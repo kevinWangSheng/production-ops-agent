@@ -1,0 +1,2849 @@
+{
+  "schema": "opspilot-lab-summary-1",
+  "experiment": "m1-03-review-acceptance",
+  "run_id": "99ad11b8-35b3-4ae0-b2f3-01703dc7a7f3",
+  "frozen_at": "2026-10-10T17:45:31.616251+00:00",
+  "incident_id": "0834af7e-0951-5850-a409-b1550255ee0a",
+  "environment": "lab: F6 archive database copy (synthetic OTel Demo lab data), not production",
+  "review_driver": "test-driven simulated review: a dedicated lab Basic Auth account posting the workbench forms over HTTP (D33); not a human review",
+  "started": "2026-10-10T17:42:26.720463+00:00",
+  "ended": "2026-10-10T17:45:30.330196+00:00",
+  "failures": [],
+  "caps": {
+    "attempts_total": 8,
+    "model_requests_total": 16
+  },
+  "evidence_links": {
+    "checked": 119,
+    "resolved": 119,
+    "by_kind": {
+      "investigation": 0,
+      "recovery": 119
+    }
+  },
+  "steps": [
+    {
+      "step": "before",
+      "http_status": null,
+      "page_matches_projection": true,
+      "page_error": null,
+      "projection": {
+        "generation_status": "not_generated",
+        "unknown_reasons": [],
+        "postmortem_generation": null,
+        "versions": [],
+        "knowledge": [],
+        "knowledge_actions": [],
+        "recent_attempts": []
+      }
+    },
+    {
+      "step": "generate_v1",
+      "http_status": null,
+      "page_matches_projection": true,
+      "page_error": null,
+      "projection": {
+        "generation_status": "under_review",
+        "unknown_reasons": [],
+        "postmortem_generation": 2,
+        "versions": [
+          {
+            "version": 1,
+            "revises_version": null,
+            "state": "under_review",
+            "stale_reason": null,
+            "content_sha256": "e1b6466a018c2f1b2bc79a18f29485db122e20ae5fa4883f2ccd0eb4992f6960",
+            "conclusions": 12,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 0,
+            "prompt_version": "f13-postmortem-prompt-v3",
+            "disputes": [],
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_spike_stable_replicas",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:221e72fa-babf-4e6b-aa25-101b7a3c2511",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:221e72fa-babf-4e6b-aa25-101b7a3c2511",
+                "worker"
+              ]
+            ]
+          }
+        ],
+        "knowledge": [],
+        "knowledge_actions": [],
+        "recent_attempts": [
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 1,
+            "model_requests": 1
+          }
+        ]
+      }
+    },
+    {
+      "step": "approve_v1",
+      "http_status": 200,
+      "version": 1,
+      "page_matches_projection": true,
+      "page_error": null,
+      "projection": {
+        "generation_status": "approved",
+        "unknown_reasons": [],
+        "postmortem_generation": 3,
+        "versions": [
+          {
+            "version": 1,
+            "revises_version": null,
+            "state": "approved",
+            "stale_reason": null,
+            "content_sha256": "e1b6466a018c2f1b2bc79a18f29485db122e20ae5fa4883f2ccd0eb4992f6960",
+            "conclusions": 12,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 0,
+            "prompt_version": "f13-postmortem-prompt-v3",
+            "disputes": [],
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_spike_stable_replicas",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:221e72fa-babf-4e6b-aa25-101b7a3c2511",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:221e72fa-babf-4e6b-aa25-101b7a3c2511",
+                "worker"
+              ],
+              [
+                "approve",
+                "lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          }
+        ],
+        "knowledge": [
+          {
+            "entry_id": "a6045025-a72d-4d91-8a33-b09a15734d2d",
+            "revision": 1,
+            "state": "active",
+            "retrievable": true,
+            "source_version": 1,
+            "source_proposal_key": "checkout_error_spike_stable_replicas",
+            "supersedes_revision": null,
+            "approved_by": "lab-reviewer",
+            "approved_by_kind": "basic_auth",
+            "content_sha256": "e622ebf7729ab81f53f9d7c386ce945da3c8da811068d84b5cacbac156f62c3d",
+            "revoked_by": null,
+            "revoked_reason": null
+          }
+        ],
+        "knowledge_actions": [
+          [
+            "publish",
+            1,
+            "lab-reviewer",
+            "basic_auth"
+          ]
+        ],
+        "recent_attempts": [
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 1,
+            "model_requests": 1
+          }
+        ]
+      }
+    },
+    {
+      "step": "follow_up_1",
+      "http_status": 200,
+      "page_matches_projection": true,
+      "page_error": null,
+      "projection": {
+        "generation_status": "approved",
+        "unknown_reasons": [],
+        "postmortem_generation": 3,
+        "versions": [
+          {
+            "version": 1,
+            "revises_version": null,
+            "state": "approved",
+            "stale_reason": null,
+            "content_sha256": "e1b6466a018c2f1b2bc79a18f29485db122e20ae5fa4883f2ccd0eb4992f6960",
+            "conclusions": 12,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 0,
+            "prompt_version": "f13-postmortem-prompt-v3",
+            "disputes": [],
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_spike_stable_replicas",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:221e72fa-babf-4e6b-aa25-101b7a3c2511",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:221e72fa-babf-4e6b-aa25-101b7a3c2511",
+                "worker"
+              ],
+              [
+                "approve",
+                "lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          }
+        ],
+        "knowledge": [
+          {
+            "entry_id": "a6045025-a72d-4d91-8a33-b09a15734d2d",
+            "revision": 1,
+            "state": "active",
+            "retrievable": true,
+            "source_version": 1,
+            "source_proposal_key": "checkout_error_spike_stable_replicas",
+            "supersedes_revision": null,
+            "approved_by": "lab-reviewer",
+            "approved_by_kind": "basic_auth",
+            "content_sha256": "e622ebf7729ab81f53f9d7c386ce945da3c8da811068d84b5cacbac156f62c3d",
+            "revoked_by": null,
+            "revoked_reason": null
+          }
+        ],
+        "knowledge_actions": [
+          [
+            "publish",
+            1,
+            "lab-reviewer",
+            "basic_auth"
+          ]
+        ],
+        "recent_attempts": [
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 1,
+            "model_requests": 1
+          }
+        ]
+      }
+    },
+    {
+      "step": "generate_v2",
+      "http_status": null,
+      "page_matches_projection": true,
+      "page_error": null,
+      "projection": {
+        "generation_status": "under_review",
+        "unknown_reasons": [],
+        "postmortem_generation": 5,
+        "versions": [
+          {
+            "version": 1,
+            "revises_version": null,
+            "state": "approved",
+            "stale_reason": null,
+            "content_sha256": "e1b6466a018c2f1b2bc79a18f29485db122e20ae5fa4883f2ccd0eb4992f6960",
+            "conclusions": 12,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 0,
+            "prompt_version": "f13-postmortem-prompt-v3",
+            "disputes": [],
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_spike_stable_replicas",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:221e72fa-babf-4e6b-aa25-101b7a3c2511",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:221e72fa-babf-4e6b-aa25-101b7a3c2511",
+                "worker"
+              ],
+              [
+                "approve",
+                "lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 2,
+            "revises_version": null,
+            "state": "under_review",
+            "stale_reason": null,
+            "content_sha256": "bae2221ac1141406f59e8c2f9941ca251eb9c1b5c878942615a1c6449c819787",
+            "conclusions": 14,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 0,
+            "prompt_version": "f13-postmortem-prompt-v3",
+            "disputes": [],
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_spike_stable_replicas",
+                "supersedes_entry_id": "a6045025-a72d-4d91-8a33-b09a15734d2d"
+              },
+              {
+                "key": "service_errors_high_dependency_low",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:221e72fa-babf-4e6b-aa25-101b7a3c2511",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:221e72fa-babf-4e6b-aa25-101b7a3c2511",
+                "worker"
+              ]
+            ]
+          }
+        ],
+        "knowledge": [
+          {
+            "entry_id": "a6045025-a72d-4d91-8a33-b09a15734d2d",
+            "revision": 1,
+            "state": "active",
+            "retrievable": true,
+            "source_version": 1,
+            "source_proposal_key": "checkout_error_spike_stable_replicas",
+            "supersedes_revision": null,
+            "approved_by": "lab-reviewer",
+            "approved_by_kind": "basic_auth",
+            "content_sha256": "e622ebf7729ab81f53f9d7c386ce945da3c8da811068d84b5cacbac156f62c3d",
+            "revoked_by": null,
+            "revoked_reason": null
+          }
+        ],
+        "knowledge_actions": [
+          [
+            "publish",
+            1,
+            "lab-reviewer",
+            "basic_auth"
+          ]
+        ],
+        "recent_attempts": [
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 2,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 1,
+            "model_requests": 1
+          }
+        ]
+      }
+    },
+    {
+      "step": "return_v2",
+      "http_status": 200,
+      "version": 2,
+      "page_matches_projection": true,
+      "page_error": null,
+      "projection": {
+        "generation_status": "returned",
+        "unknown_reasons": [],
+        "postmortem_generation": 6,
+        "versions": [
+          {
+            "version": 1,
+            "revises_version": null,
+            "state": "approved",
+            "stale_reason": null,
+            "content_sha256": "e1b6466a018c2f1b2bc79a18f29485db122e20ae5fa4883f2ccd0eb4992f6960",
+            "conclusions": 12,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 0,
+            "prompt_version": "f13-postmortem-prompt-v3",
+            "disputes": [],
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_spike_stable_replicas",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:221e72fa-babf-4e6b-aa25-101b7a3c2511",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:221e72fa-babf-4e6b-aa25-101b7a3c2511",
+                "worker"
+              ],
+              [
+                "approve",
+                "lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 2,
+            "revises_version": null,
+            "state": "returned",
+            "stale_reason": null,
+            "content_sha256": "bae2221ac1141406f59e8c2f9941ca251eb9c1b5c878942615a1c6449c819787",
+            "conclusions": 14,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 0,
+            "prompt_version": "f13-postmortem-prompt-v3",
+            "disputes": [],
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_spike_stable_replicas",
+                "supersedes_entry_id": "a6045025-a72d-4d91-8a33-b09a15734d2d"
+              },
+              {
+                "key": "service_errors_high_dependency_low",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:221e72fa-babf-4e6b-aa25-101b7a3c2511",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:221e72fa-babf-4e6b-aa25-101b7a3c2511",
+                "worker"
+              ],
+              [
+                "return",
+                "lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          }
+        ],
+        "knowledge": [
+          {
+            "entry_id": "a6045025-a72d-4d91-8a33-b09a15734d2d",
+            "revision": 1,
+            "state": "active",
+            "retrievable": true,
+            "source_version": 1,
+            "source_proposal_key": "checkout_error_spike_stable_replicas",
+            "supersedes_revision": null,
+            "approved_by": "lab-reviewer",
+            "approved_by_kind": "basic_auth",
+            "content_sha256": "e622ebf7729ab81f53f9d7c386ce945da3c8da811068d84b5cacbac156f62c3d",
+            "revoked_by": null,
+            "revoked_reason": null
+          }
+        ],
+        "knowledge_actions": [
+          [
+            "publish",
+            1,
+            "lab-reviewer",
+            "basic_auth"
+          ]
+        ],
+        "recent_attempts": [
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 2,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 1,
+            "model_requests": 1
+          }
+        ]
+      }
+    },
+    {
+      "step": "generate_v3",
+      "http_status": null,
+      "page_matches_projection": true,
+      "page_error": null,
+      "projection": {
+        "generation_status": "under_review",
+        "unknown_reasons": [],
+        "postmortem_generation": 8,
+        "versions": [
+          {
+            "version": 1,
+            "revises_version": null,
+            "state": "approved",
+            "stale_reason": null,
+            "content_sha256": "e1b6466a018c2f1b2bc79a18f29485db122e20ae5fa4883f2ccd0eb4992f6960",
+            "conclusions": 12,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 0,
+            "prompt_version": "f13-postmortem-prompt-v3",
+            "disputes": [],
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_spike_stable_replicas",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:221e72fa-babf-4e6b-aa25-101b7a3c2511",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:221e72fa-babf-4e6b-aa25-101b7a3c2511",
+                "worker"
+              ],
+              [
+                "approve",
+                "lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 2,
+            "revises_version": null,
+            "state": "returned",
+            "stale_reason": null,
+            "content_sha256": "bae2221ac1141406f59e8c2f9941ca251eb9c1b5c878942615a1c6449c819787",
+            "conclusions": 14,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 0,
+            "prompt_version": "f13-postmortem-prompt-v3",
+            "disputes": [],
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_spike_stable_replicas",
+                "supersedes_entry_id": "a6045025-a72d-4d91-8a33-b09a15734d2d"
+              },
+              {
+                "key": "service_errors_high_dependency_low",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:221e72fa-babf-4e6b-aa25-101b7a3c2511",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:221e72fa-babf-4e6b-aa25-101b7a3c2511",
+                "worker"
+              ],
+              [
+                "return",
+                "lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 3,
+            "revises_version": 2,
+            "state": "under_review",
+            "stale_reason": null,
+            "content_sha256": "0fa7ee5aaf717f30f6942424754386e30179baf46fee356824b497fa5cd96ff6",
+            "conclusions": 12,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 0,
+            "prompt_version": "f13-postmortem-prompt-v3",
+            "disputes": [],
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_spike_stable_replicas",
+                "supersedes_entry_id": "a6045025-a72d-4d91-8a33-b09a15734d2d"
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:221e72fa-babf-4e6b-aa25-101b7a3c2511",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:221e72fa-babf-4e6b-aa25-101b7a3c2511",
+                "worker"
+              ]
+            ]
+          }
+        ],
+        "knowledge": [
+          {
+            "entry_id": "a6045025-a72d-4d91-8a33-b09a15734d2d",
+            "revision": 1,
+            "state": "active",
+            "retrievable": true,
+            "source_version": 1,
+            "source_proposal_key": "checkout_error_spike_stable_replicas",
+            "supersedes_revision": null,
+            "approved_by": "lab-reviewer",
+            "approved_by_kind": "basic_auth",
+            "content_sha256": "e622ebf7729ab81f53f9d7c386ce945da3c8da811068d84b5cacbac156f62c3d",
+            "revoked_by": null,
+            "revoked_reason": null
+          }
+        ],
+        "knowledge_actions": [
+          [
+            "publish",
+            1,
+            "lab-reviewer",
+            "basic_auth"
+          ]
+        ],
+        "recent_attempts": [
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 3,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 2,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 1,
+            "model_requests": 1
+          }
+        ]
+      }
+    },
+    {
+      "step": "reject_v3",
+      "http_status": 200,
+      "version": 3,
+      "page_matches_projection": true,
+      "page_error": null,
+      "projection": {
+        "generation_status": "rejected",
+        "unknown_reasons": [],
+        "postmortem_generation": 9,
+        "versions": [
+          {
+            "version": 1,
+            "revises_version": null,
+            "state": "approved",
+            "stale_reason": null,
+            "content_sha256": "e1b6466a018c2f1b2bc79a18f29485db122e20ae5fa4883f2ccd0eb4992f6960",
+            "conclusions": 12,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 0,
+            "prompt_version": "f13-postmortem-prompt-v3",
+            "disputes": [],
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_spike_stable_replicas",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:221e72fa-babf-4e6b-aa25-101b7a3c2511",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:221e72fa-babf-4e6b-aa25-101b7a3c2511",
+                "worker"
+              ],
+              [
+                "approve",
+                "lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 2,
+            "revises_version": null,
+            "state": "returned",
+            "stale_reason": null,
+            "content_sha256": "bae2221ac1141406f59e8c2f9941ca251eb9c1b5c878942615a1c6449c819787",
+            "conclusions": 14,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 0,
+            "prompt_version": "f13-postmortem-prompt-v3",
+            "disputes": [],
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_spike_stable_replicas",
+                "supersedes_entry_id": "a6045025-a72d-4d91-8a33-b09a15734d2d"
+              },
+              {
+                "key": "service_errors_high_dependency_low",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:221e72fa-babf-4e6b-aa25-101b7a3c2511",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:221e72fa-babf-4e6b-aa25-101b7a3c2511",
+                "worker"
+              ],
+              [
+                "return",
+                "lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 3,
+            "revises_version": 2,
+            "state": "rejected",
+            "stale_reason": null,
+            "content_sha256": "0fa7ee5aaf717f30f6942424754386e30179baf46fee356824b497fa5cd96ff6",
+            "conclusions": 12,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 0,
+            "prompt_version": "f13-postmortem-prompt-v3",
+            "disputes": [],
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_spike_stable_replicas",
+                "supersedes_entry_id": "a6045025-a72d-4d91-8a33-b09a15734d2d"
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:221e72fa-babf-4e6b-aa25-101b7a3c2511",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:221e72fa-babf-4e6b-aa25-101b7a3c2511",
+                "worker"
+              ],
+              [
+                "reject",
+                "lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          }
+        ],
+        "knowledge": [
+          {
+            "entry_id": "a6045025-a72d-4d91-8a33-b09a15734d2d",
+            "revision": 1,
+            "state": "active",
+            "retrievable": true,
+            "source_version": 1,
+            "source_proposal_key": "checkout_error_spike_stable_replicas",
+            "supersedes_revision": null,
+            "approved_by": "lab-reviewer",
+            "approved_by_kind": "basic_auth",
+            "content_sha256": "e622ebf7729ab81f53f9d7c386ce945da3c8da811068d84b5cacbac156f62c3d",
+            "revoked_by": null,
+            "revoked_reason": null
+          }
+        ],
+        "knowledge_actions": [
+          [
+            "publish",
+            1,
+            "lab-reviewer",
+            "basic_auth"
+          ]
+        ],
+        "recent_attempts": [
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 3,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 2,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 1,
+            "model_requests": 1
+          }
+        ]
+      }
+    },
+    {
+      "step": "follow_up_2",
+      "http_status": 200,
+      "page_matches_projection": true,
+      "page_error": null,
+      "projection": {
+        "generation_status": "rejected",
+        "unknown_reasons": [],
+        "postmortem_generation": 9,
+        "versions": [
+          {
+            "version": 1,
+            "revises_version": null,
+            "state": "approved",
+            "stale_reason": null,
+            "content_sha256": "e1b6466a018c2f1b2bc79a18f29485db122e20ae5fa4883f2ccd0eb4992f6960",
+            "conclusions": 12,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 0,
+            "prompt_version": "f13-postmortem-prompt-v3",
+            "disputes": [],
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_spike_stable_replicas",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:221e72fa-babf-4e6b-aa25-101b7a3c2511",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:221e72fa-babf-4e6b-aa25-101b7a3c2511",
+                "worker"
+              ],
+              [
+                "approve",
+                "lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 2,
+            "revises_version": null,
+            "state": "returned",
+            "stale_reason": null,
+            "content_sha256": "bae2221ac1141406f59e8c2f9941ca251eb9c1b5c878942615a1c6449c819787",
+            "conclusions": 14,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 0,
+            "prompt_version": "f13-postmortem-prompt-v3",
+            "disputes": [],
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_spike_stable_replicas",
+                "supersedes_entry_id": "a6045025-a72d-4d91-8a33-b09a15734d2d"
+              },
+              {
+                "key": "service_errors_high_dependency_low",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:221e72fa-babf-4e6b-aa25-101b7a3c2511",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:221e72fa-babf-4e6b-aa25-101b7a3c2511",
+                "worker"
+              ],
+              [
+                "return",
+                "lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 3,
+            "revises_version": 2,
+            "state": "rejected",
+            "stale_reason": null,
+            "content_sha256": "0fa7ee5aaf717f30f6942424754386e30179baf46fee356824b497fa5cd96ff6",
+            "conclusions": 12,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 0,
+            "prompt_version": "f13-postmortem-prompt-v3",
+            "disputes": [],
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_spike_stable_replicas",
+                "supersedes_entry_id": "a6045025-a72d-4d91-8a33-b09a15734d2d"
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:221e72fa-babf-4e6b-aa25-101b7a3c2511",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:221e72fa-babf-4e6b-aa25-101b7a3c2511",
+                "worker"
+              ],
+              [
+                "reject",
+                "lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          }
+        ],
+        "knowledge": [
+          {
+            "entry_id": "a6045025-a72d-4d91-8a33-b09a15734d2d",
+            "revision": 1,
+            "state": "active",
+            "retrievable": true,
+            "source_version": 1,
+            "source_proposal_key": "checkout_error_spike_stable_replicas",
+            "supersedes_revision": null,
+            "approved_by": "lab-reviewer",
+            "approved_by_kind": "basic_auth",
+            "content_sha256": "e622ebf7729ab81f53f9d7c386ce945da3c8da811068d84b5cacbac156f62c3d",
+            "revoked_by": null,
+            "revoked_reason": null
+          }
+        ],
+        "knowledge_actions": [
+          [
+            "publish",
+            1,
+            "lab-reviewer",
+            "basic_auth"
+          ]
+        ],
+        "recent_attempts": [
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 3,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 2,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 1,
+            "model_requests": 1
+          }
+        ]
+      }
+    },
+    {
+      "step": "generate_v4",
+      "http_status": null,
+      "page_matches_projection": true,
+      "page_error": null,
+      "projection": {
+        "generation_status": "under_review",
+        "unknown_reasons": [],
+        "postmortem_generation": 11,
+        "versions": [
+          {
+            "version": 1,
+            "revises_version": null,
+            "state": "approved",
+            "stale_reason": null,
+            "content_sha256": "e1b6466a018c2f1b2bc79a18f29485db122e20ae5fa4883f2ccd0eb4992f6960",
+            "conclusions": 12,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 0,
+            "prompt_version": "f13-postmortem-prompt-v3",
+            "disputes": [],
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_spike_stable_replicas",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:221e72fa-babf-4e6b-aa25-101b7a3c2511",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:221e72fa-babf-4e6b-aa25-101b7a3c2511",
+                "worker"
+              ],
+              [
+                "approve",
+                "lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 2,
+            "revises_version": null,
+            "state": "returned",
+            "stale_reason": null,
+            "content_sha256": "bae2221ac1141406f59e8c2f9941ca251eb9c1b5c878942615a1c6449c819787",
+            "conclusions": 14,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 0,
+            "prompt_version": "f13-postmortem-prompt-v3",
+            "disputes": [],
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_spike_stable_replicas",
+                "supersedes_entry_id": "a6045025-a72d-4d91-8a33-b09a15734d2d"
+              },
+              {
+                "key": "service_errors_high_dependency_low",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:221e72fa-babf-4e6b-aa25-101b7a3c2511",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:221e72fa-babf-4e6b-aa25-101b7a3c2511",
+                "worker"
+              ],
+              [
+                "return",
+                "lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 3,
+            "revises_version": 2,
+            "state": "rejected",
+            "stale_reason": null,
+            "content_sha256": "0fa7ee5aaf717f30f6942424754386e30179baf46fee356824b497fa5cd96ff6",
+            "conclusions": 12,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 0,
+            "prompt_version": "f13-postmortem-prompt-v3",
+            "disputes": [],
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_spike_stable_replicas",
+                "supersedes_entry_id": "a6045025-a72d-4d91-8a33-b09a15734d2d"
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:221e72fa-babf-4e6b-aa25-101b7a3c2511",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:221e72fa-babf-4e6b-aa25-101b7a3c2511",
+                "worker"
+              ],
+              [
+                "reject",
+                "lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 4,
+            "revises_version": null,
+            "state": "under_review",
+            "stale_reason": null,
+            "content_sha256": "45b5b223feff581e40ae96bf9c3d4bf83fac26e8812ee221ded20dca8b327e2b",
+            "conclusions": 13,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 0,
+            "prompt_version": "f13-postmortem-prompt-v3",
+            "disputes": [],
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_dependency_error_ratio_signal",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "checkout_error_spike_stable_replicas",
+                "supersedes_entry_id": "a6045025-a72d-4d91-8a33-b09a15734d2d"
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:221e72fa-babf-4e6b-aa25-101b7a3c2511",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:221e72fa-babf-4e6b-aa25-101b7a3c2511",
+                "worker"
+              ]
+            ]
+          }
+        ],
+        "knowledge": [
+          {
+            "entry_id": "a6045025-a72d-4d91-8a33-b09a15734d2d",
+            "revision": 1,
+            "state": "active",
+            "retrievable": true,
+            "source_version": 1,
+            "source_proposal_key": "checkout_error_spike_stable_replicas",
+            "supersedes_revision": null,
+            "approved_by": "lab-reviewer",
+            "approved_by_kind": "basic_auth",
+            "content_sha256": "e622ebf7729ab81f53f9d7c386ce945da3c8da811068d84b5cacbac156f62c3d",
+            "revoked_by": null,
+            "revoked_reason": null
+          }
+        ],
+        "knowledge_actions": [
+          [
+            "publish",
+            1,
+            "lab-reviewer",
+            "basic_auth"
+          ]
+        ],
+        "recent_attempts": [
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 4,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 3,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 2,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 1,
+            "model_requests": 1
+          }
+        ]
+      }
+    },
+    {
+      "step": "supersede_v4",
+      "http_status": 200,
+      "version": 4,
+      "page_matches_projection": true,
+      "page_error": null,
+      "projection": {
+        "generation_status": "approved",
+        "unknown_reasons": [],
+        "postmortem_generation": 12,
+        "versions": [
+          {
+            "version": 1,
+            "revises_version": null,
+            "state": "approved",
+            "stale_reason": null,
+            "content_sha256": "e1b6466a018c2f1b2bc79a18f29485db122e20ae5fa4883f2ccd0eb4992f6960",
+            "conclusions": 12,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 0,
+            "prompt_version": "f13-postmortem-prompt-v3",
+            "disputes": [],
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_spike_stable_replicas",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:221e72fa-babf-4e6b-aa25-101b7a3c2511",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:221e72fa-babf-4e6b-aa25-101b7a3c2511",
+                "worker"
+              ],
+              [
+                "approve",
+                "lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 2,
+            "revises_version": null,
+            "state": "returned",
+            "stale_reason": null,
+            "content_sha256": "bae2221ac1141406f59e8c2f9941ca251eb9c1b5c878942615a1c6449c819787",
+            "conclusions": 14,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 0,
+            "prompt_version": "f13-postmortem-prompt-v3",
+            "disputes": [],
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_spike_stable_replicas",
+                "supersedes_entry_id": "a6045025-a72d-4d91-8a33-b09a15734d2d"
+              },
+              {
+                "key": "service_errors_high_dependency_low",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:221e72fa-babf-4e6b-aa25-101b7a3c2511",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:221e72fa-babf-4e6b-aa25-101b7a3c2511",
+                "worker"
+              ],
+              [
+                "return",
+                "lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 3,
+            "revises_version": 2,
+            "state": "rejected",
+            "stale_reason": null,
+            "content_sha256": "0fa7ee5aaf717f30f6942424754386e30179baf46fee356824b497fa5cd96ff6",
+            "conclusions": 12,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 0,
+            "prompt_version": "f13-postmortem-prompt-v3",
+            "disputes": [],
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_spike_stable_replicas",
+                "supersedes_entry_id": "a6045025-a72d-4d91-8a33-b09a15734d2d"
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:221e72fa-babf-4e6b-aa25-101b7a3c2511",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:221e72fa-babf-4e6b-aa25-101b7a3c2511",
+                "worker"
+              ],
+              [
+                "reject",
+                "lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 4,
+            "revises_version": null,
+            "state": "approved",
+            "stale_reason": null,
+            "content_sha256": "45b5b223feff581e40ae96bf9c3d4bf83fac26e8812ee221ded20dca8b327e2b",
+            "conclusions": 13,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 0,
+            "prompt_version": "f13-postmortem-prompt-v3",
+            "disputes": [],
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_dependency_error_ratio_signal",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "checkout_error_spike_stable_replicas",
+                "supersedes_entry_id": "a6045025-a72d-4d91-8a33-b09a15734d2d"
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:221e72fa-babf-4e6b-aa25-101b7a3c2511",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:221e72fa-babf-4e6b-aa25-101b7a3c2511",
+                "worker"
+              ],
+              [
+                "approve",
+                "lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          }
+        ],
+        "knowledge": [
+          {
+            "entry_id": "a6045025-a72d-4d91-8a33-b09a15734d2d",
+            "revision": 1,
+            "state": "superseded",
+            "retrievable": false,
+            "source_version": 1,
+            "source_proposal_key": "checkout_error_spike_stable_replicas",
+            "supersedes_revision": null,
+            "approved_by": "lab-reviewer",
+            "approved_by_kind": "basic_auth",
+            "content_sha256": "e622ebf7729ab81f53f9d7c386ce945da3c8da811068d84b5cacbac156f62c3d",
+            "revoked_by": null,
+            "revoked_reason": null
+          },
+          {
+            "entry_id": "a6045025-a72d-4d91-8a33-b09a15734d2d",
+            "revision": 2,
+            "state": "active",
+            "retrievable": true,
+            "source_version": 4,
+            "source_proposal_key": "checkout_error_spike_stable_replicas",
+            "supersedes_revision": 1,
+            "approved_by": "lab-reviewer",
+            "approved_by_kind": "basic_auth",
+            "content_sha256": "e7de42aff95748b37f9a2c7dc8f526dbcc26e11c4fcff8941abedc7dd68c5bb7",
+            "revoked_by": null,
+            "revoked_reason": null
+          },
+          {
+            "entry_id": "5502a391-e932-4255-b083-72735ecd00f4",
+            "revision": 1,
+            "state": "active",
+            "retrievable": true,
+            "source_version": 4,
+            "source_proposal_key": "checkout_dependency_error_ratio_signal",
+            "supersedes_revision": null,
+            "approved_by": "lab-reviewer",
+            "approved_by_kind": "basic_auth",
+            "content_sha256": "a7380b03cca878929f9036940a6cbf727e76a53d8ac69dc38edd4bcf097b2a17",
+            "revoked_by": null,
+            "revoked_reason": null
+          }
+        ],
+        "knowledge_actions": [
+          [
+            "publish",
+            1,
+            "lab-reviewer",
+            "basic_auth"
+          ],
+          [
+            "supersede",
+            2,
+            "lab-reviewer",
+            "basic_auth"
+          ],
+          [
+            "publish",
+            1,
+            "lab-reviewer",
+            "basic_auth"
+          ]
+        ],
+        "recent_attempts": [
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 4,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 3,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 2,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 1,
+            "model_requests": 1
+          }
+        ]
+      }
+    },
+    {
+      "step": "revoke",
+      "http_status": 200,
+      "page_matches_projection": true,
+      "page_error": null,
+      "projection": {
+        "generation_status": "approved",
+        "unknown_reasons": [],
+        "postmortem_generation": 12,
+        "versions": [
+          {
+            "version": 1,
+            "revises_version": null,
+            "state": "approved",
+            "stale_reason": null,
+            "content_sha256": "e1b6466a018c2f1b2bc79a18f29485db122e20ae5fa4883f2ccd0eb4992f6960",
+            "conclusions": 12,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 0,
+            "prompt_version": "f13-postmortem-prompt-v3",
+            "disputes": [],
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_spike_stable_replicas",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:221e72fa-babf-4e6b-aa25-101b7a3c2511",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:221e72fa-babf-4e6b-aa25-101b7a3c2511",
+                "worker"
+              ],
+              [
+                "approve",
+                "lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 2,
+            "revises_version": null,
+            "state": "returned",
+            "stale_reason": null,
+            "content_sha256": "bae2221ac1141406f59e8c2f9941ca251eb9c1b5c878942615a1c6449c819787",
+            "conclusions": 14,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 0,
+            "prompt_version": "f13-postmortem-prompt-v3",
+            "disputes": [],
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_spike_stable_replicas",
+                "supersedes_entry_id": "a6045025-a72d-4d91-8a33-b09a15734d2d"
+              },
+              {
+                "key": "service_errors_high_dependency_low",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:221e72fa-babf-4e6b-aa25-101b7a3c2511",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:221e72fa-babf-4e6b-aa25-101b7a3c2511",
+                "worker"
+              ],
+              [
+                "return",
+                "lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 3,
+            "revises_version": 2,
+            "state": "rejected",
+            "stale_reason": null,
+            "content_sha256": "0fa7ee5aaf717f30f6942424754386e30179baf46fee356824b497fa5cd96ff6",
+            "conclusions": 12,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 0,
+            "prompt_version": "f13-postmortem-prompt-v3",
+            "disputes": [],
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_spike_stable_replicas",
+                "supersedes_entry_id": "a6045025-a72d-4d91-8a33-b09a15734d2d"
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:221e72fa-babf-4e6b-aa25-101b7a3c2511",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:221e72fa-babf-4e6b-aa25-101b7a3c2511",
+                "worker"
+              ],
+              [
+                "reject",
+                "lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 4,
+            "revises_version": null,
+            "state": "approved",
+            "stale_reason": null,
+            "content_sha256": "45b5b223feff581e40ae96bf9c3d4bf83fac26e8812ee221ded20dca8b327e2b",
+            "conclusions": 13,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 0,
+            "prompt_version": "f13-postmortem-prompt-v3",
+            "disputes": [],
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_dependency_error_ratio_signal",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "checkout_error_spike_stable_replicas",
+                "supersedes_entry_id": "a6045025-a72d-4d91-8a33-b09a15734d2d"
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:221e72fa-babf-4e6b-aa25-101b7a3c2511",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:221e72fa-babf-4e6b-aa25-101b7a3c2511",
+                "worker"
+              ],
+              [
+                "approve",
+                "lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          }
+        ],
+        "knowledge": [
+          {
+            "entry_id": "a6045025-a72d-4d91-8a33-b09a15734d2d",
+            "revision": 1,
+            "state": "superseded",
+            "retrievable": false,
+            "source_version": 1,
+            "source_proposal_key": "checkout_error_spike_stable_replicas",
+            "supersedes_revision": null,
+            "approved_by": "lab-reviewer",
+            "approved_by_kind": "basic_auth",
+            "content_sha256": "e622ebf7729ab81f53f9d7c386ce945da3c8da811068d84b5cacbac156f62c3d",
+            "revoked_by": null,
+            "revoked_reason": null
+          },
+          {
+            "entry_id": "a6045025-a72d-4d91-8a33-b09a15734d2d",
+            "revision": 2,
+            "state": "active",
+            "retrievable": true,
+            "source_version": 4,
+            "source_proposal_key": "checkout_error_spike_stable_replicas",
+            "supersedes_revision": 1,
+            "approved_by": "lab-reviewer",
+            "approved_by_kind": "basic_auth",
+            "content_sha256": "e7de42aff95748b37f9a2c7dc8f526dbcc26e11c4fcff8941abedc7dd68c5bb7",
+            "revoked_by": null,
+            "revoked_reason": null
+          },
+          {
+            "entry_id": "5502a391-e932-4255-b083-72735ecd00f4",
+            "revision": 1,
+            "state": "revoked",
+            "retrievable": false,
+            "source_version": 4,
+            "source_proposal_key": "checkout_dependency_error_ratio_signal",
+            "supersedes_revision": null,
+            "approved_by": "lab-reviewer",
+            "approved_by_kind": "basic_auth",
+            "content_sha256": "a7380b03cca878929f9036940a6cbf727e76a53d8ac69dc38edd4bcf097b2a17",
+            "revoked_by": "lab-reviewer",
+            "revoked_reason": "Lab review: revoked to exercise reversibility."
+          }
+        ],
+        "knowledge_actions": [
+          [
+            "publish",
+            1,
+            "lab-reviewer",
+            "basic_auth"
+          ],
+          [
+            "supersede",
+            2,
+            "lab-reviewer",
+            "basic_auth"
+          ],
+          [
+            "publish",
+            1,
+            "lab-reviewer",
+            "basic_auth"
+          ],
+          [
+            "revoke",
+            1,
+            "lab-reviewer",
+            "basic_auth"
+          ]
+        ],
+        "recent_attempts": [
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 4,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 3,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 2,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 1,
+            "model_requests": 1
+          }
+        ]
+      }
+    },
+    {
+      "step": "final",
+      "http_status": null,
+      "page_matches_projection": true,
+      "page_error": null,
+      "projection": {
+        "generation_status": "approved",
+        "unknown_reasons": [],
+        "postmortem_generation": 12,
+        "versions": [
+          {
+            "version": 1,
+            "revises_version": null,
+            "state": "approved",
+            "stale_reason": null,
+            "content_sha256": "e1b6466a018c2f1b2bc79a18f29485db122e20ae5fa4883f2ccd0eb4992f6960",
+            "conclusions": 12,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 0,
+            "prompt_version": "f13-postmortem-prompt-v3",
+            "disputes": [],
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_spike_stable_replicas",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:221e72fa-babf-4e6b-aa25-101b7a3c2511",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:221e72fa-babf-4e6b-aa25-101b7a3c2511",
+                "worker"
+              ],
+              [
+                "approve",
+                "lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 2,
+            "revises_version": null,
+            "state": "returned",
+            "stale_reason": null,
+            "content_sha256": "bae2221ac1141406f59e8c2f9941ca251eb9c1b5c878942615a1c6449c819787",
+            "conclusions": 14,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 0,
+            "prompt_version": "f13-postmortem-prompt-v3",
+            "disputes": [],
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_spike_stable_replicas",
+                "supersedes_entry_id": "a6045025-a72d-4d91-8a33-b09a15734d2d"
+              },
+              {
+                "key": "service_errors_high_dependency_low",
+                "supersedes_entry_id": null
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:221e72fa-babf-4e6b-aa25-101b7a3c2511",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:221e72fa-babf-4e6b-aa25-101b7a3c2511",
+                "worker"
+              ],
+              [
+                "return",
+                "lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 3,
+            "revises_version": 2,
+            "state": "rejected",
+            "stale_reason": null,
+            "content_sha256": "0fa7ee5aaf717f30f6942424754386e30179baf46fee356824b497fa5cd96ff6",
+            "conclusions": 12,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 0,
+            "prompt_version": "f13-postmortem-prompt-v3",
+            "disputes": [],
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_error_spike_stable_replicas",
+                "supersedes_entry_id": "a6045025-a72d-4d91-8a33-b09a15734d2d"
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:221e72fa-babf-4e6b-aa25-101b7a3c2511",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:221e72fa-babf-4e6b-aa25-101b7a3c2511",
+                "worker"
+              ],
+              [
+                "reject",
+                "lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          },
+          {
+            "version": 4,
+            "revises_version": null,
+            "state": "approved",
+            "stale_reason": null,
+            "content_sha256": "45b5b223feff581e40ae96bf9c3d4bf83fac26e8812ee221ded20dca8b327e2b",
+            "conclusions": 13,
+            "uncertain": 3,
+            "citations_failed": 0,
+            "disputed": 0,
+            "prompt_version": "f13-postmortem-prompt-v3",
+            "disputes": [],
+            "sections_present": [
+              "human_actions",
+              "incident",
+              "recovery",
+              "runs",
+              "timeline"
+            ],
+            "model_sections": [
+              "findings",
+              "hypotheses",
+              "impact_summary",
+              "recommendations"
+            ],
+            "proposals": [
+              {
+                "key": "checkout_dependency_error_ratio_signal",
+                "supersedes_entry_id": null
+              },
+              {
+                "key": "checkout_error_spike_stable_replicas",
+                "supersedes_entry_id": "a6045025-a72d-4d91-8a33-b09a15734d2d"
+              }
+            ],
+            "review_actions": [
+              [
+                "generate",
+                "worker:221e72fa-babf-4e6b-aa25-101b7a3c2511",
+                "worker"
+              ],
+              [
+                "submit",
+                "worker:221e72fa-babf-4e6b-aa25-101b7a3c2511",
+                "worker"
+              ],
+              [
+                "approve",
+                "lab-reviewer",
+                "basic_auth"
+              ]
+            ]
+          }
+        ],
+        "knowledge": [
+          {
+            "entry_id": "a6045025-a72d-4d91-8a33-b09a15734d2d",
+            "revision": 1,
+            "state": "superseded",
+            "retrievable": false,
+            "source_version": 1,
+            "source_proposal_key": "checkout_error_spike_stable_replicas",
+            "supersedes_revision": null,
+            "approved_by": "lab-reviewer",
+            "approved_by_kind": "basic_auth",
+            "content_sha256": "e622ebf7729ab81f53f9d7c386ce945da3c8da811068d84b5cacbac156f62c3d",
+            "revoked_by": null,
+            "revoked_reason": null
+          },
+          {
+            "entry_id": "a6045025-a72d-4d91-8a33-b09a15734d2d",
+            "revision": 2,
+            "state": "active",
+            "retrievable": true,
+            "source_version": 4,
+            "source_proposal_key": "checkout_error_spike_stable_replicas",
+            "supersedes_revision": 1,
+            "approved_by": "lab-reviewer",
+            "approved_by_kind": "basic_auth",
+            "content_sha256": "e7de42aff95748b37f9a2c7dc8f526dbcc26e11c4fcff8941abedc7dd68c5bb7",
+            "revoked_by": null,
+            "revoked_reason": null
+          },
+          {
+            "entry_id": "5502a391-e932-4255-b083-72735ecd00f4",
+            "revision": 1,
+            "state": "revoked",
+            "retrievable": false,
+            "source_version": 4,
+            "source_proposal_key": "checkout_dependency_error_ratio_signal",
+            "supersedes_revision": null,
+            "approved_by": "lab-reviewer",
+            "approved_by_kind": "basic_auth",
+            "content_sha256": "a7380b03cca878929f9036940a6cbf727e76a53d8ac69dc38edd4bcf097b2a17",
+            "revoked_by": "lab-reviewer",
+            "revoked_reason": "Lab review: revoked to exercise reversibility."
+          }
+        ],
+        "knowledge_actions": [
+          [
+            "publish",
+            1,
+            "lab-reviewer",
+            "basic_auth"
+          ],
+          [
+            "supersede",
+            2,
+            "lab-reviewer",
+            "basic_auth"
+          ],
+          [
+            "publish",
+            1,
+            "lab-reviewer",
+            "basic_auth"
+          ],
+          [
+            "revoke",
+            1,
+            "lab-reviewer",
+            "basic_auth"
+          ]
+        ],
+        "recent_attempts": [
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 4,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 3,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 2,
+            "model_requests": 1
+          },
+          {
+            "status": "succeeded",
+            "error_code": null,
+            "version": 1,
+            "model_requests": 1
+          }
+        ]
+      }
+    }
+  ],
+  "generations": [
+    {
+      "step": "generate_v1",
+      "claimed": true,
+      "attempt_id": "221f6baf-3d15-4634-ae56-264b634e8d3c",
+      "status": "succeeded",
+      "error_code": null,
+      "version": 1,
+      "state": "under_review",
+      "model_requests_recorded": 1,
+      "model_requests_counted": 1,
+      "trace": {
+        "mode": "lab",
+        "otel_trace_id": "5e7c45e593091ba8e71a92e37cb68db0",
+        "dropped_spans": 0,
+        "project": "opspilot-lab-m1-03-supersede-20261010",
+        "project_id": "a9253255-8019-4e9d-8667-e8975d3a4424",
+        "trace_tier": "longlived",
+        "langsmith_run_id": "00000000-0000-0000-85b8-1512d75b0349",
+        "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/a9253255-8019-4e9d-8667-e8975d3a4424/r/00000000-0000-0000-85b8-1512d75b0349?poll=true",
+        "read_back": "found"
+      }
+    },
+    {
+      "step": "generate_v2",
+      "claimed": true,
+      "attempt_id": "017ea87f-dfb4-44c1-829c-dca43fb9a473",
+      "status": "succeeded",
+      "error_code": null,
+      "version": 2,
+      "state": "under_review",
+      "model_requests_recorded": 1,
+      "model_requests_counted": 1,
+      "trace": {
+        "mode": "lab",
+        "otel_trace_id": "533ee4974bb2900c0e785a5f751ea8cc",
+        "dropped_spans": 0,
+        "project": "opspilot-lab-m1-03-supersede-20261010",
+        "project_id": "a9253255-8019-4e9d-8667-e8975d3a4424",
+        "trace_tier": "longlived",
+        "langsmith_run_id": "00000000-0000-0000-a4a0-4a498cb02007",
+        "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/a9253255-8019-4e9d-8667-e8975d3a4424/r/00000000-0000-0000-a4a0-4a498cb02007?poll=true",
+        "read_back": "found"
+      }
+    },
+    {
+      "step": "generate_v3",
+      "claimed": true,
+      "attempt_id": "ba36714d-0d54-4aad-979a-869fb88ff1c3",
+      "status": "succeeded",
+      "error_code": null,
+      "version": 3,
+      "state": "under_review",
+      "model_requests_recorded": 1,
+      "model_requests_counted": 1,
+      "trace": {
+        "mode": "lab",
+        "otel_trace_id": "e358b2ce761ea70a5fa8eb01cb16d229",
+        "dropped_spans": 0,
+        "project": "opspilot-lab-m1-03-supersede-20261010",
+        "project_id": "a9253255-8019-4e9d-8667-e8975d3a4424",
+        "trace_tier": "longlived",
+        "langsmith_run_id": "00000000-0000-0000-e871-43f3f507300b",
+        "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/a9253255-8019-4e9d-8667-e8975d3a4424/r/00000000-0000-0000-e871-43f3f507300b?poll=true",
+        "read_back": "found"
+      }
+    },
+    {
+      "step": "generate_v4",
+      "claimed": true,
+      "attempt_id": "26318591-2f16-4dfc-8e42-a06eb4e7c618",
+      "status": "succeeded",
+      "error_code": null,
+      "version": 4,
+      "state": "under_review",
+      "model_requests_recorded": 1,
+      "model_requests_counted": 1,
+      "trace": {
+        "mode": "lab",
+        "otel_trace_id": "b35eef130883a2aa986df895e44da010",
+        "dropped_spans": 0,
+        "project": "opspilot-lab-m1-03-supersede-20261010",
+        "project_id": "a9253255-8019-4e9d-8667-e8975d3a4424",
+        "trace_tier": "longlived",
+        "langsmith_run_id": "00000000-0000-0000-f084-55ca5f377824",
+        "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/a9253255-8019-4e9d-8667-e8975d3a4424/r/00000000-0000-0000-f084-55ca5f377824?poll=true",
+        "read_back": "found"
+      }
+    }
+  ],
+  "final": {
+    "generation_status": "approved",
+    "unknown_reasons": [],
+    "postmortem_generation": 12,
+    "versions": [
+      {
+        "version": 1,
+        "revises_version": null,
+        "state": "approved",
+        "stale_reason": null,
+        "content_sha256": "e1b6466a018c2f1b2bc79a18f29485db122e20ae5fa4883f2ccd0eb4992f6960",
+        "conclusions": 12,
+        "uncertain": 3,
+        "citations_failed": 0,
+        "disputed": 0,
+        "prompt_version": "f13-postmortem-prompt-v3",
+        "disputes": [],
+        "sections_present": [
+          "human_actions",
+          "incident",
+          "recovery",
+          "runs",
+          "timeline"
+        ],
+        "model_sections": [
+          "findings",
+          "hypotheses",
+          "impact_summary",
+          "recommendations"
+        ],
+        "proposals": [
+          {
+            "key": "checkout_error_spike_stable_replicas",
+            "supersedes_entry_id": null
+          }
+        ],
+        "review_actions": [
+          [
+            "generate",
+            "worker:221e72fa-babf-4e6b-aa25-101b7a3c2511",
+            "worker"
+          ],
+          [
+            "submit",
+            "worker:221e72fa-babf-4e6b-aa25-101b7a3c2511",
+            "worker"
+          ],
+          [
+            "approve",
+            "lab-reviewer",
+            "basic_auth"
+          ]
+        ]
+      },
+      {
+        "version": 2,
+        "revises_version": null,
+        "state": "returned",
+        "stale_reason": null,
+        "content_sha256": "bae2221ac1141406f59e8c2f9941ca251eb9c1b5c878942615a1c6449c819787",
+        "conclusions": 14,
+        "uncertain": 3,
+        "citations_failed": 0,
+        "disputed": 0,
+        "prompt_version": "f13-postmortem-prompt-v3",
+        "disputes": [],
+        "sections_present": [
+          "human_actions",
+          "incident",
+          "recovery",
+          "runs",
+          "timeline"
+        ],
+        "model_sections": [
+          "findings",
+          "hypotheses",
+          "impact_summary",
+          "recommendations"
+        ],
+        "proposals": [
+          {
+            "key": "checkout_error_spike_stable_replicas",
+            "supersedes_entry_id": "a6045025-a72d-4d91-8a33-b09a15734d2d"
+          },
+          {
+            "key": "service_errors_high_dependency_low",
+            "supersedes_entry_id": null
+          }
+        ],
+        "review_actions": [
+          [
+            "generate",
+            "worker:221e72fa-babf-4e6b-aa25-101b7a3c2511",
+            "worker"
+          ],
+          [
+            "submit",
+            "worker:221e72fa-babf-4e6b-aa25-101b7a3c2511",
+            "worker"
+          ],
+          [
+            "return",
+            "lab-reviewer",
+            "basic_auth"
+          ]
+        ]
+      },
+      {
+        "version": 3,
+        "revises_version": 2,
+        "state": "rejected",
+        "stale_reason": null,
+        "content_sha256": "0fa7ee5aaf717f30f6942424754386e30179baf46fee356824b497fa5cd96ff6",
+        "conclusions": 12,
+        "uncertain": 3,
+        "citations_failed": 0,
+        "disputed": 0,
+        "prompt_version": "f13-postmortem-prompt-v3",
+        "disputes": [],
+        "sections_present": [
+          "human_actions",
+          "incident",
+          "recovery",
+          "runs",
+          "timeline"
+        ],
+        "model_sections": [
+          "findings",
+          "hypotheses",
+          "impact_summary",
+          "recommendations"
+        ],
+        "proposals": [
+          {
+            "key": "checkout_error_spike_stable_replicas",
+            "supersedes_entry_id": "a6045025-a72d-4d91-8a33-b09a15734d2d"
+          }
+        ],
+        "review_actions": [
+          [
+            "generate",
+            "worker:221e72fa-babf-4e6b-aa25-101b7a3c2511",
+            "worker"
+          ],
+          [
+            "submit",
+            "worker:221e72fa-babf-4e6b-aa25-101b7a3c2511",
+            "worker"
+          ],
+          [
+            "reject",
+            "lab-reviewer",
+            "basic_auth"
+          ]
+        ]
+      },
+      {
+        "version": 4,
+        "revises_version": null,
+        "state": "approved",
+        "stale_reason": null,
+        "content_sha256": "45b5b223feff581e40ae96bf9c3d4bf83fac26e8812ee221ded20dca8b327e2b",
+        "conclusions": 13,
+        "uncertain": 3,
+        "citations_failed": 0,
+        "disputed": 0,
+        "prompt_version": "f13-postmortem-prompt-v3",
+        "disputes": [],
+        "sections_present": [
+          "human_actions",
+          "incident",
+          "recovery",
+          "runs",
+          "timeline"
+        ],
+        "model_sections": [
+          "findings",
+          "hypotheses",
+          "impact_summary",
+          "recommendations"
+        ],
+        "proposals": [
+          {
+            "key": "checkout_dependency_error_ratio_signal",
+            "supersedes_entry_id": null
+          },
+          {
+            "key": "checkout_error_spike_stable_replicas",
+            "supersedes_entry_id": "a6045025-a72d-4d91-8a33-b09a15734d2d"
+          }
+        ],
+        "review_actions": [
+          [
+            "generate",
+            "worker:221e72fa-babf-4e6b-aa25-101b7a3c2511",
+            "worker"
+          ],
+          [
+            "submit",
+            "worker:221e72fa-babf-4e6b-aa25-101b7a3c2511",
+            "worker"
+          ],
+          [
+            "approve",
+            "lab-reviewer",
+            "basic_auth"
+          ]
+        ]
+      }
+    ],
+    "knowledge": [
+      {
+        "entry_id": "a6045025-a72d-4d91-8a33-b09a15734d2d",
+        "revision": 1,
+        "state": "superseded",
+        "retrievable": false,
+        "source_version": 1,
+        "source_proposal_key": "checkout_error_spike_stable_replicas",
+        "supersedes_revision": null,
+        "approved_by": "lab-reviewer",
+        "approved_by_kind": "basic_auth",
+        "content_sha256": "e622ebf7729ab81f53f9d7c386ce945da3c8da811068d84b5cacbac156f62c3d",
+        "revoked_by": null,
+        "revoked_reason": null
+      },
+      {
+        "entry_id": "a6045025-a72d-4d91-8a33-b09a15734d2d",
+        "revision": 2,
+        "state": "active",
+        "retrievable": true,
+        "source_version": 4,
+        "source_proposal_key": "checkout_error_spike_stable_replicas",
+        "supersedes_revision": 1,
+        "approved_by": "lab-reviewer",
+        "approved_by_kind": "basic_auth",
+        "content_sha256": "e7de42aff95748b37f9a2c7dc8f526dbcc26e11c4fcff8941abedc7dd68c5bb7",
+        "revoked_by": null,
+        "revoked_reason": null
+      },
+      {
+        "entry_id": "5502a391-e932-4255-b083-72735ecd00f4",
+        "revision": 1,
+        "state": "revoked",
+        "retrievable": false,
+        "source_version": 4,
+        "source_proposal_key": "checkout_dependency_error_ratio_signal",
+        "supersedes_revision": null,
+        "approved_by": "lab-reviewer",
+        "approved_by_kind": "basic_auth",
+        "content_sha256": "a7380b03cca878929f9036940a6cbf727e76a53d8ac69dc38edd4bcf097b2a17",
+        "revoked_by": "lab-reviewer",
+        "revoked_reason": "Lab review: revoked to exercise reversibility."
+      }
+    ],
+    "knowledge_actions": [
+      [
+        "publish",
+        1,
+        "lab-reviewer",
+        "basic_auth"
+      ],
+      [
+        "supersede",
+        2,
+        "lab-reviewer",
+        "basic_auth"
+      ],
+      [
+        "publish",
+        1,
+        "lab-reviewer",
+        "basic_auth"
+      ],
+      [
+        "revoke",
+        1,
+        "lab-reviewer",
+        "basic_auth"
+      ]
+    ],
+    "recent_attempts": [
+      {
+        "status": "succeeded",
+        "error_code": null,
+        "version": 4,
+        "model_requests": 1
+      },
+      {
+        "status": "succeeded",
+        "error_code": null,
+        "version": 3,
+        "model_requests": 1
+      },
+      {
+        "status": "succeeded",
+        "error_code": null,
+        "version": 2,
+        "model_requests": 1
+      },
+      {
+        "status": "succeeded",
+        "error_code": null,
+        "version": 1,
+        "model_requests": 1
+      }
+    ]
+  },
+  "counts": {
+    "model_requests_counted": 4,
+    "model_requests_recorded": 4,
+    "prompt_tokens": 120141,
+    "completion_tokens": 42255
+  },
+  "cost": {
+    "known_cost_cny_upper": 0.633263,
+    "balance_before": {
+      "is_available": true,
+      "balance_infos": [
+        {
+          "currency": "CNY",
+          "total_balance": "4.02",
+          "granted_balance": "0.00",
+          "topped_up_balance": "4.02"
+        }
+      ]
+    },
+    "balance_after": {
+      "is_available": true,
+      "balance_infos": [
+        {
+          "currency": "CNY",
+          "total_balance": "4.01",
+          "granted_balance": "0.00",
+          "topped_up_balance": "4.01"
+        }
+      ]
+    }
+  },
+  "raw_ledger": {
+    "sha256": "baf861aeaa278f3038f404e1e0e40a0c00b90601ce750c835caa913377a390c8",
+    "bytes": 97828,
+    "path": "tmp/lab-ledgers/m1-03-review-acceptance/99ad11b8-35b3-4ae0-b2f3-01703dc7a7f3/ledger.json",
+    "in_repository": false
+  }
+}
