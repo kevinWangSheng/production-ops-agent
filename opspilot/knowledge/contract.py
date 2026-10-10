@@ -30,14 +30,14 @@ from datetime import datetime
 from typing import Any, Literal, TypedDict, get_args
 from uuid import UUID
 
-CONTRACT_REVISION = "r5"
+CONTRACT_REVISION = "r7"
 
 # --- versions recorded with every generation (D20) -------------------------
 
 # The model is the investigation's (``deepseek-flash``, D20); everything
 # below is the postmortem's own and moves independently of the investigation
 # prompt and report schema.
-POSTMORTEM_PROMPT_VERSION = "f13-postmortem-prompt-v1"
+POSTMORTEM_PROMPT_VERSION = "f13-postmortem-prompt-v2"
 POSTMORTEM_OUTPUT_SCHEMA_VERSION = "f13-postmortem-output-v1"
 POSTMORTEM_CONTENT_SCHEMA_VERSION = "f13-postmortem-content-v1"
 POSTMORTEM_INPUT_POLICY_VERSION = "f13-postmortem-input-v1"

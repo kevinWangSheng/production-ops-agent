@@ -96,6 +96,10 @@ MAX_BACKOFF_WAIT_S = 300.0
 MAX_WAITS = MAX_GENERATIONS_PER_STEP
 # D16: a disputed version can only be returned; regenerate at most this often
 MAX_DISPUTE_RETURNS = 2
+# R18 (r7, #181): claimed generation attempts across the whole run, failed
+# and regenerated ones included; each attempt makes at most two requests
+MAX_ATTEMPTS_TOTAL = 8
+MAX_MODEL_REQUESTS_TOTAL = 16
 
 
 def _balance(key: str) -> dict | str:
@@ -169,6 +173,19 @@ def _brief(outcome: PostmortemOutcome) -> dict[str, Any]:
                 "uncertain": sum(c.certainty == "uncertain" for c in v.conclusions),
                 "citations_failed": sum(not c.citations_valid for c in v.conclusions),
                 "disputed": sum(c.dispute_state == "disputed" for c in v.conclusions),
+                "prompt_version": (v.generation_record or {}).get("prompt_version"),
+                # R20: what each dispute says and cites, so D38 can judge it
+                # against the input evidence
+                "disputes": [
+                    {
+                        "conclusion_key": c.conclusion_key,
+                        "section": c.section,
+                        "evidence_ids": [r["evidence_id"] for r in c.evidence_refs],
+                        "reasons": [d.get("reason") for d in c.disputes],
+                    }
+                    for c in v.conclusions
+                    if c.dispute_state == "disputed"
+                ],
                 "sections_present": sorted(
                     name for name, value in v.sections.items() if value
                 ),
@@ -358,6 +375,14 @@ def main() -> int:
         claimed attempts count, a wait for the backoff does not."""
         claimed = waits = 0
         while claimed < MAX_GENERATIONS_PER_STEP:
+            done = sum(1 for g in generations if g.get("claimed"))
+            if (
+                done >= MAX_ATTEMPTS_TOTAL
+                or len(recorder.attempts) + 2 > MAX_MODEL_REQUESTS_TOTAL
+            ):
+                failures.append(f"{name}:RUN_CAP_REACHED")
+                generations.append({"step": name, "claimed": False, "cap": True})
+                break
             calls_before = len(recorder.attempts)
             result = worker.generate(args.incident)
             if result is None:
@@ -714,6 +739,10 @@ def main() -> int:
             "started": started.isoformat(),
             "ended": ended.isoformat(),
             "failures": failures,
+            "caps": {
+                "attempts_total": MAX_ATTEMPTS_TOTAL,
+                "model_requests_total": MAX_MODEL_REQUESTS_TOTAL,
+            },
             "evidence_links": {
                 "checked": len(evidence_links),
                 "resolved": sum(1 for v in evidence_links.values() if v["resolved"]),

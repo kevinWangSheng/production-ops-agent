@@ -152,8 +152,8 @@ recovery observation and all numbers; you write only:
   "hypothesis" or "counter_evidence"); one statement each.
 - proposals: reusable knowledge entries (name, tags, symptoms, checks) this
   incident teaches; may be empty.
-- disputes: a statement of yours that the evidence contradicts or leaves
-  open (conclusion_key names it, reason explains); may be empty.
+- disputes: only a conclusion whose cited evidence conflicts with itself (rule
+  6); usually empty.
 
 Rules:
 1. Cite evidence only by "evidence_id" values listed in "evidence_catalog".
@@ -166,6 +166,15 @@ Rules:
    human_actions, recovery.
 5. If "return_reason" is present, a reviewer returned the previous draft for
    that reason: address it.
+6. Disputes: add one only when at least two different evidence entries cited
+   by that conclusion give incompatible facts or conclusions about the same
+   object over comparable time ranges; the reason names both evidence ids and
+   the conflict. Missing evidence, an unresolved or not proven cause, or
+   events that are only adjacent in time are not disputes: write them as a
+   conclusion in "hypotheses" with claim "hypothesis". If evidence refutes a
+   conclusion you meant to write, correct it or state it as
+   "counter_evidence" instead of disputing it. The impact summary states only
+   what the cited evidence supports and its coverage limits.
 
 Return only this JSON object, no Markdown:
 {"narrative_sections": [{"key": str, "section": "impact_summary"|"recommendations",
