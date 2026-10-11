@@ -27,10 +27,10 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Literal, TypedDict, get_args
+from typing import Any, Literal, NotRequired, TypedDict, get_args
 from uuid import UUID
 
-CONTRACT_REVISION = "r8"
+CONTRACT_REVISION = "r9"
 
 # --- versions recorded with every generation (D20) -------------------------
 
@@ -41,10 +41,14 @@ CONTRACT_REVISION = "r8"
 # and a proposal may name the revision it supersedes -- prompt v3, output
 # v2, input v2. Versions recorded under earlier values stay as written and
 # are not stale for it.
-POSTMORTEM_PROMPT_VERSION = "f13-postmortem-prompt-v3"
+# r9 (#199, D47-D52): an evidence view over MAX_VIEW_BYTES is sent as
+# span_groups only (traces) or metadata only, and the prompt explains both
+# projections -- prompt v4, input v3; output and content schemas unchanged.
+# Versions recorded under earlier values stay as written and are not stale.
+POSTMORTEM_PROMPT_VERSION = "f13-postmortem-prompt-v4"
 POSTMORTEM_OUTPUT_SCHEMA_VERSION = "f13-postmortem-output-v2"
 POSTMORTEM_CONTENT_SCHEMA_VERSION = "f13-postmortem-content-v1"
-POSTMORTEM_INPUT_POLICY_VERSION = "f13-postmortem-input-v2"
+POSTMORTEM_INPUT_POLICY_VERSION = "f13-postmortem-input-v3"
 # The request profile: JSON mode, thinking enabled, reasoning effort high,
 # no tools (``opspilot.investigation.loop.serialized_request``).
 POSTMORTEM_MODEL_PROFILE = "deepseek-flash/json/thinking-high/no-tools"
@@ -248,6 +252,9 @@ class CatalogEntry(EvidenceRef):
     # observation sample (id ``<sample_id>:<signal_name>``, as F6's
     # ``recovery_outcome``)
     kind: Literal["investigation", "recovery"]
+    # r9 (D49): present only on an investigation view reduced to fit
+    # MAX_VIEW_BYTES; ``metadata_only`` is never citable as fact
+    projection: NotRequired[Literal["span_groups_only", "metadata_only"]]
 
 
 class GenerationRecord(TypedDict):
