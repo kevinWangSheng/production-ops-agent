@@ -13,7 +13,8 @@ call (plus at most one repair call).
   watermark: the incident facts above, adopted and committed evidence views
   reduced to an allowlist of fields, human action text, the recovery ending
   with its sample readings (no raw bytes), the investigation report's text
-  fields and the reviewer's return reason. Every string is scrubbed for
+  fields, the reviewer's return reason and this postmortem's active
+  knowledge entries (key, name, revision; r8). Every string is scrubbed for
   credential-shaped text. Independent byte and item limits; over any of
   them nothing is generated (``InputTooLarge`` with the limit's name).
 * **What the model writes (R1).** One JSON object with exactly
@@ -21,6 +22,10 @@ call (plus at most one repair call).
   unknown keys, duplicate keys and missing keys are refused
   (``OutputInvalid``). Each statement cites evidence ids from the catalog;
   code resolves each id to its scope, time window and ``citable_as_fact``.
+* **Supersede (r8, #179).** A proposal replaces an active entry only by
+  naming its exact key with the revision the input listed
+  (``supersedes_revision``); a mismatch, an unknown key or an active key
+  without a revision is an output problem, never an implicit mapping.
 * **Citations (D2, D22).** A statement citing an id outside the catalog, or
   a ``fact`` claim citing nothing citable as fact, fails its citation check:
   it is stored ``uncertain`` with the error codes in the document, and the
@@ -42,6 +47,7 @@ from opspilot.knowledge.contract import (
     CODE_SECTIONS,
     CONTRACT_REVISION,
     MODEL_OUTPUT_FIELDS,
+    MODEL_OUTPUT_OPTIONAL_FIELDS,
     POSTMORTEM_CONTENT_SCHEMA_VERSION,
     POSTMORTEM_INPUT_POLICY_VERSION,
     POSTMORTEM_MODEL_PROFILE,
@@ -151,7 +157,8 @@ recovery observation and all numbers; you write only:
 - conclusions: section "findings" (claim "fact") or "hypotheses" (claim
   "hypothesis" or "counter_evidence"); one statement each.
 - proposals: reusable knowledge entries (name, tags, symptoms, checks) this
-  incident teaches; may be empty.
+  incident teaches; may be empty. A proposal either adds a new entry or
+  replaces one listed in "published_knowledge_entries" (rule 7).
 - disputes: only a conclusion that cites at least two different evidence
   entries that conflict with each other (rule 6); usually empty.
 
@@ -175,6 +182,12 @@ Rules:
    conclusion you meant to write, correct it or state it as
    "counter_evidence" instead of disputing it. The impact summary states only
    what the cited evidence supports and its coverage limits.
+7. "published_knowledge_entries" lists the knowledge entries this postmortem
+   already published that are still active (key, name, revision). To replace
+   one with updated content, use exactly its "key" and set
+   "supersedes_revision" to its listed "revision". A new entry uses a key not
+   in that list and "supersedes_revision": null. Never reuse a listed key
+   without its revision.
 
 Return only this JSON object, no Markdown:
 {"narrative_sections": [{"key": str, "section": "impact_summary"|"recommendations",
@@ -183,7 +196,7 @@ Return only this JSON object, no Markdown:
    "claim": "fact"|"hypothesis"|"counter_evidence"|"recommendation",
    "body": str, "evidence_ids": [str]}],
  "proposals": [{"key": str, "name": str, "tags": [str], "symptoms": [str],
-   "checks": [str], "evidence_ids": [str]}],
+   "checks": [str], "evidence_ids": [str], "supersedes_revision": int|null}],
  "disputes": [{"conclusion_key": str, "reason": str}]}
 """
 
@@ -265,6 +278,16 @@ def _iso(value: Any) -> str | None:
 
 
 @dataclass(frozen=True)
+class PublishedEntry:
+    """An active knowledge entry this postmortem published (r8, D39, D40):
+    the target a proposal with the same key and revision supersedes."""
+
+    entry_id: UUID
+    revision: int
+    name: str
+
+
+@dataclass(frozen=True)
 class GenerationInput:
     """One generation's input, assembled from ``read_input`` rows."""
 
@@ -280,7 +303,8 @@ class GenerationInput:
     catalog: tuple[dict[str, Any], ...]
     # what the model reads (D21)
     payload: dict[str, Any]
-    published_entries: Mapping[str, UUID] = field(default_factory=dict)
+    # proposal key -> active entry (r8); the model sees key, name, revision
+    published_entries: Mapping[str, PublishedEntry] = field(default_factory=dict)
 
     @property
     def payload_text(self) -> str:
@@ -489,6 +513,23 @@ def build_input(
     catalog = _scrub(catalog, secrets)
     readings = _scrub(readings, secrets)
     return_reason = raw["return_reason"]
+    published = {
+        key: PublishedEntry(entry["entry_id"], entry["revision"], entry["name"])
+        for key, entry in raw["published_entries"].items()
+    }
+    # r8 (D39, R21-R24): sorted by key, no entry id; scrubbed like every
+    # other row-derived string and counted in MAX_INPUT_BYTES
+    entries = _scrub(
+        [
+            {
+                "key": key,
+                "name": published[key].name,
+                "revision": published[key].revision,
+            }
+            for key in sorted(published)
+        ],
+        secrets,
+    )
     payload = {
         **facts,
         "investigation_report": report,
@@ -498,6 +539,7 @@ def build_input(
         "return_reason": None
         if return_reason is None
         else _text(return_reason, secrets),
+        "published_knowledge_entries": entries,
     }
     head = raw["postmortem"]
     built = GenerationInput(
@@ -509,7 +551,7 @@ def build_input(
         facts=facts,
         catalog=tuple(catalog),
         payload=payload,
-        published_entries=dict(raw["published_entries"]),
+        published_entries=published,
     )
     if built.payload_bytes > MAX_INPUT_BYTES:
         raise InputTooLarge("MAX_INPUT_BYTES")
@@ -632,6 +674,7 @@ class Proposal:
     symptoms: tuple[str, ...]
     checks: tuple[str, ...]
     evidence_ids: tuple[str, ...]
+    supersedes_revision: int | None = None
 
 
 @dataclass(frozen=True)
@@ -707,7 +750,13 @@ def parse_model_output(text: str | None) -> ModelOutput:
     proposals: list[Proposal] = []
     for index, item in _items(data, "proposals", MAX_PROPOSALS, problems):
         where = f"proposals[{index}]"
-        if not _exact_keys(item, MODEL_OUTPUT_FIELDS["proposals"], where, problems):
+        if not _exact_keys(
+            item,
+            MODEL_OUTPUT_FIELDS["proposals"],
+            where,
+            problems,
+            optional=MODEL_OUTPUT_OPTIONAL_FIELDS["proposals"],
+        ):
             continue
         proposal = _proposal(item, where, problems)
         if proposal is not None:
@@ -732,13 +781,18 @@ def parse_model_output(text: str | None) -> ModelOutput:
 
 
 def _exact_keys(
-    item: Any, wanted: Sequence[str], where: str, problems: list[str]
+    item: Any,
+    wanted: Sequence[str],
+    where: str,
+    problems: list[str],
+    *,
+    optional: Sequence[str] = (),
 ) -> bool:
     if not isinstance(item, dict):
         problems.append(f"{where or 'reply'}.not_an_object")
         return False
     extra = sorted(set(item) - set(wanted))
-    missing = sorted(set(wanted) - set(item))
+    missing = sorted(set(wanted) - set(item) - set(optional))
     for key in extra:
         problems.append(f"{where}.{key}.unknown" if where else f"{key}.unknown")
     for key in missing:
@@ -823,6 +877,10 @@ def _proposal(
     symptoms = _strings(item["symptoms"], minimum=1)
     checks = _strings(item["checks"], minimum=1)
     ids = _ids(item["evidence_ids"])
+    revision = item.get("supersedes_revision")
+    fields["supersedes_revision"] = revision is None or (
+        type(revision) is int and revision >= 1
+    )
     bad = [k for k, ok in fields.items() if not ok] + [
         name
         for name, value in (
@@ -842,7 +900,7 @@ def _proposal(
         and checks is not None
         and ids is not None
     )
-    return Proposal(item["key"], item["name"], tags, symptoms, checks, ids)
+    return Proposal(item["key"], item["name"], tags, symptoms, checks, ids, revision)
 
 
 # --- citations (D2, D22) ------------------------------------------------------------
@@ -868,16 +926,42 @@ def citation_errors(
 
 
 def proposal_problems(
-    output: ModelOutput, catalog: Sequence[Mapping[str, Any]]
+    output: ModelOutput,
+    catalog: Sequence[Mapping[str, Any]],
+    published: Mapping[str, PublishedEntry] | None = None,
 ) -> list[str]:
     """A proposal citing an id outside the catalog is a structural problem
-    (a proposal has no ``uncertain`` state of its own)."""
+    (a proposal has no ``uncertain`` state of its own). So is a supersede
+    target that is not exactly an active entry's key and revision as the
+    input listed it (r8, D41, D43, R25), and an active entry's key reused
+    without its revision: no implicit mapping."""
     known = {entry["evidence_id"] for entry in catalog}
-    return [
-        f"proposals.{p.key}.UNKNOWN_EVIDENCE"
-        for p in output.proposals
-        if any(i not in known for i in p.evidence_ids)
-    ]
+    published = published or {}
+    problems: list[str] = []
+    for p in output.proposals:
+        if any(i not in known for i in p.evidence_ids):
+            problems.append(f"proposals.{p.key}.UNKNOWN_EVIDENCE")
+        target = published.get(p.key)
+        if p.supersedes_revision is None:
+            if target is not None:
+                problems.append(f"proposals.{p.key}.SUPERSEDE_REVISION_MISSING")
+        elif target is None:
+            problems.append(f"proposals.{p.key}.SUPERSEDE_TARGET_UNKNOWN")
+        elif target.revision != p.supersedes_revision:
+            problems.append(f"proposals.{p.key}.SUPERSEDE_REVISION_MISMATCH")
+    return problems
+
+
+def _target(built: GenerationInput, proposal: Proposal) -> UUID | None:
+    """The entry a proposal supersedes: exact key and revision only (D41)."""
+    target = built.published_entries.get(proposal.key)
+    if (
+        target is None
+        or proposal.supersedes_revision is None
+        or target.revision != proposal.supersedes_revision
+    ):
+        return None
+    return target.entry_id
 
 
 def repair_notes(errors: Mapping[str, Sequence[str]]) -> list[str]:
@@ -987,7 +1071,7 @@ def assemble(
                 "checks": [clean(t) for t in p.checks],
                 "evidence_refs": refs(p.evidence_ids),
             },
-            supersedes_entry_id=built.published_entries.get(p.key),
+            supersedes_entry_id=_target(built, p),
         )
         for p in output.proposals
     )

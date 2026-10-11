@@ -278,7 +278,9 @@ class PostmortemWorker:
                         usage[key] += value
                 try:
                     output = parse_model_output(reply.content)
-                    problems = proposal_problems(output, built.catalog)
+                    problems = proposal_problems(
+                        output, built.catalog, built.published_entries
+                    )
                     errors = {} if problems else citation_errors(output, built.catalog)
                 except OutputInvalid as exc:
                     output, problems, errors = None, list(exc.problems), {}

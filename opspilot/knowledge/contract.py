@@ -30,17 +30,21 @@ from datetime import datetime
 from typing import Any, Literal, TypedDict, get_args
 from uuid import UUID
 
-CONTRACT_REVISION = "r7"
+CONTRACT_REVISION = "r8"
 
 # --- versions recorded with every generation (D20) -------------------------
 
 # The model is the investigation's (``deepseek-flash``, D20); everything
 # below is the postmortem's own and moves independently of the investigation
 # prompt and report schema.
-POSTMORTEM_PROMPT_VERSION = "f13-postmortem-prompt-v2"
-POSTMORTEM_OUTPUT_SCHEMA_VERSION = "f13-postmortem-output-v1"
+# r8 (#179, D44): the input lists this postmortem's active knowledge entries
+# and a proposal may name the revision it supersedes -- prompt v3, output
+# v2, input v2. Versions recorded under earlier values stay as written and
+# are not stale for it.
+POSTMORTEM_PROMPT_VERSION = "f13-postmortem-prompt-v3"
+POSTMORTEM_OUTPUT_SCHEMA_VERSION = "f13-postmortem-output-v2"
 POSTMORTEM_CONTENT_SCHEMA_VERSION = "f13-postmortem-content-v1"
-POSTMORTEM_INPUT_POLICY_VERSION = "f13-postmortem-input-v1"
+POSTMORTEM_INPUT_POLICY_VERSION = "f13-postmortem-input-v2"
 # The request profile: JSON mode, thinking enabled, reasoning effort high,
 # no tools (``opspilot.investigation.loop.serialized_request``).
 POSTMORTEM_MODEL_PROFILE = "deepseek-flash/json/thinking-high/no-tools"
@@ -207,8 +211,21 @@ MODEL_OUTPUT_FIELDS: Mapping[str, tuple[str, ...]] = {
     "": ("narrative_sections", "conclusions", "proposals", "disputes"),
     "narrative_sections": ("key", "section", "body", "evidence_ids"),
     "conclusions": ("key", "section", "claim", "body", "evidence_ids"),
-    "proposals": ("key", "name", "tags", "symptoms", "checks", "evidence_ids"),
+    "proposals": (
+        "key",
+        "name",
+        "tags",
+        "symptoms",
+        "checks",
+        "evidence_ids",
+        "supersedes_revision",
+    ),
     "disputes": ("conclusion_key", "reason"),
+}
+# Per-item keys that may be left out (r8, #179): a proposal without
+# ``supersedes_revision`` is the same as one with ``null`` (a new entry).
+MODEL_OUTPUT_OPTIONAL_FIELDS: Mapping[str, tuple[str, ...]] = {
+    "proposals": ("supersedes_revision",),
 }
 
 # --- stored document of one version ------------------------------------------
@@ -502,6 +519,7 @@ __all__ = [
     "CONTRACT_REVISION",
     "EVENT_PAYLOAD_KEYS",
     "MODEL_OUTPUT_FIELDS",
+    "MODEL_OUTPUT_OPTIONAL_FIELDS",
     "MODEL_SECTIONS",
     "POSTMORTEM_CONTENT_SCHEMA_VERSION",
     "POSTMORTEM_INPUT_POLICY_VERSION",

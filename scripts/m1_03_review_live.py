@@ -15,7 +15,8 @@ serve`` already running on the same copy:
    workbench control route), generate, return the version for revision,
    regenerate, reject;
 4. move the watermark again, generate, and supersede the published entry
-   only when the version actually proposes ``supersedes_entry_id``;
+   only when the version actually proposes ``supersedes_entry_id`` (r8:
+   the model saw the active entry's key and revision, #179 D45);
    otherwise record that the replacement could not be exercised (R15);
 5. revoke the active revision through the workbench.
 
@@ -675,6 +676,19 @@ def main() -> int:
                 )
                 if [state for _, state in states][-2:] != ["superseded", "active"]:
                     failures.append(f"SUPERSEDE_STATES:{states}")
+                # #179 D45: the new revision names the one it replaced, the
+                # knowledge read returns only it, history keeps both
+                newest = max(
+                    (k for k in current.knowledge if k.entry_id == entry_id),
+                    key=lambda k: k.revision,
+                )
+                if newest.supersedes_revision != newest.revision - 1:
+                    failures.append(f"SUPERSEDES_REVISION:{newest.supersedes_revision}")
+                read = knowledge.active_revision(entry_id)
+                if read is None or read["revision"] != newest.revision:
+                    failures.append("SUPERSEDE_READ_NOT_NEW_REVISION")
+                if len(knowledge.knowledge_history(entry_id)["revisions"]) < 2:
+                    failures.append("SUPERSEDE_HISTORY_LOST")
 
         # 4. revoke the active revision
         active = [k for k in current.knowledge if k.state == "active"]
