@@ -90,4 +90,4 @@ DeepSeek 余额从 3.27 降到 3.17 CNY，差 0.10 CNY，分别取于 19:44:15Z 
 
 ## 凭据
 
-证据中没有 token、口令、API key，也没有幂等键原值。本机没有 gitleaks。把私有 env 文件、Prometheus 账号文件、webhook token 文件、实验 UI 账号与口令文件、目标身份文件中长度 ≥ 6 的 25 个值，逐一在本目录做字面匹配（不打印原值）。命中两类非机密值：`LANGSMITH_WORKSPACE_ID`，它等于 trace 链接里的组织 ID `/o/c7727675-…`（已在 #169、#199 证据中入库）；目标身份文件里的两行 JSON 结构片段（`"version": 1,` 与 `}`），不是凭据。
+证据中没有 token、口令、API key，也没有幂等键原值。本机没有 gitleaks。把私有 env 文件、Prometheus 账号文件、webhook token 文件、实验 UI 账号与口令文件、目标身份文件中长度 ≥ 6 的 25 个值，逐一在本目录做字面匹配（不打印原值）。命中两类非机密值：`LANGSMITH_WORKSPACE_ID`，它等于 trace 链接里的组织 ID `/o/c7727675-…`（已在 #169、#199 证据中入库）；目标身份文件里的两行 JSON 结构片段（`"version": 1,` 与 `}`），不是凭据。写完 run.md 后对整个目录复查，另命中 `.env` 中 `LANGSMITH_PROJECT` 的值 `default`（命中的是 `default_transaction_read_only` 里的普通单词）。
