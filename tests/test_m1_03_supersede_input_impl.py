@@ -283,8 +283,9 @@ def test_prompt_describes_the_entries_and_the_target_revision() -> None:
 
 
 def test_r8_versions() -> None:
-    assert POSTMORTEM_PROMPT_VERSION == "f13-postmortem-prompt-v3"
+    # r9 (#199, D51) moved prompt and input again; output stays r8's
+    assert POSTMORTEM_PROMPT_VERSION == "f13-postmortem-prompt-v4"
     assert POSTMORTEM_OUTPUT_SCHEMA_VERSION == "f13-postmortem-output-v2"
-    assert POSTMORTEM_INPUT_POLICY_VERSION == "f13-postmortem-input-v2"
+    assert POSTMORTEM_INPUT_POLICY_VERSION == "f13-postmortem-input-v3"
     assert POSTMORTEM_CONTENT_SCHEMA_VERSION == "f13-postmortem-content-v1"
-    assert CONTRACT_REVISION == "r8"
+    assert CONTRACT_REVISION == "r9"

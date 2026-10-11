@@ -17,6 +17,9 @@ call (plus at most one repair call).
   knowledge entries (key, name, revision; r8). Every string is scrubbed for
   credential-shaped text. Independent byte and item limits; over any of
   them nothing is generated (``InputTooLarge`` with the limit's name).
+  r9 (#199): a view over its byte limit is first reduced -- a traces view
+  to its ``span_groups``, any other to metadata that cites no fact -- and
+  refused only when that still does not fit.
 * **What the model writes (R1).** One JSON object with exactly
   ``narrative_sections``, ``conclusions``, ``proposals`` and ``disputes``;
   unknown keys, duplicate keys and missing keys are refused
@@ -123,6 +126,31 @@ _VIEW_FIELDS = (
     "span_groups",
     "incomplete_reason",
 )
+# r9 (#199, D48): what a view over MAX_VIEW_BYTES keeps when even its
+# compact form does not fit -- identity, scope, window and counts, no
+# content; never citable as fact.
+_METADATA_FIELDS = (
+    "evidence_id",
+    "run_id",
+    "status",
+    "adopted",
+    "tool",
+    "source",
+    "target_id",
+    "query",
+    "window",
+    "observed_at",
+    "data_as_of",
+    "source_start_at",
+    "source_end_at",
+    "result_count",
+    "returned_count",
+    "incomplete",
+    "truncated",
+    "incomplete_reason",
+)
+SPAN_GROUPS_ONLY = "span_groups_only"
+METADATA_ONLY = "metadata_only"
 _REPORT_FIELDS = ("assessment_status", "conclusion", "summary", "gaps", "next_steps")
 _CLAIM_FIELDS = ("kind", "text", "evidence_ids")
 
@@ -188,6 +216,12 @@ Rules:
    "supersedes_revision" to its listed "revision". A new entry uses a key not
    in that list and "supersedes_revision": null. Never reuse a listed key
    without its revision.
+8. An evidence view or catalog entry with "projection" was reduced to fit
+   the input. "span_groups_only": the per-span "content" was left out
+   ("omitted_content_items" spans); state only what its "span_groups" show
+   per service and operation, never details of individual spans or traces.
+   "metadata_only": only identity, scope, window and counts remain; it is
+   never citable as fact and supports no fact or number about its content.
 
 Return only this JSON object, no Markdown:
 {"narrative_sections": [{"key": str, "section": "impact_summary"|"recommendations",
@@ -319,6 +353,46 @@ class GenerationInput:
         return content_sha256(self.payload_text)
 
 
+def _fits(view: Mapping[str, Any]) -> bool:
+    return len(canonical_json(view).encode("utf-8")) <= MAX_VIEW_BYTES
+
+
+def project_view(
+    view: Mapping[str, Any], evidence_id: str, run_id: Any, secrets: Sequence[str]
+) -> dict[str, Any]:
+    """One adopted evidence view as the model sees it (D21, r9 D47-D48).
+
+    The allowlisted fields, scrubbed. A view within ``MAX_VIEW_BYTES`` is
+    returned as is. Over it, a ``traces_search`` view with a ``span_groups``
+    list drops its per-span ``content`` (``projection: span_groups_only``);
+    any view still over it keeps only its metadata, never citable as fact
+    (``projection: metadata_only``). Still over: ``InputTooLarge``."""
+    projected: dict[str, Any] = _scrub(
+        {k: view[k] for k in _VIEW_FIELDS if k in view}, secrets
+    )
+    projected["evidence_id"] = evidence_id
+    projected["run_id"] = run_id
+    if _fits(projected):
+        return projected
+    if projected.get("tool") == "traces_search" and isinstance(
+        projected.get("span_groups"), list
+    ):
+        content = projected.get("content")
+        compact = {k: v for k, v in projected.items() if k != "content"}
+        compact["projection"] = SPAN_GROUPS_ONLY
+        compact["omitted_content_items"] = (
+            len(content) if isinstance(content, list) else None
+        )
+        if _fits(compact):
+            return compact
+    metadata = {k: projected[k] for k in _METADATA_FIELDS if k in projected}
+    metadata["citable_as_fact"] = False
+    metadata["projection"] = METADATA_ONLY
+    if _fits(metadata):
+        return metadata
+    raise InputTooLarge("MAX_VIEW_BYTES")
+
+
 def build_input(
     raw: Mapping[str, Any], *, secrets: Sequence[str] | None = None
 ) -> GenerationInput:
@@ -342,12 +416,9 @@ def build_input(
     views: list[dict[str, Any]] = []
     for row in adopted:
         view = row["view"] if isinstance(row["view"], Mapping) else {}
-        projected = _scrub({k: view[k] for k in _VIEW_FIELDS if k in view}, secrets)
-        projected["evidence_id"] = row["evidence_id"]
-        projected["run_id"] = row["run_id"]
-        if len(canonical_json(projected).encode("utf-8")) > MAX_VIEW_BYTES:
-            raise InputTooLarge("MAX_VIEW_BYTES")
+        projected = project_view(view, row["evidence_id"], row["run_id"], secrets)
         views.append(projected)
+        projection = projected.get("projection")
         # catalog fields come from the scrubbed projection, never the raw
         # view: they reach the model too (PR #174 bot review)
         scrubbed_window = projected.get("window")
@@ -356,20 +427,23 @@ def build_input(
         )
         observed = _iso(row["observed_at"]) or "unknown"
         scope = f"{projected.get('tool') or 'tool'}:{projected.get('target_id') or 'unknown'}"
-        catalog.append(
-            {
-                "evidence_id": row["evidence_id"],
-                "kind": "investigation",
-                "scope": redact(scope, secrets),
-                "window_start": redact(str(window.get("start") or observed), secrets),
-                "window_end": redact(str(window.get("end") or observed), secrets),
-                "citable_as_fact": bool(
-                    row["adopted"]
-                    and row["status"] == "ok"
-                    and view.get("citable_as_fact") is True
-                ),
-            }
-        )
+        entry: dict[str, Any] = {
+            "evidence_id": row["evidence_id"],
+            "kind": "investigation",
+            "scope": redact(scope, secrets),
+            "window_start": redact(str(window.get("start") or observed), secrets),
+            "window_end": redact(str(window.get("end") or observed), secrets),
+            # r9 (D49): a metadata-only view supports no fact
+            "citable_as_fact": bool(
+                row["adopted"]
+                and row["status"] == "ok"
+                and view.get("citable_as_fact") is True
+                and projection != METADATA_ONLY
+            ),
+        }
+        if projection is not None:
+            entry["projection"] = projection
+        catalog.append(entry)
 
     samples = {s["sample_id"]: s for s in observation["samples"]}
     readings: list[dict[str, Any]] = []

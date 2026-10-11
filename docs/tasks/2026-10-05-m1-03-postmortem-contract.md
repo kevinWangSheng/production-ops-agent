@@ -114,3 +114,16 @@
 | R27 | 纯函数测试：payload 含目标、排序稳定、超限拒绝、key+revision 精确绑定；保留现有 PG supersede 测试 |
 | R29 | （lead 2026-10-10，独立测试作者指出 D41 未定字段名）输出提议增加 `supersedes_revision: int \| null`（≥1；解析时可省略，省略视为 null，prompt 始终要求给出）。key 等于输入中 active 条目时 `supersedes_revision` 必须等于该条目 revision；为 null 或不等、或给了 revision 但 key 不在输入中，均按输出问题处理：一次修正调用后 `OUTPUT_INVALID`（D30）；只有 key 与 revision 都匹配才设 `supersedes_entry_id`。目标 revision 只在生成时校验，不入库（R28） |
 | R28 | 不加表或迁移，除非持久化目标 revision 确需新列（D41）；若需迁移，按用户门 PR 处理并在任务记录写理由 |
+
+## #199 超限证据视图进入复盘输入（r9）
+
+来源：独立预审（Codex 只读，2026-10-11）；用户 2026-10-11 按推荐裁决 U1、U2、U5、U6。现状：`build_input` 对投影脱敏后超过 `MAX_VIEW_BYTES`（32 KiB）的单个视图直接 `InputTooLarge`，R7 对 `INPUT_TOO_LARGE` 立即封顶，#169 真实运行的 `traces_search` 视图（`content` 47,026 字符、`span_groups` 4,900 字符）因此使整篇复盘永久不生成。
+
+| 编号 | 问题 | 裁决 | 主要代价 | 影响面 |
+|---|---|---|---|---|
+| D47 | 超限的 traces 视图怎么进输入（U1） | 只在按现有规则投影、脱敏后超过 `MAX_VIEW_BYTES` 时生效，未超限视图逐字节不变；`tool == "traces_search"` 且有列表型 `span_groups` 时去掉 `content`，保留其余 `_VIEW_FIELDS`，加 `"projection": "span_groups_only"` 与 `"omitted_content_items"`（原 `content` 列表长度，非列表为 null）；压缩后不超限即采用 | 模型看不到逐 span 细节 | D21 投影、输入哈希 |
+| D48 | 其余仍超限的视图（U1） | 任意仍超限视图（含压缩后仍超限的 traces 视图）改为仅元数据：只留 `evidence_id`、`run_id`、`status`、`adopted`、`tool`、`source`、`target_id`、`query`、`window`、`observed_at`、`data_as_of`、`source_start_at`、`source_end_at`、`result_count`、`returned_count`、`incomplete`、`truncated`、`incomplete_reason` 中存在的字段，`citable_as_fact` 置 false，加 `"projection": "metadata_only"`；仍超限才 `InputTooLarge("MAX_VIEW_BYTES")` | 该证据只能导航、不能支撑事实 | D21、R7 |
+| D49 | 被压缩证据能否支撑事实（U2） | `span_groups_only` 保持原 `citable_as_fact`；`metadata_only` 恒为 false；证据目录条目的 `citable_as_fact` 与投影视图一致并带同一 `projection` 值；引用校验沿用目录，只引用 metadata_only 证据的事实陈述按现有规则不合格 | 模型可写事实变少 | D2、D22、引用校验 |
+| D50 | 上限是否提高（U5） | `MAX_VIEW_BYTES` 32 KiB、`MAX_INPUT_BYTES` 256 KiB 与其他 D21 上限不变；压缩后总输入超 256 KiB 仍为 `INPUT_TOO_LARGE` | 多个大视图叠加仍可能失败 | D21 |
+| D51 | 版本与旧数据（U6） | 输入策略 `f13-postmortem-input-v3`；提示词加一条规则说明两种 `projection`（span_groups_only 只作服务/操作聚合层级陈述、不引逐 span 细节；metadata_only 不支撑事实），提示词 `f13-postmortem-prompt-v4`；输出与内容 schema 版本不变；已有草稿与版本不因新版本陈旧 | 版本数增加 | 生成记录、trace |
+| D52 | 已卡住的任务（U6） | 在旧输入策略版本下因 `INPUT_TOO_LARGE` 用尽 R7 的生成任务，在当前版本下视为新的一轮：同一水位重新到期一次，R7 从头计数；当前版本下再次 `INPUT_TOO_LARGE` 照旧封顶、不再重开；其他错误码与其他用尽原因不受影响；不新增表、不迁移（R35），旧版本信息取自尝试记录的 `input_policy_version` | 每次输入策略升级可能重开一轮 | 候选扫描、R7 |

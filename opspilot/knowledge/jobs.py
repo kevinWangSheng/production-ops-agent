@@ -33,7 +33,10 @@ from uuid import UUID, uuid4
 
 from psycopg.types.json import Jsonb
 
-from opspilot.knowledge.contract import RETRYABLE_ATTEMPT_ERRORS
+from opspilot.knowledge.contract import (
+    POSTMORTEM_INPUT_POLICY_VERSION,
+    RETRYABLE_ATTEMPT_ERRORS,
+)
 from opspilot.knowledge.store import KnowledgeStore, Watermark, canonical_json
 from opspilot.persistence.base import Connection, PersistenceError, _StoreBase
 
@@ -45,7 +48,10 @@ GENERATION_LEASE_SECONDS = 900
 # OUTPUT_INVALID and citation-failed drafts all count. When the cap is
 # reached ``next_attempt_at`` is cleared and generation stops, visibly,
 # until the watermark moves or a new return arrives. INPUT_TOO_LARGE is
-# deterministic and exhausts the cap at once (D21: not generated).
+# deterministic and exhausts the cap at once (D21: not generated). r9
+# (#199, D52): a cap reached by INPUT_TOO_LARGE under an older input policy
+# version is due once more under the current one, counting afresh; the same
+# error under the current version caps it again for good.
 MAX_ATTEMPTS_PER_WATERMARK = 3
 # Errors that count one attempt; a crashed attempt (LEASE_LOST) counts too,
 # so a crash loop is bounded by the same cap.
@@ -66,6 +72,16 @@ _KEY_SQL = (
     "|| '#r' || COALESCE(j.pending_regeneration_version::text, '')"
 )
 
+# D52: the job's cap came from INPUT_TOO_LARGE, and the latest attempt
+# that failed so ran under an input policy other than the current one.
+_INPUT_POLICY_REOPEN_SQL = """(
+    j.last_error_code = 'INPUT_TOO_LARGE'
+    AND (SELECT a.input_policy_version
+         FROM opspilot_postmortem_generation_attempts a
+         WHERE a.incident_id = i.incident_id AND a.error_code = 'INPUT_TOO_LARGE'
+         ORDER BY a.finished_at DESC NULLS LAST, a.started_at DESC
+         LIMIT 1) IS DISTINCT FROM %(input_policy_version)s)"""
+
 _CANDIDATE_SQL = f"""
 SELECT i.incident_id, e.recorded_at
 FROM opspilot_incidents i
@@ -83,7 +99,8 @@ WHERE NOT EXISTS (
   AND (j.next_attempt_at IS NULL OR j.next_attempt_at <= clock_timestamp()
        OR j.failure_watermark IS DISTINCT FROM {_KEY_SQL})
   AND NOT (COALESCE(j.consecutive_failures, 0) >= %(max_attempts)s
-           AND j.failure_watermark IS NOT DISTINCT FROM {_KEY_SQL})
+           AND j.failure_watermark IS NOT DISTINCT FROM {_KEY_SQL}
+           AND NOT {_INPUT_POLICY_REOPEN_SQL})
   AND NOT EXISTS (
     SELECT 1 FROM opspilot_postmortem_versions u
     WHERE u.postmortem_id = p.postmortem_id AND u.state = 'under_review')
@@ -153,15 +170,27 @@ class Claim:
 class GenerationStore(_StoreBase):
     """Candidate scan, lease, attempt budget and input reads (worker only)."""
 
-    def candidates(self, *, limit: int) -> tuple[UUID, ...]:
-        """Incidents due for generation, oldest observation ending first."""
+    def candidates(
+        self,
+        *,
+        limit: int,
+        input_policy_version: str = POSTMORTEM_INPUT_POLICY_VERSION,
+    ) -> tuple[UUID, ...]:
+        """Incidents due for generation, oldest observation ending first;
+        ``input_policy_version`` is the one the next attempt runs (D52)."""
         with self.transaction(snapshot=True) as conn:
-            rows = self._candidate_rows(conn, limit=limit)
+            rows = self._candidate_rows(
+                conn, limit=limit, input_policy_version=input_policy_version
+            )
         return tuple(row["incident_id"] for row in rows)
 
     @staticmethod
     def _candidate_rows(
-        conn: Connection, *, limit: int, incident_id: UUID | None = None
+        conn: Connection,
+        *,
+        limit: int,
+        input_policy_version: str,
+        incident_id: UUID | None = None,
     ) -> list[dict[str, Any]]:
         statement = _CANDIDATE_SQL.replace(
             "{incident_filter}",
@@ -173,6 +202,7 @@ class GenerationStore(_StoreBase):
                 "limit": limit,
                 "incident_id": incident_id,
                 "max_attempts": MAX_ATTEMPTS_PER_WATERMARK,
+                "input_policy_version": input_policy_version,
             },
         ).fetchall()
 
@@ -230,13 +260,33 @@ class GenerationStore(_StoreBase):
                         (incident_id,),
                     )
                 )
-            if not self._candidate_rows(conn, limit=1, incident_id=incident_id):
+            if not self._candidate_rows(
+                conn,
+                limit=1,
+                input_policy_version=versions.get(
+                    "input_policy_version", POSTMORTEM_INPUT_POLICY_VERSION
+                ),
+                incident_id=incident_id,
+            ):
                 conn.execute(
                     "UPDATE opspilot_postmortem_generation_jobs SET lease_owner=NULL, "
                     "lease_until=NULL WHERE incident_id=%s",
                     (incident_id,),
                 )
                 return None
+            if (
+                job["consecutive_failures"] >= MAX_ATTEMPTS_PER_WATERMARK
+                and job["last_error_code"] == "INPUT_TOO_LARGE"
+            ):
+                # D52: capped by INPUT_TOO_LARGE under an older input policy
+                # (else it would not be a candidate): this attempt starts a
+                # new count, so a different failure is not capped at once
+                conn.execute(
+                    "UPDATE opspilot_postmortem_generation_jobs SET "
+                    "consecutive_failures=0, failure_watermark=NULL "
+                    "WHERE incident_id=%s",
+                    (incident_id,),
+                )
             watermark = current_watermark(conn, incident_id)
             epoch = job["lease_epoch"] + 1
             conn.execute(

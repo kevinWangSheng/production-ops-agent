@@ -122,7 +122,12 @@ class PostmortemWorker:
         except PersistenceError as exc:
             _log.warning("stale scan refused code=%s", exc)
         try:
-            candidates = self.jobs.candidates(limit=self.batch)
+            candidates = self.jobs.candidates(
+                limit=self.batch,
+                input_policy_version=generation_versions(self.model_name)[
+                    "input_policy_version"
+                ],
+            )
         except PersistenceError as exc:
             _log.warning("candidate scan refused code=%s", exc)
             return []
