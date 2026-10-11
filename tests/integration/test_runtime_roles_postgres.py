@@ -767,3 +767,92 @@ def test_0011_downgrade_revokes_only_its_own_grants_from_a_preexisting_role() ->
             conn.execute(
                 sql.SQL("DROP DATABASE {} WITH (FORCE)").format(sql.Identifier(name))
             )
+
+
+def _scratch_at_0010() -> tuple[str, str]:
+    name = f"opspilot_roles_{uuid4().hex[:12]}"
+    with psycopg.connect(DSN, autocommit=True) as conn:
+        conn.execute(
+            sql.SQL("CREATE DATABASE {} TEMPLATE template0").format(
+                sql.Identifier(name)
+            )
+        )
+    scratch = make_conninfo(DSN, dbname=name)
+    schema.command.upgrade(schema._config(scratch), "0010_alert_intake")
+    return name, scratch
+
+
+def _drop_database(name: str) -> None:
+    with psycopg.connect(DSN, autocommit=True) as conn:
+        conn.execute(
+            sql.SQL("DROP DATABASE {} WITH (FORCE)").format(sql.Identifier(name))
+        )
+
+
+_ATTRIBUTES = (
+    "SELECT rolcanlogin, rolsuper, rolcreaterole, rolcreatedb, rolreplication, "
+    "rolbypassrls FROM pg_roles WHERE rolname = %s"
+)
+
+
+@pytest.mark.parametrize(
+    ("role", "grant", "revert", "reported"),
+    [
+        (WEB_ROLE, "LOGIN", "NOLOGIN", "LOGIN"),
+        (WORKER_ROLE, "CREATEDB", "NOCREATEDB", "CREATEDB"),
+        (WEB_ROLE, "BYPASSRLS", "NOBYPASSRLS", "BYPASSRLS"),
+    ],
+)
+def test_0011_refuses_an_existing_role_that_is_not_a_plain_group(
+    role, grant, revert, reported
+) -> None:
+    """The roles are cluster-wide and already exist (the lab database is at
+    head); the attribute is set for the duration of the test only."""
+    name, scratch = _scratch_at_0010()
+    with psycopg.connect(DSN, autocommit=True) as conn:
+        conn.execute(sql.SQL("ALTER ROLE {} " + grant).format(sql.Identifier(role)))
+    try:
+        with psycopg.connect(DSN) as conn:
+            altered = conn.execute(_ATTRIBUTES, (role,)).fetchone()
+        with pytest.raises(
+            Exception, match=f"{role} is not a plain NOLOGIN group .*{reported}"
+        ):
+            schema.command.upgrade(schema._config(scratch), "head")
+        with psycopg.connect(scratch) as conn:
+            assert schema.current_revision(conn) == "0010_alert_intake"
+            for runtime in (WEB_ROLE, WORKER_ROLE):
+                held = catalog_grants(conn, runtime)
+                assert all(not privileges for privileges in held.values()), runtime
+            assert conn.execute(
+                "SELECT count(*) FROM pg_trigger WHERE tgname = ANY(%s)",
+                ([trigger for trigger, _ in TRIGGER_GUARDED.values()],),
+            ).fetchone() == (0,)
+        with psycopg.connect(DSN) as conn:
+            # never altered by the migration
+            assert conn.execute(_ATTRIBUTES, (role,)).fetchone() == altered
+    finally:
+        with psycopg.connect(DSN, autocommit=True) as conn:
+            conn.execute(
+                sql.SQL("ALTER ROLE {} " + revert).format(sql.Identifier(role))
+            )
+        _drop_database(name)
+
+
+def test_0011_reuses_an_existing_plain_group_untouched() -> None:
+    name, scratch = _scratch_at_0010()
+    try:
+        with psycopg.connect(DSN) as conn:
+            before = {
+                r: conn.execute(_ATTRIBUTES, (r,)).fetchone() for r in RUNTIME_GRANTS
+            }
+        assert all(row is not None and not any(row) for row in before.values())
+        schema.command.upgrade(schema._config(scratch), "head")
+        with psycopg.connect(scratch) as conn:
+            for role, declared in RUNTIME_GRANTS.items():
+                assert catalog_grants(conn, role) == declared
+        with psycopg.connect(DSN) as conn:
+            assert {
+                r: conn.execute(_ATTRIBUTES, (r,)).fetchone() for r in RUNTIME_GRANTS
+            } == before
+    finally:
+        _drop_database(name)

@@ -6,7 +6,9 @@ Create Date: 2026-10-11
 
 #169 (contract r1, interface r2 in the task record). Creates two cluster
 roles, ``opspilot_web`` and ``opspilot_worker``, as ``NOLOGIN`` groups --
-reused untouched when they already exist -- and grants each exactly the
+an existing one is reused untouched only when it is a plain group (no
+LOGIN, SUPERUSER, CREATEROLE, CREATEDB, REPLICATION or BYPASSRLS; the
+upgrade fails naming the attributes otherwise) -- and grants each exactly the
 privileges of ``RUNTIME_GRANTS`` below: ``SELECT`` on ``alembic_version``,
 ``USAGE`` on schema ``public``, and per relation what the process's own SQL
 needs (``opspilot.persistence.grants`` explains the matrix and is the
@@ -287,9 +289,25 @@ def upgrade() -> None:
         statements.append(
             f"""
             DO $$
+            DECLARE
+              unsafe text;
             BEGIN
               IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{role}') THEN
                 CREATE ROLE {role} NOLOGIN;
+              ELSE
+                -- reused only as a plain group, never altered: a role that
+                -- can log in or holds elevated attributes fails the upgrade
+                SELECT pg_catalog.concat_ws(', ',
+                  CASE WHEN rolcanlogin THEN 'LOGIN' END,
+                  CASE WHEN rolsuper THEN 'SUPERUSER' END,
+                  CASE WHEN rolcreaterole THEN 'CREATEROLE' END,
+                  CASE WHEN rolcreatedb THEN 'CREATEDB' END,
+                  CASE WHEN rolreplication THEN 'REPLICATION' END,
+                  CASE WHEN rolbypassrls THEN 'BYPASSRLS' END)
+                INTO unsafe FROM pg_roles WHERE rolname = '{role}';
+                IF unsafe <> '' THEN
+                  RAISE EXCEPTION 'existing role {role} is not a plain NOLOGIN group (has %); fix or rename it before migrating to 0011', unsafe;
+                END IF;
               END IF;
             END
             $$;
