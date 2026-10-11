@@ -41,7 +41,7 @@ web 与 worker 目前都用迁移 owner 连接 PG（`opspilot/web/__main__.py` `
 
 - 2026-10-11：合同预审（Codex 只读）与用户裁决 r1；开 #197 跟踪完整 C3 §3 拆分。
 - 2026-10-11：实施（`feature/m1-pg-runtime-roles`，`../production-ops-agent-pg-roles-impl`，PR #200）。并行线：实现（Opus 5.5）、独立合同测试（Codex，只依据 r1 与公开接口）。lead 定接口 r2（P1–P6）；独立测试与实现先后暴露歧义，lead 裁决 r3（Q1 共用 F13 表的审核写入由角色感知触发器 42501 拒绝；Q2 退回修改可写再生成请求列；Q3 Observer 既有授权不变；Q4 ACL 口径）、r4（实现者停下上报的 C1–C3 取 A：审计行角色守卫、生成任务列级授权、web 只能把 Run 租约置空的守卫）、r5（角色是集群级，downgrade 只撤销 0011 授予的权限）。可逆选择：identity 列不需序列权限（探针确认，预审原述有误）；FOR SHARE 需要的锁用列级 UPDATE；两角色均无挂起写权限。测试侧缺陷 6 处由测试作者修，实现未为测试改断言。独立审查（Codex）P2「downgrade 用 DROP OWNED 会删既有对象」已修（`f698d76`），复验可接受；复验指出 r5 原措辞与 r2 冲突，lead 更正 r5 措辞，代码不变。检查：独立测试 46/46 ×3；`make check`（含 PG）4527 passed；CI 三项通过。机器人分诊 1 条 P1（stale 转换未校验旧状态）不采纳：0008 版本守卫对所有角色已拒绝。
-- 2026-10-11：真实 Run（新上下文 Agent，kind lab，web/worker/Observer 均非 owner，[证据](../evidence/m1-pg-roles-live/run.md)，Codex 复核证据可接受）：告警接入、调查发布、恢复确认通过；PG 日志 0 次 42501/permission denied；96 次连接快照无 owner；余额差 0.12 CNY。第 4 项失败：复盘生成因 traces 视图 49,521 字节超过 32 KiB 上限 `INPUT_TOO_LARGE`（产品既有限制，#199），worker 草稿写入与 web 审核动作在真实环境未执行，只有 PG 集成测试证据。
+- 2026-10-11：真实 Run（新上下文 Agent，kind lab，web/worker/Observer 均非 owner，证据 `docs/evidence/m1-pg-roles-live/`（随实施 PR #200 入库，本 PR 不含），Codex 复核证据可接受）：告警接入、调查发布、恢复确认通过；PG 日志 0 次 42501/permission denied；96 次连接快照无 owner；余额差 0.12 CNY。第 4 项失败：复盘生成因 traces 视图 49,521 字节超过 32 KiB 上限 `INPUT_TOO_LARGE`（产品既有限制，#199），worker 草稿写入与 web 审核动作在真实环境未执行，只有 PG 集成测试证据。
 
 ## 下一步与交接
 
