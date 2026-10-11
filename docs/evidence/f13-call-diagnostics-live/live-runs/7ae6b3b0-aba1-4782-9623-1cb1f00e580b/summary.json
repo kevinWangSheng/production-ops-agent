@@ -163,7 +163,8 @@
       },
       "visible_completion_tokens": {
         "db": 4674,
-        "page": "4674"
+        "page": "4674",
+        "trace_derived": 4674
       },
       "outcome": {
         "db": "repair_requested",
@@ -177,7 +178,16 @@
           "NOT_JSON"
         ]
       },
-      "all_equal": true
+      "all_equal": true,
+      "field_checks": {
+        "finish_reason": true,
+        "reasoning_tokens": true,
+        "prompt_tokens": true,
+        "completion_tokens": true,
+        "visible_completion_tokens": true,
+        "outcome": true,
+        "problems": true
+      }
     },
     {
       "seq": 2,
@@ -203,7 +213,8 @@
       },
       "visible_completion_tokens": {
         "db": 5402,
-        "page": "5402"
+        "page": "5402",
+        "trace_derived": 5402
       },
       "outcome": {
         "db": "accepted",
@@ -213,7 +224,16 @@
         "db": [],
         "page": []
       },
-      "all_equal": true
+      "all_equal": true,
+      "field_checks": {
+        "finish_reason": true,
+        "reasoning_tokens": true,
+        "prompt_tokens": true,
+        "completion_tokens": true,
+        "visible_completion_tokens": true,
+        "outcome": true,
+        "problems": true
+      }
     }
   ],
   "page": {
@@ -458,5 +478,6 @@
     "bytes": 126221,
     "path": "tmp/lab-ledgers/f13-call-diagnostics-live/7ae6b3b0-aba1-4782-9623-1cb1f00e580b/ledger.json",
     "in_repository": false
-  }
+  },
+  "three_way_agreement_note": "finish_reason, prompt_tokens, completion_tokens and reasoning_tokens are compared directly across db, trace and page. The trace does not export visible tokens (D55); visible_completion_tokens.trace_derived = trace completion_tokens - trace reasoning_tokens, compared with db and page. outcome and problems are compared across db and page only (not in the trace). all_equal is the AND of field_checks. trace_derived, field_checks and this note were added after freezing, computed only from values already in this file; the raw ledger (hash below) holds the summary as first frozen, without them."
 }
