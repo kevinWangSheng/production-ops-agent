@@ -141,23 +141,25 @@ RUNTIME_LOGINS = {
 }
 
 
-def runtime_roles():
+def runtime_roles(logins=RUNTIME_LOGINS):
     """Create the lab's web and worker logins once; print the DSNs to use.
 
     Talks to ``DSN`` (``OPSPILOT_LAB_DSN`` when set), whose schema must
     already be at head: the group roles come from the migration, never from
     here. An existing login is reused when it is a plain member of its group
-    and nothing else; anything else is refused rather than altered.
+    and nothing else -- it inherits the group's grants (a NOINHERIT login
+    would fail at startup) and holds no superuser, CREATEROLE, CREATEDB,
+    REPLICATION or BYPASSRLS; anything else is refused rather than altered.
     """
     with psycopg.connect(DSN, autocommit=True, connect_timeout=2) as conn:
-        for login, group in RUNTIME_LOGINS.items():
+        for login, group in logins.items():
             if not conn.execute(
                 "SELECT 1 FROM pg_roles WHERE rolname=%s", (group,)
             ).fetchone():
                 raise RuntimeError(f"ROLE_MISSING: {group} (run make migrate first)")
             row = conn.execute(
-                "SELECT r.rolcanlogin, r.rolsuper, r.rolcreaterole, r.rolcreatedb, "
-                "array(SELECT g.rolname FROM pg_auth_members m JOIN pg_roles g "
+                "SELECT r.rolcanlogin, r.rolinherit, r.rolsuper, r.rolcreaterole, "
+                "r.rolcreatedb, r.rolreplication, r.rolbypassrls, array(SELECT g.rolname FROM pg_auth_members m JOIN pg_roles g "
                 "ON g.oid = m.roleid WHERE m.member = r.oid ORDER BY 1) AS groups "
                 "FROM pg_roles r WHERE r.rolname=%s",
                 (login,),
@@ -168,8 +170,28 @@ def runtime_roles():
                         sql.Identifier(login), sql.Identifier(group)
                     )
                 )
-            elif tuple(row) != (True, False, False, False, [group]):
-                raise RuntimeError(f"ROLE_CONFLICT: {login}")
+            else:
+                expected = (True, True, False, False, False, False, False, [group])
+                names = (
+                    "LOGIN",
+                    "INHERIT",
+                    "SUPERUSER",
+                    "CREATEROLE",
+                    "CREATEDB",
+                    "REPLICATION",
+                    "BYPASSRLS",
+                    "membership",
+                )
+                wrong = [
+                    f"{name}={actual}"
+                    for name, actual, want in zip(names, row, expected, strict=True)
+                    if actual != want
+                ]
+                if wrong:
+                    raise RuntimeError(
+                        f"ROLE_CONFLICT: {login} ({', '.join(wrong)}; expected a "
+                        f"LOGIN INHERIT member of {group} only)"
+                    )
             print(f"{group}: {make_conninfo(DSN, user=login)}")
 
 
