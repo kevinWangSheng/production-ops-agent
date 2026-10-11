@@ -289,3 +289,91 @@ def test_escaped_key_search_stays_linear_on_large_input():
         started = time.monotonic()
         redact_credentials(text)
         assert time.monotonic() - started < 5, chunk
+
+
+# -- PR #195 bot P1: unquoted assignments with object or array values ---------
+
+_BRACKET_FAKE = "-".join(("BRACKET", "FAKE"))
+_UNQUOTED_CASES = {
+    # unquoted name, object / array value, any spacing
+    f'password: {{"nested":"{_BRACKET_FAKE}"}}': f"password: {R}",
+    f'token = [ "a", "{_BRACKET_FAKE}" ]': f"token = {R}",
+    f'api_key={{"a": {{"b": ["{_BRACKET_FAKE}"]}}}} tail': f"api_key={R} tail",
+    f'secret:[1,{{"x":"{_BRACKET_FAKE}"}}]&q=1': f"secret:{R}&q=1",
+    # multi-line nested
+    f'password: {{\n  "user": "ops",\n  "pw": "{_BRACKET_FAKE}"\n}}\nnext': (
+        f"password: {R}\nnext"
+    ),
+    f'token =\n[\n "{_BRACKET_FAKE}"\n]': f"token =\n{R}",
+    # never balances: to the end of the text
+    f'password: {{"open": "{_BRACKET_FAKE}" and more': f"password: {R}",
+    # a quote or bracket glued to an unquoted value
+    f'password=abc"{_BRACKET_FAKE} x"': f"password={R}",
+    f'password=pre{{"a":"{_BRACKET_FAKE}"}}': f"password={R}",
+    f"token=x'{_BRACKET_FAKE}'": f"token={R}",
+    # nested in an ordinary assignment's value
+    f"x=api_key={_BRACKET_FAKE}": f"x=api_key={R}",
+    # quoted-key forms: trailing text glued to a closed value
+    # (the glued text opens a quote that never closes: to the end)
+    f'{{"password": "a"{_BRACKET_FAKE}"}}': f'{{"password": "{R}"',
+    f'{{"password": "a"{_BRACKET_FAKE}, "n": 1}}': f'{{"password": "{R}", "n": 1}}',
+    f'{{"token": {{"a": 1}}{_BRACKET_FAKE}}}': f'{{"token": "{R}"}}',
+    f'{{"password": 12"{_BRACKET_FAKE}"}}': f'{{"password": {R}}}',
+}
+
+
+def test_unquoted_container_values_are_redacted_whole():
+    for text, expected in _UNQUOTED_CASES.items():
+        once = redact_credentials(text)
+        assert once == expected, (text, once)
+        assert redact_credentials(once) == once  # idempotent
+
+
+def test_ordinary_unquoted_assignments_keep_their_values():
+    for text in (
+        'config: {"region": "eu"} done',
+        "list = [1, 2, 3]",
+        "https://host/p?q=1&page=2",
+        "the author_filter=alice option",
+    ):
+        assert redact_credentials(text) == text, text
+
+
+def test_unquoted_container_values_never_reach_the_model():
+    from dataclasses import replace
+
+    from opspilot.investigation.context import initial_messages, project_input_content
+    from tests.m1_investigation_support import assemble
+
+    _, request, _, _, _, _ = assemble(replies=[])
+    for text in _UNQUOTED_CASES:
+        assert _BRACKET_FAKE not in canonical(alert_context({}, {"d": text}))
+        alert = parse_alert(
+            {
+                "status": "firing",
+                "labels": {"alertname": "A"},
+                "annotations": {"d": text},
+                "startsAt": "2026-10-10T11:41:54Z",
+                "fingerprint": "f1",
+            }
+        )
+        record = record_of(alert)
+        assert _BRACKET_FAKE not in record.alert_json
+        assert alert_context_of_record(record.alert_json) == alert_context(
+            alert.labels, alert.annotations
+        )
+        messages, _ = initial_messages(
+            replace(request.as_input(), question=text), evidence_context=None
+        )
+        assert _BRACKET_FAKE not in messages[1]["content"]
+        assert _BRACKET_FAKE not in str(project_input_content({"text": text}))
+
+
+def test_value_scans_stay_linear_on_large_input():
+    import time
+
+    for chunk in ("password: {", "token = [", 'password=a"', "x=api_key=", "k=["):
+        text = chunk * (512 * 1024 // len(chunk))
+        started = time.monotonic()
+        redact_credentials(text)
+        assert time.monotonic() - started < 5, chunk
