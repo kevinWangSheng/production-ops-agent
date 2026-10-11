@@ -8,6 +8,8 @@ import subprocess
 from pathlib import Path
 
 import psycopg
+from psycopg import sql
+from psycopg.conninfo import make_conninfo
 
 ROOT = Path(__file__).resolve().parents[2]
 DATA = ROOT / "tmp/m0-b/postgres"
@@ -129,10 +131,76 @@ def start():
             conn.execute("CREATE DATABASE m0_budget")
 
 
+# Login roles for the web and worker processes (migration 0011 creates the
+# NOLOGIN group roles and their grants). Trust auth on 127.0.0.1, so no
+# password; a deployment creates its own logins with credentials outside the
+# repository.
+RUNTIME_LOGINS = {
+    "opspilot_web_lab": "opspilot_web",
+    "opspilot_worker_lab": "opspilot_worker",
+}
+
+
+def runtime_roles(logins=RUNTIME_LOGINS):
+    """Create the lab's web and worker logins once; print the DSNs to use.
+
+    Talks to ``DSN`` (``OPSPILOT_LAB_DSN`` when set), whose schema must
+    already be at head: the group roles come from the migration, never from
+    here. An existing login is reused when it is a plain member of its group
+    and nothing else -- it inherits the group's grants (a NOINHERIT login
+    would fail at startup) and holds no superuser, CREATEROLE, CREATEDB,
+    REPLICATION or BYPASSRLS; anything else is refused rather than altered.
+    """
+    with psycopg.connect(DSN, autocommit=True, connect_timeout=2) as conn:
+        for login, group in logins.items():
+            if not conn.execute(
+                "SELECT 1 FROM pg_roles WHERE rolname=%s", (group,)
+            ).fetchone():
+                raise RuntimeError(f"ROLE_MISSING: {group} (run make migrate first)")
+            row = conn.execute(
+                "SELECT r.rolcanlogin, r.rolinherit, r.rolsuper, r.rolcreaterole, "
+                "r.rolcreatedb, r.rolreplication, r.rolbypassrls, array(SELECT g.rolname FROM pg_auth_members m JOIN pg_roles g "
+                "ON g.oid = m.roleid WHERE m.member = r.oid ORDER BY 1) AS groups "
+                "FROM pg_roles r WHERE r.rolname=%s",
+                (login,),
+            ).fetchone()
+            if row is None:
+                conn.execute(
+                    sql.SQL("CREATE ROLE {} LOGIN IN ROLE {}").format(
+                        sql.Identifier(login), sql.Identifier(group)
+                    )
+                )
+            else:
+                expected = (True, True, False, False, False, False, False, [group])
+                names = (
+                    "LOGIN",
+                    "INHERIT",
+                    "SUPERUSER",
+                    "CREATEROLE",
+                    "CREATEDB",
+                    "REPLICATION",
+                    "BYPASSRLS",
+                    "membership",
+                )
+                wrong = [
+                    f"{name}={actual}"
+                    for name, actual, want in zip(names, row, expected, strict=True)
+                    if actual != want
+                ]
+                if wrong:
+                    raise RuntimeError(
+                        f"ROLE_CONFLICT: {login} ({', '.join(wrong)}; expected a "
+                        f"LOGIN INHERIT member of {group} only)"
+                    )
+            print(f"{group}: {make_conninfo(DSN, user=login)}")
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=["start", "stop", "restart"])
+    parser.add_argument("action", choices=["start", "stop", "restart", "runtime-roles"])
     action = parser.parse_args().action
+    if action == "runtime-roles":
+        runtime_roles()
     if action in ("stop", "restart"):
         stop()
     if action in ("start", "restart"):

@@ -22,7 +22,10 @@ Safety properties, and where they come from:
 
 Configuration (environment only):
 
-* ``OPSPILOT_DSN``                  PostgreSQL DSN (required).
+* ``OPSPILOT_WORKER_DSN``           PostgreSQL DSN (required), as a login role
+  in ``opspilot_worker`` (migration 0011), shared by the postmortem thread
+  and the sweep; never the migration owner's ``OPSPILOT_DSN``, which this
+  process does not read.
 * ``DEEPSEEK_API_KEY``              the model credential, or
 * ``OPSPILOT_ENV_FILE``             a private ``KEY=value`` file holding it.
 * ``OPSPILOT_WORKER_POLL_SECONDS``  idle poll interval (default 2).
@@ -265,9 +268,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s"
     )
-    dsn = os.environ.get("OPSPILOT_DSN")
+    dsn = os.environ.get("OPSPILOT_WORKER_DSN")
     if not dsn:
-        raise SystemExit("OPSPILOT_DSN is required")
+        raise SystemExit("OPSPILOT_WORKER_DSN is required")
     grace = _float_env("OPSPILOT_WORKER_GRACE_SECONDS", 30.0)
     store = DurableStore(dsn)
     store.install()
