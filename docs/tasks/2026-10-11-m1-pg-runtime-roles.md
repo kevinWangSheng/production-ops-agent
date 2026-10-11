@@ -15,7 +15,7 @@ web 与 worker 目前都用迁移 owner 连接 PG（`opspilot/web/__main__.py` `
 
 - 运行时启动只做 `verify_head`，不执行 DDL（`opspilot/persistence/base.py` `install`），非 owner 角色启动不受影响。
 - Observer 已有独立角色：0003 建 `opspilot_observer NOLOGIN` 组角色并做列级 GRANT，登录角色由部署脚本或测试夹具在迁移外创建；F13 对 Observer 零写已有集成测试（`tests/integration/test_m1_03_knowledge_store_postgres.py`）。
-- 迁移中没有 `SECURITY DEFINER`、`LISTEN/NOTIFY`、显式 `CREATE SEQUENCE`；0010 的 `delivery_id` 是 identity 列，INSERT 需要序列权限。
+- 迁移中没有 `SECURITY DEFINER`、`LISTEN/NOTIFY`、显式 `CREATE SEQUENCE`；0010 的 `delivery_id` 等 identity 列只需表的 INSERT 权限，不需要序列权限（实施中探针确认，预审原写「需要序列权限」有误）。
 - worker 进程内执行工具（`opspilot/tools/otel_demo.py`），必须可达 Prometheus；预审曾推荐「Worker 不可达被调查系统」，与此不符，已改为移出本任务。
 - 预审（Codex 只读，2026-10-11）全文在主仓库被忽略的 `tmp/pg-roles/prereview.result.md`，未入库。
 
