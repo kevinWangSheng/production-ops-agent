@@ -1050,8 +1050,9 @@ class KnowledgeStore(_StoreBase):
             ).fetchone()
             attempts = conn.execute(
                 "SELECT attempt_id, incident_id, status, error_code, revises_version, "
-                "version, model_requests, max_model_requests, started_at, finished_at "
-                "FROM opspilot_postmortem_generation_attempts WHERE incident_id=%s "
+                "version, model_requests, max_model_requests, started_at, finished_at, "
+                "model_calls FROM opspilot_postmortem_generation_attempts "
+                "WHERE incident_id=%s "
                 "ORDER BY started_at DESC, attempt_id LIMIT %s",
                 (incident_id, ATTEMPTS_SHOWN),
             ).fetchall()

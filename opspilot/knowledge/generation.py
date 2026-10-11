@@ -1042,6 +1042,83 @@ def repair_notes(errors: Mapping[str, Sequence[str]]) -> list[str]:
     return [f"{key}: {', '.join(codes)}" for key, codes in sorted(errors.items())]
 
 
+# --- per-request problem codes (r10, D54) ------------------------------------------
+
+_CONTAINERS = ("narrative_sections", "conclusions", "proposals", "disputes")
+# The fixed vocabulary of an attempt's ``model_calls[].problems``: the
+# parser's, ``proposal_problems``' and ``citation_errors``' codes with every
+# list index and model-chosen name (unknown field, statement or proposal
+# key) removed, so nothing the model wrote is stored.
+PROBLEM_CODES: frozenset[str] = frozenset(
+    {
+        "EMPTY_REPLY",
+        "NOT_JSON",
+        "DUPLICATE_KEY",
+        "NOT_AN_OBJECT",
+        "DUPLICATE_STATEMENT_KEY",
+        "DUPLICATE_PROPOSAL_KEY",
+        "reply.unknown_field",
+        "narrative_sections.impact_summary_missing",
+        "UNRECOGNIZED_PROBLEM",
+        *(f"{name}.missing" for name in MODEL_OUTPUT_FIELDS[""]),
+        *(
+            f"{c}.{kind}"
+            for c in _CONTAINERS
+            for kind in ("not_a_list", "too_many", "not_an_object", "unknown_field")
+        ),
+        *(f"{c}.{name}" for c in _CONTAINERS for name in MODEL_OUTPUT_FIELDS[c]),
+        *(
+            f"{c}.{name}.missing"
+            for c in _CONTAINERS
+            for name in MODEL_OUTPUT_FIELDS[c]
+        ),
+        *(
+            f"proposals.{code}"
+            for code in (
+                "UNKNOWN_EVIDENCE",
+                "SUPERSEDE_REVISION_MISSING",
+                "SUPERSEDE_TARGET_UNKNOWN",
+                "SUPERSEDE_REVISION_MISMATCH",
+            )
+        ),
+        "citations.UNKNOWN_EVIDENCE",
+        "citations.NOT_CITABLE_AS_FACT",
+    }
+)
+_INDEXED = re.compile(r"^(" + "|".join(_CONTAINERS) + r")\[\d+\]\.(.+)$")
+_PROPOSAL_CODE = re.compile(r"^proposals\.[^\[]+\.([A-Z_]+)$")
+
+
+def _problem_code(problem: str) -> str:
+    if (indexed := _INDEXED.match(problem)) is not None:
+        container, rest = indexed.groups()
+        code = (
+            f"{container}.unknown_field"
+            if rest.endswith(".unknown")
+            else f"{container}.{rest}"
+        )
+    elif (proposal := _PROPOSAL_CODE.match(problem)) is not None:
+        code = f"proposals.{proposal.group(1)}"
+    elif problem.endswith(".unknown"):
+        code = "reply.unknown_field"
+    else:
+        code = problem
+    return code if code in PROBLEM_CODES else "UNRECOGNIZED_PROBLEM"
+
+
+def problem_codes(
+    problems: Sequence[str], errors: Mapping[str, Sequence[str]] | None = None
+) -> list[str]:
+    """``PROBLEM_CODES`` for one reply's parser or proposal problems and its
+    citation errors, in first-seen order, each once."""
+    codes = [_problem_code(p) for p in problems] + [
+        _problem_code(f"citations.{code}")
+        for found in (errors or {}).values()
+        for code in found
+    ]
+    return list(dict.fromkeys(codes))
+
+
 # --- assembly ---------------------------------------------------------------------------
 
 

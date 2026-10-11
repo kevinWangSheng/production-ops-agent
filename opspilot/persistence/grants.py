@@ -241,7 +241,7 @@ RUNTIME_GRANTS: Mapping[str, Mapping[str, frozenset[str]]] = {
             "max_model_requests,model,model_profile,output_schema_version,prompt_version,"
             "revises_version,watermark)",
             "UPDATE(completion_tokens,error_code,finished_at,input_bytes,input_sha256,"
-            "model_requests,prompt_tokens,response_model,status,version)",
+            "model_calls,model_requests,prompt_tokens,response_model,status,version)",
         ),
         "opspilot_postmortem_generation_jobs": _g(
             "SELECT",

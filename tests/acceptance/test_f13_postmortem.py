@@ -245,6 +245,26 @@ def assert_records(h, incident, result, model):
         assert k.freshness == (active["freshness"] if k.retrievable else None)
 
 
+def _model_calls_text(calls):
+    def shown(value):
+        return "unknown" if value is None else str(value)
+
+    if not calls:
+        return "unknown"
+    return normalize(
+        " ".join(
+            f"{c['purpose']} · finish {shown(c['finish_reason'])}"
+            f" · prompt {shown(c['prompt_tokens'])}"
+            f" · completion {shown(c['completion_tokens'])}"
+            f" (reasoning {shown(c['reasoning_tokens'])},"
+            f" visible {shown(c['visible_completion_tokens'])})"
+            f" · {c['outcome']}"
+            + (f" · {' '.join(c['problems'])}" if c["problems"] else "")
+            for c in calls
+        )
+    )
+
+
 def assert_pages(h, incident, result):
     """D34/R14：HTML 单元格对应投影字段，代际变化由调用者重读。"""
     page = h.page(f"/incidents/{incident}")
@@ -273,6 +293,8 @@ def assert_pages(h, incident, result):
             + (f" revises {a['revises_version']}" if a["revises_version"] else ""),
             f"{a['model_requests']} / {a['max_model_requests']}",
             f"{a['started_at']} → {a['finished_at'] or ''}".strip(),
+            # r10 (#202, D56): per-request diagnostics, "unknown" without them
+            _model_calls_text(a["model_calls"]),
         ]
     version_rows = page.rows.get("postmortem-versions", [])
     assert len(version_rows) == len(result.versions)

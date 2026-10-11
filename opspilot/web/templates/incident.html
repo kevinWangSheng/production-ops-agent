@@ -180,12 +180,20 @@
 {% endif %}
 {% if postmortem.attempts %}
 <table id="postmortem-attempts">
-  <thead><tr><th>Attempt</th><th>Status</th><th>Error</th><th>Version</th><th>Model requests</th><th>Started → finished</th></tr></thead>
+  <thead><tr><th>Attempt</th><th>Status</th><th>Error</th><th>Version</th><th>Model requests</th><th>Started → finished</th><th>Per request: finish · tokens · outcome · problems</th></tr></thead>
   <tbody>
   {% for a in postmortem.attempts %}
   <tr><td><code>{{ a.attempt_id }}</code></td><td><span class="badge">{{ a.status }}</span></td><td><code>{{ a.error_code or "" }}</code></td>
       <td>{{ a.version or "" }}{% if a.revises_version %} <span class="muted">revises {{ a.revises_version }}</span>{% endif %}</td>
-      <td>{{ a.model_requests }} / {{ a.max_model_requests }}</td><td>{{ a.started_at }} → {{ a.finished_at or "" }}</td></tr>
+      <td>{{ a.model_requests }} / {{ a.max_model_requests }}</td><td>{{ a.started_at }} → {{ a.finished_at or "" }}</td>
+      <td class="model-calls">{% if a.model_calls %}<ol>{% for c in a.model_calls %}
+        <li data-seq="{{ c.seq }}">{{ c.purpose }} · finish <code class="finish-reason">{{ c.finish_reason if c.finish_reason is not none else "unknown" }}</code>
+          · prompt <span class="prompt-tokens">{{ c.prompt_tokens if c.prompt_tokens is not none else "unknown" }}</span>
+          · completion <span class="completion-tokens">{{ c.completion_tokens if c.completion_tokens is not none else "unknown" }}</span>
+          (reasoning <span class="reasoning-tokens">{{ c.reasoning_tokens if c.reasoning_tokens is not none else "unknown" }}</span>,
+          visible <span class="visible-completion-tokens">{{ c.visible_completion_tokens if c.visible_completion_tokens is not none else "unknown" }}</span>)
+          · <span class="badge outcome">{{ c.outcome }}</span>{% if c.problems %} · <span class="problems">{% for p in c.problems %}<code>{{ p }}</code>{% if not loop.last %} {% endif %}{% endfor %}</span>{% endif %}</li>
+      {% endfor %}</ol>{% else %}<span class="muted">unknown</span>{% endif %}</td></tr>
   {% endfor %}
   </tbody>
 </table>

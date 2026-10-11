@@ -21,7 +21,8 @@ generation, Run count and current Run, and the input watermark; evidence
 alone is compared when the version is written (``record_draft``) and by the
 compensation scan.
 
-Tables: ``opspilot_postmortem_generation_jobs`` / ``_attempts`` (0009).
+Tables: ``opspilot_postmortem_generation_jobs`` / ``_attempts`` (0009;
+``_attempts.model_calls``: 0012).
 """
 
 from __future__ import annotations
@@ -365,6 +366,7 @@ class GenerationStore(_StoreBase):
         prompt_tokens: int = 0,
         completion_tokens: int = 0,
         citations_failed: bool = False,
+        model_calls: list[dict[str, Any]] | None = None,
     ) -> None:
         """Close the attempt and release the lease, in one transaction with
         the failure count and ``next_attempt_at`` (R7; the workbench reads
@@ -374,7 +376,8 @@ class GenerationStore(_StoreBase):
         schedules the next attempt with exponential backoff or, at the cap,
         clears ``next_attempt_at``; a reviewable version clears the count.
         A lease that is no longer ours changes nothing but the attempt row
-        (``LEASE_LOST`` is raised after it is closed)."""
+        (``LEASE_LOST`` is raised after it is closed). ``model_calls`` (r10,
+        D54) is written with the row, ``[]`` when no request was sent."""
         with self.transaction() as conn:
             job = self._require_row(
                 conn.execute(
@@ -385,7 +388,7 @@ class GenerationStore(_StoreBase):
             closed = conn.execute(
                 "UPDATE opspilot_postmortem_generation_attempts SET status=%s, "
                 "error_code=%s, version=%s, response_model=%s, input_sha256=%s, "
-                "input_bytes=%s, prompt_tokens=%s, completion_tokens=%s, "
+                "input_bytes=%s, prompt_tokens=%s, completion_tokens=%s, model_calls=%s, "
                 "finished_at=clock_timestamp() WHERE attempt_id=%s AND status='running' "
                 "RETURNING watermark, revises_version",
                 (
@@ -397,6 +400,7 @@ class GenerationStore(_StoreBase):
                     input_bytes,
                     prompt_tokens,
                     completion_tokens,
+                    Jsonb(list(model_calls or [])),
                     claim.attempt_id,
                 ),
             ).fetchone()
