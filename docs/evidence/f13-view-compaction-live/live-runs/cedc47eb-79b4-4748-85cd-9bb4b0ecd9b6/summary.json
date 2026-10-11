@@ -1,0 +1,494 @@
+{
+  "schema": "opspilot-lab-summary-1",
+  "experiment": "f13-view-compaction-live",
+  "run_id": "cedc47eb-79b4-4748-85cd-9bb4b0ecd9b6",
+  "frozen_at": "2026-10-11T14:56:11.712895+00:00",
+  "round": "f13-view-compaction-live-20261011",
+  "versions": {
+    "branch": "feature/F13-view-compaction",
+    "commit": "92f434e0a54f6f926cca682dc6e9fcf61b137f29",
+    "schema_head": "0011_runtime_roles",
+    "model": "deepseek-flash",
+    "postmortem_versions": {
+      "prompt_version": "f13-postmortem-prompt-v4",
+      "output_schema_version": "f13-postmortem-output-v2",
+      "input_policy_version": "f13-postmortem-input-v3",
+      "model_profile": "deepseek-flash/json/thinking-high/no-tools"
+    }
+  },
+  "database": "byte copy of the #169 run's data directory (tmp/pg-live-copy), port 55494",
+  "incident_id": "b23a19fd-cf49-5e1b-bd03-a3a89973e3fe",
+  "roles": {
+    "owner": "m0_lab (superuser; schema check, pg_stat_activity sampler, read-only projections only)",
+    "web": "opspilot_web_lab IN ROLE opspilot_web",
+    "worker": "opspilot_worker_lab IN ROLE opspilot_worker"
+  },
+  "d52_reopen": {
+    "attempts": [
+      {
+        "attempt_id": "045af765-6fe5-454f-b13b-78fe8c2ae211",
+        "status": "failed",
+        "error_code": "INPUT_TOO_LARGE",
+        "version": null,
+        "model": "deepseek-flash",
+        "response_model": null,
+        "model_profile": "deepseek-flash/json/thinking-high/no-tools",
+        "prompt_version": "f13-postmortem-prompt-v3",
+        "output_schema_version": "f13-postmortem-output-v2",
+        "input_policy_version": "f13-postmortem-input-v2",
+        "input_sha256": null,
+        "input_bytes": null,
+        "max_model_requests": 2,
+        "model_requests": 0,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "started_at": "2026-10-11 10:08:49.835969+00:00",
+        "finished_at": "2026-10-11 10:08:49.915398+00:00"
+      },
+      {
+        "attempt_id": "cedc47eb-79b4-4748-85cd-9bb4b0ecd9b6",
+        "status": "succeeded",
+        "error_code": null,
+        "version": 1,
+        "model": "deepseek-flash",
+        "response_model": "deepseek-flash",
+        "model_profile": "deepseek-flash/json/thinking-high/no-tools",
+        "prompt_version": "f13-postmortem-prompt-v4",
+        "output_schema_version": "f13-postmortem-output-v2",
+        "input_policy_version": "f13-postmortem-input-v3",
+        "input_sha256": "5da21402c5271d86a805a0a7b654e0c12961dcdc7f39947a90015973536b103b",
+        "input_bytes": 137706,
+        "max_model_requests": 2,
+        "model_requests": 2,
+        "prompt_tokens": 111013,
+        "completion_tokens": 21505,
+        "started_at": "2026-10-11 14:49:33.991889+00:00",
+        "finished_at": "2026-10-11 14:51:08.792436+00:00"
+      }
+    ],
+    "job_after": [
+      {
+        "incident_id": "b23a19fd-cf49-5e1b-bd03-a3a89973e3fe",
+        "lease_epoch": 2,
+        "failure_watermark": null,
+        "consecutive_failures": 0,
+        "next_attempt_at": null,
+        "last_error_code": null,
+        "updated_at": "2026-10-11 14:51:08.792895+00:00"
+      }
+    ],
+    "v3_attempts": 1,
+    "observed_until": "2026-10-11T14:53:55Z"
+  },
+  "d47_compaction": {
+    "evidence_id": "54dedff4-746c-40a0-80b3-b8dfdf7531cc-t2:1933e66f-6511-4add-b56b-e9d62f062a25",
+    "full_projection_bytes": 49569,
+    "compacted": {
+      "evidence_id": "54dedff4-746c-40a0-80b3-b8dfdf7531cc-t2:1933e66f-6511-4add-b56b-e9d62f062a25",
+      "tool": "traces_search",
+      "projection": "span_groups_only",
+      "citable_as_fact": true,
+      "omitted_content_items": 66,
+      "bytes": 5406
+    },
+    "span_groups_items": 25,
+    "max_view_bytes": 32768,
+    "catalog_entry": [
+      {
+        "evidence_id": "54dedff4-746c-40a0-80b3-b8dfdf7531cc-t2:1933e66f-6511-4add-b56b-e9d62f062a25",
+        "kind": "investigation",
+        "scope": "traces_search:m0-otel-20260909",
+        "window_start": "2026-10-11T09:51:00+00:00",
+        "window_end": "2026-10-11T09:52:03+00:00",
+        "citable_as_fact": true,
+        "projection": "span_groups_only"
+      }
+    ],
+    "rebuilt_input_sha256": "5da21402c5271d86a805a0a7b654e0c12961dcdc7f39947a90015973536b103b",
+    "rebuilt_input_bytes": 137706,
+    "rebuilt_matches_attempt": true,
+    "views": [
+      {
+        "evidence_id": "54dedff4-746c-40a0-80b3-b8dfdf7531cc-t0:f7ba7900-08b2-4961-b276-cfc6d002832b",
+        "tool": "metrics_range_query",
+        "projection": null,
+        "citable_as_fact": true,
+        "omitted_content_items": null,
+        "bytes": 1866
+      },
+      {
+        "evidence_id": "54dedff4-746c-40a0-80b3-b8dfdf7531cc-t1:c2a696cd-aa2b-414e-8216-65f87dfc6385",
+        "tool": "metrics_range_query",
+        "projection": null,
+        "citable_as_fact": true,
+        "omitted_content_items": null,
+        "bytes": 3214
+      },
+      {
+        "evidence_id": "54dedff4-746c-40a0-80b3-b8dfdf7531cc-t2:1933e66f-6511-4add-b56b-e9d62f062a25",
+        "tool": "traces_search",
+        "projection": "span_groups_only",
+        "citable_as_fact": true,
+        "omitted_content_items": 66,
+        "bytes": 5406
+      },
+      {
+        "evidence_id": "75aa6a30-c1d8-4907-9bce-92504f645e1b-t0:9687cf49-c8bd-4a87-8d61-98cf163717e1",
+        "tool": "metrics_range_query",
+        "projection": null,
+        "citable_as_fact": true,
+        "omitted_content_items": null,
+        "bytes": 2712
+      },
+      {
+        "evidence_id": "75aa6a30-c1d8-4907-9bce-92504f645e1b-t1:f5b74653-2a11-4960-a7ad-6653df8711fd",
+        "tool": "metrics_range_query",
+        "projection": null,
+        "citable_as_fact": true,
+        "omitted_content_items": null,
+        "bytes": 2892
+      },
+      {
+        "evidence_id": "75aa6a30-c1d8-4907-9bce-92504f645e1b-t2:856d795a-6ad9-48d6-973b-c19c1c2352b4",
+        "tool": "metrics_range_query",
+        "projection": null,
+        "citable_as_fact": true,
+        "omitted_content_items": null,
+        "bytes": 1886
+      },
+      {
+        "evidence_id": "845c085a-d288-4240-bbdd-7107ce42b8d1-t0:ce95832a-b4b7-42de-9113-aabcd9aec527",
+        "tool": "metrics_range_query",
+        "projection": null,
+        "citable_as_fact": true,
+        "omitted_content_items": null,
+        "bytes": 4241
+      },
+      {
+        "evidence_id": "845c085a-d288-4240-bbdd-7107ce42b8d1-t1:549b1c17-fba1-4d68-930c-1b54afe14f51",
+        "tool": "metrics_range_query",
+        "projection": null,
+        "citable_as_fact": true,
+        "omitted_content_items": null,
+        "bytes": 1331
+      },
+      {
+        "evidence_id": "dfa1fe53-a9db-49d4-8181-bdbc228725e8-t0:c92a8476-eca9-4afe-ae90-9f3813963da7",
+        "tool": "metrics_range_query",
+        "projection": null,
+        "citable_as_fact": true,
+        "omitted_content_items": null,
+        "bytes": 2055
+      },
+      {
+        "evidence_id": "dfa1fe53-a9db-49d4-8181-bdbc228725e8-t1:a6b4b173-8dd9-4531-89a5-d045e9342970",
+        "tool": "metrics_range_query",
+        "projection": null,
+        "citable_as_fact": true,
+        "omitted_content_items": null,
+        "bytes": 1583
+      },
+      {
+        "evidence_id": "e60df1a2-1f9a-49ce-9eb7-d91e6c93079f-t0:8175b1a2-fbbb-4e4a-8d6d-07b08b9cfb60",
+        "tool": "metrics_range_query",
+        "projection": null,
+        "citable_as_fact": true,
+        "omitted_content_items": null,
+        "bytes": 3556
+      },
+      {
+        "evidence_id": "e60df1a2-1f9a-49ce-9eb7-d91e6c93079f-t1:a1b1d825-a1a1-41a8-bb52-215a62ebabe4",
+        "tool": "metrics_range_query",
+        "projection": null,
+        "citable_as_fact": true,
+        "omitted_content_items": null,
+        "bytes": 2743
+      },
+      {
+        "evidence_id": "e60df1a2-1f9a-49ce-9eb7-d91e6c93079f-t2:1986510d-9db0-42fa-9b84-892042314e7f",
+        "tool": "metrics_range_query",
+        "projection": null,
+        "citable_as_fact": true,
+        "omitted_content_items": null,
+        "bytes": 6231
+      }
+    ]
+  },
+  "draft": {
+    "model_conclusions": 13,
+    "citations_failed": 0,
+    "by_certainty": {
+      "supported": 9,
+      "uncertain": 4
+    },
+    "conclusions_citing_compacted_view": [
+      {
+        "ordinal": 5,
+        "section": "impact_summary",
+        "certainty": "supported",
+        "citations_valid": true,
+        "ref_citable_as_fact": true,
+        "other_refs": 11,
+        "body": "The incident affected checkout ordering in the otel-demo namespace: the 5-minute error ratio for checkout's otel-demo.CheckoutService/PlaceOrder SERVER spans is 0 at 09:46:54Z, 09:47:24Z and 09:47:54Z, 0.5 at 09:48:24Z and 09:48:54Z, 0.667 at 09:49:24Z and 09:49:54Z, and 1.0 from 09:50:24Z through the last returned point at 09:51:54Z. The volume behind that ratio is very small: over the hour ending 09:52:03Z the same span series totals 77.29 spans, of which 3.05 carry STATUS_CODE_ERROR and 74.24 carry STATUS_CODE_UNSET, so 1.0 is reached with only a handful of spans per 5-minute window, and STATUS_CODE_UNSET means the span carried no status, not that the call succeeded. The failing path is checkout's charge step: in the sampled span groups the only checkout operations with error rows are oteldemo.CheckoutService/PlaceOrder (rpc.grpc.status_code=13) and its client call oteldemo.PaymentService/Charge (rpc.grpc.status_code=2), matching payment's grpc.oteldemo.PaymentService/Charge (2 error rows), while checkout's cart, currency, product-catalog and shipping operations in the same sample show no error rows and rpc.grpc.status_code=0 where a status is recorded. The same wave appears upstream: frontend (CLIENT, INTERNAL and SERVER), frontend-proxy (CLIENT and SERVER) and load-generator (CLIENT) error spans at 0.00833/s and 0.0125/s in the windows ending 09:49:03Z through 09:52:03Z. Onset and duration: payment's Charge server-span error rate is 0 for every returned window from 08:27:03Z through the window ending 09:47:03Z, first non-zero at 0.00417/s for the window ending 09:49:03Z and 0.0125/s at 09:51:03Z, with its untagged rate falling to 0 in that same window; the recovery monitor reports error_ratio 1.0 for the window ending 09:54:39Z, 0.4 for 09:55:40Z and 0.0 for the window ending 09:56:40Z and every window through 10:08:43Z, healthy_since 2026-10-11T09:58:40.939756+00:00 and recovery_confirmed at 2026-10-11T10:08:43. Coverage limits: all 15 recovery samples show one available and one ready replica, so replica counts say nothing about application-level failure; the trace evidence is a span_groups_only projection of a 66-span sample with individual span content omitted, so it supports statements per service and operation only and no success/failure proportion; and no log, deployment, Kubernetes-event or feature-flag-state source is present, so these numbers do not identify what changed in payment at about 09:48Z."
+      },
+      {
+        "ordinal": 10,
+        "section": "findings",
+        "certainty": "supported",
+        "citations_valid": true,
+        "ref_citable_as_fact": true,
+        "other_refs": 1,
+        "body": "In the sampled span groups the only checkout operations with error rows are oteldemo.CheckoutService/PlaceOrder (2 rows, rpc.grpc.status_code=13) and its client call oteldemo.PaymentService/Charge (2 rows, rpc.grpc.status_code=2), matching service=payment operation grpc.oteldemo.PaymentService/Charge (2 error rows); checkout's other dependency operations in the same sample - oteldemo.CartService/GetCart, oteldemo.CurrencyService/Convert, oteldemo.ProductCatalogService/GetProduct and oteldemo.ShippingService/GetQuote - have no error rows and rpc.grpc.status_code=0 where a status is recorded."
+      },
+      {
+        "ordinal": 15,
+        "section": "hypotheses",
+        "certainty": "uncertain",
+        "citations_valid": true,
+        "ref_citable_as_fact": true,
+        "other_refs": 4,
+        "body": "The proximate cause is an application-level failure inside payment's charge handling rather than checkout-side breakage or payment becoming unreachable: payment keeps serving Charge calls at its usual rate while its error rate becomes non-zero and its untagged rate falls to 0, the hourly error counts on checkout's client call and on payment's server operation are identical at 3.05, no other checkout dependency operation carries errors in the sampled span groups, and frontend checkout traffic continues at its prior rate."
+      }
+    ]
+  },
+  "postmortem": {
+    "generation_status": "approved",
+    "postmortem_id": "ded45924-f62c-4630-8af6-c80b365b8397",
+    "postmortem_generation": 3,
+    "versions": [
+      {
+        "version": 1,
+        "state": "approved",
+        "revises_version": null,
+        "conclusions": 18,
+        "citations_failed": 0,
+        "disputed": 0
+      }
+    ],
+    "review_actions": [
+      {
+        "event_id": "b86c713f-a2c2-4675-af09-4658fc45fd05",
+        "object_kind": "postmortem",
+        "object_id": "ded45924-f62c-4630-8af6-c80b365b8397",
+        "action": "generate",
+        "version": 1,
+        "revision": null,
+        "actor_id": "worker:a250c4ae-7907-4f2d-ba50-572b8b58be93",
+        "principal_kind": "worker",
+        "reason": null,
+        "expected_generation": 0,
+        "resulting_generation": 1,
+        "recorded_at": "2026-10-11 14:51:08.778979+00:00"
+      },
+      {
+        "event_id": "f8318fef-5c04-41bf-b72b-ae3244cb3284",
+        "object_kind": "postmortem",
+        "object_id": "ded45924-f62c-4630-8af6-c80b365b8397",
+        "action": "submit",
+        "version": 1,
+        "revision": null,
+        "actor_id": "worker:a250c4ae-7907-4f2d-ba50-572b8b58be93",
+        "principal_kind": "worker",
+        "reason": null,
+        "expected_generation": 1,
+        "resulting_generation": 2,
+        "recorded_at": "2026-10-11 14:51:08.789768+00:00"
+      },
+      {
+        "event_id": "1763b569-8cbc-4324-b061-1911ffbf8be8",
+        "object_kind": "postmortem",
+        "object_id": "ded45924-f62c-4630-8af6-c80b365b8397",
+        "action": "approve",
+        "version": 1,
+        "revision": null,
+        "actor_id": "pgroles-lab",
+        "principal_kind": "basic_auth",
+        "reason": null,
+        "expected_generation": 2,
+        "resulting_generation": 3,
+        "recorded_at": "2026-10-11 14:52:33.087633+00:00"
+      }
+    ],
+    "knowledge": [
+      {
+        "entry_id": "3e5718ee-39f6-4f36-acce-793bd832f5c0",
+        "revision": 1,
+        "state": "active",
+        "retrievable": true,
+        "name": "Ratio alerts on tiny span windows: verify the denominator before paging",
+        "tags": [
+          "alerting",
+          "error-ratio",
+          "traces",
+          "low-traffic"
+        ],
+        "content": "{\"checks\":[\"Query the hour increase of the numerator and of the denominator separately for the exact span filter the alert uses, and record both numbers\",\"Compare the error rate and the untagged rate per step: if the untagged rate falls to 0 while the error rate stays low, the ratio may rise because the successful-looking span population disappeared\",\"Confirm what STATUS_CODE_UNSET means for this span set (no status recorded) before treating it as success\",\"Add or request a minimum request/span-count condition so a handful of spans cannot alone trigger a critical page\"],\"evidence_refs\":[{\"citable_as_fact\":true,\"evidence_id\":\"dfa1fe53-a9db-49d4-8181-bdbc228725e8-t0:c92a8476-eca9-4afe-ae90-9f3813963da7\",\"scope\":\"metrics_range_query:m0-otel-20260909\",\"window_end\":\"2026-10-11T09:52:03+00:00\",\"window_start\":\"2026-10-11T09:41:54+00:00\"},{\"citable_as_fact\":true,\"evidence_id\":\"845c085a-d288-4240-bbdd-7107ce42b8d1-t0:ce95832a-b4b7-42de-9113-aabcd9aec527\",\"scope\":\"metrics_range_query:m0-otel-20260909\",\"window_end\":\"2026-10-11T09:52:03+00:00\",\"window_start\":\"2026-10-11T08:52:03+00:00\"},{\"citable_as_fact\":true,\"evidence_id\":\"845c085a-d288-4240-bbdd-7107ce42b8d1-t1:549b1c17-fba1-4d68-930c-1b54afe14f51\",\"scope\":\"metrics_range_query:m0-otel-20260909\",\"window_end\":\"2026-10-11T09:52:03+00:00\",\"window_start\":\"2026-10-11T08:52:03+00:00\"},{\"citable_as_fact\":true,\"evidence_id\":\"dfa1fe53-a9db-49d4-8181-bdbc228725e8-t1:a6b4b173-8dd9-4531-89a5-d045e9342970\",\"scope\":\"metrics_range_query:m0-otel-20260909\",\"window_end\":\"2026-10-11T09:52:03+00:00\",\"window_start\":\"2026-10-11T08:51:54+00:00\"}],\"symptoms\":[\"A ratio-based alert saturates at 1.0 or jumps to a high value while absolute error counts stay in the single digits\",\"The series feeding the alert divides error spans by total spans including STATUS_CODE_UNSET spans\",\"Only a few spans per window are produced for the affected operation\"]}",
+        "content_sha256": "c3528dd93bca146f783f41300dd0bb54fd97114289e33ff75cf1411d5cce1c05",
+        "source_postmortem_id": "ded45924-f62c-4630-8af6-c80b365b8397",
+        "source_version": 1,
+        "source_proposal_key": "ratio_alert_small_denominator_check",
+        "supersedes_revision": null,
+        "approved_by": "pgroles-lab",
+        "approved_by_kind": "basic_auth",
+        "approved_at": "2026-10-11 14:52:33.095877+00:00",
+        "approval_event_id": "3860fdb3-4c4a-4607-bfea-5e73f9b4fe64",
+        "revoked_reason": null,
+        "revoked_by": null,
+        "revoked_by_kind": null,
+        "revoked_at": null,
+        "freshness": {
+          "approved_at": "2026-10-11 14:52:33.095877+00:00",
+          "generated_at": "2026-10-11 14:51:08.782497+00:00",
+          "observation_ended_at": "2026-10-11 10:08:43.509477+00:00",
+          "evidence_snapshot_sha256": "57087e6074a91fcdcb5700e5c03e133648759a4a8aaca2ec3230a52b4b7c16d1"
+        }
+      }
+    ],
+    "recent_attempts": [
+      {
+        "attempt_id": "cedc47eb-79b4-4748-85cd-9bb4b0ecd9b6",
+        "incident_id": "b23a19fd-cf49-5e1b-bd03-a3a89973e3fe",
+        "status": "succeeded",
+        "error_code": null,
+        "revises_version": null,
+        "version": 1,
+        "model_requests": 2,
+        "max_model_requests": 2,
+        "started_at": "2026-10-11 14:49:33.991889+00:00",
+        "finished_at": "2026-10-11 14:51:08.792436+00:00"
+      },
+      {
+        "attempt_id": "045af765-6fe5-454f-b13b-78fe8c2ae211",
+        "incident_id": "b23a19fd-cf49-5e1b-bd03-a3a89973e3fe",
+        "status": "failed",
+        "error_code": "INPUT_TOO_LARGE",
+        "revises_version": null,
+        "version": null,
+        "model_requests": 0,
+        "max_model_requests": 2,
+        "started_at": "2026-10-11 10:08:49.835969+00:00",
+        "finished_at": "2026-10-11 10:08:49.915398+00:00"
+      }
+    ]
+  },
+  "review": {
+    "performed": true,
+    "action": "approve",
+    "at": "2026-10-11T14:52:32Z",
+    "via": "GET /postmortems/{postmortem_id}/versions/1 as Basic Auth lab account pgroles-lab, POST the rendered form-approve (hidden action, expected_generation, idempotency label from the page) to /postmortems/{postmortem_id}/versions/1/review",
+    "http_status": 200,
+    "response": {
+      "action": "approve",
+      "postmortem_id": "ded45924-f62c-4630-8af6-c80b365b8397",
+      "incident_id": "b23a19fd-cf49-5e1b-bd03-a3a89973e3fe",
+      "version": 1,
+      "state": "approved",
+      "generation": 3,
+      "replayed": false,
+      "published": {
+        "ratio_alert_small_denominator_check": {
+          "entry_id": "3e5718ee-39f6-4f36-acce-793bd832f5c0",
+          "revision": 1,
+          "generation": 1,
+          "action": "publish"
+        }
+      }
+    },
+    "why": "version 1 under_review with 0 disputes and all conclusions citations_valid; the three conclusions citing the compacted traces view state per service/operation span_groups facts (rows, error_rows, status) that match the stored span_groups; approve is the action the draft allows",
+    "simulated_review": "test-driven review by the run agent through the workbench HTTP form (D33), not a human reviewer"
+  },
+  "pg_log": {
+    "log_settings": "log_connections=on, log_disconnections=on, log_min_messages=warning, log_min_error_statement=error, log_line_prefix with user/app/sqlstate (carried in the copied postgresql.conf)",
+    "window": "2026-10-11T14:48:00Z (pg_ctl start) .. 14:54:06Z (worker/web stopped); log written fresh for this run",
+    "lines": 327,
+    "ERROR": 0,
+    "FATAL": 0,
+    "sqlstate_42501": 0,
+    "permission_denied": 0,
+    "non_00000_sqlstate_lines": 0,
+    "connections_by_user_app": {
+      "m0_lab / lab-monitor": 30,
+      "m0_lab / lab-readonly": 43,
+      "m0_lab / lab-schema-check": 1,
+      "opspilot_web_lab / opspilot-web": 3,
+      "opspilot_worker_lab / opspilot-worker": 3
+    }
+  },
+  "activity": {
+    "sampler": "owner SELECT on pg_stat_activity every 10 s (app lab-monitor, own pid excluded)",
+    "snapshots": 30,
+    "first": "2026-10-11T14:49:14+00:00",
+    "last": "2026-10-11T14:54:04+00:00",
+    "sessions_seen": {
+      "opspilot_web_lab / opspilot-web": 29,
+      "opspilot_worker_lab / opspilot-worker": 28
+    },
+    "opspilot_app_as_owner": 0,
+    "port_to_pid_check_14:54:01Z": {
+      "web pid": {
+        "login": "opspilot_web_lab",
+        "client_ports": [
+          60874,
+          61838
+        ]
+      },
+      "worker pid": {
+        "login": "opspilot_worker_lab",
+        "client_ports": [
+          60970,
+          60972
+        ]
+      },
+      "method": "pg_stat_activity client_port matched against lsof of each started PID"
+    }
+  },
+  "trace": {
+    "project": {
+      "project": "opspilot-lab-f13-view-compaction-live-20261011",
+      "project_id": "226ac9e5-5965-422f-97c0-84d8463a20bd",
+      "trace_tier": "longlived"
+    },
+    "root_runs_found": 1,
+    "traces": [
+      {
+        "name": "opspilot.postmortem_generation",
+        "langsmith_run_id": "00000000-0000-0000-0b00-481198872b09",
+        "otel_trace_id": "0889d94bf8c8b2fe4339a0860dd392c5",
+        "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/226ac9e5-5965-422f-97c0-84d8463a20bd/r/00000000-0000-0000-0b00-481198872b09?poll=true",
+        "start_time": "2026-10-11 14:49:33.995719+00:00",
+        "end_time": "2026-10-11 14:51:08.793327+00:00",
+        "status": "success",
+        "prompt_tokens": 111013,
+        "completion_tokens": 21505,
+        "child_runs": {
+          "llm": 2
+        }
+      }
+    ]
+  },
+  "cost": {
+    "balance_before": [
+      {
+        "currency": "CNY",
+        "total_balance": "3.44",
+        "granted_balance": "0.00",
+        "topped_up_balance": "3.44"
+      }
+    ],
+    "balance_before_at": "2026-10-11T14:48:41.314227+00:00",
+    "balance_after": [
+      {
+        "currency": "CNY",
+        "total_balance": "3.29",
+        "granted_balance": "0.00",
+        "topped_up_balance": "3.29"
+      }
+    ]
+  },
+  "raw_ledger": {
+    "sha256": "a7d165fd2436c1abf8068b9c51f93ecac97a415fc963c7c4dfe4c76dc1ef0757",
+    "bytes": 169331,
+    "path": "tmp/lab-ledgers/f13-view-compaction-live/cedc47eb-79b4-4748-85cd-9bb4b0ecd9b6/ledger.json",
+    "in_repository": false
+  }
+}
