@@ -855,3 +855,106 @@ def test_round3_scrub_is_the_single_write_path():
         "def _write" in line or "span.set_attribute(key, scrubbed)" in line
         for line in direct
     ), direct
+
+
+# -- issue #190: long Runs and the span attribute limit -----------------------
+
+
+def _long_transcript(rounds, tools_per_round=3):
+    """A Run transcript that grows like the real one: each round adds one
+    assistant message with tool calls and one tool message per call."""
+    messages = [
+        {"role": "system", "content": "You are OpsPilot."},
+        {"role": "user", "content": "Why are checkout errors elevated?"},
+    ]
+    for round_index in range(rounds):
+        calls = [
+            {
+                "id": f"call-{round_index}-{j}",
+                "type": "function",
+                "function": {"name": "metrics.range_query", "arguments": "{}"},
+            }
+            for j in range(tools_per_round)
+        ]
+        messages.append({"role": "assistant", "content": None, "tool_calls": calls})
+        messages += [
+            {
+                "role": "tool",
+                "tool_call_id": call["id"],
+                "content": f'{{"rows": [], "round": {round_index}}}',
+            }
+            for call in calls
+        ]
+    return tuple(messages)
+
+
+def _assert_llm_span_complete(span, *, seq, messages):
+    attributes = dict(span.attributes)
+    assert span.dropped_attributes == 0
+    assert attributes["langsmith.span.kind"] == "llm"
+    assert attributes["langsmith.metadata.model_call_seq"] == seq
+    # Token counts reconcile against PG ``run_usage`` (ADR-0006).
+    assert attributes["gen_ai.usage.input_tokens"] == 120
+    assert attributes["gen_ai.usage.output_tokens"] == 34
+    assert attributes["gen_ai.usage.total_tokens"] == 154
+    indexes = sorted(
+        int(key.split(".")[2])
+        for key in attributes
+        if key.startswith("gen_ai.prompt.") and key.endswith(".role")
+    )
+    assert indexes == list(range(len(indexes)))
+    # The system prompt, the question and the newest message stay visible.
+    assert attributes["gen_ai.prompt.0.content"] == messages[0]["content"]
+    assert attributes["gen_ai.prompt.1.content"] == messages[1]["content"]
+    last = indexes[-1]
+    assert attributes[f"gen_ai.prompt.{last}.role"] == messages[-1]["role"]
+    assert attributes[f"gen_ai.prompt.{last}.content"] == messages[-1]["content"]
+
+
+def test_issue_190_every_llm_span_of_a_long_run_keeps_kind_and_seq():
+    """17 model calls / 48 tool results, as in Run 92fdbc19: LangSmith must
+    count one llm run per model request."""
+    exporter = InMemorySpanExporter()
+    tracer = tracing.configure(lab_env(), exporter=exporter)
+    client = DeepSeekClient(FAKE_DEEPSEEK_KEY, opener=_Opener(reply_payload()))
+    transcripts = [_long_transcript(rounds) for rounds in range(17)]
+    with tracer.run(incident_id="i", run_id="r", versions={}):
+        for messages in transcripts:
+            client.complete(model_call(messages=messages))
+    tracer.shutdown()
+    llm = [
+        span
+        for span in exporter.get_finished_spans()
+        if span.name == "deepseek.chat.completions"
+    ]
+    assert len(llm) == 17
+    for seq, (span, messages) in enumerate(zip(llm, transcripts, strict=True), 1):
+        _assert_llm_span_complete(span, seq=seq, messages=messages)
+
+
+def test_issue_190_a_very_long_prompt_is_condensed_not_evicted():
+    exporter = InMemorySpanExporter()
+    tracer = tracing.configure(lab_env(), exporter=exporter)
+    messages = _long_transcript(100)  # 402 messages
+    with tracer.run(incident_id="i", run_id="r", versions={}):
+        DeepSeekClient(FAKE_DEEPSEEK_KEY, opener=_Opener(reply_payload())).complete(
+            model_call(messages=messages)
+        )
+    tracer.shutdown()
+    span = by_name(exporter.get_finished_spans())["deepseek.chat.completions"]
+    _assert_llm_span_complete(span, seq=1, messages=messages)
+    attributes = dict(span.attributes)
+    assert attributes["opspilot.model.prompt_message_count"] == len(messages)
+    kept = sum(1 for key in attributes if key.endswith(".role") and "prompt" in key)
+    assert attributes["opspilot.model.prompt_messages_omitted"] == len(messages) - kept
+
+
+def test_issue_190_ambient_otel_limits_do_not_shrink_lab_spans(monkeypatch):
+    monkeypatch.setenv("OTEL_SPAN_ATTRIBUTE_COUNT_LIMIT", "4")
+    monkeypatch.setenv("OTEL_ATTRIBUTE_COUNT_LIMIT", "4")
+    exporter = InMemorySpanExporter()
+    one_lab_run(exporter)
+    for span in exporter.get_finished_spans():
+        assert span.dropped_attributes == 0, span.name
+    llm = by_name(exporter.get_finished_spans())["deepseek.chat.completions"]
+    assert dict(llm.attributes)["langsmith.metadata.model_call_seq"] == 1
