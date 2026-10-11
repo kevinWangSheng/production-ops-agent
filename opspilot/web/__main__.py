@@ -2,7 +2,9 @@
 
 Configuration comes from the environment only, and only as hashes:
 
-* ``OPSPILOT_DSN``            PostgreSQL DSN of the business-state authority.
+* ``OPSPILOT_WEB_DSN``        PostgreSQL DSN of the business-state authority, as
+  a login role in ``opspilot_web`` (migration 0011); never the migration
+  owner's ``OPSPILOT_DSN``, which this process does not read.
 * ``OPSPILOT_UI_USERS``       ``name=<pbkdf2 hash>`` entries separated by ``,``.
 * ``OPSPILOT_EVENT_TOKENS``   ``<sha256 hex>=<actor id>`` entries separated by ``,``.
 * ``OPSPILOT_AUTH_REVISION``  identifier recorded on every principal.
@@ -26,8 +28,8 @@ Configuration comes from the environment only, and only as hashes:
 ``hash-password`` and ``token-digest`` print the value to put in the
 environment; the secret itself is read from stdin and never echoed. This
 process runs no investigator: Runs stay ``queued`` until a worker
-(``python -m opspilot.worker_main``) claims them. It is not a deployment artifact and installs schema on start, which
-a production path must not do.
+(``python -m opspilot.worker_main``) claims them. It is not a deployment artifact; on start it only verifies that
+the schema is at the Alembic head (``make migrate`` runs as the owner).
 """
 
 from __future__ import annotations
@@ -116,9 +118,9 @@ def _health_profile() -> HealthProfile:
 def _serve() -> int:
     import uvicorn
 
-    dsn = os.environ.get("OPSPILOT_DSN")
+    dsn = os.environ.get("OPSPILOT_WEB_DSN")
     if not dsn:
-        raise SystemExit("OPSPILOT_DSN is required")
+        raise SystemExit("OPSPILOT_WEB_DSN is required")
     bind = os.environ.get("OPSPILOT_BIND", "127.0.0.1:8080")
     # Browsers send Origin on every form POST, so an empty allow-list would
     # refuse the dev UI itself; default to the bind address over plain http.
