@@ -19,6 +19,7 @@ from uuid import UUID, uuid4
 
 from opspilot.instructions.discipline import prompt_revision
 from opspilot.investigation.context import (
+    ALERT_CONTEXT_BOUNDARY,
     COMPACTION_INSTRUCTION,
     COMPACTION_KIND,
     CONCLUSION_KIND,
@@ -115,6 +116,7 @@ def prompt_revision_versions(
             report_contract=report_contract,
             run_coverage_template=RUN_COVERAGE_TEMPLATE,
             report_retry_template=REPORT_RETRY_TEMPLATE,
+            alert_context_template=ALERT_CONTEXT_BOUNDARY,
         )
     }
 

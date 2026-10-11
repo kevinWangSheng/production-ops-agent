@@ -350,7 +350,7 @@ def test_an_unknown_input_version_is_incompatible_a_malformed_one_invalid(monkey
     v2 = _input(affected_service=service).as_json()
     with pytest.raises(ContextError, match="INCOMPATIBLE_STATE"):
         InvestigationInput.from_json(
-            {**v2, "version": "opspilot-investigation-input-v4"}
+            {**v2, "version": "opspilot-investigation-input-v5"}
         )
     for bad in ("bogus", None, 2, "opspilot-investigation-input-v0"):
         with pytest.raises(ContextError, match="INPUT_INVALID"):

@@ -32,6 +32,8 @@ from opspilot.acceptance_alert import alert_intake_outcome
 from opspilot.alertmanager import (
     Alert,
     InvalidAlert,
+    alert_context,
+    alert_context_of_record,
     parse_alert,
     question_for,
     record_of,
@@ -47,6 +49,7 @@ from opspilot.intake import (
 )
 from opspilot.investigation.context import (
     AFFECTED_SERVICE,
+    ALERT_CONTEXT,
     CONCLUSION_KIND,
     INPUT_CONTENT_FIELD_MAX_CHARS,
     ContextError,
@@ -469,6 +472,7 @@ class Workbench:
                     starts_at=alert.starts_at_time,
                     original=alert.starts_at_raw,
                 ),
+                alert_context=alert_context(alert.labels, alert.annotations),
             ),
             "ledger": [
                 (
@@ -736,13 +740,16 @@ class Workbench:
         *,
         affected_service: Mapping[str, str] | None = None,
         alert: AlertAnchor | None = None,
+        alert_context: Mapping[str, Any] | None = None,
     ) -> dict[str, Any] | None:
         """A first Run's input over the intake question (``None`` without a face).
 
         ``affected_service`` (an alert's resolved namespace + workload, E11)
         is recorded in the scope facts as focus; it grants nothing.
         ``alert`` frames an alert Run at the alert's receipt and anchors its
-        default query window at ``startsAt`` (J1-J3).
+        default query window at ``startsAt`` (J1-J3); ``alert_context`` (its
+        processed labels and annotations, K1-K4) makes the input v4 and
+        reaches the model as labelled untrusted context.
         """
         if self.tool_face is None:
             return None
@@ -761,6 +768,11 @@ class Workbench:
                     **fresh.scope_facts,
                     AFFECTED_SERVICE: dict(affected_service),
                 },
+            )
+        if alert_context is not None:
+            fresh = replace(
+                fresh,
+                scope_facts={**fresh.scope_facts, ALERT_CONTEXT: dict(alert_context)},
             )
         return fresh.as_json()
 
@@ -807,9 +819,18 @@ class Workbench:
                 summary.incident_id,
                 exc.code,
             )
-            service, alert = self._alert_rebuild(summary.incident_id)
+            try:
+                service, alert, context = self._alert_rebuild(summary.incident_id)
+            except ContextError as rebuild_exc:
+                # Same fail-closed refusal as rows that cannot be continued.
+                raise PersistenceError(rebuild_exc.code) from rebuild_exc
             return self._fresh_input(
-                request, run_id, deadline, affected_service=service, alert=alert
+                request,
+                run_id,
+                deadline,
+                affected_service=service,
+                alert=alert,
+                alert_context=context,
             )
         # A PersistenceError (storage outage, lock timeout) propagates: the
         # control action fails closed and the operator retries (bot review,
@@ -817,15 +838,23 @@ class Workbench:
 
     def _alert_rebuild(
         self, incident_id: UUID
-    ) -> tuple[Mapping[str, str] | None, AlertAnchor | None]:
-        """What a fresh rebuild of an alert incident's Run keeps (F5, J5):
-        its affected service and the anchor of the incident's earliest
-        delivery, never the renewal instant. ``(None, None)`` for an
-        incident no alert opened."""
+    ) -> tuple[Mapping[str, str] | None, AlertAnchor | None, Mapping[str, Any] | None]:
+        """What a fresh rebuild of an alert incident's Run keeps (F5, J5,
+        K6): its affected service, and the anchor and alert context of the
+        incident's earliest delivery, never the renewal instant or a later
+        replay's annotations. ``(None, None, None)`` for an incident no
+        alert opened.
+
+        The alert context is rebuilt from that delivery's audit text. A
+        record cut at its byte bound is no longer JSON and cannot rebuild
+        it; a Run with an empty or partial context would be a different
+        input than the alert gave, so this fails closed with
+        ``ContextError("INCOMPATIBLE_STATE")`` (K6, C3 §7) and the caller
+        refuses the control action, as for any input it cannot rebuild."""
         reader = getattr(self.incidents, "alert_records", None)
         records = None if reader is None else reader(incident_id)
         if records is None or records.identity is None or not records.deliveries:
-            return None, None
+            return None, None, None
         identity = records.identity
         first = records.deliveries[0]
         service = (
@@ -833,11 +862,16 @@ class Workbench:
             if identity["namespace"] is None or identity["workload"] is None
             else {"namespace": identity["namespace"], "workload": identity["workload"]}
         )
-        return service, AlertAnchor(
+        context = alert_context_of_record(first["alert_json"])
+        if context is None:
+            _log.warning("alert record unreadable incident=%s", incident_id)
+            raise ContextError("INCOMPATIBLE_STATE")
+        anchor = AlertAnchor(
             received_at=first["received_at"],
             starts_at=identity["starts_at"],
             original=identity["starts_at_raw"],
         )
+        return service, anchor, context
 
     def _audit_matches(
         self,

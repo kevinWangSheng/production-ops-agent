@@ -325,14 +325,16 @@ def prompt_revision(
     report_contract: str,
     run_coverage_template: str = "",
     report_retry_template: str = "",
+    alert_context_template: str = "",
 ) -> str:
     """``ModelProfile.prompt_revision``：L1a 与 L2 的复合版本（C3 第 5 节）。
 
     ``report_contract`` 传入 L2 报告契约的完整文本，``run_coverage_template``
     传入最终报告请求后追加的运行覆盖摘要模板（第二轮合同 C），
     ``report_retry_template`` 传入 B3 的一次性修复重试反馈模板
-    （docs/tasks/2026-09-28-m1-01-upstream-alignment-b.md），都由调用方从其
-    单一来源取得。实例值（具体失败原因、具体 evidence_id）不参与，只有模板
+    （docs/tasks/2026-09-28-m1-01-upstream-alignment-b.md），
+    ``alert_context_template`` 传入告警 Run 的不可信告警上下文边界措辞
+    （M1-04 K5、F8），都由调用方从其单一来源取得。实例值（具体失败原因、具体 evidence_id）不参与，只有模板
     本身参与；这样仅预算、授权范围或具体失败内容不同的两个 Run 得到相同
     取值。
     """
@@ -344,6 +346,7 @@ def prompt_revision(
                 "report_contract": report_contract,
                 "run_coverage_template": run_coverage_template,
                 "report_retry_template": report_retry_template,
+                "alert_context_template": alert_context_template,
             }
         ),
     )
