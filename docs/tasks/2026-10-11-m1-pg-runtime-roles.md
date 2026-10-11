@@ -1,6 +1,6 @@
 # M1 调查侧 PG 运行角色拆分（#169）
 
-- 状态：进行中（授权 PR #198、实施 PR #200 均待用户合并；真实 Run 第 4 项因 #199 未通过）
+- 状态：已完成（#198、#200 已合并，2026-10-11）；真实 Run 第 4 项因 #199 未通过，补跑跟随 #199
 - 更新日期：2026-10-11
 - 依据：[#169](https://github.com/kevinWangSheng/production-ops-agent/issues/169)；C3 §3「运行角色与权限」、§11「部署与 schema 迁移」；M1-03 D8（[任务记录](2026-10-05-m1-03-postmortem.md)）；SPEC 2026-10-11 段
 - 工作区：授权 PR `chore/m1-pg-roles`，`../production-ops-agent-pg-roles`；实施 worktree 写在执行节
@@ -40,11 +40,11 @@ web 与 worker 目前都用迁移 owner 连接 PG（`opspilot/web/__main__.py` `
 ## 执行进展与证据
 
 - 2026-10-11：合同预审（Codex 只读）与用户裁决 r1；开 #197 跟踪完整 C3 §3 拆分。
-- 2026-10-11：实施（`feature/m1-pg-runtime-roles`，`../production-ops-agent-pg-roles-impl`，PR #200）。并行线：实现（Opus 5.5）、独立合同测试（Codex，只依据 r1 与公开接口）。lead 定接口 r2（P1–P6）；独立测试与实现先后暴露歧义，lead 裁决 r3（Q1 共用 F13 表的审核写入由角色感知触发器 42501 拒绝；Q2 退回修改可写再生成请求列；Q3 Observer 既有授权不变；Q4 ACL 口径）、r4（实现者停下上报的 C1–C3 取 A：审计行角色守卫、生成任务列级授权、web 只能把 Run 租约置空的守卫）、r5（角色是集群级，downgrade 只撤销 0011 授予的权限）。可逆选择：identity 列不需序列权限（探针确认，预审原述有误）；FOR SHARE 需要的锁用列级 UPDATE；两角色均无挂起写权限。测试侧缺陷 6 处由测试作者修，实现未为测试改断言。独立审查（Codex）P2「downgrade 用 DROP OWNED 会删既有对象」已修（`f698d76`），复验可接受；复验指出 r5 原措辞与 r2 冲突，lead 更正 r5 措辞，代码不变。检查：独立测试 46/46 ×3；`make check`（含 PG）4527 passed；CI 三项通过。机器人分诊 1 条 P1（stale 转换未校验旧状态）不采纳：0008 版本守卫对所有角色已拒绝。
+- 2026-10-11：实施（`feature/m1-pg-runtime-roles`，`../production-ops-agent-pg-roles-impl`，PR #200）。并行线：实现（Opus 5.5）、独立合同测试（Codex，只依据 r1 与公开接口）。lead 定接口 r2（P1–P6）；独立测试与实现先后暴露歧义，lead 裁决 r3（Q1 共用 F13 表的审核写入由角色感知触发器 42501 拒绝；Q2 退回修改可写再生成请求列；Q3 Observer 既有授权不变；Q4 ACL 口径）、r4（实现者停下上报的 C1–C3 取 A：审计行角色守卫、生成任务列级授权、web 只能把 Run 租约置空的守卫）、r5（角色是集群级，downgrade 只撤销 0011 授予的权限）。可逆选择：identity 列不需序列权限（探针确认，预审原述有误）；FOR SHARE 需要的锁用列级 UPDATE；两角色均无挂起写权限。测试侧缺陷 6 处由测试作者修，实现未为测试改断言。独立审查（Codex）P2「downgrade 用 DROP OWNED 会删既有对象」已修（`f698d76`），复验可接受；复验指出 r5 原措辞与 r2 冲突，lead 更正 r5 措辞，代码不变。检查：独立测试 46/46 ×3；`make check`（含 PG）4527 passed；CI 三项通过。机器人分诊：P1（stale 转换未校验旧状态）不采纳，0008 版本守卫对所有角色已拒绝；P2 lab 辅助脚本复用登录角色时补查 INHERIT/REPLICATION/BYPASSRLS（`c08287f`）与 P1 0011 复用同名既有角色前须为纯 NOLOGIN 组角色、否则迁移失败（`2e83627`，源于 lead 接口 r2「复用且不改属性」措辞）均采纳；lead 自核修复差分。
 - 2026-10-11：真实 Run（新上下文 Agent，kind lab，web/worker/Observer 均非 owner，证据 `docs/evidence/m1-pg-roles-live/`（随实施 PR #200 入库，本 PR 不含），Codex 复核证据可接受）：告警接入、调查发布、恢复确认通过；PG 日志 0 次 42501/permission denied；96 次连接快照无 owner；余额差 0.12 CNY。第 4 项失败：复盘生成因 traces 视图 49,521 字节超过 32 KiB 上限 `INPUT_TOO_LARGE`（产品既有限制，#199），worker 草稿写入与 web 审核动作在真实环境未执行，只有 PG 集成测试证据。
 
 ## 下一步与交接
 
-- 待用户：合并 #198（授权）与 #200（实施，权限/部署合同变更）。
+- #198（`2cca32c`）与 #200（`d8213f0`）2026-10-11 由 lead 按用户意图 squash 合并（用户告知已合并时两者仍 OPEN 且 CLEAN）。
 - #199 解决后补跑第 4 项真实证据（worker 草稿写入 + web 审核动作）。
-- 合并后清理：两个 worktree 的临时 PG 已停，数据在各 worktree `tmp/pg*`；`../production-ops-agent-pg-roles-tests` 只含独立测试副本，已并入 #200。
+- 清理：三个 worktree 与本地分支已删；被忽略的实验数据（真实 Run 的 PG 数据目录、原始 ledger、驱动脚本与日志、临时 PG）移至主仓库 `tmp/pg-roles-archive/`，未入库。
