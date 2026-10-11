@@ -17,6 +17,7 @@ from opspilot import schema
 from opspilot.knowledge import KnowledgeStore, contract
 from opspilot.knowledge.jobs import MAX_ATTEMPTS_PER_WATERMARK, GenerationStore
 from opspilot.persistence import PoolConfig
+from scripts.m0.postgres_lab import DSN
 from tests.f13_acceptance_support import seed_upstream
 
 pytestmark = pytest.mark.skipif(
@@ -27,7 +28,7 @@ pytestmark = pytest.mark.skipif(
 @pytest.fixture
 def stores():
     # Per-test scratch database: never alter or stop the lead's lab instance.
-    lab = os.environ["OPSPILOT_LAB_DSN"]
+    lab = DSN
     name = f"opspilot_f13view_{uuid4().hex[:12]}"
     with psycopg.connect(lab, autocommit=True) as conn:
         conn.execute(
