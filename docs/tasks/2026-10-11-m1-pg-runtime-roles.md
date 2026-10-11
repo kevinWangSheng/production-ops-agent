@@ -1,6 +1,6 @@
 # M1 调查侧 PG 运行角色拆分（#169）
 
-- 状态：已完成（#198、#200 已合并，2026-10-11）；真实 Run 第 4 项因 #199 未通过，补跑跟随 #199
+- 状态：已完成（#198、#200 已合并，2026-10-11；真实 Run 第 4 项随 #199 在 #203 补跑通过）
 - 更新日期：2026-10-11
 - 依据：[#169](https://github.com/kevinWangSheng/production-ops-agent/issues/169)；C3 §3「运行角色与权限」、§11「部署与 schema 迁移」；M1-03 D8（[任务记录](2026-10-05-m1-03-postmortem.md)）；SPEC 2026-10-11 段
 - 工作区：授权 PR `chore/m1-pg-roles`，`../production-ops-agent-pg-roles`；实施 worktree 写在执行节
@@ -46,5 +46,5 @@ web 与 worker 目前都用迁移 owner 连接 PG（`opspilot/web/__main__.py` `
 ## 下一步与交接
 
 - #198（`2cca32c`）与 #200（`d8213f0`）2026-10-11 由 lead 按用户意图 squash 合并（用户告知已合并时两者仍 OPEN 且 CLEAN）。
-- #199 解决后补跑第 4 项真实证据（worker 草稿写入 + web 审核动作）。
+- 第 4 项补跑（2026-10-11，#203，[证据](../evidence/f13-view-compaction-live/run.md)）：在本任务真实运行库的副本上，web/worker 以非 owner 登录角色运行，worker 在 v3 输入策略下生成真实模型草稿并进入审核，web 以 Basic Auth 批准并发布知识条目；PG 日志 0 次 42501/permission denied，连接身份无 owner。U7/U9 由两次真实运行合计满足：告警→调查→恢复（[#169 证据](../evidence/m1-pg-roles-live/run.md)）+ 草稿→批准。退回、驳回、替换、撤销只由 PG 集成测试覆盖。
 - 清理：三个 worktree 与本地分支已删；被忽略的实验数据（真实 Run 的 PG 数据目录、原始 ledger、驱动脚本与日志、临时 PG）移至主仓库 `tmp/pg-roles-archive/`，未入库。
