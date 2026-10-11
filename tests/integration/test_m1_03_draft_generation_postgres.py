@@ -342,7 +342,7 @@ def test_generation_writes_a_reviewable_version_with_its_record(stores, dsn) -> 
     [version] = view["postmortem"]["versions"]
     document = json.loads(version["content"])
     record = document["generation"]
-    assert record["prompt_version"] == "f13-postmortem-prompt-v2"
+    assert record["prompt_version"] == "f13-postmortem-prompt-v3"
     assert record["model"] == "deepseek-flash" and record["model_requests"] == 1
     assert record["model_profile"].startswith("deepseek-flash/")
     assert document["validation"] == {"citations_valid": True, "errors": {}}
@@ -604,22 +604,32 @@ def test_a_return_is_regenerated_with_its_reason(stores, dsn) -> None:
     assert incident_id not in jobs.candidates(limit=50)
 
 
-def test_proposals_of_an_approved_version_supersede_on_regeneration(
-    stores, dsn
-) -> None:
-    knowledge, _, durable = stores
-    incident_id = _seed(dsn)
-    proposal = {
+def _proposal(incident_id: UUID, **extra) -> dict:
+    return {
         "key": "checkout-5xx",
         "name": "checkout 5xx after deploy",
         "tags": ["checkout"],
         "symptoms": ["5xx"],
         "checks": ["error ratio"],
         "evidence_ids": [_evidence(incident_id)],
+        **extra,
     }
-    [first] = _worker(
-        stores, ScriptedModel(_reply(incident_id, proposals=[proposal]))
-    ).poll_once()
+
+
+def _payload(call: ModelCall) -> dict:
+    return json.loads(call.messages[1]["content"])
+
+
+def _approved_with_entry(stores, dsn) -> tuple[UUID, UUID]:
+    """An incident whose first version is approved and published
+    ``checkout-5xx`` at revision 1, then moved on (a new input) so a new
+    generation is due."""
+    knowledge, _, durable = stores
+    incident_id = _seed(dsn)
+    model = ScriptedModel(_reply(incident_id, proposals=[_proposal(incident_id)]))
+    [first] = _worker(stores, model).poll_once()
+    # no active entry yet: an empty list, first publication unchanged (R24)
+    assert _payload(model.calls[0])["published_knowledge_entries"] == []
     snapshot = knowledge.incident_postmortem(incident_id)["postmortem"]
     approved = knowledge.approve(
         snapshot["postmortem_id"],
@@ -629,14 +639,159 @@ def test_proposals_of_an_approved_version_supersede_on_regeneration(
         actor=REVIEWER,
     )
     entry_id = approved.published["checkout-5xx"]["entry_id"]
-    # the incident moves on (a new input), so a new generation is due
     durable.append_input(incident_id, uuid4(), {"text": "regressed"})
-    [second] = _worker(
-        stores, ScriptedModel(_reply(incident_id, proposals=[proposal]))
-    ).poll_once()
+    return incident_id, entry_id
+
+
+def _approve_latest(knowledge, incident_id: UUID, entry_id: UUID):
+    snapshot = knowledge.incident_postmortem(incident_id)["postmortem"]
+    return knowledge.approve(
+        snapshot["postmortem_id"],
+        snapshot["versions"][-1]["version"],
+        expected_generation=snapshot["generation"],
+        idempotency_key=f"ap-{uuid4()}",
+        actor=REVIEWER,
+        entry_generations={
+            entry_id: knowledge.knowledge_history(entry_id)["generation"]
+        },
+    )
+
+
+def test_a_supersede_proposal_names_the_listed_key_and_revision(stores, dsn) -> None:
+    """r8 (#179, D39, D41, D45 shape): the model sees the active entry and
+    its revision; key + revision binds the proposal to the entry; approval
+    supersedes revision 1 with revision 2."""
+    knowledge, _, durable = stores
+    incident_id, entry_id = _approved_with_entry(stores, dsn)
+    model = ScriptedModel(
+        _reply(incident_id, proposals=[_proposal(incident_id, supersedes_revision=1)])
+    )
+    [second] = _worker(stores, model).poll_once()
+    assert second.state == "under_review"
+    sent = model.calls[0].messages[1]["content"]
+    assert _payload(model.calls[0])["published_knowledge_entries"] == [
+        {"key": "checkout-5xx", "name": "checkout 5xx after deploy", "revision": 1}
+    ]
+    assert str(entry_id) not in sent  # R21: no entry UUID reaches the model
     latest = knowledge.incident_postmortem(incident_id)["postmortem"]["versions"][-1]
     assert latest["version"] == second.version
     assert latest["proposals"][0]["supersedes_entry_id"] == entry_id
+
+    _approve_latest(knowledge, incident_id, entry_id)
+    history = knowledge.knowledge_history(entry_id)
+    assert [(r["revision"], r["state"]) for r in history["revisions"]] == [
+        (1, "superseded"),
+        (2, "active"),
+    ]
+    assert history["revisions"][1]["supersedes_revision"] == 1
+    assert knowledge.active_revision(entry_id)["revision"] == 2
+
+    # the next generation lists the new active revision, and only it
+    durable.append_input(incident_id, uuid4(), {"text": "again"})
+    model = ScriptedModel(_reply(incident_id))
+    _worker(stores, model).poll_once()
+    assert _payload(model.calls[0])["published_knowledge_entries"] == [
+        {"key": "checkout-5xx", "name": "checkout 5xx after deploy", "revision": 2}
+    ]
+
+
+def test_a_reused_key_without_its_revision_is_invalid_output(stores, dsn) -> None:
+    """R25: no implicit key mapping; one repair, then OUTPUT_INVALID (D30)."""
+    knowledge, _, _ = stores
+    incident_id, _ = _approved_with_entry(stores, dsn)
+    bare = _reply(incident_id, proposals=[_proposal(incident_id)])
+    model = ScriptedModel(bare, bare)
+    [outcome] = _worker(stores, model).poll_once()
+    assert (outcome.status, outcome.error_code) == ("failed", "OUTPUT_INVALID")
+    assert "SUPERSEDE_REVISION_MISSING" in model.calls[1].messages[3]["content"]
+    versions = knowledge.incident_postmortem(incident_id)["postmortem"]["versions"]
+    assert len(versions) == 1  # no version written
+
+
+@pytest.mark.parametrize(
+    ("first", "code"),
+    [
+        ({"supersedes_revision": 2}, "SUPERSEDE_REVISION_MISMATCH"),
+        (
+            {"key": "checkout-errors", "supersedes_revision": 1},
+            "SUPERSEDE_TARGET_UNKNOWN",
+        ),
+    ],
+)
+def test_a_wrong_target_is_repaired_once_against_the_input(
+    stores, dsn, first, code
+) -> None:
+    """D41: code checks the target against the input; the one repair call
+    (D22) may correct it."""
+    knowledge, _, _ = stores
+    incident_id, entry_id = _approved_with_entry(stores, dsn)
+    model = ScriptedModel(
+        _reply(incident_id, proposals=[_proposal(incident_id, **first)]),
+        _reply(incident_id, proposals=[_proposal(incident_id, supersedes_revision=1)]),
+    )
+    [outcome] = _worker(stores, model).poll_once()
+    assert outcome.state == "under_review"
+    assert code in model.calls[1].messages[3]["content"]
+    latest = knowledge.incident_postmortem(incident_id)["postmortem"]["versions"][-1]
+    assert latest["proposals"][0]["supersedes_entry_id"] == entry_id
+
+
+def test_a_revoked_entry_is_neither_listed_nor_a_target(stores, dsn) -> None:
+    """D40: only active entries reach the input; a revoked one cannot be
+    revived through a supersede proposal."""
+    knowledge, _, _ = stores
+    incident_id, entry_id = _approved_with_entry(stores, dsn)
+    knowledge.revoke(
+        entry_id,
+        1,
+        reason="no longer applies",
+        expected_generation=knowledge.knowledge_history(entry_id)["generation"],
+        idempotency_key=f"rv-{uuid4()}",
+        actor=REVIEWER,
+    )
+    target = _reply(
+        incident_id, proposals=[_proposal(incident_id, supersedes_revision=1)]
+    )
+    model = ScriptedModel(target, target)
+    [outcome] = _worker(stores, model).poll_once()
+    assert _payload(model.calls[0])["published_knowledge_entries"] == []
+    assert (outcome.status, outcome.error_code) == ("failed", "OUTPUT_INVALID")
+    assert "SUPERSEDE_TARGET_UNKNOWN" in model.calls[1].messages[3]["content"]
+
+
+def test_versions_recorded_under_r7_stay_readable_and_current(
+    stores, dsn, monkeypatch
+) -> None:
+    """D44, R26: a version written with the r7 version strings keeps them,
+    stays reviewable and is not regenerated because the code moved to r8."""
+    from opspilot.knowledge import generation
+
+    knowledge, jobs, _ = stores
+    incident_id = _seed(dsn)
+    monkeypatch.setattr(
+        generation, "POSTMORTEM_PROMPT_VERSION", "f13-postmortem-prompt-v2"
+    )
+    monkeypatch.setattr(
+        generation, "POSTMORTEM_OUTPUT_SCHEMA_VERSION", "f13-postmortem-output-v1"
+    )
+    monkeypatch.setattr(
+        generation, "POSTMORTEM_INPUT_POLICY_VERSION", "f13-postmortem-input-v1"
+    )
+    _worker(stores, ScriptedModel(_reply(incident_id))).poll_once()
+    monkeypatch.undo()
+    [version] = knowledge.incident_postmortem(incident_id)["postmortem"]["versions"]
+    record = json.loads(version["content"])["generation"]
+    assert (
+        record["prompt_version"],
+        record["output_schema_version"],
+        record["input_policy_version"],
+    ) == (
+        "f13-postmortem-prompt-v2",
+        "f13-postmortem-output-v1",
+        "f13-postmortem-input-v1",
+    )
+    assert version["state"] == "under_review"
+    assert incident_id not in jobs.candidates(limit=50)
 
 
 def test_the_observer_role_has_no_privilege_on_generation_tables(dsn) -> None:

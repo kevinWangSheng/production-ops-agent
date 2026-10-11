@@ -17,6 +17,7 @@ T0 = datetime(2026, 10, 9, 12, 5, 7, 123456, tzinfo=timezone.utc)
 START = (T0 - timedelta(minutes=5)).isoformat()
 END = T0.isoformat()
 HUMAN_NOTE = "人工核查：checkout 错误率升高，根因尚未确认"
+_OMITTED = object()
 
 
 class CountingModel:
@@ -42,8 +43,24 @@ class CountingModel:
         )
 
 
-def output(evidence_id, *, disputed=False, citation_failure=False):
+def output(
+    evidence_id,
+    *,
+    disputed=False,
+    citation_failure=False,
+    supersedes_revision=_OMITTED,
+):
     """测试作者冻结的最小合法模型输出。"""
+    proposal = {
+        "key": "checkout-errors",
+        "name": "checkout 错误核查",
+        "tags": ["checkout"],
+        "symptoms": ["错误率异常"],
+        "checks": ["核对错误窗口"],
+        "evidence_ids": [evidence_id],
+    }
+    if supersedes_revision is not _OMITTED:
+        proposal["supersedes_revision"] = supersedes_revision
     return {
         "narrative_sections": [
             {
@@ -64,16 +81,7 @@ def output(evidence_id, *, disputed=False, citation_failure=False):
                 "evidence_ids": [evidence_id],
             }
         ],
-        "proposals": [
-            {
-                "key": "checkout-errors",
-                "name": "checkout 错误核查",
-                "tags": ["checkout"],
-                "symptoms": ["错误率异常"],
-                "checks": ["核对错误窗口"],
-                "evidence_ids": [evidence_id],
-            }
-        ],
+        "proposals": [proposal],
         "disputes": [
             {"conclusion_key": "uncertainty", "reason": "对照窗口不足，结论有争议"}
         ]
