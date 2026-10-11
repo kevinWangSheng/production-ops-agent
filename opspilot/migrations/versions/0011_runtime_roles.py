@@ -27,9 +27,11 @@ This is the investigation side's incremental split, not C3 section 3's full
 Controller/Worker/Gateway isolation (#197): the worker still calls the
 persistence write primitives itself.
 
-``downgrade()`` revokes in this database everything the two roles hold
-(``DROP OWNED BY``), then drops each role only when no other database still
-references it (``pg_shdepend``, as 0003). A role that would be dropped while
+``downgrade()`` drops the guard triggers and revokes exactly the
+privileges ``upgrade()`` granted (no ``DROP OWNED BY``: a role that existed
+before 0011 keeps what it owned and was granted elsewhere), then drops each
+role only when nothing references it any more -- no object it owns, no
+other grant, in this or another database (``pg_shdepend``). A role that would be dropped while
 login roles are still members refuses the downgrade instead: drop or
 re-home those logins first.
 """
@@ -273,6 +275,12 @@ def _grant(privilege: str, relation: str, role: str) -> str:
     return f"GRANT {kind} {on}ON {relation} TO {role};"
 
 
+def _revoke(privilege: str, relation: str, role: str) -> str:
+    kind, _, columns = privilege.partition("(")
+    on = f"({columns.rstrip(')')}) " if columns else ""
+    return f"REVOKE {kind} {on}ON {relation} FROM {role};"
+
+
 def upgrade() -> None:
     statements = []
     for role in ROLES:
@@ -378,8 +386,13 @@ def downgrade() -> None:
         DROP TRIGGER opspilot_f13_audit_worker_guard ON opspilot_f13_audit;
         DROP FUNCTION opspilot_worker_review_guard();
         """,
-        f"DROP OWNED BY {', '.join(ROLES)};",
     ]
+    # Exactly what upgrade() granted, never DROP OWNED: a role that existed
+    # before 0011 keeps its objects and its other grants.
+    for role in ROLES:
+        statements.append(f"REVOKE USAGE ON SCHEMA public FROM {role};")
+        for relation, privileges in RUNTIME_GRANTS[role].items():
+            statements.extend(_revoke(p, relation, role) for p in privileges)
     for role in ROLES:
         statements.append(
             f"""

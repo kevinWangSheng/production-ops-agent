@@ -709,3 +709,61 @@ def test_the_web_may_clear_a_run_lease_but_not_set_one(web_dsn) -> None:
             "SELECT state, owner, lease_until, epoch FROM opspilot_runs WHERE run_id=%s",
             (run_id,),
         ).fetchone() == ("queued", None, None, 0)
+
+
+def test_0011_downgrade_revokes_only_its_own_grants_from_a_preexisting_role() -> None:
+    """A role that existed before 0011 keeps what it owned and was granted
+    elsewhere; only the 0011 grants and guard triggers go."""
+    name = f"opspilot_roles_{uuid4().hex[:12]}"
+    with psycopg.connect(DSN, autocommit=True) as conn:
+        conn.execute(
+            sql.SQL("CREATE DATABASE {} TEMPLATE template0").format(
+                sql.Identifier(name)
+            )
+        )
+    scratch = make_conninfo(DSN, dbname=name)
+    try:
+        schema.command.upgrade(schema._config(scratch), "0010_alert_intake")
+        with psycopg.connect(scratch) as conn:
+            conn.execute("CREATE TABLE web_owned (x int)")
+            conn.execute("ALTER TABLE web_owned OWNER TO opspilot_web")
+            conn.execute("CREATE TABLE unrelated (x int)")
+            conn.execute("GRANT SELECT, INSERT ON unrelated TO opspilot_web")
+            conn.execute("GRANT SELECT ON opspilot_incidents TO opspilot_worker")
+        schema.command.upgrade(schema._config(scratch), "head")
+        schema.command.downgrade(schema._config(scratch), "0010_alert_intake")
+        with psycopg.connect(scratch) as conn:
+            assert conn.execute(
+                "SELECT pg_get_userbyid(relowner) FROM pg_class "
+                "WHERE relname = 'web_owned' AND relnamespace = 'public'::regnamespace"
+            ).fetchone() == ("opspilot_web",)
+            assert conn.execute(
+                "SELECT has_table_privilege('opspilot_web', 'unrelated', 'SELECT'), "
+                "has_table_privilege('opspilot_web', 'unrelated', 'INSERT')"
+            ).fetchone() == (True, True)
+            for role in (WEB_ROLE, WORKER_ROLE):
+                held = catalog_grants(conn, role)
+                assert all(not privileges for privileges in held.values()), role
+                assert not conn.execute(
+                    "SELECT 1 FROM pg_namespace n, LATERAL aclexplode(n.nspacl) a "
+                    "WHERE n.nspname = 'public' AND a.grantee = %s::regrole",
+                    (role,),
+                ).fetchall(), role
+            assert conn.execute(
+                "SELECT count(*) FROM pg_trigger WHERE tgname = ANY(%s)",
+                ([trigger for trigger, _ in TRIGGER_GUARDED.values()],),
+            ).fetchone() == (0,)
+            assert conn.execute(
+                "SELECT count(*) FROM pg_proc WHERE proname IN "
+                "('opspilot_worker_review_guard', 'opspilot_web_lease_guard')"
+            ).fetchone() == (0,)
+        with psycopg.connect(DSN) as conn:
+            assert conn.execute(
+                "SELECT count(*) FROM pg_roles WHERE rolname = ANY(%s)",
+                ([WEB_ROLE, WORKER_ROLE],),
+            ).fetchone() == (2,)
+    finally:
+        with psycopg.connect(DSN, autocommit=True) as conn:
+            conn.execute(
+                sql.SQL("DROP DATABASE {} WITH (FORCE)").format(sql.Identifier(name))
+            )
