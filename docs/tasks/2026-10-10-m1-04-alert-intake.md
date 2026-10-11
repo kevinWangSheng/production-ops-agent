@@ -1,6 +1,6 @@
 # M1-04 Alertmanager 告警接入
 
-- 状态：第 1–3 步已合并（#187 #188 #191），F9 问题脱敏已合并（#189）；第 4 步实现、独立审查与真实运行完成，PR 待用户合并
+- 状态：第 1–3 步已合并（#187 #188 #191），F9 问题脱敏已合并（#189）；第 4 步已合并（#195）；四步完成
 - 更新日期：2026-10-10
 - 依据：[#167](https://github.com/kevinWangSheng/production-ops-agent/issues/167)；C3 §6「事件接收、去重与持久调度」、§9「页面、认证与人工操作」；PRODUCT-CONSTRAINTS「Evidence and context requirements」；feature_list F1 第 2 步（duplicate-event、wrong-target）、F7 第 5 步（审计重建）；SPEC 2026-10-10 段
 - 工作区：授权 PR `chore/m1-04-alert-intake-gate`，`../production-ops-agent-alert-intake`；实施每步一个 worktree，写在执行节
@@ -133,5 +133,5 @@ r2：第 1、2 步预审 E1–E15 用户 2026-10-10 全部按推荐采纳，R1�
 
 ## 下一步与交接
 
-- 第 4 步 PR 合并（用户门：输入版本 v4、prompt revision、共享脱敏规则收紧）。合并后 M1-04 四步完成，不翻任何 `passes`。
+- 第 4 步已合并 #195（2026-10-11）。PR 上机器人分诊：P1 运行代码不可核对（证据补记 `opspilot/` tree 哈希）、P2 持久化 alert_context 一致性校验、P1 无引号对象/数组凭据赋值漏出（修复后 Codex 复验可接受）均采纳；P2 嵌套赋值吞掉外层引号后的文本属过度脱敏、按设计宁多勿漏，拒绝。M1-04 四步完成，不翻任何 `passes`。
 - 待用户决定：trace scrub 对紧凑 JSON 有损是否开缺陷 issue。
