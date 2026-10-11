@@ -1,0 +1,400 @@
+{
+  "schema": "opspilot-lab-summary-1",
+  "experiment": "m1-pg-roles-live",
+  "run_id": "8e8ad43b-0b9e-5545-8b19-a3c202bc7855",
+  "frozen_at": "2026-10-11T10:19:33.199588+00:00",
+  "round": "m1-pg-roles-live-20261011",
+  "versions": {
+    "branch": "feature/m1-pg-runtime-roles",
+    "commit": "0d263a33b12acf1aaebf2b0fe800c2cdf64cc166",
+    "schema_head": "0011_runtime_roles",
+    "model": "deepseek-flash",
+    "tool_profile": "otel-demo",
+    "worker_versions": {
+      "prompt_revision": "prompt-replay-candidate-bdb4914edefa",
+      "context_policy_revision": "ctx-ctx-policy-v1-a30e65ea52f4",
+      "tool_schema_revision": "otel-demo-d61d6f2a3b04",
+      "source": "worker startup log"
+    }
+  },
+  "roles": {
+    "owner": "m0_lab (superuser; make migrate, runtime-roles/observer login creation, read-only projections)",
+    "web": "opspilot_web_lab IN ROLE opspilot_web",
+    "worker": "opspilot_worker_lab IN ROLE opspilot_worker",
+    "observer": "opspilot_observer_lab IN ROLE opspilot_observer"
+  },
+  "negative_launch": {
+    "at": "2026-10-11T09:45:45Z",
+    "env": "env -i PATH HOME OPSPILOT_DSN=<owner> OPSPILOT_TOOL_PROFILE=otel-demo",
+    "web": {
+      "exit": 1,
+      "stderr": "OPSPILOT_WEB_DSN is required"
+    },
+    "worker": {
+      "exit": 1,
+      "stderr": "OPSPILOT_WORKER_DSN is required"
+    },
+    "pg_connections_opened": 0
+  },
+  "deliveries": [
+    {
+      "delivery_id": 1,
+      "status": "firing",
+      "outcome": "created",
+      "actor": "alertmanager",
+      "fingerprint": "83f7541ae0105d42",
+      "starts_at": "2026-10-11 09:51:54+00:00",
+      "received_at": "2026-10-11 09:52:03.931736+00:00",
+      "annotation_revision": 1,
+      "truncated": false,
+      "incident_id": "b23a19fd-cf49-5e1b-bd03-a3a89973e3fe"
+    },
+    {
+      "delivery_id": 2,
+      "status": "resolved",
+      "outcome": "resolved_attached",
+      "actor": "alertmanager",
+      "fingerprint": "83f7541ae0105d42",
+      "starts_at": "2026-10-11 09:51:54+00:00",
+      "received_at": "2026-10-11 09:56:03.881313+00:00",
+      "annotation_revision": 1,
+      "truncated": false,
+      "incident_id": "b23a19fd-cf49-5e1b-bd03-a3a89973e3fe"
+    }
+  ],
+  "investigation": {
+    "runs": [
+      [
+        "8e8ad43b-0b9e-5545-8b19-a3c202bc7855",
+        "completed",
+        6,
+        15
+      ]
+    ],
+    "outcome": {
+      "scenario_id": "m1-pg-roles-live",
+      "final_state": "completed",
+      "evidence_ids": [
+        "dfa1fe53-a9db-49d4-8181-bdbc228725e8-t0:c92a8476-eca9-4afe-ae90-9f3813963da7",
+        "dfa1fe53-a9db-49d4-8181-bdbc228725e8-t1:a6b4b173-8dd9-4531-89a5-d045e9342970",
+        "845c085a-d288-4240-bbdd-7107ce42b8d1-t0:ce95832a-b4b7-42de-9113-aabcd9aec527",
+        "845c085a-d288-4240-bbdd-7107ce42b8d1-t1:549b1c17-fba1-4d68-930c-1b54afe14f51",
+        "54dedff4-746c-40a0-80b3-b8dfdf7531cc-t0:f7ba7900-08b2-4961-b276-cfc6d002832b",
+        "54dedff4-746c-40a0-80b3-b8dfdf7531cc-t1:c2a696cd-aa2b-414e-8216-65f87dfc6385",
+        "54dedff4-746c-40a0-80b3-b8dfdf7531cc-t2:1933e66f-6511-4add-b56b-e9d62f062a25",
+        "e60df1a2-1f9a-49ce-9eb7-d91e6c93079f-t0:8175b1a2-fbbb-4e4a-8d6d-07b08b9cfb60",
+        "e60df1a2-1f9a-49ce-9eb7-d91e6c93079f-t1:a1b1d825-a1a1-41a8-bb52-215a62ebabe4",
+        "e60df1a2-1f9a-49ce-9eb7-d91e6c93079f-t2:1986510d-9db0-42fa-9b84-892042314e7f",
+        "75aa6a30-c1d8-4907-9bce-92504f645e1b-t0:9687cf49-c8bd-4a87-8d61-98cf163717e1",
+        "75aa6a30-c1d8-4907-9bce-92504f645e1b-t1:f5b74653-2a11-4960-a7ad-6653df8711fd",
+        "75aa6a30-c1d8-4907-9bce-92504f645e1b-t2:856d795a-6ad9-48d6-973b-c19c1c2352b4"
+      ],
+      "decision": "report_available",
+      "actions": [
+        "read_only_query"
+      ],
+      "permissions": [
+        "read_only",
+        "human_control"
+      ],
+      "human_interaction": null,
+      "handoff_reasons": [],
+      "report_available": true
+    },
+    "conclusion": {
+      "rounds": 6,
+      "handoff": false,
+      "execution": "completed",
+      "evidence_ids": 13,
+      "report": {
+        "schema_version": "m0-report-v2",
+        "assessment_status": "completed",
+        "conclusion": "partial",
+        "summary": "The alert reproduces: the 5-minute error ratio for checkout's otel-demo.CheckoutService/PlaceOrder SERVER spans rises 0 -> 0.5 (09:48:24Z) -> 0.667 -> 1.0 (from 09:50:24Z through 09:51:54Z), matching the firing time. However the denominator is tiny: over the hour ending 09:52:03Z there are only 77.29 PlaceOrder server spans in total (3.05 STATUS_CODE_ERROR, 74.24 STATUS_CODE_UNSET), so '100%' rests on ~3-4 spans per 5-minute window, and the same series shows the untagged-span rate falling to 0 while the error rate is only ~0.0125/s. The failures are not random: checkout's only failing downstream call is oteldemo.PaymentService/Charge (client span, rpc.grpc.status_code=2), whose child is payment's grpc.oteldemo.PaymentService/Charge server span throwing 'Payment request failed. Invalid token. app.loyalty.level=gold' at charge.js:37, and all other checkout dependencies (cart, currency, product-catalog, shipping) returned gRPC status 0 in the sampled traces. Payment's Charge error rate is 0 for every window from 08:22:03Z up to the window ending 09:49:03Z and then appears, with no successful Charge spans in the most recent 5-minute window; checkout-facing traffic from the frontend continued at its prior rate, so this is an application-level rejection inside payment rather than checkout or payment becoming unreachable. Root cause (what changed in payment at ~09:48Z: config, feature flag, deployment, or bad request data) is not observable with the permitted tools, so the conclusion is partial."
+      }
+    }
+  },
+  "incident_row": [
+    "resolved",
+    "queued",
+    1
+  ],
+  "remediation": {
+    "at": "2026-10-11T09:53:36Z",
+    "via": "POST /incidents/{id}/control as Basic Auth lab account pgroles-lab, form taken from the rendered incident page",
+    "http_status": 200,
+    "response": {
+      "action": "register_remediation",
+      "generation": 1,
+      "replayed": false,
+      "sequence": 25
+    },
+    "revision": "checkout:otel-demo-0.37.8-flag-restored"
+  },
+  "recovery": {
+    "incident_lifecycle": "resolved",
+    "recorded_lifecycle": "resolved",
+    "target": {
+      "revision": "checkout:otel-demo-0.37.8-flag-restored",
+      "namespace": "otel-demo",
+      "cluster_uid": "kind-opspilot-m1",
+      "resource_uid": "m0-otel-20260909",
+      "integration_id": "m0-otel-20260909"
+    },
+    "recovery_confirmed": true,
+    "recovery_verdict": "healthy",
+    "recovery_reasons": [],
+    "healthy_window_seconds": 602,
+    "used_sample_count": 15,
+    "observation_ended": true,
+    "observation_ended_reason": "recovery_confirmed",
+    "handoff_reasons": [],
+    "permissions": [
+      "read_only",
+      "human_control",
+      "database_temp"
+    ],
+    "recovery_profile_revision": "otel-demo-checkout@b72bbe2e30be",
+    "recovery_handled_at": "2026-10-11 09:53:35.845846+00:00",
+    "samples": [
+      {
+        "sequence": 1,
+        "window_end": "2026-10-11 09:54:39.963929+00:00",
+        "outcome": "degraded",
+        "disposition": "adopted"
+      },
+      {
+        "sequence": 2,
+        "window_end": "2026-10-11 09:55:40.270692+00:00",
+        "outcome": "degraded",
+        "disposition": "adopted"
+      },
+      {
+        "sequence": 3,
+        "window_end": "2026-10-11 09:56:40.503407+00:00",
+        "outcome": "healthy",
+        "disposition": "adopted"
+      },
+      {
+        "sequence": 4,
+        "window_end": "2026-10-11 09:57:40.726019+00:00",
+        "outcome": "healthy",
+        "disposition": "adopted"
+      },
+      {
+        "sequence": 5,
+        "window_end": "2026-10-11 09:58:40.939756+00:00",
+        "outcome": "healthy",
+        "disposition": "adopted"
+      },
+      {
+        "sequence": 6,
+        "window_end": "2026-10-11 09:59:41.182626+00:00",
+        "outcome": "healthy",
+        "disposition": "adopted"
+      },
+      {
+        "sequence": 7,
+        "window_end": "2026-10-11 10:00:41.434954+00:00",
+        "outcome": "healthy",
+        "disposition": "adopted"
+      },
+      {
+        "sequence": 8,
+        "window_end": "2026-10-11 10:01:41.707098+00:00",
+        "outcome": "healthy",
+        "disposition": "adopted"
+      },
+      {
+        "sequence": 9,
+        "window_end": "2026-10-11 10:02:41.962724+00:00",
+        "outcome": "healthy",
+        "disposition": "adopted"
+      },
+      {
+        "sequence": 10,
+        "window_end": "2026-10-11 10:03:42.160847+00:00",
+        "outcome": "healthy",
+        "disposition": "adopted"
+      },
+      {
+        "sequence": 11,
+        "window_end": "2026-10-11 10:04:42.411849+00:00",
+        "outcome": "healthy",
+        "disposition": "adopted"
+      },
+      {
+        "sequence": 12,
+        "window_end": "2026-10-11 10:05:42.667572+00:00",
+        "outcome": "healthy",
+        "disposition": "adopted"
+      },
+      {
+        "sequence": 13,
+        "window_end": "2026-10-11 10:06:42.944512+00:00",
+        "outcome": "healthy",
+        "disposition": "adopted"
+      },
+      {
+        "sequence": 14,
+        "window_end": "2026-10-11 10:07:43.169983+00:00",
+        "outcome": "healthy",
+        "disposition": "adopted"
+      },
+      {
+        "sequence": 15,
+        "window_end": "2026-10-11 10:08:43.415074+00:00",
+        "outcome": "healthy",
+        "disposition": "adopted"
+      }
+    ],
+    "action_counts": {
+      "advance_incident_lifecycle": 2,
+      "persist_observation": 15,
+      "read_only_query": 360,
+      "record_handling": 1
+    }
+  },
+  "postmortem": {
+    "generation_status": "generation_failed",
+    "postmortem_id": "None",
+    "postmortem_generation": null,
+    "versions": [],
+    "review_actions": [],
+    "knowledge": [],
+    "recent_attempts": [
+      {
+        "attempt_id": "045af765-6fe5-454f-b13b-78fe8c2ae211",
+        "incident_id": "b23a19fd-cf49-5e1b-bd03-a3a89973e3fe",
+        "status": "failed",
+        "error_code": "INPUT_TOO_LARGE",
+        "revises_version": null,
+        "version": null,
+        "model_requests": 0,
+        "max_model_requests": 2,
+        "started_at": "2026-10-11 10:08:49.835969+00:00",
+        "finished_at": "2026-10-11 10:08:49.915398+00:00"
+      }
+    ]
+  },
+  "review": {
+    "performed": false,
+    "reason": "no postmortem version exists: generation attempt failed INPUT_TOO_LARGE (MAX_VIEW_BYTES 32768; traces_search view 49521 bytes)"
+  },
+  "pg_log": {
+    "log_settings": "log_connections=on, log_disconnections=on, log_min_messages=warning, log_min_error_statement=error, log_line_prefix with user/app/sqlstate",
+    "window": "2026-10-11T09:44:59Z (initdb start) .. 10:18:35Z (processes stopped)",
+    "lines": 1111,
+    "ERROR": 0,
+    "FATAL": 0,
+    "sqlstate_42501": 0,
+    "permission_denied": 0,
+    "non_00000_sqlstate_lines": 0,
+    "connections_by_user_app": {
+      "m0_lab / -": 1,
+      "m0_lab / lab-monitor": 97,
+      "m0_lab / lab-readonly": 159,
+      "m0_lab / opspilot-migrate": 2,
+      "m0_lab / psql": 4,
+      "opspilot_observer_lab / opspilot-observer": 2,
+      "opspilot_web_lab / opspilot-web": 5,
+      "opspilot_worker_lab / opspilot-worker": 4
+    }
+  },
+  "activity": {
+    "sampler": "owner SELECT on pg_stat_activity every 20 s (app lab-monitor, own pid excluded)",
+    "snapshots": 97,
+    "first": "2026-10-11T09:46:18+00:00",
+    "last": "2026-10-11T10:18:20+00:00",
+    "sessions_seen": {
+      "opspilot_observer_lab / opspilot-observer": 96,
+      "opspilot_web_lab / opspilot-web": 96,
+      "opspilot_worker_lab / opspilot-worker": 96
+    },
+    "opspilot_app_as_owner": 0,
+    "port_to_pid_check_10:10Z": {
+      "web pid": {
+        "login": "opspilot_web_lab",
+        "client_ports": [
+          64869
+        ]
+      },
+      "worker pid": {
+        "login": "opspilot_worker_lab",
+        "client_ports": [
+          62189,
+          62190
+        ]
+      },
+      "observer pid": {
+        "login": "opspilot_observer_lab",
+        "client_ports": [
+          62185,
+          62186
+        ]
+      },
+      "method": "pg_stat_activity client_port matched against lsof of each started PID"
+    }
+  },
+  "trace": {
+    "project": {
+      "project": "opspilot-lab-m1-pg-roles-live-20261011",
+      "project_id": "704ad7ef-672b-48a6-832b-9e0ae976d743",
+      "trace_tier": "longlived"
+    },
+    "root_runs_found": 2,
+    "traces": [
+      {
+        "name": "opspilot.run",
+        "langsmith_run_id": "00000000-0000-0000-edf0-819d41422b6d",
+        "otel_trace_id": "8cbc609c390a614b5503211e1ba2ac78",
+        "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/704ad7ef-672b-48a6-832b-9e0ae976d743/r/00000000-0000-0000-edf0-819d41422b6d?poll=true",
+        "start_time": "2026-10-11 09:52:04.921841+00:00",
+        "end_time": "2026-10-11 09:53:28.537088+00:00",
+        "status": "success",
+        "prompt_tokens": 126918,
+        "completion_tokens": 20017,
+        "child_runs": {
+          "llm": 6,
+          "tool": 15
+        }
+      },
+      {
+        "name": "opspilot.postmortem_generation",
+        "langsmith_run_id": "00000000-0000-0000-6028-48ec01689b4c",
+        "otel_trace_id": "ad3565b867525265c0208c3290f5e57e",
+        "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/704ad7ef-672b-48a6-832b-9e0ae976d743/r/00000000-0000-0000-6028-48ec01689b4c?poll=true",
+        "start_time": "2026-10-11 10:08:49.876945+00:00",
+        "end_time": "2026-10-11 10:08:49.916809+00:00",
+        "status": "success",
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "child_runs": {}
+      }
+    ]
+  },
+  "cost": {
+    "balance_before": [
+      {
+        "currency": "CNY",
+        "total_balance": "3.58",
+        "granted_balance": "0.00",
+        "topped_up_balance": "3.58"
+      }
+    ],
+    "balance_after": [
+      {
+        "currency": "CNY",
+        "total_balance": "3.46",
+        "granted_balance": "0.00",
+        "topped_up_balance": "3.46"
+      }
+    ]
+  },
+  "raw_ledger": {
+    "sha256": "a9fc1a6b413021416c402129d332bd4e43cbe8e2cacc27ba71d4916e24fafefc",
+    "bytes": 785496,
+    "path": "tmp/lab-ledgers/m1-pg-roles-live/8e8ad43b-0b9e-5545-8b19-a3c202bc7855/ledger.json",
+    "in_repository": false
+  }
+}
