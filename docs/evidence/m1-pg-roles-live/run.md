@@ -44,13 +44,34 @@
 | 1 告警接入 | 真实告警 → `/intake/alertmanager` 建事故与 Run（web 角色） | 投递 1：`firing` / `created`，`actor=alertmanager`，fingerprint `83f7541ae0105d42`；投递 2：`resolved` / `resolved_attached`（identity 列 INSERT 成功） | 通过 |
 | 2 调查 | worker 领取，用真实 `deepseek-flash` 跑完，得到报告或交接 | Run `completed`，`decision=report_available`，没有交接，13 个证据 ID，`actions=[read_only_query]`。报告 `assessment_status=completed`、`conclusion=partial`：错误来自 payment `Charge` 的「Invalid token」，payment 为何拒绝没有证据（摘要 `investigation.conclusion`）。结论已发布，不是交接 | 通过 |
 | 3 恢复 | restore；web 登记处置；Observer 读真实 Prometheus 给出判定 | restore 已校验；登记 200；15 次采样，`recovery_verdict=healthy`，`recovery_confirmed=true`，`healthy_window_seconds=602`，`observation_ended_reason=recovery_confirmed`，生命周期 `resolved`。actions：record_handling 1、advance_incident_lifecycle 2、read_only_query 360、persist_observation 15 | 通过 |
-| 4 复盘与审核 | worker 用真实模型生成草稿 → web 执行一次审核动作 | **失败**。worker 领取生成任务并写下尝试行（没有 42501），但 `build_input` 在调用模型前抛出 `InputTooLarge("MAX_VIEW_BYTES")`：13 个已采纳证据视图中，有一个 `traces_search` 视图投影后为 49521 字节，超过 `MAX_VIEW_BYTES = 32768`（`opspilot/knowledge/generation.py:76,348`）。页面显示 `generation_failed`，「Generation stopped at this watermark after 3 failed attempts」。没有版本可审，所以 web 审核动作未执行，worker 写版本、web 写审核审计这两条路径没有真实证据 | 失败（与权限无关） |
+| 4 复盘与审核 | worker 用真实模型生成草稿 → web 执行一次审核动作 | **INPUT_TOO_LARGE**：产品输入上限，与角色改动无关。worker 角色下实际执行与未执行的部分，见下节「第 4 项拆分」 | **失败** |
 | PG 日志 | 来自三个进程的 `permission denied` / 42501 为 0 | 整份日志 1194 行（09:44:59 起，到摘要读取之后）：ERROR 0、FATAL 0、`sqlstate=42501` 0、`permission denied` 0，SQLSTATE 非 `00000` 的行 0 | 通过 |
 | 连接身份 | 各进程以自己的登录角色连接，web、worker、Observer 都不以 owner 连接 | `pg_stat_activity` 每 20 s 一次快照，共 96 次（09:46:18–10:18:20）：只出现 `opspilot_web_lab/opspilot-web`、`opspilot_worker_lab/opspilot-worker`、`opspilot_observer_lab/opspilot-observer`，带 `opspilot-*` 应用名的 owner 会话为 0。另在 10:10Z 把 `client_port` 与各 PID 的 `lsof` 对照：web PID → 64869（web 角色），worker PID → 62189/62190（worker 角色），Observer PID → 62185/62186（observer 角色）。这项对照不依赖客户端自报的 application_name | 通过 |
 | 负向启动 | 只设 `OPSPILOT_DSN` 时 web、worker 拒绝启动 | web 退出码 1，stderr `OPSPILOT_WEB_DSN is required`；worker 退出码 1，stderr `OPSPILOT_WORKER_DSN is required`；该时段 PG 日志没有新连接 | 通过 |
 | trace | LangSmith 可见 | 调查 [根 run](https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/704ad7ef-672b-48a6-832b-9e0ae976d743/r/00000000-0000-0000-edf0-819d41422b6d?poll=true)：OTel `8cbc609c390a614b5503211e1ba2ac78`，子 run 为 llm 6、tool 15，与库里的 `budget_spent=6`、`tool_operations_used=15` 一致，token 126918 输入 / 20017 输出。复盘生成 [根 run](https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/704ad7ef-672b-48a6-832b-9e0ae976d743/r/00000000-0000-0000-6028-48ec01689b4c?poll=true)：OTel `ad3565b867525265c0208c3290f5e57e`，0 次 llm 调用（在调用模型前失败） | 通过 |
 
 按 user / application_name 统计的连接数：web 5、worker 4、Observer 2（另有 4 个来自运行后 `table_privileges()` 的只读测量，应用名 `lab-observer-privileges`）；owner 只有 migrate 3（其中 1 个没有应用名，发生在 migrate 期间）、psql 4、`lab-monitor` 97、`lab-readonly` 159。
+
+### 第 4 项拆分
+
+**判定：失败（INPUT_TOO_LARGE，产品输入上限，与角色改动无关）。** 按 lead 决定，不改代码、不重试。
+
+失败原因：恢复确认后，worker 的复盘线程在 10:08:49Z 领取生成任务。`build_input` 在调用模型前抛出 `InputTooLarge("MAX_VIEW_BYTES")`。13 个已采纳证据视图中，`traces_search` 视图 `54dedff4-746c-40a0-80b3-b8dfdf7531cc-t2:1933e66f-6511-4add-b56b-e9d62f062a25` 投影后为 **49521 字节**，超过 `MAX_VIEW_BYTES = 32 * 1024 = 32768`（`opspilot/knowledge/generation.py:76` 定义上限，`:348` 判定）。其余 12 个视图都是 `metrics_range_query`，大小在 1283–6183 字节之间。
+
+在 worker 角色（`opspilot_worker_lab ∈ opspilot_worker`）下实际执行且成功的部分，这段时间 PG 日志中 42501 为 0、ERROR 为 0：
+
+- 生成任务领取：候选扫描，`opspilot_postmortem_generation_jobs` 上 `INSERT … ON CONFLICT DO NOTHING`，并取得生成租约
+- 尝试行写入：`opspilot_postmortem_generation_attempts` 写入尝试 `045af765-6fe5-454f-b13b-78fe8c2ae211`
+- 失败记录：同一尝试结束为 `failed` / `INPUT_TOO_LARGE`，`model_requests=0`；生成任务的失败状态已持久化（事故页显示 `generation_failed`，「Generation stopped at this watermark after 3 failed attempts」）；事件 `postmortem_generation_failed` 写入事故事件流
+- 同一线程的 stale 扫描照常轮询，没有拒绝
+- web 角色读取：事故页的 Postmortem 区块与尝试表由 web 进程正常渲染，返回 200
+
+没有执行的部分：
+
+- 复盘草稿版本：模型调用，以及 versions / conclusions / proposals / disputes 等表的 worker 写入
+- web 审核动作（approve / return / reject / supersede / revoke），以及它们对 F13 审计、版本状态与生成任务再生成列的写入
+
+**web 审核动作的授权与 worker 写草稿版本的授权，只由本分支的 PG 集成测试覆盖，本次真实运行没有证明。**
 
 ## 观察到但不属本项判定
 
@@ -60,7 +81,7 @@
 
 ## 失败与未覆盖
 
-- 第 4 项失败，见上。worker 写复盘版本，以及 web 的批准、退回等审核写路径，在本次真实运行中没有执行。它们在非 owner 角色下的合法性只有确定性集成测试覆盖，没有真实证据。
+- 第 4 项失败，见「第 4 项拆分」。草稿版本与 web 审核动作都没有执行，相关授权只有 PG 集成测试证据。
 - 本次没有重试，没有改代码。实验环境动作只有 inject / restore 两次，都已校验，flag 已回到注入前的 sha256。
 
 ## 费用
