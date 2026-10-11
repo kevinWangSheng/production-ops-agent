@@ -1,0 +1,462 @@
+{
+  "schema": "opspilot-lab-summary-1",
+  "experiment": "f13-call-diagnostics-live",
+  "run_id": "7ae6b3b0-aba1-4782-9623-1cb1f00e580b",
+  "frozen_at": "2026-10-11T19:49:26.769852+00:00",
+  "round": "f13-call-diagnostics-live-20261011",
+  "versions": {
+    "branch": "feature/F13-output-budget",
+    "commit": "cc9966ba3bdba1776e6aa3bc7b70e6d1422f6d24",
+    "schema_head": "0012_generation_call_diagnostics",
+    "schema_before": "0011_runtime_roles",
+    "model": "deepseek-flash",
+    "postmortem_versions": {
+      "prompt_version": "f13-postmortem-prompt-v4",
+      "output_schema_version": "f13-postmortem-output-v2",
+      "input_policy_version": "f13-postmortem-input-v3",
+      "model_profile": "deepseek-flash/json/thinking-high/no-tools"
+    }
+  },
+  "database": "fresh byte copy of the #169 run's data directory (tmp/pg-live-copy), port 55497, migrated 0011 -> 0012 by owner",
+  "incident_id": "b23a19fd-cf49-5e1b-bd03-a3a89973e3fe",
+  "roles": {
+    "owner": "m0_lab (superuser; migrate, schema check, pg_stat_activity sampler, read-only projections only)",
+    "web": "opspilot_web_lab IN ROLE opspilot_web",
+    "worker": "opspilot_worker_lab IN ROLE opspilot_worker"
+  },
+  "attempts": [
+    {
+      "attempt_id": "045af765-6fe5-454f-b13b-78fe8c2ae211",
+      "status": "failed",
+      "error_code": "INPUT_TOO_LARGE",
+      "version": null,
+      "model": "deepseek-flash",
+      "response_model": null,
+      "model_profile": "deepseek-flash/json/thinking-high/no-tools",
+      "prompt_version": "f13-postmortem-prompt-v3",
+      "output_schema_version": "f13-postmortem-output-v2",
+      "input_policy_version": "f13-postmortem-input-v2",
+      "input_bytes": null,
+      "max_model_requests": 2,
+      "model_requests": 0,
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "model_calls": [],
+      "started_at": "2026-10-11 10:08:49.835969+00:00",
+      "finished_at": "2026-10-11 10:08:49.915398+00:00"
+    },
+    {
+      "attempt_id": "7ae6b3b0-aba1-4782-9623-1cb1f00e580b",
+      "status": "succeeded",
+      "error_code": null,
+      "version": 1,
+      "model": "deepseek-flash",
+      "response_model": "deepseek-flash",
+      "model_profile": "deepseek-flash/json/thinking-high/no-tools",
+      "prompt_version": "f13-postmortem-prompt-v4",
+      "output_schema_version": "f13-postmortem-output-v2",
+      "input_policy_version": "f13-postmortem-input-v3",
+      "input_bytes": 137706,
+      "max_model_requests": 2,
+      "model_requests": 2,
+      "prompt_tokens": 111323,
+      "completion_tokens": 22851,
+      "model_calls": [
+        {
+          "seq": 1,
+          "outcome": "repair_requested",
+          "purpose": "generate",
+          "problems": [
+            "NOT_JSON"
+          ],
+          "finish_reason": "length",
+          "prompt_tokens": 53313,
+          "reasoning_tokens": 11710,
+          "completion_tokens": 16384,
+          "visible_completion_tokens": 4674
+        },
+        {
+          "seq": 2,
+          "outcome": "accepted",
+          "purpose": "repair",
+          "problems": [],
+          "finish_reason": "stop",
+          "prompt_tokens": 58010,
+          "reasoning_tokens": 1065,
+          "completion_tokens": 6467,
+          "visible_completion_tokens": 5402
+        }
+      ],
+      "started_at": "2026-10-11 19:44:31.177005+00:00",
+      "finished_at": "2026-10-11 19:46:13.190862+00:00"
+    }
+  ],
+  "job_after": [
+    {
+      "incident_id": "b23a19fd-cf49-5e1b-bd03-a3a89973e3fe",
+      "lease_epoch": 2,
+      "failure_watermark": null,
+      "consecutive_failures": 0,
+      "next_attempt_at": null,
+      "last_error_code": null,
+      "updated_at": "2026-10-11 19:46:13.191377+00:00"
+    }
+  ],
+  "model_calls_check": {
+    "attempt_id": "7ae6b3b0-aba1-4782-9623-1cb1f00e580b",
+    "entries": 2,
+    "model_requests": 2,
+    "keys_exactly_contract": true,
+    "sum_prompt_tokens": 111323,
+    "attempt_prompt_tokens": 111323,
+    "sum_completion_tokens": 22851,
+    "attempt_completion_tokens": 22851,
+    "sums_equal": true,
+    "old_attempts_model_calls": {
+      "045af765-6fe5-454f-b13b-78fe8c2ae211": []
+    }
+  },
+  "issue_202_answer": [
+    {
+      "seq": 1,
+      "purpose": "generate",
+      "finish_reason": "length",
+      "completion_tokens": 16384,
+      "reasoning_tokens": 11710,
+      "visible_completion_tokens": 4674,
+      "reasoning_share": 0.7147,
+      "hit_max_output_tokens_16384": true
+    },
+    {
+      "seq": 2,
+      "purpose": "repair",
+      "finish_reason": "stop",
+      "completion_tokens": 6467,
+      "reasoning_tokens": 1065,
+      "visible_completion_tokens": 5402,
+      "reasoning_share": 0.1647,
+      "hit_max_output_tokens_16384": false
+    }
+  ],
+  "three_way_agreement": [
+    {
+      "seq": 1,
+      "finish_reason": {
+        "db": "length",
+        "trace": "length",
+        "page": "length"
+      },
+      "reasoning_tokens": {
+        "db": 11710,
+        "trace": 11710,
+        "page": "11710"
+      },
+      "prompt_tokens": {
+        "db": 53313,
+        "trace": 53313,
+        "page": "53313"
+      },
+      "completion_tokens": {
+        "db": 16384,
+        "trace": 16384,
+        "page": "16384"
+      },
+      "visible_completion_tokens": {
+        "db": 4674,
+        "page": "4674"
+      },
+      "outcome": {
+        "db": "repair_requested",
+        "page": "repair_requested"
+      },
+      "problems": {
+        "db": [
+          "NOT_JSON"
+        ],
+        "page": [
+          "NOT_JSON"
+        ]
+      },
+      "all_equal": true
+    },
+    {
+      "seq": 2,
+      "finish_reason": {
+        "db": "stop",
+        "trace": "stop",
+        "page": "stop"
+      },
+      "reasoning_tokens": {
+        "db": 1065,
+        "trace": 1065,
+        "page": "1065"
+      },
+      "prompt_tokens": {
+        "db": 58010,
+        "trace": 58010,
+        "page": "58010"
+      },
+      "completion_tokens": {
+        "db": 6467,
+        "trace": 6467,
+        "page": "6467"
+      },
+      "visible_completion_tokens": {
+        "db": 5402,
+        "page": "5402"
+      },
+      "outcome": {
+        "db": "accepted",
+        "page": "accepted"
+      },
+      "problems": {
+        "db": [],
+        "page": []
+      },
+      "all_equal": true
+    }
+  ],
+  "page": {
+    "fetched_as": "Basic Auth lab account pgroles-lab, GET /incidents/{incident_id}, HTTP 200",
+    "rows": [
+      {
+        "attempt_id": "7ae6b3b0-aba1-4782-9623-1cb1f00e580b",
+        "calls": [
+          {
+            "seq": 1,
+            "finish_reason": "length",
+            "prompt_tokens": "53313",
+            "completion_tokens": "16384",
+            "reasoning_tokens": "11710",
+            "visible_completion_tokens": "4674",
+            "outcome": "repair_requested",
+            "problems": [
+              "NOT_JSON"
+            ]
+          },
+          {
+            "seq": 2,
+            "finish_reason": "stop",
+            "prompt_tokens": "58010",
+            "completion_tokens": "6467",
+            "reasoning_tokens": "1065",
+            "visible_completion_tokens": "5402",
+            "outcome": "accepted",
+            "problems": []
+          }
+        ],
+        "text": null
+      },
+      {
+        "attempt_id": "045af765-6fe5-454f-b13b-78fe8c2ae211",
+        "calls": [],
+        "text": "unknown"
+      }
+    ]
+  },
+  "draft": {
+    "version_state": [
+      {
+        "version": 1,
+        "state": "under_review",
+        "conclusions": 20,
+        "citations_failed": 0,
+        "disputed": 0
+      }
+    ],
+    "model_conclusions": 15
+  },
+  "acceptance_projection_recent_attempts": [
+    {
+      "attempt_id": "7ae6b3b0-aba1-4782-9623-1cb1f00e580b",
+      "incident_id": "b23a19fd-cf49-5e1b-bd03-a3a89973e3fe",
+      "status": "succeeded",
+      "error_code": null,
+      "revises_version": null,
+      "version": 1,
+      "model_requests": 2,
+      "max_model_requests": 2,
+      "started_at": "2026-10-11 19:44:31.177005+00:00",
+      "finished_at": "2026-10-11 19:46:13.190862+00:00",
+      "model_calls": [
+        {
+          "seq": 1,
+          "outcome": "repair_requested",
+          "purpose": "generate",
+          "problems": [
+            "NOT_JSON"
+          ],
+          "finish_reason": "length",
+          "prompt_tokens": 53313,
+          "reasoning_tokens": 11710,
+          "completion_tokens": 16384,
+          "visible_completion_tokens": 4674
+        },
+        {
+          "seq": 2,
+          "outcome": "accepted",
+          "purpose": "repair",
+          "problems": [],
+          "finish_reason": "stop",
+          "prompt_tokens": 58010,
+          "reasoning_tokens": 1065,
+          "completion_tokens": 6467,
+          "visible_completion_tokens": 5402
+        }
+      ]
+    },
+    {
+      "attempt_id": "045af765-6fe5-454f-b13b-78fe8c2ae211",
+      "incident_id": "b23a19fd-cf49-5e1b-bd03-a3a89973e3fe",
+      "status": "failed",
+      "error_code": "INPUT_TOO_LARGE",
+      "revises_version": null,
+      "version": null,
+      "model_requests": 0,
+      "max_model_requests": 2,
+      "started_at": "2026-10-11 10:08:49.835969+00:00",
+      "finished_at": "2026-10-11 10:08:49.915398+00:00",
+      "model_calls": []
+    }
+  ],
+  "review": {
+    "performed": false,
+    "why": "optional for #202; the draft reached under_review and was left there"
+  },
+  "no_extra_attempt_checked_at": "2026-10-11T19:48:13Z",
+  "pg_log": {
+    "log_settings": "log_connections=on, log_disconnections=on, log_min_messages=warning, log_min_error_statement=error, log_line_prefix with user/app/sqlstate (carried in the copied postgresql.conf)",
+    "window": "2026-10-11T19:43:48Z (pg_ctl start, fresh log file) .. line 241, 19:48:18.778Z (last web session disconnect after SIGTERM of worker and web)",
+    "cutoff_line": 241,
+    "lines": 241,
+    "ERROR": 0,
+    "FATAL": 0,
+    "sqlstate_42501": 0,
+    "permission_denied": 0,
+    "non_00000_sqlstate_lines": 0,
+    "connections_by_user_app": {
+      "m0_lab / lab-migrate": 2,
+      "m0_lab / lab-monitor": 24,
+      "m0_lab / lab-readonly": 25,
+      "m0_lab / lab-schema-check": 2,
+      "opspilot_web_lab / opspilot-web": 3,
+      "opspilot_worker_lab / opspilot-worker": 3
+    }
+  },
+  "activity": {
+    "sampler": "owner SELECT on pg_stat_activity every 10 s (app lab-monitor, own pid excluded)",
+    "snapshots": 24,
+    "sampler_errors": 0,
+    "first": "2026-10-11T19:44:22+00:00",
+    "last": "2026-10-11T19:48:13+00:00",
+    "sessions_seen": {
+      "opspilot_web_lab / opspilot-web": 46,
+      "opspilot_worker_lab / opspilot-worker": 58
+    },
+    "opspilot_app_as_owner": 0,
+    "port_to_pid_check_19:46:48Z": {
+      "web pid": {
+        "login": "opspilot_web_lab",
+        "client_ports": [
+          59053,
+          59689
+        ]
+      },
+      "worker pid": {
+        "login": "opspilot_worker_lab",
+        "client_ports": [
+          59094,
+          59097
+        ]
+      },
+      "method": "pg_stat_activity client_port matched against lsof of each started PID"
+    }
+  },
+  "trace": {
+    "project": {
+      "project": "opspilot-lab-f13-call-diagnostics-live-20261011",
+      "project_id": "192bd20a-b8c0-4bc0-be95-84d7c215a0a1",
+      "trace_tier": "longlived"
+    },
+    "root_runs_found": 1,
+    "traces": [
+      {
+        "name": "opspilot.postmortem_generation",
+        "langsmith_run_id": "00000000-0000-0000-f2f1-73a0110410cc",
+        "trace_id": "00000000-0000-0000-f2f1-73a0110410cc",
+        "otel_trace_id": "e2cd24b148669b7a92ff81693eddd7b8",
+        "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/192bd20a-b8c0-4bc0-be95-84d7c215a0a1/r/00000000-0000-0000-f2f1-73a0110410cc?poll=true",
+        "status": "success",
+        "prompt_tokens": 111323,
+        "completion_tokens": 22851,
+        "llm_calls": [
+          {
+            "name": "deepseek.chat.completions",
+            "langsmith_run_id": "00000000-0000-0000-a9c1-bcbcf76e09fc",
+            "start_time": "2026-10-11 19:44:31.198432+00:00",
+            "end_time": "2026-10-11 19:45:50.485908+00:00",
+            "status": "success",
+            "prompt_tokens": 53313,
+            "completion_tokens": 16384,
+            "opspilot_model_metadata": {
+              "otel.span.opspilot.model.finish_reason": "length",
+              "otel.span.opspilot.model.json_mode": true,
+              "otel.span.opspilot.model.prompt_message_count": 2,
+              "otel.span.opspilot.model.prompt_messages_omitted": 0,
+              "otel.span.opspilot.model.reasoning_tokens": 11710,
+              "otel.span.opspilot.model.timeout_seconds": 360,
+              "otel.span.opspilot.model.tool_call_count": 0,
+              "otel.span.opspilot.model.tool_schema_count": 0
+            },
+            "gen_ai_finish_reasons_metadata": {}
+          },
+          {
+            "name": "deepseek.chat.completions",
+            "langsmith_run_id": "00000000-0000-0000-fae4-3fa10e6930d1",
+            "start_time": "2026-10-11 19:45:50.498680+00:00",
+            "end_time": "2026-10-11 19:46:13.153823+00:00",
+            "status": "success",
+            "prompt_tokens": 58010,
+            "completion_tokens": 6467,
+            "opspilot_model_metadata": {
+              "otel.span.opspilot.model.finish_reason": "stop",
+              "otel.span.opspilot.model.json_mode": true,
+              "otel.span.opspilot.model.prompt_message_count": 4,
+              "otel.span.opspilot.model.prompt_messages_omitted": 0,
+              "otel.span.opspilot.model.reasoning_tokens": 1065,
+              "otel.span.opspilot.model.timeout_seconds": 360,
+              "otel.span.opspilot.model.tool_call_count": 0,
+              "otel.span.opspilot.model.tool_schema_count": 0
+            },
+            "gen_ai_finish_reasons_metadata": {}
+          }
+        ]
+      }
+    ]
+  },
+  "cost": {
+    "balance_before": [
+      {
+        "currency": "CNY",
+        "total_balance": "3.27",
+        "granted_balance": "0.00",
+        "topped_up_balance": "3.27"
+      }
+    ],
+    "balance_before_at": "2026-10-11T19:44:15.573767+00:00",
+    "balance_after": [
+      {
+        "currency": "CNY",
+        "total_balance": "3.17",
+        "granted_balance": "0.00",
+        "topped_up_balance": "3.17"
+      }
+    ]
+  },
+  "raw_ledger": {
+    "sha256": "3d37d0a4b8ca9f91d6b669ca5667b982b861f0a102e72f295fe764d2e73d1d89",
+    "bytes": 126221,
+    "path": "tmp/lab-ledgers/f13-call-diagnostics-live/7ae6b3b0-aba1-4782-9623-1cb1f00e580b/ledger.json",
+    "in_repository": false
+  }
+}
