@@ -121,3 +121,50 @@
 
 - B3：失效情形无操作，仅运行性失败耗尽后交接（PR #209 机器人 P1）。
 - A4 实现细节：`authorization_source` 按 `purpose` 条件约束，release 会话为 NULL（PR #209 机器人 P2）。
+
+
+---
+
+# 第 1 步按步预审（Codex GPT-6 Astra high，只读，2026-10-12，基于 r1）
+
+已核对当前 worktree、r1、SPEC/C3、迁移、运行入口和持久化代码。本次未修改文件、未写 Git、未跑迁移、未接触 kind。
+
+已确认的事实：
+
+- `web` 只有请求驱动逻辑；`web/__main__.py:118-171` 启动 Uvicorn，SSE 的 `reconcile` 仅在已有浏览器连接时运行，见 `web/app.py:761-805`。没有独立后台 Controller 循环。
+- `worker` 有调查循环和 postmortem 循环，见 `worker_main.py:267-305`；postmortem 有独立 jobs 表和 lease，见 `knowledge/jobs.py:24-25,86-128`。
+- `opspilot_worker` 对观察会话只有 `SELECT`，对事故只有 `UPDATE(conclusion)`，见 `0011_runtime_roles.py:190-208`；`opspilot_web` 才有观察会话插入和事故控制更新权限，见 `0011_runtime_roles.py:97-140`。
+- `publish()` 只把结论写入事故并将 Run 置为 `completed`，见 `persistence/steps.py:300-363`。真正的“合格结论”判据是 `conclusion_publishable()`，见 `investigation/context.py:1228-1259`；Runner 只有通过该判据才调用 `publish()`，见 `investigation/runner.py:377-430`。
+- `run_completed` 事件带 `published=true`，但它是通知投影，不能作为崩溃恢复的唯一权威，见 `investigation/progress.py:80-95`。
+- `authorize_session_in()` 当前会锁事故、检查暂停、目标、HealthProfile subject、目标身份、活动会话，并递增 `observation_generation`，见 `observation/store.py:1126-1220`。
+- 人工 `register_remediation` 会递增 `control_generation`、撤销旧会话、授权新会话并写控制审计，见 `observation/store.py:1263-1356`。接管也会递增代际并撤销观察，见 `persistence/controls.py:231-250`。
+
+## A：需用户裁决
+
+| 编号 | 问题 | 选项与代价 | 推荐 | 影响面 | 裁决 |
+|---|---|---|---|---|---|
+| A1 | 谁扫描“待授权”任务、用哪个角色 | ① worker 直接写观察会话：被 `0011` 权限和 C3 §3 禁止；② worker 写专用待授权表，Controller 扫描并调用 web/Controller 观察写原语：增加一张任务表和 worker 的最小 INSERT/UPDATE 权限；③ 新增独立 Controller 进程：边界清晰，但 #197 尚无进程、部署或凭据合同 | 采用②。Controller 近期落在 web 进程内的后台循环，使用 `opspilot_web`；worker 只写非观察任务标记。需要单任务 lease，避免多 web 副本重复执行。 | 新表、0011 角色授权、web 启动/停止生命周期、部署运行合同 | r1 已定“Controller 侧可重放、worker 不写观察表”；具体是 web 后台循环还是独立进程仍**未确认**。若不接受 web 承载，需在 #197 先定义 Controller 进程。 |
+| A2 | “合格结论已发布”的精确读取点和触发语义 | ① 只看 `run_completed` 事件：事件丢失时无法恢复；② 只看 `incidents.conclusion`：需复用已有合格判据；③ 重新调用 `publish()`：会混淆幂等发布和触发 | 以持久状态为权威：读取当前 Run、`opspilot_incidents.conclusion` 和当前代际，按 `conclusion_publishable()` 的完整规则判断；事件只作加速提示。交接/失败结论不触发。见 `context.py:1228-1259`、`steps.py:343-363`。 | 触发正确性、崩溃恢复、重复发布、验收场景 | r1 已定“只在合格结论发布后”。需要确认实现必须采用上述持久判据，而不是事件存在性。 |
+| A3 | 授权时条件不满足时的分类 | 全部静默跳过会丢失交接；全部无限重试会在人工接管或暂停后重新开观察 | 推荐固定分类：`lifecycle != open`、结论/代际已陈旧、`human_owned`、无 HealthProfile、已有人工活动会话 → 终态跳过并写可见原因；全局/目标挂起、数据库冲突 → 有界重试；重试耗尽写 handoff reason、事故保持 `open`。人工会话先提交则自动任务标为已处理。依据 `authorize_session_in` 的拒绝条件 `store.py:1126-1180`、接管撤销逻辑 `controls.py:231-250`。 | 事故状态、值班可见性、暂停恢复后的行为、B3 验收 | r1 只规定“有界重试、失败写交接原因”；上述永久/暂时失败分类仍**未确认**。 |
+| A4 | 迁移、触发器和运行角色的具体合同 | 修改历史 `0003/0011`；或新增线性迁移并补授权 | 在会话表 `opspilot_observation_sessions` 增加 `authorization_source text NOT NULL DEFAULT 'post_remediation'`，CHECK 仅允许 `post_remediation`/`self_healing`；`register_remediation` 固定写 `post_remediation`，自动原语固定写 `self_healing`。不要改写历史 `0003/0011`；新增迁移补 `opspilot_web` 对新列的 INSERT 权限，并为待授权表授予 worker 最小权限。0003 的 Observer 生命周期证据触发器无需改变，因为它只约束 `observing_recovery -> resolved/open`，见 `0003_observation_store.py:383-467`。 | 旧数据默认值、升级顺序、角色隔离、Observer 边界 | r1 已定字段和值域；“历史迁移不改、由下一个线性迁移补 grant”是推荐实现，需作为第 1 步合同确认。 |
+| A5 | 自动审计是否进入 `opspilot_controls`，以及是否推进 `control_generation` | ① 新建审计表：查询面增加；② 复用 `opspilot_controls` 并递增代际：会使旧 Run/任务失效；③ 复用该表但同代审计：需允许 `expected_generation == resulting_generation` | 复用 `opspilot_controls`，`actor='system'`，payload 至少含 `authorization_source='self_healing'`、task key、session/profile、结果或失败原因；`expected_generation` 与 `resulting_generation` 都写当前值，**自动授权不递增 `control_generation`**。只递增 `observation_generation`，这是现有授权原语的语义，见 `store.py:1181-1207`。 | 审计查询、并发栅栏、旧 Run/lease、F13 水位 | r1 已定 actor 和来源；是否允许 controls 中出现同代系统审计行、动作名称取值仍**未确认**。 |
+
+## B：可逆默认
+
+| 编号 | 问题 | 选项与代价 | 推荐 | 影响面 | 裁决 |
+|---|---|---|---|---|---|
+| B1 | 幂等与重复发布 | 随机 session 会在崩溃重试时重复开会话；只按 incident 会阻止新 Run | 使用 `incident_id + control_generation + trigger=published`，并确定性派生 `session_id`/任务 key。相同 Run 重复 `publish()`、重复扫描或恢复扫描只产生一次授权；新 Run 或追问产生新 `control_generation`，才允许新的自动授权。`new_run` 会清除结论并推进代际，见 `runs.py:82-113`。 | 崩溃恢复、重复发布、新 Run、追问 |
+| B2 | HealthProfile 和模式读取 | 从调用方传参可能漂移；读取默认 profile 可能覆盖目标实际 profile | Controller 在同一事务锁下重新读取目标绑定的 HealthProfile，完整复制 `max_samples`、间隔、持续窗口、deadline 和 revision；不允许 worker/UI 覆盖。`authorize_session_in()` 已将这些参数冻结到会话，见 `store.py:1178-1217`。只接受 `mode='automatic'`；`human_owned` 直接停止自动观察，符合 `controls.py:231-250` 和 `runs.py:169-179`。 | 参数冻结、接管语义、replay |
+| B3 | 待授权任务表的最小结构 | 仅存 incident_id 无法证明代际和触发来源；存完整 profile 会复制配置 | 建议字段：`task_id`、`incident_id`、`control_generation`、`trigger`、`state`、`attempts`、`next_attempt_at`、`lease_owner/lease_until`、`last_error`、`created_at/updated_at`；不复制 HealthProfile 内容。任务只保存水位，授权时重新读取 profile。可参考 `knowledge/jobs.py:131-155,210-257` 的 lease/backoff 结构。 | 重放、并发扫描、有界重试 |
+| B4 | `register_remediation` 接线 | 让人工路径隐式依赖默认 source；低层原语允许任意 actor/source 组合 | 低层 `authorize_session_in()` 显式接收 source；人工包装器固定 `post_remediation`，自动包装器固定 `self_healing`；现有直接调用者更新为显式值。旧行由迁移默认回填，归档证据不改。当前会话表没有 provenance，见 `0003_observation_store.py:214-228`。 | API 合同、旧调用兼容、归档 replay |
+| B5 | 第 1 步必须有的确定性测试 | 只测 schema 会漏掉并发、权限和 crash replay | 至少覆盖：迁移默认值与 CHECK；旧会话兼容读取；worker 对观察表仍无 INSERT/UPDATE；web 可插入 source；合格结论才生成任务；handoff/不完整报告不生成；同代重复扫描只授权一次；新 Run 生成新 key；人工登记、takeover、pause、cancel、scope suspension 的先提交者胜负；自动审计 actor/source；自动授权不推进 `control_generation`；profile 参数和 DB 时钟冻结；lease 过期后可重放且达到上限后写 handoff reason。权限基线见 `grants.py:49-62,124-140`，Observer 证据边界见 `0003_observation_store.py:369-380,415-467`。 | 第 1 步的合同测试和角色测试 | 可直接作为 PR 的完成门槛；不需要真实模型、迁移到共享库或 kind。 |
+
+第 1 步建议限定为一个 PR：新增线性迁移和角色授权、增加 `authorization_source` 与兼容读取、增加待授权任务及 lease/replay 原语、在 Controller 侧接入发布后的扫描触发、接入同一事务授权路径、补上述确定性合同测试。F6/F13 投影、页面展示和 kind 真实运行应留到后续 PR；任务记录本身也把 Controller 授权/重放和投影分开列出，见 `docs/tasks/2026-10-12-184-self-healing-recovery.md:89-107`。
+
+主要风险是当前没有既有 Controller 后台循环，web 的 SSE `reconcile` 不能替代无人值守扫描；若 web 多副本没有任务 lease，会产生重复竞争。另一个风险是 `publish()` 本身只持久化结论，不保存独立的“发布时刻”，所以必须以授权事务 DB 时钟作为观察起点，并以持久结论和代际重建触发，而不能依赖通知事件。
+
+## lead 核对（2026-10-12）
+
+- `opspilot_incidents.conclusion` 只由 `publish()` 写入（`persistence/steps.py:356`），`new_run`（`runs.py:112`）与 `controls.py:399` 清空；因此「`conclusion IS NOT NULL` 且 `lifecycle=open`」即当前 Run 已发布合格结论，Controller 可直接扫描事故表派生触发，不需要 worker 写待授权标记。
+- 预审 A3 的失败分类与 r2 B3 一致：失效情形作废为无操作，原因只记在自动授权记录上，不写事故。
+- 待用户裁决：S1-D1 Controller 承载位置、S1-D2 触发来源、S1-D3 审计与代际。
