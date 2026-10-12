@@ -21,7 +21,7 @@ r1 由用户 2026-10-12 按预审推荐裁决；r3、r4 前三项为用户裁决
 
 触发与授权
 - C1 候选（不满足则不写任何记录）：`incidents.conclusion IS NOT NULL`（只有 `publish()` 写，`steps.py:356`）且当前 Run `completed` 且 `runs.control_generation = incidents.control_generation`（人工登记推进代际后不再是候选）、`lifecycle` ∈ {`open`,`observing_recovery`}，且该 `(incident_id, control_generation)` 尚无记录或为到期的 `retrying`。交接不发布、`handoff_only` 无 Run，都不是候选。其余条件在行锁下复核，见 C8。
-- C2 执行者：web 进程内后台循环（`opspilot_web` 角色），间隔 `OPSPILOT_SELF_HEAL_INTERVAL_SECONDS`（`0` 关闭；第 1 步默认 `0`，第 2 步与 F6/F13 投影一起改为默认 30，避免投影未就绪时自动会话被计为人工处置）；多副本靠主键与 `SKIP LOCKED` 防重；#197 拆出 Controller 时整体迁走。worker 与 Observer 权限不变。
+- C2 执行者：web 进程内后台循环（`opspilot_web` 角色），间隔 `OPSPILOT_SELF_HEAL_INTERVAL_SECONDS`（未设置时默认 30；`0` 关闭；非法值拒绝启动。第 1 步默认 `0`，第 2 步与 F6/F13 投影一起改为默认 30，避免投影未就绪时自动会话被计为人工处置）；多副本靠主键与 `SKIP LOCKED` 防重；#197 拆出 Controller 时整体迁走。worker 与 Observer 权限不变。
 - C3 授权：与人工登记共用同一事务原语、暂停与代际栅栏。目标身份只取自配置的目标身份注册表（`OPSPILOT_TARGET_IDENTITIES`，按已登记 `resource_uid` 绑定），与人工路径共用补齐步骤与 `TARGET_MISMATCH`/`TARGET_IDENTITY_MISSING`/`HEALTH_PROFILE_TARGET_MISMATCH` 检查；不接受告警或模型提供的身份，缺失即 fail-closed。会话参数全部取自 HealthProfile，观察起点为授权事务的 DB 时钟，不延长 deadline。
 - C4 版本：自动会话没有权威的目标版本，`target.revision` 记 `null`，工作台显示为未知；不写伪造的版本串。
 - C5 幂等：`(incident_id, control_generation)` 至多一次；会话 ID `uuid5(intake_key:auto-observe:<control_generation>)`。
@@ -50,6 +50,8 @@ r1 由用户 2026-10-12 按预审推荐裁决；r3、r4 前三项为用户裁决
 - D2-09 文案：工作台为英文，采用 SPEC 原文 "recovered, no remediation recorded"，同时显示来源 `automatic` / `post_remediation`。
 - D2-10 存量：采纳推荐①，按 C1 持久条件，升级开启后的首次扫描也会处理符合条件的存量事故（C1 无时间截断，持久状态为权威）。在 PR 简报中列为提示项，用户合并前可改为只处理开启后发布的结论。
 - D2-11 不新增 subject event；页面靠刷新快照看到生命周期与来源。D2-13 F6 生命周期配对改为按来源/代际关联，不再按位置。D2-01/06/12/14/15/16 按推荐。
+- 实施中 lead 定的公开字段名（合同未固定，可逆）：F6 `RecoveryOutcome` 新增 `authorization_sources`（与 `observation_sessions` 按序对应）、`authorization_source`、`observation_authorization["authorization_source"]`、`system_authorizations`，不往 `observation_sessions[*]` 加键（保留 `tests/test_f6_recovery_outcome.py:183` 的既有精确键断言，D2-02）；`Workbench.snapshot()` 新增顶层 `authorization_source`、`recovery_status`、`recovery_statement`；自动授权不在 F6 `actions` 中出现，open→observing_recovery 只经 `system_authorizations` 与会话可见。第 1 步独立测试中断言默认间隔 0 的一条按 C2 改为 30，由测试作者修改。
+- 实施发现：F13 输入的凭据键脱敏规则（匹配 "auth"）此前把 `authorized_by`/`authorized_at` 静默删掉；现在三项来源字段在脱敏后写入（值仍经脱敏），人工路径的复盘输入因此也带授权者与时间（D2-05）。
 
 ## 执行进展与证据
 
@@ -57,6 +59,7 @@ r1 由用户 2026-10-12 按预审推荐裁决；r3、r4 前三项为用户裁决
 - 第 1 步（`feature/F6-184-self-heal-step1`）：迁移 `0013_self_heal_authorization`；`Workbench.self_heal_pass` 与 web 进程后台循环（默认关闭）；人工与自动路径共用身份补齐与授权原语；`Target.revision` 可空（仅 `automatic` 来源可为 null）；事件写入步骤移到 `opspilot/persistence/events.py` 以便与交接同事务。
 - 验证（PG 17.9 本机临时实例，测试作者用 55472、实现用 55471）：独立测试作者（Codex GPT-6 Astra high，仅按合同与公开接口编写）`test_self_heal_authorization_postgres.py` 27 passed（单独运行与完整集成套件内均通过）；实现者测试 24 + 10 passed；完整集成 714 passed、54 skipped；非集成 3994 passed、2 xfailed；ruff、mypy 通过。独立代码审查（Codex GPT-6 Astra high，全新上下文）发现 1 个 P1（失败记录未复核代际），修复后同一审查者复验关闭，含真实 PG 锁超时复现（约 4.00 s 返回 TIMEOUT、不写决定）。
 - 独立测试修正记录：作者初版基于 r3，更新到 r6；两处失败为测试夹具违反 `job_check`、一处断言代际写错（`generation - 1` → `generation`，语义更严）、一处共享库候选顺序依赖（显式大 `limit`），均由作者本人修改；实现者未改该文件。
+- 第 2 步（`feature/F6-184-self-heal-step2`）：F6 投影把自动授权归为系统授权并暴露来源字段；F13 `human_actions` 排除自动授权、`recovery` 段带来源；工作台显示来源与 "recovered, no remediation recorded"（仅 automatic 且独立确认且 `resolved`）；循环默认 30 s。验证（PG 17.9 本机临时实例，测试作者 55482、实现 55483）：独立测试作者（Codex，仅按合同与公开接口）`test_self_heal_projection_postgres.py` 14 passed；第 1 步独立测试中默认间隔一条按 C2 由测试作者改为 30；完整集成 729 passed、54 skipped；`make check` 3850 passed、2 xfailed；mypy 通过。未覆盖：D2-06（自动授权使已有复盘变 stale）无端到端测试——真实路径需要完整人工观察周期加新 Run 才能同时满足「已有复盘」与「当前代际新结论」；代码路径为与人工登记共用的授权原语（第 1 步未改的 `mark_stale_in` 调用）。
 - 未执行：kind 真实运行（第 3 步）；F6/F13 投影与页面来源展示、循环默认开启（第 2 步）。
 - 实验环境：与另一会话（production-ops-agent-00）协调，同一时间只跑一个真实故障；真实 Run 前先确认。
 

@@ -44,11 +44,12 @@
 <h2>Recovery observation</h2>
 {% if snapshot.observation_sessions %}
 <table id="observation-sessions">
-  <thead><tr><th>Session</th><th>State</th><th>Generations</th><th>Profile</th><th>Target revision</th><th>Authorized</th><th>Deadline</th><th>Samples</th></tr></thead>
+  <thead><tr><th>Session</th><th>Source</th><th>State</th><th>Generations</th><th>Profile</th><th>Target revision</th><th>Authorized</th><th>Deadline</th><th>Samples</th></tr></thead>
   <tbody>
   {% for s in snapshot.observation_sessions %}
   <tr>
     <td><code>{{ s.session_id }}</code></td>
+    <td><span class="badge authorization-source">{{ s.authorization_source or "none" }}</span></td>
     <td><span class="badge">{{ s.state }}</span>{% if s.ended_reason %} <span class="muted">{{ s.ended_reason }}</span>{% endif %}</td>
     <td>control {{ s.subject_control_generation }} · observation {{ s.observation_generation }}</td>
     <td><code>{{ s.health_profile_revision or "none" }}</code></td>
@@ -67,12 +68,13 @@
 {% for r in snapshot.recovery %}
 <div class="recovery-session">
   <p>
-    session <code>{{ r.session_id }}</code> · <span class="badge">{{ r.state }}</span>{% if r.ended_reason %} <span class="muted">{{ r.ended_reason }}</span>{% endif %}
+    session <code>{{ r.session_id }}</code> · source <span class="badge authorization-source">{{ r.authorization_source or "none" }}</span> · <span class="badge">{{ r.state }}</span>{% if r.ended_reason %} <span class="muted">{{ r.ended_reason }}</span>{% endif %}
+    {% if r.recovery_statement %}· <strong class="recovery-statement" data-status="{{ r.recovery_status }}">{{ r.recovery_statement }}</strong>{% endif %}
     · verdict <span class="badge">{{ r.replay.recovery_verdict }}</span>
     {% if r.replay.recovery_confirmed %}<strong>recovery confirmed</strong>{% else %}<span class="muted">not confirmed</span>{% endif %}
     · healthy window {{ r.replay.healthy_window_seconds }} s
     · profile <code>{{ r.health_profile_revision or "none" }}</code>
-    · handled at {{ r.handled_at }}
+    · {{ "authorized at" if r.authorization_source == "automatic" else "handled at" }} {{ r.handled_at }}
     · offline replay:
     {% if r.replay.consistent %}<span class="badge">replay consistent</span>{% else %}<strong>integrity mismatch</strong> <code>{{ r.replay.integrity | join(", ") }}</code>{% if r.replay.available %} <span class="muted">(bundles recompute to <code>{{ r.replay.recomputed_verdict }}</code>; the stored verdict is not repeated)</span>{% endif %}{% endif %}
     {% if r.replay.reasons %}<br><span class="muted">reasons:</span> {{ r.replay.reasons | join("; ") }}{% endif %}

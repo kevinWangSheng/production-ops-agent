@@ -28,9 +28,11 @@ Configuration comes from the environment only, and only as hashes:
   observation passes (``Workbench.self_heal_pass``, #184): a background
   thread authorizes the recovery observation of incidents whose conclusion
   was published and on which no remediation was recorded, under this
-  process's ``opspilot_web`` role. Default ``0`` (off) until the F6/F13
-  projections tell an automatic authorization from a human action (#184
-  step 2, which turns it on at 30); a positive value turns it on.
+  process's ``opspilot_web`` role. Default ``30`` (on; the F6/F13
+  projections count the automatic authorization as the system's, not a
+  human action, #184 step 2); ``0`` turns it off, any other positive value
+  sets the interval, and a value that is not ``0`` or a positive finite
+  number refuses to start.
 
 ``hash-password`` and ``token-digest`` print the value to put in the
 environment; the secret itself is read from stdin and never echoed. This
@@ -74,9 +76,10 @@ from opspilot.web.store import (
 )
 
 _log = logging.getLogger(__name__)
-#: Off in step 1 (#184 r6 C2): until step 2's projections, an automatic
-#: session would count as a human action in F6 and the F13 postmortem input.
-SELF_HEAL_INTERVAL_SECONDS = 0.0
+#: On by default since #184 step 2 (r6 C2): the F6/F13 projections classify
+#: the automatic authorization as the system's. ``0`` in the environment
+#: turns the loop off.
+SELF_HEAL_INTERVAL_SECONDS = 30.0
 
 
 def _pairs(raw: str) -> dict[str, str]:

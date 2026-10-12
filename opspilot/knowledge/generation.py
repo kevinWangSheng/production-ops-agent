@@ -65,6 +65,11 @@ from opspilot.knowledge.store import (
     canonical_json,
     content_sha256,
 )
+from opspilot.observation.store import (
+    AUTO_OBSERVATION_ACTION,
+    AUTO_OBSERVATION_ACTOR,
+    POST_REMEDIATION,
+)
 from opspilot.tools.registry import redact_credentials
 
 # D23: one call, plus at most one structure/citation repair (D22).
@@ -483,6 +488,14 @@ def build_input(
 
     human_actions: list[dict[str, Any]] = []
     for control in raw["controls"]:
+        # The automatic observation's authorization is the product's own
+        # decision, not a human action (#184 C7): it is told by the
+        # ``recovery`` section's ``authorization_source`` instead.
+        if (
+            control["action"] == AUTO_OBSERVATION_ACTION
+            and control["actor"] == AUTO_OBSERVATION_ACTOR
+        ):
+            continue
         human_actions.append(
             {
                 "at": _iso(control["created_at"]),
@@ -584,6 +597,20 @@ def build_input(
             "recovery": recovery,
         },
         secrets,
+    )
+    # Who granted the observation, and when (#184 C6/C7, D2-05): the human
+    # "register remediation" (``post_remediation``) or the automatic
+    # observation after a published conclusion (``automatic``, actor
+    # ``system``); a row written before migration 0013 reads as the human
+    # action. Code-assembled keys whose names the credential-key rule of the
+    # scrub would drop ("auth"), so their values are scrubbed and set here.
+    granted = {
+        "authorization_source": session.get("authorization_source") or POST_REMEDIATION,
+        "authorized_by": recovery["authorized_by"],
+        "authorized_at": recovery["authorized_at"],
+    }
+    facts["recovery"].update(
+        {key: _scrub(value, secrets) for key, value in granted.items()}
     )
     catalog = _scrub(catalog, secrets)
     readings = _scrub(readings, secrets)

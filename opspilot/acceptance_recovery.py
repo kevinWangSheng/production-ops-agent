@@ -69,11 +69,18 @@ Field sources (``RecoveryOutcome``):
   mark: one session runs one sampling job at a time, so they are causal.
   Control rows: ``register_remediation`` -> ``record_handling``,
   plus ``advance_incident_lifecycle`` only when the lifecycle did move --
-  the k-th registration authorizes the k-th session; the incident was
-  ``open`` before the first one, and before a later one it was whatever the
-  previous session's last ending record left it at (``lifecycle_after``);
-  without such a record the move is unknown and not claimed. ``takeover``
-  -> ``human_takeover``; any other control -> ``human_control:<action>``.
+  a registration is paired with the session it authorized (the
+  ``session_id`` its audit payload names; a row without one is paired with
+  the k-th ``post_remediation`` session, never with an automatic one, #184
+  D2-13); the incident was ``open`` before the first session, and before a
+  later one it was whatever the session created just before it left it at
+  (its last ending record's ``lifecycle_after``); without such a record the
+  move is unknown and not claimed. ``takeover`` -> ``human_takeover``; any
+  other human control -> ``human_control:<action>``. A system authorization
+  (``auto_authorize_observation`` by actor ``system``, #184 C7) is no human
+  action: it adds nothing to ``actions`` or ``action_events`` and is
+  listed in ``system_authorizations`` (it stays in ``handling_audit``, the
+  raw audit rows).
   Per sample: ``read_only_query`` once per instant query a reading's bundle
   shows as actually sent (a part recorded with detail ``LEASE_BUDGET`` was
   never sent; the profile sentinel sends nothing; a bundle that does not
@@ -82,7 +89,16 @@ Field sources (``RecoveryOutcome``):
   ``human_handoff`` for a deadline or budget ending.
 * ``permissions``: derived from the privileges the Observer login actually
   holds (``ObservationStore.table_privileges``), see
-  ``permissions_from_grants``; ``human_control`` when a control row exists.
+  ``permissions_from_grants``; ``human_control`` when a human control row
+  exists (a system authorization is not one).
+* ``authorization_source``: who granted the latest session --
+  ``post_remediation`` (the human "register remediation") or ``automatic``
+  (the observation the product authorized after a published conclusion);
+  a session row written before migration 0013 carries none and reads as
+  ``post_remediation`` (the archived records are never rewritten); also
+  on ``observation_authorization``. ``authorization_sources`` is the same
+  per entry of ``observation_sessions`` (whose session contract keys stay
+  as they were).
 * ``model_requests``: empty -- the recovery path has no model client
   (``opspilot.observer`` imports none, checked by ``tests/test_m1_observer
   .py``); the acceptance harness counts calls on its own stub.
@@ -98,7 +114,12 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any
 
-from opspilot.observation.store import RECORD_COLUMNS
+from opspilot.observation.store import (
+    AUTO_OBSERVATION_ACTION,
+    AUTO_OBSERVATION_ACTOR,
+    POST_REMEDIATION,
+    RECORD_COLUMNS,
+)
 from opspilot.observer.prometheus import _single_value, epoch_to_datetime
 from opspilot.observer.replay import (
     ReplayedReading,
@@ -115,6 +136,8 @@ __all__ = [
     "RecoveryRecords",
     "RecoverySample",
     "RecoverySignal",
+    "authorization_source",
+    "is_system_authorization",
     "permissions_from_grants",
     "recovery_outcome",
 ]
@@ -338,6 +361,14 @@ class RecoveryOutcome:
     replay: SessionReplay | None
     model_requests: tuple[Any, ...] = field(default=())
     action_events: tuple[RecoveryAction, ...] = field(default=())
+    # who granted the latest session (``post_remediation`` / ``automatic``);
+    # ``None`` without a session (#184 C6)
+    authorization_source: str | None = None
+    # one per ``observation_sessions`` entry, same order
+    authorization_sources: tuple[str | None, ...] = field(default=())
+    # the control rows that are system authorizations, not human actions
+    # (``auto_authorize_observation`` by ``system``, #184 C7)
+    system_authorizations: tuple[Mapping[str, Any], ...] = field(default=())
 
 
 def _extra(measured: Grant | None, allowed: Grant | None) -> Columns | str | None:
@@ -594,16 +625,60 @@ def _samples(
     return samples
 
 
-def _lifecycle_before_registration(
-    index: int, sessions: Sequence[Mapping[str, Any]]
+def authorization_source(row: Mapping[str, Any]) -> str | None:
+    """Who granted one session row: its stored ``authorization_source``;
+    an incident recovery row written before migration 0013 carries none and
+    reads as ``post_remediation`` (C6: the archive is read, not rewritten).
+    A release observation has none."""
+    stored = row.get("authorization_source")
+    if stored is not None:
+        return str(stored)
+    if row.get("purpose", "incident_recovery") == "incident_recovery":
+        return POST_REMEDIATION
+    return None
+
+
+def is_system_authorization(row: Mapping[str, Any]) -> bool:
+    """A control row the product wrote on its own (#184 C7), not a human
+    decision: the automatic observation's authorization by ``system``."""
+    return (
+        row.get("action") == AUTO_OBSERVATION_ACTION
+        and row.get("actor") == AUTO_OBSERVATION_ACTOR
+    )
+
+
+def _registered_session(
+    row: Mapping[str, Any], ordinal: int, sessions: Sequence[Mapping[str, Any]]
+) -> int | None:
+    """The index of the session a registration authorized (D2-13): the one
+    its audit payload names, else the ``ordinal``-th ``post_remediation``
+    session; ``None`` when the records do not say."""
+    payload = row.get("payload")
+    named = payload.get("session_id") if isinstance(payload, Mapping) else None
+    if named is not None:
+        for index, history in enumerate(sessions):
+            if str(history["session"].get("session_id")) == str(named):
+                return index
+        return None
+    human = [
+        index
+        for index, history in enumerate(sessions)
+        if authorization_source(history["session"]) == POST_REMEDIATION
+    ]
+    return human[ordinal] if ordinal < len(human) else None
+
+
+def _lifecycle_before_session(
+    index: int | None, sessions: Sequence[Mapping[str, Any]]
 ) -> str | None:
-    """The incident lifecycle before the ``index``-th registration, from the
-    records: ``open`` before the first session; otherwise what the previous
-    session's last ending record left it at, or unknown."""
+    """The incident lifecycle before session ``index`` was authorized, from
+    the records: ``open`` before the first session; otherwise what the
+    session created just before it left it at (its last ending record), or
+    unknown."""
+    if index is None:
+        return None
     if index == 0:
         return "open"
-    if index > len(sessions):
-        return None
     endings = sessions[index - 1].get("endings") or ()
     if not endings:
         return None
@@ -670,11 +745,15 @@ def _actions(
     order = 0
     registrations = 0
     for row in controls:
+        if is_system_authorization(row):
+            continue
         action = str(row.get("action"))
         done: list[str] = []
         if action == "register_remediation":
             done.append("record_handling")
-            before = _lifecycle_before_registration(registrations, sessions)
+            before = _lifecycle_before_session(
+                _registered_session(row, registrations, sessions), sessions
+            )
             registrations += 1
             if before is not None and before != "observing_recovery":
                 done.append("advance_incident_lifecycle")
@@ -921,14 +1000,25 @@ def recovery_outcome(scenario: Any, records: RecoveryRecords) -> RecoveryOutcome
             else {
                 **_session_projection(subject_id, session_row),
                 "subject_id": subject_id,
+                "authorization_source": authorization_source(session_row),
             }
         ),
         sample_jobs=_sample_jobs(sessions),
         handling_audit=controls,
         actions=tuple(event.action for event in action_events),
         permissions=permissions_from_grants(
-            records.grants, human_control=bool(controls)
+            records.grants,
+            human_control=any(not is_system_authorization(row) for row in controls),
         ),
         replay=replay,
         action_events=action_events,
+        authorization_source=(
+            None if session_row is None else authorization_source(session_row)
+        ),
+        authorization_sources=tuple(
+            authorization_source(history["session"]) for history in sessions
+        ),
+        system_authorizations=tuple(
+            row for row in controls if is_system_authorization(row)
+        ),
     )

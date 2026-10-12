@@ -49,7 +49,7 @@ def test_a_set_stop_ends_the_loop_before_any_pass() -> None:
 
 
 @pytest.mark.parametrize(
-    ("raw", "expected"), [(None, 0.0), ("0", 0.0), ("2.5", 2.5), ("30", 30.0)]
+    ("raw", "expected"), [(None, 30.0), ("0", 0.0), ("2.5", 2.5), ("30", 30.0)]
 )
 def test_the_interval_comes_from_the_environment(
     monkeypatch: pytest.MonkeyPatch, raw: str | None, expected: float

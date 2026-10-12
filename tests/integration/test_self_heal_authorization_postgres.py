@@ -271,11 +271,11 @@ def _end_unconfirmed_session(
         )
 
 
-def test_self_heal_loop_default_interval_is_disabled(
+def test_self_heal_loop_default_interval_is_thirty_seconds(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("OPSPILOT_SELF_HEAL_INTERVAL_SECONDS", raising=False)
-    assert web_main._self_heal_interval() == 0.0
+    assert web_main._self_heal_interval() == 30.0
 
 
 def test_migration_exposes_source_checks_authorization_table_and_legacy_backfill(

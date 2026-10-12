@@ -29,6 +29,7 @@ from markupsafe import Markup
 from pydantic import ValidationError
 
 from opspilot.acceptance_alert import alert_intake_outcome
+from opspilot.acceptance_recovery import authorization_source
 from opspilot.alertmanager import (
     Alert,
     InvalidAlert,
@@ -1362,10 +1363,13 @@ class Workbench:
             "observation_sessions": [
                 _session_view(row) for row in observation_sessions
             ],
-            "recovery": [
-                self._recovery_view(cast(UUID, row["session_id"]))
-                for row in observation_sessions
-            ],
+            "recovery": _with_recovery_status(
+                [
+                    self._recovery_view(cast(UUID, row["session_id"]))
+                    for row in observation_sessions
+                ],
+                summary.lifecycle,
+            ),
             "health_profile_revision": (
                 None if self.health_profile is None else self.health_profile.revision
             ),
@@ -1483,6 +1487,7 @@ class Workbench:
         return {
             "session_id": str(result.session_id),
             "state": result.stored_session_state,
+            "authorization_source": authorization_source(history["session"]),
             "ended_reason": history["session"].get("ended_reason"),
             "health_profile_revision": result.health_profile_revision,
             "handled_at": result.handled_at.isoformat(),
@@ -1980,6 +1985,7 @@ def _recovery_basis_only(history: Mapping[str, Any]) -> dict[str, Any]:
     return {
         "session_id": str(row["session_id"]),
         "state": str(row["state"]),
+        "authorization_source": authorization_source(row),
         "ended_reason": row.get("ended_reason"),
         "health_profile_revision": row.get("health_profile_revision"),
         "handled_at": row["authorized_at"].isoformat(),
@@ -2002,12 +2008,54 @@ def _recovery_basis_only(history: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+#: What the page says of an automatic observation (#184 D2-08/D2-09): no
+#: causal claim, and a recovery only once the independent observation
+#: confirmed it and the incident is resolved.
+RECOVERED_NO_REMEDIATION = "recovered, no remediation recorded"
+OBSERVING_NO_CLAIM = "observing; recovery not confirmed yet"
+
+
+def _with_recovery_status(
+    views: list[dict[str, Any]], lifecycle: str
+) -> list[dict[str, Any]]:
+    """Mark each session view with what the page may say about it.
+
+    ``recovery_status`` is ``None`` for a ``post_remediation`` session (the
+    human registration keeps its own wording). For an ``automatic`` one it
+    is ``observing`` while the session is authorized, and
+    ``recovered_no_remediation`` only for the latest session when the
+    offline replay agrees with the stored records, the observation
+    confirmed recovery and the incident is ``resolved``; otherwise
+    ``None`` -- an ended, revoked or unconfirmed automatic session claims
+    nothing."""
+    for index, view in enumerate(views):
+        status: str | None = None
+        statement: str | None = None
+        if view.get("authorization_source") == "automatic":
+            replay = view["replay"]
+            if view["state"] == "authorized":
+                status, statement = "observing", OBSERVING_NO_CLAIM
+            elif (
+                index == len(views) - 1
+                and lifecycle == "resolved"
+                and replay.get("available")
+                and replay.get("consistent")
+                and replay.get("recovery_confirmed")
+            ):
+                status = "recovered_no_remediation"
+                statement = RECOVERED_NO_REMEDIATION
+        view["recovery_status"] = status
+        view["recovery_statement"] = statement
+    return views
+
+
 def _session_view(row: Mapping[str, Any]) -> dict[str, Any]:
     """The page's projection of one observation session row."""
     target = row.get("target") or {}
     return {
         "session_id": str(row["session_id"]),
         "state": str(row["state"]),
+        "authorization_source": authorization_source(row),
         "ended_reason": row.get("ended_reason"),
         "authorized_by": str(row["authorized_by"]),
         "authorized_at": row["authorized_at"],
