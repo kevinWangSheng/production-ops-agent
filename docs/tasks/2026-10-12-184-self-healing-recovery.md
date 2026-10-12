@@ -21,7 +21,7 @@ r1 由用户 2026-10-12 按预审推荐裁决；r3、r4 前三项为用户裁决
 
 触发与授权
 - C1 触发：`incidents.conclusion IS NOT NULL`（只有 `publish()` 写，`steps.py:356`）且当前 Run `completed` 且 `runs.control_generation = incidents.control_generation`（r5：人工登记推进代际后不再触发）、`lifecycle='open'`、`mode='automatic'`、`handoff_only` 为假、无活动会话、目标有生效的 HealthProfile。交接不发布，不触发。
-- C2 执行者：web 进程内后台循环（`opspilot_web` 角色），间隔 `OPSPILOT_SELF_HEAL_INTERVAL_SECONDS`（默认 30，`0` 关闭）；多副本靠主键与 `SKIP LOCKED` 防重；#197 拆出 Controller 时整体迁走。worker 与 Observer 权限不变。
+- C2 执行者：web 进程内后台循环（`opspilot_web` 角色），间隔 `OPSPILOT_SELF_HEAL_INTERVAL_SECONDS`（`0` 关闭；第 1 步默认 `0`，第 2 步与 F6/F13 投影一起改为默认 30，避免投影未就绪时自动会话被计为人工处置）；多副本靠主键与 `SKIP LOCKED` 防重；#197 拆出 Controller 时整体迁走。worker 与 Observer 权限不变。
 - C3 授权：与人工登记共用同一事务原语、暂停与代际栅栏。目标身份只取自配置的目标身份注册表（`OPSPILOT_TARGET_IDENTITIES`，按已登记 `resource_uid` 绑定），与人工路径共用补齐步骤与 `TARGET_MISMATCH`/`TARGET_IDENTITY_MISSING`/`HEALTH_PROFILE_TARGET_MISMATCH` 检查；不接受告警或模型提供的身份，缺失即 fail-closed。会话参数全部取自 HealthProfile，观察起点为授权事务的 DB 时钟，不延长 deadline。
 - C4 版本：自动会话没有权威的目标版本，`target.revision` 记 `null`，工作台显示为未知；不写伪造的版本串。
 - C5 幂等：`(incident_id, control_generation)` 至多一次；会话 ID `uuid5(intake_key:auto-observe:<control_generation>)`。
