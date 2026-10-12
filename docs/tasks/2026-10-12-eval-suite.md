@@ -1,6 +1,6 @@
 # 场景评测套件（回放 + live，参照 HolmesGPT tests/llm）
 
-- 状态：合同 r3 已裁决；SPEC 有界开放待用户合并（本 PR）；PR-A 未开工
+- 状态：合同 r4 已定；SPEC 有界开放待用户合并（本 PR）；PR-A 未开工
 - 更新日期：2026-10-12
 - 依据：外部验收入口 `IncidentScenario -> IncidentOutcome`（AGENTS.md「验证与汇报」）；[v4 验收包](../testing/first-investigation-v4-2026-09-10.md)；[M1-01 收口记录](2026-09-28-m1-01-closure.md)中的上游评测口径；ADR-0006；C3 第 388–398 行（judge 校准）；上游 HolmesGPT `46e3a72` 的 `tests/llm/`
 - 工作区：本 PR `chore/eval-suite-gate`，`../production-ops-agent-eval-gate`；实施时每个 PR 一个 worktree，写在执行节
@@ -12,19 +12,19 @@
 
 ## 前提与完成条件
 
-- 前提：SPEC 有界开放段落合并；DeepSeek 充值（余额 2.96 CNY，基线估计 4–13 CNY）；live 档开跑前与其他会话确认 kind lab 空闲（D15）。
+- 前提：SPEC 有界开放段落合并（含 r4 收紧项确认）；DeepSeek 充值（余额 2.96 CNY，基线估计 4–13 CNY）；live 档开跑前与其他会话确认 kind lab 空闲（D15）。
 - 完成条件：6 个场景回放各 5 次、live 各 2 次，都有冻结的 `summary.json` 与 LangSmith trace；成功率表（`passed/attempted`，`replay_miss` 计为失败并另列 miss 率）作为基线入库；每个 PR 都经过独立审查。
 
-## 合同（r3）
+## 合同（r4）
 
-完整决定表（含选项、代价与出处）见 [合同决定表](2026-10-12-eval-suite-contract.md)。r1：用户于 2026-10-12 一次裁决。r2：PR #210 机器人分诊后，D10 与 D13 改判，用户同日裁决。r3：PR #210 第二轮分诊后，补正常场景判据（D6）、修正 CI 档位（D8），用户同日裁决。
+完整决定表（含选项、代价与出处）见 [合同决定表](2026-10-12-eval-suite-contract.md)。r1：用户于 2026-10-12 一次裁决。r2：PR #210 机器人分诊后，D10 与 D13 改判，用户同日裁决。r3：PR #210 第二轮分诊后，补正常场景判据（D6）、修正 CI 档位（D8），用户同日裁决。r4：PR #210 第三轮分诊，四项收紧（D1 改称开发场景、D6 证据支持与正常场景收紧、R3 分母），均按 C3 §11 只收紧不放宽，在本 PR 合并时由用户一并确认。
 
-- D1 场景：v4 的 normal-1/2、fault-1/2，加留出的 `productCatalogFailure`、`cartFailure`，共 6 个；新增场景另开版本；答案只放在评测侧。
+- D1 场景：v4 的 normal-1/2、fault-1/2，加 `productCatalogFailure`、`cartFailure`，共 6 个，全部是开发场景（r4：后两个已在三包中跑过且结果已公开，不再称为留出）。任何留出结论都需要另建隔离的未见场景集；新增场景另开版本；答案只放在评测侧。
 - D2 回放：回放从 live 录制的完整模型可见输入、工具 schema、工具调用与结果、视图、hash、时间与权限，模型真实调用；另保留不调用模型的结构重放，不计入质量成功率。
 - D3 live 环境：复用 kind + OTel Demo 与 `scripts/kind_lab.py fault`，记录注入前后的 SHA。
 - D4 并行：只有回放用 xdist 并行；live 串行（`parallel=1`）；DeepSeek 并发为 1。
 - D5 次数：回放 5 次，live 2 次；表中注明样本量带来的置信不足。
-- D6 判据：先只用确定性判据。故障场景：schema、证据/目标/时间绑定、最终状态通过，且根因结论点名注入故障的服务与操作并引用证据 ID。正常场景（r3）：绑定与状态检查通过，且没有任何事实型 claim 把故障目录中的服务或操作说成原因；`inconclusive`/`partial` 满足此条件即算通过（对齐 M1-01 上游口径「正常场景无误报」）。LLM judge 校准后再加。
+- D6 判据：先只用确定性判据。故障场景：schema、证据/目标/时间绑定、最终状态通过，根因结论点名注入故障的服务与操作，且引用的证据中至少一条满足该场景预先定义的证据特征（r4：例如故障操作上的错误 span 或错误率读数，按 C3 §11「结论获得证据支持」）。证据特征的具体判定在 PR-A 预审中定。正常场景（r3、r4）：绑定与状态检查通过，且没有任何事实型因果诊断（不限于故障目录中的组件）；假设型陈述允许；`inconclusive`/`partial` 满足此条件即算通过。LLM judge 校准后再加。
 - D7 存放：仓库保存每 Run 的 `summary.json` 与轮次汇总，LangSmith 每轮一个 project；原始 ledger 不入库。
 - D8 CI（r3）：PR CI 只跑不调用模型的结构重放，离线、不带任何凭据；调用模型的回放与 live 都由 lead 或用户手工跑。
 - D9 `passes`：不翻转。

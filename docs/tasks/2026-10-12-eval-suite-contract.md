@@ -1,4 +1,4 @@
-# OpsPilot 场景评测套件：合同决定表（r3）
+# OpsPilot 场景评测套件：合同决定表（r4）
 
 预审者 Codex GPT-6 Astra（high，全新上下文，只读），2026-10-12。lead 补充 D13–D15，并核对了上游完整文件树。用户于 2026-10-12 按推荐裁决 D1–D15；D6 按 lead 修订后的推荐采用「先只用确定性判据」。
 
@@ -56,11 +56,19 @@ kind lab 的固定 host 端口是 18080/19090/16686（`scripts/kind_lab/kind-con
 - D6 补正常场景：绑定与状态检查通过，且没有事实型 claim 把故障目录中的服务或操作说成原因；`inconclusive`/`partial` 满足此条件即算通过。原因：r1 只定义了故障场景的判据，两个正常场景的结果会取决于实现。
 - D8 修正：PR CI 只跑不调用模型的结构重放（离线、无凭据）；调用模型的回放手工跑。原因：调用模型的回放需要 DeepSeek/LangSmith 凭据，把凭据给 PR CI 会暴露给不可信 PR 代码。
 
+### r4（2026-10-12，PR #210 第三轮分诊，只收紧）
+
+- D1：`productCatalogFailure`、`cartFailure` 已在三包中跑过，结果已公开，改称开发场景；留出结论需要另建隔离的未见场景集。
+- D6 故障场景：除点名服务与操作外，引用的证据中须有一条满足场景预先定义的证据特征（C3 §11）；具体判定在 PR-A 预审中定。
+- D6 正常场景：任何事实型因果诊断都判失败，不限于故障目录中的组件。
+- R3：已开始的 Run 若 setup 失败或结果未知，计入分母并判失败。
+
 ## 3. 可逆默认（R 项，Agent 自决并记录理由）
 
 - R1：目录采用 `docs/evidence/eval/<round>/runs/<run_id>/summary.json`、`aggregate.json`、`manifest.json`；理由是与现有 `freeze`/ADR-0006 对齐，便于删除整轮而不改历史。
 - R2：`manifest.json` 固定 code/upstream/model/prompt/tool/profile/evaluator/permission/fixture hash、N、seed、时间和命令；理由是满足 v4/C3 冻结且不把答案送入模型。
 - R3：aggregate 每行固定 `scenario_id, mode, repetition, outcome_state, deterministic_pass, judge_pass, overall, failure_class, model_requests, tokens, cost, trace_link, summary_path`，同时输出 `passed/attempted` 和失败分母；理由是禁止把 skipped/setup/unknown 混进成功率。
+- R3 修订（r4）：分母只排除尚未开始的跳过（单列）；已开始的 Run 若 setup 失败或结果未知，都计为失败（C3 §11「失败和放弃必须进入对应分母」）。
 - R4：replay 采用固定 seed 的场景顺序和 `pytest` 参数 ID；仅无共享环境的 replay 使用 xdist，live runner 默认拒绝 `parallel>1`；理由是可重现且 fail-closed。
 - R5：after/restore 必须幂等，任何注入/恢复都保存前后 SHA；临时 PG/端口不自动抢占已有资源；理由是现有 kind_lab 的安全边界和可回滚。
 - R6：不新增 pytest marker；复用现有 tags/feature_id，避免上游所说的无效 tag 导致收集失败。
