@@ -1,6 +1,6 @@
 # 场景评测套件（回放 + live，参照 HolmesGPT tests/llm）
 
-- 状态：合同 r5 已定；SPEC 有界开放待用户合并（本 PR）；PR-A 未开工
+- 状态：合同 r5 已定；SPEC 有界开放已合并（#210）；PR-A 未开工，预审须先回答 #211
 - 更新日期：2026-10-12
 - 依据：外部验收入口 `IncidentScenario -> IncidentOutcome`（AGENTS.md「验证与汇报」）；[v4 验收包](../testing/first-investigation-v4-2026-09-10.md)；[M1-01 收口记录](2026-09-28-m1-01-closure.md)中的上游评测口径；ADR-0006；C3 第 388–398 行（judge 校准）；上游 HolmesGPT `46e3a72` 的 `tests/llm/`
 - 工作区：本 PR `chore/eval-suite-gate`，`../production-ops-agent-eval-gate`；实施时每个 PR 一个 worktree，写在执行节
@@ -46,4 +46,4 @@
 
 ## 下一步与交接
 
-- 待用户：合并本 PR（SPEC 变更，用户门）；为 DeepSeek 充值。
+- SPEC 有界开放已合并（#210，2026-10-12）。PR-A 预审须先回答 #211 的五项（其中第 1 项「因果诊断能否机读」会影响 D6）。待用户：为 DeepSeek 充值。
