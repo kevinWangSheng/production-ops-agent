@@ -1,0 +1,406 @@
+{
+  "schema": "opspilot-lab-summary-1",
+  "experiment": "f13-output-65k-live",
+  "run_id": "52a4e52f-1c48-4718-a11f-16dc41be1bfb",
+  "frozen_at": "2026-10-12T03:24:51.075813+00:00",
+  "round": "f13-output-65k-live-20261011",
+  "versions": {
+    "branch": "feature/F13-output-65k",
+    "commit": "341572b76aa33950d9842b1dc346cd5b6296a6db",
+    "schema_head": "0012_generation_call_diagnostics",
+    "schema_before": "0011_runtime_roles",
+    "model": "deepseek-flash",
+    "postmortem_versions": {
+      "prompt_version": "f13-postmortem-prompt-v4",
+      "output_schema_version": "f13-postmortem-output-v2",
+      "input_policy_version": "f13-postmortem-input-v3",
+      "model_profile": "deepseek-flash/json/thinking-high/no-tools"
+    }
+  },
+  "database": "fresh byte copy of the #169 run's data directory (tmp/pg-live-copy), port 55503, migrated 0011 -> 0012 by owner",
+  "incident_id": "b23a19fd-cf49-5e1b-bd03-a3a89973e3fe",
+  "roles": {
+    "owner": "m0_lab (superuser; migrate, schema check, pg_stat_activity sampler, read-only projections only)",
+    "web": "opspilot_web_lab IN ROLE opspilot_web",
+    "worker": "opspilot_worker_lab IN ROLE opspilot_worker"
+  },
+  "attempts": [
+    {
+      "attempt_id": "045af765-6fe5-454f-b13b-78fe8c2ae211",
+      "status": "failed",
+      "error_code": "INPUT_TOO_LARGE",
+      "version": null,
+      "model": "deepseek-flash",
+      "response_model": null,
+      "model_profile": "deepseek-flash/json/thinking-high/no-tools",
+      "prompt_version": "f13-postmortem-prompt-v3",
+      "output_schema_version": "f13-postmortem-output-v2",
+      "input_policy_version": "f13-postmortem-input-v2",
+      "input_bytes": null,
+      "max_model_requests": 2,
+      "model_requests": 0,
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "model_calls": [],
+      "started_at": "2026-10-11 10:08:49.835969+00:00",
+      "finished_at": "2026-10-11 10:08:49.915398+00:00"
+    },
+    {
+      "attempt_id": "52a4e52f-1c48-4718-a11f-16dc41be1bfb",
+      "status": "succeeded",
+      "error_code": null,
+      "version": 1,
+      "model": "deepseek-flash",
+      "response_model": "deepseek-flash",
+      "model_profile": "deepseek-flash/json/thinking-high/no-tools",
+      "prompt_version": "f13-postmortem-prompt-v4",
+      "output_schema_version": "f13-postmortem-output-v2",
+      "input_policy_version": "f13-postmortem-input-v3",
+      "input_bytes": 137706,
+      "max_model_requests": 2,
+      "model_requests": 1,
+      "prompt_tokens": 53313,
+      "completion_tokens": 11703,
+      "model_calls": [
+        {
+          "seq": 1,
+          "outcome": "accepted",
+          "purpose": "generate",
+          "problems": [],
+          "finish_reason": "stop",
+          "prompt_tokens": 53313,
+          "reasoning_tokens": 6437,
+          "completion_tokens": 11703,
+          "visible_completion_tokens": 5266
+        }
+      ],
+      "started_at": "2026-10-12 03:21:37.144393+00:00",
+      "finished_at": "2026-10-12 03:22:32.706421+00:00"
+    }
+  ],
+  "job_after": [
+    {
+      "incident_id": "b23a19fd-cf49-5e1b-bd03-a3a89973e3fe",
+      "lease_epoch": 2,
+      "failure_watermark": null,
+      "consecutive_failures": 0,
+      "next_attempt_at": null,
+      "last_error_code": null,
+      "updated_at": "2026-10-12 03:22:32.706846+00:00"
+    }
+  ],
+  "model_calls_check": {
+    "attempt_id": "52a4e52f-1c48-4718-a11f-16dc41be1bfb",
+    "entries": 1,
+    "model_requests": 1,
+    "keys_exactly_contract": true,
+    "sum_prompt_tokens": 53313,
+    "attempt_prompt_tokens": 53313,
+    "sum_completion_tokens": 11703,
+    "attempt_completion_tokens": 11703,
+    "sums_equal": true,
+    "old_attempts_model_calls": {
+      "045af765-6fe5-454f-b13b-78fe8c2ae211": []
+    }
+  },
+  "per_request": [
+    {
+      "seq": 1,
+      "purpose": "generate",
+      "finish_reason": "stop",
+      "max_tokens_sent": {
+        "trace_invocation_params": 65536,
+        "trace_metadata": {},
+        "code_constant": 65536
+      },
+      "prompt_tokens": 53313,
+      "completion_tokens": 11703,
+      "reasoning_tokens": 6437,
+      "visible_completion_tokens": 5266,
+      "reasoning_share": 0.55,
+      "hit_max_output_tokens_65536": false,
+      "outcome": "accepted",
+      "problems": [],
+      "trace_start": "2026-10-12 03:21:37.165911+00:00",
+      "trace_end": "2026-10-12 03:22:32.678666+00:00",
+      "duration_seconds": 55.512755,
+      "request_timeout_seconds": 360.0,
+      "under_timeout": true
+    }
+  ],
+  "attempt_result": {
+    "attempt_id": "52a4e52f-1c48-4718-a11f-16dc41be1bfb",
+    "status": "succeeded",
+    "error_code": null,
+    "model_requests": 1,
+    "max_model_requests": 2,
+    "repaired": false,
+    "version": 1
+  },
+  "success_criterion": {
+    "text": "first request finish_reason=stop, model_requests=1, draft reaches under_review",
+    "first_finish_reason": "stop",
+    "model_requests": 1,
+    "draft_state": "under_review",
+    "met": true
+  },
+  "three_way_agreement": [
+    {
+      "seq": 1,
+      "finish_reason": {
+        "db": "stop",
+        "trace": "stop",
+        "page": "stop"
+      },
+      "reasoning_tokens": {
+        "db": 6437,
+        "trace": 6437,
+        "page": "6437"
+      },
+      "prompt_tokens": {
+        "db": 53313,
+        "trace": 53313,
+        "page": "53313"
+      },
+      "completion_tokens": {
+        "db": 11703,
+        "trace": 11703,
+        "page": "11703"
+      },
+      "visible_completion_tokens": {
+        "db": 5266,
+        "page": "5266",
+        "trace_derived": 5266
+      },
+      "outcome": {
+        "db": "accepted",
+        "page": "accepted"
+      },
+      "problems": {
+        "db": [],
+        "page": []
+      },
+      "all_equal": true,
+      "field_checks": {
+        "finish_reason": true,
+        "reasoning_tokens": true,
+        "prompt_tokens": true,
+        "completion_tokens": true,
+        "visible_completion_tokens": true,
+        "outcome": true,
+        "problems": true
+      }
+    }
+  ],
+  "page": {
+    "fetched_as": "Basic Auth lab account pgroles-lab, GET /incidents/{incident_id}, HTTP 200",
+    "rows": [
+      {
+        "attempt_id": "52a4e52f-1c48-4718-a11f-16dc41be1bfb",
+        "calls": [
+          {
+            "seq": 1,
+            "finish_reason": "stop",
+            "prompt_tokens": "53313",
+            "completion_tokens": "11703",
+            "reasoning_tokens": "6437",
+            "visible_completion_tokens": "5266",
+            "outcome": "accepted",
+            "problems": []
+          }
+        ],
+        "text": null
+      },
+      {
+        "attempt_id": "045af765-6fe5-454f-b13b-78fe8c2ae211",
+        "calls": [],
+        "text": "unknown"
+      }
+    ]
+  },
+  "draft": {
+    "version_state": [
+      {
+        "version": 1,
+        "state": "under_review",
+        "conclusions": 20,
+        "citations_failed": 0,
+        "disputed": 0
+      }
+    ],
+    "model_conclusions": 15
+  },
+  "acceptance_projection_recent_attempts": [
+    {
+      "attempt_id": "52a4e52f-1c48-4718-a11f-16dc41be1bfb",
+      "incident_id": "b23a19fd-cf49-5e1b-bd03-a3a89973e3fe",
+      "status": "succeeded",
+      "error_code": null,
+      "revises_version": null,
+      "version": 1,
+      "model_requests": 1,
+      "max_model_requests": 2,
+      "started_at": "2026-10-12 03:21:37.144393+00:00",
+      "finished_at": "2026-10-12 03:22:32.706421+00:00",
+      "model_calls": [
+        {
+          "seq": 1,
+          "outcome": "accepted",
+          "purpose": "generate",
+          "problems": [],
+          "finish_reason": "stop",
+          "prompt_tokens": 53313,
+          "reasoning_tokens": 6437,
+          "completion_tokens": 11703,
+          "visible_completion_tokens": 5266
+        }
+      ]
+    },
+    {
+      "attempt_id": "045af765-6fe5-454f-b13b-78fe8c2ae211",
+      "incident_id": "b23a19fd-cf49-5e1b-bd03-a3a89973e3fe",
+      "status": "failed",
+      "error_code": "INPUT_TOO_LARGE",
+      "revises_version": null,
+      "version": null,
+      "model_requests": 0,
+      "max_model_requests": 2,
+      "started_at": "2026-10-11 10:08:49.835969+00:00",
+      "finished_at": "2026-10-11 10:08:49.915398+00:00",
+      "model_calls": []
+    }
+  ],
+  "review": {
+    "performed": false,
+    "why": "optional for #202; the draft reached under_review and was left there"
+  },
+  "no_extra_attempt_checked_at": "2026-10-12T03:24:23Z",
+  "pg_log": {
+    "log_settings": "log_connections=on, log_disconnections=on, log_min_messages=warning, log_min_error_statement=error, log_line_prefix with user/app/sqlstate (carried in the copied postgresql.conf)",
+    "window": "2026-10-12T03:20:45Z (pg_ctl start, fresh log file) .. line 183, 03:24:23.889Z (last web session disconnect after SIGTERM of worker and web)",
+    "cutoff_line": 183,
+    "lines": 183,
+    "ERROR": 1,
+    "FATAL": 0,
+    "sqlstate_42501": 0,
+    "permission_denied": 0,
+    "non_00000_sqlstate_lines": 2,
+    "web_worker": {
+      "ERROR": 0,
+      "FATAL": 0,
+      "sqlstate_42501": 0,
+      "permission_denied": 0,
+      "non_00000_sqlstate_lines": 0,
+      "lines": 15
+    },
+    "owner_error_note": "1 ERROR (sqlstate 42703, line 29, 03:21:00Z) is the run executor's own owner read-only query (app lab-readonly) naming a column that does not exist, before web/worker started; not from web or worker",
+    "connections_by_user_app": {
+      "m0_lab / lab-migrate": 2,
+      "m0_lab / lab-monitor": 18,
+      "m0_lab / lab-readonly": 17,
+      "m0_lab / lab-schema-check": 2,
+      "opspilot_web_lab / opspilot-web": 2,
+      "opspilot_worker_lab / opspilot-worker": 3
+    }
+  },
+  "activity": {
+    "sampler": "owner SELECT on pg_stat_activity every 10 s (app lab-monitor, own pid excluded)",
+    "snapshots": 19,
+    "sampler_errors": 0,
+    "first": "2026-10-12T03:21:26+00:00",
+    "last": "2026-10-12T03:24:26+00:00",
+    "sessions_seen": {
+      "opspilot_web_lab / opspilot-web": 34,
+      "opspilot_worker_lab / opspilot-worker": 44
+    },
+    "opspilot_app_as_owner": 0,
+    "port_to_pid_check_03:21:58Z": {
+      "web pid": {
+        "login": "opspilot_web_lab",
+        "client_ports": [
+          61384,
+          61385
+        ]
+      },
+      "worker pid": {
+        "login": "opspilot_worker_lab",
+        "client_ports": [
+          61443,
+          61444,
+          61446
+        ]
+      },
+      "method": "pg_stat_activity client_port matched against lsof of each started PID"
+    }
+  },
+  "trace": {
+    "project": {
+      "project": "opspilot-lab-f13-output-65k-live-20261011",
+      "project_id": "d7597bbd-266e-40dc-b757-accb911e7ec6",
+      "trace_tier": "longlived"
+    },
+    "root_runs_found": 1,
+    "traces": [
+      {
+        "name": "opspilot.postmortem_generation",
+        "langsmith_run_id": "00000000-0000-0000-893a-1ad3b75eca03",
+        "trace_id": "00000000-0000-0000-893a-1ad3b75eca03",
+        "otel_trace_id": "26384c32eeabb296f6aee465d6f933d0",
+        "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/d7597bbd-266e-40dc-b757-accb911e7ec6/r/00000000-0000-0000-893a-1ad3b75eca03?poll=true",
+        "status": "success",
+        "prompt_tokens": 53313,
+        "completion_tokens": 11703,
+        "llm_calls": [
+          {
+            "name": "deepseek.chat.completions",
+            "langsmith_run_id": "00000000-0000-0000-22ab-8f2b4e17dd47",
+            "start_time": "2026-10-12 03:21:37.165911+00:00",
+            "end_time": "2026-10-12 03:22:32.678666+00:00",
+            "status": "success",
+            "prompt_tokens": 53313,
+            "completion_tokens": 11703,
+            "invocation_params_max_tokens": 65536,
+            "max_tokens_metadata": {},
+            "duration_seconds": 55.512755,
+            "opspilot_model_metadata": {
+              "otel.span.opspilot.model.finish_reason": "stop",
+              "otel.span.opspilot.model.json_mode": true,
+              "otel.span.opspilot.model.prompt_message_count": 2,
+              "otel.span.opspilot.model.prompt_messages_omitted": 0,
+              "otel.span.opspilot.model.reasoning_tokens": 6437,
+              "otel.span.opspilot.model.timeout_seconds": 360,
+              "otel.span.opspilot.model.tool_call_count": 0,
+              "otel.span.opspilot.model.tool_schema_count": 0
+            },
+            "gen_ai_finish_reasons_metadata": {}
+          }
+        ]
+      }
+    ]
+  },
+  "cost": {
+    "balance_before": [
+      {
+        "currency": "CNY",
+        "total_balance": "3.12",
+        "granted_balance": "0.00",
+        "topped_up_balance": "3.12"
+      }
+    ],
+    "balance_before_at": "2026-10-12T03:21:19.229796+00:00",
+    "balance_after": [
+      {
+        "currency": "CNY",
+        "total_balance": "3.12",
+        "granted_balance": "0.00",
+        "topped_up_balance": "3.12"
+      }
+    ]
+  },
+  "raw_ledger": {
+    "sha256": "8a07a632cc403453b661d7598510395fa101ab4047792b8a2b352e3e8e37c3c0",
+    "bytes": 122557,
+    "path": "tmp/lab-ledgers/f13-output-65k-live/52a4e52f-1c48-4718-a11f-16dc41be1bfb/ledger.json",
+    "in_repository": false
+  }
+}

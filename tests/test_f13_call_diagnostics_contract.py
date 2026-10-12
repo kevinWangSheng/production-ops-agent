@@ -1,6 +1,6 @@
-"""Independent #202 r10 D54/D55; only public worker/trace interfaces.
+"""Independent #202 r11 D54/D55/D57/D59; public worker/trace interfaces.
 
-Frozen baseline 1559bbb and tmp/f13-output/interface-o.md. No real model,
+Frozen baseline 02d896f and tmp/f13-65k/interface-r11.md. No real model,
 network exporter, database, or assumptions about new private helpers.
 """
 
@@ -82,7 +82,7 @@ class ScriptedModel:
     def complete(self, call):
         self.calls.append(call)
         assert len(self.calls) <= 2, "D22: no third request"
-        assert call.max_tokens == 16384, "U1: retain request output limit"
+        assert call.max_tokens == 65_536, "D57: each request uses the new output limit"
         result = self.replies.pop(0)
         if isinstance(result, Exception):
             raise result
@@ -202,6 +202,7 @@ def test_d54_length_invalid_then_one_repair(repair_succeeds):
         ]
     )
     assert len(model.calls) == 2
+    assert [call.max_tokens for call in model.calls] == [65_536, 65_536]
     assert outcome.status == ("succeeded" if repair_succeeds else "failed")
     assert outcome.error_code == (None if repair_succeeds else "OUTPUT_INVALID")
     calls = diagnostics(finished)
@@ -213,6 +214,26 @@ def test_d54_length_invalid_then_one_repair(repair_succeeds):
     assert calls[0]["problems"]
     assert bool(calls[1]["problems"]) is (not repair_succeeds)
     assert calls[1]["finish_reason"] == "stop"
+
+
+@pytest.mark.parametrize("visible_chars", [64_000, 64_001])
+def test_d59_repair_echo_keeps_64000_character_boundary(visible_chars):
+    # Multibyte text distinguishes a character limit from a byte limit.
+    start, end = "ECHO_BOUNDARY_START_", "_ECHO_BOUNDARY_END"
+    visible = start + "回" * (visible_chars - len(start) - len(end)) + end
+    outcome, finished, _, model = generate(
+        [reply(visible, finish_reason="length"), reply()]
+    )
+    assert outcome.status == "succeeded"
+    assert len(model.calls) == 2
+    assert [call.max_tokens for call in model.calls] == [65_536, 65_536]
+    sent = "\n".join(
+        message.get("content") or "" for message in model.calls[1].messages
+    )
+    assert visible[:64_000] in sent
+    if visible_chars > 64_000:
+        assert visible not in sent
+    assert [call["purpose"] for call in diagnostics(finished)] == ["generate", "repair"]
 
 
 @pytest.mark.parametrize("code", ["MODEL_REJECTED", "MODEL_UNAVAILABLE"])
@@ -316,8 +337,8 @@ def test_d55_model_span_exports_finish_and_reasoning_count_only(parent):
         tracing.reset()
 
 
-def test_observation_change_retains_limits_errors_and_generation_record():
-    assert MAX_OUTPUT_TOKENS == 16384
+def test_d57_output_limit_preserves_other_limits_errors_and_generation_record():
+    assert MAX_OUTPUT_TOKENS == 65_536
     assert MAX_MODEL_REQUESTS_PER_GENERATION == 2
     assert MAX_ATTEMPTS_PER_WATERMARK == 3
     assert set(get_args(contract.AttemptErrorCode)) == {
@@ -337,7 +358,7 @@ def test_observation_change_retains_limits_errors_and_generation_record():
     assert contract.POSTMORTEM_PROMPT_VERSION == "f13-postmortem-prompt-v4"
     assert contract.POSTMORTEM_INPUT_POLICY_VERSION == "f13-postmortem-input-v3"
     _, _, knowledge, model = generate([reply()])
-    assert len(model.calls) == 1 and model.calls[0].max_tokens == 16384
+    assert len(model.calls) == 1 and model.calls[0].max_tokens == 65_536
     record = knowledge.drafts[0]["content"]["generation"]
     assert set(record) == {
         "attempt_id",

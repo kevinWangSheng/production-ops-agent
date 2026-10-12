@@ -93,7 +93,7 @@ def test_versions_keep_the_content_schema_v1_value() -> None:
     assert POSTMORTEM_OUTPUT_SCHEMA_VERSION == "f13-postmortem-output-v2"
     assert POSTMORTEM_CONTENT_SCHEMA_VERSION == "f13-postmortem-content-v1"
     assert POSTMORTEM_INPUT_POLICY_VERSION == "f13-postmortem-input-v3"
-    assert CONTRACT_REVISION == "r10"
+    assert CONTRACT_REVISION == "r11"
 
 
 def test_system_prompt_contains_narrow_dispute_and_hypothesis_rules() -> None:
