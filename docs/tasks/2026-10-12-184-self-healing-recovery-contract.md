@@ -64,17 +64,17 @@
 
 | 编号 | 问题 | 选项与代价 | 推荐 | 影响面 | 裁决 |
 |---|---|---|---|---|---|
-| A1 | 是否纳入 M1 | 纳入：修改 C3 §10、生命周期说明并实现验收；不纳入：保持人工登记，问题继续存在 | 纳入有 HealthProfile 的 incident recovery | SPEC、C3、实现范围、验收 | |
-| A2 | 自动开观察时机 | 仅合格结论发布后；发布后和交接后都开；仅交接后开。交接路径需新增持久触发语义 | 仅在合格结论已发布后；当前 `publish()` 有明确持久标记，ADR-0005 明确交接不发布（`steps.py:300-363`；ADR-0005:13-16） | Controller 调度、事故生命周期 | |
-| A3 | 谁来触发自动授权 | worker 直接写；Controller 发布后同步写；Controller 通过可重放待处理任务写。worker 直写会违反 C3 §3 | Controller 侧可重放任务，调用与人工登记相同的事务原语 | 角色、迁移、崩溃恢复 | |
-| A4 | 是否区分自愈与人工整改 | 只靠 actor；显式 provenance 字段；仅 UI 推导。只靠 actor 无法稳定表达旧数据和未来来源 | 会话持久 `authorization_source`，审计 actor 值为 `system`，DB current_user 仍为 Controller/web | schema、F6/F13 投影、审计 | |
-| A5 | `system` actor 的精确定义 | actor=`system`；actor=`system:self_healing`；仅 payload 标记。数据库当前只要求非空文本 | actor 字段使用 `system`，payload/source 使用 `self_healing`；不新增 DB 角色 | 审计查询、兼容读取 | |
-| A6 | 观察时间锚点与 deadline | 从结论发布时刻；从 Controller 授权时刻；从首次采样时刻。发布时刻当前未单独持久化，首次采样会放宽“整改后新数据” | 从授权事务 DB 时钟起算；profile 参数不变、不延长 | HealthProfile、实时性、验收 | |
-| A7 | 自动会话与人工操作竞态 | 自动优先；人工优先；按 incident 行锁和 control_generation 决胜。自动优先会压过接管/登记 | 行锁 + expected generation；人工登记/接管/暂停/取消先提交者胜，人工动作撤销自动会话 | 并发、审计、lease | |
-| A8 | 无 HealthProfile 目标 | 只交接；用通用探针；使用 Alertmanager resolved。通用探针无法满足 C3 必要信号，resolved 方案违反 M1-04 C | 保持现状：不能自动确认恢复，继续人工关闭/处理 | 目标范围、验收 | |
-| A9 | 与 M1-04 决定 C 的关系 | 改 C 让 resolved 触发；保留 C，resolved 仅提示；两条入口并行 | 保留 C；resolved 只能作为工作台提示，不触发观察 | Alert intake、#167、#184 | |
-| A10 | 旧会话与归档来源字段 | 回填并重写旧证据；旧字段缺失即 unknown；兼容读取默认 legacy/post-remediation。重写会破坏归档真实性 | 不改原始证据；旧 incident recovery 会话映射为 post-remediation/legacy，新增会话必须显式来源 | F6 replay、F13 复盘 | |
-| A11 | 迁移和权限合同 | 给 worker 观察写权限；复用 web/Controller 写权限；新增专门 Controller 角色。worker 扩权与 C3 冲突 | 复用当前 Controller/web 观察写权限；worker 只发布结论和写待处理标记 | 0011、下一个迁移、部署停机 | |
+| A1 | 是否纳入 M1 | 纳入：修改 C3 §10、生命周期说明并实现验收；不纳入：保持人工登记，问题继续存在 | 纳入有 HealthProfile 的 incident recovery | SPEC、C3、实现范围、验收 | 采纳推荐（用户 2026-10-12，r1） |
+| A2 | 自动开观察时机 | 仅合格结论发布后；发布后和交接后都开；仅交接后开。交接路径需新增持久触发语义 | 仅在合格结论已发布后；当前 `publish()` 有明确持久标记，ADR-0005 明确交接不发布（`steps.py:300-363`；ADR-0005:13-16） | Controller 调度、事故生命周期 | 采纳推荐（用户 2026-10-12，r1） |
+| A3 | 谁来触发自动授权 | worker 直接写；Controller 发布后同步写；Controller 通过可重放待处理任务写。worker 直写会违反 C3 §3 | Controller 侧可重放任务，调用与人工登记相同的事务原语 | 角色、迁移、崩溃恢复 | 采纳推荐（用户 2026-10-12，r1） |
+| A4 | 是否区分自愈与人工整改 | 只靠 actor；显式 provenance 字段；仅 UI 推导。只靠 actor 无法稳定表达旧数据和未来来源 | 会话持久 `authorization_source`，审计 actor 值为 `system`，DB current_user 仍为 Controller/web | schema、F6/F13 投影、审计 | 采纳推荐（用户 2026-10-12，r1） |
+| A5 | `system` actor 的精确定义 | actor=`system`；actor=`system:self_healing`；仅 payload 标记。数据库当前只要求非空文本 | actor 字段使用 `system`，payload/source 使用 `self_healing`；不新增 DB 角色 | 审计查询、兼容读取 | 采纳推荐（用户 2026-10-12，r1） |
+| A6 | 观察时间锚点与 deadline | 从结论发布时刻；从 Controller 授权时刻；从首次采样时刻。发布时刻当前未单独持久化，首次采样会放宽“整改后新数据” | 从授权事务 DB 时钟起算；profile 参数不变、不延长 | HealthProfile、实时性、验收 | 采纳推荐（用户 2026-10-12，r1） |
+| A7 | 自动会话与人工操作竞态 | 自动优先；人工优先；按 incident 行锁和 control_generation 决胜。自动优先会压过接管/登记 | 行锁 + expected generation；人工登记/接管/暂停/取消先提交者胜，人工动作撤销自动会话 | 并发、审计、lease | 采纳推荐（用户 2026-10-12，r1） |
+| A8 | 无 HealthProfile 目标 | 只交接；用通用探针；使用 Alertmanager resolved。通用探针无法满足 C3 必要信号，resolved 方案违反 M1-04 C | 保持现状：不能自动确认恢复，继续人工关闭/处理 | 目标范围、验收 | 采纳推荐（用户 2026-10-12，r1） |
+| A9 | 与 M1-04 决定 C 的关系 | 改 C 让 resolved 触发；保留 C，resolved 仅提示；两条入口并行 | 保留 C；resolved 只能作为工作台提示，不触发观察 | Alert intake、#167、#184 | 采纳推荐（用户 2026-10-12，r1） |
+| A10 | 旧会话与归档来源字段 | 回填并重写旧证据；旧字段缺失即 unknown；兼容读取默认 legacy/post-remediation。重写会破坏归档真实性 | 不改原始证据；旧 incident recovery 会话映射为 post-remediation/legacy，新增会话必须显式来源 | F6 replay、F13 复盘 | 采纳推荐（用户 2026-10-12，r1） |
+| A11 | 迁移和权限合同 | 给 worker 观察写权限；复用 web/Controller 写权限；新增专门 Controller 角色。worker 扩权与 C3 冲突 | 复用当前 Controller/web 观察写权限；worker 只发布结论和写待处理标记 | 0011、下一个迁移、部署停机 | 采纳推荐（用户 2026-10-12，r1） |
 
 ## 决定表 B：可逆默认
 
