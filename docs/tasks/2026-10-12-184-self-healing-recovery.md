@@ -27,7 +27,7 @@ r1 由用户 2026-10-12 按预审推荐裁决；r3、r4 前三项为用户裁决
 - C5 幂等：`(incident_id, control_generation)` 至多一次；会话 ID `uuid5(intake_key:auto-observe:<control_generation>)`。
 
 来源与审计
-- C6 `opspilot_observation_sessions.authorization_source`：`incident_recovery` ∈ {`post_remediation`,`automatic`} 非空，`release_observation` 为 NULL（CHECK 按 `purpose`）。列默认 `post_remediation` 仅为旧写入方与跨版本夹具兼容（r5-2：独立 F13 测试 D53 夹具在 0011 与 head 都插入会话）；产品原语的 `authorization_source` 为必填参数、无默认值，测试断言自动会话从不落到默认值。迁移回填旧 `incident_recovery` 行，release 行置 NULL；不改写归档证据。
+- C6 `opspilot_observation_sessions.authorization_source`：`incident_recovery` ∈ {`post_remediation`,`automatic`} 非空，`release_observation` 为 NULL（CHECK 按 `purpose`）。列默认 `post_remediation` 仅为旧写入方与跨版本夹具兼容（r5-2：独立 F13 测试 D53 夹具在 0011 与 head 都插入会话）；产品原语的 `authorization_source` 为必填参数、无默认值，测试断言自动会话从不落到默认值。例外（lead 可逆默认）：仅测试调用的便捷包装 `ObservationStore.authorize_session` 保留默认 `post_remediation`，产品与脚本无调用方（grep 核对），避免改动约 15 处既有测试调用。迁移回填旧 `incident_recovery` 行，release 行置 NULL；不改写归档证据。
 - C7 审计：`opspilot_controls` 写独立动作 `auto_authorize_observation`，actor `system`，`expected_generation = resulting_generation`，不推进 `control_generation`；只按现有原语推进 `observation_generation`。第 2 步 F13 投影把它归为系统授权，不计入 `human_actions`。
 
 失败与竞态
