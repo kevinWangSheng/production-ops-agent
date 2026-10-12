@@ -20,7 +20,7 @@ SPEC「2026-10-12 user decision」段与 C3 §10「自愈确认」段，随授�
 - 前提：用户裁决下方决定表；C3 §10 与生命周期描述按裁决修订（C3 变更属用户门）。
 - 完成条件（草案）：自愈场景在 kind 实验环境真实跑通——故障注入后自愈、无人点击，事故经独立观察推进到 `resolved` 且来源标为自愈；持续故障场景到期保持 `open` 并交接；人工登记路径、F6 验收投影不回退；独立审查与独立验收测试作者按 AGENTS.md 执行。
 
-## 合同（r2）
+## 合同（r3）
 
 用户 2026-10-12 按推荐裁决 A1–A11；B1–B5 按推荐作可逆默认。完整表见[合同决定表](2026-10-12-184-self-healing-recovery-contract.md)（Codex GPT-6 Astra，high，只读预审）。
 
@@ -37,6 +37,23 @@ SPEC「2026-10-12 user decision」段与 C3 §10「自愈确认」段，随授�
 - **A11** 复用现有 Controller/web 观察写权限，不给 worker 扩权。
 - B1 幂等键 `incident_id + control_generation + trigger=published`；B2 参数全部取自已加载 HealthProfile；B3（r2）代际、挂起、生命周期等失效情形作废为无操作、只留历史，仅运行性失败有界重试、耗尽后写交接原因、事故保持 `open`；B4 实验用 harness 定时 `fault restore`，产品侧无人点击；B5 工作台/F13 展示来源。
 
+### r3（第 1 步预审，用户 2026-10-12 按推荐裁决）
+
+- **S1-D1** 自动授权循环跑在 web 进程内的后台循环，用 `opspilot_web` 角色；多副本靠唯一键与 `SKIP LOCKED` 防重；#197 拆出 Controller 时整体迁走。
+- **S1-D2** 触发由扫描持久事故状态派生：`conclusion IS NOT NULL`（只有 `publish()` 写，`steps.py:356`；`new_run`/`controls.py:399` 清空）且 `lifecycle='open'`、`mode='automatic'`、无活动会话、该 `(incident_id, control_generation)` 尚无自动授权记录。worker 权限不变。
+- **S1-D3** 审计写 `opspilot_controls`：`actor='system'`，`expected_generation = resulting_generation` = 当前值，**不递增** `control_generation`；只按现有原语递增 `observation_generation`。
+- 可逆默认（lead）：自动会话的 `revision` 记固定值 `self-healing:no-change-recorded`（人工登记的 revision 是操作者填写的整改后版本，自愈没有）；会话 ID 用 `uuid5(intake_key:self-heal:<control_generation>)`。
+
+### 第 1 步公开接口（r3，lead 按可逆默认定）
+
+- 迁移（下一个线性号）：`opspilot_observation_sessions.authorization_source text`，CHECK：`purpose='incident_recovery'` 时 ∈ {`post_remediation`,`self_healing`} 且非空，`release_observation` 时为 NULL；已有行回填 `post_remediation`。新表 `opspilot_self_heal_authorizations`：主键 `(incident_id, control_generation)`，`state` ∈ {`authorized`,`skipped`,`retrying`,`handed_off`}，`reason`、`attempts`、`next_attempt_at`、`session_id`、`created_at`、`updated_at`。`RUNTIME_GRANTS`：web 读写该表与新列，worker 与 Observer 无写权限。
+- `ObservationStore.register_remediation` 写 `authorization_source='post_remediation'`；`authorize_session_in` 显式接收 `authorization_source`。
+- `Workbench.self_heal_pass(*, limit: int = 20) -> list[SelfHealOutcome]`（`opspilot/web/service.py`），`SelfHealOutcome(incident_id, control_generation, state, reason, session_id)`。每个候选一个事务：行锁（`SKIP LOCKED`）后复核条件，解析目标身份与 HealthProfile（与人工登记同规则：`identity.health_profile_id == profile_id`，subject 比对在存储层），调用同一授权原语（`actor='system'`，`authorization_source='self_healing'`，参数全部取自 HealthProfile，观察起点为事务 DB 时钟），写审计行与本表 `authorized` 行。
+- 失效或不适用（r2 B3）：生命周期非 open、`human_owned`、事故已暂停/已取消、`handoff_only`、全局或目标挂起、已有活动会话、无身份或 HealthProfile 不匹配 → 本表 `skipped` + 原因，终态，不改事故、不写审计。挂起解除后不补开（C3 §4）。
+- 运行性失败（DB 错误等）→ `retrying`，有界重试（最多 5 次、指数退避），耗尽 → `handed_off`，并写一条工作台可见的事故事件，事故保持 `open`。
+- web 启动时起后台循环，间隔 `OPSPILOT_SELF_HEAL_INTERVAL_SECONDS`（默认 30，`0` 关闭），进程退出时停止。
+- 第 1 步不含：F6/F13 投影与页面展示（第 2 步）、kind 真实运行（第 3 步）。
+
 ## 执行进展与证据
 
 - 2026-10-12 建 worktree、任务记录、SPEC 草案；Codex 合同预审完成；用户按推荐裁决 r1，F11 排在本任务之后。
@@ -45,4 +62,4 @@ SPEC「2026-10-12 user decision」段与 C3 §10「自愈确认」段，随授�
 
 ## 下一步与交接
 
-授权 PR 独立审查与机器人分诊 → 用户合并 → 第 1 步（迁移 `authorization_source` + Controller 自动授权原语）开工前按步预审。
+授权 PR #209 待用户合并；第 1 步按 r3 公开接口实施（worktree `../poa-184-step1`，分支 `feature/F6-184-self-heal-step1`）：实现 Agent 与独立测试作者（Codex）并行，PR 在 #209 合并后对 main 提交。
