@@ -1,6 +1,6 @@
 # M1 准备：OTel 埋点接 LangSmith，实验证据上平台
 
-- 状态：PR 1 已合并（#108，issue #80）；PR 2 已合并（#110，issue #81）；完成条件中「全新上下文审查凭 API 读 trace」与 `otel-demo` lab Run 未执行
+- 状态：已完成（#108 #110；独立审查凭 API 读 trace 于 2026-10-12 完成；`otel-demo` lab Run 由 #200 等覆盖）
 - 更新日期：2026-10-06
 - 依据：[ADR-0006](../adr/0006-trace-evidence-and-backlog.md)；C3 §2（第 31 行）、§11「可观测性」「保留与删除」、第 440–441 行（私有字段与凭据不出域）；F8 第 1 步
 - 工作区：PR 1 `../production-ops-agent-trace`（`chore/m1-prep-trace`，已合并）；PR 2 `../production-ops-agent-trace2`，分支 `chore/m1-prep-trace-evidence`
@@ -126,3 +126,4 @@ Astra（全新上下文）2 项与 Codex 机器人 3 项全部采纳，每项先
 2. feedback CLI 同时给 `--run-id` 与 `--summary` 时两者须一致，否则 `RUN_ID_MISMATCH` 拒绝、不写；`--record` 仍要求 `--summary`。
 `make check`：2618 passed、311 skipped、2 xfailed。
 - #116（`chore/fix-evidence-script-usage`）：`scripts/m1_live_runner.py` 冻结摘要 `counts` 同时记录原 Run 的 `run_usage` 与续跑 Run 的 `current_run_id`/`current_run_usage`（无续跑时两者同一 Run）；选「两个都记」而非统一归属，因为 `run_usage` 字段名与旧摘要兼容、续跑前后各自的预算占用都可对账，原始 ledger 不入库后无法补。`scripts/lab_review_feedback.py` 回读不一致时 `--record` 不写 `summary.json`（stderr 报 `READ_BACK_MISMATCH`，退出 1，已创建的 feedback id 仍在打印的 view 里供重试），因为摘要里的 `review_feedback` 只应是已核验记录，显式记「核验失败」会让同一数组混有两种语义。不重跑真实 Run，不改已冻结证据。
+- 收口（2026-10-12）：独立审查（Codex GPT-6 Astra，全新上下文）只凭 LangSmith API 读取 #200 真实 Run 的根 trace（`otel-demo`，6 次 llm、15 次 tool），判定 pass、无 P1/P2，见[审查记录](../evidence/m1-pg-roles-live/trace-review-2026-10-12.md)。feedback `review_trace_independent=pass`（id `01a12f59-1816-7410-a908-98031c1ca481`）回读一致，已记入该 Run 的 `summary.json`。`lab_review_feedback.py --summary` 不支持多 trace 摘要（`trace.traces[]`），因此本次用 `--run-id` 写入，再用同一个 `record_in_summary` 记录。两项完成条件至此达成。
