@@ -21,7 +21,11 @@ from opspilot.acceptance_recovery import (
     authorization_source,
     is_system_authorization,
 )
-from opspilot.knowledge.generation import build_input
+from opspilot.knowledge.generation import (
+    MAX_HUMAN_ACTIONS,
+    InputTooLarge,
+    build_input,
+)
 from opspilot.knowledge.store import Watermark
 from opspilot.web.service import (
     OBSERVING_NO_CLAIM,
@@ -301,6 +305,19 @@ def test_f13_input_leaves_the_system_authorization_out_of_human_actions():
     events = [e["event"] for e in built.facts["timeline"]]
     assert not [e for e in events if "auto_authorize" in e]
     assert "self_heal" not in built.payload_text
+
+
+def test_the_system_authorization_does_not_count_toward_the_human_action_limit():
+    incident = uuid4()
+    controls = [
+        {**_registration(incident, uuid4()), "created_at": NOW}
+        for _ in range(MAX_HUMAN_ACTIONS)
+    ]
+    controls.append({**_auto_control(incident, uuid4()), "created_at": NOW})
+    built = build_input(_raw(controls, source="automatic"), secrets=[])
+    assert len(built.facts["human_actions"]) == MAX_HUMAN_ACTIONS
+    with pytest.raises(InputTooLarge):
+        build_input(_raw(controls + controls[:1], source="automatic"), secrets=[])
 
 
 def test_f13_input_reads_a_legacy_session_as_post_remediation():
