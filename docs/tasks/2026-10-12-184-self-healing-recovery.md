@@ -50,5 +50,5 @@ r1 由用户 2026-10-12 按预审推荐裁决；r3、r4 前三项为用户裁决
 
 ## 下一步与交接
 
-授权 PR #209 待用户合并；第 1 步按 r3 公开接口实施（worktree `../poa-184-step1`，分支 `feature/F6-184-self-heal-step1`）：实现 Agent 与独立测试作者（Codex）并行，PR 在 #209 合并后对 main 提交。
+授权 PR #209 待用户合并；第 1 步按 r6 公开接口实施（worktree `../poa-184-step1`，分支 `feature/F6-184-self-heal-step1`）：实现 Agent 与独立测试作者（Codex）并行，PR 在 #209 合并后对 main 提交。
 
