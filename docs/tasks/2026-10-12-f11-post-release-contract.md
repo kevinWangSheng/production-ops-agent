@@ -67,7 +67,7 @@
 | 编号 | 问题 | 选项与代价 | 推荐 | 影响面 | 裁决 |
 |---|---|---|---|---|---|
 | A1 | 发布事件来源 | 集群 K8s/Prometheus 探测：自动但需新增 K8s 只读身份与 watcher；外部 webhook：复用 `event_token`，身份精确但依赖部署方投递；两者都要：覆盖广但需统一去重语义 | 外部部署 webhook，首版单一来源；沿用 `POST /intake/alertmanager` 的 event-token 通道模式（`opspilot/web/app.py:524-550`），集群探测另立合同 | 接收端、凭据、去重、实验 | 采纳推荐（用户 2026-10-12，r1）；未定项见任务记录「r1 未定项」 |
-| A2 | 来源唯一发布 ID | webhook 外部 release ID；K8s Deployment UID+generation；ReplicaSet UID/hash | webhook 必须提供不可变 source release ID；K8s 兼容字段保留 Deployment UID + ReplicaSet UID/hash，不把 generation 单独当版本 | `ReleaseObservation` identity、唯一索引 | 采纳推荐（用户 2026-10-12，r1） |
+| A2 | 来源唯一发布 ID | webhook 外部 release ID；K8s Deployment UID+generation；ReplicaSet UID/hash | webhook 必须提供不可变 source release ID；K8s 兼容字段保留 Deployment UID + ReplicaSet UID/hash，不把 generation 单独当版本 | `ReleaseObservation` identity、唯一索引 | 采纳推荐（用户 2026-10-12，r1）；未定项见任务记录「r1 未定项」 |
 | A3 | 不可变发布版本 | image digest；pod-template-hash；Deployment generation；完整模板规范化 hash | 记录 image digest + 完整 pod-template/config digest；hash/generation 仅作辅助证据。实测 Pod 有 image digest，但 OTel 没有 ReplicaSet 标签 | before/after revision、old/new evidence | 采纳推荐（用户 2026-10-12，r1） |
 | A4 | 发布观察参数 | 复用现有 HealthProfile session 值；单独 F11 profile；固定常量写入合同 | 复用 profile 的 cadence/health window/deadline/max samples，新增并冻结 `released_at` 与 `min_tracking_seconds`；全部以 DB clock 采纳 | session schema、真实验收时长 | 采纳推荐（用户 2026-10-12，r1）；具体取值见任务记录「r1 未定项」 |
 | A5 | before/after 与并发故障口径 | 全量服务流量；按版本/实例切片；无法切片即 unknown | Observer 只确定性判健康/退化；因果归因交给 Incident Run。无足够版本或流量证据时输出 `unknown`，不称为发布回归 | HealthProfile、证据投影、F11 第 2 步 | 采纳推荐（用户 2026-10-12，r1）；具体取值见任务记录「r1 未定项」 |
@@ -83,7 +83,7 @@
 | 编号 | 问题 | 选项与代价 | 推荐 | 影响面 | 裁决 |
 |---|---|---|---|---|---|
 | B1 | webhook payload 规范化 | 直接保存原文；规范 JSON+hash；允许任意字段 | 规范 JSON、长度上限、原文 hash、未知字段拒绝或进入不可信审计上下文，沿用 Alertmanager 的脱敏/限长纪律（`docs/tasks/2026-10-10-m1-04-alert-intake.md:43-52`） | 审计、重放 | 可逆默认：复用已验证的 token、hash、限长模式，减少新认证面。 |
-| B2 | 发布事件/采样锁顺序 | 先锁 release；先锁 target；事件接收与 session 分事务 | release identity → observation → session，采样继续沿用 incident-first 的既有顺序 | 死锁、重复任务 | 可逆默认：保持现有 `FOR UPDATE SKIP LOCKED` 与 DB clock 语义（`opspilot/observation/store.py:1495-1510`）。 |
+| B2 | 发布事件/采样锁顺序 | 先锁 release；先锁 target；事件接收与 session 分事务 | release identity → observation → session，采样继续沿用 incident-first 的既有顺序 | 死锁、重复任务 | 可逆默认：保持现有 `FOR UPDATE SKIP LOCKED` 与 DB clock 语义（`opspilot/observation/store.py:1495-1510`）。；未定项见任务记录「r1 未定项」 |
 | B3 | 缺口与暂停 | 暂停补采样；自动延长 deadline；缺口直接 anomalous | 缺口只保留观察，暂停不补跨度、不延长 deadline；到期无证据为 unknown（C3 §10） | deadline、healthy window | 可逆默认：直接复用 M1-02 的 history-only/unknown 规则。 |
 | B4 | 证据投影字段 | 只存结论；存完整 before/after 证据；由模型解释版本 | 存 source ID、target、image/config digest、Deployment/ReplicaSet identity、窗口、标签快照和 hash；模型只写叙述 | replay、报告输入 | 可逆默认：确定性字段先落库，模型只消费已提交证据。 |
 
