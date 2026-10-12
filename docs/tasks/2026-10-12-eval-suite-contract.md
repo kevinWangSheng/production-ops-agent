@@ -1,4 +1,4 @@
-# OpsPilot 场景评测套件：合同决定表（r1）
+# OpsPilot 场景评测套件：合同决定表（r2）
 
 预审者 Codex GPT-6 Astra（high，全新上下文，只读），2026-10-12。lead 补充 D13–D15，并核对了上游完整文件树。用户于 2026-10-12 按推荐裁决 D1–D15；D6 按 lead 修订后的推荐采用「先只用确定性判据」。
 
@@ -36,7 +36,7 @@ kind lab 的固定 host 端口是 18080/19090/16686（`scripts/kind_lab/kind-con
 | D7 | 成功率表与基线存放 | A 仓库冻结每 Run/aggregate `summary.json`，LangSmith project 存 trace；B 只存 LangSmith dataset/experiment；C 只存 Markdown | **A**：仓库是长期依据，LangSmith 是 trace/read-back；每轮一个 project，raw ledger 不入库 | ADR-0006、长期复核、数据保留 | 2026-10-12 按推荐 |
 | D8 | CI 档位 | A PR CI 跑 replay deterministic N=1；B CI 跑 live；C 两档都不进 CI、全手工 | **A**；live 仅手工/夜间 lab，失败不把外部环境抖动伪装成代码回归 | CI 凭据/外部依赖、F1 passes | 2026-10-12 按推荐 |
 | D9 | 与 feature `passes` | A 实现 harness 即翻 F1/F14；B 只在全部场景、重复、held-out、版本/权限/成本证据和独立审查通过后翻 | **B**；本 PR 只落合同与证据，不翻任何 `passes` | 产品验收门槛（当前 F1/F14 false） | 2026-10-12 按推荐 |
-| D10 | 费用/时长上限 | A 沿当前每 Run 100 请求、单次 model 360s、Run backstop 7200s；B 恢复脚本旧 2/4 请求和 12min；另设 suite 总额 | **A 作为技术上限；另裁 suite 总预算/墙钟**（当前上限见 `opspilot/investigation/limits.py:22-34,87-93`）。费用按余额差，摘要记录 planned/actual/unknown | AGENTS 费用合同、DeepSeek 余额、超时状态 | 2026-10-12 按推荐 |
+| D10 | 费用/时长上限 | A 沿当前每 Run 100 请求、单次 model 360s、Run backstop 7200s；B 恢复脚本旧 2/4 请求和 12min；另设 suite 总额 | **A 作为技术上限；另裁 suite 总预算/墙钟**（当前上限见 `opspilot/investigation/limits.py:22-34,87-93`）。费用按余额差，摘要记录 planned/actual/unknown | AGENTS 费用合同、DeepSeek 余额、超时状态 | r2 2026-10-12 用户裁决：不设套件级上限，只用每 Run 技术上限，每轮记录余额差 |
 | D11 | trace 与 `summary.json` | A 只留 LangSmith URL；B 每 Run 必有冻结摘要：Outcome、versions、scenario、counts/tokens/cost、trace id/link/read-back、ledger SHA，原始 ledger 外置 | **B**，沿 ADR-0006 现有 `freeze`；trace read-back 找不到如实记 `not_found` | 审查证据、不可伪造链接、保留期 | 2026-10-12 按推荐 |
 | D12 | 时间、状态、主体/权限、旧证据兼容 | A 场景固定 v4 300s；B 使用 Run 授权 frame，工具 query 窗由模型在 frame 内选；状态以当前 PG/Outcome 为准，旧摘要只读重放 | **B**（已实现的 otel-demo 语义，`opspilot/tools/otel_demo.py:15-33,43-51`）；任何 replay 不重签旧 hash、不把 stale/unknown 变 fact；权限固定 read_only | C3 §4/5/8/11、历史证据兼容、状态陈旧 | 2026-10-12 按推荐 |
 
@@ -45,7 +45,7 @@ kind lab 的固定 host 端口是 18080/19090/16686（`scripts/kind_lab/kind-con
 
 | 编号 | 问题 | 选项与代价 | 推荐 | 影响面 | 裁决 |
 |---|---|---|---|---|---|
-| D13 | 回放档里模型发出未录制的查询 | A 记为 `replay_miss`，单列，不计入成功率分母；B 计为失败；C 回退为真实调用 | **A**；每轮报告 miss 率，录制集合可随 live 轮次增补 | 成功率口径、回放可信度 | 2026-10-12 按推荐 |
+| D13 | 回放档里模型发出未录制的查询 | A 记为 `replay_miss`，单列，不计入成功率分母；B 计为失败；C 回退为真实调用 | r1 推荐 A；**r2 改为 B**：A 与 C3 第 394 行、v4 第 99 行「失败和放弃必须进入对应分母」冲突。该 Run 计为失败，另单列 miss 率；录制集合可随 live 轮次增补 | 成功率口径、回放可信度 | r2 2026-10-12 用户裁决 B |
 | D14 | 与 SPEC 中「M0 遗留项须在 candidate evaluation 之前完成」的关系 | A 本套件定为开发基线，不是候选评测，不支持任何发布或 `passes` 结论；B 先补齐 M0 遗留项 | **A**，在 SPEC 有界开放段落中写明 | SPEC 门槛 | 2026-10-12 按推荐 |
 | D15 | kind lab 与其他会话共用 | live 档开跑前须向其他会话确认 lab 空闲；同一时间只允许一个真实故障 | 照此执行 | 并发、实验环境 | 2026-10-12 按推荐 |
 
