@@ -1,0 +1,61 @@
+# F11 发布后观察与调查
+
+- 状态：合同 r1 已裁决（A1–A11）；授权 PR 待用户合并；实现排在 #184 之后，未开工
+- 更新日期：2026-10-12
+- 依据：[#207](https://github.com/kevinWangSheng/production-ops-agent/issues/207)；feature_list F11 四步；C3 §1（第二个入口）、§4「事故与发布观察分开建模」「人工控制与结果所有权」、§6、§9（发布观察页面与操作）、§10「观察主体与授权」「采样与提交」中发布观察条款、§12「实验环境」（发布实验变更镜像或配置，不重建 chart）；PRODUCT-CONSTRAINTS（不批准、不阻断、不执行发布）；ROADMAP M2
+- 工作区：`feature/F11-post-release`，`../poa-f11-post-release`
+
+## 目标与范围
+
+第二个入口：观察到一次发布（滚动更新）后，为该发布建立独立的 `ReleaseObservation`（不需要先有事故），由确定性 Observer 在固定期限内按 HealthProfile 采样，覆盖「先健康后变坏」的延迟回归。结论为 healthy / anomalous / unknown（或 cancelled）。异常时幂等创建或关联事故，并以发布前后版本、新旧实例证据启动独立调查。结果只作建议，不改变任何 CI 检查、部署门、rollout 或流量策略。
+
+C3 §14 把 F11 排在 M2；本切片是提前开放。F11 `passes` 只在四步验收全部实际通过后翻转。
+
+## SPEC 有界开放
+
+按 r1 定稿为 `SPEC.md`「2026-10-12 user decision: F11 post-release observation」段，随授权 PR 合并（用户门）。
+
+## 前提与完成条件
+
+- 前提：用户裁决决定表（发布来源、版本身份、观察参数、对比口径、拆步）；实验环境能做「改镜像或配置」的真实发布。
+- 完成条件（草案）：F11 四步在 kind 实验环境真实跑通——健康发布、带无关并发故障的发布、延迟回归；输出区分 healthy / degraded / unknown；零发布门或流量策略写入；独立审查与独立验收测试作者按 AGENTS.md 执行；四步都有证据后翻 `passes`。
+
+## 合同（r1）
+
+用户 2026-10-12 按推荐裁决 A1–A11；B1–B4 按推荐作可逆默认；用户决定先做 #184，F11 在其后（两者都改观察会话 schema，F11 rebase 到 #184 之上）。完整表见[合同决定表](2026-10-12-f11-post-release-contract.md)（Codex GPT-6 Astra，high，只读预审）。
+
+- **A1** 首版只接外部部署 webhook（event-token 通道）；集群内 rollout 探测另立合同。
+- **A2** 来源必须提供不可变 source release ID；Deployment UID + ReplicaSet UID/hash 作辅助身份。
+- **A3** 版本 = image digest + 完整 pod-template/config digest；hash/generation 仅作辅助证据。
+- **A4** 复用 HealthProfile 的频率、健康窗、deadline、次数，新增冻结 `released_at` 与 `min_tracking_seconds`；以 DB 时钟采纳。
+- **A5** Observer 只确定性判健康或退化，因果交给事故 Run；版本/流量证据不足输出 `unknown`，不称发布回归。
+- **A6** 发布异常用独立幂等键，不按时间相近自动并入告警事故；跨来源只建关联；已关闭事故走新事故规则。
+- **A7** 新增独立发布观察表；会话显式主体类型与 ID，不用空 Incident 代替。
+- **A8** 首版产品不持 K8s 凭据；Observer 仍只有 PG + Prometheus。
+- **A9** 异常后建 Incident 与事故 Run，输入快照带发布身份、前后版本、新旧实例证据；不新增 `release` Run。
+- **A10** 存储保留 `anomalous`，UI/验收投影映射为 `degraded`。
+- **A11** 零发布门写入三层证明：代码面、权限负向测试、真实发布前后核对 CI/门禁/rollout/流量策略不变；四步证据齐全才翻 `passes`。
+
+**r1 未定项**（A1/A2/A4/A5/A6/A11 与 B2 只定了方向，以下取值未裁决；在首个需要它的实施步骤合同预审中由用户裁决，裁决前该步不开工）：
+- U1（A4，PR-1 预审）：`released_at` 的权威来源（webhook 事件时间或接收时的 DB 时钟）、deadline 起算点，以及延迟或重放投递时的处理。
+- U2（A4，PR-1 预审）：`min_tracking_seconds` 的取值与校准依据。
+- U3（A5，PR-2/PR-4 中较早者的预审）：before/after 窗口、old/new 实例的确定性比较字段、判定「证据足够」的谓词，以及无关并发故障下整体服务查询与按版本/实例切片的取舍。
+- U4（A1，PR-3 预审）：发布 webhook 的认证主体绑定。现有 `event_channel` 接受 `OPSPILOT_EVENT_TOKENS` 里的任一 token（`opspilot/web/app.py:194-198`）；推荐方向是该路由只接受专用 actor（同 M1-04 E13 的 `alertmanager` 专用 actor 做法），Alertmanager token 不能提交发布。
+- U5（A11，PR-3/PR-5 预审）：零发布门写入证明如何与 harness 自身的发布变更分开。harness 改镜像或配置必然改变 rollout，简单的前后对比会因此失败；推荐方向是在 harness 变更之后取基线，并以 API 审计或 actor 证据区分产品发起的写入。
+- U6（A1/A2，PR-1/PR-3 预审）：webhook 载荷到不可变已登记目标的确定性解析。推荐方向同 M1-04（`docs/tasks/2026-10-10-m1-04-alert-intake.md:49`）：在 `OPSPILOT_TARGET_IDENTITIES` 中恰好命中一个才建 `ReleaseObservation`，缺失、多义或不符一律 fail-closed，不发查询、不建事故。
+- U7（B2，PR-2 预审）：发布观察的采样锁顺序。B2 写的「沿用 incident-first」只适用于恢复会话；发布会话没有事故行，推荐方向是 release observation → session，恢复会话保持现有顺序。
+- U8（A6，PR-4 预审）：发布异常的目标已有开放事故时，关联该事故（以事件追加发布证据、不开第二个调查、不覆盖其人工控制，C3 `technical-proposal-2026-09-07.md:374`）还是新建发布事故并只建关系。PRODUCT-CONSTRAINTS「Product workflow」允许关联新的或已有事故；A6 只排除按时间相近自动合并。用户 2026-10-12 决定留待 PR-4 预审裁决。
+
+r1 只定方向。其余实现者需要猜的语义点，按 AGENTS.md「合同预审」在各步开工前的预审中列表裁决，不在本授权 PR 内穷举。
+
+## 执行进展与证据
+
+- 2026-10-12 建 worktree、任务记录、SPEC 草案、issue；派发 Codex 合同预审。
+- 实验环境：与另一会话（production-ops-agent-00）及 #184 协调，同一时间只跑一个真实故障。
+- 迁移：线性链，#184 第 1 步合并后 main 末尾为 `0013_self_heal_authorization`；PR-1 开工时取当时 main 的下一个编号（预审决定表按旧 HEAD 写的 0012 已过时）。
+
+## 下一步与交接
+
+授权 PR 待用户合并 → #184 合并后 rebase（迁移重编号）→ 按步预审与实施。
+
+- 来自 #184 r5-2：`opspilot_observation_sessions.authorization_source` 默认值为 `post_remediation`，发布观察会话必须显式插入 NULL。
