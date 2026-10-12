@@ -424,7 +424,10 @@ def _model_call_attributes(call: ModelCall, *, seq: int) -> dict[str, AttrValue]
 def _model_reply_attributes(reply: ModelReply) -> dict[str, AttrValue]:
     """Allowlist: finish reason, response model, three token counts, the
     visible completion. ``reasoning_content``, ``raw`` and the rest of
-    ``usage`` are not copied."""
+    ``usage`` are not copied. r10 (#202, D55): the finish reason again and
+    the reasoning token count as ``opspilot.model.*``, which LangSmith shows
+    in run metadata where ``gen_ai.response.finish_reasons`` did not appear;
+    the count is left out when the provider did not report it."""
     from opspilot.investigation.loop import ModelReply
 
     if not isinstance(reply, ModelReply):
@@ -433,7 +436,14 @@ def _model_reply_attributes(reply: ModelReply) -> dict[str, AttrValue]:
         "gen_ai.response.model": reply.response_model,
         "gen_ai.response.finish_reasons": [reply.finish_reason],
         "opspilot.model.tool_call_count": len(reply.tool_calls),
+        "opspilot.model.finish_reason": reply.finish_reason,
     }
+    details = reply.usage.get("completion_tokens_details")
+    reasoning = (
+        details.get("reasoning_tokens") if isinstance(details, Mapping) else None
+    )
+    if isinstance(reasoning, int) and not isinstance(reasoning, bool):
+        attributes["opspilot.model.reasoning_tokens"] = reasoning
     for source, target in (
         ("prompt_tokens", "gen_ai.usage.input_tokens"),
         ("completion_tokens", "gen_ai.usage.output_tokens"),

@@ -288,4 +288,4 @@ def test_r8_versions() -> None:
     assert POSTMORTEM_OUTPUT_SCHEMA_VERSION == "f13-postmortem-output-v2"
     assert POSTMORTEM_INPUT_POLICY_VERSION == "f13-postmortem-input-v3"
     assert POSTMORTEM_CONTENT_SCHEMA_VERSION == "f13-postmortem-content-v1"
-    assert CONTRACT_REVISION == "r9"
+    assert CONTRACT_REVISION == "r10"

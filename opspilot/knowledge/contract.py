@@ -30,7 +30,7 @@ from datetime import datetime
 from typing import Any, Literal, NotRequired, TypedDict, get_args
 from uuid import UUID
 
-CONTRACT_REVISION = "r9"
+CONTRACT_REVISION = "r10"
 
 # --- versions recorded with every generation (D20) -------------------------
 
@@ -45,6 +45,8 @@ CONTRACT_REVISION = "r9"
 # span_groups only (traces) or metadata only, and the prompt explains both
 # projections -- prompt v4, input v3; output and content schemas unchanged.
 # Versions recorded under earlier values stay as written and are not stale.
+# r10 (#202, D53-D56): attempts carry per-request diagnostics
+# (``AttemptView.model_calls``); no version string below moves.
 POSTMORTEM_PROMPT_VERSION = "f13-postmortem-prompt-v4"
 POSTMORTEM_OUTPUT_SCHEMA_VERSION = "f13-postmortem-output-v2"
 POSTMORTEM_CONTENT_SCHEMA_VERSION = "f13-postmortem-content-v1"
@@ -381,6 +383,39 @@ class PostmortemSnapshot(TypedDict):
     versions: list[VersionView]
 
 
+# r10 (#202, D53-D56): one entry per model request of an attempt, in request
+# order. ``[]`` on an attempt means unknown: closed before 0012, still
+# running, or reaped as abandoned. No reply text, reasoning or prompt.
+ModelCallPurpose = Literal["generate", "repair"]
+ModelCallOutcome = Literal[
+    # this reply's output was used (a version or a citation-failed draft)
+    "accepted",
+    # this reply's output was refused and a repair request followed
+    "repair_requested",
+    # this reply's output was refused and no repair followed
+    "rejected",
+    # the request failed: no reply
+    "provider_error",
+]
+
+
+class ModelCallView(TypedDict):
+    seq: int
+    purpose: ModelCallPurpose
+    # the provider's string, None when there was no reply
+    finish_reason: str | None
+    # None when the provider did not report it; never inferred
+    prompt_tokens: int | None
+    completion_tokens: int | None
+    # ``usage.completion_tokens_details.reasoning_tokens``
+    reasoning_tokens: int | None
+    # completion_tokens - reasoning_tokens when both are integers
+    visible_completion_tokens: int | None
+    outcome: ModelCallOutcome
+    # ``opspilot.knowledge.generation.PROBLEM_CODES``; [] when valid
+    problems: list[str]
+
+
 class AttemptView(TypedDict):
     attempt_id: UUID
     incident_id: UUID
@@ -392,6 +427,7 @@ class AttemptView(TypedDict):
     max_model_requests: int
     started_at: datetime
     finished_at: datetime | None
+    model_calls: list[ModelCallView]
 
 
 class ScheduleView(TypedDict):
@@ -554,6 +590,9 @@ __all__ = [
     "GenerationRecord",
     "GenerationStatus",
     "IncidentPostmortemView",
+    "ModelCallOutcome",
+    "ModelCallPurpose",
+    "ModelCallView",
     "ModelSection",
     "PostmortemDocument",
     "PostmortemSnapshot",

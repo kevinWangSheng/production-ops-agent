@@ -1,9 +1,9 @@
-# M1-03 合同决定表（第 2–4 步、#181 与 #179，合同 r3–r8，当前 r8）
+# M1-03 合同决定表（第 2–4 步、#181、#179、#199 与 #202，合同 r3–r10，当前 r10）
 
 - 来源：第 2、3 步合同预审（Codex 只读，2026-10-09，18 项 + 3 处权威来源冲突；预审原文为本地工件，未入库）；lead 按 [合同预审](README.md#合同预审) 必答类别补「旧数据」一项（D27）。
 - 第 4 步来源（r6）：另一轮独立预审（Codex 只读，2026-10-09，按 README 九类作答；需用户裁决 4 项、可逆默认 8 项），见下文「第 4 步」节；上一行的 18 项只指第 2、3 步预审。
 - 裁决：用户 2026-10-09 全部按推荐采纳。
-- 修订：r1 = D1–D13（第 1 步前预审）；r2 = D8 修订、D14–D16 与 D2/D3/D4/D9 字段补全（第 1 步实施中）；r3 = 本表 D17–D27 与可逆默认 R1–R7（R7 与 D22 调用次数说明由 #173 机器人分诊补）；r4 = D28–D30（第 2 步实施中补）；r5 = D31 与 D29 修订（#173 机器人分诊发现，用户 2026-10-09 裁决）；r6 = D32–D35 与可逆默认 R8–R15（第 4 步预审，用户 2026-10-09 全部按推荐采纳）；r7 = D36–D38 与可逆默认 R16–R20（#181 争议定义预审，用户 2026-10-09 全部按推荐采纳）；r8 = D39–D46 与可逆默认 R21–R28（#179 替换可达预审，用户 2026-10-10 全部按推荐采纳）。D1–D16 见[任务记录](2026-10-05-m1-03-postmortem.md)。
+- 修订：r1 = D1–D13（第 1 步前预审）；r2 = D8 修订、D14–D16 与 D2/D3/D4/D9 字段补全（第 1 步实施中）；r3 = 本表 D17–D27 与可逆默认 R1–R7（R7 与 D22 调用次数说明由 #173 机器人分诊补）；r4 = D28–D30（第 2 步实施中补）；r5 = D31 与 D29 修订（#173 机器人分诊发现，用户 2026-10-09 裁决）；r6 = D32–D35 与可逆默认 R8–R15（第 4 步预审，用户 2026-10-09 全部按推荐采纳）；r7 = D36–D38 与可逆默认 R16–R20（#181 争议定义预审，用户 2026-10-09 全部按推荐采纳）；r8 = D39–D46 与可逆默认 R21–R28（#179 替换可达预审，用户 2026-10-10 全部按推荐采纳）；r9 = D47–D52（#199）；r10 = D53–D56（#202 逐请求诊断，Codex 预审，用户 2026-10-11 按推荐裁决）。D1–D16 见[任务记录](2026-10-05-m1-03-postmortem.md)。
 
 ## 需用户裁决（已裁决）
 
@@ -127,3 +127,14 @@
 | D50 | 上限是否提高（U5） | `MAX_VIEW_BYTES` 32 KiB、`MAX_INPUT_BYTES` 256 KiB 与其他 D21 上限不变；压缩后总输入超 256 KiB 仍为 `INPUT_TOO_LARGE` | 多个大视图叠加仍可能失败 | D21 |
 | D51 | 版本与旧数据（U6） | 输入策略 `f13-postmortem-input-v3`；提示词加一条规则说明两种 `projection`（span_groups_only 只作服务/操作聚合层级陈述、不引逐 span 细节；metadata_only 不支撑事实），提示词 `f13-postmortem-prompt-v4`；输出与内容 schema 版本不变；已有草稿与版本不因新版本陈旧 | 版本数增加 | 生成记录、trace |
 | D52 | 已卡住的任务（U6） | 在旧输入策略版本下因 `INPUT_TOO_LARGE` 用尽 R7 的生成任务，在当前版本下视为新的一轮：同一水位重新到期一次，R7 从头计数；当前版本下再次 `INPUT_TOO_LARGE` 照旧封顶、不再重开；其他错误码与其他用尽原因不受影响；不新增表、不迁移（R35），旧版本信息取自尝试记录的 `input_policy_version` | 每次输入策略升级可能重开一轮 | 候选扫描、R7 |
+
+## #202 首次请求用满输出上限：逐请求诊断（r10）
+
+来源：独立预审（Codex 只读，2026-10-11）；用户 2026-10-11 按推荐裁决：U1 先只补观测、不改上限；U2 诊断存于生成尝试行并在 trace 可见；U3–U6（length 单独错误码、更高上限重试、升到 65,536、调整 thinking 档或 R1）待真实数据后再裁决。现状：#199 真实运行首次请求 completion 16,384 = `MAX_OUTPUT_TOKENS`，随后修正，但尝试表与生成记录只有合计 token，trace 回读看不到 finish reason，无法确认是否截断。
+
+| 编号 | 问题 | 裁决 | 主要代价 | 影响面 |
+|---|---|---|---|---|
+| D53 | 诊断存哪里（U2） | 迁移 `0012_generation_call_diagnostics`：尝试表加 `model_calls jsonb NOT NULL DEFAULT '[]'`，CHECK 为数组；旧行 `[]` 即「未知」，不回填；worker 可写该列，web 只读；downgrade 删列 | 一次迁移 | 迁移、`RUNTIME_GRANTS` |
+| D54 | 记什么 | 每个尝试结束（任何结局）在同一事务写入，按请求顺序每项：`seq`、`purpose`（generate/repair）、`finish_reason`、`prompt_tokens`、`completion_tokens`、`reasoning_tokens`、`visible_completion_tokens`（两者都是整数时才算）、`outcome`（accepted/repair_requested/rejected/provider_error）、`problems`（现有解析、proposal、引用校验的确定性原因码）；缺失为 null、不推断；不存 reasoning、正文与提示词 | 问题码只到类别 | worker、尝试表 |
+| D55 | trace | 模型调用 span 加 allowlist 属性 `opspilot.model.finish_reason` 与 `opspilot.model.reasoning_tokens`（可缺省），调查侧同一函数一并带上 | 纯增量 | tracing |
+| D56 | 展示 | F13 验收投影的尝试历史与工作台事故页的生成尝试表展示逐请求 finish_reason、token 拆分、outcome、problems；旧尝试显示 unknown；两者同源（`incident_postmortem`） | 页面多一列 | 投影、页面、`AttemptView` |

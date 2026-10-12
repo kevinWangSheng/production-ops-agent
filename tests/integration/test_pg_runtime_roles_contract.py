@@ -245,7 +245,7 @@ def test_p1_downgrade_clears_local_acl_then_upgrade_restores():
     # Separate DB, no test login members active. A failed member precondition
     # must fail rather than revoke another session's cluster-global role.
     with _database() as scratch:
-        assert schema.head_revision() == "0011_runtime_roles", (
+        assert schema.head_revision() == "0012_generation_call_diagnostics", (
             "P1 migration 0011 missing"
         )
         with psycopg.connect(scratch) as conn:

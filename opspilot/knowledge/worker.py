@@ -16,6 +16,9 @@ at a time (D17: each worker runs at most one generation). One generation:
    ``KnowledgeStore.record_draft`` with the watermark read in step 2;
 5. close the attempt and release the lease; a provider failure is recorded
    as ``MODEL_REJECTED`` / ``MODEL_UNAVAILABLE`` with bounded backoff (D22).
+   The same write records each model request's finish reason, token split,
+   outcome and problem codes (``model_calls``, r10 D54) -- never reply
+   text, reasoning or prompt.
 
 The generation never claims an investigation Run, and nothing here calls a
 review primitive (``tests/test_knowledge_store_callers.py``). Logs carry
@@ -26,7 +29,7 @@ from __future__ import annotations
 
 import logging
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 from uuid import UUID, uuid4
@@ -53,6 +56,7 @@ from opspilot.knowledge.generation import (
     generation_versions,
     messages,
     parse_model_output,
+    problem_codes,
     proposal_problems,
     repair_notes,
 )
@@ -62,6 +66,9 @@ from opspilot.persistence import PersistenceError
 
 _log = logging.getLogger("opspilot.postmortem")
 
+# A provider's finish reason is a short code; anything longer is cut.
+_MAX_FINISH_REASON = 64
+
 # record_draft refusals that mean "the incident moved or another writer
 # won": nothing to retry at this watermark.
 _SUPERSEDED = {
@@ -70,6 +77,42 @@ _SUPERSEDED = {
     "OPEN_VERSION_EXISTS": "GENERATION_CONFLICT",
     "ILLEGAL_TRANSITION": "GENERATION_CONFLICT",
 }
+
+
+def _count(value: Any) -> int | None:
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+def model_call(
+    seq: int, reply: ModelReply | None, problems: list[str]
+) -> dict[str, Any]:
+    """One ``model_calls`` entry (r10, D54): what the provider reported,
+    ``None`` where it reported nothing; ``outcome`` is settled by the
+    caller. ``reply`` is ``None`` for a request that failed."""
+    usage: Mapping[str, Any] = {} if reply is None else reply.usage
+    details = usage.get("completion_tokens_details")
+    completion = _count(usage.get("completion_tokens"))
+    reasoning = (
+        _count(details.get("reasoning_tokens"))
+        if isinstance(details, Mapping)
+        else None
+    )
+    finish = None if reply is None else reply.finish_reason
+    return {
+        "seq": seq,
+        "purpose": "generate" if seq == 1 else "repair",
+        "finish_reason": finish[:_MAX_FINISH_REASON]
+        if isinstance(finish, str) and finish
+        else None,
+        "prompt_tokens": _count(usage.get("prompt_tokens")),
+        "completion_tokens": completion,
+        "reasoning_tokens": reasoning,
+        "visible_completion_tokens": None
+        if completion is None or reasoning is None
+        else completion - reasoning,
+        "outcome": "provider_error" if reply is None else "rejected",
+        "problems": problems,
+    }
 
 
 class Events(Protocol):
@@ -256,26 +299,34 @@ class PostmortemWorker:
         problems: list[str] = []
         errors: dict[str, list[str]] = {}
         repaired = False
+        calls: list[dict[str, Any]] = []
+        common["model_calls"] = calls
         try:
             for round_ in range(claim.max_model_requests):
                 if round_ and not (problems or errors):
                     break
                 notes = problems + repair_notes(errors)
                 used = self.jobs.reserve_model_request(claim)
-                reply = self.model.complete(
-                    ModelCall(
-                        messages=messages(
-                            built,
-                            repair=notes if round_ else (),
-                            previous=None if reply is None else reply.content,
-                        ),
-                        tools=None,
-                        json_mode=True,
-                        max_tokens=MAX_OUTPUT_TOKENS,
-                        timeout_seconds=MODEL_REQUEST_TIMEOUT_SECONDS,
-                        model=self.model_name,
+                if calls:
+                    calls[-1]["outcome"] = "repair_requested"
+                try:
+                    reply = self.model.complete(
+                        ModelCall(
+                            messages=messages(
+                                built,
+                                repair=notes if round_ else (),
+                                previous=None if reply is None else reply.content,
+                            ),
+                            tools=None,
+                            json_mode=True,
+                            max_tokens=MAX_OUTPUT_TOKENS,
+                            timeout_seconds=MODEL_REQUEST_TIMEOUT_SECONDS,
+                            model=self.model_name,
+                        )
                     )
-                )
+                except ModelError:
+                    calls.append(model_call(len(calls) + 1, None, []))
+                    raise
                 repaired = round_ > 0
                 for key in usage:
                     value = reply.usage.get(key)
@@ -289,6 +340,12 @@ class PostmortemWorker:
                     errors = {} if problems else citation_errors(output, built.catalog)
                 except OutputInvalid as exc:
                     output, problems, errors = None, list(exc.problems), {}
+                calls.append(
+                    model_call(len(calls) + 1, reply, problem_codes(problems, errors))
+                )
+            if output is not None and not problems and calls:
+                # used as written: a version, or a draft whose citations failed
+                calls[-1]["outcome"] = "accepted"
         except ModelError as exc:
             code = (
                 "MODEL_REJECTED"
@@ -396,6 +453,7 @@ class PostmortemWorker:
         response_model: str | None = None,
         input_sha256: str | None = None,
         input_bytes: int | None = None,
+        model_calls: list[dict[str, Any]] | None = None,
     ) -> GenerationOutcome:
         usage = usage or {}
         try:
@@ -411,6 +469,7 @@ class PostmortemWorker:
                 prompt_tokens=usage.get("prompt_tokens", 0),
                 completion_tokens=usage.get("completion_tokens", 0),
                 citations_failed=citations_failed,
+                model_calls=model_calls or [],
             )
         except PersistenceError as exc:
             if str(exc) != "LEASE_LOST":
