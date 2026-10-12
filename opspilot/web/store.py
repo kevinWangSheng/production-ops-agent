@@ -22,7 +22,7 @@ from psycopg.types.json import Jsonb
 
 from opspilot.acceptance_alert import AlertIntakeRecords, alert_intake_records
 from opspilot.investigation.store import DurableStepStore, StepCommitter
-from opspilot.observation.store import ObservationStore
+from opspilot.observation.store import ObservationStore, SelfHealGrant
 from opspilot.persistence import DurableStore, Lease, PersistenceError
 from opspilot.schema import (
     TARGET_MATCH_FIELD,
@@ -108,6 +108,17 @@ class TargetIdentity:
             value = getattr(self, name)
             if not isinstance(value, str) or not value:
                 raise ValueError(f"TARGET_IDENTITY_{name.upper()}_REQUIRED")
+
+
+def identity_fields(identity: TargetIdentity) -> dict[str, str]:
+    """The registry columns an observation authorization completes a bare
+    target row from (``ObservationStore._complete_identity``): the identity
+    plus ``workload``, without the profile binding."""
+    return {
+        field: value
+        for field, value in asdict(identity).items()
+        if field != "health_profile_id"
+    }
 
 
 class TargetRegistry(Protocol):
@@ -286,6 +297,33 @@ class IncidentStore(Protocol):
         ``identity`` completes the registry row the first time (from the
         configured registry, never the operator); returns the new control
         generation."""
+        ...
+
+    def auto_observation_candidates(
+        self, *, limit: int = 20
+    ) -> tuple[Mapping[str, Any], ...]:
+        """Incidents the automatic-observation pass decides on next
+        (``ObservationStore.auto_observation_candidates``)."""
+        ...
+
+    def authorize_automatic_observation(
+        self,
+        incident_id: UUID,
+        *,
+        control_generation: int,
+        grant: SelfHealGrant | None,
+        refusal: str | None = None,
+    ) -> Mapping[str, Any] | None:
+        """Decide one automatic-observation candidate in one transaction
+        (``ObservationStore.authorize_automatic_observation``); ``None`` when another
+        writer holds the incident or the generation is already decided."""
+        ...
+
+    def record_auto_observation_failure(
+        self, incident_id: UUID, *, control_generation: int, reason: str
+    ) -> Mapping[str, Any]:
+        """Count one operational failure of an automatic-observation decision
+        (``ObservationStore.record_auto_observation_failure``)."""
         ...
 
     def observation_sessions(self, incident_id: UUID) -> tuple[Mapping[str, Any], ...]:
@@ -663,16 +701,35 @@ class DurableIncidentStore:
             health_profile_revision=health_profile_revision,
             health_profile=health_profile,
             session_id=session_id,
-            identity=(
-                None
-                if identity is None
-                else {
-                    field: value
-                    for field, value in asdict(identity).items()
-                    if field != "health_profile_id"
-                }
-            ),
+            identity=None if identity is None else identity_fields(identity),
             payload=payload,
+        )
+
+    def auto_observation_candidates(
+        self, *, limit: int = 20
+    ) -> tuple[Mapping[str, Any], ...]:
+        return tuple(self._observation.auto_observation_candidates(limit=limit))
+
+    def authorize_automatic_observation(
+        self,
+        incident_id: UUID,
+        *,
+        control_generation: int,
+        grant: SelfHealGrant | None,
+        refusal: str | None = None,
+    ) -> Mapping[str, Any] | None:
+        return self._observation.authorize_automatic_observation(
+            incident_id,
+            control_generation=control_generation,
+            grant=grant,
+            refusal=refusal,
+        )
+
+    def record_auto_observation_failure(
+        self, incident_id: UUID, *, control_generation: int, reason: str
+    ) -> Mapping[str, Any]:
+        return self._observation.record_auto_observation_failure(
+            incident_id, control_generation=control_generation, reason=reason
         )
 
     def observation_sessions(self, incident_id: UUID) -> tuple[Mapping[str, Any], ...]:

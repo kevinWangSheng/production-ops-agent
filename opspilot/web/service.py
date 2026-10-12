@@ -72,6 +72,7 @@ from opspilot.investigation.progress import (
 )
 from opspilot.investigation.reports import ReportV2, parse_report
 from opspilot.investigation.store import StepCommitter, StepStoreError
+from opspilot.observation.store import SelfHealGrant, SelfHealState
 from opspilot.observer.health_profile import HealthProfile, canonical_content
 from opspilot.observer.replay import replay_history
 from opspilot.persistence import Lease, PersistenceError
@@ -83,8 +84,10 @@ from opspilot.web.store import (
     ControlAudit,
     IncidentStore,
     IncidentSummary,
+    TargetIdentity,
     TargetRegistry,
     WebLedger,
+    identity_fields,
 )
 
 _INTAKE_NAMESPACE = UUID("0f4c9d3e-2b7a-4a6e-9c1d-5e8f7a6b3c21")
@@ -190,6 +193,17 @@ class ControlResult:
     generation: int
     replayed: bool
     sequence: int
+
+
+@dataclass(frozen=True)
+class SelfHealOutcome:
+    """One decision of :meth:`Workbench.self_heal_pass` (#184 r3)."""
+
+    incident_id: UUID
+    control_generation: int
+    state: SelfHealState
+    reason: str | None
+    session_id: UUID | None
 
 
 @dataclass(frozen=True)
@@ -644,12 +658,7 @@ class Workbench:
             # same decision re-creates the same session or conflicts on it.
             assert self.health_profile is not None and revision is not None
             parameters = self.health_profile.session
-            identity = None
-            intake = self.ledger.get("intake", summary.intake_key)
-            if self.targets is not None and intake is not None:
-                identity = self.targets.resolve(
-                    _envelope_from_json(intake["envelope"]).request.target_id
-                )
+            identity = self._configured_identity(summary.intake_key)
             # Without a configured identity there is nothing to observe
             # (fail closed before any write, even for a registry row that an
             # earlier registration completed: the profile binding below
@@ -729,6 +738,105 @@ class Workbench:
             payload={"channel": "web", "idempotency_key": key},
         )
         return generation, run_id
+
+    def _configured_identity(self, intake_key: str) -> TargetIdentity | None:
+        """The configured identity of the intake's ``target_id`` (the
+        registry file, never an operator), or ``None`` without one; both
+        observation authorizations resolve the target through it."""
+        intake = self.ledger.get("intake", intake_key)
+        if self.targets is None or intake is None:
+            return None
+        return self.targets.resolve(
+            _envelope_from_json(intake["envelope"]).request.target_id
+        )
+
+    # -- automatic observation (#184; the r3 interface keeps "self-heal") ---
+
+    def self_heal_pass(self, *, limit: int = 20) -> list[SelfHealOutcome]:
+        """Authorize an independent recovery observation for every incident
+        whose qualified conclusion was published at its current generation
+        and on which no remediation was recorded (#184 r3-r5; C3 section 10).
+        The record makes no causal claim: it says the observation was
+        authorized automatically, not that the fault healed itself.
+
+        Controller work in the web process (S1-D1): candidates come from
+        durable state (``IncidentStore.auto_observation_candidates``) and
+        each one is decided in its own transaction by the store, which
+        re-checks it under the incident lock. The target identity and
+        HealthProfile are resolved by the same rules as "register
+        remediation" (``_configured_identity``; the profile must be the one
+        the identity names) and a bare registry row is completed from that
+        identity in the authorizing transaction, so a first observation on a
+        target needs no earlier human registration. A missing identity or
+        profile is a ``skipped`` decision, never a guess. An operational
+        failure is counted (``record_auto_observation_failure``); the one
+        that exhausts the retries hands the decision to a human with one
+        ``auto_observation_handed_off`` event on the incident's timeline,
+        the incident staying ``open``. Candidates another writer holds are
+        left to the next pass and not reported.
+        """
+        outcomes: list[SelfHealOutcome] = []
+        for candidate in self.incidents.auto_observation_candidates(limit=limit):
+            incident_id = candidate["incident_id"]
+            generation = int(candidate["control_generation"])
+            try:
+                decided = self._auto_observe_one(
+                    incident_id, generation, str(candidate["intake_key"])
+                )
+            except PersistenceError as exc:
+                # The hand-off event is written by the store in the same
+                # transaction as the ``handed_off`` decision (C9).
+                decided = self.incidents.record_auto_observation_failure(
+                    incident_id, control_generation=generation, reason=str(exc)
+                )
+            if decided is None:
+                continue
+            outcomes.append(
+                SelfHealOutcome(
+                    incident_id=incident_id,
+                    control_generation=generation,
+                    state=decided["state"],
+                    reason=decided["reason"],
+                    session_id=decided["session_id"],
+                )
+            )
+        return outcomes
+
+    def _auto_observe_one(
+        self, incident_id: UUID, generation: int, intake_key: str
+    ) -> Mapping[str, Any] | None:
+        profile = self.health_profile
+        refusal: str | None = None
+        identity = None
+        if profile is None:
+            refusal = "HEALTH_PROFILE_REQUIRED"
+        else:
+            identity = self._configured_identity(intake_key)
+            if identity is None:
+                refusal = "TARGET_IDENTITY_MISSING"
+            elif identity.health_profile_id != profile.profile_id:
+                refusal = "HEALTH_PROFILE_TARGET_MISMATCH"
+        grant = None
+        if refusal is None:
+            assert profile is not None and identity is not None
+            parameters = profile.session
+            grant = SelfHealGrant(
+                # Derived like the human action's session id, so a retry of
+                # the same decision re-creates the same session.
+                session_id=uuid5(
+                    _INTAKE_NAMESPACE, f"{intake_key}:auto-observe:{generation}"
+                ),
+                health_profile_revision=profile.revision,
+                health_profile=canonical_content(profile),
+                deadline_seconds=parameters.deadline_seconds,
+                max_samples=parameters.max_samples,
+                sample_interval_seconds=parameters.sample_interval_seconds,
+                sustained_window_seconds=parameters.sustained_window_seconds,
+                identity=identity_fields(identity),
+            )
+        return self.incidents.authorize_automatic_observation(
+            incident_id, control_generation=generation, grant=grant, refusal=refusal
+        )
 
     # -- investigation inputs -------------------------------------------
 

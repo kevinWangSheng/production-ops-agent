@@ -24,6 +24,13 @@ Configuration comes from the environment only, and only as hashes:
 * ``OPSPILOT_HEALTH_PROFILE``  path of the HealthProfile JSON the
   "register remediation" action fixes an observation session by (default:
   the shipped ``otel-demo-checkout`` profile).
+* ``OPSPILOT_SELF_HEAL_INTERVAL_SECONDS`` seconds between two automatic
+  observation passes (``Workbench.self_heal_pass``, #184): a background
+  thread authorizes the recovery observation of incidents whose conclusion
+  was published and on which no remediation was recorded, under this
+  process's ``opspilot_web`` role. Default ``0`` (off) until the F6/F13
+  projections tell an automatic authorization from a human action (#184
+  step 2, which turns it on at 30); a positive value turns it on.
 
 ``hash-password`` and ``token-digest`` print the value to put in the
 environment; the secret itself is read from stdin and never echoed. This
@@ -35,8 +42,11 @@ the schema is at the Alembic head (``make migrate`` runs as the owner).
 from __future__ import annotations
 
 import getpass
+import logging
+import math
 import os
 import sys
+import threading
 from pathlib import Path
 
 from opspilot.investigation.limits import RUN_WALL_SECONDS
@@ -63,6 +73,11 @@ from opspilot.web.store import (
     MappingTargetRegistry,
 )
 
+_log = logging.getLogger(__name__)
+#: Off in step 1 (#184 r6 C2): until step 2's projections, an automatic
+#: session would count as a human action in F6 and the F13 postmortem input.
+SELF_HEAL_INTERVAL_SECONDS = 0.0
+
 
 def _pairs(raw: str) -> dict[str, str]:
     result: dict[str, str] = {}
@@ -85,6 +100,34 @@ def _run_seconds() -> float:
     if not 0 < value <= RUN_WALL_SECONDS:
         raise SystemExit("OPSPILOT_RUN_SECONDS must be within the frozen wall")
     return value
+
+
+def _self_heal_interval() -> float:
+    raw = os.environ.get("OPSPILOT_SELF_HEAL_INTERVAL_SECONDS")
+    if raw is None:
+        return SELF_HEAL_INTERVAL_SECONDS
+    try:
+        value = float(raw)
+    except ValueError:
+        raise SystemExit(
+            "OPSPILOT_SELF_HEAL_INTERVAL_SECONDS must be a number"
+        ) from None
+    if not math.isfinite(value) or value < 0:
+        raise SystemExit("OPSPILOT_SELF_HEAL_INTERVAL_SECONDS must be 0 or positive")
+    return value
+
+
+def self_heal_loop(
+    workbench: Workbench, interval: float, stop: threading.Event
+) -> None:
+    """Run ``workbench.self_heal_pass()`` every ``interval`` seconds until
+    ``stop`` is set. A failed pass is logged and the next one runs on time:
+    every decision is durable and keyed, so nothing is lost by retrying."""
+    while not stop.wait(interval):
+        try:
+            workbench.self_heal_pass()
+        except Exception:
+            _log.exception("automatic observation pass failed")
 
 
 def _target_registry() -> MappingTargetRegistry | None:
@@ -122,6 +165,7 @@ def _serve() -> int:
     if not dsn:
         raise SystemExit("OPSPILOT_WEB_DSN is required")
     bind = os.environ.get("OPSPILOT_BIND", "127.0.0.1:8080")
+    interval = _self_heal_interval()
     # Browsers send Origin on every form POST, so an empty allow-list would
     # refuse the dev UI itself; default to the bind address over plain http.
     origins = os.environ.get("OPSPILOT_ALLOWED_ORIGINS") or f"http://{bind}"
@@ -163,9 +207,25 @@ def _serve() -> int:
         review=PostmortemReview(knowledge=knowledge, events=events),
     )
     host, _, port = bind.rpartition(":")
+    stop = threading.Event()
+    healer = None
+    if interval > 0:
+        healer = threading.Thread(
+            target=self_heal_loop,
+            args=(workbench, interval, stop),
+            name="opspilot-auto-observe",
+            daemon=True,
+        )
+        healer.start()
     try:
         uvicorn.run(app, host=host or "127.0.0.1", port=int(port), proxy_headers=False)
     finally:
+        stop.set()
+        if healer is not None:
+            # One pass is bounded by the statement and lock timeouts of its
+            # transactions; a pass still running after this is abandoned
+            # with the process (daemon thread), its transaction rolled back.
+            healer.join(timeout=10)
         knowledge.close()
         store.close()
     return 0
