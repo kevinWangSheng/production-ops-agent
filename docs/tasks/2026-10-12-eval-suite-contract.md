@@ -1,4 +1,4 @@
-# OpsPilot 场景评测套件：合同决定表（r4）
+# OpsPilot 场景评测套件：合同决定表（r5）
 
 预审者 Codex GPT-6 Astra（high，全新上下文，只读），2026-10-12。lead 补充 D13–D15，并核对了上游完整文件树。用户于 2026-10-12 按推荐裁决 D1–D15；D6 按 lead 修订后的推荐采用「先只用确定性判据」。
 
@@ -63,6 +63,12 @@ kind lab 的固定 host 端口是 18080/19090/16686（`scripts/kind_lab/kind-con
 - D6 正常场景：任何事实型因果诊断都判失败，不限于故障目录中的组件。
 - R3：已开始的 Run 若 setup 失败或结果未知，计入分母并判失败。
 
+### r5（2026-10-12，PR #210 第四轮分诊，只收紧）
+
+- D6 故障场景：每一条事实型因果诊断都须点名注入故障的服务与操作，并满足场景的证据特征；存在其他事实型因果诊断即判失败。
+- PR-D 删除 F14 对照报告，与任务记录的「范围外」和 SPEC 的开发基线定位保持一致。
+- 机器人审查循环：已到第 4 轮。此后同类的判据细化发现按类拒绝，转入 PR-A 预审处理（见 bot-review 停机规则）。
+
 ## 3. 可逆默认（R 项，Agent 自决并记录理由）
 
 - R1：目录采用 `docs/evidence/eval/<round>/runs/<run_id>/summary.json`、`aggregate.json`、`manifest.json`；理由是与现有 `freeze`/ADR-0006 对齐，便于删除整轮而不改历史。
@@ -78,7 +84,7 @@ kind lab 的固定 host 端口是 18080/19090/16686（`scripts/kind_lab/kind-con
 1. **PR-A：F1 外部评测合同与 schema**（D1、D5–D9、D11–D12）。新上下文验收作者只按 `IncidentScenario -> IncidentOutcome` 写确定性 fixture/aggregate 合同测试；不得翻 `passes`。验收：收集、分母、状态/权限/evidence bind、失败分类、旧摘要只读兼容。
 2. **PR-B：replay 录制/回放与基线表**（D2、R1–R4）。验收：同一 manifest 在无网络 fixture 下重放 N 次；结构重放零模型；模型 replay 的每次调用、summary、LangSmith read-back 和余额差均可对账；独立审查确认 expected answer 未进入模型输入。
 3. **PR-C：live kind/OTel 场景驱动**（D3–D4、D10）。验收：单场景注入→独立观察→调查→restore 串行跑通；端口/PG 冲突 fail-closed；至少一次真实 Run 有 LangSmith trace + 冻结 `summary.json`；不声称生产证明。
-4. **PR-D：CI/手工入口与 F14 对照报告**（D7–D9）。验收：PR CI 只跑 replay smoke；手工 live 明确 `--mode live`、round、N、预算；与固定 upstream commit 在 matched scenario/权限/模型配置下分别列结果，不把不同工具集的 HolmesGPT 分数合并成 OpsPilot 分数。
+4. **PR-D：CI 结构重放入口与第一轮基线入库**（D7–D9）。验收：PR CI 只跑不调用模型的结构重放（离线、无凭据）；手工 live 须明确 `--mode live`、round 与 N；基线表入库。（r5：删除原 F14 对照报告。F14 matched baseline 不在本有界开放范围内，见任务记录与 SPEC。）
 
 每个 PR 一个合同条款、目标 `main`、不做 stacked PR；完成前由未参与实现的 Agent 独立审查并按影响项复验（`AGENTS.md:48-60`）。
 
