@@ -34,7 +34,7 @@ import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Any, Literal, cast
+from typing import Any, Final, Literal, cast
 from uuid import UUID, uuid4
 
 from psycopg.types.json import Jsonb
@@ -55,6 +55,7 @@ from opspilot.domain.observation import (
 from opspilot.domain.subjects import INCIDENT_LIFECYCLE, SubjectRef
 from opspilot.observation.revocation import end_session, revoke_authorized_sessions
 from opspilot.persistence.base import Connection, PersistenceError, _StoreBase
+from opspilot.persistence.events import append_once_in
 
 # How long one claimed sampling job stays leased to its owner. A Prometheus
 # query is bounded by the data-source timeout (C3 section 13: 20 s); the lease
@@ -146,6 +147,43 @@ _STALE_BINDINGS = frozenset(
     }
 )
 ReadingStatus = Literal["ok", "no_data", "stale", "timeout", "failed"]
+#: Who granted an incident recovery session (migration 0013, #184 A4/r4): the
+#: human "register remediation" action, or the automatic observation the
+#: Controller authorizes after a qualified conclusion was published. The
+#: record makes no causal claim (no remediation recorded, not "it healed").
+#: The product always names the source (A10); the column default is only the
+#: legacy reading of rows written before 0013.
+AuthorizationSource = Literal["post_remediation", "automatic"]
+POST_REMEDIATION: Final[AuthorizationSource] = "post_remediation"
+AUTOMATIC: Final[AuthorizationSource] = "automatic"
+AUTHORIZATION_SOURCES: tuple[AuthorizationSource, ...] = (POST_REMEDIATION, AUTOMATIC)
+SelfHealState = Literal["authorized", "skipped", "retrying", "handed_off"]
+#: The automatic observation's audit identity (A5): ``actor`` on the session
+#: and the ``opspilot_controls`` row; the database user stays the web role.
+AUTO_OBSERVATION_ACTOR = "system"
+AUTO_OBSERVATION_ACTION = "auto_authorize_observation"
+#: Operational failures one ``(incident, control generation)`` may take; the
+#: last one hands the decision to a human and the incident stays ``open``.
+AUTO_OBSERVATION_MAX_ATTEMPTS = 5
+#: The timeline event (``opspilot_subject_events``) a hand-off writes in the
+#: same transaction as the ``handed_off`` decision (C9).
+AUTO_OBSERVATION_HANDED_OFF = "auto_observation_handed_off"
+#: First retry delay; each further failure doubles it (30, 60, 120, 240 s).
+AUTO_OBSERVATION_RETRY_BASE_SECONDS = 30
+# Refusals of the authorization primitive that mean "not applicable any
+# more" rather than "try again": the decision is skipped for good (#184 B3).
+_AUTO_OBSERVATION_NOT_APPLICABLE = frozenset(
+    {
+        "ILLEGAL_TRANSITION",
+        "INVALID_INPUT",
+        "UNKNOWN_TARGET",
+        "TARGET_IDENTITY_MISSING",
+        "TARGET_MISMATCH",
+        "HEALTH_PROFILE_TARGET_MISMATCH",
+        "HEALTH_PROFILE_REVISION_MISMATCH",
+        "OBSERVATION_ALREADY_AUTHORIZED",
+    }
+)
 
 
 def profile_revision(profile_id: str, content: str) -> str:
@@ -1010,6 +1048,24 @@ def fold_history(
     )
 
 
+@dataclass(frozen=True)
+class SelfHealGrant:
+    """What an automatic observation is authorized with (#184 B2): every
+    parameter from the loaded HealthProfile, the deterministic session id and
+    the configured identity of the incident's target. The deadline is a
+    duration: the window starts at the authorizing transaction's database
+    clock (A6)."""
+
+    session_id: UUID
+    health_profile_revision: str
+    health_profile: str
+    deadline_seconds: int
+    max_samples: int
+    sample_interval_seconds: int
+    sustained_window_seconds: int
+    identity: Mapping[str, str] | None
+
+
 class ObservationStore(_StoreBase):
     """Observation sessions, sampling jobs and samples on PostgreSQL."""
 
@@ -1029,6 +1085,7 @@ class ObservationStore(_StoreBase):
         health_profile: str | None = None,
         session_id: UUID | None = None,
         first_sample_due_at: datetime | None = None,
+        authorization_source: AuthorizationSource = "post_remediation",
     ) -> UUID:
         """Create one authorized session and its first sampling job.
 
@@ -1060,6 +1117,7 @@ class ObservationStore(_StoreBase):
                 health_profile=health_profile,
                 session_id=session_id,
                 first_sample_due_at=first_sample_due_at,
+                authorization_source=authorization_source,
             )
 
     def authorize_session_in(
@@ -1067,7 +1125,7 @@ class ObservationStore(_StoreBase):
         conn: Connection,
         incident_id: UUID,
         *,
-        revision: str,
+        revision: str | None,
         actor: str,
         deadline_at: datetime,
         max_samples: int,
@@ -1075,6 +1133,7 @@ class ObservationStore(_StoreBase):
         sustained_window_seconds: int,
         health_profile_revision: str | None = None,
         health_profile: str | None = None,
+        authorization_source: AuthorizationSource,
         session_id: UUID | None = None,
         first_sample_due_at: datetime | None = None,
     ) -> UUID:
@@ -1091,11 +1150,20 @@ class ObservationStore(_StoreBase):
         a difference is ``TARGET_MISMATCH`` and nothing is written. A changed
         ``revision`` is not a difference (a redeployed target can be observed
         again).
+
+        ``authorization_source`` is stored on the session (migration 0013):
+        ``POST_REMEDIATION`` for the human action, ``AUTOMATIC`` for the
+        automatic observation; the caller always names it. Only an automatic
+        observation may pass ``revision=None``: no remediation was recorded,
+        so the target revision is unknown (#184 C4), never a made-up string.
         """
         if (
             not isinstance(incident_id, UUID)
-            or not isinstance(revision, str)
-            or not revision
+            or authorization_source not in AUTHORIZATION_SOURCES
+            or (revision is None and authorization_source != AUTOMATIC)
+            or (
+                revision is not None and (not isinstance(revision, str) or not revision)
+            )
             or not isinstance(actor, str)
             or not actor
             or not isinstance(deadline_at, datetime)
@@ -1197,7 +1265,7 @@ class ObservationStore(_StoreBase):
         identity = session_id or uuid4()
         due = first_sample_due_at or now + timedelta(seconds=sample_interval_seconds)
         conn.execute(
-            "INSERT INTO opspilot_observation_sessions(session_id,incident_id,purpose,target_id,target,subject_control_generation,observation_generation,authorized_by,health_profile_revision,authorized_global_generation,authorized_target_generation,deadline_at,max_samples,sample_interval_seconds,sustained_window_seconds,issued_sequence,active_sample_job_id,active_sample_sequence,active_sample_due_at) VALUES(%s,%s,'incident_recovery',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,1,%s,1,%s)",
+            "INSERT INTO opspilot_observation_sessions(session_id,incident_id,purpose,target_id,target,subject_control_generation,observation_generation,authorized_by,authorization_source,health_profile_revision,authorized_global_generation,authorized_target_generation,deadline_at,max_samples,sample_interval_seconds,sustained_window_seconds,issued_sequence,active_sample_job_id,active_sample_sequence,active_sample_due_at) VALUES(%s,%s,'incident_recovery',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,1,%s,1,%s)",
             (
                 identity,
                 incident_id,
@@ -1206,6 +1274,7 @@ class ObservationStore(_StoreBase):
                 int(incident["control_generation"]),
                 generation,
                 actor,
+                authorization_source,
                 health_profile_revision,
                 int(scope["global_generation"]),
                 int(scope["target_generation"]),
@@ -1334,6 +1403,7 @@ class ObservationStore(_StoreBase):
                 incident_id,
                 revision=revision,
                 actor=actor,
+                authorization_source=POST_REMEDIATION,
                 deadline_at=deadline_at,
                 max_samples=max_samples,
                 sample_interval_seconds=sample_interval_seconds,
@@ -1354,6 +1424,360 @@ class ObservationStore(_StoreBase):
                 (uuid4(), incident_id, expected_generation, nxt, actor, Jsonb(audit)),
             )
             return nxt
+
+    # --- automatic observation (Controller side, #184 step 1; table and
+    # method names keep the r3 "self-heal" interface)
+
+    def auto_observation_candidates(self, *, limit: int = 20) -> list[dict[str, Any]]:
+        """Incidents the automatic-observation pass should decide on, oldest first.
+
+        Derived from durable state alone (C1): a conclusion is published
+        (only ``publish()`` writes it; a new Run or renewal clears it) at the
+        current generation -- the current Run is ``completed`` under the
+        incident's ``control_generation`` (a human registration steps the
+        generation without publishing, so its generation never qualifies) --
+        the lifecycle is ``open`` or ``observing_recovery`` and the current
+        ``(incident, control generation)`` has no decision yet; plus every
+        ``retrying`` decision that is due, whatever the incident looks like
+        now, and every ``retrying`` decision of a generation that is no
+        longer current, due or not (C9: the re-check retires it as
+        ``CONTROL_GENERATION_CHANGED`` rather than leave it ``retrying`` for
+        good). Nothing else filters here: human ownership, control state,
+        suspension, an active session or a lifecycle other than ``open`` are
+        the locked re-check's (C8), which records them ``skipped``. Rows:
+        ``incident_id``, ``intake_key``, ``control_generation``.
+        """
+        if type(limit) is not int or limit <= 0:
+            raise PersistenceError("INVALID_INPUT")
+        with self.transaction(snapshot=True) as conn:
+            return conn.execute(
+                "SELECT i.incident_id,i.intake_key,COALESCE(a.control_generation,i.control_generation) AS control_generation FROM opspilot_incidents i LEFT JOIN opspilot_self_heal_authorizations a ON a.incident_id=i.incident_id AND a.state='retrying' AND (a.next_attempt_at<=clock_timestamp() OR a.control_generation<>i.control_generation) WHERE a.incident_id IS NOT NULL OR (i.conclusion IS NOT NULL AND i.lifecycle IN ('open','observing_recovery') AND EXISTS (SELECT 1 FROM opspilot_runs r WHERE r.run_id=i.current_run_id AND r.incident_id=i.incident_id AND r.state='completed' AND r.control_generation=i.control_generation) AND NOT EXISTS (SELECT 1 FROM opspilot_self_heal_authorizations d WHERE d.incident_id=i.incident_id AND d.control_generation=i.control_generation)) ORDER BY i.created_at,i.incident_id,control_generation LIMIT %s",
+                (limit,),
+            ).fetchall()
+
+    def authorize_automatic_observation(
+        self,
+        incident_id: UUID,
+        *,
+        control_generation: int,
+        grant: SelfHealGrant | None,
+        refusal: str | None = None,
+    ) -> dict[str, Any] | None:
+        """Decide one candidate in one transaction (#184 r3).
+
+        Same lock order as :meth:`register_remediation` (scope ``FOR SHARE``,
+        then the incident row), the incident row taken ``SKIP LOCKED``: a
+        row a human decision or another web replica holds is left to the
+        next pass (``None``), as is a decision already recorded for this
+        generation (a ``retrying`` one only once it is due, or at once when
+        its generation is no longer current). Under the lock
+        the trigger is re-checked; a stale or not applicable candidate --
+        generation moved, lifecycle not ``open``, ``human_owned``, paused or
+        cancelled, handed off at intake, global or target scope suspended, a
+        session already authorized, ``refusal`` from the caller (no identity
+        or profile for the target), or a refusal of the authorization
+        primitive in ``_AUTO_OBSERVATION_NOT_APPLICABLE`` -- is recorded ``skipped``
+        with its reason and nothing else changes (B3: terminal; a lifted
+        suspension does not reopen it, C3 section 4). Otherwise the session
+        is authorized through :meth:`authorize_session_in` (actor
+        ``system``, source ``AUTOMATIC``, target revision ``None``
+        (unknown, C4), window from this transaction's database clock), the ``opspilot_controls`` audit row is written with
+        ``expected_generation = resulting_generation`` (S1-D3: the control
+        generation does not move, only the observation generation does) and
+        the decision is recorded ``authorized``.
+
+        Any other failure propagates and nothing is written; the caller
+        records it with :meth:`record_auto_observation_failure`. Returns the
+        decision row (``state``, ``reason``, ``session_id``).
+        """
+        if (
+            not isinstance(incident_id, UUID)
+            or type(control_generation) is not int
+            or control_generation < 0
+            or (grant is None and refusal is None)
+            or (refusal is not None and (not isinstance(refusal, str) or not refusal))
+        ):
+            raise PersistenceError("INVALID_INPUT")
+        with self.transaction() as conn:
+            scope = self._lock_scope(conn, incident_id)
+            incident = self._lock_auto_incident(conn, incident_id, skip_locked=True)
+            if incident is None:
+                return None
+            decided = conn.execute(
+                "SELECT state,next_attempt_at<=clock_timestamp() AS due FROM opspilot_self_heal_authorizations WHERE incident_id=%s AND control_generation=%s FOR UPDATE",
+                (incident_id, control_generation),
+            ).fetchone()
+            # A retry waits for its time unless its generation is gone: that
+            # one is retired now, whatever its next attempt says.
+            current = int(incident["control_generation"]) == control_generation
+            if decided is not None and (
+                decided["state"] != "retrying" or (current and not decided["due"])
+            ):
+                return None
+            reason = self._auto_observation_refusal(
+                conn, incident, scope, control_generation
+            )
+            if reason is None:
+                reason = refusal
+            if reason is None:
+                assert grant is not None
+                try:
+                    # A savepoint: a refusal of the primitive is a decision
+                    # to record in this transaction, not a failure of it.
+                    with conn.transaction():
+                        session = self._authorize_automatic_in(
+                            conn, incident, control_generation, grant
+                        )
+                except PersistenceError as exc:
+                    if str(exc) not in _AUTO_OBSERVATION_NOT_APPLICABLE:
+                        raise
+                    reason = str(exc)
+                else:
+                    return self._record_auto_observation(
+                        conn,
+                        incident_id,
+                        control_generation,
+                        state="authorized",
+                        reason=None,
+                        session_id=session,
+                    )
+            return self._record_auto_observation(
+                conn,
+                incident_id,
+                control_generation,
+                state="skipped",
+                reason=reason,
+                session_id=None,
+            )
+
+    def record_auto_observation_failure(
+        self, incident_id: UUID, *, control_generation: int, reason: str
+    ) -> dict[str, Any]:
+        """Count one operational failure of an automatic-observation decision (B3).
+
+        ``retrying`` with the next attempt ``AUTO_OBSERVATION_RETRY_BASE_SECONDS *
+        2**(attempts - 1)`` after the database clock, until the
+        ``AUTO_OBSERVATION_MAX_ATTEMPTS``-th failure turns it ``handed_off`` (no
+        further attempt; the incident is not touched and stays ``open``) and
+        appends the workbench-visible ``AUTO_OBSERVATION_HANDED_OFF`` event in
+        the same transaction, once per generation: the two commit or roll
+        back together, so a hand-off is never recorded without its event. A
+        decision that is already settled is returned unchanged.
+
+        The failure is recorded after the authorizing transaction rolled
+        back, so a human decision may have committed in between. Under the
+        same lock order as the authorization (scope, then incident) the
+        generation is checked again: one that moved on, or no longer has its
+        published Run, settles the decision ``skipped`` instead
+        (``CONTROL_GENERATION_CHANGED`` / ``NOT_PUBLISHED_AT_GENERATION``) --
+        no attempt counted, no hand-off, no event (C9, C10). The incident
+        lock is waited for, not skipped: the holder is one short human or
+        Observer transaction and the ``lock_timeout`` bounds the wait; a
+        timeout raises and the decision is left for the next pass.
+        """
+        if (
+            not isinstance(incident_id, UUID)
+            or type(control_generation) is not int
+            or control_generation < 0
+            or not isinstance(reason, str)
+            or not reason
+        ):
+            raise PersistenceError("INVALID_INPUT")
+        with self.transaction() as conn:
+            self._lock_scope(conn, incident_id)
+            incident = self._lock_auto_incident(conn, incident_id, skip_locked=False)
+            if incident is None:
+                raise PersistenceError("UNKNOWN_IDENTITY")
+            settled = conn.execute(
+                "SELECT incident_id,control_generation,state,reason,attempts,next_attempt_at,session_id FROM opspilot_self_heal_authorizations WHERE incident_id=%s AND control_generation=%s FOR UPDATE",
+                (incident_id, control_generation),
+            ).fetchone()
+            if settled is not None and settled["state"] != "retrying":
+                return settled
+            stale = None
+            if int(incident["control_generation"]) != control_generation:
+                stale = "CONTROL_GENERATION_CHANGED"
+            elif not incident["concluded"] or not incident["published_here"]:
+                stale = "NOT_PUBLISHED_AT_GENERATION"
+            if stale is not None:
+                return self._record_auto_observation(
+                    conn,
+                    incident_id,
+                    control_generation,
+                    state="skipped",
+                    reason=stale,
+                    session_id=None,
+                )
+            conn.execute(
+                "INSERT INTO opspilot_self_heal_authorizations(incident_id,control_generation,state,reason,attempts,next_attempt_at) VALUES(%s,%s,'retrying',%s,0,clock_timestamp()) ON CONFLICT (incident_id,control_generation) DO NOTHING",
+                (incident_id, control_generation, reason),
+            )
+            row = self._require_row(
+                conn.execute(
+                    "SELECT incident_id,control_generation,state,reason,attempts,next_attempt_at,session_id FROM opspilot_self_heal_authorizations WHERE incident_id=%s AND control_generation=%s FOR UPDATE",
+                    (incident_id, control_generation),
+                )
+            )
+            if row["state"] != "retrying":
+                return row
+            attempts = int(row["attempts"]) + 1
+            exhausted = attempts >= AUTO_OBSERVATION_MAX_ATTEMPTS
+            decided = self._require_row(
+                conn.execute(
+                    "UPDATE opspilot_self_heal_authorizations SET state=%s,reason=%s,attempts=%s,next_attempt_at=CASE WHEN %s THEN NULL ELSE clock_timestamp() + make_interval(secs => %s) END,updated_at=clock_timestamp() WHERE incident_id=%s AND control_generation=%s RETURNING incident_id,control_generation,state,reason,attempts,next_attempt_at,session_id",
+                    (
+                        "handed_off" if exhausted else "retrying",
+                        reason,
+                        attempts,
+                        exhausted,
+                        AUTO_OBSERVATION_RETRY_BASE_SECONDS * 2 ** (attempts - 1),
+                        incident_id,
+                        control_generation,
+                    ),
+                )
+            )
+            if exhausted:
+                append_once_in(
+                    conn,
+                    incident_id,
+                    AUTO_OBSERVATION_HANDED_OFF,
+                    {
+                        "control_generation": control_generation,
+                        "reason": reason,
+                        "attempts": attempts,
+                    },
+                    key={"control_generation": control_generation},
+                )
+            return decided
+
+    def auto_observation_decision(
+        self, incident_id: UUID, control_generation: int
+    ) -> dict[str, Any] | None:
+        """The recorded automatic-observation decision of one generation, if any."""
+        with self.transaction(snapshot=True) as conn:
+            return conn.execute(
+                "SELECT incident_id,control_generation,state,reason,attempts,next_attempt_at,session_id,created_at,updated_at FROM opspilot_self_heal_authorizations WHERE incident_id=%s AND control_generation=%s",
+                (incident_id, control_generation),
+            ).fetchone()
+
+    @staticmethod
+    def _lock_auto_incident(
+        conn: Connection, incident_id: UUID, *, skip_locked: bool
+    ) -> dict[str, Any] | None:
+        """The incident row an automatic-observation decision is taken under,
+        locked, with whether its current Run published at its generation."""
+        return conn.execute(
+            "SELECT i.incident_id,i.lifecycle,i.mode,i.state,i.control_generation,i.observation_generation,i.target_id,i.conclusion IS NOT NULL AS concluded,r.state='completed' AND r.control_generation=i.control_generation AS published_here FROM opspilot_incidents i LEFT JOIN opspilot_runs r ON r.run_id=i.current_run_id AND r.incident_id=i.incident_id WHERE i.incident_id=%s FOR UPDATE OF i"
+            + (" SKIP LOCKED" if skip_locked else ""),
+            (incident_id,),
+        ).fetchone()
+
+    @staticmethod
+    def _auto_observation_refusal(
+        conn: Connection,
+        incident: Mapping[str, Any],
+        scope: Mapping[str, Any],
+        control_generation: int,
+    ) -> str | None:
+        """Why the locked incident no longer takes an automatic observation
+        for ``control_generation`` (the S1-D2 trigger re-checked, plus the
+        human-control and scope gates of r3), or ``None``."""
+        if int(incident["control_generation"]) != control_generation:
+            return "CONTROL_GENERATION_CHANGED"
+        if not incident["concluded"] or not incident["published_here"]:
+            return "NOT_PUBLISHED_AT_GENERATION"
+        if incident["mode"] != "automatic":
+            return "HUMAN_OWNED"
+        # Before the control mirror: a suspension also pauses the incident,
+        # and the suspension is the cause worth recording.
+        if scope["global_suspended"] or scope["target_suspended"]:
+            return "SCOPE_SUSPENDED"
+        if incident["state"] == "paused":
+            return "INCIDENT_PAUSED"
+        if incident["state"] == "cancelled":
+            return "INCIDENT_CANCELLED"
+        if conn.execute(
+            "SELECT 1 FROM opspilot_alert_identities WHERE incident_id=%s AND handoff_reason IS NOT NULL",
+            (incident["incident_id"],),
+        ).fetchone():
+            return "HANDOFF_ONLY"
+        if conn.execute(
+            "SELECT 1 FROM opspilot_observation_sessions WHERE incident_id=%s AND state='authorized'",
+            (incident["incident_id"],),
+        ).fetchone():
+            return "OBSERVATION_ALREADY_AUTHORIZED"
+        if incident["lifecycle"] != "open":
+            return "LIFECYCLE_NOT_OPEN"
+        if incident["target_id"] is None:
+            return "UNKNOWN_TARGET"
+        return None
+
+    def _authorize_automatic_in(
+        self,
+        conn: Connection,
+        incident: Mapping[str, Any],
+        control_generation: int,
+        grant: SelfHealGrant,
+    ) -> UUID:
+        incident_id = incident["incident_id"]
+        # The registry row is completed from the configured identity exactly
+        # as the human action does on its first registration.
+        self._complete_identity(conn, incident["target_id"], grant.identity)
+        deadline_at = self._db_now(conn) + timedelta(seconds=grant.deadline_seconds)
+        session = self.authorize_session_in(
+            conn,
+            incident_id,
+            revision=None,
+            actor=AUTO_OBSERVATION_ACTOR,
+            authorization_source=AUTOMATIC,
+            deadline_at=deadline_at,
+            max_samples=grant.max_samples,
+            sample_interval_seconds=grant.sample_interval_seconds,
+            sustained_window_seconds=grant.sustained_window_seconds,
+            health_profile_revision=grant.health_profile_revision,
+            health_profile=grant.health_profile,
+            session_id=grant.session_id,
+        )
+        conn.execute(
+            "INSERT INTO opspilot_controls(audit_id,incident_id,action,expected_generation,resulting_generation,actor,payload) VALUES(%s,%s,%s,%s,%s,%s,%s)",
+            (
+                uuid4(),
+                incident_id,
+                AUTO_OBSERVATION_ACTION,
+                control_generation,
+                control_generation,
+                AUTO_OBSERVATION_ACTOR,
+                Jsonb(
+                    {
+                        "authorization_source": AUTOMATIC,
+                        "trigger": "published",
+                        "revision": None,
+                        "session_id": str(session),
+                        "health_profile_revision": grant.health_profile_revision,
+                        "deadline_at": deadline_at.isoformat(),
+                    }
+                ),
+            ),
+        )
+        return session
+
+    @staticmethod
+    def _record_auto_observation(
+        conn: Connection,
+        incident_id: UUID,
+        control_generation: int,
+        *,
+        state: Literal["authorized", "skipped"],
+        reason: str | None,
+        session_id: UUID | None,
+    ) -> dict[str, Any]:
+        # A due ``retrying`` row is settled in place; its attempts are kept.
+        return _StoreBase._require_row(
+            conn.execute(
+                "INSERT INTO opspilot_self_heal_authorizations(incident_id,control_generation,state,reason,session_id) VALUES(%s,%s,%s,%s,%s) ON CONFLICT (incident_id,control_generation) DO UPDATE SET state=EXCLUDED.state,reason=EXCLUDED.reason,session_id=EXCLUDED.session_id,next_attempt_at=NULL,updated_at=clock_timestamp() RETURNING incident_id,control_generation,state,reason,attempts,next_attempt_at,session_id",
+                (incident_id, control_generation, state, reason, session_id),
+            )
+        )
 
     def revoke_sessions(self, incident_id: UUID) -> list[UUID]:
         with self.transaction() as conn:
@@ -1441,7 +1865,7 @@ class ObservationStore(_StoreBase):
         )
 
     def _registered_target(
-        self, conn: Connection, target_id: UUID, revision: str
+        self, conn: Connection, target_id: UUID, revision: str | None
     ) -> Target:
         """The immutable identity the registry holds for ``target_id`` plus
         the revision snapshot of this authorization; a row without the

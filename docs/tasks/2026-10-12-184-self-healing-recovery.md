@@ -32,7 +32,7 @@ r1 由用户 2026-10-12 按预审推荐裁决；r3、r4 前三项为用户裁决
 
 失败与竞态
 - C8 候选在行锁下复核，不满足 → 记录 `skipped` + 原因（终态，不改事故、不写审计）：`mode='human_owned'`、事故已暂停/取消、已有活动会话或 `lifecycle` 非 `open`、全局或目标挂起、无身份或 profile 不匹配、复核时已不再是 C1 候选（`NOT_PUBLISHED_AT_GENERATION`）。挂起解除后不补开。
-- C9 运行性失败 → `retrying`，最多 5 次、指数退避（扫描选取到期的 `retrying` 行），耗尽 → `handed_off` 并写一条工作台可见的事故事件，事故保持 `open`。
+- C9 运行性失败 → `retrying`，最多 5 次、指数退避 30×2^(n−1) 秒（扫描选取到期的 `retrying` 行）；第 5 次 → `handed_off`，与一条工作台可见的 `auto_observation_handed_off` 事故事件在同一事务提交，事故保持 `open`。记录失败时按 scope → incident → 决定行加锁并复核代际（等锁，受 4 s `lock_timeout` 约束，超时留给下一轮）：代际已变 → `skipped`/`CONTROL_GENERATION_CHANGED`，不计次、不交接、不写事件。已过期代际的 `retrying` 行（无论是否到期）在下一轮同样退役为 `skipped`。（第 1 步实施中补充：PR #209 机器人与独立代码审查 P1。）
 - C10 人工优先：接管（停止自动观察）、登记处置推进代际并撤销自动会话，先提交者胜；全局/目标挂起沿用 M1-02 现有行为，自动与人工会话一致：挂起期间不领取采样（`claim_due_samples` 排除挂起 scope，`store.py:1509`），挂起后的采样结果作废，解除后会话因 scope 代际不符失效（`_scope_blocks`），不在挂起事务中逐个撤销（挂起路径本身不属本切片）。暂停与取消在结论发布后不可用，保持现状（`controls.py:306-309`）。
 - C11 无 HealthProfile 的目标保持现状，只能人工处理。
 
@@ -44,11 +44,13 @@ r1 由用户 2026-10-12 按预审推荐裁决；r3、r4 前三项为用户裁决
 
 ## 执行进展与证据
 
-- 2026-10-12 预审 → 用户裁决 r1；第 1 步预审 → r3；PR #209 机器人与独立复审 → r4–r6（用户裁决 PRODUCT-CONSTRAINTS 修订、中性来源 `automatic`、收窄人工优先）。F11 排在本任务之后。
+- 2026-10-12 预审 → 用户裁决 r1；第 1 步预审 → r3；PR #209 机器人与独立复审 → r4–r6（用户裁决 PRODUCT-CONSTRAINTS 修订、中性来源 `automatic`、收窄人工优先）；#209 合并为 `1752639`。F11 排在本任务之后。
+- 第 1 步（`feature/F6-184-self-heal-step1`）：迁移 `0013_self_heal_authorization`；`Workbench.self_heal_pass` 与 web 进程后台循环（默认关闭）；人工与自动路径共用身份补齐与授权原语；`Target.revision` 可空（仅 `automatic` 来源可为 null）；事件写入步骤移到 `opspilot/persistence/events.py` 以便与交接同事务。
+- 验证（PG 17.9 本机临时实例，测试作者用 55472、实现用 55471）：独立测试作者（Codex GPT-6 Astra high，仅按合同与公开接口编写）`test_self_heal_authorization_postgres.py` 27 passed（单独运行与完整集成套件内均通过）；实现者测试 24 + 10 passed；完整集成 714 passed、54 skipped；非集成 3994 passed、2 xfailed；ruff、mypy 通过。独立代码审查（Codex GPT-6 Astra high，全新上下文）发现 1 个 P1（失败记录未复核代际），修复后同一审查者复验关闭，含真实 PG 锁超时复现（约 4.00 s 返回 TIMEOUT、不写决定）。
+- 独立测试修正记录：作者初版基于 r3，更新到 r6；两处失败为测试夹具违反 `job_check`、一处断言代际写错（`generation - 1` → `generation`，语义更严）、一处共享库候选顺序依赖（显式大 `limit`），均由作者本人修改；实现者未改该文件。
+- 未执行：kind 真实运行（第 3 步）；F6/F13 投影与页面来源展示、循环默认开启（第 2 步）。
 - 实验环境：与另一会话（production-ops-agent-00）协调，同一时间只跑一个真实故障；真实 Run 前先确认。
-- 迁移：线性链，当前 main 末尾 0012；对方先合并则 rebase 并重编号。
 
 ## 下一步与交接
 
-授权 PR #209 待用户合并；第 1 步按 r6 公开接口实施（worktree `../poa-184-step1`，分支 `feature/F6-184-self-heal-step1`）：实现 Agent 与独立测试作者（Codex）并行，PR 在 #209 合并后对 main 提交。
-
+第 1 步 PR 待用户合并（功能 PR，用户门）。第 2 步：F6/F13 投影把 `auto_authorize_observation` 归为系统授权、工作台展示「已恢复，未登记处置」与来源、循环默认 30 s；开工前按步预审。第 3 步：kind 真实运行两场景，先与另一会话确认实验环境空闲。
