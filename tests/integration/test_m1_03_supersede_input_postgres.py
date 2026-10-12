@@ -189,7 +189,7 @@ def test_d44_r26_new_version_changes_generation_record_old_remains_readable(
     assert new_record["prompt_version"] == "f13-postmortem-prompt-v4"
     assert new_record["output_schema_version"] == "f13-postmortem-output-v2"
     assert new_record["input_policy_version"] == "f13-postmortem-input-v3"
-    assert json.loads(versions[-1]["content"])["contract_revision"] == "r10"
+    assert json.loads(versions[-1]["content"])["contract_revision"] == "r11"
     assert versions[0]["content_sha256"] != versions[-1]["content_sha256"]
     assert versions[0]["state"] == "approved"
     reread = knowledge.postmortem(old_postmortem_id)["versions"][0]
