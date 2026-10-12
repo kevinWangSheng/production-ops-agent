@@ -52,7 +52,7 @@
     <td><span class="badge">{{ s.state }}</span>{% if s.ended_reason %} <span class="muted">{{ s.ended_reason }}</span>{% endif %}</td>
     <td>control {{ s.subject_control_generation }} · observation {{ s.observation_generation }}</td>
     <td><code>{{ s.health_profile_revision or "none" }}</code></td>
-    <td><code>{{ s.target_revision }}</code></td>
+    <td><code>{{ s.target_revision if s.target_revision is not none else "unknown" }}</code></td>
     <td>{{ s.authorized_at }} by <code>{{ s.authorized_by }}</code></td>
     <td>{{ s.deadline_at }}</td>
     <td>{{ s.adopted_count }} / {{ s.max_samples }} adopted{% if s.active_sample_due_at %}, next due {{ s.active_sample_due_at }}{% endif %}</td>

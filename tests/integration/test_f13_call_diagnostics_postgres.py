@@ -154,7 +154,7 @@ def test_d53_migration_old_rows_check_and_roundtrip():
             assert "[]" in info[2]
             assert conn.execute(
                 "SELECT version_num FROM alembic_version"
-            ).fetchone() == ("0012_generation_call_diagnostics",)
+            ).fetchone() == (schema.head_revision(),)
             assert conn.execute(
                 f"SELECT model_calls FROM {TABLE} WHERE attempt_id=%s", (attempt,)
             ).fetchone() == ([],)

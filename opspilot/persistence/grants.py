@@ -130,10 +130,11 @@ RUNTIME_GRANTS: Mapping[str, Mapping[str, frozenset[str]]] = {
         "opspilot_observation_sessions": _g(
             "SELECT",
             "INSERT(active_sample_due_at,active_sample_job_id,active_sample_sequence,"
-            "authorized_by,authorized_global_generation,authorized_target_generation,"
-            "deadline_at,health_profile_revision,incident_id,issued_sequence,max_samples,"
-            "observation_generation,purpose,sample_interval_seconds,session_id,"
-            "subject_control_generation,sustained_window_seconds,target,target_id)",
+            "authorization_source,authorized_by,authorized_global_generation,"
+            "authorized_target_generation,deadline_at,health_profile_revision,incident_id,"
+            "issued_sequence,max_samples,observation_generation,purpose,"
+            "sample_interval_seconds,session_id,subject_control_generation,"
+            "sustained_window_seconds,target,target_id)",
             "UPDATE(active_sample_due_at,active_sample_job_id,active_sample_lease_until,"
             "active_sample_owner,active_sample_sequence,adopted_count,adopted_sequence,"
             "adopted_window_end,ended_reason,healthy_since,state,updated_at)",
@@ -164,6 +165,13 @@ RUNTIME_GRANTS: Mapping[str, Mapping[str, frozenset[str]]] = {
         # lock-only: FOR SHARE needs UPDATE on some column; scope_id is
         # CHECK (= 1), so the grant cannot change any suspension state
         "opspilot_scope_controls": _g("SELECT", "UPDATE(scope_id)"),
+        # the self-heal pass (#184, migration 0013) runs in the web process
+        "opspilot_self_heal_authorizations": _g(
+            "SELECT",
+            "INSERT(attempts,control_generation,incident_id,next_attempt_at,reason,"
+            "session_id,state)",
+            "UPDATE(attempts,next_attempt_at,reason,session_id,state,updated_at)",
+        ),
         "opspilot_steps": S,
         "opspilot_subject_events": _g(
             "SELECT", "INSERT(kind,payload,sequence,subject_id)"
@@ -277,6 +285,7 @@ RUNTIME_GRANTS: Mapping[str, Mapping[str, frozenset[str]]] = {
         # lock-only: FOR SHARE needs UPDATE on some column; scope_id is
         # CHECK (= 1), so the grant cannot change any suspension state
         "opspilot_scope_controls": _g("SELECT", "UPDATE(scope_id)"),
+        "opspilot_self_heal_authorizations": NONE,
         "opspilot_steps": _g(
             "SELECT",
             "INSERT(control_generation,logical_key,observed_at,response,run_id,sequence,"

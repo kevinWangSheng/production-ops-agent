@@ -20,6 +20,8 @@ from uuid import UUID
 from psycopg.types.json import Jsonb
 
 from opspilot.persistence import DurableStore, PersistenceError
+from opspilot.persistence.events import append_once_in
+from opspilot.persistence.events import check_event as _check
 
 MAX_EVENT_PAYLOAD_BYTES = 64 * 1024
 
@@ -75,13 +77,6 @@ class EventLog(Protocol):
     def floor(self, subject_id: UUID) -> int:
         """Oldest retained sequence, or 1 when nothing was ever pruned."""
         ...
-
-
-def _check(kind: str, payload: Mapping[str, Any]) -> None:
-    if not isinstance(kind, str) or not kind or len(kind) > 64:
-        raise ValueError("INVALID_INPUT")
-    if not isinstance(payload, Mapping):
-        raise ValueError("INVALID_INPUT")
 
 
 def _check_cursor(cursor: int) -> None:
@@ -198,44 +193,7 @@ class DurableEventLog:
     ) -> int:
         _check(kind, payload)
         with self._store.transaction() as conn:
-            # Same per-subject lock as append(): the existence check and the
-            # insert are one critical section, so two announcers of the same
-            # fact cannot both pass the check. ``@>`` is jsonb containment,
-            # so an empty key matches any payload of the kind.
-            conn.execute(
-                "SELECT pg_advisory_xact_lock(hashtextextended(%s::text, 0))",
-                (str(subject_id),),
-            )
-            wanted = {} if key is None else dict(key)
-            if wanted.get("reconciled") is False:
-                legacy = dict(wanted)
-                legacy.pop("reconciled")
-                retained = conn.execute(
-                    """SELECT MIN(sequence) AS sequence
-                       FROM opspilot_subject_events
-                       WHERE subject_id=%s AND kind=%s
-                         AND (payload @> %s OR (payload @> %s AND NOT (payload ? 'reconciled')))""",
-                    (subject_id, kind, Jsonb(wanted), Jsonb(legacy)),
-                ).fetchone()
-            else:
-                retained = conn.execute(
-                    "SELECT MIN(sequence) AS sequence FROM opspilot_subject_events WHERE subject_id=%s AND kind=%s AND payload @> %s",
-                    (subject_id, kind, Jsonb(wanted)),
-                ).fetchone()
-            if retained is not None and retained["sequence"] is not None:
-                return int(retained["sequence"])
-            row = conn.execute(
-                "SELECT COALESCE(MAX(sequence), 0) + 1 AS next_sequence FROM opspilot_subject_events WHERE subject_id=%s",
-                (subject_id,),
-            ).fetchone()
-            if row is None:
-                raise PersistenceError("INCONSISTENT_STATE")
-            sequence = int(row["next_sequence"])
-            conn.execute(
-                "INSERT INTO opspilot_subject_events(subject_id,sequence,kind,payload) VALUES(%s,%s,%s,%s)",
-                (subject_id, sequence, kind, Jsonb(dict(payload))),
-            )
-            return sequence
+            return append_once_in(conn, subject_id, kind, payload, key=key)
 
     def read_after(
         self, subject_id: UUID, cursor: int, *, limit: int = 100

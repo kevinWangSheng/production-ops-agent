@@ -35,7 +35,10 @@ class Target(DTO):
     cluster_uid: Text
     namespace: Text
     resource_uid: Text
-    revision: Text
+    #: The target revision an observation was authorized at; ``None`` when no
+    #: authoritative revision exists (an automatic observation records no
+    #: remediation and so no post-handling revision, #184 C4).
+    revision: Text | None
 
 
 class InputEvent(DTO):
