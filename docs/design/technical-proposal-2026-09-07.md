@@ -341,7 +341,7 @@ automatic 模式且生命周期允许时才自动查询。接管默认停止自�
 
 恢复或重新打开不继承旧采样窗口。规则变化后，如仍获授权则创建新版本观察会话，否则保持停止。
 
-自愈确认（2026-10-12 用户决定，#184）：目标有生效的 HealthProfile 时，合格结论发布后由 Controller 侧可重放任务自动授权一次 `incident_recovery` 观察，与人工登记走同一事务原语、暂停与代际栅栏；交接不发布，不触发。worker 不写观察授权。会话持久记录授权来源 `post_remediation` 或 `self_healing`，审计 actor 为 `system`；观察窗口从授权事务的数据库时钟起算，参数全部取自 HealthProfile。人工登记、接管、暂停、取消先提交者胜，并撤销自动会话。持续健康转为 resolved 并标明自愈；无法确认或到期保持 open 并写明交接原因。没有 HealthProfile 的目标只能人工处理；告警 resolved 只记录，可作提示，不触发观察。
+自愈确认（2026-10-12 用户决定，#184）：目标有生效的 HealthProfile 时，合格结论发布后由 Controller 侧可重放任务自动授权一次 `incident_recovery` 观察，与人工登记走同一事务原语、暂停与代际栅栏；交接不发布，不触发。worker 不写观察授权。会话持久记录授权来源 `post_remediation` 或 `self_healing`，审计 actor 为 `system`；观察窗口从授权事务的数据库时钟起算，参数全部取自 HealthProfile。人工登记、接管、暂停、取消先提交者胜，并撤销自动会话。自动授权任务执行时如代际、挂起或生命周期已变，作废为无操作，只留历史，不改事故。持续健康转为 resolved 并标明自愈；无法确认或到期保持 open 并写明交接原因。没有 HealthProfile 的目标只能人工处理；告警 resolved 只记录，可作提示，不触发观察。
 
 ### 采样与提交
 

@@ -20,14 +20,14 @@ SPEC「2026-10-12 user decision」段与 C3 §10「自愈确认」段，随授�
 - 前提：用户裁决下方决定表；C3 §10 与生命周期描述按裁决修订（C3 变更属用户门）。
 - 完成条件（草案）：自愈场景在 kind 实验环境真实跑通——故障注入后自愈、无人点击，事故经独立观察推进到 `resolved` 且来源标为自愈；持续故障场景到期保持 `open` 并交接；人工登记路径、F6 验收投影不回退；独立审查与独立验收测试作者按 AGENTS.md 执行。
 
-## 合同（r1）
+## 合同（r2）
 
 用户 2026-10-12 按推荐裁决 A1–A11；B1–B5 按推荐作可逆默认。完整表见[合同决定表](2026-10-12-184-self-healing-recovery-contract.md)（Codex GPT-6 Astra，high，只读预审）。
 
 - **A1** 纳入 M1，仅限有 HealthProfile 的 `incident_recovery`。
 - **A2** 只在合格结论发布后自动开观察；交接不发布（ADR-0005），交接路径不触发。
 - **A3** 由 Controller 侧可重放任务授权，调用与人工登记相同的事务原语；worker 不写观察表。
-- **A4** 会话持久 `authorization_source = post_remediation | self_healing`（下一个迁移）。
+- **A4** 会话持久 `authorization_source = post_remediation | self_healing`（下一个迁移）；r2：按 `purpose` 条件约束，release 会话为 NULL。
 - **A5** 审计 actor 为 `system`，来源记 `self_healing`；不新增 DB 角色，DB current_user 仍是 Controller/web 角色。
 - **A6** 观察起点为授权事务的 DB 时钟；HealthProfile 参数不变，不延长 deadline。
 - **A7** 事故行锁 + 代际决胜，先提交者胜；人工登记、接管、暂停、取消撤销自动会话。
@@ -35,7 +35,7 @@ SPEC「2026-10-12 user decision」段与 C3 §10「自愈确认」段，随授�
 - **A9** 保留 M1-04 决定 C；resolved 告警只作工作台提示，不触发观察。
 - **A10** 不改写旧证据；旧会话兼容读作 `post_remediation`，新会话必须显式来源。
 - **A11** 复用现有 Controller/web 观察写权限，不给 worker 扩权。
-- B1 幂等键 `incident_id + control_generation + trigger=published`；B2 参数全部取自已加载 HealthProfile；B3 有界重试，失败写可见交接原因、事故保持 `open`；B4 实验用 harness 定时 `fault restore`，产品侧无人点击；B5 工作台/F13 展示来源。
+- B1 幂等键 `incident_id + control_generation + trigger=published`；B2 参数全部取自已加载 HealthProfile；B3（r2）代际、挂起、生命周期等失效情形作废为无操作、只留历史，仅运行性失败有界重试、耗尽后写交接原因、事故保持 `open`；B4 实验用 harness 定时 `fault restore`，产品侧无人点击；B5 工作台/F13 展示来源。
 
 ## 执行进展与证据
 

@@ -34,7 +34,7 @@
 
    待决：需要新增会话来源字段或等价持久合同；当前会话只有 `authorized_by`，没有 provenance（0003 `:214-265`）。
 
-   推荐：下一个迁移新增非空枚举字段，例如 `authorization_source = post_remediation | self_healing`；升级时旧 incident recovery 会话填 `post_remediation`，release observation 不受影响。迁移必须在线性链下一个号，按 C3 §11 在 web、worker、Observer 全停时升级（C3 `:408-410`）。
+   推荐：下一个迁移新增枚举字段 `authorization_source = post_remediation | self_healing`；升级时旧 incident recovery 会话填 `post_remediation`，release observation 不受影响。（r2 补充：该字段按 `purpose` 条件约束——`incident_recovery` 必填，`release_observation` 必须为 NULL，发布来源由 F11 另定；PR #209 机器人 P2。）迁移必须在线性链下一个号，按 C3 §11 在 web、worker、Observer 全停时升级（C3 `:408-410`）。
 
 6. **旧数据与已归档证据兼容**
 
@@ -82,7 +82,7 @@
 |---|---|---|---|---|---|
 | B1 | 自动授权幂等键 | 随机 session；incident + control_generation；incident + conclusion hash。随机键无法安全重试 | `incident_id + control_generation + trigger=published`，session_id 确定性派生 | 重试、崩溃恢复 | 可逆默认：与现有 `register_remediation` 的代际和幂等语义一致 |
 | B2 | 自动会话参数来源 | 新配置；调用方传参；HealthProfile 固定值 | 完全复制已加载 HealthProfile 的 session 参数，前端和 worker 不得覆盖 | 预算、窗口、replay | 可逆默认：现有 `authorize_session_in` 已要求调用方提供冻结参数 |
-| B3 | 自动授权失败处理 | 重试无限；标记失败并交接；静默忽略 | 有界重试，失败写可见 handoff reason，incident 保持 `open` | 运维、值班可见性 | 可逆默认：符合 C3 unknown/handoff 和 ADR-0005 |
+| B3 | 自动授权失败处理 | 重试无限；标记失败并交接；静默忽略 | 分两类（r2）：代际、挂起、生命周期、已有活动会话或 HealthProfile 不再生效等**失效**情形，任务作废为无操作，只留历史，不改事故、不写交接；只有运行性失败（DB 不可用等）有界重试，耗尽后写可见交接原因，事故保持 `open` | 运维、值班可见性 | 可逆默认：失效结果只保留历史（C3 §10），人工先提交者胜（A7）；PR #209 机器人 P1 |
 | B4 | 自愈实验构造 | 产品自动恢复；工程 harness 定时恢复；告警 resolved 触发 | 工程 harness 定时执行 `fault inject` 后 `restore`，产品无人点击登记 | kind、F6 真实验收 | 可逆默认：`scripts/kind_lab.py:895-984` 已提供受校验的 flagd 注入/恢复 |
 | B5 | 展示命名 | 仅显示 resolved；显示 self-healed；显示授权来源和恢复来源两处 | F6 显示 `authorization_source=self_healing`，F13 recovery 段显示 `recovery_source=self_healed` | 工作台、F13、审计 | 可逆默认：不改变生命周期和既有恢复 verdict |
 
@@ -116,3 +116,8 @@
 - 当前 kind 集群只做了只读 `kubectl get/describe` 核查：OTel Demo、Prometheus、kube-state-metrics、Alertmanager 均在运行；Prometheus HTTP GET 未能认证，因为本地实验 credential 文件不可用，实时指标状态未确认。
 - `pytest --collect-only` 未执行成功：工作树没有 `.venv/bin/python`，系统也没有 `python` 命令；本次没有测试通过结论。
 - F6 当前归档合同明确要求 42 个 PG opt-in 场景、权限测量、重放一致性和 `passes: true` 保持（`docs/testing/f6-acceptance-tests.md:10-20`）。任何来源字段变更都必须做旧归档 replay，不能仅凭静态检查宣称兼容。
+
+## r2 追加（lead，2026-10-12，可逆默认细化，不改用户裁决）
+
+- B3：失效情形无操作，仅运行性失败耗尽后交接（PR #209 机器人 P1）。
+- A4 实现细节：`authorization_source` 按 `purpose` 条件约束，release 会话为 NULL（PR #209 机器人 P2）。
