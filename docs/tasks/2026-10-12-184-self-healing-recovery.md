@@ -1,6 +1,6 @@
 # #184 结论发布后自动开启恢复观察（未登记处置时）
 
-- 状态：合同 r6（2026-10-12）；授权 PR #209 待合并；第 1 步实施中（`../poa-184-step1`）
+- 状态：合同 r6（2026-10-12）；#209 授权、#213 第 1 步已合并；第 2 步实施中（`../poa-184-step2`）
 - 更新日期：2026-10-12
 - 依据：[#184](https://github.com/kevinWangSheng/production-ops-agent/issues/184)；PRODUCT-CONSTRAINTS「Product workflow」；SPEC 2026-10-12 段；C3 §4、§10「结论发布后自动开观察」段；feature_list F6（`passes` 已为 true，不得回退）；M1-02 [任务记录](2026-10-03-m1-02-recovery-observation.md)；M1-04 决定 C
 - 工作区：授权 PR `chore/184-self-heal-gate`（`../poa-184-self-heal`）；第 1 步 `feature/F6-184-self-heal-step1`（`../poa-184-step1`，lab PG 55471，测试作者 PG 55472）
@@ -42,6 +42,15 @@ r1 由用户 2026-10-12 按预审推荐裁决；r3、r4 前三项为用户裁决
 - `self_heal` 这类表名与函数名是内部名，不出现在产品展示、审计动作或 F13 投影中。
 - 不含：F6/F13 投影与页面（第 2 步）、kind 真实运行（第 3 步）。
 
+## 第 2 步决定（预审 D2-01–D2-16）
+
+预审原文：[第 2 步预审](2026-10-12-184-step2-prereview.md)（Codex，只读）。用户 2026-10-12 授权：r6 范围内的推荐由 lead 采纳，只有改 PRODUCT-CONSTRAINTS、权限或验收步骤要求的项才停下裁决（选项 b）。本步全部按推荐采纳，无停下项。
+
+- 预审标为 A 的 D2-02/03/04/05/07/08 已由 r6 C7 与 SPEC 2026-10-12 段确定：自动授权投影为系统授权，不进 F6 `actions`/`human_interaction`、不使 `permissions` 含 `human_control`、不进 F13 `human_actions`；F13 `recovery` 段带 `authorization_source`；F6 只增字段，既有断言与 `passes` 不变；「已恢复，未登记处置」只在 `automatic` 会话经独立观察确认、事故 `resolved` 时显示，观察中不声称恢复，人工登记保持现有语义。
+- D2-09 文案：工作台为英文，采用 SPEC 原文 "recovered, no remediation recorded"，同时显示来源 `automatic` / `post_remediation`。
+- D2-10 存量：采纳推荐①，按 C1 持久条件，升级开启后的首次扫描也会处理符合条件的存量事故（C1 无时间截断，持久状态为权威）。在 PR 简报中列为提示项，用户合并前可改为只处理开启后发布的结论。
+- D2-11 不新增 subject event；页面靠刷新快照看到生命周期与来源。D2-13 F6 生命周期配对改为按来源/代际关联，不再按位置。D2-01/06/12/14/15/16 按推荐。
+
 ## 执行进展与证据
 
 - 2026-10-12 预审 → 用户裁决 r1；第 1 步预审 → r3；PR #209 机器人与独立复审 → r4–r6（用户裁决 PRODUCT-CONSTRAINTS 修订、中性来源 `automatic`、收窄人工优先）；#209 合并为 `1752639`。F11 排在本任务之后。
@@ -53,4 +62,4 @@ r1 由用户 2026-10-12 按预审推荐裁决；r3、r4 前三项为用户裁决
 
 ## 下一步与交接
 
-第 1 步 PR 待用户合并（功能 PR，用户门）。第 2 步：F6/F13 投影把 `auto_authorize_observation` 归为系统授权、工作台展示「已恢复，未登记处置」与来源、循环默认 30 s；开工前按步预审。第 3 步：kind 真实运行两场景，先与另一会话确认实验环境空闲。
+第 1 步已合并（#213）。第 2 步（实施中，worktree `../poa-184-step2`，分支 `feature/F6-184-self-heal-step2`）：F6/F13 投影把 `auto_authorize_observation` 归为系统授权、工作台展示「已恢复，未登记处置」与来源、循环默认 30 s；开工前按步预审。第 3 步：kind 真实运行两场景，先与另一会话确认实验环境空闲。
