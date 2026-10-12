@@ -20,9 +20,21 @@ C3 §14 把 F11 排在 M2；本切片是提前开放。F11 `passes` 只在四步
 - 前提：用户裁决决定表（发布来源、版本身份、观察参数、对比口径、拆步）；实验环境能做「改镜像或配置」的真实发布。
 - 完成条件（草案）：F11 四步在 kind 实验环境真实跑通——健康发布、带无关并发故障的发布、延迟回归；输出区分 healthy / degraded / unknown；零发布门或流量策略写入；独立审查与独立验收测试作者按 AGENTS.md 执行；四步都有证据后翻 `passes`。
 
-## 合同（r0，待裁决）
+## 合同（r1）
 
-预审决定表：[合同决定表](2026-10-12-f11-post-release-contract.md)（Codex GPT-6 Astra，high，只读预审）。
+用户 2026-10-12 按推荐裁决 A1–A11；B1–B4 按推荐作可逆默认；用户决定先做 #184，F11 在其后（两者都改观察会话 schema，F11 rebase 到 #184 之上）。完整表见[合同决定表](2026-10-12-f11-post-release-contract.md)（Codex GPT-6 Astra，high，只读预审）。
+
+- **A1** 首版只接外部部署 webhook（event-token 通道）；集群内 rollout 探测另立合同。
+- **A2** 来源必须提供不可变 source release ID；Deployment UID + ReplicaSet UID/hash 作辅助身份。
+- **A3** 版本 = image digest + 完整 pod-template/config digest；hash/generation 仅作辅助证据。
+- **A4** 复用 HealthProfile 的频率、健康窗、deadline、次数，新增冻结 `released_at` 与 `min_tracking_seconds`；以 DB 时钟采纳。
+- **A5** Observer 只确定性判健康或退化，因果交给事故 Run；版本/流量证据不足输出 `unknown`，不称发布回归。
+- **A6** 发布异常用独立幂等键，不按时间相近自动并入告警事故；跨来源只建关联；已关闭事故走新事故规则。
+- **A7** 新增独立发布观察表；会话显式主体类型与 ID，不用空 Incident 代替。
+- **A8** 首版产品不持 K8s 凭据；Observer 仍只有 PG + Prometheus。
+- **A9** 异常后建 Incident 与事故 Run，输入快照带发布身份、前后版本、新旧实例证据；不新增 `release` Run。
+- **A10** 存储保留 `anomalous`，UI/验收投影映射为 `degraded`。
+- **A11** 零发布门写入三层证明：代码面、权限负向测试、真实发布前后核对 CI/门禁/rollout/流量策略不变；四步证据齐全才翻 `passes`。
 
 ## 执行进展与证据
 

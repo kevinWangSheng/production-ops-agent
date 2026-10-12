@@ -66,17 +66,17 @@
 
 | 编号 | 问题 | 选项与代价 | 推荐 | 影响面 | 裁决 |
 |---|---|---|---|---|---|
-| A1 | 发布事件来源 | 集群 K8s/Prometheus 探测：自动但需新增 K8s 只读身份与 watcher；外部 webhook：复用 `event_token`，身份精确但依赖部署方投递；两者都要：覆盖广但需统一去重语义 | 外部部署 webhook，首版单一来源；沿用 `POST /intake/alertmanager` 的 event-token 通道模式（`opspilot/web/app.py:524-550`），集群探测另立合同 | 接收端、凭据、去重、实验 |  |
-| A2 | 来源唯一发布 ID | webhook 外部 release ID；K8s Deployment UID+generation；ReplicaSet UID/hash | webhook 必须提供不可变 source release ID；K8s 兼容字段保留 Deployment UID + ReplicaSet UID/hash，不把 generation 单独当版本 | `ReleaseObservation` identity、唯一索引 |  |
-| A3 | 不可变发布版本 | image digest；pod-template-hash；Deployment generation；完整模板规范化 hash | 记录 image digest + 完整 pod-template/config digest；hash/generation 仅作辅助证据。实测 Pod 有 image digest，但 OTel 没有 ReplicaSet 标签 | before/after revision、old/new evidence |  |
-| A4 | 发布观察参数 | 复用现有 HealthProfile session 值；单独 F11 profile；固定常量写入合同 | 复用 profile 的 cadence/health window/deadline/max samples，新增并冻结 `released_at` 与 `min_tracking_seconds`；全部以 DB clock 采纳 | session schema、真实验收时长 |  |
-| A5 | before/after 与并发故障口径 | 全量服务流量；按版本/实例切片；无法切片即 unknown | Observer 只确定性判健康/退化；因果归因交给 Incident Run。无足够版本或流量证据时输出 `unknown`，不称为发布回归 | HealthProfile、证据投影、F11 第 2 步 |  |
-| A6 | 异常关联事故与 M1-04 规则 | 按 target/time 自动合并；按 release identity 独立事故；跨来源只建立关联 | release anomaly 使用独立幂等 key；不按相似时间自动合并 Alertmanager 事故，遵守 C3 §6 的跨来源默认关联规则；关闭事故按新事故处理（`docs/design/technical-proposal-2026-09-07.md:223-229,372`） | Incident、Run、重复调查 |  |
-| A7 | 发布主体的数据模型 | 把 session 改成多态 subject；新增 `release_observations` 与 release session；复用 incident 表伪装 | 新增独立 `opspilot_release_observations`，session 显式 subject kind/id；禁止用空 Incident 代替发布主体 | 下一个迁移、旧数据兼容、replay |  |
-| A8 | Observer 角色与来源权限 | Observer 直接持 K8s read-only credential；专用 release receiver 持 credential；外部 webhook 无 K8s credential | 首版 Observer 仍只持 PostgreSQL + Prometheus；webhook receiver 用 event token，不给产品 K8s 写权；若以后 K8s 探测，单独建只读身份和负向测试 | RBAC、0011 grants、网络隔离 |  |
-| A9 | 发布 Run 主体类型 | 新增 `release` Run；异常后才创建 Incident Run；发布观察完全不建 Run | 推荐异常后创建 Incident Run，输入快照携带 release identity/before/after/old-new evidence；不新增 `release` Run，避免当前 `opspilot_runs.incident_id NOT NULL` 与结论权威冲突（`opspilot/migrations/versions/0001_baseline.py:64-71`） | worker、结论写入、Run schema |  |
-| A10 | 工作台与结果映射 | 数据库直接改为 `degraded`；保留 C3 `anomalous`，页面映射为 `degraded`；两套状态并列 | 数据库保留 C3 `anomalous`，验收/UI 投影映射 `anomalous → degraded`，`unknown` 保持 `unknown`；提供列表、详情、暂停、恢复、取消 | 页面、API、F11 第 4 步 |  |
-| A11 | 零发布门写入与 passes | 静态 grep；权限负向测试；真实运行投影；只做其中一项 | 三层证明：代码禁止写入接口/工具、K8s/外部权限负向测试、真实发布前后检查 CI/gate/rollout/traffic policy 未变；四步证据齐全才翻 `passes` | acceptance projector、feature_list、独立审查 |  |
+| A1 | 发布事件来源 | 集群 K8s/Prometheus 探测：自动但需新增 K8s 只读身份与 watcher；外部 webhook：复用 `event_token`，身份精确但依赖部署方投递；两者都要：覆盖广但需统一去重语义 | 外部部署 webhook，首版单一来源；沿用 `POST /intake/alertmanager` 的 event-token 通道模式（`opspilot/web/app.py:524-550`），集群探测另立合同 | 接收端、凭据、去重、实验 | 采纳推荐（用户 2026-10-12，r1） |
+| A2 | 来源唯一发布 ID | webhook 外部 release ID；K8s Deployment UID+generation；ReplicaSet UID/hash | webhook 必须提供不可变 source release ID；K8s 兼容字段保留 Deployment UID + ReplicaSet UID/hash，不把 generation 单独当版本 | `ReleaseObservation` identity、唯一索引 | 采纳推荐（用户 2026-10-12，r1） |
+| A3 | 不可变发布版本 | image digest；pod-template-hash；Deployment generation；完整模板规范化 hash | 记录 image digest + 完整 pod-template/config digest；hash/generation 仅作辅助证据。实测 Pod 有 image digest，但 OTel 没有 ReplicaSet 标签 | before/after revision、old/new evidence | 采纳推荐（用户 2026-10-12，r1） |
+| A4 | 发布观察参数 | 复用现有 HealthProfile session 值；单独 F11 profile；固定常量写入合同 | 复用 profile 的 cadence/health window/deadline/max samples，新增并冻结 `released_at` 与 `min_tracking_seconds`；全部以 DB clock 采纳 | session schema、真实验收时长 | 采纳推荐（用户 2026-10-12，r1） |
+| A5 | before/after 与并发故障口径 | 全量服务流量；按版本/实例切片；无法切片即 unknown | Observer 只确定性判健康/退化；因果归因交给 Incident Run。无足够版本或流量证据时输出 `unknown`，不称为发布回归 | HealthProfile、证据投影、F11 第 2 步 | 采纳推荐（用户 2026-10-12，r1） |
+| A6 | 异常关联事故与 M1-04 规则 | 按 target/time 自动合并；按 release identity 独立事故；跨来源只建立关联 | release anomaly 使用独立幂等 key；不按相似时间自动合并 Alertmanager 事故，遵守 C3 §6 的跨来源默认关联规则；关闭事故按新事故处理（`docs/design/technical-proposal-2026-09-07.md:223-229,372`） | Incident、Run、重复调查 | 采纳推荐（用户 2026-10-12，r1） |
+| A7 | 发布主体的数据模型 | 把 session 改成多态 subject；新增 `release_observations` 与 release session；复用 incident 表伪装 | 新增独立 `opspilot_release_observations`，session 显式 subject kind/id；禁止用空 Incident 代替发布主体 | 下一个迁移、旧数据兼容、replay | 采纳推荐（用户 2026-10-12，r1） |
+| A8 | Observer 角色与来源权限 | Observer 直接持 K8s read-only credential；专用 release receiver 持 credential；外部 webhook 无 K8s credential | 首版 Observer 仍只持 PostgreSQL + Prometheus；webhook receiver 用 event token，不给产品 K8s 写权；若以后 K8s 探测，单独建只读身份和负向测试 | RBAC、0011 grants、网络隔离 | 采纳推荐（用户 2026-10-12，r1） |
+| A9 | 发布 Run 主体类型 | 新增 `release` Run；异常后才创建 Incident Run；发布观察完全不建 Run | 推荐异常后创建 Incident Run，输入快照携带 release identity/before/after/old-new evidence；不新增 `release` Run，避免当前 `opspilot_runs.incident_id NOT NULL` 与结论权威冲突（`opspilot/migrations/versions/0001_baseline.py:64-71`） | worker、结论写入、Run schema | 采纳推荐（用户 2026-10-12，r1） |
+| A10 | 工作台与结果映射 | 数据库直接改为 `degraded`；保留 C3 `anomalous`，页面映射为 `degraded`；两套状态并列 | 数据库保留 C3 `anomalous`，验收/UI 投影映射 `anomalous → degraded`，`unknown` 保持 `unknown`；提供列表、详情、暂停、恢复、取消 | 页面、API、F11 第 4 步 | 采纳推荐（用户 2026-10-12，r1） |
+| A11 | 零发布门写入与 passes | 静态 grep；权限负向测试；真实运行投影；只做其中一项 | 三层证明：代码禁止写入接口/工具、K8s/外部权限负向测试、真实发布前后检查 CI/gate/rollout/traffic policy 未变；四步证据齐全才翻 `passes` | acceptance projector、feature_list、独立审查 | 采纳推荐（用户 2026-10-12，r1） |
 
 ## B：可逆默认
 
