@@ -404,7 +404,7 @@ def _is_system_authorization(control: Mapping[str, Any]) -> bool:
     decision, not a human action (#184 C7): it is told by the ``recovery``
     section's ``authorization_source`` and counts toward neither
     ``human_actions`` nor its ``MAX_HUMAN_ACTIONS`` limit."""
-    return (
+    return bool(
         control["action"] == AUTO_OBSERVATION_ACTION
         and control["actor"] == AUTO_OBSERVATION_ACTOR
     )
