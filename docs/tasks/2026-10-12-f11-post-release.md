@@ -1,6 +1,6 @@
 # F11 发布后观察与调查
 
-- 状态：合同预审中，等待用户裁决；未开工实现
+- 状态：合同 r1 已裁决（A1–A11）；授权 PR 待用户合并；实现排在 #184 之后，未开工
 - 更新日期：2026-10-12
 - 依据：[#207](https://github.com/kevinWangSheng/production-ops-agent/issues/207)；feature_list F11 四步；C3 §1（第二个入口）、§4「事故与发布观察分开建模」「人工控制与结果所有权」、§6、§9（发布观察页面与操作）、§10「观察主体与授权」「采样与提交」中发布观察条款、§12「实验环境」（发布实验变更镜像或配置，不重建 chart）；PRODUCT-CONSTRAINTS（不批准、不阻断、不执行发布）；ROADMAP M2
 - 工作区：`feature/F11-post-release`，`../poa-f11-post-release`
@@ -11,9 +11,9 @@
 
 C3 §14 把 F11 排在 M2；本切片是提前开放。F11 `passes` 只在四步验收全部实际通过后翻转。
 
-## SPEC 有界开放草案
+## SPEC 有界开放
 
-草案文字见本分支 `SPEC.md` 末尾「2026-10-12 draft」段；用户裁决后定稿，随授权 PR 合并（用户门）。
+按 r1 定稿为 `SPEC.md`「2026-10-12 user decision: F11 post-release observation」段，随授权 PR 合并（用户门）。
 
 ## 前提与完成条件
 
@@ -44,6 +44,6 @@ C3 §14 把 F11 排在 M2；本切片是提前开放。F11 `passes` 只在四步
 
 ## 下一步与交接
 
-用户裁决决定表 → 合同 r1 → 授权 PR → 按步实施。
+授权 PR 待用户合并 → #184 合并后 rebase（迁移重编号）→ 按步预审与实施。
 
 - 来自 #184 r5-2：`opspilot_observation_sessions.authorization_source` 默认值为 `post_remediation`，发布观察会话必须显式插入 NULL。
