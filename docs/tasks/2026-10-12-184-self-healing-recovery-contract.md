@@ -168,3 +168,8 @@
 - `opspilot_incidents.conclusion` 只由 `publish()` 写入（`persistence/steps.py:356`），`new_run`（`runs.py:112`）与 `controls.py:399` 清空；因此「`conclusion IS NOT NULL` 且 `lifecycle=open`」即当前 Run 已发布合格结论，Controller 可直接扫描事故表派生触发，不需要 worker 写待授权标记。
 - 预审 A3 的失败分类与 r2 B3 一致：失效情形作废为无操作，原因只记在自动授权记录上，不写事故。
 - 待用户裁决：S1-D1 Controller 承载位置、S1-D2 触发来源、S1-D3 审计与代际。
+
+
+## r4 追加（2026-10-12）
+
+见任务记录「r4」节：PRODUCT-CONSTRAINTS 修订、来源值改为 `automatic` 不作因果判断、A7 收窄（用户批准）；身份补齐、retrying 扫描、独立审计动作、旧映射限定（lead）。

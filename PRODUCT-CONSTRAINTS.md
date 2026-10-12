@@ -17,7 +17,7 @@ The Agent may persist its own incident state, evidence, reports and reviewed kno
 
 ## Product workflow
 
-Alert -> incident and target resolution -> investigation and human handling -> independent recovery observation -> archive and reviewed postmortem.
+Alert -> incident and target resolution -> investigation and human handling (or, for a target with a HealthProfile, a published conclusion with no human handling recorded; user decision 2026-10-12, #184) -> independent recovery observation -> archive and reviewed postmortem.
 
 Observed rollout -> independent ReleaseObservation and target resolution -> bounded observation/investigation -> healthy completion, unknown handoff, or abnormality linked to a new/existing Incident. Normal releases do not require an Incident. Each subject has its own control version and result ownership; release observation cannot transfer recovery authority to an Incident.
 
