@@ -558,7 +558,7 @@ class GenerationStore(_StoreBase):
             ).fetchall()
             session = conn.execute(
                 "SELECT session_id, state, ended_reason, health_profile_revision, "
-                "authorized_by, authorized_at, deadline_at, max_samples, "
+                "authorization_source, authorized_by, authorized_at, deadline_at, max_samples, "
                 "sample_interval_seconds, sustained_window_seconds, adopted_count, "
                 "healthy_since, target FROM opspilot_observation_sessions "
                 "WHERE session_id=%s",

@@ -99,7 +99,7 @@ echo '{"checkout-prod": {"integration_id": "fixture", "cluster_uid": "fixture-cl
 OPSPILOT_TARGET_IDENTITIES=/tmp/opspilot-targets.json \
 OPSPILOT_UI_USERS="demo=<上面打印的哈希>" .venv/bin/python -m opspilot.web serve
 # 「登记处置」用的 HealthProfile 默认是随产品发布的 otel-demo-checkout.json；OPSPILOT_HEALTH_PROFILE=<路径> 可换
-# web 进程内的自动观察循环（#184）每 OPSPILOT_SELF_HEAL_INTERVAL_SECONDS 秒（第 1 步默认 0 即关闭，设正数开启；第 2 步 F6/F13 投影区分系统授权后改默认 30）为当前代际已发布合格结论、未登记处置的事故自动授权一次恢复观察，身份与 HealthProfile 规则同「登记处置」
+# web 进程内的自动观察循环（#184）每 OPSPILOT_SELF_HEAL_INTERVAL_SECONDS 秒（默认 30；设 0 关闭，设其他正数改间隔，非法值拒绝启动；F6/F13 投影把它记为系统授权，不计入人工动作）为当前代际已发布合格结论、未登记处置的事故自动授权一次恢复观察，身份与 HealthProfile 规则同「登记处置」
 # 另一个终端：worker（SIGTERM/Ctrl-C 停止领取，等在跑的尝试最多 OPSPILOT_WORKER_GRACE_SECONDS 秒）
 OPSPILOT_ENV_FILE=/绝对路径/.env .venv/bin/python -m opspilot.worker_main
 # 提交事故（目标固定为 fixture 的 checkout-prod；Origin 必须是绑定地址）

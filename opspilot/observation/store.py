@@ -82,6 +82,10 @@ _SESSION_COLUMNS = (
     "active_sample_due_at,active_sample_owner,active_sample_epoch,"
     "active_sample_lease_until,created_at,updated_at"
 )
+# What the readers return per session: the record columns plus who granted
+# the observation (migration 0013, #184 C6). Kept out of ``RECORD_COLUMNS``:
+# the replay does not read it, and a login's read-only check is unchanged.
+_SESSION_VIEW_COLUMNS = _SESSION_COLUMNS + ",authorization_source"
 _SAMPLE_COLUMNS = (
     "sample_id,session_id,job_id,sequence,epoch,window_start,window_end,outcome,"
     "required_signals_present,subject_control_generation,observation_generation,"
@@ -2296,7 +2300,7 @@ class ObservationStore(_StoreBase):
         with self.transaction(snapshot=True) as conn:
             return list(
                 conn.execute(
-                    f"SELECT {_SESSION_COLUMNS} FROM opspilot_observation_sessions WHERE incident_id=%s ORDER BY created_at,session_id",
+                    f"SELECT {_SESSION_VIEW_COLUMNS} FROM opspilot_observation_sessions WHERE incident_id=%s ORDER BY created_at,session_id",
                     (incident_id,),
                 ).fetchall()
             )
@@ -2304,7 +2308,7 @@ class ObservationStore(_StoreBase):
     def session(self, session_id: UUID) -> dict[str, Any]:
         with self.transaction(snapshot=True) as conn:
             row = conn.execute(
-                f"SELECT {_SESSION_COLUMNS} FROM opspilot_observation_sessions WHERE session_id=%s",
+                f"SELECT {_SESSION_VIEW_COLUMNS} FROM opspilot_observation_sessions WHERE session_id=%s",
                 (session_id,),
             ).fetchone()
         if row is None:
@@ -2464,7 +2468,7 @@ class ObservationStore(_StoreBase):
 
     def _session_history_in(self, conn: Connection, session_id: UUID) -> dict[str, Any]:
         row = conn.execute(
-            f"SELECT {_SESSION_COLUMNS} FROM opspilot_observation_sessions WHERE session_id=%s",
+            f"SELECT {_SESSION_VIEW_COLUMNS} FROM opspilot_observation_sessions WHERE session_id=%s",
             (session_id,),
         ).fetchone()
         if row is None:
