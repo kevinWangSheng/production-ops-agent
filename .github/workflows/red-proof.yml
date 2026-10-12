@@ -1,7 +1,7 @@
 name: red-proof
 
 # 红证明：PR 新增或修改的测试放到 merge-base 的代码上至少要有一个失败。
-# 试行期只报告（--report-only），结论见 step summary 与 warning 注解，不影响合并状态。
+# 只报告（--report-only，2026-10-12 决定保持，#100），结论见 step summary 与 warning 注解，不影响合并状态。
 # 只钉住已有行为的 PR（重构、补特征测试）加 label `no-red-proof` 跳过。
 on:
   pull_request:
