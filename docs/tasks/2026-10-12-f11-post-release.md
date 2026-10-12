@@ -51,7 +51,7 @@ r1 只定方向。其余实现者需要猜的语义点，按 AGENTS.md「合同�
 
 - 2026-10-12 建 worktree、任务记录、SPEC 草案、issue；派发 Codex 合同预审。
 - 实验环境：与另一会话（production-ops-agent-00）及 #184 协调，同一时间只跑一个真实故障。
-- 迁移：线性链，当前 main 末尾 0012；#184 或其他会话先合并则 rebase 并重编号。
+- 迁移：线性链，#184 第 1 步合并后 main 末尾为 `0013_self_heal_authorization`；PR-1 开工时取当时 main 的下一个编号（预审决定表按旧 HEAD 写的 0012 已过时）。
 
 ## 下一步与交接
 
