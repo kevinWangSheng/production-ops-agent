@@ -69,9 +69,10 @@ from opspilot.tools.registry import redact_credentials
 
 # D23: one call, plus at most one structure/citation repair (D22).
 MAX_MODEL_REQUESTS_PER_GENERATION = 2
-# Completion budget per call: a postmortem is far shorter than an
-# investigation report; well under the frozen 65_536.
-MAX_OUTPUT_TOKENS = 16_384
+# Completion budget per call (generate and repair alike); r11 (#202, D57)
+# matches the investigation's frozen 65_536. The completion counts
+# reasoning tokens, and 16_384 was used up by the first request (#199/#202).
+MAX_OUTPUT_TOKENS = 65_536
 
 # D21 input limits (bytes of the canonical model input; item counts).
 MAX_INPUT_BYTES = 256 * 1024

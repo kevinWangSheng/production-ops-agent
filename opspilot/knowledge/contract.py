@@ -30,7 +30,7 @@ from datetime import datetime
 from typing import Any, Literal, NotRequired, TypedDict, get_args
 from uuid import UUID
 
-CONTRACT_REVISION = "r10"
+CONTRACT_REVISION = "r11"
 
 # --- versions recorded with every generation (D20) -------------------------
 
@@ -47,6 +47,8 @@ CONTRACT_REVISION = "r10"
 # Versions recorded under earlier values stay as written and are not stale.
 # r10 (#202, D53-D56): attempts carry per-request diagnostics
 # (``AttemptView.model_calls``); no version string below moves.
+# r11 (#202, D57-D60): each generation request may complete up to 65_536
+# tokens (was 16_384); no version string below moves.
 POSTMORTEM_PROMPT_VERSION = "f13-postmortem-prompt-v4"
 POSTMORTEM_OUTPUT_SCHEMA_VERSION = "f13-postmortem-output-v2"
 POSTMORTEM_CONTENT_SCHEMA_VERSION = "f13-postmortem-content-v1"
