@@ -77,4 +77,4 @@ SPEC「2026-10-12 user decision」段与 C3 §10「自愈确认」段，随授�
 ### r5（lead，2026-10-12，实施中冒出，可逆默认）
 
 - R5-1 触发额外要求当前 Run 为 `completed` 且 `runs.control_generation = incidents.control_generation`：人工登记推进代际后结论仍在，但 G+1 没有发布，不得再次自动授权（A2、B1「trigger=published」的本义）。
-- R5-2 `authorization_source` 不设列默认值，新会话必须显式来源（A10）；既有测试中原始 SQL 插入会话的夹具只补列，不改断言。
+- R5-2 `authorization_source` 设 `DEFAULT 'post_remediation'`，CHECK 按 `purpose` 条件约束，迁移把 release 行置 NULL；产品原语始终显式传来源（A10）。理由：无默认值会让独立 F13 测试 D53 的共享夹具（在 0011 与 head 两个版本都插入会话）无法同时正确，不为此改独立测试。对 F11 的影响：发布会话必须显式插入 NULL。
