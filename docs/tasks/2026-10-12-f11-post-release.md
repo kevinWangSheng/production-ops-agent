@@ -36,10 +36,12 @@ C3 §14 把 F11 排在 M2；本切片是提前开放。F11 `passes` 只在四步
 - **A10** 存储保留 `anomalous`，UI/验收投影映射为 `degraded`。
 - **A11** 零发布门写入三层证明：代码面、权限负向测试、真实发布前后核对 CI/门禁/rollout/流量策略不变；四步证据齐全才翻 `passes`。
 
-**r1 未定项**（A4/A5 只定了方向，以下取值未裁决；在首个需要它的实施步骤合同预审中由用户裁决，裁决前该步不开工）：
+**r1 未定项**（A1/A4/A5/A11 只定了方向，以下取值未裁决；在首个需要它的实施步骤合同预审中由用户裁决，裁决前该步不开工）：
 - U1（A4，PR-1 预审）：`released_at` 的权威来源（webhook 事件时间或接收时的 DB 时钟）、deadline 起算点，以及延迟或重放投递时的处理。
 - U2（A4，PR-1 预审）：`min_tracking_seconds` 的取值与校准依据。
 - U3（A5，PR-2/PR-4 中较早者的预审）：before/after 窗口、old/new 实例的确定性比较字段、判定「证据足够」的谓词，以及无关并发故障下整体服务查询与按版本/实例切片的取舍。
+- U4（A1，PR-3 预审）：发布 webhook 的认证主体绑定。现有 `event_channel` 接受 `OPSPILOT_EVENT_TOKENS` 里的任一 token（`opspilot/web/app.py:194-198`）；推荐方向是该路由只接受专用 actor（同 M1-04 E13 的 `alertmanager` 专用 actor 做法），Alertmanager token 不能提交发布。
+- U5（A11，PR-3/PR-5 预审）：零发布门写入证明如何与 harness 自身的发布变更分开。harness 改镜像或配置必然改变 rollout，简单的前后对比会因此失败；推荐方向是在 harness 变更之后取基线，并以 API 审计或 actor 证据区分产品发起的写入。
 
 ## 执行进展与证据
 
