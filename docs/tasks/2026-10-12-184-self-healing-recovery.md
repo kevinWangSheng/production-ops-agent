@@ -20,7 +20,7 @@ kind 实验环境真实跑通两个场景：故障由 harness 恢复、产品侧
 r1 由用户 2026-10-12 按预审推荐裁决；r3、r4 前三项为用户裁决；其余为 lead 可逆默认。[合同决定表](2026-10-12-184-self-healing-recovery-contract.md)是预审原文与修订历史，**与本节冲突时以本节为准**。
 
 触发与授权
-- C1 触发：`incidents.conclusion IS NOT NULL`（只有 `publish()` 写，`steps.py:356`）且当前 Run `completed` 且 `runs.control_generation = incidents.control_generation`（r5：人工登记推进代际后不再触发）、`lifecycle='open'`、`mode='automatic'`、`handoff_only` 为假、无活动会话、目标有生效的 HealthProfile。交接不发布，不触发。
+- C1 候选（不满足则不写任何记录）：`incidents.conclusion IS NOT NULL`（只有 `publish()` 写，`steps.py:356`）且当前 Run `completed` 且 `runs.control_generation = incidents.control_generation`（人工登记推进代际后不再是候选）、`lifecycle` ∈ {`open`,`observing_recovery`}，且该 `(incident_id, control_generation)` 尚无记录或为到期的 `retrying`。交接不发布、`handoff_only` 无 Run，都不是候选。其余条件在行锁下复核，见 C8。
 - C2 执行者：web 进程内后台循环（`opspilot_web` 角色），间隔 `OPSPILOT_SELF_HEAL_INTERVAL_SECONDS`（`0` 关闭；第 1 步默认 `0`，第 2 步与 F6/F13 投影一起改为默认 30，避免投影未就绪时自动会话被计为人工处置）；多副本靠主键与 `SKIP LOCKED` 防重；#197 拆出 Controller 时整体迁走。worker 与 Observer 权限不变。
 - C3 授权：与人工登记共用同一事务原语、暂停与代际栅栏。目标身份只取自配置的目标身份注册表（`OPSPILOT_TARGET_IDENTITIES`，按已登记 `resource_uid` 绑定），与人工路径共用补齐步骤与 `TARGET_MISMATCH`/`TARGET_IDENTITY_MISSING`/`HEALTH_PROFILE_TARGET_MISMATCH` 检查；不接受告警或模型提供的身份，缺失即 fail-closed。会话参数全部取自 HealthProfile，观察起点为授权事务的 DB 时钟，不延长 deadline。
 - C4 版本：自动会话没有权威的目标版本，`target.revision` 记 `null`，工作台显示为未知；不写伪造的版本串。
@@ -31,7 +31,7 @@ r1 由用户 2026-10-12 按预审推荐裁决；r3、r4 前三项为用户裁决
 - C7 审计：`opspilot_controls` 写独立动作 `auto_authorize_observation`，actor `system`，`expected_generation = resulting_generation`，不推进 `control_generation`；只按现有原语推进 `observation_generation`。第 2 步 F13 投影把它归为系统授权，不计入 `human_actions`。
 
 失败与竞态
-- C8 失效或不适用（生命周期非 open、`human_owned`、事故已暂停/取消、`handoff_only`、全局或目标挂起、已有活动会话、无身份或 profile 不匹配）→ 记录 `skipped` + 原因，终态，不改事故、不写审计；挂起解除后不补开。
+- C8 候选在行锁下复核，不满足 → 记录 `skipped` + 原因（终态，不改事故、不写审计）：`mode='human_owned'`、事故已暂停/取消、已有活动会话或 `lifecycle` 非 `open`、全局或目标挂起、无身份或 profile 不匹配、复核时已不再是 C1 候选（`NOT_PUBLISHED_AT_GENERATION`）。挂起解除后不补开。
 - C9 运行性失败 → `retrying`，最多 5 次、指数退避（扫描选取到期的 `retrying` 行），耗尽 → `handed_off` 并写一条工作台可见的事故事件，事故保持 `open`。
 - C10 人工优先：接管（停止自动观察）、登记处置、全局/目标挂起，先提交者胜并撤销自动会话；暂停与取消在结论发布后不可用，保持现状（`controls.py:306-309`）。
 - C11 无 HealthProfile 的目标保持现状，只能人工处理。
