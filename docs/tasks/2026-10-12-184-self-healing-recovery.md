@@ -20,7 +20,7 @@ SPEC「2026-10-12 user decision」段与 C3 §10「自愈确认」段，随授�
 - 前提：用户裁决下方决定表；C3 §10 与生命周期描述按裁决修订（C3 变更属用户门）。
 - 完成条件（草案）：自愈场景在 kind 实验环境真实跑通——故障注入后自愈、无人点击，事故经独立观察推进到 `resolved` 且来源标为自愈；持续故障场景到期保持 `open` 并交接；人工登记路径、F6 验收投影不回退；独立审查与独立验收测试作者按 AGENTS.md 执行。
 
-## 合同（r4）
+## 合同（r5）
 
 用户 2026-10-12 按推荐裁决 A1–A11；B1–B5 按推荐作可逆默认。完整表见[合同决定表](2026-10-12-184-self-healing-recovery-contract.md)（Codex GPT-6 Astra，high，只读预审）。
 
@@ -73,3 +73,8 @@ SPEC「2026-10-12 user decision」段与 C3 §10「自愈确认」段，随授�
 - R4-5（lead）扫描同时选取到期的 `retrying` 行。
 - R4-6（lead）审计动作 `auto_authorize_observation`；第 2 步 F13 投影把它归为系统授权，不计入 `human_actions`（`knowledge/generation.py:484-497`）。
 - R4-7（lead）旧来源映射只适用 `incident_recovery` 会话。
+
+### r5（lead，2026-10-12，实施中冒出，可逆默认）
+
+- R5-1 触发额外要求当前 Run 为 `completed` 且 `runs.control_generation = incidents.control_generation`：人工登记推进代际后结论仍在，但 G+1 没有发布，不得再次自动授权（A2、B1「trigger=published」的本义）。
+- R5-2 `authorization_source` 不设列默认值，新会话必须显式来源（A10）；既有测试中原始 SQL 插入会话的夹具只补列，不改断言。
