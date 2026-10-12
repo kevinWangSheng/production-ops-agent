@@ -45,3 +45,5 @@ C3 §14 把 F11 排在 M2；本切片是提前开放。F11 `passes` 只在四步
 ## 下一步与交接
 
 用户裁决决定表 → 合同 r1 → 授权 PR → 按步实施。
+
+- 来自 #184 r5-2：`opspilot_observation_sessions.authorization_source` 默认值为 `post_remediation`，发布观察会话必须显式插入 NULL。
