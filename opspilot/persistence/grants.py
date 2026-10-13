@@ -59,6 +59,10 @@ TRIGGER_GUARDED: Mapping[str, tuple[str, str]] = {
         WORKER_ROLE,
     ),
     "opspilot_runs": ("opspilot_runs_web_lease_guard", WEB_ROLE),
+    "opspilot_release_observations": (
+        "opspilot_release_observations_initial_guard",
+        WEB_ROLE,
+    ),
 }
 
 RUNTIME_GRANTS: Mapping[str, Mapping[str, frozenset[str]]] = {
@@ -154,6 +158,14 @@ RUNTIME_GRANTS: Mapping[str, Mapping[str, frozenset[str]]] = {
         "opspilot_postmortem_proposals": S,
         "opspilot_postmortem_versions": _g("SELECT", "UPDATE(stale_reason,state)"),
         "opspilot_postmortems": _g("SELECT", "UPDATE(generation,updated_at)"),
+        "opspilot_release_events": _g(
+            "SELECT",
+            "INSERT(actor,audit_text,kind,observation_id,outcome,raw_sha256,reason,received_at,semantic_sha256,sequence,source,source_release_id,truncated)",
+        ),
+        "opspilot_release_observations": _g(
+            "SELECT",
+            "INSERT(after_revision,auxiliary,before_revision,deadline_at,deadline_seconds,ended_at,ended_reason,format_version,health_profile_revision,max_samples,min_tracking_seconds,observation_id,released_at,sample_interval_seconds,semantic_sha256,source,source_release_id,status,sustained_window_seconds,target_id,target_snapshot,timing_policy_version)",
+        ),
         # human controls and the deadline sweep clear owner/lease_until; no
         # epoch, so the web cannot issue a lease of its own (claim() sets it)
         "opspilot_runs": _g(
@@ -276,6 +288,8 @@ RUNTIME_GRANTS: Mapping[str, Mapping[str, frozenset[str]]] = {
             "INSERT(incident_id,postmortem_id)",
             "UPDATE(generation,latest_version,updated_at)",
         ),
+        "opspilot_release_events": NONE,
+        "opspilot_release_observations": NONE,
         "opspilot_runs": _g(
             "SELECT",
             "UPDATE(budget_reserved,budget_spent,budget_unknown,control_generation,epoch,"
