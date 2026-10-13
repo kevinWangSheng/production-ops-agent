@@ -1,9 +1,9 @@
 # F11 发布后观察与调查
 
-- 状态：PR-1 合同 r3；授权 PR #214 已合并；PR-1 实现与独立验收完成，PR 待用户合并
+- 状态：PR-1 已合并（#218）；PR-2 合同 r1 已裁决，PR-2a 实施中
 - 更新日期：2026-10-13
 - 依据：[#207](https://github.com/kevinWangSheng/production-ops-agent/issues/207)；feature_list F11 四步；C3 §1（第二个入口）、§4「事故与发布观察分开建模」「人工控制与结果所有权」、§6、§9（发布观察页面与操作）、§10「观察主体与授权」「采样与提交」中发布观察条款、§12「实验环境」（发布实验变更镜像或配置，不重建 chart）；PRODUCT-CONSTRAINTS（不批准、不阻断、不执行发布）；ROADMAP M2
-- 工作区：授权 PR `feature/F11-post-release`（已合并 #214）；PR-1 `feature/F11-pr1-release-persistence`，`../poa-f11-pr1`
+- 工作区：PR-2a `feature/F11-pr2-observer-subjects`，`../poa-f11-pr2`
 
 ## 目标与范围
 
@@ -63,6 +63,16 @@ r1 只定方向。其余实现者需要猜的语义点，按 AGENTS.md「合同�
 - P1-09 新表非空时拒绝降级，不级联删除。
 - 执行分工（用户 2026-10-12）：后端实现由 Codex gpt-6.1-sol 完成，限定在 r2 范围；独立验收测试由全新上下文 Claude 子 Agent 只按合同与接口编写；独立审查另开 Codex 会话。
 
+## PR-2 合同（r1）
+
+完整合同：[F11 PR-2 合同](2026-10-13-f11-pr2-contract.md)。要点：
+- 发布观察由 web 授权，授权只认冻结的校准 policy 清单 `opspilot/observation/policies/release-calibrations.json`，初始为空 → 授权返回 `RELEASE_POLICY_UNCALIBRATED`；U2 正式值由单独的 kind 校准证据任务产出、用户批准后写入（改变 r2「PR-2 预审前先校准」的顺序）。
+- 暂停/恢复/取消的存储原语在 PR-2，页面在 PR-5；异常只持久化唯一 ending（`anomaly_key`），事故关联由 PR-4 消费（修改领域「异常必须已有事故」）。
+- 版本切片：span `service_instance_id` = Pod UID → `kube_pod_owner` ReplicaSet（`<workload>-<after_pod_template_hash>`）与 `kube_pod_container_info` image digest 完整等于 `after.images`；映射、流量、覆盖不足一律 unknown；整体服务信号只作上下文。
+- 最短跟踪按授权后实际连续覆盖计算；采样次数按发布主体累计；最早健康严格早于 deadline。
+- 锁：发布采样 release→session；授权/控制 scope→release→session；恢复采样保持 incident-first。
+- 拆为 PR-2a（存储、判定、守卫、重放）与 PR-2b（Prometheus 多序列读取、Observer 接线）。
+
 ## 执行进展与证据
 
 - 2026-10-12 建 worktree、任务记录、SPEC 草案、issue；派发 Codex 合同预审。
@@ -73,6 +83,6 @@ r1 只定方向。其余实现者需要猜的语义点，按 AGENTS.md「合同�
 
 ## 下一步与交接
 
-PR-1 待用户合并（功能 PR，用户门）。之后 PR-2 预审须先校准并冻结 `min_tracking_seconds`（U2），并回答 U3、U7。
+PR-1 已合并（#218，`8299970`）。PR-2a 实施中；之后 PR-2b；U2 校准证据任务另立（需 kind 真实发布，与其他会话协调实验环境）。
 
 - 来自 #184 r5-2：`opspilot_observation_sessions.authorization_source` 默认值为 `post_remediation`，发布观察会话必须显式插入 NULL。
