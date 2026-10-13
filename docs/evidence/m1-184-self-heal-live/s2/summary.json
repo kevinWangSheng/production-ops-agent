@@ -1,0 +1,2258 @@
+{
+  "schema": "opspilot-lab-summary-1",
+  "experiment": "m1-184-self-heal-live",
+  "run_id": "04e10229-a18e-5489-b8a5-af5fbbfdf937",
+  "frozen_at": "2026-10-13T06:50:48.040108+00:00",
+  "round": "184-step3-20261012",
+  "scenario": "S2",
+  "versions": {
+    "branch": "feature/F6-184-self-heal-step3",
+    "commit": "df3863ef97cd290663b565c917e2626736ec74d7",
+    "schema_head": "0013_self_heal_authorization",
+    "worker_versions": {
+      "prompt_revision": "prompt-replay-candidate-bdb4914edefa",
+      "tool_schema_revision": "otel-demo-d61d6f2a3b04",
+      "context_policy_revision": "ctx-ctx-policy-v1-a30e65ea52f4"
+    },
+    "tool_profile": "otel-demo",
+    "otel_demo_chart": "0.37.8"
+  },
+  "health_profile": {
+    "path": "otel-demo-checkout-deadline-1200.json",
+    "sha256": "f64a6e14065bc7fa04d709dc1b0b84cce24b7176cf1629b0bc3b3df7fc5c6cb9",
+    "session": {
+      "deadline_seconds": 1200,
+      "max_samples": 40,
+      "sample_interval_seconds": 60,
+      "sustained_window_seconds": 600
+    }
+  },
+  "lab_actions": [
+    {
+      "at": "2026-10-13T06:12:26.373882+00:00",
+      "action": "inject",
+      "before_sha256": "1ee5c0258e3e13609ecec75979cee286ab00f442d288112e39e3db8433d176c6",
+      "after_sha256": "e47d27c2fa01c72d8bc71d40d0f4223b1049fd84582e5789cbd9a5ccbdcc915d",
+      "live_sha256": "e47d27c2fa01c72d8bc71d40d0f4223b1049fd84582e5789cbd9a5ccbdcc915d",
+      "verified": true
+    },
+    {
+      "at": "2026-10-13T06:41:30.153304+00:00",
+      "action": "restore",
+      "before_sha256": "e47d27c2fa01c72d8bc71d40d0f4223b1049fd84582e5789cbd9a5ccbdcc915d",
+      "after_sha256": "1ee5c0258e3e13609ecec75979cee286ab00f442d288112e39e3db8433d176c6",
+      "live_sha256": "1ee5c0258e3e13609ecec75979cee286ab00f442d288112e39e3db8433d176c6",
+      "verified": true
+    }
+  ],
+  "deliveries": [
+    {
+      "delivery_id": 3,
+      "status": "firing",
+      "outcome": "created",
+      "actor": "alertmanager",
+      "fingerprint": "83f7541ae0105d42",
+      "starts_at": "2026-10-13T06:16:54+00:00",
+      "received_at": "2026-10-13T06:17:53.630354+00:00",
+      "incident_id": "6c915943-d439-5e5e-a346-c6e8c71938a5"
+    },
+    {
+      "delivery_id": 4,
+      "status": "resolved",
+      "outcome": "resolved_attached",
+      "actor": "alertmanager",
+      "fingerprint": "83f7541ae0105d42",
+      "starts_at": "2026-10-13T06:16:54+00:00",
+      "received_at": "2026-10-13T06:50:26.212379+00:00",
+      "incident_id": "6c915943-d439-5e5e-a346-c6e8c71938a5"
+    }
+  ],
+  "incident": {
+    "incident_id": "6c915943-d439-5e5e-a346-c6e8c71938a5",
+    "lifecycle": "open",
+    "state": "queued",
+    "mode": "automatic",
+    "control_generation": 0,
+    "observation_generation": 1,
+    "current_run_id": "04e10229-a18e-5489-b8a5-af5fbbfdf937",
+    "target_id": "b2c260ed-51c1-4942-882e-7c2b7db34ec8",
+    "created_at": "2026-10-13T06:17:53.638150+00:00",
+    "has_conclusion": true
+  },
+  "investigation": {
+    "runs": [
+      {
+        "run_id": "04e10229-a18e-5489-b8a5-af5fbbfdf937",
+        "state": "completed",
+        "control_generation": 0,
+        "budget_spent": 8,
+        "tool_operations_used": 16,
+        "tool_seconds_used": 0.6913194200024009,
+        "versions": {
+          "prompt_revision": "prompt-replay-candidate-bdb4914edefa",
+          "tool_schema_revision": "otel-demo-d61d6f2a3b04",
+          "context_policy_revision": "ctx-ctx-policy-v1-a30e65ea52f4"
+        },
+        "deadline": "2026-10-13T08:17:53.632755+00:00"
+      }
+    ],
+    "decision": "report_available",
+    "handoff_reasons": [],
+    "evidence_ids": 14,
+    "report": {
+      "assessment_status": "completed",
+      "conclusion": "partial",
+      "summary": "The alert reproduces from the supplied expression: the checkout PlaceOrder server-span error ratio (5m rate of STATUS_CODE_ERROR / 5m rate of all statuses) exceeded 0.5 in two excursions inside 2026-10-13T05:16:54Z-06:17:53Z and stood at 0.875 at the 06:16:54Z anchor. The failure path is visible in spans and metric labels: checkout's PlaceOrder fails because its oteldemo.PaymentService/Charge call returns gRPC status 2 (Unknown), with the checkout span description 'failed to charge card: ... Payment request failed. Invalid token. app.loyalty.level=gold'; the matched payment server span grpc.oteldemo.PaymentService/Charge is flagged error=true with the same message thrown at /usr/src/app/charge.js:37. Payment's Charge error ratio has the same time shape and the same 0.875 end value as checkout's PlaceOrder ratio, and over the hour payment recorded roughly 19.32 error versus 57.97 unset Charge server spans while every other checkout dependency (cart, currency, product-catalog, shipping, quote) showed gRPC 0 / HTTP 200 in the sampled traces. User-facing effect is downstream: frontend /api/checkout and frontend-proxy returned 500, and load-generator POST spans errored (~19.3 of ~542). Unresolved: the cause of 'Invalid token'. Payment evaluated a flagd float flag only about 3 times in the hour, the flagd trace view could not be retrieved (INVALID_PARAMS), and one flagd evaluation bucket sits inside a fully healthy interval, so a flag/fault-injection origin remains a hypothesis."
+    }
+  },
+  "automatic_decisions": [
+    {
+      "incident_id": "6c915943-d439-5e5e-a346-c6e8c71938a5",
+      "control_generation": 0,
+      "state": "authorized",
+      "reason": null,
+      "attempts": 0,
+      "next_attempt_at": null,
+      "session_id": "e0691373-4201-549e-9e4a-de3467a9518a",
+      "created_at": "2026-10-13T06:20:46.089486+00:00",
+      "updated_at": "2026-10-13T06:20:46.089486+00:00"
+    }
+  ],
+  "controls": [
+    {
+      "audit_id": "106cc8a5-ca0f-4a28-944c-e4459c2d77d7",
+      "incident_id": "6c915943-d439-5e5e-a346-c6e8c71938a5",
+      "action": "auto_authorize_observation",
+      "expected_generation": 0,
+      "resulting_generation": 0,
+      "actor": "system",
+      "payload": {
+        "trigger": "published",
+        "revision": null,
+        "session_id": "e0691373-4201-549e-9e4a-de3467a9518a",
+        "deadline_at": "2026-10-12T23:40:46.079900-07:00",
+        "authorization_source": "automatic",
+        "health_profile_revision": "otel-demo-checkout@dc7d44caa04d"
+      },
+      "created_at": "2026-10-13T06:20:46.089124+00:00"
+    }
+  ],
+  "sessions": [
+    {
+      "session_id": "e0691373-4201-549e-9e4a-de3467a9518a",
+      "authorization_source": "automatic",
+      "authorized_by": "system",
+      "target": {
+        "revision": null,
+        "namespace": "otel-demo",
+        "cluster_uid": "c8001471-8b7b-4449-83c0-924e6f46b857",
+        "resource_uid": "m0-otel-20260909",
+        "integration_id": "m0-otel-20260909"
+      },
+      "state": "expired",
+      "ended_reason": "deadline_expired",
+      "authorized_at": "2026-10-13T06:20:46.088734+00:00",
+      "deadline_at": "2026-10-13T06:40:46.079900+00:00",
+      "max_samples": 40,
+      "sample_interval_seconds": 60,
+      "sustained_window_seconds": 600,
+      "adopted_count": 19,
+      "healthy_since": null,
+      "health_profile_revision": "otel-demo-checkout@dc7d44caa04d",
+      "samples": [
+        {
+          "sequence": 1,
+          "window_end": "2026-10-13T06:21:46.422338+00:00",
+          "outcome": "degraded",
+          "disposition": "adopted",
+          "health_basis": "outcome_not_healthy",
+          "transition": null,
+          "readings": {
+            "dependency_deployments_available": [
+              "ok",
+              8.0,
+              5
+            ],
+            "dependency_error_ratio": [
+              "ok",
+              0.12195121951219512,
+              5
+            ],
+            "deployment_available_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_available_replicas_min_in_window": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_ready_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "error_ratio": [
+              "ok",
+              1.0,
+              5
+            ],
+            "latency_p95_milliseconds": [
+              "ok",
+              74.99999999999997,
+              5
+            ],
+            "request_rate_per_second": [
+              "ok",
+              0.041666840278501156,
+              5
+            ]
+          }
+        },
+        {
+          "sequence": 2,
+          "window_end": "2026-10-13T06:22:46.602628+00:00",
+          "outcome": "degraded",
+          "disposition": "adopted",
+          "health_basis": "outcome_not_healthy",
+          "transition": null,
+          "readings": {
+            "dependency_deployments_available": [
+              "ok",
+              8.0,
+              5
+            ],
+            "dependency_error_ratio": [
+              "ok",
+              0.11538461538461538,
+              5
+            ],
+            "deployment_available_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_available_replicas_min_in_window": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_ready_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "error_ratio": [
+              "ok",
+              1.0,
+              5
+            ],
+            "latency_p95_milliseconds": [
+              "ok",
+              48.0,
+              5
+            ],
+            "request_rate_per_second": [
+              "ok",
+              0.03749984375065104,
+              5
+            ]
+          }
+        },
+        {
+          "sequence": 3,
+          "window_end": "2026-10-13T06:23:46.742691+00:00",
+          "outcome": "degraded",
+          "disposition": "adopted",
+          "health_basis": "outcome_not_healthy",
+          "transition": null,
+          "readings": {
+            "dependency_deployments_available": [
+              "ok",
+              8.0,
+              5
+            ],
+            "dependency_error_ratio": [
+              "ok",
+              0.11290322580645161,
+              5
+            ],
+            "deployment_available_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_available_replicas_min_in_window": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_ready_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "error_ratio": [
+              "ok",
+              1.0,
+              5
+            ],
+            "latency_p95_milliseconds": [
+              "ok",
+              48.0,
+              5
+            ],
+            "request_rate_per_second": [
+              "ok",
+              0.02916642361313656,
+              5
+            ]
+          }
+        },
+        {
+          "sequence": 4,
+          "window_end": "2026-10-13T06:24:46.933693+00:00",
+          "outcome": "degraded",
+          "disposition": "adopted",
+          "health_basis": "outcome_not_healthy",
+          "transition": null,
+          "readings": {
+            "dependency_deployments_available": [
+              "ok",
+              8.0,
+              5
+            ],
+            "dependency_error_ratio": [
+              "ok",
+              0.11363636363636363,
+              5
+            ],
+            "deployment_available_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_available_replicas_min_in_window": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_ready_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "error_ratio": [
+              "ok",
+              1.0,
+              5
+            ],
+            "latency_p95_milliseconds": [
+              "ok",
+              48.0,
+              5
+            ],
+            "request_rate_per_second": [
+              "ok",
+              0.020833420139250578,
+              5
+            ]
+          }
+        },
+        {
+          "sequence": 5,
+          "window_end": "2026-10-13T06:25:47.198920+00:00",
+          "outcome": "degraded",
+          "disposition": "adopted",
+          "health_basis": "outcome_not_healthy",
+          "transition": null,
+          "readings": {
+            "dependency_deployments_available": [
+              "ok",
+              8.0,
+              5
+            ],
+            "dependency_error_ratio": [
+              "ok",
+              0.10526315789473685,
+              5
+            ],
+            "deployment_available_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_available_replicas_min_in_window": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_ready_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "error_ratio": [
+              "ok",
+              1.0,
+              5
+            ],
+            "latency_p95_milliseconds": [
+              "ok",
+              47.99999999999999,
+              5
+            ],
+            "request_rate_per_second": [
+              "ok",
+              0.016666666666666666,
+              5
+            ]
+          }
+        },
+        {
+          "sequence": 6,
+          "window_end": "2026-10-13T06:26:47.461071+00:00",
+          "outcome": "degraded",
+          "disposition": "adopted",
+          "health_basis": "outcome_not_healthy",
+          "transition": null,
+          "readings": {
+            "dependency_deployments_available": [
+              "ok",
+              8.0,
+              5
+            ],
+            "dependency_error_ratio": [
+              "ok",
+              0.12,
+              5
+            ],
+            "deployment_available_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_available_replicas_min_in_window": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_ready_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "error_ratio": [
+              "ok",
+              1.0,
+              5
+            ],
+            "latency_p95_milliseconds": [
+              "ok",
+              47.599999999999994,
+              5
+            ],
+            "request_rate_per_second": [
+              "ok",
+              0.025000104167100697,
+              5
+            ]
+          }
+        },
+        {
+          "sequence": 7,
+          "window_end": "2026-10-13T06:27:47.686175+00:00",
+          "outcome": "degraded",
+          "disposition": "adopted",
+          "health_basis": "outcome_not_healthy",
+          "transition": null,
+          "readings": {
+            "dependency_deployments_available": [
+              "ok",
+              8.0,
+              5
+            ],
+            "dependency_error_ratio": [
+              "ok",
+              0.125,
+              5
+            ],
+            "deployment_available_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_available_replicas_min_in_window": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_ready_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "error_ratio": [
+              "ok",
+              1.0,
+              5
+            ],
+            "latency_p95_milliseconds": [
+              "ok",
+              47.666666666666664,
+              5
+            ],
+            "request_rate_per_second": [
+              "ok",
+              0.02916678819495081,
+              5
+            ]
+          }
+        },
+        {
+          "sequence": 8,
+          "window_end": "2026-10-13T06:28:47.931168+00:00",
+          "outcome": "degraded",
+          "disposition": "adopted",
+          "health_basis": "outcome_not_healthy",
+          "transition": null,
+          "readings": {
+            "dependency_deployments_available": [
+              "ok",
+              8.0,
+              5
+            ],
+            "dependency_error_ratio": [
+              "ok",
+              0.1282051282051282,
+              5
+            ],
+            "deployment_available_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_available_replicas_min_in_window": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_ready_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "error_ratio": [
+              "ok",
+              1.0,
+              5
+            ],
+            "latency_p95_milliseconds": [
+              "ok",
+              47.49999999999999,
+              5
+            ],
+            "request_rate_per_second": [
+              "ok",
+              0.04166649305627893,
+              5
+            ]
+          }
+        },
+        {
+          "sequence": 9,
+          "window_end": "2026-10-13T06:29:48.139339+00:00",
+          "outcome": "degraded",
+          "disposition": "adopted",
+          "health_basis": "outcome_not_healthy",
+          "transition": null,
+          "readings": {
+            "dependency_deployments_available": [
+              "ok",
+              8.0,
+              5
+            ],
+            "dependency_error_ratio": [
+              "ok",
+              0.13414634146341464,
+              5
+            ],
+            "deployment_available_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_available_replicas_min_in_window": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_ready_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "error_ratio": [
+              "ok",
+              1.0,
+              5
+            ],
+            "latency_p95_milliseconds": [
+              "ok",
+              47.55555555555556,
+              5
+            ],
+            "request_rate_per_second": [
+              "ok",
+              0.04583295139207174,
+              5
+            ]
+          }
+        },
+        {
+          "sequence": 10,
+          "window_end": "2026-10-13T06:30:48.542323+00:00",
+          "outcome": "degraded",
+          "disposition": "adopted",
+          "health_basis": "outcome_not_healthy",
+          "transition": null,
+          "readings": {
+            "dependency_deployments_available": [
+              "ok",
+              8.0,
+              5
+            ],
+            "dependency_error_ratio": [
+              "ok",
+              0.13333333333333333,
+              5
+            ],
+            "deployment_available_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_available_replicas_min_in_window": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_ready_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "error_ratio": [
+              "ok",
+              1.0,
+              5
+            ],
+            "latency_p95_milliseconds": [
+              "ok",
+              47.714285714285715,
+              5
+            ],
+            "request_rate_per_second": [
+              "ok",
+              0.03333319444502315,
+              5
+            ]
+          }
+        },
+        {
+          "sequence": 11,
+          "window_end": "2026-10-13T06:31:48.747714+00:00",
+          "outcome": "degraded",
+          "disposition": "adopted",
+          "health_basis": "outcome_not_healthy",
+          "transition": null,
+          "readings": {
+            "dependency_deployments_available": [
+              "ok",
+              8.0,
+              5
+            ],
+            "dependency_error_ratio": [
+              "ok",
+              0.125,
+              5
+            ],
+            "deployment_available_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_available_replicas_min_in_window": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_ready_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "error_ratio": [
+              "ok",
+              1.0,
+              5
+            ],
+            "latency_p95_milliseconds": [
+              "ok",
+              47.599999999999994,
+              5
+            ],
+            "request_rate_per_second": [
+              "ok",
+              0.025000104167100697,
+              5
+            ]
+          }
+        },
+        {
+          "sequence": 12,
+          "window_end": "2026-10-13T06:32:49.111424+00:00",
+          "outcome": "degraded",
+          "disposition": "adopted",
+          "health_basis": "outcome_not_healthy",
+          "transition": null,
+          "readings": {
+            "dependency_deployments_available": [
+              "ok",
+              8.0,
+              5
+            ],
+            "dependency_error_ratio": [
+              "ok",
+              0.12962962962962962,
+              5
+            ],
+            "deployment_available_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_available_replicas_min_in_window": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_ready_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "error_ratio": [
+              "ok",
+              1.0,
+              5
+            ],
+            "latency_p95_milliseconds": [
+              "ok",
+              82.49999999999999,
+              5
+            ],
+            "request_rate_per_second": [
+              "ok",
+              0.02916678819495081,
+              5
+            ]
+          }
+        },
+        {
+          "sequence": 13,
+          "window_end": "2026-10-13T06:33:49.470220+00:00",
+          "outcome": "degraded",
+          "disposition": "adopted",
+          "health_basis": "outcome_not_healthy",
+          "transition": null,
+          "readings": {
+            "dependency_deployments_available": [
+              "ok",
+              8.0,
+              5
+            ],
+            "dependency_error_ratio": [
+              "ok",
+              0.13043478260869565,
+              5
+            ],
+            "deployment_available_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_available_replicas_min_in_window": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_ready_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "error_ratio": [
+              "ok",
+              1.0,
+              5
+            ],
+            "latency_p95_milliseconds": [
+              "ok",
+              84.99999999999997,
+              5
+            ],
+            "request_rate_per_second": [
+              "ok",
+              0.025000208335069454,
+              5
+            ]
+          }
+        },
+        {
+          "sequence": 14,
+          "window_end": "2026-10-13T06:34:49.787023+00:00",
+          "outcome": "degraded",
+          "disposition": "adopted",
+          "health_basis": "outcome_not_healthy",
+          "transition": null,
+          "readings": {
+            "dependency_deployments_available": [
+              "ok",
+              8.0,
+              5
+            ],
+            "dependency_error_ratio": [
+              "ok",
+              0.125,
+              5
+            ],
+            "deployment_available_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_available_replicas_min_in_window": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_ready_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "error_ratio": [
+              "ok",
+              1.0,
+              5
+            ],
+            "latency_p95_milliseconds": [
+              "ok",
+              79.99999999999997,
+              5
+            ],
+            "request_rate_per_second": [
+              "ok",
+              0.03333333333333333,
+              5
+            ]
+          }
+        },
+        {
+          "sequence": 15,
+          "window_end": "2026-10-13T06:35:50.136392+00:00",
+          "outcome": "degraded",
+          "disposition": "adopted",
+          "health_basis": "outcome_not_healthy",
+          "transition": null,
+          "readings": {
+            "dependency_deployments_available": [
+              "ok",
+              8.0,
+              5
+            ],
+            "dependency_error_ratio": [
+              "ok",
+              0.1282051282051282,
+              5
+            ],
+            "deployment_available_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_available_replicas_min_in_window": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_ready_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "error_ratio": [
+              "ok",
+              1.0,
+              5
+            ],
+            "latency_p95_milliseconds": [
+              "ok",
+              74.99999999999997,
+              5
+            ],
+            "request_rate_per_second": [
+              "ok",
+              0.04166649305627893,
+              5
+            ]
+          }
+        },
+        {
+          "sequence": 16,
+          "window_end": "2026-10-13T06:36:50.471622+00:00",
+          "outcome": "degraded",
+          "disposition": "adopted",
+          "health_basis": "outcome_not_healthy",
+          "transition": null,
+          "readings": {
+            "dependency_deployments_available": [
+              "ok",
+              8.0,
+              5
+            ],
+            "dependency_error_ratio": [
+              "ok",
+              0.12903225806451613,
+              5
+            ],
+            "deployment_available_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_available_replicas_min_in_window": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_ready_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "error_ratio": [
+              "ok",
+              1.0,
+              5
+            ],
+            "latency_p95_milliseconds": [
+              "ok",
+              79.99999999999997,
+              5
+            ],
+            "request_rate_per_second": [
+              "ok",
+              0.033333472222800926,
+              5
+            ]
+          }
+        },
+        {
+          "sequence": 17,
+          "window_end": "2026-10-13T06:37:50.687398+00:00",
+          "outcome": "degraded",
+          "disposition": "adopted",
+          "health_basis": "outcome_not_healthy",
+          "transition": null,
+          "readings": {
+            "dependency_deployments_available": [
+              "ok",
+              8.0,
+              5
+            ],
+            "dependency_error_ratio": [
+              "ok",
+              0.125,
+              5
+            ],
+            "deployment_available_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_available_replicas_min_in_window": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_ready_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "error_ratio": [
+              "ok",
+              1.0,
+              5
+            ],
+            "latency_p95_milliseconds": [
+              "ok",
+              87.49999999999999,
+              5
+            ],
+            "request_rate_per_second": [
+              "ok",
+              0.041666666666666664,
+              5
+            ]
+          }
+        },
+        {
+          "sequence": 18,
+          "window_end": "2026-10-13T06:38:50.896877+00:00",
+          "outcome": "degraded",
+          "disposition": "adopted",
+          "health_basis": "outcome_not_healthy",
+          "transition": null,
+          "readings": {
+            "dependency_deployments_available": [
+              "ok",
+              8.0,
+              5
+            ],
+            "dependency_error_ratio": [
+              "ok",
+              0.12857142857142856,
+              5
+            ],
+            "deployment_available_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_available_replicas_min_in_window": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_ready_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "error_ratio": [
+              "ok",
+              1.0,
+              5
+            ],
+            "latency_p95_milliseconds": [
+              "ok",
+              88.74999999999999,
+              5
+            ],
+            "request_rate_per_second": [
+              "ok",
+              0.03750015625065104,
+              5
+            ]
+          }
+        },
+        {
+          "sequence": 19,
+          "window_end": "2026-10-13T06:39:51.217291+00:00",
+          "outcome": "degraded",
+          "disposition": "adopted",
+          "health_basis": "outcome_not_healthy",
+          "transition": null,
+          "readings": {
+            "dependency_deployments_available": [
+              "ok",
+              8.0,
+              5
+            ],
+            "dependency_error_ratio": [
+              "ok",
+              0.125,
+              5
+            ],
+            "deployment_available_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_available_replicas_min_in_window": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_ready_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "error_ratio": [
+              "ok",
+              1.0,
+              5
+            ],
+            "latency_p95_milliseconds": [
+              "ok",
+              91.24999999999999,
+              5
+            ],
+            "request_rate_per_second": [
+              "ok",
+              0.029166666666666667,
+              5
+            ]
+          }
+        }
+      ],
+      "endings": [
+        {
+          "ending_id": "24b15dd2-4a06-403d-8e9b-43d4727309f7",
+          "session_id": "e0691373-4201-549e-9e4a-de3467a9518a",
+          "incident_id": "6c915943-d439-5e5e-a346-c6e8c71938a5",
+          "ended_reason": "deadline_expired",
+          "transition": "observation_ended_unconfirmed",
+          "sample_id": null,
+          "lifecycle_before": "observing_recovery",
+          "lifecycle_after": "open",
+          "recorded_at": "2026-10-13T06:40:46.498767+00:00",
+          "job_id": "d9778337-8f83-4d12-ada8-25fde80c96c5",
+          "job_sequence": 20
+        }
+      ]
+    }
+  ],
+  "replay": [
+    {
+      "session_id": "e0691373-4201-549e-9e4a-de3467a9518a",
+      "consistent": true,
+      "recovery_verdict": "degraded",
+      "recomputed_verdict": "degraded",
+      "healthy_window_seconds": 0
+    }
+  ],
+  "recovery_outcome": {
+    "scenario_id": "m184-S2",
+    "subject_id": "6c915943-d439-5e5e-a346-c6e8c71938a5",
+    "incident_lifecycle": "open",
+    "recorded_lifecycle": "open",
+    "incident_mode": "automatic",
+    "target": {
+      "revision": null,
+      "namespace": "otel-demo",
+      "cluster_uid": "c8001471-8b7b-4449-83c0-924e6f46b857",
+      "resource_uid": "m0-otel-20260909",
+      "integration_id": "m0-otel-20260909"
+    },
+    "recovery_confirmed": false,
+    "recovery_verdict": "degraded",
+    "recovery_reasons": [
+      "DEGRADED_SIGNAL:error_ratio",
+      "DEGRADED_SIGNAL:dependency_error_ratio",
+      "CONTINUED_DEGRADATION",
+      "OBSERVATION_UNCONFIRMED"
+    ],
+    "latest_sample_verdict": "degraded",
+    "healthy_window_seconds": 0,
+    "used_sample_count": 19,
+    "observation_ended": true,
+    "observation_ended_reason": "deadline_expired",
+    "human_interaction": "handoff",
+    "handoff_reasons": [
+      "DEADLINE_EXPIRED",
+      "DEGRADED_SIGNAL:error_ratio",
+      "DEGRADED_SIGNAL:dependency_error_ratio",
+      "CONTINUED_DEGRADATION",
+      "OBSERVATION_UNCONFIRMED"
+    ],
+    "recovery_profile_revision": "otel-demo-checkout@dc7d44caa04d",
+    "recovery_handled_at": "2026-10-13T06:20:46.088734+00:00",
+    "observation_sessions": [
+      {
+        "session_id": "e0691373-4201-549e-9e4a-de3467a9518a",
+        "purpose": "incident_recovery",
+        "subject_control_generation": 0,
+        "observation_generation": 1,
+        "state": "expired",
+        "health_profile_revision": "otel-demo-checkout@dc7d44caa04d",
+        "adopted_sequence": 19,
+        "adopted_window_end": "2026-10-13T06:39:51.217291+00:00",
+        "active_sample_job_id": null,
+        "subject": {
+          "kind": "incident",
+          "id": "6c915943-d439-5e5e-a346-c6e8c71938a5"
+        },
+        "target": {
+          "revision": null,
+          "namespace": "otel-demo",
+          "cluster_uid": "c8001471-8b7b-4449-83c0-924e6f46b857",
+          "resource_uid": "m0-otel-20260909",
+          "integration_id": "m0-otel-20260909"
+        },
+        "authorized": false
+      }
+    ],
+    "observation_authorization": {
+      "session_id": "e0691373-4201-549e-9e4a-de3467a9518a",
+      "purpose": "incident_recovery",
+      "subject_control_generation": 0,
+      "observation_generation": 1,
+      "state": "expired",
+      "health_profile_revision": "otel-demo-checkout@dc7d44caa04d",
+      "adopted_sequence": 19,
+      "adopted_window_end": "2026-10-13T06:39:51.217291+00:00",
+      "active_sample_job_id": null,
+      "subject": {
+        "kind": "incident",
+        "id": "6c915943-d439-5e5e-a346-c6e8c71938a5"
+      },
+      "target": {
+        "revision": null,
+        "namespace": "otel-demo",
+        "cluster_uid": "c8001471-8b7b-4449-83c0-924e6f46b857",
+        "resource_uid": "m0-otel-20260909",
+        "integration_id": "m0-otel-20260909"
+      },
+      "authorized": false,
+      "subject_id": "6c915943-d439-5e5e-a346-c6e8c71938a5",
+      "authorization_source": "automatic"
+    },
+    "sample_jobs": [
+      {
+        "job_id": "103ebd68-2856-43d6-8961-af138dd76dac",
+        "session_id": "e0691373-4201-549e-9e4a-de3467a9518a",
+        "sequence": 8
+      },
+      {
+        "job_id": "10f401ba-65e2-4be1-8a4b-91a8b6ac23f7",
+        "session_id": "e0691373-4201-549e-9e4a-de3467a9518a",
+        "sequence": 4
+      },
+      {
+        "job_id": "15a4f345-598d-4c95-b1d0-3a1a492fab0a",
+        "session_id": "e0691373-4201-549e-9e4a-de3467a9518a",
+        "sequence": 6
+      },
+      {
+        "job_id": "19ec32bf-db9e-4ce1-b51f-921ef6b1901f",
+        "session_id": "e0691373-4201-549e-9e4a-de3467a9518a",
+        "sequence": 10
+      },
+      {
+        "job_id": "203c3515-3745-4020-a36a-398f22899525",
+        "session_id": "e0691373-4201-549e-9e4a-de3467a9518a",
+        "sequence": 14
+      },
+      {
+        "job_id": "2f802533-d5a1-47fa-a7a1-b4413f266442",
+        "session_id": "e0691373-4201-549e-9e4a-de3467a9518a",
+        "sequence": 2
+      },
+      {
+        "job_id": "37a8a867-56fc-42dc-a9c7-7fecb1356eb5",
+        "session_id": "e0691373-4201-549e-9e4a-de3467a9518a",
+        "sequence": 18
+      },
+      {
+        "job_id": "3d8ab9d9-16cd-4c38-856f-7c627363f0a6",
+        "session_id": "e0691373-4201-549e-9e4a-de3467a9518a",
+        "sequence": 19
+      },
+      {
+        "job_id": "49394e33-e38e-470d-86d3-b4ed758f3f87",
+        "session_id": "e0691373-4201-549e-9e4a-de3467a9518a",
+        "sequence": 13
+      },
+      {
+        "job_id": "49c5fc2d-492a-4180-8b77-61a4048ea638",
+        "session_id": "e0691373-4201-549e-9e4a-de3467a9518a",
+        "sequence": 7
+      },
+      {
+        "job_id": "60151b76-6be9-4aa3-8cb5-c37d055f14be",
+        "session_id": "e0691373-4201-549e-9e4a-de3467a9518a",
+        "sequence": 16
+      },
+      {
+        "job_id": "70e465ad-f46a-4db2-9ee9-fc4fa235574c",
+        "session_id": "e0691373-4201-549e-9e4a-de3467a9518a",
+        "sequence": 3
+      },
+      {
+        "job_id": "74c1759e-07ad-4507-b7f0-d7f1b1647ac6",
+        "session_id": "e0691373-4201-549e-9e4a-de3467a9518a",
+        "sequence": 12
+      },
+      {
+        "job_id": "8ebb3a93-d117-4aa3-a769-0bd0a2e0af39",
+        "session_id": "e0691373-4201-549e-9e4a-de3467a9518a",
+        "sequence": 17
+      },
+      {
+        "job_id": "97391778-82ac-4f93-b876-7db18d584c20",
+        "session_id": "e0691373-4201-549e-9e4a-de3467a9518a",
+        "sequence": 11
+      },
+      {
+        "job_id": "aaa38cfe-368b-4c03-9403-c65062faea4d",
+        "session_id": "e0691373-4201-549e-9e4a-de3467a9518a",
+        "sequence": 5
+      },
+      {
+        "job_id": "b0fc51d1-7125-4b23-b4f9-68cd0659e5cc",
+        "session_id": "e0691373-4201-549e-9e4a-de3467a9518a",
+        "sequence": 1
+      },
+      {
+        "job_id": "c635135a-8ce5-41df-9ae9-4be70664857f",
+        "session_id": "e0691373-4201-549e-9e4a-de3467a9518a",
+        "sequence": 15
+      },
+      {
+        "job_id": "d9778337-8f83-4d12-ada8-25fde80c96c5",
+        "session_id": "e0691373-4201-549e-9e4a-de3467a9518a",
+        "sequence": 20
+      },
+      {
+        "job_id": "eaf4d120-278b-493f-9843-775323c66e4d",
+        "session_id": "e0691373-4201-549e-9e4a-de3467a9518a",
+        "sequence": 9
+      }
+    ],
+    "handling_audit": [
+      {
+        "audit_id": "106cc8a5-ca0f-4a28-944c-e4459c2d77d7",
+        "incident_id": "6c915943-d439-5e5e-a346-c6e8c71938a5",
+        "action": "auto_authorize_observation",
+        "expected_generation": 0,
+        "resulting_generation": 0,
+        "actor": "system",
+        "payload": {
+          "trigger": "published",
+          "revision": null,
+          "session_id": "e0691373-4201-549e-9e4a-de3467a9518a",
+          "deadline_at": "2026-10-12T23:40:46.079900-07:00",
+          "authorization_source": "automatic",
+          "health_profile_revision": "otel-demo-checkout@dc7d44caa04d"
+        },
+        "created_at": "2026-10-13T06:20:46.089124+00:00"
+      }
+    ],
+    "actions": [
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "persist_observation",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "persist_observation",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "persist_observation",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "persist_observation",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "persist_observation",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "persist_observation",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "persist_observation",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "persist_observation",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "persist_observation",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "persist_observation",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "persist_observation",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "persist_observation",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "persist_observation",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "persist_observation",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "persist_observation",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "persist_observation",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "persist_observation",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "persist_observation",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "persist_observation",
+      "advance_incident_lifecycle",
+      "human_handoff"
+    ],
+    "permissions": [
+      "read_only",
+      "database_temp"
+    ],
+    "model_requests": [],
+    "authorization_source": "automatic",
+    "authorization_sources": [
+      "automatic"
+    ],
+    "system_authorizations": [
+      {
+        "audit_id": "106cc8a5-ca0f-4a28-944c-e4459c2d77d7",
+        "incident_id": "6c915943-d439-5e5e-a346-c6e8c71938a5",
+        "action": "auto_authorize_observation",
+        "expected_generation": 0,
+        "resulting_generation": 0,
+        "actor": "system",
+        "payload": {
+          "trigger": "published",
+          "revision": null,
+          "session_id": "e0691373-4201-549e-9e4a-de3467a9518a",
+          "deadline_at": "2026-10-12T23:40:46.079900-07:00",
+          "authorization_source": "automatic",
+          "health_profile_revision": "otel-demo-checkout@dc7d44caa04d"
+        },
+        "created_at": "2026-10-13T06:20:46.089124+00:00"
+      }
+    ],
+    "recovery_profile_content_sha256": "dc7d44caa04dfb267d6ce2f29be0e888793c892c879cc57a15847e5071751ef3",
+    "recovery_samples_digest": {
+      "sha256": "9540c288027549330f052c089f3122418ad7ea815763cc92108adc349acb9c26",
+      "bytes": 183191
+    },
+    "replay_digest": {
+      "sha256": "60fd7e7bb78228e891292ce542e127923ccaba8d9a388b9401cc8b4088cdc52a",
+      "bytes": 123518
+    },
+    "action_events_digest": {
+      "sha256": "8ac1bee318a2093f248d7ded4d0c9d82d313c90062b4bb365f081c58e13d6da4",
+      "bytes": 70281
+    }
+  },
+  "workbench_page": {
+    "status": 200,
+    "bytes": 229810,
+    "sha256": "041d6d4f24198c2952a2b191b94c3746eec09e92fe0336865635a20d7e511c10",
+    "shows_recovered_no_remediation": false,
+    "shows_source_automatic": true
+  },
+  "verdicts": {
+    "scenario": "S2",
+    "incident_id": "6c915943-d439-5e5e-a346-c6e8c71938a5",
+    "checked_at": "2026-10-12T23:50:43.139437-07:00",
+    "verdicts": [
+      {
+        "id": "C1",
+        "requirement": "Published current completed Run at incident generation",
+        "expected": true,
+        "actual": {
+          "conclusion_present": true,
+          "run_state": "completed",
+          "current_run_id": "04e10229-a18e-5489-b8a5-af5fbbfdf937",
+          "run_id": "04e10229-a18e-5489-b8a5-af5fbbfdf937",
+          "run_incident_id": "6c915943-d439-5e5e-a346-c6e8c71938a5",
+          "incident_generation": 0,
+          "run_generation": 0
+        },
+        "pass": true
+      },
+      {
+        "id": "C2",
+        "requirement": "Exactly one authorized decision linked to one current session",
+        "expected": {
+          "decisions": 1,
+          "sessions": 1,
+          "state": "authorized"
+        },
+        "actual": {
+          "authorizations": [
+            {
+              "incident_id": "6c915943-d439-5e5e-a346-c6e8c71938a5",
+              "control_generation": 0,
+              "state": "authorized",
+              "reason": null,
+              "session_id": "e0691373-4201-549e-9e4a-de3467a9518a",
+              "attempts": 0
+            }
+          ],
+          "session_ids": [
+            "e0691373-4201-549e-9e4a-de3467a9518a"
+          ]
+        },
+        "pass": true
+      },
+      {
+        "id": "C3",
+        "requirement": "One system authorization preserves current control generation",
+        "expected": 0,
+        "actual": [
+          {
+            "audit_id": "106cc8a5-ca0f-4a28-944c-e4459c2d77d7",
+            "incident_id": "6c915943-d439-5e5e-a346-c6e8c71938a5",
+            "action": "auto_authorize_observation",
+            "expected_generation": 0,
+            "resulting_generation": 0,
+            "actor": "system",
+            "payload": {
+              "trigger": "published",
+              "revision": null,
+              "session_id": "e0691373-4201-549e-9e4a-de3467a9518a",
+              "deadline_at": "2026-10-12T23:40:46.079900-07:00",
+              "authorization_source": "automatic",
+              "health_profile_revision": "otel-demo-checkout@dc7d44caa04d"
+            },
+            "created_at": "2026-10-12T23:20:46.089124-07:00"
+          }
+        ],
+        "pass": true
+      },
+      {
+        "id": "C4",
+        "requirement": "No human controls anywhere in incident history",
+        "expected": [],
+        "actual": [],
+        "pass": true
+      },
+      {
+        "id": "C5",
+        "requirement": "Automatic session with explicitly unknown revision at current generation",
+        "expected": {
+          "authorization_source": "automatic",
+          "revision": null,
+          "generation": 0
+        },
+        "actual": {
+          "authorization_source": "automatic",
+          "target": {
+            "revision": null,
+            "namespace": "otel-demo",
+            "cluster_uid": "c8001471-8b7b-4449-83c0-924e6f46b857",
+            "resource_uid": "m0-otel-20260909",
+            "integration_id": "m0-otel-20260909"
+          },
+          "generation": 0
+        },
+        "pass": true
+      },
+      {
+        "id": "C6",
+        "requirement": "F6 automatic source, no human permission or human actions",
+        "expected": {
+          "source": "automatic",
+          "human_actions": [],
+          "human_control": false
+        },
+        "actual": {
+          "in_ledger": true,
+          "sha256": "5f98b4fc89377492637c274f602c93f91c9da138ef1d08017cb6a8135a14a848",
+          "bytes": 9231
+        },
+        "pass": true
+      },
+      {
+        "id": "C7",
+        "requirement": "All public offline replays consistent; latest agrees with F6",
+        "expected": true,
+        "actual": {
+          "replays": [
+            {
+              "session_id": "e0691373-4201-549e-9e4a-de3467a9518a",
+              "consistent": true,
+              "recovery_verdict": "degraded",
+              "integrity": []
+            }
+          ],
+          "f6_replay": {
+            "session_id": "e0691373-4201-549e-9e4a-de3467a9518a",
+            "consistent": true,
+            "recovery_verdict": "degraded",
+            "integrity": []
+          }
+        },
+        "pass": true
+      },
+      {
+        "id": "S2-1",
+        "requirement": "Session terminal state and reason",
+        "expected": [
+          "expired",
+          "deadline_expired"
+        ],
+        "actual": [
+          "expired",
+          "deadline_expired"
+        ],
+        "pass": true
+      },
+      {
+        "id": "S2-2",
+        "requirement": "Incident lifecycle agrees with public F6 projection",
+        "expected": "open",
+        "actual": {
+          "stored": "open",
+          "f6": "open"
+        },
+        "pass": true
+      },
+      {
+        "id": "S2-3",
+        "requirement": "One unconfirmed ending at or after frozen DB deadline",
+        "expected": {
+          "count": 1,
+          "transition": "observation_ended_unconfirmed",
+          "lifecycle_after": "open",
+          "ended_reason": "deadline_expired",
+          "at_or_after_deadline": true
+        },
+        "actual": {
+          "endings": [
+            {
+              "ending_id": "24b15dd2-4a06-403d-8e9b-43d4727309f7",
+              "session_id": "e0691373-4201-549e-9e4a-de3467a9518a",
+              "incident_id": "6c915943-d439-5e5e-a346-c6e8c71938a5",
+              "ended_reason": "deadline_expired",
+              "transition": "observation_ended_unconfirmed",
+              "sample_id": null,
+              "lifecycle_before": "observing_recovery",
+              "lifecycle_after": "open",
+              "recorded_at": "2026-10-12T23:40:46.498767-07:00",
+              "job_id": "d9778337-8f83-4d12-ada8-25fde80c96c5",
+              "job_sequence": 20
+            }
+          ],
+          "deadline_at": "2026-10-12T23:40:46.079900-07:00"
+        },
+        "pass": true
+      },
+      {
+        "id": "S2-4",
+        "requirement": "F6 deadline handoff without recovery",
+        "expected": {
+          "confirmed": false,
+          "ended": true,
+          "reason": "deadline_expired",
+          "interaction": "handoff",
+          "handoff_reason": "DEADLINE_EXPIRED"
+        },
+        "actual": {
+          "recovery_confirmed": false,
+          "observation_ended": true,
+          "observation_ended_reason": "deadline_expired",
+          "human_interaction": "handoff",
+          "handoff_reasons": [
+            "DEADLINE_EXPIRED",
+            "DEGRADED_SIGNAL:error_ratio",
+            "DEGRADED_SIGNAL:dependency_error_ratio",
+            "CONTINUED_DEGRADATION",
+            "OBSERVATION_UNCONFIRMED"
+          ]
+        },
+        "pass": true
+      },
+      {
+        "id": "S2-5",
+        "requirement": "Sample budget exhaustion cannot substitute for deadline",
+        "expected": "no max_samples_exhausted",
+        "actual": [
+          "deadline_expired",
+          "deadline_expired",
+          "deadline_expired"
+        ],
+        "pass": true
+      },
+      {
+        "id": "S2-6",
+        "requirement": "Authorization failure cannot substitute for observation handoff",
+        "expected": "authorized",
+        "actual": [
+          {
+            "incident_id": "6c915943-d439-5e5e-a346-c6e8c71938a5",
+            "control_generation": 0,
+            "state": "authorized",
+            "reason": null,
+            "session_id": "e0691373-4201-549e-9e4a-de3467a9518a",
+            "attempts": 0
+          }
+        ],
+        "pass": true
+      },
+      {
+        "id": "S2-7",
+        "requirement": "Sampled persistent degradation with required telemetry and traffic, not unknown",
+        "expected": "nonempty adopted degraded samples; F6 degraded",
+        "actual": {
+          "in_ledger": true,
+          "sha256": "1948dcc0ba955c01a7721e5224bab11ca6e72d437f5cfb433981f80b8d5ca974",
+          "bytes": 16552
+        },
+        "pass": true
+      },
+      {
+        "id": "S2-8",
+        "requirement": "Public recovery section makes no recovery success claim",
+        "expected": "no success statement",
+        "actual": {
+          "in_ledger": true,
+          "sha256": "62aee11176792a1a5bb28bd82f783dfbbbfaf424029c40e7d98ac27463f384c0",
+          "bytes": 82054
+        },
+        "pass": true
+      },
+      {
+        "id": "S2-9",
+        "requirement": "No second automatic session at the same generation (at read time)",
+        "expected": 1,
+        "actual": [
+          "e0691373-4201-549e-9e4a-de3467a9518a"
+        ],
+        "pass": true
+      }
+    ],
+    "all_pass": true
+  },
+  "timeline": {
+    "sha256": "7216f528bd91921f1cc6f1bcc6c1f4d97498df52239417649669e3d6ed36b16b",
+    "bytes": 2992
+  },
+  "postmortem_attempts": [
+    {
+      "attempt_id": "5fe4d8d8-7d83-4d8c-bf79-01624161d9ba",
+      "status": "succeeded",
+      "version": 1,
+      "model": "deepseek-flash",
+      "model_requests": 1,
+      "prompt_tokens": 59961,
+      "completion_tokens": 18440,
+      "started_at": "2026-10-13T06:41:07.848046+00:00",
+      "finished_at": "2026-10-13T06:42:36.036577+00:00"
+    }
+  ],
+  "artifacts": {
+    "docs/evidence/m1-184-self-heal-live/collect.py": {
+      "sha256": "5586f1fc080821e8d9cb475d2c02090f113b79ec380856a57c4758a9078677ed",
+      "bytes": 16770
+    },
+    "docs/evidence/m1-184-self-heal-live/verify.py": {
+      "sha256": "3ccf664b268debdd622b0832805cb5b5ce8408be250149a818db88adadb065d5",
+      "bytes": 25746
+    },
+    "tests/test_m1_184_live_verify.py": {
+      "sha256": "a7c39f1deb4ece94d725bf1bc558754facd84a6191992ab10280e4c17b6016b3",
+      "bytes": 10003
+    },
+    "docs/evidence/m1-184-self-heal-live/otel-demo-checkout-deadline-1200.json": {
+      "sha256": "f64a6e14065bc7fa04d709dc1b0b84cce24b7176cf1629b0bc3b3df7fc5c6cb9",
+      "bytes": 11192
+    },
+    "git_diff_head_sha256": "d237732343ba3466340661bacf680dcac2e6ae3bb30d71c44af00999872c3f41"
+  },
+  "trace": {
+    "project": {
+      "project": "opspilot-lab-184-step3-20261012",
+      "project_id": "f23200d9-3795-484f-9aae-415924c67a36",
+      "trace_tier": "longlived"
+    },
+    "root_runs_found": 1,
+    "traces": [
+      {
+        "name": "opspilot.run",
+        "langsmith_run_id": "00000000-0000-0000-8ef0-8d0f9164cbf8",
+        "otel_trace_id": "4b21f6d0694686c5b7a9d4205f744601",
+        "business_run_ids": [
+          "04e10229-a18e-5489-b8a5-af5fbbfdf937"
+        ],
+        "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/f23200d9-3795-484f-9aae-415924c67a36/r/00000000-0000-0000-8ef0-8d0f9164cbf8?poll=true",
+        "read_back": "found",
+        "start_time": "2026-10-13 06:17:55.614918+00:00",
+        "end_time": "2026-10-13 06:20:34.281289+00:00",
+        "status": "success",
+        "prompt_tokens": 353049,
+        "completion_tokens": 32813,
+        "child_runs": {
+          "llm": 8,
+          "tool": 16
+        }
+      }
+    ]
+  },
+  "cost": {
+    "reads": [
+      {
+        "at": "2026-10-13T05:48:53.923151+00:00",
+        "balance": [
+          {
+            "currency": "CNY",
+            "total_balance": "202.15",
+            "granted_balance": "0.00",
+            "topped_up_balance": "202.15"
+          }
+        ]
+      },
+      {
+        "at": "2026-10-13T06:13:02.516360+00:00",
+        "balance": [
+          {
+            "currency": "CNY",
+            "total_balance": "202.06",
+            "granted_balance": "0.00",
+            "topped_up_balance": "202.06"
+          }
+        ]
+      },
+      {
+        "at": "2026-10-13T06:50:19.593752+00:00",
+        "balance": [
+          {
+            "currency": "CNY",
+            "total_balance": "201.07",
+            "granted_balance": "0.00",
+            "topped_up_balance": "201.07"
+          }
+        ]
+      }
+    ],
+    "note": "one balance key for the whole round; between the first and last read the worker made the S1 and S2 investigation Runs and the S1 and S2 postmortem drafts (one model request each, see postmortem_attempts). The S1 postmortem started 06:12:07Z, before the middle read, so no per-scenario split is attributable; only the round total is reported. No other calls on this key in the window are known (other sessions not checked)."
+  },
+  "raw_ledger": {
+    "sha256": "9b25cc6b41452774064b1cd253a6b0f519eea59747e321a8abfbfef2f9ac5da5",
+    "bytes": 1696530,
+    "path": "m1-184-self-heal-live/04e10229-a18e-5489-b8a5-af5fbbfdf937/ledger.json",
+    "in_repository": false
+  }
+}
