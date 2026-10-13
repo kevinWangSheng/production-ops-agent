@@ -84,6 +84,10 @@ class CalibrationResult:
     negatives: int
     false_passes: int
     reasons: tuple[str, ...]
+    # Which judge and frozen validation pack this result is for; ``aggregate``
+    # accepts it only for the round that froze the same two hashes.
+    judge_config_hash: str | None = None
+    calibration_pack_hash: str | None = None
 
 
 @dataclass(frozen=True)
@@ -116,6 +120,9 @@ def validate_manifest(manifest: Manifest) -> None:
     if extra:
         raise ManifestError(f"UNKNOWN_DIMENSION:{','.join(extra)}")
     for name, value in manifest.dimensions.items():
+        if value.kind not in ("hash", "version", "none", "unknown"):
+            # Persisted JSON gets no protection from the Literal annotation.
+            raise ManifestError(f"BAD_KIND:{name}")
         if value.kind in ("hash", "version") and not value.value:
             raise ManifestError(f"MISSING_VALUE:{name}")
         if value.kind == "none" and not value.reason:
@@ -151,6 +158,8 @@ def calibrate(
     runs_per_item: int = 2,
     min_agreement: int = 46,
     min_negatives: int = 12,
+    judge_config_hash: str | None = None,
+    calibration_pack_hash: str | None = None,
 ) -> CalibrationResult:
     runs: Counter[str] = Counter()
     agreement = 0
@@ -183,6 +192,8 @@ def calibrate(
         negatives=negatives,
         false_passes=false_passes,
         reasons=tuple(reasons),
+        judge_config_hash=judge_config_hash,
+        calibration_pack_hash=calibration_pack_hash,
     )
 
 
@@ -219,7 +230,10 @@ def aggregate(
         if attempt.manifest_hash != expected_hash:
             raise AggregateError("MANIFEST_HASH_MISMATCH")
         used = (evaluation.judge_config_hash, evaluation.judge_calibration_hash)
-        if used != (None, None) and used != frozen_judge:
+        judged = evaluation.judge_status not in ("skipped", "not_run")
+        if (used != (None, None) or judged) and (
+            used != frozen_judge or None in frozen_judge
+        ):
             # A stale or uncalibrated judge identity (bot review P1).
             raise AggregateError("JUDGE_IDENTITY_MISMATCH")
         if attempt.attempt_id in seen_attempts:
@@ -275,7 +289,13 @@ def aggregate(
         reasons.append("EVIDENCE_INCOMPLETE")
     if manifest_unknowns(manifest):
         reasons.append("MANIFEST_UNKNOWN")
-    if calibration is None or not calibration.passed:
+    if (
+        calibration is None
+        or not calibration.passed
+        or None in frozen_judge
+        or (calibration.judge_config_hash, calibration.calibration_pack_hash)
+        != frozen_judge
+    ):
         reasons.append("JUDGE_NOT_CALIBRATED")
     if not any(slot.mode != "structural" for slot in planned):
         reasons.append("NO_QUALITY_SLOTS")

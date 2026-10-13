@@ -1880,6 +1880,18 @@ def test_aggregate_all_baseline_incomplete_reasons_preserved_in_order():
     failed = evaluation(
         attempt_record=item, failure="evidence_incomplete", evidence="incomplete"
     )
+    # Interface:154 now requires judged results to bind to frozen hashes.
+    # This missing-manifest fixture represents a judge that never ran.
+    failed = replace(
+        failed,
+        judge_status="not_run",
+        diagnosis_pass=None,
+        judge_pass=False,
+        judge_config_hash=None,
+        judge_calibration_hash=None,
+        failure_class="judge_error",
+        failure_reasons=("JUDGE_NOT_RUN", "EVIDENCE_INCOMPLETE"),
+    )
     result = aggregate(frozen, planned, [failed], None)
     assert not result.baseline_complete
     assert result.incomplete_reasons == (
@@ -2728,7 +2740,12 @@ def test_aggregate_accepts_judge_identity_matching_frozen_hash_dimensions(
     if status != "ok":
         data["judge"] = replace(data["judge"], diagnoses=(), verdict=None)
     result = aggregate(
-        frozen, [planned_for(data["attempt"])], [evaluate(**data)], calibration()
+        frozen,
+        [planned_for(data["attempt"])],
+        [evaluate(**data)],
+        calibration(
+            judge_config_hash=config_hash, calibration_pack_hash=calibration_hash
+        ),
     )
     assert result.baseline_complete and result.incomplete_reasons == ()
     assert result.rows[0].attempted == 1
@@ -2825,9 +2842,14 @@ def test_aggregate_without_judge_does_not_require_identity_match(dimension, kind
     row = result.rows[0]
     assert (row.attempted, row.failed, row.not_started) == (1, 1, 0)
     assert row.failure_classes == {"judge_error": 1} and row.pass_rate == 0.0
-    assert result.baseline_complete is (kind not in {"unknown", "missing"})
+    # CONTRACT CHANGE, interface:154,156 (fifth review): an absent judge still
+    # permits aggregation, but this changed/missing frozen dimension no longer
+    # matches the calibration fixture. Every case now blocks baseline completion.
+    assert result.baseline_complete is False
     assert result.incomplete_reasons == (
-        ("MANIFEST_UNKNOWN",) if kind in {"unknown", "missing"} else ()
+        ("MANIFEST_UNKNOWN", "JUDGE_NOT_CALIBRATED")
+        if kind in {"unknown", "missing"}
+        else ("JUDGE_NOT_CALIBRATED",)
     )
 
 
@@ -2861,3 +2883,216 @@ def test_scenarios_signature_accepts_known_min_matches_field(tmp_path, minimum):
     spec, answer = load_scenario(directory)
     assert answer.scenario_id == spec.scenario_id and answer.signature is not None
     assert answer.signature.min_matches == minimum
+
+
+# PR #221 fifth review: interface:76-78,142,145-147,154,156,176.
+
+
+@pytest.mark.parametrize(
+    "binding",
+    [
+        {},
+        {"judge_config_hash": "aB" * 32, "calibration_pack_hash": "Cd" * 32},
+        {"judge_config_hash": "aB" * 32},
+        {"calibration_pack_hash": "Cd" * 32},
+    ],
+)
+@pytest.mark.parametrize("false_pass", [False, True])
+def test_calibrate_preserves_identity_hashes_without_changing_score(
+    binding, false_pass
+):
+    labels, verdicts = calibration_inputs()
+    if false_pass:
+        verdicts[0] = (verdicts[0][0], True)
+    result = calibrate(labels, verdicts, **binding)
+    assert result.judge_config_hash == binding.get("judge_config_hash")
+    assert result.calibration_pack_hash == binding.get("calibration_pack_hash")
+    assert result.passed is (not false_pass)
+    assert result.agreement == (47 if false_pass else 48)
+    assert result.reasons == (("FALSE_PASS",) if false_pass else ())
+
+
+@pytest.mark.parametrize(
+    "status", ["ok", "error", "timeout", "invalid", "oversize", "uncalibrated"]
+)
+@pytest.mark.parametrize("identity_present", [False, True])
+def test_aggregate_requires_identity_for_every_judged_status(status, identity_present):
+    data = case()
+    if status == "uncalibrated":
+        data["judge"] = replace(data["judge"], calibrated=False)
+    elif status != "ok":
+        data["judge"] = replace(
+            data["judge"], status=status, diagnoses=(), verdict=None
+        )
+    evaluated = evaluate(**data)
+    assert evaluated.judge_status == status
+    if not identity_present:
+        evaluated = replace(
+            evaluated, judge_config_hash=None, judge_calibration_hash=None
+        )
+        with pytest.raises(AggregateError, match="^JUDGE_IDENTITY_MISMATCH$"):
+            aggregate(
+                manifest(), [planned_for(evaluated.attempt)], [evaluated], calibration()
+            )
+    else:
+        result = aggregate(
+            manifest(), [planned_for(evaluated.attempt)], [evaluated], calibration()
+        )
+        assert result.rows[0].attempted == 1
+        assert result.rows[0].passed == (1 if status == "ok" else 0)
+
+
+@pytest.mark.parametrize("status", ["skipped", "not_run"])
+@pytest.mark.parametrize("manifest_binding", ["hash", "none", "missing"])
+def test_aggregate_accepts_unjudged_statuses_without_hashes(status, manifest_binding):
+    frozen = manifest()
+    dimensions = dict(frozen.dimensions)
+    for name in ("judge_config", "calibration_pack"):
+        if manifest_binding == "none":
+            dimensions[name] = DimensionValue("none", None, "judge not configured")
+        elif manifest_binding == "missing":
+            del dimensions[name]
+    frozen = replace(frozen, dimensions=dimensions)
+    data = case()
+    data["judge"] = None
+    data["attempt"] = replace(
+        data["attempt"], manifest_hash=canonical_hash(asdict(frozen))
+    )
+    if status == "skipped":
+        data["outcome"] = replace(data["outcome"], permissions=("write",))
+    evaluated = evaluate(**data)
+    assert evaluated.judge_status == status
+    assert (
+        evaluated.judge_config_hash is None and evaluated.judge_calibration_hash is None
+    )
+    result = aggregate(
+        frozen, [planned_for(evaluated.attempt)], [evaluated], calibration()
+    )
+    assert (
+        result.rows[0].attempted,
+        result.rows[0].failed,
+        result.rows[0].not_started,
+    ) == (1, 1, 0)
+    assert result.baseline_complete is (manifest_binding == "hash")
+
+
+@pytest.mark.parametrize("status", ["skipped", "not_run"])
+@pytest.mark.parametrize("binding", ["matching", "wrong", "partial"])
+def test_aggregate_unjudged_status_cannot_bypass_present_identity(status, binding):
+    data = case()
+    data["judge"] = None
+    if status == "skipped":
+        data["outcome"] = replace(data["outcome"], permissions=("write",))
+    evaluated = replace(
+        evaluate(**data),
+        judge_config_hash="judge-config-v1",
+        judge_calibration_hash="labels-v1",
+    )
+    if binding == "wrong":
+        evaluated = replace(evaluated, judge_config_hash="other-config")
+    elif binding == "partial":
+        evaluated = replace(evaluated, judge_calibration_hash=None)
+    if binding == "matching":
+        result = aggregate(
+            manifest(), [planned_for(evaluated.attempt)], [evaluated], calibration()
+        )
+        assert result.rows[0].attempted == 1 and result.rows[0].failed == 1
+    else:
+        with pytest.raises(AggregateError, match="^JUDGE_IDENTITY_MISMATCH$"):
+            aggregate(
+                manifest(), [planned_for(evaluated.attempt)], [evaluated], calibration()
+            )
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {},
+        {"judge_config_hash": "other-config"},
+        {"calibration_pack_hash": "other-pack"},
+        {"judge_config_hash": "other-config", "calibration_pack_hash": "other-pack"},
+        {"judge_config_hash": None},
+        {"calibration_pack_hash": None},
+        {"judge_config_hash": None, "calibration_pack_hash": None},
+    ],
+)
+def test_baseline_completion_requires_matching_calibration_hashes(changes):
+    calibrated = calibration(**changes)
+    assert calibrated.passed
+    evaluated = evaluate(**case())
+    result = aggregate(
+        manifest(), [planned_for(evaluated.attempt)], [evaluated], calibrated
+    )
+    assert result.rows[0].pass_rate == 1.0
+    assert result.baseline_complete is (not changes)
+    assert result.incomplete_reasons == (("JUDGE_NOT_CALIBRATED",) if changes else ())
+
+
+@pytest.mark.parametrize(
+    "dimension,calibration_field",
+    [
+        ("judge_config", "judge_config_hash"),
+        ("calibration_pack", "calibration_pack_hash"),
+    ],
+)
+@pytest.mark.parametrize("kind", ["version", "none", "unknown", "missing"])
+def test_baseline_calibration_binding_requires_frozen_hash_kind(
+    dimension, calibration_field, kind
+):
+    frozen = manifest()
+    dimensions = dict(frozen.dimensions)
+    value = dimensions[dimension].value if kind == "version" else None
+    if kind == "missing":
+        del dimensions[dimension]
+    else:
+        dimensions[dimension] = DimensionValue(kind, value, "not frozen as a hash")
+    frozen = replace(frozen, dimensions=dimensions)
+    # Equal raw values (including None) cannot turn a non-hash dimension into
+    # the frozen hash required by interface:156. No judge bypasses rejection of
+    # the evaluation so that the baseline-completion rule is tested separately.
+    data = case()
+    data["judge"] = None
+    data["attempt"] = replace(
+        data["attempt"], manifest_hash=canonical_hash(asdict(frozen))
+    )
+    calibrated = calibration(**{calibration_field: value})
+    result = aggregate(
+        frozen, [planned_for(data["attempt"])], [evaluate(**data)], calibrated
+    )
+    assert not result.baseline_complete
+    assert result.incomplete_reasons == (
+        ("MANIFEST_UNKNOWN", "JUDGE_NOT_CALIBRATED")
+        if kind in {"unknown", "missing"}
+        else ("JUDGE_NOT_CALIBRATED",)
+    )
+
+
+@pytest.mark.parametrize("kind", ["verison", "version", "hash", "none", "unknown"])
+def test_manifest_kind_is_checked_by_validate_and_aggregate(kind):
+    frozen = manifest()
+    frozen = replace(
+        frozen,
+        dimensions={
+            **frozen.dimensions,
+            "prompt": DimensionValue(
+                kind,
+                None if kind in {"none", "unknown"} else "v1",
+                "explicit fixture state" if kind in {"none", "unknown"} else None,
+            ),
+        },
+    )
+    item = attempt(manifest_hash=canonical_hash(asdict(frozen)))
+    evaluated = evaluation(attempt_record=item)
+    if kind == "verison":
+        with pytest.raises(ManifestError):
+            validate_manifest(frozen)
+        with pytest.raises(ManifestError):
+            aggregate(frozen, [planned_for(item)], [evaluated], calibration())
+    else:
+        validate_manifest(frozen)
+        result = aggregate(frozen, [planned_for(item)], [evaluated], calibration())
+        assert result.rows[0].pass_rate == 1.0
+        assert result.baseline_complete is (kind != "unknown")
+        assert result.incomplete_reasons == (
+            ("MANIFEST_UNKNOWN",) if kind == "unknown" else ()
+        )

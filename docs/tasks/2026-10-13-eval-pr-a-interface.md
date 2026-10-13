@@ -74,7 +74,8 @@ DimensionValue(kind: Literal["hash", "version", "none", "unknown"],
 Manifest(round_id: str, dimensions: Mapping[str, DimensionValue])
 PlannedSlot(scenario_id: str, scenario_version: str, mode: Mode, repetition: int)
 CalibrationResult(passed: bool, items: int, comparisons: int, agreement: int,
-                  negatives: int, false_passes: int, reasons: tuple[str, ...])
+                  negatives: int, false_passes: int, reasons: tuple[str, ...],
+                  judge_config_hash: str | None = None, calibration_pack_hash: str | None = None)
 AggregateRow(scenario_id: str, scenario_version: str, mode: Mode, planned: int,
              attempted: int, not_started: int, passed: int, failed: int,
              pass_rate: float | None, replay_miss: int, replay_miss_rate: float | None,
@@ -138,10 +139,10 @@ report 解析失败时 `citations`、`signature` 记为假（原因只记 `REPOR
 `REQUIRED_DIMENSIONS`（元组，顺序固定）：`code`、`upstream`、`scenarios`、`answers`、`evidence_rules`、`model_request`、`prompt`、`tools_schema`、`projection`、`registry`、`profile`、`adapter`、`evaluator`、`judge_config`、`calibration_pack`、`permissions`、`limits`、`kind_environment`、`subject_initial_state`、`session`、`human_feedback`、`workload`、`knowledge_snapshot`、`replay_fixture`、`n`、`seed`、`command`、`clock_policy`。
 
 - `manifest_unknowns(manifest) -> tuple[str, ...]`：缺失或 kind 为 unknown 的维度名，按 `REQUIRED_DIMENSIONS` 顺序。
-- `validate_manifest(manifest)`：kind 为 hash/version 而 value 为空、kind 为 none 而 reason 为空、出现清单外维度名时抛 `ManifestError`。unknown 不抛错。
+- `validate_manifest(manifest)`：kind 不在 hash/version/none/unknown 之中、kind 为 hash/version 而 value 为空、kind 为 none 而 reason 为空、出现清单外维度名时抛 `ManifestError`。unknown 不抛错。
 - `manifest_hash(manifest) -> str`：对 `round_id` 与全部维度的规范 JSON 取 sha256（与 `canonical_view_hash` 同算法）；维度顺序不影响结果。
 
-### `calibrate(labels, verdicts, *, min_items=24, runs_per_item=2, min_agreement=46, min_negatives=12) -> CalibrationResult`（P7）
+### `calibrate(labels, verdicts, *, min_items=24, runs_per_item=2, min_agreement=46, min_negatives=12, judge_config_hash=None, calibration_pack_hash=None) -> CalibrationResult`（P7）
 
 `labels: Mapping[str, bool]`（冻结验证集的最终标签，True = 该报告应通过），`verdicts: Sequence[tuple[str, bool]]`（judge 对每个 item 的判定，每个 item 恰 `runs_per_item` 次）。verdicts 中出现无标签的 item、或某个有标签 item 的判定次数不等于 `runs_per_item`，抛 `CalibrationError`。`comparisons = items × runs_per_item`；`agreement` 为判定等于标签的次数；`negatives` 为标签 False 的 item 数；`false_passes` 为标签 False 而判定 True 的次数。`passed` 当且仅当 `items >= min_items`、`agreement >= min_agreement`、`negatives >= min_negatives`、`false_passes == 0`；否则 `reasons` 依次含 `TOO_FEW_ITEMS`、`AGREEMENT_BELOW_THRESHOLD`、`TOO_FEW_NEGATIVES`、`FALSE_PASS` 中适用者。
 
@@ -150,9 +151,9 @@ report 解析失败时 `citations`、`signature` 记为假（原因只记 `REPOR
 `planned: Sequence[PlannedSlot]`，`evaluations: Sequence[RunEvaluation]`，`calibration: CalibrationResult | None`。
 
 - 先调用 `validate_manifest(manifest)`，不合法时 `ManifestError` 直接抛出。
-- 拒绝（抛 `AggregateError`）：planned 有重复槽位；某个 evaluation 的 `round_id` 不等于 manifest 的 round_id，或 `manifest_hash` 不等于 `manifest_hash(manifest)`；`attempt_id` 重复；evaluation 不对应任何 planned 槽位；同一槽位多于一个 evaluation（重跑属于新轮次）；evaluation 带 judge 身份（两个 hash 不全为 None）而不等于 manifest 中 kind 为 hash 的 `judge_config` 与 `calibration_pack` 值（`JUDGE_IDENTITY_MISMATCH`）。
+- 拒绝（抛 `AggregateError`）：planned 有重复槽位；某个 evaluation 的 `round_id` 不等于 manifest 的 round_id，或 `manifest_hash` 不等于 `manifest_hash(manifest)`；`attempt_id` 重复；evaluation 不对应任何 planned 槽位；同一槽位多于一个 evaluation（重跑属于新轮次）；evaluation 的 judge 身份不合格（`JUDGE_IDENTITY_MISMATCH`）：`judge_status` 不是 skipped/not_run 的 evaluation，或两个 hash 不全为 None 的 evaluation，其两个 hash 都必须等于 manifest 中 kind 为 hash 的 `judge_config` 与 `calibration_pack` 值（manifest 该维度不是 hash 时一律不合格）。
 - 每个 `(scenario_id, scenario_version, mode)` 一行，按这三项排序：`planned` 为该组槽位数；`attempted` 为 evaluation 数；`not_started = planned - attempted`；`passed` 为 `overall` 为真的数；`failed = attempted - passed`；`pass_rate = passed / attempted`，attempted 为 0 时为 None；`mode == "structural"` 时 `pass_rate` 恒为 None（结构重放不产出质量率）；`replay_miss` 为该组 `attempt.replay_miss` 为真的数，`replay_miss_rate` 仅 replay 模式且 attempted > 0 时为 `replay_miss / attempted`，否则 None；`failure_classes` 为失败 evaluation 的 `failure_class` 计数。
-- `baseline_complete` 当且仅当：全部槽位都已 attempted（`SLOTS_NOT_STARTED`），所有 evaluation 的 evidence_status 为 complete（`EVIDENCE_INCOMPLETE`），`manifest_unknowns` 为空（`MANIFEST_UNKNOWN`），calibration 非 None 且 passed（`JUDGE_NOT_CALIBRATED`），且至少有一个非 structural 槽位（`NO_QUALITY_SLOTS`）。`incomplete_reasons` 按上述顺序列出适用者。成功率低于 100% 不影响 baseline_complete（P10）。
+- `baseline_complete` 当且仅当：全部槽位都已 attempted（`SLOTS_NOT_STARTED`），所有 evaluation 的 evidence_status 为 complete（`EVIDENCE_INCOMPLETE`），`manifest_unknowns` 为空（`MANIFEST_UNKNOWN`），calibration 非 None、passed，且其 `judge_config_hash`/`calibration_pack_hash` 等于 manifest 冻结的两个 hash 值（`JUDGE_NOT_CALIBRATED`），且至少有一个非 structural 槽位（`NO_QUALITY_SLOTS`）。`incomplete_reasons` 按上述顺序列出适用者。成功率低于 100% 不影响 baseline_complete（P10）。
 
 ## 测试作者提出的歧义与处置（2026-10-13）
 
@@ -171,6 +172,8 @@ report 解析失败时 `citations`、`signature` 记为假（原因只记 `REPOR
 ## 独立审查后的修订（2026-10-13）
 
 独立审查（Codex，全新上下文）判 fail，四项均已复现并修复：P1 judge 认定为事实型因果诊断的语句须满足事实证据资格（不看报告自填的 kind）；P2 payment 规则补入 payment 服务自身的 server span `grpc.oteldemo.PaymentService/Charge`（fault-1 证据中有 31 条错误 span）；P2 evaluate 核对场景身份（复验补上 Outcome 的 scenario_id），trace 绑定到 attempt 的产品 Run；P2 aggregate 先校验 manifest。
+
+PR #221 机器人审查第五轮（三项，用户 2026-10-13 选择修复后停止推送）：已判过的 evaluation 必须带与 manifest 一致的 judge hash；校准结果绑定冻结的 judge 配置与验证包 hash；manifest 拒绝未知 kind。此后机器人发现汇入一个 PR-B issue，不再逐轮推送。
 
 PR #221 机器人审查第四轮（两项，均采纳）：judge 结果的 config/calibration hash 须等于本轮 manifest 冻结值；signature 对象拒绝未知字段。
 

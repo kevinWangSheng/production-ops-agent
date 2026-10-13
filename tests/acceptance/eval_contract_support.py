@@ -320,7 +320,20 @@ def gate_args(data):
 
 
 def calibration(**changes):
-    return replace(CalibrationResult(True, 24, 48, 48, 12, 0, ()), **changes)
+    return replace(
+        CalibrationResult(
+            True,
+            24,
+            48,
+            48,
+            12,
+            0,
+            (),
+            judge_config_hash="judge-config-v1",
+            calibration_pack_hash="labels-v1",
+        ),
+        **changes,
+    )
 
 
 def evaluation(*, attempt_record=None, failure=None, evidence="complete"):
@@ -333,6 +346,8 @@ def evaluation(*, attempt_record=None, failure=None, evidence="complete"):
         gate=GateResult(True, dict.fromkeys(CHECKS, True), ()),
         signature_matches={EID: ("span-cart",)},
         judge_status="ok",
+        judge_config_hash="judge-config-v1",
+        judge_calibration_hash="labels-v1",
         diagnosis_pass=diagnosis_pass,
         evidence_status=evidence,
         deterministic_pass=evidence == "complete",
