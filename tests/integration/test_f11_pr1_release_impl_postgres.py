@@ -191,6 +191,15 @@ def test_late_delivery_and_utf8_bounded_redaction(store, request_data):
     assert "hidden" not in audit.audit_text
 
 
+def test_nul_in_raw_body_is_replaced_in_audit_text(store, request_data):
+    request_data["raw_body"] = b"before\x00after"
+    receipt = store.record_release(**request_data)
+    assert receipt.outcome == "created"
+    [audit] = store.release_events(receipt.observation_id)
+    assert audit.audit_text == "before\ufffdafter"
+    assert audit.raw_sha256.endswith(hashlib.sha256(b"before\x00after").hexdigest())
+
+
 def test_caller_transaction_rolls_back_subject_binding_and_audit(store, request_data):
     with pytest.raises(RuntimeError, match="abort composition"):
         with store.transaction() as conn:

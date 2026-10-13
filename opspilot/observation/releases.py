@@ -442,9 +442,9 @@ class ReleaseStore(_TargetProfileOps):
                     (observation_id,),
                 )
             )["sequence"]
-        encoded = redact_credentials(raw_body.decode("utf-8", errors="replace")).encode(
-            "utf-8"
-        )
+        # PostgreSQL text cannot hold NUL; raw_sha256 still covers the exact bytes.
+        decoded = raw_body.decode("utf-8", errors="replace").replace("\x00", "\ufffd")
+        encoded = redact_credentials(decoded).encode("utf-8")
         truncated = len(encoded) > 16384
         audit_text = encoded[:16384].decode("utf-8", errors="ignore")
         audit = self._require_row(
