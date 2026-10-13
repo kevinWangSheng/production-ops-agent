@@ -9,14 +9,12 @@ without reading the implementation. Two kinds of helpers live here:
   (固定语义 6) for the checkout profile's eight signals, the four slice
   signals and the three mapping relations (固定语义 5).
 
-Contract gap (reported, not invented): r1 fixes the query *keys* and the
-PromQL *relations* but states that whitespace and matcher order are not
-interface, and names no public query-plan builder. The store must refuse
-evidence whose query text differs from its own plan (固定语义 7,
-``readings_inconsistent``), so a test that needs a *sufficient* sample
-adopted needs the planned text. :data:`PLAN_BUILDER` is the one seam the
-lead binds once the implementation names its builder; until then only the
-tests that need planned text fail, with ``QUERY_PLAN_SEAM_UNBOUND``.
+Query plan: r1 fixes the query *keys* and the PromQL *relations* but not
+whitespace or matcher order, and the store refuses evidence whose query text
+differs from its own plan (固定语义 7, ``readings_inconsistent``). The r2
+addendum (lead decision, reversible) makes the builder public as
+``opspilot.observer.release_evaluation.build_release_query_plan``;
+:data:`PLAN_BUILDER` is bound to it.
 
 The raw *shape* each key answers with is also this file's reading of the
 contract (documented on :class:`EvidenceBuilder`), not a contract fact.
@@ -45,6 +43,7 @@ from opspilot.observer import (
     load_health_profile,
     profile_revision,
 )
+from opspilot.observer.release_evaluation import build_release_query_plan
 
 PROFILE = load_health_profile(PROFILE_DIRECTORY / "otel-demo-checkout.json")
 PROFILE_CONTENT = canonical_content(PROFILE)
@@ -192,12 +191,18 @@ def catalog_text(*entries: Mapping[str, Any]) -> str:
     return canonical_json({"format_version": 1, "policies": list(entries)})
 
 
-# --- query-plan seam (contract gap, see module docstring) -------------------
+# --- query-plan seam (r2 addendum, see module docstring) --------------------
+
+
+def _r2_plan(
+    context: Any, window_end: datetime, uids: tuple[UUID, ...]
+) -> Mapping[str, str]:
+    return build_release_query_plan(context, window_end=window_end, instance_uids=uids)
+
 
 #: ``(context, window_end, instance_uids) -> {query_key: query_text}``.
-#: Bind to the implementation's public plan builder once it is named.
 PLAN_BUILDER: Callable[[Any, datetime, tuple[UUID, ...]], Mapping[str, str]] | None = (
-    None
+    _r2_plan
 )
 
 
