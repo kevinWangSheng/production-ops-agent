@@ -11,7 +11,7 @@ from uuid import UUID, uuid4
 
 import psycopg
 from psycopg.types.json import Jsonb
-from pydantic import AwareDatetime, Field, ValidationError
+from pydantic import AfterValidator, AwareDatetime, Field, ValidationError
 
 from opspilot.domain.base import DTO, Count, Positive, Text
 from opspilot.observation.bindings import _TargetProfileOps
@@ -20,27 +20,40 @@ from opspilot.observer.health_profile import HealthProfile
 from opspilot.persistence.base import Connection, PersistenceError
 from opspilot.redaction import redact_credentials
 
+
+def _storable_release_text(value: str) -> str:
+    """Reject input that PostgreSQL text/JSONB or UTF-8 cannot represent."""
+    if "\x00" in value:
+        raise ValueError("RELEASE_TEXT_NOT_STORABLE")
+    try:
+        value.encode("utf-8")
+    except UnicodeEncodeError:
+        raise ValueError("RELEASE_TEXT_NOT_STORABLE") from None
+    return value
+
+
+_ReleaseText = Annotated[Text, AfterValidator(_storable_release_text)]
 Sha256Digest = Annotated[str, Field(pattern=r"^sha256:[0-9a-f]{64}$")]
 
 
 class ReleaseRevision(DTO):
-    images: dict[Text, Sha256Digest] = Field(min_length=1)
+    images: dict[_ReleaseText, Sha256Digest] = Field(min_length=1)
     pod_template_digest: Sha256Digest
 
 
 class ReleaseAuxiliary(DTO):
-    deployment_uid: Text | None = None
-    before_replicaset_uid: Text | None = None
-    after_replicaset_uid: Text | None = None
-    before_pod_template_hash: Text | None = None
-    after_pod_template_hash: Text | None = None
+    deployment_uid: _ReleaseText | None = None
+    before_replicaset_uid: _ReleaseText | None = None
+    after_replicaset_uid: _ReleaseText | None = None
+    before_pod_template_hash: _ReleaseText | None = None
+    after_pod_template_hash: _ReleaseText | None = None
     deployment_generation: Count | None = None
 
 
 class ReleaseEvent(DTO):
     format_version: Literal[1]
-    source: Text
-    source_release_id: Text
+    source: _ReleaseText
+    source_release_id: _ReleaseText
     released_at: AwareDatetime
     before: ReleaseRevision
     after: ReleaseRevision

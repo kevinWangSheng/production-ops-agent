@@ -484,3 +484,28 @@ def test_registered_identity_replays_with_none_or_dictionary(
     assert [event.sequence for event in events] == [1, 2]
     assert [event.outcome for event in events] == ["created", "replayed"]
     assert [event.semantic_sha256 for event in events] == [frozen.semantic_sha256] * 2
+
+
+@pytest.mark.parametrize("revision", ["before", "after"])
+@pytest.mark.parametrize(
+    "invalid",
+    ["\x00", "\ud800", "\udfff"],
+    ids=["nul", "high-surrogate", "low-surrogate"],
+)
+def test_mutated_image_keys_are_validation_errors_without_writes(
+    store, request_data, revision, invalid
+):
+    event = request_data["event"]
+    getattr(event, revision).images["app" + invalid] = DIGEST
+    with pytest.raises(ValidationError):
+        store.record_release(**request_data)
+    assert store.find_release(event.source, event.source_release_id) is None
+    with psycopg.connect(DSN) as conn:
+        assert conn.execute(
+            "SELECT count(*) FROM opspilot_release_events WHERE source=%s AND source_release_id=%s",
+            (event.source, event.source_release_id),
+        ).fetchone() == (0,)
+        assert conn.execute(
+            "SELECT integration_id,cluster_uid,namespace,workload FROM opspilot_targets WHERE target_id=%s",
+            (request_data["target_id"],),
+        ).fetchone() == (None, None, None, None)
