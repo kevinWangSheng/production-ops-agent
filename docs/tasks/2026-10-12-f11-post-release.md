@@ -1,9 +1,9 @@
 # F11 发布后观察与调查
 
-- 状态：合同 r1 已裁决（A1–A11）；授权 PR 待用户合并；实现排在 #184 之后，未开工
-- 更新日期：2026-10-12
+- 状态：PR-1 合同 r3；授权 PR #214 已合并；PR-1 实现与独立验收完成，PR 待用户合并
+- 更新日期：2026-10-13
 - 依据：[#207](https://github.com/kevinWangSheng/production-ops-agent/issues/207)；feature_list F11 四步；C3 §1（第二个入口）、§4「事故与发布观察分开建模」「人工控制与结果所有权」、§6、§9（发布观察页面与操作）、§10「观察主体与授权」「采样与提交」中发布观察条款、§12「实验环境」（发布实验变更镜像或配置，不重建 chart）；PRODUCT-CONSTRAINTS（不批准、不阻断、不执行发布）；ROADMAP M2
-- 工作区：`feature/F11-post-release`，`../poa-f11-post-release`
+- 工作区：授权 PR `feature/F11-post-release`（已合并 #214）；PR-1 `feature/F11-pr1-release-persistence`，`../poa-f11-pr1`
 
 ## 目标与范围
 
@@ -48,14 +48,31 @@ C3 §14 把 F11 排在 M2；本切片是提前开放。F11 `passes` 只在四步
 
 r1 只定方向。其余实现者需要猜的语义点，按 AGENTS.md「合同预审」在各步开工前的预审中列表裁决，不在本授权 PR 内穷举。
 
+## PR-1 合同（r2）
+
+预审与完整决定表：[F11 PR-1 合同](2026-10-12-f11-pr1-contract.md)（Codex 只读预审；用户 2026-10-12 对 P1-01–P1-09 全部采纳推荐；P1-10–P1-13 为 lead 采纳的可逆默认；公开接口 r2 由 lead 定稿）。
+
+- P1-01（U1）`released_at` 取部署源实际变更时间，`received_at` 取 DB 时钟；deadline = `released_at` + profile `deadline_seconds`；未来时间零容差拒绝；到达时已过期 → 记录 `unknown`/`late_delivery`，不观察；重放不重置时间。
+- P1-02（U2）`min_tracking_seconds` 显式传入、无默认；1200 s 仅为开发候选，正式值在 PR-2 首次授权发布观察前校准冻结。
+- P1-03 唯一键 `(source, source_release_id)`；同键内容不同 → `RELEASE_IDENTITY_CONFLICT`，不覆盖；successor 不在本步。
+- P1-04 前后版本 = 各容器 image digest + 完整 pod-template/config digest；Deployment/ReplicaSet 身份仅辅助；只存摘要。
+- P1-05（U6）本步只要求绑定配置登记的目标并逐字段核对；载荷解析留 PR-3。
+- P1-06 冻结 profile revision 与参数；缺失或错配拒绝并审计，不套默认 profile。
+- P1-07 web 只有新表 SELECT 与列级 INSERT，初始状态由 DB 守卫限定；worker、Observer 无权限。
+- P1-08 每次投递追加一条审计（脱敏，限 16 KiB）。
+- P1-09 新表非空时拒绝降级，不级联删除。
+- 执行分工（用户 2026-10-12）：后端实现由 Codex gpt-6.1-sol 完成，限定在 r2 范围；独立验收测试由全新上下文 Claude 子 Agent 只按合同与接口编写；独立审查另开 Codex 会话。
+
 ## 执行进展与证据
 
 - 2026-10-12 建 worktree、任务记录、SPEC 草案、issue；派发 Codex 合同预审。
 - 实验环境：与另一会话（production-ops-agent-00）及 #184 协调，同一时间只跑一个真实故障。
-- 迁移：线性链，#184 第 1 步合并后 main 末尾为 `0013_self_heal_authorization`；PR-1 开工时取当时 main 的下一个编号（预审决定表按旧 HEAD 写的 0012 已过时）。
+- 迁移：线性链，#184 第 1 步合并后 main 末尾为 `0013_self_heal_authorization`；PR-1 为 `0014_release_observations`。
+- 2026-10-12/13 PR-1（`feature/F11-pr1-release-persistence`）：Codex gpt-6.1-sol 实现（迁移 0014、`opspilot/observation/releases.py`；最小提取 `observation/bindings.py` 与中立 `opspilot/redaction.py`，旧入口保留）；独立验收测试由全新上下文 Claude 子 Agent 只按合同编写（`tests/integration/test_f11_release_store_postgres.py`，在 `feature/F11-pr1-tests` 提交后拣入）。r3 来自测试作者歧义清单与实现者合同问题：identity 可空、late 守卫须 DB 确认已过期、序号用 advisory lock（web 无 UPDATE 不能行锁）、profile 拒绝码、脱敏不得从调查侧导入。独立审查（Codex gpt-6-astra，全新会话）2 个 P2：指纹含调用参数致同一目标两种传参误判冲突（已修，`9fa9e35`）；验收未经公开写入口覆盖存储故障（测试作者补锁超时/权限拒绝，`6543dce`）。PR #218 机器人分诊采纳 2 项（DTO 拒绝 NUL/不成对代理字符，`696df78`，测试作者补 4 个结构非法用例 `1673a4e`；审计正文中的 NUL 替换为 U+FFFD、`raw_sha256` 仍覆盖原字节，`25c8537`，lead 自核并做红证明）。检查（PG 17.9 本机临时实例 55501，代码为 `25c8537`）：独立验收 75 passed；完整集成 861 passed、38 skipped；`make check` 4949 passed、2 xfailed。无模型、无 kind 调用。
+- 收尾四个数（PR-1）：实施期间新冒出的合同问题 6（r3），另机器人分诊 2 项缺陷；因合同变更重写的测试 0；环境重跑 0；用户裁决轮数 1。
 
 ## 下一步与交接
 
-授权 PR 待用户合并 → #184 合并后 rebase（迁移重编号）→ 按步预审与实施。
+PR-1 待用户合并（功能 PR，用户门）。之后 PR-2 预审须先校准并冻结 `min_tracking_seconds`（U2），并回答 U3、U7。
 
 - 来自 #184 r5-2：`opspilot_observation_sessions.authorization_source` 默认值为 `post_remediation`，发布观察会话必须显式插入 NULL。
