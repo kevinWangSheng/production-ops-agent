@@ -755,6 +755,16 @@ def _with(path: tuple[str, ...], value: Any) -> dict[str, Any]:
         ("unknown revision field", _with(("after", "config"), "plain text")),
         ("unknown auxiliary field", {**_valid_fields(), "auxiliary": {"secret": "x"}}),
         ("missing after", {k: v for k, v in _valid_fields().items() if k != "after"}),
+        ("NUL in source", _with(("source",), "argo\x00rollouts")),
+        ("NUL in source_release_id", _with(("source_release_id",), "rel-\x00-1")),
+        (
+            "unpaired surrogate in a container name",
+            _with(("after", "images"), {"check\ud800out": _digest("c")}),
+        ),
+        (
+            "NUL in an auxiliary field",
+            {**_valid_fields(), "auxiliary": {"deployment_uid": "uid\x00-1"}},
+        ),
     ],
 )
 def test_structurally_invalid_events_are_refused_by_the_dto(label, fields) -> None:
