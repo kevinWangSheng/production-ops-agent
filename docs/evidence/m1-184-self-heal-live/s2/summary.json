@@ -2,7 +2,7 @@
   "schema": "opspilot-lab-summary-1",
   "experiment": "m1-184-self-heal-live",
   "run_id": "04e10229-a18e-5489-b8a5-af5fbbfdf937",
-  "frozen_at": "2026-10-13T09:05:44.555112+00:00",
+  "frozen_at": "2026-10-13T09:13:54.331105+00:00",
   "round": "184-step3-20261012",
   "scenario": "S2",
   "versions": {
@@ -1869,7 +1869,7 @@
   "workbench_page": {
     "status": 200,
     "bytes": 229810,
-    "sha256": "17ed17e966b021f48c4c9178a8bc8e6cbc6d37f265b21479060b422261f634a5",
+    "sha256": "24053a7a8e8a8f651492ba61f316ca1ea22765559b60053316cc9933bd9aefee",
     "shows_recovered_no_remediation": false,
     "shows_source_automatic": true
   },
@@ -3026,7 +3026,10 @@
           "projection": {
             "text": {
               "excerpt": "Recovery verdict (independent observation; not the investigation's conclusion) session e0691373-4201-549e-9e4a-de3467a9518a · source automatic · expired deadline_expired · verdict degraded not confirmed · healthy window 0 s · profile otel-demo-checkout@dc7d44caa04d · authorized at 2026-10-12T23:20:46.088734-07:00 · offline replay: replay consistent reasons: deadline_expired; required signals outside their healthy bound: dependency_error_ratio, error_ratio lifecycle implied by replay: no claim · recorded with the samples: observing_recovery # Window Outcome stored → replayed Decision stored Replay 1 2026-10-12T23:16:46.422338-07:00 → 2026-10-12T23:21:46.422338-07:00 submitted 2026-10-12T23:21:46.474844-07:00 degraded required present → degraded required present required signals outside their healthy bound: dependency_error_ratio, error_ratio adopted · adopted · no health (outcome_not_healthy) consistent Signal Status / value / points stored → replayed Verdict Query Window Source Raw sha256 dependency_deployments_available ok / 8.0 / 5 → ok / 8.0 / 5 healthy 8.0 within healthy bound [8.0, 8.0] count(kube_deployment_status_replicas_available{namespace=\"otel-demo\",deployment=~\"payment|cart|valkey-cart|product-catalog|currency|shipping|email|flagd\"} >= 1) 2026-10-12T23:16:46.422338-07:00 → 2026-10-12T23:21:46.422338-07:00 prometheus 6d6bcc28230e85555c5d6dca706c982f66e8bd8b4294162f4aaccb7057e2103a verified dependency_error_ratio ok / 0.12195121951219512 / 5 → ok / 0.121951219512195",
-              "contains_recovered_no_remediation": false,
+              "contains": {
+                "recovered, no remediation recorded": false,
+                "recovery confirmed": false
+              },
               "sha256": "e08e356a84452bdd9c034441fb8d82c785c161807f2c558200319fba8965faf0",
               "bytes": 79514
             },
@@ -3073,8 +3076,8 @@
   ],
   "artifacts": {
     "docs/evidence/m1-184-self-heal-live/collect.py": {
-      "sha256": "d3e8d27f59ccaacd9c3e88ce2141aa5ac494f9a93751bc38eec0a70a4d0c0b16",
-      "bytes": 18488
+      "sha256": "c97d6cb6246b79f869657db89e6b88cf2a8f18eb33d2389eb6438e05993a9b57",
+      "bytes": 18687
     },
     "docs/evidence/m1-184-self-heal-live/verify.py": {
       "sha256": "3ccf664b268debdd622b0832805cb5b5ce8408be250149a818db88adadb065d5",
@@ -3158,8 +3161,8 @@
     "note": "one balance key for the whole round; between the first and last read the worker made the S1 and S2 investigation Runs and the S1 and S2 postmortem drafts (one model request each, see postmortem_attempts). The S1 postmortem started 06:12:07Z, before the middle read, so no per-scenario split is attributable; only the round total is reported. No other calls on this key in the window are known (other sessions not checked)."
   },
   "raw_ledger": {
-    "sha256": "61c5b44c55a9d0a69d353628966e95cba419a6aaaa0ad58f245783000868c0f8",
-    "bytes": 1734367,
+    "sha256": "862801b3865db57a60f620ffbb4f497ef9a856248b9b4c030ccd500002c8ac55",
+    "bytes": 1734465,
     "path": "m1-184-self-heal-live/04e10229-a18e-5489-b8a5-af5fbbfdf937/ledger.json",
     "in_repository": false
   }

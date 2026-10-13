@@ -51,6 +51,7 @@ from scripts.lab_evidence import freeze, langsmith_client, run_url  # noqa: E402
 
 LAB_HISTORY = ROOT.parent / "production-ops-agent/tmp/m1-kind-lab/engineer-only"
 PAGE_STATEMENT = "recovered, no remediation recorded"
+PAGE_PHRASES = (PAGE_STATEMENT, "recovery confirmed")
 
 
 def jd(value: Any) -> Any:
@@ -109,7 +110,9 @@ def _bounded(actual: Any) -> Any:
         data = actual.encode()
         return {
             "excerpt": actual[:TEXT_EXCERPT],
-            "contains_recovered_no_remediation": PAGE_STATEMENT in actual,
+            # every phrase whose presence or absence a verify.py page
+            # predicate depends on (S1-4, S2-8; bot review P2 on #217)
+            "contains": {phrase: phrase in actual for phrase in PAGE_PHRASES},
             "sha256": hashlib.sha256(data).hexdigest(),
             "bytes": len(data),
         }
