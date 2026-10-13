@@ -1,9 +1,9 @@
 # #184 结论发布后自动开启恢复观察（未登记处置时）
 
-- 状态：合同 r6（2026-10-12）；#209 授权、#213 第 1 步已合并；第 2 步实施中（`../poa-184-step2`）
+- 状态：合同 r6（2026-10-12）；#209 授权、#213 第 1 步、#215 第 2 步已合并；第 3 步实施中（`../poa-184-step3`）
 - 更新日期：2026-10-12
 - 依据：[#184](https://github.com/kevinWangSheng/production-ops-agent/issues/184)；PRODUCT-CONSTRAINTS「Product workflow」；SPEC 2026-10-12 段；C3 §4、§10「结论发布后自动开观察」段；feature_list F6（`passes` 已为 true，不得回退）；M1-02 [任务记录](2026-10-03-m1-02-recovery-observation.md)；M1-04 决定 C
-- 工作区：授权 PR `chore/184-self-heal-gate`（`../poa-184-self-heal`）；第 1 步 `feature/F6-184-self-heal-step1`（`../poa-184-step1`，lab PG 55471，测试作者 PG 55472）
+- 工作区：授权 PR `chore/184-self-heal-gate`（`../poa-184-self-heal`）；第 1 步 `feature/F6-184-self-heal-step1`（`../poa-184-step1`，lab PG 55471，测试作者 PG 55472）；第 2 步 `feature/F6-184-self-heal-step2`（已合并）；第 3 步 `feature/F6-184-self-heal-step3`（`../poa-184-step3`，lab PG 55497，数据在主仓库 `tmp/184-step3/pg`）
 
 ## 目标与范围
 
@@ -53,6 +53,17 @@ r1 由用户 2026-10-12 按预审推荐裁决；r3、r4 前三项为用户裁决
 - 实施中 lead 定的公开字段名（合同未固定，可逆）：F6 `RecoveryOutcome` 新增 `authorization_sources`（与 `observation_sessions` 按序对应）、`authorization_source`、`observation_authorization["authorization_source"]`、`system_authorizations`，不往 `observation_sessions[*]` 加键（保留 `tests/test_f6_recovery_outcome.py:183` 的既有精确键断言，D2-02）；`Workbench.snapshot()` 新增顶层 `authorization_source`、`recovery_status`、`recovery_statement`；自动授权不在 F6 `actions` 中出现，open→observing_recovery 只经 `system_authorizations` 与会话可见。第 1 步独立测试中断言默认间隔 0 的一条按 C2 改为 30，由测试作者修改。
 - 实施发现：F13 输入的凭据键脱敏规则（匹配 "auth"）此前把 `authorized_by`/`authorized_at` 静默删掉；现在三项来源字段在脱敏后写入（值仍经脱敏），人工路径的复盘输入因此也带授权者与时间（D2-05）。
 
+## 第 3 步决定（预审 D3-01–D3-15）
+
+预审原文：[第 3 步预审](2026-10-12-184-step3-prereview.md)（Codex，只读）。按用户选项 b 全部采纳推荐，无 A 类停下项。
+
+- 入口与身份（D3-01/02）：两场景都由真实 Alertmanager webhook 进入；身份文件沿用 M1-04 的 `m0-otel-20260909` 条目，`cluster_uid` 与 kind 集群 `kube-system` UID 核对一致。
+- 前提（D3-03/04）：真实 worker 发布结论满足 C1；每场景一次真实尝试，交接或未发布照实记为未达前提，不刷到成功。
+- S1（D3-05/06）：看到 `automatic` 会话后立即由 harness restore；用随产品发布的 HealthProfile，不缩短健康窗。
+- S2（D3-07/09/10）：只把 `session.deadline_seconds` 改为 1200 的实验 profile（[`otel-demo-checkout-deadline-1200.json`](../evidence/m1-184-self-heal-live/otel-demo-checkout-deadline-1200.json)），保证期限先于 40 次采样耗尽；经已有 `OPSPILOT_HEALTH_PROFILE` 接口加载，不改 shipped 配置。通过 = 会话 `expired`/`deadline_expired`、事故 `open`、F6 交接原因含期限到期；捕获证据后再 restore。
+- 证据（D3-11/12/13）：每场景一份 `summary.json`（`lab_evidence.freeze`，原始 ledger 不入库），F6 `recovery_outcome` 与离线重放为外部断言源，各链接自己的调查 Run trace。
+- 工具（D3-14）：新增取证脚本 `docs/evidence/m1-184-self-heal-live/collect.py`（lead）；通过判据 `verify.py` 及其单元测试由独立 Codex 按合同与公开接口编写。
+
 ## 执行进展与证据
 
 - 2026-10-12 预审 → 用户裁决 r1；第 1 步预审 → r3；PR #209 机器人与独立复审 → r4–r6（用户裁决 PRODUCT-CONSTRAINTS 修订、中性来源 `automatic`、收窄人工优先）；#209 合并为 `1752639`。F11 排在本任务之后。
@@ -60,9 +71,8 @@ r1 由用户 2026-10-12 按预审推荐裁决；r3、r4 前三项为用户裁决
 - 验证（PG 17.9 本机临时实例，测试作者用 55472、实现用 55471）：独立测试作者（Codex GPT-6 Astra high，仅按合同与公开接口编写）`test_self_heal_authorization_postgres.py` 27 passed（单独运行与完整集成套件内均通过）；实现者测试 24 + 10 passed；完整集成 714 passed、54 skipped；非集成 3994 passed、2 xfailed；ruff、mypy 通过。独立代码审查（Codex GPT-6 Astra high，全新上下文）发现 1 个 P1（失败记录未复核代际），修复后同一审查者复验关闭，含真实 PG 锁超时复现（约 4.00 s 返回 TIMEOUT、不写决定）。
 - 独立测试修正记录：作者初版基于 r3，更新到 r6；两处失败为测试夹具违反 `job_check`、一处断言代际写错（`generation - 1` → `generation`，语义更严）、一处共享库候选顺序依赖（显式大 `limit`），均由作者本人修改；实现者未改该文件。
 - 第 2 步（`feature/F6-184-self-heal-step2`）：F6 投影把自动授权归为系统授权并暴露来源字段；F13 `human_actions` 排除自动授权、`recovery` 段带来源；工作台显示来源与 "recovered, no remediation recorded"（仅 automatic 且独立确认且 `resolved`）；循环默认 30 s。验证（PG 17.9 本机临时实例，测试作者 55482、实现 55483）：独立测试作者（Codex，仅按合同与公开接口）`test_self_heal_projection_postgres.py` 14 passed；第 1 步独立测试中默认间隔一条按 C2 由测试作者改为 30；完整集成 729 passed、54 skipped；`make check` 3850 passed、2 xfailed；mypy 通过。未覆盖：D2-06（自动授权使已有复盘变 stale）无端到端测试——真实路径需要完整人工观察周期加新 Run 才能同时满足「已有复盘」与「当前代际新结论」；代码路径为与人工登记共用的授权原语（第 1 步未改的 `mark_stale_in` 调用）。
-- 未执行：kind 真实运行（第 3 步）；F6/F13 投影与页面来源展示、循环默认开启（第 2 步）。
-- 实验环境：与另一会话（production-ops-agent-00）协调，同一时间只跑一个真实故障；真实 Run 前先确认。
+- 第 3 步（`feature/F6-184-self-heal-step3`，2026-10-13 05:46–06:45Z）：kind 真实运行两场景，与 production-ops-agent-00 确认实验环境空闲后执行，[运行记录](../evidence/m1-184-self-heal-live/run.md)。S1：真实告警 → 真实调查发布（结论 supported）→ web 循环约 20 s 后自动授权（system、`automatic`、revision null）→ harness restore → 11 个连续健康样本后 `resolved`，事故页显示 "recovered, no remediation recorded"；S2：故障持续 → 19 个 degraded 样本 → 1200 s 期限到期 `expired`/`deadline_expired`，事故回 `open`，F6 交接原因含 `DEADLINE_EXPIRED`。两场景均无任何人工 control。独立判据（Codex 按合同与公开接口编写的 `verify.py`）S1 11/11、S2 18/18 通过（S2-10/11 为 PR 机器人发现后由判据作者补的故障时序与采样覆盖判据），离线重放一致；各附 LangSmith trace（read_back found）与冻结 `summary.json`。费用合计 1.08 CNY（两次调查 + 两份自动复盘草稿）。独立审查（Codex，全新上下文）报 4 个 P2 + 1 个 P3（时间线原文入摘要、缺脚本哈希、恢复后复核无原始记录、费用归属漏了复盘调用、restore 时间），均已修正并在 restore 后重新 verify 与冻结。未覆盖：自动授权的 C9 重试/交接、C8 跳过路径与人工优先竞态只有第 1 步集成测试，没有真实运行。
 
 ## 下一步与交接
 
-第 1 步已合并（#213）。第 2 步（实施中，worktree `../poa-184-step2`，分支 `feature/F6-184-self-heal-step2`）：F6/F13 投影把 `auto_authorize_observation` 归为系统授权、工作台展示「已恢复，未登记处置」与来源、循环默认 30 s；开工前按步预审。第 3 步：kind 真实运行两场景，先与另一会话确认实验环境空闲。
+第 1 步（#213）、第 2 步（#215）已合并；第 3 步真实运行完成，PR 合并后完成条件满足，#184 可关闭（关闭 issue 待用户确认）。F11 发布后观察排在其后（[任务记录](2026-10-12-f11-post-release.md)）。
