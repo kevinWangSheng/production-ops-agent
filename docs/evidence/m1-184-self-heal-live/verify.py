@@ -13,10 +13,14 @@ from that recovery section's visible content. Measured permission extras
 (e.g. documented database_temp) are reported; the adopted criterion rejects
 human_control, not every extra privilege flag.
 
-This checks committed recovery evidence, not harness ordering, live traffic
-between samples, real-model provenance or LangSmith read-back. Those need the
-lead's separately frozen experiment/trace evidence; all_pass is scoped to the
-checks below, not a declaration that the entire live experiment passed.
+S2 additionally requires the harness fault log (pre-review :181): the last
+verified inject precedes authorization and no verified restore precedes the
+frozen deadline. Adopted degraded samples cover that observation window with
+at most twice the frozen sampling interval at either edge or between samples.
+This checks recorded harness ordering and sampled telemetry, not unsampled
+traffic, real-model provenance or LangSmith read-back. Those need the lead's
+separately frozen experiment/trace evidence; all_pass is scoped to the checks
+below, not a declaration that the entire live experiment passed.
 No product writes, POSTs, model calls or kind operations.
 """
 
@@ -26,7 +30,7 @@ import argparse
 import base64
 import json
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
@@ -63,12 +67,55 @@ def json_value(value: Any) -> Any:
     return value
 
 
+def aware_instant(value: Any) -> datetime:
+    """Accept DB instants or ISO timestamps, refusing ambiguous local time."""
+    instant = value if isinstance(value, datetime) else datetime.fromisoformat(value)
+    if instant.tzinfo is None or instant.utcoffset() is None:
+        raise ValueError("timestamp must include timezone")
+    return instant
+
+
+def fault_events(value: Any) -> list[dict[str, Any]]:
+    """Validate only the harness's public evidence fields; no I/O."""
+    if not isinstance(value, list):
+        raise ValueError("fault log must be a list of records")
+    events: list[dict[str, Any]] = []
+    for row in value:
+        if (
+            not isinstance(row, dict)
+            or row.get("action") not in {"inject", "restore"}
+            or type(row.get("verified")) is not bool
+        ):
+            raise ValueError("invalid fault event")
+        at = aware_instant(row.get("at"))
+        if at.utcoffset() != timedelta(0):
+            raise ValueError("fault log timestamps must be UTC")
+        events.append({"at": at, "action": row["action"], "verified": row["verified"]})
+    return events
+
+
+def read_fault_log(path: Path) -> list[dict[str, Any]]:
+    """Read harness JSONL without invoking or modifying the harness."""
+    with path.open("rb") as source:
+        contents = source.read(4 * 1024 * 1024 + 1)
+    if len(contents) > 4 * 1024 * 1024:
+        raise ValueError("fault log too large")
+    return fault_events(
+        [
+            json.loads(line)
+            for line in contents.decode("utf-8").splitlines()
+            if line.strip()
+        ]
+    )
+
+
 def judge(scenario: str, incident_id: str, records: dict[str, Any]) -> dict[str, Any]:
     """Pure verdicts on already-read records and public projections.
 
     Input: incident, run, authorizations, sessions (incident_records histories),
     controls, projection (selected RecoveryOutcome fields), replays (public
-    replay summaries), page (parsed public recovery section). No I/O here.
+    replay summaries), page (parsed public recovery section), fault_log
+    (required for S2: already-read harness JSONL events). No I/O here.
     """
     if scenario not in {"S1", "S2"}:
         raise ValueError("scenario must be S1 or S2")
@@ -412,6 +459,85 @@ def judge(scenario: str, incident_id: str, records: dict[str, Any]) -> dict[str,
             and p["recovery_verdict"] == "degraded"
             and "INSUFFICIENT_TRAFFIC" not in p["recovery_reasons"],
         )
+        # Pre-review :181: temporal coverage uses the frozen session, not
+        # profile defaults, host time, or the incident's final state.
+        authorization_at = session.get("authorized_at")
+        interval = session.get("sample_interval_seconds")
+        coverage: dict[str, Any] = {
+            "authorized_at": authorization_at,
+            "deadline_at": deadline,
+            "sample_interval_seconds": interval,
+            "window_ends": [s.get("window_end") for s in adopted],
+        }
+        coverage_ok = False
+        frozen_authorization: datetime | None = None
+        frozen_deadline: datetime | None = None
+        try:
+            frozen_authorization = aware_instant(authorization_at)
+            frozen_deadline = aware_instant(deadline)
+            ends = sorted(aware_instant(s.get("window_end")) for s in adopted)
+            if type(interval) is not int or interval <= 0:
+                raise ValueError("invalid frozen sampling interval")
+            tolerance = timedelta(seconds=2 * interval)
+            gaps = [later - earlier for earlier, later in zip(ends, ends[1:])]
+            coverage["gap_seconds"] = [gap.total_seconds() for gap in gaps]
+            coverage["maximum_gap_seconds"] = 2 * interval
+            coverage_ok = bool(ends) and (
+                frozen_authorization < frozen_deadline
+                and frozen_authorization <= ends[0] <= frozen_authorization + tolerance
+                and frozen_deadline - tolerance <= ends[-1] <= frozen_deadline
+                and all(timedelta(0) < gap <= tolerance for gap in gaps)
+            )
+        except (ValueError, TypeError):
+            coverage["error"] = (
+                "missing or invalid frozen time/interval/sample timestamps"
+            )
+        check(
+            "S2-11",
+            "Adopted degradation samples span authorization through deadline",
+            "first/last edge and every consecutive gap <= 2 * frozen interval",
+            coverage,
+            coverage_ok,
+        )
+        fault_ok = False
+        fault_actual: dict[str, Any] = {
+            "authorized_at": authorization_at,
+            "deadline_at": deadline,
+        }
+        try:
+            events = fault_events(records.get("fault_log"))
+            fault_actual["events"] = events
+            injects = [
+                e["at"] for e in events if e["verified"] and e["action"] == "inject"
+            ]
+            last_inject = max(injects) if injects else None
+            restores = [
+                e["at"]
+                for e in events
+                if e["verified"]
+                and e["action"] == "restore"
+                and last_inject is not None
+                and e["at"] >= last_inject
+            ]
+            fault_actual["last_verified_inject"] = last_inject
+            fault_actual["verified_restores_after_inject"] = restores
+            fault_ok = (
+                last_inject is not None
+                and frozen_authorization is not None
+                and frozen_deadline is not None
+                and frozen_authorization < frozen_deadline
+                and last_inject < frozen_authorization
+                and all(at >= frozen_deadline for at in restores)
+            )
+        except (ValueError, TypeError):
+            fault_actual["error"] = "missing or invalid UTC harness fault log"
+        check(
+            "S2-10",
+            "Verified harness fault remains injected through frozen deadline",
+            "last verified inject < authorized_at; verified restores after inject >= deadline_at",
+            fault_actual,
+            fault_ok,
+        )
         check(
             "S2-8",
             "Public recovery section makes no recovery success claim",
@@ -657,20 +783,26 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--observer-dsn", required=True)
     parser.add_argument("--web", required=True)
     parser.add_argument("--user-file", type=Path, required=True)
+    parser.add_argument(
+        "--fault-log", type=Path, help="harness fault-log.jsonl (required for S2)"
+    )
     parser.add_argument("--out", type=Path)
     args = parser.parse_args(argv)
+    if args.scenario == "S2" and args.fault_log is None:
+        print("USAGE_ERROR: --fault-log is required for S2", file=sys.stderr)
+        return 2
     try:
-        verdict = judge(
-            args.scenario,
-            str(args.incident),
-            read_records(
-                args.incident,
-                args.owner_dsn,
-                args.observer_dsn,
-                args.web,
-                args.user_file,
-            ),
+        events = None if args.fault_log is None else read_fault_log(args.fault_log)
+        records = read_records(
+            args.incident,
+            args.owner_dsn,
+            args.observer_dsn,
+            args.web,
+            args.user_file,
         )
+        if events is not None:
+            records["fault_log"] = events
+        verdict = judge(args.scenario, str(args.incident), records)
         document = json.dumps(verdict, ensure_ascii=False, indent=2) + "\n"
         if args.out:
             args.out.write_text(document)

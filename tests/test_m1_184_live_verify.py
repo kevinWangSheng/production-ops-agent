@@ -29,6 +29,18 @@ def inputs(scenario: str) -> dict[str, Any]:
     state = "completed" if recovered else "expired"
     reason = "recovery_confirmed" if recovered else "deadline_expired"
     lifecycle = "resolved" if recovered else "open"
+    authorized_at = NOW - timedelta(seconds=1200)
+    offsets = [1140] if recovered else list(range(60, 1200, 60))
+    samples = [
+        {
+            "sample_id": f"sample-{index}",
+            "disposition": "adopted",
+            "window_end": authorized_at + timedelta(seconds=offset),
+            "outcome": "healthy" if recovered else "degraded",
+            "required_signals_present": True,
+        }
+        for index, offset in enumerate(offsets, start=1)
+    ]
     replay = {
         "session_id": SESSION,
         "consistent": True,
@@ -38,8 +50,8 @@ def inputs(scenario: str) -> dict[str, Any]:
         "healthy_window_seconds": 600 if recovered else 0,
         "samples": [
             {
-                "sample_id": "sample-1",
-                "replayed_outcome": "healthy" if recovered else "degraded",
+                "sample_id": sample["sample_id"],
+                "replayed_outcome": sample["outcome"],
                 "replayed_required_signals_present": True,
                 "readings": [
                     {"signal_name": "traffic", "verdict": "healthy"},
@@ -49,6 +61,7 @@ def inputs(scenario: str) -> dict[str, Any]:
                     },
                 ],
             }
+            for sample in samples
         ],
     }
     p: dict[str, Any] = {
@@ -72,6 +85,14 @@ def inputs(scenario: str) -> dict[str, Any]:
         p["actions"].append("human_handoff")
     return {
         "checked_at": NOW.isoformat(),
+        "fault_log": [
+            {
+                "at": (authorized_at - timedelta(seconds=1)).isoformat(),
+                "action": "inject",
+                "verified": True,
+            },
+            {"at": NOW.isoformat(), "action": "restore", "verified": True},
+        ],
         "incident": {
             "incident_id": INCIDENT,
             "current_run_id": RUN,
@@ -114,6 +135,8 @@ def inputs(scenario: str) -> dict[str, Any]:
                     "state": state,
                     "ended_reason": reason,
                     "deadline_at": NOW,
+                    "authorized_at": authorized_at,
+                    "sample_interval_seconds": 60,
                     "sustained_window_seconds": 600,
                 },
                 "health_profile": {
@@ -121,15 +144,7 @@ def inputs(scenario: str) -> dict[str, Any]:
                         {"session": {"sustained_window_seconds": 600}}
                     )
                 },
-                "samples": [
-                    {
-                        "sample_id": "sample-1",
-                        "disposition": "adopted",
-                        "window_end": NOW - timedelta(seconds=60),
-                        "outcome": "healthy" if recovered else "degraded",
-                        "required_signals_present": True,
-                    }
-                ],
+                "samples": samples,
                 "endings": [
                     {
                         "recorded_at": NOW,
@@ -279,3 +294,98 @@ def test_visible_recovery_section_uses_real_template_fields() -> None:
     data = inputs("S1")
     data["page"] = parser.document()
     assert judge("S1", INCIDENT, data)["all_pass"] is True
+
+
+@pytest.mark.parametrize(
+    "gap", ["single_sample", "late_first", "early_last", "interior_gap"]
+)
+def test_s2_incomplete_sample_window_fails(gap: str) -> None:
+    data = inputs("S2")
+    samples = data["sessions"][0]["samples"]
+    if gap == "single_sample":
+        data["sessions"][0]["samples"] = samples[:1]
+    elif gap == "late_first":
+        data["sessions"][0]["samples"] = samples[2:]
+    elif gap == "early_last":
+        data["sessions"][0]["samples"] = samples[:-2]
+    else:
+        del samples[5:7]
+    assert "S2-11" in failed("S2", data)
+
+
+def test_s2_restore_before_deadline_fails() -> None:
+    data = inputs("S2")
+    data["fault_log"][1]["at"] = (NOW - timedelta(seconds=1)).isoformat()
+    assert "S2-10" in failed("S2", data)
+
+
+@pytest.mark.parametrize("at_deadline", [True, False])
+def test_s2_full_coverage_and_post_deadline_restore_pass(at_deadline: bool) -> None:
+    data = inputs("S2")
+    data["fault_log"][1]["at"] = (
+        NOW + timedelta(seconds=0 if at_deadline else 60)
+    ).isoformat()
+    assert judge("S2", INCIDENT, data)["all_pass"] is True
+
+
+def test_s2_without_fault_log_fails() -> None:
+    data = inputs("S2")
+    del data["fault_log"]
+    assert "S2-10" in failed("S2", data)
+
+
+def test_s2_cli_without_fault_log_exits_before_reads(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert (
+        VERIFY["main"](
+            [
+                "--scenario",
+                "S2",
+                "--incident",
+                INCIDENT,
+                "--owner-dsn",
+                "unused",
+                "--observer-dsn",
+                "unused",
+                "--web",
+                "http://127.0.0.1:8080",
+                "--user-file",
+                "unused",
+            ]
+        )
+        == 2
+    )
+    assert "--fault-log is required for S2" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "missing_verified_inject",
+        "inject_at_authorization",
+        "naive_timestamp",
+        "malformed_verified",
+    ],
+)
+def test_s2_invalid_injection_evidence_fails(mutation: str) -> None:
+    data = inputs("S2")
+    inject = data["fault_log"][0]
+    if mutation == "missing_verified_inject":
+        inject["verified"] = False
+    elif mutation == "inject_at_authorization":
+        inject["at"] = data["sessions"][0]["session"]["authorized_at"].isoformat()
+    elif mutation == "naive_timestamp":
+        inject["at"] = "2026-10-12T00:00:00"
+    else:
+        inject["verified"] = "true"
+    assert "S2-10" in failed("S2", data)
+
+
+def test_s2_coverage_tolerance_uses_frozen_interval() -> None:
+    data = inputs("S2")
+    # These windows start/end 60 seconds from the edges, with 120-second gaps.
+    data["sessions"][0]["samples"] = data["sessions"][0]["samples"][::2]
+    assert judge("S2", INCIDENT, data)["all_pass"] is True
+    data["sessions"][0]["session"]["sample_interval_seconds"] = 30
+    assert "S2-11" in failed("S2", data)

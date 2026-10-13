@@ -44,9 +44,10 @@
 | 06:41:09 | 首次 verify（16/16）与冻结后执行 restore |
 | 06:41:30 | `fault restore`（fault-log `at` 06:41:30.153Z，`verified: true`） |
 | 06:44:51 | 恢复后约 3 分钟（web 循环多轮）只读复核：两条决定各一个会话，S2 事故 `open`，未补开观察；`kind_lab.py health` ok，所有 flag off（原始输出 `tmp/184-step3/s2-post-restore-check.txt`，sha256 `7f2ba1d4…d82d`，不入库） |
-| 06:50:43 | 独立审查后重新 verify 并重新冻结（web 以同一 profile 只读重启，worker/Observer 未启动）：S2 仍 16/16，其中 S2-9（同代际无第二个自动会话）此时读于 restore 之后；摘要的 `verdicts.checked_at` 即此次 |
+| 06:50:43 | 独立审查后重新 verify 并重新冻结（web 以同一 profile 只读重启，worker/Observer 未启动）：S2 仍 16/16，其中 S2-9（同代际无第二个自动会话）此时读于 restore 之后 |
+| 09:26:23 | PR 机器人指出 S2-7 未要求退化证据覆盖整个观察期；判据作者新增 S2-10（fault-log：inject 在授权前、deadline 前无 restore）与 S2-11（采样覆盖授权到期限两端、相邻间隔 ≤ 2×采样间隔），在 `df3863e` 检出上重跑：S1 11/11、S2 18/18；摘要的 `verdicts.checked_at` 即此次 |
 
-判据（verify.py，16/16 通过）：C1–C7 同上（重放一致，`degraded`）；S2-1 会话 `expired`/`deadline_expired`；S2-2 事故 `open` 与 F6 一致；S2-3 恰好一条未确认 ending、不早于冻结 deadline；S2-4 F6 `recovery_confirmed=false`、`observation_ended=true`、`human_interaction=handoff`，`handoff_reasons` = `DEADLINE_EXPIRED`、`DEGRADED_SIGNAL:error_ratio`、`DEGRADED_SIGNAL:dependency_error_ratio`、`CONTINUED_DEGRADATION`、`OBSERVATION_UNCONFIRMED`；S2-5 不是次数耗尽（19 < 40）；S2-6 自动授权决定仍是 `authorized`（不是授权失败交接）；S2-7 采样期间信号与流量可用、无 unknown；S2-8 页面无恢复成功文案；S2-9 同代际无第二个自动会话。trace：[根 run](https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/f23200d9-3795-484f-9aae-415924c67a36/r/00000000-0000-0000-8ef0-8d0f9164cbf8?poll=true)，`read_back = found`，子 run llm 8、tool 16，与库一致。
+判据（verify.py，18/18 通过）：C1–C7 同上（重放一致，`degraded`）；S2-1 会话 `expired`/`deadline_expired`；S2-2 事故 `open` 与 F6 一致；S2-3 恰好一条未确认 ending、不早于冻结 deadline；S2-4 F6 `recovery_confirmed=false`、`observation_ended=true`、`human_interaction=handoff`，`handoff_reasons` = `DEADLINE_EXPIRED`、`DEGRADED_SIGNAL:error_ratio`、`DEGRADED_SIGNAL:dependency_error_ratio`、`CONTINUED_DEGRADATION`、`OBSERVATION_UNCONFIRMED`；S2-5 不是次数耗尽（19 < 40）；S2-6 自动授权决定仍是 `authorized`（不是授权失败交接）；S2-7 采样期间信号与流量可用、无 unknown；S2-8 页面无恢复成功文案；S2-9 同代际无第二个自动会话；S2-10 fault-log 的 inject（06:12:26）早于授权、restore（06:41:30）晚于 deadline（06:40:46）；S2-11 19 个 degraded 样本覆盖 06:21:46–06:39:51，两端与相邻间隔均 ≤ 120 s。trace：[根 run](https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/f23200d9-3795-484f-9aae-415924c67a36/r/00000000-0000-0000-8ef0-8d0f9164cbf8?poll=true)，`read_back = found`，子 run llm 8、tool 16，与库一致。
 
 ## 费用
 

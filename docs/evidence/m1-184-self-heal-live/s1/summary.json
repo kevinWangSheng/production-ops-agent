@@ -2,7 +2,7 @@
   "schema": "opspilot-lab-summary-1",
   "experiment": "m1-184-self-heal-live",
   "run_id": "86c9c662-439f-5b8b-af7d-af4a944e60d4",
-  "frozen_at": "2026-10-13T09:13:49.059306+00:00",
+  "frozen_at": "2026-10-13T09:26:28.143418+00:00",
   "round": "184-step3-20261012",
   "scenario": "S1",
   "versions": {
@@ -1532,14 +1532,14 @@
   "workbench_page": {
     "status": 200,
     "bytes": 175415,
-    "sha256": "b067e5f3cdc162241966f561ce98c66703cf4616016ec946d87309081fbe7282",
+    "sha256": "3dd51280ad08b5ade3b39341e93ea999dd5e76b4bc8cf7f55075d78af44cb335",
     "shows_recovered_no_remediation": true,
     "shows_source_automatic": true
   },
   "verdicts": {
     "scenario": "S1",
     "incident_id": "cb7ef8c8-8010-5e45-99cb-704f26f268c5",
-    "checked_at": "2026-10-12T23:50:37.127932-07:00",
+    "checked_at": "2026-10-13T02:26:22.982305-07:00",
     "verdicts": [
       {
         "id": "C1",
@@ -2147,12 +2147,12 @@
       "bytes": 18687
     },
     "docs/evidence/m1-184-self-heal-live/verify.py": {
-      "sha256": "3ccf664b268debdd622b0832805cb5b5ce8408be250149a818db88adadb065d5",
-      "bytes": 25746
+      "sha256": "2f90b0f75fa8da385cad7cde766f7b2a3948fb52747258137b4156a796e143ff",
+      "bytes": 31715
     },
     "tests/test_m1_184_live_verify.py": {
-      "sha256": "a7c39f1deb4ece94d725bf1bc558754facd84a6191992ab10280e4c17b6016b3",
-      "bytes": 10003
+      "sha256": "85626cd3712e671d727907498757861db1cf71b50d8d72ce8638a8fd58814c62",
+      "bytes": 13486
     },
     "docs/evidence/m1-184-self-heal-live/otel-demo-checkout-deadline-1200.json": {
       "sha256": "f64a6e14065bc7fa04d709dc1b0b84cce24b7176cf1629b0bc3b3df7fc5c6cb9",
@@ -2228,7 +2228,7 @@
     "note": "one balance key for the whole round; between the first and last read the worker made the S1 and S2 investigation Runs and the S1 and S2 postmortem drafts (one model request each, see postmortem_attempts). The S1 postmortem started 06:12:07Z, before the middle read, so no per-scenario split is attributable; only the round total is reported. No other calls on this key in the window are known (other sessions not checked)."
   },
   "raw_ledger": {
-    "sha256": "c79179277ccd26be43bf8062af5939dc29ae9cab9fc608b27a903d26ee6a050c",
+    "sha256": "941cc6df8dd3ba23fb68959910f64130a5135dbe5a2a8d79ff9f8a72d21c8046",
     "bytes": 1160574,
     "path": "m1-184-self-heal-live/86c9c662-439f-5b8b-af7d-af4a944e60d4/ledger.json",
     "in_repository": false

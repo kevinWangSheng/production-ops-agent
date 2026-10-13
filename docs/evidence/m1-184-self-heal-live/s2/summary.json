@@ -2,7 +2,7 @@
   "schema": "opspilot-lab-summary-1",
   "experiment": "m1-184-self-heal-live",
   "run_id": "04e10229-a18e-5489-b8a5-af5fbbfdf937",
-  "frozen_at": "2026-10-13T09:13:54.331105+00:00",
+  "frozen_at": "2026-10-13T09:26:34.452025+00:00",
   "round": "184-step3-20261012",
   "scenario": "S2",
   "versions": {
@@ -1869,14 +1869,14 @@
   "workbench_page": {
     "status": 200,
     "bytes": 229810,
-    "sha256": "24053a7a8e8a8f651492ba61f316ca1ea22765559b60053316cc9933bd9aefee",
+    "sha256": "1f39d52d0e486959a03059bc6197799028be57886ea3c72057903b57d8160c7c",
     "shows_recovered_no_remediation": false,
     "shows_source_automatic": true
   },
   "verdicts": {
     "scenario": "S2",
     "incident_id": "6c915943-d439-5e5e-a346-c6e8c71938a5",
-    "checked_at": "2026-10-12T23:50:43.139437-07:00",
+    "checked_at": "2026-10-13T02:26:23.500690-07:00",
     "verdicts": [
       {
         "id": "C1",
@@ -3019,6 +3019,85 @@
         "pass": true
       },
       {
+        "id": "S2-11",
+        "requirement": "Adopted degradation samples span authorization through deadline",
+        "expected": "first/last edge and every consecutive gap <= 2 * frozen interval",
+        "actual": {
+          "authorized_at": "2026-10-12T23:20:46.088734-07:00",
+          "deadline_at": "2026-10-12T23:40:46.079900-07:00",
+          "sample_interval_seconds": 60,
+          "window_ends": [
+            "2026-10-12T23:21:46.422338-07:00",
+            "2026-10-12T23:22:46.602628-07:00",
+            "2026-10-12T23:23:46.742691-07:00",
+            "2026-10-12T23:24:46.933693-07:00",
+            "2026-10-12T23:25:47.198920-07:00",
+            "2026-10-12T23:26:47.461071-07:00",
+            "2026-10-12T23:27:47.686175-07:00",
+            "2026-10-12T23:28:47.931168-07:00",
+            "2026-10-12T23:29:48.139339-07:00",
+            "2026-10-12T23:30:48.542323-07:00",
+            "2026-10-12T23:31:48.747714-07:00",
+            "2026-10-12T23:32:49.111424-07:00",
+            "2026-10-12T23:33:49.470220-07:00",
+            "2026-10-12T23:34:49.787023-07:00",
+            "2026-10-12T23:35:50.136392-07:00",
+            "2026-10-12T23:36:50.471622-07:00",
+            "2026-10-12T23:37:50.687398-07:00",
+            "2026-10-12T23:38:50.896877-07:00",
+            "2026-10-12T23:39:51.217291-07:00"
+          ],
+          "gap_seconds": [
+            60.18029,
+            60.140063,
+            60.191002,
+            60.265227,
+            60.262151,
+            60.225104,
+            60.244993,
+            60.208171,
+            60.402984,
+            60.205391,
+            60.36371,
+            60.358796,
+            60.316803,
+            60.349369,
+            60.33523,
+            60.215776,
+            60.209479,
+            60.320414
+          ],
+          "maximum_gap_seconds": 120
+        },
+        "pass": true
+      },
+      {
+        "id": "S2-10",
+        "requirement": "Verified harness fault remains injected through frozen deadline",
+        "expected": "last verified inject < authorized_at; verified restores after inject >= deadline_at",
+        "actual": {
+          "authorized_at": "2026-10-12T23:20:46.088734-07:00",
+          "deadline_at": "2026-10-12T23:40:46.079900-07:00",
+          "events": [
+            {
+              "at": "2026-10-13T06:12:26.373882+00:00",
+              "action": "inject",
+              "verified": true
+            },
+            {
+              "at": "2026-10-13T06:41:30.153304+00:00",
+              "action": "restore",
+              "verified": true
+            }
+          ],
+          "last_verified_inject": "2026-10-13T06:12:26.373882+00:00",
+          "verified_restores_after_inject": [
+            "2026-10-13T06:41:30.153304+00:00"
+          ]
+        },
+        "pass": true
+      },
+      {
         "id": "S2-8",
         "requirement": "Public recovery section makes no recovery success claim",
         "expected": "no success statement",
@@ -3080,12 +3159,12 @@
       "bytes": 18687
     },
     "docs/evidence/m1-184-self-heal-live/verify.py": {
-      "sha256": "3ccf664b268debdd622b0832805cb5b5ce8408be250149a818db88adadb065d5",
-      "bytes": 25746
+      "sha256": "2f90b0f75fa8da385cad7cde766f7b2a3948fb52747258137b4156a796e143ff",
+      "bytes": 31715
     },
     "tests/test_m1_184_live_verify.py": {
-      "sha256": "a7c39f1deb4ece94d725bf1bc558754facd84a6191992ab10280e4c17b6016b3",
-      "bytes": 10003
+      "sha256": "85626cd3712e671d727907498757861db1cf71b50d8d72ce8638a8fd58814c62",
+      "bytes": 13486
     },
     "docs/evidence/m1-184-self-heal-live/otel-demo-checkout-deadline-1200.json": {
       "sha256": "f64a6e14065bc7fa04d709dc1b0b84cce24b7176cf1629b0bc3b3df7fc5c6cb9",
@@ -3161,8 +3240,8 @@
     "note": "one balance key for the whole round; between the first and last read the worker made the S1 and S2 investigation Runs and the S1 and S2 postmortem drafts (one model request each, see postmortem_attempts). The S1 postmortem started 06:12:07Z, before the middle read, so no per-scenario split is attributable; only the round total is reported. No other calls on this key in the window are known (other sessions not checked)."
   },
   "raw_ledger": {
-    "sha256": "862801b3865db57a60f620ffbb4f497ef9a856248b9b4c030ccd500002c8ac55",
-    "bytes": 1734465,
+    "sha256": "2d836078e58ea95379df7658d92ca3b159c44ddd1c8d6ea1be7063be7634067b",
+    "bytes": 1740215,
     "path": "m1-184-self-heal-live/04e10229-a18e-5489-b8a5-af5fbbfdf937/ledger.json",
     "in_repository": false
   }
