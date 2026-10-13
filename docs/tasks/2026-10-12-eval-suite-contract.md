@@ -71,7 +71,7 @@ kind lab 的固定 host 端口是 18080/19090/16686（`scripts/kind_lab/kind-con
 
 ### r6（2026-10-12，#211 第 1 项，用户裁决）
 
-- D6 改选预审原推荐的选项 C：确定性 gate（schema、证据/目标/时间绑定、`read_only` 权限、最终状态、证据特征存在）通过后，由校准后的 LLM judge 判因果条件；`overall = deterministic_pass AND judge_pass`。原因：`ClaimV2.kind` 只分事实与假设，因果诊断还会出现在 summary 与正文中，r4/r5 的因果条件无法机读（v4 第 25 行）。另两个选项：给报告加结构化因果字段（改模型可见合同、需改版本），或每 Run 独立证据审查（6×7 次不可扩展）。用户按推荐选 judge，参照上游 HolmesGPT（`tests/llm/test_ask_holmes.py:173-187,270-300`）。
+- D6 改选预审原推荐的选项 C：确定性 gate（schema、证据/目标/时间绑定、`read_only` 权限、最终状态；证据特征存在只查故障场景）通过后，由校准后的 LLM judge 判因果条件；`overall = deterministic_pass AND judge_pass`。原因：`ClaimV2.kind` 只分事实与假设，因果诊断还会出现在 summary 与正文中，r4/r5 的因果条件无法机读（v4 第 25 行）。另两个选项：给报告加结构化因果字段（改模型可见合同、需改版本），或每 Run 独立证据审查（6×7 次不可扩展）。用户按推荐选 judge，参照上游 HolmesGPT（`tests/llm/test_ask_holmes.py:173-187,270-300`）。
 - 不变：r1–r5 的因果条件本身，包括 r5 的「每一条事实型因果诊断都须点名注入故障并由其自身引用的证据满足证据特征」，由 judge 逐条判定；gate 中「引用证据存在证据特征」只是必要条件；judge 不替代确定性断言；expected answer 只在评测侧。
 - 新增前提：judge 未按独立标注校准前不记录基线（C3 第 388–398 行）。judge 模型（是否与被测模型分开）、标注来源、校准样本与一致率门槛留给 PR-A 预审。
 - 费用前提更新：DeepSeek 余额 202.15 CNY（2026-10-12 充值后）。
