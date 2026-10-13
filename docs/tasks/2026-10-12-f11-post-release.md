@@ -68,8 +68,8 @@ r1 只定方向。其余实现者需要猜的语义点，按 AGENTS.md「合同�
 - 2026-10-12 建 worktree、任务记录、SPEC 草案、issue；派发 Codex 合同预审。
 - 实验环境：与另一会话（production-ops-agent-00）及 #184 协调，同一时间只跑一个真实故障。
 - 迁移：线性链，#184 第 1 步合并后 main 末尾为 `0013_self_heal_authorization`；PR-1 为 `0014_release_observations`。
-- 2026-10-12/13 PR-1（`feature/F11-pr1-release-persistence`）：Codex gpt-6.1-sol 实现（迁移 0014、`opspilot/observation/releases.py`；最小提取 `observation/bindings.py` 与中立 `opspilot/redaction.py`，旧入口保留）；独立验收测试由全新上下文 Claude 子 Agent 只按合同编写（`tests/integration/test_f11_release_store_postgres.py`，在 `feature/F11-pr1-tests` 提交后拣入）。r3 来自测试作者歧义清单与实现者合同问题：identity 可空、late 守卫须 DB 确认已过期、序号用 advisory lock（web 无 UPDATE 不能行锁）、profile 拒绝码、脱敏不得从调查侧导入。独立审查（Codex gpt-6-astra，全新会话）2 个 P2：指纹含调用参数致同一目标两种传参误判冲突（已修，`9fa9e35`）；验收未经公开写入口覆盖存储故障（测试作者补锁超时/权限拒绝，`6543dce`）。检查（PG 17.9 本机临时实例 55501/55502）：独立验收 71 passed；完整集成 850 passed、38 skipped；`make check` 4856 passed、2 xfailed。无模型、无 kind 调用。
-- 收尾四个数（PR-1）：实施期间新冒出的合同问题 6（r3）；因合同变更重写的测试 0；环境重跑 0；用户裁决轮数 1。
+- 2026-10-12/13 PR-1（`feature/F11-pr1-release-persistence`）：Codex gpt-6.1-sol 实现（迁移 0014、`opspilot/observation/releases.py`；最小提取 `observation/bindings.py` 与中立 `opspilot/redaction.py`，旧入口保留）；独立验收测试由全新上下文 Claude 子 Agent 只按合同编写（`tests/integration/test_f11_release_store_postgres.py`，在 `feature/F11-pr1-tests` 提交后拣入）。r3 来自测试作者歧义清单与实现者合同问题：identity 可空、late 守卫须 DB 确认已过期、序号用 advisory lock（web 无 UPDATE 不能行锁）、profile 拒绝码、脱敏不得从调查侧导入。独立审查（Codex gpt-6-astra，全新会话）2 个 P2：指纹含调用参数致同一目标两种传参误判冲突（已修，`9fa9e35`）；验收未经公开写入口覆盖存储故障（测试作者补锁超时/权限拒绝，`6543dce`）。PR #218 机器人分诊采纳 2 项（DTO 拒绝 NUL/不成对代理字符，`696df78`，测试作者补 4 个结构非法用例 `1673a4e`；审计正文中的 NUL 替换为 U+FFFD、`raw_sha256` 仍覆盖原字节，`25c8537`，lead 自核并做红证明）。检查（PG 17.9 本机临时实例 55501，代码为 `25c8537`）：独立验收 75 passed；完整集成 861 passed、38 skipped；`make check` 4949 passed、2 xfailed。无模型、无 kind 调用。
+- 收尾四个数（PR-1）：实施期间新冒出的合同问题 6（r3），另机器人分诊 2 项缺陷；因合同变更重写的测试 0；环境重跑 0；用户裁决轮数 1。
 
 ## 下一步与交接
 
