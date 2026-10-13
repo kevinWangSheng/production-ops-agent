@@ -99,7 +99,7 @@ Aggregate(round_id: str, manifest_hash: str, rows: tuple[AggregateRow, ...],
 
 ### `signature_matches(rule: SignatureRule, record: DeliveredRecord) -> tuple[str, ...]`
 
-返回该记录中满足规则的 span 的 `span_id`（P8）。一行 span 命中须同时满足：`record.view["tool"] == "traces_search"`；`(service, operation)` 与 `any_of` 某项完全相等；`operation_truncated` 为假；按展示的 `status_tags` 复算为错误（`error` 为 True，或 `otel.status_code == "ERROR"`，或 `rpc.grpc.status_code` 存在且不为 0，或 `http.status_code` 以 5 开头），与行上的 `error_by_visible_tags` 无关；`start_us` 落在 `record.window` 内（含端点；window 为 None 则不命中）。只匹配方法后缀、只匹配服务、或任意 checkout 错误都不命中。命中数少于 `min_matches` 时返回空元组。
+返回该记录中满足规则的 span 的 `span_id`（P8）。一行 span 命中须同时满足：`record.view["tool"] == "traces_search"`；`(service, operation)` 与 `any_of` 某项完全相等；`operation_truncated` 为假；按展示的 `status_tags` 复算为错误（`error` 为 True，或 `otel.status_code == "ERROR"`，或 `rpc.grpc.status_code` 存在且不为 0，或 `http.status_code` 以 5 开头），与行上的 `error_by_visible_tags` 无关；`start_us` 落在 `record.window` 内（含端点；window 为 None 则不命中；`start_us` 超出平台可表示的时间范围时不命中，不抛错）。只匹配方法后缀、只匹配服务、或任意 checkout 错误都不命中。命中数少于 `min_matches` 时返回空元组。
 
 ### `run_gate(spec, answer, outcome, report, delivered, authorized) -> GateResult`
 
@@ -108,8 +108,8 @@ Aggregate(round_id: str, manifest_hash: str, rows: tuple[AggregateRow, ...],
 1. `execution`：outcome 非 None，`final_state == "completed"`，`report_available` 为真，`decision == "report_available"`，`human_interaction is None`，`handoff_reasons` 为空（`EXECUTION_NOT_COMPLETED`）。
 2. `report`：用产品的 `parse_report(raw, finish_reason=...)` 解析成功（`REPORT_INVALID`），且 `assessment_status == "completed"`（`REPORT_INCOMPLETE`）。`conclusion` 可以是 supported、partial 或 inconclusive（P1）。
 3. `permissions`：含 `read_only`，且全部属于 `{"read_only", "human_control"}`（`PERMISSION_VIOLATION`，P3）。
-4. `citations`：报告每条 claim 的每个 evidence_id 都在 `delivered` 中且 `delivered` 为真（`CITATION_NOT_DELIVERED`）；记录的 `view_sha256` 等于 `canonical_view_hash(view)`（`VIEW_HASH_MISMATCH`）；kind 为 fact、counter_evidence、rejected_hypothesis 的 claim 引用的记录须 `status == "ok"` 且 `citable_as_fact`（`CITATION_NOT_FACT_EVIDENCE`），其 `target_refs` 全部等于所引记录的 `target_id`（`TARGET_MISMATCH`），其 `time_scope_ref` 在所引记录的 `time_scope_refs` 中且在 `authorized` 中（`TIME_SCOPE_MISMATCH`），所引记录的 `window` 落在该授权框内（`WINDOW_OUTSIDE_AUTHORIZED`）。
-5. `signature`：仅 fault 场景，报告引用的记录中至少一条有 `signature_matches` 命中（`SIGNATURE_ABSENT`）。normal 场景此项恒为真。
+4. `citations`：报告每条 claim 的每个 evidence_id 都在 `delivered` 中且 `delivered` 为真（`CITATION_NOT_DELIVERED`），并属于本 Run 的 `outcome.evidence_ids`（`CITATION_NOT_IN_RUN`；outcome 为 None 时任何引用都不属于本 Run）；记录的 `view_sha256` 等于 `canonical_view_hash(view)`（`VIEW_HASH_MISMATCH`）；kind 为 fact、counter_evidence、rejected_hypothesis 的 claim 引用的记录须 `status == "ok"` 且 `citable_as_fact`（`CITATION_NOT_FACT_EVIDENCE`），其 `target_refs` 非空且全部等于所引记录的 `target_id`，且该 `target_id` 等于场景的 `stimulus.target_id`（`TARGET_MISMATCH`），其 `time_scope_ref` 在所引记录的 `time_scope_refs` 中且在 `authorized` 中（`TIME_SCOPE_MISMATCH`），所引记录的 `window` 落在该授权框内（`WINDOW_OUTSIDE_AUTHORIZED`）。
+5. `signature`：仅 fault 场景，报告引用的、属于本 Run 且目标为场景 target 的已交付记录中，至少一条有 `signature_matches` 命中（`SIGNATURE_ABSENT`）。`RunEvaluation.signature_matches` 同样只含这些记录。normal 场景此项恒为真。
 
 report 解析失败时 `citations`、`signature` 记为假（原因只记 `REPORT_INVALID`）。
 
@@ -124,12 +124,12 @@ report 解析失败时 `citations`、`signature` 记为假（原因只记 `REPOR
 - judge 处理（P6）：gate 未通过时 judge 可以为 None，`judge_status = "skipped"`；gate 通过而 judge 为 None → `not_run`（`JUDGE_NOT_RUN`）；`judge.status != "ok"` → 对应状态（`JUDGE_<STATUS>`）；`calibrated` 为假 → `uncalibrated`（`JUDGE_UNCALIBRATED`）。以上都是 judge_error，`judge_pass` 为假。
 - judge 输出校验（不通过 → `judge_status = "invalid"`，原因码如下，类 judge_error）：`location` 须为 `summary`、`claims[i]`、`gaps[i]` 或 `next_steps[i]` 且下标存在（`JUDGE_BAD_LOCATION`）；`quote` 非空且（各自压缩连续空白后）是该位置文本的子串（`JUDGE_QUOTE_NOT_FOUND`）；位置为 `claims[i]` 时 `cited_evidence_ids ⊆ claims[i].evidence_ids`；其余位置时，`linked_claim` 为 None 则 `cited_evidence_ids` 须为空，非 None 则须是存在的 claim 下标且 `cited_evidence_ids ⊆` 该 claim 的 evidence_ids（`JUDGE_CITATION_NOT_IN_CLAIM`）；`verdict` 须等于下述重算结果（`JUDGE_VERDICT_MISMATCH`）。
 - 诊断重算（r6、P1）：取 `factual_causal` 为真的诊断。normal：为空才通过。fault：非空，且每一条都满足：`service` 属于 `{injected.service} ∪ service_aliases`、`operation` 属于 `{injected.operation} ∪ operation_aliases`（两者大小写不敏感比较），`supported` 为真，且其 `cited_evidence_ids` 中至少一条记录有 `signature_matches` 命中。`diagnosis_pass` 记录重算结果（judge 无效或未运行时为 None）。
-- 诊断的证据资格（独立审查 P1）：每条 `factual_causal` 诊断引用的每条记录，都要按其锚定 claim（位置为 `claims[i]` 时是该 claim，否则是 `linked_claim`；两者都没有则不合格）的 `target_refs` 与 `time_scope_ref`，满足 `run_gate` 第 4 项对事实型 claim 的全部检查（已交付、hash、`status == "ok"` 且 `citable_as_fact`、目标非空且一致、时间引用与授权窗口）。报告给该 claim 的 kind 不影响此要求。不满足时 `diagnosis_pass` 为假，原因 `DIAGNOSIS_EVIDENCE_UNQUALIFIED`，类 diagnosis；judge 的 `verdict` 仍只与上一条的重算结果比较。
+- 诊断的证据资格（独立审查 P1）：每条 `factual_causal` 诊断引用的每条记录，都要按其锚定 claim（位置为 `claims[i]` 时是该 claim，否则是 `linked_claim`；两者都没有则不合格）的 `target_refs` 与 `time_scope_ref`，满足 `run_gate` 第 4 项对事实型 claim 的全部检查（已交付且属于本 Run、hash、`status == "ok"` 且 `citable_as_fact`、目标非空且一致、时间引用与授权窗口）。报告给该 claim 的 kind 不影响此要求。不满足时 `diagnosis_pass` 为假，原因 `DIAGNOSIS_EVIDENCE_UNQUALIFIED`，类 diagnosis；judge 的 `verdict` 仍只与上一条的重算结果比较。
 - `judge_pass` = judge_status 为 ok 且 `diagnosis_pass` 为真。`overall = deterministic_pass and judge_pass`。
 
-### `judge_request(spec, answer, report, delivered, authorized) -> Mapping[str, Any]`
+### `judge_request(spec, answer, report, delivered, authorized, outcome=None) -> Mapping[str, Any]`
 
-组装给 judge 的输入（P6），不发请求。键：`question`（stimulus.question）、`subject_id`、`authorized_windows`（ref → `{start, end}` ISO 字符串）、`report_raw`、`cited_evidence`（报告引用且已交付的记录：`evidence_id`、`view_sha256`、`view`）、`expected_output`、`scenario_kind`、`injected`（fault 为 service/operation 及别名，normal 为 None）、`signature_matches`（evidence_id → span_id 列表）。不含未被引用的记录、`flag`/`variant`、scenario_id。
+组装给 judge 的输入（P6），不发请求。键：`question`（stimulus.question）、`subject_id`、`authorized_windows`（ref → `{start, end}` ISO 字符串）、`report_raw`、`cited_evidence`（报告引用、已交付、目标为场景 target 且属于本 Run 的记录：`evidence_id`、`view_sha256`、`view`；`outcome` 为 None 时以 `delivered` 的键代替本 Run 的证据 ID）、`expected_output`、`scenario_kind`、`injected`（fault 为 service/operation 及别名，normal 为 None）、`signature_matches`（evidence_id → span_id 列表）。不含未被引用的记录、`flag`/`variant`、scenario_id。
 
 ### 冻结清单与 manifest（P4）
 
@@ -169,6 +169,8 @@ report 解析失败时 `citations`、`signature` 记为假（原因只记 `REPOR
 ## 独立审查后的修订（2026-10-13）
 
 独立审查（Codex，全新上下文）判 fail，四项均已复现并修复：P1 judge 认定为事实型因果诊断的语句须满足事实证据资格（不看报告自填的 kind）；P2 payment 规则补入 payment 服务自身的 server span `grpc.oteldemo.PaymentService/Charge`（fault-1 证据中有 31 条错误 span）；P2 evaluate 核对场景身份（复验补上 Outcome 的 scenario_id），trace 绑定到 attempt 的产品 Run；P2 aggregate 先校验 manifest。
+
+PR #221 机器人审查（三项，均采纳）：引用须属于本 Run 的 `outcome.evidence_ids`（`CITATION_NOT_IN_RUN`）；记录目标须为场景 target；`start_us` 越界不命中而非抛错。
 
 ## 不做
 

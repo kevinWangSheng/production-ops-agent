@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
@@ -43,7 +44,11 @@ def _error_by_tags(tags: Any) -> bool:
 def _in_window(start_us: Any, window: Window) -> bool:
     if not isinstance(start_us, int) or isinstance(start_us, bool):
         return False
-    at = datetime.fromtimestamp(start_us / 1_000_000, tz=UTC)
+    try:
+        at = datetime.fromtimestamp(start_us / 1_000_000, tz=UTC)
+    except (OverflowError, OSError, ValueError):
+        # A timestamp outside the platform range is not a match, not a crash.
+        return False
     return window.start <= at <= window.end
 
 
@@ -96,11 +101,38 @@ def cited_ids(report: ReportV2) -> tuple[str, ...]:
     )
 
 
+@dataclass(frozen=True)
+class RunScope:
+    """What a cited record must belong to: this Run's evidence and target."""
+
+    evidence_ids: frozenset[str]
+    target_id: str
+
+
+def run_scope(spec: ScenarioSpec, outcome: IncidentOutcome | None) -> RunScope:
+    return RunScope(
+        evidence_ids=frozenset(outcome.evidence_ids)
+        if outcome is not None
+        else frozenset(),
+        target_id=spec.stimulus.target_id,
+    )
+
+
+def in_scope(eid: str, record: DeliveredRecord | None, scope: RunScope) -> bool:
+    return (
+        record is not None
+        and record.delivered
+        and eid in scope.evidence_ids
+        and record.target_id == scope.target_id
+    )
+
+
 def fact_binding_reasons(
     target_refs: Sequence[str],
     time_scope_ref: str | None,
     record: DeliveredRecord | None,
     authorized: Mapping[str, Window],
+    scope: RunScope,
 ) -> list[str]:
     """Why ``record`` cannot back a fact cited with these target/time refs.
 
@@ -115,7 +147,11 @@ def fact_binding_reasons(
         reasons.append("VIEW_HASH_MISMATCH")
     if record.status != "ok" or not record.citable_as_fact:
         reasons.append("CITATION_NOT_FACT_EVIDENCE")
-    if not target_refs or any(ref != record.target_id for ref in target_refs):
+    if (
+        not target_refs
+        or any(ref != record.target_id for ref in target_refs)
+        or record.target_id != scope.target_id
+    ):
         reasons.append("TARGET_MISMATCH")
     frame = authorized.get(time_scope_ref) if time_scope_ref is not None else None
     if (
@@ -135,6 +171,7 @@ def _citation_reasons(
     report: ReportV2,
     delivered: Mapping[str, DeliveredRecord],
     authorized: Mapping[str, Window],
+    scope: RunScope,
 ) -> list[str]:
     reasons: list[str] = []
     for claim in report.claims:
@@ -143,10 +180,17 @@ def _citation_reasons(
             if record is None or not record.delivered:
                 reasons.append("CITATION_NOT_DELIVERED")
                 continue
+            if eid not in scope.evidence_ids:
+                # Evidence from another Run or repetition (bot review P1).
+                reasons.append("CITATION_NOT_IN_RUN")
             if claim.kind in _FACT_LIKE:
                 reasons.extend(
                     fact_binding_reasons(
-                        claim.target_refs, claim.time_scope_ref, record, authorized
+                        claim.target_refs,
+                        claim.time_scope_ref,
+                        record,
+                        authorized,
+                        scope,
                     )
                 )
             elif record.view_sha256 != canonical_view_hash(record.view):
@@ -158,14 +202,15 @@ def report_signature_matches(
     answer: Answer,
     report: ReportV2 | None,
     delivered: Mapping[str, DeliveredRecord],
+    scope: RunScope,
 ) -> dict[str, tuple[str, ...]]:
-    """Signature hits per cited, delivered evidence ID (fault scenarios only)."""
+    """Signature hits per cited evidence ID of this Run and target (faults only)."""
     if answer.signature is None or report is None:
         return {}
     hits: dict[str, tuple[str, ...]] = {}
     for eid in cited_ids(report):
         record = delivered.get(eid)
-        if record is None or not record.delivered:
+        if record is None or not in_scope(eid, record, scope):
             continue
         matched = signature_matches(answer.signature, record)
         if matched:
@@ -209,12 +254,13 @@ def run_gate(
         checks["citations"] = False
         checks["signature"] = False
     else:
-        citation_reasons = _citation_reasons(parsed, delivered, authorized)
+        scope = run_scope(spec, outcome)
+        citation_reasons = _citation_reasons(parsed, delivered, authorized, scope)
         checks["citations"] = not citation_reasons
         reasons.extend(citation_reasons)
         if spec.kind == "fault":
             checks["signature"] = bool(
-                report_signature_matches(answer, parsed, delivered)
+                report_signature_matches(answer, parsed, delivered, scope)
             )
             if not checks["signature"]:
                 reasons.append("SIGNATURE_ABSENT")

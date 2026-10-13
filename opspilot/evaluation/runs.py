@@ -14,11 +14,14 @@ from typing import Any
 
 from opspilot.acceptance import IncidentOutcome
 from opspilot.evaluation.gate import (
+    RunScope,
     cited_ids,
     fact_binding_reasons,
+    in_scope,
     parsed_report,
     report_signature_matches,
     run_gate,
+    run_scope,
 )
 from opspilot.evaluation.model import (
     FAILURE_PRIORITY,
@@ -133,6 +136,7 @@ def _unqualified_diagnoses(
     diagnoses: Sequence[JudgedDiagnosis],
     delivered: Mapping[str, DeliveredRecord],
     authorized: Mapping[str, Window],
+    scope: RunScope,
 ) -> bool:
     """True when a factual causal diagnosis cites evidence that cannot back a fact.
 
@@ -145,8 +149,13 @@ def _unqualified_diagnoses(
         index = _anchor_claim(report, diagnosis)
         claim = report.claims[index] if index is not None else None
         for eid in diagnosis.cited_evidence_ids:
-            if claim is None or fact_binding_reasons(
-                claim.target_refs, claim.time_scope_ref, delivered.get(eid), authorized
+            record = delivered.get(eid)
+            if (
+                claim is None
+                or not in_scope(eid, record, scope)
+                or fact_binding_reasons(
+                    claim.target_refs, claim.time_scope_ref, record, authorized, scope
+                )
             ):
                 return True
     return False
@@ -210,7 +219,8 @@ def evaluate(
         reasons.append(code)
 
     parsed = parsed_report(report)
-    matches = report_signature_matches(answer, parsed, delivered)
+    scope = run_scope(spec, outcome)
+    matches = report_signature_matches(answer, parsed, delivered, scope)
 
     judge_status: Any
     diagnosis_pass: bool | None = None
@@ -238,7 +248,7 @@ def evaluate(
         else:
             judge_status = "ok"
             unqualified = _unqualified_diagnoses(
-                parsed, judge.diagnoses, delivered, authorized
+                parsed, judge.diagnoses, delivered, authorized, scope
             )
             diagnosis_pass = recomputed and not unqualified
             if unqualified:
@@ -289,10 +299,19 @@ def judge_request(
     report: ReportCapture,
     delivered: Mapping[str, DeliveredRecord],
     authorized: Mapping[str, Window],
+    outcome: IncidentOutcome | None = None,
 ) -> Mapping[str, Any]:
     """The judge's input (r7 P6); building it sends nothing."""
     parsed = parsed_report(report)
     cited = cited_ids(parsed) if parsed is not None else ()
+    # Only this Run's evidence on the scenario target; without an outcome
+    # the delivered records stand in for the Run's evidence IDs.
+    scope = RunScope(
+        evidence_ids=frozenset(outcome.evidence_ids)
+        if outcome is not None
+        else frozenset(delivered),
+        target_id=spec.stimulus.target_id,
+    )
     evidence = [
         {
             "evidence_id": eid,
@@ -300,7 +319,7 @@ def judge_request(
             "view": dict(delivered[eid].view),
         }
         for eid in cited
-        if eid in delivered and delivered[eid].delivered
+        if in_scope(eid, delivered.get(eid), scope)
     ]
     injected = answer.injected
     return {
@@ -325,7 +344,7 @@ def judge_request(
         "signature_matches": {
             eid: list(spans)
             for eid, spans in report_signature_matches(
-                answer, parsed, delivered
+                answer, parsed, delivered, scope
             ).items()
         },
     }

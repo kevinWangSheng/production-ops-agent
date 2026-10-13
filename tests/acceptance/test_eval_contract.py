@@ -418,6 +418,7 @@ def test_gate_checks_every_citation_not_only_first_good_evidence(same_claim):
     data = case()
     bad = record(evidence_id="ev-second", view_sha256="bad")
     data["delivered"][bad.evidence_id] = bad
+    data["outcome"] = replace(data["outcome"], evidence_ids=(EID, bad.evidence_id))
     claims = (
         [claim(evidence_ids=[EID, bad.evidence_id])]
         if same_claim
@@ -445,6 +446,7 @@ def test_gate_signature_must_be_in_report_citations_and_is_fault_only(fault):
     data = case(fault=fault)
     other = record(evidence_id="ev-no-error", rows=[span(status_tags={})])
     data["delivered"][other.evidence_id] = other
+    data["outcome"] = replace(data["outcome"], evidence_ids=(EID, other.evidence_id))
     data["report"] = capture(
         fault=fault, claims=[claim(evidence_ids=[other.evidence_id])]
     )
@@ -461,6 +463,7 @@ def test_gate_signature_minimum_must_be_met_by_at_least_one_record():
     data["delivered"]["ev-second"] = record(
         evidence_id="ev-second", rows=[span(span_id="span-second")]
     )
+    data["outcome"] = replace(data["outcome"], evidence_ids=(EID, "ev-second"))
     data["report"] = capture(claims=[claim(evidence_ids=[EID, "ev-second"])])
     result = run_gate(**gate_args(data))
     assert result.checks["citations"] and not result.checks["signature"]
@@ -712,6 +715,7 @@ def test_diagnosis_gate_signature_cannot_be_borrowed_from_another_claim():
     data["delivered"][other_id] = record(
         evidence_id=other_id, rows=[span(status_tags={})]
     )
+    data["outcome"] = replace(data["outcome"], evidence_ids=(EID, other_id))
     data["report"] = capture(
         claims=[
             claim(OBSERVATION),
@@ -954,6 +958,7 @@ def test_judge_output_rejects_unknown_borrowed_or_unlinked_citations(
         next_steps=[CAUSE],
     )
     data["delivered"]["ev-other-claim"] = record(evidence_id="ev-other-claim", rows=[])
+    data["outcome"] = replace(data["outcome"], evidence_ids=(EID, "ev-other-claim"))
     data["judge"] = judge(
         diagnoses=(
             diagnosis(
@@ -1025,12 +1030,15 @@ def test_judge_request_exact_keys_and_evaluator_only_input_boundary(fault):
     data["delivered"]["ev-undelivered"] = record(
         evidence_id="ev-undelivered", delivered=False
     )
+    data["outcome"] = replace(
+        data["outcome"], evidence_ids=(EID, "ev-unused", "ev-undelivered")
+    )
     payload = report_payload(fault=fault)
     payload["claims"].append(claim(OBSERVATION, evidence_ids=["ev-undelivered"]))
     data["report"] = capture(payload)
     args = {
         key: data[key]
-        for key in ("spec", "answer", "report", "delivered", "authorized")
+        for key in ("spec", "answer", "report", "delivered", "authorized", "outcome")
     }
     result = judge_request(**args)
     assert set(result) == {
@@ -1932,7 +1940,7 @@ def test_diagnosis_factual_evidence_qualification_overrides_report_kind(
     data = case()
     changes = {
         "none": {},
-        "target": {"target_id": "other-target"},
+        "target": {},
         "window_before": {"window": Window(START - timedelta(microseconds=1), END)},
         "window_after": {"window": Window(START, END + timedelta(microseconds=1))},
         "not_citable": {"citable_as_fact": False},
@@ -1943,7 +1951,11 @@ def test_diagnosis_factual_evidence_qualification_overrides_report_kind(
     }[defect]
     data["delivered"][EID] = record(**changes)
     cited_claim = claim(kind=kind)
-    if defect == "empty_targets":
+    if defect == "target":
+        # Keep the record eligible for the gate's scenario-target signature;
+        # its mismatch with this claim still fails diagnosis qualification.
+        cited_claim["target_refs"] = ["other-target"]
+    elif defect == "empty_targets":
         cited_claim["target_refs"] = []
     elif defect == "unauthorized_scope":
         data["authorized"] = {"other-scope": Window(START, END)}
@@ -1978,6 +1990,7 @@ def test_diagnosis_requires_every_cited_record_to_qualify(unqualified_first):
     data = case()
     other_id = "ev-unqualified"
     data["delivered"][other_id] = record(evidence_id=other_id, citable_as_fact=False)
+    data["outcome"] = replace(data["outcome"], evidence_ids=(EID, other_id))
     ids = (other_id, EID) if unqualified_first else (EID, other_id)
     data["report"] = capture(claims=[claim(kind="hypothesis", evidence_ids=list(ids))])
     data["judge"] = judge(diagnoses=(diagnosis(cited_evidence_ids=ids),))
@@ -2018,7 +2031,7 @@ def test_payment_scenario_signature_accepts_only_qualified_server_span(
         span_id="payment-server-error",
     )
     row.update(row_changes)
-    visible = record(rows=[row])
+    visible = record(rows=[row], target_id=spec.stimulus.target_id)
     assert signature_matches(answer.signature, visible) == (
         ("payment-server-error",) if expected else ()
     )
@@ -2026,7 +2039,12 @@ def test_payment_scenario_signature_accepts_only_qualified_server_span(
     data["spec"], data["answer"] = spec, answer
     data["outcome"] = replace(data["outcome"], scenario_id=spec.scenario_id)
     data["report"] = capture(
-        claims=[claim("The payment Charge RPC returned an error.")]
+        claims=[
+            claim(
+                "The payment Charge RPC returned an error.",
+                target_refs=[spec.stimulus.target_id],
+            )
+        ]
     )
     data["delivered"] = {EID: visible}
     result = run_gate(**gate_args(data))
@@ -2211,3 +2229,229 @@ def test_evaluate_accepts_none_outcome_for_setup_failure(fault):
     assert "SETUP_FAILED" in result.failure_reasons
     assert "SCENARIO_MISMATCH" not in result.failure_reasons
     assert result.evidence_status == "complete"
+
+
+# PR #221: interface:102,111-112,127,130-132,173.
+
+
+@pytest.mark.parametrize("fault", [False, True], ids=["normal", "fault"])
+@pytest.mark.parametrize(
+    "kind",
+    [
+        "fact",
+        "counter_evidence",
+        "rejected_hypothesis",
+        "hypothesis",
+        "recommendation",
+    ],
+)
+@pytest.mark.parametrize("in_run", [False, True])
+def test_gate_citations_and_signature_require_current_run_membership(
+    fault, kind, in_run
+):
+    data = case(fault=fault)
+    data["report"] = capture(
+        fault=fault,
+        claims=[
+            claim(
+                CAUSE if fault else OBSERVATION,
+                kind=kind,
+            )
+        ],
+    )
+    data["outcome"] = replace(data["outcome"], evidence_ids=(EID,) if in_run else ())
+    gate = run_gate(**gate_args(data))
+    assert gate.checks["citations"] is in_run and gate.passed is in_run
+    assert gate.checks["signature"] is (in_run or not fault)
+    assert ("CITATION_NOT_IN_RUN" in gate.reasons) is (not in_run)
+    assert ("SIGNATURE_ABSENT" in gate.reasons) is (fault and not in_run)
+    if not in_run:
+        data["judge"] = None
+    result = evaluate(**data)
+    assert result.overall is in_run and result.deterministic_pass is in_run
+    if fault and in_run:
+        assert result.signature_matches[EID] == ("span-cart",)
+    elif not in_run:
+        assert EID not in result.signature_matches
+        assert "CITATION_NOT_IN_RUN" in result.failure_reasons
+        assert result.failure_class == "deterministic_gate"
+
+
+@pytest.mark.parametrize("fault", [False, True], ids=["normal", "fault"])
+def test_gate_missing_outcome_does_not_authorize_delivered_citations(fault):
+    data = case(fault=fault)
+    data["outcome"] = data["judge"] = None
+    result = evaluate(**data)
+    assert not result.gate.checks["citations"] and not result.overall
+    assert "CITATION_NOT_IN_RUN" in result.failure_reasons
+    assert result.failure_class == "execution"
+    assert EID not in result.signature_matches
+    assert result.gate.checks["signature"] is (not fault)
+
+
+@pytest.mark.parametrize("kind", ["fact", "hypothesis", "recommendation"])
+@pytest.mark.parametrize("location", ["claims[0]", "summary"])
+@pytest.mark.parametrize("second_in_run", [False, True])
+def test_diagnosis_cannot_borrow_foreign_citation_despite_own_signature(
+    kind, location, second_in_run
+):
+    data = case()
+    second_id = "ev-second-run-candidate"
+    data["delivered"][second_id] = record(
+        evidence_id=second_id,
+        rows=[span(span_id="span-second")],
+    )
+    data["outcome"] = replace(
+        data["outcome"],
+        evidence_ids=(EID, second_id) if second_in_run else (EID,),
+    )
+    data["report"] = capture(claims=[claim(kind=kind, evidence_ids=[EID, second_id])])
+    data["judge"] = judge(
+        diagnoses=(
+            diagnosis(
+                location=location,
+                linked_claim=0 if location == "summary" else None,
+                cited_evidence_ids=(EID, second_id),
+            ),
+        )
+    )
+    result = evaluate(**data)
+    # The own-Run signature makes the original verdict True independently of
+    # the second record. Qualification must still check every cited record.
+    assert result.gate.checks["signature"]
+    assert result.signature_matches[EID] == ("span-cart",)
+    assert result.judge_status == "ok"
+    assert result.diagnosis_pass is second_in_run
+    assert result.judge_pass is second_in_run and result.overall is second_in_run
+    if second_in_run:
+        assert result.signature_matches[second_id] == ("span-second",)
+        assert result.failure_class is None and result.failure_reasons == ()
+    else:
+        assert second_id not in result.signature_matches
+        assert "CITATION_NOT_IN_RUN" in result.failure_reasons
+        assert "DIAGNOSIS_EVIDENCE_UNQUALIFIED" in result.failure_reasons
+        assert result.failure_class == "deterministic_gate"
+
+
+@pytest.mark.parametrize("fault", [False, True], ids=["normal", "fault"])
+@pytest.mark.parametrize("kind", ["fact", "counter_evidence", "rejected_hypothesis"])
+@pytest.mark.parametrize("scenario_target", [False, True])
+def test_gate_rejects_matching_record_and_claim_on_non_scenario_target(
+    fault, kind, scenario_target
+):
+    data = case(fault=fault)
+    target = data["spec"].stimulus.target_id if scenario_target else "other-target"
+    data["delivered"][EID] = record(target_id=target)
+    data["report"] = capture(
+        fault=fault,
+        claims=[
+            claim(
+                CAUSE if fault else OBSERVATION,
+                kind=kind,
+                target_refs=[target],
+            )
+        ],
+    )
+    gate = run_gate(**gate_args(data))
+    assert (
+        gate.passed is scenario_target and gate.checks["citations"] is scenario_target
+    )
+    assert ("TARGET_MISMATCH" in gate.reasons) is (not scenario_target)
+    assert gate.checks["signature"] is (scenario_target or not fault)
+    if not scenario_target:
+        data["judge"] = None
+    result = evaluate(**data)
+    assert result.overall is scenario_target
+    if not scenario_target:
+        assert EID not in result.signature_matches
+        assert "TARGET_MISMATCH" in result.failure_reasons
+        assert result.failure_class == "deterministic_gate"
+
+
+@pytest.mark.parametrize("fault", [False, True], ids=["normal", "fault"])
+@pytest.mark.parametrize(
+    "start_us,matches",
+    [
+        (micros(START), True),
+        (10**100, False),
+        (-(10**100), False),
+    ],
+)
+def test_signature_out_of_range_start_is_nonmatch_and_evaluate_returns(
+    fault, start_us, matches
+):
+    data = case(fault=fault)
+    visible = record(rows=[span(start_us=start_us)])
+    assert signature_matches(rule(), visible) == (("span-cart",) if matches else ())
+    data["delivered"][EID] = visible
+    if fault:
+        data["judge"] = judge(verdict=matches)
+    result = evaluate(**data)
+    expected_pass = matches or not fault
+    assert result.gate.checks["citations"] and result.evidence_status == "complete"
+    assert result.gate.checks["signature"] is expected_pass
+    assert result.judge_status == "ok" and result.diagnosis_pass is expected_pass
+    assert result.overall is expected_pass
+    if not matches:
+        assert not result.signature_matches.get(EID, ())
+    if fault and not matches:
+        assert "SIGNATURE_ABSENT" in result.failure_reasons
+        assert "DIAGNOSIS_FAILED" in result.failure_reasons
+        assert result.failure_class == "deterministic_gate"
+    else:
+        assert result.failure_class is None and result.failure_reasons == ()
+
+
+@pytest.mark.parametrize("fault", [False, True], ids=["normal", "fault"])
+@pytest.mark.parametrize("outcome_mode", ["provided", "none", "omitted"])
+def test_judge_request_filters_run_membership_and_scenario_target(fault, outcome_mode):
+    data = case(fault=fault)
+    foreign_id, wrong_target_id = "ev-other-run", "ev-other-target"
+    data["delivered"].update(
+        {
+            foreign_id: record(
+                evidence_id=foreign_id, rows=[span(span_id="span-other-run")]
+            ),
+            wrong_target_id: record(
+                evidence_id=wrong_target_id, target_id="other-target"
+            ),
+            "ev-undelivered": record(evidence_id="ev-undelivered", delivered=False),
+            "ev-unused": record(evidence_id="ev-unused"),
+        }
+    )
+    data["outcome"] = replace(
+        data["outcome"],
+        evidence_ids=(EID, wrong_target_id, "ev-undelivered", "ev-unused"),
+    )
+    data["report"] = capture(
+        fault=fault,
+        claims=[
+            claim(evidence_ids=[foreign_id, EID]),
+            claim(evidence_ids=[wrong_target_id], target_refs=["other-target"]),
+            claim(evidence_ids=["ev-undelivered"]),
+            claim(evidence_ids=[EID]),
+        ],
+    )
+    args = {
+        key: data[key]
+        for key in ("spec", "answer", "report", "delivered", "authorized")
+    }
+    if outcome_mode != "omitted":
+        args["outcome"] = data["outcome"] if outcome_mode == "provided" else None
+    request = judge_request(**args)
+    # interface:132 explicitly retains the delivered-key fallback when outcome
+    # is absent; scenario-target and delivery filtering still apply there.
+    expected_ids = [EID] if outcome_mode == "provided" else [foreign_id, EID]
+    assert request["cited_evidence"] == [
+        {
+            "evidence_id": eid,
+            "view_sha256": data["delivered"][eid].view_sha256,
+            "view": data["delivered"][eid].view,
+        }
+        for eid in expected_ids
+    ]
+    assert set(request["signature_matches"]) == (set(expected_ids) if fault else set())
+    if fault:
+        assert request["signature_matches"][EID] == ["span-cart"]
+        if outcome_mode != "provided":
+            assert request["signature_matches"][foreign_id] == ["span-other-run"]
