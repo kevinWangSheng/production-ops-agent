@@ -76,6 +76,137 @@ kind lab 的固定 host 端口是 18080/19090/16686（`scripts/kind_lab/kind-con
 - 新增前提：judge 未按独立标注校准前不记录基线（C3 第 388–398 行）。judge 模型（是否与被测模型分开）、标注来源、校准样本与一致率门槛留给 PR-A 预审。
 - 费用前提更新：DeepSeek 余额 202.15 CNY（2026-10-12 充值后）。
 
+### r7（2026-10-13，PR-A 合同预审，用户裁决）
+
+预审者 Codex GPT-6 Astra（high，全新上下文，只读），核查版本 `8f221b5`；lead 复核了四项关键事实（`opspilot/acceptance.py:421` 持久化权限含 `human_control`；`opspilot/investigation/loop.py:550-556` incomplete 报告仍返回执行 completed；`scripts/kind_lab.py:100` 只有 `paymentFailure`；上游 `tests/llm/utils/test_env_vars.py` 的 `CLASSIFIER_MODEL` 默认同被测模型）。用户 2026-10-13 裁决：P1–P4、P6–P10 按推荐；P5 改为 GLM 5.3 作 judge。P5 改判带来的推论：judge 调用不占 DeepSeek 并发（P9 中「共用并发 1」改为 judge 单独串行）；评测证据（报告与引用的可见证据）发往第二家供应商，仅限开发评测；GLM 凭据与端点在接入 judge 的步骤前核查。预审全文如下（标题降级嵌入）。
+
+
+只读预审，2026-10-12。核查版本：`8f221b556b21c75e61ec3d16bdafcacd57fc9549`。未修改文件、提交、stash/checkout、同步分支或运行评测；用户已有改动未触碰。下列推荐是待裁决方案，不代替已批准的 r6。
+
+引用缩写：
+
+- **T**：`docs/tasks/2026-10-12-eval-suite.md`
+- **D**：`docs/tasks/2026-10-12-eval-suite-contract.md`
+- **C3**：`docs/design/technical-proposal-2026-09-07.md`
+- **V4**：`docs/testing/first-investigation-v4-2026-09-10.md`
+- **E**：`docs/evidence/m1-01-alignment-c-effect/`
+- **U**：HolmesGPT 固定提交 `46e3a728d762b774d2ec458357decb8698541ce5` 下的路径；已实际读取指定本地文件，补充文件通过固定提交的 GitHub contents API 读取。
+
+#### 1. 已核查事实
+
+**入口与结局。** `opspilot/acceptance.py:93–116` 的 `IncidentScenario` 只有身份、feature、步骤、kind、subject；`IncidentOutcome` 没有报告全文、证据内容或 `assessment_status`，因此评测必须另带证据包，不能只靠 Outcome 判报告质量。终态取值为 `completed/failed/blocked/budget_exhausted/cancelled/paused`（:88–90）；持久化投影依据发布记录、handoff 和人控状态判断（:291–359）。已有外部验收覆盖完成、provider 失败、预算、deadline、持久化交接（`tests/acceptance/test_m1_01_acceptance.py:37–89,113–139`）。
+
+**报告与权限存在两个重要接缝。**
+
+- `opspilot/investigation/reports.py:93–139`：`ClaimV2.kind` 有 fact、hypothesis、recommendation、counter_evidence、rejected_hypothesis，没有 causal 标记；因果文字可能位于 summary、claims[].text、gaps、next_steps。`assessment_status` 是 completed/incomplete，`conclusion` 是 supported/partial/inconclusive。
+- `opspilot/investigation/loop.py:550–556` 对 incomplete 报告仍可返回 execution=completed，另记 `INCOMPLETE_INVESTIGATION`。仅检查执行 completed 会放过未完成调查。V4:93 明确 handoff 不能抵作正向能力通过，:99 要保留失败分母。
+- loop/live-record 投影返回 `("read_only",)`，持久化投影返回 `("read_only","human_control")`（`opspilot/acceptance.py:126–135,415–426,458–469`）。权限 gate 不能直接要求单元素数组相等。
+
+**冻结摘要与 trace。** `scripts/lab_evidence.py:250–293` 写 `opspilot-lab-summary-1`、experiment/run_id/frozen_at、调用者传入的业务字段及外置 ledger 的 hash/bytes/path，并未定义统一业务 schema。其回读状态实际为 found、root_run_not_found、no_trace_id、not_exported、error:*（:180–226）。
+
+已有单 trace 示例为 `docs/evidence/m1-01-handoff-runner/live-runs/93372aa7-8fd5-4f8e-bb88-161b2cbc5d1f/summary.json:134–150`；多 trace 示例为 `docs/evidence/m1-pg-roles-live/live-runs/8e8ad43b-0b9e-5545-8b19-a3c202bc7855/summary.json:339–374`，包含 investigation、postmortem 两个 root。`record_in_summary` 实际位于 `scripts/lab_review_feedback.py:102–110`，追加反馈时重写 summary；其 CLI 仍只认 `trace.langsmith_run_id`（:129–137）。
+
+**六场景及证据规则的可实现性。**
+
+| 场景 | 注入与诊断对象 | 已核查依据 |
+|---|---|---|
+| normal-1、normal-2 | 无故障注入 | E `run.md:4–6,15–16` |
+| fault-1、fault-2 | paymentFailure→100%；payment 的 Charge | E `fault-timeline.jsonl:1–2`、`run.md:17–18` |
+| productCatalogFailure | →on；product-catalog 的 GetProduct | E `fault-timeline.jsonl:3–4`、`pc-fault/ledger.json:970–1002` |
+| cartFailure | →on；cart 的 EmptyCart，展示的错误涉及 storage 连接 | E `fault-timeline.jsonl:5–6`、`cart-fault/ledger.json:254–287` |
+
+当前 `scripts/kind_lab.py:100–103,867–881` 只硬编码 paymentFailure；另两项需要 PR-C 扩展。当前工具视图提供 service、operation、start_us、status_tags、error_by_visible_tags（`opspilot/tools/otel_demo.py:1342–1403`），可以写确定性规则。注意已有 GetProduct、EmptyCart 证据是 **checkout 上的失败 RPC client span**，不能只接受故障服务自身的 server span。`span_groups` 只汇总实际展示行（:1511–1559），不能代表全部流量。
+
+**上游可直接借鉴的机制。** U `tests/llm/utils/test_env_vars.py:5–9` 支持独立 `CLASSIFIER_MODEL`，默认同 MODEL；`classifiers.py:135–173,215–252` 以 expected 和回答判二值分数，strict 要求全部 expected elements 满足，输出上限 16384。该接口没有独立传入证据正文；不能原样满足本项目逐条引用支持要求。`test_ask_holmes.py:152–187,270–298` 判回答后仍执行确定性约束，`test_results.py:64–74` 要求 pytest 成功且 judge=1。
+
+U `.claude/skills/create-eval/references/test-case-format.md:23–32` 明确 expected_output 只给 evaluator；`anti-hallucination.md:5–7,54–103` 要求从工具发现答案。已读同目录 `running-evals.md:49–75` 及 `docs/development/evaluations/{index,adding-evals,reporting,running-evals}.md`；reporting:81–86 同样采用 0/1。未据这些局部文件推断“上游全仓没有校准机制”。
+
+**合同与凭据边界。** 已通过 `gh issue view 211` 读取原文。C3:392 要求冻结全部实验维度，:396–400 要求可诊断性基于可见证据、失败进入分母、先开发校准再候选评测。SPEC:20 只开放开发基线，不能关闭 SPEC:6 的 formal judge calibration。仅检查 `.env` 变量存在性：有 DeepSeek/LangSmith key，没有 OpenAI/Anthropic/OpenRouter key；未输出值，也未验证有效性。202.15 CNY 是 T:15 的记录，本次未回读余额。
+
+#### 2. 决定表
+
+### 需用户裁决：合同、权限、验收与数据流
+
+| 编号 | 问题 | 选项与代价 | 推荐 | 影响面 | 裁决 |
+|---|---|---|---|---|---|
+| P1 | #211-2/5：完成结局与正面诊断 | A 同时查执行、报告、交接；B 只查无误诊，会放过未完成 | **A**。六例均要求 Outcome completed、report_available、decision=report_available、无 handoff，且 assessment_status=completed。正常仍允许 partial/inconclusive，但事实型因果诊断为零；故障至少一条且每条满足 r6，禁止空集 `all()` 通过 | V4:93/99；正常与故障通过条件 | 2026-10-13 用户按推荐 |
+| P2 | #211-3：trace 回读不到 | A evidence-incomplete 并算失败；B 当诊断错误；C 忽略 | **A**。必需 trace 未回读或身份不匹配：deterministic_pass=false、overall=false，保留原 judge 判分，计失败分母，baseline_complete=false。有限回读后冻结，后来补证另建 revision，不覆盖旧结果。setup 失败无产品 Run 时保留评测 attempt root trace，不伪造产品 trace | T:16/32；证据完整性与基线完成声明 | 2026-10-13 用户按推荐 |
+| P3 | read_only 如何匹配真实入口 | A 容许 human_control；B 精确单元素会误拒；C 改产品投影扩大范围 | **A**。必须含 read_only，额外只容许 human_control；写权限和未知权限拒绝，保留原数组并绑定实际权限配置 hash。该 gate 不宣称已经证明基础设施隔离 | r6 与 acceptance.py:421 的兼容 | 2026-10-13 用户按推荐 |
+| P4 | #211-4：manifest 每个维度 | A 逐项必填；B 自由 versions 字典容易遗漏 | **A**。下述冻结清单每项必须有 version/hash，或带理由的显式 none；缺失是 unknown，不能冒充 none，unknown 阻止基线完成 | C3:392；PR-B/C/D 不再猜字段 | 2026-10-13 用户按推荐 |
+| P5 | judge 模型 | A 独立调用现有 deepseek-flash，最快但同家族相关偏差；B 另一 DeepSeek 型号仍同家族；C 异家族，需要确认凭据、费用和数据出口 | **A 仅作开发起点**：显式独立配置、全新消息上下文，不沿用调查会话或自评分；披露 same-family，必须通过 P7。校准不达标再选 C，不能宣称换家族自动消除偏差。沿上游可独配且默认同模型的机制 | 模型、凭据、费用；不承诺偏差已消除 | 2026-10-13 用户改判：judge 用 GLM 5.3（异家族，用户已在 .env 配置凭据，未核查） |
+| P6 | judge 输入、输出、引用归属与失败 | A 上游 expected+回答，不能核逐条支持；B 加真实可见证据与逐诊断记录 | **B**。输入完整安全报告、问题/授权主体时间、报告引用且已交付的 view 内容/ID/hash、expected answer、证据规则及匹配结果。输出每条诊断的定位/引文、是否事实型因果、服务/操作、引用、支持判定、短理由和二值 verdict。summary 不得继承全报告任意引用；可关联明确同义且带引文的 claim，并记录关联供复核。代码验证定位、ID和规则匹配并重算 AND。error/timeout/invalid/oversize/uncalibrated 均不通过；gate 失败可跳过 judge，但不能通过 | r6 全文识别、逐条支持、异常口径；无隐藏 raw、私有 reasoning、注入器答案或旧评分 | 2026-10-13 用户按推荐 |
+| P7 | 校准标签、数量、门槛与失败处置 | A 人工盲标加独立复核，较慢；B 双独立 Agent 盲标加人工裁决，较快但标签仍有相关偏差 | **B，限开发基线**。两个未参与实现的全新上下文 Agent，独立于待校准 judge，先盲标、不看 judge 输出；记录模型身份，分歧交用户裁决。6 例各 2 份调试、4 份冻结验证，共12+24；优先历史完整报告与实际可见证据，不足用独立作者最小反例并标来源，同源变体不跨集合。24 份验证每份判两次：至少46/48与最终标签一致，至少12份负例两次均不得误通过；另核关键因果诊断有无漏检。失败不记基线；修 judge 后换验证集，不反复调同一验证集 | 提议的开发门槛，非统计可靠性保证；不关闭 SPEC:6 的 formal calibration/held-out 项 | 2026-10-13 用户按推荐 |
+| P8 | D6 证据特征具体表达 | A 首版只支持可见错误 span，快但会拒仅有充分 metrics 的报告；B 同时解释通用 PromQL，工作量和误判面大 | **A，作为明确收紧提交裁决**。评测侧 `answer.json` 保存版本化 `any_of` 规则：精确 service/RPC operation 别名、error=true、时间窗、min_matches=1；四故障按上表映射，正常为 none。容许对应服务 server span，或 checkout 上同一完整 RPC 的失败 client span；不接受只匹配方法后缀或任意 checkout error。规则返回 evidence_id、trace/span_id、规则 ID；行须已交付且被引用、目标/hash/时间合格、operation 未截断，错误由展示标签复算。cart storage 错误支持 EmptyCart 失败，不能自动支持“valkey 服务宕机” | 首版证据资格；V4:81 不要求猜隐藏 flag；后续新增规则需版本化 | 2026-10-13 用户按推荐 |
+| P9 | judge 调用上限、超时、费用 | A 单次固定分类；B 自动修复/投票，增加费用并改变判分 | **A**。生产评测每份报告一次、无自动重试；调查100请求/7200s保持，judge 是结束后的独立 evaluation 阶段。单次360s、请求8MiB/响应2MiB，输出初值16384沿上游；超限失败，不静默截断。DeepSeek调查与judge共用并发1；无 suite 预算上限。按轮余额差对账，分阶段记请求/token/耗时，无法拆分的费用标 unknown，校准费用另列 | D10 与外部调用；限值依据 limits.py:26,87–93，输出值待校准验证 | 2026-10-13 用户按推荐 |
+| P10 | attempt 起点、分母与完成 | A setup 前登记 attempt；B 产品 Run 建好才计数，会漏 setup 失败 | **A**。先持久化 attempt_started，再 setup，product_run_id 可空。开始后的 setup/error/abort/unknown/replay_miss/judge_error/evidence_incomplete 全计失败；未开始 skipped 单列。每例固定 replay5/live2，失败不重抽替换，重跑保留新 attempt 与原失败。基线完成指固定槽位已执行、校准合格且证据齐全，可以得到低于100%的成功率；不是产品验收通过 | R3 起点、次数、失败分母及完成声明 | 2026-10-13 用户按推荐 |
+
+**P4 的冻结清单：** code/upstream；场景、expected answer、证据规则；模型请求名及预期响应身份；prompt、tool/schema、projection、registry、profile、adapter、evaluator；judge 配置与校准包；权限；预算/超时/大小保护；kind/chart/images/config；主体初态、session、人工反馈、workload、知识快照；replay fixture；N、seed、命令、时钟策略。轮次配置在执行前冻结；每 Run 另绑定实际窗口、主体状态、注入前后 hash、实际响应模型名与录制身份。`none` 表示明确不适用，不能表示尚未取得。
+
+**P7 验证样本必须覆盖：** 正常报告的隐蔽归因、summary 与 claims 不一致、额外错误归因、借用其他诊断引用、纯假设、故障无正面诊断、证据不足。标签保留逐条因果片段、引用支持与最终二值结果；先冻结标签/裁决，再读取 judge 输出。两次 judge 调用用于校准稳定性检查，不形成生产评测投票机制。
+
+### 可逆默认：Agent 自定并记录理由
+
+| 编号 | 问题 | 选项与代价 | 推荐 | 影响面 | 裁决 |
+|---|---|---|---|---|---|
+| P11 | 场景与答案存放、隔离 | 单对象容易整包送模；分文件多一层序列化 | 分 `scenario.json` 与 evaluator-only `answer.json`；前者含版本/外部 Scenario/症状/授权引用，后者含 expected/signature/注入映射。模型输入仅从白名单 stimulus 生成，不含答案型场景 ID、路径或注入映射。理由：落实上游 expected 隔离且可直接测试 | PR-B/C 驱动边界，不改 ReportV2 | Agent 自定（理由见推荐列） |
+| P12 | 每 Run 与 aggregate schema | 扩历史摘要会破坏既有消费方；新版包可显式兼容 | 沿 D:81 路径，新增版本化 eval summary/manifest/aggregate。字段见下；未知值附原因，不默认为零。理由：既有 freeze 的业务字段由调用者自由传入，需要评测层冻结接口 | PR-A 数据合同；PR-B/D 汇总消费 | Agent 自定（理由见推荐列） |
+| P13 | 多 trace、旧摘要与反馈 | 强塞单 trace 会丢角色；列表可显式绑定 | 新 `trace.entries[]` 记录 role、required、attempt/product_run/evaluation 身份、project/id/url、normalized/raw read_back、checked_at。旧单 trace 转一项，多 trace 按角色/身份选取，不取第一项充数。旧件只读，不改 hash/原 verdict；新版反馈和补证另写 revision。理由：两种历史形状已存在，旧 record_in_summary 会重写摘要 | 历史兼容、冻结摘要 hash 与 trace 消费 | Agent 自定（理由见推荐列） |
+
+**P12 最小字段合同：**
+
+- `summary`：schema、round/attempt/scenario/version/mode/repetition、nullable product_run_id、轮次 manifest hash、每 Run 绑定记录、started/ended、完整 Outcome、报告原文/解析/hash、证据与实际交付记录的引用/hash、gate 分项、judge 状态/逐诊断结果/配置与校准 hash、overall、failure_class 与全部 failure_reasons、调查/judge usage、cost、trace、外置 ledger hash。
+- `aggregate`：每 attempt 保留 D:83 的行字段并加 manifest_hash、judge_status、evidence_status；按 **scenario＋mode＋同一轮次冻结配置** 报 planned/attempted/passed/failed/not_started、passed/attempted、replay_miss/attempted、失败分类。零分母为 null；结构重放 quality_rate=null；live/replay 不混算。
+- 固定主失败类及优先级：setup → replay_miss → execution → deterministic_gate → judge_error → diagnosis → evidence_incomplete；全部原因始终保留，避免主类掩盖 trace 缺失。started 槽位缺 summary 计 unknown 失败；重复身份、串轮次或不兼容版本拒绝汇总。
+
+**合同预审九类覆盖：**
+
+| 类别 | 已定或待决 |
+|---|---|
+| 时间 | 已定 T:33、V4:21–22：授权框与历史时间保真；P8 固定 span 起点落在查询窗，查询窗落在授权框，UTC、无额外容差；耗时单调钟，judge 阶段另记 |
+| 计数与口径 | 已定 T:26/34、D:84；setup 前起点、缺结果、补跑与聚合待 P10/P12 |
+| 状态转移 | 产品状态沿 acceptance.py:291–359，不由 judge 修改；评测 terminal、缺 trace 补证待 P1/P2 |
+| 主体与权限 | 已定 T:33、PRODUCT-CONSTRAINTS.md:16/48；真实权限数组兼容待 P3，judge 凭据仅 evaluator 持有 |
+| 数据合同 | 已定 D:81–83；完整字段待 P4/P6/P11–13；先 schema/reader，再 B/C writer，最后 D，无数据库迁移 |
+| 旧数据与归档兼容 | 已定 V4:27、T:33；P13 只读适配，缺字段为 legacy/unknown，不能自动升级通过 |
+| 并发与水位 | 已定 T:25/36；P9 明确 judge 共用 DeepSeek 并发1；P10/P13 防重复计数和覆盖冻结结果 |
+| 外部调用 | 已定 T:31，无 suite 上限；模型、超时、大小、异常和费用待 P5/P6/P9 |
+| 验收投影与 passes | 已定 SPEC:20、T:30/42；保留 Scenario→Outcome，增加评测证据包，不翻 passes |
+
+#### 3. 与已裁决 r6 的冲突
+
+1. **权限的字面实现冲突。** T:27/33 的 read_only 若实现成精确数组 `["read_only"]`，会拒绝 `opspilot/acceptance.py:421` 的合法持久化投影。应裁决 P3，不能擅改产品入口。
+2. **完成状态存在会触发 V4 冲突的缺口。** T:27 允许 partial/inconclusive，但未明确 assessment_status；`loop.py:550–556` 证明 execution=completed 不充分。若仅凭执行状态通过，会违反 V4:93/99；P1 补足，不撤销正常场景允许不确定结论的决定。
+3. **manifest 清单不完整。** D:82 未逐项列出 C3:392 的主体初态、session、人工反馈、workload、知识快照等维度；P4 补齐。
+
+r6 引入校准 judge 本身与 SPEC:20 一致，无需重开。它不等同 V4 全文事实审查完成，也不关闭 SPEC:6 的 M0 formal calibration。P8 的 trace-only 是本次明确提交裁决的收紧，不能当作 r6 已经批准。
+
+#### 4. PR-A 的验收方式
+
+独立验收作者只拿批准后的合同、C3/V4/r6、公开 DTO/schema 和接口规格，不看实现。保留 `IncidentScenario -> IncidentOutcome`；建议公开评测接口为：
+
+- `evaluate(ScenarioSpec, Outcome, ReportCapture, DeliveredEvidence, Manifest, JudgeResult) -> RunEvaluation`
+- `aggregate(Manifest, PlannedAttempts, RunEvaluations) -> Aggregate`
+- `investigator_input(ScenarioSpec) -> ModelVisibleStimulus`
+
+使用固定 JudgeResult 和假客户端编写确定性合同测试，覆盖：
+
+1. 六例身份/版本映射；改变 expected 或注入映射不改变被测模型输入。
+2. 错目标、错窗、坏 hash、未交付引用拒绝；错误 span 的 operation、状态、时间及缺失/截断反例。
+3. completed＋partial 正常报告可过，incomplete/handoff 不过；故障零诊断、额外诊断、错误引用不通过；summary 诊断与引用关联规则。
+4. read_only＋human_control 可过，写权限拒绝；gate/judge AND 真值表；超时、非法 JSON、未知引用、未校准均失败。
+5. 校准计数与门槛边界、缺标签拒绝；这些测试只验证计算，不能证明真实语义识别质量。
+6. trace 缺失/串 Run/多 root、旧摘要 hash 保真；manifest 每维度缺失、unknown、合法 none。
+7. setup 前后跳过、失败/放弃/未知/replay_miss、缺 summary、重复 ID、零分母、跨模式/版本拒混；结构重放零模型、零凭据、无质量率。
+
+PR-A 完成只代表合同/schema、离线测试和独立审查完成。真实 judge 校准、PR-B 录制隔离、PR-C 注入与真实 Run、PR-D CI 与基线入库仍须各自证据；不得翻任何 `passes`。
+
+#### 5. 风险与未核查项
+
+- **未核查：** 本次没有执行测试、调用模型、校准 judge、回读 LangSmith 或运行 kind/PG；仅审阅代码、合同、历史证据及固定上游文件。未验证凭据有效性、当前余额、judge 可用性/费用/延迟。既有4–13 CNY估计不能直接覆盖新增 judge 和校准调用。
+- **未核查：** 当前 kind 的实际 chart/config 与另两个 flag 是否可用；历史记录不能代替现场预检。`scripts/otel_demo_observe.py:174–189` 的流量前提包含 payment，不能原样当成所有故障的充分可诊断性判据。
+- **未核查：** PR-B 完整输入、实际交付与 hash 录制的实现可行性。旧 Outcome/summary 不足以重建可见证据；材料缺失的报告不得充作校准金标。
+- **边界：** 上游完整树的 `truncated=false` 已核实，但未审全仓，不断言其不存在其他校准机制。双 Agent 标签、同家族 judge、小开发样本均可能相关失误；P7 门槛是待裁决建议，尚无运行证据。模型、prompt、规则或标签变更须新版本并重新校准；本套件不支持生产可靠性、发布或 M0 完成结论。
+
 ## 3. 可逆默认（R 项，Agent 自决并记录理由）
 
 - R1：目录采用 `docs/evidence/eval/<round>/runs/<run_id>/summary.json`、`aggregate.json`、`manifest.json`；理由是与现有 `freeze`/ADR-0006 对齐，便于删除整轮而不改历史。
