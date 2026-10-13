@@ -56,6 +56,10 @@ class Window:
     start: datetime
     end: datetime
 
+    def __post_init__(self) -> None:
+        if self.start > self.end:
+            raise ValueError("WINDOW_REVERSED")
+
     def contains(self, other: Window) -> bool:
         return self.start <= other.start and other.end <= self.end
 

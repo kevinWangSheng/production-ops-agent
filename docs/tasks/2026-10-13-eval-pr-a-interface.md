@@ -17,7 +17,7 @@
 Mode = Literal["replay", "live", "structural"]
 ScenarioKind = Literal["fault", "normal"]
 
-Window(start: datetime, end: datetime)                    # 闭区间；start <= end
+Window(start: datetime, end: datetime)                    # 闭区间；start > end 时构造即抛 ValueError("WINDOW_REVERSED")
 
 Stimulus(question: str, subject_id: str, target_id: str)   # 被测模型可见的全部内容
 ScenarioSpec(scenario_id: str, version: str, kind: ScenarioKind,
@@ -170,7 +170,7 @@ report 解析失败时 `citations`、`signature` 记为假（原因只记 `REPOR
 
 独立审查（Codex，全新上下文）判 fail，四项均已复现并修复：P1 judge 认定为事实型因果诊断的语句须满足事实证据资格（不看报告自填的 kind）；P2 payment 规则补入 payment 服务自身的 server span `grpc.oteldemo.PaymentService/Charge`（fault-1 证据中有 31 条错误 span）；P2 evaluate 核对场景身份（复验补上 Outcome 的 scenario_id），trace 绑定到 attempt 的产品 Run；P2 aggregate 先校验 manifest。
 
-PR #221 机器人审查（三项，均采纳）：引用须属于本 Run 的 `outcome.evidence_ids`（`CITATION_NOT_IN_RUN`）；记录目标须为场景 target；`start_us` 越界不命中而非抛错。
+PR #221 机器人审查（三项，均采纳）：引用须属于本 Run 的 `outcome.evidence_ids`（`CITATION_NOT_IN_RUN`）；记录目标须为场景 target；`start_us` 越界不命中而非抛错；第二轮：`Window` 反向区间构造即拒绝。
 
 ## 不做
 
