@@ -93,20 +93,55 @@ def _digest(path: Path) -> dict:
     return {"sha256": hashlib.sha256(data).hexdigest(), "bytes": len(data)}
 
 
+TEXT_EXCERPT = 1500
+
+
+def _bounded(actual: Any) -> Any:
+    """What a verdict was judged on, kept inspectable in the summary.
+
+    Bulky values are projected, not dropped (bot review P1 on #217): page
+    text keeps its leading excerpt, whether it carries the recovery
+    statement, and the hash of the full text; per-sample readings keep one
+    verdict per signal. The full value stays in the ledger.
+    """
+    if isinstance(actual, str) and len(actual) > TEXT_EXCERPT:
+        data = actual.encode()
+        return {
+            "excerpt": actual[:TEXT_EXCERPT],
+            "contains_recovered_no_remediation": PAGE_STATEMENT in actual,
+            "sha256": hashlib.sha256(data).hexdigest(),
+            "bytes": len(data),
+        }
+    if isinstance(actual, dict):
+        if isinstance(actual.get("readings"), list):
+            actual = actual | {
+                "readings": {
+                    r.get("signal_name"): r.get("verdict", r.get("status"))
+                    for r in actual["readings"]
+                    if isinstance(r, dict)
+                }
+            }
+        return {key: _bounded(value) for key, value in actual.items()}
+    if isinstance(actual, list):
+        return [_bounded(value) for value in actual]
+    return actual
+
+
 def _compact(verdicts: dict) -> dict:
-    """verify.py output with any ``actual`` over 4 KiB replaced by its hash."""
+    """verify.py output with every ``actual`` bounded by ``_bounded``."""
     items = []
     for item in verdicts["verdicts"]:
         blob = json.dumps(item["actual"], sort_keys=True).encode()
-        if len(blob) > 4096:
-            item = item | {
-                "actual": {
-                    "in_ledger": True,
+        bounded = _bounded(item["actual"])
+        if bounded != item["actual"]:
+            bounded = {
+                "projection": bounded,
+                "full_in_ledger": {
                     "sha256": hashlib.sha256(blob).hexdigest(),
                     "bytes": len(blob),
-                }
+                },
             }
-        items.append(item)
+        items.append(item | {"actual": bounded})
     return verdicts | {"verdicts": items}
 
 
