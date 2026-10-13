@@ -1,0 +1,36 @@
+{
+  "scenario_id": "eval-product-catalog-failure",
+  "version": "1",
+  "expected_output": [
+    "The report identifies failing product-catalog GetProduct calls (oteldemo.ProductCatalogService/GetProduct returning errors) as the cause of the errors, citing the error spans it observed."
+  ],
+  "injected": {
+    "service": "product-catalog",
+    "service_aliases": [
+      "productcatalog",
+      "productcatalogservice",
+      "product-catalog-service"
+    ],
+    "operation": "GetProduct",
+    "operation_aliases": [
+      "oteldemo.ProductCatalogService/GetProduct",
+      "ProductCatalogService/GetProduct"
+    ],
+    "flag": "productCatalogFailure",
+    "variant": "on"
+  },
+  "signature": {
+    "rule_id": "product-catalog-getproduct-error-span-v1",
+    "any_of": [
+      {
+        "service": "product-catalog",
+        "operation": "oteldemo.ProductCatalogService/GetProduct"
+      },
+      {
+        "service": "checkout",
+        "operation": "oteldemo.ProductCatalogService/GetProduct"
+      }
+    ],
+    "min_matches": 1
+  }
+}

@@ -1,9 +1,9 @@
 # 场景评测套件（回放 + live，参照 HolmesGPT tests/llm）
 
-- 状态：合同 r7 已定（PR-A 预审 P1–P13 已裁决，#211 已全部回答）；SPEC 有界开放已合并（#210）；PR-A 可开工
+- 状态：合同 r7；PR-A（评测合同与 schema）已实现并通过独立审查，待用户合并，见执行节
 - 更新日期：2026-10-13
 - 依据：外部验收入口 `IncidentScenario -> IncidentOutcome`（AGENTS.md「验证与汇报」）；[v4 验收包](../testing/first-investigation-v4-2026-09-10.md)；[M1-01 收口记录](2026-09-28-m1-01-closure.md)中的上游评测口径；ADR-0006；C3 第 388–398 行（judge 校准）；上游 HolmesGPT `46e3a72` 的 `tests/llm/`
-- 工作区：本 PR `chore/eval-suite-gate`，`../production-ops-agent-eval-gate`；实施时每个 PR 一个 worktree，写在执行节
+- 工作区：每个 PR 一个 worktree，写在执行节
 
 ## 目标与范围
 
@@ -53,6 +53,15 @@
 3. PR-B：回放的录制与重放，以及基线表（D2、D13、R1–R4）。
 4. PR-C：live kind 场景驱动（D3、D4、D10、D15）。
 5. PR-D：CI 结构重放入口与第一轮基线入库。
+
+## 执行
+
+- PR-A：分支 `feature/eval-a-contract`，worktree `../production-ops-agent-eval-a`。公开接口 [PR-A 接口](2026-10-13-eval-pr-a-interface.md)；代码 `opspilot/evaluation/`；6 个场景 `evals/scenarios/`。
+  - 验收测试由未参与实现的 Codex 只按接口文档编写（`tests/acceptance/test_eval_contract.py`），首轮 406 例 405 过，唯一失败是实现把窗口检查挂在时间引用检查之后，改实现；接口歧义 9 项的处置写在接口文档末尾。
+  - 独立审查（Codex，全新上下文）首轮 fail：P1 judge 认定为事实型因果的 hypothesis 可绕过证据资格；P2 payment 规则漏掉真实 server span；P2 场景与产品 Run 身份未绑定；P2 aggregate 未校验 manifest。四项复现后修复，接口同步修订，测试作者补测（既有断言经 AST 核对未改）。复验 pass with fixes，残余 1 项（Outcome 的 scenario_id 未核对）修复并补测。终态 531 例全过；PR #221 机器人三项（引用须属本 Run、记录须在场景 target、越界时间戳不抛错）采纳修复后 589 例全过；第二、三轮共四项（反向与非 UTC 窗口、记录 ID 绑定、签名只来自合格引用）采纳修复后 633 例全过；第四轮两项（judge 身份绑定 manifest、signature 拒绝未知字段）采纳修复后 686 例全过；第五轮三项（judged 结果必须带 judge hash、校准结果绑定冻结 hash、manifest 拒绝未知 kind）修复后 738 例全过，全仓 `make check` 等价检查通过。
+  - 证据特征规则对 6 个冻结证据包核对：故障包各自命中，正常包零命中；76 条记录的 `view_sha256` 与产品算法一致。
+  - 实施中冒出的合同问题（用户 2026-10-13 裁决按 P8 原样）：product-catalog 故障中 `frontend` 上的 `grpc.oteldemo.ProductCatalogService/GetProduct` 失败 client span（真实证据 6 条）不计入证据特征，只认 product-catalog server span（同一故障包 11 条）或 checkout 上的 client span。
+  - 机器人审查共五轮，均为身份与输入校验的收紧；第五轮按用户选择修复后停止推送，后续发现汇入一个 PR-B issue。
 
 ## 下一步与交接
 
