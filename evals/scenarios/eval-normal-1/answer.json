@@ -1,0 +1,9 @@
+{
+  "scenario_id": "eval-normal-1",
+  "version": "1",
+  "expected_output": [
+    "The report makes no factual causal diagnosis of a failure. Saying that no failure is evident in the cited evidence, or that the evidence is inconclusive, is acceptable; hypotheses are allowed only when labelled as hypotheses."
+  ],
+  "injected": null,
+  "signature": null
+}
