@@ -1,4 +1,4 @@
-"""Release event r2 DTOs and transactional persistence (F11 PR-1 only)."""
+"""Frozen release events and transactional Controller authorization/control."""
 
 from __future__ import annotations
 
@@ -15,7 +15,13 @@ from pydantic import AfterValidator, AwareDatetime, Field, ValidationError
 
 from opspilot.domain.base import DTO, Count, Positive, Text
 from opspilot.observation.bindings import _TargetProfileOps
-from opspilot.observation.store import _profile_subject
+from opspilot.observation.release_commands import (
+    ReleaseCommandReceipt as ReleaseCommandReceipt,
+)
+from opspilot.observation.release_commands import (
+    _ReleaseCommandOps,
+)
+from opspilot.observation.release_policy import ReleaseText, Sha256
 from opspilot.observer.health_profile import HealthProfile
 from opspilot.persistence.base import Connection, PersistenceError
 from opspilot.redaction import redact_credentials
@@ -101,6 +107,10 @@ class ReleaseRecord(DTO):
     supersedes_observation_id: UUID | None
     created_at: AwareDatetime
     updated_at: AwareDatetime
+    used_sample_count: Count
+    calibrated_policy_revision: ReleaseText | None
+    calibrated_policy_content: ReleaseText | None
+    calibrated_policy_sha256: Sha256 | None
 
 
 class ReleaseEventRecord(DTO):
@@ -157,8 +167,8 @@ class _ExistingRelease(Exception):
         self.row = row
 
 
-class ReleaseStore(_TargetProfileOps):
-    """Only initial subjects and delivery receipts; no observation scheduling."""
+class ReleaseStore(_ReleaseCommandOps):
+    """Register frozen releases and apply audited Controller commands."""
 
     @staticmethod
     def _error_code(exc: psycopg.Error) -> str:
@@ -289,7 +299,10 @@ class ReleaseStore(_TargetProfileOps):
                             profile = HealthProfile.model_validate_json(health_profile)
                         except ValidationError as exc:
                             raise PersistenceError("INVALID_RELEASE_POLICY") from exc
-                        if _profile_subject(health_profile) != (
+                        if (
+                            profile.subject.kubernetes_namespace,
+                            profile.subject.service,
+                        ) != (
                             target.namespace,
                             workload,
                         ):

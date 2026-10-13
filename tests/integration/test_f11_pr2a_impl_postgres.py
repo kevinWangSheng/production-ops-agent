@@ -1,0 +1,1131 @@
+"""PR-2a implementation checks using raw fixtures and non-owner roles."""
+
+import copy
+import json
+import os
+import re
+import time
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timedelta, timezone
+from uuid import UUID, uuid4, uuid5
+
+import psycopg
+import pytest
+from psycopg.rows import dict_row
+from pydantic import ValidationError
+
+from opspilot.domain.evidence import QueryWindow
+from opspilot.observation import release_policy
+from opspilot.observation.release_policy import (
+    ReleasePolicy,
+    canonical_json,
+    sha256,
+)
+from opspilot.observation.release_types import (
+    ReleaseInstance,
+    ReleaseQueryResult,
+    ReleaseSampleEvidence,
+)
+from opspilot.observation.releases import (
+    ReleaseAuxiliary,
+    ReleaseEvent,
+    ReleaseRevision,
+    ReleaseStore,
+)
+from opspilot.observation.store import ObservationStore
+from opspilot.observer.health_profile import (
+    HealthProfile,
+    canonical_content,
+    load_health_profile,
+)
+from opspilot.observer.release_evaluation import (
+    build_release_query_plan,
+    evaluate_release_sample,
+)
+from opspilot.observer.release_replay import replay_release_history
+from opspilot.persistence import DurableStore, PersistenceError
+from scripts.m0.postgres_lab import DSN
+from tests.runtime_roles_support import login
+
+pytestmark = pytest.mark.skipif(
+    os.environ.get("M1_DURABLE_POSTGRES") != "1", reason="explicit PG opt-in required"
+)
+DIGEST = "sha256:" + "a" * 64
+NEW_DIGEST = "sha256:" + "b" * 64
+
+
+@pytest.fixture
+def harness(tmp_path, monkeypatch, request):
+    profile = load_health_profile(
+        release_policy.Path("opspilot/observer/profiles/otel-demo-checkout.json")
+    )
+    content = profile.model_dump(mode="json")
+    content.update(evaluation_window_seconds=2, query_timeout_seconds=1)
+    content["session"].update(sample_interval_seconds=1, sustained_window_seconds=1)
+    if hasattr(request, "param"):
+        content["session"]["max_samples"] = request.param
+    for sig in content["signals"]:
+        for key in ("query", "coverage_query", "freshness_query"):
+            sig[key] = re.sub(r"\[5m\]", "[2s]", sig[key])
+    profile = HealthProfile.model_validate_json(json.dumps(content))
+    resource_uid = "pr2a-" + uuid4().hex
+    target = DurableStore(DSN).register_target(resource_uid)
+    identity = {
+        "integration_id": "impl",
+        "cluster_uid": "lab",
+        "namespace": profile.subject.kubernetes_namespace,
+        "resource_uid": resource_uid,
+        "workload": profile.subject.service,
+    }
+    policy_content = {
+        "format_version": 1,
+        "target": identity,
+        "health_profile_revision": profile.revision,
+        "health_profile_sha256": sha256(canonical_content(profile).encode()),
+        "min_tracking_seconds": 2,
+        "evaluator": "release-after-v1",
+        "mapping": "pod-uid-replicaset-image-v1",
+        "evidence_path": "docs/evidence/test-only/run.md",
+        "evidence_sha256": "c" * 64,
+        "approval_ref": "test-only",
+        "approved_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+    }
+    digest = sha256(canonical_json(policy_content).encode())
+    policy = ReleasePolicy.model_validate_json(
+        canonical_json(
+            {
+                "policy_id": "impl",
+                "revision": "impl@" + digest[:12],
+                "content_sha256": digest,
+                "content": policy_content,
+            }
+        )
+    )
+    catalog = tmp_path / "catalog.json"
+    catalog.write_text(
+        canonical_json(
+            {"format_version": 1, "policies": [policy.model_dump(mode="json")]}
+        )
+    )
+    monkeypatch.setattr(release_policy, "RELEASE_POLICY_CATALOG_PATH", catalog)
+    with (
+        login(DSN, "opspilot_web") as web_dsn,
+        login(DSN, "opspilot_observer") as observer_dsn,
+    ):
+        web = ReleaseStore(web_dsn)
+        observer = ObservationStore(observer_dsn)
+        receipt = web.record_release(
+            event=ReleaseEvent(
+                format_version=1,
+                source="pr2a-" + uuid4().hex,
+                source_release_id=uuid4().hex,
+                released_at=datetime.now(timezone.utc) - timedelta(seconds=10),
+                before=ReleaseRevision(
+                    images={"app": DIGEST}, pod_template_digest=DIGEST
+                ),
+                after=ReleaseRevision(
+                    images={"app": NEW_DIGEST}, pod_template_digest=NEW_DIGEST
+                ),
+                auxiliary=ReleaseAuxiliary(
+                    before_pod_template_hash="aaa", after_pod_template_hash="bbb"
+                ),
+            ),
+            target_id=target,
+            identity=identity,
+            health_profile_revision=profile.revision,
+            health_profile=canonical_content(profile),
+            min_tracking_seconds=2,
+            actor="tester",
+            raw_body=b"{}",
+        )
+        assert receipt.outcome == "created", receipt
+        oid = receipt.observation_id
+        yield web, observer, oid, policy, catalog
+        row = web.get_release(oid)
+        if row.status in ("pending", "observing"):
+            web.control_release(
+                oid,
+                action="cancel",
+                actor="cleanup",
+                expected_control_generation=row.control_generation,
+                idempotency_key="cleanup",
+                calibrated_policy_revision=None,
+            )
+        web.close()
+        observer.close()
+
+
+def authorize(h):
+    web, _, oid, policy, _ = h
+    return web.authorize_release(
+        oid,
+        actor="controller",
+        expected_control_generation=0,
+        idempotency_key="authorize",
+        calibrated_policy_revision=policy.revision,
+    )
+
+
+def force_due(sid):
+    with psycopg.connect(DSN) as conn:
+        conn.execute(
+            "UPDATE opspilot_observation_sessions SET active_sample_due_at=clock_timestamp() WHERE session_id=%s",
+            (sid,),
+        )
+
+
+def claim(h, sid):
+    force_due(sid)
+    return h[1]._claim_release_due(uuid4(), sid, 120)[0]
+
+
+def raw_evidence(context, at, *, degraded=False, missing=False):
+    instance = ReleaseInstance(
+        pod_uid=UUID("12345678-1234-1234-1234-123456789012"),
+        pod_name="checkout-bbb-pod",
+        replicaset_name="checkout-bbb",
+        images={"app": NEW_DIGEST},
+    )
+    plan = build_release_query_plan(
+        context, window_end=at, instance_uids=(instance.pod_uid,)
+    )
+    results = []
+    for key, query in plan.items():
+        labels = {}
+        value = 1.0
+        name = key.split(":")[1]
+        kind = key.split(":")[2]
+        if key.startswith("mapping:"):
+            labels = {"namespace": "otel-demo"}
+            if name == "replicaset_owner":
+                labels.update(
+                    replicaset="checkout-bbb",
+                    owner_kind="Deployment",
+                    owner_name="checkout",
+                )
+            else:
+                labels.update(uid=str(instance.pod_uid), pod=instance.pod_name)
+                if name == "pod_owner":
+                    labels.update(owner_kind="ReplicaSet", owner_name="checkout-bbb")
+                else:
+                    labels.update(container="app", image_id="repo@" + NEW_DIGEST)
+        elif kind == "query":
+            signal = context.health_profile.signal(name)
+            value = (
+                0.1
+                if name == "request_rate_per_second"
+                else 0.0
+                if name
+                in (
+                    "error_ratio",
+                    "dependency_error_ratio",
+                    "deployment_unavailable_replicas",
+                )
+                else 100.0
+                if name == "latency_p95_milliseconds"
+                else 1.0
+            )
+            if degraded and name == "error_ratio" and key.startswith("after:"):
+                value = 0.5
+            assert signal is not None
+            if signal.healthy.min is not None and value < signal.healthy.min:
+                value = signal.healthy.min
+        if kind == "coverage":
+            value = 4.0
+        if kind == "freshness":
+            value = at.timestamp()
+        rows = (
+            []
+            if missing and key == "after:request_rate_per_second:query"
+            else [{"metric": labels, "value": [at.timestamp(), str(value)]}]
+        )
+        raw = canonical_json(
+            {"status": "success", "data": {"resultType": "vector", "result": rows}}
+        ).encode()
+        results.append(
+            ReleaseQueryResult(
+                query_key=key,
+                query=query,
+                source="prometheus",
+                evaluated_at=at,
+                sent_at=at,
+                status="ok",
+                http_status=200,
+                detail="",
+                body_complete=True,
+                raw=raw,
+                raw_sha256=sha256(raw),
+            )
+        )
+    return ReleaseSampleEvidence(
+        format_version=1,
+        sample_id=uuid4(),
+        window=QueryWindow(
+            start=at
+            - timedelta(seconds=context.health_profile.evaluation_window_seconds),
+            end=at,
+        ),
+        queries=tuple(results),
+    )
+
+
+def test_empty_catalog_rejects_and_replays_first_receipt(harness):
+    h = harness
+    h[4].write_text('{"format_version":1,"policies":[]}')
+    first = authorize(h)
+    assert (first.outcome, first.reason, first.session_id) == (
+        "rejected",
+        "RELEASE_POLICY_UNCALIBRATED",
+        None,
+    )
+    row = h[0].get_release(h[2])
+    assert (
+        row.status,
+        row.control_generation,
+        row.observation_generation,
+        row.used_sample_count,
+    ) == ("pending", 0, 0, 0)
+    second = authorize(h)
+    assert second.model_copy(update={"replayed": False}) == first
+    assert len(h[0].release_audit(h[2])) == 1
+    with pytest.raises(PersistenceError, match="IDEMPOTENCY_CONFLICT"):
+        h[0].authorize_release(
+            h[2],
+            actor="other",
+            expected_control_generation=0,
+            idempotency_key="authorize",
+            calibrated_policy_revision=h[3].revision,
+        )
+
+
+def test_commands_pause_resume_cancel_and_late_result(harness):
+    h = harness
+    a = authorize(h)
+    assert a.outcome == "applied"
+    lease = claim(h, a.session_id)
+    assert h[1].lease_scope_current(lease)
+    ctx = h[1].release_context(a.session_id)
+    evidence = raw_evidence(ctx, h[1].current_time())
+    pause = h[0].control_release(
+        h[2],
+        action="pause",
+        actor="human",
+        expected_control_generation=0,
+        idempotency_key="pause",
+        calibrated_policy_revision=None,
+    )
+    assert (pause.control_generation, pause.observation_generation, pause.paused) == (
+        1,
+        2,
+        True,
+    )
+    assert not h[1].lease_scope_current(lease)
+    late = h[1].submit_release_sample(lease, evidence)
+    assert not late.accepted and late.reason == "control_generation_stale"
+    resume = h[0].control_release(
+        h[2],
+        action="resume",
+        actor="human",
+        expected_control_generation=1,
+        idempotency_key="resume",
+        calibrated_policy_revision=h[3].revision,
+    )
+    assert resume.session_id != a.session_id and resume.control_generation == 2
+    cancel = h[0].control_release(
+        h[2],
+        action="cancel",
+        actor="human",
+        expected_control_generation=2,
+        idempotency_key="cancel",
+        calibrated_policy_revision=None,
+    )
+    assert cancel.status == "cancelled"
+    assert (
+        h[0]
+        .control_release(
+            h[2],
+            action="pause",
+            actor="human",
+            expected_control_generation=3,
+            idempotency_key="terminal",
+            calibrated_policy_revision=None,
+        )
+        .reason
+        == "RELEASE_TERMINAL"
+    )
+    assert authorize(h).model_copy(update={"replayed": False}) == a
+    replay = replay_release_history(h[1].release_history(h[2]))
+    assert replay.consistent, replay.integrity
+
+
+@pytest.mark.parametrize(
+    "degraded,missing,expected",
+    [(False, False, "healthy"), (True, False, "degraded"), (False, True, "unknown")],
+)
+def test_raw_mapping_and_evaluation(harness, degraded, missing, expected):
+    a = authorize(harness)
+    ctx = harness[1].release_context(a.session_id)
+    at = ctx.authorized_at + timedelta(seconds=3)
+    evaluation = evaluate_release_sample(
+        ctx, raw_evidence(ctx, at, degraded=degraded, missing=missing), decision_at=at
+    )
+    assert evaluation.verdict == expected, evaluation.reason_codes
+    assert len(evaluation.instances) == 1
+
+
+def test_anomaly_atomic_receipt_replay_and_tampering(harness):
+    h = harness
+    a = authorize(h)
+    time.sleep(2.05)
+    lease = claim(h, a.session_id)
+    ctx = h[1].release_context(a.session_id)
+    evidence = raw_evidence(ctx, h[1].current_time(), degraded=True)
+    receipt = h[1].submit_release_sample(lease, evidence)
+    assert (receipt.accepted, receipt.release_status, receipt.used_sample_count) == (
+        True,
+        "anomalous",
+        1,
+    ), receipt
+    assert receipt.ending_id == uuid5(h[2], "session-ending:" + str(a.session_id))
+    assert h[0].get_release(h[2]).incident_id is None
+    assert h[0].pending_anomaly_endings() == h[0].pending_anomaly_endings()
+    assert any(
+        e.observation_id == h[2] for e in h[0].pending_anomaly_endings(limit=1000)
+    )
+    assert (
+        h[1]
+        .submit_release_sample(lease, evidence)
+        .model_copy(update={"replayed": False})
+        == receipt
+    )
+    changed = evidence.model_copy(
+        update={
+            "window": evidence.window.model_copy(
+                update={"end": evidence.window.end + timedelta(microseconds=1)}
+            )
+        }
+    )
+    with pytest.raises(PersistenceError, match="SAMPLE_IDENTITY_CONFLICT"):
+        h[1].submit_release_sample(lease, changed)
+    history = h[1].release_history(h[2])
+    replay = replay_release_history(history)
+    assert replay.consistent, replay.integrity
+    assert (
+        replay.verdict == "degraded"
+        and replay.external_queries == replay.model_requests == ()
+    )
+    corrupted = copy.deepcopy(history)
+    corrupted["samples"][0]["queries"][0]["raw"] = b"changed"
+    assert "RAW_SHA256_MISMATCH" in replay_release_history(corrupted).integrity
+    assert h[1].session_history(a.session_id)["selected_session_id"] == a.session_id
+    assert h[1].replay_session(a.session_id).consistent
+
+
+def test_unknown_counts_and_query_mismatch_history_only(harness):
+    h = harness
+    a = authorize(h)
+    lease = claim(h, a.session_id)
+    ctx = h[1].release_context(a.session_id)
+    evidence = raw_evidence(ctx, h[1].current_time())
+    receipt = h[1].submit_release_sample(lease, evidence)
+    assert (
+        receipt.accepted
+        and receipt.evaluation.verdict == "unknown"
+        and receipt.used_sample_count == 1
+    )
+    assert receipt.tracking_seconds == receipt.healthy_window_seconds == 0
+    lease = claim(h, a.session_id)
+    evidence = raw_evidence(ctx, h[1].current_time())
+    query = evidence.queries[0].model_copy(update={"query": "vector(1)"})
+    evidence = evidence.model_copy(update={"queries": (query, *evidence.queries[1:])})
+    receipt = h[1].submit_release_sample(lease, evidence)
+    assert (
+        not receipt.accepted
+        and receipt.reason == "readings_inconsistent"
+        and receipt.used_sample_count == 1
+    )
+
+
+def test_authorization_transaction_rollback(harness):
+    h = harness
+    with pytest.raises(RuntimeError):
+        with h[0].transaction() as conn:
+            h[0].authorize_release_in(
+                conn,
+                h[2],
+                actor="controller",
+                expected_control_generation=0,
+                idempotency_key="rollback",
+                calibrated_policy_revision=h[3].revision,
+            )
+            raise RuntimeError("rollback")
+    assert h[0].get_release(h[2]).status == "pending"
+    assert h[0].release_audit(h[2]) == ()
+
+
+def test_bare_sql_role_guards(harness):
+    h = harness
+    with h[1].transaction() as conn:
+        with pytest.raises(psycopg.errors.InsufficientPrivilege):
+            with conn.transaction():
+                conn.execute(
+                    "UPDATE opspilot_release_observations SET status='observing' WHERE observation_id=%s",
+                    (h[2],),
+                )
+    with pytest.raises(PersistenceError, match="INTEGRITY_REFUSED"):
+        with h[0].transaction() as conn:
+            conn.execute(
+                "UPDATE opspilot_release_observations SET paused=true,control_generation=control_generation+1,observation_generation=observation_generation+1 WHERE observation_id=%s",
+                (h[2],),
+            )
+    assert h[0].get_release(h[2]).status == "pending"
+
+
+def test_command_concurrency_same_receipt(harness):
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        receipts = list(pool.map(lambda _: authorize(harness), range(2)))
+    assert {r.audit_id for r in receipts} == {receipts[0].audit_id}
+    assert sum(r.replayed for r in receipts) == 1
+
+
+def test_dto_bounds_and_raw_hash(harness):
+    a = authorize(harness)
+    ctx = harness[1].release_context(a.session_id)
+    evidence = raw_evidence(ctx, ctx.authorized_at)
+    query = evidence.queries[0]
+    with pytest.raises(ValidationError):
+        ReleaseSampleEvidence.model_validate(
+            {**evidence.model_dump(), "format_version": True}
+        )
+    with pytest.raises(ValidationError):
+        release_policy.ReleasePolicyCatalog.model_validate_json(
+            '{"format_version":true,"policies":[]}'
+        )
+    with pytest.raises(ValidationError):
+        ReleaseQueryResult.model_validate(
+            {**query.model_dump(), "raw_sha256": "0" * 64}
+        )
+    with pytest.raises(ValidationError):
+        ReleaseSampleEvidence.model_validate(
+            {**evidence.model_dump(), "queries": (query, query)}
+        )
+    with pytest.raises(ValidationError):
+        ReleaseSampleEvidence.model_validate(
+            {
+                **evidence.model_dump(),
+                "queries": tuple(
+                    query.model_copy(update={"query_key": str(i)}) for i in range(65)
+                ),
+            }
+        )
+
+
+def test_healthy_requires_a_sustained_window_and_offline_replays(harness):
+    h = harness
+    a = authorize(h)
+    ctx = h[1].release_context(a.session_id)
+    time.sleep(2.05)
+    lease = claim(h, a.session_id)
+    first = h[1].submit_release_sample(lease, raw_evidence(ctx, h[1].current_time()))
+    assert (
+        first.accepted
+        and first.release_status == "observing"
+        and first.healthy_window_seconds == 0
+    )
+    time.sleep(1.05)
+    lease = claim(h, a.session_id)
+    second = h[1].submit_release_sample(lease, raw_evidence(ctx, h[1].current_time()))
+    assert second.release_status == "healthy" and second.used_sample_count == 2
+    assert second.tracking_seconds >= 2 and second.healthy_window_seconds >= 1
+    replay = replay_release_history(h[1].release_history(h[2]))
+    assert replay.consistent, replay.integrity
+    assert replay.verdict == "healthy"
+    corrupted = copy.deepcopy(h[1].release_history(h[2]))
+    corrupted["samples"][0]["release_receipt"]["tracking_seconds"] = 12345.0
+    corrupted["samples"][0]["release_receipt"]["healthy_window_seconds"] = 12345.0
+    assert "SAMPLE_DECISION_MISMATCH" in replay_release_history(corrupted).integrity
+
+
+def test_scope_change_revokes_session_without_resetting_budget(harness):
+    h = harness
+    a = authorize(h)
+    lease = claim(h, a.session_id)
+    ctx = h[1].release_context(a.session_id)
+    evidence = raw_evidence(ctx, h[1].current_time())
+    row = h[0].get_release(h[2])
+    owner = DurableStore(DSN)
+    owner.set_target_suspension(
+        row.target_id, True, expected_generation=0, actor="tester"
+    )
+    owner.set_target_suspension(
+        row.target_id, False, expected_generation=1, actor="tester"
+    )
+    assert not h[1].lease_scope_current(lease)
+    receipt = h[1].submit_release_sample(lease, evidence)
+    assert receipt.reason == "suspended" and receipt.session_state == "revoked"
+    resumed = h[0].control_release(
+        h[2],
+        action="resume",
+        actor="tester",
+        expected_control_generation=0,
+        idempotency_key="scope-resume",
+        calibrated_policy_revision=h[3].revision,
+    )
+    assert (
+        resumed.outcome == "applied"
+        and resumed.session_id != a.session_id
+        and resumed.used_sample_count == 0
+    )
+    assert resumed.deadline_at == row.deadline_at
+
+
+def test_pending_deadline_sweeper_without_session(harness):
+    h = harness
+    row = h[0].get_release(h[2])
+    with psycopg.connect(DSN, row_factory=dict_row) as conn:
+        profile = conn.execute(
+            "SELECT content FROM opspilot_health_profiles WHERE health_profile_revision=%s",
+            (row.health_profile_revision,),
+        ).fetchone()["content"]
+    receipt = h[0].record_release(
+        event=ReleaseEvent(
+            format_version=1,
+            source="deadline-" + uuid4().hex,
+            source_release_id=uuid4().hex,
+            released_at=h[1].current_time()
+            - timedelta(seconds=row.deadline_seconds - 0.2),
+            before=row.before_revision,
+            after=row.after_revision,
+            auxiliary=row.auxiliary,
+        ),
+        target_id=row.target_id,
+        identity=row.target_snapshot,
+        health_profile_revision=row.health_profile_revision,
+        health_profile=profile,
+        min_tracking_seconds=row.min_tracking_seconds,
+        actor="tester",
+        raw_body=b"{}",
+    )
+    assert receipt.status == "pending"
+    time.sleep(0.25)
+    assert receipt.observation_id in h[1].sweep_expired_releases(limit=10000)
+    assert receipt.observation_id not in h[1].sweep_expired_releases(limit=10000)
+    record = h[0].get_release(receipt.observation_id)
+    assert record.status == "unknown" and record.ended_reason == "deadline_expired"
+    audit = h[0].release_audit(receipt.observation_id)
+    assert (
+        audit[0]["idempotency_key"] == "system:deadline"
+        and audit[0]["session_id"] is None
+    )
+    replay = replay_release_history(h[1].release_history(receipt.observation_id))
+    assert replay.consistent, replay.integrity
+
+
+@pytest.mark.parametrize("harness", [2], indirect=True)
+def test_budget_survives_pause_resume_and_unknown_ends_once(harness):
+    h = harness
+    a = authorize(h)
+    ctx = h[1].release_context(a.session_id)
+    lease = claim(h, a.session_id)
+    first = h[1].submit_release_sample(lease, raw_evidence(ctx, h[1].current_time()))
+    assert first.used_sample_count == 1 and first.release_status == "observing"
+    h[0].control_release(
+        h[2],
+        action="pause",
+        actor="human",
+        expected_control_generation=0,
+        idempotency_key="budget-pause",
+        calibrated_policy_revision=None,
+    )
+    resumed = h[0].control_release(
+        h[2],
+        action="resume",
+        actor="human",
+        expected_control_generation=1,
+        idempotency_key="budget-resume",
+        calibrated_policy_revision=h[3].revision,
+    )
+    lease = claim(h, resumed.session_id)
+    ctx = h[1].release_context(resumed.session_id)
+    second = h[1].submit_release_sample(lease, raw_evidence(ctx, h[1].current_time()))
+    assert (
+        second.used_sample_count == 2
+        and second.release_status == "unknown"
+        and second.session_state == "expired"
+    )
+    assert h[0].get_release(h[2]).ended_reason == "max_samples_exhausted"
+    replay = replay_release_history(h[1].release_history(h[2]))
+    assert replay.consistent, replay.integrity
+
+
+def test_submit_failure_rolls_back_evidence_watermark_and_ending(harness, monkeypatch):
+    h = harness
+    a = authorize(h)
+    time.sleep(2.05)
+    lease = claim(h, a.session_id)
+    ctx = h[1].release_context(a.session_id)
+    evidence = raw_evidence(ctx, h[1].current_time(), degraded=True)
+
+    def fail(*args, **kwargs):
+        raise RuntimeError("injected-ending-failure")
+
+    monkeypatch.setattr(
+        "opspilot.observation.release_samples.end_release_session", fail
+    )
+    with pytest.raises(RuntimeError, match="injected-ending-failure"):
+        h[1].submit_release_sample(lease, evidence)
+    history = h[1].release_history(h[2])
+    assert history["samples"] == [] and history["endings"] == []
+    assert (
+        history["release"].used_sample_count == 0
+        and history["release"].status == "observing"
+    )
+    assert history["sessions"][0]["adopted_count"] == 0
+    assert h[1].lease_scope_current(lease)
+
+
+def test_migration_roundtrip_backfills_legacy_subject_and_refuses_unbound():
+    from alembic import command
+    from psycopg import sql
+    from psycopg.conninfo import make_conninfo
+
+    from opspilot import schema
+
+    name = "opspilot_pr2a_impl_" + uuid4().hex[:12]
+    dsn = make_conninfo(DSN, dbname=name)
+    with psycopg.connect(DSN, autocommit=True) as admin:
+        admin.execute(
+            sql.SQL("CREATE DATABASE {} TEMPLATE template0").format(
+                sql.Identifier(name)
+            )
+        )
+        try:
+            schema.upgrade_to(dsn, "0014_release_observations")
+            target, incident, sid = uuid4(), uuid4(), uuid4()
+            with psycopg.connect(dsn) as conn:
+                conn.execute(
+                    "INSERT INTO opspilot_targets(target_id,resource_uid) VALUES(%s,%s)",
+                    (target, "migration-" + str(target)),
+                )
+                conn.execute(
+                    "INSERT INTO opspilot_incidents(incident_id,intake_key,state,target_id) VALUES(%s,%s,'running',%s)",
+                    (incident, str(incident), target),
+                )
+                conn.execute(
+                    "INSERT INTO opspilot_observation_sessions(session_id,incident_id,purpose,target_id,target,subject_control_generation,observation_generation,authorized_by,authorized_global_generation,authorized_target_generation,deadline_at,max_samples,sample_interval_seconds,sustained_window_seconds) VALUES(%s,%s,'incident_recovery',%s,'{}',0,1,'legacy',0,0,clock_timestamp()+interval '1 hour',40,60,600)",
+                    (sid, incident, target),
+                )
+            pg_dump = os.environ["OPSPILOT_PG_DUMP"]
+            before = schema.schema_dump(dsn, pg_dump=pg_dump)
+            schema.upgrade_head(dsn)
+            with psycopg.connect(dsn) as conn:
+                row = conn.execute(
+                    "SELECT incident_id,subject_kind,subject_id,state,authorization_source FROM opspilot_observation_sessions WHERE session_id=%s",
+                    (sid,),
+                ).fetchone()
+                assert row == (
+                    incident,
+                    "incident",
+                    incident,
+                    "authorized",
+                    "post_remediation",
+                )
+            command.downgrade(schema._config(dsn), "0014_release_observations")
+            assert schema.schema_dump(dsn, pg_dump=pg_dump) == before
+            with psycopg.connect(dsn) as conn:
+                conn.execute(
+                    "UPDATE opspilot_observation_sessions SET purpose='release_observation',authorization_source=NULL WHERE session_id=%s",
+                    (sid,),
+                )
+            with pytest.raises(Exception, match="LEGACY_RELEASE_SESSION_UNBOUND"):
+                schema.upgrade_head(dsn)
+            with psycopg.connect(dsn) as conn:
+                assert schema.current_revision(conn) == "0014_release_observations"
+        finally:
+            admin.execute(
+                sql.SQL("DROP DATABASE {} WITH (FORCE)").format(sql.Identifier(name))
+            )
+
+
+def test_web_sample_submission_refusal_is_integrity_and_rolls_back(harness):
+    h = harness
+    a = authorize(h)
+    lease = claim(h, a.session_id)
+    ctx = h[1].release_context(a.session_id)
+    unauthorized = ObservationStore(h[0].dsn)
+    try:
+        with pytest.raises(PersistenceError, match="INTEGRITY_REFUSED"):
+            unauthorized.submit_release_sample(
+                lease, raw_evidence(ctx, h[1].current_time())
+            )
+    finally:
+        unauthorized.close()
+    assert h[1].release_history(h[2])["samples"] == []
+    assert h[1].lease_scope_current(lease)
+
+
+def test_concurrent_sample_id_collision_across_subjects_is_identity_conflict(harness):
+    h = harness
+    first = authorize(h)
+    original = h[0].get_release(h[2])
+    profile = canonical_content(h[1].release_context(first.session_id).health_profile)
+    registered = h[0].record_release(
+        event=ReleaseEvent(
+            format_version=1,
+            source=original.source,
+            source_release_id=uuid4().hex,
+            released_at=original.released_at,
+            before=original.before_revision,
+            after=original.after_revision,
+            auxiliary=original.auxiliary,
+        ),
+        target_id=original.target_id,
+        identity=original.target_snapshot,
+        health_profile_revision=original.health_profile_revision,
+        health_profile=profile,
+        min_tracking_seconds=original.min_tracking_seconds,
+        actor="tester",
+        raw_body=b"{}",
+    )
+    second = h[0].authorize_release(
+        registered.observation_id,
+        actor="controller",
+        expected_control_generation=0,
+        idempotency_key="second-authorize",
+        calibrated_policy_revision=h[3].revision,
+    )
+    leases = (claim(h, first.session_id), claim(h, second.session_id))
+    at = h[1].current_time()
+    sample_id = uuid4()
+    evidence = tuple(
+        raw_evidence(h[1].release_context(a.session_id), at).model_copy(
+            update={"sample_id": sample_id}
+        )
+        for a in (first, second)
+    )
+
+    def submit(index):
+        try:
+            return h[1].submit_release_sample(leases[index], evidence[index])
+        except PersistenceError as exc:
+            return str(exc)
+
+    try:
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results = list(pool.map(submit, (0, 1)))
+        assert sum(result == "SAMPLE_IDENTITY_CONFLICT" for result in results) == 1
+        assert sum(getattr(result, "accepted", False) for result in results) == 1
+    finally:
+        row = h[0].get_release(registered.observation_id)
+        h[0].control_release(
+            registered.observation_id,
+            action="cancel",
+            actor="cleanup",
+            expected_control_generation=row.control_generation,
+            idempotency_key="collision-cleanup",
+            calibrated_policy_revision=None,
+        )
+
+
+def test_public_claim_shares_limit_and_skips_a_locked_release(harness):
+    from opspilot.observation.release_types import ReleaseSampleLease
+    from opspilot.observation.store import SampleLease
+    from tests.integration.test_m1_02_observation_store_postgres import (
+        _authorize,
+        _incident,
+    )
+
+    h = harness
+    authorized = authorize(h)
+    owner = DurableStore(DSN)
+    controller = ObservationStore(DSN)
+    incident, _, target = _incident(owner)
+    incident_session = _authorize(controller, incident, target)
+    try:
+        with psycopg.connect(DSN) as conn:
+            conn.execute(
+                "UPDATE opspilot_observation_sessions SET active_sample_due_at='2000-01-01'::timestamptz WHERE session_id IN (%s,%s)",
+                (authorized.session_id, incident_session),
+            )
+        leases = h[1].claim_due_samples(uuid4(), limit=2)
+        assert {lease.session_id for lease in leases} == {
+            authorized.session_id,
+            incident_session,
+        }
+        assert {type(lease) for lease in leases} == {SampleLease, ReleaseSampleLease}
+        with psycopg.connect(DSN) as conn:
+            conn.execute(
+                "UPDATE opspilot_observation_sessions SET active_sample_owner=NULL,active_sample_lease_until=NULL WHERE session_id IN (%s,%s)",
+                (authorized.session_id, incident_session),
+            )
+        with psycopg.connect(DSN) as blocker:
+            blocker.execute(
+                "SELECT observation_id FROM opspilot_release_observations WHERE observation_id=%s FOR UPDATE",
+                (h[2],),
+            )
+            leases = h[1].claim_due_samples(uuid4(), limit=1)
+            assert len(leases) == 1 and leases[0].session_id == incident_session
+    finally:
+        controller.revoke_sessions(incident)
+        controller.close()
+        owner.close()
+
+
+def test_catalog_hash_covers_the_original_valid_utc_timestamp_text(harness):
+    h = harness
+    content = h[3].content.model_dump(mode="json")
+    content["approved_at"] = content["approved_at"].replace("Z", "+00:00")
+    digest = sha256(canonical_json(content).encode())
+    entry = {
+        "policy_id": "timestamp",
+        "revision": "timestamp@" + digest[:12],
+        "content_sha256": digest,
+        "content": content,
+    }
+    h[4].write_text(canonical_json({"format_version": 1, "policies": [entry]}))
+    policy = release_policy.load_release_policy_catalog().policies[0]
+    assert policy.content.model_dump(mode="json") == content
+    assert policy.content_sha256 == digest
+    receipt = h[0].authorize_release(
+        h[2],
+        actor="controller",
+        expected_control_generation=0,
+        idempotency_key="timestamp-authorize",
+        calibrated_policy_revision=policy.revision,
+    )
+    assert receipt.outcome == "applied"
+    row = h[0].get_release(h[2])
+    assert row.calibrated_policy_content == canonical_json(content)
+    assert row.calibrated_policy_sha256 == digest
+    assert h[1].release_context(receipt.session_id).policy.content_sha256 == digest
+
+
+def test_invalid_version_name_and_raw_label_text_cannot_confirm_health(harness):
+    h = harness
+    a = authorize(h)
+    ctx = h[1].release_context(a.session_id)
+    at = ctx.authorized_at + timedelta(seconds=3)
+    invalid = ctx.model_copy(
+        update={
+            "release": ctx.release.model_copy(
+                update={
+                    "auxiliary": ctx.release.auxiliary.model_copy(
+                        update={"after_pod_template_hash": "bad..hash"}
+                    )
+                }
+            )
+        }
+    )
+    result = evaluate_release_sample(invalid, raw_evidence(invalid, at), decision_at=at)
+    assert (
+        result.verdict == "unknown"
+        and "VERSION_IDENTITY_MISSING" in result.reason_codes
+    )
+    evidence = raw_evidence(ctx, at)
+    queries = []
+    for q in evidence.queries:
+        if q.query_key == "mapping:container_info:query":
+            body = json.loads(q.raw)
+            body["data"]["result"][0]["metric"]["container"] = "app\x00"
+            raw = canonical_json(body).encode()
+            q = q.model_copy(update={"raw": raw, "raw_sha256": sha256(raw)})
+        queries.append(q)
+    result = evaluate_release_sample(
+        ctx, evidence.model_copy(update={"queries": tuple(queries)}), decision_at=at
+    )
+    assert (
+        result.verdict == "unknown"
+        and "QUERY_FAILED:mapping:container_info:query" in result.reason_codes
+    )
+
+
+def test_deadline_crossed_during_catalog_validation_rejects_without_authorizing(
+    harness, monkeypatch
+):
+    h = harness
+    record = h[0].get_release(h[2])
+    with psycopg.connect(DSN) as conn:
+        profile = conn.execute(
+            "SELECT content FROM opspilot_health_profiles WHERE health_profile_revision=%s",
+            (record.health_profile_revision,),
+        ).fetchone()[0]
+    receipt = h[0].record_release(
+        event=ReleaseEvent(
+            format_version=1,
+            source=record.source,
+            source_release_id=uuid4().hex,
+            released_at=h[1].current_time()
+            - timedelta(seconds=record.deadline_seconds - 0.3),
+            before=record.before_revision,
+            after=record.after_revision,
+            auxiliary=record.auxiliary,
+        ),
+        target_id=record.target_id,
+        identity=record.target_snapshot,
+        health_profile_revision=record.health_profile_revision,
+        health_profile=profile,
+        min_tracking_seconds=record.min_tracking_seconds,
+        actor="tester",
+        raw_body=b"{}",
+    )
+    assert receipt.status == "pending"
+    from opspilot.observation import release_commands
+
+    original = release_commands.load_release_policy_catalog
+
+    def slow_catalog():
+        time.sleep(0.4)
+        return original()
+
+    monkeypatch.setattr(release_commands, "load_release_policy_catalog", slow_catalog)
+    result = h[0].authorize_release(
+        receipt.observation_id,
+        actor="controller",
+        expected_control_generation=0,
+        idempotency_key="late-authorization",
+        calibrated_policy_revision=h[3].revision,
+    )
+    assert (result.outcome, result.reason, result.session_id) == (
+        "rejected",
+        "RELEASE_DEADLINE_EXPIRED",
+        None,
+    )
+    assert h[0].get_release(receipt.observation_id).status == "pending"
+    assert h[1].release_history(receipt.observation_id)["sessions"] == []
+    h[0].control_release(
+        receipt.observation_id,
+        action="cancel",
+        actor="cleanup",
+        expected_control_generation=0,
+        idempotency_key="late-cleanup",
+        calibrated_policy_revision=None,
+    )
+
+
+@pytest.mark.parametrize(
+    "timestamp", ["2026-10-13\x0000:00:00+00:00", "2026-10-13X00:00:00+00:00"]
+)
+def test_catalog_rejects_invalid_timestamp_lexemes(harness, timestamp):
+    h = harness
+    content = h[3].content.model_dump(mode="json")
+    content["approved_at"] = timestamp
+    digest = sha256(canonical_json(content).encode())
+    entry = {
+        "policy_id": "bad-time",
+        "revision": "bad-time@" + digest[:12],
+        "content_sha256": digest,
+        "content": content,
+    }
+    h[4].write_text(canonical_json({"format_version": 1, "policies": [entry]}))
+    with pytest.raises(ValidationError):
+        release_policy.load_release_policy_catalog()
+    receipt = h[0].authorize_release(
+        h[2],
+        actor="controller",
+        expected_control_generation=0,
+        idempotency_key="invalid-time",
+        calibrated_policy_revision=entry["revision"],
+    )
+    assert (receipt.outcome, receipt.reason) == (
+        "rejected",
+        "RELEASE_POLICY_CATALOG_INVALID",
+    )
+    assert h[1].release_history(h[2])["sessions"] == []
+
+
+def test_sample_fingerprint_normalizes_offsets_and_replays_postgres_timestamps(harness):
+    h = harness
+    a = authorize(h)
+    lease = claim(h, a.session_id)
+    ctx = h[1].release_context(a.session_id)
+    at = h[1].current_time().astimezone(timezone.utc)
+    evidence = raw_evidence(ctx, at)
+    first = h[1].submit_release_sample(lease, evidence)
+    shifted = lease.model_copy(
+        update={
+            "lease_until": lease.lease_until.astimezone(timezone.utc),
+            "deadline_at": lease.deadline_at.astimezone(timezone.utc),
+        }
+    )
+    assert (
+        h[1]
+        .submit_release_sample(shifted, evidence)
+        .model_copy(update={"replayed": False})
+        == first
+    )
+    replay = replay_release_history(h[1].release_history(h[2]))
+    assert replay.consistent, replay.integrity
+
+
+def test_structurally_valid_unsupported_profile_returns_unknown(harness):
+    h = harness
+    a = authorize(h)
+    ctx = h[1].release_context(a.session_id)
+    evidence = raw_evidence(ctx, ctx.authorized_at + timedelta(seconds=3))
+    content = ctx.health_profile.model_dump(mode="json")
+    for signal in content["signals"]:
+        if signal["name"] == "request_rate_per_second":
+            signal["coverage_query"] = signal["query"]
+    profile = HealthProfile.model_validate_json(canonical_json(content))
+    badctx = ctx.model_copy(update={"health_profile": profile})
+    evaluation = evaluate_release_sample(
+        badctx, evidence, decision_at=evidence.window.end
+    )
+    assert (
+        evaluation.verdict == "unknown"
+        and "HEALTH_PROFILE_INVALID" in evaluation.reason_codes
+    )
+    assert not evaluation.evidence_sufficient
+
+
+def test_release_coverage_uses_elapsed_utc_time_across_dst_fold(harness):
+    from zoneinfo import ZoneInfo
+
+    from opspilot.observer.release_evaluation import (
+        ReleaseEvaluationContext,
+        advance_release_window,
+    )
+
+    h = harness
+    a = authorize(h)
+    original = h[1].release_context(a.session_id)
+    local = ZoneInfo("America/Los_Angeles")
+    authorized = datetime(2026, 11, 1, 1, 59, 57, tzinfo=local, fold=0)
+    release = original.release.model_copy(
+        update={
+            "released_at": authorized,
+            "received_at": authorized,
+            "deadline_at": authorized.astimezone(timezone.utc)
+            + timedelta(seconds=3600),
+        }
+    )
+    context = ReleaseEvaluationContext(
+        release=release,
+        session_id=original.session_id,
+        authorized_at=authorized,
+        policy=original.policy,
+        health_profile=original.health_profile,
+    )
+    first = datetime(2026, 11, 1, 1, 59, 59, tzinfo=local, fold=0).astimezone(
+        timezone.utc
+    )
+    second = datetime(2026, 11, 1, 1, 0, 0, tzinfo=local, fold=1).astimezone(
+        timezone.utc
+    )
+    state = {}
+    for used, at in enumerate((first, second), 1):
+        evidence = raw_evidence(context, at)
+        evaluation = evaluate_release_sample(context, evidence, decision_at=at)
+        assert evaluation.verdict == "healthy", evaluation.reason_codes
+        state, status, reason = advance_release_window(
+            context,
+            state,
+            evaluation,
+            window_start=evidence.window.start,
+            window_end=evidence.window.end,
+            decision_at=at,
+            used_sample_count=used,
+        )
+    assert (status, reason) == ("healthy", "healthy_confirmed")
+    assert (state["tracking_until"] - state["tracking_since"]).total_seconds() == 3
+    assert (second - state["healthy_since"]).total_seconds() == 1
