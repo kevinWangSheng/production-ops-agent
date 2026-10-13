@@ -165,7 +165,7 @@ def _record(
     return store.record_release(
         event=event,
         target_id=target_id,
-        identity=identity,  # type: ignore[arg-type]  # None only in the identity-missing case
+        identity=identity,  # r3: Mapping[str, str] | None
         health_profile_revision=revision,
         health_profile=content,
         min_tracking_seconds=min_tracking_seconds,
@@ -648,6 +648,59 @@ def test_a_profile_for_another_workload_is_refused(owner, releases) -> None:
     _assert_rejected_without_record(
         receipt, "HEALTH_PROFILE_TARGET_MISMATCH", event, releases
     )
+
+
+@pytest.mark.parametrize(
+    "first_with_identity", [False, True], ids=["none-then-full", "full-then-none"]
+)
+def test_identity_parameter_form_does_not_change_the_fingerprint(
+    owner, releases, first_with_identity
+) -> None:
+    # r3: the fingerprint covers the target, not the call parameter; for a
+    # complete registry row ``None`` and the equivalent mapping are the same.
+    target_id, identity = _target(owner)
+    event = _event(released_at=_db_now() - timedelta(minutes=2))
+    forms = (identity, None) if first_with_identity else (None, identity)
+
+    first = _record(releases, event, target_id, forms[0])
+    second = _record(releases, event, target_id, forms[1])
+
+    assert first.outcome == "created"
+    assert second.outcome == "replayed"
+    assert second.observation_id == first.observation_id
+    events = releases.release_events(first.observation_id)
+    assert [e.outcome for e in events] == ["created", "replayed"]
+    assert events[0].semantic_sha256 == events[1].semantic_sha256
+
+
+@pytest.mark.parametrize(
+    ("label", "revision", "content"),
+    [
+        (
+            "revision not hashing the content",
+            f"{PROFILE.profile_id}@000000000000",
+            None,
+        ),
+        ("content that is not a profile", None, '{"not":"a profile"}'),
+    ],
+)
+def test_an_invalid_profile_revision_or_content_is_an_invalid_policy(
+    owner, releases, label, revision, content
+) -> None:
+    # r3: invalid profile content or revision -> INVALID_RELEASE_POLICY.
+    if content is None:
+        content = PROFILE_CONTENT
+    if revision is None:
+        digest = hashlib.sha256(content.encode()).hexdigest()
+        revision = f"{PROFILE.profile_id}@{digest[:12]}"
+    target_id, identity = _target(owner)
+    event = _event(released_at=_db_now() - timedelta(minutes=1))
+
+    receipt = _record(
+        releases, event, target_id, identity, revision=revision, content=content
+    )
+
+    _assert_rejected_without_record(receipt, "INVALID_RELEASE_POLICY", event, releases)
 
 
 # --- structural validation (固定语义: pydantic before storage) --------------
@@ -1157,6 +1210,114 @@ def test_worker_and_observer_cannot_touch_the_new_tables(
                 conn.execute(statement, args)
     with pytest.raises(PersistenceError):
         ReleaseStore(dsn, pool=POOL).get_release(receipt.observation_id)
+
+
+# --- storage failures through the write entry (固定语义: PersistenceError) ---
+
+
+def _fresh_profile() -> tuple[str, str]:
+    """A valid profile revision no earlier test stored (only the description
+    differs), so a leftover ``opspilot_health_profiles`` row is attributable."""
+    profile = HealthProfile.model_validate(
+        {
+            **PROFILE.model_dump(mode="python"),
+            "description": f"{PROFILE.description} [{uuid4().hex}]",
+        }
+    )
+    return profile_revision(profile), canonical_content(profile)
+
+
+def _write(
+    store: ReleaseStore,
+    entry: str,
+    event: ReleaseEvent,
+    target: tuple[UUID, dict[str, str]],
+    revision: str,
+    content: str,
+) -> ReleaseReceipt:
+    """Drive one public write entry: the wrapper, or ``record_release_in``
+    inside a caller-owned transaction."""
+    kwargs: dict[str, Any] = {
+        "event": event,
+        "target_id": target[0],
+        "identity": target[1],
+        "health_profile_revision": revision,
+        "health_profile": content,
+        "min_tracking_seconds": MIN_TRACKING,
+        "actor": "release-source:test",
+        "raw_body": event.model_dump_json().encode(),
+    }
+    if entry == "record_release":
+        return store.record_release(**kwargs)
+    with store.transaction() as conn:
+        return store.record_release_in(conn, **kwargs)
+
+
+def _assert_nothing_written(
+    event: ReleaseEvent, target_id: UUID, revision: str
+) -> None:
+    with psycopg.connect(DSN) as conn:
+        assert conn.execute(
+            f"SELECT count(*) FROM {OBSERVATIONS} WHERE source=%s AND source_release_id=%s",
+            (event.source, event.source_release_id),
+        ).fetchone() == (0,)
+        assert conn.execute(
+            f"SELECT count(*) FROM {EVENTS} WHERE source=%s AND source_release_id=%s",
+            (event.source, event.source_release_id),
+        ).fetchone() == (0,)
+        assert conn.execute(
+            "SELECT integration_id,cluster_uid,namespace,workload "
+            "FROM opspilot_targets WHERE target_id=%s",
+            (target_id,),
+        ).fetchone() == (None, None, None, None), "identity completion rolled back"
+        assert conn.execute(
+            "SELECT count(*) FROM opspilot_health_profiles "
+            "WHERE health_profile_revision=%s",
+            (revision,),
+        ).fetchone() == (0,), "profile row from the failed call rolled back"
+
+
+@pytest.mark.parametrize("entry", ["record_release", "record_release_in"])
+def test_a_lock_timeout_during_the_write_raises_timeout_and_rolls_back(
+    owner, releases, entry
+) -> None:
+    # The audit table is held ACCESS EXCLUSIVE by another connection, so the
+    # write must hit the transaction's lock_timeout (4 s) wherever it touches
+    # that table; identity completion and the profile row come with it.
+    target = _target(owner, complete=False)
+    revision, content = _fresh_profile()
+    event = _event(released_at=_db_now() - timedelta(minutes=1))
+
+    with psycopg.connect(DSN) as blocker:
+        blocker.execute(f"LOCK TABLE {EVENTS} IN ACCESS EXCLUSIVE MODE")
+        try:
+            with pytest.raises(PersistenceError) as raised:
+                _write(releases, entry, event, target, revision, content)
+        finally:
+            blocker.rollback()
+
+    assert raised.value.args[0] == "TIMEOUT"
+    _assert_nothing_written(event, target[0], revision)
+
+
+@pytest.mark.parametrize("entry", ["record_release", "record_release_in"])
+def test_a_privilege_refusal_during_the_write_raises_integrity_refused(
+    owner, worker_dsn, entry
+) -> None:
+    # A worker member has no privilege on the release tables (P1-07): its
+    # write is refused with 42501, which the store reports as
+    # INTEGRITY_REFUSED (P1-13), never as a business receipt or another code.
+    target = _target(owner, complete=False)
+    revision, content = _fresh_profile()
+    event = _event(released_at=_db_now() - timedelta(minutes=1))
+
+    with pytest.raises(PersistenceError) as raised:
+        _write(
+            ReleaseStore(worker_dsn, pool=POOL), entry, event, target, revision, content
+        )
+
+    assert raised.value.args[0] == "INTEGRITY_REFUSED"
+    _assert_nothing_written(event, target[0], revision)
 
 
 # --- migration 0014 (P1-09) --------------------------------------------------
