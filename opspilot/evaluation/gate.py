@@ -122,12 +122,14 @@ def in_scope(eid: str, record: DeliveredRecord | None, scope: RunScope) -> bool:
     return (
         record is not None
         and record.delivered
+        and record.evidence_id == eid
         and eid in scope.evidence_ids
         and record.target_id == scope.target_id
     )
 
 
 def fact_binding_reasons(
+    eid: str,
     target_refs: Sequence[str],
     time_scope_ref: str | None,
     record: DeliveredRecord | None,
@@ -142,6 +144,9 @@ def fact_binding_reasons(
     """
     if record is None or not record.delivered:
         return ["CITATION_NOT_DELIVERED"]
+    if record.evidence_id != eid:
+        # A record filed under another Run's ID (bot review P1).
+        return ["CITATION_ID_MISMATCH"]
     reasons: list[str] = []
     if record.view_sha256 != canonical_view_hash(record.view):
         reasons.append("VIEW_HASH_MISMATCH")
@@ -180,12 +185,16 @@ def _citation_reasons(
             if record is None or not record.delivered:
                 reasons.append("CITATION_NOT_DELIVERED")
                 continue
+            if record.evidence_id != eid:
+                reasons.append("CITATION_ID_MISMATCH")
+                continue
             if eid not in scope.evidence_ids:
                 # Evidence from another Run or repetition (bot review P1).
                 reasons.append("CITATION_NOT_IN_RUN")
             if claim.kind in _FACT_LIKE:
                 reasons.extend(
                     fact_binding_reasons(
+                        eid,
                         claim.target_refs,
                         claim.time_scope_ref,
                         record,
@@ -202,19 +211,30 @@ def report_signature_matches(
     answer: Answer,
     report: ReportV2 | None,
     delivered: Mapping[str, DeliveredRecord],
+    authorized: Mapping[str, Window],
     scope: RunScope,
 ) -> dict[str, tuple[str, ...]]:
-    """Signature hits per cited evidence ID of this Run and target (faults only)."""
+    """Signature hits per qualified citation of this Run (fault scenarios only).
+
+    A record counts only where some claim cites it with fact-qualified
+    target, hash and authorized-time bindings, whatever that claim's kind
+    (r7 P8; bot review: no signature from an unauthorized window).
+    """
     if answer.signature is None or report is None:
         return {}
     hits: dict[str, tuple[str, ...]] = {}
-    for eid in cited_ids(report):
-        record = delivered.get(eid)
-        if record is None or not in_scope(eid, record, scope):
-            continue
-        matched = signature_matches(answer.signature, record)
-        if matched:
-            hits[eid] = matched
+    for claim in report.claims:
+        for eid in claim.evidence_ids:
+            record = delivered.get(eid)
+            if eid in hits or record is None or not in_scope(eid, record, scope):
+                continue
+            if fact_binding_reasons(
+                eid, claim.target_refs, claim.time_scope_ref, record, authorized, scope
+            ):
+                continue
+            matched = signature_matches(answer.signature, record)
+            if matched:
+                hits[eid] = matched
     return hits
 
 
@@ -260,7 +280,7 @@ def run_gate(
         reasons.extend(citation_reasons)
         if spec.kind == "fault":
             checks["signature"] = bool(
-                report_signature_matches(answer, parsed, delivered, scope)
+                report_signature_matches(answer, parsed, delivered, authorized, scope)
             )
             if not checks["signature"]:
                 reasons.append("SIGNATURE_ABSENT")

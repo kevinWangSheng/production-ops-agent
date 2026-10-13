@@ -154,7 +154,12 @@ def _unqualified_diagnoses(
                 claim is None
                 or not in_scope(eid, record, scope)
                 or fact_binding_reasons(
-                    claim.target_refs, claim.time_scope_ref, record, authorized, scope
+                    eid,
+                    claim.target_refs,
+                    claim.time_scope_ref,
+                    record,
+                    authorized,
+                    scope,
                 )
             ):
                 return True
@@ -220,7 +225,7 @@ def evaluate(
 
     parsed = parsed_report(report)
     scope = run_scope(spec, outcome)
-    matches = report_signature_matches(answer, parsed, delivered, scope)
+    matches = report_signature_matches(answer, parsed, delivered, authorized, scope)
 
     judge_status: Any
     diagnosis_pass: bool | None = None
@@ -344,7 +349,7 @@ def judge_request(
         "signature_matches": {
             eid: list(spans)
             for eid, spans in report_signature_matches(
-                answer, parsed, delivered, scope
+                answer, parsed, delivered, authorized, scope
             ).items()
         },
     }

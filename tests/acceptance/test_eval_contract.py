@@ -10,7 +10,7 @@ import json
 from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import FrozenInstanceError, asdict, fields, replace
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -1952,36 +1952,46 @@ def test_diagnosis_factual_evidence_qualification_overrides_report_kind(
     data["delivered"][EID] = record(**changes)
     cited_claim = claim(kind=kind)
     if defect == "target":
-        # Keep the record eligible for the gate's scenario-target signature;
-        # its mismatch with this claim still fails diagnosis qualification.
+        # The record targets the scenario, but this claim does not bind to it.
         cited_claim["target_refs"] = ["other-target"]
     elif defect == "empty_targets":
         cited_claim["target_refs"] = []
     elif defect == "unauthorized_scope":
         data["authorized"] = {"other-scope": Window(START, END)}
     data["report"] = capture(claims=[cited_claim], gaps=[CAUSE], next_steps=[CAUSE])
+    qualified = defect == "none"
     data["judge"] = judge(
         diagnoses=(
             diagnosis(
                 location=location,
                 linked_claim=None if location == "claims[0]" else 0,
             ),
-        )
+        ),
+        # Interface:112,125-127 (PR #221 third review): the verdict must
+        # reflect the absence of an eligible signature for defective evidence.
+        verdict=qualified,
     )
     result = evaluate(**data)
-    # These records still match the span rule. The new qualification rule is
-    # independent of both the report's kind and the judge verdict recomputation.
-    assert result.gate.passed and result.deterministic_pass
-    assert result.signature_matches[EID] == ("span-cart",)
+    # CONTRACT CHANGE, interface:111-112,121,123,127,173: raw span matching
+    # still succeeds, but every defect excludes the sole claim/record from
+    # eligible signatures. Thus gate and deterministic_pass now fail, and the
+    # primary failure is deterministic_gate rather than diagnosis. Nonfact
+    # claim kinds do not bypass the signature's fact-evidence qualification.
+    assert signature_matches(rule(), data["delivered"][EID]) == ("span-cart",)
+    assert result.gate.checks["citations"]
+    assert result.gate.checks["signature"] is qualified
+    assert result.gate.passed is qualified and result.deterministic_pass is qualified
     assert result.judge_status == "ok"
     assert "JUDGE_VERDICT_MISMATCH" not in result.failure_reasons
-    qualified = defect == "none"
     assert result.diagnosis_pass is qualified
     assert result.judge_pass is qualified and result.overall is qualified
     if qualified:
+        assert result.signature_matches[EID] == ("span-cart",)
         assert result.failure_class is None and result.failure_reasons == ()
     else:
-        assert result.failure_class == "diagnosis"
+        assert EID not in result.signature_matches
+        assert "SIGNATURE_ABSENT" in result.failure_reasons
+        assert result.failure_class == "deterministic_gate"
         assert "DIAGNOSIS_EVIDENCE_UNQUALIFIED" in result.failure_reasons
 
 
@@ -2455,3 +2465,188 @@ def test_judge_request_filters_run_membership_and_scenario_target(fault, outcome
         assert request["signature_matches"][EID] == ["span-cart"]
         if outcome_mode != "provided":
             assert request["signature_matches"][foreign_id] == ["span-other-run"]
+
+
+# PR #221 third review: interface:20,111-112,125-127,132,173.
+
+
+@pytest.mark.parametrize("fault", [False, True], ids=["normal", "fault"])
+@pytest.mark.parametrize(
+    "kind",
+    [
+        "fact",
+        "counter_evidence",
+        "rejected_hypothesis",
+        "hypothesis",
+        "recommendation",
+    ],
+)
+@pytest.mark.parametrize("identity_matches", [False, True])
+def test_citation_record_identity_controls_gate_signature_and_diagnosis(
+    fault, kind, identity_matches
+):
+    data = case(fault=fault)
+    record_id = EID if identity_matches else "different-evidence-id"
+    data["delivered"][EID] = record(evidence_id=record_id)
+    # Both identities belong to this Run: only map-key/record-ID agreement
+    # changes, rather than accidentally testing the Run-membership check.
+    data["outcome"] = replace(
+        data["outcome"], evidence_ids=(EID, "different-evidence-id")
+    )
+    data["report"] = capture(
+        fault=fault,
+        claims=[
+            claim(
+                CAUSE if fault else OBSERVATION,
+                kind=kind,
+            )
+        ],
+    )
+    if fault:
+        data["judge"] = judge(verdict=identity_matches)
+    result = evaluate(**data)
+    assert result.gate.checks["citations"] is identity_matches
+    assert result.gate.passed is identity_matches and result.overall is identity_matches
+    assert result.gate.checks["signature"] is (identity_matches or not fault)
+    assert "CITATION_NOT_IN_RUN" not in result.failure_reasons
+    assert "VIEW_HASH_MISMATCH" not in result.failure_reasons
+    assert result.judge_status == "ok"
+    if identity_matches:
+        assert result.failure_class is None and result.failure_reasons == ()
+        assert result.diagnosis_pass is True and result.judge_pass
+        if fault:
+            assert result.signature_matches[EID] == ("span-cart",)
+    else:
+        assert "CITATION_ID_MISMATCH" in result.gate.reasons
+        assert "CITATION_ID_MISMATCH" in result.failure_reasons
+        assert (
+            EID not in result.signature_matches
+            and record_id not in result.signature_matches
+        )
+        assert result.failure_class == "deterministic_gate"
+        if fault:
+            assert "SIGNATURE_ABSENT" in result.failure_reasons
+            assert "DIAGNOSIS_EVIDENCE_UNQUALIFIED" in result.failure_reasons
+            assert result.diagnosis_pass is False and not result.judge_pass
+
+
+@pytest.mark.parametrize("fault", [False, True], ids=["normal", "fault"])
+@pytest.mark.parametrize(
+    "query_window,span_start,qualified",
+    [
+        (Window(START, END), START, True),
+        (Window(START, START), START, True),
+        (
+            Window(START - timedelta(microseconds=1), END),
+            START - timedelta(microseconds=1),
+            False,
+        ),
+        (
+            Window(START, END + timedelta(microseconds=1)),
+            END + timedelta(microseconds=1),
+            False,
+        ),
+    ],
+)
+def test_hypothesis_window_qualification_controls_gate_and_judge_request_signatures(
+    fault, query_window, span_start, qualified
+):
+    data = case(fault=fault)
+    data["delivered"][EID] = record(
+        window=query_window,
+        rows=[span(start_us=micros(span_start))],
+    )
+    data["report"] = capture(
+        fault=fault,
+        claims=[
+            claim(
+                CAUSE if fault else OBSERVATION,
+                kind="hypothesis",
+            )
+        ],
+    )
+    if fault:
+        data["judge"] = judge(verdict=qualified)
+    # Row matching only knows the query window; the gate must additionally
+    # require that query window to fit inside the authorized window.
+    assert signature_matches(rule(), data["delivered"][EID]) == ("span-cart",)
+    result = evaluate(**data)
+    assert result.gate.checks["citations"]
+    assert result.gate.checks["signature"] is (qualified or not fault)
+    assert result.overall is (qualified or not fault)
+    request = judge_request(
+        **{
+            key: data[key]
+            for key in (
+                "spec",
+                "answer",
+                "report",
+                "delivered",
+                "authorized",
+                "outcome",
+            )
+        }
+    )
+    if fault and qualified:
+        assert result.signature_matches[EID] == ("span-cart",)
+        assert request["signature_matches"][EID] == ["span-cart"]
+    else:
+        assert EID not in result.signature_matches
+        assert EID not in request["signature_matches"]
+    if fault and not qualified:
+        assert "SIGNATURE_ABSENT" in result.gate.reasons
+        assert "DIAGNOSIS_EVIDENCE_UNQUALIFIED" in result.failure_reasons
+        assert result.failure_class == "deterministic_gate"
+        assert result.judge_status == "ok" and result.diagnosis_pass is False
+
+
+@pytest.mark.parametrize("good_first", [False, True])
+@pytest.mark.parametrize("diagnosis_on_good_claim", [False, True])
+def test_signature_accepts_any_qualified_claim_without_lending_its_diagnosis_anchor(
+    good_first, diagnosis_on_good_claim
+):
+    data = case()
+    good = claim(kind="hypothesis")
+    bad = claim(kind="hypothesis", target_refs=["other-target"])
+    data["report"] = capture(claims=[good, bad] if good_first else [bad, good])
+    good_index = 0 if good_first else 1
+    anchor = good_index if diagnosis_on_good_claim else 1 - good_index
+    data["judge"] = judge(diagnoses=(diagnosis(location=f"claims[{anchor}]"),))
+    result = evaluate(**data)
+    assert result.gate.passed and result.deterministic_pass
+    assert result.signature_matches[EID] == ("span-cart",)
+    assert result.judge_status == "ok"
+    assert result.diagnosis_pass is diagnosis_on_good_claim
+    assert result.overall is diagnosis_on_good_claim
+    if diagnosis_on_good_claim:
+        assert result.failure_class is None and result.failure_reasons == ()
+    else:
+        assert result.failure_class == "diagnosis"
+        assert "DIAGNOSIS_EVIDENCE_UNQUALIFIED" in result.failure_reasons
+
+
+@pytest.mark.parametrize("endpoint", ["start", "end", "both"])
+@pytest.mark.parametrize(
+    "tz",
+    [None, timezone(timedelta(hours=8)), timezone(timedelta(hours=-7))],
+    ids=["naive", "utc-plus-eight", "utc-minus-seven"],
+)
+def test_window_rejects_naive_or_non_utc_endpoints(endpoint, tz):
+    start, end = START, END
+    if endpoint in {"start", "both"}:
+        start = START.replace(tzinfo=None) if tz is None else START.astimezone(tz)
+    if endpoint in {"end", "both"}:
+        end = END.replace(tzinfo=None) if tz is None else END.astimezone(tz)
+    with pytest.raises(ValueError, match="^WINDOW_NOT_UTC$"):
+        Window(start, end)
+
+
+@pytest.mark.parametrize("delta_us", [-1, 0, 1])
+def test_window_utc_ordering_accepts_equal_endpoints_and_rejects_reversal(delta_us):
+    end = START + timedelta(microseconds=delta_us)
+    if delta_us < 0:
+        with pytest.raises(ValueError, match="^WINDOW_REVERSED$"):
+            Window(START, end)
+    else:
+        window = Window(START, end)
+        assert window.start == START and window.end == end

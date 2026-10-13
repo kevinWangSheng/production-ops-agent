@@ -58,7 +58,7 @@
 
 - PR-A：分支 `feature/eval-a-contract`，worktree `../production-ops-agent-eval-a`。公开接口 [PR-A 接口](2026-10-13-eval-pr-a-interface.md)；代码 `opspilot/evaluation/`；6 个场景 `evals/scenarios/`。
   - 验收测试由未参与实现的 Codex 只按接口文档编写（`tests/acceptance/test_eval_contract.py`），首轮 406 例 405 过，唯一失败是实现把窗口检查挂在时间引用检查之后，改实现；接口歧义 9 项的处置写在接口文档末尾。
-  - 独立审查（Codex，全新上下文）首轮 fail：P1 judge 认定为事实型因果的 hypothesis 可绕过证据资格；P2 payment 规则漏掉真实 server span；P2 场景与产品 Run 身份未绑定；P2 aggregate 未校验 manifest。四项复现后修复，接口同步修订，测试作者补测（既有断言经 AST 核对未改）。复验 pass with fixes，残余 1 项（Outcome 的 scenario_id 未核对）修复并补测。终态 531 例全过；PR #221 机器人三项（引用须属本 Run、记录须在场景 target、越界时间戳不抛错）采纳修复后 589 例全过，全仓 `make check` 等价检查通过。
+  - 独立审查（Codex，全新上下文）首轮 fail：P1 judge 认定为事实型因果的 hypothesis 可绕过证据资格；P2 payment 规则漏掉真实 server span；P2 场景与产品 Run 身份未绑定；P2 aggregate 未校验 manifest。四项复现后修复，接口同步修订，测试作者补测（既有断言经 AST 核对未改）。复验 pass with fixes，残余 1 项（Outcome 的 scenario_id 未核对）修复并补测。终态 531 例全过；PR #221 机器人三项（引用须属本 Run、记录须在场景 target、越界时间戳不抛错）采纳修复后 589 例全过；第二、三轮共四项（反向与非 UTC 窗口、记录 ID 绑定、签名只来自合格引用）采纳修复后 633 例全过，全仓 `make check` 等价检查通过。
   - 证据特征规则对 6 个冻结证据包核对：故障包各自命中，正常包零命中；76 条记录的 `view_sha256` 与产品算法一致。
   - 实施中冒出、待用户裁决：product-catalog 故障中 `frontend` 上的 `grpc.oteldemo.ProductCatalogService/GetProduct` 失败 client span（真实证据 6 条）按 P8 不计入证据特征，只认 product-catalog server span 或 checkout 上的 client span。
 

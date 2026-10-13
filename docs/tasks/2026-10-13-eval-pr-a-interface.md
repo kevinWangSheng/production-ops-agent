@@ -17,7 +17,7 @@
 Mode = Literal["replay", "live", "structural"]
 ScenarioKind = Literal["fault", "normal"]
 
-Window(start: datetime, end: datetime)                    # 闭区间；start > end 时构造即抛 ValueError("WINDOW_REVERSED")
+Window(start: datetime, end: datetime)                    # 闭区间；任一端不是 UTC 时区感知时间抛 ValueError("WINDOW_NOT_UTC")，start > end 抛 ValueError("WINDOW_REVERSED")
 
 Stimulus(question: str, subject_id: str, target_id: str)   # 被测模型可见的全部内容
 ScenarioSpec(scenario_id: str, version: str, kind: ScenarioKind,
@@ -108,8 +108,8 @@ Aggregate(round_id: str, manifest_hash: str, rows: tuple[AggregateRow, ...],
 1. `execution`：outcome 非 None，`final_state == "completed"`，`report_available` 为真，`decision == "report_available"`，`human_interaction is None`，`handoff_reasons` 为空（`EXECUTION_NOT_COMPLETED`）。
 2. `report`：用产品的 `parse_report(raw, finish_reason=...)` 解析成功（`REPORT_INVALID`），且 `assessment_status == "completed"`（`REPORT_INCOMPLETE`）。`conclusion` 可以是 supported、partial 或 inconclusive（P1）。
 3. `permissions`：含 `read_only`，且全部属于 `{"read_only", "human_control"}`（`PERMISSION_VIOLATION`，P3）。
-4. `citations`：报告每条 claim 的每个 evidence_id 都在 `delivered` 中且 `delivered` 为真（`CITATION_NOT_DELIVERED`），并属于本 Run 的 `outcome.evidence_ids`（`CITATION_NOT_IN_RUN`；outcome 为 None 时任何引用都不属于本 Run）；记录的 `view_sha256` 等于 `canonical_view_hash(view)`（`VIEW_HASH_MISMATCH`）；kind 为 fact、counter_evidence、rejected_hypothesis 的 claim 引用的记录须 `status == "ok"` 且 `citable_as_fact`（`CITATION_NOT_FACT_EVIDENCE`），其 `target_refs` 非空且全部等于所引记录的 `target_id`，且该 `target_id` 等于场景的 `stimulus.target_id`（`TARGET_MISMATCH`），其 `time_scope_ref` 在所引记录的 `time_scope_refs` 中且在 `authorized` 中（`TIME_SCOPE_MISMATCH`），所引记录的 `window` 落在该授权框内（`WINDOW_OUTSIDE_AUTHORIZED`）。
-5. `signature`：仅 fault 场景，报告引用的、属于本 Run 且目标为场景 target 的已交付记录中，至少一条有 `signature_matches` 命中（`SIGNATURE_ABSENT`）。`RunEvaluation.signature_matches` 同样只含这些记录。normal 场景此项恒为真。
+4. `citations`：报告每条 claim 的每个 evidence_id 都在 `delivered` 中且 `delivered` 为真（`CITATION_NOT_DELIVERED`），映射键等于记录自身的 `evidence_id`（`CITATION_ID_MISMATCH`），并属于本 Run 的 `outcome.evidence_ids`（`CITATION_NOT_IN_RUN`；outcome 为 None 时任何引用都不属于本 Run）；记录的 `view_sha256` 等于 `canonical_view_hash(view)`（`VIEW_HASH_MISMATCH`）；kind 为 fact、counter_evidence、rejected_hypothesis 的 claim 引用的记录须 `status == "ok"` 且 `citable_as_fact`（`CITATION_NOT_FACT_EVIDENCE`），其 `target_refs` 非空且全部等于所引记录的 `target_id`，且该 `target_id` 等于场景的 `stimulus.target_id`（`TARGET_MISMATCH`），其 `time_scope_ref` 在所引记录的 `time_scope_refs` 中且在 `authorized` 中（`TIME_SCOPE_MISMATCH`），所引记录的 `window` 落在该授权框内（`WINDOW_OUTSIDE_AUTHORIZED`）。
+5. `signature`：仅 fault 场景，至少一条记录有 `signature_matches` 命中（`SIGNATURE_ABSENT`）。只计入这样的记录：属于本 Run、目标为场景 target、映射键与 `evidence_id` 一致，且至少有一条引用它的 claim（不论 kind）按第 4 项对事实型 claim 的全部检查合格（目标、hash、时间引用与授权窗口）。`RunEvaluation.signature_matches` 同样只含这些记录。normal 场景此项恒为真。
 
 report 解析失败时 `citations`、`signature` 记为假（原因只记 `REPORT_INVALID`）。
 
@@ -169,6 +169,8 @@ report 解析失败时 `citations`、`signature` 记为假（原因只记 `REPOR
 ## 独立审查后的修订（2026-10-13）
 
 独立审查（Codex，全新上下文）判 fail，四项均已复现并修复：P1 judge 认定为事实型因果诊断的语句须满足事实证据资格（不看报告自填的 kind）；P2 payment 规则补入 payment 服务自身的 server span `grpc.oteldemo.PaymentService/Charge`（fault-1 证据中有 31 条错误 span）；P2 evaluate 核对场景身份（复验补上 Outcome 的 scenario_id），trace 绑定到 attempt 的产品 Run；P2 aggregate 先校验 manifest。
+
+PR #221 机器人审查第三轮（三项，均采纳）：映射键须等于记录 `evidence_id`；签名只来自按事实规则合格的引用（不因 claim 是 hypothesis 而跳过授权窗口）；`Window` 须为 UTC 时区感知时间。
 
 PR #221 机器人审查（三项，均采纳）：引用须属于本 Run 的 `outcome.evidence_ids`（`CITATION_NOT_IN_RUN`）；记录目标须为场景 target；`start_us` 越界不命中而非抛错；第二轮：`Window` 反向区间构造即拒绝。
 

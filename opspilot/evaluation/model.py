@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Literal, cast
 
@@ -57,6 +57,10 @@ class Window:
     end: datetime
 
     def __post_init__(self) -> None:
+        for bound in (self.start, self.end):
+            if bound.utcoffset() != timedelta(0):
+                # Naive or non-UTC bounds would break span-time comparison.
+                raise ValueError("WINDOW_NOT_UTC")
         if self.start > self.end:
             raise ValueError("WINDOW_REVERSED")
 
