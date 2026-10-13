@@ -1,7 +1,7 @@
 # 场景评测套件（回放 + live，参照 HolmesGPT tests/llm）
 
 - 状态：合同 r6 已定（D6 改为确定性 gate + 校准后的 LLM judge）；SPEC 有界开放已合并（#210）；PR-A 未开工，预审须先回答 #211 其余四项
-- 更新日期：2026-10-12
+- 更新日期：2026-10-13
 - 依据：外部验收入口 `IncidentScenario -> IncidentOutcome`（AGENTS.md「验证与汇报」）；[v4 验收包](../testing/first-investigation-v4-2026-09-10.md)；[M1-01 收口记录](2026-09-28-m1-01-closure.md)中的上游评测口径；ADR-0006；C3 第 388–398 行（judge 校准）；上游 HolmesGPT `46e3a72` 的 `tests/llm/`
 - 工作区：本 PR `chore/eval-suite-gate`，`../production-ops-agent-eval-gate`；实施时每个 PR 一个 worktree，写在执行节
 
@@ -24,7 +24,7 @@
 - D3 live 环境：复用 kind + OTel Demo 与 `scripts/kind_lab.py fault`，记录注入前后的 SHA。
 - D4 并行：只有回放用 xdist 并行；live 串行（`parallel=1`）；DeepSeek 并发为 1。
 - D5 次数：回放 5 次，live 2 次；表中注明样本量带来的置信不足。
-- D6 判据（r6）：确定性 gate 与校准后的 LLM judge 都通过才算通过（`overall = deterministic_pass AND judge_pass`），judge 不替代确定性断言（SPEC 验收段、AGENTS.md）。确定性 gate：schema、证据/目标/时间绑定、权限（`IncidentOutcome.permissions` 为 `read_only`，D12）、最终状态；仅故障场景另查引用证据中存在该场景的证据特征（正常场景没有证据特征）。judge：认定报告（含 summary 与正文）里的事实型因果诊断，并按评测侧的 expected answer 逐条判下述因果条件，包括每条诊断自己引用的证据满足证据特征（gate 只查证据特征存在，不能替代逐条支持）；expected answer 不进入被测模型输入。judge 未按独立标注校准前不记录基线（C3 第 388–398 行）。judge 模型、标注来源、校准样本与一致率门槛在 PR-A 预审中定。以下 r1–r5 的因果条件不变，只是改由 judge 判定。故障场景：schema、证据/目标/时间绑定、最终状态通过，根因结论点名注入故障的服务与操作，且引用的证据中至少一条满足该场景预先定义的证据特征（r4：例如故障操作上的错误 span 或错误率读数，按 C3 §11「结论获得证据支持」）；每一条事实型因果诊断都须满足上述条件，存在其他事实型因果诊断即判失败（r5）。证据特征的具体判定在 PR-A 预审中定。正常场景（r3、r4）：绑定与状态检查通过，且没有任何事实型因果诊断（不限于故障目录中的组件）；假设型陈述允许；`inconclusive`/`partial` 满足此条件即算通过。
+- D6 判据（r6）：确定性 gate 与校准后的 LLM judge 都通过才算通过（`overall = deterministic_pass AND judge_pass`），judge 不替代确定性断言（SPEC 验收段、AGENTS.md）。确定性 gate：schema、证据/目标/时间绑定、权限（`IncidentOutcome.permissions` 为 `read_only`，D12）、最终状态；仅故障场景另查引用证据中存在该场景的证据特征（正常场景没有证据特征）。judge：认定报告（含 summary 与正文）里的事实型因果诊断，并按评测侧的 expected answer 逐条判下述因果条件，包括每条诊断自己引用的证据满足证据特征（gate 只查证据特征存在，不能替代逐条支持）；expected answer 不进入被测模型输入。judge 未按独立标注校准前不记录基线（C3 第 388–398 行）。judge 模型见 D16；标注来源、校准样本与一致率门槛在 PR-A 预审中定。以下 r1–r5 的因果条件不变，只是改由 judge 判定。故障场景：schema、证据/目标/时间绑定、最终状态通过，根因结论点名注入故障的服务与操作，且引用的证据中至少一条满足该场景预先定义的证据特征（r4：例如故障操作上的错误 span 或错误率读数，按 C3 §11「结论获得证据支持」）；每一条事实型因果诊断都须满足上述条件，存在其他事实型因果诊断即判失败（r5）。证据特征的具体判定在 PR-A 预审中定。正常场景（r3、r4）：绑定与状态检查通过，且没有任何事实型因果诊断（不限于故障目录中的组件）；假设型陈述允许；`inconclusive`/`partial` 满足此条件即算通过。
 - D7 存放：仓库保存每 Run 的 `summary.json` 与轮次汇总，LangSmith 每轮一个 project；原始 ledger 不入库。
 - D8 CI（r3）：PR CI 只跑不调用模型的结构重放，离线、不带任何凭据；调用模型的回放与 live 都由 lead 或用户手工跑。
 - D9 `passes`：不翻转。
@@ -34,6 +34,7 @@
 - D13 回放未命中：该 Run 记为失败并计入分母（C3 第 394 行、v4 第 99 行），另单列 miss 率（用户 2026-10-12 按 PR #210 分诊结果改判）。
 - D14 SPEC 关系：定为开发基线，在 SPEC 有界开放段落中写明。
 - D15 kind lab：与其他会话共用，同一时间只有一个真实故障，开跑前先确认。
+- D16 judge 模型（用户 2026-10-13 选定）：judge 与被测模型分属不同家族，避免同盲点抬高通过率。主候选 GLM-5.3（智谱按量付费 API；订阅制 Coding Plan 限编码工具，不用），对照 GPT-6.1 Sol 与被测的 `deepseek-flash`；三者判同一批人工标注样本，GLM-5.3 达到一致率门槛即采用，明显落后 Sol 时改用 Sol。judge 只在评测侧调用，不进调查 loop、报告生成或恢复路径。新增数据出口（judge 输入发往智谱与 OpenAI）属数据流合同变更，以本 PR 用户合并为准；凭据只放私有 `.env`，不进 PR CI（D8）；私有协议字段仍不进 judge（C3 §12）。选型依据（第三方来源，未经官方核对）：两家新版本均未涨价、未见退化报告；按 100 次判分粗估 GLM-5.3 约 $5、Sol 约 $9。
 - 可逆默认 R1–R6 见合同决定表。
 
 ## 计划
@@ -46,4 +47,4 @@
 
 ## 下一步与交接
 
-- SPEC 有界开放已合并（#210，2026-10-12）。#211 第 1 项已裁决为 r6（judge）；PR-A 预审须回答其余四项，并定 judge 模型、标注来源、校准样本与一致率门槛。DeepSeek 已充值（202.15 CNY）。
+- SPEC 有界开放已合并（#210，2026-10-12）。#211 第 1 项已裁决为 r6（judge）；PR-A 预审须回答其余四项，并定标注来源、校准样本与一致率门槛；judge 模型已选定（D16）。DeepSeek 已充值（202.15 CNY）。
