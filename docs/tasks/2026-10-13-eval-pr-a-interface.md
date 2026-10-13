@@ -62,7 +62,9 @@ RunEvaluation(attempt: AttemptRecord, gate: GateResult,
               diagnosis_pass: bool | None,
               evidence_status: Literal["complete", "incomplete"],
               deterministic_pass: bool, judge_pass: bool, overall: bool,
-              failure_class: FailureClass | None, failure_reasons: tuple[str, ...])
+              failure_class: FailureClass | None, failure_reasons: tuple[str, ...],
+              judge_config_hash: str | None = None,         # 取自 JudgeResult；无 judge 时为 None
+              judge_calibration_hash: str | None = None)
 
 FailureClass = Literal["setup", "replay_miss", "execution", "deterministic_gate",
                        "judge_error", "diagnosis", "evidence_incomplete"]
@@ -87,7 +89,7 @@ Aggregate(round_id: str, manifest_hash: str, rows: tuple[AggregateRow, ...],
 
 ### `load_scenario(directory: Path) -> tuple[ScenarioSpec, Answer]`
 
-读一个场景目录。以下任一情况抛 `ScenarioError`：两个文件的 scenario_id/version 不一致；fault 场景缺 `injected` 或 `signature`；normal 场景带了 `injected` 或 `signature`；`signature.any_of` 为空或 `min_matches < 1`；`expected_output` 为空；`scenario.json` 出现白名单（question、subject_id、target_id 与 IncidentScenario 字段）以外的被测可见字段。`load_scenarios(root: Path) -> tuple[tuple[ScenarioSpec, Answer], ...]` 按 scenario_id 排序读全部子目录。
+读一个场景目录。以下任一情况抛 `ScenarioError`：两个文件的 scenario_id/version 不一致；fault 场景缺 `injected` 或 `signature`；normal 场景带了 `injected` 或 `signature`；`signature.any_of` 为空、`min_matches < 1` 或 signature 出现 `rule_id`、`any_of`、`min_matches` 以外的字段；`expected_output` 为空；`scenario.json` 出现白名单（question、subject_id、target_id 与 IncidentScenario 字段）以外的被测可见字段。`load_scenarios(root: Path) -> tuple[tuple[ScenarioSpec, Answer], ...]` 按 scenario_id 排序读全部子目录。
 
 ### `investigator_input(spec: ScenarioSpec) -> Mapping[str, str]`
 
@@ -148,7 +150,7 @@ report 解析失败时 `citations`、`signature` 记为假（原因只记 `REPOR
 `planned: Sequence[PlannedSlot]`，`evaluations: Sequence[RunEvaluation]`，`calibration: CalibrationResult | None`。
 
 - 先调用 `validate_manifest(manifest)`，不合法时 `ManifestError` 直接抛出。
-- 拒绝（抛 `AggregateError`）：planned 有重复槽位；某个 evaluation 的 `round_id` 不等于 manifest 的 round_id，或 `manifest_hash` 不等于 `manifest_hash(manifest)`；`attempt_id` 重复；evaluation 不对应任何 planned 槽位；同一槽位多于一个 evaluation（重跑属于新轮次）。
+- 拒绝（抛 `AggregateError`）：planned 有重复槽位；某个 evaluation 的 `round_id` 不等于 manifest 的 round_id，或 `manifest_hash` 不等于 `manifest_hash(manifest)`；`attempt_id` 重复；evaluation 不对应任何 planned 槽位；同一槽位多于一个 evaluation（重跑属于新轮次）；evaluation 带 judge 身份（两个 hash 不全为 None）而不等于 manifest 中 kind 为 hash 的 `judge_config` 与 `calibration_pack` 值（`JUDGE_IDENTITY_MISMATCH`）。
 - 每个 `(scenario_id, scenario_version, mode)` 一行，按这三项排序：`planned` 为该组槽位数；`attempted` 为 evaluation 数；`not_started = planned - attempted`；`passed` 为 `overall` 为真的数；`failed = attempted - passed`；`pass_rate = passed / attempted`，attempted 为 0 时为 None；`mode == "structural"` 时 `pass_rate` 恒为 None（结构重放不产出质量率）；`replay_miss` 为该组 `attempt.replay_miss` 为真的数，`replay_miss_rate` 仅 replay 模式且 attempted > 0 时为 `replay_miss / attempted`，否则 None；`failure_classes` 为失败 evaluation 的 `failure_class` 计数。
 - `baseline_complete` 当且仅当：全部槽位都已 attempted（`SLOTS_NOT_STARTED`），所有 evaluation 的 evidence_status 为 complete（`EVIDENCE_INCOMPLETE`），`manifest_unknowns` 为空（`MANIFEST_UNKNOWN`），calibration 非 None 且 passed（`JUDGE_NOT_CALIBRATED`），且至少有一个非 structural 槽位（`NO_QUALITY_SLOTS`）。`incomplete_reasons` 按上述顺序列出适用者。成功率低于 100% 不影响 baseline_complete（P10）。
 
@@ -169,6 +171,8 @@ report 解析失败时 `citations`、`signature` 记为假（原因只记 `REPOR
 ## 独立审查后的修订（2026-10-13）
 
 独立审查（Codex，全新上下文）判 fail，四项均已复现并修复：P1 judge 认定为事实型因果诊断的语句须满足事实证据资格（不看报告自填的 kind）；P2 payment 规则补入 payment 服务自身的 server span `grpc.oteldemo.PaymentService/Charge`（fault-1 证据中有 31 条错误 span）；P2 evaluate 核对场景身份（复验补上 Outcome 的 scenario_id），trace 绑定到 attempt 的产品 Run；P2 aggregate 先校验 manifest。
+
+PR #221 机器人审查第四轮（两项，均采纳）：judge 结果的 config/calibration hash 须等于本轮 manifest 冻结值；signature 对象拒绝未知字段。
 
 PR #221 机器人审查第三轮（三项，均采纳）：映射键须等于记录 `evidence_id`；签名只来自按事实规则合格的引用（不因 claim 是 hypothesis 而跳过授权窗口）；`Window` 须为 UTC 时区感知时间。
 

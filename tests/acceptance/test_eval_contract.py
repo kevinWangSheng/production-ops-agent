@@ -2650,3 +2650,214 @@ def test_window_utc_ordering_accepts_equal_endpoints_and_rejects_reversal(delta_
     else:
         window = Window(START, end)
         assert window.start == START and window.end == end
+
+
+# PR #221 fourth review: interface:66-67,92,153,175.
+
+
+@pytest.mark.parametrize("fault", [False, True], ids=["normal", "fault"])
+@pytest.mark.parametrize(
+    "state",
+    [
+        "ok",
+        "error",
+        "timeout",
+        "invalid",
+        "oversize",
+        "uncalibrated",
+        "gate_failed",
+    ],
+)
+def test_evaluate_preserves_judge_config_and_calibration_hashes_verbatim(fault, state):
+    data = case(fault=fault)
+    config_hash, calibration_hash = "aB" * 32, "Cd" * 32
+    data["judge"] = replace(
+        data["judge"],
+        config_hash=config_hash,
+        calibration_hash=calibration_hash,
+    )
+    if state in {"error", "timeout", "invalid", "oversize"}:
+        data["judge"] = replace(data["judge"], status=state, diagnoses=(), verdict=None)
+    elif state == "uncalibrated":
+        data["judge"] = replace(data["judge"], calibrated=False)
+    elif state == "gate_failed":
+        data["outcome"] = replace(data["outcome"], permissions=("write",))
+    result = evaluate(**data)
+    assert result.judge_config_hash == config_hash
+    assert result.judge_calibration_hash == calibration_hash
+
+
+@pytest.mark.parametrize("fault", [False, True], ids=["normal", "fault"])
+@pytest.mark.parametrize("gate_pass", [False, True])
+def test_evaluate_without_judge_records_null_identity_hashes(fault, gate_pass):
+    data = case(fault=fault)
+    data["judge"] = None
+    if not gate_pass:
+        data["outcome"] = replace(data["outcome"], permissions=("write",))
+    result = evaluate(**data)
+    assert result.judge_config_hash is None and result.judge_calibration_hash is None
+    assert result.judge_status == ("not_run" if gate_pass else "skipped")
+    assert not result.overall
+
+
+@pytest.mark.parametrize("fault", [False, True], ids=["normal", "fault"])
+@pytest.mark.parametrize("status", ["ok", "timeout"])
+def test_aggregate_accepts_judge_identity_matching_frozen_hash_dimensions(
+    fault, status
+):
+    frozen = manifest()
+    config_hash, calibration_hash = "aB" * 32, "Cd" * 32
+    frozen = replace(
+        frozen,
+        dimensions={
+            **frozen.dimensions,
+            "judge_config": DimensionValue("hash", config_hash, None),
+            "calibration_pack": DimensionValue("hash", calibration_hash, None),
+        },
+    )
+    data = case(fault=fault)
+    data["attempt"] = replace(
+        data["attempt"], manifest_hash=canonical_hash(asdict(frozen))
+    )
+    data["judge"] = replace(
+        data["judge"],
+        status=status,
+        config_hash=config_hash,
+        calibration_hash=calibration_hash,
+    )
+    if status != "ok":
+        data["judge"] = replace(data["judge"], diagnoses=(), verdict=None)
+    result = aggregate(
+        frozen, [planned_for(data["attempt"])], [evaluate(**data)], calibration()
+    )
+    assert result.baseline_complete and result.incomplete_reasons == ()
+    assert result.rows[0].attempted == 1
+    assert result.rows[0].pass_rate == (1.0 if status == "ok" else 0.0)
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"config_hash": "another-config-hash"},
+        {"calibration_hash": "another-calibration-hash"},
+        {
+            "config_hash": "another-config-hash",
+            "calibration_hash": "another-calibration-hash",
+        },
+    ],
+)
+@pytest.mark.parametrize("status", ["ok", "timeout"])
+def test_aggregate_rejects_judge_hash_mismatch_even_for_failed_judge(changes, status):
+    data = case()
+    data["judge"] = replace(data["judge"], status=status, **changes)
+    if status != "ok":
+        data["judge"] = replace(data["judge"], diagnoses=(), verdict=None)
+    evaluated = evaluate(**data)
+    with pytest.raises(AggregateError, match="^JUDGE_IDENTITY_MISMATCH$"):
+        aggregate(
+            manifest(), [planned_for(data["attempt"])], [evaluated], calibration()
+        )
+
+
+@pytest.mark.parametrize("dimension", ["judge_config", "calibration_pack"])
+@pytest.mark.parametrize("kind", ["version", "none", "unknown", "missing"])
+def test_aggregate_rejects_judge_identity_without_frozen_hash_kind(dimension, kind):
+    frozen = manifest()
+    dimensions = dict(frozen.dimensions)
+    original_hash = dimensions[dimension].value
+    if kind == "missing":
+        del dimensions[dimension]
+    else:
+        dimensions[dimension] = DimensionValue(
+            kind,
+            original_hash if kind == "version" else None,
+            None if kind == "version" else "not frozen as a hash",
+        )
+    frozen = replace(frozen, dimensions=dimensions)
+    validate_manifest(frozen)
+    data = case()
+    data["attempt"] = replace(
+        data["attempt"], manifest_hash=canonical_hash(asdict(frozen))
+    )
+    evaluated = evaluate(**data)
+    with pytest.raises(AggregateError, match="^JUDGE_IDENTITY_MISMATCH$"):
+        aggregate(frozen, [planned_for(data["attempt"])], [evaluated], calibration())
+
+
+@pytest.mark.parametrize(
+    "missing_field", ["judge_config_hash", "judge_calibration_hash"]
+)
+def test_aggregate_rejects_partial_judge_identity(missing_field):
+    data = case()
+    evaluated = replace(evaluate(**data), **{missing_field: None})
+    with pytest.raises(AggregateError, match="^JUDGE_IDENTITY_MISMATCH$"):
+        aggregate(
+            manifest(), [planned_for(data["attempt"])], [evaluated], calibration()
+        )
+
+
+@pytest.mark.parametrize("dimension", ["judge_config", "calibration_pack"])
+@pytest.mark.parametrize("kind", ["hash", "version", "none", "unknown", "missing"])
+def test_aggregate_without_judge_does_not_require_identity_match(dimension, kind):
+    frozen = manifest()
+    dimensions = dict(frozen.dimensions)
+    if kind == "missing":
+        del dimensions[dimension]
+    else:
+        dimensions[dimension] = DimensionValue(
+            kind,
+            "different-frozen-value" if kind in {"hash", "version"} else None,
+            None if kind in {"hash", "version"} else "no judge result for this attempt",
+        )
+    frozen = replace(frozen, dimensions=dimensions)
+    data = case()
+    data["judge"] = None
+    data["attempt"] = replace(
+        data["attempt"], manifest_hash=canonical_hash(asdict(frozen))
+    )
+    evaluated = evaluate(**data)
+    assert (
+        evaluated.judge_config_hash is None and evaluated.judge_calibration_hash is None
+    )
+    result = aggregate(
+        frozen, [planned_for(data["attempt"])], [evaluated], calibration()
+    )
+    row = result.rows[0]
+    assert (row.attempted, row.failed, row.not_started) == (1, 1, 0)
+    assert row.failure_classes == {"judge_error": 1} and row.pass_rate == 0.0
+    assert result.baseline_complete is (kind not in {"unknown", "missing"})
+    assert result.incomplete_reasons == (
+        ("MANIFEST_UNKNOWN",) if kind in {"unknown", "missing"} else ()
+    )
+
+
+@pytest.mark.parametrize(
+    "mutation", ["rename_min_matches", "extra_min_match", "unknown_option"]
+)
+def test_scenarios_signature_rejects_unknown_fields_including_min_match(
+    tmp_path, mutation
+):
+    directory = copy_scenario(tmp_path)
+    path = directory / "answer.json"
+    payload = json.loads(path.read_text())
+    if mutation == "rename_min_matches":
+        payload["signature"]["min_match"] = payload["signature"].pop("min_matches")
+    elif mutation == "extra_min_match":
+        payload["signature"]["min_match"] = 2
+    else:
+        payload["signature"]["unknown_option"] = True
+    path.write_text(json.dumps(payload))
+    with pytest.raises(ScenarioError):
+        load_scenario(directory)
+
+
+@pytest.mark.parametrize("minimum", [1, 2])
+def test_scenarios_signature_accepts_known_min_matches_field(tmp_path, minimum):
+    directory = copy_scenario(tmp_path)
+    path = directory / "answer.json"
+    payload = json.loads(path.read_text())
+    payload["signature"]["min_matches"] = minimum
+    path.write_text(json.dumps(payload))
+    spec, answer = load_scenario(directory)
+    assert answer.scenario_id == spec.scenario_id and answer.signature is not None
+    assert answer.signature.min_matches == minimum

@@ -295,6 +295,8 @@ def evaluate(
         overall=overall,
         failure_class=failure_class,
         failure_reasons=tuple(dict.fromkeys(reasons)),
+        judge_config_hash=judge.config_hash if judge is not None else None,
+        judge_calibration_hash=judge.calibration_hash if judge is not None else None,
     )
 
 

@@ -208,7 +208,9 @@ def manifest(**changes):
         Manifest(
             round_id="round-contract",
             dimensions={
-                name: DimensionValue("version", "v1", None) for name in DIMENSIONS
+                **{name: DimensionValue("version", "v1", None) for name in DIMENSIONS},
+                "judge_config": DimensionValue("hash", "judge-config-v1", None),
+                "calibration_pack": DimensionValue("hash", "labels-v1", None),
             },
         ),
         **changes,

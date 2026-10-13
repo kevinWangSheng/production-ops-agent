@@ -186,6 +186,11 @@ def calibrate(
     )
 
 
+def _frozen_hash(manifest: Manifest, name: str) -> str | None:
+    value = manifest.dimensions.get(name)
+    return value.value if value is not None and value.kind == "hash" else None
+
+
 def _slot(evaluation: RunEvaluation) -> PlannedSlot:
     a = evaluation.attempt
     return PlannedSlot(a.scenario_id, a.scenario_version, a.mode, a.repetition)
@@ -201,6 +206,10 @@ def aggregate(
     if len(set(planned)) != len(planned):
         raise AggregateError("DUPLICATE_PLANNED_SLOT")
     expected_hash = manifest_hash(manifest)
+    frozen_judge = (
+        _frozen_hash(manifest, "judge_config"),
+        _frozen_hash(manifest, "calibration_pack"),
+    )
     seen_attempts: set[str] = set()
     by_slot: dict[PlannedSlot, RunEvaluation] = {}
     for evaluation in evaluations:
@@ -209,6 +218,10 @@ def aggregate(
             raise AggregateError("ROUND_MISMATCH")
         if attempt.manifest_hash != expected_hash:
             raise AggregateError("MANIFEST_HASH_MISMATCH")
+        used = (evaluation.judge_config_hash, evaluation.judge_calibration_hash)
+        if used != (None, None) and used != frozen_judge:
+            # A stale or uncalibrated judge identity (bot review P1).
+            raise AggregateError("JUDGE_IDENTITY_MISMATCH")
         if attempt.attempt_id in seen_attempts:
             raise AggregateError("DUPLICATE_ATTEMPT")
         seen_attempts.add(attempt.attempt_id)

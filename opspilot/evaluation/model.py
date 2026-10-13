@@ -214,6 +214,10 @@ class RunEvaluation:
     overall: bool
     failure_class: FailureClass | None
     failure_reasons: tuple[str, ...]
+    # The judge identity that produced the verdict, checked by ``aggregate``
+    # against the round's frozen ``judge_config`` and ``calibration_pack``.
+    judge_config_hash: str | None = None
+    judge_calibration_hash: str | None = None
 
 
 def canonical_view_hash(view: Mapping[str, Any]) -> str:
@@ -317,6 +321,10 @@ def _injected(data: Mapping[str, Any]) -> InjectedFault:
 
 
 def _signature(data: Mapping[str, Any]) -> SignatureRule:
+    extra = sorted(set(data) - {"rule_id", "any_of", "min_matches"})
+    if extra:
+        # A misspelt threshold must not silently fall back to 1.
+        raise ScenarioError(f"UNEXPECTED_FIELDS:answer.signature:{','.join(extra)}")
     matchers = data.get("any_of")
     if not isinstance(matchers, list) or not matchers:
         raise ScenarioError("EMPTY_SIGNATURE")
