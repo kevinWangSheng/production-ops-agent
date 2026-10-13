@@ -120,12 +120,12 @@ _BUSINESS_REFUSALS = frozenset(
 
 
 def _semantic_sha256(
-    event: ReleaseEvent, target_id: UUID, identity: Mapping[str, str] | None
+    event: ReleaseEvent, target_id: UUID, target_snapshot: Mapping[str, Any] | None
 ) -> str:
     # UTC normalization makes equivalent offsets replay the same instant.
     content = {
         "target_id": str(target_id),
-        "target_snapshot": None if identity is None else dict(identity),
+        "target_snapshot": None if target_snapshot is None else dict(target_snapshot),
         "before": event.before.model_dump(mode="json"),
         "after": event.after.model_dump(mode="json"),
         "released_at": event.released_at.astimezone(timezone.utc).isoformat(),
@@ -203,7 +203,6 @@ class ReleaseStore(_TargetProfileOps):
             raise PersistenceError("INVALID_INPUT")
         # Revalidate mutable containers inside the frozen DTO before any writes.
         event = ReleaseEvent.model_validate(event.model_dump())
-        semantic = _semantic_sha256(event, target_id, identity)
         try:
             return self._record_in(
                 conn,
@@ -215,7 +214,6 @@ class ReleaseStore(_TargetProfileOps):
                 min_tracking_seconds,
                 actor,
                 raw_body,
-                semantic,
             )
         except psycopg.Error as exc:
             # The caller owns the transaction and must roll it back on failure.
@@ -232,10 +230,17 @@ class ReleaseStore(_TargetProfileOps):
         min_tracking_seconds: int,
         actor: str,
         raw_body: bytes,
-        semantic: str,
     ) -> ReleaseReceipt:
         now = self._db_now(conn)
         row = self._find_in(conn, event.source, event.source_release_id)
+        # The registry is authoritative; an omitted configuration identity is
+        # the same target as its equivalent dictionary, not a semantic change.
+        target_snapshot = conn.execute(
+            "SELECT integration_id,cluster_uid,namespace,resource_uid,workload "
+            "FROM opspilot_targets WHERE target_id=%s",
+            (target_id,),
+        ).fetchone()
+        semantic = _semantic_sha256(event, target_id, target_snapshot)
         outcome: Literal["created", "replayed", "rejected"] = "rejected"
         reason = None
         if row is None:
@@ -254,6 +259,11 @@ class ReleaseStore(_TargetProfileOps):
                                 (target_id,),
                             )
                         )["workload"]
+                        target_snapshot = {
+                            **target.model_dump(exclude={"revision"}),
+                            "workload": workload,
+                        }
+                        semantic = _semantic_sha256(event, target_id, target_snapshot)
                         if health_profile is None or health_profile == "":
                             raise PersistenceError("HEALTH_PROFILE_UNAVAILABLE")
                         if (
@@ -317,14 +327,7 @@ class ReleaseStore(_TargetProfileOps):
                                             event.source,
                                             event.source_release_id,
                                             target_id,
-                                            Jsonb(
-                                                {
-                                                    **target.model_dump(
-                                                        exclude={"revision"}
-                                                    ),
-                                                    "workload": workload,
-                                                }
-                                            ),
+                                            Jsonb(target_snapshot),
                                             Jsonb(event.before.model_dump()),
                                             Jsonb(event.after.model_dump()),
                                             Jsonb(event.auxiliary.model_dump()),
@@ -381,7 +384,17 @@ class ReleaseStore(_TargetProfileOps):
                 assert row is not None
         if row is not None and outcome != "created":
             if row["semantic_sha256"] == semantic:
-                outcome, reason = "replayed", None
+                # Normalizing the fingerprint does not exempt a supplied
+                # identity from the existing registry comparison rule.
+                try:
+                    with conn.transaction():
+                        self._complete_identity(conn, target_id, identity)
+                except PersistenceError as exc:
+                    if str(exc) not in _BUSINESS_REFUSALS:
+                        raise
+                    outcome, reason = "rejected", str(exc)
+                else:
+                    outcome, reason = "replayed", None
             else:
                 outcome, reason = "rejected", "RELEASE_IDENTITY_CONFLICT"
         return self._audit_in(

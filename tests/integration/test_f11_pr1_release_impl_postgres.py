@@ -455,3 +455,32 @@ def test_profile_refusal_codes_leave_one_audit_and_no_binding(
         ).fetchone() == dict(
             integration_id=None, cluster_uid=None, namespace=None, workload=None
         )
+
+
+@pytest.mark.parametrize("first_identity_is_none", [True, False])
+def test_registered_identity_replays_with_none_or_dictionary(
+    store, request_data, first_identity_is_none
+):
+    # Both forms refer to this same, already complete registry entry.
+    identity = request_data["identity"]
+    with store.transaction() as conn:
+        store._complete_identity(conn, request_data["target_id"], identity)
+    first = store.record_release(
+        **{**request_data, "identity": None if first_identity_is_none else identity}
+    )
+    frozen = store.get_release(first.observation_id)
+    replay = store.record_release(
+        **{**request_data, "identity": identity if first_identity_is_none else None}
+    )
+    assert (first.outcome, replay.outcome, replay.reason) == (
+        "created",
+        "replayed",
+        None,
+    )
+    assert replay.observation_id == first.observation_id
+    assert store.get_release(first.observation_id) == frozen
+    assert frozen.target_snapshot == identity
+    events = store.release_events(first.observation_id)
+    assert [event.sequence for event in events] == [1, 2]
+    assert [event.outcome for event in events] == ["created", "replayed"]
+    assert [event.semantic_sha256 for event in events] == [frozen.semantic_sha256] * 2
