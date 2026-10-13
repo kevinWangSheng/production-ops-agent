@@ -2,12 +2,13 @@
   "schema": "opspilot-lab-summary-1",
   "experiment": "m1-184-self-heal-live",
   "run_id": "04e10229-a18e-5489-b8a5-af5fbbfdf937",
-  "frozen_at": "2026-10-13T07:03:37.997831+00:00",
+  "frozen_at": "2026-10-13T09:05:44.555112+00:00",
   "round": "184-step3-20261012",
   "scenario": "S2",
   "versions": {
-    "branch": "feature/F6-184-self-heal-step3",
-    "commit": "4d90541f4346c471a4b6b66c79b6db495380d410",
+    "collector_branch": "HEAD",
+    "executed_commit": "df3863ef97cd290663b565c917e2626736ec74d7",
+    "collector_commit": "df3863ef97cd290663b565c917e2626736ec74d7",
     "schema_head": "0013_self_heal_authorization",
     "worker_versions": {
       "prompt_revision": "prompt-replay-candidate-bdb4914edefa",
@@ -1868,7 +1869,7 @@
   "workbench_page": {
     "status": 200,
     "bytes": 229810,
-    "sha256": "a4d3cee551575e8b1b9912bbb36e4df68c4d15b3755fcf85a6c5b4ae9d1a097a",
+    "sha256": "17ed17e966b021f48c4c9178a8bc8e6cbc6d37f265b21479060b422261f634a5",
     "shows_recovered_no_remediation": false,
     "shows_source_automatic": true
   },
@@ -3072,8 +3073,8 @@
   ],
   "artifacts": {
     "docs/evidence/m1-184-self-heal-live/collect.py": {
-      "sha256": "385f9bbf9c6e79e93695bb490a18669fffa5d92f27c85c0e84515d2f4657bced",
-      "bytes": 18109
+      "sha256": "d3e8d27f59ccaacd9c3e88ce2141aa5ac494f9a93751bc38eec0a70a4d0c0b16",
+      "bytes": 18488
     },
     "docs/evidence/m1-184-self-heal-live/verify.py": {
       "sha256": "3ccf664b268debdd622b0832805cb5b5ce8408be250149a818db88adadb065d5",
@@ -3087,7 +3088,7 @@
       "sha256": "f64a6e14065bc7fa04d709dc1b0b84cce24b7176cf1629b0bc3b3df7fc5c6cb9",
       "bytes": 11192
     },
-    "git_diff_head_sha256": "a46ac672e1ae462860fbae02cc91f17e21c705189bb3e9ea587e97b0e83826cc"
+    "git_diff_head_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
   },
   "trace": {
     "project": {
@@ -3157,8 +3158,8 @@
     "note": "one balance key for the whole round; between the first and last read the worker made the S1 and S2 investigation Runs and the S1 and S2 postmortem drafts (one model request each, see postmortem_attempts). The S1 postmortem started 06:12:07Z, before the middle read, so no per-scenario split is attributable; only the round total is reported. No other calls on this key in the window are known (other sessions not checked)."
   },
   "raw_ledger": {
-    "sha256": "dcf0576d6d235be2091755fd6a2c4090fa4c38b12bdae05ee3faf36905ea2cfd",
-    "bytes": 1734304,
+    "sha256": "61c5b44c55a9d0a69d353628966e95cba419a6aaaa0ad58f245783000868c0f8",
+    "bytes": 1734367,
     "path": "m1-184-self-heal-live/04e10229-a18e-5489-b8a5-af5fbbfdf937/ledger.json",
     "in_repository": false
   }

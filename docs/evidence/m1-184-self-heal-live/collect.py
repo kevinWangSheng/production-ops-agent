@@ -9,6 +9,7 @@ separately started Observer. This script only reads, after the fact:
     collect.py --scenario S1|S2 --incident <uuid> --owner-dsn ... --observer-dsn ...
                --web http://127.0.0.1:8080 --user-file <name:password>
                --experiment-id <kind fault id> --project-file <pre.json>
+               --executed-commit <sha the product processes ran>
                [--verdicts <verify.py output>] [--timeline <watch log>]
 
 Owner reads run in a read-only session; the Observer login is used only to
@@ -197,6 +198,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--verdicts", type=Path)
     parser.add_argument("--timeline", type=Path)
     parser.add_argument("--balance-file", type=Path)
+    # the commit whose product processes ran the experiment, recorded when
+    # the run started; HEAD at freeze time is only the collector's checkout
+    # (bot review P2 on #217)
+    parser.add_argument("--executed-commit", required=True)
     args = parser.parse_args(argv)
     incident = args.incident
 
@@ -356,10 +361,11 @@ def main(argv: list[str] | None = None) -> int:
         "round": "184-step3-20261012",
         "scenario": args.scenario,
         "versions": {
-            "branch": subprocess.check_output(
+            "collector_branch": subprocess.check_output(
                 ["git", "rev-parse", "--abbrev-ref", "HEAD"], text=True, cwd=ROOT
             ).strip(),
-            "commit": subprocess.check_output(
+            "executed_commit": args.executed_commit,
+            "collector_commit": subprocess.check_output(
                 ["git", "rev-parse", "HEAD"], text=True, cwd=ROOT
             ).strip(),
             "schema_head": schema_head,

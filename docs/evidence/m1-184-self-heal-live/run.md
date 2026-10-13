@@ -4,6 +4,7 @@
 - 合同：[任务记录](../../tasks/2026-10-12-184-self-healing-recovery.md) r6 + 第 3 步决定（[预审](../../tasks/2026-10-12-184-step3-prereview.md) D3-01–D3-15）
 - 冻结摘要：[s1/summary.json](s1/summary.json)、[s2/summary.json](s2/summary.json)（含取证/判据脚本与实验 profile 的 sha256，`artifacts`）；原始 ledger（库记录、F6 投影全量、页面 HTML、完整判据、watch 时间线）不入库，本机 `tmp/184-step3/ledgers/`，哈希见各摘要 `raw_ledger`（ADR-0006）
 - 判据：[verify.py](verify.py) 由独立 Codex 按合同与公开接口编写（实现者未改）；取证：[collect.py](collect.py)（lead）
+- 冻结方式：摘要 `versions.executed_commit` 是运行产品进程的提交 `df3863e`。分支后来 merge-base 前移到含迁移 0014 的 `main`，而实验库停在 0013，所以最终冻结在 `df3863e` 的临时 detached 检出上执行（同一份 collect/verify/profile 文件，哈希见摘要 `artifacts`），事故页也由该提交的 web 只读重启后提供；`collector_commit` 因此也是 `df3863e`
 - 类别：有界真实软件环境运行 + 真实模型调用。故障只由 kind lab 的 flagd 钩子注入与恢复，告警由真实 Prometheus/Alertmanager 产生；不是生产证明
 
 ## 环境
