@@ -33,6 +33,7 @@ from opspilot.evaluation import (
     record,
     replay,
 )
+from opspilot.evaluation.codec import decode
 from opspilot.investigation.client import DeepSeekClient
 from opspilot.investigation.context import messages_hash
 from opspilot.investigation.loop import (
@@ -50,6 +51,9 @@ from tests.m1_investigation_support import (
 )
 from tests.m1_investigation_support import reply as loop_reply
 from tests.m1_investigation_support import tool_call as loop_tool_call
+from tests.m1_tool_support import build as build_tool_executor
+from tests.m1_tool_support import registration as tool_registration
+from tests.m1_tool_support import request as tool_request_fixture
 
 MiB = 1024 * 1024
 
@@ -1862,3 +1866,257 @@ def test_review_p2_3_truncated_http_error_body_is_incomplete(tmp_path):
     assert doc["complete"] is False
     assert doc["incomplete_reasons"]
     assert s.verify_code(pkg, sha) in INCOMPLETE_CODES
+
+
+# --- independent recheck findings (2026-10-14) ----------------------------------------
+# Semantics fixed by the lead after the B2 recheck; interface sync pending.
+# See EVAL_B2_AMBIGUITIES.md item 17.
+
+
+def _record_real_loop(tmp_path: Path, replies: list[Any], *, model_requests: int):
+    """Record one real InvestigationLoop Run through CaptureHooks."""
+    log: dict[str, Any] = {}
+
+    def driver(hooks: Any) -> Any:
+        loop, request, scripted, *_ = assemble(
+            replies=replies, model_requests=model_requests
+        )
+        inner = hooks.tools(loop.executor)
+        facade_calls: list[Any] = []
+
+        class CountingFacade:
+            def execute(self, tool_request: Any) -> Any:
+                facade_calls.append(tool_request)
+                return inner.execute(tool_request)
+
+            def __getattr__(self, name: str) -> Any:
+                return getattr(inner, name)
+
+        loop.model = hooks.model(scripted)
+        loop.executor = CountingFacade()
+        loop.capture_delivery = hooks.delivery
+        result = loop.run(request)
+        log.update(result=result, facade_calls=facade_calls, scripted=scripted)
+        return s.outcome(tuple(dict.fromkeys(result.evidence_ids)))
+
+    pkg = tmp_path / "source"
+    ref = record(driver, destination=pkg, context=_loop_context())
+    return pkg, ref, log
+
+
+def _delivery_by_call_id(pkg: Path, doc: dict[str, Any]) -> dict[str, Any]:
+    return {
+        s.blob_json(pkg, event["response_ref"])["tool_call_id"]: event
+        for event in s.events_of(doc, "delivery")
+    }
+
+
+# Recheck P2-1: one reply [A(expr=up), duplicate A, B(expr=down)], the next
+# reply duplicates B. Each refusal claims its own call ID, so B's tool event
+# stays paired with B's call.
+def test_recheck_p2_1_mixed_refusals_record_completely_and_pair_b(tmp_path):
+    replies = [
+        loop_reply(
+            tool_calls=[
+                loop_tool_call("a", arguments='{"expr":"up"}'),
+                loop_tool_call("a-duplicate", arguments='{"expr":"up"}'),
+                loop_tool_call("b", arguments='{"expr":"down"}'),
+            ],
+            finish="tool_calls",
+        ),
+        loop_reply(
+            tool_calls=[loop_tool_call("b-duplicate", arguments='{"expr":"down"}')],
+            finish="tool_calls",
+        ),
+        report_from_transcript,
+    ]
+    pkg, ref, log = _record_real_loop(tmp_path, replies, model_requests=3)
+    assert log["result"].execution == "completed"
+    assert len(log["scripted"].calls) == 3
+    # Only the two physical calls reach the facade.
+    assert [r.params for r in log["facade_calls"]] == [
+        {"expr": "up"},
+        {"expr": "down"},
+    ]
+    doc = s.package_json(pkg)
+    assert doc["complete"] is True and doc["incomplete_reasons"] == []
+    by_seq = {event["seq"]: event for event in doc["events"]}
+    tools = s.events_of(doc, "tool")
+    assert [s.blob_json(pkg, t["request_ref"])["request"]["params"] for t in tools] == [
+        {"expr": "up"},
+        {"expr": "down"},
+    ]
+    tool_a, tool_b = tools
+    assert len(s.events_of(doc, "refusal")) == 2
+    deliveries = _delivery_by_call_id(pkg, doc)
+    assert set(deliveries) == {"a", "a-duplicate", "b", "b-duplicate"}
+    # I:62: physical deliveries are parented by their own tool events.
+    assert deliveries["a"]["parent"] == tool_a["seq"]
+    assert deliveries["b"]["parent"] == tool_b["seq"]
+    # I:112: delivery -> refusal -> the tool event whose evidence it cites.
+    for call_id, source_tool in (("a-duplicate", tool_a), ("b-duplicate", tool_b)):
+        refusal = by_seq[deliveries[call_id]["parent"]]
+        assert refusal["kind"] == "refusal"
+        assert refusal["parent"] == source_tool["seq"]
+        assert s.blob_json(pkg, refusal["request_ref"])["tool_call_id"] == call_id
+    b_view = s.blob_json(pkg, deliveries["b"]["request_ref"])
+    b_refusal = by_seq[deliveries["b-duplicate"]["parent"]]
+    assert (
+        s.blob_json(pkg, b_refusal["request_ref"])["duplicate_of_evidence_id"]
+        == b_view["evidence_id"]
+    )
+    assert s.verify_code(pkg, ref.sha256) is None
+
+
+# Recheck P2-2: every refused delivery needs its own refusal event; an old
+# refusal view cannot be reused through the cache branch.
+def test_recheck_p2_2_refused_delivery_without_own_refusal_is_identity_mismatch(
+    tmp_path,
+):
+    replies = [
+        loop_reply(tool_calls=[loop_tool_call(call_id)], finish="tool_calls")
+        for call_id in ("one", "two", "three")
+    ] + [report_from_transcript]
+    pkg, ref, log = _record_real_loop(tmp_path, replies, model_requests=4)
+    assert log["result"].execution == "completed"
+    assert s.verify_code(pkg, ref.sha256) is None  # control: untampered
+
+    doc = s.package_json(pkg)
+    refusals = s.events_of(doc, "refusal")
+    assert len(refusals) == 2
+    old_view = s.blob_json(pkg, refusals[0]["response_ref"])
+    # The third delivery reuses the first refusal's view and operation_id.
+    last_delivery = s.events_of(doc, "delivery")[-1]
+    view_bytes = s.canonical_bytes(old_view)
+    s.put_blob(pkg, last_delivery["request_ref"], view_bytes)
+    message = s.blob_json(pkg, last_delivery["response_ref"])
+    assert message["tool_call_id"] == "three"
+    message["content"] = view_bytes.decode()
+    s.put_blob(pkg, last_delivery["response_ref"], s.canonical_bytes(message))
+    last_delivery["hashes"] = {
+        "view_sha256": canonical_view_hash(old_view),
+        "delivery_sha256": s.sha(s.canonical_bytes(message)),
+    }
+    last_delivery["parent"] = None
+    # Keep the next actual model request consistent with the new message.
+    last_model = s.events_of(doc, "model")[-1]
+    body = s.blob_json(pkg, last_model["request_ref"])
+    for item in body["call"]["messages"]:
+        if item.get("role") == "tool" and item.get("tool_call_id") == "three":
+            item["content"] = message["content"]
+    body["body"] = serialized_request(decode(ModelCall, body["call"])).decode()
+    s.put_blob(pkg, last_model["request_ref"], s.canonical_bytes(body))
+    last_model["hashes"] = {
+        "request_body_sha256": s.sha(body["body"].encode()),
+        "messages_sha256": messages_hash(body["call"]["messages"]),
+    }
+    # Drop the second refusal event and renumber seq/parent.
+    removed = refusals[-1]["seq"]
+    doc["events"] = [e for e in doc["events"] if e["seq"] != removed]
+    for seq, event in enumerate(doc["events"]):
+        event["seq"] = seq
+        if event["parent"] is not None and event["parent"] > removed:
+            event["parent"] -= 1
+    sha = s.write_recording(pkg, doc)
+    # I:112-113: two refused deliveries but only one refusal event.
+    assert s.verify_code(pkg, sha) == "IDENTITY_MISMATCH"
+
+
+# Recheck P2-3: product-legal refusals that never query the source
+# (operation.window=None) record completely. This narrows the P2-1 window
+# rule to executed queries; the P2-1 counterexamples above still apply.
+@pytest.mark.parametrize(
+    ("window", "status", "reason"),
+    [
+        pytest.param(
+            {"start": "invalid", "end": "invalid"},
+            "error",
+            "INVALID_PARAMS",
+            id="invalid-window",
+        ),
+        pytest.param(None, "denied", "WINDOW_TOO_LARGE", id="window-too-large"),
+    ],
+)
+def test_recheck_p2_3_unexecuted_tool_refusal_records_completely(
+    tmp_path, window, status, reason
+):
+    executor, transport, _sink, clock = build_tool_executor(
+        registrations=[tool_registration(max_window_seconds=300)]
+    )
+    # Default fixture request: a 10-minute window inside the authorized box,
+    # above the 300 s tool limit.
+    overrides = {} if window is None else {"window": window}
+    tool_request = tool_request_fixture(**overrides)
+    seen: list[Any] = []
+
+    def driver(hooks: Any):
+        model = hooks.model(
+            ScriptedModel(
+                [
+                    loop_reply(
+                        tool_calls=[
+                            loop_tool_call(
+                                "call",
+                                tool_request.tool_name,
+                                json.dumps(tool_request.params),
+                            )
+                        ],
+                        finish="tool_calls",
+                    ),
+                    loop_reply(content="done"),
+                ]
+            )
+        )
+        first = ModelCall(
+            messages=(
+                {"role": "system", "content": s.SYSTEM},
+                {"role": "user", "content": s.QUESTION},
+            ),
+            tools=None,
+            json_mode=False,
+            max_tokens=100,
+            timeout_seconds=30.0,
+        )
+        answer = model.complete(first)
+        result = hooks.tools(executor).execute(tool_request)
+        seen.append(result)
+        message = {
+            "role": "tool",
+            "tool_call_id": "call",
+            "content": s.canonical_bytes(dict(result.model_view)).decode(),
+        }
+        hooks.delivery(result.model_view, message)
+        assistant = {
+            "role": "assistant",
+            "content": answer.content,
+            "reasoning_content": answer.reasoning_content,
+            "tool_calls": [dict(c) for c in answer.tool_calls],
+        }
+        model.complete(replace(first, messages=(*first.messages, assistant, message)))
+        return s.outcome(())
+
+    context = s.context(
+        source_run_id=executor.scope.run_id,
+        started_at=clock.now(),
+        ended_at=clock.now() + timedelta(seconds=10),
+        bindings=(
+            s.binding(
+                tool=tool_request.tool_name,
+                target=tool_request.target_ref,
+                source="prometheus",
+                authorized_window=executor.scope.window.as_json(),
+                default_window=None,
+            ),
+        ),
+    )
+    pkg = tmp_path / "source"
+    ref = record(driver, destination=pkg, context=context)
+    # The product refused before any source query.
+    (result,) = seen
+    assert (result.status, result.reason) == (status, reason)
+    assert result.operation.window is None
+    assert transport.called is False
+    doc = s.package_json(pkg)
+    assert doc["complete"] is True and doc["incomplete_reasons"] == []
+    assert len(s.events_of(doc, "tool")) == 1
+    assert s.verify_code(pkg, ref.sha256) is None

@@ -80,3 +80,15 @@
 
 16. **错误正文截断（Review P2-3）**
     - 原因码名称尚未确定，测试只断言 complete=false、incomplete_reasons 非空，以及 load 加结构核验得到 RECORDING_INCOMPLETE。record 当场抛码（任意固定码）或正常返回都接受。测试没有引用其他测试模块里的私有 opener，而是在本文件内重新实现了一个等价 opener：HTTPError 503，读取正文时抛 IncompleteRead(b'partial')。
+
+## 复验 3 项 P2 补测（2026-10-14，语义由 lead 确定，接口文档待同步）
+
+17. **混合拒绝、逐次 refusal、未执行拒绝的窗口（Recheck P2-1 至 P2-3）**
+    - P2-1 用真实 loop 复现。「B 的 tool 事件和 B 的调用对得上」分三层观察：
+      - 第二个 tool 事件的 request.params 为 `{"expr":"down"}`；
+      - tool_call_id 为 b 的 delivery 的 parent 就是这个 tool 事件；
+      - b-duplicate 的 refusal 的 parent 也指向它，duplicate_of_evidence_id 等于 B 的 evidence_id。
+    - P2-2 的篡改照复验脚本的写法：删掉第二个 refusal，把它的 delivery.parent 改为 null，视图和 operation_id 改为复用第一个拒绝的，消息和后续模型请求的 body、messages hash 都改成自洽，seq 和 parent 重新编号。
+      - delivery_sha256 按「实际消息的 canonical JSON 的 SHA256」重算。这个算法接口没有逐字写明，是从复验脚本推得的。如果实现采用其他算法，这条篡改会先触发 HASH_MISMATCH，那时应改的是测试的篡改方式，不是判定。
+    - P2-3 把上一轮 P2-1 的窗口规则收窄为只适用于「已执行查询、有 operation.window」的结果。operation.window=None 且没有源查询的产品拒绝（INVALID_PARAMS、WINDOW_TOO_LARGE）必须能完整录制。P2-1 的反例保持不变。
+      - 驱动是一次最小的「模型、工具、交付、模型」序列，没有接入真实 loop。工具执行器、注册信息和请求用 `tests/m1_tool_support` 的公开夹具；binding.default_window 为 None。
