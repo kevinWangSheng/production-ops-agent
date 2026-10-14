@@ -1,6 +1,6 @@
 # PR #229（评测 PR-B2）有界真实运行：默认路径与录制路径
 
-- 日期：2026-10-14 20:00–20:10Z；分支 `feature/eval-b2-replay`，代码运行的 commit `59ef641`（运行期间工作区除忽略的 `tmp/` 外没有改动）
+- 日期：2026-10-14 20:00–20:10Z；分支 `feature/eval-b2-replay`，代码运行的 commit `acedfa3`（运行期间工作区除忽略的 `tmp/` 外没有改动；与摘要 `versions.commit` 一致）
 - 类别：有界真实软件环境运行加真实模型调用（`deepseek-flash`）。这不是生产证明，也不是 B2 的独立验收
 - 冻结摘要（ADR-0006）：默认路径 [live-runs/ec6bcb1e-…/summary.json](live-runs/ec6bcb1e-d838-41ce-bfff-ef610b14e596/summary.json)，录制路径 [live-runs/4cf3a8ee-…/summary.json](live-runs/4cf3a8ee-ae47-4184-9de0-6f69d284f95f/summary.json)。原始 ledger 在忽略目录 `tmp/lab-ledgers/eval-b2-live/` 下，录制包在 `tmp/eval/eval-b2-live-4cf3a8ee-…/` 下，都不入库
 - **结论：默认路径通过。录制路径的真实 Run 正常发布结论，但录制被 B2 自己的核验判为不完整（`IDENTITY_MISMATCH`），所以结构回放没有执行。** 原因见下文「录制失败」
