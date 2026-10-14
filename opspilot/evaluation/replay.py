@@ -27,6 +27,8 @@ from opspilot.evaluation.recording import (
     RecordingEvent,
     ToolBinding,
     ToolFacade,
+    _configuration_bytes,
+    _context,
     _read,
     binding_for,
     blob,
@@ -83,11 +85,12 @@ class ReplaySession:
         investigator: ModelClient,
         run_id: str,
     ) -> None:
-        self.context = recording.context
+        self.context = _context(recording.context)
+        self._configuration = _configuration_bytes(self.context)
         self.clock = _ReplayClock(recording.context.ended_at)
         self.capture_http = hooks.http
         self.id_map: dict[str, str] = {}
-        self.error: str | None = None
+        self._error: str | None = None
         self._opened = time.monotonic()
         self._reasoning: set[bytes] = set()
         self._model_name: str | None = None
@@ -140,18 +143,28 @@ class ReplaySession:
                     request["operation_id"]
                 ] = frozen["operation_id"]
             except StorageError:
-                self.error = "REPLAY_MISS"
+                self._error = "REPLAY_MISS"
                 raise StorageError("REPLAY_MISS") from None
         self._hooks.delivery(view, message)
         self._remaining()
 
+    @property
+    def error(self) -> str | None:
+        return self._error
+
     def _remaining(self) -> float:
-        remaining = 7200.0 - (time.monotonic() - self._opened)
-        if remaining <= 0:
-            self.error = "TIMEOUT"
-            raise StorageError("TIMEOUT")
+        try:
+            changed = _configuration_bytes(self.context) != self._configuration
+        except Exception:
+            changed = True
+        if changed and self._error is None:
+            self._error = "IDENTITY_MISMATCH"
         if self.error is not None:
             raise StorageError(self.error)
+        remaining = 7200.0 - (time.monotonic() - self._opened)
+        if remaining <= 0:
+            self._error = "TIMEOUT"
+            raise StorageError("TIMEOUT")
         return remaining
 
 
@@ -174,7 +187,7 @@ class _SessionTools:
         try:
             return self.captured.execute(request)
         except StorageError as exc:
-            self.session.error = exc.code
+            self.session._error = exc.code
             raise
 
 
@@ -214,7 +227,7 @@ class _FrozenTools:
             session._remaining()
             return outcome
         except StorageError as exc:
-            session.error = exc.code
+            session._error = exc.code
             raise
 
 
@@ -239,7 +252,7 @@ class _CurrentModel:
         if session._model_name is None:
             session._model_name = call.model
         elif session._model_name != call.model:
-            session.error = "IDENTITY_MISMATCH"
+            session._error = "IDENTITY_MISMATCH"
             raise StorageError("IDENTITY_MISMATCH")
         # Do not infer or transform source history. Private reasoning can only
         # be echoed from an actual current-Run response, including its pairing.
@@ -251,26 +264,26 @@ class _CurrentModel:
                 "tool_call_id",
                 "reasoning_content",
             }:
-                session.error = "SCHEMA_INVALID"
+                session._error = "SCHEMA_INVALID"
                 raise StorageError("SCHEMA_INVALID")
             if "reasoning_content" in message and (
                 message.get("role") != "assistant"
                 or _protocol_key(message) not in session._reasoning
             ):
-                session.error = "IDENTITY_MISMATCH"
+                session._error = "IDENTITY_MISMATCH"
                 raise StorageError("IDENTITY_MISMATCH")
         if call.timeout_seconds <= 0:
-            session.error = "TIMEOUT"
+            session._error = "TIMEOUT"
             raise StorageError("TIMEOUT")
         timeout = min(call.timeout_seconds, 360.0, remaining)
         opened = time.monotonic()
         reply = self.captured.complete(replace(call, timeout_seconds=timeout))
         if time.monotonic() - opened > timeout:
-            session.error = "TIMEOUT"
+            session._error = "TIMEOUT"
             raise StorageError("TIMEOUT")
         session._remaining()
         if set(reply.raw) - {"id", "usage"}:
-            session.error = "SCHEMA_INVALID"
+            session._error = "SCHEMA_INVALID"
             raise StorageError("SCHEMA_INVALID")
         session._reasoning.add(
             _protocol_key(
@@ -412,7 +425,14 @@ def replay(
         session = ReplaySession(
             source, hooks, investigator, attempt.product_run_id or ""
         )
-        outcome = driver(session)
+        try:
+            outcome = driver(session)
+        except Exception:
+            # A driver cannot assign a classification by raising a fixed code.
+            # Genuine session failures remain sticky and take precedence below.
+            raise StorageError(
+                hooks._storage_error or session.error or "DRIVER_ERROR"
+            ) from None
         session._remaining()  # Sticky miss/timeout survives a driver catching it.
         hooks.finish(source.context.ended_at)
         return outcome
@@ -429,7 +449,7 @@ def replay(
         code = (
             session.error
             if session is not None and session.error is not None
-            else exc.code
+            else "DRIVER_ERROR"
         )
         if code not in {
             "REPLAY_MISS",

@@ -414,6 +414,7 @@ class CaptureHooks:
         self.context = context
         self.events: list[RecordingEvent] = []
         self.reasons: list[str] = []
+        self._storage_error: str | None = None
         self._at = context.started_at
         self._sealed = False
         self._model_parent: int | None = None
@@ -469,12 +470,18 @@ class CaptureHooks:
         digest = sha(raw)
         path = self.destination / "blobs" / digest
         try:
-            _publish(path, raw, media_type)
+            try:
+                _publish(path, raw, media_type)
+            except StorageError as exc:
+                if exc.code != "OUTPUT_EXISTS":
+                    raise
+                if _read(path, limit) != raw:
+                    raise StorageError("HASH_MISMATCH") from None
         except StorageError as exc:
-            if exc.code != "OUTPUT_EXISTS":
-                raise
-            if _read(path, limit) != raw:
-                raise StorageError("HASH_MISMATCH") from None
+            if exc.code == "EVIDENCE_UNAVAILABLE":
+                self._storage_error = exc.code
+                self.reasons.append(exc.code)
+            raise
         return ArtifactRef("blobs/" + digest, digest, len(raw), media_type, "private")
 
     def _begin(
@@ -776,16 +783,37 @@ def _save(
 
 
 def _configuration_bytes(context: RecordingContext) -> bytes:
-    """Detach the configuration baseline from nested mutable DTO mappings."""
-    return canonical_bytes(
-        {
-            "tool_snapshots": context.tool_snapshots,
-            "source_manifest": context.source_manifest,
-            "source_manifest_hash": context.source_manifest_hash,
-            "bindings": context.bindings,
-            "versions": context.versions,
-        }
-    )
+    """Freeze every context field except the three explicit evolving slots."""
+    value = encode(context)
+    del value["input_refs"], value["ended_at"]
+    source = value["initial_state"].get("replay_source")
+    if isinstance(source, dict) and "id_map" in source:
+        source["id_map"] = None
+    return canonical_bytes(value)
+
+
+def _restore_incomplete(destination: Path) -> None:
+    """Undo an unsuccessful marker removal; do not publish a success."""
+    try:
+        _publish(destination / "INCOMPLETE", b"RECORDING_INCOMPLETE", "text/plain")
+    except StorageError as exc:
+        if exc.code == "OUTPUT_EXISTS":
+            return
+    else:
+        return
+    # If the marker cannot be restored, remove the metadata instead. Even a
+    # failure after marker publication/close must never expose a complete DTO.
+    try:
+        parent, name = _parent(destination / "recording.json")
+    except StorageError:
+        return
+    try:
+        os.unlink(name, dir_fd=parent)
+        os.fsync(parent)
+    except (OSError, ValueError):
+        pass
+    finally:
+        _close(parent)
 
 
 def record(
@@ -795,12 +823,12 @@ def record(
     context: RecordingContext,
 ) -> ArtifactRef:
     context = _context(context)
+    context = replace(
+        context, source_versions=context.source_versions or context.versions
+    )
     configuration = _configuration_bytes(context)
     _create(destination, context)
-    hooks = CaptureHooks(
-        destination,
-        replace(context, source_versions=context.source_versions or context.versions),
-    )
+    hooks = CaptureHooks(destination, context)
     outcome: IncidentOutcome | None = None
     failure: str | None = None
     try:
@@ -845,6 +873,9 @@ def record(
             else "RECORDING_INCOMPLETE"
         )
         hooks.reasons.append(failure)
+    if hooks._storage_error is not None:
+        failure = hooks._storage_error
+        hooks.reasons.append(failure)
     try:
         configuration_changed = _configuration_bytes(hooks.context) != configuration
     except Exception:
@@ -871,6 +902,7 @@ def record(
         if not _close(parent):
             failure = "EVIDENCE_UNAVAILABLE"
     if failure is not None:
+        _restore_incomplete(destination)
         raise StorageError(failure) from None
     return ref
 
