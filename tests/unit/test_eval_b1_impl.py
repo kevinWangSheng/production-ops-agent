@@ -498,14 +498,15 @@ def test_complete_round_baseline_and_cached_aggregate(tmp_path):
     path = tmp_path / "round.json"
     write_round(path, rnd, resolve=resolver(tmp_path))
     result = load_round(path, resolve=resolver(tmp_path))
-    assert (
-        result.baseline_complete
-        and result.rows[0].passed == result.rows[0].attempted == 1
-    )
+    assert not result.baseline_complete
+    assert result.incomplete_reasons == ("BASELINE_LAYOUT_MISMATCH",)
+    assert result.rows[0].passed == result.rows[0].attempted == 1
     baseline = tmp_path / "baseline.md"
     write_baseline(path, resolve=resolver(tmp_path), destination=baseline)
     text = baseline.read_text()
     assert "1/1" in text and "100.00%" in text and "置信不足" in text
+    assert "回放1次、live0次" in text and "回放5次、live2次" not in text
+    assert "baseline_complete：false" in text
     original = baseline.read_bytes()
     with pytest.raises(StorageError, match="^OUTPUT_EXISTS$"):
         write_baseline(path, resolve=resolver(tmp_path), destination=baseline)
@@ -869,3 +870,144 @@ def test_cleanup_failure_is_normalized(tmp_path, monkeypatch, cleanup):
     assert caught.value.__cause__ is None and caught.value.__context__ is None
     assert not hasattr(caught.value, "filename")
     assert path.exists()
+
+
+def d1_slots():
+    return tuple(
+        PlannedSlot(spec.scenario_id, spec.version, mode, repetition)
+        for directory in sorted((ROOT / "evals/scenarios").iterdir())
+        if directory.is_dir()
+        for spec, _answer in (load_scenario(directory),)
+        for mode, repetitions in (("replay", 5), ("live", 2))
+        for repetition in range(1, repetitions + 1)
+    )
+
+
+def write_layout_round(tmp_path, planned):
+    base = capture()
+    summaries, journals, evaluations = {}, [], []
+    for index, planned_slot in enumerate(planned):
+        directory = ROOT / "evals/scenarios" / planned_slot.scenario_id
+        if directory.is_dir():
+            spec, answer = load_scenario(directory)
+        else:
+            spec = replace(
+                base.spec,
+                scenario_id=planned_slot.scenario_id,
+                incident=replace(
+                    base.spec.incident, scenario_id=planned_slot.scenario_id
+                ),
+            )
+            answer = replace(base.answer, scenario_id=planned_slot.scenario_id)
+        aid, product_id, trace_id = (
+            f"layout-{index}",
+            f"product-{index}",
+            f"trace-{index}",
+        )
+        attempt = replace(
+            base.attempt,
+            attempt_id=aid,
+            scenario_id=spec.scenario_id,
+            scenario_version=planned_slot.scenario_version,
+            mode=planned_slot.mode,
+            repetition=planned_slot.repetition,
+            product_run_id=product_id,
+        )
+        trace = replace(
+            base.traces[0],
+            attempt_id=aid,
+            evaluation_id=aid,
+            entry=replace(
+                base.traces[0].entry,
+                run_id=trace_id,
+                expected_run_id=trace_id,
+                product_run_id=product_id,
+            ),
+        )
+        cap = replace(
+            base,
+            spec=spec,
+            answer=answer,
+            attempt=attempt,
+            traces=(trace,),
+            outcome=replace(base.outcome, scenario_id=spec.scenario_id),
+        )
+        journals.append(
+            write_attempt(
+                tmp_path / f"journal-{index}.json",
+                AttemptJournal(attempt, spec, answer),
+            )
+        )
+        summaries[aid] = write_summary(tmp_path / f"summary-{index}.json", cap)
+        evaluations.append(score(cap))
+    c = calibration_capture()
+    cr = write_calibration(tmp_path / "calibration.json", c)
+    rc = RoundCapture(base.manifest, planned, tuple(journals), summaries, cr)
+    path = tmp_path / "round.json"
+    write_round(path, rc, resolve=resolver(tmp_path))
+    calibration = calibrate(
+        c.labels,
+        c.verdicts,
+        judge_config_hash=c.judge_config_hash,
+        calibration_pack_hash=c.calibration_pack_hash,
+    )
+    raw_aggregate = aggregate(base.manifest, planned, evaluations, calibration)
+    assert raw_aggregate.baseline_complete
+    assert json.loads(path.read_bytes())["aggregate"] == wire(raw_aggregate)
+    return path
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "exact",
+        "missing_replay",
+        "missing_live",
+        "extra_replay",
+        "extra_scenario",
+        "structural",
+    ],
+)
+def test_d1_layout_completion_gate_and_actual_plan_note(tmp_path, mutation):
+    planned = d1_slots()
+    assert len(planned) == 42 and len({s.scenario_id for s in planned}) == 6
+    if mutation == "missing_replay":
+        planned = planned[1:]
+    elif mutation == "missing_live":
+        planned = tuple(s for i, s in enumerate(planned) if i != 5)
+    elif mutation == "extra_replay":
+        planned += (replace(planned[0], repetition=6),)
+    elif mutation == "extra_scenario":
+        planned += (replace(planned[0], scenario_id="outside-d1"),)
+    elif mutation == "structural":
+        planned += (replace(planned[0], mode="structural"),)
+    path = write_layout_round(tmp_path, planned)
+    frozen = path.read_bytes()
+    result = load_round(path, resolve=resolver(tmp_path))
+    assert result.baseline_complete is (mutation == "exact")
+    assert result.incomplete_reasons == (
+        () if mutation == "exact" else ("BASELINE_LAYOUT_MISMATCH",)
+    )
+    baseline = tmp_path / "baseline.md"
+    write_baseline(path, resolve=resolver(tmp_path), destination=baseline)
+    text = baseline.read_text()
+    replay = sum(s.mode == "replay" for s in planned)
+    live = sum(s.mode == "live" for s in planned)
+    structural = sum(s.mode == "structural" for s in planned)
+    assert f"回放{replay}次、live{live}次、structural{structural}次" in text
+    assert f"baseline_complete：{str(result.baseline_complete).lower()}" in text
+    assert ("BASELINE_LAYOUT_MISMATCH" in text) is (mutation != "exact")
+    assert path.read_bytes() == frozen
+
+
+def test_layout_mismatch_preserves_existing_reasons(tmp_path):
+    _, rnd = round_capture(tmp_path, summary=False)
+    path = tmp_path / "unknown.json"
+    write_round(path, rnd, resolve=resolver(tmp_path))
+    before = json.loads(path.read_bytes())["aggregate"]
+    result = load_round(path, resolve=resolver(tmp_path))
+    assert result.incomplete_reasons == (
+        *before["incomplete_reasons"],
+        "BASELINE_LAYOUT_MISMATCH",
+    )
+    assert result.rows[0].attempted == 1 and result.rows[0].failed == 1

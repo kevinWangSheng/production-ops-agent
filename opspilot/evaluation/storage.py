@@ -7,6 +7,7 @@ import os
 import re
 import secrets
 import stat
+from collections import Counter
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from datetime import datetime
@@ -33,10 +34,12 @@ from opspilot.evaluation.model import (
     JudgeResult,
     ReportCapture,
     RunEvaluation,
+    ScenarioError,
     ScenarioSpec,
     TraceEntry,
     Window,
     canonical_view_hash,
+    load_scenarios,
 )
 from opspilot.evaluation.rounds import (
     Aggregate,
@@ -690,7 +693,32 @@ def load_round(path: Path, *, resolve: Resolver) -> Aggregate:
         raise StorageError("HASH_MISMATCH")
     if stored != result:
         raise StorageError("DERIVED_RESULT_MISMATCH")
-    return result
+    return _baseline_layout(result)
+
+
+def _baseline_layout(result: Aggregate) -> Aggregate:
+    """Apply the B1 completion policy after validating the PR-A cache."""
+    root = Path(__file__).resolve().parents[2] / "evals" / "scenarios"
+    try:
+        scenarios = load_scenarios(root)
+    except (OSError, ScenarioError):
+        scenarios = ()
+    scenario_ids = {spec.scenario_id for spec, _answer in scenarios}
+    expected = {
+        (scenario_id, mode): count
+        for scenario_id in scenario_ids
+        for mode, count in (("replay", 5), ("live", 2))
+    }
+    actual: Counter[tuple[str, str]] = Counter()
+    for row in result.rows:
+        actual[row.scenario_id, row.mode] += row.planned
+    if len(scenarios) == len(scenario_ids) == 6 and actual == expected:
+        return result
+    return replace(
+        result,
+        baseline_complete=False,
+        incomplete_reasons=(*result.incomplete_reasons, "BASELINE_LAYOUT_MISMATCH"),
+    )
 
 
 def read_legacy_summary(path: Path) -> LegacySummary:

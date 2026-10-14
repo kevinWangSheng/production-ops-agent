@@ -92,7 +92,9 @@ StorageError(ValueError) 的 `.code` 与 str 都为以下固定码，错误正�
 
 ## 基线表与调整理由
 
-write_baseline **重新 load_round**，生成 UTF-8 Markdown 表并独占原子写入：每scenario/version/mode列 planned、attempted、not_started、passed/attempted、failed、质量率、replay_miss/attempted、miss率、失败分类；零分母率为 `null`，structural质量率为 `null`，miss率只为replay列出。replay_miss沿PR-A计失败分母；注明「D5：回放5次、live2次；样本量有限，置信不足」，以及baseline_complete与incomplete_reasons，不把低成功率当基线未完成。
+B1完成门槛：load_round先按PR-A重算并逐项核对缓存（write_round仍冻结PR-A缓存，旧件只读），再要求aggregate.baseline_complete为真且按scenario_id/mode累计的计划恰好为evals/scenarios中D1的6个场景、每个5个replay和2个live，无额外场景/模式槽位；布局不满足（或场景来源不可读）时返回baseline_complete=False，并在原原因末尾加BASELINE_LAYOUT_MISMATCH。write_baseline直接使用此返回值，样本量说明按实际计划合计生成，分场景/版本数量见表planned列；理由：机器人 P1，T:46 固定槽位。
+
+write_baseline **重新 load_round**，生成 UTF-8 Markdown 表并独占原子写入：每scenario/version/mode列 planned、attempted、not_started、passed/attempted、failed、质量率、replay_miss/attempted、miss率、失败分类；零分母率为 `null`，structural质量率为 `null`，miss率只为replay列出。replay_miss沿PR-A计失败分母；注明按实际计划合计生成的「D5：实际计划（合计）：回放N次、liveM次、structuralK次；样本量有限，置信不足」，以及baseline_complete与incomplete_reasons，不把低成功率当基线未完成。
 
 最小调整：增加 write_attempt/write_calibration/write_round 与 DTO envelope，理由是预审只有reader签名，测试/驱动需要可复现的冻结写入口；load_calibration直接返回重算 CalibrationResult，B3再引入盲标认证类型。summary把P12身份统一放capture.attempt，理由是避免重复身份产生两套权威；trace.entries 保持P13字段路径，capture.traces供evaluate原始输入使用，两者逐项比较；旧trace转换仅用于展示。原始交付存ref并保存对照DTO，理由是缺外置证据时明确fail-closed；writer不自动创建包/录制文件。B1不证明P7盲标、录制完整性或真实生产观察。
 
