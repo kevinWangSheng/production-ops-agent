@@ -244,7 +244,7 @@ def build_release_query_plan(
             assert selector_match is not None
             selector = selector_match.group(1)
             sliced["instances"] = (
-                "count by (service_instance_id, k8s_pod_name, k8s_namespace_name, service_name) "
+                "count by (service_instance_id, k8s_pod_name, k8s_pod_uid, k8s_namespace_name, service_name) "
                 f"(count_over_time({selector}[{w}s]))"
             )
             for kind, expr in sliced.items():

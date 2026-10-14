@@ -1164,6 +1164,7 @@ def test_impl_instances_plan_preserves_span_binding_labels(harness):
         assert {label.strip() for label in grouping.group(1).split(",")} == {
             "service_instance_id",
             "k8s_pod_name",
+            "k8s_pod_uid",
             "k8s_namespace_name",
             "service_name",
         }
@@ -1265,3 +1266,205 @@ def test_impl_replay_rejects_tampered_healthy_ending_binding(harness, field):
     assert not replay.consistent
     assert replay.verdict == "unknown"
     assert "ENDING_MISMATCH" in replay.integrity
+
+
+@pytest.mark.parametrize("pod_uid", [None, "mapped", "wrong"])
+def test_impl_instances_grouping_keeps_pod_uid_identity(harness, pod_uid):
+    authorization = authorize(harness)
+    context = harness[1].release_context(authorization.session_id)
+    at = context.authorized_at + timedelta(seconds=3)
+    evidence = raw_evidence(context, at)
+    key = "after:request_rate_per_second:instances"
+    query = next(query for query in evidence.queries if query.query_key == key)
+    rows = json.loads(query.raw)["data"]["result"]
+    labels = rows[0]["metric"]
+    if pod_uid is not None:
+        labels["k8s_pod_uid"] = (
+            labels["service_instance_id"] if pod_uid == "mapped" else str(uuid4())
+        )
+    grouping = re.match(r"count by \(([^)]+)\)", query.query)
+    assert grouping is not None
+    kept = {label.strip() for label in grouping.group(1).split(",")}
+    # Prometheus aggregation retains only grouping labels in the response.
+    rows[0]["metric"] = {
+        label: value for label, value in labels.items() if label in kept
+    }
+    evidence = _impl_replace_query_vectors(evidence, {key: rows})
+    evaluation = evaluate_release_sample(context, evidence, decision_at=at)
+    if pod_uid == "wrong":
+        assert evaluation.verdict == "unknown", evaluation
+        assert not evaluation.evidence_sufficient
+        assert "VERSION_INSTANCE_MISMATCH" in evaluation.reason_codes
+    else:
+        assert evaluation.verdict == "healthy", evaluation.reason_codes
+
+
+@pytest.fixture
+def _impl_fresh_budget_database(monkeypatch):
+    import sys
+
+    from psycopg import sql
+    from psycopg.conninfo import make_conninfo
+
+    from opspilot import schema
+
+    name = "opspilot_budget_guard_" + uuid4().hex[:12]
+    dsn = make_conninfo(DSN, dbname=name)
+    with psycopg.connect(DSN, autocommit=True) as admin:
+        admin.execute(
+            sql.SQL("CREATE DATABASE {} TEMPLATE template0").format(
+                sql.Identifier(name)
+            )
+        )
+        try:
+            schema.upgrade_head(dsn)
+            monkeypatch.setattr(sys.modules[__name__], "DSN", dsn)
+            yield dsn
+        finally:
+            admin.execute(
+                sql.SQL("DROP DATABASE {} WITH (FORCE)").format(sql.Identifier(name))
+            )
+
+
+def _impl_prepare_last_budget_sample(h):
+    authorization = authorize(h)
+    context = h[1].release_context(authorization.session_id)
+    for _ in range(context.release.max_samples - 1):
+        lease = claim(h, authorization.session_id)
+        receipt = h[1].submit_release_sample(
+            lease, raw_evidence(context, h[1].current_time(), missing=True)
+        )
+        assert receipt.accepted and receipt.release_status == "observing"
+    lease = claim(h, authorization.session_id)
+    return context, lease, raw_evidence(context, h[1].current_time(), missing=True)
+
+
+def test_impl_unknown_budget_requires_session_to_end(
+    _impl_fresh_budget_database, request, monkeypatch
+):
+    from opspilot.observation import release_samples
+
+    h = request.getfixturevalue("harness")
+    _, lease, evidence = _impl_prepare_last_budget_sample(h)
+    original = release_samples.end_release_session
+
+    def leave_session_authorized(conn, *args, **kwargs):
+        identity = conn.execute(
+            "SELECT pg_has_role(current_user,'opspilot_observer','MEMBER') AS observer, current_user<>(SELECT pg_get_userbyid(relowner) FROM pg_class WHERE oid='opspilot_release_observations'::regclass) AS non_owner"
+        ).fetchone()
+        assert identity["observer"] and identity["non_owner"]
+
+        class KeepSession:
+            def execute(self, query, parameters=None):
+                if query.startswith("UPDATE opspilot_observation_sessions SET state="):
+                    return None
+                return conn.execute(query, parameters)
+
+        return original(KeepSession(), *args, **kwargs)
+
+    monkeypatch.setattr(
+        release_samples, "end_release_session", leave_session_authorized
+    )
+    with pytest.raises(PersistenceError, match="INTEGRITY_REFUSED") as error:
+        h[1].submit_release_sample(lease, evidence)
+    assert isinstance(error.value.__cause__, psycopg.errors.InsufficientPrivilege)
+    assert error.value.__cause__.sqlstate == "42501"
+    history = h[1].release_history(h[2])
+    assert history["release"].status == "observing"
+    assert history["release"].used_sample_count == lease.sequence - 1
+    assert history["sessions"][0]["state"] == "authorized"
+    assert history["sessions"][0]["active_sample_job_id"] == lease.job_id
+    assert not history["endings"]
+
+
+def test_impl_unknown_budget_rejects_another_release_sample(
+    _impl_fresh_budget_database, request, monkeypatch
+):
+    from contextlib import contextmanager
+
+    from opspilot.observation import release_samples
+
+    h = request.getfixturevalue("harness")
+    context, lease, evidence = _impl_prepare_last_budget_sample(h)
+    other = h[0].record_release(
+        event=ReleaseEvent(
+            format_version=1,
+            source="guard-foreign",
+            source_release_id=uuid4().hex,
+            released_at=context.release.released_at,
+            before=context.release.before_revision,
+            after=context.release.after_revision,
+            auxiliary=context.release.auxiliary,
+        ),
+        target_id=context.release.target_id,
+        identity=context.release.target_snapshot,
+        health_profile_revision=context.health_profile.revision,
+        health_profile=canonical_content(context.health_profile),
+        min_tracking_seconds=context.release.min_tracking_seconds,
+        actor="tester",
+        raw_body=b"{}",
+    )
+    _, other_lease, other_evidence = _impl_prepare_last_budget_sample(
+        (h[0], h[1], other.observation_id, h[3], h[4])
+    )
+    original = release_samples.end_release_session
+
+    def bind_foreign_sample(conn, *args, **kwargs):
+        identity = conn.execute(
+            "SELECT pg_has_role(current_user,'opspilot_observer','MEMBER') AS observer, current_user<>(SELECT pg_get_userbyid(relowner) FROM pg_class WHERE oid='opspilot_release_observations'::regclass) AS non_owner"
+        ).fetchone()
+        assert identity["observer"] and identity["non_owner"]
+
+        @contextmanager
+        def same_transaction(*, snapshot=False):
+            yield conn
+
+        with monkeypatch.context() as nested:
+            nested.setattr(h[1], "_release_transaction", same_transaction)
+            nested.setattr(release_samples, "end_release_session", original)
+            receipt = h[1].submit_release_sample(other_lease, other_evidence)
+            assert receipt.accepted and receipt.release_status == "unknown"
+        kwargs["sample_id"] = other_evidence.sample_id
+        return original(conn, *args, **kwargs)
+
+    monkeypatch.setattr(release_samples, "end_release_session", bind_foreign_sample)
+    with pytest.raises(PersistenceError, match="INTEGRITY_REFUSED") as error:
+        h[1].submit_release_sample(lease, evidence)
+    assert isinstance(error.value.__cause__, psycopg.errors.InsufficientPrivilege)
+    assert error.value.__cause__.sqlstate == "42501"
+    history = h[1].release_history(h[2])
+    assert history["release"].status == "observing"
+    assert history["sessions"][0]["state"] == "authorized"
+    assert not history["endings"]
+    foreign_history = h[1].release_history(other.observation_id)
+    assert (
+        foreign_history["release"].used_sample_count == context.release.max_samples - 1
+    )
+    assert all(
+        sample["sample_id"] != other_evidence.sample_id
+        for sample in foreign_history["samples"]
+    )
+    h[0].control_release(
+        other.observation_id,
+        action="cancel",
+        actor="cleanup",
+        expected_control_generation=0,
+        idempotency_key="foreign-cleanup",
+        calibrated_policy_revision=None,
+    )
+
+
+def test_impl_unknown_budget_normal_submit_expires_session(
+    _impl_fresh_budget_database, request
+):
+    h = request.getfixturevalue("harness")
+    context, lease, evidence = _impl_prepare_last_budget_sample(h)
+    receipt = h[1].submit_release_sample(lease, evidence)
+    assert receipt.accepted and receipt.release_status == "unknown"
+    assert receipt.session_state == "expired"
+    assert receipt.used_sample_count == context.release.max_samples
+    history = h[1].release_history(h[2])
+    assert history["sessions"][0]["state"] == "expired"
+    assert history["sessions"][0]["active_sample_job_id"] is None
+    assert history["endings"][0]["sample_id"] == evidence.sample_id
+    assert replay_release_history(history).consistent
