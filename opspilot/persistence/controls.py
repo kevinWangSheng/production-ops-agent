@@ -63,6 +63,9 @@ class _ControlOps(_StoreBase):
                     "UPDATE opspilot_runs SET owner=NULL,lease_until=NULL,state='paused' WHERE state IN ('queued','running','waiting_human')"
                 )
             conn.execute(
+                "SELECT observation_id FROM opspilot_release_observations ORDER BY observation_id FOR UPDATE"
+            )
+            conn.execute(
                 "INSERT INTO opspilot_suspension_audit(target_id,suspended,generation,actor) VALUES(NULL,%s,%s,%s)",
                 (suspended, nxt, actor),
             )
@@ -133,6 +136,10 @@ class _ControlOps(_StoreBase):
                     "UPDATE opspilot_runs SET owner=NULL,lease_until=NULL,state='paused' WHERE state IN ('queued','running','waiting_human') AND incident_id IN (SELECT incident_id FROM opspilot_incidents WHERE target_id=%s)",
                     (target_id,),
                 )
+            conn.execute(
+                "SELECT observation_id FROM opspilot_release_observations WHERE target_id=%s ORDER BY observation_id FOR UPDATE",
+                (target_id,),
+            )
             conn.execute(
                 "INSERT INTO opspilot_suspension_audit(target_id,suspended,generation,actor) VALUES(%s,%s,%s,%s)",
                 (target_id, suspended, nxt, actor),

@@ -34,7 +34,10 @@ import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Any, Final, Literal, cast
+from typing import TYPE_CHECKING, Any, Final, Literal, cast
+
+if TYPE_CHECKING:
+    from opspilot.observer.release_replay import ReleaseReplay
 from uuid import UUID, uuid4
 
 from psycopg.types.json import Jsonb
@@ -54,6 +57,8 @@ from opspilot.domain.observation import (
 )
 from opspilot.domain.subjects import INCIDENT_LIFECYCLE, SubjectRef
 from opspilot.observation.bindings import _TargetProfileOps
+from opspilot.observation.release_samples import _ReleaseSampleOps
+from opspilot.observation.release_types import ReleaseSampleLease
 from opspilot.observation.revocation import end_session, revoke_authorized_sessions
 from opspilot.persistence.base import Connection, PersistenceError, _StoreBase
 from opspilot.persistence.events import append_once_in
@@ -1069,7 +1074,7 @@ class SelfHealGrant:
     identity: Mapping[str, str] | None
 
 
-class ObservationStore(_TargetProfileOps):
+class ObservationStore(_ReleaseSampleOps, _TargetProfileOps):
     """Observation sessions, sampling jobs and samples on PostgreSQL."""
 
     # --- authorization (Controller side; step 3 wraps this in the human action)
@@ -1796,12 +1801,13 @@ class ObservationStore(_TargetProfileOps):
 
     # --- sampling (Observer side)
 
-    def claim_due_samples(
+    def _claim_incident_due_samples(
         self,
         owner: UUID,
         *,
         limit: int = 20,
         lease_seconds: int = OBSERVER_LEASE_SECONDS,
+        selected_session_id: UUID | None = None,
     ) -> list[SampleLease]:
         """Lease due sampling jobs.
 
@@ -1838,8 +1844,8 @@ class ObservationStore(_TargetProfileOps):
             # it (issue #86: a separate per-row SKIP LOCKED probe let locked
             # candidates use up the limit) and the claim never waits.
             rows = conn.execute(
-                "SELECT s.session_id,s.incident_id,s.active_sample_job_id,s.active_sample_sequence,s.active_sample_epoch,s.subject_control_generation,s.observation_generation,s.health_profile_revision,s.deadline_at,s.sample_interval_seconds,s.adopted_window_end,s.authorized_global_generation,s.authorized_target_generation,i.lifecycle FROM opspilot_observation_sessions s JOIN opspilot_incidents i ON i.incident_id=s.incident_id WHERE s.state='authorized' AND s.authorized AND s.active_sample_job_id IS NOT NULL AND s.active_sample_due_at<=%s AND (s.active_sample_lease_until IS NULL OR s.active_sample_lease_until<=%s) AND s.deadline_at>%s AND NOT (SELECT global_suspended FROM opspilot_scope_controls WHERE scope_id=1) AND NOT COALESCE((SELECT suspended FROM opspilot_target_suspensions t WHERE t.target_id=s.target_id),false) ORDER BY s.active_sample_due_at,s.session_id LIMIT %s FOR UPDATE OF s SKIP LOCKED FOR NO KEY UPDATE OF i SKIP LOCKED",
-                (now, now, now, limit),
+                "SELECT s.session_id,s.incident_id,s.active_sample_job_id,s.active_sample_sequence,s.active_sample_epoch,s.subject_control_generation,s.observation_generation,s.health_profile_revision,s.deadline_at,s.sample_interval_seconds,s.adopted_window_end,s.authorized_global_generation,s.authorized_target_generation,i.lifecycle FROM opspilot_observation_sessions s JOIN opspilot_incidents i ON i.incident_id=s.incident_id WHERE s.state='authorized' AND s.authorized AND s.active_sample_job_id IS NOT NULL AND s.active_sample_due_at<=%s AND (s.active_sample_lease_until IS NULL OR s.active_sample_lease_until<=%s) AND s.deadline_at>%s AND (%s::uuid IS NULL OR s.session_id=%s) AND NOT (SELECT global_suspended FROM opspilot_scope_controls WHERE scope_id=1) AND NOT COALESCE((SELECT suspended FROM opspilot_target_suspensions t WHERE t.target_id=s.target_id),false) ORDER BY s.active_sample_due_at,s.session_id LIMIT %s FOR UPDATE OF s SKIP LOCKED FOR NO KEY UPDATE OF i SKIP LOCKED",
+                (now, now, now, selected_session_id, selected_session_id, limit),
             ).fetchall()
             for row in rows:
                 scope = self._lock_scope(conn, row["incident_id"], lock=False)
@@ -1885,7 +1891,7 @@ class ObservationStore(_TargetProfileOps):
                 )
         return leases
 
-    def lease_scope_current(self, lease: SampleLease) -> bool:
+    def lease_scope_current(self, lease: SampleLease | ReleaseSampleLease) -> bool:
         """Is the authorization the lease was issued under still in force?
 
         Read-only snapshot, no lock: the Observer asks this before *every*
@@ -1902,6 +1908,8 @@ class ObservationStore(_TargetProfileOps):
         ``suspended`` / ``lease_revoked`` / stale-binding history. A request
         already in flight cannot be recalled (bounded cancellation).
         """
+        if isinstance(lease, ReleaseSampleLease):
+            return self._release_lease_current(lease)
         if not isinstance(lease, SampleLease):
             raise PersistenceError("INVALID_INPUT")
         with self.transaction(snapshot=True) as conn:
@@ -2162,7 +2170,7 @@ class ObservationStore(_TargetProfileOps):
             raise PersistenceError("INVALID_INPUT")
         with self.transaction(snapshot=True) as conn:
             candidates = conn.execute(
-                "SELECT session_id,incident_id FROM opspilot_observation_sessions WHERE state='authorized' AND deadline_at<=clock_timestamp() ORDER BY deadline_at,session_id LIMIT %s",
+                "SELECT session_id,incident_id FROM opspilot_observation_sessions WHERE purpose='incident_recovery' AND state='authorized' AND deadline_at<=clock_timestamp() ORDER BY deadline_at,session_id LIMIT %s",
                 (limit,),
             ).fetchall()
         expired: list[UUID] = []
@@ -2377,6 +2385,16 @@ class ObservationStore(_TargetProfileOps):
         ).fetchone()
         if row is None:
             raise PersistenceError("UNKNOWN_IDENTITY")
+        if row["purpose"] == "release_observation":
+            subject = conn.execute(
+                "SELECT release_observation_id FROM opspilot_observation_sessions WHERE session_id=%s",
+                (session_id,),
+            ).fetchone()
+            assert subject is not None
+            return {
+                **self._release_history_in(conn, subject["release_observation_id"]),
+                "selected_session_id": session_id,
+            }
         incident = self._require_row(
             conn.execute(
                 "SELECT lifecycle FROM opspilot_incidents WHERE incident_id=%s",
@@ -2416,7 +2434,7 @@ class ObservationStore(_TargetProfileOps):
             "endings": endings,
         }
 
-    def replay_session(self, session_id: UUID) -> ReplayReport:
+    def replay_session(self, session_id: UUID) -> ReplayReport | ReleaseReplay:
         """Recompute every stored decision from the stored rows alone.
 
         Reads nothing but the session, its samples and readings; the
@@ -2426,7 +2444,12 @@ class ObservationStore(_TargetProfileOps):
         with what is stored. A mismatch means the stored basis no longer
         reproduces the stored verdict.
         """
-        return fold_history(self.session_history(session_id))
+        history = self.session_history(session_id)
+        if "release" in history:
+            from opspilot.observer.release_replay import replay_release_history
+
+            return replay_release_history(history)
+        return fold_history(history)
 
     # --- helpers
 

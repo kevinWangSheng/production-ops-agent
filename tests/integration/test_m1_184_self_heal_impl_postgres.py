@@ -496,6 +496,9 @@ def test_the_source_check_follows_the_purpose(
             "authorization_source=NULL",
             "authorization_source='manual'",
             "purpose='release_observation'",
+            # P2-08 (F11 PR-2 contract): a release session must bind a release
+            # subject, so an incident-bound session cannot become one
+            "purpose='release_observation',authorization_source=NULL",
         ):
             with pytest.raises(psycopg.errors.CheckViolation):
                 with conn.transaction():
@@ -503,11 +506,6 @@ def test_the_source_check_follows_the_purpose(
                         f"UPDATE opspilot_observation_sessions SET {change} WHERE session_id=%s",
                         (outcome.session_id,),
                     )
-        with conn.transaction(force_rollback=True):
-            conn.execute(
-                "UPDATE opspilot_observation_sessions SET purpose='release_observation',authorization_source=NULL WHERE session_id=%s",
-                (outcome.session_id,),
-            )
 
 
 def test_a_conclusion_without_a_completed_run_at_the_generation_is_not_a_candidate(

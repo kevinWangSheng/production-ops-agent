@@ -52,6 +52,8 @@ def _g(*privileges: str) -> frozenset[str]:
 #: and staleness to the same F13 tables the review actions write; the web
 #: clears Run leases but must never set one.
 TRIGGER_GUARDED: Mapping[str, tuple[str, str]] = {
+    "opspilot_observation_sessions": ("release_session_guard", "opspilot_observer"),
+    "opspilot_release_audit": ("release_audit_guard", "opspilot_observer"),
     "opspilot_f13_audit": ("opspilot_f13_audit_worker_guard", WORKER_ROLE),
     "opspilot_f13_requests": ("opspilot_f13_requests_worker_guard", WORKER_ROLE),
     "opspilot_postmortem_versions": (
@@ -60,7 +62,7 @@ TRIGGER_GUARDED: Mapping[str, tuple[str, str]] = {
     ),
     "opspilot_runs": ("opspilot_runs_web_lease_guard", WEB_ROLE),
     "opspilot_release_observations": (
-        "opspilot_release_observations_initial_guard",
+        "release_update_guard",
         WEB_ROLE,
     ),
 }
@@ -126,22 +128,14 @@ RUNTIME_GRANTS: Mapping[str, Mapping[str, frozenset[str]]] = {
             "INSERT(entry_id,event_id,reason,revision,revoked_by,revoked_by_kind)",
         ),
         "opspilot_observation_endings": _g(
+            "INSERT(anomaly_key,ended_reason,ending_id,incident_id,job_id,job_sequence,lifecycle_after,lifecycle_before,release_observation_id,sample_id,session_id,subject_state_after,subject_state_before,transition)",
             "SELECT",
-            "INSERT(ended_reason,ending_id,incident_id,job_id,job_sequence,lifecycle_after,"
-            "lifecycle_before,sample_id,session_id,transition)",
         ),
         "opspilot_observation_samples": S,
         "opspilot_observation_sessions": _g(
+            "INSERT(active_sample_due_at,active_sample_job_id,active_sample_sequence,authorization_source,authorized_by,authorized_global_generation,authorized_target_generation,deadline_at,health_profile_revision,incident_id,issued_sequence,max_samples,observation_generation,purpose,release_budget_used_at_authorization,release_observation_id,release_policy_revision,sample_interval_seconds,session_id,subject_control_generation,sustained_window_seconds,target,target_id)",
             "SELECT",
-            "INSERT(active_sample_due_at,active_sample_job_id,active_sample_sequence,"
-            "authorization_source,authorized_by,authorized_global_generation,"
-            "authorized_target_generation,deadline_at,health_profile_revision,incident_id,"
-            "issued_sequence,max_samples,observation_generation,purpose,"
-            "sample_interval_seconds,session_id,subject_control_generation,"
-            "sustained_window_seconds,target,target_id)",
-            "UPDATE(active_sample_due_at,active_sample_job_id,active_sample_lease_until,"
-            "active_sample_owner,active_sample_sequence,adopted_count,adopted_sequence,"
-            "adopted_window_end,ended_reason,healthy_since,state,updated_at)",
+            "UPDATE(active_sample_due_at,active_sample_job_id,active_sample_lease_until,active_sample_owner,active_sample_sequence,adopted_count,adopted_sequence,adopted_window_end,ended_reason,healthy_since,state,updated_at)",
         ),
         "opspilot_observation_signal_readings": S,
         "opspilot_postmortem_conclusions": S,
@@ -163,8 +157,9 @@ RUNTIME_GRANTS: Mapping[str, Mapping[str, frozenset[str]]] = {
             "INSERT(actor,audit_text,kind,observation_id,outcome,raw_sha256,reason,received_at,semantic_sha256,sequence,source,source_release_id,truncated)",
         ),
         "opspilot_release_observations": _g(
-            "SELECT",
             "INSERT(after_revision,auxiliary,before_revision,deadline_at,deadline_seconds,ended_at,ended_reason,format_version,health_profile_revision,max_samples,min_tracking_seconds,observation_id,released_at,sample_interval_seconds,semantic_sha256,source,source_release_id,status,sustained_window_seconds,target_id,target_snapshot,timing_policy_version)",
+            "SELECT",
+            "UPDATE(calibrated_policy_content,calibrated_policy_revision,calibrated_policy_sha256,control_generation,ended_at,ended_reason,observation_generation,paused,status,updated_at)",
         ),
         # human controls and the deadline sweep clear owner/lease_until; no
         # epoch, so the web cannot issue a lease of its own (claim() sets it)
@@ -202,6 +197,11 @@ RUNTIME_GRANTS: Mapping[str, Mapping[str, frozenset[str]]] = {
         ),
         "opspilot_tool_charges": NONE,
         "opspilot_web_ledger": _g("SELECT", "INSERT(key,namespace,value)", "DELETE"),
+        "opspilot_release_query_results": S,
+        "opspilot_release_audit": _g(
+            "SELECT",
+            "INSERT(action,actor,audit_id,control_generation_after,control_generation_before,ending_id,expected_control_generation,idempotency_key,observation_generation_after,observation_generation_before,observation_id,outcome,paused_after,paused_before,principal_kind,reason,request_sha256,result,sequence,session_id,status_after,status_before)",
+        ),
     },
     WORKER_ROLE: {
         "alembic_version": S,
@@ -319,5 +319,7 @@ RUNTIME_GRANTS: Mapping[str, Mapping[str, frozenset[str]]] = {
             "UPDATE(seconds)",
         ),
         "opspilot_web_ledger": NONE,
+        "opspilot_release_query_results": NONE,
+        "opspilot_release_audit": NONE,
     },
 }

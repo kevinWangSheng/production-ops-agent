@@ -20,6 +20,7 @@ import json
 import logging
 import threading
 from dataclasses import dataclass, field
+from typing import cast
 from uuid import UUID, uuid4
 
 from pydantic import ValidationError
@@ -90,7 +91,7 @@ class ObserverLoop:
                 break
             if not leases:
                 break
-            lease = leases[0]
+            lease = cast(SampleLease, leases[0])
             try:
                 receipt = self.sample(lease)
             except PersistenceError as exc:

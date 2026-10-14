@@ -438,25 +438,32 @@ def test_the_expected_observer_grants_are_the_migrations():
     spec = importlib.util.spec_from_file_location("m0003", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    spec15 = importlib.util.spec_from_file_location(
+        "m0015", path.parent / "0015_release_observation_sessions.py"
+    )
+    m15 = importlib.util.module_from_spec(spec15)
+    spec15.loader.exec_module(m15)
     assert OBSERVER_GRANTS["opspilot_incidents"]["SELECT"] == tuple(
         module.OBSERVER_INCIDENT_COLUMNS
     )
     assert OBSERVER_GRANTS["opspilot_observation_sessions"]["UPDATE"] == tuple(
         module.OBSERVER_SESSION_COLUMNS
-    )
+    ) + ("tracking_since", "tracking_until")
     source = path.read_text()
     samples = re.search(r"GRANT INSERT \(([^)]*)\) ON \{samples\}", source).group(1)
     endings = re.search(r"GRANT INSERT \(([^)]*)\) ON \{endings\}", source).group(1)
     assert OBSERVER_GRANTS["opspilot_observation_samples"]["INSERT"] == tuple(
         samples.split(",")
-    )
+    ) + tuple(m15.SAMPLE_INSERT.split(","))
     later = (path.parent / "0007_ending_job_identity.py").read_text()
     job_columns = re.search(
         r"GRANT INSERT \(([^)]*)\) ON opspilot_observation_endings", later
     ).group(1)
     assert OBSERVER_GRANTS["opspilot_observation_endings"]["INSERT"] == tuple(
         endings.split(",")
-    ) + tuple(name.strip() for name in job_columns.split(","))
+    ) + tuple(name.strip() for name in job_columns.split(",")) + tuple(
+        m15.ENDING_INSERT.split(",")
+    )
     assert "GRANT UPDATE (lifecycle) ON opspilot_incidents" in source
 
 
