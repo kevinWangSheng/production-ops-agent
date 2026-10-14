@@ -17,7 +17,7 @@ judge_once(request: JudgeInput, *, config: JudgeConfig,
 
 只接受 `ZAI_API_KEY/ZAI_BASE_URL/OPSPILOT_JUDGE_MODEL/OPENAI_API_KEY/OPENAI_BASE_URL/OPENAI_JUDGE_MODEL/OPENAI_JUDGE_RESPONSE_MODEL/DEEPSEEK_API_KEY/DEEPSEEK_BASE_URL`。文件必须绝对路径、当前用户拥有、普通文件、无符号链接、精确0600、≤16384字节；先用 O_NOFOLLOW 打开并 fstat，再读。空行/注释忽略，字面 KEY=VALUE，可成对引号，无执行/插值；重复/未知键拒绝。environ 不读取进程环境，只检查白名单键的冲突，不用其补齐文件凭据；无关环境键忽略。错误仅 `JudgeError.code`：CONFIG_ABSOLUTE_PATH_REQUIRED、CONFIG_PRIVATE_REGULAR_FILE_REQUIRED、CONFIG_UNREADABLE、CONFIG_SYNTAX、CONFIG_ENV_CONFLICT、CONFIG_INVALID、JUDGE_IDENTITY_MISMATCH。
 
-Z.ai 固定 `https://api.z.ai/api/paas/v4/chat/completions`、请求/响应 `glm-5.3`。DeepSeek 固定 `https://api.deepseek.com/chat/completions`、请求/响应 `deepseek-flash`，只供校准对照。OpenAI 固定 `https://api.openai.com/v1/chat/completions`；必须显式给 OPENAI_JUDGE_MODEL 与 OPENAI_JUDGE_RESPONSE_MODEL，两个值均固定为 `gpt-6.1-sol`，缺失或其他名字拒绝；此值由lead依据Codex CLI采用，官方API可用性待真实校准第一次调用核实，本任务不联网。三家各有 ZaiAdapter/OpenAIAdapter/DeepSeekAdapter，build(config,input) 返回 bytes；不复用调查客户端。固定两条新消息（system规则、user白名单JSON），stream=false，Z.ai/DeepSeek 用 max_tokens，OpenAI 用 max_completion_tokens；无历史、工具或旧评分。响应需 model 匹配固定身份（OpenAI允许`gpt-6.1-sol`或有效日历日期`gpt-6.1-sol-YYYY-MM-DD`，其余为invalid；GLM/DeepSeek仍精确匹配）、单 choices、index=0、assistant、finish_reason=stop、无 tool_calls；只消费 content，私有响应协议不保留。usage 只记录非负整数 prompt/completion/total_tokens，缺值 unknown（None）。
+Z.ai 固定 `https://api.z.ai/api/paas/v4/chat/completions`、请求/响应 `glm-5.3`。DeepSeek 固定 `https://api.deepseek.com/chat/completions`、请求/响应 `deepseek-flash`，只供校准对照。OpenAI 固定 `https://api.openai.com/v1/chat/completions`；必须显式给 OPENAI_JUDGE_MODEL 与 OPENAI_JUDGE_RESPONSE_MODEL，两个值均固定为 `gpt-6.1-sol`，缺失或其他名字拒绝；此值由lead依据Codex CLI采用，官方API可用性待真实校准第一次调用核实，本任务不联网。三家各有 ZaiAdapter/OpenAIAdapter/DeepSeekAdapter，build(config,input) 返回 bytes；不复用调查客户端。固定两条新消息（system规则、user白名单JSON），stream=false，Z.ai/DeepSeek 用 max_tokens，OpenAI 用 max_completion_tokens；无历史、工具或旧评分。响应需 model 匹配固定身份（OpenAI允许`gpt-6.1-sol`或有效日历日期`gpt-6.1-sol-YYYY-MM-DD`，其余为invalid；GLM/DeepSeek仍精确匹配）、单 choices、index=0、assistant、finish_reason=stop、tool_calls/function_call仅容许key缺省或显式null（包括[]在内的任何非null值均invalid）；只消费 content，私有响应协议不保留。usage 只记录非负整数 prompt/completion/total_tokens，缺值 unknown（None）。
 
 `JudgeTransport.send(*, endpoint:str, headers:Mapping[str,str], body:bytes, timeout_seconds:float, max_response_bytes:int) -> JudgeHTTPResponse(status_code:int, chunks:Iterable[bytes])`。必须用给定端点/认证头，零重试、禁重定向；超时覆盖连接及完整响应读取，抛 TimeoutError；其他异常只映射固定码。附 HTTPJudgeTransport 基于仓库已有 httpx2（无新增依赖），分块读且响应2MiB保护，deadline 单调钟。假 transport 可返回多块、抛异常；judge 也独立计字节与检查耗时。生产评测每报告恰一次调用；未校准仍可取得观察，但不能通过。
 
@@ -97,3 +97,8 @@ SelectionRecord(status=`selected|pending_user_decision|no_baseline`,selected_pro
 - 标签语义校验（包括引文、定位、引用与verdict复核）失败一律`CALIBRATION_LABEL_INVALID`；复用P6时捕获其异常，在except外转成标签错误，cause/context均None。标签校验不透传`JUDGE_OUTPUT_INVALID/JUDGE_VERDICT_MISMATCH`等judge输出码；结构、身份及hash错误仍按原定义拒绝。理由：同一复核算法在标注域和judge输出域有不同错误合同。
 - `HASH_MISMATCH`只表示内容与已绑定hash不符（包括冻结文件字节、输入及配置指纹）；不是汇总派生结果错误的别名。来源item_id/input_hash/repetition身份不符仍为`IDENTITY_MISMATCH`。
 - 从逐次原始记录及冻结标签重建的observations、计数或selection，与`calibration.json`缓存不一致一律`DERIVED_RESULT_MISMATCH`。把另一轮成功observations/selection换入失败汇总、保留180份来源文件不动，仍拒绝认证，报该码；不改P6/P7/D16计算或源件权威。理由：修正r3错误码表述，保持第80行明文错误域。
+
+
+## r5：PR #232 工具调用字段裁决（2026-10-14，lead裁决）
+
+assistant响应的`tool_calls`、`function_call`等工具调用字段按存在性与null校验：key不存在或值为null视为无工具调用；key存在且值非null一律invalid/JUDGE_OUTPUT_INVALID，包括空数组[]、非空数组/对象及其他假值，不采用真值判断。原因：部分OpenAI兼容端点在无工具调用时显式返回null，拒绝null可能使所有正常响应及校准失败。理由：PR #232 机器人 P2；null 读法待真实调用核实。首次真实调用须核实该端点行为，本次仅用假transport验证。

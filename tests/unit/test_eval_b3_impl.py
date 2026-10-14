@@ -1297,3 +1297,31 @@ def test_label_semantic_errors_use_calibration_domain_code(tmp_path, pack, flaw)
         freeze_label_pack(tmp_path / "bad-labels", bad)
     assert caught.value.__cause__ is None and caught.value.__context__ is None
     assert not (tmp_path / "bad-labels").exists()
+
+
+@pytest.mark.parametrize("field", ["tool_calls", "function_call"])
+@pytest.mark.parametrize("shape", ["empty", "null", "nonempty"])
+def test_pr232_tool_fields_require_absent_or_null(field, shape):
+    request, diagnoses, verdict = make_input()
+    config = configs()["zai"]
+    response = json.loads(completion(config, diagnoses, verdict))
+    if shape == "empty":
+        value = []
+    elif shape == "null":
+        value = None
+    elif field == "function_call":
+        value = {"name": "forbidden", "arguments": "{}"}
+    else:
+        value = [{"id": "forbidden", "type": "function"}]
+    response["choices"][0]["message"][field] = value
+    observation, transport = invoke(
+        request, diagnoses, verdict, response=canonical_bytes(response)
+    )
+    assert len(transport.calls) == 1
+    if shape == "null":
+        assert observation.valid and observation.result.status == "ok"
+        assert observation.recomputed_verdict is True
+    else:
+        assert observation.result.status == "invalid"
+        assert not observation.valid and not observation.passed
+        assert observation.error_code == "JUDGE_OUTPUT_INVALID"

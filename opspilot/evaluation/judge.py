@@ -507,7 +507,9 @@ def _output(
         type(message) is not dict
         or message.get("role") != "assistant"
         or type(message.get("content")) is not str
-        or message.get("tool_calls")
+        or any(
+            message.get(field) is not None for field in ("tool_calls", "function_call")
+        )
     ):
         raise JudgeError("JUDGE_OUTPUT_INVALID")
     content = exact(
