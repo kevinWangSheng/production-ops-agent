@@ -1,0 +1,36 @@
+{
+  "scenario_id": "eval-payment-failure-2",
+  "version": "1",
+  "expected_output": [
+    "The report identifies failing payment Charge calls (checkout's oteldemo.PaymentService/Charge RPC returning errors) as the cause of the checkout errors, citing the error spans it observed."
+  ],
+  "injected": {
+    "service": "payment",
+    "service_aliases": [
+      "paymentservice",
+      "payment-service"
+    ],
+    "operation": "Charge",
+    "operation_aliases": [
+      "oteldemo.PaymentService/Charge",
+      "PaymentService/Charge",
+      "grpc.oteldemo.PaymentService/Charge"
+    ],
+    "flag": "paymentFailure",
+    "variant": "100%"
+  },
+  "signature": {
+    "rule_id": "payment-charge-error-span-v1",
+    "any_of": [
+      {
+        "service": "payment",
+        "operation": "grpc.oteldemo.PaymentService/Charge"
+      },
+      {
+        "service": "checkout",
+        "operation": "oteldemo.PaymentService/Charge"
+      }
+    ],
+    "min_matches": 1
+  }
+}
