@@ -24,6 +24,7 @@ from opspilot.evaluation.codec import (
     validated,
 )
 from opspilot.evaluation.judge import (
+    OBSERVATION_ERROR_CODES,
     JudgeConfig,
     JudgeError,
     JudgeInput,
@@ -33,6 +34,7 @@ from opspilot.evaluation.judge import (
     check_diagnoses,
     judge_config_hash,
     judge_once,
+    response_identity_matches,
     safe_input,
 )
 from opspilot.evaluation.model import JudgedDiagnosis
@@ -136,6 +138,7 @@ class VerifiedCalibration:
     # Proof is rechecked at use, so replacing a dataclass field cannot forge trust.
     _proof: bytes = field(repr=False)
     _pack: LabelPack = field(repr=False)
+    _directory: Path = field(repr=False)
 
 
 def _validated_pack(pack: LabelPack) -> LabelPack:
@@ -224,7 +227,10 @@ def final_labels(pack: LabelPack) -> Mapping[str, BlindLabel]:
             or not first.model_identity.strip()
             or not second.model_identity.strip()
             or any(
-                a.model_identity.strip().casefold() in {"glm-5.3", "deepseek-flash"}
+                any(
+                    response_identity_matches(p, a.model_identity.strip().casefold())
+                    for p in ("zai", "openai", "deepseek")
+                )
                 for a in pack.annotations
             )
         ):
@@ -340,7 +346,7 @@ def _check_directory(path: Path) -> None:
     raise JudgeError("EVIDENCE_UNAVAILABLE")
 
 
-def _calibration_bytes(path: Path) -> bytes:
+def _calibration_source(path: Path) -> tuple[bytes, Path]:
     # Directory is the primary public API; retain the original explicit-file API.
     try:
         mode = path.lstat().st_mode
@@ -348,9 +354,9 @@ def _calibration_bytes(path: Path) -> bytes:
         pass
     else:
         if stat.S_ISDIR(mode):
-            return _read(path / "calibration.json")
+            return _read(path / "calibration.json"), path
         if stat.S_ISREG(mode) and path.name == "calibration.json":
-            return _read(path)
+            return _read(path), path.parent
     raise JudgeError("EVIDENCE_UNAVAILABLE")
 
 
@@ -461,7 +467,9 @@ def _counts(
             if (
                 not observation.valid
                 or observation.error_code is not None
-                or observation.response_model != config.response_model
+                or not response_identity_matches(
+                    config.provider, observation.response_model
+                )
                 or observation.recomputed_verdict is not recomputed
             ):
                 raise JudgeError("DERIVED_RESULT_MISMATCH")
@@ -473,7 +481,7 @@ def _counts(
                 or observation.recomputed_verdict is not None
                 or result.verdict is not None
                 or result.diagnoses
-                or observation.error_code is None
+                or observation.error_code not in OBSERVATION_ERROR_CODES
             ):
                 raise JudgeError("DERIVED_RESULT_MISMATCH")
             problems.add("JUDGE_OBSERVATION_FAILED")
@@ -609,6 +617,7 @@ def _verify(
     raw: bytes,
     pack: LabelPack,
     config: JudgeConfig,
+    directory: Path,
 ) -> tuple[SelectionRecord, CalibrationResult]:
     try:
         labels = final_labels(pack)
@@ -626,18 +635,46 @@ def _verify(
             raise JudgeError("SCHEMA_INVALID")
         if judge_config_hash(configs[config.provider]) != judge_config_hash(config):
             raise JudgeError("HASH_MISMATCH")
-        observations = decode(
+        cached_observations = decode(
             Mapping[str, tuple[CalibrationObservation, ...]], obj["observations"]
         )
-        if set(observations) != _PROVIDERS:
+        if set(cached_observations) != _PROVIDERS:
             raise JudgeError("SCHEMA_INVALID")
+        frozen_pack = load_label_pack(
+            directory / "label-pack", expected_pack_hash=pack_hash
+        )
+        if frozen_pack != pack:
+            raise JudgeError("HASH_MISMATCH")
+        observations: dict[str, tuple[CalibrationObservation, ...]] = {}
+        for provider in ("zai", "openai", "deepseek"):
+            entries: list[CalibrationObservation] = []
+            for item in frozen_pack.items:
+                for repetition in range(
+                    1, (2 if item.split == "validation" else 1) + 1
+                ):
+                    entry = decode(
+                        CalibrationObservation,
+                        parse(
+                            _read(directory / f"{provider}-{len(entries) + 1:03d}.json")
+                        ),
+                    )
+                    if (entry.item_id, entry.input_hash, entry.repetition) != (
+                        item.item_id,
+                        item.input_hash,
+                        repetition,
+                    ):
+                        raise JudgeError("IDENTITY_MISMATCH")
+                    entries.append(entry)
+            observations[provider] = tuple(entries)
+        if cached_observations != observations:
+            raise JudgeError("HASH_MISMATCH")
         results = {
             p: _counts(pack, labels, configs[p], observations[p], pack_hash)
             for p in _PROVIDERS
         }
         selection = _selection(pack_hash, results)
         if decode(SelectionRecord, obj["selection"]) != selection:
-            raise JudgeError("DERIVED_RESULT_MISMATCH")
+            raise JudgeError("HASH_MISMATCH")
         if (
             selection.status != "selected"
             or selection.selected_provider != config.provider
@@ -656,8 +693,9 @@ def load_verified_calibration(
     config: JudgeConfig,
 ) -> VerifiedCalibration:
     _check_config(config)
-    raw = _calibration_bytes(path)
-    selection, result = _verify(raw, pack, config)
+    raw, directory = _calibration_source(path)
+    _check_directory(directory)
+    selection, result = _verify(raw, pack, config, directory)
     return VerifiedCalibration(
         selection.pack_hash,
         judge_config_hash(config),
@@ -665,6 +703,7 @@ def load_verified_calibration(
         result,
         raw,
         _validated_pack(pack),
+        directory,
     )
 
 
@@ -672,7 +711,13 @@ def calibration_matches(calibration: VerifiedCalibration, config: JudgeConfig) -
     try:
         if type(calibration) is not VerifiedCalibration:
             return False
-        selection, result = _verify(calibration._proof, calibration._pack, config)
+        _check_config(config)
+        current = _read(calibration._directory / "calibration.json")
+        if parse(current) != parse(calibration._proof):
+            return False
+        selection, result = _verify(
+            current, calibration._pack, config, calibration._directory
+        )
         return (
             calibration.provider == config.provider
             and calibration.pack_hash == selection.pack_hash

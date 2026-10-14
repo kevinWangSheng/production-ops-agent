@@ -78,8 +78,8 @@ def configs():
         "openai": JudgeConfig(
             "openai",
             "https://api.openai.com/v1/chat/completions",
-            "explicit-sol-test-id",
-            "explicit-sol-test-response",
+            "gpt-6.1-sol",
+            "gpt-6.1-sol",
             SECRET,
         ),
         "deepseek": JudgeConfig(
@@ -863,7 +863,7 @@ def test_calibration_readback_recomputes_results_and_observations(tmp_path, pack
     forged = json.loads(path.read_bytes())
     forged["selection"]["results"]["zai"]["agreement"] = 47
     path.write_bytes(canonical_bytes(forged))
-    with pytest.raises(JudgeError, match="DERIVED_RESULT_MISMATCH"):
+    with pytest.raises(JudgeError, match="HASH_MISMATCH"):
         load_verified_calibration(path, pack=pack, config=configs_["zai"])
     forged = original
     forged["observations"]["zai"][0]["observation"]["result"]["verdict"] = not forged[
@@ -1108,3 +1108,170 @@ def test_config_nul_in_comment_is_rejected(tmp_path):
     with pytest.raises(JudgeError, match="CONFIG_SYNTAX") as caught:
         load_judge_config(path, environ={})
     assert caught.value.__cause__ is None and caught.value.__context__ is None
+
+
+@pytest.mark.parametrize(
+    "key",
+    [
+        "clientSecret",
+        "ClientSecret",
+        "clientApiKey",
+        "ClientAPIKey",
+        "client-api-key-value",
+        "providerReasoningContentBlob",
+        "ProviderEncryptedContentEnvelope",
+    ],
+)
+def test_review_p1_normalized_slots_never_reach_transport(key):
+    request, diagnoses, verdict = make_input()
+    record = request.delivered["e1"]
+    view = {**record.view, key: "SYNTHETIC-PRIVATE-SLOT"}
+    request = replace(
+        request,
+        delivered={
+            "e1": replace(record, view=view, view_sha256=canonical_view_hash(view))
+        },
+    )
+    observation, transport = invoke(request, diagnoses, verdict)
+    assert observation.result.status == "invalid"
+    assert transport.calls == []
+
+
+def test_review_p2_config_read_error_cannot_retain_secret_bytes(tmp_path):
+    path = tmp_path / "bad-encoding-config"
+    marker = b"SYNTHETIC-KEY-IN-ERROR"
+    path.write_bytes(b"ZAI_API_KEY=" + marker + b"\n# \xff")
+    path.chmod(0o600)
+    with pytest.raises(JudgeError, match="CONFIG_UNREADABLE") as caught:
+        load_judge_config(path, environ={})
+    assert caught.value.__cause__ is None and caught.value.__context__ is None
+    assert marker.decode() not in repr(caught.value)
+
+
+def test_review_p2_arbitrary_transport_code_cannot_leak_authentication():
+    def fail(call):
+        raise JudgeError(call["headers"]["Authorization"])
+
+    observation, transport = invoke(response=fail)
+    assert observation.error_code == "JUDGE_TRANSPORT_ERROR"
+    assert SECRET not in repr(observation)
+    assert observation.result.status == "error" and len(transport.calls) == 1
+
+
+def test_review_p2_wrong_openai_model_cannot_certify_d16(tmp_path, pack):
+    candidate_configs = configs()
+    candidate_configs["openai"] = replace(
+        candidate_configs["openai"],
+        request_model="gpt-4o-mini",
+        response_model="gpt-4o-mini",
+    )
+    transports = calibration_transports(pack, candidate_configs)
+    with pytest.raises(JudgeError, match="JUDGE_IDENTITY_MISMATCH"):
+        run_calibration(
+            pack,
+            configs=candidate_configs,
+            transports=transports,
+            destination=tmp_path / "wrong-model",
+        )
+    assert all(not t.calls for t in transports.values())
+
+
+def test_review_p2_summary_cache_cannot_detach_from_error_artifacts(tmp_path, pack):
+    candidate_configs = configs()
+    failed, good = tmp_path / "failed", tmp_path / "good"
+    run_calibration(
+        pack,
+        configs=candidate_configs,
+        transports=calibration_transports(pack, candidate_configs, errors=("zai",)),
+        destination=failed,
+    )
+    run_calibration(
+        pack,
+        configs=candidate_configs,
+        transports=calibration_transports(pack, candidate_configs),
+        destination=good,
+    )
+    originals = {p.name: p.read_bytes() for p in failed.glob("zai-*.json")}
+    summary = json.loads((failed / "calibration.json").read_bytes())
+    other = json.loads((good / "calibration.json").read_bytes())
+    summary["observations"]["zai"] = other["observations"]["zai"]
+    summary["selection"] = other["selection"]
+    (failed / "calibration.json").write_bytes(canonical_bytes(summary))
+    assert all((failed / name).read_bytes() == raw for name, raw in originals.items())
+    with pytest.raises(JudgeError, match="HASH_MISMATCH|IDENTITY_MISMATCH"):
+        load_verified_calibration(failed, pack=pack, config=candidate_configs["zai"])
+
+
+@pytest.mark.parametrize(
+    "model,valid",
+    [
+        ("gpt-6.1-sol", True),
+        ("gpt-6.1-sol-2026-10-14", True),
+        ("gpt-6.1-sol-2026-99-99", False),
+        ("gpt-6.1-sol-preview", False),
+        ("gpt-4o-mini", False),
+        ("gpt-6.1-sol-2026-10-14-extra", False),
+    ],
+)
+def test_openai_response_identity_exact_or_calendar_snapshot(model, valid):
+    request, diagnoses, verdict = make_input()
+    config = configs()["openai"]
+    observation, transport = invoke(
+        request,
+        diagnoses,
+        verdict,
+        config=config,
+        response=completion(config, diagnoses, verdict, model=model),
+    )
+    assert observation.valid is valid
+    assert len(transport.calls) == 1
+    if valid:
+        assert observation.response_model == model
+    else:
+        assert observation.result.status == "invalid"
+        assert observation.error_code == "JUDGE_RESPONSE_IDENTITY_INVALID"
+
+
+def test_verified_calibration_rechecks_live_per_call_artifacts(tmp_path, pack):
+    c = configs()
+    directory = tmp_path / "run"
+    run_calibration(
+        pack,
+        configs=c,
+        transports=calibration_transports(pack, c),
+        destination=directory,
+    )
+    verified = load_verified_calibration(directory, pack=pack, config=c["zai"])
+    assert invoke(calibration=verified)[0].passed
+    original = directory / "zai-001.json"
+    value = json.loads(original.read_bytes())
+    value["input_hash"] = "0" * 64
+    original.write_bytes(canonical_bytes(value))
+    assert not invoke(calibration=verified)[0].result.calibrated
+    with pytest.raises(JudgeError, match="IDENTITY_MISMATCH"):
+        load_verified_calibration(directory, pack=pack, config=c["zai"])
+
+
+@pytest.mark.parametrize(
+    "key",
+    [
+        "CLIENTSECRET",
+        "CLIENTAPIKEY",
+        "CLIENTTOKEN",
+        "Reasoning.Content",
+        "provider_reasoning_content_suffix",
+        "provider-reasoning-content-suffix",
+    ],
+)
+def test_slot_normalization_case_and_separator_variants(key):
+    request, diagnoses, verdict = make_input()
+    record = request.delivered["e1"]
+    view = {**record.view, key: "PRIVATE-SYNTHETIC-VALUE"}
+    request = replace(
+        request,
+        delivered={
+            "e1": replace(record, view=view, view_sha256=canonical_view_hash(view))
+        },
+    )
+    observation, transport = invoke(request, diagnoses, verdict)
+    assert observation.result.status == "invalid" and not transport.calls

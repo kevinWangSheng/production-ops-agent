@@ -10,6 +10,7 @@ import stat
 import time
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
+from datetime import date
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Protocol
 
@@ -67,11 +68,52 @@ _PRIVATE_KEYS = frozenset(
     "password passwd token access_token refresh_token secret credential credentials "
     "cookie bearer".split()
 )
-_PRIVATE_COMPACT = frozenset(k.replace("_", "") for k in _PRIVATE_KEYS)
-_CREDENTIAL_SLOT = re.compile(
-    r"(?:^|[_.-])(?:api[_-]?key|auth|authorization|authentication|token|secret|password|passwd|credential|credentials|cookie|bearer)(?:$|[_.-])",
-    re.I,
+_MODELS = {"zai": "glm-5.3", "openai": "gpt-6.1-sol", "deepseek": "deepseek-flash"}
+OBSERVATION_ERROR_CODES = frozenset(
+    {
+        "CONFIG_INVALID",
+        "JUDGE_IDENTITY_MISMATCH",
+        "SCHEMA_INVALID",
+        "JUDGE_PRIVATE_FIELD",
+        "JUDGE_OUTPUT_INVALID",
+        "JUDGE_VERDICT_MISMATCH",
+        "JUDGE_REQUEST_OVERSIZE",
+        "JUDGE_RESPONSE_OVERSIZE",
+        "JUDGE_TIMEOUT",
+        "JUDGE_HTTP_ERROR",
+        "JUDGE_TRANSPORT_ERROR",
+        "JUDGE_RESPONSE_IDENTITY_INVALID",
+    }
 )
+_SLOT_MARKERS = _PRIVATE_KEYS | {"auth", "authentication", "apikey"}
+_COMPACT_MARKERS = frozenset(
+    k.replace("_", "") for k in _SLOT_MARKERS if k not in {"auth", "authentication"}
+)
+
+
+def _normalize_slot(key: str) -> str:
+    # Preserve word boundaries before case folding, including acronyms (APIKey).
+    key = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1_\2", key)
+    key = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", key)
+    return re.sub(r"[^a-zA-Z0-9]+", "_", key).strip("_").casefold()
+
+
+def response_identity_matches(provider: Provider, value: object) -> bool:
+    if type(value) is not str:
+        return False
+    if value == _MODELS[provider]:
+        return True
+    if provider != "openai" or not re.fullmatch(
+        r"gpt-6\.1-sol-\d{4}-\d{2}-\d{2}", value
+    ):
+        return False
+    try:
+        date.fromisoformat(value[-10:])
+    except ValueError:
+        return False
+    return True
+
+
 _INPUT_KEYS = {
     "question",
     "subject_id",
@@ -145,7 +187,7 @@ def _check_config(config: JudgeConfig) -> None:
         )
     ):
         raise JudgeError("CONFIG_INVALID")
-    identity = {"zai": "glm-5.3", "deepseek": "deepseek-flash"}.get(config.provider)
+    identity = _MODELS[config.provider]
     if identity is not None and (config.request_model, config.response_model) != (
         identity,
         identity,
@@ -176,6 +218,7 @@ def load_judge_config(
     if not path.is_absolute():
         raise JudgeError("CONFIG_ABSOLUTE_PATH_REQUIRED")
     raw: str | None = None
+    read_failed = False
     try:
         fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
         with os.fdopen(fd, encoding="utf-8") as stream:
@@ -189,8 +232,8 @@ def load_judge_config(
                 raise JudgeError("CONFIG_PRIVATE_REGULAR_FILE_REQUIRED")
             raw = stream.read(16385)
     except (OSError, UnicodeError):
-        pass
-    if raw is None:
+        read_failed = True
+    if read_failed or raw is None:
         raise JudgeError("CONFIG_UNREADABLE")
     if "\x00" in raw:
         raise JudgeError("CONFIG_SYNTAX")
@@ -311,8 +354,12 @@ class HTTPJudgeTransport:
 def _reject_private(value: Any) -> None:
     if isinstance(value, Mapping):
         for key, child in value.items():
-            normalized = str(key).casefold().replace("_", "").replace("-", "")
-            if normalized in _PRIVATE_COMPACT or _CREDENTIAL_SLOT.search(str(key)):
+            normalized = _normalize_slot(str(key))
+            compact = normalized.replace("_", "")
+            if any(
+                re.search(r"(?:^|_)" + marker + r"(?:$|_)", normalized)
+                for marker in _SLOT_MARKERS
+            ) or any(marker in compact for marker in _COMPACT_MARKERS):
                 raise JudgeError("JUDGE_PRIVATE_FIELD")
             _reject_private(child)
     elif isinstance(value, (list, tuple)):
@@ -438,8 +485,12 @@ def _output(
     response: bytes, config: JudgeConfig
 ) -> tuple[tuple[JudgedDiagnosis, ...], bool, str, dict[str, int | None]]:
     obj = parse(response)
-    if obj.get("model") != config.response_model:
-        raise JudgeError("JUDGE_IDENTITY_MISMATCH")
+    if not response_identity_matches(config.provider, obj.get("model")):
+        raise JudgeError(
+            "JUDGE_RESPONSE_IDENTITY_INVALID"
+            if config.provider == "openai"
+            else "JUDGE_IDENTITY_MISMATCH"
+        )
     choices = obj.get("choices")
     if type(choices) is not list or len(choices) != 1:
         raise JudgeError("JUDGE_OUTPUT_INVALID")
@@ -478,7 +529,7 @@ def _output(
         if isinstance(usage_obj, Mapping)
         else dict.fromkeys(("prompt_tokens", "completion_tokens", "total_tokens"))
     )
-    return diagnoses, verdict, config.response_model, usage
+    return diagnoses, verdict, obj["model"], usage
 
 
 def judge_once(
@@ -547,10 +598,18 @@ def judge_once(
     except TimeoutError:
         status, code = "timeout", "JUDGE_TIMEOUT"
     except JudgeError as exc:
-        code = exc.code
+        code = (
+            exc.code
+            if type(exc.code) is str and exc.code in OBSERVATION_ERROR_CODES
+            else "JUDGE_TRANSPORT_ERROR"
+        )
         if code.endswith("OVERSIZE"):
             status = "oversize"
-        elif code in ("JUDGE_IDENTITY_MISMATCH", "JUDGE_HTTP_ERROR"):
+        elif code in (
+            "JUDGE_IDENTITY_MISMATCH",
+            "JUDGE_HTTP_ERROR",
+            "JUDGE_TRANSPORT_ERROR",
+        ):
             status = "error"
     except StorageError:
         code = "SCHEMA_INVALID"
