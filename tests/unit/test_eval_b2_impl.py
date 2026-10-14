@@ -490,6 +490,61 @@ def test_cross_run_private_reasoning_rejected_before_client(tmp_path):
     assert result.error == "IDENTITY_MISMATCH" and not model.calls
 
 
+@pytest.mark.parametrize(
+    ("role", "change_content", "expected_error"),
+    [
+        ("user", False, "IDENTITY_MISMATCH"),
+        ("tool", False, "IDENTITY_MISMATCH"),
+        ("assistant", True, "IDENTITY_MISMATCH"),
+        ("assistant", False, None),
+    ],
+)
+def test_current_reasoning_stays_on_matching_assistant_message(
+    tmp_path, role, change_content, expected_error
+):
+    recording = source(tmp_path)
+    model = ScriptedModel(
+        [
+            first_call("new-call", reasoning="synthetic-current-private"),
+            reply(content="done"),
+        ]
+    )
+
+    def drive(session):
+        class RelabeledHistory:
+            def complete(self, request):
+                messages = tuple(
+                    {
+                        **message,
+                        "role": role,
+                        **({"content": "changed"} if change_content else {}),
+                    }
+                    if "reasoning_content" in message
+                    else message
+                    for message in request.messages
+                )
+                return session.model.complete(replace(request, messages=messages))
+
+        return conversation(
+            RelabeledHistory(),
+            session.tools,
+            session.capture_delivery,
+            step="new-step",
+        )
+
+    result = run_replay(recording, tmp_path, model=model, driver=drive)
+    assert result.error == expected_error
+    assert len(model.calls) == (2 if expected_error is None else 1)
+    if expected_error is None:
+        assert model.calls[1].messages[1]["role"] == "assistant"
+        assert (
+            model.calls[1].messages[1]["reasoning_content"]
+            == "synthetic-current-private"
+        )
+    else:
+        assert result.attempt.status == "aborted"
+
+
 def test_frozen_business_clock_real_monotonic_and_timeout_clamp(tmp_path):
     recording = source(tmp_path)
     model = ScriptedModel([reply(content="done")])

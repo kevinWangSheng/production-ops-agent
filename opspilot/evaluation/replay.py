@@ -222,7 +222,7 @@ def _protocol_key(message: Mapping[str, Any]) -> bytes:
     return canonical_bytes(
         {
             name: message.get(name)
-            for name in ("content", "reasoning_content", "tool_calls")
+            for name in ("role", "content", "reasoning_content", "tool_calls")
         }
     )
 
@@ -253,9 +253,9 @@ class _CurrentModel:
             }:
                 session.error = "SCHEMA_INVALID"
                 raise StorageError("SCHEMA_INVALID")
-            if (
-                "reasoning_content" in message
-                and _protocol_key(message) not in session._reasoning
+            if "reasoning_content" in message and (
+                message.get("role") != "assistant"
+                or _protocol_key(message) not in session._reasoning
             ):
                 session.error = "IDENTITY_MISMATCH"
                 raise StorageError("IDENTITY_MISMATCH")
@@ -275,6 +275,7 @@ class _CurrentModel:
         session._reasoning.add(
             _protocol_key(
                 {
+                    "role": "assistant",
                     "content": reply.content,
                     "reasoning_content": reply.reasoning_content,
                     "tool_calls": list(reply.tool_calls),

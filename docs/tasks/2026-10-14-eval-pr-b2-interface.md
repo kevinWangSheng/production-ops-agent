@@ -93,6 +93,8 @@ recording.json 为 canonical JSON：`{schema:'opspilot-replay-1',context:<DTO>,e
 
 实施时收紧：工具 facade 当前只能接受已冻结绑定的请求；未冻结工具/目标（包括无法表示的注册拒绝）拒绝 fixture，不猜测绑定。缓存 delivery 必须来自包内已录工具视图或 initial_state.evidence_views。模型请求消息仅允许产品消息字段，reasoning_content 须匹配本回放已产生的完整 assistant 配对，单 Run model 名称固定；未知私有协议字段拒绝。增加 finish(at) 是为了让 live driver 在调用结束后冻结真实业务钟，不预猜录制结束时间。逐件读 blob，索引只保留引用/hash，不累积所有请求/工具原文。
 
+私有推理配对键包含 role、content、reasoning_content、tool_calls；reasoning_content 仅允许原样回送到本回放当前客户端产生的对应 assistant 消息，挂在 user/tool 等其他角色或不匹配的 assistant 消息上，调用客户端前以 IDENTITY_MISMATCH 拒绝。理由：PR #229 机器人 P2。
+
 格式补齐：context 的 input_refs/source_versions/clock_policy 显式保存原始输入引用、来源版本和固定时钟策略；JSON 中包括默认字段。`CaptureHooks.input(raw: bytes)->ArtifactRef` 保存8 MiB以内原始JSON输入（严格JSON、无凭据/私有协议），driver 应录原始业务输入，禁止含答案/flag的评测封套。synthetic 未给输入时自动冻结 stimulus 的 canonical JSON；非 synthetic 缺原始输入即 incomplete。source_versions 默认取录制 versions，回放另存源版本；新包复制源输入blob并单独记录当前实际模型请求。补齐显式字段的理由是避免原始输入来源与时钟策略只藏在通用 Mapping 中。已知人控终态（paused/cancelled及pause/cancel/resume/follow_up/correct交互）与控制事件同样拒绝；压缩/重试逐物理调用记录，RESPONSE_TOO_LARGE即incomplete。
 
 独立验收分诊澄清（2026-10-14；不改变只读、精确查找、私有协议或完整性合同）：
