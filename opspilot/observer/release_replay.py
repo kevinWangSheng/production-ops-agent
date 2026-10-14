@@ -162,14 +162,21 @@ def _replay_release_history(history: Mapping[str, object]) -> ReleaseReplay:
     )
     # Audit recorded_at is later than decision time in the same transaction;
     # authorization necessarily commits before any sample can be claimed.
-    status: Any = "unknown" if release.ended_reason == "late_delivery" else "pending"
+    late_delivery = release.received_at >= release.deadline_at
+    status: Any = "unknown" if late_delivery else "pending"
+    terminal_reason = "late_delivery" if late_delivery else None
+    terminal_sample: Any = None
+    terminal_audit: Any = None
+    last_event_at = terminal_time_floor = release.received_at
     used = 0
     control_generation = observation_generation = 0
     paused = False
     audit_sequence = 0
     evaluations = []
     ended_samples: dict[UUID, tuple[str, str, UUID]] = {}
-    for _, _, kind, item in events:
+    for event_at, _, kind, item in events:
+        prior_event_at = last_event_at
+        last_event_at = max(last_event_at, event_at)
         if kind == "audit":
             a = item
             if a.get("observation_id") != release.observation_id:
@@ -250,6 +257,12 @@ def _replay_release_history(history: Mapping[str, object]) -> ReleaseReplay:
                 if action == "pause" and paused is not True:
                     issues.add("WATERMARK_MISMATCH")
                 status = expected_status or status
+                if action in ("cancel", "deadline_expired"):
+                    terminal_reason = (
+                        "cancelled" if action == "cancel" else "deadline_expired"
+                    )
+                    terminal_audit = a
+                    terminal_time_floor = prior_event_at
             elif (
                 a["control_generation_after"] != control_generation
                 or a["observation_generation_after"] != observation_generation
@@ -426,6 +439,8 @@ def _replay_release_history(history: Mapping[str, object]) -> ReleaseReplay:
             )
             if terminal:
                 status = terminal
+                terminal_reason = ending_reason
+                terminal_sample = m
                 ended_samples[s["session_id"]] = (
                     terminal,
                     ending_reason or "",
@@ -479,11 +494,12 @@ def _replay_release_history(history: Mapping[str, object]) -> ReleaseReplay:
             s["state"] != "authorized" and len(facts) != 1
         ):
             issues.add("ENDING_MISMATCH")
-    for sid, terminal_sample in ended_samples.items():
+    for sid, expected_terminal_sample in ended_samples.items():
         matches = [
             e
             for e in endings
-            if e["session_id"] == sid and e.get("sample_id") == terminal_sample[2]
+            if e["session_id"] == sid
+            and e.get("sample_id") == expected_terminal_sample[2]
         ]
         if len(matches) != 1:
             issues.add("ENDING_MISMATCH")
@@ -556,6 +572,51 @@ def _replay_release_history(history: Mapping[str, object]) -> ReleaseReplay:
         issues.add("BUDGET_MISMATCH")
     if status != release.status:
         issues.add("STATUS_MISMATCH")
+    if release.ended_reason != terminal_reason:
+        issues.add("STATUS_MISMATCH")
+    if terminal_reason is None:
+        if release.ended_at is not None:
+            issues.add("STATUS_MISMATCH")
+    elif release.ended_at is None:
+        issues.add("ENDING_MISMATCH")
+    elif terminal_sample is not None:
+        if release.ended_at != terminal_sample["decision_at"]:
+            issues.add("ENDING_MISMATCH")
+        terminal_endings = [
+            e for e in endings if e.get("sample_id") == terminal_sample["sample_id"]
+        ]
+        if len(terminal_endings) != 1 or not (
+            release.ended_at <= terminal_endings[0]["recorded_at"] <= release.updated_at
+        ):
+            issues.add("ENDING_MISMATCH")
+    elif terminal_audit is not None:
+        if not (
+            terminal_time_floor
+            <= release.ended_at
+            <= min(terminal_audit["recorded_at"], release.updated_at)
+        ) or (
+            terminal_reason == "deadline_expired"
+            and release.ended_at < release.deadline_at
+        ):
+            issues.add("ENDING_MISMATCH")
+        if terminal_audit.get("ending_id") is not None:
+            terminal_ending = next(
+                (e for e in endings if e["ending_id"] == terminal_audit["ending_id"]),
+                None,
+            )
+            if terminal_ending is None or (
+                terminal_ending["ended_reason"] != terminal_reason
+                or terminal_ending["subject_state_after"] != status
+                or release.ended_at != terminal_ending["recorded_at"]
+                or not release.ended_at
+                <= terminal_ending["recorded_at"]
+                <= min(terminal_audit["recorded_at"], release.updated_at)
+            ):
+                issues.add("ENDING_MISMATCH")
+        elif release.ended_at != terminal_audit["recorded_at"]:
+            issues.add("ENDING_MISMATCH")
+    elif not (late_delivery and release.ended_at == release.received_at):
+        issues.add("ENDING_MISMATCH")
     verdict: Literal["healthy", "degraded", "unknown"] = "unknown"
     if not issues:
         if status == "healthy":

@@ -538,12 +538,13 @@ class _ReleaseCommandOps(_TargetProfileOps):
             fields = "status,paused,control_generation,observation_generation,ended_reason,ended_at,calibrated_policy_revision,calibrated_policy_content,calibrated_policy_sha256".split(
                 ","
             )
-            conn.execute(
-                "UPDATE opspilot_release_observations SET "
-                + ",".join(f"{f}=%s" for f in fields)
-                + ",updated_at=clock_timestamp() WHERE observation_id=%s",
-                [row[f] for f in fields] + [oid],
-            )
+            if action != "cancel":
+                conn.execute(
+                    "UPDATE opspilot_release_observations SET "
+                    + ",".join(f"{f}=%s" for f in fields)
+                    + ",updated_at=clock_timestamp() WHERE observation_id=%s",
+                    [row[f] for f in fields] + [oid],
+                )
         data = {
             "observation_id": str(oid),
             "action": action,
@@ -579,6 +580,26 @@ class _ReleaseCommandOps(_TargetProfileOps):
             ending_id=ending,
             receipt=data,
         )
+        if reason is None and action == "cancel":
+            terminal_time = conn.execute(
+                "SELECT recorded_at FROM opspilot_observation_endings WHERE ending_id=%s"
+                if ending is not None
+                else "SELECT recorded_at FROM opspilot_release_audit WHERE audit_id=%s",
+                (ending if ending is not None else UUID(result["audit_id"]),),
+            ).fetchone()
+            assert terminal_time is not None
+            conn.execute(
+                "UPDATE opspilot_release_observations SET status=%s,paused=%s,control_generation=%s,observation_generation=%s,ended_reason=%s,ended_at=%s,updated_at=clock_timestamp() WHERE observation_id=%s",
+                (
+                    row["status"],
+                    row["paused"],
+                    row["control_generation"],
+                    row["observation_generation"],
+                    row["ended_reason"],
+                    terminal_time["recorded_at"],
+                    oid,
+                ),
+            )
         return ReleaseCommandReceipt.model_validate_json(canonical_json(result))
 
     def _checked_policy(

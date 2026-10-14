@@ -873,6 +873,138 @@ def test_public_claim_shares_limit_and_skips_a_locked_release(harness):
         owner.close()
 
 
+def test_impl_non_owner_cannot_forge_healthy_window_origins(
+    _impl_fresh_budget_database, request
+):
+    h = request.getfixturevalue("harness")
+    authorization = authorize(h)
+    context = h[1].release_context(authorization.session_id)
+    refused = False
+    try:
+        with h[1]._release_transaction() as conn:
+            identity = conn.execute(
+                "SELECT pg_has_role(current_user,'opspilot_observer','MEMBER') AS observer, current_user<>(SELECT pg_get_userbyid(relowner) FROM pg_class WHERE oid='opspilot_observation_sessions'::regclass) AS non_owner"
+            ).fetchone()
+            assert identity["observer"] and identity["non_owner"]
+            conn.execute(
+                "UPDATE opspilot_observation_sessions SET tracking_since=authorized_at,tracking_until=authorized_at,healthy_since=authorized_at WHERE session_id=%s",
+                (authorization.session_id,),
+            )
+    except PersistenceError as error:
+        assert isinstance(error.__cause__, psycopg.errors.InsufficientPrivilege)
+        assert error.__cause__.sqlstate == "42501"
+        refused = True
+    time.sleep(2.05)
+    lease = claim(h, authorization.session_id)
+    receipt = h[1].submit_release_sample(
+        lease,
+        raw_evidence(context, context.authorized_at + timedelta(seconds=2)),
+    )
+    assert receipt.accepted and receipt.release_status == "observing", receipt
+    assert refused, "watermark forgery committed without an adopted sample"
+
+
+def test_impl_watermark_guard_allows_gap_and_unknown_resets(
+    _impl_fresh_budget_database, request
+):
+    h = request.getfixturevalue("harness")
+    authorization = authorize(h)
+    context = h[1].release_context(authorization.session_id)
+    time.sleep(2.05)
+    first_at = context.authorized_at + timedelta(seconds=2)
+    first = h[1].submit_release_sample(
+        claim(h, authorization.session_id), raw_evidence(context, first_at)
+    )
+    assert first.accepted and first.release_status == "observing"
+    time.sleep(2.05)
+    gap_at = context.authorized_at + timedelta(seconds=4, milliseconds=1)
+    for missing in (False, True, False):
+        receipt = h[1].submit_release_sample(
+            claim(h, authorization.session_id),
+            raw_evidence(context, gap_at, missing=missing),
+        )
+        assert receipt.accepted and receipt.release_status == "observing"
+        session = h[1].release_history(h[2])["sessions"][0]
+        if missing:
+            assert session["tracking_since"] is None
+            assert session["tracking_until"] is None
+            assert session["healthy_since"] is None
+        else:
+            assert session["tracking_since"] == gap_at - timedelta(seconds=2)
+            assert session["tracking_until"] == gap_at
+            assert session["healthy_since"] == gap_at
+    time.sleep(1.05)
+    confirmed = h[1].submit_release_sample(
+        claim(h, authorization.session_id),
+        raw_evidence(context, gap_at + timedelta(seconds=1)),
+    )
+    assert confirmed.accepted and confirmed.release_status == "healthy"
+    assert replay_release_history(h[1].release_history(h[2])).consistent
+
+
+@pytest.mark.parametrize("field", ["ended_reason", "ended_at", "ending_time"])
+def test_impl_replay_rejects_terminal_metadata_tampering(harness, field):
+    authorization = authorize(harness)
+    context = harness[1].release_context(authorization.session_id)
+    time.sleep(2.05)
+    first = harness[1].submit_release_sample(
+        claim(harness, authorization.session_id),
+        raw_evidence(context, harness[1].current_time()),
+    )
+    assert first.release_status == "observing"
+    time.sleep(1.05)
+    second = harness[1].submit_release_sample(
+        claim(harness, authorization.session_id),
+        raw_evidence(context, harness[1].current_time()),
+    )
+    assert second.release_status == "healthy"
+    history = harness[1].release_history(harness[2])
+    assert replay_release_history(history).consistent
+    corrupted = copy.deepcopy(history)
+    if field == "ending_time":
+        corrupted["endings"][0]["recorded_at"] += timedelta(days=1)
+    else:
+        value = (
+            "max_samples_exhausted"
+            if field == "ended_reason"
+            else history["release"].ended_at + timedelta(seconds=1)
+        )
+        corrupted["release"] = history["release"].model_copy(update={field: value})
+    replay = replay_release_history(corrupted)
+    assert not replay.consistent, replay
+    assert replay.verdict == "unknown"
+
+
+@pytest.mark.parametrize("authorized", [False, True])
+def test_impl_replay_cancel_time_is_bound_to_frozen_evidence(harness, authorized):
+    if authorized:
+        authorize(harness)
+    time.sleep(0.025)
+    harness[0].control_release(
+        harness[2],
+        action="cancel",
+        actor="tester",
+        expected_control_generation=0,
+        idempotency_key="terminal-time",
+        calibrated_policy_revision=None,
+    )
+    history = harness[1].release_history(harness[2])
+    assert replay_release_history(history).consistent
+    previous = max(
+        [history["release"].received_at]
+        + [audit["recorded_at"] for audit in history["audit"][:-1]]
+    )
+    original = history["release"].ended_at
+    assert original > previous
+    corrupted = copy.deepcopy(history)
+    corrupted["release"] = history["release"].model_copy(
+        update={"ended_at": previous + (original - previous) / 2}
+    )
+    replay = replay_release_history(corrupted)
+    assert not replay.consistent
+    assert replay.verdict == "unknown"
+
+
 def test_catalog_hash_covers_the_original_valid_utc_timestamp_text(harness):
     h = harness
     content = h[3].content.model_dump(mode="json")

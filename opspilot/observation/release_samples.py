@@ -647,7 +647,7 @@ class _ReleaseSampleOps(_StoreBase):
                     },
                     "deadline_at": row["deadline_at"].isoformat(),
                 }
-                audit_release(
+                audit = audit_release(
                     conn,
                     row,
                     after,
@@ -662,9 +662,16 @@ class _ReleaseSampleOps(_StoreBase):
                     ending_id=ending,
                     receipt=data,
                 )
+                terminal_time = conn.execute(
+                    "SELECT recorded_at FROM opspilot_observation_endings WHERE ending_id=%s"
+                    if ending is not None
+                    else "SELECT recorded_at FROM opspilot_release_audit WHERE audit_id=%s",
+                    (ending if ending is not None else UUID(audit["audit_id"]),),
+                ).fetchone()
+                assert terminal_time is not None
                 conn.execute(
                     "UPDATE opspilot_release_observations SET status='unknown',ended_reason='deadline_expired',ended_at=%s,updated_at=clock_timestamp() WHERE observation_id=%s",
-                    (now, row["observation_id"]),
+                    (terminal_time["recorded_at"], row["observation_id"]),
                 )
                 ended.append(row["observation_id"])
         return ended

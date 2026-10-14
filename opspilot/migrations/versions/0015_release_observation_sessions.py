@@ -348,9 +348,23 @@ INCIDENT_EVIDENCE_0015 = "CREATE OR REPLACE FUNCTION opspilot_observer_lifecycle
 
 EXTRA_GUARDS = """
 CREATE FUNCTION opspilot_release_session_end_evidence() RETURNS trigger LANGUAGE plpgsql SET search_path=pg_catalog,pg_temp AS $$ BEGIN
+  IF NEW.purpose='release_observation' AND ROW(NEW.tracking_since,NEW.tracking_until,NEW.healthy_since) IS DISTINCT FROM ROW(OLD.tracking_since,OLD.tracking_until,OLD.healthy_since)
+    AND current_user<>(SELECT pg_get_userbyid(relowner) FROM pg_class WHERE oid=TG_RELID)
+    AND NOT EXISTS(SELECT 1 FROM public.opspilot_observation_samples m
+      WHERE m.xmin=pg_current_xact_id()::xid AND m.session_id=NEW.session_id AND m.purpose=NEW.purpose AND m.subject_kind=NEW.subject_kind AND m.subject_id=NEW.subject_id AND m.disposition='adopted'
+        AND m.subject_control_generation=NEW.subject_control_generation AND m.observation_generation=NEW.observation_generation
+        AND m.current_subject_control_generation=NEW.subject_control_generation AND m.current_subject_observation_generation=NEW.observation_generation
+        AND m.sequence=NEW.adopted_sequence AND m.sequence>OLD.adopted_sequence AND NEW.adopted_count=OLD.adopted_count+1
+        AND m.window_end=NEW.adopted_window_end AND (OLD.adopted_window_end IS NULL OR m.window_end>=OLD.adopted_window_end)
+        AND NEW.tracking_since IS NOT DISTINCT FROM CASE WHEN m.release_evaluation->>'evidence_sufficient'='true' AND m.release_evaluation->>'verdict' IN ('healthy','degraded') THEN CASE WHEN OLD.tracking_until IS NULL OR m.window_start>OLD.tracking_until THEN m.window_start ELSE OLD.tracking_since END ELSE NULL END
+        AND NEW.tracking_until IS NOT DISTINCT FROM CASE WHEN m.release_evaluation->>'evidence_sufficient'='true' AND m.release_evaluation->>'verdict' IN ('healthy','degraded') THEN m.window_end ELSE NULL END
+        AND NEW.healthy_since IS NOT DISTINCT FROM CASE WHEN m.release_evaluation->>'verdict'='healthy' THEN CASE WHEN OLD.tracking_until IS NULL OR m.window_start>OLD.tracking_until OR OLD.healthy_since IS NULL THEN m.window_end ELSE OLD.healthy_since END ELSE NULL END
+        AND (NEW.tracking_since IS NULL OR (NEW.tracking_since>=NEW.authorized_at AND NEW.tracking_since<=m.window_end))
+        AND (NEW.healthy_since IS NULL OR (NEW.healthy_since>=NEW.authorized_at AND NEW.healthy_since<=m.window_end)))
+  THEN RAISE insufficient_privilege USING MESSAGE='release session watermark evidence refused'; END IF;
   IF NEW.purpose='release_observation' AND NEW.state IS DISTINCT FROM OLD.state AND NOT EXISTS(SELECT 1 FROM public.opspilot_observation_endings e WHERE e.session_id=NEW.session_id AND e.purpose=NEW.purpose AND e.subject_id=NEW.subject_id AND e.ended_reason=NEW.ended_reason AND e.xmin=pg_current_xact_id()::xid) THEN RAISE insufficient_privilege USING MESSAGE='release session ending evidence refused'; END IF; RETURN NULL;
 END $$;
-CREATE CONSTRAINT TRIGGER release_session_end_evidence AFTER UPDATE OF state,ended_reason ON opspilot_observation_sessions DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION opspilot_release_session_end_evidence();
+CREATE CONSTRAINT TRIGGER release_session_end_evidence AFTER UPDATE OF state,ended_reason,tracking_since,tracking_until,healthy_since ON opspilot_observation_sessions DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION opspilot_release_session_end_evidence();
 ALTER TABLE opspilot_observation_sessions ADD CONSTRAINT release_session_ended_slot CHECK(purpose='incident_recovery' OR state='authorized' OR (active_sample_job_id IS NULL AND active_sample_owner IS NULL AND active_sample_lease_until IS NULL));
 CREATE FUNCTION opspilot_observation_legacy_update_sync() RETURNS trigger LANGUAGE plpgsql SET search_path=pg_catalog,pg_temp AS $$ BEGIN
   IF NEW.purpose='incident_recovery' THEN
