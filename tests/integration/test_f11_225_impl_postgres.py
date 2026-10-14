@@ -860,3 +860,326 @@ def test_real_pause_ending_cannot_be_relabelled_as_independent_revocation(
     assert not replay.consistent
     assert replay.verdict == "unknown"
     assert "ENDING_MISMATCH" in replay.integrity
+
+
+def test_deadline_ending_with_sample_reference_is_42501(harness):
+    _, observer, oid, _, _ = harness
+    sid = authorize(harness).session_id
+    receipt = observer.submit_release_sample(
+        claim(harness, sid),
+        raw_evidence(observer.release_context(sid), observer.current_time()),
+    )
+    assert receipt.accepted and receipt.ending_id is None
+    expire(oid)
+    with pytest.raises(psycopg.errors.InsufficientPrivilege) as raised:
+        with psycopg.connect(observer.dsn, row_factory=dict_row) as conn:
+            row = release_row(conn, oid)
+            eid = end_release_session(
+                conn,
+                row,
+                session_row(conn, sid),
+                reason="deadline_expired",
+                status_after="unknown",
+                sample_id=receipt.sample_id,
+            )
+            deadline_audit(conn, row, sid=sid, eid=eid)
+            terminal_update(conn, oid)
+    assert raised.value.sqlstate == "42501"
+
+
+def test_deadline_ending_with_anomaly_key_is_already_rejected(harness):
+    _, observer, oid, _, _ = harness
+    sid = authorize(harness).session_id
+    expire(oid)
+    # 0015's immediate endings_anomaly CHECK already enforces this edge.
+    with pytest.raises(psycopg.errors.CheckViolation) as raised:
+        with psycopg.connect(observer.dsn, row_factory=dict_row) as conn:
+            row = release_row(conn, oid)
+            session = session_row(conn, sid)
+            eid = uuid5(oid, "session-ending:" + str(sid))
+            conn.execute(
+                "INSERT INTO opspilot_observation_endings(ending_id,session_id,release_observation_id,ended_reason,transition,subject_state_before,subject_state_after,job_id,job_sequence,anomaly_key) VALUES(%s,%s,%s,'deadline_expired','release_unknown','observing','unknown',%s,%s,%s)",
+                (
+                    eid,
+                    sid,
+                    oid,
+                    session["active_sample_job_id"],
+                    session["active_sample_sequence"],
+                    "foreign:" + str(oid),
+                ),
+            )
+            conn.execute(
+                "UPDATE opspilot_observation_sessions SET state='expired',ended_reason='deadline_expired',active_sample_job_id=NULL,active_sample_sequence=NULL,active_sample_due_at=NULL,active_sample_owner=NULL,active_sample_lease_until=NULL,updated_at=clock_timestamp() WHERE session_id=%s",
+                (sid,),
+            )
+            deadline_audit(conn, row, sid=sid, eid=eid)
+            terminal_update(conn, oid)
+    assert raised.value.sqlstate == "23514"
+
+
+@pytest.mark.parametrize("active_session", [False, True])
+@pytest.mark.parametrize("reason", ["late_delivery", "max_samples_exhausted"])
+def test_deadline_subject_reason_must_match_terminal_evidence(
+    harness, active_session, reason
+):
+    _, observer, oid, _, _ = harness
+    sid = authorize(harness).session_id if active_session else None
+    expire(oid)
+    with pytest.raises(psycopg.errors.InsufficientPrivilege) as raised:
+        with psycopg.connect(observer.dsn, row_factory=dict_row) as conn:
+            row = release_row(conn, oid)
+            eid = (
+                end_release_session(
+                    conn,
+                    row,
+                    session_row(conn, sid),
+                    reason="deadline_expired",
+                    status_after="unknown",
+                )
+                if sid
+                else None
+            )
+            deadline_audit(conn, row, sid=sid, eid=eid)
+            conn.execute(
+                "UPDATE opspilot_release_observations SET status='unknown',ended_reason=%s,ended_at=clock_timestamp(),updated_at=clock_timestamp() WHERE observation_id=%s",
+                (reason, oid),
+            )
+    assert raised.value.sqlstate == "42501"
+
+
+def _snapshot_mutations(snapshot):
+    """Change every saved result field independently, keeping its row intact."""
+    for field, value in snapshot.items():
+        if field == "_lease":
+            continue
+        if field.endswith("_id"):
+            yield field, str(uuid4())
+            if value is not None:
+                yield field, None
+        elif isinstance(value, bool):
+            yield field, not value
+        elif isinstance(value, (int, float)):
+            yield field, value + 1
+        elif field.endswith("_at"):
+            yield field, "2000-01-01T00:00:00Z"
+        elif field == "evaluation":
+            yield (
+                field,
+                {
+                    **value,
+                    "verdict": "unknown"
+                    if value["verdict"] != "unknown"
+                    else "degraded",
+                },
+            )
+        elif field == "session_state":
+            yield field, "authorized" if value != "authorized" else "revoked"
+        elif field in ("status", "release_status"):
+            yield field, "cancelled" if value != "cancelled" else "unknown"
+        elif field == "disposition":
+            yield field, "history_only" if value == "adopted" else "adopted"
+        elif field == "outcome":
+            yield field, "rejected" if value == "applied" else "applied"
+        else:
+            yield field, "altered"
+        # Removing a saved field must not turn it into an unchecked default.
+        yield field, _MISSING
+
+
+_MISSING = object()
+
+
+def _assert_snapshot_tampering_rejected(history, rows, column):
+    baseline = replay_release_history(history)
+    assert baseline.consistent, baseline.integrity
+    missed = []
+    for index, row in enumerate(rows):
+        for field, value in _snapshot_mutations(row[column]):
+            corrupted = copy.deepcopy(history)
+            snapshot = corrupted["samples" if column == "release_receipt" else "audit"][
+                index
+            ][column]
+            if value is _MISSING:
+                del snapshot[field]
+            else:
+                snapshot[field] = value
+            replay = replay_release_history(corrupted)
+            if replay.consistent or replay.verdict != "unknown":
+                missed.append((index, field, "missing" if value is _MISSING else value))
+            if field == "ending_id" and not replay.consistent:
+                assert "ENDING_MISMATCH" in replay.integrity, replay.integrity
+        if column == "release_receipt":
+            for field, value in _snapshot_mutations(row[column]["_lease"]):
+                corrupted = copy.deepcopy(history)
+                lease = corrupted["samples"][index][column]["_lease"]
+                if value is _MISSING:
+                    del lease[field]
+                else:
+                    lease[field] = value
+                replay = replay_release_history(corrupted)
+                if replay.consistent or replay.verdict != "unknown":
+                    missed.append(
+                        (
+                            index,
+                            "_lease." + field,
+                            "missing" if value is _MISSING else value,
+                        )
+                    )
+    assert not missed, missed
+
+
+@pytest.mark.parametrize(
+    "mode",
+    [
+        "adopted",
+        "scope_submit",
+        "scope_claim",
+        "scope_old_return",
+        "paused_return",
+        "lease_revoked",
+    ],
+)
+def test_all_sample_receipt_fields_match_pg_history(harness, mode):
+    web, observer, oid, _, _ = harness
+    sid = authorize(harness).session_id
+    context = observer.release_context(sid)
+    lease = claim(harness, sid)
+    owner = DurableStore(DSN)
+    try:
+        if mode in ("scope_submit", "scope_claim", "scope_old_return"):
+            if mode == "scope_old_return":
+                # Adopt sequence 1 and queue sequence 2, then let a different
+                # sample from the old lease arrive after suspension. The
+                # ending records the current slot, not this old return's job.
+                first = observer.submit_release_sample(
+                    lease, raw_evidence(context, observer.current_time())
+                )
+                assert first.accepted and first.ending_id is None
+            owner.set_target_suspension(
+                web.get_release(oid).target_id,
+                True,
+                expected_generation=0,
+                actor="tester",
+            )
+            if mode == "scope_claim":
+                with psycopg.connect(DSN) as conn:
+                    conn.execute(
+                        "UPDATE opspilot_observation_sessions SET active_sample_lease_until=clock_timestamp()-interval '1 second' WHERE session_id=%s",
+                        (sid,),
+                    )
+                assert observer._claim_release_due(uuid4(), sid, 120) == []
+        elif mode == "paused_return":
+            web.control_release(
+                oid,
+                action="pause",
+                actor="tester",
+                expected_control_generation=0,
+                idempotency_key="pause",
+                calibrated_policy_revision=None,
+            )
+        elif mode == "lease_revoked":
+            # A second owner reclaims the expired slot; the old return is history-only.
+            with psycopg.connect(DSN) as conn:
+                conn.execute(
+                    "UPDATE opspilot_observation_sessions SET active_sample_lease_until=clock_timestamp()-interval '1 second' WHERE session_id=%s",
+                    (sid,),
+                )
+            assert observer._claim_release_due(uuid4(), sid, 120)
+        observer.submit_release_sample(
+            lease, raw_evidence(context, observer.current_time())
+        )
+        history = observer.release_history(oid)
+        _assert_snapshot_tampering_rejected(
+            history, history["samples"], "release_receipt"
+        )
+    finally:
+        owner.close()
+
+
+@pytest.mark.parametrize(
+    ("reason", "harness"),
+    [("healthy_confirmed", 40), ("anomaly_detected", 40), ("max_samples_exhausted", 2)],
+    indirect=["harness"],
+)
+def test_all_terminal_sample_receipt_fields_match_pg_history(harness, reason):
+    _, observer, oid, _, _ = harness
+    sid = authorize(harness).session_id
+    context = observer.release_context(sid)
+    if reason != "max_samples_exhausted":
+        time.sleep(2.05)
+    receipt = observer.submit_release_sample(
+        claim(harness, sid),
+        raw_evidence(
+            context, observer.current_time(), degraded=reason == "anomaly_detected"
+        ),
+    )
+    if reason != "anomaly_detected":
+        if reason == "healthy_confirmed":
+            time.sleep(1.05)
+        receipt = observer.submit_release_sample(
+            claim(harness, sid), raw_evidence(context, observer.current_time())
+        )
+    assert receipt.ending_id is not None
+    history = observer.release_history(oid)
+    _assert_snapshot_tampering_rejected(history, history["samples"], "release_receipt")
+
+
+@pytest.mark.parametrize(
+    "action", ["authorize", "pause", "resume", "cancel", "rejected", "deadline_expired"]
+)
+def test_all_audit_result_fields_match_pg_history(harness, action):
+    web, observer, oid, policy, _ = harness
+    if action == "deadline_expired":
+        # Keep received_at before deadline: move the frozen test clock before authorization.
+        with psycopg.connect(DSN) as conn:
+            conn.execute("SET LOCAL session_replication_role=replica")
+            conn.execute(
+                "UPDATE opspilot_release_observations SET released_at=statement_timestamp()-(deadline_seconds-1)*interval '1 second',deadline_at=statement_timestamp()+interval '1 second' WHERE observation_id=%s",
+                (oid,),
+            )
+    sid = authorize(harness).session_id
+    if action == "deadline_expired":
+        time.sleep(1.05)
+        assert oid in observer.sweep_expired_releases(limit=10000)
+    elif action != "authorize":
+        observer.submit_release_sample(
+            claim(harness, sid),
+            raw_evidence(observer.release_context(sid), observer.current_time()),
+        )
+        if action == "resume":
+            owner = DurableStore(DSN)
+            generation = owner.set_target_suspension(
+                web.get_release(oid).target_id,
+                True,
+                expected_generation=0,
+                actor="tester",
+            )
+            owner.set_target_suspension(
+                web.get_release(oid).target_id,
+                False,
+                expected_generation=generation,
+                actor="tester",
+            )
+            owner.close()
+        if action == "rejected":
+            web.authorize_release(
+                oid,
+                actor="tester",
+                expected_control_generation=0,
+                idempotency_key="rejected",
+                calibrated_policy_revision=policy.revision,
+            )
+        else:
+            web.control_release(
+                oid,
+                action=action,
+                actor="tester",
+                expected_control_generation=0,
+                idempotency_key=action,
+                calibrated_policy_revision=policy.revision
+                if action == "resume"
+                else None,
+            )
+    assert sid is not None
+    history = observer.release_history(oid)
+    _assert_snapshot_tampering_rejected(history, history["audit"], "result")

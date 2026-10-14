@@ -18,10 +18,10 @@ def upgrade() -> None:
         valid:=EXISTS(SELECT 1 FROM public.opspilot_observation_endings e JOIN public.opspilot_observation_sessions s ON s.session_id=e.session_id
           LEFT JOIN public.opspilot_observation_samples m ON m.sample_id=e.sample_id
           WHERE e.release_observation_id=NEW.observation_id AND e.purpose='release_observation' AND s.subject_control_generation=NEW.control_generation AND s.observation_generation=NEW.observation_generation
-            AND e.xmin=pg_current_xact_id()::xid AND e.subject_state_before=OLD.status AND e.subject_state_after=NEW.status
+            AND e.xmin=pg_current_xact_id()::xid AND e.subject_state_before=OLD.status AND e.subject_state_after=NEW.status AND NEW.ended_reason=e.ended_reason
             AND ((NEW.status IN ('healthy','anomalous') AND e.transition='release_' || NEW.status AND e.ended_reason=CASE NEW.status WHEN 'healthy' THEN 'healthy_confirmed' ELSE 'anomaly_detected' END AND s.state='completed' AND s.ended_reason=e.ended_reason AND m.transition=e.transition AND (NEW.status<>'anomalous' OR e.anomaly_key='release-anomaly:' || NEW.observation_id::text) AND m.xmin=pg_current_xact_id()::xid AND m.session_id=e.session_id AND m.purpose=e.purpose AND m.subject_id=NEW.observation_id AND m.disposition='adopted' AND m.subject_control_generation=NEW.control_generation AND m.observation_generation=NEW.observation_generation AND m.decision_at<NEW.deadline_at AND (m.release_evaluation->>'evidence_sufficient')::boolean AND m.outcome=CASE NEW.status WHEN 'healthy' THEN 'healthy' ELSE 'degraded' END
               AND (NEW.status<>'healthy' OR (m.confirms_health AND s.tracking_since>=s.authorized_at AND s.healthy_since>=s.authorized_at AND s.tracking_until=m.window_end AND m.window_end<=m.decision_at AND m.window_start>=s.authorized_at AND s.tracking_until>=NEW.released_at+NEW.min_tracking_seconds*interval '1 second' AND s.tracking_until-s.tracking_since>=NEW.min_tracking_seconds*interval '1 second' AND s.tracking_until-s.healthy_since>=NEW.sustained_window_seconds*interval '1 second')))
-              OR (NEW.status='unknown' AND e.transition='release_unknown' AND ((e.ended_reason='deadline_expired' AND clock_timestamp()>=NEW.deadline_at
+              OR (NEW.status='unknown' AND e.transition='release_unknown' AND ((e.ended_reason='deadline_expired' AND e.sample_id IS NULL AND clock_timestamp()>=NEW.deadline_at
                 AND s.xmin=pg_current_xact_id()::xid AND s.state='expired' AND s.ended_reason=e.ended_reason
                 AND s.release_observation_id=NEW.observation_id AND s.purpose=e.purpose AND s.subject_kind=e.subject_kind AND s.subject_id=NEW.observation_id
                 AND s.deadline_at=NEW.deadline_at
@@ -44,7 +44,7 @@ def upgrade() -> None:
           -- Deferred check: a sweep's referenced session uses the ending
           -- branch above. No authorized session permits subject-only audit.
           valid:=valid OR EXISTS(SELECT 1 FROM public.opspilot_release_audit a
-            WHERE a.observation_id=NEW.observation_id AND a.action='deadline_expired' AND a.outcome='applied'
+            WHERE a.observation_id=NEW.observation_id AND a.action='deadline_expired' AND a.outcome='applied' AND NEW.ended_reason='deadline_expired'
               AND a.xmin=pg_current_xact_id()::xid AND a.status_before=OLD.status AND a.status_after=NEW.status
               AND a.expected_control_generation=OLD.control_generation
               AND a.control_generation_before=OLD.control_generation AND a.control_generation_after=NEW.control_generation

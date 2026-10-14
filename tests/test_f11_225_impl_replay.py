@@ -127,6 +127,24 @@ def history_for(reason="authority_revoked"):
             }
         )
     content = canonical_content(PROFILE)
+    for audit in audits:
+        audit["reason"] = (
+            "deadline_expired" if audit["action"] == "deadline_expired" else None
+        )
+        audit["result"] = {
+            **{
+                key: str(audit[key]) if audit[key] is not None else None
+                for key in ("audit_id", "observation_id", "session_id", "ending_id")
+            },
+            **{key: audit[key] for key in ("sequence", "action", "outcome", "reason")},
+            "status": audit["status_after"],
+            "paused": audit["paused_after"],
+            "control_generation": audit["control_generation_after"],
+            "observation_generation": audit["observation_generation_after"],
+            "used_sample_count": 0,
+            "deadline_at": record.deadline_at.isoformat(),
+            "replayed": False,
+        }
     return {
         "format_version": 1,
         "release": record,
@@ -339,3 +357,44 @@ def test_recorded_old_session_cannot_lose_its_control_ending(
     assert not replay.consistent
     assert replay.verdict == "unknown"
     assert "ENDING_MISMATCH" in replay.integrity
+
+
+@pytest.mark.parametrize(
+    "reason",
+    [
+        "authority_revoked",
+        "cancelled",
+        "deadline_expired",
+        "binding_stale",
+        "scope_suspended",
+    ],
+)
+@pytest.mark.parametrize(
+    "field",
+    [
+        "audit_id",
+        "observation_id",
+        "session_id",
+        "ending_id",
+        "sequence",
+        "action",
+        "outcome",
+        "reason",
+        "status",
+        "paused",
+        "control_generation",
+        "observation_generation",
+        "used_sample_count",
+        "deadline_at",
+        "replayed",
+    ],
+)
+def test_every_audit_snapshot_field_is_required_for_each_ending_reason(reason, field):
+    history = history_for(reason)
+    assert replay_release_history(history).consistent
+    del history["audit"][-1]["result"][field]
+    replay = replay_release_history(history)
+    assert not replay.consistent
+    assert replay.verdict == "unknown"
+    if field in ("session_id", "ending_id"):
+        assert "ENDING_MISMATCH" in replay.integrity

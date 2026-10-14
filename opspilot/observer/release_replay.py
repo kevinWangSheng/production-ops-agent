@@ -53,6 +53,29 @@ _AUDIT_ENDING_REASONS = {
 _AUDITED_ENDING_REASONS = frozenset(_AUDIT_ENDING_REASONS.values())
 
 
+def _snapshot_matches(actual: object, expected: Mapping[str, Any]) -> bool:
+    """Compare a complete saved JSON result with typed historical facts."""
+    if not isinstance(actual, Mapping) or actual.keys() != expected.keys():
+        return False
+    for key, expected_value in expected.items():
+        value = actual[key]
+        try:
+            if isinstance(expected_value, UUID):
+                if not isinstance(value, str) or UUID(value) != expected_value:
+                    return False
+            elif isinstance(expected_value, datetime):
+                if (
+                    not isinstance(value, str)
+                    or datetime.fromisoformat(value) != expected_value
+                ):
+                    return False
+            elif type(value) is not type(expected_value) or value != expected_value:
+                return False
+        except ValueError:
+            return False
+    return True
+
+
 def _replay_release_history(history: Mapping[str, object]) -> ReleaseReplay:
     issues: set[str] = set()
     release_value = history.get("release")
@@ -282,6 +305,34 @@ def _replay_release_history(history: Mapping[str, object]) -> ReleaseReplay:
                 or a["status_after"] != status
             ):
                 issues.add("SAMPLE_DECISION_MISMATCH")
+            expected_result = {
+                "observation_id": release.observation_id,
+                "audit_id": a["audit_id"],
+                "sequence": a["sequence"],
+                "action": a["action"],
+                "outcome": a["outcome"],
+                "reason": a.get("reason"),
+                "session_id": a.get("session_id"),
+                "ending_id": a.get("ending_id"),
+                "status": status,
+                "paused": paused,
+                "control_generation": control_generation,
+                "observation_generation": observation_generation,
+                "used_sample_count": used,
+                "deadline_at": release.deadline_at,
+                "replayed": False,
+            }
+            result = a.get("result")
+            if not _snapshot_matches(result, expected_result):
+                issues.add("SAMPLE_DECISION_MISMATCH")
+                if not isinstance(result, Mapping) or any(
+                    not _snapshot_matches(
+                        {key: result[key]} if key in result else {},
+                        {key: expected_result[key]},
+                    )
+                    for key in ("session_id", "ending_id")
+                ):
+                    issues.add("ENDING_MISMATCH")
             continue
         m = item
         s = by_session.get(m.get("session_id"))
@@ -369,6 +420,7 @@ def _replay_release_history(history: Mapping[str, object]) -> ReleaseReplay:
             or lease.deadline_at != s["deadline_at"]
             or lease.global_suspension_generation != s["authorized_global_generation"]
             or lease.target_suspension_generation != s["authorized_target_generation"]
+            or lease.sample_interval_seconds != s["sample_interval_seconds"]
         ):
             issues.add("SUBJECT_BINDING_MISMATCH")
         if (
@@ -390,7 +442,7 @@ def _replay_release_history(history: Mapping[str, object]) -> ReleaseReplay:
             reason = "control_generation_stale"
         elif m["current_subject_observation_generation"] != m["observation_generation"]:
             reason = "observation_generation_stale"
-        elif m["current_subject_state"] != "observing":
+        elif m["current_subject_state"] != "observing" or paused:
             reason = "subject_state_not_adoptable"
         elif (
             m["scope_suspended"]
@@ -479,6 +531,64 @@ def _replay_release_history(history: Mapping[str, object]) -> ReleaseReplay:
                 healthy_seconds = (
                     fold["adopted_window_end"] - fold["healthy_since"]
                 ).total_seconds()
+        # Reconstruct the receipt at this decision, not from the session's
+        # final row: a later pause/claim/terminal sample can end it afterwards.
+        expected_ending = None
+        session_state = "authorized"
+        due = None
+        if prior_end is not None:
+            session_state = (
+                "completed"
+                if prior_end["ended_reason"]
+                in ("healthy_confirmed", "anomaly_detected")
+                else "expired"
+                if prior_end["ended_reason"]
+                in ("deadline_expired", "max_samples_exhausted")
+                else "revoked"
+            )
+        elif terminal or reason in (
+            "suspended",
+            "control_generation_stale",
+            "observation_generation_stale",
+            "subject_state_not_adoptable",
+        ):
+            expected_ending = uuid5(
+                release.observation_id, "session-ending:" + str(s["session_id"])
+            )
+            session_state = (
+                "completed"
+                if terminal in ("healthy", "anomalous")
+                else "expired"
+                if terminal
+                else "revoked"
+            )
+            matches = [e for e in endings if e["ending_id"] == expected_ending]
+            expected_reason = (
+                terminal_reason
+                if terminal
+                else "scope_suspended"
+                if reason == "suspended"
+                else "binding_stale"
+            )
+            if len(matches) != 1 or (
+                matches[0]["ended_reason"] != expected_reason
+                or matches[0]["session_id"] != s["session_id"]
+                or (terminal and matches[0]["job_id"] != m["job_id"])
+                or (terminal and matches[0]["job_sequence"] != m["sequence"])
+                or matches[0]["recorded_at"] < m["decision_at"]
+                or (not terminal and matches[0]["recorded_at"] > m["submitted_at"])
+            ):
+                issues.add("ENDING_MISMATCH")
+        elif reason == "adopted" or m["lease_valid"]:
+            due = m["decision_at"] + timedelta(seconds=release.sample_interval_seconds)
+        saved_receipt = m["release_receipt"]
+        if not isinstance(saved_receipt, Mapping) or not _snapshot_matches(
+            {"ending_id": saved_receipt["ending_id"]}
+            if "ending_id" in saved_receipt
+            else {},
+            {"ending_id": expected_ending},
+        ):
+            issues.add("ENDING_MISMATCH")
         try:
             receipt = ReleaseSampleReceipt.model_validate_json(
                 canonical_json(
@@ -497,6 +607,12 @@ def _replay_release_history(history: Mapping[str, object]) -> ReleaseReplay:
                 or receipt.reason != reason
                 or receipt.release_status != status
                 or receipt.evaluation != evaluation
+                or receipt.replayed is not False
+                or receipt.disposition != m["disposition"]
+                or receipt.session_state != session_state
+                or receipt.next_sample_due_at != due
+                or set(saved_receipt)
+                != set(ReleaseSampleReceipt.model_fields) | {"_lease"}
             ):
                 issues.add("SAMPLE_DECISION_MISMATCH")
         except (ValueError, TypeError):
