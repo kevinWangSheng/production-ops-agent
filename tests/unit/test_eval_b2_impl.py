@@ -1053,3 +1053,306 @@ def test_structural_null_run_accepts_version_fixture_but_rejects_wrong_mode(tmp_
             manifest=manifest,
             investigator=None,
         )
+
+
+def _contradict_tool(result, field):
+    operation = result.operation
+    view = dict(result.model_view)
+    if field in ("requested_tool", "requested_target"):
+        operation = replace(operation, **{field: "different"})
+    elif field == "view_operation":
+        view["operation_id"] = "other-operation"
+    else:
+        operation = replace(
+            operation, window=Window(AUTH.start + timedelta(minutes=1), AUTH.end)
+        )
+    evidence = replace(
+        result.evidence,
+        operation=operation,
+        _view=view,
+        view_sha256=sha(canonical_bytes(view)),
+    )
+    return replace(result, operation=operation, model_view=view, evidence=evidence)
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "requested_tool",
+        "requested_target",
+        "view_operation",
+        "explicit_window",
+        "default_window",
+    ],
+)
+def test_contradictory_tool_associations_cannot_record_complete(tmp_path, field):
+    class Contradictory(Executor):
+        def execute(self, req):
+            return _contradict_tool(super().execute(req), field)
+
+    def drive(hooks):
+        # A default lookup uses the whole authorized window in this fixture.
+        params = request("old-step")
+        if field == "default_window":
+            params = replace(params, window=None)
+        hooks.model(ScriptedModel([first_call()])).complete(call())
+        hooks.tools(Contradictory()).execute(params)
+        return outcome()
+
+    with pytest.raises(RecordingError, match="IDENTITY_MISMATCH"):
+        source(tmp_path, driver=drive)
+    assert (
+        json.loads((tmp_path / "source" / "recording.json").read_bytes())["complete"]
+        is False
+    )
+
+
+@pytest.mark.parametrize(
+    "field", ["requested_tool", "requested_target", "view_operation", "window"]
+)
+def test_resigned_contradictory_packet_is_rejected_before_model(tmp_path, field):
+    from opspilot.evaluation.recording import unwire, wire
+
+    recording = source(tmp_path)
+    event = recording.events[1]
+    payload = json_blob(recording, event.response_ref)
+    result = _contradict_tool(unwire(ToolOutcome, payload), field)
+    data = canonical_bytes(wire(result))
+    ref = replace(
+        event.response_ref, path="blobs/" + sha(data), sha256=sha(data), bytes=len(data)
+    )
+    (recording.path.parent / ref.path).write_bytes(data)
+    meta = json.loads(recording.path.read_bytes())
+    meta["events"][1]["response_ref"] = encode(ref)
+    meta["events"][1]["hashes"]["view_sha256"] = sha(canonical_bytes(result.model_view))
+    raw = canonical_bytes(meta)
+    recording.path.write_bytes(raw)
+    with pytest.raises(RecordingError, match="IDENTITY_MISMATCH"):
+        load_recording(recording.path, expected_hash=sha(raw))
+    candidate = replace(
+        recording, ref=replace(recording.ref, sha256=sha(raw), bytes=len(raw))
+    )
+    model = ScriptedModel([])
+    with pytest.raises(RecordingError, match="IDENTITY_MISMATCH"):
+        run_replay(candidate, tmp_path, model=model)
+    assert model.calls == []
+
+
+@pytest.mark.parametrize(
+    "error", ["incomplete_read", "io_error", "timeout", "short_content_length"]
+)
+def test_error_body_truncation_is_incomplete_with_default_result_preserved(
+    tmp_path, error
+):
+    from http.client import IncompleteRead
+
+    class Body:
+        def read(self, size=-1):
+            if error == "incomplete_read":
+                raise IncompleteRead(b"partial")
+            if error == "timeout":
+                raise TimeoutError("synthetic timeout")
+            if error == "short_content_length":
+                return b"partial"
+            raise OSError("synthetic error")
+
+        def close(self):
+            pass
+
+    class Opener:
+        def open(self, req, timeout):
+            raise HTTPError(
+                "https://synthetic.invalid",
+                503,
+                "synthetic",
+                {"Content-Length": "99"} if error == "short_content_length" else {},
+                Body(),
+            )
+
+    assert DeepSeekClient("synthetic", opener=Opener())._post(b"{}", 5.0) == (b"", 503)
+    for capture in (None, lambda *args: None):
+        with pytest.raises(ModelError, match="MODEL_UNAVAILABLE"):
+            DeepSeekClient("synthetic", opener=Opener(), capture_http=capture).complete(
+                call()
+            )
+
+    def drive(hooks):
+        model = hooks.model(
+            DeepSeekClient("synthetic", opener=Opener(), capture_http=hooks.http)
+        )
+        with pytest.raises(ModelError, match="MODEL_UNAVAILABLE"):
+            model.complete(call())
+        return outcome()
+
+    with pytest.raises(RecordingError, match="RECORDING_INCOMPLETE"):
+        source(tmp_path, driver=drive)
+    path = tmp_path / "source" / "recording.json"
+    meta = json.loads(path.read_bytes())
+    assert "HTTP_BODY_INCOMPLETE" in meta["incomplete_reasons"]
+    http = next(item for item in meta["events"] if item["kind"] == "http")
+    assert http["hashes"]["status"] == "503" and http["response_ref"] is None
+    assert http["error"] == "HTTP_BODY_INCOMPLETE"
+    # The reader must reject a known truncation even if the outer flags lie.
+    (path.parent / "INCOMPLETE").unlink()
+    meta.update(complete=True, incomplete_reasons=[])
+    raw = canonical_bytes(meta)
+    path.write_bytes(raw)
+    with pytest.raises(RecordingError, match="RECORDING_INCOMPLETE"):
+        load_recording(path, expected_hash=sha(raw))
+
+
+def test_loop_duplicate_refusal_records_and_replays_without_facade_call(tmp_path):
+    from types import SimpleNamespace
+
+    from opspilot.investigation.store import MemoryStepStore
+
+    replies = [
+        reply(tool_calls=[tool_call("one")], finish="tool_calls"),
+        reply(tool_calls=[tool_call("two")], finish="tool_calls"),
+        report_from_transcript,
+    ]
+    loop, req, _, transport, _, _ = assemble(replies=replies, model_requests=3)
+    ctx = replace(
+        context(),
+        source_run_id=req.run_id,
+        started_at=loop.clock.now(),
+        ended_at=loop.clock.now(),
+        bindings=(
+            ToolBinding(
+                "metrics.range_query",
+                "v1",
+                "checkout-prod",
+                "prometheus",
+                encode(req.scope.window),
+                None,
+                HASH,
+                HASH,
+                HASH,
+                HASH,
+            ),
+        ),
+    )
+    counts = []
+    executor = loop.executor
+
+    def execute(req):
+        counts.append(req)
+        return executor.execute(req)
+
+    def drive(hooks):
+        loop.model = hooks.model(loop.model)
+        loop.executor = hooks.tools(
+            SimpleNamespace(
+                scope=executor.scope, tool_seconds_used=0.0, execute=execute
+            )
+        )
+        loop.capture_delivery = hooks.delivery
+        assert loop.run(req).execution == "completed"
+        return outcome()
+
+    recording = source(tmp_path, driver=drive, ctx=ctx)
+    assert transport.called and len(counts) == 1
+    refusals = [event for event in recording.events if event.kind == "refusal"]
+    assert len(refusals) == 1
+    refused = json_blob(recording, refusals[0].response_ref)
+    original = json_blob(recording, recording.events[1].response_ref)["model_view"]
+    assert refused["reason"] == "DUPLICATE_TOOL_CALL"
+    assert refused["operation_id"] != original["operation_id"]
+    assert refused["evidence_id"] == original["evidence_id"]
+    manifest, attempt = manifest_attempt(recording, "structural")
+    assert replay(
+        recording,
+        mode="structural",
+        attempt=attempt,
+        manifest=manifest,
+        investigator=None,
+    ).structural_verified
+    fresh_model = ScriptedModel(
+        [
+            reply(tool_calls=[tool_call("fresh-one")], finish="tool_calls"),
+            reply(tool_calls=[tool_call("fresh-two")], finish="tool_calls"),
+            report_from_transcript,
+        ]
+    )
+
+    def replay_drive(session):
+        fresh, _, _, unused_transport, _, _ = assemble(replies=[], model_requests=3)
+        scope = replace(req.scope, run_id="run-new")
+        calls = []
+
+        def frozen_execute(request):
+            calls.append(request)
+            return session.tools.execute(request)
+
+        fresh.clock = session.clock
+        fresh.store = MemoryStepStore(
+            budget_limit=4,
+            deadline=scope.deadline,
+            clock=session.clock,
+            run_id="run-new",
+        )
+        fresh.executor = SimpleNamespace(
+            scope=scope, tool_seconds_used=0.0, execute=frozen_execute
+        )
+        fresh.model = session.model
+        fresh.capture_delivery = session.capture_delivery
+        result = fresh.run(
+            replace(
+                req,
+                run_id="run-new",
+                scope=scope,
+                evidence_context={**req.evidence_context, "run_id": "run-new"},
+            )
+        )
+        assert result.execution == "completed"
+        assert len(calls) == 1 and not unused_transport.called
+        return outcome()
+
+    capture = run_replay(recording, tmp_path, model=fresh_model, driver=replay_drive)
+    assert capture.error is None, capture
+    assert len(capture.id_map) == 2  # The real tool and the separate refusal.
+    assert len(fresh_model.calls) == 3
+    copied = load_recording(
+        tmp_path / "new-recording" / "recording.json",
+        expected_hash=capture.recording_ref.sha256,
+    )
+    new_refusal = next(event for event in copied.events if event.kind == "refusal")
+    current = json_blob(copied, new_refusal.response_ref)
+    assert current["operation_id"] in capture.id_map
+    assert capture.id_map[current["operation_id"]] == refused["operation_id"]
+    assert {**current, "operation_id": refused["operation_id"]} == refused
+
+
+def test_unrecorded_loop_refusal_is_sticky_replay_miss(tmp_path):
+    from opspilot.investigation.loop import _duplicate_call_view
+
+    recording = source(tmp_path)
+    model = ScriptedModel(
+        [
+            first_call("first"),
+            first_call("unrecorded"),
+            reply(content="must not be called"),
+        ]
+    )
+
+    def drive(session):
+        conversation(
+            session.model, session.tools, session.capture_delivery, step="new-tool"
+        )
+        denied = _duplicate_call_view("new-refusal", evidence_id="evidence-old")
+        with pytest.raises(RecordingError, match="REPLAY_MISS"):
+            session.capture_delivery(
+                denied,
+                {
+                    "role": "tool",
+                    "tool_call_id": "unrecorded",
+                    "content": canonical_bytes(denied).decode(),
+                },
+            )
+        with pytest.raises(RecordingError, match="REPLAY_MISS"):
+            session.model.complete(call())
+        return outcome()
+
+    capture = run_replay(recording, tmp_path, model=model, driver=drive)
+    assert capture.error == "REPLAY_MISS" and capture.attempt.replay_miss
+    assert len(model.calls) == 2

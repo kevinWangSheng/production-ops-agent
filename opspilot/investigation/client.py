@@ -148,6 +148,7 @@ class DeepSeekClient:
         if not endpoint.startswith("https://"):
             raise ModelError("MODEL_REJECTED")
         self._capture_http = capture_http
+        self._error_body_incomplete = False
         self._api_key = api_key
         self._endpoint = endpoint
         self._model = model
@@ -180,12 +181,15 @@ class DeepSeekClient:
             if self._capture_http is None:
                 raw, status = self._post(body, call.timeout_seconds)
             else:
+                self._error_body_incomplete = False
                 try:
                     raw, status = self._post(body, call.timeout_seconds)
                 except ModelError:
                     self._capture_http(body, None, None)
                     raise
-                self._capture_http(body, raw, status)
+                self._capture_http(
+                    body, None if self._error_body_incomplete else raw, status
+                )
             if 400 <= status < 500 and status not in _TRANSIENT_CLIENT_STATUS:
                 raise ModelError("MODEL_REJECTED")
             if status in _RETRYABLE_STATUS or status < 200 or status >= 300:
@@ -289,12 +293,29 @@ class DeepSeekClient:
                     )
                     if self._capture_http is not None:
                         captured_error_body = drained
+                        declared = (
+                            exc.headers.get("Content-Length")
+                            if exc.headers is not None
+                            else None
+                        )
+                        if declared is not None:
+                            try:
+                                expected_bytes = int(declared)
+                            except (TypeError, ValueError):
+                                self._error_body_incomplete = True
+                            else:
+                                if expected_bytes < 0 or len(drained) != expected_bytes:
+                                    self._error_body_incomplete = True
                 except (OSError, HTTPException):
+                    if self._capture_http is not None:
+                        self._error_body_incomplete = True
                     # A truncated chunked error body raises IncompleteRead
                     # here, inside this suite, where the sibling handler
                     # below cannot see it (bot review finding, PR #29).
                     self._abort_transport()
             else:
+                if self._capture_http is not None:
+                    self._error_body_incomplete = True
                 self._abort_transport()
             return captured_error_body, int(exc.code)
         except (URLError, TimeoutError, OSError, HTTPException) as exc:

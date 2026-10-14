@@ -14,14 +14,18 @@ from opspilot.acceptance import IncidentOutcome
 from opspilot.evaluation.codec import (
     StorageError,
     canonical_bytes,
+    decode,
+    parse,
     validated,
 )
 from opspilot.evaluation.model import AttemptRecord
 from opspilot.evaluation.recording import (
+    MAX_BLOB_BYTES,
     MAX_METADATA_BYTES,
     CaptureHooks,
     Recording,
     RecordingEvent,
+    ToolBinding,
     ToolFacade,
     _read,
     binding_for,
@@ -81,7 +85,6 @@ class ReplaySession:
     ) -> None:
         self.context = recording.context
         self.clock = _ReplayClock(recording.context.ended_at)
-        self.capture_delivery = hooks.delivery
         self.capture_http = hooks.http
         self.id_map: dict[str, str] = {}
         self.error: str | None = None
@@ -92,14 +95,55 @@ class ReplaySession:
         self._hooks = hooks
         self._run_id = run_id
         self._index: dict[str, list[RecordingEvent]] = defaultdict(list)
+        self._refusals: dict[str, list[RecordingEvent]] = defaultdict(list)
+        self._refusal_counts: dict[str, int] = defaultdict(int)
         self._counts: dict[str, int] = defaultdict(int)
         for event in recording.events:
             if event.kind == "tool":
                 obj = json_blob(recording, event.request_ref)
                 assert event.response_ref is not None
                 self._index[obj["key"]].append(event)
+            elif event.kind == "refusal":
+                assert event.parent is not None
+                origin = json_blob(
+                    recording, recording.events[event.parent].request_ref
+                )
+                self._refusals[origin["key"]].append(event)
         self.tools: ToolFacade = _SessionTools(self, hooks.tools(_FrozenTools(self)))
         self.model: ModelClient = _CurrentModel(self, hooks.model(investigator))
+
+    def capture_delivery(
+        self, view: Mapping[str, Any], message: Mapping[str, Any]
+    ) -> None:
+        self._remaining()
+        if view.get("reason") == "DUPLICATE_TOOL_CALL":
+            try:
+                parent, request = self._hooks._refusal_request(view, message)
+                obj = parse_capture_request(self._hooks, parent)
+                tool_request = unwire(ToolRequest, obj["request"])
+                binding = decode(ToolBinding, obj["binding"])
+                key = tool_key(self.context, tool_request, binding)
+                candidates = self._refusals.get(key, [])
+                occurrence = self._refusal_counts[key]
+                if occurrence >= len(candidates):
+                    raise StorageError("REPLAY_MISS")
+                event = candidates[occurrence]
+                assert event.response_ref is not None
+                frozen = json_blob(self._recording, event.response_ref)
+                if canonical_bytes(
+                    {**view, "operation_id": frozen["operation_id"]}
+                ) != canonical_bytes(frozen):
+                    raise StorageError("REPLAY_MISS")
+                self._refusal_counts[key] += 1
+                self.id_map[request["operation_id"]] = frozen["operation_id"]
+                self._hooks.context.initial_state["replay_source"]["id_map"][
+                    request["operation_id"]
+                ] = frozen["operation_id"]
+            except StorageError:
+                self.error = "REPLAY_MISS"
+                raise StorageError("REPLAY_MISS") from None
+        self._hooks.delivery(view, message)
+        self._remaining()
 
     def _remaining(self) -> float:
         remaining = 7200.0 - (time.monotonic() - self._opened)
@@ -109,6 +153,12 @@ class ReplaySession:
         if self.error is not None:
             raise StorageError(self.error)
         return remaining
+
+
+def parse_capture_request(hooks: CaptureHooks, seq: int) -> dict[str, Any]:
+    return parse(
+        _read(hooks.destination / hooks.events[seq].request_ref.path, MAX_BLOB_BYTES)
+    )
 
 
 class _SessionTools:

@@ -44,6 +44,8 @@ from opspilot.investigation.loop import (
     ModelClient,
     ModelError,
     ModelReply,
+    _call_fingerprint,
+    _duplicate_call_view,
     serialized_request,
 )
 from opspilot.investigation.messages import PairingError, validate_tool_calls
@@ -125,7 +127,7 @@ class RecordingContext:
 @dataclass(frozen=True)
 class RecordingEvent:
     seq: int
-    kind: Literal["model", "tool", "delivery", "http"]
+    kind: Literal["model", "tool", "delivery", "http", "refusal"]
     parent: int | None
     request_ref: ArtifactRef
     response_ref: ArtifactRef | None
@@ -385,6 +387,10 @@ class CaptureHooks:
         self._pending_views: dict[str, list[int]] = {}
         self._delivered_tools: set[int] = set()
         self._counts: Counter[str] = Counter()
+        self._current_calls: dict[str, Mapping[str, Any]] = {}
+        self._claimed_calls: set[str] = set()
+        self._tool_fingerprints: dict[int, str] = {}
+        self._evidence_events: dict[str, int] = {}
 
     def clock(self, at: datetime) -> None:
         at = decode(datetime, encode(at))
@@ -439,7 +445,7 @@ class CaptureHooks:
 
     def _begin(
         self,
-        kind: Literal["model", "tool", "delivery", "http"],
+        kind: Literal["model", "tool", "delivery", "http", "refusal"],
         request: bytes,
         hashes: Mapping[str, str],
         *,
@@ -499,6 +505,9 @@ class CaptureHooks:
                 try:
                     reply = client.complete(call)
                     validated(ModelReply, reply)
+                    calls = validate_tool_calls({"tool_calls": list(reply.tool_calls)})
+                    hooks._current_calls = {item["id"]: item for item in calls}
+                    hooks._claimed_calls = set()
                     hooks._end(seq, canonical_bytes(reply), limit=MAX_RESPONSE_BYTES)
                     return reply
                 except ModelError as exc:
@@ -547,10 +556,15 @@ class CaptureHooks:
             parent=self._model_parent,
             media_type="application/octet-stream",
         )
+        truncated = response is None and status is not None
+        if truncated:
+            self.reasons.append("HTTP_BODY_INCOMPLETE")
         self._end(
             seq,
             response,
-            error="MODEL_UNAVAILABLE" if response is None else None,
+            error="HTTP_BODY_INCOMPLETE"
+            if truncated
+            else ("MODEL_UNAVAILABLE" if response is None else None),
             media_type="application/octet-stream",
             limit=MAX_RESPONSE_BYTES,
         )
@@ -580,6 +594,18 @@ class CaptureHooks:
                     {},
                 )
                 hooks._operations[request.operation_id] = seq
+                candidates = [
+                    item
+                    for item in hooks._current_calls.values()
+                    if item["function"]["name"] == request.tool_name
+                    and item["id"] not in hooks._claimed_calls
+                ]
+                if candidates:
+                    candidate = candidates[0]
+                    hooks._claimed_calls.add(candidate["id"])
+                    hooks._tool_fingerprints[seq] = call_fingerprint(
+                        candidate, binding.target
+                    )
                 try:
                     outcome = executor.execute(request)
                     hooks._operations[
@@ -594,6 +620,9 @@ class CaptureHooks:
                     ):
                         hooks.reasons.append("RECORDING_INCOMPLETE")
                         raise StorageError("RECORDING_INCOMPLETE")
+                    evidence_id = outcome.model_view.get("evidence_id")
+                    if isinstance(evidence_id, str) and evidence_id:
+                        hooks._evidence_events[evidence_id] = seq
                     view_hash = sha(canonical_bytes(outcome.model_view))
                     hooks._pending_views.setdefault(view_hash, []).append(seq)
                     hooks.events[seq] = replace(
@@ -611,6 +640,44 @@ class CaptureHooks:
 
         return CapturedTools()
 
+    def _refusal_request(
+        self, view: Mapping[str, Any], message: Mapping[str, Any]
+    ) -> tuple[int, dict[str, Any]]:
+        evidence_id = view.get("duplicate_of_evidence_id")
+        operation_id = view.get("operation_id")
+        call_id = message.get("tool_call_id")
+        parent = (
+            self._evidence_events.get(evidence_id)
+            if isinstance(evidence_id, str)
+            else None
+        )
+        call = self._current_calls.get(call_id) if isinstance(call_id, str) else None
+        if (
+            parent is None
+            or not isinstance(evidence_id, str)
+            or call is None
+            or not isinstance(operation_id, str)
+            or not operation_id
+        ):
+            raise StorageError("IDENTITY_MISMATCH")
+        request = parse(
+            _read(
+                self.destination / self.events[parent].request_ref.path, MAX_BLOB_BYTES
+            )
+        )
+        binding = decode(ToolBinding, request["binding"])
+        if call_fingerprint(call, binding.target) != self._tool_fingerprints[
+            parent
+        ] or canonical_bytes(view) != canonical_bytes(
+            _duplicate_call_view(operation_id, evidence_id=evidence_id)
+        ):
+            raise StorageError("IDENTITY_MISMATCH")
+        return parent, {
+            "operation_id": operation_id,
+            "tool_call_id": call_id,
+            "duplicate_of_evidence_id": evidence_id,
+        }
+
     def delivery(self, view: Mapping[str, Any], message: Mapping[str, Any]) -> None:
         if (
             len(canonical_bytes(view)) > MAX_VIEW_BYTES
@@ -618,6 +685,19 @@ class CaptureHooks:
         ):
             self.reasons.append("RECORDING_INCOMPLETE")
             raise StorageError("RECORDING_INCOMPLETE")
+        if view.get("reason") == "DUPLICATE_TOOL_CALL":
+            origin, request = self._refusal_request(view, message)
+            refusal = self._begin(
+                "refusal",
+                canonical_bytes(request),
+                {"view_sha256": sha(canonical_bytes(view))},
+                parent=origin,
+            )
+            self._end(refusal, canonical_bytes(view), limit=MAX_VIEW_BYTES)
+            self._operations[request["operation_id"]] = refusal
+            self._pending_views.setdefault(sha(canonical_bytes(view)), []).append(
+                refusal
+            )
         parent = self._operations.pop(str(view.get("operation_id")), None)
         candidates = self._pending_views.get(sha(canonical_bytes(view)), [])
         if parent in self._delivered_tools:
@@ -800,6 +880,9 @@ def validate_recording(recording: Recording) -> None:
     tool_views: dict[int, str] = {}
     tools_waiting: list[int] = []
     tool_calls: dict[int, str] = {}
+    tool_fingerprints: dict[int, str] = {}
+    evidence_events: dict[str, int] = {}
+    operation_ids: set[str] = set()
     saw_model = False
     for seq, event in enumerate(recording.events):
         if (
@@ -887,6 +970,8 @@ def validate_recording(recording: Recording) -> None:
                 except PairingError:
                     raise StorageError("SCHEMA_INVALID") from None
                 pending = {item["id"]: item for item in calls}
+            elif event.error == "RESPONSE_TOO_LARGE":
+                raise StorageError("RECORDING_INCOMPLETE")
             elif event.error not in {
                 "MODEL_UNAVAILABLE",
                 "MODEL_REJECTED",
@@ -908,6 +993,10 @@ def validate_recording(recording: Recording) -> None:
                 event, {"request_body_sha256": sha(request_raw), "status": status}
             )
             if response_raw is not None and len(response_raw) > MAX_RESPONSE_BYTES:
+                raise StorageError("RECORDING_INCOMPLETE")
+            if event.error == "HTTP_BODY_INCOMPLETE" or (
+                response_raw is None and status != "unknown"
+            ):
                 raise StorageError("RECORDING_INCOMPLETE")
             if response_raw is None and event.error != "MODEL_UNAVAILABLE":
                 raise StorageError("RECORDING_INCOMPLETE")
@@ -973,7 +1062,52 @@ def validate_recording(recording: Recording) -> None:
             if not available:
                 raise StorageError("IDENTITY_MISMATCH")
             tool_calls[seq] = available[0]["id"]
+            tool_fingerprints[seq] = call_fingerprint(available[0], binding.target)
+            operation_ids.add(request.operation_id)
+            operation_ids.add(outcome.operation.operation_id)
+            evidence_id = outcome.model_view.get("evidence_id")
+            if isinstance(evidence_id, str) and evidence_id:
+                evidence_events[evidence_id] = seq
             tool_views[seq] = sha(view_raw)
+            tools_waiting.append(seq)
+        elif event.kind == "refusal":
+            if (
+                response_raw is None
+                or event.error is not None
+                or len(response_raw) > MAX_VIEW_BYTES
+            ):
+                raise StorageError("RECORDING_INCOMPLETE")
+            obj = exact(
+                parse(request_raw),
+                {"operation_id", "tool_call_id", "duplicate_of_evidence_id"},
+            )
+            obj = decode(dict[str, str], obj)
+            if not all(obj.values()):
+                raise StorageError("IDENTITY_MISMATCH")
+            view = parse(response_raw)
+            _same_hashes(event, {"view_sha256": sha(canonical_bytes(view))})
+            origin = evidence_events.get(obj["duplicate_of_evidence_id"])
+            call = pending.get(obj["tool_call_id"])
+            if (
+                event.parent is None
+                or event.parent != origin
+                or call is None
+                or obj["operation_id"] in operation_ids
+            ):
+                raise StorageError("IDENTITY_MISMATCH")
+            request = json_blob(recording, recording.events[event.parent].request_ref)
+            binding = decode(ToolBinding, request["binding"])
+            if call_fingerprint(call, binding.target) != tool_fingerprints[
+                event.parent
+            ] or canonical_bytes(view) != canonical_bytes(
+                _duplicate_call_view(
+                    obj["operation_id"], evidence_id=obj["duplicate_of_evidence_id"]
+                )
+            ):
+                raise StorageError("IDENTITY_MISMATCH")
+            operation_ids.add(obj["operation_id"])
+            tool_calls[seq] = obj["tool_call_id"]
+            tool_views[seq] = sha(response_raw)
             tools_waiting.append(seq)
         else:
             if response_raw is None or event.error is not None:
@@ -1025,6 +1159,15 @@ def validate_recording(recording: Recording) -> None:
             raise StorageError("RECORDING_INCOMPLETE")
 
 
+def call_fingerprint(call: Mapping[str, Any], target: str) -> str:
+    function = call["function"]
+    return sha(
+        _call_fingerprint(function["name"], function["arguments"], target).encode(
+            "utf-8"
+        )
+    )
+
+
 def _tool_integrity(
     context: RecordingContext,
     request: ToolRequest,
@@ -1050,10 +1193,30 @@ def _tool_integrity(
         or operation.target_id != binding.target
     ):
         raise StorageError("IDENTITY_MISMATCH")
-    auth = _window(binding.authorized_window)
-    if operation.window is not None and (
-        operation.window.start < auth.start or operation.window.end > auth.end
+    if canonical_bytes(operation.requested_tool) != canonical_bytes(
+        request.tool_name
+    ) or canonical_bytes(operation.requested_target) != canonical_bytes(
+        request.target_ref
     ):
+        raise StorageError("IDENTITY_MISMATCH")
+    if (
+        "operation_id" in outcome.model_view
+        and outcome.model_view["operation_id"] != operation.operation_id
+    ):
+        raise StorageError("IDENTITY_MISMATCH")
+    auth = _window(binding.authorized_window)
+    try:
+        value = (
+            request.window
+            if request.window is not None
+            else (binding.default_window or binding.authorized_window)
+        )
+        if not isinstance(value, Mapping):
+            raise StorageError("IDENTITY_MISMATCH")
+        expected_window = _window(value)
+    except (StorageError, TypeError):
+        raise StorageError("IDENTITY_MISMATCH") from None
+    if operation.window != expected_window or not auth.contains(expected_window):
         raise StorageError("IDENTITY_MISMATCH")
     evidence = outcome.evidence
     if evidence is not None:

@@ -21,7 +21,7 @@ RecordingContext(recording_id: str, source_run_id: str, source_manifest_hash: st
                  source_versions: Mapping[str, str] | None = None,
                  clock_policy: Literal['event-clock/frozen-end-real-monotonic'] =
                     'event-clock/frozen-end-real-monotonic')
-RecordingEvent(seq: int, kind: Literal['model','tool','delivery','http'], parent: int | None,
+RecordingEvent(seq: int, kind: Literal['model','tool','delivery','http','refusal'], parent: int | None,
                request_ref: ArtifactRef, response_ref: ArtifactRef | None,
                error: str | None, clock: datetime, identity: str,
                hashes: Mapping[str, str])
@@ -59,7 +59,7 @@ replay(recording: Recording, *, mode: Literal['replay','structural'],
 
 ## 文件与 hash
 
-recording.json 为 canonical JSON：`{schema:'opspilot-replay-1',context:<DTO>,events:[<DTO>],outcome:<DTO|null>,complete:bool,incomplete_reasons:[str]}`；所有字段必填，未知字段/版本拒绝。事件 seq 从 0 连续，identity=source_run_id，clock 在始末之间单调；parent 只指向已开始的 model 事件（http）或 tool 事件（delivery，可为 null 表示缓存/拒绝）。事件按调用开始排序，失败也保留；hashes 精确按 kind 定义：
+recording.json 为 canonical JSON：`{schema:'opspilot-replay-1',context:<DTO>,events:[<DTO>],outcome:<DTO|null>,complete:bool,incomplete_reasons:[str]}`；所有字段必填，未知字段/版本拒绝。事件 seq 从 0 连续，identity=source_run_id，clock 在始末之间单调；parent 指向已开始的关联事件：http→model、delivery→tool/refusal（可为 null 表示缓存）、refusal→原 tool；refusal 的严格格式见末尾 P2 修复合同。事件按调用开始排序，失败也保留；hashes 精确按 kind 定义：
 
 - model：request_ref 是 `{call:<ModelCall全部字段>,body:<UTF8原HTTP body>}`；response_ref 是完整 ModelReply；hashes={request_body_sha256,messages_sha256}，前者对 serialized_request 字节，后者对 canonical messages。
 - http：request_ref 原 body，response_ref 原响应（或 null）；hashes={request_body_sha256,status}，status 为十进制 HTTP 状态字符串或 `unknown`。须与父 model 字节一致。
@@ -104,3 +104,12 @@ recording.json 为 canonical JSON：`{schema:'opspilot-replay-1',context:<DTO>,e
 - synthetic 的 stimulus 自动输入仅在 driver 返回且未调用 input()/未提供 input_refs 时补入；显式原输入和回放复制的源输入不会另附一份默认输入，finish 后仍允许落此派生元数据，不允许新增事件。理由：落实「未给输入时」的条件，避免回放输入引用重复。
 - delivery 先核自身 view/delivery hash，再核父事件身份与消息配对；自身 hash 不符为 HASH_MISMATCH，字节/hash 均正确但与后续实际模型工具消息不符为 IDENTITY_MISMATCH。理由：区分直接内容损坏与跨事件身份错误，采纳歧义 12 的消息不符读法。
 - 尾部未再送模的 delivery 仍须对应录制模型回复中存在的 tool_call_id，并来自已录工具视图或冻结缓存；它只表示已生成，不计实际送达。理由：原第 75 行的「模型 tool_calls 与 tool delivery 配对」不会因未发送而失效；不能凭空添加未知 call ID。
+
+
+独立审查 P2 修复合同（lead 2026-10-14 已裁决；适用于 record 完整性检查、load/结构核验以及模型回放的源包校验）：
+
+- 工具跨事件关联：operation.requested_tool/requested_target 必须与 ToolRequest.tool_name/target_ref 按 typed canonical JSON 相等；view 如带 operation_id，必须等于 operation.operation_id。显式 request.window 必须能严格解析为 Window 且等于 operation.window；request.window=null 时，operation.window 必须等于 binding.default_window，未设默认窗则等于 binding.authorized_window；推出的窗还须在授权框内。不得用「都在授权框内」代替相等，不能表示的窗口（包括 operation.window=null）拒绝包。任一关联矛盾 → IDENTITY_MISMATCH，回放在调用当前模型前拒绝。理由：内部 hash 自洽不证明来源、请求和实际查询指向同一事实；允许既有参数派生与省略 view ID 的条款不豁免已经存在的矛盾。
+- `DUPLICATE_TOOL_CALL` 是 loop 在 facade 之前产生的拒绝，CaptureHooks.delivery 自动在对应 delivery 前添加 kind='refusal'，不需要额外产品挂点或调用 executor。该事件 parent 指向最初产生被引用证据的 tool 事件；request_ref 为严格对象 `{operation_id,tool_call_id,duplicate_of_evidence_id}`（均非空字符串），response_ref 为完整拒绝 view，hashes 精确为 `{view_sha256}`。operation_id 为本次被拒调用自己的 ID，不能占用源工具或其他拒绝的 ID；delivery.parent 指向该 refusal。其 error=null，clock/identity/seq/私有 refs 沿既有规则。
+- refusal 必须对应当前模型真实声明的 call ID；工具/目标/解析后参数的重复身份按现有 loop._call_fingerprint 与被引用工具的原模型调用相等，证据 ID 必须由包内既有 tool view 产生，完整拒绝字段必须等于现有 loop._duplicate_call_view 的投影。它不是旧 view 的全文缓存，也不能生成新 adopted evidence。理由：合法拒绝有新的 operation_id 和新的投影，不能误当作不相同的缓存 view，也不能放行任意伪造网关结果。
+- 模型回放分别索引物理 tool 与 refusal：refusal 按其 parent 工具的精确冻结请求键及拒绝出现次序消费，在 ReplaySession.capture_delivery 校验；不经 facade，facade 不会合成一个未发生的 ToolOutcome。当前 loop 产生的拒绝除新 operation_id 外须与冻结拒绝逐字段相等；新/旧拒绝 operation_id 加入 id_map，证据 ID 不变，原证据及 hash 不变，当前实际 view/消息另录。不命中、耗尽或拒绝字段不兼容 → sticky REPLAY_MISS，停止该 Run；旧尾项可不消费。理由：重现既有 loop 的拒绝，保留身份映射与真实交付，不绕开冻结包查询或补 live。
+- 新增固定原因码 `HTTP_BODY_INCOMPLETE`，用于 http.error 与 recording.incomplete_reasons，不是供应商文本、也不是新的 outward RecordingError：record 仍抛 RECORDING_INCOMPLETE。启用 capture_http 时，已知 HTTP 错误正文在读取中抛 IncompleteRead/HTTPException/OSError（含读取超时），或 Content-Length 与读取长度不符/非法、错误头已收到但预算耗尽而未能读完时，以 `(body, None, 已知status)` 回调一次；不把部分正文冒充完整空 bytes。真正的完整空响应仍为 `(body,b'',status)`；未取得响应的连接失败仍为 `(body,None,None)`。reader 即使遇到被改写的 complete=true 也不能接受该截断事件。关闭录制时仍沿原读取、返回 `(b'',status)` 与 ModelError/重试路径；不改认证头或默认请求 body。理由：请求失败可以有完整录制，已知截断不能标为完整。
