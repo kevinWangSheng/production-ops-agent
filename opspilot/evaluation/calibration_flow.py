@@ -286,10 +286,16 @@ def final_labels(pack: LabelPack) -> Mapping[str, BlindLabel]:
 def _check_label(item: CalibrationItem, label: BlindLabel) -> None:
     if label.input_hash != item.input_hash:
         raise JudgeError("HASH_MISMATCH")
-    if (
-        check_diagnoses(item.request, label.diagnoses, label.verdict)
-        is not label.verdict
-    ):
+    valid = False
+    try:
+        valid = (
+            check_diagnoses(item.request, label.diagnoses, label.verdict)
+            is label.verdict
+        )
+    except (JudgeError, StorageError):
+        pass
+    if not valid:
+        # Labels are not judge observations; never expose judge-output codes here.
         raise JudgeError("CALIBRATION_LABEL_INVALID")
 
 
@@ -667,14 +673,14 @@ def _verify(
                     entries.append(entry)
             observations[provider] = tuple(entries)
         if cached_observations != observations:
-            raise JudgeError("HASH_MISMATCH")
+            raise JudgeError("DERIVED_RESULT_MISMATCH")
         results = {
             p: _counts(pack, labels, configs[p], observations[p], pack_hash)
             for p in _PROVIDERS
         }
         selection = _selection(pack_hash, results)
         if decode(SelectionRecord, obj["selection"]) != selection:
-            raise JudgeError("HASH_MISMATCH")
+            raise JudgeError("DERIVED_RESULT_MISMATCH")
         if (
             selection.status != "selected"
             or selection.selected_provider != config.provider

@@ -863,7 +863,7 @@ def test_calibration_readback_recomputes_results_and_observations(tmp_path, pack
     forged = json.loads(path.read_bytes())
     forged["selection"]["results"]["zai"]["agreement"] = 47
     path.write_bytes(canonical_bytes(forged))
-    with pytest.raises(JudgeError, match="HASH_MISMATCH"):
+    with pytest.raises(JudgeError, match="DERIVED_RESULT_MISMATCH"):
         load_verified_calibration(path, pack=pack, config=configs_["zai"])
     forged = original
     forged["observations"]["zai"][0]["observation"]["result"]["verdict"] = not forged[
@@ -1198,8 +1198,9 @@ def test_review_p2_summary_cache_cannot_detach_from_error_artifacts(tmp_path, pa
     summary["selection"] = other["selection"]
     (failed / "calibration.json").write_bytes(canonical_bytes(summary))
     assert all((failed / name).read_bytes() == raw for name, raw in originals.items())
-    with pytest.raises(JudgeError, match="HASH_MISMATCH|IDENTITY_MISMATCH"):
+    with pytest.raises(JudgeError, match="DERIVED_RESULT_MISMATCH") as caught:
         load_verified_calibration(failed, pack=pack, config=candidate_configs["zai"])
+    assert caught.value.__cause__ is None and caught.value.__context__ is None
 
 
 @pytest.mark.parametrize(
@@ -1275,3 +1276,24 @@ def test_slot_normalization_case_and_separator_variants(key):
     )
     observation, transport = invoke(request, diagnoses, verdict)
     assert observation.result.status == "invalid" and not transport.calls
+
+
+@pytest.mark.parametrize("flaw", ["verdict", "quote", "location"])
+def test_label_semantic_errors_use_calibration_domain_code(tmp_path, pack, flaw):
+    original = pack.annotations[0].labels
+    index = next(i for i, label in enumerate(original) if label.diagnoses)
+    label = original[index]
+    if flaw == "verdict":
+        changed = replace(label, verdict=not label.verdict)
+    else:
+        diagnoses = list(label.diagnoses)
+        diagnoses[0] = replace(diagnoses[0], **{flaw: "invalid-label-value"})
+        changed = replace(label, diagnoses=tuple(diagnoses))
+    labels = tuple(changed if i == index else v for i, v in enumerate(original))
+    bad = replace(
+        pack, annotations=tuple(replace(a, labels=labels) for a in pack.annotations)
+    )
+    with pytest.raises(JudgeError, match="CALIBRATION_LABEL_INVALID") as caught:
+        freeze_label_pack(tmp_path / "bad-labels", bad)
+    assert caught.value.__cause__ is None and caught.value.__context__ is None
+    assert not (tmp_path / "bad-labels").exists()
