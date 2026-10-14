@@ -13,7 +13,7 @@ from collections import Counter
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Literal
+from typing import Literal, cast
 
 from opspilot.evaluation.codec import (
     StorageError,
@@ -29,6 +29,7 @@ from opspilot.evaluation.judge import (
     JudgeInput,
     JudgeObservation,
     JudgeTransport,
+    _check_config,
     check_diagnoses,
     judge_config_hash,
     judge_once,
@@ -137,6 +138,14 @@ class VerifiedCalibration:
     _pack: LabelPack = field(repr=False)
 
 
+def _validated_pack(pack: LabelPack) -> LabelPack:
+    try:
+        return cast(LabelPack, validated(LabelPack, pack))
+    except StorageError:
+        pass
+    raise JudgeError("SCHEMA_INVALID")
+
+
 def _hash(value: object) -> str:
     return hashlib.sha256(canonical_bytes(value)).hexdigest()
 
@@ -214,6 +223,10 @@ def final_labels(pack: LabelPack) -> Mapping[str, BlindLabel]:
             or first.annotator_identity == second.annotator_identity
             or not first.model_identity.strip()
             or not second.model_identity.strip()
+            or any(
+                a.model_identity.strip().casefold() in {"glm-5.3", "deepseek-flash"}
+                for a in pack.annotations
+            )
         ):
             raise JudgeError("CALIBRATION_UNRESOLVED")
         annotations: list[dict[str, BlindLabel]] = []
@@ -260,7 +273,8 @@ def final_labels(pack: LabelPack) -> Mapping[str, BlindLabel]:
             raise JudgeError("CALIBRATION_TOO_FEW_NEGATIVES")
         return final
     except StorageError:
-        raise JudgeError("SCHEMA_INVALID") from None
+        pass
+    raise JudgeError("SCHEMA_INVALID")
 
 
 def _check_label(item: CalibrationItem, label: BlindLabel) -> None:
@@ -274,15 +288,19 @@ def _check_label(item: CalibrationItem, label: BlindLabel) -> None:
 
 
 def _create_directory(path: Path) -> None:
+    code: str | None = None
     try:
         path.mkdir(mode=0o700, parents=False, exist_ok=False)
     except FileExistsError:
-        raise JudgeError("OUTPUT_EXISTS") from None
+        code = "OUTPUT_EXISTS"
     except OSError:
-        raise JudgeError("ARTIFACT_UNWRITABLE") from None
+        code = "ARTIFACT_UNWRITABLE"
+    if code is not None:
+        raise JudgeError(code)
 
 
 def _write(path: Path, raw: bytes) -> None:
+    code: str | None = None
     try:
         fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
         with os.fdopen(fd, "wb") as stream:
@@ -290,9 +308,11 @@ def _write(path: Path, raw: bytes) -> None:
             stream.flush()
             os.fsync(stream.fileno())
     except FileExistsError:
-        raise JudgeError("OUTPUT_EXISTS") from None
+        code = "OUTPUT_EXISTS"
     except OSError:
-        raise JudgeError("ARTIFACT_UNWRITABLE") from None
+        code = "ARTIFACT_UNWRITABLE"
+    if code is not None:
+        raise JudgeError(code)
 
 
 def _read(path: Path) -> bytes:
@@ -307,18 +327,35 @@ def _read(path: Path) -> bytes:
                 raise JudgeError("SCHEMA_INVALID")
             return raw
     except OSError:
-        raise JudgeError("EVIDENCE_UNAVAILABLE") from None
+        pass
+    raise JudgeError("EVIDENCE_UNAVAILABLE")
 
 
 def _check_directory(path: Path) -> None:
     try:
-        if not stat.S_ISDIR(path.lstat().st_mode):
-            raise JudgeError("EVIDENCE_UNAVAILABLE")
+        if stat.S_ISDIR(path.lstat().st_mode):
+            return
     except OSError:
-        raise JudgeError("EVIDENCE_UNAVAILABLE") from None
+        pass
+    raise JudgeError("EVIDENCE_UNAVAILABLE")
+
+
+def _calibration_bytes(path: Path) -> bytes:
+    # Directory is the primary public API; retain the original explicit-file API.
+    try:
+        mode = path.lstat().st_mode
+    except OSError:
+        pass
+    else:
+        if stat.S_ISDIR(mode):
+            return _read(path / "calibration.json")
+        if stat.S_ISREG(mode) and path.name == "calibration.json":
+            return _read(path)
+    raise JudgeError("EVIDENCE_UNAVAILABLE")
 
 
 def freeze_label_pack(path: Path, pack: LabelPack) -> str:
+    pack = _validated_pack(pack)
     pack_hash = label_pack_hash(pack)
     parts = _parts(pack)
     index = canonical_bytes(
@@ -368,7 +405,8 @@ def load_label_pack(path: Path, *, expected_pack_hash: str) -> LabelPack:
             raise JudgeError("HASH_MISMATCH")
         return pack
     except StorageError:
-        raise JudgeError("SCHEMA_INVALID") from None
+        pass
+    raise JudgeError("SCHEMA_INVALID")
 
 
 def _missing_diagnosis(label: BlindLabel, observation: JudgeObservation) -> bool:
@@ -491,11 +529,12 @@ def _check_candidates(pack: LabelPack, configs: Mapping[str, JudgeConfig]) -> No
     if set(configs) != _PROVIDERS:
         raise JudgeError("CONFIG_INVALID")
     for provider, config in configs.items():
-        judge_config_hash(config)
+        _check_config(config)
         if config.provider != provider:
             raise JudgeError("JUDGE_IDENTITY_MISMATCH")
         if any(
-            a.model_identity in (config.request_model, config.response_model)
+            a.model_identity.strip().casefold()
+            in (config.request_model.casefold(), config.response_model.casefold())
             for a in pack.annotations
         ):
             raise JudgeError("CALIBRATION_UNRESOLVED")
@@ -508,7 +547,7 @@ def run_calibration(
     transports: Mapping[str, JudgeTransport],
     destination: Path,
 ) -> SelectionRecord:
-    pack = validated(LabelPack, pack)
+    pack = _validated_pack(pack)
     labels = final_labels(pack)
     pack_hash = label_pack_hash(pack)
     _check_candidates(pack, configs)
@@ -606,7 +645,8 @@ def _verify(
             raise JudgeError("CALIBRATION_UNRESOLVED")
         return selection, results[config.provider]
     except StorageError:
-        raise JudgeError("SCHEMA_INVALID") from None
+        pass
+    raise JudgeError("SCHEMA_INVALID")
 
 
 def load_verified_calibration(
@@ -615,7 +655,8 @@ def load_verified_calibration(
     pack: LabelPack,
     config: JudgeConfig,
 ) -> VerifiedCalibration:
-    raw = _read(path)
+    _check_config(config)
+    raw = _calibration_bytes(path)
     selection, result = _verify(raw, pack, config)
     return VerifiedCalibration(
         selection.pack_hash,
@@ -623,7 +664,7 @@ def load_verified_calibration(
         config.provider,
         result,
         raw,
-        validated(LabelPack, pack),
+        _validated_pack(pack),
     )
 
 

@@ -964,3 +964,147 @@ def test_missing_causal_diagnosis_cannot_be_correct_negative(tmp_path, pack):
     assert selection.results["zai"].false_passes == 0
     assert not selection.results["zai"].passed
     assert "KEY_DIAGNOSIS_MISSING" in selection.results["zai"].reasons
+
+
+def test_input_hash_equals_json_normalized_product_canonical(pack):
+    from opspilot.evaluation import judge_request
+    from opspilot.tools.registry import canonical_hash
+
+    for item in pack.items:
+        request = item.request
+        payload = judge_request(
+            request.spec,
+            request.answer,
+            request.report,
+            request.delivered,
+            request.authorized,
+            outcome=request.outcome,
+        )
+        normalized = json.loads(json.dumps(payload, allow_nan=False))
+        assert item.input_hash == canonical_hash(normalized)
+
+
+def test_annotation_bytes_only_depend_on_annotation_set(tmp_path, pack):
+    from opspilot.evaluation.calibration_flow import load_label_pack
+
+    first = tmp_path / "first"
+    second = tmp_path / "second"
+    freeze_label_pack(first, pack)
+    swapped = replace(pack, annotations=tuple(reversed(pack.annotations)))
+    pack_hash = freeze_label_pack(second, swapped)
+    assert (first / "annotations-1.json").read_bytes() == canonical_bytes(
+        pack.annotations[0]
+    )
+    assert (first / "annotations-1.json").read_bytes() == (
+        second / "annotations-2.json"
+    ).read_bytes()
+    assert load_label_pack(second, expected_pack_hash=pack_hash) == swapped
+
+
+@pytest.mark.parametrize("model", ["glm-5.3", "deepseek-flash", "GLM-5.3"])
+def test_fixed_candidate_annotator_rejected_during_freeze(tmp_path, pack, model):
+    bad = replace(
+        pack,
+        annotations=(
+            pack.annotations[0],
+            replace(pack.annotations[1], model_identity=model),
+        ),
+    )
+    with pytest.raises(JudgeError, match="CALIBRATION_UNRESOLVED") as caught:
+        freeze_label_pack(tmp_path / "bad", bad)
+    assert caught.value.__cause__ is None and caught.value.__context__ is None
+    assert not (tmp_path / "bad").exists()
+
+
+def test_config_hash_pure_but_modified_profile_never_sent():
+    config = configs()["zai"]
+    base = judge_config_hash(config)
+    for field in (
+        "provider",
+        "endpoint",
+        "request_model",
+        "response_model",
+        "prompt",
+        "adapter_version",
+        "schema_version",
+    ):
+        changed = replace(
+            config,
+            **{
+                field: "openai"
+                if field == "provider"
+                else getattr(config, field) + "-changed"
+            },
+        )
+        assert judge_config_hash(changed) != base
+        observation, transport = invoke(config=changed)
+        assert not observation.passed and not transport.calls
+
+
+@pytest.mark.parametrize("kind", ["symlink", "directory", "missing", "bad_utf8"])
+def test_config_io_conversion_removes_exception_chain(tmp_path, kind):
+    path = tmp_path / "config"
+    if kind == "symlink":
+        path.symlink_to(tmp_path / "absent")
+    elif kind == "directory":
+        path.mkdir()
+    elif kind == "bad_utf8":
+        path.write_bytes(b"\xff")
+        path.chmod(0o600)
+    with pytest.raises(JudgeError, match="CONFIG_UNREADABLE") as caught:
+        load_judge_config(path, environ={})
+    assert caught.value.__cause__ is None and caught.value.__context__ is None
+
+
+@pytest.mark.parametrize("quoted", ["'", '"'])
+def test_quoted_config_is_literal_and_same_environ_allowed(tmp_path, quoted):
+    path = tmp_path / "config"
+    value = "fake-$HOME-${PATH}-`not-executed`"
+    path.write_text(f"ZAI_API_KEY={quoted}{value}{quoted}\n")
+    path.chmod(0o600)
+    config = load_judge_config(path, environ={"ZAI_API_KEY": value})
+    assert config.api_key == value
+
+
+def test_verified_directory_and_explicit_file_share_semantic_proof(tmp_path, pack):
+    configs_ = configs()
+    destination = tmp_path / "cal"
+    run_calibration(
+        pack,
+        configs=configs_,
+        transports=calibration_transports(pack, configs_),
+        destination=destination,
+    )
+    path = destination / "calibration.json"
+    # JSON whitespace/key order are not an integrity or correctness signal.
+    obj = json.loads(path.read_bytes())
+    path.write_text(json.dumps(obj, indent=2, sort_keys=False))
+    by_directory = load_verified_calibration(
+        destination, pack=pack, config=configs_["zai"]
+    )
+    by_file = load_verified_calibration(path, pack=pack, config=configs_["zai"])
+    assert by_directory == by_file
+    assert invoke(calibration=by_directory)[0].passed
+    alias = tmp_path / "link"
+    alias.symlink_to(destination)
+    with pytest.raises(JudgeError, match="EVIDENCE_UNAVAILABLE") as caught:
+        load_verified_calibration(alias, pack=pack, config=configs_["zai"])
+    assert caught.value.__cause__ is None and caught.value.__context__ is None
+
+
+def test_invalid_calibration_dto_uses_judge_error_without_chain(tmp_path):
+    with pytest.raises(JudgeError, match="SCHEMA_INVALID") as caught:
+        run_calibration(
+            None, configs={}, transports={}, destination=tmp_path / "invalid"
+        )
+    assert caught.value.__cause__ is None and caught.value.__context__ is None
+    assert not (tmp_path / "invalid").exists()
+
+
+def test_config_nul_in_comment_is_rejected(tmp_path):
+    path = tmp_path / "config"
+    path.write_bytes(b"# comment\x00\nZAI_API_KEY=fake-only\n")
+    path.chmod(0o600)
+    with pytest.raises(JudgeError, match="CONFIG_SYNTAX") as caught:
+        load_judge_config(path, environ={})
+    assert caught.value.__cause__ is None and caught.value.__context__ is None

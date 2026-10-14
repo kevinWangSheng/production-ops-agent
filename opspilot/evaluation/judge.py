@@ -154,15 +154,20 @@ def _check_config(config: JudgeConfig) -> None:
 
 
 def judge_config_hash(config: JudgeConfig) -> str:
-    _check_config(config)
-    public = {
-        name: getattr(config, name)
-        for name in config.__dataclass_fields__
-        if name != "api_key"
-    }
-    # Normalize the default int and the same loaded float to the same identity.
-    public["timeout_seconds"] = float(config.timeout_seconds)
-    return hashlib.sha256(canonical_bytes(public)).hexdigest()
+    # Fingerprinting is separate from permission to execute a configuration.
+    try:
+        config = validated(JudgeConfig, config)
+    except StorageError:
+        pass
+    else:
+        public = {
+            name: getattr(config, name)
+            for name in config.__dataclass_fields__
+            if name != "api_key"
+        }
+        public["timeout_seconds"] = float(config.timeout_seconds)
+        return hashlib.sha256(canonical_bytes(public)).hexdigest()
+    raise JudgeError("SCHEMA_INVALID")
 
 
 def load_judge_config(
@@ -170,6 +175,7 @@ def load_judge_config(
 ) -> JudgeConfig:
     if not path.is_absolute():
         raise JudgeError("CONFIG_ABSOLUTE_PATH_REQUIRED")
+    raw: str | None = None
     try:
         fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
         with os.fdopen(fd, encoding="utf-8") as stream:
@@ -183,7 +189,11 @@ def load_judge_config(
                 raise JudgeError("CONFIG_PRIVATE_REGULAR_FILE_REQUIRED")
             raw = stream.read(16385)
     except (OSError, UnicodeError):
-        raise JudgeError("CONFIG_UNREADABLE") from None
+        pass
+    if raw is None:
+        raise JudgeError("CONFIG_UNREADABLE")
+    if "\x00" in raw:
+        raise JudgeError("CONFIG_SYNTAX")
     values: dict[str, str] = {}
     for line in raw.splitlines():
         line = line.strip()
@@ -191,17 +201,15 @@ def load_judge_config(
             continue
         key, sep, value = line.partition("=")
         key, value = key.strip(), value.strip()
-        if (
-            not sep
-            or key not in KEYS
-            or key in values
-            or any(c in value for c in ("$", "`", "\x00"))
-        ):
+        if not sep or key not in KEYS or key in values or "\x00" in value:
             raise JudgeError("CONFIG_SYNTAX")
         if value[:1] in ("'", '"'):
             if len(value) < 2 or value[-1] != value[0]:
                 raise JudgeError("CONFIG_SYNTAX")
+            # Quoted values are literal: no shell evaluation or interpolation.
             value = value[1:-1]
+        elif any(c in value for c in ("$", "`")):
+            raise JudgeError("CONFIG_SYNTAX")
         values[key] = value
     if any(k in environ and environ[k] != v for k, v in values.items()):
         raise JudgeError("CONFIG_ENV_CONFLICT")
@@ -296,7 +304,8 @@ class HTTPJudgeTransport:
         try:
             return asyncio.run(invoke())
         except httpx2.TimeoutException:
-            raise TimeoutError from None
+            pass
+        raise TimeoutError
 
 
 def _reject_private(value: Any) -> None:
@@ -499,6 +508,7 @@ def judge_once(
         ("prompt_tokens", "completion_tokens", "total_tokens")
     )
     try:
+        _check_config(config)
         request = validated(JudgeInput, request)
         body = _ADAPTERS[config.provider].build(config, safe_input(request))
         if len(body) > config.max_request_bytes:
