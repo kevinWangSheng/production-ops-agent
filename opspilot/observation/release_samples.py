@@ -208,30 +208,50 @@ class _ReleaseSampleOps(_StoreBase):
             or lease_seconds <= 0
         ):
             raise PersistenceError("INVALID_INPUT")
-        with self.transaction(snapshot=True) as conn:
-            now = self._db_now(conn).astimezone(timezone.utc)
-            candidates = conn.execute(
-                "SELECT session_id,purpose FROM opspilot_observation_sessions WHERE state='authorized' AND authorized AND active_sample_job_id IS NOT NULL AND active_sample_due_at<=%s AND (active_sample_lease_until IS NULL OR active_sample_lease_until<=%s) AND deadline_at>%s ORDER BY active_sample_due_at,session_id",
-                (now, now, now),
-            ).fetchall()
         leases: list[SampleLease | ReleaseSampleLease] = []
-        for row in candidates:
-            if len(leases) >= limit:
+        probe_budget = 8 * limit
+        probed = 0
+        now: datetime | None = None
+        cursor: tuple[datetime, UUID] | None = None
+        while len(leases) < limit and probed < probe_budget:
+            page_limit = min(limit, probe_budget - probed)
+            with self.transaction(snapshot=True) as conn:
+                if now is None:
+                    now = self._db_now(conn).astimezone(timezone.utc)
+                query = "SELECT session_id,purpose,active_sample_due_at FROM opspilot_observation_sessions WHERE state='authorized' AND authorized AND active_sample_job_id IS NOT NULL AND active_sample_due_at<=%s AND (active_sample_lease_until IS NULL OR active_sample_lease_until<=%s) AND deadline_at>%s"
+                parameters: list[object] = [now, now, now]
+                if cursor is not None:
+                    query += " AND (active_sample_due_at,session_id)>(%s,%s)"
+                    parameters.extend(cursor)
+                query += " ORDER BY active_sample_due_at,session_id LIMIT %s"
+                parameters.append(page_limit)
+                candidates = conn.execute(query, parameters).fetchall()
+            if not candidates:
                 break
-            if row["purpose"] == "release_observation":
-                leases.extend(
-                    self._claim_release_due(owner, row["session_id"], lease_seconds)
-                )
-            else:
-                # Existing incident transaction and lease shape are retained.
-                leases.extend(
-                    self._claim_incident_due_samples(  # type: ignore[attr-defined]
-                        owner,
-                        limit=1,
-                        lease_seconds=lease_seconds,
-                        selected_session_id=row["session_id"],
+            cursor = (
+                candidates[-1]["active_sample_due_at"],
+                candidates[-1]["session_id"],
+            )
+            for row in candidates:
+                if len(leases) >= limit:
+                    break
+                probed += 1
+                if row["purpose"] == "release_observation":
+                    leases.extend(
+                        self._claim_release_due(owner, row["session_id"], lease_seconds)
                     )
-                )
+                else:
+                    # Existing incident transaction and lease shape are retained.
+                    leases.extend(
+                        self._claim_incident_due_samples(  # type: ignore[attr-defined]
+                            owner,
+                            limit=1,
+                            lease_seconds=lease_seconds,
+                            selected_session_id=row["session_id"],
+                        )
+                    )
+            if len(candidates) < page_limit:
+                break
         return leases
 
     def _release_lease_current(self, lease: ReleaseSampleLease) -> bool:

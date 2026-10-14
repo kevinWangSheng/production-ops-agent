@@ -1468,3 +1468,90 @@ def test_impl_unknown_budget_normal_submit_expires_session(
     assert history["sessions"][0]["active_sample_job_id"] is None
     assert history["endings"][0]["sample_id"] == evidence.sample_id
     assert replay_release_history(history).consistent
+
+
+@pytest.mark.parametrize("locked_count", [3, 20])
+def test_impl_public_claim_pages_and_bounds_locked_backlog(
+    harness, monkeypatch, locked_count
+):
+    from contextlib import contextmanager
+
+    from tests.integration.test_m1_02_observation_store_postgres import (
+        _authorize,
+        _incident,
+    )
+
+    observer = harness[1]
+    owner = DurableStore(DSN)
+    controller = ObservationStore(DSN)
+    incidents = []
+    sessions = []
+    pages = []
+    probes = []
+    limit = 2
+    original_transaction = observer.transaction
+    original_claim = observer._claim_incident_due_samples
+
+    class RecordingConnection:
+        def __init__(self, conn):
+            self.conn = conn
+
+        def execute(self, query, parameters=None):
+            cursor = self.conn.execute(query, parameters)
+            if isinstance(query, str) and query.startswith("SELECT session_id,purpose"):
+                rows = cursor.fetchall()
+                pages.append((query, rows))
+
+                class Result:
+                    def fetchall(self):
+                        return rows
+
+                return Result()
+            return cursor
+
+    @contextmanager
+    def record_transaction(*, snapshot=False):
+        with original_transaction(snapshot=snapshot) as conn:
+            yield RecordingConnection(conn) if snapshot else conn
+
+    def record_probe(*args, **kwargs):
+        probes.append(kwargs["selected_session_id"])
+        return original_claim(*args, **kwargs)
+
+    try:
+        for _ in range(locked_count + 6):
+            incident, _, target = _incident(owner)
+            incidents.append(incident)
+            session = _authorize(controller, incident, target)
+            sessions.append(session)
+            with psycopg.connect(DSN) as conn:
+                conn.execute(
+                    "UPDATE opspilot_observation_sessions SET active_sample_due_at=%s WHERE session_id=%s",
+                    (datetime(1900, 1, 1, tzinfo=timezone.utc), session),
+                )
+        sessions.sort()
+        monkeypatch.setattr(observer, "transaction", record_transaction)
+        monkeypatch.setattr(observer, "_claim_incident_due_samples", record_probe)
+        with psycopg.connect(DSN) as blocker:
+            blocker.execute(
+                "SELECT session_id FROM opspilot_observation_sessions WHERE session_id=ANY(%s) FOR UPDATE",
+                (sessions[:locked_count],),
+            )
+            leases = observer.claim_due_samples(uuid4(), limit=limit)
+        assert len(leases) <= limit
+        assert pages and all(" LIMIT " in query for query, _ in pages)
+        assert all(len(rows) <= limit for _, rows in pages)
+        assert len(probes) <= 8 * limit
+        if locked_count == 3:
+            assert [lease.session_id for lease in leases] == sessions[
+                locked_count : locked_count + limit
+            ]
+            assert len(pages) >= 3
+        else:
+            assert leases == []
+            assert len(probes) == 8 * limit
+    finally:
+        for incident in incidents:
+            controller.revoke_sessions(incident)
+        controller.close()
+        owner.close()
