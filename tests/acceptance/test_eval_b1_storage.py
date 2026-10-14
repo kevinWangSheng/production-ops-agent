@@ -1405,16 +1405,15 @@ def _chain_texts(error):
         # Review counterexample: 2 disagreements, no false pass, no positive
         # label to disagree on (24 negatives).
         CalibrationResult(True, 24, 48, 46, 24, 0, ()),
-        # false_passes > disagreements (1).
-        CalibrationResult(False, 24, 48, 47, 12, 2, ("FALSE_PASS",)),
-        # 4 false negatives with one positive item (max 2).
-        CalibrationResult(False, 24, 48, 44, 23, 0, ("AGREEMENT_BELOW_THRESHOLD",)),
+        # All negatives, 1 disagreement but 0 false passes: violates
+        # disagreements - false_passes <= 2*(items - negatives).
+        CalibrationResult(True, 24, 48, 47, 24, 0, ()),
     ],
 )
 def test_aggregate_rejects_calibration_disagreement_bounds(forged):
-    # Lead semantics (review finding 1): disagreements = comparisons - agreement;
-    # false_passes <= disagreements and
-    # disagreements - false_passes <= 2*(items - negatives).
+    # Lead semantics r2: joint bounds apply only when passed=True.
+    # disagreements = comparisons - agreement; false_passes <= disagreements
+    # and disagreements - false_passes <= 2*(items - negatives).
     frozen, planned, evs = _agg_inputs()
     forged = replace(
         forged, judge_config_hash=JUDGE_HASH, calibration_pack_hash=PACK_HASH
@@ -1422,6 +1421,27 @@ def test_aggregate_rejects_calibration_disagreement_bounds(forged):
     with pytest.raises(AggregateError) as excinfo:
         aggregate(frozen, planned, evs, forged)
     assert str(excinfo.value) == "CALIBRATION_INCONSISTENT"
+
+
+def test_aggregate_accepts_failed_calibration_outside_bounds():
+    # Lead semantics r2: joint bounds apply only when passed=True. A failed DTO
+    # with false_passes (2) > disagreements (1) gets only the range checks
+    # (I:99 compatibility), is accepted and blocks the baseline.
+    frozen, planned, evs = _agg_inputs()
+    failed = CalibrationResult(
+        False,
+        24,
+        48,
+        47,
+        12,
+        2,
+        ("FALSE_PASS",),
+        judge_config_hash=JUDGE_HASH,
+        calibration_pack_hash=PACK_HASH,
+    )
+    agg = aggregate(frozen, planned, evs, failed)
+    assert agg.baseline_complete is False
+    assert "JUDGE_NOT_CALIBRATED" in agg.incomplete_reasons
 
 
 def test_aggregate_accepts_failed_calibration_within_bounds():
