@@ -105,6 +105,7 @@ AUDIT = "opspilot_release_audit"
 QUERY_RESULTS = "opspilot_release_query_results"
 BEFORE_0015 = "0014_release_observations"
 REVISION_0015 = "0015_release_observation_sessions"
+HEAD = "0016_release_deadline_evidence"
 
 SESSION = PROFILE.session  # deadline 3600, max 40, cadence 60, window 600
 MIN_TRACKING = 600  # M: explicit test value, not a calibration
@@ -2755,7 +2756,7 @@ def test_0015_backfills_legacy_incident_rows_and_round_trips_losslessly() -> Non
     name, scratch = _scratch_database()
     try:
         schema.migrate(scratch, pg_dump=PG_DUMP)
-        assert _revision(scratch) == REVISION_0015 == schema.head_revision()
+        assert _revision(scratch) == HEAD == schema.head_revision()
         head_dump = schema.schema_dump(scratch, pg_dump=PG_DUMP)
         incidents, active = _legacy_incident_data(scratch)
         sessions = list(incidents)
@@ -2781,7 +2782,7 @@ def test_0015_backfills_legacy_incident_rows_and_round_trips_losslessly() -> Non
         )
 
         _upgrade(scratch)
-        assert _revision(scratch) == REVISION_0015
+        assert _revision(scratch) == HEAD
         assert schema.schema_dump(scratch, pg_dump=PG_DUMP) == head_dump
         again = _legacy_rows(scratch, sessions)
         assert again == at_head, "backfill reproduces the same neutral fields"
@@ -2893,6 +2894,8 @@ def test_0015_downgrade_is_refused_when_release_observation_data_exists(
             _downgrade(scratch)
 
         assert "RELEASE_OBSERVATION_DATA_WOULD_BE_LOST" in str(raised.value)
+        # Each revision commits separately: 0016 restores the 0015 function;
+        # the data-loss refusal rolls back only the attempted 0015 downgrade.
         assert _revision(scratch) == REVISION_0015
         assert _rows(f"SELECT * FROM {AUDIT} ORDER BY sequence", (), scratch) == audit
         assert _rows(f"SELECT * FROM {SESSIONS}", (), scratch) == sessions
