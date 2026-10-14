@@ -23,7 +23,6 @@ import pytest
 from eval_b3_support import (
     CANARIES,
     CANARY_OF,
-    CONFIG_CODES,
     COVERAGE,
     CREDENTIAL_NAMES,
     ENDPOINTS,
@@ -246,9 +245,7 @@ def test_relative_path_rejected(tmp_path, monkeypatch):
 def test_only_exact_0600_accepted(tmp_path, mode):
     path = write_env(tmp_path, env_text(), mode=mode)
     try:
-        config_error(
-            path, {"CONFIG_PRIVATE_REGULAR_FILE_REQUIRED", "CONFIG_UNREADABLE"}
-        )
+        config_error(path, {"CONFIG_PRIVATE_REGULAR_FILE_REQUIRED"})
     finally:
         os.chmod(path, 0o600)
 
@@ -263,15 +260,13 @@ def test_symlinked_config_rejected(tmp_path):
     real = write_env(tmp_path, env_text(), name="real.env")
     link = tmp_path.resolve() / ".env.judge"
     link.symlink_to(real)
-    config_error(link, {"CONFIG_PRIVATE_REGULAR_FILE_REQUIRED", "CONFIG_UNREADABLE"})
+    config_error(link, {"CONFIG_UNREADABLE"})
 
 
 def test_directory_and_missing_file_rejected(tmp_path):
     directory = tmp_path.resolve() / "dir.env"
     directory.mkdir(mode=0o700)
-    config_error(
-        directory, {"CONFIG_PRIVATE_REGULAR_FILE_REQUIRED", "CONFIG_UNREADABLE"}
-    )
+    config_error(directory, {"CONFIG_UNREADABLE"})
     config_error(tmp_path.resolve() / "absent.env", {"CONFIG_UNREADABLE"})
 
 
@@ -279,7 +274,7 @@ def test_config_over_16384_bytes_rejected(tmp_path):
     padding = ["# " + "x" * 120] * 140  # comments only; > 16384 bytes in total
     path = write_env(tmp_path, env_text(extra=padding))
     assert path.stat().st_size > 16384
-    config_error(path, CONFIG_CODES)
+    config_error(path, {"CONFIG_PRIVATE_REGULAR_FILE_REQUIRED"})
 
 
 def test_unknown_key_rejected_without_echoing_values(tmp_path):
@@ -288,7 +283,7 @@ def test_unknown_key_rejected_without_echoing_values(tmp_path):
     )
     config_error(
         path,
-        {"CONFIG_SYNTAX", "CONFIG_INVALID"},
+        {"CONFIG_SYNTAX"},
         secrets=(*CANARIES, "canary-unknown-value", "OPSPILOT_JUDGE_EXTRA"),
     )
 
@@ -298,7 +293,7 @@ def test_duplicate_key_rejected(tmp_path):
     path = write_env(tmp_path, env_text(extra=extra))
     config_error(
         path,
-        {"CONFIG_SYNTAX", "CONFIG_INVALID"},
+        {"CONFIG_SYNTAX"},
         secrets=(*CANARIES, "canary-second-zai-value"),
     )
 
@@ -315,7 +310,7 @@ def test_duplicate_key_rejected(tmp_path):
 )
 def test_missing_required_key_rejected(tmp_path, provider, dropped):
     path = write_env(tmp_path, env_text(drop=(dropped,)))
-    config_error(path, {"CONFIG_INVALID", "CONFIG_SYNTAX"}, provider=provider)
+    config_error(path, {"CONFIG_INVALID"}, provider=provider)
 
 
 def test_empty_credential_rejected(tmp_path):
@@ -324,16 +319,16 @@ def test_empty_credential_rejected(tmp_path):
 
 
 @pytest.mark.parametrize(
-    ("name", "value"),
-    [
-        ("OPSPILOT_JUDGE_MODEL", "glm-4.6"),
-        ("ZAI_BASE_URL", "https://open.bigmodel.cn/api/paas/v4"),
-        ("ZAI_BASE_URL", "http://api.z.ai/api/paas/v4"),
+    ("name", "value", "code"),
+    [  # r2 item 6: renamed fixed model vs changed fixed BASE_URL
+        ("OPSPILOT_JUDGE_MODEL", "glm-4.6", "JUDGE_IDENTITY_MISMATCH"),
+        ("ZAI_BASE_URL", "https://open.bigmodel.cn/api/paas/v4", "CONFIG_INVALID"),
+        ("ZAI_BASE_URL", "http://api.z.ai/api/paas/v4", "CONFIG_INVALID"),
     ],
 )
-def test_zai_identity_cannot_be_redirected(tmp_path, name, value):
+def test_zai_identity_cannot_be_redirected(tmp_path, name, value, code):
     path = write_env(tmp_path, env_text(override={name: value}))
-    config_error(path, {"CONFIG_INVALID", "JUDGE_IDENTITY_MISMATCH"})
+    config_error(path, {code})
 
 
 def test_comments_blank_lines_and_paired_quotes_are_literal(tmp_path):
@@ -356,7 +351,7 @@ def test_process_environment_is_never_read(tmp_path, monkeypatch):
     )
     config_error(
         missing,
-        {"CONFIG_INVALID", "CONFIG_SYNTAX"},
+        {"CONFIG_INVALID"},
         secrets=("canary-process-env-zai",),
     )
 
@@ -366,9 +361,7 @@ def test_environ_cannot_fill_missing_credential(tmp_path):
     environ = {CREDENTIAL_NAMES["zai"]: "canary-environ-zai"}
     with pytest.raises(JudgeError) as caught:
         load(missing, "zai", environ)
-    expect_code(
-        caught.value, {"CONFIG_INVALID", "CONFIG_SYNTAX", "CONFIG_ENV_CONFLICT"}
-    )
+    expect_code(caught.value, {"CONFIG_INVALID"})
     assert_no_leak(caught.value, "canary-environ-zai")
 
 
@@ -469,7 +462,7 @@ def test_request_body_is_the_p6_whitelist_only(configs):
     assert "max_completion_tokens" not in body
     assert "tools" not in body and "tool_choice" not in body
     assert [m["role"] for m in body["messages"]] == ["system", "user"]
-    assert body["messages"][0]["content"]
+    assert body["messages"][0]["content"] == configs["zai"].prompt  # r2 item 7
     sent = user_payload(call.body)
     assert sent == expected_user_payload(request)
     assert len(sent) == 9
@@ -635,6 +628,7 @@ def test_private_protocol_fields_never_reach_transport(configs, key, placement):
 CREDENTIAL_SLOTS = (  # B3:26 credential slot keys, variants and prefixed/suffixed names
     "api_key",
     "API-Key",
+    "api.key",
     "ZAI_API_KEY",
     "authorization",
     "password",
@@ -713,7 +707,7 @@ def test_valid_uncalibrated_observation_cannot_pass(configs):
     assert observation.response_model == "glm-5.3"
     assert observation.elapsed_seconds >= 0
     assert observation.provider == "zai"
-    assert observation.phase in {"evaluation", "calibration"}
+    assert observation.phase == "evaluation"  # r2 item 7
     assert observation.balance_delta is None  # B3:30: unknown, never a fake zero
 
 
@@ -925,7 +919,7 @@ ENVELOPE_CASES = {
             GOOD, message={"tool_calls": [{"id": "t", "type": "function"}]}
         ),
         200,
-        {"invalid", "error"},
+        {"invalid"},
     ),
     "two_choices": (
         lambda: completion(
@@ -944,9 +938,9 @@ ENVELOPE_CASES = {
             ],
         ),
         200,
-        {"invalid", "error"},
+        {"invalid"},
     ),
-    "no_choices": (lambda: completion("", choices=[]), 200, {"invalid", "error"}),
+    "no_choices": (lambda: completion("", choices=[]), 200, {"invalid"}),
     "index_one": (
         lambda: completion(
             "",
@@ -959,14 +953,14 @@ ENVELOPE_CASES = {
             ],
         ),
         200,
-        {"invalid", "error"},
+        {"invalid"},
     ),
     "role_user": (
         lambda: completion(GOOD, message={"role": "user"}),
         200,
-        {"invalid", "error"},
+        {"invalid"},
     ),
-    "body_not_json": (lambda: b"<html>bad gateway</html>", 200, {"invalid", "error"}),
+    "body_not_json": (lambda: b"<html>bad gateway</html>", 200, {"invalid"}),
     "http_500": (lambda: completion(GOOD), 500, {"error"}),
     "http_429": (lambda: completion(GOOD), 429, {"error"}),
     "http_401": (lambda: completion(GOOD), 401, {"error"}),
@@ -1031,7 +1025,8 @@ def test_oversized_response_is_oversize_and_reading_stops(configs, verified):
         calibration=verified,
     )
     assert_failed(observation, transport, "oversize")
-    assert sum(consumed) <= MAX_RESPONSE + 2 * 65536
+    # r2 item 7: the first chunk over the limit is counted, the next is never read.
+    assert sum(consumed) == MAX_RESPONSE + 65536
 
 
 def test_response_just_over_limit_is_oversize(configs, verified):
@@ -1165,7 +1160,7 @@ def test_freeze_refuses_existing_destination(pack, tmp_path):
     (target / "items.json").write_text("keep")
     with pytest.raises(Exception) as caught:
         freeze_label_pack(target, pack)
-    expect_code(caught.value, {"OUTPUT_EXISTS"})
+    expect_judge_error(caught.value, {"OUTPUT_EXISTS"})
     assert (target / "items.json").read_text() == "keep"
 
 
@@ -1175,7 +1170,7 @@ def test_load_roundtrip_binds_pack_hash(frozen, pack):
     assert loaded == pack
     with pytest.raises(Exception) as caught:
         load_label_pack(directory, expected_pack_hash="0" * 64)
-    expect_code(caught.value, {"HASH_MISMATCH"})
+    expect_judge_error(caught.value, {"HASH_MISMATCH"})
 
 
 def _copy_pack(frozen, tmp_path):
@@ -1191,7 +1186,7 @@ def test_tampered_label_file_rejected(frozen, tmp_path):
     path.write_bytes(path.read_bytes().replace(b"true", b"false", 1))
     with pytest.raises(Exception) as caught:
         load_label_pack(target, expected_pack_hash=pack_hash)
-    expect_code(caught.value, {"HASH_MISMATCH"})
+    expect_judge_error(caught.value, {"HASH_MISMATCH"})
 
 
 def test_resigned_index_with_unknown_field_rejected(frozen, tmp_path):
@@ -1201,7 +1196,7 @@ def test_resigned_index_with_unknown_field_rejected(frozen, tmp_path):
     (target / "pack.json").write_text(json.dumps(index))
     with pytest.raises(Exception) as caught:
         load_label_pack(target, expected_pack_hash=canonical_hash(index))
-    expect_code(caught.value, None)
+    expect_judge_error(caught.value, {"SCHEMA_INVALID"})
 
 
 def test_symlinked_pack_file_rejected(frozen, tmp_path):
@@ -1211,21 +1206,32 @@ def test_symlinked_pack_file_rejected(frozen, tmp_path):
     (target / "items.json").symlink_to(real)
     with pytest.raises(Exception) as caught:
         load_label_pack(target, expected_pack_hash=pack_hash)
-    expect_code(caught.value, None)
+    expect_judge_error(caught.value, None)
 
 
-def assert_pack_rejected(tmp_path, build, configs, world, *, frozen_stage=True):
-    """B3:46-51: invalid packs are refused before any judge call; freeze or load refuses too."""
+def expect_judge_error(exc: BaseException, codes) -> str:
+    """r2 item 6: label/calibration errors are JudgeError with a fixed code."""
+    assert isinstance(exc, JudgeError), type(exc).__name__
+    return expect_code(exc, codes)
+
+
+def assert_pack_rejected(
+    tmp_path, build, configs, world, *, frozen_stage=True, codes=None
+):
+    """B3:46-51: invalid packs are refused before any judge call; freeze or load refuses too.
+
+    codes=None only where r2 fixes no single code (EVAL_B3_AMBIGUITIES.md r2-tightening).
+    """
     try:
         bad = build()
     except Exception as exc:  # strict DTO construction counts as rejection
-        expect_code(exc, None)
+        expect_judge_error(exc, codes)
         return
     ts = transports(world)
     destination = tmp_path / "calibration"
     with pytest.raises(Exception) as caught:
         run_calibration(bad, configs=configs, transports=ts, destination=destination)
-    expect_code(caught.value, None)
+    expect_judge_error(caught.value, codes)
     assert all(t.calls == [] for t in ts.values())
     assert not (destination / "calibration.json").exists()
     if not frozen_stage:
@@ -1233,11 +1239,11 @@ def assert_pack_rejected(tmp_path, build, configs, world, *, frozen_stage=True):
     try:
         pack_hash = freeze_label_pack(tmp_path / "pack", bad)
     except Exception as exc:
-        expect_code(exc, None)
+        expect_judge_error(exc, codes)
         return
     with pytest.raises(Exception) as caught:
         load_label_pack(tmp_path / "pack", expected_pack_hash=pack_hash)
-    expect_code(caught.value, None)
+    expect_judge_error(caught.value, codes)
 
 
 def _subset(world, keep):
@@ -1429,9 +1435,44 @@ PACK_MUTATIONS = {
 }
 
 
+# r2 item 6 fixed codes; None = r2 names no single code for this case.
+MUTATION_CODES = {
+    "five_scenarios": {"SCHEMA_INVALID"},
+    "three_debug": {"SCHEMA_INVALID"},
+    "unknown_split": {"SCHEMA_INVALID"},
+    "duplicate_item_id": {"SCHEMA_INVALID"},
+    "duplicate_input": None,
+    "family_crosses": {"CALIBRATION_SET_OVERLAP"},
+    "eleven_negatives": {"CALIBRATION_TOO_FEW_NEGATIVES"},
+    "coverage_missing": {"CALIBRATION_COVERAGE_INCOMPLETE"},
+    "wrong_input_hash": {"HASH_MISMATCH"},
+    "label_hash_mismatch": {"HASH_MISMATCH"},
+    "label_verdict_inconsistent": {"CALIBRATION_LABEL_INVALID"},
+    "label_bad_quote": {"CALIBRATION_LABEL_INVALID"},
+    "label_bad_location": {"CALIBRATION_LABEL_INVALID"},
+    "disagreement_unadjudicated": {"CALIBRATION_UNRESOLVED"},
+    "missed_diagnosis_disagreement": {"CALIBRATION_UNRESOLVED"},
+    "one_annotation": None,
+    "three_annotations": None,
+    "same_identity": None,
+    "same_annotator_other_model": None,
+    "annotation_missing_item": None,
+}
+
+
+def test_every_mutation_has_a_code_decision():
+    assert set(MUTATION_CODES) == set(PACK_MUTATIONS)
+
+
 @pytest.mark.parametrize("name", sorted(PACK_MUTATIONS))
 def test_invalid_pack_rejected_before_any_call(tmp_path, configs, world, name):
-    assert_pack_rejected(tmp_path, lambda: PACK_MUTATIONS[name](world), configs, world)
+    assert_pack_rejected(
+        tmp_path,
+        lambda: PACK_MUTATIONS[name](world),
+        configs,
+        world,
+        codes=MUTATION_CODES[name],
+    )
 
 
 @pytest.mark.parametrize("model", ["glm-5.3", "deepseek-flash"])
@@ -1525,13 +1566,22 @@ def test_adjudication_must_bind_both_files_and_a_record(
         "empty_record": lambda: pack_with(record=""),
         "blank_record": lambda: pack_with(record="   "),
     }[flaw]
-    assert_pack_rejected(tmp_path, build, configs, world)
+    # r2 item 6: adjudication defects are CALIBRATION_UNRESOLVED; r2 names no
+    # single code for wrong/swapped file hashes (HASH_MISMATCH is also plausible).
+    codes = {"CALIBRATION_UNRESOLVED"} if flaw.endswith("_record") else None
+    assert_pack_rejected(tmp_path, build, configs, world, codes=codes)
 
 
 def test_adjudication_forbidden_on_agreeing_item(adjudicated, configs, world, tmp_path):
     pack_with, _ = adjudicated
     agreeing = _first(world, positive=True, kind="fault")
-    assert_pack_rejected(tmp_path, lambda: pack_with(item=agreeing), configs, world)
+    assert_pack_rejected(
+        tmp_path,
+        lambda: pack_with(item=agreeing),
+        configs,
+        world,
+        codes={"CALIBRATION_UNRESOLVED"},
+    )
 
 
 # ========================================================= 5. run_calibration
@@ -1605,11 +1655,11 @@ def test_existing_destination_not_overwritten(world, pack, configs, tmp_path):
     destination = tmp_path / "cal"
     destination.mkdir()
     (destination / "calibration.json").write_text("keep")
+    ts = transports(world)
     with pytest.raises(Exception) as caught:
-        run_calibration(
-            pack, configs=configs, transports=transports(world), destination=destination
-        )
-    expect_code(caught.value, {"OUTPUT_EXISTS"})
+        run_calibration(pack, configs=configs, transports=ts, destination=destination)
+    expect_judge_error(caught.value, {"OUTPUT_EXISTS"})
+    assert all(t.calls == [] for t in ts.values())  # r2 item 8: before sending
     assert (destination / "calibration.json").read_text() == "keep"
 
 
@@ -1621,13 +1671,13 @@ def test_all_three_providers_required(world, pack, configs, tmp_path, missing):
         run_calibration(
             pack, configs=partial, transports=ts, destination=tmp_path / "a"
         )
-    expect_code(caught.value, None)
+    expect_judge_error(caught.value, None)
     partial_ts = {k: v for k, v in ts.items() if k != missing}
     with pytest.raises(Exception) as caught:
         run_calibration(
             pack, configs=configs, transports=partial_ts, destination=tmp_path / "b"
         )
-    expect_code(caught.value, None)
+    expect_judge_error(caught.value, None)
     assert all(t.calls == [] for t in ts.values())
 
 
@@ -1737,7 +1787,9 @@ def test_verified_calibration_only_for_selected_provider(
     for provider in ("openai", "deepseek"):
         with pytest.raises(Exception) as caught:
             load_verified_calibration(destination, pack=pack, config=configs[provider])
-        expect_code(caught.value, {"CALIBRATION_UNRESOLVED", "JUDGE_IDENTITY_MISMATCH"})
+        expect_judge_error(
+            caught.value, {"CALIBRATION_UNRESOLVED", "JUDGE_IDENTITY_MISMATCH"}
+        )
 
 
 @pytest.mark.parametrize("name", ["glm46_sol48", "both_fail"])
@@ -1754,7 +1806,7 @@ def test_unresolved_record_yields_no_verified_calibration(
             load_verified_calibration(
                 tmp_path / "cal", pack=pack, config=configs[provider]
             )
-        expect_code(caught.value, {"CALIBRATION_UNRESOLVED", "JUDGE_IDENTITY_MISMATCH"})
+        expect_judge_error(caught.value, {"CALIBRATION_UNRESOLVED"})  # r2 item 3
 
 
 def _walk(value, visit):
@@ -1787,7 +1839,7 @@ def test_forged_selection_rejected(world, pack, configs, tmp_path):
     path.write_text(json.dumps(doc))
     with pytest.raises(Exception) as caught:
         load_verified_calibration(tmp_path / "cal", pack=pack, config=configs["openai"])
-    expect_code(caught.value, None)
+    expect_judge_error(caught.value, {"DERIVED_RESULT_MISMATCH"})
 
 
 def test_forged_counts_rejected(world, pack, configs, tmp_path):
@@ -1815,24 +1867,36 @@ def test_forged_counts_rejected(world, pack, configs, tmp_path):
     path.write_text(json.dumps(doc))
     with pytest.raises(Exception) as caught:
         load_verified_calibration(tmp_path / "cal", pack=pack, config=configs["zai"])
-    expect_code(caught.value, None)
+    expect_judge_error(caught.value, {"DERIVED_RESULT_MISMATCH"})
 
 
 def test_verified_calibration_bound_to_pack_and_config(
     selected, world, configs, tmp_path
 ):
     destination, _ = selected
-    other_pack = _mut_eleven_negatives(world)
+    # A valid pack with different bytes (r2 item 2: model identity may repeat),
+    # so only the pack binding differs.
+    labels = world.labels
+    other_pack = LabelPack(
+        world.items,
+        (
+            annotation(labels, 0),
+            annotation(labels, 1, model_identity="claude-opus-5-5"),
+        ),
+        (),
+    )
     with pytest.raises(Exception) as caught:
         load_verified_calibration(destination, pack=other_pack, config=configs["zai"])
-    expect_code(caught.value, None)
+    expect_judge_error(caught.value, {"HASH_MISMATCH"})
     prompt_changed = copy.copy(configs["zai"])
     object.__setattr__(prompt_changed, "prompt", configs["zai"].prompt + " v2")
     with pytest.raises(Exception) as caught:
         load_verified_calibration(
             destination, pack=make_pack(world), config=prompt_changed
         )
-    expect_code(caught.value, None)
+    # r2 item 1 validates the profile apart from the hash, and no valid zai
+    # config hashes differently, so a changed prompt may fail the profile first.
+    expect_judge_error(caught.value, {"HASH_MISMATCH", "CONFIG_INVALID"})
 
 
 # ================================================================= 6. network

@@ -96,3 +96,48 @@ B3 r2 第 68 行起给出明确约定。以下逐条对照，均未放宽断言�
 - **第 27 条（篡改强度）**：r2 第 8 项规定 loader 容忍 JSON 空白和键顺序的变化，只按语义重算。因此重写后仍被拒绝，就说明拒绝的是被篡改的内容，测试强度不再受格式影响。
 - **夹具修正（r2 第 9 项）**：`test_selected_record_and_artifact` 的签名漏注入 `pack` fixture，导致拿 loader 的返回值去比较 fixture 函数对象。已补上该参数，断言不变。
 - **导入排序**：按实现 worktree 的 ruff 规则排序，那边 B3 模块存在，被归为 first-party。在不含 B3 模块的 worktree 里单独运行 ruff 会报 I001，合并后不会出现。
+
+## r2 收紧（2026-10-14）
+
+凡 r2 写明了码或状态的位置，都已改成单一断言：
+
+- **配置（r2 第 6 项）**
+  - 最终路径是符号链接或目录 → `CONFIG_UNREADABLE`
+  - 权限不是 0600、文件过大 → `CONFIG_PRIVATE_REGULAR_FILE_REQUIRED`
+  - 未知键、重复键 → `CONFIG_SYNTAX`
+  - 缺所选供应商的凭据或 Sol 的两个模型键、environ 想补齐缺失的键 → `CONFIG_INVALID`
+  - 固定模型被改名 → `JUDGE_IDENTITY_MISMATCH`
+  - 固定 BASE_URL 被改 → `CONFIG_INVALID`
+- **请求与观察（r2 第 7 项）**
+  - 非法 envelope（多个/零个 choices、index≠0、role 不对、带 tool_calls、响应体不是 JSON）一律 `invalid`；HTTP 失败一律 `error`
+  - system 消息的 content 必须等于 `config.prompt`
+  - 直接调用 judge_once 时 `phase == "evaluation"`
+  - 超大响应：读到第一个超限块就停，消费量恰好等于 2 MiB 加 64 KiB
+  - 凭据槽名单加入点号变体 `api.key`
+- **标签与校准（r2 第 6 项）**：所有错误都必须是 `JudgeError`
+  - 结构类问题（场景数、调试/验证数、未知 split、重复 ID）→ `SCHEMA_INVALID`
+  - source_family 跨集合 → `CALIBRATION_SET_OVERLAP`
+  - 负例不足 → `CALIBRATION_TOO_FEW_NEGATIVES`
+  - 覆盖标签缺失 → `CALIBRATION_COVERAGE_INCOMPLETE`
+  - input hash 错 → `HASH_MISMATCH`
+  - 标签本身不合法 → `CALIBRATION_LABEL_INVALID`
+  - 未裁决的分歧、空或空白的裁决记录、对一致项的裁决 → `CALIBRATION_UNRESOLVED`
+  - 重签名后 pack.json 带未知字段 → `SCHEMA_INVALID`
+  - 已有目标 → `OUTPUT_EXISTS`；run_calibration 必须在任何发送之前报出
+- **认证（r2 第 3 项）**
+  - pending 或 no_baseline 记录 → `CALIBRATION_UNRESOLVED`
+  - 保存的派生值被篡改 → `DERIVED_RESULT_MISMATCH`
+  - pack 不符 → `HASH_MISMATCH`
+
+r2 没有给出单一码的位置保持原样，只要求是 JudgeError 并带固定码：
+
+1. **重复 input hash**：可读作「结构」（SCHEMA_INVALID），也可读作「hash」（HASH_MISMATCH）。
+2. **标注份数错、标注者身份重复、同一标注者换模型、标注缺项**：可读作「结构」（SCHEMA_INVALID），也可读作「标注」（CALIBRATION_UNRESOLVED）。
+3. **裁决绑定的文件 hash 被交换或未知**：可读作 CALIBRATION_UNRESOLVED，也可读作 HASH_MISMATCH。
+4. **候选 judge 或 Sol 作标注者**：r2 只规定了在哪一步拒绝，没有规定码。
+5. **标签包里的符号链接文件**：r2 第 3 项的 EVIDENCE_UNAVAILABLE 只针对校准工件路径。
+6. **已选定为 GLM 的记录配上 OpenAI 或 DeepSeek 的配置**：可以读作「未选定」，也可以读作「config 不符」。维持 `CALIBRATION_UNRESOLVED`/`JUDGE_IDENTITY_MISMATCH`。
+7. **改了 prompt 的配置去读认证记录**：r2 第 1 项把 profile 校验放在 hash 之外，而合法的 zai 配置 hash 都相同，构造不出一个合法且 hash 不同的配置。接受 `HASH_MISMATCH` 或 `CONFIG_INVALID`。
+8. **空凭据值（`ZAI_API_KEY=`）**：r2 写的是「缺凭据 = CONFIG_INVALID」，但没说空值是否算缺。维持 `CONFIG_INVALID`/`CONFIG_SYNTAX`。
+
+夹具修正：`test_verified_calibration_bound_to_pack_and_config` 原先拿一个本身不合法的包（11 个负例）去测绑定，loader 因包本身不合法而先拒绝（CALIBRATION_TOO_FEW_NEGATIVES），根本没检查到绑定。现改用合法的不同包（第二位标注者换用同一模型身份，r2 第 2 项允许），pack 绑定断言恢复为 `HASH_MISMATCH`。
