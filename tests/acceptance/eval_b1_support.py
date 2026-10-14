@@ -469,10 +469,25 @@ def bare_capture(spec, answer, *, attempt_id, mode, repetition, manifest):
     )
 
 
-def build_layout_round(root: Path, *, short_live: str | None = None) -> dict[str, Any]:
-    """Every D1 scenario with 5 replay + 2 live slots, all completed.
+def d5_plan(spec) -> list[tuple[str, str, int]]:
+    """The fixed D5 slots of one scenario: (version, mode, repetition)."""
+    return [(spec.version, "replay", rep) for rep in range(1, 6)] + [
+        (spec.version, "live", rep) for rep in range(1, 3)
+    ]
 
-    ``short_live`` names one scenario that gets a single live slot instead.
+
+def build_layout_round(
+    root: Path,
+    *,
+    short_live: str | None = None,
+    plan: Callable[[Any], list[tuple[str, str, int]]] | None = None,
+) -> dict[str, Any]:
+    """Every D1 scenario's planned slots, all completed.
+
+    Default plan is D5 (5 replay + 2 live). ``short_live`` names one scenario
+    that gets a single live slot instead; ``plan`` overrides the slots per
+    scenario, and a version other than the scenario's own is applied to the
+    frozen spec/answer so PR-A identity checks still hold.
     """
     bundle = Bundle(root)
     frozen = frozen_manifest()
@@ -480,25 +495,24 @@ def build_layout_round(root: Path, *, short_live: str | None = None) -> dict[str
     journal_refs = []
     summary_refs = {}
     for spec, answer in load_scenarios(SCENARIO_ROOT):
-        lives = 1 if spec.scenario_id == short_live else 2
-        for mode, count in (("replay", 5), ("live", lives)):
-            for rep in range(1, count + 1):
-                planned.append(PlannedSlot(spec.scenario_id, spec.version, mode, rep))
-                aid = f"{spec.scenario_id}-{mode}-{rep}"
-                cap = bare_capture(
-                    spec,
-                    answer,
-                    attempt_id=aid,
-                    mode=mode,
-                    repetition=rep,
-                    manifest=frozen,
-                )
-                journal_refs.append(
-                    write_attempt(bundle.path(f"journal-{aid}.json"), journal_for(cap))
-                )
-                summary_refs[aid] = write_summary(
-                    bundle.path(f"summary-{aid}.json"), cap
-                )
+        slots = (plan or d5_plan)(spec)
+        if spec.scenario_id == short_live:
+            slots = [s for s in slots if not (s[1] == "live" and s[2] != 1)]
+        for version, mode, rep in slots:
+            planned.append(PlannedSlot(spec.scenario_id, version, mode, rep))
+            aid = f"{spec.scenario_id}-{version}-{mode}-{rep}"
+            cap = bare_capture(
+                replace(spec, version=version),
+                replace(answer, version=version),
+                attempt_id=aid,
+                mode=mode,
+                repetition=rep,
+                manifest=frozen,
+            )
+            journal_refs.append(
+                write_attempt(bundle.path(f"journal-{aid}.json"), journal_for(cap))
+            )
+            summary_refs[aid] = write_summary(bundle.path(f"summary-{aid}.json"), cap)
     calibration_ref = write_calibration(
         bundle.path("calibration.json"), calibration_capture()
     )

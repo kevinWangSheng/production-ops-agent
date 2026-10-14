@@ -35,6 +35,7 @@ from eval_b1_support import (
     calibration_doc,
     canonical,
     code_of,
+    d5_plan,
     evaluate_capture,
     forge_summary,
     frozen_manifest,
@@ -1580,3 +1581,78 @@ def test_d5_layout_missing_live_slot_appends_reason(tmp_path):
     agg = load_round(built["round_path"], resolve=built["bundle"].resolve)
     assert agg.baseline_complete is False
     assert agg.incomplete_reasons == ("BASELINE_LAYOUT_MISMATCH",)
+
+
+# ================================================================ Bot P1 r2 / T:46
+
+
+CART = "eval-cart-failure"
+
+
+def _only_cart(changed):
+    """Keep D5 for every scenario except eval-cart-failure."""
+
+    def plan(spec):
+        return changed(spec) if spec.scenario_id == CART else d5_plan(spec)
+
+    return plan
+
+
+def _layout_reasons(tmp_path, plan):
+    built = build_layout_round(tmp_path / "layout", plan=plan)
+    return load_round(built["round_path"], resolve=built["bundle"].resolve)
+
+
+def test_layout_split_across_two_versions(tmp_path):
+    # Bot P1 r2 / T:46: one scenario split into 5 current-version replay and
+    # 2 live under another version is not the D5 layout.
+    def split(spec):
+        return [(spec.version, "replay", r) for r in range(1, 6)] + [
+            (spec.version + "-next", "live", r) for r in range(1, 3)
+        ]
+
+    agg = _layout_reasons(tmp_path, _only_cart(split))
+    assert agg.baseline_complete is False
+    assert agg.incomplete_reasons == ("BASELINE_LAYOUT_MISMATCH",)
+
+
+def test_layout_repetitions_shifted(tmp_path):
+    # Bot P1 r2 / T:46: replay repetitions 2-6 instead of the fixture's 1-5.
+    def shifted(spec):
+        return [(spec.version, "replay", r) for r in range(2, 7)] + [
+            (spec.version, "live", r) for r in range(1, 3)
+        ]
+
+    agg = _layout_reasons(tmp_path, _only_cart(shifted))
+    assert agg.baseline_complete is False
+    assert agg.incomplete_reasons == ("BASELINE_LAYOUT_MISMATCH",)
+
+
+def test_layout_repetitions_with_gap(tmp_path):
+    # Bot P1 r2 / T:46: five replay repetitions that are not consecutive.
+    def gapped(spec):
+        return [(spec.version, "replay", r) for r in (1, 2, 3, 4, 6)] + [
+            (spec.version, "live", r) for r in range(1, 3)
+        ]
+
+    agg = _layout_reasons(tmp_path, _only_cart(gapped))
+    assert agg.baseline_complete is False
+    assert agg.incomplete_reasons == ("BASELINE_LAYOUT_MISMATCH",)
+
+
+def test_layout_version_not_current(tmp_path):
+    # Bot P1 r2 / T:46: the single round version must equal the scenario's
+    # current version in evals/scenarios.
+    def stale(spec):
+        return [("0-stale", mode, r) for _version, mode, r in d5_plan(spec)]
+
+    agg = _layout_reasons(tmp_path, _only_cart(stale))
+    assert agg.baseline_complete is False
+    assert agg.incomplete_reasons == ("BASELINE_LAYOUT_MISMATCH",)
+
+
+def test_layout_valid_d5_still_complete(tmp_path):
+    # Bot P1 r2 / T:46 positive control: the exact D5 plan stays complete.
+    agg = _layout_reasons(tmp_path, d5_plan)
+    assert agg.baseline_complete is True
+    assert agg.incomplete_reasons == ()
