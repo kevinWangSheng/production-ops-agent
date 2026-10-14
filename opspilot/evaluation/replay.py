@@ -51,7 +51,7 @@ class ReplayCapture:
     outcome: IncidentOutcome | None
     recording_ref: ArtifactRef | None
     source_run_id: str
-    replay_run_id: str
+    replay_run_id: str | None
     business_time: datetime
     structural_verified: bool
     error: str | None
@@ -253,15 +253,15 @@ def _identity(
         or attempt.round_id != manifest.round_id
         or attempt.scenario_id != context.scenario_id
         or attempt.scenario_version != context.scenario_version
-        or not attempt.product_run_id
+        or (mode == "replay" and not attempt.product_run_id)
         or attempt.product_run_id == context.source_run_id
     ):
         raise StorageError("IDENTITY_MISMATCH")
     fixture = manifest.dimensions.get("replay_fixture")
     if (
-        fixture is None
-        or fixture.kind != "hash"
-        or fixture.value != recording.ref.sha256
+        fixture is not None
+        and fixture.kind == "hash"
+        and fixture.value != recording.ref.sha256
     ):
         raise StorageError("IDENTITY_MISMATCH")
 
@@ -295,7 +295,6 @@ def replay(
     # Do not trust a manually constructed Recording or mutable DTO contents.
     source = load_recording(recording.path, expected_hash=recording.ref.sha256)
     _identity(source, mode, attempt, manifest)
-    assert attempt.product_run_id is not None
     base = ReplayCapture(
         attempt,
         None,
@@ -309,6 +308,7 @@ def replay(
     )
     if mode == "structural":
         return base
+    assert attempt.product_run_id is not None
     if investigator is None or driver is None or destination is None:
         raise StorageError("SCHEMA_INVALID")
     if not _compatible(source, manifest):

@@ -44,7 +44,6 @@ from opspilot.investigation.loop import (
     ModelClient,
     ModelError,
     ModelReply,
-    _parse_arguments,
     serialized_request,
 )
 from opspilot.investigation.messages import PairingError, validate_tool_calls
@@ -183,8 +182,6 @@ def _context(context: RecordingContext) -> RecordingContext:
         for name in ("permissions", "registry", "profile", "projection"):
             value = getattr(binding, name + "_hash")
             _hash(value)
-            if context.versions.get(name) != value:
-                invalid()
     if not context.synthetic:
         for name in (
             "tools_schema",
@@ -193,7 +190,8 @@ def _context(context: RecordingContext) -> RecordingContext:
             "profile",
             "projection",
         ):
-            _hash(context.versions.get(name, ""))
+            if not context.versions.get(name, "").strip():
+                invalid()
     _no_credentials(encode(context))
     _no_private(encode(context))
     return context
@@ -384,6 +382,8 @@ class CaptureHooks:
         self._sealed = False
         self._model_parent: int | None = None
         self._operations: dict[str, int] = {}
+        self._pending_views: dict[str, list[int]] = {}
+        self._delivered_tools: set[int] = set()
         self._counts: Counter[str] = Counter()
 
     def clock(self, at: datetime) -> None:
@@ -594,6 +594,8 @@ class CaptureHooks:
                     ):
                         hooks.reasons.append("RECORDING_INCOMPLETE")
                         raise StorageError("RECORDING_INCOMPLETE")
+                    view_hash = sha(canonical_bytes(outcome.model_view))
+                    hooks._pending_views.setdefault(view_hash, []).append(seq)
                     hooks.events[seq] = replace(
                         hooks.events[seq],
                         hashes={
@@ -617,6 +619,15 @@ class CaptureHooks:
             self.reasons.append("RECORDING_INCOMPLETE")
             raise StorageError("RECORDING_INCOMPLETE")
         parent = self._operations.pop(str(view.get("operation_id")), None)
+        candidates = self._pending_views.get(sha(canonical_bytes(view)), [])
+        if parent in self._delivered_tools:
+            parent = None
+        if parent is None and candidates:
+            parent = candidates[0]
+        if parent is not None:
+            self._delivered_tools.add(parent)
+            if parent in candidates:
+                candidates.remove(parent)
         seq = self._begin(
             "delivery",
             canonical_bytes(view),
@@ -662,9 +673,15 @@ def record(
     outcome: IncidentOutcome | None = None
     failure: str | None = None
     try:
-        if context.synthetic and not context.input_refs:
-            hooks.input(canonical_bytes(context.stimulus))
         outcome = validated(IncidentOutcome, driver(hooks))
+        if context.synthetic and not hooks.context.input_refs:
+            # A driver may supply original bytes before sealing. Generate the
+            # fallback only after it has had that opportunity; this is metadata,
+            # not another post-seal event.
+            ref = hooks._put(
+                canonical_bytes(hooks.context.stimulus), limit=MAX_REQUEST_BYTES
+            )
+            hooks.context = replace(hooks.context, input_refs=(ref,))
         if outcome.scenario_id != context.scenario_id:
             raise StorageError("IDENTITY_MISMATCH")
         if outcome.final_state in {
@@ -947,8 +964,6 @@ def validate_recording(recording: Recording) -> None:
                 item
                 for item in pending.values()
                 if item["function"]["name"] == request.tool_name
-                and canonical_bytes(_parse_arguments(item["function"]["arguments"]))
-                == canonical_bytes(request.params)
             ]
             if not matching:
                 raise StorageError("IDENTITY_MISMATCH")
@@ -976,6 +991,13 @@ def validate_recording(recording: Recording) -> None:
                 or type(message["content"]) is not str
             ):
                 invalid()
+            _same_hashes(
+                event,
+                {
+                    "view_sha256": sha(canonical_bytes(view)),
+                    "delivery_sha256": sha(canonical_bytes(message)),
+                },
+            )
             call_id = message["tool_call_id"]
             if call_id not in pending:
                 raise StorageError("IDENTITY_MISMATCH")
@@ -994,13 +1016,6 @@ def validate_recording(recording: Recording) -> None:
                 ]
                 if sha(request_raw) not in known_views:
                     raise StorageError("IDENTITY_MISMATCH")
-            _same_hashes(
-                event,
-                {
-                    "view_sha256": sha(canonical_bytes(view)),
-                    "delivery_sha256": sha(canonical_bytes(message)),
-                },
-            )
             pending.pop(call_id)
             generated[call_id] = sha(canonical_bytes(message))
     if not saw_model or tools_waiting or pending:
@@ -1050,5 +1065,8 @@ def _tool_integrity(
             raise StorageError("HASH_MISMATCH")
         if canonical_bytes(evidence.view) != canonical_bytes(outcome.model_view):
             raise StorageError("HASH_MISMATCH")
-        if outcome.model_view.get("evidence_id") != evidence.evidence_id:
+        if (
+            "evidence_id" in outcome.model_view
+            and outcome.model_view["evidence_id"] != evidence.evidence_id
+        ):
             raise StorageError("IDENTITY_MISMATCH")

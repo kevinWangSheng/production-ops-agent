@@ -161,6 +161,16 @@ class DeepSeekClient:
         else:
             self._opener = opener
 
+    @property
+    def capture_http(self) -> Callable[[bytes, bytes | None, int | None], None] | None:
+        return self._capture_http
+
+    @capture_http.setter
+    def capture_http(
+        self, hook: Callable[[bytes, bytes | None, int | None], None] | None
+    ) -> None:
+        self._capture_http = hook
+
     def complete(self, call: ModelCall) -> ModelReply:
         """One physical HTTPS request. Retries are the loop's budget decision."""
         # The span sees ``call`` and the parsed ``ModelReply`` only -- never

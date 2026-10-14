@@ -988,3 +988,68 @@ def test_transport_oversize_cannot_be_complete_even_if_driver_catches(tmp_path):
 
     with pytest.raises(RecordingError, match="RECORDING_INCOMPLETE"):
         source(tmp_path, driver=drive)
+
+
+@pytest.mark.parametrize("declared", [True, False])
+def test_trailing_delivery_still_requires_a_declared_model_call(tmp_path, declared):
+    def drive(hooks):
+        last = first_call("late") if declared else reply(content="stop")
+        model = hooks.model(ScriptedModel([first_call(), last]))
+        views = []
+
+        def deliver(view, message):
+            views.append(view)
+            hooks.delivery(view, message)
+
+        conversation(model, hooks.tools(Executor()), deliver)
+        hooks.delivery(
+            views[0],
+            {
+                "role": "tool",
+                "tool_call_id": "late",
+                "content": canonical_bytes(views[0]).decode(),
+            },
+        )
+        return outcome()
+
+    if not declared:
+        with pytest.raises(RecordingError, match="IDENTITY_MISMATCH"):
+            source(tmp_path, driver=drive)
+    else:
+        recording = source(tmp_path, driver=drive)
+        assert recording.events[-1].kind == "delivery"
+        manifest, attempt = manifest_attempt(recording, "structural")
+        assert replay(
+            recording,
+            mode="structural",
+            attempt=attempt,
+            manifest=manifest,
+            investigator=None,
+        ).structural_verified
+
+
+def test_structural_null_run_accepts_version_fixture_but_rejects_wrong_mode(tmp_path):
+    recording = source(tmp_path)
+    manifest, attempt = manifest_attempt(recording, "structural")
+    dimensions = dict(manifest.dimensions)
+    dimensions["replay_fixture"] = DimensionValue("version", "v1", None)
+    manifest = replace(manifest, dimensions=dimensions)
+    attempt = replace(
+        attempt, manifest_hash=manifest_hash(manifest), product_run_id=None
+    )
+    capture = replay(
+        recording,
+        mode="structural",
+        attempt=attempt,
+        manifest=manifest,
+        investigator=None,
+    )
+    assert capture.replay_run_id is None and capture.structural_verified
+    with pytest.raises(RecordingError, match="IDENTITY_MISMATCH"):
+        replay(
+            recording,
+            mode="structural",
+            attempt=replace(attempt, mode="replay"),
+            manifest=manifest,
+            investigator=None,
+        )

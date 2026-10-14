@@ -92,3 +92,15 @@ recording.json 为 canonical JSON：`{schema:'opspilot-replay-1',context:<DTO>,e
 实施时收紧：工具 facade 当前只能接受已冻结绑定的请求；未冻结工具/目标（包括无法表示的注册拒绝）拒绝 fixture，不猜测绑定。缓存 delivery 必须来自包内已录工具视图或 initial_state.evidence_views。模型请求消息仅允许产品消息字段，reasoning_content 须匹配本回放已产生的完整 assistant 配对，单 Run model 名称固定；未知私有协议字段拒绝。增加 finish(at) 是为了让 live driver 在调用结束后冻结真实业务钟，不预猜录制结束时间。逐件读 blob，索引只保留引用/hash，不累积所有请求/工具原文。
 
 格式补齐：context 的 input_refs/source_versions/clock_policy 显式保存原始输入引用、来源版本和固定时钟策略；JSON 中包括默认字段。`CaptureHooks.input(raw: bytes)->ArtifactRef` 保存8 MiB以内原始JSON输入（严格JSON、无凭据/私有协议），driver 应录原始业务输入，禁止含答案/flag的评测封套。synthetic 未给输入时自动冻结 stimulus 的 canonical JSON；非 synthetic 缺原始输入即 incomplete。source_versions 默认取录制 versions，回放另存源版本；新包复制源输入blob并单独记录当前实际模型请求。补齐显式字段的理由是避免原始输入来源与时钟策略只藏在通用 Mapping 中。已知人控终态（paused/cancelled及pause/cancel/resume/follow_up/correct交互）与控制事件同样拒绝；压缩/重试逐物理调用记录，RESPONSE_TOO_LARGE即incomplete。
+
+独立验收分诊澄清（2026-10-14；不改变只读、精确查找、私有协议或完整性合同）：
+
+- context.versions/source_versions 保存版本标识或 hash 字符串，manifest 比较 DimensionValue.value（kind 为 hash/version）；binding 四个 *_hash 是独立的内容 SHA256，不要求等于对应版本标签。理由：版本名与内容摘要是两个冻结维度，原接口没有规定二者相等（歧义 5）。
+- 两个录制边界各自保留原始请求：模型 arguments 与 facade 的 typed params 不要求相等，driver 可在 facade 前完成既有默认值/授权参数组装；结构核验关联工具名、同名调用顺序与 delivery.tool_call_id，模型 arguments 和工具 params 均不得改写。理由：接口没有把某个调查 loop 的参数派生方式强加给所有注入 driver；工具查找仍完整比较 facade 的 typed params/window 与冻结 binding。
+- model_view 是任意严格 JSON 对象，不要求嵌入 operation_id/evidence_id；若含 evidence_id 则必须与 EvidenceRecord 一致，完整 view/hash 仍须等于 evidence.view/hash。缺 operation_id 的新 delivery 按完整 view 的字节 SHA 与待交付工具事件的来源顺序关联，不做工具请求近似匹配。理由：这些身份已在 ToolOutcome/EvidenceRecord 的显式字段中，不能虚构或额外要求视图字段。
+- 源包始终以传入 Recording.ref.sha256 重新读取、逐件验证，工具索引只属于该已核验包；manifest.replay_fixture 可用版本标签，若明确声明 kind=hash 则必须等于该 SHA。理由：原接口未要求 manifest 的版本标签伪装成文件 hash，来源强绑定由已经验证的 Recording.ref 实现。
+- 结构模式不创建产品 Run，允许 attempt.product_run_id 与 ReplayCapture.replay_run_id 为 null；若提供 Run ID 仍不得冒充源 Run。模型模式仍必须使用与源不同的显式产品 Run。理由：零调用的静态核验不需要虚构运行身份，原接口未要求结构模式创建 Run（补充歧义 11）。
+- DeepSeekClient.capture_http 是默认 None 的可赋值属性，也接受同名构造参数；后赋值替换当前 hook，赋 None 关闭。理由：原「注入到 capture_http」两种读法均成立，采纳歧义 10 的实例赋值方式。
+- synthetic 的 stimulus 自动输入仅在 driver 返回且未调用 input()/未提供 input_refs 时补入；显式原输入和回放复制的源输入不会另附一份默认输入，finish 后仍允许落此派生元数据，不允许新增事件。理由：落实「未给输入时」的条件，避免回放输入引用重复。
+- delivery 先核自身 view/delivery hash，再核父事件身份与消息配对；自身 hash 不符为 HASH_MISMATCH，字节/hash 均正确但与后续实际模型工具消息不符为 IDENTITY_MISMATCH。理由：区分直接内容损坏与跨事件身份错误，采纳歧义 12 的消息不符读法。
+- 尾部未再送模的 delivery 仍须对应录制模型回复中存在的 tool_call_id，并来自已录工具视图或冻结缓存；它只表示已生成，不计实际送达。理由：原第 75 行的「模型 tool_calls 与 tool delivery 配对」不会因未发送而失效；不能凭空添加未知 call ID。
