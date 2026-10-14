@@ -394,7 +394,26 @@ def test_tool_event_records_request_binding_key_occurrence_and_hashes(tmp_path):
 
 
 def test_tool_without_evidence_hashes_empty_raw(tmp_path):
-    outcomes = [lambda req: s.tool_outcome(req, evidence_id="none", raw=None)]
+    def metadata_only(req: Any):
+        # A dispatched no_data result without EvidenceRecord carries no source
+        # data in its view (Recheck2 ruling); status matches the outcome.
+        return s.tool_outcome(
+            req,
+            evidence_id="unused",  # not written into the view below
+            raw=None,
+            view={
+                "operation_id": req.operation_id,
+                "tool": s.TOOL,
+                "status": "no_data",
+                "reason": "NO_DATA",
+                "source_contact": "confirmed",
+                "trust": "gateway",
+                "citable_as_fact": False,
+                "content": None,
+            },
+        )
+
+    outcomes = [metadata_only]
     pkg, _ = make(tmp_path, s.source_driver(outcomes=outcomes, result=s.outcome(())))
     event = s.events_of(s.package_json(pkg), "tool")[0]
     # I:66: no evidence.raw -> raw hash is SHA256(b'').
