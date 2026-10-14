@@ -1,9 +1,9 @@
 # F11 发布后观察与调查
 
-- 状态：PR-1 已合并（#218）；PR-2a 已合并（#223）；PR-2b 待实施
-- 更新日期：2026-10-13
+- 状态：PR-1 已合并（#218）；PR-2a 已合并（#223）；PR-2b 已合并（#227）；#225 加固为 #228
+- 更新日期：2026-10-14
 - 依据：[#207](https://github.com/kevinWangSheng/production-ops-agent/issues/207)；feature_list F11 四步；C3 §1（第二个入口）、§4「事故与发布观察分开建模」「人工控制与结果所有权」、§6、§9（发布观察页面与操作）、§10「观察主体与授权」「采样与提交」中发布观察条款、§12「实验环境」（发布实验变更镜像或配置，不重建 chart）；PRODUCT-CONSTRAINTS（不批准、不阻断、不执行发布）；ROADMAP M2
-- 工作区：PR-2a 已合并并清理；PR-2b 开工时新建
+- 工作区：PR-2b 已合并并清理；#225 `feature/F11-release-hardening`（`../poa-f11-225`），独立验收 `test/f11-225-acceptance`（`../poa-f11-225-tests`）
 
 ## 目标与范围
 
@@ -82,6 +82,8 @@ r1 只定方向。其余实现者需要猜的语义点，按 AGENTS.md「合同�
 - 收尾四个数（PR-1）：实施期间新冒出的合同问题 6（r3），另机器人分诊 2 项缺陷；因合同变更重写的测试 0；环境重跑 0；用户裁决轮数 1。
 - 2026-10-13/14 PR-2a（[#223](https://github.com/kevinWangSheng/production-ops-agent/pull/223)，`e0d39f9`）：Codex gpt-6.1-sol 实现；独立验收测试由全新上下文 Claude 子 Agent 只按合同编写；首跑失败经独立分诊，形成合同 r2–r3 补充，3 个旧测试按 P2-03/P2-08/P2-09 更新。独立审查（Codex gpt-6-astra，含非 owner 角色裸 SQL 故障注入）1 P1 + 4 P2 已修复复验；机器人 7 轮，采纳 12、拒绝 1、转 [#225](https://github.com/kevinWangSheng/production-ops-agent/issues/225) 2，逐轮处置见 #223 thread。r4：零查询证据按合法 unknown 计次（用户 2026-10-14 确认）。检查：独立验收 74＋110 passed；`make check`（含 PG 集成）5982 passed。无模型、无 kind 调用。
 - 收尾四个数（PR-2a）：实施期间新冒出的合同问题 6（r2 两项、r3 四项）；因合同变更重写的测试 3（旧测试按 P2 裁决）；环境重跑 0；用户裁决轮数 1。
+- 2026-10-14 PR-2b（`feature/F11-pr2b-telemetry`）：开工预审（Codex gpt-6-astra，只读）无合同层空白，四项可逆细节写入合同 r5。Codex gpt-6.1-sol 实现 `instant_vector`、`take_release_sample` 与 Observer 接线；独立验收测试由全新上下文 Claude 子 Agent 只按合同编写（55 条），首跑 2 条失败经 lead 分诊均为测试错误（计划中 coverage／freshness 共用查询文本、会话 purpose 取值为 `incident_recovery`），修正后 55 passed。独立审查（Codex gpt-6-astra，全新会话，含真实 HTTP 慢响应注入）无 P1/P2；四个测试文件 121 passed。实现者 `make check`（含 PG）6048 passed。未接真实 Prometheus／kind，校准清单仍为空，无模型调用。
+- 收尾四个数（PR-2b）：新冒出的合同问题 0（r5 为开工预审）；因合同变更重写的测试 0；环境重跑 2（uv 缓存权限、同库并发竞争）；用户裁决轮数 0。
 - 2026-10-14 #225 加固（`feature/F11-release-hardening`）：迁移 0016 替换到期证据守卫（downgrade 恢复 0015 函数），重放对每种 ending reason 校验完整边及真实终结事实。lead 裁决：issue 措辞过窄，以合同 §9 为准——无 authorized session 时允许只写审计（含暂停或 scope 撤销后的 observing），有 authorized session 时须同事务 deadline ending 并结束该 session。Codex gpt-6.1-sol 实现；独立验收测试由全新上下文 Claude 子 Agent 只按合同编写（26 条，修复前 18 红，修复后全绿）；独立审查（Codex gpt-6-astra，PG 故障注入）1 P2（终结 ending 未与真实主体终态核对）已修复并经同一审查者复验。4 个旧测试只同步迁移头版本号。实现者 `make check`（含 PG）6098 passed。
 - PR #228 机器人分诊采纳 1 项 P2：有 session 的到期分支补齐同事务 applied 到期审计，并逐项匹配 session／ending、状态、代际与 paused（合法清扫原本就写完整审计）；实现测试补缺审计与引用错配负例。实现者 `make check` 6110 passed。
 - PR #228 机器人第二轮采纳 3 项 P2（均为篡改归档后重放仍判一致）：控制驱动的 authority_revoked ending 须恰被一条匹配 applied pause／resume 审计引用；采样终结 receipt 的 ending_id 须等于 ending；所有 ending 须 authorized_at ≤ recorded_at。实现测试补对应篡改（修复前红）。实现者 `make check` 6126 passed。
@@ -90,6 +92,6 @@ r1 只定方向。其余实现者需要猜的语义点，按 AGENTS.md「合同�
 
 ## 下一步与交接
 
-PR-1 已合并（#218，`8299970`）。PR-2a 已合并（#223，`e0d39f9`）；下一步 PR-2b；#225 加固待排；U2 校准证据任务另立（需 kind 真实发布，与其他会话协调实验环境）。
+PR-1 已合并（#218，`8299970`）。PR-2a 已合并（#223，`e0d39f9`）；PR-2b 已合并（#227，`92920f1`）；#225 加固为 #228；下一步 U2 校准证据任务（需 kind 真实发布，与其他会话协调实验环境）。
 
 - 来自 #184 r5-2：`opspilot_observation_sessions.authorization_source` 默认值为 `post_remediation`，发布观察会话必须显式插入 NULL。
