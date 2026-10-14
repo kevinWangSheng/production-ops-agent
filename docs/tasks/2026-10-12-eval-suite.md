@@ -1,7 +1,7 @@
 # 场景评测套件（回放 + live，参照 HolmesGPT tests/llm）
 
-- 状态：合同 r7；PR-A（评测合同与 schema）已实现并通过独立审查，待用户合并，见执行节
-- 更新日期：2026-10-13
+- 状态：合同 r7；PR-A 已合并（#221）；PR-B 预审完成、B1/B2 已裁决（2026-10-14），拆为 B1 → B2 → B3；PR-B1 已实现并通过独立审查，见执行节
+- 更新日期：2026-10-14
 - 依据：外部验收入口 `IncidentScenario -> IncidentOutcome`（AGENTS.md「验证与汇报」）；[v4 验收包](../testing/first-investigation-v4-2026-09-10.md)；[M1-01 收口记录](2026-09-28-m1-01-closure.md)中的上游评测口径；ADR-0006；C3 第 388–398 行（judge 校准）；上游 HolmesGPT `46e3a72` 的 `tests/llm/`
 - 工作区：每个 PR 一个 worktree，写在执行节
 
@@ -62,6 +62,10 @@
   - 证据特征规则对 6 个冻结证据包核对：故障包各自命中，正常包零命中；76 条记录的 `view_sha256` 与产品算法一致。
   - 实施中冒出的合同问题（用户 2026-10-13 裁决按 P8 原样）：product-catalog 故障中 `frontend` 上的 `grpc.oteldemo.ProductCatalogService/GetProduct` 失败 client span（真实证据 6 条）不计入证据特征，只认 product-catalog server span（同一故障包 11 条）或 checkout 上的 client span。
   - 机器人审查共五轮，均为身份与输入校验的收紧；第五轮按用户选择修复后停止推送，后续发现汇入一个 PR-B issue。
+
+- PR-B 预审（Codex gpt-6-astra，2026-10-14）：[PR-B 合同](2026-10-14-eval-pr-b-contract.md)。用户裁决 B1 = 工具按冻结请求键精确匹配、缺键即 `REPLAY_MISS`；B2 = 冻结证据快照、业务钟固定在录制结束时刻；B3–B8 为 lead 采纳的可逆默认。拆为 PR-B1（持久化边界与表，含 #222）→ PR-B2（录制与回放）→ PR-B3（judge 接入与校准）。
+- PR-B1：分支 `feature/eval-b1-loader`，worktree `../poa-eval-b1`；公开接口 [PR-B1 接口](2026-10-14-eval-pr-b1-interface.md)；代码 `opspilot/evaluation/{codec,storage,baseline}.py`、`rounds.py` 防御。实现 Codex gpt-6.1-sol；独立验收测试由全新上下文 Claude 子 Agent 只按接口编写（`tests/acceptance/test_eval_b1_storage.py`，168 例，歧义 16 条见 `EVAL_B1_AMBIGUITIES.md`），首轮 158/160，两条均为实现偏离接口（异常链、映射键错误码），改实现。独立审查（Codex gpt-6-astra）首轮 fail 4 项 P2：不可能的通过校准仍使基线完成、校准失败时 loader 仍公布 100% 通过率、解析异常链携带原始值、清理失败暴露路径；均改实现、测试作者补测。lead 裁决 r2：校准联合约束只对 `passed=True` 生效（失败 DTO 不抬高通过率，保留 I:99 兼容，PR-A 与 B1 既有断言未改）。复验 pass，三组 pytest 1026 passed；实现者 `make check` 4994 passed、1054 skipped、2 xfailed。无模型、网络或 PG 调用。
+- PR-B 可选遗留（审查者）：PR-A `calibrate()` 的 `min_items` 语义允许多于 24 项，与 T:43「24 项、46/48」口径需对齐，不属 B1。
 
 ## 下一步与交接
 
