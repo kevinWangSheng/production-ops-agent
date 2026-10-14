@@ -164,6 +164,7 @@ def _replay_release_history(history: Mapping[str, object]) -> ReleaseReplay:
     # authorization necessarily commits before any sample can be claimed.
     late_delivery = release.received_at >= release.deadline_at
     status: Any = "unknown" if late_delivery else "pending"
+    subject_states = [(release.received_at, status)]
     terminal_reason = "late_delivery" if late_delivery else None
     terminal_sample: Any = None
     terminal_audit: Any = None
@@ -257,6 +258,7 @@ def _replay_release_history(history: Mapping[str, object]) -> ReleaseReplay:
                 if action == "pause" and paused is not True:
                     issues.add("WATERMARK_MISMATCH")
                 status = expected_status or status
+                subject_states.append((event_at, status))
                 if action in ("cancel", "deadline_expired"):
                     terminal_reason = (
                         "cancelled" if action == "cancel" else "deadline_expired"
@@ -441,6 +443,7 @@ def _replay_release_history(history: Mapping[str, object]) -> ReleaseReplay:
             )
             if terminal:
                 status = terminal
+                subject_states.append((event_at, status))
                 terminal_reason = ending_reason
                 terminal_sample = m
                 ended_samples[s["session_id"]] = (
@@ -496,6 +499,8 @@ def _replay_release_history(history: Mapping[str, object]) -> ReleaseReplay:
             s["state"] != "authorized" and len(facts) != 1
         ):
             issues.add("ENDING_MISMATCH")
+        if terminal_reason is not None and s["state"] == "authorized":
+            issues.add("ENDING_MISMATCH")
     for sid, expected_terminal_sample in ended_samples.items():
         matches = [
             e
@@ -507,6 +512,66 @@ def _replay_release_history(history: Mapping[str, object]) -> ReleaseReplay:
             issues.add("ENDING_MISMATCH")
     by_sample = {m["sample_id"]: m for m in samples}
     for e in endings:
+        if any(
+            field not in e
+            for field in (
+                "ended_reason",
+                "transition",
+                "subject_state_before",
+                "subject_state_after",
+            )
+        ):
+            issues.add("ENDING_MISMATCH")
+            continue
+        reason = e.get("ended_reason")
+        before = e.get("subject_state_before")
+        after = e.get("subject_state_after")
+        transition = e.get("transition")
+        # Mirror the reason-specific release edges, including endings that
+        # revoke sampling authority without terminating the release subject.
+        if reason in ("healthy_confirmed", "anomaly_detected"):
+            expected_after = "healthy" if reason == "healthy_confirmed" else "anomalous"
+            edge_matches = (
+                before == "observing"
+                and after == expected_after
+                and transition == "release_" + expected_after
+                and e.get("sample_id") is not None
+            )
+        elif reason in ("deadline_expired", "max_samples_exhausted"):
+            edge_matches = (
+                before in ("pending", "observing")
+                and after == "unknown"
+                and transition == "release_unknown"
+            )
+        elif reason in ("authority_revoked", "binding_stale", "scope_suspended"):
+            edge_matches = (
+                before in ("pending", "observing")
+                and after == before
+                and transition is None
+            )
+        elif reason == "cancelled":
+            edge_matches = (
+                before in ("pending", "observing")
+                and after == "cancelled"
+                and transition is None
+            )
+        else:
+            edge_matches = False
+        if not edge_matches:
+            issues.add("ENDING_MISMATCH")
+        sample = by_sample.get(e.get("sample_id"))
+        recorded_at = e.get("recorded_at")
+        if sample is not None:
+            expected_before = sample.get("current_subject_state")
+        elif isinstance(recorded_at, datetime):
+            expected_before = next(
+                (state for at, state in reversed(subject_states) if at < recorded_at),
+                None,
+            )
+        else:
+            expected_before = None
+        if before != expected_before:
+            issues.add("ENDING_MISMATCH")
         if (
             e.get("ending_id")
             != uuid5(
@@ -548,7 +613,8 @@ def _replay_release_history(history: Mapping[str, object]) -> ReleaseReplay:
             ):
                 issues.add("ENDING_MISMATCH")
         if (
-            e["ended_reason"] in ("healthy_confirmed", "anomaly_detected")
+            e["ended_reason"]
+            in ("healthy_confirmed", "anomaly_detected", "max_samples_exhausted")
             and e["session_id"] not in ended_samples
         ):
             issues.add("ENDING_MISMATCH")
@@ -564,6 +630,74 @@ def _replay_release_history(history: Mapping[str, object]) -> ReleaseReplay:
             "anomaly_key"
         ) != "release-anomaly:" + str(release.observation_id):
             issues.add("ENDING_MISMATCH")
+        if e["ended_reason"] != "anomaly_detected" and e.get("anomaly_key") is not None:
+            issues.add("ENDING_MISMATCH")
+        if reason in (
+            "cancelled",
+            "deadline_expired",
+            "healthy_confirmed",
+            "anomaly_detected",
+            "max_samples_exhausted",
+        ):
+            # A plausible terminal edge must be backed by the event that
+            # actually ended this subject, not just a matching session marker.
+            if (
+                s is None
+                or not isinstance(recorded_at, datetime)
+                or not isinstance(s.get("authorized_at"), datetime)
+                or recorded_at < s["authorized_at"]
+                or release.status != after
+                or status != after
+                or release.ended_reason != reason
+                or terminal_reason != reason
+                or release.ended_at is None
+            ):
+                issues.add("ENDING_MISMATCH")
+                continue
+            if reason in ("cancelled", "deadline_expired"):
+                applied = [
+                    a
+                    for a in audits
+                    if a.get("action")
+                    == ("cancel" if reason == "cancelled" else reason)
+                    and a.get("outcome") == "applied"
+                    and a.get("observation_id") == release.observation_id
+                    and a.get("ending_id") == e.get("ending_id")
+                    # Cancel references the old session through ending_id;
+                    # its session_id is reserved for new authorizations.
+                    and a.get("session_id")
+                    == (s["session_id"] if reason == "deadline_expired" else None)
+                    and a.get("status_before") == before
+                    and a.get("status_after") == after
+                    and a.get("control_generation_before")
+                    == s.get("subject_control_generation")
+                    and a.get("observation_generation_before")
+                    == s.get("observation_generation")
+                    and a.get("control_generation_after") == release.control_generation
+                    and a.get("observation_generation_after")
+                    == release.observation_generation
+                ]
+                if (
+                    len(applied) != 1
+                    or e.get("sample_id") is not None
+                    or release.ended_at != recorded_at
+                    or not recorded_at
+                    <= applied[0]["recorded_at"]
+                    <= release.updated_at
+                    or (
+                        reason == "deadline_expired"
+                        and recorded_at < release.deadline_at
+                    )
+                ):
+                    issues.add("ENDING_MISMATCH")
+            elif (
+                terminal_sample is None
+                or terminal_sample.get("session_id") != s["session_id"]
+                or terminal_sample.get("sample_id") != e.get("sample_id")
+                or release.ended_at != terminal_sample.get("decision_at")
+                or not release.ended_at <= recorded_at <= release.updated_at
+            ):
+                issues.add("ENDING_MISMATCH")
     if (
         release.control_generation != control_generation
         or release.observation_generation != observation_generation
@@ -587,8 +721,14 @@ def _replay_release_history(history: Mapping[str, object]) -> ReleaseReplay:
         terminal_endings = [
             e for e in endings if e.get("sample_id") == terminal_sample["sample_id"]
         ]
-        if len(terminal_endings) != 1 or not (
-            release.ended_at <= terminal_endings[0]["recorded_at"] <= release.updated_at
+        if (
+            len(terminal_endings) != 1
+            or not isinstance(terminal_endings[0].get("recorded_at"), datetime)
+            or not (
+                release.ended_at
+                <= terminal_endings[0]["recorded_at"]
+                <= release.updated_at
+            )
         ):
             issues.add("ENDING_MISMATCH")
     elif terminal_audit is not None:
@@ -607,9 +747,9 @@ def _replay_release_history(history: Mapping[str, object]) -> ReleaseReplay:
                 None,
             )
             if terminal_ending is None or (
-                terminal_ending["ended_reason"] != terminal_reason
-                or terminal_ending["subject_state_after"] != status
-                or release.ended_at != terminal_ending["recorded_at"]
+                terminal_ending.get("ended_reason") != terminal_reason
+                or terminal_ending.get("subject_state_after") != status
+                or release.ended_at != terminal_ending.get("recorded_at")
                 or not release.ended_at
                 <= terminal_ending["recorded_at"]
                 <= min(terminal_audit["recorded_at"], release.updated_at)
