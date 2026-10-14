@@ -17,6 +17,7 @@ from dataclasses import asdict, replace
 from datetime import datetime, timedelta
 from http.client import IncompleteRead
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 from urllib.error import HTTPError, URLError
 
@@ -40,6 +41,7 @@ from opspilot.investigation.loop import (
     ModelReply,
     serialized_request,
 )
+from opspilot.investigation.store import MemoryStepStore
 from tests.acceptance import eval_b2_support as s
 from tests.m1_investigation_support import (
     ScriptedModel,
@@ -1614,14 +1616,19 @@ def _duplicate_loop_replies() -> list[Any]:
     ]
 
 
-def _loop_driver(log: dict[str, Any], *, replay_session: bool):
+def _loop_driver(
+    log: dict[str, Any], *, replay_session: bool, replay_run_id: str = s.REPLAY_RUN
+):
+    if replay_session:
+        return _loop_replay_driver(log, replay_run_id)
+
     def wire(model: Any, tools: Any, deliver: Any) -> Any:
         loop, request, scripted, *_ = assemble(
-            replies=[] if replay_session else _duplicate_loop_replies(),
+            replies=_duplicate_loop_replies(),
             model_requests=3,
         )
         facade_calls: list[Any] = []
-        inner = tools(loop.executor) if not replay_session else tools
+        inner = tools(loop.executor)
 
         class CountingFacade:
             def execute(self, tool_request: Any) -> Any:
@@ -1631,18 +1638,54 @@ def _loop_driver(log: dict[str, Any], *, replay_session: bool):
             def __getattr__(self, name: str) -> Any:
                 return getattr(inner, name)
 
-        loop.model = model(scripted) if not replay_session else model
+        loop.model = model(scripted)
         loop.executor = CountingFacade()
         loop.capture_delivery = deliver
         result = loop.run(request)
         log.update(result=result, facade_calls=facade_calls, scripted=scripted)
         return s.outcome(tuple(dict.fromkeys(result.evidence_ids)))
 
-    if replay_session:
-        return lambda session: wire(
-            session.model, session.tools, session.capture_delivery
-        )
     return lambda hooks: wire(hooks.model, hooks.tools, hooks.delivery)
+
+
+def _loop_replay_driver(log: dict[str, Any], replay_run_id: str):
+    """I:58: the driver builds its own isolated Run state (scope, store, clock)
+    for the explicit replay Run (I:44/I:102); session.tools only serves frozen
+    tool results, so the executor adapter supplies the scope itself."""
+
+    def driver(session: Any) -> Any:
+        loop, request, scripted, *_ = assemble(replies=[], model_requests=3)
+        # The remaining authorization config comes from the fixed fixture.
+        scope = replace(request.scope, run_id=replay_run_id)
+        facade_calls: list[Any] = []
+
+        def execute(tool_request: Any) -> Any:
+            facade_calls.append(tool_request)
+            return session.tools.execute(tool_request)
+
+        loop.clock = session.clock
+        loop.store = MemoryStepStore(
+            budget_limit=4,
+            deadline=scope.deadline,
+            clock=session.clock,
+            run_id=replay_run_id,
+        )
+        loop.executor = SimpleNamespace(
+            scope=scope, tool_seconds_used=0.0, execute=execute
+        )
+        loop.model = session.model
+        loop.capture_delivery = session.capture_delivery
+        request = replace(
+            request,
+            run_id=replay_run_id,
+            scope=scope,
+            evidence_context={**request.evidence_context, "run_id": replay_run_id},
+        )
+        result = loop.run(request)
+        log.update(result=result, facade_calls=facade_calls, scripted=scripted)
+        return s.outcome(tuple(dict.fromkeys(result.evidence_ids)))
+
+    return driver
 
 
 def _loop_context():
