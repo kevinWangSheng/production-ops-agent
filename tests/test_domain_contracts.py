@@ -212,11 +212,11 @@ def test_a_release_observation_completes_without_any_incident():
     assert observation.incident_id is None
 
 
-def test_an_abnormal_release_links_or_creates_an_incident():
+def test_an_abnormal_release_may_wait_unlinked_or_link_an_incident():
     observation = advance_release(release(), "observation_started")
-    with pytest.raises(DomainError) as excinfo:
-        advance_release(observation, "anomaly_detected")
-    assert excinfo.value.code == "INVALID_INPUT"
+    # P2-03 (F11 PR-2 contract): anomalous may stay unlinked until PR-4
+    unlinked = advance_release(observation, "anomaly_detected")
+    assert (unlinked.status, unlinked.incident_id) == ("anomalous", None)
     linked = advance_release(observation, "anomaly_detected", incident_id="inc-9")
     assert (linked.status, linked.incident_id) == ("anomalous", "inc-9")
 

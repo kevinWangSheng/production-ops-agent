@@ -2,8 +2,8 @@
 
 The two subjects are modelled separately and share no lifecycle. A release
 observation carries its own identity, control version, status machine and
-result ownership, and exists without any incident; only an abnormal result
-creates or links one. A human close is not an independent recovery
+result ownership, and exists without any incident; an abnormal result
+may later create or link one. A human close is not an independent recovery
 confirmation, so no human trigger reaches ``resolved``.
 """
 
@@ -112,7 +112,7 @@ class ReleaseObservationPolicy(DTO):
     def windows_fit_the_deadline(self) -> "ReleaseObservationPolicy":
         if self.deadline <= self.released_at:
             raise ValueError("INVALID_DEADLINE")
-        if self.earliest_healthy_at > self.deadline:
+        if self.earliest_healthy_at >= self.deadline:
             raise ValueError("REQUIRED_WINDOW_EXCEEDS_DEADLINE")
         return self
 
@@ -177,7 +177,7 @@ def advance_release(
 
     ``healthy_window_satisfied`` additionally requires the minimum tracking span
     to have elapsed, so a healthy sample taken earlier leaves the record
-    observing. ``anomaly_detected`` requires the incident it creates or links.
+    observing. An anomaly may await its later incident handoff.
     """
     if not isinstance(observation, ReleaseObservation):
         raise DomainError("INVALID_INPUT", "release observation is required")
@@ -188,15 +188,14 @@ def advance_release(
             raise DomainError(
                 "ILLEGAL_TRANSITION", "minimum tracking span not yet covered"
             )
-        if now > observation.policy.deadline:
+        if now >= observation.policy.deadline:
             raise DomainError("ILLEGAL_TRANSITION", "deadline already expired")
     if trigger == "anomaly_detected":
         linked = incident_id or observation.incident_id
-        if not isinstance(linked, str) or not linked:
-            raise DomainError(
-                "INVALID_INPUT", "an abnormal release links or creates an incident"
-            )
-        update["incident_id"] = linked
+        if linked is not None:
+            if not isinstance(linked, str) or not linked:
+                raise DomainError("INVALID_INPUT", "incident id must be nonempty text")
+            update["incident_id"] = linked
     return observation.model_copy(update=update)
 
 

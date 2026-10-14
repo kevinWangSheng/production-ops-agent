@@ -181,6 +181,8 @@ OBSERVER_GRANTS: Mapping[str, Mapping[str, Grant]] = {
             "active_sample_epoch",
             "active_sample_lease_until",
             "updated_at",
+            "tracking_since",
+            "tracking_until",
         ),
     },
     "opspilot_observation_signal_readings": {"SELECT": "*", "INSERT": "*"},
@@ -214,6 +216,13 @@ OBSERVER_GRANTS: Mapping[str, Mapping[str, Grant]] = {
             "lease_stamps_match",
             "readings_consistent",
             "transition",
+            "current_subject_state",
+            "current_subject_control_generation",
+            "current_subject_observation_generation",
+            "decision_at",
+            "release_evidence_sha256",
+            "release_evaluation",
+            "release_receipt",
         ),
     },
     "opspilot_observation_endings": {
@@ -229,6 +238,64 @@ OBSERVER_GRANTS: Mapping[str, Mapping[str, Grant]] = {
             "lifecycle_after",
             "job_id",
             "job_sequence",
+            "release_observation_id",
+            "subject_state_before",
+            "subject_state_after",
+            "anomaly_key",
+        ),
+    },
+    "opspilot_release_observations": {
+        "SELECT": "*",
+        "UPDATE": (
+            "status",
+            "used_sample_count",
+            "ended_reason",
+            "ended_at",
+            "updated_at",
+        ),
+    },
+    "opspilot_release_query_results": {
+        "SELECT": "*",
+        "INSERT": (
+            "sample_id",
+            "query_key",
+            "query",
+            "source",
+            "evaluated_at",
+            "sent_at",
+            "status",
+            "http_status",
+            "detail",
+            "body_complete",
+            "raw",
+            "raw_sha256",
+        ),
+    },
+    "opspilot_release_audit": {
+        "SELECT": "*",
+        "INSERT": (
+            "audit_id",
+            "observation_id",
+            "sequence",
+            "idempotency_key",
+            "request_sha256",
+            "action",
+            "principal_kind",
+            "actor",
+            "outcome",
+            "reason",
+            "expected_control_generation",
+            "control_generation_before",
+            "control_generation_after",
+            "observation_generation_before",
+            "observation_generation_after",
+            "status_before",
+            "status_after",
+            "paused_before",
+            "paused_after",
+            "session_id",
+            "ending_id",
+            "result",
         ),
     },
 }
@@ -950,12 +1017,13 @@ def recovery_outcome(scenario: Any, records: RecoveryRecords) -> RecoveryOutcome
             raise ValueError("SUBJECT_MISMATCH")
     latest = sessions[-1] if sessions else None
     replay = None if latest is None else replay_history(latest)
+    assert replay is None or isinstance(replay, SessionReplay)
     session_row = None if latest is None else latest["session"]
 
     samples: list[RecoverySample] = []
     for history in sessions:
         this_replay = replay if history is latest else replay_history(history)
-        assert this_replay is not None
+        assert isinstance(this_replay, SessionReplay)
         samples.extend(_samples(subject_id, history, this_replay))
 
     recorded_lifecycle = str(incident["lifecycle"])

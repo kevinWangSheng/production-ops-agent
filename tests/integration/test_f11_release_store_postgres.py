@@ -1037,7 +1037,16 @@ def test_the_web_role_holds_only_select_and_column_insert_on_the_new_tables() ->
     for table in (OBSERVATIONS, EVENTS):
         declared = RUNTIME_GRANTS[WEB_ROLE][table]
         assert "SELECT" in declared
-        assert all(p == "SELECT" or p.startswith("INSERT(") for p in declared), declared
+        assert all(
+            p == "SELECT"
+            or p.startswith("INSERT(")
+            or (
+                table == OBSERVATIONS
+                and p
+                == "UPDATE(calibrated_policy_content,calibrated_policy_revision,calibrated_policy_sha256,control_generation,ended_at,ended_reason,observation_generation,paused,status,updated_at)"
+            )
+            for p in declared
+        ), declared
         assert RUNTIME_GRANTS[WORKER_ROLE][table] == frozenset()
     with psycopg.connect(DSN) as conn:
         web = catalog_grants(conn, WEB_ROLE)
@@ -1046,7 +1055,17 @@ def test_the_web_role_holds_only_select_and_column_insert_on_the_new_tables() ->
         for table in (OBSERVATIONS, EVENTS):
             assert web[table] == RUNTIME_GRANTS[WEB_ROLE][table]
             assert worker[table] == frozenset()
-            assert observer[table] == frozenset()
+            expected_observer = (
+                frozenset(
+                    {
+                        "SELECT",
+                        "UPDATE(ended_at,ended_reason,status,updated_at,used_sample_count)",
+                    }
+                )
+                if table == OBSERVATIONS
+                else frozenset()
+            )
+            assert observer[table] == expected_observer
 
 
 @pytest.mark.parametrize(
@@ -1203,8 +1222,10 @@ def test_worker_and_observer_cannot_touch_the_new_tables(
 ) -> None:
     dsn = request.getfixturevalue(role_fixture)
     _, receipt = web_release
+    # P2-09 (F11 PR-2 contract): Observer now reads the release table
+    observer = role_fixture == "observer_dsn"
     statements = (
-        (f"SELECT count(*) FROM {OBSERVATIONS}", ()),
+        *(() if observer else ((f"SELECT count(*) FROM {OBSERVATIONS}", ()),)),
         (f"SELECT count(*) FROM {EVENTS}", ()),
         (
             f"UPDATE {OBSERVATIONS} SET status='healthy' WHERE observation_id=%s",
@@ -1218,8 +1239,12 @@ def test_worker_and_observer_cannot_touch_the_new_tables(
         with psycopg.connect(dsn) as conn:
             with pytest.raises(psycopg.errors.InsufficientPrivilege):
                 conn.execute(statement, args)
-    with pytest.raises(PersistenceError):
-        ReleaseStore(dsn, pool=POOL).get_release(receipt.observation_id)
+    if observer:
+        record = ReleaseStore(dsn, pool=POOL).get_release(receipt.observation_id)
+        assert record.observation_id == receipt.observation_id
+    else:
+        with pytest.raises(PersistenceError):
+            ReleaseStore(dsn, pool=POOL).get_release(receipt.observation_id)
 
 
 # --- storage failures through the write entry (固定语义: PersistenceError) ---
@@ -1365,7 +1390,6 @@ def test_0014_downgrades_only_when_empty_and_keeps_data_otherwise() -> None:
     name, scratch = _scratch_database()
     try:
         schema.migrate(scratch, pg_dump=PG_DUMP)
-        head = schema.head_revision()
         before_dump = schema.schema_dump(scratch, pg_dump=PG_DUMP)
         with psycopg.connect(scratch) as conn:
             assert {OBSERVATIONS, EVENTS} <= relations(conn)
@@ -1386,6 +1410,42 @@ def test_0014_downgrades_only_when_empty_and_keeps_data_otherwise() -> None:
                     for table, held in at_head.items()
                     if table not in (OBSERVATIONS, EVENTS)
                 }
+                # 0015 adds two relations and exact columns to shared tables;
+                # descending through it must revoke those additions as well.
+                expected = {
+                    table: held
+                    for table, held in expected.items()
+                    if table
+                    not in ("opspilot_release_audit", "opspilot_release_query_results")
+                }
+                if role == WEB_ROLE:
+                    removals = {
+                        "opspilot_observation_sessions": {
+                            "release_observation_id",
+                            "release_policy_revision",
+                            "release_budget_used_at_authorization",
+                        },
+                        "opspilot_observation_endings": {
+                            "release_observation_id",
+                            "subject_state_before",
+                            "subject_state_after",
+                            "anomaly_key",
+                        },
+                    }
+                    for table, columns in removals.items():
+                        normalized = set()
+                        for privilege in expected[table]:
+                            if privilege.startswith("INSERT("):
+                                remaining_columns = (
+                                    set(privilege[7:-1].split(",")) - columns
+                                )
+                                privilege = (
+                                    "INSERT("
+                                    + ",".join(sorted(remaining_columns))
+                                    + ")"
+                                )
+                            normalized.add(privilege)
+                        expected[table] = frozenset(normalized)
                 assert catalog_grants(conn, role) == expected, role
 
         schema.command.upgrade(schema._config(scratch), "head")
@@ -1405,7 +1465,9 @@ def test_0014_downgrades_only_when_empty_and_keeps_data_otherwise() -> None:
         with pytest.raises(Exception):
             schema.command.downgrade(schema._config(scratch), BEFORE_0014)
         with psycopg.connect(scratch) as conn:
-            assert schema.current_revision(conn) == head
+            # 0015 commits its lossless downgrade first; the 0014 data guard
+            # then refuses removing the release records in its own transaction.
+            assert schema.current_revision(conn) == "0014_release_observations"
             assert {OBSERVATIONS, EVENTS} <= relations(conn)
         assert _count_in(scratch, OBSERVATIONS) == 1
         assert _count_in(scratch, EVENTS) == 1

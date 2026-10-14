@@ -33,10 +33,13 @@ from opspilot.evaluation.model import (
     JudgeResult,
     ReportCapture,
     RunEvaluation,
+    ScenarioError,
     ScenarioSpec,
     TraceEntry,
     Window,
     canonical_view_hash,
+    load_scenarios,
+    validate_scenario,
 )
 from opspilot.evaluation.rounds import (
     Aggregate,
@@ -158,7 +161,7 @@ def _resolve(ref: ArtifactRef, resolve: Resolver) -> bytes:
     try:
         raw = resolve(ref)
     except Exception:
-        raise StorageError("EVIDENCE_UNAVAILABLE") from None
+        raw = None
     if type(raw) is not bytes:
         raise StorageError("EVIDENCE_UNAVAILABLE")
     if len(raw) != ref.bytes or _sha(raw) != ref.sha256:
@@ -179,30 +182,47 @@ def _parent(path: Path) -> tuple[int, str]:
             descriptor = child
         return descriptor, absolute.name
     except OSError:
+        pass
+    _close(descriptor)
+    raise StorageError("EVIDENCE_UNAVAILABLE") from None
+
+
+def _close(descriptor: int) -> bool:
+    try:
         os.close(descriptor)
-        raise StorageError("EVIDENCE_UNAVAILABLE") from None
+    except OSError:
+        return False
+    return True
 
 
 def _read(path: Path) -> bytes:
     parent, name = _parent(path)
+    raw = None
     try:
         descriptor = os.open(
             name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent
         )
         with os.fdopen(descriptor, "rb") as file:
-            if not stat.S_ISREG(os.fstat(file.fileno()).st_mode):
-                raise StorageError("EVIDENCE_UNAVAILABLE")
-            return file.read()
+            if stat.S_ISREG(os.fstat(file.fileno()).st_mode):
+                raw = file.read()
     except OSError:
-        raise StorageError("EVIDENCE_UNAVAILABLE") from None
+        pass
     finally:
-        os.close(parent)
+        if not _close(parent):
+            raw = None
+    if raw is None:
+        raise StorageError("EVIDENCE_UNAVAILABLE") from None
+    return raw
 
 
 def _publish(path: Path, raw: bytes, media_type: str) -> ArtifactRef:
+    path = path.absolute()
+    reference = ArtifactRef(path.name, _sha(raw), len(raw), media_type, "private")
+    _ref(reference)
     parent, name = _parent(path)
     temporary = f".eval-{secrets.token_hex(16)}.tmp"
     created = False
+    failure: str | None = None
     try:
         # Report existing targets consistently, even non-regular/symlink ones.
         try:
@@ -210,30 +230,39 @@ def _publish(path: Path, raw: bytes, media_type: str) -> ArtifactRef:
         except FileNotFoundError:
             pass
         else:
-            raise StorageError("OUTPUT_EXISTS")
-        descriptor = os.open(
-            temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600, dir_fd=parent
-        )
-        created = True
-        with os.fdopen(descriptor, "wb") as file:
-            file.write(raw)
-            file.flush()
-            os.fsync(file.fileno())
-        os.link(
-            temporary, name, src_dir_fd=parent, dst_dir_fd=parent, follow_symlinks=False
-        )
-        os.fsync(parent)
+            failure = "OUTPUT_EXISTS"
+        if failure is None:
+            descriptor = os.open(
+                temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600, dir_fd=parent
+            )
+            created = True
+            with os.fdopen(descriptor, "wb") as file:
+                file.write(raw)
+                file.flush()
+                os.fsync(file.fileno())
+            os.link(
+                temporary,
+                name,
+                src_dir_fd=parent,
+                dst_dir_fd=parent,
+                follow_symlinks=False,
+            )
+            os.fsync(parent)
     except FileExistsError:
-        raise StorageError("OUTPUT_EXISTS") from None
+        failure = "OUTPUT_EXISTS"
     except OSError:
-        raise StorageError("EVIDENCE_UNAVAILABLE") from None
+        failure = "EVIDENCE_UNAVAILABLE"
     finally:
         try:
             if created:
                 os.unlink(temporary, dir_fd=parent)
-        finally:
-            os.close(parent)
-    return ArtifactRef(name, _sha(raw), len(raw), media_type, "private")
+        except OSError:
+            failure = "EVIDENCE_UNAVAILABLE"
+        if not _close(parent):
+            failure = "EVIDENCE_UNAVAILABLE"
+    if failure is not None:
+        raise StorageError(failure) from None
+    return reference
 
 
 def _envelope(raw: bytes, schema: str, keys: set[str]) -> dict[str, Any]:
@@ -261,33 +290,15 @@ def _identity(
         or (outcome is not None and outcome.scenario_id != spec.scenario_id)
     ):
         raise StorageError("IDENTITY_MISMATCH")
-    if (
-        not answer.expected_output
-        or any(not t.strip() for t in answer.expected_output)
-        or attempt.repetition < 1
-        or not attempt.attempt_id.strip()
-        or not spec.scenario_id.strip()
-        or not spec.version.strip()
-        or not spec.stimulus.question.strip()
-        or not spec.stimulus.target_id.strip()
-        or not spec.stimulus.subject_id.strip()
-    ):
+    if attempt.repetition < 1 or not attempt.attempt_id.strip():
         invalid()
-    if spec.kind == "normal":
-        if answer.injected is not None or answer.signature is not None:
-            invalid()
-    elif answer.injected is None or answer.signature is None:
-        invalid()
-    if answer.signature is not None and (
-        not answer.signature.any_of
-        or answer.signature.min_matches < 1
-        or not answer.signature.rule_id.strip()
-        or any(
-            not m.service.strip() or not m.operation.strip()
-            for m in answer.signature.any_of
-        )
-    ):
-        invalid()
+    try:
+        validate_scenario(spec, answer)
+    except (ValueError, TypeError):
+        pass
+    else:
+        return
+    invalid()
 
 
 def _manifest(manifest: Manifest) -> None:
@@ -295,7 +306,10 @@ def _manifest(manifest: Manifest) -> None:
     try:
         validate_manifest(manifest)
     except ManifestError:
-        raise StorageError("SCHEMA_INVALID") from None
+        pass
+    else:
+        return
+    raise StorageError("SCHEMA_INVALID") from None
 
 
 def _binding(attempt: AttemptRecord, manifest: Manifest) -> None:
@@ -324,11 +338,14 @@ def _capture(capture: EvaluationCapture, manifest: Manifest) -> RunEvaluation:
         capture.replay_run_id != capture.attempt.product_run_id
     ):
         raise StorageError("IDENTITY_MISMATCH")
-    if set(capture.delivery_refs) != set(capture.delivered):
-        raise StorageError("EVIDENCE_UNAVAILABLE")
     for key, record in capture.delivered.items():
         if key != record.evidence_id:
             raise StorageError("IDENTITY_MISMATCH")
+    if set(capture.delivery_refs) - set(capture.delivered):
+        raise StorageError("IDENTITY_MISMATCH")
+    if set(capture.delivered) - set(capture.delivery_refs):
+        raise StorageError("EVIDENCE_UNAVAILABLE")
+    for record in capture.delivered.values():
         if record.view_sha256 != canonical_view_hash(record.view):
             raise StorageError("HASH_MISMATCH")
     for ref in capture.delivery_refs.values():
@@ -366,7 +383,8 @@ def _capture(capture: EvaluationCapture, manifest: Manifest) -> RunEvaluation:
             capture.judge,
         )
     except (ValueError, TypeError, KeyError, OverflowError):
-        raise StorageError("SCHEMA_INVALID") from None
+        pass
+    raise StorageError("SCHEMA_INVALID") from None
 
 
 def _report_fields(capture: EvaluationCapture) -> tuple[Any, str | None]:
@@ -445,9 +463,12 @@ def _load_summary(
             invalid()
         for claim in saved_report["claims"]:
             exact(claim, set(ClaimV2.model_fields))
+        report_valid = True
         try:
             ReportV2.model_validate(saved_report, strict=True)
         except ValueError:
+            report_valid = False
+        if not report_valid:
             raise StorageError("SCHEMA_INVALID") from None
     if stored != result or canonical_bytes(obj["report_parsed"]) != canonical_bytes(
         parsed
@@ -490,7 +511,8 @@ def _calibration(capture: CalibrationCapture) -> CalibrationResult:
             calibration_pack_hash=capture.calibration_pack_hash,
         )
     except CalibrationError:
-        raise StorageError("SCHEMA_INVALID") from None
+        pass
+    raise StorageError("SCHEMA_INVALID") from None
 
 
 def write_calibration(path: Path, capture: CalibrationCapture) -> ArtifactRef:
@@ -567,6 +589,7 @@ def _round(capture: RoundCapture, resolve: Resolver) -> Aggregate:
     if set(capture.summaries) - set(journals):
         raise StorageError("IDENTITY_MISMATCH")
     evaluations: list[RunEvaluation] = []
+    claimed_calibrated = False
     for key, journal in journals.items():
         summary_ref = capture.summaries.get(key)
         if summary_ref is not None:
@@ -593,6 +616,7 @@ def _round(capture: RoundCapture, resolve: Resolver) -> Aggregate:
             ):
                 raise StorageError("IDENTITY_MISMATCH")
             evaluations.append(evaluation)
+            claimed_calibrated |= summary.judge is not None and summary.judge.calibrated
         elif journal.attempt.started:
             evaluations.append(
                 evaluate(
@@ -618,10 +642,13 @@ def _round(capture: RoundCapture, resolve: Resolver) -> Aggregate:
             cast(str, pack.value),
             cast(str, judge.value),
         )
+    if claimed_calibrated and (calibration is None or not calibration.passed):
+        raise StorageError("DERIVED_RESULT_MISMATCH")
     try:
         return aggregate(capture.manifest, capture.planned, evaluations, calibration)
     except (AggregateError, ManifestError):
-        raise StorageError("SCHEMA_INVALID") from None
+        pass
+    raise StorageError("SCHEMA_INVALID") from None
 
 
 def write_round(path: Path, capture: RoundCapture, *, resolve: Resolver) -> ArtifactRef:
@@ -651,7 +678,37 @@ def load_round(path: Path, *, resolve: Resolver) -> Aggregate:
         raise StorageError("HASH_MISMATCH")
     if stored != result:
         raise StorageError("DERIVED_RESULT_MISMATCH")
-    return result
+    return _baseline_layout(result, capture.planned)
+
+
+def _baseline_layout(result: Aggregate, planned: tuple[PlannedSlot, ...]) -> Aggregate:
+    """Apply the B1 completion policy after validating the PR-A cache."""
+    root = Path(__file__).resolve().parents[2] / "evals" / "scenarios"
+    try:
+        scenarios = load_scenarios(root)
+    except (OSError, ScenarioError):
+        scenarios = ()
+    scenario_ids = {spec.scenario_id for spec, _answer in scenarios}
+    expected = {
+        PlannedSlot(spec.scenario_id, spec.version, "replay", repetition)
+        for spec, _answer in scenarios
+        for repetition in range(1, 6)
+    } | {
+        PlannedSlot(spec.scenario_id, spec.version, "live", repetition)
+        for spec, _answer in scenarios
+        for repetition in range(1, 3)
+    }
+    if (
+        len(scenarios) == len(scenario_ids) == 6
+        and len(planned) == len(expected)
+        and set(planned) == expected
+    ):
+        return result
+    return replace(
+        result,
+        baseline_complete=False,
+        incomplete_reasons=(*result.incomplete_reasons, "BASELINE_LAYOUT_MISMATCH"),
+    )
 
 
 def read_legacy_summary(path: Path) -> LegacySummary:

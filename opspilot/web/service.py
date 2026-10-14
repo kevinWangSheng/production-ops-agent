@@ -75,7 +75,7 @@ from opspilot.investigation.reports import ReportV2, parse_report
 from opspilot.investigation.store import StepCommitter, StepStoreError
 from opspilot.observation.store import SelfHealGrant, SelfHealState
 from opspilot.observer.health_profile import HealthProfile, canonical_content
-from opspilot.observer.replay import replay_history
+from opspilot.observer.replay import SessionReplay, replay_history
 from opspilot.persistence import Lease, PersistenceError
 from opspilot.tools.executor import EvidenceSink
 from opspilot.web.charts import MAX_FIGURES, evidence_chart
@@ -1434,7 +1434,7 @@ class Workbench:
         so instead of taking the page down."""
         history = self.incidents.observation_history(session_id)
         try:
-            result = replay_history(history)
+            result = cast(SessionReplay, replay_history(history))
         except Exception:  # noqa: BLE001 - the page must still render the rows
             logging.getLogger(__name__).exception(
                 "replay failed for session %s", session_id

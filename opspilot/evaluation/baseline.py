@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from pathlib import Path
 
 from opspilot.evaluation.storage import ArtifactRef, Resolver, _publish, load_round
@@ -19,6 +20,9 @@ def write_baseline(
     round_path: Path, *, resolve: Resolver, destination: Path
 ) -> ArtifactRef:
     result = load_round(round_path, resolve=resolve)
+    planned: Counter[str] = Counter()
+    for row in result.rows:
+        planned[row.mode] += row.planned
     lines = [
         "# OpsPilot 开发基线",
         "",
@@ -26,7 +30,8 @@ def write_baseline(
         f"baseline_complete：{str(result.baseline_complete).lower()}",
         "incomplete_reasons：" + (", ".join(result.incomplete_reasons) or "无"),
         "",
-        "D5：回放5次、live2次；样本量有限，置信不足。",
+        f"D5：实际计划（合计）：回放{planned['replay']}次、live{planned['live']}次、"
+        f"structural{planned['structural']}次；样本量有限，置信不足。",
         "replay_miss 计失败并计入分母；structural 质量率为 null。",
         "",
         "| scenario | version | mode | planned | attempted | not_started | passed/attempted | failed | 质量率 | replay_miss/attempted | miss率 | 失败分类 |",

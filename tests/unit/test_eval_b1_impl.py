@@ -498,14 +498,15 @@ def test_complete_round_baseline_and_cached_aggregate(tmp_path):
     path = tmp_path / "round.json"
     write_round(path, rnd, resolve=resolver(tmp_path))
     result = load_round(path, resolve=resolver(tmp_path))
-    assert (
-        result.baseline_complete
-        and result.rows[0].passed == result.rows[0].attempted == 1
-    )
+    assert not result.baseline_complete
+    assert result.incomplete_reasons == ("BASELINE_LAYOUT_MISMATCH",)
+    assert result.rows[0].passed == result.rows[0].attempted == 1
     baseline = tmp_path / "baseline.md"
     write_baseline(path, resolve=resolver(tmp_path), destination=baseline)
     text = baseline.read_text()
     assert "1/1" in text and "100.00%" in text and "置信不足" in text
+    assert "回放1次、live0次" in text and "回放5次、live2次" not in text
+    assert "baseline_complete：false" in text
     original = baseline.read_bytes()
     with pytest.raises(StorageError, match="^OUTPUT_EXISTS$"):
         write_baseline(path, resolve=resolver(tmp_path), destination=baseline)
@@ -592,7 +593,12 @@ def test_replay_miss_and_structural(tmp_path, mode, miss, quality):
         tmp_path / "journal.json", AttemptJournal(cap.attempt, cap.spec, cap.answer)
     )
     s = write_summary(tmp_path / "summary.json", cap)
-    rnd = RoundCapture(cap.manifest, (slot(cap),), (a,), {cap.attempt.attempt_id: s})
+    calibration_ref = write_calibration(
+        tmp_path / "calibration.json", calibration_capture()
+    )
+    rnd = RoundCapture(
+        cap.manifest, (slot(cap),), (a,), {cap.attempt.attempt_id: s}, calibration_ref
+    )
     write_round(tmp_path / "round.json", rnd, resolve=resolver(tmp_path))
     row = load_round(tmp_path / "round.json", resolve=resolver(tmp_path)).rows[0]
     assert row.pass_rate == quality
@@ -699,7 +705,9 @@ def test_legacy_failed_calibration_stays_fail_closed():
         judge_config_hash=c.judge_config_hash,
         calibration_pack_hash=c.calibration_pack_hash,
     )
-    result = replace(result, passed=False, false_passes=1, reasons=("FALSE_PASS",))
+    result = replace(
+        result, passed=False, agreement=48, false_passes=1, reasons=("FALSE_PASS",)
+    )
     aggregated = aggregate(cap.manifest, [slot(cap)], [score(cap)], result)
     assert not aggregated.baseline_complete
     assert aggregated.incomplete_reasons == ("JUDGE_NOT_CALIBRATED",)
@@ -756,3 +764,395 @@ def test_writer_bad_python_types_are_fixed_errors(tmp_path):
         )
     assert not (tmp_path / "bad-types.json").exists()
     assert not (tmp_path / "surrogate.json").exists()
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"negatives": 24, "agreement": 46},
+        {
+            "agreement": 48,
+            "false_passes": 1,
+            "passed": False,
+            "reasons": ("FALSE_PASS",),
+        },
+        {"agreement": 23, "passed": False, "reasons": ("AGREEMENT_BELOW_THRESHOLD",)},
+    ],
+)
+def test_calibration_joint_constraints(changes):
+    cap = capture()
+    c = calibration_capture()
+    calibration = calibrate(c.labels, c.verdicts)
+    changed = replace(calibration, **changes)
+    if changed.passed:
+        with pytest.raises(AggregateError, match="^CALIBRATION_INCONSISTENT$"):
+            aggregate(cap.manifest, [slot(cap)], [score(cap)], changed)
+    else:
+        result = aggregate(cap.manifest, [slot(cap)], [score(cap)], changed)
+        assert not result.baseline_complete
+        assert "JUDGE_NOT_CALIBRATED" in result.incomplete_reasons
+
+
+@pytest.mark.parametrize("missing", [False, True])
+def test_round_rejects_false_calibration_claim(tmp_path, missing):
+    cap, rnd = round_capture(tmp_path)
+    if missing:
+        rnd = replace(rnd, calibration_ref=None)
+        failed = None
+    else:
+        c = calibration_capture()
+        c = replace(c, verdicts=(("0", True),) + c.verdicts[1:])
+        cr = write_calibration(tmp_path / "failed.json", c)
+        rnd = replace(rnd, calibration_ref=cr)
+        failed = calibrate(
+            c.labels,
+            c.verdicts,
+            judge_config_hash=c.judge_config_hash,
+            calibration_pack_hash=c.calibration_pack_hash,
+        )
+    rejected = tmp_path / "rejected-round.json"
+    with pytest.raises(StorageError, match="^DERIVED_RESULT_MISMATCH$"):
+        write_round(rejected, rnd, resolve=resolver(tmp_path))
+    assert not rejected.exists()
+    cached = aggregate(cap.manifest, rnd.planned, [score(cap)], failed)
+    forged = tmp_path / "cached-round.json"
+    forged.write_bytes(
+        raw(
+            {"schema": "opspilot-eval-aggregate-1", "capture": rnd, "aggregate": cached}
+        )
+    )
+    with pytest.raises(StorageError, match="^DERIVED_RESULT_MISMATCH$"):
+        load_round(forged, resolve=resolver(tmp_path))
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        b'{"bad":',
+        b'{"bad":"\\ud800"}',
+        b'{"n":1e999}',
+        b'{"x":1,"x":2}',
+    ],
+)
+def test_codec_failure_chains_empty(tmp_path, payload):
+    path = tmp_path / "invalid.json"
+    path.write_bytes(payload)
+    with pytest.raises(StorageError) as caught:
+        load_summary(path, manifest=capture().manifest, resolve=resolver(tmp_path))
+    assert caught.value.__cause__ is None and caught.value.__context__ is None
+
+
+def test_bad_datetime_has_no_context(summary, tmp_path):
+    cap, path = summary
+    mutate(path, "capture.started_at", "synthetic-private-date")
+    with pytest.raises(StorageError, match="^SCHEMA_INVALID$") as caught:
+        load_summary(path, manifest=cap.manifest, resolve=resolver(tmp_path))
+    assert caught.value.__cause__ is None and caught.value.__context__ is None
+
+
+@pytest.mark.parametrize("cleanup", ["unlink", "close"])
+def test_cleanup_failure_is_normalized(tmp_path, monkeypatch, cleanup):
+    import opspilot.evaluation.storage as storage
+
+    cap = capture()
+    journal = AttemptJournal(cap.attempt, cap.spec, cap.answer)
+    real = getattr(storage.os, cleanup)
+
+    def fail(*args, **kwargs):
+        real(*args, **kwargs)
+        if cleanup == "unlink" or path.exists():
+            raise PermissionError(13, "Permission denied", "/synthetic-private-path")
+
+    monkeypatch.setattr(storage.os, cleanup, fail)
+    path = tmp_path / "cleanup.json"
+    with pytest.raises(StorageError, match="^EVIDENCE_UNAVAILABLE$") as caught:
+        write_attempt(path, journal)
+    assert caught.value.__cause__ is None and caught.value.__context__ is None
+    assert not hasattr(caught.value, "filename")
+    assert path.exists()
+
+
+def d1_slots():
+    return tuple(
+        PlannedSlot(spec.scenario_id, spec.version, mode, repetition)
+        for directory in sorted((ROOT / "evals/scenarios").iterdir())
+        if directory.is_dir()
+        for spec, _answer in (load_scenario(directory),)
+        for mode, repetitions in (("replay", 5), ("live", 2))
+        for repetition in range(1, repetitions + 1)
+    )
+
+
+def write_layout_round(tmp_path, planned):
+    base = capture()
+    summaries, journals, evaluations = {}, [], []
+    for index, planned_slot in enumerate(planned):
+        directory = ROOT / "evals/scenarios" / planned_slot.scenario_id
+        if directory.is_dir():
+            spec, answer = load_scenario(directory)
+        else:
+            spec = replace(
+                base.spec,
+                scenario_id=planned_slot.scenario_id,
+                incident=replace(
+                    base.spec.incident, scenario_id=planned_slot.scenario_id
+                ),
+            )
+            answer = replace(base.answer, scenario_id=planned_slot.scenario_id)
+        spec = replace(spec, version=planned_slot.scenario_version)
+        answer = replace(answer, version=planned_slot.scenario_version)
+        aid, product_id, trace_id = (
+            f"layout-{index}",
+            f"product-{index}",
+            f"trace-{index}",
+        )
+        attempt = replace(
+            base.attempt,
+            attempt_id=aid,
+            scenario_id=spec.scenario_id,
+            scenario_version=planned_slot.scenario_version,
+            mode=planned_slot.mode,
+            repetition=planned_slot.repetition,
+            product_run_id=product_id,
+        )
+        trace = replace(
+            base.traces[0],
+            attempt_id=aid,
+            evaluation_id=aid,
+            entry=replace(
+                base.traces[0].entry,
+                run_id=trace_id,
+                expected_run_id=trace_id,
+                product_run_id=product_id,
+            ),
+        )
+        cap = replace(
+            base,
+            spec=spec,
+            answer=answer,
+            attempt=attempt,
+            traces=(trace,),
+            outcome=replace(base.outcome, scenario_id=spec.scenario_id),
+        )
+        journals.append(
+            write_attempt(
+                tmp_path / f"journal-{index}.json",
+                AttemptJournal(attempt, spec, answer),
+            )
+        )
+        summaries[aid] = write_summary(tmp_path / f"summary-{index}.json", cap)
+        evaluations.append(score(cap))
+    c = calibration_capture()
+    cr = write_calibration(tmp_path / "calibration.json", c)
+    rc = RoundCapture(base.manifest, planned, tuple(journals), summaries, cr)
+    path = tmp_path / "round.json"
+    write_round(path, rc, resolve=resolver(tmp_path))
+    calibration = calibrate(
+        c.labels,
+        c.verdicts,
+        judge_config_hash=c.judge_config_hash,
+        calibration_pack_hash=c.calibration_pack_hash,
+    )
+    raw_aggregate = aggregate(base.manifest, planned, evaluations, calibration)
+    assert raw_aggregate.baseline_complete
+    assert json.loads(path.read_bytes())["aggregate"] == wire(raw_aggregate)
+    return path
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "exact",
+        "missing_replay",
+        "missing_live",
+        "extra_replay",
+        "extra_scenario",
+        "structural",
+        "split_version",
+        "old_version",
+        "shift_replay",
+        "shift_live",
+        "gap_replay",
+    ],
+)
+def test_d1_layout_completion_gate_and_actual_plan_note(tmp_path, mutation):
+    planned = d1_slots()
+    assert len(planned) == 42 and len({s.scenario_id for s in planned}) == 6
+    if mutation == "missing_replay":
+        planned = planned[1:]
+    elif mutation == "missing_live":
+        planned = tuple(s for i, s in enumerate(planned) if i != 5)
+    elif mutation == "extra_replay":
+        planned += (replace(planned[0], repetition=6),)
+    elif mutation == "extra_scenario":
+        planned += (replace(planned[0], scenario_id="outside-d1"),)
+    elif mutation == "structural":
+        planned += (replace(planned[0], mode="structural"),)
+    elif mutation in ("split_version", "old_version"):
+        planned = tuple(
+            replace(s, scenario_version=s.scenario_version + "-other")
+            if s.scenario_id == planned[0].scenario_id
+            and (mutation == "old_version" or s.mode == "live")
+            else s
+            for s in planned
+        )
+    elif mutation in ("shift_replay", "shift_live", "gap_replay"):
+        mode = "live" if mutation == "shift_live" else "replay"
+        planned = tuple(
+            replace(s, repetition=s.repetition + 1)
+            if s.scenario_id == planned[0].scenario_id
+            and s.mode == mode
+            and (mutation != "gap_replay" or s.repetition == 5)
+            else s
+            for s in planned
+        )
+    path = write_layout_round(tmp_path, planned)
+    frozen = path.read_bytes()
+    result = load_round(path, resolve=resolver(tmp_path))
+    assert result.baseline_complete is (mutation == "exact")
+    assert result.incomplete_reasons == (
+        () if mutation == "exact" else ("BASELINE_LAYOUT_MISMATCH",)
+    )
+    baseline = tmp_path / "baseline.md"
+    write_baseline(path, resolve=resolver(tmp_path), destination=baseline)
+    text = baseline.read_text()
+    replay = sum(s.mode == "replay" for s in planned)
+    live = sum(s.mode == "live" for s in planned)
+    structural = sum(s.mode == "structural" for s in planned)
+    assert f"回放{replay}次、live{live}次、structural{structural}次" in text
+    assert f"baseline_complete：{str(result.baseline_complete).lower()}" in text
+    assert ("BASELINE_LAYOUT_MISMATCH" in text) is (mutation != "exact")
+    assert path.read_bytes() == frozen
+
+
+def test_layout_mismatch_preserves_existing_reasons(tmp_path):
+    _, rnd = round_capture(tmp_path, summary=False)
+    path = tmp_path / "unknown.json"
+    write_round(path, rnd, resolve=resolver(tmp_path))
+    before = json.loads(path.read_bytes())["aggregate"]
+    result = load_round(path, resolve=resolver(tmp_path))
+    assert result.incomplete_reasons == (
+        *before["incomplete_reasons"],
+        "BASELINE_LAYOUT_MISMATCH",
+    )
+    assert result.rows[0].attempted == 1 and result.rows[0].failed == 1
+
+
+def fault_capture():
+    base = capture()
+    spec, answer = load_scenario(ROOT / "evals/scenarios/eval-cart-failure")
+    return replace(
+        base,
+        spec=spec,
+        answer=answer,
+        attempt=replace(
+            base.attempt, scenario_id=spec.scenario_id, scenario_version=spec.version
+        ),
+        outcome=replace(base.outcome, scenario_id=spec.scenario_id),
+    )
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("answer.injected.service", ""),
+        ("answer.injected.service", " \t"),
+        ("answer.injected.operation", ""),
+        ("answer.injected.operation", " \n"),
+        ("answer.injected.flag", ""),
+        ("answer.injected.variant", ""),
+        ("answer.injected.service_aliases", [""]),
+        ("answer.injected.operation_aliases", [" "]),
+        ("answer.injected.service", 0),
+        ("answer.injected.operation", None),
+        ("answer.injected.service_aliases", "alias"),
+        ("spec.incident.feature_id", ""),
+        ("spec.incident.acceptance_step", " "),
+        ("spec.incident.kind", ""),
+        ("spec.incident.subject_id", " "),
+        ("spec.stimulus.question", ""),
+        ("spec.stimulus.subject_id", " "),
+        ("spec.stimulus.target_id", ""),
+        ("answer.expected_output", []),
+        ("answer.expected_output", [" "]),
+        ("answer.signature.rule_id", ""),
+        ("answer.signature.any_of", []),
+        ("answer.signature.any_of.0.service", ""),
+        ("answer.signature.any_of.0.operation", " "),
+        ("answer.signature.min_matches", 0),
+    ],
+)
+def test_persisted_scenario_uses_file_validation(tmp_path, field, value):
+    from opspilot.evaluation import ScenarioError
+
+    cap = fault_capture()
+    path = tmp_path / "summary.json"
+    write_summary(path, cap)
+    mutate(path, "capture." + field, value)
+    payload = json.loads(path.read_bytes())["capture"]
+    scenario = payload["spec"]
+    scenario["incident"].pop("scenario_id")
+    (tmp_path / "scenario.json").write_bytes(raw(scenario))
+    (tmp_path / "answer.json").write_bytes(raw(payload["answer"]))
+    with pytest.raises(ScenarioError):
+        load_scenario(tmp_path)
+    with pytest.raises(StorageError, match="^SCHEMA_INVALID$") as caught:
+        load_summary(path, manifest=cap.manifest, resolve=resolver(tmp_path))
+    assert caught.value.__cause__ is None and caught.value.__context__ is None
+
+
+@pytest.mark.parametrize("field", ["service", "operation", "flag", "variant"])
+def test_writer_and_journal_reject_blank_injected(tmp_path, field):
+    cap = fault_capture()
+    bad = replace(
+        cap,
+        answer=replace(
+            cap.answer, injected=replace(cap.answer.injected, **{field: " "})
+        ),
+    )
+    with pytest.raises(StorageError, match="^SCHEMA_INVALID$"):
+        write_summary(tmp_path / "summary.json", bad)
+    with pytest.raises(StorageError, match="^SCHEMA_INVALID$"):
+        write_attempt(
+            tmp_path / "attempt.json", AttemptJournal(bad.attempt, bad.spec, bad.answer)
+        )
+    assert (
+        not (tmp_path / "summary.json").exists()
+        and not (tmp_path / "attempt.json").exists()
+    )
+
+
+@pytest.mark.parametrize(
+    "writer", ["summary", "attempt", "calibration", "round", "baseline"]
+)
+@pytest.mark.parametrize("name", ["round\\1.json", "bad\\name.md", "bad\x00name.json"])
+def test_all_writers_validate_returned_ref_before_publish(tmp_path, writer, name):
+    cap, rnd = round_capture(tmp_path)
+    source = tmp_path / "source-round.json"
+    write_round(source, rnd, resolve=resolver(tmp_path))
+    target = tmp_path / name
+    before = {p.name: p.read_bytes() for p in tmp_path.iterdir()}
+    calls = {
+        "summary": lambda: write_summary(target, cap),
+        "attempt": lambda: write_attempt(
+            target, AttemptJournal(cap.attempt, cap.spec, cap.answer)
+        ),
+        "calibration": lambda: write_calibration(target, calibration_capture()),
+        "round": lambda: write_round(target, rnd, resolve=resolver(tmp_path)),
+        "baseline": lambda: write_baseline(
+            source, resolve=resolver(tmp_path), destination=target
+        ),
+    }
+    with pytest.raises(StorageError, match="^SCHEMA_INVALID$") as caught:
+        calls[writer]()
+    assert caught.value.__cause__ is None and caught.value.__context__ is None
+    assert {p.name: p.read_bytes() for p in tmp_path.iterdir()} == before
+
+
+@pytest.mark.parametrize("name", ["普通轮次.json", "round.1.json", ".hidden.json"])
+def test_valid_published_ref_is_resolvable(tmp_path, name):
+    cap = capture()
+    path = tmp_path / name
+    ref = write_summary(path, cap)
+    assert ref.path == name and resolver(tmp_path)(ref) == path.read_bytes()
+    assert load_summary(path, manifest=cap.manifest, resolve=resolver(tmp_path)).overall
