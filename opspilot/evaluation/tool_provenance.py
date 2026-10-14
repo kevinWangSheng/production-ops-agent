@@ -217,13 +217,12 @@ def check_result(
     outcome: ToolOutcome,
     event_clock: datetime,
 ) -> None:
-    """Rebuild every text/binding field; independently constrain audit facts."""
+    """Bind every result to frozen identity; bound evidenceless audit facts."""
     item = snapshot_for(context, binding)
     tools, targets = _registries(item)
     scope = item.scope
     op = outcome.operation
-    if outcome.evidence is not None:
-        mismatch()
+    same(op.run_id, scope.run_id)
     same(
         (op.scope_id, op.subject_kind, op.subject_id),
         (scope.scope_id, scope.subject_kind, scope.subject_id),
@@ -280,6 +279,34 @@ def check_result(
                         failure = ("error", "INVALID_PARAMS")
     for name, expected in resolved.items():
         same(getattr(op, name), expected)
+    if outcome.evidence is not None:
+        if not op.dispatched or failure is not None:
+            mismatch()
+        same(op.credential_ref, target.credential_ref)
+        same(outcome.evidence.operation, op)
+        identities = {
+            "operation_id": op.operation_id,
+            "run_id": scope.run_id,
+            "scope_id": scope.scope_id,
+            "subject_kind": scope.subject_kind,
+            "subject_id": scope.subject_id,
+            "registry_revision": targets.revision,
+            "tool_registry_revision": tools.revision,
+            "requested_tool": request.tool_name,
+            "requested_target": request.target_ref,
+            "tool": reg.name,
+            "tool_version": reg.version,
+            "source": reg.source,
+            "target_id": target.target_id,
+            "credential_ref": target.credential_ref,
+            "query": parse(resolved["query"].encode()),
+        }
+        # Evidence keeps source payload, but its top-level identity projections
+        # cannot disagree with the same frozen headers merely by rehashing it.
+        for view in (outcome.model_view, outcome.evidence.view):
+            for name in set(view) & identities.keys():
+                same(view[name], identities[name])
+        return
     if op.dispatched:
         if failure is not None:
             mismatch()

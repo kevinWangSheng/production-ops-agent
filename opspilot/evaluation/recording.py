@@ -1331,7 +1331,7 @@ def _tool_integrity(
         raise StorageError("IDENTITY_MISMATCH")
     auth = _window(binding.authorized_window)
     evidence = outcome.evidence
-    if unqueried or evidence is None:
+    if unqueried or evidence is None or context.tool_snapshots:
         check_result(context, request, binding, outcome, event_clock)
     if operation.window is not None and not auth.contains(operation.window):
         raise StorageError("IDENTITY_MISMATCH")
