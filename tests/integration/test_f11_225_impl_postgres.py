@@ -235,12 +235,27 @@ def test_erroneous_observer_deadline_transaction_is_42501(harness, fault):
         "paused_after",
     ],
 )
-def test_audit_only_requires_matching_generations_and_pause(harness, field):
+@pytest.mark.parametrize("active_session", [False, True])
+def test_deadline_audit_requires_matching_generations_and_pause(
+    harness, field, active_session
+):
     _, observer, oid, _, _ = harness
+    sid = authorize(harness).session_id if active_session else None
     expire(oid)
     with pytest.raises(psycopg.errors.InsufficientPrivilege) as raised:
         with psycopg.connect(observer.dsn, row_factory=dict_row) as conn:
             row = release_row(conn, oid)
+            eid = (
+                end_release_session(
+                    conn,
+                    row,
+                    session_row(conn, sid),
+                    reason="deadline_expired",
+                    status_after="unknown",
+                )
+                if active_session
+                else None
+            )
             # Inject the malformed audit before INSERT; append-only rows are
             # never rewritten by the Observer.
             after = {**row, "status": "unknown"}
@@ -263,8 +278,8 @@ def test_audit_only_requires_matching_generations_and_pause(harness, field):
                 fingerprint="a" * 64,
                 outcome="applied",
                 reason="deadline_expired",
-                session_id=None,
-                ending_id=None,
+                session_id=sid,
+                ending_id=eid,
                 receipt={},
             )
             terminal_update(conn, oid)
@@ -283,14 +298,34 @@ def test_deferred_check_accepts_complete_deadline_transaction_in_any_order(
         if order == "subject_first":
             terminal_update(conn, oid)
         if order == "audit_first":
-            deadline_audit(conn, row)
-        eid = end_release_session(
-            conn,
-            row,
-            session_row(conn, sid),
-            reason="deadline_expired",
-            status_after="unknown",
-        )
+            # Audit FKs are immediate: insert the ending first, then the
+            # referenced audit while the session is still authorized. Its
+            # matching session end is checked at transaction commit.
+            eid = uuid5(oid, "session-ending:" + str(sid))
+            session = session_row(conn, sid)
+            conn.execute(
+                "INSERT INTO opspilot_observation_endings(ending_id,session_id,release_observation_id,ended_reason,transition,subject_state_before,subject_state_after,job_id,job_sequence) VALUES(%s,%s,%s,'deadline_expired','release_unknown','observing','unknown',%s,%s)",
+                (
+                    eid,
+                    sid,
+                    oid,
+                    session["active_sample_job_id"],
+                    session["active_sample_sequence"],
+                ),
+            )
+            deadline_audit(conn, row, sid=sid, eid=eid)
+            conn.execute(
+                "UPDATE opspilot_observation_sessions SET state='expired',ended_reason='deadline_expired',active_sample_job_id=NULL,active_sample_sequence=NULL,active_sample_due_at=NULL,active_sample_owner=NULL,active_sample_lease_until=NULL,updated_at=clock_timestamp() WHERE session_id=%s",
+                (sid,),
+            )
+        else:
+            eid = end_release_session(
+                conn,
+                row,
+                session_row(conn, sid),
+                reason="deadline_expired",
+                status_after="unknown",
+            )
         if order != "audit_first":
             deadline_audit(conn, row, sid=sid, eid=eid)
         if order != "subject_first":
@@ -485,3 +520,75 @@ def test_cancel_pg_ending_requires_the_actual_terminal_fact(harness, fault):
     assert not replay.consistent
     assert replay.verdict == "unknown"
     assert "ENDING_MISMATCH" in replay.integrity
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        "missing_audit",
+        "null_session",
+        "null_ending",
+        "wrong_session",
+        "wrong_ending",
+    ],
+)
+def test_deadline_session_ending_requires_its_same_transaction_audit(harness, fault):
+    web, observer, oid, policy, _ = harness
+    sid = authorize(harness).session_id
+    old_sid = sid
+    if fault.startswith("wrong_"):
+        web.control_release(
+            oid,
+            action="pause",
+            actor="human",
+            expected_control_generation=0,
+            idempotency_key="audit-ref-pause",
+            calibrated_policy_revision=None,
+        )
+        sid = web.control_release(
+            oid,
+            action="resume",
+            actor="human",
+            expected_control_generation=1,
+            idempotency_key="audit-ref-resume",
+            calibrated_policy_revision=policy.revision,
+        ).session_id
+    expire(oid)
+    with pytest.raises(psycopg.errors.InsufficientPrivilege) as raised:
+        with psycopg.connect(observer.dsn, row_factory=dict_row) as conn:
+            row = release_row(conn, oid)
+            eid = end_release_session(
+                conn,
+                row,
+                session_row(conn, sid),
+                reason="deadline_expired",
+                status_after="unknown",
+            )
+            if fault != "missing_audit":
+                deadline_audit(
+                    conn,
+                    row,
+                    sid=None
+                    if fault == "null_session"
+                    else old_sid
+                    if fault == "wrong_session"
+                    else sid,
+                    eid=None
+                    if fault == "null_ending"
+                    else uuid5(oid, "session-ending:" + str(old_sid))
+                    if fault == "wrong_ending"
+                    else eid,
+                )
+            terminal_update(conn, oid)
+    assert raised.value.sqlstate == "42501"
+    assert web.get_release(oid).status == "observing"
+    assert all(a["action"] != "deadline_expired" for a in web.release_audit(oid))
+    with psycopg.connect(DSN) as conn:
+        assert conn.execute(
+            "SELECT state,ended_reason FROM opspilot_observation_sessions WHERE session_id=%s",
+            (sid,),
+        ).fetchone() == ("authorized", None)
+        assert conn.execute(
+            "SELECT count(*) FROM opspilot_observation_endings WHERE session_id=%s",
+            (sid,),
+        ).fetchone() == (0,)

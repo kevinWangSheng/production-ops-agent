@@ -26,6 +26,15 @@ def upgrade() -> None:
                 AND s.release_observation_id=NEW.observation_id AND s.purpose=e.purpose AND s.subject_kind=e.subject_kind AND s.subject_id=NEW.observation_id
                 AND s.deadline_at=NEW.deadline_at
                 AND e.subject_kind='release_observation' AND e.subject_id=NEW.observation_id
+                AND EXISTS(SELECT 1 FROM public.opspilot_release_audit a
+                  WHERE a.observation_id=NEW.observation_id AND a.action='deadline_expired' AND a.outcome='applied'
+                    AND a.idempotency_key='system:deadline' AND a.xmin=pg_current_xact_id()::xid
+                    AND a.session_id=s.session_id AND a.ending_id=e.ending_id
+                    AND a.status_before=OLD.status AND a.status_after=NEW.status
+                    AND a.expected_control_generation=OLD.control_generation
+                    AND a.control_generation_before=OLD.control_generation AND a.control_generation_after=NEW.control_generation
+                    AND a.observation_generation_before=OLD.observation_generation AND a.observation_generation_after=NEW.observation_generation
+                    AND a.paused_before=OLD.paused AND a.paused_after=NEW.paused)
                 AND NOT EXISTS(SELECT 1 FROM public.opspilot_observation_sessions active WHERE active.release_observation_id=NEW.observation_id AND active.state='authorized')) OR (e.ended_reason='max_samples_exhausted' AND NEW.used_sample_count=NEW.max_samples AND m.disposition='adopted' AND m.xmin=pg_current_xact_id()::xid
                 AND s.xmin=pg_current_xact_id()::xid AND s.state='expired' AND s.ended_reason=e.ended_reason
                 AND s.release_observation_id=NEW.observation_id AND s.purpose=e.purpose AND s.subject_kind=e.subject_kind AND s.subject_id=NEW.observation_id
