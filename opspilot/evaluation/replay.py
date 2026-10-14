@@ -43,7 +43,7 @@ from opspilot.evaluation.rounds import (
     manifest_hash,
     validate_manifest,
 )
-from opspilot.evaluation.storage import ArtifactRef
+from opspilot.evaluation.storage import ArtifactRef, _local_path
 from opspilot.investigation.loop import ModelCall, ModelClient, ModelReply
 from opspilot.tools.executor import ToolRequest
 from opspilot.tools.outcomes import ToolOutcome
@@ -372,6 +372,7 @@ def replay(
             attempt=replace(attempt, status="aborted", replay_miss=True),
             error="REPLAY_MISS",
         )
+    destination = _local_path(destination)
     initial = dict(source.context.initial_state)
     initial["replay_source"] = {
         "run_id": source.context.source_run_id,

@@ -39,7 +39,14 @@ from opspilot.evaluation.codec import (
     validated,
 )
 from opspilot.evaluation.rounds import Manifest
-from opspilot.evaluation.storage import ArtifactRef, _parent, _publish, _ref
+from opspilot.evaluation.storage import (
+    ArtifactRef,
+    _close,
+    _local_path,
+    _parent,
+    _publish,
+    _ref,
+)
 from opspilot.evaluation.tool_provenance import (
     ToolSnapshot,
     check_result,
@@ -303,6 +310,7 @@ def unwire(annotation: Any, value: Any) -> Any:
 
 def _read(path: Path, limit: int) -> bytes:
     parent, name = _parent(path)
+    raw = None
     try:
         descriptor = os.open(
             name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent
@@ -316,11 +324,16 @@ def _read(path: Path, limit: int) -> bytes:
             raw = file.read(limit + 1)
             if len(raw) > limit:
                 raise StorageError("RECORDING_INCOMPLETE")
-            return raw
-    except OSError:
-        raise StorageError("EVIDENCE_UNAVAILABLE") from None
+    except StorageError:
+        raise
+    except (OSError, ValueError):
+        raw = None
     finally:
-        os.close(parent)
+        if not _close(parent):
+            raw = None
+    if raw is None:
+        raise StorageError("EVIDENCE_UNAVAILABLE") from None
+    return raw
 
 
 def blob(recording: Recording, ref: ArtifactRef) -> bytes:
@@ -364,25 +377,33 @@ def tool_key(
 
 
 def _create(destination: Path, context: RecordingContext) -> None:
+    destination = _local_path(destination)
     if not context.synthetic:
         root = Path(__file__).resolve().parents[2] / "tmp" / "eval"
         if destination.absolute() != root / context.recording_id:
             invalid()
     parent, name = _parent(destination)
+    failure = None
     try:
         os.mkdir(name, 0o700, dir_fd=parent)
         os.fsync(parent)
     except FileExistsError:
-        raise StorageError("OUTPUT_EXISTS") from None
-    except OSError:
-        raise StorageError("EVIDENCE_UNAVAILABLE") from None
+        failure = "OUTPUT_EXISTS"
+    except (OSError, ValueError):
+        failure = "EVIDENCE_UNAVAILABLE"
     finally:
-        os.close(parent)
+        if not _close(parent):
+            failure = "EVIDENCE_UNAVAILABLE"
+    if failure is not None:
+        raise StorageError(failure) from None
     _publish(destination / "INCOMPLETE", b"RECORDING_INCOMPLETE", "text/plain")
     try:
         os.mkdir(destination / "blobs", 0o700)
-    except OSError:
-        raise StorageError("EVIDENCE_UNAVAILABLE") from None
+    except (OSError, ValueError):
+        pass
+    else:
+        return
+    raise StorageError("EVIDENCE_UNAVAILABLE") from None
 
 
 class CaptureHooks:
