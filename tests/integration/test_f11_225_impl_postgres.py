@@ -592,3 +592,134 @@ def test_deadline_session_ending_requires_its_same_transaction_audit(harness, fa
             "SELECT count(*) FROM opspilot_observation_endings WHERE session_id=%s",
             (sid,),
         ).fetchone() == (0,)
+
+
+@pytest.mark.parametrize("action", ["pause", "resume"])
+@pytest.mark.parametrize("reference", ["foreign", "null"])
+def test_control_revocation_requires_its_applied_audit_reference(
+    harness, action, reference
+):
+    web, observer, oid, policy, _ = harness
+    sid = authorize(harness).session_id
+    if action == "resume":
+        owner = DurableStore(DSN)
+        target = web.get_release(oid).target_id
+        generation = owner.set_target_suspension(
+            target, True, expected_generation=0, actor="test"
+        )
+        owner.set_target_suspension(
+            target, False, expected_generation=generation, actor="test"
+        )
+        owner.close()
+    command = web.control_release(
+        oid,
+        action=action,
+        actor="human",
+        expected_control_generation=0,
+        idempotency_key="reference-" + action,
+        calibrated_policy_revision=policy.revision if action == "resume" else None,
+    )
+    assert command.outcome == "applied"
+    history = observer.release_history(oid)
+    assert replay_release_history(history).consistent
+    assert history["endings"][0]["session_id"] == sid
+    assert history["endings"][0]["ended_reason"] == "authority_revoked"
+    corrupted = copy.deepcopy(history)
+    corrupted["audit"][-1]["ending_id"] = uuid4() if reference == "foreign" else None
+    replay = replay_release_history(corrupted)
+    assert not replay.consistent
+    assert replay.verdict == "unknown"
+    assert "ENDING_MISMATCH" in replay.integrity
+
+
+@pytest.mark.parametrize(
+    ("reason", "harness"),
+    [("healthy_confirmed", 40), ("anomaly_detected", 40), ("max_samples_exhausted", 2)],
+    indirect=["harness"],
+)
+@pytest.mark.parametrize("reference", ["foreign", "null"])
+def test_terminal_sample_receipt_requires_its_ending_reference(
+    harness, reason, reference
+):
+    _, observer, oid, _, _ = harness
+    sid = authorize(harness).session_id
+    context = observer.release_context(sid)
+    if reason != "max_samples_exhausted":
+        time.sleep(2.05)
+    lease = claim(harness, sid)
+    receipt = observer.submit_release_sample(
+        lease,
+        raw_evidence(
+            context, observer.current_time(), degraded=reason == "anomaly_detected"
+        ),
+    )
+    if reason in ("healthy_confirmed", "max_samples_exhausted"):
+        assert receipt.release_status == "observing"
+        if reason == "healthy_confirmed":
+            time.sleep(1.05)
+        lease = claim(harness, sid)
+        receipt = observer.submit_release_sample(
+            lease, raw_evidence(context, observer.current_time())
+        )
+    assert receipt.accepted
+    history = observer.release_history(oid)
+    assert history["endings"][0]["ended_reason"] == reason
+    assert replay_release_history(history).consistent
+    corrupted = copy.deepcopy(history)
+    terminal = next(
+        m
+        for m in corrupted["samples"]
+        if m["sample_id"] == history["endings"][0]["sample_id"]
+    )
+    terminal["release_receipt"]["ending_id"] = (
+        str(uuid4()) if reference == "foreign" else None
+    )
+    replay = replay_release_history(corrupted)
+    assert not replay.consistent
+    assert replay.verdict == "unknown"
+    assert "ENDING_MISMATCH" in replay.integrity
+
+
+def test_control_ending_cannot_be_referenced_by_two_applied_audits(harness):
+    from datetime import timedelta
+
+    web, observer, oid, _, _ = harness
+    authorize(harness)
+    assert (
+        web.control_release(
+            oid,
+            action="pause",
+            actor="human",
+            expected_control_generation=0,
+            idempotency_key="one-ending-reference",
+            calibrated_policy_revision=None,
+        ).outcome
+        == "applied"
+    )
+    history = observer.release_history(oid)
+    assert replay_release_history(history).consistent
+    corrupted = copy.deepcopy(history)
+    previous = corrupted["audit"][-1]
+    duplicate = copy.deepcopy(previous)
+    duplicate.update(
+        audit_id=uuid4(),
+        sequence=previous["sequence"] + 1,
+        idempotency_key="duplicate-ending-reference",
+        recorded_at=previous["recorded_at"] + timedelta(microseconds=1),
+        control_generation_before=previous["control_generation_after"],
+        control_generation_after=previous["control_generation_after"] + 1,
+        observation_generation_before=previous["observation_generation_after"],
+        observation_generation_after=previous["observation_generation_after"] + 1,
+        paused_before=True,
+    )
+    corrupted["audit"].append(duplicate)
+    corrupted["release"] = history["release"].model_copy(
+        update={
+            "control_generation": duplicate["control_generation_after"],
+            "observation_generation": duplicate["observation_generation_after"],
+        }
+    )
+    replay = replay_release_history(corrupted)
+    assert not replay.consistent
+    assert replay.verdict == "unknown"
+    assert "ENDING_MISMATCH" in replay.integrity

@@ -252,3 +252,30 @@ def test_missing_edge_fields_report_ending_mismatch(reason, field):
     assert not replay.consistent
     assert replay.verdict == "unknown"
     assert "ENDING_MISMATCH" in replay.integrity
+
+
+@pytest.mark.parametrize(
+    "reason",
+    [
+        "authority_revoked",
+        "binding_stale",
+        "scope_suspended",
+        "cancelled",
+        "deadline_expired",
+    ],
+)
+def test_ending_cannot_predate_session_authorization_even_with_a_pending_edge(reason):
+    history = history_for(reason)
+    assert replay_release_history(history).consistent
+    corrupted = copy.deepcopy(history)
+    ending = corrupted["endings"][0]
+    ending["recorded_at"] = corrupted["sessions"][0]["authorized_at"] - timedelta(
+        microseconds=1
+    )
+    ending["subject_state_before"] = "pending"
+    if reason in ("authority_revoked", "binding_stale", "scope_suspended"):
+        ending["subject_state_after"] = "pending"
+    replay = replay_release_history(corrupted)
+    assert not replay.consistent
+    assert replay.verdict == "unknown"
+    assert "ENDING_MISMATCH" in replay.integrity

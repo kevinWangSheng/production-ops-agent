@@ -175,6 +175,7 @@ def _replay_release_history(history: Mapping[str, object]) -> ReleaseReplay:
     audit_sequence = 0
     evaluations = []
     ended_samples: dict[UUID, tuple[str, str, UUID]] = {}
+    receipt_endings: dict[UUID, UUID | None] = {}
     for event_at, _, kind, item in events:
         prior_event_at = last_event_at
         last_event_at = max(last_event_at, event_at)
@@ -475,6 +476,7 @@ def _replay_release_history(history: Mapping[str, object]) -> ReleaseReplay:
                     {k: v for k, v in m["release_receipt"].items() if k != "_lease"}
                 )
             )
+            receipt_endings[m["sample_id"]] = receipt.ending_id
             if (
                 receipt.tracking_seconds != tracking_seconds
                 or receipt.healthy_window_seconds != healthy_seconds
@@ -588,6 +590,12 @@ def _replay_release_history(history: Mapping[str, object]) -> ReleaseReplay:
             issues.add("ENDING_MISMATCH")
         else:
             if (
+                not isinstance(recorded_at, datetime)
+                or not isinstance(s.get("authorized_at"), datetime)
+                or recorded_at < s["authorized_at"]
+            ):
+                issues.add("ENDING_MISMATCH")
+            if (
                 e.get("subject_kind") != s.get("subject_kind")
                 or not isinstance(e.get("job_id"), UUID)
                 or e.get("job_sequence") != s.get("issued_sequence")
@@ -602,6 +610,61 @@ def _replay_release_history(history: Mapping[str, object]) -> ReleaseReplay:
             )
             if s["state"] != expected_state:
                 issues.add("ENDING_MISMATCH")
+        if reason == "authority_revoked":
+            controls = [
+                a
+                for a in audits
+                if s is not None
+                and a.get("action") in ("pause", "resume")
+                and a.get("outcome") == "applied"
+                and a.get("observation_id") == release.observation_id
+                and a.get("ending_id") == e.get("ending_id")
+            ]
+            if s is None or len(controls) != 1:
+                issues.add("ENDING_MISMATCH")
+            else:
+                control = controls[0]
+                if (
+                    control.get("status_before") != before
+                    or control.get("status_after") != after
+                    or control.get("control_generation_before")
+                    != s["subject_control_generation"]
+                    or control.get("observation_generation_before")
+                    != s["observation_generation"]
+                    or control.get("control_generation_after")
+                    != s["subject_control_generation"] + 1
+                    or control.get("observation_generation_after")
+                    != s["observation_generation"] + 1
+                    or not isinstance(recorded_at, datetime)
+                    or not isinstance(s.get("authorized_at"), datetime)
+                    or not s["authorized_at"] <= recorded_at <= control["recorded_at"]
+                ):
+                    issues.add("ENDING_MISMATCH")
+                if control["action"] == "pause":
+                    if (
+                        control.get("session_id") is not None
+                        or control.get("paused_before") is not False
+                        or control.get("paused_after") is not True
+                    ):
+                        issues.add("ENDING_MISMATCH")
+                else:
+                    replacement = by_session.get(control.get("session_id"))
+                    if (
+                        replacement is None
+                        or replacement["session_id"] == s["session_id"]
+                        or replacement.get("subject_id") != s.get("subject_id")
+                        or replacement.get("subject_control_generation")
+                        != control["control_generation_after"]
+                        or replacement.get("observation_generation")
+                        != control["observation_generation_after"]
+                        or control.get("paused_after") is not False
+                        or not isinstance(recorded_at, datetime)
+                        or not isinstance(replacement.get("authorized_at"), datetime)
+                        or not recorded_at
+                        <= replacement["authorized_at"]
+                        <= control["recorded_at"]
+                    ):
+                        issues.add("ENDING_MISMATCH")
         if e.get("sample_id") is not None:
             sample = by_sample.get(e["sample_id"])
             if (
@@ -624,6 +687,7 @@ def _replay_release_history(history: Mapping[str, object]) -> ReleaseReplay:
             or e["ended_reason"] != ending_terminal[1]
             or e["sample_id"] != ending_terminal[2]
             or e["subject_state_after"] != ending_terminal[0]
+            or receipt_endings.get(e.get("sample_id")) != e.get("ending_id")
         ):
             issues.add("ENDING_MISMATCH")
         if e["ended_reason"] == "anomaly_detected" and e.get(
