@@ -49,7 +49,11 @@ from opspilot.investigation.loop import (
     serialized_request,
 )
 from opspilot.investigation.messages import PairingError, validate_tool_calls
-from opspilot.tools.executor import ToolRequest
+from opspilot.tools.executor import (
+    ToolRequest,
+    _result_size_message,
+    _view_size_message,
+)
 from opspilot.tools.outcomes import ToolOutcome, Window
 
 RecordingError = StorageError
@@ -1338,8 +1342,27 @@ def _evidenceless_result(outcome: ToolOutcome, *, unqueried: bool = False) -> No
             limit = view[name]
             if type(limit) is not int or limit < 0:
                 raise StorageError("IDENTITY_MISMATCH")
-    if "message" in view and type(view["message"]) is not str:
-        raise StorageError("IDENTITY_MISMATCH")
+    hints = set(view) & {
+        "message",
+        "query",
+        "max_result_bytes",
+        "max_view_tokens",
+        "view_tokens",
+    }
+    if hints:
+        if hints == {"message", "max_result_bytes"}:
+            expected = _result_size_message(cast(int, view["max_result_bytes"]))
+        elif (
+            hints == {"message", "query", "max_view_tokens", "view_tokens"}
+            and "window" in view
+        ):
+            expected = _view_size_message(
+                cast(int, view["view_tokens"]), cast(int, view["max_view_tokens"])
+            )
+        else:
+            raise StorageError("IDENTITY_MISMATCH")
+        if type(view["message"]) is not str or view["message"] != expected:
+            raise StorageError("IDENTITY_MISMATCH")
     if "query" in view:
         query: Any = outcome.operation.query
         if query is not None:
