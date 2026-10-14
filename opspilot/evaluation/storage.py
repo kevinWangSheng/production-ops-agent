@@ -158,7 +158,7 @@ def _resolve(ref: ArtifactRef, resolve: Resolver) -> bytes:
     try:
         raw = resolve(ref)
     except Exception:
-        raise StorageError("EVIDENCE_UNAVAILABLE") from None
+        raw = None
     if type(raw) is not bytes:
         raise StorageError("EVIDENCE_UNAVAILABLE")
     if len(raw) != ref.bytes or _sha(raw) != ref.sha256:
@@ -180,7 +180,7 @@ def _parent(path: Path) -> tuple[int, str]:
         return descriptor, absolute.name
     except OSError:
         os.close(descriptor)
-        raise StorageError("EVIDENCE_UNAVAILABLE") from None
+    raise StorageError("EVIDENCE_UNAVAILABLE") from None
 
 
 def _read(path: Path) -> bytes:
@@ -194,15 +194,17 @@ def _read(path: Path) -> bytes:
                 raise StorageError("EVIDENCE_UNAVAILABLE")
             return file.read()
     except OSError:
-        raise StorageError("EVIDENCE_UNAVAILABLE") from None
+        pass
     finally:
         os.close(parent)
+    raise StorageError("EVIDENCE_UNAVAILABLE") from None
 
 
 def _publish(path: Path, raw: bytes, media_type: str) -> ArtifactRef:
     parent, name = _parent(path)
     temporary = f".eval-{secrets.token_hex(16)}.tmp"
     created = False
+    failure: str | None = None
     try:
         # Report existing targets consistently, even non-regular/symlink ones.
         try:
@@ -224,15 +226,17 @@ def _publish(path: Path, raw: bytes, media_type: str) -> ArtifactRef:
         )
         os.fsync(parent)
     except FileExistsError:
-        raise StorageError("OUTPUT_EXISTS") from None
+        failure = "OUTPUT_EXISTS"
     except OSError:
-        raise StorageError("EVIDENCE_UNAVAILABLE") from None
+        failure = "EVIDENCE_UNAVAILABLE"
     finally:
         try:
             if created:
                 os.unlink(temporary, dir_fd=parent)
         finally:
             os.close(parent)
+    if failure is not None:
+        raise StorageError(failure) from None
     return ArtifactRef(name, _sha(raw), len(raw), media_type, "private")
 
 
@@ -295,7 +299,10 @@ def _manifest(manifest: Manifest) -> None:
     try:
         validate_manifest(manifest)
     except ManifestError:
-        raise StorageError("SCHEMA_INVALID") from None
+        pass
+    else:
+        return
+    raise StorageError("SCHEMA_INVALID") from None
 
 
 def _binding(attempt: AttemptRecord, manifest: Manifest) -> None:
@@ -324,11 +331,14 @@ def _capture(capture: EvaluationCapture, manifest: Manifest) -> RunEvaluation:
         capture.replay_run_id != capture.attempt.product_run_id
     ):
         raise StorageError("IDENTITY_MISMATCH")
-    if set(capture.delivery_refs) != set(capture.delivered):
-        raise StorageError("EVIDENCE_UNAVAILABLE")
     for key, record in capture.delivered.items():
         if key != record.evidence_id:
             raise StorageError("IDENTITY_MISMATCH")
+    if set(capture.delivery_refs) - set(capture.delivered):
+        raise StorageError("IDENTITY_MISMATCH")
+    if set(capture.delivered) - set(capture.delivery_refs):
+        raise StorageError("EVIDENCE_UNAVAILABLE")
+    for record in capture.delivered.values():
         if record.view_sha256 != canonical_view_hash(record.view):
             raise StorageError("HASH_MISMATCH")
     for ref in capture.delivery_refs.values():
@@ -366,7 +376,8 @@ def _capture(capture: EvaluationCapture, manifest: Manifest) -> RunEvaluation:
             capture.judge,
         )
     except (ValueError, TypeError, KeyError, OverflowError):
-        raise StorageError("SCHEMA_INVALID") from None
+        pass
+    raise StorageError("SCHEMA_INVALID") from None
 
 
 def _report_fields(capture: EvaluationCapture) -> tuple[Any, str | None]:
@@ -445,9 +456,12 @@ def _load_summary(
             invalid()
         for claim in saved_report["claims"]:
             exact(claim, set(ClaimV2.model_fields))
+        report_valid = True
         try:
             ReportV2.model_validate(saved_report, strict=True)
         except ValueError:
+            report_valid = False
+        if not report_valid:
             raise StorageError("SCHEMA_INVALID") from None
     if stored != result or canonical_bytes(obj["report_parsed"]) != canonical_bytes(
         parsed
@@ -490,7 +504,8 @@ def _calibration(capture: CalibrationCapture) -> CalibrationResult:
             calibration_pack_hash=capture.calibration_pack_hash,
         )
     except CalibrationError:
-        raise StorageError("SCHEMA_INVALID") from None
+        pass
+    raise StorageError("SCHEMA_INVALID") from None
 
 
 def write_calibration(path: Path, capture: CalibrationCapture) -> ArtifactRef:
@@ -621,7 +636,8 @@ def _round(capture: RoundCapture, resolve: Resolver) -> Aggregate:
     try:
         return aggregate(capture.manifest, capture.planned, evaluations, calibration)
     except (AggregateError, ManifestError):
-        raise StorageError("SCHEMA_INVALID") from None
+        pass
+    raise StorageError("SCHEMA_INVALID") from None
 
 
 def write_round(path: Path, capture: RoundCapture, *, resolve: Resolver) -> ArtifactRef:
