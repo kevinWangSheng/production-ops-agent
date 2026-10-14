@@ -211,7 +211,7 @@ PR-A 完成只代表合同/schema、离线测试和独立审查完成。真实 j
 
 | # | 决定点 | 决定 | 影响 | 裁决 |
 |---|---|---|---|---|
-| D16 | judge 模型与数据出口 | GLM-5.3（Z.ai 按量 API）为 judge；GPT-6.1 Sol（OpenAI）与被测 `deepseek-flash`（DeepSeek）只作校准对照，三者判同一批 P7 标注样本。GLM-5.3 达 P7 门槛且一致数不低于 Sol 即采用；否则冻结前交用户裁决，可选项只有 GLM-5.3 与达标的 Sol，DeepSeek 不可选，都不达标不记基线。三家只在开发评测中收到 judge 输入（含 expected answer），私有协议字段不进 judge（C3 §12），凭据放私有 `.env.judge`，不进 PR CI | 数据流、judge 独立性、基线口径；SPEC 有界开放段同步 | 用户 2026-10-13 选定，#219 由用户合并生效 |
+| D16 | judge 模型与数据出口 | GLM-5.3（Z.ai 按量 API）为 judge；GPT-6.1 Sol（OpenAI）与被测 `deepseek-flash`（DeepSeek）只作校准对照，三者判同一批 P7 标注样本。GLM-5.3 达 P7 门槛且一致数不低于 Sol 即采用；否则冻结前交用户裁决，可选项只有达到 P7 门槛的 GLM-5.3 或 Sol，DeepSeek 不可选，都不达标不记基线。三家只在开发评测中收到 judge 输入（含 expected answer），私有协议字段不进 judge（C3 §12），凭据放私有 `.env.judge`，不进 PR CI | 数据流、judge 独立性、基线口径；SPEC 有界开放段同步 | 用户 2026-10-13 选定，#219 由用户合并生效 |
 
 ## 3. 可逆默认（R 项，Agent 自决并记录理由）
 
