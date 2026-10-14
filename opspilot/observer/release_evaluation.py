@@ -179,7 +179,7 @@ def build_release_query_plan(
     w = profile.evaluation_window_seconds
     if rs is not None:
         ns = "namespace=" + json.dumps(n)
-        selectors = {
+        expected_owners = {
             "replicaset_owner": "kube_replicaset_owner{"
             + ns
             + ",replicaset="
@@ -192,6 +192,14 @@ def build_release_query_plan(
             + ',owner_kind="ReplicaSet",owner_name='
             + json.dumps(rs)
             + "}",
+        }
+        selectors = {
+            "replicaset_owner": "kube_replicaset_owner{"
+            + ns
+            + ",replicaset="
+            + json.dumps(rs)
+            + "}",
+            "pod_owner": "kube_pod_owner{" + ns + "}",
             "container_info": "kube_pod_container_info{" + ns + "}",
         }
         for name, selector in selectors.items():
@@ -200,8 +208,20 @@ def build_release_query_plan(
                 "coverage": f"count_over_time({selector}[{w}s])",
                 "freshness": f"timestamp({selector})",
             }
-            if name == "container_info":
-                owner = selectors["pod_owner"]
+            if name in expected_owners:
+                owner = expected_owners[name]
+                join = (
+                    "namespace,replicaset"
+                    if name == "replicaset_owner"
+                    else "namespace,pod,uid"
+                )
+                expressions["query"] += f" and on({join}) {owner}"
+                expressions["freshness"] += f" and on({join}) timestamp({owner})"
+                expressions["coverage"] += (
+                    f" and on({join}) count_over_time({owner}[{w}s])"
+                )
+            else:
+                owner = expected_owners["pod_owner"]
                 expressions["query"] += f" and on(namespace,pod,uid) {owner}"
                 expressions["freshness"] += f" and on(namespace,pod,uid) {owner}"
                 expressions["coverage"] += (
@@ -331,6 +351,17 @@ def _mapped_instances(
         fresh = parse_vector(queries.get(f"mapping:{name}:freshness"), reasons)
         if not current or not coverage or not fresh:
             reasons.add("VERSION_MAPPING_MISSING")
+        if name in ("replicaset_owner", "pod_owner"):
+            expected_kind = "Deployment" if name == "replicaset_owner" else "ReplicaSet"
+            expected_name = (
+                profile.subject.service if name == "replicaset_owner" else rs
+            )
+            if any(
+                labels.get("owner_kind") != expected_kind
+                or labels.get("owner_name") != expected_name
+                for labels, _, _ in current + coverage + fresh
+            ):
+                reasons.add("VERSION_MAPPING_AMBIGUOUS")
 
         def identity(labels: dict[str, str]) -> tuple[tuple[str, str], ...]:
             return tuple(sorted((k, v) for k, v in labels.items() if k != "__name__"))
@@ -444,6 +475,12 @@ def query_evidence_consistent(
         window_end=evidence.window.end,
         instance_uids=tuple(i.pod_uid for i in instances),
     )
+    # Empty evidence is a counted unknown; partial evidence must match the
+    # complete plan (after keys exist only when mapping produces a UID set).
+    if evidence.queries and not set(plan).issubset(
+        q.query_key for q in evidence.queries
+    ):
+        return False
     if (
         (evidence.window.end - evidence.window.start).total_seconds()
         != context.health_profile.evaluation_window_seconds

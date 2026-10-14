@@ -1005,6 +1005,87 @@ def test_impl_replay_cancel_time_is_bound_to_frozen_evidence(harness, authorized
     assert replay.verdict == "unknown"
 
 
+@pytest.mark.parametrize("owner_group", ["replicaset_owner", "pod_owner"])
+def test_impl_owner_queries_expose_conflicting_owners(harness, owner_group):
+    authorization = authorize(harness)
+    context = harness[1].release_context(authorization.session_id)
+    at = context.authorized_at + timedelta(seconds=3)
+    evidence = raw_evidence(context, at)
+    replacements = {}
+    for query in evidence.queries:
+        if query.query_key.startswith(f"mapping:{owner_group}:"):
+            rows = json.loads(query.raw)["data"]["result"]
+            rows.append(copy.deepcopy(rows[0]))
+            rows[-1]["metric"]["owner_name"] = "conflicting-owner"
+            # Model the owner-name filtering on the left side of the plan's
+            # set intersection: right-side membership must not hide owners.
+            left = query.query.split(" and on(", 1)[0]
+            expected = re.search(r'owner_name=("(?:\\.|[^"\\])*")', left)
+            if expected is not None:
+                owner = json.loads(expected.group(1))
+                rows = [row for row in rows if row["metric"]["owner_name"] == owner]
+            replacements[query.query_key] = rows
+    evaluation = evaluate_release_sample(
+        context, _impl_replace_query_vectors(evidence, replacements), decision_at=at
+    )
+    assert evaluation.verdict == "unknown", evaluation
+    assert not evaluation.evidence_sufficient
+    assert "VERSION_MAPPING_AMBIGUOUS" in evaluation.reason_codes
+
+
+@pytest.mark.parametrize(
+    "missing",
+    [
+        "all",
+        "context:request_rate_per_second:query",
+        "mapping:pod_owner:query",
+        "after:request_rate_per_second:query",
+    ],
+)
+def test_impl_query_completeness_follows_r4(harness, missing):
+    authorization = authorize(harness)
+    context = harness[1].release_context(authorization.session_id)
+    lease = claim(harness, authorization.session_id)
+    evidence = raw_evidence(context, harness[1].current_time())
+    evidence = evidence.model_copy(
+        update={
+            "queries": ()
+            if missing == "all"
+            else tuple(
+                query
+                for query in evidence.queries
+                if query.query_key != missing
+                and not (
+                    missing.startswith("mapping:")
+                    and query.query_key.startswith("after:")
+                )
+            )
+        }
+    )
+    if missing == "all":
+        pure = evaluate_release_sample(
+            context, evidence, decision_at=evidence.window.end
+        )
+        assert pure.verdict == "unknown" and pure.outcome == "no_data"
+    receipt = harness[1].submit_release_sample(lease, evidence)
+    empty = missing == "all"
+    assert receipt.accepted == empty, receipt
+    assert receipt.disposition == ("adopted" if empty else "history_only")
+    assert receipt.reason == ("adopted" if empty else "readings_inconsistent")
+    assert receipt.used_sample_count == int(empty)
+    if empty:
+        assert receipt.evaluation.verdict == "unknown"
+        assert receipt.evaluation.outcome == "no_data"
+    history = harness[1].release_history(harness[2])
+    assert history["sessions"][0]["adopted_count"] == int(empty)
+    assert history["sessions"][0]["adopted_window_end"] == (
+        evidence.window.end if empty else None
+    )
+    assert history["release"].status == "observing"
+    assert not history["endings"]
+    assert replay_release_history(history).used_sample_count == int(empty)
+
+
 def test_catalog_hash_covers_the_original_valid_utc_timestamp_text(harness):
     h = harness
     content = h[3].content.model_dump(mode="json")
