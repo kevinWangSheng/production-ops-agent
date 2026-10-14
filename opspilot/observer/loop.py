@@ -20,10 +20,12 @@ import json
 import logging
 import threading
 from dataclasses import dataclass, field
+from typing import cast
 from uuid import UUID, uuid4
 
 from pydantic import ValidationError
 
+from opspilot.observation.release_types import ReleaseSampleLease, ReleaseSampleReceipt
 from opspilot.observation.store import (
     OBSERVER_LEASE_SECONDS,
     ObservationStore,
@@ -31,6 +33,7 @@ from opspilot.observation.store import (
     SampleReceipt,
 )
 from opspilot.observer.health_profile import HealthProfile
+from opspilot.observer.release_sampling import ReleaseSource, take_release_sample
 from opspilot.observer.sampler import (
     PROFILE_INVALID,
     PROFILE_UNAVAILABLE,
@@ -61,7 +64,7 @@ class ObserverLoop:
     # inside it (``sampler.SUBMIT_MARGIN_SECONDS``)
     lease_seconds: int = OBSERVER_LEASE_SECONDS
 
-    def poll_once(self) -> list[tuple[UUID, SampleReceipt]]:
+    def poll_once(self) -> list[tuple[UUID, SampleReceipt | ReleaseSampleReceipt]]:
         """One pass: sweep deadlines, claim due jobs, sample each. Storage
         refusals and crashed samples are logged by code/type and skipped; the
         lease lapses and the next claim retries the same logical sequence."""
@@ -70,6 +73,15 @@ class ObserverLoop:
                 _log.info("swept session=%s", session_id)
         except PersistenceError as exc:
             _log.warning("sweep refused code=%s", exc)
+        # Keep legacy incident-only store doubles usable; production stores
+        # always expose this sweep after PR-2a.
+        release_sweep = getattr(self.store, "sweep_expired_releases", None)
+        if release_sweep is not None:
+            try:
+                for observation_id in release_sweep(limit=self.batch):
+                    _log.info("swept observation_id=%s", observation_id)
+            except PersistenceError as exc:
+                _log.warning("release sweep refused code=%s", exc)
         # One lease at a time (codex round 3, P1): a lease is issued with its
         # clock running, and a sample may legitimately use most of it (hung
         # source, lease budget). Leasing a batch up front would let the later
@@ -77,7 +89,7 @@ class ObserverLoop:
         # submissions would be filed as lease_revoked. Claiming the next job
         # only after the previous sample is submitted keeps every sample at
         # the start of its own lease; ``batch`` bounds one pass.
-        results: list[tuple[UUID, SampleReceipt]] = []
+        results: list[tuple[UUID, SampleReceipt | ReleaseSampleReceipt]] = []
         for _ in range(self.batch):
             if self.stop.is_set():
                 break
@@ -94,19 +106,31 @@ class ObserverLoop:
             try:
                 receipt = self.sample(lease)
             except PersistenceError as exc:
-                _log.warning("sample refused session=%s code=%s", lease.session_id, exc)
+                _log.warning(
+                    "sample refused session=%s observation_id=%s code=%s",
+                    lease.session_id,
+                    getattr(lease, "observation_id", None),
+                    exc,
+                )
                 continue
             except Exception as exc:  # noqa: BLE001 - keep the observer alive
                 _log.error(
-                    "sample crashed session=%s error=%s",
+                    "sample crashed session=%s observation_id=%s error=%s",
                     lease.session_id,
+                    getattr(lease, "observation_id", None),
                     type(exc).__name__,
                 )
                 continue
             results.append((lease.session_id, receipt))
         return results
 
-    def sample(self, lease: SampleLease) -> SampleReceipt:
+    def sample(
+        self, lease: SampleLease | ReleaseSampleLease
+    ) -> SampleReceipt | ReleaseSampleReceipt:
+        if isinstance(lease, ReleaseSampleLease):
+            return take_release_sample(
+                lease, cast(ReleaseSource, self.source), self.store
+            ).receipt
         profile, reason, error_type = self.profile_for(lease)
         if profile is None:
             outcome = "no_data" if lease.health_profile_revision is None else "failed"

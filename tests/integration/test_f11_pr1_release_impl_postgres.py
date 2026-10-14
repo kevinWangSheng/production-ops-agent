@@ -279,9 +279,13 @@ def test_role_and_immutable_boundaries(store, request_data, group):
                 "DELETE FROM opspilot_release_events",
                 "TRUNCATE opspilot_release_observations",
             ]
+            if group == "opspilot_worker":
+                # P2-09 (F11 PR-2 contract): Observer now reads the release table
+                statements.append(
+                    "SELECT observation_id FROM opspilot_release_observations"
+                )
             if group != "opspilot_web":
                 statements += [
-                    "SELECT observation_id FROM opspilot_release_observations",
                     "SELECT event_id FROM opspilot_release_events",
                     "INSERT INTO opspilot_release_events(actor) VALUES('forged')",
                 ]
