@@ -18,6 +18,8 @@ from opspilot.evaluation import (
     RecordingContext,
     RecordingError,
     ToolBinding,
+    ToolSnapshot,
+    bind_tool_snapshots,
     load_recording,
     manifest_hash,
     record,
@@ -226,6 +228,12 @@ def manifest_attempt(recording, mode="replay"):
         name: DimensionValue("hash", HASH, None) for name in REQUIRED_DIMENSIONS
     }
     dimensions["replay_fixture"] = DimensionValue("hash", recording.ref.sha256, None)
+    dimensions.update(
+        {
+            name: DimensionValue("hash", value, None)
+            for name, value in recording.context.versions.items()
+        }
+    )
     manifest = Manifest("round-new", dimensions)
     attempt = AttemptRecord(
         "attempt-new",
@@ -1532,6 +1540,8 @@ def test_real_unqueried_error_or_denial_records_and_replays_without_live_query(
         reply(content="done"),
     ]
 
+    ctx = _audit_context(ctx, executor)
+
     def exercise(model, tools, deliver, step):
         initial = call()
         response = model.complete(initial)
@@ -1550,6 +1560,23 @@ def test_real_unqueried_error_or_denial_records_and_replays_without_live_query(
         }
         model.complete(call([*initial.messages, assistant, message]))
         return replace(outcome(), evidence_ids=())
+
+    if kind == "invalid_params":
+        # The new ruling requires null window on unexecuted results. The
+        # product keeps its parsed window on this late parameter refusal.
+        with pytest.raises(RecordingError, match="IDENTITY_MISMATCH"):
+            source(
+                tmp_path,
+                ctx=ctx,
+                driver=lambda hooks: exercise(
+                    hooks.model(ScriptedModel(responses)),
+                    hooks.tools(Counted()),
+                    hooks.delivery,
+                    "source-step",
+                ),
+            )
+        assert not transport.called
+        return
 
     recording = source(
         tmp_path,
@@ -1790,11 +1817,7 @@ def test_executed_metadata_only_result_without_evidence_keeps_empty_raw_hash(
                 if status == "oversize"
                 else ("SOURCE_UNAVAILABLE" if status == "error" else "NO_DATA")
             )
-            operation = (
-                replace(base.operation, query=canonical_bytes(req.params).decode())
-                if status == "oversize"
-                else base.operation
-            )
+            operation = _audited_operation(base.operation, req)
             view = {
                 "operation_id": operation.operation_id,
                 "status": actual_status,
@@ -1817,6 +1840,7 @@ def test_executed_metadata_only_result_without_evidence_keeps_empty_raw_hash(
 
     recording = source(
         tmp_path,
+        ctx=_audit_context(),
         driver=lambda hooks: conversation(
             hooks.model(ScriptedModel([first_call(), reply(content="done")])),
             hooks.tools(EmptyResult()),
@@ -1829,13 +1853,75 @@ def test_executed_metadata_only_result_without_evidence_keeps_empty_raw_hash(
     assert recording.complete
 
 
+def _audit_context(ctx=None, executor=None):
+    from opspilot.tools import QueryScope, TargetRegistry, ToolRegistry
+    from tests.m1_tool_support import registration, target
+
+    ctx = ctx or context()
+    if executor is None:
+        tools = (
+            registration(
+                name="metrics.query", max_result_bytes=1024, max_view_tokens=50
+            ),
+        )
+        targets = (target(target_id="target"),)
+        scope = QueryScope(
+            "scope",
+            "incident",
+            "target",
+            "source-run",
+            0,
+            0,
+            0,
+            TargetRegistry(targets).revision,
+            ToolRegistry(tools).revision,
+            frozenset({"target"}),
+            frozenset({"metrics.query"}),
+            AUTH,
+            NOW + timedelta(seconds=360),
+        )
+    else:
+        tools = tuple(executor._tools._entries.values())
+        targets = tuple(executor._targets._entries.values())
+        scope = executor.scope
+    manifest = Manifest(
+        "source-round",
+        {
+            name: DimensionValue("hash", ctx.versions.get(name, HASH), None)
+            for name in REQUIRED_DIMENSIONS
+        },
+    )
+    return bind_tool_snapshots(ctx, (ToolSnapshot(tools, targets, scope),), manifest)
+
+
+def _audited_operation(operation, req):
+    ctx = _audit_context()
+    snapshot = ctx.tool_snapshots[0]
+    scope = snapshot.scope
+    return replace(
+        operation,
+        scope_id=scope.scope_id,
+        subject_kind=scope.subject_kind,
+        subject_id=scope.subject_id,
+        registry_revision=scope.registry_revision,
+        tool_registry_revision=scope.tool_registry_revision,
+        query=canonical_bytes(req.params).decode(),
+        started_at=NOW,
+        authorized_at=NOW,
+        finished_at=NOW,
+        elapsed_seconds=0.0,
+        timeout_seconds=10.0,
+        credential_ref=snapshot.targets[0].credential_ref,
+    )
+
+
 def _size_result(req, family, change=None):
     from types import SimpleNamespace
 
     from opspilot.tools.executor import _refusal_detail, _view_refusal_detail
 
     base = Executor().execute(req)
-    operation = replace(base.operation, query=canonical_bytes(req.params).decode())
+    operation = _audited_operation(base.operation, req)
     view = {
         "operation_id": operation.operation_id,
         "status": "error",
@@ -1868,6 +1954,7 @@ def _size_source(tmp_path, family, change=None):
 
     return source(
         tmp_path,
+        ctx=_audit_context(),
         driver=lambda hooks: conversation(
             hooks.model(ScriptedModel([first_call(), reply(content="done")])),
             hooks.tools(SizeExecutor()),
@@ -2048,6 +2135,7 @@ def test_evidenceless_query_is_bound_to_frozen_facade_params(tmp_path, mutation)
     with pytest.raises(RecordingError, match="IDENTITY_MISMATCH"):
         source(
             tmp_path,
+            ctx=_audit_context(),
             driver=lambda hooks: conversation(
                 hooks.model(ScriptedModel([first_call(), reply(content="done")])),
                 hooks.tools(ForgedQuery()),
@@ -2055,3 +2143,561 @@ def test_evidenceless_query_is_bound_to_frozen_facade_params(tmp_path, mutation)
                 stub=False,
             ),
         )
+
+
+def _audit_source(tmp_path, factory, *, ctx=None, req=None, tick=None):
+    ctx = ctx or _audit_context()
+    req = req or request()
+
+    class Facade:
+        def execute(self, item):
+            result = factory(item)
+            if tick is not None:
+                hooks.clock(tick)
+            return result
+
+    def driver(capture):
+        nonlocal hooks
+        hooks = capture
+        model = hooks.model(
+            ScriptedModel(
+                [
+                    reply(
+                        tool_calls=[
+                            tool_call(
+                                "audit-call", req.tool_name, json.dumps(req.params)
+                            )
+                        ],
+                        finish="tool_calls",
+                    ),
+                    reply(content="done"),
+                ]
+            )
+        )
+        initial = call()
+        response = model.complete(initial)
+        result = hooks.tools(Facade()).execute(req)
+        message = {
+            "role": "tool",
+            "tool_call_id": "audit-call",
+            "content": canonical_bytes(result.model_view).decode(),
+        }
+        hooks.delivery(result.model_view, message)
+        assistant = {
+            "role": "assistant",
+            "content": response.content,
+            "reasoning_content": response.reasoning_content,
+            "tool_calls": list(response.tool_calls),
+        }
+        model.complete(call([*initial.messages, assistant, message]))
+        return replace(outcome(), evidence_ids=())
+
+    hooks = None
+    return source(tmp_path, ctx=ctx, driver=driver)
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "operation_id",
+        "run_id",
+        "requested_tool",
+        "requested_target",
+        "scope_id",
+        "subject_kind",
+        "subject_id",
+        "registry_revision",
+        "tool_registry_revision",
+        "tool",
+        "tool_version",
+        "source",
+        "target_id",
+        "credential_ref",
+        "query",
+        "window",
+        "started_at",
+        "authorized_at",
+        "finished_at",
+        "elapsed_seconds",
+        "timeout_seconds",
+        "dispatched",
+    ],
+)
+def test_all_restricted_operation_fields_are_anchored_or_bounded(tmp_path, field):
+    def forge(req):
+        result = _size_result(req, "view")
+        op, view = result.operation, dict(result.model_view)
+        value = "unfrozen source payload"
+        if field == "window":
+            value = Window(AUTH.start + timedelta(seconds=1), AUTH.end)
+        elif field in ("started_at", "authorized_at", "finished_at"):
+            value = NOW + timedelta(seconds=11)
+        elif field in ("elapsed_seconds", "timeout_seconds"):
+            value = -1.0
+        elif field == "dispatched":
+            value = False
+        op = replace(op, **{field: value})
+        if field in view:
+            view[field] = encode(value)
+        if field == "query":
+            op = replace(op, query=canonical_bytes({"rows": [3]}).decode())
+            view["query"] = {"rows": [3]}
+        if field == "started_at":
+            view["requested_at"] = value.isoformat()
+        return replace(result, operation=op, model_view=view)
+
+    with pytest.raises(RecordingError, match="IDENTITY_MISMATCH"):
+        _audit_source(tmp_path, forge)
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        "byte_limit",
+        "token_limit",
+        "token_equal",
+        "token_bool",
+        "narrow_window",
+        "status_pair",
+        "contact_pair",
+        "free_text",
+        "extra_data",
+        "time_order",
+        "clock_lags",
+        "timeout_limit",
+        "timeout_deadline",
+        "nonfinite_elapsed",
+        "unknown_params",
+        "invalid_param_type",
+    ],
+)
+def test_joint_metadata_forgery_cannot_bypass_frozen_provenance(tmp_path, case):
+    from opspilot.tools.executor import _result_size_message, _view_size_message
+
+    req = request(params={"rows": [3]}) if case == "unknown_params" else request()
+    if case == "invalid_param_type":
+        req = request(params={"expr": 3})
+
+    def forge(item):
+        result = _size_result(item, "bytes" if case == "byte_limit" else "view")
+        op, view = result.operation, dict(result.model_view)
+        if case == "byte_limit":
+            view.update(max_result_bytes=2048, message=_result_size_message(2048))
+        elif case == "token_limit":
+            view.update(max_view_tokens=51, message=_view_size_message(100, 51))
+        elif case in ("token_equal", "token_bool"):
+            tokens = 50 if case == "token_equal" else True
+            view.update(view_tokens=tokens, message=_view_size_message(tokens, 50))
+        elif case == "narrow_window":
+            view["window"] = encode(Window(AUTH.start + timedelta(seconds=1), AUTH.end))
+        elif case == "status_pair":
+            view.update(status="denied", reason="TOOL_NOT_IN_SCOPE")
+            result = replace(result, status="denied", reason="TOOL_NOT_IN_SCOPE")
+        elif case == "contact_pair":
+            view["source_contact"] = "possible"
+            result = replace(result, source_contact="possible")
+        elif case == "free_text":
+            view["message"] = "SOURCE ROWS 3"
+        elif case == "extra_data":
+            view["observation"] = {"rows": [3]}
+        elif case == "time_order":
+            op = replace(op, started_at=NOW + timedelta(seconds=1))
+        elif case == "clock_lags":
+            op = replace(op, finished_at=NOW + timedelta(seconds=1))
+        elif case == "timeout_limit":
+            op = replace(op, timeout_seconds=11.0)
+        elif case == "timeout_deadline":
+            op = replace(op, authorized_at=NOW + timedelta(seconds=355))
+        elif case == "nonfinite_elapsed":
+            op = replace(op, elapsed_seconds=float("inf"))
+        return replace(result, operation=op, model_view=view)
+
+    # Nonfinite JSON cannot be captured in the first place; this is the codec
+    # boundary, while every JSON-expressible mismatch is an identity failure.
+    expected = "SCHEMA_INVALID" if case == "nonfinite_elapsed" else "IDENTITY_MISMATCH"
+    with pytest.raises(RecordingError, match=expected):
+        _audit_source(tmp_path, forge, req=req)
+
+
+@pytest.mark.parametrize(
+    "mutation", ["snapshot", "scope", "manifest", "binding", "missing"]
+)
+def test_snapshot_scope_manifest_and_binding_are_one_frozen_identity(
+    tmp_path, mutation
+):
+    rec = _size_source(tmp_path, "view")
+    meta = json.loads(rec.path.read_bytes())
+    ctx = meta["context"]
+    if mutation == "snapshot":
+        ctx["tool_snapshots"][0]["tools"][0]["max_view_tokens"] = 51
+    elif mutation == "scope":
+        ctx["tool_snapshots"][0]["scope"]["subject_id"] = "unfrozen"
+    elif mutation == "manifest":
+        ctx["source_manifest"]["dimensions"]["registry"]["value"] = HASH
+    elif mutation == "binding":
+        ctx["bindings"][0]["permissions_hash"] = HASH
+    else:
+        ctx["tool_snapshots"] = []
+        ctx["source_manifest"] = None
+    raw = canonical_bytes(meta)
+    rec.path.write_bytes(raw)
+    with pytest.raises(RecordingError, match="IDENTITY_MISMATCH"):
+        load_recording(rec.path, expected_hash=sha(raw))
+    candidate = replace(rec, ref=replace(rec.ref, sha256=sha(raw), bytes=len(raw)))
+    client = ScriptedModel([])
+    with pytest.raises(RecordingError, match="IDENTITY_MISMATCH"):
+        run_replay(candidate, tmp_path, model=client)
+    assert not client.calls
+
+
+def test_unknown_operation_field_is_identity_mismatch_even_with_recomputed_hash(
+    tmp_path,
+):
+    rec = _size_source(tmp_path, "bytes")
+    meta = json.loads(rec.path.read_bytes())
+    event = next(e for e in meta["events"] if e["kind"] == "tool")
+    body = json.loads((rec.path.parent / event["response_ref"]["path"]).read_bytes())
+    body["operation"]["extra_source_data"] = {"rows": [3]}
+    raw = canonical_bytes(body)
+    path = "blobs/" + sha(raw)
+    (rec.path.parent / path).write_bytes(raw)
+    event["response_ref"].update(path=path, sha256=sha(raw), bytes=len(raw))
+    raw = canonical_bytes(meta)
+    rec.path.write_bytes(raw)
+    with pytest.raises(RecordingError, match="IDENTITY_MISMATCH"):
+        load_recording(rec.path, expected_hash=sha(raw))
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        "empty",
+        "source_error",
+        "timeout",
+        "unavailable",
+        "transport_too_large",
+        "body_too_large",
+        "view_too_large",
+        "malformed",
+        "sink_failure",
+    ],
+)
+def test_product_gateway_outcomes_with_independent_snapshots(tmp_path, case):
+    from opspilot.tools import (
+        TransportResponse,
+        TransportResultTooLarge,
+        TransportTimeout,
+        TransportUnavailable,
+    )
+    from tests import m1_tool_support as t
+
+    kwargs = {"token_counter": lambda _: 20000} if case == "view_too_large" else {}
+    if case == "sink_failure":
+        kwargs["sink"] = t.RecordingSink(fail=True)
+    executor, transport, sink, clock = t.build(**kwargs)
+    transport.response = TransportResponse(
+        body=t.body([] if case == "empty" else [{"value": 3}])
+    )
+    if case == "source_error":
+        transport.response = TransportResponse(body=t.body([]), source_status="500")
+    elif case == "body_too_large":
+        transport.response = TransportResponse(body=t.body([{"value": "x" * 5000}]))
+    elif case == "malformed":
+        transport.response = TransportResponse(body=b"xxx")
+    errors = {
+        "timeout": TransportTimeout,
+        "unavailable": TransportUnavailable,
+        "transport_too_large": TransportResultTooLarge,
+    }
+    if case in errors:
+        transport.error = errors[case]()
+    req = t.request()
+    ctx = replace(
+        context(),
+        source_run_id=executor.scope.run_id,
+        started_at=clock.now(),
+        ended_at=clock.now() + timedelta(seconds=10),
+        bindings=(
+            replace(
+                context().bindings[0],
+                tool=req.tool_name,
+                target=req.target_ref,
+                authorized_window=encode(executor.scope.window),
+            ),
+        ),
+    )
+    ctx = _audit_context(ctx, executor)
+    recording = _audit_source(tmp_path, executor.execute, ctx=ctx, req=req)
+    assert recording.complete and transport.called
+    event = next(e for e in recording.events if e.kind == "tool")
+    body = json_blob(recording, event.response_ref)
+    if case == "empty":
+        assert body["evidence"] is not None
+    else:
+        assert body["evidence"] is None
+        assert event.hashes["raw_sha256"] == sha(b"")
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        "premature_deadline",
+        "missing_elapsed",
+        "invented_transport",
+        "gateway_before_timeout",
+        "dispatch_after_deadline",
+    ],
+)
+def test_independent_audit_phase_regressions(tmp_path, case):
+    def forge(req):
+        result = _size_result(req, "view")
+        op, view = result.operation, dict(result.model_view)
+        if case == "missing_elapsed":
+            return replace(result, operation=replace(op, elapsed_seconds=None))
+        for key in ("message", "query", "max_view_tokens", "view_tokens"):
+            view.pop(key, None)
+        if case == "premature_deadline":
+            result = replace(result, status="denied", reason="DEADLINE_EXCEEDED")
+        elif case == "gateway_before_timeout":
+            result = replace(result, status="timeout", reason="GATEWAY_TIMEOUT")
+        elif case == "dispatch_after_deadline":
+            op = replace(
+                op,
+                authorized_at=NOW + timedelta(seconds=360),
+                finished_at=NOW + timedelta(seconds=360),
+                timeout_seconds=0.0,
+            )
+        else:
+            op = replace(
+                op,
+                dispatched=False,
+                window=None,
+                authorized_at=None,
+                finished_at=None,
+                elapsed_seconds=None,
+                timeout_seconds=None,
+                credential_ref=None,
+            )
+            result = replace(result, reason="SOURCE_UNAVAILABLE", source_contact="none")
+        view.update(
+            status=result.status,
+            reason=result.reason,
+            source_contact=result.source_contact,
+            window=encode(op.window),
+        )
+        return replace(result, operation=op, model_view=view)
+
+    with pytest.raises(RecordingError, match="IDENTITY_MISMATCH"):
+        _audit_source(tmp_path, forge)
+
+
+def test_legacy_complete_evidence_packet_without_new_context_fields_still_loads(
+    tmp_path,
+):
+    rec = source(tmp_path)
+    meta = json.loads(rec.path.read_bytes())
+    del meta["context"]["tool_snapshots"]
+    del meta["context"]["source_manifest"]
+    raw = canonical_bytes(meta)
+    rec.path.write_bytes(raw)
+    assert load_recording(rec.path, expected_hash=sha(raw)).complete
+
+
+@pytest.mark.parametrize("kind", ["ordinary", "gateway_timeout", "deadline"])
+def test_bounded_audit_facts_allow_real_clock_progress(tmp_path, kind):
+    ctx = replace(_audit_context(), ended_at=NOW + timedelta(seconds=400))
+    finish = NOW + timedelta(
+        seconds={"ordinary": 2, "gateway_timeout": 11, "deadline": 360}[kind]
+    )
+
+    def result(req):
+        original = _size_result(req, "view")
+        op = original.operation
+        if kind == "ordinary":
+            op = replace(
+                op,
+                authorized_at=NOW + timedelta(seconds=1),
+                finished_at=finish,
+                elapsed_seconds=2.0,
+            )
+            return replace(original, operation=op)
+        for_state = (
+            ("timeout", "GATEWAY_TIMEOUT")
+            if kind == "gateway_timeout"
+            else ("denied", "DEADLINE_EXCEEDED")
+        )
+        if kind == "deadline":
+            op = replace(
+                op,
+                started_at=NOW + timedelta(seconds=359),
+                authorized_at=NOW + timedelta(seconds=359),
+                timeout_seconds=1.0,
+                finished_at=finish,
+                elapsed_seconds=1.0,
+            )
+        else:
+            op = replace(op, finished_at=finish, elapsed_seconds=11.0)
+        view = {
+            key: value
+            for key, value in original.model_view.items()
+            if key not in {"message", "query", "max_view_tokens", "view_tokens"}
+        }
+        view.update(
+            status=for_state[0],
+            reason=for_state[1],
+            requested_at=op.started_at.isoformat(),
+        )
+        return replace(
+            original,
+            operation=op,
+            status=for_state[0],
+            reason=for_state[1],
+            model_view=view,
+        )
+
+    rec = _audit_source(tmp_path, result, ctx=ctx, tick=finish)
+    assert rec.complete
+    capture = run_replay(rec, tmp_path)
+    assert capture.error is None
+    copied = load_recording(
+        tmp_path / "new-recording" / "recording.json",
+        expected_hash=capture.recording_ref.sha256,
+    )
+    assert copied.context.started_at == ctx.started_at
+    assert all(e.clock == ctx.ended_at for e in copied.events)
+
+
+def test_snapshot_manifest_hash_dimension_cannot_be_relabelled_as_version(tmp_path):
+    rec = _size_source(tmp_path, "view")
+    manifest, attempt = manifest_attempt(rec)
+    dims = dict(manifest.dimensions)
+    dims["registry"] = replace(dims["registry"], kind="version")
+    manifest = replace(manifest, dimensions=dims)
+    attempt = replace(attempt, manifest_hash=manifest_hash(manifest))
+    model = ScriptedModel([])
+    capture = run_replay(rec, tmp_path, manifest=manifest, attempt=attempt, model=model)
+    assert capture.error == "REPLAY_MISS" and not model.calls
+
+
+@pytest.mark.parametrize("stage", ["dispatched", "no_authorization", "early_reserve"])
+def test_deadline_reason_is_bound_to_the_actual_check_stage(tmp_path, stage):
+    dispatched = stage == "dispatched"
+    ctx = replace(_audit_context(), ended_at=NOW + timedelta(seconds=370))
+
+    def forge(req):
+        original = _size_result(req, "view")
+        op = original.operation
+        if not dispatched:
+            op = replace(
+                op,
+                dispatched=False,
+                window=None,
+                authorized_at=None,
+                finished_at=None,
+                elapsed_seconds=None,
+                timeout_seconds=None,
+                credential_ref=None,
+            )
+            if stage == "early_reserve":
+                op = replace(op, authorized_at=NOW)
+        view = {
+            key: value
+            for key, value in original.model_view.items()
+            if key not in {"message", "query", "max_view_tokens", "view_tokens"}
+        }
+        view.update(
+            status="denied",
+            reason="DEADLINE_EXCEEDED",
+            source_contact="confirmed" if dispatched else "none",
+            window=encode(op.window),
+        )
+        return replace(
+            original,
+            operation=op,
+            model_view=view,
+            status="denied",
+            reason="DEADLINE_EXCEEDED",
+            source_contact=view["source_contact"],
+        )
+
+    with pytest.raises(RecordingError, match="IDENTITY_MISMATCH"):
+        _audit_source(tmp_path, forge, ctx=ctx, tick=NOW + timedelta(seconds=365))
+
+
+@pytest.mark.parametrize("reserve_completed", [True, False])
+def test_pre_dispatch_deadline_distinguishes_reserve_from_charge(
+    tmp_path, reserve_completed
+):
+    ctx = replace(_audit_context(), ended_at=NOW + timedelta(seconds=370))
+
+    def refuse(req):
+        original = _size_result(req, "view")
+        op = replace(
+            original.operation,
+            dispatched=False,
+            window=None,
+            finished_at=None,
+            elapsed_seconds=None,
+            authorized_at=NOW if reserve_completed else NOW + timedelta(seconds=365),
+            timeout_seconds=10.0 if reserve_completed else None,
+            credential_ref=original.operation.credential_ref
+            if reserve_completed
+            else None,
+        )
+        view = {
+            key: value
+            for key, value in original.model_view.items()
+            if key not in {"message", "query", "max_view_tokens", "view_tokens"}
+        }
+        view.update(
+            status="denied",
+            reason="DEADLINE_EXCEEDED",
+            source_contact="none",
+            window=None,
+        )
+        return replace(
+            original,
+            operation=op,
+            model_view=view,
+            status="denied",
+            reason="DEADLINE_EXCEEDED",
+            source_contact="none",
+        )
+
+    assert _audit_source(
+        tmp_path, refuse, ctx=ctx, tick=NOW + timedelta(seconds=365)
+    ).complete
+
+
+@pytest.mark.parametrize("mutation", ["possible_contact", "already_timed_out"])
+def test_dispatched_deadline_has_arrival_phase_contact_and_timeout(tmp_path, mutation):
+    ctx = replace(_audit_context(), ended_at=NOW + timedelta(seconds=370))
+
+    def result(req):
+        base = _size_result(req, "view")
+        op = replace(
+            base.operation,
+            started_at=NOW + timedelta(seconds=359),
+            authorized_at=NOW + timedelta(seconds=359),
+            finished_at=NOW + timedelta(seconds=360),
+            timeout_seconds=1.0,
+            elapsed_seconds=2.0 if mutation == "already_timed_out" else 1.0,
+        )
+        view = {
+            key: value
+            for key, value in base.model_view.items()
+            if key not in {"message", "query", "max_view_tokens", "view_tokens"}
+        }
+        contact = "possible" if mutation == "possible_contact" else "confirmed"
+        view.update(status="denied", reason="DEADLINE_EXCEEDED", source_contact=contact)
+        return replace(
+            base,
+            operation=op,
+            model_view=view,
+            status="denied",
+            reason="DEADLINE_EXCEEDED",
+            source_contact=contact,
+        )
+
+    with pytest.raises(RecordingError, match="IDENTITY_MISMATCH"):
+        _audit_source(tmp_path, result, ctx=ctx, tick=NOW + timedelta(seconds=365))

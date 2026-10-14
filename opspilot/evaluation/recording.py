@@ -38,7 +38,13 @@ from opspilot.evaluation.codec import (
     parse,
     validated,
 )
+from opspilot.evaluation.rounds import Manifest
 from opspilot.evaluation.storage import ArtifactRef, _parent, _publish, _ref
+from opspilot.evaluation.tool_provenance import (
+    ToolSnapshot,
+    check_result,
+    validate_snapshot_context,
+)
 from opspilot.investigation.loop import (
     ModelCall,
     ModelClient,
@@ -49,13 +55,9 @@ from opspilot.investigation.loop import (
     serialized_request,
 )
 from opspilot.investigation.messages import PairingError, validate_tool_calls
-from opspilot.tools.executor import (
-    ToolRequest,
-    _result_size_message,
-    _view_size_message,
-)
+from opspilot.tools.executor import ToolRequest
 from opspilot.tools.outcomes import ToolOutcome, Window
-from opspilot.tools.registry import canonical as tool_canonical
+from opspilot.tools.registry import ToolContractError
 
 RecordingError = StorageError
 RecordingRef = ArtifactRef
@@ -127,6 +129,8 @@ class RecordingContext:
     clock_policy: Literal["event-clock/frozen-end-real-monotonic"] = (
         "event-clock/frozen-end-real-monotonic"
     )
+    tool_snapshots: tuple[ToolSnapshot, ...] = ()
+    source_manifest: Manifest | None = None
 
 
 @dataclass(frozen=True)
@@ -158,7 +162,11 @@ class ToolFacade(Protocol):
 
 
 def _context(context: RecordingContext) -> RecordingContext:
-    context = validated(RecordingContext, context)
+    try:
+        context = validated(RecordingContext, context)
+    except ToolContractError:
+        raise StorageError("IDENTITY_MISMATCH") from None
+    validate_snapshot_context(context)
     for value in (
         context.recording_id,
         context.source_run_id,
@@ -637,6 +645,7 @@ class CaptureHooks:
                             "raw_sha256": sha(raw),
                         },
                     )
+                    hooks.events[seq] = replace(hooks.events[seq], clock=hooks._at)
                     hooks._end(seq, canonical_bytes(wire(outcome)))
                     return outcome
                 except Exception:
@@ -839,7 +848,7 @@ def load_recording(path: Path, *, expected_hash: str) -> Recording:
     recording = Recording(
         path,
         ArtifactRef(path.name, sha(raw), len(raw), "application/json", "private"),
-        _context(decode(RecordingContext, obj["context"])),
+        _decode_context(obj["context"]),
         decode(tuple[RecordingEvent, ...], obj["events"]),
         decode(IncidentOutcome | None, obj["outcome"]),
         decode(bool, obj["complete"]),
@@ -1048,8 +1057,18 @@ def validate_recording(recording: Recording) -> None:
             if type(obj["occurrence"]) is not int or obj["occurrence"] != counts[key]:
                 raise StorageError("IDENTITY_MISMATCH")
             counts[key] += 1
-            outcome = unwire(ToolOutcome, parse(response_raw))
-            _tool_integrity(context, request, binding, outcome)
+            payload = parse(response_raw)
+            restricted = payload.get("evidence") is None or (
+                isinstance(payload.get("operation"), dict)
+                and payload["operation"].get("dispatched") is False
+            )
+            try:
+                outcome = unwire(ToolOutcome, payload)
+            except (StorageError, ToolContractError):
+                if restricted:
+                    raise StorageError("IDENTITY_MISMATCH") from None
+                raise
+            _tool_integrity(context, request, binding, outcome, event.clock)
             raw = b"" if outcome.evidence is None else outcome.evidence.raw
             view_raw = canonical_bytes(outcome.model_view)
             if len(raw) > MAX_RAW_BYTES or len(view_raw) > MAX_VIEW_BYTES:
@@ -1186,6 +1205,7 @@ def _tool_integrity(
     request: ToolRequest,
     binding: ToolBinding,
     outcome: ToolOutcome,
+    event_clock: datetime,
 ) -> None:
     operation = outcome.operation
     source = context.initial_state.get("replay_source")
@@ -1223,8 +1243,8 @@ def _tool_integrity(
         raise StorageError("IDENTITY_MISMATCH")
     auth = _window(binding.authorized_window)
     evidence = outcome.evidence
-    if unqueried:
-        _unqueried_refusal(outcome, request)
+    if unqueried or evidence is None:
+        check_result(context, request, binding, outcome, event_clock)
     if operation.window is not None and not auth.contains(operation.window):
         raise StorageError("IDENTITY_MISMATCH")
     if not unqueried:
@@ -1241,8 +1261,6 @@ def _tool_integrity(
             raise StorageError("IDENTITY_MISMATCH") from None
         if operation.window != expected_window or not auth.contains(expected_window):
             raise StorageError("IDENTITY_MISMATCH")
-        if evidence is None:
-            _evidenceless_result(outcome, request)
     if evidence is not None:
         if evidence.operation != operation:
             raise StorageError("IDENTITY_MISMATCH")
@@ -1259,124 +1277,12 @@ def _tool_integrity(
             raise StorageError("IDENTITY_MISMATCH")
 
 
-def _unqueried_refusal(outcome: ToolOutcome, request: ToolRequest) -> None:
-    """Only a verified pre-query refusal is exempt from window equality."""
-    if outcome.status not in ("denied", "error") or outcome.source_contact != "none":
-        raise StorageError("IDENTITY_MISMATCH")
-    _evidenceless_result(outcome, request, unqueried=True)
-
-
-def _evidenceless_result(
-    outcome: ToolOutcome, request: ToolRequest, *, unqueried: bool = False
-) -> None:
-    """Missing evidence never grants permission to deliver source data."""
-    view = outcome.model_view
-    # _accept_params() only validates/copies; it never normalizes values or
-    # adds defaults. A query that was built must retain these exact params.
-    query_text = tool_canonical(request.params)
-    if outcome.operation.query is not None and outcome.operation.query != query_text:
-        raise StorageError("IDENTITY_MISMATCH")
-    allowed = {
-        "operation_id",
-        "trust",
-        "status",
-        "citable_as_fact",
-        "adopted",
-        "reason",
-        "source_contact",
-        "tool",
-        "target_id",
-        "window",
-        "requested_at",
-        "content",
-    }
-    if not unqueried and outcome.reason == "RESULT_TOO_LARGE":
-        # These are the product executor's content-free diagnostic hints,
-        # not the source rows that were refused.
-        allowed |= {
-            "message",
-            "query",
-            "max_result_bytes",
-            "max_view_tokens",
-            "view_tokens",
-        }
-    if (
-        outcome.evidence is not None
-        or set(view) - allowed
-        or view.get("content") is not None
-    ):
-        raise StorageError("IDENTITY_MISMATCH")
-    for flag in ("adopted", "citable_as_fact"):
-        if flag in view and view[flag] is not False:
-            raise StorageError("IDENTITY_MISMATCH")
-    for name, expected in (
-        ("status", outcome.status),
-        ("reason", outcome.reason),
-        ("source_contact", outcome.source_contact),
-        ("trust", "gateway"),
-        ("tool", outcome.operation.tool),
-        ("target_id", outcome.operation.target_id),
-    ):
-        if name in view and canonical_bytes(view[name]) != canonical_bytes(expected):
-            raise StorageError("IDENTITY_MISMATCH")
+def _decode_context(value: Any) -> RecordingContext:
+    # New optional provenance fields do not invalidate old complete evidence
+    # packets. Restricted branches still require the actual snapshots below.
+    if isinstance(value, dict):
+        value = {"tool_snapshots": [], "source_manifest": None, **value}
     try:
-        if "window" in view:
-            value = view["window"]
-            if value is not None and not isinstance(value, Mapping):
-                raise StorageError("IDENTITY_MISMATCH")
-            window = None if value is None else _window(value)
-            if unqueried:
-                valid = window == outcome.operation.window
-            else:
-                valid = (
-                    window is not None
-                    and outcome.operation.window is not None
-                    and outcome.operation.window.contains(window)
-                )
-            if not valid:
-                raise StorageError("IDENTITY_MISMATCH")
-        if "requested_at" in view:
-            at = (
-                None
-                if view["requested_at"] is None
-                else decode(datetime, view["requested_at"])
-            )
-            if at != outcome.operation.started_at:
-                raise StorageError("IDENTITY_MISMATCH")
-    except StorageError:
+        return _context(decode(RecordingContext, value))
+    except ToolContractError:
         raise StorageError("IDENTITY_MISMATCH") from None
-    for name in ("max_result_bytes", "max_view_tokens", "view_tokens"):
-        if name in view:
-            limit = view[name]
-            if type(limit) is not int or limit < 0:
-                raise StorageError("IDENTITY_MISMATCH")
-    hints = set(view) & {
-        "message",
-        "query",
-        "max_result_bytes",
-        "max_view_tokens",
-        "view_tokens",
-    }
-    if hints:
-        if hints == {"message", "max_result_bytes"}:
-            expected = _result_size_message(cast(int, view["max_result_bytes"]))
-        elif (
-            hints == {"message", "query", "max_view_tokens", "view_tokens"}
-            and "window" in view
-        ):
-            expected = _view_size_message(
-                cast(int, view["view_tokens"]), cast(int, view["max_view_tokens"])
-            )
-        else:
-            raise StorageError("IDENTITY_MISMATCH")
-        if type(view["message"]) is not str or view["message"] != expected:
-            raise StorageError("IDENTITY_MISMATCH")
-    if "query" in view:
-        query: Any = outcome.operation.query
-        if query is not None:
-            try:
-                query = parse(query.encode("utf-8"))
-            except StorageError:
-                pass  # Some facades retain their native query string.
-        if canonical_bytes(view["query"]) != canonical_bytes(query):
-            raise StorageError("IDENTITY_MISMATCH")

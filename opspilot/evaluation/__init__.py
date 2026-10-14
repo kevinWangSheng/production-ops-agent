@@ -84,6 +84,7 @@ from opspilot.evaluation.storage import (
     write_round,
     write_summary,
 )
+from opspilot.evaluation.tool_provenance import ToolSnapshot, bind_tool_snapshots
 
 __all__ = [
     "CaptureHooks",
@@ -93,6 +94,8 @@ __all__ = [
     "RecordingEvent",
     "RecordingRef",
     "ToolBinding",
+    "ToolSnapshot",
+    "bind_tool_snapshots",
     "ToolFacade",
     "ReplayCapture",
     "ReplaySession",

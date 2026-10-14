@@ -327,6 +327,11 @@ def _compatible(recording: Recording, manifest: Manifest) -> bool:
                 "version",
             )
             or dimension.value != recording.context.versions.get(key)
+            or (
+                bool(recording.context.tool_snapshots)
+                and key in ("registry", "permissions")
+                and dimension.kind != "hash"
+            )
         ):
             return False
     return True
@@ -378,10 +383,11 @@ def replay(
         recording_id=attempt.attempt_id,
         source_run_id=attempt.product_run_id,
         source_manifest_hash=manifest_hash(manifest),
+        source_manifest=manifest if source.context.tool_snapshots else None,
         initial_state=initial,
         input_refs=(),
         source_versions=source.context.versions,
-        started_at=source.context.ended_at,
+        started_at=source.context.started_at,
         ended_at=source.context.ended_at,
         versions={
             **source.context.versions,
@@ -400,6 +406,7 @@ def replay(
         hooks.clock(source.context.ended_at)
         for ref in source.context.input_refs:
             hooks.input(blob(source, ref))
+        hooks.clock(source.context.ended_at)
         session = ReplaySession(
             source, hooks, investigator, attempt.product_run_id or ""
         )
