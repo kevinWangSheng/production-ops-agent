@@ -1222,7 +1222,7 @@ def _tool_integrity(
         _unqueried_refusal(outcome)
     if operation.window is not None and not auth.contains(operation.window):
         raise StorageError("IDENTITY_MISMATCH")
-    if evidence is not None:
+    if not unqueried:
         try:
             value = (
                 request.window
@@ -1236,6 +1236,8 @@ def _tool_integrity(
             raise StorageError("IDENTITY_MISMATCH") from None
         if operation.window != expected_window or not auth.contains(expected_window):
             raise StorageError("IDENTITY_MISMATCH")
+        if evidence is None:
+            _evidenceless_result(outcome)
     if evidence is not None:
         if evidence.operation != operation:
             raise StorageError("IDENTITY_MISMATCH")
@@ -1253,7 +1255,14 @@ def _tool_integrity(
 
 
 def _unqueried_refusal(outcome: ToolOutcome) -> None:
-    """A pre-query denial carries gateway metadata, never query evidence."""
+    """Only a verified pre-query refusal is exempt from window equality."""
+    if outcome.status not in ("denied", "error") or outcome.source_contact != "none":
+        raise StorageError("IDENTITY_MISMATCH")
+    _evidenceless_result(outcome, unqueried=True)
+
+
+def _evidenceless_result(outcome: ToolOutcome, *, unqueried: bool = False) -> None:
+    """Missing evidence never grants permission to deliver source data."""
     view = outcome.model_view
     allowed = {
         "operation_id",
@@ -1269,10 +1278,18 @@ def _unqueried_refusal(outcome: ToolOutcome) -> None:
         "requested_at",
         "content",
     }
+    if not unqueried and outcome.reason == "RESULT_TOO_LARGE":
+        # These are the product executor's content-free diagnostic hints,
+        # not the source rows that were refused.
+        allowed |= {
+            "message",
+            "query",
+            "max_result_bytes",
+            "max_view_tokens",
+            "view_tokens",
+        }
     if (
-        outcome.status not in ("denied", "error")
-        or outcome.source_contact != "none"
-        or outcome.evidence is not None
+        outcome.evidence is not None
         or set(view) - allowed
         or view.get("content") is not None
     ):
@@ -1283,7 +1300,7 @@ def _unqueried_refusal(outcome: ToolOutcome) -> None:
     for name, expected in (
         ("status", outcome.status),
         ("reason", outcome.reason),
-        ("source_contact", "none"),
+        ("source_contact", outcome.source_contact),
         ("trust", "gateway"),
         ("tool", outcome.operation.tool),
         ("target_id", outcome.operation.target_id),
@@ -1296,7 +1313,15 @@ def _unqueried_refusal(outcome: ToolOutcome) -> None:
             if value is not None and not isinstance(value, Mapping):
                 raise StorageError("IDENTITY_MISMATCH")
             window = None if value is None else _window(value)
-            if window != outcome.operation.window:
+            if unqueried:
+                valid = window == outcome.operation.window
+            else:
+                valid = (
+                    window is not None
+                    and outcome.operation.window is not None
+                    and outcome.operation.window.contains(window)
+                )
+            if not valid:
                 raise StorageError("IDENTITY_MISMATCH")
         if "requested_at" in view:
             at = (
@@ -1308,3 +1333,19 @@ def _unqueried_refusal(outcome: ToolOutcome) -> None:
                 raise StorageError("IDENTITY_MISMATCH")
     except StorageError:
         raise StorageError("IDENTITY_MISMATCH") from None
+    for name in ("max_result_bytes", "max_view_tokens", "view_tokens"):
+        if name in view:
+            limit = view[name]
+            if type(limit) is not int or limit < 0:
+                raise StorageError("IDENTITY_MISMATCH")
+    if "message" in view and type(view["message"]) is not str:
+        raise StorageError("IDENTITY_MISMATCH")
+    if "query" in view:
+        query: Any = outcome.operation.query
+        if query is not None:
+            try:
+                query = parse(query.encode("utf-8"))
+            except StorageError:
+                pass  # Some facades retain their native query string.
+        if canonical_bytes(view["query"]) != canonical_bytes(query):
+            raise StorageError("IDENTITY_MISMATCH")

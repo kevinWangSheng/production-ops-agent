@@ -1654,3 +1654,176 @@ def test_unqueried_result_cannot_smuggle_evidence_or_data(tmp_path, payload):
 
     with pytest.raises(RecordingError, match="IDENTITY_MISMATCH"):
         source(tmp_path, driver=drive)
+
+
+@pytest.mark.parametrize("default", [False, True])
+def test_executed_without_evidence_still_requires_request_window(tmp_path, default):
+    class BrokenWindow(Executor):
+        def execute(self, req):
+            base = super().execute(req)
+            operation = replace(
+                base.operation,
+                window=Window(AUTH.start + timedelta(minutes=1), AUTH.end),
+            )
+            return ToolOutcome(
+                operation,
+                "error",
+                "SOURCE_UNAVAILABLE",
+                "possible",
+                {
+                    "operation_id": operation.operation_id,
+                    "trust": "gateway",
+                    "status": "error",
+                    "reason": "SOURCE_UNAVAILABLE",
+                    "source_contact": "possible",
+                    "window": encode(operation.window),
+                    "content": None,
+                    "citable_as_fact": False,
+                },
+                None,
+            )
+
+    def drive(hooks):
+        model = hooks.model(ScriptedModel([first_call(), reply(content="done")]))
+        tools = hooks.tools(BrokenWindow())
+        if default:
+            original = tools
+
+            class DefaultTools:
+                def execute(self, req):
+                    return original.execute(replace(req, window=None))
+
+            tools = DefaultTools()
+        return conversation(model, tools, hooks.delivery)
+
+    with pytest.raises(RecordingError, match="IDENTITY_MISMATCH"):
+        source(tmp_path, driver=drive)
+
+
+@pytest.mark.parametrize("payload", ["rows", "content", "evidence_id", "unknown_data"])
+def test_executed_without_evidence_cannot_deliver_data_even_with_matching_window(
+    tmp_path, payload
+):
+    class MissingRecord(Executor):
+        def execute(self, req):
+            base = super().execute(req)
+            view = {
+                "operation_id": base.operation.operation_id,
+                "window": encode(base.operation.window),
+                "content": None,
+                "citable_as_fact": False,
+            }
+            view[payload] = "forged-id" if payload == "evidence_id" else [{"value": 3}]
+            return replace(base, evidence=None, model_view=view)
+
+    with pytest.raises(RecordingError, match="IDENTITY_MISMATCH"):
+        source(
+            tmp_path,
+            driver=lambda hooks: conversation(
+                hooks.model(ScriptedModel([first_call(), reply(content="done")])),
+                hooks.tools(MissingRecord()),
+                hooks.delivery,
+                stub=False,
+            ),
+        )
+
+
+@pytest.mark.parametrize("mismatched", [False, True])
+def test_saved_evidenceless_executed_packet_is_blocked_before_model(
+    tmp_path, mismatched
+):
+    from opspilot.evaluation.recording import unwire, wire
+
+    recording = source(tmp_path)
+    meta = json.loads(recording.path.read_bytes())
+    event = recording.events[1]
+    old = unwire(ToolOutcome, json_blob(recording, event.response_ref))
+    operation = (
+        replace(
+            old.operation, window=Window(AUTH.start + timedelta(minutes=1), AUTH.end)
+        )
+        if mismatched
+        else old.operation
+    )
+    result = replace(
+        old,
+        operation=operation,
+        evidence=None,
+        model_view={**old.model_view, "window": encode(operation.window)},
+    )
+    payload = canonical_bytes(wire(result))
+    ref = replace(
+        event.response_ref,
+        path="blobs/" + sha(payload),
+        sha256=sha(payload),
+        bytes=len(payload),
+    )
+    (recording.path.parent / ref.path).write_bytes(payload)
+    meta["events"][1]["response_ref"] = encode(ref)
+    meta["events"][1]["hashes"] = {
+        "view_sha256": sha(canonical_bytes(result.model_view)),
+        "raw_sha256": sha(b""),
+    }
+    raw = canonical_bytes(meta)
+    recording.path.write_bytes(raw)
+    with pytest.raises(RecordingError, match="IDENTITY_MISMATCH"):
+        load_recording(recording.path, expected_hash=sha(raw))
+    candidate = replace(
+        recording, ref=replace(recording.ref, sha256=sha(raw), bytes=len(raw))
+    )
+    model = ScriptedModel([])
+    with pytest.raises(RecordingError, match="IDENTITY_MISMATCH"):
+        run_replay(candidate, tmp_path, model=model)
+    assert not model.calls
+
+
+@pytest.mark.parametrize("status", ["error", "no_data", "oversize"])
+def test_executed_metadata_only_result_without_evidence_keeps_empty_raw_hash(
+    tmp_path, status
+):
+    class EmptyResult(Executor):
+        def execute(self, req):
+            base = super().execute(req)
+            actual_status = "error" if status == "oversize" else status
+            reason = (
+                "RESULT_TOO_LARGE"
+                if status == "oversize"
+                else ("SOURCE_UNAVAILABLE" if status == "error" else "NO_DATA")
+            )
+            operation = (
+                replace(base.operation, query=canonical_bytes(req.params).decode())
+                if status == "oversize"
+                else base.operation
+            )
+            view = {
+                "operation_id": operation.operation_id,
+                "status": actual_status,
+                "reason": reason,
+                "source_contact": "confirmed",
+                "trust": "gateway",
+                "window": encode(base.operation.window),
+                "citable_as_fact": False,
+                "content": None,
+            }
+            if status == "oversize":
+                from opspilot.tools.executor import _view_refusal_detail
+
+                view.update(
+                    _view_refusal_detail(100, 50, req.params, encode(operation.window))
+                )
+            return ToolOutcome(
+                operation, actual_status, reason, "confirmed", view, None
+            )
+
+    recording = source(
+        tmp_path,
+        driver=lambda hooks: conversation(
+            hooks.model(ScriptedModel([first_call(), reply(content="done")])),
+            hooks.tools(EmptyResult()),
+            hooks.delivery,
+            stub=False,
+        ),
+    )
+    event = next(item for item in recording.events if item.kind == "tool")
+    assert event.hashes["raw_sha256"] == sha(b"")
+    assert recording.complete
