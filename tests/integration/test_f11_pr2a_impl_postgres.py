@@ -904,6 +904,45 @@ def test_impl_non_owner_cannot_forge_healthy_window_origins(
     assert refused, "watermark forgery committed without an adopted sample"
 
 
+@pytest.mark.parametrize(
+    "assignment",
+    [
+        "adopted_sequence=1",
+        "adopted_count=1",
+        "adopted_window_end=clock_timestamp()+interval '1 day'",
+        "adopted_sequence=1,adopted_count=1,adopted_window_end=clock_timestamp()+interval '1 day'",
+    ],
+)
+def test_impl_non_owner_cannot_forge_adopted_watermarks(
+    _impl_fresh_budget_database, request, assignment
+):
+    h = request.getfixturevalue("harness")
+    authorization = authorize(h)
+    with pytest.raises(PersistenceError, match="INTEGRITY_REFUSED") as error:
+        with h[1]._release_transaction() as conn:
+            identity = conn.execute(
+                "SELECT pg_has_role(current_user,'opspilot_observer','MEMBER') AS observer, current_user<>(SELECT pg_get_userbyid(relowner) FROM pg_class WHERE oid='opspilot_observation_sessions'::regclass) AS non_owner"
+            ).fetchone()
+            assert identity["observer"] and identity["non_owner"]
+            conn.execute(
+                "UPDATE opspilot_observation_sessions SET "
+                + assignment
+                + " WHERE session_id=%s",
+                (authorization.session_id,),
+            )
+    assert isinstance(error.value.__cause__, psycopg.errors.InsufficientPrivilege)
+    assert error.value.__cause__.sqlstate == "42501"
+    session = h[1].release_history(h[2])["sessions"][0]
+    assert session["adopted_sequence"] == session["adopted_count"] == 0
+    assert session["adopted_window_end"] is None
+    context = h[1].release_context(authorization.session_id)
+    receipt = h[1].submit_release_sample(
+        claim(h, authorization.session_id),
+        raw_evidence(context, h[1].current_time(), missing=True),
+    )
+    assert receipt.accepted and receipt.used_sample_count == 1
+
+
 def test_impl_watermark_guard_allows_gap_and_unknown_resets(
     _impl_fresh_budget_database, request
 ):
