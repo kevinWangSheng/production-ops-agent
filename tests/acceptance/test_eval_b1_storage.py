@@ -1678,3 +1678,33 @@ def test_empty_injected_identity_rejected(bundle, field_name):
     assert evaluate_capture(cap).overall is True
     path = forge_summary(bundle, f"empty-{field_name}.json", cap)
     rejects("SCHEMA_INVALID", load, bundle, path)
+
+
+# ================================================================ Bot P2 r4
+
+
+@pytest.mark.parametrize(
+    "writer", ["summary", "attempt", "calibration", "round", "baseline"]
+)
+def test_writer_rejects_unreadable_ref_name(rnd, tmp_path, writer):
+    # Bot P2 r4: a backslash file name is legal on POSIX but its ref path
+    # could never be read back (I:68), so every writer validates the ref path
+    # before publishing: SCHEMA_INVALID, no target and no temp file left.
+    out = tmp_path / "out"
+    out.mkdir()
+    target = out / "x\\1.json"
+    bundle = rnd["bundle"]
+    calls = {
+        "summary": lambda: write_summary(target, rnd["caps"]["attempt-1"]),
+        "attempt": lambda: write_attempt(target, rnd["journals"]["attempt-1"]),
+        "calibration": lambda: write_calibration(target, rnd["calibration"]),
+        "round": lambda: write_round(
+            target, rnd["round_capture"], resolve=bundle.resolve
+        ),
+        "baseline": lambda: write_baseline(
+            rnd["round_path"], resolve=bundle.resolve, destination=target
+        ),
+    }
+    rejects("SCHEMA_INVALID", calls[writer])
+    assert not target.exists()
+    assert list(out.iterdir()) == []
