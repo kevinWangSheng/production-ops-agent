@@ -4,6 +4,7 @@ Public interface: docs/tasks/2026-10-13-eval-pr-a-interface.md. Offline and
 deterministic; the investigation runtime never imports this package.
 """
 
+from opspilot.evaluation.baseline import write_baseline
 from opspilot.evaluation.gate import GATE_CHECKS, run_gate, signature_matches
 from opspilot.evaluation.model import (
     Answer,
@@ -50,8 +51,47 @@ from opspilot.evaluation.rounds import (
     validate_manifest,
 )
 from opspilot.evaluation.runs import evaluate, judge_request
+from opspilot.evaluation.storage import (
+    ArtifactRef,
+    AttemptJournal,
+    CalibrationCapture,
+    EvaluationCapture,
+    LegacySummary,
+    Resolver,
+    RoundCapture,
+    StorageError,
+    TraceRecord,
+    load_attempt,
+    load_calibration,
+    load_round,
+    load_summary,
+    read_legacy_summary,
+    write_attempt,
+    write_calibration,
+    write_round,
+    write_summary,
+)
 
 __all__ = [
+    "ArtifactRef",
+    "AttemptJournal",
+    "CalibrationCapture",
+    "EvaluationCapture",
+    "LegacySummary",
+    "Resolver",
+    "RoundCapture",
+    "StorageError",
+    "TraceRecord",
+    "load_attempt",
+    "load_calibration",
+    "load_round",
+    "load_summary",
+    "read_legacy_summary",
+    "write_attempt",
+    "write_baseline",
+    "write_calibration",
+    "write_round",
+    "write_summary",
     "GATE_CHECKS",
     "REQUIRED_DIMENSIONS",
     "Aggregate",
