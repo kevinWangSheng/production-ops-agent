@@ -98,3 +98,8 @@
     - 测试把 binding 的授权窗和请求窗都设成 23:00–00:00，这是为了照搬复验反例的时间。事件业务钟仍然是夹具的 12:00–12:10，这两组时间互不相关。
     - 结果的 status 为 ok，source_contact 为 confirmed。(a) 结果窗口是 23:01–00:00，(b) 结果窗口等于请求窗。
     - 和第 14 条一样，record 当场报 IDENTITY_MISMATCH 也接受；这种情况下，模型回放应抛 RECORDING_INCOMPLETE。
+
+19. **RESULT_TOO_LARGE 的 message（Recheck3 P2）**
+    - 依据 lead 裁决：message 必须与产品固定模板逐字相等，模板由 view 中的限制字段重建（`_refusal_detail` 用 max_result_bytes，`_view_refusal_detail` 用 view_tokens/max_view_tokens），不相等时报 IDENTITY_MISMATCH。
+    - 反例 (a) 只让 message 偏离模板：max_result_bytes=1024，窗口一致（请求未给窗口，结果等于 binding 默认窗），dispatched=True，evidence=None，content=null。和第 14 条一样，record 当场报 IDENTITY_MISMATCH 也接受。
+    - 正向对照 (b) 用真实 ReadOnlyToolExecutor 覆盖两种模板：一种是字节上限（返回体为 5000 字节），另一种是视图 token 上限（max_view_tokens=20，token_counter=len）。测试不断言模板全文，只断言前缀能区分两种模板，以免把产品文案抄进测试；逐字相等的比较由实现完成，测试只要求包完整、能通过核验。

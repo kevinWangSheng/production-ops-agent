@@ -43,6 +43,7 @@ from opspilot.investigation.loop import (
     serialized_request,
 )
 from opspilot.investigation.store import MemoryStepStore
+from opspilot.tools import TransportResponse
 from tests.acceptance import eval_b2_support as s
 from tests.m1_investigation_support import (
     ScriptedModel,
@@ -51,6 +52,7 @@ from tests.m1_investigation_support import (
 )
 from tests.m1_investigation_support import reply as loop_reply
 from tests.m1_investigation_support import tool_call as loop_tool_call
+from tests.m1_tool_support import body as tool_body
 from tests.m1_tool_support import build as build_tool_executor
 from tests.m1_tool_support import registration as tool_registration
 from tests.m1_tool_support import request as tool_request_fixture
@@ -2226,3 +2228,166 @@ def test_recheck2_p2_dispatched_result_without_evidence_but_with_data_is_rejecte
         run_replay(tmp_path, rec, [request_], investigator=inv)
     assert err.value.code == expected
     assert inv.calls == []
+
+
+# --- third recheck finding (2026-10-14) -------------------------------------------------
+# Lead ruling: a RESULT_TOO_LARGE message must equal the product's fixed
+# template (opspilot/tools/executor.py _refusal_detail/_view_refusal_detail),
+# rebuilt from the view's own limit fields; anything else is
+# IDENTITY_MISMATCH. See EVAL_B2_AMBIGUITIES.md item 19.
+
+
+def _oversize_with_source_data(request: Any):
+    result = s.tool_outcome(request, evidence_id="unused", raw=None)
+    assert result.operation.dispatched is True
+    view = {
+        "operation_id": request.operation_id,
+        "status": "error",
+        "reason": "RESULT_TOO_LARGE",
+        "source_contact": "confirmed",
+        "trust": "gateway",
+        "content": None,
+        "adopted": False,
+        "citable_as_fact": False,
+        "message": 'SOURCE DATA: {"rows":[{"value":3}]}',
+        "max_result_bytes": 1024,
+    }
+    return replace(
+        result,
+        status="error",
+        reason="RESULT_TOO_LARGE",
+        source_contact="confirmed",
+        evidence=None,
+        model_view=view,
+    )
+
+
+# Recheck3 P2 (a): a non-template message cannot smuggle source data out of
+# an evidence-free RESULT_TOO_LARGE result. The window is consistent
+# (omitted request window -> binding default window, as tool_outcome sets).
+def test_recheck3_p2_oversize_message_not_product_template_is_rejected(tmp_path):
+    request_ = dict(s.REQ_A, window=None)
+    pkg = tmp_path / "source"
+    recorded: Any = None
+    try:
+        recorded = record(
+            s.source_driver(
+                [request_], outcomes=[_oversize_with_source_data], result=s.outcome(())
+            ),
+            destination=pkg,
+            context=s.context(),
+        )
+    except RecordingError as exc:
+        # Record-time detection accepted (ambiguity 14); never complete.
+        assert str(exc) == exc.code
+        assert exc.code == "IDENTITY_MISMATCH"
+        assert_not_complete(pkg)
+    if recorded is not None:
+        assert s.verify_code(pkg, recorded.sha256) == "IDENTITY_MISMATCH"
+        expected = "IDENTITY_MISMATCH"
+        sha = recorded.sha256
+    else:
+        expected = "RECORDING_INCOMPLETE"
+        sha = s.sha((pkg / "recording.json").read_bytes())
+    inv = Investigator()
+    with pytest.raises(RecordingError) as err:
+        rec = load_recording(pkg / "recording.json", expected_hash=sha)
+        run_replay(tmp_path, rec, [request_], investigator=inv)
+    assert err.value.code == expected
+    assert inv.calls == []
+
+
+# Recheck3 P2 (b): the real executor's over-limit results (byte ceiling and
+# view-token ceiling templates) record completely and verify.
+@pytest.mark.parametrize("ceiling", ["result-bytes", "view-tokens"])
+def test_recheck3_p2_product_oversize_template_records_completely(tmp_path, ceiling):
+    if ceiling == "view-tokens":
+        executor, transport, _sink, clock = build_tool_executor(
+            registrations=[tool_registration(max_view_tokens=20)], token_counter=len
+        )
+        rows = [{"value": 3}]
+    else:
+        executor, transport, _sink, clock = build_tool_executor()
+        rows = [{"value": "x" * 5000}]
+    transport.response = TransportResponse(body=tool_body(rows))
+    tool_request = tool_request_fixture()
+    seen: list[Any] = []
+
+    def driver(hooks: Any):
+        model = hooks.model(
+            ScriptedModel(
+                [
+                    loop_reply(
+                        tool_calls=[
+                            loop_tool_call(
+                                "call",
+                                tool_request.tool_name,
+                                json.dumps(tool_request.params),
+                            )
+                        ],
+                        finish="tool_calls",
+                    ),
+                    loop_reply(content="done"),
+                ]
+            )
+        )
+        first = ModelCall(
+            messages=(
+                {"role": "system", "content": s.SYSTEM},
+                {"role": "user", "content": s.QUESTION},
+            ),
+            tools=None,
+            json_mode=False,
+            max_tokens=100,
+            timeout_seconds=30.0,
+        )
+        answer = model.complete(first)
+        result = hooks.tools(executor).execute(tool_request)
+        seen.append(result)
+        message = {
+            "role": "tool",
+            "tool_call_id": "call",
+            "content": s.canonical_bytes(dict(result.model_view)).decode(),
+        }
+        hooks.delivery(result.model_view, message)
+        assistant = {
+            "role": "assistant",
+            "content": answer.content,
+            "reasoning_content": answer.reasoning_content,
+            "tool_calls": [dict(c) for c in answer.tool_calls],
+        }
+        model.complete(replace(first, messages=(*first.messages, assistant, message)))
+        return s.outcome(())
+
+    context = s.context(
+        source_run_id=executor.scope.run_id,
+        started_at=clock.now(),
+        ended_at=clock.now() + timedelta(seconds=10),
+        bindings=(
+            s.binding(
+                tool=tool_request.tool_name,
+                target=tool_request.target_ref,
+                source="prometheus",
+                authorized_window=executor.scope.window.as_json(),
+                default_window=None,
+            ),
+        ),
+    )
+    pkg = tmp_path / "source"
+    ref = record(driver, destination=pkg, context=context)
+    (result,) = seen
+    # The product produced an evidence-free over-limit result with its fixed
+    # template message.
+    assert (result.status, result.reason) == ("error", "RESULT_TOO_LARGE")
+    assert result.evidence is None and result.operation.dispatched is True
+    assert result.model_view["content"] is None
+    assert result.model_view["message"].startswith(
+        "The tool call result is too large"
+        if ceiling == "view-tokens"
+        else "The result exceeded the"
+    )
+    doc = s.package_json(pkg)
+    assert doc["complete"] is True and doc["incomplete_reasons"] == []
+    event = s.events_of(doc, "tool")[0]
+    assert event["hashes"]["raw_sha256"] == s.sha(b"")
+    assert s.verify_code(pkg, ref.sha256) is None
