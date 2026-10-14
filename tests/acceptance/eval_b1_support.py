@@ -29,6 +29,7 @@ from eval_contract_support import (
 from opspilot.evaluation import (
     ArtifactRef,
     AttemptJournal,
+    AttemptRecord,
     CalibrationCapture,
     DimensionValue,
     EvaluationCapture,
@@ -40,6 +41,7 @@ from opspilot.evaluation import (
     aggregate,
     calibrate,
     evaluate,
+    load_scenarios,
     manifest_hash,
     write_attempt,
     write_calibration,
@@ -426,3 +428,86 @@ def build_round(root: Path) -> dict[str, Any]:
         "round_path": bundle.path("round.json"),
         "expected": expected,
     }
+
+
+# ---------------------------------------------------------------- D5 layout (Bot P1 / T:46)
+
+SCENARIO_ROOT = Path(__file__).resolve().parents[2] / "evals" / "scenarios"
+
+
+def bare_capture(spec, answer, *, attempt_id, mode, repetition, manifest):
+    """A started, evidence-complete Run with no report or delivery.
+
+    It fails the gate (no outcome), which is fine: a low pass rate never
+    blocks baseline_complete (I:95); only layout and evidence matter here.
+    """
+    attempt = AttemptRecord(
+        attempt_id=attempt_id,
+        round_id=manifest.round_id,
+        manifest_hash=manifest_hash(manifest),
+        scenario_id=spec.scenario_id,
+        scenario_version=spec.version,
+        mode=mode,
+        repetition=repetition,
+        started=True,
+        status="ran",
+        replay_miss=False,
+        product_run_id="product-1",
+    )
+    return EvaluationCapture(
+        manifest=manifest,
+        spec=spec,
+        answer=answer,
+        attempt=attempt,
+        outcome=None,
+        report=None,
+        delivered={},
+        authorized={},
+        traces=(trace_record(attempt_id),),
+        judge=None,
+        delivery_refs={},
+    )
+
+
+def build_layout_round(root: Path, *, short_live: str | None = None) -> dict[str, Any]:
+    """Every D1 scenario with 5 replay + 2 live slots, all completed.
+
+    ``short_live`` names one scenario that gets a single live slot instead.
+    """
+    bundle = Bundle(root)
+    frozen = frozen_manifest()
+    planned: list[PlannedSlot] = []
+    journal_refs = []
+    summary_refs = {}
+    for spec, answer in load_scenarios(SCENARIO_ROOT):
+        lives = 1 if spec.scenario_id == short_live else 2
+        for mode, count in (("replay", 5), ("live", lives)):
+            for rep in range(1, count + 1):
+                planned.append(PlannedSlot(spec.scenario_id, spec.version, mode, rep))
+                aid = f"{spec.scenario_id}-{mode}-{rep}"
+                cap = bare_capture(
+                    spec,
+                    answer,
+                    attempt_id=aid,
+                    mode=mode,
+                    repetition=rep,
+                    manifest=frozen,
+                )
+                journal_refs.append(
+                    write_attempt(bundle.path(f"journal-{aid}.json"), journal_for(cap))
+                )
+                summary_refs[aid] = write_summary(
+                    bundle.path(f"summary-{aid}.json"), cap
+                )
+    calibration_ref = write_calibration(
+        bundle.path("calibration.json"), calibration_capture()
+    )
+    rc = RoundCapture(
+        manifest=frozen,
+        planned=tuple(planned),
+        journals=tuple(journal_refs),
+        summaries=summary_refs,
+        calibration_ref=calibration_ref,
+    )
+    write_round(bundle.path("round.json"), rc, resolve=bundle.resolve)
+    return {"bundle": bundle, "round_path": bundle.path("round.json")}

@@ -29,6 +29,7 @@ from eval_b1_support import (
     SUMMARY_SCHEMA,
     Bundle,
     StorageError,
+    build_layout_round,
     build_round,
     calibration_capture,
     calibration_doc,
@@ -951,11 +952,22 @@ def _row(agg, scenario, mode):
 
 def test_round_round_trip_equals_pr_a_aggregate(rnd):
     # I:46-47, I:61, I:74: load_round re-reads everything and calls aggregate().
+    # Bot P1 / T:46 fixed slots (I:95): the 7-slot fixture is not the D5
+    # layout, so BASELINE_LAYOUT_MISMATCH is appended; the cached aggregate
+    # stays the PR-A one.
     result = load_round(rnd["round_path"], resolve=rnd["bundle"].resolve)
-    assert result == rnd["expected"]
+    assert result == _with_layout_mismatch(rnd["expected"])
     doc = read_doc(rnd["round_path"])
     assert doc == round_doc(rnd["round_capture"], rnd["expected"])
     assert doc["schema"] == ROUND_SCHEMA
+
+
+def _with_layout_mismatch(expected):
+    return replace(
+        expected,
+        baseline_complete=False,
+        incomplete_reasons=expected.incomplete_reasons + ("BASELINE_LAYOUT_MISMATCH",),
+    )
 
 
 def test_denominator_rules(rnd):
@@ -975,7 +987,12 @@ def test_denominator_rules(rnd):
     empty = _row(agg, NORMAL, "replay")
     assert (empty.attempted, empty.not_started, empty.pass_rate) == (0, 1, None)
     assert agg.baseline_complete is False
-    assert agg.incomplete_reasons == ("SLOTS_NOT_STARTED", "EVIDENCE_INCOMPLETE")
+    # Bot P1 / T:46 fixed slots: non-D5 layout appends the layout reason last.
+    assert agg.incomplete_reasons == (
+        "SLOTS_NOT_STARTED",
+        "EVIDENCE_INCOMPLETE",
+        "BASELINE_LAYOUT_MISMATCH",
+    )
 
 
 def test_round_cached_aggregate_tampered(rnd, tmp_path):
@@ -1149,9 +1166,15 @@ def test_baseline_table(rnd, tmp_path):
     assert not _is_number(structural[7])  # miss rate only for replay
     empty = _table_row(text, NORMAL, "v1", "replay")
     assert empty[5] == "null" and empty[7] == "null"  # zero denominators
-    assert "D5：回放5次、live2次；样本量有限，置信不足" in text
+    # Bot P1 / T:46 fixed slots (I:95): sample note from the actual plan totals
+    # (replay 5+1, live 0, structural 1) and the appended layout reason.
+    assert (
+        "D5：实际计划（合计）：回放6次、live0次、structural1次；样本量有限，置信不足"
+        in text
+    )
     assert "baseline_complete" in text
     assert "SLOTS_NOT_STARTED" in text and "EVIDENCE_INCOMPLETE" in text
+    assert "BASELINE_LAYOUT_MISMATCH" in text
 
 
 def test_baseline_reloads_round_not_cache(rnd, tmp_path):
@@ -1525,3 +1548,35 @@ def test_temp_cleanup_failure_is_evidence_unavailable(tmp_path, monkeypatch):
             write_attempt(out / "a.json", journal)
     assert code_of(excinfo) == "EVIDENCE_UNAVAILABLE"
     assert all(secret_path not in text for text in _chain_texts(excinfo.value))
+
+
+# ================================================================ Bot P1 / T:46 fixed slots
+
+
+def test_d5_layout_round_is_baseline_complete(tmp_path):
+    # Bot P1 / T:46 fixed slots (I:95): the six D1 scenarios with 5 replay and
+    # 2 live slots each, all completed -> baseline_complete, no layout reason.
+    built = build_layout_round(tmp_path / "d5")
+    agg = load_round(built["round_path"], resolve=built["bundle"].resolve)
+    assert sum(row.planned for row in agg.rows) == 42
+    assert agg.baseline_complete is True
+    assert agg.incomplete_reasons == ()
+    dest = tmp_path / "d5.md"
+    write_baseline(
+        built["round_path"], resolve=built["bundle"].resolve, destination=dest
+    )
+    text = dest.read_text(encoding="utf-8")
+    assert (
+        "D5：实际计划（合计）：回放30次、live12次、structural0次；样本量有限，置信不足"
+        in text
+    )
+    assert "BASELINE_LAYOUT_MISMATCH" not in text
+
+
+def test_d5_layout_missing_live_slot_appends_reason(tmp_path):
+    # Bot P1 / T:46 fixed slots (I:95): one scenario with a single live slot
+    # breaks the layout although every planned slot completed.
+    built = build_layout_round(tmp_path / "short", short_live="eval-cart-failure")
+    agg = load_round(built["round_path"], resolve=built["bundle"].resolve)
+    assert agg.baseline_complete is False
+    assert agg.incomplete_reasons == ("BASELINE_LAYOUT_MISMATCH",)
