@@ -1,4 +1,4 @@
-# OpsPilot 场景评测套件：合同决定表（r5）
+# OpsPilot 场景评测套件：合同决定表（r8）
 
 预审者 Codex GPT-6 Astra（high，全新上下文，只读），2026-10-12。lead 补充 D13–D15，并核对了上游完整文件树。用户于 2026-10-12 按推荐裁决 D1–D15；D6 按 lead 修订后的推荐采用「先只用确定性判据」。
 
@@ -207,6 +207,12 @@ PR-A 完成只代表合同/schema、离线测试和独立审查完成。真实 j
 - **未核查：** PR-B 完整输入、实际交付与 hash 录制的实现可行性。旧 Outcome/summary 不足以重建可见证据；材料缺失的报告不得充作校准金标。
 - **边界：** 上游完整树的 `truncated=false` 已核实，但未审全仓，不断言其不存在其他校准机制。双 Agent 标签、同家族 judge、小开发样本均可能相关失误；P7 门槛是待裁决建议，尚无运行证据。模型、prompt、规则或标签变更须新版本并重新校准；本套件不支持生产可靠性、发布或 M0 完成结论。
 
+### r8（2026-10-13，#219，用户门）
+
+| # | 决定点 | 决定 | 影响 | 裁决 |
+|---|---|---|---|---|
+| D16 | judge 模型与数据出口 | GLM-5.3（Z.ai 按量 API）为 judge；GPT-6.1 Sol（OpenAI）与被测 `deepseek-flash`（DeepSeek）只作校准对照，三者判同一批 P7 标注样本。GLM-5.3 达 P7 门槛且一致数不低于 Sol 即采用；否则冻结前交用户裁决，可选项只有达到 P7 门槛的 GLM-5.3 或 Sol，DeepSeek 不可选，都不达标不记基线。三家只在开发评测中收到 judge 输入（含 expected answer），私有协议字段不进 judge（C3 §12），凭据放私有 `.env.judge`，不进 PR CI | 数据流、judge 独立性、基线口径；SPEC 有界开放段同步 | 用户 2026-10-13 选定，#219 由用户合并生效 |
+
 ## 3. 可逆默认（R 项，Agent 自决并记录理由）
 
 - R1：目录采用 `docs/evidence/eval/<round>/runs/<run_id>/summary.json`、`aggregate.json`、`manifest.json`；理由是与现有 `freeze`/ADR-0006 对齐，便于删除整轮而不改历史。
@@ -220,7 +226,7 @@ PR-A 完成只代表合同/schema、离线测试和独立审查完成。真实 j
 ## 4. 建议的 PR 切分与验收
 
 1. **PR-A：F1 外部评测合同与 schema**（D1、D5–D9、D11–D12）。新上下文验收作者只按 `IncidentScenario -> IncidentOutcome` 写确定性 fixture/aggregate 合同测试；不得翻 `passes`。验收：收集、分母、状态/权限/evidence bind、失败分类、旧摘要只读兼容。
-2. **PR-B：replay 录制/回放与基线表**（D2、R1–R4）。验收：同一 manifest 在无网络 fixture 下重放 N 次；结构重放零模型；模型 replay 的每次调用、summary、LangSmith read-back 和余额差均可对账；独立审查确认 expected answer 未进入模型输入。
+2. **PR-B：replay 录制/回放与基线表**（D2、R1–R4；r8 起 judge 接入与 P7 校准 D16 同属 PR-B，可在 PR-B 预审中拆分）。验收：同一 manifest 在无网络 fixture 下重放 N 次；结构重放零模型；模型 replay 的每次调用、summary、LangSmith read-back 和余额差均可对账；独立审查确认 expected answer 未进入模型输入。
 3. **PR-C：live kind/OTel 场景驱动**（D3–D4、D10）。验收：单场景注入→独立观察→调查→restore 串行跑通；端口/PG 冲突 fail-closed；至少一次真实 Run 有 LangSmith trace + 冻结 `summary.json`；不声称生产证明。
 4. **PR-D：CI 结构重放入口与第一轮基线入库**（D7–D9）。验收：PR CI 只跑不调用模型的结构重放（离线、无凭据）；手工 live 须明确 `--mode live`、round 与 N；基线表入库。（r5：删除原 F14 对照报告。F14 matched baseline 不在本有界开放范围内，见任务记录与 SPEC。）
 
