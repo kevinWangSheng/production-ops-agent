@@ -1692,8 +1692,28 @@ def test_review_p2_2_duplicate_call_refusal_records_and_replays(tmp_path):
     first_view = s.blob_json(pkg, deliveries[0]["request_ref"])
     refusal_view = s.blob_json(pkg, deliveries[1]["request_ref"])
     refusal_message = s.blob_json(pkg, deliveries[1]["response_ref"])
-    # I:62: no parent tool event for a refusal; I:52 "包括缓存命中与拒绝".
-    assert deliveries[1]["parent"] is None
+    # I:112: CaptureHooks.delivery adds a kind='refusal' event before the
+    # refused delivery; delivery.parent -> refusal -> the first tool event.
+    by_seq = {event["seq"]: event for event in doc["events"]}
+    refusal = by_seq[deliveries[1]["parent"]]
+    assert refusal["kind"] == "refusal"
+    assert refusal["seq"] < deliveries[1]["seq"]
+    first_tool = s.events_of(doc, "tool")[0]
+    assert refusal["parent"] == first_tool["seq"]
+    assert set(refusal["hashes"]) == {"view_sha256"}
+    assert refusal["error"] is None
+    refusal_request = s.blob_json(pkg, refusal["request_ref"])
+    assert set(refusal_request) == {
+        "operation_id",
+        "tool_call_id",
+        "duplicate_of_evidence_id",
+    }
+    assert all(isinstance(v, str) and v for v in refusal_request.values())
+    assert refusal_request["tool_call_id"] == "call-two"
+    assert refusal_request["duplicate_of_evidence_id"] == first_view["evidence_id"]
+    # The real loop's first view carries the executed call's operation_id.
+    assert refusal_request["operation_id"] != first_view["operation_id"]
+    assert refusal_request["operation_id"] == refusal_view["operation_id"]
     assert refusal_view["reason"] == "DUPLICATE_TOOL_CALL"
     assert refusal_view["duplicate_of_evidence_id"] == first_view["evidence_id"]
     assert refusal_message["tool_call_id"] == "call-two"
@@ -1731,7 +1751,9 @@ def test_review_p2_2_duplicate_call_refusal_records_and_replays(tmp_path):
     new_doc = s.package_json(new_pkg)
     new_deliveries = s.events_of(new_doc, "delivery")
     assert len(new_deliveries) == 2
-    assert new_deliveries[1]["parent"] is None
+    # I:112 applies to the new recording too: delivery.parent -> refusal.
+    new_by_seq = {event["seq"]: event for event in new_doc["events"]}
+    assert new_by_seq[new_deliveries[1]["parent"]]["kind"] == "refusal"
     replayed_view = s.blob_json(new_pkg, new_deliveries[1]["request_ref"])
     replayed_message = s.blob_json(new_pkg, new_deliveries[1]["response_ref"])
     # Unchanged apart from the per-Run operation_id the loop derives from

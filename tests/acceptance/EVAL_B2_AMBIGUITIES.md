@@ -75,7 +75,7 @@
 15. **重复调用拒绝的录制与回放（Review P2-2）**
     - 用真实 `InvestigationLoop`、`tests/m1_investigation_support.assemble` 和 `metrics.range_query` 复现审查场景，没有用合成 investigate。绑定按真实 ToolOutcome 冻结（tool/target/source=prometheus，授权窗和默认窗都取 scope 窗口），source_run_id 取 loop 的 run_id。
     - 「原样重现」的读法：回放中的拒绝 delivery 的完整视图和实际消息内容，去掉 operation_id 后与源包逐字段相等；tool_call_id 也相同。operation_id 由新 Run 的 step 派生，I:73 只允许新 operation ID 不同，所以不比较它。
-    - 「拒绝有自己的 operation_id」通过拒绝视图里的 operation_id 观察：它非空，并且与第一次真实调用的 operation_id 不同。「不调用 facade」通过两点观察：源包和回放中 facade 都只被调用 1 次，tool 事件也只有 1 个。拒绝 delivery 的 parent 为 null（I:62）。
+    - 「拒绝有自己的 operation_id」通过拒绝视图里的 operation_id 观察：它非空，并且与第一次真实调用的 operation_id 不同。「不调用 facade」通过两点观察：源包和回放中 facade 都只被调用 1 次，tool 事件也只有 1 个。事件结构按 I:111–114 定稿断言：拒绝 delivery 的 parent 指向 kind='refusal' 事件，该事件的 parent 指向第一次 tool 事件，hashes 恰为 {view_sha256}，request_ref 恰为 {operation_id, tool_call_id, duplicate_of_evidence_id}（均非空，operation_id 与第一次调用不同、等于拒绝视图的 operation_id）。回放产生的新包按同一条规则，只断言拒绝 delivery 的 parent 是 refusal 事件。
     - 回放 driver 复用 assemble 产生的 run_id，测试不断言回放 loop 内部的 run_id，只看 ReplayCapture 的 Run 映射。
 
 16. **错误正文截断（Review P2-3）**
