@@ -82,6 +82,8 @@ r1 只定方向。其余实现者需要猜的语义点，按 AGENTS.md「合同�
 - 收尾四个数（PR-1）：实施期间新冒出的合同问题 6（r3），另机器人分诊 2 项缺陷；因合同变更重写的测试 0；环境重跑 0；用户裁决轮数 1。
 - 2026-10-13/14 PR-2a（[#223](https://github.com/kevinWangSheng/production-ops-agent/pull/223)，`e0d39f9`）：Codex gpt-6.1-sol 实现；独立验收测试由全新上下文 Claude 子 Agent 只按合同编写；首跑失败经独立分诊，形成合同 r2–r3 补充，3 个旧测试按 P2-03/P2-08/P2-09 更新。独立审查（Codex gpt-6-astra，含非 owner 角色裸 SQL 故障注入）1 P1 + 4 P2 已修复复验；机器人 7 轮，采纳 12、拒绝 1、转 [#225](https://github.com/kevinWangSheng/production-ops-agent/issues/225) 2，逐轮处置见 #223 thread。r4：零查询证据按合法 unknown 计次（用户 2026-10-14 确认）。检查：独立验收 74＋110 passed；`make check`（含 PG 集成）5982 passed。无模型、无 kind 调用。
 - 收尾四个数（PR-2a）：实施期间新冒出的合同问题 6（r2 两项、r3 四项）；因合同变更重写的测试 3（旧测试按 P2 裁决）；环境重跑 0；用户裁决轮数 1。
+- 2026-10-14 #225 加固（`feature/F11-release-hardening`）：迁移 0016 替换到期证据守卫（downgrade 恢复 0015 函数），重放对每种 ending reason 校验完整边及真实终结事实。lead 裁决：issue 措辞过窄，以合同 §9 为准——无 authorized session 时允许只写审计（含暂停或 scope 撤销后的 observing），有 authorized session 时须同事务 deadline ending 并结束该 session。Codex gpt-6.1-sol 实现；独立验收测试由全新上下文 Claude 子 Agent 只按合同编写（26 条，修复前 18 红，修复后全绿）；独立审查（Codex gpt-6-astra，PG 故障注入）1 P2（终结 ending 未与真实主体终态核对）已修复并经同一审查者复验。4 个旧测试只同步迁移头版本号。实现者 `make check`（含 PG）6098 passed。
+- 收尾四个数（#225）：新冒出的合同问题 1（issue 与合同 §9 口径，lead 按合同裁决）；因合同变更重写的测试 0；环境重跑 1（uv 缓存权限）；用户裁决轮数 0。
 
 ## 下一步与交接
 
