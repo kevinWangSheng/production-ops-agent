@@ -723,3 +723,140 @@ def test_control_ending_cannot_be_referenced_by_two_applied_audits(harness):
     assert not replay.consistent
     assert replay.verdict == "unknown"
     assert "ENDING_MISMATCH" in replay.integrity
+
+
+ENDING_REASONS = (
+    "authority_revoked",
+    "binding_stale",
+    "scope_suspended",
+    "cancelled",
+    "deadline_expired",
+    "healthy_confirmed",
+    "anomaly_detected",
+    "max_samples_exhausted",
+)
+
+
+def _rename_ending(history, target):
+    corrupted = copy.deepcopy(history)
+    ending = corrupted["endings"][0]
+    sid = ending["session_id"]
+    session = next(s for s in corrupted["sessions"] if s["session_id"] == sid)
+    session.update(
+        ended_reason=target,
+        state="completed"
+        if target in ("healthy_confirmed", "anomaly_detected")
+        else "expired"
+        if target in ("deadline_expired", "max_samples_exhausted")
+        else "revoked",
+    )
+    after = (
+        "healthy"
+        if target == "healthy_confirmed"
+        else "anomalous"
+        if target == "anomaly_detected"
+        else "unknown"
+        if target in ("deadline_expired", "max_samples_exhausted")
+        else "cancelled"
+        if target == "cancelled"
+        else ending["subject_state_before"]
+    )
+    ending.update(
+        ended_reason=target,
+        subject_state_after=after,
+        transition="release_" + after
+        if target
+        in (
+            "healthy_confirmed",
+            "anomaly_detected",
+            "deadline_expired",
+            "max_samples_exhausted",
+        )
+        else None,
+        anomaly_key="release-anomaly:" + str(history["release"].observation_id)
+        if target == "anomaly_detected"
+        else None,
+    )
+    return corrupted
+
+
+@pytest.mark.parametrize(
+    ("source", "target", "harness"),
+    [
+        (s, t, 2 if s == "max_samples_exhausted" else 40)
+        for s in ENDING_REASONS
+        for t in ENDING_REASONS
+        if s != t
+    ],
+    indirect=["harness"],
+)
+def test_all_ending_reason_renames_respect_producing_facts_or_r6_limit(
+    harness, source, target
+):
+    from tests.test_f11_225_impl_replay import history_for
+
+    if source in ("healthy_confirmed", "anomaly_detected", "max_samples_exhausted"):
+        _, observer, oid, _, _ = harness
+        sid = authorize(harness).session_id
+        context = observer.release_context(sid)
+        if source != "max_samples_exhausted":
+            time.sleep(2.05)
+        lease = claim(harness, sid)
+        receipt = observer.submit_release_sample(
+            lease,
+            raw_evidence(
+                context, observer.current_time(), degraded=source == "anomaly_detected"
+            ),
+        )
+        if source in ("healthy_confirmed", "max_samples_exhausted"):
+            assert receipt.release_status == "observing"
+            if source == "healthy_confirmed":
+                time.sleep(1.05)
+            lease = claim(harness, sid)
+            receipt = observer.submit_release_sample(
+                lease, raw_evidence(context, observer.current_time())
+            )
+        assert receipt.accepted
+        history = observer.release_history(oid)
+    else:
+        history = history_for(source)
+    baseline = replay_release_history(history)
+    assert baseline.consistent
+    replay = replay_release_history(_rename_ending(history, target))
+    if {source, target} == {"binding_stale", "scope_suspended"}:
+        # r6: 归档无结束时 scope 快照，无法区分；不影响发布状态与结论。
+        assert history["samples"] == []
+        assert replay.consistent
+        assert replay.integrity == ()
+        assert replay.stored_status == baseline.stored_status
+        assert replay.replayed_status == baseline.replayed_status
+        assert replay.verdict == baseline.verdict == "unknown"
+        return
+    assert not replay.consistent, (source, target, replay)
+    assert replay.verdict == "unknown"
+    assert "ENDING_MISMATCH" in replay.integrity
+
+
+@pytest.mark.parametrize("target", ["binding_stale", "scope_suspended"])
+def test_real_pause_ending_cannot_be_relabelled_as_independent_revocation(
+    harness, target
+):
+    web, observer, oid, _, _ = harness
+    authorize(harness)
+    assert (
+        web.control_release(
+            oid,
+            action="pause",
+            actor="human",
+            expected_control_generation=0,
+            idempotency_key="rename-independent-revocation",
+            calibrated_policy_revision=None,
+        ).outcome
+        == "applied"
+    )
+    history = observer.release_history(oid)
+    assert replay_release_history(history).consistent
+    replay = replay_release_history(_rename_ending(history, target))
+    assert not replay.consistent
+    assert replay.verdict == "unknown"
+    assert "ENDING_MISMATCH" in replay.integrity

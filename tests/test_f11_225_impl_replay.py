@@ -279,3 +279,63 @@ def test_ending_cannot_predate_session_authorization_even_with_a_pending_edge(re
     assert not replay.consistent
     assert replay.verdict == "unknown"
     assert "ENDING_MISMATCH" in replay.integrity
+
+
+@pytest.mark.parametrize("reason", ["binding_stale", "scope_suspended"])
+@pytest.mark.parametrize("action", ["pause", "resume", "cancel", "deadline_expired"])
+def test_rejected_audit_cannot_reference_an_independent_ending(reason, action):
+    history = history_for(reason)
+    assert replay_release_history(history).consistent
+    release = history["release"]
+    original = history["audit"][0]
+    history["audit"].append(
+        {
+            **original,
+            "audit_id": uuid4(),
+            "sequence": 2,
+            "action": action,
+            "outcome": "rejected",
+            "reason": "rejected",
+            "recorded_at": history["endings"][0]["recorded_at"] + timedelta(seconds=1),
+            "status_before": release.status,
+            "status_after": release.status,
+            "control_generation_before": release.control_generation,
+            "control_generation_after": release.control_generation,
+            "observation_generation_before": release.observation_generation,
+            "observation_generation_after": release.observation_generation,
+            "paused_before": release.paused,
+            "paused_after": release.paused,
+            "session_id": None,
+            "ending_id": history["endings"][0]["ending_id"],
+        }
+    )
+    replay = replay_release_history(history)
+    assert not replay.consistent
+    assert replay.verdict == "unknown"
+    assert "ENDING_MISMATCH" in replay.integrity
+
+
+@pytest.mark.parametrize("location", ["column", "receipt"])
+@pytest.mark.parametrize("target", ["binding_stale", "scope_suspended"])
+@pytest.mark.parametrize("reference", ["missing", "foreign"])
+def test_recorded_old_session_cannot_lose_its_control_ending(
+    location, target, reference
+):
+    history = history_for("authority_revoked")
+    assert replay_release_history(history).consistent
+    session = history["sessions"][0]
+    ending = history["endings"][0]
+    audit = history["audit"][-1]
+    session["ended_reason"] = ending["ended_reason"] = target
+    audit["ending_id"] = None if reference == "missing" else uuid4()
+    if location == "column":
+        audit["session_id"] = session["session_id"]
+    else:
+        audit["result"] = {
+            "session_id": str(session["session_id"]),
+            "ending_id": str(ending["ending_id"]),
+        }
+    replay = replay_release_history(history)
+    assert not replay.consistent
+    assert replay.verdict == "unknown"
+    assert "ENDING_MISMATCH" in replay.integrity

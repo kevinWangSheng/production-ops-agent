@@ -44,6 +44,15 @@ class ReleaseReplay(DTO):
     model_requests: tuple[()] = ()
 
 
+_AUDIT_ENDING_REASONS = {
+    "pause": "authority_revoked",
+    "resume": "authority_revoked",
+    "cancel": "cancelled",
+    "deadline_expired": "deadline_expired",
+}
+_AUDITED_ENDING_REASONS = frozenset(_AUDIT_ENDING_REASONS.values())
+
+
 def _replay_release_history(history: Mapping[str, object]) -> ReleaseReplay:
     issues: set[str] = set()
     release_value = history.get("release")
@@ -513,6 +522,72 @@ def _replay_release_history(history: Mapping[str, object]) -> ReleaseReplay:
         if len(matches) != 1:
             issues.add("ENDING_MISMATCH")
     by_sample = {m["sample_id"]: m for m in samples}
+    by_ending = {e["ending_id"]: e for e in endings}
+    ending_audits: dict[UUID, list[Any]] = {}
+    if len(by_ending) != len(endings):
+        issues.add("ENDING_MISMATCH")
+    # Validate audit -> ending independently of the archived reason: renaming
+    # an ending cannot opt it out of the control event that references it.
+    for a in audits:
+        if a.get("outcome") == "applied" and a.get("action") in ("pause", "resume"):
+            result = a.get("result")
+            recorded_sessions = (
+                a.get("session_id"),
+                result.get("session_id") if isinstance(result, Mapping) else None,
+            )
+            for value in recorded_sessions:
+                if value is None:
+                    continue
+                try:
+                    recorded_sid = UUID(str(value))
+                except (ValueError, TypeError):
+                    issues.add("ENDING_MISMATCH")
+                    continue
+                recorded_session = by_session.get(recorded_sid)
+                if recorded_session is None:
+                    issues.add("ENDING_MISMATCH")
+                    continue
+                # Resume normally records its new session (after generations).
+                # Only an explicitly recorded before-generation session is old.
+                if recorded_session.get("subject_control_generation") == a.get(
+                    "control_generation_before"
+                ) and recorded_session.get("observation_generation") == a.get(
+                    "observation_generation_before"
+                ):
+                    expected_id = uuid5(
+                        release.observation_id, "session-ending:" + str(recorded_sid)
+                    )
+                    recorded_ending = by_ending.get(expected_id)
+                    if (
+                        a.get("ending_id") != expected_id
+                        or recorded_ending is None
+                        or recorded_ending.get("session_id") != recorded_sid
+                        or recorded_ending.get("ended_reason") != "authority_revoked"
+                        or recorded_session.get("ended_reason") != "authority_revoked"
+                    ):
+                        issues.add("ENDING_MISMATCH")
+        if a.get("ending_id") is None:
+            continue
+        if a.get("outcome") != "applied":
+            # Rejected commands produce no ending, so cannot claim one of
+            # the independently produced or previously controlled facts.
+            issues.add("ENDING_MISMATCH")
+            continue
+        ending_audits.setdefault(a["ending_id"], []).append(a)
+        referenced = by_ending.get(a["ending_id"])
+        session = by_session.get(referenced.get("session_id")) if referenced else None
+        expected_reason = _AUDIT_ENDING_REASONS.get(a.get("action"))
+        if (
+            expected_reason is None
+            or referenced is None
+            or session is None
+            or referenced.get("ended_reason") != expected_reason
+            or session.get("ended_reason") != expected_reason
+            or a.get("observation_id") != release.observation_id
+            or referenced.get("subject_id") != a.get("observation_id")
+            or session.get("subject_id") != a.get("observation_id")
+        ):
+            issues.add("ENDING_MISMATCH")
     for e in endings:
         if any(
             field not in e
@@ -529,6 +604,17 @@ def _replay_release_history(history: Mapping[str, object]) -> ReleaseReplay:
         before = e.get("subject_state_before")
         after = e.get("subject_state_after")
         transition = e.get("transition")
+        references = ending_audits.get(e.get("ending_id"), [])
+        # Validate ending -> audit cardinality for every reason, including
+        # reasons that must originate outside the control/deadline audit path.
+        if reason in _AUDITED_ENDING_REASONS:
+            if (
+                len(references) != 1
+                or _AUDIT_ENDING_REASONS.get(references[0].get("action")) != reason
+            ):
+                issues.add("ENDING_MISMATCH")
+        elif references:
+            issues.add("ENDING_MISMATCH")
         # Mirror the reason-specific release edges, including endings that
         # revoke sampling authority without terminating the release subject.
         if reason in ("healthy_confirmed", "anomaly_detected"):
@@ -613,7 +699,7 @@ def _replay_release_history(history: Mapping[str, object]) -> ReleaseReplay:
         if reason == "authority_revoked":
             controls = [
                 a
-                for a in audits
+                for a in references
                 if s is not None
                 and a.get("action") in ("pause", "resume")
                 and a.get("outcome") == "applied"
@@ -721,7 +807,7 @@ def _replay_release_history(history: Mapping[str, object]) -> ReleaseReplay:
             if reason in ("cancelled", "deadline_expired"):
                 applied = [
                     a
-                    for a in audits
+                    for a in references
                     if a.get("action")
                     == ("cancel" if reason == "cancelled" else reason)
                     and a.get("outcome") == "applied"
