@@ -7,7 +7,6 @@ import os
 import re
 import secrets
 import stat
-from collections import Counter
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from datetime import datetime
@@ -693,10 +692,10 @@ def load_round(path: Path, *, resolve: Resolver) -> Aggregate:
         raise StorageError("HASH_MISMATCH")
     if stored != result:
         raise StorageError("DERIVED_RESULT_MISMATCH")
-    return _baseline_layout(result)
+    return _baseline_layout(result, capture.planned)
 
 
-def _baseline_layout(result: Aggregate) -> Aggregate:
+def _baseline_layout(result: Aggregate, planned: tuple[PlannedSlot, ...]) -> Aggregate:
     """Apply the B1 completion policy after validating the PR-A cache."""
     root = Path(__file__).resolve().parents[2] / "evals" / "scenarios"
     try:
@@ -705,14 +704,19 @@ def _baseline_layout(result: Aggregate) -> Aggregate:
         scenarios = ()
     scenario_ids = {spec.scenario_id for spec, _answer in scenarios}
     expected = {
-        (scenario_id, mode): count
-        for scenario_id in scenario_ids
-        for mode, count in (("replay", 5), ("live", 2))
+        PlannedSlot(spec.scenario_id, spec.version, "replay", repetition)
+        for spec, _answer in scenarios
+        for repetition in range(1, 6)
+    } | {
+        PlannedSlot(spec.scenario_id, spec.version, "live", repetition)
+        for spec, _answer in scenarios
+        for repetition in range(1, 3)
     }
-    actual: Counter[tuple[str, str]] = Counter()
-    for row in result.rows:
-        actual[row.scenario_id, row.mode] += row.planned
-    if len(scenarios) == len(scenario_ids) == 6 and actual == expected:
+    if (
+        len(scenarios) == len(scenario_ids) == 6
+        and len(planned) == len(expected)
+        and set(planned) == expected
+    ):
         return result
     return replace(
         result,

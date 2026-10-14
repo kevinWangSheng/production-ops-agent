@@ -899,6 +899,8 @@ def write_layout_round(tmp_path, planned):
                 ),
             )
             answer = replace(base.answer, scenario_id=planned_slot.scenario_id)
+        spec = replace(spec, version=planned_slot.scenario_version)
+        answer = replace(answer, version=planned_slot.scenario_version)
         aid, product_id, trace_id = (
             f"layout-{index}",
             f"product-{index}",
@@ -966,6 +968,11 @@ def write_layout_round(tmp_path, planned):
         "extra_replay",
         "extra_scenario",
         "structural",
+        "split_version",
+        "old_version",
+        "shift_replay",
+        "shift_live",
+        "gap_replay",
     ],
 )
 def test_d1_layout_completion_gate_and_actual_plan_note(tmp_path, mutation):
@@ -981,6 +988,24 @@ def test_d1_layout_completion_gate_and_actual_plan_note(tmp_path, mutation):
         planned += (replace(planned[0], scenario_id="outside-d1"),)
     elif mutation == "structural":
         planned += (replace(planned[0], mode="structural"),)
+    elif mutation in ("split_version", "old_version"):
+        planned = tuple(
+            replace(s, scenario_version=s.scenario_version + "-other")
+            if s.scenario_id == planned[0].scenario_id
+            and (mutation == "old_version" or s.mode == "live")
+            else s
+            for s in planned
+        )
+    elif mutation in ("shift_replay", "shift_live", "gap_replay"):
+        mode = "live" if mutation == "shift_live" else "replay"
+        planned = tuple(
+            replace(s, repetition=s.repetition + 1)
+            if s.scenario_id == planned[0].scenario_id
+            and s.mode == mode
+            and (mutation != "gap_replay" or s.repetition == 5)
+            else s
+            for s in planned
+        )
     path = write_layout_round(tmp_path, planned)
     frozen = path.read_bytes()
     result = load_round(path, resolve=resolver(tmp_path))

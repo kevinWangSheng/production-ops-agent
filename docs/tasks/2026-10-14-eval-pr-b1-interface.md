@@ -92,7 +92,7 @@ StorageError(ValueError) 的 `.code` 与 str 都为以下固定码，错误正�
 
 ## 基线表与调整理由
 
-B1完成门槛：load_round先按PR-A重算并逐项核对缓存（write_round仍冻结PR-A缓存，旧件只读），再要求aggregate.baseline_complete为真且按scenario_id/mode累计的计划恰好为evals/scenarios中D1的6个场景、每个5个replay和2个live，无额外场景/模式槽位；布局不满足（或场景来源不可读）时返回baseline_complete=False，并在原原因末尾加BASELINE_LAYOUT_MISMATCH。write_baseline直接使用此返回值，样本量说明按实际计划合计生成，分场景/版本数量见表planned列；理由：机器人 P1，T:46 固定槽位。
+B1完成门槛：load_round先按PR-A重算并逐项核对缓存（write_round仍冻结PR-A缓存，旧件只读），再要求aggregate.baseline_complete为真且计划的完整PlannedSlot集合恰好对应evals/scenarios中D1的6个场景：每个scenario_id仅一个scenario_version且等于该场景当前版本，repetition沿B1现有最小值1的约定从1开始，replay恰为{1,2,3,4,5}、live恰为{1,2}，不允许额外槽位、版本或模式；布局不满足（或场景来源不可读）时返回baseline_complete=False，并在原原因末尾加BASELINE_LAYOUT_MISMATCH。write_baseline直接使用此返回值，样本量说明按实际计划合计生成，分场景/版本数量见表planned列；理由：机器人 P1 r2：版本与重复序号。
 
 write_baseline **重新 load_round**，生成 UTF-8 Markdown 表并独占原子写入：每scenario/version/mode列 planned、attempted、not_started、passed/attempted、failed、质量率、replay_miss/attempted、miss率、失败分类；零分母率为 `null`，structural质量率为 `null`，miss率只为replay列出。replay_miss沿PR-A计失败分母；注明按实际计划合计生成的「D5：实际计划（合计）：回放N次、liveM次、structuralK次；样本量有限，置信不足」，以及baseline_complete与incomplete_reasons，不把低成功率当基线未完成。
 
