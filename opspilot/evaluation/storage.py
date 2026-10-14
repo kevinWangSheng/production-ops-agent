@@ -197,10 +197,12 @@ def _parent(path: Path) -> tuple[int, str]:
             child = os.open(
                 part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=descriptor
             )
-            os.close(descriptor)
+            if not _close(descriptor):
+                break
             descriptor = child
             child = None
-        return descriptor, absolute.name
+        else:
+            return descriptor, absolute.name
     except (OSError, ValueError):
         pass
     if child is not None:

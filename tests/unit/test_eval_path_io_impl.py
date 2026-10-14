@@ -1,6 +1,7 @@
 """Local IO failures are fixed codes, never raw path text or leaked dir fds."""
 
 import errno
+import importlib
 import os
 from dataclasses import replace
 
@@ -17,6 +18,51 @@ from opspilot.evaluation import (
 )
 from tests.unit import test_eval_b1_impl as b1
 from tests.unit import test_eval_b2_impl as b2
+
+
+@pytest.mark.parametrize("boundary", ["record", "load", "load_incomplete"])
+def test_recording_final_directory_close_failure_is_normalized(
+    tmp_path, monkeypatch, boundary
+):
+    recording_module = importlib.import_module("opspilot.evaluation.recording")
+    source = b2.source(tmp_path) if boundary != "record" else None
+    if boundary == "load_incomplete":
+        (source.path.parent / "INCOMPLETE").write_bytes(b"RECORDING_INCOMPLETE")
+    target = source.path if source else tmp_path / "source" / "INCOMPLETE"
+    real_parent, real_close = recording_module._parent, os.close
+    pending = None
+    failed = []
+
+    def tracked_parent(path):
+        nonlocal pending
+        parent, name = real_parent(path)
+        if path == target:
+            pending = parent
+        return parent, name
+
+    def failed_close(descriptor):
+        nonlocal pending
+        real_close(descriptor)
+        if descriptor == pending:
+            pending = None
+            failed.append(descriptor)
+            raise OSError(
+                errno.EIO, "synthetic close failure", "synthetic-private-path"
+            )
+
+    with monkeypatch.context() as patch:
+        patch.setattr(recording_module, "_parent", tracked_parent)
+        patch.setattr(os, "close", failed_close)
+        with pytest.raises(StorageError, match="^EVIDENCE_UNAVAILABLE$") as caught:
+            if source:
+                load_recording(source.path, expected_hash=source.ref.sha256)
+            else:
+                b2.source(tmp_path)
+    assert len(failed) == 1
+    assert caught.value.__cause__ is None and caught.value.__context__ is None
+    with pytest.raises(OSError) as closed:
+        os.fstat(failed[0])
+    assert closed.value.errno == errno.EBADF
 
 
 @pytest.mark.parametrize("bad", ["\x00", "\ud800"], ids=["nul", "surrogate"])

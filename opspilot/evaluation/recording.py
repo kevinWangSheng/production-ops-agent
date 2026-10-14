@@ -865,25 +865,33 @@ def record(
     try:
         os.unlink(name, dir_fd=parent)
         os.fsync(parent)
+    except (OSError, ValueError):
+        failure = "EVIDENCE_UNAVAILABLE"
     finally:
-        os.close(parent)
+        if not _close(parent):
+            failure = "EVIDENCE_UNAVAILABLE"
+    if failure is not None:
+        raise StorageError(failure) from None
     return ref
 
 
 def load_recording(path: Path, *, expected_hash: str) -> Recording:
     _hash(expected_hash)
     parent, _ = _parent(path)
+    failure = None
     try:
-        try:
-            os.stat("INCOMPLETE", dir_fd=parent, follow_symlinks=False)
-        except FileNotFoundError:
-            pass
-        else:
-            raise StorageError("RECORDING_INCOMPLETE")
-    except OSError:
-        raise StorageError("EVIDENCE_UNAVAILABLE") from None
+        os.stat("INCOMPLETE", dir_fd=parent, follow_symlinks=False)
+    except FileNotFoundError:
+        pass
+    except (OSError, ValueError):
+        failure = "EVIDENCE_UNAVAILABLE"
+    else:
+        failure = "RECORDING_INCOMPLETE"
     finally:
-        os.close(parent)
+        if not _close(parent):
+            failure = "EVIDENCE_UNAVAILABLE"
+    if failure is not None:
+        raise StorageError(failure) from None
     raw = _read(path, MAX_METADATA_BYTES)
     if sha(raw) != expected_hash:
         raise StorageError("HASH_MISMATCH")
