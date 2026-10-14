@@ -55,6 +55,7 @@ from opspilot.tools.executor import (
     _view_size_message,
 )
 from opspilot.tools.outcomes import ToolOutcome, Window
+from opspilot.tools.registry import canonical as tool_canonical
 
 RecordingError = StorageError
 RecordingRef = ArtifactRef
@@ -1223,7 +1224,7 @@ def _tool_integrity(
     auth = _window(binding.authorized_window)
     evidence = outcome.evidence
     if unqueried:
-        _unqueried_refusal(outcome)
+        _unqueried_refusal(outcome, request)
     if operation.window is not None and not auth.contains(operation.window):
         raise StorageError("IDENTITY_MISMATCH")
     if not unqueried:
@@ -1241,7 +1242,7 @@ def _tool_integrity(
         if operation.window != expected_window or not auth.contains(expected_window):
             raise StorageError("IDENTITY_MISMATCH")
         if evidence is None:
-            _evidenceless_result(outcome)
+            _evidenceless_result(outcome, request)
     if evidence is not None:
         if evidence.operation != operation:
             raise StorageError("IDENTITY_MISMATCH")
@@ -1258,16 +1259,23 @@ def _tool_integrity(
             raise StorageError("IDENTITY_MISMATCH")
 
 
-def _unqueried_refusal(outcome: ToolOutcome) -> None:
+def _unqueried_refusal(outcome: ToolOutcome, request: ToolRequest) -> None:
     """Only a verified pre-query refusal is exempt from window equality."""
     if outcome.status not in ("denied", "error") or outcome.source_contact != "none":
         raise StorageError("IDENTITY_MISMATCH")
-    _evidenceless_result(outcome, unqueried=True)
+    _evidenceless_result(outcome, request, unqueried=True)
 
 
-def _evidenceless_result(outcome: ToolOutcome, *, unqueried: bool = False) -> None:
+def _evidenceless_result(
+    outcome: ToolOutcome, request: ToolRequest, *, unqueried: bool = False
+) -> None:
     """Missing evidence never grants permission to deliver source data."""
     view = outcome.model_view
+    # _accept_params() only validates/copies; it never normalizes values or
+    # adds defaults. A query that was built must retain these exact params.
+    query_text = tool_canonical(request.params)
+    if outcome.operation.query is not None and outcome.operation.query != query_text:
+        raise StorageError("IDENTITY_MISMATCH")
     allowed = {
         "operation_id",
         "trust",

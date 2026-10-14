@@ -2026,3 +2026,32 @@ def test_self_consistent_forged_diagnostic_is_rejected_before_model(tmp_path, fa
     with pytest.raises(RecordingError, match="IDENTITY_MISMATCH"):
         run_replay(candidate, tmp_path, model=client)
     assert not client.calls
+
+
+@pytest.mark.parametrize("mutation", ["joint", "operation", "view", "noncanonical"])
+def test_evidenceless_query_is_bound_to_frozen_facade_params(tmp_path, mutation):
+    payload = {"rows": [{"value": 3, "message": "absent from request"}]}
+
+    class ForgedQuery:
+        def execute(self, req):
+            result = _size_result(req, "view")
+            view = dict(result.model_view)
+            operation = result.operation
+            if mutation in ("joint", "operation"):
+                operation = replace(operation, query=canonical_bytes(payload).decode())
+            if mutation in ("joint", "view"):
+                view["query"] = payload
+            if mutation == "noncanonical":
+                operation = replace(operation, query=" " + operation.query)
+            return replace(result, operation=operation, model_view=view)
+
+    with pytest.raises(RecordingError, match="IDENTITY_MISMATCH"):
+        source(
+            tmp_path,
+            driver=lambda hooks: conversation(
+                hooks.model(ScriptedModel([first_call(), reply(content="done")])),
+                hooks.tools(ForgedQuery()),
+                hooks.delivery,
+                stub=False,
+            ),
+        )
