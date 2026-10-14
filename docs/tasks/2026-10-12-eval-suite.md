@@ -34,7 +34,7 @@
 - D13 回放未命中：该 Run 记为失败并计入分母（C3 第 394 行、v4 第 99 行），另单列 miss 率（用户 2026-10-12 按 PR #210 分诊结果改判）。
 - D14 SPEC 关系：定为开发基线，在 SPEC 有界开放段落中写明。
 - D15 kind lab：与其他会话共用，同一时间只有一个真实故障，开跑前先确认。
-- D16 judge 模型（用户 2026-10-13 选定）：judge 与被测模型分属不同家族，避免同盲点抬高通过率。主候选 GLM-5.3（智谱按量付费 API；订阅制 Coding Plan 限编码工具，不用），对照 GPT-6.1 Sol 与被测的 `deepseek-flash`；三者判同一批人工标注样本，GLM-5.3 达到一致率门槛即采用，明显落后 Sol 时改用 Sol。judge 只在评测侧调用，不进调查 loop、报告生成或恢复路径。新增数据出口（judge 输入发往智谱与 OpenAI）属数据流合同变更，以本 PR 用户合并为准；凭据只放私有 `.env`，不进 PR CI（D8）；私有协议字段仍不进 judge（C3 §12）。选型依据（第三方来源，未经官方核对）：两家新版本均未涨价、未见退化报告；按 100 次判分粗估 GLM-5.3 约 $5、Sol 约 $9。
+- D16 judge 模型（用户 2026-10-13 选定）：judge 与被测模型分属不同家族，避免同盲点抬高通过率。主候选 GLM-5.3（智谱按量付费 API；订阅制 Coding Plan 限编码工具，不用），对照 GPT-6.1 Sol 与被测的 `deepseek-flash`；三者判同一批人工标注样本，GLM-5.3 达到一致率门槛即采用，明显落后 Sol 时改用 Sol。judge 只在评测侧调用，不进调查 loop、报告生成或恢复路径。新增数据出口（judge 输入发往智谱与 OpenAI）属数据流合同变更，以本 PR 用户合并为准，SPEC 有界开放段同步扩到 r7 与 D16；凭据只放私有 `.env.judge`（模板 `evals/judge.env.example`；不放 `.env`，M0 配置加载器拒绝未知键），不进 PR CI（D8）；私有协议字段仍不进 judge（C3 §12）。选型依据（第三方来源，未经官方核对）：两家新版本均未涨价、未见退化报告；按 100 次判分粗估 GLM-5.3 约 $5、Sol 约 $9。
 - P1 结局（#211-2/5）：通过须执行 completed、report_available、无 handoff 且 `assessment_status=completed`；正常场景仍允许 partial/inconclusive 但事实型因果诊断为零；故障场景至少一条诊断且每条满足 r6，空集不得通过。
 - P2 trace（#211-3）：必需 trace 回读不到或身份不匹配记 `evidence_incomplete`，判失败、计分母、保留 judge 判分，阻止宣告基线完成；补证另建 revision。
 - P3 权限：须含 `read_only`，额外只容许 `human_control`（持久化投影，`opspilot/acceptance.py:421`）；写或未知权限拒绝。
