@@ -204,6 +204,7 @@ class Catalog:
         self.point()
 
     def empty(self) -> None:
+        self.entries.clear()
         self.write(EMPTY_CATALOG)
 
     def remove(self) -> None:
@@ -561,10 +562,15 @@ def _submit_empty(
 
 def _set_authorized_at(session_id: UUID, at: datetime) -> None:
     """Backdate the authorization (as the F6 store tests do) so that windows
-    entirely after it can end in the past."""
-    _exec(
-        f"UPDATE {SESSIONS} SET authorized_at=%s WHERE session_id=%s", (at, session_id)
-    )
+    entirely after it can end in the past. The product guard freezes
+    ``authorized_at`` for every role (contract r3), so the test bypasses
+    triggers itself as superuser, scoped to this one transaction."""
+    with psycopg.connect(DSN) as conn:
+        conn.execute("SET LOCAL session_replication_role = replica")
+        conn.execute(
+            f"UPDATE {SESSIONS} SET authorized_at=%s WHERE session_id=%s",
+            (at, session_id),
+        )
 
 
 def _submit_sufficient(
@@ -1191,8 +1197,9 @@ def test_pause_resume_and_cancel_move_generations_sessions_and_audit(
         ("cancel", None),
     ):
         before = reader.get_release(oid)
+        audit_before = _audit_count(oid)  # the rejection itself is audited
         refused = _control(web, oid, action, 3, revision=revision)
-        _assert_rejected(reader, refused, "RELEASE_TERMINAL", before, _audit_count(oid))
+        _assert_rejected(reader, refused, "RELEASE_TERMINAL", before, audit_before)
     refused = _authorize(web, oid, observing.revision, expected=3)
     assert (refused.outcome, refused.reason) == ("rejected", "RELEASE_TERMINAL")
     assert len(_release_sessions(oid)) == 2
@@ -2061,8 +2068,10 @@ def test_session_and_evidence_column_grants() -> None:
         "calibrated_policy_revision=calibrated_policy_revision",
         "status='cancelled'",
         "status='pending'",
-        "status='healthy'",
-        "status='anomalous'",
+        # terminal fields kept consistent (CHECK release_terminal_fields) so the
+        # deferred evidence guard, not the CHECK, is what refuses the write
+        "status='healthy',ended_reason='healthy_confirmed',ended_at=clock_timestamp()",
+        "status='anomalous',ended_reason='anomaly_detected',ended_at=clock_timestamp()",
         "status='unknown',ended_reason='deadline_expired',ended_at=clock_timestamp()",
         "status='unknown',ended_reason='max_samples_exhausted',ended_at=clock_timestamp()",
     ],

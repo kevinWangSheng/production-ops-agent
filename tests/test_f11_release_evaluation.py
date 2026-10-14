@@ -9,6 +9,8 @@ public ``evaluate_release_sample`` and DTOs are exercised. No database.
 
 from __future__ import annotations
 
+import json
+import re
 from collections.abc import Mapping
 from datetime import datetime, timedelta
 from typing import Any
@@ -137,8 +139,9 @@ def _record(
 
 
 def _policy() -> ReleasePolicy:
-    return ReleasePolicy.model_validate(
-        policy_entry(policy_content(IDENTITY, min_tracking_seconds=600))
+    # strict DTO (公开接口 r1 通用约定); the catalog is JSON-loaded, so validate JSON
+    return ReleasePolicy.model_validate_json(
+        json.dumps(policy_entry(policy_content(IDENTITY, min_tracking_seconds=600)))
     )
 
 
@@ -769,7 +772,7 @@ def _evidence(queries: list[ReleaseQueryResult]) -> ReleaseSampleEvidence:
             "format_version": 1,
             "sample_id": uuid4(),
             "window": {"start": WINDOW_END - WINDOW, "end": WINDOW_END},
-            "queries": queries,
+            "queries": tuple(queries),
         }
     )
 
@@ -807,8 +810,10 @@ def test_query_result_dto_accepts_a_body_at_the_limit() -> None:
 
 def test_evidence_rejects_duplicate_query_keys() -> None:
     one = ReleaseQueryResult.model_validate(_query())
+    twin = ReleaseQueryResult.model_validate(_query(raw=b"[]"))
+    assert len(_evidence([one]).queries) == 1  # the shape itself is valid
     with pytest.raises(ValidationError):
-        _evidence([one, one])
+        _evidence([one, twin])
 
 
 def test_evidence_holds_at_most_64_query_results() -> None:
@@ -834,6 +839,13 @@ def _plan(uids: tuple[UUID, ...]) -> dict[str, str]:
     from tests.f11_release_support import planned_texts
 
     return planned_texts(_context(), WINDOW_END, uids)
+
+
+_UID_MATCHER = re.compile(r'service_instance_id=~"((?:[^"\\]|\\.)*)"')
+
+
+def _unescape(text: str) -> str:
+    return re.sub(r"\\(.)", r"\1", text)
 
 
 def _compact(text: str) -> str:
@@ -879,8 +891,15 @@ def test_plan_slices_every_after_selector_by_the_exact_uid_set() -> None:
         for part in ("query", "coverage", "freshness", "instances"):
             text = plan[f"after:{signal}:{part}"]
             assert "service_instance_id=~" in _compact(text), text
-            for uid in uids:
-                assert str(uid) in text
+            # 固定语义 6: each UID is regex-escaped, so compare the unescaped set
+            matchers = _UID_MATCHER.findall(_compact(text))
+            assert matchers, text
+            for literal in matchers:
+                regex = _unescape(literal)  # PromQL string literal -> regex
+                alternatives = {_unescape(alt) for alt in regex.split("|")}
+                assert alternatives == {str(uid) for uid in uids}, (signal, part)
+                for uid in uids:
+                    assert re.fullmatch(regex, str(uid)), (signal, part, regex)
 
 
 def test_plan_never_widens_an_empty_uid_set_to_the_whole_service() -> None:

@@ -1222,8 +1222,10 @@ def test_worker_and_observer_cannot_touch_the_new_tables(
 ) -> None:
     dsn = request.getfixturevalue(role_fixture)
     _, receipt = web_release
+    # P2-09 (F11 PR-2 contract): Observer now reads the release table
+    observer = role_fixture == "observer_dsn"
     statements = (
-        (f"SELECT count(*) FROM {OBSERVATIONS}", ()),
+        *(() if observer else ((f"SELECT count(*) FROM {OBSERVATIONS}", ()),)),
         (f"SELECT count(*) FROM {EVENTS}", ()),
         (
             f"UPDATE {OBSERVATIONS} SET status='healthy' WHERE observation_id=%s",
@@ -1237,8 +1239,12 @@ def test_worker_and_observer_cannot_touch_the_new_tables(
         with psycopg.connect(dsn) as conn:
             with pytest.raises(psycopg.errors.InsufficientPrivilege):
                 conn.execute(statement, args)
-    with pytest.raises(PersistenceError):
-        ReleaseStore(dsn, pool=POOL).get_release(receipt.observation_id)
+    if observer:
+        record = ReleaseStore(dsn, pool=POOL).get_release(receipt.observation_id)
+        assert record.observation_id == receipt.observation_id
+    else:
+        with pytest.raises(PersistenceError):
+            ReleaseStore(dsn, pool=POOL).get_release(receipt.observation_id)
 
 
 # --- storage failures through the write entry (固定语义: PersistenceError) ---
