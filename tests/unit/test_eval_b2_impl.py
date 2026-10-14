@@ -2493,6 +2493,105 @@ def test_product_gateway_outcomes_with_independent_snapshots(tmp_path, case):
         assert event.hashes["raw_sha256"] == sha(b"")
 
 
+def _product_narrow_view_source(tmp_path, selection="explicit"):
+    from opspilot.tools.otel_demo import (
+        CREDENTIAL_REF,
+        TARGET_ID,
+        TRACES_TOOL,
+        OtelDemoConfig,
+        OtelDemoTransport,
+        _registrations,
+        _target,
+    )
+    from tests import m1_tool_support as t
+    from tests.test_m1_otel_demo_contract import FakeOpener
+
+    frame = Window(NOW - timedelta(hours=24), NOW)
+    narrow = Window(NOW - timedelta(minutes=20), NOW - timedelta(minutes=5))
+    params = {"service": "checkout", "limit": 1}
+    if selection == "explicit":
+        params.update(narrow.as_json())
+    opener = FakeOpener({"/api/traces": b'{"data":[]}'})
+    transport = OtelDemoTransport(credentials={CREDENTIAL_REF: None}, opener=opener)
+    executor, _, sink, clock = t.build(
+        registrations=_registrations(),
+        targets=[_target(OtelDemoConfig())],
+        transport=transport,
+        clock=t.FakeClock(start=NOW),
+        token_counter=lambda _: 25001,
+        scope_overrides={
+            "run_id": "source-run",
+            "target_ids": frozenset({TARGET_ID}),
+            "tool_names": frozenset({TRACES_TOOL}),
+            "window": frame,
+            "deadline": NOW + timedelta(seconds=360),
+            "default_query_window": narrow if selection == "scope_default" else None,
+        },
+    )
+    req = t.request(
+        tool_name=TRACES_TOOL,
+        target_ref=TARGET_ID,
+        params=params,
+        window=frame.as_json(),
+    )
+    ctx = replace(
+        context(),
+        bindings=(
+            replace(
+                context().bindings[0],
+                tool=TRACES_TOOL,
+                target=TARGET_ID,
+                source="otel-demo",
+                authorized_window=frame.as_json(),
+                default_window=narrow.as_json()
+                if selection == "scope_default"
+                else None,
+            ),
+        ),
+    )
+    ctx = _audit_context(ctx, executor)
+    results = []
+
+    def execute(request):
+        result = executor.execute(request)
+        assert result.reason == "RESULT_TOO_LARGE" and result.evidence is None
+        assert frame.contains(Window.parse(result.model_view["window"]))
+        assert result.model_view["window"] != frame.as_json()
+        assert not sink.records
+        results.append(result)
+        return result
+
+    rec = _audit_source(tmp_path, execute, ctx=ctx, req=req, tick=clock.now())
+    assert opener.called
+    return rec, results[0], ctx, req
+
+
+@pytest.mark.parametrize("selection", ["explicit", "default", "scope_default"])
+def test_product_view_token_refusal_query_window_records_completely(
+    tmp_path, selection
+):
+    rec, _, _, _ = _product_narrow_view_source(tmp_path, selection)
+    assert rec.complete
+    assert load_recording(rec.path, expected_hash=rec.ref.sha256).complete
+
+
+@pytest.mark.parametrize("forgery", ["narrow", "authorized_frame"])
+def test_product_view_token_refusal_rejects_unrequested_window(tmp_path, forgery):
+    rec, result, ctx, req = _product_narrow_view_source(tmp_path)
+    other = (
+        Window(NOW - timedelta(minutes=10), NOW)
+        if forgery == "narrow"
+        else result.operation.window
+    )
+    forged = replace(
+        result, model_view={**result.model_view, "window": other.as_json()}
+    )
+    destination = rec.path.parent.parent / "forged"
+    destination.mkdir()
+    with pytest.raises(RecordingError, match="^IDENTITY_MISMATCH$"):
+        _audit_source(destination, lambda _: forged, ctx=ctx, req=req)
+
+
 @pytest.mark.parametrize(
     "case",
     [

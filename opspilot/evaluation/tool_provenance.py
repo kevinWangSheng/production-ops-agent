@@ -29,10 +29,19 @@ from opspilot.evaluation.rounds import (
 from opspilot.tools.executor import (
     QueryScope,
     ToolRequest,
+    TransportRequest,
     _accept_params,
     _result_size_message,
     _status_for,
-    _view_size_message,
+    _view_refusal_detail,
+)
+from opspilot.tools.otel_demo import (
+    METRICS_TOOL,
+    TRACES_TOOL,
+    _query_window,
+)
+from opspilot.tools.otel_demo import (
+    SOURCE as OTEL_SOURCE,
 )
 from opspilot.tools.outcomes import DENIED_REASONS, ToolOutcome, Window
 from opspilot.tools.registry import (
@@ -422,10 +431,15 @@ def check_result(
             or op.timeout_seconds <= 0
         ):
             mismatch()
-    _check_view(outcome, reg)
+    _check_view(outcome, reg, target, scope)
 
 
-def _check_view(outcome: ToolOutcome, reg: ToolRegistration) -> None:
+def _check_view(
+    outcome: ToolOutcome,
+    reg: ToolRegistration,
+    target: RegisteredTarget,
+    scope: QueryScope,
+) -> None:
     op, view = outcome.operation, outcome.model_view
     expected = {
         "operation_id": op.operation_id,
@@ -463,11 +477,45 @@ def _check_view(outcome: ToolOutcome, reg: ToolRegistration) -> None:
             tokens = view["view_tokens"]
             if type(tokens) is not int or tokens <= reg.max_view_tokens:
                 mismatch()
+            query = parse((op.query or "null").encode())
+            window = op.window
+            if not isinstance(query, dict) or op.window is None:
+                mismatch()
+            assert window is not None
+            if (
+                reg.source == OTEL_SOURCE
+                and reg.version == "v1"
+                and reg.name in (METRICS_TOOL, TRACES_TOOL)
+            ):
+                # Replay the same profile selection from frozen, checked
+                # parameters. Never use the response's claimed query_window.
+                default = scope.default_query_window
+                window, refusal = _query_window(
+                    TransportRequest(
+                        operation_id=op.operation_id,
+                        source=reg.source,
+                        verb=reg.verb,
+                        endpoint=target.endpoint,
+                        selector=target.selector,
+                        params=query,
+                        window=window,
+                        timeout_seconds=reg.request_timeout_seconds,
+                        max_result_bytes=reg.max_result_bytes,
+                        credential_ref=target.credential_ref,
+                        tool=reg.name,
+                        default_window=default
+                        if default is not None and window.contains(default)
+                        else None,
+                    )
+                )
+                if refusal is not None or window is None:
+                    mismatch()
+            if not op.window.contains(window) or not scope.window.contains(window):
+                mismatch()
             expected.update(
-                query=parse((op.query or "null").encode()),
-                max_view_tokens=reg.max_view_tokens,
-                view_tokens=tokens,
-                message=_view_size_message(tokens, reg.max_view_tokens),
+                _view_refusal_detail(
+                    tokens, reg.max_view_tokens, query, window.as_json()
+                )
             )
         else:
             mismatch()
