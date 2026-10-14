@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import threading
 from dataclasses import fields, replace
 
@@ -48,9 +49,10 @@ from eval_b1_support import (
     tamper,
     to_json,
     trace_record,
+    unknown_evaluation,
     write_doc,
 )
-from eval_contract_support import EID, evaluation
+from eval_contract_support import EID, SCOPE, evaluation
 
 from opspilot.evaluation import (
     AggregateError,
@@ -1383,3 +1385,123 @@ def test_aggregate_accepts_honest_failed_calibration():
     )
     agg = aggregate(frozen, planned, evs, honest)
     assert "JUDGE_NOT_CALIBRATED" in agg.incomplete_reasons
+
+
+# ================================================================ review findings (lead semantics, 2026-10-14)
+
+
+def _chain_texts(error):
+    seen, texts = set(), []
+    while error is not None and id(error) not in seen:
+        seen.add(id(error))
+        texts.append(str(error))
+        error = error.__cause__ or error.__context__
+    return texts
+
+
+@pytest.mark.parametrize(
+    "forged",
+    [
+        # Review counterexample: 2 disagreements, no false pass, no positive
+        # label to disagree on (24 negatives).
+        CalibrationResult(True, 24, 48, 46, 24, 0, ()),
+        # false_passes > disagreements (1).
+        CalibrationResult(False, 24, 48, 47, 12, 2, ("FALSE_PASS",)),
+        # 4 false negatives with one positive item (max 2).
+        CalibrationResult(False, 24, 48, 44, 23, 0, ("AGREEMENT_BELOW_THRESHOLD",)),
+    ],
+)
+def test_aggregate_rejects_calibration_disagreement_bounds(forged):
+    # Lead semantics (review finding 1): disagreements = comparisons - agreement;
+    # false_passes <= disagreements and
+    # disagreements - false_passes <= 2*(items - negatives).
+    frozen, planned, evs = _agg_inputs()
+    forged = replace(
+        forged, judge_config_hash=JUDGE_HASH, calibration_pack_hash=PACK_HASH
+    )
+    with pytest.raises(AggregateError) as excinfo:
+        aggregate(frozen, planned, evs, forged)
+    assert str(excinfo.value) == "CALIBRATION_INCONSISTENT"
+
+
+def test_aggregate_accepts_failed_calibration_within_bounds():
+    # Review finding 1 positive control: a failed DTO meeting both bounds
+    # (24 items, 47/48 agreement, 1 false pass, from calibrate()) is accepted.
+    frozen, planned, evs = _agg_inputs()
+    failed = recalibrate(calibration_capture(flip=1))
+    assert (failed.agreement, failed.false_passes, failed.passed) == (47, 1, False)
+    agg = aggregate(frozen, planned, evs, failed)
+    assert "JUDGE_NOT_CALIBRATED" in agg.incomplete_reasons
+
+
+def _round_evaluations(rnd):
+    caps = rnd["caps"]
+    evaluations = [evaluate_capture(caps[a]) for a in ("attempt-1", "attempt-2")]
+    evaluations.append(unknown_evaluation(rnd["journals"]["attempt-3"]))
+    evaluations.append(evaluate_capture(caps["attempt-6"]))
+    return evaluations
+
+
+@pytest.mark.parametrize("calibration_state", ["failed", "absent"])
+def test_round_calibrated_judge_needs_passing_calibration(rnd, calibration_state):
+    # Lead semantics (review finding 2): a summary judge with calibrated=True
+    # while the round's recomputed calibration failed (24 items, 47/48, one
+    # negative false pass) or is absent -> DERIVED_RESULT_MISMATCH, for both
+    # write_round and load_round.
+    bundle = rnd["bundle"]
+    assert rnd["caps"]["attempt-1"].judge.calibrated is True
+    calibration = None
+    calibration_ref = None
+    if calibration_state == "failed":
+        failing = calibration_capture(flip=1)
+        calibration = recalibrate(failing)
+        assert (calibration.agreement, calibration.false_passes) == (47, 1)
+        assert calibration.passed is False
+        calibration_ref = write_calibration(bundle.path("cal-failed.json"), failing)
+    rc = replace(rnd["round_capture"], calibration_ref=calibration_ref)
+    target = bundle.path("round-uncalibrated.json")
+    rejects("DERIVED_RESULT_MISMATCH", write_round, target, rc, resolve=bundle.resolve)
+    assert not target.exists()
+    agg = aggregate(
+        rnd["manifest"], rnd["planned"], _round_evaluations(rnd), calibration
+    )
+    forged = write_doc(bundle.path("round-forged.json"), round_doc(rc, agg))
+    rejects("DERIVED_RESULT_MISMATCH", load_round, forged, resolve=bundle.resolve)
+
+
+def test_parse_error_chain_carries_no_raw_value(written, bundle):
+    # I:78 + review finding 3: a parse error keeps raw values out of the
+    # message and of every __cause__/__context__ link.
+    _cap, _ref, path = written
+    secret = "sk-test-SECRET-0001"
+
+    def poison(doc):
+        doc["capture"]["authorized"][SCOPE]["start"] = secret
+
+    out = tamper(path, bundle.path("poison.json"), poison)
+    with pytest.raises(StorageError) as excinfo:
+        load(bundle, out)
+    assert code_of(excinfo) == "SCHEMA_INVALID"
+    assert all("SECRET" not in text for text in _chain_texts(excinfo.value))
+
+
+def test_temp_cleanup_failure_is_evidence_unavailable(tmp_path, monkeypatch):
+    # I:78, I:91 + review finding 4: a failing cleanup unlink is a write IO
+    # error; neither message nor chain exposes the OS error's path.
+    journal = journal_for(make_capture(Bundle(tmp_path / "src")))
+    out = tmp_path / "out"
+    out.mkdir()
+    secret_path = "/private/secret-path"
+
+    def deny(*args, **kwargs):
+        raise PermissionError(13, "Permission denied", secret_path)
+
+    with monkeypatch.context() as patch:
+        # os.remove is the same syscall under another name; patched too so an
+        # implementation choosing it is held to the same rule.
+        patch.setattr(os, "unlink", deny)
+        patch.setattr(os, "remove", deny)
+        with pytest.raises(StorageError) as excinfo:
+            write_attempt(out / "a.json", journal)
+    assert code_of(excinfo) == "EVIDENCE_UNAVAILABLE"
+    assert all(secret_path not in text for text in _chain_texts(excinfo.value))
