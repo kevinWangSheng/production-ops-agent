@@ -207,6 +207,44 @@ def _slot(evaluation: RunEvaluation) -> PlannedSlot:
     return PlannedSlot(a.scenario_id, a.scenario_version, a.mode, a.repetition)
 
 
+def _validate_calibration(calibration: CalibrationResult) -> None:
+    """Defend the DTO seam; persistence separately recomputes raw verdicts."""
+    counts = (
+        calibration.items,
+        calibration.comparisons,
+        calibration.agreement,
+        calibration.negatives,
+        calibration.false_passes,
+    )
+    if any(type(n) is not int or n < 0 for n in counts):
+        raise AggregateError("CALIBRATION_INCONSISTENT")
+    items, comparisons, agreement, negatives, false_passes = counts
+    if (
+        comparisons != items * 2
+        or agreement > comparisons
+        or negatives > items
+        or false_passes > 2 * negatives
+    ):
+        raise AggregateError("CALIBRATION_INCONSISTENT")
+    # PR-A accepts failed legacy DTOs whose agreement and false_passes were
+    # counted independently. Keep that tested, fail-closed behavior; the
+    # persisted loader recomputes all joint counts from labels/verdicts.
+    reasons = tuple(
+        code
+        for failed, code in (
+            (items < 24, "TOO_FEW_ITEMS"),
+            (agreement < 46, "AGREEMENT_BELOW_THRESHOLD"),
+            (negatives < 12, "TOO_FEW_NEGATIVES"),
+            (false_passes != 0, "FALSE_PASS"),
+        )
+        if failed
+    )
+    if type(calibration.passed) is not bool or (
+        calibration.passed != (not reasons) or calibration.reasons != reasons
+    ):
+        raise AggregateError("CALIBRATION_INCONSISTENT")
+
+
 def aggregate(
     manifest: Manifest,
     planned: Sequence[PlannedSlot],
@@ -214,6 +252,8 @@ def aggregate(
     calibration: CalibrationResult | None,
 ) -> Aggregate:
     validate_manifest(manifest)
+    if calibration is not None:
+        _validate_calibration(calibration)
     if len(set(planned)) != len(planned):
         raise AggregateError("DUPLICATE_PLANNED_SLOT")
     expected_hash = manifest_hash(manifest)
@@ -225,6 +265,8 @@ def aggregate(
     by_slot: dict[PlannedSlot, RunEvaluation] = {}
     for evaluation in evaluations:
         attempt = evaluation.attempt
+        if attempt.started is not True:
+            raise AggregateError("ATTEMPT_NOT_STARTED")
         if attempt.round_id != manifest.round_id:
             raise AggregateError("ROUND_MISMATCH")
         if attempt.manifest_hash != expected_hash:
