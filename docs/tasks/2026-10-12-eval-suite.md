@@ -65,6 +65,11 @@
 
 - PR-B 预审（Codex gpt-6-astra，2026-10-14）：[PR-B 合同](2026-10-14-eval-pr-b-contract.md)。用户裁决 B1 = 工具按冻结请求键精确匹配、缺键即 `REPLAY_MISS`；B2 = 冻结证据快照、业务钟固定在录制结束时刻；B3–B8 为 lead 采纳的可逆默认。拆为 PR-B1（持久化边界与表，含 #222）→ PR-B2（录制与回放）→ PR-B3（judge 接入与校准）。
 - PR-B1：分支 `feature/eval-b1-loader`，worktree `../poa-eval-b1`；公开接口 [PR-B1 接口](2026-10-14-eval-pr-b1-interface.md)；代码 `opspilot/evaluation/{codec,storage,baseline}.py`、`rounds.py` 防御。实现 Codex gpt-6.1-sol；独立验收测试由全新上下文 Claude 子 Agent 只按接口编写（`tests/acceptance/test_eval_b1_storage.py`，168 例，歧义 16 条见 `EVAL_B1_AMBIGUITIES.md`），首轮 158/160，两条均为实现偏离接口（异常链、映射键错误码），改实现。独立审查（Codex gpt-6-astra）首轮 fail 4 项 P2：不可能的通过校准仍使基线完成、校准失败时 loader 仍公布 100% 通过率、解析异常链携带原始值、清理失败暴露路径；均改实现、测试作者补测。lead 裁决 r2：校准联合约束只对 `passed=True` 生效（失败 DTO 不抬高通过率，保留 I:99 兼容，PR-A 与 B1 既有断言未改）。复验 pass，三组 pytest 1026 passed；实现者 `make check` 4994 passed、1054 skipped、2 xfailed。无模型、网络或 PG 调用。
+  - PR #224 机器人四轮 P1/P2 均采纳修复：D5 布局不符报 `BASELINE_LAYOUT_MISMATCH`；版本与重复序号按精确 PlannedSlot 集合核对；存储边界复用 `validate_scenario()`；`_publish` 发布前校验 ref 路径。两次合入 main 后三组 1099 passed，`make check` 5247 passed、1255 skipped、2 xfailed。
+- PR-B2：分支 `feature/eval-b2-replay`，worktree `../poa-eval-b2`；公开接口 [PR-B2 接口](2026-10-14-eval-pr-b2-interface.md)；代码 `opspilot/evaluation/{recording,replay,tool_provenance}.py`；产品挂点只加默认 `None` 的 `capture_http`（client.py）与 `capture_delivery`（loop.py），`tools/executor.py` 两段提示文案纯抽取为函数，默认路径字节不变。实现 Codex gpt-6.1-sol；验收测试由全新上下文 Claude 子 Agent 只按接口编写（`tests/acceptance/test_eval_b2_replay.py`，歧义 23 条见 `EVAL_B2_AMBIGUITIES.md`）。
+  - 独立审查（Codex gpt-6-astra）首审 3 项 P2，此后复验 5 轮逐项修复：跨事件身份与窗口关联（lead 更正：窗口相等只适用已执行查询，loop 前的 refusal 须可录）；dispatched=true 无证据却带数据；`RESULT_TOO_LARGE` 提示按产品模板逐字重建；无证据 query 锚定冻结请求参数。
+  - 用户裁决 2026-10-14「受约束审计事实」：无证据或未执行的结果只接受白名单字段，身份、query、上限、提示从录制前冻结的 ToolSnapshot（工具注册与 QueryScope，纳入 manifest hash）重建逐字比对，状态与时间按词表、阶段与钟窗约束，其余字段报 `IDENTITY_MISMATCH`。测试夹具随之迁移到真实执行器加冻结快照，断言未改，另补未篡改对照证明反例非空洞。
+  - 最终复验 fail 1 项新类别 P2（模型响应后补快照仍判完整）；用户选择再修一轮：record 入口锁定配置字节基线，事后替换即拒。定向复验 pass（24 种绕过与 7 类回放替换均拒）。合入 B1 后九组 1638 passed，gitleaks 无发现。触及调查 loop/client 挂点所需的真实 Run trace 留给 PR-C 一并提供。
 - PR-B 可选遗留（审查者）：PR-A `calibrate()` 的 `min_items` 语义允许多于 24 项，与 T:43「24 项、46/48」口径需对齐，不属 B1。
 
 ## 下一步与交接
