@@ -40,14 +40,21 @@ from http.client import (
     HTTPSConnection,
     IncompleteRead,
 )
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 from urllib.parse import urlsplit
+
+from pydantic import AfterValidator, AwareDatetime, Field
+
+from opspilot.domain.base import DTO
+from opspilot.observation.release_policy import storable_text
 
 __all__ = [
     "IN_FLIGHT_LIMIT",
     "InstantResult",
     "InstantStatus",
     "PrometheusReadOnlySource",
+    "PrometheusSeries",
+    "VectorResult",
     "RESPONSE_LIMIT_BYTES",
 ]
 
@@ -88,6 +95,31 @@ class InstantResult:
     detail: str = ""
     body_complete: bool = True
     sent_at: datetime | None = None
+
+
+_UtcDatetime = Annotated[
+    AwareDatetime, AfterValidator(lambda value: value.astimezone(timezone.utc))
+]
+
+
+class PrometheusSeries(DTO):
+    labels: dict[
+        Annotated[str, AfterValidator(storable_text)],
+        Annotated[str, AfterValidator(storable_text)],
+    ]
+    timestamp: _UtcDatetime
+    value: float = Field(allow_inf_nan=False)
+
+
+class VectorResult(DTO):
+    expr: Annotated[str, AfterValidator(storable_text)]
+    status: InstantStatus
+    series: tuple[PrometheusSeries, ...]
+    body: bytes
+    http_status: int | None
+    detail: Annotated[str, AfterValidator(storable_text)]
+    body_complete: bool
+    sent_at: _UtcDatetime | None
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -253,6 +285,118 @@ class PrometheusReadOnlySource:
         status, value, detail = _single_value(body)
         return InstantResult(
             expr, status, value, body, http_status, detail, sent_at=sent_at
+        )
+
+    def instant_vector(
+        self, expr: str, *, at: datetime, timeout_seconds: int
+    ) -> VectorResult:
+        """Read a strict vector using the same bounded, single-request transport."""
+        if at.tzinfo is None or at.utcoffset() is None:
+            raise ValueError("QUERY_TIME_NAIVE")
+        delta = at.astimezone(timezone.utc) - datetime(1970, 1, 1, tzinfo=timezone.utc)
+        micros = (delta.days * 86400 + delta.seconds) * 1_000_000 + delta.microseconds
+        sign = "-" if micros < 0 else ""
+        seconds, fraction = divmod(abs(micros), 1_000_000)
+        url = f"{self._base}/api/v1/query?" + urllib.parse.urlencode(
+            {
+                "query": expr,
+                "time": f"{sign}{seconds}.{fraction:06d}",
+                "timeout": f"{int(timeout_seconds)}s",
+            }
+        )
+        headers = {"Accept": "application/json"}
+        if self._basic_auth is not None:
+            raw = f"{self._basic_auth[0]}:{self._basic_auth[1]}".encode()
+            headers["Authorization"] = "Basic " + base64.b64encode(raw).decode("ascii")
+        elif self._token:
+            headers["Authorization"] = f"Bearer {self._token}"
+        sent = _Sent(self._clock)
+        try:
+            if self._opener is not None:
+                http_status, body, complete = self._fetch_via_opener(
+                    url, headers, timeout_seconds, sent
+                )
+            else:
+                http_status, body, complete = _fetch(
+                    url, headers, timeout_seconds, sent
+                )
+        except _Timeout as cut:
+            return VectorResult(
+                expr=expr,
+                status="timeout",
+                series=(),
+                body=cut.partial[:_ERROR_BODY_BYTES],
+                http_status=None,
+                detail="TIMEOUT",
+                body_complete=False,
+                sent_at=sent.close(),
+            )
+        except _Overloaded:
+            return VectorResult(
+                expr=expr,
+                status="failed",
+                series=(),
+                body=b"",
+                http_status=None,
+                detail="IN_FLIGHT_LIMIT",
+                body_complete=True,
+                sent_at=None,
+            )
+        except _Protocol as cut:
+            return VectorResult(
+                expr=expr,
+                status="failed",
+                series=(),
+                body=cut.partial[:_ERROR_BODY_BYTES],
+                http_status=cut.http_status,
+                detail="UNREACHABLE",
+                body_complete=cut.body_complete,
+                sent_at=sent.close(),
+            )
+        except (urllib.error.URLError, OSError):
+            return VectorResult(
+                expr=expr,
+                status="failed",
+                series=(),
+                body=b"",
+                http_status=None,
+                detail="UNREACHABLE",
+                body_complete=True,
+                sent_at=sent.close(),
+            )
+        sent_at = sent.close()
+        if http_status != 200:
+            return VectorResult(
+                expr=expr,
+                status="failed",
+                series=(),
+                body=body[:_ERROR_BODY_BYTES],
+                http_status=http_status,
+                detail="HTTP",
+                body_complete=complete,
+                sent_at=sent_at,
+            )
+        if not complete or len(body) > RESPONSE_LIMIT_BYTES:
+            return VectorResult(
+                expr=expr,
+                status="failed",
+                series=(),
+                body=body[:_ERROR_BODY_BYTES],
+                http_status=http_status,
+                detail="TOO_LARGE",
+                body_complete=False,
+                sent_at=sent_at,
+            )
+        status, series, detail = _vector_series(body)
+        return VectorResult(
+            expr=expr,
+            status=status,
+            series=series,
+            body=body,
+            http_status=http_status,
+            detail=detail,
+            body_complete=True,
+            sent_at=sent_at,
         )
 
     def _fetch_via_opener(
@@ -699,3 +843,49 @@ def _single_value(body: bytes) -> tuple[InstantStatus, float | None, str]:
 def epoch_to_datetime(value: float) -> datetime:
     """A Prometheus ``timestamp()`` result as an aware UTC datetime."""
     return datetime.fromtimestamp(value, tz=timezone.utc)
+
+
+def _vector_series(
+    body: bytes,
+) -> tuple[InstantStatus, tuple[PrometheusSeries, ...], str]:
+    try:
+        obj = json.loads(body)
+        if not isinstance(obj, dict):
+            raise ValueError
+        if obj.get("status") != "success":
+            return "failed", (), "STATUS_NOT_SUCCESS"
+        data = obj["data"]
+        if data["resultType"] != "vector":
+            return "failed", (), "NOT_VECTOR"
+        rows = data["result"]
+        if not isinstance(rows, list):
+            raise ValueError
+        unique: dict[tuple[tuple[str, str], ...], PrometheusSeries] = {}
+        samples: dict[tuple[tuple[str, str], ...], tuple[float, float]] = {}
+        for row in rows:
+            labels = row["metric"]
+            if not isinstance(labels, dict) or any(
+                not isinstance(k, str) or not isinstance(v, str)
+                for k, v in labels.items()
+            ):
+                raise ValueError
+            pair = row["value"]
+            if not isinstance(pair, list) or len(pair) != 2:
+                raise ValueError
+            stamp, value = pair
+            if isinstance(stamp, bool) or isinstance(value, bool):
+                raise ValueError
+            stamp, value = float(stamp), float(value)
+            if not math.isfinite(stamp) or not math.isfinite(value):
+                return "failed", (), "NON_FINITE"
+            identity = tuple(sorted(labels.items()))
+            if identity in samples and samples[identity] != (stamp, value):
+                return "failed", (), "CONFLICTING_SERIES"
+            unique[identity] = PrometheusSeries(
+                labels=labels, timestamp=epoch_to_datetime(stamp), value=value
+            )
+            samples[identity] = (stamp, value)
+        series = tuple(unique.values())
+        return ("ok" if series else "no_data"), series, ""
+    except (KeyError, TypeError, ValueError, OverflowError, OSError, RecursionError):
+        return "failed", (), "INVALID_VECTOR"
