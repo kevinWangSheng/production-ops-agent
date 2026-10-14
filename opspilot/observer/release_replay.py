@@ -302,6 +302,8 @@ def _replay_release_history(history: Mapping[str, object]) -> ReleaseReplay:
 
             queries = []
             for q in m["queries"]:
+                if q.get("sample_id") != m["sample_id"]:
+                    issues.add("SUBJECT_BINDING_MISMATCH")
                 data = {k: v for k, v in q.items() if k != "sample_id"}
                 raw = data["raw"]
                 if not isinstance(raw, bytes):

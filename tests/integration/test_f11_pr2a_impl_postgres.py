@@ -1014,6 +1014,34 @@ def test_impl_replay_rejects_terminal_metadata_tampering(harness, field):
     assert replay.verdict == "unknown"
 
 
+@pytest.mark.parametrize("binding", ["other_sample", "missing"])
+def test_impl_replay_rejects_query_sample_binding(harness, binding):
+    authorization = authorize(harness)
+    context = harness[1].release_context(authorization.session_id)
+    time.sleep(2.05)
+    for index in range(2):
+        if index:
+            time.sleep(1.05)
+        receipt = harness[1].submit_release_sample(
+            claim(harness, authorization.session_id),
+            raw_evidence(context, harness[1].current_time()),
+        )
+    assert receipt.release_status == "healthy"
+    history = harness[1].release_history(harness[2])
+    baseline = replay_release_history(history)
+    assert baseline.consistent and baseline.verdict == "healthy"
+    corrupted = copy.deepcopy(history)
+    query = corrupted["samples"][0]["queries"][0]
+    if binding == "other_sample":
+        query["sample_id"] = corrupted["samples"][1]["sample_id"]
+    else:
+        del query["sample_id"]
+    replay = replay_release_history(corrupted)
+    assert not replay.consistent
+    assert replay.verdict == "unknown"
+    assert "SUBJECT_BINDING_MISMATCH" in replay.integrity
+
+
 @pytest.mark.parametrize("authorized", [False, True])
 def test_impl_replay_cancel_time_is_bound_to_frozen_evidence(harness, authorized):
     if authorized:
