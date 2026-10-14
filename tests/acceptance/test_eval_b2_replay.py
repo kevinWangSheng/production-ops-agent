@@ -2120,3 +2120,90 @@ def test_recheck_p2_3_unexecuted_tool_refusal_records_completely(
     assert doc["complete"] is True and doc["incomplete_reasons"] == []
     assert len(s.events_of(doc, "tool")) == 1
     assert s.verify_code(pkg, ref.sha256) is None
+
+
+# --- second recheck finding (2026-10-14) ----------------------------------------------
+# Lead ruling: dispatched=True always gets the window relation checked, with
+# or without evidence; dispatched=True + evidence=None while the view still
+# carries source data (rows/evidence_id) is self-contradictory. Only a
+# dispatched=False refusal with no evidence and no data skips the window
+# check. See EVAL_B2_AMBIGUITIES.md item 18.
+
+_AUTH_START = datetime(2026, 10, 12, 23, 0, tzinfo=s.START.tzinfo)
+_AUTH_END = datetime(2026, 10, 13, 0, 0, tzinfo=s.START.tzinfo)
+
+
+def _evidence_free_dispatched_outcome(result_start: datetime):
+    def factory(request: Any):
+        result = s.tool_outcome(request, evidence_id="evidence-old")
+        window = s.ToolWindow(result_start, _AUTH_END)
+        op = replace(result.operation, window=window)
+        assert op.dispatched is True
+        view = {
+            **dict(result.model_view),
+            "evidence_id": "evidence-old",
+            "rows": [{"value": 3}],
+            "window": {"start": s.iso(window.start), "end": s.iso(window.end)},
+        }
+        return replace(
+            result,
+            status="ok",
+            source_contact="confirmed",
+            operation=op,
+            evidence=None,
+            model_view=view,
+        )
+
+    return factory
+
+
+# Recheck2 P2: an executed query without EvidenceRecord cannot carry data
+# past the window relation check.
+@pytest.mark.parametrize(
+    "result_start",
+    [
+        # (a) the recheck counterexample: request 23:00-00:00, operation and
+        # view window 23:01-00:00, both inside the authorized box.
+        pytest.param(_AUTH_START + timedelta(minutes=1), id="window-differs"),
+        # (b) same windows, still self-contradictory: dispatched with data
+        # in the view but no EvidenceRecord.
+        pytest.param(_AUTH_START, id="window-equal"),
+    ],
+)
+def test_recheck2_p2_dispatched_result_without_evidence_but_with_data_is_rejected(
+    tmp_path, result_start
+):
+    auth = {"start": s.iso(_AUTH_START), "end": s.iso(_AUTH_END)}
+    request_ = dict(s.REQ_A, window=auth)
+    context = s.context(
+        bindings=(s.binding(authorized_window=auth, default_window=None),)
+    )
+    pkg = tmp_path / "source"
+    recorded: Any = None
+    try:
+        recorded = record(
+            s.source_driver(
+                [request_], outcomes=[_evidence_free_dispatched_outcome(result_start)]
+            ),
+            destination=pkg,
+            context=context,
+        )
+    except RecordingError as exc:
+        # Record-time detection accepted (ambiguity 14); never complete.
+        assert str(exc) == exc.code
+        assert exc.code == "IDENTITY_MISMATCH"
+        assert_not_complete(pkg)
+    if recorded is not None:
+        assert s.verify_code(pkg, recorded.sha256) == "IDENTITY_MISMATCH"
+        expected = "IDENTITY_MISMATCH"
+        sha = recorded.sha256
+    else:
+        expected = "RECORDING_INCOMPLETE"
+        sha = s.sha((pkg / "recording.json").read_bytes())
+    # Model replay refuses before calling the current model.
+    inv = Investigator()
+    with pytest.raises(RecordingError) as err:
+        rec = load_recording(pkg / "recording.json", expected_hash=sha)
+        run_replay(tmp_path, rec, [request_], investigator=inv)
+    assert err.value.code == expected
+    assert inv.calls == []

@@ -92,3 +92,9 @@
       - delivery_sha256 按「实际消息的 canonical JSON 的 SHA256」重算。这个算法接口没有逐字写明，是从复验脚本推得的。如果实现采用其他算法，这条篡改会先触发 HASH_MISMATCH，那时应改的是测试的篡改方式，不是判定。
     - P2-3 把上一轮 P2-1 的窗口规则收窄为只适用于「已执行查询、有 operation.window」的结果。operation.window=None 且没有源查询的产品拒绝（INVALID_PARAMS、WINDOW_TOO_LARGE）必须能完整录制。P2-1 的反例保持不变。
       - 驱动是一次最小的「模型、工具、交付、模型」序列，没有接入真实 loop。工具执行器、注册信息和请求用 `tests/m1_tool_support` 的公开夹具；binding.default_window 为 None。
+
+18. **已执行、没有证据、却带数据的结果（Recheck2 P2）**
+    - 依据 lead 裁决：只要 dispatched=True 就核窗口；dispatched=True、evidence=None，但 view 带 rows/evidence_id 时，判为自相矛盾，报 IDENTITY_MISMATCH。
+    - 测试把 binding 的授权窗和请求窗都设成 23:00–00:00，这是为了照搬复验反例的时间。事件业务钟仍然是夹具的 12:00–12:10，这两组时间互不相关。
+    - 结果的 status 为 ok，source_contact 为 confirmed。(a) 结果窗口是 23:01–00:00，(b) 结果窗口等于请求窗。
+    - 和第 14 条一样，record 当场报 IDENTITY_MISMATCH 也接受；这种情况下，模型回放应抛 RECORDING_INCOMPLETE。
