@@ -209,6 +209,8 @@ def raw_evidence(context, at, *, degraded=False, missing=False):
                     labels.update(owner_kind="ReplicaSet", owner_name="checkout-bbb")
                 else:
                     labels.update(container="app", image_id="repo@" + NEW_DIGEST)
+        elif kind == "instances":
+            labels = {"service_instance_id": str(instance.pod_uid)}
         elif kind == "query":
             signal = context.health_profile.signal(name)
             value = (
