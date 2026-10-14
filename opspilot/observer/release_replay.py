@@ -367,6 +367,7 @@ def _replay_release_history(history: Mapping[str, object]) -> ReleaseReplay:
             for q in m["queries"]:
                 if q.get("sample_id") != m["sample_id"]:
                     issues.add("SUBJECT_BINDING_MISMATCH")
+                    issues.add("QUERY_MISMATCH")
                 data = {k: v for k, v in q.items() if k != "sample_id"}
                 raw = data["raw"]
                 if not isinstance(raw, bytes):
@@ -374,6 +375,7 @@ def _replay_release_history(history: Mapping[str, object]) -> ReleaseReplay:
                 data["raw"] = raw
                 if sha256(raw) != data["raw_sha256"]:
                     issues.add("RAW_SHA256_MISMATCH")
+                    issues.add("QUERY_MISMATCH")
                 queries.append(ReleaseQueryResult.model_validate(data))
             evidence = ReleaseSampleEvidence(
                 format_version=1,
@@ -386,7 +388,11 @@ def _replay_release_history(history: Mapping[str, object]) -> ReleaseReplay:
             )
             evaluations.append(evaluation)
             consistent = query_evidence_consistent(context, evidence, m["decision_at"])
-            if not consistent:
+            # A missing key can be legitimate interrupted history. Existing
+            # rows must still match the plan even when adoption was fenced.
+            if not query_evidence_consistent(
+                context, evidence, m["decision_at"], require_complete=False
+            ):
                 issues.add("QUERY_MISMATCH")
             if (
                 evaluation.model_dump(mode="json") != m["release_evaluation"]
@@ -397,7 +403,10 @@ def _replay_release_history(history: Mapping[str, object]) -> ReleaseReplay:
             lease = ReleaseSampleLease.model_validate_json(
                 canonical_json(m["release_receipt"]["_lease"])
             )
-            from opspilot.observation.release_samples import sample_fingerprint
+            from opspilot.observation.release_samples import (
+                release_sample_reason,
+                sample_fingerprint,
+            )
 
             if sample_fingerprint(lease, evidence) != m["release_evidence_sha256"]:
                 issues.add("RAW_SHA256_MISMATCH")
@@ -437,34 +446,6 @@ def _replay_release_history(history: Mapping[str, object]) -> ReleaseReplay:
         ):
             issues.add("SAMPLE_DECISION_MISMATCH")
         fold = marks[s["session_id"]]
-        reason = "adopted"
-        if m["current_subject_control_generation"] != m["subject_control_generation"]:
-            reason = "control_generation_stale"
-        elif m["current_subject_observation_generation"] != m["observation_generation"]:
-            reason = "observation_generation_stale"
-        elif m["current_subject_state"] != "observing" or paused:
-            reason = "subject_state_not_adoptable"
-        elif (
-            m["scope_suspended"]
-            or m["global_generation"] != s["authorized_global_generation"]
-            or m["target_generation"] != s["authorized_target_generation"]
-        ):
-            reason = "suspended"
-        elif m["decision_at"] >= release.deadline_at:
-            reason = "deadline_expired"
-        elif not m["lease_valid"]:
-            reason = "lease_revoked"
-        elif not m["lease_stamps_match"]:
-            reason = "lease_stamp_mismatch"
-        elif m["sequence"] <= fold["adopted_sequence"]:
-            reason = "sequence_not_advancing"
-        elif (
-            fold["adopted_window_end"] is not None
-            and m["window_end"] < fold["adopted_window_end"]
-        ):
-            reason = "window_regressed"
-        elif not consistent:
-            reason = "readings_inconsistent"
         # Ended-session returns cannot be adopted; final state alone cannot date
         # revocation, so use the immutable ending timestamp at this decision.
         prior_end = next(
@@ -476,8 +457,31 @@ def _replay_release_history(history: Mapping[str, object]) -> ReleaseReplay:
             ),
             None,
         )
-        if reason == "adopted" and prior_end is not None:
-            reason = "session_not_authorized"
+        reason = release_sample_reason(
+            {
+                "control_generation": control_generation,
+                "observation_generation": observation_generation,
+                "status": status,
+                "paused": paused,
+                "deadline_at": release.deadline_at,
+            },
+            {
+                **fold,
+                "state": "authorized" if prior_end is None else "revoked",
+                "authorized": prior_end is None,
+            },
+            lease,
+            evidence,
+            decision_at=m["decision_at"],
+            blocked=(
+                m["scope_suspended"]
+                or m["global_generation"] != s["authorized_global_generation"]
+                or m["target_generation"] != s["authorized_target_generation"]
+            ),
+            lease_valid=m["lease_valid"],
+            lease_stamps_match=m["lease_stamps_match"],
+            readings_consistent=consistent,
+        )
         if (
             (reason == "adopted") != (m["disposition"] == "adopted")
             or reason != m["reason"]

@@ -100,6 +100,47 @@ def sample_fingerprint(
     return sha256(canonical_json(_fingerprint_json(data)).encode())
 
 
+def release_sample_reason(
+    release: Mapping[str, Any],
+    session: Mapping[str, Any],
+    lease: ReleaseSampleLease,
+    evidence: ReleaseSampleEvidence,
+    *,
+    decision_at: datetime,
+    blocked: bool,
+    lease_valid: bool,
+    lease_stamps_match: bool,
+    readings_consistent: bool,
+) -> str:
+    """Apply the same adoption fences online and to historical decision facts."""
+    if release["control_generation"] != lease.subject_control_generation:
+        return "control_generation_stale"
+    if release["observation_generation"] != lease.observation_generation:
+        return "observation_generation_stale"
+    if release["status"] != "observing" or release["paused"]:
+        return "subject_state_not_adoptable"
+    if blocked:
+        return "suspended"
+    if decision_at >= release["deadline_at"]:
+        return "deadline_expired"
+    if session["state"] != "authorized" or not session["authorized"]:
+        return "session_not_authorized"
+    if not lease_valid:
+        return "lease_revoked"
+    if not lease_stamps_match:
+        return "lease_stamp_mismatch"
+    if lease.sequence <= session["adopted_sequence"]:
+        return "sequence_not_advancing"
+    if (
+        session["adopted_window_end"] is not None
+        and evidence.window.end < session["adopted_window_end"]
+    ):
+        return "window_regressed"
+    if not readings_consistent:
+        return "readings_inconsistent"
+    return "adopted"
+
+
 class _ReleaseSampleOps(_StoreBase):
     @contextmanager
     def _release_transaction(self, *, snapshot: bool = False) -> Iterator[Connection]:
@@ -379,32 +420,17 @@ class _ReleaseSampleOps(_StoreBase):
                 or scope["global_generation"] != lease.global_suspension_generation
                 or scope["target_generation"] != lease.target_suspension_generation
             )
-            reason = "adopted"
-            if release["control_generation"] != lease.subject_control_generation:
-                reason = "control_generation_stale"
-            elif release["observation_generation"] != lease.observation_generation:
-                reason = "observation_generation_stale"
-            elif release["status"] != "observing" or release["paused"]:
-                reason = "subject_state_not_adoptable"
-            elif blocked:
-                reason = "suspended"
-            elif now >= release["deadline_at"]:
-                reason = "deadline_expired"
-            elif session["state"] != "authorized" or not session["authorized"]:
-                reason = "session_not_authorized"
-            elif not valid:
-                reason = "lease_revoked"
-            elif not stamps:
-                reason = "lease_stamp_mismatch"
-            elif lease.sequence <= session["adopted_sequence"]:
-                reason = "sequence_not_advancing"
-            elif (
-                session["adopted_window_end"] is not None
-                and evidence.window.end < session["adopted_window_end"]
-            ):
-                reason = "window_regressed"
-            elif not consistent:
-                reason = "readings_inconsistent"
+            reason = release_sample_reason(
+                release,
+                session,
+                lease,
+                evidence,
+                decision_at=now,
+                blocked=blocked,
+                lease_valid=valid,
+                lease_stamps_match=stamps,
+                readings_consistent=consistent,
+            )
             accepted = reason == "adopted"
             status = None
             ending_reason = None
