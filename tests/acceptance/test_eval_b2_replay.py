@@ -15,9 +15,10 @@ import os
 import time
 from dataclasses import asdict, replace
 from datetime import datetime, timedelta
+from http.client import IncompleteRead
 from pathlib import Path
 from typing import Any
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
 
 import pytest
 
@@ -40,6 +41,13 @@ from opspilot.investigation.loop import (
     serialized_request,
 )
 from tests.acceptance import eval_b2_support as s
+from tests.m1_investigation_support import (
+    ScriptedModel,
+    assemble,
+    report_from_transcript,
+)
+from tests.m1_investigation_support import reply as loop_reply
+from tests.m1_investigation_support import tool_call as loop_tool_call
 
 MiB = 1024 * 1024
 
@@ -1451,3 +1459,341 @@ def test_replay_session_exposes_frozen_context_not_source_history(tmp_path, sour
     assert log["context"].stimulus == rec.context.stimulus
     assert s.SRC_REASONING not in repr(inv.calls[0].messages)
     assert "src_call_0" not in repr(inv.calls[0].messages)
+
+
+# --- independent review findings (2026-10-14) --------------------------------------
+# Semantics fixed by the lead after the independent review of the B2
+# implementation; the interface record will be synced. See
+# EVAL_B2_AMBIGUITIES.md items 14-16 for the readings adopted here.
+
+
+def _window(start_min: int, end_min: int) -> dict[str, str]:
+    return {
+        "start": s.iso(s.START + timedelta(minutes=start_min)),
+        "end": s.iso(s.START + timedelta(minutes=end_min)),
+    }
+
+
+def _forged_outcome(
+    *,
+    requested_tool: str | None = None,
+    requested_target: str | None = None,
+    view_operation_id: str | None = None,
+    window: tuple[int, int] | None = None,
+):
+    """Outcome factory whose operation contradicts its own ToolRequest.
+
+    Every artifact stays internally hash-consistent (normal record() path);
+    only the cross-event relation between request and result is wrong.
+    """
+
+    def factory(request: Any):
+        view = None
+        if view_operation_id is not None:
+            view = {
+                "tool": s.TOOL,
+                "status": "ok",
+                "evidence_id": "ev-1",
+                "operation_id": view_operation_id,
+                "content": [{"service": "cart", "error": True}],
+            }
+        result = s.tool_outcome(request, evidence_id="ev-1", view=view)
+        changes: dict[str, Any] = {}
+        if requested_tool is not None:
+            changes["requested_tool"] = requested_tool
+        if requested_target is not None:
+            changes["requested_target"] = requested_target
+        if window is not None:
+            changes["window"] = s.ToolWindow(
+                s.START + timedelta(minutes=window[0]),
+                s.START + timedelta(minutes=window[1]),
+            )
+        if changes:
+            op = replace(result.operation, **changes)
+            evidence = (
+                None
+                if result.evidence is None
+                else replace(result.evidence, operation=op)
+            )
+            result = replace(result, operation=op, evidence=evidence)
+        return result
+
+    return factory
+
+
+# Review P2-1: request/result identity and window must be cross-checked.
+@pytest.mark.parametrize(
+    ("request_", "factory"),
+    [
+        pytest.param(
+            s.REQ_A,
+            _forged_outcome(requested_tool="metrics.range_query"),
+            id="requested-tool-differs",
+        ),
+        pytest.param(
+            s.REQ_A,
+            _forged_outcome(requested_target="other-target"),
+            id="requested-target-differs",
+        ),
+        pytest.param(
+            s.REQ_A,
+            _forged_outcome(view_operation_id="OTHER-RUN-operation"),
+            id="view-operation-id-differs",
+        ),
+        pytest.param(
+            # The review's counterexample: request 12:00-12:01, result
+            # 12:05-12:10; both inside the authorized box 12:00-12:10.
+            dict(s.REQ_A, window=_window(0, 1)),
+            _forged_outcome(window=(5, 10)),
+            id="explicit-window-differs",
+        ),
+        pytest.param(
+            # No window in the request: the result must carry the default
+            # window (binding default 12:05-12:10); 12:01-12:03 is inside
+            # the authorized box but is not the default.
+            dict(s.REQ_A, window=None),
+            _forged_outcome(window=(1, 3)),
+            id="omitted-window-not-default",
+        ),
+    ],
+)
+def test_review_p2_1_contradicting_request_and_result_is_identity_mismatch(
+    tmp_path, request_, factory
+):
+    # Review P2-1; C:124/C:134-136, I:75/I:82: structural verification
+    # relates requested_tool/requested_target, an existing view.operation_id
+    # and the request window with the recorded operation.
+    pkg = tmp_path / "source"
+    recorded: Any = None
+    try:
+        recorded = record(
+            s.source_driver([request_], outcomes=[factory]),
+            destination=pkg,
+            context=s.context(),
+        )
+    except RecordingError as exc:
+        # Detection already at record time is accepted (ambiguity 14); the
+        # package is then never complete.
+        assert str(exc) == exc.code
+        assert exc.code == "IDENTITY_MISMATCH"
+        assert_not_complete(pkg)
+    if recorded is not None:
+        assert s.verify_code(pkg, recorded.sha256) == "IDENTITY_MISMATCH"
+        expected = "IDENTITY_MISMATCH"
+        sha = recorded.sha256
+    else:
+        expected = "RECORDING_INCOMPLETE"
+        sha = s.sha((pkg / "recording.json").read_bytes())
+    # Model replay must not use the package: refused before any model call.
+    inv = Investigator()
+    with pytest.raises(RecordingError) as err:
+        rec = load_recording(pkg / "recording.json", expected_hash=sha)
+        run_replay(tmp_path, rec, [request_], investigator=inv)
+    assert err.value.code == expected
+    assert inv.calls == []
+
+
+# Review P2-1 (control): a consistent explicit window still verifies, so the
+# window check is equality, not "any window inside the authorized box".
+def test_review_p2_1_explicit_window_equal_to_result_window_verifies(tmp_path):
+    request_ = dict(s.REQ_A, window=_window(2, 4))
+    pkg, ref = make(
+        tmp_path,
+        s.source_driver([request_], outcomes=[_forged_outcome(window=(2, 4))]),
+    )
+    assert s.verify_code(pkg, ref.sha256) is None
+
+
+def _duplicate_loop_replies() -> list[Any]:
+    # Same tool, same arguments, different call_id: the second call is the
+    # loop's DUPLICATE_TOOL_CALL refusal (no facade call).
+    return [
+        loop_reply(tool_calls=[loop_tool_call("call-one")], finish="tool_calls"),
+        loop_reply(tool_calls=[loop_tool_call("call-two")], finish="tool_calls"),
+        report_from_transcript,
+    ]
+
+
+def _loop_driver(log: dict[str, Any], *, replay_session: bool):
+    def wire(model: Any, tools: Any, deliver: Any) -> Any:
+        loop, request, scripted, *_ = assemble(
+            replies=[] if replay_session else _duplicate_loop_replies(),
+            model_requests=3,
+        )
+        facade_calls: list[Any] = []
+        inner = tools(loop.executor) if not replay_session else tools
+
+        class CountingFacade:
+            def execute(self, tool_request: Any) -> Any:
+                facade_calls.append(tool_request)
+                return inner.execute(tool_request)
+
+            def __getattr__(self, name: str) -> Any:
+                return getattr(inner, name)
+
+        loop.model = model(scripted) if not replay_session else model
+        loop.executor = CountingFacade()
+        loop.capture_delivery = deliver
+        result = loop.run(request)
+        log.update(result=result, facade_calls=facade_calls, scripted=scripted)
+        return s.outcome(tuple(dict.fromkeys(result.evidence_ids)))
+
+    if replay_session:
+        return lambda session: wire(
+            session.model, session.tools, session.capture_delivery
+        )
+    return lambda hooks: wire(hooks.model, hooks.tools, hooks.delivery)
+
+
+def _loop_context():
+    loop, request, *_ = assemble(replies=[], model_requests=3)
+    window = request.scope.window.as_json()
+    now = loop.clock.now()
+    return s.context(
+        source_run_id=request.run_id,
+        started_at=now,
+        ended_at=now,
+        bindings=(
+            s.binding(
+                tool="metrics.range_query",
+                target="checkout-prod",
+                source="prometheus",
+                authorized_window=window,
+                default_window=window,
+            ),
+        ),
+    )
+
+
+def _without_operation_id(view: Any) -> dict[str, Any]:
+    return {k: v for k, v in dict(view).items() if k != "operation_id"}
+
+
+# Review P2-2: the real InvestigationLoop's DUPLICATE_TOOL_CALL refusal of a
+# repeated call (same arguments, new call_id) records as a complete package
+# and replays the refusal unchanged.
+def test_review_p2_2_duplicate_call_refusal_records_and_replays(tmp_path):
+    log: dict[str, Any] = {}
+    pkg = tmp_path / "source"
+    ref = record(
+        _loop_driver(log, replay_session=False),
+        destination=pkg,
+        context=_loop_context(),
+    )
+    assert log["result"].execution == "completed"
+    # C:117 / I:52: one facade call; the refusal never reaches the facade.
+    assert len(log["facade_calls"]) == 1
+    doc = s.package_json(pkg)
+    assert doc["complete"] is True and doc["incomplete_reasons"] == []
+    assert len(s.events_of(doc, "model")) == 3
+    assert len(s.events_of(doc, "tool")) == 1
+    deliveries = s.events_of(doc, "delivery")
+    assert len(deliveries) == 2
+    first_view = s.blob_json(pkg, deliveries[0]["request_ref"])
+    refusal_view = s.blob_json(pkg, deliveries[1]["request_ref"])
+    refusal_message = s.blob_json(pkg, deliveries[1]["response_ref"])
+    # I:62: no parent tool event for a refusal; I:52 "包括缓存命中与拒绝".
+    assert deliveries[1]["parent"] is None
+    assert refusal_view["reason"] == "DUPLICATE_TOOL_CALL"
+    assert refusal_view["duplicate_of_evidence_id"] == first_view["evidence_id"]
+    assert refusal_message["tool_call_id"] == "call-two"
+    # The refusal has its own operation_id, distinct from the executed call's.
+    assert isinstance(refusal_view["operation_id"], str)
+    assert refusal_view["operation_id"]
+    assert refusal_view["operation_id"] != first_view["operation_id"]
+    # Structural verification accepts the package.
+    assert s.verify_code(pkg, ref.sha256) is None
+
+    # Model replay reproduces the refusal from frozen evidence.
+    rec = loaded(pkg, ref)
+    investigator = ScriptedModel(_duplicate_loop_replies())
+    replay_log: dict[str, Any] = {}
+    capture = replay(
+        rec,
+        mode="replay",
+        attempt=s.attempt("replay"),
+        manifest=s.manifest(),
+        investigator=investigator,
+        driver=_loop_driver(replay_log, replay_session=True),
+        destination=tmp_path / "replayed",
+    )
+    assert capture.error is None
+    assert capture.attempt.replay_miss is False
+    assert replay_log["result"].execution == "completed"
+    assert len(investigator.calls) == 3
+    assert len(replay_log["facade_calls"]) == 1
+    new_pkg = tmp_path / "replayed"
+    new = load_recording(
+        new_pkg / capture.recording_ref.path,
+        expected_hash=capture.recording_ref.sha256,
+    )
+    assert new.complete is True
+    new_doc = s.package_json(new_pkg)
+    new_deliveries = s.events_of(new_doc, "delivery")
+    assert len(new_deliveries) == 2
+    assert new_deliveries[1]["parent"] is None
+    replayed_view = s.blob_json(new_pkg, new_deliveries[1]["request_ref"])
+    replayed_message = s.blob_json(new_pkg, new_deliveries[1]["response_ref"])
+    # Unchanged apart from the per-Run operation_id the loop derives from
+    # its new step (I:73 only new operation IDs are ignored).
+    assert _without_operation_id(replayed_view) == _without_operation_id(refusal_view)
+    assert replayed_message["tool_call_id"] == refusal_message["tool_call_id"]
+    assert _without_operation_id(
+        json.loads(replayed_message["content"])
+    ) == _without_operation_id(json.loads(refusal_message["content"]))
+
+
+class _TruncatedErrorBody:
+    def read(self, size: int = -1) -> bytes:
+        raise IncompleteRead(b"partial")
+
+    def close(self) -> None:
+        return None
+
+
+class _TruncatedErrorOpener:
+    def open(self, request: Any, timeout: float):
+        raise HTTPError(
+            "https://api.deepseek.com/v1/chat/completions",
+            503,
+            "error",
+            {},  # type: ignore[arg-type]
+            _TruncatedErrorBody(),  # type: ignore[arg-type]
+        )
+
+
+# Review P2-3: an HTTP 503 whose error body is cut short (IncompleteRead) is
+# a known truncation, never a complete empty response body.
+def test_review_p2_3_truncated_http_error_body_is_incomplete(tmp_path):
+    client_errors: list[ModelError] = []
+
+    def driver(hooks: Any):
+        client = DeepSeekClient(CANARY, opener=_TruncatedErrorOpener())
+        client.capture_http = hooks.http
+        hooks.clock(s.START + timedelta(minutes=1))
+        try:
+            hooks.model(client).complete(CALL)
+        except ModelError as exc:
+            client_errors.append(exc)
+        return s.outcome(
+            (), final_state="failed", decision="handoff", report_available=False
+        )
+
+    pkg = tmp_path / "source"
+    try:
+        ref = record(driver, destination=pkg, context=s.context())
+    except RecordingError as exc:
+        # I:41: record may raise its fixed code after writing complete=false.
+        assert str(exc) == exc.code
+        doc = s.package_json(pkg)
+        sha = s.sha((pkg / "recording.json").read_bytes())
+    else:
+        doc = s.package_json(pkg)
+        sha = ref.sha256
+    # The client itself failed the call (503); the driver handled it.
+    assert len(client_errors) == 1
+    # C:120 / I:69 / I:80: complete=False with a reason; the reason code
+    # itself is not yet fixed and is not asserted.
+    assert doc["complete"] is False
+    assert doc["incomplete_reasons"]
+    assert s.verify_code(pkg, sha) in INCOMPLETE_CODES

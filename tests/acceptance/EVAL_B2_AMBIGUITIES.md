@@ -63,3 +63,20 @@
 13. **结构模式的「不读取凭据」如何观察**
     - 原文：I:44「不读取凭据」。
     - 采用：替换 `os.environ`，断言调用期间没有读取名称含 KEY/TOKEN/SECRET/DEEPSEEK/PASSWORD 的环境变量。实现如果通过其他途径读取凭据文件，这项测试覆盖不到。
+
+## 独立审查 3 项 P2 补测（2026-10-14，语义由 lead 确定，接口文档待同步）
+
+14. **跨事件身份/窗口不符在哪一步报出（Review P2-1）**
+    - 原文：lead 裁决「结构核验必须报 IDENTITY_MISMATCH，模型回放不得使用这个包」；I:41 允许 record 落 complete=false 后抛固定码。
+    - 读法 A：record 照常完成，结构核验报 IDENTITY_MISMATCH。读法 B：record 当场抛 IDENTITY_MISMATCH 并留下不完整包。
+    - 采用：两者都接受。读法 A 时模型回放须抛 IDENTITY_MISMATCH；读法 B 时须抛 RECORDING_INCOMPLETE。两种情况下 investigator 都不得被调用。
+    - 「没给窗口时等于由授权框推出的默认窗」：测试用 binding.default_window（12:05–12:10）作为默认窗。为了不依赖「默认窗是 default_window 还是授权框本身」这一点，反例取 12:01–12:03，它和两者都不相等。另有一条对照：显式窗口和结果窗口相等时核验通过，用来证明判定标准是相等，而不是「落在授权框内」。
+
+15. **重复调用拒绝的录制与回放（Review P2-2）**
+    - 用真实 `InvestigationLoop`、`tests/m1_investigation_support.assemble` 和 `metrics.range_query` 复现审查场景，没有用合成 investigate。绑定按真实 ToolOutcome 冻结（tool/target/source=prometheus，授权窗和默认窗都取 scope 窗口），source_run_id 取 loop 的 run_id。
+    - 「原样重现」的读法：回放中的拒绝 delivery 的完整视图和实际消息内容，去掉 operation_id 后与源包逐字段相等；tool_call_id 也相同。operation_id 由新 Run 的 step 派生，I:73 只允许新 operation ID 不同，所以不比较它。
+    - 「拒绝有自己的 operation_id」通过拒绝视图里的 operation_id 观察：它非空，并且与第一次真实调用的 operation_id 不同。「不调用 facade」通过两点观察：源包和回放中 facade 都只被调用 1 次，tool 事件也只有 1 个。拒绝 delivery 的 parent 为 null（I:62）。
+    - 回放 driver 复用 assemble 产生的 run_id，测试不断言回放 loop 内部的 run_id，只看 ReplayCapture 的 Run 映射。
+
+16. **错误正文截断（Review P2-3）**
+    - 原因码名称尚未确定，测试只断言 complete=false、incomplete_reasons 非空，以及 load 加结构核验得到 RECORDING_INCOMPLETE。record 当场抛码（任意固定码）或正常返回都接受。测试没有引用其他测试模块里的私有 opener，而是在本文件内重新实现了一个等价 opener：HTTPError 503，读取正文时抛 IncompleteRead(b'partial')。
