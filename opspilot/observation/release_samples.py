@@ -656,7 +656,7 @@ class _ReleaseSampleOps(_StoreBase):
 
         release = release_row(conn, observation_id)
         profile = conn.execute(
-            "SELECT health_profile_revision,content,content_sha256 FROM opspilot_health_profiles WHERE health_profile_revision=%s",
+            "SELECT health_profile_revision AS revision,content,content_sha256 FROM opspilot_health_profiles WHERE health_profile_revision=%s",
             (release["health_profile_revision"],),
         ).fetchone()
         sessions = conn.execute(
@@ -673,7 +673,7 @@ class _ReleaseSampleOps(_StoreBase):
         ).fetchall()
         for sample in samples:
             sample["queries"] = conn.execute(
-                "SELECT sample_id,query_key,query,source,evaluated_at,sent_at,status,http_status,detail,body_complete,raw,raw_sha256 FROM opspilot_release_query_results WHERE sample_id=%s ORDER BY query_key",
+                'SELECT sample_id,query_key,query,source,evaluated_at,sent_at,status,http_status,detail,body_complete,raw,raw_sha256 FROM opspilot_release_query_results WHERE sample_id=%s ORDER BY query_key COLLATE "C"',
                 (sample["sample_id"],),
             ).fetchall()
         endings = conn.execute(

@@ -74,7 +74,8 @@ def _replay_release_history(history: Mapping[str, object]) -> ReleaseReplay:
     try:
         profile = HealthProfile.model_validate_json(profile_data["content"])
         if (
-            profile.revision != release.health_profile_revision
+            profile_data["revision"] != release.health_profile_revision
+            or profile.revision != profile_data["revision"]
             or sha256(profile_data["content"].encode())
             != profile_data["content_sha256"]
         ):

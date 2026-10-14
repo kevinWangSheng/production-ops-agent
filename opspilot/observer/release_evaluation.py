@@ -146,6 +146,8 @@ def version_identity(
     rs = f"{context.health_profile.subject.service}-{h}"
     if (
         h is None
+        or len(h) > 63
+        or re.fullmatch(r"[a-z0-9](?:[-a-z0-9]*[a-z0-9])?", h) is None
         or len(rs) > 253
         or re.fullmatch(
             r"[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*", rs
@@ -242,7 +244,7 @@ def build_release_query_plan(
             assert selector_match is not None
             selector = selector_match.group(1)
             sliced["instances"] = (
-                f"count(count by (service_instance_id) (count_over_time({selector}[{w}s])))"
+                f"count by (service_instance_id) (count_over_time({selector}[{w}s]))"
             )
             for kind, expr in sliced.items():
                 plan[f"after:{signal.name}:{kind}"] = expr
@@ -557,7 +559,7 @@ def evaluate_release_sample(
                     ):
                         reasons.add("VERSION_INSTANCE_MISMATCH")
 
-            if all(len(v) == 1 for v in parsed):
+            if all(len(v) == 1 for v in parsed[:3]):
                 value = parsed[0][0][2]
                 rawcount = parsed[1][0][2]
                 timestamp = parsed[2][0][2]
@@ -578,7 +580,11 @@ def evaluate_release_sample(
                 ):
                     verdict = "stale"
                     reasons.add(f"STALE_TELEMETRY:{scope}:{signal.name}")
-                elif scope == "after" and parsed[3][0][2] != len(instances):
+                elif scope == "after" and (
+                    len(parsed[3]) != len(uid_names)
+                    or {labels.get("service_instance_id") for labels, _, _ in parsed[3]}
+                    != set(uid_names)
+                ):
                     verdict = "missing"
                     reasons.add("VERSION_INSTANCE_MISMATCH")
                 else:
