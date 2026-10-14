@@ -2790,3 +2790,155 @@ def test_ruling_2026_10_14_real_evidence_free_results_record_completely(tmp_path
     assert code is None
     doc = s.package_json(tmp_path / "source")
     assert doc["complete"] is True and doc["incomplete_reasons"] == []
+
+
+# --- final recheck P2: snapshot freeze timing (user ruling 2026-10-14) -----------------
+# Interface lines 114/119/121-130: the ToolSnapshot is frozen before the first
+# model/tool call and independently of responses. A driver that rebinds a
+# snapshot after its first model call (so that it matches a later restricted
+# result) must not get a complete package. See EVAL_B2_AMBIGUITIES.md item 23.
+
+
+def _late_snapshot_setup():
+    """Config A (frozen at entry when used) and config B (what the executor
+    actually runs, max_view_tokens differs). Each config's scope comes from an
+    executor built from that config's own DTOs."""
+    exec_a, _t, clock_a, regs_a, tgts_a = _real_tool(
+        registrations=[tool_registration(max_view_tokens=50)],
+        token_counter=lambda _text: 100,
+    )
+    exec_b, transport_b, clock_b, regs_b, tgts_b = _real_tool(
+        registrations=[tool_registration(max_view_tokens=40)],
+        token_counter=lambda _text: 100,
+    )
+    transport_b.response = TransportResponse(body=tool_body([{"value": 3}]))
+    snap_a = ToolSnapshot(tuple(regs_a), tuple(tgts_a), exec_a.scope)
+    snap_b = ToolSnapshot(tuple(regs_b), tuple(tgts_b), exec_b.scope)
+    return exec_b, clock_b, snap_a, snap_b
+
+
+def _plain_context(executor: Any, clock: Any, tool_request: Any):
+    return s.context(
+        source_run_id=executor.scope.run_id,
+        started_at=clock.now(),
+        ended_at=clock.now() + timedelta(seconds=10),
+        bindings=(
+            s.binding(
+                tool=tool_request.tool_name,
+                target=tool_request.target_ref,
+                source="prometheus",
+                authorized_window=executor.scope.window.as_json(),
+                default_window=None,
+            ),
+        ),
+    )
+
+
+def _late_bind_driver(
+    executor: Any, tool_request: Any, late_snapshot: Any, entry_context: Any, log: dict
+):
+    def driver(hooks: Any):
+        model = hooks.model(
+            ScriptedModel(
+                [
+                    loop_reply(
+                        tool_calls=[
+                            loop_tool_call(
+                                "call",
+                                tool_request.tool_name,
+                                json.dumps(tool_request.params),
+                            )
+                        ],
+                        finish="tool_calls",
+                    ),
+                    loop_reply(content="done"),
+                ]
+            )
+        )
+        first = ModelCall(
+            messages=(
+                {"role": "system", "content": s.SYSTEM},
+                {"role": "user", "content": s.QUESTION},
+            ),
+            tools=None,
+            json_mode=False,
+            max_tokens=100,
+            timeout_seconds=30.0,
+        )
+        answer = model.complete(first)  # first model call happens first
+        if late_snapshot is not None:
+            current = getattr(hooks, "context", entry_context)
+            rebound = bind_tool_snapshots(current, (late_snapshot,), s.manifest())
+            try:
+                hooks.context = rebound
+                log["replaced"] = True
+            except (AttributeError, TypeError):
+                # hooks exposes no replaceable context (ambiguity 23); the
+                # late snapshot then simply never reaches the recording.
+                log["replaced"] = False
+        result = hooks.tools(executor).execute(tool_request)
+        log["result"] = result
+        message = {
+            "role": "tool",
+            "tool_call_id": "call",
+            "content": s.canonical_bytes(dict(result.model_view)).decode(),
+        }
+        hooks.delivery(result.model_view, message)
+        assistant = {
+            "role": "assistant",
+            "content": answer.content,
+            "reasoning_content": answer.reasoning_content,
+            "tool_calls": [dict(c) for c in answer.tool_calls],
+        }
+        model.complete(replace(first, messages=(*first.messages, assistant, message)))
+        return s.outcome(())
+
+    return driver
+
+
+# Final recheck P2 (negative): snapshot bound only after the first model call.
+@pytest.mark.parametrize("entry", ["no-snapshot", "other-compliant-snapshot"])
+def test_final_recheck_p2_snapshot_bound_after_first_call_is_rejected(tmp_path, entry):
+    executor, clock, snap_a, snap_b = _late_snapshot_setup()
+    tool_request = tool_request_fixture()
+    context = _plain_context(executor, clock, tool_request)
+    if entry == "other-compliant-snapshot":
+        context = bind_tool_snapshots(context, (snap_a,), s.manifest())
+    log: dict[str, Any] = {}
+    pkg = tmp_path / "source"
+    with pytest.raises(RecordingError) as err:
+        record(
+            _late_bind_driver(executor, tool_request, snap_b, context, log),
+            destination=pkg,
+            context=context,
+        )
+    # The late snapshot matches the restricted result that follows it.
+    result = log["result"]
+    assert (result.status, result.reason) == ("error", "RESULT_TOO_LARGE")
+    assert result.evidence is None
+    assert result.model_view["max_view_tokens"] == 40
+    assert str(err.value) == err.value.code
+    assert err.value.code == "IDENTITY_MISMATCH"
+    assert_not_complete(pkg)
+    sha = s.sha((pkg / "recording.json").read_bytes())
+    assert s.verify_code(pkg, sha) in INCOMPLETE_CODES | {"IDENTITY_MISMATCH"}
+
+
+# Final recheck P2 (control): the same configuration frozen before record().
+def test_final_recheck_p2_snapshot_frozen_before_record_verifies(tmp_path):
+    executor, clock, _snap_a, snap_b = _late_snapshot_setup()
+    tool_request = tool_request_fixture()
+    context = bind_tool_snapshots(
+        _plain_context(executor, clock, tool_request), (snap_b,), s.manifest()
+    )
+    log: dict[str, Any] = {}
+    pkg = tmp_path / "source"
+    ref = record(
+        _late_bind_driver(executor, tool_request, None, context, log),
+        destination=pkg,
+        context=context,
+    )
+    assert log["result"].model_view["max_view_tokens"] == 40
+    doc = s.package_json(pkg)
+    assert doc["complete"] is True and doc["incomplete_reasons"] == []
+    assert s.verify_code(pkg, ref.sha256) is None

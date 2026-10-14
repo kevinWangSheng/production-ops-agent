@@ -132,3 +132,10 @@
       - Recheck2：请求窗是授权框 00:00–01:00；(a) 的结果窗是 00:01–01:00；结果去掉 EvidenceRecord，view 保留 evidence_id 和非空 content，并加上 rows。
     - 新增对照测试 `test_real_snapshot_bases_verify_untampered`：同样的底和快照、不做篡改时必须能完整录制并通过核验。这证明反例被拒是因为各自的篡改，而不是因为缺快照或夹具本身不合规。
     - Review P2-1 的正向对照（窗口相等时通过）仍用假夹具。它带完整 EvidenceRecord，不属于受限分支，没有快照也能通过。
+
+23. **快照冻结时序：driver 如何替换 hooks.context（最终复验 P2）**
+    - 原文：接口第 114、119、121–130 行要求 ToolSnapshot 在首次模型/工具调用前冻结，且独立于响应。接口没有定义 `CaptureHooks.context`，也没有给替换方式。
+    - 读法 A：hooks 暴露一个可赋值的 `context`。读法 B：hooks 不暴露 context，driver 无法替换。
+    - 采用：两种都覆盖。driver 在第一次模型调用之后，先读 `getattr(hooks, "context", 入口 context)`，用 `bind_tool_snapshots` 绑定新快照，再尝试 `hooks.context = 新 context`；如果抛 AttributeError 或 TypeError，就当作无法替换，继续执行。不论哪种读法，都要求 record 抛 IDENTITY_MISMATCH 且包不完整；load 加结构核验也必须拒绝。
+    - 「合规快照」的构造：入口快照 A（max_view_tokens=50）和迟到快照 B（max_view_tokens=40）各取自用自身 DTO 构建的真实执行器；真正执行的是 B。迟到快照因此与随后的受限结果（100/40 的 RESULT_TOO_LARGE）一致，只有冻结时序违规。
+    - 对照：在 record 之前就冻结 B，录制完整、核验通过。
