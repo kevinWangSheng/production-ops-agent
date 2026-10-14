@@ -754,6 +754,19 @@ def _save(
     return _publish(hooks.destination / "recording.json", payload, "application/json")
 
 
+def _configuration_bytes(context: RecordingContext) -> bytes:
+    """Detach the configuration baseline from nested mutable DTO mappings."""
+    return canonical_bytes(
+        {
+            "tool_snapshots": context.tool_snapshots,
+            "source_manifest": context.source_manifest,
+            "source_manifest_hash": context.source_manifest_hash,
+            "bindings": context.bindings,
+            "versions": context.versions,
+        }
+    )
+
+
 def record(
     driver: Callable[[CaptureHooks], IncidentOutcome],
     *,
@@ -761,6 +774,7 @@ def record(
     context: RecordingContext,
 ) -> ArtifactRef:
     context = _context(context)
+    configuration = _configuration_bytes(context)
     _create(destination, context)
     hooks = CaptureHooks(
         destination,
@@ -810,7 +824,20 @@ def record(
             else "RECORDING_INCOMPLETE"
         )
         hooks.reasons.append(failure)
-    ref = _save(hooks, outcome, failure is None)
+    try:
+        configuration_changed = _configuration_bytes(hooks.context) != configuration
+    except Exception:
+        configuration_changed = True
+    if configuration_changed:
+        failure = "IDENTITY_MISMATCH"
+        hooks.reasons.append(failure)
+    try:
+        ref = _save(hooks, outcome, failure is None)
+    except StorageError:
+        if configuration_changed:
+            # An unserializable replacement still leaves INCOMPLETE in place.
+            raise StorageError("IDENTITY_MISMATCH") from None
+        raise
     if failure is not None:
         raise StorageError(failure) from None
     parent, name = _parent(destination / "INCOMPLETE")

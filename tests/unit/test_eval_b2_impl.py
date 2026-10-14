@@ -2701,3 +2701,163 @@ def test_dispatched_deadline_has_arrival_phase_contact_and_timeout(tmp_path, mut
 
     with pytest.raises(RecordingError, match="IDENTITY_MISMATCH"):
         _audit_source(tmp_path, result, ctx=ctx, tick=NOW + timedelta(seconds=365))
+
+
+@pytest.mark.parametrize(
+    "prebound", [False, True], ids=["response_derived", "prebound_control"]
+)
+def test_snapshot_configuration_is_frozen_at_record_entry(tmp_path, prebound):
+    from opspilot.tools import ToolRegistry
+    from opspilot.tools.executor import _view_size_message
+
+    base = _audit_context()
+    response_limit = 777
+    observations = []
+
+    def snapshot(limit):
+        previous = base.tool_snapshots[0]
+        tools = (replace(previous.tools[0], max_view_tokens=limit),)
+        scope = replace(
+            previous.scope, tool_registry_revision=ToolRegistry(tools).revision
+        )
+        return ToolSnapshot(tools, previous.targets, scope)
+
+    initial = (
+        bind_tool_snapshots(
+            context(), (snapshot(response_limit),), base.source_manifest
+        )
+        if prebound
+        else context()
+    )
+
+    def driver(hooks):
+        model = hooks.model(
+            ScriptedModel(
+                [
+                    replace(
+                        first_call(),
+                        content=json.dumps({"max_view_tokens": response_limit}),
+                    ),
+                    reply(content="done"),
+                ]
+            )
+        )
+        first = call()
+        response = model.complete(first)
+        limit = json.loads(response.content)["max_view_tokens"]
+        if not prebound:
+            observations.append(
+                (len(hooks.events), len(hooks.context.tool_snapshots), limit)
+            )
+            hooks.context = bind_tool_snapshots(
+                hooks.context, (snapshot(limit),), base.source_manifest
+            )
+        frozen = hooks.context.tool_snapshots[0]
+
+        class Facade:
+            def execute(self, req):
+                result = _size_result(req, "view")
+                op = replace(
+                    result.operation,
+                    tool_registry_revision=frozen.scope.tool_registry_revision,
+                )
+                view = dict(
+                    result.model_view,
+                    max_view_tokens=limit,
+                    view_tokens=limit + 1,
+                    message=_view_size_message(limit + 1, limit),
+                )
+                return replace(result, operation=op, model_view=view)
+
+        result = hooks.tools(Facade()).execute(request())
+        message = {
+            "role": "tool",
+            "tool_call_id": response.tool_calls[0]["id"],
+            "content": canonical_bytes(result.model_view).decode(),
+        }
+        hooks.delivery(result.model_view, message)
+        assistant = {
+            "role": "assistant",
+            "content": response.content,
+            "reasoning_content": response.reasoning_content,
+            "tool_calls": list(response.tool_calls),
+        }
+        model.complete(call([*first.messages, assistant, message]))
+        return replace(outcome(), evidence_ids=())
+
+    if not prebound:
+        with pytest.raises(RecordingError, match="IDENTITY_MISMATCH"):
+            source(tmp_path, ctx=initial, driver=driver)
+        assert observations == [(1, 0, response_limit)]
+        doc = json.loads((tmp_path / "source" / "recording.json").read_bytes())
+        assert doc["complete"] is False
+        assert "IDENTITY_MISMATCH" in doc["incomplete_reasons"]
+        assert (tmp_path / "source" / "INCOMPLETE").exists()
+        with pytest.raises(RecordingError, match="RECORDING_INCOMPLETE"):
+            load_recording(
+                tmp_path / "source" / "recording.json",
+                expected_hash=sha(canonical_bytes(doc)),
+            )
+    else:
+        rec = source(tmp_path, ctx=initial, driver=driver)
+        manifest, attempt = manifest_attempt(rec, "structural")
+        assert (
+            rec.complete
+            and rec.context.tool_snapshots[0].tools[0].max_view_tokens == response_limit
+        )
+        assert replay(
+            rec,
+            mode="structural",
+            manifest=manifest,
+            attempt=attempt,
+            investigator=None,
+        ).structural_verified
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ["versions_in_place", "binding", "manifest", "aborted", "unserializable"],
+)
+def test_record_entry_configuration_cannot_change_after_model_reply(tmp_path, mutation):
+    def driver(hooks):
+        hooks.model(ScriptedModel([reply(content="done")])).complete(call())
+        if mutation == "binding":
+            binding = replace(hooks.context.bindings[0], profile_hash=sha(b"changed"))
+            hooks.context = replace(hooks.context, bindings=(binding,))
+        elif mutation == "manifest":
+            # The manifest remains self-consistent; its nested dimensions are
+            # shared with the context used to construct CaptureHooks.
+            hooks.context.source_manifest.dimensions["prompt"] = DimensionValue(
+                "hash", sha(b"changed"), None
+            )
+            hooks.context = replace(
+                hooks.context,
+                source_manifest_hash=manifest_hash(hooks.context.source_manifest),
+            )
+        else:
+            hooks.context.versions["code"] = (
+                object() if mutation == "unserializable" else "after-response"
+            )
+            if mutation == "aborted":
+                raise RuntimeError("synthetic driver failure")
+        return replace(outcome(), evidence_ids=())
+
+    with pytest.raises(RecordingError, match="IDENTITY_MISMATCH"):
+        source(tmp_path, ctx=_audit_context(), driver=driver)
+    assert (tmp_path / "source" / "INCOMPLETE").exists()
+    path = tmp_path / "source" / "recording.json"
+    if path.exists():
+        assert json.loads(path.read_bytes())["complete"] is False
+
+
+def test_record_entry_lock_allows_input_references_and_end_clock_to_advance(tmp_path):
+    def driver(hooks):
+        hooks.input(b'{"synthetic_original":true}')
+        hooks.model(ScriptedModel([reply(content="done")])).complete(call())
+        hooks.finish(NOW + timedelta(seconds=2))
+        return replace(outcome(), evidence_ids=())
+
+    rec = source(tmp_path, ctx=_audit_context(), driver=driver)
+    assert rec.complete and rec.context.ended_at == NOW + timedelta(seconds=2)
+    assert len(rec.context.input_refs) == 1
+    assert json_blob(rec, rec.context.input_refs[0]) == {"synthetic_original": True}
