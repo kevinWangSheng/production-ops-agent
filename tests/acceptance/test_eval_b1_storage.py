@@ -1656,3 +1656,25 @@ def test_layout_valid_d5_still_complete(tmp_path):
     agg = _layout_reasons(tmp_path, d5_plan)
     assert agg.baseline_complete is True
     assert agg.incomplete_reasons == ()
+
+
+# ================================================================ Bot P1 r3
+
+
+@pytest.mark.parametrize("field_name", ["service", "operation"])
+def test_empty_injected_identity_rejected(bundle, field_name):
+    # Bot P1 r3: the storage boundary re-applies load_scenario() validation to
+    # the deserialized spec/answer. An empty injected service/operation, with
+    # the judge diagnosis emptied to match, is self-consistent (evaluate()
+    # recomputes overall=True) and must still be SCHEMA_INVALID.
+    cap = make_capture(bundle)
+    injected = replace(cap.answer.injected, **{field_name: ""})
+    diagnoses = tuple(replace(d, **{field_name: ""}) for d in cap.judge.diagnoses)
+    cap = replace(
+        cap,
+        answer=replace(cap.answer, injected=injected),
+        judge=replace(cap.judge, diagnoses=diagnoses),
+    )
+    assert evaluate_capture(cap).overall is True
+    path = forge_summary(bundle, f"empty-{field_name}.json", cap)
+    rejects("SCHEMA_INVALID", load, bundle, path)
