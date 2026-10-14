@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Literal, cast
@@ -377,9 +377,15 @@ def _answer(data: Mapping[str, Any]) -> Answer:
     )
 
 
-def load_scenario(directory: Path) -> tuple[ScenarioSpec, Answer]:
-    spec = _spec(_read(directory / "scenario.json"))
-    answer = _answer(_read(directory / "answer.json"))
+def validate_scenario(spec: ScenarioSpec, answer: Answer) -> None:
+    """Validate DTOs through the same parsers and constraints as scenario files."""
+    # The DTO has a full IncidentScenario; the file format omits its derived ID.
+    # JSON round-tripping maps DTO tuples to the file format's JSON arrays.
+    scenario_data = json.loads(json.dumps(asdict(spec)))
+    scenario_data["incident"].pop("scenario_id")
+    answer_data = json.loads(json.dumps(asdict(answer)))
+    if (_spec(scenario_data), _answer(answer_data)) != (spec, answer):
+        raise ScenarioError("SCENARIO_DTO_MISMATCH")
     if (spec.scenario_id, spec.version) != (answer.scenario_id, answer.version):
         raise ScenarioError("SCENARIO_ANSWER_MISMATCH")
     if spec.kind == "fault" and (answer.injected is None or answer.signature is None):
@@ -388,6 +394,12 @@ def load_scenario(directory: Path) -> tuple[ScenarioSpec, Answer]:
         answer.injected is not None or answer.signature is not None
     ):
         raise ScenarioError("NORMAL_FORBIDS_INJECTED_AND_SIGNATURE")
+
+
+def load_scenario(directory: Path) -> tuple[ScenarioSpec, Answer]:
+    spec = _spec(_read(directory / "scenario.json"))
+    answer = _answer(_read(directory / "answer.json"))
+    validate_scenario(spec, answer)
     return spec, answer
 
 

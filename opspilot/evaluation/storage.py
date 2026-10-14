@@ -39,6 +39,7 @@ from opspilot.evaluation.model import (
     Window,
     canonical_view_hash,
     load_scenarios,
+    validate_scenario,
 )
 from opspilot.evaluation.rounds import (
     Aggregate,
@@ -286,33 +287,15 @@ def _identity(
         or (outcome is not None and outcome.scenario_id != spec.scenario_id)
     ):
         raise StorageError("IDENTITY_MISMATCH")
-    if (
-        not answer.expected_output
-        or any(not t.strip() for t in answer.expected_output)
-        or attempt.repetition < 1
-        or not attempt.attempt_id.strip()
-        or not spec.scenario_id.strip()
-        or not spec.version.strip()
-        or not spec.stimulus.question.strip()
-        or not spec.stimulus.target_id.strip()
-        or not spec.stimulus.subject_id.strip()
-    ):
+    if attempt.repetition < 1 or not attempt.attempt_id.strip():
         invalid()
-    if spec.kind == "normal":
-        if answer.injected is not None or answer.signature is not None:
-            invalid()
-    elif answer.injected is None or answer.signature is None:
-        invalid()
-    if answer.signature is not None and (
-        not answer.signature.any_of
-        or answer.signature.min_matches < 1
-        or not answer.signature.rule_id.strip()
-        or any(
-            not m.service.strip() or not m.operation.strip()
-            for m in answer.signature.any_of
-        )
-    ):
-        invalid()
+    try:
+        validate_scenario(spec, answer)
+    except (ValueError, TypeError):
+        pass
+    else:
+        return
+    invalid()
 
 
 def _manifest(manifest: Manifest) -> None:

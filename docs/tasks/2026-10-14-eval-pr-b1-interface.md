@@ -63,6 +63,8 @@ JSON 顶层如下，未知 schema 或字段拒绝；writer 写出的 null 和默
 
 DTO 序列化：字段名严格等于 dataclass 的全部字段（包括 PR-A 默认字段）；嵌套递归展开，tuple/frozenset 是数组（frozenset 排序、不得重复），Mapping 是字符串键对象；Literal 仅接受列出的字符串；bool 必须是 JSON true/false（拒绝 0/1/"false"）；int 不接受 bool；float 只接受有限 JSON 数；datetime 是 UTC ISO8601 字符串，reader 接受 Z 或 +00:00，writer 用 +00:00。ScenarioSpec.incident 包含完整 IncidentScenario（也含 scenario_id），不同于场景目录的简写格式。PR-A 场景限制仍成立：fault 必须有 injected/signature，normal 两者为 null，expected_output 非空，signature.any_of 非空且 min_matches≥1。
 
+storage在DTO反序列化后统一调用opspilot.evaluation.model.validate_scenario(spec, answer)，与load_scenario共享原有_spec/_answer解析及场景约束，覆盖injected全部字段非空/类型/格式、别名、signature与场景种类约束；规则失败报SCHEMA_INVALID且异常链为空，既有身份绑定错误仍按IDENTITY_MISMATCH处理；理由：机器人 P1 r3。
+
 `view`、usage、cost 为不限定业务键的 JSON 数据对象，所有层仍拒绝重复键/非有限数/非JSON类型；usage/cost 缺测为 null，不能默认为零。报告 raw 是字符串，报告 schema 错误作为 gate 失败保存，不把失败 Run 拒绝掉。
 
 canonical JSON：`json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode("utf-8")`，无换行，与产品 canonical 算法在有限 JSON 上一致。ArtifactRef.sha256 为**实际文件字节** SHA256 的 64 位小写 hex；bytes 为非负整数；media_type 非空。manifest_hash 使用 PR-A `manifest_hash()`（不改 PR-A hash/version 字符串的既有语义）；view hash 用 `canonical_view_hash()`；report hash 按 raw 字节。refs.path 必须是非空 POSIX 包内相对路径，拒绝绝对路径、反斜线、空段、`.`、`..`；reader 拒绝本地路径的任一符号链接及非普通文件。resolver 必须同样拒绝包内符号链接和越界，B1 无法从 bytes callback 判定它访问了哪个 inode。

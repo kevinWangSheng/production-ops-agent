@@ -1036,3 +1036,87 @@ def test_layout_mismatch_preserves_existing_reasons(tmp_path):
         "BASELINE_LAYOUT_MISMATCH",
     )
     assert result.rows[0].attempted == 1 and result.rows[0].failed == 1
+
+
+def fault_capture():
+    base = capture()
+    spec, answer = load_scenario(ROOT / "evals/scenarios/eval-cart-failure")
+    return replace(
+        base,
+        spec=spec,
+        answer=answer,
+        attempt=replace(
+            base.attempt, scenario_id=spec.scenario_id, scenario_version=spec.version
+        ),
+        outcome=replace(base.outcome, scenario_id=spec.scenario_id),
+    )
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("answer.injected.service", ""),
+        ("answer.injected.service", " \t"),
+        ("answer.injected.operation", ""),
+        ("answer.injected.operation", " \n"),
+        ("answer.injected.flag", ""),
+        ("answer.injected.variant", ""),
+        ("answer.injected.service_aliases", [""]),
+        ("answer.injected.operation_aliases", [" "]),
+        ("answer.injected.service", 0),
+        ("answer.injected.operation", None),
+        ("answer.injected.service_aliases", "alias"),
+        ("spec.incident.feature_id", ""),
+        ("spec.incident.acceptance_step", " "),
+        ("spec.incident.kind", ""),
+        ("spec.incident.subject_id", " "),
+        ("spec.stimulus.question", ""),
+        ("spec.stimulus.subject_id", " "),
+        ("spec.stimulus.target_id", ""),
+        ("answer.expected_output", []),
+        ("answer.expected_output", [" "]),
+        ("answer.signature.rule_id", ""),
+        ("answer.signature.any_of", []),
+        ("answer.signature.any_of.0.service", ""),
+        ("answer.signature.any_of.0.operation", " "),
+        ("answer.signature.min_matches", 0),
+    ],
+)
+def test_persisted_scenario_uses_file_validation(tmp_path, field, value):
+    from opspilot.evaluation import ScenarioError
+
+    cap = fault_capture()
+    path = tmp_path / "summary.json"
+    write_summary(path, cap)
+    mutate(path, "capture." + field, value)
+    payload = json.loads(path.read_bytes())["capture"]
+    scenario = payload["spec"]
+    scenario["incident"].pop("scenario_id")
+    (tmp_path / "scenario.json").write_bytes(raw(scenario))
+    (tmp_path / "answer.json").write_bytes(raw(payload["answer"]))
+    with pytest.raises(ScenarioError):
+        load_scenario(tmp_path)
+    with pytest.raises(StorageError, match="^SCHEMA_INVALID$") as caught:
+        load_summary(path, manifest=cap.manifest, resolve=resolver(tmp_path))
+    assert caught.value.__cause__ is None and caught.value.__context__ is None
+
+
+@pytest.mark.parametrize("field", ["service", "operation", "flag", "variant"])
+def test_writer_and_journal_reject_blank_injected(tmp_path, field):
+    cap = fault_capture()
+    bad = replace(
+        cap,
+        answer=replace(
+            cap.answer, injected=replace(cap.answer.injected, **{field: " "})
+        ),
+    )
+    with pytest.raises(StorageError, match="^SCHEMA_INVALID$"):
+        write_summary(tmp_path / "summary.json", bad)
+    with pytest.raises(StorageError, match="^SCHEMA_INVALID$"):
+        write_attempt(
+            tmp_path / "attempt.json", AttemptJournal(bad.attempt, bad.spec, bad.answer)
+        )
+    assert (
+        not (tmp_path / "summary.json").exists()
+        and not (tmp_path / "attempt.json").exists()
+    )
