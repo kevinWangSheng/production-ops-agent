@@ -2391,3 +2391,149 @@ def test_recheck3_p2_product_oversize_template_records_completely(tmp_path, ceil
     event = s.events_of(doc, "tool")[0]
     assert event["hashes"]["raw_sha256"] == s.sha(b"")
     assert s.verify_code(pkg, ref.sha256) is None
+
+
+# --- fourth recheck finding (2026-10-14) ------------------------------------------------
+# Lead ruling: every field allowed in an evidence-free result must be rebuilt
+# from the frozen request, tool registration or product template and
+# compared; query is canonical(accepted request params) as
+# opspilot/tools/executor.py:692-705 builds it. Mismatch or non-rebuildable
+# -> IDENTITY_MISMATCH. See EVAL_B2_AMBIGUITIES.md item 20.
+#
+# Positive control (b): test_recheck3_p2_product_oversize_template_records_
+# completely[view-tokens] above already records the real executor's
+# view-token RESULT_TOO_LARGE result, whose operation.query/view.query the
+# executor builds from the request params, and requires a complete package
+# that passes structural verification; it is not repeated here.
+
+
+def _single_call_driver(executor: Any, tool_request: Any, seen: list[Any]):
+    def driver(hooks: Any):
+        model = hooks.model(
+            ScriptedModel(
+                [
+                    loop_reply(
+                        tool_calls=[
+                            loop_tool_call(
+                                "call",
+                                tool_request.tool_name,
+                                json.dumps(tool_request.params),
+                            )
+                        ],
+                        finish="tool_calls",
+                    ),
+                    loop_reply(content="done"),
+                ]
+            )
+        )
+        first = ModelCall(
+            messages=(
+                {"role": "system", "content": s.SYSTEM},
+                {"role": "user", "content": s.QUESTION},
+            ),
+            tools=None,
+            json_mode=False,
+            max_tokens=100,
+            timeout_seconds=30.0,
+        )
+        answer = model.complete(first)
+        result = hooks.tools(executor).execute(tool_request)
+        seen.append(result)
+        message = {
+            "role": "tool",
+            "tool_call_id": "call",
+            "content": s.canonical_bytes(dict(result.model_view)).decode(),
+        }
+        hooks.delivery(result.model_view, message)
+        assistant = {
+            "role": "assistant",
+            "content": answer.content,
+            "reasoning_content": answer.reasoning_content,
+            "tool_calls": [dict(c) for c in answer.tool_calls],
+        }
+        model.complete(replace(first, messages=(*first.messages, assistant, message)))
+        return s.outcome(())
+
+    return driver
+
+
+# Recheck4 P2 (a): operation.query and view.query forged to the same source
+# rows agree with each other but not with the frozen request params.
+def test_recheck4_p2_evidence_free_query_not_from_request_is_rejected(tmp_path):
+    real, transport, _sink, clock = build_tool_executor(
+        registrations=[tool_registration(max_view_tokens=50)],
+        token_counter=lambda _text: 100,
+    )
+    transport.response = TransportResponse(body=tool_body([{"value": 3}]))
+    tool_request = tool_request_fixture(params={"expr": "rate(errors[5m])"})
+    payload = {
+        "rows": [{"value": 3, "message": "source response, absent from request"}]
+    }
+
+    produced: list[Any] = []
+
+    class ForgedQuery:
+        def __init__(self) -> None:
+            self.scope = real.scope
+
+        def execute(self, request: Any) -> Any:
+            result = real.execute(request)
+            op = replace(result.operation, query=s.canonical_bytes(payload).decode())
+            forged = replace(
+                result, operation=op, model_view={**result.model_view, "query": payload}
+            )
+            produced.append(forged)
+            return forged
+
+    seen: list[Any] = []
+    context = s.context(
+        source_run_id=real.scope.run_id,
+        started_at=clock.now(),
+        ended_at=clock.now() + timedelta(seconds=10),
+        bindings=(
+            s.binding(
+                tool=tool_request.tool_name,
+                target=tool_request.target_ref,
+                source="prometheus",
+                authorized_window=real.scope.window.as_json(),
+                default_window=None,
+            ),
+        ),
+    )
+    pkg = tmp_path / "source"
+    recorded: Any = None
+    try:
+        recorded = record(
+            _single_call_driver(ForgedQuery(), tool_request, seen),
+            destination=pkg,
+            context=context,
+        )
+    except RecordingError as exc:
+        # Record-time detection accepted (ambiguity 14); never complete.
+        assert str(exc) == exc.code
+        assert exc.code == "IDENTITY_MISMATCH"
+        assert_not_complete(pkg)
+    # Precondition: everything but query is the real product result
+    # (dispatched, no evidence, template message 100/50 tokens).
+    (result,) = produced
+    assert (result.status, result.reason) == ("error", "RESULT_TOO_LARGE")
+    assert result.evidence is None and result.operation.dispatched is True
+    assert result.model_view["view_tokens"] == 100
+    assert result.model_view["max_view_tokens"] == 50
+    assert result.model_view["message"].startswith(
+        "The tool call result is too large to return: 100/50 tokens."
+    )
+    if recorded is not None:
+        assert s.verify_code(pkg, recorded.sha256) == "IDENTITY_MISMATCH"
+        expected = "IDENTITY_MISMATCH"
+        sha = recorded.sha256
+    else:
+        expected = "RECORDING_INCOMPLETE"
+        sha = s.sha((pkg / "recording.json").read_bytes())
+    # Model replay re-verifies the source and refuses before any model call.
+    inv = Investigator()
+    with pytest.raises(RecordingError) as err:
+        rec = load_recording(pkg / "recording.json", expected_hash=sha)
+        run_replay(tmp_path, rec, [s.REQ_A], investigator=inv)
+    assert err.value.code == expected
+    assert inv.calls == []

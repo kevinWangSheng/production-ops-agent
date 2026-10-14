@@ -103,3 +103,9 @@
     - 依据 lead 裁决：message 必须与产品固定模板逐字相等，模板由 view 中的限制字段重建（`_refusal_detail` 用 max_result_bytes，`_view_refusal_detail` 用 view_tokens/max_view_tokens），不相等时报 IDENTITY_MISMATCH。
     - 反例 (a) 只让 message 偏离模板：max_result_bytes=1024，窗口一致（请求未给窗口，结果等于 binding 默认窗），dispatched=True，evidence=None，content=null。和第 14 条一样，record 当场报 IDENTITY_MISMATCH 也接受。
     - 正向对照 (b) 用真实 ReadOnlyToolExecutor 覆盖两种模板：一种是字节上限（返回体为 5000 字节），另一种是视图 token 上限（max_view_tokens=20，token_counter=len）。测试不断言模板全文，只断言前缀能区分两种模板，以免把产品文案抄进测试；逐字相等的比较由实现完成，测试只要求包完整、能通过核验。
+
+20. **无证据结果的 query 来源（Recheck4 P2）**
+    - 依据 lead 裁决：query 必须等于 canonical(请求参数经产品校验后的值)，即 executor.py:692–705 的构造方式；只比较 operation.query 和 view.query 两者彼此一致是不够的。
+    - 反例 (a) 用真实 ReadOnlyToolExecutor 生成结果：max_view_tokens=50，token_counter 恒为 100，所以 view_tokens=100，message 是真实模板。然后只把 operation.query 和 view.query 同时改成 rows 载荷，其余字段保持真实产品值。
+    - 模型回放用夹具里的普通 replay driver。源包在回放前的核验阶段就会被拒绝，调用 driver 之前已经停止，所以 driver 的请求内容无关紧要。
+    - 正向对照 (b) 复用第 19 条的 view-tokens 用例，没有重复写。
