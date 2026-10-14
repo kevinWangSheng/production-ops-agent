@@ -90,6 +90,8 @@ StorageError(ValueError) 的 `.code` 与 str 都为以下固定码，错误正�
 | DERIVED_RESULT_MISMATCH | 保存的evaluation、报告解析、calibration result、aggregate与纯函数重算不一致 |
 | OUTPUT_EXISTS | writer目标已存在（含符号链接），并发仅一个成功 |
 
+所有writer在共同发布入口_publish中先构造将要返回的ArtifactRef，再直接复用_ref的路径与结构校验；返回路径不合法（含最终文件名的反斜杠、NUL等）一律SCHEMA_INVALID，校验在打开目录、创建临时文件及发布前完成，不留下任何新文件；理由：机器人 P2 r4。
+
 每个 writer 先验证全部数据、在目标同目录私有临时普通文件写完并 fsync，再 hard-link 独占发布、fsync目录、删除自身临时文件。读者只见完整文件；不覆盖既有目标，不用 replace。非重复的写IO错误报 EVIDENCE_UNAVAILABLE（含finally中unlink/close清理的OSError，归一后异常链为空；发布后目录fsync或清理失败可能已留下完整文件，重试仍OUTPUT_EXISTS；理由：清理同属写IO边界，不能泄露filename或回滚已发布目标）；多文件调用没有事务承诺。
 
 ## 基线表与调整理由

@@ -216,6 +216,9 @@ def _read(path: Path) -> bytes:
 
 
 def _publish(path: Path, raw: bytes, media_type: str) -> ArtifactRef:
+    path = path.absolute()
+    reference = ArtifactRef(path.name, _sha(raw), len(raw), media_type, "private")
+    _ref(reference)
     parent, name = _parent(path)
     temporary = f".eval-{secrets.token_hex(16)}.tmp"
     created = False
@@ -259,7 +262,7 @@ def _publish(path: Path, raw: bytes, media_type: str) -> ArtifactRef:
             failure = "EVIDENCE_UNAVAILABLE"
     if failure is not None:
         raise StorageError(failure) from None
-    return ArtifactRef(name, _sha(raw), len(raw), media_type, "private")
+    return reference
 
 
 def _envelope(raw: bytes, schema: str, keys: set[str]) -> dict[str, Any]:

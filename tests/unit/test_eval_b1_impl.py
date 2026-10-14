@@ -1120,3 +1120,39 @@ def test_writer_and_journal_reject_blank_injected(tmp_path, field):
         not (tmp_path / "summary.json").exists()
         and not (tmp_path / "attempt.json").exists()
     )
+
+
+@pytest.mark.parametrize(
+    "writer", ["summary", "attempt", "calibration", "round", "baseline"]
+)
+@pytest.mark.parametrize("name", ["round\\1.json", "bad\\name.md", "bad\x00name.json"])
+def test_all_writers_validate_returned_ref_before_publish(tmp_path, writer, name):
+    cap, rnd = round_capture(tmp_path)
+    source = tmp_path / "source-round.json"
+    write_round(source, rnd, resolve=resolver(tmp_path))
+    target = tmp_path / name
+    before = {p.name: p.read_bytes() for p in tmp_path.iterdir()}
+    calls = {
+        "summary": lambda: write_summary(target, cap),
+        "attempt": lambda: write_attempt(
+            target, AttemptJournal(cap.attempt, cap.spec, cap.answer)
+        ),
+        "calibration": lambda: write_calibration(target, calibration_capture()),
+        "round": lambda: write_round(target, rnd, resolve=resolver(tmp_path)),
+        "baseline": lambda: write_baseline(
+            source, resolve=resolver(tmp_path), destination=target
+        ),
+    }
+    with pytest.raises(StorageError, match="^SCHEMA_INVALID$") as caught:
+        calls[writer]()
+    assert caught.value.__cause__ is None and caught.value.__context__ is None
+    assert {p.name: p.read_bytes() for p in tmp_path.iterdir()} == before
+
+
+@pytest.mark.parametrize("name", ["普通轮次.json", "round.1.json", ".hidden.json"])
+def test_valid_published_ref_is_resolvable(tmp_path, name):
+    cap = capture()
+    path = tmp_path / name
+    ref = write_summary(path, cap)
+    assert ref.path == name and resolver(tmp_path)(ref) == path.read_bytes()
+    assert load_summary(path, manifest=cap.manifest, resolve=resolver(tmp_path)).overall
