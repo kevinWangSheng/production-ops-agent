@@ -198,12 +198,30 @@ def call_once(request, config, *, respond, calibration=None):
     return observation, transport
 
 
+OBSERVATION_CODES = frozenset(  # r3 item 3: the only JudgeObservation.error_code values
+    {
+        "CONFIG_INVALID",
+        "JUDGE_IDENTITY_MISMATCH",
+        "SCHEMA_INVALID",
+        "JUDGE_PRIVATE_FIELD",
+        "JUDGE_OUTPUT_INVALID",
+        "JUDGE_VERDICT_MISMATCH",
+        "JUDGE_REQUEST_OVERSIZE",
+        "JUDGE_RESPONSE_OVERSIZE",
+        "JUDGE_TIMEOUT",
+        "JUDGE_HTTP_ERROR",
+        "JUDGE_TRANSPORT_ERROR",
+        "JUDGE_RESPONSE_IDENTITY_INVALID",
+    }
+)
+
+
 def assert_failed(observation, transport, status):
     statuses = {status} if isinstance(status, str) else set(status)
     assert observation.result.status in statuses
     assert observation.passed is False
     assert observation.valid is False
-    assert observation.error_code
+    assert observation.error_code in OBSERVATION_CODES
     assert len(transport.calls) <= 1  # P9: zero retries
 
 
@@ -1212,6 +1230,9 @@ def test_symlinked_pack_file_rejected(frozen, tmp_path):
 def expect_judge_error(exc: BaseException, codes) -> str:
     """r2 item 6: label/calibration errors are JudgeError with a fixed code."""
     assert isinstance(exc, JudgeError), type(exc).__name__
+    # r3 item 2: every converted error leaves no implicit or explicit chain.
+    assert exc.__cause__ is None and exc.__context__ is None
+    assert_no_leak(exc)
     return expect_code(exc, codes)
 
 
@@ -1897,6 +1918,253 @@ def test_verified_calibration_bound_to_pack_and_config(
     # r2 item 1 validates the profile apart from the hash, and no valid zai
     # config hashes differently, so a changed prompt may fail the profile first.
     expect_judge_error(caught.value, {"HASH_MISMATCH", "CONFIG_INVALID"})
+
+
+# ============================================== r3: review counterexamples
+
+
+CASED_SLOTS = (  # r3 item 1: camel/Pascal/kebab/acronym spellings of sensitive slots
+    "clientSecret",
+    "ClientApiKey",
+    "client-secret",
+    "clientAPIKey",
+    "AccessToken",
+    "x-api-key",
+    "userPassword",
+    "sessionCookie",
+    "reasoningContent",
+    "RedactedThinking",
+    "encrypted-content",
+    "modelReasoning",
+)
+
+
+@pytest.mark.parametrize("placement", ["view_top", "view_nested"])
+@pytest.mark.parametrize("key", CASED_SLOTS)
+def test_r3_cased_sensitive_slots_never_reach_transport(configs, key, placement):
+    observation, transport = call_once(
+        PLACEMENTS[placement](key),
+        configs["zai"],
+        respond=ok_reply((diagnosis(),), True),
+    )
+    assert transport.calls == []
+    assert observation.result.status == "invalid"
+    assert observation.passed is False
+    assert observation.error_code in OBSERVATION_CODES
+    assert "private-protocol-marker" not in repr(observation)
+
+
+@pytest.mark.parametrize(
+    ("raw", "codes"),
+    [  # r2 item 6: decode failure is CONFIG_UNREADABLE; NUL is rejected (code not fixed)
+        (b"\xff\xfe\xfa", {"CONFIG_UNREADABLE"}),
+        (b"\x00", None),
+    ],
+)
+def test_r3_bad_bytes_config_error_has_no_chain_or_key_bytes(tmp_path, raw, codes):
+    text = env_text().encode()
+    name = CREDENTIAL_NAMES["zai"].encode()
+    # Corrupt the credential line itself so a leaking decoder would echo the key.
+    text = text.replace(
+        name + b"=" + ZAI_CANARY.encode(), name + b"=" + ZAI_CANARY.encode() + raw
+    )
+    path = tmp_path.resolve() / ".env.judge"
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "wb") as handle:
+        handle.write(text)
+    exc = config_error(path, codes if codes else CONFIG_ERROR_CODES)
+    assert exc.__cause__ is None and exc.__context__ is None
+    assert ZAI_CANARY.encode().hex() not in leak_surface(exc)
+
+
+CONFIG_ERROR_CODES = frozenset(
+    {
+        "CONFIG_ABSOLUTE_PATH_REQUIRED",
+        "CONFIG_PRIVATE_REGULAR_FILE_REQUIRED",
+        "CONFIG_UNREADABLE",
+        "CONFIG_SYNTAX",
+        "CONFIG_ENV_CONFLICT",
+        "CONFIG_INVALID",
+        "JUDGE_IDENTITY_MISMATCH",
+    }
+)
+
+
+class _CodedTransportError(Exception):
+    def __init__(self, code: str):
+        super().__init__(code)
+        self.code = code
+
+
+def _judge_error_with(code: str) -> BaseException:
+    exc = JudgeError(code)
+    try:
+        exc.code = code
+    except AttributeError:
+        pass
+    return exc
+
+
+@pytest.mark.parametrize("factory", [_judge_error_with, _CodedTransportError])
+@pytest.mark.parametrize(
+    "code",
+    [
+        f"Bearer {ZAI_CANARY}",
+        f"AUTH_{ZAI_CANARY}",
+        "JUDGE_TOTALLY_FINE",
+        "CONFIG_ENV_CONFLICT\n",
+    ],
+)
+def test_r3_transport_error_codes_are_whitelisted(configs, verified, factory, code):
+    error = factory(code)
+    observation, transport = call_once(
+        judge_input(), configs["zai"], respond=lambda _c: error, calibration=verified
+    )
+    assert_failed(observation, transport, "error")
+    assert observation.error_code == "JUDGE_TRANSPORT_ERROR"
+    assert len(transport.calls) == 1
+    assert ZAI_CANARY not in repr(observation)
+    assert "TOTALLY_FINE" not in repr(observation)
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["OPENAI_JUDGE_MODEL", "OPENAI_JUDGE_RESPONSE_MODEL"],
+)
+@pytest.mark.parametrize(
+    "value",
+    [
+        "gpt-6.1-astra",
+        "gpt-6.1",
+        "gpt-6.1-sol-2026-09-30",
+        "GPT-6.1-SOL",
+        "gpt-6.1-sol-preview",
+    ],
+)
+def test_r3_openai_config_identity_is_fixed(tmp_path, name, value):
+    """r3 item 4: config request/response identity is exactly gpt-6.1-sol."""
+    path = write_env(tmp_path, env_text(override={name: value}))
+    config_error(path, {"JUDGE_IDENTITY_MISMATCH"}, provider="openai")
+
+
+def test_r3_openai_dated_snapshot_response_accepted(configs):
+    observation, _ = call_once(
+        judge_input(),
+        configs["openai"],
+        respond=ok_reply((diagnosis(),), True, model="gpt-6.1-sol-2026-09-30"),
+    )
+    assert observation.valid is True
+    assert observation.response_model == "gpt-6.1-sol-2026-09-30"
+
+
+@pytest.mark.parametrize(
+    "model",
+    [
+        "gpt-6.1-astra",
+        "gpt-6.1-sol-preview",
+        "gpt-6.1-sol-20260930",
+        "gpt-6.1-sol-2026-02-30",  # impossible date
+        "gpt-6.1-sol-2026-13-01",
+        "gpt-6.1-sol-2026-09-30-x",
+        "GPT-6.1-SOL",
+        "glm-5.3",
+    ],
+)
+def test_r3_openai_response_identity_rejected(configs, verified, model):
+    observation, transport = call_once(
+        judge_input(),
+        configs["openai"],
+        respond=ok_reply((diagnosis(),), True, model=model),
+    )
+    assert_failed(observation, transport, "invalid")
+    assert observation.error_code == "JUDGE_RESPONSE_IDENTITY_INVALID"
+
+
+def test_r3_wrong_sol_identity_cannot_complete_d16(world, pack, configs, tmp_path):
+    def astra(label, provider):
+        return http(
+            completion(
+                content(label.diagnoses, label.verdict),
+                model="gpt-6.1-astra",
+                usage=USAGE,
+            )
+        )
+
+    ts = transports(
+        world, openai=everywhere(astra, world.authored), zai=_false_fails(world, 2)
+    )
+    record = run_calibration(
+        pack, configs=configs, transports=ts, destination=tmp_path / "cal"
+    )
+    assert record.results["openai"].passed is False
+    assert "openai" not in record.eligible
+    with pytest.raises(Exception) as caught:
+        load_verified_calibration(tmp_path / "cal", pack=pack, config=configs["openai"])
+    expect_judge_error(caught.value, None)
+
+
+def test_r3_swapped_summary_cache_rejected(world, pack, configs, tmp_path):
+    """r3 item 5: calibration.json from a passing run cannot cover all-error raw records."""
+    failing = tmp_path / "failing"
+    ts = transports(world, zai=everywhere(http_error, world.authored))
+    record = run_calibration(pack, configs=configs, transports=ts, destination=failing)
+    assert record.results["zai"].passed is False and record.selected_provider is None
+    passing = tmp_path / "passing"
+    good = run_calibration(
+        pack, configs=configs, transports=transports(world), destination=passing
+    )
+    assert good.status == "selected" and good.selected_provider == "zai"
+    target = failing / "calibration.json"
+    os.chmod(target, 0o600)
+    target.write_bytes((passing / "calibration.json").read_bytes())
+    with pytest.raises(Exception) as caught:
+        load_verified_calibration(failing, pack=pack, config=configs["zai"])
+    # r3 item 5 names HASH_MISMATCH/IDENTITY_MISMATCH; r2 item 3 names
+    # DERIVED_RESULT_MISMATCH for saved derived values (see EVAL_B3_AMBIGUITIES.md).
+    expect_judge_error(
+        caught.value, {"HASH_MISMATCH", "IDENTITY_MISMATCH", "DERIVED_RESULT_MISMATCH"}
+    )
+
+
+def _raw_records(destination, provider):
+    return sorted(
+        p
+        for p in destination.iterdir()
+        if p.is_file() and p.name.startswith(provider) and p.name != "calibration.json"
+    )
+
+
+def test_r3_raw_records_are_the_source_of_truth(world, pack, configs, tmp_path):
+    """r3 item 5: 60 per-call records per provider; a missing one is EVIDENCE_UNAVAILABLE,
+    and a verified calibration stops passing once its source records change."""
+    destination = tmp_path / "cal"
+    run_calibration(
+        pack, configs=configs, transports=transports(world), destination=destination
+    )
+    for provider in MODELS:
+        assert len(_raw_records(destination, provider)) == 60, provider
+    proof = load_verified_calibration(destination, pack=pack, config=configs["zai"])
+    observation, _ = call_once(
+        judge_input(),
+        configs["zai"],
+        respond=ok_reply((diagnosis(),), True),
+        calibration=proof,
+    )
+    assert observation.passed is True
+    first = _raw_records(destination, "zai")[0]
+    first.unlink()
+    with pytest.raises(Exception) as caught:
+        load_verified_calibration(destination, pack=pack, config=configs["zai"])
+    expect_judge_error(caught.value, {"EVIDENCE_UNAVAILABLE"})
+    transport = FakeTransport(ok_reply((diagnosis(),), True))
+    try:
+        stale = judge_once(
+            judge_input(), config=configs["zai"], calibration=proof, transport=transport
+        )
+    except Exception as exc:
+        expect_judge_error(exc, None)
+    else:
+        assert stale.passed is False
 
 
 # ================================================================= 6. network

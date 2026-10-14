@@ -141,3 +141,27 @@ r2 没有给出单一码的位置保持原样，只要求是 JudgeError 并带�
 8. **空凭据值（`ZAI_API_KEY=`）**：r2 写的是「缺凭据 = CONFIG_INVALID」，但没说空值是否算缺。维持 `CONFIG_INVALID`/`CONFIG_SYNTAX`。
 
 夹具修正：`test_verified_calibration_bound_to_pack_and_config` 原先拿一个本身不合法的包（11 个负例）去测绑定，loader 因包本身不合法而先拒绝（CALIBRATION_TOO_FEW_NEGATIVES），根本没检查到绑定。现改用合法的不同包（第二位标注者换用同一模型身份，r2 第 2 项允许），pack 绑定断言恢复为 `HASH_MISMATCH`。
+
+## r3 审查反例（2026-10-14）
+
+按 r3 第 86 行起的五项补充，测试名前缀为 `test_r3_`：
+
+1. **大小写与分隔符变体（r3 第 1 项）**
+   - 测试的槽名：clientSecret、ClientApiKey、client-secret、clientAPIKey、AccessToken、x-api-key、userPassword、sessionCookie、reasoningContent、RedactedThinking、encrypted-content、modelReasoning。
+   - 每个名字放在 view 顶层和嵌套行两处，期望 invalid、零发送、error_code 在白名单内。r3 没有规定具体用哪个码，所以只断言落在白名单内。
+2. **异常链（r3 第 2 项）**
+   - 配置凭据行末尾带非法 UTF-8 字节时报 `CONFIG_UNREADABLE`（r2 第 6 项）；带 NUL 时只要求是某个 CONFIG 码（r2 没有写死）。
+   - 所有 JudgeError（含标签与校准的错误）都要求 `__cause__` 和 `__context__` 为 None，且完整 traceback 中没有 canary。
+3. **transport 错误码白名单（r3 第 3 项）**
+   - 所有失败观察的 error_code 都必须属于 r3 列出的 12 个码。
+   - transport 抛出带任意 code 的 JudgeError 或自定义异常时，结果固定为 error/`JUDGE_TRANSPORT_ERROR`，repr 中没有 canary 和原始 code。
+   - JudgeError 的构造签名没有公开，测试用 `JudgeError(code)` 构造，再尝试设置 `.code`。
+4. **Sol 身份（r3 第 4 项）**
+   - 配置的两个 OpenAI 模型键不是 `gpt-6.1-sol` 时报 `JUDGE_IDENTITY_MISMATCH`（r2 第 6 项「固定模型改名」）。带日期的写法在配置里同样拒绝，只允许出现在实际响应中。
+   - 响应 model 为 `gpt-6.1-sol-YYYY-MM-DD` 且日期有效时接受，并保存该名字；其余（含 02-30 这类不存在的日期、无连字符的日期、大写、preview）一律 invalid/`JUDGE_RESPONSE_IDENTITY_INVALID`。
+   - 对照模型全程用错名响应时，openai 不合格、不可选，也不能为它生成认证。
+5. **原始记录才是来源（r3 第 5 项）**
+   - 拿另一轮成功的 calibration.json 覆盖全部为 error 的那一轮，loader 必须拒绝。
+     - **码是二选一**：r3 第 5 项写 HASH_MISMATCH 或 IDENTITY_MISMATCH，r2 第 3 项对「保存的派生值不符」写 DERIVED_RESULT_MISMATCH。三者都接受；按 lead 指示，两条 forged 测试仍保持 r2 的写法。
+   - 每家恰有 60 个逐次记录。删掉一个之后，loader 报 `EVIDENCE_UNAVAILABLE`，原先拿到的认证也不能再让 judge_once 通过。
+     - **文件名是推断**：按「文件名以 provider 名开头、不是 calibration.json」查找逐次记录，因为 r3 写的 `provider-001.json` 没说明 provider 部分是字面量还是供应商名。
