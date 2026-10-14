@@ -401,12 +401,10 @@ def investigate(
         messages.append(message)
     clock(8)
     final = replace(first, messages=tuple(messages))
-    model.complete(final)
-    if tail_delivery and seen:
-        deliver(
-            seen[-1].model_view,
-            {"role": "tool", "tool_call_id": "late", "content": "x"},
-        )
+    if not tail_delivery:
+        # tail_delivery: the last (legitimately paired) delivery is never sent
+        # to a later model request (I:67 "已生成，不算送达"; I:106).
+        model.complete(final)
     return first, final
 
 

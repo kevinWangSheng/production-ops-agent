@@ -1133,7 +1133,7 @@ def test_structural_attempt_binding_errors_are_identity_mismatch(source, changes
     _, _, rec = source
     # I:82: attempt/manifest/mode/scenario binding errors.
     with pytest.raises(RecordingError) as err:
-        s.structural(rec, attempt=s.attempt("structural", **changes))
+        s.structural(rec, attempt=replace(s.attempt("structural"), **changes))
     assert err.value.code == "IDENTITY_MISMATCH"
 
 
