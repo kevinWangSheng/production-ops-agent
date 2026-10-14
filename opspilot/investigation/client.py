@@ -13,7 +13,7 @@ from __future__ import annotations
 import json
 import socket
 import time
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from concurrent.futures import ThreadPoolExecutor
 from http.client import HTTPException, HTTPSConnection
 from typing import Any, Protocol, cast
@@ -141,11 +141,13 @@ class DeepSeekClient:
         model: str = ACCEPTED_RESPONSE_MODEL,
         clock: MonotonicClock | None = None,
         opener: _Opener | None = None,
+        capture_http: Callable[[bytes, bytes | None, int | None], None] | None = None,
     ) -> None:
         if not isinstance(api_key, str) or not api_key:
             raise ModelError("MODEL_REJECTED")
         if not endpoint.startswith("https://"):
             raise ModelError("MODEL_REJECTED")
+        self._capture_http = capture_http
         self._api_key = api_key
         self._endpoint = endpoint
         self._model = model
@@ -165,7 +167,15 @@ class DeepSeekClient:
         # the request headers or the raw body (``opspilot.tracing``).
         with tracer().model_call(call) as span:
             body = serialized_request(call)
-            raw, status = self._post(body, call.timeout_seconds)
+            if self._capture_http is None:
+                raw, status = self._post(body, call.timeout_seconds)
+            else:
+                try:
+                    raw, status = self._post(body, call.timeout_seconds)
+                except ModelError:
+                    self._capture_http(body, None, None)
+                    raise
+                self._capture_http(body, raw, status)
             if 400 <= status < 500 and status not in _TRANSIENT_CLIENT_STATUS:
                 raise ModelError("MODEL_REJECTED")
             if status in _RETRYABLE_STATUS or status < 200 or status >= 300:
@@ -260,12 +270,15 @@ class DeepSeekClient:
             # path. Reuse the same pool/backstop rather than a second
             # mechanism; ``OSError`` already covers a timed-out drain
             # (``TimeoutError`` is an ``OSError`` subclass) same as before.
+            captured_error_body = b""
             remaining = deadline - self._clock.monotonic()
             if remaining > 0:
                 try:
-                    pool.submit(exc.read, MAX_HTTP_RESPONSE_BYTES + 1).result(
+                    drained = pool.submit(exc.read, MAX_HTTP_RESPONSE_BYTES + 1).result(
                         timeout=remaining
                     )
+                    if self._capture_http is not None:
+                        captured_error_body = drained
                 except (OSError, HTTPException):
                     # A truncated chunked error body raises IncompleteRead
                     # here, inside this suite, where the sibling handler
@@ -273,7 +286,7 @@ class DeepSeekClient:
                     self._abort_transport()
             else:
                 self._abort_transport()
-            return b"", int(exc.code)
+            return captured_error_body, int(exc.code)
         except (URLError, TimeoutError, OSError, HTTPException) as exc:
             # ``concurrent.futures.TimeoutError`` (``future.result``'s own
             # timeout, i.e. ``_fetch`` did not finish within ``budget`` at

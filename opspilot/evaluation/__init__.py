@@ -33,6 +33,19 @@ from opspilot.evaluation.model import (
     load_scenario,
     load_scenarios,
 )
+from opspilot.evaluation.recording import (
+    CaptureHooks,
+    Recording,
+    RecordingContext,
+    RecordingError,
+    RecordingEvent,
+    RecordingRef,
+    ToolBinding,
+    ToolFacade,
+    load_recording,
+    record,
+)
+from opspilot.evaluation.replay import ReplayCapture, ReplaySession, replay
 from opspilot.evaluation.rounds import (
     REQUIRED_DIMENSIONS,
     Aggregate,
@@ -73,6 +86,19 @@ from opspilot.evaluation.storage import (
 )
 
 __all__ = [
+    "CaptureHooks",
+    "Recording",
+    "RecordingContext",
+    "RecordingError",
+    "RecordingEvent",
+    "RecordingRef",
+    "ToolBinding",
+    "ToolFacade",
+    "ReplayCapture",
+    "ReplaySession",
+    "load_recording",
+    "record",
+    "replay",
     "ArtifactRef",
     "AttemptJournal",
     "CalibrationCapture",

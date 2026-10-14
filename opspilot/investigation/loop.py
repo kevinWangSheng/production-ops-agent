@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from typing import Any, Literal, Protocol
 from uuid import UUID, uuid4
@@ -353,6 +353,9 @@ class InvestigationLoop:
     store: StepCommitter
     clock: Clock
     accepted_response_model: str = ACCEPTED_RESPONSE_MODEL
+    capture_delivery: Callable[[Mapping[str, Any], Mapping[str, Any]], None] | None = (
+        None
+    )
 
     def _check_identity(self, request: InvestigationRequest) -> None:
         if not isinstance(request, InvestigationRequest):
@@ -859,6 +862,8 @@ class InvestigationLoop:
                     "content": canonical(visible_view(view, limits=request.limits)),
                 }
             )
+            if self.capture_delivery is not None:
+                self.capture_delivery(view, results[-1])
         return results
 
     # -- context management (HolmesGPT mechanism 2, C3 §5) -------------------
