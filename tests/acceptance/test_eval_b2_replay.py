@@ -28,6 +28,8 @@ from opspilot.evaluation import (
     DimensionValue,
     RecordingError,
     StorageError,
+    ToolSnapshot,
+    bind_tool_snapshots,
     canonical_view_hash,
     load_recording,
     record,
@@ -56,6 +58,7 @@ from tests.m1_tool_support import body as tool_body
 from tests.m1_tool_support import build as build_tool_executor
 from tests.m1_tool_support import registration as tool_registration
 from tests.m1_tool_support import request as tool_request_fixture
+from tests.m1_tool_support import target as tool_target
 
 MiB = 1024 * 1024
 
@@ -210,6 +213,45 @@ def assert_refused(fn: Any) -> None:
 def source(tmp_path: Path):
     pkg, ref = make(tmp_path, name="source")
     return pkg, ref, loaded(pkg, ref)
+
+
+def _real_tool(
+    *, registrations: Any = None, targets: Any = None, **build_kw: Any
+) -> tuple[Any, Any, Any, list[Any], list[Any]]:
+    """A real ReadOnlyToolExecutor plus the exact registration/target DTOs it
+    was built from (the ToolSnapshot source; never derived from results)."""
+    regs = list(registrations) if registrations is not None else [tool_registration()]
+    tgts = list(targets) if targets is not None else [tool_target()]
+    executor, transport, _sink, clock = build_tool_executor(
+        registrations=regs, targets=tgts, **build_kw
+    )
+    return executor, transport, clock, regs, tgts
+
+
+def _snapshot_context(
+    executor: Any, clock: Any, tool_request: Any, regs: list[Any], tgts: list[Any]
+):
+    """Interface 2026-10-14 (restricted branch): freeze the ToolSnapshot built
+    from the configured DTOs and bind it before any call."""
+    context = s.context(
+        source_run_id=executor.scope.run_id,
+        started_at=clock.now(),
+        ended_at=clock.now() + timedelta(seconds=10),
+        bindings=(
+            s.binding(
+                tool=tool_request.tool_name,
+                target=tool_request.target_ref,
+                source="prometheus",
+                authorized_window=executor.scope.window.as_json(),
+                default_window=None,
+            ),
+        ),
+    )
+    return bind_tool_snapshots(
+        context,
+        (ToolSnapshot(tuple(regs), tuple(tgts), executor.scope),),
+        s.manifest(),
+    )
 
 
 # --- error type ------------------------------------------------------------------
@@ -396,27 +438,43 @@ def test_tool_event_records_request_binding_key_occurrence_and_hashes(tmp_path):
 
 
 def test_tool_without_evidence_hashes_empty_raw(tmp_path):
-    def metadata_only(req: Any):
-        # A dispatched no_data result without EvidenceRecord carries no source
-        # data in its view (Recheck2 ruling); status matches the outcome.
-        return s.tool_outcome(
-            req,
-            evidence_id="unused",  # not written into the view below
-            raw=None,
-            view={
-                "operation_id": req.operation_id,
-                "tool": s.TOOL,
+    # Interface 2026-10-14 ruling: an evidence-free result needs frozen
+    # ToolSnapshot provenance, so the sample is a real executor's dispatched
+    # empty query projected to metadata-only no_data (no EvidenceRecord, no
+    # source data; view fields limited to the restricted whitelist).
+    real, transport, clock, regs, tgts = _real_tool()
+    transport.response = TransportResponse(body=tool_body([]))
+    tool_request = tool_request_fixture()
+
+    class MetadataOnly:
+        def __init__(self) -> None:
+            self.scope = real.scope
+
+        def execute(self, request: Any) -> Any:
+            result = real.execute(request)
+            op = result.operation
+            assert (result.status, op.dispatched) == ("no_data", True)
+            view = {
+                "operation_id": op.operation_id,
+                "trust": "gateway",
                 "status": "no_data",
                 "reason": "NO_DATA",
                 "source_contact": "confirmed",
-                "trust": "gateway",
-                "citable_as_fact": False,
+                "tool": op.tool,
+                "target_id": op.target_id,
+                "window": op.window.as_json(),
+                "requested_at": op.started_at.isoformat(),
                 "content": None,
-            },
-        )
+                "citable_as_fact": False,
+            }
+            return replace(result, evidence=None, model_view=view)
 
-    outcomes = [metadata_only]
-    pkg, _ = make(tmp_path, s.source_driver(outcomes=outcomes, result=s.outcome(())))
+    pkg = tmp_path / "pkg"
+    record(
+        _single_call_driver(MetadataOnly(), tool_request, []),
+        destination=pkg,
+        context=_snapshot_context(real, clock, tool_request, regs, tgts),
+    )
     event = s.events_of(s.package_json(pkg), "tool")[0]
     # I:66: no evidence.raw -> raw hash is SHA256(b'').
     assert event["hashes"]["raw_sha256"] == s.sha(b"")
@@ -2061,7 +2119,7 @@ def test_recheck_p2_2_refused_delivery_without_own_refusal_is_identity_mismatch(
 def test_recheck_p2_3_unexecuted_tool_refusal_records_completely(
     tmp_path, window, status, reason
 ):
-    executor, transport, _sink, clock = build_tool_executor(
+    executor, transport, clock, regs, tgts = _real_tool(
         registrations=[tool_registration(max_window_seconds=300)]
     )
     # Default fixture request: a 10-minute window inside the authorized box,
@@ -2116,20 +2174,7 @@ def test_recheck_p2_3_unexecuted_tool_refusal_records_completely(
         model.complete(replace(first, messages=(*first.messages, assistant, message)))
         return s.outcome(())
 
-    context = s.context(
-        source_run_id=executor.scope.run_id,
-        started_at=clock.now(),
-        ended_at=clock.now() + timedelta(seconds=10),
-        bindings=(
-            s.binding(
-                tool=tool_request.tool_name,
-                target=tool_request.target_ref,
-                source="prometheus",
-                authorized_window=executor.scope.window.as_json(),
-                default_window=None,
-            ),
-        ),
-    )
+    context = _snapshot_context(executor, clock, tool_request, regs, tgts)
     pkg = tmp_path / "source"
     ref = record(driver, destination=pkg, context=context)
     # The product refused before any source query.
@@ -2302,12 +2347,12 @@ def test_recheck3_p2_oversize_message_not_product_template_is_rejected(tmp_path)
 @pytest.mark.parametrize("ceiling", ["result-bytes", "view-tokens"])
 def test_recheck3_p2_product_oversize_template_records_completely(tmp_path, ceiling):
     if ceiling == "view-tokens":
-        executor, transport, _sink, clock = build_tool_executor(
+        executor, transport, clock, regs, tgts = _real_tool(
             registrations=[tool_registration(max_view_tokens=20)], token_counter=len
         )
         rows = [{"value": 3}]
     else:
-        executor, transport, _sink, clock = build_tool_executor()
+        executor, transport, clock, regs, tgts = _real_tool()
         rows = [{"value": "x" * 5000}]
     transport.response = TransportResponse(body=tool_body(rows))
     tool_request = tool_request_fixture()
@@ -2359,20 +2404,7 @@ def test_recheck3_p2_product_oversize_template_records_completely(tmp_path, ceil
         model.complete(replace(first, messages=(*first.messages, assistant, message)))
         return s.outcome(())
 
-    context = s.context(
-        source_run_id=executor.scope.run_id,
-        started_at=clock.now(),
-        ended_at=clock.now() + timedelta(seconds=10),
-        bindings=(
-            s.binding(
-                tool=tool_request.tool_name,
-                target=tool_request.target_ref,
-                source="prometheus",
-                authorized_window=executor.scope.window.as_json(),
-                default_window=None,
-            ),
-        ),
-    )
+    context = _snapshot_context(executor, clock, tool_request, regs, tgts)
     pkg = tmp_path / "source"
     ref = record(driver, destination=pkg, context=context)
     (result,) = seen
@@ -2460,7 +2492,7 @@ def _single_call_driver(executor: Any, tool_request: Any, seen: list[Any]):
 # Recheck4 P2 (a): operation.query and view.query forged to the same source
 # rows agree with each other but not with the frozen request params.
 def test_recheck4_p2_evidence_free_query_not_from_request_is_rejected(tmp_path):
-    real, transport, _sink, clock = build_tool_executor(
+    real, transport, clock, regs, tgts = _real_tool(
         registrations=[tool_registration(max_view_tokens=50)],
         token_counter=lambda _text: 100,
     )
@@ -2486,20 +2518,7 @@ def test_recheck4_p2_evidence_free_query_not_from_request_is_rejected(tmp_path):
             return forged
 
     seen: list[Any] = []
-    context = s.context(
-        source_run_id=real.scope.run_id,
-        started_at=clock.now(),
-        ended_at=clock.now() + timedelta(seconds=10),
-        bindings=(
-            s.binding(
-                tool=tool_request.tool_name,
-                target=tool_request.target_ref,
-                source="prometheus",
-                authorized_window=real.scope.window.as_json(),
-                default_window=None,
-            ),
-        ),
-    )
+    context = _snapshot_context(real, clock, tool_request, regs, tgts)
     pkg = tmp_path / "source"
     recorded: Any = None
     try:
@@ -2552,20 +2571,20 @@ def test_recheck4_p2_evidence_free_query_not_from_request_is_rejected(tmp_path):
 def _ruling_executor(base: str):
     """A real ReadOnlyToolExecutor producing a legal evidence-free result."""
     if base == "view-too-large":
-        executor, transport, _sink, clock = build_tool_executor(
+        executor, transport, clock, regs, tgts = _real_tool(
             registrations=[tool_registration(max_view_tokens=50)],
             token_counter=lambda _text: 100,
         )
         transport.response = TransportResponse(body=tool_body([{"value": 3}]))
     else:
-        executor, transport, _sink, clock = build_tool_executor()
+        executor, transport, clock, regs, tgts = _real_tool()
         transport.response = TransportResponse(body=tool_body([]), source_status="500")
-    return executor, clock
+    return executor, clock, regs, tgts
 
 
 def _ruling_record(tmp_path: Path, base: str, mutate: Any = None):
     """Record one real call (optionally tampered once); return (code, result)."""
-    real, clock = _ruling_executor(base)
+    real, clock, regs, tgts = _ruling_executor(base)
     tool_request = tool_request_fixture()
     produced: list[Any] = []
 
@@ -2580,20 +2599,7 @@ def _ruling_record(tmp_path: Path, base: str, mutate: Any = None):
             produced.append(result)
             return result
 
-    context = s.context(
-        source_run_id=real.scope.run_id,
-        started_at=clock.now(),
-        ended_at=clock.now() + timedelta(seconds=10),
-        bindings=(
-            s.binding(
-                tool=tool_request.tool_name,
-                target=tool_request.target_ref,
-                source="prometheus",
-                authorized_window=real.scope.window.as_json(),
-                default_window=None,
-            ),
-        ),
-    )
+    context = _snapshot_context(real, clock, tool_request, regs, tgts)
     pkg = tmp_path / "source"
     try:
         ref = record(
