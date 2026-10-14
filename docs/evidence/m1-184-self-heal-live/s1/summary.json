@@ -1,0 +1,2236 @@
+{
+  "schema": "opspilot-lab-summary-1",
+  "experiment": "m1-184-self-heal-live",
+  "run_id": "86c9c662-439f-5b8b-af7d-af4a944e60d4",
+  "frozen_at": "2026-10-13T09:26:28.143418+00:00",
+  "round": "184-step3-20261012",
+  "scenario": "S1",
+  "versions": {
+    "collector_branch": "HEAD",
+    "executed_commit": "df3863ef97cd290663b565c917e2626736ec74d7",
+    "collector_commit": "df3863ef97cd290663b565c917e2626736ec74d7",
+    "schema_head": "0013_self_heal_authorization",
+    "worker_versions": {
+      "prompt_revision": "prompt-replay-candidate-bdb4914edefa",
+      "tool_schema_revision": "otel-demo-d61d6f2a3b04",
+      "context_policy_revision": "ctx-ctx-policy-v1-a30e65ea52f4"
+    },
+    "tool_profile": "otel-demo",
+    "otel_demo_chart": "0.37.8"
+  },
+  "health_profile": {
+    "path": "otel-demo-checkout.json",
+    "sha256": "95ae4e83f983d0fab78656b4f4b062d033eaf91840a6c3fdeed514209cfb017b",
+    "session": {
+      "deadline_seconds": 3600,
+      "max_samples": 40,
+      "sample_interval_seconds": 60,
+      "sustained_window_seconds": 600
+    }
+  },
+  "lab_actions": [
+    {
+      "at": "2026-10-13T05:46:54.780139+00:00",
+      "action": "inject",
+      "before_sha256": "1ee5c0258e3e13609ecec75979cee286ab00f442d288112e39e3db8433d176c6",
+      "after_sha256": "e47d27c2fa01c72d8bc71d40d0f4223b1049fd84582e5789cbd9a5ccbdcc915d",
+      "live_sha256": "e47d27c2fa01c72d8bc71d40d0f4223b1049fd84582e5789cbd9a5ccbdcc915d",
+      "verified": true
+    },
+    {
+      "at": "2026-10-13T05:56:38.347929+00:00",
+      "action": "restore",
+      "before_sha256": "e47d27c2fa01c72d8bc71d40d0f4223b1049fd84582e5789cbd9a5ccbdcc915d",
+      "after_sha256": "1ee5c0258e3e13609ecec75979cee286ab00f442d288112e39e3db8433d176c6",
+      "live_sha256": "1ee5c0258e3e13609ecec75979cee286ab00f442d288112e39e3db8433d176c6",
+      "verified": true
+    }
+  ],
+  "deliveries": [
+    {
+      "delivery_id": 1,
+      "status": "firing",
+      "outcome": "created",
+      "actor": "alertmanager",
+      "fingerprint": "83f7541ae0105d42",
+      "starts_at": "2026-10-13T05:53:54+00:00",
+      "received_at": "2026-10-13T05:54:53.737322+00:00",
+      "incident_id": "cb7ef8c8-8010-5e45-99cb-704f26f268c5"
+    },
+    {
+      "delivery_id": 2,
+      "status": "resolved",
+      "outcome": "resolved_attached",
+      "actor": "alertmanager",
+      "fingerprint": "83f7541ae0105d42",
+      "starts_at": "2026-10-13T05:53:54+00:00",
+      "received_at": "2026-10-13T06:00:53.716831+00:00",
+      "incident_id": "cb7ef8c8-8010-5e45-99cb-704f26f268c5"
+    }
+  ],
+  "incident": {
+    "incident_id": "cb7ef8c8-8010-5e45-99cb-704f26f268c5",
+    "lifecycle": "resolved",
+    "state": "queued",
+    "mode": "automatic",
+    "control_generation": 0,
+    "observation_generation": 1,
+    "current_run_id": "86c9c662-439f-5b8b-af7d-af4a944e60d4",
+    "target_id": "b2c260ed-51c1-4942-882e-7c2b7db34ec8",
+    "created_at": "2026-10-13T05:54:53.749433+00:00",
+    "has_conclusion": true
+  },
+  "investigation": {
+    "runs": [
+      {
+        "run_id": "86c9c662-439f-5b8b-af7d-af4a944e60d4",
+        "state": "completed",
+        "control_generation": 0,
+        "budget_spent": 4,
+        "tool_operations_used": 9,
+        "tool_seconds_used": 1.7240782510489225,
+        "versions": {
+          "prompt_revision": "prompt-replay-candidate-bdb4914edefa",
+          "tool_schema_revision": "otel-demo-d61d6f2a3b04",
+          "context_policy_revision": "ctx-ctx-policy-v1-a30e65ea52f4"
+        },
+        "deadline": "2026-10-13T07:54:53.739551+00:00"
+      }
+    ],
+    "decision": "report_available",
+    "handoff_reasons": [],
+    "evidence_ids": 8,
+    "report": {
+      "assessment_status": "completed",
+      "conclusion": "supported",
+      "summary": "The alert is firing because its condition is genuinely satisfied: at the alert time the trailing-5-minute ratio of ERROR checkout PlaceOrder SERVER spans to all such spans evaluated to 1 (13cae997-6655-4a28-8aeb-94a068b924d3-t0:62fa6b40-6c83-4e05-abe6-efb11ec42436), starting from 0 through 05:48:54Z and rising to 0.333 at ~05:49:54Z, 0.5 at ~05:50:54Z, then 1.0 from ~05:51:54Z to the end of the window (13cae997-6655-4a28-8aeb-94a068b924d3-t1:d339470c-715f-40e1-bee9-d59837289633). The visible failure is a card-charge rejection: sampled checkout PlaceOrder server spans record ERROR with otel.status_description 'failed to charge card: ... rpc error: code = Unknown desc = Payment request failed. Invalid token. app.loyalty.level=gold' and rpc.grpc.status_code=13, while the payment-side span grpc.oteldemo.PaymentService/Charge throws 'Payment request failed. Invalid token.' at charge.js:37 (13cae997-6655-4a28-8aeb-94a068b924d3-t3:df064bad-539b-4f4a-8447-18cb01041ff8). Payment Charge ERROR activity starts at ~05:49:54Z and climbs to 7.5 spans per 5 minutes (4c6841bb-dd6a-476a-8039-25cb841c679d-t1:1cd76fe7-32a5-42b8-9821-c362f8260c86), coinciding with the checkout ratio onset. The rest of checkout's sampled downstream calls (cart, currency, shipping, product-catalog) show grpc status 0 in the same traces, so the alert reflects a failure localized to the payment charge step being surfaced through PlaceOrder, not a general checkout outage, and the annotation's '100%' applies only to the trailing 5-minute window (the full-hour PlaceOrder error ratio is ~11%)."
+    }
+  },
+  "automatic_decisions": [
+    {
+      "incident_id": "cb7ef8c8-8010-5e45-99cb-704f26f268c5",
+      "control_generation": 0,
+      "state": "authorized",
+      "reason": null,
+      "attempts": 0,
+      "next_attempt_at": null,
+      "session_id": "9ec319fd-ac14-5f1e-a652-7c6c1863c140",
+      "created_at": "2026-10-13T05:56:36.547279+00:00",
+      "updated_at": "2026-10-13T05:56:36.547279+00:00"
+    }
+  ],
+  "controls": [
+    {
+      "audit_id": "ab0c113d-869f-40a7-9a8d-073ba5043a5b",
+      "incident_id": "cb7ef8c8-8010-5e45-99cb-704f26f268c5",
+      "action": "auto_authorize_observation",
+      "expected_generation": 0,
+      "resulting_generation": 0,
+      "actor": "system",
+      "payload": {
+        "trigger": "published",
+        "revision": null,
+        "session_id": "9ec319fd-ac14-5f1e-a652-7c6c1863c140",
+        "deadline_at": "2026-10-12T23:56:36.539105-07:00",
+        "authorization_source": "automatic",
+        "health_profile_revision": "otel-demo-checkout@b72bbe2e30be"
+      },
+      "created_at": "2026-10-13T05:56:36.546503+00:00"
+    }
+  ],
+  "sessions": [
+    {
+      "session_id": "9ec319fd-ac14-5f1e-a652-7c6c1863c140",
+      "authorization_source": "automatic",
+      "authorized_by": "system",
+      "target": {
+        "revision": null,
+        "namespace": "otel-demo",
+        "cluster_uid": "c8001471-8b7b-4449-83c0-924e6f46b857",
+        "resource_uid": "m0-otel-20260909",
+        "integration_id": "m0-otel-20260909"
+      },
+      "state": "completed",
+      "ended_reason": "recovery_confirmed",
+      "authorized_at": "2026-10-13T05:56:36.544542+00:00",
+      "deadline_at": "2026-10-13T06:56:36.539105+00:00",
+      "max_samples": 40,
+      "sample_interval_seconds": 60,
+      "sustained_window_seconds": 600,
+      "adopted_count": 15,
+      "healthy_since": "2026-10-13T06:01:38.251573+00:00",
+      "health_profile_revision": "otel-demo-checkout@b72bbe2e30be",
+      "samples": [
+        {
+          "sequence": 1,
+          "window_end": "2026-10-13T05:57:37.434406+00:00",
+          "outcome": "degraded",
+          "disposition": "adopted",
+          "health_basis": "outcome_not_healthy",
+          "transition": null,
+          "readings": {
+            "dependency_deployments_available": [
+              "ok",
+              8.0,
+              5
+            ],
+            "dependency_error_ratio": [
+              "ok",
+              0.125,
+              5
+            ],
+            "deployment_available_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_available_replicas_min_in_window": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_ready_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "error_ratio": [
+              "ok",
+              1.0,
+              5
+            ],
+            "latency_p95_milliseconds": [
+              "ok",
+              47.99999999999999,
+              5
+            ],
+            "request_rate_per_second": [
+              "ok",
+              0.016666666666666666,
+              5
+            ]
+          }
+        },
+        {
+          "sequence": 2,
+          "window_end": "2026-10-13T05:58:37.655194+00:00",
+          "outcome": "degraded",
+          "disposition": "adopted",
+          "health_basis": "outcome_not_healthy",
+          "transition": null,
+          "readings": {
+            "dependency_deployments_available": [
+              "ok",
+              8.0,
+              5
+            ],
+            "dependency_error_ratio": [
+              "ok",
+              0.07142857142857144,
+              5
+            ],
+            "deployment_available_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_available_replicas_min_in_window": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_ready_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "error_ratio": [
+              "ok",
+              0.6,
+              5
+            ],
+            "latency_p95_milliseconds": [
+              "ok",
+              175.0,
+              5
+            ],
+            "request_rate_per_second": [
+              "ok",
+              0.02083324652813947,
+              5
+            ]
+          }
+        },
+        {
+          "sequence": 3,
+          "window_end": "2026-10-13T05:59:37.795177+00:00",
+          "outcome": "degraded",
+          "disposition": "adopted",
+          "health_basis": "outcome_not_healthy",
+          "transition": null,
+          "readings": {
+            "dependency_deployments_available": [
+              "ok",
+              8.0,
+              5
+            ],
+            "dependency_error_ratio": [
+              "ok",
+              0.020833333333333336,
+              5
+            ],
+            "deployment_available_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_available_replicas_min_in_window": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_ready_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "error_ratio": [
+              "ok",
+              0.19999999999999998,
+              5
+            ],
+            "latency_p95_milliseconds": [
+              "ok",
+              174.99999999999997,
+              5
+            ],
+            "request_rate_per_second": [
+              "ok",
+              0.020833159723668972,
+              5
+            ]
+          }
+        },
+        {
+          "sequence": 4,
+          "window_end": "2026-10-13T06:00:38.025222+00:00",
+          "outcome": "healthy",
+          "disposition": "adopted",
+          "health_basis": "window_before_authorization",
+          "transition": null,
+          "readings": {
+            "dependency_deployments_available": [
+              "ok",
+              8.0,
+              5
+            ],
+            "dependency_error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "deployment_available_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_available_replicas_min_in_window": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_ready_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "latency_p95_milliseconds": [
+              "ok",
+              174.99999999999997,
+              5
+            ],
+            "request_rate_per_second": [
+              "ok",
+              0.020833333333333332,
+              5
+            ]
+          }
+        },
+        {
+          "sequence": 5,
+          "window_end": "2026-10-13T06:01:38.251573+00:00",
+          "outcome": "healthy",
+          "disposition": "adopted",
+          "health_basis": "confirmed",
+          "transition": null,
+          "readings": {
+            "dependency_deployments_available": [
+              "ok",
+              8.0,
+              5
+            ],
+            "dependency_error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "deployment_available_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_available_replicas_min_in_window": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_ready_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "latency_p95_milliseconds": [
+              "ok",
+              159.99999999999994,
+              5
+            ],
+            "request_rate_per_second": [
+              "ok",
+              0.03333333333333333,
+              5
+            ]
+          }
+        },
+        {
+          "sequence": 6,
+          "window_end": "2026-10-13T06:02:38.454635+00:00",
+          "outcome": "healthy",
+          "disposition": "adopted",
+          "health_basis": "confirmed",
+          "transition": null,
+          "readings": {
+            "dependency_deployments_available": [
+              "ok",
+              8.0,
+              5
+            ],
+            "dependency_error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "deployment_available_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_available_replicas_min_in_window": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_ready_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "latency_p95_milliseconds": [
+              "ok",
+              164.99999999999997,
+              5
+            ],
+            "request_rate_per_second": [
+              "ok",
+              0.029166666666666667,
+              5
+            ]
+          }
+        },
+        {
+          "sequence": 7,
+          "window_end": "2026-10-13T06:03:38.658632+00:00",
+          "outcome": "healthy",
+          "disposition": "adopted",
+          "health_basis": "confirmed",
+          "transition": null,
+          "readings": {
+            "dependency_deployments_available": [
+              "ok",
+              8.0,
+              5
+            ],
+            "dependency_error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "deployment_available_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_available_replicas_min_in_window": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_ready_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "latency_p95_milliseconds": [
+              "ok",
+              174.99999999999997,
+              5
+            ],
+            "request_rate_per_second": [
+              "ok",
+              0.020833506945891214,
+              5
+            ]
+          }
+        },
+        {
+          "sequence": 8,
+          "window_end": "2026-10-13T06:04:38.801318+00:00",
+          "outcome": "healthy",
+          "disposition": "adopted",
+          "health_basis": "confirmed",
+          "transition": null,
+          "readings": {
+            "dependency_deployments_available": [
+              "ok",
+              8.0,
+              5
+            ],
+            "dependency_error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "deployment_available_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_available_replicas_min_in_window": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_ready_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "latency_p95_milliseconds": [
+              "ok",
+              339.9999999999999,
+              5
+            ],
+            "request_rate_per_second": [
+              "ok",
+              0.024999791668402764,
+              5
+            ]
+          }
+        },
+        {
+          "sequence": 9,
+          "window_end": "2026-10-13T06:05:38.984403+00:00",
+          "outcome": "healthy",
+          "disposition": "adopted",
+          "health_basis": "confirmed",
+          "transition": null,
+          "readings": {
+            "dependency_deployments_available": [
+              "ok",
+              8.0,
+              5
+            ],
+            "dependency_error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "deployment_available_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_available_replicas_min_in_window": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_ready_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "latency_p95_milliseconds": [
+              "ok",
+              349.99999999999994,
+              5
+            ],
+            "request_rate_per_second": [
+              "ok",
+              0.020833333333333332,
+              5
+            ]
+          }
+        },
+        {
+          "sequence": 10,
+          "window_end": "2026-10-13T06:06:39.176385+00:00",
+          "outcome": "healthy",
+          "disposition": "adopted",
+          "health_basis": "confirmed",
+          "transition": null,
+          "readings": {
+            "dependency_deployments_available": [
+              "ok",
+              8.0,
+              5
+            ],
+            "dependency_error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "deployment_available_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_available_replicas_min_in_window": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_ready_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "latency_p95_milliseconds": [
+              "ok",
+              319.9999999999999,
+              5
+            ],
+            "request_rate_per_second": [
+              "ok",
+              0.03333333333333333,
+              5
+            ]
+          }
+        },
+        {
+          "sequence": 11,
+          "window_end": "2026-10-13T06:07:39.345694+00:00",
+          "outcome": "healthy",
+          "disposition": "adopted",
+          "health_basis": "confirmed",
+          "transition": null,
+          "readings": {
+            "dependency_deployments_available": [
+              "ok",
+              8.0,
+              5
+            ],
+            "dependency_error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "deployment_available_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_available_replicas_min_in_window": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_ready_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "latency_p95_milliseconds": [
+              "ok",
+              309.9999999999999,
+              5
+            ],
+            "request_rate_per_second": [
+              "ok",
+              0.0375,
+              5
+            ]
+          }
+        },
+        {
+          "sequence": 12,
+          "window_end": "2026-10-13T06:08:39.504937+00:00",
+          "outcome": "healthy",
+          "disposition": "adopted",
+          "health_basis": "confirmed",
+          "transition": null,
+          "readings": {
+            "dependency_deployments_available": [
+              "ok",
+              8.0,
+              5
+            ],
+            "dependency_error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "deployment_available_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_available_replicas_min_in_window": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_ready_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "latency_p95_milliseconds": [
+              "ok",
+              95.0,
+              5
+            ],
+            "request_rate_per_second": [
+              "ok",
+              0.03333361111342594,
+              5
+            ]
+          }
+        },
+        {
+          "sequence": 13,
+          "window_end": "2026-10-13T06:09:39.625625+00:00",
+          "outcome": "healthy",
+          "disposition": "adopted",
+          "health_basis": "confirmed",
+          "transition": null,
+          "readings": {
+            "dependency_deployments_available": [
+              "ok",
+              8.0,
+              5
+            ],
+            "dependency_error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "deployment_available_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_available_replicas_min_in_window": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_ready_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "latency_p95_milliseconds": [
+              "ok",
+              92.5,
+              5
+            ],
+            "request_rate_per_second": [
+              "ok",
+              0.024999895833767362,
+              5
+            ]
+          }
+        },
+        {
+          "sequence": 14,
+          "window_end": "2026-10-13T06:10:39.751149+00:00",
+          "outcome": "healthy",
+          "disposition": "adopted",
+          "health_basis": "confirmed",
+          "transition": null,
+          "readings": {
+            "dependency_deployments_available": [
+              "ok",
+              8.0,
+              5
+            ],
+            "dependency_error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "deployment_available_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_available_replicas_min_in_window": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_ready_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "latency_p95_milliseconds": [
+              "ok",
+              96.66666666666666,
+              5
+            ],
+            "request_rate_per_second": [
+              "ok",
+              0.016666736111400463,
+              5
+            ]
+          }
+        },
+        {
+          "sequence": 15,
+          "window_end": "2026-10-13T06:11:39.952746+00:00",
+          "outcome": "healthy",
+          "disposition": "adopted",
+          "health_basis": "confirmed",
+          "transition": "recovery_confirmed",
+          "readings": {
+            "dependency_deployments_available": [
+              "ok",
+              8.0,
+              5
+            ],
+            "dependency_error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "deployment_available_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_available_replicas_min_in_window": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_ready_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "latency_p95_milliseconds": [
+              "ok",
+              96.66666666666666,
+              5
+            ],
+            "request_rate_per_second": [
+              "ok",
+              0.016666597222511573,
+              5
+            ]
+          }
+        }
+      ],
+      "endings": [
+        {
+          "ending_id": "ebe7ef21-ea41-47ed-a793-61b5f74850f5",
+          "session_id": "9ec319fd-ac14-5f1e-a652-7c6c1863c140",
+          "incident_id": "cb7ef8c8-8010-5e45-99cb-704f26f268c5",
+          "ended_reason": "recovery_confirmed",
+          "transition": "recovery_confirmed",
+          "sample_id": "459b433e-7fe9-4145-99c9-3df06ad4b39c",
+          "lifecycle_before": "observing_recovery",
+          "lifecycle_after": "resolved",
+          "recorded_at": "2026-10-13T06:11:40.042886+00:00",
+          "job_id": "6e8479d9-b5a6-4ad5-b586-d5e59d75b9a6",
+          "job_sequence": 15
+        }
+      ]
+    }
+  ],
+  "replay": [
+    {
+      "session_id": "9ec319fd-ac14-5f1e-a652-7c6c1863c140",
+      "consistent": true,
+      "recovery_verdict": "healthy",
+      "recomputed_verdict": "healthy",
+      "healthy_window_seconds": 601
+    }
+  ],
+  "recovery_outcome": {
+    "scenario_id": "m184-S1",
+    "subject_id": "cb7ef8c8-8010-5e45-99cb-704f26f268c5",
+    "incident_lifecycle": "resolved",
+    "recorded_lifecycle": "resolved",
+    "incident_mode": "automatic",
+    "target": {
+      "revision": null,
+      "namespace": "otel-demo",
+      "cluster_uid": "c8001471-8b7b-4449-83c0-924e6f46b857",
+      "resource_uid": "m0-otel-20260909",
+      "integration_id": "m0-otel-20260909"
+    },
+    "recovery_confirmed": true,
+    "recovery_verdict": "healthy",
+    "recovery_reasons": [],
+    "latest_sample_verdict": "healthy",
+    "healthy_window_seconds": 601,
+    "used_sample_count": 15,
+    "observation_ended": true,
+    "observation_ended_reason": "recovery_confirmed",
+    "human_interaction": null,
+    "handoff_reasons": [],
+    "recovery_profile_revision": "otel-demo-checkout@b72bbe2e30be",
+    "recovery_handled_at": "2026-10-13T05:56:36.544542+00:00",
+    "observation_sessions": [
+      {
+        "session_id": "9ec319fd-ac14-5f1e-a652-7c6c1863c140",
+        "purpose": "incident_recovery",
+        "subject_control_generation": 0,
+        "observation_generation": 1,
+        "state": "completed",
+        "health_profile_revision": "otel-demo-checkout@b72bbe2e30be",
+        "adopted_sequence": 15,
+        "adopted_window_end": "2026-10-13T06:11:39.952746+00:00",
+        "active_sample_job_id": null,
+        "subject": {
+          "kind": "incident",
+          "id": "cb7ef8c8-8010-5e45-99cb-704f26f268c5"
+        },
+        "target": {
+          "revision": null,
+          "namespace": "otel-demo",
+          "cluster_uid": "c8001471-8b7b-4449-83c0-924e6f46b857",
+          "resource_uid": "m0-otel-20260909",
+          "integration_id": "m0-otel-20260909"
+        },
+        "authorized": false
+      }
+    ],
+    "observation_authorization": {
+      "session_id": "9ec319fd-ac14-5f1e-a652-7c6c1863c140",
+      "purpose": "incident_recovery",
+      "subject_control_generation": 0,
+      "observation_generation": 1,
+      "state": "completed",
+      "health_profile_revision": "otel-demo-checkout@b72bbe2e30be",
+      "adopted_sequence": 15,
+      "adopted_window_end": "2026-10-13T06:11:39.952746+00:00",
+      "active_sample_job_id": null,
+      "subject": {
+        "kind": "incident",
+        "id": "cb7ef8c8-8010-5e45-99cb-704f26f268c5"
+      },
+      "target": {
+        "revision": null,
+        "namespace": "otel-demo",
+        "cluster_uid": "c8001471-8b7b-4449-83c0-924e6f46b857",
+        "resource_uid": "m0-otel-20260909",
+        "integration_id": "m0-otel-20260909"
+      },
+      "authorized": false,
+      "subject_id": "cb7ef8c8-8010-5e45-99cb-704f26f268c5",
+      "authorization_source": "automatic"
+    },
+    "sample_jobs": [
+      {
+        "job_id": "0bc45eca-cbc5-42d8-9061-32da1253d434",
+        "session_id": "9ec319fd-ac14-5f1e-a652-7c6c1863c140",
+        "sequence": 7
+      },
+      {
+        "job_id": "4a9fb651-f372-4059-a3aa-85e528e2c59b",
+        "session_id": "9ec319fd-ac14-5f1e-a652-7c6c1863c140",
+        "sequence": 1
+      },
+      {
+        "job_id": "5fe4dfa4-21ad-4fcd-a112-fb980110a2f8",
+        "session_id": "9ec319fd-ac14-5f1e-a652-7c6c1863c140",
+        "sequence": 12
+      },
+      {
+        "job_id": "6a92b26c-baa4-4ae7-97c0-e3725af332e6",
+        "session_id": "9ec319fd-ac14-5f1e-a652-7c6c1863c140",
+        "sequence": 3
+      },
+      {
+        "job_id": "6e8479d9-b5a6-4ad5-b586-d5e59d75b9a6",
+        "session_id": "9ec319fd-ac14-5f1e-a652-7c6c1863c140",
+        "sequence": 15
+      },
+      {
+        "job_id": "7a6e96e4-3c76-4880-972f-a9ab6e5bcf26",
+        "session_id": "9ec319fd-ac14-5f1e-a652-7c6c1863c140",
+        "sequence": 13
+      },
+      {
+        "job_id": "7c2ebe36-ab3d-4639-81e0-35bfcc115be0",
+        "session_id": "9ec319fd-ac14-5f1e-a652-7c6c1863c140",
+        "sequence": 5
+      },
+      {
+        "job_id": "836a6d43-7117-4586-afb6-d753609873c1",
+        "session_id": "9ec319fd-ac14-5f1e-a652-7c6c1863c140",
+        "sequence": 9
+      },
+      {
+        "job_id": "8769e40e-4a72-46e8-b5f8-78562c5568c9",
+        "session_id": "9ec319fd-ac14-5f1e-a652-7c6c1863c140",
+        "sequence": 6
+      },
+      {
+        "job_id": "89290e68-9948-4f17-bca6-dfc3086c83e6",
+        "session_id": "9ec319fd-ac14-5f1e-a652-7c6c1863c140",
+        "sequence": 8
+      },
+      {
+        "job_id": "9498cb9b-c63e-4b54-8ff7-4c8d273ec766",
+        "session_id": "9ec319fd-ac14-5f1e-a652-7c6c1863c140",
+        "sequence": 14
+      },
+      {
+        "job_id": "b1bf43e9-606b-44d6-90d6-f21859b7fdb6",
+        "session_id": "9ec319fd-ac14-5f1e-a652-7c6c1863c140",
+        "sequence": 11
+      },
+      {
+        "job_id": "cec0515b-4926-4426-b518-803166faf84c",
+        "session_id": "9ec319fd-ac14-5f1e-a652-7c6c1863c140",
+        "sequence": 10
+      },
+      {
+        "job_id": "d58e7f58-5ba9-4244-a1ee-a785d4955540",
+        "session_id": "9ec319fd-ac14-5f1e-a652-7c6c1863c140",
+        "sequence": 4
+      },
+      {
+        "job_id": "de34a350-cae9-4945-99b4-39443277786e",
+        "session_id": "9ec319fd-ac14-5f1e-a652-7c6c1863c140",
+        "sequence": 2
+      }
+    ],
+    "handling_audit": [
+      {
+        "audit_id": "ab0c113d-869f-40a7-9a8d-073ba5043a5b",
+        "incident_id": "cb7ef8c8-8010-5e45-99cb-704f26f268c5",
+        "action": "auto_authorize_observation",
+        "expected_generation": 0,
+        "resulting_generation": 0,
+        "actor": "system",
+        "payload": {
+          "trigger": "published",
+          "revision": null,
+          "session_id": "9ec319fd-ac14-5f1e-a652-7c6c1863c140",
+          "deadline_at": "2026-10-12T23:56:36.539105-07:00",
+          "authorization_source": "automatic",
+          "health_profile_revision": "otel-demo-checkout@b72bbe2e30be"
+        },
+        "created_at": "2026-10-13T05:56:36.546503+00:00"
+      }
+    ],
+    "actions": [
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "persist_observation",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "persist_observation",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "persist_observation",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "persist_observation",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "persist_observation",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "persist_observation",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "persist_observation",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "persist_observation",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "persist_observation",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "persist_observation",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "persist_observation",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "persist_observation",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "persist_observation",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "persist_observation",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "persist_observation",
+      "advance_incident_lifecycle"
+    ],
+    "permissions": [
+      "read_only",
+      "database_temp"
+    ],
+    "model_requests": [],
+    "authorization_source": "automatic",
+    "authorization_sources": [
+      "automatic"
+    ],
+    "system_authorizations": [
+      {
+        "audit_id": "ab0c113d-869f-40a7-9a8d-073ba5043a5b",
+        "incident_id": "cb7ef8c8-8010-5e45-99cb-704f26f268c5",
+        "action": "auto_authorize_observation",
+        "expected_generation": 0,
+        "resulting_generation": 0,
+        "actor": "system",
+        "payload": {
+          "trigger": "published",
+          "revision": null,
+          "session_id": "9ec319fd-ac14-5f1e-a652-7c6c1863c140",
+          "deadline_at": "2026-10-12T23:56:36.539105-07:00",
+          "authorization_source": "automatic",
+          "health_profile_revision": "otel-demo-checkout@b72bbe2e30be"
+        },
+        "created_at": "2026-10-13T05:56:36.546503+00:00"
+      }
+    ],
+    "recovery_profile_content_sha256": "b72bbe2e30bea4775790519787da4ce107dbc1500ce87b87a2ee2af3f57cbfa4",
+    "recovery_samples_digest": {
+      "sha256": "fc0b9f6fc689f4caf54ad1bb7ac9f36410d77fecf1fdb7082dde805cc294543a",
+      "bytes": 144196
+    },
+    "replay_digest": {
+      "sha256": "c68a6d41b01c2f044afa95cb7baf0e082a88b5f43f198a9614383ed0dc1e3275",
+      "bytes": 96569
+    },
+    "action_events_digest": {
+      "sha256": "77bc4ad142f98113da80f0215c771a7dab689e9eef3c7bebfbf9f4e892b76b9b",
+      "bytes": 55397
+    }
+  },
+  "workbench_page": {
+    "status": 200,
+    "bytes": 175415,
+    "sha256": "3dd51280ad08b5ade3b39341e93ea999dd5e76b4bc8cf7f55075d78af44cb335",
+    "shows_recovered_no_remediation": true,
+    "shows_source_automatic": true
+  },
+  "verdicts": {
+    "scenario": "S1",
+    "incident_id": "cb7ef8c8-8010-5e45-99cb-704f26f268c5",
+    "checked_at": "2026-10-13T02:26:22.982305-07:00",
+    "verdicts": [
+      {
+        "id": "C1",
+        "requirement": "Published current completed Run at incident generation",
+        "expected": true,
+        "actual": {
+          "conclusion_present": true,
+          "run_state": "completed",
+          "current_run_id": "86c9c662-439f-5b8b-af7d-af4a944e60d4",
+          "run_id": "86c9c662-439f-5b8b-af7d-af4a944e60d4",
+          "run_incident_id": "cb7ef8c8-8010-5e45-99cb-704f26f268c5",
+          "incident_generation": 0,
+          "run_generation": 0
+        },
+        "pass": true
+      },
+      {
+        "id": "C2",
+        "requirement": "Exactly one authorized decision linked to one current session",
+        "expected": {
+          "decisions": 1,
+          "sessions": 1,
+          "state": "authorized"
+        },
+        "actual": {
+          "authorizations": [
+            {
+              "incident_id": "cb7ef8c8-8010-5e45-99cb-704f26f268c5",
+              "control_generation": 0,
+              "state": "authorized",
+              "reason": null,
+              "session_id": "9ec319fd-ac14-5f1e-a652-7c6c1863c140",
+              "attempts": 0
+            }
+          ],
+          "session_ids": [
+            "9ec319fd-ac14-5f1e-a652-7c6c1863c140"
+          ]
+        },
+        "pass": true
+      },
+      {
+        "id": "C3",
+        "requirement": "One system authorization preserves current control generation",
+        "expected": 0,
+        "actual": [
+          {
+            "audit_id": "ab0c113d-869f-40a7-9a8d-073ba5043a5b",
+            "incident_id": "cb7ef8c8-8010-5e45-99cb-704f26f268c5",
+            "action": "auto_authorize_observation",
+            "expected_generation": 0,
+            "resulting_generation": 0,
+            "actor": "system",
+            "payload": {
+              "trigger": "published",
+              "revision": null,
+              "session_id": "9ec319fd-ac14-5f1e-a652-7c6c1863c140",
+              "deadline_at": "2026-10-12T23:56:36.539105-07:00",
+              "authorization_source": "automatic",
+              "health_profile_revision": "otel-demo-checkout@b72bbe2e30be"
+            },
+            "created_at": "2026-10-12T22:56:36.546503-07:00"
+          }
+        ],
+        "pass": true
+      },
+      {
+        "id": "C4",
+        "requirement": "No human controls anywhere in incident history",
+        "expected": [],
+        "actual": [],
+        "pass": true
+      },
+      {
+        "id": "C5",
+        "requirement": "Automatic session with explicitly unknown revision at current generation",
+        "expected": {
+          "authorization_source": "automatic",
+          "revision": null,
+          "generation": 0
+        },
+        "actual": {
+          "authorization_source": "automatic",
+          "target": {
+            "revision": null,
+            "namespace": "otel-demo",
+            "cluster_uid": "c8001471-8b7b-4449-83c0-924e6f46b857",
+            "resource_uid": "m0-otel-20260909",
+            "integration_id": "m0-otel-20260909"
+          },
+          "generation": 0
+        },
+        "pass": true
+      },
+      {
+        "id": "C6",
+        "requirement": "F6 automatic source, no human permission or human actions",
+        "expected": {
+          "source": "automatic",
+          "human_actions": [],
+          "human_control": false
+        },
+        "actual": {
+          "source": "automatic",
+          "actions": [
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "persist_observation",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "persist_observation",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "persist_observation",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "persist_observation",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "persist_observation",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "persist_observation",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "persist_observation",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "persist_observation",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "persist_observation",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "persist_observation",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "persist_observation",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "persist_observation",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "persist_observation",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "persist_observation",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "persist_observation",
+            "advance_incident_lifecycle"
+          ],
+          "permissions": [
+            "read_only",
+            "database_temp"
+          ]
+        },
+        "pass": true
+      },
+      {
+        "id": "C7",
+        "requirement": "All public offline replays consistent; latest agrees with F6",
+        "expected": true,
+        "actual": {
+          "replays": [
+            {
+              "session_id": "9ec319fd-ac14-5f1e-a652-7c6c1863c140",
+              "consistent": true,
+              "recovery_verdict": "healthy",
+              "integrity": []
+            }
+          ],
+          "f6_replay": {
+            "session_id": "9ec319fd-ac14-5f1e-a652-7c6c1863c140",
+            "consistent": true,
+            "recovery_verdict": "healthy",
+            "integrity": []
+          }
+        },
+        "pass": true
+      },
+      {
+        "id": "S1-1",
+        "requirement": "Session terminal state and reason",
+        "expected": [
+          "completed",
+          "recovery_confirmed"
+        ],
+        "actual": [
+          "completed",
+          "recovery_confirmed"
+        ],
+        "pass": true
+      },
+      {
+        "id": "S1-2",
+        "requirement": "Incident lifecycle agrees with public F6 projection",
+        "expected": "resolved",
+        "actual": {
+          "stored": "resolved",
+          "f6": "resolved"
+        },
+        "pass": true
+      },
+      {
+        "id": "S1-3",
+        "requirement": "Confirmed recovery with complete frozen profile healthy window",
+        "expected": {
+          "confirmed": true,
+          "minimum_seconds": 600
+        },
+        "actual": {
+          "confirmed": true,
+          "healthy_window_seconds": 601,
+          "session_sustained": 600
+        },
+        "pass": true
+      },
+      {
+        "id": "S1-4",
+        "requirement": "Visible automatic recovery statement and rendered snapshot status",
+        "expected": {
+          "text": "recovered, no remediation recorded",
+          "source": "automatic",
+          "status": "recovered_no_remediation"
+        },
+        "actual": {
+          "projection": {
+            "text": {
+              "excerpt": "Recovery verdict (independent observation; not the investigation's conclusion) session 9ec319fd-ac14-5f1e-a652-7c6c1863c140 · source automatic · completed recovery_confirmed · recovered, no remediation recorded · verdict healthy recovery confirmed · healthy window 601 s · profile otel-demo-checkout@b72bbe2e30be · authorized at 2026-10-12T22:56:36.544542-07:00 · offline replay: replay consistent reasons: recovery_confirmed; every required signal is present, fresh and within bounds lifecycle implied by replay: resolved · recorded with the samples: resolved # Window Outcome stored → replayed Decision stored Replay 1 2026-10-12T22:52:37.434406-07:00 → 2026-10-12T22:57:37.434406-07:00 submitted 2026-10-12T22:57:37.505054-07:00 degraded required present → degraded required present required signals outside their healthy bound: dependency_error_ratio, error_ratio adopted · adopted · no health (outcome_not_healthy) consistent Signal Status / value / points stored → replayed Verdict Query Window Source Raw sha256 dependency_deployments_available ok / 8.0 / 5 → ok / 8.0 / 5 healthy 8.0 within healthy bound [8.0, 8.0] count(kube_deployment_status_replicas_available{namespace=\"otel-demo\",deployment=~\"payment|cart|valkey-cart|product-catalog|currency|shipping|email|flagd\"} >= 1) 2026-10-12T22:52:37.434406-07:00 → 2026-10-12T22:57:37.434406-07:00 prometheus 38939ba7112f70336e3d02f9c7c27ec5aa310e4e6404fc4ff4f6042ce49ca2d5 verified dependency_error_ratio ok / 0.125 / 5 → ok / 0.125 / 5 degrad",
+              "contains": {
+                "recovered, no remediation recorded": true,
+                "recovery confirmed": true
+              },
+              "sha256": "71d1973673bf00445ff7c54cf9f5ab2289e208334f897e5b521f9115fb1291a1",
+              "bytes": 62147
+            },
+            "sources": [
+              "automatic"
+            ],
+            "statuses": [
+              "recovered_no_remediation"
+            ]
+          },
+          "full_in_ledger": {
+            "sha256": "2ec854a862ebc2921b4cdba2d02e4475a878a93015e562c5f197b5862b1dd685",
+            "bytes": 64201
+          }
+        },
+        "pass": true
+      }
+    ],
+    "all_pass": true
+  },
+  "timeline": {
+    "sha256": "88f0a93ff71ecce6de6a9dbaea91ebe834d53667577f628a59bb65b66fd07178",
+    "bytes": 2569
+  },
+  "postmortem_attempts": [
+    {
+      "attempt_id": "f565f56c-08d1-442d-acb0-112cfdae5bed",
+      "status": "succeeded",
+      "version": 1,
+      "model": "deepseek-flash",
+      "model_requests": 1,
+      "prompt_tokens": 41806,
+      "completion_tokens": 12421,
+      "started_at": "2026-10-13T06:12:07.709085+00:00",
+      "finished_at": "2026-10-13T06:13:07.301843+00:00"
+    }
+  ],
+  "artifacts": {
+    "docs/evidence/m1-184-self-heal-live/collect.py": {
+      "sha256": "c97d6cb6246b79f869657db89e6b88cf2a8f18eb33d2389eb6438e05993a9b57",
+      "bytes": 18687
+    },
+    "docs/evidence/m1-184-self-heal-live/verify.py": {
+      "sha256": "2f90b0f75fa8da385cad7cde766f7b2a3948fb52747258137b4156a796e143ff",
+      "bytes": 31715
+    },
+    "tests/test_m1_184_live_verify.py": {
+      "sha256": "85626cd3712e671d727907498757861db1cf71b50d8d72ce8638a8fd58814c62",
+      "bytes": 13486
+    },
+    "docs/evidence/m1-184-self-heal-live/otel-demo-checkout-deadline-1200.json": {
+      "sha256": "f64a6e14065bc7fa04d709dc1b0b84cce24b7176cf1629b0bc3b3df7fc5c6cb9",
+      "bytes": 11192
+    },
+    "git_diff_head_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "trace": {
+    "project": {
+      "project": "opspilot-lab-184-step3-20261012",
+      "project_id": "f23200d9-3795-484f-9aae-415924c67a36",
+      "trace_tier": "longlived"
+    },
+    "root_runs_found": 1,
+    "traces": [
+      {
+        "name": "opspilot.run",
+        "langsmith_run_id": "00000000-0000-0000-6ffd-ae52ba7bfed9",
+        "otel_trace_id": "e7a34b15629efdcb132d362cc4a2f57f",
+        "business_run_ids": [
+          "86c9c662-439f-5b8b-af7d-af4a944e60d4"
+        ],
+        "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/f23200d9-3795-484f-9aae-415924c67a36/r/00000000-0000-0000-6ffd-ae52ba7bfed9?poll=true",
+        "read_back": "found",
+        "start_time": "2026-10-13 05:54:54.990611+00:00",
+        "end_time": "2026-10-13 05:56:14.577842+00:00",
+        "status": "success",
+        "prompt_tokens": 73962,
+        "completion_tokens": 15423,
+        "child_runs": {
+          "llm": 4,
+          "tool": 9
+        }
+      }
+    ]
+  },
+  "cost": {
+    "reads": [
+      {
+        "at": "2026-10-13T05:48:53.923151+00:00",
+        "balance": [
+          {
+            "currency": "CNY",
+            "total_balance": "202.15",
+            "granted_balance": "0.00",
+            "topped_up_balance": "202.15"
+          }
+        ]
+      },
+      {
+        "at": "2026-10-13T06:13:02.516360+00:00",
+        "balance": [
+          {
+            "currency": "CNY",
+            "total_balance": "202.06",
+            "granted_balance": "0.00",
+            "topped_up_balance": "202.06"
+          }
+        ]
+      },
+      {
+        "at": "2026-10-13T06:50:19.593752+00:00",
+        "balance": [
+          {
+            "currency": "CNY",
+            "total_balance": "201.07",
+            "granted_balance": "0.00",
+            "topped_up_balance": "201.07"
+          }
+        ]
+      }
+    ],
+    "note": "one balance key for the whole round; between the first and last read the worker made the S1 and S2 investigation Runs and the S1 and S2 postmortem drafts (one model request each, see postmortem_attempts). The S1 postmortem started 06:12:07Z, before the middle read, so no per-scenario split is attributable; only the round total is reported. No other calls on this key in the window are known (other sessions not checked)."
+  },
+  "raw_ledger": {
+    "sha256": "941cc6df8dd3ba23fb68959910f64130a5135dbe5a2a8d79ff9f8a72d21c8046",
+    "bytes": 1160574,
+    "path": "m1-184-self-heal-live/86c9c662-439f-5b8b-af7d-af4a944e60d4/ledger.json",
+    "in_repository": false
+  }
+}

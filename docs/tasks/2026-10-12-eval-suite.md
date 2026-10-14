@@ -1,9 +1,9 @@
 # 场景评测套件（回放 + live，参照 HolmesGPT tests/llm）
 
-- 状态：合同 r6 已定（D6 改为确定性 gate + 校准后的 LLM judge）；SPEC 有界开放已合并（#210）；PR-A 未开工，预审须先回答 #211 其余四项
-- 更新日期：2026-10-12
+- 状态：合同 r7；PR-A（评测合同与 schema）已实现并通过独立审查，待用户合并，见执行节
+- 更新日期：2026-10-13
 - 依据：外部验收入口 `IncidentScenario -> IncidentOutcome`（AGENTS.md「验证与汇报」）；[v4 验收包](../testing/first-investigation-v4-2026-09-10.md)；[M1-01 收口记录](2026-09-28-m1-01-closure.md)中的上游评测口径；ADR-0006；C3 第 388–398 行（judge 校准）；上游 HolmesGPT `46e3a72` 的 `tests/llm/`
-- 工作区：本 PR `chore/eval-suite-gate`，`../production-ops-agent-eval-gate`；实施时每个 PR 一个 worktree，写在执行节
+- 工作区：每个 PR 一个 worktree，写在执行节
 
 ## 目标与范围
 
@@ -15,9 +15,9 @@
 - 前提：SPEC 有界开放段落合并（含 r4 收紧项确认）；DeepSeek 充值（已完成：2026-10-12 余额 202.15 CNY，基线估计 4–13 CNY）；live 档开跑前与其他会话确认 kind lab 空闲（D15）。
 - 完成条件：6 个场景回放各 5 次、live 各 2 次，都有冻结的 `summary.json` 与 LangSmith trace；judge 已按独立标注校准；成功率表（`passed/attempted`，`replay_miss` 计为失败并另列 miss 率）作为基线入库；每个 PR 都经过独立审查。
 
-## 合同（r6）
+## 合同（r7）
 
-完整决定表（含选项、代价与出处）见 [合同决定表](2026-10-12-eval-suite-contract.md)。r1：用户于 2026-10-12 一次裁决。r2：PR #210 机器人分诊后，D10 与 D13 改判，用户同日裁决。r3：PR #210 第二轮分诊后，补正常场景判据（D6）、修正 CI 档位（D8），用户同日裁决。r4：PR #210 第三轮分诊，四项收紧（D1 改称开发场景、D6 证据支持与正常场景收紧、R3 分母），均按 C3 §11 只收紧不放宽，在本 PR 合并时由用户一并确认。r5：第四轮分诊，故障场景每条因果诊断都须受支持，PR-D 删除 F14 对照；同样只收紧。r6：#211 第 1 项（报告 schema 不标因果，确定性判据无法机读），用户 2026-10-12 改选 D6 选项 C，参照 HolmesGPT。
+完整决定表（含选项、代价与出处）见 [合同决定表](2026-10-12-eval-suite-contract.md)。r1：用户于 2026-10-12 一次裁决。r2：PR #210 机器人分诊后，D10 与 D13 改判，用户同日裁决。r3：PR #210 第二轮分诊后，补正常场景判据（D6）、修正 CI 档位（D8），用户同日裁决。r4：PR #210 第三轮分诊，四项收紧（D1 改称开发场景、D6 证据支持与正常场景收紧、R3 分母），均按 C3 §11 只收紧不放宽，在本 PR 合并时由用户一并确认。r5：第四轮分诊，故障场景每条因果诊断都须受支持，PR-D 删除 F14 对照；同样只收紧。r6：#211 第 1 项（报告 schema 不标因果，确定性判据无法机读），用户 2026-10-12 改选 D6 选项 C，参照 HolmesGPT。r7：PR-A 合同预审（P1–P13），用户 2026-10-13 裁决，P5 改判为 GLM 5.3。
 
 - D1 场景：v4 的 normal-1/2、fault-1/2，加 `productCatalogFailure`、`cartFailure`，共 6 个，全部是开发场景（r4：后两个已在三包中跑过且结果已公开，不再称为留出）。任何留出结论都需要另建隔离的未见场景集；新增场景另开版本；答案只放在评测侧。
 - D2 回放：回放从 live 录制的完整模型可见输入、工具 schema、工具调用与结果、视图、hash、时间与权限，模型真实调用；另保留不调用模型的结构重放，不计入质量成功率。
@@ -34,7 +34,17 @@
 - D13 回放未命中：该 Run 记为失败并计入分母（C3 第 394 行、v4 第 99 行），另单列 miss 率（用户 2026-10-12 按 PR #210 分诊结果改判）。
 - D14 SPEC 关系：定为开发基线，在 SPEC 有界开放段落中写明。
 - D15 kind lab：与其他会话共用，同一时间只有一个真实故障，开跑前先确认。
-- 可逆默认 R1–R6 见合同决定表。
+- P1 结局（#211-2/5）：通过须执行 completed、report_available、无 handoff 且 `assessment_status=completed`；正常场景仍允许 partial/inconclusive 但事实型因果诊断为零；故障场景至少一条诊断且每条满足 r6，空集不得通过。
+- P2 trace（#211-3）：必需 trace 回读不到或身份不匹配记 `evidence_incomplete`，判失败、计分母、保留 judge 判分，阻止宣告基线完成；补证另建 revision。
+- P3 权限：须含 `read_only`，额外只容许 `human_control`（持久化投影，`opspilot/acceptance.py:421`）；写或未知权限拒绝。
+- P4 manifest（#211-4）：C3 §11 每个维度必须有 version/hash 或带理由的显式 `none`；缺失为 unknown，阻止基线完成。
+- P5 judge 模型：GLM 5.3（异家族），独立配置、全新上下文；须通过 P7 校准。评测证据发往第二家供应商，仅限开发评测；凭据与端点在接入 judge 前核查。
+- P6 judge 输入输出：输入报告全文、授权主体与时间、报告引用且已交付的证据内容/ID/hash、expected answer、证据规则结果；输出逐条诊断（定位/引文、是否事实型因果、服务/操作、引用、支持判定、理由）与二值 verdict；代码复核定位与引用并重算 AND；error/timeout/invalid/oversize/未校准均不通过。
+- P7 校准：两个独立全新上下文 Agent 盲标，分歧由用户裁决；每场景 2 份调试、4 份冻结验证（共 12+24）；24 份验证各判两次，≥46/48 与最终标签一致，且负例零误通过；不达标不记基线，修 judge 后换验证集。只服务开发基线，不关闭 SPEC 的 M0 formal calibration 入口项。
+- P8 证据特征：首版只认可见错误 span，评测侧 `answer.json` 存版本化 `any_of` 规则（精确 service/RPC operation、error=true、时间窗、min_matches=1）；容许故障服务 server span 或 checkout 上同一 RPC 的失败 client span；只靠 metrics 的报告不通过。
+- P9 judge 调用：每份报告一次、不自动重试或投票；单次 360 s、请求 8 MiB/响应 2 MiB、输出上限 16384；judge 单独串行（P5 改判后不占 DeepSeek 并发）；费用分供应商、分阶段记录，校准费用另列。
+- P10 分母：setup 前登记 attempt；开始后的 setup/error/abort/unknown/replay_miss/judge_error/evidence_incomplete 都计失败，未开始的跳过单列；固定槽位，失败不重抽替换；基线完成 = 槽位执行完、校准合格、证据齐全，不是产品验收通过。
+- 可逆默认 R1–R6 与 P11–P13（场景与答案分文件隔离、版本化 eval summary/manifest/aggregate、多 trace `trace.entries[]` 与旧摘要只读兼容）见合同决定表。
 
 ## 计划
 
@@ -44,6 +54,15 @@
 4. PR-C：live kind 场景驱动（D3、D4、D10、D15）。
 5. PR-D：CI 结构重放入口与第一轮基线入库。
 
+## 执行
+
+- PR-A：分支 `feature/eval-a-contract`，worktree `../production-ops-agent-eval-a`。公开接口 [PR-A 接口](2026-10-13-eval-pr-a-interface.md)；代码 `opspilot/evaluation/`；6 个场景 `evals/scenarios/`。
+  - 验收测试由未参与实现的 Codex 只按接口文档编写（`tests/acceptance/test_eval_contract.py`），首轮 406 例 405 过，唯一失败是实现把窗口检查挂在时间引用检查之后，改实现；接口歧义 9 项的处置写在接口文档末尾。
+  - 独立审查（Codex，全新上下文）首轮 fail：P1 judge 认定为事实型因果的 hypothesis 可绕过证据资格；P2 payment 规则漏掉真实 server span；P2 场景与产品 Run 身份未绑定；P2 aggregate 未校验 manifest。四项复现后修复，接口同步修订，测试作者补测（既有断言经 AST 核对未改）。复验 pass with fixes，残余 1 项（Outcome 的 scenario_id 未核对）修复并补测。终态 531 例全过；PR #221 机器人三项（引用须属本 Run、记录须在场景 target、越界时间戳不抛错）采纳修复后 589 例全过；第二、三轮共四项（反向与非 UTC 窗口、记录 ID 绑定、签名只来自合格引用）采纳修复后 633 例全过；第四轮两项（judge 身份绑定 manifest、signature 拒绝未知字段）采纳修复后 686 例全过；第五轮三项（judged 结果必须带 judge hash、校准结果绑定冻结 hash、manifest 拒绝未知 kind）修复后 738 例全过，全仓 `make check` 等价检查通过。
+  - 证据特征规则对 6 个冻结证据包核对：故障包各自命中，正常包零命中；76 条记录的 `view_sha256` 与产品算法一致。
+  - 实施中冒出的合同问题（用户 2026-10-13 裁决按 P8 原样）：product-catalog 故障中 `frontend` 上的 `grpc.oteldemo.ProductCatalogService/GetProduct` 失败 client span（真实证据 6 条）不计入证据特征，只认 product-catalog server span（同一故障包 11 条）或 checkout 上的 client span。
+  - 机器人审查共五轮，均为身份与输入校验的收紧；第五轮按用户选择修复后停止推送，后续发现汇入一个 PR-B issue。
+
 ## 下一步与交接
 
-- SPEC 有界开放已合并（#210，2026-10-12）。#211 第 1 项已裁决为 r6（judge）；PR-A 预审须回答其余四项，并定 judge 模型、标注来源、校准样本与一致率门槛。DeepSeek 已充值（202.15 CNY）。
+- SPEC 有界开放已合并（#210，2026-10-12）。PR-A 预审已裁决为 r7（2026-10-13），#211 五项全部回答。下一步：PR-A 实施，验收测试由未参与实现的 Agent 按预审第 4 节的公开接口编写。DeepSeek 已充值（202.15 CNY）；GLM 5.3 凭据与端点待核查。
