@@ -71,11 +71,11 @@ canonical JSON：`json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_
 
 - summary 从保存的原始输入调用 PR-A `evaluate()`。保存的 evaluation/report_parsed/report_sha256 逐项核对；缓存不能决定通过。attempt round_id、manifest hash、capture.manifest 必须绑定传入 manifest；保存evaluation内的attempt身份及judge hashes也须与原始输入相等，缓存aggregate的round_id/manifest_hash须相等；spec/answer/attempt/outcome 的场景版本与身份必须一致。trace.entry 属于来源角色（role 为 source/source_*）时不得 required；TraceRecord.attempt_id/evaluation_id 必须等于当前 attempt_id，entry 的产品 Run 不一致仍沿 PR-A 判 evidence_incomplete。非 null replay_run_id 必须等于 attempt.product_run_id。judge 的两 hash 必须与 manifest 的 hash 维度绑定（judge 为 null 无此要求）。
 - load_calibration 固定调用 `calibrate()` 默认 P7 参数（24项、每项2次、46一致、12负例、0误通过）；与保存 result 全字段比较，再核 expected hashes，不信 passed。少样本可读回为失败结果；判定次数不对则结构错误。错误判定不得用非 bool 表示。
-- load_round 逐一读 journal/summary/calibration，调用 `aggregate()`，比较保存 aggregate。journal 不得重复 attempt_id/槽位、不计划的槽位拒绝；summary 必须有相同 started=True journal，冻结 spec/answer、身份/槽位相同（status/replay_miss/product_run_id 可在执行后改变；journal 已有 product_run_id 则必须一致）。started=True 缺 summary 时，用 journal spec/answer 和 `replace(attempt,status="unknown")`，其余输入 None/空集合调用 evaluate，失败计分母；started=False 且无 summary 或完全没有 journal 的计划槽位 → not_started。present summary ref 读不到不能当缺 summary吞掉，必须 EVIDENCE_UNAVAILABLE。
-- `aggregate()` 补防御：started 不是真正 True → AggregateError("ATTEMPT_NOT_STARTED")；校准计数须为非负非bool整数、comparisons==items*2、agreement≤comparisons、negatives≤items、false_passes≤2*negatives；按固定P7门槛的 passed/reasons 须自洽，否则 AggregateError("CALIBRATION_INCONSISTENT")。保留 PR-A 其余签名及语义。
+- load_round 逐一读 journal/summary/calibration，调用 `aggregate()`，比较保存 aggregate。journal 不得重复 attempt_id/槽位、不计划的槽位拒绝；summary 必须有相同 started=True journal，冻结 spec/answer、身份/槽位相同（status/replay_miss/product_run_id 可在执行后改变；journal 已有 product_run_id 则必须一致）。started=True 缺 summary 时，用 journal spec/answer 和 `replace(attempt,status="unknown")`，其余输入 None/空集合调用 evaluate，失败计分母；started=False 且无 summary 或完全没有 journal 的计划槽位 → not_started。present summary ref 读不到不能当缺 summary吞掉，必须 EVIDENCE_UNAVAILABLE。任一summary的judge.calibrated=True而本轮校准缺失或重算passed=False时，load_round/write_round一律DERIVED_RESULT_MISMATCH并拒绝整轮；理由：T:42未校准均不通过，不能公布矛盾通过率。
+- `aggregate()` 补防御：started 不是真正 True → AggregateError("ATTEMPT_NOT_STARTED")；校准计数须为非负非bool整数、comparisons==items*2、agreement≤comparisons、negatives≤items、false_passes≤2*negatives；仅passed=True时令disagreements=comparisons-agreement，并要求false_passes≤disagreements且disagreements-false_passes≤2*(items-negatives)；passed=False不执行联合约束，保留原有范围检查；理由：r2：失败 DTO 不抬高通过率，保留 I:99 兼容；按固定P7门槛的 passed/reasons 须自洽，否则 AggregateError("CALIBRATION_INCONSISTENT")。保留 PR-A 其余签名及语义。
 - 旧无 schema summary 仅由 read_legacy_summary 展示：原 payload 和原字节 hash 不改；trace.entries 数组原样，旧 trace 单对象转换成一个展示项，缺 trace 为空。verified 恒 false。load_summary 对无 schema 旧件报 EVIDENCE_UNAVAILABLE；未知显式 schema 报 SCHEMA_INVALID，绝不自动升级。
 
-StorageError(ValueError) 的 `.code` 与 str 都为以下固定码，错误正文/异常链不携带原始数据、路径、供应商异常或凭据：
+StorageError(ValueError) 的 `.code` 与 str 都为以下固定码，错误正文/异常链不携带原始数据、路径、供应商异常或凭据，转换后的异常__cause__与__context__均为None，所有评测模块在except块外抛出新异常；理由：from None仅隐藏展示，不能移除隐式异常链：
 
 | 码 | 条件 |
 |---|---|
@@ -88,7 +88,7 @@ StorageError(ValueError) 的 `.code` 与 str 都为以下固定码，错误正�
 | DERIVED_RESULT_MISMATCH | 保存的evaluation、报告解析、calibration result、aggregate与纯函数重算不一致 |
 | OUTPUT_EXISTS | writer目标已存在（含符号链接），并发仅一个成功 |
 
-每个 writer 先验证全部数据、在目标同目录私有临时普通文件写完并 fsync，再 hard-link 独占发布、fsync目录、删除自身临时文件。读者只见完整文件；不覆盖既有目标，不用 replace。非重复的写IO错误报 EVIDENCE_UNAVAILABLE（发布后目录fsync失败可能已留下完整文件，重试仍OUTPUT_EXISTS）；多文件调用没有事务承诺。
+每个 writer 先验证全部数据、在目标同目录私有临时普通文件写完并 fsync，再 hard-link 独占发布、fsync目录、删除自身临时文件。读者只见完整文件；不覆盖既有目标，不用 replace。非重复的写IO错误报 EVIDENCE_UNAVAILABLE（含finally中unlink/close清理的OSError，归一后异常链为空；发布后目录fsync或清理失败可能已留下完整文件，重试仍OUTPUT_EXISTS；理由：清理同属写IO边界，不能泄露filename或回滚已发布目标）；多文件调用没有事务承诺。
 
 ## 基线表与调整理由
 
@@ -96,4 +96,4 @@ write_baseline **重新 load_round**，生成 UTF-8 Markdown 表并独占原子�
 
 最小调整：增加 write_attempt/write_calibration/write_round 与 DTO envelope，理由是预审只有reader签名，测试/驱动需要可复现的冻结写入口；load_calibration直接返回重算 CalibrationResult，B3再引入盲标认证类型。summary把P12身份统一放capture.attempt，理由是避免重复身份产生两套权威；trace.entries 保持P13字段路径，capture.traces供evaluate原始输入使用，两者逐项比较；旧trace转换仅用于展示。原始交付存ref并保存对照DTO，理由是缺外置证据时明确fail-closed；writer不自动创建包/录制文件。B1不证明P7盲标、录制完整性或真实生产观察。
 
-PR-A 兼容处置（实际测试揭示）：失败 CalibrationResult 的 agreement 与 false_passes 联合关系不另加 aggregate 拒绝门，理由是既有验收用48一致/1误通过表示失败；保留失败与阻止基线的语义。仍检查各计数范围、comparisons及P7 passed/reasons；新持久化件完整重算，不接受矛盾计数。
+PR-A 兼容处置（lead裁决r2）：passed=False的旧CalibrationResult保留原有范围检查，不执行联合约束，48一致/1误通过的失败DTO仍接受并阻止基线完成；理由：r2：失败 DTO 不抬高通过率，保留 I:99 兼容。新持久化件仍完整重算。

@@ -238,10 +238,14 @@ _INJECTED_KEYS = frozenset(
 
 
 def _read(path: Path) -> dict[str, Any]:
+    unreadable = False
+    data: Any = None
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError) as exc:
-        raise ScenarioError(f"UNREADABLE:{path.name}") from exc
+    except (OSError, ValueError):
+        unreadable = True
+    if unreadable:
+        raise ScenarioError(f"UNREADABLE:{path.name}")
     if not isinstance(data, dict):
         raise ScenarioError(f"NOT_AN_OBJECT:{path.name}")
     return data

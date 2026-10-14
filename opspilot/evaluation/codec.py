@@ -51,8 +51,10 @@ def encode(value: Any) -> Any:
         try:
             value.encode("utf-8")
         except UnicodeError:
-            return invalid()
-        return value
+            pass
+        else:
+            return value
+        return invalid()
     if value is None or type(value) in (bool, int):
         return value
     if type(value) is float and math.isfinite(value):
@@ -70,7 +72,8 @@ def canonical_bytes(value: Any) -> bytes:
             allow_nan=False,
         ).encode("utf-8")
     except (ValueError, TypeError, OverflowError, RecursionError):
-        raise StorageError("SCHEMA_INVALID") from None
+        pass
+    return invalid()
 
 
 def _pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
@@ -94,7 +97,8 @@ def parse(raw: bytes) -> dict[str, Any]:
             return invalid()
         return cast(dict[str, Any], value)
     except (ValueError, TypeError, OverflowError, RecursionError):
-        raise StorageError("SCHEMA_INVALID") from None
+        pass
+    return invalid()
 
 
 def exact(value: Any, keys: set[str]) -> dict[str, Any]:
@@ -125,10 +129,11 @@ def decode(annotation: Any, value: Any) -> Any:
     if annotation in (str, bool, int):
         return value if type(value) is annotation else invalid()
     if annotation is float:
+        finite = False
         try:
             finite = type(value) in (int, float) and math.isfinite(value)
         except OverflowError:
-            return invalid()
+            pass
         if not finite:
             return invalid()
         return float(value)
@@ -138,6 +143,8 @@ def decode(annotation: Any, value: Any) -> Any:
         try:
             result = datetime.fromisoformat(value)
         except ValueError:
+            result = None
+        if result is None:
             return invalid()
         if result.utcoffset() != timedelta(0):
             return invalid()
@@ -166,7 +173,7 @@ def decode(annotation: Any, value: Any) -> Any:
         try:
             return annotation(**{k: decode(hints[k], v) for k, v in obj.items()})
         except (ValueError, TypeError):
-            return invalid()
+            pass
     return invalid()
 
 
@@ -174,4 +181,5 @@ def validated(annotation: Any, value: Any) -> Any:
     try:
         return decode(annotation, encode(value))
     except (ValueError, TypeError, OverflowError, RecursionError):
-        raise StorageError("SCHEMA_INVALID") from None
+        pass
+    return invalid()

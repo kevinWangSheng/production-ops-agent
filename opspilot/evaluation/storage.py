@@ -179,25 +179,37 @@ def _parent(path: Path) -> tuple[int, str]:
             descriptor = child
         return descriptor, absolute.name
     except OSError:
-        os.close(descriptor)
+        pass
+    _close(descriptor)
     raise StorageError("EVIDENCE_UNAVAILABLE") from None
+
+
+def _close(descriptor: int) -> bool:
+    try:
+        os.close(descriptor)
+    except OSError:
+        return False
+    return True
 
 
 def _read(path: Path) -> bytes:
     parent, name = _parent(path)
+    raw = None
     try:
         descriptor = os.open(
             name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent
         )
         with os.fdopen(descriptor, "rb") as file:
-            if not stat.S_ISREG(os.fstat(file.fileno()).st_mode):
-                raise StorageError("EVIDENCE_UNAVAILABLE")
-            return file.read()
+            if stat.S_ISREG(os.fstat(file.fileno()).st_mode):
+                raw = file.read()
     except OSError:
         pass
     finally:
-        os.close(parent)
-    raise StorageError("EVIDENCE_UNAVAILABLE") from None
+        if not _close(parent):
+            raw = None
+    if raw is None:
+        raise StorageError("EVIDENCE_UNAVAILABLE") from None
+    return raw
 
 
 def _publish(path: Path, raw: bytes, media_type: str) -> ArtifactRef:
@@ -212,19 +224,24 @@ def _publish(path: Path, raw: bytes, media_type: str) -> ArtifactRef:
         except FileNotFoundError:
             pass
         else:
-            raise StorageError("OUTPUT_EXISTS")
-        descriptor = os.open(
-            temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600, dir_fd=parent
-        )
-        created = True
-        with os.fdopen(descriptor, "wb") as file:
-            file.write(raw)
-            file.flush()
-            os.fsync(file.fileno())
-        os.link(
-            temporary, name, src_dir_fd=parent, dst_dir_fd=parent, follow_symlinks=False
-        )
-        os.fsync(parent)
+            failure = "OUTPUT_EXISTS"
+        if failure is None:
+            descriptor = os.open(
+                temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600, dir_fd=parent
+            )
+            created = True
+            with os.fdopen(descriptor, "wb") as file:
+                file.write(raw)
+                file.flush()
+                os.fsync(file.fileno())
+            os.link(
+                temporary,
+                name,
+                src_dir_fd=parent,
+                dst_dir_fd=parent,
+                follow_symlinks=False,
+            )
+            os.fsync(parent)
     except FileExistsError:
         failure = "OUTPUT_EXISTS"
     except OSError:
@@ -233,8 +250,10 @@ def _publish(path: Path, raw: bytes, media_type: str) -> ArtifactRef:
         try:
             if created:
                 os.unlink(temporary, dir_fd=parent)
-        finally:
-            os.close(parent)
+        except OSError:
+            failure = "EVIDENCE_UNAVAILABLE"
+        if not _close(parent):
+            failure = "EVIDENCE_UNAVAILABLE"
     if failure is not None:
         raise StorageError(failure) from None
     return ArtifactRef(name, _sha(raw), len(raw), media_type, "private")
@@ -582,6 +601,7 @@ def _round(capture: RoundCapture, resolve: Resolver) -> Aggregate:
     if set(capture.summaries) - set(journals):
         raise StorageError("IDENTITY_MISMATCH")
     evaluations: list[RunEvaluation] = []
+    claimed_calibrated = False
     for key, journal in journals.items():
         summary_ref = capture.summaries.get(key)
         if summary_ref is not None:
@@ -608,6 +628,7 @@ def _round(capture: RoundCapture, resolve: Resolver) -> Aggregate:
             ):
                 raise StorageError("IDENTITY_MISMATCH")
             evaluations.append(evaluation)
+            claimed_calibrated |= summary.judge is not None and summary.judge.calibrated
         elif journal.attempt.started:
             evaluations.append(
                 evaluate(
@@ -633,6 +654,8 @@ def _round(capture: RoundCapture, resolve: Resolver) -> Aggregate:
             cast(str, pack.value),
             cast(str, judge.value),
         )
+    if claimed_calibrated and (calibration is None or not calibration.passed):
+        raise StorageError("DERIVED_RESULT_MISMATCH")
     try:
         return aggregate(capture.manifest, capture.planned, evaluations, calibration)
     except (AggregateError, ManifestError):

@@ -592,7 +592,12 @@ def test_replay_miss_and_structural(tmp_path, mode, miss, quality):
         tmp_path / "journal.json", AttemptJournal(cap.attempt, cap.spec, cap.answer)
     )
     s = write_summary(tmp_path / "summary.json", cap)
-    rnd = RoundCapture(cap.manifest, (slot(cap),), (a,), {cap.attempt.attempt_id: s})
+    calibration_ref = write_calibration(
+        tmp_path / "calibration.json", calibration_capture()
+    )
+    rnd = RoundCapture(
+        cap.manifest, (slot(cap),), (a,), {cap.attempt.attempt_id: s}, calibration_ref
+    )
     write_round(tmp_path / "round.json", rnd, resolve=resolver(tmp_path))
     row = load_round(tmp_path / "round.json", resolve=resolver(tmp_path)).rows[0]
     assert row.pass_rate == quality
@@ -699,7 +704,9 @@ def test_legacy_failed_calibration_stays_fail_closed():
         judge_config_hash=c.judge_config_hash,
         calibration_pack_hash=c.calibration_pack_hash,
     )
-    result = replace(result, passed=False, false_passes=1, reasons=("FALSE_PASS",))
+    result = replace(
+        result, passed=False, agreement=48, false_passes=1, reasons=("FALSE_PASS",)
+    )
     aggregated = aggregate(cap.manifest, [slot(cap)], [score(cap)], result)
     assert not aggregated.baseline_complete
     assert aggregated.incomplete_reasons == ("JUDGE_NOT_CALIBRATED",)
@@ -756,3 +763,109 @@ def test_writer_bad_python_types_are_fixed_errors(tmp_path):
         )
     assert not (tmp_path / "bad-types.json").exists()
     assert not (tmp_path / "surrogate.json").exists()
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"negatives": 24, "agreement": 46},
+        {
+            "agreement": 48,
+            "false_passes": 1,
+            "passed": False,
+            "reasons": ("FALSE_PASS",),
+        },
+        {"agreement": 23, "passed": False, "reasons": ("AGREEMENT_BELOW_THRESHOLD",)},
+    ],
+)
+def test_calibration_joint_constraints(changes):
+    cap = capture()
+    c = calibration_capture()
+    calibration = calibrate(c.labels, c.verdicts)
+    changed = replace(calibration, **changes)
+    if changed.passed:
+        with pytest.raises(AggregateError, match="^CALIBRATION_INCONSISTENT$"):
+            aggregate(cap.manifest, [slot(cap)], [score(cap)], changed)
+    else:
+        result = aggregate(cap.manifest, [slot(cap)], [score(cap)], changed)
+        assert not result.baseline_complete
+        assert "JUDGE_NOT_CALIBRATED" in result.incomplete_reasons
+
+
+@pytest.mark.parametrize("missing", [False, True])
+def test_round_rejects_false_calibration_claim(tmp_path, missing):
+    cap, rnd = round_capture(tmp_path)
+    if missing:
+        rnd = replace(rnd, calibration_ref=None)
+        failed = None
+    else:
+        c = calibration_capture()
+        c = replace(c, verdicts=(("0", True),) + c.verdicts[1:])
+        cr = write_calibration(tmp_path / "failed.json", c)
+        rnd = replace(rnd, calibration_ref=cr)
+        failed = calibrate(
+            c.labels,
+            c.verdicts,
+            judge_config_hash=c.judge_config_hash,
+            calibration_pack_hash=c.calibration_pack_hash,
+        )
+    rejected = tmp_path / "rejected-round.json"
+    with pytest.raises(StorageError, match="^DERIVED_RESULT_MISMATCH$"):
+        write_round(rejected, rnd, resolve=resolver(tmp_path))
+    assert not rejected.exists()
+    cached = aggregate(cap.manifest, rnd.planned, [score(cap)], failed)
+    forged = tmp_path / "cached-round.json"
+    forged.write_bytes(
+        raw(
+            {"schema": "opspilot-eval-aggregate-1", "capture": rnd, "aggregate": cached}
+        )
+    )
+    with pytest.raises(StorageError, match="^DERIVED_RESULT_MISMATCH$"):
+        load_round(forged, resolve=resolver(tmp_path))
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        b'{"bad":',
+        b'{"bad":"\\ud800"}',
+        b'{"n":1e999}',
+        b'{"x":1,"x":2}',
+    ],
+)
+def test_codec_failure_chains_empty(tmp_path, payload):
+    path = tmp_path / "invalid.json"
+    path.write_bytes(payload)
+    with pytest.raises(StorageError) as caught:
+        load_summary(path, manifest=capture().manifest, resolve=resolver(tmp_path))
+    assert caught.value.__cause__ is None and caught.value.__context__ is None
+
+
+def test_bad_datetime_has_no_context(summary, tmp_path):
+    cap, path = summary
+    mutate(path, "capture.started_at", "synthetic-private-date")
+    with pytest.raises(StorageError, match="^SCHEMA_INVALID$") as caught:
+        load_summary(path, manifest=cap.manifest, resolve=resolver(tmp_path))
+    assert caught.value.__cause__ is None and caught.value.__context__ is None
+
+
+@pytest.mark.parametrize("cleanup", ["unlink", "close"])
+def test_cleanup_failure_is_normalized(tmp_path, monkeypatch, cleanup):
+    import opspilot.evaluation.storage as storage
+
+    cap = capture()
+    journal = AttemptJournal(cap.attempt, cap.spec, cap.answer)
+    real = getattr(storage.os, cleanup)
+
+    def fail(*args, **kwargs):
+        real(*args, **kwargs)
+        if cleanup == "unlink" or path.exists():
+            raise PermissionError(13, "Permission denied", "/synthetic-private-path")
+
+    monkeypatch.setattr(storage.os, cleanup, fail)
+    path = tmp_path / "cleanup.json"
+    with pytest.raises(StorageError, match="^EVIDENCE_UNAVAILABLE$") as caught:
+        write_attempt(path, journal)
+    assert caught.value.__cause__ is None and caught.value.__context__ is None
+    assert not hasattr(caught.value, "filename")
+    assert path.exists()

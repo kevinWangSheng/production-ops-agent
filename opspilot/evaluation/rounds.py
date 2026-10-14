@@ -226,9 +226,13 @@ def _validate_calibration(calibration: CalibrationResult) -> None:
         or false_passes > 2 * negatives
     ):
         raise AggregateError("CALIBRATION_INCONSISTENT")
-    # PR-A accepts failed legacy DTOs whose agreement and false_passes were
-    # counted independently. Keep that tested, fail-closed behavior; the
-    # persisted loader recomputes all joint counts from labels/verdicts.
+    disagreements = comparisons - agreement
+    if calibration.passed is True and (
+        false_passes > disagreements
+        or disagreements - false_passes > 2 * (items - negatives)
+    ):
+        raise AggregateError("CALIBRATION_INCONSISTENT")
+    # r2: failed DTOs cannot raise the pass rate; preserve I:99 compatibility.
     reasons = tuple(
         code
         for failed, code in (
