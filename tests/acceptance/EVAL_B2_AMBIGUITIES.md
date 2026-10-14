@@ -122,3 +122,13 @@
       - 不读取注册快照的内部结构，只断言错误码；
       - record 当场报码也接受，但必须是 IDENTITY_MISMATCH，且包不完整。
     - `_too_large_message` 照抄了产品模板。它只用来构造自洽的篡改，以及在正向用例里核对真实结果与模板逐字相等。如果产品文案改了，正向用例会提示需要同步。
+
+22. **反例迁移到真实执行器加快照（2026-10-14）**
+    - Review P2-1、Recheck2、Recheck3 (a) 的反例不再用假工具夹具。现在的底是真实 ReadOnlyToolExecutor 的结果，加上 `bind_tool_snapshots` 冻结的合规 ToolSnapshot，每个用例只做一处篡改。
+      - 改 operation 时，同步替换 EvidenceRecord.operation。
+      - 改 view 时，同步替换 EvidenceRecord 的 view 和 view_sha256。这样只留下被测的那一处矛盾，不会因为 hash 不一致先被拒。
+    - 反例的时间改用 m1 执行器的授权框 00:00–01:00，不再照搬第 14、18 条里 12:00/23:00 的数值，但反例的形状不变。
+      - 「省略窗口」用例：facade 请求不带窗口，执行器实际按 00:01–00:03 执行。binding 默认窗为 None，所以默认窗就是授权框。
+      - Recheck2：请求窗是授权框 00:00–01:00；(a) 的结果窗是 00:01–01:00；结果去掉 EvidenceRecord，view 保留 evidence_id 和非空 content，并加上 rows。
+    - 新增对照测试 `test_real_snapshot_bases_verify_untampered`：同样的底和快照、不做篡改时必须能完整录制并通过核验。这证明反例被拒是因为各自的篡改，而不是因为缺快照或夹具本身不合规。
+    - Review P2-1 的正向对照（窗口相等时通过）仍用假夹具。它带完整 EvidenceRecord，不属于受限分支，没有快照也能通过。

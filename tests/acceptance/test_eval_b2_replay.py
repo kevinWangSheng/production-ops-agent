@@ -54,6 +54,7 @@ from tests.m1_investigation_support import (
 )
 from tests.m1_investigation_support import reply as loop_reply
 from tests.m1_investigation_support import tool_call as loop_tool_call
+from tests.m1_tool_support import WINDOW_START
 from tests.m1_tool_support import body as tool_body
 from tests.m1_tool_support import build as build_tool_executor
 from tests.m1_tool_support import registration as tool_registration
@@ -252,6 +253,111 @@ def _snapshot_context(
         (ToolSnapshot(tuple(regs), tuple(tgts), executor.scope),),
         s.manifest(),
     )
+
+
+_ROWS_RESPONSE_BODY = [{"value": 3}]
+
+
+def _real_window(start_min: int, end_min: int) -> dict[str, str]:
+    """A window inside the m1 executor's authorized frame (00:00-01:00)."""
+    return {
+        "start": (WINDOW_START + timedelta(minutes=start_min)).isoformat(),
+        "end": (WINDOW_START + timedelta(minutes=end_min)).isoformat(),
+    }
+
+
+def _replace_op(result: Any, **changes: Any) -> Any:
+    """Change the operation consistently on the outcome and its evidence."""
+    op = replace(result.operation, **changes)
+    evidence = result.evidence
+    if evidence is not None:
+        evidence = replace(evidence, operation=op)
+    return replace(result, operation=op, evidence=evidence)
+
+
+def _replace_view(result: Any, **changes: Any) -> Any:
+    """Change the view consistently on the outcome and its EvidenceRecord."""
+    view = {**dict(result.model_view), **changes}
+    evidence = result.evidence
+    if evidence is not None:
+        evidence = replace(evidence, _view=view, view_sha256=canonical_view_hash(view))
+    return replace(result, model_view=view, evidence=evidence)
+
+
+def _record_real(
+    tmp_path: Path,
+    *,
+    tool_request: Any,
+    mutate: Any = None,
+    execute_window: Any = None,
+    registrations: Any = None,
+    build_kw: dict[str, Any] | None = None,
+    response: Any = None,
+):
+    """Record one real executor call with a compliant frozen ToolSnapshot.
+
+    ``execute_window`` (if given) is the window the executor actually ran,
+    while the recorded facade request keeps its own window; ``mutate`` is
+    the single tamper applied to the real result. Returns (ref | None,
+    record-time error code | None, pkg, produced results).
+    """
+    real, transport, clock, regs, tgts = _real_tool(
+        registrations=registrations, **(build_kw or {})
+    )
+    transport.response = response or TransportResponse(
+        body=tool_body(_ROWS_RESPONSE_BODY)
+    )
+    produced: list[Any] = []
+
+    class Executor:
+        def __init__(self) -> None:
+            self.scope = real.scope
+
+        def execute(self, request: Any) -> Any:
+            ran = (
+                request
+                if execute_window is None
+                else replace(request, window=execute_window)
+            )
+            result = real.execute(ran)
+            if mutate is not None:
+                result = mutate(result)
+            produced.append(result)
+            return result
+
+    pkg = tmp_path / "source"
+    try:
+        ref = record(
+            _single_call_driver(Executor(), tool_request, []),
+            destination=pkg,
+            context=_snapshot_context(real, clock, tool_request, regs, tgts),
+        )
+    except RecordingError as exc:
+        assert str(exc) == exc.code
+        return None, exc.code, pkg, produced
+    return ref, None, pkg, produced
+
+
+def _assert_rejected_and_not_replayed(
+    tmp_path: Path, recorded: Any, record_code: str | None, pkg: Path
+) -> None:
+    """Shared IDENTITY_MISMATCH contract: record-time or structural detection,
+    and model replay refused before any model call (ambiguity 14)."""
+    if recorded is None:
+        assert record_code == "IDENTITY_MISMATCH"
+        assert_not_complete(pkg)
+        expected = "RECORDING_INCOMPLETE"
+        sha = s.sha((pkg / "recording.json").read_bytes())
+    else:
+        assert s.verify_code(pkg, recorded.sha256) == "IDENTITY_MISMATCH"
+        expected = "IDENTITY_MISMATCH"
+        sha = recorded.sha256
+    inv = Investigator()
+    with pytest.raises(RecordingError) as err:
+        rec = load_recording(pkg / "recording.json", expected_hash=sha)
+        run_replay(tmp_path, rec, [s.REQ_A], investigator=inv)
+    assert err.value.code == expected
+    assert inv.calls == []
 
 
 # --- error type ------------------------------------------------------------------
@@ -1607,75 +1713,105 @@ def _forged_outcome(
 
 
 # Review P2-1: request/result identity and window must be cross-checked.
+# Base: a real executor's ok result (with EvidenceRecord) and a compliant
+# frozen ToolSnapshot; each case applies one tamper (control:
+# test_real_snapshot_bases_verify_untampered).
 @pytest.mark.parametrize(
-    ("request_", "factory"),
+    ("request_window", "execute_window", "mutate"),
     [
         pytest.param(
-            s.REQ_A,
-            _forged_outcome(requested_tool="metrics.range_query"),
+            _real_window(0, 10),
+            None,
+            lambda r: _replace_op(r, requested_tool="metrics.other_query"),
             id="requested-tool-differs",
         ),
         pytest.param(
-            s.REQ_A,
-            _forged_outcome(requested_target="other-target"),
+            _real_window(0, 10),
+            None,
+            lambda r: _replace_op(r, requested_target="other-target"),
             id="requested-target-differs",
         ),
         pytest.param(
-            s.REQ_A,
-            _forged_outcome(view_operation_id="OTHER-RUN-operation"),
+            _real_window(0, 10),
+            None,
+            lambda r: _replace_view(r, operation_id="OTHER-RUN-operation"),
             id="view-operation-id-differs",
         ),
         pytest.param(
-            # The review's counterexample: request 12:00-12:01, result
-            # 12:05-12:10; both inside the authorized box 12:00-12:10.
-            dict(s.REQ_A, window=_window(0, 1)),
-            _forged_outcome(window=(5, 10)),
+            # The review's counterexample shape: request 00:00-00:01, result
+            # 00:05-00:10; both inside the authorized frame.
+            _real_window(0, 1),
+            None,
+            lambda r: _replace_view(
+                _replace_op(
+                    r,
+                    window=s.ToolWindow(
+                        WINDOW_START + timedelta(minutes=5),
+                        WINDOW_START + timedelta(minutes=10),
+                    ),
+                ),
+                window=_real_window(5, 10),
+            ),
             id="explicit-window-differs",
         ),
         pytest.param(
             # No window in the request: the result must carry the default
-            # window (binding default 12:05-12:10); 12:01-12:03 is inside
-            # the authorized box but is not the default.
-            dict(s.REQ_A, window=None),
-            _forged_outcome(window=(1, 3)),
+            # (binding default None -> authorized frame 00:00-01:00); the
+            # executor actually answered 00:01-00:03.
+            None,
+            _real_window(1, 3),
+            None,
             id="omitted-window-not-default",
         ),
     ],
 )
 def test_review_p2_1_contradicting_request_and_result_is_identity_mismatch(
-    tmp_path, request_, factory
+    tmp_path, request_window, execute_window, mutate
 ):
     # Review P2-1; C:124/C:134-136, I:75/I:82: structural verification
     # relates requested_tool/requested_target, an existing view.operation_id
     # and the request window with the recorded operation.
-    pkg = tmp_path / "source"
-    recorded: Any = None
-    try:
-        recorded = record(
-            s.source_driver([request_], outcomes=[factory]),
-            destination=pkg,
-            context=s.context(),
-        )
-    except RecordingError as exc:
-        # Detection already at record time is accepted (ambiguity 14); the
-        # package is then never complete.
-        assert str(exc) == exc.code
-        assert exc.code == "IDENTITY_MISMATCH"
-        assert_not_complete(pkg)
-    if recorded is not None:
-        assert s.verify_code(pkg, recorded.sha256) == "IDENTITY_MISMATCH"
-        expected = "IDENTITY_MISMATCH"
-        sha = recorded.sha256
-    else:
-        expected = "RECORDING_INCOMPLETE"
-        sha = s.sha((pkg / "recording.json").read_bytes())
-    # Model replay must not use the package: refused before any model call.
-    inv = Investigator()
-    with pytest.raises(RecordingError) as err:
-        rec = load_recording(pkg / "recording.json", expected_hash=sha)
-        run_replay(tmp_path, rec, [request_], investigator=inv)
-    assert err.value.code == expected
-    assert inv.calls == []
+    recorded, code, pkg, produced = _record_real(
+        tmp_path,
+        tool_request=tool_request_fixture(window=request_window),
+        mutate=mutate,
+        execute_window=execute_window,
+    )
+    assert produced and produced[0].operation.dispatched is True
+    _assert_rejected_and_not_replayed(tmp_path, recorded, code, pkg)
+
+
+# Control for the real-executor bases used by Review P2-1, Recheck2 and
+# Recheck3 (a): untampered, with the same snapshot, they record completely
+# and verify, so each rejection above comes from its own tamper.
+@pytest.mark.parametrize(
+    ("request_window", "execute_window", "body"),
+    [
+        pytest.param(_real_window(0, 10), None, None, id="ok-explicit-window"),
+        pytest.param(_real_window(0, 1), None, None, id="ok-short-window"),
+        pytest.param(
+            None, _real_window(0, 60), None, id="ok-omitted-window-authorized"
+        ),
+        pytest.param(
+            _real_window(0, 10),
+            None,
+            [{"value": "x" * 5000}],
+            id="result-too-large-bytes",
+        ),
+    ],
+)
+def test_real_snapshot_bases_verify_untampered(
+    tmp_path, request_window, execute_window, body
+):
+    recorded, code, pkg, produced = _record_real(
+        tmp_path,
+        tool_request=tool_request_fixture(window=request_window),
+        execute_window=execute_window,
+        response=None if body is None else TransportResponse(body=tool_body(body)),
+    )
+    assert code is None
+    assert s.package_json(pkg)["complete"] is True
+    assert s.verify_code(pkg, recorded.sha256) is None
 
 
 # Review P2-1 (control): a consistent explicit window still verifies, so the
@@ -2195,84 +2331,56 @@ def test_recheck_p2_3_unexecuted_tool_refusal_records_completely(
 # dispatched=False refusal with no evidence and no data skips the window
 # check. See EVAL_B2_AMBIGUITIES.md item 18.
 
-_AUTH_START = datetime(2026, 10, 12, 23, 0, tzinfo=s.START.tzinfo)
-_AUTH_END = datetime(2026, 10, 13, 0, 0, tzinfo=s.START.tzinfo)
 
+def _evidence_free_with_data(window: Any):
+    """Drop the EvidenceRecord of a real ok result; its view keeps the source
+    data (evidence_id, non-null content) and gets ``rows``."""
 
-def _evidence_free_dispatched_outcome(result_start: datetime):
-    def factory(request: Any):
-        result = s.tool_outcome(request, evidence_id="evidence-old")
-        window = s.ToolWindow(result_start, _AUTH_END)
-        op = replace(result.operation, window=window)
-        assert op.dispatched is True
+    def mutate(result: Any) -> Any:
+        assert result.operation.dispatched is True and result.status == "ok"
+        if window is not None:
+            result = _replace_op(
+                result,
+                window=s.ToolWindow(
+                    datetime.fromisoformat(window["start"]),
+                    datetime.fromisoformat(window["end"]),
+                ),
+            )
         view = {
             **dict(result.model_view),
-            "evidence_id": "evidence-old",
             "rows": [{"value": 3}],
-            "window": {"start": s.iso(window.start), "end": s.iso(window.end)},
         }
-        return replace(
-            result,
-            status="ok",
-            source_contact="confirmed",
-            operation=op,
-            evidence=None,
-            model_view=view,
-        )
+        if window is not None:
+            view["window"] = window
+        assert view.get("evidence_id")
+        return replace(result, evidence=None, model_view=view)
 
-    return factory
+    return mutate
 
 
 # Recheck2 P2: an executed query without EvidenceRecord cannot carry data
 # past the window relation check.
 @pytest.mark.parametrize(
-    "result_start",
+    "result_window",
     [
-        # (a) the recheck counterexample: request 23:00-00:00, operation and
-        # view window 23:01-00:00, both inside the authorized box.
-        pytest.param(_AUTH_START + timedelta(minutes=1), id="window-differs"),
+        # (a) the recheck counterexample shape: request 00:00-01:00,
+        # operation and view window 00:01-01:00, both inside the frame.
+        pytest.param(_real_window(1, 60), id="window-differs"),
         # (b) same windows, still self-contradictory: dispatched with data
         # in the view but no EvidenceRecord.
-        pytest.param(_AUTH_START, id="window-equal"),
+        pytest.param(None, id="window-equal"),
     ],
 )
 def test_recheck2_p2_dispatched_result_without_evidence_but_with_data_is_rejected(
-    tmp_path, result_start
+    tmp_path, result_window
 ):
-    auth = {"start": s.iso(_AUTH_START), "end": s.iso(_AUTH_END)}
-    request_ = dict(s.REQ_A, window=auth)
-    context = s.context(
-        bindings=(s.binding(authorized_window=auth, default_window=None),)
+    recorded, code, pkg, produced = _record_real(
+        tmp_path,
+        tool_request=tool_request_fixture(window=_real_window(0, 60)),
+        mutate=_evidence_free_with_data(result_window),
     )
-    pkg = tmp_path / "source"
-    recorded: Any = None
-    try:
-        recorded = record(
-            s.source_driver(
-                [request_], outcomes=[_evidence_free_dispatched_outcome(result_start)]
-            ),
-            destination=pkg,
-            context=context,
-        )
-    except RecordingError as exc:
-        # Record-time detection accepted (ambiguity 14); never complete.
-        assert str(exc) == exc.code
-        assert exc.code == "IDENTITY_MISMATCH"
-        assert_not_complete(pkg)
-    if recorded is not None:
-        assert s.verify_code(pkg, recorded.sha256) == "IDENTITY_MISMATCH"
-        expected = "IDENTITY_MISMATCH"
-        sha = recorded.sha256
-    else:
-        expected = "RECORDING_INCOMPLETE"
-        sha = s.sha((pkg / "recording.json").read_bytes())
-    # Model replay refuses before calling the current model.
-    inv = Investigator()
-    with pytest.raises(RecordingError) as err:
-        rec = load_recording(pkg / "recording.json", expected_hash=sha)
-        run_replay(tmp_path, rec, [request_], investigator=inv)
-    assert err.value.code == expected
-    assert inv.calls == []
+    assert produced[0].evidence is None
+    _assert_rejected_and_not_replayed(tmp_path, recorded, code, pkg)
 
 
 # --- third recheck finding (2026-10-14) -------------------------------------------------
@@ -2282,64 +2390,29 @@ def test_recheck2_p2_dispatched_result_without_evidence_but_with_data_is_rejecte
 # IDENTITY_MISMATCH. See EVAL_B2_AMBIGUITIES.md item 19.
 
 
-def _oversize_with_source_data(request: Any):
-    result = s.tool_outcome(request, evidence_id="unused", raw=None)
-    assert result.operation.dispatched is True
-    view = {
-        "operation_id": request.operation_id,
-        "status": "error",
-        "reason": "RESULT_TOO_LARGE",
-        "source_contact": "confirmed",
-        "trust": "gateway",
-        "content": None,
-        "adopted": False,
-        "citable_as_fact": False,
-        "message": 'SOURCE DATA: {"rows":[{"value":3}]}',
-        "max_result_bytes": 1024,
-    }
-    return replace(
-        result,
-        status="error",
-        reason="RESULT_TOO_LARGE",
-        source_contact="confirmed",
-        evidence=None,
-        model_view=view,
-    )
-
-
 # Recheck3 P2 (a): a non-template message cannot smuggle source data out of
-# an evidence-free RESULT_TOO_LARGE result. The window is consistent
-# (omitted request window -> binding default window, as tool_outcome sets).
+# an evidence-free RESULT_TOO_LARGE result. Base: the real executor's byte
+# ceiling result (control: test_real_snapshot_bases_verify_untampered
+# [result-too-large-bytes]); only the message is changed.
 def test_recheck3_p2_oversize_message_not_product_template_is_rejected(tmp_path):
-    request_ = dict(s.REQ_A, window=None)
-    pkg = tmp_path / "source"
-    recorded: Any = None
-    try:
-        recorded = record(
-            s.source_driver(
-                [request_], outcomes=[_oversize_with_source_data], result=s.outcome(())
-            ),
-            destination=pkg,
-            context=s.context(),
+    def mutate(result: Any) -> Any:
+        assert (result.status, result.reason) == ("error", "RESULT_TOO_LARGE")
+        assert result.evidence is None and "max_result_bytes" in result.model_view
+        return replace(
+            result,
+            model_view={
+                **dict(result.model_view),
+                "message": 'SOURCE DATA: {"rows":[{"value":3}]}',
+            },
         )
-    except RecordingError as exc:
-        # Record-time detection accepted (ambiguity 14); never complete.
-        assert str(exc) == exc.code
-        assert exc.code == "IDENTITY_MISMATCH"
-        assert_not_complete(pkg)
-    if recorded is not None:
-        assert s.verify_code(pkg, recorded.sha256) == "IDENTITY_MISMATCH"
-        expected = "IDENTITY_MISMATCH"
-        sha = recorded.sha256
-    else:
-        expected = "RECORDING_INCOMPLETE"
-        sha = s.sha((pkg / "recording.json").read_bytes())
-    inv = Investigator()
-    with pytest.raises(RecordingError) as err:
-        rec = load_recording(pkg / "recording.json", expected_hash=sha)
-        run_replay(tmp_path, rec, [request_], investigator=inv)
-    assert err.value.code == expected
-    assert inv.calls == []
+
+    recorded, code, pkg, _ = _record_real(
+        tmp_path,
+        tool_request=tool_request_fixture(),
+        mutate=mutate,
+        response=TransportResponse(body=tool_body([{"value": "x" * 5000}])),
+    )
+    _assert_rejected_and_not_replayed(tmp_path, recorded, code, pkg)
 
 
 # Recheck3 P2 (b): the real executor's over-limit results (byte ceiling and
