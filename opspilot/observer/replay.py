@@ -31,6 +31,11 @@ replay needs and nothing else) or an explicit ``--dsn``.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from opspilot.observer.release_replay import ReleaseReplay
+
 import argparse
 import hashlib
 import json
@@ -624,13 +629,18 @@ def _session_parameter_codes(
     return codes
 
 
-def replay_history(history: Mapping[str, Any]) -> SessionReplay:
+def replay_history(history: Mapping[str, Any]) -> SessionReplay | ReleaseReplay:
     """Recompute one session from its stored history alone.
 
     ``history`` is what ``ObservationStore.session_history`` returns (or the
     same shape built from the frozen artifacts by ``replay``). Pure: no
     I/O, no clock.
     """
+    if "release" in history:
+        from opspilot.observer.release_replay import replay_release_history
+
+        return replay_release_history(history)
+
     row = history["session"]
     revision = row.get("health_profile_revision")
     profile, profile_error = _load_profile(
@@ -933,10 +943,14 @@ def replay(
         "samples": list(samples),
         "endings": list(endings or ()),
     }
-    return replay_history(history)
+    result = replay_history(history)
+    assert isinstance(result, SessionReplay)
+    return result
 
 
-def replay_stored_session(store: ObservationStore, session_id: UUID) -> SessionReplay:
+def replay_stored_session(
+    store: ObservationStore, session_id: UUID
+) -> SessionReplay | ReleaseReplay:
     """Replay one session from the database (one snapshot read, nothing else)."""
     return replay_history(store.session_history(session_id))
 
@@ -1067,7 +1081,11 @@ def main(
         documents: list[dict[str, Any]] = []
         for sid in session_ids:
             try:
-                documents.append(summary(replay_stored_session(store, sid)))
+                result = replay_stored_session(store, sid)
+                if isinstance(result, SessionReplay):
+                    documents.append(summary(result))
+                else:
+                    documents.append(result.model_dump(mode="json"))
             except PersistenceError:
                 raise
             except Exception as exc:  # noqa: BLE001 - report, never crash
