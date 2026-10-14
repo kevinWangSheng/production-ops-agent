@@ -218,7 +218,7 @@ class _ReleaseSampleOps(_StoreBase):
             with self.transaction(snapshot=True) as conn:
                 if now is None:
                     now = self._db_now(conn).astimezone(timezone.utc)
-                query = "SELECT session_id,purpose,active_sample_due_at FROM opspilot_observation_sessions WHERE state='authorized' AND authorized AND active_sample_job_id IS NOT NULL AND active_sample_due_at<=%s AND (active_sample_lease_until IS NULL OR active_sample_lease_until<=%s) AND deadline_at>%s"
+                query = "SELECT session_id,purpose,active_sample_due_at FROM opspilot_observation_sessions s JOIN opspilot_scope_controls g ON g.scope_id=1 LEFT JOIN opspilot_target_suspensions t ON t.target_id=s.target_id WHERE s.state='authorized' AND s.authorized AND s.active_sample_job_id IS NOT NULL AND s.active_sample_due_at<=%s AND (s.active_sample_lease_until IS NULL OR s.active_sample_lease_until<=%s) AND s.deadline_at>%s AND NOT g.global_suspended AND NOT COALESCE(t.suspended,false)"
                 parameters: list[object] = [now, now, now]
                 if cursor is not None:
                     query += " AND (active_sample_due_at,session_id)>(%s,%s)"

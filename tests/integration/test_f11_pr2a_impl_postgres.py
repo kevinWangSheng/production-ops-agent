@@ -1360,6 +1360,190 @@ def test_structurally_valid_unsupported_profile_returns_unknown(harness):
     assert not evaluation.evidence_sufficient
 
 
+@pytest.mark.parametrize("spelling", ["max_space", "leading_space", "unexpected"])
+def test_impl_after_coverage_normalizes_or_refuses(harness, spelling):
+    from opspilot.observer.release_evaluation import supported_profile
+
+    authorization = authorize(harness)
+    context = harness[1].release_context(authorization.session_id)
+    content = context.health_profile.model_dump(mode="json")
+    for signal in content["signals"]:
+        if signal["name"] == "request_rate_per_second":
+            original = signal["coverage_query"]
+            signal["coverage_query"] = (
+                original.replace("max(", "max (")
+                if spelling == "max_space"
+                else "  " + original
+                if spelling == "leading_space"
+                else original.replace("max(", "sum(")
+            )
+    profile = HealthProfile.model_validate_json(canonical_json(content))
+    context = context.model_copy(update={"health_profile": profile})
+    at = context.authorized_at + timedelta(seconds=3)
+    if spelling == "unexpected":
+        with pytest.raises(ValueError, match="HEALTH_PROFILE_INVALID"):
+            build_release_query_plan(context, window_end=at, instance_uids=(uuid4(),))
+        evidence = ReleaseSampleEvidence(
+            format_version=1,
+            sample_id=uuid4(),
+            window=QueryWindow(start=at - timedelta(seconds=2), end=at),
+            queries=(),
+        )
+        assert (
+            evaluate_release_sample(context, evidence, decision_at=at).verdict
+            == "unknown"
+        )
+    else:
+        assert supported_profile(profile)
+        plan = build_release_query_plan(
+            context, window_end=at, instance_uids=(uuid4(),)
+        )
+        assert plan["after:request_rate_per_second:coverage"].startswith(
+            "min(count_over_time("
+        )
+        assert "max" not in plan["after:request_rate_per_second:coverage"]
+
+
+@pytest.mark.parametrize("purpose", ["incident", "release"])
+@pytest.mark.parametrize(
+    "blocked", ["target_suspended", "target_generation", "global_generation"]
+)
+def test_impl_suspended_backlog_does_not_use_probe_budget(
+    _impl_fresh_budget_database, request, monkeypatch, purpose, blocked
+):
+    from tests.integration.test_m1_02_observation_store_postgres import (
+        _authorize,
+        _incident,
+    )
+
+    h = request.getfixturevalue("harness")
+    owner = DurableStore(DSN)
+    controller = ObservationStore(DSN)
+    incidents, releases, heads, targets = [], [], [], set()
+    try:
+        for index in range(9):
+            if purpose == "incident":
+                incident, target_id, target = _incident(owner)
+                incidents.append(incident)
+                heads.append(_authorize(controller, incident, target))
+                targets.add(target_id)
+            else:
+                template = h[0].get_release(h[2])
+                if index == 0:
+                    oid = h[2]
+                else:
+                    recorded = h[0].record_release(
+                        event=ReleaseEvent(
+                            format_version=1,
+                            source="blocked-backlog",
+                            source_release_id=uuid4().hex,
+                            released_at=template.released_at,
+                            before=template.before_revision,
+                            after=template.after_revision,
+                            auxiliary=template.auxiliary,
+                        ),
+                        target_id=template.target_id,
+                        identity=template.target_snapshot,
+                        health_profile_revision=template.health_profile_revision,
+                        health_profile=canonical_content(
+                            h[1].release_context(heads[0]).health_profile
+                        ),
+                        min_tracking_seconds=template.min_tracking_seconds,
+                        actor="tester",
+                        raw_body=b"{}",
+                    )
+                    oid = recorded.observation_id
+                releases.append(oid)
+                authorization = h[0].authorize_release(
+                    oid,
+                    actor="controller",
+                    expected_control_generation=0,
+                    idempotency_key="backlog-authorize",
+                    calibrated_policy_revision=h[3].revision,
+                )
+                heads.append(authorization.session_id)
+                targets.add(template.target_id)
+        with psycopg.connect(DSN) as conn:
+            conn.execute(
+                "UPDATE opspilot_observation_sessions SET active_sample_due_at='1900-01-01'::timestamptz WHERE session_id=ANY(%s)",
+                (heads,),
+            )
+            if blocked == "global_generation":
+                conn.execute(
+                    "UPDATE opspilot_scope_controls SET global_generation=global_generation+1 WHERE scope_id=1"
+                )
+            else:
+                conn.execute(
+                    "UPDATE opspilot_target_suspensions SET suspended=true WHERE target_id=ANY(%s)"
+                    if blocked == "target_suspended"
+                    else "UPDATE opspilot_target_suspensions SET generation=generation+1 WHERE target_id=ANY(%s)",
+                    (list(targets),),
+                )
+        if purpose == "incident":
+            ready = authorize(h).session_id
+        else:
+            incident, _, target = _incident(owner)
+            incidents.append(incident)
+            ready = _authorize(controller, incident, target)
+        with psycopg.connect(DSN) as conn:
+            conn.execute(
+                "UPDATE opspilot_observation_sessions SET active_sample_due_at='1901-01-01'::timestamptz WHERE session_id=%s",
+                (ready,),
+            )
+        probes = []
+        incident_claim = h[1]._claim_incident_due_samples
+        release_claim = h[1]._claim_release_due
+
+        def claim_incident(*args, **kwargs):
+            probes.append(kwargs["selected_session_id"])
+            return incident_claim(*args, **kwargs)
+
+        def claim_release(owner, sid, lease_seconds):
+            probes.append(sid)
+            return release_claim(owner, sid, lease_seconds)
+
+        monkeypatch.setattr(h[1], "_claim_incident_due_samples", claim_incident)
+        monkeypatch.setattr(h[1], "_claim_release_due", claim_release)
+        leases = h[1].claim_due_samples(uuid4(), limit=1)
+        if blocked != "target_suspended":
+            assert leases == []
+            assert len(probes) == 8
+            with psycopg.connect(DSN, row_factory=dict_row) as conn:
+                retired = conn.execute(
+                    "SELECT state,ended_reason FROM opspilot_observation_sessions WHERE session_id=ANY(%s)",
+                    (heads,),
+                ).fetchall()
+            assert sum(row["state"] == "revoked" for row in retired) == 8
+            probes.clear()
+            leases = h[1].claim_due_samples(uuid4(), limit=1)
+            assert len(probes) == 2
+            assert probes[0] in heads and probes[1] == ready
+            with psycopg.connect(DSN) as conn:
+                assert conn.execute(
+                    "SELECT count(*) FROM opspilot_observation_sessions WHERE session_id=ANY(%s) AND state='revoked' AND ended_reason='scope_suspended'",
+                    (heads,),
+                ).fetchone()[0] == len(heads)
+        else:
+            assert probes == [ready]
+        assert [lease.session_id for lease in leases] == [ready]
+    finally:
+        for incident in incidents:
+            controller.revoke_sessions(incident)
+        for oid in releases:
+            row = h[0].get_release(oid)
+            if row.status in ("pending", "observing"):
+                h[0].control_release(
+                    oid,
+                    action="cancel",
+                    actor="cleanup",
+                    expected_control_generation=row.control_generation,
+                    idempotency_key="backlog-cleanup",
+                    calibrated_policy_revision=None,
+                )
+        controller.close()
+        owner.close()
+
+
 def test_release_coverage_uses_elapsed_utc_time_across_dst_fold(harness):
     from zoneinfo import ZoneInfo
 

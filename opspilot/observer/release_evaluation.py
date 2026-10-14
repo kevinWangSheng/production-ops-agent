@@ -256,13 +256,17 @@ def build_release_query_plan(
                     ("freshness", "freshness_query"),
                 )
             }
-            sliced["coverage"] = re.sub(r"^max\(", "min(", sliced["coverage"])
-            # The same request/duration selector proves instance presence, not error numerators.
-            selector_match = re.search(
-                r"count_over_time\((.*)\[[^\]]+\]\)", sliced["coverage"]
+            coverage = normalize_query(
+                re.sub(r"\[[0-9]+[smhd]\]", f"[{w}s]", sliced["coverage"])
             )
-            assert selector_match is not None
+            # The same request/duration selector proves instance presence, not error numerators.
+            selector_match = re.fullmatch(
+                r"max\(count_over_time\((.+)\[" + str(w) + r"s\]\)\)", coverage
+            )
+            if selector_match is None:
+                raise ValueError("HEALTH_PROFILE_INVALID")
             selector = selector_match.group(1)
+            sliced["coverage"] = f"min(count_over_time({selector}[{w}s]))"
             sliced["instances"] = (
                 "count by (service_instance_id, k8s_pod_name, k8s_pod_uid, k8s_namespace_name, service_name) "
                 f"(count_over_time({selector}[{w}s]))"
