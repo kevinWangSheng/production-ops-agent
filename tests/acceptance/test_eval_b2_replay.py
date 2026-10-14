@@ -2537,3 +2537,177 @@ def test_recheck4_p2_evidence_free_query_not_from_request_is_rejected(tmp_path):
         run_replay(tmp_path, rec, [s.REQ_A], investigator=inv)
     assert err.value.code == expected
     assert inv.calls == []
+
+
+# --- user ruling 2026-10-14: constrained run-audit facts ----------------------------------
+# For evidence-free results and every unexecuted refusal: message/query/limit
+# and identity/binding fields are rebuilt from the frozen request, tool
+# registration snapshot or product template; status/reason/source_contact,
+# timestamps, view_tokens and window are audit facts under fixed
+# constraints; any other field is IDENTITY_MISMATCH. The registration
+# snapshot format is not fixed yet, so nothing here reads it.
+# See EVAL_B2_AMBIGUITIES.md item 21.
+
+
+def _ruling_executor(base: str):
+    """A real ReadOnlyToolExecutor producing a legal evidence-free result."""
+    if base == "view-too-large":
+        executor, transport, _sink, clock = build_tool_executor(
+            registrations=[tool_registration(max_view_tokens=50)],
+            token_counter=lambda _text: 100,
+        )
+        transport.response = TransportResponse(body=tool_body([{"value": 3}]))
+    else:
+        executor, transport, _sink, clock = build_tool_executor()
+        transport.response = TransportResponse(body=tool_body([]), source_status="500")
+    return executor, clock
+
+
+def _ruling_record(tmp_path: Path, base: str, mutate: Any = None):
+    """Record one real call (optionally tampered once); return (code, result)."""
+    real, clock = _ruling_executor(base)
+    tool_request = tool_request_fixture()
+    produced: list[Any] = []
+
+    class Tampered:
+        def __init__(self) -> None:
+            self.scope = real.scope
+
+        def execute(self, request: Any) -> Any:
+            result = real.execute(request)
+            if mutate is not None:
+                result = mutate(result)
+            produced.append(result)
+            return result
+
+    context = s.context(
+        source_run_id=real.scope.run_id,
+        started_at=clock.now(),
+        ended_at=clock.now() + timedelta(seconds=10),
+        bindings=(
+            s.binding(
+                tool=tool_request.tool_name,
+                target=tool_request.target_ref,
+                source="prometheus",
+                authorized_window=real.scope.window.as_json(),
+                default_window=None,
+            ),
+        ),
+    )
+    pkg = tmp_path / "source"
+    try:
+        ref = record(
+            _single_call_driver(Tampered(), tool_request, []),
+            destination=pkg,
+            context=context,
+        )
+    except RecordingError as exc:
+        # Record-time detection accepted (ambiguity 14); never complete.
+        assert str(exc) == exc.code
+        assert_not_complete(pkg)
+        return exc.code, produced[0]
+    return s.verify_code(pkg, ref.sha256), produced[0]
+
+
+def _with_view(**changes: Any):
+    def mutate(result: Any) -> Any:
+        return replace(result, model_view={**result.model_view, **changes})
+
+    return mutate
+
+
+def _too_large_message(tokens: int, limit: int) -> str:
+    # Mirrors the product template (executor.py _view_refusal_detail) only to
+    # build self-consistent tampering; the real base message is asserted to
+    # start with the same prefix below.
+    return (
+        f"The tool call result is too large to return: {tokens}/{limit} tokens.\n"
+        "Try to repeat the query but proactively narrow down the result "
+        "(a narrower time window, a filter, or a smaller limit) so that "
+        "the tool answer fits within the allowed number of tokens."
+    )
+
+
+def _source_contact_none(result: Any) -> Any:
+    return replace(
+        result,
+        source_contact="none",
+        model_view={**result.model_view, "source_contact": "none"},
+    )
+
+
+# Ruling 2026-10-14: one tamper per case on a real legal result.
+@pytest.mark.parametrize(
+    ("base", "mutate"),
+    [
+        # (a) view_tokens differs from the number in the message.
+        pytest.param(
+            "view-too-large", _with_view(view_tokens=99), id="a-view-tokens-vs-message"
+        ),
+        # (a) view_tokens not above the limit (message kept consistent).
+        pytest.param(
+            "view-too-large",
+            _with_view(view_tokens=50, message=_too_large_message(50, 50)),
+            id="a-view-tokens-not-above-limit",
+        ),
+        # (b) requested_at outside the recording clock window.
+        pytest.param(
+            "view-too-large",
+            _with_view(requested_at="2026-09-13T01:05:00+00:00"),
+            id="b-requested-at-outside-clock-window",
+        ),
+        # (c) status / reason outside the product vocabulary.
+        pytest.param(
+            "source-error", _with_view(status="maybe"), id="c-status-not-in-vocabulary"
+        ),
+        pytest.param(
+            "source-error",
+            _with_view(reason="NOT_A_PRODUCT_REASON"),
+            id="c-reason-not-in-vocabulary",
+        ),
+        # (c) executed (dispatched=True) but source_contact=none.
+        pytest.param(
+            "source-error", _source_contact_none, id="c-dispatched-with-no-contact"
+        ),
+        # (d) max_view_tokens changed in view and message together:
+        # self-consistent, but not the registered limit (50).
+        pytest.param(
+            "view-too-large",
+            _with_view(max_view_tokens=40, message=_too_large_message(100, 40)),
+            id="d-limit-not-registered",
+        ),
+        # (e) an unknown extra field.
+        pytest.param(
+            "view-too-large", _with_view(debug_note="x"), id="e-unknown-field-oversize"
+        ),
+        pytest.param(
+            "source-error",
+            _with_view(debug_note="x"),
+            id="e-unknown-field-source-error",
+        ),
+    ],
+)
+def test_ruling_2026_10_14_tampered_audit_field_is_identity_mismatch(
+    tmp_path, base, mutate
+):
+    code, result = _ruling_record(tmp_path, base, mutate)
+    # Base precondition: dispatched, evidence-free product result.
+    assert result.evidence is None and result.operation.dispatched is True
+    assert code == "IDENTITY_MISMATCH"
+
+
+# Ruling 2026-10-14 (positive): the untampered real results record completely.
+@pytest.mark.parametrize("base", ["view-too-large", "source-error"])
+def test_ruling_2026_10_14_real_evidence_free_results_record_completely(tmp_path, base):
+    code, result = _ruling_record(tmp_path, base)
+    assert result.evidence is None and result.operation.dispatched is True
+    if base == "view-too-large":
+        assert (result.status, result.reason) == ("error", "RESULT_TOO_LARGE")
+        assert result.model_view["view_tokens"] == 100
+        assert result.model_view["max_view_tokens"] == 50
+        assert result.model_view["message"] == _too_large_message(100, 50)
+    else:
+        assert (result.status, result.reason) == ("error", "SOURCE_ERROR")
+    assert code is None
+    doc = s.package_json(tmp_path / "source")
+    assert doc["complete"] is True and doc["incomplete_reasons"] == []

@@ -109,3 +109,16 @@
     - 反例 (a) 用真实 ReadOnlyToolExecutor 生成结果：max_view_tokens=50，token_counter 恒为 100，所以 view_tokens=100，message 是真实模板。然后只把 operation.query 和 view.query 同时改成 rows 载荷，其余字段保持真实产品值。
     - 模型回放用夹具里的普通 replay driver。源包在回放前的核验阶段就会被拒绝，调用 driver 之前已经停止，所以 driver 的请求内容无关紧要。
     - 正向对照 (b) 复用第 19 条的 view-tokens 用例，没有重复写。
+
+21. **受约束的运行审计事实（Ruling 2026-10-14）**
+    - 依据用户 2026-10-14 的裁决。每个反例都以真实 ReadOnlyToolExecutor 的合法、无证据结果为底，各做一处篡改。底有两种：一是视图 token 超限（max_view_tokens=50，view_tokens=100），二是源错误（source_status=500，结果为 error/SOURCE_ERROR）。
+    - 「一处」按逻辑改动计：
+      - (a) 第二例同时改 view_tokens 和 message，让二者一致，只违反「大于上限」；
+      - (d) 同时改 max_view_tokens 和 message，让二者自洽，只违反注册上限。
+    - (c) 用例的篡改位置：
+      - ToolOutcome 构造时会校验 status/reason 是否在词表内，所以「不在词表」只改 view 字段；
+      - 「与 dispatched 的组合非法」用 dispatched=True 配 source_contact=none 表达，outcome 和 view 一起改。
+    - 断言范围：
+      - 不读取注册快照的内部结构，只断言错误码；
+      - record 当场报码也接受，但必须是 IDENTITY_MISMATCH，且包不完整。
+    - `_too_large_message` 照抄了产品模板。它只用来构造自洽的篡改，以及在正向用例里核对真实结果与模板逐字相等。如果产品文案改了，正向用例会提示需要同步。
