@@ -487,6 +487,7 @@ def _replay_release_history(history: Mapping[str, object]) -> ReleaseReplay:
         ]
         if len(matches) != 1:
             issues.add("ENDING_MISMATCH")
+    by_sample = {m["sample_id"]: m for m in samples}
     for e in endings:
         if (
             e.get("ending_id")
@@ -494,6 +495,7 @@ def _replay_release_history(history: Mapping[str, object]) -> ReleaseReplay:
                 release.observation_id, "session-ending:" + str(e.get("session_id"))
             )
             or e.get("purpose") != "release_observation"
+            or e.get("subject_kind") != "release_observation"
             or e.get("subject_id") != release.observation_id
             or e.get("release_observation_id") != release.observation_id
         ):
@@ -502,6 +504,12 @@ def _replay_release_history(history: Mapping[str, object]) -> ReleaseReplay:
         if s is None or s["ended_reason"] != e["ended_reason"]:
             issues.add("ENDING_MISMATCH")
         else:
+            if (
+                e.get("subject_kind") != s.get("subject_kind")
+                or not isinstance(e.get("job_id"), UUID)
+                or e.get("job_sequence") != s.get("issued_sequence")
+            ):
+                issues.add("ENDING_MISMATCH")
             expected_state = (
                 "completed"
                 if e["ended_reason"] in ("healthy_confirmed", "anomaly_detected")
@@ -510,6 +518,16 @@ def _replay_release_history(history: Mapping[str, object]) -> ReleaseReplay:
                 else "revoked"
             )
             if s["state"] != expected_state:
+                issues.add("ENDING_MISMATCH")
+        if e.get("sample_id") is not None:
+            sample = by_sample.get(e["sample_id"])
+            if (
+                sample is None
+                or sample.get("session_id") != e["session_id"]
+                or sample.get("subject_kind") != e.get("subject_kind")
+                or sample.get("job_id") != e.get("job_id")
+                or sample.get("sequence") != e.get("job_sequence")
+            ):
                 issues.add("ENDING_MISMATCH")
         if (
             e["ended_reason"] in ("healthy_confirmed", "anomaly_detected")

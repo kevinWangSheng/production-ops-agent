@@ -1131,3 +1131,137 @@ def test_release_coverage_uses_elapsed_utc_time_across_dst_fold(harness):
     assert (status, reason) == ("healthy", "healthy_confirmed")
     assert (state["tracking_until"] - state["tracking_since"]).total_seconds() == 3
     assert (second - state["healthy_since"]).total_seconds() == 1
+
+
+def _impl_replace_query_vectors(evidence, replacements):
+    queries = []
+    for query in evidence.queries:
+        if query.query_key in replacements:
+            body = json.loads(query.raw)
+            body["data"]["result"] = replacements[query.query_key]
+            raw = canonical_json(body).encode()
+            query = query.model_copy(update={"raw": raw, "raw_sha256": sha256(raw)})
+        queries.append(query)
+    return evidence.model_copy(update={"queries": tuple(queries)})
+
+
+def test_impl_instances_plan_preserves_span_binding_labels(harness):
+    authorization = authorize(harness)
+    context = harness[1].release_context(authorization.session_id)
+    at = context.authorized_at + timedelta(seconds=3)
+    plan = build_release_query_plan(
+        context,
+        window_end=at,
+        instance_uids=(UUID("12345678-1234-1234-1234-123456789012"),),
+    )
+    instance_queries = [
+        query for key, query in plan.items() if key.endswith(":instances")
+    ]
+    assert len(instance_queries) == 4
+    for query in instance_queries:
+        grouping = re.match(r"count by \(([^)]+)\)", query)
+        assert grouping is not None
+        assert {label.strip() for label in grouping.group(1).split(",")} == {
+            "service_instance_id",
+            "k8s_pod_name",
+            "k8s_namespace_name",
+            "service_name",
+        }
+
+
+@pytest.mark.parametrize(
+    "conflict", ["k8s_pod_name", "k8s_namespace_name", "service_name", "duplicate_uid"]
+)
+def test_impl_instances_span_binding_conflicts_are_unknown(harness, conflict):
+    authorization = authorize(harness)
+    context = harness[1].release_context(authorization.session_id)
+    at = context.authorized_at + timedelta(seconds=3)
+    evidence = raw_evidence(context, at)
+    key = "after:request_rate_per_second:instances"
+    query = next(query for query in evidence.queries if query.query_key == key)
+    rows = json.loads(query.raw)["data"]["result"]
+    labels = rows[0]["metric"]
+    labels.update(
+        k8s_pod_name="checkout-bbb-pod",
+        k8s_namespace_name=context.health_profile.subject.kubernetes_namespace,
+        service_name=context.health_profile.subject.service,
+    )
+    if conflict == "duplicate_uid":
+        rows.append(copy.deepcopy(rows[0]))
+        rows[-1]["metric"]["k8s_pod_name"] = "other-pod"
+    else:
+        labels[conflict] = "other-target"
+    evidence = _impl_replace_query_vectors(evidence, {key: rows})
+    evaluation = evaluate_release_sample(context, evidence, decision_at=at)
+    assert not evaluation.evidence_sufficient
+    assert evaluation.verdict == "unknown"
+    assert "VERSION_INSTANCE_MISMATCH" in evaluation.reason_codes
+
+
+@pytest.mark.parametrize("scope", ["context", "after"])
+@pytest.mark.parametrize("missing_value", [False, True])
+def test_impl_insufficient_and_stale_reasons_are_both_retained(
+    harness, scope, missing_value
+):
+    authorization = authorize(harness)
+    context = harness[1].release_context(authorization.session_id)
+    at = context.authorized_at + timedelta(seconds=3)
+    evidence = raw_evidence(context, at)
+    prefix = f"{scope}:request_rate_per_second"
+    evidence = _impl_replace_query_vectors(
+        evidence,
+        {
+            prefix + ":coverage": [{"metric": {}, "value": [at.timestamp(), "0"]}],
+            prefix + ":freshness": [
+                {
+                    "metric": {},
+                    "value": [
+                        at.timestamp(),
+                        str(
+                            at.timestamp()
+                            - context.health_profile.freshness_seconds
+                            - 1
+                        ),
+                    ],
+                }
+            ],
+        },
+    )
+    if missing_value:
+        evidence = _impl_replace_query_vectors(evidence, {prefix + ":query": []})
+    evaluation = evaluate_release_sample(context, evidence, decision_at=at)
+    assert evaluation.verdict == "unknown"
+    assert evaluation.outcome == "stale"
+    assert f"INSUFFICIENT_SAMPLES:{prefix}" in evaluation.reason_codes
+    assert f"STALE_TELEMETRY:{prefix}" in evaluation.reason_codes
+    if missing_value:
+        assert f"REQUIRED_TELEMETRY_MISSING:{prefix}" in evaluation.reason_codes
+
+
+@pytest.mark.parametrize("field", ["subject_kind", "job_id", "job_sequence"])
+def test_impl_replay_rejects_tampered_healthy_ending_binding(harness, field):
+    authorization = authorize(harness)
+    context = harness[1].release_context(authorization.session_id)
+    time.sleep(2.05)
+    for index in range(2):
+        if index:
+            time.sleep(1.05)
+        lease = claim(harness, authorization.session_id)
+        receipt = harness[1].submit_release_sample(
+            lease, raw_evidence(context, harness[1].current_time())
+        )
+    assert receipt.release_status == "healthy"
+    history = harness[1].release_history(harness[2])
+    baseline = replay_release_history(history)
+    assert baseline.consistent and baseline.verdict == "healthy"
+    corrupted = copy.deepcopy(history)
+    ending = corrupted["endings"][0]
+    ending[field] = {
+        "subject_kind": "incident",
+        "job_id": uuid4(),
+        "job_sequence": ending["job_sequence"] + 1,
+    }[field]
+    replay = replay_release_history(corrupted)
+    assert not replay.consistent
+    assert replay.verdict == "unknown"
+    assert "ENDING_MISMATCH" in replay.integrity

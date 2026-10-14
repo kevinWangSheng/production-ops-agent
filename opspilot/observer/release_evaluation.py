@@ -244,7 +244,8 @@ def build_release_query_plan(
             assert selector_match is not None
             selector = selector_match.group(1)
             sliced["instances"] = (
-                f"count by (service_instance_id) (count_over_time({selector}[{w}s]))"
+                "count by (service_instance_id, k8s_pod_name, k8s_namespace_name, service_name) "
+                f"(count_over_time({selector}[{w}s]))"
             )
             for kind, expr in sliced.items():
                 plan[f"after:{signal.name}:{kind}"] = expr
@@ -559,34 +560,42 @@ def evaluate_release_sample(
                     ):
                         reasons.add("VERSION_INSTANCE_MISMATCH")
 
-            if all(len(v) == 1 for v in parsed[:3]):
-                value = parsed[0][0][2]
+            insufficient_samples = stale = False
+            if len(parsed[1]) == 1:
                 rawcount = parsed[1][0][2]
-                timestamp = parsed[2][0][2]
                 if rawcount >= 0 and rawcount.is_integer():
                     count = int(rawcount)
+                insufficient_samples = count is None or count < signal.minimum_samples
+                if insufficient_samples:
+                    reasons.add(f"INSUFFICIENT_SAMPLES:{scope}:{signal.name}")
+            if len(parsed[2]) == 1:
+                timestamp = parsed[2][0][2]
                 try:
                     latest = datetime.fromtimestamp(timestamp, timezone.utc)
                 except (ValueError, OverflowError, OSError):
                     latest = None
-                if count is None or count < signal.minimum_samples:
-                    verdict = "insufficient_samples"
-                    reasons.add(f"INSUFFICIENT_SAMPLES:{scope}:{signal.name}")
-                elif (
-                    latest is None
-                    or not 0
+                stale = latest is None or not (
+                    0
                     <= evidence.window.end.timestamp() - timestamp
                     <= profile.freshness_seconds
-                ):
-                    verdict = "stale"
+                )
+                if stale:
                     reasons.add(f"STALE_TELEMETRY:{scope}:{signal.name}")
-                elif scope == "after" and (
+            if all(len(v) == 1 for v in parsed[:3]):
+                value = parsed[0][0][2]
+                instance_mismatch = scope == "after" and (
                     len(parsed[3]) != len(uid_names)
                     or {labels.get("service_instance_id") for labels, _, _ in parsed[3]}
                     != set(uid_names)
-                ):
-                    verdict = "missing"
+                )
+                if instance_mismatch:
                     reasons.add("VERSION_INSTANCE_MISMATCH")
+                if stale:
+                    verdict = "stale"
+                elif insufficient_samples:
+                    verdict = "insufficient_samples"
+                elif instance_mismatch:
+                    verdict = "missing"
                 else:
                     verdict = (
                         "healthy" if signal.healthy.contains(value) else "degraded"
