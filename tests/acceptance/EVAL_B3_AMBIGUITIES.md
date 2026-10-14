@@ -1,6 +1,6 @@
 # PR-B3 验收测试歧义清单
 
-依据：`docs/tasks/2026-10-14-eval-pr-b3-interface.md`（下称 B3，按 sha1 `43b61df` 版本，含 provider/phase/balance_delta、凭据槽键、`destination/label-pack` 与扣除虚假一致数的更新）、PR-B 预审第 4 节（下称 C）、合同 r8 P6/P7/P9/D16。每条写原文、可能读法和测试采用的读法；采用的都是更保守的那一种，或者只断言不随读法变化的部分。
+依据：`docs/tasks/2026-10-14-eval-pr-b3-interface.md`（下称 B3；初版按 sha1 `43b61df`，r2 的确认见文末「r2 处置」；初版含 provider/phase/balance_delta、凭据槽键、`destination/label-pack` 与扣除虚假一致数的更新）、PR-B 预审第 4 节（下称 C）、合同 r8 P6/P7/P9/D16。每条写原文、可能读法和测试采用的读法；采用的都是更保守的那一种，或者只断言不随读法变化的部分。
 
 ## 未覆盖
 
@@ -84,3 +84,15 @@
 27. **篡改 calibration.json 的测试强度**
     - 篡改后用 `json.dumps` 重写，格式也会变，所以测试只能断言拒绝，分不清是因为内容还是格式被拒。
     - 两处篡改：把 pending 改成选中 Sol；把误通过计数洗成 0 并选中 GLM。
+
+## r2 处置（2026-10-14）
+
+B3 r2 第 68 行起给出明确约定。以下逐条对照，均未放宽断言：
+
+- **第 1 条（调查侧隔离）**：实现方单元测试 `tests/unit/test_eval_b3_impl.py::test_answer_flag_and_path_do_not_change_actual_investigation_requests` 已覆盖（r2 第 4 项）。它用真实的 InvestigationLoop 和假模型，先比较首个 `serialized_request`，再比较整条物理请求序列。本文件不重复覆盖。
+- **第 20 条（input_hash）**：r2 第 1 项把算法定为 `canonical_hash(json.loads(json.dumps(judge_request(..., outcome=outcome), allow_nan=False)))`，与本测试的读法一致，夹具不变。
+- **第 22 条（annotations 字节）**：r2 第 2 项确认文件内容为 `canonical_bytes(annotation)`，与槽位和所在包无关，hash 顺序固定为 1、2。探针包取 hash 的做法成立。
+- **第 23 条（认证路径）**：r2 第 3 项确认接受 destination 目录，与本测试的读法一致。
+- **第 27 条（篡改强度）**：r2 第 8 项规定 loader 容忍 JSON 空白和键顺序的变化，只按语义重算。因此重写后仍被拒绝，就说明拒绝的是被篡改的内容，测试强度不再受格式影响。
+- **夹具修正（r2 第 9 项）**：`test_selected_record_and_artifact` 的签名漏注入 `pack` fixture，导致拿 loader 的返回值去比较 fixture 函数对象。已补上该参数，断言不变。
+- **导入排序**：按实现 worktree 的 ruff 规则排序，那边 B3 模块存在，被归为 first-party。在不含 B3 模块的 worktree 里单独运行 ruff 会报 I001，合并后不会出现。

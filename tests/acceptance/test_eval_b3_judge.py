@@ -85,6 +85,13 @@ from eval_contract_support import (
     report_payload,
     trace,
 )
+
+from opspilot.evaluation import (
+    JudgeResult,
+    evaluate,
+    load_scenario,
+    run_gate,
+)
 from opspilot.evaluation.calibration_flow import (
     Adjudication,
     LabelPack,
@@ -98,13 +105,6 @@ from opspilot.evaluation.judge import (
     JudgeHTTPResponse,
     judge_config_hash,
     judge_once,
-)
-
-from opspilot.evaluation import (
-    JudgeResult,
-    evaluate,
-    load_scenario,
-    run_gate,
 )
 from opspilot.tools.registry import canonical_hash
 
@@ -1553,7 +1553,7 @@ def test_calibration_calls_once_per_debug_twice_per_validation_serially(
     assert probe.max_active == 1
 
 
-def test_selected_record_and_artifact(selected, frozen, configs):
+def test_selected_record_and_artifact(selected, frozen, configs, pack):
     destination, record = selected
     _, pack_hash = frozen
     assert record.status == "selected"

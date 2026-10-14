@@ -23,17 +23,6 @@ from pathlib import Path
 from typing import Any
 
 from eval_contract_support import END, SCOPE, START, case, micros, span
-from opspilot.evaluation.calibration_flow import (
-    AnnotationSet,
-    BlindLabel,
-    CalibrationItem,
-    LabelPack,
-)
-from opspilot.evaluation.judge import (
-    JudgeHTTPResponse,
-    JudgeInput,
-    load_judge_config,
-)
 
 from opspilot.acceptance import IncidentOutcome
 from opspilot.evaluation import (
@@ -45,6 +34,17 @@ from opspilot.evaluation import (
     Window,
     judge_request,
     load_scenarios,
+)
+from opspilot.evaluation.calibration_flow import (
+    AnnotationSet,
+    BlindLabel,
+    CalibrationItem,
+    LabelPack,
+)
+from opspilot.evaluation.judge import (
+    JudgeHTTPResponse,
+    JudgeInput,
+    load_judge_config,
 )
 from opspilot.tools.registry import canonical_hash
 
