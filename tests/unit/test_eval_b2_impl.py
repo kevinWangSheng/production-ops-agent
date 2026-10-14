@@ -150,6 +150,7 @@ class Executor:
             "prometheus",
             "target",
             window=AUTH,
+            dispatched=True,
         )
         view = {
             "evidence_id": "evidence-old",
@@ -1201,14 +1202,27 @@ def test_error_body_truncation_is_incomplete_with_default_result_preserved(
         load_recording(path, expected_hash=sha(raw))
 
 
-def test_loop_duplicate_refusal_records_and_replays_without_facade_call(tmp_path):
+@pytest.mark.parametrize("mixed", [False, True])
+def test_loop_duplicate_refusal_records_and_replays_without_facade_call(
+    tmp_path, mixed
+):
     from types import SimpleNamespace
 
     from opspilot.investigation.store import MemoryStepStore
 
+    first = [tool_call("one")]
+    repeated = tool_call("two")
+    if mixed:
+        first = [
+            tool_call("a", arguments='{"expr":"up"}'),
+            tool_call("a-duplicate", arguments='{"expr":"up"}'),
+            tool_call("b", arguments='{"expr":"down"}'),
+        ]
+        repeated = tool_call("b-duplicate", arguments='{"expr":"down"}')
+    expected_calls, expected_refusals = (2, 2) if mixed else (1, 1)
     replies = [
-        reply(tool_calls=[tool_call("one")], finish="tool_calls"),
-        reply(tool_calls=[tool_call("two")], finish="tool_calls"),
+        reply(tool_calls=first, finish="tool_calls"),
+        reply(tool_calls=[repeated], finish="tool_calls"),
         report_from_transcript,
     ]
     loop, req, _, transport, _, _ = assemble(replies=replies, model_requests=3)
@@ -1251,9 +1265,16 @@ def test_loop_duplicate_refusal_records_and_replays_without_facade_call(tmp_path
         return outcome()
 
     recording = source(tmp_path, driver=drive, ctx=ctx)
-    assert transport.called and len(counts) == 1
+    assert transport.called and len(counts) == expected_calls
     refusals = [event for event in recording.events if event.kind == "refusal"]
-    assert len(refusals) == 1
+    assert len(refusals) == expected_refusals
+    if mixed:
+        assert [
+            json_blob(recording, recording.events[event.parent].request_ref)["request"][
+                "params"
+            ]["expr"]
+            for event in refusals
+        ] == ["up", "down"]
     refused = json_blob(recording, refusals[0].response_ref)
     original = json_blob(recording, recording.events[1].response_ref)["model_view"]
     assert refused["reason"] == "DUPLICATE_TOOL_CALL"
@@ -1269,8 +1290,14 @@ def test_loop_duplicate_refusal_records_and_replays_without_facade_call(tmp_path
     ).structural_verified
     fresh_model = ScriptedModel(
         [
-            reply(tool_calls=[tool_call("fresh-one")], finish="tool_calls"),
-            reply(tool_calls=[tool_call("fresh-two")], finish="tool_calls"),
+            reply(
+                tool_calls=first if mixed else [tool_call("fresh-one")],
+                finish="tool_calls",
+            ),
+            reply(
+                tool_calls=[repeated] if mixed else [tool_call("fresh-two")],
+                finish="tool_calls",
+            ),
             report_from_transcript,
         ]
     )
@@ -1305,12 +1332,12 @@ def test_loop_duplicate_refusal_records_and_replays_without_facade_call(tmp_path
             )
         )
         assert result.execution == "completed"
-        assert len(calls) == 1 and not unused_transport.called
+        assert len(calls) == expected_calls and not unused_transport.called
         return outcome()
 
     capture = run_replay(recording, tmp_path, model=fresh_model, driver=replay_drive)
     assert capture.error is None, capture
-    assert len(capture.id_map) == 2  # The real tool and the separate refusal.
+    assert len(capture.id_map) == expected_calls + expected_refusals
     assert len(fresh_model.calls) == 3
     copied = load_recording(
         tmp_path / "new-recording" / "recording.json",
@@ -1356,3 +1383,274 @@ def test_unrecorded_loop_refusal_is_sticky_replay_miss(tmp_path):
     capture = run_replay(recording, tmp_path, model=model, driver=drive)
     assert capture.error == "REPLAY_MISS" and capture.attempt.replay_miss
     assert len(model.calls) == 2
+
+
+@pytest.mark.parametrize("seed_cache", [False, True])
+def test_removed_refusal_cannot_be_replaced_by_cached_denial(tmp_path, seed_cache):
+    from opspilot.evaluation.codec import decode
+
+    replies = [
+        reply(tool_calls=[tool_call(name)], finish="tool_calls")
+        for name in ("one", "two", "three")
+    ]
+    loop, req, _, _, _, _ = assemble(
+        replies=[*replies, report_from_transcript], model_requests=4
+    )
+    ctx = replace(
+        context(),
+        source_run_id=req.run_id,
+        started_at=loop.clock.now(),
+        ended_at=loop.clock.now(),
+        bindings=(
+            replace(
+                context().bindings[0],
+                tool="metrics.range_query",
+                target="checkout-prod",
+                authorized_window=encode(req.scope.window),
+            ),
+        ),
+    )
+
+    def drive(hooks):
+        loop.model = hooks.model(loop.model)
+        loop.executor = hooks.tools(loop.executor)
+        loop.capture_delivery = hooks.delivery
+        assert loop.run(req).execution == "completed"
+        return outcome()
+
+    recording = source(tmp_path, driver=drive, ctx=ctx)
+    meta = json.loads(recording.path.read_bytes())
+    refusals = [item for item in meta["events"] if item["kind"] == "refusal"]
+    deliveries = [item for item in meta["events"] if item["kind"] == "delivery"]
+
+    def read(ref):
+        return json.loads((recording.path.parent / ref["path"]).read_bytes())
+
+    def put(ref, value):
+        raw = canonical_bytes(value)
+        ref.update(path="blobs/" + sha(raw), sha256=sha(raw), bytes=len(raw))
+        (recording.path.parent / ref["path"]).write_bytes(raw)
+
+    old_view = read(refusals[0]["response_ref"])
+    last = deliveries[-1]
+    message = read(last["response_ref"])
+    message["content"] = canonical_bytes(old_view).decode()
+    put(last["request_ref"], old_view)
+    put(last["response_ref"], message)
+    last.update(
+        parent=None,
+        hashes={
+            "view_sha256": sha(canonical_bytes(old_view)),
+            "delivery_sha256": sha(canonical_bytes(message)),
+        },
+    )
+    final = [item for item in meta["events"] if item["kind"] == "model"][-1]
+    model_request = read(final["request_ref"])
+    for item in model_request["call"]["messages"]:
+        if item.get("role") == "tool" and item.get("tool_call_id") == "three":
+            item["content"] = message["content"]
+    model_request["body"] = serialized_request(
+        decode(ModelCall, model_request["call"])
+    ).decode()
+    put(final["request_ref"], model_request)
+    final["hashes"] = {
+        "request_body_sha256": sha(model_request["body"].encode()),
+        "messages_sha256": sha(canonical_bytes(model_request["call"]["messages"])),
+    }
+    removed = refusals[-1]["seq"]
+    meta["events"] = [item for item in meta["events"] if item["seq"] != removed]
+    for seq, item in enumerate(meta["events"]):
+        item["seq"] = seq
+        if item["parent"] is not None and item["parent"] > removed:
+            item["parent"] -= 1
+    if seed_cache:
+        meta["context"]["initial_state"]["evidence_views"] = [old_view]
+    raw = canonical_bytes(meta)
+    recording.path.write_bytes(raw)
+    with pytest.raises(RecordingError, match="IDENTITY_MISMATCH"):
+        load_recording(recording.path, expected_hash=sha(raw))
+    candidate = replace(
+        recording, ref=replace(recording.ref, sha256=sha(raw), bytes=len(raw))
+    )
+    model = ScriptedModel([])
+    with pytest.raises(RecordingError, match="IDENTITY_MISMATCH"):
+        run_replay(candidate, tmp_path, model=model)
+    assert not model.calls
+
+
+@pytest.mark.parametrize("kind", ["invalid_window", "too_large", "invalid_params"])
+def test_real_unqueried_error_or_denial_records_and_replays_without_live_query(
+    tmp_path, kind
+):
+    from tests.m1_tool_support import build, registration
+    from tests.m1_tool_support import request as tool_request
+
+    executor, transport, _, clock = build(
+        registrations=[registration(max_window_seconds=300)]
+    )
+    req = tool_request()
+    if kind == "invalid_window":
+        req = replace(req, window={"start": "invalid", "end": "invalid"})
+    elif kind == "invalid_params":
+        req = replace(
+            req,
+            window={
+                "start": req.window["start"],
+                "end": (executor.scope.window.start + timedelta(minutes=1)).isoformat(),
+            },
+            params={"expr": 123},
+        )
+    counts = []
+
+    class Counted:
+        def execute(self, item):
+            counts.append(item)
+            result = executor.execute(item)
+            assert not result.operation.dispatched and result.evidence is None
+            assert result.status in ("error", "denied")
+            return result
+
+    ctx = replace(
+        context(),
+        source_run_id=executor.scope.run_id,
+        started_at=clock.now(),
+        ended_at=clock.now() + timedelta(seconds=10),
+        bindings=(
+            replace(
+                context().bindings[0],
+                tool=req.tool_name,
+                target=req.target_ref,
+                authorized_window=encode(executor.scope.window),
+            ),
+        ),
+    )
+    responses = [
+        reply(
+            tool_calls=[tool_call("refused", req.tool_name, json.dumps(req.params))],
+            finish="tool_calls",
+        ),
+        reply(content="done"),
+    ]
+
+    def exercise(model, tools, deliver, step):
+        initial = call()
+        response = model.complete(initial)
+        result = tools.execute(replace(req, step_id=step))
+        message = {
+            "role": "tool",
+            "tool_call_id": "refused",
+            "content": canonical_bytes(result.model_view).decode(),
+        }
+        deliver(result.model_view, message)
+        assistant = {
+            "role": "assistant",
+            "content": response.content,
+            "reasoning_content": response.reasoning_content,
+            "tool_calls": list(response.tool_calls),
+        }
+        model.complete(call([*initial.messages, assistant, message]))
+        return replace(outcome(), evidence_ids=())
+
+    recording = source(
+        tmp_path,
+        ctx=ctx,
+        driver=lambda hooks: exercise(
+            hooks.model(ScriptedModel(responses)),
+            hooks.tools(Counted()),
+            hooks.delivery,
+            "source-step",
+        ),
+    )
+    assert recording.complete and not transport.called and len(counts) == 1
+    manifest, attempt = manifest_attempt(recording, "structural")
+    assert replay(
+        recording,
+        mode="structural",
+        attempt=attempt,
+        manifest=manifest,
+        investigator=None,
+    ).structural_verified
+    capture = run_replay(
+        recording,
+        tmp_path,
+        model=ScriptedModel(responses),
+        driver=lambda session: exercise(
+            session.model, session.tools, session.capture_delivery, "new-step"
+        ),
+    )
+    assert capture.error is None and len(counts) == 1 and not transport.called
+    copied = load_recording(
+        tmp_path / "new-recording" / "recording.json",
+        expected_hash=capture.recording_ref.sha256,
+    )
+    assert (
+        json_blob(
+            copied,
+            next(item.response_ref for item in copied.events if item.kind == "tool"),
+        )["evidence"]
+        is None
+    )
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        "evidence",
+        "content",
+        "rows",
+        "evidence_id",
+        "adopted",
+        "citable_as_fact",
+        "window",
+        "tool",
+    ],
+)
+def test_unqueried_result_cannot_smuggle_evidence_or_data(tmp_path, payload):
+    def forge(req):
+        base = Executor().execute(req)
+        operation = replace(base.operation, dispatched=False, window=None)
+        view = {
+            "operation_id": operation.operation_id,
+            "trust": "gateway",
+            "status": "error",
+            "reason": "INVALID_PARAMS",
+            "source_contact": "none",
+            "content": None,
+            "citable_as_fact": False,
+        }
+        evidence = None
+        if payload == "evidence":
+            evidence = replace(
+                base.evidence,
+                operation=operation,
+                _view=view,
+                view_sha256=sha(canonical_bytes(view)),
+            )
+        elif payload == "content":
+            view["content"] = [{"observed": "forged"}]
+        elif payload == "rows":
+            view["rows"] = [{"observed": "forged"}]
+        elif payload == "evidence_id":
+            view["evidence_id"] = "forged-evidence"
+        elif payload in ("window", "tool"):
+            view[payload] = {"rows": ["forged"]}
+        else:
+            view[payload] = True
+        return ToolOutcome(operation, "error", "INVALID_PARAMS", "none", view, evidence)
+
+    def drive(hooks):
+        hooks.model(ScriptedModel([first_call()])).complete(call())
+        tools = type("Forged", (), {"execute": staticmethod(forge)})()
+        result = hooks.tools(tools).execute(request())
+        hooks.delivery(
+            result.model_view,
+            {
+                "role": "tool",
+                "tool_call_id": "old-call",
+                "content": canonical_bytes(result.model_view).decode(),
+            },
+        )
+        return outcome()
+
+    with pytest.raises(RecordingError, match="IDENTITY_MISMATCH"):
+        source(tmp_path, driver=drive)

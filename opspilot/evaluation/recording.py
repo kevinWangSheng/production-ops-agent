@@ -656,6 +656,7 @@ class CaptureHooks:
             parent is None
             or not isinstance(evidence_id, str)
             or call is None
+            or call_id in self._claimed_calls
             or not isinstance(operation_id, str)
             or not operation_id
         ):
@@ -687,6 +688,7 @@ class CaptureHooks:
             raise StorageError("RECORDING_INCOMPLETE")
         if view.get("reason") == "DUPLICATE_TOOL_CALL":
             origin, request = self._refusal_request(view, message)
+            self._claimed_calls.add(request["tool_call_id"])
             refusal = self._begin(
                 "refusal",
                 canonical_bytes(request),
@@ -878,6 +880,7 @@ def validate_recording(recording: Recording) -> None:
     pending: dict[str, Mapping[str, Any]] = {}
     generated: dict[str, str] = {}
     tool_views: dict[int, str] = {}
+    event_views: dict[int, str] = {}
     tools_waiting: list[int] = []
     tool_calls: dict[int, str] = {}
     tool_fingerprints: dict[int, str] = {}
@@ -1069,6 +1072,7 @@ def validate_recording(recording: Recording) -> None:
             if isinstance(evidence_id, str) and evidence_id:
                 evidence_events[evidence_id] = seq
             tool_views[seq] = sha(view_raw)
+            event_views[seq] = sha(view_raw)
             tools_waiting.append(seq)
         elif event.kind == "refusal":
             if (
@@ -1107,7 +1111,7 @@ def validate_recording(recording: Recording) -> None:
                 raise StorageError("IDENTITY_MISMATCH")
             operation_ids.add(obj["operation_id"])
             tool_calls[seq] = obj["tool_call_id"]
-            tool_views[seq] = sha(response_raw)
+            event_views[seq] = sha(canonical_bytes(view))
             tools_waiting.append(seq)
         else:
             if response_raw is None or event.error is not None:
@@ -1135,10 +1139,14 @@ def validate_recording(recording: Recording) -> None:
             call_id = message["tool_call_id"]
             if call_id not in pending:
                 raise StorageError("IDENTITY_MISMATCH")
+            if view.get("reason") == "DUPLICATE_TOOL_CALL" and (
+                event.parent is None or recording.events[event.parent].kind != "refusal"
+            ):
+                raise StorageError("IDENTITY_MISMATCH")
             if event.parent is not None:
                 if (
                     event.parent not in tools_waiting
-                    or sha(request_raw) != tool_views[event.parent]
+                    or sha(request_raw) != event_views[event.parent]
                     or tool_calls[event.parent] != call_id
                 ):
                     raise StorageError("IDENTITY_MISMATCH")
@@ -1186,12 +1194,16 @@ def _tool_integrity(
         expected_operation = mappings.get(request.operation_id)
     if operation.run_id != expected_run or operation.operation_id != expected_operation:
         raise StorageError("IDENTITY_MISMATCH")
+    unqueried = not operation.dispatched
     if operation.tool is not None and (
         operation.tool != binding.tool
         or operation.tool_version != binding.version
         or operation.source != binding.source
-        or operation.target_id != binding.target
     ):
+        raise StorageError("IDENTITY_MISMATCH")
+    if (
+        operation.target_id is not None or not unqueried
+    ) and operation.target_id != binding.target:
         raise StorageError("IDENTITY_MISMATCH")
     if canonical_bytes(operation.requested_tool) != canonical_bytes(
         request.tool_name
@@ -1205,20 +1217,25 @@ def _tool_integrity(
     ):
         raise StorageError("IDENTITY_MISMATCH")
     auth = _window(binding.authorized_window)
-    try:
-        value = (
-            request.window
-            if request.window is not None
-            else (binding.default_window or binding.authorized_window)
-        )
-        if not isinstance(value, Mapping):
-            raise StorageError("IDENTITY_MISMATCH")
-        expected_window = _window(value)
-    except (StorageError, TypeError):
-        raise StorageError("IDENTITY_MISMATCH") from None
-    if operation.window != expected_window or not auth.contains(expected_window):
-        raise StorageError("IDENTITY_MISMATCH")
     evidence = outcome.evidence
+    if unqueried:
+        _unqueried_refusal(outcome)
+    if operation.window is not None and not auth.contains(operation.window):
+        raise StorageError("IDENTITY_MISMATCH")
+    if evidence is not None:
+        try:
+            value = (
+                request.window
+                if request.window is not None
+                else (binding.default_window or binding.authorized_window)
+            )
+            if not isinstance(value, Mapping):
+                raise StorageError("IDENTITY_MISMATCH")
+            expected_window = _window(value)
+        except (StorageError, TypeError):
+            raise StorageError("IDENTITY_MISMATCH") from None
+        if operation.window != expected_window or not auth.contains(expected_window):
+            raise StorageError("IDENTITY_MISMATCH")
     if evidence is not None:
         if evidence.operation != operation:
             raise StorageError("IDENTITY_MISMATCH")
@@ -1233,3 +1250,61 @@ def _tool_integrity(
             and outcome.model_view["evidence_id"] != evidence.evidence_id
         ):
             raise StorageError("IDENTITY_MISMATCH")
+
+
+def _unqueried_refusal(outcome: ToolOutcome) -> None:
+    """A pre-query denial carries gateway metadata, never query evidence."""
+    view = outcome.model_view
+    allowed = {
+        "operation_id",
+        "trust",
+        "status",
+        "citable_as_fact",
+        "adopted",
+        "reason",
+        "source_contact",
+        "tool",
+        "target_id",
+        "window",
+        "requested_at",
+        "content",
+    }
+    if (
+        outcome.status not in ("denied", "error")
+        or outcome.source_contact != "none"
+        or outcome.evidence is not None
+        or set(view) - allowed
+        or view.get("content") is not None
+    ):
+        raise StorageError("IDENTITY_MISMATCH")
+    for flag in ("adopted", "citable_as_fact"):
+        if flag in view and view[flag] is not False:
+            raise StorageError("IDENTITY_MISMATCH")
+    for name, expected in (
+        ("status", outcome.status),
+        ("reason", outcome.reason),
+        ("source_contact", "none"),
+        ("trust", "gateway"),
+        ("tool", outcome.operation.tool),
+        ("target_id", outcome.operation.target_id),
+    ):
+        if name in view and canonical_bytes(view[name]) != canonical_bytes(expected):
+            raise StorageError("IDENTITY_MISMATCH")
+    try:
+        if "window" in view:
+            value = view["window"]
+            if value is not None and not isinstance(value, Mapping):
+                raise StorageError("IDENTITY_MISMATCH")
+            window = None if value is None else _window(value)
+            if window != outcome.operation.window:
+                raise StorageError("IDENTITY_MISMATCH")
+        if "requested_at" in view:
+            at = (
+                None
+                if view["requested_at"] is None
+                else decode(datetime, view["requested_at"])
+            )
+            if at != outcome.operation.started_at:
+                raise StorageError("IDENTITY_MISMATCH")
+    except StorageError:
+        raise StorageError("IDENTITY_MISMATCH") from None
