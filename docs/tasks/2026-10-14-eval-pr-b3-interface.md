@@ -1,4 +1,4 @@
-# PR-B3 judge 与校准公开接口（r8 / B6、B7）
+# PR-B3 judge 与校准公开接口（r9 / B6、B7）
 
 状态：实施接口；工作区 `poa-eval-b3`，分支 `feature/eval-b3-judge`，基线 `70bfb18`。依据 [PR-B 预审](2026-10-14-eval-pr-b-contract.md) 第4节 judge/P7 与第5节第3项、[r8/D16](2026-10-12-eval-suite-contract.md)。不改变 PR-A/B1、产品状态或 passes。所有接口同步，测试只注入假 transport。
 
@@ -44,7 +44,7 @@ load_verified_calibration(path: Path, *, pack: LabelPack,
 
 LabelPack(items:tuple[CalibrationItem,...], annotations:tuple[AnnotationSet,...], adjudications:tuple[Adjudication,...])。
 CalibrationItem(item_id,scenario_id,split=`debug|validation`,source_family,input_hash,request:JudgeInput,coverage:tuple[str,...])；input_hash为实际P6白名单输入canonical hash。恰六场景，每场景2debug+4validation，ID唯一、输入hash唯一，source_family采用r8规定的规范形式并不跨集合。验证覆盖 hidden_normal_cause/summary_claim_mismatch/extra_wrong_cause/borrowed_citation/hypothesis/no_positive_diagnosis/insufficient_evidence。来源族由作者诚实记录，程序不能证明作者独立性。
-AnnotationSet(annotator_identity,model_identity,labels:tuple[BlindLabel,...])；BlindLabel(item_id,input_hash,diagnoses:tuple[JudgedDiagnosis,...],verdict:bool)。恰两份不同标注者身份（模型身份可相同）、都覆盖36项，不得用三家候选judge盲标；记录身份不证明全新上下文。每标签定位/引文/引用与重算AND均复核。两份逐条标签不同（包括漏诊）时必须有 Adjudication(item_id,annotation_hashes:tuple[str,str],decision_record:str,label:BlindLabel)；绑定两份完整annotations文件hash，decision_record是非空人工裁决记录；一致项禁止额外裁决。最终至少12个validation负例。
+AnnotationSet(annotator_identity,model_identity,labels:tuple[BlindLabel,...])；BlindLabel(item_id,input_hash,diagnoses:tuple[JudgedDiagnosis,...],verdict:bool)。恰两份按casefold比较仍不同的规范标注者身份（模型身份可相同）、都覆盖36项，不得用三家候选judge盲标（模型名按r9片段规则排除，含装饰写法）；记录身份不证明全新上下文。每标签定位/引文/引用与重算AND均复核。两份逐条标签不同（包括漏诊）时必须有 Adjudication(item_id,annotation_hashes:tuple[str,str],decision_record:str,label:BlindLabel)；绑定两份完整annotations文件hash，decision_record是非空人工裁决记录；一致项禁止额外裁决。最终至少12个validation负例。
 
 freeze 在新目录独占写 items.json、annotations-1.json、annotations-2.json、adjudications.json、pack.json；均0600。pack.json包含schema=`opspilot-label-pack-1`与前四文件sha256，不包含自己hash；返回该索引canonical hash。loader重算四文件与输入hash、标签、分布与裁决；拒绝符号链接、未知schema/字段、hash不符。OUTPUT_EXISTS时不覆盖；写失败留下不完整件并fail-closed。工件只能放ignored私有目录，公开仓库只记录允许的hash/结果，不能提交实验答案。
 
@@ -122,3 +122,24 @@ assistant响应的`tool_calls`、`function_call`等工具调用字段按存在�
 - 原文核对：P6/P7见`2026-10-12-eval-suite-contract.md:137–138`；PR-A接口`:130`区分原始verdict与证据资格、`:147`明确agreement=judge判定与标签相同、false_passes=标签False且judge判True；预审`2026-10-14-eval-pr-b-contract.md:147/164`要求按实际verdict重建，错误响应不得当负例上的正确False。“经P6复核”不授权用复核否决后的False覆盖原始judge判定，原文与本次修复无冲突。理由：PR #232 机器人第 4 轮。
 - 每个有效验证观察按原始`result.verdict`计一致与误通过；`recomputed_verdict`仅作P6资格/复核核验，不能替换计数值。原始True、复核False增加P6_RECHECK_FAILED，provider不达标，且该调用不给一致信用：负标签时false_passes增加1、agreement不增加；正标签时原始True本来的一致信用被扣除，也作不一致。错误/无verdict/漏诊继续不获一致信用；无有效verdict在B1 bool计数API中的False仅占位，随后扣除其可能得到的负例一致数，不冒充judge判False。读回同样从逐次记录重算此口径。理由：PR #232 机器人第 4 轮。
 - 来源家族采用拒绝策略，不trim/规范化后继续使用：只允许ASCII小写规范ID，正则fullmatch为`[a-z0-9][a-z0-9._:-]*(?:/[a-z0-9][a-z0-9._:-]*)*`。禁止首尾/内部空白、控制字符、大小写/Unicode变体、空路径段及`.`/`..`路径段，非规范形式SCHEMA_INVALID，在目录写入与任何transport前拒绝。它是区分大小写的规范身份，不是待解析文件路径；合法ID按原字节比较跨集合重叠，重叠仍为CALIBRATION_SET_OVERLAP。理由：PR #232 机器人第 4 轮；消除空白或非规范拼写绕过来源隔离。
+
+
+## r9：标识类与候选模型按类收口（2026-10-14，lead裁决）
+
+理由：PR #232 机器人第 5 轮，按类收口。
+
+**统一规范与入口。** 所有下列结构化标识由同一个校验器覆盖：非空、1–256字符、ASCII字符集`[A-Za-z0-9._:/@-]`，fullmatch；不允许任何首尾/内部空白、控制字符、Unicode变体或超长，不trim、不Unicode规范化后继续接收、不改写保存值。非规范一律SCHEMA_INVALID，cause/context为空。在freeze/运行前、每条逐次记录与汇总发布前，以及load标签包、load认证、既有认证使用时均检查；运行中新返回的标识不规范时立即SCHEMA_INVALID，不发布该条工件且不继续下一次调用；源记录及汇总缓存都检查，先检查格式再比较身份/派生值。已有字节/hash完整性检查仍先于对绑定文件的内容解析，坏文件保持HASH_MISMATCH。
+
+**逐项字段清单（`[]`为所有元素，map key同样检查）。**
+
+1. 标签主记录：`CalibrationItem.item_id/scenario_id/source_family/input_hash/split/coverage[]`；`AnnotationSet.annotator_identity/model_identity`；`BlindLabel.item_id/input_hash`（含两份标注及裁决label）；`Adjudication.item_id/annotation_hashes[]`。source_family还须满足r8的ASCII小写、非空规范路径段规则，长度新增256上限，仍拒绝而非trim。
+2. 版本/场景/主体：`request.spec.scenario_id/version/kind`、`spec.incident.scenario_id/feature_id/kind/subject_id`、`spec.stimulus.subject_id/target_id`；`request.answer.scenario_id/version`、`answer.injected.flag/service/service_aliases[]/operation/operation_aliases[]`、`answer.signature.rule_id/any_of[].service/operation`。
+3. 证据与授权：`request.delivered`的key和每项`evidence_id/target_id/status/time_scope_refs[]/view_sha256`，`request.authorized`的窗口引用key；view内部已声明投影引用槽`evidence_id/operation_id/run_id/subject_id/target_id/trace_id/span_id/parent_span_id/time_scope_refs[]`和指纹`view_sha256/raw_sha256/source_response_sha256`递归检查。此外固定投影身份槽`tool/tool_version/source/registry_revision/tool_registry_revision/projection_revision/projection/trust/status`、`content[]/span_groups[]/query`中的`service/operation`、span的`service_version/status_state`、`parent_references[].refType/traceID/spanID`、`backend_trace_ids[]`和`backend_counts_by_service`的服务key同样递归校验。投影可选引用ID及service_version为null代表缺失，不接受空字符串；其他已声明固定身份槽存在时不得null。操作名沿下述span名称扩展，不将这些固定结构误作自由OTel文本豁免。
+4. 报告与结局：`request.report.finish_reason`；raw报告中的`schema_version/assessment_status/conclusion`、每条claim的`kind/evidence_ids[]/target_refs[]/time_scope_ref`；`request.outcome.scenario_id/final_state/decision/evidence_ids[]/actions[]/permissions[]/handoff_reasons[]`。报告引用按原JSON检查，不能借产品文本strip绕过。时间框、日期是时间值，不是ID。
+5. 逐次记录：`CalibrationObservation.item_id/input_hash`；`observation.provider/phase/response_model/error_code`及`usage`计数名key；`result.status/config_hash/calibration_hash`、`result.diagnoses[].service/operation/cited_evidence_ids[]`。同样适用于冻结标签diagnoses中的这些字段；location为P6专用定位表达式（允许claims[0]等），仍按P6/r4校验而不套通用ID字符集。
+6. 校准配置/汇总/认证：`configs`、`transports`、`observations`及`SelectionRecord.results`的provider key；`JudgeConfig.provider/request_model/response_model/adapter_version/schema_version`；汇总固定schema及pack_hash，`SelectionRecord.status/selected_provider/eligible[]/pack_hash`，每个CalibrationResult的`judge_config_hash/calibration_pack_hash/reasons[]`；VerifiedCalibration的`provider/pack_hash/config_hash/result`及其冻结pack复核沿用同规则。
+7. 固定文件协议：pack索引schema、files文件名集合仍严格固定；所有出现的input/config/calibration/pack/view/raw/annotation SHA256指纹都必须64位小写hex，非规范SCHEMA_INVALID、规范但与绑定内容不符仍HASH_MISMATCH。provider只允许精确小写zai/openai/deepseek；其余既有enum除格式外仍须符合原schema。
+
+**协议允许的缺失值与内容字段。** `SelectionRecord.selected_provider`、`JudgeObservation.response_model/error_code`、诊断service/operation和报告time_scope_ref可按原schema为null（缺失不是空ID）；校准逐次JudgeResult尚未认证时唯一允许`calibrated=False,calibration_hash=""`，并由_counts继续检查状态绑定，其他绑定hash不能为空。`quote/reason`、问题/摘要/说明、expected_output、acceptance_step、human_interaction、人工decision_record及提示词为内容；`injected.variant`为配置值（已有100%），不是身份ID。普通OTel属性值、span_groups.status中的标签表达式及计数（例如rpc.grpc.status_code=0）是内容，不被猜成身份，仍受r7敏感键拒绝；顶层view.status仍是规范枚举标识。已核查PR-A六份冻结包中的76个view，标识规范校验全部放行；文件路径不是ID。服务名/别名使用通用规范；操作名/别名按span名称的受限ASCII语法`[A-Za-z0-9._:/@(){}\[\]-]+(?: [A-Za-z0-9._:/@(){}\[\]-]+)*`，总长1–256；允许单个ASCII空格分隔词及路由括号，拒绝首尾/连续空白、控制字符及Unicode变体。理由：PR-A六包实际含`HTTP POST`、`orders publish`、`router frontend egress`、`GET /api/products/{productId}`、`executing api route (pages) /api/products/[productId]`及`{closure}`；这些是既有规范span名称，不是身份trim或自由文本豁免。ASCII大小写保留，P6仍用原比较规则。endpoint仍按固定URL校验，api_key只走认证且不作为身份或hash输入。
+
+**去重与模型排除。** annotator_identity先通过规范检查，再casefold比较；大小写不同仍视为同一标注者，报CALIBRATION_UNRESOLVED，不改写标注字节或hash。model_identity先通过规范检查，再小写去全部分隔符，含D16任一固定片段`glm53/gpt61sol/deepseekflash`即CALIBRATION_UNRESOLVED，允许误判；例如openai/gpt-6.1-sol、Z.ai-glm-5.3、DeepSeek/Flash@revision及任意前后缀都拒绝。`Z.ai glm-5.3`因空格先报SCHEMA_INVALID。两个独立标注者仍可共用同一个非候选模型；程序校验不能替代真实独立上下文证据。

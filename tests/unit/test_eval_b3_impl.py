@@ -736,7 +736,9 @@ def test_disagreement_requires_hash_bound_human_record(tmp_path, pack):
         final_labels(
             replace(
                 adjudicated,
-                adjudications=(replace(decision, annotation_hashes=("x", "y")),),
+                adjudications=(
+                    replace(decision, annotation_hashes=("0" * 64, "1" * 64)),
+                ),
             )
         )
 
@@ -1633,3 +1635,538 @@ def test_pr232_round4_noncanonical_family_id_rejected_before_transports(
     assert all(not t.calls for t in transports.values())
     assert not (tmp_path / "run").exists()
     assert caught.value.__cause__ is None and caught.value.__context__ is None
+
+
+def _r9_replace_pack_field(pack, field, value):
+    first = pack.items[0]
+    annotation = pack.annotations[0]
+    label = annotation.labels[0]
+    if field in {"annotator_identity", "model_identity"}:
+        return replace(
+            pack,
+            annotations=(replace(annotation, **{field: value}), pack.annotations[1]),
+        )
+    if field in {"item_id", "scenario_id", "source_family", "input_hash"}:
+        return replace(pack, items=(replace(first, **{field: value}), *pack.items[1:]))
+    if field.startswith("label."):
+        changed = replace(label, **{field.split(".", 1)[1]: value})
+        return replace(
+            pack,
+            annotations=(
+                replace(annotation, labels=(changed, *annotation.labels[1:])),
+                pack.annotations[1],
+            ),
+        )
+    request = first.request
+    if field == "subject_id":
+        request = replace(
+            request,
+            spec=replace(
+                request.spec, stimulus=replace(request.spec.stimulus, subject_id=value)
+            ),
+        )
+    elif field == "version":
+        request = replace(request, spec=replace(request.spec, version=value))
+    elif field == "target_id":
+        request = replace(
+            request, delivered={"e1": replace(request.delivered["e1"], target_id=value)}
+        )
+    elif field == "evidence_id":
+        request = replace(
+            request,
+            delivered={"e1": replace(request.delivered["e1"], evidence_id=value)},
+        )
+    elif field == "authorized_key":
+        request = replace(request, authorized={value: request.authorized["w"]})
+    elif field == "report_ref":
+        doc = json.loads(request.report.raw)
+        doc["claims"][0]["time_scope_ref"] = value
+        request = replace(request, report=ReportCapture(json.dumps(doc), "stop"))
+    else:
+        raise AssertionError(field)
+    return replace(pack, items=(replace(first, request=request), *pack.items[1:]))
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "annotator_identity",
+        "model_identity",
+        "item_id",
+        "scenario_id",
+        "source_family",
+        "input_hash",
+        "label.item_id",
+        "label.input_hash",
+        "subject_id",
+        "version",
+        "target_id",
+        "evidence_id",
+        "authorized_key",
+        "report_ref",
+    ],
+)
+@pytest.mark.parametrize(
+    "bad", [" bad", "bad\n", "bad value", "bad\x00value", "bad+value", "x" * 257]
+)
+def test_pr232_round5_pack_identity_classes_fail_schema_before_io(
+    tmp_path, pack, field, bad
+):
+    corrupted = _r9_replace_pack_field(pack, field, bad)
+    c = configs()
+    transports = {p: FakeTransport(RuntimeError("must-not-send")) for p in c}
+    with pytest.raises(JudgeError, match="SCHEMA_INVALID") as caught:
+        run_calibration(
+            corrupted, configs=c, transports=transports, destination=tmp_path / "run"
+        )
+    assert caught.value.__cause__ is None and caught.value.__context__ is None
+    assert not (tmp_path / "run").exists()
+    assert all(not t.calls for t in transports.values())
+
+
+def test_pr232_round5_annotator_dedup_uses_casefold(pack):
+    duplicate = replace(
+        pack.annotations[1],
+        annotator_identity=pack.annotations[0].annotator_identity.upper(),
+    )
+    with pytest.raises(JudgeError, match="CALIBRATION_UNRESOLVED"):
+        final_labels(replace(pack, annotations=(pack.annotations[0], duplicate)))
+
+
+@pytest.mark.parametrize(
+    "identity,code",
+    [
+        ("openai/gpt-6.1-sol", "CALIBRATION_UNRESOLVED"),
+        ("Z.ai-glm-5.3", "CALIBRATION_UNRESOLVED"),
+        ("Z.ai glm-5.3", "SCHEMA_INVALID"),
+        ("provider:gLm_5_3@snapshot", "CALIBRATION_UNRESOLVED"),
+        ("prefixGPT61SOLsuffix", "CALIBRATION_UNRESOLVED"),
+        ("DeepSeek/Flash@revision", "CALIBRATION_UNRESOLVED"),
+        ("other-deepseekflash-evaluator", "CALIBRATION_UNRESOLVED"),
+    ],
+)
+def test_pr232_round5_decorated_candidate_models_cannot_annotate(
+    tmp_path, pack, identity, code
+):
+    corrupted = replace(
+        pack,
+        annotations=(
+            pack.annotations[0],
+            replace(pack.annotations[1], model_identity=identity),
+        ),
+    )
+    with pytest.raises(JudgeError, match=code):
+        freeze_label_pack(tmp_path / "pack", corrupted)
+    assert not (tmp_path / "pack").exists()
+
+
+@pytest.fixture(scope="module")
+def r9_identity_artifact(tmp_path_factory):
+    p = pack.__wrapped__()
+    c = configs()
+    root = tmp_path_factory.mktemp("r9-identity") / "calibration"
+    run_calibration(
+        p, configs=c, transports=calibration_transports(p, c), destination=root
+    )
+    return root, p, c
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "config_key",
+        "provider",
+        "request_model",
+        "response_model",
+        "adapter_version",
+        "schema_version",
+        "cached_item_id",
+        "cached_hash",
+        "cached_provider",
+        "cached_response_model",
+        "source_item_id",
+        "source_hash",
+        "source_provider",
+        "selected_provider",
+        "eligible",
+        "result_key",
+        "pack_hash",
+        "result_hash",
+    ],
+)
+def test_pr232_round5_calibration_identity_classes_fail_schema(
+    tmp_path, r9_identity_artifact, field
+):
+    import shutil
+
+    original, p, c = r9_identity_artifact
+    root = tmp_path / "copy"
+    shutil.copytree(original, root)
+    path = root / "calibration.json"
+    doc = json.loads(path.read_bytes())
+    bad = " bad"
+    if field == "config_key":
+        doc["configs"][bad] = doc["configs"].pop("zai")
+    elif field in {
+        "provider",
+        "request_model",
+        "response_model",
+        "adapter_version",
+        "schema_version",
+    }:
+        doc["configs"]["zai"][field] = bad
+    elif field.startswith("cached_"):
+        observation = doc["observations"]["zai"][0]
+        if field == "cached_item_id":
+            observation["item_id"] = bad
+        elif field == "cached_hash":
+            observation["input_hash"] = bad
+        elif field == "cached_provider":
+            observation["observation"]["provider"] = bad
+        else:
+            observation["observation"]["response_model"] = bad
+    elif field.startswith("source_"):
+        source = root / "zai-001.json"
+        observation = json.loads(source.read_bytes())
+        if field == "source_item_id":
+            observation["item_id"] = bad
+        elif field == "source_hash":
+            observation["input_hash"] = bad
+        else:
+            observation["observation"]["provider"] = bad
+        source.write_bytes(canonical_bytes(observation))
+    elif field == "selected_provider":
+        doc["selection"][field] = bad
+    elif field == "eligible":
+        doc["selection"][field] = [bad]
+    elif field == "result_key":
+        doc["selection"]["results"][bad] = doc["selection"]["results"].pop("zai")
+    elif field == "pack_hash":
+        doc[field] = bad
+    else:
+        doc["selection"]["results"]["zai"]["judge_config_hash"] = bad
+    path.write_bytes(canonical_bytes(doc))
+    with pytest.raises(JudgeError, match="SCHEMA_INVALID") as caught:
+        load_verified_calibration(root, pack=p, config=c["zai"])
+    assert caught.value.__cause__ is None and caught.value.__context__ is None
+
+
+def _r9_replace_path(value, path, replacement):
+    from dataclasses import is_dataclass
+
+    if not path:
+        return replacement
+    head, *rest = path
+    if is_dataclass(value):
+        return replace(
+            value, **{head: _r9_replace_path(getattr(value, head), rest, replacement)}
+        )
+    if isinstance(value, dict):
+        return {**value, head: _r9_replace_path(value[head], rest, replacement)}
+    items = sorted(value) if isinstance(value, frozenset) else list(value)
+    items[head] = _r9_replace_path(items[head], rest, replacement)
+    return type(value)(items)
+
+
+_R9_NESTED_PATHS = [
+    ("items", 0, "split"),
+    ("items", 0, "coverage", 0),
+    *(
+        ("items", 0, "request", "spec", "incident", field)
+        for field in ("scenario_id", "feature_id", "subject_id", "kind")
+    ),
+    *(("items", 0, "request", "answer", field) for field in ("scenario_id", "version")),
+    *(
+        ("items", 0, "request", "answer", "injected", field)
+        for field in ("flag", "service", "operation")
+    ),
+    ("items", 0, "request", "answer", "injected", "service_aliases", 0),
+    ("items", 0, "request", "answer", "injected", "operation_aliases", 0),
+    ("items", 0, "request", "answer", "signature", "rule_id"),
+    ("items", 0, "request", "answer", "signature", "any_of", 0, "service"),
+    ("items", 0, "request", "answer", "signature", "any_of", 0, "operation"),
+    ("items", 0, "request", "report", "finish_reason"),
+    *(
+        ("items", 0, "request", "outcome", field)
+        for field in ("scenario_id", "final_state", "decision")
+    ),
+    ("items", 0, "request", "outcome", "evidence_ids", 0),
+    ("items", 0, "request", "outcome", "permissions", 0),
+    ("items", 0, "request", "delivered", "e1", "status"),
+    ("items", 0, "request", "delivered", "e1", "time_scope_refs", 0),
+    ("items", 0, "request", "delivered", "e1", "view_sha256"),
+    ("items", 0, "request", "delivered", "e1", "view", "content", 0, "span_id"),
+    ("items", 0, "request", "delivered", "e1", "view", "content", 0, "trace_id"),
+    *(
+        ("annotations", 0, "labels", 1, "diagnoses", 0, field)
+        for field in ("service", "operation")
+    ),
+    ("annotations", 0, "labels", 1, "diagnoses", 0, "cited_evidence_ids", 0),
+]
+
+
+@pytest.mark.parametrize("path", _R9_NESTED_PATHS, ids=lambda p: ".".join(map(str, p)))
+def test_pr232_round5_nested_identity_field_inventory(tmp_path, pack, path):
+    bad = _r9_replace_path(pack, path, " bad")
+    with pytest.raises(JudgeError, match="SCHEMA_INVALID"):
+        freeze_label_pack(tmp_path / "bad", bad)
+    assert not (tmp_path / "bad").exists()
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        ("schema_version",),
+        ("assessment_status",),
+        ("conclusion",),
+        ("claims", 0, "kind"),
+        ("claims", 0, "evidence_ids", 0),
+        ("claims", 0, "target_refs", 0),
+        ("claims", 0, "time_scope_ref"),
+    ],
+)
+def test_pr232_round5_raw_report_identity_field_inventory(tmp_path, pack, path):
+    item = pack.items[0]
+    doc = _r9_replace_path(json.loads(item.request.report.raw), path, " bad")
+    request = replace(item.request, report=ReportCapture(json.dumps(doc), "stop"))
+    bad = replace(pack, items=(replace(item, request=request), *pack.items[1:]))
+    with pytest.raises(JudgeError, match="SCHEMA_INVALID"):
+        freeze_label_pack(tmp_path / "bad", bad)
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        ("pack_hash",),
+        ("status",),
+        ("results", "zai", "calibration_pack_hash"),
+        ("results", "zai", "judge_config_hash"),
+    ],
+)
+def test_pr232_round5_selection_identity_field_inventory(
+    tmp_path, r9_identity_artifact, path
+):
+    import shutil
+
+    original, p, c = r9_identity_artifact
+    root = tmp_path / "copy"
+    shutil.copytree(original, root)
+    doc = json.loads((root / "calibration.json").read_bytes())
+    doc["selection"] = _r9_replace_path(doc["selection"], path, " bad")
+    (root / "calibration.json").write_bytes(canonical_bytes(doc))
+    with pytest.raises(JudgeError, match="SCHEMA_INVALID"):
+        load_verified_calibration(root, pack=p, config=c["zai"])
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        ("observation", "phase"),
+        ("observation", "error_code"),
+        ("observation", "result", "status"),
+        ("observation", "result", "config_hash"),
+        ("observation", "result", "calibration_hash"),
+        ("observation", "result", "diagnoses", 0, "service"),
+        ("observation", "result", "diagnoses", 0, "operation"),
+        ("observation", "result", "diagnoses", 0, "cited_evidence_ids", 0),
+    ],
+)
+def test_pr232_round5_source_identity_field_inventory(
+    tmp_path, r9_identity_artifact, path
+):
+    import shutil
+
+    original, p, c = r9_identity_artifact
+    root = tmp_path / "copy"
+    shutil.copytree(original, root)
+    source = root / "zai-002.json"
+    entry = _r9_replace_path(json.loads(source.read_bytes()), path, " bad")
+    source.write_bytes(canonical_bytes(entry))
+    with pytest.raises(JudgeError, match="SCHEMA_INVALID"):
+        load_verified_calibration(root, pack=p, config=c["zai"])
+
+
+@pytest.mark.parametrize("model", [None, "", " bad", "bad\x00id", "x" * 257])
+def test_pr232_round5_calibration_config_response_identity_is_required(
+    tmp_path, pack, model
+):
+    c = configs()
+    c["openai"] = replace(c["openai"], response_model=model)
+    transports = {p: FakeTransport(RuntimeError("must-not-send")) for p in c}
+    with pytest.raises(JudgeError, match="SCHEMA_INVALID"):
+        run_calibration(
+            pack, configs=c, transports=transports, destination=tmp_path / "bad"
+        )
+    assert all(not t.calls for t in transports.values())
+
+
+@pytest.mark.parametrize("operation", ["POST /K", "İ", "ı", "ſ"])
+def test_pr232_round5_operation_rejects_unicode_casefold_variants(
+    tmp_path, pack, operation
+):
+    bad = _r9_replace_path(
+        pack, ("items", 0, "request", "answer", "injected", "operation"), operation
+    )
+    # Rebind the mutated input so an unrelated hash mismatch cannot mask acceptance.
+    item = bad.items[0]
+    rebound_hash = sha(safe_input(item.request))
+    bad = replace(
+        bad,
+        items=(replace(item, input_hash=rebound_hash), *bad.items[1:]),
+        annotations=tuple(
+            replace(
+                annotation,
+                labels=tuple(
+                    replace(label, input_hash=rebound_hash)
+                    if label.item_id == item.item_id
+                    else label
+                    for label in annotation.labels
+                ),
+            )
+            for annotation in bad.annotations
+        ),
+    )
+    with pytest.raises(JudgeError, match="SCHEMA_INVALID"):
+        freeze_label_pack(tmp_path / "bad", bad)
+    assert not (tmp_path / "bad").exists()
+
+
+def test_pr232_round5_invalid_response_identity_stops_before_source_write(
+    tmp_path, pack
+):
+    c = configs()
+    diagnosis = JudgedDiagnosis(
+        "claims[0]",
+        json.loads(pack.items[0].request.report.raw)["claims"][0]["text"],
+        False,
+        " bad ",
+        None,
+        (),
+        None,
+        False,
+        "No causal assertion.",
+    )
+    transports = {
+        provider: FakeTransport(completion(config, (diagnosis,), False))
+        for provider, config in c.items()
+    }
+    root = tmp_path / "bad"
+    with pytest.raises(JudgeError, match="SCHEMA_INVALID") as caught:
+        run_calibration(pack, configs=c, transports=transports, destination=root)
+    assert caught.value.__cause__ is None and caught.value.__context__ is None
+    assert len(transports["zai"].calls) == 1
+    assert not transports["openai"].calls and not transports["deepseek"].calls
+    assert not list(root.glob("zai-*.json"))
+    assert not (root / "calibration.json").exists()
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        *(
+            (name,)
+            for name in (
+                "tool",
+                "tool_version",
+                "source",
+                "registry_revision",
+                "tool_registry_revision",
+                "projection_revision",
+                "projection",
+                "trust",
+                "status",
+            )
+        ),
+        *(
+            ("content", 0, name)
+            for name in (
+                "service",
+                "operation",
+                "service_version",
+                "status_state",
+            )
+        ),
+        *(
+            ("content", 0, "parent_references", 0, name)
+            for name in ("refType", "traceID", "spanID")
+        ),
+        ("span_groups", 0, "service"),
+        ("span_groups", 0, "operation"),
+        ("backend_trace_ids", 0),
+        ("backend_counts_by_service",),
+        ("source_response_sha256",),
+    ],
+    ids=lambda p: ".".join(map(str, p)),
+)
+def test_pr232_round5_fixed_projection_identity_inventory(tmp_path, pack, path):
+    item = pack.items[0]
+    record = item.request.delivered["e1"]
+    view = {
+        "tool_version": "1",
+        "source": "jaeger",
+        "registry_revision": "r1",
+        "tool_registry_revision": "r1",
+        "projection_revision": "r1",
+        "projection": "trace-projection-v1",
+        "trust": "untrusted-evidence",
+        "status": "ok",
+        "span_groups": [{"service": "cart", "operation": "POST /rpc"}],
+        "backend_trace_ids": ["trace-1"],
+        "backend_counts_by_service": {"cart": {}},
+        "source_response_sha256": "0" * 64,
+        **json.loads(json.dumps(record.view)),
+    }
+    view["content"][0].update(
+        service_version="1",
+        status_state="recorded",
+        parent_references=[
+            {"refType": "CHILD_OF", "traceID": "trace-1", "spanID": "span-1"}
+        ],
+    )
+    view = _r9_replace_path(
+        view, path, {" bad": {}} if path == ("backend_counts_by_service",) else " bad"
+    )
+    request = replace(
+        item.request,
+        delivered={
+            "e1": replace(record, view=view, view_sha256=canonical_view_hash(view)),
+        },
+    )
+    rebound_hash = sha(safe_input(request))
+    bad = replace(
+        pack,
+        items=(
+            replace(item, request=request, input_hash=rebound_hash),
+            *pack.items[1:],
+        ),
+        annotations=tuple(
+            replace(
+                annotation,
+                labels=tuple(
+                    replace(label, input_hash=rebound_hash)
+                    if label.item_id == item.item_id
+                    else label
+                    for label in annotation.labels
+                ),
+            )
+            for annotation in pack.annotations
+        ),
+    )
+    with pytest.raises(JudgeError, match="SCHEMA_INVALID"):
+        freeze_label_pack(tmp_path / "bad", bad)
+    assert not (tmp_path / "bad").exists()
+
+
+def test_pr232_round5_frozen_otel_identity_fields_remain_compatible():
+    from opspilot.evaluation.calibration_flow import _view_identifiers
+
+    root = ROOT / "docs/evidence/m1-01-alignment-c-effect"
+    names = ("normal-1", "normal-2", "fault-1", "fault-2", "pc-fault", "cart-fault")
+    checked = 0
+    for name in names:
+        # Inspect only the already-frozen public evidence views, not ledger steps.
+        evidence = json.loads((root / name / "ledger.json").read_bytes())["evidence"]
+        for record in evidence:
+            _view_identifiers(record["view"])
+            checked += 1
+    assert checked == 76

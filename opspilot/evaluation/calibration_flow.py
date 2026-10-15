@@ -12,9 +12,9 @@ import re
 import stat
 from collections import Counter
 from collections.abc import Mapping
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field, fields, is_dataclass, replace
 from pathlib import Path
-from typing import Literal, cast
+from typing import Any, Literal, cast
 
 from opspilot.evaluation.codec import (
     StorageError,
@@ -25,6 +25,7 @@ from opspilot.evaluation.codec import (
     validated,
 )
 from opspilot.evaluation.judge import (
+    _MODELS,
     OBSERVATION_ERROR_CODES,
     JudgeConfig,
     JudgeError,
@@ -32,13 +33,14 @@ from opspilot.evaluation.judge import (
     JudgeObservation,
     JudgeTransport,
     _check_config,
+    _normalize_slot,
     check_diagnoses,
     judge_config_hash,
     judge_once,
     response_identity_matches,
     safe_input,
 )
-from opspilot.evaluation.model import JudgedDiagnosis
+from opspilot.evaluation.model import JudgedDiagnosis, JudgeResult, ReportCapture
 from opspilot.evaluation.rounds import CalibrationResult, calibrate
 
 SCENARIOS = frozenset(
@@ -62,6 +64,10 @@ COVERAGE = frozenset(
         "insufficient_evidence",
     }
 )
+_IDENTIFIER = re.compile(r"[A-Za-z0-9._:/@-]{1,256}")
+_SHA256 = re.compile(r"[0-9a-f]{64}")
+_OPERATION = re.compile(r"[A-Za-z0-9._:/@(){}\[\]-]+(?: [A-Za-z0-9._:/@(){}\[\]-]+)*")
+_CANDIDATE_FRAGMENTS = frozenset(_normalize_slot(m) for m in _MODELS.values())
 _FAMILY_ID = re.compile(r"[a-z0-9][a-z0-9._:-]*(?:/[a-z0-9][a-z0-9._:-]*)*")
 _PROVIDERS = frozenset({"zai", "openai", "deepseek"})
 _FILES = (
@@ -143,6 +149,221 @@ class VerifiedCalibration:
     _directory: Path = field(repr=False)
 
 
+def _identifier(value: Any) -> None:
+    if type(value) is not str or _IDENTIFIER.fullmatch(value) is None:
+        raise JudgeError("SCHEMA_INVALID")
+
+
+def _hash_identifier(value: Any) -> None:
+    if type(value) is not str or _SHA256.fullmatch(value) is None:
+        raise JudgeError("SCHEMA_INVALID")
+
+
+def _provider_identifier(value: Any) -> None:
+    _identifier(value)
+    if value not in _PROVIDERS:
+        raise JudgeError("SCHEMA_INVALID")
+
+
+def _provider_keys(value: Mapping[str, Any]) -> None:
+    for key in value:
+        _provider_identifier(key)
+
+
+def _operation_name(value: Any) -> None:
+    # PR-A freezes HTTP routes, templated routes and names such as "orders publish".
+    if (
+        type(value) is not str
+        or len(value) > 256
+        or _OPERATION.fullmatch(value) is None
+    ):
+        raise JudgeError("SCHEMA_INVALID")
+
+
+def _report_identifiers(raw: str | None) -> None:
+    if raw is None:
+        return  # Existing report-schema validation rejects a missing report.
+    obj = parse(raw.encode("utf-8"))
+    for name in ("schema_version", "assessment_status", "conclusion"):
+        _identifier(obj.get(name))
+    claims = obj.get("claims")
+    if type(claims) is not list:
+        raise JudgeError("SCHEMA_INVALID")
+    for claim in claims:
+        if type(claim) is not dict:
+            raise JudgeError("SCHEMA_INVALID")
+        _identifier(claim.get("kind"))
+        for name in ("evidence_ids", "target_refs"):
+            refs = claim.get(name, [])
+            if type(refs) is not list:
+                raise JudgeError("SCHEMA_INVALID")
+            for ref in refs:
+                _identifier(ref)
+        if claim.get("time_scope_ref") is not None:
+            _identifier(claim["time_scope_ref"])
+
+
+def _view_identifiers(value: Any, *, grouped: bool = False) -> None:
+    # Fixed projection metadata and references, not arbitrary OTel text values.
+    ids = {
+        "evidence_id",
+        "operation_id",
+        "run_id",
+        "subject_id",
+        "target_id",
+        "trace_id",
+        "span_id",
+        "parent_span_id",
+        "traceID",
+        "spanID",
+        "service_version",
+    }
+    metadata = {
+        "tool",
+        "tool_version",
+        "source",
+        "registry_revision",
+        "tool_registry_revision",
+        "projection_revision",
+        "projection",
+        "trust",
+        "status",
+        "status_state",
+        "service",
+        "refType",
+    }
+    hashes = {"view_sha256", "raw_sha256", "source_response_sha256"}
+    if isinstance(value, Mapping):
+        for key, child in value.items():
+            if grouped and key == "status":
+                # span_groups.status contains rendered tag expressions and counts,
+                # e.g. rpc.grpc.status_code=0; it is not the view status enum.
+                if not isinstance(child, Mapping) or any(
+                    type(k) is not str or type(v) is not int or v < 0
+                    for k, v in child.items()
+                ):
+                    raise JudgeError("SCHEMA_INVALID")
+                continue
+            if key in ids and child is not None:
+                _identifier(child)
+            elif key in metadata:
+                _identifier(child)
+            elif key == "operation":
+                _operation_name(child)
+            elif key in hashes:
+                _hash_identifier(child)
+            elif key in {"time_scope_refs", "backend_trace_ids"}:
+                if not isinstance(child, (tuple, list, frozenset)):
+                    raise JudgeError("SCHEMA_INVALID")
+                for ref in child:
+                    _identifier(ref)
+            elif key == "backend_counts_by_service":
+                if not isinstance(child, Mapping):
+                    raise JudgeError("SCHEMA_INVALID")
+                for service in child:
+                    _identifier(service)
+            _view_identifiers(child, grouped=key == "span_groups")
+    elif isinstance(value, (tuple, list)):
+        for child in value:
+            _view_identifiers(child, grouped=grouped)
+
+
+def _metadata_identifiers(value: Any) -> None:
+    """One policy for pack, source, cache and verified DTO identities. No trim."""
+    if is_dataclass(value) and not isinstance(value, type):
+        for f in fields(value):
+            name, child = f.name, getattr(value, f.name)
+            if name == "view":
+                _view_identifiers(child)
+                continue
+            if isinstance(value, ReportCapture) and name == "raw":
+                _report_identifiers(child)
+                continue
+            if name == "source_family":
+                _identifier(child)
+                if _FAMILY_ID.fullmatch(child) is None:
+                    raise JudgeError("SCHEMA_INVALID")
+            elif name.endswith(("_hash", "_sha256")):
+                if not (
+                    isinstance(value, JudgeResult)
+                    and name == "calibration_hash"
+                    and child == ""
+                    and not value.calibrated
+                ):
+                    _hash_identifier(child)
+            elif name == "annotation_hashes":
+                for item in child:
+                    _hash_identifier(item)
+            elif name in {"provider", "selected_provider"}:
+                if not (name == "selected_provider" and child is None):
+                    _provider_identifier(child)
+            elif name == "eligible":
+                for item in child:
+                    _provider_identifier(item)
+            elif name == "results":
+                _provider_keys(child)
+            elif name in {
+                "service",
+                "service_aliases",
+                "operation",
+                "operation_aliases",
+            }:
+                items = child if name.endswith("_aliases") else (child,)
+                for item in items:
+                    if item is None and isinstance(value, JudgedDiagnosis):
+                        continue
+                    (_operation_name if name.startswith("operation") else _identifier)(
+                        item
+                    )
+            elif child is None and (
+                isinstance(value, JudgeObservation)
+                and name in {"response_model", "error_code"}
+                or name == "time_scope_ref"
+            ):
+                continue  # Explicit optional, absent protocol values, never blank IDs.
+            elif name.endswith(("_id", "_ref", "_identity", "_version")) or name in {
+                "version",
+                "request_model",
+                "response_model",
+                "error_code",
+                "kind",
+                "split",
+                "status",
+                "phase",
+                "finish_reason",
+                "final_state",
+                "decision",
+                "flag",
+            }:
+                _identifier(child)
+            elif name in {
+                "evidence_ids",
+                "cited_evidence_ids",
+                "target_refs",
+                "time_scope_refs",
+                "coverage",
+                "permissions",
+                "actions",
+                "handoff_reasons",
+                "reasons",
+            }:
+                for item in child:
+                    _identifier(item)
+            _metadata_identifiers(child)
+    elif isinstance(value, Mapping):
+        for key, child in value.items():
+            _identifier(key)
+            _metadata_identifiers(child)
+    elif isinstance(value, (tuple, list, frozenset)):
+        for child in value:
+            _metadata_identifiers(child)
+
+
+def _candidate_annotator(identity: str) -> bool:
+    compact = _normalize_slot(identity)
+    return any(fragment in compact for fragment in _CANDIDATE_FRAGMENTS)
+
+
 def _validated_pack(pack: LabelPack) -> LabelPack:
     try:
         return cast(LabelPack, validated(LabelPack, pack))
@@ -186,6 +407,7 @@ def final_labels(pack: LabelPack) -> Mapping[str, BlindLabel]:
     """Reconstruct labels; never trust cached verdicts or adjudication membership."""
     try:
         pack = validated(LabelPack, pack)
+        _metadata_identifiers(pack)
         if len(pack.items) != 36 or len(pack.annotations) != 2:
             raise JudgeError("SCHEMA_INVALID")
         ids = {item.item_id for item in pack.items}
@@ -224,18 +446,8 @@ def final_labels(pack: LabelPack) -> Mapping[str, BlindLabel]:
             raise JudgeError("CALIBRATION_COVERAGE_INCOMPLETE")
         first, second = pack.annotations
         if (
-            not first.annotator_identity.strip()
-            or not second.annotator_identity.strip()
-            or first.annotator_identity == second.annotator_identity
-            or not first.model_identity.strip()
-            or not second.model_identity.strip()
-            or any(
-                any(
-                    response_identity_matches(p, a.model_identity.strip().casefold())
-                    for p in ("zai", "openai", "deepseek")
-                )
-                for a in pack.annotations
-            )
+            first.annotator_identity.casefold() == second.annotator_identity.casefold()
+            or any(_candidate_annotator(a.model_identity) for a in pack.annotations)
         ):
             raise JudgeError("CALIBRATION_UNRESOLVED")
         annotations: list[dict[str, BlindLabel]] = []
@@ -405,6 +617,7 @@ def freeze_label_pack(path: Path, pack: LabelPack) -> str:
 
 
 def load_label_pack(path: Path, *, expected_pack_hash: str) -> LabelPack:
+    _hash_identifier(expected_pack_hash)
     _check_directory(path)
     try:
         raw = _read(path / "pack.json")
@@ -416,6 +629,7 @@ def load_label_pack(path: Path, *, expected_pack_hash: str) -> LabelPack:
         hashes = exact(obj["files"], set(_FILES))
         parts: dict[str, bytes] = {}
         for name in _FILES:
+            _hash_identifier(hashes[name])
             parts[name] = _read(path / name)
             if hashlib.sha256(parts[name]).hexdigest() != hashes[name]:
                 raise JudgeError("HASH_MISMATCH")
@@ -455,6 +669,9 @@ def _counts(
     observations: tuple[CalibrationObservation, ...],
     pack_hash: str,
 ) -> CalibrationResult:
+    _metadata_identifiers(config)
+    _metadata_identifiers(observations)
+    _hash_identifier(pack_hash)
     config_hash = judge_config_hash(config)
     wanted = Counter(
         (i.item_id, repetition)
@@ -565,18 +782,16 @@ def _selection(
 
 
 def _check_candidates(pack: LabelPack, configs: Mapping[str, JudgeConfig]) -> None:
+    _provider_keys(configs)
+    _metadata_identifiers(configs)
     if set(configs) != _PROVIDERS:
         raise JudgeError("CONFIG_INVALID")
     for provider, config in configs.items():
         _check_config(config)
         if config.provider != provider:
             raise JudgeError("JUDGE_IDENTITY_MISMATCH")
-        if any(
-            a.model_identity.strip().casefold()
-            in (config.request_model.casefold(), config.response_model.casefold())
-            for a in pack.annotations
-        ):
-            raise JudgeError("CALIBRATION_UNRESOLVED")
+    if any(_candidate_annotator(a.model_identity) for a in pack.annotations):
+        raise JudgeError("CALIBRATION_UNRESOLVED")
 
 
 def run_calibration(
@@ -590,6 +805,7 @@ def run_calibration(
     labels = final_labels(pack)
     pack_hash = label_pack_hash(pack)
     _check_candidates(pack, configs)
+    _provider_keys(transports)
     if set(transports) != _PROVIDERS:
         raise JudgeError("CONFIG_INVALID")
     # Claim destination before any paid call; restarting cannot overwrite history.
@@ -616,6 +832,8 @@ def run_calibration(
                 entry = CalibrationObservation(
                     item.item_id, item.input_hash, repetition, observation
                 )
+                # Reject malformed returned identities before publication or another call.
+                _metadata_identifiers(entry)
                 # Persist each observation before proceeding, including failures.
                 _write(
                     destination / f"{provider}-{len(entries) + 1:03d}.json",
@@ -627,6 +845,7 @@ def run_calibration(
             pack, labels, configs[provider], observations[provider], pack_hash
         )
     selection = _selection(pack_hash, results)
+    _metadata_identifiers(selection)
     _write(
         destination / "calibration.json",
         canonical_bytes(
@@ -658,6 +877,7 @@ def _verify(
         )
         if obj["schema"] != "opspilot-judge-calibration-1":
             raise JudgeError("SCHEMA_INVALID")
+        _hash_identifier(obj["pack_hash"])
         if obj["pack_hash"] != pack_hash:
             raise JudgeError("HASH_MISMATCH")
         configs = decode(Mapping[str, JudgeConfig], obj["configs"])
@@ -669,6 +889,10 @@ def _verify(
         cached_observations = decode(
             Mapping[str, tuple[CalibrationObservation, ...]], obj["observations"]
         )
+        _provider_keys(cached_observations)
+        _metadata_identifiers(cached_observations)
+        stored_selection = decode(SelectionRecord, obj["selection"])
+        _metadata_identifiers(stored_selection)
         if set(cached_observations) != _PROVIDERS:
             raise JudgeError("SCHEMA_INVALID")
         frozen_pack = load_label_pack(
@@ -689,6 +913,7 @@ def _verify(
                             _read(directory / f"{provider}-{len(entries) + 1:03d}.json")
                         ),
                     )
+                    _metadata_identifiers(entry)
                     if (entry.item_id, entry.input_hash, entry.repetition) != (
                         item.item_id,
                         item.input_hash,
@@ -704,7 +929,7 @@ def _verify(
             for p in _PROVIDERS
         }
         selection = _selection(pack_hash, results)
-        if decode(SelectionRecord, obj["selection"]) != selection:
+        if stored_selection != selection:
             raise JudgeError("DERIVED_RESULT_MISMATCH")
         if (
             selection.status != "selected"
@@ -723,6 +948,7 @@ def load_verified_calibration(
     pack: LabelPack,
     config: JudgeConfig,
 ) -> VerifiedCalibration:
+    _metadata_identifiers(config)
     _check_config(config)
     raw, directory = _calibration_source(path)
     _check_directory(directory)
@@ -742,6 +968,8 @@ def calibration_matches(calibration: VerifiedCalibration, config: JudgeConfig) -
     try:
         if type(calibration) is not VerifiedCalibration:
             return False
+        _metadata_identifiers(calibration)
+        _metadata_identifiers(config)
         _check_config(config)
         current = _read(calibration._directory / "calibration.json")
         if parse(current) != parse(calibration._proof):
