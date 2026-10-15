@@ -464,6 +464,8 @@ def query_evidence_consistent(
     context: ReleaseEvaluationContext,
     evidence: ReleaseSampleEvidence,
     decision_at: datetime,
+    *,
+    require_complete: bool = True,
 ) -> bool:
     if not supported_profile(context.health_profile):
         return False
@@ -481,8 +483,10 @@ def query_evidence_consistent(
     )
     # Empty evidence is a counted unknown; partial evidence must match the
     # complete plan (after keys exist only when mapping produces a UID set).
-    if evidence.queries and not set(plan).issubset(
-        q.query_key for q in evidence.queries
+    if (
+        require_complete
+        and evidence.queries
+        and not set(plan).issubset(q.query_key for q in evidence.queries)
     ):
         return False
     if (
