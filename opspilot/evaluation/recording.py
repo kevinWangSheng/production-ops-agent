@@ -60,6 +60,7 @@ from opspilot.investigation.loop import (
     _call_fingerprint,
     _duplicate_call_view,
     serialized_request,
+    tool_request_for,
 )
 from opspilot.investigation.messages import PairingError, validate_tool_calls
 from opspilot.tools.executor import ToolRequest
@@ -619,6 +620,15 @@ class CaptureHooks:
 
             def execute(self, request: ToolRequest) -> ToolOutcome:
                 binding = binding_for(hooks.context, request)
+                candidates = [
+                    item
+                    for item in hooks._current_calls.values()
+                    if item["id"] not in hooks._claimed_calls
+                    and _matches_request(hooks.context, binding, request, item)
+                ]
+                if not candidates:
+                    hooks.reasons.append("IDENTITY_MISMATCH")
+                    raise StorageError("IDENTITY_MISMATCH")
                 key = tool_key(hooks.context, request, binding)
                 occurrence = hooks._counts[key]
                 hooks._counts[key] += 1
@@ -635,18 +645,11 @@ class CaptureHooks:
                     {},
                 )
                 hooks._operations[request.operation_id] = seq
-                candidates = [
-                    item
-                    for item in hooks._current_calls.values()
-                    if item["function"]["name"] == request.tool_name
-                    and item["id"] not in hooks._claimed_calls
-                ]
-                if candidates:
-                    candidate = candidates[0]
-                    hooks._claimed_calls.add(candidate["id"])
-                    hooks._tool_fingerprints[seq] = call_fingerprint(
-                        candidate, binding.target
-                    )
+                candidate = candidates[0]
+                hooks._claimed_calls.add(candidate["id"])
+                hooks._tool_fingerprints[seq] = call_fingerprint(
+                    candidate, binding.target
+                )
                 try:
                     outcome = executor.execute(request)
                     hooks._operations[
@@ -661,7 +664,11 @@ class CaptureHooks:
                     ):
                         hooks.reasons.append("RECORDING_INCOMPLETE")
                         raise StorageError("RECORDING_INCOMPLETE")
-                    evidence_id = outcome.model_view.get("evidence_id")
+                    evidence_id = (
+                        None
+                        if outcome.evidence is None
+                        else outcome.evidence.evidence_id
+                    )
                     if isinstance(evidence_id, str) and evidence_id:
                         hooks._evidence_events[evidence_id] = seq
                     view_hash = sha(canonical_bytes(outcome.model_view))
@@ -854,6 +861,8 @@ def record(
             "correct",
         }:
             raise StorageError("SCHEMA_INVALID")
+        if "IDENTITY_MISMATCH" in hooks.reasons:
+            raise StorageError("IDENTITY_MISMATCH")
         if hooks.reasons or (not context.synthetic and not hooks._sealed):
             raise StorageError("RECORDING_INCOMPLETE")
         provisional = Recording(
@@ -981,6 +990,9 @@ def validate_recording(recording: Recording) -> None:
     model_bodies: dict[int, str] = {}
     pending: dict[str, Mapping[str, Any]] = {}
     generated: dict[str, str] = {}
+    generated_evidence: dict[str, set[str]] = {}
+    delivered_evidence: set[str] = set()
+    evidence_by_view: dict[str, set[str]] = {}
     tool_views: dict[int, str] = {}
     event_views: dict[int, str] = {}
     tools_waiting: list[int] = []
@@ -1062,6 +1074,7 @@ def validate_recording(recording: Recording) -> None:
                         or sha(canonical_bytes(message)) != generated[call_id]
                     ):
                         raise StorageError("IDENTITY_MISMATCH")
+                    delivered_evidence.update(generated_evidence.get(call_id, set()))
             if pending:
                 raise StorageError("RECORDING_INCOMPLETE")
             if response_raw is not None:
@@ -1167,7 +1180,7 @@ def validate_recording(recording: Recording) -> None:
             matching = [
                 item
                 for item in pending.values()
-                if item["function"]["name"] == request.tool_name
+                if _matches_request(context, binding, request, item)
             ]
             if not matching:
                 raise StorageError("IDENTITY_MISMATCH")
@@ -1180,9 +1193,16 @@ def validate_recording(recording: Recording) -> None:
             tool_fingerprints[seq] = call_fingerprint(available[0], binding.target)
             operation_ids.add(request.operation_id)
             operation_ids.add(outcome.operation.operation_id)
-            evidence_id = outcome.model_view.get("evidence_id")
-            if isinstance(evidence_id, str) and evidence_id:
+            evidence_id = (
+                None if outcome.evidence is None else outcome.evidence.evidence_id
+            )
+            if (
+                outcome.evidence is not None
+                and isinstance(evidence_id, str)
+                and evidence_id
+            ):
                 evidence_events[evidence_id] = seq
+                evidence_by_view.setdefault(sha(view_raw), set()).add(evidence_id)
             tool_views[seq] = sha(view_raw)
             event_views[seq] = sha(view_raw)
             tools_waiting.append(seq)
@@ -1272,6 +1292,11 @@ def validate_recording(recording: Recording) -> None:
                     raise StorageError("IDENTITY_MISMATCH")
             pending.pop(call_id)
             generated[call_id] = sha(canonical_bytes(message))
+            generated_evidence[call_id] = set(
+                evidence_by_view.get(sha(request_raw), set())
+            )
+    if set(recording.outcome.evidence_ids) - delivered_evidence:
+        raise StorageError("IDENTITY_MISMATCH")
     if not saw_model or tools_waiting or pending:
         raise StorageError("RECORDING_INCOMPLETE")
     for seq in model_bodies:
@@ -1286,6 +1311,34 @@ def call_fingerprint(call: Mapping[str, Any], target: str) -> str:
             "utf-8"
         )
     )
+
+
+def _matches_request(
+    context: RecordingContext,
+    binding: ToolBinding,
+    request: ToolRequest,
+    call: Mapping[str, Any],
+) -> bool:
+    targets = {
+        item.target for item in context.bindings if item.tool == request.tool_name
+    }
+    target = context.stimulus.get("target_id")
+    if target is None and len(targets) == 1:
+        target = next(iter(targets))
+    if not isinstance(target, str) or target not in targets:
+        return False  # No frozen loop target: never infer it from the response.
+    expected = tool_request_for(
+        request.step_id,
+        request.tool_index,
+        call,
+        target_ref=target,
+        window=binding.authorized_window,
+    )
+    # The loop supplies the window envelope; arguments (including reserved
+    # keys) stay in params. Existing frozen request/default-window checks apply.
+    return canonical_bytes(
+        (expected.tool_name, expected.target_ref, expected.params)
+    ) == canonical_bytes((request.tool_name, request.target_ref, request.params))
 
 
 def _tool_integrity(

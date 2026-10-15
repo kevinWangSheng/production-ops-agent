@@ -205,7 +205,10 @@ def conversation(model, tools, delivery, *, step="old-step", params=None, stub=T
         "tool_calls": list(response.tool_calls),
     }
     model.complete(call([*initial.messages, assistant, message]))
-    return outcome()
+    return replace(
+        outcome(),
+        evidence_ids=() if result.evidence is None else (result.evidence.evidence_id,),
+    )
 
 
 def source(tmp_path, *, driver=None, ctx=None):
@@ -410,16 +413,45 @@ def test_exhaustion_is_sticky_even_if_driver_catches_error(tmp_path):
     recording = source(tmp_path)
 
     def drive(session):
-        session.model.complete(call())
+        first = session.model.complete(call())
         req = request("new")
-        session.tools.execute(req)
+        result = session.tools.execute(req)
+        message = {
+            "role": "tool",
+            "tool_call_id": first.tool_calls[0]["id"],
+            "content": canonical_bytes(result.model_view).decode(),
+        }
+        session.capture_delivery(result.model_view, message)
+        session.model.complete(
+            call(
+                [
+                    {
+                        "role": "assistant",
+                        "content": first.content,
+                        "reasoning_content": first.reasoning_content,
+                        "tool_calls": list(first.tool_calls),
+                    },
+                    message,
+                ]
+            )
+        )
         with pytest.raises(RecordingError, match="REPLAY_MISS"):
-            session.tools.execute(req)
+            session.tools.execute(request("new-two"))
         with pytest.raises(RecordingError, match="REPLAY_MISS"):
             session.model.complete(call())
         return outcome()
 
-    result = run_replay(recording, tmp_path, driver=drive)
+    result = run_replay(
+        recording,
+        tmp_path,
+        driver=drive,
+        model=ScriptedModel(
+            [
+                first_call("new-one"),
+                first_call("new-two"),
+            ]
+        ),
+    )
     assert result.error == "REPLAY_MISS" and result.attempt.replay_miss
 
 
@@ -430,7 +462,10 @@ def test_model_can_end_early_without_using_tool_tail(tmp_path):
         recording,
         tmp_path,
         model=model,
-        driver=lambda session: (session.model.complete(call()), outcome())[1],
+        driver=lambda session: (
+            session.model.complete(call()),
+            replace(outcome(), evidence_ids=()),
+        )[1],
     )
     assert result.error is None and len(model.calls) == 1 and not result.id_map
 
@@ -553,7 +588,7 @@ def test_frozen_business_clock_real_monotonic_and_timeout_clamp(tmp_path):
         assert session.clock.now() == recording.context.ended_at
         assert session.clock.monotonic() > 0
         session.model.complete(replace(call(), timeout_seconds=9999))
-        return outcome()
+        return replace(outcome(), evidence_ids=())
 
     result = run_replay(recording, tmp_path, model=model, driver=drive)
     assert result.error is None and model.calls[0].timeout_seconds == 360.0
@@ -685,7 +720,7 @@ def test_failed_physical_request_and_retry_both_recorded(tmp_path):
         with pytest.raises(ModelError):
             client.complete(call())
         client.complete(call())
-        return outcome()
+        return replace(outcome(), evidence_ids=())
 
     recording = source(tmp_path, driver=drive)
     assert [event.error for event in recording.events] == ["MODEL_UNAVAILABLE", None]
@@ -728,7 +763,7 @@ def test_http_hook_records_raw_without_auth_header_and_default_bytes_identical(
         )
         captured = hooks.model(client).complete(call())
         assert captured == plain
-        return outcome()
+        return replace(outcome(), evidence_ids=())
 
     recording = source(tmp_path, driver=drive)
     assert requests == [(serialized_request(call()), 360.0)] * 2
@@ -763,7 +798,7 @@ def test_http_error_body_kept_only_when_capture_enabled(tmp_path):
         )
         with pytest.raises(ModelError, match="MODEL_UNAVAILABLE"):
             client.complete(call())
-        return outcome()
+        return replace(outcome(), evidence_ids=())
 
     recording = source(tmp_path, driver=drive)
     assert recording.events[0].error == "MODEL_UNAVAILABLE"
@@ -862,7 +897,7 @@ def test_missing_delivery_and_invented_tool_dispatch_refused(tmp_path):
         hooks.tools(Executor()).execute(request())
         return outcome()
 
-    with pytest.raises(RecordingError, match="RECORDING_INCOMPLETE"):
+    with pytest.raises(RecordingError, match="IDENTITY_MISMATCH"):
         source(tmp_path, driver=missing)
 
 
@@ -923,7 +958,7 @@ def test_finish_seals_final_business_clock(tmp_path):
     def drive(hooks):
         hooks.model(ScriptedModel([reply(content="done")])).complete(call())
         hooks.finish(NOW + timedelta(seconds=1))
-        return outcome()
+        return replace(outcome(), evidence_ids=())
 
     recording = source(tmp_path, driver=drive)
     assert recording.context.ended_at == NOW + timedelta(seconds=1)
@@ -1324,8 +1359,9 @@ def test_loop_duplicate_refusal_records_and_replays_without_facade_call(
             )
         )
         loop.capture_delivery = hooks.delivery
-        assert loop.run(req).execution == "completed"
-        return outcome()
+        result = loop.run(req)
+        assert result.execution == "completed"
+        return replace(outcome(), evidence_ids=result.evidence_ids)
 
     recording = source(tmp_path, driver=drive, ctx=ctx)
     assert transport.called and len(counts) == expected_calls
@@ -1396,7 +1432,7 @@ def test_loop_duplicate_refusal_records_and_replays_without_facade_call(
         )
         assert result.execution == "completed"
         assert len(calls) == expected_calls and not unused_transport.called
-        return outcome()
+        return replace(outcome(), evidence_ids=result.evidence_ids)
 
     capture = run_replay(recording, tmp_path, model=fresh_model, driver=replay_drive)
     assert capture.error is None, capture
@@ -1478,8 +1514,9 @@ def test_removed_refusal_cannot_be_replaced_by_cached_denial(tmp_path, seed_cach
         loop.model = hooks.model(loop.model)
         loop.executor = hooks.tools(loop.executor)
         loop.capture_delivery = hooks.delivery
-        assert loop.run(req).execution == "completed"
-        return outcome()
+        result = loop.run(req)
+        assert result.execution == "completed"
+        return replace(outcome(), evidence_ids=result.evidence_ids)
 
     recording = source(tmp_path, driver=drive, ctx=ctx)
     meta = json.loads(recording.path.read_bytes())
@@ -2103,7 +2140,7 @@ def test_valid_limit_hints_record_and_replay_without_evidence(tmp_path, family):
             "tool_calls": list(response.tool_calls),
         }
         session.model.complete(call([*initial.messages, assistant, message]))
-        return outcome()
+        return replace(outcome(), evidence_ids=())
 
     model = ScriptedModel(
         [first_call("new-call", reasoning="fresh"), reply(content="done")]

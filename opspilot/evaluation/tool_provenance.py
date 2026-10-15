@@ -27,6 +27,7 @@ from opspilot.evaluation.rounds import (
     validate_manifest,
 )
 from opspilot.tools.executor import (
+    _GENERIC_VIEW_KEYS,
     QueryScope,
     ToolRequest,
     TransportRequest,
@@ -306,7 +307,6 @@ def check_result(
         for view in (outcome.model_view, outcome.evidence.view):
             for name in set(view) & identities.keys():
                 same(view[name], identities[name])
-        return
     if op.dispatched:
         if failure is not None:
             mismatch()
@@ -316,7 +316,7 @@ def check_result(
             else (binding.default_window or binding.authorized_window)
         )
         same(op.window, expected_window)
-        allowed = {
+        allowed: set[tuple[str, str | None, str]] = {
             ("no_data", "NO_DATA", "confirmed"),
             ("error", "INVALID_PARAMS", "confirmed"),
             ("error", "SOURCE_ERROR", "possible"),
@@ -335,6 +335,8 @@ def check_result(
             for reason in _CONTROL - {"DEADLINE_EXCEEDED"}
             for contact in ("possible", "confirmed")
         }
+        if outcome.evidence is not None:
+            allowed.add(("ok", None, "confirmed"))
         if (outcome.status, outcome.reason, outcome.source_contact) not in allowed:
             mismatch()
         same(op.credential_ref, target.credential_ref)
@@ -458,7 +460,91 @@ def check_result(
             or op.timeout_seconds <= 0
         ):
             mismatch()
-    _check_view(outcome, reg, target, scope)
+    if outcome.evidence is None:
+        _check_view(outcome, reg, target, scope)
+    else:
+        _check_evidence_view(outcome, scope, event_clock)
+
+
+def _check_evidence_view(
+    outcome: ToolOutcome, scope: QueryScope, event_clock: datetime
+) -> None:
+    evidence, op, view = outcome.evidence, outcome.operation, outcome.model_view
+    assert evidence is not None
+    if not _GENERIC_VIEW_KEYS <= view.keys():
+        mismatch()
+    same(evidence.status, outcome.status)
+    same(evidence.observed_at, op.finished_at)
+    if evidence.observed_at > event_clock:
+        mismatch()
+    if evidence.data_as_of is not None and evidence.data_as_of > evidence.observed_at:
+        mismatch()
+    start, end = evidence.source_start_at, evidence.source_end_at
+    if (start is None) != (end is None):
+        mismatch()
+    if (
+        start is not None
+        and end is not None
+        and not (
+            scope.window.start <= start <= end <= scope.window.end
+            and end <= evidence.observed_at
+        )
+    ):
+        mismatch()
+    for count in (evidence.result_count, evidence.omitted_rows, evidence.omitted_bytes):
+        if type(count) is not int or count < 0:
+            mismatch()
+    if evidence.adopted and outcome.status not in ("ok", "no_data"):
+        mismatch()
+    content = view["content"]
+    if evidence.adopted:
+        if not isinstance(content, list):
+            mismatch()
+        returned = len(content)
+    else:
+        same(content, None)
+        returned = 0
+    same(evidence.omitted_rows, evidence.result_count - returned)
+    same(evidence.truncated, bool(evidence.omitted_rows))
+    expected = {
+        "evidence_id": evidence.evidence_id,
+        "operation_id": op.operation_id,
+        "trust": "untrusted-evidence",
+        "status": outcome.status,
+        "adopted": evidence.adopted,
+        "citable_as_fact": evidence.adopted and outcome.status == "ok",
+        "projection_revision": evidence.projection_revision,
+        "observed_at": evidence.observed_at.isoformat(),
+        "dispatch_started_at": None
+        if op.started_at is None
+        else op.started_at.isoformat(),
+        "data_as_of": None
+        if evidence.data_as_of is None
+        else evidence.data_as_of.isoformat(),
+        "source_start_at": None if start is None else start.isoformat(),
+        "source_end_at": None if end is None else end.isoformat(),
+        "freshness_seconds": evidence.freshness_seconds,
+        "result_count": evidence.result_count,
+        "returned_count": returned,
+        "incomplete": evidence.incomplete,
+        "truncated": evidence.truncated,
+        "omitted_rows": evidence.omitted_rows,
+        "omitted_bytes": evidence.omitted_bytes,
+    }
+    for name, value in expected.items():
+        same(view[name], value)
+    window = Window.parse(view["window"])
+    if window is None or op.window is None or not op.window.contains(window):
+        mismatch()
+    lookback = view["lookback_seconds"]
+    if lookback is not None and (
+        type(lookback) is not int or not 0 <= lookback <= window.seconds
+    ):
+        mismatch()
+    same(
+        view["lookback_start_at"],
+        None if lookback is None else window.start.isoformat(),
+    )
 
 
 def _check_view(
