@@ -1,0 +1,263 @@
+{
+ "note": "Engineer read-only readback after the run (default_transaction_read_only=on); backs run.md figures not in summary.json.",
+ "read_at": "2026-10-15 01:34:35.904962-07",
+ "alembic": [
+  {
+   "version_num": "0016_release_deadline_evidence"
+  }
+ ],
+ "row_counts": [
+  {
+   "incidents": 1,
+   "runs": 1,
+   "sessions": 1
+  }
+ ],
+ "postmortem_attempts": [
+  {
+   "status": "failed",
+   "error_code": "INPUT_TOO_LARGE",
+   "input_bytes": null,
+   "model_requests": 0,
+   "prompt_tokens": 0,
+   "completion_tokens": 0,
+   "input_policy_version": "f13-postmortem-input-v3",
+   "prompt_version": "f13-postmortem-prompt-v4",
+   "started_at": "2026-10-15 00:29:12.931088-07",
+   "finished_at": "2026-10-15 00:29:13.119771-07"
+  },
+  {
+   "status": "succeeded",
+   "error_code": null,
+   "input_bytes": 146729,
+   "model_requests": 1,
+   "prompt_tokens": 59414,
+   "completion_tokens": 24860,
+   "input_policy_version": "f13-postmortem-input-v4",
+   "prompt_version": "f13-postmortem-prompt-v5",
+   "started_at": "2026-10-15 01:16:39.366188-07",
+   "finished_at": "2026-10-15 01:18:31.347091-07"
+  }
+ ],
+ "postmortem_versions": [
+  {
+   "version": 1,
+   "state": "approved",
+   "content_sha256": "d4a1df2d2a604244990d3f066ecf28fce1041787fbf575e53136213f07665f10"
+  }
+ ],
+ "disputes": [
+  {
+   "n": 0
+  }
+ ],
+ "conclusions": [
+  {
+   "n": 22,
+   "citations_valid": 22,
+   "deterministic": 5
+  }
+ ],
+ "latency_p95_by_sample": [
+  {
+   "sequence": 1,
+   "outcome": "degraded",
+   "value": 95.0
+  },
+  {
+   "sequence": 2,
+   "outcome": "degraded",
+   "value": 740.0
+  },
+  {
+   "sequence": 3,
+   "outcome": "degraded",
+   "value": 679.9999999999999
+  },
+  {
+   "sequence": 4,
+   "outcome": "degraded",
+   "value": 679.9999999999999
+  },
+  {
+   "sequence": 5,
+   "outcome": "degraded",
+   "value": 659.9999999999999
+  },
+  {
+   "sequence": 6,
+   "outcome": "healthy",
+   "value": 191.25
+  },
+  {
+   "sequence": 7,
+   "outcome": "healthy",
+   "value": 195.0
+  },
+  {
+   "sequence": 8,
+   "outcome": "healthy",
+   "value": 195.0
+  },
+  {
+   "sequence": 9,
+   "outcome": "healthy",
+   "value": 195.0
+  },
+  {
+   "sequence": 10,
+   "outcome": "healthy",
+   "value": 195.0
+  },
+  {
+   "sequence": 11,
+   "outcome": "healthy",
+   "value": 195.0
+  },
+  {
+   "sequence": 12,
+   "outcome": "degraded",
+   "value": 699.9999999999999
+  },
+  {
+   "sequence": 13,
+   "outcome": "degraded",
+   "value": 659.9999999999999
+  },
+  {
+   "sequence": 14,
+   "outcome": "degraded",
+   "value": 679.9999999999998
+  },
+  {
+   "sequence": 15,
+   "outcome": "degraded",
+   "value": 1670.0
+  },
+  {
+   "sequence": 16,
+   "outcome": "degraded",
+   "value": 1759.9999999999995
+  },
+  {
+   "sequence": 17,
+   "outcome": "degraded",
+   "value": 1820.0
+  },
+  {
+   "sequence": 18,
+   "outcome": "degraded",
+   "value": 1789.9999999999998
+  },
+  {
+   "sequence": 19,
+   "outcome": "healthy",
+   "value": 370.0
+  },
+  {
+   "sequence": 20,
+   "outcome": "healthy",
+   "value": 370.0
+  },
+  {
+   "sequence": 21,
+   "outcome": "healthy",
+   "value": 349.99999999999994
+  },
+  {
+   "sequence": 22,
+   "outcome": "healthy",
+   "value": 375.0
+  },
+  {
+   "sequence": 23,
+   "outcome": "healthy",
+   "value": 380.0
+  },
+  {
+   "sequence": 24,
+   "outcome": "healthy",
+   "value": 359.99999999999994
+  },
+  {
+   "sequence": 25,
+   "outcome": "healthy",
+   "value": 194.0
+  },
+  {
+   "sequence": 26,
+   "outcome": "healthy",
+   "value": 191.0
+  },
+  {
+   "sequence": 27,
+   "outcome": "healthy",
+   "value": 188.75
+  },
+  {
+   "sequence": 28,
+   "outcome": "healthy",
+   "value": 185.0
+  },
+  {
+   "sequence": 29,
+   "outcome": "degraded",
+   "value": 560.0000000000001
+  },
+  {
+   "sequence": 30,
+   "outcome": "degraded",
+   "value": 579.9999999999998
+  },
+  {
+   "sequence": 31,
+   "outcome": "degraded",
+   "value": 599.9999999999998
+  },
+  {
+   "sequence": 32,
+   "outcome": "degraded",
+   "value": 659.9999999999999
+  },
+  {
+   "sequence": 33,
+   "outcome": "healthy",
+   "value": 195.0
+  },
+  {
+   "sequence": 34,
+   "outcome": "healthy",
+   "value": 191.66666666666666
+  },
+  {
+   "sequence": 35,
+   "outcome": "healthy",
+   "value": 192.5
+  },
+  {
+   "sequence": 36,
+   "outcome": "healthy",
+   "value": 191.25
+  },
+  {
+   "sequence": 37,
+   "outcome": "healthy",
+   "value": 191.0
+  },
+  {
+   "sequence": 38,
+   "outcome": "healthy",
+   "value": 192.85714285714286
+  },
+  {
+   "sequence": 39,
+   "outcome": "healthy",
+   "value": 191.66666666666666
+  },
+  {
+   "sequence": 40,
+   "outcome": "healthy",
+   "value": 192.0
+  }
+ ]
+}
