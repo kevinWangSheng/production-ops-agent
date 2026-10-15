@@ -122,6 +122,10 @@ def identity_fields(identity: TargetIdentity) -> dict[str, str]:
 
 
 class TargetRegistry(Protocol):
+    def keys(self) -> tuple[str, ...]:
+        """All configured operator target keys, in stable order."""
+        ...
+
     def resolve(self, target_id: str) -> TargetIdentity | None:
         """The configured identity for an operator's target id, or ``None``
         when the id is unknown (a remediation on it is then refused for
@@ -157,6 +161,9 @@ class MappingTargetRegistry:
     def from_file(cls, path: str) -> MappingTargetRegistry:
         return cls(load_target_identities(path))
 
+    def keys(self) -> tuple[str, ...]:
+        return tuple(sorted(self._targets))
+
     def resolve(self, target_id: str) -> TargetIdentity | None:
         return self._targets.get(target_id)
 
@@ -171,6 +178,16 @@ class MappingTargetRegistry:
 
 
 class IncidentStore(Protocol):
+    def suspension_state(self) -> dict[str, Any]: ...
+
+    def set_global_suspension(
+        self, suspended: bool, *, expected_generation: int, actor: str
+    ) -> int: ...
+
+    def set_target_suspension(
+        self, target_id: UUID, suspended: bool, *, expected_generation: int, actor: str
+    ) -> int: ...
+
     def accept(
         self,
         incident_id: UUID,
@@ -540,6 +557,23 @@ class DurableIncidentStore:
             versions=versions,
             input=input,
             target_id=target_id,
+        )
+
+    def suspension_state(self) -> dict[str, Any]:
+        return self._store.suspension_state()
+
+    def set_global_suspension(
+        self, suspended: bool, *, expected_generation: int, actor: str
+    ) -> int:
+        return self._store.set_global_suspension(
+            suspended, expected_generation=expected_generation, actor=actor
+        )
+
+    def set_target_suspension(
+        self, target_id: UUID, suspended: bool, *, expected_generation: int, actor: str
+    ) -> int:
+        return self._store.set_target_suspension(
+            target_id, suspended, expected_generation=expected_generation, actor=actor
         )
 
     def register_target(self, resource_uid: str) -> UUID:

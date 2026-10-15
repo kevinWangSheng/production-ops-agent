@@ -37,7 +37,7 @@ def _sql_lines(text: str) -> list[str]:
 
 def test_head_is_the_newest_revision() -> None:
     assert schema.BASELINE_REVISION == "0001_baseline"
-    assert schema.head_revision() == "0016_release_deadline_evidence"
+    assert schema.head_revision() == "0017_web_suspension_grants"
 
 
 def test_baseline_sql_equals_frozen_legacy_ddl() -> None:

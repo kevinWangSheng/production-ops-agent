@@ -15,6 +15,29 @@ _CONTROL_OPEN_RUN_STATES = frozenset({"queued", "running", "paused", "waiting_hu
 
 
 class _ControlOps(_StoreBase):
+    def suspension_state(self) -> dict[str, Any]:
+        """Read gates in one snapshot, without reading the suspension audit."""
+        with self.transaction(snapshot=True) as conn:
+            scope = self._lock_scope(conn, lock=False)
+            rows = conn.execute(
+                "SELECT t.resource_uid,COALESCE(s.suspended,false) AS suspended,"
+                "COALESCE(s.generation,0) AS generation FROM opspilot_targets t "
+                "LEFT JOIN opspilot_target_suspensions s USING (target_id)"
+            ).fetchall()
+        return {
+            "global": {
+                "suspended": bool(scope["global_suspended"]),
+                "generation": int(scope["global_generation"]),
+            },
+            "targets": {
+                row["resource_uid"]: {
+                    "suspended": bool(row["suspended"]),
+                    "generation": int(row["generation"]),
+                }
+                for row in rows
+            },
+        }
+
     def set_global_suspension(
         self, suspended: bool, *, expected_generation: int, actor: str
     ) -> int:

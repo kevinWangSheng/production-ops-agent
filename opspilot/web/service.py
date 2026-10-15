@@ -505,6 +505,128 @@ class Workbench:
 
     # -- human control --------------------------------------------------
 
+    def controls(self) -> dict[str, Any]:
+        state = self.incidents.suspension_state()
+        targets = []
+        for key in () if self.targets is None else self.targets.keys():
+            identity = self.targets.resolve(key) if self.targets is not None else None
+            if identity is None:
+                raise WorkbenchError("UNKNOWN_TARGET")
+            gate = state["targets"].get(
+                identity.resource_uid,
+                {
+                    "suspended": False,
+                    "generation": 0,
+                },
+            )
+            targets.append({"target_id": key, **gate})
+        return {"global": state["global"], "targets": targets}
+
+    def suspension(
+        self,
+        *,
+        scope: str,
+        target_id: str | None,
+        suspended: bool,
+        expected_generation: int,
+        idempotency_key: str,
+        actor_id: str,
+    ) -> dict[str, Any]:
+        if (
+            scope not in {"global", "target"}
+            or type(suspended) is not bool
+            or type(expected_generation) is not int
+            or expected_generation < 0
+            or (scope == "global" and target_id is not None)
+            or (scope == "target" and not target_id)
+        ):
+            raise WorkbenchError("INVALID_INPUT")
+        try:
+            _reject_ambiguous_identifier(idempotency_key)
+            if not 1 <= len(idempotency_key) <= 256:
+                raise ValueError
+        except ValueError:
+            raise WorkbenchError("INVALID_INPUT") from None
+        identity = None
+        if scope == "target":
+            identity = (
+                self.targets.resolve(target_id)
+                if self.targets is not None and target_id is not None
+                else None
+            )
+            if identity is None:
+                raise WorkbenchError("UNKNOWN_TARGET")
+        intent = {
+            "scope": scope,
+            "target_id": target_id,
+            "suspended": suspended,
+            "expected_generation": expected_generation,
+            "actor_id": actor_id,
+        }
+        stored, inserted = self.ledger.put("suspension_intent", idempotency_key, intent)
+        if not inserted:
+            if dict(stored) != intent:
+                raise WorkbenchError("CONTROL_KEY_CONFLICT")
+            result = self.ledger.get("suspension", idempotency_key)
+            if result is not None:
+                return {**result, "replayed": True}
+            # Another request (or a crash) owns the pending intent. Never
+            # apply it twice: same-value writes also append an audit row.
+            state = self.incidents.suspension_state()
+            gate = (
+                state["global"]
+                if identity is None
+                else state["targets"].get(identity.resource_uid, {"generation": 0})
+            )
+            raise WorkbenchError(
+                "CONTROL_CONFLICT", current_generation=gate["generation"]
+            )
+        try:
+            if identity is None:
+                generation = self.incidents.set_global_suspension(
+                    suspended, expected_generation=expected_generation, actor=actor_id
+                )
+            else:
+                target_uuid = self.incidents.register_target(identity.resource_uid)
+                generation = self.incidents.set_target_suspension(
+                    target_uuid,
+                    suspended,
+                    expected_generation=expected_generation,
+                    actor=actor_id,
+                )
+        except PersistenceError as exc:
+            code = str(exc)
+            # Only these refusals guarantee no suspension decision committed
+            # (the target INSERT before CONTROL_CONFLICT is rolled back).
+            # Otherwise retain the intent: a lost commit acknowledgement can
+            # hide even a same-value audit INSERT, which must not be repeated.
+            if code in {
+                "CONTROL_CONFLICT",
+                "UNKNOWN_TARGET",
+                "INVALID_INPUT",
+                "IDENTITY_CONFLICT",
+            }:
+                self.ledger.delete("suspension_intent", idempotency_key)
+            if code == "CONTROL_CONFLICT":
+                state = self.incidents.suspension_state()
+                gate = (
+                    state["global"]
+                    if identity is None
+                    else state["targets"].get(identity.resource_uid, {"generation": 0})
+                )
+                raise WorkbenchError(
+                    "CONTROL_CONFLICT", current_generation=gate["generation"]
+                ) from None
+            raise WorkbenchError(code) from None
+        result = {
+            "scope": scope,
+            "target_id": target_id,
+            "suspended": suspended,
+            "generation": generation,
+        }
+        self.ledger.put("suspension", idempotency_key, result)
+        return {**result, "replayed": False}
+
     def control(
         self,
         incident_id: UUID,

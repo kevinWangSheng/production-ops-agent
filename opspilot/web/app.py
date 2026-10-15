@@ -97,6 +97,7 @@ _AUTH_STATUS = {
 }
 _WORKBENCH_STATUS = {
     "UNKNOWN_INCIDENT": 404,
+    "UNKNOWN_TARGET": 404,
     "INVALID_INPUT": 400,
     "INVALID_ACTION": 400,
     "TEXT_REQUIRED": 400,
@@ -300,6 +301,41 @@ def create_app(
         principal = await ui(request)
         incidents = await in_thread(workbench.list_incidents)
         return render("index.html", principal=principal, incidents=incidents)
+
+    @app.get("/controls")
+    async def controls_page(request: Request) -> Response:
+        principal = await ui(request)
+        state = await in_thread(workbench.controls)
+        if wants_html(request):
+            return render(
+                "controls.html",
+                principal=principal,
+                state=state,
+                form_nonce=uuid4().hex,
+            )
+        return JSONResponse(state)
+
+    @app.post("/controls/suspension")
+    async def suspension(request: Request) -> Response:
+        principal = await ui_mutation(request)
+        fields = await form_of(request)
+        generation = fields.get("expected_generation", "")
+        if not generation.isascii() or not generation.isdigit() or len(generation) > 19:
+            raise _Refusal(400, "INVALID_INPUT")
+        if fields.get("suspended") not in {"true", "false"}:
+            raise _Refusal(400, "INVALID_INPUT")
+        result = await in_thread(
+            workbench.suspension,
+            scope=fields.get("scope", ""),
+            target_id=fields.get("target_id"),
+            suspended=fields["suspended"] == "true",
+            expected_generation=int(generation),
+            idempotency_key=fields.get("idempotency_key", ""),
+            actor_id=principal.actor_id,
+        )
+        if wants_html(request):
+            return RedirectResponse("/controls", status_code=303)
+        return JSONResponse(result)
 
     @app.get("/incidents/{incident_id}", response_class=HTMLResponse)
     async def incident_page(request: Request, incident_id: str) -> Response:
