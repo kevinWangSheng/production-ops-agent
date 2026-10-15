@@ -273,3 +273,72 @@ M0_B_POSTGRES=1 .venv/bin/python -m pytest tests/integration/test_m0_live_postgr
 ### 本轮真实软件环境与上游基线
 
 2026-09-09已固定并实际部署OTel Demo 2.0.2，HolmesGPT固定上游源码/独立锁依赖运行；[环境复现与保留路径](evidence/m0-real-environment/reproduce.md)、[当前总任务](tasks/2026-09-09-m0-real-investigation.md)。专属Colima profile和运行数据属于production-ops-agent-m0-environment原工作区；合入代码不自动搬移其tmp/VM/数据库，不从其他worktree盲目启停同名服务。原PG仍属于production-ops-agent-m0-01。真实模型/故障仅按当前实验合同执行，产品Agent仍只读；安装/开发检查不证明调查正确。
+
+### F11 U2 有界实验工具（r1/L3）
+
+入口：`.venv/bin/python -m scripts.f11_u2_harness --help`。仅供工程师在已协调的
+`kind-opspilot-m1 / otel-demo` 实验环境使用；本次实现只做离线测试，尚无真实运行证据。
+原始响应、完整模板、时间线和占用记录均写入 git 忽略的 `tmp/lab-ledgers/`，不进仓库。
+所有外部调用设超时；Prometheus 沿用产品 30,720 字节响应保护、120 秒租约及 5 秒提交余量。
+
+全局参数放子命令前：`--holder <持有人> --batch <批次> [--dry-run]`。
+`--dry-run` 跳过全部 kubectl、flagd、Prometheus、数据库调用和写盘，打印动作。
+下列命令中的 `--run <轮次>` 是目录名（字母、数字、下划线、连字符），每轮使用新名字。
+
+- `occupation claim --until <带时区的结束时间>`：原子预约；`occupation show` 查询；
+  `occupation release` 仅原持有人及批次释放。过期记录也不自动抢占；有运行中操作或待恢复故障时拒绝释放。
+  进程被 kill 后留下的 `.active-*.json` 须先核查其中 PID 已退出，再由协调者清理；不自动猜测会话已结束。
+- `release --run <轮次> --release-id <唯一标识>`：读取 checkout 当前 Deployment、RS、Pod/digest，
+  用 `OPSPILOT_U2_RELEASE_ID` 环境变量 patch 触发真实配置滚动发布。仅记录 patch 成功回执为 R，
+  保留请求前后 UTC 界限；不重建 chart。同一个轮次拒绝重复发布。
+- `watch --run <轮次> --seconds 600`：有界轮询 Kubernetes 对象及事件，保存 RS/Pod UID、digest、
+  新 Pod Ready 源时间和旧 Pod 消失的观测上下界。完成后补齐 after 身份；超时／并发模板更改报错。
+  RS/Pod/Event 列表请求另存起止界限；消失下界取上轮请求开始，上界取本轮响应结束。
+  可与故障调度并行运行，避免把 Ready 当作 R。
+- `fault --run <轮次> --offset 300 --duration 180 --flagd-url http://127.0.0.1:<已转发端口> --method Int`：
+  默认 `paymentFailure: off → 100%`。在 R+offset 发出注入，确认 flagd 返回目标 variant 后维持 duration 秒再恢复。
+  method 按实际 flag 值类型选 `Boolean/String/Int/Float/Object`，不猜类型。
+  flagd HTTP/JSON v1 协议依据[上游 README](https://github.com/open-feature/flagd/blob/main/README.md)。
+  端口转发须在协调后的真实运行阶段准备；工具不会启动转发或接触集群外环境。
+  ConfigMap 使用 resourceVersion 和原内容比较保护，恢复前核对本轮注入内容；一次仅允许一个故障。
+  若恢复时已读到原配置，仍用 CAS 写入唯一恢复标记并核验 resourceVersion 推进，阻止超时注入晚到提交；
+  恢复写入或核验失败时保留恢复输入。
+  `finally` 尝试恢复；kill／恢复失败会保留 `fault-active.json`，用
+  `restore --run <轮次> --flagd-url <同一地址> --method <同一类型>` 显式恢复。
+  日志区分计划、配置回执、flagd variant 首次确认（带上下界）、业务实际起病（待请求/span 证据核对）。
+  **ad flag 已由 lead 在集群 `flagd-config` 的 `demo.flagd.json` 中确认是 `adFailure`**；显式传
+  `--flag adFailure --normal <正常variant> --variant <故障variant>`，运行时仍核对 flag、variant 和起始状态。
+  flag 名确认不代表 checkout 流量不受影响，“无关故障”场景仍需独立核验。
+- `register --run <轮次> --registry <身份文件> --resource-uid <键> --profile <路径> --minimum 1200`：watch 补齐发布身份后，通过 `register_target`／`ReleaseStore.record_release` 写入 `OPSPILOT_LAB_DSN` 指定库；不迁移、不授权。重复登记交产品幂等处理，`registration.json` 保存最新回执和原冻结 R／deadline，每次事件规范 JSON、profile 原文、回执另存 `registration-attempts/`。按 lead 裁决 A，入库传 `canonical_content(profile)`，revision 按产品计算；原文另存轮次目录，并在回执记录 `profile_original_sha256`。可选 PG 验证：`M1_DURABLE_POSTGRES=1 .venv/bin/python -m pytest tests/test_f11_u2_register_postgres.py`，只用自建 initdb 临时库；缺少环境前提则跳过，绝不连接 55561。
+- `context --run <轮次> --registry <当前注册表路径> --resource-uid <注册表键> --minimum 1200`：
+  先完成 watch；从注册表（也可用 `OPSPILOT_TARGET_IDENTITIES`）与只读数据库 SELECT 获取五项身份并严格比对，
+  再核对 kube-system UID、实际 namespace/Deployment 和 integration 标签／OTel 属性。
+  lead 已核实的开发路径示例：`--registry tmp/184-step3/targets.json --resource-uid m0-otel-20260909`；
+  这里只记录示例路径与条目名，不复制文件内容，运行时仍须完整比对。
+  `resource_uid` 保留注册表键，Deployment UID 单独存证。profile 默认 checkout 当前文件，必须与数据库冻结内容／完整哈希一致。
+  显式设置 `OPSPILOT_LAB_DSN`；不迁移、不写数据库、取不到即报错。A 取身份齐备后的当前 DB 时间，记录 DB/host 时差界限，拒绝未来 R。
+  `context.json` 中的 policy 只是满足纯函数 DTO 的 **UNAPPROVED 实验壳**；不得交给 Controller 或复制进正式清单。
+- `collect --run <轮次>`：先在调用 shell 中 `set -a; source tmp/m1-kind-lab/prometheus-lab.env; set +a`，
+  并设置 `OPSPILOT_LAB_DSN`；仅读取 lab 账号环境变量，不打印环境或认证头，不回退使用 Observer 账号。
+  首采 A+I，之后提交 DB 时间+I；实际轮询／排队和查询耗时自然计入。
+  每轮同一 DB 时间 T，复用产品 `build_release_query_plan` 串行 mapping/context→UID→after；
+  仅经 `PrometheusReadOnlySource.instant_vector` 查询。保存逐响应原始字节、SHA-256、计划及耗时。
+  达到 profile 次数上限／绝对 deadline 停止，非采纳证据停止采集并保留缺口；不隐式重开预算或续采。
+  采集开始的 `capture-start.json` 冻结 HEAD、相关源码哈希与工作区差异；
+  `code-snapshots/capture/` 保存 harness、kind_lab、产品 Python 源码和依赖声明／锁文件的确切字节。
+- `fold --run <轮次> --minimum 600 1200 1500 --scenario <场景> --truth <真值JSON路径>`：
+  不访问集群／数据库／Prometheus；按原始字节重新计算 `evaluate_release_sample`，
+  用产品 `advance_release_window` 推进各候选 M，记录样本 outcome/reason、缺口、unknown、预算和终态时间。
+  未采满且未达终态标 `unknown/CAPTURE_INCOMPLETE`，不假装已经到达 deadline。
+  摘要的采集版本读取冻结记录，折叠版本另记 `fold_code` 与 `code-snapshots/fold/<本次ID>/`；
+  旧 ledger 缺少采集版本时标 `capture_code_status=unavailable`，不借折叠版本补填。
+  调度／采纳外围规则在脚本中标注 PR-2 合同行号（433–464、619、625–632、r7:39），窗口算法没有重写。
+  输出 `tmp/lab-ledgers/<轮次>/summary.json` 及 stdout JSON；truth 必须包含独立核查的真值与失败分类，
+  不能把注入计划当实际起病。场景：`healthy/immediate/delayed-5m/delayed-15m/unrelated/boundary/probe`。
+- `aggregate <逐轮summary.json>... [--output <路径>]`：函数 `aggregate_summaries` 默认冻结
+  `docs/evidence/f11-u2-calibration/summary.json`，包含全部传入成功／失败轮、逐轮文件哈希、场景数量；
+  拒绝覆盖旧摘要或重复轮次。该步骤供之后真实实验调用，本步不生成正式证据。
+
+离线测试：`UV_CACHE_DIR=$PWD/tmp/uv-cache .venv/bin/python -m pytest tests/test_f11_u2_harness.py`。
+工具输出不构成正式校准批准；五类各三次、健康备用预算、非预期 unknown 比例、
+checkout 流量不受 ad 故障影响及临近健康终结边界仍需真实实验与独立真值审查。
