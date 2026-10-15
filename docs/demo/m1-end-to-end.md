@@ -37,7 +37,8 @@ OPSPILOT_UI_USERS="<审核人>=<hash-password 打印的哈希>" \
   .venv/bin/python -m opspilot.web serve             # 127.0.0.1:8080，自动观察循环默认开启
 #  worker：真实模型 + lab trace（trace 只导出到 `opspilot-lab-` 前缀的项目）
 #  开跑前建立 LangSmith 项目并回读保留期（期望打印 "trace_tier": "longlived"）：
-LANGSMITH_API_KEY=<key> OPSPILOT_LAB_ROUND=<round> .venv/bin/python -c 'import os,json; from scripts import lab_evidence as l; print(json.dumps(l.prepare_lab_project(os.environ, os.environ["OPSPILOT_LAB_ROUND"], client_factory=lambda: l.langsmith_client(os.environ))))'
+#  密钥从私有 .env 读取，不出现在命令行或 shell 历史里
+OPSPILOT_TRACE=lab OPSPILOT_LAB_ROUND=<round> .venv/bin/python -c 'import os,json; from pathlib import Path; from opspilot.worker_main import _read_env_file as r; os.environ["LANGSMITH_API_KEY"]=r(Path(".env").resolve(),"LANGSMITH_API_KEY") or ""; from scripts import lab_evidence as l; print(json.dumps(l.prepare_lab_project(os.environ, os.environ["OPSPILOT_LAB_ROUND"], client_factory=lambda: l.langsmith_client(os.environ))))'
 set -a; . tmp/m1-kind-lab/prometheus-investigator.env; set +a
 OPSPILOT_WORKER_DSN="host=127.0.0.1 port=<端口> dbname=m0_budget user=opspilot_worker_lab" \
 OPSPILOT_TOOL_PROFILE=otel-demo OPSPILOT_ENV_FILE=$PWD/.env OPSPILOT_TRACE=lab \
