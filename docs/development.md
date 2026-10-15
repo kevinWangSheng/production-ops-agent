@@ -278,7 +278,7 @@ M0_B_POSTGRES=1 .venv/bin/python -m pytest tests/integration/test_m0_live_postgr
 
 入口：`.venv/bin/python -m scripts.f11_u2_harness --help`。仅供工程师在已协调的
 `kind-opspilot-m1 / otel-demo` 实验环境使用；本次实现只做离线测试，尚无真实运行证据。
-原始响应、完整模板、时间线和占用记录均写入 git 忽略的 `tmp/lab-ledgers/`，不进仓库。
+原始响应、完整模板、时间线和占用记录默认写入由 `git rev-parse --git-common-dir` 定位的主仓库 `tmp/lab-ledgers/`，可用绝对路径 `OPSPILOT_LAB_LEDGERS` 覆盖；占用、guard、`fault-active.json` 在所有 worktree 间共享。摘要按 UTC 时间／区间下界、上界及来源稳定合并发布与故障事件，保留原始时间界限；原始 ledger 不进仓库。
 所有外部调用设超时；Prometheus 沿用产品 30,720 字节响应保护、120 秒租约及 5 秒提交余量。
 
 全局参数放子命令前：`--holder <持有人> --batch <批次> [--dry-run]`。

@@ -59,11 +59,43 @@ from opspilot.schema import load_target_identities
 from scripts import kind_lab
 
 ROOT = Path(__file__).resolve().parents[1]
-LEDGERS = ROOT / "tmp/lab-ledgers"
+# Resolve on first real operation: imports and dry-run must not invoke git.
+LEDGERS: Path | None = None
 SUMMARY = ROOT / "docs/evidence/f11-u2-calibration/summary.json"
 TARGET_KEYS = ("integration_id", "cluster_uid", "namespace", "resource_uid", "workload")
 AD_FLAG = "adFailure"  # Lead verified in live flagd-config/demo.flagd.json.
 CONTRACT = "docs/tasks/2026-10-13-f11-pr2-contract.md"
+
+
+def resolve_ledger_root(root: Path = ROOT) -> Path:
+    override = os.environ.get("OPSPILOT_LAB_LEDGERS")
+    if override is not None:
+        path = Path(override).expanduser()
+        if not override or not path.is_absolute():
+            raise ValueError("LAB_LEDGERS_ABSOLUTE_PATH_REQUIRED")
+        return path.resolve()
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(root), "rev-parse", "--git-common-dir"],
+            capture_output=True,
+            timeout=5,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        raise ValueError("LAB_REPOSITORY_LOOKUP_TIMEOUT") from None
+    if result.returncode or not result.stdout.strip():
+        raise ValueError("LAB_REPOSITORY_UNCONFIRMED")
+    common = Path(result.stdout.decode().strip())
+    if not common.is_absolute():
+        common = root / common
+    return common.resolve().parent / "tmp/lab-ledgers"
+
+
+def lab_ledgers() -> Path:
+    global LEDGERS
+    if LEDGERS is None:
+        LEDGERS = resolve_ledger_root(ROOT)
+    return LEDGERS
 
 
 def utc_now() -> datetime:
@@ -107,8 +139,9 @@ def append_event(path: Path, event: dict[str, Any]) -> None:
 
 @contextmanager
 def local_guard(name: str, *, blocking: bool = True) -> Iterator[None]:
-    LEDGERS.mkdir(parents=True, exist_ok=True)
-    with (LEDGERS / f".{name}.guard").open("a") as stream:
+    root = lab_ledgers()
+    root.mkdir(parents=True, exist_ok=True)
+    with (root / f".{name}.guard").open("a") as stream:
         try:
             fcntl.flock(stream, fcntl.LOCK_EX | (0 if blocking else fcntl.LOCK_NB))
         except BlockingIOError:
@@ -122,7 +155,8 @@ def local_guard(name: str, *, blocking: bool = True) -> Iterator[None]:
 def occupation(action: str, holder: str, batch: str, until: datetime | None = None):
     """Expired reservations remain visible and require owner release; no stealing."""
     with local_guard("occupation"):
-        path = LEDGERS / "occupation.json"
+        root = lab_ledgers()
+        path = root / "occupation.json"
         record = read_json(path) if path.exists() else None
         if action == "show":
             return record
@@ -147,8 +181,8 @@ def occupation(action: str, holder: str, batch: str, until: datetime | None = No
                 raise ValueError("LAB_NOT_RESERVED")
             # No release while a live operation (possibly scheduled) is in flight.
             if (
-                any(LEDGERS.glob(".active-*.json"))
-                or (LEDGERS / "fault-active.json").exists()
+                any(root.glob(".active-*.json"))
+                or (root / "fault-active.json").exists()
             ):
                 raise ValueError("LAB_OPERATION_IN_PROGRESS")
             path.unlink()
@@ -162,11 +196,12 @@ def occupation(action: str, holder: str, batch: str, until: datetime | None = No
 
 @contextmanager
 def reserved(holder: str, batch: str) -> Iterator[None]:
-    marker = LEDGERS / f".active-{uuid4().hex}.json"
+    root = lab_ledgers()
+    marker = root / f".active-{uuid4().hex}.json"
     with local_guard("occupation"):
         record = (
-            read_json(LEDGERS / "occupation.json")
-            if (LEDGERS / "occupation.json").exists()
+            read_json(root / "occupation.json")
+            if (root / "occupation.json").exists()
             else None
         )
         if not record or (record["holder"], record["batch"]) != (holder, batch):
@@ -870,7 +905,7 @@ def publish(ledger: Path, release_id: str, *, dry_run: bool = False) -> dict[str
         print(shlex.join(command))
         return {"dry_run": True}
     with local_guard("publish", blocking=False), local_guard("fault", blocking=False):
-        if (LEDGERS / "fault-active.json").exists():
+        if (lab_ledgers() / "fault-active.json").exists():
             raise ValueError("FAULT_RECOVERY_REQUIRED")
         if (ledger / "release.json").exists():
             raise ValueError("RELEASE_ALREADY_RECORDED")
@@ -1622,7 +1657,7 @@ def await_flag(
 def restore_fault(
     ledger: Path, url: str, method: str, propagation_seconds: int
 ) -> None:
-    state_path = LEDGERS / "fault-active.json"
+    state_path = lab_ledgers() / "fault-active.json"
     state = read_json(state_path)
     if state["ledger"] != str(ledger.resolve()):
         raise ValueError("FAULT_BELONGS_TO_ANOTHER_RUN")
@@ -1680,13 +1715,14 @@ def scheduled_fault(
     released = utc(read_json(ledger / "release.json")["released_at"])
     planned = released + timedelta(seconds=offset)
     with local_guard("fault", blocking=False):
-        state_path = LEDGERS / "fault-active.json"
+        state_path = lab_ledgers() / "fault-active.json"
         if state_path.exists():
             raise ValueError("FAULT_RECOVERY_REQUIRED")
         append_event(
             ledger / "fault.jsonl",
             dict(
                 kind="injection_planned",
+                at=utc_now().isoformat(),
                 planned_at=planned.isoformat(),
                 flag=flag,
                 variant=variant,
@@ -1791,11 +1827,14 @@ def positive(value: str) -> int:
     return number
 
 
-def ledger_path(value: str) -> Path:
+def ledger_path(value: str, *, dry_run: bool = False) -> Path:
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,99}", value):
         raise ValueError("INVALID_RUN_ID")
-    path = LEDGERS / value
-    if not path.resolve().is_relative_to(LEDGERS.resolve()):
+    if dry_run:
+        return Path(value)
+    root = lab_ledgers()
+    path = root / value
+    if not path.resolve().is_relative_to(root.resolve()):
         raise ValueError("LEDGER_PATH_OUTSIDE_TMP")
     return path
 
@@ -1807,6 +1846,55 @@ def read_events(ledger: Path, filename: str) -> list[Any]:
         if path.exists()
         else []
     )
+
+
+def merged_timeline(ledger: Path) -> list[dict[str, Any]]:
+    """Merge concurrent streams by UTC time/bounds without rewriting evidence."""
+    rows = []
+    for source in ("timeline.jsonl", "fault.jsonl"):
+        for sequence, event in enumerate(read_events(ledger, source)):
+            # Existing interval evidence uses conservative lower/upper bounds;
+            # point records use their actual recording/receipt time, never a
+            # planned injection time when an actual timestamp is available.
+            point = next(
+                (
+                    event[key]
+                    for key in (
+                        "recorded_at",
+                        "at",
+                        "observed_at",
+                        "effective_at",
+                        "released_at",
+                        "event_at",
+                        "planned_at",
+                    )
+                    if event.get(key)
+                ),
+                None,
+            )
+            lower = (
+                event.get("lower_bound")
+                or event.get("request_before")
+                or point
+                or event.get("upper_bound")
+                or event.get("request_after")
+            )
+            upper = (
+                event.get("upper_bound") or event.get("request_after") or point or lower
+            )
+            if lower is None or upper is None:
+                raise ValueError("TIMELINE_TIMESTAMP_MISSING")
+            rows.append(
+                (
+                    utc(lower),
+                    utc(upper),
+                    source,
+                    sequence,
+                    {**event, "timeline_source": source},
+                )
+            )
+    rows.sort(key=lambda row: row[:4])
+    return [row[4] for row in rows]
 
 
 def artifact_manifest(ledger: Path) -> list[dict[str, Any]]:
@@ -1938,7 +2026,7 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 aggregate_summaries(args.summaries, args.output)
             return 0
-        ledger = ledger_path(args.run)
+        ledger = ledger_path(args.run, dry_run=args.dry_run)
         if args.dry_run:
             if args.command == "release":
                 publish(ledger, args.release_id, dry_run=True)
@@ -1974,8 +2062,7 @@ def main(argv: list[str] | None = None) -> int:
                 load_samples(ledger),
                 scenario=args.scenario,
                 truth=read_json(args.truth),
-                timeline=read_events(ledger, "timeline.jsonl")
-                + read_events(ledger, "fault.jsonl"),
+                timeline=merged_timeline(ledger),
                 candidates=args.minimum,
                 code_revision=fold_code["revision"],
                 capture_code=started.get("code"),

@@ -1352,3 +1352,181 @@ def test_register_canonicalizes_profile_and_preserves_original_bytes(
     assert h.read_json(attempts[0] / "receipt.json")[
         "profile_original_sha256"
     ] == sha256(original)
+
+
+@pytest.fixture
+def shared_worktree_harnesses(monkeypatch, tmp_path):
+    import os
+    import sys
+    import types
+    from pathlib import Path
+    from types import SimpleNamespace
+
+    main_root = tmp_path / "main"
+    common = main_root / ".git"
+    main_root.mkdir()
+    roots = [tmp_path / "worktree-a", tmp_path / "worktree-b"]
+    source = Path(h.__file__).read_text()
+    monkeypatch.delenv("OPSPILOT_LAB_LEDGERS", raising=False)
+
+    def git(command, **kwargs):
+        assert command[0] == "git" and command[-2:] == ["rev-parse", "--git-common-dir"]
+        assert kwargs["timeout"] > 0
+        root = Path(command[command.index("-C") + 1])
+        assert root in roots
+        return SimpleNamespace(
+            returncode=0, stdout=os.path.relpath(common, root).encode(), stderr=b""
+        )
+
+    monkeypatch.setattr(h.subprocess, "run", git)
+    modules = []
+    for i, root in enumerate(roots):
+        module = types.ModuleType(f"_u2_worktree_test_{i}")
+        module.__file__ = str(root / "scripts/f11_u2_harness.py")
+        monkeypatch.setitem(sys.modules, module.__name__, module)
+        exec(compile(source, module.__file__, "exec"), module.__dict__)
+        modules.append(module)
+    return *modules, main_root / "tmp/lab-ledgers"
+
+
+def test_different_worktrees_share_reservation_and_refuse_second_claim(
+    shared_worktree_harnesses, capsys
+):
+    first, second, shared = shared_worktree_harnesses
+    args = ["occupation", "claim", "--until", "2099-01-01T00:00:00Z"]
+    assert first.main(["--holder", "alice", "--batch", "first", *args]) == 0
+    assert second.main(["--holder", "bob", "--batch", "second", *args]) == 2
+    assert first.LEDGERS == second.LEDGERS == shared
+    assert first.read_json(shared / "occupation.json")["holder"] == "alice"
+    assert "LAB_OCCUPIED" in capsys.readouterr().err
+
+
+def test_worktrees_share_guards_and_pending_fault_record(shared_worktree_harnesses):
+    first, second, shared = shared_worktree_harnesses
+    with first.local_guard("publish", blocking=False):
+        with pytest.raises(ValueError, match="LAB_OPERATION_IN_PROGRESS"):
+            with second.local_guard("publish", blocking=False):
+                pytest.fail("second worktree acquired the same guard")
+    first.write_json(shared / "fault-active.json", {})
+    with pytest.raises(ValueError, match="FAULT_RECOVERY_REQUIRED"):
+        second.publish(shared / "next-run", "next-release")
+
+
+def test_fresh_worktree_dry_run_does_not_resolve_git_or_create_shared_state(
+    shared_worktree_harnesses, monkeypatch
+):
+    first, _, shared = shared_worktree_harnesses
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("dry-run invoked an external command")
+
+    monkeypatch.setattr(first.subprocess, "run", forbidden)
+    assert (
+        first.main(["--dry-run", "release", "--run", "dry", "--release-id", "dry"]) == 0
+    )
+    assert first.LEDGERS is None and not shared.exists()
+
+
+def test_lab_ledgers_absolute_override_never_invokes_git(monkeypatch, tmp_path):
+    destination = tmp_path / "explicit-shared"
+    monkeypatch.setenv("OPSPILOT_LAB_LEDGERS", str(destination))
+    assert h.resolve_ledger_root(tmp_path / "one") == destination
+    assert h.resolve_ledger_root(tmp_path / "two") == destination
+
+
+@pytest.mark.parametrize("value", ["", "relative/path"])
+def test_lab_ledgers_override_refuses_worktree_relative_paths(
+    monkeypatch, tmp_path, value
+):
+    monkeypatch.setenv("OPSPILOT_LAB_LEDGERS", value)
+    with pytest.raises(ValueError, match="ABSOLUTE_PATH_REQUIRED"):
+        h.resolve_ledger_root(tmp_path)
+
+
+def test_fold_merges_concurrent_rollout_and_fault_events_without_changing_bounds(
+    monkeypatch, tmp_path, capsys
+):
+    ledger = h.ledger_path("merged-timeline")
+    h.write_json(ledger / "context.json", _context().model_dump(mode="json"))
+    truth = tmp_path / "truth.json"
+    h.write_json(truth, {})
+    monkeypatch.setattr(
+        h, "external", lambda command, **kw: b"head" if "rev-parse" in command else b""
+    )
+
+    def at(second):
+        return f"2026-10-14T10:00:{second:02d}+00:00"
+
+    rollout = [
+        dict(kind="new_pod_ready", observed_at=at(10), event_at=at(9)),
+        dict(kind="old_pod_gone", lower_bound=at(3), upper_bound=at(8), event_at=None),
+        dict(
+            kind="release_patch_requested", at=at(0), source="original-release-source"
+        ),
+        dict(kind="rollout_tie", at=at(6)),
+    ]
+    fault = [
+        dict(
+            kind="injection_config_verified",
+            request_before=at(2),
+            request_after=at(4),
+            planned_at=at(0),
+        ),
+        dict(
+            kind="flagd_variant_effective",
+            lower_bound=at(3),
+            upper_bound=at(5),
+            effective_at=at(5),
+        ),
+        dict(kind="restore_config_verified", at=at(6)),
+    ]
+    for filename, events in (("timeline.jsonl", rollout), ("fault.jsonl", fault)):
+        for event in events:
+            h.append_event(ledger / filename, event)
+    original_files = {
+        name: (ledger / name).read_bytes() for name in ("timeline.jsonl", "fault.jsonl")
+    }
+    assert (
+        h.main(
+            [
+                "fold",
+                "--run",
+                "merged-timeline",
+                "--minimum",
+                "600",
+                "--scenario",
+                "probe",
+                "--truth",
+                str(truth),
+            ]
+        )
+        == 0
+    )
+    capsys.readouterr()
+    timeline = h.read_json(ledger / "summary.json")["timeline"]
+    assert [e["kind"] for e in timeline] == [
+        "release_patch_requested",
+        "injection_config_verified",
+        "flagd_variant_effective",
+        "old_pod_gone",
+        "restore_config_verified",
+        "rollout_tie",
+        "new_pod_ready",
+    ]
+    originals = {event["kind"]: event for event in rollout + fault}
+    for event in timeline:
+        assert {k: v for k, v in event.items() if k != "timeline_source"} == originals[
+            event["kind"]
+        ]
+    assert [e["timeline_source"] for e in timeline] == [
+        "timeline.jsonl",
+        "fault.jsonl",
+        "fault.jsonl",
+        "timeline.jsonl",
+        "fault.jsonl",
+        "timeline.jsonl",
+        "timeline.jsonl",
+    ]
+    assert all(
+        (ledger / name).read_bytes() == raw for name, raw in original_files.items()
+    )
