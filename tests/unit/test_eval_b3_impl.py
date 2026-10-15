@@ -1512,3 +1512,124 @@ def test_pr232_all_required_fragments_reject_arbitrary_prefix_and_suffix(fragmen
         assert observation.result.status == "invalid"
         assert observation.error_code == "JUDGE_PRIVATE_FIELD"
         assert not transport.calls
+
+
+@pytest.mark.parametrize("gold", [False, True])
+def test_pr232_round4_raw_true_recheck_false_is_not_agreement(tmp_path, pack, gold):
+    labels = final_labels(pack)
+    item = next(
+        i
+        for i in pack.items
+        if i.split == "validation"
+        and i.request.spec.kind == "fault"
+        and labels[i.item_id].verdict is gold
+    )
+    original_label = labels[item.item_id]
+    payload = json.loads(item.request.report.raw)
+    hypothesis = "The service might be the cause, but this target is unverified."
+    payload["claims"].append(
+        {
+            "kind": "hypothesis",
+            "text": hypothesis,
+            "evidence_ids": ["e1"],
+            "target_refs": ["unqualified-target"],
+            "time_scope_ref": "w",
+        }
+    )
+    request = replace(item.request, report=ReportCapture(json.dumps(payload), "stop"))
+    modified_item = replace(item, request=request, input_hash=sha(safe_input(request)))
+    label = replace(original_label, input_hash=modified_item.input_hash)
+    modified_pack = replace(
+        pack,
+        items=tuple(
+            modified_item if i.item_id == item.item_id else i for i in pack.items
+        ),
+        annotations=tuple(
+            replace(
+                a,
+                labels=tuple(
+                    label if v.item_id == item.item_id else v for v in a.labels
+                ),
+            )
+            for a in pack.annotations
+        ),
+    )
+    injected = request.answer.injected
+    additional = JudgedDiagnosis(
+        "claims[1]",
+        hypothesis,
+        True,
+        injected.service,
+        injected.operation,
+        ("e1",),
+        None,
+        True,
+        "Synthetic judge treated an unqualified hypothesis as fact.",
+    )
+    bad_diagnoses = (*label.diagnoses, additional)
+    c = configs()
+    observed, probe = invoke(request, bad_diagnoses, True, config=c["zai"])
+    assert len(probe.calls) == 1 and observed.valid
+    assert observed.result.verdict is True and observed.recomputed_verdict is False
+    transports = calibration_transports(modified_pack, c)
+    standard = transports["zai"].value
+    injected_once = False
+
+    def send_one_bad_verdict(call):
+        nonlocal injected_once
+        sent = json.loads(json.loads(call["body"])["messages"][1]["content"])
+        if sent["report_raw"] == request.report.raw and not injected_once:
+            injected_once = True
+            return completion(c["zai"], bad_diagnoses, True)
+        return standard(call)
+
+    transports["zai"].value = send_one_bad_verdict
+    destination = tmp_path / "run"
+    selection = run_calibration(
+        modified_pack, configs=c, transports=transports, destination=destination
+    )
+    result = selection.results["zai"]
+    assert injected_once and result.comparisons == 48
+    assert result.agreement == 47
+    assert result.false_passes == (0 if gold else 1)
+    assert not result.passed and "P6_RECHECK_FAILED" in result.reasons
+    with pytest.raises(JudgeError, match="CALIBRATION_UNRESOLVED"):
+        load_verified_calibration(destination, pack=modified_pack, config=c["zai"])
+
+
+@pytest.mark.parametrize(
+    "family",
+    [
+        " family-id",
+        "family-id ",
+        "\tfamily-id",
+        "family-id\n",
+        "Ｆamily-id",
+        "Family-id",
+        "family//id",
+        "family/../id",
+    ],
+)
+def test_pr232_round4_noncanonical_family_id_rejected_before_transports(
+    tmp_path, pack, family
+):
+    debug = next(i for i in pack.items if i.split == "debug")
+    validation = next(i for i in pack.items if i.split == "validation")
+    items = tuple(
+        replace(i, source_family="family-id")
+        if i.item_id == debug.item_id
+        else replace(i, source_family=family)
+        if i.item_id == validation.item_id
+        else i
+        for i in pack.items
+    )
+    bad = replace(pack, items=items)
+    c = configs()
+    transports = {p: FakeTransport(RuntimeError("must-not-send")) for p in c}
+    with pytest.raises(JudgeError, match="SCHEMA_INVALID") as caught:
+        run_calibration(
+            bad, configs=c, transports=transports, destination=tmp_path / "run"
+        )
+    assert all(not t.calls for t in transports.values())
+    assert not (tmp_path / "run").exists()
+    assert caught.value.__cause__ is None and caught.value.__context__ is None

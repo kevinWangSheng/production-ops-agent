@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 import stat
 from collections import Counter
 from collections.abc import Mapping
@@ -61,6 +62,7 @@ COVERAGE = frozenset(
         "insufficient_evidence",
     }
 )
+_FAMILY_ID = re.compile(r"[a-z0-9][a-z0-9._:-]*(?:/[a-z0-9][a-z0-9._:-]*)*")
 _PROVIDERS = frozenset({"zai", "openai", "deepseek"})
 _FILES = (
     "items.json",
@@ -204,9 +206,10 @@ def final_labels(pack: LabelPack) -> Mapping[str, BlindLabel]:
         coverage: set[str] = set()
         items = {item.item_id: item for item in pack.items}
         for item in pack.items:
+            if _FAMILY_ID.fullmatch(item.source_family) is None:
+                raise JudgeError("SCHEMA_INVALID")
             if (
                 item.scenario_id != item.request.spec.scenario_id
-                or not item.source_family.strip()
                 or item.input_hash != _hash(safe_input(item.request))
                 or item.input_hash in input_hashes
                 or not set(item.coverage) <= COVERAGE
@@ -482,6 +485,7 @@ def _counts(
             and observation.valid
         ):
             raise JudgeError("DERIVED_RESULT_MISMATCH")
+        recheck_failed = False
         if result.status == "ok":
             if result.verdict is None:
                 raise JudgeError("SCHEMA_INVALID")
@@ -495,6 +499,9 @@ def _counts(
                 or observation.recomputed_verdict is not recomputed
             ):
                 raise JudgeError("DERIVED_RESULT_MISMATCH")
+            recheck_failed = recomputed is not result.verdict
+            if recheck_failed:
+                problems.add("P6_RECHECK_FAILED")
             if _missing_diagnosis(labels[item.item_id], observation):
                 problems.add("KEY_DIAGNOSIS_MISSING")
         else:
@@ -507,12 +514,14 @@ def _counts(
             ):
                 raise JudgeError("DERIVED_RESULT_MISMATCH")
             problems.add("JUDGE_OBSERVATION_FAILED")
-        # Keep actual false passes separate from errors. Errors and omissions
-        # receive no agreement credit, including a failed negative observation.
+        # P7 measures the judge's own verdict, never a veto-corrected substitute.
+        # Errors, omissions and failed P6 rechecks receive no agreement credit.
         if item.split == "validation":
-            effective = observation.recomputed_verdict if observation.valid else False
-            compromised = not observation.valid or _missing_diagnosis(
-                labels[item.item_id], observation
+            effective = result.verdict if observation.valid else False
+            compromised = (
+                not observation.valid
+                or recheck_failed
+                or _missing_diagnosis(labels[item.item_id], observation)
             )
             invalid_agreements += (
                 compromised and effective == labels[item.item_id].verdict
