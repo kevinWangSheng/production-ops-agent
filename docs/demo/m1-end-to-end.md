@@ -35,10 +35,11 @@ OPSPILOT_WEB_DSN="host=127.0.0.1 port=<端口> dbname=m0_budget user=opspilot_we
 OPSPILOT_TOOL_PROFILE=otel-demo OPSPILOT_TARGET_IDENTITIES=<targets.json> \
 OPSPILOT_UI_USERS="<审核人>=<hash-password 打印的哈希>" \
   .venv/bin/python -m opspilot.web serve             # 127.0.0.1:8080，自动观察循环默认开启
-#  worker：真实模型 + lab trace
+#  worker：真实模型 + lab trace（trace 只导出到 `opspilot-lab-` 前缀的项目，开跑前用 `scripts/lab_evidence.py` 的 `prepare_lab_project` 建立并回读 trace_tier）
 set -a; . tmp/m1-kind-lab/prometheus-investigator.env; set +a
 OPSPILOT_WORKER_DSN="host=127.0.0.1 port=<端口> dbname=m0_budget user=opspilot_worker_lab" \
 OPSPILOT_TOOL_PROFILE=otel-demo OPSPILOT_ENV_FILE=$PWD/.env OPSPILOT_TRACE=lab \
+OPSPILOT_LAB_ROUND=<round> LANGSMITH_PROJECT=opspilot-lab-<round> \
   .venv/bin/python -m opspilot.worker_main
 #  Observer：干净环境，只带自己的 DSN 与账号文件
 env -i PATH=/usr/bin:/bin HOME=$HOME \
@@ -68,5 +69,5 @@ env -i PATH=/usr/bin:/bin HOME=$HOME \
 
 - 本次运行恢复未确认：故障 1 秒内就恢复了，但宿主内存压力让 checkout p95 两度超过 500 ms，40 次采样用完时健康窗只有 421 s，事故按合同交还给人。演示时看到 `open` + 交接是合法结局，不是崩溃。
 - 实验流量极低（约 0.01–0.05 req/s），p95 由少数请求决定，恢复判定对偶发慢请求很敏感。
-- 复盘输入超限：40 次采样的观察会让复盘输入超过 256 KiB 而失败，修复在 PR #240（本文写时未合并）；在 `main` 上复现会停在 `INPUT_TOO_LARGE`。
+- 复盘输入超限（已修复）：本次第 1 次复盘尝试因 40 次采样让输入超过 256 KiB 而失败；修复 #240 已合并（输入策略 v4、提示词 v5），当前 `main` 复现不再停在 `INPUT_TOO_LARGE`。
 - 这是 kind 实验环境上的有界运行，不是生产证明；Prometheus basic auth 对所有账号权限相同；调查侧角色隔离是增量的，Controller/Gateway 全隔离未做（#197）。
