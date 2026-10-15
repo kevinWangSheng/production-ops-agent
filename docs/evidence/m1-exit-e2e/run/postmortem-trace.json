@@ -1,0 +1,26 @@
+{
+ "note": "Engineer lookup of postmortem-generation root runs in the lab LangSmith project (metadata postmortem_attempt_id, opspilot/tracing.py:380); the collector's run_id filter omits them.",
+ "project": "opspilot-lab-m1-exit-e2e-20261015",
+ "roots": [
+  {
+   "trace_id": "00000000-0000-0000-de12-76d8486b466d",
+   "root_run_id": "00000000-0000-0000-de12-76d8486b466d",
+   "name": "opspilot.postmortem_generation",
+   "start_time": "2026-10-15 08:16:39.367374+00:00",
+   "end_time": "2026-10-15 08:18:31.348151+00:00",
+   "status": "success",
+   "postmortem_attempt_id": "9d2d3ca1-51ee-4574-9a12-33f39f18c726",
+   "incident_id": "d40e777a-9d73-52ed-b86f-6a61dfaf33b0"
+  },
+  {
+   "trace_id": "00000000-0000-0000-780b-dcfc097aba72",
+   "root_run_id": "00000000-0000-0000-780b-dcfc097aba72",
+   "name": "opspilot.postmortem_generation",
+   "start_time": "2026-10-15 07:29:12.956038+00:00",
+   "end_time": "2026-10-15 07:29:13.122034+00:00",
+   "status": "success",
+   "postmortem_attempt_id": "0b417e3f-99ba-40e7-a7d3-14fbef184837",
+   "incident_id": "d40e777a-9d73-52ed-b86f-6a61dfaf33b0"
+  }
+ ]
+}
