@@ -342,7 +342,7 @@ def test_generation_writes_a_reviewable_version_with_its_record(stores, dsn) -> 
     [version] = view["postmortem"]["versions"]
     document = json.loads(version["content"])
     record = document["generation"]
-    assert record["prompt_version"] == "f13-postmortem-prompt-v4"
+    assert record["prompt_version"] == "f13-postmortem-prompt-v5"
     assert record["model"] == "deepseek-flash" and record["model_requests"] == 1
     assert record["model_profile"].startswith("deepseek-flash/")
     assert document["validation"] == {"citations_valid": True, "errors": {}}
@@ -885,7 +885,9 @@ def test_recovery_fields_reaching_the_model_are_scrubbed(stores, dsn) -> None:
     built = build_input(jobs.read_input(incident_id), secrets=[])
     assert "fake-source-value" not in built.payload_text
     assert {e["evidence_id"] for e in built.catalog} == {
-        r["evidence_id"] for r in built.payload["recovery_readings"]
+        evidence_id
+        for group in built.payload["recovery_readings"]
+        for evidence_id in group["evidence_ids"]
     } | {e["evidence_id"] for e in built.catalog if e["kind"] == "investigation"}
 
 

@@ -30,7 +30,7 @@ from datetime import datetime
 from typing import Any, Literal, NotRequired, TypedDict, get_args
 from uuid import UUID
 
-CONTRACT_REVISION = "r11"
+CONTRACT_REVISION = "r12"
 
 # --- versions recorded with every generation (D20) -------------------------
 
@@ -49,10 +49,13 @@ CONTRACT_REVISION = "r11"
 # (``AttemptView.model_calls``); no version string below moves.
 # r11 (#202, D57-D60): each generation request may complete up to 65_536
 # tokens (was 16_384); no version string below moves.
-POSTMORTEM_PROMPT_VERSION = "f13-postmortem-prompt-v4"
+# r12 (D21): recovery readings use columns and recovery catalog entries are
+# compact in the model input only -- prompt v5, input v4; full stored
+# evidence and output/content schemas stay unchanged.
+POSTMORTEM_PROMPT_VERSION = "f13-postmortem-prompt-v5"
 POSTMORTEM_OUTPUT_SCHEMA_VERSION = "f13-postmortem-output-v2"
 POSTMORTEM_CONTENT_SCHEMA_VERSION = "f13-postmortem-content-v1"
-POSTMORTEM_INPUT_POLICY_VERSION = "f13-postmortem-input-v3"
+POSTMORTEM_INPUT_POLICY_VERSION = "f13-postmortem-input-v4"
 # The request profile: JSON mode, thinking enabled, reasoning effort high,
 # no tools (``opspilot.investigation.loop.serialized_request``).
 POSTMORTEM_MODEL_PROFILE = "deepseek-flash/json/thinking-high/no-tools"

@@ -364,8 +364,8 @@ def test_d47_exact_32k_boundary_and_utf8_byte_count(character, extra_byte):
 @pytest.mark.parametrize(
     "name,expected",
     [
-        ("POSTMORTEM_INPUT_POLICY_VERSION", "f13-postmortem-input-v3"),
-        ("POSTMORTEM_PROMPT_VERSION", "f13-postmortem-prompt-v4"),
+        ("POSTMORTEM_INPUT_POLICY_VERSION", "f13-postmortem-input-v4"),
+        ("POSTMORTEM_PROMPT_VERSION", "f13-postmortem-prompt-v5"),
         ("POSTMORTEM_OUTPUT_SCHEMA_VERSION", "f13-postmortem-output-v2"),
         ("POSTMORTEM_CONTENT_SCHEMA_VERSION", "f13-postmortem-content-v1"),
     ],
