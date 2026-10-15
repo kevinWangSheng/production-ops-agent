@@ -12,6 +12,28 @@ from opspilot.persistence.base import Connection, Lease, PersistenceError, _Stor
 
 
 class _RunOps(_StoreBase):
+    def investigation_history(self, incident_id: UUID) -> list[dict[str, Any]]:
+        """Read Runs with database-clock step times and completed reports.
+
+        started_at is the earliest recorded step time, not Run creation time.
+        concluded_at belongs to the selected latest non-late conclusion step
+        of a completed Run. Runs without steps sort last and retain NULL times.
+        """
+        with self.transaction(snapshot=True) as conn:
+            return list(
+                conn.execute(
+                    "SELECT r.run_id,r.state,r.control_generation, "
+                    "(SELECT MIN(s.observed_at) FROM opspilot_steps s WHERE s.run_id=r.run_id) AS started_at, "
+                    "conclusion.observed_at AS concluded_at,conclusion.response AS report "
+                    "FROM opspilot_runs r LEFT JOIN LATERAL "
+                    "(SELECT s.observed_at,s.response FROM opspilot_steps s WHERE s.run_id=r.run_id "
+                    "AND s.response->>'kind'='conclusion' AND s.status!='late_result' "
+                    "AND r.state='completed' ORDER BY s.sequence DESC,s.step_id DESC LIMIT 1) conclusion ON true "
+                    "WHERE r.incident_id=%s ORDER BY started_at NULLS LAST,r.control_generation,r.run_id",
+                    (incident_id,),
+                ).fetchall()
+            )
+
     def new_run(
         self,
         incident_id: UUID,
