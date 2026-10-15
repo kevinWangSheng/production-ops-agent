@@ -188,26 +188,36 @@ def outcome(evidence_ids: tuple[str, ...] = ("ev-1",), **changes: Any):
 # --- fake model / executor ----------------------------------------------------
 
 
-def tool_call(call_id: str) -> dict[str, Any]:
+def tool_call(call_id: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+    """An assistant tool call whose arguments are exactly the ToolRequest
+    params the driver will send (interface "PR #229 round 5": calls pair with
+    requests by tool_request_for() + typed canonical params; ``{}`` only
+    matches empty params)."""
+    arguments = "{}" if params is None else json.dumps(params, ensure_ascii=False)
     return {
         "id": call_id,
         "type": "function",
-        "function": {"name": TOOL, "arguments": "{}"},
+        "function": {"name": TOOL, "arguments": arguments},
     }
 
 
 def reply(
     *,
     calls: tuple[str, ...] = (),
+    params: Any = None,
     content: str | None = None,
     reasoning: str | None = None,
     raw: dict[str, Any] | None = None,
     response_id: str = "resp-1",
 ) -> ModelReply:
+    """``params`` (one mapping per call) sets each call's arguments."""
+    call_params = [None] * len(calls) if params is None else list(params)
     return ModelReply(
         content=content,
         reasoning_content=reasoning,
-        tool_calls=tuple(tool_call(c) for c in calls),
+        tool_calls=tuple(
+            tool_call(c, p) for c, p in zip(calls, call_params, strict=True)
+        ),
         finish_reason="tool_calls" if calls else "stop",
         response_model=ACCEPTED_RESPONSE_MODEL,
         usage={"prompt_tokens": 10, "completion_tokens": 5},
@@ -431,7 +441,12 @@ def source_driver(
         calls = tuple(f"src_call_{i}" for i in range(len(requests)))
         fake = FakeModel(
             [
-                reply(calls=calls, reasoning=SRC_REASONING, response_id="src-1"),
+                reply(
+                    calls=calls,
+                    params=[spec["params"] for spec in requests],
+                    reasoning=SRC_REASONING,
+                    response_id="src-1",
+                ),
                 reply(content='{"summary":"done"}', response_id="src-2"),
             ]
         )
@@ -452,7 +467,11 @@ def source_driver(
         )
         if log is not None:
             log.update(first=first, final=final, seen=seen, model=fake)
-        ids = tuple(o.evidence.evidence_id for o in seen if o.evidence is not None)
+        # Interface "PR #229 round 5": the outcome may cite only evidence whose
+        # tool message reached a later model request; a tail delivery that was
+        # never sent does not count.
+        sent = seen[:-1] if tail_delivery else seen
+        ids = tuple(o.evidence.evidence_id for o in sent if o.evidence is not None)
         return outcome(ids) if result is None else result
 
     return driver

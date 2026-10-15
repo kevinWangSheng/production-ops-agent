@@ -106,16 +106,28 @@ class Investigator(s.FakeModel):
     def __init__(
         self, tool_calls: int = 1, *, reasoning: str = "NEW-REASONING-1"
     ) -> None:
-        super().__init__(
-            [
-                s.reply(
-                    calls=tuple(f"new_call_{i}" for i in range(tool_calls)),
-                    reasoning=reasoning,
-                    response_id="new-1",
-                ),
-                s.reply(content='{"summary":"done"}', response_id="new-2"),
-            ]
-        )
+        self.tool_calls = tool_calls
+        self.reasoning = reasoning
+        super().__init__(self._script(None))
+
+    def _script(self, requests: list[dict[str, Any]] | None) -> list[Any]:
+        return [
+            s.reply(
+                calls=tuple(f"new_call_{i}" for i in range(self.tool_calls)),
+                params=None
+                if requests is None
+                else [spec["params"] for spec in requests[: self.tool_calls]],
+                reasoning=self.reasoning,
+                response_id="new-1",
+            ),
+            s.reply(content='{"summary":"done"}', response_id="new-2"),
+        ]
+
+    def bind(self, requests: list[dict[str, Any]]) -> None:
+        """Make each scripted tool call's arguments equal the request params
+        the replay driver will send (interface "PR #229 round 5" pairing)."""
+        if not self.calls and len(requests) >= self.tool_calls:
+            self.script = self._script(requests)
 
 
 def replay_driver(
@@ -181,6 +193,8 @@ def run_replay(
 ):
     log = {} if log is None else log
     investigator = Investigator(len(requests)) if investigator is None else investigator
+    if isinstance(investigator, Investigator):
+        investigator.bind(requests)
     frozen = s.manifest() if frozen is None else frozen
     capture = replay(
         rec,
@@ -216,6 +230,12 @@ def source(tmp_path: Path):
     return pkg, ref, loaded(pkg, ref)
 
 
+def _stimulus_for(target_id: str) -> dict[str, Any]:
+    """Interface "PR #229 round 5": the pairing target is the frozen
+    stimulus.target_id, so it names the real executor's target."""
+    return {**dict(s.context().stimulus), "target_id": target_id}
+
+
 def _real_tool(
     *, registrations: Any = None, targets: Any = None, **build_kw: Any
 ) -> tuple[Any, Any, Any, list[Any], list[Any]]:
@@ -236,6 +256,7 @@ def _snapshot_context(
     from the configured DTOs and bind it before any call."""
     context = s.context(
         source_run_id=executor.scope.run_id,
+        stimulus=_stimulus_for(tool_request.target_ref),
         started_at=clock.now(),
         ended_at=clock.now() + timedelta(seconds=10),
         bindings=(
@@ -1913,6 +1934,7 @@ def _loop_context():
     now = loop.clock.now()
     return s.context(
         source_run_id=request.run_id,
+        stimulus=_stimulus_for("checkout-prod"),
         started_at=now,
         ended_at=now,
         bindings=(
@@ -2820,6 +2842,7 @@ def _late_snapshot_setup():
 def _plain_context(executor: Any, clock: Any, tool_request: Any):
     return s.context(
         source_run_id=executor.scope.run_id,
+        stimulus=_stimulus_for(tool_request.target_ref),
         started_at=clock.now(),
         ended_at=clock.now() + timedelta(seconds=10),
         bindings=(

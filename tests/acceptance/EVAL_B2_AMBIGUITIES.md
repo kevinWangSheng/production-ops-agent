@@ -139,3 +139,9 @@
     - 采用：两种都覆盖。driver 在第一次模型调用之后，先读 `getattr(hooks, "context", 入口 context)`，用 `bind_tool_snapshots` 绑定新快照，再尝试 `hooks.context = 新 context`；如果抛 AttributeError 或 TypeError，就当作无法替换，继续执行。不论哪种读法，都要求 record 抛 IDENTITY_MISMATCH 且包不完整；load 加结构核验也必须拒绝。
     - 「合规快照」的构造：入口快照 A（max_view_tokens=50）和迟到快照 B（max_view_tokens=40）各取自用自身 DTO 构建的真实执行器；真正执行的是 B。迟到快照因此与随后的受限结果（100/40 的 RESULT_TOO_LARGE）一致，只有冻结时序违规。
     - 对照：在 record 之前就冻结 B，录制完整、核验通过。
+
+24. **夹具按「PR #229 机器人第 5 轮」三条规则迁移（2026-10-14）**
+    - 工具配对规则：assistant tool_call 的 arguments 改成 `json.dumps(实际 ToolRequest.params)`，涉及 `s.tool_call`、`s.reply(params=...)` 和 `source_driver`；`{}` 只用于不带工具调用的回复。回放用的 `Investigator` 由 `run_replay` 调用 `bind(requests)`，按回放 driver 实际要发出的请求填充 arguments。这样「查找键不一致」类用例仍然报 REPLAY_MISS，不会先因为配对失败被拒。
+    - 配对目标取冻结的 stimulus.target_id：真实执行器和真实 loop 的 context（`_snapshot_context`、`_plain_context`、`_loop_context`）把 stimulus.target_id 设成 checkout-prod，不再沿用夹具默认的 target-demo。
+    - outcome 引用规则：`source_driver` 在 tail_delivery 时不再引用最后那条只生成、未送进模型的证据；其余 driver 原本只引用已交付并已送模的证据，或者不引用任何证据。
+    - 带证据结果的状态与时间不变量没有改夹具：真实执行器的结果本来就合规，对照用例已能通过；假工具的 `tool_outcome` 在当前实现上也能通过。
