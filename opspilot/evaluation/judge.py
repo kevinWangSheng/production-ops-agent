@@ -8,6 +8,7 @@ import os
 import re
 import stat
 import time
+import unicodedata
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import date
@@ -62,11 +63,24 @@ _BASES = {
     "openai": "https://api.openai.com/v1",
     "deepseek": "https://api.deepseek.com",
 }
-_PRIVATE_KEYS = frozenset(
-    "reasoning_content reasoning thinking redacted_thinking encrypted_content "
-    "api_key authorization zai_api_key openai_api_key deepseek_api_key "
-    "password passwd token access_token refresh_token secret credential credentials "
-    "cookie bearer".split()
+_SENSITIVE_FRAGMENTS = frozenset(
+    {
+        "auth",
+        "token",
+        "secret",
+        "password",
+        "passwd",
+        "apikey",
+        "credential",
+        "cookie",
+        "session",
+        "bearer",
+        "privatekey",
+        "signature",
+        "reasoning",
+        "thinking",
+        "encrypted",
+    }
 )
 _MODELS = {"zai": "glm-5.3", "openai": "gpt-6.1-sol", "deepseek": "deepseek-flash"}
 OBSERVATION_ERROR_CODES = frozenset(
@@ -85,17 +99,11 @@ OBSERVATION_ERROR_CODES = frozenset(
         "JUDGE_RESPONSE_IDENTITY_INVALID",
     }
 )
-_SLOT_MARKERS = _PRIVATE_KEYS | {"auth", "authentication", "apikey"}
-_COMPACT_MARKERS = frozenset(
-    k.replace("_", "") for k in _SLOT_MARKERS if k not in {"auth", "authentication"}
-)
 
 
 def _normalize_slot(key: str) -> str:
-    # Preserve word boundaries before case folding, including acronyms (APIKey).
-    key = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1_\2", key)
-    key = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", key)
-    return re.sub(r"[^a-zA-Z0-9]+", "_", key).strip("_").casefold()
+    normalized = unicodedata.normalize("NFKC", key).casefold()
+    return "".join(char for char in normalized if char.isalnum())
 
 
 def response_identity_matches(provider: Provider, value: object) -> bool:
@@ -354,17 +362,30 @@ class HTTPJudgeTransport:
 def _reject_private(value: Any) -> None:
     if isinstance(value, Mapping):
         for key, child in value.items():
-            normalized = _normalize_slot(str(key))
-            compact = normalized.replace("_", "")
-            if any(
-                re.search(r"(?:^|_)" + marker + r"(?:$|_)", normalized)
-                for marker in _SLOT_MARKERS
-            ) or any(marker in compact for marker in _COMPACT_MARKERS):
+            compact = _normalize_slot(str(key))
+            if any(marker in compact for marker in _SENSITIVE_FRAGMENTS):
                 raise JudgeError("JUDGE_PRIVATE_FIELD")
             _reject_private(child)
     elif isinstance(value, (list, tuple)):
         for child in value:
             _reject_private(child)
+
+
+def _check_payload(payload: Mapping[str, Any]) -> None:
+    obj = exact(dict(payload), _INPUT_KEYS)
+    # These are fixed P6 protocol maps, not untrusted evidence attributes. Their
+    # keys are reference/evidence IDs; their values have closed, non-attribute
+    # schemas. Do not exempt their names inside evidence or report objects.
+    decode(Mapping[str, Window], obj["authorized_windows"])
+    decode(Mapping[str, tuple[str, ...]], obj["signature_matches"])
+    for name, value in obj.items():
+        if name in {"authorized_windows", "signature_matches"}:
+            continue
+        if name == "report_raw":
+            raw = decode(str, value)
+            _reject_private(parse(raw.encode("utf-8")))
+        else:
+            _reject_private(value)
 
 
 def safe_input(request: JudgeInput) -> Mapping[str, Any]:
@@ -385,9 +406,7 @@ def safe_input(request: JudgeInput) -> Mapping[str, Any]:
         request.authorized,
         outcome=request.outcome,
     )
-    _reject_private(payload)
-    if request.report.raw is not None:
-        _reject_private(parse(request.report.raw.encode("utf-8")))
+    _check_payload(payload)
     return payload
 
 
@@ -399,8 +418,7 @@ class ZaiAdapter:
         _check_config(config)
         if config.provider != self.provider:
             raise JudgeError("JUDGE_IDENTITY_MISMATCH")
-        exact(dict(payload), _INPUT_KEYS)
-        _reject_private(payload)
+        _check_payload(payload)
         return canonical_bytes(
             {
                 "model": config.request_model,

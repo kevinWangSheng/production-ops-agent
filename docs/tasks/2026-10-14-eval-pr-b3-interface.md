@@ -23,7 +23,7 @@ Z.ai 固定 `https://api.z.ai/api/paas/v4/chat/completions`、请求/响应 `glm
 
 ## P6 输入与输出
 
-`JudgeInput(spec:ScenarioSpec, answer:Answer, report:ReportCapture, delivered:Mapping[str,DeliveredRecord], authorized:Mapping[str,Window], outcome:IncidentOutcome)`，outcome 必填。DTO严格类型及未知字段检查。实际 body 只来自 PR-A `judge_request(..., outcome=...)` 的9键：question、subject_id、authorized_windows、report_raw、cited_evidence、expected_output、scenario_kind、injected（仅service/aliases/operation/aliases）、signature_matches。不发送 flag/variant、场景ID/路径、未引用/未交付/其他Run证据、recording或ledger。发送前递归拒绝私有协议键（reasoning_content、reasoning、thinking、redacted_thinking、encrypted_content）及凭据槽键（api_key及大小写/连字符变体、authorization、password/passwd、token/access_token/refresh_token、secret、credential/credentials、cookie、bearer；命名槽前后缀同样拒绝）；report_raw 内JSON也检查。私有字段注入返回 invalid，transport 调用为0。修改未引用证据不会改变请求body。
+`JudgeInput(spec:ScenarioSpec, answer:Answer, report:ReportCapture, delivered:Mapping[str,DeliveredRecord], authorized:Mapping[str,Window], outcome:IncidentOutcome)`，outcome 必填。DTO严格类型及未知字段检查。实际 body 只来自 PR-A `judge_request(..., outcome=...)` 的9键：question、subject_id、authorized_windows、report_raw、cited_evidence、expected_output、scenario_kind、injected（仅service/aliases/operation/aliases）、signature_matches。不发送 flag/variant、场景ID/路径、未引用/未交付/其他Run证据、recording或ledger。发送前对证据/报告数据键递归执行r7的敏感片段子串拒绝（含私有协议字段），不因大小写、分隔符或前后缀放行；report_raw 内JSON也检查。私有字段注入返回 invalid，transport 调用为0。修改未引用证据不会改变请求body。
 
 content 必须是严格 JSON 对象（无重复键/未知键/非有限数），恰 `schema, diagnoses, verdict`，schema=`opspilot-judge-1`，verdict 严格 bool；每条 diagnoses 恰 PR-A JudgedDiagnosis 的9字段：location、quote、factual_causal(bool)、service/operation(str|null)、cited_evidence_ids(str数组)、linked_claim(int|null，拒bool)、supported(bool)、reason(str)。不能由模型提供 calibrated/hash/status。
 
@@ -107,3 +107,11 @@ assistant响应的`tool_calls`、`function_call`等工具调用字段按存在�
 ## r6：PR #232 工件目录持久化（2026-10-14，lead裁决）
 
 每次创建输出目录或冻结标签目录后，必须fsync父目录；每次独占创建标签文件、pack.json、provider-NNN.json或calibration.json，必须先flush/fsync文件并关闭，再fsync所在目录，成功后才允许继续下一次调用或返回。目录open/fsync/close失败一律在except外报ARTIFACT_UNWRITABLE，cause/context为空；立即中止流程，不发起后续付费调用，不重试、不回滚/覆盖已有文件。失败可能留下不完整工件，不能因此视为已完成校准。理由：PR #232 机器人 P2；逐次权威工件和冻结标签必须先完成目录项持久化，避免崩溃丢失后继续付费调用。
+
+
+## r7：PR #232 凭据槽 fail-closed（2026-10-14，lead裁决）
+
+- 证据/报告的键名先NFKC规范化并casefold为小写，去掉全部非字母数字字符；只要包含任一敏感片段就拒绝为invalid、transport零调用（槽检查报JUDGE_PRIVATE_FIELD；报告schema先拒绝时可报SCHEMA_INVALID，同样零调用）：auth、token、secret、password、passwd、apikey、credential、cookie、session、bearer、privatekey、signature、reasoning、thinking、encrypted。无词边界、大小写、分隔符或前后缀例外；客户端不得静默删字段。理由：PR #232 机器人 P1。
+- 证据/报告精确键豁免清单为空，author仍拒绝。核查`docs/evidence/m1-01-alignment-c-effect/{normal-1,normal-2,fault-1,fault-2,pc-fault,cart-fault}/ledger.json`的全部76份`evidence[*].view`：103个不同键，敏感片段命中0，author及其大小写变体未出现；不扫描/发送ledger的dsn、模型私有steps等容器。现有PR-A/B3夹具证据17键、报告12键也无命中。真实键无需豁免，后续证据出现普通词误伤时先失败，不自动扩豁免。理由：PR #232 机器人 P1；仅按实际证据决定例外。
+- P6固定协议元数据不是证据属性：外层严格九键白名单，`authorized_windows`限定`引用ID -> Window(start,end)`（严格UTC类型）；`signature_matches`限定`证据ID -> span ID字符串数组`。这些map键为身份引用，值按封闭schema验证，不能塞入凭据属性对象；报告raw解析后仍检查所有数据键，cited_evidence及view逐层检查。保留已批准的P6授权/签名字段和ev-signature等引用ID，不将其加入全局数据键豁免；相同名字出现在证据/报告数据里照样拒绝。理由：PR #232 机器人 P1；避免把固定协议和身份映射误作外来凭据槽，同时不改变PR-A请求语义。
+- 历史r3的边界正则及排除auth/authentication的复合词规则已由本节替换；识别保守，未来普通词命中可导致invalid，不把安全失败改成通过。核对只证明现有键兼容，不证明任意值不含敏感数据或未来OTel字段都兼容。

@@ -1377,3 +1377,138 @@ def test_pr232_directory_fsync_failure_stops_further_transports(
     assert all(not transports[p].calls for p in ("openai", "deepseek"))
     assert not (destination / "calibration.json").exists()
     assert caught.value.__cause__ is None and caught.value.__context__ is None
+
+
+@pytest.mark.parametrize(
+    "key",
+    [
+        "CLIENTAUTH",
+        "CLIENTAUTHENTICATION",
+        "clientAuthentication",
+        "XAuthToken",
+        "sessionid",
+        "mysecretvalue",
+        "private-key-material",
+        "clientSignature",
+        "Author",
+        "providerEncryptedData",
+        "opaqueReasoningState",
+    ],
+)
+def test_pr232_sensitive_substrings_fail_closed(key):
+    request, diagnoses, verdict = make_input()
+    record = request.delivered["e1"]
+    view = {**record.view, key: "SYNTHETIC-CREDENTIAL-VALUE"}
+    request = replace(
+        request,
+        delivered={
+            "e1": replace(record, view=view, view_sha256=canonical_view_hash(view))
+        },
+    )
+    observation, transport = invoke(request, diagnoses, verdict)
+    assert observation.result.status == "invalid"
+    assert observation.error_code == "JUDGE_PRIVATE_FIELD"
+    assert not observation.valid and not transport.calls
+
+
+@pytest.mark.parametrize(
+    "pack_name",
+    ["normal-1", "normal-2", "fault-1", "fault-2", "pc-fault", "cart-fault"],
+)
+def test_pr232_frozen_evidence_keys_are_not_blocked(pack_name):
+    from opspilot.evaluation.judge import _reject_private
+
+    path = ROOT / "docs/evidence/m1-01-alignment-c-effect" / pack_name / "ledger.json"
+    records = json.loads(path.read_bytes())["evidence"]
+    request, _, _ = make_input("eval-normal-1")
+    for evidence in records:
+        view = evidence["view"]
+        _reject_private(view)
+        record = replace(
+            request.delivered["e1"], view=view, view_sha256=canonical_view_hash(view)
+        )
+        changed = replace(request, delivered={"e1": record})
+        observation, transport = invoke(changed, (), True)
+        assert len(transport.calls) == 1
+        assert observation.valid
+        assert (
+            json.loads(
+                json.loads(transport.calls[0]["body"])["messages"][1]["content"]
+            )["cited_evidence"][0]["view"]
+            == view
+        )
+
+
+@pytest.mark.parametrize(
+    "key", ["authorized_windows", "signature_matches", "ev-signature"]
+)
+def test_pr232_protocol_names_are_not_global_evidence_exemptions(key):
+    request, diagnoses, verdict = make_input()
+    record = request.delivered["e1"]
+    view = {**record.view, key: "SYNTHETIC-PRIVATE-DATA"}
+    request = replace(
+        request,
+        delivered={
+            "e1": replace(record, view=view, view_sha256=canonical_view_hash(view))
+        },
+    )
+    observation, transport = invoke(request, diagnoses, verdict)
+    assert observation.error_code == "JUDGE_PRIVATE_FIELD"
+    assert observation.result.status == "invalid" and not transport.calls
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("authorized_windows", {"w": {"clientAuth": "SYNTHETIC-SECRET"}}),
+        ("signature_matches", {"e1": {"clientAuth": "SYNTHETIC-SECRET"}}),
+    ],
+)
+def test_pr232_protocol_maps_only_allow_closed_value_schemas(field, value):
+    from opspilot.evaluation.judge import ZaiAdapter
+
+    request, _, _ = make_input()
+    payload = dict(safe_input(request))
+    payload[field] = value
+    with pytest.raises(ValueError, match="SCHEMA_INVALID"):
+        ZaiAdapter().build(configs()["zai"], payload)
+
+
+@pytest.mark.parametrize(
+    "fragment",
+    [
+        "auth",
+        "token",
+        "secret",
+        "password",
+        "passwd",
+        "apikey",
+        "credential",
+        "cookie",
+        "session",
+        "bearer",
+        "privatekey",
+        "signature",
+        "reasoning",
+        "thinking",
+        "encrypted",
+    ],
+)
+def test_pr232_all_required_fragments_reject_arbitrary_prefix_and_suffix(fragment):
+    for key in (
+        f"PREFIX{fragment.upper()}SUFFIX",
+        f"prefix.{'.'.join(fragment)}.suffix",
+    ):
+        request, diagnoses, verdict = make_input()
+        record = request.delivered["e1"]
+        view = {**record.view, "content": [{key: "SYNTHETIC-CREDENTIAL"}]}
+        request = replace(
+            request,
+            delivered={
+                "e1": replace(record, view=view, view_sha256=canonical_view_hash(view))
+            },
+        )
+        observation, transport = invoke(request, diagnoses, verdict)
+        assert observation.result.status == "invalid"
+        assert observation.error_code == "JUDGE_PRIVATE_FIELD"
+        assert not transport.calls
