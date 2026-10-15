@@ -20,7 +20,7 @@ import json
 import logging
 from collections.abc import Iterable, Mapping
 from dataclasses import asdict, dataclass, field, replace
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from typing import Any, Literal, Protocol, cast
 from uuid import UUID, uuid4, uuid5
@@ -194,6 +194,7 @@ class ControlResult:
     generation: int
     replayed: bool
     sequence: int
+    run_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -628,7 +629,12 @@ class Workbench:
         result_row, _ = self.ledger.put(
             "control",
             key,
-            {"action": action, "generation": generation, "sequence": sequence},
+            {
+                "action": action,
+                "generation": generation,
+                "sequence": sequence,
+                "run_id": None if new_run_id is None else str(new_run_id),
+            },
         )
         return ControlResult(
             incident_id,
@@ -636,6 +642,7 @@ class Workbench:
             int(result_row["generation"]),
             False,
             int(result_row["sequence"]),
+            result_row.get("run_id"),
         )
 
     def _apply(
@@ -717,14 +724,7 @@ class Workbench:
             generation = self.incidents.control(
                 summary.incident_id, expected, action, actor_id, payload, **renewal
             )
-            current = self.incidents.find_incident(summary.incident_id)
-            if (
-                current is None
-                or current.current_run_id is None
-                or current.current_run_id == summary.current_run_id
-            ):
-                return generation, None
-            return generation, current.current_run_id
+            return generation, self._decision_run(summary, generation)
         if summary.control_generation != expected:
             raise PersistenceError("CONTROL_CONFLICT")
         generation = self.incidents.new_run(
@@ -739,6 +739,21 @@ class Workbench:
             payload={"channel": "web", "idempotency_key": key},
         )
         return generation, run_id
+
+    def _decision_run(self, summary: IncidentSummary, generation: int) -> UUID | None:
+        """Prove this decision's deterministic Run exists, even after another renewal."""
+        candidate = uuid5(_INTAKE_NAMESPACE, f"{summary.intake_key}:run:{generation}")
+        rows = self.incidents.investigation_history(summary.incident_id)
+        if rows:
+            return (
+                candidate if any(row["run_id"] == candidate for row in rows) else None
+            )
+        current = self.incidents.find_incident(summary.incident_id)
+        return (
+            candidate
+            if current is not None and current.current_run_id == candidate
+            else None
+        )
 
     def _configured_identity(self, intake_key: str) -> TargetIdentity | None:
         """The configured identity of the intake's ``target_id`` (the
@@ -1036,10 +1051,22 @@ class Workbench:
         intent: Mapping[str, Any],
         audit: ControlAudit,
     ) -> ControlResult:
+        summary = self.incidents.find_incident(incident_id)
+        run_id = (
+            self._decision_run(summary, audit.resulting_generation)
+            if summary is not None and audit.action in {*_TEXT_ACTIONS, "new_run"}
+            else None
+        )
+        run_fields = {} if run_id is None else {"run_id": str(run_id)}
         sequence = self.events.append_once(
             incident_id,
             "control_applied",
-            dict(intent, generation=audit.resulting_generation, reconciled=True),
+            dict(
+                intent,
+                generation=audit.resulting_generation,
+                reconciled=True,
+                **run_fields,
+            ),
             key={"generation": audit.resulting_generation},
         )
         row, _ = self.ledger.put(
@@ -1049,6 +1076,7 @@ class Workbench:
                 "action": audit.action,
                 "generation": audit.resulting_generation,
                 "sequence": sequence,
+                **run_fields,
             },
         )
         return self._control_replay(incident_id, row)
@@ -1139,6 +1167,7 @@ class Workbench:
             int(stored["generation"]),
             True,
             int(stored["sequence"]),
+            stored.get("run_id"),
         )
 
     def _notes(self, incident_id: UUID) -> list[dict[str, Any]]:
@@ -1279,6 +1308,10 @@ class Workbench:
     def _controls(self, incident_id: UUID) -> list[dict[str, Any]]:
         """Every confirmed decision from the ledger rows, in generation order."""
         intents = dict(self.ledger.list_prefix("control_intent", f"{incident_id}:"))
+        times = {
+            int(row["resulting_generation"]): row["created_at"]
+            for row in self.incidents.control_times(incident_id)
+        }
         rows = []
         for key, result in self.ledger.list_prefix("control", f"{incident_id}:"):
             intent = intents.get(key)
@@ -1289,10 +1322,55 @@ class Workbench:
                     intent,
                     generation=int(result["generation"]),
                     sequence=int(result["sequence"]),
+                    decided_at=(
+                        times[int(result["generation"])]
+                        .astimezone(timezone.utc)
+                        .isoformat()
+                        if int(result["generation"]) in times
+                        else None
+                    ),
                 )
             )
         rows.sort(key=lambda item: item["generation"])
         return rows
+
+    def _history(self, incident_id: UUID, current_run_id: UUID) -> list[dict[str, Any]]:
+        rows = self.incidents.investigation_history(incident_id)
+        # Scan all retained pages: an old Run's completion may precede the
+        # page of recent progress displayed on the incident screen.
+        cursor = max(0, self.events.floor(incident_id) - 1)
+        hashes = {}
+        while True:
+            page = self.events.read_after(incident_id, cursor, limit=_EVENT_PAGE)
+            if not page:
+                break
+            for event in page:
+                if event.kind == "run_completed" and event.payload.get("report_sha256"):
+                    hashes[str(event.payload.get("run_id"))] = event.payload[
+                        "report_sha256"
+                    ]
+            cursor = page[-1].sequence
+        return [
+            {
+                "run_id": str(row["run_id"]),
+                "state": row["state"],
+                "control_generation": int(row["control_generation"]),
+                **{
+                    field: row[field].astimezone(timezone.utc).isoformat()
+                    if row[field] is not None
+                    else None
+                    for field in ("started_at", "concluded_at")
+                },
+                "report": _report_view(row["report"]),
+                "verified": (
+                    hashes[str(row["run_id"])] == _content_sha256(row["report"])
+                    if str(row["run_id"]) in hashes
+                    else None
+                ),
+            }
+            for row in rows
+            if row["run_id"] != current_run_id
+        ]
 
     def snapshot(self, incident_id: UUID) -> dict[str, Any]:
         """Everything the incident page renders, read from committed rows."""
@@ -1357,6 +1435,7 @@ class Workbench:
             "charts": self._charts(incident_id, report or handoff_report),
             "outcome": None if outcome is None else dict(outcome.payload),
             "controls": self._controls(incident_id),
+            "history": self._history(incident_id, run["run_id"]),
             # Recovery observation (M1-02): shown apart from the investigation
             # report, with the sampling basis behind each verdict and the
             # offline replay's agreement with it (step 5, #87).

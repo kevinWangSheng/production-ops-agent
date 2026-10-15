@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Evidence {{ evidence.evidence_id }}{% endblock %}
+{% block body %}
+<h1>Evidence <code>{{ evidence.evidence_id }}</code></h1>
+<p><a href="/incidents/{{ incident_id }}">Back to incident</a></p>
+<dl>
+{% for key in ["run_id", "status", "adopted", "observed_at", "data_as_of", "raw_sha256", "view_sha256", "hashes_verified", "projection_revision"] %}
+  <dt>{{ key }}</dt><dd><code>{{ evidence[key] }}</code></dd>
+{% endfor %}
+</dl>
+<h2>View</h2>
+<pre>{{ evidence.view | tojson(indent=2) }}</pre>
+<h2>Raw {% if evidence.raw_base64 is defined %}(base64){% else %}text{% endif %}</h2>
+<pre>{{ evidence.raw_utf8 if evidence.raw_utf8 is defined else evidence.raw_base64 }}</pre>
+{% endblock %}

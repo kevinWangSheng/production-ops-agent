@@ -571,16 +571,15 @@ def test_submitted_incident_is_investigated_and_the_report_is_shown_with_evidenc
     )
     listing = call(app, "GET", "/", headers=basic())
     assert listing.status == 200 and incident in listing.text and other in listing.text
-    # Concluded incidents accept no further control.
+    # Pause remains refused after a conclusion (C3 §10).
     assert (
         _control(
             app,
             incident,
             {
-                "action": "follow_up",
+                "action": "pause",
                 "expected_generation": "0",
                 "idempotency_key": "late",
-                "text": "more?",
             },
         ).status
         == 409

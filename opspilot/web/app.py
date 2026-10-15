@@ -113,6 +113,7 @@ _WORKBENCH_STATUS = {
     "CONTROL_KEY_CONFLICT": 409,
     "CONTROL_CONFLICT": 409,
     "ILLEGAL_TRANSITION": 409,
+    "REOPEN_REQUIRED": 409,
     "IDENTITY_CONFLICT": 409,
     "UNKNOWN_IDENTITY": 404,
     "STORAGE_UNAVAILABLE": 503,
@@ -580,6 +581,7 @@ def create_app(
                 "generation": result.generation,
                 "replayed": result.replayed,
                 "sequence": result.sequence,
+                **({"run_id": result.run_id} if result.run_id is not None else {}),
             }
         )
 
@@ -619,7 +621,7 @@ def create_app(
     async def evidence(
         request: Request, incident_id: str, evidence_id: str
     ) -> Response:
-        await ui(request)
+        principal = await ui(request)
         subject = incident_of(incident_id)
         record = await in_thread(workbench.evidence_for, subject, evidence_id)
         if record is None:
@@ -635,24 +637,30 @@ def create_app(
             raw: dict[str, Any] = {"raw_utf8": record.raw.decode("utf-8")}
         except UnicodeDecodeError:
             raw = {"raw_base64": base64.b64encode(record.raw).decode("ascii")}
-        return JSONResponse(
-            {
-                "evidence_id": record.evidence_id,
-                "run_id": record.run_id,
-                "status": record.status,
-                "adopted": record.adopted,
-                "raw_sha256": record.raw_sha256,
-                "view_sha256": record.view_sha256,
-                "hashes_verified": record.hashes_verified,
-                "projection_revision": record.projection_revision,
-                "observed_at": record.observed_at.isoformat(),
-                "data_as_of": (
-                    None if record.data_as_of is None else record.data_as_of.isoformat()
-                ),
-                "view": dict(record.view),
-                **raw,
-            }
-        )
+        payload = {
+            "evidence_id": record.evidence_id,
+            "run_id": record.run_id,
+            "status": record.status,
+            "adopted": record.adopted,
+            "raw_sha256": record.raw_sha256,
+            "view_sha256": record.view_sha256,
+            "hashes_verified": record.hashes_verified,
+            "projection_revision": record.projection_revision,
+            "observed_at": record.observed_at.isoformat(),
+            "data_as_of": (
+                None if record.data_as_of is None else record.data_as_of.isoformat()
+            ),
+            "view": dict(record.view),
+            **raw,
+        }
+        if wants_html(request):
+            return render(
+                "evidence.html",
+                evidence=payload,
+                incident_id=incident_id,
+                principal=principal,
+            )
+        return JSONResponse(payload)
 
     return app
 

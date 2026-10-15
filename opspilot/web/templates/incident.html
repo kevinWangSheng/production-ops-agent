@@ -309,14 +309,40 @@
 <p class="muted">No committed steps.</p>
 {% endif %}
 
+<h2>Investigation history</h2>
+{% for entry in snapshot.history %}
+<section class="investigation-history">
+  <h3>Run <code>{{ entry.run_id }}</code></h3>
+  <p>State <code>{{ entry.state }}</code> · generation {{ entry.control_generation }}
+    · Concluded at (UTC) {{ entry.concluded_at or "—" }} · verified {{ entry.verified }}</p>
+  {% if entry.report and entry.report.parsed %}
+    <p>Conclusion <strong>{{ entry.report.conclusion }}</strong></p>
+    <p>{{ entry.report.summary }}</p>
+    {% for kind, key in [("fact", "facts"), ("hypothesis", "hypotheses"), ("counter_evidence", "counter_evidence"), ("rejected_hypothesis", "rejected_hypotheses"), ("recommendation", "recommendations")] %}
+    <ul>
+      {% for claim in entry.report[key] %}
+      <li><code>{{ kind }}</code>: {{ claim.text }}
+        {% for eid in claim.evidence_ids %}
+        <a href="/incidents/{{ inc.incident_id }}/evidence/{{ eid }}"><code>{{ eid }}</code></a>
+        {% endfor %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% endfor %}
+  {% elif entry.report %}
+    <p>Report could not be parsed: {{ entry.report.reason }}</p>
+  {% else %}<p class="muted">No published conclusion retained.</p>{% endif %}
+</section>
+{% else %}<p class="muted">No earlier Runs.</p>{% endfor %}
+
 <h2>Human decisions</h2>
 {% if snapshot.controls %}
 <table>
-  <thead><tr><th>Seq</th><th>Action</th><th>Actor</th><th>Expected → new</th><th>Text</th></tr></thead>
+  <thead><tr><th>Seq</th><th>Action</th><th>Actor</th><th>Time (UTC)</th><th>Expected → new</th><th>Text</th></tr></thead>
   <tbody>
   {% for item in snapshot.controls %}
   <tr><td>{{ item.sequence }}</td><td><code>{{ item.action }}</code></td><td><code>{{ item.actor_id }}</code></td>
-      <td>{{ item.expected_generation }} → {{ item.generation }}</td><td>{{ item.text or "" }}</td></tr>
+      <td>{{ item.decided_at or "unknown" }}</td><td>{{ item.expected_generation }} → {{ item.generation }}</td><td>{{ item.text or "" }}</td></tr>
   {% endfor %}
   </tbody>
 </table>

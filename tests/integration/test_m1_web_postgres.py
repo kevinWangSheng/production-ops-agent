@@ -172,7 +172,7 @@ def test_submit_run_and_read_back_on_postgres():
         ("5", "step_committed"),
         ("6", "run_completed"),
     ]
-    # Concluded: no further control is accepted, generation stays 0.
+    # Concluded: a follow-up starts a successor at generation 1.
     late = post_form(
         app,
         f"/incidents/{incident}/control",
@@ -184,7 +184,8 @@ def test_submit_run_and_read_back_on_postgres():
         },
         headers={**basic(), **same_origin()},
     )
-    assert late.status == 409 and late.json() == {"code": "ILLEGAL_TRANSITION"}
+    assert late.status == 200 and late.json()["generation"] == 1
+    assert late.json()["run_id"] != str(rebuilt["run"]["run_id"])
 
 
 def test_control_generations_and_late_results_on_postgres():

@@ -174,6 +174,16 @@ class _ControlOps(_StoreBase):
             "target_generation": int(scope["target_generation"]),
         }
 
+    def control_times(self, incident_id: UUID) -> list[dict[str, Any]]:
+        """Read the database timestamps of committed human decisions."""
+        with self.transaction(snapshot=True) as conn:
+            return list(
+                conn.execute(
+                    "SELECT resulting_generation,created_at FROM opspilot_controls WHERE incident_id=%s ORDER BY resulting_generation",
+                    (incident_id,),
+                ).fetchall()
+            )
+
     def control(
         self,
         incident_id: UUID,
@@ -203,7 +213,12 @@ class _ControlOps(_StoreBase):
         freezes the incident's inputs, not the Run's). Without a renewal the
         note is refused (``ILLEGAL_TRANSITION``) rather than re-queueing a
         row nothing can ever claim. A Run that is not overdue is re-queued as
-        before and the renewal arguments are unused.
+        before and the renewal arguments are unused. Published conclusions
+        and completed/cancelled incidents also require a successor for text
+        actions; terminal old Runs keep their state. Under human ownership,
+        text actions with a payload only record a note, leaving the Run and
+        control mirror untouched. In either mode resolved/closed incidents
+        require reopening (REOPEN_REQUIRED) before follow_up/correct.
         """
         # payload 只接受 JSON 对象：列表/标量虽是合法 JSON，落库后模型侧投影
         # （非 Mapping 一律丢弃）会把操作者的文字静默吞掉，而 control() 却已报告
@@ -218,7 +233,7 @@ class _ControlOps(_StoreBase):
             # 而该码的约定处置是「重读代际后重试」——两种情况重试都不会成功。
             # 顺序仍是先锁 incident 再锁 run，与三条写路径一致。
             row = conn.execute(
-                "SELECT control_generation,state,mode,conclusion,current_run_id FROM opspilot_incidents WHERE incident_id=%s FOR UPDATE",
+                "SELECT control_generation,state,mode,lifecycle,conclusion,current_run_id FROM opspilot_incidents WHERE incident_id=%s FOR UPDATE",
                 (incident_id,),
             ).fetchone()
             if not row:
@@ -234,7 +249,13 @@ class _ControlOps(_StoreBase):
                 "takeover",
             }:
                 raise PersistenceError("INVALID_INPUT")
+            note = action in {"follow_up", "correct"}
+            if note and row["lifecycle"] in {"resolved", "closed"}:
+                raise PersistenceError("REOPEN_REQUIRED")
             human_owned = row["mode"] == "human_owned"
+            human_note = human_owned and note
+            if human_note and payload is None:
+                raise PersistenceError("ILLEGAL_TRANSITION")
             if action == "takeover":
                 # C3 §10 接管：mode -> human_owned，同一事务递增代际、撤销观察
                 # 授权、停下自动调查：当前 Run 交给人（waiting_human，收回租约），
@@ -302,17 +323,18 @@ class _ControlOps(_StoreBase):
             # Run 也不换新 Run），带内容的追问/纠正只记录为输入、照常审计与推进
             # 代际，Run 留在人手里；resume 只解除主体暂停（领域 apply_control 的
             # resume 不改 mode），同样不碰 Run（独立审查 PR #123 第 1、2 条）。
-            renew = action in {"follow_up", "correct"} and overdue and not human_owned
+            concluded = (
+                row["state"] in {"cancelled", "completed"}
+                or row["conclusion"] is not None
+            )
+            renew = note and (overdue or concluded) and not human_owned
             # resume 不带新输入，过期的 Run 没有可以恢复进去的东西：重排队只会
             # 留下一行谁都领不到、每次轮询都被拒绝的 queued。与 #47 对无续开
             # 参数的追问同一处置：拒绝；出路是追问/纠正（续开）或 cancel + new_run。
             # human_owned 下 resume 不排队任何 Run，所以不受此限。
             if action == "resume" and overdue and not human_owned:
                 raise PersistenceError("ILLEGAL_TRANSITION")
-            if (
-                row["state"] in {"cancelled", "completed"}
-                or row["conclusion"] is not None
-            ):
+            if concluded and not (human_note or renew):
                 raise PersistenceError("ILLEGAL_TRANSITION")
             # 暂停态只接受 resume 与 cancel，与 opspilot/domain/runs.py 的
             # RUN_EXECUTION（paused -> human_resume / human_cancel）一致。
@@ -328,7 +350,11 @@ class _ControlOps(_StoreBase):
             # 按放行名单判定而不是点名 blocked：原写法只挡住当时想到的那一个
             # 状态，`failed`/`budget_exhausted` 这类终态一旦开始被写入就会静默
             # 变成「允许」。cancel 不受限，它是人工控制的兜底出口。
-            if action != "cancel" and run["run_state"] not in _CONTROL_OPEN_RUN_STATES:
+            if (
+                action != "cancel"
+                and not (human_note or renew)
+                and run["run_state"] not in _CONTROL_OPEN_RUN_STATES
+            ):
                 raise PersistenceError("ILLEGAL_TRANSITION")
             if renew:
                 if renew_run_id is None or renew_deadline is None:

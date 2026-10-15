@@ -230,6 +230,10 @@ class IncidentStore(Protocol):
 
     def rebuild(self, incident_id: UUID) -> dict[str, Any]: ...
 
+    def investigation_history(self, incident_id: UUID) -> list[dict[str, Any]]: ...
+
+    def control_times(self, incident_id: UUID) -> list[dict[str, Any]]: ...
+
     def claim(
         self,
         incident_id: UUID,
@@ -610,6 +614,14 @@ class DurableIncidentStore:
 
     def rebuild(self, incident_id: UUID) -> dict[str, Any]:
         return self._store.rebuild(incident_id)
+
+    def investigation_history(self, incident_id: UUID) -> list[dict[str, Any]]:
+        """Read Run history and its database-clock step timestamps."""
+        return self._store.investigation_history(incident_id)
+
+    def control_times(self, incident_id: UUID) -> list[dict[str, Any]]:
+        """Read committed human-decision timestamps by resulting generation."""
+        return self._store.control_times(incident_id)
 
     def claim(
         self,

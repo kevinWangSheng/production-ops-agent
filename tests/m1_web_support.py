@@ -444,6 +444,12 @@ class MemoryIncidentStore:
         )
         return nxt
 
+    def investigation_history(self, incident_id):
+        return []
+
+    def control_times(self, incident_id):
+        return []
+
     def rebuild(self, incident_id):
         row = self.incidents.get(incident_id)
         if row is None:
