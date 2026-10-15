@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}OpsPilot · suspension controls{% endblock %}
+{% macro control_form(scope, target_id, gate, suffix) %}
+<form method="post" action="/controls/suspension">
+  <input type="hidden" name="scope" value="{{ scope }}">
+  {% if target_id is not none %}<input type="hidden" name="target_id" value="{{ target_id }}">{% endif %}
+  <input type="hidden" name="expected_generation" value="{{ gate.generation }}">
+  <input type="hidden" name="idempotency_key" value="{{ form_nonce }}:{{ suffix }}">
+  <input type="hidden" name="suspended" value="{{ 'false' if gate.suspended else 'true' }}">
+  <button type="submit">{{ 'Release' if gate.suspended else 'Suspend' }}</button>
+</form>
+{% endmacro %}
+{% block body %}
+<h1>Investigation suspension</h1>
+<p><a href="/">Incidents</a></p>
+<p>Suspension stops new queries; in-flight results are kept only as history; release does not auto-resume.</p>
+<h2>Global</h2>
+<p>{{ 'Suspended' if state.global.suspended else 'Released' }} · generation {{ state.global.generation }}</p>
+{{ control_form('global', none, state.global, 'global') }}
+<h2>Registry targets</h2>
+<table>
+<thead><tr><th>Target</th><th>State</th><th>Generation</th><th>Action</th></tr></thead>
+<tbody>
+{% for target in state.targets %}
+<tr><td>{{ target.target_id }}</td><td>{{ 'Suspended' if target.suspended else 'Released' }}</td><td>{{ target.generation }}</td>
+<td>{{ control_form('target', target.target_id, target, loop.index) }}</td></tr>
+{% endfor %}
+</tbody>
+</table>
+{% endblock %}
