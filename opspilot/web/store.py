@@ -206,6 +206,7 @@ class IncidentStore(Protocol):
         renew_run_id: UUID | None = None,
         renew_deadline: datetime | None = None,
         renew_input: dict[str, Any] | None = None,
+        renew_basis: dict[str, Any] | None = None,
     ) -> int:
         """Apply one human decision; ``payload`` carries follow-up/correction content.
 
@@ -512,6 +513,7 @@ class DurableIncidentStore:
         # keywords; an older base gets the positional call it accepts and
         # keeps re-queueing (bot review, PR #47).
         self._renewal_supported = "renew_run_id" in parameters
+        self._renew_basis_supported = "renew_basis" in parameters
         # #128 adds ``payload`` to DurableStore.new_run (the request key on
         # the audit row); an older base gets the call it accepts.
         new_run = getattr(store, "new_run", None)
@@ -560,6 +562,7 @@ class DurableIncidentStore:
         renew_run_id: UUID | None = None,
         renew_deadline: datetime | None = None,
         renew_input: dict[str, Any] | None = None,
+        renew_basis: dict[str, Any] | None = None,
     ) -> int:
         renewal: dict[str, Any] = {}
         if self._renewal_supported:
@@ -568,6 +571,8 @@ class DurableIncidentStore:
                 "renew_deadline": renew_deadline,
                 "renew_input": renew_input,
             }
+        if self._renew_basis_supported:
+            renewal["renew_basis"] = renew_basis
         # The signature guards above prove which keywords exist at runtime;
         # mypy only sees the current DurableStore signature.
         control: Any = self._store.control

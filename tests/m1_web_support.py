@@ -207,6 +207,7 @@ class MemoryIncidentStore:
         renew_run_id=None,
         renew_deadline=None,
         renew_input=None,
+        renew_basis=None,
     ):
         row = self.incidents.get(incident_id)
         if row is None:

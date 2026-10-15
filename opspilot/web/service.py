@@ -714,16 +714,36 @@ class Workbench:
             payload: dict[str, Any] = {"channel": "web", "idempotency_key": key}
             if text is not None:
                 payload["text"] = text
-            renewal: dict[str, Any] = {}
-            if action in _TEXT_ACTIONS:
-                renewal = {
-                    "renew_run_id": run_id,
-                    "renew_deadline": deadline,
-                    "renew_input": self._successor_input(summary, run_id, deadline),
-                }
-            generation = self.incidents.control(
-                summary.incident_id, expected, action, actor_id, payload, **renewal
-            )
+            for attempt in range(3):
+                renewal: dict[str, Any] = {}
+                if action in _TEXT_ACTIONS:
+                    snapshot = self.incidents.rebuild(summary.incident_id)
+                    renewal = {
+                        "renew_run_id": run_id,
+                        "renew_deadline": deadline,
+                        "renew_input": self._successor_input(
+                            summary, run_id, deadline, snapshot=snapshot
+                        ),
+                        "renew_basis": {
+                            "run_id": str(snapshot["run"]["run_id"]),
+                            "concluded": snapshot.get("conclusion") is not None,
+                        },
+                    }
+                try:
+                    generation = self.incidents.control(
+                        summary.incident_id,
+                        expected,
+                        action,
+                        actor_id,
+                        payload,
+                        **renewal,
+                    )
+                    break
+                except PersistenceError as exc:
+                    if str(exc) != "RENEW_INPUT_STALE":
+                        raise
+                    if attempt == 2:
+                        raise PersistenceError("CONTROL_CONFLICT") from None
             return generation, self._decision_run(summary, generation)
         if summary.control_generation != expected:
             raise PersistenceError("CONTROL_CONFLICT")
@@ -901,7 +921,12 @@ class Workbench:
         return fresh.as_json()
 
     def _successor_input(
-        self, summary: IncidentSummary, run_id: UUID, deadline: datetime
+        self,
+        summary: IncidentSummary,
+        run_id: UUID,
+        deadline: datetime,
+        *,
+        snapshot: Mapping[str, Any] | None = None,
     ) -> dict[str, Any] | None:
         """The input a Run that replaces the current one starts from.
 
@@ -910,8 +935,9 @@ class Workbench:
         no snapshot (rows older than the face) or rows this version cannot
         continue gets a fresh input over the intake question instead, so
         the successor is always runnable. The renewal input is built before
-        the store decides whether the note renews at all (only an overdue
-        Run does); an unused one costs a rebuild and nothing else.
+        the store decides whether the note renews at all (overdue or concluded
+        Runs do); an unused one costs a rebuild and nothing else. The optional
+        snapshot binds this assembly to the renewal basis checked under lock.
         """
         if self.tool_face is None:
             return None
@@ -925,7 +951,9 @@ class Workbench:
         request = _envelope_from_json(intake["envelope"]).request
         try:
             return continuation_input(
-                self.incidents.rebuild(summary.incident_id),
+                snapshot
+                if snapshot is not None
+                else self.incidents.rebuild(summary.incident_id),
                 new_run_id=str(run_id),
                 deadline=deadline,
                 authorized_targets=frozenset({request.target_id}),

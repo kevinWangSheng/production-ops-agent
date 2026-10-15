@@ -195,6 +195,7 @@ class _ControlOps(_StoreBase):
         renew_run_id: UUID | None = None,
         renew_deadline: datetime | None = None,
         renew_input: dict[str, Any] | None = None,
+        renew_basis: dict[str, Any] | None = None,
     ) -> int:
         """Apply one human decision under ``expected_generation``.
 
@@ -219,6 +220,11 @@ class _ControlOps(_StoreBase):
         text actions with a payload only record a note, leaving the Run and
         control mirror untouched. In either mode resolved/closed incidents
         require reopening (REOPEN_REQUIRED) before follow_up/correct.
+
+        Optional ``renew_basis`` binds successor input to its snapshot's
+        Run identity and published-conclusion presence. A renewal whose
+        locked row differs raises RENEW_INPUT_STALE before any write, so
+        callers can rebuild and retry. Callers omitting it retain prior behavior.
         """
         # payload 只接受 JSON 对象：列表/标量虽是合法 JSON，落库后模型侧投影
         # （非 Mapping 一律丢弃）会把操作者的文字静默吞掉，而 control() 却已报告
@@ -357,6 +363,13 @@ class _ControlOps(_StoreBase):
             ):
                 raise PersistenceError("ILLEGAL_TRANSITION")
             if renew:
+                if renew_basis is not None and (
+                    not isinstance(renew_basis, dict)
+                    or str(renew_basis.get("run_id")) != str(row["current_run_id"])
+                    or renew_basis.get("concluded")
+                    is not (row["conclusion"] is not None)
+                ):
+                    raise PersistenceError("RENEW_INPUT_STALE")
                 if renew_run_id is None or renew_deadline is None:
                     raise PersistenceError("ILLEGAL_TRANSITION")
                 if conn.execute(

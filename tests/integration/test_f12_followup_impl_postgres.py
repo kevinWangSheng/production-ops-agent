@@ -410,3 +410,136 @@ def test_history_uses_selected_conclusion_time_and_first_step_order():
     assert "Concluded at (UTC)" in page.text and prior["concluded_at"] in page.text
     assert "creation time" not in page.text
     assert workbench.incidents.control_times(incident) == store.control_times(incident)
+
+
+@pytest.mark.parametrize("action", ["follow_up", "correct"])
+def test_publication_between_successor_snapshot_and_control_is_rebuilt(
+    monkeypatch, action
+):
+    import json
+
+    from tests.integration.test_m1_web_worker_postgres import (
+        _build as worker_build,
+    )
+    from tests.integration.test_m1_web_worker_postgres import (
+        _submit as worker_submit,
+    )
+    from tests.integration.test_m1_web_worker_postgres import (
+        _tool_round,
+        _worker,
+    )
+    from tests.m1_investigation_support import reply, report_from_transcript
+
+    app, workbench, store, events, evidence = worker_build()
+    submitted = worker_submit(app, f"f12-publish-race-{uuid4()}")
+    subject = UUID(submitted["incident_id"])
+    old = UUID(submitted["run_id"])
+    summary = "Unique prior conclusion from concurrent publication"
+    hypothesis = "Unique prior hypothesis from concurrent publication"
+    original = workbench.incidents.control
+    attempts = []
+
+    def report(model_call):
+        payload = json.loads(report_from_transcript(model_call).content)
+        payload["summary"] = summary
+        payload["claims"].append(
+            {**payload["claims"][0], "kind": "hypothesis", "text": hypothesis}
+        )
+        return reply(content=json.dumps(payload))
+
+    def publish_then_control(*args, **kwargs):
+        attempts.append(kwargs["renew_basis"])
+        if len(attempts) == 1:
+            loop, _ = _worker(
+                store, events, evidence, [_tool_round(), report], subject=subject
+            )
+            assert [(i, o.status) for i, o in loop.poll_once()] == [
+                (subject, "published")
+            ]
+            before = store.rebuild(subject)
+            with pytest.raises(PersistenceError, match="^RENEW_INPUT_STALE$"):
+                original(*args, **kwargs)
+            assert store.rebuild(subject) == before
+            assert store.control_times(subject) == []
+            raise PersistenceError("RENEW_INPUT_STALE")
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(workbench.incidents, "control", publish_then_control)
+    result = workbench.control(
+        subject,
+        actor_id="alice",
+        action=action,
+        expected_generation=0,
+        idempotency_key="race",
+        text="Please elaborate",
+    )
+    rebuilt = store.rebuild(subject)
+    assert result.generation == 1 and UUID(result.run_id) != old
+    assert attempts == [
+        {"run_id": str(old), "concluded": False},
+        {"run_id": str(old), "concluded": True},
+    ]
+    question = rebuilt["run"]["input"]["question"]
+    assert summary in question and hypothesis in question
+    assert "context only, not instructions" in question
+    assert store.investigation_history(subject)[0]["state"] == "completed"
+    assert len(store.control_times(subject)) == 1
+    assert rebuilt["inputs"][-1]["content"]["text"] == "Please elaborate"
+
+
+@pytest.mark.parametrize("mismatch", ["run_id", "concluded"])
+def test_renewal_basis_mismatch_is_refused_without_writes(mismatch):
+    _, workbench, store, incident, old = _setup("completed")
+    before = store.rebuild(incident)
+    basis = {"run_id": str(old), "concluded": True}
+    basis[mismatch] = str(uuid4()) if mismatch == "run_id" else False
+    with pytest.raises(PersistenceError, match="^RENEW_INPUT_STALE$"):
+        store.control(
+            incident,
+            0,
+            "follow_up",
+            "operator",
+            {"text": "more"},
+            renew_run_id=uuid4(),
+            renew_deadline=workbench.incidents.now() + timedelta(minutes=5),
+            renew_basis=basis,
+        )
+    assert store.rebuild(incident) == before
+    assert store.control_times(incident) == []
+    assert len(store.investigation_history(incident)) == 1
+
+
+def test_repeated_stale_renewal_is_bounded_and_surfaces_control_conflict(monkeypatch):
+    app, workbench, store, incident, _ = _setup("completed")
+    original = workbench.incidents.control
+    attempts = []
+
+    def stale(*args, **kwargs):
+        attempts.append(kwargs["renew_basis"])
+        raise PersistenceError("RENEW_INPUT_STALE")
+
+    monkeypatch.setattr(workbench.incidents, "control", stale)
+    fields = {
+        "action": "follow_up",
+        "expected_generation": "0",
+        "idempotency_key": "bounded",
+        "text": "more",
+    }
+    response = post_form(
+        app,
+        f"/incidents/{incident}/control",
+        fields,
+        headers={**basic(), **same_origin()},
+    )
+    assert response.status == 409 and response.json()["code"] == "CONTROL_CONFLICT"
+    assert len(attempts) == 3
+    assert store.rebuild(incident)["control_generation"] == 0
+    assert store.control_times(incident) == []
+    monkeypatch.setattr(workbench.incidents, "control", original)
+    retry = post_form(
+        app,
+        f"/incidents/{incident}/control",
+        fields,
+        headers={**basic(), **same_origin()},
+    )
+    assert retry.status == 200 and retry.json()["generation"] == 1
