@@ -132,15 +132,14 @@ def test_human_owned_terminal_note_only_records_input(action, terminal):
     assert store.control_times(incident)[-1]["resulting_generation"] == generation + 1
 
 
-@pytest.mark.parametrize("mode", ["automatic", "human_owned"])
 @pytest.mark.parametrize("lifecycle", ["resolved", "closed"])
 @pytest.mark.parametrize("action", ["follow_up", "correct"])
-def test_closed_or_resolved_requires_reopen_before_any_write(mode, lifecycle, action):
+def test_closed_or_resolved_requires_reopen_before_any_write(lifecycle, action):
     app, _, store, incident, _ = _setup("completed")
     with store.transaction() as conn:
         conn.execute(
-            "UPDATE opspilot_incidents SET lifecycle=%s,mode=%s WHERE incident_id=%s",
-            (lifecycle, mode, incident),
+            "UPDATE opspilot_incidents SET lifecycle=%s WHERE incident_id=%s",
+            (lifecycle, incident),
         )
     before = store.rebuild(incident)
     response = post_form(
@@ -543,3 +542,40 @@ def test_repeated_stale_renewal_is_bounded_and_surfaces_control_conflict(monkeyp
         headers={**basic(), **same_origin()},
     )
     assert retry.status == 200 and retry.json()["generation"] == 1
+
+
+@pytest.mark.parametrize("lifecycle", ["resolved", "closed"])
+@pytest.mark.parametrize("action", ["follow_up", "correct"])
+def test_human_owned_note_on_resolved_or_closed_is_recorded_only(lifecycle, action):
+    """Contract r2: REOPEN_REQUIRED only guards a note that would start a Run."""
+    app, _, store, incident, _ = _setup("completed")
+    with store.transaction() as conn:
+        conn.execute(
+            "UPDATE opspilot_incidents SET lifecycle=%s,mode='human_owned' WHERE incident_id=%s",
+            (lifecycle, incident),
+        )
+    before = store.rebuild(incident)
+    response = post_form(
+        app,
+        f"/incidents/{incident}/control",
+        {
+            "action": action,
+            "expected_generation": "0",
+            "idempotency_key": str(uuid4()),
+            "text": "more",
+        },
+        headers={**basic(), **same_origin()},
+    )
+    assert response.status == 200, response.text
+    after = store.rebuild(incident)
+    assert after["run"] == before["run"]
+    assert after["conclusion"] == before["conclusion"]
+    assert len(store.investigation_history(incident)) == 1
+    with store.transaction() as conn:
+        assert (
+            conn.execute(
+                "SELECT lifecycle FROM opspilot_incidents WHERE incident_id=%s",
+                (incident,),
+            ).fetchone()["lifecycle"]
+            == lifecycle
+        )

@@ -218,8 +218,10 @@ class _ControlOps(_StoreBase):
         and completed/cancelled incidents also require a successor for text
         actions; terminal old Runs keep their state. Under human ownership,
         text actions with a payload only record a note, leaving the Run and
-        control mirror untouched. In either mode resolved/closed incidents
-        require reopening (REOPEN_REQUIRED) before follow_up/correct.
+        control mirror untouched. A note that would start a successor
+        on a resolved/closed incident (automatic mode, concluded, completed or
+        cancelled) requires reopening first (REOPEN_REQUIRED, F12 contract r2);
+        other notes on those lifecycles behave as before.
 
         Optional ``renew_basis`` binds successor input to its snapshot's
         Run identity and published-conclusion presence. A renewal whose
@@ -256,8 +258,6 @@ class _ControlOps(_StoreBase):
             }:
                 raise PersistenceError("INVALID_INPUT")
             note = action in {"follow_up", "correct"}
-            if note and row["lifecycle"] in {"resolved", "closed"}:
-                raise PersistenceError("REOPEN_REQUIRED")
             human_owned = row["mode"] == "human_owned"
             human_note = human_owned and note
             if human_note and payload is None:
@@ -333,6 +333,18 @@ class _ControlOps(_StoreBase):
                 row["state"] in {"cancelled", "completed"}
                 or row["conclusion"] is not None
             )
+            # F12 合同 r2（用户 2026-10-15）：只有会开出新 Run 的追问/纠正
+            # （automatic、已结论或已完成/取消）在 resolved/closed 上要求先重新
+            # 打开；续开会把生命周期写回 open，不能由一句追问翻掉「已恢复」。
+            # 其余追问照旧：未结论的 Run 重新排队、human_owned 只记输入，
+            # 生命周期都不变。
+            if (
+                note
+                and concluded
+                and not human_owned
+                and row["lifecycle"] in {"resolved", "closed"}
+            ):
+                raise PersistenceError("REOPEN_REQUIRED")
             renew = note and (overdue or concluded) and not human_owned
             # resume 不带新输入，过期的 Run 没有可以恢复进去的东西：重排队只会
             # 留下一行谁都领不到、每次轮询都被拒绝的 queued。与 #47 对无续开

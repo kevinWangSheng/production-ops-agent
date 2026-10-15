@@ -181,7 +181,11 @@ def _evidence_ids(snapshot) -> list[str]:
             continue
         for entry in step["tool_results"] or ():
             evidence_id = entry["result"].get("evidence_id")
-            if isinstance(evidence_id, str) and evidence_id and evidence_id not in found:
+            if (
+                isinstance(evidence_id, str)
+                and evidence_id
+                and evidence_id not in found
+            ):
                 found.append(evidence_id)
     return found
 
@@ -218,7 +222,10 @@ def _assert_new_run_opened(env, action, generation, text):
     "action,text",
     [
         ("follow_up", "Check the payments dependency as well."),
-        ("correct", "Added fact: payments was redeployed at 10:02; the latency hypothesis is wrong."),
+        (
+            "correct",
+            "Added fact: payments was redeployed at 10:02; the latency hypothesis is wrong.",
+        ),
     ],
 )
 def test_note_after_conclusion_opens_new_run_and_page_keeps_history(action, text):
@@ -328,6 +335,8 @@ def test_pause_resume_cancel_after_conclusion_stay_refused(action):
 @pytest.mark.parametrize("mode", ["automatic", "human_owned"])
 @pytest.mark.parametrize("lifecycle", ["resolved", "closed"])
 def test_note_on_resolved_or_closed_incident_requires_reopen(lifecycle, mode, action):
+    """Contract r2: REOPEN_REQUIRED only for a note that would open a new Run
+    (automatic mode, conclusion published); human_owned notes are recorded."""
     env = _concluded(f"reopen-{lifecycle}-{mode}-{action}")
     generation = 0
     if mode == "human_owned":
@@ -341,20 +350,44 @@ def test_note_on_resolved_or_closed_incident_requires_reopen(lifecycle, mode, ac
     runs_before = _runs(env)
     controls_before = _controls(env)
     inputs_before = _inputs(env)
+    conclusion_before = env.store.rebuild(env.subject)["conclusion"]
+    text = "Is it still broken?"
 
-    refused = _act(env, action, generation, "Is it still broken?")
-    assert refused.status == 409, refused.text
-    assert refused.json()["code"] == "REOPEN_REQUIRED"
-
+    response = _act(env, action, generation, text)
     row = _incident(env)
-    assert row["control_generation"] == generation
     assert row["lifecycle"] == lifecycle
     assert row["mode"] == mode
     assert row["current_run_id"] == env.old_run
     assert _runs(env) == runs_before
-    assert _controls(env) == controls_before
-    assert _inputs(env) == inputs_before
+    assert env.store.rebuild(env.subject)["conclusion"] == conclusion_before
     assert not _claimable(env)
+
+    if mode == "automatic":
+        # r2: a note that would start a new Run is refused.
+        assert response.status == 409, response.text
+        assert response.json()["code"] == "REOPEN_REQUIRED"
+        assert row["control_generation"] == generation
+        assert _controls(env) == controls_before
+        assert _inputs(env) == inputs_before
+        return
+
+    # r2: under human ownership the note is recorded only.
+    _ok(response, generation + 1)
+    assert row["control_generation"] == generation + 1
+    audit = _controls(env)
+    assert audit[: len(controls_before)] == controls_before
+    added = audit[len(controls_before) :]
+    assert [(r["action"], r["resulting_generation"]) for r in added] == [
+        (action, generation + 1)
+    ]
+    assert (added[0]["payload"] or {}).get("text") == text
+    assert ("takeover", 1) in [(r["action"], r["resulting_generation"]) for r in audit]
+    notes = _inputs(env)
+    assert notes[: len(inputs_before)] == inputs_before
+    assert [
+        (i["kind"], i["content"].get("text"), i["control_generation"])
+        for i in notes[len(inputs_before) :]
+    ] == [(action, text, generation + 1)]
 
 
 # --------------------------------------------------------------------------
@@ -396,7 +429,9 @@ def test_notes_under_human_ownership_after_conclusion_are_recorded_only():
         t for _, t in notes
     ]
     recorded = _inputs(env)
-    assert [(i["kind"], i["content"].get("text"), i["control_generation"]) for i in recorded] == [
+    assert [
+        (i["kind"], i["content"].get("text"), i["control_generation"]) for i in recorded
+    ] == [
         ("correct", notes[0][1], 2),
         ("follow_up", notes[1][1], 3),
     ]
@@ -473,7 +508,9 @@ def test_human_decisions_carry_their_database_timestamp():
     rows = env.workbench.snapshot(env.subject)["controls"]
     assert [r["generation"] for r in rows] == [1, 2]
     for row in rows:
-        values = [_as_datetime(row.get(k)) for k in _TIME_KEYS if row.get(k) is not None]
+        values = [
+            _as_datetime(row.get(k)) for k in _TIME_KEYS if row.get(k) is not None
+        ]
         values = [v for v in values if v is not None]
         assert values, f"no timestamp field on decision row {sorted(row)}"
         assert values[0] == db_times[row["generation"]]
