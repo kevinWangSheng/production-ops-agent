@@ -32,7 +32,7 @@ LEGACY_DDL = (
     pathlib.Path(__file__).parent / "legacy_schema_2026-10-05.sql"
 ).read_text()
 PG_DUMP = os.environ.get("OPSPILOT_PG_DUMP", "pg_dump")
-HEAD = "0016_release_deadline_evidence"
+HEAD = "0017_web_suspension_grants"
 # opspilot_* tables at head: 15 in the baseline + 5 of 0003 (profiles,
 # sessions, samples, readings, endings) + 10 of 0008 (postmortems, versions,
 # conclusions, disputes, proposals, knowledge entries/revisions/revocations,
