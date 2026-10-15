@@ -346,3 +346,5 @@ M0_B_POSTGRES=1 .venv/bin/python -m pytest tests/integration/test_m0_live_postgr
 离线测试：`UV_CACHE_DIR=$PWD/tmp/uv-cache .venv/bin/python -m pytest tests/test_f11_u2_harness.py`。
 工具输出不构成正式校准批准；五类各三次、健康备用预算、非预期 unknown 比例、
 checkout 流量不受 ad 故障影响及临近健康终结边界仍需真实实验与独立真值审查。
+
+Web 创建 Run 时默认读取同一目标的已审核知识。`OPSPILOT_KNOWLEDGE_HINTS=off` 关闭读取；`OPSPILOT_KNOWLEDGE_MAX_AGE_SECONDS` 设置非负整数新鲜度阈值（默认 `2592000` 秒，即 30 天），超过阈值的知识仍提供并标为 stale。

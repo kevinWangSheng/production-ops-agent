@@ -188,12 +188,27 @@ def _serve() -> int:
     ledger.install()
     profile = select_profile(os.environ)
     clock = DurableClock(store)
+    knowledge = KnowledgeStore(dsn)
+    try:
+        knowledge_max_age = int(
+            os.environ.get("OPSPILOT_KNOWLEDGE_MAX_AGE_SECONDS", "2592000")
+        )
+        if knowledge_max_age < 0:
+            raise ValueError
+    except ValueError:
+        raise SystemExit(
+            "OPSPILOT_KNOWLEDGE_MAX_AGE_SECONDS must be a nonnegative integer"
+        ) from None
     workbench = Workbench(
         incidents=DurableIncidentStore(store),
         events=events,
         evidence=evidence,
         ledger=ledger,
         targets=_target_registry(),
+        knowledge=None
+        if os.environ.get("OPSPILOT_KNOWLEDGE_HINTS") == "off"
+        else knowledge,
+        knowledge_max_age_seconds=knowledge_max_age,
         health_profile=_health_profile(),
         # The same versions and tool face ``python -m opspilot.worker_main``
         # claims and runs with: a Run recorded under other versions is
@@ -202,7 +217,6 @@ def _serve() -> int:
         tool_face=profile.face(clock),
         run_seconds=_run_seconds(),
     )
-    knowledge = KnowledgeStore(dsn)
     app = create_app(
         workbench,
         Authenticator(config),
