@@ -8,7 +8,7 @@
 ## 目标与范围
 
 多个故障场景各跑多次，分回放和 live 两档，产出成功率表并记录基线，作为后续改动的回归依据。本套件是开发基线，不是 SPEC 所说的 candidate evaluation：不翻任何 `passes`，不支持发布结论。
-范围外：跨模型对比、F14 的 matched baseline、生产观察。
+范围外：被测系统或基线的跨模型对比（D16 的 judge 校准对照不在此列）、F14 的 matched baseline、生产观察。
 
 ## 前提与完成条件
 
@@ -66,9 +66,15 @@
 
 - PR-B 预审（Codex gpt-6-astra，2026-10-14）：[PR-B 合同](2026-10-14-eval-pr-b-contract.md)。用户裁决 B1 = 工具按冻结请求键精确匹配、缺键即 `REPLAY_MISS`；B2 = 冻结证据快照、业务钟固定在录制结束时刻；B3–B8 为 lead 采纳的可逆默认。拆为 PR-B1（持久化边界与表，含 #222）→ PR-B2（录制与回放）→ PR-B3（judge 接入与校准）。
 - PR-B1：分支 `feature/eval-b1-loader`，worktree `../poa-eval-b1`；公开接口 [PR-B1 接口](2026-10-14-eval-pr-b1-interface.md)；代码 `opspilot/evaluation/{codec,storage,baseline}.py`、`rounds.py` 防御。实现 Codex gpt-6.1-sol；独立验收测试由全新上下文 Claude 子 Agent 只按接口编写（`tests/acceptance/test_eval_b1_storage.py`，168 例，歧义 16 条见 `EVAL_B1_AMBIGUITIES.md`），首轮 158/160，两条均为实现偏离接口（异常链、映射键错误码），改实现。独立审查（Codex gpt-6-astra）首轮 fail 4 项 P2：不可能的通过校准仍使基线完成、校准失败时 loader 仍公布 100% 通过率、解析异常链携带原始值、清理失败暴露路径；均改实现、测试作者补测。lead 裁决 r2：校准联合约束只对 `passed=True` 生效（失败 DTO 不抬高通过率，保留 I:99 兼容，PR-A 与 B1 既有断言未改）。复验 pass，三组 pytest 1026 passed；实现者 `make check` 4994 passed、1054 skipped、2 xfailed。无模型、网络或 PG 调用。
-- PR-B3：分支 `feature/eval-b3-judge`，worktree `../poa-eval-b3`；公开接口 [PR-B3 接口](2026-10-14-eval-pr-b3-interface.md)（r4）；代码 `opspilot/evaluation/{judge,calibration_flow}.py`，不改产品代码。实现 Codex gpt-6.1-sol，全部离线、假 transport；`.env.judge` 0600 白名单加载、零重试、三家 adapter 固定身份（OpenAI 对照 `gpt-6.1-sol`，官方 API 名待首次真实校准核实）、P6 代码复核、P7 盲标包冻结与 D16 选择记录（需用户裁决时停在 pending）。验收测试由全新上下文 Claude 子 Agent 只按接口编写（`tests/acceptance/test_eval_b3_judge.py`，311 例，歧义见 `EVAL_B3_AMBIGUITIES.md`）。独立审查（Codex gpt-6-astra）首审 fail 1 P1 + 4 P2（camelCase 凭据槽进入 judge、异常链带密钥、transport 错误码未白名单、任意 OpenAI 模型可冒充 Sol、篡改汇总可得认证），修复后复验 pass。真实 P7 校准未执行：需私有 `.env.judge` 与真实 Run 报告样本（盲标两份 + 用户裁决分歧）。
+  - PR #224 机器人四轮 P1/P2 均采纳修复：D5 布局不符报 `BASELINE_LAYOUT_MISMATCH`；版本与重复序号按精确 PlannedSlot 集合核对；存储边界复用 `validate_scenario()`；`_publish` 发布前校验 ref 路径。两次合入 main 后三组 1099 passed，`make check` 5247 passed、1255 skipped、2 xfailed。
+- PR-B2：分支 `feature/eval-b2-replay`，worktree `../poa-eval-b2`；公开接口 [PR-B2 接口](2026-10-14-eval-pr-b2-interface.md)；代码 `opspilot/evaluation/{recording,replay,tool_provenance}.py`；产品挂点只加默认 `None` 的 `capture_http`（client.py）与 `capture_delivery`（loop.py），`tools/executor.py` 两段提示文案纯抽取为函数，默认路径字节不变。实现 Codex gpt-6.1-sol；验收测试由全新上下文 Claude 子 Agent 只按接口编写（`tests/acceptance/test_eval_b2_replay.py`，歧义 23 条见 `EVAL_B2_AMBIGUITIES.md`）。
+  - 独立审查（Codex gpt-6-astra）首审 3 项 P2，此后复验 5 轮逐项修复：跨事件身份与窗口关联（lead 更正：窗口相等只适用已执行查询，loop 前的 refusal 须可录）；dispatched=true 无证据却带数据；`RESULT_TOO_LARGE` 提示按产品模板逐字重建；无证据 query 锚定冻结请求参数。
+  - 用户裁决 2026-10-14「受约束审计事实」：无证据或未执行的结果只接受白名单字段，身份、query、上限、提示从录制前冻结的 ToolSnapshot（工具注册与 QueryScope，纳入 manifest hash）重建逐字比对，状态与时间按词表、阶段与钟窗约束，其余字段报 `IDENTITY_MISMATCH`。测试夹具随之迁移到真实执行器加冻结快照，断言未改，另补未篡改对照证明反例非空洞。
+  - 最终复验 fail 1 项新类别 P2（模型响应后补快照仍判完整）；用户选择再修一轮：record 入口锁定配置字节基线，事后替换即拒。定向复验 pass（24 种绕过与 7 类回放替换均拒）。合入 B1 后九组 1638 passed，gitleaks 无发现。
+  - PR #229：真实 Run 证据 [eval-b2-live](../evidence/eval-b2-live/README.md)：默认路径 Run 正常；首次录制 Run 发现 view-token 拒绝写实际查询窗、与 B2 窗口规则冲突（lead 裁决按已校验 query 重建后接受，定向复验 pass）；复跑录制 complete、结构回放通过，三次 Run 余额差约 0.26 CNY（可能未全部入账）。机器人 6 轮：前 5 轮均修（reasoning 角色绑定、close/fsync 归一、context 全字段冻结、sticky 回放分类、带证据结果核对冻结快照与通用不变量、outcome 证据 ID 绑定已交付证据、工具调用按参数配对；第 5 轮用户裁决再修），第 6 轮两项按停机规则转 #234 随 PR-C。已合并（#229，2026-10-14）。live driver 缺 capture_delivery 注入点与公开注册 DTO，留 PR-C。
+- PR-B3：分支 `feature/eval-b3-judge`，worktree `../poa-eval-b3`；公开接口 [PR-B3 接口](2026-10-14-eval-pr-b3-interface.md)（r7）；代码 `opspilot/evaluation/{judge,calibration_flow}.py`，不改产品代码。实现 Codex gpt-6.1-sol，全部离线、假 transport；`.env.judge` 0600 白名单加载、零重试、三家 adapter 固定身份（OpenAI 对照 `gpt-6.1-sol`，官方 API 名待首次真实校准核实）、P6 代码复核、P7 盲标包冻结与 D16 选择记录（需用户裁决时停在 pending）。验收测试由全新上下文 Claude 子 Agent 只按接口编写（`tests/acceptance/test_eval_b3_judge.py`，311 例，歧义见 `EVAL_B3_AMBIGUITIES.md`）。独立审查（Codex gpt-6-astra）首审 fail 1 P1 + 4 P2（camelCase 凭据槽进入 judge、异常链带密钥、transport 错误码未白名单、任意 OpenAI 模型可冒充 Sol、篡改汇总可得认证），修复后复验 pass；PR #232 机器人：空 tool_calls 信封（null 视同缺失，待真实调用核实）、目录 fsync、敏感片段按子串 fail-closed 拒绝（六个冻结证据包 103 个键无误伤）均采纳修复。真实 P7 校准未执行：需私有 `.env.judge` 与真实 Run 报告样本（盲标两份 + 用户裁决分歧）。
 - PR-B 可选遗留（审查者）：PR-A `calibrate()` 的 `min_items` 语义允许多于 24 项，与 T:43「24 项、46/48」口径需对齐，不属 B1。
 
 ## 下一步与交接
 
-- PR-A 已合并（#221）；合同 r8 = r7 + D16（#219，GLM-5.3 主候选、GPT-6.1 Sol 对照，待 P7 校准选定）。PR-B 预审已裁决（2026-10-14），拆为 B1 → B2 → B3。B1 即本 PR #224。下一步 PR-B2（录制与回放，分支 `feature/eval-b2-replay`）；PR-B3 judge 接入与校准需私有 `.env.judge`。DeepSeek 已充值（202.15 CNY）。
+- PR-A 已合并（#221）；合同 r8 = r7 + D16（#219，GLM-5.3 主候选、GPT-6.1 Sol 对照，待 P7 校准选定）。PR-B 预审已裁决（2026-10-14），拆为 B1 → B2 → B3。B1、B2 已合并（#224、#229）；PR-B3 judge 接入与校准离线实现见 #232，真实 P7 校准需私有 `.env.judge`、真实 Run 报告样本与盲标裁决。DeepSeek 已充值（202.15 CNY）。
