@@ -13,7 +13,7 @@ OpsPilot 是只读的事故调查 Agent。它不修改目标系统，只在三�
 
 ## 复现步骤
 
-前提：macOS + colima；已 `make setup`；`.env` 里有 `DEEPSEEK_API_KEY`（可选 `LANGSMITH_API_KEY` 看 trace）；宿主可回收内存 ≥ 3 GiB，运行期间不要并行跑其他重负载任务（见「已知限制」）。下面的 `<…>` 都是占位符，凭据不写进命令行历史以外的任何文件。
+前提：macOS + colima；已 `make setup`；`.env` 里有 `DEEPSEEK_API_KEY` 与 `LANGSMITH_API_KEY`（下面的命令按 lab trace 开启写；不要 trace 时去掉 worker 的 `OPSPILOT_TRACE=lab` 与项目准备那一步）；宿主可回收内存 ≥ 3 GiB，运行期间不要并行跑其他重负载任务（见「已知限制」）。下面的 `<…>` 都是占位符，凭据不写进命令行历史以外的任何文件。
 
 ```sh
 # 1. 实验环境：kind + OTel Demo + Prometheus/Alertmanager；首次约 20 分钟
@@ -33,8 +33,8 @@ OPSPILOT_LAB_DSN="$OPSPILOT_DSN" .venv/bin/python -m scripts.m0.postgres_lab run
 set -a; . tmp/m1-kind-lab/prometheus-investigator.env; . tmp/m1-kind-lab/workbench-alertmanager.env; set +a
 OPSPILOT_WEB_DSN="host=127.0.0.1 port=<端口> dbname=m0_budget user=opspilot_web_lab" \
 OPSPILOT_TOOL_PROFILE=otel-demo OPSPILOT_TARGET_IDENTITIES=<targets.json> \
-OPSPILOT_UI_USERS="<审核人>=<hash-password 打印的哈希>" \
-  .venv/bin/python -m opspilot.web serve             # 127.0.0.1:8080，自动观察循环默认开启
+OPSPILOT_UI_USERS='<审核人>=<hash-password 打印的哈希>' \
+  .venv/bin/python -m opspilot.web serve             # 127.0.0.1:8080，自动观察循环默认开启；哈希含 `$`，必须单引号
 #  worker：真实模型 + lab trace（trace 只导出到 `opspilot-lab-` 前缀的项目）
 #  开跑前建立 LangSmith 项目并回读保留期（期望打印 "trace_tier": "longlived"）：
 #  密钥从私有 .env 读取，不出现在命令行或 shell 历史里
