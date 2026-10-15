@@ -1621,6 +1621,25 @@ def _status_for(problem: str) -> ToolStatus:
     return "denied" if problem == "PARAM_NOT_ALLOWED" else "error"
 
 
+def _result_size_message(ceiling: int) -> str:
+    """Fixed gateway text; shared with exact recording validation."""
+    return (
+        f"The result exceeded the {ceiling}-byte limit for this tool. "
+        "Retry with a smaller limit or a narrower window."
+    )
+
+
+def _view_size_message(tokens: int, limit: int) -> str:
+    """Fixed gateway text; source payload never enters this message."""
+    return (
+        f"The tool call result is too large to return: {tokens}/{limit} "
+        "tokens.\n"
+        "Try to repeat the query but proactively narrow down the result "
+        "(a narrower time window, a filter, or a smaller limit) so that "
+        "the tool answer fits within the allowed number of tokens."
+    )
+
+
 def _refusal_detail(reason: str, plan: _Plan) -> Mapping[str, object] | None:
     """B1 review disposition P2: an actionable ``RESULT_TOO_LARGE`` refusal.
 
@@ -1638,10 +1657,7 @@ def _refusal_detail(reason: str, plan: _Plan) -> Mapping[str, object] | None:
     ceiling = plan.registration.max_result_bytes
     return {
         "max_result_bytes": ceiling,
-        "message": (
-            f"The result exceeded the {ceiling}-byte limit for this tool. "
-            "Retry with a smaller limit or a narrower window."
-        ),
+        "message": _result_size_message(ceiling),
     }
 
 
@@ -1666,13 +1682,7 @@ def _view_refusal_detail(
         "query": dict(query),
         "max_view_tokens": limit,
         "view_tokens": tokens,
-        "message": (
-            f"The tool call result is too large to return: {tokens}/{limit} "
-            "tokens.\n"
-            "Try to repeat the query but proactively narrow down the result "
-            "(a narrower time window, a filter, or a smaller limit) so that "
-            "the tool answer fits within the allowed number of tokens."
-        ),
+        "message": _view_size_message(tokens, limit),
     }
 
 

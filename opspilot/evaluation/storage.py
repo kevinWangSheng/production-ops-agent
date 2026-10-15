@@ -169,21 +169,46 @@ def _resolve(ref: ArtifactRef, resolve: Resolver) -> bytes:
     return raw
 
 
+def _local_path(path: Path, *, for_write: bool = False) -> Path:
+    """Normalize filesystem failures; writers validate ref names before IO."""
+    try:
+        absolute = path.absolute()
+        if not for_write:
+            # _publish first enforces the existing ArtifactRef schema; its
+            # subsequent _parent call checks filesystem components here.
+            if "\x00" in os.fspath(absolute):
+                raise ValueError
+            os.fsencode(absolute)
+    except (OSError, ValueError):
+        pass
+    else:
+        return absolute
+    raise StorageError("EVIDENCE_UNAVAILABLE") from None
+
+
 def _parent(path: Path) -> tuple[int, str]:
     """Walk using directory fds so a symlink swap cannot redirect IO."""
-    absolute = path.absolute()
-    descriptor = os.open("/", os.O_RDONLY | os.O_DIRECTORY)
+    absolute = _local_path(path)
+    descriptor = None
+    child = None
     try:
+        descriptor = os.open("/", os.O_RDONLY | os.O_DIRECTORY)
         for part in absolute.parts[1:-1]:
             child = os.open(
                 part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=descriptor
             )
-            os.close(descriptor)
+            if not _close(descriptor):
+                break
             descriptor = child
-        return descriptor, absolute.name
-    except OSError:
+            child = None
+        else:
+            return descriptor, absolute.name
+    except (OSError, ValueError):
         pass
-    _close(descriptor)
+    if child is not None:
+        _close(child)
+    if descriptor is not None:
+        _close(descriptor)
     raise StorageError("EVIDENCE_UNAVAILABLE") from None
 
 
@@ -205,7 +230,7 @@ def _read(path: Path) -> bytes:
         with os.fdopen(descriptor, "rb") as file:
             if stat.S_ISREG(os.fstat(file.fileno()).st_mode):
                 raw = file.read()
-    except OSError:
+    except (OSError, ValueError):
         pass
     finally:
         if not _close(parent):
@@ -216,7 +241,7 @@ def _read(path: Path) -> bytes:
 
 
 def _publish(path: Path, raw: bytes, media_type: str) -> ArtifactRef:
-    path = path.absolute()
+    path = _local_path(path, for_write=True)
     reference = ArtifactRef(path.name, _sha(raw), len(raw), media_type, "private")
     _ref(reference)
     parent, name = _parent(path)
@@ -250,13 +275,13 @@ def _publish(path: Path, raw: bytes, media_type: str) -> ArtifactRef:
             os.fsync(parent)
     except FileExistsError:
         failure = "OUTPUT_EXISTS"
-    except OSError:
+    except (OSError, ValueError):
         failure = "EVIDENCE_UNAVAILABLE"
     finally:
         try:
             if created:
                 os.unlink(temporary, dir_fd=parent)
-        except OSError:
+        except (OSError, ValueError):
             failure = "EVIDENCE_UNAVAILABLE"
         if not _close(parent):
             failure = "EVIDENCE_UNAVAILABLE"
