@@ -42,6 +42,6 @@ r2（2026-10-15 用户裁决 A）：按 U3 字面实现时，已合并的 F13/M1
 
 ## 未完成与待决
 
-- 有界真实 Run（本 PR 改了续接输入，ADR-0006 要求 trace + `summary.json`）：本轮不使用 kind 与真实模型，计划见下，由 lead 排期。
-  - 计划：kind lab 故障注入 → 告警 → 结论发布 → 工作台（8091）追问「检查 payments 依赖」→ 新 Run 发布 → 页面同时显示新结论与历史中的旧结论 → 对旧结论某假设 `correct` → 新 Run 输入可见旧结论标签与纠正文本（LangSmith trace）；冻结页面快照与 `summary.json` 到 `docs/evidence/f12-live/`。
+- 有界真实 Run（本 PR 改了续接输入）：已由 #247 干净重跑补齐一次（运行提交 `0b09559` = main + #238 + 本 PR，代码与本分支一致）。事故 `ae7a0387` 结论发布后工作台 `follow_up` 200，开新 Run `3ed23c95`，其输入带先前报告（`Conclusion: partial` + Summary），跑完发布新结论；记录、trace、冻结 `run-b/summary.json` 见 #248 `docs/evidence/m1-clean-rerun/`。
+  - 原计划中未做：对旧结论 `correct` 后的新 Run、页面历史区快照单独冻结；F12 `passes` 不在本 PR。
 - 已知限制：事故关联纠正（重绑定/合并/拆分）未实现（U6-A）；U4-A 依赖步骤行不被保留策略清理（C3 §11 未确认）。
