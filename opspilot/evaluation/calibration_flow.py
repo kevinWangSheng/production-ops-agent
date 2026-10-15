@@ -299,6 +299,20 @@ def _check_label(item: CalibrationItem, label: BlindLabel) -> None:
         raise JudgeError("CALIBRATION_LABEL_INVALID")
 
 
+def _fsync_directory(path: Path) -> None:
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        try:
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+    except OSError:
+        pass
+    else:
+        return
+    raise JudgeError("ARTIFACT_UNWRITABLE")
+
+
 def _create_directory(path: Path) -> None:
     code: str | None = None
     try:
@@ -309,6 +323,7 @@ def _create_directory(path: Path) -> None:
         code = "ARTIFACT_UNWRITABLE"
     if code is not None:
         raise JudgeError(code)
+    _fsync_directory(path.parent)
 
 
 def _write(path: Path, raw: bytes) -> None:
@@ -325,6 +340,7 @@ def _write(path: Path, raw: bytes) -> None:
         code = "ARTIFACT_UNWRITABLE"
     if code is not None:
         raise JudgeError(code)
+    _fsync_directory(path.parent)
 
 
 def _read(path: Path) -> bytes:

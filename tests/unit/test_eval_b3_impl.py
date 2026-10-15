@@ -3,6 +3,7 @@
 import hashlib
 import json
 import os
+import stat
 from dataclasses import asdict, replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -1325,3 +1326,54 @@ def test_pr232_tool_fields_require_absent_or_null(field, shape):
         assert observation.result.status == "invalid"
         assert not observation.valid and not observation.passed
         assert observation.error_code == "JUDGE_OUTPUT_INVALID"
+
+
+@pytest.mark.parametrize(
+    "stage", ["output_directory", "label_directory", "label_file", "observation_file"]
+)
+def test_pr232_directory_fsync_failure_stops_further_transports(
+    tmp_path, pack, monkeypatch, stage
+):
+    destination = tmp_path / "calibration"
+    label_directory = destination / "label-pack"
+    c = configs()
+    transports = calibration_transports(pack, c)
+    original_fsync = os.fsync
+    calls_at_failure = []
+
+    def fail_directory_fsync(fd):
+        info = os.fstat(fd)
+        if stat.S_ISDIR(info.st_mode):
+            at_output = info.st_ino == tmp_path.stat().st_ino
+            at_run = destination.exists() and info.st_ino == destination.stat().st_ino
+            at_labels = (
+                label_directory.exists()
+                and info.st_ino == label_directory.stat().st_ino
+            )
+            should_fail = (
+                stage == "output_directory"
+                and at_output
+                or stage == "label_directory"
+                and at_run
+                and label_directory.exists()
+                or stage == "label_file"
+                and at_labels
+                and (label_directory / "items.json").exists()
+                or stage == "observation_file"
+                and at_run
+                and (destination / "zai-001.json").exists()
+            )
+            if should_fail:
+                calls_at_failure.append(sum(len(t.calls) for t in transports.values()))
+                raise OSError("SYNTHETIC_DIRECTORY_FSYNC_FAILURE")
+        original_fsync(fd)
+
+    monkeypatch.setattr(os, "fsync", fail_directory_fsync)
+    with pytest.raises(JudgeError, match="ARTIFACT_UNWRITABLE") as caught:
+        run_calibration(pack, configs=c, transports=transports, destination=destination)
+    expected = 1 if stage == "observation_file" else 0
+    assert calls_at_failure == [expected]
+    assert sum(len(t.calls) for t in transports.values()) == expected
+    assert all(not transports[p].calls for p in ("openai", "deepseek"))
+    assert not (destination / "calibration.json").exists()
+    assert caught.value.__cause__ is None and caught.value.__context__ is None

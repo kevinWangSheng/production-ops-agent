@@ -102,3 +102,8 @@ SelectionRecord(status=`selected|pending_user_decision|no_baseline`,selected_pro
 ## r5：PR #232 工具调用字段裁决（2026-10-14，lead裁决）
 
 assistant响应的`tool_calls`、`function_call`等工具调用字段按存在性与null校验：key不存在或值为null视为无工具调用；key存在且值非null一律invalid/JUDGE_OUTPUT_INVALID，包括空数组[]、非空数组/对象及其他假值，不采用真值判断。原因：部分OpenAI兼容端点在无工具调用时显式返回null，拒绝null可能使所有正常响应及校准失败。理由：PR #232 机器人 P2；null 读法待真实调用核实。首次真实调用须核实该端点行为，本次仅用假transport验证。
+
+
+## r6：PR #232 工件目录持久化（2026-10-14，lead裁决）
+
+每次创建输出目录或冻结标签目录后，必须fsync父目录；每次独占创建标签文件、pack.json、provider-NNN.json或calibration.json，必须先flush/fsync文件并关闭，再fsync所在目录，成功后才允许继续下一次调用或返回。目录open/fsync/close失败一律在except外报ARTIFACT_UNWRITABLE，cause/context为空；立即中止流程，不发起后续付费调用，不重试、不回滚/覆盖已有文件。失败可能留下不完整工件，不能因此视为已完成校准。理由：PR #232 机器人 P2；逐次权威工件和冻结标签必须先完成目录项持久化，避免崩溃丢失后继续付费调用。
