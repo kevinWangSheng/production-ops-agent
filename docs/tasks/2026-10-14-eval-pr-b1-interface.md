@@ -49,7 +49,7 @@ read_legacy_summary(path: Path) -> LegacySummary
 write_baseline(round_path: Path, *, resolve: Resolver, destination: Path) -> ArtifactRef
 ```
 
-`path` 是本地输出/输入路径；writer 返回的 ref.path 为文件名，调用方负责包内唯一命名及 resolver 的包根。resolver 接受 ref 返回原始字节，不访问网络。新 reader 会自行核 bytes/SHA，不信 resolver。文件缺失/读错 → EVIDENCE_UNAVAILABLE。函数不写入被读文件。
+`path` 是本地输出/输入路径；writer 返回的 ref.path 为文件名，调用方负责包内唯一命名及 resolver 的包根。resolver 接受 ref 返回原始字节，不访问网络。新 reader 会自行核 bytes/SHA，不信 resolver。文件缺失/读错 → EVIDENCE_UNAVAILABLE。本地 path 的文件系统转换错误（含 NUL/UnicodeEncodeError/ValueError）归一为 EVIDENCE_UNAVAILABLE，正文与异常链不保留路径，目录 fd 清理后再报错；writer 先按第93行验证将返回的 ref，非法叶文件名（含 NUL/不可编码字符）仍为 SCHEMA_INVALID，祖先目录的转换错误才属于写IO失败。理由：PR #224 机器人 P2。函数不写入被读文件。
 
 ## 文件格式（所有列出的字段必填，包括 nullable 字段）
 
