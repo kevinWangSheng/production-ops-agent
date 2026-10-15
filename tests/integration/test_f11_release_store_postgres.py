@@ -1446,6 +1446,17 @@ def test_0014_downgrades_only_when_empty_and_keeps_data_otherwise() -> None:
                                 )
                             normalized.add(privilege)
                         expected[table] = frozenset(normalized)
+                    # 0017 grants the operator suspension writes; below it
+                    # the web role holds the lock-only privileges again.
+                    expected.update(
+                        opspilot_scope_controls=frozenset(
+                            {"SELECT", "UPDATE(scope_id)"}
+                        ),
+                        opspilot_suspension_audit=frozenset(),
+                        opspilot_target_suspensions=frozenset(
+                            {"SELECT", "INSERT(target_id)", "UPDATE(updated_at)"}
+                        ),
+                    )
                 assert catalog_grants(conn, role) == expected, role
 
         schema.command.upgrade(schema._config(scratch), "head")

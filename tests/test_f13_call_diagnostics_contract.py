@@ -355,8 +355,8 @@ def test_d57_output_limit_preserves_other_limits_errors_and_generation_record():
         "MODEL_UNAVAILABLE",
         "OUTPUT_INVALID",
     }
-    assert contract.POSTMORTEM_PROMPT_VERSION == "f13-postmortem-prompt-v4"
-    assert contract.POSTMORTEM_INPUT_POLICY_VERSION == "f13-postmortem-input-v3"
+    assert contract.POSTMORTEM_PROMPT_VERSION == "f13-postmortem-prompt-v5"
+    assert contract.POSTMORTEM_INPUT_POLICY_VERSION == "f13-postmortem-input-v4"
     _, _, knowledge, model = generate([reply()])
     assert len(model.calls) == 1 and model.calls[0].max_tokens == 65_536
     record = knowledge.drafts[0]["content"]["generation"]

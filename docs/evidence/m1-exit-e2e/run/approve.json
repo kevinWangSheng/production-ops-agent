@@ -1,0 +1,70 @@
+{
+  "after": [
+    {
+      "content_sha256": "d4a1df2d2a604244990d3f066ecf28fce1041787fbf575e53136213f07665f10",
+      "state": "approved",
+      "version": 1
+    }
+  ],
+  "at": "2026-10-15 01:23:54.248522-07",
+  "before": [
+    {
+      "content_sha256": "d4a1df2d2a604244990d3f066ecf28fce1041787fbf575e53136213f07665f10",
+      "state": "under_review",
+      "version": 1
+    }
+  ],
+  "expected_generation": 2,
+  "http_body": {
+    "action": "approve",
+    "generation": 3,
+    "incident_id": "d40e777a-9d73-52ed-b86f-6a61dfaf33b0",
+    "postmortem_id": "976dc688-3ed8-4cdf-9dd0-f535d1096b20",
+    "published": {
+      "checkout-payment-charge-error-burst": {
+        "action": "publish",
+        "entry_id": "b35f6683-e1c0-4186-a7d7-b5cdaafb70dc",
+        "generation": 1,
+        "revision": 1
+      },
+      "low-volume-error-ratio-alert-flap": {
+        "action": "publish",
+        "entry_id": "77e950c1-854d-4462-b225-95aec8f1cd6a",
+        "generation": 1,
+        "revision": 1
+      }
+    },
+    "replayed": false,
+    "state": "approved",
+    "version": 1
+  },
+  "http_status": 200,
+  "knowledge_revisions": [
+    {
+      "approved_at": "2026-10-15 01:23:54.231918-07:00",
+      "approved_by": "e2e-lab",
+      "approved_by_kind": "basic_auth",
+      "content_sha256": "c7328aa9b4dcae9c4928cf7382483280d0c6e6b47e99085530cd7c4d20d3d3b8",
+      "entry_id": "b35f6683-e1c0-4186-a7d7-b5cdaafb70dc",
+      "name": "Checkout PlaceOrder failure burst localized to the payment Charge call",
+      "revision": 1,
+      "source_version": 1,
+      "tags": "['checkout', 'payment', 'grpc', 'error-ratio', 'otel-demo']"
+    },
+    {
+      "approved_at": "2026-10-15 01:23:54.233182-07:00",
+      "approved_by": "e2e-lab",
+      "approved_by_kind": "basic_auth",
+      "content_sha256": "1a984136740d03d96ced5989fe49fe3778de6efa1fe5999076c17c1e6ebbce7a",
+      "entry_id": "77e950c1-854d-4462-b225-95aec8f1cd6a",
+      "name": "Error-ratio alert firing on a single-digit span count",
+      "revision": 1,
+      "source_version": 1,
+      "tags": "['alerting', 'error-ratio', 'low-traffic']"
+    }
+  ],
+  "page_has_approve_form": true,
+  "page_status": 200,
+  "postmortem_id": "976dc688-3ed8-4cdf-9dd0-f535d1096b20",
+  "version": 1
+}

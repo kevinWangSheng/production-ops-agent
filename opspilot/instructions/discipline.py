@@ -326,6 +326,7 @@ def prompt_revision(
     run_coverage_template: str = "",
     report_retry_template: str = "",
     alert_context_template: str = "",
+    knowledge_template: str = "",
 ) -> str:
     """``ModelProfile.prompt_revision``：L1a 与 L2 的复合版本（C3 第 5 节）。
 
@@ -347,6 +348,7 @@ def prompt_revision(
                 "run_coverage_template": run_coverage_template,
                 "report_retry_template": report_retry_template,
                 "alert_context_template": alert_context_template,
+                "knowledge_template": knowledge_template,
             }
         ),
     )

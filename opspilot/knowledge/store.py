@@ -56,6 +56,7 @@ from psycopg import errors
 from opspilot.domain.base import DomainError
 from opspilot.domain.knowledge import POSTMORTEM
 from opspilot.knowledge.contract import ATTEMPTS_SHOWN
+from opspilot.knowledge.hints import POLICY_VERSION, bound_entries, hint_content
 from opspilot.persistence.base import Connection, PersistenceError, _StoreBase
 
 PrincipalKind = Literal["basic_auth", "worker"]
@@ -955,6 +956,87 @@ class KnowledgeStore(_StoreBase):
             return result
 
     # --- reads
+
+    def knowledge_for_target(
+        self,
+        resource_uid: str,
+        query_text: str,
+        *,
+        limit: int = 3,
+        max_age_seconds: int,
+    ) -> dict[str, Any]:
+        """Read active hints in a separate read-only snapshot before intake."""
+        if (
+            type(limit) is not int
+            or not 0 <= limit <= 3
+            or type(max_age_seconds) is not int
+            or max_age_seconds < 0
+        ):
+            raise PersistenceError("INVALID_INPUT")
+        with self.transaction(snapshot=True) as conn:
+            clock = conn.execute("SELECT clock_timestamp() AS retrieved_at").fetchone()
+            assert clock is not None
+            retrieved_at = clock["retrieved_at"]
+            rows = conn.execute(
+                "SELECT r.*, p.incident_id AS source_incident_id, "
+                "e.recorded_at AS observation_ended_at, "
+                "floor(extract(epoch FROM (%s - e.recorded_at)))::bigint AS age_seconds "
+                "FROM opspilot_knowledge_revisions r "
+                "JOIN opspilot_knowledge_revision_states s USING (entry_id, revision) "
+                "JOIN opspilot_postmortems p ON p.postmortem_id=r.source_postmortem_id "
+                "JOIN opspilot_incidents i ON i.incident_id=p.incident_id "
+                "JOIN opspilot_targets t ON t.target_id=i.target_id "
+                "JOIN opspilot_postmortem_versions v ON v.postmortem_id=r.source_postmortem_id AND v.version=r.source_version "
+                "JOIN opspilot_observation_endings e ON e.ending_id=v.observation_ending_id "
+                "WHERE t.resource_uid=%s AND s.state='active' "
+                "ORDER BY (floor(extract(epoch FROM (%s - e.recorded_at))) > %s), "
+                "ts_rank(to_tsvector('simple', r.name || ' ' || array_to_string(r.tags, ' ') || ' ' || r.content), "
+                "plainto_tsquery('simple', %s)) DESC, r.approved_at DESC, r.entry_id LIMIT %s",
+                (
+                    retrieved_at,
+                    resource_uid,
+                    retrieved_at,
+                    max_age_seconds,
+                    query_text,
+                    limit,
+                ),
+            ).fetchall()
+            entries = []
+            for row in rows:
+                content, truncated = hint_content(row["content"])
+                entry = {
+                    k: row[k]
+                    for k in (
+                        "revision",
+                        "name",
+                        "tags",
+                        "content_sha256",
+                        "source_version",
+                        "approved_by",
+                        "age_seconds",
+                    )
+                }
+                for key in ("entry_id", "source_incident_id", "source_postmortem_id"):
+                    entry[key] = str(row[key])
+                for key in ("approved_at", "observation_ended_at"):
+                    entry[key] = row[key].isoformat()
+                entry.update(
+                    content=content,
+                    truncated=truncated,
+                    freshness="stale"
+                    if row["age_seconds"] > max_age_seconds
+                    else "fresh",
+                )
+                entries.append(entry)
+            entries, omitted = bound_entries(entries)
+            return dict(
+                policy_version=POLICY_VERSION,
+                status="ok",
+                retrieved_at=retrieved_at.isoformat(),
+                max_age_seconds=max_age_seconds,
+                omitted_for_size=omitted,
+                entries=entries,
+            )
 
     def active_revision(self, entry_id: UUID) -> dict[str, Any] | None:
         """The knowledge read (D3): the entry's ``active`` revision, or

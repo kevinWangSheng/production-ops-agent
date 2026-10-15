@@ -26,6 +26,7 @@ from typing import Any, Literal, Protocol, cast
 from uuid import UUID, uuid4, uuid5
 
 from markupsafe import Markup
+from psycopg import Error as DatabaseError
 from pydantic import ValidationError
 
 from opspilot.acceptance_alert import alert_intake_outcome
@@ -53,6 +54,7 @@ from opspilot.investigation.context import (
     ALERT_CONTEXT,
     CONCLUSION_KIND,
     INPUT_CONTENT_FIELD_MAX_CHARS,
+    KNOWLEDGE,
     ContextError,
     conclusion_publishable,
 )
@@ -73,6 +75,7 @@ from opspilot.investigation.progress import (
 )
 from opspilot.investigation.reports import ReportV2, parse_report
 from opspilot.investigation.store import StepCommitter, StepStoreError
+from opspilot.knowledge.hints import knowledge_checks, unavailable_fact
 from opspilot.observation.store import SelfHealGrant, SelfHealState
 from opspilot.observer.health_profile import HealthProfile, canonical_content
 from opspilot.observer.replay import SessionReplay, replay_history
@@ -252,6 +255,8 @@ class Workbench:
     #: does not list, leaves a bare row and the registration is refused for
     #: lack of identity -- nothing is guessed, and intake never needs it.
     targets: TargetRegistry | None = None
+    knowledge: Any = None
+    knowledge_max_age_seconds: int = 2592000
     _owner: UUID = field(default_factory=uuid4)
 
     # -- intake ---------------------------------------------------------
@@ -505,6 +510,130 @@ class Workbench:
         }
 
     # -- human control --------------------------------------------------
+
+    def controls(self) -> dict[str, Any]:
+        state = self.incidents.suspension_state()
+        targets = []
+        for key in () if self.targets is None else self.targets.keys():
+            identity = self.targets.resolve(key) if self.targets is not None else None
+            if identity is None:
+                raise WorkbenchError("UNKNOWN_TARGET")
+            gate = state["targets"].get(
+                identity.resource_uid,
+                {
+                    "suspended": False,
+                    "generation": 0,
+                },
+            )
+            targets.append({"target_id": key, **gate})
+        return {"global": state["global"], "targets": targets}
+
+    def suspension(
+        self,
+        *,
+        scope: str,
+        target_id: str | None,
+        suspended: bool,
+        expected_generation: int,
+        idempotency_key: str,
+        actor_id: str,
+    ) -> dict[str, Any]:
+        if (
+            scope not in {"global", "target"}
+            or type(suspended) is not bool
+            or type(expected_generation) is not int
+            or expected_generation < 0
+            or (scope == "global" and target_id is not None)
+            or (scope == "target" and not target_id)
+        ):
+            raise WorkbenchError("INVALID_INPUT")
+        try:
+            _reject_ambiguous_identifier(idempotency_key)
+            if not 1 <= len(idempotency_key) <= 256:
+                raise ValueError
+        except ValueError:
+            raise WorkbenchError("INVALID_INPUT") from None
+        identity = None
+        if scope == "target":
+            identity = (
+                self.targets.resolve(target_id)
+                if self.targets is not None and target_id is not None
+                else None
+            )
+            if identity is None:
+                raise WorkbenchError("UNKNOWN_TARGET")
+        intent = {
+            "scope": scope,
+            "target_id": target_id,
+            "suspended": suspended,
+            "expected_generation": expected_generation,
+            "actor_id": actor_id,
+        }
+        stored, inserted = self.ledger.put("suspension_intent", idempotency_key, intent)
+        if not inserted:
+            if dict(stored) != intent:
+                raise WorkbenchError("CONTROL_KEY_CONFLICT")
+            result = self.ledger.get("suspension", idempotency_key)
+            if result is not None:
+                return {**result, "replayed": True}
+            # Another request (or a crash) owns the pending intent. Never
+            # apply it twice: same-value writes also append an audit row.
+            state = self.incidents.suspension_state()
+            gate = (
+                state["global"]
+                if identity is None
+                else state["targets"].get(identity.resource_uid, {"generation": 0})
+            )
+            raise WorkbenchError(
+                "CONTROL_CONFLICT", current_generation=gate["generation"]
+            )
+        try:
+            if identity is None:
+                generation = self.incidents.set_global_suspension(
+                    suspended, expected_generation=expected_generation, actor=actor_id
+                )
+            else:
+                # Registration shares the suspension's transaction: a refused
+                # request leaves no target row behind.
+                generation = self.incidents.set_target_suspension(
+                    None,
+                    suspended,
+                    expected_generation=expected_generation,
+                    actor=actor_id,
+                    resource_uid=identity.resource_uid,
+                )
+        except PersistenceError as exc:
+            code = str(exc)
+            # Only these refusals guarantee no suspension decision committed
+            # (the target INSERT before CONTROL_CONFLICT is rolled back).
+            # Otherwise retain the intent: a lost commit acknowledgement can
+            # hide even a same-value audit INSERT, which must not be repeated.
+            if code in {
+                "CONTROL_CONFLICT",
+                "UNKNOWN_TARGET",
+                "INVALID_INPUT",
+                "IDENTITY_CONFLICT",
+            }:
+                self.ledger.delete("suspension_intent", idempotency_key)
+            if code == "CONTROL_CONFLICT":
+                state = self.incidents.suspension_state()
+                gate = (
+                    state["global"]
+                    if identity is None
+                    else state["targets"].get(identity.resource_uid, {"generation": 0})
+                )
+                raise WorkbenchError(
+                    "CONTROL_CONFLICT", current_generation=gate["generation"]
+                ) from None
+            raise WorkbenchError(code) from None
+        result = {
+            "scope": scope,
+            "target_id": target_id,
+            "suspended": suspended,
+            "generation": generation,
+        }
+        self.ledger.put("suspension", idempotency_key, result)
+        return {**result, "replayed": False}
 
     def control(
         self,
@@ -918,7 +1047,29 @@ class Workbench:
                 fresh,
                 scope_facts={**fresh.scope_facts, ALERT_CONTEXT: dict(alert_context)},
             )
+        if self.knowledge is not None:
+            fresh = replace(
+                fresh,
+                scope_facts={**fresh.scope_facts, KNOWLEDGE: self._knowledge(request)},
+            )
         return fresh.as_json()
+
+    def _knowledge(self, request: IntakeRequest) -> dict[str, Any]:
+        """The approved knowledge a new Run of ``request`` starts with (F13
+        step 4, U5-A): retrieved per Run in its own snapshot; a storage
+        failure records ``unavailable`` instead of blocking the Run (R5)."""
+        try:
+            return cast(
+                dict[str, Any],
+                self.knowledge.knowledge_for_target(
+                    request.target_id,
+                    request.question,
+                    max_age_seconds=self.knowledge_max_age_seconds,
+                ),
+            )
+        except (PersistenceError, DatabaseError, OSError, TimeoutError):
+            _log.warning("knowledge hint retrieval unavailable")
+            return unavailable_fact(self.knowledge_max_age_seconds)
 
     def _successor_input(
         self,
@@ -950,14 +1101,19 @@ class Workbench:
             return None
         request = _envelope_from_json(intake["envelope"]).request
         try:
-            return continuation_input(
+            fresh = continuation_input(
                 snapshot
                 if snapshot is not None
                 else self.incidents.rebuild(summary.incident_id),
                 new_run_id=str(run_id),
                 deadline=deadline,
                 authorized_targets=frozenset({request.target_id}),
-            ).as_json()
+            )
+            facts = dict(fresh.scope_facts)
+            facts.pop(KNOWLEDGE, None)
+            if self.knowledge is not None:
+                facts[KNOWLEDGE] = self._knowledge(request)
+            return replace(fresh, scope_facts=facts).as_json()
         except ContextError as exc:
             if exc.code != "INPUT_MISSING":
                 # Rows this version cannot continue: fail closed with the
@@ -1437,6 +1593,18 @@ class Workbench:
             events, str(run["run_id"]), int(rebuilt["control_generation"]), runnable
         )
         report = _report_view(rebuilt.get("conclusion"))
+        knowledge_view = None
+        input_snapshot = run.get("input") or {}
+        fact = input_snapshot.get("scope_facts", {}).get(KNOWLEDGE)
+        if fact is not None:
+            committed = rebuilt.get("conclusion")
+            parsed_report = None
+            if isinstance(committed, Mapping):
+                content, finish = _committed_report(committed)
+                parsed_report, _ = parse_report(
+                    content, finish_reason=finish or "unknown"
+                )
+            knowledge_view = {**fact, "checks": knowledge_checks(fact, parsed_report)}
         observation_sessions = self.incidents.observation_sessions(incident_id)
         handoff_report = None
         if report is None and outcome is not None and outcome.kind == "run_handoff":
@@ -1459,6 +1627,7 @@ class Workbench:
             "steps": steps,
             "pending_tools": len(rebuilt["pending_tools"]),
             "report": report,
+            "knowledge": knowledge_view,
             "handoff_report": handoff_report,
             "charts": self._charts(incident_id, report or handoff_report),
             "outcome": None if outcome is None else dict(outcome.payload),

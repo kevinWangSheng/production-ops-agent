@@ -609,16 +609,41 @@ def test_the_web_cannot_write_a_draft_or_take_a_lease(harness, web_dsn) -> None:
             )
 
 
-def test_neither_role_may_truncate_or_write_suspensions(web_dsn, worker_dsn) -> None:
+def test_runtime_suspension_write_boundaries(web_dsn, worker_dsn) -> None:
     for dsn in (web_dsn, worker_dsn):
-        for statement in (
+        statements = [
             "TRUNCATE opspilot_web_ledger",
             "UPDATE opspilot_scope_controls SET global_suspended = true",
             "UPDATE opspilot_target_suspensions SET suspended = true",
             "INSERT INTO opspilot_suspension_audit(target_id,suspended,generation,actor) "
             "VALUES (NULL, true, 1, 'forged')",
             "CREATE TABLE opspilot_forged (x int)",
-        ):
+        ]
+        if dsn == web_dsn:
+            statements = [
+                "TRUNCATE opspilot_web_ledger",
+                "CREATE TABLE opspilot_forged (x int)",
+                "SELECT * FROM opspilot_suspension_audit",
+                "UPDATE opspilot_suspension_audit SET actor='forged'",
+                "INSERT INTO opspilot_suspension_audit(audit_id,target_id,suspended,generation,actor) "
+                "OVERRIDING SYSTEM VALUE VALUES (999999, NULL, true, 1, 'forged')",
+                "INSERT INTO opspilot_target_suspensions(target_id,updated_at) "
+                "VALUES (gen_random_uuid(),clock_timestamp())",
+            ]
+            # Exercise exactly the newly permitted column writes; roll back
+            # so this role-boundary test does not change investigation gates.
+            with psycopg.connect(dsn) as conn:
+                conn.execute(
+                    "UPDATE opspilot_scope_controls SET global_suspended=false,global_generation=global_generation"
+                )
+                conn.execute(
+                    "UPDATE opspilot_target_suspensions SET suspended=suspended,generation=generation"
+                )
+                conn.execute(
+                    "INSERT INTO opspilot_suspension_audit(target_id,suspended,generation,actor) VALUES(NULL,false,0,'role-test')"
+                )
+                conn.rollback()
+        for statement in statements:
             with psycopg.connect(dsn) as conn:
                 with pytest.raises(psycopg.errors.InsufficientPrivilege):
                     conn.execute(statement)

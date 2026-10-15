@@ -1,0 +1,4903 @@
+{
+  "schema": "opspilot-lab-summary-1",
+  "experiment": "m1-exit-e2e",
+  "run_id": "98f27b4d-890a-5fdc-ada1-ed4117b0680a",
+  "frozen_at": "2026-10-15T08:24:26.736021+00:00",
+  "round": "m1-exit-e2e-20261015",
+  "scenario": "S1",
+  "versions": {
+    "collector_branch": "chore/m1-exit-e2e",
+    "executed_commit": "8ff4a23",
+    "collector_commit": "8ff4a237e50ffdee15f1e0e236fa1da55a05c366",
+    "schema_head": "0016_release_deadline_evidence",
+    "worker_versions": {
+      "prompt_revision": "prompt-replay-candidate-bdb4914edefa",
+      "tool_schema_revision": "otel-demo-d61d6f2a3b04",
+      "context_policy_revision": "ctx-ctx-policy-v1-a30e65ea52f4"
+    },
+    "tool_profile": "otel-demo",
+    "otel_demo_chart": "0.37.8"
+  },
+  "health_profile": {
+    "path": "otel-demo-checkout.json",
+    "sha256": "95ae4e83f983d0fab78656b4f4b062d033eaf91840a6c3fdeed514209cfb017b",
+    "session": {
+      "deadline_seconds": 3600,
+      "max_samples": 40,
+      "sample_interval_seconds": 60,
+      "sustained_window_seconds": 600
+    }
+  },
+  "lab_actions": [
+    {
+      "at": "2026-10-15T06:39:46.078023+00:00",
+      "action": "inject",
+      "before_sha256": "1ee5c0258e3e13609ecec75979cee286ab00f442d288112e39e3db8433d176c6",
+      "after_sha256": "e47d27c2fa01c72d8bc71d40d0f4223b1049fd84582e5789cbd9a5ccbdcc915d",
+      "live_sha256": "e47d27c2fa01c72d8bc71d40d0f4223b1049fd84582e5789cbd9a5ccbdcc915d",
+      "verified": true
+    },
+    {
+      "at": "2026-10-15T06:49:01.317816+00:00",
+      "action": "restore",
+      "before_sha256": "e47d27c2fa01c72d8bc71d40d0f4223b1049fd84582e5789cbd9a5ccbdcc915d",
+      "after_sha256": "1ee5c0258e3e13609ecec75979cee286ab00f442d288112e39e3db8433d176c6",
+      "live_sha256": "1ee5c0258e3e13609ecec75979cee286ab00f442d288112e39e3db8433d176c6",
+      "verified": true
+    }
+  ],
+  "deliveries": [
+    {
+      "delivery_id": 1,
+      "status": "firing",
+      "outcome": "created",
+      "actor": "alertmanager",
+      "fingerprint": "83f7541ae0105d42",
+      "starts_at": "2026-10-15T06:44:54+00:00",
+      "received_at": "2026-10-15T06:45:53.845834+00:00",
+      "incident_id": "d40e777a-9d73-52ed-b86f-6a61dfaf33b0"
+    },
+    {
+      "delivery_id": 2,
+      "status": "resolved",
+      "outcome": "resolved_attached",
+      "actor": "alertmanager",
+      "fingerprint": "83f7541ae0105d42",
+      "starts_at": "2026-10-15T06:44:54+00:00",
+      "received_at": "2026-10-15T06:52:53.382763+00:00",
+      "incident_id": "d40e777a-9d73-52ed-b86f-6a61dfaf33b0"
+    }
+  ],
+  "incident": {
+    "incident_id": "d40e777a-9d73-52ed-b86f-6a61dfaf33b0",
+    "lifecycle": "open",
+    "state": "queued",
+    "mode": "automatic",
+    "control_generation": 0,
+    "observation_generation": 1,
+    "current_run_id": "98f27b4d-890a-5fdc-ada1-ed4117b0680a",
+    "target_id": "0f042187-1d12-4e20-b0d7-95d0fa5408eb",
+    "created_at": "2026-10-15T06:45:53.905026+00:00",
+    "has_conclusion": true
+  },
+  "investigation": {
+    "runs": [
+      {
+        "run_id": "98f27b4d-890a-5fdc-ada1-ed4117b0680a",
+        "state": "completed",
+        "control_generation": 0,
+        "budget_spent": 8,
+        "tool_operations_used": 19,
+        "tool_seconds_used": 2.2722033311147243,
+        "versions": {
+          "prompt_revision": "prompt-replay-candidate-bdb4914edefa",
+          "tool_schema_revision": "otel-demo-d61d6f2a3b04",
+          "context_policy_revision": "ctx-ctx-policy-v1-a30e65ea52f4"
+        },
+        "deadline": "2026-10-15T08:45:53.877571+00:00"
+      }
+    ],
+    "decision": "report_available",
+    "handoff_reasons": [],
+    "evidence_ids": 16,
+    "report": {
+      "assessment_status": "completed",
+      "conclusion": "partial",
+      "summary": "The alert is firing on a real, current breach of its condition: over the 5 minutes ending 2026-10-15T06:45:53Z the checkout PlaceOrder server-span series shows 3.75 error spans and 0 non-error (UNSET) spans, i.e. an observed error ratio of 1.0 (evidence 59f3c353-859b-409a-bd26-91edcef8684e-t0:f9cd66f8-9534-4f0c-a93f-25b91f989ad3, 59f3c353-859b-409a-bd26-91edcef8684e-t1:ef54838f-79fb-46cd-b9e2-887528f24506), which matches the alert's >0.5 condition and its '100%' annotation. The burst is only a few minutes old (error rate 0 up to the 06:40:54 evaluation, nonzero from 06:41:54), and it is localized to the checkout->payment charge step: the only error spans attributed to checkout in the hour are PlaceOrder (server, 3.05) and its outgoing oteldemo.PaymentService/Charge client span (3.05), while the payment service's own grpc.oteldemo.PaymentService/Charge server span recorded 5.08 errors versus 0 in the preceding hour. Trace error details show payment throwing an application error from /usr/src/app/charge.js:37 ('Payment request failed. Invalid token. app.loyalty.level=gold'), which checkout surfaces as gRPC status 2/13 and 500s through frontend, frontend-proxy and load-generator. The immediate mechanism of the firing is therefore well supported, but what makes payment reject charges is not established: the ~1–11 ms failures with no failing child span point to an in-process thrown error (consistent with a flag/injection-style fault, given the loyalty-level text and a single flagd ResolveFloat evaluation from payment in this hour), yet no flag value, configuration or change event was observed, and the observed flag-evaluation count (~1) is far below the failure count (>=5). The signal is also drawn from a very small denominator (~4 error spans in 5 minutes; ~6-7 PlaceOrder spans per 5 minutes typically) and had a similar unexplained excursion around 20:05-20:30 UTC on 2026-10-14."
+    }
+  },
+  "automatic_decisions": [
+    {
+      "incident_id": "d40e777a-9d73-52ed-b86f-6a61dfaf33b0",
+      "control_generation": 0,
+      "state": "authorized",
+      "reason": null,
+      "attempts": 0,
+      "next_attempt_at": null,
+      "session_id": "b9515b54-dd8f-5dab-9aad-f76fe2118d8c",
+      "created_at": "2026-10-15T06:48:53.756168+00:00",
+      "updated_at": "2026-10-15T06:48:53.756168+00:00"
+    }
+  ],
+  "controls": [
+    {
+      "audit_id": "8848b2d3-1dd3-46b7-86d6-42f0dcd1ea4d",
+      "incident_id": "d40e777a-9d73-52ed-b86f-6a61dfaf33b0",
+      "action": "auto_authorize_observation",
+      "expected_generation": 0,
+      "resulting_generation": 0,
+      "actor": "system",
+      "payload": {
+        "trigger": "published",
+        "revision": null,
+        "session_id": "b9515b54-dd8f-5dab-9aad-f76fe2118d8c",
+        "deadline_at": "2026-10-15T00:48:53.735060-07:00",
+        "authorization_source": "automatic",
+        "health_profile_revision": "otel-demo-checkout@b72bbe2e30be"
+      },
+      "created_at": "2026-10-15T06:48:53.754692+00:00"
+    }
+  ],
+  "sessions": [
+    {
+      "session_id": "b9515b54-dd8f-5dab-9aad-f76fe2118d8c",
+      "authorization_source": "automatic",
+      "authorized_by": "system",
+      "target": {
+        "revision": null,
+        "namespace": "otel-demo",
+        "cluster_uid": "c8001471-8b7b-4449-83c0-924e6f46b857",
+        "resource_uid": "m0-otel-20260909",
+        "integration_id": "m0-otel-20260909"
+      },
+      "state": "expired",
+      "ended_reason": "max_samples_exhausted",
+      "authorized_at": "2026-10-15T06:48:53.752607+00:00",
+      "deadline_at": "2026-10-15T07:48:53.735060+00:00",
+      "max_samples": 40,
+      "sample_interval_seconds": 60,
+      "sustained_window_seconds": 600,
+      "adopted_count": 40,
+      "healthy_since": "2026-10-15T07:22:08.107841+00:00",
+      "health_profile_revision": "otel-demo-checkout@b72bbe2e30be",
+      "samples": [
+        {
+          "sequence": 1,
+          "window_end": "2026-10-15T06:49:57.956494+00:00",
+          "outcome": "degraded",
+          "disposition": "adopted",
+          "health_basis": "outcome_not_healthy",
+          "transition": null,
+          "readings": {
+            "dependency_deployments_available": [
+              "ok",
+              8.0,
+              5
+            ],
+            "dependency_error_ratio": [
+              "ok",
+              0.16666666666666666,
+              5
+            ],
+            "deployment_available_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_available_replicas_min_in_window": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_ready_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "error_ratio": [
+              "ok",
+              1.0,
+              5
+            ],
+            "latency_p95_milliseconds": [
+              "ok",
+              95.0,
+              5
+            ],
+            "request_rate_per_second": [
+              "ok",
+              0.008333368055700232,
+              5
+            ]
+          }
+        },
+        {
+          "sequence": 2,
+          "window_end": "2026-10-15T06:50:58.357278+00:00",
+          "outcome": "degraded",
+          "disposition": "adopted",
+          "health_basis": "outcome_not_healthy",
+          "transition": null,
+          "readings": {
+            "dependency_deployments_available": [
+              "ok",
+              8.0,
+              5
+            ],
+            "dependency_error_ratio": [
+              "ok",
+              0.08695652173913043,
+              5
+            ],
+            "deployment_available_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_available_replicas_min_in_window": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_ready_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "error_ratio": [
+              "ok",
+              0.6666666666666666,
+              5
+            ],
+            "latency_p95_milliseconds": [
+              "ok",
+              740.0,
+              5
+            ],
+            "request_rate_per_second": [
+              "ok",
+              0.0125,
+              5
+            ]
+          }
+        },
+        {
+          "sequence": 3,
+          "window_end": "2026-10-15T06:51:58.647945+00:00",
+          "outcome": "degraded",
+          "disposition": "adopted",
+          "health_basis": "outcome_not_healthy",
+          "transition": null,
+          "readings": {
+            "dependency_deployments_available": [
+              "ok",
+              8.0,
+              5
+            ],
+            "dependency_error_ratio": [
+              "ok",
+              0.01639344262295082,
+              5
+            ],
+            "deployment_available_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_available_replicas_min_in_window": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_ready_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "error_ratio": [
+              "ok",
+              0.16666666666666669,
+              5
+            ],
+            "latency_p95_milliseconds": [
+              "ok",
+              679.9999999999999,
+              5
+            ],
+            "request_rate_per_second": [
+              "ok",
+              0.02499989583376736,
+              5
+            ]
+          }
+        },
+        {
+          "sequence": 4,
+          "window_end": "2026-10-15T06:52:58.962929+00:00",
+          "outcome": "degraded",
+          "disposition": "adopted",
+          "health_basis": "outcome_not_healthy",
+          "transition": null,
+          "readings": {
+            "dependency_deployments_available": [
+              "ok",
+              8.0,
+              5
+            ],
+            "dependency_error_ratio": [
+              "ok",
+              0.01639344262295082,
+              5
+            ],
+            "deployment_available_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_available_replicas_min_in_window": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_ready_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "error_ratio": [
+              "ok",
+              0.16666666666666669,
+              5
+            ],
+            "latency_p95_milliseconds": [
+              "ok",
+              679.9999999999999,
+              5
+            ],
+            "request_rate_per_second": [
+              "ok",
+              0.024999999999999998,
+              5
+            ]
+          }
+        },
+        {
+          "sequence": 5,
+          "window_end": "2026-10-15T06:53:59.175317+00:00",
+          "outcome": "degraded",
+          "disposition": "adopted",
+          "health_basis": "outcome_not_healthy",
+          "transition": null,
+          "readings": {
+            "dependency_deployments_available": [
+              "ok",
+              8.0,
+              5
+            ],
+            "dependency_error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "deployment_available_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_available_replicas_min_in_window": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_ready_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "latency_p95_milliseconds": [
+              "ok",
+              659.9999999999999,
+              5
+            ],
+            "request_rate_per_second": [
+              "ok",
+              0.029166545139395254,
+              5
+            ]
+          }
+        },
+        {
+          "sequence": 6,
+          "window_end": "2026-10-15T06:54:59.405427+00:00",
+          "outcome": "healthy",
+          "disposition": "adopted",
+          "health_basis": "confirmed",
+          "transition": null,
+          "readings": {
+            "dependency_deployments_available": [
+              "ok",
+              8.0,
+              5
+            ],
+            "dependency_error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "deployment_available_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_available_replicas_min_in_window": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_ready_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "latency_p95_milliseconds": [
+              "ok",
+              191.25,
+              5
+            ],
+            "request_rate_per_second": [
+              "ok",
+              0.02916642361313656,
+              5
+            ]
+          }
+        },
+        {
+          "sequence": 7,
+          "window_end": "2026-10-15T06:55:59.694591+00:00",
+          "outcome": "healthy",
+          "disposition": "adopted",
+          "health_basis": "confirmed",
+          "transition": null,
+          "readings": {
+            "dependency_deployments_available": [
+              "ok",
+              8.0,
+              5
+            ],
+            "dependency_error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "deployment_available_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_available_replicas_min_in_window": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_ready_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "latency_p95_milliseconds": [
+              "ok",
+              195.0,
+              5
+            ],
+            "request_rate_per_second": [
+              "ok",
+              0.016666736111400463,
+              5
+            ]
+          }
+        },
+        {
+          "sequence": 8,
+          "window_end": "2026-10-15T06:56:59.931364+00:00",
+          "outcome": "healthy",
+          "disposition": "adopted",
+          "health_basis": "confirmed",
+          "transition": null,
+          "readings": {
+            "dependency_deployments_available": [
+              "ok",
+              8.0,
+              5
+            ],
+            "dependency_error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "deployment_available_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_available_replicas_min_in_window": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_ready_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "latency_p95_milliseconds": [
+              "ok",
+              195.0,
+              5
+            ],
+            "request_rate_per_second": [
+              "ok",
+              0.016666527778935177,
+              5
+            ]
+          }
+        },
+        {
+          "sequence": 9,
+          "window_end": "2026-10-15T06:58:00.261289+00:00",
+          "outcome": "healthy",
+          "disposition": "adopted",
+          "health_basis": "confirmed",
+          "transition": null,
+          "readings": {
+            "dependency_deployments_available": [
+              "ok",
+              8.0,
+              5
+            ],
+            "dependency_error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "deployment_available_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_available_replicas_min_in_window": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_ready_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "latency_p95_milliseconds": [
+              "ok",
+              195.0,
+              5
+            ],
+            "request_rate_per_second": [
+              "ok",
+              0.0125,
+              5
+            ]
+          }
+        },
+        {
+          "sequence": 10,
+          "window_end": "2026-10-15T06:59:00.662905+00:00",
+          "outcome": "healthy",
+          "disposition": "adopted",
+          "health_basis": "confirmed",
+          "transition": null,
+          "readings": {
+            "dependency_deployments_available": [
+              "ok",
+              8.0,
+              5
+            ],
+            "dependency_error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "deployment_available_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_available_replicas_min_in_window": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_ready_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "latency_p95_milliseconds": [
+              "ok",
+              195.0,
+              5
+            ],
+            "request_rate_per_second": [
+              "ok",
+              0.012500104167534727,
+              5
+            ]
+          }
+        },
+        {
+          "sequence": 11,
+          "window_end": "2026-10-15T07:00:00.907541+00:00",
+          "outcome": "healthy",
+          "disposition": "adopted",
+          "health_basis": "confirmed",
+          "transition": null,
+          "readings": {
+            "dependency_deployments_available": [
+              "ok",
+              8.0,
+              5
+            ],
+            "dependency_error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "deployment_available_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_available_replicas_min_in_window": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_ready_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "latency_p95_milliseconds": [
+              "ok",
+              195.0,
+              5
+            ],
+            "request_rate_per_second": [
+              "ok",
+              0.008333298611255787,
+              5
+            ]
+          }
+        },
+        {
+          "sequence": 12,
+          "window_end": "2026-10-15T07:01:01.120761+00:00",
+          "outcome": "degraded",
+          "disposition": "adopted",
+          "health_basis": "outcome_not_healthy",
+          "transition": null,
+          "readings": {
+            "dependency_deployments_available": [
+              "ok",
+              8.0,
+              5
+            ],
+            "dependency_error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "deployment_available_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_available_replicas_min_in_window": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_ready_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "latency_p95_milliseconds": [
+              "ok",
+              699.9999999999999,
+              5
+            ],
+            "request_rate_per_second": [
+              "ok",
+              0.0207958142185141,
+              5
+            ]
+          }
+        },
+        {
+          "sequence": 13,
+          "window_end": "2026-10-15T07:02:01.340288+00:00",
+          "outcome": "degraded",
+          "disposition": "adopted",
+          "health_basis": "outcome_not_healthy",
+          "transition": null,
+          "readings": {
+            "dependency_deployments_available": [
+              "ok",
+              8.0,
+              5
+            ],
+            "dependency_error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "deployment_available_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_available_replicas_min_in_window": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_ready_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "latency_p95_milliseconds": [
+              "ok",
+              659.9999999999999,
+              5
+            ],
+            "request_rate_per_second": [
+              "ok",
+              0.02917456811219705,
+              5
+            ]
+          }
+        },
+        {
+          "sequence": 14,
+          "window_end": "2026-10-15T07:03:01.738487+00:00",
+          "outcome": "degraded",
+          "disposition": "adopted",
+          "health_basis": "outcome_not_healthy",
+          "transition": null,
+          "readings": {
+            "dependency_deployments_available": [
+              "ok",
+              8.0,
+              5
+            ],
+            "dependency_error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "deployment_available_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_available_replicas_min_in_window": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_ready_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "latency_p95_milliseconds": [
+              "ok",
+              679.9999999999998,
+              5
+            ],
+            "request_rate_per_second": [
+              "ok",
+              0.02500656422310856,
+              5
+            ]
+          }
+        },
+        {
+          "sequence": 15,
+          "window_end": "2026-10-15T07:04:02.379106+00:00",
+          "outcome": "degraded",
+          "disposition": "adopted",
+          "health_basis": "outcome_not_healthy",
+          "transition": null,
+          "readings": {
+            "dependency_deployments_available": [
+              "ok",
+              8.0,
+              5
+            ],
+            "dependency_error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "deployment_available_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_available_replicas_min_in_window": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_ready_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "latency_p95_milliseconds": [
+              "ok",
+              1670.0,
+              5
+            ],
+            "request_rate_per_second": [
+              "ok",
+              0.045845749890595366,
+              5
+            ]
+          }
+        },
+        {
+          "sequence": 16,
+          "window_end": "2026-10-15T07:05:02.738846+00:00",
+          "outcome": "degraded",
+          "disposition": "adopted",
+          "health_basis": "outcome_not_healthy",
+          "transition": null,
+          "readings": {
+            "dependency_deployments_available": [
+              "ok",
+              8.0,
+              5
+            ],
+            "dependency_error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "deployment_available_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_available_replicas_min_in_window": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_ready_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "latency_p95_milliseconds": [
+              "ok",
+              1759.9999999999995,
+              5
+            ],
+            "request_rate_per_second": [
+              "ok",
+              0.033402783286917384,
+              5
+            ]
+          }
+        },
+        {
+          "sequence": 17,
+          "window_end": "2026-10-15T07:06:03.067076+00:00",
+          "outcome": "degraded",
+          "disposition": "adopted",
+          "health_basis": "outcome_not_healthy",
+          "transition": null,
+          "readings": {
+            "dependency_deployments_available": [
+              "ok",
+              8.0,
+              5
+            ],
+            "dependency_error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "deployment_available_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_available_replicas_min_in_window": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_ready_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "latency_p95_milliseconds": [
+              "ok",
+              1820.0,
+              5
+            ],
+            "request_rate_per_second": [
+              "ok",
+              0.025,
+              5
+            ]
+          }
+        },
+        {
+          "sequence": 18,
+          "window_end": "2026-10-15T07:07:03.488807+00:00",
+          "outcome": "degraded",
+          "disposition": "adopted",
+          "health_basis": "outcome_not_healthy",
+          "transition": null,
+          "readings": {
+            "dependency_deployments_available": [
+              "ok",
+              8.0,
+              5
+            ],
+            "dependency_error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "deployment_available_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_available_replicas_min_in_window": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_ready_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "latency_p95_milliseconds": [
+              "ok",
+              1789.9999999999998,
+              5
+            ],
+            "request_rate_per_second": [
+              "ok",
+              0.029166909724247698,
+              5
+            ]
+          }
+        },
+        {
+          "sequence": 19,
+          "window_end": "2026-10-15T07:08:03.729509+00:00",
+          "outcome": "healthy",
+          "disposition": "adopted",
+          "health_basis": "confirmed",
+          "transition": null,
+          "readings": {
+            "dependency_deployments_available": [
+              "ok",
+              8.0,
+              5
+            ],
+            "dependency_error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "deployment_available_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_available_replicas_min_in_window": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_ready_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "latency_p95_milliseconds": [
+              "ok",
+              370.0,
+              5
+            ],
+            "request_rate_per_second": [
+              "ok",
+              0.01249947918836715,
+              5
+            ]
+          }
+        },
+        {
+          "sequence": 20,
+          "window_end": "2026-10-15T07:09:04.023296+00:00",
+          "outcome": "healthy",
+          "disposition": "adopted",
+          "health_basis": "confirmed",
+          "transition": null,
+          "readings": {
+            "dependency_deployments_available": [
+              "ok",
+              8.0,
+              5
+            ],
+            "dependency_error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "deployment_available_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_available_replicas_min_in_window": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_ready_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "latency_p95_milliseconds": [
+              "ok",
+              370.0,
+              5
+            ],
+            "request_rate_per_second": [
+              "ok",
+              0.025,
+              5
+            ]
+          }
+        },
+        {
+          "sequence": 21,
+          "window_end": "2026-10-15T07:10:04.351267+00:00",
+          "outcome": "healthy",
+          "disposition": "adopted",
+          "health_basis": "confirmed",
+          "transition": null,
+          "readings": {
+            "dependency_deployments_available": [
+              "ok",
+              8.0,
+              5
+            ],
+            "dependency_error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "deployment_available_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_available_replicas_min_in_window": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_ready_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "latency_p95_milliseconds": [
+              "ok",
+              349.99999999999994,
+              5
+            ],
+            "request_rate_per_second": [
+              "ok",
+              0.020833333333333332,
+              5
+            ]
+          }
+        },
+        {
+          "sequence": 22,
+          "window_end": "2026-10-15T07:11:04.617381+00:00",
+          "outcome": "healthy",
+          "disposition": "adopted",
+          "health_basis": "confirmed",
+          "transition": null,
+          "readings": {
+            "dependency_deployments_available": [
+              "ok",
+              8.0,
+              5
+            ],
+            "dependency_error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "deployment_available_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_available_replicas_min_in_window": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_ready_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "latency_p95_milliseconds": [
+              "ok",
+              375.0,
+              5
+            ],
+            "request_rate_per_second": [
+              "ok",
+              0.020833246528139466,
+              5
+            ]
+          }
+        },
+        {
+          "sequence": 23,
+          "window_end": "2026-10-15T07:12:04.817252+00:00",
+          "outcome": "healthy",
+          "disposition": "adopted",
+          "health_basis": "confirmed",
+          "transition": null,
+          "readings": {
+            "dependency_deployments_available": [
+              "ok",
+              8.0,
+              5
+            ],
+            "dependency_error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "deployment_available_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_available_replicas_min_in_window": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_ready_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "latency_p95_milliseconds": [
+              "ok",
+              380.0,
+              5
+            ],
+            "request_rate_per_second": [
+              "ok",
+              0.016667291690105043,
+              5
+            ]
+          }
+        },
+        {
+          "sequence": 24,
+          "window_end": "2026-10-15T07:13:05.258436+00:00",
+          "outcome": "healthy",
+          "disposition": "adopted",
+          "health_basis": "confirmed",
+          "transition": null,
+          "readings": {
+            "dependency_deployments_available": [
+              "ok",
+              8.0,
+              5
+            ],
+            "dependency_error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "deployment_available_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_available_replicas_min_in_window": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_ready_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "latency_p95_milliseconds": [
+              "ok",
+              359.99999999999994,
+              5
+            ],
+            "request_rate_per_second": [
+              "ok",
+              0.016666597222511573,
+              5
+            ]
+          }
+        },
+        {
+          "sequence": 25,
+          "window_end": "2026-10-15T07:14:05.666937+00:00",
+          "outcome": "healthy",
+          "disposition": "adopted",
+          "health_basis": "confirmed",
+          "transition": null,
+          "readings": {
+            "dependency_deployments_available": [
+              "ok",
+              8.0,
+              5
+            ],
+            "dependency_error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "deployment_available_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_available_replicas_min_in_window": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_ready_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "latency_p95_milliseconds": [
+              "ok",
+              194.0,
+              5
+            ],
+            "request_rate_per_second": [
+              "ok",
+              0.025000104167100697,
+              5
+            ]
+          }
+        },
+        {
+          "sequence": 26,
+          "window_end": "2026-10-15T07:15:05.960667+00:00",
+          "outcome": "healthy",
+          "disposition": "adopted",
+          "health_basis": "confirmed",
+          "transition": null,
+          "readings": {
+            "dependency_deployments_available": [
+              "ok",
+              8.0,
+              5
+            ],
+            "dependency_error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "deployment_available_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_available_replicas_min_in_window": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_ready_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "latency_p95_milliseconds": [
+              "ok",
+              191.0,
+              5
+            ],
+            "request_rate_per_second": [
+              "ok",
+              0.037500000000000006,
+              5
+            ]
+          }
+        },
+        {
+          "sequence": 27,
+          "window_end": "2026-10-15T07:16:06.257349+00:00",
+          "outcome": "healthy",
+          "disposition": "adopted",
+          "health_basis": "confirmed",
+          "transition": null,
+          "readings": {
+            "dependency_deployments_available": [
+              "ok",
+              8.0,
+              5
+            ],
+            "dependency_error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "deployment_available_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_available_replicas_min_in_window": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_ready_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "latency_p95_milliseconds": [
+              "ok",
+              188.75,
+              5
+            ],
+            "request_rate_per_second": [
+              "ok",
+              0.03750015625065104,
+              5
+            ]
+          }
+        },
+        {
+          "sequence": 28,
+          "window_end": "2026-10-15T07:17:06.480161+00:00",
+          "outcome": "healthy",
+          "disposition": "adopted",
+          "health_basis": "confirmed",
+          "transition": null,
+          "readings": {
+            "dependency_deployments_available": [
+              "ok",
+              8.0,
+              5
+            ],
+            "dependency_error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "deployment_available_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_available_replicas_min_in_window": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_ready_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "latency_p95_milliseconds": [
+              "ok",
+              185.0,
+              5
+            ],
+            "request_rate_per_second": [
+              "ok",
+              0.05000020833420139,
+              5
+            ]
+          }
+        },
+        {
+          "sequence": 29,
+          "window_end": "2026-10-15T07:18:06.800021+00:00",
+          "outcome": "degraded",
+          "disposition": "adopted",
+          "health_basis": "outcome_not_healthy",
+          "transition": null,
+          "readings": {
+            "dependency_deployments_available": [
+              "ok",
+              8.0,
+              5
+            ],
+            "dependency_error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "deployment_available_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_available_replicas_min_in_window": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_ready_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "latency_p95_milliseconds": [
+              "ok",
+              560.0000000000001,
+              5
+            ],
+            "request_rate_per_second": [
+              "ok",
+              0.05,
+              5
+            ]
+          }
+        },
+        {
+          "sequence": 30,
+          "window_end": "2026-10-15T07:19:07.158911+00:00",
+          "outcome": "degraded",
+          "disposition": "adopted",
+          "health_basis": "outcome_not_healthy",
+          "transition": null,
+          "readings": {
+            "dependency_deployments_available": [
+              "ok",
+              8.0,
+              5
+            ],
+            "dependency_error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "deployment_available_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_available_replicas_min_in_window": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_ready_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "latency_p95_milliseconds": [
+              "ok",
+              579.9999999999998,
+              5
+            ],
+            "request_rate_per_second": [
+              "ok",
+              0.04583333333333333,
+              5
+            ]
+          }
+        },
+        {
+          "sequence": 31,
+          "window_end": "2026-10-15T07:20:07.596893+00:00",
+          "outcome": "degraded",
+          "disposition": "adopted",
+          "health_basis": "outcome_not_healthy",
+          "transition": null,
+          "readings": {
+            "dependency_deployments_available": [
+              "ok",
+              8.0,
+              5
+            ],
+            "dependency_error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "deployment_available_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_available_replicas_min_in_window": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_ready_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "latency_p95_milliseconds": [
+              "ok",
+              599.9999999999998,
+              5
+            ],
+            "request_rate_per_second": [
+              "ok",
+              0.041666666666666664,
+              5
+            ]
+          }
+        },
+        {
+          "sequence": 32,
+          "window_end": "2026-10-15T07:21:07.812017+00:00",
+          "outcome": "degraded",
+          "disposition": "adopted",
+          "health_basis": "outcome_not_healthy",
+          "transition": null,
+          "readings": {
+            "dependency_deployments_available": [
+              "ok",
+              8.0,
+              5
+            ],
+            "dependency_error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "deployment_available_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_available_replicas_min_in_window": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_ready_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "latency_p95_milliseconds": [
+              "ok",
+              659.9999999999999,
+              5
+            ],
+            "request_rate_per_second": [
+              "ok",
+              0.02916642361313656,
+              5
+            ]
+          }
+        },
+        {
+          "sequence": 33,
+          "window_end": "2026-10-15T07:22:08.107841+00:00",
+          "outcome": "healthy",
+          "disposition": "adopted",
+          "health_basis": "confirmed",
+          "transition": null,
+          "readings": {
+            "dependency_deployments_available": [
+              "ok",
+              8.0,
+              5
+            ],
+            "dependency_error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "deployment_available_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_available_replicas_min_in_window": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_ready_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "latency_p95_milliseconds": [
+              "ok",
+              195.0,
+              5
+            ],
+            "request_rate_per_second": [
+              "ok",
+              0.020833246528139466,
+              5
+            ]
+          }
+        },
+        {
+          "sequence": 34,
+          "window_end": "2026-10-15T07:23:08.331637+00:00",
+          "outcome": "healthy",
+          "disposition": "adopted",
+          "health_basis": "confirmed",
+          "transition": null,
+          "readings": {
+            "dependency_deployments_available": [
+              "ok",
+              8.0,
+              5
+            ],
+            "dependency_error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "deployment_available_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_available_replicas_min_in_window": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_ready_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "latency_p95_milliseconds": [
+              "ok",
+              191.66666666666666,
+              5
+            ],
+            "request_rate_per_second": [
+              "ok",
+              0.020833333333333332,
+              5
+            ]
+          }
+        },
+        {
+          "sequence": 35,
+          "window_end": "2026-10-15T07:24:08.600418+00:00",
+          "outcome": "healthy",
+          "disposition": "adopted",
+          "health_basis": "confirmed",
+          "transition": null,
+          "readings": {
+            "dependency_deployments_available": [
+              "ok",
+              8.0,
+              5
+            ],
+            "dependency_error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "deployment_available_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_available_replicas_min_in_window": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_ready_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "latency_p95_milliseconds": [
+              "ok",
+              192.5,
+              5
+            ],
+            "request_rate_per_second": [
+              "ok",
+              0.024999895833767362,
+              5
+            ]
+          }
+        },
+        {
+          "sequence": 36,
+          "window_end": "2026-10-15T07:25:08.826018+00:00",
+          "outcome": "healthy",
+          "disposition": "adopted",
+          "health_basis": "confirmed",
+          "transition": null,
+          "readings": {
+            "dependency_deployments_available": [
+              "ok",
+              8.0,
+              5
+            ],
+            "dependency_error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "deployment_available_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_available_replicas_min_in_window": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_ready_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "latency_p95_milliseconds": [
+              "ok",
+              191.25,
+              5
+            ],
+            "request_rate_per_second": [
+              "ok",
+              0.029166909724247698,
+              5
+            ]
+          }
+        },
+        {
+          "sequence": 37,
+          "window_end": "2026-10-15T07:26:09.087866+00:00",
+          "outcome": "healthy",
+          "disposition": "adopted",
+          "health_basis": "confirmed",
+          "transition": null,
+          "readings": {
+            "dependency_deployments_available": [
+              "ok",
+              8.0,
+              5
+            ],
+            "dependency_error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "deployment_available_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_available_replicas_min_in_window": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_ready_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "latency_p95_milliseconds": [
+              "ok",
+              191.0,
+              5
+            ],
+            "request_rate_per_second": [
+              "ok",
+              0.0375,
+              5
+            ]
+          }
+        },
+        {
+          "sequence": 38,
+          "window_end": "2026-10-15T07:27:09.321061+00:00",
+          "outcome": "healthy",
+          "disposition": "adopted",
+          "health_basis": "confirmed",
+          "transition": null,
+          "readings": {
+            "dependency_deployments_available": [
+              "ok",
+              8.0,
+              5
+            ],
+            "dependency_error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "deployment_available_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_available_replicas_min_in_window": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_ready_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "latency_p95_milliseconds": [
+              "ok",
+              192.85714285714286,
+              5
+            ],
+            "request_rate_per_second": [
+              "ok",
+              0.041666840278501156,
+              5
+            ]
+          }
+        },
+        {
+          "sequence": 39,
+          "window_end": "2026-10-15T07:28:09.602867+00:00",
+          "outcome": "healthy",
+          "disposition": "adopted",
+          "health_basis": "confirmed",
+          "transition": null,
+          "readings": {
+            "dependency_deployments_available": [
+              "ok",
+              8.0,
+              5
+            ],
+            "dependency_error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "deployment_available_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_available_replicas_min_in_window": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_ready_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "latency_p95_milliseconds": [
+              "ok",
+              191.66666666666666,
+              5
+            ],
+            "request_rate_per_second": [
+              "ok",
+              0.041666666666666664,
+              5
+            ]
+          }
+        },
+        {
+          "sequence": 40,
+          "window_end": "2026-10-15T07:29:09.903515+00:00",
+          "outcome": "healthy",
+          "disposition": "adopted",
+          "health_basis": "confirmed",
+          "transition": "observation_ended_unconfirmed",
+          "readings": {
+            "dependency_deployments_available": [
+              "ok",
+              8.0,
+              5
+            ],
+            "dependency_error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "deployment_available_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_available_replicas_min_in_window": [
+              "ok",
+              1.0,
+              5
+            ],
+            "deployment_ready_replicas": [
+              "ok",
+              1.0,
+              5
+            ],
+            "error_ratio": [
+              "ok",
+              0.0,
+              5
+            ],
+            "latency_p95_milliseconds": [
+              "ok",
+              192.0,
+              5
+            ],
+            "request_rate_per_second": [
+              "ok",
+              0.03333333333333333,
+              5
+            ]
+          }
+        }
+      ],
+      "endings": [
+        {
+          "ending_id": "897cc27e-c6f4-448f-86a1-f5c335f32481",
+          "session_id": "b9515b54-dd8f-5dab-9aad-f76fe2118d8c",
+          "incident_id": "d40e777a-9d73-52ed-b86f-6a61dfaf33b0",
+          "ended_reason": "max_samples_exhausted",
+          "transition": "observation_ended_unconfirmed",
+          "sample_id": "159e92c5-c050-4d6a-80c2-c78a67ed8b7c",
+          "lifecycle_before": "observing_recovery",
+          "lifecycle_after": "open",
+          "recorded_at": "2026-10-15T07:29:10.017131+00:00",
+          "job_id": "7a480099-8310-482b-a1e1-8ddf0b153b1a",
+          "job_sequence": 40
+        }
+      ]
+    }
+  ],
+  "replay": [
+    {
+      "session_id": "b9515b54-dd8f-5dab-9aad-f76fe2118d8c",
+      "consistent": true,
+      "recovery_verdict": "unknown",
+      "recomputed_verdict": "unknown",
+      "healthy_window_seconds": 421
+    }
+  ],
+  "recovery_outcome": {
+    "scenario_id": "m1-exit-e2e-S1",
+    "subject_id": "d40e777a-9d73-52ed-b86f-6a61dfaf33b0",
+    "incident_lifecycle": "open",
+    "recorded_lifecycle": "open",
+    "incident_mode": "automatic",
+    "target": {
+      "revision": null,
+      "namespace": "otel-demo",
+      "cluster_uid": "c8001471-8b7b-4449-83c0-924e6f46b857",
+      "resource_uid": "m0-otel-20260909",
+      "integration_id": "m0-otel-20260909"
+    },
+    "recovery_confirmed": false,
+    "recovery_verdict": "unknown",
+    "recovery_reasons": [
+      "OBSERVATION_UNCONFIRMED"
+    ],
+    "latest_sample_verdict": "healthy",
+    "healthy_window_seconds": 421,
+    "used_sample_count": 40,
+    "observation_ended": true,
+    "observation_ended_reason": "max_samples_exhausted",
+    "human_interaction": "handoff",
+    "handoff_reasons": [
+      "MAX_SAMPLES_EXHAUSTED",
+      "OBSERVATION_UNCONFIRMED"
+    ],
+    "recovery_profile_revision": "otel-demo-checkout@b72bbe2e30be",
+    "recovery_handled_at": "2026-10-15T06:48:53.752607+00:00",
+    "observation_sessions": [
+      {
+        "session_id": "b9515b54-dd8f-5dab-9aad-f76fe2118d8c",
+        "purpose": "incident_recovery",
+        "subject_control_generation": 0,
+        "observation_generation": 1,
+        "state": "expired",
+        "health_profile_revision": "otel-demo-checkout@b72bbe2e30be",
+        "adopted_sequence": 40,
+        "adopted_window_end": "2026-10-15T07:29:09.903515+00:00",
+        "active_sample_job_id": null,
+        "subject": {
+          "kind": "incident",
+          "id": "d40e777a-9d73-52ed-b86f-6a61dfaf33b0"
+        },
+        "target": {
+          "revision": null,
+          "namespace": "otel-demo",
+          "cluster_uid": "c8001471-8b7b-4449-83c0-924e6f46b857",
+          "resource_uid": "m0-otel-20260909",
+          "integration_id": "m0-otel-20260909"
+        },
+        "authorized": false
+      }
+    ],
+    "observation_authorization": {
+      "session_id": "b9515b54-dd8f-5dab-9aad-f76fe2118d8c",
+      "purpose": "incident_recovery",
+      "subject_control_generation": 0,
+      "observation_generation": 1,
+      "state": "expired",
+      "health_profile_revision": "otel-demo-checkout@b72bbe2e30be",
+      "adopted_sequence": 40,
+      "adopted_window_end": "2026-10-15T07:29:09.903515+00:00",
+      "active_sample_job_id": null,
+      "subject": {
+        "kind": "incident",
+        "id": "d40e777a-9d73-52ed-b86f-6a61dfaf33b0"
+      },
+      "target": {
+        "revision": null,
+        "namespace": "otel-demo",
+        "cluster_uid": "c8001471-8b7b-4449-83c0-924e6f46b857",
+        "resource_uid": "m0-otel-20260909",
+        "integration_id": "m0-otel-20260909"
+      },
+      "authorized": false,
+      "subject_id": "d40e777a-9d73-52ed-b86f-6a61dfaf33b0",
+      "authorization_source": "automatic"
+    },
+    "sample_jobs": [
+      {
+        "job_id": "00df46c6-d91a-4316-a71a-9e02c48cc8b7",
+        "session_id": "b9515b54-dd8f-5dab-9aad-f76fe2118d8c",
+        "sequence": 18
+      },
+      {
+        "job_id": "036cff01-af07-4e4d-9f6b-5b5431bc2452",
+        "session_id": "b9515b54-dd8f-5dab-9aad-f76fe2118d8c",
+        "sequence": 14
+      },
+      {
+        "job_id": "108619b9-4306-4e9c-87d5-77c20036b920",
+        "session_id": "b9515b54-dd8f-5dab-9aad-f76fe2118d8c",
+        "sequence": 37
+      },
+      {
+        "job_id": "136dbc2e-f734-48fc-84d4-537678d62348",
+        "session_id": "b9515b54-dd8f-5dab-9aad-f76fe2118d8c",
+        "sequence": 3
+      },
+      {
+        "job_id": "1ea1e8bb-37e2-4393-955e-90b384166406",
+        "session_id": "b9515b54-dd8f-5dab-9aad-f76fe2118d8c",
+        "sequence": 12
+      },
+      {
+        "job_id": "338f4f14-d430-4828-af5e-48f1ee03977d",
+        "session_id": "b9515b54-dd8f-5dab-9aad-f76fe2118d8c",
+        "sequence": 19
+      },
+      {
+        "job_id": "34b6dd49-fc77-41ee-a539-838a263c1053",
+        "session_id": "b9515b54-dd8f-5dab-9aad-f76fe2118d8c",
+        "sequence": 7
+      },
+      {
+        "job_id": "37fa747a-a3a4-4bc4-80f7-0ac6a2f5c9f8",
+        "session_id": "b9515b54-dd8f-5dab-9aad-f76fe2118d8c",
+        "sequence": 25
+      },
+      {
+        "job_id": "453d1981-e1fa-4ec2-b36e-6357727e4adc",
+        "session_id": "b9515b54-dd8f-5dab-9aad-f76fe2118d8c",
+        "sequence": 4
+      },
+      {
+        "job_id": "465eafef-29f6-4348-8474-913613c3b47e",
+        "session_id": "b9515b54-dd8f-5dab-9aad-f76fe2118d8c",
+        "sequence": 39
+      },
+      {
+        "job_id": "48743cdc-7234-4824-bcc7-2b66408c897a",
+        "session_id": "b9515b54-dd8f-5dab-9aad-f76fe2118d8c",
+        "sequence": 20
+      },
+      {
+        "job_id": "4d886b36-fd9e-4737-b542-da5da000d458",
+        "session_id": "b9515b54-dd8f-5dab-9aad-f76fe2118d8c",
+        "sequence": 33
+      },
+      {
+        "job_id": "56fad306-bcac-4004-b34b-9f19f3929382",
+        "session_id": "b9515b54-dd8f-5dab-9aad-f76fe2118d8c",
+        "sequence": 28
+      },
+      {
+        "job_id": "68353923-0599-423f-bdf4-6517992c684a",
+        "session_id": "b9515b54-dd8f-5dab-9aad-f76fe2118d8c",
+        "sequence": 5
+      },
+      {
+        "job_id": "688fc600-0c7b-48a1-86e0-dddcf7aaa57a",
+        "session_id": "b9515b54-dd8f-5dab-9aad-f76fe2118d8c",
+        "sequence": 11
+      },
+      {
+        "job_id": "7a480099-8310-482b-a1e1-8ddf0b153b1a",
+        "session_id": "b9515b54-dd8f-5dab-9aad-f76fe2118d8c",
+        "sequence": 40
+      },
+      {
+        "job_id": "7bd55ccc-8f23-49a2-909a-16b33bc3dea3",
+        "session_id": "b9515b54-dd8f-5dab-9aad-f76fe2118d8c",
+        "sequence": 13
+      },
+      {
+        "job_id": "85bf4d4b-05fc-4e19-852c-fc35c9fcb17a",
+        "session_id": "b9515b54-dd8f-5dab-9aad-f76fe2118d8c",
+        "sequence": 2
+      },
+      {
+        "job_id": "93c3e1d2-89f1-4c4d-925b-10164f5412a4",
+        "session_id": "b9515b54-dd8f-5dab-9aad-f76fe2118d8c",
+        "sequence": 29
+      },
+      {
+        "job_id": "a0f6e749-44cc-413a-94ba-6c9e5b9bc855",
+        "session_id": "b9515b54-dd8f-5dab-9aad-f76fe2118d8c",
+        "sequence": 38
+      },
+      {
+        "job_id": "a2f47c1d-d79b-4be6-a73c-26f45ec312a0",
+        "session_id": "b9515b54-dd8f-5dab-9aad-f76fe2118d8c",
+        "sequence": 35
+      },
+      {
+        "job_id": "adb751b3-d79c-4a7d-b9d1-fabe1d02d6e3",
+        "session_id": "b9515b54-dd8f-5dab-9aad-f76fe2118d8c",
+        "sequence": 32
+      },
+      {
+        "job_id": "af225426-9a11-41c1-8a9a-a3e3f9db3ced",
+        "session_id": "b9515b54-dd8f-5dab-9aad-f76fe2118d8c",
+        "sequence": 23
+      },
+      {
+        "job_id": "b9c9738b-d83e-42b9-9c0b-a7a352d53654",
+        "session_id": "b9515b54-dd8f-5dab-9aad-f76fe2118d8c",
+        "sequence": 9
+      },
+      {
+        "job_id": "bade9424-7a68-423f-b361-29bab9c429fb",
+        "session_id": "b9515b54-dd8f-5dab-9aad-f76fe2118d8c",
+        "sequence": 1
+      },
+      {
+        "job_id": "bc84d173-86a5-48b4-9082-cf70b82ab351",
+        "session_id": "b9515b54-dd8f-5dab-9aad-f76fe2118d8c",
+        "sequence": 21
+      },
+      {
+        "job_id": "be47b515-9c0b-441e-8d58-8f04ae6d54f1",
+        "session_id": "b9515b54-dd8f-5dab-9aad-f76fe2118d8c",
+        "sequence": 30
+      },
+      {
+        "job_id": "c07ede54-4f2b-4b4d-abea-74f977386211",
+        "session_id": "b9515b54-dd8f-5dab-9aad-f76fe2118d8c",
+        "sequence": 10
+      },
+      {
+        "job_id": "c3c941b5-ab99-4c9a-aa1d-090e48f0fe48",
+        "session_id": "b9515b54-dd8f-5dab-9aad-f76fe2118d8c",
+        "sequence": 31
+      },
+      {
+        "job_id": "cff851ed-e662-4985-b21e-a14873fbf038",
+        "session_id": "b9515b54-dd8f-5dab-9aad-f76fe2118d8c",
+        "sequence": 26
+      },
+      {
+        "job_id": "d144b2f3-7f45-4886-999e-b83ac01b096c",
+        "session_id": "b9515b54-dd8f-5dab-9aad-f76fe2118d8c",
+        "sequence": 34
+      },
+      {
+        "job_id": "d2a097e4-8325-48da-a621-b908ef07a714",
+        "session_id": "b9515b54-dd8f-5dab-9aad-f76fe2118d8c",
+        "sequence": 27
+      },
+      {
+        "job_id": "d3db051b-c3d4-4d01-9008-0c99fc8f0d96",
+        "session_id": "b9515b54-dd8f-5dab-9aad-f76fe2118d8c",
+        "sequence": 24
+      },
+      {
+        "job_id": "d667e8ac-e8ea-47cb-804a-25b60e3b85ca",
+        "session_id": "b9515b54-dd8f-5dab-9aad-f76fe2118d8c",
+        "sequence": 36
+      },
+      {
+        "job_id": "d8c9c011-fd85-401b-80da-16e7bb797353",
+        "session_id": "b9515b54-dd8f-5dab-9aad-f76fe2118d8c",
+        "sequence": 8
+      },
+      {
+        "job_id": "e41c8e1f-e91f-48d1-a252-2a488b13578f",
+        "session_id": "b9515b54-dd8f-5dab-9aad-f76fe2118d8c",
+        "sequence": 16
+      },
+      {
+        "job_id": "e7fc2df6-390b-4cf3-97d5-48f37841a659",
+        "session_id": "b9515b54-dd8f-5dab-9aad-f76fe2118d8c",
+        "sequence": 22
+      },
+      {
+        "job_id": "f039df08-bc92-4893-9ec8-290f95ac2951",
+        "session_id": "b9515b54-dd8f-5dab-9aad-f76fe2118d8c",
+        "sequence": 6
+      },
+      {
+        "job_id": "f3757cf6-d02e-4548-bf01-4838e678931e",
+        "session_id": "b9515b54-dd8f-5dab-9aad-f76fe2118d8c",
+        "sequence": 15
+      },
+      {
+        "job_id": "f6e6c3da-513c-4213-8f6e-234addc5a358",
+        "session_id": "b9515b54-dd8f-5dab-9aad-f76fe2118d8c",
+        "sequence": 17
+      }
+    ],
+    "handling_audit": [
+      {
+        "audit_id": "8848b2d3-1dd3-46b7-86d6-42f0dcd1ea4d",
+        "incident_id": "d40e777a-9d73-52ed-b86f-6a61dfaf33b0",
+        "action": "auto_authorize_observation",
+        "expected_generation": 0,
+        "resulting_generation": 0,
+        "actor": "system",
+        "payload": {
+          "trigger": "published",
+          "revision": null,
+          "session_id": "b9515b54-dd8f-5dab-9aad-f76fe2118d8c",
+          "deadline_at": "2026-10-15T00:48:53.735060-07:00",
+          "authorization_source": "automatic",
+          "health_profile_revision": "otel-demo-checkout@b72bbe2e30be"
+        },
+        "created_at": "2026-10-15T06:48:53.754692+00:00"
+      }
+    ],
+    "actions": [
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "persist_observation",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "persist_observation",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "persist_observation",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "persist_observation",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "persist_observation",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "persist_observation",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "persist_observation",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "persist_observation",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "persist_observation",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "persist_observation",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "persist_observation",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "persist_observation",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "persist_observation",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "persist_observation",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "persist_observation",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "persist_observation",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "persist_observation",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "persist_observation",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "persist_observation",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "persist_observation",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "persist_observation",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "persist_observation",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "persist_observation",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "persist_observation",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "persist_observation",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "persist_observation",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "persist_observation",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "persist_observation",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "persist_observation",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "persist_observation",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "persist_observation",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "persist_observation",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "persist_observation",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "persist_observation",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "persist_observation",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "persist_observation",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "persist_observation",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "persist_observation",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "persist_observation",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "read_only_query",
+      "persist_observation",
+      "advance_incident_lifecycle",
+      "human_handoff"
+    ],
+    "permissions": [
+      "read_only",
+      "database_temp"
+    ],
+    "model_requests": [],
+    "authorization_source": "automatic",
+    "authorization_sources": [
+      "automatic"
+    ],
+    "system_authorizations": [
+      {
+        "audit_id": "8848b2d3-1dd3-46b7-86d6-42f0dcd1ea4d",
+        "incident_id": "d40e777a-9d73-52ed-b86f-6a61dfaf33b0",
+        "action": "auto_authorize_observation",
+        "expected_generation": 0,
+        "resulting_generation": 0,
+        "actor": "system",
+        "payload": {
+          "trigger": "published",
+          "revision": null,
+          "session_id": "b9515b54-dd8f-5dab-9aad-f76fe2118d8c",
+          "deadline_at": "2026-10-15T00:48:53.735060-07:00",
+          "authorization_source": "automatic",
+          "health_profile_revision": "otel-demo-checkout@b72bbe2e30be"
+        },
+        "created_at": "2026-10-15T06:48:53.754692+00:00"
+      }
+    ],
+    "recovery_profile_content_sha256": "b72bbe2e30bea4775790519787da4ce107dbc1500ce87b87a2ee2af3f57cbfa4",
+    "recovery_samples_digest": {
+      "sha256": "0d02517bc5f51868e05400e18149a5fb3cd3c94e7b2a62a41095596ed1336814",
+      "bytes": 384068
+    },
+    "replay_digest": {
+      "sha256": "bd78e4b34de86f8b78a76c30ced6d3d54c30489b36ec30dc80d2f487223b6da1",
+      "bytes": 254137
+    },
+    "action_events_digest": {
+      "sha256": "6d969d3ff99073a4724b03efea2c5542b3aa51c3cdd10ee113139545ef25684a",
+      "bytes": 147645
+    }
+  },
+  "workbench_page": {
+    "status": 200,
+    "bytes": 386096,
+    "sha256": "498172acf7aa9c445b161619dfb0d28f6da3dfa74324e18644dc9f5d53fde823",
+    "shows_recovered_no_remediation": false,
+    "shows_source_automatic": true
+  },
+  "verdicts": {
+    "scenario": "S1",
+    "incident_id": "d40e777a-9d73-52ed-b86f-6a61dfaf33b0",
+    "checked_at": "2026-10-15T00:30:30.407939-07:00",
+    "verdicts": [
+      {
+        "id": "C1",
+        "requirement": "Published current completed Run at incident generation",
+        "expected": true,
+        "actual": {
+          "conclusion_present": true,
+          "run_state": "completed",
+          "current_run_id": "98f27b4d-890a-5fdc-ada1-ed4117b0680a",
+          "run_id": "98f27b4d-890a-5fdc-ada1-ed4117b0680a",
+          "run_incident_id": "d40e777a-9d73-52ed-b86f-6a61dfaf33b0",
+          "incident_generation": 0,
+          "run_generation": 0
+        },
+        "pass": true
+      },
+      {
+        "id": "C2",
+        "requirement": "Exactly one authorized decision linked to one current session",
+        "expected": {
+          "decisions": 1,
+          "sessions": 1,
+          "state": "authorized"
+        },
+        "actual": {
+          "authorizations": [
+            {
+              "incident_id": "d40e777a-9d73-52ed-b86f-6a61dfaf33b0",
+              "control_generation": 0,
+              "state": "authorized",
+              "reason": null,
+              "session_id": "b9515b54-dd8f-5dab-9aad-f76fe2118d8c",
+              "attempts": 0
+            }
+          ],
+          "session_ids": [
+            "b9515b54-dd8f-5dab-9aad-f76fe2118d8c"
+          ]
+        },
+        "pass": true
+      },
+      {
+        "id": "C3",
+        "requirement": "One system authorization preserves current control generation",
+        "expected": 0,
+        "actual": [
+          {
+            "audit_id": "8848b2d3-1dd3-46b7-86d6-42f0dcd1ea4d",
+            "incident_id": "d40e777a-9d73-52ed-b86f-6a61dfaf33b0",
+            "action": "auto_authorize_observation",
+            "expected_generation": 0,
+            "resulting_generation": 0,
+            "actor": "system",
+            "payload": {
+              "trigger": "published",
+              "revision": null,
+              "session_id": "b9515b54-dd8f-5dab-9aad-f76fe2118d8c",
+              "deadline_at": "2026-10-15T00:48:53.735060-07:00",
+              "authorization_source": "automatic",
+              "health_profile_revision": "otel-demo-checkout@b72bbe2e30be"
+            },
+            "created_at": "2026-10-14T23:48:53.754692-07:00"
+          }
+        ],
+        "pass": true
+      },
+      {
+        "id": "C4",
+        "requirement": "No human controls anywhere in incident history",
+        "expected": [],
+        "actual": [],
+        "pass": true
+      },
+      {
+        "id": "C5",
+        "requirement": "Automatic session with explicitly unknown revision at current generation",
+        "expected": {
+          "authorization_source": "automatic",
+          "revision": null,
+          "generation": 0
+        },
+        "actual": {
+          "authorization_source": "automatic",
+          "target": {
+            "revision": null,
+            "namespace": "otel-demo",
+            "cluster_uid": "c8001471-8b7b-4449-83c0-924e6f46b857",
+            "resource_uid": "m0-otel-20260909",
+            "integration_id": "m0-otel-20260909"
+          },
+          "generation": 0
+        },
+        "pass": true
+      },
+      {
+        "id": "C6",
+        "requirement": "F6 automatic source, no human permission or human actions",
+        "expected": {
+          "source": "automatic",
+          "human_actions": [],
+          "human_control": false
+        },
+        "actual": {
+          "source": "automatic",
+          "actions": [
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "persist_observation",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "persist_observation",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "persist_observation",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "persist_observation",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "persist_observation",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "persist_observation",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "persist_observation",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "persist_observation",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "persist_observation",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "persist_observation",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "persist_observation",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "persist_observation",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "persist_observation",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "persist_observation",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "persist_observation",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "persist_observation",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "persist_observation",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "persist_observation",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "persist_observation",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "persist_observation",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "persist_observation",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "persist_observation",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "persist_observation",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "persist_observation",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "persist_observation",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "persist_observation",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "persist_observation",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "persist_observation",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "persist_observation",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "persist_observation",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "persist_observation",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "persist_observation",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "persist_observation",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "persist_observation",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "persist_observation",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "persist_observation",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "persist_observation",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "persist_observation",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "persist_observation",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "read_only_query",
+            "persist_observation",
+            "advance_incident_lifecycle",
+            "human_handoff"
+          ],
+          "permissions": [
+            "read_only",
+            "database_temp"
+          ]
+        },
+        "pass": true
+      },
+      {
+        "id": "C7",
+        "requirement": "All public offline replays consistent; latest agrees with F6",
+        "expected": true,
+        "actual": {
+          "replays": [
+            {
+              "session_id": "b9515b54-dd8f-5dab-9aad-f76fe2118d8c",
+              "consistent": true,
+              "recovery_verdict": "unknown",
+              "integrity": []
+            }
+          ],
+          "f6_replay": {
+            "session_id": "b9515b54-dd8f-5dab-9aad-f76fe2118d8c",
+            "consistent": true,
+            "recovery_verdict": "unknown",
+            "integrity": []
+          }
+        },
+        "pass": true
+      },
+      {
+        "id": "S1-1",
+        "requirement": "Session terminal state and reason",
+        "expected": [
+          "completed",
+          "recovery_confirmed"
+        ],
+        "actual": [
+          "expired",
+          "max_samples_exhausted"
+        ],
+        "pass": false
+      },
+      {
+        "id": "S1-2",
+        "requirement": "Incident lifecycle agrees with public F6 projection",
+        "expected": "resolved",
+        "actual": {
+          "stored": "open",
+          "f6": "open"
+        },
+        "pass": false
+      },
+      {
+        "id": "S1-3",
+        "requirement": "Confirmed recovery with complete frozen profile healthy window",
+        "expected": {
+          "confirmed": true,
+          "minimum_seconds": 600
+        },
+        "actual": {
+          "confirmed": false,
+          "healthy_window_seconds": 421,
+          "session_sustained": 600
+        },
+        "pass": false
+      },
+      {
+        "id": "S1-4",
+        "requirement": "Visible automatic recovery statement and rendered snapshot status",
+        "expected": {
+          "text": "recovered, no remediation recorded",
+          "source": "automatic",
+          "status": "recovered_no_remediation"
+        },
+        "actual": {
+          "projection": {
+            "text": {
+              "excerpt": "Recovery verdict (independent observation; not the investigation's conclusion) session b9515b54-dd8f-5dab-9aad-f76fe2118d8c · source automatic · expired max_samples_exhausted · verdict unknown not confirmed · healthy window 421 s · profile otel-demo-checkout@b72bbe2e30be · authorized at 2026-10-14T23:48:53.752607-07:00 · offline replay: replay consistent reasons: max_samples_exhausted; every required signal is present, fresh and within bounds lifecycle implied by replay: open · recorded with the samples: open # Window Outcome stored → replayed Decision stored Replay 1 2026-10-14T23:44:57.956494-07:00 → 2026-10-14T23:49:57.956494-07:00 submitted 2026-10-14T23:49:58.177568-07:00 degraded required present → degraded required present required signals outside their healthy bound: dependency_error_ratio, error_ratio adopted · adopted · no health (outcome_not_healthy) consistent Signal Status / value / points stored → replayed Verdict Query Window Source Raw sha256 dependency_deployments_available ok / 8.0 / 5 → ok / 8.0 / 5 healthy 8.0 within healthy bound [8.0, 8.0] count(kube_deployment_status_replicas_available{namespace=\"otel-demo\",deployment=~\"payment|cart|valkey-cart|product-catalog|currency|shipping|email|flagd\"} >= 1) 2026-10-14T23:44:57.956494-07:00 → 2026-10-14T23:49:57.956494-07:00 prometheus 611b05267460d68473758d0986f1c01857ffca90ab82c46235d58c2e701c6218 verified dependency_error_ratio ok / 0.16666666666666666 / 5 → ok / 0.16666666666666666 / 5 degraded 0.1666666666666",
+              "contains": {
+                "recovered, no remediation recorded": false,
+                "recovery confirmed": false
+              },
+              "sha256": "e5cd8399ca75d60113075f5d9f6f6517b784004f9e03342f8aae39add6a6bf8e",
+              "bytes": 164004
+            },
+            "sources": [
+              "automatic"
+            ],
+            "statuses": []
+          },
+          "full_in_ledger": {
+            "sha256": "c596106db43b0dda3a39a63402a72ae6968806bc9455f4a0cac2b9e9614db3dd",
+            "bytes": 169253
+          }
+        },
+        "pass": false
+      }
+    ],
+    "all_pass": false
+  },
+  "timeline": {
+    "sha256": "f5f8a701651a4003013b165b978f9ba061139837897f5dd7030cc0c73a26bd52",
+    "bytes": 5601
+  },
+  "postmortem_attempts": [
+    {
+      "attempt_id": "0b417e3f-99ba-40e7-a7d3-14fbef184837",
+      "status": "failed",
+      "version": null,
+      "model": "deepseek-flash",
+      "model_requests": 0,
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "started_at": "2026-10-15T07:29:12.931088+00:00",
+      "finished_at": "2026-10-15T07:29:13.119771+00:00"
+    },
+    {
+      "attempt_id": "9d2d3ca1-51ee-4574-9a12-33f39f18c726",
+      "status": "succeeded",
+      "version": 1,
+      "model": "deepseek-flash",
+      "model_requests": 1,
+      "prompt_tokens": 59414,
+      "completion_tokens": 24860,
+      "started_at": "2026-10-15T08:16:39.366188+00:00",
+      "finished_at": "2026-10-15T08:18:31.347091+00:00"
+    }
+  ],
+  "artifacts": {
+    "docs/evidence/m1-exit-e2e/collect.py": {
+      "sha256": "be08168ccff4fd4a99ae7d37810da3d264c12f49b45c3aa30379fe757d77ed60",
+      "bytes": 18687
+    },
+    "docs/evidence/m1-exit-e2e/verify.py": {
+      "sha256": "2f90b0f75fa8da385cad7cde766f7b2a3948fb52747258137b4156a796e143ff",
+      "bytes": 31715
+    },
+    "docs/evidence/m1-exit-e2e/approve.py": {
+      "sha256": "1e7987157f4a57a498b714354d5963506e8ca88a9354f92173ad1da66dd4a236",
+      "bytes": 4325
+    },
+    "opspilot/observer/profiles/otel-demo-checkout.json": {
+      "sha256": "95ae4e83f983d0fab78656b4f4b062d033eaf91840a6c3fdeed514209cfb017b",
+      "bytes": 11192
+    },
+    "git_diff_head_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "trace": {
+    "project": {
+      "project": "opspilot-lab-m1-exit-e2e-20261015",
+      "project_id": "b1a27f49-b0eb-4ef6-9d79-363801a4ad1f",
+      "trace_tier": "longlived"
+    },
+    "root_runs_found": 1,
+    "traces": [
+      {
+        "name": "opspilot.run",
+        "langsmith_run_id": "00000000-0000-0000-3055-6f91339217a7",
+        "otel_trace_id": "9dda8d8e0fb071e23aeb9abf03312a3a",
+        "business_run_ids": [
+          "98f27b4d-890a-5fdc-ada1-ed4117b0680a"
+        ],
+        "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/b1a27f49-b0eb-4ef6-9d79-363801a4ad1f/r/00000000-0000-0000-3055-6f91339217a7?poll=true",
+        "read_back": "found",
+        "start_time": "2026-10-15 06:45:55.398271+00:00",
+        "end_time": "2026-10-15 06:48:31.153457+00:00",
+        "status": "success",
+        "prompt_tokens": 273925,
+        "completion_tokens": 28185,
+        "child_runs": {
+          "llm": 8,
+          "tool": 19
+        }
+      }
+    ]
+  },
+  "cost": {
+    "before": {
+      "at": "2026-10-15T06:39:10.535912+00:00",
+      "label": "before",
+      "balance": [
+        {
+          "currency": "CNY",
+          "total_balance": "200.39",
+          "granted_balance": "0.00",
+          "topped_up_balance": "200.39"
+        }
+      ]
+    },
+    "after": {
+      "at": "2026-10-15T08:24:03.370362+00:00",
+      "label": "after",
+      "balance": [
+        {
+          "currency": "CNY",
+          "total_balance": "204.76",
+          "granted_balance": "4.73",
+          "topped_up_balance": "200.02"
+        }
+      ]
+    },
+    "all": [
+      {
+        "at": "2026-10-15T06:39:10.535912+00:00",
+        "label": "before",
+        "balance": [
+          {
+            "currency": "CNY",
+            "total_balance": "200.39",
+            "granted_balance": "0.00",
+            "topped_up_balance": "200.39"
+          }
+        ]
+      },
+      {
+        "at": "2026-10-15T07:29:51.399796+00:00",
+        "label": "after-observation",
+        "balance": [
+          {
+            "currency": "CNY",
+            "total_balance": "200.03",
+            "granted_balance": "0.00",
+            "topped_up_balance": "200.03"
+          }
+        ]
+      },
+      {
+        "at": "2026-10-15T08:24:03.370362+00:00",
+        "label": "after",
+        "balance": [
+          {
+            "currency": "CNY",
+            "total_balance": "204.76",
+            "granted_balance": "4.73",
+            "topped_up_balance": "200.02"
+          }
+        ]
+      }
+    ]
+  },
+  "raw_ledger": {
+    "sha256": "d1b0874711f3dcd957c33b3891fa4bc97f9efefed6db22c07573f388c0a3aca7",
+    "bytes": 2717446,
+    "path": "tmp/lab-ledgers/m1-exit-e2e/98f27b4d-890a-5fdc-ada1-ed4117b0680a/ledger.json",
+    "in_repository": false
+  }
+}
