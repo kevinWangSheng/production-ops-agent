@@ -1,0 +1,139 @@
+{
+  "follow_up": {
+    "after": [
+      {
+        "control_generation": 1,
+        "current_run_id": "3ed23c95-2304-5b65-bbbb-d0dabc9a3215",
+        "lifecycle": "open",
+        "state": "queued"
+      }
+    ],
+    "before": {
+      "control_generation": 0,
+      "current_run_id": "49a537d7-7555-518d-96d1-3653c86ad396",
+      "lifecycle": "open"
+    },
+    "http_body": {
+      "action": "follow_up",
+      "generation": 1,
+      "incident_id": "ae7a0387-7cd8-59b3-a8f5-b2395c603759",
+      "replayed": false,
+      "run_id": "3ed23c95-2304-5b65-bbbb-d0dabc9a3215",
+      "sequence": 21
+    },
+    "http_status": 200
+  },
+  "incidents": [
+    {
+      "concluded": true,
+      "control_generation": 0,
+      "current_run_id": "2c321376-8a53-592b-b844-459de3ab8bdd",
+      "incident_id": "002c3fba-fcb7-5fee-871e-797f6d72b399",
+      "lifecycle": "resolved"
+    },
+    {
+      "concluded": true,
+      "control_generation": 1,
+      "current_run_id": "3ed23c95-2304-5b65-bbbb-d0dabc9a3215",
+      "incident_id": "ae7a0387-7cd8-59b3-a8f5-b2395c603759",
+      "lifecycle": "observing_recovery"
+    }
+  ],
+  "knowledge_revisions": [
+    {
+      "approved_at": "2026-10-15 11:26:08.815247-07",
+      "approved_by_kind": "basic_auth",
+      "entry_id": "4eb40edf-a9ca-44a3-90cd-5f62b3daf8ab",
+      "name": "Checkout PlaceOrder error ratio at 100% while only payment calls fail",
+      "revision": 1,
+      "source_postmortem_id": "378b0fe2-bc81-4095-aae9-a1363ca97ff6"
+    }
+  ],
+  "runs": [
+    {
+      "control_generation": 0,
+      "incident_id": "002c3fba-fcb7-5fee-871e-797f6d72b399",
+      "input_sha256": "87035f7d37df553ab74306122e886e3e70defa1211aa25ad77ab013030fe6d02",
+      "knowledge": {
+        "entry_names": [],
+        "policy_version": "knowledge-hint-v1",
+        "status": "ok"
+      },
+      "prior_report_excerpt": null,
+      "run_id": "2c321376-8a53-592b-b844-459de3ab8bdd",
+      "state": "completed"
+    },
+    {
+      "control_generation": 0,
+      "incident_id": "ae7a0387-7cd8-59b3-a8f5-b2395c603759",
+      "input_sha256": "cd492de78893e1e1af902b3971d981f499ca7689957e03c7ad207d3f7ec8b431",
+      "knowledge": {
+        "entry_names": [
+          "Checkout PlaceOrder error ratio at 100% while only payment calls fail"
+        ],
+        "policy_version": "knowledge-hint-v1",
+        "status": "ok"
+      },
+      "prior_report_excerpt": null,
+      "run_id": "49a537d7-7555-518d-96d1-3653c86ad396",
+      "state": "completed"
+    },
+    {
+      "control_generation": 1,
+      "incident_id": "ae7a0387-7cd8-59b3-a8f5-b2395c603759",
+      "input_sha256": "544ca39f18669e47c6b03510fa814d5178ff38cd887a1b226949e649c70f7526",
+      "knowledge": {
+        "entry_names": [
+          "Checkout PlaceOrder error ratio at 100% while only payment calls fail"
+        ],
+        "policy_version": "knowledge-hint-v1",
+        "status": "ok"
+      },
+      "prior_report_excerpt": "er human corrections take precedence):\\nConclusion: partial\\nSummary: The alert is firing because checkout's PlaceOrder server spans reached a 100% error ratio in the trailing 5-minute window at the alert instant (2026-10-15T18:32:54Z). The",
+      "run_id": "3ed23c95-2304-5b65-bbbb-d0dabc9a3215",
+      "state": "completed"
+    }
+  ],
+  "trace_roots": [
+    {
+      "metadata_ids": {
+        "incident_id": "002c3fba-fcb7-5fee-871e-797f6d72b399",
+        "run_id": "2c321376-8a53-592b-b844-459de3ab8bdd"
+      },
+      "name": "opspilot.run",
+      "start": "2026-10-15 18:07:54.004327+00:00",
+      "status": "success",
+      "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/938480c0-652b-4ee9-a771-a70bbc56fe16/r/00000000-0000-0000-9c4b-dbb80c662fd9?poll=true"
+    },
+    {
+      "metadata_ids": {
+        "incident_id": "002c3fba-fcb7-5fee-871e-797f6d72b399",
+        "postmortem_attempt_id": "6ae9f154-b231-4057-99bf-6f2b90568289"
+      },
+      "name": "opspilot.postmortem_generation",
+      "start": "2026-10-15 18:24:54.954399+00:00",
+      "status": "success",
+      "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/938480c0-652b-4ee9-a771-a70bbc56fe16/r/00000000-0000-0000-37d5-9882c1f94ca8?poll=true"
+    },
+    {
+      "metadata_ids": {
+        "incident_id": "ae7a0387-7cd8-59b3-a8f5-b2395c603759",
+        "run_id": "49a537d7-7555-518d-96d1-3653c86ad396"
+      },
+      "name": "opspilot.run",
+      "start": "2026-10-15 18:33:55.291517+00:00",
+      "status": "success",
+      "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/938480c0-652b-4ee9-a771-a70bbc56fe16/r/00000000-0000-0000-9bd6-c9199a677c4e?poll=true"
+    },
+    {
+      "metadata_ids": {
+        "incident_id": "ae7a0387-7cd8-59b3-a8f5-b2395c603759",
+        "run_id": "3ed23c95-2304-5b65-bbbb-d0dabc9a3215"
+      },
+      "name": "opspilot.run",
+      "start": "2026-10-15 18:35:15.157163+00:00",
+      "status": "success",
+      "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/938480c0-652b-4ee9-a771-a70bbc56fe16/r/00000000-0000-0000-63e7-d99a6baa5727?poll=true"
+    }
+  ]
+}

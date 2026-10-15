@@ -1,11 +1,11 @@
 # OpsPilot M1 端到端演示：从告警到批准的复盘知识
 
-OpsPilot 是只读的事故调查 Agent。它不修改目标系统，只在三处产生结果：调查报告、独立的恢复观察结论、经人审核后发布的复盘知识。M1 的完整路径在一次真实运行中走通过，证据见 [M1 退出端到端运行记录](../evidence/m1-exit-e2e/run.md)（2026-10-15）。
+OpsPilot 是只读的事故调查 Agent。它不修改目标系统，只在三处产生结果：调查报告、独立的恢复观察结论、经人审核后发布的复盘知识。M1 的完整路径在一次从空库起的真实运行中走通并确认恢复，证据见 [M1 干净重跑记录](../evidence/m1-clean-rerun/run.md)（2026-10-15，S1 判据 11/11）；同日较早的 [首次运行](../evidence/m1-exit-e2e/run.md) 因宿主内存干扰未确认恢复，作为历史保留。
 
 ## 系统做了什么
 
 1. **告警进来**：kind 实验环境里的 OTel Demo 被注入支付故障（flagd `paymentFailure` 100%），Prometheus 规则触发，Alertmanager 以 webhook 推给工作台（Bearer token 认证），工作台按告警标签匹配目标、建事故和调查 Run。
-2. **调查**：常驻 worker 领取 Run，用真实模型（DeepSeek `deepseek-flash`）调用只读工具查 Prometheus 指标和 Jaeger trace，写出带证据引用的报告并发布结论。本次 8 次模型请求、19 次工具调用，定位到 payment `Charge`「Invalid token」导致 checkout 下单失败，根因机制标为未确立（工具读不到 flag 配置）。
+2. **调查**：常驻 worker 领取 Run，用真实模型（DeepSeek `deepseek-flash`）调用只读工具查 Prometheus 指标和 Jaeger trace，写出带证据引用的报告并发布结论。干净重跑中约 80 秒发布结论（预算计数 6、工具调用 14 次，结论 `supported`）：checkout `PlaceOrder` 全部报错，下游 payment `Charge` 返回「Invalid token」导致扣款失败（首次运行为 8 次模型请求、19 次工具调用，根因机制标为未确立）。
 3. **自动恢复观察**：结论发布后，web 进程内的循环以 `system` 身份自动授权一个观察会话，不改人工控制代际。独立的 Observer 进程用自己的数据库角色和 Prometheus 账号，按 HealthProfile 每 60 s 采样 8 个信号（副本、请求量、错误率、p95 延迟、依赖错误率等），连续健康 600 s 才确认恢复；次数或期限用完仍未确认就把事故交还给人。
 4. **复盘与知识**：观察结束后 worker 自动生成复盘草稿，每条结论的证据引用都要通过校验，才进入待审核。审核人在工作台批准后，草稿里提议的知识条目发布为带版本的知识 revision。
 
@@ -58,7 +58,7 @@ env -i PATH=/usr/bin:/bin HOME=$HOME \
 .venv/bin/python scripts/kind_lab.py fault restore --experiment-id <id>
 ```
 
-`targets.json` 把操作者 target_id 映射到不可变身份（`integration_id`、`cluster_uid`、`namespace`、`workload`、`health_profile_id`）并带告警匹配标签，格式见 [开发指南](../development.md) 第 0004 迁移与三进程流程段。本次运行用一个只读轮询脚本盯数据库状态，看到自动授权就执行第 5 步；脚本、启动脚本与日志都在 git 忽略的 `tmp/m1-exit-e2e/`，哈希列在运行记录里。
+`targets.json` 把操作者 target_id 映射到不可变身份（`integration_id`、`cluster_uid`、`namespace`、`workload`、`health_profile_id`）并带告警匹配标签，格式见 [开发指南](../development.md) 第 0004 迁移与三进程流程段。运行时用一个只读轮询脚本盯数据库状态，看到自动授权就执行第 5 步；脚本、启动脚本与日志都在 git 忽略的 `tmp/` 下，哈希列在运行记录里。干净重跑把 load-generator 的 `LOCUST_USERS` 临时从 2 调到 6（`kubectl -n otel-demo set env deploy/load-generator LOCUST_USERS=6`），告警更快、p95 更稳，跑完改回 2。
 
 之后无需操作：Observer 采样到确认恢复或用完次数，worker 自动生成复盘草稿。最后在工作台批准（或用 [approve.py](../evidence/m1-exit-e2e/approve.py) 以审核人身份提交页面上的批准表单）。
 
@@ -70,7 +70,8 @@ env -i PATH=/usr/bin:/bin HOME=$HOME \
 
 ## 已知限制
 
-- 本次运行恢复未确认：故障 1 秒内就恢复了，但宿主内存压力让 checkout p95 两度超过 500 ms，40 次采样用完时健康窗只有 421 s，事故按合同交还给人。演示时看到 `open` + 交接是合法结局，不是崩溃。
-- 实验流量极低（约 0.01–0.05 req/s），p95 由少数请求决定，恢复判定对偶发慢请求很敏感。
-- 复盘输入超限（已修复）：本次第 1 次复盘尝试因 40 次采样让输入超过 256 KiB 而失败；修复 #240 已合并（输入策略 v4、提示词 v5），当前 `main` 复现不再停在 `INPUT_TOO_LARGE`。
+- 干净重跑：恢复后前 4 个样本仍为 `degraded`（5 分钟窗口仍含故障期），第 5 个样本起连续健康，602 s 后确认恢复、事故 `resolved`；复盘一次生成。
+- 首次运行恢复未确认：宿主内存压力让 checkout p95 两度超过 500 ms，40 次采样用完时健康窗只有 421 s，事故按合同交还给人。演示时看到 `open` + 交接是合法结局，不是崩溃；运行前确认宿主内存充足。
+- 实验流量低（2 个 locust 用户时约 0.01–0.05 req/s，6 个约 0.07），p95 由少数请求决定，恢复判定对偶发慢请求敏感。
+- 复盘输入超限（已修复）：首次运行第 1 次复盘尝试因 40 次采样让输入超过 256 KiB 而失败；修复 #240 已合并（输入策略 v4、提示词 v5），当前 `main` 复现不再停在 `INPUT_TOO_LARGE`。
 - 这是 kind 实验环境上的有界运行，不是生产证明；Prometheus basic auth 对所有账号权限相同；调查侧角色隔离是增量的，Controller/Gateway 全隔离未做（#197）。
