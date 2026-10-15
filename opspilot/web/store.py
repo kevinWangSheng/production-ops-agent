@@ -185,7 +185,13 @@ class IncidentStore(Protocol):
     ) -> int: ...
 
     def set_target_suspension(
-        self, target_id: UUID, suspended: bool, *, expected_generation: int, actor: str
+        self,
+        target_id: UUID | None,
+        suspended: bool,
+        *,
+        expected_generation: int,
+        actor: str,
+        resource_uid: str | None = None,
     ) -> int: ...
 
     def accept(
@@ -570,10 +576,20 @@ class DurableIncidentStore:
         )
 
     def set_target_suspension(
-        self, target_id: UUID, suspended: bool, *, expected_generation: int, actor: str
+        self,
+        target_id: UUID | None,
+        suspended: bool,
+        *,
+        expected_generation: int,
+        actor: str,
+        resource_uid: str | None = None,
     ) -> int:
         return self._store.set_target_suspension(
-            target_id, suspended, expected_generation=expected_generation, actor=actor
+            target_id,
+            suspended,
+            expected_generation=expected_generation,
+            actor=actor,
+            resource_uid=resource_uid,
         )
 
     def register_target(self, resource_uid: str) -> UUID:

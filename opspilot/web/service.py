@@ -587,12 +587,14 @@ class Workbench:
                     suspended, expected_generation=expected_generation, actor=actor_id
                 )
             else:
-                target_uuid = self.incidents.register_target(identity.resource_uid)
+                # Registration shares the suspension's transaction: a refused
+                # request leaves no target row behind.
                 generation = self.incidents.set_target_suspension(
-                    target_uuid,
+                    None,
                     suspended,
                     expected_generation=expected_generation,
                     actor=actor_id,
+                    resource_uid=identity.resource_uid,
                 )
         except PersistenceError as exc:
             code = str(exc)

@@ -99,18 +99,43 @@ class _ControlOps(_StoreBase):
 
     def set_target_suspension(
         self,
-        target_id: UUID,
+        target_id: UUID | None,
         suspended: bool,
         *,
         expected_generation: int,
         actor: str,
+        resource_uid: str | None = None,
     ) -> int:
-        """Change one registered immutable target's gate and invalidate its leases."""
-        if not isinstance(target_id, UUID) or type(suspended) is not bool:
+        """Change one registered immutable target's gate and invalidate its leases.
+
+        With ``resource_uid`` instead of ``target_id`` (the operator entry),
+        the target is registered in the same transaction, so a refused
+        request (e.g. ``CONTROL_CONFLICT``) leaves no target row behind.
+        """
+        if type(suspended) is not bool or (
+            not isinstance(target_id, UUID)
+            if resource_uid is None
+            else target_id is not None
+            or not isinstance(resource_uid, str)
+            or not resource_uid
+        ):
             raise PersistenceError("INVALID_INPUT")
         with self.transaction() as conn:
             self._lock_scope(conn)
-            if not conn.execute(
+            if resource_uid is not None:
+                found = conn.execute(
+                    "SELECT target_id FROM opspilot_targets WHERE resource_uid=%s",
+                    (resource_uid,),
+                ).fetchone()
+                if found is None:
+                    target_id = uuid4()
+                    conn.execute(
+                        "INSERT INTO opspilot_targets(target_id,resource_uid) VALUES(%s,%s)",
+                        (target_id, resource_uid),
+                    )
+                else:
+                    target_id = found["target_id"]
+            elif not conn.execute(
                 "SELECT 1 FROM opspilot_targets WHERE target_id=%s", (target_id,)
             ).fetchone():
                 raise PersistenceError("UNKNOWN_TARGET")

@@ -397,6 +397,46 @@ def test_unregistered_registry_target_is_read_only_until_mutation(entry):
     )
 
 
+def test_refused_first_target_request_registers_nothing(entry):
+    from opspilot.web.store import MappingTargetRegistry
+
+    app, workbench, _ = entry
+    key = "f7-stale-" + uuid4().hex
+    workbench.targets = MappingTargetRegistry(
+        {
+            key: {
+                "integration_id": "fixture",
+                "cluster_uid": "cluster",
+                "namespace": "test",
+            }
+        }
+    )
+    before = audit_count()
+    response = _form(
+        app,
+        "/controls/suspension",
+        {
+            "scope": "target",
+            "target_id": key,
+            "suspended": "true",
+            "expected_generation": "3",
+            "idempotency_key": uuid4().hex,
+        },
+    )
+    assert response.status == 409
+    assert response.json() == {"code": "CONTROL_CONFLICT", "current_generation": 0}
+    with psycopg.connect(DSN) as conn:
+        assert not conn.execute(
+            "SELECT 1 FROM opspilot_targets WHERE resource_uid=%s", (key,)
+        ).fetchone()
+        assert not conn.execute(
+            "SELECT 1 FROM opspilot_target_suspensions s JOIN opspilot_targets t"
+            " USING (target_id) WHERE t.resource_uid=%s",
+            (key,),
+        ).fetchone()
+    assert audit_count() == before
+
+
 @pytest.mark.parametrize("scope", ["global", "target"])
 @pytest.mark.parametrize("error", ["STORAGE_UNAVAILABLE", "RETRY", "TIMEOUT"])
 def test_same_value_retry_after_lost_commit_ack(entry, monkeypatch, scope, error):
