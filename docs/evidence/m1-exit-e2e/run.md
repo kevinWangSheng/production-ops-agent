@@ -1,8 +1,8 @@
 # M1 退出：从干净环境起的一体化端到端运行
 
 - 日期：2026-10-15 06:39–08:24Z；分支 `chore/m1-exit-e2e`（起点 `main` `8ff4a23`，本分支不改 `opspilot/`）
-- 依据：[M1 退出决策 D1-A](https://github.com/kevinWangSheng/production-ops-agent/blob/chore/m1-exit-decision/docs/tasks/2026-10-14-m1-exit-decision.md)（PR #236，未合并时以该分支为准）：空库迁移 → 非 owner 角色启动 web/worker/Observer → kind 注入故障 → Alertmanager 告警 → 调查发布结论 → 恢复故障 → 自动恢复观察 → 复盘草稿 → 工作台批准；结果可解释即算数，失败如实记录，不为通过重跑，不翻任何 `passes`
-- 产品代码：告警、调查、观察三段跑在 `8ff4a23`（与 `e1b8867` 相比只差文档，`git diff --stat e1b8867 8ff4a23` 只有 3 个 `docs/` 文件）；复盘重新生成跑在 PR #240 的 HEAD `95ee1bb`（合同 r12，未合并，见下文「复盘」）
+- 依据：[M1 退出决策 D1-A](../../tasks/2026-10-14-m1-exit-decision.md)（PR #236，已合并）：空库迁移 → 非 owner 角色启动 web/worker/Observer → kind 注入故障 → Alertmanager 告警 → 调查发布结论 → 恢复故障 → 自动恢复观察 → 复盘草稿 → 工作台批准；结果可解释即算数，失败如实记录，不为通过重跑，不翻任何 `passes`
+- 产品代码：告警、调查、观察三段跑在 `8ff4a23`（与 `e1b8867` 相比只差文档，`git diff --stat e1b8867 8ff4a23` 只有 3 个 `docs/` 文件）；复盘重新生成跑在 PR #240 的 HEAD `95ee1bb`（合同 r12，运行时未合并，已于 2026-10-15 合并入 main，见下文「复盘」）
 - 冻结摘要：[run/summary.json](run/summary.json)（`frozen_at` 08:24:26Z，含 collect/verify/approve 与 HealthProfile 的 sha256，`artifacts`）；批准记录 [run/approve.json](run/approve.json)；运行后只读回读 [run/readback.json](run/readback.json)（`default_transaction_read_only=on`，08:34:35Z：行数、复盘尝试与输入字节、争议与结论计数、逐样本 p95），补摘要里没有的数字。原始 ledger 不入库，本机 `tmp/lab-ledgers/m1-exit-e2e/98f27b4d-…/ledger.json`（sha256 `d1b08747…a3aca7`，2,717,446 B，与摘要 `raw_ledger` 一致）
 - 判据：[verify.py](verify.py) 与 [#184 第 3 步的 verify.py](../m1-184-self-heal-live/verify.py) 逐字相同（独立 Codex 按合同编写），本次只用其 S1 判据；取证 [collect.py](collect.py) 由 #184 版本改名重定向（只改场景名、round 与 artifacts 列表）；批准 [approve.py](approve.py) 以工作台 Basic Auth 审核人身份提交页面上的批准动作并只读回读
 - 类别：有界真实软件环境运行 + 真实模型调用（DeepSeek `deepseek-flash`）。故障只由 kind lab 的 flagd 钩子注入与恢复，告警由真实 Prometheus/Alertmanager 产生；不是生产证明
