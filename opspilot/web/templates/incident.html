@@ -211,6 +211,21 @@
 </section>
 {% endif %}
 
+<section id="knowledge-hints">
+<h2>Historical knowledge hints</h2>
+{% set knowledge = snapshot.knowledge %}
+{% if knowledge %}
+<p>Status: {{ knowledge.status }} · retrieved at {{ knowledge.retrieved_at }} · freshness threshold {{ knowledge.max_age_seconds }} seconds · omitted for size {{ knowledge.omitted_for_size }}</p>
+<ul>{% for entry in knowledge.entries %}
+<li><a href="/knowledge/{{ entry.entry_id }}">{{ entry.name }}</a> r{{ entry.revision }}
+· {{ entry.freshness }} · age {{ entry.age_seconds }} seconds
+· <a href="/incidents/{{ entry.source_incident_id }}">source incident</a>
+· truncated: {{ entry.truncated }}
+· check: {{ knowledge.checks[loop.index0].verdict }}</li>
+{% endfor %}</ul>
+{% else %}<p>No knowledge input was recorded for this Run.</p>{% endif %}
+</section>
+
 <h2 id="investigation-report">Investigation report <span class="muted">(the investigator's causal conclusion; it does not certify recovery)</span></h2>
 {% set report = snapshot.report %}
 {% if report is none %}

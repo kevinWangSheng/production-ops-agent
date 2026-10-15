@@ -435,10 +435,10 @@ def test_k6_k7_timeout_successor_preserves_first_context(harness, database, fres
     assert _message_context(calls[0].messages[2]) == original
 
 
-def test_k4_unknown_v5_is_incompatible(harness, database):
+def test_k4_unknown_later_version_is_incompatible(harness, database):
     _, _, outcome = _create(harness, database)
     snapshot = deepcopy(outcome.run_input)
-    snapshot["version"] = "opspilot-investigation-input-v5"
+    snapshot["version"] = "opspilot-investigation-input-v6"
     with pytest.raises(ContextError) as excinfo:
         InvestigationInput.from_json(snapshot)
     assert excinfo.value.code == "INCOMPATIBLE_STATE"
