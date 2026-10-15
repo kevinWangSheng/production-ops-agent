@@ -152,6 +152,116 @@ def local_guard(name: str, *, blocking: bool = True) -> Iterator[None]:
             fcntl.flock(stream, fcntl.LOCK_UN)
 
 
+def _round_journal() -> tuple[list[dict[str, Any]], bytes]:
+    path = lab_ledgers() / "run-starts.jsonl"
+    raw = path.read_bytes() if path.exists() else b""
+    rows = []
+    previous = "0" * 64
+    seen = set()
+    try:
+        for line in raw.splitlines():
+            row = json.loads(line)
+            if (
+                row["format_version"] != 1
+                or row["kind"] != "run_started"
+                or row["previous_sha256"] != previous
+                or any(
+                    not isinstance(row[key], str) or not row[key].strip()
+                    for key in ("batch", "round", "holder", "started_at", "start_id")
+                )
+                or row["round"] in seen
+            ):
+                raise ValueError("invalid journal")
+            utc(row["started_at"])
+            UUID(row["start_id"])
+            digest = sha256(
+                canonical_json(
+                    {key: value for key, value in row.items() if key != "record_sha256"}
+                ).encode()
+            )
+            if row["record_sha256"] != digest:
+                raise ValueError("invalid hash")
+            seen.add(row["round"])
+            previous = digest
+            rows.append(row)
+    except (KeyError, TypeError, ValueError):
+        raise ValueError("BATCH_LOG_INVALID") from None
+    return rows, raw
+
+
+def start_round(
+    ledger: Path,
+    batch: str,
+    holder: str,
+    *,
+    new: bool = False,
+    existing_only: bool = False,
+) -> dict[str, Any]:
+    if ledger.resolve() != (lab_ledgers() / ledger.name).resolve():
+        raise ValueError("ROUND_OUTSIDE_SHARED_LEDGERS")
+    with local_guard("batch-journal"):
+        rows, _ = _round_journal()
+        existing = next((row for row in rows if row["round"] == ledger.name), None)
+        if existing:
+            if batch and batch != existing["batch"]:
+                raise ValueError("ROUND_BATCH_MISMATCH")
+            if new:
+                raise ValueError("ROUND_ALREADY_STARTED_USE_NEW_RUN")
+            return existing
+        if existing_only:
+            raise ValueError("ROUND_NOT_STARTED")
+        if not batch.strip() or not holder.strip():
+            raise ValueError("HOLDER_AND_BATCH_REQUIRED")
+        row = dict(
+            format_version=1,
+            kind="run_started",
+            batch=batch,
+            round=ledger.name,
+            holder=holder,
+            started_at=utc_now().isoformat(),
+            start_id=str(uuid4()),
+            previous_sha256=rows[-1]["record_sha256"] if rows else "0" * 64,
+        )
+        row["record_sha256"] = sha256(canonical_json(row).encode())
+        # No rewriting or deletion path. Commit the append before any lab call;
+        # torn/changed records fail closed instead of disappearing from a batch.
+        path = lab_ledgers() / "run-starts.jsonl"
+        with path.open("a") as stream:
+            os.chmod(path, 0o600)
+            stream.write(canonical_json(row) + "\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        return row
+
+
+def round_binding(start: dict[str, Any]) -> dict[str, str]:
+    return dict(
+        batch=start["batch"], round=start["round"], round_start_id=start["start_id"]
+    )
+
+
+@contextmanager
+def round_guard(
+    ledger: Path, *, freeze: bool = False, recovery: bool = False
+) -> Iterator[None]:
+    root = lab_ledgers()
+    root.mkdir(parents=True, exist_ok=True)
+    path = root / f".round-{sha256(ledger.name.encode())}.guard"
+    with path.open("a") as stream:
+        try:
+            fcntl.flock(
+                stream, (fcntl.LOCK_EX if freeze else fcntl.LOCK_SH) | fcntl.LOCK_NB
+            )
+        except BlockingIOError:
+            raise ValueError("ROUND_OPERATION_IN_PROGRESS") from None
+        try:
+            if not recovery and (ledger / "summary.json").exists():
+                raise ValueError("ROUND_ALREADY_SUMMARIZED")
+            yield
+        finally:
+            fcntl.flock(stream, fcntl.LOCK_UN)
+
+
 def occupation(action: str, holder: str, batch: str, until: datetime | None = None):
     """Expired reservations remain visible and require owner release; no stealing."""
     with local_guard("occupation"):
@@ -634,8 +744,12 @@ def run_summary(
     )
 
 
-def aggregate_summaries(paths: list[Path], output: Path = SUMMARY) -> dict[str, Any]:
+def aggregate_summaries(
+    paths: list[Path], output: Path = SUMMARY, *, batch: str
+) -> dict[str, Any]:
     """Freeze all supplied successes AND failures; never declare calibration approved."""
+    if not batch.strip():
+        raise ValueError("BATCH_REQUIRED")
     if not paths:
         raise ValueError("RUN_SUMMARIES_REQUIRED")
     runs = [
@@ -644,24 +758,86 @@ def aggregate_summaries(paths: list[Path], output: Path = SUMMARY) -> dict[str, 
     ]
     if len({r["sha256"] for r in runs}) != len(runs):
         raise ValueError("DUPLICATE_RUN_SUMMARY")
-    for identity in (
-        lambda r: r["summary"]["run_id"],
-        lambda r: (
-            r["summary"]["release"]["source"],
-            r["summary"]["release"]["source_release_id"],
-        ),
-    ):
-        if len({identity(r) for r in runs}) != len(runs):
-            raise ValueError("DUPLICATE_RELEASE_RUN")
-    value = dict(
-        format_version=1,
-        evidence_kind="U2_CALIBRATION_UNAPPROVED",
-        approval=None,
-        runs=runs,
-        scenario_counts=dict(Counter(r["summary"]["scenario"] for r in runs)),
-    )
-    write_json(output, value, exclusive=True)
-    return value
+    if len({r["summary"]["run_id"] for r in runs}) != len(runs):
+        raise ValueError("DUPLICATE_RELEASE_RUN")
+    released = [
+        r["summary"]["release"] for r in runs if r["summary"].get("release") is not None
+    ]
+    if len({(r["source"], r["source_release_id"]) for r in released}) != len(released):
+        raise ValueError("DUPLICATE_RELEASE_RUN")
+    with local_guard("batch-journal"):
+        rows, raw = _round_journal()
+        expected = {row["round"]: row for row in rows if row["batch"] == batch}
+        actual = [r["summary"].get("round") for r in runs]
+        if not expected or len(actual) != len(expected) or set(actual) != set(expected):
+            raise ValueError("BATCH_ROUND_SET_MISMATCH")
+        for run in runs:
+            summary = run["summary"]
+            if (
+                summary.get("batch") != batch
+                or summary.get("round_start_id")
+                != expected[summary["round"]]["start_id"]
+            ):
+                raise ValueError("BATCH_ROUND_BINDING_MISMATCH")
+            if summary.get("round_status") not in ("summarized", "aborted"):
+                raise ValueError("ROUND_STATUS_REQUIRED")
+            if summary["round_status"] == "aborted" and (
+                not isinstance(summary.get("reason"), str)
+                or not summary["reason"].strip()
+            ):
+                raise ValueError("ABORT_REASON_REQUIRED")
+            if summary["round_status"] == "summarized" and (
+                not isinstance(summary.get("release"), dict)
+                or not summary.get("candidates")
+            ):
+                raise ValueError("ROUND_SUMMARY_INVALID")
+        value = dict(
+            format_version=1,
+            evidence_kind="U2_CALIBRATION_UNAPPROVED",
+            approval=None,
+            batch=batch,
+            runs=runs,
+            batch_log=dict(
+                path="run-starts.jsonl",
+                sha256=sha256(raw),
+                bytes=len(raw),
+                record_count=len(rows),
+                starts=list(expected.values()),
+            ),
+            scenario_counts=dict(Counter(r["summary"]["scenario"] for r in runs)),
+            round_status_counts=dict(
+                Counter(r["summary"]["round_status"] for r in runs)
+            ),
+        )
+        write_json(output, value, exclusive=True)
+        return value
+
+
+def abort_round(
+    ledger: Path, *, batch: str, holder: str, reason: str, scenario: str
+) -> dict[str, Any]:
+    if not reason.strip():
+        raise ValueError("ABORT_REASON_REQUIRED")
+    if not batch.strip() or not holder.strip():
+        raise ValueError("HOLDER_AND_BATCH_REQUIRED")
+    with round_guard(ledger, freeze=True):
+        start = start_round(ledger, batch, holder, existing_only=True)
+        artifacts = artifact_manifest(ledger)
+        summary = dict(
+            format_version=1,
+            evidence_kind="U2_SIDECAR_UNAPPROVED",
+            **round_binding(start),
+            run_id=start["start_id"],
+            round_status="aborted",
+            reason=reason,
+            scenario=scenario,
+            aborted_at=utc_now().isoformat(),
+            aborted_by=holder,
+            candidates={},
+            artifact_hashes=artifacts,
+        )
+        write_json(ledger / "summary.json", summary, exclusive=True)
+        return summary
 
 
 def external(
@@ -1934,6 +2110,7 @@ def parser() -> argparse.ArgumentParser:
         "restore",
         "collect",
         "fold",
+        "abort",
     ):
         command = sub.add_parser(name)
         command.add_argument(
@@ -2001,6 +2178,21 @@ def parser() -> argparse.ArgumentParser:
                 required=True,
                 help="independently recorded truth JSON, failures included",
             )
+        if name == "abort":
+            command.add_argument("--reason", required=True)
+            command.add_argument(
+                "--scenario",
+                required=True,
+                choices=[
+                    "healthy",
+                    "immediate",
+                    "delayed-5m",
+                    "delayed-15m",
+                    "unrelated",
+                    "boundary",
+                    "probe",
+                ],
+            )
     aggregate = sub.add_parser("aggregate")
     aggregate.add_argument("summaries", nargs="+", type=Path)
     aggregate.add_argument("--output", type=Path, default=SUMMARY)
@@ -2024,7 +2216,7 @@ def main(argv: list[str] | None = None) -> int:
             if args.dry_run:
                 print("aggregate supplied run summaries (dry-run)")
             else:
-                aggregate_summaries(args.summaries, args.output)
+                aggregate_summaries(args.summaries, args.output, batch=args.batch)
             return 0
         ledger = ledger_path(args.run, dry_run=args.dry_run)
         if args.dry_run:
@@ -2047,46 +2239,68 @@ def main(argv: list[str] | None = None) -> int:
                     f"{args.command}: kubectl/flagd/Prometheus/DB calls and local writes skipped (dry-run)"
                 )
             return 0
-        if args.command == "fold":
-            context = ReleaseEvaluationContext.model_validate_json(
-                (ledger / "context.json").read_bytes()
-            )
-            started = (
-                read_json(ledger / "capture-start.json")
-                if (ledger / "capture-start.json").exists()
-                else {}
-            )
-            fold_code = freeze_code(ledger, "fold")
-            summary = run_summary(
-                context,
-                load_samples(ledger),
+        if args.command == "abort":
+            summary = abort_round(
+                ledger,
+                batch=args.batch,
+                holder=args.holder,
+                reason=args.reason,
                 scenario=args.scenario,
-                truth=read_json(args.truth),
-                timeline=merged_timeline(ledger),
-                candidates=args.minimum,
-                code_revision=fold_code["revision"],
-                capture_code=started.get("code"),
-                fold_code=fold_code,
-                capture_end=read_json(ledger / "capture-end.json")
-                if (ledger / "capture-end.json").exists()
-                else None,
             )
-            summary["identity"] = (
-                read_json(ledger / "identity.json")
-                if (ledger / "identity.json").exists()
-                else None
-            )
-            summary["release_snapshot"] = (
-                read_json(ledger / "release.json")
-                if (ledger / "release.json").exists()
-                else None
-            )
-            summary["artifact_hashes"] = artifact_manifest(ledger)
-            summary["platform_links"] = summary["truth"].get("platform_links", [])
-            write_json(ledger / "summary.json", summary, exclusive=True)
             print(json.dumps(summary, indent=2))
             return 0
-        with reserved(args.holder, args.batch):
+        if args.command == "fold":
+            with round_guard(ledger, freeze=True):
+                start = start_round(ledger, args.batch, args.holder, existing_only=True)
+                context = ReleaseEvaluationContext.model_validate_json(
+                    (ledger / "context.json").read_bytes()
+                )
+                started = (
+                    read_json(ledger / "capture-start.json")
+                    if (ledger / "capture-start.json").exists()
+                    else {}
+                )
+                fold_code = freeze_code(ledger, "fold")
+                summary = run_summary(
+                    context,
+                    load_samples(ledger),
+                    scenario=args.scenario,
+                    truth=read_json(args.truth),
+                    timeline=merged_timeline(ledger),
+                    candidates=args.minimum,
+                    code_revision=fold_code["revision"],
+                    capture_code=started.get("code"),
+                    fold_code=fold_code,
+                    capture_end=read_json(ledger / "capture-end.json")
+                    if (ledger / "capture-end.json").exists()
+                    else None,
+                )
+                summary["identity"] = (
+                    read_json(ledger / "identity.json")
+                    if (ledger / "identity.json").exists()
+                    else None
+                )
+                summary["release_snapshot"] = (
+                    read_json(ledger / "release.json")
+                    if (ledger / "release.json").exists()
+                    else None
+                )
+                summary["artifact_hashes"] = artifact_manifest(ledger)
+                summary["platform_links"] = summary["truth"].get("platform_links", [])
+                summary.update(round_binding(start), round_status="summarized")
+                write_json(ledger / "summary.json", summary, exclusive=True)
+                print(json.dumps(summary, indent=2))
+                return 0
+        with (
+            reserved(args.holder, args.batch),
+            round_guard(ledger, recovery=args.command == "restore"),
+        ):
+            # Recovery does not begin a calibration round and must remain
+            # available even if the batch journal is damaged or incomplete.
+            if args.command != "restore":
+                start_round(
+                    ledger, args.batch, args.holder, new=args.command == "release"
+                )
             if args.command == "release":
                 publish(ledger, args.release_id)
             elif args.command == "watch":

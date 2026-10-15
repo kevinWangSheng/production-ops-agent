@@ -388,16 +388,20 @@ def test_summary_and_aggregate_include_failed_runs_without_approval(tmp_path):
     }
     assert required <= summary.keys()
     assert summary["candidates"]["600"]["status"] == "unknown"
+    start = h.start_round(h.ledger_path("aggregate-round"), "summary-batch", "test")
+    summary.update(h.round_binding(start), round_status="summarized")
     h.write_json(tmp_path / "round.json", summary)
     output = tmp_path / "summary.json"
-    aggregate = h.aggregate_summaries([tmp_path / "round.json"], output)
+    aggregate = h.aggregate_summaries(
+        [tmp_path / "round.json"], output, batch="summary-batch"
+    )
     assert aggregate["approval"] is None
     assert aggregate["scenario_counts"] == {"healthy": 1}
     assert aggregate["runs"][0]["sha256"] == sha256(
         (tmp_path / "round.json").read_bytes()
     )
     with pytest.raises(FileExistsError):
-        h.aggregate_summaries([tmp_path / "round.json"], output)
+        h.aggregate_summaries([tmp_path / "round.json"], output, batch="summary-batch")
 
 
 def identity_objects():
@@ -683,11 +687,21 @@ def test_aggregate_rejects_same_release_after_truth_edits(tmp_path):
         code_revision="test",
     )
     b = {**a, "truth": {"status": "checked"}}
+    a.update(
+        h.round_binding(h.start_round(h.ledger_path("dedup-a"), "dedup", "test")),
+        round_status="summarized",
+    )
+    b.update(
+        h.round_binding(h.start_round(h.ledger_path("dedup-b"), "dedup", "test")),
+        round_status="summarized",
+    )
     h.write_json(tmp_path / "a.json", a)
     h.write_json(tmp_path / "b.json", b)
     with pytest.raises(ValueError, match="DUPLICATE_RELEASE_RUN"):
         h.aggregate_summaries(
-            [tmp_path / "a.json", tmp_path / "b.json"], tmp_path / "summary.json"
+            [tmp_path / "a.json", tmp_path / "b.json"],
+            tmp_path / "summary.json",
+            batch="dedup",
         )
 
 
@@ -985,6 +999,7 @@ def test_summary_binds_capture_code_before_source_and_head_change(
     monkeypatch.setattr(h, "external", git)
     context = _context()
     ledger = h.ledger_path("provenance")
+    h.start_round(ledger, "provenance-batch", "test")
     h.write_json(ledger / "context.json", context.model_dump(mode="json"))
     # End immediately, so the real collect_run start path executes without HTTP/DB.
     monkeypatch.setattr(h, "db_clock", lambda _: context.release.deadline_at)
@@ -1068,6 +1083,7 @@ def test_failed_fold_can_retry_with_corrected_truth_and_retains_both_snapshots(
         h, "external", lambda command, **kw: b"head" if "rev-parse" in command else b""
     )
     ledger = h.ledger_path("retry")
+    h.start_round(ledger, "retry-batch", "test")
     h.write_json(ledger / "context.json", _context().model_dump(mode="json"))
     truth = tmp_path / "truth.json"
     args = [
@@ -1447,6 +1463,7 @@ def test_fold_merges_concurrent_rollout_and_fault_events_without_changing_bounds
     monkeypatch, tmp_path, capsys
 ):
     ledger = h.ledger_path("merged-timeline")
+    h.start_round(ledger, "timeline-batch", "test")
     h.write_json(ledger / "context.json", _context().model_dump(mode="json"))
     truth = tmp_path / "truth.json"
     h.write_json(truth, {})
@@ -1530,3 +1547,216 @@ def test_fold_merges_concurrent_rollout_and_fault_events_without_changing_bounds
     assert all(
         (ledger / name).read_bytes() == raw for name, raw in original_files.items()
     )
+
+
+def test_aggregate_rejects_omitted_round_recorded_before_failed_release(
+    monkeypatch, tmp_path, capsys
+):
+    h.occupation("claim", "alice", "all-rounds", h.utc_now() + timedelta(hours=1))
+
+    def fail_snapshot(**kwargs):
+        raise ValueError("SIMULATED_CLUSTER_FAILURE")
+
+    monkeypatch.setattr(h, "snapshot", fail_snapshot)
+    for name in ("ok", "failed"):
+        assert (
+            h.main(
+                [
+                    "--holder",
+                    "alice",
+                    "--batch",
+                    "all-rounds",
+                    "release",
+                    "--run",
+                    name,
+                    "--release-id",
+                    name,
+                ]
+            )
+            == 2
+        )
+    capsys.readouterr()
+    summary = h.run_summary(
+        _context(),
+        [],
+        scenario="healthy",
+        truth={},
+        timeline=[],
+        candidates=[600],
+        code_revision="test",
+    )
+    starts = [
+        json.loads(line)
+        for line in (h.LEDGERS / "run-starts.jsonl").read_text().splitlines()
+    ]
+    start = next(row for row in starts if row["round"] == "ok")
+    summary.update(
+        batch="all-rounds",
+        round="ok",
+        round_start_id=start["start_id"],
+        round_status="summarized",
+    )
+    path = h.LEDGERS / "ok/summary.json"
+    h.write_json(path, summary)
+    output = tmp_path / "aggregate.json"
+    assert (
+        h.main(
+            ["--batch", "all-rounds", "aggregate", str(path), "--output", str(output)]
+        )
+        == 2
+    )
+    assert not output.exists()
+    assert "BATCH_ROUND_SET_MISMATCH" in capsys.readouterr().err
+
+
+def test_aborted_round_is_explicitly_included_in_batch_without_context(tmp_path):
+    good, aborted = h.ledger_path("good"), h.ledger_path("aborted")
+    start = h.start_round(good, "batch", "alice")
+    h.start_round(aborted, "batch", "alice")
+    complete = h.run_summary(
+        _context(),
+        [],
+        scenario="healthy",
+        truth={},
+        timeline=[],
+        candidates=[600],
+        code_revision="test",
+    )
+    complete.update(h.round_binding(start), round_status="summarized")
+    h.write_json(good / "summary.json", complete)
+    assert (
+        h.main(
+            [
+                "--batch",
+                "batch",
+                "--holder",
+                "alice",
+                "abort",
+                "--run",
+                "aborted",
+                "--reason",
+                "rollout timed out before context existed",
+                "--scenario",
+                "delayed-15m",
+            ]
+        )
+        == 0
+    )
+    failed = h.read_json(aborted / "summary.json")
+    assert (
+        failed["round_status"] == "aborted"
+        and failed["reason"] == "rollout timed out before context existed"
+    )
+    assert failed["candidates"] == {} and not (aborted / "context.json").exists()
+    output = tmp_path / "batch-summary.json"
+    result = h.aggregate_summaries(
+        [good / "summary.json", aborted / "summary.json"], output, batch="batch"
+    )
+    assert result["round_status_counts"] == {"summarized": 1, "aborted": 1}
+    assert result["scenario_counts"] == {"healthy": 1, "delayed-15m": 1}
+    assert {row["round"] for row in result["batch_log"]["starts"]} == {
+        "good",
+        "aborted",
+    }
+    assert result["batch_log"]["sha256"] == sha256(
+        (h.LEDGERS / "run-starts.jsonl").read_bytes()
+    )
+
+
+def test_round_start_is_immutable_and_failed_release_cannot_reuse_name(
+    monkeypatch, capsys
+):
+    ledger = h.ledger_path("one")
+    first = h.start_round(ledger, "batch", "alice")
+    original = (h.LEDGERS / "run-starts.jsonl").read_bytes()
+    assert h.start_round(ledger, "batch", "another-holder") == first
+    assert (h.LEDGERS / "run-starts.jsonl").read_bytes() == original
+    h.start_round(h.ledger_path("two"), "batch", "alice")
+    assert (h.LEDGERS / "run-starts.jsonl").read_bytes().startswith(original)
+    h.occupation("claim", "alice", "batch", h.utc_now() + timedelta(hours=1))
+    assert (
+        h.main(
+            [
+                "--batch",
+                "batch",
+                "--holder",
+                "alice",
+                "release",
+                "--run",
+                "one",
+                "--release-id",
+                "again",
+            ]
+        )
+        == 2
+    )
+    assert "ROUND_ALREADY_STARTED_USE_NEW_RUN" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "problem", ["extra", "wrong_batch", "wrong_start", "missing_reason"]
+)
+def test_batch_aggregate_rejects_extra_or_unbound_aborted_summaries(tmp_path, problem):
+    ledger = h.ledger_path("one")
+    h.start_round(ledger, "batch", "alice")
+    value = h.abort_round(
+        ledger, batch="batch", holder="alice", reason="failed", scenario="healthy"
+    )
+    paths = [ledger / "summary.json"]
+    if problem == "extra":
+        other = h.ledger_path("other")
+        h.start_round(other, "other-batch", "alice")
+        h.abort_round(
+            other,
+            batch="other-batch",
+            holder="alice",
+            reason="other failure",
+            scenario="probe",
+        )
+        paths.append(other / "summary.json")
+    elif problem == "wrong_batch":
+        value["batch"] = "other"
+    elif problem == "wrong_start":
+        value["round_start_id"] = "wrong"
+    else:
+        value["reason"] = "  "
+    h.write_json(ledger / "summary.json", value)
+    output = tmp_path / "aggregate.json"
+    with pytest.raises(ValueError):
+        h.aggregate_summaries(paths, output, batch="batch")
+    assert not output.exists()
+
+
+def test_abort_refuses_live_round_and_frozen_round_allows_only_recovery():
+    ledger = h.ledger_path("round")
+    h.start_round(ledger, "batch", "alice")
+    with h.round_guard(ledger):
+        with pytest.raises(ValueError, match="ROUND_OPERATION_IN_PROGRESS"):
+            h.abort_round(
+                ledger, batch="batch", holder="alice", reason="failed", scenario="probe"
+            )
+    h.abort_round(
+        ledger, batch="batch", holder="alice", reason="failed", scenario="probe"
+    )
+    with pytest.raises(ValueError, match="ROUND_ALREADY_SUMMARIZED"):
+        with h.round_guard(ledger):
+            pytest.fail("closed round reopened")
+    with h.round_guard(ledger, recovery=True):
+        pass
+
+
+def test_changed_batch_journal_is_rejected_without_dropping_bad_record(tmp_path):
+    ledger = h.ledger_path("round")
+    h.start_round(ledger, "batch", "alice")
+    h.abort_round(
+        ledger, batch="batch", holder="alice", reason="failed", scenario="probe"
+    )
+    journal = h.LEDGERS / "run-starts.jsonl"
+    row = json.loads(journal.read_bytes())
+    row["holder"] = "changed"
+    h.write_json(journal, row)
+    with pytest.raises(ValueError, match="BATCH_LOG_INVALID"):
+        h.aggregate_summaries(
+            [ledger / "summary.json"], tmp_path / "aggregate.json", batch="batch"
+        )
+    assert h.read_json(journal)["holder"] == "changed"

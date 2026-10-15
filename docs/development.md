@@ -291,6 +291,7 @@ M0_B_POSTGRES=1 .venv/bin/python -m pytest tests/integration/test_m0_live_postgr
 - `release --run <轮次> --release-id <唯一标识>`：读取 checkout 当前 Deployment、RS、Pod/digest，
   用 `OPSPILOT_U2_RELEASE_ID` 环境变量 patch 触发真实配置滚动发布。仅记录 patch 成功回执为 R，
   保留请求前后 UTC 界限；不重建 chart。同一个轮次拒绝重复发布。
+  每个获准开跑的轮次在任何外呼前，将批次、轮次、持有人和 UTC 开始时间追加到共享 `run-starts.jsonl`；日志带前项哈希并同步落盘，后续命令复用原开始记录，失败发布也须换新轮次名，不覆盖原记录。
 - `watch --run <轮次> --seconds 600`：有界轮询 Kubernetes 对象及事件，保存 RS/Pod UID、digest、
   新 Pod Ready 源时间和旧 Pod 消失的观测上下界。完成后补齐 after 身份；超时／并发模板更改报错。
   RS/Pod/Event 列表请求另存起止界限；消失下界取上轮请求开始，上界取本轮响应结束。
@@ -335,9 +336,10 @@ M0_B_POSTGRES=1 .venv/bin/python -m pytest tests/integration/test_m0_live_postgr
   调度／采纳外围规则在脚本中标注 PR-2 合同行号（433–464、619、625–632、r7:39），窗口算法没有重写。
   输出 `tmp/lab-ledgers/<轮次>/summary.json` 及 stdout JSON；truth 必须包含独立核查的真值与失败分类，
   不能把注入计划当实际起病。场景：`healthy/immediate/delayed-5m/delayed-15m/unrelated/boundary/probe`。
-- `aggregate <逐轮summary.json>... [--output <路径>]`：函数 `aggregate_summaries` 默认冻结
+- `--batch <批次> --holder <持有人> abort --run <轮次> --reason <中止原因> --scenario <场景>`：为已开始但未生成摘要的轮次写显式 `aborted` 摘要，保存原因及现有工件哈希，不要求 context、不伪造产品结论。摘要冻结与同轮在途操作互斥；冻结后拒绝继续采集或注入，仍允许 `restore`。
+- `--batch <批次> aggregate <逐轮summary.json>... [--output <路径>]`：函数 `aggregate_summaries(..., batch=...)` 默认冻结
   `docs/evidence/f11-u2-calibration/summary.json`，包含全部传入成功／失败轮、逐轮文件哈希、场景数量；
-  拒绝覆盖旧摘要或重复轮次。该步骤供之后真实实验调用，本步不生成正式证据。
+  从批次日志推导全部应有轮次，传入集合有缺失、多余、重复或开始记录绑定不符均拒绝；无正常摘要的失败轮必须先显式 `abort`。汇总绑定日志前缀字节数、哈希及开始记录，单独统计 aborted 数量；拒绝覆盖旧摘要，不能靠事后 fold 补造未记录的开始。本步不生成真实证据。
 
 离线测试：`UV_CACHE_DIR=$PWD/tmp/uv-cache .venv/bin/python -m pytest tests/test_f11_u2_harness.py`。
 工具输出不构成正式校准批准；五类各三次、健康备用预算、非预期 unknown 比例、
