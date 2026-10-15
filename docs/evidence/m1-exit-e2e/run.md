@@ -49,7 +49,7 @@
 - 通过：C1 发布前提（当前 Run `completed`、有结论）；C2 唯一授权决定与会话；C3 一次 system 授权、代际不变；C4 无任何人工 control；C5 automatic + `revision=null`；C6 F6 来源 automatic、`permissions` 无 `human_control`、`actions` 无人工动作；C7 离线重放一致（`unknown`，健康窗 421 s）。
 - 未通过（均因恢复未确认）：S1-1 会话 `expired`/`max_samples_exhausted`（期望 `completed`/`recovery_confirmed`）；S1-2 事故 `open`（期望 `resolved`，库与 F6 一致）；S1-3 未确认、健康窗 421 s < 600 s；S1-4 事故页没有 "recovered, no remediation recorded"（来源 automatic 正常显示，页面 200，sha256 `498172ac…`）。
 - 这是 S1（期望恢复）判据，未用 #184 的 S2（期望到期交接）判据重判。按合同，本次结局是另一条合法路径：40 次采样耗尽、未确认 → 事故保持 `open` 并交接，F6 `human_interaction=handoff`，`handoff_reasons` = `MAX_SAMPLES_EXHAUSTED`、`OBSERVATION_UNCONFIRMED`。
-- trace：[根 run](https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/b1a27f49-b0eb-4ef6-9d79-363801a4ad1f/r/00000000-0000-0000-3055-6f91339217a7?poll=true)，`read_back = found`，project 内根 run 1 个（调查），子 run llm 8、tool 19，与库一致。复盘生成是否另有 trace 未核查（未确认）。
+- trace：[根 run](https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/b1a27f49-b0eb-4ef6-9d79-363801a4ad1f/r/00000000-0000-0000-3055-6f91339217a7?poll=true)，`read_back = found`，project 内根 run 1 个（调查），子 run llm 8、tool 19，与库一致。复盘生成的根 run 由采集脚本的 `run_id` 过滤漏掉（复盘根用 `postmortem_attempt_id`，`opspilot/tracing.py:380`）；补查结果冻结在 [`run/postmortem-trace.json`](run/postmortem-trace.json)：两次尝试各一个根 run（07:29Z 失败那次、08:16Z 成功那次）。
 
 ## 复盘与批准
 
@@ -63,7 +63,7 @@
 - 走通：干净库迁移与非 owner 角色启动；真实告警 → 自动建事故 → 真实模型调查并发布结论；结论发布后无人点击的自动授权；Observer 独立采样 40 次并按合同结束、交接；离线重放与库一致；复盘草稿（在 #240 修复后）→ 工作台人工批准 → 知识发布。
 - 没走通：恢复未确认。故障在授权后 1 秒恢复，错误率从样本 5 起一直为 0，但 checkout p95 在 12–18、29–32 两段超出 500 ms 上界，健康窗两次被打断，最后一段只累积到 421 s，40 次采样就用完了（40 × 60 s 先于 3600 s 期限耗尽）。
 - 原因判断：同时有其他开发任务在跑，宿主内存吃紧，p95 抬升判为环境干扰，不是故障残留。内存数据为 lead 运行时观测，未冻结（`sysctl vm.swapusage` 与 `ps`）：07:06Z swap 16.6/17.4 GB、kind VM 常驻内存 1.45 GB；07:21Z swap 16.0 GB、kind VM 常驻内存 0.85 GB。冻结证据与此相容的部分：两段退化期间 error_ratio 与依赖错误率均为 0，p95 退化后自行回落（逐样本 p95 见 `readback.json` `latency_p95_by_sample`）。按 D1「可解释即算数、不为通过重跑」，不重跑。
-- 首次复盘失败暴露的是产品缺陷（输入超限），已由 #240 修复，但 #240 尚未合并；本次复盘成功依赖未合并代码。
+- 首次复盘失败暴露的是产品缺陷（输入超限）。运行当时成功的那次复盘跑在 #240 分支代码 `95ee1bb` 上；#240 已于 2026-10-15 合并入 main，当前 main 已含该修复。
 
 ## 费用
 
