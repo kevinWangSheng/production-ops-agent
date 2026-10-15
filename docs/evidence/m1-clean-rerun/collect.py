@@ -206,6 +206,8 @@ def main(argv: list[str] | None = None) -> int:
     # the run started; HEAD at freeze time is only the collector's checkout
     # (bot review P2 on #217)
     parser.add_argument("--executed-commit", required=True)
+    # phase B (#238/#246 runs) freezes beside phase A under its own directory
+    parser.add_argument("--evidence-subdir", default="run")
     args = parser.parse_args(argv)
     incident = args.incident
 
@@ -458,7 +460,7 @@ def main(argv: list[str] | None = None) -> int:
         ledger,
         experiment="m1-clean-rerun",
         run_id=run_id,
-        evidence_dir=ROOT / "docs/evidence/m1-clean-rerun/run",
+        evidence_dir=ROOT / "docs/evidence/m1-clean-rerun" / args.evidence_subdir,
         summary=summary,
     )
     print(path)

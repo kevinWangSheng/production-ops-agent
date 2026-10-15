@@ -25,7 +25,10 @@ def read(sql, params):
     with psycopg.connect(DSN, row_factory=dict_row) as conn:
         conn.execute("SET TRANSACTION READ ONLY")
         return [
-            {k: (v if isinstance(v, (int, float, bool, type(None))) else str(v)) for k, v in r.items()}
+            {
+                k: (v if isinstance(v, (int, float, bool, type(None))) else str(v))
+                for k, v in r.items()
+            }
             for r in conn.execute(sql, params).fetchall()
         ]
 
@@ -46,7 +49,11 @@ response = httpx2.post(
         "idempotency_key": f"e2e-{uuid4().hex}",
         "expected_generation": str(row["control_generation"]),
     },
-    headers={"authorization": f"Basic {token}", "origin": BASE, "accept": "application/json"},
+    headers={
+        "authorization": f"Basic {token}",
+        "origin": BASE,
+        "accept": "application/json",
+    },
     timeout=30.0,
 )
 try:
@@ -58,7 +65,12 @@ after = read(
     " FROM opspilot_incidents i JOIN opspilot_runs r ON r.run_id=i.current_run_id WHERE i.incident_id=%s",
     (incident,),
 )
-result = {"before": row, "http_status": response.status_code, "http_body": body, "after": after}
+result = {
+    "before": row,
+    "http_status": response.status_code,
+    "http_body": body,
+    "after": after,
+}
 out.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
 print(json.dumps(result))
 sys.exit(0 if response.status_code == 200 else 1)

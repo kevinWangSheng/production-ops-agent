@@ -1,9 +1,9 @@
 # M1 干净重跑记录（2026-10-15，#247）
 
 - 目的：在 [M1 退出端到端运行](../m1-exit-e2e/run.md) 恢复未确认（宿主内存干扰）之后，从空库再跑一次完整路径并拿到确认恢复；同一环境再注入一次故障，为 #238（F13 第 4 步，知识线索进入调查输入）和 #246（F12 PR-1，结论后追问开新 Run 并携带先前报告）提供真实 Run 证据。
-- 运行代码：本地集成分支 `integ/m1-clean-rerun` `0b09559`（`main` 含 #239/#241，加 #238 与 #246 合并、冲突按 F12 r2 解决），不入库；`make check` 7561 passed / 0 failed（同一提交）。摘要 `versions.executed_commit` 记的就是这个提交。
-- 冻结摘要：[run/summary.json](run/summary.json)（阶段 A，`frozen_at` 18:41:13Z，sha256 `48c269d2…c2b5c9`）；批准记录 [run/approve.json](run/approve.json)；阶段 B 只读回读 [run/phase-b.json](run/phase-b.json)（Run 输入里的知识条目名、先前报告摘录、追问响应、LangSmith 根 run）。原始 ledger 不入库，本机 `tmp/lab-ledgers/m1-clean-rerun/2c321376-…/ledger.json`（sha256 `e55c9e4b…855156`，1,248,877 B）。
-- 判据：[verify.py](verify.py) 与 [m1-exit-e2e/verify.py](../m1-exit-e2e/verify.py) 逐字相同；[collect.py](collect.py) 只改了实验名与 round；[approve.py](approve.py) 同上次；[followup.py](followup.py) 以工作台审核人身份提交一次追问表单（凭据读文件，不打印）。
+- 运行代码：本地集成分支 `integ/m1-clean-rerun` `0b09559`（`main` 含 #239/#241，加 #238 与 #246 合并、冲突按 F12 r2 解决），原样保留在远端分支 `chore/m1-clean-rerun-integ`（不合并，供核对运行代码）；`make check` 7561 passed / 0 failed（同一提交）。摘要 `versions.executed_commit` 记的就是这个提交。
+- 冻结摘要：[run/summary.json](run/summary.json)（阶段 A，`frozen_at` 18:41:13Z，sha256 `48c269d2…c2b5c9`）；批准记录 [run/approve.json](run/approve.json)；阶段 B 冻结摘要 [run-b/summary.json](run-b/summary.json)（事故 `ae7a0387`，Run `49a537d7` 与 `3ed23c95`，`frozen_at` 19:20:05Z，sha256 `b1e38b47…4c96a3c`，trace 根 run 2 个；collector 只能填 `--scenario S1`，阶段 B 未作恢复判定，其恢复字段为未确认，按此读）；阶段 B 只读回读 [run/phase-b.json](run/phase-b.json) 补摘要不含的 Run 输入摘录（知识条目名、先前报告、各 Run 输入 sha256）与追问响应。原始 ledger 不入库：阶段 A 本机 `tmp/lab-ledgers/m1-clean-rerun/2c321376-…/ledger.json`（sha256 `e55c9e4b…855156`，1,248,877 B）；阶段 B `…/3ed23c95-…/ledger.json`（sha256 `f8b0433e…b84e4aa`，893,850 B，含两次 Run 的输入，即知识条目与 `Conclusion: partial` 先前报告）。阶段 B 取证时只起 PG 与 web（`OPSPILOT_SELF_HEAL_INTERVAL_SECONDS=0`，不再写自动授权），worker 与 Observer 已停，观察会话停在 `authorized`。
+- 判据：[verify.py](verify.py) 与 [m1-exit-e2e/verify.py](../m1-exit-e2e/verify.py) 逐字相同；[collect.py](collect.py) 只改了实验名、round 与输出子目录参数 `--evidence-subdir`；[approve.py](approve.py) 同上次；[followup.py](followup.py) 以工作台审核人身份提交一次追问表单（凭据读文件，不打印）。
 
 ## 环境
 
