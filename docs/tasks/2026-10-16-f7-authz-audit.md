@@ -51,6 +51,7 @@ lab 代理：经 `127.0.0.1:19090` 访问，行为见 A4；`scripts/f7_authz_pro
 - 验收断言放宽与恢复（照实记录）：测试作者首轮遇到投影要求 dict 行（实现缺陷，已在实现侧修，测试保持普通连接）后，看到实现输出把两处断言放宽——复盘来源允许集合加入 `opspilot_postmortem_versions`、`opspilot_f13_audit`、`opspilot_knowledge_revisions`；恢复观察相对登记处置的次序改为只要求采样与结束严格晚于登记、会话行只需晚于此前的纠正。放宽版本随 `c1b9e1d` 提交。协调者要求恢复，作者已恢复原写法；恢复后 2 failed / 22 passed，两处分歧列入下方「待决」决定表，实现与测试都不再改，等裁决。
 - 测试作者列出的其余不清处由 lead 按可逆细节定：`tool_charges`、`runs`、`input_rounds` 无自身时间列，取关联记录的数据库写入时间并在 `detail.time_basis` 标明（`steps.observed_at` 默认 `clock_timestamp()`，0001 l.82）；UI 接收的输入由 `input_rounds` 体现；query 的 `detail` 键名以实现为准（测试只断言 `tool`、`target_id`）；第 5 步不挂 `PRODUCT_CONSTRAINT_SCENARIO_INDEX`（需改 `opspilot/acceptance.py`，超出本 PR）。
 - 独立审查（Codex `gpt-6-astra`，会话 `01a1451c`）：P2×2——取消等非 completed 终态的 Run 无结束条目；探测矩阵漏 `lab` 账号与 HEAD/OPTIONS/路径变形。修复后 resume 复验两项已解决，另报新 P2：路径变形把 5xx 当拒绝。lead 自修为只认 4xx（301/0/5xx 均判失败）并补参数化用例，自核通过。审查明确：nginx alpine 是否认 `$2y$` bcrypt、真实路径行为、已有 lab 升级顺序与 collector 写入只能在 lab 验证。
+- 第 5 步真实数据（R3）：用户 2026-10-16 批准复制 F12 live 库；协调者复制到 `tmp/f12-live-pg`，lead 在 55596 只读启动，重建 4 个事故，跑完停库。`002c3fba`、`e1ac6e74` 七类齐全，证据 [f7-audit-rebuild](../evidence/f7-audit-rebuild/run.md)（D1、D2 待决）。
 - `make check`（98d7c62，PG 55595，共享锁）：ruff、format、mypy 通过；pytest 8700 passed、55 skipped、2 xfailed（nginx 离线校验 1 例因本机无 nginx 跳过）。
 
 ## lab 计划（需要协调者排期）
@@ -60,7 +61,7 @@ lab 代理：经 `127.0.0.1:19090` 访问，行为见 A4；`scripts/f7_authz_pro
 1. 部署代理（约 10 分钟，无模型）：`.venv/bin/python scripts/kind_lab.py up`（helm 升级：Prometheus 换 web.yml 并改 ClusterIP，随后 apply 代理占 30090）→ `kind_lab.py health` ok（lab 账号经代理读，证明 bcrypt 可用）→ 3 分钟后 `rate(traces_span_metrics_calls_total[2m]) > 0`（collector 写入链路仍通）。失败回滚：`git` 回到 main 版本的 `scripts/kind_lab*` 再 `up`。
 2. 第 1 步探测（约 3 分钟，无模型）：`.venv/bin/python scripts/f7_authz_probe.py > docs/evidence/f7-authz-probe/probe.json`；期望 `ok: true`（三账号读 200、禁止路径 403、变形 4xx、匿名 401、`opspilot_f7_probe` 无新样本）。证据加 gitleaks 与凭据原值字面匹配。
 3. 第 4 步真实 Run（S4c，合同第 6 节，约 30-45 分钟，1-2 个真实模型 Run）：注入 `paymentFailure` → 告警建事故、Run 运行中 → 工作台 `POST /controls/suspension`（scope=global）→ 核对 generation 之后无新查询、在途结果只作历史、Observer 采样以 `scope_suspended` 结束 → 解除，确认不自动恢复 → 对目标暂停重复一遍 → 恢复故障。**现无专用采集脚本**，需要先仿 `docs/evidence/f12-live/ctl.py`、`collect.py` 写一个（离线可做，lab 前完成）。
-4. 第 5 步真实数据（离线，不占 lab）：在 F12 live 库副本上 `scripts/f7_audit_rebuild.py` 只读重建干净重跑事故与 `e1ac6e74`，冻结 `summary.json`；副本待协调者提供。
+4. 第 5 步真实数据：已完成（见上），D1 选 B 时需重跑。
 
 五步证据齐后单独一个提交翻 F7 `passes`。
 
@@ -70,10 +71,9 @@ lab 代理：经 `127.0.0.1:19090` 访问，行为见 A4；`scripts/f7_authz_pro
 
 | 编号 | 分歧 | 选项与代价 | 推荐 |
 |---|---|---|---|
-| D1 | 接口写 postmortem_review 来源为「`opspilot_postmortems` 各版本与审核、`opspilot_knowledge_entries`」，并规定 `source` 是表名；而版本与审核动作实际存在 `opspilot_postmortem_versions`、`opspilot_f13_audit`（迁移 0008）。实现按真实表名报，测试按字面两表断言 → `test_s5b_entries_are_ordered...` 失败（来源 `opspilot_f13_audit`） | a. 澄清接口：「各版本与审核」指 0008 的版本表与审核审计表，`source` 报真实表名；测试作者按澄清后的接口改允许集合，并恢复审核人/生成者可归属的断言。信息完整。<br>b. 实现把版本与审核行的 `source` 统一报 `opspilot_postmortems`：符合字面，但 `source` 不再是真实表名，审计回溯要多一步 | a |
-| D2 | 测试要求所有恢复观察条目不早于登记处置的控制行；而观察会话行与登记处置同一事务写入，会话的 `clock_timestamp()` 比控制行早约 0.7 ms（实测 08:10:06.324019 对 .324701）→ `test_s5b_causal_order_holds` 失败。产品不改，投影按 R6 只用数据库写入时间 | a. 同一事务内的行不定义因果先后：会话行只要求与登记同事务（不早于此前的纠正），采样与结束严格晚于登记。<br>b. 投影对同一事务的行改用事务时间或人为把会话行排到控制行之后：违背 R6「只用写入时间」，或需要读事务标识，复杂且偏离真实时钟 | a |
+| D1 | 合同（R2：「组合三个现有投影加 suspension_audit 和 tool_charges」）与本记录接口都没点名 `opspilot_f13_audit`；接口写 postmortem_review 来源为「`opspilot_postmortems` 各版本与审核、`opspilot_knowledge_entries`」并规定 `source` 是表名，而版本与审核动作实际存在 `opspilot_postmortem_versions` 与 `opspilot_f13_audit`（迁移 0008）。实现报真实表名，测试按字面两表断言 → 来源 `opspilot_f13_audit`（action=generate）的条目让 `test_s5b_entries_are_ordered...` 失败。合同没禁止这些表，属于措辞缺口 | A. 允许 0008 的版本表与审核审计表作为来源：改本记录接口，测试作者按新接口改允许集合并加回审核人/生成者可归属断言。代价：一次接口修订；收益：审核谁做的、何时生成都可回溯。<br>B. 实现不读这两张表，只报 `opspilot_postmortems` 与知识条目：符合字面，但复盘「审核」本身（审核人、批准动作）从时间线消失，第 5 步「postmortem review」只剩结果没有动作；真实库摘要需重跑 | A |
+| D2 | R6 规定只按 PostgreSQL 写入时间排序；本 PR 的验收另要求因果次序（恢复观察不早于登记处置）。观察会话行与登记控制行在同一事务写入，会话行 `clock_timestamp()` 早 0.7–1.3 ms → `test_s5b_causal_order_holds` 失败。两条要求对同一事务内的行冲突 | A. 同一事务内的行不定义因果先后：会话行只要求不早于此前的纠正，采样与结束必须严格晚于登记。代价：测试按此改写（由测试作者）；不动产品与投影。<br>B. 投影对同一事务的行按事务内位置排序：需要读事务标识（`xmin`）并定一个事务内顺序规则，复杂，且 `xmin` 跨回卷不可靠。<br>C. 产品改为先写控制行再写会话行：动产品存储（`ObservationStore.register_remediation`），超出本 PR 范围，需另开 PR，在途库不受影响 | A |
 
 ### 其他
 
-- F12 live 库副本（第 5 步 R3 数据）：复制被本机权限分类器拒绝，协调者已移到 `production-ops-agent/tmp/archive/f12-live/live/pg`（只读），正在征求用户是否允许复制到本 worktree。
 - 第 4 步真实 Run 的采集脚本尚未写。
