@@ -367,3 +367,14 @@ def test_display_redaction_survives_json_nested_past_the_decoder_limit():
     deep = b"[" * 100_000 + b'"password=synthetic-secret"' + b"]" * 100_000
     shown = redact_json_bytes(deep)
     assert b"synthetic-secret" not in shown
+
+
+def test_many_keys_that_redact_alike_stay_linear_and_distinct():
+    import time
+
+    payload = {f"https://user{i}:pw{i}@host": i for i in range(30_000)}
+    started = time.monotonic()
+    result = redact_payload(payload)
+    assert time.monotonic() - started < 5
+    assert len(result) == 30_000
+    assert sorted(result.values()) == list(range(30_000))

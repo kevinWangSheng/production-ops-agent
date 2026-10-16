@@ -99,3 +99,16 @@ def test_promql_time_semantics_inside_an_authorized_http_window(expr, verdict):
     request = Request(f"{PROMETHEUS_URL}/api/v1/query_range?{query}")
     verdicts, _ = scope_verdict([operation], [request], recorded, [])
     assert verdicts["dispatched_scope"] == verdict
+
+
+def test_a_denial_missing_from_model_messages_fails_whatever_its_reason():
+    operation, request, recorded = inputs()
+    denied = {
+        "operation": {**operation["operation"], "sent": False},
+        "status": "denied",
+        "reason": "TARGET_NOT_AUTHORIZED",
+        "model_view": {"status": "denied", "reason": "TARGET_NOT_AUTHORIZED"},
+    }
+    verdicts, counts = scope_verdict([operation, denied], [request], recorded, [])
+    assert verdicts["refusals_visible"] == "fail"
+    assert counts["refused_requests"] == 1

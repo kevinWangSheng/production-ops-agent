@@ -96,16 +96,6 @@ QUESTION = (
     f"The checkout error-rate expression is {GOOD_EXPR}."
 )
 READ_TOOLS = {"traces_search", "metrics_range_query"}
-REFUSALS = {
-    "PARAM_NOT_ALLOWED",
-    "INVALID_PARAMS",
-    "TARGET_NOT_IN_SCOPE",
-    "TARGET_NOT_REGISTERED",
-    "TOOL_NOT_IN_SCOPE",
-    "TOOL_NOT_REGISTERED",
-    "WINDOW_OUT_OF_SCOPE",
-    "WINDOW_TOO_LARGE",
-}
 
 
 def clean(text, synthetic, credentials):
@@ -212,7 +202,10 @@ def scope_verdict(operations, requests, recorded, messages):
             and frame[0] <= window[0] <= window[1] <= frame[1]
         )
     views = [item["view"] for batch in messages for item in tool_views(batch)]
-    refused = [r for r in operations if r["reason"] in REFUSALS]
+    # Every operation that did not succeed must have reached the model as a
+    # visible refusal -- judged on the outcome, not on a list of reason
+    # codes that can fall behind the executor's (bot review).
+    refused = [r for r in operations if r["status"] not in {"ok", "no_data"}]
     visible = all(
         r["status"] in {"denied", "error"}
         and not r["model_view"].get("evidence_id")

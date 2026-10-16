@@ -407,6 +407,7 @@ def redact_payload(value: object) -> object:
     # is walked like a list and comes back as one (bot review).
     result: dict[str, object] | list[object] = {} if isinstance(value, dict) else []
     stack = [(value, result)]
+    suffixes: dict[tuple[int, str], int] = {}
     changed = False
     while stack:
         source, destination = stack.pop()
@@ -449,10 +450,15 @@ def redact_payload(value: object) -> object:
                 # rather than letting one overwrite the other.
                 name = redact_credentials(key)
                 changed |= name != key
-                base, suffix = name, 1
-                while name in destination:
-                    suffix += 1
-                    name = f"{base}#{suffix}"
+                if name in destination:
+                    # The next free suffix per base, so many keys that redact
+                    # alike cost one probe each, not a rescan (bot review).
+                    base = name
+                    suffix = suffixes.get((id(destination), base), 1)
+                    while name in destination:
+                        suffix += 1
+                        name = f"{base}#{suffix}"
+                    suffixes[(id(destination), base)] = suffix
                     changed = True
                 destination[name] = redacted
             else:
