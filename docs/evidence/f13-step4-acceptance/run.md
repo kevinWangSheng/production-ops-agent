@@ -3,7 +3,7 @@
 - 目的：按 [任务记录](../../tasks/2026-10-15-f13-step4-acceptance.md)「验收运行计划」跑 3 个有界真实 Run，判定 F13 第 4 步。
 - **结论：Run 1、Run 2 通过；Run 3 失败（核对结果为 `conflicting`，不是 `contradicted`）。F13 `passes` 不翻。**
 - 运行代码：分支 `feature/F13-step4-acceptance` `e1582ed`（= `main` `d19e78a` + 本 PR），web 与 worker 都用非 owner 角色；Observer 未启动（本验收不作恢复判定）。模型 `deepseek-flash`，trace 只在实验环境导出。
-- 判定：[`knowledge_use.py`](knowledge_use.py)（投影加事故页 `#knowledge-hints` 逐条比对）；人工动作：[`workbench.py`](workbench.py)；冻结摘要：[`collect.py`](collect.py)（从 m1-clean-rerun 复制，只改实验名、round、产物清单和输出目录；`--scenario S1` 的恢复字段在这里不作判定）。
+- 判定：[`knowledge_use.py`](knowledge_use.py)（投影加事故页 `#knowledge-hints` 逐条比对）；人工动作：[`workbench.py`](workbench.py)；冻结摘要：[`collect.py`](collect.py)（从 m1-clean-rerun 复制，只改实验名、round、产物清单和输出目录；`--scenario S1` 的恢复字段在这里不作判定）。冻结后对 `collect.py` 跑过一次 `ruff format`，只改了排版，所以入库文件的 sha256 与各 `summary.json` 里 `artifacts` 记录的值不同。
 - 原始 ledger 不入库，在本机 `production-ops-agent/tmp/lab-ledgers/f13-step4-acceptance/<run_id>/ledger.json`（sha256 见各 `summary.json` 的 `raw_ledger`）。
 
 ## 环境
