@@ -48,6 +48,8 @@
 - close 对 `waiting_human` Run（接管后）同样取消：`waiting_human` 属控制层开放态（`_CONTROL_OPEN_RUN_STATES`），与现有 cancel 一致；ADR-0005 的交接终态是另一状态，不受影响。用户 2026-10-16 裁决 A（取消，即本 PR 现行为），验收测试按此收紧断言（PR-3）。
 - `make check`：ruff、format、mypy 通过；pytest 7605 passed、17 failed、54 skipped——17 例均为迁移类测试，首因是环境未把 `pg_dump` 放进 PATH（`OPSPILOT_PG_DUMP` 未设）；补上 PG 17 bin 后这 17 例单独重跑 17 passed。
 
+- PR-3 真实运行（2026-10-16）：四步可观察行为通过，见 [f12-live 记录](../evidence/f12-live/run.md)；用户 2026-10-16 接受两处偏离（4② 手工重投、等价 HTTP 表单提交）为实际通过；续开后复盘重复生成见 #255。
+
 ## 未完成与待决
 
 - 真实运行属 PR-3，本 PR 不做。

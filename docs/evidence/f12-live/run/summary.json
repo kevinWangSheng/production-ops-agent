@@ -1,0 +1,504 @@
+{
+  "schema": "opspilot-lab-summary-1",
+  "experiment": "f12-live",
+  "run_id": "e1ac6e74-da8c-52c5-92c7-20a9e9a543cf",
+  "frozen_at": "2026-10-16T08:46:53.085587+00:00",
+  "versions": {
+    "executed_commit": "f497424"
+  },
+  "incidents": {
+    "A": "e1ac6e74-da8c-52c5-92c7-20a9e9a543cf",
+    "B": "a7eeac26-f7ec-5239-8d5e-c2744cb67f41"
+  },
+  "checks": {
+    "step1": [
+      {
+        "check": "evidence link resolves to an HTML evidence page",
+        "pass": true,
+        "detail": 7906
+      },
+      {
+        "check": "follow_up after a published conclusion: 200, new Run, old Run completed",
+        "pass": true,
+        "detail": {
+          "new_run": "9e760c03-bf62-5025-9ae2-606662c25b4f",
+          "generation": 1
+        }
+      },
+      {
+        "check": "new Run published an updated conclusion",
+        "pass": true,
+        "detail": null
+      },
+      {
+        "check": "page after the update shows Investigation history with the prior Run",
+        "pass": true,
+        "detail": null
+      }
+    ],
+    "step2": [
+      {
+        "check": "correct of a hypothesis: 200 and a new Run",
+        "pass": true,
+        "detail": {
+          "action": "correct",
+          "generation": 2,
+          "incident_id": "e1ac6e74-da8c-52c5-92c7-20a9e9a543cf",
+          "replayed": false,
+          "run_id": "c7d8b699-090f-558f-bcb5-046d988ee49e",
+          "sequence": 50
+        }
+      },
+      {
+        "check": "audit and input rows carry the correction",
+        "pass": true,
+        "detail": null
+      },
+      {
+        "check": "successor input carries the prior conclusion labelled not instructions",
+        "pass": true,
+        "detail": null
+      },
+      {
+        "check": "corrected Run published; the prior conclusions stay in history",
+        "pass": true,
+        "detail": null
+      }
+    ],
+    "step3": [
+      {
+        "check": "05-pause accepted with operator and generation",
+        "pass": true,
+        "detail": {
+          "generation": 3,
+          "after": {
+            "concluded": false,
+            "control_generation": 3,
+            "current_run_id": "c7d8b699-090f-558f-bcb5-046d988ee49e",
+            "lifecycle": "open",
+            "mode": "automatic",
+            "state": "paused"
+          }
+        }
+      },
+      {
+        "check": "06-resume accepted with operator and generation",
+        "pass": true,
+        "detail": {
+          "generation": 4,
+          "after": {
+            "concluded": false,
+            "control_generation": 4,
+            "current_run_id": "c7d8b699-090f-558f-bcb5-046d988ee49e",
+            "lifecycle": "open",
+            "mode": "automatic",
+            "state": "running"
+          }
+        }
+      },
+      {
+        "check": "09-cancel accepted with operator and generation",
+        "pass": true,
+        "detail": {
+          "generation": 6,
+          "after": {
+            "concluded": false,
+            "control_generation": 6,
+            "current_run_id": "dc25871c-b6de-5b1b-99f8-7b4ed878802c",
+            "lifecycle": "open",
+            "mode": "automatic",
+            "state": "cancelled"
+          }
+        }
+      },
+      {
+        "check": "11-takeover-mid-run accepted with operator and generation",
+        "pass": true,
+        "detail": {
+          "generation": 8,
+          "after": {
+            "concluded": false,
+            "control_generation": 8,
+            "current_run_id": "1f53e856-9f2c-528f-bf7b-549f007a8355",
+            "lifecycle": "open",
+            "mode": "human_owned",
+            "state": "running"
+          }
+        }
+      },
+      {
+        "check": "15-close accepted with operator and generation",
+        "pass": true,
+        "detail": {
+          "generation": 11,
+          "after": {
+            "concluded": false,
+            "control_generation": 11,
+            "current_run_id": "1f53e856-9f2c-528f-bf7b-549f007a8355",
+            "lifecycle": "closed",
+            "mode": "human_owned",
+            "state": "cancelled"
+          }
+        }
+      },
+      {
+        "check": "17-reopen accepted with operator and generation",
+        "pass": true,
+        "detail": {
+          "generation": 12,
+          "after": {
+            "concluded": false,
+            "control_generation": 12,
+            "current_run_id": "1f53e856-9f2c-528f-bf7b-549f007a8355",
+            "lifecycle": "open",
+            "mode": "human_owned",
+            "state": "cancelled"
+          }
+        }
+      },
+      {
+        "check": "B02-close-running accepted with operator and generation",
+        "pass": true,
+        "detail": {
+          "generation": 1,
+          "after": {
+            "concluded": false,
+            "control_generation": 1,
+            "current_run_id": "169ee055-69eb-5d53-8f7a-1011da45f086",
+            "lifecycle": "closed",
+            "mode": "automatic",
+            "state": "cancelled"
+          }
+        }
+      },
+      {
+        "check": "B04-reopen accepted with operator and generation",
+        "pass": true,
+        "detail": {
+          "generation": 2,
+          "after": {
+            "concluded": false,
+            "control_generation": 2,
+            "current_run_id": "169ee055-69eb-5d53-8f7a-1011da45f086",
+            "lifecycle": "open",
+            "mode": "automatic",
+            "state": "cancelled"
+          }
+        }
+      },
+      {
+        "check": "every human decision row has a database timestamp",
+        "pass": true,
+        "detail": 18
+      },
+      {
+        "check": "page badges after pause / close / reopen",
+        "pass": true,
+        "detail": {
+          "paused": "paused",
+          "closed": "closed",
+          "reopened": "open"
+        }
+      },
+      {
+        "check": "closed page offers reopen and not close; reopened page offers close and not reopen",
+        "pass": true,
+        "detail": {
+          "closed": [
+            "correct",
+            "follow_up",
+            "reopen",
+            "takeover"
+          ],
+          "reopened": [
+            "close",
+            "correct",
+            "follow_up",
+            "register_remediation",
+            "takeover"
+          ]
+        }
+      },
+      {
+        "check": "A: close during observation revoked the session and cancelled the waiting_human Run",
+        "pass": true,
+        "detail": [
+          {
+            "authorization_source": "automatic",
+            "ended_reason": "authority_revoked",
+            "session_id": "43eb3541-2a91-5541-9260-8cf4a33774f8",
+            "state": "revoked"
+          },
+          {
+            "authorization_source": "automatic",
+            "ended_reason": "authority_revoked",
+            "session_id": "a2be5e9b-5071-590c-bfc2-9a185119d056",
+            "state": "revoked"
+          },
+          {
+            "authorization_source": "post_remediation",
+            "ended_reason": "authority_revoked",
+            "session_id": "bab64023-32ee-5fb1-9c90-fb2bde2b164b",
+            "state": "revoked"
+          }
+        ]
+      },
+      {
+        "check": "A: new_run on the closed incident refused REOPEN_REQUIRED, nothing written",
+        "pass": true,
+        "detail": null
+      },
+      {
+        "check": "A: reopen started no Run and no observation",
+        "pass": true,
+        "detail": null
+      },
+      {
+        "check": "B: close of a running automatic Run cancelled it; its later write is late_result only",
+        "pass": true,
+        "detail": [
+          [
+            0,
+            "tool_result_committed"
+          ],
+          [
+            1,
+            "tool_result_committed"
+          ],
+          [
+            2,
+            "late_result"
+          ]
+        ]
+      },
+      {
+        "check": "B: follow_up on the closed incident refused REOPEN_REQUIRED",
+        "pass": true,
+        "detail": null
+      },
+      {
+        "check": "B: reopen started no Run; the follow_up after it opened one that published",
+        "pass": true,
+        "detail": null
+      }
+    ],
+    "step4": [
+      {
+        "check": "takeover: mode human_owned, Run waiting_human, audit row",
+        "pass": true,
+        "detail": null
+      },
+      {
+        "check": "(1) worker dispatched before takeover: its later round is late_result only, no publish",
+        "pass": true,
+        "detail": [
+          [
+            0,
+            7,
+            "tool_result_committed"
+          ],
+          [
+            1,
+            7,
+            "late_result"
+          ]
+        ]
+      },
+      {
+        "check": "(2) same firing alert delivered again (hand redelivery): replayed, no new incident or Run",
+        "pass": true,
+        "detail": [
+          [
+            5,
+            "firing",
+            "created"
+          ],
+          [
+            6,
+            "firing",
+            "replayed"
+          ],
+          [
+            7,
+            "resolved",
+            "resolved_attached"
+          ]
+        ]
+      },
+      {
+        "check": "(3) fact under human ownership: recorded, Run and mode unchanged",
+        "pass": true,
+        "detail": null
+      },
+      {
+        "check": "handoff kept: takeover audit row still present at the end",
+        "pass": true,
+        "detail": null
+      }
+    ]
+  },
+  "verdicts": {
+    "step1": true,
+    "step2": true,
+    "step3": true,
+    "step4": true
+  },
+  "all_steps_pass": true,
+  "pages": {
+    "01-first-conclusion": "b4482f11fa231212c56faa7cdae19bb3527a000587f586916d8d8779356c2a99",
+    "01b-evidence": "733ea11fae9e6df98da8234005a160e688befd72a41e94ba1dc9e4375a2f9576",
+    "03-second-conclusion": "1243d24ee79f80d2a191e9352d7069600506ce0f8ef4dab1597c500a0dc25dd9",
+    "05b-paused": "5b859f08627a092c20c9339dc1293cbc9d0b9ddd91317609357fedf216bc306a",
+    "07-third-conclusion": "8ea7eb81b5085424f7b3b5de456085ec560bf53c023720222d470b89beed7d6a",
+    "09b-cancelled": "ca38c305eefb7f739d3d4f3be30853386e09e0cb1f9960dad1c4161160d29ff5",
+    "11b-taken-over": "b423a975f9b7b33f9d98330d6fa33d5d22f1e393cecd2341bf16f514cbd1ab38",
+    "13b-after-fact": "ec25220af2d0b15deef76e8190549bea1fc563aa5115f74872022e5cf42a9086",
+    "14b-observing": "b7f4b8084b41566be31e7bb5ab635556dbccd68a8ee4b116b81e3fd213d606e4",
+    "15b-closed": "0608f7dfff81bac10c54cec86d03213c016fca07c06c918200232e3d50850cb8",
+    "17b-reopened": "05fe77453e997f6dab14879cb83ff15f40b1ffcc582bab96e5f7fdbec1e6752c",
+    "18-final": "c92ea4447d84254d072878072dbd702b1e1efce26784e7829047698c9d3821a4",
+    "B01-running": "60b60c8d6c29dce29e5a6db8e56187c714ac428f1e1782f522a9ae2693b7210a",
+    "B03b-closed": "c457fa51a96df0c4770749163d26d124cce61d9e3455a790eef140bea4dd09a8",
+    "B05b-after-follow-up": "4f3ca1ea83dda698e8d5be6998420dce629d619b29c2b9ee2ef44b9a6ba70387",
+    "B06-new-conclusion": "2193d214ff8dd7a3da2a3880a52d3e3890f2d7438d06b883ab5f080685f64c28"
+  },
+  "trace": {
+    "project": {
+      "project": "opspilot-lab-f12-live-20261016",
+      "project_id": "1a70f852-5e85-46ad-9bb8-19125103d8ed",
+      "trace_tier": "longlived"
+    },
+    "roots": [
+      {
+        "name": "opspilot.run",
+        "incident_id": "e1ac6e74-da8c-52c5-92c7-20a9e9a543cf",
+        "run_id": "bb64bec6-4a5f-5ffd-ae10-3b6a12dd782b",
+        "start_time": "2026-10-16 08:13:05.897378+00:00",
+        "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/1a70f852-5e85-46ad-9bb8-19125103d8ed/r/00000000-0000-0000-4fe6-01d82b01b652?poll=true"
+      },
+      {
+        "name": "opspilot.run",
+        "incident_id": "e1ac6e74-da8c-52c5-92c7-20a9e9a543cf",
+        "run_id": "9e760c03-bf62-5025-9ae2-606662c25b4f",
+        "start_time": "2026-10-16 08:17:05.328054+00:00",
+        "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/1a70f852-5e85-46ad-9bb8-19125103d8ed/r/00000000-0000-0000-9c2c-6ecce7c00891?poll=true"
+      },
+      {
+        "name": "opspilot.postmortem_generation",
+        "incident_id": "e1ac6e74-da8c-52c5-92c7-20a9e9a543cf",
+        "run_id": null,
+        "start_time": "2026-10-16 08:17:28.444698+00:00",
+        "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/1a70f852-5e85-46ad-9bb8-19125103d8ed/r/00000000-0000-0000-5cea-4c5a22676ec5?poll=true"
+      },
+      {
+        "name": "opspilot.postmortem_generation",
+        "incident_id": "e1ac6e74-da8c-52c5-92c7-20a9e9a543cf",
+        "run_id": null,
+        "start_time": "2026-10-16 08:19:26.546532+00:00",
+        "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/1a70f852-5e85-46ad-9bb8-19125103d8ed/r/00000000-0000-0000-4d5e-a38f06bc77ea?poll=true"
+      },
+      {
+        "name": "opspilot.run",
+        "incident_id": "e1ac6e74-da8c-52c5-92c7-20a9e9a543cf",
+        "run_id": "c7d8b699-090f-558f-bcb5-046d988ee49e",
+        "start_time": "2026-10-16 08:24:50.670985+00:00",
+        "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/1a70f852-5e85-46ad-9bb8-19125103d8ed/r/00000000-0000-0000-a55a-e1a9edecddb9?poll=true"
+      },
+      {
+        "name": "opspilot.postmortem_generation",
+        "incident_id": "e1ac6e74-da8c-52c5-92c7-20a9e9a543cf",
+        "run_id": null,
+        "start_time": "2026-10-16 08:25:00.837753+00:00",
+        "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/1a70f852-5e85-46ad-9bb8-19125103d8ed/r/00000000-0000-0000-361e-d83a17c2f074?poll=true"
+      },
+      {
+        "name": "opspilot.run",
+        "incident_id": "e1ac6e74-da8c-52c5-92c7-20a9e9a543cf",
+        "run_id": "c7d8b699-090f-558f-bcb5-046d988ee49e",
+        "start_time": "2026-10-16 08:25:09.264333+00:00",
+        "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/1a70f852-5e85-46ad-9bb8-19125103d8ed/r/00000000-0000-0000-cae2-c0c7b9f25f81?poll=true"
+      },
+      {
+        "name": "opspilot.postmortem_generation",
+        "incident_id": "e1ac6e74-da8c-52c5-92c7-20a9e9a543cf",
+        "run_id": null,
+        "start_time": "2026-10-16 08:26:57.072512+00:00",
+        "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/1a70f852-5e85-46ad-9bb8-19125103d8ed/r/00000000-0000-0000-796e-b0fadb4d6be8?poll=true"
+      },
+      {
+        "name": "opspilot.run",
+        "incident_id": "e1ac6e74-da8c-52c5-92c7-20a9e9a543cf",
+        "run_id": "dc25871c-b6de-5b1b-99f8-7b4ed878802c",
+        "start_time": "2026-10-16 08:27:55.401015+00:00",
+        "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/1a70f852-5e85-46ad-9bb8-19125103d8ed/r/00000000-0000-0000-4f9a-1acd238f48ed?poll=true"
+      },
+      {
+        "name": "opspilot.run",
+        "incident_id": "e1ac6e74-da8c-52c5-92c7-20a9e9a543cf",
+        "run_id": "1f53e856-9f2c-528f-bf7b-549f007a8355",
+        "start_time": "2026-10-16 08:28:12.228027+00:00",
+        "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/1a70f852-5e85-46ad-9bb8-19125103d8ed/r/00000000-0000-0000-d845-7d402c7494ec?poll=true"
+      },
+      {
+        "name": "opspilot.postmortem_generation",
+        "incident_id": "e1ac6e74-da8c-52c5-92c7-20a9e9a543cf",
+        "run_id": null,
+        "start_time": "2026-10-16 08:29:29.994543+00:00",
+        "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/1a70f852-5e85-46ad-9bb8-19125103d8ed/r/00000000-0000-0000-b021-f6d4127b2dc2?poll=true"
+      },
+      {
+        "name": "opspilot.postmortem_generation",
+        "incident_id": "e1ac6e74-da8c-52c5-92c7-20a9e9a543cf",
+        "run_id": null,
+        "start_time": "2026-10-16 08:31:58.228043+00:00",
+        "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/1a70f852-5e85-46ad-9bb8-19125103d8ed/r/00000000-0000-0000-9d17-b0cfa5e0e935?poll=true"
+      },
+      {
+        "name": "opspilot.run",
+        "incident_id": "a7eeac26-f7ec-5239-8d5e-c2744cb67f41",
+        "run_id": "169ee055-69eb-5d53-8f7a-1011da45f086",
+        "start_time": "2026-10-16 08:41:04.492488+00:00",
+        "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/1a70f852-5e85-46ad-9bb8-19125103d8ed/r/00000000-0000-0000-72bf-de6db600f7f3?poll=true"
+      },
+      {
+        "name": "opspilot.run",
+        "incident_id": "a7eeac26-f7ec-5239-8d5e-c2744cb67f41",
+        "run_id": "6390989a-69d8-532c-b0ce-d35337e56c15",
+        "start_time": "2026-10-16 08:42:30.479202+00:00",
+        "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/1a70f852-5e85-46ad-9bb8-19125103d8ed/r/00000000-0000-0000-3c2f-2596659ff683?poll=true"
+      }
+    ]
+  },
+  "balance": [
+    {
+      "at": "2026-10-16T08:06:41.583059+00:00",
+      "label": "before",
+      "balance": [
+        {
+          "currency": "CNY",
+          "total_balance": "203.44",
+          "granted_balance": "3.41",
+          "topped_up_balance": "200.02"
+        }
+      ]
+    },
+    {
+      "at": "2026-10-16T08:45:49.855354+00:00",
+      "label": "after",
+      "balance": [
+        {
+          "currency": "CNY",
+          "total_balance": "200.49",
+          "granted_balance": "0.47",
+          "topped_up_balance": "200.02"
+        }
+      ]
+    }
+  ],
+  "raw_ledger": {
+    "sha256": "1296a2a66f89f1c5bfe298d2e3754e79325bfb9a9c482596232500b700a7f6e4",
+    "bytes": 1551986,
+    "path": "f12-live/e1ac6e74-da8c-52c5-92c7-20a9e9a543cf/ledger.json",
+    "in_repository": false
+  }
+}
