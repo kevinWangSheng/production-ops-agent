@@ -130,7 +130,7 @@
       "Pause, cancel, take over, close and reopen an incident and verify explicit status with authorized actor and timestamps",
       "After a user takes over, deliver new evidence and verify it respects the incident state and does not erase the handoff"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": "F13",
