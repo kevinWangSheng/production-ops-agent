@@ -119,19 +119,16 @@ def probe(base_url: str = BASE_URL, directory: Path = LAB_DIR) -> dict[str, Any]
             elif path == "/api/v1/series":
                 query = "?match%5B%5D=up"
             expected = (
-                "non-2xx"
+                "4xx"
                 if (method, path) in VARIANT_REQUESTS
                 else 401
                 if role == "anonymous"
                 else (200 if (method, path) in READ_REQUESTS else 403)
             )
             status, _ = request(base_url, method, path + query, auths.get(role))
-            # A transport failure (status 0) is not an observed HTTP denial.
-            matches = (
-                100 <= status <= 599 and not 200 <= status < 300
-                if expected == "non-2xx"
-                else status == expected
-            )
+            # Only a client-error answer is a denial: a transport failure
+            # (status 0) or a 5xx says nothing about the authorization edge.
+            matches = 400 <= status < 500 if expected == "4xx" else status == expected
             results.append(
                 {
                     "method": method,

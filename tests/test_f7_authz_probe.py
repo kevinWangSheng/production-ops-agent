@@ -104,7 +104,7 @@ def test_collector_detects_failures_without_printing_credentials(
         assert all(
             r["expected"] == 401
             for r in report["requests"]
-            if r["account"] == "anonymous" and r["expected"] != "non-2xx"
+            if r["account"] == "anonymous" and r["expected"] != "4xx"
         )
         for secret in accounts.values():
             assert secret not in output
@@ -165,9 +165,18 @@ def test_any_account_getting_2xx_on_a_forbidden_request_fails(
 
 @pytest.mark.parametrize(
     "status,expected_ok",
-    [(0, False), (200, False), (299, False), (301, True), (400, True), (403, True)],
+    [
+        (0, False),
+        (200, False),
+        (299, False),
+        (301, False),
+        (400, True),
+        (403, True),
+        (500, False),
+        (503, False),
+    ],
 )
-def test_variant_status_is_recorded_and_connection_failure_is_not_a_denial(
+def test_variant_status_is_recorded_and_only_a_4xx_is_a_denial(
     monkeypatch: pytest.MonkeyPatch,
     status: int,
     expected_ok: bool,
@@ -188,6 +197,6 @@ def test_variant_status_is_recorded_and_connection_failure_is_not_a_denial(
     monkeypatch.setattr(probe, "request", request)
     report = probe.probe()
     assert report["ok"] is expected_ok
-    variants = [r for r in report["requests"] if r["expected"] == "non-2xx"]
+    variants = [r for r in report["requests"] if r["expected"] == "4xx"]
     assert len(variants) == 4 * 2 * 5
     assert {r["status"] for r in variants} == {status}
