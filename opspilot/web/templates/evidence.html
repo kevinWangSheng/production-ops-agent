@@ -5,7 +5,9 @@
 <p><a href="/incidents/{{ incident_id }}">Back to incident</a></p>
 <dl>
 {% for key in ["run_id", "status", "adopted", "observed_at", "data_as_of", "raw_sha256", "view_sha256", "hashes_verified", "display_redacted", "projection_revision"] %}
+{% if key in evidence %}
   <dt>{{ key }}</dt><dd><code>{{ evidence[key] }}</code></dd>
+{% endif %}
 {% endfor %}
 </dl>
 <h2>View</h2>

@@ -256,3 +256,8 @@ def test_redaction_is_idempotent_on_keys_it_redacted():
     # A credential-named key loses its value on the first pass already.
     assert once[f"password={MARKER}"] == MARKER
     assert once["token"] == MARKER
+
+
+def test_a_marker_in_source_keys_is_no_exemption():
+    result = redact_payload({f"api_key_{MARKER}": "synthetic-secret"})
+    assert "synthetic-secret" not in canonical(result)

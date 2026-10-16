@@ -687,13 +687,15 @@ def create_app(
                 None if record.data_as_of is None else record.data_as_of.isoformat()
             ),
             "view": view,
-            # The hashes and ``hashes_verified`` are over the *stored* bytes;
-            # true here means the raw/view shown was credential-redacted for
-            # display and no longer hashes to them (evidence stored before
-            # F7 U7-a is never rewritten).
-            "display_redacted": raw_redacted or view is not stored_view,
             **raw,
         }
+        if raw_redacted or view is not stored_view:
+            # The hashes and ``hashes_verified`` stay over the stored bytes;
+            # this says what is shown was redacted for display and no longer
+            # hashes to them (evidence or readings stored before F7 U7-a,
+            # never rewritten). Absent otherwise, so evidence redacted at
+            # persistence keeps the page's established key set.
+            payload["display_redacted"] = True
         if wants_html(request):
             return render(
                 "evidence.html",
@@ -753,12 +755,14 @@ def _recovery_reading(evidence_id: str, found: Mapping[str, Any]) -> dict[str, A
             if raw is None
             else hashlib.sha256(bytes(raw)).hexdigest() == raw_sha256
         ),
-        # As on tool evidence: the hash is over the stored bytes, and this
-        # says the shown raw/value/query were redacted for display.
-        "display_redacted": raw_redacted
-        or value is not reading["value"]
-        or query is not reading["query"],
         **raw_fields,
+        **(
+            {"display_redacted": True}
+            if raw_redacted
+            or value is not reading["value"]
+            or query is not reading["query"]
+            else {}
+        ),
     }
 
 

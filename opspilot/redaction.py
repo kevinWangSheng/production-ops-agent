@@ -413,12 +413,12 @@ def redact_payload(value: object) -> object:
             if (
                 isinstance(source, dict)
                 and isinstance(key, str)
-                # A key a previous pass already redacted (``https://
-                # [REDACTED_CREDENTIAL]@host``) is source text, not a field
-                # name; matching the marker's own word would make a second
-                # pass wipe that key's value (independent review P2).
-                and REDACTED_CREDENTIAL not in key
-                and _credential_name(key)
+                # The marker's own word must not make a key a credential
+                # name (a second pass would wipe ``https://[REDACTED_
+                # CREDENTIAL]@host``'s value), but a marker in the source is
+                # no exemption either: the rest of the key is still checked
+                # (``api_key_[REDACTED_CREDENTIAL]``; independent review).
+                and _credential_name(key.replace(REDACTED_CREDENTIAL, ""))
                 and item is not None
             ):
                 # Whatever a credential-named field holds -- a string, a
