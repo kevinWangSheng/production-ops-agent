@@ -7,7 +7,7 @@ import os
 from collections.abc import Iterator
 from contextlib import closing, contextmanager
 from dataclasses import FrozenInstanceError
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -359,3 +359,131 @@ def test_cancel_through_product_entry_records_run_end(conn: Connection) -> None:
         assert ended.detail["control_audit_id"] == str(control["audit_id"])
         assert ended.detail["state"] == "cancelled"
         assert ended.actor == UI_USER
+
+
+@pytest.mark.parametrize(
+    "state,execution,ended_count",
+    [
+        ("blocked", "blocked", 1),
+        ("blocked", "failed", 0),
+        ("waiting_human", "blocked", 0),
+    ],
+)
+def test_runner_blocked_handoff_anchors_only_a_blocked_run(
+    conn: Connection,
+    state: str,
+    execution: str,
+    ended_count: int,
+) -> None:
+    from opspilot.acceptance_audit import audit_records
+
+    incident, run, _ = seed(conn)
+    conn.execute("UPDATE opspilot_runs SET state=%s WHERE run_id=%s", (state, run))
+    conn.execute(
+        "DELETE FROM opspilot_subject_events WHERE subject_id=%s AND kind='run_completed'",
+        (incident,),
+    )
+    event = conn.execute(
+        """INSERT INTO opspilot_subject_events(subject_id,sequence,kind,payload)
+           VALUES(%s,2,'run_handoff',%s) RETURNING recorded_at""",
+        (
+            incident,
+            Jsonb({"run_id": str(run), "execution": execution, "parked": False}),
+        ),
+    ).fetchone()
+    assert event is not None
+    timeline, gaps = audit_records(conn, incident)
+    ended = [
+        e
+        for e in timeline.entries
+        if e.source == "opspilot_runs"
+        and e.run_id == run
+        and e.detail["action"] == "ended"
+    ]
+    assert len(ended) == ended_count
+    if ended_count:
+        assert ended[0].recorded_at == event["recorded_at"]
+        assert ended[0].detail["event_sequence"] == 2
+        assert "opspilot_runs.ended" not in gaps
+    elif state == "blocked":
+        assert gaps["opspilot_runs.ended"] == 1
+
+
+def test_preexisting_suspension_baselines_explain_a_paused_new_run(
+    conn: Connection,
+) -> None:
+    from opspilot.persistence import DurableStore
+    from tests.acceptance.f7_pg_support import scratch_database
+
+    with contextmanager(scratch_database)() as dsn, closing(DurableStore(dsn)) as store:
+        target = store.register_target("audit-baseline-target")
+        unrelated = store.register_target("unrelated-audit-baseline-target")
+        global_generation = store.set_global_suspension(
+            True, expected_generation=0, actor="operator"
+        )
+        store.set_global_suspension(
+            True, expected_generation=global_generation, actor="retry"
+        )
+        target_generation = store.set_target_suspension(
+            target, True, expected_generation=0, actor="operator"
+        )
+        target_generation = store.set_target_suspension(
+            target, False, expected_generation=target_generation, actor="operator"
+        )
+        store.set_target_suspension(
+            unrelated, True, expected_generation=0, actor="operator"
+        )
+        with store.transaction(snapshot=True) as connection:
+            expected = connection.execute(
+                """SELECT DISTINCT ON (target_id) audit_id,target_id,suspended,created_at
+                   FROM opspilot_suspension_audit WHERE target_id IS NULL OR target_id=%s
+                   ORDER BY target_id,created_at DESC,audit_id DESC""",
+                (target,),
+            ).fetchall()
+            now = connection.execute("SELECT clock_timestamp() AS now").fetchone()
+            assert now is not None
+        incident, run = uuid4(), uuid4()
+        store.accept(
+            incident,
+            run,
+            str(incident),
+            deadline=now["now"] + timedelta(hours=1),
+            budget_limit=1000,
+            versions={"state": "v1"},
+            target_id=target,
+        )
+        with store.transaction(snapshot=True) as connection:
+            state = connection.execute(
+                "SELECT state FROM opspilot_runs WHERE run_id=%s", (run,)
+            ).fetchone()
+        assert state == {"state": "paused"}
+        store.set_global_suspension(
+            False, expected_generation=global_generation, actor="operator"
+        )
+        store.set_target_suspension(
+            target, True, expected_generation=target_generation, actor="operator"
+        )
+        with store.transaction(snapshot=True) as connection:
+            timeline = audit_timeline(connection, incident)
+            created = connection.execute(
+                "SELECT created_at FROM opspilot_incidents WHERE incident_id=%s",
+                (incident,),
+            ).fetchone()
+        assert created is not None
+        suspensions = [
+            e for e in timeline.entries if e.source == "opspilot_suspension_audit"
+        ]
+        baseline = [e for e in suspensions if e.detail.get("baseline") is True]
+        assert len(baseline) == 2
+        assert {e.record_id for e in baseline} == {
+            str(row["audit_id"]) for row in expected
+        }
+        assert {e.detail["target_id"]: e.detail["suspended"] for e in baseline} == {
+            None: True,
+            str(target): False,
+        }
+        assert all(e.recorded_at < created["created_at"] for e in baseline)
+        changes = [e for e in suspensions if not e.detail.get("baseline")]
+        assert len(changes) == 2
+        assert all(e.recorded_at >= created["created_at"] for e in changes)
+        assert not any(e.detail["target_id"] == str(unrelated) for e in suspensions)

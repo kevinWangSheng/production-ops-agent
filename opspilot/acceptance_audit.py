@@ -275,7 +275,7 @@ def _audit_records(
 
     run_events: dict[UUID, list[dict[str, Any]]] = {}
     for row in rows("""SELECT sequence,kind,recorded_at,payload->>'run_id' AS run_id,
-                             payload->>'code' AS code
+                             payload->>'code' AS code,payload->>'execution' AS execution
                       FROM opspilot_subject_events WHERE subject_id=%s"""):
         run_id = None
         if row["run_id"]:
@@ -316,12 +316,15 @@ def _audit_records(
                 "control_applied": "created",
                 "run_completed": "ended",
             }.get(event["kind"])
-            # Version mismatch is announced only after claim() has durably
-            # blocked the Run. A handoff alone never proves a terminal state.
-            if (
-                row["state"] == "blocked"
-                and event["kind"] == "run_claim_refused"
-                and event["code"] == "INCOMPATIBLE_STATE"
+            # Both claim's version mismatch and Runner._blocked persist the
+            # blocked state before announcing it. Require that Run state as
+            # well: an arbitrary handoff never proves a terminal transition.
+            if row["state"] == "blocked" and (
+                (
+                    event["kind"] == "run_claim_refused"
+                    and event["code"] == "INCOMPATIBLE_STATE"
+                )
+                or (event["kind"] == "run_handoff" and event["execution"] == "blocked")
             ):
                 action = "ended"
             if action and action not in seen_actions:
@@ -370,10 +373,18 @@ def _audit_records(
                 undated[key] = undated.get(key, 0) + 1
 
     for row in cursor.execute(
-        """SELECT audit_id,target_id,suspended,generation,actor,created_at
-           FROM opspilot_suspension_audit
-           WHERE (target_id IS NULL OR target_id=%s) AND created_at >= %s""",
-        (incident["target_id"], incident["created_at"]),
+        """WITH scoped AS (
+             SELECT audit_id,target_id,suspended,generation,actor,created_at
+             FROM opspilot_suspension_audit
+             WHERE target_id IS NULL OR target_id=%s
+           )
+           SELECT *,false AS baseline FROM scoped WHERE created_at >= %s
+           UNION ALL
+           SELECT *,true AS baseline FROM (
+             SELECT DISTINCT ON (target_id) * FROM scoped WHERE created_at < %s
+             ORDER BY target_id,created_at DESC,audit_id DESC
+           ) prior""",
+        (incident["target_id"], incident["created_at"], incident["created_at"]),
     ).fetchall():
         add(
             row,
@@ -383,6 +394,7 @@ def _audit_records(
             "created_at",
             ("target_id", "suspended", "generation"),
             actor=row["actor"],
+            extra={"baseline": True} if row["baseline"] else None,
         )
     for row in rows("""SELECT audit_id,action,expected_generation,resulting_generation,
                              actor,created_at FROM opspilot_controls WHERE incident_id=%s"""):
