@@ -54,3 +54,7 @@ OPSPILOT_LAB_DSN="host=127.0.0.1 port=<临时实例> dbname=m0_budget user=m0_la
 M1_DURABLE_POSTGRES=1 \
 .venv/bin/python -m pytest tests/integration/test_f12_acceptance_postgres.py -q
 ```
+
+## 真实运行
+
+2026-10-16 kind 实验环境有界运行（场景 A + B，运行提交 `f497424`）：四步可观察行为全部通过，见 [记录](../evidence/f12-live/run.md) 与 [summary.json](../evidence/f12-live/run/summary.json)。第 4 步②为手工重投同一告警（模拟 Alertmanager 重发），控制动作经与页面表单相同的 HTTP 路由提交，未用浏览器点按钮。
