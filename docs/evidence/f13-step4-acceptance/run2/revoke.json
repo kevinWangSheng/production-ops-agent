@@ -1,0 +1,25 @@
+{
+  "after": [
+    {
+      "revision": 1,
+      "state": "revoked"
+    }
+  ],
+  "before": [
+    {
+      "revision": 1,
+      "state": "active"
+    }
+  ],
+  "expected_generation": 1,
+  "http_body": {
+    "action": "revoke",
+    "entry_id": "4eb40edf-a9ca-44a3-90cd-5f62b3daf8ab",
+    "generation": 2,
+    "replayed": false,
+    "revision": 1,
+    "state": "revoked"
+  },
+  "http_status": 200,
+  "revoked_revision": 1
+}

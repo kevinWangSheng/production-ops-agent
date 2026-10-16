@@ -1,7 +1,7 @@
 # F13 第 4 步：验收投影与真实验收（PR-C）
 
-- 状态：进行中
-- 更新日期：2026-10-15
+- 状态：阻塞（真实验收 Run 3 失败，待裁决）
+- 更新日期：2026-10-16
 - 依据：[F13 第 4 步合同预审 r1](2026-10-15-f13-step4-contract.md)（R8、R9、U2、U6、U8 与「验收运行计划」）；PR-B 记录 [2026-10-15-f13-step4.md](2026-10-15-f13-step4.md)（#238 已合并，`knowledge_checks` 在 PR-B 实现，本 PR 复用）。
 - 工作区：worktree `/Users/shenghuikevin/dev/AI/poa-f13-c`，分支 `feature/F13-step4-acceptance`，基于 `origin/main` `d19e78a`。本机 PG 端口 55593（`tmp/pg`）。
 
@@ -46,7 +46,7 @@
 - 独立验收测试：未参与实现的 Claude 子 Agent 只按本记录与合同编写 `tests/test_f13_step4_acceptance.py`（纯内存）与 `tests/integration/test_f13_step4_acceptance_postgres.py`（真实 PG、真实工作台、桩模型输出带标签报告；页面与投影逐字段一致；撤销后后继 Run 不含被撤销 revision），实现未改其断言。本机：纯内存 24 passed，PG（55593）3 passed。
 - 独立审查：Codex `gpt-6-astra` 首审投影本身无 P1/P2；判定脚本 2 个 P2（`changed` 可省略被撤销 revision 而空过；页面子串匹配会把别的条目 r20 当成 r2）。已改为必填参数、按链接取 entry_id 并整行解析字段逐项比较，resume 复验确认解决、无新增。
 - 检查：`make check`（共享锁）6134 passed、1521 skipped、2 xfailed。
-- 真实验收：需要 kind lab 时段，见下节。
+- 真实验收（2026-10-16，[运行记录](../evidence/f13-step4-acceptance/run.md)）：Run 1 通过（K1 r1 fresh，核对 `consistent` 且 `handled`）；Run 2 通过（撤销后输入不含 K1 r1）；**Run 3 失败**（K1 标 `stale`、页面可见，但核对结果是 `conflicting`：1 条带标签 `fact` 加 2 条带标签 `rejected_hypothesis`）。直接原因是问题写了「过去 10 分钟」，提问时故障恢复才约 4.5 分钟，窗口里还带着故障尾部。F13 `passes` 未翻。费用约 0.25 CNY。
 
 ## 验收运行计划
 
@@ -64,8 +64,9 @@
 
 ## 待决
 
-1. **真实 Run 顺序 1 → 3 → 2**：合同写「按顺序执行」，并要求 Run 3 前「在 D1 库中保留一条 active 知识，或用 I2 批准产生的新知识」。起点库只有 K1 一条知识，先撤销再做 Run 3 就没有可用知识；改走 I2 批准则要等 I2 恢复确认与复盘生成（多约 20 分钟），且复盘提议可能替换 K1，结果不可控。推荐把 Run 3 提到撤销之前，三个 Run 的断言不变。
+1. ~~真实 Run 顺序~~：已执行 1 → 3 → 2。起点库只有 K1 一条知识，先撤销就没有知识可供 Run 3 使用；三个 Run 的断言不变。协调者 2026-10-16 批准（可逆的执行细节，不改验收步骤）。
+2. **Run 3 是否重跑**：失败照实记录。问题时间窗是 lead 的运行设计失误：「过去 10 分钟」没有避开刚恢复的故障尾部。它不属于环境异常，也不是产品拒绝了报告。可选：A 维持失败，F13 第 4 步不通过，另开 issue 跟进；B 用户批准后只重跑 Run 3 一次，问题改为「过去 5 分钟」，并在故障恢复 10 分钟以上后再提问，其余断言不变（约 15 分钟、无故障窗）。推荐 B：A 的失败只能说明窗口设计有问题，不能说明知识处理策略不对。
 
 ## 下一步与交接
 
-需要 kind lab 时段（约 1 小时、2 个故障窗），由协调者排期后按上节执行；通过后翻 F13 `passes` 并补证据。
+等待待决 2 的裁决。实验库副本 `tmp/lab-pg`（已停）保留，状态为 Run 2 之后：K1 r1 已撤销，库里没有 active 知识。重跑 Run 3 需要一条 active 知识，从 `production-ops-agent/tmp/m1-clean/pg` 重新复制一份即可。lab 已收尾：flag 全部 off，health ok，heavy 锁已释放。

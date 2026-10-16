@@ -1,0 +1,148 @@
+{
+  "checks": [
+    {
+      "detail": "ok",
+      "name": "status_ok",
+      "passed": true
+    },
+    {
+      "detail": 1,
+      "name": "page_entry_count",
+      "passed": true
+    },
+    {
+      "detail": {
+        "page": [
+          "4eb40edf-a9ca-44a3-90cd-5f62b3daf8ab",
+          1,
+          "fresh",
+          37473,
+          false,
+          "consistent"
+        ],
+        "projection": [
+          "4eb40edf-a9ca-44a3-90cd-5f62b3daf8ab",
+          1,
+          "fresh",
+          37473,
+          false,
+          "consistent"
+        ]
+      },
+      "name": "page_matches_projection[0]",
+      "passed": true
+    },
+    {
+      "detail": [
+        "4eb40edf-a9ca-44a3-90cd-5f62b3daf8ab"
+      ],
+      "name": "entry_provided",
+      "passed": true
+    },
+    {
+      "detail": 1,
+      "name": "entry_revision",
+      "passed": true
+    },
+    {
+      "detail": "fresh",
+      "name": "entry_fresh",
+      "passed": true
+    }
+  ],
+  "incident_id": "31f0bf6e-b731-5e0f-96e1-b5d8ac881665",
+  "observed": {
+    "claim_kinds": [
+      "fact"
+    ],
+    "handled": true,
+    "verdict": "consistent"
+  },
+  "outcome": {
+    "entries": [
+      {
+        "age_seconds": 37473,
+        "approved_at": "2026-10-15T11:26:08.815247-07:00",
+        "approved_by": "e2e-lab",
+        "claim_kinds": [
+          "fact"
+        ],
+        "content_sha256": "856fecf7a4bc9bafde89bb0986bec488e214b587581a9c9cf3563663e5435fd5",
+        "entry_id": "4eb40edf-a9ca-44a3-90cd-5f62b3daf8ab",
+        "freshness": "fresh",
+        "handled": true,
+        "name": "Checkout PlaceOrder error ratio at 100% while only payment calls fail",
+        "observation_ended_at": "2026-10-15T11:24:31.093847-07:00",
+        "revision": 1,
+        "source_incident_id": "002c3fba-fcb7-5fee-871e-797f6d72b399",
+        "source_postmortem_id": "378b0fe2-bc81-4095-aae9-a1363ca97ff6",
+        "source_version": 1,
+        "tagged_claims": [
+          {
+            "evidence_ids": [
+              "0f4e7d01-b492-41bd-8c16-49081ae32e86-t2:374ee4e0-5c20-4ea1-82b9-dc814481470b",
+              "3b2b4e67-4c5e-4345-a0fb-03662f1ae4a9-t0:4190ca34-a71b-42aa-bf32-4ed7e5305821",
+              "0f4e7d01-b492-41bd-8c16-49081ae32e86-t0:fb5c1f33-1210-4813-ad20-953077281bb7"
+            ],
+            "kind": "fact",
+            "text": "The observed signature this run - PlaceOrder errors driven solely by oteldemo.PaymentService/Charge returning a non-zero status with 'Payment request failed. Invalid token' at low span volume - is consistent with the previously approved pattern [knowledge:4eb40edf-a9ca-44a3-90cd-5f62b3daf8ab@r1]."
+          }
+        ],
+        "tags": [
+          "otel-demo",
+          "checkout",
+          "payment",
+          "span-error-ratio",
+          "low-volume-alerting"
+        ],
+        "truncated": false,
+        "verdict": "consistent"
+      }
+    ],
+    "max_age_seconds": 2592000,
+    "model_requests": [],
+    "omitted_for_size": 0,
+    "policy_version": "knowledge-hint-v1",
+    "report_available": true,
+    "retrieved_at": "2026-10-15T21:49:04.425362-07:00",
+    "run_evidence_ids": [
+      "6af32fe1-3b38-4323-937a-6cd56656644f-t0:5e0a88cd-7d57-4eb2-a9dd-daaae0bedc9a",
+      "6af32fe1-3b38-4323-937a-6cd56656644f-t1:2715400d-d9ff-4c70-9920-4fcbefe1eda0",
+      "ea70e743-cfcd-4f9f-a842-9001538bf43a-t0:a104286e-cfa7-4c29-9b1e-f610bac5944d",
+      "ea70e743-cfcd-4f9f-a842-9001538bf43a-t1:0e21a5b2-d633-45f6-87b6-1902331a9131",
+      "0f4e7d01-b492-41bd-8c16-49081ae32e86-t0:fb5c1f33-1210-4813-ad20-953077281bb7",
+      "0f4e7d01-b492-41bd-8c16-49081ae32e86-t1:98879521-4553-4eed-a223-c8492459931b",
+      "0f4e7d01-b492-41bd-8c16-49081ae32e86-t2:374ee4e0-5c20-4ea1-82b9-dc814481470b",
+      "3b2b4e67-4c5e-4345-a0fb-03662f1ae4a9-t0:4190ca34-a71b-42aa-bf32-4ed7e5305821",
+      "3b2b4e67-4c5e-4345-a0fb-03662f1ae4a9-t1:b55c339b-938c-4b63-b462-831682b4e320",
+      "ed8522a8-c20d-41e4-ba1a-2fcb6106c35f-t0:f0b65379-fb2a-4d74-bc3a-f5e6bcc53521",
+      "ed8522a8-c20d-41e4-ba1a-2fcb6106c35f-t1:38800f62-cfd0-407c-a7c8-653a8e562f6d",
+      "f0c398e5-d600-4c34-84d0-e13460145566-t0:5d4c1cdf-a950-4d96-8b6f-7f9b7ff24608",
+      "f0c398e5-d600-4c34-84d0-e13460145566-t1:fbdf5997-4bf8-4169-bee3-471cae4de1da",
+      "f0c398e5-d600-4c34-84d0-e13460145566-t2:70d18871-b0ca-403b-947d-89a7733ebbfc"
+    ],
+    "run_id": "d89aa6e5-4f65-552c-90e7-ac3b31798604",
+    "run_state": "completed",
+    "scenario_id": "F13:step4:consistent",
+    "status": "ok",
+    "subject_id": "31f0bf6e-b731-5e0f-96e1-b5d8ac881665",
+    "unknown_reasons": [],
+    "unprovided_tags": []
+  },
+  "page_items": [
+    {
+      "fields": [
+        "4eb40edf-a9ca-44a3-90cd-5f62b3daf8ab",
+        1,
+        "fresh",
+        37473,
+        false,
+        "consistent"
+      ],
+      "text": "r1 \u00b7 fresh \u00b7 age 37473 seconds \u00b7 source incident \u00b7 truncated: False \u00b7 check: consistent"
+    }
+  ],
+  "page_status": 200,
+  "passed": true,
+  "scenario": "consistent"
+}
