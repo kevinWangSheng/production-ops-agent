@@ -261,3 +261,56 @@ def test_redaction_is_idempotent_on_keys_it_redacted():
 def test_a_marker_in_source_keys_is_no_exemption():
     result = redact_payload({f"api_key_{MARKER}": "synthetic-secret"})
     assert "synthetic-secret" not in canonical(result)
+
+
+def test_tuples_and_non_string_keys_are_walked_like_json():
+    result = redact_payload({"a": ("api_key=synthetic-secret", {"token": "x"}), 1: "v"})
+    assert "synthetic-secret" not in canonical(result)
+    assert result == {"a": [f"api_key={MARKER}", {"token": MARKER}], "1": "v"}
+
+
+def test_legacy_body_with_a_lone_surrogate_still_displays():
+    shown = redact_json_bytes(b'{"password":"synthetic-secret","meta":"\\ud800"}')
+    assert b"synthetic-secret" not in shown
+    assert json.loads(shown)["password"] == MARKER
+
+
+def test_recovery_bundle_bodies_are_redacted_for_display():
+    import base64
+
+    body = b'{"password":"synthetic-secret"}'
+    bundle = json.dumps(
+        {
+            "format": "opspilot.observer.reading/2",
+            "latency": {"body_b64": base64.b64encode(body).decode()},
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode()
+    found = {
+        "session_id": "session",
+        "target": {},
+        "sample": {
+            "sample_id": "s",
+            "sequence": 1,
+            "disposition": "healthy",
+            "readings_consistent": True,
+        },
+        "reading": {
+            "raw": bundle,
+            "raw_sha256": sha256(bundle).hexdigest(),
+            "signal_name": "latency",
+            "status": "ok",
+            "value": 1.0,
+            "sample_count": 1,
+            "query": "q",
+            "window_start": NOW,
+            "window_end": NOW,
+            "source": "fixture",
+        },
+    }
+    displayed = _recovery_reading("evidence", found)
+    shown = json.loads(displayed["raw_utf8"])["latency"]["body_b64"]
+    assert b"synthetic-secret" not in base64.b64decode(shown)
+    assert displayed["display_redacted"] is True
+    assert displayed["hashes_verified"] is True

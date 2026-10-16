@@ -464,7 +464,9 @@ def execute(args):
                 else "fail"
             )
             if published_report
-            else "not_published"
+            # A Run that ended without a conclusion (limit, failure, handoff)
+            # is not passing acceptance evidence, however clean its ledger.
+            else "fail"
         )
         trace_record = {
             "mode": tracer.mode,

@@ -717,12 +717,50 @@ def _raw_fields(raw: bytes) -> tuple[dict[str, str], bool]:
         return {"raw_base64": base64.b64encode(raw).decode("ascii")}, False
 
 
+def _bundle_bodies_redacted(raw: bytes) -> bytes:
+    """An Observer reading bundle with each base64 source body redacted.
+
+    The bundle (``observer.sampler._bundle``) stores every response body as
+    ``body_b64``; redacting the outer JSON only sees base64 text, so each
+    body is decoded, redacted and re-encoded for display (bot review). The
+    stored bytes and their ``body_sha256`` are untouched. Anything that is
+    not such a bundle comes back as the same object.
+    """
+    try:
+        document = json.loads(raw)
+    except (UnicodeDecodeError, ValueError):
+        return raw
+    if not isinstance(document, dict):
+        return raw
+    changed = False
+    for part in document.values():
+        if not isinstance(part, dict) or not isinstance(part.get("body_b64"), str):
+            continue
+        try:
+            body = base64.b64decode(part["body_b64"], validate=True)
+        except ValueError:
+            continue
+        shown = redact_json_bytes(body)
+        if shown is not body:
+            part["body_b64"] = base64.b64encode(shown).decode("ascii")
+            changed = True
+    if not changed:
+        return raw
+    return json.dumps(document, sort_keys=True, separators=(",", ":")).encode()
+
+
 def _recovery_reading(evidence_id: str, found: Mapping[str, Any]) -> dict[str, Any]:
     """One stored signal reading of an observation sample, as captured."""
     sample, reading = found["sample"], found["reading"]
     raw = reading.get("raw")
     raw_sha256 = reading.get("raw_sha256")
-    raw_fields, raw_redacted = ({}, False) if raw is None else _raw_fields(bytes(raw))
+    raw_fields: dict[str, str] = {}
+    raw_redacted = False
+    if raw is not None:
+        stored = bytes(raw)
+        shown = _bundle_bodies_redacted(stored)
+        raw_fields, raw_redacted = _raw_fields(shown)
+        raw_redacted = raw_redacted or shown is not stored
     value = redact_payload(reading["value"])
     query = redact_payload(reading["query"])
     return {

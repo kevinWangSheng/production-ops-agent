@@ -401,18 +401,23 @@ def redact_payload(value: object) -> object:
     if isinstance(value, str):
         text = redact_credentials(value)
         return value if text == value else text
-    if not isinstance(value, (dict, list)):
+    if not isinstance(value, (dict, list, tuple)):
         return value
+    # A tuple serializes as a JSON array (``json.dumps``, ``canonical``), so it
+    # is walked like a list and comes back as one (bot review).
     result: dict[str, object] | list[object] = {} if isinstance(value, dict) else []
     stack = [(value, result)]
     changed = False
     while stack:
         source, destination = stack.pop()
         items = source.items() if isinstance(source, dict) else enumerate(source)
-        for key, item in items:
+        for raw_key, item in items:
+            # A non-string key is serialized by JSON as its scalar text
+            # (``1`` -> ``"1"``), so it is examined and stored as that text.
+            key = raw_key if isinstance(raw_key, str) else json.dumps(raw_key)
+            changed |= key is not raw_key and isinstance(source, dict)
             if (
                 isinstance(source, dict)
-                and isinstance(key, str)
                 # The marker's own word must not make a key a credential
                 # name (a second pass would wipe ``https://[REDACTED_
                 # CREDENTIAL]@host``'s value), but a marker in the source is
@@ -429,7 +434,7 @@ def redact_payload(value: object) -> object:
             elif isinstance(item, str):
                 redacted = redact_credentials(item)
                 changed |= redacted != item
-            elif isinstance(item, (dict, list)):
+            elif isinstance(item, (dict, list, tuple)):
                 child: dict[str, object] | list[object] = (
                     {} if isinstance(item, dict) else []
                 )
@@ -438,7 +443,6 @@ def redact_payload(value: object) -> object:
             else:
                 redacted = item
             if isinstance(destination, dict):
-                assert isinstance(key, str)
                 # A key is source text too (a URL with userinfo, a Jaeger
                 # service name turned into a count key): redact it, and keep
                 # two keys that redact alike apart with a stable suffix
@@ -470,7 +474,12 @@ def redact_json_bytes(body: bytes) -> bytes:
     result = redact_payload(payload)
     if result is payload:
         return body
-    # Equivalent to tools.registry.canonical, without its import cycle.
-    return json.dumps(
-        result, sort_keys=True, separators=(",", ":"), ensure_ascii=False
-    ).encode("utf-8")
+    # Equivalent to tools.registry.canonical, without its import cycle. A
+    # lone surrogate (``"\\ud800"`` in the source) cannot be UTF-8 encoded;
+    # such a body keeps its escapes instead of failing the caller (bot review).
+    try:
+        return json.dumps(
+            result, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+        ).encode("utf-8")
+    except UnicodeEncodeError:
+        return json.dumps(result, sort_keys=True, separators=(",", ":")).encode("ascii")

@@ -47,6 +47,8 @@ U7-a：数据源返回内容里的凭据在进入模型、trace 和持久化之�
 - P2 的性质（协调者要求核对）：新证据在执行器 `_inspect` 里、`register` 之前已脱敏，PG `opspilot_evidence.raw/view` 存的就是脱敏后字节，`hashes_verified` 对它成立、`display_redacted` 为 false；验收 `test_s3c_s3d_source_secrets_are_absent_from_every_input_store_and_export` 直接查 PG 表零命中。审查者复现 P2 用的是恢复读数（Observer 存储，不在 r1 点名范围，见待决 1）和本 PR 之前写入的旧工具证据——只有这两类会触发展示时脱敏，标记只用于它们。
 - 测试作者提出、lead 处置：越权请求有的是 `denied`（目标参数、未登记工具），有的是 `error/INVALID_PARAMS`（窗口越界、offset），U8-a 只要求「被拒、可见」，两者都接受；适配器内拒绝也计入 `tool_operations_used`（现有行为，不在本 PR 范围）；`summary.json` 由调用方组装，测试按现有脚本做法组装。
 
+- 机器人分诊（`@codex review`，c5e80e0 及首推 552c617 两次自动审查，共 5 条）全部采纳：P1 `view_fields` 里的 tuple 没被遍历；P1 恢复读数 bundle 里的 `body_b64` 没解码就脱敏，等于没做；P1 脚本把没有发布结论的 Run 记为非失败；P2 非字符串键触发断言；P2 旧证据含孤立代理项时展示报 500。修复：tuple 按数组遍历、非字符串键按 JSON 文本处理、编码失败时退回 ASCII 转义、展示时解码 bundle 各 body 后再脱敏、未发布记为 fail；每项都补了回归测试。
+
 ## 真实 Run 计划（待协调者排时段）
 
 - 脚本 `scripts/f7_hostile_live.py`（Codex 写，lead 复跑 `--dry-check` 退出 0：20 项判定中 18 项 pass，trace 两项因 dry 模式记为 skipped，秘密命中全为 0）。一次真实 DeepSeek Run，数据源用回放（R4，不用 kind）。span log 注入、已批准知识注入、合成秘密同时出现在这一次 Run 里。
