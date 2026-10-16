@@ -1,0 +1,11 @@
+{
+  "http_body": {
+    "incident_id": "25444bd5-cdac-59c1-ac53-7b2433b2f761",
+    "replayed": false,
+    "run_id": "4981b1b3-c98d-503c-ac1c-6be8f2255139",
+    "sequence": 1
+  },
+  "http_status": 201,
+  "question": "Are checkout payments failing right now? Check the PlaceOrder error ratio over the last 10 minutes.",
+  "target_id": "m0-otel-20260909"
+}

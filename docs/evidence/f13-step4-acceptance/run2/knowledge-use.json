@@ -1,0 +1,49 @@
+{
+  "checks": [
+    {
+      "detail": "ok",
+      "name": "status_ok",
+      "passed": true
+    },
+    {
+      "detail": 0,
+      "name": "page_entry_count",
+      "passed": true
+    },
+    {
+      "detail": [],
+      "name": "revoked_revision_absent",
+      "passed": true
+    }
+  ],
+  "incident_id": "73c80dbc-13ee-5304-825d-fcfd7d8ab9c5",
+  "observed": {},
+  "outcome": {
+    "entries": [],
+    "max_age_seconds": 2592000,
+    "model_requests": [],
+    "omitted_for_size": 0,
+    "policy_version": "knowledge-hint-v1",
+    "report_available": true,
+    "retrieved_at": "2026-10-15T22:04:04.014067-07:00",
+    "run_evidence_ids": [
+      "34af5db0-2f8c-4f9b-aed6-ad9464343f5c-t0:d1efd066-913e-4c46-ad25-66916ccccdb6",
+      "7b24036b-b747-4b49-97c1-1e821d2f7f1f-t0:6420e540-f186-4558-a325-3674eed60f92",
+      "7b24036b-b747-4b49-97c1-1e821d2f7f1f-t1:d7beafaf-568c-4c1f-abe5-39aa69f49502",
+      "7b24036b-b747-4b49-97c1-1e821d2f7f1f-t2:6cc2f15f-0f20-4a8f-8a00-bc6d78810a32",
+      "a2772433-02ea-4a0b-a601-98b6090285cd-t0:0a3d277c-d332-4c15-b0c9-0986fad571f8",
+      "a2772433-02ea-4a0b-a601-98b6090285cd-t1:91e47db9-d0b6-4be5-b06a-615f2a20c1a2"
+    ],
+    "run_id": "823ee04b-c322-5f49-a829-cf7b50cb90b5",
+    "run_state": "completed",
+    "scenario_id": "F13:step4:changed",
+    "status": "ok",
+    "subject_id": "73c80dbc-13ee-5304-825d-fcfd7d8ab9c5",
+    "unknown_reasons": [],
+    "unprovided_tags": []
+  },
+  "page_items": [],
+  "page_status": 200,
+  "passed": true,
+  "scenario": "changed"
+}

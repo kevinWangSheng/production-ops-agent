@@ -1,0 +1,207 @@
+{
+  "checks": [
+    {
+      "detail": "ok",
+      "name": "status_ok",
+      "passed": true
+    },
+    {
+      "detail": 1,
+      "name": "page_entry_count",
+      "passed": true
+    },
+    {
+      "detail": {
+        "page": [
+          "4eb40edf-a9ca-44a3-90cd-5f62b3daf8ab",
+          1,
+          "stale",
+          37916,
+          false,
+          "conflicting"
+        ],
+        "projection": [
+          "4eb40edf-a9ca-44a3-90cd-5f62b3daf8ab",
+          1,
+          "stale",
+          37916,
+          false,
+          "conflicting"
+        ]
+      },
+      "name": "page_matches_projection[0]",
+      "passed": true
+    },
+    {
+      "detail": [
+        "4eb40edf-a9ca-44a3-90cd-5f62b3daf8ab"
+      ],
+      "name": "entry_provided",
+      "passed": true
+    },
+    {
+      "detail": "stale",
+      "name": "entry_stale",
+      "passed": true
+    },
+    {
+      "detail": "conflicting",
+      "name": "verdict_contradicted",
+      "passed": false
+    },
+    {
+      "detail": [
+        {
+          "evidence_ids": [
+            "3ea8d55e-8bd1-48da-b764-a783179aecc3-t0:fbaa68dc-a223-43fa-b64a-cc8906ffd6fd"
+          ],
+          "kind": "fact",
+          "text": "The historical claim that checkout's client RPC breakdown shows only oteldemo.PaymentService returning a non-zero status (rpc_grpc_status_code=2) while cart, currency, product-catalog and shipping stay at 0 is consistent with this Run's current-window evidence [knowledge:4eb40edf-a9ca-44a3-90cd-5f62b3daf8ab@r1]."
+        },
+        {
+          "evidence_ids": [
+            "6905b68b-707b-4222-8b25-07ffdf4a01db-t1:467c92ff-5cab-439f-b31b-4c5076bce4bb",
+            "44e09af1-85ed-448d-ac1f-7b74c8039054-t1:503fa71f-1fc1-48ae-a891-d124f174eefa"
+          ],
+          "kind": "rejected_hypothesis",
+          "text": "The historical knowledge that checkout PlaceOrder had a 100% error ratio with all PlaceOrder server spans carrying STATUS_CODE_ERROR and none STATUS_CODE_UNSET (and about 0.025 PlaceOrder spans/s) is contradicted for the current window: the ratio is 0.4737 with 20 ERROR spans alongside 22.22 UNSET spans, and the PlaceOrder span rate is 0.0704 spans/s [knowledge:4eb40edf-a9ca-44a3-90cd-5f62b3daf8ab@r1]."
+        },
+        {
+          "evidence_ids": [
+            "44e09af1-85ed-448d-ac1f-7b74c8039054-t0:b73d1b2e-3cbb-4d03-86b0-41cf51001dc3",
+            "3ea8d55e-8bd1-48da-b764-a783179aecc3-t1:6b8ede7a-f351-4660-a91a-376c3bb94ec0"
+          ],
+          "kind": "rejected_hypothesis",
+          "text": "The historical knowledge that payment's own oteldemo.PaymentService/Charge error ratio reaches 1.0 is not reproduced in the current window: the same computation now yields 0.4865, with 20 STATUS_CODE_ERROR spans against 21.11 STATUS_CODE_UNSET spans [knowledge:4eb40edf-a9ca-44a3-90cd-5f62b3daf8ab@r1]."
+        }
+      ],
+      "name": "handled_with_run_evidence",
+      "passed": false
+    },
+    {
+      "detail": [
+        "fact",
+        "rejected_hypothesis"
+      ],
+      "name": "no_fact_on_knowledge",
+      "passed": false
+    },
+    {
+      "detail": [
+        "4eb40edf-a9ca-44a3-90cd-5f62b3daf8ab",
+        1,
+        "stale",
+        37916,
+        false,
+        "conflicting"
+      ],
+      "name": "page_shows_stale_and_contradicted",
+      "passed": false
+    },
+    {
+      "detail": [],
+      "name": "no_unprovided_tags",
+      "passed": true
+    }
+  ],
+  "incident_id": "25444bd5-cdac-59c1-ac53-7b2433b2f761",
+  "observed": {},
+  "outcome": {
+    "entries": [
+      {
+        "age_seconds": 37916,
+        "approved_at": "2026-10-15T11:26:08.815247-07:00",
+        "approved_by": "e2e-lab",
+        "claim_kinds": [
+          "fact",
+          "rejected_hypothesis"
+        ],
+        "content_sha256": "856fecf7a4bc9bafde89bb0986bec488e214b587581a9c9cf3563663e5435fd5",
+        "entry_id": "4eb40edf-a9ca-44a3-90cd-5f62b3daf8ab",
+        "freshness": "stale",
+        "handled": false,
+        "name": "Checkout PlaceOrder error ratio at 100% while only payment calls fail",
+        "observation_ended_at": "2026-10-15T11:24:31.093847-07:00",
+        "revision": 1,
+        "source_incident_id": "002c3fba-fcb7-5fee-871e-797f6d72b399",
+        "source_postmortem_id": "378b0fe2-bc81-4095-aae9-a1363ca97ff6",
+        "source_version": 1,
+        "tagged_claims": [
+          {
+            "evidence_ids": [
+              "3ea8d55e-8bd1-48da-b764-a783179aecc3-t0:fbaa68dc-a223-43fa-b64a-cc8906ffd6fd"
+            ],
+            "kind": "fact",
+            "text": "The historical claim that checkout's client RPC breakdown shows only oteldemo.PaymentService returning a non-zero status (rpc_grpc_status_code=2) while cart, currency, product-catalog and shipping stay at 0 is consistent with this Run's current-window evidence [knowledge:4eb40edf-a9ca-44a3-90cd-5f62b3daf8ab@r1]."
+          },
+          {
+            "evidence_ids": [
+              "6905b68b-707b-4222-8b25-07ffdf4a01db-t1:467c92ff-5cab-439f-b31b-4c5076bce4bb",
+              "44e09af1-85ed-448d-ac1f-7b74c8039054-t1:503fa71f-1fc1-48ae-a891-d124f174eefa"
+            ],
+            "kind": "rejected_hypothesis",
+            "text": "The historical knowledge that checkout PlaceOrder had a 100% error ratio with all PlaceOrder server spans carrying STATUS_CODE_ERROR and none STATUS_CODE_UNSET (and about 0.025 PlaceOrder spans/s) is contradicted for the current window: the ratio is 0.4737 with 20 ERROR spans alongside 22.22 UNSET spans, and the PlaceOrder span rate is 0.0704 spans/s [knowledge:4eb40edf-a9ca-44a3-90cd-5f62b3daf8ab@r1]."
+          },
+          {
+            "evidence_ids": [
+              "44e09af1-85ed-448d-ac1f-7b74c8039054-t0:b73d1b2e-3cbb-4d03-86b0-41cf51001dc3",
+              "3ea8d55e-8bd1-48da-b764-a783179aecc3-t1:6b8ede7a-f351-4660-a91a-376c3bb94ec0"
+            ],
+            "kind": "rejected_hypothesis",
+            "text": "The historical knowledge that payment's own oteldemo.PaymentService/Charge error ratio reaches 1.0 is not reproduced in the current window: the same computation now yields 0.4865, with 20 STATUS_CODE_ERROR spans against 21.11 STATUS_CODE_UNSET spans [knowledge:4eb40edf-a9ca-44a3-90cd-5f62b3daf8ab@r1]."
+          }
+        ],
+        "tags": [
+          "otel-demo",
+          "checkout",
+          "payment",
+          "span-error-ratio",
+          "low-volume-alerting"
+        ],
+        "truncated": false,
+        "verdict": "conflicting"
+      }
+    ],
+    "max_age_seconds": 3600,
+    "model_requests": [],
+    "omitted_for_size": 0,
+    "policy_version": "knowledge-hint-v1",
+    "report_available": true,
+    "retrieved_at": "2026-10-15T21:56:27.598407-07:00",
+    "run_evidence_ids": [
+      "6905b68b-707b-4222-8b25-07ffdf4a01db-t0:7fb4de0a-b4ed-4623-acce-5fea81513cc1",
+      "6905b68b-707b-4222-8b25-07ffdf4a01db-t1:467c92ff-5cab-439f-b31b-4c5076bce4bb",
+      "3ea8d55e-8bd1-48da-b764-a783179aecc3-t0:fbaa68dc-a223-43fa-b64a-cc8906ffd6fd",
+      "3ea8d55e-8bd1-48da-b764-a783179aecc3-t1:6b8ede7a-f351-4660-a91a-376c3bb94ec0",
+      "80050c66-b56a-402b-a456-70fbb9b4d401-t0:96c860ec-0f7a-4654-9dcd-c7cf7ed1dd24",
+      "80050c66-b56a-402b-a456-70fbb9b4d401-t1:84b63956-d569-40e3-b456-99f2bb26fc2b",
+      "fee2fe09-ad98-4644-930c-0d10749698d7-t0:32b170d1-b295-400f-b760-db426022179f",
+      "fee2fe09-ad98-4644-930c-0d10749698d7-t1:7d509235-d118-483a-ad6a-cbf27e770c45",
+      "44e09af1-85ed-448d-ac1f-7b74c8039054-t0:b73d1b2e-3cbb-4d03-86b0-41cf51001dc3",
+      "44e09af1-85ed-448d-ac1f-7b74c8039054-t1:503fa71f-1fc1-48ae-a891-d124f174eefa"
+    ],
+    "run_id": "4981b1b3-c98d-503c-ac1c-6be8f2255139",
+    "run_state": "completed",
+    "scenario_id": "F13:step4:stale-contradicted",
+    "status": "ok",
+    "subject_id": "25444bd5-cdac-59c1-ac53-7b2433b2f761",
+    "unknown_reasons": [],
+    "unprovided_tags": []
+  },
+  "page_items": [
+    {
+      "fields": [
+        "4eb40edf-a9ca-44a3-90cd-5f62b3daf8ab",
+        1,
+        "stale",
+        37916,
+        false,
+        "conflicting"
+      ],
+      "text": "r1 \u00b7 stale \u00b7 age 37916 seconds \u00b7 source incident \u00b7 truncated: False \u00b7 check: conflicting"
+    }
+  ],
+  "page_status": 200,
+  "passed": false,
+  "scenario": "stale-contradicted"
+}
