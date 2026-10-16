@@ -242,3 +242,17 @@ def test_jaeger_service_name_key_is_redacted_in_projection():
     # The adapter keeps the name; the executor's payload walk removes it
     # from keys and values alike before anything is recorded.
     assert "synthetic-pass" not in canonical(redact_payload(record))
+
+
+def test_redaction_is_idempotent_on_keys_it_redacted():
+    payload = {
+        "https://alice:synthetic-pass@example.com": {"span_count": 3},
+        "password=synthetic-pass": {"max_duration_us": 5},
+        "token": "real-token-field",
+    }
+    once = redact_payload(payload)
+    assert redact_payload(once) is once
+    assert {"span_count": 3} in once.values()
+    # A credential-named key loses its value on the first pass already.
+    assert once[f"password={MARKER}"] == MARKER
+    assert once["token"] == MARKER
