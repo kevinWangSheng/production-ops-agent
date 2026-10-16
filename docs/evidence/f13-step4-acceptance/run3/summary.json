@@ -1,0 +1,367 @@
+{
+  "schema": "opspilot-lab-summary-1",
+  "experiment": "f13-step4-acceptance",
+  "run_id": "4981b1b3-c98d-503c-ac1c-6be8f2255139",
+  "frozen_at": "2026-10-16T06:38:36.514454+00:00",
+  "round": "f13-step4-20261016",
+  "scenario": "S1",
+  "versions": {
+    "collector_branch": "feature/F13-step4-acceptance",
+    "executed_commit": "e1582ede4dd24cb180c20856b2c23d344507c0dd",
+    "collector_commit": "938a73d9c3ffd0d67059b246f1178b92a8da0d09",
+    "schema_head": "0017_web_suspension_grants",
+    "worker_versions": {
+      "prompt_revision": "prompt-replay-candidate-dd9018031487",
+      "tool_schema_revision": "otel-demo-d61d6f2a3b04",
+      "context_policy_revision": "ctx-ctx-policy-v1-a30e65ea52f4"
+    },
+    "tool_profile": "otel-demo",
+    "otel_demo_chart": "0.37.8"
+  },
+  "health_profile": {
+    "path": "otel-demo-checkout.json",
+    "sha256": "95ae4e83f983d0fab78656b4f4b062d033eaf91840a6c3fdeed514209cfb017b",
+    "session": {
+      "deadline_seconds": 3600,
+      "max_samples": 40,
+      "sample_interval_seconds": 60,
+      "sustained_window_seconds": 600
+    }
+  },
+  "lab_actions": [
+    {
+      "at": "2026-10-16T04:44:36.555364+00:00",
+      "action": "inject",
+      "before_sha256": "1ee5c0258e3e13609ecec75979cee286ab00f442d288112e39e3db8433d176c6",
+      "after_sha256": "e47d27c2fa01c72d8bc71d40d0f4223b1049fd84582e5789cbd9a5ccbdcc915d",
+      "live_sha256": "e47d27c2fa01c72d8bc71d40d0f4223b1049fd84582e5789cbd9a5ccbdcc915d",
+      "verified": true
+    },
+    {
+      "at": "2026-10-16T04:51:39.581680+00:00",
+      "action": "restore",
+      "before_sha256": "e47d27c2fa01c72d8bc71d40d0f4223b1049fd84582e5789cbd9a5ccbdcc915d",
+      "after_sha256": "1ee5c0258e3e13609ecec75979cee286ab00f442d288112e39e3db8433d176c6",
+      "live_sha256": "1ee5c0258e3e13609ecec75979cee286ab00f442d288112e39e3db8433d176c6",
+      "verified": true
+    }
+  ],
+  "deliveries": [],
+  "incident": {
+    "incident_id": "25444bd5-cdac-59c1-ac53-7b2433b2f761",
+    "lifecycle": "observing_recovery",
+    "state": "queued",
+    "mode": "automatic",
+    "control_generation": 0,
+    "observation_generation": 1,
+    "current_run_id": "4981b1b3-c98d-503c-ac1c-6be8f2255139",
+    "target_id": "5e2fd25d-04cd-44bf-8018-53c059805a08",
+    "created_at": "2026-10-16T04:56:27.613342+00:00",
+    "has_conclusion": true
+  },
+  "investigation": {
+    "runs": [
+      {
+        "run_id": "4981b1b3-c98d-503c-ac1c-6be8f2255139",
+        "state": "completed",
+        "control_generation": 0,
+        "budget_spent": 6,
+        "tool_operations_used": 12,
+        "tool_seconds_used": 0.7381997511256486,
+        "versions": {
+          "prompt_revision": "prompt-replay-candidate-dd9018031487",
+          "tool_schema_revision": "otel-demo-d61d6f2a3b04",
+          "context_policy_revision": "ctx-ctx-policy-v1-a30e65ea52f4"
+        },
+        "deadline": "2026-10-16T06:56:27.597463+00:00"
+      }
+    ],
+    "decision": "report_available",
+    "handoff_reasons": [],
+    "evidence_ids": 10,
+    "report": {
+      "assessment_status": "completed",
+      "conclusion": "supported",
+      "summary": "In the last 10 minutes of the authorized window (2026-10-16T04:46:27Z–04:56:27Z, policy-window-1), checkout's oteldemo.CheckoutService/PlaceOrder span error ratio is 0.4737 (47.4%), not 100% and not zero: 20 spans carried STATUS_CODE_ERROR against 22.22 STATUS_CODE_UNSET in the same 600s increase, with a total PlaceOrder span rate of 0.0704 spans/s (~42 spans per 10 minutes). The only non-zero gRPC status among checkout's client RPCs is oteldemo.PaymentService/Charge with rpc_grpc_status_code=2 (~20 calls), while cart, currency, product-catalog, shipping and email calls all show status 0; payment's own server span grpc.oteldemo.PaymentService/Charge shows 20 STATUS_CODE_ERROR spans and its error ratio is 0.4865. The same ratio query over the preceding ~1h40m of a 2-hour view returned 0 at every step up to 04:41:27, with the first non-zero point at 04:46:27 (0.3636, then 0.923, then 0.4737), so the failure is recent and ongoing. A single sampled trace at 04:56:23 (trace f060d4ab0a282c88ecc47bb28b069858) shows a fully successful order — checkout PlaceOrder rpc.grpc.status_code=0, payment Charge rpc.grpc.status_code=0, frontend POST /api/checkout http.status_code=200 — confirming that this is a partial failure affecting a subset of orders, not a total outage. Because these are span counts (not unique requests) over low absolute volume, the ratio is indicative rather than a precise request failure rate, and the mechanism behind the Charge failures is not established by the evidence available in this Run."
+    }
+  },
+  "automatic_decisions": [
+    {
+      "incident_id": "25444bd5-cdac-59c1-ac53-7b2433b2f761",
+      "control_generation": 0,
+      "state": "authorized",
+      "reason": null,
+      "attempts": 0,
+      "next_attempt_at": null,
+      "session_id": "7cc7f85d-a513-5cf9-bcc0-25f0119ae646",
+      "created_at": "2026-10-16T04:58:22.794966+00:00",
+      "updated_at": "2026-10-16T04:58:22.794966+00:00"
+    }
+  ],
+  "controls": [
+    {
+      "audit_id": "22de54d8-5813-4f28-a4e3-b99ce89824f6",
+      "incident_id": "25444bd5-cdac-59c1-ac53-7b2433b2f761",
+      "action": "auto_authorize_observation",
+      "expected_generation": 0,
+      "resulting_generation": 0,
+      "actor": "system",
+      "payload": {
+        "trigger": "published",
+        "revision": null,
+        "session_id": "7cc7f85d-a513-5cf9-bcc0-25f0119ae646",
+        "deadline_at": "2026-10-15T22:58:22.789209-07:00",
+        "authorization_source": "automatic",
+        "health_profile_revision": "otel-demo-checkout@b72bbe2e30be"
+      },
+      "created_at": "2026-10-16T04:58:22.794404+00:00"
+    }
+  ],
+  "sessions": [
+    {
+      "session_id": "7cc7f85d-a513-5cf9-bcc0-25f0119ae646",
+      "authorization_source": "automatic",
+      "authorized_by": "system",
+      "target": {
+        "revision": null,
+        "namespace": "otel-demo",
+        "cluster_uid": "c8001471-8b7b-4449-83c0-924e6f46b857",
+        "resource_uid": "m0-otel-20260909",
+        "integration_id": "m0-otel-20260909"
+      },
+      "state": "authorized",
+      "ended_reason": null,
+      "authorized_at": "2026-10-16T04:58:22.793510+00:00",
+      "deadline_at": "2026-10-16T05:58:22.789209+00:00",
+      "max_samples": 40,
+      "sample_interval_seconds": 60,
+      "sustained_window_seconds": 600,
+      "adopted_count": 0,
+      "healthy_since": null,
+      "health_profile_revision": "otel-demo-checkout@b72bbe2e30be",
+      "samples": [],
+      "endings": []
+    }
+  ],
+  "replay": [
+    {
+      "session_id": "7cc7f85d-a513-5cf9-bcc0-25f0119ae646",
+      "consistent": true,
+      "recovery_verdict": "unknown",
+      "recomputed_verdict": "unknown",
+      "healthy_window_seconds": 0
+    }
+  ],
+  "recovery_outcome": {
+    "scenario_id": "f13-step4-acceptance-run3",
+    "subject_id": "25444bd5-cdac-59c1-ac53-7b2433b2f761",
+    "incident_lifecycle": "observing_recovery",
+    "recorded_lifecycle": "observing_recovery",
+    "incident_mode": "automatic",
+    "target": {
+      "revision": null,
+      "namespace": "otel-demo",
+      "cluster_uid": "c8001471-8b7b-4449-83c0-924e6f46b857",
+      "resource_uid": "m0-otel-20260909",
+      "integration_id": "m0-otel-20260909"
+    },
+    "recovery_confirmed": false,
+    "recovery_verdict": "unknown",
+    "recovery_reasons": [],
+    "latest_sample_verdict": null,
+    "healthy_window_seconds": 0,
+    "used_sample_count": 0,
+    "observation_ended": false,
+    "observation_ended_reason": null,
+    "human_interaction": null,
+    "handoff_reasons": [],
+    "recovery_profile_revision": "otel-demo-checkout@b72bbe2e30be",
+    "recovery_handled_at": "2026-10-16T04:58:22.793510+00:00",
+    "observation_sessions": [
+      {
+        "session_id": "7cc7f85d-a513-5cf9-bcc0-25f0119ae646",
+        "purpose": "incident_recovery",
+        "subject_control_generation": 0,
+        "observation_generation": 1,
+        "state": "authorized",
+        "health_profile_revision": "otel-demo-checkout@b72bbe2e30be",
+        "adopted_sequence": 0,
+        "adopted_window_end": null,
+        "active_sample_job_id": "ed61a35e-f3b4-4404-8242-eee59e1c3ec2",
+        "subject": {
+          "kind": "incident",
+          "id": "25444bd5-cdac-59c1-ac53-7b2433b2f761"
+        },
+        "target": {
+          "revision": null,
+          "namespace": "otel-demo",
+          "cluster_uid": "c8001471-8b7b-4449-83c0-924e6f46b857",
+          "resource_uid": "m0-otel-20260909",
+          "integration_id": "m0-otel-20260909"
+        },
+        "authorized": true
+      }
+    ],
+    "observation_authorization": {
+      "session_id": "7cc7f85d-a513-5cf9-bcc0-25f0119ae646",
+      "purpose": "incident_recovery",
+      "subject_control_generation": 0,
+      "observation_generation": 1,
+      "state": "authorized",
+      "health_profile_revision": "otel-demo-checkout@b72bbe2e30be",
+      "adopted_sequence": 0,
+      "adopted_window_end": null,
+      "active_sample_job_id": "ed61a35e-f3b4-4404-8242-eee59e1c3ec2",
+      "subject": {
+        "kind": "incident",
+        "id": "25444bd5-cdac-59c1-ac53-7b2433b2f761"
+      },
+      "target": {
+        "revision": null,
+        "namespace": "otel-demo",
+        "cluster_uid": "c8001471-8b7b-4449-83c0-924e6f46b857",
+        "resource_uid": "m0-otel-20260909",
+        "integration_id": "m0-otel-20260909"
+      },
+      "authorized": true,
+      "subject_id": "25444bd5-cdac-59c1-ac53-7b2433b2f761",
+      "authorization_source": "automatic"
+    },
+    "sample_jobs": [
+      {
+        "job_id": "ed61a35e-f3b4-4404-8242-eee59e1c3ec2",
+        "session_id": "7cc7f85d-a513-5cf9-bcc0-25f0119ae646",
+        "sequence": 1
+      }
+    ],
+    "handling_audit": [
+      {
+        "audit_id": "22de54d8-5813-4f28-a4e3-b99ce89824f6",
+        "incident_id": "25444bd5-cdac-59c1-ac53-7b2433b2f761",
+        "action": "auto_authorize_observation",
+        "expected_generation": 0,
+        "resulting_generation": 0,
+        "actor": "system",
+        "payload": {
+          "trigger": "published",
+          "revision": null,
+          "session_id": "7cc7f85d-a513-5cf9-bcc0-25f0119ae646",
+          "deadline_at": "2026-10-15T22:58:22.789209-07:00",
+          "authorization_source": "automatic",
+          "health_profile_revision": "otel-demo-checkout@b72bbe2e30be"
+        },
+        "created_at": "2026-10-16T04:58:22.794404+00:00"
+      }
+    ],
+    "actions": [],
+    "permissions": [
+      "read_only",
+      "database_temp"
+    ],
+    "model_requests": [],
+    "authorization_source": "automatic",
+    "authorization_sources": [
+      "automatic"
+    ],
+    "system_authorizations": [
+      {
+        "audit_id": "22de54d8-5813-4f28-a4e3-b99ce89824f6",
+        "incident_id": "25444bd5-cdac-59c1-ac53-7b2433b2f761",
+        "action": "auto_authorize_observation",
+        "expected_generation": 0,
+        "resulting_generation": 0,
+        "actor": "system",
+        "payload": {
+          "trigger": "published",
+          "revision": null,
+          "session_id": "7cc7f85d-a513-5cf9-bcc0-25f0119ae646",
+          "deadline_at": "2026-10-15T22:58:22.789209-07:00",
+          "authorization_source": "automatic",
+          "health_profile_revision": "otel-demo-checkout@b72bbe2e30be"
+        },
+        "created_at": "2026-10-16T04:58:22.794404+00:00"
+      }
+    ],
+    "recovery_profile_content_sha256": "b72bbe2e30bea4775790519787da4ce107dbc1500ce87b87a2ee2af3f57cbfa4",
+    "recovery_samples_digest": {
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "bytes": 2
+    },
+    "replay_digest": {
+      "sha256": "72db0254c5e3e3c860159e58a2c26271d13711e455c92c9389191619e2a3882f",
+      "bytes": 1389
+    },
+    "action_events_digest": {
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "bytes": 2
+    }
+  },
+  "workbench_page": {
+    "status": 200,
+    "bytes": 57899,
+    "sha256": "5035a784129956c701694d2caec479377ffe532c2d78b30ee7359ef910a89df7",
+    "shows_recovered_no_remediation": false,
+    "shows_source_automatic": true
+  },
+  "verdicts": null,
+  "timeline": {
+    "sha256": "14c7e107a16f6c2c2d6c878ed16f3e367a3f594c7ec6a120a15d5893ebcd5dba",
+    "bytes": 700
+  },
+  "postmortem_attempts": [],
+  "artifacts": {
+    "docs/evidence/f13-step4-acceptance/collect.py": {
+      "sha256": "5c8934d7347004ccc3120c799f48d2e1bf2eaecb375dc41a32aeb64f75c70663",
+      "bytes": 19009
+    },
+    "docs/evidence/f13-step4-acceptance/knowledge_use.py": {
+      "sha256": "0bca8245782f685029dc09527dee1604cfbe21923efd4b7ba78c9baf60729a50",
+      "bytes": 9049
+    },
+    "docs/evidence/f13-step4-acceptance/workbench.py": {
+      "sha256": "7945f97ca0459d56a0e475314741dee3862a61280fe9225d2981c5fa6f848ef3",
+      "bytes": 5098
+    },
+    "opspilot/observer/profiles/otel-demo-checkout.json": {
+      "sha256": "95ae4e83f983d0fab78656b4f4b062d033eaf91840a6c3fdeed514209cfb017b",
+      "bytes": 11192
+    },
+    "git_diff_head_sha256": "8aedc56ff78d0897746e4e2c4ae30b45997efca1f3158951c8cb26ba8efca4a8"
+  },
+  "trace": {
+    "project": {
+      "project": "opspilot-lab-f13-step4-20261016",
+      "project_id": "2ac94101-1233-41aa-846f-aaf7640c88ca",
+      "trace_tier": "longlived"
+    },
+    "root_runs_found": 1,
+    "traces": [
+      {
+        "name": "opspilot.run",
+        "langsmith_run_id": "00000000-0000-0000-80cf-a377f814e476",
+        "otel_trace_id": "65a285fc87548f7207aeb3df3dc47496",
+        "business_run_ids": [
+          "4981b1b3-c98d-503c-ac1c-6be8f2255139"
+        ],
+        "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/2ac94101-1233-41aa-846f-aaf7640c88ca/r/00000000-0000-0000-80cf-a377f814e476?poll=true",
+        "read_back": "found",
+        "start_time": "2026-10-16 04:56:28.481171+00:00",
+        "end_time": "2026-10-16 04:57:22.129997+00:00",
+        "status": "success",
+        "prompt_tokens": 93371,
+        "completion_tokens": 10029,
+        "child_runs": {
+          "llm": 6,
+          "tool": 12
+        }
+      }
+    ]
+  },
+  "cost": null,
+  "raw_ledger": {
+    "sha256": "e08a606de4c1150f99e01ecd0fa219871aa5b9632c0eb5a2b1e2173f01467925",
+    "bytes": 308345,
+    "path": "tmp/lab-ledgers/f13-step4-acceptance/4981b1b3-c98d-503c-ac1c-6be8f2255139/ledger.json",
+    "in_repository": false
+  }
+}

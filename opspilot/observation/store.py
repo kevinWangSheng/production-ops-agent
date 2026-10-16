@@ -1365,6 +1365,8 @@ class ObservationStore(_ReleaseSampleOps, _TargetProfileOps):
             incident = self._lock_incident(conn, incident_id)
             if int(incident["control_generation"]) != expected_generation:
                 raise PersistenceError("CONTROL_CONFLICT")
+            if incident["lifecycle"] == "closed":
+                raise PersistenceError("REOPEN_REQUIRED")
             if scope["global_suspended"] or scope["target_suspended"]:
                 raise PersistenceError("SCOPE_SUSPENDED")
             if incident["target_id"] is None:

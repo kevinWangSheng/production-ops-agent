@@ -23,6 +23,13 @@ from opspilot.acceptance_alert import (  # noqa: E402
     alert_intake_outcome,
     alert_intake_records,
 )
+from opspilot.acceptance_knowledge import (  # noqa: E402
+    KnowledgeHintOutcome,
+    KnowledgeUseOutcome,
+    KnowledgeUseRecords,
+    knowledge_use_outcome,
+    knowledge_use_records,
+)
 
 # The postmortem and reviewed-knowledge seam (F13, M1-03 step 4, R13): its
 # own type again, because the postmortem's state machine and records are
@@ -61,7 +68,10 @@ __all__ = [
     "AlertIntakeRecords",
     "IncidentOutcome",
     "IncidentScenario",
+    "KnowledgeHintOutcome",
     "KnowledgeRevisionOutcome",
+    "KnowledgeUseOutcome",
+    "KnowledgeUseRecords",
     "PostmortemConclusion",
     "PostmortemOutcome",
     "PostmortemRecords",
@@ -76,6 +86,8 @@ __all__ = [
     "alert_delivery_count",
     "alert_intake_outcome",
     "alert_intake_records",
+    "knowledge_use_outcome",
+    "knowledge_use_records",
     "outcome_from_durable",
     "outcome_from_live_record",
     "outcome_from_loop",

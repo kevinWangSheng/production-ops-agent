@@ -144,7 +144,7 @@
       "Approve or reject a proposed knowledge update and verify provenance, reviewer, version and reversibility are recorded",
       "Run a later incident against changed or stale knowledge and verify freshness and contradictory evidence are handled according to the reviewed policy"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": "F14",

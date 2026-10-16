@@ -46,7 +46,7 @@ from opspilot.tools.executor import Clock
 from opspilot.web.auth import Authenticator, AuthError
 from opspilot.web.events import CursorTooOld
 from opspilot.web.review import EVENT_KINDS, PostmortemReview, ReviewError
-from opspilot.web.service import CONTROL_ACTIONS, Workbench, WorkbenchError
+from opspilot.web.service import Workbench, WorkbenchError, available_actions
 
 MAX_BODY_BYTES = 64 * 1024
 #: One Alertmanager webhook carries a whole group of alerts (each recorded up
@@ -357,7 +357,7 @@ def create_app(
             snapshot=snapshot,
             postmortem=postmortem,
             postmortem_kinds=EVENT_KINDS,
-            actions=sorted(CONTROL_ACTIONS),
+            actions=available_actions(snapshot),
             # One fresh key per rendered form: two operators on the same page
             # state must not share an idempotency key.
             form_nonce=uuid4().hex,
