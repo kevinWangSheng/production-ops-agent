@@ -49,6 +49,7 @@ U7-a：数据源返回内容里的凭据在进入模型、trace 和持久化之�
 
 - 机器人分诊（`@codex review`，c5e80e0 及首推 552c617 两次自动审查，共 5 条）全部采纳：P1 `view_fields` 里的 tuple 没被遍历；P1 恢复读数 bundle 里的 `body_b64` 没解码就脱敏，等于没做；P1 脚本把没有发布结论的 Run 记为非失败；P2 非字符串键触发断言；P2 旧证据含孤立代理项时展示报 500。修复：tuple 按数组遍历、非字符串键按 JSON 文本处理、编码失败时退回 ASCII 转义、展示时解码 bundle 各 body 后再脱敏、未发布记为 fail；每项都补了回归测试。复验（9e0927b）：两个 P1 已解决；脚本 P2 还漏了一处：range selector 会往回看，首点之前那段读取也要落在授权框里。lead 补上（HTTP start 减去回看时间不得早于授权起点）并加负例，属于小改，lead 自核。
 - 实质返工后第二次 `@codex review`（69f3728）：新增 1 条 P2——展示脱敏遇到嵌套超过解码器上限的 JSON 时报 500。改为退回到全文 prose 脱敏，加回归测试，lead 自核。其余两条是旧 thread 换了锚点，此前已经处置。
+- `make check`（9c8b702，最终 HEAD，本地 PG 55592，共享锁）：ruff、format、mypy 通过；pytest 7600 passed、54 skipped、2 xfailed。
 - 独立复验（astra，b9adb12）又找出两个早已存在的 P1 和一个脚本 P2。P1：一个键重复出现时 `json.loads` 只留最后一个值，前面那个值里的秘密留在了 raw 字节里。P1：恢复读数 bundle 里非 UTF-8 的 body 被原样导出。P2：脚本的范围判定没看 PromQL 的 `offset`/`@`。修复：只要出现重复键就一律按脱敏后的规范 JSON 存储和展示；非文本 body 在展示时省略（`body_omitted_for_display`）；脚本按产品的 `promql_problem` 判定。都补了回归测试。
 
 ## 真实 Run 计划（待协调者排时段）
@@ -63,5 +64,5 @@ U7-a：数据源返回内容里的凭据在进入模型、trace 和持久化之�
 
 ## 下一步与交接
 
-- 实现（Codex `gpt-6.1-sol`）与验收测试（全新上下文 Agent）并行 → 独立审查（Codex `gpt-6-astra`）→ `make check` → 开 PR（用户门，不合并，标注真实 Run 待补）。
+- PR #253 已开（用户门，不合并）。剩下的是真实 Run（见上方计划）：跑完补 trace 链接、`summary.json` 与 gitleaks，再请协调者向用户简报。
 - 真实 Run 计划见 PR 与给协调者的报告。
