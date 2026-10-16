@@ -123,6 +123,8 @@ ControlAction = Literal[
     "new_run",
     "register_remediation",
     "takeover",
+    "close",
+    "reopen",
 ]
 #: "The incident was handled outside the system": increments the control
 #: generation, authorizes an observation session and moves the incident to
@@ -143,6 +145,8 @@ CONTROL_ACTIONS: frozenset[str] = frozenset(
         "new_run",
         REGISTER_REMEDIATION,
         TAKEOVER,
+        "close",
+        "reopen",
     }
 )
 #: Report claim categories in page order; chart order follows it.
@@ -154,6 +158,51 @@ CHART_CATEGORIES = (
     "recommendations",
 )
 _TEXT_ACTIONS = frozenset({"follow_up", "correct"})
+
+
+def available_actions(snapshot: Mapping[str, Any]) -> list[str]:
+    """Likely accepted controls; the locked server decision remains authoritative.
+
+    Deadlines and scope gates may change after this snapshot, so retain actions
+    when their acceptance cannot be ruled out from the page's stored state.
+    """
+    if snapshot.get("handoff_only"):
+        return []
+    incident = snapshot["incident"]
+    lifecycle = incident.lifecycle
+    human_owned = incident.mode == "human_owned"
+    control = incident.control
+    concluded = incident.concluded or incident.state in {"completed", "cancelled"}
+    run_state = snapshot["run"]["state"]
+    actions = {TAKEOVER}
+    if lifecycle in {"open", "observing_recovery", "resolved"}:
+        actions.add("close")
+    if lifecycle in {"resolved", "closed"}:
+        actions.add("reopen")
+    if (
+        lifecycle in {"open", "observing_recovery"}
+        and control != "paused"
+        and snapshot.get("health_profile_revision")
+    ):
+        # Registration starts an observation: only these lifecycles take one,
+        # and a paused incident takes no new authorization.
+        actions.add(REGISTER_REMEDIATION)
+    if lifecycle != "closed":
+        if control == "cancelled" and not human_owned:
+            actions.add("new_run")
+        if not concluded:
+            actions.add("cancel")
+            if run_state in {"queued", "running", "paused", "waiting_human"}:
+                actions.add("resume")
+                if control != "paused":
+                    actions.add("pause")
+    if human_owned or (
+        lifecycle != "closed"
+        and not (lifecycle == "resolved" and concluded)
+        and (concluded or run_state in {"queued", "running", "paused", "waiting_human"})
+    ):
+        actions.update(_TEXT_ACTIONS)
+    return sorted(actions)
 
 
 class WorkbenchError(Exception):
