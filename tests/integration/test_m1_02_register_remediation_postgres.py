@@ -378,7 +378,9 @@ def test_registration_is_refused_on_a_resolved_or_closed_incident(
                 "UPDATE opspilot_incidents SET lifecycle=%s WHERE incident_id=%s",
                 (lifecycle, incident),
             )
-        with pytest.raises(PersistenceError, match="ILLEGAL_TRANSITION"):
+        # F12 C4: closed requires reopening; resolved keeps its prior refusal.
+        error = "REOPEN_REQUIRED" if lifecycle == "closed" else "ILLEGAL_TRANSITION"
+        with pytest.raises(PersistenceError, match=error):
             _register(controller, incident, expected=0)
         row = _incident_row(owner, incident)
         assert (row["lifecycle"], row["control_generation"]) == (lifecycle, 0)

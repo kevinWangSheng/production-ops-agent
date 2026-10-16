@@ -64,7 +64,7 @@ class _RunOps(_StoreBase):
             ).fetchone()
             if not row:
                 raise PersistenceError("UNKNOWN_IDENTITY")
-            if row["mode"] == "human_owned":
+            if row["mode"] == "human_owned" and row["lifecycle"] != "closed":
                 # A new Run is automatic investigation; human ownership has no
                 # way back to automatic in the domain model (C3 §10, #121).
                 raise PersistenceError("ILLEGAL_TRANSITION")
@@ -101,6 +101,10 @@ class _RunOps(_StoreBase):
                 if row["current_run_id"] == run_id and row["state"] != "cancelled":
                     raise PersistenceError("ILLEGAL_TRANSITION")
                 raise PersistenceError("IDENTITY_CONFLICT")
+            if row["lifecycle"] == "closed":
+                if int(row["control_generation"]) != expected_generation:
+                    raise PersistenceError("CONTROL_CONFLICT")
+                raise PersistenceError("REOPEN_REQUIRED")
             if row["state"] != "cancelled":
                 raise PersistenceError("ILLEGAL_TRANSITION")
             if int(row["control_generation"]) != expected_generation:

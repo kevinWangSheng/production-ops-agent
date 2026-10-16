@@ -15,7 +15,7 @@ from uuid import UUID
 
 from markupsafe import escape
 
-from opspilot.web.service import CONTROL_ACTIONS
+from opspilot.web.service import available_actions
 from opspilot.web.store import TargetIdentity, TargetRegistry
 from tests.m1_02_replay_support import PROFILE, stored_history, take
 from tests.m1_web_support import (
@@ -139,7 +139,7 @@ def test_the_page_separates_the_recovery_verdict_from_the_report_and_shows_the_b
     assert errors["verdict"] == "healthy"
     assert "raw" not in errors
     # read-only: the only forms on the page are the existing control actions
-    assert text.count("<form") == len(CONTROL_ACTIONS)
+    assert text.count("<form") == len(available_actions(snapshot))
 
 
 def test_a_tampered_stored_verdict_shows_as_an_integrity_mismatch():

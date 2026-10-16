@@ -271,6 +271,9 @@ class _ControlOps(_StoreBase):
         cancelled) requires reopening first (REOPEN_REQUIRED, F12 contract r2);
         other notes on those lifecycles behave as before.
 
+        Close stops unfinished Runs and observation before closing the lifecycle.
+        Reopen only returns resolved/closed incidents to open; it starts no work.
+
         Optional ``renew_basis`` binds successor input to its snapshot's
         Run identity and published-conclusion presence. A renewal whose
         locked row differs raises RENEW_INPUT_STALE before any write, so
@@ -303,6 +306,8 @@ class _ControlOps(_StoreBase):
                 "follow_up",
                 "correct",
                 "takeover",
+                "close",
+                "reopen",
             }:
                 raise PersistenceError("INVALID_INPUT")
             note = action in {"follow_up", "correct"}
@@ -310,6 +315,58 @@ class _ControlOps(_StoreBase):
             human_note = human_owned and note
             if human_note and payload is None:
                 raise PersistenceError("ILLEGAL_TRANSITION")
+            if action in {"close", "reopen"}:
+                allowed = (
+                    {"open", "observing_recovery", "resolved"}
+                    if action == "close"
+                    else {"resolved", "closed"}
+                )
+                if row["lifecycle"] not in allowed:
+                    raise PersistenceError("ILLEGAL_TRANSITION")
+                nxt = expected_generation + 1
+                conn.execute(
+                    "UPDATE opspilot_incidents SET control_generation=%s WHERE incident_id=%s",
+                    (nxt, incident_id),
+                )
+                state = row["state"]
+                if action == "close":
+                    # 结束记录保留当前生命周期；撤销必须先于写入 closed。
+                    from opspilot.observation.revocation import (
+                        revoke_authorized_sessions,
+                    )
+
+                    revoke_authorized_sessions(conn, incident_id)
+                    cancelled = conn.execute(
+                        "UPDATE opspilot_runs SET state='cancelled',owner=NULL,lease_until=NULL,control_generation=%s WHERE incident_id=%s AND state IN ('queued','paused','running','waiting_human','blocked') RETURNING run_id",
+                        (nxt, incident_id),
+                    ).fetchall()
+                    if any(r["run_id"] == row["current_run_id"] for r in cancelled):
+                        state = "cancelled"
+                conn.execute(
+                    "UPDATE opspilot_incidents SET lifecycle=%s,state=%s WHERE incident_id=%s",
+                    ("closed" if action == "close" else "open", state, incident_id),
+                )
+                conn.execute(
+                    "INSERT INTO opspilot_controls(audit_id,incident_id,action,expected_generation,resulting_generation,actor,payload) VALUES(%s,%s,%s,%s,%s,%s,%s)",
+                    (
+                        uuid4(),
+                        incident_id,
+                        action,
+                        expected_generation,
+                        nxt,
+                        actor,
+                        Jsonb(payload) if payload is not None else None,
+                    ),
+                )
+                from opspilot.knowledge.store import mark_stale_in
+
+                mark_stale_in(
+                    conn,
+                    incident_id,
+                    reason="control_generation_changed",
+                    source=f"control.{action}",
+                )
+                return nxt
             if action == "takeover":
                 # C3 §10 接管：mode -> human_owned，同一事务递增代际、撤销观察
                 # 授权、停下自动调查：当前 Run 交给人（waiting_human，收回租约），
