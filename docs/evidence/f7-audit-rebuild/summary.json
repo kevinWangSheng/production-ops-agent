@@ -1,6 +1,6 @@
 {
-  "frozen_at": "2026-10-16T16:22:20.417784+00:00",
-  "execution_commit": "f8fefe949cea55a8c3717d4a1ead34aff3404810",
+  "frozen_at": "2026-10-16T18:24:42.198984+00:00",
+  "execution_commit": "7a497a64022fd203a2fa44da0574cdafb0261b14",
   "worktree_dirty": false,
   "incidents": [
     {
@@ -11,14 +11,14 @@
         "evidence": 13,
         "state_change": 28,
         "human_correction": 1,
-        "recovery_observation": 18,
+        "recovery_observation": 19,
         "postmortem_review": 7
       },
-      "entry_count": 89,
+      "entry_count": 90,
       "first_at": "2026-10-15T11:07:53.116355-07:00",
       "last_at": "2026-10-15T11:26:08.825500-07:00",
       "missing": [],
-      "entries_sha256": "f715eb2a50884849a76357ff2c70b5ad9dd8689539982bafb969614520a15920",
+      "entries_sha256": "7f872c22fa237e30ada79635d7c63771f087a609206cb074d5c8b4fe1a8d088c",
       "undated_records": {},
       "missing_sources": [
         "opspilot_inputs",
@@ -35,16 +35,16 @@
         "evidence": 24,
         "state_change": 50,
         "human_correction": 2,
-        "recovery_observation": 6,
+        "recovery_observation": 7,
         "postmortem_review": 0
       },
-      "entry_count": 125,
+      "entry_count": 126,
       "first_at": "2026-10-15T11:33:53.059466-07:00",
       "last_at": "2026-10-15T11:44:52.979004-07:00",
       "missing": [
         "postmortem_review"
       ],
-      "entries_sha256": "2f86f5395d670c20f1f5a75bff1cac57735473e78e80ef534e1c0ad5520c338f",
+      "entries_sha256": "ae6cdaf85e620d41d78611ec1d4b2bfa92b78c90a6a6a66a9bae91f82fd27ff0",
       "undated_records": {},
       "missing_sources": [
         "opspilot_suspension_audit",
@@ -65,14 +65,14 @@
         "evidence": 50,
         "state_change": 109,
         "human_correction": 14,
-        "recovery_observation": 8,
+        "recovery_observation": 10,
         "postmortem_review": 4
       },
-      "entry_count": 266,
+      "entry_count": 268,
       "first_at": "2026-10-16T01:13:04.177819-07:00",
       "last_at": "2026-10-16T01:34:04.054254-07:00",
       "missing": [],
-      "entries_sha256": "d7a135f6a048bbf98c161d25955028808102987ec79e7e33ef4c4de8ab2e320b",
+      "entries_sha256": "855a3816c84400920ab2dd4f323179579ebb2addf097528358c9795044a10a02",
       "undated_records": {
         "opspilot_input_rounds": 2
       },
@@ -92,16 +92,16 @@
         "evidence": 16,
         "state_change": 35,
         "human_correction": 4,
-        "recovery_observation": 2,
+        "recovery_observation": 3,
         "postmortem_review": 0
       },
-      "entry_count": 83,
+      "entry_count": 84,
       "first_at": "2026-10-16T01:41:03.927532-07:00",
       "last_at": "2026-10-16T01:44:58.512273-07:00",
       "missing": [
         "postmortem_review"
       ],
-      "entries_sha256": "fd0d77857c47ba5732eb910c1d48e1ddc607fda7e92c57b3dc4e8a35abd54b0f",
+      "entries_sha256": "c6c1c829c8e46a47e7397755a3140ae76e1df3233aee197a5e7993b77033423d",
       "undated_records": {
         "opspilot_input_rounds": 1
       },
