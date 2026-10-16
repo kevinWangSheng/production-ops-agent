@@ -179,10 +179,13 @@ def available_actions(snapshot: Mapping[str, Any]) -> list[str]:
         actions.add("close")
     if lifecycle in {"resolved", "closed"}:
         actions.add("reopen")
-    if lifecycle in {"open", "observing_recovery"} and snapshot.get(
-        "health_profile_revision"
+    if (
+        lifecycle in {"open", "observing_recovery"}
+        and control != "paused"
+        and snapshot.get("health_profile_revision")
     ):
-        # Registration starts an observation, which only these lifecycles take.
+        # Registration starts an observation: only these lifecycles take one,
+        # and a paused incident takes no new authorization.
         actions.add(REGISTER_REMEDIATION)
     if lifecycle != "closed":
         if control == "cancelled" and not human_owned:

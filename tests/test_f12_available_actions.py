@@ -74,6 +74,7 @@ def test_mirrors_and_profile_filter_only_known_refusals():
     assert "register_remediation" not in available_actions(_snapshot(profile=None))
     actions = available_actions(_snapshot(state="paused", run_state="paused"))
     assert "pause" not in actions
+    assert "register_remediation" not in actions
     assert {"resume", "cancel", "follow_up", "correct"} <= set(actions)
     actions = available_actions(
         _snapshot("resolved", concluded=True, run_state="completed")
