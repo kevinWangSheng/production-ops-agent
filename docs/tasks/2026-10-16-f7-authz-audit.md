@@ -44,12 +44,25 @@ lab 代理：经 `127.0.0.1:19090` 访问，行为见 A4；`scripts/f7_authz_pro
 
 ## 执行进展与证据
 
-（待填）
+- 2026-10-16：PR-B #253 合并后从 `origin/main` `4aebf75` 建 worktree 与 PG 55595；基线 F7 第 2-4 步 PG 验收 10 passed。
+- 实现（Codex `gpt-6.1-sol`）：代理用 `nginx:1.28.0-alpine`；`proxy` 账号只补不重生成；代理配置与 htpasswd 经私有临时文件进 Secret，配置哈希变化滚动 Pod；投影内部自带 `dict_row` 游标，不依赖调用方连接。保守选择：没有自身数据库时间的行用标明来源的关联记录时间（如步骤的写入时间），找不到锚的计入冻结摘要 `undated`，不静默丢弃。
+- lead 机械修正：`tests/test_m1_prometheus_credentials.py` 两条旧断言（web.yml 列出全部账号、4 个密码）按 A3 改为「只列 collector 与 proxy」「5 个密码」。
+- 验收测试：全新上下文 Claude 子 Agent 只看合同、本记录接口与公开接口写 `tests/acceptance/test_f7_step1_entry_points.py`、`test_f7_step5_audit_postgres.py`（含 U4-a 单次上限）；首跑第 5 步 11 failed（投影假定 dict 行），实现修复后全部通过，未改断言。
+- 独立审查（Codex `gpt-6-astra`，会话 `01a1451c`）：P2×2——取消等非 completed 终态的 Run 无结束条目；探测矩阵漏 `lab` 账号与 HEAD/OPTIONS/路径变形。修复后 resume 复验两项已解决，另报新 P2：路径变形把 5xx 当拒绝。lead 自修为只认 4xx（301/0/5xx 均判失败）并补参数化用例，自核通过。审查明确：nginx alpine 是否认 `$2y$` bcrypt、真实路径行为、已有 lab 升级顺序与 collector 写入只能在 lab 验证。
+- `make check`（98d7c62，PG 55595，共享锁）：ruff、format、mypy 通过；pytest 8700 passed、55 skipped、2 xfailed（nginx 离线校验 1 例因本机无 nginx 跳过）。
 
 ## lab 计划（需要协调者排期）
 
-（待填）
+约 75-90 分钟，按顺序；开始前查 swap、停重负载，`kind_lab.py health` ok。
+
+1. 部署代理（约 10 分钟，无模型）：`.venv/bin/python scripts/kind_lab.py up`（helm 升级：Prometheus 换 web.yml 并改 ClusterIP，随后 apply 代理占 30090）→ `kind_lab.py health` ok（lab 账号经代理读，证明 bcrypt 可用）→ 3 分钟后 `rate(traces_span_metrics_calls_total[2m]) > 0`（collector 写入链路仍通）。失败回滚：`git` 回到 main 版本的 `scripts/kind_lab*` 再 `up`。
+2. 第 1 步探测（约 3 分钟，无模型）：`.venv/bin/python scripts/f7_authz_probe.py > docs/evidence/f7-authz-probe/probe.json`；期望 `ok: true`（三账号读 200、禁止路径 403、变形 4xx、匿名 401、`opspilot_f7_probe` 无新样本）。证据加 gitleaks 与凭据原值字面匹配。
+3. 第 4 步真实 Run（S4c，合同第 6 节，约 30-45 分钟，1-2 个真实模型 Run）：注入 `paymentFailure` → 告警建事故、Run 运行中 → 工作台 `POST /controls/suspension`（scope=global）→ 核对 generation 之后无新查询、在途结果只作历史、Observer 采样以 `scope_suspended` 结束 → 解除，确认不自动恢复 → 对目标暂停重复一遍 → 恢复故障。**现无专用采集脚本**，需要先仿 `docs/evidence/f12-live/ctl.py`、`collect.py` 写一个（离线可做，lab 前完成）。
+4. 第 5 步真实数据（离线，不占 lab）：在 F12 live 库副本上 `scripts/f7_audit_rebuild.py` 只读重建干净重跑事故与 `e1ac6e74`，冻结 `summary.json`；副本待协调者提供。
+
+五步证据齐后单独一个提交翻 F7 `passes`。
 
 ## 待决
 
-无。
+- F12 live 库副本（第 5 步 R3 数据）：复制被本机权限分类器拒绝，待协调者提供。
+- 第 4 步真实 Run 的采集脚本尚未写。
