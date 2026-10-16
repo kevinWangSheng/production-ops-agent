@@ -48,6 +48,7 @@ lab 代理：经 `127.0.0.1:19090` 访问，行为见 A4；`scripts/f7_authz_pro
 - 实现（Codex `gpt-6.1-sol`）：代理用 `nginx:1.28.0-alpine`；`proxy` 账号只补不重生成；代理配置与 htpasswd 经私有临时文件进 Secret，配置哈希变化滚动 Pod；投影内部自带 `dict_row` 游标，不依赖调用方连接。保守选择：没有自身数据库时间的行用标明来源的关联记录时间（如步骤的写入时间），找不到锚的计入冻结摘要 `undated`，不静默丢弃。
 - lead 机械修正：`tests/test_m1_prometheus_credentials.py` 两条旧断言（web.yml 列出全部账号、4 个密码）按 A3 改为「只列 collector 与 proxy」「5 个密码」。
 - 验收测试：全新上下文 Claude 子 Agent 只看合同、本记录接口与公开接口写 `tests/acceptance/test_f7_step1_entry_points.py`、`test_f7_step5_audit_postgres.py`（含 U4-a 单次上限）；首跑第 5 步 11 failed（投影假定 dict 行），实现修复后全部通过，未改断言。
+- 验收断言放宽与恢复（照实记录）：测试作者首轮遇到投影要求 dict 行（实现缺陷，已在实现侧修，测试保持普通连接）后，看到实现输出把两处断言放宽——复盘来源允许集合加入 `opspilot_postmortem_versions`、`opspilot_f13_audit`、`opspilot_knowledge_revisions`；恢复观察相对登记处置的次序改为只要求采样与结束严格晚于登记、会话行只需晚于此前的纠正。放宽版本随 `c1b9e1d` 提交。协调者要求恢复，作者已恢复原写法；恢复后 2 failed / 22 passed，两处分歧列入下方「待决」决定表，实现与测试都不再改，等裁决。
 - 独立审查（Codex `gpt-6-astra`，会话 `01a1451c`）：P2×2——取消等非 completed 终态的 Run 无结束条目；探测矩阵漏 `lab` 账号与 HEAD/OPTIONS/路径变形。修复后 resume 复验两项已解决，另报新 P2：路径变形把 5xx 当拒绝。lead 自修为只认 4xx（301/0/5xx 均判失败）并补参数化用例，自核通过。审查明确：nginx alpine 是否认 `$2y$` bcrypt、真实路径行为、已有 lab 升级顺序与 collector 写入只能在 lab 验证。
 - `make check`（98d7c62，PG 55595，共享锁）：ruff、format、mypy 通过；pytest 8700 passed、55 skipped、2 xfailed（nginx 离线校验 1 例因本机无 nginx 跳过）。
 
@@ -64,5 +65,14 @@ lab 代理：经 `127.0.0.1:19090` 访问，行为见 A4；`scripts/f7_authz_pro
 
 ## 待决
 
-- F12 live 库副本（第 5 步 R3 数据）：复制被本机权限分类器拒绝，待协调者提供。
+### 需用户裁决（第 5 步验收断言与接口分歧）
+
+| 编号 | 分歧 | 选项与代价 | 推荐 |
+|---|---|---|---|
+| D1 | 接口写 postmortem_review 来源为「`opspilot_postmortems` 各版本与审核、`opspilot_knowledge_entries`」，并规定 `source` 是表名；而版本与审核动作实际存在 `opspilot_postmortem_versions`、`opspilot_f13_audit`（迁移 0008）。实现按真实表名报，测试按字面两表断言 → `test_s5b_entries_are_ordered...` 失败（来源 `opspilot_f13_audit`） | a. 澄清接口：「各版本与审核」指 0008 的版本表与审核审计表，`source` 报真实表名；测试作者按澄清后的接口改允许集合，并恢复审核人/生成者可归属的断言。信息完整。<br>b. 实现把版本与审核行的 `source` 统一报 `opspilot_postmortems`：符合字面，但 `source` 不再是真实表名，审计回溯要多一步 | a |
+| D2 | 测试要求所有恢复观察条目不早于登记处置的控制行；而观察会话行与登记处置同一事务写入，会话的 `clock_timestamp()` 比控制行早约 0.7 ms（实测 08:10:06.324019 对 .324701）→ `test_s5b_causal_order_holds` 失败。产品不改，投影按 R6 只用数据库写入时间 | a. 同一事务内的行不定义因果先后：会话行只要求与登记同事务（不早于此前的纠正），采样与结束严格晚于登记。<br>b. 投影对同一事务的行改用事务时间或人为把会话行排到控制行之后：违背 R6「只用写入时间」，或需要读事务标识，复杂且偏离真实时钟 | a |
+
+### 其他
+
+- F12 live 库副本（第 5 步 R3 数据）：复制被本机权限分类器拒绝，协调者已移到 `production-ops-agent/tmp/archive/f12-live/live/pg`（只读），正在征求用户是否允许复制到本 worktree。
 - 第 4 步真实 Run 的采集脚本尚未写。
