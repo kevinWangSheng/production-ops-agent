@@ -38,7 +38,7 @@
 - `AuditEntry(recorded_at: datetime, sequence: int, category: str, source: str, record_id: str, run_id: UUID | None, actor: str | None, detail: Mapping[str, object])`，frozen；`source` 是表名；`detail` 只含 id、枚举和计数，不含自由文本。
 - `AuditTimeline(incident_id: UUID, entries: tuple[AuditEntry, ...], counts: Mapping[str, int], missing: tuple[str, ...])`；`entries` 按 `(recorded_at, 来源顺序, record_id)` 排序，`sequence` 为排序后的位置（0 起）；`missing` 是计数为 0 的类别。
 - `audit_timeline(conn, incident_id: UUID) -> AuditTimeline`，`conn` 与现有 PG 投影同类型；未知事故抛 `LookupError`；只发 SELECT，可在 `READ ONLY` 事务内运行。
-- 类别来源：input = `opspilot_inputs`、`opspilot_input_rounds`、`opspilot_alert_deliveries`；query = `opspilot_tool_charges`（`detail` 含 tool、target_id、结果码、是否出站）；evidence = `opspilot_evidence`；state_change = `opspilot_subject_events`、`opspilot_runs` 的创建与结束、影响该事故目标或全局的 `opspilot_suspension_audit`；human_correction = `opspilot_controls`（`detail.action` 为控制动作名，`actor` 为操作员）；recovery_observation = `opspilot_observation_sessions`、`_samples`、`_endings`、`opspilot_self_heal_authorizations`；postmortem_review = `opspilot_postmortems` 各版本与审核、`opspilot_knowledge_entries`。时间一律取 PostgreSQL 写入的时间列。
+- 类别来源：input = `opspilot_inputs`、`opspilot_input_rounds`、`opspilot_alert_deliveries`；query = `opspilot_tool_charges`（`detail` 含 tool、target_id、结果码、是否出站）；evidence = `opspilot_evidence`；state_change = `opspilot_subject_events`、`opspilot_runs` 的创建与结束、影响该事故目标或全局的 `opspilot_suspension_audit`；human_correction = `opspilot_controls`（`detail.action` 为控制动作名，`actor` 为操作员）；recovery_observation = `opspilot_observation_sessions`、`_samples`、`_endings`、`opspilot_self_heal_authorizations`；postmortem_review = `opspilot_postmortems`、`opspilot_postmortem_versions`、`opspilot_f13_audit`（迁移 0008 的复盘、版本与审核审计，D1 = A 澄清）、`opspilot_knowledge_entries`。时间一律取 PostgreSQL 写入的时间列。
 
 lab 代理：经 `127.0.0.1:19090` 访问，行为见 A4；`scripts/f7_authz_probe.py` 输出每个请求的方法、路径、账号名、状态码、期望、是否符合。
 
@@ -52,28 +52,28 @@ lab 代理：经 `127.0.0.1:19090` 访问，行为见 A4；`scripts/f7_authz_pro
 - 测试作者列出的其余不清处由 lead 按可逆细节定：`tool_charges`、`runs`、`input_rounds` 无自身时间列，取关联记录的数据库写入时间并在 `detail.time_basis` 标明（`steps.observed_at` 默认 `clock_timestamp()`，0001 l.82）；UI 接收的输入由 `input_rounds` 体现；query 的 `detail` 键名以实现为准（测试只断言 `tool`、`target_id`）；第 5 步不挂 `PRODUCT_CONSTRAINT_SCENARIO_INDEX`（需改 `opspilot/acceptance.py`，超出本 PR）。
 - 独立审查（Codex `gpt-6-astra`，会话 `01a1451c`）：P2×2——取消等非 completed 终态的 Run 无结束条目；探测矩阵漏 `lab` 账号与 HEAD/OPTIONS/路径变形。修复后 resume 复验两项已解决，另报新 P2：路径变形把 5xx 当拒绝。lead 自修为只认 4xx（301/0/5xx 均判失败）并补参数化用例，自核通过。审查明确：nginx alpine 是否认 `$2y$` bcrypt、真实路径行为、已有 lab 升级顺序与 collector 写入只能在 lab 验证。
 - 第 5 步真实数据（R3）：用户 2026-10-16 批准复制 F12 live 库；协调者复制到 `tmp/f12-live-pg`，lead 在 55596 只读启动，重建 4 个事故，跑完停库。`002c3fba`、`e1ac6e74` 七类齐全，证据 [f7-audit-rebuild](../evidence/f7-audit-rebuild/run.md)（D1、D2 待决）。
+- 用户裁决（2026-10-16，协调者转达）：D1 = A（接口改为：postmortem_review 来源是 0008 的 `opspilot_postmortems`、`opspilot_postmortem_versions`、`opspilot_f13_audit` 与 `opspilot_knowledge_entries`，`source` 报真实表名）；D2 = A（同一事务写入的行不定义先后，会话行只要求不早于此前的纠正，采样与结束严格晚于登记）。两项都不改实现。原测试作者按裁决收紧：允许集合加入两张 0008 表（未加 `opspilot_knowledge_revisions`），加回审核人与生成者可归属断言；次序断言按 D2 改写，保留采样与结束严格晚于登记、二者必须出现。第 5 步 PG 验收 24 passed（PG 55595）。
+- 用户批准复制 F12 live 库（2026-10-16）。
+- lab 时段（协调者批准，2026-10-16 09:34–10:04 PDT，持共享重负载锁，注入前 swap 11.9/13.3 GB、checkout rate 0.0125/s、p95 193 ms）：
+  - 部署代理：本分支 `kind_lab.py up` 成功，`health` ok，span 样本持续写入。共享 lab 目录以符号链接接入 worktree，auth 文件只补 `proxy`。
+  - 第 1 步探测：运行 1 `ok: false`（HEAD 读路径期望 200 实得 405，是探测期望错误：代理放行 HEAD，Prometheus API 不处理 HEAD）；改期望为 405 与单测替身后重跑一次，运行 2 `ok: true`。两份输出都入库，见 [f7-authz-probe](../evidence/f7-authz-probe/run.md)。
+  - 第 4 步真实 Run：全局与按目标暂停各一次，窗口内新增查询 0、在途轮写回 `late_result`、解除后不自动恢复，`ok: true`；费用 0.48 CNY；见 [f7-step4-live](../evidence/f7-step4-live/run.md)。故障已恢复、flag 全部 off，web/worker 与 PG 55597、55596 已停，锁已释放。
+  - 兼容：本 PR 合并前，main 版 `kind_lab.py` 在未设 lab 账号环境变量时会因 auth 文件有 5 个账号而退出，main 版 `up` 也会拒绝；F11 U2 harness 与产品 env 经代理可读。详见探测记录。
 - `make check`（98d7c62，PG 55595，共享锁）：ruff、format、mypy 通过；pytest 8700 passed、55 skipped、2 xfailed（nginx 离线校验 1 例因本机无 nginx 跳过）。
 
-## lab 计划（需要协调者排期）
+## lab 计划
 
-约 75-90 分钟，按顺序；开始前查 swap、停重负载，`kind_lab.py health` ok。
-
-1. 部署代理（约 10 分钟，无模型）：`.venv/bin/python scripts/kind_lab.py up`（helm 升级：Prometheus 换 web.yml 并改 ClusterIP，随后 apply 代理占 30090）→ `kind_lab.py health` ok（lab 账号经代理读，证明 bcrypt 可用）→ 3 分钟后 `rate(traces_span_metrics_calls_total[2m]) > 0`（collector 写入链路仍通）。失败回滚：`git` 回到 main 版本的 `scripts/kind_lab*` 再 `up`。
-2. 第 1 步探测（约 3 分钟，无模型）：`.venv/bin/python scripts/f7_authz_probe.py > docs/evidence/f7-authz-probe/probe.json`；期望 `ok: true`（三账号读 200、禁止路径 403、变形 4xx、匿名 401、`opspilot_f7_probe` 无新样本）。证据加 gitleaks 与凭据原值字面匹配。
-3. 第 4 步真实 Run（S4c，合同第 6 节，约 30-45 分钟，1-2 个真实模型 Run）：注入 `paymentFailure` → 告警建事故、Run 运行中 → 工作台 `POST /controls/suspension`（scope=global）→ 核对 generation 之后无新查询、在途结果只作历史、Observer 采样以 `scope_suspended` 结束 → 解除，确认不自动恢复 → 对目标暂停重复一遍 → 恢复故障。**现无专用采集脚本**，需要先仿 `docs/evidence/f12-live/ctl.py`、`collect.py` 写一个（离线可做，lab 前完成）。
-4. 第 5 步真实数据：已完成（见上），D1 选 B 时需重跑。
-
-五步证据齐后单独一个提交翻 F7 `passes`。
+已于 2026-10-16 执行，结果见「执行进展与证据」。
 
 ## 待决
 
-### 需用户裁决（第 5 步验收断言与接口分歧）
+### 第 5 步验收断言与接口分歧（用户 2026-10-16 裁决：D1 = A，D2 = A）
 
 | 编号 | 分歧 | 选项与代价 | 推荐 |
 |---|---|---|---|
-| D1 | 合同（R2：「组合三个现有投影加 suspension_audit 和 tool_charges」）与本记录接口都没点名 `opspilot_f13_audit`；接口写 postmortem_review 来源为「`opspilot_postmortems` 各版本与审核、`opspilot_knowledge_entries`」并规定 `source` 是表名，而版本与审核动作实际存在 `opspilot_postmortem_versions` 与 `opspilot_f13_audit`（迁移 0008）。实现报真实表名，测试按字面两表断言 → 来源 `opspilot_f13_audit`（action=generate）的条目让 `test_s5b_entries_are_ordered...` 失败。合同没禁止这些表，属于措辞缺口 | A. 允许 0008 的版本表与审核审计表作为来源：改本记录接口，测试作者按新接口改允许集合并加回审核人/生成者可归属断言。代价：一次接口修订；收益：审核谁做的、何时生成都可回溯。<br>B. 实现不读这两张表，只报 `opspilot_postmortems` 与知识条目：符合字面，但复盘「审核」本身（审核人、批准动作）从时间线消失，第 5 步「postmortem review」只剩结果没有动作；真实库摘要需重跑 | A |
-| D2 | R6 规定只按 PostgreSQL 写入时间排序；本 PR 的验收另要求因果次序（恢复观察不早于登记处置）。观察会话行与登记控制行在同一事务写入，会话行 `clock_timestamp()` 早 0.7–1.3 ms → `test_s5b_causal_order_holds` 失败。两条要求对同一事务内的行冲突 | A. 同一事务内的行不定义因果先后：会话行只要求不早于此前的纠正，采样与结束必须严格晚于登记。代价：测试按此改写（由测试作者）；不动产品与投影。<br>B. 投影对同一事务的行按事务内位置排序：需要读事务标识（`xmin`）并定一个事务内顺序规则，复杂，且 `xmin` 跨回卷不可靠。<br>C. 产品改为先写控制行再写会话行：动产品存储（`ObservationStore.register_remediation`），超出本 PR 范围，需另开 PR，在途库不受影响 | A |
+| D1（裁决 A） | 合同（R2：「组合三个现有投影加 suspension_audit 和 tool_charges」）与本记录接口都没点名 `opspilot_f13_audit`；接口写 postmortem_review 来源为「`opspilot_postmortems` 各版本与审核、`opspilot_knowledge_entries`」并规定 `source` 是表名，而版本与审核动作实际存在 `opspilot_postmortem_versions` 与 `opspilot_f13_audit`（迁移 0008）。实现报真实表名，测试按字面两表断言 → 来源 `opspilot_f13_audit`（action=generate）的条目让 `test_s5b_entries_are_ordered...` 失败。合同没禁止这些表，属于措辞缺口 | A. 允许 0008 的版本表与审核审计表作为来源：改本记录接口，测试作者按新接口改允许集合并加回审核人/生成者可归属断言。代价：一次接口修订；收益：审核谁做的、何时生成都可回溯。<br>B. 实现不读这两张表，只报 `opspilot_postmortems` 与知识条目：符合字面，但复盘「审核」本身（审核人、批准动作）从时间线消失，第 5 步「postmortem review」只剩结果没有动作；真实库摘要需重跑 | A |
+| D2（裁决 A） | R6 规定只按 PostgreSQL 写入时间排序；本 PR 的验收另要求因果次序（恢复观察不早于登记处置）。观察会话行与登记控制行在同一事务写入，会话行 `clock_timestamp()` 早 0.7–1.3 ms → `test_s5b_causal_order_holds` 失败。两条要求对同一事务内的行冲突 | A. 同一事务内的行不定义因果先后：会话行只要求不早于此前的纠正，采样与结束必须严格晚于登记。代价：测试按此改写（由测试作者）；不动产品与投影。<br>B. 投影对同一事务的行按事务内位置排序：需要读事务标识（`xmin`）并定一个事务内顺序规则，复杂，且 `xmin` 跨回卷不可靠。<br>C. 产品改为先写控制行再写会话行：动产品存储（`ObservationStore.register_remediation`），超出本 PR 范围，需另开 PR，在途库不受影响 | A |
 
 ### 其他
 
-- 第 4 步真实 Run 的采集脚本尚未写。
+无。

@@ -1,0 +1,92 @@
+{
+  "after": {
+    "db_now": "2026-10-16 09:47:14.937513-07:00",
+    "evidence": 2,
+    "incidents": [
+      {
+        "concluded": false,
+        "control_generation": 0,
+        "current_run_id": "180c39be-f34a-566d-8e31-f00a32918872",
+        "incident_id": "ddbe2e9c-ed95-5233-95d5-166ef23af687",
+        "lifecycle": "open",
+        "mode": "automatic",
+        "state": "paused"
+      }
+    ],
+    "last_step_at": "2026-10-16 09:47:12.069727-07:00",
+    "runs": [
+      {
+        "control_generation": 0,
+        "incident_id": "ddbe2e9c-ed95-5233-95d5-166ef23af687",
+        "run_id": "180c39be-f34a-566d-8e31-f00a32918872",
+        "state": "paused"
+      }
+    ],
+    "scope": [
+      {
+        "global_generation": 1,
+        "global_suspended": true
+      }
+    ],
+    "targets": [
+      {
+        "generation": 0,
+        "suspended": false,
+        "target_id": "77ce20be-1637-458f-b34b-ab0a6e342e4a"
+      }
+    ],
+    "tool_charges": 3
+  },
+  "at": "2026-10-16T16:47:14.801183+00:00",
+  "before": {
+    "db_now": "2026-10-16 09:47:14.804594-07:00",
+    "evidence": 2,
+    "incidents": [
+      {
+        "concluded": false,
+        "control_generation": 0,
+        "current_run_id": "180c39be-f34a-566d-8e31-f00a32918872",
+        "incident_id": "ddbe2e9c-ed95-5233-95d5-166ef23af687",
+        "lifecycle": "open",
+        "mode": "automatic",
+        "state": "queued"
+      }
+    ],
+    "last_step_at": "2026-10-16 09:47:12.069727-07:00",
+    "runs": [
+      {
+        "control_generation": 0,
+        "incident_id": "ddbe2e9c-ed95-5233-95d5-166ef23af687",
+        "run_id": "180c39be-f34a-566d-8e31-f00a32918872",
+        "state": "running"
+      }
+    ],
+    "scope": [
+      {
+        "global_generation": 0,
+        "global_suspended": false
+      }
+    ],
+    "targets": [
+      {
+        "generation": 0,
+        "suspended": false,
+        "target_id": "77ce20be-1637-458f-b34b-ab0a6e342e4a"
+      }
+    ],
+    "tool_charges": 3
+  },
+  "http_body": {
+    "generation": 1,
+    "replayed": false,
+    "scope": "global",
+    "suspended": true,
+    "target_id": null
+  },
+  "http_status": 200,
+  "request": {
+    "expected_generation": 0,
+    "scope": "global",
+    "suspended": "true"
+  }
+}
