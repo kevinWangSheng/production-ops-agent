@@ -85,6 +85,7 @@ from opspilot.investigation.inputs import ToolFace
 from opspilot.investigation.loop import DISCIPLINE_VARIANT, investigation_versions
 from opspilot.investigation.runner import ExecutorFactory
 from opspilot.persistence import DurableStore, Lease, PersistenceError
+from opspilot.redaction import redact_credentials
 from opspilot.tools.executor import (
     MAX_OPERATIONS_PER_RUN,
     MAX_TOOL_SECONDS_PER_RUN,
@@ -102,7 +103,7 @@ from opspilot.tools.executor import (
     TransportUnavailable,
 )
 from opspilot.tools.ledger import DurableToolLedger
-from opspilot.tools.outcomes import Window
+from opspilot.tools.outcomes import PROJECTION_REVISION, Window
 from opspilot.tools.registry import (
     ParameterSpec,
     RegisteredTarget,
@@ -654,6 +655,7 @@ def _tool_schema_revision() -> str:
             "tool_schemas": [dict(item) for item in TOOL_SCHEMAS],
             "registry": ToolRegistry(_registrations()).revision,
             "trace_projection": TRACE_PROJECTION,
+            "projection_revision": PROJECTION_REVISION,
         }
     )
     return f"otel-demo-{digest[:12]}"
@@ -1291,7 +1293,7 @@ def _details(span: Mapping[str, Any]) -> list[dict[str, Any]]:
 def _clipped(field: Mapping[str, Any]) -> dict[str, Any]:
     value = field["value"]
     text = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
-    raw = text.encode("utf-8")
+    raw = redact_credentials(text).encode("utf-8")
     return {
         **field,
         "value": raw[:MAX_DETAIL_BYTES_PER_FIELD].decode("utf-8", errors="ignore"),
@@ -1378,7 +1380,7 @@ def project_traces(
                 stamps.append(start + duration_us)
                 if start < window_start_us or start + duration_us > window_end_us:
                     outside += 1
-            operation = str(span.get("operationName", ""))
+            operation = redact_credentials(str(span.get("operationName", "")))
             spans.append(
                 {
                     "trace_id": trace.get("traceID"),

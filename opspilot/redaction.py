@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 
 # The authentication-bearing subset of RESERVED_PARAMETERS. These names may
@@ -388,3 +389,134 @@ def redact_credentials(text: str) -> str:
     return _CREDENTIAL_SCHEME.sub(
         lambda m: f"{m.group('scheme')} {REDACTED_CREDENTIAL}", redacted
     )
+
+
+def redact_payload(value: object) -> object:
+    """Redact JSON string values, object keys and credential-named fields, purely.
+
+    An explicit stack keeps traversal linear and independent of nesting depth.
+    Return the original value when unchanged, including its byte representation
+    when callers use identity to decide whether to serialize again.
+    """
+    if isinstance(value, str):
+        text = redact_credentials(value)
+        return value if text == value else text
+    if not isinstance(value, (dict, list, tuple)):
+        return value
+    # A tuple serializes as a JSON array (``json.dumps``, ``canonical``), so it
+    # is walked like a list and comes back as one (bot review).
+    result: dict[str, object] | list[object] = {} if isinstance(value, dict) else []
+    stack = [(value, result)]
+    suffixes: dict[tuple[int, str], int] = {}
+    changed = False
+    while stack:
+        source, destination = stack.pop()
+        items = source.items() if isinstance(source, dict) else enumerate(source)
+        for raw_key, item in items:
+            # A non-string key is serialized by JSON as its scalar text
+            # (``1`` -> ``"1"``), so it is examined and stored as that text.
+            key = raw_key if isinstance(raw_key, str) else json.dumps(raw_key)
+            changed |= key is not raw_key and isinstance(source, dict)
+            if (
+                isinstance(source, dict)
+                # The marker's own word must not make a key a credential
+                # name (a second pass would wipe ``https://[REDACTED_
+                # CREDENTIAL]@host``'s value), but a marker in the source is
+                # no exemption either: the rest of the key is still checked
+                # (``api_key_[REDACTED_CREDENTIAL]``; independent review).
+                and _credential_name(key.replace(REDACTED_CREDENTIAL, ""))
+                and item is not None
+            ):
+                # Whatever a credential-named field holds -- a string, a
+                # number, an object -- is replaced whole, as the prose rule
+                # does for ``"password": 4711`` or ``"token": {...}``.
+                redacted: object = REDACTED_CREDENTIAL
+                changed |= redacted != item
+            elif isinstance(item, str):
+                redacted = redact_credentials(item)
+                changed |= redacted != item
+            elif isinstance(item, (dict, list, tuple)):
+                child: dict[str, object] | list[object] = (
+                    {} if isinstance(item, dict) else []
+                )
+                stack.append((item, child))
+                redacted = child
+            else:
+                redacted = item
+            if isinstance(destination, dict):
+                # A key is source text too (a URL with userinfo, a Jaeger
+                # service name turned into a count key): redact it, and keep
+                # two keys that redact alike apart with a stable suffix
+                # rather than letting one overwrite the other.
+                name = redact_credentials(key)
+                changed |= name != key
+                if name in destination:
+                    # The next free suffix per base, so many keys that redact
+                    # alike cost one probe each, not a rescan (bot review).
+                    base = name
+                    suffix = suffixes.get((id(destination), base), 1)
+                    while name in destination:
+                        suffix += 1
+                        name = f"{base}#{suffix}"
+                    suffixes[(id(destination), base)] = suffix
+                    changed = True
+                destination[name] = redacted
+            else:
+                destination.append(redacted)
+    return result if changed else value
+
+
+def _pairs_without_duplicates(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    result = dict(pairs)
+    if len(result) != len(pairs):
+        raise _DuplicateKey
+    return result
+
+
+class _DuplicateKey(ValueError):
+    pass
+
+
+def has_duplicate_keys(text: str) -> bool:
+    """Whether a JSON text repeats a key in some object.
+
+    ``json.loads`` keeps the last value of a repeated key, so a payload that
+    parses unchanged by redaction may still carry an earlier value -- a
+    secret -- in its bytes (``{"password":"s","password":"[REDACTED_
+    CREDENTIAL]"}``; independent review). Such bytes are never kept as they
+    are. ``False`` for text that is not JSON at all.
+    """
+    try:
+        json.loads(text, object_pairs_hook=_pairs_without_duplicates)
+    except _DuplicateKey:
+        return True
+    except (ValueError, RecursionError):
+        return False
+    return False
+
+
+def redact_json_bytes(body: bytes) -> bytes:
+    """Redact UTF-8 JSON or prose; preserve unchanged and non-UTF-8 bytes."""
+    try:
+        text = body.decode("utf-8")
+    except UnicodeDecodeError:
+        return body
+    try:
+        payload = json.loads(text)
+    except (ValueError, RecursionError):
+        # Not JSON, or nested past the decoder's limit: the text rules still
+        # apply, linearly, to the whole body (bot review).
+        redacted = redact_credentials(text)
+        return body if redacted == text else redacted.encode("utf-8")
+    result = redact_payload(payload)
+    if result is payload and not has_duplicate_keys(text):
+        return body
+    # Equivalent to tools.registry.canonical, without its import cycle. A
+    # lone surrogate (``"\\ud800"`` in the source) cannot be UTF-8 encoded;
+    # such a body keeps its escapes instead of failing the caller (bot review).
+    try:
+        return json.dumps(
+            result, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+        ).encode("utf-8")
+    except UnicodeEncodeError:
+        return json.dumps(result, sort_keys=True, separators=(",", ":")).encode("ascii")

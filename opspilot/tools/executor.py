@@ -16,9 +16,9 @@ What it deliberately does not do:
   this package (``PRODUCT-CONSTRAINTS.md``, "Data flow contract").
 - It never takes authorization, target identity, scope, budget or control state
   from a tool result. Results are untrusted evidence, never instructions.
-- It does not redact secrets that a *data source* may itself return inside a
-  payload. That is a separate, unbuilt redaction policy; until it exists, a
-  source whose payload can contain secret material must not be registered.
+- Source payloads and adapter view fields are credential-redacted before
+  evidence registration. Credential names and prose patterns provide context;
+  bare secret strings without naming context cannot be identified.
 
 Failure vocabulary: contract violations by the operator raise
 ``ToolContractError``; everything caused by model-proposed input or by the data
@@ -38,6 +38,7 @@ from types import MappingProxyType
 from typing import Protocol, cast, runtime_checkable
 from uuid import UUID, uuid4
 
+from opspilot.redaction import has_duplicate_keys, redact_payload
 from opspilot.tracing import tracer
 
 from .outcomes import (
@@ -1065,7 +1066,7 @@ class ReadOnlyToolExecutor:
         if elapsed > timeout:
             # A result that arrives after its deadline must not update state.
             return refuse_after_fetch("timeout", "GATEWAY_TIMEOUT")
-        problem, rows, payload = self._inspect(plan, operation, response)
+        problem, rows, payload, response = self._inspect(plan, operation, response)
         if problem is not None:
             return refuse_after_fetch(*problem)
         # Narrowing for the type checker: _inspect() returns no problem only
@@ -1236,11 +1237,11 @@ class ReadOnlyToolExecutor:
 
     def _inspect(
         self, plan: _Plan, operation: ToolOperation, response: object
-    ) -> tuple[tuple[ToolStatus, str] | None, list[object], object]:
+    ) -> tuple[tuple[ToolStatus, str] | None, list[object], object, object]:
         """Validate one returned response; the only place these rules live.
 
-        Returns ``(problem, rows, payload)``. ``problem`` is ``None`` when the
-        response may be turned into a record -- adopted or history-only. Both
+        Returns ``(problem, rows, payload, sanitized_response)``. A ``None``
+        problem permits a record -- adopted or history-only. Both
         callers go through it, because ``_history()`` originally repeated only
         the parse step and thereby committed an oversized body and crashed
         ``execute()`` with an ``AttributeError`` from a malformed
@@ -1249,8 +1250,8 @@ class ReadOnlyToolExecutor:
 
         def _problem(
             status: ToolStatus, reason: str
-        ) -> tuple[tuple[ToolStatus, str], list[object], object]:
-            return (status, reason), [], None
+        ) -> tuple[tuple[ToolStatus, str], list[object], object, object]:
+            return (status, reason), [], None, response
 
         if not isinstance(response, TransportResponse) or not isinstance(
             response.body, bytes
@@ -1354,7 +1355,30 @@ class ReadOnlyToolExecutor:
             scope_window = self._scope.window
             if covered_start < scope_window.start or covered_end > scope_window.end:
                 return _problem("denied", "WINDOW_OUT_OF_SCOPE")
-        return None, list(rows), payload
+        try:
+            redacted = redact_payload(payload)
+            fields = (
+                None
+                if response.view_fields is None
+                else cast(
+                    Mapping[str, object], redact_payload(dict(response.view_fields))
+                )
+            )
+            if redacted is not payload or has_duplicate_keys(
+                response.body.decode("utf-8")
+            ):
+                body = canonical(redacted).encode("utf-8")
+                if len(body) > plan.registration.max_result_bytes:
+                    return _problem("error", "RESULT_TOO_LARGE")
+                rows, payload = _result_rows(plan.registration, body)
+                if rows is None:
+                    return _problem("error", "MALFORMED_RESULT")
+            else:
+                body = response.body
+            response = replace(response, body=body, view_fields=fields)
+        except (ValueError, RecursionError):
+            return _problem("error", "MALFORMED_RESULT")
+        return None, list(rows), payload, response
 
     def _history(
         self,
@@ -1379,12 +1403,13 @@ class ReadOnlyToolExecutor:
             # its vendor text near model context, and a human decision landing
             # on top does not turn it into one.
             return None
-        problem, rows, payload = self._inspect(plan, operation, response)
+        problem, rows, payload, response = self._inspect(plan, operation, response)
         if problem is not None:
             # Whatever would have been refused on the adopt path is not
             # retained on the history path either: an over-limit body must not
             # slip past ``max_result_bytes`` because a human paused the Run.
             return None
+        assert isinstance(response, TransportResponse)
         record = self._record(
             dispatch_id,
             operation,
