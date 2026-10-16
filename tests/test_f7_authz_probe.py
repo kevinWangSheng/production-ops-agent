@@ -14,6 +14,11 @@ from scripts import f7_authz_probe as probe
 from scripts import kind_lab
 
 
+def _read_status(method: str) -> int:
+    # Prometheus' API answers HEAD with 405 after the proxy passes it.
+    return 405 if method == "HEAD" else 200
+
+
 @pytest.mark.parametrize(
     "change,wrong_status", [(False, False), (True, False), (False, True)]
 )
@@ -62,7 +67,7 @@ def test_collector_detects_failures_without_printing_credentials(
                     401
                     if not auth
                     else (
-                        200
+                        _read_status(self.command)
                         if (self.command, parsed.path) in probe.READ_REQUESTS
                         else 403
                     )
@@ -149,7 +154,9 @@ def test_any_account_getting_2xx_on_a_forbidden_request_fails(
             return 400, b""
         if role == "anonymous":
             return 401, b""
-        return (200 if (verb, requested_path) in probe.READ_REQUESTS else 403), b""
+        return (
+            _read_status(verb) if (verb, requested_path) in probe.READ_REQUESTS else 403
+        ), b""
 
     monkeypatch.setattr(probe, "request", request)
     report = probe.probe()
@@ -192,7 +199,9 @@ def test_variant_status_is_recorded_and_only_a_4xx_is_a_denial(
             return status, b""
         if auth is None:
             return 401, b""
-        return (200 if (method, bare_path) in probe.READ_REQUESTS else 403), b""
+        return (
+            _read_status(method) if (method, bare_path) in probe.READ_REQUESTS else 403
+        ), b""
 
     monkeypatch.setattr(probe, "request", request)
     report = probe.probe()

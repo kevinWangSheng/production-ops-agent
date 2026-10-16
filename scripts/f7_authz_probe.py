@@ -123,7 +123,11 @@ def probe(base_url: str = BASE_URL, directory: Path = LAB_DIR) -> dict[str, Any]
                 if (method, path) in VARIANT_REQUESTS
                 else 401
                 if role == "anonymous"
-                else (200 if (method, path) in READ_REQUESTS else 403)
+                # The proxy passes HEAD on read paths; Prometheus' API has no
+                # HEAD handler and answers 405 (lab run 1, 2026-10-16).
+                else (405 if method == "HEAD" else 200)
+                if (method, path) in READ_REQUESTS
+                else 403
             )
             status, _ = request(base_url, method, path + query, auths.get(role))
             # Only a client-error answer is a denial: a transport failure
