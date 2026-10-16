@@ -2,13 +2,13 @@
   "schema": "opspilot-lab-summary-1",
   "experiment": "f13-step4-acceptance",
   "run_id": "d89aa6e5-4f65-552c-90e7-ac3b31798604",
-  "frozen_at": "2026-10-16T05:06:35.399643+00:00",
+  "frozen_at": "2026-10-16T06:38:30.962173+00:00",
   "round": "f13-step4-20261016",
   "scenario": "S1",
   "versions": {
     "collector_branch": "feature/F13-step4-acceptance",
     "executed_commit": "e1582ede4dd24cb180c20856b2c23d344507c0dd",
-    "collector_commit": "e1582ede4dd24cb180c20856b2c23d344507c0dd",
+    "collector_commit": "938a73d9c3ffd0d67059b246f1178b92a8da0d09",
     "schema_head": "0017_web_suspension_grants",
     "worker_versions": {
       "prompt_revision": "prompt-replay-candidate-dd9018031487",
@@ -320,20 +320,20 @@
   "workbench_page": {
     "status": 200,
     "bytes": 77663,
-    "sha256": "d0b523c3dfe1b5067059847dbf55437bb683cc2f812fc4cff7dc337167622c52",
+    "sha256": "aaebad56b40189716bfdbed1b6e41fbb199d89237f95ff819dc30cfc12b15f9e",
     "shows_recovered_no_remediation": false,
     "shows_source_automatic": true
   },
   "verdicts": null,
   "timeline": {
-    "sha256": "7ec81a9d0b801cf4fdd4da10fd48c06dd7f0e4ea5a42fb0165f4d55c236f89df",
-    "bytes": 656
+    "sha256": "14c7e107a16f6c2c2d6c878ed16f3e367a3f594c7ec6a120a15d5893ebcd5dba",
+    "bytes": 700
   },
   "postmortem_attempts": [],
   "artifacts": {
     "docs/evidence/f13-step4-acceptance/collect.py": {
-      "sha256": "9c1593bbbf5ae4f3d2a9e2c9c1106aa3241091a692b63a50d2e1a797212981f2",
-      "bytes": 18996
+      "sha256": "5c8934d7347004ccc3120c799f48d2e1bf2eaecb375dc41a32aeb64f75c70663",
+      "bytes": 19009
     },
     "docs/evidence/f13-step4-acceptance/knowledge_use.py": {
       "sha256": "0bca8245782f685029dc09527dee1604cfbe21923efd4b7ba78c9baf60729a50",
@@ -347,7 +347,7 @@
       "sha256": "95ae4e83f983d0fab78656b4f4b062d033eaf91840a6c3fdeed514209cfb017b",
       "bytes": 11192
     },
-    "git_diff_head_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    "git_diff_head_sha256": "db5a2e3773f819056218e53248a7ff871e536f0c51dc6c6d1c251fcf3868ff7f"
   },
   "trace": {
     "project": {
@@ -380,8 +380,8 @@
   },
   "cost": null,
   "raw_ledger": {
-    "sha256": "c732916c5e785f462ae8b50171fb5fcde73fac72ceb71f635719e3468fd3cc22",
-    "bytes": 492197,
+    "sha256": "3f3b10043fa337f197fa681c6616b5adc1465fcf9556c544b81fcc7eb7368374",
+    "bytes": 492242,
     "path": "tmp/lab-ledgers/f13-step4-acceptance/d89aa6e5-4f65-552c-90e7-ac3b31798604/ledger.json",
     "in_repository": false
   }

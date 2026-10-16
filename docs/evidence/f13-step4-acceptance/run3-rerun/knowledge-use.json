@@ -1,0 +1,194 @@
+{
+  "checks": [
+    {
+      "detail": "ok",
+      "name": "status_ok",
+      "passed": true
+    },
+    {
+      "detail": 1,
+      "name": "page_entry_count",
+      "passed": true
+    },
+    {
+      "detail": {
+        "page": [
+          "4eb40edf-a9ca-44a3-90cd-5f62b3daf8ab",
+          1,
+          "stale",
+          44094,
+          false,
+          "contradicted"
+        ],
+        "projection": [
+          "4eb40edf-a9ca-44a3-90cd-5f62b3daf8ab",
+          1,
+          "stale",
+          44094,
+          false,
+          "contradicted"
+        ]
+      },
+      "name": "page_matches_projection[0]",
+      "passed": true
+    },
+    {
+      "detail": [
+        "4eb40edf-a9ca-44a3-90cd-5f62b3daf8ab"
+      ],
+      "name": "entry_provided",
+      "passed": true
+    },
+    {
+      "detail": "stale",
+      "name": "entry_stale",
+      "passed": true
+    },
+    {
+      "detail": "contradicted",
+      "name": "verdict_contradicted",
+      "passed": true
+    },
+    {
+      "detail": [
+        {
+          "evidence_ids": [
+            "9a9d880a-0533-4999-b9df-ffa9e231aea7-t0:0c96bf39-159f-4b13-9b01-633635e18375",
+            "4fbe174e-da8b-4e5f-893a-b24e19885c31-t2:946803cb-4a7d-4518-b417-f3bcc659bfd5",
+            "35c6a19b-a407-434a-852a-8c22749b76d9-t0:4f378d23-382b-47b7-b6dc-ea4bdf468b0a"
+          ],
+          "kind": "rejected_hypothesis",
+          "text": "Rejected: the pre-existing knowledge claim [knowledge:4eb40edf-a9ca-44a3-90cd-5f62b3daf8ab@r1] that checkout's PlaceOrder error ratio is currently 100% with only payment calls failing is contradicted for the current period \u2014 in the last 5 minutes PlaceOrder shows 0 STATUS_CODE_ERROR spans and its client RPC metric shows rpc_grpc_status_code=2 to oteldemo.PaymentService at 0. (The 100% condition did match an earlier episode within the authorized window, but not the current window.)"
+        },
+        {
+          "evidence_ids": [
+            "6c82e4ce-6a41-403b-a2e9-763e1ab500d4-t0:0f22d64d-9a59-4cec-960c-eadd13aa2ccb"
+          ],
+          "kind": "hypothesis",
+          "text": "Hypothesis (unverified): the earlier PlaceOrder error episode within the authorized window may share the payment-Charge failure signature described in [knowledge:4eb40edf-a9ca-44a3-90cd-5f62b3daf8ab@r1], but this Run did not obtain trace-level or payment-side evidence for those earlier timestamps, so the failing dependency during that episode remains unconfirmed."
+        }
+      ],
+      "name": "handled_with_run_evidence",
+      "passed": true
+    },
+    {
+      "detail": [
+        "rejected_hypothesis",
+        "hypothesis"
+      ],
+      "name": "no_fact_on_knowledge",
+      "passed": true
+    },
+    {
+      "detail": [
+        "4eb40edf-a9ca-44a3-90cd-5f62b3daf8ab",
+        1,
+        "stale",
+        44094,
+        false,
+        "contradicted"
+      ],
+      "name": "page_shows_stale_and_contradicted",
+      "passed": true
+    },
+    {
+      "detail": [],
+      "name": "no_unprovided_tags",
+      "passed": true
+    }
+  ],
+  "incident_id": "9e147bfa-d1b6-5473-89ec-bd5578825c92",
+  "observed": {},
+  "outcome": {
+    "entries": [
+      {
+        "age_seconds": 44094,
+        "approved_at": "2026-10-15T11:26:08.815247-07:00",
+        "approved_by": "e2e-lab",
+        "claim_kinds": [
+          "rejected_hypothesis",
+          "hypothesis"
+        ],
+        "content_sha256": "856fecf7a4bc9bafde89bb0986bec488e214b587581a9c9cf3563663e5435fd5",
+        "entry_id": "4eb40edf-a9ca-44a3-90cd-5f62b3daf8ab",
+        "freshness": "stale",
+        "handled": true,
+        "name": "Checkout PlaceOrder error ratio at 100% while only payment calls fail",
+        "observation_ended_at": "2026-10-15T11:24:31.093847-07:00",
+        "revision": 1,
+        "source_incident_id": "002c3fba-fcb7-5fee-871e-797f6d72b399",
+        "source_postmortem_id": "378b0fe2-bc81-4095-aae9-a1363ca97ff6",
+        "source_version": 1,
+        "tagged_claims": [
+          {
+            "evidence_ids": [
+              "9a9d880a-0533-4999-b9df-ffa9e231aea7-t0:0c96bf39-159f-4b13-9b01-633635e18375",
+              "4fbe174e-da8b-4e5f-893a-b24e19885c31-t2:946803cb-4a7d-4518-b417-f3bcc659bfd5",
+              "35c6a19b-a407-434a-852a-8c22749b76d9-t0:4f378d23-382b-47b7-b6dc-ea4bdf468b0a"
+            ],
+            "kind": "rejected_hypothesis",
+            "text": "Rejected: the pre-existing knowledge claim [knowledge:4eb40edf-a9ca-44a3-90cd-5f62b3daf8ab@r1] that checkout's PlaceOrder error ratio is currently 100% with only payment calls failing is contradicted for the current period \u2014 in the last 5 minutes PlaceOrder shows 0 STATUS_CODE_ERROR spans and its client RPC metric shows rpc_grpc_status_code=2 to oteldemo.PaymentService at 0. (The 100% condition did match an earlier episode within the authorized window, but not the current window.)"
+          },
+          {
+            "evidence_ids": [
+              "6c82e4ce-6a41-403b-a2e9-763e1ab500d4-t0:0f22d64d-9a59-4cec-960c-eadd13aa2ccb"
+            ],
+            "kind": "hypothesis",
+            "text": "Hypothesis (unverified): the earlier PlaceOrder error episode within the authorized window may share the payment-Charge failure signature described in [knowledge:4eb40edf-a9ca-44a3-90cd-5f62b3daf8ab@r1], but this Run did not obtain trace-level or payment-side evidence for those earlier timestamps, so the failing dependency during that episode remains unconfirmed."
+          }
+        ],
+        "tags": [
+          "otel-demo",
+          "checkout",
+          "payment",
+          "span-error-ratio",
+          "low-volume-alerting"
+        ],
+        "truncated": false,
+        "verdict": "contradicted"
+      }
+    ],
+    "max_age_seconds": 3600,
+    "model_requests": [],
+    "omitted_for_size": 0,
+    "policy_version": "knowledge-hint-v1",
+    "report_available": true,
+    "retrieved_at": "2026-10-15T23:39:25.331644-07:00",
+    "run_evidence_ids": [
+      "9a9d880a-0533-4999-b9df-ffa9e231aea7-t0:0c96bf39-159f-4b13-9b01-633635e18375",
+      "9a9d880a-0533-4999-b9df-ffa9e231aea7-t1:b2c1c24d-1793-4ff5-ac9c-1505dc5bc9ca",
+      "4fbe174e-da8b-4e5f-893a-b24e19885c31-t0:d79ae3dd-b738-40a4-8573-e70a0b238891",
+      "4fbe174e-da8b-4e5f-893a-b24e19885c31-t1:88e39ba7-ed86-45bf-8be3-dde47897b99c",
+      "4fbe174e-da8b-4e5f-893a-b24e19885c31-t2:946803cb-4a7d-4518-b417-f3bcc659bfd5",
+      "6c82e4ce-6a41-403b-a2e9-763e1ab500d4-t0:0f22d64d-9a59-4cec-960c-eadd13aa2ccb",
+      "6c82e4ce-6a41-403b-a2e9-763e1ab500d4-t1:265daeee-50fe-4ee9-9be6-591e236114bf",
+      "35c6a19b-a407-434a-852a-8c22749b76d9-t0:4f378d23-382b-47b7-b6dc-ea4bdf468b0a",
+      "c0ddf585-b015-4957-9f4d-72de86b01325-t0:90db5d13-2e9a-4bf1-b318-1b1bcccff139",
+      "494f7ff7-603a-43b3-a470-65e229eca631-t0:48cf0378-5726-429d-9fdc-13334eac8ed7",
+      "494f7ff7-603a-43b3-a470-65e229eca631-t1:52b05b5f-47e5-40ff-aa3f-b9b08eb9da3f"
+    ],
+    "run_id": "f0cd48fb-151c-5ed2-aadb-488d68154067",
+    "run_state": "completed",
+    "scenario_id": "F13:step4:stale-contradicted",
+    "status": "ok",
+    "subject_id": "9e147bfa-d1b6-5473-89ec-bd5578825c92",
+    "unknown_reasons": [],
+    "unprovided_tags": []
+  },
+  "page_items": [
+    {
+      "fields": [
+        "4eb40edf-a9ca-44a3-90cd-5f62b3daf8ab",
+        1,
+        "stale",
+        44094,
+        false,
+        "contradicted"
+      ],
+      "text": "r1 \u00b7 stale \u00b7 age 44094 seconds \u00b7 source incident \u00b7 truncated: False \u00b7 check: contradicted"
+    }
+  ],
+  "page_status": 200,
+  "passed": true,
+  "scenario": "stale-contradicted"
+}

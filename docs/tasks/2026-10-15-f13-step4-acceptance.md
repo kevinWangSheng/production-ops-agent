@@ -1,6 +1,6 @@
 # F13 第 4 步：验收投影与真实验收（PR-C）
 
-- 状态：阻塞（真实验收 Run 3 失败，待裁决）
+- 状态：已完成（F13 `passes` 已翻，等待用户合并 PR）
 - 更新日期：2026-10-16
 - 依据：[F13 第 4 步合同预审 r1](2026-10-15-f13-step4-contract.md)（R8、R9、U2、U6、U8 与「验收运行计划」）；PR-B 记录 [2026-10-15-f13-step4.md](2026-10-15-f13-step4.md)（#238 已合并，`knowledge_checks` 在 PR-B 实现，本 PR 复用）。
 - 工作区：worktree `/Users/shenghuikevin/dev/AI/poa-f13-c`，分支 `feature/F13-step4-acceptance`，基于 `origin/main` `d19e78a`。本机 PG 端口 55593（`tmp/pg`）。
@@ -45,8 +45,10 @@
 - 实现：Codex `gpt-6.1-sol` 按上节接口实现 `opspilot/acceptance_knowledge.py`（加实现者自测）。保守取舍：`unknown` 时 `run_id`/`run_state` 也置空；主体不一致与知识无效并存时报 `SUBJECT_MISMATCH`；`unprovided_tags` 记完整标签原文；报告无法解析时仍保留已发布结论的证据 ID，知识结果为 `untagged`。
 - 独立验收测试：未参与实现的 Claude 子 Agent 只按本记录与合同编写 `tests/test_f13_step4_acceptance.py`（纯内存）与 `tests/integration/test_f13_step4_acceptance_postgres.py`（真实 PG、真实工作台、桩模型输出带标签报告；页面与投影逐字段一致；撤销后后继 Run 不含被撤销 revision），实现未改其断言。本机：纯内存 24 passed，PG（55593）3 passed。
 - 独立审查：Codex `gpt-6-astra` 首审投影本身无 P1/P2；判定脚本 2 个 P2（`changed` 可省略被撤销 revision 而空过；页面子串匹配会把别的条目 r20 当成 r2）。已改为必填参数、按链接取 entry_id 并整行解析字段逐项比较，resume 复验确认解决、无新增。
+- Run 3 重跑（用户裁决 B，见待决 2）：**通过**。K1 r1 标 `stale`，核对结果 `contradicted` 且 `handled`（带标签的 `rejected_hypothesis` 引用本 Run 3 个证据），没有带标签的 `fact`，页面可见。三个真实 Run 都已通过，确定性层也通过，第 1–3 步证据按 U6-A 认可，所以 `feature_list.json` 中 F13 `passes` 翻为 `true`。
+- `collect.py` 的哈希：冻结后跑过 `ruff format` 导致不一致。处置是用排版后的文件对 Run 1–3 重新冻结，没有回退文件内容（回退会让 `ruff format --check` 失败）；差异见运行记录。
 - 检查：`make check`（共享锁）6134 passed、1521 skipped、2 xfailed。
-- 真实验收（2026-10-16，[运行记录](../evidence/f13-step4-acceptance/run.md)）：Run 1 通过（K1 r1 fresh，核对 `consistent` 且 `handled`）；Run 2 通过（撤销后输入不含 K1 r1）；**Run 3 失败**（K1 标 `stale`、页面可见，但核对结果是 `conflicting`：1 条带标签 `fact` 加 2 条带标签 `rejected_hypothesis`）。直接原因是问题写了「过去 10 分钟」，提问时故障恢复才约 4.5 分钟，窗口里还带着故障尾部。F13 `passes` 未翻。费用约 0.25 CNY。
+- 真实验收（2026-10-16，[运行记录](../evidence/f13-step4-acceptance/run.md)）：Run 1 通过（K1 r1 fresh，核对 `consistent` 且 `handled`）；Run 2 通过（撤销后输入不含 K1 r1）；**Run 3 失败**（K1 标 `stale`、页面可见，但核对结果是 `conflicting`：1 条带标签 `fact` 加 2 条带标签 `rejected_hypothesis`）。直接原因是问题写了「过去 10 分钟」，提问时故障恢复才约 4.5 分钟，窗口里还带着故障尾部。费用约 0.25 CNY。
 
 ## 验收运行计划
 
@@ -65,8 +67,17 @@
 ## 待决
 
 1. ~~真实 Run 顺序~~：已执行 1 → 3 → 2。起点库只有 K1 一条知识，先撤销就没有知识可供 Run 3 使用；三个 Run 的断言不变。协调者 2026-10-16 批准（可逆的执行细节，不改验收步骤）。
-2. **Run 3 是否重跑**：失败照实记录。问题时间窗是 lead 的运行设计失误：「过去 10 分钟」没有避开刚恢复的故障尾部。它不属于环境异常，也不是产品拒绝了报告。可选：A 维持失败，F13 第 4 步不通过，另开 issue 跟进；B 用户批准后只重跑 Run 3 一次，问题改为「过去 5 分钟」，并在故障恢复 10 分钟以上后再提问，其余断言不变（约 15 分钟、无故障窗）。推荐 B：A 的失败只能说明窗口设计有问题，不能说明知识处理策略不对。
+2. ~~Run 3 是否重跑~~：**用户裁决 2026-10-16 选 B**：只重跑一次，断言不变，问题改为「past 5 minutes」，在故障恢复 10 分钟以上且健康后提问；再失败就按失败关闭。首次失败的证据保留，重跑只是新增证据。原分析如下：失败照实记录。问题时间窗是 lead 的运行设计失误：「过去 10 分钟」没有避开刚恢复的故障尾部。它不属于环境异常，也不是产品拒绝了报告。可选：A 维持失败，F13 第 4 步不通过，另开 issue 跟进；B 用户批准后只重跑 Run 3 一次，问题改为「过去 5 分钟」，并在故障恢复 10 分钟以上后再提问，其余断言不变（约 15 分钟、无故障窗）。推荐 B：A 的失败只能说明窗口设计有问题，不能说明知识处理策略不对。
+
+## 测试作者列出的合同未写清点（现行行为，已对照代码）
+
+- `handled`：同一条目下带标签、但 `evidence_ids` 为空的 `fact`/`rejected_hypothesis`，会让该条 `handled` 为假（`knowledge_checks` 不把它计入 verdict，但投影要求决定 verdict 的每条 claim 都引用本 Run 证据）。
+- `absent`（输入没有 `knowledge`）时，报告中出现的任何 `[knowledge:…]` 标签都记入 `unprovided_tags`。
+
+## 收尾四个数
+
+实施期间新冒出的合同问题 1（真实 Run 的执行顺序）；因合同变更重写的测试 0；环境重跑 1（Run 3 重跑，原因是 lead 定的问题时间窗有误）；用户裁决轮数 1（Run 3 重跑；执行顺序由协调者批准）。
 
 ## 下一步与交接
 
-等待待决 2 的裁决。实验库副本 `tmp/lab-pg`（已停）保留，状态为 Run 2 之后：K1 r1 已撤销，库里没有 active 知识。重跑 Run 3 需要一条 active 知识，从 `production-ops-agent/tmp/m1-clean/pg` 重新复制一份即可。lab 已收尾：flag 全部 off，health ok，heavy 锁已释放。
+功能 PR 走用户门：做到可合并后停下，由用户合并。实验库副本 `tmp/lab-pg`（Run 2 之后的状态）和 `tmp/lab-pg2`（重跑之后的状态）都已停止并保留，删除 worktree 前先确认不再需要。lab 已收尾，heavy 锁已释放。
