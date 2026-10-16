@@ -378,10 +378,16 @@ def _audit_records(
              FROM opspilot_suspension_audit
              WHERE target_id IS NULL OR target_id=%s
            )
-           SELECT *,false AS baseline FROM scoped WHERE created_at >= %s
+           SELECT audit_id,target_id,suspended,generation,actor,created_at,
+                  false AS baseline
+           FROM scoped WHERE created_at >= %s
            UNION ALL
-           SELECT *,true AS baseline FROM (
-             SELECT DISTINCT ON (target_id) * FROM scoped WHERE created_at < %s
+           SELECT audit_id,target_id,suspended,generation,actor,created_at,
+                  true AS baseline
+           FROM (
+             SELECT DISTINCT ON (target_id)
+                    audit_id,target_id,suspended,generation,actor,created_at
+             FROM scoped WHERE created_at < %s
              ORDER BY target_id,created_at DESC,audit_id DESC
            ) prior""",
         (incident["target_id"], incident["created_at"], incident["created_at"]),
