@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus-readonly-proxy
+  namespace: otel-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: prometheus-readonly-proxy
+  template:
+    metadata:
+      labels:
+        app: prometheus-readonly-proxy
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: nginx
+          # nginx 1.28.0 stable was released 2025-04-23.
+          image: nginx:1.28.0-alpine
+          command: ["nginx", "-g", "daemon off;"]
+          ports:
+            - containerPort: 8080
+          readinessProbe:
+            tcpSocket:
+              port: 8080
+          livenessProbe:
+            tcpSocket:
+              port: 8080
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+          volumeMounts:
+            - name: configuration
+              mountPath: /etc/opspilot-proxy
+              readOnly: true
+            - name: configuration
+              mountPath: /etc/nginx/nginx.conf
+              subPath: nginx.conf
+              readOnly: true
+      volumes:
+        - name: configuration
+          secret:
+            secretName: prometheus-readonly-proxy
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus-readonly-proxy
+  namespace: otel-demo
+spec:
+  type: NodePort
+  selector:
+    app: prometheus-readonly-proxy
+  ports:
+    - port: 9090
+      targetPort: 8080
+      nodePort: 30090

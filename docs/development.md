@@ -348,3 +348,12 @@ M0_B_POSTGRES=1 .venv/bin/python -m pytest tests/integration/test_m0_live_postgr
 checkout 流量不受 ad 故障影响及临近健康终结边界仍需真实实验与独立真值审查。
 
 Web 创建 Run 时默认读取同一目标的已审核知识。`OPSPILOT_KNOWLEDGE_HINTS=off` 关闭读取；`OPSPILOT_KNOWLEDGE_MAX_AGE_SECONDS` 设置非负整数新鲜度阈值（默认 `2592000` 秒，即 30 天），超过阈值的知识仍提供并标为 stale。
+
+F7 lab Prometheus 的宿主入口仍为 `http://127.0.0.1:19090`，由只读 nginx
+鉴权代理占用 NodePort 30090；Prometheus 自身只保留 ClusterIP。代理认证
+investigator、observer、lab，只允许 GET/HEAD 的查询白名单，collector 与 proxy
+账号仅用于集群内上游。已有 auth 文件只补 proxy 密码，原角色 env 不失效。
+`kind_lab.py up` 应用 Secret 与代理清单并等待就绪；本地只记录鉴权结果用
+`.venv/bin/python -m scripts.f7_authz_probe`。审计冻结通过
+`OPSPILOT_LAB_DSN=… .venv/bin/python -m scripts.f7_audit_rebuild <incident-id> --out <目录>/summary.json`
+在只读快照事务中执行，输出计数与哈希，不导出原始 payload。

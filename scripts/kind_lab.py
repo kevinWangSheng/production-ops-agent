@@ -48,6 +48,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections.abc import Callable
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -117,7 +118,7 @@ KUBECTL = "kubectl"
 # ``KEY=value`` env file per product role for the engineer to source. They
 # never go into the repository, the chart values, logs or evidence.
 AUTH_FILE = LAB_DIR / "prometheus-auth.json"
-PROMETHEUS_ACCOUNTS = ("observer", "investigator", "collector", "lab")
+PROMETHEUS_ACCOUNTS = ("observer", "investigator", "collector", "lab", "proxy")
 WEB_CONFIG_SECRET = "prometheus-web-config"
 COLLECTOR_AUTH_SECRET = "prometheus-web-auth"
 # M1-04 (E13): Alertmanager's bearer token for the workbench webhook. The
@@ -257,17 +258,16 @@ def _private_write(path: Path, content: str) -> None:
 def prometheus_accounts(path: Path = AUTH_FILE) -> dict[str, str]:
     """``{account: password}`` from the private auth file, created on first use.
 
-    Four accounts: ``observer`` and ``investigator`` are the two product
-    roles' read-only identities (D3), ``collector`` is the lab's own
-    telemetry push (the OTel collector exports OTLP metrics into Prometheus)
-    and ``lab`` is what this script's health check uses. Prometheus' built-in
-    basic auth gives every account the same rights; the contract asks for
-    separate credentials, not separate permissions.
+    Product read accounts authenticate only at the readonly proxy. Existing
+    four-account labs gain only the proxy password; all other drift is refused.
     """
     if path.exists():
         if stat.S_IMODE(path.stat().st_mode) & 0o077:
             raise SystemExit(f"{path} must not be group/world readable; refusing")
         accounts = json.loads(path.read_text())
+        if set(accounts) == set(PROMETHEUS_ACCOUNTS) - {"proxy"}:
+            accounts["proxy"] = secrets.token_urlsafe(24)
+            _private_write(path, json.dumps(accounts, indent=2) + "\n")
         if set(accounts) != set(PROMETHEUS_ACCOUNTS):
             raise SystemExit(f"{path} does not list exactly {PROMETHEUS_ACCOUNTS}")
         return {name: str(accounts[name]) for name in PROMETHEUS_ACCOUNTS}
@@ -304,12 +304,134 @@ def bcrypt_hash(password: str) -> str:
     return proc.stdout.strip().split(":", 1)[1]
 
 
-def web_config_yaml(accounts: dict[str, str], hasher=bcrypt_hash) -> str:
-    """Prometheus ``--web.config.file`` content: every account, bcrypt-hashed."""
+def web_config_yaml(
+    accounts: dict[str, str], hasher: Callable[[str], str] = bcrypt_hash
+) -> str:
+    """Prometheus ``--web.config.file`` content: upstream-only accounts, bcrypt-hashed."""
     lines = ["basic_auth_users:"]
-    for name in PROMETHEUS_ACCOUNTS:
+    for name in ("collector", "proxy"):
         lines.append(f'  {name}: "{hasher(accounts[name])}"')
     return "\n".join(lines) + "\n"
+
+
+PROXY_SECRET = "prometheus-readonly-proxy"
+READ_PATHS = (
+    "/api/v1/query",
+    "/api/v1/query_range",
+    "/api/v1/series",
+    "/api/v1/labels",
+    "/api/v1/status/buildinfo",
+)
+
+
+def proxy_htpasswd(
+    accounts: dict[str, str], hasher: Callable[[str], str] = bcrypt_hash
+) -> str:
+    return "".join(f"{name}:{hasher(accounts[name])}\n" for name in ROLE_ENV_VARS)
+
+
+def proxy_nginx_config(accounts: dict[str, str]) -> str:
+    # try_files runs AFTER basic authentication. A rewrite-phase return at
+    # the public location would incorrectly give anonymous callers 403.
+    locations = "\n".join(
+        f"    location = {path} {{ try_files /__absent__ @read; }}"
+        for path in READ_PATHS
+    )
+    return (
+        """worker_processes 1;
+error_log /dev/stderr crit;
+pid /tmp/nginx.pid;
+events { worker_connections 128; }
+http {
+  access_log off;
+  upstream prometheus_backend { server prometheus:9090; }
+  server {
+    listen 8080;
+    root /var/empty;
+    auth_basic "lab readonly";
+    auth_basic_user_file /etc/opspilot-proxy/htpasswd;
+"""
+        + locations
+        + """
+    location ~ ^/api/v1/label/[A-Za-z_][A-Za-z0-9_]*/values$ {
+      try_files /__absent__ @read;
+    }
+    location / { try_files /__absent__ @denied; }
+    location @denied { return 403; }
+    location @read {
+      if ($request_method !~ ^(GET|HEAD)$) { return 403; }
+      proxy_pass_request_body off;
+      proxy_set_header Content-Length "";
+      proxy_set_header Authorization "AUTHORIZATION";
+      proxy_pass http://prometheus_backend$uri$is_args$args;
+    }
+  }
+}
+""".replace("AUTHORIZATION", basic_auth_header(accounts, "proxy"))
+    )
+
+
+def apply_readonly_proxy(accounts: dict[str, str]) -> int:
+    with tempfile.TemporaryDirectory(prefix="prom-proxy-") as scratch:
+        config = Path(scratch) / "nginx.conf"
+        auth = Path(scratch) / "htpasswd"
+        _private_write(config, proxy_nginx_config(accounts))
+        _private_write(auth, proxy_htpasswd(accounts))
+        code = _apply_secret(
+            PROXY_SECRET,
+            f"--from-file=nginx.conf={config}",
+            f"--from-file=htpasswd={auth}",
+        )
+    if code:
+        return code
+    code = run(
+        kubectl("apply", "-f", str(CONFIG / "prometheus-readonly-proxy.yaml"))
+    ).returncode
+    if code:
+        return code
+    code = roll_readonly_proxy_on_config_change()
+    if code:
+        return code
+    return run(
+        kubectl(
+            "-n",
+            NAMESPACE,
+            "rollout",
+            "status",
+            "deployment/prometheus-readonly-proxy",
+            "--timeout=180s",
+        )
+    ).returncode
+
+
+def roll_readonly_proxy_on_config_change() -> int:
+    proc = capture(
+        kubectl("-n", NAMESPACE, "get", "secret", PROXY_SECRET, "-o", "json")
+    )
+    if proc.returncode:
+        print("cannot read proxy configuration Secret", file=sys.stderr)
+        return proc.returncode
+    try:
+        digest = config_sha256(json.loads(proc.stdout))
+    except ValueError:
+        print("invalid proxy configuration Secret", file=sys.stderr)
+        return 1
+    patch = {
+        "spec": {
+            "template": {"metadata": {"annotations": {CONFIG_HASH_ANNOTATION: digest}}}
+        }
+    }
+    return run(
+        kubectl(
+            "-n",
+            NAMESPACE,
+            "patch",
+            "deployment",
+            "prometheus-readonly-proxy",
+            "-p",
+            json.dumps(patch),
+        )
+    ).returncode
 
 
 def webhook_token(path: Path | None = None) -> str:
@@ -386,7 +508,7 @@ def apply_prometheus_auth_secrets(accounts: dict[str, str]) -> int:
     return 0
 
 
-def _apply_secret(secret: str, source: str) -> int:
+def _apply_secret(secret: str, *sources: str) -> int:
     """``kubectl create secret generic --dry-run -o yaml | kubectl apply``;
     ``source`` is a ``--from-file`` argument naming a private file."""
     rendered = capture(
@@ -397,14 +519,14 @@ def _apply_secret(secret: str, source: str) -> int:
             "secret",
             "generic",
             secret,
-            source,
+            *sources,
             "--dry-run=client",
             "-o",
             "yaml",
         )
     )
     if rendered.returncode != 0:
-        print(rendered.stderr, file=sys.stderr)
+        print("Secret rendering failed (diagnostics suppressed)", file=sys.stderr)
         return rendered.returncode
     applied = subprocess.run(
         kubectl("apply", "-f", "-"),
@@ -413,7 +535,7 @@ def _apply_secret(secret: str, source: str) -> int:
         capture_output=True,
     )
     if applied.returncode != 0:
-        print(applied.stderr, file=sys.stderr)
+        print("Secret apply failed (diagnostics suppressed)", file=sys.stderr)
         return applied.returncode
     print(f"+ kubectl apply secret/{secret} (values not shown)")
     return 0
@@ -492,7 +614,7 @@ def lab_authorization(
     exists; ``None`` when neither is set (an authenticated Prometheus then
     answers 401, which the scripts report instead of hiding).
     """
-    env = os.environ if env is None else env
+    env = dict(os.environ) if env is None else env
     # resolved at call time so a test (or a relocated LAB_DIR) can point it
     path = AUTH_FILE if path is None else path
     user_var, password_var = ROLE_ENV_VARS["lab"]
@@ -775,6 +897,9 @@ def cmd_up(args: argparse.Namespace) -> int:
     )
     if proc.returncode != 0:
         return proc.returncode
+    code = apply_readonly_proxy(accounts)
+    if code != 0:
+        return code
     code = roll_prometheus_on_config_change()
     if code != 0:
         return code
