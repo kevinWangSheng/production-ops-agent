@@ -114,6 +114,21 @@ def test_pg_projection_readonly_order_missing_and_safe_detail(conn: Connection) 
         ),
     )
     conn.execute(
+        """INSERT INTO opspilot_subject_events(subject_id,sequence,kind,payload)
+           VALUES(%s,3,'tool_committed',%s)""",
+        (
+            incident,
+            Jsonb(
+                {
+                    "run_id": str(run),
+                    "evidence_id": f"{operation}:{dispatch}",
+                    "status": "ok",
+                    "adopted": True,
+                }
+            ),
+        ),
+    )
+    conn.execute(
         """INSERT INTO opspilot_controls(audit_id,incident_id,action,
            expected_generation,resulting_generation,actor,payload)
            VALUES(%s,%s,'correct',0,1,'operator',%s)""",
@@ -224,6 +239,22 @@ def test_failure_checkpoint_handoff_and_unanchored_rows(conn: Connection) -> Non
             Jsonb({"run_id": str(run), "parked": True}),
         ),
     )
+    conn.execute(
+        """INSERT INTO opspilot_subject_events(subject_id,sequence,kind,payload)
+           VALUES(%s,5,'tool_committed',%s)""",
+        (
+            incident,
+            Jsonb(
+                {
+                    "run_id": str(run),
+                    "step_id": str(step),
+                    "ordinal": 0,
+                    "evidence_id": None,
+                    "status": "timeout",
+                }
+            ),
+        ),
+    )
     timeline, gaps = audit_records(conn, incident)
     query = next(e for e in timeline.entries if e.category == "query")
     assert query.detail["result_code"] == "timeout"
@@ -236,7 +267,7 @@ def test_failure_checkpoint_handoff_and_unanchored_rows(conn: Connection) -> Non
     assert [
         e.detail["action"] for e in timeline.entries if e.source == "opspilot_runs"
     ] == ["created", "ended"]
-    assert sum(e.source == "opspilot_subject_events" for e in timeline.entries) == 4
+    assert sum(e.source == "opspilot_subject_events" for e in timeline.entries) == 5
 
 
 def test_default_tuple_connection_keeps_its_row_factory(conn: Connection) -> None:
@@ -601,6 +632,20 @@ def test_shared_knowledge_entry_review_is_attributed_to_its_source_revision(
             all_knowledge_events = {str(row["event_id"]) for row in audits}
             for incident, revision in ((first_incident, 1), (second_incident, 2)):
                 timeline = audit_timeline(connection, incident)
+                [knowledge] = [
+                    e
+                    for e in timeline.entries
+                    if e.source == "opspilot_knowledge_entries"
+                ]
+                source_revision = connection.execute(
+                    """SELECT approved_at FROM opspilot_knowledge_revisions
+                       WHERE entry_id=%s AND revision=%s""",
+                    (entry_id, revision),
+                ).fetchone()
+                assert source_revision is not None
+                assert knowledge.record_id == f"{entry_id}:{revision}"
+                assert knowledge.detail["revision"] == revision
+                assert knowledge.recorded_at == source_revision["approved_at"]
                 own_audits = {
                     e.record_id: e
                     for e in timeline.entries
@@ -619,3 +664,161 @@ def test_shared_knowledge_entry_review_is_attributed_to_its_source_revision(
                     assert entry.detail["revision"] == revision
                 assert "unknown-reviewer" not in {e.actor for e in timeline.entries}
                 assert str(unknown_event) not in own_audits
+
+
+def test_creation_records_do_not_retroactively_gain_review_or_session_state(
+    conn: Connection,
+) -> None:
+    from opspilot.knowledge import Actor, KnowledgeStore
+    from tests.acceptance.f7_pg_support import scratch_database
+    from tests.integration.test_m1_03_knowledge_store_postgres import (
+        _conclusions,
+        _seed_incident,
+    )
+
+    with (
+        contextmanager(scratch_database)() as dsn,
+        closing(KnowledgeStore(dsn)) as store,
+    ):
+        incident, watermark = _seed_incident(dsn)
+        draft = store.record_draft(
+            incident,
+            expected_generation=0,
+            idempotency_key=str(uuid4()),
+            actor=Actor("worker", "worker"),
+            content={"impact": "test"},
+            watermark=watermark,
+            conclusions=_conclusions(),
+        )
+        assert draft.version is not None
+        with psycopg.connect(dsn) as connection:
+            before = audit_timeline(connection, incident)
+        store.approve(
+            draft.object_id,
+            draft.version,
+            expected_generation=draft.generation,
+            idempotency_key=str(uuid4()),
+            actor=Actor("reviewer", "basic_auth"),
+        )
+        with psycopg.connect(dsn) as connection:
+            after = audit_timeline(connection, incident)
+        for source in ("opspilot_observation_sessions", "opspilot_postmortem_versions"):
+            [earlier] = [e for e in before.entries if e.source == source]
+            [later] = [e for e in after.entries if e.source == source]
+            assert earlier.recorded_at == later.recorded_at
+            assert dict(earlier.detail) == dict(later.detail)
+            assert "state" not in later.detail
+        assert any(e.source == "opspilot_observation_endings" for e in after.entries)
+        assert any(
+            e.source == "opspilot_f13_audit" and e.detail["action"] == "approve"
+            for e in after.entries
+        )
+        assert all(
+            "state" not in e.detail
+            for e in after.entries
+            if e.source in ("opspilot_runs", "opspilot_postmortems")
+            and e.detail.get("action") != "ended"
+        )
+
+
+def test_self_heal_creation_stays_immutable_and_latest_snapshot_uses_updated_at(
+    conn: Connection,
+) -> None:
+    from tests.acceptance.f7_pg_support import scratch_database
+    from tests.integration.test_m1_03_knowledge_store_postgres import _seed_incident
+
+    with contextmanager(scratch_database)() as dsn:
+        incident, watermark = _seed_incident(dsn)
+        with psycopg.connect(dsn, row_factory=dict_row) as connection:
+            inserted = connection.execute(
+                """INSERT INTO opspilot_self_heal_authorizations(
+                    incident_id,control_generation,state,reason,attempts,next_attempt_at)
+                   VALUES(%s,0,'retrying','SOURCE_UNAVAILABLE',0,clock_timestamp())
+                   RETURNING created_at""",
+                (incident,),
+            ).fetchone()
+            assert inserted is not None
+            before = audit_timeline(connection, incident)
+            updated = connection.execute(
+                """UPDATE opspilot_self_heal_authorizations
+                   SET state='authorized',reason=NULL,attempts=2,session_id=%s,
+                       next_attempt_at=NULL,updated_at=clock_timestamp()
+                   WHERE incident_id=%s AND control_generation=0 RETURNING updated_at""",
+                (watermark.observation_session_id, incident),
+            ).fetchone()
+            assert updated is not None
+            after = audit_timeline(connection, incident)
+        source = "opspilot_self_heal_authorizations"
+        [before_created] = [
+            e
+            for e in before.entries
+            if e.source == source and "snapshot" not in e.detail
+        ]
+        [after_created] = [
+            e
+            for e in after.entries
+            if e.source == source and "snapshot" not in e.detail
+        ]
+        assert (
+            before_created.recorded_at
+            == after_created.recorded_at
+            == inserted["created_at"]
+        )
+        assert (
+            dict(before_created.detail)
+            == dict(after_created.detail)
+            == {"control_generation": 0}
+        )
+        [latest] = [
+            e
+            for e in after.entries
+            if e.source == source and e.detail.get("snapshot") == "latest"
+        ]
+        assert latest.record_id != after_created.record_id
+        assert latest.recorded_at == updated["updated_at"] > after_created.recorded_at
+        assert latest.detail["state"] == "authorized"
+        assert latest.detail["attempts"] == 2
+        assert latest.detail["session_id"] == str(watermark.observation_session_id)
+
+
+def test_plan_time_does_not_claim_later_query_or_evidence_result_state(
+    conn: Connection,
+) -> None:
+    from opspilot.acceptance_audit import audit_records
+
+    incident, run, step = seed(conn)
+    dispatch = uuid4()
+    operation = f"{step}-t0"
+    conn.execute(
+        """INSERT INTO opspilot_tool_charges(dispatch_id,run_id,epoch,operation_id)
+           VALUES(%s,%s,1,%s)""",
+        (dispatch, run, operation),
+    )
+    conn.execute(
+        """INSERT INTO opspilot_evidence(evidence_id,run_id,subject_id,status,adopted,
+             raw,raw_sha256,view,view_sha256,projection_revision,observed_at,committed)
+           VALUES(%s,%s,%s,'ok',true,%s,%s,%s,%s,'v1',clock_timestamp(),true)""",
+        (
+            f"{operation}:{dispatch}",
+            str(run),
+            str(incident),
+            b"{}",
+            "a" * 64,
+            Jsonb({"tool": "prometheus_query", "target_id": "checkout"}),
+            "b" * 64,
+        ),
+    )
+    timeline, gaps = audit_records(conn, incident)
+    [query] = [e for e in timeline.entries if e.category == "query"]
+    [evidence] = [e for e in timeline.entries if e.category == "evidence"]
+    assert (
+        query.detail["record_kind"]
+        == evidence.detail["record_kind"]
+        == "plan_reference"
+    )
+    assert all(
+        query.detail[key] is None
+        for key in ("result_code", "reason", "outbound", "source_contact")
+    )
+    assert {"status", "adopted", "committed"}.isdisjoint(evidence.detail)
+    assert gaps["opspilot_tool_charges.result"] == gaps["opspilot_evidence.result"] == 1

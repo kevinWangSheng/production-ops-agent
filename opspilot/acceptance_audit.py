@@ -188,13 +188,15 @@ def _audit_records(
             extra={"time_basis": "step_recorded"},
         )
 
-    # operation_id is canonically "<step UUID>-t<ordinal>". The timestamp is
-    # explicitly the preceding plan commit, never a guessed dispatch time.
+    # operation_id is canonically "<step UUID>-t<ordinal>". Without a tool
+    # commit event, only the preceding plan is dated; later result state is
+    # deliberately unknown at that time. A unique failed checkpoint can be
+    # correlated by run/step/ordinal/status without an evidence ID.
     for row in rows("""SELECT c.dispatch_id,c.run_id,c.operation_id,c.epoch,
                              COALESCE(ev.recorded_at,s.observed_at) AS recorded_at,
                              CASE WHEN ev.recorded_at IS NULL THEN 'step_recorded'
                                   ELSE 'tool_event' END AS time_basis,
-                             COALESCE(e.status,tr.result->>'status') AS status,
+                             ev.status AS status,
                              COALESCE(e.view->>'tool',tr.result->>'tool') AS tool,
                              COALESCE(e.view->>'target_id',tr.result->>'target_id') AS target_id,
                              tr.result->>'reason' AS reason,
@@ -219,17 +221,33 @@ def _audit_records(
                         LIMIT 1
                       ) tr ON true
                       LEFT JOIN LATERAL (
-                        SELECT recorded_at FROM opspilot_subject_events
+                        SELECT recorded_at,payload->>'status' AS status
+                        FROM opspilot_subject_events
                         WHERE subject_id=r.incident_id AND kind='tool_committed'
-                          AND payload->>'evidence_id'=e.evidence_id
+                          AND (payload->>'evidence_id'=e.evidence_id
+                            OR (e.evidence_id IS NULL AND tr.result IS NOT NULL
+                              AND payload->>'run_id'=c.run_id::text
+                              AND payload->>'step_id'=s.step_id::text
+                              AND payload->>'ordinal'=split_part(c.operation_id,'-t',2)
+                              AND payload->>'status'=tr.result->>'status'))
                         ORDER BY recorded_at,sequence LIMIT 1
                       ) ev ON true
                       WHERE r.incident_id=%s"""):
-        contact = row["source_contact"]
+        result_recorded = row["time_basis"] == "tool_event"
+        if not result_recorded:
+            key = "opspilot_tool_charges.result"
+            undated[key] = undated.get(key, 0) + 1
+        contact = row["source_contact"] if result_recorded else None
         outbound = (
-            True
-            if row["has_evidence"] or contact == "confirmed"
-            else (False if contact == "none" else None)
+            (
+                True
+                if row["has_evidence"] or contact == "confirmed"
+                else False
+                if contact == "none"
+                else None
+            )
+            if result_recorded
+            else None
         )
         add(
             row,
@@ -241,14 +259,15 @@ def _audit_records(
             run_id=row["run_id"],
             extra={
                 "result_code": row["status"],
-                "reason": row["reason"],
+                "reason": row["reason"] if result_recorded else None,
                 "outbound": outbound,
                 "source_contact": contact,
                 "time_basis": row["time_basis"],
+                "record_kind": "result" if result_recorded else "plan_reference",
             },
         )
 
-    for row in rows("""SELECT e.evidence_id,e.run_id,e.status,e.adopted,e.committed,
+    for row in rows("""SELECT e.evidence_id,e.run_id,ev.status,ev.adopted,
                              COALESCE(ev.recorded_at,s.observed_at) AS observed_at,
                              CASE WHEN ev.recorded_at IS NULL THEN 'step_recorded'
                                   ELSE 'tool_event' END AS time_basis
@@ -256,21 +275,37 @@ def _audit_records(
                       LEFT JOIN opspilot_steps s ON s.run_id::text=e.run_id
                         AND s.step_id::text=split_part(split_part(e.evidence_id,':',1),'-t',1)
                       LEFT JOIN LATERAL (
-                        SELECT recorded_at FROM opspilot_subject_events
+                        SELECT recorded_at,payload->>'status' AS status,
+                               payload->'adopted' AS adopted
+                        FROM opspilot_subject_events
                         WHERE subject_id::text=e.subject_id AND kind='tool_committed'
                           AND payload->>'evidence_id'=e.evidence_id
                         ORDER BY recorded_at,sequence LIMIT 1
                       ) ev ON true
                       WHERE e.subject_id=%s::text"""):
+        if row["time_basis"] != "tool_event":
+            key = "opspilot_evidence.result"
+            undated[key] = undated.get(key, 0) + 1
         add(
             row,
             "evidence",
             "opspilot_evidence",
             row["evidence_id"],
             "observed_at",
-            ("status", "adopted", "committed"),
             run_id=UUID(row["run_id"]),
-            extra={"time_basis": row["time_basis"]},
+            extra={
+                "time_basis": row["time_basis"],
+                **(
+                    {
+                        "status": row["status"],
+                        "adopted": row["adopted"],
+                        "committed": True,
+                        "record_kind": "result",
+                    }
+                    if row["time_basis"] == "tool_event"
+                    else {"record_kind": "plan_reference"}
+                ),
+            },
         )
 
     run_events: dict[UUID, list[dict[str, Any]]] = {}
@@ -414,7 +449,7 @@ def _audit_records(
             actor=row["actor"],
         )
 
-    for row in rows("""SELECT session_id,state,purpose,authorization_source,created_at
+    for row in rows("""SELECT session_id,purpose,authorization_source,created_at
                       FROM opspilot_observation_sessions WHERE incident_id=%s
                         AND purpose='incident_recovery'"""):
         add(
@@ -423,7 +458,7 @@ def _audit_records(
             "opspilot_observation_sessions",
             row["session_id"],
             "created_at",
-            ("state", "purpose", "authorization_source"),
+            ("purpose", "authorization_source"),
         )
     for row in rows("""SELECT m.sample_id,m.sequence,m.outcome,m.disposition,m.reason,
                              m.submitted_at
@@ -449,7 +484,7 @@ def _audit_records(
             "recorded_at",
             ("ended_reason", "transition"),
         )
-    for row in rows("""SELECT control_generation,state,attempts,session_id,created_at
+    for row in rows("""SELECT control_generation,state,attempts,session_id,created_at,updated_at
                       FROM opspilot_self_heal_authorizations WHERE incident_id=%s"""):
         add(
             row,
@@ -457,7 +492,16 @@ def _audit_records(
             "opspilot_self_heal_authorizations",
             f"{incident_id}:{row['control_generation']}",
             "created_at",
+            ("control_generation",),
+        )
+        add(
+            row,
+            "recovery_observation",
+            "opspilot_self_heal_authorizations",
+            f"{incident_id}:{row['control_generation']}:latest",
+            "updated_at",
             ("control_generation", "state", "attempts", "session_id"),
+            extra={"snapshot": "latest"},
         )
 
     for row in rows("""SELECT postmortem_id,created_at FROM opspilot_postmortems
@@ -469,7 +513,7 @@ def _audit_records(
             row["postmortem_id"],
             "created_at",
         )
-    for row in rows("""SELECT v.postmortem_id,v.version,v.state,v.created_at
+    for row in rows("""SELECT v.postmortem_id,v.version,v.created_at
                       FROM opspilot_postmortem_versions v
                       JOIN opspilot_postmortems p USING(postmortem_id)
                       WHERE p.incident_id=%s"""):
@@ -479,9 +523,9 @@ def _audit_records(
             "opspilot_postmortem_versions",
             f"{row['postmortem_id']}:{row['version']}",
             "created_at",
-            ("version", "state"),
+            ("version",),
         )
-    for row in rows("""SELECT DISTINCT e.entry_id,e.created_at
+    for row in rows("""SELECT e.entry_id,k.revision,k.approved_at
                       FROM opspilot_knowledge_entries e
                       JOIN opspilot_knowledge_revisions k USING(entry_id)
                       JOIN opspilot_postmortems p ON p.postmortem_id=k.source_postmortem_id
@@ -490,8 +534,9 @@ def _audit_records(
             row,
             "postmortem_review",
             "opspilot_knowledge_entries",
-            row["entry_id"],
-            "created_at",
+            f"{row['entry_id']}:{row['revision']}",
+            "approved_at",
+            ("revision",),
         )
     # Knowledge publish/supersede audit the NEW revision; revoke audits the
     # revoked revision (knowledge.store._publish/revoke). Entry identity alone
