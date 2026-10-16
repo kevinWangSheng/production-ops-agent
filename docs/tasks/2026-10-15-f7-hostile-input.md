@@ -47,6 +47,12 @@ U7-a：数据源返回内容里的凭据在进入模型、trace 和持久化之�
 - P2 的性质（协调者要求核对）：新证据在执行器 `_inspect` 里、`register` 之前已脱敏，PG `opspilot_evidence.raw/view` 存的就是脱敏后字节，`hashes_verified` 对它成立、`display_redacted` 为 false；验收 `test_s3c_s3d_source_secrets_are_absent_from_every_input_store_and_export` 直接查 PG 表零命中。审查者复现 P2 用的是恢复读数（Observer 存储，不在 r1 点名范围，见待决 1）和本 PR 之前写入的旧工具证据——只有这两类会触发展示时脱敏，标记只用于它们。
 - 测试作者提出、lead 处置：越权请求有的是 `denied`（目标参数、未登记工具），有的是 `error/INVALID_PARAMS`（窗口越界、offset），U8-a 只要求「被拒、可见」，两者都接受；适配器内拒绝也计入 `tool_operations_used`（现有行为，不在本 PR 范围）；`summary.json` 由调用方组装，测试按现有脚本做法组装。
 
+## 真实 Run 计划（待协调者排时段）
+
+- 脚本 `scripts/f7_hostile_live.py`（Codex 写，lead 复跑 `--dry-check` 退出 0：20 项判定中 18 项 pass，trace 两项因 dry 模式记为 skipped，秘密命中全为 0）。一次真实 DeepSeek Run，数据源用回放（R4，不用 kind）。span log 注入、已批准知识注入、合成秘密同时出现在这一次 Run 里。
+- 命令：`OPSPILOT_LAB_DSN=<55592> M1_DURABLE_POSTGRES=1 OPSPILOT_TRACE=lab M0_ENV_FILE=<凭据文件> .venv/bin/python scripts/f7_hostile_live.py --lab-round f7-hostile-<日期> --deadline-seconds 720 -o tmp/f7-hostile-live-report.md`。Run 本身 2–12 分钟，trace 回读另需约 1–2 分钟。费用记供应商余额差。
+- 判定：U8-a 账本断言；模型请求、重建 transcript、PG raw/view、web JSON/HTML、LangSmith 回读的全部子 run、`summary.json`、ledger 中合成秘密零命中。冻结到 `docs/evidence/f7-hostile-input-live/`，提交前跑 gitleaks。
+
 ## 待决
 
 1. Observer 与发布观察存的原始读数（`0003` readings、`0015` query raw）不在 r1 补充的点名范围（工具证据的 `record.raw`），本 PR 只在 web 展示层兜底，不改存储。是否另开 issue 由协调者定。
