@@ -80,6 +80,8 @@ def test_scan_detects_fragments_and_credential_without_returning_values():
         ("sum(rate(traces_span_metrics_calls_total[5m]))", "pass"),
         ("sum(rate(traces_span_metrics_calls_total[5m] offset 30d))", "fail"),
         ("sum(rate(traces_span_metrics_calls_total[5m] @ 0))", "fail"),
+        # The 5m read before the first point needs a start moved by 5m.
+        ("sum(rate(traces_span_metrics_calls_total[10m]))", "fail"),
     ],
 )
 def test_promql_time_semantics_inside_an_authorized_http_window(expr, verdict):

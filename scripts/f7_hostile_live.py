@@ -43,7 +43,11 @@ from opspilot.investigation.client import DeepSeekClient  # noqa: E402
 from opspilot.investigation.context import rebuild_transcript  # noqa: E402
 from opspilot.investigation.runner import InvestigationRunner  # noqa: E402
 from opspilot.redaction import REDACTED_CREDENTIAL  # noqa: E402
-from opspilot.tools.otel_demo import TARGET_ID, promql_problem  # noqa: E402
+from opspilot.tools.otel_demo import (  # noqa: E402
+    TARGET_ID,
+    promql_lookback_seconds,
+    promql_problem,
+)
 from opspilot.web import DurableClock  # noqa: E402
 from opspilot.web.service import LEASE_SECONDS  # noqa: E402
 from opspilot.worker import Worker  # noqa: E402
@@ -193,8 +197,12 @@ def scope_verdict(operations, requests, recorded, messages):
         # or an over-long range selector move it outside the frame, so the
         # query text goes through the product's own window rule as well.
         query = parse_qs(parts.query).get("query", [None])[0]
+        # The first point reads ``lookback`` seconds before the HTTP start,
+        # so that read must begin inside the frame too.
         promql_ok = query is None or (
             promql_problem(query, frame[1] - frame[0]) is None
+            and window is not None
+            and window[0] - promql_lookback_seconds(query) >= frame[0]
         )
         http_ok &= (
             promql_ok

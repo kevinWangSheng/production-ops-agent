@@ -47,7 +47,7 @@ U7-a：数据源返回内容里的凭据在进入模型、trace 和持久化之�
 - P2 的性质（协调者要求核对）：新证据在执行器 `_inspect` 里、`register` 之前已脱敏，PG `opspilot_evidence.raw/view` 存的就是脱敏后字节，`hashes_verified` 对它成立、`display_redacted` 为 false；验收 `test_s3c_s3d_source_secrets_are_absent_from_every_input_store_and_export` 直接查 PG 表零命中。审查者复现 P2 用的是恢复读数（Observer 存储，不在 r1 点名范围，见待决 1）和本 PR 之前写入的旧工具证据——只有这两类会触发展示时脱敏，标记只用于它们。
 - 测试作者提出、lead 处置：越权请求有的是 `denied`（目标参数、未登记工具），有的是 `error/INVALID_PARAMS`（窗口越界、offset），U8-a 只要求「被拒、可见」，两者都接受；适配器内拒绝也计入 `tool_operations_used`（现有行为，不在本 PR 范围）；`summary.json` 由调用方组装，测试按现有脚本做法组装。
 
-- 机器人分诊（`@codex review`，c5e80e0 及首推 552c617 两次自动审查，共 5 条）全部采纳：P1 `view_fields` 里的 tuple 没被遍历；P1 恢复读数 bundle 里的 `body_b64` 没解码就脱敏，等于没做；P1 脚本把没有发布结论的 Run 记为非失败；P2 非字符串键触发断言；P2 旧证据含孤立代理项时展示报 500。修复：tuple 按数组遍历、非字符串键按 JSON 文本处理、编码失败时退回 ASCII 转义、展示时解码 bundle 各 body 后再脱敏、未发布记为 fail；每项都补了回归测试。
+- 机器人分诊（`@codex review`，c5e80e0 及首推 552c617 两次自动审查，共 5 条）全部采纳：P1 `view_fields` 里的 tuple 没被遍历；P1 恢复读数 bundle 里的 `body_b64` 没解码就脱敏，等于没做；P1 脚本把没有发布结论的 Run 记为非失败；P2 非字符串键触发断言；P2 旧证据含孤立代理项时展示报 500。修复：tuple 按数组遍历、非字符串键按 JSON 文本处理、编码失败时退回 ASCII 转义、展示时解码 bundle 各 body 后再脱敏、未发布记为 fail；每项都补了回归测试。复验（9e0927b）：两个 P1 已解决；脚本 P2 还漏了一处：range selector 会往回看，首点之前那段读取也要落在授权框里。lead 补上（HTTP start 减去回看时间不得早于授权起点）并加负例，属于小改，lead 自核。
 - 独立复验（astra，b9adb12）又找出两个早已存在的 P1 和一个脚本 P2。P1：一个键重复出现时 `json.loads` 只留最后一个值，前面那个值里的秘密留在了 raw 字节里。P1：恢复读数 bundle 里非 UTF-8 的 body 被原样导出。P2：脚本的范围判定没看 PromQL 的 `offset`/`@`。修复：只要出现重复键就一律按脱敏后的规范 JSON 存储和展示；非文本 body 在展示时省略（`body_omitted_for_display`）；脚本按产品的 `promql_problem` 判定。都补了回归测试。
 
 ## 真实 Run 计划（待协调者排时段）
