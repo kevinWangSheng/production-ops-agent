@@ -61,7 +61,7 @@ lab 代理：经 `127.0.0.1:19090` 访问，行为见 A4；`scripts/f7_authz_pro
   - 兼容：本 PR 合并前，main 版 `kind_lab.py` 在未设 lab 账号环境变量时会因 auth 文件有 5 个账号而退出，main 版 `up` 也会拒绝；F11 U2 harness 与产品 env 经代理可读。详见探测记录。
 - PR 机器人（`@codex review`，一次）两项 P2 采纳：事故创建前已生效的暂停补一条基线审计行（`detail.baseline`）；`Runner._blocked` 的 `run_handoff`/`execution=blocked` 记为 Run 结束。实现者修，lead 自核；F12 live 库无暂停审计与 blocked 交接行（只读查得 0、0），第 5 步真实数据摘要不受影响。
 - 机器人对 `b283350` 自动复审又报一项 P2（知识条目审计行未按本事故的修订归属，会把其他事故的审核动作算进来），采纳：按条目、revision 与来源复盘归属，无 revision 的知识审计行保守排除；补两事故共享条目的单测。lead 处置时误把该线程与前两条一起 resolve，修复后补回复。重跑 F12 live 副本的只读重建，四个事故计数与条目 sha256 与已冻结摘要一致。
-- `make check`（98d7c62，PG 55595，共享锁）：ruff、format、mypy 通过；pytest 8700 passed、55 skipped、2 xfailed（nginx 离线校验 1 例因本机无 nginx 跳过）。
+- `make check`：98d7c62 上 8700 passed；合并 main（#257、#259）与机器人修复后 3975bb1 上 8720 passed、55 skipped、2 xfailed（PG 55595，共享锁）。CI 曾因投影里的 `SELECT *` 被 `test_sql_column_order_independence` 拒绝而失败，改为显式列后通过（本机此前的 make check 早于该改动）。
 
 ## lab 计划
 
