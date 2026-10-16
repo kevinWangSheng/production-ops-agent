@@ -740,6 +740,15 @@ def _bundle_bodies_redacted(raw: bytes) -> bytes:
             body = base64.b64decode(part["body_b64"], validate=True)
         except ValueError:
             continue
+        try:
+            body.decode("utf-8")
+        except UnicodeDecodeError:
+            # Bytes that are not text cannot be examined for credentials;
+            # base64 is no redaction, so the body is not shown at all.
+            part["body_b64"] = ""
+            part["body_omitted_for_display"] = True
+            changed = True
+            continue
         shown = redact_json_bytes(body)
         if shown is not body:
             part["body_b64"] = base64.b64encode(shown).decode("ascii")

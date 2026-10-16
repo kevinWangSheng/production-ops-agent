@@ -28,7 +28,7 @@ from contextlib import ExitStack, contextmanager
 from datetime import datetime
 from hashlib import sha256
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 # Allow the documented direct-file invocation in a package=false workspace.
 ROOT = Path(__file__).resolve().parents[1]
@@ -43,7 +43,7 @@ from opspilot.investigation.client import DeepSeekClient  # noqa: E402
 from opspilot.investigation.context import rebuild_transcript  # noqa: E402
 from opspilot.investigation.runner import InvestigationRunner  # noqa: E402
 from opspilot.redaction import REDACTED_CREDENTIAL  # noqa: E402
-from opspilot.tools.otel_demo import TARGET_ID  # noqa: E402
+from opspilot.tools.otel_demo import TARGET_ID, promql_problem  # noqa: E402
 from opspilot.web import DurableClock  # noqa: E402
 from opspilot.web.service import LEASE_SECONDS  # noqa: E402
 from opspilot.worker import Worker  # noqa: E402
@@ -189,8 +189,16 @@ def scope_verdict(operations, requests, recorded, messages):
             )
         }
         window = query_window_of(request.full_url)
+        # The HTTP start/end alone do not bound a PromQL read: ``offset``/``@``
+        # or an over-long range selector move it outside the frame, so the
+        # query text goes through the product's own window rule as well.
+        query = parse_qs(parts.query).get("query", [None])[0]
+        promql_ok = query is None or (
+            promql_problem(query, frame[1] - frame[0]) is None
+        )
         http_ok &= (
-            request.get_method() == "GET"
+            promql_ok
+            and request.get_method() == "GET"
             and (parts.scheme, parts.netloc, parts.path) in allowed
             and window is not None
             and frame[0] <= window[0] <= window[1] <= frame[1]

@@ -314,3 +314,50 @@ def test_recovery_bundle_bodies_are_redacted_for_display():
     assert b"synthetic-secret" not in base64.b64decode(shown)
     assert displayed["display_redacted"] is True
     assert displayed["hashes_verified"] is True
+
+
+def test_a_repeated_key_cannot_hide_an_earlier_secret_in_raw():
+    raw = b'{"data":{"result":[{"password":"synthetic-secret","password":"[REDACTED_CREDENTIAL]"}]}}'
+    assert b"synthetic-secret" not in redact_json_bytes(raw)
+    executor, transport, sink, _ = build()
+    transport.response = TransportResponse(body=raw)
+    assert executor.execute(request()).status == "ok"
+    assert b"synthetic-secret" not in sink.records[0].raw
+    assert sink.records[0].raw_sha256 == sha256(sink.records[0].raw).hexdigest()
+
+
+def test_recovery_bundle_body_that_is_not_text_is_not_shown():
+    import base64
+
+    body = b"\xffpassword=synthetic-secret"
+    bundle = json.dumps(
+        {"latency": {"body_b64": base64.b64encode(body).decode()}},
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode()
+    found = {
+        "session_id": "session",
+        "target": {},
+        "sample": {
+            "sample_id": "s",
+            "sequence": 1,
+            "disposition": "healthy",
+            "readings_consistent": True,
+        },
+        "reading": {
+            "raw": bundle,
+            "raw_sha256": sha256(bundle).hexdigest(),
+            "signal_name": "latency",
+            "status": "ok",
+            "value": 1.0,
+            "sample_count": 1,
+            "query": "q",
+            "window_start": NOW,
+            "window_end": NOW,
+            "source": "fixture",
+        },
+    }
+    displayed = _recovery_reading("evidence", found)
+    part = json.loads(displayed["raw_utf8"])["latency"]
+    assert part["body_b64"] == "" and part["body_omitted_for_display"] is True
+    assert displayed["display_redacted"] is True

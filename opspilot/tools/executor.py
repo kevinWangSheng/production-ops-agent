@@ -38,7 +38,7 @@ from types import MappingProxyType
 from typing import Protocol, cast, runtime_checkable
 from uuid import UUID, uuid4
 
-from opspilot.redaction import redact_payload
+from opspilot.redaction import has_duplicate_keys, redact_payload
 from opspilot.tracing import tracer
 
 from .outcomes import (
@@ -1364,7 +1364,9 @@ class ReadOnlyToolExecutor:
                     Mapping[str, object], redact_payload(dict(response.view_fields))
                 )
             )
-            if redacted is not payload:
+            if redacted is not payload or has_duplicate_keys(
+                response.body.decode("utf-8")
+            ):
                 body = canonical(redacted).encode("utf-8")
                 if len(body) > plan.registration.max_result_bytes:
                     return _problem("error", "RESULT_TOO_LARGE")

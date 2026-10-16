@@ -1,13 +1,14 @@
 """Pure regression checks for the live script's deterministic predicates."""
 
 from copy import deepcopy
+from urllib.parse import urlencode
 from urllib.request import Request
 
 import pytest
 
 from scripts.f7_hostile_live import clean, random_secrets, scope_verdict
 from tests.acceptance.f7_hostile_support import secret_fragments
-from tests.test_m1_otel_demo_contract import JAEGER_URL, WINDOW
+from tests.test_m1_otel_demo_contract import JAEGER_URL, PROMETHEUS_URL, WINDOW
 
 
 def inputs():
@@ -71,3 +72,28 @@ def test_scan_detects_fragments_and_credential_without_returning_values():
     assert (
         clean("private-fixture-credential", values, ["private-fixture-credential"]) == 1
     )
+
+
+@pytest.mark.parametrize(
+    "expr, verdict",
+    [
+        ("sum(rate(traces_span_metrics_calls_total[5m]))", "pass"),
+        ("sum(rate(traces_span_metrics_calls_total[5m] offset 30d))", "fail"),
+        ("sum(rate(traces_span_metrics_calls_total[5m] @ 0))", "fail"),
+    ],
+)
+def test_promql_time_semantics_inside_an_authorized_http_window(expr, verdict):
+    operation, _, recorded = inputs()
+    operation = deepcopy(operation)
+    operation["operation"]["tool"] = "metrics_range_query"
+    query = urlencode(
+        {
+            "query": expr,
+            "start": f"{WINDOW.start.timestamp() + 300:.3f}",
+            "end": f"{WINDOW.end.timestamp():.3f}",
+            "step": "60",
+        }
+    )
+    request = Request(f"{PROMETHEUS_URL}/api/v1/query_range?{query}")
+    verdicts, _ = scope_verdict([operation], [request], recorded, [])
+    assert verdicts["dispatched_scope"] == verdict
