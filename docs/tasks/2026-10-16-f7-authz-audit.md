@@ -1,6 +1,6 @@
 # F7 只读安全与审计（PR-C：只读鉴权代理、入口枚举、审计重建、passes）
 
-- 状态：进行中
+- 状态：五步验收有证据，F7 `passes` 已翻（待用户合并）
 - 更新日期：2026-10-16
 - 依据：`feature_list.json` F7 第 1、5 步（并汇总 2-4 步证据后翻 `passes`）；[F7 合同预审 r1](2026-10-15-f7-contract.md) U1-a、U3-a、U4-a、R2、R3、R5、R6；C3 §8（l.306-308 鉴权代理/独立实例）、§11 审计；[OTLP 写入探测](../evidence/f7-otlp-probe/run.md)（两个产品账号都能写 → 走 U3-a）
 - 工作区：worktree `/Users/shenghuikevin/dev/AI/poa-f7-c`，分支 `feature/F7-authz-audit`，起点 `origin/main`（含 PR-A #239、PR-B #253）；本地 PostgreSQL 17 端口 55595（`tmp/pg`）
