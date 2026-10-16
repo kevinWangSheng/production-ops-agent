@@ -58,7 +58,8 @@ __all__ = [
 # ``truncated``/``omitted_*`` are always False/0 on a view the model receives.
 # v7: successful OTel Demo calls over ``traces_span_metrics_calls_total``
 # carry the ``series_note`` semantic annotation in the hashed view.
-PROJECTION_REVISION = "m1-01-tool-view-v7"
+# v8: credential-redact data source return values (F7 U7-a).
+PROJECTION_REVISION = "m1-01-tool-view-v8"
 
 ToolStatus = Literal["ok", "no_data", "error", "timeout", "denied"]
 SourceContact = Literal["none", "possible", "confirmed"]

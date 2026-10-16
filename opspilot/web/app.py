@@ -41,6 +41,7 @@ from opspilot.domain.intake import delivery_key
 from opspilot.intake import IntakeEnvelope, IntakeRequest, Principal, verify_channel
 from opspilot.knowledge.contract import ReviewCommand
 from opspilot.persistence import PersistenceError
+from opspilot.redaction import redact_json_bytes, redact_payload
 from opspilot.tools.executor import Clock
 from opspilot.web.auth import Authenticator, AuthError
 from opspilot.web.events import CursorTooOld
@@ -670,7 +671,9 @@ def create_app(
                 raise _Refusal(404, "UNKNOWN_EVIDENCE")
             return JSONResponse(_recovery_reading(evidence_id, found))
         try:
-            raw: dict[str, Any] = {"raw_utf8": record.raw.decode("utf-8")}
+            raw: dict[str, Any] = {
+                "raw_utf8": redact_json_bytes(record.raw).decode("utf-8")
+            }
         except UnicodeDecodeError:
             raw = {"raw_base64": base64.b64encode(record.raw).decode("ascii")}
         payload = {
@@ -686,7 +689,7 @@ def create_app(
             "data_as_of": (
                 None if record.data_as_of is None else record.data_as_of.isoformat()
             ),
-            "view": dict(record.view),
+            "view": redact_payload(dict(record.view)),
             **raw,
         }
         if wants_html(request):
@@ -703,7 +706,7 @@ def create_app(
 
 def _raw_fields(raw: bytes) -> dict[str, str]:
     try:
-        return {"raw_utf8": raw.decode("utf-8")}
+        return {"raw_utf8": redact_json_bytes(raw).decode("utf-8")}
     except UnicodeDecodeError:
         return {"raw_base64": base64.b64encode(raw).decode("ascii")}
 
@@ -730,9 +733,9 @@ def _recovery_reading(evidence_id: str, found: Mapping[str, Any]) -> dict[str, A
         "readings_consistent": bool(sample["readings_consistent"]),
         "signal_name": reading["signal_name"],
         "status": reading["status"],
-        "value": reading["value"],
+        "value": redact_payload(reading["value"]),
         "sample_count": reading["sample_count"],
-        "query": reading["query"],
+        "query": redact_payload(reading["query"]),
         "window_start": reading["window_start"].isoformat(),
         "window_end": reading["window_end"].isoformat(),
         "source": reading["source"],

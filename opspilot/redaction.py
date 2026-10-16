@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 
 # The authentication-bearing subset of RESERVED_PARAMETERS. These names may
@@ -388,3 +389,72 @@ def redact_credentials(text: str) -> str:
     return _CREDENTIAL_SCHEME.sub(
         lambda m: f"{m.group('scheme')} {REDACTED_CREDENTIAL}", redacted
     )
+
+
+def redact_payload(value: object) -> object:
+    """Redact JSON string values and credential-named string fields, purely.
+
+    An explicit stack keeps traversal linear and independent of nesting depth.
+    Return the original value when unchanged, including its byte representation
+    when callers use identity to decide whether to serialize again.
+    """
+    if isinstance(value, str):
+        text = redact_credentials(value)
+        return value if text == value else text
+    if not isinstance(value, (dict, list)):
+        return value
+    result: dict[str, object] | list[object] = {} if isinstance(value, dict) else []
+    stack = [(value, result)]
+    changed = False
+    while stack:
+        source, destination = stack.pop()
+        items = source.items() if isinstance(source, dict) else enumerate(source)
+        for key, item in items:
+            if (
+                isinstance(source, dict)
+                and isinstance(key, str)
+                and _credential_name(key)
+                and item is not None
+            ):
+                # Whatever a credential-named field holds -- a string, a
+                # number, an object -- is replaced whole, as the prose rule
+                # does for ``"password": 4711`` or ``"token": {...}``.
+                redacted: object = REDACTED_CREDENTIAL
+                changed |= redacted != item
+            elif isinstance(item, str):
+                redacted = redact_credentials(item)
+                changed |= redacted != item
+            elif isinstance(item, (dict, list)):
+                child: dict[str, object] | list[object] = (
+                    {} if isinstance(item, dict) else []
+                )
+                stack.append((item, child))
+                redacted = child
+            else:
+                redacted = item
+            if isinstance(destination, dict):
+                assert isinstance(key, str)
+                destination[key] = redacted
+            else:
+                destination.append(redacted)
+    return result if changed else value
+
+
+def redact_json_bytes(body: bytes) -> bytes:
+    """Redact UTF-8 JSON or prose; preserve unchanged and non-UTF-8 bytes."""
+    try:
+        text = body.decode("utf-8")
+    except UnicodeDecodeError:
+        return body
+    try:
+        payload = json.loads(text)
+    except ValueError:
+        redacted = redact_credentials(text)
+        return body if redacted == text else redacted.encode("utf-8")
+    result = redact_payload(payload)
+    if result is payload:
+        return body
+    # Equivalent to tools.registry.canonical, without its import cycle.
+    return json.dumps(
+        result, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    ).encode("utf-8")

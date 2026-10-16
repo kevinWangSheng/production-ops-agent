@@ -80,7 +80,7 @@ FIXTURE_TARGET = "checkout-prod"
 FIXTURE_EXPR = "rate(http_errors[5m])"
 WINDOW_START = datetime(2026, 9, 14, 0, 0, tzinfo=timezone.utc)
 WINDOW_END = datetime(2026, 9, 14, 1, 0, tzinfo=timezone.utc)
-TOOL_SCHEMA_REVISION = "fixture-2"
+TOOL_SCHEMA_REVISION = "fixture-3"
 _TIME_POLICY = "policy-window-1"
 _MAX_WINDOW_SECONDS = 3600
 _CANNED_BODY = b'{"data": {"result": [{"metric": "http_errors_rate", "value": 0.042}]}}'
