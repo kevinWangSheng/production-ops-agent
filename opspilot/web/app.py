@@ -41,6 +41,7 @@ from opspilot.domain.intake import delivery_key
 from opspilot.intake import IntakeEnvelope, IntakeRequest, Principal, verify_channel
 from opspilot.knowledge.contract import ReviewCommand
 from opspilot.persistence import PersistenceError
+from opspilot.redaction import redact_json_bytes, redact_payload
 from opspilot.tools.executor import Clock
 from opspilot.web.auth import Authenticator, AuthError
 from opspilot.web.events import CursorTooOld
@@ -669,10 +670,9 @@ def create_app(
             if found is None:
                 raise _Refusal(404, "UNKNOWN_EVIDENCE")
             return JSONResponse(_recovery_reading(evidence_id, found))
-        try:
-            raw: dict[str, Any] = {"raw_utf8": record.raw.decode("utf-8")}
-        except UnicodeDecodeError:
-            raw = {"raw_base64": base64.b64encode(record.raw).decode("ascii")}
+        raw, raw_redacted = _raw_fields(record.raw)
+        stored_view = dict(record.view)
+        view = redact_payload(stored_view)
         payload = {
             "evidence_id": record.evidence_id,
             "run_id": record.run_id,
@@ -686,9 +686,16 @@ def create_app(
             "data_as_of": (
                 None if record.data_as_of is None else record.data_as_of.isoformat()
             ),
-            "view": dict(record.view),
+            "view": view,
             **raw,
         }
+        if raw_redacted or view is not stored_view:
+            # The hashes and ``hashes_verified`` stay over the stored bytes;
+            # this says what is shown was redacted for display and no longer
+            # hashes to them (evidence or readings stored before F7 U7-a,
+            # never rewritten). Absent otherwise, so evidence redacted at
+            # persistence keeps the page's established key set.
+            payload["display_redacted"] = True
         if wants_html(request):
             return render(
                 "evidence.html",
@@ -701,11 +708,54 @@ def create_app(
     return app
 
 
-def _raw_fields(raw: bytes) -> dict[str, str]:
+def _raw_fields(raw: bytes) -> tuple[dict[str, str], bool]:
+    """The raw bytes as shown, and whether display redaction changed them."""
+    shown = redact_json_bytes(raw)
     try:
-        return {"raw_utf8": raw.decode("utf-8")}
+        return {"raw_utf8": shown.decode("utf-8")}, shown is not raw
     except UnicodeDecodeError:
-        return {"raw_base64": base64.b64encode(raw).decode("ascii")}
+        return {"raw_base64": base64.b64encode(raw).decode("ascii")}, False
+
+
+def _bundle_bodies_redacted(raw: bytes) -> bytes:
+    """An Observer reading bundle with each base64 source body redacted.
+
+    The bundle (``observer.sampler._bundle``) stores every response body as
+    ``body_b64``; redacting the outer JSON only sees base64 text, so each
+    body is decoded, redacted and re-encoded for display (bot review). The
+    stored bytes and their ``body_sha256`` are untouched. Anything that is
+    not such a bundle comes back as the same object.
+    """
+    try:
+        document = json.loads(raw)
+    except (UnicodeDecodeError, ValueError, RecursionError):
+        return raw
+    if not isinstance(document, dict):
+        return raw
+    changed = False
+    for part in document.values():
+        if not isinstance(part, dict) or not isinstance(part.get("body_b64"), str):
+            continue
+        try:
+            body = base64.b64decode(part["body_b64"], validate=True)
+        except ValueError:
+            continue
+        try:
+            body.decode("utf-8")
+        except UnicodeDecodeError:
+            # Bytes that are not text cannot be examined for credentials;
+            # base64 is no redaction, so the body is not shown at all.
+            part["body_b64"] = ""
+            part["body_omitted_for_display"] = True
+            changed = True
+            continue
+        shown = redact_json_bytes(body)
+        if shown is not body:
+            part["body_b64"] = base64.b64encode(shown).decode("ascii")
+            changed = True
+    if not changed:
+        return raw
+    return json.dumps(document, sort_keys=True, separators=(",", ":")).encode()
 
 
 def _recovery_reading(evidence_id: str, found: Mapping[str, Any]) -> dict[str, Any]:
@@ -713,6 +763,15 @@ def _recovery_reading(evidence_id: str, found: Mapping[str, Any]) -> dict[str, A
     sample, reading = found["sample"], found["reading"]
     raw = reading.get("raw")
     raw_sha256 = reading.get("raw_sha256")
+    raw_fields: dict[str, str] = {}
+    raw_redacted = False
+    if raw is not None:
+        stored = bytes(raw)
+        shown = _bundle_bodies_redacted(stored)
+        raw_fields, raw_redacted = _raw_fields(shown)
+        raw_redacted = raw_redacted or shown is not stored
+    value = redact_payload(reading["value"])
+    query = redact_payload(reading["query"])
     return {
         "evidence_id": evidence_id,
         "kind": "recovery",
@@ -730,9 +789,9 @@ def _recovery_reading(evidence_id: str, found: Mapping[str, Any]) -> dict[str, A
         "readings_consistent": bool(sample["readings_consistent"]),
         "signal_name": reading["signal_name"],
         "status": reading["status"],
-        "value": reading["value"],
+        "value": value,
         "sample_count": reading["sample_count"],
-        "query": reading["query"],
+        "query": query,
         "window_start": reading["window_start"].isoformat(),
         "window_end": reading["window_end"].isoformat(),
         "source": reading["source"],
@@ -743,7 +802,14 @@ def _recovery_reading(evidence_id: str, found: Mapping[str, Any]) -> dict[str, A
             if raw is None
             else hashlib.sha256(bytes(raw)).hexdigest() == raw_sha256
         ),
-        **({} if raw is None else _raw_fields(bytes(raw))),
+        **raw_fields,
+        **(
+            {"display_redacted": True}
+            if raw_redacted
+            or value is not reading["value"]
+            or query is not reading["query"]
+            else {}
+        ),
     }
 
 
