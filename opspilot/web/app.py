@@ -728,7 +728,7 @@ def _bundle_bodies_redacted(raw: bytes) -> bytes:
     """
     try:
         document = json.loads(raw)
-    except (UnicodeDecodeError, ValueError):
+    except (UnicodeDecodeError, ValueError, RecursionError):
         return raw
     if not isinstance(document, dict):
         return raw

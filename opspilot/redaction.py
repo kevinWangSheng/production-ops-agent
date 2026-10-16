@@ -497,7 +497,9 @@ def redact_json_bytes(body: bytes) -> bytes:
         return body
     try:
         payload = json.loads(text)
-    except ValueError:
+    except (ValueError, RecursionError):
+        # Not JSON, or nested past the decoder's limit: the text rules still
+        # apply, linearly, to the whole body (bot review).
         redacted = redact_credentials(text)
         return body if redacted == text else redacted.encode("utf-8")
     result = redact_payload(payload)

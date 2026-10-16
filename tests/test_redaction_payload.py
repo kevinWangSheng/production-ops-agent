@@ -361,3 +361,9 @@ def test_recovery_bundle_body_that_is_not_text_is_not_shown():
     part = json.loads(displayed["raw_utf8"])["latency"]
     assert part["body_b64"] == "" and part["body_omitted_for_display"] is True
     assert displayed["display_redacted"] is True
+
+
+def test_display_redaction_survives_json_nested_past_the_decoder_limit():
+    deep = b"[" * 100_000 + b'"password=synthetic-secret"' + b"]" * 100_000
+    shown = redact_json_bytes(deep)
+    assert b"synthetic-secret" not in shown
