@@ -49,6 +49,7 @@ lab 代理：经 `127.0.0.1:19090` 访问，行为见 A4；`scripts/f7_authz_pro
 - lead 机械修正：`tests/test_m1_prometheus_credentials.py` 两条旧断言（web.yml 列出全部账号、4 个密码）按 A3 改为「只列 collector 与 proxy」「5 个密码」。
 - 验收测试：全新上下文 Claude 子 Agent 只看合同、本记录接口与公开接口写 `tests/acceptance/test_f7_step1_entry_points.py`、`test_f7_step5_audit_postgres.py`（含 U4-a 单次上限）；首跑第 5 步 11 failed（投影假定 dict 行），实现修复后全部通过，未改断言。
 - 验收断言放宽与恢复（照实记录）：测试作者首轮遇到投影要求 dict 行（实现缺陷，已在实现侧修，测试保持普通连接）后，看到实现输出把两处断言放宽——复盘来源允许集合加入 `opspilot_postmortem_versions`、`opspilot_f13_audit`、`opspilot_knowledge_revisions`；恢复观察相对登记处置的次序改为只要求采样与结束严格晚于登记、会话行只需晚于此前的纠正。放宽版本随 `c1b9e1d` 提交。协调者要求恢复，作者已恢复原写法；恢复后 2 failed / 22 passed，两处分歧列入下方「待决」决定表，实现与测试都不再改，等裁决。
+- 测试作者列出的其余不清处由 lead 按可逆细节定：`tool_charges`、`runs`、`input_rounds` 无自身时间列，取关联记录的数据库写入时间并在 `detail.time_basis` 标明（`steps.observed_at` 默认 `clock_timestamp()`，0001 l.82）；UI 接收的输入由 `input_rounds` 体现；query 的 `detail` 键名以实现为准（测试只断言 `tool`、`target_id`）；第 5 步不挂 `PRODUCT_CONSTRAINT_SCENARIO_INDEX`（需改 `opspilot/acceptance.py`，超出本 PR）。
 - 独立审查（Codex `gpt-6-astra`，会话 `01a1451c`）：P2×2——取消等非 completed 终态的 Run 无结束条目；探测矩阵漏 `lab` 账号与 HEAD/OPTIONS/路径变形。修复后 resume 复验两项已解决，另报新 P2：路径变形把 5xx 当拒绝。lead 自修为只认 4xx（301/0/5xx 均判失败）并补参数化用例，自核通过。审查明确：nginx alpine 是否认 `$2y$` bcrypt、真实路径行为、已有 lab 升级顺序与 collector 写入只能在 lab 验证。
 - `make check`（98d7c62，PG 55595，共享锁）：ruff、format、mypy 通过；pytest 8700 passed、55 skipped、2 xfailed（nginx 离线校验 1 例因本机无 nginx 跳过）。
 
