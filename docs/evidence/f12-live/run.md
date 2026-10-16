@@ -43,7 +43,8 @@
 
 - 4② 的「同一告警再次 firing」是手工重投：Alertmanager `repeat_interval` 为 1 小时，窗口内没有真实重发。重投体用库中存下的同一条告警（fingerprint、startsAt 不变），走 `/intake/alertmanager` 与 Alertmanager 相同的 Bearer 认证，所以是模拟重投，不算真实重发。
 - 控制动作通过 HTTP 提交与页面表单相同的字段（同一路由与 Origin 校验），没有用 Playwright 点按钮；页面状态以每步后保存的 HTML 为证。
-- 观察到的现有行为（G5 沿用，不属本 PR 改动）：每次续开新 Run 都会撤销自动授权的观察会话，事故随之成为复盘生成候选，worker 在场景 A 中做了 6 次复盘生成尝试，前 5 次因水位变化 `WATERMARK_MOVED` 作废，关闭后第 6 次（08:31:58）生成版本 1（under_review）。这抬高了模型费用，是否需要在续开后抑制复盘生成，需另开 issue。
+- 观察到的现有行为（G5 沿用，不属本 PR 改动）：每次续开新 Run 都会撤销自动授权的观察会话，事故随之成为复盘生成候选，worker 在场景 A 中做了 6 次复盘生成尝试，前 5 次因水位变化 `WATERMARK_MOVED` 作废，关闭后第 6 次（08:31:58）生成版本 1（under_review）。这抬高了模型费用，已开 #255 跟踪。
+- 用户 2026-10-16 裁决：上述两处偏离（4② 手工重投、控制经等价 HTTP 表单提交）按「实际通过」接受，F12 `passes` 据此翻转（#255 跟踪复盘重复生成，不影响本判定）。
 
 ## trace（project `opspilot-lab-f12-live-20261016`，longlived）
 
