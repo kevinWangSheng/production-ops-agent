@@ -3,7 +3,7 @@
 - 时间：2026-10-16T16:42:14Z 注入 `paymentFailure`（实验 id `f7-step4-20261016`）→ 16:57:42Z 恢复；flagd 11 个 flag 恢复后全部 `off`。协调者批准的 lab 时段，持共享重负载锁；注入前 swap 11.9/13.3 GB，checkout 5m rate 0.0125/s、p95 193 ms。
 - 环境：新建 PG 17（55597，空库迁移到 `0017_web_suspension_grants`，web/worker 用 `postgres_lab runtime-roles` 的非 owner 角色）；web 在 8080（Alertmanager webhook 固定指向）；worker 真实模型、trace `lab`；不启 Observer（暂停期间 Observer 停止 S4d 已由确定性测试覆盖，合同 S4d「已覆盖」）。经本 PR 的只读代理读 Prometheus。
 - 运行代码：本分支 `b272bdb` 加未提交的探测期望修正（不涉及产品代码）。
-- 操作：[ctl.py](ctl.py) 以工作台操作员（Basic Auth `e2e-lab`，带 Origin）调用 `POST /controls/suspension` 与 `POST /incidents/{id}/control`，每次记录前后状态到 [run/controls/](run/controls/)；判定由 [collect.py](collect.py) 从产品行只读计算，冻结 [run/summary.json](run/summary.json)（sha256 `cbb60eb8…07d073`）。
+- 操作：[ctl.py](ctl.py) 以工作台操作员（Basic Auth `e2e-lab`，带 Origin）调用 `POST /controls/suspension` 与 `POST /incidents/{id}/control`，每次记录前后状态到 [run/controls/](run/controls/)；判定由 [collect.py](collect.py) 从产品行只读计算（入库版本只做了 ruff 格式化与 noqa 注释，行为与运行时相同），冻结 [run/summary.json](run/summary.json)（sha256 `cbb60eb8…07d073`）。
 - 费用：DeepSeek 余额 196.41 → 195.93 CNY（0.48），见 [run/balance.jsonl](run/balance.jsonl)。
 - trace（project `opspilot-lab-f7-step4-20261016`，longlived）：3 个根 run（暂停前、第一次 resume 后、第二次 resume 后）：[16:47:05](https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/a05b57ef-bfa7-4093-ac48-05b5f80e090b/r/00000000-0000-0000-5433-33c67c002893)、[16:50:40](https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/a05b57ef-bfa7-4093-ac48-05b5f80e090b/r/00000000-0000-0000-3806-c15718b89df5)、[16:53:15](https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/a05b57ef-bfa7-4093-ac48-05b5f80e090b/r/00000000-0000-0000-cbc5-d3183b030ddd)。
 
