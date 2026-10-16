@@ -1,7 +1,7 @@
 # F12 PR-2：关闭与重新打开事故
 
 - 状态：进行中
-- 更新日期：2026-10-15
+- 更新日期：2026-10-16
 - 依据：F12 第 3 步（`feature_list.json`，PRD.md:63-67）；[F12 合同预审 r2](2026-10-15-f12-contract.md)（第五节 PR-2：U2-A、U3-A、G4、G5、G6）；C3 §4、§10；PRODUCT-CONSTRAINTS「Recovery」；[PR-1 记录](2026-10-15-f12-followup-history.md)（#246 已合并）
 - 工作区：`/Users/shenghuikevin/dev/AI/poa-f12-close`，分支 `feature/F12-close-reopen`，起点 main `d19e78a`；本机 PG 55591（`tmp/pg`）
 
@@ -45,7 +45,7 @@
 - 实现测试：`test_f12_close_reopen_postgres.py`、`test_f12_available_actions.py` 及控制/页面回归 87 passed；按关键字筛选回归 713 passed、14 skipped。
 - G5 实测：observing_recovery 事故 close 后，会话以 `authority_revoked` 结束（结束记录前后 lifecycle 均为 observing_recovery），随后 `GenerationStore.candidates` 把该事故列为复盘生成候选；即关闭会触发复盘草稿生成（沿用现有「观察结束」条件，未新增条件）。未实际调用模型。reopen 不恢复旧观察。
 - 既有测试调整两处：恢复页表单数改按 G4 的 `available_actions(snapshot)`；登记处置在 closed 上的预期按 C4 改为 `REOPEN_REQUIRED`，resolved 与其余断言不变。
-- close 对 `waiting_human` Run（接管后）同样取消：`waiting_human` 属控制层开放态（`_CONTROL_OPEN_RUN_STATES`），与现有 cancel 一致；ADR-0005 的交接终态是另一状态，不受影响。
+- close 对 `waiting_human` Run（接管后）同样取消：`waiting_human` 属控制层开放态（`_CONTROL_OPEN_RUN_STATES`），与现有 cancel 一致；ADR-0005 的交接终态是另一状态，不受影响。用户 2026-10-16 裁决 A（取消，即本 PR 现行为），验收测试按此收紧断言（PR-3）。
 - `make check`：ruff、format、mypy 通过；pytest 7605 passed、17 failed、54 skipped——17 例均为迁移类测试，首因是环境未把 `pg_dump` 放进 PATH（`OPSPILOT_PG_DUMP` 未设）；补上 PG 17 bin 后这 17 例单独重跑 17 passed。
 
 ## 未完成与待决
