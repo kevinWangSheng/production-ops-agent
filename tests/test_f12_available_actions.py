@@ -60,6 +60,10 @@ def test_lifecycle_actions(lifecycle, close, reopen, mode):
         } & set(actions)
         assert ("follow_up" in actions) is (mode == "human_owned")
         assert ("correct" in actions) is (mode == "human_owned")
+    # Registration starts an observation: only open/observing_recovery take it.
+    assert ("register_remediation" in actions) is (
+        lifecycle in {"open", "observing_recovery"}
+    )
 
 
 def test_mirrors_and_profile_filter_only_known_refusals():
