@@ -5,10 +5,11 @@ from __future__ import annotations
 import json
 import os
 from collections.abc import Iterator
+from contextlib import closing, contextmanager
 from dataclasses import FrozenInstanceError
 from datetime import UTC, datetime
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import psycopg
 import pytest
@@ -250,3 +251,111 @@ def test_default_tuple_connection_keeps_its_row_factory(conn: Connection) -> Non
                 assert ordinary.row_factory is tuple_row
                 assert caller_cursor.execute("SELECT 1").fetchone() == (1,)
             assert ordinary.execute("SELECT 2").fetchone() == (2,)
+
+
+@pytest.mark.parametrize(
+    "state", ("completed", "cancelled", "failed", "blocked", "budget_exhausted")
+)
+def test_every_terminal_run_without_an_end_anchor_is_counted_undated(
+    conn: Connection,
+    state: str,
+) -> None:
+    from opspilot.acceptance_audit import audit_records
+
+    incident, run, _ = seed(conn)
+    conn.execute("UPDATE opspilot_runs SET state=%s WHERE run_id=%s", (state, run))
+    conn.execute(
+        "DELETE FROM opspilot_subject_events WHERE subject_id=%s AND kind='run_completed'",
+        (incident,),
+    )
+    timeline, gaps = audit_records(conn, incident)
+    assert gaps["opspilot_runs.ended"] == 1
+    assert not any(
+        e.source == "opspilot_runs" and e.detail["action"] == "ended"
+        for e in timeline.entries
+    )
+
+
+def test_cancel_through_product_entry_records_run_end(conn: Connection) -> None:
+    from opspilot.persistence import DurableStore
+    from opspilot.web import (
+        Authenticator,
+        DurableClock,
+        DurableEventLog,
+        DurableEvidenceStore,
+        DurableIncidentStore,
+        DurableWebLedger,
+        Workbench,
+        create_app,
+    )
+    from tests.acceptance.f7_pg_support import _auth, scratch_database
+    from tests.m1_web_support import (
+        UI_USER,
+        basic,
+        bearer,
+        post_form,
+        post_json,
+        same_origin,
+    )
+
+    # The connection fixture checks availability first. Scratch data is dropped
+    # after the actual HTTP intake/control paths finish; no model or cluster.
+    with contextmanager(scratch_database)() as dsn, closing(DurableStore(dsn)) as store:
+        workbench = Workbench(
+            incidents=DurableIncidentStore(store),
+            events=DurableEventLog(store),
+            evidence=DurableEvidenceStore(store),
+            ledger=DurableWebLedger(store),
+            run_versions={"state": "v1"},
+            run_seconds=600,
+        )
+        app = create_app(workbench, Authenticator(_auth()), DurableClock(store))
+        accepted = post_json(  # type: ignore[no-untyped-call]
+            app,
+            "/intake/events",
+            {
+                "source": "alertmanager",
+                "external_event_id": str(uuid4()),
+                "target_id": "checkout-prod",
+                "question": "audit cancellation",
+            },
+            headers=bearer(),
+        )
+        assert accepted.status == 201, accepted.text
+        incident = UUID(accepted.json()["incident_id"])
+        with store.transaction(snapshot=True) as connection:
+            run = connection.execute(
+                "SELECT current_run_id FROM opspilot_incidents WHERE incident_id=%s",
+                (incident,),
+            ).fetchone()
+            assert run is not None
+            run_id = run["current_run_id"]
+        cancelled = post_form(  # type: ignore[no-untyped-call]
+            app,
+            f"/incidents/{incident}/control",
+            {
+                "action": "cancel",
+                "expected_generation": 0,
+                "idempotency_key": str(uuid4()),
+            },
+            headers={**basic(), **same_origin()},
+        )
+        assert cancelled.status == 200, cancelled.text
+        with store.transaction(snapshot=True) as connection:
+            timeline = audit_timeline(connection, incident)
+            control = connection.execute(
+                "SELECT audit_id,created_at FROM opspilot_controls WHERE incident_id=%s AND action='cancel'",
+                (incident,),
+            ).fetchone()
+        assert control is not None
+        [ended] = [
+            e
+            for e in timeline.entries
+            if e.source == "opspilot_runs"
+            and e.run_id == run_id
+            and e.detail["action"] == "ended"
+        ]
+        assert ended.recorded_at == control["created_at"]
+        assert ended.detail["control_audit_id"] == str(control["audit_id"])
+        assert ended.detail["state"] == "cancelled"
+        assert ended.actor == UI_USER

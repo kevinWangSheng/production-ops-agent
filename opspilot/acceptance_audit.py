@@ -48,6 +48,13 @@ SOURCES = (
 )
 
 
+# 0002_state_checks Run states: these cannot continue investigation in place
+# (domain.runs.RUN_EXECUTION); waiting_human and paused remain resumable.
+TERMINAL_RUN_STATES = frozenset(
+    {"completed", "cancelled", "failed", "blocked", "budget_exhausted"}
+)
+
+
 @dataclass(frozen=True)
 class AuditEntry:
     recorded_at: datetime
@@ -267,7 +274,8 @@ def _audit_records(
         )
 
     run_events: dict[UUID, list[dict[str, Any]]] = {}
-    for row in rows("""SELECT sequence,kind,recorded_at,payload->>'run_id' AS run_id
+    for row in rows("""SELECT sequence,kind,recorded_at,payload->>'run_id' AS run_id,
+                             payload->>'code' AS code
                       FROM opspilot_subject_events WHERE subject_id=%s"""):
         run_id = None
         if row["run_id"]:
@@ -286,7 +294,18 @@ def _audit_records(
         )
         if run_id is not None:
             run_events.setdefault(run_id, []).append(row)
-    for row in rows("SELECT run_id,state FROM opspilot_runs WHERE incident_id=%s"):
+    for (
+        row
+    ) in rows("""SELECT r.run_id,r.state,c.audit_id,c.created_at AS ended_at,c.actor
+                       FROM opspilot_runs r
+                       LEFT JOIN LATERAL (
+                         SELECT audit_id,created_at,actor FROM opspilot_controls c
+                         WHERE c.incident_id=r.incident_id
+                           AND c.resulting_generation=r.control_generation
+                           AND c.action IN ('cancel','close','follow_up','correct')
+                         ORDER BY created_at,audit_id LIMIT 1
+                       ) c ON r.state='cancelled'
+                       WHERE r.incident_id=%s"""):
         events = run_events.get(row["run_id"], [])
         # Only explicit lifecycle announcements; arbitrary related events
         # cannot prove when a Run began or ended.
@@ -297,6 +316,14 @@ def _audit_records(
                 "control_applied": "created",
                 "run_completed": "ended",
             }.get(event["kind"])
+            # Version mismatch is announced only after claim() has durably
+            # blocked the Run. A handoff alone never proves a terminal state.
+            if (
+                row["state"] == "blocked"
+                and event["kind"] == "run_claim_refused"
+                and event["code"] == "INCOMPATIBLE_STATE"
+            ):
+                action = "ended"
             if action and action not in seen_actions:
                 seen_actions.add(action)
                 add(
@@ -313,9 +340,31 @@ def _audit_records(
                     },
                 )
 
+        if (
+            "ended" not in seen_actions
+            and row["state"] == "cancelled"
+            and row["ended_at"] is not None
+        ):
+            add(
+                row,
+                "state_change",
+                "opspilot_runs",
+                f"{row['run_id']}:ended:{row['audit_id']}",
+                "ended_at",
+                run_id=row["run_id"],
+                actor=row["actor"],
+                extra={
+                    "action": "ended",
+                    "state": row["state"],
+                    "time_basis": "control_recorded",
+                    "control_audit_id": str(row["audit_id"]),
+                },
+            )
+            seen_actions.add("ended")
+
         for action in ("created", "ended"):
             if action not in seen_actions and (
-                action == "created" or row["state"] == "completed"
+                action == "created" or row["state"] in TERMINAL_RUN_STATES
             ):
                 key = f"opspilot_runs.{action}"
                 undated[key] = undated.get(key, 0) + 1

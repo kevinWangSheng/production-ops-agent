@@ -19,8 +19,9 @@ if __package__ in (None, ""):
 from scripts.kind_lab import LAB_DIR, OPENER, READ_PATHS, ROLE_ENV_VARS
 
 BASE_URL = "http://127.0.0.1:19090"
-READ_REQUESTS = tuple(("GET", p) for p in READ_PATHS) + (
-    ("GET", "/api/v1/label/__name__/values"),
+READ_ENDPOINTS = READ_PATHS + ("/api/v1/label/__name__/values",)
+READ_REQUESTS = tuple(
+    (method, path) for method in ("GET", "HEAD") for path in READ_ENDPOINTS
 )
 DENIED_REQUESTS = (
     ("POST", "/api/v1/otlp/v1/metrics"),
@@ -29,7 +30,18 @@ DENIED_REQUESTS = (
     ("POST", "/-/reload"),
     ("GET", "/federate"),
     ("POST", "/api/v1/query"),
+) + tuple(("OPTIONS", path) for path in READ_ENDPOINTS)
+VARIANT_PATHS = (
+    "//api/v1/otlp/v1/metrics",
+    "/api/v1/./otlp/v1/metrics",
+    "/api/v1/query/../otlp/v1/metrics",
+    "/api/v1/otlp%2Fv1%2Fmetrics",
+    "/API/V1/QUERY",
 )
+VARIANT_REQUESTS = tuple(
+    (method, path) for path in VARIANT_PATHS for method in ("POST", "GET")
+)
+PROBE_ACCOUNTS = ("investigator", "observer", "lab", "anonymous")
 MAX_BYTES = 2 * 1024 * 1024
 
 
@@ -97,8 +109,8 @@ def probe(base_url: str = BASE_URL, directory: Path = LAB_DIR) -> dict[str, Any]
     auths = {role: authorization(role, directory) for role in ROLE_ENV_VARS}
     before_status, before = latest_samples(base_url, auths["lab"])
     results = []
-    for role in ("investigator", "observer", "anonymous"):
-        for method, path in READ_REQUESTS + DENIED_REQUESTS:
+    for role in PROBE_ACCOUNTS:
+        for method, path in READ_REQUESTS + DENIED_REQUESTS + VARIANT_REQUESTS:
             query = (
                 "?query=up" if path in ("/api/v1/query", "/api/v1/query_range") else ""
             )
@@ -107,11 +119,19 @@ def probe(base_url: str = BASE_URL, directory: Path = LAB_DIR) -> dict[str, Any]
             elif path == "/api/v1/series":
                 query = "?match%5B%5D=up"
             expected = (
-                401
+                "non-2xx"
+                if (method, path) in VARIANT_REQUESTS
+                else 401
                 if role == "anonymous"
                 else (200 if (method, path) in READ_REQUESTS else 403)
             )
             status, _ = request(base_url, method, path + query, auths.get(role))
+            # A transport failure (status 0) is not an observed HTTP denial.
+            matches = (
+                100 <= status <= 599 and not 200 <= status < 300
+                if expected == "non-2xx"
+                else status == expected
+            )
             results.append(
                 {
                     "method": method,
@@ -119,7 +139,7 @@ def probe(base_url: str = BASE_URL, directory: Path = LAB_DIR) -> dict[str, Any]
                     "account": role,
                     "status": status,
                     "expected": expected,
-                    "matches": status == expected,
+                    "matches": matches,
                 }
             )
     after_status, after = latest_samples(base_url, auths["lab"])

@@ -73,7 +73,7 @@ def freeze(dsn: str, incident_ids: list[UUID]) -> dict[str, Any]:
             ]
             summary["associated_time_entries"] = sum(
                 e.detail.get("time_basis")
-                in ("step_recorded", "subject_event", "tool_event")
+                in ("step_recorded", "subject_event", "tool_event", "control_recorded")
                 for e in timeline.entries
             )
             summary["step_time_is_plan_commit_not_dispatch_or_return"] = True

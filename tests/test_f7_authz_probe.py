@@ -75,6 +75,8 @@ def test_collector_detects_failures_without_printing_credentials(
 
         do_GET = handle_request
         do_POST = handle_request
+        do_HEAD = handle_request
+        do_OPTIONS = handle_request
 
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     worker = threading.Thread(target=server.serve_forever, daemon=True)
@@ -88,13 +90,21 @@ def test_collector_detects_failures_without_printing_credentials(
         report = json.loads(output)
         assert report["sample_check"]["matches"] is (not change)
         assert report["ok"] is (not change and not wrong_status)
-        assert len(report["requests"]) == 3 * (
-            len(probe.READ_REQUESTS) + len(probe.DENIED_REQUESTS)
+        assert len(report["requests"]) == 4 * (
+            len(probe.READ_REQUESTS)
+            + len(probe.DENIED_REQUESTS)
+            + len(probe.VARIANT_REQUESTS)
         )
+        assert {r["account"] for r in report["requests"]} == {
+            "investigator",
+            "observer",
+            "lab",
+            "anonymous",
+        }
         assert all(
             r["expected"] == 401
             for r in report["requests"]
-            if r["account"] == "anonymous"
+            if r["account"] == "anonymous" and r["expected"] != "non-2xx"
         )
         for secret in accounts.values():
             assert secret not in output
@@ -113,3 +123,71 @@ def test_missing_credentials_are_sanitized(
     assert (
         json.loads(capsys.readouterr().out)["error"] == "cannot read role credentials"
     )
+
+
+@pytest.mark.parametrize("account", ("investigator", "observer", "lab", "anonymous"))
+@pytest.mark.parametrize("method,path", probe.DENIED_REQUESTS + probe.VARIANT_REQUESTS)
+@pytest.mark.parametrize("bad_status", (200, 204))
+def test_any_account_getting_2xx_on_a_forbidden_request_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    account: str,
+    method: str,
+    path: str,
+    bad_status: int,
+) -> None:
+    monkeypatch.setattr(probe, "authorization", lambda role, directory: role)
+    monkeypatch.setattr(probe, "latest_samples", lambda base, auth: (200, {}))
+
+    def request(
+        base: str, verb: str, url_path: str, auth: str | None
+    ) -> tuple[int, bytes]:
+        requested_path = url_path.split("?", 1)[0]
+        role = auth or "anonymous"
+        if (role, verb, requested_path) == (account, method, path):
+            return bad_status, b""
+        if (verb, requested_path) in probe.VARIANT_REQUESTS:
+            return 400, b""
+        if role == "anonymous":
+            return 401, b""
+        return (200 if (verb, requested_path) in probe.READ_REQUESTS else 403), b""
+
+    monkeypatch.setattr(probe, "request", request)
+    report = probe.probe()
+    assert report["ok"] is False
+    [failed] = [r for r in report["requests"] if not r["matches"]]
+    assert (failed["account"], failed["method"], failed["path"], failed["status"]) == (
+        account,
+        method,
+        path,
+        bad_status,
+    )
+
+
+@pytest.mark.parametrize(
+    "status,expected_ok",
+    [(0, False), (200, False), (299, False), (301, True), (400, True), (403, True)],
+)
+def test_variant_status_is_recorded_and_connection_failure_is_not_a_denial(
+    monkeypatch: pytest.MonkeyPatch,
+    status: int,
+    expected_ok: bool,
+) -> None:
+    monkeypatch.setattr(probe, "authorization", lambda role, directory: role)
+    monkeypatch.setattr(probe, "latest_samples", lambda base, auth: (200, {}))
+
+    def request(
+        base: str, method: str, path: str, auth: str | None
+    ) -> tuple[int, bytes]:
+        bare_path = path.split("?", 1)[0]
+        if (method, bare_path) in probe.VARIANT_REQUESTS:
+            return status, b""
+        if auth is None:
+            return 401, b""
+        return (200 if (method, bare_path) in probe.READ_REQUESTS else 403), b""
+
+    monkeypatch.setattr(probe, "request", request)
+    report = probe.probe()
+    assert report["ok"] is expected_ok
+    variants = [r for r in report["requests"] if r["expected"] == "non-2xx"]
+    assert len(variants) == 4 * 2 * 5
+    assert {r["status"] for r in variants} == {status}
