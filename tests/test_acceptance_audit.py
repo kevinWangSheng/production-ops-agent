@@ -487,3 +487,135 @@ def test_preexisting_suspension_baselines_explain_a_paused_new_run(
         assert len(changes) == 2
         assert all(e.recorded_at >= created["created_at"] for e in changes)
         assert not any(e.detail["target_id"] == str(unrelated) for e in suspensions)
+
+
+@pytest.mark.parametrize("revoke_first", [False, True])
+def test_shared_knowledge_entry_review_is_attributed_to_its_source_revision(
+    conn: Connection,
+    revoke_first: bool,
+) -> None:
+    from opspilot.knowledge import Actor, KnowledgeStore
+    from tests.acceptance.f7_pg_support import scratch_database
+    from tests.integration.test_m1_03_knowledge_store_postgres import (
+        _conclusions,
+        _proposal,
+        _seed_incident,
+    )
+
+    with (
+        contextmanager(scratch_database)() as dsn,
+        closing(KnowledgeStore(dsn)) as store,
+    ):
+        first_incident, first_watermark = _seed_incident(dsn)
+        first_draft = store.record_draft(
+            first_incident,
+            expected_generation=0,
+            idempotency_key=str(uuid4()),
+            actor=Actor("worker-first", "worker"),
+            content={"impact": "first"},
+            watermark=first_watermark,
+            conclusions=_conclusions(),
+            proposals=[_proposal()],
+        )
+        assert first_draft.version is not None
+        first = store.approve(
+            first_draft.object_id,
+            first_draft.version,
+            expected_generation=first_draft.generation,
+            idempotency_key=str(uuid4()),
+            actor=Actor("reviewer-first", "basic_auth"),
+        )
+        entry_id = first.published["kb-1"]["entry_id"]
+        generation = 1
+        if revoke_first:
+            revoked = store.revoke(
+                entry_id,
+                1,
+                reason="first revision withdrawn",
+                expected_generation=generation,
+                idempotency_key=str(uuid4()),
+                actor=Actor("revoker-first", "basic_auth"),
+            )
+            generation = revoked.generation
+
+        second_incident, second_watermark = _seed_incident(dsn)
+        second_draft = store.record_draft(
+            second_incident,
+            expected_generation=0,
+            idempotency_key=str(uuid4()),
+            actor=Actor("worker-second", "worker"),
+            content={"impact": "second"},
+            watermark=second_watermark,
+            conclusions=_conclusions(),
+            proposals=[_proposal(supersedes=entry_id)],
+        )
+        assert second_draft.version is not None
+        second = store.approve(
+            second_draft.object_id,
+            second_draft.version,
+            expected_generation=second_draft.generation,
+            idempotency_key=str(uuid4()),
+            actor=Actor("reviewer-second", "basic_auth"),
+            entry_generations={entry_id: generation},
+        )
+        published = second.published["kb-1"]
+        assert published["revision"] == 2
+        assert published["action"] == ("publish" if revoke_first else "supersede")
+        revoked_second = store.revoke(
+            entry_id,
+            2,
+            reason="second revision withdrawn",
+            expected_generation=published["generation"],
+            idempotency_key=str(uuid4()),
+            actor=Actor("revoker-second", "basic_auth"),
+        )
+        with psycopg.connect(dsn, row_factory=dict_row) as connection:
+            # 0008 permits a NULL revision audit row. It supplies no proven
+            # incident provenance, even though this entry has known revisions.
+            unknown_event, request_key = uuid4(), str(uuid4())
+            connection.execute(
+                """INSERT INTO opspilot_f13_requests(
+                     idempotency_key,action,request_sha256,result)
+                   VALUES(%s,'publish',%s,'{}')""",
+                (request_key, "0" * 64),
+            )
+            connection.execute(
+                """INSERT INTO opspilot_f13_audit(event_id,idempotency_key,object_kind,
+                     object_id,action,revision,actor_id,principal_kind,
+                     expected_generation,resulting_generation)
+                   VALUES(%s,%s,'knowledge_entry',%s,'publish',NULL,'unknown-reviewer',
+                     'basic_auth',%s,%s)""",
+                (
+                    unknown_event,
+                    request_key,
+                    entry_id,
+                    revoked_second.generation,
+                    revoked_second.generation + 1,
+                ),
+            )
+            audits = connection.execute(
+                """SELECT event_id,action,revision,actor_id FROM opspilot_f13_audit
+                   WHERE object_kind='knowledge_entry' AND object_id=%s""",
+                (entry_id,),
+            ).fetchall()
+            all_knowledge_events = {str(row["event_id"]) for row in audits}
+            for incident, revision in ((first_incident, 1), (second_incident, 2)):
+                timeline = audit_timeline(connection, incident)
+                own_audits = {
+                    e.record_id: e
+                    for e in timeline.entries
+                    if e.source == "opspilot_f13_audit"
+                    and e.record_id in all_knowledge_events
+                }
+                expected = {
+                    str(row["event_id"]): row
+                    for row in audits
+                    if row["revision"] == revision
+                }
+                assert set(own_audits) == set(expected)
+                for event_id, entry in own_audits.items():
+                    assert entry.actor == expected[event_id]["actor_id"]
+                    assert entry.detail["action"] == expected[event_id]["action"]
+                    assert entry.detail["revision"] == revision
+                assert "unknown-reviewer" not in {e.actor for e in timeline.entries}
+                assert str(unknown_event) not in own_audits

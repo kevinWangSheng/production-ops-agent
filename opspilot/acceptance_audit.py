@@ -487,15 +487,18 @@ def _audit_records(
             row["entry_id"],
             "created_at",
         )
+    # Knowledge publish/supersede audit the NEW revision; revoke audits the
+    # revoked revision (knowledge.store._publish/revoke). Entry identity alone
+    # spans incidents. A NULL revision cannot prove incident provenance.
     for row in rows("""SELECT a.event_id,a.action,a.version,a.revision,a.actor_id,a.recorded_at
                       FROM opspilot_f13_audit a
                       WHERE EXISTS (
                         SELECT 1 FROM opspilot_postmortems p WHERE p.incident_id=%s
                         AND ((a.object_kind='postmortem' AND a.object_id=p.postmortem_id)
-                          OR (a.object_kind='knowledge_entry' AND EXISTS (
+                          OR (a.object_kind='knowledge_entry' AND a.revision IS NOT NULL AND EXISTS (
                             SELECT 1 FROM opspilot_knowledge_revisions k
                             WHERE k.source_postmortem_id=p.postmortem_id
-                              AND k.entry_id=a.object_id))))"""):
+                              AND k.entry_id=a.object_id AND k.revision=a.revision))))"""):
         add(
             row,
             "postmortem_review",
