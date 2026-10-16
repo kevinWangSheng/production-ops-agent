@@ -122,6 +122,10 @@ def identity_fields(identity: TargetIdentity) -> dict[str, str]:
 
 
 class TargetRegistry(Protocol):
+    def keys(self) -> tuple[str, ...]:
+        """All configured operator target keys, in stable order."""
+        ...
+
     def resolve(self, target_id: str) -> TargetIdentity | None:
         """The configured identity for an operator's target id, or ``None``
         when the id is unknown (a remediation on it is then refused for
@@ -157,6 +161,9 @@ class MappingTargetRegistry:
     def from_file(cls, path: str) -> MappingTargetRegistry:
         return cls(load_target_identities(path))
 
+    def keys(self) -> tuple[str, ...]:
+        return tuple(sorted(self._targets))
+
     def resolve(self, target_id: str) -> TargetIdentity | None:
         return self._targets.get(target_id)
 
@@ -171,6 +178,22 @@ class MappingTargetRegistry:
 
 
 class IncidentStore(Protocol):
+    def suspension_state(self) -> dict[str, Any]: ...
+
+    def set_global_suspension(
+        self, suspended: bool, *, expected_generation: int, actor: str
+    ) -> int: ...
+
+    def set_target_suspension(
+        self,
+        target_id: UUID | None,
+        suspended: bool,
+        *,
+        expected_generation: int,
+        actor: str,
+        resource_uid: str | None = None,
+    ) -> int: ...
+
     def accept(
         self,
         incident_id: UUID,
@@ -206,6 +229,7 @@ class IncidentStore(Protocol):
         renew_run_id: UUID | None = None,
         renew_deadline: datetime | None = None,
         renew_input: dict[str, Any] | None = None,
+        renew_basis: dict[str, Any] | None = None,
     ) -> int:
         """Apply one human decision; ``payload`` carries follow-up/correction content.
 
@@ -229,6 +253,10 @@ class IncidentStore(Protocol):
     ) -> int: ...
 
     def rebuild(self, incident_id: UUID) -> dict[str, Any]: ...
+
+    def investigation_history(self, incident_id: UUID) -> list[dict[str, Any]]: ...
+
+    def control_times(self, incident_id: UUID) -> list[dict[str, Any]]: ...
 
     def claim(
         self,
@@ -508,6 +536,7 @@ class DurableIncidentStore:
         # keywords; an older base gets the positional call it accepts and
         # keeps re-queueing (bot review, PR #47).
         self._renewal_supported = "renew_run_id" in parameters
+        self._renew_basis_supported = "renew_basis" in parameters
         # #128 adds ``payload`` to DurableStore.new_run (the request key on
         # the audit row); an older base gets the call it accepts.
         new_run = getattr(store, "new_run", None)
@@ -542,6 +571,33 @@ class DurableIncidentStore:
             target_id=target_id,
         )
 
+    def suspension_state(self) -> dict[str, Any]:
+        return self._store.suspension_state()
+
+    def set_global_suspension(
+        self, suspended: bool, *, expected_generation: int, actor: str
+    ) -> int:
+        return self._store.set_global_suspension(
+            suspended, expected_generation=expected_generation, actor=actor
+        )
+
+    def set_target_suspension(
+        self,
+        target_id: UUID | None,
+        suspended: bool,
+        *,
+        expected_generation: int,
+        actor: str,
+        resource_uid: str | None = None,
+    ) -> int:
+        return self._store.set_target_suspension(
+            target_id,
+            suspended,
+            expected_generation=expected_generation,
+            actor=actor,
+            resource_uid=resource_uid,
+        )
+
     def register_target(self, resource_uid: str) -> UUID:
         return self._store.register_target(resource_uid)
 
@@ -556,6 +612,7 @@ class DurableIncidentStore:
         renew_run_id: UUID | None = None,
         renew_deadline: datetime | None = None,
         renew_input: dict[str, Any] | None = None,
+        renew_basis: dict[str, Any] | None = None,
     ) -> int:
         renewal: dict[str, Any] = {}
         if self._renewal_supported:
@@ -564,6 +621,8 @@ class DurableIncidentStore:
                 "renew_deadline": renew_deadline,
                 "renew_input": renew_input,
             }
+        if self._renew_basis_supported:
+            renewal["renew_basis"] = renew_basis
         # The signature guards above prove which keywords exist at runtime;
         # mypy only sees the current DurableStore signature.
         control: Any = self._store.control
@@ -610,6 +669,14 @@ class DurableIncidentStore:
 
     def rebuild(self, incident_id: UUID) -> dict[str, Any]:
         return self._store.rebuild(incident_id)
+
+    def investigation_history(self, incident_id: UUID) -> list[dict[str, Any]]:
+        """Read Run history and its database-clock step timestamps."""
+        return self._store.investigation_history(incident_id)
+
+    def control_times(self, incident_id: UUID) -> list[dict[str, Any]]:
+        """Read committed human-decision timestamps by resulting generation."""
+        return self._store.control_times(incident_id)
 
     def claim(
         self,

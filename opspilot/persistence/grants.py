@@ -169,9 +169,10 @@ RUNTIME_GRANTS: Mapping[str, Mapping[str, frozenset[str]]] = {
             "state,versions)",
             "UPDATE(control_generation,lease_until,owner,state)",
         ),
-        # lock-only: FOR SHARE needs UPDATE on some column; scope_id is
-        # CHECK (= 1), so the grant cannot change any suspension state
-        "opspilot_scope_controls": _g("SELECT", "UPDATE(scope_id)"),
+        # F7 operator entry: global suspension state and generation writes.
+        "opspilot_scope_controls": _g(
+            "SELECT", "UPDATE(global_generation,global_suspended,scope_id)"
+        ),
         # the self-heal pass (#184, migration 0013) runs in the web process
         "opspilot_self_heal_authorizations": _g(
             "SELECT",
@@ -183,12 +184,13 @@ RUNTIME_GRANTS: Mapping[str, Mapping[str, frozenset[str]]] = {
         "opspilot_subject_events": _g(
             "SELECT", "INSERT(kind,payload,sequence,subject_id)"
         ),
-        # suspensions have no web or worker caller (owner tooling only)
-        "opspilot_suspension_audit": NONE,
-        # INSERT: the unsuspended row of a newly registered target;
-        # UPDATE(updated_at) is lock-only (see opspilot_scope_controls)
+        # F7 operator decisions append audit rows; the web cannot read them.
+        "opspilot_suspension_audit": _g("INSERT(actor,generation,suspended,target_id)"),
+        # F7 target suspension writes, plus the existing registration/lock columns.
         "opspilot_target_suspensions": _g(
-            "SELECT", "INSERT(target_id)", "UPDATE(updated_at)"
+            "SELECT",
+            "INSERT(generation,suspended,target_id)",
+            "UPDATE(generation,suspended,updated_at)",
         ),
         "opspilot_targets": _g(
             "SELECT",

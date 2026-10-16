@@ -29,6 +29,10 @@
 
 Use explicit Markdown links from the repository entry point. If current sources disagree, resolve the inconsistency before implementation; historical drafts cannot override current SPEC. User instructions remain authoritative.
 
+## Demo
+
+- [M1 端到端演示](demo/m1-end-to-end.md)：一页说明系统从告警到批准复盘知识做了什么、复现命令（凭据为占位符）、工作台看什么与已知限制；对应运行记录 [M1 退出端到端运行](evidence/m1-exit-e2e/run.md)。
+
 ## Evidence and historical material
 
 - [Eval platform joint selection](research/eval-platform-selection-2026-09-07.md): LangSmith/Langfuse/LangWatch/Braintrust fit, local scenario/oracle responsibilities, deployment and cost boundaries; historical selection evidence; the approved C3 plan now selects LangSmith, with runtime/price validation pending.

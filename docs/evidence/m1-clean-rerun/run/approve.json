@@ -1,0 +1,53 @@
+{
+  "after": [
+    {
+      "content_sha256": "d16e6d28ad069b79aa40dc56b730407986363ef847504f2177b3b2bc00274d0b",
+      "state": "approved",
+      "version": 1
+    }
+  ],
+  "at": "2026-10-15 11:26:08.846609-07",
+  "before": [
+    {
+      "content_sha256": "d16e6d28ad069b79aa40dc56b730407986363ef847504f2177b3b2bc00274d0b",
+      "state": "under_review",
+      "version": 1
+    }
+  ],
+  "expected_generation": 2,
+  "http_body": {
+    "action": "approve",
+    "generation": 3,
+    "incident_id": "002c3fba-fcb7-5fee-871e-797f6d72b399",
+    "postmortem_id": "378b0fe2-bc81-4095-aae9-a1363ca97ff6",
+    "published": {
+      "checkout_placeorder_payment_charge_error": {
+        "action": "publish",
+        "entry_id": "4eb40edf-a9ca-44a3-90cd-5f62b3daf8ab",
+        "generation": 1,
+        "revision": 1
+      }
+    },
+    "replayed": false,
+    "state": "approved",
+    "version": 1
+  },
+  "http_status": 200,
+  "knowledge_revisions": [
+    {
+      "approved_at": "2026-10-15 11:26:08.815247-07:00",
+      "approved_by": "e2e-lab",
+      "approved_by_kind": "basic_auth",
+      "content_sha256": "856fecf7a4bc9bafde89bb0986bec488e214b587581a9c9cf3563663e5435fd5",
+      "entry_id": "4eb40edf-a9ca-44a3-90cd-5f62b3daf8ab",
+      "name": "Checkout PlaceOrder error ratio at 100% while only payment calls fail",
+      "revision": 1,
+      "source_version": 1,
+      "tags": "['otel-demo', 'checkout', 'payment', 'span-error-ratio', 'low-volume-alerting']"
+    }
+  ],
+  "page_has_approve_form": true,
+  "page_status": 200,
+  "postmortem_id": "378b0fe2-bc81-4095-aae9-a1363ca97ff6",
+  "version": 1
+}

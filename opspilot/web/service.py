@@ -20,12 +20,13 @@ import json
 import logging
 from collections.abc import Iterable, Mapping
 from dataclasses import asdict, dataclass, field, replace
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from typing import Any, Literal, Protocol, cast
 from uuid import UUID, uuid4, uuid5
 
 from markupsafe import Markup
+from psycopg import Error as DatabaseError
 from pydantic import ValidationError
 
 from opspilot.acceptance_alert import alert_intake_outcome
@@ -53,6 +54,7 @@ from opspilot.investigation.context import (
     ALERT_CONTEXT,
     CONCLUSION_KIND,
     INPUT_CONTENT_FIELD_MAX_CHARS,
+    KNOWLEDGE,
     ContextError,
     conclusion_publishable,
 )
@@ -73,6 +75,7 @@ from opspilot.investigation.progress import (
 )
 from opspilot.investigation.reports import ReportV2, parse_report
 from opspilot.investigation.store import StepCommitter, StepStoreError
+from opspilot.knowledge.hints import knowledge_checks, unavailable_fact
 from opspilot.observation.store import SelfHealGrant, SelfHealState
 from opspilot.observer.health_profile import HealthProfile, canonical_content
 from opspilot.observer.replay import SessionReplay, replay_history
@@ -194,6 +197,7 @@ class ControlResult:
     generation: int
     replayed: bool
     sequence: int
+    run_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -251,6 +255,8 @@ class Workbench:
     #: does not list, leaves a bare row and the registration is refused for
     #: lack of identity -- nothing is guessed, and intake never needs it.
     targets: TargetRegistry | None = None
+    knowledge: Any = None
+    knowledge_max_age_seconds: int = 2592000
     _owner: UUID = field(default_factory=uuid4)
 
     # -- intake ---------------------------------------------------------
@@ -505,6 +511,130 @@ class Workbench:
 
     # -- human control --------------------------------------------------
 
+    def controls(self) -> dict[str, Any]:
+        state = self.incidents.suspension_state()
+        targets = []
+        for key in () if self.targets is None else self.targets.keys():
+            identity = self.targets.resolve(key) if self.targets is not None else None
+            if identity is None:
+                raise WorkbenchError("UNKNOWN_TARGET")
+            gate = state["targets"].get(
+                identity.resource_uid,
+                {
+                    "suspended": False,
+                    "generation": 0,
+                },
+            )
+            targets.append({"target_id": key, **gate})
+        return {"global": state["global"], "targets": targets}
+
+    def suspension(
+        self,
+        *,
+        scope: str,
+        target_id: str | None,
+        suspended: bool,
+        expected_generation: int,
+        idempotency_key: str,
+        actor_id: str,
+    ) -> dict[str, Any]:
+        if (
+            scope not in {"global", "target"}
+            or type(suspended) is not bool
+            or type(expected_generation) is not int
+            or expected_generation < 0
+            or (scope == "global" and target_id is not None)
+            or (scope == "target" and not target_id)
+        ):
+            raise WorkbenchError("INVALID_INPUT")
+        try:
+            _reject_ambiguous_identifier(idempotency_key)
+            if not 1 <= len(idempotency_key) <= 256:
+                raise ValueError
+        except ValueError:
+            raise WorkbenchError("INVALID_INPUT") from None
+        identity = None
+        if scope == "target":
+            identity = (
+                self.targets.resolve(target_id)
+                if self.targets is not None and target_id is not None
+                else None
+            )
+            if identity is None:
+                raise WorkbenchError("UNKNOWN_TARGET")
+        intent = {
+            "scope": scope,
+            "target_id": target_id,
+            "suspended": suspended,
+            "expected_generation": expected_generation,
+            "actor_id": actor_id,
+        }
+        stored, inserted = self.ledger.put("suspension_intent", idempotency_key, intent)
+        if not inserted:
+            if dict(stored) != intent:
+                raise WorkbenchError("CONTROL_KEY_CONFLICT")
+            result = self.ledger.get("suspension", idempotency_key)
+            if result is not None:
+                return {**result, "replayed": True}
+            # Another request (or a crash) owns the pending intent. Never
+            # apply it twice: same-value writes also append an audit row.
+            state = self.incidents.suspension_state()
+            gate = (
+                state["global"]
+                if identity is None
+                else state["targets"].get(identity.resource_uid, {"generation": 0})
+            )
+            raise WorkbenchError(
+                "CONTROL_CONFLICT", current_generation=gate["generation"]
+            )
+        try:
+            if identity is None:
+                generation = self.incidents.set_global_suspension(
+                    suspended, expected_generation=expected_generation, actor=actor_id
+                )
+            else:
+                # Registration shares the suspension's transaction: a refused
+                # request leaves no target row behind.
+                generation = self.incidents.set_target_suspension(
+                    None,
+                    suspended,
+                    expected_generation=expected_generation,
+                    actor=actor_id,
+                    resource_uid=identity.resource_uid,
+                )
+        except PersistenceError as exc:
+            code = str(exc)
+            # Only these refusals guarantee no suspension decision committed
+            # (the target INSERT before CONTROL_CONFLICT is rolled back).
+            # Otherwise retain the intent: a lost commit acknowledgement can
+            # hide even a same-value audit INSERT, which must not be repeated.
+            if code in {
+                "CONTROL_CONFLICT",
+                "UNKNOWN_TARGET",
+                "INVALID_INPUT",
+                "IDENTITY_CONFLICT",
+            }:
+                self.ledger.delete("suspension_intent", idempotency_key)
+            if code == "CONTROL_CONFLICT":
+                state = self.incidents.suspension_state()
+                gate = (
+                    state["global"]
+                    if identity is None
+                    else state["targets"].get(identity.resource_uid, {"generation": 0})
+                )
+                raise WorkbenchError(
+                    "CONTROL_CONFLICT", current_generation=gate["generation"]
+                ) from None
+            raise WorkbenchError(code) from None
+        result = {
+            "scope": scope,
+            "target_id": target_id,
+            "suspended": suspended,
+            "generation": generation,
+        }
+        self.ledger.put("suspension", idempotency_key, result)
+        return {**result, "replayed": False}
+
     def control(
         self,
         incident_id: UUID,
@@ -628,7 +758,12 @@ class Workbench:
         result_row, _ = self.ledger.put(
             "control",
             key,
-            {"action": action, "generation": generation, "sequence": sequence},
+            {
+                "action": action,
+                "generation": generation,
+                "sequence": sequence,
+                "run_id": None if new_run_id is None else str(new_run_id),
+            },
         )
         return ControlResult(
             incident_id,
@@ -636,6 +771,7 @@ class Workbench:
             int(result_row["generation"]),
             False,
             int(result_row["sequence"]),
+            result_row.get("run_id"),
         )
 
     def _apply(
@@ -707,24 +843,37 @@ class Workbench:
             payload: dict[str, Any] = {"channel": "web", "idempotency_key": key}
             if text is not None:
                 payload["text"] = text
-            renewal: dict[str, Any] = {}
-            if action in _TEXT_ACTIONS:
-                renewal = {
-                    "renew_run_id": run_id,
-                    "renew_deadline": deadline,
-                    "renew_input": self._successor_input(summary, run_id, deadline),
-                }
-            generation = self.incidents.control(
-                summary.incident_id, expected, action, actor_id, payload, **renewal
-            )
-            current = self.incidents.find_incident(summary.incident_id)
-            if (
-                current is None
-                or current.current_run_id is None
-                or current.current_run_id == summary.current_run_id
-            ):
-                return generation, None
-            return generation, current.current_run_id
+            for attempt in range(3):
+                renewal: dict[str, Any] = {}
+                if action in _TEXT_ACTIONS:
+                    snapshot = self.incidents.rebuild(summary.incident_id)
+                    renewal = {
+                        "renew_run_id": run_id,
+                        "renew_deadline": deadline,
+                        "renew_input": self._successor_input(
+                            summary, run_id, deadline, snapshot=snapshot
+                        ),
+                        "renew_basis": {
+                            "run_id": str(snapshot["run"]["run_id"]),
+                            "concluded": snapshot.get("conclusion") is not None,
+                        },
+                    }
+                try:
+                    generation = self.incidents.control(
+                        summary.incident_id,
+                        expected,
+                        action,
+                        actor_id,
+                        payload,
+                        **renewal,
+                    )
+                    break
+                except PersistenceError as exc:
+                    if str(exc) != "RENEW_INPUT_STALE":
+                        raise
+                    if attempt == 2:
+                        raise PersistenceError("CONTROL_CONFLICT") from None
+            return generation, self._decision_run(summary, generation)
         if summary.control_generation != expected:
             raise PersistenceError("CONTROL_CONFLICT")
         generation = self.incidents.new_run(
@@ -739,6 +888,21 @@ class Workbench:
             payload={"channel": "web", "idempotency_key": key},
         )
         return generation, run_id
+
+    def _decision_run(self, summary: IncidentSummary, generation: int) -> UUID | None:
+        """Prove this decision's deterministic Run exists, even after another renewal."""
+        candidate = uuid5(_INTAKE_NAMESPACE, f"{summary.intake_key}:run:{generation}")
+        rows = self.incidents.investigation_history(summary.incident_id)
+        if rows:
+            return (
+                candidate if any(row["run_id"] == candidate for row in rows) else None
+            )
+        current = self.incidents.find_incident(summary.incident_id)
+        return (
+            candidate
+            if current is not None and current.current_run_id == candidate
+            else None
+        )
 
     def _configured_identity(self, intake_key: str) -> TargetIdentity | None:
         """The configured identity of the intake's ``target_id`` (the
@@ -883,10 +1047,37 @@ class Workbench:
                 fresh,
                 scope_facts={**fresh.scope_facts, ALERT_CONTEXT: dict(alert_context)},
             )
+        if self.knowledge is not None:
+            fresh = replace(
+                fresh,
+                scope_facts={**fresh.scope_facts, KNOWLEDGE: self._knowledge(request)},
+            )
         return fresh.as_json()
 
+    def _knowledge(self, request: IntakeRequest) -> dict[str, Any]:
+        """The approved knowledge a new Run of ``request`` starts with (F13
+        step 4, U5-A): retrieved per Run in its own snapshot; a storage
+        failure records ``unavailable`` instead of blocking the Run (R5)."""
+        try:
+            return cast(
+                dict[str, Any],
+                self.knowledge.knowledge_for_target(
+                    request.target_id,
+                    request.question,
+                    max_age_seconds=self.knowledge_max_age_seconds,
+                ),
+            )
+        except (PersistenceError, DatabaseError, OSError, TimeoutError):
+            _log.warning("knowledge hint retrieval unavailable")
+            return unavailable_fact(self.knowledge_max_age_seconds)
+
     def _successor_input(
-        self, summary: IncidentSummary, run_id: UUID, deadline: datetime
+        self,
+        summary: IncidentSummary,
+        run_id: UUID,
+        deadline: datetime,
+        *,
+        snapshot: Mapping[str, Any] | None = None,
     ) -> dict[str, Any] | None:
         """The input a Run that replaces the current one starts from.
 
@@ -895,8 +1086,9 @@ class Workbench:
         no snapshot (rows older than the face) or rows this version cannot
         continue gets a fresh input over the intake question instead, so
         the successor is always runnable. The renewal input is built before
-        the store decides whether the note renews at all (only an overdue
-        Run does); an unused one costs a rebuild and nothing else.
+        the store decides whether the note renews at all (overdue or concluded
+        Runs do); an unused one costs a rebuild and nothing else. The optional
+        snapshot binds this assembly to the renewal basis checked under lock.
         """
         if self.tool_face is None:
             return None
@@ -909,12 +1101,19 @@ class Workbench:
             return None
         request = _envelope_from_json(intake["envelope"]).request
         try:
-            return continuation_input(
-                self.incidents.rebuild(summary.incident_id),
+            fresh = continuation_input(
+                snapshot
+                if snapshot is not None
+                else self.incidents.rebuild(summary.incident_id),
                 new_run_id=str(run_id),
                 deadline=deadline,
                 authorized_targets=frozenset({request.target_id}),
-            ).as_json()
+            )
+            facts = dict(fresh.scope_facts)
+            facts.pop(KNOWLEDGE, None)
+            if self.knowledge is not None:
+                facts[KNOWLEDGE] = self._knowledge(request)
+            return replace(fresh, scope_facts=facts).as_json()
         except ContextError as exc:
             if exc.code != "INPUT_MISSING":
                 # Rows this version cannot continue: fail closed with the
@@ -1036,10 +1235,22 @@ class Workbench:
         intent: Mapping[str, Any],
         audit: ControlAudit,
     ) -> ControlResult:
+        summary = self.incidents.find_incident(incident_id)
+        run_id = (
+            self._decision_run(summary, audit.resulting_generation)
+            if summary is not None and audit.action in {*_TEXT_ACTIONS, "new_run"}
+            else None
+        )
+        run_fields = {} if run_id is None else {"run_id": str(run_id)}
         sequence = self.events.append_once(
             incident_id,
             "control_applied",
-            dict(intent, generation=audit.resulting_generation, reconciled=True),
+            dict(
+                intent,
+                generation=audit.resulting_generation,
+                reconciled=True,
+                **run_fields,
+            ),
             key={"generation": audit.resulting_generation},
         )
         row, _ = self.ledger.put(
@@ -1049,6 +1260,7 @@ class Workbench:
                 "action": audit.action,
                 "generation": audit.resulting_generation,
                 "sequence": sequence,
+                **run_fields,
             },
         )
         return self._control_replay(incident_id, row)
@@ -1139,6 +1351,7 @@ class Workbench:
             int(stored["generation"]),
             True,
             int(stored["sequence"]),
+            stored.get("run_id"),
         )
 
     def _notes(self, incident_id: UUID) -> list[dict[str, Any]]:
@@ -1279,6 +1492,10 @@ class Workbench:
     def _controls(self, incident_id: UUID) -> list[dict[str, Any]]:
         """Every confirmed decision from the ledger rows, in generation order."""
         intents = dict(self.ledger.list_prefix("control_intent", f"{incident_id}:"))
+        times = {
+            int(row["resulting_generation"]): row["created_at"]
+            for row in self.incidents.control_times(incident_id)
+        }
         rows = []
         for key, result in self.ledger.list_prefix("control", f"{incident_id}:"):
             intent = intents.get(key)
@@ -1289,10 +1506,55 @@ class Workbench:
                     intent,
                     generation=int(result["generation"]),
                     sequence=int(result["sequence"]),
+                    decided_at=(
+                        times[int(result["generation"])]
+                        .astimezone(timezone.utc)
+                        .isoformat()
+                        if int(result["generation"]) in times
+                        else None
+                    ),
                 )
             )
         rows.sort(key=lambda item: item["generation"])
         return rows
+
+    def _history(self, incident_id: UUID, current_run_id: UUID) -> list[dict[str, Any]]:
+        rows = self.incidents.investigation_history(incident_id)
+        # Scan all retained pages: an old Run's completion may precede the
+        # page of recent progress displayed on the incident screen.
+        cursor = max(0, self.events.floor(incident_id) - 1)
+        hashes = {}
+        while True:
+            page = self.events.read_after(incident_id, cursor, limit=_EVENT_PAGE)
+            if not page:
+                break
+            for event in page:
+                if event.kind == "run_completed" and event.payload.get("report_sha256"):
+                    hashes[str(event.payload.get("run_id"))] = event.payload[
+                        "report_sha256"
+                    ]
+            cursor = page[-1].sequence
+        return [
+            {
+                "run_id": str(row["run_id"]),
+                "state": row["state"],
+                "control_generation": int(row["control_generation"]),
+                **{
+                    field: row[field].astimezone(timezone.utc).isoformat()
+                    if row[field] is not None
+                    else None
+                    for field in ("started_at", "concluded_at")
+                },
+                "report": _report_view(row["report"]),
+                "verified": (
+                    hashes[str(row["run_id"])] == _content_sha256(row["report"])
+                    if str(row["run_id"]) in hashes
+                    else None
+                ),
+            }
+            for row in rows
+            if row["run_id"] != current_run_id
+        ]
 
     def snapshot(self, incident_id: UUID) -> dict[str, Any]:
         """Everything the incident page renders, read from committed rows."""
@@ -1331,6 +1593,18 @@ class Workbench:
             events, str(run["run_id"]), int(rebuilt["control_generation"]), runnable
         )
         report = _report_view(rebuilt.get("conclusion"))
+        knowledge_view = None
+        input_snapshot = run.get("input") or {}
+        fact = input_snapshot.get("scope_facts", {}).get(KNOWLEDGE)
+        if fact is not None:
+            committed = rebuilt.get("conclusion")
+            parsed_report = None
+            if isinstance(committed, Mapping):
+                content, finish = _committed_report(committed)
+                parsed_report, _ = parse_report(
+                    content, finish_reason=finish or "unknown"
+                )
+            knowledge_view = {**fact, "checks": knowledge_checks(fact, parsed_report)}
         observation_sessions = self.incidents.observation_sessions(incident_id)
         handoff_report = None
         if report is None and outcome is not None and outcome.kind == "run_handoff":
@@ -1353,10 +1627,12 @@ class Workbench:
             "steps": steps,
             "pending_tools": len(rebuilt["pending_tools"]),
             "report": report,
+            "knowledge": knowledge_view,
             "handoff_report": handoff_report,
             "charts": self._charts(incident_id, report or handoff_report),
             "outcome": None if outcome is None else dict(outcome.payload),
             "controls": self._controls(incident_id),
+            "history": self._history(incident_id, run["run_id"]),
             # Recovery observation (M1-02): shown apart from the investigation
             # report, with the sampling basis behind each verdict and the
             # offline replay's agreement with it (step 5, #87).
