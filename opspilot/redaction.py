@@ -392,7 +392,7 @@ def redact_credentials(text: str) -> str:
 
 
 def redact_payload(value: object) -> object:
-    """Redact JSON string values and credential-named string fields, purely.
+    """Redact JSON string values, object keys and credential-named fields, purely.
 
     An explicit stack keeps traversal linear and independent of nesting depth.
     Return the original value when unchanged, including its byte representation
@@ -434,7 +434,18 @@ def redact_payload(value: object) -> object:
                 redacted = item
             if isinstance(destination, dict):
                 assert isinstance(key, str)
-                destination[key] = redacted
+                # A key is source text too (a URL with userinfo, a Jaeger
+                # service name turned into a count key): redact it, and keep
+                # two keys that redact alike apart with a stable suffix
+                # rather than letting one overwrite the other.
+                name = redact_credentials(key)
+                changed |= name != key
+                base, suffix = name, 1
+                while name in destination:
+                    suffix += 1
+                    name = f"{base}#{suffix}"
+                    changed = True
+                destination[name] = redacted
             else:
                 destination.append(redacted)
     return result if changed else value

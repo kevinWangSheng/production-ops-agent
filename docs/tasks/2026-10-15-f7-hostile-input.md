@@ -24,7 +24,8 @@ U7-a：数据源返回内容里的凭据在进入模型、trace 和持久化之�
 - 键名感知：合同原文只写「值过 `redact_credentials`」，但 `{"api_key": "…"}` 这种结构化标签单看值无法判定；按名称规则补上。理由：与 prose 规则同一定义，取保守。
 - raw 存储形态：没有任何值被改时 raw 保持源字节不变；有改动时存脱敏后的规范 JSON，`raw_sha256` 对存储字节计算。理由：r1 允许「脱敏或省略」，脱敏保留可检查性；无命中时零行为变化。
 - trace 适配器：`exception.message` 等明细值先脱敏再按 600 字节截断，operation 名先脱敏再截 150 字符。理由：先截断会留下 `Bearer` 后不足 8 字符的令牌片段，规则匹配不到。
-- web 证据页：对 `raw_utf8` 与 view 再做一次展示时脱敏（无命中时原样），覆盖本 PR 之前存的旧记录和恢复读数。理由：旧证据不回写（第 6 类），展示层兜底。
+- 对象键：键文本同样过 `redact_credentials`；两个键脱敏后相同时，后者加 `#2`、`#3` 后缀，不互相覆盖。理由：URL 键、Jaeger 服务名转成的计数键也是数据源文本（审查 P1）。
+- web 证据页：对 `raw_utf8` 与 view（恢复读数还有 value、query）再做一次展示时脱敏，无命中时原样，覆盖本 PR 之前存的旧记录和恢复读数。哈希与 `hashes_verified` 仍针对存储字节；新字段 `display_redacted` 为 true 表示显示内容经过展示脱敏、不再对应该哈希（审查 P2）。理由：旧证据不回写（第 6 类），展示层兜底。
 - revision：`PROJECTION_REVISION` → `m1-01-tool-view-v8`；otel-demo 的 `TOOL_SCHEMA_REVISION` 哈希纳入 projection revision；fixture 档 `fixture-2` → `fixture-3`。理由：只改 `PROJECTION_REVISION` 不进 `versions`，在途 Run 不会被拦，违背第 6 类。
 - 已知限制（沿用 `redaction.py` 原文）：没有命名上下文的裸秘密字符串判定不了；验收用的合成秘密限于规则声明覆盖的形态（`name=value`、`name: value`、`Bearer`/`Basic`、URL userinfo、凭据名键）。
 
@@ -33,11 +34,15 @@ U7-a：数据源返回内容里的凭据在进入模型、trace 和持久化之�
 - `opspilot.redaction.REDACTED_CREDENTIAL` 是唯一标记。
 - 工具结果：已采纳与只作历史的 `EvidenceRecord` 的 `raw`、`view`（含 `content`）、`ToolOutcome.model_view` 中不含上述形态的秘密原值；`raw_sha256 == sha256(raw)`。无命中时 `raw` 与传输返回字节逐字节相同。
 - `opspilot.tools.outcomes.PROJECTION_REVISION == "m1-01-tool-view-v8"`；`opspilot.tools.fixture.TOOL_SCHEMA_REVISION == "fixture-3"`；otel-demo 的值与 bump 前不同。
-- web `GET /incidents/{id}/evidence/{evidence_id}`（JSON 与 HTML）返回的 `raw_utf8`、`view` 不含秘密原值。
+- web `GET /incidents/{id}/evidence/{evidence_id}`（JSON 与 HTML）返回的 `raw_utf8`、`view` 不含秘密原值；`display_redacted` 说明显示内容是否经过展示脱敏。
 
 ## 执行进展与证据
 
 - 2026-10-15：建 worktree 与本地 PG（55592）；基线 `tests/test_m1_tool_boundaries.py`、`tests/integration/test_m1_otel_demo_contract_postgres.py` 111 passed。
+- 实现（Codex `gpt-6.1-sol`）：`redaction.redact_payload` / `redact_json_bytes`，执行器 `_inspect` 统一脱敏（采纳与历史两条路径），trace 明细先脱敏后截断，revision bump，web 展示兜底。lead 自改一处：凭据名字段的非空值（不止字符串）整体替换，同步实现者单元测试的一个期望。
+- 验收测试（全新上下文 Agent，未看实现）：`tests/acceptance/test_f7_step2_hostile_input_postgres.py`、`test_f7_step3_source_secrets.py`、`test_f7_step3_source_secrets_postgres.py` 及两个 support 模块，挂 `test_product_constraints_checklist.py`。替身模型经真实 `DeepSeekClient` + 脚本化 opener，无真实调用。实现后 15 passed；去掉实现（`git apply -R`）后 8 failed / 4 passed（失败的全是脱敏与 revision 用例，注入类原本就守得住）。
+- 独立审查（Codex `gpt-6-astra`，会话 `01a142f6`）：P1 对象键里的凭据（URL userinfo 键、Jaeger 服务名转成的键）未脱敏，审查者经执行器复现；P2 web 展示脱敏后 `hashes_verified=true`，但显示内容并不对应该哈希。lead 修复：键文本脱敏加冲突后缀；加 `display_redacted`；补 3 个回归测试。复验待补。
+- 测试作者提出、lead 处置：越权请求有的是 `denied`（目标参数、未登记工具），有的是 `error/INVALID_PARAMS`（窗口越界、offset），U8-a 只要求「被拒、可见」，两者都接受；适配器内拒绝也计入 `tool_operations_used`（现有行为，不在本 PR 范围）；`summary.json` 由调用方组装，测试按现有脚本做法组装。
 
 ## 待决
 
