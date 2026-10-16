@@ -50,7 +50,7 @@ U7-a：数据源返回内容里的凭据在进入模型、trace 和持久化之�
 - 机器人分诊（`@codex review`，c5e80e0 及首推 552c617 两次自动审查，共 5 条）全部采纳：P1 `view_fields` 里的 tuple 没被遍历；P1 恢复读数 bundle 里的 `body_b64` 没解码就脱敏，等于没做；P1 脚本把没有发布结论的 Run 记为非失败；P2 非字符串键触发断言；P2 旧证据含孤立代理项时展示报 500。修复：tuple 按数组遍历、非字符串键按 JSON 文本处理、编码失败时退回 ASCII 转义、展示时解码 bundle 各 body 后再脱敏、未发布记为 fail；每项都补了回归测试。复验（9e0927b）：两个 P1 已解决；脚本 P2 还漏了一处：range selector 会往回看，首点之前那段读取也要落在授权框里。lead 补上（HTTP start 减去回看时间不得早于授权起点）并加负例，属于小改，lead 自核。
 - 实质返工后第二次 `@codex review`（69f3728）：新增 1 条 P2——展示脱敏遇到嵌套超过解码器上限的 JSON 时报 500。改为退回到全文 prose 脱敏，加回归测试，lead 自核。其余两条是旧 thread 换了锚点，此前已经处置。
 - 推送后的自动审查（d7e8fdf）又来 2 条 P2：一是多个键脱敏后相同时，加后缀那一步会退化成平方复杂度，改成按 base 记下一个可用序号；二是脚本的拒绝可见性判定靠一张 reason 白名单，漏了 `TARGET_NOT_AUTHORIZED`，改成所有非成功操作都必须在模型消息里看得到。各补了回归测试，lead 自核。
-- `make check`（9c8b702，本地 PG 55592，共享锁）：ruff、format、mypy 通过；pytest 7600 passed、54 skipped、2 xfailed。
+- `make check`（70f419d，本地 PG 55592，共享锁）：ruff、format、mypy 通过；pytest 7603 passed、54 skipped、2 xfailed（上一次在 9c8b702 上跑，7600 passed）。
 - 独立复验（astra，b9adb12）又找出两个早已存在的 P1 和一个脚本 P2。P1：一个键重复出现时 `json.loads` 只留最后一个值，前面那个值里的秘密留在了 raw 字节里。P1：恢复读数 bundle 里非 UTF-8 的 body 被原样导出。P2：脚本的范围判定没看 PromQL 的 `offset`/`@`。修复：只要出现重复键就一律按脱敏后的规范 JSON 存储和展示；非文本 body 在展示时省略（`body_omitted_for_display`）；脚本按产品的 `promql_problem` 判定。都补了回归测试。
 
 ## 真实 Run 计划（待协调者排时段）
