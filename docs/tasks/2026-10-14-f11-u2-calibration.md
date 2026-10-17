@@ -1,10 +1,10 @@
 # F11 U2 发布观察校准证据
 
-- 状态：进行中（2026-10-17 真实实验已开始：基线、probe、首批五类正式轮已采集，其中三轮为产品缺陷轮待修复后重跑；证据尚未冻结）
+- 状态：实验完成、证据待冻结与审查（2026-10-17 批次 `u2-20261017`：基线、probe、五类正式轮、受缺陷影响的三类重跑、boundary、Observer 接线均已执行；policy 未写入，待用户批准）
 - 更新日期：2026-10-17
 - 依据：[F11 任务记录](2026-10-12-f11-post-release.md)（U2／P1-02）；[PR-2 合同](2026-10-13-f11-pr2-contract.md) §1 校准 policy、固定语义 1／4、P2-04、「校准证据不足」、r1–r7；[预审与决定表](2026-10-14-f11-u2-calibration-contract.md)；C3 §12「实验环境」；ADR-0006
 - 工作区：工具 PR #233 已合并（`e1b8867`），分支已清理。实验工具可在主仓库 `main` 运行（占用与原始 ledger 都在主仓库 `tmp/`）；提交证据与 policy 时另开 `chore/`／`feature/` 分支 worktree
-- 实验环境：kind-opspilot-m1／otel-demo；与 eval 会话已协调（2026-10-14：近期不占用，开跑前互相确认）
+- 实验环境：kind-opspilot-m1／otel-demo；2026-10-17 04:05Z–22:46Z 由本任务占用（与 eval 会话 -00／-76／-87 协调，-87 同意延至 10-18 01:00Z；占用记录写的结束时间仍是 16:00Z，延长靠会话协调，记录到期也不会被抢占），已释放
 
 ## 目标
 
@@ -31,15 +31,12 @@
 - 2026-10-17 probe（`u2-probe-1`）发现 Prometheus 把求值时间舍入到毫秒，窗尾微秒 ≥500 时样本时间戳晚于 evaluated_at、整样本 `QUERY_FAILED`→unknown；用户裁决方案 A：查询 `time` 参数向下截断到毫秒（PR-2 合同 r8 修订 B01），分支 `feature/F11-release-query-ms-floor`，修复后重跑 probe 再进入正式轮（#261）。
 - 2026-10-17 正式轮 `u2-f-immediate-1`／`u2-f-delayed5-1`／`u2-f-delayed15-1` 起病时 after 切片 coverage 被新出现的 ERROR 序列拉低、判 `INSUFFICIENT_SAMPLES`→unknown；用户裁决按 PR-2:556–559 意图修复（r8 第二条：实例内 max、跨实例 min），分支 `feature/F11-release-coverage-per-instance`；三轮保留为产品缺陷轮、不作校准证据，修复后重跑 immediate／delayed-5m／delayed-15m／boundary，healthy／unrelated 经核实 after 实例无 ERROR 序列、无起病 unknown 保留。
 
-## 下一步与交接（2026-10-14）
+- 2026-10-17 实验（证据 [run.md](../evidence/f11-u2-calibration/run.md)）：基线 scrape 60s、单查询中位 1.5s、单样本 61–91s。有效轮 healthy-1、unrelated-1、immediate-2、delayed5-2、delayed15-2、boundary-1；缺陷轮 probe-1、immediate-1、delayed5-1、delayed15-1 保留、不作证据；probe-2 与 Observer 接线轮以 `abort` 记入。M=1200 与 M=1500 均满足 U2-03 全部判据（预热后非预期 unknown 0/35、0/39；健康终结剩余 ≥28 次、≥1878s）；M≤900 在 delayed-15m／boundary 漏检，M=1800 在 unrelated 备用预算 94s 不足。adFailure 实测不影响 checkout，但为弱故障（1/25、3/126）。Observer 接线：web 角色授权 applied，`opspilot_observer_u2` 14 个样本后 healthy_confirmed。实验库为 Observer 迁移 0016→0017（仅 GRANT）。
+- 收尾四数（实验阶段）：新增合同问题 2（r8 两条）；因合同变更重写测试 3（B01 验收、两处实现测试断言）；环境重跑 0（缺陷重跑 3 轮另计）；新增用户裁决 3（方案 A、按意图修覆盖、窗口延长）。
 
-以下为 2026-10-14 交接时的开跑说明；2026-10-17 起实际执行情况见上文「进展与证据」各行（原始 ledger 在主仓库 `tmp/lab-ledgers/`，批次 `u2-20261017`）。
+## 待决与交接（2026-10-17）
 
-- **实验库**：本机专用 PG `127.0.0.1:55561`，库 `m0_budget`，owner `m0_lab`（trust），已迁移至 `0016`，库为空。数据在主仓库 `tmp/f11-u2/pg`（git 忽略；不随 worktree 删除，勿删）。交接时仍在运行；若已停：`/opt/homebrew/opt/postgresql@17/bin/pg_ctl -D tmp/f11-u2/pg -l tmp/f11-u2/pg.log -o "-p 55561 -k $PWD/tmp/f11-u2/sock -c listen_addresses=127.0.0.1" -w start`。不要复制 `tmp/184-step3/pg` 旧证据库（含角色凭据，权限分类器会拒绝）。
-- **目标身份**：身份文件 `tmp/184-step3/targets.json`，注册表键 `m0-otel-20260909`（`cluster_uid` 与集群 `kube-system` UID 一致，lead 已核）。profile 为仓库 `opspilot/observer/profiles/otel-demo-checkout.json`（revision `otel-demo-checkout@b72bbe2e30be`）。
-- **凭据**：旁路采集只 `set -a; source tmp/m1-kind-lab/prometheus-lab.env; set +a`；Observer 接线验证用 `prometheus-observer.env`。只 source，不 cat、不打印、不写入证据。flagd 端口转发在开跑阶段自行准备。
-- **实验环境协调**：2026-10-14 eval 会话 production-ops-agent-00、-76 与评测会话 -87 均回复近期不占用 kind-opspilot-m1，开跑前会先联系本任务。开跑前用 `occupation claim` 写占用记录（主仓库 `tmp/lab-ledgers/`），并用 SendMessage 通知上述会话具体时段；一次只注入一个故障，恢复且健康窗洗净后再下一轮。
-- **开跑顺序**：`kind_lab.py health` 全部 ok、所有 flag 为 off → `occupation claim` → 基线测量约 30 分钟（scrape 周期、flush 延迟、checkout 流量、查询耗时）→ 一轮 `probe` 开发探测（release → watch → register → context → collect → fold），核对端到端链路与时间线 → 确认 `adFailure` 不影响 checkout 必要信号 → 正式五类×3（每批 3 轮约 3–4 小时）→ 临近健康终结的边界轮（U2-01，场景 `boundary`）→ 一次产品 Observer 接线验证（U2-04；先在 55561 实验库建专用登录角色，trust 认证无需口令：`CREATE ROLE opspilot_observer_u2 LOGIN IN ROLE opspilot_observer`、`CREATE ROLE opspilot_web_u2 LOGIN IN ROLE opspilot_web`，Observer 用 `OPSPILOT_OBSERVER_DSN=…user=opspilot_observer_u2`、授权走 web 角色；不得用 owner `m0_lab` 跑接线验证，否则绕过角色授权与守卫，启动方式见[开发指南](../development.md)「Observer」一节；临时测试清单驱动 Observer 走授权→采样→提交，只作接线证据，不算正式校准，测试清单不得进入产品清单）→ `aggregate --batch` 冻结 `docs/evidence/f11-u2-calibration/summary.json` → 确认所有故障已恢复、无运行中操作后 `occupation release` 释放占用，并通知上述会话 → 证据独立审查（Codex gpt-6-astra，对照注入日志、原始响应与 K8s 对象核对真值）→ 用户批准摘要哈希、目标、profile 哈希、M 与覆盖限制 → policy 写入 PR（用户门）。命令细节见[开发指南](../development.md#f11-u2-有界实验工具r1l3)。
-- **判据与失败处理**：见上文 r1 U2-03。冻结与送审前须确认五类×3、`boundary` 轮与 Observer 接线验证都已执行并在汇总或 run.md 中可查（`aggregate` 只核对日志轮次齐全，不检查场景覆盖），缺任一项不得提交用户批准；不删失败轮（中止轮用 `abort` 记入），不事后放宽判据；改参数须新 profile revision 并重跑受影响场景；证据不足则清单保持为空。
-- **已知坑**：Codex 沙箱内无法启动 PG（共享内存），PG 测试由 lead 在沙箱外跑；给 Codex 审查者的提示避免「篡改／构造事务／绕过」类措辞，会触发内容过滤（改用「字段不一致的修改」「数据一致性复核」）；Codex 只用 workspace-write 沙箱，不用 bypass 参数。
+- **用户批准项**（policy 写入 `release-calibrations.json` 为用户门 PR，未做）：冻结 `summary.json` 的 sha256；目标五项身份（见 run.md）；profile `otel-demo-checkout@b72bbe2e30be`／`b72bbe2e30bea4775790519787da4ce107dbc1500ce87b87a2ee2af3f57cbfa4`；M（lead 推荐 1500：delayed-15m 余量约 6 分钟，1200 仅约 70s）及冻结参数（W300／F90／超时 20／I60／H600／deadline 3600／40 次）；覆盖限制（run.md「覆盖与限制」）。
+- **实验库**：PG `127.0.0.1:55561` 仍运行，数据在主仓库 `tmp/f11-u2/pg`（勿删）；登录角色 `opspilot_observer_u2`、`opspilot_web_u2`。原始 ledger 在主仓库 `tmp/lab-ledgers/u2-*`（不入库，勿删）。
+- **已知坑**：harness `collect` 后台进程忽略 SIGINT（非交互 shell），提前停止只能 SIGTERM，之后须人工核实 PID 已退出再移走 `.active-*.json`（probe-2 已如此处理并存档）；Codex 沙箱内起不了 PG；审查提示避免「篡改／绕过」类措辞。
 - **相关待排**：[#230](https://github.com/kevinWangSheng/production-ops-agent/issues/230)（重放逐字段完整性），与 U2 无依赖。
