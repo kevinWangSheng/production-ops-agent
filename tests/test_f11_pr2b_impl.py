@@ -74,7 +74,7 @@ def read(raw, **kwargs):
     return source.instant_vector("up", at=AT, timeout_seconds=3), opener
 
 
-def test_vector_microsecond_time_auth_and_exact_raw():
+def test_vector_millisecond_floor_time_auth_and_exact_raw():
     raw = body([row(labels={"pod": "one"}), row("2", labels={"pod": "two"})])
     opener = Opener(raw)
     source = PrometheusReadOnlySource(
@@ -86,7 +86,7 @@ def test_vector_microsecond_time_auth_and_exact_raw():
     assert parsed.path == "/api/v1/query" and request.get_method() == "GET"
     assert parse_qs(parsed.query) == {
         "query": ["up"],
-        "time": [f"{int(AT.timestamp())}.123456"],
+        "time": [f"{int(AT.timestamp())}.123"],  # r8: floored to the millisecond
         "timeout": ["3s"],
     }
     assert request.get_header("Authorization") == "Bearer synthetic" and timeout == 3

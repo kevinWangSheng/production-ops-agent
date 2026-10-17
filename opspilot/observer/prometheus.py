@@ -127,6 +127,16 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
+def _query_time_milliseconds(at: datetime) -> str:
+    delta = at.astimezone(timezone.utc) - datetime(1970, 1, 1, tzinfo=timezone.utc)
+    micros = (delta.days * 86400 + delta.seconds) * 1_000_000 + delta.microseconds
+    # Floor before splitting the sign so pre-epoch times also round down.
+    millis = micros // 1000
+    sign = "-" if millis < 0 else ""
+    seconds, fraction = divmod(abs(millis), 1000)
+    return f"{sign}{seconds}.{fraction:03d}"
+
+
 class PrometheusReadOnlySource:
     """``GET /api/v1/query`` with the Observer's own base URL and token."""
 
@@ -194,7 +204,7 @@ class PrometheusReadOnlySource:
         url = f"{self._base}/api/v1/query?" + urllib.parse.urlencode(
             {
                 "query": expr,
-                "time": f"{at.timestamp():.3f}",
+                "time": _query_time_milliseconds(at),
                 "timeout": f"{int(timeout_seconds)}s",
             }
         )
@@ -293,14 +303,10 @@ class PrometheusReadOnlySource:
         """Read a strict vector using the same bounded, single-request transport."""
         if at.tzinfo is None or at.utcoffset() is None:
             raise ValueError("QUERY_TIME_NAIVE")
-        delta = at.astimezone(timezone.utc) - datetime(1970, 1, 1, tzinfo=timezone.utc)
-        micros = (delta.days * 86400 + delta.seconds) * 1_000_000 + delta.microseconds
-        sign = "-" if micros < 0 else ""
-        seconds, fraction = divmod(abs(micros), 1_000_000)
         url = f"{self._base}/api/v1/query?" + urllib.parse.urlencode(
             {
                 "query": expr,
-                "time": f"{sign}{seconds}.{fraction:06d}",
+                "time": _query_time_milliseconds(at),
                 "timeout": f"{int(timeout_seconds)}s",
             }
         )
