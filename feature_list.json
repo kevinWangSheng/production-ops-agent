@@ -73,7 +73,7 @@
       "Activate global or service-level investigation suspension and verify new queries stop and in-flight work follows the reviewed cancellation policy",
       "Reconstruct input, queries, evidence, state changes, human corrections, recovery observations and postmortem review from audit records; enforce per-target query and data-volume limits"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": "F8",

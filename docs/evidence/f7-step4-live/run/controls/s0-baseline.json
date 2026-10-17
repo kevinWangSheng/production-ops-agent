@@ -1,0 +1,18 @@
+{
+  "at": "2026-10-16T16:42:45.718273+00:00",
+  "state": {
+    "db_now": "2026-10-16 09:42:45.740529-07:00",
+    "evidence": 0,
+    "incidents": [],
+    "last_step_at": null,
+    "runs": [],
+    "scope": [
+      {
+        "global_generation": 0,
+        "global_suspended": false
+      }
+    ],
+    "targets": [],
+    "tool_charges": 0
+  }
+}

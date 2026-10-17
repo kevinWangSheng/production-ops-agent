@@ -256,12 +256,16 @@ def test_traces_requests_stay_anonymous_even_with_a_prometheus_credential(
 # --- lab provisioning (engineer side)
 
 
-def test_lab_web_config_lists_every_account_with_a_bcrypt_hash():
+def test_lab_web_config_lists_only_the_collector_and_proxy_accounts():
+    # F7 PR-C (A3): the product and lab accounts reach Prometheus only
+    # through the read-only proxy, so its web config no longer lists them
     accounts = {name: f"pw-{name}" for name in kind_lab.PROMETHEUS_ACCOUNTS}
     rendered = kind_lab.web_config_yaml(accounts, hasher=lambda p: f"$2y$10$HASH({p})")
     assert rendered.startswith("basic_auth_users:\n")
-    for name in ("observer", "investigator", "collector", "lab"):
+    for name in ("collector", "proxy"):
         assert f'  {name}: "$2y$10$HASH(pw-{name})"' in rendered
+    for name in ("observer", "investigator", "lab"):
+        assert f"  {name}:" not in rendered
     assert kind_lab.bcrypt_hash("example").startswith("$2y$10$")
 
 
@@ -287,7 +291,7 @@ def test_lab_auth_file_is_created_private_and_a_loose_one_is_refused(tmp_path):
     accounts = kind_lab.prometheus_accounts(path)
     assert set(accounts) == set(kind_lab.PROMETHEUS_ACCOUNTS)
     assert stat.S_IMODE(path.stat().st_mode) == 0o600
-    assert len(set(accounts.values())) == 4 and all(
+    assert len(set(accounts.values())) == 5 and all(
         len(v) >= 24 for v in accounts.values()
     )
     assert kind_lab.prometheus_accounts(path) == accounts

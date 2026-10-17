@@ -47,3 +47,13 @@ def test_f7_step2_and_step3_acceptance_modules_own_their_indexed_scenarios():
                 module.__name__,
                 label,
             )
+
+
+def test_f7_step1_acceptance_module_owns_the_readonly_scenario():
+    """F7 PR-C: entry-point enumeration (step 1) belongs to
+    ``explicit_exclusions`` ("F7:readonly")."""
+    from tests.acceptance import test_f7_step1_entry_points as step1
+
+    assert step1.PRODUCT_CONSTRAINT_SCENARIOS == ("F7:readonly",)
+    for label in step1.PRODUCT_CONSTRAINT_SCENARIOS:
+        assert label in PRODUCT_CONSTRAINT_SCENARIO_INDEX["explicit_exclusions"]

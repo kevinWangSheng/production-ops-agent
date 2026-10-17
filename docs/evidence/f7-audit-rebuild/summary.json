@@ -1,0 +1,121 @@
+{
+  "frozen_at": "2026-10-16T18:24:42.198984+00:00",
+  "execution_commit": "7a497a64022fd203a2fa44da0574cdafb0261b14",
+  "worktree_dirty": false,
+  "incidents": [
+    {
+      "incident_id": "002c3fba-fcb7-5fee-871e-797f6d72b399",
+      "counts": {
+        "input": 8,
+        "query": 14,
+        "evidence": 13,
+        "state_change": 28,
+        "human_correction": 1,
+        "recovery_observation": 19,
+        "postmortem_review": 7
+      },
+      "entry_count": 90,
+      "first_at": "2026-10-15T11:07:53.116355-07:00",
+      "last_at": "2026-10-15T11:26:08.825500-07:00",
+      "missing": [],
+      "entries_sha256": "7f872c22fa237e30ada79635d7c63771f087a609206cb074d5c8b4fe1a8d088c",
+      "undated_records": {},
+      "missing_sources": [
+        "opspilot_inputs",
+        "opspilot_suspension_audit"
+      ],
+      "associated_time_entries": 35,
+      "step_time_is_plan_commit_not_dispatch_or_return": true
+    },
+    {
+      "incident_id": "ae7a0387-7cd8-59b3-a8f5-b2395c603759",
+      "counts": {
+        "input": 17,
+        "query": 26,
+        "evidence": 24,
+        "state_change": 50,
+        "human_correction": 2,
+        "recovery_observation": 7,
+        "postmortem_review": 0
+      },
+      "entry_count": 126,
+      "first_at": "2026-10-15T11:33:53.059466-07:00",
+      "last_at": "2026-10-15T11:44:52.979004-07:00",
+      "missing": [
+        "postmortem_review"
+      ],
+      "entries_sha256": "ae6cdaf85e620d41d78611ec1d4b2bfa92b78c90a6a6a66a9bae91f82fd27ff0",
+      "undated_records": {},
+      "missing_sources": [
+        "opspilot_suspension_audit",
+        "opspilot_observation_endings",
+        "opspilot_postmortems",
+        "opspilot_postmortem_versions",
+        "opspilot_f13_audit",
+        "opspilot_knowledge_entries"
+      ],
+      "associated_time_entries": 68,
+      "step_time_is_plan_commit_not_dispatch_or_return": true
+    },
+    {
+      "incident_id": "e1ac6e74-da8c-52c5-92c7-20a9e9a543cf",
+      "counts": {
+        "input": 27,
+        "query": 54,
+        "evidence": 50,
+        "state_change": 109,
+        "human_correction": 14,
+        "recovery_observation": 10,
+        "postmortem_review": 4
+      },
+      "entry_count": 268,
+      "first_at": "2026-10-16T01:13:04.177819-07:00",
+      "last_at": "2026-10-16T01:34:04.054254-07:00",
+      "missing": [],
+      "entries_sha256": "855a3816c84400920ab2dd4f323179579ebb2addf097528358c9795044a10a02",
+      "undated_records": {
+        "opspilot_input_rounds": 2
+      },
+      "missing_sources": [
+        "opspilot_suspension_audit",
+        "opspilot_observation_samples",
+        "opspilot_knowledge_entries"
+      ],
+      "associated_time_entries": 133,
+      "step_time_is_plan_commit_not_dispatch_or_return": true
+    },
+    {
+      "incident_id": "a7eeac26-f7ec-5239-8d5e-c2744cb67f41",
+      "counts": {
+        "input": 8,
+        "query": 18,
+        "evidence": 16,
+        "state_change": 35,
+        "human_correction": 4,
+        "recovery_observation": 3,
+        "postmortem_review": 0
+      },
+      "entry_count": 84,
+      "first_at": "2026-10-16T01:41:03.927532-07:00",
+      "last_at": "2026-10-16T01:44:58.512273-07:00",
+      "missing": [
+        "postmortem_review"
+      ],
+      "entries_sha256": "c6c1c829c8e46a47e7397755a3140ae76e1df3233aee197a5e7993b77033423d",
+      "undated_records": {
+        "opspilot_input_rounds": 1
+      },
+      "missing_sources": [
+        "opspilot_suspension_audit",
+        "opspilot_observation_samples",
+        "opspilot_observation_endings",
+        "opspilot_postmortems",
+        "opspilot_postmortem_versions",
+        "opspilot_f13_audit",
+        "opspilot_knowledge_entries"
+      ],
+      "associated_time_entries": 44,
+      "step_time_is_plan_commit_not_dispatch_or_return": true
+    }
+  ]
+}

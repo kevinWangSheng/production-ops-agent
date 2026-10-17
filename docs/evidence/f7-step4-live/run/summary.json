@@ -1,0 +1,180 @@
+{
+  "audit_counts": {
+    "evidence": 22,
+    "human_correction": 3,
+    "input": 10,
+    "postmortem_review": 0,
+    "query": 23,
+    "recovery_observation": 2,
+    "state_change": 44
+  },
+  "checks": [
+    {
+      "inside_steps_all_late_result": true,
+      "ok": true,
+      "operator_resume_after_release": "2026-10-16T09:50:38.902146-07:00",
+      "queries_before_on": 3,
+      "queries_inside": 0,
+      "steps_between_release_and_resume": 0,
+      "steps_inside": [
+        "late_result"
+      ],
+      "window": {
+        "generation_off": 2,
+        "generation_on": 1,
+        "off": "2026-10-16T09:49:16.589260-07:00",
+        "on": "2026-10-16T09:47:14.932941-07:00",
+        "scope": "global"
+      }
+    },
+    {
+      "inside_steps_all_late_result": true,
+      "ok": true,
+      "operator_resume_after_release": "2026-10-16T09:53:14.529864-07:00",
+      "queries_before_on": 6,
+      "queries_inside": 0,
+      "steps_between_release_and_resume": 0,
+      "steps_inside": [
+        "late_result"
+      ],
+      "window": {
+        "generation_off": 2,
+        "generation_on": 1,
+        "off": "2026-10-16T09:52:16.369048-07:00",
+        "on": "2026-10-16T09:50:54.330761-07:00",
+        "scope": "target"
+      }
+    }
+  ],
+  "controls": [
+    {
+      "action": "resume",
+      "actor": "e2e-lab",
+      "at": "2026-10-16T09:50:38.902146-07:00"
+    },
+    {
+      "action": "resume",
+      "actor": "e2e-lab",
+      "at": "2026-10-16T09:53:14.529864-07:00"
+    },
+    {
+      "action": "auto_authorize_observation",
+      "actor": "system",
+      "at": "2026-10-16T09:57:31.523839-07:00"
+    }
+  ],
+  "frozen_at": "2026-10-16T16:58:09.757674+00:00",
+  "incident_id": "ddbe2e9c-ed95-5233-95d5-166ef23af687",
+  "ok": true,
+  "query_count": 23,
+  "runs": [
+    {
+      "run_id": "180c39be-f34a-566d-8e31-f00a32918872",
+      "state": "completed"
+    }
+  ],
+  "steps": [
+    {
+      "at": "2026-10-16T09:47:12.069727-07:00",
+      "control_generation": 0,
+      "sequence": 0,
+      "status": "tool_result_committed"
+    },
+    {
+      "at": "2026-10-16T09:47:32.132269-07:00",
+      "control_generation": 0,
+      "sequence": 1,
+      "status": "late_result"
+    },
+    {
+      "at": "2026-10-16T09:50:51.596508-07:00",
+      "control_generation": 1,
+      "sequence": 2,
+      "status": "tool_result_committed"
+    },
+    {
+      "at": "2026-10-16T09:50:54.902499-07:00",
+      "control_generation": 1,
+      "sequence": 3,
+      "status": "late_result"
+    },
+    {
+      "at": "2026-10-16T09:53:26.070942-07:00",
+      "control_generation": 2,
+      "sequence": 4,
+      "status": "tool_result_committed"
+    },
+    {
+      "at": "2026-10-16T09:53:40.980202-07:00",
+      "control_generation": 2,
+      "sequence": 5,
+      "status": "tool_result_committed"
+    },
+    {
+      "at": "2026-10-16T09:54:29.774389-07:00",
+      "control_generation": 2,
+      "sequence": 6,
+      "status": "tool_result_committed"
+    },
+    {
+      "at": "2026-10-16T09:55:08.437677-07:00",
+      "control_generation": 2,
+      "sequence": 7,
+      "status": "tool_result_committed"
+    },
+    {
+      "at": "2026-10-16T09:55:33.085269-07:00",
+      "control_generation": 2,
+      "sequence": 8,
+      "status": "tool_result_committed"
+    },
+    {
+      "at": "2026-10-16T09:56:02.303293-07:00",
+      "control_generation": 2,
+      "sequence": 9,
+      "status": "tool_result_committed"
+    },
+    {
+      "at": "2026-10-16T09:57:27.489856-07:00",
+      "control_generation": 2,
+      "sequence": 10,
+      "status": "response_committed"
+    },
+    {
+      "at": "2026-10-16T09:57:27.502518-07:00",
+      "control_generation": 2,
+      "sequence": 11,
+      "status": "response_committed"
+    }
+  ],
+  "suspension_audit": [
+    {
+      "actor": "e2e-lab",
+      "at": "2026-10-16T09:47:14.932941-07:00",
+      "generation": 1,
+      "scope": "global",
+      "suspended": true
+    },
+    {
+      "actor": "e2e-lab",
+      "at": "2026-10-16T09:49:16.589260-07:00",
+      "generation": 2,
+      "scope": "global",
+      "suspended": false
+    },
+    {
+      "actor": "e2e-lab",
+      "at": "2026-10-16T09:50:54.330761-07:00",
+      "generation": 1,
+      "scope": "target",
+      "suspended": true
+    },
+    {
+      "actor": "e2e-lab",
+      "at": "2026-10-16T09:52:16.369048-07:00",
+      "generation": 2,
+      "scope": "target",
+      "suspended": false
+    }
+  ]
+}

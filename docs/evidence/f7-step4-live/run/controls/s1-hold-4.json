@@ -1,0 +1,41 @@
+{
+  "at": "2026-10-16T16:48:38.766992+00:00",
+  "state": {
+    "db_now": "2026-10-16 09:48:38.770963-07:00",
+    "evidence": 2,
+    "incidents": [
+      {
+        "concluded": false,
+        "control_generation": 0,
+        "current_run_id": "180c39be-f34a-566d-8e31-f00a32918872",
+        "incident_id": "ddbe2e9c-ed95-5233-95d5-166ef23af687",
+        "lifecycle": "open",
+        "mode": "automatic",
+        "state": "paused"
+      }
+    ],
+    "last_step_at": "2026-10-16 09:47:32.132269-07:00",
+    "runs": [
+      {
+        "control_generation": 0,
+        "incident_id": "ddbe2e9c-ed95-5233-95d5-166ef23af687",
+        "run_id": "180c39be-f34a-566d-8e31-f00a32918872",
+        "state": "paused"
+      }
+    ],
+    "scope": [
+      {
+        "global_generation": 1,
+        "global_suspended": true
+      }
+    ],
+    "targets": [
+      {
+        "generation": 0,
+        "suspended": false,
+        "target_id": "77ce20be-1637-458f-b34b-ab0a6e342e4a"
+      }
+    ],
+    "tool_charges": 3
+  }
+}

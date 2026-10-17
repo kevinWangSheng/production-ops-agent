@@ -126,9 +126,10 @@ prometheus:
         secretName: prometheus-web-config
         readOnly: true
     service:
-      type: NodePort
+      # Only the authenticated readonly proxy publishes host port 19090.
+      # Collector and proxy use this cluster-private upstream.
+      type: ClusterIP
       servicePort: 9090
-      nodePort: 30090
     # M1-04: alerts go to the separately installed, pinned Alertmanager
     # release (scripts/kind_lab/alertmanager-values.yaml); the chart's own
     # alertmanager subchart stays disabled.

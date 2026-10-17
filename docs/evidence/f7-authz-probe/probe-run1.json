@@ -1,0 +1,1104 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/api/v1/query",
+      "account": "investigator",
+      "status": 200,
+      "expected": 200,
+      "matches": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/query_range",
+      "account": "investigator",
+      "status": 200,
+      "expected": 200,
+      "matches": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/series",
+      "account": "investigator",
+      "status": 200,
+      "expected": 200,
+      "matches": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/labels",
+      "account": "investigator",
+      "status": 200,
+      "expected": 200,
+      "matches": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/status/buildinfo",
+      "account": "investigator",
+      "status": 200,
+      "expected": 200,
+      "matches": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/label/__name__/values",
+      "account": "investigator",
+      "status": 200,
+      "expected": 200,
+      "matches": true
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/v1/query",
+      "account": "investigator",
+      "status": 405,
+      "expected": 200,
+      "matches": false
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/v1/query_range",
+      "account": "investigator",
+      "status": 405,
+      "expected": 200,
+      "matches": false
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/v1/series",
+      "account": "investigator",
+      "status": 405,
+      "expected": 200,
+      "matches": false
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/v1/labels",
+      "account": "investigator",
+      "status": 405,
+      "expected": 200,
+      "matches": false
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/v1/status/buildinfo",
+      "account": "investigator",
+      "status": 405,
+      "expected": 200,
+      "matches": false
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/v1/label/__name__/values",
+      "account": "investigator",
+      "status": 405,
+      "expected": 200,
+      "matches": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/otlp/v1/metrics",
+      "account": "investigator",
+      "status": 403,
+      "expected": 403,
+      "matches": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/write",
+      "account": "investigator",
+      "status": 403,
+      "expected": 403,
+      "matches": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/tsdb/snapshot",
+      "account": "investigator",
+      "status": 403,
+      "expected": 403,
+      "matches": true
+    },
+    {
+      "method": "POST",
+      "path": "/-/reload",
+      "account": "investigator",
+      "status": 403,
+      "expected": 403,
+      "matches": true
+    },
+    {
+      "method": "GET",
+      "path": "/federate",
+      "account": "investigator",
+      "status": 403,
+      "expected": 403,
+      "matches": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/query",
+      "account": "investigator",
+      "status": 403,
+      "expected": 403,
+      "matches": true
+    },
+    {
+      "method": "OPTIONS",
+      "path": "/api/v1/query",
+      "account": "investigator",
+      "status": 403,
+      "expected": 403,
+      "matches": true
+    },
+    {
+      "method": "OPTIONS",
+      "path": "/api/v1/query_range",
+      "account": "investigator",
+      "status": 403,
+      "expected": 403,
+      "matches": true
+    },
+    {
+      "method": "OPTIONS",
+      "path": "/api/v1/series",
+      "account": "investigator",
+      "status": 403,
+      "expected": 403,
+      "matches": true
+    },
+    {
+      "method": "OPTIONS",
+      "path": "/api/v1/labels",
+      "account": "investigator",
+      "status": 403,
+      "expected": 403,
+      "matches": true
+    },
+    {
+      "method": "OPTIONS",
+      "path": "/api/v1/status/buildinfo",
+      "account": "investigator",
+      "status": 403,
+      "expected": 403,
+      "matches": true
+    },
+    {
+      "method": "OPTIONS",
+      "path": "/api/v1/label/__name__/values",
+      "account": "investigator",
+      "status": 403,
+      "expected": 403,
+      "matches": true
+    },
+    {
+      "method": "POST",
+      "path": "//api/v1/otlp/v1/metrics",
+      "account": "investigator",
+      "status": 403,
+      "expected": "4xx",
+      "matches": true
+    },
+    {
+      "method": "GET",
+      "path": "//api/v1/otlp/v1/metrics",
+      "account": "investigator",
+      "status": 403,
+      "expected": "4xx",
+      "matches": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/./otlp/v1/metrics",
+      "account": "investigator",
+      "status": 403,
+      "expected": "4xx",
+      "matches": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/./otlp/v1/metrics",
+      "account": "investigator",
+      "status": 403,
+      "expected": "4xx",
+      "matches": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/query/../otlp/v1/metrics",
+      "account": "investigator",
+      "status": 403,
+      "expected": "4xx",
+      "matches": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/query/../otlp/v1/metrics",
+      "account": "investigator",
+      "status": 403,
+      "expected": "4xx",
+      "matches": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/otlp%2Fv1%2Fmetrics",
+      "account": "investigator",
+      "status": 403,
+      "expected": "4xx",
+      "matches": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/otlp%2Fv1%2Fmetrics",
+      "account": "investigator",
+      "status": 403,
+      "expected": "4xx",
+      "matches": true
+    },
+    {
+      "method": "POST",
+      "path": "/API/V1/QUERY",
+      "account": "investigator",
+      "status": 403,
+      "expected": "4xx",
+      "matches": true
+    },
+    {
+      "method": "GET",
+      "path": "/API/V1/QUERY",
+      "account": "investigator",
+      "status": 403,
+      "expected": "4xx",
+      "matches": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/query",
+      "account": "observer",
+      "status": 200,
+      "expected": 200,
+      "matches": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/query_range",
+      "account": "observer",
+      "status": 200,
+      "expected": 200,
+      "matches": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/series",
+      "account": "observer",
+      "status": 200,
+      "expected": 200,
+      "matches": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/labels",
+      "account": "observer",
+      "status": 200,
+      "expected": 200,
+      "matches": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/status/buildinfo",
+      "account": "observer",
+      "status": 200,
+      "expected": 200,
+      "matches": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/label/__name__/values",
+      "account": "observer",
+      "status": 200,
+      "expected": 200,
+      "matches": true
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/v1/query",
+      "account": "observer",
+      "status": 405,
+      "expected": 200,
+      "matches": false
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/v1/query_range",
+      "account": "observer",
+      "status": 405,
+      "expected": 200,
+      "matches": false
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/v1/series",
+      "account": "observer",
+      "status": 405,
+      "expected": 200,
+      "matches": false
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/v1/labels",
+      "account": "observer",
+      "status": 405,
+      "expected": 200,
+      "matches": false
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/v1/status/buildinfo",
+      "account": "observer",
+      "status": 405,
+      "expected": 200,
+      "matches": false
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/v1/label/__name__/values",
+      "account": "observer",
+      "status": 405,
+      "expected": 200,
+      "matches": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/otlp/v1/metrics",
+      "account": "observer",
+      "status": 403,
+      "expected": 403,
+      "matches": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/write",
+      "account": "observer",
+      "status": 403,
+      "expected": 403,
+      "matches": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/tsdb/snapshot",
+      "account": "observer",
+      "status": 403,
+      "expected": 403,
+      "matches": true
+    },
+    {
+      "method": "POST",
+      "path": "/-/reload",
+      "account": "observer",
+      "status": 403,
+      "expected": 403,
+      "matches": true
+    },
+    {
+      "method": "GET",
+      "path": "/federate",
+      "account": "observer",
+      "status": 403,
+      "expected": 403,
+      "matches": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/query",
+      "account": "observer",
+      "status": 403,
+      "expected": 403,
+      "matches": true
+    },
+    {
+      "method": "OPTIONS",
+      "path": "/api/v1/query",
+      "account": "observer",
+      "status": 403,
+      "expected": 403,
+      "matches": true
+    },
+    {
+      "method": "OPTIONS",
+      "path": "/api/v1/query_range",
+      "account": "observer",
+      "status": 403,
+      "expected": 403,
+      "matches": true
+    },
+    {
+      "method": "OPTIONS",
+      "path": "/api/v1/series",
+      "account": "observer",
+      "status": 403,
+      "expected": 403,
+      "matches": true
+    },
+    {
+      "method": "OPTIONS",
+      "path": "/api/v1/labels",
+      "account": "observer",
+      "status": 403,
+      "expected": 403,
+      "matches": true
+    },
+    {
+      "method": "OPTIONS",
+      "path": "/api/v1/status/buildinfo",
+      "account": "observer",
+      "status": 403,
+      "expected": 403,
+      "matches": true
+    },
+    {
+      "method": "OPTIONS",
+      "path": "/api/v1/label/__name__/values",
+      "account": "observer",
+      "status": 403,
+      "expected": 403,
+      "matches": true
+    },
+    {
+      "method": "POST",
+      "path": "//api/v1/otlp/v1/metrics",
+      "account": "observer",
+      "status": 403,
+      "expected": "4xx",
+      "matches": true
+    },
+    {
+      "method": "GET",
+      "path": "//api/v1/otlp/v1/metrics",
+      "account": "observer",
+      "status": 403,
+      "expected": "4xx",
+      "matches": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/./otlp/v1/metrics",
+      "account": "observer",
+      "status": 403,
+      "expected": "4xx",
+      "matches": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/./otlp/v1/metrics",
+      "account": "observer",
+      "status": 403,
+      "expected": "4xx",
+      "matches": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/query/../otlp/v1/metrics",
+      "account": "observer",
+      "status": 403,
+      "expected": "4xx",
+      "matches": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/query/../otlp/v1/metrics",
+      "account": "observer",
+      "status": 403,
+      "expected": "4xx",
+      "matches": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/otlp%2Fv1%2Fmetrics",
+      "account": "observer",
+      "status": 403,
+      "expected": "4xx",
+      "matches": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/otlp%2Fv1%2Fmetrics",
+      "account": "observer",
+      "status": 403,
+      "expected": "4xx",
+      "matches": true
+    },
+    {
+      "method": "POST",
+      "path": "/API/V1/QUERY",
+      "account": "observer",
+      "status": 403,
+      "expected": "4xx",
+      "matches": true
+    },
+    {
+      "method": "GET",
+      "path": "/API/V1/QUERY",
+      "account": "observer",
+      "status": 403,
+      "expected": "4xx",
+      "matches": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/query",
+      "account": "lab",
+      "status": 200,
+      "expected": 200,
+      "matches": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/query_range",
+      "account": "lab",
+      "status": 200,
+      "expected": 200,
+      "matches": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/series",
+      "account": "lab",
+      "status": 200,
+      "expected": 200,
+      "matches": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/labels",
+      "account": "lab",
+      "status": 200,
+      "expected": 200,
+      "matches": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/status/buildinfo",
+      "account": "lab",
+      "status": 200,
+      "expected": 200,
+      "matches": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/label/__name__/values",
+      "account": "lab",
+      "status": 200,
+      "expected": 200,
+      "matches": true
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/v1/query",
+      "account": "lab",
+      "status": 405,
+      "expected": 200,
+      "matches": false
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/v1/query_range",
+      "account": "lab",
+      "status": 405,
+      "expected": 200,
+      "matches": false
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/v1/series",
+      "account": "lab",
+      "status": 405,
+      "expected": 200,
+      "matches": false
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/v1/labels",
+      "account": "lab",
+      "status": 405,
+      "expected": 200,
+      "matches": false
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/v1/status/buildinfo",
+      "account": "lab",
+      "status": 405,
+      "expected": 200,
+      "matches": false
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/v1/label/__name__/values",
+      "account": "lab",
+      "status": 405,
+      "expected": 200,
+      "matches": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/otlp/v1/metrics",
+      "account": "lab",
+      "status": 403,
+      "expected": 403,
+      "matches": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/write",
+      "account": "lab",
+      "status": 403,
+      "expected": 403,
+      "matches": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/tsdb/snapshot",
+      "account": "lab",
+      "status": 403,
+      "expected": 403,
+      "matches": true
+    },
+    {
+      "method": "POST",
+      "path": "/-/reload",
+      "account": "lab",
+      "status": 403,
+      "expected": 403,
+      "matches": true
+    },
+    {
+      "method": "GET",
+      "path": "/federate",
+      "account": "lab",
+      "status": 403,
+      "expected": 403,
+      "matches": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/query",
+      "account": "lab",
+      "status": 403,
+      "expected": 403,
+      "matches": true
+    },
+    {
+      "method": "OPTIONS",
+      "path": "/api/v1/query",
+      "account": "lab",
+      "status": 403,
+      "expected": 403,
+      "matches": true
+    },
+    {
+      "method": "OPTIONS",
+      "path": "/api/v1/query_range",
+      "account": "lab",
+      "status": 403,
+      "expected": 403,
+      "matches": true
+    },
+    {
+      "method": "OPTIONS",
+      "path": "/api/v1/series",
+      "account": "lab",
+      "status": 403,
+      "expected": 403,
+      "matches": true
+    },
+    {
+      "method": "OPTIONS",
+      "path": "/api/v1/labels",
+      "account": "lab",
+      "status": 403,
+      "expected": 403,
+      "matches": true
+    },
+    {
+      "method": "OPTIONS",
+      "path": "/api/v1/status/buildinfo",
+      "account": "lab",
+      "status": 403,
+      "expected": 403,
+      "matches": true
+    },
+    {
+      "method": "OPTIONS",
+      "path": "/api/v1/label/__name__/values",
+      "account": "lab",
+      "status": 403,
+      "expected": 403,
+      "matches": true
+    },
+    {
+      "method": "POST",
+      "path": "//api/v1/otlp/v1/metrics",
+      "account": "lab",
+      "status": 403,
+      "expected": "4xx",
+      "matches": true
+    },
+    {
+      "method": "GET",
+      "path": "//api/v1/otlp/v1/metrics",
+      "account": "lab",
+      "status": 403,
+      "expected": "4xx",
+      "matches": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/./otlp/v1/metrics",
+      "account": "lab",
+      "status": 403,
+      "expected": "4xx",
+      "matches": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/./otlp/v1/metrics",
+      "account": "lab",
+      "status": 403,
+      "expected": "4xx",
+      "matches": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/query/../otlp/v1/metrics",
+      "account": "lab",
+      "status": 403,
+      "expected": "4xx",
+      "matches": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/query/../otlp/v1/metrics",
+      "account": "lab",
+      "status": 403,
+      "expected": "4xx",
+      "matches": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/otlp%2Fv1%2Fmetrics",
+      "account": "lab",
+      "status": 403,
+      "expected": "4xx",
+      "matches": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/otlp%2Fv1%2Fmetrics",
+      "account": "lab",
+      "status": 403,
+      "expected": "4xx",
+      "matches": true
+    },
+    {
+      "method": "POST",
+      "path": "/API/V1/QUERY",
+      "account": "lab",
+      "status": 403,
+      "expected": "4xx",
+      "matches": true
+    },
+    {
+      "method": "GET",
+      "path": "/API/V1/QUERY",
+      "account": "lab",
+      "status": 403,
+      "expected": "4xx",
+      "matches": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/query",
+      "account": "anonymous",
+      "status": 401,
+      "expected": 401,
+      "matches": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/query_range",
+      "account": "anonymous",
+      "status": 401,
+      "expected": 401,
+      "matches": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/series",
+      "account": "anonymous",
+      "status": 401,
+      "expected": 401,
+      "matches": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/labels",
+      "account": "anonymous",
+      "status": 401,
+      "expected": 401,
+      "matches": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/status/buildinfo",
+      "account": "anonymous",
+      "status": 401,
+      "expected": 401,
+      "matches": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/label/__name__/values",
+      "account": "anonymous",
+      "status": 401,
+      "expected": 401,
+      "matches": true
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/v1/query",
+      "account": "anonymous",
+      "status": 401,
+      "expected": 401,
+      "matches": true
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/v1/query_range",
+      "account": "anonymous",
+      "status": 401,
+      "expected": 401,
+      "matches": true
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/v1/series",
+      "account": "anonymous",
+      "status": 401,
+      "expected": 401,
+      "matches": true
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/v1/labels",
+      "account": "anonymous",
+      "status": 401,
+      "expected": 401,
+      "matches": true
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/v1/status/buildinfo",
+      "account": "anonymous",
+      "status": 401,
+      "expected": 401,
+      "matches": true
+    },
+    {
+      "method": "HEAD",
+      "path": "/api/v1/label/__name__/values",
+      "account": "anonymous",
+      "status": 401,
+      "expected": 401,
+      "matches": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/otlp/v1/metrics",
+      "account": "anonymous",
+      "status": 401,
+      "expected": 401,
+      "matches": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/write",
+      "account": "anonymous",
+      "status": 401,
+      "expected": 401,
+      "matches": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/admin/tsdb/snapshot",
+      "account": "anonymous",
+      "status": 401,
+      "expected": 401,
+      "matches": true
+    },
+    {
+      "method": "POST",
+      "path": "/-/reload",
+      "account": "anonymous",
+      "status": 401,
+      "expected": 401,
+      "matches": true
+    },
+    {
+      "method": "GET",
+      "path": "/federate",
+      "account": "anonymous",
+      "status": 401,
+      "expected": 401,
+      "matches": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/query",
+      "account": "anonymous",
+      "status": 401,
+      "expected": 401,
+      "matches": true
+    },
+    {
+      "method": "OPTIONS",
+      "path": "/api/v1/query",
+      "account": "anonymous",
+      "status": 401,
+      "expected": 401,
+      "matches": true
+    },
+    {
+      "method": "OPTIONS",
+      "path": "/api/v1/query_range",
+      "account": "anonymous",
+      "status": 401,
+      "expected": 401,
+      "matches": true
+    },
+    {
+      "method": "OPTIONS",
+      "path": "/api/v1/series",
+      "account": "anonymous",
+      "status": 401,
+      "expected": 401,
+      "matches": true
+    },
+    {
+      "method": "OPTIONS",
+      "path": "/api/v1/labels",
+      "account": "anonymous",
+      "status": 401,
+      "expected": 401,
+      "matches": true
+    },
+    {
+      "method": "OPTIONS",
+      "path": "/api/v1/status/buildinfo",
+      "account": "anonymous",
+      "status": 401,
+      "expected": 401,
+      "matches": true
+    },
+    {
+      "method": "OPTIONS",
+      "path": "/api/v1/label/__name__/values",
+      "account": "anonymous",
+      "status": 401,
+      "expected": 401,
+      "matches": true
+    },
+    {
+      "method": "POST",
+      "path": "//api/v1/otlp/v1/metrics",
+      "account": "anonymous",
+      "status": 401,
+      "expected": "4xx",
+      "matches": true
+    },
+    {
+      "method": "GET",
+      "path": "//api/v1/otlp/v1/metrics",
+      "account": "anonymous",
+      "status": 401,
+      "expected": "4xx",
+      "matches": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/./otlp/v1/metrics",
+      "account": "anonymous",
+      "status": 401,
+      "expected": "4xx",
+      "matches": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/./otlp/v1/metrics",
+      "account": "anonymous",
+      "status": 401,
+      "expected": "4xx",
+      "matches": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/query/../otlp/v1/metrics",
+      "account": "anonymous",
+      "status": 401,
+      "expected": "4xx",
+      "matches": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/query/../otlp/v1/metrics",
+      "account": "anonymous",
+      "status": 401,
+      "expected": "4xx",
+      "matches": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/otlp%2Fv1%2Fmetrics",
+      "account": "anonymous",
+      "status": 401,
+      "expected": "4xx",
+      "matches": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/otlp%2Fv1%2Fmetrics",
+      "account": "anonymous",
+      "status": 401,
+      "expected": "4xx",
+      "matches": true
+    },
+    {
+      "method": "POST",
+      "path": "/API/V1/QUERY",
+      "account": "anonymous",
+      "status": 401,
+      "expected": "4xx",
+      "matches": true
+    },
+    {
+      "method": "GET",
+      "path": "/API/V1/QUERY",
+      "account": "anonymous",
+      "status": 401,
+      "expected": "4xx",
+      "matches": true
+    }
+  ],
+  "sample_check": {
+    "account": "lab",
+    "method": "GET",
+    "path": "/api/v1/query",
+    "status_before": 200,
+    "status_after": 200,
+    "expected": "no new sample timestamps",
+    "matches": true,
+    "series_before": 2,
+    "series_after": 2
+  },
+  "ok": false
+}
