@@ -1,7 +1,7 @@
 # F11 U2 发布观察校准证据
 
-- 状态：进行中（实验工具已合并 #233，真实实验未执行；2026-10-14 交接）
-- 更新日期：2026-10-14
+- 状态：进行中（2026-10-17 真实实验已开始：基线、probe、首批五类正式轮已采集，其中三轮为产品缺陷轮待修复后重跑；证据尚未冻结）
+- 更新日期：2026-10-17
 - 依据：[F11 任务记录](2026-10-12-f11-post-release.md)（U2／P1-02）；[PR-2 合同](2026-10-13-f11-pr2-contract.md) §1 校准 policy、固定语义 1／4、P2-04、「校准证据不足」、r1–r7；[预审与决定表](2026-10-14-f11-u2-calibration-contract.md)；C3 §12「实验环境」；ADR-0006
 - 工作区：工具 PR #233 已合并（`e1b8867`），分支已清理。实验工具可在主仓库 `main` 运行（占用与原始 ledger 都在主仓库 `tmp/`）；提交证据与 policy 时另开 `chore/`／`feature/` 分支 worktree
 - 实验环境：kind-opspilot-m1／otel-demo；与 eval 会话已协调（2026-10-14：近期不占用，开跑前互相确认）
@@ -33,7 +33,7 @@
 
 ## 下一步与交接（2026-10-14）
 
-接手会话按此执行；尚未对 kind 做任何写操作，未生成任何真实证据。
+以下为 2026-10-14 交接时的开跑说明；2026-10-17 起实际执行情况见上文「进展与证据」各行（原始 ledger 在主仓库 `tmp/lab-ledgers/`，批次 `u2-20261017`）。
 
 - **实验库**：本机专用 PG `127.0.0.1:55561`，库 `m0_budget`，owner `m0_lab`（trust），已迁移至 `0016`，库为空。数据在主仓库 `tmp/f11-u2/pg`（git 忽略；不随 worktree 删除，勿删）。交接时仍在运行；若已停：`/opt/homebrew/opt/postgresql@17/bin/pg_ctl -D tmp/f11-u2/pg -l tmp/f11-u2/pg.log -o "-p 55561 -k $PWD/tmp/f11-u2/sock -c listen_addresses=127.0.0.1" -w start`。不要复制 `tmp/184-step3/pg` 旧证据库（含角色凭据，权限分类器会拒绝）。
 - **目标身份**：身份文件 `tmp/184-step3/targets.json`，注册表键 `m0-otel-20260909`（`cluster_uid` 与集群 `kube-system` UID 一致，lead 已核）。profile 为仓库 `opspilot/observer/profiles/otel-demo-checkout.json`（revision `otel-demo-checkout@b72bbe2e30be`）。
