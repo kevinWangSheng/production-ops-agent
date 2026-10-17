@@ -28,7 +28,8 @@
 - 2026-10-14 实验工具 `scripts/f11_u2_harness.py`（[#233](https://github.com/kevinWangSheng/production-ops-agent/pull/233)，`e1b8867`；Codex gpt-6.1-sol 实现）：占用记录、配置发布、时间线、定时注入与恢复、按产品路径登记 pending 发布（`register`）、旁路采集、离线折叠、`abort`、按批次日志核对的汇总。复用产品 `build_release_query_plan`、`evaluate_release_sample`、`advance_release_window`、`instant_vector`、`record_release`，窗口算法未重写，外围调度／采纳规则逐处标注 PR-2 合同行号。独立审查（Codex gpt-6-astra）3 项 P2 已修复复验；机器人 3 项 P2 已修复（占用锁改为经 git common dir 定位的主仓库 `tmp/lab-ledgers/` 跨 worktree 共享；事件流按时间合并；汇总按批次开始日志核对轮次，缺失即拒绝）。离线测试 66 passed，`register` PG 测试 1 passed（lead 在沙箱外执行），`make check` 5463 passed。
 - lead 可逆默认：登记传 `canonical_content(profile)`，与产品 web 一致（`opspilot/web/service.py:684`），原文另存并记录哈希；无关故障 flag 为 `adFailure`（集群 `flagd-config` 中核实；checkout 下游不含 ad，仍须实测确认不影响 checkout 信号）。
 - 收尾四数（工具阶段）：新增合同问题 0；因合同变更重写测试 0；环境重跑 0；新增用户裁决 0。
-- 2026-10-17 probe（`u2-probe-1`）发现 Prometheus 把求值时间舍入到毫秒，窗尾微秒 ≥500 时样本时间戳晚于 evaluated_at、整样本 `QUERY_FAILED`→unknown；用户裁决方案 A：查询 `time` 参数向下截断到毫秒（PR-2 合同 r8 修订 B01），分支 `feature/F11-release-query-ms-floor`，修复后重跑 probe 再进入正式轮。
+- 2026-10-17 probe（`u2-probe-1`）发现 Prometheus 把求值时间舍入到毫秒，窗尾微秒 ≥500 时样本时间戳晚于 evaluated_at、整样本 `QUERY_FAILED`→unknown；用户裁决方案 A：查询 `time` 参数向下截断到毫秒（PR-2 合同 r8 修订 B01），分支 `feature/F11-release-query-ms-floor`，修复后重跑 probe 再进入正式轮（#261）。
+- 2026-10-17 正式轮 `u2-f-immediate-1`／`u2-f-delayed5-1`／`u2-f-delayed15-1` 起病时 after 切片 coverage 被新出现的 ERROR 序列拉低、判 `INSUFFICIENT_SAMPLES`→unknown；用户裁决按 PR-2:556–559 意图修复（r8 第二条：实例内 max、跨实例 min），分支 `feature/F11-release-coverage-per-instance`；三轮保留为产品缺陷轮、不作校准证据，修复后重跑 immediate／delayed-5m／delayed-15m／boundary，healthy／unrelated 经核实 after 实例无 ERROR 序列、无起病 unknown 保留。
 
 ## 下一步与交接（2026-10-14）
 
