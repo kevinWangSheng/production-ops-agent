@@ -100,8 +100,12 @@ class Harness:
     events: object
 
     def seed(self, *, evidence=True, readings=True):
-        """只造上游事故/观察证据；不写复盘、知识或生成调度表。"""
-        incident = seed_upstream(self.dsn, ended_at=T0)
+        """只造上游事故/观察证据；不写复盘、知识或生成调度表。
+
+        人工追问发生在 Run 未结束时（合法、不续开），随后 Run 经公开 cancel
+        进入终态：#255 裁决下事故有未终态 Run 时不生成复盘，run_count 仍为 1。
+        """
+        incident = seed_upstream(self.dsn, ended_at=T0, run_state="queued")
         response = self.post(
             f"/incidents/{incident}/control",
             {
@@ -114,6 +118,7 @@ class Harness:
             },
         )
         assert response.status == 200, response.text
+        self.finish_run(incident)
         with psycopg.connect(self.dsn) as conn:
             session = conn.execute(
                 "SELECT session_id FROM opspilot_observation_sessions WHERE incident_id=%s",
@@ -125,6 +130,31 @@ class Harness:
             ).fetchone()[0]
         ev = f"ev-{incident}" if evidence else None
         return incident, ev, session, ending
+
+    def control(self, incident, action, **extra):
+        return self.post(
+            f"/incidents/{incident}/control",
+            {
+                "action": action,
+                "expected_generation": self.page(f"/incidents/{incident}").text(
+                    "control-generation"
+                ),
+                "idempotency_key": uuid4().hex,
+                **extra,
+            },
+        )
+
+    def finish_run(self, incident):
+        """#255：未终态 Run 挡住复盘生成；经公开 cancel 让当前 Run 进入终态。"""
+        response = self.control(incident, "cancel")
+        assert response.status == 200, response.text
+
+    def reopen_follow_up(self, incident, text):
+        """Run 已终态、事故 resolved 时，追问须先重新打开（F12 r2，否则
+        REOPEN_REQUIRED）；追问随即续开新 Run。返回追问的响应。"""
+        response = self.control(incident, "reopen")
+        assert response.status == 200, response.text
+        return self.control(incident, "follow_up", text=text)
 
     def post(self, path, fields, *, authenticated=True):
         return post_form(
@@ -274,12 +304,21 @@ def normalize(value):
 
 
 def seed_upstream(
-    dsn: str, *, ended_at: datetime = T0, authorized: bool = False
+    dsn: str,
+    *,
+    ended_at: datetime = T0,
+    authorized: bool = False,
+    run_state: str = "cancelled",
 ) -> UUID:
-    """插入无调查结论、Run 仍排队的事故及已结束观察，允许合法人工追问。
+    """插入无调查结论的事故及已结束观察。
 
+    ``run_state`` 默认 ``cancelled``（终态，事故镜像同为 cancelled）：#255
+    裁决下只有 Run 全部终态的事故才是复盘候选。``queued`` 留一个未结束的
+    Run，供合法人工追问（不续开），之后由调用方让它进入终态。
     只构造上游记录；后续控制、复盘生成和审核全部通过产品公开入口。
     """
+    assert run_state in {"queued", "cancelled"}
+    incident_state = "investigating" if run_state == "queued" else run_state
     incident_id, target_id, run_id = uuid4(), uuid4(), uuid4()
     session_id = uuid4()
     with psycopg.connect(dsn) as conn:
@@ -292,14 +331,19 @@ def seed_upstream(
             (target_id,),
         )
         conn.execute(
-            "INSERT INTO opspilot_incidents(incident_id,intake_key,state,lifecycle,target_id,observation_generation) VALUES (%s,%s,'investigating','resolved',%s,1)",
-            (incident_id, f"key-{incident_id}", target_id),
+            "INSERT INTO opspilot_incidents(incident_id,intake_key,state,lifecycle,target_id,observation_generation) VALUES (%s,%s,%s,'resolved',%s,1)",
+            (incident_id, f"key-{incident_id}", incident_state, target_id),
         )
         conn.execute(
             "INSERT INTO opspilot_runs(run_id, incident_id, state, control_generation, "
             "budget_limit, deadline, versions) "
-            "VALUES (%s, %s, 'queued', 0, 1, %s, '{}')",
-            (run_id, incident_id, datetime.now(timezone.utc) + timedelta(hours=1)),
+            "VALUES (%s, %s, %s, 0, 1, %s, '{}')",
+            (
+                run_id,
+                incident_id,
+                run_state,
+                datetime.now(timezone.utc) + timedelta(hours=1),
+            ),
         )
         conn.execute(
             "UPDATE opspilot_incidents SET current_run_id=%s WHERE incident_id=%s",

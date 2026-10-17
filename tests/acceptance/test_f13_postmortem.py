@@ -547,17 +547,7 @@ def test_untrusted_versions_refuse_approval_without_mutation(h, monkeypatch, sta
         )
         assert response.status == 200, response.text
     elif state == "stale":
-        response = h.post(
-            f"/incidents/{incident}/control",
-            {
-                "action": "follow_up",
-                "expected_generation": h.page(f"/incidents/{incident}").text(
-                    "control-generation"
-                ),
-                "idempotency_key": uuid4().hex,
-                "text": "新增人工线索改变水位",
-            },
-        )
+        response = h.reopen_follow_up(incident, "新增人工线索改变水位")
         assert response.status == 200, response.text
     before = raw_records(h, incident)
     refusal = h.review(incident)
@@ -787,18 +777,9 @@ def test_http_supersede_and_revoke_preserve_immutable_history(h, monkeypatch):
     before = raw_records(h, incident)
     [entry] = before.published
     entry_id = entry["entry_id"]
-    response = h.post(
-        f"/incidents/{incident}/control",
-        {
-            "action": "follow_up",
-            "expected_generation": h.page(f"/incidents/{incident}").text(
-                "control-generation"
-            ),
-            "idempotency_key": uuid4().hex,
-            "text": "补充人工确认：请复核 checkout 错误窗口",
-        },
-    )
+    response = h.reopen_follow_up(incident, "补充人工确认：请复核 checkout 错误窗口")
     assert response.status == 200, response.text
+    h.finish_run(incident)
     active_revision = before.active[entry_id]["revision"]
     model.payload = output(ev, supersedes_revision=active_revision)
     view = h.generate(incident, model)["postmortem"]
