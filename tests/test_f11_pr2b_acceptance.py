@@ -1,8 +1,9 @@
 """Independent acceptance and contract tests for F11 PR-2b (no database).
 
 Written from ``docs/tasks/2026-10-13-f11-pr2-contract.md`` (「拆分」, r5
-B01–B04 and 「5. PR-2b 遥测接口」) plus the pre-review fixed semantics handed
-to the test author, without reading the PR-2b implementation:
+B01–B04 with B01 as revised by r8 -- the ``time`` parameter is floored to the
+millisecond -- and 「5. PR-2b 遥测接口」) plus the pre-review fixed semantics
+handed to the test author, without reading the PR-2b implementation:
 
 * ``PrometheusReadOnlySource.instant_vector``: request shape, B01 ``time``
   parameter, parsing and error classification;
@@ -30,7 +31,7 @@ import urllib.parse
 from collections import Counter
 from collections.abc import Callable, Sequence
 from datetime import datetime, timedelta, timezone
-from decimal import Decimal
+from decimal import ROUND_FLOOR, Decimal
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Any
 from uuid import UUID, uuid4
@@ -233,9 +234,34 @@ def test_instant_vector_returns_every_series_with_labels_time_and_value() -> Non
     assert request.get_header("Authorization") == "Bearer obs-token"
 
 
-@pytest.mark.parametrize("micro", [123456, 999999, 500, 0])
+#: r8 B01 修订: microsecond parts around every millisecond rounding edge.
+B01_MICROS = [0, 499, 500, 123456, 999999, 999500, 743743]
+
+
+def _sent_time(opener: FakeOpener) -> str:
+    request, _ = opener.requests[0]
+    (sent,) = urllib.parse.parse_qs(urllib.parse.urlsplit(request.full_url).query)[
+        "time"
+    ]
+    return sent
+
+
+def _assert_floored_to_milliseconds(sent: str, at: datetime) -> None:
+    """r8 B01: the ``time`` parameter is ``at`` truncated (floored) to the
+    millisecond -- never rounded, never after ``at``, less than 1 ms before it,
+    written with exactly three decimals."""
+    sent_value, exact = Decimal(sent), _exact_epoch(at)
+    assert sent_value <= exact, (sent, exact)  # never after T
+    assert exact - sent_value < Decimal("0.001"), (sent, exact)  # within 1 ms
+    whole, _, fraction = sent.partition(".")
+    assert whole.isdigit() and len(fraction) == 3 and fraction.isdigit(), sent
+    # equivalently: the exact millisecond floor of T
+    assert sent_value == exact.quantize(Decimal("0.001"), rounding=ROUND_FLOOR)
+
+
+@pytest.mark.parametrize("micro", B01_MICROS)
 @pr2b
-def test_b01_the_time_parameter_keeps_microseconds_and_never_rounds_up(
+def test_b01_instant_vector_time_parameter_is_floored_to_the_millisecond(
     micro: int,
 ) -> None:
     at = T.replace(microsecond=micro)
@@ -243,16 +269,19 @@ def test_b01_the_time_parameter_keeps_microseconds_and_never_rounds_up(
 
     src.instant_vector("up", at=at, timeout_seconds=5)
 
-    request, _ = opener.requests[0]
-    (sent,) = urllib.parse.parse_qs(urllib.parse.urlsplit(request.full_url).query)[
-        "time"
-    ]
-    sent_value, exact = Decimal(sent), _exact_epoch(at)
-    assert sent_value <= exact, (sent, exact)  # never after T
-    assert exact - sent_value < Decimal("0.000001"), (
-        sent,
-        exact,
-    )  # microsecond precision
+    _assert_floored_to_milliseconds(_sent_time(opener), at)
+
+
+@pytest.mark.parametrize("micro", B01_MICROS)
+def test_b01_old_instant_time_parameter_is_floored_to_the_millisecond(
+    micro: int,
+) -> None:
+    at = T.replace(microsecond=micro)
+    src, opener = _source(body=_body([]))
+
+    src.instant("up", at=at, timeout_seconds=5)
+
+    _assert_floored_to_milliseconds(_sent_time(opener), at)
 
 
 @pr2b
