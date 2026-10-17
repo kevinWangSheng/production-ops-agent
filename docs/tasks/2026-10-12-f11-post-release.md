@@ -45,6 +45,7 @@ C3 §14 把 F11 排在 M2；本切片是提前开放。F11 `passes` 只在四步
 - U6（A1/A2，PR-1/PR-3 预审）：webhook 载荷到不可变已登记目标的确定性解析。推荐方向同 M1-04（`docs/tasks/2026-10-10-m1-04-alert-intake.md:49`）：在 `OPSPILOT_TARGET_IDENTITIES` 中恰好命中一个才建 `ReleaseObservation`，缺失、多义或不符一律 fail-closed，不发查询、不建事故。
 - U7（B2，PR-2 预审）：发布观察的采样锁顺序。B2 写的「沿用 incident-first」只适用于恢复会话；发布会话没有事故行，推荐方向是 release observation → session，恢复会话保持现有顺序。
 - U8（A6，PR-4 预审）：发布异常的目标已有开放事故时，关联该事故（以事件追加发布证据、不开第二个调查、不覆盖其人工控制，C3 `technical-proposal-2026-09-07.md:374`）还是新建发布事故并只建关系。PRODUCT-CONSTRAINTS「Product workflow」允许关联新的或已有事故；A6 只排除按时间相近自动合并。用户 2026-10-12 决定留待 PR-4 预审裁决。
+  - 已裁决（用户 2026-10-17，随 F2 U2）：目标已有开放事故时追加发布证据事件并写关联，不开第二个调查，不覆盖人工控制。见 [F2 合同 r1](2026-10-17-f2-contract.md) U2。
 
 r1 只定方向。其余实现者需要猜的语义点，按 AGENTS.md「合同预审」在各步开工前的预审中列表裁决，不在本授权 PR 内穷举。
 
