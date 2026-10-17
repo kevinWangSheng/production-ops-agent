@@ -68,14 +68,15 @@ import base64
 import json
 import re
 import socket
+import threading
 import urllib.error
 import urllib.parse
 import urllib.request
 from collections.abc import Mapping, Sequence
+from concurrent.futures import Future
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from hashlib import sha256
-from http.client import HTTPResponse
 from typing import Any
 from urllib.parse import urlsplit
 from uuid import UUID
@@ -102,6 +103,7 @@ from opspilot.tools.executor import (
     TransportTimeout,
     TransportUnavailable,
 )
+from opspilot.tools.http_deadline import DeadlineHandlers, RequestSockets
 from opspilot.tools.ledger import DurableToolLedger
 from opspilot.tools.outcomes import PROJECTION_REVISION, Window
 from opspilot.tools.registry import (
@@ -986,6 +988,8 @@ class OtelDemoTransport:
             urllib.request.ProxyHandler({}), _NoRedirect()
         )
 
+        self._deadline_handlers = DeadlineHandlers(self._opener)
+
     def fetch(self, request: TransportRequest) -> TransportResponse:
         if request.credential_ref not in self._credentials:
             raise TransportError("CREDENTIAL_REF_UNKNOWN")
@@ -1011,19 +1015,42 @@ class OtelDemoTransport:
         elif token:
             headers["Authorization"] = f"Bearer {token}"
         http_request = urllib.request.Request(url, headers=headers, method="GET")
+        sockets = RequestSockets(request.timeout_seconds)
+
+        def read() -> _Fetched:
+            self._deadline_handlers.local.sockets = sockets
+            try:
+                try:
+                    with self._opener.open(
+                        http_request, timeout=request.timeout_seconds
+                    ) as response:
+                        body = response.read(max_bytes + 1)
+                        status = int(response.status)
+                except urllib.error.HTTPError as error:
+                    with error:
+                        body = error.read(ERROR_BODY_BYTES)
+                    code = int(error.code)
+                    if code >= 500:
+                        raise TransportUnavailable(str(code)) from None
+                    return _Fetched(code, body)
+                if len(body) > max_bytes:
+                    raise TransportResultTooLarge(str(max_bytes))
+                return _Fetched(status, body)
+            finally:
+                del self._deadline_handlers.local.sockets
+
+        future: Future[_Fetched] = Future()
+
+        def run() -> None:
+            try:
+                future.set_result(read())
+            except BaseException as error:
+                future.set_exception(error)
+
+        thread = threading.Thread(target=run, daemon=True, name="otel-query")
         try:
-            response: HTTPResponse
-            with self._opener.open(
-                http_request, timeout=request.timeout_seconds
-            ) as response:
-                body = response.read(max_bytes + 1)
-                status = int(response.status)
-        except urllib.error.HTTPError as error:
-            body = error.read(ERROR_BODY_BYTES)
-            code = int(error.code)
-            if code >= 500:
-                raise TransportUnavailable(str(code)) from None
-            return _Fetched(code, body)
+            thread.start()
+            return future.result(timeout=sockets.remaining())
         except (TimeoutError, socket.timeout):
             raise TransportTimeout("TIMEOUT") from None
         except urllib.error.URLError as error:
@@ -1032,9 +1059,8 @@ class OtelDemoTransport:
             raise TransportUnavailable("UNREACHABLE") from None
         except OSError:
             raise TransportUnavailable("UNREACHABLE") from None
-        if len(body) > max_bytes:
-            raise TransportResultTooLarge(str(max_bytes))
-        return _Fetched(status, body)
+        finally:
+            sockets.abort()
 
     # -- metrics ------------------------------------------------------------
 
