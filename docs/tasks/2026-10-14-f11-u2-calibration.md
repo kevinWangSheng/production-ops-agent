@@ -1,7 +1,7 @@
 # F11 U2 发布观察校准证据
 
-- 状态：进行中（实验工具已合并 #233，真实实验未执行；2026-10-14 交接）
-- 更新日期：2026-10-14
+- 状态：进行中（2026-10-17 真实实验已开始：基线、probe、首批五类正式轮已采集，其中三轮为产品缺陷轮待修复后重跑；证据尚未冻结）
+- 更新日期：2026-10-17
 - 依据：[F11 任务记录](2026-10-12-f11-post-release.md)（U2／P1-02）；[PR-2 合同](2026-10-13-f11-pr2-contract.md) §1 校准 policy、固定语义 1／4、P2-04、「校准证据不足」、r1–r7；[预审与决定表](2026-10-14-f11-u2-calibration-contract.md)；C3 §12「实验环境」；ADR-0006
 - 工作区：工具 PR #233 已合并（`e1b8867`），分支已清理。实验工具可在主仓库 `main` 运行（占用与原始 ledger 都在主仓库 `tmp/`）；提交证据与 policy 时另开 `chore/`／`feature/` 分支 worktree
 - 实验环境：kind-opspilot-m1／otel-demo；与 eval 会话已协调（2026-10-14：近期不占用，开跑前互相确认）
@@ -28,11 +28,12 @@
 - 2026-10-14 实验工具 `scripts/f11_u2_harness.py`（[#233](https://github.com/kevinWangSheng/production-ops-agent/pull/233)，`e1b8867`；Codex gpt-6.1-sol 实现）：占用记录、配置发布、时间线、定时注入与恢复、按产品路径登记 pending 发布（`register`）、旁路采集、离线折叠、`abort`、按批次日志核对的汇总。复用产品 `build_release_query_plan`、`evaluate_release_sample`、`advance_release_window`、`instant_vector`、`record_release`，窗口算法未重写，外围调度／采纳规则逐处标注 PR-2 合同行号。独立审查（Codex gpt-6-astra）3 项 P2 已修复复验；机器人 3 项 P2 已修复（占用锁改为经 git common dir 定位的主仓库 `tmp/lab-ledgers/` 跨 worktree 共享；事件流按时间合并；汇总按批次开始日志核对轮次，缺失即拒绝）。离线测试 66 passed，`register` PG 测试 1 passed（lead 在沙箱外执行），`make check` 5463 passed。
 - lead 可逆默认：登记传 `canonical_content(profile)`，与产品 web 一致（`opspilot/web/service.py:684`），原文另存并记录哈希；无关故障 flag 为 `adFailure`（集群 `flagd-config` 中核实；checkout 下游不含 ad，仍须实测确认不影响 checkout 信号）。
 - 收尾四数（工具阶段）：新增合同问题 0；因合同变更重写测试 0；环境重跑 0；新增用户裁决 0。
-- 2026-10-17 probe（`u2-probe-1`）发现 Prometheus 把求值时间舍入到毫秒，窗尾微秒 ≥500 时样本时间戳晚于 evaluated_at、整样本 `QUERY_FAILED`→unknown；用户裁决方案 A：查询 `time` 参数向下截断到毫秒（PR-2 合同 r8 修订 B01），分支 `feature/F11-release-query-ms-floor`，修复后重跑 probe 再进入正式轮。
+- 2026-10-17 probe（`u2-probe-1`）发现 Prometheus 把求值时间舍入到毫秒，窗尾微秒 ≥500 时样本时间戳晚于 evaluated_at、整样本 `QUERY_FAILED`→unknown；用户裁决方案 A：查询 `time` 参数向下截断到毫秒（PR-2 合同 r8 修订 B01），分支 `feature/F11-release-query-ms-floor`，修复后重跑 probe 再进入正式轮（#261）。
+- 2026-10-17 正式轮 `u2-f-immediate-1`／`u2-f-delayed5-1`／`u2-f-delayed15-1` 起病时 after 切片 coverage 被新出现的 ERROR 序列拉低、判 `INSUFFICIENT_SAMPLES`→unknown；用户裁决按 PR-2:556–559 意图修复（r8 第二条：实例内 max、跨实例 min），分支 `feature/F11-release-coverage-per-instance`；三轮保留为产品缺陷轮、不作校准证据，修复后重跑 immediate／delayed-5m／delayed-15m／boundary，healthy／unrelated 经核实 after 实例无 ERROR 序列、无起病 unknown 保留。
 
 ## 下一步与交接（2026-10-14）
 
-接手会话按此执行；尚未对 kind 做任何写操作，未生成任何真实证据。
+以下为 2026-10-14 交接时的开跑说明；2026-10-17 起实际执行情况见上文「进展与证据」各行（原始 ledger 在主仓库 `tmp/lab-ledgers/`，批次 `u2-20261017`）。
 
 - **实验库**：本机专用 PG `127.0.0.1:55561`，库 `m0_budget`，owner `m0_lab`（trust），已迁移至 `0016`，库为空。数据在主仓库 `tmp/f11-u2/pg`（git 忽略；不随 worktree 删除，勿删）。交接时仍在运行；若已停：`/opt/homebrew/opt/postgresql@17/bin/pg_ctl -D tmp/f11-u2/pg -l tmp/f11-u2/pg.log -o "-p 55561 -k $PWD/tmp/f11-u2/sock -c listen_addresses=127.0.0.1" -w start`。不要复制 `tmp/184-step3/pg` 旧证据库（含角色凭据，权限分类器会拒绝）。
 - **目标身份**：身份文件 `tmp/184-step3/targets.json`，注册表键 `m0-otel-20260909`（`cluster_uid` 与集群 `kube-system` UID 一致，lead 已核）。profile 为仓库 `opspilot/observer/profiles/otel-demo-checkout.json`（revision `otel-demo-checkout@b72bbe2e30be`）。

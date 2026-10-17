@@ -241,6 +241,7 @@ def build_release_query_plan(
             re.escape(str(uid)) for uid in sorted(set(instance_uids), key=str)
         )
         matcher = "service_instance_id=~" + json.dumps(union)
+        instance_labels = "service_instance_id, k8s_pod_name, k8s_pod_uid, k8s_namespace_name, service_name"
         for signal in profile.signals:
             if signal.name not in AFTER_SIGNALS:
                 continue
@@ -266,10 +267,11 @@ def build_release_query_plan(
             if selector_match is None:
                 raise ValueError("HEALTH_PROFILE_INVALID")
             selector = selector_match.group(1)
-            sliced["coverage"] = f"min(count_over_time({selector}[{w}s]))"
+            sliced["coverage"] = (
+                f"min(max by ({instance_labels}) (count_over_time({selector}[{w}s])))"
+            )
             sliced["instances"] = (
-                "count by (service_instance_id, k8s_pod_name, k8s_pod_uid, k8s_namespace_name, service_name) "
-                f"(count_over_time({selector}[{w}s]))"
+                f"count by ({instance_labels}) (count_over_time({selector}[{w}s]))"
             )
             for kind, expr in sliced.items():
                 plan[f"after:{signal.name}:{kind}"] = expr

@@ -1398,10 +1398,11 @@ def test_impl_after_coverage_normalizes_or_refuses(harness, spelling):
         plan = build_release_query_plan(
             context, window_end=at, instance_uids=(uuid4(),)
         )
-        assert plan["after:request_rate_per_second:coverage"].startswith(
-            "min(count_over_time("
-        )
-        assert "max" not in plan["after:request_rate_per_second:coverage"]
+        coverage = plan["after:request_rate_per_second:coverage"]
+        # r8: per-instance max inside, min across instances; the profile's own
+        # spelling of max(...) must not leak into the sliced expression.
+        assert coverage.startswith("min(max by (service_instance_id,")
+        assert coverage.count("max") == 1 and "count_over_time(" in coverage
 
 
 @pytest.mark.parametrize("purpose", ["incident", "release"])
