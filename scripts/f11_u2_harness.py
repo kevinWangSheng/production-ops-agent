@@ -744,6 +744,107 @@ def run_summary(
     )
 
 
+def raw_response_manifest_rows(summary: dict[str, Any]) -> list[dict]:
+    """Project raw response identities in capture order for evidence verification."""
+    return [
+        {
+            key: row[key]
+            for key in (
+                "sample_id",
+                "query_key",
+                "raw_sha256",
+                "raw_bytes",
+                "status",
+                "http_status",
+            )
+        }
+        for row in summary.get("raw_response_hashes", [])
+    ]
+
+
+def _compact_run_summary(summary: dict[str, Any]) -> dict[str, Any]:
+    """Project frozen round metadata without copying sample or capture payloads."""
+    compact = {
+        key: summary[key]
+        for key in (
+            "round",
+            "batch",
+            "round_start_id",
+            "round_status",
+            "scenario",
+            "run_id",
+        )
+    }
+    if summary["round_status"] == "aborted":
+        compact["reason"] = summary["reason"]
+        if "artifact_hashes" in summary:
+            compact["artifact_hashes"] = summary["artifact_hashes"]
+        return compact
+    compact.update(
+        {
+            key: summary.get(key)
+            for key in (
+                "released_at",
+                "authorized_at",
+                "code_revision",
+                "profile_revision",
+                "profile_sha256",
+                "target",
+                "truth",
+                "capture_end",
+            )
+        }
+    )
+    compact["fold_code_revision"] = (summary.get("fold_code") or {}).get("revision")
+    compact["sample_count"] = len(summary.get("capture", []))
+    timeline = summary.get("timeline", [])
+    compact["timeline"] = [
+        event for event in timeline if event.get("kind") != "flagd_probe"
+    ]
+    compact["flagd_probe_count"] = sum(
+        event.get("kind") == "flagd_probe" for event in timeline
+    )
+    rows = raw_response_manifest_rows(summary)
+    compact["raw_response_manifest"] = {
+        "count": len(rows),
+        "sha256": sha256(canonical_json(rows).encode()),
+    }
+    candidates = {}
+    for minimum, candidate in summary["candidates"].items():
+        unknowns = [
+            row
+            for row in candidate.get("samples", [])
+            if utc(row["window"]["start"]) >= utc(summary["authorized_at"])
+            and row["evaluation"]["verdict"] == "unknown"
+        ]
+        candidates[minimum] = {
+            key: candidate.get(key)
+            for key in (
+                "status",
+                "reason",
+                "terminal_at",
+                "used_sample_count",
+                "remaining_samples",
+                "remaining_seconds",
+                "healthy_reserve_ok",
+                "post_warmup_unknown_ratio",
+                "unknown_ratio",
+            )
+        }
+        candidates[minimum].update(
+            post_warmup_unknown_count=len(unknowns),
+            post_warmup_unknown_reasons=dict(
+                Counter(
+                    code
+                    for row in unknowns
+                    for code in row["evaluation"]["reason_codes"]
+                )
+            ),
+        )
+    compact["candidates"] = candidates
+    return compact
+
+
 def aggregate_summaries(
     paths: list[Path], output: Path = SUMMARY, *, batch: str
 ) -> dict[str, Any]:
@@ -752,10 +853,17 @@ def aggregate_summaries(
         raise ValueError("BATCH_REQUIRED")
     if not paths:
         raise ValueError("RUN_SUMMARIES_REQUIRED")
-    runs = [
-        dict(summary=read_json(p), sha256=sha256(p.read_bytes()), path=str(p))
-        for p in paths
-    ]
+    runs = []
+    for path in paths:
+        raw_summary = path.read_bytes()
+        runs.append(
+            dict(
+                summary=json.loads(raw_summary),
+                sha256=sha256(raw_summary),
+                bytes=len(raw_summary),
+                path=str(path),
+            )
+        )
     if len({r["sha256"] for r in runs}) != len(runs):
         raise ValueError("DUPLICATE_RUN_SUMMARY")
     if len({r["summary"]["run_id"] for r in runs}) != len(runs):
@@ -793,10 +901,19 @@ def aggregate_summaries(
                 raise ValueError("ROUND_SUMMARY_INVALID")
         value = dict(
             format_version=1,
+            run_format="compact-v1",
             evidence_kind="U2_CALIBRATION_UNAPPROVED",
             approval=None,
             batch=batch,
-            runs=runs,
+            runs=[
+                dict(
+                    sha256=run["sha256"],
+                    bytes=run["bytes"],
+                    path=run["path"],
+                    compact=_compact_run_summary(run["summary"]),
+                )
+                for run in runs
+            ],
             batch_log=dict(
                 path="run-starts.jsonl",
                 sha256=sha256(raw),
