@@ -134,7 +134,7 @@ def investigation_evidence(
         records = {row["evidence_id"]: _from_row(row) for row in rows}
         observations = []
         for record in records.values():
-            if record.status not in {"ok", "no_data"}:
+            if not record.committed or record.status not in {"ok", "no_data"}:
                 continue
             view = record.view
             observations.append(
