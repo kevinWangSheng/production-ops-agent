@@ -20,7 +20,7 @@ scrape 周期 59.3–60s（span metrics 与 KSM 相同）；最新样本年龄 s
 
 ## 产品缺陷与修复（实验中发现，均经用户裁决）
 
-1. **查询时间舍入**（`u2-probe-1`）：Prometheus 把求值时间舍入到毫秒，窗尾微秒 ≥500 时返回时间戳晚于 `evaluated_at`，整样本 `QUERY_FAILED`→unknown（预热后 9/27）。#261：`time` 参数向下截断到毫秒（r8 修订 B01）。修复后短 probe `u2-probe-2` 11 个连续 healthy、0 个 QUERY_FAILED，按设计提前停止并 `abort` 记入。
+1. **查询时间舍入**（`u2-probe-1`）：Prometheus 把求值时间舍入到毫秒，窗尾微秒 ≥500 时返回时间戳晚于 `evaluated_at`，整样本 `QUERY_FAILED`→unknown（授权后窗口的全部捕获样本 9/26；M=1200／1500 候选序列 deadline 前 8/25）。#261：`time` 参数向下截断到毫秒（r8 修订 B01）。修复后短 probe `u2-probe-2` 11 个连续 healthy、0 个 QUERY_FAILED，按设计提前停止并 `abort` 记入。
 2. **after 切片覆盖口径**（`u2-f-immediate-1`／`u2-f-delayed5-1`／`u2-f-delayed15-1`）：起病时同实例新出现的 `STATUS_CODE_ERROR` 序列窗内仅 1–2 点，`min(count_over_time(...))` 被拉低判 `INSUFFICIENT_SAMPLES`→unknown，推迟检出一个周期（Prometheus 原始点核实：UNSET 序列每分钟连续，ERROR 序列起病后才出现）。#262：按 PR-2:556–559 意图改为实例内 max、跨实例 min（r8 第二条）。三轮保留为**产品缺陷轮、不作校准证据**，修复后重跑。
 
 ## 逐轮结果
@@ -29,7 +29,7 @@ scrape 周期 59.3–60s（span metrics 与 KSM 相同）；最新样本年龄 s
 
 | 轮次 | 场景 | R | 故障生效／恢复 | 首个错误 | M=1200 | M=1500 | M=1500 剩余 | 预热后 unknown | 轮前 swap／p95 | 分类 |
 |---|---|---|---|---|---|---|---|---|---|---|
-| u2-probe-1 | probe（adFailure） | 04:41:48 | 04:48:15／04:58 | — | unknown（deadline） | unknown | — | 9/27 | 11.0G／185ms | 产品缺陷 1（不作证据） |
+| u2-probe-1 | probe（adFailure） | 04:41:48 | 04:48:15／04:58:17 | — | unknown（deadline） | unknown | — | 8/25（全捕获 9/26） | 11.0G／185ms | 产品缺陷 1（不作证据） |
 | u2-probe-2 | probe | 07:41:13 | — | — | aborted | aborted | — | 0 | 10.4G／330ms | 修复确认，提前停止 |
 | u2-f-healthy-1 | healthy | 08:07:23 | — | — | healthy 08:31:08 | healthy 08:36:06 | 28／1878s | 0 | 10.2G／377ms | **有效** |
 | u2-f-immediate-1 | immediate | 09:08:21 | 09:09:40／09:25:20 | 09:11:05 | anomalous 09:17:55 | 同左 | 36／3026s | 1/2 | 9.9G／390ms | 产品缺陷 2（不作证据） |
@@ -59,6 +59,10 @@ scrape 周期 59.3–60s（span metrics 与 KSM 相同）；最新样本年龄 s
 - 余量：delayed-15m 重跑中，M=1200 的最早健康终结约为 T₀+M−W≈20:34:20，实际检出 20:33:09，余量约 70s；M=1500 余量约 6 分钟。boundary（起病 R+1234s）在 R+1422s 检出，两个 M 都在终结前。
 - 全捕获（含终态后）unknown 18/165，均为预热或真实低流量。
 - 小样本（每类 1 次，r2）不构成统计可靠性保证。
+
+## 真值修订与重折叠（独立复核后）
+
+独立数据一致性复核（Codex gpt-6-astra）发现 3 项 P2，均为 lead 录入的真值元数据问题，不涉及判定：（1）`immediate-1`／`delayed5-1` 的 `failure_classification` 为空（折叠时缺陷 2 尚未确认）；（2）lead 的真值生成脚本把 `restore_config_verified` 事件的 `at` 读成不存在的请求界限，九个故障轮恢复配置时间记为空；（3）probe-1 的统计口径写成 9/27。处置：真值改为直接引用 `fault.jsonl` 的 `restore_config_verified.at`，补齐两轮分类并改正 probe-1 口径；九轮在**各自原折叠代码修订**（`a6adfb3`／`51264b5`，detached worktree）上用修订后的真值重新 `fold`，候选与参数不变（probe-1 另补 900／1800／2100，原有 600／1200／1500 结果逐字段相同；复核者确认这是超出真值修订的唯一内容变化，不影响结论）。复验结论：三项已修复，绑定与重放全部成立。原 summary 改名 `summary.superseded-truth-v1.json` 留在 ledger；新旧逐轮 summary 仅 `truth`、`fold_code` 快照与 `artifact_hashes` 不同，`candidates`／`capture`／`raw_response_hashes` 逐字段一致。随后重新 `aggregate`。
 
 ## healthy-1 与 unrelated-1 为何不受缺陷 2 影响（保留依据）
 
@@ -92,7 +96,7 @@ probe-1（adFailure 生效 04:48:15–04:58:15）期间 5 个样本全 healthy�
 
 ## 文件与复现
 
-- `summary.json`：`aggregate --batch u2-20261017` 冻结的紧凑批次汇总（`run_format=compact-v1`；12 轮全部列入，含缺陷轮与 aborted 轮；每轮以完整 summary 文件 sha256 绑定，并绑定 `run-starts.jsonl` 前缀哈希）。policy 的 `evidence_sha256` 指向本文件确切字节。
+- `summary.json`（sha256 `908838acb33923046a446b813cbd12add660df8d4ca56f015478253db4693364`）：`aggregate --batch u2-20261017` 冻结的紧凑批次汇总（`run_format=compact-v1`；12 轮全部列入，含缺陷轮与 aborted 轮；每轮以完整 summary 文件 sha256 绑定，并绑定 `run-starts.jsonl` 前缀哈希）。policy 的 `evidence_sha256` 指向本文件确切字节。
 - `rounds.json`：逐轮摘要（场景、真值、各候选 M 终态、逐样本 verdict／原因、分类、错误序列核查）。
 - `raw-response-hashes.json`：全部原始 Prometheus 响应的 sha256 清单（按轮、样本、查询键）。
 - 逐轮完整 summary 与原始 ledger 不入库，在主仓库 `tmp/lab-ledgers/<轮>/`（`summary.json`、`samples/`、`raw/`、`fault.jsonl`、`timeline.jsonl`、`release.json`、`before/after.json`、`context.json`、`code-snapshots/`）。逐轮 summary 由离线折叠生成，命令（在含 `capture-start.json` 冻结代码的 checkout 上，`OPSPILOT_LAB_LEDGERS` 指向 ledger 根）：`python -m scripts.f11_u2_harness --holder lane-f11-u2 --batch u2-20261017 fold --run <轮> --minimum 600 900 1200 1500 1800 2100 --scenario <场景> --truth <真值 JSON>`；aborted 轮由 `abort --run <轮> --scenario <场景> --reason <原因>` 生成。真值 JSON 原样嵌在每轮 summary 的 `truth` 字段。fold 拒绝覆盖已有 summary；复核时在 ledger 副本（连同 `run-starts.jsonl`）上删去该轮 summary 后重跑，比对 `candidates`／`capture`／`raw_response_hashes` 等判定字段（`fold_code` 快照与时间戳每次不同，整文件哈希不要求一致）；入库 summary.json 绑定的是原始那份文件的 sha256。

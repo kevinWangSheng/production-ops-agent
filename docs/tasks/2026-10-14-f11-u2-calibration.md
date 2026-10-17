@@ -32,11 +32,12 @@
 - 2026-10-17 正式轮 `u2-f-immediate-1`／`u2-f-delayed5-1`／`u2-f-delayed15-1` 起病时 after 切片 coverage 被新出现的 ERROR 序列拉低、判 `INSUFFICIENT_SAMPLES`→unknown；用户裁决按 PR-2:556–559 意图修复（r8 第二条：实例内 max、跨实例 min），分支 `feature/F11-release-coverage-per-instance`；三轮保留为产品缺陷轮、不作校准证据，修复后重跑 immediate／delayed-5m／delayed-15m／boundary，healthy／unrelated 经核实 after 实例无 ERROR 序列、无起病 unknown 保留。
 
 - 2026-10-17 实验（证据 [run.md](../evidence/f11-u2-calibration/run.md)）：基线 scrape 60s、单查询中位 1.5s、单样本 61–91s。有效轮 healthy-1、unrelated-1、immediate-2、delayed5-2、delayed15-2、boundary-1；缺陷轮 probe-1、immediate-1、delayed5-1、delayed15-1 保留、不作证据；probe-2 与 Observer 接线轮以 `abort` 记入。M=1200 与 M=1500 均满足 U2-03 全部判据（预热后非预期 unknown 0/35、0/39；健康终结剩余 ≥28 次、≥1878s）；M≤900 在 delayed-15m／boundary 漏检，M=1800 在 unrelated 备用预算 94s 不足。adFailure 实测不影响 checkout，但为弱故障（1/25、3/126）。Observer 接线：web 角色授权 applied，`opspilot_observer_u2` 14 个样本后 healthy_confirmed。实验库为 Observer 迁移 0016→0017（仅 GRANT）。
+- 证据冻结：#264 把 `aggregate` 改为紧凑格式（逐轮完整 summary 以 sha256 绑定、留在 ledger，含非 flagd_probe 时间线与原始响应清单摘要），冻结文件 499KB。独立数据一致性复核（Codex gpt-6-astra）：字节绑定、13,008 条原始响应、272 个样本的离线重算全部一致；3 项 P2 均为 lead 录入的真值元数据问题（两轮缺陷分类为空、恢复配置时间为空、probe-1 口径），已修订真值并在原折叠代码上重新 fold、重新冻结。
 - 收尾四数（实验阶段）：新增合同问题 2（r8 两条）；因合同变更重写测试 3（B01 验收、两处实现测试断言）；环境重跑 0（缺陷重跑 3 轮另计）；新增用户裁决 3（方案 A、按意图修覆盖、窗口延长）。
 
 ## 待决与交接（2026-10-17）
 
-- **用户批准项**（policy 写入 `release-calibrations.json` 为用户门 PR，未做）：冻结 `summary.json` 的 sha256；目标五项身份（见 run.md）；profile `otel-demo-checkout@b72bbe2e30be`／`b72bbe2e30bea4775790519787da4ce107dbc1500ce87b87a2ee2af3f57cbfa4`；M（lead 推荐 1500：delayed-15m 余量约 6 分钟，1200 仅约 70s）及冻结参数（W300／F90／超时 20／I60／H600／deadline 3600／40 次）；覆盖限制（run.md「覆盖与限制」）。
+- **用户批准项**（policy 写入 `release-calibrations.json` 为用户门 PR，未做）：冻结 [`summary.json`](../evidence/f11-u2-calibration/summary.json)（compact-v1，#264）sha256 `908838acb33923046a446b813cbd12add660df8d4ca56f015478253db4693364`；目标五项身份（见 run.md）；profile `otel-demo-checkout@b72bbe2e30be`／`b72bbe2e30bea4775790519787da4ce107dbc1500ce87b87a2ee2af3f57cbfa4`；M（lead 推荐 1500：delayed-15m 余量约 6 分钟，1200 仅约 70s）及冻结参数（W300／F90／超时 20／I60／H600／deadline 3600／40 次）；覆盖限制（run.md「覆盖与限制」）。
 - **实验库**：PG `127.0.0.1:55561` 仍运行，数据在主仓库 `tmp/f11-u2/pg`（勿删）；登录角色 `opspilot_observer_u2`、`opspilot_web_u2`。原始 ledger 在主仓库 `tmp/lab-ledgers/u2-*`（不入库，勿删）。
 - **已知坑**：harness `collect` 后台进程忽略 SIGINT（非交互 shell），提前停止只能 SIGTERM，之后须人工核实 PID 已退出再移走 `.active-*.json`（probe-2 已如此处理并存档）；Codex 沙箱内起不了 PG；审查提示避免「篡改／绕过」类措辞。
 - **相关待排**：[#230](https://github.com/kevinWangSheng/production-ops-agent/issues/230)（重放逐字段完整性），与 U2 无依赖。

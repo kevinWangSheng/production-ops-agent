@@ -6,8 +6,8 @@
    "round": "u2-probe-1",
    "scenario": "probe",
    "round_status": "summarized",
-   "summary_sha256": "85d3cc65e9a33163fd912be75ae6bc40734e4bf603213dd3db3d2589afddef4f",
-   "summary_bytes": 3558926,
+   "summary_sha256": "82b3bd9561d5ad27fe725e2480fcecfe32b1cb3efd08b04d8d517e1b5f9c3a21",
+   "summary_bytes": 4304727,
    "round_start_id": "b911933e-7ffe-4bb2-a5e9-2a31e3775830",
    "classification": "product_defect_1_query_time_rounding (fixed #261); not calibration evidence",
    "released_at": "2026-10-17T04:41:48.098540+00:00",
@@ -24,12 +24,15 @@
     "workload": "checkout"
    },
    "truth": {
-    "failure_classification": "product_defect: 9 of 27 post-warmup samples unknown with QUERY_FAILED on every query because Prometheus rounds evaluation time to milliseconds (sample timestamp > evaluated_at); fixed by PR #261; this round is not calibration evidence",
+    "failure_classification": "product_defect: Prometheus rounds evaluation time to milliseconds so sample timestamps exceeded evaluated_at and whole samples became QUERY_FAILED/unknown; post-authorization captured samples 9/26 unknown (8/25 within the M=1200/1500 candidate sequences before deadline); fixed by #261; this round is not calibration evidence",
     "fault": {
      "flag": "adFailure",
      "flagd_effective_at": "2026-10-17T04:48:15Z",
      "planned": "R+300s",
      "restore": "after 600s confirmed",
+     "restore_config_verified_at": [
+      "2026-10-17T04:58:16.912469+00:00"
+     ],
      "target_service": "ad"
     },
     "independent_truth": {
@@ -194,7 +197,211 @@
      },
      "coverage_gaps": []
     },
+    "1800": {
+     "status": "unknown",
+     "reason": "deadline_expired",
+     "terminal_at": "2026-10-17T05:41:48.098540+00:00",
+     "used_sample_count": 27,
+     "remaining_samples": 13,
+     "remaining_seconds": 0.0,
+     "healthy_reserve_ok": null,
+     "unknown_ratio": 0.37037037037037035,
+     "post_warmup_unknown_ratio": 0.32,
+     "unknown_reasons": {
+      "INSUFFICIENT_SAMPLES:after:dependency_error_ratio": 1,
+      "INSUFFICIENT_SAMPLES:after:error_ratio": 1,
+      "INSUFFICIENT_SAMPLES:after:latency_p95_milliseconds": 1,
+      "INSUFFICIENT_SAMPLES:after:request_rate_per_second": 1,
+      "INSUFFICIENT_TRAFFIC": 9,
+      "QUERY_FAILED:context:dependency_deployments_available:coverage": 8,
+      "QUERY_FAILED:context:dependency_deployments_available:freshness": 8,
+      "QUERY_FAILED:context:dependency_deployments_available:query": 8,
+      "QUERY_FAILED:context:dependency_error_ratio:coverage": 8,
+      "QUERY_FAILED:context:dependency_error_ratio:freshness": 8,
+      "QUERY_FAILED:context:dependency_error_ratio:query": 8,
+      "QUERY_FAILED:context:deployment_available_replicas:coverage": 8,
+      "QUERY_FAILED:context:deployment_available_replicas:freshness": 8,
+      "QUERY_FAILED:context:deployment_available_replicas:query": 8,
+      "QUERY_FAILED:context:deployment_available_replicas_min_in_window:coverage": 8,
+      "QUERY_FAILED:context:deployment_available_replicas_min_in_window:freshness": 8,
+      "QUERY_FAILED:context:deployment_available_replicas_min_in_window:query": 8,
+      "QUERY_FAILED:context:deployment_ready_replicas:coverage": 8,
+      "QUERY_FAILED:context:deployment_ready_replicas:freshness": 8,
+      "QUERY_FAILED:context:deployment_ready_replicas:query": 8,
+      "QUERY_FAILED:context:error_ratio:coverage": 8,
+      "QUERY_FAILED:context:error_ratio:freshness": 8,
+      "QUERY_FAILED:context:error_ratio:query": 8,
+      "QUERY_FAILED:context:latency_p95_milliseconds:coverage": 8,
+      "QUERY_FAILED:context:latency_p95_milliseconds:freshness": 8,
+      "QUERY_FAILED:context:latency_p95_milliseconds:query": 8,
+      "QUERY_FAILED:context:request_rate_per_second:coverage": 8,
+      "QUERY_FAILED:context:request_rate_per_second:freshness": 8,
+      "QUERY_FAILED:context:request_rate_per_second:query": 8,
+      "QUERY_FAILED:mapping:container_info:coverage": 8,
+      "QUERY_FAILED:mapping:container_info:freshness": 8,
+      "QUERY_FAILED:mapping:container_info:query": 8,
+      "QUERY_FAILED:mapping:pod_owner:coverage": 8,
+      "QUERY_FAILED:mapping:pod_owner:freshness": 8,
+      "QUERY_FAILED:mapping:pod_owner:query": 8,
+      "QUERY_FAILED:mapping:replicaset_owner:coverage": 8,
+      "QUERY_FAILED:mapping:replicaset_owner:freshness": 8,
+      "QUERY_FAILED:mapping:replicaset_owner:query": 8,
+      "REQUIRED_TELEMETRY_MISSING:after:dependency_error_ratio": 9,
+      "REQUIRED_TELEMETRY_MISSING:after:error_ratio": 9,
+      "REQUIRED_TELEMETRY_MISSING:after:latency_p95_milliseconds": 9,
+      "REQUIRED_TELEMETRY_MISSING:after:request_rate_per_second": 9,
+      "REQUIRED_TELEMETRY_MISSING:context:dependency_deployments_available": 8,
+      "REQUIRED_TELEMETRY_MISSING:context:dependency_error_ratio": 8,
+      "REQUIRED_TELEMETRY_MISSING:context:deployment_available_replicas": 8,
+      "REQUIRED_TELEMETRY_MISSING:context:deployment_available_replicas_min_in_window": 8,
+      "REQUIRED_TELEMETRY_MISSING:context:deployment_ready_replicas": 8,
+      "REQUIRED_TELEMETRY_MISSING:context:error_ratio": 8,
+      "REQUIRED_TELEMETRY_MISSING:context:latency_p95_milliseconds": 8,
+      "REQUIRED_TELEMETRY_MISSING:context:request_rate_per_second": 8,
+      "VERSION_MAPPING_AMBIGUOUS": 8,
+      "VERSION_MAPPING_INSUFFICIENT_SAMPLES": 1,
+      "VERSION_MAPPING_MISSING": 8,
+      "WINDOW_BEFORE_AUTHORIZATION": 2
+     },
+     "coverage_gaps": []
+    },
+    "2100": {
+     "status": "unknown",
+     "reason": "deadline_expired",
+     "terminal_at": "2026-10-17T05:41:48.098540+00:00",
+     "used_sample_count": 27,
+     "remaining_samples": 13,
+     "remaining_seconds": 0.0,
+     "healthy_reserve_ok": null,
+     "unknown_ratio": 0.37037037037037035,
+     "post_warmup_unknown_ratio": 0.32,
+     "unknown_reasons": {
+      "INSUFFICIENT_SAMPLES:after:dependency_error_ratio": 1,
+      "INSUFFICIENT_SAMPLES:after:error_ratio": 1,
+      "INSUFFICIENT_SAMPLES:after:latency_p95_milliseconds": 1,
+      "INSUFFICIENT_SAMPLES:after:request_rate_per_second": 1,
+      "INSUFFICIENT_TRAFFIC": 9,
+      "QUERY_FAILED:context:dependency_deployments_available:coverage": 8,
+      "QUERY_FAILED:context:dependency_deployments_available:freshness": 8,
+      "QUERY_FAILED:context:dependency_deployments_available:query": 8,
+      "QUERY_FAILED:context:dependency_error_ratio:coverage": 8,
+      "QUERY_FAILED:context:dependency_error_ratio:freshness": 8,
+      "QUERY_FAILED:context:dependency_error_ratio:query": 8,
+      "QUERY_FAILED:context:deployment_available_replicas:coverage": 8,
+      "QUERY_FAILED:context:deployment_available_replicas:freshness": 8,
+      "QUERY_FAILED:context:deployment_available_replicas:query": 8,
+      "QUERY_FAILED:context:deployment_available_replicas_min_in_window:coverage": 8,
+      "QUERY_FAILED:context:deployment_available_replicas_min_in_window:freshness": 8,
+      "QUERY_FAILED:context:deployment_available_replicas_min_in_window:query": 8,
+      "QUERY_FAILED:context:deployment_ready_replicas:coverage": 8,
+      "QUERY_FAILED:context:deployment_ready_replicas:freshness": 8,
+      "QUERY_FAILED:context:deployment_ready_replicas:query": 8,
+      "QUERY_FAILED:context:error_ratio:coverage": 8,
+      "QUERY_FAILED:context:error_ratio:freshness": 8,
+      "QUERY_FAILED:context:error_ratio:query": 8,
+      "QUERY_FAILED:context:latency_p95_milliseconds:coverage": 8,
+      "QUERY_FAILED:context:latency_p95_milliseconds:freshness": 8,
+      "QUERY_FAILED:context:latency_p95_milliseconds:query": 8,
+      "QUERY_FAILED:context:request_rate_per_second:coverage": 8,
+      "QUERY_FAILED:context:request_rate_per_second:freshness": 8,
+      "QUERY_FAILED:context:request_rate_per_second:query": 8,
+      "QUERY_FAILED:mapping:container_info:coverage": 8,
+      "QUERY_FAILED:mapping:container_info:freshness": 8,
+      "QUERY_FAILED:mapping:container_info:query": 8,
+      "QUERY_FAILED:mapping:pod_owner:coverage": 8,
+      "QUERY_FAILED:mapping:pod_owner:freshness": 8,
+      "QUERY_FAILED:mapping:pod_owner:query": 8,
+      "QUERY_FAILED:mapping:replicaset_owner:coverage": 8,
+      "QUERY_FAILED:mapping:replicaset_owner:freshness": 8,
+      "QUERY_FAILED:mapping:replicaset_owner:query": 8,
+      "REQUIRED_TELEMETRY_MISSING:after:dependency_error_ratio": 9,
+      "REQUIRED_TELEMETRY_MISSING:after:error_ratio": 9,
+      "REQUIRED_TELEMETRY_MISSING:after:latency_p95_milliseconds": 9,
+      "REQUIRED_TELEMETRY_MISSING:after:request_rate_per_second": 9,
+      "REQUIRED_TELEMETRY_MISSING:context:dependency_deployments_available": 8,
+      "REQUIRED_TELEMETRY_MISSING:context:dependency_error_ratio": 8,
+      "REQUIRED_TELEMETRY_MISSING:context:deployment_available_replicas": 8,
+      "REQUIRED_TELEMETRY_MISSING:context:deployment_available_replicas_min_in_window": 8,
+      "REQUIRED_TELEMETRY_MISSING:context:deployment_ready_replicas": 8,
+      "REQUIRED_TELEMETRY_MISSING:context:error_ratio": 8,
+      "REQUIRED_TELEMETRY_MISSING:context:latency_p95_milliseconds": 8,
+      "REQUIRED_TELEMETRY_MISSING:context:request_rate_per_second": 8,
+      "VERSION_MAPPING_AMBIGUOUS": 8,
+      "VERSION_MAPPING_INSUFFICIENT_SAMPLES": 1,
+      "VERSION_MAPPING_MISSING": 8,
+      "WINDOW_BEFORE_AUTHORIZATION": 2
+     },
+     "coverage_gaps": []
+    },
     "600": {
+     "status": "unknown",
+     "reason": "deadline_expired",
+     "terminal_at": "2026-10-17T05:41:48.098540+00:00",
+     "used_sample_count": 27,
+     "remaining_samples": 13,
+     "remaining_seconds": 0.0,
+     "healthy_reserve_ok": null,
+     "unknown_ratio": 0.37037037037037035,
+     "post_warmup_unknown_ratio": 0.32,
+     "unknown_reasons": {
+      "INSUFFICIENT_SAMPLES:after:dependency_error_ratio": 1,
+      "INSUFFICIENT_SAMPLES:after:error_ratio": 1,
+      "INSUFFICIENT_SAMPLES:after:latency_p95_milliseconds": 1,
+      "INSUFFICIENT_SAMPLES:after:request_rate_per_second": 1,
+      "INSUFFICIENT_TRAFFIC": 9,
+      "QUERY_FAILED:context:dependency_deployments_available:coverage": 8,
+      "QUERY_FAILED:context:dependency_deployments_available:freshness": 8,
+      "QUERY_FAILED:context:dependency_deployments_available:query": 8,
+      "QUERY_FAILED:context:dependency_error_ratio:coverage": 8,
+      "QUERY_FAILED:context:dependency_error_ratio:freshness": 8,
+      "QUERY_FAILED:context:dependency_error_ratio:query": 8,
+      "QUERY_FAILED:context:deployment_available_replicas:coverage": 8,
+      "QUERY_FAILED:context:deployment_available_replicas:freshness": 8,
+      "QUERY_FAILED:context:deployment_available_replicas:query": 8,
+      "QUERY_FAILED:context:deployment_available_replicas_min_in_window:coverage": 8,
+      "QUERY_FAILED:context:deployment_available_replicas_min_in_window:freshness": 8,
+      "QUERY_FAILED:context:deployment_available_replicas_min_in_window:query": 8,
+      "QUERY_FAILED:context:deployment_ready_replicas:coverage": 8,
+      "QUERY_FAILED:context:deployment_ready_replicas:freshness": 8,
+      "QUERY_FAILED:context:deployment_ready_replicas:query": 8,
+      "QUERY_FAILED:context:error_ratio:coverage": 8,
+      "QUERY_FAILED:context:error_ratio:freshness": 8,
+      "QUERY_FAILED:context:error_ratio:query": 8,
+      "QUERY_FAILED:context:latency_p95_milliseconds:coverage": 8,
+      "QUERY_FAILED:context:latency_p95_milliseconds:freshness": 8,
+      "QUERY_FAILED:context:latency_p95_milliseconds:query": 8,
+      "QUERY_FAILED:context:request_rate_per_second:coverage": 8,
+      "QUERY_FAILED:context:request_rate_per_second:freshness": 8,
+      "QUERY_FAILED:context:request_rate_per_second:query": 8,
+      "QUERY_FAILED:mapping:container_info:coverage": 8,
+      "QUERY_FAILED:mapping:container_info:freshness": 8,
+      "QUERY_FAILED:mapping:container_info:query": 8,
+      "QUERY_FAILED:mapping:pod_owner:coverage": 8,
+      "QUERY_FAILED:mapping:pod_owner:freshness": 8,
+      "QUERY_FAILED:mapping:pod_owner:query": 8,
+      "QUERY_FAILED:mapping:replicaset_owner:coverage": 8,
+      "QUERY_FAILED:mapping:replicaset_owner:freshness": 8,
+      "QUERY_FAILED:mapping:replicaset_owner:query": 8,
+      "REQUIRED_TELEMETRY_MISSING:after:dependency_error_ratio": 9,
+      "REQUIRED_TELEMETRY_MISSING:after:error_ratio": 9,
+      "REQUIRED_TELEMETRY_MISSING:after:latency_p95_milliseconds": 9,
+      "REQUIRED_TELEMETRY_MISSING:after:request_rate_per_second": 9,
+      "REQUIRED_TELEMETRY_MISSING:context:dependency_deployments_available": 8,
+      "REQUIRED_TELEMETRY_MISSING:context:dependency_error_ratio": 8,
+      "REQUIRED_TELEMETRY_MISSING:context:deployment_available_replicas": 8,
+      "REQUIRED_TELEMETRY_MISSING:context:deployment_available_replicas_min_in_window": 8,
+      "REQUIRED_TELEMETRY_MISSING:context:deployment_ready_replicas": 8,
+      "REQUIRED_TELEMETRY_MISSING:context:error_ratio": 8,
+      "REQUIRED_TELEMETRY_MISSING:context:latency_p95_milliseconds": 8,
+      "REQUIRED_TELEMETRY_MISSING:context:request_rate_per_second": 8,
+      "VERSION_MAPPING_AMBIGUOUS": 8,
+      "VERSION_MAPPING_INSUFFICIENT_SAMPLES": 1,
+      "VERSION_MAPPING_MISSING": 8,
+      "WINDOW_BEFORE_AUTHORIZATION": 2
+     },
+     "coverage_gaps": []
+    },
+    "900": {
      "status": "unknown",
      "reason": "deadline_expired",
      "terminal_at": "2026-10-17T05:41:48.098540+00:00",
@@ -7352,8 +7559,8 @@
    "round": "u2-f-immediate-1",
    "scenario": "immediate",
    "round_status": "summarized",
-   "summary_sha256": "0a8b7ab94f367ba1d38423126fbedca60efd3d3799c82177995adaf3d6b21d04",
-   "summary_bytes": 3141531,
+   "summary_sha256": "40ea60d7b049f64eea0f1420c62f3054ab4e12c9b8a981d3b0cac0c099ac7906",
+   "summary_bytes": 3170954,
    "round_start_id": "b6de9b39-5853-4506-b60a-d0522794bb86",
    "classification": "product_defect_2_after_coverage (fixed #262); not calibration evidence",
    "released_at": "2026-10-17T09:08:21.026824+00:00",
@@ -7371,7 +7578,7 @@
    },
    "truth": {
     "expected_outcome": "anomaly",
-    "failure_classification": null,
+    "failure_classification": "product_defect_round: after-slice coverage min(count_over_time) counted newly appeared STATUS_CODE_ERROR series (PR-2 contract 556-559 intent; fixed by #262); not used as calibration evidence; scenario rerun after the fix",
     "fault": {
      "config_written": [
       [
@@ -7390,11 +7597,8 @@
      "planned": [
       "2026-10-17T09:08:21.026824+00:00"
      ],
-     "restore_config": [
-      [
-       null,
-       null
-      ]
+     "restore_config_verified_at": [
+      "2026-10-17T09:24:40.922395+00:00"
      ]
     },
     "independent_truth": {
@@ -7864,8 +8068,8 @@
    "round": "u2-f-delayed5-1",
    "scenario": "delayed-5m",
    "round_status": "summarized",
-   "summary_sha256": "2a5f5227aaab52911959659d252ad653a483c1f9f1f6be3fb9de37a2bb64da11",
-   "summary_bytes": 3270980,
+   "summary_sha256": "98294469e73894c5df49bf78b47a37ead257a94df99c92991e679bc715e1b9af",
+   "summary_bytes": 3300403,
    "round_start_id": "2a0adfcf-274a-44c6-89fa-9a7fc53050d3",
    "classification": "product_defect_2_after_coverage (fixed #262); not calibration evidence",
    "released_at": "2026-10-17T10:09:56.884744+00:00",
@@ -7883,7 +8087,7 @@
    },
    "truth": {
     "expected_outcome": "anomaly",
-    "failure_classification": null,
+    "failure_classification": "product_defect_round: after-slice coverage min(count_over_time) counted newly appeared STATUS_CODE_ERROR series (PR-2 contract 556-559 intent; fixed by #262); not used as calibration evidence; scenario rerun after the fix",
     "fault": {
      "config_written": [
       [
@@ -7902,11 +8106,8 @@
      "planned": [
       "2026-10-17T10:14:56.884744+00:00"
      ],
-     "restore_config": [
-      [
-       null,
-       null
-      ]
+     "restore_config_verified_at": [
+      "2026-10-17T10:30:20.823733+00:00"
      ]
     },
     "independent_truth": {
@@ -8346,8 +8547,8 @@
    "round": "u2-f-delayed15-1",
    "scenario": "delayed-15m",
    "round_status": "summarized",
-   "summary_sha256": "38c3deae6b4c8b86e6dba1ba6ea03cf30a5a088d2e5579e6483abfc94e7008f6",
-   "summary_bytes": 3392975,
+   "summary_sha256": "3469ec52e1df00fc46b4b1fd69b2fce03c89032296bd58fb859b858d8f85d88d",
+   "summary_bytes": 3422208,
    "round_start_id": "7e898eea-a102-4b72-aca8-1adb512d71c9",
    "classification": "product_defect_2_after_coverage (fixed #262); not calibration evidence",
    "released_at": "2026-10-17T11:11:12.038541+00:00",
@@ -8365,7 +8566,7 @@
    },
    "truth": {
     "expected_outcome": "anomaly",
-    "failure_classification": "product_defect_round: after-slice coverage min(count_over_time) counts newly appeared STATUS_CODE_ERROR series (contract PR-2:556-559 intent); not used as calibration evidence; rerun after fix",
+    "failure_classification": "product_defect_round: after-slice coverage min(count_over_time) counted newly appeared STATUS_CODE_ERROR series (PR-2 contract 556-559 intent; fixed by #262); not used as calibration evidence; scenario rerun after the fix",
     "fault": {
      "config_written": [
       [
@@ -8384,11 +8585,8 @@
      "planned": [
       "2026-10-17T11:26:12.038541+00:00"
      ],
-     "restore_config": [
-      [
-       null,
-       null
-      ]
+     "restore_config_verified_at": [
+      "2026-10-17T11:42:25.419010+00:00"
      ]
     },
     "independent_truth": {
@@ -8814,8 +9012,8 @@
    "round": "u2-f-unrelated-1",
    "scenario": "unrelated",
    "round_status": "summarized",
-   "summary_sha256": "d6d7aa00140d1458e2ffdb341bd3686454bc47d521e52ddc76793f0d6805f50d",
-   "summary_bytes": 3603932,
+   "summary_sha256": "ddf73c7d1b0dbf7c1d4f838bd4a79ca150d6d807787251f77cc12d4f811f68d8",
+   "summary_bytes": 3633136,
    "round_start_id": "cf150181-832d-413c-be1e-d50f9543d057",
    "classification": "valid calibration round",
    "released_at": "2026-10-17T12:13:09.212650+00:00",
@@ -8852,11 +9050,8 @@
      "planned": [
       "2026-10-17T12:18:09.212650+00:00"
      ],
-     "restore_config": [
-      [
-       null,
-       null
-      ]
+     "restore_config_verified_at": [
+      "2026-10-17T12:33:37.654726+00:00"
      ]
     },
     "independent_truth": {
@@ -9248,8 +9443,8 @@
    "round": "u2-f-immediate-2",
    "scenario": "immediate",
    "round_status": "summarized",
-   "summary_sha256": "f2cb81cdb05229cfa28a31dd3dbc73c6d39521b1b354ecbbea214e9a3ac9a7cb",
-   "summary_bytes": 3487863,
+   "summary_sha256": "a026c3f3de4c74a1d422a4d150b82b036f0d716c4fc8ad32fc1f359f13e4bee2",
+   "summary_bytes": 3517067,
    "round_start_id": "f21efa37-5485-4d5a-b334-688a27113570",
    "classification": "valid calibration round",
    "released_at": "2026-10-17T18:09:23.003276+00:00",
@@ -9286,11 +9481,8 @@
      "planned": [
       "2026-10-17T18:09:23.003276+00:00"
      ],
-     "restore_config": [
-      [
-       null,
-       null
-      ]
+     "restore_config_verified_at": [
+      "2026-10-17T18:25:45.156283+00:00"
      ]
     },
     "independent_truth": {
@@ -9788,8 +9980,8 @@
    "round": "u2-f-delayed5-2",
    "scenario": "delayed-5m",
    "round_status": "summarized",
-   "summary_sha256": "375572d46a04d2be57bda383fa9416217b0fd29dfae771bd537440f1d3c09d26",
-   "summary_bytes": 3571818,
+   "summary_sha256": "d048015c0d8b5856bc604ced0dd5cd15a4bab0357f401a1df7c18d5e435ff8da",
+   "summary_bytes": 3601022,
    "round_start_id": "5817c085-099b-4c1a-8d4e-c920936a9be6",
    "classification": "valid calibration round",
    "released_at": "2026-10-17T19:10:55.471937+00:00",
@@ -9826,11 +10018,8 @@
      "planned": [
       "2026-10-17T19:15:55.471937+00:00"
      ],
-     "restore_config": [
-      [
-       null,
-       null
-      ]
+     "restore_config_verified_at": [
+      "2026-10-17T19:31:47.021490+00:00"
      ]
     },
     "independent_truth": {
@@ -10327,8 +10516,8 @@
    "round": "u2-f-delayed15-2",
    "scenario": "delayed-15m",
    "round_status": "summarized",
-   "summary_sha256": "ca48fdc0a70b8413a618f0bc82f9face2c352d12ee21874148dc6ceed3db7499",
-   "summary_bytes": 3607791,
+   "summary_sha256": "8af543b07cb27f7f360b226050440b5c56912143346cc3d709af095e2c7720e5",
+   "summary_bytes": 3636995,
    "round_start_id": "4c747748-2ae0-4d48-98ca-263bd2f99970",
    "classification": "valid calibration round",
    "released_at": "2026-10-17T20:12:28.338143+00:00",
@@ -10365,11 +10554,8 @@
      "planned": [
       "2026-10-17T20:27:28.338143+00:00"
      ],
-     "restore_config": [
-      [
-       null,
-       null
-      ]
+     "restore_config_verified_at": [
+      "2026-10-17T20:42:39.221958+00:00"
      ]
     },
     "independent_truth": {
@@ -10864,8 +11050,8 @@
    "round": "u2-f-boundary-1",
    "scenario": "boundary",
    "round_status": "summarized",
-   "summary_sha256": "90985f6acaa04ea420d4a0d20b520344c3a6b0dfc46df18b18edc990b1281d54",
-   "summary_bytes": 3619725,
+   "summary_sha256": "ac9adf2ff73fc15e4a51f8e7d2a497a8ed3dd6eb08f729373037a09c34c4b9e0",
+   "summary_bytes": 3648929,
    "round_start_id": "79f23138-9eaa-4c59-9db9-ccc2b8173590",
    "classification": "valid calibration round",
    "released_at": "2026-10-17T21:13:02.955655+00:00",
@@ -10902,11 +11088,8 @@
      "planned": [
       "2026-10-17T21:33:02.955655+00:00"
      ],
-     "restore_config": [
-      [
-       null,
-       null
-      ]
+     "restore_config_verified_at": [
+      "2026-10-17T21:48:27.274021+00:00"
      ]
     },
     "independent_truth": {
