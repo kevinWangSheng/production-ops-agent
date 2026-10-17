@@ -483,7 +483,9 @@ def _registrations() -> tuple[ToolRegistration, ToolRegistration]:
                 "The whole view is limited to the registered max_view_tokens "
                 "(25,000 DeepSeek tokens): a larger result is refused with "
                 "RESULT_TOO_LARGE and no series, never truncated or "
-                "summarized."
+                "summarized. Prometheus HTTP 503 with JSON errorType=timeout "
+                "is timeout/TOOL_TIMEOUT with confirmed source contact; other "
+                "5xx responses are error/SOURCE_UNAVAILABLE."
             ),
             cannot_prove=(
                 "A returned series does not prove the service is healthy or "
@@ -535,8 +537,9 @@ def _registrations() -> tuple[ToolRegistration, ToolRegistration]:
         # ``start``/``end`` selection -- the per-call volume limit that used
         # to live here moved into the transport's frame-containment check.
         max_window_seconds=OBSERVATION_SECONDS,
-        # ``503`` is nominal: 5xx raises ``TransportUnavailable`` inside the
-        # transport before classification. The rest are the transport's own
+        # ``503`` is nominal: 5xx raises inside the transport (a confirmed
+        # timeout for Prometheus 503 errorType=timeout, otherwise unavailable).
+        # The rest are the transport's own
         # pre-dispatch refusal codes.
         error_classes={
             "400": "INVALID_PARAMS",
@@ -1022,6 +1025,18 @@ class OtelDemoTransport:
             body = error.read(ERROR_BODY_BYTES)
             code = int(error.code)
             if code >= 500:
+                if code == 503 and request.tool == METRICS_TOOL:
+                    try:
+                        payload = json.loads(body)
+                    except (ValueError, UnicodeDecodeError):
+                        payload = None
+                    if (
+                        isinstance(payload, dict)
+                        and payload.get("errorType") == "timeout"
+                    ):
+                        raise TransportTimeout(
+                            "TIMEOUT", source_contact="confirmed"
+                        ) from None
                 raise TransportUnavailable(str(code)) from None
             return _Fetched(code, body)
         except (TimeoutError, socket.timeout):
