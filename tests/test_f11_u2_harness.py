@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from opspilot.observation.release_policy import sha256
+from opspilot.observation.release_policy import canonical_json, sha256
 from opspilot.observer.prometheus import VectorResult
 from opspilot.observer.release_evaluation import build_release_query_plan
 from scripts import f11_u2_harness as h
@@ -1822,6 +1822,51 @@ def warmup_mixed_samples(context):
     ]
 
 
+COMPACT_TIMELINE = [
+    {"kind": "rollout", "at": "2026-10-13T10:03:00+00:00", "detail": {"n": 1}},
+    {"kind": "flagd_probe", "at": "2026-10-13T10:04:00+00:00", "variant": "off"},
+    {"kind": "fault", "at": "2026-10-13T10:05:00+00:00", "flag": "x"},
+    {"kind": "flagd_probe", "at": "2026-10-13T10:06:00+00:00", "variant": "on"},
+    {"at": "2026-10-13T10:06:30+00:00", "note": "event without kind"},
+    {"kind": "flagd_probe", "at": "2026-10-13T10:07:00+00:00", "variant": "on"},
+    {"kind": "restore", "at": "2026-10-13T10:08:00+00:00"},
+]
+MANIFEST_FIELDS = (
+    "sample_id",
+    "query_key",
+    "raw_sha256",
+    "raw_bytes",
+    "status",
+    "http_status",
+)
+
+
+def with_query_timings(samples):
+    """Attach capture-style query timing rows (with extra non-manifest keys)."""
+    out = []
+    for i, item in enumerate(samples):
+        timings = tuple(
+            dict(
+                query_key=key,
+                query=f"expr-{i}-{key}",
+                evaluated_at=item.evidence.window.end.isoformat(),
+                issued=True,
+                timeout_seconds=5.0,
+                elapsed_seconds=0.1 * j,
+                raw_path=f"samples/{i:04d}/{j:02d}.bin",
+                raw_sha256=hashlib.sha256(f"{i}-{key}".encode()).hexdigest(),
+                raw_bytes=10 * i + j,
+                status="timeout" if j == 1 else "success",
+                sent_at=None,
+                http_status=None if j == 1 else 200,
+                body_complete=j != 1,
+            )
+            for j, key in enumerate(("zeta", "alpha", "mid"))
+        )
+        out.append(replace(item, query_timings=timings))
+    return out
+
+
 def compact_batch(tmp_path):
     """One summarized round with real samples and one aborted round, same batch."""
     good, aborted = h.ledger_path("compact-good"), h.ledger_path("compact-aborted")
@@ -1834,10 +1879,10 @@ def compact_batch(tmp_path):
     )
     summary = h.run_summary(
         context,
-        warmup_mixed_samples(context),
+        with_query_timings(warmup_mixed_samples(context)),
         scenario="healthy",
         truth={"status": "checked", "note": "kept verbatim", "nested": [1, {"x": 2}]},
-        timeline=[{"kind": "rollout", "at": context.authorized_at.isoformat()}],
+        timeline=COMPACT_TIMELINE,
         candidates=[600, 1200],
         code_revision="fold-rev",
         capture_end={"reason": "operator_stop", "at": "2026-10-13T10:12:00+00:00"},
@@ -2022,3 +2067,70 @@ def test_compact_format_keeps_existing_refusals(tmp_path):
             [good, aborted, duplicate / "summary.json"], output, batch="compact"
         )
     assert not output.exists()
+
+
+def expected_manifest_rows(summary):
+    return [
+        {k: row[k] for k in MANIFEST_FIELDS} for row in summary["raw_response_hashes"]
+    ]
+
+
+def test_raw_response_manifest_rows_projects_in_original_order(tmp_path):
+    _, _, _, summary, _ = compact_batch(tmp_path)
+    assert len(summary["raw_response_hashes"]) == 15
+    before = json.loads(json.dumps(summary))
+    rows = h.raw_response_manifest_rows(summary)
+    assert rows == expected_manifest_rows(summary)
+    assert all(set(r) == set(MANIFEST_FIELDS) for r in rows)
+    assert [r["query_key"] for r in rows[:3]] == ["zeta", "alpha", "mid"]
+    assert [r["sample_id"] for r in rows] == [
+        r["sample_id"] for r in summary["raw_response_hashes"]
+    ]
+    assert rows[1]["http_status"] is None and rows[1]["status"] == "timeout"
+    assert summary == before  # pure: input summary is not mutated
+
+
+def test_compact_timeline_drops_only_flagd_probes_and_counts_them(tmp_path):
+    _, good, aborted, summary, _ = compact_batch(tmp_path)
+    aggregate = h.aggregate_summaries(
+        [good, aborted], tmp_path / "batch.json", batch="compact"
+    )
+    compact = by_round(aggregate)["compact-good"]["compact"]
+    assert compact["timeline"] == [
+        e for e in summary["timeline"] if e.get("kind") != "flagd_probe"
+    ]
+    assert [e.get("kind") for e in compact["timeline"]] == [
+        "rollout",
+        "fault",
+        None,
+        "restore",
+    ]
+    assert compact["timeline"][0] == COMPACT_TIMELINE[0]
+    assert compact["flagd_probe_count"] == 3
+
+
+def test_compact_raw_response_manifest_matches_independent_digest(tmp_path):
+    _, good, aborted, summary, _ = compact_batch(tmp_path)
+    rows = expected_manifest_rows(summary)
+    aggregate = h.aggregate_summaries(
+        [good, aborted], tmp_path / "batch.json", batch="compact"
+    )
+    manifest = by_round(aggregate)["compact-good"]["compact"]["raw_response_manifest"]
+    assert manifest == {
+        "count": 15,
+        "sha256": hashlib.sha256(canonical_json(rows).encode()).hexdigest(),
+    }
+    reordered = rows[1:] + rows[:1]
+    assert (
+        manifest["sha256"]
+        != hashlib.sha256(canonical_json(reordered).encode()).hexdigest()
+    )
+
+
+def test_compact_aborted_round_has_no_timeline_or_manifest(tmp_path):
+    _, good, aborted, _, _ = compact_batch(tmp_path)
+    aggregate = h.aggregate_summaries(
+        [good, aborted], tmp_path / "batch.json", batch="compact"
+    )
+    bad = by_round(aggregate)["compact-aborted"]["compact"]
+    assert not {"timeline", "flagd_probe_count", "raw_response_manifest"} & bad.keys()

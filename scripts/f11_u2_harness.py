@@ -744,6 +744,24 @@ def run_summary(
     )
 
 
+def raw_response_manifest_rows(summary: dict[str, Any]) -> list[dict]:
+    """Project raw response identities in capture order for evidence verification."""
+    return [
+        {
+            key: row[key]
+            for key in (
+                "sample_id",
+                "query_key",
+                "raw_sha256",
+                "raw_bytes",
+                "status",
+                "http_status",
+            )
+        }
+        for row in summary.get("raw_response_hashes", [])
+    ]
+
+
 def _compact_run_summary(summary: dict[str, Any]) -> dict[str, Any]:
     """Project frozen round metadata without copying sample or capture payloads."""
     compact = {
@@ -779,6 +797,18 @@ def _compact_run_summary(summary: dict[str, Any]) -> dict[str, Any]:
     )
     compact["fold_code_revision"] = (summary.get("fold_code") or {}).get("revision")
     compact["sample_count"] = len(summary.get("capture", []))
+    timeline = summary.get("timeline", [])
+    compact["timeline"] = [
+        event for event in timeline if event.get("kind") != "flagd_probe"
+    ]
+    compact["flagd_probe_count"] = sum(
+        event.get("kind") == "flagd_probe" for event in timeline
+    )
+    rows = raw_response_manifest_rows(summary)
+    compact["raw_response_manifest"] = {
+        "count": len(rows),
+        "sha256": sha256(canonical_json(rows).encode()),
+    }
     candidates = {}
     for minimum, candidate in summary["candidates"].items():
         unknowns = [
