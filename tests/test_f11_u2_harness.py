@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import socket
+from collections import Counter
 from dataclasses import replace
 from datetime import timedelta
+from pathlib import Path
 
 import pytest
 
@@ -1760,3 +1763,262 @@ def test_changed_batch_journal_is_rejected_without_dropping_bad_record(tmp_path)
             [ledger / "summary.json"], tmp_path / "aggregate.json", batch="batch"
         )
     assert h.read_json(journal)["holder"] == "changed"
+
+
+# --- compact-v1 batch summary (aggregate_summaries format contract) ---
+
+COMPACT_CANDIDATE_FIELDS = {
+    "status",
+    "reason",
+    "terminal_at",
+    "used_sample_count",
+    "remaining_samples",
+    "remaining_seconds",
+    "healthy_reserve_ok",
+    "post_warmup_unknown_count",
+    "post_warmup_unknown_reasons",
+    "post_warmup_unknown_ratio",
+    "unknown_ratio",
+}
+COMPACT_SUMMARIZED_FIELDS = {
+    "round",
+    "batch",
+    "round_start_id",
+    "round_status",
+    "scenario",
+    "run_id",
+    "released_at",
+    "authorized_at",
+    "code_revision",
+    "fold_code_revision",
+    "profile_revision",
+    "profile_sha256",
+    "target",
+    "truth",
+    "capture_end",
+    "sample_count",
+    "candidates",
+}
+
+
+def warmup_mixed_samples(context):
+    """Two pre-warmup windows (start < authorized_at) and three post-warmup ones.
+
+    Pre-warmup: one empty (unknown) and one sufficient sample, both unknown with
+    WINDOW_BEFORE_AUTHORIZATION. Post-warmup: healthy, context-degraded unknown,
+    empty unknown.
+    """
+    at = context.authorized_at
+    return [
+        sample(context, at + timedelta(seconds=120), missing=True),
+        sample(context, at + timedelta(seconds=182)),
+        sample(context, at + timedelta(seconds=300)),
+        sample(
+            context,
+            at + timedelta(seconds=362),
+            context_values={"deployment_ready_replicas": 0.0},
+        ),
+        sample(context, at + timedelta(seconds=424), missing=True),
+    ]
+
+
+def compact_batch(tmp_path):
+    """One summarized round with real samples and one aborted round, same batch."""
+    good, aborted = h.ledger_path("compact-good"), h.ledger_path("compact-aborted")
+    start = h.start_round(good, "compact", "alice")
+    h.start_round(aborted, "compact", "alice")
+    context = _context()
+    capture_code = dict(
+        revision="capture-rev",
+        source_sha256={"scripts/f11_u2_harness.py": "a" * 64},
+    )
+    summary = h.run_summary(
+        context,
+        warmup_mixed_samples(context),
+        scenario="healthy",
+        truth={"status": "checked", "note": "kept verbatim", "nested": [1, {"x": 2}]},
+        timeline=[{"kind": "rollout", "at": context.authorized_at.isoformat()}],
+        candidates=[600, 1200],
+        code_revision="fold-rev",
+        capture_end={"reason": "operator_stop", "at": "2026-10-13T10:12:00+00:00"},
+        capture_code=capture_code,
+    )
+    summary.update(h.round_binding(start), round_status="summarized")
+    h.write_json(good / "summary.json", summary)
+    h.write_json(aborted / "context-probe.json", {"probe": True})
+    failed = h.abort_round(
+        aborted,
+        batch="compact",
+        holder="alice",
+        reason="rollout timed out",
+        scenario="delayed-15m",
+    )
+    return context, good / "summary.json", aborted / "summary.json", summary, failed
+
+
+def by_round(aggregate):
+    return {run["compact"]["round"]: run for run in aggregate["runs"]}
+
+
+def walk_keys(value):
+    if isinstance(value, dict):
+        for key, child in value.items():
+            yield key
+            yield from walk_keys(child)
+    elif isinstance(value, list):
+        for child in value:
+            yield from walk_keys(child)
+
+
+def test_compact_batch_summary_fields_match_round_summaries(tmp_path):
+    """New contract: runs[i] carries compact fields, not the full round summary."""
+    context, good, aborted, summary, failed = compact_batch(tmp_path)
+    output = tmp_path / "batch.json"
+    aggregate = h.aggregate_summaries([good, aborted], output, batch="compact")
+    assert h.read_json(output) == aggregate
+    assert aggregate["format_version"] == 1
+    assert aggregate["run_format"] == "compact-v1"
+    assert aggregate["approval"] is None
+    assert "evidence_kind" in aggregate and "batch_log" in aggregate
+    assert aggregate["scenario_counts"] == {"healthy": 1, "delayed-15m": 1}
+    assert aggregate["round_status_counts"] == {"summarized": 1, "aborted": 1}
+    runs = by_round(aggregate)
+    assert set(runs) == {"compact-good", "compact-aborted"}
+    for run in aggregate["runs"]:
+        assert {"sha256", "bytes", "path", "compact"} <= run.keys()
+        assert "summary" not in run
+
+    ok = runs["compact-good"]["compact"]
+    assert COMPACT_SUMMARIZED_FIELDS <= ok.keys()
+    for key in (
+        "round",
+        "batch",
+        "round_start_id",
+        "round_status",
+        "scenario",
+        "run_id",
+        "released_at",
+        "authorized_at",
+        "code_revision",
+        "profile_revision",
+        "profile_sha256",
+        "target",
+        "truth",
+        "capture_end",
+    ):
+        assert ok[key] == summary[key], key
+    assert ok["code_revision"] == "capture-rev"
+    assert ok["fold_code_revision"] == "fold-rev"
+    assert ok["truth"] == {
+        "status": "checked",
+        "note": "kept verbatim",
+        "nested": [1, {"x": 2}],
+    }
+    assert ok["sample_count"] == len(summary["capture"]) == 5
+    assert set(ok["candidates"]) == {"600", "1200"}
+    for m, compact in ok["candidates"].items():
+        full = summary["candidates"][m]
+        assert COMPACT_CANDIDATE_FIELDS <= compact.keys()
+        for key in COMPACT_CANDIDATE_FIELDS - {
+            "post_warmup_unknown_count",
+            "post_warmup_unknown_reasons",
+        }:
+            assert compact[key] == full[key], (m, key)
+
+    bad = runs["compact-aborted"]["compact"]
+    for key in (
+        "round",
+        "batch",
+        "round_start_id",
+        "round_status",
+        "scenario",
+        "run_id",
+        "reason",
+        "artifact_hashes",
+    ):
+        assert bad[key] == failed[key], key
+    assert bad["round_status"] == "aborted"
+    assert bad["reason"] == "rollout timed out"
+    assert {a["path"] for a in bad["artifact_hashes"]} == {"context-probe.json"}
+
+
+def test_compact_run_hash_and_bytes_bind_exact_round_file(tmp_path):
+    _, good, aborted, _, _ = compact_batch(tmp_path)
+    aggregate = h.aggregate_summaries(
+        [good, aborted], tmp_path / "batch.json", batch="compact"
+    )
+    runs = by_round(aggregate)
+    for name, path in (("compact-good", good), ("compact-aborted", aborted)):
+        raw = path.read_bytes()
+        run = runs[name]
+        assert run["sha256"] == hashlib.sha256(raw).hexdigest()
+        assert run["bytes"] == len(raw)
+        assert Path(run["path"]).resolve() == path.resolve()
+
+
+def test_compact_batch_summary_omits_bulky_round_fields(tmp_path):
+    _, good, aborted, summary, _ = compact_batch(tmp_path)
+    assert summary["capture"] and summary["raw_response_hashes"] is not None
+    assert summary["candidates"]["600"]["samples"]
+    output = tmp_path / "batch.json"
+    h.aggregate_summaries([good, aborted], output, batch="compact")
+    frozen = json.loads(output.read_bytes())
+    keys = set(walk_keys(frozen["runs"]))
+    assert not keys & {"capture", "raw_response_hashes", "samples", "summary"}
+    assert output.stat().st_size < good.stat().st_size
+
+
+def test_compact_post_warmup_unknowns_exclude_windows_before_authorization(tmp_path):
+    context, good, aborted, summary, _ = compact_batch(tmp_path)
+    rows = summary["candidates"]["600"]["samples"]
+    pre = [r for r in rows if h.utc(r["window"]["start"]) < context.authorized_at]
+    post = [r for r in rows if h.utc(r["window"]["start"]) >= context.authorized_at]
+    # Fixture sanity: warm-up unknowns exist and must not be counted.
+    assert len(pre) == 2 and all(r["evaluation"]["verdict"] == "unknown" for r in pre)
+    assert [r["evaluation"]["verdict"] for r in post] == [
+        "healthy",
+        "unknown",
+        "unknown",
+    ]
+    expected = Counter(
+        code
+        for r in post
+        if r["evaluation"]["verdict"] == "unknown"
+        for code in r["evaluation"]["reason_codes"]
+    )
+    aggregate = h.aggregate_summaries(
+        [good, aborted], tmp_path / "batch.json", batch="compact"
+    )
+    compact = by_round(aggregate)["compact-good"]["compact"]["candidates"]["600"]
+    assert compact["post_warmup_unknown_count"] == 2
+    assert compact["post_warmup_unknown_reasons"] == dict(expected)
+    reasons = compact["post_warmup_unknown_reasons"]
+    assert "WINDOW_BEFORE_AUTHORIZATION" not in reasons
+    assert reasons["CONTEXT_DEGRADED_ONLY"] == 1
+    assert reasons["INSUFFICIENT_TRAFFIC"] == 1  # 2 overall, 1 after warm-up
+    assert compact["post_warmup_unknown_ratio"] == pytest.approx(2 / 3)
+    assert compact["unknown_ratio"] == pytest.approx(4 / 5)
+
+
+def test_compact_format_keeps_existing_refusals(tmp_path):
+    _, good, aborted, summary, _ = compact_batch(tmp_path)
+    output = tmp_path / "batch.json"
+    with pytest.raises(ValueError, match="BATCH_ROUND_SET_MISMATCH"):
+        h.aggregate_summaries([good], output, batch="compact")
+    assert not output.exists()
+    frozen = tmp_path / "frozen.json"
+    h.aggregate_summaries([good, aborted], frozen, batch="compact")
+    with pytest.raises(FileExistsError):
+        h.aggregate_summaries([good, aborted], frozen, batch="compact")
+    duplicate = h.ledger_path("compact-dup")
+    copy = {
+        **summary,
+        **h.round_binding(h.start_round(duplicate, "compact", "alice")),
+        "truth": {"status": "edited"},
+    }
+    h.write_json(duplicate / "summary.json", copy)
+    with pytest.raises(ValueError, match="DUPLICATE_RELEASE_RUN"):
+        h.aggregate_summaries(
+            [good, aborted, duplicate / "summary.json"], output, batch="compact"
+        )
+    assert not output.exists()
