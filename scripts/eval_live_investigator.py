@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import os
 from collections.abc import Callable, Mapping
+from contextlib import ExitStack
 from dataclasses import asdict, dataclass, replace
 from datetime import timedelta
 from pathlib import Path
@@ -144,6 +145,28 @@ class _Checkpointed:
         result = self.target(*args, **kwargs)
         checkpoint()
         return result
+
+
+def _sealed_record(
+    drive: Callable[[Any], IncidentOutcome],
+    *,
+    destination: Path,
+    context: RecordingContext,
+) -> ArtifactRef:
+    """``record(drive)`` with its sealing protected (r16 R4): from the moment
+    ``drive`` returns until ``record`` returns or raises, no checkpoint fires
+    and no forced stop raises, so ``recording.json`` is written and
+    ``INCOMPLETE`` removed whatever arrives. The Run itself stays
+    interruptible, and a ``drive`` that raises never enters the section."""
+    sealing = ExitStack()
+
+    def sealed(hooks: Any) -> IncidentOutcome:
+        outcome = drive(hooks)
+        sealing.enter_context(protected())
+        return outcome
+
+    with sealing:
+        return record(sealed, destination=destination, context=context)
 
 
 class _BusinessClock:
@@ -354,7 +377,7 @@ class OtelDemoInvestigator:
 
             request.recording_dir.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
             try:
-                seen["recording_ref"] = record(
+                seen["recording_ref"] = _sealed_record(
                     drive, destination=request.recording_dir, context=context
                 )
             except Exception as exc:  # noqa: BLE001 - fixed code kept, Run result kept

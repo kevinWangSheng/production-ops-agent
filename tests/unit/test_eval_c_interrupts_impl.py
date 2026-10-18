@@ -493,3 +493,86 @@ def test_a_deps_failure_without_a_stop_is_still_refused_with_3(capsys, monkeypat
     code = eval_live.main([*d.LIVE_ARGV, *p._scenarios(NORMAL)])
     final = d._last_json(capsys)
     assert (code, final["exit_code"], final["reason"]) == (3, 3, "ENV_UNCONFIRMED")
+
+
+# -- PR #276 bot P1: the recording seal is protected --------------------------
+
+
+def _signals_while_sealing(monkeypatch) -> list[str]:
+    """Two real signals while ``record()`` writes ``recording.json``, i.e.
+    after the driver returned: the second one is a forced stop."""
+    from opspilot.evaluation import recording
+
+    real = recording._publish
+    fired: list[str] = []
+
+    def publish(path, *args, **kwargs):
+        if path.name == "recording.json" and not fired:
+            fired.append(path.name)
+            _signal()
+            _signal(signal.SIGINT)
+        return real(path, *args, **kwargs)
+
+    monkeypatch.setattr(recording, "_publish", publish)
+    return fired
+
+
+@pytest.mark.parametrize("sealed", [False, True])
+def test_a_forced_stop_while_sealing_cannot_abandon_the_recording(
+    tmp_path, monkeypatch, sealed
+):
+    """``sealed=False`` is plain ``record()``: the forced stop abandons the
+    seal (the hazard). The driver's ``_sealed_record`` finishes it."""
+    from opspilot.evaluation import load_recording, record
+    from scripts.eval_live_investigator import _sealed_record
+    from tests.acceptance import eval_b2_support as b2
+
+    fired = _signals_while_sealing(monkeypatch)
+    destination = tmp_path / "recording"
+    seal = _sealed_record if sealed else record
+    with eval_live._signals():
+        if not sealed:
+            with pytest.raises(Interrupted):
+                seal(b2.source_driver(), destination=destination, context=b2.context())
+            assert fired and (destination / "INCOMPLETE").exists()
+            return
+        ref = seal(b2.source_driver(), destination=destination, context=b2.context())
+        assert fired
+        assert eval_live._DEFER["pending"] is True  # recorded, not raised
+        assert eval_live._DEFER["depth"] == 0
+        with pytest.raises(Interrupted):
+            eval_live_lab.checkpoint()  # honoured at the next checkpoint
+    assert not (destination / "INCOMPLETE").exists()
+    loaded = load_recording(destination / ref.path, expected_hash=ref.sha256)
+    assert loaded.outcome is not None
+
+
+@pytest.mark.parametrize("failure", ["drive", "interrupted_drive", "seal"])
+def test_the_seal_protection_never_leaks_depth(tmp_path, monkeypatch, failure):
+    from opspilot.evaluation import StorageError, recording
+    from scripts.eval_live_investigator import _sealed_record
+    from tests.acceptance import eval_b2_support as b2
+
+    drive = b2.source_driver()
+    expected: type[BaseException] = StorageError
+    if failure == "drive":
+
+        def drive(hooks):  # record() turns it into RECORDING_INCOMPLETE
+            raise RuntimeError("the Run failed")
+
+    elif failure == "interrupted_drive":
+
+        def drive(hooks):
+            raise Interrupted()
+
+        expected = Interrupted
+    else:
+
+        def save(*args, **kwargs):
+            raise StorageError("EVIDENCE_UNAVAILABLE")
+
+        monkeypatch.setattr(recording, "_save", save)
+    with eval_live_lab.interrupt_scope():
+        with pytest.raises(expected):
+            _sealed_record(drive, destination=tmp_path / "rec", context=b2.context())
+        assert eval_live_lab._STOP["depth"] == 0
