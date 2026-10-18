@@ -290,7 +290,13 @@ class AttemptLedger:
             self.write_failed = True
 
     def write(self, name: str, value: Any) -> None:
-        write_private(self.directory / name, _json(value))
+        try:
+            write_private(self.directory / name, _json(value))
+        except OSError:
+            # Raised (the caller stops before touching the lab), and kept:
+            # the attempt's evidence is incomplete, so it ends with exit 5.
+            self.write_failed = True
+            raise
 
     def freeze(self) -> bytes:
         self.frozen = True
@@ -377,27 +383,44 @@ def fault_guard(root: Path) -> Iterator[None]:
         yield
 
 
+def _run_start_head(path: Path, round_id: str) -> str:
+    """The chain head of ``run-starts.jsonl``; the round must not be in it."""
+    raw = path.read_bytes() if path.exists() else b""
+    previous = "0" * 64
+    for line in raw.splitlines():
+        try:
+            row = json.loads(line)
+            body = {k: v for k, v in row.items() if k != "record_sha256"}
+            if row["previous_sha256"] != previous or row["record_sha256"] != sha256(
+                canonical_json(body).encode()
+            ):
+                raise ValueError
+        except (KeyError, TypeError, ValueError):
+            raise LabError("BATCH_LOG_INVALID") from None
+        if row.get("round") == round_id:
+            raise LabError("ROUND_ALREADY_STARTED")
+        previous = row["record_sha256"]
+    return str(previous)
+
+
+def check_run_start(root: Path, round_id: str) -> None:
+    """``append_run_start``'s checks without the append: the guard opens, the
+    chain is valid, the round is new and the log (or its directory) is
+    writable. Raises LabError, or OSError for a guard that cannot open."""
+    with _guard(root, "batch-journal", blocking=True):
+        path = root / "run-starts.jsonl"
+        _run_start_head(path, round_id)
+        if not os.access(path if path.exists() else root, os.W_OK):
+            raise LabError("LAB_LEDGER_UNAVAILABLE")
+
+
 def append_run_start(
     root: Path, round_id: str, holder: str, batch: str, now: datetime
 ) -> dict[str, Any]:
     """One ``run_started`` row in F11's hash-chained ``run-starts.jsonl``."""
     with _guard(root, "batch-journal", blocking=True):
         path = root / "run-starts.jsonl"
-        raw = path.read_bytes() if path.exists() else b""
-        previous = "0" * 64
-        for line in raw.splitlines():
-            try:
-                row = json.loads(line)
-                body = {k: v for k, v in row.items() if k != "record_sha256"}
-                if row["previous_sha256"] != previous or row["record_sha256"] != sha256(
-                    canonical_json(body).encode()
-                ):
-                    raise ValueError
-            except (KeyError, TypeError, ValueError):
-                raise LabError("BATCH_LOG_INVALID") from None
-            if row.get("round") == round_id:
-                raise LabError("ROUND_ALREADY_STARTED")
-            previous = row["record_sha256"]
+        previous = _run_start_head(path, round_id)
         entry: dict[str, Any] = dict(
             format_version=1,
             kind="run_started",

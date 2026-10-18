@@ -2007,3 +2007,90 @@ def test_an_interrupted_verify_replay_prints_the_final_json(env, capsys, monkeyp
     code = eval_live.main(["--verify-replay", "--round", "r1"], deps=env["deps"])
     final = _last_json(capsys)
     assert (code, final["exit_code"], final["status"]) == (130, 130, "interrupted")
+
+
+# -- astra review of d1addce ------------------------------------------------------
+
+
+@pytest.mark.parametrize("case", ["read_only_log", "invalid_log", "after_begin"])
+def test_batch_log_failures_refuse_before_begin_round_or_stop_after_it(
+    env, monkeypatch, case
+):
+    """Astra P2-1: a 3 never follows the round's first external call."""
+    deps, calls, investigator = _counted(env)
+    log = deps.ledger_root / "run-starts.jsonl"
+    if case == "read_only_log":
+        log.write_text("")
+        log.chmod(0o400)
+    elif case == "invalid_log":
+        log.write_text("not json\n")
+    else:
+
+        def unwritable(*args, **kwargs):
+            raise OSError("read-only")
+
+        monkeypatch.setattr(eval_live, "append_run_start", unwritable)
+    result = eval_live.run_round(config(deps, ["eval-normal-1"]), deps)
+    if case == "after_begin":
+        assert investigator.begun == [("r1", False)]
+        assert (result.exit_code, result.status) == (1, "stopped")
+        assert result.reason == "LAB_LEDGER_UNAVAILABLE"
+    else:
+        expected = (
+            "LAB_LEDGER_UNAVAILABLE"
+            if case == "read_only_log"
+            else ("BATCH_LOG_INVALID")
+        )
+        assert (result.exit_code, result.reason) == (3, expected)
+        assert investigator.begun == []
+    assert not list(deps.evidence_root.rglob("attempt.json"))
+    assert not [c for c in calls if c.startswith(("pg.", "balance."))]
+
+
+@pytest.mark.parametrize("stop", ["PG_STOP_FAILED", "LAB_FAULT_FOREIGN"])
+def test_an_unwritten_aggregate_outranks_a_stop_with_exit_1(env, monkeypatch, stop):
+    """Astra P2-3: 4 > 5 > 130 > 1; the stop reason stays in lifecycle."""
+    deps = env["deps"]
+    if stop == "PG_STOP_FAILED":
+
+        def failing(instance):
+            raise LabError("PG_STOP_FAILED")
+
+        env["pg"].stop = failing  # type: ignore[method-assign]
+    else:
+        real = env["identity"].verify
+
+        def foreign_appears():
+            (deps.ledger_root / "fault-active.json").write_text("{}")
+            return real()
+
+        env["identity"].verify = foreign_appears  # type: ignore[method-assign]
+    monkeypatch.setattr(
+        eval_live, "_write_round", lambda *a, **k: "EVIDENCE_WRITE_FAILED"
+    )
+    result = eval_live.run_round(config(deps, ["eval-cart-failure"]), deps)
+    assert (result.exit_code, result.reason) == (5, "EVIDENCE_WRITE_FAILED")
+    first = lifecycle(deps)["slots"][0]
+    assert stop in (first["reason"], first["closure_reason"])
+
+
+def test_a_failed_private_evidence_write_in_a_round_restores_and_exits_5(
+    env, monkeypatch
+):
+    """The run-mode counterpart of the probe finding: not DRIVER_ERROR/1."""
+    deps = env["deps"]
+    real = eval_live_lab.write_private
+
+    def failing(path, data, **kwargs):
+        if path.name == "pre-observation.json":
+            raise OSError("disk full")
+        return real(path, data, **kwargs)
+
+    monkeypatch.setattr(eval_live_lab, "write_private", failing)
+    cfg = config(deps, ["eval-cart-failure", "eval-normal-1"])
+    result = eval_live.run_round(cfg, deps)
+    assert (result.exit_code, result.reason) == (5, "EVIDENCE_WRITE_FAILED")
+    first, later = result.slots
+    assert first.reason == "EVIDENCE_WRITE_FAILED" and later.status == "not_started"
+    assert env["lab"].raw == ORIGINAL
+    assert not (deps.ledger_root / "fault-active.json").exists()

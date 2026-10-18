@@ -355,22 +355,35 @@ def test_a_second_concurrent_recovery_restores_nothing_and_is_refused(
     assert len(env["lab"].writes) == writes_before
 
 
-def test_an_os_error_inside_a_probe_scenario_restores_and_never_escapes(
+def test_a_failed_private_evidence_write_in_a_probe_restores_and_exits_5(
     tmp_path, capsys, monkeypatch
 ):
-    from scripts import eval_live_probe
+    """Astra P2: pre-observation.json cannot be written -> restored, the
+    later scenario never runs, exit 5 (not DRIVER_ERROR/1)."""
+    from scripts import eval_live_lab
 
     env, deps = _probe_env(tmp_path)
+    real = eval_live_lab.write_private
 
-    def unreadable(*args, **kwargs):
-        raise OSError("disk")
+    def failing(path, data, **kwargs):
+        if path.name == "pre-observation.json":
+            raise OSError("disk full")
+        return real(path, data, **kwargs)
 
-    monkeypatch.setattr(eval_live_probe, "fault_gate", unreadable)
-    code = eval_live.main([*ARGV, *_scenarios("eval-cart-failure")], deps=deps)
+    monkeypatch.setattr(eval_live_lab, "write_private", failing)
+    code = eval_live.main(
+        [*ARGV, *_scenarios("eval-cart-failure", "eval-normal-1")], deps=deps
+    )
     final = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
-    assert (code, final["exit_code"]) == (1, 1)
+    assert (code, final["exit_code"], final["reason"]) == (
+        5,
+        5,
+        "EVIDENCE_WRITE_FAILED",
+    )
+    assert [s["status"] for s in final["slots"]][1:] == ["not_started"]
     report = json.loads((deps.evidence_root / "r1/probe.json").read_text())
-    assert report["scenarios"][0]["reason"] == "DRIVER_ERROR"
+    assert report["scenarios"][0]["reason"] == "EVIDENCE_WRITE_FAILED"
     assert report["scenarios"][0]["fault"]["restored"] is True
+    assert len(report["scenarios"]) == 1
     assert env["lab"].raw == d.ORIGINAL
     assert not (deps.ledger_root / "fault-active.json").exists()

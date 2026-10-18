@@ -99,6 +99,7 @@ def _probe_one(
     }
     gate: PreObservation | None = None
     injected = False
+    evidence_failed = False
     try:
         check_occupation(
             deps.ledger_root, config.holder, config.batch, deps.clock.now()
@@ -144,6 +145,11 @@ def _probe_one(
                 entry["reason"] = entry["reason"] or "INTERRUPTED"
             except LabError as exc:
                 entry["reason"] = exc.code
+            except OSError:
+                # A private evidence/state write: restored below, then the
+                # probe stops with exit 5 (r11; a retained fault keeps 4).
+                evidence_failed = True
+                entry["reason"] = entry["reason"] or "EVIDENCE_WRITE_FAILED"
             except Exception:  # noqa: BLE001 - a driver bug still restores
                 entry["reason"] = entry["reason"] or "DRIVER_ERROR"
             finally:
@@ -157,7 +163,7 @@ def _probe_one(
     if gate is not None:
         entry["gate"] = observation_json(gate)
     ledger.event("probe", "finished", reason=entry["reason"])
-    return entry, not ledger.write_failed
+    return entry, not (ledger.write_failed or evidence_failed)
 
 
 def _restore(
@@ -248,12 +254,14 @@ def run_probe(config: eval_live.RoundConfig, deps: LiveDeps) -> eval_live.RoundR
                         later.reason = "ROUND_STOPPED"
                     break
     except LabError as exc:
-        status, exit_code, reason = "stopped", 3, exc.code
+        if eval_live._outranks(3, exit_code):
+            status, exit_code, reason = "stopped", 3, exc.code
     except (Interrupted, KeyboardInterrupt):
-        status, exit_code, reason = "interrupted", 130, "INTERRUPTED"
+        if eval_live._outranks(130, exit_code):
+            status, exit_code, reason = "interrupted", 130, "INTERRUPTED"
     except OSError:
         # The active marker could not be written or removed: never success.
-        if exit_code in (0, 1, 130):
+        if eval_live._outranks(1, exit_code):
             status, exit_code, reason = "stopped", 1, "LAB_LEDGER_UNAVAILABLE"
     evidence = eval_live.round_evidence(deps, config.round_id)
     # Like run_round: the report is written with signals held and an
@@ -269,7 +277,7 @@ def run_probe(config: eval_live.RoundConfig, deps: LiveDeps) -> eval_live.RoundR
                 eval_live._retained(deps, config.round_id),
                 True,
             )
-        if own and exit_code != 4:
+        if own and eval_live._outranks(4, exit_code):
             # This round's intent survived a path cut short: --recover (r13).
             status, exit_code, reason = "stopped", 4, "FAULT_RECOVERY_REQUIRED"
         document = {
@@ -292,9 +300,9 @@ def run_probe(config: eval_live.RoundConfig, deps: LiveDeps) -> eval_live.RoundR
     if not written:
         # r11: an evidence write failure is exit 5 with the final JSON; a
         # retained fault (4) keeps its own exit code.
-        if exit_code != 4:
+        if eval_live._outranks(5, exit_code):
             status, exit_code, reason = "stopped", 5, "EVIDENCE_WRITE_FAILED"
-    if late_interrupt and exit_code in (0, 1):
+    if late_interrupt and eval_live._outranks(130, exit_code):
         status, exit_code, reason = "interrupted", 130, "INTERRUPTED"
     return eval_live.RoundResult(
         config.round_id, status, exit_code, reason, tuple(results)

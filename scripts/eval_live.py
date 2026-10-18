@@ -84,6 +84,7 @@ from scripts.eval_live_lab import (
     append_run_start,
     check_flagd_url,
     check_occupation,
+    check_run_start,
     confirm_all_normal,
     fault_for,
     fault_gate,
@@ -442,6 +443,9 @@ def preflight(config: RoundConfig, deps: LiveDeps) -> str | None:
                 injected = slot.answer.injected
                 assert injected is not None
                 fault_for(injected.flag, injected.variant)
+        # Everything append_run_start checks, before begin_round's external
+        # call: after it, a batch log failure is no longer a refusal.
+        check_run_start(deps.ledger_root, config.round_id)
     except LabError as exc:
         return exc.code
     except OSError:
@@ -461,6 +465,15 @@ def _retained(deps: LiveDeps, round_id: str) -> tuple[bool, bool]:
     if state is None:
         return False, False
     return True, state.get("round") == round_id
+
+
+# Exit precedence (r13/r14): 4 > 5 > 130 > 1. A stop with 3 after the start
+# (the reservation vanished) ranks with 130; equal ranks keep the first.
+_RANK = {4: 4, 5: 3, 130: 2, 3: 2, 1: 1}
+
+
+def _outranks(new: int, current: int | None) -> bool:
+    return _RANK.get(new, 0) > _RANK.get(current or 0, 0)
 
 
 def run_round(config: RoundConfig, deps: LiveDeps) -> RoundResult:
@@ -497,6 +510,10 @@ def run_round(config: RoundConfig, deps: LiveDeps) -> RoundResult:
             begin(config.round_id)
         except LabError as exc:
             return _refuse(config, exc.code)
+    results = [
+        SlotResult(s.spec.scenario_id, s.spec.version, s.repetition)
+        for s in config.slots
+    ]
     try:
         append_run_start(
             deps.ledger_root,
@@ -505,14 +522,14 @@ def run_round(config: RoundConfig, deps: LiveDeps) -> RoundResult:
             config.batch,
             deps.clock.now(),
         )
-    except LabError as exc:
-        return _refuse(config, exc.code)
-    except OSError:
-        return _refuse(config, "LAB_LEDGER_UNAVAILABLE")
-    results = [
-        SlotResult(s.spec.scenario_id, s.spec.version, s.repetition)
-        for s in config.slots
-    ]
+    except (LabError, OSError) as exc:
+        # The preflight already checked the batch log (check_run_start), so
+        # this is a change since then; begin_round has run, so it is no
+        # longer a refusal: the round stops before any attempt (exit 1).
+        code = exc.code if isinstance(exc, LabError) else "LAB_LEDGER_UNAVAILABLE"
+        for result in results:
+            result.reason = "ROUND_STOPPED"
+        return RoundResult(config.round_id, "stopped", 1, code, tuple(results))
     status: Literal["finished", "stopped", "interrupted"] = "finished"
     exit_code: int | None = None
     reason: str | None = None
@@ -568,7 +585,7 @@ def run_round(config: RoundConfig, deps: LiveDeps) -> RoundResult:
     except OSError:
         # The active marker could not be written or removed: the lab
         # coordination is incomplete, so the round never reports success.
-        if exit_code in (None, 0, 1, 130):
+        if _outranks(1, exit_code):
             status, exit_code, reason = "stopped", 1, "LAB_LEDGER_UNAVAILABLE"
     manifest = round_state["manifest"]
     # The round outputs are written with signals held, and an interrupt
@@ -587,15 +604,15 @@ def run_round(config: RoundConfig, deps: LiveDeps) -> RoundResult:
         except (Interrupted, KeyboardInterrupt):
             (retained, own), late_interrupt = _retained(deps, config.round_id), True
     late_interrupt = _take_pending() or late_interrupt
-    if own and exit_code != 4:
+    if own and _outranks(4, exit_code):
         # This round's intent is still there although no closure reported a
         # failure (a path cut short): it needs --recover, so exit 4 (r13).
         status, exit_code, reason = "stopped", 4, "FAULT_RECOVERY_REQUIRED"
-    if late_interrupt and exit_code in (None, 0, 1):
+    if late_interrupt and _outranks(130, exit_code):
         status, exit_code, reason = "interrupted", 130, "INTERRUPTED"
-    # Exit precedence 4 > 5 > 130 (r13): a missing aggregate outranks an
-    # interrupt but never a retained fault.
-    if aggregate_error is not None and exit_code in (None, 130):
+    # A missing aggregate outranks an interrupt and a stop with 1 (e.g.
+    # PG_STOP_FAILED, kept in lifecycle), never a retained fault.
+    if aggregate_error is not None and _outranks(5, exit_code):
         status, exit_code, reason = "stopped", 5, aggregate_error
     if exit_code is None:
         exit_code = 0 if all(r.status == "ran" for r in results) else 1
@@ -615,11 +632,11 @@ def run_round(config: RoundConfig, deps: LiveDeps) -> RoundResult:
         except OSError:
             # Like a journal/summary write failure (r11): exit 5 with the
             # final JSON still printed; a retained fault (4) keeps its code.
-            if exit_code != 4:
+            if _outranks(5, exit_code):
                 status, exit_code, reason = "stopped", 5, "EVIDENCE_WRITE_FAILED"
         except (Interrupted, KeyboardInterrupt):
             late_interrupt = True
-    if (_take_pending() or late_interrupt) and exit_code in (0, 1):
+    if (_take_pending() or late_interrupt) and _outranks(130, exit_code):
         status, exit_code, reason = "interrupted", 130, "INTERRUPTED"
     return RoundResult(config.round_id, status, exit_code, reason, tuple(results))
 
@@ -721,6 +738,7 @@ class _Attempt:
     stop: _Stop | None = None
     closure_reason: str | None = None
     interrupted: bool = False
+    evidence_failed: bool = False  # a private evidence write raised (exit 5)
     marks: dict[str, float] = field(default_factory=dict)
 
 
@@ -849,16 +867,16 @@ def _run_slot(
         "sha256": summary_ref.sha256,
     }
     out.fault = _fault_json(state)
-    # Exit precedence 4 > 5 > 130 (r13); LAB_FAULT_FOREIGN and PG_STOP_FAILED
-    # stop the round with exit 1 below an evidence failure.
+    # Exit precedence 4 > 5 > 130 > 1 (_RANK): LAB_FAULT_FOREIGN and
+    # PG_STOP_FAILED stop the round with 1 and stay in the slot's reasons.
     if state.stop is not None and state.stop.exit_code == 4:
         raise state.stop
-    if state.ledger.write_failed:
+    if state.ledger.write_failed or state.evidence_failed:
         raise _Stop(5, "EVIDENCE_WRITE_FAILED")
-    if state.stop is not None:
-        raise state.stop
     if state.interrupted:
         raise _Stop(130, "INTERRUPTED")
+    if state.stop is not None:
+        raise state.stop
 
 
 def _attempt_body(
@@ -884,6 +902,11 @@ def _attempt_body(
                 _fail(state, "INTERRUPTED")
             except LabError as exc:
                 _fail(state, exc.code)
+            except OSError:
+                # A private evidence/state write (pre-observation, flags,
+                # recording directory): restored below, then exit 5 (r11).
+                state.evidence_failed = True
+                _fail(state, "EVIDENCE_WRITE_FAILED")
             except Exception:  # noqa: BLE001 - a driver bug still restores the lab
                 _fail(state, "DRIVER_ERROR")
             finally:
