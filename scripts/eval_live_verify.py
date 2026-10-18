@@ -136,10 +136,33 @@ def verify_replay(
         "reason": None,
         "results": results,
     }
-    target = evidence_root / round_id / "structural-replay.json"
-    if target.exists():
-        stamp = (now or datetime.now(timezone.utc)).strftime("%Y%m%dT%H%M%SZ")
-        target = target.with_name(f"structural-replay-{stamp}.json")
-    with target.open("x") as stream:
-        stream.write(json.dumps(document, indent=2, sort_keys=True) + "\n")
+    if not _write_exclusive(evidence_root / round_id, document, now):
+        # Never overwrite and never raise: the result is still reported (r10).
+        document["write_error"] = "EVIDENCE_WRITE_FAILED"
+        return 5, document
     return code, document
+
+
+MAX_NAME_ATTEMPTS = 100
+
+
+def _write_exclusive(
+    directory: Path, document: dict[str, Any], now: datetime | None
+) -> bool:
+    """Create the first free name: the plain file, then ``-<UTC>``, then
+    ``-<UTC>-2``, ``-3`` ...; each attempt is an exclusive create."""
+    stamp = (now or datetime.now(timezone.utc)).strftime("%Y%m%dT%H%M%SZ")
+    names = ["structural-replay.json", f"structural-replay-{stamp}.json"] + [
+        f"structural-replay-{stamp}-{n}.json" for n in range(2, MAX_NAME_ATTEMPTS)
+    ]
+    raw = json.dumps(document, indent=2, sort_keys=True) + "\n"
+    for name in names:
+        try:
+            with (directory / name).open("x") as stream:
+                stream.write(raw)
+            return True
+        except FileExistsError:
+            continue
+        except OSError:
+            return False
+    return False

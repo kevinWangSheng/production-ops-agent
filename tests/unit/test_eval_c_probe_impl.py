@@ -106,3 +106,62 @@ def test_probe_requires_n_one_and_no_pg_port(tmp_path, capsys):
 def test_unavailable_seat_refuses_use():
     with pytest.raises(LabError, match="PROBE_SEAM_UNAVAILABLE"):
         Unavailable().investigate(None)
+
+
+def test_probe_stops_on_a_foreign_fault_without_touching_it(tmp_path, capsys):
+    """r10/section 5: foreign state after the preflight stops the probe round."""
+    env, deps = _probe_env(tmp_path)
+    foreign = json.dumps({"ledger": "/elsewhere", "flag": "adFailure"})
+    calls = {"n": 0}
+
+    def verify():
+        calls["n"] += 1
+        if calls["n"] == 2:  # first per-scenario identity check, after preflight
+            (deps.ledger_root / "fault-active.json").write_text(foreign)
+        return ()
+
+    env["identity"].verify = verify
+    code = eval_live.main(
+        [*ARGV, *_scenarios("eval-cart-failure", "eval-payment-failure-1")], deps=deps
+    )
+    final = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    assert (code, final["status"], final["reason"]) == (
+        1,
+        "stopped",
+        "LAB_FAULT_FOREIGN",
+    )
+    assert final["slots"][1]["status"] == "not_started"
+    assert env["lab"].writes == []
+    assert (deps.ledger_root / "fault-active.json").read_text() == foreign
+
+
+def test_recover_builds_lab_only_deps_without_model_credentials(
+    tmp_path, capsys, monkeypatch
+):
+    """r10: a probe's retained fault is recoverable without M0_ENV_FILE."""
+    seen = {}
+
+    def real_deps(flagd_url, round_id, *, probe=False):
+        seen["probe"] = probe
+        raise LabError("STOP_HERE")
+
+    monkeypatch.setattr(eval_live, "real_deps", real_deps)
+    monkeypatch.delenv("M0_ENV_FILE", raising=False)
+    argv = [
+        "--recover", "--round", "r1", "--holder", "lead", "--batch", "b1",
+        "--flagd-url", "http://127.0.0.1:18013",
+    ]  # fmt: skip
+    assert eval_live.main(argv) == 3
+    assert seen == {"probe": True}
+
+
+def test_recover_refuses_without_the_lab_account(tmp_path, capsys):
+    env, deps = _probe_env(tmp_path)
+    env["lab"].complete = False
+    eval_live.main([*ARGV, *_scenarios("eval-cart-failure")], deps=deps)
+    capsys.readouterr()
+    state = (deps.ledger_root / "fault-active.json").read_bytes()
+    env["env_checker"].result = "ENV_UNCONFIRMED"
+    result = eval_live.recover_round("r1", "lead", "b1", deps)
+    assert (result.exit_code, result.reason) == (3, "ENV_UNCONFIRMED")
+    assert (deps.ledger_root / "fault-active.json").read_bytes() == state

@@ -222,6 +222,9 @@ def run_probe(config: eval_live.RoundConfig, deps: LiveDeps) -> eval_live.RoundR
                     status, exit_code, reason = "stopped", 4, entry["closure_reason"]
                 elif entry["interrupted"]:
                     status, exit_code, reason = "interrupted", 130, "INTERRUPTED"
+                elif entry["reason"] == "LAB_FAULT_FOREIGN":
+                    # Section 5: another holder's fault is live; stop (r10).
+                    status, exit_code, reason = "stopped", 1, "LAB_FAULT_FOREIGN"
                 elif entry["reason"] is not None:
                     exit_code = 1
                 if status != "finished":

@@ -112,3 +112,45 @@ def test_verify_replay_attempt_filter_and_usage(ran_round, capsys, offline):
         ["--mode", "live", "--round", s.ROUND, "--attempt", "x"], deps=ran_round.deps
     )
     assert code == 2
+
+
+def test_verify_replay_never_overwrites_and_retries_same_second_names(
+    ran_round, capsys, offline
+):
+    """r10: two checks in the same second get distinct exclusive files."""
+    from datetime import datetime, timezone
+
+    from scripts.eval_live_verify import verify_replay
+
+    deps = ran_round.deps
+    now = datetime(2026, 10, 18, 1, 2, 3, tzinfo=timezone.utc)
+    names = []
+    for _ in range(3):
+        code, document = verify_replay(
+            s.ROUND,
+            evidence_root=deps.evidence_root,
+            recording_root=deps.recording_root,
+            now=now,
+        )
+        assert code == 0 and "write_error" not in document
+    for path in sorted((deps.evidence_root / s.ROUND).glob("structural-replay*")):
+        names.append(path.name)
+    assert names == [
+        "structural-replay-20261018T010203Z-2.json",
+        "structural-replay-20261018T010203Z.json",
+        "structural-replay.json",
+    ]
+
+
+def test_verify_replay_reports_an_unwritable_result_with_code_5(
+    ran_round, capsys, offline
+):
+    directory = ran_round.deps.evidence_root / s.ROUND
+    directory.chmod(0o500)
+    try:
+        code, document = _verify(ran_round, capsys)
+    finally:
+        directory.chmod(0o700)
+    assert code == 5
+    assert document["write_error"] == "EVIDENCE_WRITE_FAILED"
+    assert document["results"] and document["results"][0]["structural_verified"]

@@ -1190,6 +1190,10 @@ def recover_round(
     round_id: str, holder: str, batch: str, deps: LiveDeps
 ) -> RoundResult:
     """Restore and wash a retained fault of this round (exit 0/3/4)."""
+    # The wash reads the lab Prometheus account; check it before anything.
+    environment = deps.env.check()
+    if environment is not None:
+        return RoundResult(round_id, "refused", 3, environment, ())
     try:
         state = read_state(deps.ledger_root)
     except LabError as exc:
@@ -1465,7 +1469,10 @@ def main(argv: Sequence[str] | None = None, *, deps: LiveDeps | None = None) -> 
         return 0
     if deps is None:
         try:
-            deps = real_deps(args.flagd_url, args.round, probe=args.probe)
+            # Recovery needs the lab seams only, never model credentials (r10).
+            deps = real_deps(
+                args.flagd_url, args.round, probe=args.probe or args.recover
+            )
         except LabError as exc:
             return _final(RoundResult(args.round, "refused", 3, exc.code, ()))
     with _signals():
