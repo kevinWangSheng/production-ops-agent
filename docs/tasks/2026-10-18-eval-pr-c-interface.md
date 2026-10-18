@@ -127,8 +127,13 @@ class TelemetryProbe(Protocol):  # 独立观察，不经产品工具
     ) -> CallCount: ...
     # r13 可选：带阶段截止时刻的检索；实现了它的探针由门槛优先调用
     def spans_within(
-        self, service: str, start: datetime, end: datetime, *,
-        request_timeout: float, deadline: float,   # deadline 为 LiveDeps.clock.monotonic() 刻度
+        self,
+        service: str,
+        start: datetime,
+        end: datetime,
+        *,
+        request_timeout: float,
+        deadline: float,  # deadline 为 LiveDeps.clock.monotonic() 刻度
     ) -> SpanQuery: ...
 
 
