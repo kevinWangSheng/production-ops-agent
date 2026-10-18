@@ -591,7 +591,8 @@ def inject_fault(
     )
     _write_state(root, state, exclusive=True)
     ledger.event("inject", "intent_written", flag=fault.flag, sha256=injected_sha)
-    deps.flags.replace(current, injected, fence=None)
+    # Every ConfigMap write carries a fence of its own (r7).
+    deps.flags.replace(current, injected, fence=uuid4().hex)
     live = deps.flags.read()
     if sha256(live.raw) != injected_sha or live.uid != current.uid:
         raise LabError("FLAG_CONFIG_PATCH_UNVERIFIED")
@@ -640,11 +641,12 @@ def restore_fault(
     live = deps.flags.read()
     if live.uid != state.get("configmap_uid"):
         raise LabError("FLAG_OBJECT_REPLACED")
-    fenced = live.raw == original
-    if not fenced and live.raw != injected:
+    if live.raw not in (original, injected):
         ledger.event("restore", "refused", reason="FLAGS_CHANGED_REFUSE_RESTORE")
         raise LabError("FLAGS_CHANGED_REFUSE_RESTORE")
-    fence = uuid4().hex if fenced else None
+    # A fresh fence on this write too, injected -> original included (r7):
+    # only our own fence proves an unknown result was our write.
+    fence = uuid4().hex
     unknown = False
     try:
         deps.flags.replace(live, original, fence=fence)
@@ -662,8 +664,8 @@ def restore_fault(
         or after.uid != live.uid
         or after.resource_version == live.resource_version
         # An advanced version alone may be another writer's; an unknown
-        # fence write counts only when our own fence value is visible.
-        or (unknown and fence is not None and after.fence != fence)
+        # write counts only when our own fence value is visible.
+        or (unknown and after.fence != fence)
     ):
         raise LabError("FLAG_RESTORE_UNVERIFIED")
     ledger.event("restore", "config_verified", sha256=sha256(after.raw))

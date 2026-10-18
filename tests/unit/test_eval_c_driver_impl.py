@@ -102,6 +102,8 @@ class Lab:
     errors_always: bool = False
     complete: bool = True
     resolve_calls: int = 0
+    fence: str | None = None
+    fences: list[str | None] = field(default_factory=list)
 
     def _variants(self, raw: bytes) -> dict[str, str]:
         return {
@@ -113,7 +115,7 @@ class Lab:
     def read(self) -> FlagConfig:
         if self.fail_reads_after_write and self.writes:
             raise LabError("FLAG_READ_FAILED")
-        return FlagConfig(self.raw, self.uid, str(self.rv))
+        return FlagConfig(self.raw, self.uid, str(self.rv), self.fence)
 
     def replace(
         self, current: FlagConfig, new_raw: bytes, *, fence: str | None
@@ -127,11 +129,14 @@ class Lab:
         if self.reject_next:
             self.reject_next = False
             raise LabError("FLAG_CAS_CONFLICT")
+        self.fences.append(fence)
         self.set(new_raw)
+        if fence is not None:
+            self.fence = fence
         if self.lose_write_response:
             self.lose_write_response = False  # one lost response only
             raise LabError("FLAG_WRITE_UNKNOWN")
-        return FlagConfig(self.raw, self.uid, str(self.rv))
+        return FlagConfig(self.raw, self.uid, str(self.rv), self.fence)
 
     def set(self, new_raw: bytes) -> None:
         before, after = self._variants(self.raw), self._variants(new_raw)
@@ -1292,3 +1297,96 @@ def test_a_signal_during_a_balance_read_still_writes_every_output(env, at):
     assert (deps.evidence_root / "r1/aggregate.json").exists()
     assert env["lab"].raw == ORIGINAL
     assert not (deps.ledger_root / "fault-active.json").exists()
+
+
+# -- r7: independent re-verification P2 findings ------------------------------
+
+
+def test_every_configmap_write_of_the_driver_carries_its_own_fence(env):
+    deps, lab = env["deps"], env["lab"]
+    eval_live.run_round(config(deps, ["eval-cart-failure"], n=2), deps)
+    assert len(lab.fences) == 4  # inject + restore, twice
+    assert all(isinstance(fence, str) and fence for fence in lab.fences)
+    assert len(set(lab.fences)) == len(lab.fences)
+
+
+def _retained_after_injection(env):
+    """Run one cart attempt whose restore is refused, leaving live==injected."""
+    deps, lab = env["deps"], env["lab"]
+    real = lab.replace
+    calls = {"n": 0}
+
+    def refuse_restore(current, new_raw, *, fence):
+        calls["n"] += 1
+        if calls["n"] == 2:  # the restore write
+            raise LabError("FLAG_CAS_CONFLICT")
+        return real(current, new_raw, fence=fence)
+
+    lab.replace = refuse_restore  # type: ignore[method-assign]
+    eval_live.run_round(config(deps, ["eval-cart-failure"]), deps)
+    lab.replace = real  # type: ignore[method-assign]
+    state = json.loads((deps.ledger_root / "fault-active.json").read_text())
+    assert lab.raw == state["injected"].encode()
+    return real
+
+
+def test_an_unknown_restore_from_injected_needs_our_fence(env):
+    """P2-1: another writer restores the original while our write is lost."""
+    deps, lab = env["deps"], env["lab"]
+    _retained_after_injection(env)
+
+    def foreign_restore(current, new_raw, *, fence):
+        lab.set(new_raw)  # someone else wrote the original bytes, no fence
+        raise LabError("FLAG_WRITE_UNKNOWN")
+
+    lab.replace = foreign_restore  # type: ignore[method-assign]
+    result = eval_live.recover_round("r1", "lead", "b1", deps)
+    assert (result.exit_code, result.reason) == (4, "FLAG_RESTORE_UNVERIFIED")
+    assert (deps.ledger_root / "fault-active.json").exists()
+
+
+def test_our_own_unknown_restore_from_injected_is_verified_by_fence(env):
+    deps, lab = env["deps"], env["lab"]
+    _retained_after_injection(env)
+    lab.lose_write_response = True  # our fenced write lands, response lost
+    result = eval_live.recover_round("r1", "lead", "b1", deps)
+    assert (result.exit_code, result.status) == (0, "recovered")
+    assert not (deps.ledger_root / "fault-active.json").exists()
+
+
+class _InterruptingPg(Pg):
+    def __init__(self, deps_ref: dict[str, Any]) -> None:
+        super().__init__(deps_ref)
+        self.stop_calls = 0
+
+    def stop(self, instance: PgInstance) -> None:
+        self.stop_calls += 1
+        if self.stop_calls == 1:
+            raise Interrupted()
+        super().stop(instance)
+
+
+@pytest.mark.parametrize("restore_fails", [False, True])
+def test_an_interrupt_during_pg_stop_still_closes_and_writes_the_attempt(
+    env, restore_fails
+):
+    """P2-2: closure finishes, summary/lifecycle match the journal, 4 > 130."""
+    pg = _InterruptingPg({"deps": env["deps"]})
+    deps = replace(env["deps"], pg=pg)
+    pg.deps_ref["deps"] = deps
+    if restore_fails:
+        env["lab"].complete = False  # wash fails -> restore failure
+    cfg = config(deps, ["eval-cart-failure", "eval-normal-1"])
+    result = eval_live.run_round(cfg, deps)
+    first, later = result.slots
+    assert pg.stop_calls == 2 and pg.stopped == pg.started
+    assert first.attempt_id is not None and first.summary is not None
+    stored = summary(deps, first.attempt_id)
+    assert stored["capture"]["attempt"]["status"] == first.status
+    assert first.status in ("aborted", "setup_failed")
+    assert lifecycle(deps)["slots"][0]["status"] == first.status
+    assert later.status == "not_started"
+    if restore_fails:
+        assert (result.exit_code, result.status) == (4, "stopped")
+    else:
+        assert (result.exit_code, result.status) == (130, "interrupted")

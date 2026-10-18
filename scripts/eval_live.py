@@ -713,22 +713,27 @@ def _run_slot(
             replace(journal_ref, path=f"runs/{attempt_id}/attempt.json"),
         )
     )
-    ledger = AttemptLedger(attempt_ledger_dir(deps, config.round_id, attempt_id), clock)
-    state = _Attempt(record, ledger, started_at)
-    state.marks["start"] = clock.monotonic()
-    ledger.event("journal", "attempt_started", attempt_id=attempt_id)
-    # The balance reads are outside the guarded body, so they take the same
-    # interrupt path themselves (independent review P2): the attempt still
-    # gets its summary and the round its outputs, then exits 130.
-    before = None
+    with _deferred_interrupts():
+        ledger = AttemptLedger(
+            attempt_ledger_dir(deps, config.round_id, attempt_id), clock
+        )
+        state = _Attempt(record, ledger, started_at)
+        state.marks["start"] = clock.monotonic()
+        ledger.event("journal", "attempt_started", attempt_id=attempt_id)
+    if _take_pending():
+        state.interrupted = True
+        _fail(state, "INTERRUPTED")
+    # From the journal on, every interrupt -- balance reads, setup outside the
+    # guard, closure -- ends here, so the started attempt always gets its
+    # summary and the round its outputs (independent review P2).
+    before = after = None
     try:
-        before = _balance(deps)
+        if not state.interrupted:
+            before = _balance(deps)
+            _attempt_body(config, deps, slot, state, signatures, round_state)
     except (Interrupted, KeyboardInterrupt):
         state.interrupted = True
         _fail(state, "INTERRUPTED")
-    if not state.interrupted:
-        _attempt_body(config, deps, slot, state, signatures, round_state)
-    after = None
     try:
         after = _balance(deps)
     except (Interrupted, KeyboardInterrupt):
@@ -742,11 +747,21 @@ def _run_slot(
     out.pre_observation = None if state.gate is None else observation_json(state.gate)
     out.timings = _timings(state, clock.now())
     try:
-        summary_ref = _write_summary(
-            config, deps, slot, state, round_state["manifest"], run_dir, balances[-1]
-        )
+        # A signal while the evidence is written is held until it is done.
+        with _deferred_interrupts():
+            summary_ref = _write_summary(
+                config,
+                deps,
+                slot,
+                state,
+                round_state["manifest"],
+                run_dir,
+                balances[-1],
+            )
     except (OSError, StorageError, ValueError):
         raise _Stop(5, "EVIDENCE_WRITE_FAILED") from None
+    if _take_pending():
+        state.interrupted = True
     # Verifying the recording may have turned a ran attempt into aborted; the
     # public slot must show what the summary says.
     out.status, out.stage, out.reason = state.status, state.stage, state.reason
@@ -973,6 +988,20 @@ def _closure(
         try:
             deps.pg.stop(state.pg)
             ledger.event("pg", "stopped")
+        except (Interrupted, KeyboardInterrupt):
+            # Closure still finishes: stop again with signals held (P2).
+            state.interrupted = True
+            ledger.event("pg", "stop_interrupted")
+            with _deferred_interrupts():
+                try:
+                    deps.pg.stop(state.pg)
+                    ledger.event("pg", "stopped")
+                except Exception as exc:  # noqa: BLE001 - logged only
+                    ledger.event(
+                        "pg",
+                        "stop_failed",
+                        reason=getattr(exc, "code", "PG_STOP_FAILED"),
+                    )
         except Exception as exc:  # noqa: BLE001 - logged, lab recovery decides
             ledger.event(
                 "pg", "stop_failed", reason=getattr(exc, "code", "PG_STOP_FAILED")
@@ -1290,9 +1319,33 @@ def _final(result: RoundResult) -> int:
     return result.exit_code
 
 
+# Signals held while evidence is written or a stop retried (r7): the handler
+# records them instead of raising, and the caller takes the interrupt path.
+_DEFER = {"depth": 0, "pending": False}
+
+
+@contextmanager
+def _deferred_interrupts() -> Iterator[None]:
+    _DEFER["depth"] += 1
+    try:
+        yield
+    finally:
+        _DEFER["depth"] -= 1
+
+
+def _take_pending() -> bool:
+    pending = bool(_DEFER["pending"]) and _DEFER["depth"] == 0
+    if pending:
+        _DEFER["pending"] = False
+    return pending
+
+
 @contextmanager
 def _signals() -> Iterator[None]:
     def handler(signum: int, frame: FrameType | None) -> None:
+        if _DEFER["depth"]:
+            _DEFER["pending"] = True
+            return
         raise Interrupted()
 
     previous = {
