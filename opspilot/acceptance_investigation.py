@@ -125,16 +125,28 @@ def investigation_evidence(
         ).fetchall()
         run_ids = {str(row["run_id"]) for row in runs}
         rows = cursor.execute(
-            """SELECT e.* FROM opspilot_evidence e
+            """SELECT e.*,EXISTS (
+                 SELECT 1 FROM opspilot_steps s JOIN opspilot_runs r USING(run_id)
+                 CROSS JOIN LATERAL jsonb_array_elements(s.tool_results) item
+                 WHERE r.incident_id=%s AND s.status!='late_result'
+                   AND item->'result'->>'evidence_id'=e.evidence_id
+               ) AS has_tool_result FROM opspilot_evidence e
                WHERE e.subject_id=%s OR e.run_id IN
                  (SELECT run_id::text FROM opspilot_runs WHERE incident_id=%s)
                ORDER BY e.observed_at,e.evidence_id""",
-            (str(incident_id), incident_id),
+            (incident_id, str(incident_id), incident_id),
         ).fetchall()
         records = {row["evidence_id"]: _from_row(row) for row in rows}
+        # A tool commit can persist before the evidence pin; either is proof
+        # of an observation, unlike a register-only orphan left by a crash.
+        result_evidence_ids = {
+            row["evidence_id"] for row in rows if row["has_tool_result"]
+        }
         observations = []
         for record in records.values():
-            if not record.committed or record.status not in {"ok", "no_data"}:
+            if not (
+                record.committed or record.evidence_id in result_evidence_ids
+            ) or record.status not in {"ok", "no_data"}:
                 continue
             view = record.view
             observations.append(
@@ -208,7 +220,9 @@ def investigation_evidence(
             represented.add(key)
 
         reports = []
-        # Handed-off conclusions remain committed steps (ADR-0005). For a
+        # A handoff must have a durable park announcement, including one
+        # repaired by Workbench.reconcile; the payload alone proves no park.
+        # Match its generation as in _select_snapshot_outcome. For a
         # completed Run, the latest conclusion is its published report, as in
         # DurableStore.investigation_history. Exclude late/abandoned reports.
         report_rows = cursor.execute(
@@ -216,7 +230,14 @@ def investigation_evidence(
                JOIN opspilot_runs r USING(run_id)
                WHERE r.incident_id=%s AND s.status!='late_result'
                  AND s.response->>'kind'='conclusion'
-                 AND (s.response->'conclusion'->>'handoff'='true'
+                 AND ((s.response->'conclusion'->>'handoff'='true'
+                       AND EXISTS (
+                         SELECT 1 FROM opspilot_subject_events ev
+                         WHERE ev.subject_id=r.incident_id AND ev.kind='run_handoff'
+                           AND ev.payload->>'run_id'=s.run_id::text
+                           AND ev.payload->>'parked'='true'
+                           AND COALESCE(ev.payload->>'control_generation','0')
+                               =s.control_generation::text))
                       OR (r.state='completed' AND s.step_id=(
                         SELECT last.step_id FROM opspilot_steps last
                         WHERE last.run_id=r.run_id AND last.status!='late_result'
