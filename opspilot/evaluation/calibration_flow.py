@@ -204,7 +204,9 @@ def _report_identifiers(raw: str | None) -> None:
 
 
 def _view_identifiers(value: Any, *, grouped: bool = False) -> None:
-    # Fixed projection metadata and references, not arbitrary OTel text values.
+    # Visit declared projection containers only. Span attributes/tags, process
+    # tags, resource, Prometheus metric/labels, status_tags and error_details are
+    # content, even when their keys happen to name projection identity slots.
     ids = {
         "evidence_id",
         "operation_id",
@@ -262,7 +264,8 @@ def _view_identifiers(value: Any, *, grouped: bool = False) -> None:
                     raise JudgeError("SCHEMA_INVALID")
                 for service in child:
                     _identifier(service)
-            _view_identifiers(child, grouped=key == "span_groups")
+            if key in {"content", "span_groups", "query", "parent_references"}:
+                _view_identifiers(child, grouped=key == "span_groups")
     elif isinstance(value, (tuple, list)):
         for child in value:
             _view_identifiers(child, grouped=grouped)

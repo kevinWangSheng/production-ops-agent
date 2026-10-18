@@ -2,10 +2,15 @@
 
 import json
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
 
-from opspilot.evaluation.calibration_flow import load_verified_calibration
+from opspilot.evaluation import canonical_view_hash
+from opspilot.evaluation.calibration_flow import (
+    _view_identifiers,
+    load_verified_calibration,
+)
 from tests.unit.test_eval_b3_impl import (
     invoke,
     make_input,
@@ -89,3 +94,106 @@ def test_judge_allows_canonical_request_identifiers(certified, verified_calibrat
     assert observation.error_code is None
     assert observation.result.calibrated is certified
     assert len(transport.calls) == 1
+
+
+def with_view(request, view):
+    record = request.delivered["e1"]
+    return replace(
+        request,
+        delivered={
+            "e1": replace(record, view=view, view_sha256=canonical_view_hash(view))
+        },
+    )
+
+
+@pytest.mark.parametrize(
+    "container",
+    [
+        "attributes",
+        "tags",
+        "labels",
+        "process",
+        "resource",
+        "metric",
+        "status_tags",
+        "error_details",
+    ],
+)
+@pytest.mark.parametrize("certified", [False, True])
+def test_judge_otel_content_keys_are_not_projection_identities(
+    container, certified, verified_calibration
+):
+    request, diagnoses, verdict = make_input()
+    content = {
+        key: " ordinary attribute value "
+        for key in ("service", "operation", "status", "source", "tool")
+    }
+    # Even names of projection containers inside attributes remain ordinary data.
+    content["query"] = {"service": "payments api"}
+    value = {"tags": content} if container == "process" else content
+    if container == "error_details":
+        value = [{"key": "service", "value": content}]
+    view = json.loads(json.dumps(request.delivered["e1"].view))
+    if container == "status_tags":
+        view["content"][0][container].update(value)
+    else:
+        view["content"][0][container] = value
+    observation, transport = invoke(
+        with_view(request, view),
+        diagnoses,
+        verdict,
+        calibration=verified_calibration if certified else None,
+    )
+    assert observation.result.status == "ok"
+    assert observation.error_code is None
+    assert observation.result.calibrated is certified
+    assert len(transport.calls) == 1
+    sent = json.loads(json.loads(transport.calls[0]["body"])["messages"][1]["content"])
+    assert sent["cited_evidence"][0]["view"] == view
+
+
+@pytest.mark.parametrize(
+    "slot",
+    ["metadata", "span", "group", "query", "parent", "backend_ids", "backend_services"],
+)
+def test_judge_declared_view_slots_still_reject_invalid_identifiers(slot):
+    request, diagnoses, verdict = make_input()
+    view = json.loads(json.dumps(request.delivered["e1"].view))
+    if slot == "metadata":
+        view["source"] = "bad source"
+    elif slot == "span":
+        view["content"][0]["service"] = "bad service"
+    elif slot == "group":
+        view["span_groups"] = [{"operation": "bad  operation"}]
+    elif slot == "query":
+        view["query"] = {"service": "bad service"}
+    elif slot == "parent":
+        view["content"][0]["parent_references"] = [{"spanID": "bad id"}]
+    elif slot == "backend_ids":
+        view["backend_trace_ids"] = ["bad id"]
+    else:
+        view["backend_counts_by_service"] = {"bad service": {"span_count": 1}}
+    observation, transport = invoke(with_view(request, view), diagnoses, verdict)
+    assert observation.result.status == "invalid"
+    assert observation.error_code == "SCHEMA_INVALID"
+    assert transport.calls == []
+
+
+def test_judge_pr_a_all_76_frozen_views_pass_identifier_validation():
+    root = (
+        Path(__file__).resolve().parents[2] / "docs/evidence/m1-01-alignment-c-effect"
+    )
+    checked = 0
+    for name in (
+        "normal-1",
+        "normal-2",
+        "fault-1",
+        "fault-2",
+        "pc-fault",
+        "cart-fault",
+    ):
+        records = json.loads((root / name / "ledger.json").read_bytes())["evidence"]
+        for record in records:
+            _view_identifiers(record["view"])
+            checked += 1
+    assert checked == 76
