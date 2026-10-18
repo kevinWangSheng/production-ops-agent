@@ -504,7 +504,7 @@ docs/evidence/eval/<R>/aggregate.json                   # write_round，opspilot
 - `GitProvenance._git`：前/后。
 - `KindLabIdentity.verify`：kubectl 前/后，3 次 HTTP 各自前/后。
 - `SocketPortProbe.in_use`（本地 TCP 探测，1 秒超时）：前/后。
-- `LocalPgLauncher.start`：initdb、pg_ctl start、CREATE DATABASE、migrate、建角色各自前/后；失败清理为保护。**例外**：`schema.migrate` 内部的 pg_dump 子进程属产品代码，见上条。
+- `LocalPgLauncher.start`：initdb、pg_ctl start、CREATE DATABASE、migrate 各自前/后；建角色循环内每条 `conn.execute` 前/后检查点，第一条期间收到停止请求后不执行第二条（#278）；失败清理为保护。**例外**：`schema.migrate` 内部的 pg_dump 子进程属产品代码，见上条。
 - `LocalPgLauncher.stop`：前（external_command）；调用方（closure、start 清理）为保护。
 - `SystemClock.sleep` / `interruptible_sleep`：可中断分片睡眠（≤0.5 秒），保护段内睡满。
 - `DeepSeekBalance.balance`：由调用方 `_run_slot` 包前/后。
@@ -517,7 +517,7 @@ docs/evidence/eval/<R>/aggregate.json                   # write_round，opspilot
 - `_guarded`：入口、注入前、investigate 前检查点；pre-observation.json 写入为保护。
 - `_closure`：全程保护。
 - `_recover_round`：occupation、active marker 同上；restore 及结果赋值为保护；恢复记录写入为保护，之后读取停止请求（记录不含状态与退出码，读取在写后不会不一致）。
-- `_main`：参数解析后检查点；`real_deps` 失败的拒绝经 `_refused`，在保护段内判码并打印。
+- `_main`：参数解析后检查点；dry-run 在保护段内先取 R10 最终快照，再序列化与打印；快照前停止时 JSON 与返回码均为中断/130，成功时保留原计划输出结构并返回 0，序列化或 stdout 写出期间的信号不改变快照（#278）。`real_deps` 失败的拒绝经 `_refused`，在保护段内判码并打印。
 - 先发布后判码：`_dispatch`、`_verify` 的最终 JSON 在保护段内取快照后打印。**例外**：`lifecycle.json`、`probe.json` 在保护段内写出后才读取停止请求；写入期间到达的信号使最终码为 130，而已写出的文件记的是写入前的状态。独立验收 `test_evidence_file_io_is_protected[lifecycle.json]` 要求这一行为（写入中收到信号 → 130），因此保留；`summary.json`、`aggregate.json` 不含轮级退出码，不存在不一致。
 
 `scripts/eval_live_probe.py`

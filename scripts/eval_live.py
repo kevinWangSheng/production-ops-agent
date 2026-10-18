@@ -1764,29 +1764,32 @@ def _main(argv: list[str], deps: LiveDeps | None) -> int:
         return 2
     checkpoint()  # a stop requested while parsing: nothing touched, 130
     if not args.recover and args.dry_run:
-        print(
-            json.dumps(
+        document = {
+            "round": args.round,
+            "status": "dry_run",
+            "slots": [
                 {
-                    "round": args.round,
-                    "status": "dry_run",
-                    "slots": [
-                        {
-                            "scenario_id": s.spec.scenario_id,
-                            "repetition": s.repetition,
-                            "kind": s.spec.kind,
-                            "flag": None
-                            if s.answer.injected is None
-                            else s.answer.injected.flag,
-                        }
-                        for s in slots
-                    ],
-                    "evidence": f"docs/evidence/eval/{args.round}/",
-                    "ledger": f"tmp/lab-ledgers/{args.round}/",
-                },
-                sort_keys=True,
-            )
-        )
-        return 0
+                    "scenario_id": s.spec.scenario_id,
+                    "repetition": s.repetition,
+                    "kind": s.spec.kind,
+                    "flag": None
+                    if s.answer.injected is None
+                    else s.answer.injected.flag,
+                }
+                for s in slots
+            ],
+            "evidence": f"docs/evidence/eval/{args.round}/",
+            "ledger": f"tmp/lab-ledgers/{args.round}/",
+        }
+        # R10: freeze before serialization/output; later signals change nothing.
+        with protected():
+            code = 130 if stop_requested() else 0
+            if code == 130:
+                document.update(
+                    status="interrupted", exit_code=130, reason="INTERRUPTED"
+                )
+            print(json.dumps(document, sort_keys=True))
+        return code
     if deps is None:
         try:
             # Recovery needs the lab seams only, never model credentials (r10).
