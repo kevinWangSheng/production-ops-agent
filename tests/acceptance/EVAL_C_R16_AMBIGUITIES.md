@@ -50,6 +50,7 @@
 - 原文：「占用与 active marker 的创建和删除，以及 occupation release」「marker 只保护创建和删除，不跨越它的 yield」「occupation 在获取锁之前仍可中断」。
 - 读法 A：occupation release 是删除 reservation 文件；读法 B：释放本次持有的资源/锁，不意味着删除外部占用声明。
 - 测试采用 B，沿用公开夹具中保留 reservation 的外部约定。在实际 unlink 删除意图/active marker 后、调用返回前发信号，验证最窄的删除后窗口。未暴露 marker 创建事务与 occupation release 的公开钩子；未定位它们的中途。flock 重试前检查点与阻塞占用等待也没有此轮可注入的公开接缝。
+- lead 裁决：active marker 在整轮运行期间阻止 occupation release，所有槽位结束后才删除；因此 n=2 时在 marker unlink 发信号应保留两份 summary，且两份 status 均不是 unknown，不要求已完成槽位变为 not_started。
 
 ## 9. R1/R8 在途调用与录制
 
