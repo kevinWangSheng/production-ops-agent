@@ -232,7 +232,7 @@ attempt_wrapper: Callable[[Lease, InvestigationInput, ReadOnlyToolExecutor,
 
 ## 9. #234 两项（A7）
 
-- **P1**：`validate_recording` 只从 delivery 的 `parent` 推出交付的 evidence ID。parent 是 tool 时取该 tool 的 evidence；parent 是 refusal 时取 refusal 的父 tool。不再按 view hash 扩展集合。缓存 delivery（`parent=None`）只有在 view 能唯一对应一个可核验身份时才算交付；有两个或以上候选时报 `IDENTITY_MISMATCH`。必须有的反例：两个 tool 事件 view 字节相同、evidence ID 不同，只交付其中一个，outcome 却引用两个 → `IDENTITY_MISMATCH`。对照：只引用已交付的那个则通过。缓存歧义 → 拒绝；缓存唯一 → 接受。
+- **P1**：`validate_recording` 只从 delivery 的 `parent` 推出交付的 evidence ID。parent 是 tool 时取该 tool 的 evidence；parent 是 refusal 时不交付任何 evidence（拒绝只引用原 tool 已产生的证据，与修复前的行为一致；r2 更正）。不再按 view hash 扩展集合。缓存 delivery（`parent=None`）只有在 view 能唯一对应一个已录 tool 的 evidence 身份时才算交付（view 自带 `evidence_id` 时以它收窄候选）；有两个或以上候选时报 `IDENTITY_MISMATCH`。必须有的反例：两个 tool 事件 view 字节相同、evidence ID 不同，两个结果都产生后才依次交付，但只有第一个的工具消息进入后续模型请求，outcome 却引用两个 → `IDENTITY_MISMATCH`。对照：只引用已交付的那个则通过。缓存歧义 → 拒绝；缓存唯一 → 接受。
 - **P2**：`replay()` 成功时返回的 `id_map`，取自按返回 ref 重新 `load_recording` 的新包的 `initial_state.replay_source.id_map`，不读 `session.id_map`。driver 在运行中改写 `session.id_map` 不影响返回值。录制失败的路径无法核验，返回 `{}`。
 - 旧录制包的 hash 不变。无法证明身份的包按新规则拒绝；历史摘要仍只读可展示。
 
