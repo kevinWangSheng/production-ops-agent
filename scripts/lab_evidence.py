@@ -129,6 +129,7 @@ def find_root_run(
     attempts: int = READ_BACK_ATTEMPTS,
     delay_seconds: float = READ_BACK_DELAY_S,
     sleep: Any = time.sleep,
+    checkpoint: Any = None,
 ) -> Any | None:
     """The LangSmith root run of this OTel trace, or None.
 
@@ -138,8 +139,13 @@ def find_root_run(
     renewed Run carries another one, so a ``run_id`` filter could return an
     arbitrary root (Codex review, PR #110 B2). The tracer records the last
     trace id it opened; that is the root the summary links.
+
+    ``checkpoint`` (eval PR-C r16) runs before and after every poll; it may
+    raise to stop polling. ``sleep`` may return early on a stop request.
     """
+    check = checkpoint or (lambda: None)
     for attempt in range(attempts):
+        check()
         runs = list(
             client.list_runs(
                 project_name=project_name,
@@ -151,6 +157,7 @@ def find_root_run(
                 limit=1,
             )
         )
+        check()
         if runs:
             return runs[0]
         if attempt + 1 < attempts:
@@ -175,8 +182,14 @@ def trace_evidence(
     client_factory: Any,
     attempts: int = READ_BACK_ATTEMPTS,
     delay_seconds: float = READ_BACK_DELAY_S,
+    sleep: Any = time.sleep,
+    checkpoint: Any = None,
 ) -> dict[str, Any]:
-    """The ``trace`` block of a summary: mode, ids, project, retention, link."""
+    """The ``trace`` block of a summary: mode, ids, project, retention, link.
+
+    ``sleep`` and ``checkpoint`` go to ``find_root_run`` and around the link
+    lookup; a checkpoint that raises a BaseException passes through.
+    """
     evidence: dict[str, Any] = {
         "mode": trace_record.get("mode"),
         "otel_trace_id": trace_record.get("trace_id"),
@@ -209,10 +222,14 @@ def trace_evidence(
             otel_trace_id=str(trace_id),
             attempts=attempts,
             delay_seconds=delay_seconds,
+            sleep=sleep,
+            checkpoint=checkpoint,
         )
         if root is None:
             evidence["read_back"] = "root_run_not_found"
             return evidence
+        if checkpoint is not None:
+            checkpoint()
         url = run_url(
             client,
             project_id=str(project["project_id"]),

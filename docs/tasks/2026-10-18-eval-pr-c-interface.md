@@ -531,10 +531,17 @@ docs/evidence/eval/<R>/aggregate.json                   # write_round，opspilot
 - 模型与工具调用：`_Checkpointed` 在录制代理外侧包前/后（R8）。
 - 录制封存（`_sealed_record`）：从 drive 返回到 `record()` 结束为保护。
 - `investigator.json` 写入为保护。
-- `_traces`：flush 前、flush 后/read-back 前、read-back 后检查点；flush 期间的停止跳过 read-back，trace 如实记为 `error`/`interrupted`；已完成的 read-back 保留，停止请求留给驱动的下一个检查点。
+- `_traces`：flush 前、flush 后/read-back 前、read-back 后检查点；read-back 内部（`lab_evidence.find_root_run`，最多 30 次 `list_runs`）逐次轮询前后都有检查点，轮询间隔用 `interruptible_sleep`，取链接（`run_url`）前也有检查点（第四轮）。flush 或轮询期间的停止结束 read-back，trace 如实记为 `error`/`interrupted`；已完成的 read-back 保留，停止请求留给驱动的下一个检查点。
 - **例外**：Run 结束后的本地读取（`_outcome` 的 rebuild/control_audit/read_after、`_report`、`store.run_usage`、`_finish_reason` 读本地文件）不加检查点。它们是一次性 PG 上的有界读取，用来组装已经计费的 Run 的结果；停止请求在 investigate 返回后驱动的下一个检查点处理。
 - `prepare_round`：只读本地文件，**例外**。
 
 `scripts/eval_live_verify.py`
 - `_verify_replay` 录制循环：每个录制的 load/replay 前/后检查点；构建最终记录前检查点。
 - `structural-replay.json`：最终快照与写出在同一保护段内，记录的状态、退出码与最终 JSON 一致；之后到达的信号不再改变结果（`_verify` 对正常返回不再二次合并）。
+
+被驱动调用的 `scripts/` helper（第四轮排查内部 sleep 与轮询）
+- `lab_evidence.find_root_run` / `trace_evidence`：唯一有内部轮询的 helper。新增 `sleep` 与 `checkpoint` 参数，默认值保持原行为；investigator 传入 `interruptible_sleep` 与 `checkpoint`，见上条。
+- `lab_evidence.prepare_lab_project` / `configure_lab_round` / `langsmith_client`：无 sleep 或轮询；`prepare_lab_project` 由 `_run_round` 包前/后。
+- `kind_lab.get_json` / `kubectl` / `lab_env` / `lab_authorization` / `mutate_flags` / `OPENER`：单次请求或纯函数，无 sleep 或重试；`kind_lab` 中带 sleep 的循环只在 `cmd_up`（实验环境搭建 CLI），驱动不调用。
+- `m1_context_latency.balance`：单次 HTTP，无重试；由 `_run_slot` 包前/后。
+- `m1_live_flash_loop.load_langsmith_env` / `read_key`、`f11_u2_harness.resolve_ledger_root`：只读本地文件或路径，无 sleep。

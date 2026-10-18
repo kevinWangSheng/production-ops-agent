@@ -818,3 +818,54 @@ def test_the_structural_replay_record_agrees_with_the_final_json(
         stored = json.loads(path.read_text())
         assert (code, final["status"]) == (0, "verified")
         assert (stored["status"], stored["exit_code"]) == ("verified", 0)
+
+
+# -- PR #276 bot round 4: the read-back polling -------------------------------
+
+
+def test_a_stop_during_the_first_read_back_poll_ends_the_polling(
+    env, capsys, monkeypatch
+):
+    """``find_root_run`` polls LangSmith up to 30 times, 2 s apart; a stop
+    during the first poll ends it there: no further ``list_runs``, the trace
+    is recorded as interrupted (never found), and the round exits 130."""
+    from opspilot import tracing
+    from scripts import eval_live_investigator as inv
+
+    polls: list[str] = []
+
+    class Client:
+        def list_runs(self, **kwargs):
+            polls.append(kwargs["project_name"])
+            if len(polls) == 1:
+                _signal()  # the first signal arrives during the first poll
+            return []  # the root is not visible yet: it would poll again
+
+    monkeypatch.setattr(inv, "langsmith_client", Client)
+    monkeypatch.setattr(tracing, "shutdown", lambda: None)
+    monkeypatch.setattr(tracing, "configure", lambda env: None)
+    project = {"project": "eval-r1", "project_id": "pid-1", "trace_tier": "x"}
+    session = inv.RoundSession("synthetic-key", project, None)  # type: ignore[arg-type]
+    real = env["investigator"].investigate
+
+    def investigate(request):
+        result = real(request)  # the Run itself completed
+        traces = inv._traces(
+            session, request.attempt.attempt_id, "run-1", "otel-1", env["clock"]
+        )
+        return replace(result, traces=traces)
+
+    env["investigator"].investigate = investigate  # type: ignore[method-assign]
+    started = time.monotonic()
+    code, final = _run(env, capsys, CART, NORMAL)
+    assert time.monotonic() - started < 10  # no 2 s waits between 30 polls
+    assert polls == ["eval-r1"]
+    assert (code, final["exit_code"], final["status"]) == (130, 130, "interrupted")
+    deps = env["deps"]
+    first, later = d.lifecycle(deps)["slots"]
+    assert first["summary"] is not None and later["status"] == "not_started"
+    (trace,) = d.summary(deps, first["attempt_id"])["capture"]["traces"]
+    assert trace["entry"]["read_back"] == "error"
+    assert json.loads(trace["raw_read_back"])["read_back"] == "interrupted"
+    assert env["lab"].raw == d.ORIGINAL
+    assert not (deps.ledger_root / "fault-active.json").exists()

@@ -55,6 +55,7 @@ from scripts.eval_live_lab import (
     LabError,
     LiveClock,
     checkpoint,
+    interruptible_sleep,
     protected,
     request_stop,
     write_private,
@@ -518,6 +519,10 @@ def _traces(
             run_id=run_id,
             project=session.project,
             client_factory=langsmith_client,
+            # Every poll of the read-back is checkpointed and its waits are
+            # interruptible (R1, R5), not only the call as a whole.
+            sleep=interruptible_sleep,
+            checkpoint=checkpoint,
         )
         checkpoint()  # a completed read-back is kept, the stop stays set
     except (Interrupted, KeyboardInterrupt):
