@@ -2216,7 +2216,7 @@ def test_r10_summary_records_bind_ordered_raw_bytes(r9_identity_artifact):
     "mutation,code",
     [
         ("missing_provider", "HASH_MISMATCH"),
-        ("extra_provider", "HASH_MISMATCH"),
+        ("extra_provider", "SCHEMA_INVALID"),
         ("short", "HASH_MISMATCH"),
         ("long", "HASH_MISMATCH"),
         ("digest", "HASH_MISMATCH"),
