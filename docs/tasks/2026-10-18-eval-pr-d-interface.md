@@ -93,3 +93,11 @@ stdout 只输出一个 JSON 对象：`{"schema":"opspilot-eval-structural-ci-1",
 - 零外部调用：在 socket 创建被禁用、环境变量被清空或填入 CANARY 假凭据的条件下，入口结果不变；fixture 的全部字节中不含这些假凭据值。
 - fixture 内容：`synthetic=True`；不含 `.env` 键名对应的值，也不含 `http(s)://` 开头的非 CANARY 主机。
 - 结构结果不计质量率：把它送入 PR-A 的 aggregate 时，`pass_rate` 为 None，`baseline_complete` 为 False（`NO_QUALITY_SLOTS`）。
+
+## r2（2026-10-18，实施中的 lead 裁决）
+
+- 入口输出 JSON 的顶层增加 `reason` 字段：退出码 3 时为 `"NOTHING_TO_VERIFY"`，其他情况为 null，写法与 `eval_live_verify` 一致。
+- 默认的 `--fixtures` 路径按仓库根目录解析；显式传入的路径原样使用。DIR 下的普通文件忽略，只有文件时退出码为 3。
+- `fixture.json` 不合格时，`recording_sha256` 记为 null。错误按执行顺序只取第一个：FIXTURE_INVALID → StorageError.code → VERIFY_FAILED → EVENT_COUNTS_MISMATCH。
+- fixture 内部不一致（`recording_sha256` 与 manifest 的 `replay_fixture` 对不上）报 FIXTURE_INVALID（见验收歧义第 9 条）。
+- 秘密扫描：B2 工具事件的 `key` 字段是 tool_key 摘要，会触发 gitleaks 的 generic-api-key 规则。`scripts/check_secrets.py` 为此加了一条例外，规则、fixture blob 路径和具体值三者同时匹配才放行，沿用 m0-integration 的先例。
