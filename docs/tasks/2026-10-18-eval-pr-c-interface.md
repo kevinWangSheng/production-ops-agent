@@ -120,6 +120,7 @@ class EnvChecker(Protocol):
 ```
 
 - `EnvChecker.check()` 在预检第一步调用，非 None 即退出 3（`ENV_UNCONFIRMED`），不调用其他接缝。真实实现在 `real_deps()` 构造时读取 `M0_ENV_FILE`；注入的 `LiveDeps` 由调用方负责，驱动不读任何环境文件。
+- **轮开始（r4）**：`Investigator` 可选实现 `begin_round(round_id: str) -> None`。驱动只在预检全部通过之后、追加 `run-starts.jsonl` 与写第一个 journal 之前调用它一次；未实现该方法的假 Investigator 视为无操作。它抛 `LabError(code)` 时整轮以退出 3、该 code 拒绝，不写 journal。真实实现在这里创建 LangSmith 项目并设置保留期；`real_deps()` 只读本地环境文件，不发起任何网络调用。因此预检拒绝的一轮对 LangSmith、DeepSeek 余额、PG 与 Investigator 全部零调用；预检本身只调用拒绝之前已经用到的接缝（`env` → 占用文件 → identity → port → flags/flagd）。
 
 - `FlagStore.replace` 是 CAS：只有当前对象的 uid、resourceVersion、raw 都等于 `current` 时才写入 `new_raw`。`fence` 非 None 时还要写入唯一注解，保证 resourceVersion 前进。返回写后的对象。条件不符抛 `LabError("FLAG_CAS_CONFLICT")`，结果未知抛 `LabError("FLAG_WRITE_UNKNOWN")`。驱动在每次 replace 后另行 `read()` 并核对 SHA，不把 replace 的返回值当作证据。
 - `Investigator` 封装真实 Run：建 incident、运行 runner、录制、trace 回读。测试用假实现代替它，从而离线测试生命周期、计分与输出；真实实现的接线规则见第 8 节。
