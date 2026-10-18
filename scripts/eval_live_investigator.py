@@ -51,10 +51,12 @@ from opspilot.web import DurableEventLog, DurableEvidenceStore, DurableIncidentS
 from opspilot.web.service import LEASE_SECONDS
 from opspilot.worker import Worker
 from scripts.eval_live_lab import (
+    Interrupted,
     LabError,
     LiveClock,
     checkpoint,
     protected,
+    request_stop,
     write_private,
 )
 from scripts.lab_evidence import (
@@ -275,14 +277,16 @@ class OtelDemoInvestigator:
                 {},
                 "PRE_OBSERVATION_STALE",
             )
+        # A checkpoint before and after every DB operation up to the intake
+        # (R1): a stop requested meanwhile never submits a billed Run.
         web = DurableStore(request.pg.web_dsn or request.pg.runtime_dsn)
-        web.install()
         store = DurableStore(request.pg.runtime_dsn)
-        store.install()
         log = DurableEventLog(store)
-        log.install()
         evidence = DurableEvidenceStore(store)
-        evidence.install()
+        for seat in (web, store, log, evidence):
+            checkpoint()
+            seat.install()
+        checkpoint()
         incident, run_id = uuid4(), uuid4()
         submitted = clock.now()
         deadline = submitted + RUN_WALL
@@ -295,6 +299,7 @@ class OtelDemoInvestigator:
             model_requests=M1_FROZEN_LIMITS.model_requests,
         )
         versions = otel_demo.otel_demo_versions()
+        checkpoint()
         web.accept(
             incident,
             run_id,
@@ -304,6 +309,7 @@ class OtelDemoInvestigator:
             versions=versions,
             input=run_input.as_json(),
         )
+        checkpoint()  # accepted, not started: no model call yet
         client = self.client_factory(self.session.key, clock)
         model = _Delegate(client)
         delivery = _Delegate(None)
@@ -497,18 +503,26 @@ def _traces(
     clock: LiveClock,
 ) -> tuple[TraceRecord, ...]:
     # Flush this attempt's spans before the bounded read-back, then reopen
-    # the exporter for the next attempt; checkpoints before the flush and
-    # after the read-back (R1).
+    # the exporter for the next attempt. Checkpoints before the flush, after
+    # it and after the read-back (R1). The Run has already happened, so a
+    # stop here skips only the remote read-back: the trace is then recorded
+    # as not read back ("error", raw "interrupted"), never as found, and the
+    # stop request stays set for the driver's next checkpoint.
     checkpoint()
     tracing.shutdown()
-    evidence = trace_evidence(
-        {"mode": "lab", "trace_id": trace_id},
-        run_id=run_id,
-        project=session.project,
-        client_factory=langsmith_client,
-    )
+    evidence: Mapping[str, Any] = {"read_back": "interrupted"}
+    try:
+        checkpoint()
+        evidence = trace_evidence(
+            {"mode": "lab", "trace_id": trace_id},
+            run_id=run_id,
+            project=session.project,
+            client_factory=langsmith_client,
+        )
+        checkpoint()  # a completed read-back is kept, the stop stays set
+    except (Interrupted, KeyboardInterrupt):
+        request_stop()
     tracing.configure(os.environ)
-    checkpoint()
     raw = str(evidence.get("read_back"))
     read_back = (
         raw

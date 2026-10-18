@@ -18,6 +18,7 @@ import subprocess
 import sys
 import threading
 import time
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -576,3 +577,130 @@ def test_the_seal_protection_never_leaks_depth(tmp_path, monkeypatch, failure):
         with pytest.raises(expected):
             _sealed_record(drive, destination=tmp_path / "rec", context=b2.context())
         assert eval_live_lab._STOP["depth"] == 0
+
+
+# -- PR #276 bot round 2: investigator checkpoints (R1) -----------------------
+
+
+class _Store:
+    """``DurableStore`` and its seats, offline: records every DB operation."""
+
+    calls: list[str] = []
+    stop_in: str | None = None
+
+    def __init__(self, *args, **kwargs) -> None:
+        self.name = type(self).__name__
+
+    def install(self) -> None:
+        _Store.calls.append(f"{self.name}.install")
+        if _Store.stop_in == f"{self.name}.install":
+            _signal()  # the first signal arrives during this DB operation
+
+    def accept(self, *args, **kwargs) -> None:
+        _Store.calls.append("accept")
+
+
+class _Web(_Store):
+    pass
+
+
+class _Log(_Store):
+    pass
+
+
+class _Evidence(_Store):
+    pass
+
+
+@pytest.mark.parametrize("stop_in", ["_Web.install", "_Evidence.install"])
+def test_a_stop_during_an_intake_db_operation_never_submits_the_run(
+    env, capsys, monkeypatch, stop_in
+):
+    from opspilot.tools import otel_demo
+    from scripts import eval_live_investigator as inv
+
+    stores = iter([_Web, _Store])
+    monkeypatch.setattr(inv, "DurableStore", lambda dsn: next(stores)())
+    monkeypatch.setattr(inv, "DurableEventLog", _Log)
+    monkeypatch.setattr(inv, "DurableEvidenceStore", _Evidence)
+    monkeypatch.setattr(_Store, "calls", [])
+    monkeypatch.setattr(_Store, "stop_in", stop_in)
+    built: list[str] = []
+    session = inv.RoundSession("synthetic-key", None, otel_demo.OtelDemoConfig())
+    investigator = inv.OtelDemoInvestigator(
+        session, env["clock"], client_factory=lambda *a: built.append("client")
+    )
+    deps = replace(env["deps"], investigator=investigator)
+    env["pg"].deps_ref["deps"] = deps
+    code = eval_live.main([*d.LIVE_ARGV, *p._scenarios(CART, NORMAL)], deps=deps)
+    final = d._last_json(capsys)
+    assert (code, final["exit_code"], final["status"]) == (130, 130, "interrupted")
+    assert stop_in in _Store.calls
+    assert "accept" not in _Store.calls and built == []  # no Run, no model
+    first, later = d.lifecycle(deps)["slots"]
+    assert (first["status"], first["reason"]) == ("aborted", "INTERRUPTED")
+    assert first["summary"] is not None and later["status"] == "not_started"
+    assert env["lab"].raw == d.ORIGINAL
+    assert not (deps.ledger_root / "fault-active.json").exists()
+    assert env["pg"].stopped == env["pg"].started
+
+
+def test_a_stop_during_the_trace_flush_skips_the_read_back_honestly(
+    env, capsys, monkeypatch
+):
+    from opspilot import tracing
+    from scripts import eval_live_investigator as inv
+
+    steps: list[str] = []
+
+    def shutdown():
+        steps.append("shutdown")
+        _signal()  # the first signal arrives while the spans are flushed
+
+    def read_back(*args, **kwargs):
+        steps.append("read_back")
+        return {"read_back": "found", "langsmith_run_id": "lsr-1"}
+
+    monkeypatch.setattr(tracing, "shutdown", shutdown)
+    monkeypatch.setattr(tracing, "configure", lambda env: steps.append("configure"))
+    monkeypatch.setattr(inv, "trace_evidence", read_back)
+    session = inv.RoundSession("synthetic-key", None, None)  # type: ignore[arg-type]
+    real = env["investigator"].investigate
+
+    def investigate(request):
+        result = real(request)  # the Run itself completed
+        traces = inv._traces(
+            session, request.attempt.attempt_id, "run-1", "otel-1", env["clock"]
+        )
+        return replace(result, traces=traces)
+
+    env["investigator"].investigate = investigate  # type: ignore[method-assign]
+    code, final = _run(env, capsys, CART, NORMAL)
+    assert steps == ["shutdown", "configure"]  # no read-back after the flush
+    assert (code, final["exit_code"], final["status"]) == (130, 130, "interrupted")
+    first, later = d.lifecycle(deps := env["deps"])["slots"]
+    assert first["summary"] is not None and later["status"] == "not_started"
+    capture = d.summary(deps, first["attempt_id"])["capture"]
+    (trace,) = capture["traces"]
+    assert trace["entry"]["read_back"] == "error"  # never "found"
+    assert json.loads(trace["raw_read_back"])["read_back"] == "interrupted"
+    assert env["lab"].raw == d.ORIGINAL
+    assert not (deps.ledger_root / "fault-active.json").exists()
+
+
+def test_a_completed_read_back_is_kept_when_the_stop_arrives_during_it(monkeypatch):
+    from opspilot import tracing
+    from scripts import eval_live_investigator as inv
+
+    def read_back(*args, **kwargs):
+        eval_live_lab.request_stop()  # arrives during the remote read-back
+        return {"read_back": "found", "langsmith_run_id": "lsr-1"}
+
+    monkeypatch.setattr(tracing, "shutdown", lambda: None)
+    monkeypatch.setattr(tracing, "configure", lambda env: None)
+    monkeypatch.setattr(inv, "trace_evidence", read_back)
+    session = inv.RoundSession("synthetic-key", None, None)  # type: ignore[arg-type]
+    with eval_live_lab.interrupt_scope():
+        (trace,) = inv._traces(session, "a1", "run-1", "otel-1", d.Clock())
+        assert eval_live_lab.stop_requested()  # left for the driver
+    assert trace.entry.read_back == "found" and trace.entry.run_id == "lsr-1"
