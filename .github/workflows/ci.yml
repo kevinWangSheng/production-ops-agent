@@ -35,20 +35,32 @@ jobs:
       - name: Run development checks
         run: make check
       # PR-D1 (D07): a fresh network namespace without interfaces, back as the
-      # runner user, only PATH/LANG and a throwaway HOME. The outbound probe must
-      # fail first, otherwise isolation is broken and the step fails.
+      # runner user, only PATH/LANG and a throwaway HOME. Before the entry runs,
+      # the namespace must hold only lo and an outbound connect must fail with
+      # "unreachable"; anything else (success, other errors) fails the step.
       - name: Structural replay (offline, no credentials)
         run: |
           sandbox_home="$(mktemp -d)"
           sudo unshare --net -- \
-            setpriv --reuid="$(id -u)" --regid="$(id -g)" --init-groups \
+            setpriv --reuid="$(id -u)" --regid="$(id -g)" --init-groups --no-new-privs \
             env -i PATH="$PATH" LANG="${LANG:-C.UTF-8}" HOME="$sandbox_home" \
             bash -euo pipefail -c '
-              if .venv/bin/python -c "import socket; socket.create_connection((\"1.1.1.1\", 443), timeout=5).close()"; then
-                echo "isolation broken: outbound TCP connect succeeded" >&2
+              links="$(sed 1,2d /proc/net/dev | cut -d: -f1 | tr -d " ")"
+              if [ "$links" != "lo" ]; then
+                echo "isolation broken: interfaces in namespace: $links" >&2
                 exit 1
               fi
-              echo "outbound TCP connect refused as expected"
+              .venv/bin/python - <<"PY"
+          import errno, socket, sys
+          try:
+              socket.create_connection(("1.1.1.1", 443), timeout=5).close()
+          except OSError as exc:
+              if exc.errno in (errno.ENETUNREACH, errno.EHOSTUNREACH):
+                  print(f"isolated: outbound connect failed with {errno.errorcode[exc.errno]}")
+                  sys.exit(0)
+              sys.exit(f"isolation probe inconclusive: {exc!r}")
+          sys.exit("isolation broken: outbound TCP connect succeeded")
+          PY
               make eval-structural
             '
       - name: Install checksum-pinned Gitleaks
