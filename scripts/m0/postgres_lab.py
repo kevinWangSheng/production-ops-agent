@@ -35,7 +35,16 @@ def binary(name):
 
 
 def run(name, *args):
-    subprocess.run([binary(name), *map(str, args)], check=True, timeout=30)
+    # Same whitelist as eval_live_lab.pg_env: pg_ctl must not hand model, trace
+    # or database credentials to the postmaster (#272). The M0 lab keeps trust
+    # auth: it is a persistent, single-user dev cluster reached by password-less
+    # DSNs, so a per-start SCRAM password would break every consumer.
+    env = {
+        key: value
+        for key, value in os.environ.items()
+        if key in ("PATH", "HOME", "TMPDIR", "LANG", "TZ") or key.startswith("LC_")
+    }
+    subprocess.run([binary(name), *map(str, args)], check=True, timeout=30, env=env)
 
 
 def validate_paths():
