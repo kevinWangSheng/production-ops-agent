@@ -60,20 +60,23 @@ def finish(h, capsys, argv=None):
     return code, result
 
 
-def closed(h, result, *, code=130, retained=False):
+def closed(h, result, *, code=130, retained=False, summaries=1):
     assert result["exit_code"] == code
     assert h.flags.current.raw == s.flags_raw()
     assert (h.deps.ledger_root / "fault-active.json").exists() is retained
     assert not list(h.deps.ledger_root.glob(".active-*.json"))
     assert h.pg.stopped == h.pg.started
     assert h.reservation.exists()
-    summaries = h.summaries()
-    assert len(summaries) == 1
-    assert summaries[0]["capture"]["attempt"]["status"] != "unknown"
+    written_summaries = h.summaries()
+    assert len(written_summaries) == summaries
+    assert all(
+        summary["capture"]["attempt"]["status"] != "unknown"
+        for summary in written_summaries
+    )
     assert list(h.public().glob("runs/*/attempt.json"))
     for name in ("aggregate.json", "lifecycle.json"):
         assert isinstance(json.loads((h.public() / name).read_bytes()), dict)
-    assert all(slot["status"] == "not_started" for slot in result["slots"][1:])
+    assert all(slot["status"] == "not_started" for slot in result["slots"][summaries:])
 
 
 @pytest.mark.parametrize("phase", ["inject", "restore", "wash", "pg-stop"])
@@ -145,7 +148,7 @@ def test_unlink_finishes_protected_transition(h, capsys, monkeypatch, target, co
     code, result = finish(h, capsys)
     assert len(reached) == 2
     assert code == 130
-    closed(h, result)
+    closed(h, result, summaries=2 if target == "active-marker" else 1)
 
 
 @pytest.mark.parametrize("name", ["summary.json", "aggregate.json", "lifecycle.json"])
