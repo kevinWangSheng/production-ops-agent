@@ -35,7 +35,6 @@ from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
-from types import FrameType
 from typing import Any, Literal
 from uuid import uuid4
 
@@ -72,7 +71,9 @@ from opspilot.observation.release_policy import sha256
 from opspilot.tools.executor import QueryScope
 from opspilot.tools.otel_demo import OtelDemoConfig
 from scripts.eval_live_lab import (
+    _STOP,
     AttemptLedger,
+    Committed,
     FaultIntent,
     Interrupted,
     LabError,
@@ -82,18 +83,25 @@ from scripts.eval_live_lab import (
     Provenance,
     active_marker,
     append_run_start,
+    await_fault,
     check_flagd_url,
     check_occupation,
     check_run_start,
+    checkpoint,
+    commit_fault,
     confirm_all_normal,
     fault_for,
     fault_gate,
     fault_guard,
-    inject_fault,
+    handle_signal,
+    interrupt_scope,
     normal_window,
     observation_json,
+    protected,
     read_state,
+    request_stop,
     restore_fault,
+    stop_requested,
     write_private,
 )
 
@@ -403,16 +411,14 @@ def fault_signatures(deps: LiveDeps) -> tuple[SignatureRule, ...]:
 
 
 def _refuse(config: RoundConfig, reason: str) -> RoundResult:
-    return RoundResult(
-        config.round_id,
-        "refused",
-        3,
-        reason,
-        tuple(
-            SlotResult(s.spec.scenario_id, s.spec.version, s.repetition)
-            for s in config.slots
-        ),
+    slots = tuple(
+        SlotResult(s.spec.scenario_id, s.spec.version, s.repetition)
+        for s in config.slots
     )
+    if stop_requested():
+        # A stop requested before or during the preflight (R10): 130, not 3.
+        return RoundResult(config.round_id, "interrupted", 130, "INTERRUPTED", slots)
+    return RoundResult(config.round_id, "refused", 3, reason, slots)
 
 
 def preflight(config: RoundConfig, deps: LiveDeps) -> str | None:
@@ -477,6 +483,11 @@ def _outranks(new: int, current: int | None) -> bool:
 
 
 def run_round(config: RoundConfig, deps: LiveDeps) -> RoundResult:
+    with interrupt_scope():
+        return _run_round(config, deps)
+
+
+def _run_round(config: RoundConfig, deps: LiveDeps) -> RoundResult:
     refusal = preflight(config, deps)
     if refusal is not None:
         return _refuse(config, refusal)
@@ -506,10 +517,12 @@ def run_round(config: RoundConfig, deps: LiveDeps) -> RoundResult:
     # the preflight passed: a refused round makes no external call (r4).
     begin = getattr(deps.investigator, "begin_round", None)
     if begin is not None:
+        checkpoint()  # before and after the project preparation (R1)
         try:
             begin(config.round_id)
         except LabError as exc:
             return _refuse(config, exc.code)
+        checkpoint()
     results = [
         SlotResult(s.spec.scenario_id, s.spec.version, s.repetition)
         for s in config.slots
@@ -549,6 +562,7 @@ def run_round(config: RoundConfig, deps: LiveDeps) -> RoundResult:
         ):
             for index, slot in enumerate(config.slots):
                 try:
+                    checkpoint()  # before every slot
                     _run_slot(
                         config,
                         deps,
@@ -567,8 +581,9 @@ def run_round(config: RoundConfig, deps: LiveDeps) -> RoundResult:
                         later.reason = "ROUND_STOPPED"
                     break
                 except (Interrupted, KeyboardInterrupt):
-                    # A signal outside every attempt-level handler (e.g. while
-                    # writing evidence): the round outputs are still written.
+                    # A checkpoint outside every attempt-level handler (e.g.
+                    # before a slot): the round outputs are still written.
+                    request_stop()
                     status, exit_code, reason = "interrupted", 130, "INTERRUPTED"
                     for later in results[index + 1 :]:
                         later.reason = "ROUND_STOPPED"
@@ -582,33 +597,35 @@ def run_round(config: RoundConfig, deps: LiveDeps) -> RoundResult:
     except LabError as exc:
         # The reservation vanished or changed between the preflight and here.
         status, exit_code, reason = "stopped", 3, exc.code
+    except (Interrupted, KeyboardInterrupt):
+        # While the active marker was being taken (its lock wait): the round
+        # started, so its outputs are still written.
+        request_stop()
+        if _outranks(130, exit_code):
+            status, exit_code, reason = "interrupted", 130, "INTERRUPTED"
     except OSError:
         # The active marker could not be written or removed: the lab
         # coordination is incomplete, so the round never reports success.
         if _outranks(1, exit_code):
             status, exit_code, reason = "stopped", 1, "LAB_LEDGER_UNAVAILABLE"
     manifest = round_state["manifest"]
-    # The round outputs are written with signals held, and an interrupt
-    # raised while writing them is remembered, not propagated: the final
-    # JSON always comes out, then the interrupt applies (r13: 4 > 5 > 130).
-    late_interrupt = False
-    with _deferred_interrupts():
+    # The round outputs are written in a protected section; a stop requested
+    # meanwhile is read afterwards (r16), so the final JSON always comes out
+    # and then the stop applies (r13: 4 > 5 > 130).
+    with protected():
         try:
             aggregate_error = _write_round(
                 config, deps, manifest, journals, summaries, evidence_dir
             )
         except (Interrupted, KeyboardInterrupt):
-            aggregate_error, late_interrupt = None, True
-        try:
-            retained, own = _retained(deps, config.round_id)
-        except (Interrupted, KeyboardInterrupt):
-            (retained, own), late_interrupt = _retained(deps, config.round_id), True
-    late_interrupt = _take_pending() or late_interrupt
+            request_stop()
+            aggregate_error = None
+        retained, own = _retained(deps, config.round_id)
     if own and _outranks(4, exit_code):
         # This round's intent is still there although no closure reported a
         # failure (a path cut short): it needs --recover, so exit 4 (r13).
         status, exit_code, reason = "stopped", 4, "FAULT_RECOVERY_REQUIRED"
-    if late_interrupt and _outranks(130, exit_code):
+    if stop_requested() and _outranks(130, exit_code):
         status, exit_code, reason = "interrupted", 130, "INTERRUPTED"
     # A missing aggregate outranks an interrupt and a stop with 1 (e.g.
     # PG_STOP_FAILED, kept in lifecycle), never a retained fault.
@@ -616,7 +633,7 @@ def run_round(config: RoundConfig, deps: LiveDeps) -> RoundResult:
         status, exit_code, reason = "stopped", 5, aggregate_error
     if exit_code is None:
         exit_code = 0 if all(r.status == "ran" for r in results) else 1
-    with _deferred_interrupts():
+    with protected():
         try:
             _write_lifecycle(
                 config,
@@ -635,8 +652,8 @@ def run_round(config: RoundConfig, deps: LiveDeps) -> RoundResult:
             if _outranks(5, exit_code):
                 status, exit_code, reason = "stopped", 5, "EVIDENCE_WRITE_FAILED"
         except (Interrupted, KeyboardInterrupt):
-            late_interrupt = True
-    if (_take_pending() or late_interrupt) and _outranks(130, exit_code):
+            request_stop()
+    if stop_requested() and _outranks(130, exit_code):
         status, exit_code, reason = "interrupted", 130, "INTERRUPTED"
     return RoundResult(config.round_id, status, exit_code, reason, tuple(results))
 
@@ -778,29 +795,31 @@ def _run_slot(
     )
     run_dir = round_evidence(deps, config.round_id) / "runs" / attempt_id
     started_at = clock.now()
-    try:
-        run_dir.mkdir(parents=True, exist_ok=False)
-        journal_ref = write_attempt(
-            run_dir / "attempt.json",
-            AttemptJournal(record, slot.spec, slot.answer, started_at=started_at),
+    # The journal, the private ledger and its first event: one protected
+    # section, so a started attempt never lacks either (r16).
+    with protected():
+        try:
+            run_dir.mkdir(parents=True, exist_ok=False)
+            journal_ref = write_attempt(
+                run_dir / "attempt.json",
+                AttemptJournal(record, slot.spec, slot.answer, started_at=started_at),
+            )
+        except (OSError, StorageError):
+            raise _Stop(5, "EVIDENCE_WRITE_FAILED") from None
+        out.attempt_id = attempt_id
+        journals.append(
+            (
+                attempt_id,
+                replace(journal_ref, path=f"runs/{attempt_id}/attempt.json"),
+            )
         )
-    except (OSError, StorageError):
-        raise _Stop(5, "EVIDENCE_WRITE_FAILED") from None
-    out.attempt_id = attempt_id
-    journals.append(
-        (
-            attempt_id,
-            replace(journal_ref, path=f"runs/{attempt_id}/attempt.json"),
-        )
-    )
-    with _deferred_interrupts():
         ledger = AttemptLedger(
             attempt_ledger_dir(deps, config.round_id, attempt_id), clock
         )
         state = _Attempt(record, ledger, started_at)
         state.marks["start"] = clock.monotonic()
         ledger.event("journal", "attempt_started", attempt_id=attempt_id)
-    if _take_pending():
+    if stop_requested():
         state.interrupted = True
         _fail(state, "INTERRUPTED")
     if ledger.write_failed:
@@ -813,9 +832,12 @@ def _run_slot(
     before = after = None
     try:
         if state.reason is None:
+            checkpoint()  # before and after every balance read (R1)
             before = _balance(deps)
+            checkpoint()
             _attempt_body(config, deps, slot, state, signatures, round_state)
     except (Interrupted, KeyboardInterrupt):
+        request_stop()
         state.interrupted = True
         _fail(state, "INTERRUPTED")
     except OSError:
@@ -825,20 +847,27 @@ def _run_slot(
     except Exception:  # noqa: BLE001 - a driver bug still gets its summary
         _fail(state, "DRIVER_ERROR")
     try:
+        checkpoint()
         after = _balance(deps)
+        checkpoint()
     except (Interrupted, KeyboardInterrupt):
+        request_stop()
         state.interrupted = True
-    balances.append(_cost(attempt_id, before, after))
-    out.status = state.status
-    out.stage = state.stage
-    out.reason = state.reason
-    out.closure_reason = state.closure_reason
-    out.product_run_id = state.record.product_run_id
-    out.pre_observation = None if state.gate is None else observation_json(state.gate)
-    out.timings = _timings(state, clock.now())
-    try:
-        # A signal while the evidence is written is held until it is done.
-        with _deferred_interrupts():
+    # After the closure everything is frozen and written in one protected
+    # section: the cost, the slot fields, the timings and the summary (r16,
+    # #273 item 4). A stop requested meanwhile is read once it is done.
+    with protected():
+        balances.append(_cost(attempt_id, before, after))
+        out.status = state.status
+        out.stage = state.stage
+        out.reason = state.reason
+        out.closure_reason = state.closure_reason
+        out.product_run_id = state.record.product_run_id
+        out.pre_observation = (
+            None if state.gate is None else observation_json(state.gate)
+        )
+        out.timings = _timings(state, clock.now())
+        try:
             summary_ref = _write_summary(
                 config,
                 deps,
@@ -848,25 +877,29 @@ def _run_slot(
                 run_dir,
                 balances[-1],
             )
-    except (OSError, StorageError, ValueError):
-        # Exit precedence 4 > 5 > 130 (r13): a retained fault outranks the
-        # missing summary, which outranks an interrupt.
-        out.status, out.stage, out.reason = state.status, state.stage, state.reason
+        except (OSError, StorageError, ValueError):
+            # Exit precedence 4 > 5 > 130 (r13): a retained fault outranks the
+            # missing summary, which outranks an interrupt.
+            out.status, out.stage = state.status, state.stage
+            out.reason = state.reason
+            out.fault = _fault_json(state)
+            if state.stop is not None and state.stop.exit_code == 4:
+                raise state.stop from None
+            raise _Stop(5, "EVIDENCE_WRITE_FAILED") from None
+        # Verifying the recording may have turned a ran attempt into aborted;
+        # the public slot must show what the summary says.
+        out.status, out.stage = state.status, state.stage
+        out.reason = state.reason
+        summaries[attempt_id] = replace(
+            summary_ref, path=f"runs/{attempt_id}/summary.json"
+        )
+        out.summary = {
+            "path": f"runs/{attempt_id}/summary.json",
+            "sha256": summary_ref.sha256,
+        }
         out.fault = _fault_json(state)
-        if state.stop is not None and state.stop.exit_code == 4:
-            raise state.stop from None
-        raise _Stop(5, "EVIDENCE_WRITE_FAILED") from None
-    if _take_pending():
+    if stop_requested():
         state.interrupted = True
-    # Verifying the recording may have turned a ran attempt into aborted; the
-    # public slot must show what the summary says.
-    out.status, out.stage, out.reason = state.status, state.stage, state.reason
-    summaries[attempt_id] = replace(summary_ref, path=f"runs/{attempt_id}/summary.json")
-    out.summary = {
-        "path": f"runs/{attempt_id}/summary.json",
-        "sha256": summary_ref.sha256,
-    }
-    out.fault = _fault_json(state)
     # Exit precedence 4 > 5 > 130 > 1 (_RANK): LAB_FAULT_FOREIGN and
     # PG_STOP_FAILED stop the round with 1 and stay in the slot's reasons.
     if state.stop is not None and state.stop.exit_code == 4:
@@ -898,6 +931,7 @@ def _attempt_body(
             try:
                 _guarded(config, deps, slot, state, signatures, round_state)
             except (Interrupted, KeyboardInterrupt):
+                request_stop()
                 state.interrupted = True
                 _fail(state, "INTERRUPTED")
             except LabError as exc:
@@ -956,6 +990,7 @@ def _guarded(
 ) -> None:
     clock, ledger = deps.clock, state.ledger
     spec, answer = slot.spec, slot.answer
+    checkpoint()
     state.stage = "identity"
     if deps.identity.verify():
         raise LabError("LAB_IDENTITY_UNCONFIRMED")
@@ -982,13 +1017,22 @@ def _guarded(
             config.batch,
             fault_for(injected.flag, injected.variant),
         )
+        checkpoint()  # before the injection
         state.injected = True
-        result = inject_fault(intent, deps=deps, ledger=ledger)
-        state.marks["effective_at"] = result.effective_at.timestamp()
+
+        def committed(fault: Committed) -> None:
+            # Recorded inside the commit's protected section, before the
+            # propagation wait (R6, #273 item 3).
+            state.marks["requested_at"] = fault.requested_at.timestamp()
+
+        result = commit_fault(intent, deps=deps, ledger=ledger, record=committed)
+        effective_at = await_fault(result, deps=deps, ledger=ledger)
+        state.marks["effective_at"] = effective_at.timestamp()
         state.stage = "pre_observation"
-        gate = fault_gate(answer.signature, confirmed_at=result.effective_at, deps=deps)
+        gate = fault_gate(answer.signature, confirmed_at=effective_at, deps=deps)
         state.gate = gate
-        ledger.write("pre-observation.json", _raw_observation(gate))
+        with protected():
+            ledger.write("pre-observation.json", _raw_observation(gate))
         if not gate.passed:
             raise LabError(gate.reason or "FAULT_NOT_OBSERVED")
         newest = max(span.start for span in gate.matched)
@@ -999,7 +1043,8 @@ def _guarded(
         state.stage = "pre_observation"
         gate = normal_window(signatures, not_before=confirmed, deps=deps)
         state.gate = gate
-        ledger.write("pre-observation.json", _raw_observation(gate))
+        with protected():
+            ledger.write("pre-observation.json", _raw_observation(gate))
         if not gate.passed or gate.window is None:
             raise LabError(gate.reason or "NORMAL_WINDOW_UNCONFIRMED")
         submit_not_after = gate.window.end + FRESHNESS
@@ -1021,6 +1066,7 @@ def _guarded(
         submit_not_after=submit_not_after,
     )
     ledger.event("investigate", "started")
+    checkpoint()
     try:
         result = deps.investigator.investigate(request)
     except (Interrupted, KeyboardInterrupt):
@@ -1070,6 +1116,18 @@ def _closure(
     signatures: tuple[SignatureRule, ...],
 ) -> None:
     """Restore and wash (if this attempt wrote an intent), then stop its PG."""
+    # The whole closure is protected (r16): the restore, the result
+    # assignment and the PG stop with its retry finish whatever arrives.
+    with protected():
+        _close(config, deps, state, signatures)
+
+
+def _close(
+    config: RoundConfig,
+    deps: LiveDeps,
+    state: _Attempt,
+    signatures: tuple[SignatureRule, ...],
+) -> None:
     ledger = state.ledger
     state.marks["closure_start"] = deps.clock.monotonic()
     try:
@@ -1097,6 +1155,7 @@ def _closure(
         if isinstance(exc, LabError):
             code = exc.code
         elif isinstance(exc, (Interrupted, KeyboardInterrupt)):
+            request_stop()
             code = "INTERRUPTED"
         else:
             code = "DRIVER_ERROR"
@@ -1114,15 +1173,15 @@ def _closure(
             deps.pg.stop(state.pg)
             ledger.event("pg", "stopped")
         except (Interrupted, KeyboardInterrupt):
-            # Closure still finishes: stop again with signals held (P2).
+            # Closure still finishes: stop again, still protected (P2).
+            request_stop()
             state.interrupted = True
             ledger.event("pg", "stop_interrupted")
-            with _deferred_interrupts():
-                try:
-                    deps.pg.stop(state.pg)
-                    ledger.event("pg", "stopped")
-                except Exception:  # noqa: BLE001 - the round stops below
-                    _pg_stop_failed(state, "PG_STOP_FAILED")
+            try:
+                deps.pg.stop(state.pg)
+                ledger.event("pg", "stopped")
+            except Exception:  # noqa: BLE001 - the round stops below
+                _pg_stop_failed(state, "PG_STOP_FAILED")
         except Exception:  # noqa: BLE001 - lab recovery is unaffected
             _pg_stop_failed(state, "PG_STOP_FAILED")
     state.marks["closure_end"] = deps.clock.monotonic()
@@ -1315,18 +1374,32 @@ def recover_round(
     round_id: str, holder: str, batch: str, deps: LiveDeps
 ) -> RoundResult:
     """Restore and wash a retained fault of this round (exit 0/3/4/5/130)."""
+    with interrupt_scope():
+        return _recover_round(round_id, holder, batch, deps)
+
+
+def _refused(round_id: str, reason: str) -> RoundResult:
+    if stop_requested():
+        # A stop requested before the refusal (R10): 130, not 3.
+        return RoundResult(round_id, "interrupted", 130, "INTERRUPTED", ())
+    return RoundResult(round_id, "refused", 3, reason, ())
+
+
+def _recover_round(
+    round_id: str, holder: str, batch: str, deps: LiveDeps
+) -> RoundResult:
     # The wash reads the lab Prometheus account; check it before anything.
     environment = deps.env.check()
     if environment is not None:
-        return RoundResult(round_id, "refused", 3, environment, ())
+        return _refused(round_id, environment)
     try:
         state = read_state(deps.ledger_root)
     except LabError as exc:
-        return RoundResult(round_id, "refused", 3, exc.code, ())
+        return _refused(round_id, exc.code)
     except OSError:
-        return RoundResult(round_id, "refused", 3, "LAB_LEDGER_UNAVAILABLE", ())
+        return _refused(round_id, "LAB_LEDGER_UNAVAILABLE")
     if state is None or state.get("round") != round_id:
-        return RoundResult(round_id, "refused", 3, "NO_RETAINED_FAULT", ())
+        return _refused(round_id, "NO_RETAINED_FAULT")
     attempt_id = str(state.get("attempt_id"))
     ledger: AttemptLedger | None = None
     interrupted = False
@@ -1335,12 +1408,14 @@ def recover_round(
     try:
         check_occupation(deps.ledger_root, holder, batch, deps.clock.now())
         signatures = fault_signatures(deps)
+        checkpoint()
         ledger = AttemptLedger(
             attempt_ledger_dir(deps, round_id, attempt_id), deps.clock, frozen=True
         )
         with (
             active_marker(deps.ledger_root, holder, batch, round_id, deps.clock.now()),
             fault_guard(deps.ledger_root),
+            protected(),  # the restore and its result (r16)
         ):
             restoring = True
             restored = restore_fault(
@@ -1349,50 +1424,45 @@ def recover_round(
         if restored is None:
             # Another recovery cleared the state between our read and the
             # guard: nothing was restored here, so no record and no exit 0.
-            return RoundResult(round_id, "refused", 3, "NO_RETAINED_FAULT", ())
+            return _refused(round_id, "NO_RETAINED_FAULT")
     except LabError as exc:
-        code = (
-            3
-            if exc.code.startswith("LAB_") or exc.code == "FAULT_BELONGS_TO_ANOTHER_RUN"
-            else 4
-        )
-        return RoundResult(
-            round_id, "stopped" if code == 4 else "refused", code, exc.code, ()
-        )
+        if exc.code.startswith("LAB_") or exc.code == "FAULT_BELONGS_TO_ANOTHER_RUN":
+            return _refused(round_id, exc.code)
+        return RoundResult(round_id, "stopped", 4, exc.code, ())
     except (Interrupted, KeyboardInterrupt, Exception) as exc:
-        # A signal or an unexpected failure (a file under the ledger root,
-        # a driver bug) while reading, restoring or washing: the intent
+        # An interrupt or an unexpected failure (a file under the ledger
+        # root, a driver bug) while reading, restoring or washing: the intent
         # decides. Still there -> not recovered, exit 4; gone after our
         # restore started -> it finished, so the record is written.
-        with _deferred_interrupts():
+        if not isinstance(exc, Exception):
+            request_stop()
+        with protected():
             _retained_now, still_here = _retained(deps, round_id)
-        interrupted = _take_pending() or not isinstance(exc, Exception)
+        interrupted = stop_requested()
         if isinstance(exc, Exception):
             failure = (
                 "LAB_LEDGER_UNAVAILABLE" if isinstance(exc, OSError) else "DRIVER_ERROR"
             )
         if still_here:
-            reason = "INTERRUPTED" if interrupted else failure
+            reason = failure or "INTERRUPTED"
             return RoundResult(round_id, "stopped", 4, f"RESTORE_FAILED:{reason}", ())
         if not restoring:
             # Gone before our restore began: another recovery did it.
-            if interrupted:
-                return RoundResult(round_id, "interrupted", 130, "INTERRUPTED", ())
-            return RoundResult(round_id, "refused", 3, "NO_RETAINED_FAULT", ())
-    stamp = deps.clock.now()
-    document = {
-        "schema": "opspilot-eval-live-recovery-1",
-        "round": round_id,
-        "attempt_id": attempt_id,
-        "recovered_at": stamp.isoformat(),
-    }
-    base = f"recovery-{stamp.strftime('%Y%m%dT%H%M%SZ')}"
-    names = [f"{base}.json"] + [f"{base}-{n}.json" for n in range(2, 100)]
-    with _deferred_interrupts():
+            return _refused(round_id, "NO_RETAINED_FAULT")
+    with protected():
+        stamp = deps.clock.now()
+        document = {
+            "schema": "opspilot-eval-live-recovery-1",
+            "round": round_id,
+            "attempt_id": attempt_id,
+            "recovered_at": stamp.isoformat(),
+        }
+        base = f"recovery-{stamp.strftime('%Y%m%dT%H%M%SZ')}"
+        names = [f"{base}.json"] + [f"{base}-{n}.json" for n in range(2, 100)]
         written = write_public_exclusive(
             round_evidence(deps, round_id), names, document
         )
-    interrupted = _take_pending() or interrupted
+    interrupted = stop_requested() or interrupted
     if not written or (ledger is not None and ledger.write_failed):
         # The lab is restored; only the public record or the private
         # recovery.jsonl could not be written (5 outranks 130).
@@ -1511,43 +1581,37 @@ def _final(result: RoundResult) -> int:
     return result.exit_code
 
 
-# Signals held while evidence is written or a stop retried (r7): the handler
-# records them instead of raising, and the caller takes the interrupt path.
-_DEFER = {"depth": 0, "pending": False}
+# Cooperative interrupts (r16) live in ``eval_live_lab``: the handler only
+# records a stop request, checkpoints raise, protected sections never do.
+# ``_DEFER`` and ``_deferred_interrupts`` are the r7 names of the same state
+# and the same nestable protected depth (R3).
+_DEFER = _STOP
+_deferred_interrupts = protected
 
 
-@contextmanager
-def _deferred_interrupts() -> Iterator[None]:
-    _DEFER["depth"] += 1
-    try:
-        yield
-    finally:
-        _DEFER["depth"] -= 1
-
-
-def _take_pending() -> bool:
-    pending = bool(_DEFER["pending"]) and _DEFER["depth"] == 0
-    if pending:
-        _DEFER["pending"] = False
-    return pending
+def _settled(result: RoundResult) -> RoundResult:
+    """The final snapshot (R10): a stop requested so far merges by rank
+    (4 > 5 > 130 = 3 after the start > 1); a later one changes nothing."""
+    if stop_requested() and _outranks(130, result.exit_code):
+        return replace(
+            result, status="interrupted", exit_code=130, reason="INTERRUPTED"
+        )
+    return result
 
 
 @contextmanager
 def _signals() -> Iterator[None]:
-    def handler(signum: int, frame: FrameType | None) -> None:
-        if _DEFER["depth"]:
-            _DEFER["pending"] = True
-            return
-        raise Interrupted()
-
-    previous = {
-        sig: signal.signal(sig, handler) for sig in (signal.SIGINT, signal.SIGTERM)
-    }
-    try:
-        yield
-    finally:
-        for sig, old in previous.items():
-            signal.signal(sig, old)
+    """One CLI call: a fresh stop state and the cooperative handler."""
+    with interrupt_scope():
+        previous = {
+            sig: signal.signal(sig, handle_signal)
+            for sig in (signal.SIGINT, signal.SIGTERM)
+        }
+        try:
+            yield
+        finally:
+            for sig, old in previous.items():
+                signal.signal(sig, old)
 
 
 def _verify(round_id: str, attempt_id: str | None, deps: LiveDeps | None) -> int:
@@ -1556,6 +1620,10 @@ def _verify(round_id: str, attempt_id: str | None, deps: LiveDeps | None) -> int
 
     evidence_root = deps.evidence_root if deps else ROOT / "docs/evidence/eval"
     recording_root = deps.recording_root if deps else ROOT / "tmp/eval"
+    # verify_replay takes the final snapshot itself, right before its record
+    # is written, so a normal return is never merged again (R10): the record
+    # and the final JSON always agree.
+    frozen = True
     try:
         code, document = verify_replay(
             round_id,
@@ -1564,7 +1632,10 @@ def _verify(round_id: str, attempt_id: str | None, deps: LiveDeps | None) -> int
             attempt_id=attempt_id,
         )
     except (Interrupted, KeyboardInterrupt, Exception) as exc:
+        frozen = False
         _escape_note(exc)
+        if not isinstance(exc, Exception):
+            request_stop()
         code = 130 if not isinstance(exc, Exception) else 1
         reason = "INTERRUPTED" if code == 130 else "DRIVER_ERROR"
         document = {
@@ -1575,9 +1646,12 @@ def _verify(round_id: str, attempt_id: str | None, deps: LiveDeps | None) -> int
             "reason": reason,
             "results": [],
         }
-    with _deferred_interrupts():
+    # The final snapshot (R10), then the JSON: a later signal changes nothing.
+    with protected():
+        if not frozen and stop_requested() and _outranks(130, code):
+            code = 130
+            document = {**document, "status": "interrupted", "exit_code": 130}
         print(json.dumps(document, sort_keys=True))
-    _take_pending()  # the final JSON is out: a later signal changes nothing
     return code
 
 
@@ -1606,14 +1680,14 @@ def _dispatch(round_id: str, deps: LiveDeps, run: Callable[[], RoundResult]) -> 
     try:
         result = run()
     except (Interrupted, KeyboardInterrupt, Exception) as exc:
-        with _deferred_interrupts():
+        if not isinstance(exc, Exception):
+            request_stop()
+        with protected():
             result = _escaped(round_id, deps, exc)
-        if _take_pending() and result.exit_code == 1:
-            result = RoundResult(round_id, "interrupted", 130, "INTERRUPTED", ())
-    with _deferred_interrupts():
-        code = _final(result)
-    _take_pending()  # the final JSON is out: a later signal changes nothing
-    return code
+    # The final snapshot (R10), then the JSON and the same exit code: a
+    # signal after the snapshot changes nothing.
+    with protected():
+        return _final(_settled(result))
 
 
 def main(argv: Sequence[str] | None = None, *, deps: LiveDeps | None = None) -> int:
@@ -1688,6 +1762,7 @@ def _main(argv: list[str], deps: LiveDeps | None) -> int:
     except _Usage as exc:
         print(json.dumps({"status": "usage", "exit_code": 2, "reason": str(exc)}))
         return 2
+    checkpoint()  # a stop requested while parsing: nothing touched, 130
     if not args.recover and args.dry_run:
         print(
             json.dumps(
@@ -1720,7 +1795,10 @@ def _main(argv: list[str], deps: LiveDeps | None) -> int:
             )
         except (LabError, OSError) as exc:
             code = exc.code if isinstance(exc, LabError) else "ENV_UNCONFIRMED"
-            return _final(RoundResult(args.round, "refused", 3, code, ()))
+            # The final snapshot (R10): a stop requested before this refusal
+            # (e.g. while the deps were built) is 130, not 3.
+            with protected():
+                return _final(_refused(args.round, code))
     live = deps
     if args.recover:
         return _dispatch(

@@ -429,3 +429,119 @@ docs/evidence/eval/<R>/aggregate.json                   # write_round，opspilot
   - 预检在 `begin_round` 之前完成 `append_run_start` 的全部检查（`check_run_start`：batch-journal guard 能打开、哈希链有效、round 未开始、`run-starts.jsonl` 或其目录可写），不满足则退出 3 且零外部调用。`begin_round` 之后追加仍失败（预检后才出现的变化）不再报 3，改为 stopped、退出 1，全部槽位 `not_started`，不写 journal。
   - run 与 `--probe` 中私有证据/状态写入（pre-observation、flags-*、wash、录制父目录）抛 OSError 时，原因记 `EVIDENCE_WRITE_FAILED`（不再归为 `DRIVER_ERROR`），照常恢复，整轮停止，后续槽位 `not_started`，退出 5；故障仍保留时 4 优先。
   - 退出码统一按 **4 > 5 > 130 > 1** 取最高。开始后以 3 停轮（预约消失）与 130 同级；同级时保留先出现者。`PG_STOP_FAILED`、`LAB_FAULT_FOREIGN` 被压过时仍记录在 lifecycle 的 reason/closure_reason 中。
+
+## 15. r16 协作式中断（#273，2026-10-18）
+
+动机：r7–r15 中信号处理器在任意字节码位置 raise `Interrupted`，任何没有包进 `_deferred_interrupts()` 的窄窗口都可能把收尾或证据写入打断一半（#273 列出 5 处）。r16 把中断改为协作式，从机制上关闭这类窗口。退出码语义（第 2 节、r13、r15 的 4 > 5 > 130 > 1）不变。
+
+- **信号处理器**：收到 SIGINT/SIGTERM 时只做一件事，置位 `stop_requested`（并记录首个信号与时间），绝不 raise。例外：第二次信号到达，且当前不在受保护段内时，按「强制中断」立即 raise `Interrupted`，让操作员能打断卡住的非收尾阶段；受保护段内的第二次信号同样只置位。
+- **检查点**：只在检查点把 `stop_requested` 转成 `Interrupted`，检查点函数为 `checkpoint()`，位置至少包括：
+  - 每个槽位开始前；
+  - 注入前；
+  - 每次预观察、洗净、gate 轮询的循环迭代；
+  - 每次模型调用或工具调用前后（经 investigator 接缝）；
+  - 每次外部命令（kubectl/pg_ctl/initdb/git）之前。
+  受保护段内调用 `checkpoint()` 不抛出。
+- **可中断等待**：真实 `Clock.sleep` 必须在置位后尽快返回，延迟不超过 1 秒（例如以 ≤1s 的片段睡眠并检查标志，或等待一个由处理器触发的 Event），返回后由调用方的下一个检查点抛出。外部命令照常受各自 timeout 约束，不在命令执行中途 kill。
+- **受保护段**：以下整段不可中断，段内既不 raise，也不执行检查点：
+  - 恢复与洗净：`restore_fault` 全程，从读取意图到 unlink 意图，再到最终 ledger 事件；
+  - PG 的启动清理与停止：`LocalPgLauncher.start` 的失败清理、closure 中的 stop 及其重试；
+  - closure 之后的冻结与证据写入：summary、journal、recording 封存、aggregate、lifecycle、probe.json、recovery 记录、`structural-replay.json`；
+  - 占用与 active marker 的创建和删除，以及 occupation release；
+  - `inject_fault` 中从写 ConfigMap 到记录 fault 元数据（含 hash 快照）这一段。fault 记录必须在等待 flagd 传播之前写入 attempt 状态，传播等待本身可以中断。
+  段结束后不自动 raise；由下一个检查点或收尾逻辑读取 `stop_requested`，按既有退出码规则处理。
+- **收尾读取**：run、`--probe`、`--recover`、`--verify-replay` 在写最终 JSON 前读取 `stop_requested`；若已置位且没有更高优先级的码，则退出 130。
+- **兼容**：测试中假对象直接抛 `Interrupted` 的做法保留，等价于一个检查点被触发；`KeyboardInterrupt` 同样处理。既有验收测试的断言不修改。
+
+#273 的 5 项与 r16 的对应：
+1. start 中断时清理失败：清理处于受保护段，先完成 stop 并检查 stop_failed，再由检查点处理中断。
+2. unlink 之后被中断：restore 全程受保护，不再报出虚假的 4。
+3. 传播等待中失败导致 fault 记录为 null：fault 记录先于传播等待写入。
+4. closure 之后 `clock.now()` 处于未保护窗口：冻结与证据写入都在受保护段内。
+5. active marker teardown：marker 的删除在受保护段内，aggregate/lifecycle 照常写出。
+
+### r16 预审裁决（astra 预审，lead 2026-10-18 全部按推荐采纳，无用户项）
+
+- **R1 检查点补全**：flock 改为非阻塞重试，每次重试前做检查点；以下位置在调用前后都做检查点：每个服务的 HTTP 子请求、每次 DB 操作与迁移、余额读取、项目准备、trace flush 与 read-back、逐录制核验。区分两种情况：检查点处可以响应中断；在途调用只能等它自己的超时结束。≤1 秒的承诺只适用于可中断的 sleep。
+- **R2 第二次信号**：SIGINT 与 SIGTERM 合并计数。第 2 次及以后的信号只在允许强制中断的位置 raise。外部命令执行期间不强制 raise，等命令完成或超时后由检查点处理。受保护段内收到的信号，在退出保护段时也不自动补抛，交给下一个检查点或收尾。强制 raise 之后照常走恢复和证据收尾。
+- **R3 停止状态不消费**：`stop_requested` 在一次 CLI 调用内是永久状态，检查点和最终判码只读取、不清空。`_deferred_interrupts` 保留为兼容入口，与受保护段共用同一个可嵌套深度。捕获到直接抛出的 `Interrupted` 时，也要置位 `stop_requested`。
+- **R4 保护完整的状态转换**：保护范围包括恢复结果的赋值、closure 的起止时间、PG stop 前后，以及证据的准备和写出。录制只保护封存阶段，不包住整个 `record(drive)`。marker 只保护创建和删除，不跨越它的 `yield`。occupation 在获取锁之前仍可中断。在受保护段内调用 checkpoint 是合法的，但不起作用。
+- **R5 sleep**：非保护段按 monotonic 截止时间做 ≤1 秒的分片睡眠，收到停止请求后提前返回，调用方紧接着做检查点。保护段内照常睡到原截止时间。假时钟的语义不变。洗净窗口的完整 300 秒断言不修改。
+- **R6 注入拆分**：注入拆成两步，先提交（持久化意图、写 ConfigMap、交付 hash 与请求时间等元数据，整段受保护），再等待传播（可中断）。run 和 probe 共用这套逻辑。传播尚未确认时，`effective_at` 保持为空。
+- **R7 假对象异常**：假对象主动抛出的 `Interrupted` 或异常属于接缝故障注入，受保护段不屏蔽它，既有断言（例如恢复写入前抛异常 → 4）不变。新增测试另行验证真实处理器的置位行为。
+- **R8 模型与工具包装**：检查点包装在录制代理外侧。已完成的物理调用先记录，再做检查点。中断要穿过普通的错误转换，进入收尾流程。
+- **R9 PG 清理失败与中断同时发生**：两者都保留。closure_reason 记 `PG_STOP_FAILED`，后续槽位停止。没有 4 或 5 时退出 130。
+- **R10 最终判码**：进入最终输出前先取快照，按既有排名（4 > 5 > 130 = 开始后的 3 > 1，同级先到者优先）合并后打印 JSON，并返回同一个码；快照之后到达的信号不再改变结果。预检拒绝（3，零外部调用）发生在任何信号之前时保持 3；预检期间若已收到停止请求，按 130 处理。
+
+### r16 实现对账（bf3154c，lead 2026-10-18 裁决）
+
+- **中断后的余额读取**：按 R1，attempt 结束后读取余额前先做检查点。停止请求已置位时跳过这次读取，该 attempt 的费用记为 `unknown`。这是已接受的行为，如实记录。
+- **强制中断的已知残余**：第二次信号在进入受保护段之前的几条字节码内到达时，仍可能 raise（例如异常处理与 `_closure` 进入保护段之间），从而跳过恢复，留下 exit 4，需要 `--recover`。不屏蔽信号就无法在 Python 中关闭这个窗口。第一次信号不会造成这种情况。
+3. **外部命令与终端信号**（astra 复验 c792c3e）：驱动的 6 处外部命令都在独立会话（`start_new_session=True`）中运行，终端 Ctrl-C 只到达驱动进程。产品代码 `opspilot/schema.py` 的 `migrate()` 调用的 pg_dump 仍和驱动同属一个进程组；但这个调用只在接管旧库时才会执行，驱动每次都新建空库，所以当前路径走不到它。这一项作为已知残余接受，不修改产品代码。
+
+#### 检查点排查清单（PR #276 第三轮，逐处一行）
+
+记号：**前/后** = 调用前后有 `checkpoint()`；**保护** = 处于受保护段；**例外** = 有意不加，附理由。外部命令（kubectl/git/initdb/pg_ctl）经 `external_command()` 在调用前做检查点、运行在独立会话，执行中不强制 raise。
+
+`scripts/eval_live_lab.py`
+- `_guard` 阻塞锁重试循环：每次迭代开头（含 sleep 之后、flock 之前）检查点；非阻塞锁只试一次。
+- `active_marker`：加锁前可中断；创建与删除为保护，`yield` 不保护。
+- `append_run_start`：锁等待可中断，取得锁后写入为保护。
+- `check_occupation` / `check_run_start`：只有锁等待，同 `_guard`。
+- `await_variant` 轮询循环：每轮 resolve 前/后；sleep 可中断，下一轮开头的检查点处理停止请求。
+- `confirm_all_normal` 遍历开关：每个开关进入 `await_variant`，同上。
+- `commit_fault`：`flags.read`（kubectl）前/后，`confirm_all_normal` 同上；提交前检查点，提交到 `record` 回调为保护。
+- `await_fault`：同 `await_variant`。
+- `restore_fault` 全程保护（read/replace/read、传播等待、洗净窗口及其 HTTP、unlink、ledger 事件）；其中检查点不生效，sleep 睡满。
+- `_query_spans` / `_checkout_calls`：每次 HTTP 前/后。
+- `fault_gate` 轮询循环：每轮开头，以及每个服务的查询、checkout 查询前/后。
+- `normal_window` 循环：每轮开头和 sleep 之后，以及每个查询前/后。
+- `LabTelemetry.spans_within` 子请求循环：每个 Jaeger 子请求前/后。
+- `LabTelemetry.checkout_calls`（Prometheus HTTP）：由 `_checkout_calls` 包前/后。
+- `HttpFlagResolver.resolve`（flagd HTTP）：由 `await_variant` 包前/后。
+- `_external`（kubectl 读）：前（external_command）/后。
+- `_patch`（kubectl 写）：前（external_command）；**例外**：不加后检查点，写入只在保护段（commit、restore）内发生，写后 raise 会丢掉"写已发生"的信息。
+- `GitProvenance._git`：前/后。
+- `KindLabIdentity.verify`：kubectl 前/后，3 次 HTTP 各自前/后。
+- `SocketPortProbe.in_use`（本地 TCP 探测，1 秒超时）：前/后。
+- `LocalPgLauncher.start`：initdb、pg_ctl start、CREATE DATABASE、migrate、建角色各自前/后；失败清理为保护。**例外**：`schema.migrate` 内部的 pg_dump 子进程属产品代码，见上条。
+- `LocalPgLauncher.stop`：前（external_command）；调用方（closure、start 清理）为保护。
+- `SystemClock.sleep` / `interruptible_sleep`：可中断分片睡眠（≤0.5 秒），保护段内睡满。
+- `DeepSeekBalance.balance`：由调用方 `_run_slot` 包前/后。
+- `ProbeEnvChecker` / `LabEnvChecker`：只读本地环境与文件，**例外**：不加。
+
+`scripts/eval_live.py`
+- `preflight`：occupation 锁、identity、端口、`confirm_all_normal` 分别同上；`env.check`、`read_state`、`fault_for` 为本地读取，**例外**。预检中 raise 的 `Interrupted` 经 `_dispatch` 得 130。
+- `_run_round`：`provenance.read`（git）同上；`begin_round`（LangSmith 项目准备）前/后；`append_run_start` 同上；槽位循环每次开始前检查点。
+- `_run_slot`：journal/ledger 创建为保护；两次余额读取前/后；closure 之后的冻结与 summary 写出为保护。
+- `_guarded`：入口、注入前、investigate 前检查点；pre-observation.json 写入为保护。
+- `_closure`：全程保护。
+- `_recover_round`：occupation、active marker 同上；restore 及结果赋值为保护；恢复记录写入为保护，之后读取停止请求（记录不含状态与退出码，读取在写后不会不一致）。
+- `_main`：参数解析后检查点；`real_deps` 失败的拒绝经 `_refused`，在保护段内判码并打印。
+- 先发布后判码：`_dispatch`、`_verify` 的最终 JSON 在保护段内取快照后打印。**例外**：`lifecycle.json`、`probe.json` 在保护段内写出后才读取停止请求；写入期间到达的信号使最终码为 130，而已写出的文件记的是写入前的状态。独立验收 `test_evidence_file_io_is_protected[lifecycle.json]` 要求这一行为（写入中收到信号 → 130），因此保留；`summary.json`、`aggregate.json` 不含轮级退出码，不存在不一致。
+
+`scripts/eval_live_probe.py`
+- `probe_preflight`：同 `preflight`。
+- `_probe_one`：入口与注入前检查点；提交与 fault 记录为保护；传播等待与 gate 同上；pre-observation 写入为保护；`_restore` 为保护。
+- `_run_probe`：槽位循环每次开始前检查点；probe.json 见上条例外。
+
+`scripts/eval_live_investigator.py`
+- `begin_round`：由 `_run_round` 包前/后。
+- `investigate`：4 次 `install()` 各自前/后，`accept()` 前/后（之后才建模型客户端并启动 Run）。
+- 模型与工具调用：`_Checkpointed` 在录制代理外侧包前/后（R8）。
+- 录制封存（`_sealed_record`）：从 drive 返回到 `record()` 结束为保护。
+- `investigator.json` 写入为保护。
+- `_traces`：flush 前、flush 后/read-back 前、read-back 后检查点；read-back 内部（`lab_evidence.find_root_run`，最多 30 次 `list_runs`）逐次轮询前后都有检查点，轮询间隔用 `interruptible_sleep`，取链接（`run_url`）前也有检查点（第四轮）。flush 或轮询期间的停止结束 read-back，trace 如实记为 `error`/`interrupted`；已完成的 read-back 保留，停止请求留给驱动的下一个检查点。
+- **例外**：Run 结束后的本地读取（`_outcome` 的 rebuild/control_audit/read_after、`_report`、`store.run_usage`、`_finish_reason` 读本地文件）不加检查点。它们是一次性 PG 上的有界读取，用来组装已经计费的 Run 的结果；停止请求在 investigate 返回后驱动的下一个检查点处理。
+- `prepare_round`：只读本地文件，**例外**。
+
+`scripts/eval_live_verify.py`
+- `_verify_replay` 录制循环：每个录制的 load/replay 前/后检查点；构建最终记录前检查点。
+- `structural-replay.json`：最终快照与写出在同一保护段内，记录的状态、退出码与最终 JSON 一致；之后到达的信号不再改变结果（`_verify` 对正常返回不再二次合并）。
+
+被驱动调用的 `scripts/` helper（第四轮排查内部 sleep 与轮询）
+- `lab_evidence.find_root_run` / `trace_evidence`：唯一有内部轮询的 helper。新增 `sleep` 与 `checkpoint` 参数，默认值保持原行为；investigator 传入 `interruptible_sleep` 与 `checkpoint`，见上条。
+- `lab_evidence.prepare_lab_project` / `configure_lab_round` / `langsmith_client`：无 sleep 或轮询；`prepare_lab_project` 由 `_run_round` 包前/后。
+- `kind_lab.get_json` / `kubectl` / `lab_env` / `lab_authorization` / `mutate_flags` / `OPENER`：单次请求或纯函数，无 sleep 或重试；`kind_lab` 中带 sleep 的循环只在 `cmd_up`（实验环境搭建 CLI），驱动不调用。
+- `m1_context_latency.balance`：单次 HTTP，无重试；由 `_run_slot` 包前/后。
+- `m1_live_flash_loop.load_langsmith_env` / `read_key`、`f11_u2_harness.resolve_ledger_root`：只读本地文件或路径，无 sleep。

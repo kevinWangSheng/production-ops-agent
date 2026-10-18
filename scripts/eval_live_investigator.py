@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import os
 from collections.abc import Callable, Mapping
+from contextlib import ExitStack
 from dataclasses import asdict, dataclass, replace
 from datetime import timedelta
 from pathlib import Path
@@ -49,7 +50,16 @@ from opspilot.tools.registry import canonical_hash
 from opspilot.web import DurableEventLog, DurableEvidenceStore, DurableIncidentStore
 from opspilot.web.service import LEASE_SECONDS
 from opspilot.worker import Worker
-from scripts.eval_live_lab import LabError, LiveClock, write_private
+from scripts.eval_live_lab import (
+    Interrupted,
+    LabError,
+    LiveClock,
+    checkpoint,
+    interruptible_sleep,
+    protected,
+    request_stop,
+    write_private,
+)
 from scripts.lab_evidence import (
     configure_lab_round,
     langsmith_client,
@@ -110,6 +120,56 @@ class _Delegate:
 
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
         return self.target(*args, **kwargs)
+
+
+class _Checkpointed:
+    """Checkpoints around every call of a recording proxy (r16 R8): outside
+    the proxy, so a completed physical call is recorded first; the resulting
+    ``Interrupted`` is a BaseException and passes the Run's error mapping."""
+
+    def __init__(self, target: Any) -> None:
+        self.target = target
+
+    def __getattr__(self, name: str) -> Any:
+        value = getattr(self.target, name)
+        if not callable(value):
+            return value
+
+        def call(*args: Any, **kwargs: Any) -> Any:
+            checkpoint()
+            result = value(*args, **kwargs)
+            checkpoint()
+            return result
+
+        return call
+
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        checkpoint()
+        result = self.target(*args, **kwargs)
+        checkpoint()
+        return result
+
+
+def _sealed_record(
+    drive: Callable[[Any], IncidentOutcome],
+    *,
+    destination: Path,
+    context: RecordingContext,
+) -> ArtifactRef:
+    """``record(drive)`` with its sealing protected (r16 R4): from the moment
+    ``drive`` returns until ``record`` returns or raises, no checkpoint fires
+    and no forced stop raises, so ``recording.json`` is written and
+    ``INCOMPLETE`` removed whatever arrives. The Run itself stays
+    interruptible, and a ``drive`` that raises never enters the section."""
+    sealing = ExitStack()
+
+    def sealed(hooks: Any) -> IncidentOutcome:
+        outcome = drive(hooks)
+        sealing.enter_context(protected())
+        return outcome
+
+    with sealing:
+        return record(sealed, destination=destination, context=context)
 
 
 class _BusinessClock:
@@ -218,14 +278,16 @@ class OtelDemoInvestigator:
                 {},
                 "PRE_OBSERVATION_STALE",
             )
+        # A checkpoint before and after every DB operation up to the intake
+        # (R1): a stop requested meanwhile never submits a billed Run.
         web = DurableStore(request.pg.web_dsn or request.pg.runtime_dsn)
-        web.install()
         store = DurableStore(request.pg.runtime_dsn)
-        store.install()
         log = DurableEventLog(store)
-        log.install()
         evidence = DurableEvidenceStore(store)
-        evidence.install()
+        for seat in (web, store, log, evidence):
+            checkpoint()
+            seat.install()
+        checkpoint()
         incident, run_id = uuid4(), uuid4()
         submitted = clock.now()
         deadline = submitted + RUN_WALL
@@ -238,6 +300,7 @@ class OtelDemoInvestigator:
             model_requests=M1_FROZEN_LIMITS.model_requests,
         )
         versions = otel_demo.otel_demo_versions()
+        checkpoint()
         web.accept(
             incident,
             run_id,
@@ -247,6 +310,7 @@ class OtelDemoInvestigator:
             versions=versions,
             input=run_input.as_json(),
         )
+        checkpoint()  # accepted, not started: no model call yet
         client = self.client_factory(self.session.key, clock)
         model = _Delegate(client)
         delivery = _Delegate(None)
@@ -309,9 +373,9 @@ class OtelDemoInvestigator:
             def drive(hooks: Any) -> IncidentOutcome:
                 clock.hooks = hooks
                 hooks.input(canonical_bytes(input.as_json()))
-                model.target = hooks.model(client)
+                model.target = _Checkpointed(hooks.model(client))
                 client.capture_http = hooks.http
-                facade.target = hooks.tools(real)
+                facade.target = _Checkpointed(hooks.tools(real))
                 delivery.target = hooks.delivery
                 seen["runner"] = proceed()
                 clock.hooks = None
@@ -320,7 +384,7 @@ class OtelDemoInvestigator:
 
             request.recording_dir.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
             try:
-                seen["recording_ref"] = record(
+                seen["recording_ref"] = _sealed_record(
                     drive, destination=request.recording_dir, context=context
                 )
             except Exception as exc:  # noqa: BLE001 - fixed code kept, Run result kept
@@ -358,17 +422,18 @@ class OtelDemoInvestigator:
         except ValueError:
             # A Run left mid-attempt has no projectable final state.
             outcome = None
-        write_private(
-            request.ledger_dir / "investigator.json",
-            json.dumps(
-                {
-                    "runner_exception": seen.get("runner_exception"),
-                    "recording_error": seen.get("recording_error"),
-                    "error": error,
-                },
-                sort_keys=True,
-            ).encode(),
-        )
+        with protected():
+            write_private(
+                request.ledger_dir / "investigator.json",
+                json.dumps(
+                    {
+                        "runner_exception": seen.get("runner_exception"),
+                        "recording_error": seen.get("recording_error"),
+                        "error": error,
+                    },
+                    sort_keys=True,
+                ).encode(),
+            )
         report = _report(store, incident)
         ref = seen.get("recording_ref")
         finish = _finish_reason(request.recording_dir, ref) if ref is not None else None
@@ -439,14 +504,29 @@ def _traces(
     clock: LiveClock,
 ) -> tuple[TraceRecord, ...]:
     # Flush this attempt's spans before the bounded read-back, then reopen
-    # the exporter for the next attempt.
+    # the exporter for the next attempt. Checkpoints before the flush, after
+    # it and after the read-back (R1). The Run has already happened, so a
+    # stop here skips only the remote read-back: the trace is then recorded
+    # as not read back ("error", raw "interrupted"), never as found, and the
+    # stop request stays set for the driver's next checkpoint.
+    checkpoint()
     tracing.shutdown()
-    evidence = trace_evidence(
-        {"mode": "lab", "trace_id": trace_id},
-        run_id=run_id,
-        project=session.project,
-        client_factory=langsmith_client,
-    )
+    evidence: Mapping[str, Any] = {"read_back": "interrupted"}
+    try:
+        checkpoint()
+        evidence = trace_evidence(
+            {"mode": "lab", "trace_id": trace_id},
+            run_id=run_id,
+            project=session.project,
+            client_factory=langsmith_client,
+            # Every poll of the read-back is checkpointed and its waits are
+            # interruptible (R1, R5), not only the call as a whole.
+            sleep=interruptible_sleep,
+            checkpoint=checkpoint,
+        )
+        checkpoint()  # a completed read-back is kept, the stop stays set
+    except (Interrupted, KeyboardInterrupt):
+        request_stop()
     tracing.configure(os.environ)
     raw = str(evidence.get("read_back"))
     read_back = (
