@@ -425,3 +425,7 @@ docs/evidence/eval/<R>/aggregate.json                   # write_round，opspilot
   - lab 协调文件（occupation/guard/active marker/run-starts）打不开：attempt 开始前视为预检拒绝（3，`LAB_LEDGER_UNAVAILABLE`）。attempt 内记 setup_failed；轮级记 stopped，退出 1，绝不报 0。
   - `--recover` 中断或异常：意图还在则退出 4（`RESTORE_FAILED:INTERRUPTED|<code>`）。本次恢复开始后意图消失，视为恢复完成：照写 recovery 记录，中断时退出 130。恢复开始前意图就消失（他人已恢复）则中断退出 130，否则退出 3 `NO_RETAINED_FAULT`。记录写入期间延后信号。
   - 兜底：run、`--probe`、`--recover` 在分发处统一捕获逃逸的异常与中断，照常输出最后一行 JSON。映射为：本轮意图仍在 → 4 `FAULT_RECOVERY_REQUIRED`；OSError/StorageError → 5；中断 → 130；LabError → 1（原因码）；其他 → 1 `DRIVER_ERROR`（stderr 只打印异常类型名）。run 与 `--probe` 收尾时若本轮意图仍在而未报 4，也改为 4。`--verify-replay` 中断时输出 status=`interrupted`、退出 130；单项失败一律填固定码（新增 `VERIFY_FAILED`），不抛出。参数解析与 dry-run 中断时输出 `{"status":"interrupted","exit_code":130}`。
+- **r15（astra 独立审查 d1addce）**：
+  - 预检在 `begin_round` 之前完成 `append_run_start` 的全部检查（`check_run_start`：batch-journal guard 能打开、哈希链有效、round 未开始、`run-starts.jsonl` 或其目录可写），不满足则退出 3 且零外部调用。`begin_round` 之后追加仍失败（预检后才出现的变化）不再报 3，改为 stopped、退出 1，全部槽位 `not_started`，不写 journal。
+  - run 与 `--probe` 中私有证据/状态写入（pre-observation、flags-*、wash、录制父目录）抛 OSError 时，原因记 `EVIDENCE_WRITE_FAILED`（不再归为 `DRIVER_ERROR`），照常恢复，整轮停止，后续槽位 `not_started`，退出 5；故障仍保留时 4 优先。
+  - 退出码统一按 **4 > 5 > 130 > 1** 取最高。开始后以 3 停轮（预约消失）与 130 同级；同级时保留先出现者。`PG_STOP_FAILED`、`LAB_FAULT_FOREIGN` 被压过时仍记录在 lifecycle 的 reason/closure_reason 中。
