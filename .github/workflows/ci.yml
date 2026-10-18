@@ -34,6 +34,23 @@ jobs:
         run: make setup
       - name: Run development checks
         run: make check
+      # PR-D1 (D07): a fresh network namespace without interfaces, back as the
+      # runner user, only PATH/LANG and a throwaway HOME. The outbound probe must
+      # fail first, otherwise isolation is broken and the step fails.
+      - name: Structural replay (offline, no credentials)
+        run: |
+          sandbox_home="$(mktemp -d)"
+          sudo unshare --net -- \
+            setpriv --reuid="$(id -u)" --regid="$(id -g)" --init-groups \
+            env -i PATH="$PATH" LANG="${LANG:-C.UTF-8}" HOME="$sandbox_home" \
+            bash -euo pipefail -c '
+              if .venv/bin/python -c "import socket; socket.create_connection((\"1.1.1.1\", 443), timeout=5).close()"; then
+                echo "isolation broken: outbound TCP connect succeeded" >&2
+                exit 1
+              fi
+              echo "outbound TCP connect refused as expected"
+              make eval-structural
+            '
       - name: Install checksum-pinned Gitleaks
         run: python3 scripts/install_gitleaks.py --directory tmp/ci-gitleaks
       - name: Secret scan and synthetic detection self-test
