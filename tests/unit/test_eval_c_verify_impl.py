@@ -153,4 +153,5 @@ def test_verify_replay_reports_an_unwritable_result_with_code_5(
         directory.chmod(0o700)
     assert code == 5
     assert document["write_error"] == "EVIDENCE_WRITE_FAILED"
+    assert document["exit_code"] == 5
     assert document["results"] and document["results"][0]["structural_verified"]

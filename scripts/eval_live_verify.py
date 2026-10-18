@@ -139,6 +139,7 @@ def verify_replay(
     if not _write_exclusive(evidence_root / round_id, document, now):
         # Never overwrite and never raise: the result is still reported (r10).
         document["write_error"] = "EVIDENCE_WRITE_FAILED"
+        document["exit_code"] = 5  # the JSON states the process exit code
         return 5, document
     return code, document
 
