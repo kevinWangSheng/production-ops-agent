@@ -1278,3 +1278,173 @@ def test_omitted_provenance_defaults_to_unknown_without_process_or_network(h, ca
     assert dimension["kind"] == "unknown"
     assert dimension["value"] is None
     assert isinstance(dimension["reason"], str) and dimension["reason"]
+
+
+@pytest.mark.parametrize("restore_branch", ["injected", "original"])
+def test_every_configmap_write_has_a_fresh_nonempty_fence(h, capsys, restore_branch):
+    if restore_branch == "original":
+
+        def already_original(request):
+            h.flags.current = replace(
+                h.flags.current,
+                raw=s.flags_raw(),
+                resource_version=str(int(h.flags.current.resource_version) + 1),
+            )
+
+        h.investigator.callback = already_original
+    code, result = h.final(capsys, argv=h.argv(n=2))
+    assert code == 0
+    assert [slot["status"] for slot in result["slots"]] == ["ran", "ran"]
+    assert len(h.flags.writes) == 4
+    fences = [fence for _, _, fence in h.flags.writes]
+    assert all(isinstance(fence, str) and fence.strip() for fence in fences)
+    assert len(set(fences)) == len(fences)
+    assert h.flags.read().fence == fences[-1]
+    assert h.flags.read().raw == s.flags_raw()
+    restores = h.flags.writes[1::2]
+    assert all(
+        (before.raw == raw) is (restore_branch == "original")
+        for before, raw, _ in restores
+    )
+
+
+@pytest.mark.parametrize("restore_branch", ["injected", "original"])
+@pytest.mark.parametrize("foreign_fence", ["CANARY-FOREIGN-FENCE", None])
+def test_unknown_restore_rejects_foreign_or_absent_fence_despite_original_bytes_and_advanced_version(
+    h, capsys, restore_branch, foreign_fence
+):
+    if restore_branch == "original":
+
+        def already_original(request):
+            h.flags.current = replace(
+                h.flags.current,
+                raw=s.flags_raw(),
+                resource_version=str(int(h.flags.current.resource_version) + 1),
+            )
+
+        h.investigator.callback = already_original
+    attempted = {}
+
+    def on_replace(intent, current, new_raw, fence):
+        if not h.flags.writes or new_raw != intent["original"].encode():
+            return
+        assert isinstance(fence, str) and fence
+        attempted.update(intent=intent, current=current, fence=fence)
+
+        def foreign_write_after_unknown_restore():
+            h.flags.after_write = None
+            # A foreign writer has the same original data but a later version.
+            # Those three matching facts cannot prove our fenced CAS committed.
+            h.flags.current = replace(
+                h.flags.current,
+                resource_version=str(int(h.flags.current.resource_version) + 1),
+                fence=foreign_fence,
+            )
+            raise lab.LabError("FLAG_WRITE_UNKNOWN")
+
+        h.flags.after_write = foreign_write_after_unknown_restore
+
+    h.flags.on_replace = on_replace
+    code, result = h.final(capsys, argv=h.argv(n=2))
+    assert (code, result["status"], result["reason"]) == (
+        4,
+        "stopped",
+        "RESTORE_FAILED:FLAG_RESTORE_UNVERIFIED",
+    )
+    assert [slot["status"] for slot in result["slots"]] == ["aborted", "not_started"]
+    current = h.flags.read()
+    assert s.sha(current.raw) == attempted["intent"]["original_sha256"]
+    assert current.uid == attempted["current"].uid
+    assert int(current.resource_version) > int(attempted["current"].resource_version)
+    assert current.fence == foreign_fence
+    assert current.fence != attempted["fence"]
+    retained = h.deps.ledger_root / "fault-active.json"
+    assert retained.exists()
+    intent = json.loads(retained.read_bytes())
+    for field in (
+        "owner",
+        "round",
+        "attempt_id",
+        "configmap_uid",
+        "original",
+        "injected",
+        "original_sha256",
+        "injected_sha256",
+    ):
+        assert intent[field] == attempted["intent"][field]
+    assert h.reservation.exists()
+    assert len(h.investigator.requests) == 1
+    assert len(list(h.public().glob("runs/*/attempt.json"))) == 1
+    lifecycle = json.loads((h.public() / "lifecycle.json").read_bytes())
+    assert (
+        lifecycle["slots"][0]["closure_reason"]
+        == "RESTORE_FAILED:FLAG_RESTORE_UNVERIFIED"
+    )
+
+
+@pytest.mark.parametrize("restore_failed", [False, True])
+def test_interrupt_during_pg_stop_preserves_attempt_identity_and_restore_exit_precedence(
+    h, monkeypatch, capsys, restore_failed
+):
+    if restore_failed:
+        h.investigator.callback = lambda request: setattr(h.telemetry, "bad_wash", True)
+    stop = h.pg.stop
+    stops = []
+
+    def stop_then_interrupt(instance):
+        stops.append(instance)
+        stop(instance)
+        if len(stops) == 1:
+            raise lab.Interrupted()
+
+    monkeypatch.setattr(h.pg, "stop", stop_then_interrupt)
+    code, result = h.final(capsys, argv=h.argv(n=2))
+    assert code == (4 if restore_failed else 130)
+    assert result["status"] == ("stopped" if restore_failed else "interrupted")
+    assert result["slots"][1]["status"] == "not_started"
+    assert stops
+    assert len(h.pg.started) == 1
+    assert all(instance == h.pg.started[0] for instance in stops)
+    assert h.pg.stopped == stops
+    assert len(h.investigator.requests) == 1
+    journals = list(h.public().glob("runs/*/attempt.json"))
+    assert len(journals) == 1
+    journal = load_attempt(journals[0]).attempt
+    summaries = h.summaries()
+    assert len(summaries) == 1
+    summary = summaries[0]
+    final = summary["capture"]["attempt"]
+    for field in (
+        "attempt_id",
+        "round_id",
+        "manifest_hash",
+        "scenario_id",
+        "scenario_version",
+        "mode",
+        "repetition",
+        "started",
+    ):
+        assert final[field] == getattr(journal, field)
+    assert journal.started is True and journal.status == "unknown"
+    assert journal.product_run_id is None
+    assert final["status"] != "unknown"
+    assert summary["evaluation"]["attempt"] == final
+    assert final["product_run_id"] == h.investigator.results[0].product_run_id
+    lifecycle = json.loads((h.public() / "lifecycle.json").read_bytes())
+    slot = lifecycle["slots"][0]
+    for field in (
+        "attempt_id",
+        "scenario_id",
+        "scenario_version",
+        "repetition",
+        "status",
+        "product_run_id",
+    ):
+        assert slot[field] == final[field]
+    assert result["slots"][0]["attempt_id"] == final["attempt_id"]
+    assert result["slots"][0]["status"] == final["status"]
+    assert (h.deps.ledger_root / "fault-active.json").exists() is restore_failed
+    if restore_failed:
+        assert final["status"] == "aborted"
+        assert slot["closure_reason"] == "RESTORE_FAILED:NORMAL_WINDOW_UNCONFIRMED"
+        assert lifecycle["reason"] == result["reason"] == slot["closure_reason"]

@@ -116,6 +116,7 @@ class Flags:
             current,
             raw=new_raw,
             resource_version=str(int(current.resource_version) + 1),
+            fence=fence,
         )
         if self.after_write:
             self.after_write()
