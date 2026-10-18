@@ -478,3 +478,63 @@ docs/evidence/eval/<R>/aggregate.json                   # write_round，opspilot
 - **中断后的余额读取**：按 R1，attempt 结束后读取余额前先做检查点。停止请求已置位时跳过这次读取，该 attempt 的费用记为 `unknown`。这是已接受的行为，如实记录。
 - **强制中断的已知残余**：第二次信号在进入受保护段之前的几条字节码内到达时，仍可能 raise（例如异常处理与 `_closure` 进入保护段之间），从而跳过恢复，留下 exit 4，需要 `--recover`。不屏蔽信号就无法在 Python 中关闭这个窗口。第一次信号不会造成这种情况。
 3. **外部命令与终端信号**（astra 复验 c792c3e）：驱动的 6 处外部命令都在独立会话（`start_new_session=True`）中运行，终端 Ctrl-C 只到达驱动进程。产品代码 `opspilot/schema.py` 的 `migrate()` 调用的 pg_dump 仍和驱动同属一个进程组；但这个调用只在接管旧库时才会执行，驱动每次都新建空库，所以当前路径走不到它。这一项作为已知残余接受，不修改产品代码。
+
+#### 检查点排查清单（PR #276 第三轮，逐处一行）
+
+记号：**前/后** = 调用前后有 `checkpoint()`；**保护** = 处于受保护段；**例外** = 有意不加，附理由。外部命令（kubectl/git/initdb/pg_ctl）经 `external_command()` 在调用前做检查点、运行在独立会话，执行中不强制 raise。
+
+`scripts/eval_live_lab.py`
+- `_guard` 阻塞锁重试循环：每次迭代开头（含 sleep 之后、flock 之前）检查点；非阻塞锁只试一次。
+- `active_marker`：加锁前可中断；创建与删除为保护，`yield` 不保护。
+- `append_run_start`：锁等待可中断，取得锁后写入为保护。
+- `check_occupation` / `check_run_start`：只有锁等待，同 `_guard`。
+- `await_variant` 轮询循环：每轮 resolve 前/后；sleep 可中断，下一轮开头的检查点处理停止请求。
+- `confirm_all_normal` 遍历开关：每个开关进入 `await_variant`，同上。
+- `commit_fault`：`flags.read`（kubectl）前/后，`confirm_all_normal` 同上；提交前检查点，提交到 `record` 回调为保护。
+- `await_fault`：同 `await_variant`。
+- `restore_fault` 全程保护（read/replace/read、传播等待、洗净窗口及其 HTTP、unlink、ledger 事件）；其中检查点不生效，sleep 睡满。
+- `_query_spans` / `_checkout_calls`：每次 HTTP 前/后。
+- `fault_gate` 轮询循环：每轮开头，以及每个服务的查询、checkout 查询前/后。
+- `normal_window` 循环：每轮开头和 sleep 之后，以及每个查询前/后。
+- `LabTelemetry.spans_within` 子请求循环：每个 Jaeger 子请求前/后。
+- `LabTelemetry.checkout_calls`（Prometheus HTTP）：由 `_checkout_calls` 包前/后。
+- `HttpFlagResolver.resolve`（flagd HTTP）：由 `await_variant` 包前/后。
+- `_external`（kubectl 读）：前（external_command）/后。
+- `_patch`（kubectl 写）：前（external_command）；**例外**：不加后检查点，写入只在保护段（commit、restore）内发生，写后 raise 会丢掉"写已发生"的信息。
+- `GitProvenance._git`：前/后。
+- `KindLabIdentity.verify`：kubectl 前/后，3 次 HTTP 各自前/后。
+- `SocketPortProbe.in_use`（本地 TCP 探测，1 秒超时）：前/后。
+- `LocalPgLauncher.start`：initdb、pg_ctl start、CREATE DATABASE、migrate、建角色各自前/后；失败清理为保护。**例外**：`schema.migrate` 内部的 pg_dump 子进程属产品代码，见上条。
+- `LocalPgLauncher.stop`：前（external_command）；调用方（closure、start 清理）为保护。
+- `SystemClock.sleep` / `interruptible_sleep`：可中断分片睡眠（≤0.5 秒），保护段内睡满。
+- `DeepSeekBalance.balance`：由调用方 `_run_slot` 包前/后。
+- `ProbeEnvChecker` / `LabEnvChecker`：只读本地环境与文件，**例外**：不加。
+
+`scripts/eval_live.py`
+- `preflight`：occupation 锁、identity、端口、`confirm_all_normal` 分别同上；`env.check`、`read_state`、`fault_for` 为本地读取，**例外**。预检中 raise 的 `Interrupted` 经 `_dispatch` 得 130。
+- `_run_round`：`provenance.read`（git）同上；`begin_round`（LangSmith 项目准备）前/后；`append_run_start` 同上；槽位循环每次开始前检查点。
+- `_run_slot`：journal/ledger 创建为保护；两次余额读取前/后；closure 之后的冻结与 summary 写出为保护。
+- `_guarded`：入口、注入前、investigate 前检查点；pre-observation.json 写入为保护。
+- `_closure`：全程保护。
+- `_recover_round`：occupation、active marker 同上；restore 及结果赋值为保护；恢复记录写入为保护，之后读取停止请求（记录不含状态与退出码，读取在写后不会不一致）。
+- `_main`：参数解析后检查点；`real_deps` 失败的拒绝经 `_refused`，在保护段内判码并打印。
+- 先发布后判码：`_dispatch`、`_verify` 的最终 JSON 在保护段内取快照后打印。**例外**：`lifecycle.json`、`probe.json` 在保护段内写出后才读取停止请求；写入期间到达的信号使最终码为 130，而已写出的文件记的是写入前的状态。独立验收 `test_evidence_file_io_is_protected[lifecycle.json]` 要求这一行为（写入中收到信号 → 130），因此保留；`summary.json`、`aggregate.json` 不含轮级退出码，不存在不一致。
+
+`scripts/eval_live_probe.py`
+- `probe_preflight`：同 `preflight`。
+- `_probe_one`：入口与注入前检查点；提交与 fault 记录为保护；传播等待与 gate 同上；pre-observation 写入为保护；`_restore` 为保护。
+- `_run_probe`：槽位循环每次开始前检查点；probe.json 见上条例外。
+
+`scripts/eval_live_investigator.py`
+- `begin_round`：由 `_run_round` 包前/后。
+- `investigate`：4 次 `install()` 各自前/后，`accept()` 前/后（之后才建模型客户端并启动 Run）。
+- 模型与工具调用：`_Checkpointed` 在录制代理外侧包前/后（R8）。
+- 录制封存（`_sealed_record`）：从 drive 返回到 `record()` 结束为保护。
+- `investigator.json` 写入为保护。
+- `_traces`：flush 前、flush 后/read-back 前、read-back 后检查点；flush 期间的停止跳过 read-back，trace 如实记为 `error`/`interrupted`；已完成的 read-back 保留，停止请求留给驱动的下一个检查点。
+- **例外**：Run 结束后的本地读取（`_outcome` 的 rebuild/control_audit/read_after、`_report`、`store.run_usage`、`_finish_reason` 读本地文件）不加检查点。它们是一次性 PG 上的有界读取，用来组装已经计费的 Run 的结果；停止请求在 investigate 返回后驱动的下一个检查点处理。
+- `prepare_round`：只读本地文件，**例外**。
+
+`scripts/eval_live_verify.py`
+- `_verify_replay` 录制循环：每个录制的 load/replay 前/后检查点；构建最终记录前检查点。
+- `structural-replay.json`：最终快照与写出在同一保护段内，记录的状态、退出码与最终 JSON 一致；之后到达的信号不再改变结果（`_verify` 对正常返回不再二次合并）。

@@ -136,6 +136,8 @@ def _verify_replay(
             if capture.recording_ref is None:
                 continue
             results.append(_verify_one(round_id, capture, recording_root))
+            checkpoint()  # after every recording too (R1)
+    checkpoint()  # before the final record is built
     if not results:
         if stop_requested():
             # A stop requested before this refusal (R10): 130, not 3.
@@ -166,20 +168,19 @@ def _verify_replay(
         "reason": None,
         "results": results,
     }
-    # The record is written in a protected section, so it is never left
-    # half-written; a stop requested so far ends the run with 130 (5
-    # outranks it).
+    # The final snapshot (R10) and the record are one protected section: the
+    # record is never left half-written, it states the same status and code
+    # as the final JSON, and a later signal changes neither (5 outranks 130).
     with protected():
+        if stop_requested():
+            code = 130
+            document = {**document, "status": "interrupted", "exit_code": 130}
         written = _write_exclusive(evidence_root / round_id, document, now)
-    interrupted = stop_requested()
     if not written:
         # Never overwrite and never raise: the result is still reported (r10).
         document["write_error"] = "EVIDENCE_WRITE_FAILED"
         document["exit_code"] = 5  # the JSON states the process exit code
         return 5, document
-    if interrupted:
-        document = {**document, "status": "interrupted", "exit_code": 130}
-        return 130, document
     return code, document
 
 

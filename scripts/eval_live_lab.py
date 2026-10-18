@@ -412,16 +412,18 @@ class AttemptLedger:
 def _guard(root: Path, name: str, *, blocking: bool) -> Iterator[None]:
     _private_dir(root)
     with (root / f".{name}.guard").open("a") as stream:
-        # A blocking guard is a non-blocking retry with a checkpoint before
-        # every retry (R1): a stop request is honoured while waiting.
+        # A blocking guard is a non-blocking retry with a checkpoint at the
+        # top of every iteration (R1), so a stop that arrives while waiting
+        # -- including during the sleep -- is seen before the lock is taken.
         while True:
+            if blocking:
+                checkpoint()
             try:
                 fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
                 break
             except BlockingIOError:
                 if not blocking:
                     raise LabError("LAB_OPERATION_IN_PROGRESS") from None
-            checkpoint()
             time.sleep(GUARD_RETRY_SECONDS)
         try:
             yield
@@ -1267,6 +1269,7 @@ class GitProvenance:
                 )
         except (OSError, subprocess.TimeoutExpired):
             return None
+        checkpoint()
         return result.stdout.decode().strip() if result.returncode == 0 else None
 
     def read(self) -> Provenance:
@@ -1314,6 +1317,7 @@ def _external(command: list[str], *, timeout: float, data: str | None = None) ->
             )
     except (subprocess.TimeoutExpired, OSError):
         raise LabError("EXTERNAL_CALL_TIMEOUT") from None
+    checkpoint()  # after the command as well (R1)
     if result.returncode:
         raise LabError("EXTERNAL_CALL_FAILED")
     if len(result.stdout) > 10 * 1024 * 1024:
@@ -1684,9 +1688,13 @@ class KindLabIdentity:
             name = ""
         if name != f"namespace/{kind_lab.NAMESPACE}":
             failures.append("KUBE_CONTEXT_UNCONFIRMED")
+        # A checkpoint before and after every HTTP request (R1); the kubectl
+        # call above has its own in ``_external``.
+        checkpoint()
         anonymous, _ = kind_lab.get_json(
             f"{kind_lab.PROMETHEUS}/api/v1/status/buildinfo"
         )
+        checkpoint()
         authorization = kind_lab.lab_authorization()
         authorized, _ = (
             (0, None)
@@ -1696,9 +1704,11 @@ class KindLabIdentity:
                 authorization=authorization,
             )
         )
+        checkpoint()
         if anonymous != 401 or authorized != 200:
             failures.append("PROMETHEUS_IDENTITY_UNCONFIRMED")
         status, services = kind_lab.get_json(f"{kind_lab.JAEGER}/api/services")
+        checkpoint()
         names = services.get("data") if isinstance(services, dict) else None
         if status != 200 or not isinstance(names, list) or "checkout" not in names:
             failures.append("JAEGER_IDENTITY_UNCONFIRMED")
@@ -1707,9 +1717,12 @@ class KindLabIdentity:
 
 class SocketPortProbe:
     def in_use(self, port: int) -> bool:
+        checkpoint()
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
             probe.settimeout(1)
-            return probe.connect_ex(("127.0.0.1", port)) == 0
+            busy = probe.connect_ex(("127.0.0.1", port)) == 0
+        checkpoint()
+        return busy
 
 
 def _pg_binary(name: str) -> str:

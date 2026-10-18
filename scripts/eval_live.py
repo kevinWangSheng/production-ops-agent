@@ -1620,6 +1620,10 @@ def _verify(round_id: str, attempt_id: str | None, deps: LiveDeps | None) -> int
 
     evidence_root = deps.evidence_root if deps else ROOT / "docs/evidence/eval"
     recording_root = deps.recording_root if deps else ROOT / "tmp/eval"
+    # verify_replay takes the final snapshot itself, right before its record
+    # is written, so a normal return is never merged again (R10): the record
+    # and the final JSON always agree.
+    frozen = True
     try:
         code, document = verify_replay(
             round_id,
@@ -1628,6 +1632,7 @@ def _verify(round_id: str, attempt_id: str | None, deps: LiveDeps | None) -> int
             attempt_id=attempt_id,
         )
     except (Interrupted, KeyboardInterrupt, Exception) as exc:
+        frozen = False
         _escape_note(exc)
         if not isinstance(exc, Exception):
             request_stop()
@@ -1643,7 +1648,7 @@ def _verify(round_id: str, attempt_id: str | None, deps: LiveDeps | None) -> int
         }
     # The final snapshot (R10), then the JSON: a later signal changes nothing.
     with protected():
-        if stop_requested() and _outranks(130, code):
+        if not frozen and stop_requested() and _outranks(130, code):
             code = 130
             document = {**document, "status": "interrupted", "exit_code": 130}
         print(json.dumps(document, sort_keys=True))

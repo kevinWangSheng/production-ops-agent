@@ -431,15 +431,16 @@ def test_no_subprocess_call_of_the_driver_shares_the_process_group():
 _HARNESS = """
 import sys
 from scripts import eval_live, eval_live_lab
-pidfile = sys.argv[1]
+pidfile, donefile = sys.argv[1], sys.argv[2]
+script = f"echo $$ > {pidfile}; sleep 1; echo done > {donefile}"
 with eval_live._signals():
     try:
-        eval_live_lab._external(
-            ["/bin/sh", "-c", f"echo $$ > {pidfile}; sleep 1"], timeout=10
-        )
+        eval_live_lab._external(["/bin/sh", "-c", script], timeout=10)
         result = "completed"
     except eval_live_lab.LabError as exc:
         result = exc.code
+    except eval_live_lab.Interrupted:
+        result = "interrupted_after"  # the checkpoint after the command
     print(result, eval_live_lab.stop_requested())
 """
 
@@ -448,11 +449,12 @@ with eval_live._signals():
 def test_a_terminal_sigint_reaches_the_driver_but_not_its_command(tmp_path):
     """Real processes: the driver runs alone in a new session (like a shell
     job); SIGINT to its process group, as Ctrl-C would send, while a command
-    runs. The command finishes; the driver only records the stop."""
-    pidfile = tmp_path / "child.pid"
+    runs. The command finishes; the driver records the stop and honours it
+    at the checkpoint after the command."""
+    pidfile, donefile = tmp_path / "child.pid", tmp_path / "child.done"
     root = Path(__file__).resolve().parents[2]
     driver = subprocess.Popen(
-        [sys.executable, "-c", _HARNESS, str(pidfile)],
+        [sys.executable, "-c", _HARNESS, str(pidfile), str(donefile)],
         cwd=root,
         stdout=subprocess.PIPE,
         start_new_session=True,
@@ -469,7 +471,8 @@ def test_a_terminal_sigint_reaches_the_driver_but_not_its_command(tmp_path):
             driver.kill()
             driver.wait()
     assert driver.returncode == 0
-    assert out.decode().split() == ["completed", "True"]
+    assert donefile.read_text().strip() == "done"  # the command survived
+    assert out.decode().split() == ["interrupted_after", "True"]
 
 
 # -- astra P2: a stop while the real deps are built ---------------------------
@@ -704,3 +707,114 @@ def test_a_completed_read_back_is_kept_when_the_stop_arrives_during_it(monkeypat
         (trace,) = inv._traces(session, "a1", "run-1", "otel-1", d.Clock())
         assert eval_live_lab.stop_requested()  # left for the driver
     assert trace.entry.read_back == "found" and trace.entry.run_id == "lsr-1"
+
+
+# -- PR #276 bot round 3 ------------------------------------------------------
+
+
+def test_a_stop_during_the_lock_wait_never_writes_run_started(tmp_path, monkeypatch):
+    """The batch-journal lock is busy; the stop arrives during the retry
+    sleep and the lock is free right after: no permanent run_started row."""
+    import fcntl
+
+    root = tmp_path / "ledgers"
+    root.mkdir()
+    holder = (root / ".batch-journal.guard").open("a")
+    fcntl.flock(holder, fcntl.LOCK_EX)  # another process holds the lock
+    real_sleep = time.sleep
+
+    def sleep(seconds):
+        _signal()  # the stop arrives while waiting ...
+        fcntl.flock(holder, fcntl.LOCK_UN)  # ... and the lock is then free
+        real_sleep(0)
+
+    monkeypatch.setattr(eval_live_lab.time, "sleep", sleep)
+    try:
+        with eval_live._signals():
+            with pytest.raises(Interrupted):
+                eval_live_lab.append_run_start(root, "r1", "lead", "b1", d.T0)
+    finally:
+        holder.close()
+    log = root / "run-starts.jsonl"
+    assert not log.exists() or log.read_text() == ""
+
+
+@pytest.mark.parametrize("stop_at", ["kubectl", "prometheus_anonymous"])
+def test_a_stop_inside_the_identity_check_skips_its_remaining_requests(
+    monkeypatch, stop_at
+):
+    from scripts import kind_lab
+
+    requests: list[str] = []
+
+    def run(command, **kwargs):
+        requests.append("kubectl")
+        if stop_at == "kubectl":
+            _signal()
+        return d._Completed(0, f"namespace/{kind_lab.NAMESPACE}\n".encode())
+
+    def get_json(url, **kwargs):
+        requests.append(url.rsplit("/", 2)[-2])
+        if stop_at == "prometheus_anonymous" and len(requests) == 2:
+            _signal()
+        return 200, {}
+
+    monkeypatch.setattr(subprocess, "run", run)
+    monkeypatch.setattr(kind_lab, "get_json", get_json)
+    monkeypatch.setattr(kind_lab, "lab_authorization", lambda: "Basic x")
+    with eval_live._signals():
+        with pytest.raises(Interrupted):
+            eval_live_lab.KindLabIdentity().verify()
+    expected = 1 if stop_at == "kubectl" else 2
+    assert len(requests) == expected  # nothing after the stop was requested
+
+
+@pytest.fixture
+def ran_round(tmp_path, capsys):
+    from tests.acceptance import eval_c_support as s
+
+    harness = s.Harness(tmp_path)
+    assert eval_live.main(harness.argv(s.FAULT), deps=harness.deps) == 0
+    capsys.readouterr()
+    return harness
+
+
+@pytest.mark.parametrize("when", ["last_recording", "record_write"])
+def test_the_structural_replay_record_agrees_with_the_final_json(
+    ran_round, capsys, monkeypatch, when
+):
+    from scripts import eval_live_verify
+    from tests.acceptance import eval_c_support as s
+
+    if when == "last_recording":
+        real = eval_live_verify._verify_one
+
+        def verify_one(*args, **kwargs):
+            item = real(*args, **kwargs)
+            _signal()  # during the load/replay of the last recording
+            return item
+
+        monkeypatch.setattr(eval_live_verify, "_verify_one", verify_one)
+    else:
+        real_write = eval_live_verify._write_exclusive
+
+        def write(directory, document, now):
+            _signal()  # after the final snapshot, while the record is written
+            return real_write(directory, document, now)
+
+        monkeypatch.setattr(eval_live_verify, "_write_exclusive", write)
+    code = eval_live.main(["--verify-replay", "--round", s.ROUND], deps=ran_round.deps)
+    final = d._last_json(capsys)
+    assert final["exit_code"] == code
+    records = sorted((ran_round.deps.evidence_root / s.ROUND).glob("structural-*"))
+    if when == "last_recording":
+        assert (code, final["status"]) == (130, "interrupted")
+        # Never a frozen "verified/0" next to a final 130.
+        for path in records:
+            stored = json.loads(path.read_text())
+            assert (stored["status"], stored["exit_code"]) == ("interrupted", 130)
+    else:
+        (path,) = records
+        stored = json.loads(path.read_text())
+        assert (code, final["status"]) == (0, "verified")
+        assert (stored["status"], stored["exit_code"]) == ("verified", 0)
