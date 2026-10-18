@@ -1,7 +1,7 @@
-# 评测 PR-C 公开接口（r1）：live kind/OTel 场景驱动
+# 评测 PR-C 公开接口（r2）：live kind/OTel 场景驱动
 
 - 依据：[PR-C 合同 r1](2026-10-18-eval-pr-c-contract.md)（下称 C，U1–U3、A1–A11 均按 B 采纳）；[套件合同](2026-10-12-eval-suite-contract.md) D3/D4/D5/D10/D15、P2/P10/P12/P13；[PR-B2 接口](2026-10-14-eval-pr-b2-interface.md)；[PR-A 接口](2026-10-13-eval-pr-a-interface.md)；issue #234。
-- 用途：供未参与实现的测试作者编写验收/合同测试。只写可观察行为与接缝，不写实现。末节「待 lead 裁决」中的项目在裁决前按本文推荐理解。
+- 用途：供未参与实现的测试作者编写验收/合同测试。只写可观察行为与接缝，不写实现。末节记录 lead 的 r2 裁决。
 - 离线原则：除真实 kind/flagd/Prometheus/Jaeger/PG/DeepSeek/LangSmith 调用本身外，全部行为都能用第 3 节的假对象离线测试。真实适配器只由 `real_deps()` 构造，测试不需要也不应调用它。
 
 ## 1. 模块
@@ -248,7 +248,7 @@ docs/evidence/eval/<R>/aggregate.json                   # write_round，opspilot
 ```
 
 - `<evidence_root>/<R>/` 在轮开始时已存在 → 退出 3（`ROUND_EXISTS`）。所有文件都独占创建，不覆盖。
-- summary 的 `EvaluationCapture` 字段：manifest（见 Q1）、spec/answer（仓库已公开内容）、attempt、outcome、report、delivered、authorized、`traces`（`TraceRecord`，role=`investigation`、required=True，含 project/url/read_back/checked_at）、`delivery_refs`、`recording_ref`、`ledger_ref`、started_at/ended_at、usage（模型请求、token、工具次数与秒数）、cost（`{balance_before_cny, balance_after_cny, delta_cny, status: measured|unknown, shared_key_possible: true}`）。
+- summary 的 `EvaluationCapture` 字段：manifest（轮 manifest，见 Q1）、spec/answer（仓库已公开内容）、attempt、outcome、report、delivered、authorized、`traces`（`TraceRecord`，role=`investigation`、required=True，含 project/url/read_back/checked_at）、`delivery_refs`、`recording_ref`、`ledger_ref`、started_at/ended_at、usage（模型请求、token、工具次数与秒数、实际领取 `epoch`）、cost（`{balance_before_cny, balance_after_cny, delta_cny, status: measured|unknown, shared_key_possible: true}`）。
 - `lifecycle.json` 每个槽位：`scenario_id, scenario_version, repetition, attempt_id|null, status, stage, reason, product_run_id, summary{path,sha256}|null, fault{flag, variant, original_sha256, injected_sha256, effective_at, restored_sha256, normal_confirmed_at, washed_at}|null, pre_observation{kind, window, matched_span_ids, trace_ids, checkout_calls, probes}|null, timings{started_at, ended_at, setup_s, investigation_s, closure_s}`。顶层：`round, manifest_hash, command`（不含环境值）、`round_status`、`retained_fault`、`recovered_at`、每轮余额。
 - 私有，不入库：`<ledger_root>/<R>/round.jsonl`；`<ledger_root>/<R>/<attempt_id>/` 下的 `lifecycle.jsonl`（每行 `seq, at, mono, stage, event, detail`）、`flags-original.json`、`flags-injected.json`、`pre-observation.json`、`wash.json`、`deliveries/<sha256>.json`、`recovery.jsonl`；录制包在 `<recording_root>/eval-live-<R>-<attempt_id>/`。文件 600，目录 700。
 - ArtifactRef 路径：`recording_ref.path="recording.json"`；`ledger_ref.path="lifecycle.jsonl"`（summary 写入前冻结，之后的事件写 `recovery.jsonl`）；`delivery_refs[eid].path="deliveries/<sha256>.json"`。`attempt_resolver(R, attempt_id, *, ledger_root, recording_root) -> Resolver`：`recording.json` 与 `blobs/*` 解析到录制目录，其余解析到 attempt 私有目录。外置原件缺失时 loader 报 `EVIDENCE_UNAVAILABLE`，不能称可复核通过。
@@ -263,7 +263,22 @@ docs/evidence/eval/<R>/aggregate.json                   # write_round，opspilot
 
 真实适配器（kubectl CAS、flagd HTTP、Prometheus/Jaeger 查询、PG 启停与迁移、端口探测、DeepSeek 余额、LangSmith project/read-back）以及 C A11 的真实 Run，只能由 lead 排期 live 执行。离线测试不覆盖这些，也不应声称覆盖。新增两个 flag 的实际传播延迟与 flagd 方法尚未实测。
 
-## 13. 待 lead 裁决（实现前按推荐理解）
+## 13. 裁决（r2，lead 2026-10-18：Q1–Q9 均按推荐采纳）
+
+**Q1 补充条件。**
+
+- 理由：B1 `_round` 要求 journal、summary 和轮 manifest 三者的 hash 一致；P10 要求在 setup 之前写 journal，而那时还没有 scope。per-Run 绑定的 manifest 只有领取之后才能算出，所以用它不能同时满足 B1 与 P10。因此 journal、summary 和 attempt 都使用轮 manifest：registry 维度取静态注册 DTO 的摘要，permissions 维度取去掉 run 身份字段（scope_id、run_id、三个 generation、deadline）后的 scope 策略摘要。
+- 保证：每个录制包仍由它自己的 `source_manifest_hash` 绑定，B2 的录制与回放核验不放宽。此外，`opspilot.evaluation.check_recording_binding(recording, attempt, *, round_id, epoch, manifest) -> None` 交叉核对以下各项，任一不符即抛 `StorageError("IDENTITY_MISMATCH")`：
+  - `recording.context.recording_id == f"eval-live-{round_id}-{attempt.attempt_id}"`；
+  - `source_run_id == attempt.product_run_id`（不为 None）；
+  - `scenario_id/scenario_version` 与 attempt 一致；
+  - 录制包内有工具快照，且每个 `tool_snapshots[*].scope.run_id == attempt.product_run_id`、`scope_id == f"otel-demo:{run_id}:{epoch}"`；
+  - `source_manifest` 的全部维度中，除 registry、permissions 外，都与轮 manifest 相同。
+- 驱动在写 summary 前执行这项核对，核对失败按 aborted 处理。`epoch` 是 runner 返回的实际领取 epoch，记录在 summary 的 `usage.epoch`。
+
+**Q2**：采用 `attempt_wrapper`，默认 None，不拆分 `resume`。**Q4**：occupation 由 lead claim/release，驱动只 check 并持有 `.active` 标记。
+
+原歧义表与推荐（已全部采纳）：
 
 | # | 歧义（依据） | 推荐 |
 |---|---|---|
