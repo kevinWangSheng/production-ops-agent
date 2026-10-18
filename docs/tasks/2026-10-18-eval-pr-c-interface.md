@@ -45,6 +45,8 @@
 | 5 | 证据写入失败（journal/summary/lifecycle/aggregate，`--probe` 的 probe.json，`--recover` 的 recovery-*.json），lab 已恢复；整轮停止。r11：任何公开证据写入的 OSError 都转为此码，stdout 最后一行 JSON 照常输出（`reason="EVIDENCE_WRITE_FAILED"`），不以异常退出 |
 | 130 | 收到 SIGINT/SIGTERM，且当前 attempt 已恢复、洗净；后续槽位 `not_started`。恢复失败时改为 4 |
 
+退出码优先级（r13）：多个停止条件同时出现时取 **4 > 5 > 130**，即恢复/洗净失败（保留故障）压过证据写入失败，证据写入失败压过中断；`--probe` 同样适用。例如洗净失败后 summary 又写不出仍为 4；中断后 summary、aggregate 或 lifecycle 写不出为 5。被压过的条件仍记录在 lifecycle / 私有 ledger 中（写得出时）。
+
 `--recover`：只处理 `round == R` 的保留故障状态，按第 5 节恢复规则执行并洗净。成功删除状态后退出 0；仍失败退出 4；状态不存在或属于其他 round 退出 3。它不修改已写的 summary 与 lifecycle，只追加私有 `recovery.jsonl`，并独占新建公开 `recovery-<UTC>.json`（`opspilot-eval-live-recovery-1`：round、attempt_id、recovered_at）。r10：`--recover` 总是只构造 lab 接缝（与 `--probe` 相同：flag store、flagd、telemetry、identity、占用/guard），不读 `M0_ENV_FILE`、不需要模型或 LangSmith 凭据，因此探测轮与正式轮遗留的故障都用同一条命令恢复；不接受与 `--probe` 组合。开始时先做 `env` 检查（只要求 lab Prometheus 账号，洗净要用），不满足退出 3（`ENV_UNCONFIRMED`），不写入任何东西。r11：同一秒内已有同名记录时依次独占创建 `recovery-<UTC>-2.json` … `-99`，绝不覆盖；lab 已恢复但公开记录写不出时退出 5（`EVIDENCE_WRITE_FAILED`），`fault-active.json` 已按恢复规则删除。
 
 `--probe`（r8，A11 生命周期探测）：`--mode live --probe --round R --scenario ID [...] --n 1 --parallel 1 --holder H --batch B --flagd-url URL`，不需要 `--pg-port`。每个场景执行一次真实 lab 生命周期，不建产品 Run、不调模型、不启 PG、不查余额、不建 LangSmith 项目，也不写 journal/summary/aggregate（不冒充 attempt）：
@@ -123,6 +125,11 @@ class TelemetryProbe(Protocol):  # 独立观察，不经产品工具
     def checkout_calls(
         self, start: datetime, end: datetime, timeout: float
     ) -> CallCount: ...
+    # r13 可选：带阶段截止时刻的检索；实现了它的探针由门槛优先调用
+    def spans_within(
+        self, service: str, start: datetime, end: datetime, *,
+        request_timeout: float, deadline: float,   # deadline 为 LiveDeps.clock.monotonic() 刻度
+    ) -> SpanQuery: ...
 
 
 class LabIdentity(Protocol):
@@ -402,6 +409,7 @@ docs/evidence/eval/<R>/aggregate.json                   # write_round，opspilot
   - **r12 自适应切分（live 负载下仍能完整）**：一页满（返回条数 ≥ 1500）说明该子窗口可能有缺失，丢弃这一页，把子窗口按微秒等分为 4 段再分别检索（相邻段不重叠：`[a, m]`、`[m+1, …]`），直到每段都不满页。只有全部子请求都成功且不满页时才 `complete=True`。上限：一次 `spans()` 最多 64 个子请求、累计响应 1 GiB、子窗口不小于 1 ms；任一触顶返回 `complete=False`（仍不当作干净）。
   - **返回内容**：只返回所查 service 自己的、`span_error()` 判为错误的 span，按 `(trace_id, span_id)` 去重（Jaeger 返回整条 trace，同一 span 可能在相邻子窗口重复出现）。门槛只对签名里每个 service 分别查询并只看错误 span，所以这一收窄不丢任何签名匹配；私有 `pre-observation.json` 里的原始记录相应只含这些错误 span。
   - **超时语义**：第 6 节的「单探测≤5 s」指每个 HTTP 子请求≤5 s；一次 `spans()` 的总耗时受 64 个子请求上限约束，门槛与洗净的总预算仍按 monotonic 计。
+  - **阶段截止（r13，独立审查 P2）**：门槛把阶段截止时刻（`started + budget`，`LiveDeps.clock.monotonic()` 刻度）传给探针：探针实现了 `spans_within` 就调用它，否则退回 `spans(service, start, end, min(probe_timeout, 剩余预算))`；`checkout_calls` 的 timeout 同样取 `min(probe_timeout, 剩余预算)`。`LabTelemetry.spans_within` 在每个子请求前检查剩余时间，子请求超时取 `min(5 s, 剩余)`；剩余≤0 即停止并返回 `complete=False`。`fault_gate` 与 `normal_window` 在接受「通过」之前再核一次截止：已超出预算就不通过（`FAULT_NOT_OBSERVED` / `NORMAL_WINDOW_UNCONFIRMED`），绝不在超时后判通过或判干净。截止端点仍含在预算内（恰好用满不算超出）。
   - **量级**：300 s 窗口、某 service 每秒 r 条 trace 时，满页阈值 1500 对应子窗口约 1500/r 秒。r=45（约 13,500 条）时：300 s 满页 → 4×75 s（各约 3,375 条，满页）→ 16×18.75 s（各约 844 条）＝ 21 个请求，其中 5 页作废，传输约 21,000 条 trace。
 - **lab 身份**：kube 身份改为经 lab kubeconfig/context 读取 `namespace/otel-demo`（`config current-context` 读的是文件默认 context，不能证明 `--context`）。
 - **PG**：每 attempt 新 initdb，只监听 127.0.0.1 TCP（不建 Unix socket：worktree 路径可能超过 103 字节上限），owner 只做迁移；intake 用 `eval_web`（`opspilot_web` 成员），Run 用 `eval_worker`（`opspilot_worker` 成员）。r11（PR #271 机器人安全 P2）：不再用 trust；initdb 以 `--auth=scram-sha-256` 和每 attempt 随机的 owner 密码（pwfile 600，放在 attempt 私有目录，initdb 后删除）建库，两个登录角色各有独立的随机 SCRAM 密码；所有 DSN（owner/web/worker）都带密码，无密码连接被拒绝。密码只在进程内存与 `PgInstance` 中，不写日志、ledger 或证据。initdb、`pg_ctl start/stop` 用净化环境启动，只保留 `PATH`、`HOME`、`TMPDIR`、`LANG`、`LC_*`、`TZ`，不含任何 DEEPSEEK/LANGSMITH/Prometheus/口令/令牌类变量，postmaster 继承的就是这份环境。
