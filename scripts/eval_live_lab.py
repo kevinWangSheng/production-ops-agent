@@ -930,6 +930,20 @@ def normal_window(
 # -- real adapters (live only; never used by offline tests) -------------------
 
 
+class ProbeEnvChecker:
+    """The probe needs only the lab Prometheus account (no model, no trace)."""
+
+    def check(self) -> str | None:
+        return None if kind_lab.lab_authorization() is not None else "ENV_UNCONFIRMED"
+
+
+class Unavailable:
+    """A seat a probe must never use (investigator, PG, balance)."""
+
+    def __getattr__(self, name: str) -> Any:
+        raise LabError("PROBE_SEAM_UNAVAILABLE")
+
+
 class GitProvenance:
     """HEAD and whether tracked files are clean, from ``git`` (live only)."""
 

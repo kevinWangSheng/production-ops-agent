@@ -1264,6 +1264,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--flagd-url", required=True)
     parser.add_argument("--pg-port", type=int)
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--probe", action="store_true")
     return parser
 
 
@@ -1371,7 +1372,12 @@ def main(argv: Sequence[str] | None = None, *, deps: LiveDeps | None = None) -> 
         except LabError as exc:
             raise _Usage(exc.code) from None
         if args.recover:
-            if args.mode not in (None, "live") or args.scenario or args.dry_run:
+            if (
+                args.mode not in (None, "live")
+                or args.scenario
+                or args.dry_run
+                or args.probe
+            ):
                 raise _Usage("--recover takes only round/holder/batch/flagd-url")
         else:
             if args.mode != "live":
@@ -1380,7 +1386,11 @@ def main(argv: Sequence[str] | None = None, *, deps: LiveDeps | None = None) -> 
                 raise _Usage("PARALLEL_UNSUPPORTED")
             if args.n is None or args.n < 1:
                 raise _Usage("--n must be >= 1")
-            if args.pg_port is None or not 1024 <= args.pg_port <= 65535:
+            if args.probe and args.n != 1:
+                raise _Usage("--probe takes --n 1")
+            if not args.probe and (
+                args.pg_port is None or not 1024 <= args.pg_port <= 65535
+            ):
                 raise _Usage("--pg-port is required")
             scenarios_root = (
                 deps.scenarios_root if deps is not None else ROOT / "evals/scenarios"
@@ -1418,12 +1428,19 @@ def main(argv: Sequence[str] | None = None, *, deps: LiveDeps | None = None) -> 
         return 0
     if deps is None:
         try:
-            deps = real_deps(args.flagd_url, args.round)
+            deps = real_deps(args.flagd_url, args.round, probe=args.probe)
         except LabError as exc:
             return _final(RoundResult(args.round, "refused", 3, exc.code, ()))
     with _signals():
         if args.recover:
             return _final(recover_round(args.round, args.holder, args.batch, deps))
+        if args.probe:
+            from scripts.eval_live_probe import run_probe
+
+            probe = RoundConfig(
+                args.round, slots, args.holder, args.batch, 0, None, tuple(argv), 1
+            )
+            return _final(run_probe(probe, deps))
         config = RoundConfig(
             args.round,
             slots,
@@ -1437,8 +1454,12 @@ def main(argv: Sequence[str] | None = None, *, deps: LiveDeps | None = None) -> 
         return _final(run_round(config, deps))
 
 
-def real_deps(flagd_url: str, round_id: str) -> LiveDeps:
-    """The only constructor of lab-touching adapters (never used offline)."""
+def real_deps(flagd_url: str, round_id: str, *, probe: bool = False) -> LiveDeps:
+    """The only constructor of lab-touching adapters (never used offline).
+
+    ``probe`` (r8) builds the lab seams only: no credential file is read and
+    the model, PG and balance seats refuse any use.
+    """
     from scripts.eval_live_investigator import OtelDemoInvestigator, prepare_round
     from scripts.eval_live_lab import (
         DeepSeekBalance,
@@ -1454,8 +1475,29 @@ def real_deps(flagd_url: str, round_id: str) -> LiveDeps:
     )
     from scripts.f11_u2_harness import resolve_ledger_root
 
-    session = prepare_round(round_id)
     clock = SystemClock()
+    if probe:
+        from scripts.eval_live_lab import ProbeEnvChecker, Unavailable
+
+        return LiveDeps(
+            clock=clock,
+            flags=KubectlFlagStore(),
+            flagd=HttpFlagResolver(flagd_url),
+            telemetry=LabTelemetry(),
+            identity=KindLabIdentity(),
+            ports=SocketPortProbe(),
+            pg=Unavailable(),
+            balance=Unavailable(),
+            investigator=Unavailable(),
+            ledger_root=resolve_ledger_root(ROOT),
+            evidence_root=ROOT / "docs/evidence/eval",
+            recording_root=ROOT / "tmp/eval",
+            pg_root=ROOT / "tmp/eval-live",
+            scenarios_root=ROOT / "evals/scenarios",
+            flagd_url=flagd_url,
+            env=ProbeEnvChecker(),
+        )
+    session = prepare_round(round_id)
     return LiveDeps(
         clock=clock,
         flags=KubectlFlagStore(),
