@@ -90,6 +90,7 @@ from scripts.eval_live_lab import (
     observation_json,
     read_state,
     restore_fault,
+    write_private,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -686,14 +687,7 @@ def _run_slot(
     state.marks["start"] = clock.monotonic()
     ledger.event("journal", "attempt_started", attempt_id=attempt_id)
     before = _balance(deps)
-    try:
-        _attempt_body(config, deps, slot, state, signatures, round_state)
-    except (Interrupted, KeyboardInterrupt):
-        state.interrupted = True
-        state.reason = state.reason or "INTERRUPTED"
-        state.status = "aborted" if state.investigating else "setup_failed"
-    finally:
-        _closure(config, deps, slot, state, signatures)
+    _attempt_body(config, deps, slot, state, signatures, round_state)
     after = _balance(deps)
     balances.append(_cost(attempt_id, before, after))
     out.status = state.status
@@ -729,21 +723,36 @@ def _attempt_body(
     signatures: tuple[SignatureRule, ...],
     round_state: dict[str, Manifest],
 ) -> None:
-    clock, ledger = deps.clock, state.ledger
-    spec, answer = slot.spec, slot.answer
+    """Setup, investigation and closure, all under one held fault guard so
+    nobody else can touch the lab between the injection and its restore."""
+    clock = deps.clock
     try:
         state.stage = "occupation"
         check_occupation(deps.ledger_root, config.holder, config.batch, clock.now())
         state.stage = "guard"
         with fault_guard(deps.ledger_root):
-            _guarded(config, deps, slot, state, signatures, round_state)
+            try:
+                _guarded(config, deps, slot, state, signatures, round_state)
+            except (Interrupted, KeyboardInterrupt):
+                state.interrupted = True
+                _fail(state, "INTERRUPTED")
+            except LabError as exc:
+                _fail(state, exc.code)
+            except Exception:  # noqa: BLE001 - a driver bug still restores the lab
+                _fail(state, "DRIVER_ERROR")
+            finally:
+                _closure(config, deps, slot, state, signatures)
     except LabError as exc:
-        if state.reason is None:
-            state.reason = exc.code
-        if not state.investigating:
-            state.status = "setup_failed"
-        ledger.event(state.stage, "failed", reason=state.reason)
-    del spec, answer
+        # The reservation or the guard was not ours: nothing was touched.
+        _fail(state, exc.code)
+        _closure(config, deps, slot, state, signatures)
+
+
+def _fail(state: _Attempt, code: str) -> None:
+    if state.reason is None:
+        state.reason = code
+    state.status = "aborted" if state.investigating else "setup_failed"
+    state.ledger.event(state.stage, "failed", reason=state.reason)
 
 
 def _guarded(
@@ -858,32 +867,43 @@ def _closure(
     """Restore and wash (if this attempt wrote an intent), then stop its PG."""
     ledger = state.ledger
     state.marks["closure_start"] = deps.clock.monotonic()
-    current = read_state(deps.ledger_root) if state.injected else None
-    if current is not None and current.get("attempt_id") == state.record.attempt_id:
-        try:
-            with fault_guard(deps.ledger_root):
-                restored = restore_fault(
-                    config.round_id,
-                    state.record.attempt_id,
-                    signatures,
-                    deps=deps,
-                    ledger=ledger,
-                )
-            if restored is not None:
-                state.marks["restored_at"] = restored.normal_confirmed_at.timestamp()
-                if restored.wash.window is not None:
-                    state.marks["washed_at"] = restored.wash.window.end.timestamp()
-        except (LabError, Interrupted, KeyboardInterrupt) as exc:
-            code = exc.code if isinstance(exc, LabError) else "INTERRUPTED"
-            ledger.event("restore", "failed", reason=code)
-            if state.status == "ran":
-                state.status = "aborted"
-            # The first failure stays the attempt's reason; the closure
-            # failure is recorded beside it and stops the round.
-            state.closure_reason = f"RESTORE_FAILED:{code}"
-            if state.reason is None:
-                state.stage, state.reason = "closure", state.closure_reason
-            state.stop = _Stop(4, state.closure_reason)
+    try:
+        # Only this attempt's own intent; the caller still holds the guard.
+        current = read_state(deps.ledger_root) if state.injected else None
+        mine = current is not None and current.get("attempt_id") == (
+            state.record.attempt_id
+        )
+        restored = (
+            restore_fault(
+                config.round_id,
+                state.record.attempt_id,
+                signatures,
+                deps=deps,
+                ledger=ledger,
+            )
+            if mine
+            else None
+        )
+        if restored is not None:
+            state.marks["restored_at"] = restored.normal_confirmed_at.timestamp()
+            if restored.wash.window is not None:
+                state.marks["washed_at"] = restored.wash.window.end.timestamp()
+    except (Exception, Interrupted, KeyboardInterrupt) as exc:  # noqa: BLE001
+        if isinstance(exc, LabError):
+            code = exc.code
+        elif isinstance(exc, (Interrupted, KeyboardInterrupt)):
+            code = "INTERRUPTED"
+        else:
+            code = "DRIVER_ERROR"
+        ledger.event("restore", "failed", reason=code)
+        if state.status == "ran":
+            state.status = "aborted"
+        # The first failure stays the attempt's reason; the closure failure
+        # is recorded beside it and stops the round (the intent is retained).
+        state.closure_reason = f"RESTORE_FAILED:{code}"
+        if state.reason is None:
+            state.stage, state.reason = "closure", state.closure_reason
+        state.stop = _Stop(4, state.closure_reason)
     if state.pg is not None:
         try:
             deps.pg.stop(state.pg)
@@ -996,17 +1016,15 @@ def _write_summary(
                 state.ledger.event("freeze", "recording_rejected", reason=code)
             else:
                 delivered, authorized = live.delivered, live.authorized
-                recording_ref = result.recording_ref
                 for evidence_id, raw in live.delivery_records.items():
                     name = f"deliveries/{sha256(raw)}.json"
                     path = state.ledger.directory / name
                     if not path.exists():
-                        from scripts.eval_live_lab import write_private
-
                         write_private(path, raw)
                     delivery_refs[evidence_id] = _ref(name, raw, "application/json")
-        elif result.recording_ref is not None:
-            recording_ref = result.recording_ref
+        # Linked whatever the status: an unverified package is still evidence
+        # of what happened, and the loader re-checks its bytes.
+        recording_ref = result.recording_ref
     state.ledger.event("freeze", "summary", status=state.status, reason=state.reason)
     ledger_raw = state.ledger.freeze()
     ledger_ref = _ref("lifecycle.jsonl", ledger_raw, "application/x-ndjson")

@@ -51,8 +51,11 @@ PROBE_SECONDS = 5.0
 WINDOW_SECONDS = 300
 FENCE_ANNOTATION = "opspilot.dev/eval-live-restore-fence"
 # Jaeger search page size for the independent observation; a page this full
-# may have dropped traces, so the result is marked incomplete.
-TRACE_LIMIT = 1500
+# may have dropped traces, so the result is marked incomplete. The search is
+# narrowed to traces with an ``error=true`` span (OTel status ERROR), since a
+# full unfiltered page of checkout traces is tens of megabytes.
+TRACE_LIMIT = 200
+MAX_TELEMETRY_BYTES = 32 * 1024 * 1024
 
 
 class LabError(Exception):
@@ -939,6 +942,11 @@ def _configmap(document: Mapping[str, Any]) -> FlagConfig:
 class KubectlFlagStore:
     """``flagd-config`` through the lab kubeconfig/context only."""
 
+    def __init__(self) -> None:
+        # Annotations of the last read, by resourceVersion: the fence write
+        # replaces the whole map, and the CAS test guarantees it is current.
+        self._annotations: dict[str, dict[str, Any]] = {}
+
     def read(self) -> FlagConfig:
         try:
             document = json.loads(
@@ -957,7 +965,10 @@ class KubectlFlagStore:
             )
         except (LabError, ValueError):
             raise LabError("FLAG_READ_FAILED") from None
-        return _configmap(document)
+        config = _configmap(document)
+        annotations = document.get("metadata", {}).get("annotations") or {}
+        self._annotations = {config.resource_version: dict(annotations)}
+        return config
 
     def replace(
         self, current: FlagConfig, new_raw: bytes, *, fence: str | None
@@ -974,9 +985,15 @@ class KubectlFlagStore:
             {"op": "replace", "path": f"/data/{escaped}", "value": new_raw.decode()},
         ]
         if fence is not None:
-            key = FENCE_ANNOTATION.replace("~", "~0").replace("/", "~1")
+            annotations = self._annotations.get(current.resource_version)
+            if annotations is None:
+                raise LabError("FLAG_READ_FAILED")
             patch.append(
-                {"op": "add", "path": f"/metadata/annotations/{key}", "value": fence}
+                {
+                    "op": "add",
+                    "path": "/metadata/annotations",
+                    "value": {**annotations, FENCE_ANNOTATION: fence},
+                }
             )
         try:
             document = json.loads(
@@ -1001,7 +1018,13 @@ class KubectlFlagStore:
             # caller re-reads and decides from the live bytes.
             raise LabError("FLAG_WRITE_UNKNOWN") from None
         written = _configmap(document)
-        if fence is not None and written.resource_version == current.resource_version:
+        if fence is not None and (
+            written.resource_version == current.resource_version
+            or (document.get("metadata", {}).get("annotations") or {}).get(
+                FENCE_ANNOTATION
+            )
+            != fence
+        ):
             raise LabError("FLAG_RESTORE_FENCE_UNVERIFIED")
         return written
 
@@ -1060,12 +1083,11 @@ class LabTelemetry:
                 "start": int(start.timestamp() * 1_000_000),
                 "end": int(end.timestamp() * 1_000_000),
                 "limit": TRACE_LIMIT,
+                "tags": json.dumps({"error": "true"}),
             }
         )
-        status, payload = kind_lab.get_json(
-            f"{kind_lab.JAEGER}/api/traces?{query}", timeout=max(timeout, 0.01)
-        )
-        if status != 200 or not isinstance(payload, dict):
+        payload = _get_json(f"{kind_lab.JAEGER}/api/traces?{query}", timeout)
+        if not isinstance(payload, dict):
             return SpanQuery((), False)
         traces = payload.get("data")
         if not isinstance(traces, list):
@@ -1095,7 +1117,6 @@ class LabTelemetry:
                     )
         except (KeyError, TypeError, ValueError, AttributeError):
             return SpanQuery((), False)
-        # ``get_json`` reads at most 1 MiB; a full page may have dropped traces.
         return SpanQuery(tuple(spans), len(traces) < TRACE_LIMIT)
 
     def checkout_calls(
@@ -1128,20 +1149,45 @@ class LabTelemetry:
         return CallCount(value, True)
 
 
+def _get_json(url: str, timeout: float) -> Any:
+    """A bounded anonymous GET (Jaeger); None on any error or oversize body."""
+    request = urllib.request.Request(url, method="GET")
+    try:
+        with kind_lab.OPENER.open(request, timeout=max(timeout, 0.01)) as response:
+            if response.status != 200:
+                return None
+            raw = response.read(MAX_TELEMETRY_BYTES + 1)
+    except (urllib.error.URLError, OSError, ValueError, TimeoutError):
+        return None
+    if len(raw) > MAX_TELEMETRY_BYTES:
+        return None
+    try:
+        return json.loads(raw)
+    except ValueError:
+        return None
+
+
 class KindLabIdentity:
     """The expected lab answers on its ports: context, auth and services."""
 
     def verify(self) -> tuple[str, ...]:
         failures: list[str] = []
         try:
-            current = (
-                _external(kind_lab.kubectl("config", "current-context"), timeout=10)
+            # ``kubectl()`` pins the lab kubeconfig and context; the demo
+            # namespace answering through it is the cluster identity.
+            name = (
+                _external(
+                    kind_lab.kubectl(
+                        "get", "namespace", kind_lab.NAMESPACE, "-o", "name"
+                    ),
+                    timeout=10,
+                )
                 .decode()
                 .strip()
             )
         except LabError:
-            current = ""
-        if current != kind_lab.KUBE_CONTEXT:
+            name = ""
+        if name != f"namespace/{kind_lab.NAMESPACE}":
             failures.append("KUBE_CONTEXT_UNCONFIRMED")
         anonymous, _ = kind_lab.get_json(
             f"{kind_lab.PROMETHEUS}/api/v1/status/buildinfo"

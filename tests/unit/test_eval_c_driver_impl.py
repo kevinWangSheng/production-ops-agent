@@ -735,3 +735,98 @@ def test_fault_flag_table_matches_the_kind_lab_whitelist():
     assert eval_live_lab.flagd_method(raw, "cartFailure") == "Boolean"
     with pytest.raises(LabError, match="FAULT_NOT_WHITELISTED"):
         eval_live_lab.fault_for("adFailure", "on")
+
+
+def test_a_driver_bug_after_injection_still_restores_under_the_guard(env, monkeypatch):
+    deps, lab = env["deps"], env["lab"]
+
+    def broken(*args, **kwargs):
+        raise RuntimeError("bug")
+
+    monkeypatch.setattr(eval_live, "fault_gate", broken)
+    result = eval_live.run_round(config(deps, ["eval-cart-failure"]), deps)
+    slot = result.slots[0]
+    assert (slot.status, slot.reason) == ("setup_failed", "DRIVER_ERROR")
+    assert lab.raw == ORIGINAL and not (deps.ledger_root / "fault-active.json").exists()
+
+
+# -- real adapters, with their transport stubbed ---------------------------------
+
+
+def test_kubectl_store_patches_by_cas_and_fences_with_the_annotation(monkeypatch):
+    calls: list[list[str]] = []
+    document = {
+        "metadata": {"uid": "u1", "resourceVersion": "7", "annotations": {"a": "b"}},
+        "data": {"demo.flagd.json": ORIGINAL.decode()},
+    }
+
+    def external(command, *, timeout, data=None):
+        calls.append(command)
+        if "patch" in command:
+            patch = json.loads(command[command.index("-p") + 1])
+            written = json.loads(json.dumps(document))
+            written["metadata"]["resourceVersion"] = "8"
+            for op in patch:
+                if op["path"] == "/metadata/annotations":
+                    written["metadata"]["annotations"] = op["value"]
+            return json.dumps(written).encode()
+        return json.dumps(document).encode()
+
+    monkeypatch.setattr(eval_live_lab, "_external", external)
+    store = eval_live_lab.KubectlFlagStore()
+    current = store.read()
+    assert (current.uid, current.resource_version) == ("u1", "7")
+    store.replace(current, ORIGINAL, fence="f1")
+    patch = json.loads(calls[-1][calls[-1].index("-p") + 1])
+    tests = {op["path"]: op["value"] for op in patch if op["op"] == "test"}
+    assert tests["/metadata/uid"] == "u1" and tests["/metadata/resourceVersion"] == "7"
+    assert tests["/data/demo.flagd.json"] == ORIGINAL.decode()
+    fence = next(op for op in patch if op["path"] == "/metadata/annotations")
+    assert fence["value"] == {"a": "b", eval_live_lab.FENCE_ANNOTATION: "f1"}
+    assert "--context" in calls[-1]
+
+
+def test_lab_telemetry_parses_jaeger_and_marks_a_full_page_incomplete(monkeypatch):
+    trace = {
+        "traceID": "t1",
+        "processes": {"p1": {"serviceName": "checkout"}},
+        "spans": [
+            {
+                "spanID": "s1",
+                "processID": "p1",
+                "operationName": "oteldemo.CartService/EmptyCart",
+                "startTime": int(T0.timestamp() * 1_000_000),
+                "tags": [{"key": "error", "value": True}],
+            }
+        ],
+    }
+    pages = {"n": 1}
+    monkeypatch.setattr(
+        eval_live_lab,
+        "_get_json",
+        lambda url, timeout: {"data": [trace] * pages["n"]},
+    )
+    probe = eval_live_lab.LabTelemetry()
+    query = probe.spans("checkout", T0, T0 + timedelta(seconds=5), 5)
+    assert query.complete and query.spans[0].start == T0
+    assert eval_live_lab.span_error(query.spans[0].tags)
+    pages["n"] = eval_live_lab.TRACE_LIMIT
+    assert not probe.spans("checkout", T0, T0, 5).complete
+    monkeypatch.setattr(eval_live_lab, "_get_json", lambda url, timeout: None)
+    assert not probe.spans("checkout", T0, T0, 5).complete
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://127.0.0.1:1",
+        "http://example.com:1",
+        "http://127.0.0.1",
+        "http://u:p@127.0.0.1:1",
+        "http://127.0.0.1:1/x",
+        "http://127.0.0.1:1?q=1",
+    ],
+)
+def test_flagd_url_must_be_a_bare_loopback_endpoint(url):
+    with pytest.raises(LabError, match="LOCAL_FLAGD_URL_REQUIRED"):
+        eval_live_lab.check_flagd_url(url)
