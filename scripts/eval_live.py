@@ -1790,7 +1790,10 @@ def _main(argv: list[str], deps: LiveDeps | None) -> int:
             )
         except (LabError, OSError) as exc:
             code = exc.code if isinstance(exc, LabError) else "ENV_UNCONFIRMED"
-            return _final(RoundResult(args.round, "refused", 3, code, ()))
+            # The final snapshot (R10): a stop requested before this refusal
+            # (e.g. while the deps were built) is 130, not 3.
+            with protected():
+                return _final(_refused(args.round, code))
     live = deps
     if args.recover:
         return _dispatch(

@@ -15,6 +15,7 @@ import json
 import os
 import signal
 import subprocess
+import sys
 import threading
 import time
 from pathlib import Path
@@ -357,3 +358,138 @@ def test_a_completed_model_or_tool_call_is_recorded_before_the_checkpoint():
         with pytest.raises(Interrupted):
             wrapped.call(3)  # never reaches the recording proxy
     assert recorded == [1, 2]
+
+
+# -- astra P1: external commands run in their own session ----------------------
+
+
+def test_every_external_command_runs_in_its_own_session(tmp_path, monkeypatch):
+    """A terminal Ctrl-C goes to the whole foreground process group; every
+    kubectl/git/initdb/pg_ctl call must be outside it (its own session)."""
+    import psycopg
+
+    data = tmp_path / "pg"
+    seen: list[tuple[str, object]] = []
+
+    def run(command, **kwargs):
+        seen.append((command[-1], kwargs.get("start_new_session")))
+        if Path(command[0]).name == "initdb":
+            data.mkdir()
+        elif command[-1] == "start":
+            (data / "postmaster.pid").write_text(f"4242\n{data}\n0\n55998\n")
+        elif command[-1] == "stop":
+            (data / "postmaster.pid").unlink()
+        return d._Completed(0, b"{}")
+
+    def refuse(*args, **kwargs):
+        raise OSError("no server")  # after pg_ctl start: the cleanup stops it
+
+    monkeypatch.setattr(subprocess, "run", run)
+    monkeypatch.setattr(eval_live_lab, "_pg_binary", lambda name: f"/bin/{name}")
+    monkeypatch.setattr(psycopg, "connect", refuse)
+    eval_live_lab._external(["kubectl", "get"], timeout=1)
+    eval_live_lab._patch(["kubectl", "patch"], timeout=1)
+    eval_live_lab.GitProvenance(tmp_path)._git("rev-parse", "HEAD")
+    with pytest.raises(LabError):
+        eval_live_lab.LocalPgLauncher().start(data, 55998)
+    actions = [action for action, _new in seen]
+    assert actions == ["get", "patch", "HEAD", "--encoding=UTF8", "start", "stop"]
+    assert all(new is True for _action, new in seen), seen
+
+
+def test_no_subprocess_call_of_the_driver_shares_the_process_group():
+    """Every ``subprocess`` call site in the driver modules passes
+    ``start_new_session=True`` (covers call sites added later too)."""
+    import ast
+
+    root = Path(__file__).resolve().parents[2] / "scripts"
+    sites = []
+    for name in (
+        "eval_live.py",
+        "eval_live_lab.py",
+        "eval_live_probe.py",
+        "eval_live_investigator.py",
+        "eval_live_verify.py",
+    ):
+        for node in ast.walk(ast.parse((root / name).read_text())):
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and isinstance(node.func.value, ast.Name)
+                and node.func.value.id == "subprocess"
+            ):
+                keywords = {k.arg: k.value for k in node.keywords}
+                new = keywords.get("start_new_session")
+                sites.append(
+                    (name, node.lineno, isinstance(new, ast.Constant) and new.value)
+                )
+    assert len(sites) >= 6
+    assert all(ok is True for _name, _line, ok in sites), sites
+
+
+_HARNESS = """
+import sys
+from scripts import eval_live, eval_live_lab
+pidfile = sys.argv[1]
+with eval_live._signals():
+    try:
+        eval_live_lab._external(
+            ["/bin/sh", "-c", f"echo $$ > {pidfile}; sleep 1"], timeout=10
+        )
+        result = "completed"
+    except eval_live_lab.LabError as exc:
+        result = exc.code
+    print(result, eval_live_lab.stop_requested())
+"""
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX process groups")
+def test_a_terminal_sigint_reaches_the_driver_but_not_its_command(tmp_path):
+    """Real processes: the driver runs alone in a new session (like a shell
+    job); SIGINT to its process group, as Ctrl-C would send, while a command
+    runs. The command finishes; the driver only records the stop."""
+    pidfile = tmp_path / "child.pid"
+    root = Path(__file__).resolve().parents[2]
+    driver = subprocess.Popen(
+        [sys.executable, "-c", _HARNESS, str(pidfile)],
+        cwd=root,
+        stdout=subprocess.PIPE,
+        start_new_session=True,
+    )
+    try:
+        deadline = time.monotonic() + 20
+        while not (pidfile.exists() and pidfile.read_text().strip()):
+            assert time.monotonic() < deadline and driver.poll() is None
+            time.sleep(0.05)
+        os.killpg(driver.pid, signal.SIGINT)  # the driver's group only
+        out, _ = driver.communicate(timeout=20)
+    finally:
+        if driver.poll() is None:
+            driver.kill()
+            driver.wait()
+    assert driver.returncode == 0
+    assert out.decode().split() == ["completed", "True"]
+
+
+# -- astra P2: a stop while the real deps are built ---------------------------
+
+
+def test_a_stop_while_the_deps_are_built_exits_130_not_3(capsys, monkeypatch):
+    def failing(flagd_url, round_id, *, probe=False):
+        _signal()  # the first signal arrives during the initialisation
+        raise LabError("ENV_UNCONFIRMED")
+
+    monkeypatch.setattr(eval_live, "real_deps", failing)
+    code = eval_live.main([*d.LIVE_ARGV, *p._scenarios(NORMAL)])
+    final = d._last_json(capsys)
+    assert (code, final["exit_code"], final["status"]) == (130, 130, "interrupted")
+
+
+def test_a_deps_failure_without_a_stop_is_still_refused_with_3(capsys, monkeypatch):
+    def failing(flagd_url, round_id, *, probe=False):
+        raise LabError("ENV_UNCONFIRMED")
+
+    monkeypatch.setattr(eval_live, "real_deps", failing)
+    code = eval_live.main([*d.LIVE_ARGV, *p._scenarios(NORMAL)])
+    final = d._last_json(capsys)
+    assert (code, final["exit_code"], final["reason"]) == (3, 3, "ENV_UNCONFIRMED")

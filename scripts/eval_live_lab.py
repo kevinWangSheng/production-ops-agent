@@ -155,7 +155,9 @@ def protected() -> Iterator[None]:
 @contextmanager
 def external_command() -> Iterator[None]:
     """kubectl/pg_ctl/initdb/git: a checkpoint before, no forced stop during;
-    the command's own timeout bounds it."""
+    the command's own timeout bounds it. Every such command also runs in its
+    own session (``start_new_session=True``), so a terminal Ctrl-C reaches
+    the driver only, never the command itself."""
     checkpoint()
     _STOP["external"] += 1
     try:
@@ -1261,6 +1263,7 @@ class GitProvenance:
                     capture_output=True,
                     timeout=10,
                     check=False,
+                    start_new_session=True,
                 )
         except (OSError, subprocess.TimeoutExpired):
             return None
@@ -1307,6 +1310,7 @@ def _external(command: list[str], *, timeout: float, data: str | None = None) ->
                 timeout=timeout,
                 check=False,
                 env=kind_lab.lab_env(),
+                start_new_session=True,
             )
     except (subprocess.TimeoutExpired, OSError):
         raise LabError("EXTERNAL_CALL_TIMEOUT") from None
@@ -1354,6 +1358,7 @@ def _patch(command: list[str], *, timeout: float) -> bytes:
                 timeout=timeout,
                 check=False,
                 env=kind_lab.lab_env(),
+                start_new_session=True,
             )
     except (subprocess.TimeoutExpired, OSError):
         raise LabError("FLAG_WRITE_UNKNOWN") from None
@@ -1796,6 +1801,7 @@ class LocalPgLauncher:
                         timeout=120,
                         capture_output=True,
                         env=pg_env(),
+                        start_new_session=True,
                     )
             finally:
                 pwfile.unlink(missing_ok=True)
@@ -1827,6 +1833,7 @@ class LocalPgLauncher:
                     capture_output=True,
                     # The postmaster inherits this environment, not ours.
                     env=pg_env(),
+                    start_new_session=True,
                 )
             # A checkpoint before and after every DB operation (R1).
             checkpoint()
@@ -1910,6 +1917,7 @@ class LocalPgLauncher:
                     timeout=120,
                     capture_output=True,
                     env=pg_env(),
+                    start_new_session=True,
                 )
         except (subprocess.SubprocessError, OSError):
             raise LabError("PG_STOP_FAILED") from None
