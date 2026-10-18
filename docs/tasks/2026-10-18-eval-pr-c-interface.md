@@ -42,7 +42,7 @@
 | 2 | 参数错误（argparse、`--parallel≠1`、未知场景、非法 round/URL/N），未写任何文件 |
 | 3 | 预检拒绝，未开始任何 attempt（不写 journal）：占用缺失/异主/过期、已有 `fault-active.json`、fault guard 被占、lab 身份不明、PG 端口已占用、flag 不在正常态、round 证据目录已存在、环境前提缺失 |
 | 4 | 恢复或洗净失败：整轮停止，`fault-active.json` 保留，后续槽位记 `not_started` |
-| 5 | 证据写入失败（journal/summary/lifecycle），lab 已恢复；整轮停止 |
+| 5 | 证据写入失败（journal/summary/lifecycle/aggregate，`--probe` 的 probe.json，`--recover` 的 recovery-*.json），lab 已恢复；整轮停止。r11：任何公开证据写入的 OSError 都转为此码，stdout 最后一行 JSON 照常输出（`reason="EVIDENCE_WRITE_FAILED"`），不以异常退出 |
 | 130 | 收到 SIGINT/SIGTERM，且当前 attempt 已恢复、洗净；后续槽位 `not_started`。恢复失败时改为 4 |
 
 `--recover`：只处理 `round == R` 的保留故障状态，按第 5 节恢复规则执行并洗净。成功删除状态后退出 0；仍失败退出 4；状态不存在或属于其他 round 退出 3。它不修改已写的 summary 与 lifecycle，只追加私有 `recovery.jsonl`，并独占新建公开 `recovery-<UTC>.json`（`opspilot-eval-live-recovery-1`：round、attempt_id、recovered_at）。r10：`--recover` 总是只构造 lab 接缝（与 `--probe` 相同：flag store、flagd、telemetry、identity、占用/guard），不读 `M0_ENV_FILE`、不需要模型或 LangSmith 凭据，因此探测轮与正式轮遗留的故障都用同一条命令恢复；不接受与 `--probe` 组合。开始时先做 `env` 检查（只要求 lab Prometheus 账号，洗净要用），不满足退出 3（`ENV_UNCONFIRMED`），不写入任何东西。
@@ -398,7 +398,7 @@ docs/evidence/eval/<R>/aggregate.json                   # write_round，opspilot
 - **轮 manifest（Q1）的两个维度**：`registry = live.registry_hash(注册 DTO)`，`permissions = live.scope_policy_hash(scope)`；后者去掉 scope_id、subject_id、run_id、三个 generation、window、default_query_window、deadline，另加 `window_seconds` 与「是否有 default_query_window」。驱动用 `template_scope(config)` 预先算出，真实领取的 scope 必须得到同一值；`check_recording_binding` 按第 13 节最后一条核对（6610ff5 中「删除该比较」的更正已按 lead 裁决撤回）。
 - **录制引用（r5）**：只有核验通过（第 14 节首条）的录制才写入 summary 的 `recording_ref`；未通过核验的 attempt 为 aborted，`recording_ref=null`，原始包仍留在私有录制目录。槽位的 `status/stage/reason` 以核验后的结果为准，与 summary 一致。
 - **录制父目录（r5 澄清第 8 节）**：驱动在调用 Investigator 之前以 700 权限创建缺失的 `recording_root`；包目录本身仍由 `record()` 独占创建。
-- **真实 Jaeger 探测的已知限制**：为避免整页 checkout trace 数十 MB，`LabTelemetry.spans` 只检索含 `error=true` 标签的 trace（每页 200 条、响应≤32 MiB，满页或超限即 `complete=False`）。只有 grpc/http 状态码、没有 error 标签的错误 span 不会被检索到；离线规则（第 6 节）不受影响。
+- **真实 Jaeger 探测（r11，PR #271 机器人 P1 更正）**：`LabTelemetry.spans` 只按 service 与时间窗检索，不再用 `tags={"error":"true"}` 服务端过滤；错误判定完全在本地按第 6 节 `span_error()`（error 标签、`otel.status_code=ERROR`、非零 grpc 状态、HTTP 5xx）。大小保护保留：每页上限 1500 条 trace、响应≤64 MiB；满页、超限、截断或解析失败都返回 `complete=False`，因此故障门槛不通过、正常窗口不判干净，绝不当作「无错误」。真实流量下 300 s 窗口若超过上限，正常窗口会判 `NORMAL_WINDOW_UNCONFIRMED`，这是有意的保守结果。
 - **lab 身份**：kube 身份改为经 lab kubeconfig/context 读取 `namespace/otel-demo`（`config current-context` 读的是文件默认 context，不能证明 `--context`）。
-- **PG**：每 attempt 新 initdb，只监听 127.0.0.1 TCP（不建 Unix socket：worktree 路径可能超过 103 字节上限），owner 只做迁移；intake 用 `eval_web`（`opspilot_web` 成员），Run 用 `eval_worker`（`opspilot_worker` 成员）。
+- **PG**：每 attempt 新 initdb，只监听 127.0.0.1 TCP（不建 Unix socket：worktree 路径可能超过 103 字节上限），owner 只做迁移；intake 用 `eval_web`（`opspilot_web` 成员），Run 用 `eval_worker`（`opspilot_worker` 成员）。r11（PR #271 机器人安全 P2）：不再用 trust；initdb 以 `--auth=scram-sha-256` 和每 attempt 随机的 owner 密码（pwfile 600，放在 attempt 私有目录，initdb 后删除）建库，两个登录角色各有独立的随机 SCRAM 密码；所有 DSN（owner/web/worker）都带密码，无密码连接被拒绝。密码只在进程内存与 `PgInstance` 中，不写日志、ledger 或证据。initdb、`pg_ctl start/stop` 用净化环境启动，只保留 `PATH`、`HOME`、`TMPDIR`、`LANG`、`LC_*`、`TZ`，不含任何 DEEPSEEK/LANGSMITH/Prometheus/口令/令牌类变量，postmaster 继承的就是这份环境。
 - **非 synthetic 录制位置**：B2 要求位于本 worktree `tmp/eval/<recording_id>/`，因此 `recording_root` 的真实值必须是 `<worktree>/tmp/eval`。
