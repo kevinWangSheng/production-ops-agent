@@ -53,6 +53,12 @@
 - 退出码：0 = 每个场景门槛通过且恢复、洗净完成；1 = 有场景门槛未通过但 lab 已恢复；3 = 预检拒绝；4 = 恢复或洗净失败（保留 `fault-active.json`，后续场景不执行，可用 `--recover --round R` 恢复）；130 = 中断且已恢复。`--n` 只接受 1。
 - 输出：私有 `<ledger_root>/<R>/probe-<scenario_id>/`（与 attempt 相同的 lifecycle.jsonl、flags-*.json、pre-observation.json、wash-*.json）；公开 `docs/evidence/eval/<R>/probe.json`（`opspilot-eval-live-probe-1`：每个场景的 scenario_id、kind、flag、gate{passed, reason, window, matched_span_ids, trace_ids, checkout_calls}、fault{original_sha256, injected_sha256, effective_at, restored, washed}、reason、closure_reason，以及 round_status、exit_code）。stdout 最后一行同第 2 节格式。
 
+`--verify-replay`（r9，A11 零模型结构回放核验）：`--verify-replay --round R [--attempt ID]`，不需要也不接受 `--mode/--scenario/--n/--parallel/--pg-port/--probe/--dry-run`，`--holder/--batch/--flagd-url` 可省略。只读本地文件，不调用任何 `LiveDeps` 接缝，不发模型、网络、kubectl 或 PG 调用：
+- 对 `docs/evidence/eval/<R>/runs/*/summary.json`（或 `--attempt` 指定的那一个）中 `capture.recording_ref` 非 null 的每个 attempt：按 `recording_ref.sha256` 对 `<recording_root>/eval-live-<R>-<attempt_id>/recording.json` 执行 `load_recording`（逐件核验），用 summary 的 attempt 与 `usage.epoch` 重做 `check_recording_binding`，再执行 `replay(mode="structural", investigator=None)`。
+- 结构回放所用的 manifest 是 summary 中的轮 manifest，只把 `replay_fixture` 维度换成 `hash=<recording sha256>`；attempt 为 `mode="structural"`、`attempt_id=<原 id>-structural`、`product_run_id=None`、其余身份同原 attempt。
+- 每项结果：`attempt_id, recording_sha256, loaded, binding_ok, structural_verified, error, event_counts{model,http,tool,delivery,refusal}`；任何一步失败以固定码填 `error`，不抛出。
+- 退出码：0 = 至少一项且全部 `structural_verified`；1 = 有任一项失败；3 = 没有可核验的 summary（`NOTHING_TO_VERIFY`）或 round 证据目录不存在。stdout 输出一个 JSON 对象 `{"round","status":"verified|failed|refused","exit_code","results":[...]}`；另独占新建公开 `docs/evidence/eval/<R>/structural-replay.json`（`opspilot-eval-structural-replay-1`，同上内容），已存在则改写为 `structural-replay-<UTC>.json`。
+
 stdout 最后一行是一个 JSON 对象：`{"round", "status": "finished|stopped|interrupted|refused|recovered", "exit_code", "reason", "slots": [{scenario_id, repetition, attempt_id, status}]}`。不含凭据、原始遥测或报告正文。
 
 ## 3. 接缝（`scripts/eval_live_lab.py`）
