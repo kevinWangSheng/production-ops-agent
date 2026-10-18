@@ -1,4 +1,4 @@
-"""Offline doubles for the PR-C r3 public protocols; no live adapter imports."""
+"""Offline doubles for the PR-C r5 public protocols; no live adapter imports."""
 
 from __future__ import annotations
 
@@ -231,6 +231,21 @@ class Balance:
         return Decimal("100.00")
 
 
+class ProvenanceReader:
+    """Deterministic provenance; never shells out to git or reads real HEAD."""
+
+    def __init__(self):
+        self.result = lab.Provenance(commit="a" * 40, clean=True)
+        self.calls = 0
+        self.callback = None
+
+    def read(self):
+        self.calls += 1
+        if self.callback:
+            self.callback()
+        return self.result
+
+
 class Env:
     def __init__(self):
         self.result = None
@@ -330,7 +345,11 @@ class Investigator:
                             target=target().target_id,
                             source=registration().source,
                             authorized_window=executor.scope.window.as_json(),
-                            default_window=executor.scope.window.as_json(),
+                            default_window=(
+                                executor.scope.default_query_window.as_json()
+                                if executor.scope.default_query_window is not None
+                                else None
+                            ),
                         ),
                     ),
                 ),
@@ -368,17 +387,32 @@ class Investigator:
             class ModelWithHttp(b2.FakeModel):
                 def complete(self, call):
                     response = super().complete(call)
-                    hooks.http(
-                        serialized_request(call),
-                        b2.canonical_bytes(
+                    response_id = f"{RAW_HTTP}-{len(self.calls)}"
+                    usage = dict(response.usage)
+                    payload = {
+                        "id": response_id,
+                        "object": "chat.completion",
+                        "model": response.response_model,
+                        "choices": [
                             {
-                                "id": RAW_HTTP,
-                                "choices": [{"message": {"content": response.content}}],
+                                "index": 0,
+                                "message": {
+                                    "role": "assistant",
+                                    "content": response.content,
+                                    "reasoning_content": response.reasoning_content,
+                                    "tool_calls": [
+                                        dict(item) for item in response.tool_calls
+                                    ],
+                                },
+                                "finish_reason": response.finish_reason,
                             }
-                        ),
-                        200,
+                        ],
+                        "usage": usage,
+                    }
+                    hooks.http(
+                        serialized_request(call), b2.canonical_bytes(payload), 200
                     )
-                    return response
+                    return replace(response, raw={"id": response_id, "usage": usage})
 
             scripted = (
                 [
@@ -508,6 +542,7 @@ class Harness:
         self.pg = Pg()
         self.investigator = Investigator(self)
         self.env = Env()
+        self.provenance = ProvenanceReader()
         self.deps = lab.LiveDeps(
             clock=self.clock,
             flags=self.flags,
@@ -525,6 +560,7 @@ class Harness:
             scenarios_root=scenarios_root,
             flagd_url="http://127.0.0.1:8013",
             env=self.env,
+            provenance=self.provenance,
         )
         self.deps.ledger_root.mkdir(parents=True)
         self.reservation = self.deps.ledger_root / "occupation.json"

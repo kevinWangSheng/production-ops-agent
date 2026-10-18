@@ -1,4 +1,4 @@
-"""PR-C r3 CLI, resource ownership and lifecycle acceptance, entirely offline."""
+"""PR-C r5 CLI, resource ownership and lifecycle acceptance, entirely offline."""
 
 from __future__ import annotations
 
@@ -106,6 +106,7 @@ def test_dry_run_reads_only_and_never_invokes_a_seam(h, monkeypatch, capsys):
     def forbidden(*args, **kwargs):
         pytest.fail("dry-run invoked an injected seam")
 
+    monkeypatch.setattr(h.investigator, "begin_round", forbidden, raising=False)
     for obj, method in [
         (h.clock, "now"),
         (h.clock, "monotonic"),
@@ -117,6 +118,7 @@ def test_dry_run_reads_only_and_never_invokes_a_seam(h, monkeypatch, capsys):
         (h.deps.balance, "balance"),
         (h.investigator, "investigate"),
         (h.env, "check"),
+        (h.provenance, "read"),
     ]:
         monkeypatch.setattr(obj, method, forbidden)
     before = {p: p.read_bytes() for p in h.root.rglob("*") if p.is_file()}
@@ -749,6 +751,7 @@ def test_environment_refusal_is_first_preflight_step_and_calls_no_other_seam(
         (h.pg, "stop"),
         (h.deps.balance, "balance"),
         (h.investigator, "investigate"),
+        (h.provenance, "read"),
     ]:
         monkeypatch.setattr(obj, method, forbidden)
     code, result = h.final(capsys)
@@ -950,7 +953,7 @@ def test_unknown_restore_result_is_decided_by_uid_sha_and_version_readback(
     h, capsys, state
 ):
     def on_replace(intent, current, new_raw, fence):
-        if not h.flags.writes:
+        if not h.flags.writes or new_raw != intent["original"].encode():
             return
         if state == "cas-conflict":
             raise lab.LabError("FLAG_CAS_CONFLICT")
@@ -1048,3 +1051,226 @@ def test_preflight_refusal_starts_no_external_run_or_langsmith_project(
     code, result = h.final(capsys)
     assert (code, result["status"]) == (3, "refused")
     assert_no_attempt(h)
+
+
+def test_round_initialization_is_once_after_preflight_before_starts_and_journal(
+    h, monkeypatch, capsys
+):
+    events = []
+    starts = h.deps.ledger_root / "run-starts.jsonl"
+
+    def no_started_round():
+        assert not starts.exists() or starts.read_bytes() == b""
+        assert not list(h.public().glob("runs/*/attempt.json"))
+
+    for obj, method, label in [
+        (h.env, "check", "env"),
+        (h.identity, "verify", "identity"),
+        (h.ports, "in_use", "port"),
+        (h.flags, "read", "flags"),
+        (h.flagd, "resolve", "flagd"),
+    ]:
+        original = getattr(obj, method)
+
+        def observed(*args, _original=original, _label=label, **kwargs):
+            events.append(_label)
+            return _original(*args, **kwargs)
+
+        monkeypatch.setattr(obj, method, observed)
+
+    def provenance():
+        no_started_round()
+        assert {"env", "identity", "port", "flags", "flagd"} <= set(events)
+        assert {call[0] for call in h.flagd.calls} == set(s.VARIANTS)
+        assert not h.investigator.requests
+        events.append("provenance")
+
+    h.provenance.callback = provenance
+    begun = []
+
+    def begin(round_id):
+        no_started_round()
+        assert h.provenance.calls == 1
+        assert events[-1] == "provenance"
+        begun.append(round_id)
+        events.append("begin")
+
+    monkeypatch.setattr(h.investigator, "begin_round", begin, raising=False)
+
+    def investigate(request):
+        assert begun == [s.ROUND]
+        assert h.provenance.calls == 1
+        assert starts.exists()
+        assert any(
+            json.loads(line).get("round") == s.ROUND
+            for line in starts.read_text().splitlines()
+        )
+        journal = load_attempt(
+            h.public() / "runs" / request.attempt.attempt_id / "attempt.json"
+        )
+        assert journal.attempt.status == "unknown"
+        events.append("investigate")
+
+    h.investigator.callback = investigate
+    code, result = h.final(capsys, argv=h.argv(n=2))
+    assert code == 0
+    assert [slot["status"] for slot in result["slots"]] == ["ran", "ran"]
+    assert begun == [s.ROUND]
+    assert h.provenance.calls == 1
+    assert events.count("provenance") == events.count("begin") == 1
+    assert (
+        events.index("provenance") < events.index("begin") < events.index("investigate")
+    )
+
+
+def test_investigator_without_optional_begin_round_still_runs(h, capsys):
+    assert not hasattr(h.investigator, "begin_round")
+    code, result = h.final(capsys, argv=h.argv(n=2))
+    assert code == 0
+    assert all(slot["status"] == "ran" for slot in result["slots"])
+    assert h.provenance.calls == 1
+    assert len(h.investigator.requests) == 2
+
+
+def test_begin_round_error_refuses_without_started_round_or_journal(
+    h, monkeypatch, capsys
+):
+    calls = []
+
+    def begin(round_id):
+        calls.append(round_id)
+        assert h.provenance.calls == 1
+        raise lab.LabError("CANARY_BEGIN_FAILED")
+
+    monkeypatch.setattr(h.investigator, "begin_round", begin, raising=False)
+    code, result = h.final(capsys)
+    assert (code, result["status"], result["reason"]) == (
+        3,
+        "refused",
+        "CANARY_BEGIN_FAILED",
+    )
+    assert calls == [s.ROUND]
+    assert h.provenance.calls == 1
+    starts = h.deps.ledger_root / "run-starts.jsonl"
+    assert not starts.exists() or starts.read_bytes() == b""
+    assert_no_attempt(h)
+
+
+def test_provenance_error_refuses_before_begin_round_or_journal(h, monkeypatch, capsys):
+    def fail():
+        raise lab.LabError("CANARY_PROVENANCE_FAILED")
+
+    h.provenance.callback = fail
+
+    def forbidden(round_id):
+        pytest.fail("begin_round called after provenance failed")
+
+    monkeypatch.setattr(h.investigator, "begin_round", forbidden, raising=False)
+    code, result = h.final(capsys)
+    assert (code, result["status"], result["reason"]) == (
+        3,
+        "refused",
+        "CANARY_PROVENANCE_FAILED",
+    )
+    assert h.provenance.calls == 1
+    starts = h.deps.ledger_root / "run-starts.jsonl"
+    assert not starts.exists() or starts.read_bytes() == b""
+    assert_no_attempt(h)
+
+
+@pytest.mark.parametrize(
+    "refusal", ["env", "reservation", "fault", "identity", "pg-port", "flags"]
+)
+def test_preflight_refusal_never_reads_provenance_or_begins_round(
+    h, monkeypatch, capsys, refusal
+):
+    def forbidden(*args, **kwargs):
+        pytest.fail("preflight-refused round entered provenance or begin_round")
+
+    h.provenance.callback = forbidden
+    monkeypatch.setattr(h.investigator, "begin_round", forbidden, raising=False)
+    if refusal == "env":
+        h.env.result = "ENV_UNCONFIRMED"
+    elif refusal == "reservation":
+        h.reservation.unlink()
+    elif refusal == "fault":
+        (h.deps.ledger_root / "fault-active.json").write_bytes(
+            b'{"owner":"CANARY-FOREIGN"}'
+        )
+    elif refusal == "identity":
+        h.identity.result = ("CANARY-UNKNOWN-LAB",)
+    elif refusal == "pg-port":
+        h.ports.busy = True
+    else:
+        doc = json.loads(h.flags.current.raw)
+        doc["flags"]["cartFailure"]["defaultVariant"] = "on"
+        h.flags.current = replace(h.flags.current, raw=s.encode(doc))
+    code, result = h.final(capsys)
+    assert (code, result["status"]) == (3, "refused")
+    assert h.provenance.calls == 0
+    assert_no_attempt(h)
+
+
+def test_clean_provenance_freezes_exact_commit_in_round_manifest(h, capsys):
+    commit = "1234567890abcdef" * 2 + "12345678"
+    h.provenance.result = lab.Provenance(commit=commit, clean=True)
+    code, result = h.final(capsys, argv=h.argv(n=2))
+    assert code == 0
+    assert all(slot["status"] == "ran" for slot in result["slots"])
+    assert h.provenance.calls == 1
+    for summary in h.summaries():
+        assert summary["capture"]["manifest"]["dimensions"]["code"] == {
+            "kind": "version",
+            "value": commit,
+            "reason": None,
+        }
+    for request in h.investigator.requests:
+        dimension = request.manifest.dimensions["code"]
+        assert (dimension.kind, dimension.value, dimension.reason) == (
+            "version",
+            commit,
+            None,
+        )
+
+
+@pytest.mark.parametrize(
+    ("commit", "clean"), [(None, True), ("b" * 40, False), (None, False)]
+)
+def test_unknown_or_dirty_provenance_does_not_refuse_round(
+    h, monkeypatch, capsys, commit, clean
+):
+    h.provenance.result = lab.Provenance(commit=commit, clean=clean)
+    begun = []
+    monkeypatch.setattr(h.investigator, "begin_round", begun.append, raising=False)
+    code, result = h.final(capsys)
+    assert code == 0
+    assert result["slots"][0]["status"] == "ran"
+    assert h.provenance.calls == 1
+    assert begun == [s.ROUND]
+    dimension = h.summaries()[0]["capture"]["manifest"]["dimensions"]["code"]
+    assert dimension["kind"] == "unknown"
+    assert dimension["value"] is None
+    assert isinstance(dimension["reason"], str) and dimension["reason"]
+    aggregate = json.loads((h.public() / "aggregate.json").read_bytes())["aggregate"]
+    assert aggregate["baseline_complete"] is False
+    assert "MANIFEST_UNKNOWN" in aggregate["incomplete_reasons"]
+
+
+def test_omitted_provenance_defaults_to_unknown_without_process_or_network(h, capsys):
+    from dataclasses import fields
+
+    assert (
+        next(
+            field for field in fields(lab.LiveDeps) if field.name == "provenance"
+        ).default
+        is None
+    )
+    h.deps = replace(h.deps, provenance=None)
+    code, result = h.final(capsys)
+    assert code == 0
+    assert result["slots"][0]["status"] == "ran"
+    assert h.provenance.calls == 0
+    dimension = h.summaries()[0]["capture"]["manifest"]["dimensions"]["code"]
+    assert dimension["kind"] == "unknown"
+    assert dimension["value"] is None
+    assert isinstance(dimension["reason"], str) and dimension["reason"]
