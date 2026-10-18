@@ -527,6 +527,13 @@ def run_round(config: RoundConfig, deps: LiveDeps) -> RoundResult:
                     for later in results[index + 1 :]:
                         later.reason = "ROUND_STOPPED"
                     break
+                except (Interrupted, KeyboardInterrupt):
+                    # A signal outside every attempt-level handler (e.g. while
+                    # writing evidence): the round outputs are still written.
+                    status, exit_code, reason = "interrupted", 130, "INTERRUPTED"
+                    for later in results[index + 1 :]:
+                        later.reason = "ROUND_STOPPED"
+                    break
     except LabError as exc:
         # The reservation vanished or changed between the preflight and here.
         status, exit_code, reason = "stopped", 3, exc.code
@@ -710,9 +717,22 @@ def _run_slot(
     state = _Attempt(record, ledger, started_at)
     state.marks["start"] = clock.monotonic()
     ledger.event("journal", "attempt_started", attempt_id=attempt_id)
-    before = _balance(deps)
-    _attempt_body(config, deps, slot, state, signatures, round_state)
-    after = _balance(deps)
+    # The balance reads are outside the guarded body, so they take the same
+    # interrupt path themselves (independent review P2): the attempt still
+    # gets its summary and the round its outputs, then exits 130.
+    before = None
+    try:
+        before = _balance(deps)
+    except (Interrupted, KeyboardInterrupt):
+        state.interrupted = True
+        _fail(state, "INTERRUPTED")
+    if not state.interrupted:
+        _attempt_body(config, deps, slot, state, signatures, round_state)
+    after = None
+    try:
+        after = _balance(deps)
+    except (Interrupted, KeyboardInterrupt):
+        state.interrupted = True
     balances.append(_cost(attempt_id, before, after))
     out.status = state.status
     out.stage = state.stage

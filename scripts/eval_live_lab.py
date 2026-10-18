@@ -96,6 +96,8 @@ class FlagConfig:
     raw: bytes
     uid: str
     resource_version: str
+    # The restore-fence annotation as read (r6); None when absent/unknown.
+    fence: str | None = None
 
 
 class FlagStore(Protocol):
@@ -642,19 +644,26 @@ def restore_fault(
     if not fenced and live.raw != injected:
         ledger.event("restore", "refused", reason="FLAGS_CHANGED_REFUSE_RESTORE")
         raise LabError("FLAGS_CHANGED_REFUSE_RESTORE")
+    fence = uuid4().hex if fenced else None
+    unknown = False
     try:
-        deps.flags.replace(live, original, fence=uuid4().hex if fenced else None)
+        deps.flags.replace(live, original, fence=fence)
     except LabError as exc:
-        # A lost response is decided by the re-read below; a refused CAS
-        # means someone else wrote first, which is never overwritten.
+        # Only an indeterminate result is decided by the re-read below; a
+        # definitive refusal (FLAG_CAS_CONFLICT) means someone else wrote
+        # first: stop, keep the intent, never overwrite (r6).
         if exc.code != "FLAG_WRITE_UNKNOWN":
             raise
+        unknown = True
         ledger.event("restore", "write_unknown")
     after = deps.flags.read()
     if (
         sha256(after.raw) != state.get("original_sha256")
         or after.uid != live.uid
         or after.resource_version == live.resource_version
+        # An advanced version alone may be another writer's; an unknown
+        # fence write counts only when our own fence value is visible.
+        or (unknown and fence is not None and after.fence != fence)
     ):
         raise LabError("FLAG_RESTORE_UNVERIFIED")
     ledger.event("restore", "config_verified", sha256=sha256(after.raw))
@@ -990,13 +999,51 @@ def _external(command: list[str], *, timeout: float, data: str | None = None) ->
 
 def _configmap(document: Mapping[str, Any]) -> FlagConfig:
     try:
+        annotations = document["metadata"].get("annotations") or {}
+        fence = annotations.get(FENCE_ANNOTATION)
         return FlagConfig(
             raw=str(document["data"][kind_lab.FLAG_FILE]).encode(),
             uid=str(document["metadata"]["uid"]),
             resource_version=str(document["metadata"]["resourceVersion"]),
+            fence=fence if isinstance(fence, str) else None,
         )
-    except (KeyError, TypeError):
+    except (KeyError, TypeError, AttributeError):
         raise LabError("FLAG_READ_FAILED") from None
+
+
+# kubectl's stderr when the API server definitively refused a JSON patch: a
+# failed ``test`` op, a 409 Conflict or a resourceVersion precondition. Such
+# a write did not happen; any other non-zero exit is indeterminate (r6).
+DEFINITIVE_REFUSALS = (
+    "testing value",  # jsonpatch: "testing value /data/x failed: test failed"
+    "test failed",
+    "(conflict)",  # 409: "Error from server (Conflict): ..."
+    "the object has been modified",
+    "precondition failed",  # uid/resourceVersion preconditions
+)
+
+
+def _patch(command: list[str], *, timeout: float) -> bytes:
+    """``kubectl patch`` stdout; ``FLAG_CAS_CONFLICT`` for a definitive
+    refusal, ``FLAG_WRITE_UNKNOWN`` only when the outcome cannot be known."""
+    try:
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            timeout=timeout,
+            check=False,
+            env=kind_lab.lab_env(),
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        raise LabError("FLAG_WRITE_UNKNOWN") from None
+    if result.returncode:
+        stderr = result.stderr.decode("utf-8", "replace").lower()
+        if any(marker in stderr for marker in DEFINITIVE_REFUSALS):
+            raise LabError("FLAG_CAS_CONFLICT")
+        raise LabError("FLAG_WRITE_UNKNOWN")
+    if len(result.stdout) > 10 * 1024 * 1024:
+        raise LabError("FLAG_WRITE_UNKNOWN")
+    return result.stdout
 
 
 class KubectlFlagStore:
@@ -1055,27 +1102,25 @@ class KubectlFlagStore:
                     "value": {**annotations, FENCE_ANNOTATION: fence},
                 }
             )
+        raw = _patch(
+            kind_lab.kubectl(
+                "-n",
+                kind_lab.NAMESPACE,
+                "patch",
+                "configmap",
+                "flagd-config",
+                "--type=json",
+                "-p",
+                canonical_json(patch),
+                "-o",
+                "json",
+            ),
+            timeout=60,
+        )
         try:
-            document = json.loads(
-                _external(
-                    kind_lab.kubectl(
-                        "-n",
-                        kind_lab.NAMESPACE,
-                        "patch",
-                        "configmap",
-                        "flagd-config",
-                        "--type=json",
-                        "-p",
-                        canonical_json(patch),
-                        "-o",
-                        "json",
-                    ),
-                    timeout=60,
-                )
-            )
-        except (LabError, ValueError):
-            # A rejected test op and a lost response look alike here; the
-            # caller re-reads and decides from the live bytes.
+            document = json.loads(raw)
+        except ValueError:
+            # The server accepted the patch but its answer is unreadable.
             raise LabError("FLAG_WRITE_UNKNOWN") from None
         written = _configmap(document)
         if fence is not None and (
@@ -1305,6 +1350,7 @@ class LocalPgLauncher:
             raise LabError("PG_DIRECTORY_EXISTS")
         _private_dir(directory.parent)
         data = directory
+        started = False
         try:
             subprocess.run(
                 [
@@ -1328,6 +1374,9 @@ class LocalPgLauncher:
                     "unix_socket_directories=''\nshared_buffers=32MB\n"
                     "max_connections=20\nautovacuum=off\n"
                 )
+            # Set before the start: a timed-out ``pg_ctl -w start`` may still
+            # leave a running server; ``stop`` no-ops when there is no pid file.
+            started = True
             subprocess.run(
                 [
                     _pg_binary("pg_ctl"),
@@ -1358,10 +1407,19 @@ class LocalPgLauncher:
                             sql.Identifier(login), sql.Identifier(group)
                         )
                     )
-        except (subprocess.SubprocessError, OSError, LabError) as exc:
-            raise LabError(getattr(exc, "code", "PG_START_FAILED")) from None
-        except Exception:  # noqa: BLE001 - psycopg/schema errors, fixed code only
-            raise LabError("PG_START_FAILED") from None
+        except BaseException as exc:
+            # The caller never receives an instance it could stop, so the
+            # server this call launched is stopped here (its own directory and
+            # port only, through ``stop``'s pid check) before failing (r6).
+            if started:
+                try:
+                    self.stop(PgInstance(data, port, "", ""))
+                except LabError:
+                    pass
+            if not isinstance(exc, Exception):
+                raise  # Interrupted/KeyboardInterrupt keep their own path
+            code = exc.code if isinstance(exc, LabError) else "PG_START_FAILED"
+            raise LabError(code) from None
         return PgInstance(
             directory=data,
             port=port,

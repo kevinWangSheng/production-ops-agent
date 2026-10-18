@@ -834,6 +834,11 @@ def test_kubectl_store_patches_by_cas_and_fences_with_the_annotation(monkeypatch
         return json.dumps(document).encode()
 
     monkeypatch.setattr(eval_live_lab, "_external", external)
+    monkeypatch.setattr(
+        eval_live_lab,
+        "_patch",
+        lambda command, *, timeout: external(command, timeout=timeout),
+    )
     store = eval_live_lab.KubectlFlagStore()
     current = store.read()
     assert (current.uid, current.resource_version) == ("u1", "7")
@@ -1129,3 +1134,161 @@ def test_public_template_scope_separates_policy_from_run_identity():
     assert scope_policy_hash(shorter) != scope_policy_hash(template)
     assert template.target_ids == frozenset({otel_demo.TARGET_ID})
     assert template.default_query_window is None
+
+
+# -- r6: independent review P2 findings ---------------------------------------
+
+
+class _Completed:
+    def __init__(self, returncode: int, stdout: bytes = b"", stderr: bytes = b""):
+        self.returncode, self.stdout, self.stderr = returncode, stdout, stderr
+
+
+@pytest.mark.parametrize(
+    "stderr,code",
+    [
+        (
+            b"The request is invalid: the server rejected our request due to an "
+            b"error in our request: testing value /metadata/resourceVersion failed",
+            "FLAG_CAS_CONFLICT",
+        ),
+        (
+            b"Error from server (Conflict): Operation cannot be fulfilled on "
+            b'configmaps "flagd-config": the object has been modified',
+            "FLAG_CAS_CONFLICT",
+        ),
+        (b"Precondition failed: UID in precondition: u1", "FLAG_CAS_CONFLICT"),
+        (
+            b"Unable to connect to the server: dial tcp: i/o timeout",
+            "FLAG_WRITE_UNKNOWN",
+        ),
+    ],
+)
+def test_kubectl_patch_separates_definitive_refusal_from_unknown(
+    monkeypatch, stderr, code
+):
+    """P2-1: a server-side CAS refusal is never adjudicated by re-read."""
+    import subprocess
+
+    def run(command, **kwargs):
+        if "patch" in command:
+            return _Completed(1, stderr=stderr)
+        raise AssertionError("unexpected call")
+
+    monkeypatch.setattr(subprocess, "run", run)
+    store = eval_live_lab.KubectlFlagStore()
+    current = FlagConfig(ORIGINAL, "u1", "10")
+    with pytest.raises(LabError) as raised:
+        store.replace(current, ORIGINAL, fence=None)
+    assert raised.value.code == code
+
+
+def test_kubectl_patch_timeout_is_unknown(monkeypatch):
+    import subprocess
+
+    def run(command, **kwargs):
+        raise subprocess.TimeoutExpired(command, 60)
+
+    monkeypatch.setattr(subprocess, "run", run)
+    with pytest.raises(LabError) as raised:
+        eval_live_lab.KubectlFlagStore().replace(
+            FlagConfig(ORIGINAL, "u1", "10"), ORIGINAL, fence=None
+        )
+    assert raised.value.code == "FLAG_WRITE_UNKNOWN"
+
+
+def test_an_unknown_fence_write_needs_our_fence_on_read_back(env):
+    """P2-1: another writer's version bump is not our fence; keep the intent."""
+    deps, lab = env["deps"], env["lab"]
+    lab.complete = False  # first round leaves a retained fault (wash fails)
+    eval_live.run_round(config(deps, ["eval-cart-failure"]), deps)
+    state_path = deps.ledger_root / "fault-active.json"
+    assert state_path.exists() and lab.raw == ORIGINAL
+    lab.complete = True
+
+    def foreign_bump(current, new_raw, *, fence):
+        # Our fence never lands; someone else bumps the version meanwhile.
+        lab.rv += 1
+        raise LabError("FLAG_WRITE_UNKNOWN")
+
+    lab.replace = foreign_bump  # type: ignore[method-assign]
+    result = eval_live.recover_round("r1", "lead", "b1", deps)
+    assert (result.exit_code, result.reason) == (4, "FLAG_RESTORE_UNVERIFIED")
+    assert state_path.exists()
+
+
+def test_pg_start_failing_after_launch_stops_the_instance_it_started(
+    tmp_path, monkeypatch
+):
+    """P2-2: a migration failure after ``pg_ctl start`` leaves no server."""
+    import subprocess
+
+    from opspilot import schema
+
+    data = tmp_path / "pg"
+    calls: list[str] = []
+
+    def run(command, **kwargs):
+        action = command[-1]
+        calls.append(action)
+        if Path(command[0]).name == "initdb":
+            data.mkdir()
+        elif action == "start":
+            (data / "postmaster.pid").write_text(f"4242\n{data}\n0\n55998\n")
+        elif action == "stop":
+            (data / "postmaster.pid").unlink()
+        return _Completed(0)
+
+    class Conn:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def execute(self, *args, **kwargs):
+            return None
+
+    def migrate(*args, **kwargs):
+        raise RuntimeError("migration failed")
+
+    import psycopg
+
+    monkeypatch.setattr(subprocess, "run", run)
+    monkeypatch.setattr(eval_live_lab, "_pg_binary", lambda name: f"/bin/{name}")
+    monkeypatch.setattr(psycopg, "connect", lambda *a, **k: Conn())
+    monkeypatch.setattr(schema, "migrate", migrate)
+    with pytest.raises(LabError, match="PG_START_FAILED"):
+        eval_live_lab.LocalPgLauncher().start(data, 55998)
+    assert calls[-1] == "stop"
+    assert not (data / "postmaster.pid").exists()
+
+
+class _InterruptingBalance:
+    def __init__(self, at: int) -> None:
+        self.at, self.calls = at, 0
+
+    def balance(self):
+        self.calls += 1
+        if self.calls == self.at:
+            raise Interrupted()
+        return None
+
+
+@pytest.mark.parametrize("at", [1, 2])
+def test_a_signal_during_a_balance_read_still_writes_every_output(env, at):
+    """P2-3: before (1) or after (2) the attempt body, exit 130 with outputs."""
+    deps = replace(env["deps"], balance=_InterruptingBalance(at))
+    cfg = config(deps, ["eval-cart-failure", "eval-normal-1"])
+    result = eval_live.run_round(cfg, deps)
+    assert (result.exit_code, result.status) == (130, "interrupted")
+    first, later = result.slots
+    assert later.status == "not_started" and later.reason == "ROUND_STOPPED"
+    assert first.summary is not None
+    if at == 1:
+        assert (first.status, first.reason) == ("setup_failed", "INTERRUPTED")
+        assert env["lab"].writes == []
+    assert lifecycle(deps)["round_status"] == "interrupted"
+    assert (deps.evidence_root / "r1/aggregate.json").exists()
+    assert env["lab"].raw == ORIGINAL
+    assert not (deps.ledger_root / "fault-active.json").exists()
