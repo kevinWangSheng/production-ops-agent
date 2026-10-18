@@ -47,6 +47,12 @@
 
 `--recover`：只处理 `round == R` 的保留故障状态，按第 5 节恢复规则执行并洗净。成功删除状态后退出 0；仍失败退出 4；状态不存在或属于其他 round 退出 3。它不修改已写的 summary 与 lifecycle，只追加私有 `recovery.jsonl`，并独占新建公开 `recovery-<UTC>.json`（`opspilot-eval-live-recovery-1`：round、attempt_id、recovered_at）。
 
+`--probe`（r8，A11 生命周期探测）：`--mode live --probe --round R --scenario ID [...] --n 1 --parallel 1 --holder H --batch B --flagd-url URL`，不需要 `--pg-port`。每个场景执行一次真实 lab 生命周期，不建产品 Run、不调模型、不启 PG、不查余额、不建 LangSmith 项目，也不写 journal/summary/aggregate（不冒充 attempt）：
+- 预检：`env`（只要求 lab Prometheus 账号可用，不读 `M0_ENV_FILE`）→ `ROUND_EXISTS` → 占用 → 已有 `fault-active.json` → fault guard → identity → 全部 flag 正常；拒绝退出 3。通过后照常追加 `run-starts.jsonl`。
+- fault 场景：持有 fault guard，按第 5 节写意图并注入（attempt_id 固定为 `probe-<scenario_id>`），等 flagd 生效，跑第 6 节 `fault_gate`，然后无论门槛结果如何都按第 5 节恢复并洗净。normal 场景：确认全部 flag 正常后跑 `normal_window`，不写 ConfigMap。
+- 退出码：0 = 每个场景门槛通过且恢复、洗净完成；1 = 有场景门槛未通过但 lab 已恢复；3 = 预检拒绝；4 = 恢复或洗净失败（保留 `fault-active.json`，后续场景不执行，可用 `--recover --round R` 恢复）；130 = 中断且已恢复。`--n` 只接受 1。
+- 输出：私有 `<ledger_root>/<R>/probe-<scenario_id>/`（与 attempt 相同的 lifecycle.jsonl、flags-*.json、pre-observation.json、wash-*.json）；公开 `docs/evidence/eval/<R>/probe.json`（`opspilot-eval-live-probe-1`：每个场景的 scenario_id、kind、flag、gate{passed, reason, window, matched_span_ids, trace_ids, checkout_calls}、fault{original_sha256, injected_sha256, effective_at, restored, washed}、reason、closure_reason，以及 round_status、exit_code）。stdout 最后一行同第 2 节格式。
+
 stdout 最后一行是一个 JSON 对象：`{"round", "status": "finished|stopped|interrupted|refused|recovered", "exit_code", "reason", "slots": [{scenario_id, repetition, attempt_id, status}]}`。不含凭据、原始遥测或报告正文。
 
 ## 3. 接缝（`scripts/eval_live_lab.py`）
