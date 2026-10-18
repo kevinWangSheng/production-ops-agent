@@ -1,6 +1,7 @@
 """A5 defaults and credential-free registration DTO public contracts."""
 
 from dataclasses import FrozenInstanceError, fields
+from datetime import timedelta
 from types import SimpleNamespace
 from unittest.mock import Mock
 from uuid import UUID
@@ -45,16 +46,36 @@ def test_runner_explicit_none_and_omitted_hooks_have_same_terminal_outcome():
         worker = SimpleNamespace(
             recover=lambda _: plan, resume=forbidden, claim=forbidden
         )
+        clock = s.Clock()
+        store = MemoryIncidentStore(clock)
+        versions = {"state": "v1"}
+        store.accept(
+            incident_id,
+            run_id,
+            "CANARY-TERMINAL",
+            deadline=clock.now() + timedelta(minutes=10),
+            budget_limit=4,
+            versions=versions,
+        )
+        lease = store.claim(
+            incident_id, run_id, UUID(int=3), versions, lease_seconds=600
+        )
+        conclusion = {"status": "completed", "summary": "CANARY-COMPLETED"}
+        step_id = store.committer(lease).commit_step("CANARY-FINAL", conclusion)
+        assert store.publish(lease, conclusion, step_id=step_id)
+        before = store.rebuild(incident_id)
+        assert before["run"]["state"] == "completed"
         runner = InvestigationRunner(
-            store=MemoryIncidentStore(s.Clock()),
+            store=store,
             worker=worker,
             model=SimpleNamespace(complete=forbidden),
             executor_factory=forbidden,
-            clock=s.Clock(),
+            clock=clock,
             **kwargs,
         )
         outcomes.append(runner.resume(incident_id))
         forbidden.assert_not_called()
+        assert store.rebuild(incident_id) == before
     assert outcomes[0] == outcomes[1]
     assert outcomes[0].status == "already_completed"
 

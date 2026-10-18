@@ -5,18 +5,25 @@ from __future__ import annotations
 import hashlib
 import json
 import shutil
-from dataclasses import asdict, replace
+from dataclasses import asdict, fields, replace
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
-from scripts.eval_live import InvestigationRequest, InvestigationResult
+from scripts.eval_live import InvestigationRequest, InvestigationResult, template_scope
 
 from opspilot.evaluation import ToolSnapshot, bind_tool_snapshots, record
 from opspilot.investigation.loop import ModelCall, serialized_request
+from opspilot.tools.otel_demo import (
+    CREDENTIAL_REF,
+    METRICS_TOOL,
+    TARGET_ID,
+    OtelDemoTransport,
+    otel_demo_registrations,
+)
 from scripts import eval_live_lab as lab
 from tests.acceptance import eval_b2_support as b2
-from tests.m1_tool_support import NOW, build, registration, target
+from tests.m1_tool_support import FakeClock, FixedControl, build
 
 ROUND = "canary-round"
 HOLDER = "CANARY-HOLDER"
@@ -257,11 +264,19 @@ class Env:
 
 
 def recording_context(attempt, manifest, round_id=ROUND, epoch=7):
-    executor, _, _, _ = build()
+    registrations = otel_demo_registrations()
+    template = template_scope()
+    duration = template.window.end - template.window.start
     scope = replace(
-        executor.scope,
-        run_id=attempt.product_run_id,
+        template,
         scope_id=f"otel-demo:{attempt.product_run_id}:{epoch}",
+        subject_id="CANARY-INCIDENT",
+        run_id=attempt.product_run_id,
+        control_generation=0,
+        global_suspension_generation=0,
+        target_suspension_generation=0,
+        window=replace(template.window, start=b2.START - duration, end=b2.START),
+        deadline=b2.END + timedelta(minutes=10),
     )
     ctx = b2.context(
         recording_id=f"eval-live-{round_id}-{attempt.attempt_id}",
@@ -269,9 +284,12 @@ def recording_context(attempt, manifest, round_id=ROUND, epoch=7):
         scenario_id=attempt.scenario_id,
         scenario_version=attempt.scenario_version,
         bindings=(),
+        stimulus={**b2.context().stimulus, "target_id": TARGET_ID},
     )
     return bind_tool_snapshots(
-        ctx, (ToolSnapshot((registration(),), (target(),), scope),), manifest
+        ctx,
+        (ToolSnapshot(registrations.tools, registrations.targets, scope),),
+        manifest,
     )
 
 
@@ -293,6 +311,7 @@ class Investigator:
         self.recordings = []
         self.created_runs = []
         self.with_evidence = False
+        self.tool_outcomes = []
 
     def investigate(self, request):
         assert isinstance(request, InvestigationRequest)
@@ -330,38 +349,69 @@ class Investigator:
         self.created_runs.append(run_id)
         attempt = replace(request.attempt, product_run_id=run_id)
         ctx = recording_context(attempt, request.manifest)
-        executor, transport, _, clock = build(
-            scope_overrides={"run_id": run_id, "scope_id": f"otel-demo:{run_id}:7"}
-        )
+        scope = ctx.tool_snapshots[0].scope
+        clock = FakeClock(start=ctx.started_at)
         if self.with_evidence:
-            ctx = bind_tool_snapshots(
-                replace(
-                    ctx,
-                    started_at=NOW,
-                    ended_at=NOW,
-                    bindings=(
-                        b2.binding(
-                            tool=registration().name,
-                            target=target().target_id,
-                            source=registration().source,
-                            authorized_window=executor.scope.window.as_json(),
-                            default_window=(
-                                executor.scope.default_query_window.as_json()
-                                if executor.scope.default_query_window is not None
-                                else None
-                            ),
-                        ),
+            from tests.test_m1_otel_demo_contract import GOOD_EXPR, FakeOpener
+
+            sample_at = scope.window.end - timedelta(minutes=1)
+            response_body = encode(
+                {
+                    "status": "success",
+                    "data": {
+                        "resultType": "matrix",
+                        "result": [
+                            {
+                                "metric": {"service_name": "checkout"},
+                                "values": [[sample_at.timestamp(), "3"]],
+                            }
+                        ],
+                    },
+                }
+            )
+            opener = FakeOpener(by_query={GOOD_EXPR: response_body})
+            transport = OtelDemoTransport(
+                credentials={CREDENTIAL_REF: None}, opener=opener
+            )
+            registrations = otel_demo_registrations()
+            executor, _, _, clock = build(
+                registrations=registrations.tools,
+                targets=registrations.targets,
+                transport=transport,
+                clock=clock,
+                control=FixedControl(
+                    generation=scope.control_generation,
+                    global_generation=scope.global_suspension_generation,
+                    target_generation=scope.target_suspension_generation,
+                ),
+                scope_overrides={
+                    field.name: getattr(scope, field.name) for field in fields(scope)
+                },
+            )
+            metric = next(
+                tool for tool in registrations.tools if tool.name == METRICS_TOOL
+            )
+            ctx = replace(
+                ctx,
+                bindings=(
+                    b2.binding(
+                        tool=metric.name,
+                        target=TARGET_ID,
+                        source=metric.source,
+                        authorized_window=scope.window.as_json(),
+                        default_window=scope.default_query_window.as_json()
+                        if scope.default_query_window
+                        else None,
                     ),
                 ),
-                (ToolSnapshot((registration(),), (target(),), executor.scope),),
-                request.manifest,
             )
+            ctx = bind_tool_snapshots(ctx, ctx.tool_snapshots, request.manifest)
         ctx = replace(
             ctx,
             stimulus={
                 "question": request.spec.stimulus.question,
                 "subject_id": request.spec.stimulus.subject_id,
-                "target_id": target().target_id,
+                "target_id": TARGET_ID,
             },
         )
         result = b2.outcome(
@@ -379,10 +429,9 @@ class Investigator:
 
         def driver(hooks):
             nonlocal result
-            from opspilot.tools import ToolRequest, TransportResponse
+            from opspilot.tools import ToolRequest
             from opspilot.tools.registry import canonical
             from tests.m1_investigation_support import reply, tool_call
-            from tests.m1_tool_support import body
 
             class ModelWithHttp(b2.FakeModel):
                 def complete(self, call):
@@ -416,7 +465,15 @@ class Investigator:
 
             scripted = (
                 [
-                    reply(tool_calls=[tool_call()], finish="tool_calls"),
+                    reply(
+                        tool_calls=[
+                            tool_call(
+                                name=METRICS_TOOL,
+                                arguments=json.dumps({"expr": GOOD_EXPR}),
+                            )
+                        ],
+                        finish="tool_calls",
+                    ),
                     reply(content="CANARY-DONE"),
                 ]
                 if self.with_evidence
@@ -428,7 +485,7 @@ class Investigator:
                     {
                         "question": request.spec.stimulus.question,
                         "subject_id": request.spec.stimulus.subject_id,
-                        "target_id": target().target_id,
+                        "target_id": TARGET_ID,
                         "evidence_context": {
                             "run_id": run_id,
                             "time_policies": [
@@ -436,7 +493,7 @@ class Investigator:
                                     "id": "CANARY-SCOPE",
                                     "mode": "historical_window",
                                     "all_authorized_targets": True,
-                                    "window": executor.scope.window.as_json(),
+                                    "window": scope.window.as_json(),
                                 }
                             ],
                         },
@@ -453,17 +510,19 @@ class Investigator:
             )
             first = model.complete(call)
             if self.with_evidence:
-                transport.response = TransportResponse(body=body([{"value": 3}]))
                 observed = hooks.tools(executor).execute(
                     ToolRequest(
                         step_id="CANARY-STEP",
                         tool_index=0,
-                        tool_name=registration().name,
-                        target_ref=target().target_id,
-                        params={"expr": "rate(http_errors[5m])"},
+                        tool_name=METRICS_TOOL,
+                        target_ref=TARGET_ID,
+                        params={"expr": GOOD_EXPR},
                         window=None,
                     )
                 )
+                self.tool_outcomes.append(observed)
+                assert observed.status == "ok", (observed.status, observed.reason)
+                assert observed.evidence is not None, (observed.status, observed.reason)
                 message = {
                     "role": "tool",
                     "tool_call_id": first.tool_calls[0]["id"],

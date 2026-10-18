@@ -885,6 +885,10 @@ def test_summary_evidence_is_derived_from_recording_and_investigator_fields_are_
         item.delivered for item in expected.delivered.values()
     )
     assert expected.authorized
+    assert len(h.investigator.tool_outcomes) == 1
+    observed = h.investigator.tool_outcomes[0]
+    assert observed.status == "ok" and observed.evidence is not None
+    assert observed.evidence.evidence_id in expected.delivered
     capture = h.summaries()[0]["capture"]
     assert capture["delivered"] == encode(expected.delivered)
     assert capture["authorized"] == encode(expected.authorized)
