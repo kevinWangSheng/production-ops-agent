@@ -1,15 +1,16 @@
-# 评测 PR-C 公开接口（r2）：live kind/OTel 场景驱动
+# 评测 PR-C 公开接口（r3）：live kind/OTel 场景驱动
 
 - 依据：[PR-C 合同 r1](2026-10-18-eval-pr-c-contract.md)（下称 C，U1–U3、A1–A11 均按 B 采纳）；[套件合同](2026-10-12-eval-suite-contract.md) D3/D4/D5/D10/D15、P2/P10/P12/P13；[PR-B2 接口](2026-10-14-eval-pr-b2-interface.md)；[PR-A 接口](2026-10-13-eval-pr-a-interface.md)；issue #234。
-- 用途：供未参与实现的测试作者编写验收/合同测试。只写可观察行为与接缝，不写实现。末节记录 lead 的 r2 裁决。
+- 用途：供未参与实现的测试作者编写验收/合同测试。只写可观察行为与接缝，不写实现。第 13 节记录 lead 的 r2 裁决，第 14 节是 r3 实现对账（只收紧或补全，不放宽）。
 - 离线原则：除真实 kind/flagd/Prometheus/Jaeger/PG/DeepSeek/LangSmith 调用本身外，全部行为都能用第 3 节的假对象离线测试。真实适配器只由 `real_deps()` 构造，测试不需要也不应调用它。
 
 ## 1. 模块
 
 | 模块 | 内容 |
 |---|---|
-| `scripts/eval_live.py` | CLI `main(argv, *, deps=None) -> int`；`run_round(config, deps) -> RoundResult`；`recover_round(config, deps) -> RecoverResult`；`attempt_resolver(...)` |
-| `scripts/eval_live_lab.py` | flag 白名单、恢复意图与占用协议、预观察门槛、接缝 Protocol 与 DTO、`LabError`、`Interrupted`、`real_deps()` |
+| `scripts/eval_live.py` | CLI `main(argv, *, deps=None) -> int`；`plan_slots(scenarios_root, wanted, n)`；`build_manifest(...)`；`run_round(config: RoundConfig, deps) -> RoundResult`；`recover_round(round_id, holder, batch, deps) -> RoundResult`；`attempt_resolver(...)`；DTO `InvestigationRequest/InvestigationResult/SlotResult/RoundResult/RoundConfig` |
+| `scripts/eval_live_lab.py` | flag 白名单、恢复意图与占用协议、预观察门槛、接缝 Protocol 与 DTO、`LabError`、`Interrupted`、真实适配器 |
+| `scripts/eval_live_investigator.py` | 真实 Investigator（live only）；`real_deps()` 在 `scripts/eval_live.py` |
 | `scripts/kind_lab.py` | `fault inject|restore` 增加 `--flag`（第 4 节） |
 | `opspilot/evaluation/live.py` | 纯函数 `evidence_from_recording()`（录制 → B1 可见证据），从 `opspilot.evaluation` 导出 |
 | 产品代码 | `InvestigationRunner` 两个默认 None 的接缝；`opspilot.tools.otel_demo` 公开注册 DTO（第 8 节） |
@@ -44,7 +45,7 @@
 | 5 | 证据写入失败（journal/summary/lifecycle），lab 已恢复；整轮停止 |
 | 130 | 收到 SIGINT/SIGTERM，且当前 attempt 已恢复、洗净；后续槽位 `not_started`。恢复失败时改为 4 |
 
-`--recover`：只处理 `round == R` 的保留故障状态，按第 5 节恢复规则执行并洗净。成功删除状态后退出 0；仍失败退出 4；状态不存在或属于其他 round 退出 3。它不修改已写的 summary，只追加私有 `recovery.jsonl`，并更新公开 lifecycle 中的 `recovered_at`。
+`--recover`：只处理 `round == R` 的保留故障状态，按第 5 节恢复规则执行并洗净。成功删除状态后退出 0；仍失败退出 4；状态不存在或属于其他 round 退出 3。它不修改已写的 summary 与 lifecycle，只追加私有 `recovery.jsonl`，并独占新建公开 `recovery-<UTC>.json`（`opspilot-eval-live-recovery-1`：round、attempt_id、recovered_at）。
 
 stdout 最后一行是一个 JSON 对象：`{"round", "status": "finished|stopped|interrupted|refused|recovered", "exit_code", "reason", "slots": [{scenario_id, repetition, attempt_id, status}]}`。不含凭据、原始遥测或报告正文。
 
@@ -90,7 +91,7 @@ class PortProbe(Protocol):
     def in_use(self, port: int) -> bool: ...  # 127.0.0.1 上是否已有监听者
 
 @dataclass(frozen=True)
-class PgInstance: directory: Path; port: int; owner_dsn: str; runtime_dsn: str
+class PgInstance: directory: Path; port: int; owner_dsn: str; runtime_dsn: str; web_dsn: str = ""
 class PgLauncher(Protocol):
     def start(self, directory: Path, port: int) -> PgInstance: ...  # 新建目录、initdb、启动、迁移
     def stop(self, instance: PgInstance) -> None: ...               # 只停本实例
@@ -116,8 +117,8 @@ class LiveDeps:
 
 - `FlagStore.replace` 是 CAS：只有当前对象的 uid、resourceVersion、raw 都等于 `current` 时才写入 `new_raw`。`fence` 非 None 时还要写入唯一注解，保证 resourceVersion 前进。返回写后的对象。条件不符抛 `LabError("FLAG_CAS_CONFLICT")`，结果未知抛 `LabError("FLAG_WRITE_UNKNOWN")`。驱动在每次 replace 后另行 `read()` 并核对 SHA，不把 replace 的返回值当作证据。
 - `Investigator` 封装真实 Run：建 incident、运行 runner、录制、trace 回读。测试用假实现代替它，从而离线测试生命周期、计分与输出；真实实现的接线规则见第 8 节。
-  - `InvestigationRequest(attempt: AttemptRecord, spec: ScenarioSpec, pg: PgInstance, recording_dir: Path, ledger_dir: Path, round_id: str, pre_observation: PreObservation, manifest: Manifest)`。
-  - `InvestigationResult(product_run_id, outcome: IncidentOutcome | None, report: ReportCapture | None, recording_ref: ArtifactRef | None, recording_error: str | None, delivered, authorized, delivery_records: Mapping[str, bytes], traces: tuple[TraceRecord, ...], submitted_at, started_at, ended_at, usage: Mapping[str, Any], error: str | None)`。`error` 只放固定码，不放异常正文。
+  - `InvestigationRequest(attempt: AttemptRecord, spec: ScenarioSpec, pg: PgInstance, recording_dir: Path, ledger_dir: Path, round_id: str, pre_observation: PreObservation, manifest: Manifest, submit_not_after: datetime | None)`。
+  - `InvestigationResult(product_run_id, outcome: IncidentOutcome | None, report: ReportCapture | None, recording_ref: ArtifactRef | None, recording_error: str | None, traces: tuple[TraceRecord, ...], submitted_at, started_at, ended_at, usage: Mapping[str, Any], error: str | None, delivered={}, authorized={}, delivery_records={})`；末三项被驱动忽略（见第 14 节）。`error` 只放固定码，不放异常正文。
 - `class LabError(Exception)` 的 `.code` 与 `str()` 都只是固定码。`class Interrupted(BaseException)`：真实 `main` 把 SIGINT/SIGTERM 转成它；测试可以在任意假对象里抛出它，模拟中途退出。`KeyboardInterrupt` 按同样方式处理。
 
 ## 4. flag 白名单与 `kind_lab.py fault`
@@ -249,8 +250,8 @@ docs/evidence/eval/<R>/aggregate.json                   # write_round，opspilot
 
 - `<evidence_root>/<R>/` 在轮开始时已存在 → 退出 3（`ROUND_EXISTS`）。所有文件都独占创建，不覆盖。
 - summary 的 `EvaluationCapture` 字段：manifest（轮 manifest，见 Q1）、spec/answer（仓库已公开内容）、attempt、outcome、report、delivered、authorized、`traces`（`TraceRecord`，role=`investigation`、required=True，含 project/url/read_back/checked_at）、`delivery_refs`、`recording_ref`、`ledger_ref`、started_at/ended_at、usage（模型请求、token、工具次数与秒数、实际领取 `epoch`）、cost（`{balance_before_cny, balance_after_cny, delta_cny, status: measured|unknown, shared_key_possible: true}`）。
-- `lifecycle.json` 每个槽位：`scenario_id, scenario_version, repetition, attempt_id|null, status, stage, reason, product_run_id, summary{path,sha256}|null, fault{flag, variant, original_sha256, injected_sha256, effective_at, restored_sha256, normal_confirmed_at, washed_at}|null, pre_observation{kind, window, matched_span_ids, trace_ids, checkout_calls, probes}|null, timings{started_at, ended_at, setup_s, investigation_s, closure_s}`。顶层：`round, manifest_hash, command`（不含环境值）、`round_status`、`retained_fault`、`recovered_at`、每轮余额。
-- 私有，不入库：`<ledger_root>/<R>/round.jsonl`；`<ledger_root>/<R>/<attempt_id>/` 下的 `lifecycle.jsonl`（每行 `seq, at, mono, stage, event, detail`）、`flags-original.json`、`flags-injected.json`、`pre-observation.json`、`wash.json`、`deliveries/<sha256>.json`、`recovery.jsonl`；录制包在 `<recording_root>/eval-live-<R>-<attempt_id>/`。文件 600，目录 700。
+- `lifecycle.json` 每个槽位：`scenario_id, scenario_version, repetition, attempt_id|null, status, stage, reason, product_run_id, summary{path,sha256}|null, fault{flag, variant, original_sha256, injected_sha256, effective_at, restored_sha256, normal_confirmed_at, washed_at}|null, pre_observation{kind, window, matched_span_ids, trace_ids, checkout_calls, probes}|null, timings{started_at, ended_at, setup_s, investigation_s, closure_s}`。顶层：`schema="opspilot-eval-live-lifecycle-1"`、`round, manifest_hash, command`（不含环境值）、`round_status`、`reason`、`retained_fault`、`recovered_at`（恒为 null，恢复见 `recovery-*.json`）、`balances`。槽位另有 `closure_reason`。
+- 私有，不入库：`<ledger_root>/<R>/round.jsonl`；`<ledger_root>/<R>/<attempt_id>/` 下的 `lifecycle.jsonl`（每行 `seq, at, mono, stage, event, detail`）、`flags-original.json`、`flags-injected.json`、`pre-observation.json`、`wash-<seq>.json`、`investigator.json`、`deliveries/<sha256>.json`、`recovery.jsonl`；录制包在 `<recording_root>/eval-live-<R>-<attempt_id>/`。文件 600，目录 700。
 - ArtifactRef 路径：`recording_ref.path="recording.json"`；`ledger_ref.path="lifecycle.jsonl"`（summary 写入前冻结，之后的事件写 `recovery.jsonl`）；`delivery_refs[eid].path="deliveries/<sha256>.json"`。`attempt_resolver(R, attempt_id, *, ledger_root, recording_root) -> Resolver`：`recording.json` 与 `blobs/*` 解析到录制目录，其余解析到 attempt 私有目录。外置原件缺失时 loader 报 `EVIDENCE_UNAVAILABLE`，不能称可复核通过。
 
 ## 11. 冲突时 fail-closed（A4）
@@ -291,3 +292,16 @@ docs/evidence/eval/<R>/aggregate.json                   # write_round，opspilot
 | Q7 | #234 P2 没有规定失败路径的 `id_map` | 失败路径返回 `{}`，因为无法从已核验包推出 |
 | Q8 | U1 中「调查窗内」的含义 | 按第 6 节解释为提交新鲜度：fault 要求 `submitted_at - 300s ≤ 最新命中 span`；Run 授权框仍沿 D12 |
 | Q9 | PG 按 attempt 还是按轮启动 | 按 attempt（A4 写的是「目录非本 attempt 所有即失败」）；端口在 attempt 之间串行复用 |
+
+## 14. r3 实现对账（2026-10-18，实现者；只收紧或补全）
+
+- **ran 的必要条件**：除第 7 节外，驱动按返回的 ref 重新 `load_recording`，要求 `synthetic=False`、`check_recording_binding` 通过、`recording.outcome == result.outcome`；summary 的 `delivered/authorized/delivery_refs` 一律由 `evidence_from_recording(已核验录制)` 推出，`InvestigationResult` 中同名字段被忽略。任一不符 → aborted，reason 为固定码（如 `IDENTITY_MISMATCH`）。因此离线假 Investigator 若返回 `recording_ref=None`，attempt 为 aborted（`RECORDING_INCOMPLETE`）；要得到 ran，必须给出真实非 synthetic 录制（实现者用 PG opt-in 测试覆盖，见 `tests/unit/test_eval_c_investigator_impl.py`）。
+- **提交新鲜度**：驱动在 `InvestigationRequest.submit_not_after` 给出最晚提交时刻（fault：最新命中 span + 300 s；normal：窗口结束 + 300 s）。Investigator 超时应返回 `error="PRE_OBSERVATION_STALE"` 且不建 Run；驱动另核 `submitted_at > submit_not_after` 也判 setup_failed `PRE_OBSERVATION_STALE`。
+- **失败原因不被覆盖**：attempt 的 `reason` 保留第一个失败；收尾失败另记 `closure_reason="RESTORE_FAILED:<code>"`，它同时是整轮停止原因（退出 4）。setup/调查中的非预期异常记 `DRIVER_ERROR`，仍执行恢复。
+- **fault guard 覆盖整个 attempt**：从 setup 到恢复与洗净结束一直持有，不在调查后释放再重取。
+- **恢复的写入结果未知**：恢复写入抛 `FLAG_WRITE_UNKNOWN` 时不立即失败，以回读决定：内容 SHA 等于 `original_sha256`、uid 不变且 resourceVersion 已前进才算恢复成功，否则 `FLAG_RESTORE_UNVERIFIED`。CAS 冲突（`FLAG_CAS_CONFLICT`）直接失败并保留状态。
+- **轮 manifest（Q1）的两个维度**：`registry = live.registry_hash(注册 DTO)`，`permissions = live.scope_policy_hash(scope)`；后者去掉 scope_id、subject_id、run_id、三个 generation、window、default_query_window、deadline，另加 `window_seconds` 与「是否有 default_query_window」。驱动用 `template_scope(config)` 预先算出，真实领取的 scope 必须得到同一值。
+- **真实 Jaeger 探测的已知限制**：为避免整页 checkout trace 数十 MB，`LabTelemetry.spans` 只检索含 `error=true` 标签的 trace（每页 200 条、响应≤32 MiB，满页或超限即 `complete=False`）。只有 grpc/http 状态码、没有 error 标签的错误 span 不会被检索到；离线规则（第 6 节）不受影响。
+- **lab 身份**：kube 身份改为经 lab kubeconfig/context 读取 `namespace/otel-demo`（`config current-context` 读的是文件默认 context，不能证明 `--context`）。
+- **PG**：每 attempt 新 initdb，只监听 127.0.0.1 TCP（不建 Unix socket：worktree 路径可能超过 103 字节上限），owner 只做迁移；intake 用 `eval_web`（`opspilot_web` 成员），Run 用 `eval_worker`（`opspilot_worker` 成员）。
+- **非 synthetic 录制位置**：B2 要求位于本 worktree `tmp/eval/<recording_id>/`，因此 `recording_root` 的真实值必须是 `<worktree>/tmp/eval`。
