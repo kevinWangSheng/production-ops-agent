@@ -1,7 +1,7 @@
 # 场景评测套件（回放 + live，参照 HolmesGPT tests/llm）
 
-- 状态：合同 r8（r7 + D16）；PR-A 已合并（#221）；PR-B 预审完成、B1/B2 已裁决（2026-10-14），拆为 B1 → B2 → B3；PR-B1 已实现并通过独立审查，见执行节
-- 更新日期：2026-10-14
+- 状态：合同 r8（r7 + D16）；PR-A（#221）、B1（#224）、B2（#229）、B3（#232）、PR-C（#271）、PR-D1 CI 结构重放入口（#274）已合并；第一轮基线、真实 P7 校准与 #250 归 M3，见执行节
+- 更新日期：2026-10-18
 - 依据：外部验收入口 `IncidentScenario -> IncidentOutcome`（AGENTS.md「验证与汇报」）；[v4 验收包](../testing/first-investigation-v4-2026-09-10.md)；[M1-01 收口记录](2026-09-28-m1-01-closure.md)中的上游评测口径；ADR-0006；C3 第 388–398 行（judge 校准）；上游 HolmesGPT `46e3a72` 的 `tests/llm/`
 - 工作区：每个 PR 一个 worktree，写在执行节
 
@@ -79,6 +79,8 @@
   - 真实验证（2026-10-18，lab 占用 07:55–08:42Z，另两会话确认空闲）：probe `eval-c-a11-probe-20261018` 三类故障（cartFailure、paymentFailure、productCatalogFailure）注入→flagd 生效→独立观察→恢复→洗净全过，`retained_fault=false`；真实 Run `eval-c-a11-run-20261018`（payment-failure-1，N=1）exit 0、slot ran、确定性 gate pass、trace read_back found、洗净完成；零模型结构回放 verified（model=http=6，tool=delivery=12）。DeepSeek 余额 188.75→188.67（0.08 CNY，key 与调查侧共用，可能含他线消耗）。证据见 `docs/evidence/eval/`。
   - PR #271 机器人 3 项（Jaeger 服务端 error 标签过滤漏判、证据写失败退出码、临时 PG trust 认证）均采纳修复；Jaeger 改为无标签查询＋本地判错＋满页自适应四分（共享阶段截止时间），astra 复验 pass。第二轮 probe `eval-c-a11-probe2-20261018`（09:27–09:53Z）三类故障全过，洗净查询约 1–2 s；仓库其余 trust 认证见 #272。
 - PR-B 可选遗留（审查者）：PR-A `calibrate()` 的 `min_items` 语义允许多于 24 项，与 T:43「24 项、46/48」口径需对齐，不属 B1。
+- PR-C：已合并（#271，2026-10-18）；机器人第 4、5 轮剩余的中断窗口问题按停机规则转 #273。
+- PR-D：用户 2026-10-18 裁决拆分（D01）。D1 CI 结构重放入口已合并（#274）：合成 CANARY fixture 加确定性生成器，checks job 在断网 namespace 中运行，在 ubuntu-24.04 runner 上实跑得到 ENETUNREACH 并 verified。接口与决定表见 [PR-D1 接口](2026-10-18-eval-pr-d-interface.md)。独立验收 65 例加实现单测 20 例；astra 独立审查 pass；机器人无发现。第一轮基线、真实 P7 校准与 #250 归 M3。
 
 ## 下一步与交接
 
