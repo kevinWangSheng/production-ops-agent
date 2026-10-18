@@ -1364,17 +1364,41 @@ def _pg_binary(name: str) -> str:
     return str(path)
 
 
+# The only variables the PostgreSQL tools and the postmaster inherit (r11):
+# nothing that could carry a model, trace or lab credential.
+PG_ENV_KEYS = ("PATH", "HOME", "TMPDIR", "LANG", "TZ")
+
+
+def pg_env() -> dict[str, str]:
+    return {
+        key: value
+        for key, value in os.environ.items()
+        if key in PG_ENV_KEYS or key.startswith("LC_")
+    }
+
+
+def _write_pwfile(path: Path, password: str) -> None:
+    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(descriptor, "w") as stream:
+        stream.write(password + "\n")
+
+
 class LocalPgLauncher:
-    """A throwaway PostgreSQL per attempt: own directory, TCP only, trust on
-    127.0.0.1, migrated by the owner, runtime logins for the worker role."""
+    """A throwaway PostgreSQL per attempt: own directory, TCP only on
+    127.0.0.1, SCRAM passwords random per attempt (no trust, r11), started
+    with a sanitized environment, migrated by the owner, runtime logins for
+    the web and worker roles."""
 
     owner = "eval_owner"
     database = "opspilot_eval"
     logins = {"eval_web": "opspilot_web", "eval_worker": "opspilot_worker"}
 
     def start(self, directory: Path, port: int) -> PgInstance:
+        import secrets
+
         import psycopg
         from psycopg import sql
+        from psycopg.conninfo import make_conninfo
 
         from opspilot import schema
 
@@ -1383,22 +1407,44 @@ class LocalPgLauncher:
         _private_dir(directory.parent)
         data = directory
         started = False
-        try:
-            subprocess.run(
-                [
-                    _pg_binary("initdb"),
-                    "-D",
-                    str(data),
-                    "-U",
-                    self.owner,
-                    "--auth=trust",
-                    "--no-locale",
-                    "--encoding=UTF8",
-                ],
-                check=True,
-                timeout=120,
-                capture_output=True,
+        passwords = {
+            name: secrets.token_urlsafe(32) for name in (self.owner, *self.logins)
+        }
+
+        def dsn(user: str, database: str = self.database) -> str:
+            return make_conninfo(
+                host="127.0.0.1",
+                port=str(port),
+                dbname=database,
+                user=user,
+                password=passwords[user],
             )
+
+        pwfile = directory.parent / f".pwfile-{uuid4().hex}"
+        try:
+            # The owner password reaches initdb through a 0600 file in the
+            # attempt's private directory, removed right after (never argv).
+            _write_pwfile(pwfile, passwords[self.owner])
+            try:
+                subprocess.run(
+                    [
+                        _pg_binary("initdb"),
+                        "-D",
+                        str(data),
+                        "-U",
+                        self.owner,
+                        "--auth=scram-sha-256",
+                        f"--pwfile={pwfile}",
+                        "--no-locale",
+                        "--encoding=UTF8",
+                    ],
+                    check=True,
+                    timeout=120,
+                    capture_output=True,
+                    env=pg_env(),
+                )
+            finally:
+                pwfile.unlink(missing_ok=True)
             with (data / "postgresql.conf").open("a") as config:
                 # No Unix socket: a worktree path can exceed the 103-byte limit.
                 config.write(
@@ -1422,21 +1468,24 @@ class LocalPgLauncher:
                 check=True,
                 timeout=120,
                 capture_output=True,
+                # The postmaster inherits this environment, not ours.
+                env=pg_env(),
             )
-            admin = f"host=127.0.0.1 port={port} dbname=postgres user={self.owner}"
+            admin = dsn(self.owner, "postgres")
             with psycopg.connect(admin, autocommit=True, connect_timeout=5) as conn:
                 conn.execute(f"CREATE DATABASE {self.database}")
-            owner_dsn = (
-                f"host=127.0.0.1 port={port} dbname={self.database} user={self.owner}"
-            )
+            owner_dsn = dsn(self.owner)
             schema.migrate(owner_dsn, pg_dump=_pg_binary("pg_dump"))
             with psycopg.connect(owner_dsn, autocommit=True, connect_timeout=5) as conn:
                 # A fresh cluster: the logins cannot pre-exist, so plain
-                # members of the migration's group roles are created here.
+                # members of the migration's group roles are created here,
+                # each with its own random SCRAM password.
                 for login, group in self.logins.items():
                     conn.execute(
-                        sql.SQL("CREATE ROLE {} LOGIN IN ROLE {}").format(
-                            sql.Identifier(login), sql.Identifier(group)
+                        sql.SQL("CREATE ROLE {} LOGIN PASSWORD {} IN ROLE {}").format(
+                            sql.Identifier(login),
+                            sql.Literal(passwords[login]),
+                            sql.Identifier(group),
                         )
                     )
         except BaseException as exc:
@@ -1456,10 +1505,8 @@ class LocalPgLauncher:
             directory=data,
             port=port,
             owner_dsn=owner_dsn,
-            runtime_dsn=(
-                f"host=127.0.0.1 port={port} dbname={self.database} user=eval_worker"
-            ),
-            web_dsn=f"host=127.0.0.1 port={port} dbname={self.database} user=eval_web",
+            runtime_dsn=dsn("eval_worker"),
+            web_dsn=dsn("eval_web"),
         )
 
     def stop(self, instance: PgInstance) -> None:
@@ -1488,6 +1535,7 @@ class LocalPgLauncher:
                 check=True,
                 timeout=120,
                 capture_output=True,
+                env=pg_env(),
             )
         except (subprocess.SubprocessError, OSError):
             raise LabError("PG_STOP_FAILED") from None

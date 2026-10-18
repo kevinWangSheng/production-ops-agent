@@ -1521,3 +1521,100 @@ def test_lab_telemetry_marks_partial_answers_incomplete(monkeypatch, defect):
         monkeypatch.setattr(eval_live_lab, "TRACE_LIMIT", 1)
     monkeypatch.setattr(eval_live_lab.kind_lab, "OPENER", _JaegerOpener(body))
     assert not eval_live_lab.LabTelemetry().spans("checkout", T0, T0, 5).complete
+
+
+CREDENTIAL_MARKERS = (
+    "DEEPSEEK",
+    "LANGSMITH",
+    "PROMETHEUS",
+    "PASSWORD",
+    "TOKEN",
+    "KEY",
+    "SECRET",
+    "PGPASS",
+)
+
+
+def test_pg_launcher_uses_scram_passwords_and_a_sanitized_environment(
+    tmp_path, monkeypatch
+):
+    """P2 security: no trust auth, no credential variable reaches postgres."""
+    import subprocess
+
+    import psycopg
+
+    from opspilot import schema
+
+    for name in (
+        "DEEPSEEK_API_KEY",
+        "LANGSMITH_API_KEY",
+        "OPSPILOT_OTEL_PROMETHEUS_PASSWORD",
+        "OPSPILOT_LAB_PROMETHEUS_USERNAME",
+        "PGPASSWORD",
+        "GITHUB_TOKEN",
+    ):
+        monkeypatch.setenv(name, "CANARY-SECRET")
+    monkeypatch.setenv("LC_ALL", "C")
+    data = tmp_path / "attempt" / "pg"
+    runs: list[dict[str, Any]] = []
+
+    def run(command, **kwargs):
+        record = {"command": command, "env": kwargs.get("env")}
+        if Path(command[0]).name == "initdb":
+            pwfile = Path(
+                next(a for a in command if a.startswith("--pwfile=")).split("=", 1)[1]
+            )
+            record["pwfile_mode"] = pwfile.stat().st_mode & 0o777
+            record["password"] = pwfile.read_text().strip()
+            data.mkdir()
+        elif command[-1] == "start":
+            (data / "postmaster.pid").write_text(f"4242\n{data}\n0\n55997\n")
+        runs.append(record)
+        return _Completed(0)
+
+    connects: list[str] = []
+    statements: list[Any] = []
+
+    class Conn:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def execute(self, statement, *args):
+            statements.append(statement)
+
+    def connect(conninfo, **kwargs):
+        connects.append(conninfo)
+        return Conn()
+
+    monkeypatch.setattr(subprocess, "run", run)
+    monkeypatch.setattr(eval_live_lab, "_pg_binary", lambda name: f"/bin/{name}")
+    monkeypatch.setattr(psycopg, "connect", connect)
+    monkeypatch.setattr(schema, "migrate", lambda *a, **k: None)
+    instance = eval_live_lab.LocalPgLauncher().start(data, 55997)
+
+    initdb = runs[0]
+    assert "--auth=scram-sha-256" in initdb["command"]
+    assert not any("trust" in arg for arg in initdb["command"])
+    assert initdb["pwfile_mode"] == 0o600 and len(initdb["password"]) >= 32
+    assert initdb["password"] not in " ".join(initdb["command"])
+    assert not list((tmp_path / "attempt").glob(".pwfile-*"))  # removed
+    for record in runs:
+        env = record["env"]
+        assert env is not None, record["command"]
+        assert "LC_ALL" in env
+        assert not [k for k in env if any(m in k.upper() for m in CREDENTIAL_MARKERS)]
+        assert "CANARY-SECRET" not in env.values()
+    for dsn in (*connects, instance.owner_dsn, instance.runtime_dsn, instance.web_dsn):
+        assert "password=" in dsn
+    passwords = {
+        part.split("=", 1)[1]
+        for dsn in (instance.owner_dsn, instance.runtime_dsn, instance.web_dsn)
+        for part in dsn.split()
+        if part.startswith("password=")
+    }
+    assert len(passwords) == 3 and initdb["password"] in passwords
+    created = [s for s in statements if "CREATE ROLE" in str(s)]
+    assert len(created) == 2

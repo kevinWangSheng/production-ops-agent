@@ -170,3 +170,25 @@ def test_a_real_recorded_run_is_ran_and_reloads(tmp_path: Path, monkeypatch, req
     (item,) = document["results"]
     assert item["binding_ok"] and item["structural_verified"]
     assert item["event_counts"]["model"] == item["event_counts"]["http"] == 2
+
+
+def test_real_launcher_rejects_passwordless_connections(tmp_path):
+    """r11: SCRAM only; the throwaway PG never trusts a local connection."""
+    import psycopg
+
+    launcher = LocalPgLauncher()
+    instance = launcher.start(tmp_path / "attempt" / "pg", int(PORT))
+    try:
+        for user in ("eval_owner", "eval_web", "eval_worker"):
+            with pytest.raises(psycopg.OperationalError):
+                psycopg.connect(
+                    f"host=127.0.0.1 port={PORT} dbname=opspilot_eval user={user}",
+                    connect_timeout=5,
+                ).close()
+        for dsn in (instance.owner_dsn, instance.web_dsn, instance.runtime_dsn):
+            with psycopg.connect(dsn, connect_timeout=5) as conn:
+                assert conn.execute("SELECT 1").fetchone() == (1,)
+        assert not list((tmp_path / "attempt").glob(".pwfile-*"))
+    finally:
+        launcher.stop(instance)
+    assert not (instance.directory / "postmaster.pid").exists()
