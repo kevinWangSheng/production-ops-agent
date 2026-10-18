@@ -1,0 +1,1 @@
+{"content":"{\"summary\":\"CANARY synthetic report\"}","finish_reason":"stop","raw":{"id":"canary-resp-2","usage":{"completion_tokens":5,"prompt_tokens":10}},"reasoning_content":null,"response_model":"deepseek-flash","tool_calls":[],"usage":{"completion_tokens":5,"prompt_tokens":10}}

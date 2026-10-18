@@ -1,4 +1,4 @@
-.PHONY: setup doctor check test migrate acceptance red-proof
+.PHONY: setup doctor check test migrate acceptance red-proof eval-structural
 
 setup:
 	UV_PROJECT_ENVIRONMENT=.venv uv sync --locked --python "$${UV_PYTHON:-3.12}"
@@ -31,3 +31,7 @@ acceptance:
 
 red-proof:
 	.venv/bin/python scripts/check_red_proof.py --base origin/main
+
+# 零模型、零网络：重放入库的合成 CANARY fixture（PR-D1）。
+eval-structural:
+	.venv/bin/python scripts/eval_structural_ci.py
