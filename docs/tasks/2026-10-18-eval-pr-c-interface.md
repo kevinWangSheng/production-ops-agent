@@ -8,7 +8,7 @@
 
 | 模块 | 内容 |
 |---|---|
-| `scripts/eval_live.py` | 唯一公开入口 `main(argv, *, deps: LiveDeps | None = None) -> int`；为写假 Investigator 公开 DTO `InvestigationRequest/InvestigationResult`；读取辅助 `attempt_resolver(...)`。`run_round/recover_round/plan_slots/build_manifest/RoundConfig/RoundResult/SlotResult` 是内部实现，测试不应依赖其构造字段（r3 测试作者澄清 4） |
+| `scripts/eval_live.py` | 唯一公开入口 `main(argv, *, deps: LiveDeps | None = None) -> int`；为写假 Investigator 公开 DTO `InvestigationRequest/InvestigationResult`；读取辅助 `attempt_resolver(...)`；轮策略模板 `template_scope(config=None)`（r5，第 3 节）。`run_round/recover_round/plan_slots/build_manifest/RoundConfig/RoundResult/SlotResult` 是内部实现，测试不应依赖其构造字段（r3 测试作者澄清 4） |
 | `scripts/eval_live_lab.py` | flag 白名单、恢复意图与占用协议、预观察门槛、接缝 Protocol 与 DTO、`LabError`、`Interrupted`、真实适配器 |
 | `scripts/eval_live_investigator.py` | 真实 Investigator（live only）；`real_deps()` 在 `scripts/eval_live.py` |
 | `scripts/kind_lab.py` | `fault inject|restore` 增加 `--flag`（第 4 节） |
@@ -129,6 +129,10 @@ class ProvenanceReader(Protocol):
 ```
 
 - **来源版本（r5）**：驱动核心自己不启动任何子进程、不发网络请求；git commit 与是否干净只经 `LiveDeps.provenance` 读取，真实实现（调用 `git`）只在 `real_deps()` 中构造。每轮调用一次，时机为预检全部通过之后、`begin_round` 之前，结果用于轮 manifest 的 `code` 维度：`commit` 非 None 且 `clean` 为真时为 `version=<commit>`，否则为 `unknown`（带原因，不拒绝本轮，但会阻止基线完成）。它抛 `LabError(code)` 时整轮以退出 3、该 code 拒绝，不写 journal。预检拒绝的一轮不调用 `provenance`。场景、答案、投影、评估器与 kind 配置文件的 SHA256 由驱动直接读文件计算，不是子进程或网络调用。
+- **轮策略模板（r5，公开）**：`scripts.eval_live.template_scope(config: OtelDemoConfig | None = None) -> QueryScope`，纯函数，不读环境、不发调用。返回值是 `otel_demo_executor_factory` 为一个新的非告警 Run 签发的 `QueryScope`，其中 Run 身份为占位值。
+  - **策略部分**（`scope_policy_hash` 保留，决定轮 manifest 的 `permissions`）：`subject_kind="incident"`；`registry_revision`、`tool_registry_revision`（由 `otel_demo_registrations(config)` 构造的注册表求得）；`target_ids={TARGET_ID}`；`tool_names={metrics_range_query, traces_search}`；`max_operations`、`max_tool_seconds` 取 `QueryScope` 默认值；授权框长度 `window.end - window.start = OBSERVATION_SECONDS`（24 h）；`default_query_window` 为 None。
+  - **Run 身份部分**（占位，必须替换，不进入 `scope_policy_hash`）：`scope_id`（真实值 `otel-demo:<run_id>:<epoch>`）、`subject_id`、`run_id`、`control_generation`、`global_suspension_generation`、`target_suspension_generation`、`window` 的起止时刻（长度保持不变）、`deadline`。
+  - 轮 manifest 的两维即 `registry = live.registry_hash(otel_demo_registrations(config).tools, .targets)`、`permissions = live.scope_policy_hash(template_scope(config))`；测试替身用 `dataclasses.replace(template_scope(), <Run 身份字段>...)` 与 `otel_demo_registrations()` 构造快照，即可满足第 13 节最后一条。
 
 - `EnvChecker.check()` 在预检第一步调用，非 None 即退出 3（`ENV_UNCONFIRMED`），不调用其他接缝。真实实现在 `real_deps()` 构造时读取 `M0_ENV_FILE`；注入的 `LiveDeps` 由调用方负责，驱动不读任何环境文件。
 - **轮开始（r4）**：`Investigator` 可选实现 `begin_round(round_id: str) -> None`。驱动只在预检全部通过之后、追加 `run-starts.jsonl` 与写第一个 journal 之前调用它一次；未实现该方法的假 Investigator 视为无操作。它抛 `LabError(code)` 时整轮以退出 3、该 code 拒绝，不写 journal。真实实现在这里创建 LangSmith 项目并设置保留期；`real_deps()` 只读本地环境文件，不发起任何网络调用。因此预检拒绝的一轮对 LangSmith、DeepSeek 余额、PG 与 Investigator 全部零调用；预检本身只调用拒绝之前已经用到的接缝（`env` → 占用文件 → identity → port → flags/flagd）。
@@ -294,7 +298,7 @@ docs/evidence/eval/<R>/aggregate.json                   # write_round，opspilot
   - `scenario_id/scenario_version` 与 attempt 一致；
   - 录制包内有工具快照，且每个 `tool_snapshots[*].scope.run_id == attempt.product_run_id`、`scope_id == f"otel-demo:{run_id}:{epoch}"`；
   - `source_manifest` 的全部维度中，除 registry、permissions 外，都与轮 manifest 相同（per-attempt 的 source_manifest 的这两个维度本就与轮 manifest 不同，这是设计）；
-  - 每个快照按第 14 节重算的 `live.registry_hash(snapshot.tools, snapshot.targets)` 等于轮 manifest 的 `registry` 值，`live.scope_policy_hash(snapshot.scope)` 等于轮 manifest 的 `permissions` 值（lead 2026-10-18 r5 裁决：`source_manifest_hash` 只证明录制自洽，这两项才证明它与本轮一致；静态工具集或 scope 策略不同的 attempt 一律 `IDENTITY_MISMATCH`）。
+  - 每个快照按第 14 节重算的 `live.registry_hash(snapshot.tools, snapshot.targets)` 等于轮 manifest 的 `registry` 值，`live.scope_policy_hash(snapshot.scope)` 等于轮 manifest 的 `permissions` 值（lead 2026-10-18 r5 裁决：`source_manifest_hash` 只证明录制自洽，这两项才证明它与本轮一致；静态工具集或 scope 策略不同的 attempt 一律 `IDENTITY_MISMATCH`）。轮 manifest 的这两个值由公开的 `template_scope(config)` 与 `otel_demo_registrations(config)` 决定（第 3 节「轮策略模板」）。
 - 驱动在写 summary 前执行这项核对，核对失败按 aborted 处理。`epoch` 是 runner 返回的实际领取 epoch，记录在 summary 的 `usage.epoch`。
 
 **Q2**：采用 `attempt_wrapper`，默认 None，不拆分 `resume`。**Q4**：occupation 由 lead claim/release，驱动只 check 并持有 `.active` 标记。
