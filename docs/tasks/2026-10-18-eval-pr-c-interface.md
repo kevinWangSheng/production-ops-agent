@@ -8,7 +8,7 @@
 
 | 模块 | 内容 |
 |---|---|
-| `scripts/eval_live.py` | CLI `main(argv, *, deps=None) -> int`；`plan_slots(scenarios_root, wanted, n)`；`build_manifest(...)`；`run_round(config: RoundConfig, deps) -> RoundResult`；`recover_round(round_id, holder, batch, deps) -> RoundResult`；`attempt_resolver(...)`；DTO `InvestigationRequest/InvestigationResult/SlotResult/RoundResult/RoundConfig` |
+| `scripts/eval_live.py` | 唯一公开入口 `main(argv, *, deps: LiveDeps | None = None) -> int`；为写假 Investigator 公开 DTO `InvestigationRequest/InvestigationResult`；读取辅助 `attempt_resolver(...)`。`run_round/recover_round/plan_slots/build_manifest/RoundConfig/RoundResult/SlotResult` 是内部实现，测试不应依赖其构造字段（r3 测试作者澄清 4） |
 | `scripts/eval_live_lab.py` | flag 白名单、恢复意图与占用协议、预观察门槛、接缝 Protocol 与 DTO、`LabError`、`Interrupted`、真实适配器 |
 | `scripts/eval_live_investigator.py` | 真实 Investigator（live only）；`real_deps()` 在 `scripts/eval_live.py` |
 | `scripts/kind_lab.py` | `fault inject|restore` 增加 `--flag`（第 4 节） |
@@ -31,14 +31,14 @@
 - `--holder/--batch` 是 A3 的占用身份。驱动只 **check** 已有预约，不 claim、不 release（第 5 节）。
 - `--flagd-url` 是事先转发好的本机 flagd 评估端点，只接受 `http://127.0.0.1|localhost|[::1]:<port>`，不能带路径、凭据或查询串；驱动从不自己起 port-forward。
 - `--pg-port` 是临时 PG 的显式端口，每个 attempt 在此端口新起一个实例（第 11 节）。
-- `--dry-run`：打印 JSON 计划（槽位顺序、路径、flag），只读场景目录，不调用任何接缝，不写文件，退出 0。
+- `--dry-run`：只读场景目录，不调用任何接缝，不写文件，退出 0。stdout 为一个 JSON 对象，字段固定为 `round`（str）、`status`（恒为 `"dry_run"`）、`slots`（按执行顺序的数组，每项 `scenario_id`、`repetition`（从 1 起的 int）、`kind`（`fault|normal`）、`flag`（fault 为白名单 flag 名，normal 为 null））、`evidence`（`"docs/evidence/eval/<R>/"`）、`ledger`（`"tmp/lab-ledgers/<R>/"`）。
 - 槽位顺序固定：先按 scenario_id 排序，再按 repetition 1..N（场景为主序）。
-- 环境前提（真实运行时）：`OPSPILOT_TRACE=lab`，`M0_ENV_FILE` 提供 DeepSeek/LangSmith 凭据（读取方式同既有脚本，不打印），调查侧 Prometheus 账号变量已载入；独立观察使用 lab 账号（`kind_lab.lab_authorization`）。缺失时退出 3，原因码 `ENV_UNCONFIRMED`。
+- 环境前提（真实运行时）：`OPSPILOT_TRACE=lab`，`M0_ENV_FILE` 提供 DeepSeek/LangSmith 凭据（读取方式同既有脚本，不打印），调查侧 Prometheus 账号变量已载入；独立观察使用 lab 账号（`kind_lab.lab_authorization`）。缺失时退出 3，原因码 `ENV_UNCONFIRMED`。这些检查经 `LiveDeps.env` 接缝（第 3 节）完成；注入完整 `LiveDeps` 时驱动自己不读 `M0_ENV_FILE` 或任何环境文件。
 
 | 退出码 | 含义 |
 |---|---|
 | 0 | 全部计划槽位均已开始，且都是 `ran`；lab 已恢复且洗净 |
-| 1 | 全部计划槽位均已开始；至少一个 `setup_failed`/`aborted`；lab 已恢复且洗净 |
+| 1 | 全部计划槽位均已开始，至少一个 `setup_failed`/`aborted`，lab 已恢复且洗净；或 setup 中发现异主恢复意图（`LAB_FAULT_FOREIGN`，第 5 节）而停轮，后续槽位 `not_started` |
 | 2 | 参数错误（argparse、`--parallel≠1`、未知场景、非法 round/URL/N），未写任何文件 |
 | 3 | 预检拒绝，未开始任何 attempt（不写 journal）：占用缺失/异主/过期、已有 `fault-active.json`、fault guard 被占、lab 身份不明、PG 端口已占用、flag 不在正常态、round 证据目录已存在、环境前提缺失 |
 | 4 | 恢复或洗净失败：整轮停止，`fault-active.json` 保留，后续槽位记 `not_started` |
@@ -113,7 +113,13 @@ class LiveDeps:
     pg_root: Path          # 真实值：<worktree>/tmp/eval-live
     scenarios_root: Path   # 真实值：evals/scenarios
     flagd_url: str
+    env: EnvChecker        # r3 测试作者澄清 6
+
+class EnvChecker(Protocol):
+    def check(self) -> str | None: ...  # None = 环境前提满足；否则 "ENV_UNCONFIRMED"
 ```
+
+- `EnvChecker.check()` 在预检第一步调用，非 None 即退出 3（`ENV_UNCONFIRMED`），不调用其他接缝。真实实现在 `real_deps()` 构造时读取 `M0_ENV_FILE`；注入的 `LiveDeps` 由调用方负责，驱动不读任何环境文件。
 
 - `FlagStore.replace` 是 CAS：只有当前对象的 uid、resourceVersion、raw 都等于 `current` 时才写入 `new_raw`。`fence` 非 None 时还要写入唯一注解，保证 resourceVersion 前进。返回写后的对象。条件不符抛 `LabError("FLAG_CAS_CONFLICT")`，结果未知抛 `LabError("FLAG_WRITE_UNKNOWN")`。驱动在每次 replace 后另行 `read()` 并核对 SHA，不把 replace 的返回值当作证据。
 - `Investigator` 封装真实 Run：建 incident、运行 runner、录制、trace 回读。测试用假实现代替它，从而离线测试生命周期、计分与输出；真实实现的接线规则见第 8 节。
@@ -154,7 +160,8 @@ F11 兼容键: ledger(attempt 私有目录绝对路径), flag, normal, variant,
             phase ∈ {intent, injected, restored_unwashed}
 ```
 
-- 预检或 attempt setup 时已存在 `fault-active.json`（无论属于谁）：拒绝（`FAULT_RECOVERY_REQUIRED`）。
+- 预检时已存在 `fault-active.json`（无论属于谁）：退出 3（`FAULT_RECOVERY_REQUIRED`）。
+- 预检通过后、某个 attempt 的 setup 中出现不属于本 attempt 的 `fault-active.json`（r3 测试作者澄清 7）：ConfigMap 零写入，不改动、不删除该文件，不调用 Investigator；本 attempt 记 `setup_failed`，原因 `LAB_FAULT_FOREIGN`；整轮停止，后续槽位 `not_started`，退出 1。退出 4 只用于本 attempt 自己的恢复或洗净失败。
 - 注入：先读取并核对全部白名单 flag 都处于正常态（ConfigMap 的 `defaultVariant` 和 flagd 解析都要满足，否则 `FLAGS_NOT_NORMAL`），再写意图（phase=intent），然后 CAS `replace(current, injected)`，再 `read()` 核对 SHA = `injected_sha256`，通过后把 phase 改为 injected，然后等待 flagd 解析为故障 variant。写入成功但回读失败、或结果未知时，意图已经落盘，直接走恢复。
 - 恢复（幂等，正常结束、异常、超时、`Interrupted` 都会执行）：
   1. 状态的 `round/attempt_id` 必须属于当前调用，否则 `FAULT_BELONGS_TO_ANOTHER_RUN`，不写入。
@@ -189,7 +196,7 @@ def normal_window(signatures: Sequence[SignatureRule], *, not_before: datetime, 
 - 签名匹配要求 `(service, operation)` 与某个 matcher 精确相等，不做后缀匹配。
 - **fault**：每轮查询的窗口是 `[confirmed_at, now()]`。通过条件：至少一个 span 命中签名、判为错误、`start` 不早于 `confirmed_at`；同一窗口内 `checkout_calls > 0`；两次查询的 `complete` 都为真。不完整的一轮查询既不算通过也不算失败，继续轮询；预算耗尽记 `FAULT_NOT_OBSERVED`。
 - **normal**：全部白名单 flag 确认正常后，窗口从 `not_before` 开始，等满 `window_seconds` 再查询 `[start, start+300s]`。通过条件：`checkout_calls > 0`，三类故障签名的错误 span 命中数为 0，所有查询 `complete`。窗口有命中或数据不完整时，从当前时刻开新窗口重来；预算耗尽记 `NORMAL_WINDOW_UNCONFIRMED`。normal 场景 setup 与故障恢复后的洗净都用这个函数。
-- **提交新鲜度**：fault 场景创建 Run 后，`submitted_at - 300s` 不得晚于最新命中 span 的 `start`，否则 `PRE_OBSERVATION_STALE`（setup_failed）。normal 场景要求 `submitted_at - window.end ≤ 300s`。
+- **提交新鲜度**：fault 场景创建 Run 后，`submitted_at - 300s` 不得晚于最新命中 span 的 `start`，否则 `PRE_OBSERVATION_STALE`（setup_failed）。normal 场景要求 `submitted_at - window.end ≤ 300s`。核对发生在两处：(a) Investigator 在建 incident/Run 之前比较当前时刻与 `submit_not_after`，超时返回 `error="PRE_OBSERVATION_STALE"`，此时没有任何产品状态；(b) Investigator 返回后，驱动比较 `result.submitted_at` 与 `submit_not_after`，超时也判 stale，此时临时 PG 中可能已有该 incident/Run，且 Run 可能已经跑完。两种情况都是 setup_failed（即使已调用 Investigator）；(b) 时 `product_run_id` 记入 attempt 与私有 ledger，保留 Investigator 返回的真实 Outcome，不伪造 handoff。
 - 原始探测结果只写私有 ledger 的 `pre-observation.json`，不进入模型输入。公开索引只记计数、span/trace ID 和窗口。门槛只证明这一有限目录，不构成全系统健康承诺。
 
 ## 7. attempt 状态与计分（U3、P10）
@@ -205,16 +212,16 @@ journal(started) -> setup(occupation, identity, guard, flags_baseline, pg,
 
 - **journal**：setup 之前用 `write_attempt` 写入 `runs/<attempt_id>/attempt.json`，`started=True`、`status="unknown"`、`product_run_id=None`。没有产品 Run 的 attempt 也占这个槽。
 - **ran**：Investigator 正常返回、`error is None`、录制 `record()` 成功（完整包），且收尾全部通过。产品 Outcome 是 handoff、gate 不过都不影响 ran；质量由 `evaluate()` 判定。
-- **setup_failed**：setup 任一步失败，此时尚未调用 Investigator。若已经注入，仍执行完整的收尾。
+- **setup_failed**：setup 任一步失败，此时尚未调用 Investigator；唯一例外是 `PRE_OBSERVATION_STALE`（第 6 节），它即使在调用 Investigator 之后发现也记 setup_failed，若已建产品 Run 则带 `product_run_id`。若已经注入，仍执行完整的收尾。
 - **aborted**：已经调用 Investigator，但它抛异常、返回 `error`、录制不完整（`RecordingError` 或 `recording_error` 非 None），或调查后的收尾失败。保留 Investigator 返回的原始 Outcome，不伪造 handoff。
-- **unknown**：驱动从不写这个状态。summary 缺失时由 loader 合成。
+- **unknown**：只出现在 setup 之前写的 journal 中（`started=True, status="unknown"`）。最终 summary 的 attempt 状态与 lifecycle 的槽位状态绝不是 unknown；summary 缺失时由 loader 合成 unknown 失败。
 - **not_started**：恢复/洗净失败、证据写入失败或收到 `Interrupted` 之后剩下的槽位。不写 journal，只在 lifecycle 中单列，原因码 `ROUND_STOPPED`。失败不重抽、不补跑替换。
 - 每个已开始的 attempt 都用 `write_summary` 写出一份 summary，失败的也写。`evaluate()` 推导的 failure_class/reasons 与 lifecycle 中的 `stage`/`reason` 并列保存。setup 或收尾失败照常继续下一槽；第 2 节退出 4/5/130 所列情况才停轮。
 - PR-C 不调用 judge：`judge=None`，因此 `overall` 恒为假（`JUDGE_NOT_RUN` 或 `skipped`）。驱动验收不要求质量通过，也不翻转 `passes`。
 
 ## 8. 产品接缝与录制接线（A5、A6）
 
-`opspilot.investigation.runner.InvestigationRunner` 新增两个字段，默认 None，此时行为与现在逐字节相同：
+`opspilot.investigation.runner.InvestigationRunner` 新增两个字段，默认 None，此时行为与现在逐字节相同。已领取 Run 上的默认等价性由既有 durable/loop-resume 测试证明（r3 测试作者澄清 3）：`tests/integration/test_m1_loop_resume_postgres.py` 与 `tests/integration/test_m1_otel_demo_contract_postgres.py`（共 37 例），以及 `test_m1_01_acceptance_postgres.py`、`test_m1_web_worker_postgres.py`、`test_m1_deadline_sweep_postgres.py`、`tests/acceptance/test_m1_04_alert_context.py`，均为 `M1_DURABLE_POSTGRES=1` opt-in：
 
 ```python
 capture_delivery: Callable[[Mapping[str, Any], Mapping[str, Any]], None] | None = None
