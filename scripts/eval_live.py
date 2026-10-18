@@ -1785,9 +1785,8 @@ def _main(argv: list[str], deps: LiveDeps | None) -> int:
         with protected():
             code = 130 if stop_requested() else 0
             if code == 130:
-                document.update(
-                    status="interrupted", exit_code=130, reason="INTERRUPTED"
-                )
+                # The same minimal document as a stop seen while parsing (r14).
+                document = {"status": "interrupted", "exit_code": 130}
             print(json.dumps(document, sort_keys=True))
         return code
     if deps is None:

@@ -381,9 +381,10 @@ def test_dry_run_signals_obey_the_final_snapshot(
     expected = (130, "interrupted") if when == "before_snapshot" else (0, "dry_run")
     assert (code, final["status"]) == expected
     if code == 130:
-        assert final["exit_code"] == code
-        assert final["reason"] == "INTERRUPTED"
-    assert final["slots"][0]["scenario_id"] == NORMAL
+        # r14: the same minimal document as a stop seen while parsing.
+        assert final == {"status": "interrupted", "exit_code": 130}
+    else:
+        assert final["slots"][0]["scenario_id"] == NORMAL
     assert env["lab"].resolve_calls == 0
     assert env["pg"].started == []
     assert not env["deps"].evidence_root.exists()
