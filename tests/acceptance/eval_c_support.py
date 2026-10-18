@@ -1,4 +1,4 @@
-"""Offline doubles for the PR-C r3 public protocols; no live adapter imports."""
+"""Offline doubles for the PR-C r5 public protocols; no live adapter imports."""
 
 from __future__ import annotations
 
@@ -229,6 +229,21 @@ class Balance:
     def balance(self):
         self.calls += 1
         return Decimal("100.00")
+
+
+class ProvenanceReader:
+    """Deterministic provenance; never shells out to git or reads real HEAD."""
+
+    def __init__(self):
+        self.result = lab.Provenance(commit="a" * 40, clean=True)
+        self.calls = 0
+        self.callback = None
+
+    def read(self):
+        self.calls += 1
+        if self.callback:
+            self.callback()
+        return self.result
 
 
 class Env:
@@ -508,6 +523,7 @@ class Harness:
         self.pg = Pg()
         self.investigator = Investigator(self)
         self.env = Env()
+        self.provenance = ProvenanceReader()
         self.deps = lab.LiveDeps(
             clock=self.clock,
             flags=self.flags,
@@ -525,6 +541,7 @@ class Harness:
             scenarios_root=scenarios_root,
             flagd_url="http://127.0.0.1:8013",
             env=self.env,
+            provenance=self.provenance,
         )
         self.deps.ledger_root.mkdir(parents=True)
         self.reservation = self.deps.ledger_root / "occupation.json"

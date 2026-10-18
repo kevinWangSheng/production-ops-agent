@@ -1,4 +1,4 @@
-# PR-C 独立验收作者记录（r3）
+# PR-C 独立验收作者记录（r5）
 
 依据：PR-C 合同 r1、公开接口最新 r3（r2 Q1–Q9、§9 勘误、§14
 实现对账与测试作者澄清）。本轮已阅读接口 diff 及 §2/6/7/8/13/14。
@@ -57,3 +57,18 @@
 
 尚未执行：真实适配器、真实 Run、三类 flag 传播、真实 PG/权限与 trace/read-back，
 以及 §8 指定的 PG opt-in 回归。离线验收不能替代这些 live 验收。
+
+## r4/r5 追加合同：已明确，无新增歧义
+
+- 按最新工作副本 diff 及 §3，LiveDeps.provenance 使用固定 commit/clean 的
+  离线 ProvenanceReader 假对象，记录调用次数，可注入 LabError；不读真实 HEAD，
+  不启动 git，原有网络与子进程守卫保持不变。
+- 新测试检查预检全部通过 → provenance.read 一次 → 可选 begin_round 一次 →
+  run-starts/journal → 多个槽位调查。两个接缝执行现场都核验尚无开始记录。
+- 未实现 begin_round 的假 Investigator 仍可完成；begin_round 抛 LabError 则
+  退出 3 并保留固定原因，零 journal/开始记录/PG/余额/调查。
+- provenance 抛 LabError 则退出 3，begin_round 不得执行；六类预检拒绝均不得
+  读取 provenance 或调用 begin_round。dry-run 对两个新增接缝均零调用。
+- 干净且 commit 已知时，公开 summary 和调查请求的 code 维度冻结该版本；
+  commit 缺失、dirty 或两者同时出现时仍执行本轮，code 为有原因的 unknown，
+  aggregate 保持 MANIFEST_UNKNOWN，不冒充完整基线。
