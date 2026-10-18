@@ -179,6 +179,100 @@ def test_judge_declared_view_slots_still_reject_invalid_identifiers(slot):
     assert transport.calls == []
 
 
+@pytest.mark.parametrize("container", ["content", "query"])
+@pytest.mark.parametrize("field", ["status", "source", "tool"])
+def test_judge_nondeclared_row_and_query_fields_are_content(container, field):
+    request, diagnoses, verdict = make_input()
+    view = json.loads(json.dumps(request.delivered["e1"].view))
+    row = view["content"][0] if container == "content" else view.setdefault("query", {})
+    row[field] = " service unavailable HTTP 500 "
+    observation, transport = invoke(with_view(request, view), diagnoses, verdict)
+    assert observation.result.status == "ok"
+    assert observation.error_code is None
+    assert len(transport.calls) == 1
+    sent = json.loads(json.loads(transport.calls[0]["body"])["messages"][1]["content"])
+    assert sent["cited_evidence"][0]["view"] == view
+
+
+REFERENCE_SLOTS = (
+    "evidence_id",
+    "operation_id",
+    "run_id",
+    "subject_id",
+    "target_id",
+    "trace_id",
+    "span_id",
+    "parent_span_id",
+    "time_scope_refs",
+)
+DECLARED_VIEW_SLOTS = {
+    "view": (
+        "tool",
+        "tool_version",
+        "source",
+        "registry_revision",
+        "tool_registry_revision",
+        "projection_revision",
+        "projection",
+        "trust",
+        "status",
+        "view_sha256",
+        "raw_sha256",
+        "source_response_sha256",
+        "backend_trace_ids",
+        "backend_counts_by_service",
+        *REFERENCE_SLOTS,
+    ),
+    "content": (
+        "service",
+        "operation",
+        "service_version",
+        "status_state",
+        *REFERENCE_SLOTS,
+    ),
+    "query": ("service", "operation"),
+    "parent_references": ("refType", "traceID", "spanID"),
+    "span_groups": ("service", "operation"),
+}
+
+
+@pytest.mark.parametrize(
+    "container,field",
+    [
+        (container, field)
+        for container, fields in DECLARED_VIEW_SLOTS.items()
+        for field in fields
+    ],
+)
+def test_judge_every_declared_view_slot_rejects_noncanonical_value(container, field):
+    request, diagnoses, verdict = make_input()
+    view = json.loads(json.dumps(request.delivered["e1"].view))
+    if container == "view":
+        obj = view
+    elif container == "content":
+        obj = view["content"][0]
+    elif container == "parent_references":
+        obj = {}
+        view["content"][0][container] = [obj]
+    elif container == "span_groups":
+        obj = {}
+        view[container] = [obj]
+    else:
+        obj = view.setdefault("query", {})
+    bad = " bad  identifier "
+    obj[field] = (
+        [bad]
+        if field in {"time_scope_refs", "backend_trace_ids"}
+        else {bad: {"span_count": 1}}
+        if field == "backend_counts_by_service"
+        else bad
+    )
+    observation, transport = invoke(with_view(request, view), diagnoses, verdict)
+    assert observation.result.status == "invalid"
+    assert observation.error_code == "SCHEMA_INVALID"
+    assert transport.calls == []
+
+
 def test_judge_pr_a_all_76_frozen_views_pass_identifier_validation():
     root = (
         Path(__file__).resolve().parents[2] / "docs/evidence/m1-01-alignment-c-effect"

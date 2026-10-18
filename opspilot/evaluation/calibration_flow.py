@@ -203,11 +203,15 @@ def _report_identifiers(raw: str | None) -> None:
             _identifier(claim["time_scope_ref"])
 
 
-def _view_identifiers(value: Any, *, grouped: bool = False) -> None:
-    # Visit declared projection containers only. Span attributes/tags, process
-    # tags, resource, Prometheus metric/labels, status_tags and error_details are
-    # content, even when their keys happen to name projection identity slots.
-    ids = {
+def _view_identifiers(
+    value: Any,
+    *,
+    container: Literal[
+        "view", "content", "query", "parent_references", "span_groups"
+    ] = "view",
+) -> None:
+    # r9 slots depend on their container; all other fields are content.
+    references = {
         "evidence_id",
         "operation_id",
         "run_id",
@@ -216,28 +220,38 @@ def _view_identifiers(value: Any, *, grouped: bool = False) -> None:
         "trace_id",
         "span_id",
         "parent_span_id",
-        "traceID",
-        "spanID",
-        "service_version",
     }
-    metadata = {
-        "tool",
-        "tool_version",
-        "source",
-        "registry_revision",
-        "tool_registry_revision",
-        "projection_revision",
-        "projection",
-        "trust",
-        "status",
-        "status_state",
-        "service",
-        "refType",
-    }
-    hashes = {"view_sha256", "raw_sha256", "source_response_sha256"}
+    optional_ids: set[str] = set()
+    identifiers: set[str] = set()
+    hashes: set[str] = set()
+    lists: set[str] = set()
+    if container == "view":
+        optional_ids = references
+        identifiers = {
+            "tool",
+            "tool_version",
+            "source",
+            "registry_revision",
+            "tool_registry_revision",
+            "projection_revision",
+            "projection",
+            "trust",
+            "status",
+        }
+        hashes = {"view_sha256", "raw_sha256", "source_response_sha256"}
+        lists = {"time_scope_refs", "backend_trace_ids"}
+    elif container == "content":
+        optional_ids = references | {"service_version"}
+        identifiers = {"service", "status_state"}
+        lists = {"time_scope_refs"}
+    elif container == "parent_references":
+        optional_ids = {"traceID", "spanID"}
+        identifiers = {"refType"}
+    else:  # query and span_groups
+        identifiers = {"service"}
     if isinstance(value, Mapping):
         for key, child in value.items():
-            if grouped and key == "status":
+            if container == "span_groups" and key == "status":
                 # span_groups.status contains rendered tag expressions and counts,
                 # e.g. rpc.grpc.status_code=0; it is not the view status enum.
                 if not isinstance(child, Mapping) or any(
@@ -246,29 +260,40 @@ def _view_identifiers(value: Any, *, grouped: bool = False) -> None:
                 ):
                     raise JudgeError("SCHEMA_INVALID")
                 continue
-            if key in ids and child is not None:
+            if key in optional_ids:
+                if child is not None:
+                    _identifier(child)
+            elif key in identifiers:
                 _identifier(child)
-            elif key in metadata:
-                _identifier(child)
-            elif key == "operation":
+            elif key == "operation" and container in {
+                "content",
+                "query",
+                "span_groups",
+            }:
                 _operation_name(child)
             elif key in hashes:
                 _hash_identifier(child)
-            elif key in {"time_scope_refs", "backend_trace_ids"}:
+            elif key in lists:
                 if not isinstance(child, (tuple, list, frozenset)):
                     raise JudgeError("SCHEMA_INVALID")
                 for ref in child:
                     _identifier(ref)
-            elif key == "backend_counts_by_service":
+            elif container == "view" and key == "backend_counts_by_service":
                 if not isinstance(child, Mapping):
                     raise JudgeError("SCHEMA_INVALID")
                 for service in child:
                     _identifier(service)
-            if key in {"content", "span_groups", "query", "parent_references"}:
-                _view_identifiers(child, grouped=key == "span_groups")
+        if container == "view":
+            _view_identifiers(value.get("content"), container="content")
+            _view_identifiers(value.get("span_groups"), container="span_groups")
+            _view_identifiers(value.get("query"), container="query")
+        elif container == "content":
+            _view_identifiers(
+                value.get("parent_references"), container="parent_references"
+            )
     elif isinstance(value, (tuple, list)):
         for child in value:
-            _view_identifiers(child, grouped=grouped)
+            _view_identifiers(child, container=container)
 
 
 def _metadata_identifiers(value: Any) -> None:
