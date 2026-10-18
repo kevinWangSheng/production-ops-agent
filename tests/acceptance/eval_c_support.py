@@ -517,7 +517,7 @@ class Investigator:
                         tool_name=METRICS_TOOL,
                         target_ref=TARGET_ID,
                         params={"expr": GOOD_EXPR},
-                        window=None,
+                        window=scope.window.as_json(),
                     )
                 )
                 self.tool_outcomes.append(observed)
