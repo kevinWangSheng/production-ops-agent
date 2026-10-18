@@ -402,3 +402,123 @@ def test_close_after_a_generated_version_regenerates_once(stores, dsn) -> None:
         (1, "stale"),
         (2, "under_review"),
     ]
+
+
+# --- U1 across the attempt: a Run opened after the claim voids it
+
+
+class _ReadInputHook:
+    """``GenerationStore`` seen by the worker, with ``hook`` run once just
+    before the attempt's ``read_input``: after ``claim`` succeeded, before the
+    attempt reads its input (and so its watermark). Everything else is the
+    real store."""
+
+    def __init__(self, jobs: GenerationStore, hook) -> None:
+        self._jobs, self._hook = jobs, hook
+
+    def read_input(self, incident_id: UUID):
+        hook, self._hook = self._hook, None
+        if hook is not None:
+            hook()
+        return self._jobs.read_input(incident_id)
+
+    def __getattr__(self, name: str):
+        return getattr(self._jobs, name)
+
+
+class _HookedModel(ScriptedModel):
+    """Runs ``hook`` once inside the first model call: after ``read_input``,
+    before ``record_draft``."""
+
+    def __init__(self, hook, *steps: object) -> None:
+        super().__init__(*steps)
+        self._hook = hook
+
+    def complete(self, call):
+        hook, self._hook = self._hook, None
+        if hook is not None:
+            hook()
+        return super().complete(call)
+
+
+def _reopen_and_follow_up(durable: DurableStore, dsn: str, incident_id: UUID) -> None:
+    """The incident is resolved with its Run finished, so the follow-up goes
+    through reopen (F12 r2) and renews the Run: a new queued Run."""
+    generation = _incident(dsn, incident_id)["control_generation"]
+    generation = durable.control(incident_id, generation, "reopen", "operator")
+    durable.control(
+        incident_id,
+        generation,
+        "follow_up",
+        "operator",
+        {"text": "Also check the payments dependency"},
+        renew_run_id=uuid4(),
+        renew_deadline=datetime.now(timezone.utc) + timedelta(hours=1),
+    )
+    assert _current_run_state(dsn, incident_id) == "queued"
+
+
+def _assert_attempt_voided(stores, incident_id: UUID) -> None:
+    """r1 "not generated": the attempt leaves no version (draft or reviewable)
+    and counts no failure, so the view reads ``not_generated``."""
+    knowledge, _, _ = stores
+    view = knowledge.incident_postmortem(incident_id)
+    assert view["status"] == "not_generated"
+    assert view["postmortem"] is None or view["postmortem"]["versions"] == []
+    assert all(a["status"] not in ("succeeded", "failed") for a in view["attempts"])
+
+
+def _generates_once_after_the_void(stores, incident_id: UUID) -> None:
+    """No backoff manipulation: the next poll after the Run ends generates
+    version 1 at once, and only once."""
+    knowledge, jobs, _ = stores
+    assert incident_id in jobs.candidates(limit=1000)
+    model = ScriptedModel(_reply(incident_id))
+    outcomes = [
+        o for o in _worker(stores, model).poll_once() if o.incident_id == incident_id
+    ]
+    assert [(o.status, o.version, o.state) for o in outcomes] == [
+        ("succeeded", 1, "under_review")
+    ]
+    idle = ScriptedModel()
+    assert all(o.incident_id != incident_id for o in _worker(stores, idle).poll_once())
+    assert idle.calls == []
+    view = knowledge.incident_postmortem(incident_id)
+    assert [v["state"] for v in view["postmortem"]["versions"]] == ["under_review"]
+    assert [a["status"] for a in view["attempts"]].count("succeeded") == 1
+
+
+@pytest.mark.parametrize("pause", ["before_read_input", "during_model_call"])
+def test_a_run_opened_after_the_claim_voids_the_attempt(stores, dsn, pause) -> None:
+    """Review finding on #255: claim succeeds, then a follow-up (via reopen)
+    opens an unfinished Run, then the attempt reads its input / calls the
+    model and would record a draft. Insertion points:
+
+    * ``before_read_input``: between ``claim`` and ``read_input`` (the
+      ``_ReadInputHook`` proxy) -- the attempt's watermark already includes
+      the new Run, so only the Run state can void it;
+    * ``during_model_call``: between ``read_input`` and ``record_draft``
+      (``_HookedModel``).
+    """
+    knowledge, jobs, durable = stores
+    incident_id = _seed(dsn)  # Run completed, recovery confirmed: a candidate
+    assert incident_id in jobs.candidates(limit=1000)
+
+    def follow_up() -> None:
+        _reopen_and_follow_up(durable, dsn, incident_id)
+
+    if pause == "before_read_input":
+        model = ScriptedModel(_reply(incident_id))
+        worker_jobs = _ReadInputHook(jobs, follow_up)
+    else:
+        model = _HookedModel(follow_up, _reply(incident_id))
+        worker_jobs = jobs
+    # poll_once, not generate: a refusal raised inside the attempt is the
+    # worker's to log, the outcome is read from the view below
+    _worker((knowledge, worker_jobs, durable), model).poll_once()
+    assert _current_run_state(dsn, incident_id) == "queued"  # the hook ran
+    _assert_attempt_voided(stores, incident_id)
+    assert incident_id not in jobs.candidates(limit=1000)
+
+    _set_current_run(dsn, incident_id, "completed")
+    _generates_once_after_the_void(stores, incident_id)
