@@ -88,6 +88,7 @@ RunnerStatus = Literal[
 ]
 
 ExecutorFactory = Callable[[Lease, InvestigationInput], ReadOnlyToolExecutor]
+CaptureDelivery = Callable[[Mapping[str, Any], Mapping[str, Any]], None]
 
 
 @dataclass(frozen=True)
@@ -113,6 +114,24 @@ class InvestigationRunner:
     # exist, and a missing row is an ``EVIDENCE_PROJECTION_FAILED`` handoff.
     events: ProgressLog | None = None
     evidence: EvidenceProjection | None = None
+    # Evaluation-only seams (eval PR-C, A5); ``None`` changes nothing.
+    # ``capture_delivery`` is handed to every loop as is. ``attempt_wrapper``
+    # sees a claimed attempt once its executor is built for the real lease
+    # and input, before any pending tool, model or tool call, and must return
+    # what ``proceed()`` (the rest of the attempt, fences unchanged) returns.
+    capture_delivery: CaptureDelivery | None = None
+    attempt_wrapper: (
+        Callable[
+            [
+                Lease,
+                InvestigationInput,
+                ReadOnlyToolExecutor,
+                Callable[[], RunnerOutcome],
+            ],
+            RunnerOutcome,
+        ]
+        | None
+    ) = None
 
     def resume(self, incident_id: UUID) -> RunnerOutcome:
         """Continue (or start) the incident's current Run from committed rows."""
@@ -251,6 +270,28 @@ class InvestigationRunner:
         executor = self.executor_factory(lease, input)
         if executor.scope.run_id != str(lease.run_id):
             raise ContextError("RUN_MISMATCH")
+        if self.attempt_wrapper is not None:
+            started = False
+
+            def proceed() -> RunnerOutcome:
+                nonlocal started
+                if started:
+                    # One claimed attempt runs once, whatever the wrapper does.
+                    raise RuntimeError("ATTEMPT_ALREADY_PROCEEDED")
+                started = True
+                return self._proceed(incident_id, session, input, executor)
+
+            return self.attempt_wrapper(lease, input, executor, proceed)
+        return self._proceed(incident_id, session, input, executor)
+
+    def _proceed(
+        self,
+        incident_id: UUID,
+        session: RecoverySession,
+        input: InvestigationInput,
+        executor: ReadOnlyToolExecutor,
+    ) -> RunnerOutcome:
+        lease = session.lease
         target_ref = input.bound_target_id
         if target_ref is None and len(executor.scope.target_ids) == 1:
             target_ref = next(iter(executor.scope.target_ids))
@@ -342,7 +383,11 @@ class InvestigationRunner:
                 evidence=self.evidence,
             )
         loop = InvestigationLoop(
-            model=self.model, executor=executor, store=committer, clock=self.clock
+            model=self.model,
+            executor=executor,
+            store=committer,
+            clock=self.clock,
+            capture_delivery=self.capture_delivery,
         )
         outcome = loop.resume(transcript)
         if outcome.final_step_id is None or outcome.conclusion is None:
