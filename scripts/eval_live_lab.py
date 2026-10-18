@@ -784,6 +784,33 @@ def _span_row(span: ObservedSpan) -> dict[str, Any]:
     }
 
 
+def _query_spans(
+    deps: LiveDeps,
+    service: str,
+    start: datetime,
+    end: datetime,
+    probe_timeout: float,
+    deadline: float,
+) -> SpanQuery:
+    """One service's spans, bounded by the stage deadline (r13)."""
+    left = deadline - deps.clock.monotonic()
+    if left < 0:
+        return SpanQuery((), False)
+    within = getattr(deps.telemetry, "spans_within", None)
+    if within is not None:
+        result: SpanQuery = within(
+            service,
+            start,
+            end,
+            request_timeout=min(probe_timeout, max(left, 0.01)),
+            deadline=deadline,
+        )
+        return result
+    return deps.telemetry.spans(
+        service, start, end, min(probe_timeout, max(left, 0.01))
+    )
+
+
 def fault_gate(
     signature: SignatureRule,
     *,
@@ -804,11 +831,11 @@ def fault_gate(
         end = clock.now()
         complete = end >= confirmed_at
         matched: list[ObservedSpan] = []
+        deadline = started + budget_seconds
         for service in services:
-            timeout = min(
-                probe_timeout, max(_remaining(clock, started, budget_seconds), 0.01)
+            query = _query_spans(
+                deps, service, confirmed_at, end, probe_timeout, deadline
             )
-            query = deps.telemetry.spans(service, confirmed_at, end, timeout)
             probes += 1
             complete = complete and query.complete
             matched += _hits(query, signature, confirmed_at, end)
@@ -832,6 +859,9 @@ def fault_gate(
         # Jaeger returns whole traces, so a span seen through two signature
         # services' searches arrives twice; count and report it once.
         matched = _unique(matched)
+        if _remaining(clock, started, budget_seconds) < 0:
+            # Results that arrived after the stage deadline never pass (r13).
+            break
         if (
             complete
             and count.complete
@@ -897,8 +927,9 @@ def normal_window(
             break
         complete = True
         hits: list[ObservedSpan] = []
+        deadline = started + budget_seconds
         for service in services:
-            query = deps.telemetry.spans(service, start, end, probe_timeout)
+            query = _query_spans(deps, service, start, end, probe_timeout, deadline)
             probes += 1
             complete = complete and query.complete
             for rule in signatures:
@@ -912,10 +943,17 @@ def normal_window(
                     "spans": [_span_row(span) for span in query.spans],
                 }
             )
-        count = deps.telemetry.checkout_calls(start, end, probe_timeout)
+        count = deps.telemetry.checkout_calls(
+            start,
+            end,
+            min(probe_timeout, max(_remaining(clock, started, budget_seconds), 0.01)),
+        )
         probes += 1
         raw.append({"checkout_calls": count.value, "complete": count.complete})
         calls = count.value
+        if _remaining(clock, started, budget_seconds) < 0:
+            # A window judged after the stage deadline is never clean (r13).
+            break
         if (
             complete
             and count.complete
@@ -1217,16 +1255,35 @@ def check_flagd_url(url: str) -> str:
 class LabTelemetry:
     """Independent reads: Jaeger search and the lab account on Prometheus."""
 
+    def __init__(self, clock: LiveClock | None = None) -> None:
+        # The same monotonic scale as the gates' stage deadline (r13).
+        self.clock = clock or SystemClock()
+
     def spans(
         self, service: str, start: datetime, end: datetime, timeout: float
+    ) -> SpanQuery:
+        return self.spans_within(
+            service, start, end, request_timeout=timeout, deadline=None
+        )
+
+    def spans_within(
+        self,
+        service: str,
+        start: datetime,
+        end: datetime,
+        *,
+        request_timeout: float,
+        deadline: float | None,
     ) -> SpanQuery:
         """This service's error spans in the window, complete or flagged not.
 
         A full page may hide traces, so it is discarded and its sub-window
         split in ``SPLIT_FACTOR`` until every page stays under the limit
-        (r12). ``timeout`` bounds each HTTP request; the request count, the
-        bytes read and the smallest sub-window are capped, and reaching any
-        cap is ``complete=False`` -- never a clean answer.
+        (r12). ``request_timeout`` bounds each HTTP request and, with a
+        ``deadline`` (this probe's monotonic clock), never outlasts the stage
+        (r13); the request count, the bytes read and the smallest sub-window
+        are capped too, and reaching any limit is ``complete=False`` -- never
+        a clean answer.
         """
         found: dict[tuple[str, str], ObservedSpan] = {}
         requests = read = 0
@@ -1237,6 +1294,13 @@ class LabTelemetry:
             low, high = pending.pop()
             if requests >= MAX_SUBREQUESTS:
                 return SpanQuery(tuple(found.values()), False)
+            timeout = request_timeout
+            if deadline is not None:
+                left = deadline - self.clock.monotonic()
+                if left <= 0:
+                    # The stage is out of time: what is missing stays missing.
+                    return SpanQuery(tuple(found.values()), False)
+                timeout = min(request_timeout, left)
             requests += 1
             query = urllib.parse.urlencode(
                 {"service": service, "start": low, "end": high, "limit": TRACE_LIMIT}

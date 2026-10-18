@@ -1756,3 +1756,74 @@ def test_adaptive_split_reports_incomplete_when_a_cap_is_reached(monkeypatch):
         .spans("checkout", T0, T0 + timedelta(seconds=300), 5)
         .complete
     )
+
+
+# -- r13: stage deadline and exit-code precedence -------------------------------
+
+
+def _slow(env, seconds: float):
+    """Each telemetry span query takes ``seconds`` of the fake clock."""
+    lab, clock = env["lab"], env["clock"]
+    real = lab.spans
+
+    def spans(service, start, end, timeout):
+        clock.advance(seconds)
+        return real(service, start, end, timeout)
+
+    lab.spans = spans  # type: ignore[method-assign]
+
+
+def test_normal_window_judged_after_the_deadline_is_never_clean(env):
+    deps = env["deps"]
+    _slow(env, 100)  # 4 services x 100 s after the 300 s wait -> 700 s > 600 s
+    sigs = eval_live.fault_signatures(deps)
+    result = eval_live_lab.normal_window(sigs, not_before=env["clock"].now(), deps=deps)
+    assert not result.passed and result.reason == "NORMAL_WINDOW_UNCONFIRMED"
+
+
+def test_fault_gate_never_passes_after_the_deadline(env):
+    deps, lab, clock = env["deps"], env["lab"], env["clock"]
+    lab.set(d_inject_cart(lab.raw))
+    clock.advance(lab.delay + 1)
+    confirmed = clock.now()
+    clock.advance(5)
+    _slow(env, 400)  # two signature services -> 800 s on the first poll
+    rule = next(
+        a.signature
+        for s, a in load_scenarios(SCENARIOS)
+        if s.scenario_id == "eval-cart-failure"
+    )
+    result = eval_live_lab.fault_gate(rule, confirmed_at=confirmed, deps=deps)
+    assert not result.passed and result.reason == "FAULT_NOT_OBSERVED"
+
+
+def d_inject_cart(raw: bytes) -> bytes:
+    data = json.loads(raw)
+    data["flags"]["cartFailure"]["defaultVariant"] = "on"
+    return json.dumps(data).encode()
+
+
+def test_lab_telemetry_stops_sub_requests_at_the_stage_deadline(monkeypatch):
+    clock = Clock()
+    jaeger = _LoadedJaeger()
+    timeouts: list[float] = []
+    real_open = jaeger.open
+
+    def slow_open(request, timeout=None):
+        timeouts.append(timeout)
+        clock.advance(4)  # each Jaeger request takes 4 s
+        return real_open(request, timeout)
+
+    jaeger.open = slow_open  # type: ignore[method-assign]
+    monkeypatch.setattr(eval_live_lab.kind_lab, "OPENER", jaeger)
+    probe = eval_live_lab.LabTelemetry(clock)
+    deadline = clock.monotonic() + 10  # room for 2.5 requests
+    query = probe.spans_within(
+        "checkout",
+        T0,
+        T0 + timedelta(seconds=300),
+        request_timeout=5,
+        deadline=deadline,
+    )
+    assert not query.complete
+    assert len(timeouts) == 3 and timeouts[0] == 5 and timeouts[-1] == pytest.approx(2)
