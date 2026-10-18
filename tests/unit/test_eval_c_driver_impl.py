@@ -1425,3 +1425,99 @@ def test_fault_gate_reports_each_span_once_across_service_queries(env):
     ids = [span.span_id for span in gate.matched]
     assert ids == ["span-0", "span-1"]
     assert eval_live_lab.observation_json(gate)["matched_span_ids"] == ids
+
+
+# -- r11: PR #271 bot findings --------------------------------------------------
+
+
+class _JaegerOpener:
+    """A Jaeger search that, like the real one, honours a ``tags`` filter."""
+
+    def __init__(self, body: dict[str, Any] | bytes) -> None:
+        self.body, self.urls = body, []
+
+    def open(self, request, timeout=None):
+        import io
+        from urllib.parse import parse_qs, urlsplit
+
+        url = request.full_url if hasattr(request, "full_url") else str(request)
+        self.urls.append(url)
+        body = self.body
+        query = parse_qs(urlsplit(url).query)
+        if isinstance(body, dict) and "tags" in query:
+            wanted = json.loads(query["tags"][0])
+            body = {
+                "data": [
+                    trace
+                    for trace in body["data"]
+                    if any(
+                        {t["key"]: str(t["value"]).lower() for t in span["tags"]}.get(k)
+                        == v
+                        for span in trace["spans"]
+                        for k, v in wanted.items()
+                    )
+                ]
+            }
+        raw = body if isinstance(body, bytes) else json.dumps(body).encode()
+
+        class Response(io.BytesIO):
+            status = 200
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+        return Response(raw)
+
+
+def _trace(trace_id: str, tags: list[dict[str, Any]]) -> dict[str, Any]:
+    return {
+        "traceID": trace_id,
+        "processes": {"p1": {"serviceName": "checkout"}},
+        "spans": [
+            {
+                "spanID": f"{trace_id}-s",
+                "processID": "p1",
+                "operationName": "oteldemo.CartService/EmptyCart",
+                "startTime": int(T0.timestamp() * 1_000_000),
+                "tags": tags,
+            }
+        ],
+    }
+
+
+def test_lab_telemetry_finds_errors_that_carry_no_error_tag(monkeypatch):
+    """P1: status-code, gRPC and HTTP 5xx errors are decided locally."""
+    body = {
+        "data": [
+            _trace("t-status", [{"key": "otel.status_code", "value": "ERROR"}]),
+            _trace("t-grpc", [{"key": "rpc.grpc.status_code", "value": 13}]),
+            _trace("t-http", [{"key": "http.status_code", "value": 503}]),
+            _trace("t-ok", [{"key": "rpc.grpc.status_code", "value": 0}]),
+        ]
+    }
+    opener = _JaegerOpener(body)
+    monkeypatch.setattr(eval_live_lab.kind_lab, "OPENER", opener)
+    query = eval_live_lab.LabTelemetry().spans("checkout", T0, T0, 5)
+    assert query.complete
+    errors = {s.trace_id for s in query.spans if eval_live_lab.span_error(s.tags)}
+    assert errors == {"t-status", "t-grpc", "t-http"}
+    assert all("tags=" not in url for url in opener.urls)
+
+
+@pytest.mark.parametrize("defect", ["truncated", "oversize", "full_page"])
+def test_lab_telemetry_marks_partial_answers_incomplete(monkeypatch, defect):
+    """P1: a cut or capped search is incomplete, never 'no errors'."""
+    trace = _trace("t", [{"key": "otel.status_code", "value": "ERROR"}])
+    if defect == "truncated":
+        body: Any = json.dumps({"data": [trace]}).encode()[:-10]
+    elif defect == "oversize":
+        body = {"data": [trace]}
+        monkeypatch.setattr(eval_live_lab, "MAX_TELEMETRY_BYTES", 16)
+    else:
+        body = {"data": [trace]}
+        monkeypatch.setattr(eval_live_lab, "TRACE_LIMIT", 1)
+    monkeypatch.setattr(eval_live_lab.kind_lab, "OPENER", _JaegerOpener(body))
+    assert not eval_live_lab.LabTelemetry().spans("checkout", T0, T0, 5).complete

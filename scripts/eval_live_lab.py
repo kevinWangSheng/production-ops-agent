@@ -51,11 +51,13 @@ PROBE_SECONDS = 5.0
 WINDOW_SECONDS = 300
 FENCE_ANNOTATION = "opspilot.dev/eval-live-restore-fence"
 # Jaeger search page size for the independent observation; a page this full
-# may have dropped traces, so the result is marked incomplete. The search is
-# narrowed to traces with an ``error=true`` span (OTel status ERROR), since a
-# full unfiltered page of checkout traces is tens of megabytes.
-TRACE_LIMIT = 200
-MAX_TELEMETRY_BYTES = 32 * 1024 * 1024
+# may have dropped traces, so the result is marked incomplete. No server-side
+# tag filter: ``span_error`` decides locally, since an error shown only by
+# status code, gRPC or HTTP 5xx carries no ``error=true`` tag (r11). Larger
+# pages than that limit or bodies past the byte cap are incomplete, never
+# "no errors".
+TRACE_LIMIT = 1500
+MAX_TELEMETRY_BYTES = 64 * 1024 * 1024
 
 
 class LabError(Exception):
@@ -1219,7 +1221,6 @@ class LabTelemetry:
                 "start": int(start.timestamp() * 1_000_000),
                 "end": int(end.timestamp() * 1_000_000),
                 "limit": TRACE_LIMIT,
-                "tags": json.dumps({"error": "true"}),
             }
         )
         payload = _get_json(f"{kind_lab.JAEGER}/api/traces?{query}", timeout)
