@@ -241,3 +241,33 @@ def test_recovery_record_write_failure_and_same_second_names(tmp_path, capsys):
     result = eval_live.recover_round("r2", "lead", "b1", deps)
     assert (result.exit_code, result.reason) == (5, "EVIDENCE_WRITE_FAILED")
     assert not (deps.ledger_root / "fault-active.json").exists()
+
+
+@pytest.mark.parametrize("first", ["retained_fault", "interrupt"])
+def test_probe_exit_precedence_with_a_failed_report(
+    tmp_path, capsys, monkeypatch, first
+):
+    """r13: 4 > 5 > 130 for the probe report too."""
+    env, deps = _probe_env(tmp_path)
+    if first == "retained_fault":
+        env["lab"].complete = False
+    else:
+        real = env["identity"].verify
+        calls = {"n": 0}
+
+        def verify():
+            calls["n"] += 1
+            if calls["n"] == 2:  # inside the first scenario, after preflight
+                from scripts.eval_live_lab import Interrupted
+
+                raise Interrupted()
+            return real()
+
+        env["identity"].verify = verify
+    monkeypatch.setattr(eval_live, "write_public_exclusive", lambda *a, **k: False)
+    code = eval_live.main(
+        [*ARGV, *_scenarios("eval-cart-failure", "eval-normal-1")], deps=deps
+    )
+    final = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    assert code == (4 if first == "retained_fault" else 5)
+    assert final["exit_code"] == code

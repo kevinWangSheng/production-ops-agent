@@ -1827,3 +1827,40 @@ def test_lab_telemetry_stops_sub_requests_at_the_stage_deadline(monkeypatch):
     )
     assert not query.complete
     assert len(timeouts) == 3 and timeouts[0] == 5 and timeouts[-1] == pytest.approx(2)
+
+
+def _write_fails(monkeypatch, which: str) -> None:
+    def broken(*args, **kwargs):
+        raise PermissionError(which)
+
+    target = {
+        "summary": "_write_summary",
+        "aggregate": "write_round",
+        "lifecycle": "_write_lifecycle",
+    }[which]
+    monkeypatch.setattr(eval_live, target, broken)
+
+
+@pytest.mark.parametrize("write", ["summary", "aggregate", "lifecycle"])
+@pytest.mark.parametrize("first", ["retained_fault", "interrupt"])
+def test_exit_precedence_is_restore_failure_then_evidence_then_interrupt(
+    env, monkeypatch, write, first
+):
+    """r13: 4 > 5 > 130 whatever evidence write fails."""
+    deps = env["deps"]
+    if first == "retained_fault":
+        env["lab"].complete = False  # gate and wash fail -> exit 4
+    else:
+        deps = replace(deps, balance=_InterruptingBalance(2))  # after the body
+    _write_fails(monkeypatch, write)
+    result = eval_live.run_round(
+        config(deps, ["eval-cart-failure", "eval-normal-1"]), deps
+    )
+    expected = 4 if first == "retained_fault" else 5
+    assert result.exit_code == expected, result
+    assert result.slots[1].status == "not_started"
+    if first == "retained_fault":
+        assert (deps.ledger_root / "fault-active.json").exists()
+        assert result.reason.startswith("RESTORE_FAILED")
+    else:
+        assert result.reason == "EVIDENCE_WRITE_FAILED"

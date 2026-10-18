@@ -541,7 +541,9 @@ def run_round(config: RoundConfig, deps: LiveDeps) -> RoundResult:
     aggregate_error = _write_round(
         config, deps, manifest, journals, summaries, evidence_dir
     )
-    if aggregate_error is not None and exit_code is None:
+    # Exit precedence 4 > 5 > 130 (r13): a missing aggregate outranks an
+    # interrupt but never a retained fault.
+    if aggregate_error is not None and exit_code in (None, 130):
         status, exit_code, reason = "stopped", 5, aggregate_error
     if exit_code is None:
         exit_code = 0 if all(r.status == "ran" for r in results) else 1
@@ -767,6 +769,12 @@ def _run_slot(
                 balances[-1],
             )
     except (OSError, StorageError, ValueError):
+        # Exit precedence 4 > 5 > 130 (r13): a retained fault outranks the
+        # missing summary, which outranks an interrupt.
+        out.status, out.stage, out.reason = state.status, state.stage, state.reason
+        out.fault = _fault_json(state)
+        if state.stop is not None and state.stop.exit_code == 4:
+            raise state.stop from None
         raise _Stop(5, "EVIDENCE_WRITE_FAILED") from None
     if _take_pending():
         state.interrupted = True
