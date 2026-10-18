@@ -68,75 +68,125 @@ stdout 最后一行是一个 JSON 对象：`{"round", "status": "finished|stoppe
 
 ```python
 class LiveClock(Protocol):
-    def now(self) -> datetime: ...           # UTC
+    def now(self) -> datetime: ...  # UTC
     def monotonic(self) -> float: ...
-    def sleep(self, seconds: float) -> None: ...   # 假时钟：同时推进 now 与 monotonic
+    def sleep(self, seconds: float) -> None: ...  # 假时钟：同时推进 now 与 monotonic
+
 
 @dataclass(frozen=True)
-class FlagConfig:                            # flagd-config ConfigMap 的 demo.flagd.json
-    raw: bytes; uid: str; resource_version: str
-    fence: str | None = None   # r6：读到的 opspilot.dev/eval-live-restore-fence 注解值
+class FlagConfig:  # flagd-config ConfigMap 的 demo.flagd.json
+    raw: bytes
+    uid: str
+    resource_version: str
+    fence: str | None = None  # r6：读到的 opspilot.dev/eval-live-restore-fence 注解值
+
 
 class FlagStore(Protocol):
-    def read(self) -> FlagConfig: ...        # 失败抛 LabError("FLAG_READ_FAILED")
-    def replace(self, current: FlagConfig, new_raw: bytes, *, fence: str | None) -> FlagConfig: ...
+    def read(self) -> FlagConfig: ...  # 失败抛 LabError("FLAG_READ_FAILED")
+    def replace(
+        self, current: FlagConfig, new_raw: bytes, *, fence: str | None
+    ) -> FlagConfig: ...
 
-class FlagResolver(Protocol):                # flagd 守护进程解析，不代表应用已生效
-    def resolve(self, flag: str, method: str, timeout: float) -> str | None: ...  # variant 名；错误/未知为 None
+
+class FlagResolver(Protocol):  # flagd 守护进程解析，不代表应用已生效
+    def resolve(
+        self, flag: str, method: str, timeout: float
+    ) -> str | None: ...  # variant 名；错误/未知为 None
+
 
 @dataclass(frozen=True)
 class ObservedSpan:
-    trace_id: str; span_id: str; service: str; operation: str
-    start: datetime; tags: Mapping[str, Any]
+    trace_id: str
+    span_id: str
+    service: str
+    operation: str
+    start: datetime
+    tags: Mapping[str, Any]
+
 
 @dataclass(frozen=True)
-class SpanQuery:  spans: tuple[ObservedSpan, ...]; complete: bool   # 截断/上限/错误时 complete=False
-@dataclass(frozen=True)
-class CallCount:  value: float | None; complete: bool
+class SpanQuery:
+    spans: tuple[ObservedSpan, ...]
+    complete: bool  # 截断/上限/错误时 complete=False
 
-class TelemetryProbe(Protocol):              # 独立观察，不经产品工具
-    def spans(self, service: str, start: datetime, end: datetime, timeout: float) -> SpanQuery: ...
-    def checkout_calls(self, start: datetime, end: datetime, timeout: float) -> CallCount: ...
+
+@dataclass(frozen=True)
+class CallCount:
+    value: float | None
+    complete: bool
+
+
+class TelemetryProbe(Protocol):  # 独立观察，不经产品工具
+    def spans(
+        self, service: str, start: datetime, end: datetime, timeout: float
+    ) -> SpanQuery: ...
+    def checkout_calls(
+        self, start: datetime, end: datetime, timeout: float
+    ) -> CallCount: ...
+
 
 class LabIdentity(Protocol):
     def verify(self) -> tuple[str, ...]: ...  # 空元组 = 身份已确认；否则为失败码
 
+
 class PortProbe(Protocol):
     def in_use(self, port: int) -> bool: ...  # 127.0.0.1 上是否已有监听者
 
+
 @dataclass(frozen=True)
-class PgInstance: directory: Path; port: int; owner_dsn: str; runtime_dsn: str; web_dsn: str = ""
+class PgInstance:
+    directory: Path
+    port: int
+    owner_dsn: str
+    runtime_dsn: str
+    web_dsn: str = ""
+
+
 class PgLauncher(Protocol):
-    def start(self, directory: Path, port: int) -> PgInstance: ...  # 新建目录、initdb、启动、迁移
-    def stop(self, instance: PgInstance) -> None: ...               # 只停本实例
+    def start(
+        self, directory: Path, port: int
+    ) -> PgInstance: ...  # 新建目录、initdb、启动、迁移
+    def stop(self, instance: PgInstance) -> None: ...  # 只停本实例
+
 
 class BalanceReader(Protocol):
     def balance(self) -> Decimal | None: ...  # DeepSeek 余额（CNY）；未知为 None
 
+
 class Investigator(Protocol):
     def investigate(self, request: InvestigationRequest) -> InvestigationResult: ...
 
+
 @dataclass(frozen=True)
 class LiveDeps:
-    clock: LiveClock; flags: FlagStore; flagd: FlagResolver; telemetry: TelemetryProbe
-    identity: LabIdentity; ports: PortProbe; pg: PgLauncher; balance: BalanceReader
+    clock: LiveClock
+    flags: FlagStore
+    flagd: FlagResolver
+    telemetry: TelemetryProbe
+    identity: LabIdentity
+    ports: PortProbe
+    pg: PgLauncher
+    balance: BalanceReader
     investigator: Investigator
-    ledger_root: Path      # 真实值：git-common-dir 的上级目录/tmp/lab-ledgers
-    evidence_root: Path    # 真实值：docs/evidence/eval
-    recording_root: Path   # 真实值：<worktree>/tmp/eval
-    pg_root: Path          # 真实值：<worktree>/tmp/eval-live
-    scenarios_root: Path   # 真实值：evals/scenarios
+    ledger_root: Path  # 真实值：git-common-dir 的上级目录/tmp/lab-ledgers
+    evidence_root: Path  # 真实值：docs/evidence/eval
+    recording_root: Path  # 真实值：<worktree>/tmp/eval
+    pg_root: Path  # 真实值：<worktree>/tmp/eval-live
+    scenarios_root: Path  # 真实值：evals/scenarios
     flagd_url: str
-    env: EnvChecker        # r3 测试作者澄清 6
+    env: EnvChecker  # r3 测试作者澄清 6
     provenance: ProvenanceReader  # r5
+
 
 class EnvChecker(Protocol):
     def check(self) -> str | None: ...  # None = 环境前提满足；否则 "ENV_UNCONFIRMED"
 
+
 @dataclass(frozen=True)
 class Provenance:
-    commit: str | None   # 代码版本（git HEAD）；未知为 None
-    clean: bool          # 已跟踪文件无未提交改动
+    commit: str | None  # 代码版本（git HEAD）；未知为 None
+    clean: bool  # 已跟踪文件无未提交改动
+
 
 class ProvenanceReader(Protocol):
     def read(self) -> Provenance: ...
@@ -255,8 +305,13 @@ journal(started) -> setup(occupation, identity, guard, flags_baseline, pg,
 
 ```python
 capture_delivery: Callable[[Mapping[str, Any], Mapping[str, Any]], None] | None = None
-attempt_wrapper: Callable[[Lease, InvestigationInput, ReadOnlyToolExecutor,
-                           Callable[[], RunnerOutcome]], RunnerOutcome] | None = None
+attempt_wrapper: (
+    Callable[
+        [Lease, InvestigationInput, ReadOnlyToolExecutor, Callable[[], RunnerOutcome]],
+        RunnerOutcome,
+    ]
+    | None
+) = None
 ```
 
 - `capture_delivery` 原样传给每个 `InvestigationLoop`。
