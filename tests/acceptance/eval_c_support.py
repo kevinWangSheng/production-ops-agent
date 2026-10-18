@@ -10,8 +10,6 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
-from scripts.eval_live import InvestigationRequest, InvestigationResult, template_scope
-
 from opspilot.evaluation import ToolSnapshot, bind_tool_snapshots, record
 from opspilot.investigation.loop import ModelCall, serialized_request
 from opspilot.tools.otel_demo import (
@@ -22,6 +20,7 @@ from opspilot.tools.otel_demo import (
     otel_demo_registrations,
 )
 from scripts import eval_live_lab as lab
+from scripts.eval_live import InvestigationRequest, InvestigationResult, template_scope
 from tests.acceptance import eval_b2_support as b2
 from tests.m1_tool_support import FakeClock, FixedControl, build
 

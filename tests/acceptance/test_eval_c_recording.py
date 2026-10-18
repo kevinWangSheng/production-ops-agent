@@ -5,7 +5,6 @@ from dataclasses import replace
 from types import SimpleNamespace
 
 import pytest
-from opspilot.evaluation.live import registry_hash, scope_policy_hash
 
 from opspilot.evaluation import (
     DimensionValue,
@@ -17,6 +16,7 @@ from opspilot.evaluation import (
     record,
     replay,
 )
+from opspilot.evaluation.live import registry_hash, scope_policy_hash
 from opspilot.investigation.loop import ModelCall
 from opspilot.tools.executor import ToolRequest
 from opspilot.tools.registry import canonical
