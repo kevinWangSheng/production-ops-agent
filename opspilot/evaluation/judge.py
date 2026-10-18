@@ -581,6 +581,9 @@ def judge_once(
     try:
         _check_config(config)
         request = validated(JudgeInput, request)
+        from opspilot.evaluation.calibration_flow import _metadata_identifiers
+
+        _metadata_identifiers(request)
         body = _ADAPTERS[config.provider].build(config, safe_input(request))
         if len(body) > config.max_request_bytes:
             raise JudgeError("JUDGE_REQUEST_OVERSIZE")

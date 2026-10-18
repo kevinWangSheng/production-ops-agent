@@ -152,3 +152,12 @@ assistant响应的`tool_calls`、`function_call`等工具调用字段按存在�
 1. **写入与读取同一上限。** 所有校准工件（标签冻结件、pack.json、provider-NNN.json、calibration.json）写入前检查序列化字节数，超过 67108864 即报 ARTIFACT_UNWRITABLE（cause/context 为空），不创建该文件，立即中止，不再发起付费调用。标签冻结件在第一次付费调用之前写入，所以 items.json 超限在零付费调用时就会失败。单条 provider-NNN.json 受 2 MiB 响应上限约束，不会触及该上限。
 2. **calibration.json 只存缓存摘要。** 顶层字段固定为 `schema`（仍为 `opspilot-judge-calibration-1`，该格式尚无真实工件）、`pack_hash`、`configs`、`records`、`selection`，不再含 `observations`。`records` 的 key 为三家 provider，值为按 001–060 顺序排列的 60 个 SHA256（小写 64 位 hex），每个对应 `provider-NNN.json` 的原始字节。第 51 行「含全部 observations」与 r3 第 5 项「observations 与缓存逐项比对」按本条替换；observation 只以逐次文件为准。
 3. **loader 判定顺序。** 保留现有 pack/config/身份校验，然后：先从逐次文件与冻结标签重算 selection，与缓存 selection 不符报 DERIVED_RESULT_MISMATCH（保持 r4 「换入另一轮汇总」报该码）；selection 一致而 `records` 的 provider 集合、数量或任一 hash 与逐次文件原始字节不符，报 HASH_MISMATCH；缺件仍是 EVIDENCE_UNAVAILABLE，hash 非规范、顶层字段多余/缺失、provider key 不是 zai/openai/deepseek（r9）仍是 SCHEMA_INVALID。
+
+## r11：judge_once 对当前请求执行 r9 规范标识校验（2026-10-18，按用户常设指示采纳推荐，#250）
+
+理由：PR #232 机器人第 7 轮 P2。原来 r9 的规范标识校验覆盖了标签包、逐次记录、汇总和认证工件，但没有覆盖 `judge_once` 收到的当前请求。
+
+1. **范围。** 在 `judge_once` 中，`validated(JudgeInput, request)` 之后、构建请求体之前，对当前请求调用与 r9 相同的校验器。检查范围是 r9 字段清单第 2–4 类（版本/场景/主体、证据与授权、报告与结局），规则（含字符集、长度、操作名语法、null 语义）与 r9 完全一致，不另立规则。
+2. **已认证与未认证一视同仁。** 带 `VerifiedCalibration` 的调用和不带认证的调用都要做这项检查，这样「既有认证使用时均检查」就覆盖到每一次评测请求。理由：未认证调用同样会把字节发往外部供应商，标识规范是数据出口约束，与是否认证无关。
+3. **失败语义。** 标识不规范时，结果为 status `invalid`、code `SCHEMA_INVALID`，transport 调用次数为零，不发送任何字节；cause/context 为空。超大请求等既有检查的顺序不变：先做 DTO 校验，再做标识校验，再构建请求体，最后检查请求大小。
+4. **不变项。** 规范的请求（包括 PR-A 六个冻结包里的 76 个 view）照常放行；已有的 judge 和校准测试断言不修改。
