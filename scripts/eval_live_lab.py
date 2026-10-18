@@ -28,7 +28,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -75,6 +75,105 @@ class LabError(Exception):
 
 class Interrupted(BaseException):  # noqa: N818 - a signal, not an error
     """SIGINT/SIGTERM turned into a catchable exit (U2 recovery path)."""
+
+
+# -- cooperative interrupts (interface r16) -----------------------------------
+#
+# The signal handler only records a stop request; ``checkpoint()`` turns it
+# into ``Interrupted`` outside protected sections. ``pending`` is the stop
+# request: permanent for one CLI call (R3), read and never cleared. A second
+# signal (SIGINT and SIGTERM counted together) raises at once, but only
+# outside protected sections and outside external commands (R2).
+_STOP: dict[str, Any] = {
+    "depth": 0,  # protected sections (nestable)
+    "pending": False,
+    "signals": 0,
+    "first": None,  # the first signal number, None for a caught Interrupted
+    "at": None,  # monotonic time of the first stop request
+    "external": 0,  # inside an external command (no forced raise)
+    "scopes": 0,
+}
+SLEEP_SLICE_SECONDS = 0.5
+GUARD_RETRY_SECONDS = 0.05
+
+
+def _reset_stop() -> None:
+    _STOP.update(depth=0, pending=False, signals=0, first=None, at=None, external=0)
+
+
+@contextmanager
+def interrupt_scope() -> Iterator[None]:
+    """One CLI call (or one mode called directly): the stop state starts
+    clear and is cleared again when the outermost scope ends."""
+    outermost = _STOP["scopes"] == 0
+    if outermost:
+        _reset_stop()
+    _STOP["scopes"] += 1
+    try:
+        yield
+    finally:
+        _STOP["scopes"] -= 1
+        if outermost:
+            _reset_stop()
+
+
+def request_stop(signum: int | None = None) -> None:
+    """Record a stop request; a caught ``Interrupted`` records one too (R3)."""
+    if not _STOP["pending"]:
+        _STOP.update(pending=True, first=signum, at=time.monotonic())
+
+
+def stop_requested() -> bool:
+    return bool(_STOP["pending"])
+
+
+def handle_signal(signum: int, frame: Any) -> None:
+    """The SIGINT/SIGTERM handler: record, raise only on a forced stop."""
+    _STOP["signals"] += 1
+    request_stop(signum)
+    if _STOP["signals"] >= 2 and not _STOP["depth"] and not _STOP["external"]:
+        raise Interrupted()
+
+
+def checkpoint() -> None:
+    """Where a stop request becomes ``Interrupted``; a no-op when protected."""
+    if _STOP["pending"] and not _STOP["depth"]:
+        raise Interrupted()
+
+
+@contextmanager
+def protected() -> Iterator[None]:
+    """A section that is never interrupted: no checkpoint fires and no forced
+    stop raises inside it, and leaving it raises nothing either (R2)."""
+    _STOP["depth"] += 1
+    try:
+        yield
+    finally:
+        _STOP["depth"] -= 1
+
+
+@contextmanager
+def external_command() -> Iterator[None]:
+    """kubectl/pg_ctl/initdb/git: a checkpoint before, no forced stop during;
+    the command's own timeout bounds it."""
+    checkpoint()
+    _STOP["external"] += 1
+    try:
+        yield
+    finally:
+        _STOP["external"] -= 1
+
+
+def interruptible_sleep(seconds: float) -> None:
+    """Sleep in slices of at most ``SLEEP_SLICE_SECONDS`` and return early
+    once a stop is requested (R5); a protected section sleeps in full."""
+    if seconds <= 0:
+        return
+    deadline = time.monotonic() + seconds
+    while (left := deadline - time.monotonic()) > 0:
+        if _STOP["pending"] and not _STOP["depth"]:
+            return
+        time.sleep(min(left, SLEEP_SLICE_SECONDS))
 
 
 @dataclass(frozen=True)
@@ -311,10 +410,17 @@ class AttemptLedger:
 def _guard(root: Path, name: str, *, blocking: bool) -> Iterator[None]:
     _private_dir(root)
     with (root / f".{name}.guard").open("a") as stream:
-        try:
-            fcntl.flock(stream, fcntl.LOCK_EX | (0 if blocking else fcntl.LOCK_NB))
-        except BlockingIOError:
-            raise LabError("LAB_OPERATION_IN_PROGRESS") from None
+        # A blocking guard is a non-blocking retry with a checkpoint before
+        # every retry (R1): a stop request is honoured while waiting.
+        while True:
+            try:
+                fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if not blocking:
+                    raise LabError("LAB_OPERATION_IN_PROGRESS") from None
+            checkpoint()
+            time.sleep(GUARD_RETRY_SECONDS)
         try:
             yield
         finally:
@@ -364,7 +470,9 @@ def active_marker(
 ) -> Iterator[Path]:
     """F11's ``.active-*.json``: blocks ``occupation release`` while running."""
     marker = root / f".active-{uuid4().hex}.json"
-    with _guard(root, "occupation", blocking=True):
+    # Interruptible until the lock is held; the creation and the removal are
+    # protected, the body (``yield``) is not (R4).
+    with _guard(root, "occupation", blocking=True), protected():
         _check_reservation(_reservation(root), holder, batch, now)
         write_private(
             marker,
@@ -373,7 +481,8 @@ def active_marker(
     try:
         yield marker
     finally:
-        marker.unlink(missing_ok=True)
+        with protected():
+            marker.unlink(missing_ok=True)
 
 
 @contextmanager
@@ -418,7 +527,7 @@ def append_run_start(
     root: Path, round_id: str, holder: str, batch: str, now: datetime
 ) -> dict[str, Any]:
     """One ``run_started`` row in F11's hash-chained ``run-starts.jsonl``."""
-    with _guard(root, "batch-journal", blocking=True):
+    with _guard(root, "batch-journal", blocking=True), protected():
         path = root / "run-starts.jsonl"
         previous = _run_start_head(path, round_id)
         entry: dict[str, Any] = dict(
@@ -511,7 +620,10 @@ def await_variant(
     clock = deps.clock
     started = clock.monotonic()
     while (left := _remaining(clock, started, budget_seconds)) > 0:
-        if deps.flagd.resolve(flag, method, min(probe_timeout, left)) == variant:
+        checkpoint()
+        resolved = deps.flagd.resolve(flag, method, min(probe_timeout, left))
+        checkpoint()
+        if resolved == variant:
             return clock.now()
         left = _remaining(clock, started, budget_seconds)
         if left <= 0:
@@ -587,13 +699,47 @@ class Injected:
     requested_at: datetime
 
 
+@dataclass(frozen=True)
+class Committed:
+    """An injection written and verified in the ConfigMap, not yet effective."""
+
+    original_sha256: str
+    injected_sha256: str
+    requested_at: datetime
+    flag: str
+    method: str
+    variant: str
+
+
 def inject_fault(
     intent: FaultIntent, *, deps: LiveDeps, ledger: AttemptLedger
 ) -> Injected:
-    """Persist the restore intent, CAS-inject, verify bytes, await the daemon.
+    """``commit_fault`` then ``await_fault``, for callers that keep nothing
+    in between."""
+    committed = commit_fault(intent, deps=deps, ledger=ledger)
+    effective = await_fault(committed, deps=deps, ledger=ledger)
+    return Injected(
+        committed.original_sha256,
+        committed.injected_sha256,
+        effective,
+        committed.requested_at,
+    )
+
+
+def commit_fault(
+    intent: FaultIntent,
+    *,
+    deps: LiveDeps,
+    ledger: AttemptLedger,
+    record: Callable[[Committed], None] | None = None,
+) -> Committed:
+    """Persist the restore intent, CAS-inject and verify the bytes (R6).
 
     The caller holds ``fault_guard``. Any failure after the intent is written
     leaves the state file for ``restore_fault`` (the caller always runs it).
+    Everything from the first evidence write to ``record`` -- the caller's
+    copy of the hashes and request time -- is one protected section, so the
+    fault metadata exists before the propagation wait starts.
     """
     root = deps.ledger_root
     if read_state(root) is not None:
@@ -604,6 +750,33 @@ def inject_fault(
     fault = intent.fault
     method = flagd_method(current.raw, fault.flag)
     injected = mutate(current.raw, fault)
+    original_sha, injected_sha = sha256(current.raw), sha256(injected)
+    checkpoint()
+    with protected():
+        requested = _commit(intent, current, injected, deps=deps, ledger=ledger)
+        committed = Committed(
+            original_sha,
+            injected_sha,
+            requested,
+            fault.flag,
+            method,
+            fault.fault_variant,
+        )
+        if record is not None:
+            record(committed)
+    return committed
+
+
+def _commit(
+    intent: FaultIntent,
+    current: FlagConfig,
+    injected: bytes,
+    *,
+    deps: LiveDeps,
+    ledger: AttemptLedger,
+) -> datetime:
+    root = deps.ledger_root
+    fault = intent.fault
     original_sha, injected_sha = sha256(current.raw), sha256(injected)
     ledger.write("flags-original.json", {"raw": current.raw.decode()})
     ledger.write("flags-injected.json", {"raw": injected.decode()})
@@ -638,9 +811,16 @@ def inject_fault(
     state["phase"] = "injected"
     _write_state(root, state, exclusive=False)
     ledger.event("inject", "config_verified", sha256=injected_sha)
-    effective = await_variant(deps, fault.flag, method, fault.fault_variant)
+    return requested
+
+
+def await_fault(
+    committed: Committed, *, deps: LiveDeps, ledger: AttemptLedger
+) -> datetime:
+    """The flagd propagation of a committed injection (interruptible)."""
+    effective = await_variant(deps, committed.flag, committed.method, committed.variant)
     ledger.event("propagation", "flagd_effective", at=effective.isoformat())
-    return Injected(original_sha, injected_sha, effective, requested)
+    return effective
 
 
 @dataclass(frozen=True)
@@ -663,8 +843,21 @@ def restore_fault(
     ``None`` when no state exists. Never overwrites a change it did not make:
     only the recorded injection (version-conditioned) or, when the original
     is already live, a fence write that excludes a late injection commit.
-    The state file is removed only after the wash passes.
+    The state file is removed only after the wash passes. The whole restore,
+    from reading the intent to the last ledger event, is protected (r16).
     """
+    with protected():
+        return _restore(round_id, attempt_id, signatures, deps=deps, ledger=ledger)
+
+
+def _restore(
+    round_id: str,
+    attempt_id: str,
+    signatures: Sequence[SignatureRule],
+    *,
+    deps: LiveDeps,
+    ledger: AttemptLedger,
+) -> Restored | None:
     root = deps.ledger_root
     state = read_state(root)
     if state is None:
@@ -824,10 +1017,12 @@ def _query_spans(
     probe_timeout: float,
     deadline: float,
 ) -> SpanQuery:
-    """One service's spans, bounded by the stage deadline (r13)."""
+    """One service's spans, bounded by the stage deadline (r13), with a
+    checkpoint before and after the request (R1)."""
     left = deadline - deps.clock.monotonic()
     if left < 0:
         return SpanQuery((), False)
+    checkpoint()
     within = getattr(deps.telemetry, "spans_within", None)
     if within is not None:
         result: SpanQuery = within(
@@ -837,10 +1032,21 @@ def _query_spans(
             request_timeout=min(probe_timeout, max(left, 0.01)),
             deadline=deadline,
         )
-        return result
-    return deps.telemetry.spans(
-        service, start, end, min(probe_timeout, max(left, 0.01))
-    )
+    else:
+        result = deps.telemetry.spans(
+            service, start, end, min(probe_timeout, max(left, 0.01))
+        )
+    checkpoint()
+    return result
+
+
+def _checkout_calls(
+    deps: LiveDeps, start: datetime, end: datetime, timeout: float
+) -> CallCount:
+    checkpoint()
+    count = deps.telemetry.checkout_calls(start, end, timeout)
+    checkpoint()
+    return count
 
 
 def fault_gate(
@@ -860,6 +1066,7 @@ def fault_gate(
     raw: list[Mapping[str, Any]] = []
     calls: float | None = None
     while _remaining(clock, started, budget_seconds) > 0:
+        checkpoint()
         end = clock.now()
         complete = end >= confirmed_at
         matched: list[ObservedSpan] = []
@@ -880,7 +1087,8 @@ def fault_gate(
                     "spans": [_span_row(span) for span in query.spans],
                 }
             )
-        count = deps.telemetry.checkout_calls(
+        count = _checkout_calls(
+            deps,
             confirmed_at,
             end,
             min(probe_timeout, max(_remaining(clock, started, budget_seconds), 0.01)),
@@ -947,12 +1155,14 @@ def normal_window(
     raw: list[Mapping[str, Any]] = []
     calls: float | None = None
     while True:
+        checkpoint()
         end = start + timedelta(seconds=window_seconds)
         wait = (end - clock.now()).total_seconds()
         if wait > 0:
             if wait > _remaining(clock, started, budget_seconds):
                 break
             clock.sleep(wait)
+            checkpoint()  # an interruptible sleep returns early on a stop
         # The budget is inclusive (U1 "at most 600 s"): a window that closes
         # exactly at it is still read.
         if _remaining(clock, started, budget_seconds) < 0:
@@ -975,7 +1185,8 @@ def normal_window(
                     "spans": [_span_row(span) for span in query.spans],
                 }
             )
-        count = deps.telemetry.checkout_calls(
+        count = _checkout_calls(
+            deps,
             start,
             end,
             min(probe_timeout, max(_remaining(clock, started, budget_seconds), 0.01)),
@@ -1044,12 +1255,13 @@ class GitProvenance:
 
     def _git(self, *args: str) -> str | None:
         try:
-            result = subprocess.run(
-                ["git", "-C", str(self.root), *args],
-                capture_output=True,
-                timeout=10,
-                check=False,
-            )
+            with external_command():
+                result = subprocess.run(
+                    ["git", "-C", str(self.root), *args],
+                    capture_output=True,
+                    timeout=10,
+                    check=False,
+                )
         except (OSError, subprocess.TimeoutExpired):
             return None
         return result.stdout.decode().strip() if result.returncode == 0 else None
@@ -1081,21 +1293,21 @@ class SystemClock:
         return time.monotonic()
 
     def sleep(self, seconds: float) -> None:
-        if seconds > 0:
-            time.sleep(seconds)
+        interruptible_sleep(seconds)
 
 
 def _external(command: list[str], *, timeout: float, data: str | None = None) -> bytes:
     """No shell and no stderr echo: kubectl output may hold deployment data."""
     try:
-        result = subprocess.run(
-            command,
-            input=None if data is None else data.encode(),
-            capture_output=True,
-            timeout=timeout,
-            check=False,
-            env=kind_lab.lab_env(),
-        )
+        with external_command():
+            result = subprocess.run(
+                command,
+                input=None if data is None else data.encode(),
+                capture_output=True,
+                timeout=timeout,
+                check=False,
+                env=kind_lab.lab_env(),
+            )
     except (subprocess.TimeoutExpired, OSError):
         raise LabError("EXTERNAL_CALL_TIMEOUT") from None
     if result.returncode:
@@ -1135,13 +1347,14 @@ def _patch(command: list[str], *, timeout: float) -> bytes:
     """``kubectl patch`` stdout; ``FLAG_CAS_CONFLICT`` for a definitive
     refusal, ``FLAG_WRITE_UNKNOWN`` only when the outcome cannot be known."""
     try:
-        result = subprocess.run(
-            command,
-            capture_output=True,
-            timeout=timeout,
-            check=False,
-            env=kind_lab.lab_env(),
-        )
+        with external_command():
+            result = subprocess.run(
+                command,
+                capture_output=True,
+                timeout=timeout,
+                check=False,
+                env=kind_lab.lab_env(),
+            )
     except (subprocess.TimeoutExpired, OSError):
         raise LabError("FLAG_WRITE_UNKNOWN") from None
     if result.returncode:
@@ -1337,9 +1550,11 @@ class LabTelemetry:
             query = urllib.parse.urlencode(
                 {"service": service, "start": low, "end": high, "limit": TRACE_LIMIT}
             )
+            checkpoint()  # before and after every sub-request (R1)
             payload, size = _get_json_sized(
                 f"{kind_lab.JAEGER}/api/traces?{query}", timeout
             )
+            checkpoint()
             read += size
             if read > MAX_SEARCH_BYTES or not isinstance(payload, dict):
                 return SpanQuery(tuple(found.values()), False)
@@ -1564,25 +1779,27 @@ class LocalPgLauncher:
             # attempt's private directory, removed right after (never argv).
             _write_pwfile(pwfile, passwords[self.owner])
             try:
-                subprocess.run(
-                    [
-                        _pg_binary("initdb"),
-                        "-D",
-                        str(data),
-                        "-U",
-                        self.owner,
-                        "--auth=scram-sha-256",
-                        f"--pwfile={pwfile}",
-                        "--no-locale",
-                        "--encoding=UTF8",
-                    ],
-                    check=True,
-                    timeout=120,
-                    capture_output=True,
-                    env=pg_env(),
-                )
+                with external_command():
+                    subprocess.run(
+                        [
+                            _pg_binary("initdb"),
+                            "-D",
+                            str(data),
+                            "-U",
+                            self.owner,
+                            "--auth=scram-sha-256",
+                            f"--pwfile={pwfile}",
+                            "--no-locale",
+                            "--encoding=UTF8",
+                        ],
+                        check=True,
+                        timeout=120,
+                        capture_output=True,
+                        env=pg_env(),
+                    )
             finally:
                 pwfile.unlink(missing_ok=True)
+            checkpoint()
             with (data / "postgresql.conf").open("a") as config:
                 # No Unix socket: a worktree path can exceed the 103-byte limit.
                 config.write(
@@ -1592,28 +1809,34 @@ class LocalPgLauncher:
                 )
             # Set before the start: a timed-out ``pg_ctl -w start`` may still
             # leave a running server; ``stop`` no-ops when there is no pid file.
+            checkpoint()
             started = True
-            subprocess.run(
-                [
-                    _pg_binary("pg_ctl"),
-                    "-D",
-                    str(data),
-                    "-l",
-                    str(data.parent / "postgres.log"),
-                    "-w",
-                    "start",
-                ],
-                check=True,
-                timeout=120,
-                capture_output=True,
-                # The postmaster inherits this environment, not ours.
-                env=pg_env(),
-            )
+            with external_command():
+                subprocess.run(
+                    [
+                        _pg_binary("pg_ctl"),
+                        "-D",
+                        str(data),
+                        "-l",
+                        str(data.parent / "postgres.log"),
+                        "-w",
+                        "start",
+                    ],
+                    check=True,
+                    timeout=120,
+                    capture_output=True,
+                    # The postmaster inherits this environment, not ours.
+                    env=pg_env(),
+                )
+            # A checkpoint before and after every DB operation (R1).
+            checkpoint()
             admin = dsn(self.owner, "postgres")
             with psycopg.connect(admin, autocommit=True, connect_timeout=5) as conn:
                 conn.execute(f"CREATE DATABASE {self.database}")
+            checkpoint()
             owner_dsn = dsn(self.owner)
             schema.migrate(owner_dsn, pg_dump=_pg_binary("pg_dump"))
+            checkpoint()
             with psycopg.connect(owner_dsn, autocommit=True, connect_timeout=5) as conn:
                 # A fresh cluster: the logins cannot pre-exist, so plain
                 # members of the migration's group roles are created here,
@@ -1626,22 +1849,29 @@ class LocalPgLauncher:
                             sql.Identifier(group),
                         )
                     )
+            checkpoint()
         except BaseException as exc:
+            if not isinstance(exc, Exception):
+                request_stop()  # a caught interrupt is a stop request (R3)
             # The caller never receives an instance it could stop, so the
             # server this call launched is stopped here (its own directory and
             # port only, through ``stop``'s pid check) before failing (r6).
+            # The cleanup is protected: the stop finishes and its result is
+            # checked before any interrupt is handled (r16, #273 item 1).
             stop_failed = False
-            if started:
-                try:
-                    self.stop(PgInstance(data, port, "", ""))
-                except Exception:  # noqa: BLE001 - reported as PG_STOP_FAILED
-                    stop_failed = True
+            with protected():
+                if started:
+                    try:
+                        self.stop(PgInstance(data, port, "", ""))
+                    except Exception:  # noqa: BLE001 - reported as PG_STOP_FAILED
+                        stop_failed = True
+            if stop_failed:
+                # A server that may still listen outranks the start failure
+                # and an interrupt: the attempt stops the round (never
+                # swallowed, never exit 0); the stop request stays set.
+                raise LabError("PG_STOP_FAILED") from None
             if not isinstance(exc, Exception):
                 raise  # Interrupted/KeyboardInterrupt keep their own path
-            if stop_failed:
-                # A server that may still listen outranks the start failure:
-                # the attempt stops the round (never swallowed, never exit 0).
-                raise LabError("PG_STOP_FAILED") from None
             code = exc.code if isinstance(exc, LabError) else "PG_START_FAILED"
             raise LabError(code) from None
         return PgInstance(
@@ -1665,21 +1895,22 @@ class LocalPgLauncher:
         ):
             raise LabError("PG_STOP_FAILED")
         try:
-            subprocess.run(
-                [
-                    _pg_binary("pg_ctl"),
-                    "-D",
-                    str(instance.directory),
-                    "-m",
-                    "fast",
-                    "-w",
-                    "stop",
-                ],
-                check=True,
-                timeout=120,
-                capture_output=True,
-                env=pg_env(),
-            )
+            with external_command():
+                subprocess.run(
+                    [
+                        _pg_binary("pg_ctl"),
+                        "-D",
+                        str(instance.directory),
+                        "-m",
+                        "fast",
+                        "-w",
+                        "stop",
+                    ],
+                    check=True,
+                    timeout=120,
+                    capture_output=True,
+                    env=pg_env(),
+                )
         except (subprocess.SubprocessError, OSError):
             raise LabError("PG_STOP_FAILED") from None
 

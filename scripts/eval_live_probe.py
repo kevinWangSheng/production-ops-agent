@@ -19,6 +19,7 @@ from opspilot.evaluation import ScenarioError
 from scripts import eval_live
 from scripts.eval_live_lab import (
     AttemptLedger,
+    Committed,
     FaultIntent,
     Interrupted,
     LabError,
@@ -26,16 +27,22 @@ from scripts.eval_live_lab import (
     PreObservation,
     active_marker,
     append_run_start,
+    await_fault,
     check_occupation,
+    checkpoint,
+    commit_fault,
     confirm_all_normal,
     fault_for,
     fault_gate,
     fault_guard,
-    inject_fault,
+    interrupt_scope,
     normal_window,
     observation_json,
+    protected,
     read_state,
+    request_stop,
     restore_fault,
+    stop_requested,
 )
 
 
@@ -106,6 +113,7 @@ def _probe_one(
         )
         with fault_guard(deps.ledger_root):
             try:
+                checkpoint()
                 if deps.identity.verify():
                     raise LabError("LAB_IDENTITY_UNCONFIRMED")
                 if read_state(deps.ledger_root) is not None:
@@ -119,28 +127,40 @@ def _probe_one(
                         config.batch,
                         fault_for(answer.injected.flag, answer.injected.variant),
                     )
+                    checkpoint()  # before the injection
                     injected = True
-                    result = inject_fault(intent, deps=deps, ledger=ledger)
-                    entry["fault"] = {
-                        "original_sha256": result.original_sha256,
-                        "injected_sha256": result.injected_sha256,
-                        "effective_at": _iso(result.effective_at),
-                        "restored": False,
-                        "washed": False,
-                    }
+
+                    def committed(fault: Committed) -> None:
+                        # Inside the commit's protected section, before the
+                        # propagation wait (R6, #273 item 3).
+                        entry["fault"] = {
+                            "original_sha256": fault.original_sha256,
+                            "injected_sha256": fault.injected_sha256,
+                            "effective_at": None,
+                            "restored": False,
+                            "washed": False,
+                        }
+
+                    result = commit_fault(
+                        intent, deps=deps, ledger=ledger, record=committed
+                    )
+                    effective_at = await_fault(result, deps=deps, ledger=ledger)
+                    entry["fault"]["effective_at"] = _iso(effective_at)
                     gate = fault_gate(
-                        answer.signature, confirmed_at=result.effective_at, deps=deps
+                        answer.signature, confirmed_at=effective_at, deps=deps
                     )
                 else:
                     confirmed = confirm_all_normal(deps, deps.flags.read())
                     gate = normal_window(signatures, not_before=confirmed, deps=deps)
-                ledger.write(
-                    "pre-observation.json",
-                    {**observation_json(gate), "raw": [dict(r) for r in gate.raw]},
-                )
+                with protected():
+                    ledger.write(
+                        "pre-observation.json",
+                        {**observation_json(gate), "raw": [dict(r) for r in gate.raw]},
+                    )
                 if not gate.passed:
                     entry["reason"] = gate.reason
             except (Interrupted, KeyboardInterrupt):
+                request_stop()
                 entry["interrupted"] = True
                 entry["reason"] = entry["reason"] or "INTERRUPTED"
             except LabError as exc:
@@ -160,9 +180,19 @@ def _probe_one(
     except OSError:
         # Occupation or guard file (any restore above already ran).
         entry["reason"] = entry["reason"] or "LAB_LEDGER_UNAVAILABLE"
+    except (Interrupted, KeyboardInterrupt):
+        # Before the guard (the occupation lock wait): nothing was touched.
+        request_stop()
+        entry["interrupted"] = True
+        entry["reason"] = entry["reason"] or "INTERRUPTED"
+    if stop_requested():
+        # A stop requested during a protected section (the restore) or a
+        # path without a checkpoint after it: the probe ends here (130).
+        entry["interrupted"] = True
     if gate is not None:
         entry["gate"] = observation_json(gate)
-    ledger.event("probe", "finished", reason=entry["reason"])
+    with protected():
+        ledger.event("probe", "finished", reason=entry["reason"])
     return entry, not (ledger.write_failed or evidence_failed)
 
 
@@ -175,15 +205,18 @@ def _restore(
     entry: dict[str, Any],
 ) -> None:
     try:
-        state = read_state(deps.ledger_root)
-        if state is None or state.get("attempt_id") != attempt_id:
-            return
-        restored = restore_fault(
-            config.round_id, attempt_id, signatures, deps=deps, ledger=ledger
-        )
-        if restored is not None and entry["fault"] is not None:
-            entry["fault"].update(restored=True, washed=True)
+        # The restore and its result are one protected section (r16).
+        with protected():
+            state = read_state(deps.ledger_root)
+            if state is None or state.get("attempt_id") != attempt_id:
+                return
+            restored = restore_fault(
+                config.round_id, attempt_id, signatures, deps=deps, ledger=ledger
+            )
+            if restored is not None and entry["fault"] is not None:
+                entry["fault"].update(restored=True, washed=True)
     except (Interrupted, KeyboardInterrupt):
+        request_stop()
         entry["closure_reason"] = "RESTORE_FAILED:INTERRUPTED"
     except LabError as exc:
         entry["closure_reason"] = f"RESTORE_FAILED:{exc.code}"
@@ -192,6 +225,11 @@ def _restore(
 
 
 def run_probe(config: eval_live.RoundConfig, deps: LiveDeps) -> eval_live.RoundResult:
+    with interrupt_scope():
+        return _run_probe(config, deps)
+
+
+def _run_probe(config: eval_live.RoundConfig, deps: LiveDeps) -> eval_live.RoundResult:
     refusal = probe_preflight(config, deps)
     if refusal is not None:
         return eval_live._refuse(config, refusal)
@@ -228,6 +266,7 @@ def run_probe(config: eval_live.RoundConfig, deps: LiveDeps) -> eval_live.RoundR
             deps.clock.now(),
         ):
             for index, slot in enumerate(config.slots):
+                checkpoint()  # before every slot
                 entry, ledger_ok = _probe_one(config, deps, slot, signatures)
                 entries.append(entry)
                 out = results[index]
@@ -257,6 +296,7 @@ def run_probe(config: eval_live.RoundConfig, deps: LiveDeps) -> eval_live.RoundR
         if eval_live._outranks(3, exit_code):
             status, exit_code, reason = "stopped", 3, exc.code
     except (Interrupted, KeyboardInterrupt):
+        request_stop()
         if eval_live._outranks(130, exit_code):
             status, exit_code, reason = "interrupted", 130, "INTERRUPTED"
     except OSError:
@@ -264,19 +304,12 @@ def run_probe(config: eval_live.RoundConfig, deps: LiveDeps) -> eval_live.RoundR
         if eval_live._outranks(1, exit_code):
             status, exit_code, reason = "stopped", 1, "LAB_LEDGER_UNAVAILABLE"
     evidence = eval_live.round_evidence(deps, config.round_id)
-    # Like run_round: the report is written with signals held and an
-    # interrupt raised meanwhile is remembered, so the final JSON always
+    # Like run_round: the report is written in a protected section and a
+    # stop requested meanwhile is read afterwards, so the final JSON always
     # comes out and the round then exits 130 (precedence 4 > 5 > 130).
-    late_interrupt = False
     written = False
-    with eval_live._deferred_interrupts():
-        try:
-            retained, own = eval_live._retained(deps, config.round_id)
-        except (Interrupted, KeyboardInterrupt):
-            (retained, own), late_interrupt = (
-                eval_live._retained(deps, config.round_id),
-                True,
-            )
+    with protected():
+        retained, own = eval_live._retained(deps, config.round_id)
         if own and eval_live._outranks(4, exit_code):
             # This round's intent survived a path cut short: --recover (r13).
             status, exit_code, reason = "stopped", 4, "FAULT_RECOVERY_REQUIRED"
@@ -294,15 +327,14 @@ def run_probe(config: eval_live.RoundConfig, deps: LiveDeps) -> eval_live.RoundR
                 evidence, ["probe.json"], document
             )
         except (Interrupted, KeyboardInterrupt):
+            request_stop()
             written = (evidence / "probe.json").is_file()
-            late_interrupt = True
-    late_interrupt = eval_live._take_pending() or late_interrupt
     if not written:
         # r11: an evidence write failure is exit 5 with the final JSON; a
         # retained fault (4) keeps its own exit code.
         if eval_live._outranks(5, exit_code):
             status, exit_code, reason = "stopped", 5, "EVIDENCE_WRITE_FAILED"
-    if late_interrupt and eval_live._outranks(130, exit_code):
+    if stop_requested() and eval_live._outranks(130, exit_code):
         status, exit_code, reason = "interrupted", 130, "INTERRUPTED"
     return eval_live.RoundResult(
         config.round_id, status, exit_code, reason, tuple(results)

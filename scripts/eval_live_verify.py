@@ -25,6 +25,12 @@ from opspilot.evaluation import (
     replay,
 )
 from opspilot.evaluation.codec import StorageError, decode, parse
+from scripts.eval_live_lab import (
+    checkpoint,
+    interrupt_scope,
+    protected,
+    stop_requested,
+)
 
 SCHEMA = "opspilot-eval-structural-replay-1"
 KINDS = ("model", "http", "tool", "delivery", "refusal")
@@ -102,12 +108,24 @@ def verify_replay(
     attempt_id: str | None = None,
     now: datetime | None = None,
 ) -> tuple[int, dict[str, Any]]:
+    with interrupt_scope():
+        return _verify_replay(round_id, evidence_root, recording_root, attempt_id, now)
+
+
+def _verify_replay(
+    round_id: str,
+    evidence_root: Path,
+    recording_root: Path,
+    attempt_id: str | None,
+    now: datetime | None,
+) -> tuple[int, dict[str, Any]]:
     runs = evidence_root / round_id / "runs"
     results: list[dict[str, Any]] = []
     if runs.is_dir():
         for path in sorted(runs.glob("*/summary.json")):
             if attempt_id is not None and path.parent.name != attempt_id:
                 continue
+            checkpoint()  # before every recording (R1)
             try:
                 capture = decode(EvaluationCapture, parse(path.read_bytes())["capture"])
             except (StorageError, OSError, KeyError, TypeError, ValueError):
@@ -119,6 +137,16 @@ def verify_replay(
                 continue
             results.append(_verify_one(round_id, capture, recording_root))
     if not results:
+        if stop_requested():
+            # A stop requested before this refusal (R10): 130, not 3.
+            return 130, {
+                "schema": SCHEMA,
+                "round": round_id,
+                "status": "interrupted",
+                "exit_code": 130,
+                "reason": "INTERRUPTED",
+                "results": [],
+            }
         document = {
             "schema": SCHEMA,
             "round": round_id,
@@ -138,13 +166,12 @@ def verify_replay(
         "reason": None,
         "results": results,
     }
-    from scripts.eval_live import _deferred_interrupts, _take_pending
-
-    # Signals are held while the record is created, so it is never left
-    # half-written; an interrupt then ends the run with 130 (5 outranks it).
-    with _deferred_interrupts():
+    # The record is written in a protected section, so it is never left
+    # half-written; a stop requested so far ends the run with 130 (5
+    # outranks it).
+    with protected():
         written = _write_exclusive(evidence_root / round_id, document, now)
-    interrupted = _take_pending()
+    interrupted = stop_requested()
     if not written:
         # Never overwrite and never raise: the result is still reported (r10).
         document["write_error"] = "EVIDENCE_WRITE_FAILED"

@@ -49,7 +49,13 @@ from opspilot.tools.registry import canonical_hash
 from opspilot.web import DurableEventLog, DurableEvidenceStore, DurableIncidentStore
 from opspilot.web.service import LEASE_SECONDS
 from opspilot.worker import Worker
-from scripts.eval_live_lab import LabError, LiveClock, write_private
+from scripts.eval_live_lab import (
+    LabError,
+    LiveClock,
+    checkpoint,
+    protected,
+    write_private,
+)
 from scripts.lab_evidence import (
     configure_lab_round,
     langsmith_client,
@@ -110,6 +116,34 @@ class _Delegate:
 
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
         return self.target(*args, **kwargs)
+
+
+class _Checkpointed:
+    """Checkpoints around every call of a recording proxy (r16 R8): outside
+    the proxy, so a completed physical call is recorded first; the resulting
+    ``Interrupted`` is a BaseException and passes the Run's error mapping."""
+
+    def __init__(self, target: Any) -> None:
+        self.target = target
+
+    def __getattr__(self, name: str) -> Any:
+        value = getattr(self.target, name)
+        if not callable(value):
+            return value
+
+        def call(*args: Any, **kwargs: Any) -> Any:
+            checkpoint()
+            result = value(*args, **kwargs)
+            checkpoint()
+            return result
+
+        return call
+
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        checkpoint()
+        result = self.target(*args, **kwargs)
+        checkpoint()
+        return result
 
 
 class _BusinessClock:
@@ -309,9 +343,9 @@ class OtelDemoInvestigator:
             def drive(hooks: Any) -> IncidentOutcome:
                 clock.hooks = hooks
                 hooks.input(canonical_bytes(input.as_json()))
-                model.target = hooks.model(client)
+                model.target = _Checkpointed(hooks.model(client))
                 client.capture_http = hooks.http
-                facade.target = hooks.tools(real)
+                facade.target = _Checkpointed(hooks.tools(real))
                 delivery.target = hooks.delivery
                 seen["runner"] = proceed()
                 clock.hooks = None
@@ -358,17 +392,18 @@ class OtelDemoInvestigator:
         except ValueError:
             # A Run left mid-attempt has no projectable final state.
             outcome = None
-        write_private(
-            request.ledger_dir / "investigator.json",
-            json.dumps(
-                {
-                    "runner_exception": seen.get("runner_exception"),
-                    "recording_error": seen.get("recording_error"),
-                    "error": error,
-                },
-                sort_keys=True,
-            ).encode(),
-        )
+        with protected():
+            write_private(
+                request.ledger_dir / "investigator.json",
+                json.dumps(
+                    {
+                        "runner_exception": seen.get("runner_exception"),
+                        "recording_error": seen.get("recording_error"),
+                        "error": error,
+                    },
+                    sort_keys=True,
+                ).encode(),
+            )
         report = _report(store, incident)
         ref = seen.get("recording_ref")
         finish = _finish_reason(request.recording_dir, ref) if ref is not None else None
@@ -439,7 +474,9 @@ def _traces(
     clock: LiveClock,
 ) -> tuple[TraceRecord, ...]:
     # Flush this attempt's spans before the bounded read-back, then reopen
-    # the exporter for the next attempt.
+    # the exporter for the next attempt; checkpoints before the flush and
+    # after the read-back (R1).
+    checkpoint()
     tracing.shutdown()
     evidence = trace_evidence(
         {"mode": "lab", "trace_id": trace_id},
@@ -448,6 +485,7 @@ def _traces(
         client_factory=langsmith_client,
     )
     tracing.configure(os.environ)
+    checkpoint()
     raw = str(evidence.get("read_back"))
     read_back = (
         raw
