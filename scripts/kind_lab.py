@@ -19,7 +19,8 @@ step 4 (one account per role, see ``prometheus_accounts``) and ``env-file``
 writes a role's credentials for the engineer to source; ``stop`` stops the colima VM and keeps the
 cluster and releases installed (no ``kind delete``, no ``helm uninstall``);
 ``fault inject|restore`` patches the ``flagd-config`` ConfigMap
-(``paymentFailure`` -> ``100%`` / back to ``off``), recording original and
+(``paymentFailure`` -> ``100%`` by default, or ``--flag`` one of
+``FAULT_FLAGS`` to its fault variant / back to ``off``), recording original and
 changed bytes with SHA-256 under an engineer-only history directory and
 refusing a second injection or a restore over an unexpected edit, like the
 M0 ``development_fault.py`` hook.
@@ -102,6 +103,14 @@ FLAG = "paymentFailure"
 FLAG_FILE = "demo.flagd.json"
 NORMAL_VARIANT = "off"
 FAULT_VARIANT = "100%"
+# The only flags the fault hook may move, each to its one fault variant
+# (eval PR-C, A2): the payment default above plus the two development
+# scenarios' flags. No free flag or variant is accepted.
+FAULT_FLAGS = {
+    "paymentFailure": FAULT_VARIANT,
+    "productCatalogFailure": "on",
+    "cartFailure": "on",
+}
 # Everything this script writes on the host lives under this git-ignored,
 # lab-owned directory: fault history, the lab kubeconfig and Helm's
 # repository config/cache/data. Not configurable (PR #111 review P1: an
@@ -989,21 +998,26 @@ def cmd_stop(args: argparse.Namespace) -> int:
     return run(["colima", "stop", PROFILE]).returncode
 
 
-def mutate_flags(raw: bytes, variant: str, expected: str) -> bytes:
-    """``demo.flagd.json`` with ``paymentFailure`` moved from ``expected`` to ``variant``.
+def mutate_flags(raw: bytes, variant: str, expected: str, *, flag: str = FLAG) -> bytes:
+    """``demo.flagd.json`` with ``flag`` moved from ``expected`` to ``variant``.
 
     Refuses when the flag is not in the expected state so a repeat injection
-    or a restore of an untouched file is never silently accepted.
+    or a restore of an untouched file is never silently accepted, and refuses
+    a flag outside ``FAULT_FLAGS`` or one the live file does not define.
     """
+    if flag not in FAULT_FLAGS:
+        raise SystemExit(f"{flag} is not an allowed fault flag; refusing")
     data = json.loads(raw)
-    flag = data["flags"][FLAG]
-    if flag["defaultVariant"] != expected:
+    entry = data["flags"].get(flag)
+    if not isinstance(entry, dict):
+        raise SystemExit(f"{flag} is not a flag of {FLAG_FILE}; refusing")
+    if entry["defaultVariant"] != expected:
         raise SystemExit(
-            f"{FLAG} is {flag['defaultVariant']!r}, expected {expected!r}; refusing"
+            f"{flag} is {entry['defaultVariant']!r}, expected {expected!r}; refusing"
         )
-    if variant not in flag["variants"]:
-        raise SystemExit(f"{variant!r} is not a variant of {FLAG}")
-    flag["defaultVariant"] = variant
+    if variant not in entry["variants"]:
+        raise SystemExit(f"{variant!r} is not a variant of {flag}")
+    entry["defaultVariant"] = variant
     return (json.dumps(data, indent=2) + "\n").encode()
 
 
@@ -1032,8 +1046,9 @@ def cmd_fault(args: argparse.Namespace) -> int:
     if args.action == "inject":
         if original.exists() or changed.exists():
             raise SystemExit("Existing experiment history; refuse repeat injection.")
-        variant = FAULT_VARIANT
-        payload = mutate_flags(raw, variant, NORMAL_VARIANT)
+        flag = args.flag
+        variant = FAULT_FLAGS[flag]
+        payload = mutate_flags(raw, variant, NORMAL_VARIANT, flag=flag)
         # The history files are written only after the patch is verified
         # below, so a failed or unverified injection leaves no record that
         # would make a retry refuse (Codex review P2 on PR #111); the
@@ -1049,9 +1064,19 @@ def cmd_fault(args: argparse.Namespace) -> int:
             )
         variant = NORMAL_VARIANT
         payload = original.read_bytes()
+        # The flag this experiment moved, read from its own snapshots.
+        before = json.loads(payload)["flags"]
+        after = json.loads(changed.read_bytes())["flags"]
+        moved = sorted(
+            name
+            for name in after
+            if name in before
+            and after[name].get("defaultVariant") != before[name].get("defaultVariant")
+        )
+        flag = moved[0] if len(moved) == 1 else FLAG
     patch = json.dumps({"data": {FLAG_FILE: payload.decode()}})
     print(
-        f"+ kubectl -n {NAMESPACE} patch configmap flagd-config ({FLAG} -> {variant})"
+        f"+ kubectl -n {NAMESPACE} patch configmap flagd-config ({flag} -> {variant})"
     )
     proc = capture(
         kubectl(
@@ -1086,6 +1111,7 @@ def cmd_fault(args: argparse.Namespace) -> int:
                 {
                     "at": datetime.datetime.now(datetime.UTC).isoformat(),
                     "action": args.action,
+                    "flag": flag,
                     "before_sha256": hashlib.sha256(raw).hexdigest(),
                     "after_sha256": expected_sha,
                     "live_sha256": live_sha,
@@ -1137,6 +1163,7 @@ def main(argv: list[str] | None = None) -> int:
     fault = sub.add_parser("fault", help="developer-only fault hook (flagd ConfigMap)")
     fault.add_argument("action", choices=["inject", "restore"])
     fault.add_argument("--experiment-id")
+    fault.add_argument("--flag", choices=sorted(FAULT_FLAGS), default=FLAG)
     fault.set_defaults(func=cmd_fault)
     args = parser.parse_args(argv)
     return int(args.func(args))
