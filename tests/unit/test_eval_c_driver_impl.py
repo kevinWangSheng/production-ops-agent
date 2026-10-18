@@ -271,6 +271,7 @@ def make_env(tmp_path: Path) -> dict[str, Any]:
     ref: dict[str, Any] = {}
     identity, ports, pg = Identity(), Ports(), Pg(ref)
     investigator = Investigator(lab, clock)
+    env_checker = EnvOk()
     deps = LiveDeps(
         clock=clock,
         flags=lab,
@@ -287,6 +288,7 @@ def make_env(tmp_path: Path) -> dict[str, Any]:
         pg_root=tmp_path / "pg",
         scenarios_root=SCENARIOS,
         flagd_url="http://127.0.0.1:18013",
+        env=env_checker,
     )
     ref["deps"] = deps
     reserve(deps)
@@ -298,7 +300,16 @@ def make_env(tmp_path: Path) -> dict[str, Any]:
         ports=ports,
         pg=pg,
         investigator=investigator,
+        env_checker=env_checker,
     )
+
+
+class EnvOk:
+    def __init__(self) -> None:
+        self.result: str | None = None
+
+    def check(self) -> str | None:
+        return self.result
 
 
 def reserve(deps: LiveDeps, holder: str = "lead", batch: str = "b1", hours: int = 4):
@@ -348,6 +359,7 @@ def summary(deps: LiveDeps, attempt_id: str, round_id: str = "r1") -> dict[str, 
         ("port", "PG_PORT_IN_USE"),
         ("flag_on", "FLAGS_NOT_NORMAL"),
         ("round_exists", "ROUND_EXISTS"),
+        ("env", "ENV_UNCONFIRMED"),
     ],
 )
 def test_preflight_refuses_without_starting_any_attempt(env, case, code):
@@ -370,6 +382,8 @@ def test_preflight_refuses_without_starting_any_attempt(env, case, code):
         env["lab"].raw = json.dumps(data).encode()
     elif case == "round_exists":
         (deps.evidence_root / "r1").mkdir(parents=True)
+    elif case == "env":
+        env["env_checker"].result = "ENV_UNCONFIRMED"
     occupation_before = (
         (deps.ledger_root / "occupation.json").read_bytes()
         if (deps.ledger_root / "occupation.json").exists()
@@ -599,6 +613,53 @@ def test_a_stale_submission_is_setup_failed(env):
     result = eval_live.run_round(config(deps, ["eval-cart-failure"]), deps)
     slot = result.slots[0]
     assert (slot.status, slot.reason) == ("setup_failed", "PRE_OBSERVATION_STALE")
+    # The Run already created keeps its ID (attempt + private ledger).
+    assert slot.product_run_id is not None
+    stored = summary(deps, slot.attempt_id)
+    assert stored["capture"]["attempt"]["product_run_id"] == slot.product_run_id
+    assert stored["capture"]["attempt"]["status"] == "setup_failed"
+    events = [
+        json.loads(line)
+        for line in (deps.ledger_root / "r1" / slot.attempt_id / "lifecycle.jsonl")
+        .read_text()
+        .splitlines()
+    ]
+    stale = next(e for e in events if e["event"] == "stale")
+    assert stale["detail"]["product_run_id"] == slot.product_run_id
+
+
+def test_a_foreign_fault_appearing_during_setup_is_never_touched(env):
+    deps, lab = env["deps"], env["lab"]
+    foreign = json.dumps({"ledger": "/elsewhere", "flag": "adFailure"})
+    real_verify = env["identity"].verify
+
+    def verify():
+        # After the preflight, another holder writes its restore intent.
+        if not (deps.ledger_root / "fault-active.json").exists() and list(
+            deps.evidence_root.rglob("attempt.json")
+        ):
+            (deps.ledger_root / "fault-active.json").write_text(foreign)
+        return real_verify()
+
+    env["identity"].verify = verify
+    cfg = config(deps, ["eval-cart-failure", "eval-normal-1"])
+    result = eval_live.run_round(cfg, deps)
+    first, later = result.slots
+    assert (first.status, first.reason) == ("setup_failed", "LAB_FAULT_FOREIGN")
+    assert later.status == "not_started" and later.reason == "ROUND_STOPPED"
+    assert (result.exit_code, result.status) == (1, "stopped")
+    assert lab.writes == [] and env["investigator"].requests == []
+    assert (deps.ledger_root / "fault-active.json").read_text() == foreign
+
+
+def test_final_statuses_are_never_unknown(env):
+    deps = env["deps"]
+    env["lab"].complete = False
+    eval_live.run_round(config(deps, ["eval-normal-1"]), deps)
+    for path in deps.evidence_root.rglob("summary.json"):
+        status = json.loads(path.read_text())["capture"]["attempt"]["status"]
+        assert status != "unknown"
+    assert all(s["status"] != "unknown" for s in lifecycle(deps)["slots"])
 
 
 # -- normal attempts --------------------------------------------------------------

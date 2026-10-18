@@ -170,6 +170,10 @@ class Investigator(Protocol):
     def investigate(self, request: Any) -> Any: ...
 
 
+class EnvChecker(Protocol):
+    def check(self) -> str | None: ...
+
+
 @dataclass(frozen=True)
 class LiveDeps:
     clock: LiveClock
@@ -187,6 +191,8 @@ class LiveDeps:
     pg_root: Path
     scenarios_root: Path
     flagd_url: str
+    # None = the environment preconditions hold, else "ENV_UNCONFIRMED".
+    env: EnvChecker
 
 
 # -- private ledger -----------------------------------------------------------
@@ -537,7 +543,8 @@ def inject_fault(
     """
     root = deps.ledger_root
     if read_state(root) is not None:
-        raise LabError("FAULT_RECOVERY_REQUIRED")
+        # Someone else's intent: never written over, never restored by us.
+        raise LabError("LAB_FAULT_FOREIGN")
     current = deps.flags.read()
     confirm_all_normal(deps, current)
     fault = intent.fault
@@ -894,6 +901,19 @@ def normal_window(
 
 
 # -- real adapters (live only; never used by offline tests) -------------------
+
+
+class LabEnvChecker:
+    """The lab trace target and the otel-demo profile, from ``os.environ``
+    (credentials were already read by ``prepare_round``)."""
+
+    def check(self) -> str | None:
+        from opspilot import tracing
+
+        env = os.environ
+        if env.get("OPSPILOT_TOOL_PROFILE") != "otel-demo":
+            return "ENV_UNCONFIRMED"
+        return "ENV_UNCONFIRMED" if tracing.check_lab_target(env) else None
 
 
 class SystemClock:

@@ -421,6 +421,9 @@ def _refuse(config: RoundConfig, reason: str) -> RoundResult:
 
 def preflight(config: RoundConfig, deps: LiveDeps) -> str | None:
     """A refusal code, or None; nothing here writes or mutates anything."""
+    environment = deps.env.check()
+    if environment is not None:
+        return environment
     if round_evidence(deps, config.round_id).exists():
         return "ROUND_EXISTS"
     try:
@@ -753,6 +756,10 @@ def _fail(state: _Attempt, code: str) -> None:
         state.reason = code
     state.status = "aborted" if state.investigating else "setup_failed"
     state.ledger.event(state.stage, "failed", reason=state.reason)
+    if code == "LAB_FAULT_FOREIGN":
+        # Another holder's fault is live: no further slot may start (exit 1;
+        # exit 4 stays for this driver's own restore/wash failure).
+        state.stop = _Stop(1, code)
 
 
 def _guarded(
@@ -769,7 +776,8 @@ def _guarded(
     if deps.identity.verify():
         raise LabError("LAB_IDENTITY_UNCONFIRMED")
     if read_state(deps.ledger_root) is not None:
-        raise LabError("FAULT_RECOVERY_REQUIRED")
+        # Appeared after the preflight: not ours, so touch nothing (r3/7).
+        raise LabError("LAB_FAULT_FOREIGN")
     state.stage = "pg"
     if deps.ports.in_use(config.pg_port):
         raise LabError("PG_PORT_IN_USE")
@@ -844,9 +852,19 @@ def _guarded(
         and result.submitted_at > submit_not_after
     )
     if stale:
+        # Still setup_failed after the call (r3/2); a Run that was already
+        # created keeps its ID in the attempt and the private ledger.
         state.investigating = False
         state.status, state.reason = "setup_failed", "PRE_OBSERVATION_STALE"
         state.stage = "submit"
+        ledger.event(
+            "submit",
+            "stale",
+            product_run_id=result.product_run_id,
+            submitted_at=None
+            if result.submitted_at is None
+            else result.submitted_at.isoformat(),
+        )
     elif result.error is not None:
         state.status, state.reason = "aborted", result.error
     elif result.recording_ref is None or result.recording_error is not None:
@@ -1334,6 +1352,7 @@ def real_deps(flagd_url: str, round_id: str) -> LiveDeps:
         HttpFlagResolver,
         KindLabIdentity,
         KubectlFlagStore,
+        LabEnvChecker,
         LabTelemetry,
         LocalPgLauncher,
         SocketPortProbe,
@@ -1359,6 +1378,7 @@ def real_deps(flagd_url: str, round_id: str) -> LiveDeps:
         pg_root=ROOT / "tmp/eval-live",
         scenarios_root=ROOT / "evals/scenarios",
         flagd_url=flagd_url,
+        env=LabEnvChecker(),
     )
 
 
