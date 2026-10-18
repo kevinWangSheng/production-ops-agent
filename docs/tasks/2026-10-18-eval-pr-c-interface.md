@@ -45,19 +45,20 @@
 | 5 | 证据写入失败（journal/summary/lifecycle），lab 已恢复；整轮停止 |
 | 130 | 收到 SIGINT/SIGTERM，且当前 attempt 已恢复、洗净；后续槽位 `not_started`。恢复失败时改为 4 |
 
-`--recover`：只处理 `round == R` 的保留故障状态，按第 5 节恢复规则执行并洗净。成功删除状态后退出 0；仍失败退出 4；状态不存在或属于其他 round 退出 3。它不修改已写的 summary 与 lifecycle，只追加私有 `recovery.jsonl`，并独占新建公开 `recovery-<UTC>.json`（`opspilot-eval-live-recovery-1`：round、attempt_id、recovered_at）。
+`--recover`：只处理 `round == R` 的保留故障状态，按第 5 节恢复规则执行并洗净。成功删除状态后退出 0；仍失败退出 4；状态不存在或属于其他 round 退出 3。它不修改已写的 summary 与 lifecycle，只追加私有 `recovery.jsonl`，并独占新建公开 `recovery-<UTC>.json`（`opspilot-eval-live-recovery-1`：round、attempt_id、recovered_at）。r10：`--recover` 总是只构造 lab 接缝（与 `--probe` 相同：flag store、flagd、telemetry、identity、占用/guard），不读 `M0_ENV_FILE`、不需要模型或 LangSmith 凭据，因此探测轮与正式轮遗留的故障都用同一条命令恢复；不接受与 `--probe` 组合。开始时先做 `env` 检查（只要求 lab Prometheus 账号，洗净要用），不满足退出 3（`ENV_UNCONFIRMED`），不写入任何东西。
 
 `--probe`（r8，A11 生命周期探测）：`--mode live --probe --round R --scenario ID [...] --n 1 --parallel 1 --holder H --batch B --flagd-url URL`，不需要 `--pg-port`。每个场景执行一次真实 lab 生命周期，不建产品 Run、不调模型、不启 PG、不查余额、不建 LangSmith 项目，也不写 journal/summary/aggregate（不冒充 attempt）：
 - 预检：`env`（只要求 lab Prometheus 账号可用，不读 `M0_ENV_FILE`）→ `ROUND_EXISTS` → 占用 → 已有 `fault-active.json` → fault guard → identity → 全部 flag 正常；拒绝退出 3。通过后照常追加 `run-starts.jsonl`。
 - fault 场景：持有 fault guard，按第 5 节写意图并注入（attempt_id 固定为 `probe-<scenario_id>`），等 flagd 生效，跑第 6 节 `fault_gate`，然后无论门槛结果如何都按第 5 节恢复并洗净。normal 场景：确认全部 flag 正常后跑 `normal_window`，不写 ConfigMap。
-- 退出码：0 = 每个场景门槛通过且恢复、洗净完成；1 = 有场景门槛未通过但 lab 已恢复；3 = 预检拒绝；4 = 恢复或洗净失败（保留 `fault-active.json`，后续场景不执行，可用 `--recover --round R` 恢复）；130 = 中断且已恢复。`--n` 只接受 1。
+- 异主状态（r10）：预检之后某场景开始时出现不属于本场景的 `fault-active.json`（或注入入口检查时出现），与正式轮相同按第 5 节处理：ConfigMap 零写入、不改动该文件、该场景 reason=`LAB_FAULT_FOREIGN`，整轮停止，后续场景 `not_started`（`ROUND_STOPPED`），退出 1。
+- 退出码：0 = 每个场景门槛通过且恢复、洗净完成；1 = 有场景门槛未通过但 lab 已恢复，或因 `LAB_FAULT_FOREIGN` 停轮；3 = 预检拒绝；4 = 恢复或洗净失败（保留 `fault-active.json`，后续场景不执行，可用 `--recover --round R` 恢复）；130 = 中断且已恢复。`--n` 只接受 1。
 - 输出：私有 `<ledger_root>/<R>/probe-<scenario_id>/`（与 attempt 相同的 lifecycle.jsonl、flags-*.json、pre-observation.json、wash-*.json）；公开 `docs/evidence/eval/<R>/probe.json`（`opspilot-eval-live-probe-1`：每个场景的 scenario_id、kind、flag、gate{passed, reason, window, matched_span_ids, trace_ids, checkout_calls}、fault{original_sha256, injected_sha256, effective_at, restored, washed}、reason、closure_reason，以及 round_status、exit_code）。stdout 最后一行同第 2 节格式。
 
 `--verify-replay`（r9，A11 零模型结构回放核验）：`--verify-replay --round R [--attempt ID]`，不需要也不接受 `--mode/--scenario/--n/--parallel/--pg-port/--probe/--dry-run`，`--holder/--batch/--flagd-url` 可省略。只读本地文件，不调用任何 `LiveDeps` 接缝，不发模型、网络、kubectl 或 PG 调用：
 - 对 `docs/evidence/eval/<R>/runs/*/summary.json`（或 `--attempt` 指定的那一个）中 `capture.recording_ref` 非 null 的每个 attempt：按 `recording_ref.sha256` 对 `<recording_root>/eval-live-<R>-<attempt_id>/recording.json` 执行 `load_recording`（逐件核验），用 summary 的 attempt 与 `usage.epoch` 重做 `check_recording_binding`，再执行 `replay(mode="structural", investigator=None)`。
 - 结构回放所用的 manifest 是 summary 中的轮 manifest，只把 `replay_fixture` 维度换成 `hash=<recording sha256>`；attempt 为 `mode="structural"`、`attempt_id=<原 id>-structural`、`product_run_id=None`、其余身份同原 attempt。
 - 每项结果：`attempt_id, recording_sha256, loaded, binding_ok, structural_verified, error, event_counts{model,http,tool,delivery,refusal}`；任何一步失败以固定码填 `error`，不抛出。
-- 退出码：0 = 至少一项且全部 `structural_verified`；1 = 有任一项失败；3 = 没有可核验的 summary（`NOTHING_TO_VERIFY`）或 round 证据目录不存在。stdout 输出一个 JSON 对象 `{"round","status":"verified|failed|refused","exit_code","results":[...]}`；另独占新建公开 `docs/evidence/eval/<R>/structural-replay.json`（`opspilot-eval-structural-replay-1`，同上内容），已存在则改写为 `structural-replay-<UTC>.json`。
+- 退出码：0 = 至少一项且全部 `structural_verified`；1 = 有任一项失败；3 = 没有可核验的 summary（`NOTHING_TO_VERIFY`）或 round 证据目录不存在。stdout 输出一个 JSON 对象 `{"round","status":"verified|failed|refused","exit_code","results":[...]}`；另独占新建公开 `docs/evidence/eval/<R>/structural-replay.json`（`opspilot-eval-structural-replay-1`，同上内容），已存在则改写为 `structural-replay-<UTC>.json`；r10：再冲突时依次尝试 `structural-replay-<UTC>-2.json`、`-3` …，每次都是独占创建，绝不覆盖。仍无法写出（目录不可写或候选名用尽）时不抛异常：stdout 照常输出完整 JSON，另带 `"write_error": "EVIDENCE_WRITE_FAILED"`，退出码 5。
 
 stdout 最后一行是一个 JSON 对象：`{"round", "status": "finished|stopped|interrupted|refused|recovered", "exit_code", "reason", "slots": [{scenario_id, repetition, attempt_id, status}]}`。不含凭据、原始遥测或报告正文。
 
