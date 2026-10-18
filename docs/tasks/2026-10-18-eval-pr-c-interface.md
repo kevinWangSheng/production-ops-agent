@@ -183,7 +183,7 @@ F11 兼容键: ledger(attempt 私有目录绝对路径), flag, normal, variant,
 - 恢复（幂等，正常结束、异常、超时、`Interrupted` 都会执行）：
   1. 状态的 `round/attempt_id` 必须属于当前调用，否则 `FAULT_BELONGS_TO_ANOTHER_RUN`，不写入。
   2. 读取 live ConfigMap。uid 不等于 `configmap_uid` 时报 `FLAG_OBJECT_REPLACED` 并停止。
-  3. live = injected：以当前版本为条件 CAS 写回 original。live = original：做一次带 fence 的 CAS（排除迟到的注入提交），内容不变。其他值：`FLAGS_CHANGED_REFUSE_RESTORE`，不覆盖他人改动，保留状态。
+  3. live = injected：以当前版本为条件、带本次写入专属 fence 的 CAS 写回 original。live = original：做一次带 fence 的 CAS（排除迟到的注入提交），内容不变。（r7：驱动对 ConfigMap 的每一次写入——注入与两种恢复——都带一个新生成的、只属于这次写入的 fence 值。）其他值：`FLAGS_CHANGED_REFUSE_RESTORE`，不覆盖他人改动，保留状态。
   4. 回读 SHA = `original_sha256`，flagd 解析回正常 variant（≤600 s），然后把 phase 改为 restored_unwashed，执行洗净（第 6 节，≤600 s；预算含端点，恰好在 600 s 结束的窗口照常判定）。洗净失败的原因码就是 `normal_window` 的 `reason`（`NORMAL_WINDOW_UNCONFIRMED`），因此 `closure_reason="RESTORE_FAILED:NORMAL_WINDOW_UNCONFIRMED"`（r5 更正：实现曾用未写入接口的 `WASH_FAILED`）。
   5. 洗净通过后才删除 `fault-active.json`。任一步失败都保留文件，本轮停止并退出 4，不释放占用。
 - 传播等待：每 5 s 轮询一次，单次探测 ≤5 s，总预算 ≤600 s（monotonic）。超时原因码 `FLAG_PROPAGATION_UNCONFIRMED`。
@@ -326,6 +326,7 @@ docs/evidence/eval/<R>/aggregate.json                   # write_round，opspilot
 - **fault guard 覆盖整个 attempt**：从 setup 到恢复与洗净结束一直持有，不在调查后释放再重取。
 - **恢复的写入结果未知**：恢复写入抛 `FLAG_WRITE_UNKNOWN` 时不立即失败，以回读决定：内容 SHA 等于 `original_sha256`、uid 不变且 resourceVersion 已前进才算恢复成功，否则 `FLAG_RESTORE_UNVERIFIED`。CAS 冲突（`FLAG_CAS_CONFLICT`）直接失败并保留状态。
 - **确定冲突与结果未知（r6，独立审查 P2）**：只有真正不确定的结果（超时、传输错误、写后响应不可解析）才是 `FLAG_WRITE_UNKNOWN` 并进入回读判定；服务器明确拒绝（JSON patch `test` 失败、409 Conflict、resourceVersion 前置条件不符）一律是 `FLAG_CAS_CONFLICT`，恢复停止，`fault-active.json` 保留，绝不按成功处理。fence 写入结果未知时，回读还必须看到本次的 fence 注解（`FlagConfig.fence` 等于本次写入的值），只有 resourceVersion 前进（可能是他人写入）不算成功。`FlagConfig.fence` 默认 None，假对象可以不设；那样 fence 未知结果总判 `FLAG_RESTORE_UNVERIFIED`。
+- **每次写入都带 fence（r7，独立审查复验 P2）**：注入、把 injected 写回 original、对 original 的 fence 写入，三者都以新生成的 fence 值调用 `FlagStore.replace(..., fence=<值>)`；驱动没有任何不带 fence 的 ConfigMap 写入。任何恢复写入的结果为 `FLAG_WRITE_UNKNOWN` 时，只有回读同时满足四项才算成功：内容 SHA = `original_sha256`、uid 不变、resourceVersion 已前进、`fence` 等于这次写入的值；否则 `FLAG_RESTORE_UNVERIFIED`，`fault-active.json` 与意图保留。因此 `FlagStore` 的实现（含假对象）须在写入时记录 fence 并在 `read()` 的 `FlagConfig.fence` 返回当前注解值，否则结果未知的恢复永远判为未核验。fence 注解写在 `opspilot.dev/eval-live-restore-fence`，写入时保留其他注解；F11 `restore_fault`/`patch_flags` 与 `kind_lab.py fault` 只比较 `demo.flagd.json` 数据（及 F11 自己 CAS 用的 resourceVersion），不读取这个注解，不受影响。
 - **轮 manifest（Q1）的两个维度**：`registry = live.registry_hash(注册 DTO)`，`permissions = live.scope_policy_hash(scope)`；后者去掉 scope_id、subject_id、run_id、三个 generation、window、default_query_window、deadline，另加 `window_seconds` 与「是否有 default_query_window」。驱动用 `template_scope(config)` 预先算出，真实领取的 scope 必须得到同一值；`check_recording_binding` 按第 13 节最后一条核对（6610ff5 中「删除该比较」的更正已按 lead 裁决撤回）。
 - **录制引用（r5）**：只有核验通过（第 14 节首条）的录制才写入 summary 的 `recording_ref`；未通过核验的 attempt 为 aborted，`recording_ref=null`，原始包仍留在私有录制目录。槽位的 `status/stage/reason` 以核验后的结果为准，与 summary 一致。
 - **录制父目录（r5 澄清第 8 节）**：驱动在调用 Investigator 之前以 700 权限创建缺失的 `recording_root`；包目录本身仍由 `record()` 独占创建。
