@@ -5,6 +5,7 @@ from dataclasses import replace
 from types import SimpleNamespace
 
 import pytest
+from opspilot.evaluation.live import registry_hash, scope_policy_hash
 
 from opspilot.evaluation import (
     DimensionValue,
@@ -36,6 +37,23 @@ def q1_context():
     manifest = replace(b2.manifest(), round_id=s.ROUND)
     attempt = b2.attempt("live", manifest, product_run_id="CANARY-RUN")
     ctx = s.recording_context(attempt, manifest)
+    snapshot = ctx.tool_snapshots[0]
+    manifest = replace(
+        manifest,
+        dimensions={
+            **manifest.dimensions,
+            "registry": DimensionValue(
+                "hash", registry_hash(snapshot.tools, snapshot.targets), None
+            ),
+            "permissions": DimensionValue(
+                "hash", scope_policy_hash(snapshot.scope), None
+            ),
+        },
+    )
+    attempt = replace(attempt, manifest_hash=manifest_hash(manifest))
+    from opspilot.evaluation import bind_tool_snapshots
+
+    ctx = bind_tool_snapshots(ctx, ctx.tool_snapshots, manifest)
     return manifest, attempt, ctx
 
 
@@ -43,6 +61,10 @@ def test_q1_valid_per_attempt_binding_accepts_different_registry_and_permissions
     tmp_path,
 ):
     manifest, attempt, ctx = q1_context()
+    for dimension in ("registry", "permissions"):
+        assert (
+            ctx.source_manifest.dimensions[dimension] != manifest.dimensions[dimension]
+        )
     ref = record(
         b2.source_driver(requests=[], result=b2.outcome(())),
         destination=tmp_path / "bound",
@@ -146,7 +168,7 @@ COMMON_VIEW = {
 }
 
 
-def collision_driver(*, cite_both=False, count=2, with_identity=False):
+def collision_driver(*, cite_both=False, count=2, with_identity=False, cache=False):
     """Legacy sparse views can be byte-identical despite distinct evidence IDs.
 
     Produce every result, then generate their deliveries in order. Only the
@@ -161,8 +183,11 @@ def collision_driver(*, cite_both=False, count=2, with_identity=False):
                         calls=tuple(f"call-{i}" for i in range(count)),
                         params=[b2.REQ_A["params"]] * count,
                     ),
-                    b2.reply(content="done"),
+                    b2.reply(calls=("cache-call",), params=[b2.REQ_A["params"]])
+                    if cache
+                    else b2.reply(content="done"),
                 ]
+                + ([b2.reply(content="done")] if cache else [])
             )
         )
         tools = hooks.tools(
@@ -207,20 +232,42 @@ def collision_driver(*, cite_both=False, count=2, with_identity=False):
             }
             hooks.delivery(result.model_view, message)
             messages.append(message)
-        model.complete(
-            replace(
-                call,
-                messages=call.messages
-                + (
-                    {
-                        "role": "assistant",
-                        "content": None,
-                        "tool_calls": list(first.tool_calls),
-                    },
-                    messages[0],
-                ),
-            )
+        second_call = replace(
+            call,
+            messages=call.messages
+            + (
+                {
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": list(first.tool_calls),
+                },
+                messages[0],
+            ),
         )
+        second = model.complete(second_call)
+        if cache:
+            message = {
+                "role": "tool",
+                "tool_call_id": second.tool_calls[0]["id"],
+                "content": canonical(dict(results[0].model_view)),
+            }
+            # Every physical tool retains its own parented delivery. This
+            # additional delivery belongs to a new model call served from cache.
+            hooks.delivery(results[0].model_view, message)
+            model.complete(
+                replace(
+                    second_call,
+                    messages=second_call.messages
+                    + (
+                        {
+                            "role": "assistant",
+                            "content": second.content,
+                            "tool_calls": list(second.tool_calls),
+                        },
+                        message,
+                    ),
+                )
+            )
         hooks.finish(b2.END)
         return b2.outcome(("ev-1", "ev-2") if cite_both else ("ev-1",))
 
@@ -264,19 +311,33 @@ def test_234_cache_delivery_requires_unique_verifiable_identity(
     tmp_path, count, with_identity
 ):
     pkg = tmp_path / "cache"
-    record(
-        collision_driver(count=count, with_identity=with_identity),
-        destination=pkg,
-        context=b2.context(),
-    )
-    doc = b2.package_json(pkg)
-    b2.events_of(doc, "delivery")[0]["parent"] = None
-    digest = b2.write_recording(pkg, doc)
+
+    def create():
+        return record(
+            collision_driver(count=count, with_identity=with_identity, cache=True),
+            destination=pkg,
+            context=b2.context(),
+        )
+
     if count == 2 and not with_identity:
         with pytest.raises(RecordingError, match="^IDENTITY_MISMATCH$"):
-            load_recording(pkg / "recording.json", expected_hash=digest)
+            create()
     else:
-        assert load_recording(pkg / "recording.json", expected_hash=digest)
+        ref = create()
+        recording = load_recording(pkg / ref.path, expected_hash=ref.sha256)
+        doc = b2.package_json(pkg)
+        tools = b2.events_of(doc, "tool")
+        deliveries = b2.events_of(doc, "delivery")
+        assert len(tools) == count
+        assert len(deliveries) == count + 1
+        assert [delivery["parent"] for delivery in deliveries[:count]] == [
+            tool["seq"] for tool in tools
+        ]
+        assert deliveries[-1]["parent"] is None
+        from opspilot.evaluation import evidence_from_recording
+
+        evidence = evidence_from_recording(recording, outcome=recording.outcome)
+        assert evidence.delivered["ev-1"].delivered
 
 
 def replay_driver(*, mutate=False, fail=False):
@@ -408,3 +469,48 @@ def test_234_refusal_delivers_no_evidence_and_original_delivery_is_independent(
     # A refusal contributes zero evidence; only independently delivered
     # original tool messages can make their evidence count as delivered.
     assert len(delivered) == (1 if send_original else 0)
+
+
+@pytest.mark.parametrize("mismatch", ["static-tools", "scope-policy"])
+def test_q1_round_manifest_must_match_snapshot_static_registration_and_policy(
+    tmp_path, mismatch
+):
+    manifest, attempt, ctx = q1_context()
+    ref = record(
+        b2.source_driver(requests=[], result=b2.outcome(())),
+        destination=tmp_path / "bound",
+        context=ctx,
+    )
+    recording = load_recording(tmp_path / "bound" / ref.path, expected_hash=ref.sha256)
+    snapshot = recording.context.tool_snapshots[0]
+    if mismatch == "static-tools":
+        tools = (
+            replace(snapshot.tools[0], version="CANARY-OTHER-VERSION"),
+        ) + snapshot.tools[1:]
+        dimension = "registry"
+        wrong_hash = registry_hash(tools, snapshot.targets)
+    else:
+        from datetime import timedelta
+
+        policy = replace(
+            snapshot.scope,
+            window=replace(
+                snapshot.scope.window,
+                end=snapshot.scope.window.end + timedelta(seconds=1),
+            ),
+        )
+        dimension = "permissions"
+        wrong_hash = scope_policy_hash(policy)
+    assert wrong_hash != manifest.dimensions[dimension].value
+    wrong = replace(
+        manifest,
+        dimensions={
+            **manifest.dimensions,
+            dimension: DimensionValue("hash", wrong_hash, None),
+        },
+    )
+    attempt = replace(attempt, manifest_hash=manifest_hash(wrong))
+    with pytest.raises(StorageError, match="^IDENTITY_MISMATCH$"):
+        check_recording_binding(
+            recording, attempt, round_id=s.ROUND, epoch=7, manifest=wrong
+        )

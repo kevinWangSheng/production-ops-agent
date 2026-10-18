@@ -1,17 +1,19 @@
 """A5 defaults and credential-free registration DTO public contracts."""
 
-from dataclasses import FrozenInstanceError, asdict, fields
+from dataclasses import FrozenInstanceError, fields
 from types import SimpleNamespace
 from unittest.mock import Mock
 from uuid import UUID
 
 import pytest
 
+from opspilot.evaluation.codec import encode
 from opspilot.investigation.runner import InvestigationRunner
 from opspilot.tools.otel_demo import OtelDemoConfig, otel_demo_registrations
 from opspilot.worker import RecoveryPlan
 from tests.acceptance import eval_c_support as s
 from tests.acceptance.test_eval_c_live_driver import offline  # noqa: F401
+from tests.m1_web_support import MemoryIncidentStore
 
 
 def test_runner_hooks_default_to_none():
@@ -44,7 +46,7 @@ def test_runner_explicit_none_and_omitted_hooks_have_same_terminal_outcome():
             recover=lambda _: plan, resume=forbidden, claim=forbidden
         )
         runner = InvestigationRunner(
-            store=Mock(),
+            store=MemoryIncidentStore(s.Clock()),
             worker=worker,
             model=SimpleNamespace(complete=forbidden),
             executor_factory=forbidden,
@@ -66,7 +68,7 @@ def test_public_otel_registrations_are_frozen_and_credential_free():
     dto = otel_demo_registrations(config)
     assert isinstance(dto.tools, tuple) and dto.tools
     assert isinstance(dto.targets, tuple) and dto.targets
-    visible = repr(asdict(dto))
+    visible = repr(encode(dto)) + repr(dto)
     for marker in (s.SECRET, "CANARY-USER", "CANARY-PASSWORD-82e1"):
         assert marker not in visible
     assert all(hasattr(target, "credential_ref") for target in dto.targets)

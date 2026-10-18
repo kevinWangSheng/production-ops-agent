@@ -953,7 +953,7 @@ def test_unknown_restore_result_is_decided_by_uid_sha_and_version_readback(
     h, capsys, state
 ):
     def on_replace(intent, current, new_raw, fence):
-        if not h.flags.writes:
+        if not h.flags.writes or new_raw != intent["original"].encode():
             return
         if state == "cas-conflict":
             raise lab.LabError("FLAG_CAS_CONFLICT")
@@ -1254,3 +1254,23 @@ def test_unknown_or_dirty_provenance_does_not_refuse_round(
     aggregate = json.loads((h.public() / "aggregate.json").read_bytes())["aggregate"]
     assert aggregate["baseline_complete"] is False
     assert "MANIFEST_UNKNOWN" in aggregate["incomplete_reasons"]
+
+
+def test_omitted_provenance_defaults_to_unknown_without_process_or_network(h, capsys):
+    from dataclasses import fields
+
+    assert (
+        next(
+            field for field in fields(lab.LiveDeps) if field.name == "provenance"
+        ).default
+        is None
+    )
+    h.deps = replace(h.deps, provenance=None)
+    code, result = h.final(capsys)
+    assert code == 0
+    assert result["slots"][0]["status"] == "ran"
+    assert h.provenance.calls == 0
+    dimension = h.summaries()[0]["capture"]["manifest"]["dimensions"]["code"]
+    assert dimension["kind"] == "unknown"
+    assert dimension["value"] is None
+    assert isinstance(dimension["reason"], str) and dimension["reason"]

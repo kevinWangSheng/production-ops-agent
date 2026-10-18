@@ -72,3 +72,32 @@
 - 干净且 commit 已知时，公开 summary 和调查请求的 code 维度冻结该版本；
   commit 缺失、dirty 或两者同时出现时仍执行本轮，code 为有原因的 unknown，
   aggregate 保持 MANIFEST_UNKNOWN，不冒充完整基线。
+
+## lead 的 T1–T6 / I3 分诊修正
+
+- **T1**：HTTP fixture 改为完整 DeepSeek chat completion：id/model、单 choice
+  的 index/assistant message/finish_reason，以及 usage。reasoning/tool_calls
+  同样保留，返回 ModelReply.raw 与产品 parser 的 id/usage 投影一致；未绕过
+  B2 的 HTTP → ModelReply 相等校验。
+- **T2**：with_evidence 的 binding.default_window 取实际
+  scope.default_query_window（为 None 时保持 None），不再冒用授权框。
+- **T3**：只对写回 intent.original 的 restore 注入未知结果；下一槽的故障注入
+  不再受到上一槽故障脚本的污染。两槽均 ran 的成功断言保留。
+- **T4**：缓存通过新的模型调用与额外 delivery 产生；每个物理工具自己的
+  parented delivery 原样保留。合法对照明确检查工具数、交付数及最后的空 parent，
+  歧义缓存仍要求 IDENTITY_MISMATCH，不再通过删 parent 制造 unpaired tool。
+- **T5**：默认 None 的终态回归使用既有 MemoryIncidentStore 离线 fixture，
+  真实执行空集合的过期扫描；不再把 Mock 当作可查询 store。仍要求 omitted 与
+  explicit None 两次 resume 结果相等且 already_completed，模型/工具零调用。
+- **T6**：注册 DTO 用 eval codec.encode 与 repr 检查凭据泄漏，不对
+  MappingProxyType 调用 dataclasses.asdict；frozen 断言保留。
+- **I3（本轮用户转达的最新明确裁决）**：Q1 轮 manifest 的 registry/permissions
+  从同一份快照的静态注册和 scope policy 求 hash，再由 B2 helper 生成独立的
+  per-attempt source_manifest。正向例明确要求两层摘要不同仍被接受；另加
+  static tools 不同、scope policy 不同的 IDENTITY_MISMATCH 反例。使用 §14
+  已命名的公开 opspilot.evaluation.live.registry_hash / scope_policy_hash。
+  **工作副本冲突已记录**：当前 §14 的 r5 段落仍写「不再要求」比较这两维；
+  本次测试按用户最新 I3 的「MUST compare」执行，没有修改接口文档。
+- r5 预算边界与原因保持严格：600s 端点窗口仍须通过；洗净失败仍断言
+  NORMAL_WINDOW_UNCONFIRMED。新增 provenance 默认 None 的离线用例：继续
+  执行本轮，code 为带原因的 unknown，网络和子进程守卫保持启用。
