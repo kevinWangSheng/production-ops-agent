@@ -477,3 +477,4 @@ docs/evidence/eval/<R>/aggregate.json                   # write_round，opspilot
 
 - **中断后的余额读取**：按 R1，attempt 结束后读取余额前先做检查点。停止请求已置位时跳过这次读取，该 attempt 的费用记为 `unknown`。这是已接受的行为，如实记录。
 - **强制中断的已知残余**：第二次信号在进入受保护段之前的几条字节码内到达时，仍可能 raise（例如异常处理与 `_closure` 进入保护段之间），从而跳过恢复，留下 exit 4，需要 `--recover`。不屏蔽信号就无法在 Python 中关闭这个窗口。第一次信号不会造成这种情况。
+3. **外部命令与终端信号**（astra 复验 c792c3e）：驱动的 6 处外部命令都在独立会话（`start_new_session=True`）中运行，终端 Ctrl-C 只到达驱动进程。产品代码 `opspilot/schema.py` 的 `migrate()` 调用的 pg_dump 仍和驱动同属一个进程组；但这个调用只在接管旧库时才会执行，驱动每次都新建空库，所以当前路径走不到它。这一项作为已知残余接受，不修改产品代码。
