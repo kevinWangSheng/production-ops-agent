@@ -271,3 +271,63 @@ def test_probe_exit_precedence_with_a_failed_report(
     final = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
     assert code == (4 if first == "retained_fault" else 5)
     assert final["exit_code"] == code
+
+
+# -- PR #271 round-2 bot findings -------------------------------------------------
+
+
+@pytest.mark.parametrize("step", ["aggregate", "lifecycle"])
+def test_an_interrupt_while_writing_round_outputs_still_prints_and_exits_130(
+    tmp_path, capsys, monkeypatch, step
+):
+    from scripts.eval_live_lab import Interrupted
+
+    env = d.make_env(tmp_path)
+    real = {
+        "aggregate": eval_live._write_round,
+        "lifecycle": eval_live._write_lifecycle,
+    }
+    target = "_write_round" if step == "aggregate" else "_write_lifecycle"
+
+    def interrupted(*args, **kwargs):
+        real[step](*args, **kwargs)  # the output is written, then the signal
+        raise Interrupted()
+
+    monkeypatch.setattr(eval_live, target, interrupted)
+    argv = [
+        "--mode", "live", "--round", "r1", "--scenario", "eval-cart-failure", "--n", "1",
+        "--parallel", "1", "--holder", "lead", "--batch", "b1",
+        "--flagd-url", "http://127.0.0.1:18013", "--pg-port", "55999",
+    ]  # fmt: skip
+    code = eval_live.main(argv, deps=env["deps"])
+    final = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    assert (code, final["exit_code"], final["status"]) == (130, 130, "interrupted")
+    assert (env["deps"].evidence_root / "r1/lifecycle.json").exists()
+    assert not (env["deps"].ledger_root / "fault-active.json").exists()
+
+
+def test_a_second_concurrent_recovery_restores_nothing_and_is_refused(
+    tmp_path, capsys, monkeypatch
+):
+    env, deps = _probe_env(tmp_path)
+    env["lab"].complete = False
+    eval_live.main([*ARGV, *_scenarios("eval-cart-failure")], deps=deps)
+    capsys.readouterr()
+    env["lab"].complete = True
+    state = deps.ledger_root / "fault-active.json"
+    assert state.exists()
+    real_check = eval_live.check_occupation
+
+    def first_recovery_finishes_meanwhile(*args, **kwargs):
+        # The other recovery restored and cleared the state after our read.
+        state.unlink(missing_ok=True)
+        return real_check(*args, **kwargs)
+
+    monkeypatch.setattr(
+        eval_live, "check_occupation", first_recovery_finishes_meanwhile
+    )
+    writes_before = len(env["lab"].writes)
+    result = eval_live.recover_round("r1", "lead", "b1", deps)
+    assert (result.exit_code, result.reason) == (3, "NO_RETAINED_FAULT")
+    assert not list((deps.evidence_root / "r1").glob("recovery-*.json"))
+    assert len(env["lab"].writes) == writes_before

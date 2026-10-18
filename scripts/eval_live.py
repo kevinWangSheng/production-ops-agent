@@ -538,33 +538,52 @@ def run_round(config: RoundConfig, deps: LiveDeps) -> RoundResult:
         # The reservation vanished or changed between the preflight and here.
         status, exit_code, reason = "stopped", 3, exc.code
     manifest = round_state["manifest"]
-    aggregate_error = _write_round(
-        config, deps, manifest, journals, summaries, evidence_dir
-    )
+    # The round outputs are written with signals held, and an interrupt
+    # raised while writing them is remembered, not propagated: the final
+    # JSON always comes out, then the interrupt applies (r13: 4 > 5 > 130).
+    late_interrupt = False
+    with _deferred_interrupts():
+        try:
+            aggregate_error = _write_round(
+                config, deps, manifest, journals, summaries, evidence_dir
+            )
+        except (Interrupted, KeyboardInterrupt):
+            aggregate_error, late_interrupt = None, True
+        try:
+            retained = read_state(_safe(deps)) is not None
+        except (Interrupted, KeyboardInterrupt):
+            retained, late_interrupt = read_state(_safe(deps)) is not None, True
+    late_interrupt = _take_pending() or late_interrupt
+    if late_interrupt and exit_code in (None, 0, 1):
+        status, exit_code, reason = "interrupted", 130, "INTERRUPTED"
     # Exit precedence 4 > 5 > 130 (r13): a missing aggregate outranks an
     # interrupt but never a retained fault.
     if aggregate_error is not None and exit_code in (None, 130):
         status, exit_code, reason = "stopped", 5, aggregate_error
     if exit_code is None:
         exit_code = 0 if all(r.status == "ran" for r in results) else 1
-    retained = read_state(_safe(deps)) is not None
-    try:
-        _write_lifecycle(
-            config,
-            deps,
-            manifest,
-            results,
-            status,
-            reason,
-            retained,
-            balances,
-            evidence_dir,
-        )
-    except OSError:
-        # Like a journal/summary write failure (r11): exit 5 with the final
-        # JSON still printed; a retained fault (4) keeps its own exit code.
-        if exit_code != 4:
-            status, exit_code, reason = "stopped", 5, "EVIDENCE_WRITE_FAILED"
+    with _deferred_interrupts():
+        try:
+            _write_lifecycle(
+                config,
+                deps,
+                manifest,
+                results,
+                status,
+                reason,
+                retained,
+                balances,
+                evidence_dir,
+            )
+        except OSError:
+            # Like a journal/summary write failure (r11): exit 5 with the
+            # final JSON still printed; a retained fault (4) keeps its code.
+            if exit_code != 4:
+                status, exit_code, reason = "stopped", 5, "EVIDENCE_WRITE_FAILED"
+        except (Interrupted, KeyboardInterrupt):
+            late_interrupt = True
+    if (_take_pending() or late_interrupt) and exit_code in (0, 1):
+        status, exit_code, reason = "interrupted", 130, "INTERRUPTED"
     return RoundResult(config.round_id, status, exit_code, reason, tuple(results))
 
 
@@ -1227,7 +1246,13 @@ def recover_round(
             active_marker(deps.ledger_root, holder, batch, round_id, deps.clock.now()),
             fault_guard(deps.ledger_root),
         ):
-            restore_fault(round_id, attempt_id, signatures, deps=deps, ledger=ledger)
+            restored = restore_fault(
+                round_id, attempt_id, signatures, deps=deps, ledger=ledger
+            )
+        if restored is None:
+            # Another recovery cleared the state between our read and the
+            # guard: nothing was restored here, so no record and no exit 0.
+            return RoundResult(round_id, "refused", 3, "NO_RETAINED_FAULT", ())
     except LabError as exc:
         code = (
             3
