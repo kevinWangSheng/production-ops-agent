@@ -546,17 +546,23 @@ def run_round(config: RoundConfig, deps: LiveDeps) -> RoundResult:
     if exit_code is None:
         exit_code = 0 if all(r.status == "ran" for r in results) else 1
     retained = read_state(_safe(deps)) is not None
-    _write_lifecycle(
-        config,
-        deps,
-        manifest,
-        results,
-        status,
-        reason,
-        retained,
-        balances,
-        evidence_dir,
-    )
+    try:
+        _write_lifecycle(
+            config,
+            deps,
+            manifest,
+            results,
+            status,
+            reason,
+            retained,
+            balances,
+            evidence_dir,
+        )
+    except OSError:
+        # Like a journal/summary write failure (r11): exit 5 with the final
+        # JSON still printed; a retained fault (4) keeps its own exit code.
+        if exit_code != 4:
+            status, exit_code, reason = "stopped", 5, "EVIDENCE_WRITE_FAILED"
     return RoundResult(config.round_id, status, exit_code, reason, tuple(results))
 
 
@@ -593,6 +599,8 @@ def _write_round(
         )
     except StorageError as exc:
         return f"AGGREGATE_{exc.code}"
+    except OSError:
+        return "EVIDENCE_WRITE_FAILED"
     return None
 
 
@@ -1221,26 +1229,40 @@ def recover_round(
         return RoundResult(
             round_id, "stopped" if code == 4 else "refused", code, exc.code, ()
         )
-    evidence = round_evidence(deps, round_id)
-    evidence.mkdir(parents=True, exist_ok=True)
     stamp = deps.clock.now()
-    with (evidence / f"recovery-{stamp.strftime('%Y%m%dT%H%M%SZ')}.json").open(
-        "x"
-    ) as f:
-        f.write(
-            json.dumps(
-                {
-                    "schema": "opspilot-eval-live-recovery-1",
-                    "round": round_id,
-                    "attempt_id": attempt_id,
-                    "recovered_at": stamp.isoformat(),
-                },
-                indent=2,
-                sort_keys=True,
-            )
-            + "\n"
-        )
+    document = {
+        "schema": "opspilot-eval-live-recovery-1",
+        "round": round_id,
+        "attempt_id": attempt_id,
+        "recovered_at": stamp.isoformat(),
+    }
+    base = f"recovery-{stamp.strftime('%Y%m%dT%H%M%SZ')}"
+    names = [f"{base}.json"] + [f"{base}-{n}.json" for n in range(2, 100)]
+    if not write_public_exclusive(round_evidence(deps, round_id), names, document):
+        # The lab is restored; only the public record could not be written.
+        return RoundResult(round_id, "stopped", 5, "EVIDENCE_WRITE_FAILED", ())
     return RoundResult(round_id, "recovered", 0, None, ())
+
+
+def write_public_exclusive(
+    directory: Path, names: Sequence[str], document: Mapping[str, Any]
+) -> bool:
+    """Exclusive-create the first free name; never overwrite, never raise."""
+    raw = json.dumps(document, indent=2, sort_keys=True) + "\n"
+    try:
+        directory.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        return False
+    for name in names:
+        try:
+            with (directory / name).open("x") as stream:
+                stream.write(raw)
+            return True
+        except FileExistsError:
+            continue
+        except OSError:
+            return False
+    return False
 
 
 # -- CLI ----------------------------------------------------------------------

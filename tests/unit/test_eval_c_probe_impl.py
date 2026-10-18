@@ -165,3 +165,79 @@ def test_recover_refuses_without_the_lab_account(tmp_path, capsys):
     result = eval_live.recover_round("r1", "lead", "b1", deps)
     assert (result.exit_code, result.reason) == (3, "ENV_UNCONFIRMED")
     assert (deps.ledger_root / "fault-active.json").read_bytes() == state
+
+
+# -- r11: evidence write failures are exit 5 with the final JSON ----------------
+
+
+def test_round_lifecycle_write_failure_is_exit_5_with_final_json(
+    tmp_path, capsys, monkeypatch
+):
+    env = d.make_env(tmp_path)
+
+    def broken(*args, **kwargs):
+        raise PermissionError("read-only evidence")
+
+    monkeypatch.setattr(eval_live, "_write_lifecycle", broken)
+    argv = [
+        "--mode", "live", "--round", "r1", "--scenario", "eval-normal-1", "--n", "1",
+        "--parallel", "1", "--holder", "lead", "--batch", "b1",
+        "--flagd-url", "http://127.0.0.1:18013", "--pg-port", "55999",
+    ]  # fmt: skip
+    assert eval_live.main(argv, deps=env["deps"]) == 5
+    final = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    assert (final["exit_code"], final["reason"]) == (5, "EVIDENCE_WRITE_FAILED")
+
+
+def test_probe_report_write_failure_is_exit_5_with_final_json(tmp_path, capsys):
+    env, deps = _probe_env(tmp_path)
+    real_verify = env["identity"].verify
+
+    def verify():
+        # After the preflight: the round's evidence path becomes a file.
+        target = deps.evidence_root / "r1"
+        if not target.exists():
+            deps.evidence_root.mkdir(parents=True, exist_ok=True)
+            target.write_text("not a directory")
+        return real_verify()
+
+    calls = {"n": 0}
+
+    def gated():
+        calls["n"] += 1
+        return real_verify() if calls["n"] == 1 else verify()
+
+    env["identity"].verify = gated
+    code = eval_live.main([*ARGV, *_scenarios("eval-normal-1")], deps=deps)
+    final = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    assert (code, final["reason"]) == (5, "EVIDENCE_WRITE_FAILED")
+
+
+def test_recovery_record_write_failure_and_same_second_names(tmp_path, capsys):
+    env, deps = _probe_env(tmp_path)
+    env["lab"].complete = False
+    eval_live.main([*ARGV, *_scenarios("eval-cart-failure")], deps=deps)
+    capsys.readouterr()
+    env["lab"].complete = True
+    result = eval_live.recover_round("r1", "lead", "b1", deps)
+    assert result.exit_code == 0
+    # Two records in the same second never overwrite each other.
+    evidence = deps.evidence_root / "r1"
+    names = ["recovery-X.json", "recovery-X-2.json"]
+    assert eval_live.write_public_exclusive(evidence, names, {"n": 1})
+    assert eval_live.write_public_exclusive(evidence, names, {"n": 2})
+    assert json.loads((evidence / "recovery-X.json").read_text()) == {"n": 1}
+    assert json.loads((evidence / "recovery-X-2.json").read_text()) == {"n": 2}
+    assert not eval_live.write_public_exclusive(evidence, names, {"n": 3})
+    # A second retained fault, then an unwritable evidence path.
+    env["lab"].complete = False
+    eval_live.main(
+        [*ARGV[:4], "r2", *ARGV[5:], *_scenarios("eval-cart-failure")], deps=deps
+    )
+    capsys.readouterr()
+    env["lab"].complete = True
+    (deps.evidence_root / "r2").rename(deps.evidence_root / "r2-moved")
+    (deps.evidence_root / "r2").write_text("not a directory")
+    result = eval_live.recover_round("r2", "lead", "b1", deps)
+    assert (result.exit_code, result.reason) == (5, "EVIDENCE_WRITE_FAILED")
+    assert not (deps.ledger_root / "fault-active.json").exists()

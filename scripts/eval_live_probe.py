@@ -11,7 +11,6 @@ journal or summary, so a probe is never counted as an attempt.
 
 from __future__ import annotations
 
-import json
 from collections.abc import Sequence
 from datetime import datetime
 from typing import Any, Literal
@@ -236,7 +235,6 @@ def run_probe(config: eval_live.RoundConfig, deps: LiveDeps) -> eval_live.RoundR
     except (Interrupted, KeyboardInterrupt):
         status, exit_code, reason = "interrupted", 130, "INTERRUPTED"
     evidence = eval_live.round_evidence(deps, config.round_id)
-    evidence.mkdir(parents=True, exist_ok=True)
     document = {
         "schema": "opspilot-eval-live-probe-1",
         "round": config.round_id,
@@ -246,8 +244,11 @@ def run_probe(config: eval_live.RoundConfig, deps: LiveDeps) -> eval_live.RoundR
         "retained_fault": read_state(deps.ledger_root) is not None,
         "scenarios": entries,
     }
-    with (evidence / "probe.json").open("x") as stream:
-        stream.write(json.dumps(document, indent=2, sort_keys=True) + "\n")
+    if not eval_live.write_public_exclusive(evidence, ["probe.json"], document):
+        # r11: an evidence write failure is exit 5 with the final JSON; a
+        # retained fault (4) keeps its own exit code.
+        if exit_code != 4:
+            status, exit_code, reason = "stopped", 5, "EVIDENCE_WRITE_FAILED"
     return eval_live.RoundResult(
         config.round_id, status, exit_code, reason, tuple(results)
     )
