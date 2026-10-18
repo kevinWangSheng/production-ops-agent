@@ -340,7 +340,7 @@ M0_B_POSTGRES=1 .venv/bin/python -m pytest tests/integration/test_m0_live_postgr
   不能把注入计划当实际起病。场景：`healthy/immediate/delayed-5m/delayed-15m/unrelated/boundary/probe`。
 - `--batch <批次> --holder <持有人> abort --run <轮次> --reason <中止原因> --scenario <场景>`：为已开始但未生成摘要的轮次写显式 `aborted` 摘要，保存原因及现有工件哈希，不要求 context、不伪造产品结论。摘要冻结与同轮在途操作互斥；冻结后拒绝继续采集或注入，仍允许 `restore`。
 - `--batch <批次> aggregate <逐轮summary.json>... [--output <路径>]`：函数 `aggregate_summaries(..., batch=...)` 默认冻结
-  `docs/evidence/f11-u2-calibration/summary.json`，包含全部传入成功／失败轮、逐轮文件哈希、场景数量；
+  `docs/evidence/f11-u2-calibration/summary.json`，以 `run_format: "compact-v1"` 保存全部传入成功／失败轮的紧凑摘要、场景数量；逐轮完整 summary 留在 ledger，汇总仅以其确切字节的 SHA-256、字节数及路径绑定，不嵌入原文。
   从批次日志推导全部应有轮次，传入集合有缺失、多余、重复或开始记录绑定不符均拒绝；无正常摘要的失败轮必须先显式 `abort`。汇总绑定日志前缀字节数、哈希及开始记录，单独统计 aborted 数量；拒绝覆盖旧摘要，不能靠事后 fold 补造未记录的开始。本步不生成真实证据。
 
 离线测试：`UV_CACHE_DIR=$PWD/tmp/uv-cache .venv/bin/python -m pytest tests/test_f11_u2_harness.py`。
