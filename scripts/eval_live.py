@@ -77,6 +77,7 @@ from scripts.eval_live_lab import (
     LiveDeps,
     PgInstance,
     PreObservation,
+    Provenance,
     active_marker,
     append_run_start,
     check_flagd_url,
@@ -117,8 +118,10 @@ class RoundConfig:
     holder: str
     batch: str
     pg_port: int
-    manifest: Manifest
+    # None: built by ``run_round`` once the preflight passed (r5 provenance).
+    manifest: Manifest | None
     command: tuple[str, ...] = ()
+    n: int = 1
 
 
 @dataclass(frozen=True)
@@ -262,21 +265,6 @@ def _round_resolver(
 # -- manifest -----------------------------------------------------------------
 
 
-def _git(*args: str) -> str | None:
-    import subprocess
-
-    try:
-        result = subprocess.run(
-            ["git", "-C", str(ROOT), *args],
-            capture_output=True,
-            timeout=10,
-            check=False,
-        )
-    except (OSError, subprocess.TimeoutExpired):
-        return None
-    return result.stdout.decode().strip() if result.returncode == 0 else None
-
-
 def _file_hash(*paths: Path) -> str:
     digest = hashlib.sha256()
     for path in paths:
@@ -292,8 +280,13 @@ def build_manifest(
     *,
     scenarios_root: Path,
     config: Any = None,
+    provenance: Provenance | None = None,
 ) -> Manifest:
-    """The round manifest, frozen before the first attempt (P4/P10, Q1)."""
+    """The round manifest, frozen before the first attempt (P4/P10, Q1).
+
+    Pure apart from reading repository files: the code version comes in as
+    ``provenance`` (r5), never from a process started here.
+    """
     from opspilot.evaluation.live import registry_hash, scope_policy_hash
     from opspilot.investigation.limits import M1_FROZEN_LIMITS
     from opspilot.investigation.loop import ACCEPTED_RESPONSE_MODEL
@@ -306,8 +299,8 @@ def build_manifest(
     def none(reason: str) -> DimensionValue:
         return DimensionValue("none", None, reason)
 
-    commit = _git("rev-parse", "HEAD")
-    dirty = _git("status", "--porcelain", "--untracked-files=no")
+    commit = None if provenance is None else provenance.commit
+    clean = provenance is not None and provenance.clean
     registrations = otel_demo.otel_demo_registrations(config)
     versions = otel_demo.otel_demo_versions()
     specs = sorted({(s.spec.scenario_id, s.spec.version) for s in slots})
@@ -319,7 +312,7 @@ def build_manifest(
     answer_files = [scenarios_root / sid / "answer.json" for sid, _version in specs]
     dims: dict[str, DimensionValue] = {
         "code": DimensionValue("version", commit, None)
-        if commit and dirty == ""
+        if commit and clean
         else DimensionValue("unknown", None, "worktree not clean or commit unknown"),
         "upstream": none("no upstream code in the live driver"),
         "scenarios": hashed(_file_hash(*scenario_files)),
@@ -456,6 +449,23 @@ def run_round(config: RoundConfig, deps: LiveDeps) -> RoundResult:
     refusal = preflight(config, deps)
     if refusal is not None:
         return _refuse(config, refusal)
+    if config.manifest is None:
+        try:
+            provenance = None if deps.provenance is None else deps.provenance.read()
+        except LabError as exc:
+            return _refuse(config, exc.code)
+        config = replace(
+            config,
+            manifest=build_manifest(
+                config.round_id,
+                config.slots,
+                config.n,
+                config.command,
+                scenarios_root=deps.scenarios_root,
+                config=getattr(deps.investigator, "config", None),
+                provenance=provenance,
+            ),
+        )
     # First external setup of the round (the LangSmith project), only once
     # the preflight passed: a refused round makes no external call (r4).
     begin = getattr(deps.investigator, "begin_round", None)
@@ -484,6 +494,7 @@ def run_round(config: RoundConfig, deps: LiveDeps) -> RoundResult:
     reason: str | None = None
     journals: list[tuple[str, ArtifactRef]] = []
     summaries: dict[str, ArtifactRef] = {}
+    assert config.manifest is not None
     round_state = {"manifest": config.manifest}
     balances: list[dict[str, Any]] = []
     evidence_dir = round_evidence(deps, config.round_id)
@@ -714,6 +725,9 @@ def _run_slot(
         )
     except (OSError, StorageError, ValueError):
         raise _Stop(5, "EVIDENCE_WRITE_FAILED") from None
+    # Verifying the recording may have turned a ran attempt into aborted; the
+    # public slot must show what the summary says.
+    out.status, out.stage, out.reason = state.status, state.stage, state.reason
     summaries[attempt_id] = replace(summary_ref, path=f"runs/{attempt_id}/summary.json")
     out.summary = {
         "path": f"runs/{attempt_id}/summary.json",
@@ -828,6 +842,9 @@ def _guarded(
             raise LabError(gate.reason or "NORMAL_WINDOW_UNCONFIRMED")
         submit_not_after = gate.window.end + FRESHNESS
     state.marks["setup_end"] = clock.monotonic()
+    # §8: the recording's parent directory is created (700) when missing; the
+    # package directory itself is left to ``record()`` (OUTPUT_EXISTS rule).
+    deps.recording_root.mkdir(parents=True, exist_ok=True, mode=0o700)
     state.stage = "investigate"
     state.investigating = True
     request = InvestigationRequest(
@@ -1042,15 +1059,15 @@ def _write_summary(
                 state.ledger.event("freeze", "recording_rejected", reason=code)
             else:
                 delivered, authorized = live.delivered, live.authorized
+                # Only a verified package is linked: the loader re-resolves
+                # the ref, and an unverified one would fail the whole round.
+                recording_ref = result.recording_ref
                 for evidence_id, raw in live.delivery_records.items():
                     name = f"deliveries/{sha256(raw)}.json"
                     path = state.ledger.directory / name
                     if not path.exists():
                         write_private(path, raw)
                     delivery_refs[evidence_id] = _ref(name, raw, "application/json")
-        # Linked whatever the status: an unverified package is still evidence
-        # of what happened, and the loader re-checks its bytes.
-        recording_ref = result.recording_ref
     state.ledger.event("freeze", "summary", status=state.status, reason=state.reason)
     ledger_raw = state.ledger.freeze()
     ledger_ref = _ref("lifecycle.jsonl", ledger_raw, "application/x-ndjson")
@@ -1332,22 +1349,15 @@ def main(argv: Sequence[str] | None = None, *, deps: LiveDeps | None = None) -> 
     with _signals():
         if args.recover:
             return _final(recover_round(args.round, args.holder, args.batch, deps))
-        manifest = build_manifest(
-            args.round,
-            slots,
-            args.n,
-            argv,
-            scenarios_root=deps.scenarios_root,
-            config=getattr(deps.investigator, "config", None),
-        )
         config = RoundConfig(
             args.round,
             slots,
             args.holder,
             args.batch,
             args.pg_port,
-            manifest,
+            None,
             tuple(argv),
+            args.n,
         )
         return _final(run_round(config, deps))
 
@@ -1357,6 +1367,7 @@ def real_deps(flagd_url: str, round_id: str) -> LiveDeps:
     from scripts.eval_live_investigator import OtelDemoInvestigator, prepare_round
     from scripts.eval_live_lab import (
         DeepSeekBalance,
+        GitProvenance,
         HttpFlagResolver,
         KindLabIdentity,
         KubectlFlagStore,
@@ -1387,6 +1398,7 @@ def real_deps(flagd_url: str, round_id: str) -> LiveDeps:
         scenarios_root=ROOT / "evals/scenarios",
         flagd_url=flagd_url,
         env=LabEnvChecker(),
+        provenance=GitProvenance(ROOT),
     )
 
 

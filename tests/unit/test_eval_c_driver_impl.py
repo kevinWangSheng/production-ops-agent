@@ -480,7 +480,7 @@ def test_a_fault_never_observed_is_setup_failed_and_still_restored(env):
     assert env["investigator"].requests == []
     # Restore succeeded (config + flagd); the wash cannot pass on truncated data.
     assert lab.raw == ORIGINAL
-    assert slot.closure_reason == "RESTORE_FAILED:WASH_FAILED"
+    assert slot.closure_reason == "RESTORE_FAILED:NORMAL_WINDOW_UNCONFIRMED"
     assert result.exit_code == 4 and (deps.ledger_root / "fault-active.json").exists()
 
 
@@ -1015,3 +1015,87 @@ def test_real_deps_build_makes_no_langsmith_call(tmp_path, monkeypatch):
     assert deps.env.check() is None
     deps.investigator.begin_round("r1")
     assert langsmith == ["project"]
+
+
+# -- r5: provenance seam, verification-consistent slots, inclusive wash budget ----
+
+
+class _Provenance:
+    def __init__(self, calls: list[str]) -> None:
+        self.calls = calls
+
+    def read(self):
+        self.calls.append("provenance.read")
+        return eval_live_lab.Provenance("a" * 40, True)
+
+
+def test_provenance_is_read_once_after_preflight_and_never_on_refusal(env, monkeypatch):
+    import subprocess
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("the driver core must start no process")
+
+    monkeypatch.setattr(subprocess, "run", forbidden)
+    monkeypatch.setattr(subprocess, "Popen", forbidden)
+    calls: list[str] = []
+    deps = replace(env["deps"], provenance=_Provenance(calls))
+    argv = [
+        "--mode", "live", "--round", "r1", "--scenario", "eval-normal-1", "--n", "1",
+        "--parallel", "1", "--holder", "lead", "--batch", "b1",
+        "--flagd-url", "http://127.0.0.1:18013", "--pg-port", "55999",
+    ]  # fmt: skip
+    (deps.ledger_root / "occupation.json").rename(deps.ledger_root / "held.json")
+    assert eval_live.main(argv, deps=deps) == 3
+    assert calls == []
+    (deps.ledger_root / "held.json").rename(deps.ledger_root / "occupation.json")
+    assert eval_live.main(argv, deps=deps) == 1  # fake investigator: no recording
+    assert calls == ["provenance.read"]
+    stored = next(deps.evidence_root.rglob("summary.json"))
+    code = json.loads(stored.read_text())["capture"]["manifest"]["dimensions"]["code"]
+    assert code == {"kind": "version", "value": "a" * 40, "reason": None}
+
+
+def test_an_unverifiable_recording_aborts_consistently_and_is_not_linked(env):
+    from opspilot.evaluation import ArtifactRef
+
+    deps = env["deps"]
+    original = env["investigator"].investigate
+
+    def investigate(request):
+        result = original(request)
+        bogus = ArtifactRef(
+            "recording.json", "0" * 64, 1, "application/json", "private"
+        )
+        return replace(result, recording_ref=bogus)
+
+    env["investigator"].investigate = investigate  # type: ignore[method-assign]
+    result = eval_live.run_round(config(deps, ["eval-normal-1"]), deps)
+    slot = result.slots[0]
+    assert slot.status == "aborted" and result.exit_code == 1
+    assert lifecycle(deps)["slots"][0]["status"] == "aborted"
+    capture = summary(deps, slot.attempt_id)["capture"]
+    assert capture["attempt"]["status"] == "aborted"
+    assert capture["recording_ref"] is None
+    assert (deps.evidence_root / "r1/aggregate.json").exists()
+
+
+def test_a_fresh_window_closing_exactly_at_the_budget_is_read(env):
+    deps, lab = env["deps"], env["lab"]
+    start = env["clock"].now()
+    original = lab.spans
+
+    def first_window_dirty(service, begin, end, timeout):
+        query = original(service, begin, end, timeout)
+        if begin == start and service == "checkout":
+            span = ObservedSpan(
+                "t", "s", "checkout", "oteldemo.CartService/EmptyCart", begin,
+                {"otel.status_code": "ERROR"},
+            )  # fmt: skip
+            return SpanQuery((*query.spans, span), True)
+        return query
+
+    lab.spans = first_window_dirty  # type: ignore[method-assign]
+    sigs = eval_live.fault_signatures(deps)
+    result = eval_live_lab.normal_window(sigs, not_before=start, deps=deps)
+    assert result.passed and result.window.start == start + timedelta(seconds=300)
+    assert env["clock"].mono - 1000.0 == 600

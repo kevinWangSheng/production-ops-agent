@@ -384,7 +384,6 @@ def test_recording_binding_accepts_its_own_attempt_and_run():
         "scenario",
         "dimension",
         "no_snapshots",
-        "policy",
     ],
 )
 def test_recording_binding_refuses_any_other_identity(change):
@@ -414,12 +413,28 @@ def test_recording_binding_refuses_any_other_identity(change):
             recording,
             context=replace(recording.context, tool_snapshots=(), source_manifest=None),
         )
-    elif change == "policy":
-        dims = dict(manifest.dimensions)
-        dims["permissions"] = DimensionValue("hash", "0" * 64, None)
-        manifest = replace(manifest, dimensions=dims)
     with pytest.raises(RecordingError, match="^IDENTITY_MISMATCH$"):
         check(recording, attempt, round_id=round_id, epoch=epoch, manifest=manifest)
+
+
+def test_recording_binding_ignores_round_registry_and_permissions_values():
+    """r5: the per-Run values are bound by source_manifest_hash, not compared
+    with the round manifest's policy hashes (interface section 13 list)."""
+    from dataclasses import replace
+
+    from opspilot.evaluation import DimensionValue, check_recording_binding
+
+    recording, attempt, manifest = _binding_case()
+    dims = dict(manifest.dimensions)
+    dims["registry"] = DimensionValue("hash", "1" * 64, None)
+    dims["permissions"] = DimensionValue("hash", "2" * 64, None)
+    check_recording_binding(
+        recording,
+        attempt,
+        round_id="r1",
+        epoch=2,
+        manifest=replace(manifest, dimensions=dims),
+    )
 
 
 def test_scope_policy_hash_ignores_run_identity_only():

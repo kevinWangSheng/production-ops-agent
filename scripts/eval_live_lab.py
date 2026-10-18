@@ -175,6 +175,16 @@ class EnvChecker(Protocol):
 
 
 @dataclass(frozen=True)
+class Provenance:
+    commit: str | None
+    clean: bool
+
+
+class ProvenanceReader(Protocol):
+    def read(self) -> Provenance: ...
+
+
+@dataclass(frozen=True)
 class LiveDeps:
     clock: LiveClock
     flags: FlagStore
@@ -193,6 +203,9 @@ class LiveDeps:
     flagd_url: str
     # None = the environment preconditions hold, else "ENV_UNCONFIRMED".
     env: EnvChecker
+    # The code version (r5); the driver core itself starts no process. None
+    # leaves the manifest's ``code`` dimension unknown.
+    provenance: ProvenanceReader | None = None
 
 
 # -- private ledger -----------------------------------------------------------
@@ -658,7 +671,8 @@ def restore_fault(
     ledger.write(f"wash-{ledger.seq}.json", _raw(wash))
     if not wash.passed:
         ledger.event("wash", "failed", reason=wash.reason)
-        raise LabError("WASH_FAILED")
+        # The wash is the section 6 normal window; its own code is the cause.
+        raise LabError(wash.reason or "NORMAL_WINDOW_UNCONFIRMED")
     (root / STATE_FILE).unlink()
     ledger.event("wash", "passed", window=_window_json(wash.window))
     return Restored(sha256(after.raw), normal_at, wash)
@@ -844,7 +858,9 @@ def normal_window(
             if wait > _remaining(clock, started, budget_seconds):
                 break
             clock.sleep(wait)
-        if _remaining(clock, started, budget_seconds) <= 0:
+        # The budget is inclusive (U1 "at most 600 s"): a window that closes
+        # exactly at it is still read.
+        if _remaining(clock, started, budget_seconds) < 0:
             break
         complete = True
         hits: list[ObservedSpan] = []
@@ -901,6 +917,30 @@ def normal_window(
 
 
 # -- real adapters (live only; never used by offline tests) -------------------
+
+
+class GitProvenance:
+    """HEAD and whether tracked files are clean, from ``git`` (live only)."""
+
+    def __init__(self, root: Path) -> None:
+        self.root = root
+
+    def _git(self, *args: str) -> str | None:
+        try:
+            result = subprocess.run(
+                ["git", "-C", str(self.root), *args],
+                capture_output=True,
+                timeout=10,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+        return result.stdout.decode().strip() if result.returncode == 0 else None
+
+    def read(self) -> Provenance:
+        commit = self._git("rev-parse", "HEAD")
+        status = self._git("status", "--porcelain", "--untracked-files=no")
+        return Provenance(commit or None, status == "")
 
 
 class LabEnvChecker:
