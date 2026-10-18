@@ -874,16 +874,18 @@ def test_lab_telemetry_parses_jaeger_and_marks_a_full_page_incomplete(monkeypatc
     pages = {"n": 1}
     monkeypatch.setattr(
         eval_live_lab,
-        "_get_json",
-        lambda url, timeout: {"data": [trace] * pages["n"]},
+        "_get_json_sized",
+        lambda url, timeout: ({"data": [trace] * pages["n"]}, 100),
     )
     probe = eval_live_lab.LabTelemetry()
     query = probe.spans("checkout", T0, T0 + timedelta(seconds=5), 5)
     assert query.complete and query.spans[0].start == T0
     assert eval_live_lab.span_error(query.spans[0].tags)
-    pages["n"] = eval_live_lab.TRACE_LIMIT
+    pages["n"] = eval_live_lab.TRACE_LIMIT  # always full: splitting cannot finish
     assert not probe.spans("checkout", T0, T0, 5).complete
-    monkeypatch.setattr(eval_live_lab, "_get_json", lambda url, timeout: None)
+    monkeypatch.setattr(
+        eval_live_lab, "_get_json_sized", lambda url, timeout: (None, 0)
+    )
     assert not probe.spans("checkout", T0, T0, 5).complete
 
 
@@ -1618,3 +1620,139 @@ def test_pg_launcher_uses_scram_passwords_and_a_sanitized_environment(
     assert len(passwords) == 3 and initdb["password"] in passwords
     created = [s for s in statements if "CREATE ROLE" in str(s)]
     assert len(created) == 2
+
+
+# -- r12: adaptive split under a live-sized load --------------------------------
+
+
+class _LoadedJaeger:
+    """10,000 traces over 300 s; a page returns at most ``limit`` of the
+    traces whose queried-service span starts in [start, end] (Jaeger rule)."""
+
+    def __init__(self, traces: int = 10_000, seconds: int = 300) -> None:
+        import bisect
+
+        self.bisect = bisect
+        self.requests: list[dict[str, str]] = []
+        base = int(T0.timestamp() * 1_000_000)
+        self.traces = []
+        self.expected: dict[str, set[tuple[str, str]]] = {
+            "checkout": set(),
+            "payment": set(),
+        }
+        for index in range(traces):
+            at = base + (index * seconds * 1_000_000) // traces
+            checkout_tags: list[dict[str, Any]] = []
+            payment_tags: list[dict[str, Any]] = [
+                {"key": "rpc.grpc.status_code", "value": 0}
+            ]
+            if index % 97 == 0:
+                checkout_tags = [{"key": "otel.status_code", "value": "ERROR"}]
+            elif index % 89 == 0:
+                payment_tags = [{"key": "rpc.grpc.status_code", "value": 13}]
+            elif index % 83 == 0:
+                checkout_tags = [{"key": "http.status_code", "value": 503}]
+            elif index % 79 == 0:
+                payment_tags = [{"key": "error", "value": True}]
+            trace_id = f"t{index:05d}"
+            if checkout_tags:
+                self.expected["checkout"].add((trace_id, "c"))
+            if (
+                payment_tags[0]["key"] != "rpc.grpc.status_code"
+                or payment_tags[0]["value"]
+            ):
+                self.expected["payment"].add((trace_id, "p"))
+            self.traces.append(
+                (
+                    at,
+                    {
+                        "traceID": trace_id,
+                        "processes": {
+                            "p1": {"serviceName": "checkout"},
+                            "p2": {"serviceName": "payment"},
+                        },
+                        "spans": [
+                            {
+                                "spanID": "c",
+                                "processID": "p1",
+                                "operationName": "oteldemo.PaymentService/Charge",
+                                "startTime": at,
+                                "tags": checkout_tags,
+                            },
+                            {
+                                "spanID": "p",
+                                "processID": "p2",
+                                "operationName": "grpc.oteldemo.PaymentService/Charge",
+                                "startTime": at + 10,
+                                "tags": payment_tags,
+                            },
+                        ],
+                    },
+                )
+            )
+        self.starts = [at for at, _ in self.traces]
+
+    def open(self, request, timeout=None):
+        import io
+        from urllib.parse import parse_qs, urlsplit
+
+        query = {k: v[0] for k, v in parse_qs(urlsplit(request.full_url).query).items()}
+        self.requests.append(query)
+        low, high, limit = int(query["start"]), int(query["end"]), int(query["limit"])
+        lo = self.bisect.bisect_left(self.starts, low - 10)
+        hi = self.bisect.bisect_right(self.starts, high)
+        page = [trace for _, trace in self.traces[lo:hi]][:limit]
+        raw = json.dumps({"data": page}).encode()
+
+        class Response(io.BytesIO):
+            status = 200
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+        return Response(raw)
+
+
+@pytest.mark.parametrize("service", ["checkout", "payment"])
+def test_adaptive_split_completes_a_live_sized_window_and_finds_every_error(
+    monkeypatch, service
+):
+    jaeger = _LoadedJaeger()
+    monkeypatch.setattr(eval_live_lab.kind_lab, "OPENER", jaeger)
+    end = T0 + timedelta(seconds=300)
+    query = eval_live_lab.LabTelemetry().spans(service, T0, end, 5)
+    assert query.complete
+    found = {(span.trace_id, span.span_id) for span in query.spans}
+    assert found == jaeger.expected[service] and found
+    assert all(span.service == service for span in query.spans)
+    assert len(found) == len(query.spans)  # deduplicated
+    # 10,000 traces: 300 s full -> 4 x 75 s full -> 16 x 18.75 s (625 each).
+    assert len(jaeger.requests) == 21
+    assert all("tags" not in request for request in jaeger.requests)
+    forms = {next(iter(span.tags)) for span in query.spans}
+    expected_forms = (
+        {"otel.status_code", "http.status_code"}
+        if service == "checkout"
+        else {"rpc.grpc.status_code", "error"}
+    )
+    assert forms == expected_forms
+
+
+def test_adaptive_split_reports_incomplete_when_a_cap_is_reached(monkeypatch):
+    jaeger = _LoadedJaeger()
+    monkeypatch.setattr(eval_live_lab.kind_lab, "OPENER", jaeger)
+    monkeypatch.setattr(eval_live_lab, "MAX_SUBREQUESTS", 5)
+    query = eval_live_lab.LabTelemetry().spans(
+        "checkout", T0, T0 + timedelta(seconds=300), 5
+    )
+    assert not query.complete and len(jaeger.requests) == 5
+    monkeypatch.setattr(eval_live_lab, "MAX_SUBREQUESTS", 64)
+    monkeypatch.setattr(eval_live_lab, "MAX_SEARCH_BYTES", 1024)
+    assert (
+        not eval_live_lab.LabTelemetry()
+        .spans("checkout", T0, T0 + timedelta(seconds=300), 5)
+        .complete
+    )

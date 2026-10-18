@@ -58,6 +58,11 @@ FENCE_ANNOTATION = "opspilot.dev/eval-live-restore-fence"
 # "no errors".
 TRACE_LIMIT = 1500
 MAX_TELEMETRY_BYTES = 64 * 1024 * 1024
+# Adaptive split of a full page (r12) and its caps per ``spans()`` call.
+SPLIT_FACTOR = 4
+MAX_SUBREQUESTS = 64
+MAX_SEARCH_BYTES = 1024 * 1024 * 1024
+MIN_SUBWINDOW_US = 1_000
 
 
 class LabError(Exception):
@@ -1215,46 +1220,49 @@ class LabTelemetry:
     def spans(
         self, service: str, start: datetime, end: datetime, timeout: float
     ) -> SpanQuery:
-        query = urllib.parse.urlencode(
-            {
-                "service": service,
-                "start": int(start.timestamp() * 1_000_000),
-                "end": int(end.timestamp() * 1_000_000),
-                "limit": TRACE_LIMIT,
-            }
-        )
-        payload = _get_json(f"{kind_lab.JAEGER}/api/traces?{query}", timeout)
-        if not isinstance(payload, dict):
-            return SpanQuery((), False)
-        traces = payload.get("data")
-        if not isinstance(traces, list):
-            return SpanQuery((), False)
-        spans: list[ObservedSpan] = []
-        try:
-            for trace in traces:
-                processes = {
-                    key: value["serviceName"]
-                    for key, value in trace["processes"].items()
-                }
-                for span in trace["spans"]:
-                    spans.append(
-                        ObservedSpan(
-                            trace_id=str(trace["traceID"]),
-                            span_id=str(span["spanID"]),
-                            service=str(processes.get(span["processID"])),
-                            operation=str(span["operationName"]),
-                            start=datetime.fromtimestamp(
-                                span["startTime"] / 1_000_000, tz=timezone.utc
-                            ),
-                            tags={
-                                tag["key"]: tag["value"]
-                                for tag in span.get("tags") or []
-                            },
-                        )
-                    )
-        except (KeyError, TypeError, ValueError, AttributeError):
-            return SpanQuery((), False)
-        return SpanQuery(tuple(spans), len(traces) < TRACE_LIMIT)
+        """This service's error spans in the window, complete or flagged not.
+
+        A full page may hide traces, so it is discarded and its sub-window
+        split in ``SPLIT_FACTOR`` until every page stays under the limit
+        (r12). ``timeout`` bounds each HTTP request; the request count, the
+        bytes read and the smallest sub-window are capped, and reaching any
+        cap is ``complete=False`` -- never a clean answer.
+        """
+        found: dict[tuple[str, str], ObservedSpan] = {}
+        requests = read = 0
+        pending = [
+            (int(start.timestamp() * 1_000_000), int(end.timestamp() * 1_000_000))
+        ]
+        while pending:
+            low, high = pending.pop()
+            if requests >= MAX_SUBREQUESTS:
+                return SpanQuery(tuple(found.values()), False)
+            requests += 1
+            query = urllib.parse.urlencode(
+                {"service": service, "start": low, "end": high, "limit": TRACE_LIMIT}
+            )
+            payload, size = _get_json_sized(
+                f"{kind_lab.JAEGER}/api/traces?{query}", timeout
+            )
+            read += size
+            if read > MAX_SEARCH_BYTES or not isinstance(payload, dict):
+                return SpanQuery(tuple(found.values()), False)
+            traces = payload.get("data")
+            if not isinstance(traces, list):
+                return SpanQuery(tuple(found.values()), False)
+            if len(traces) >= TRACE_LIMIT:
+                width = high - low
+                if width < MIN_SUBWINDOW_US * SPLIT_FACTOR:
+                    return SpanQuery(tuple(found.values()), False)
+                step = width // SPLIT_FACTOR
+                bounds = [low + step * i for i in range(SPLIT_FACTOR)] + [high]
+                for index in range(SPLIT_FACTOR):
+                    first = bounds[index] if index == 0 else bounds[index] + 1
+                    pending.append((first, bounds[index + 1]))
+                continue
+            if not _collect_errors(traces, service, found):
+                return SpanQuery(tuple(found.values()), False)
+        return SpanQuery(tuple(found.values()), True)
 
     def checkout_calls(
         self, start: datetime, end: datetime, timeout: float
@@ -1286,22 +1294,56 @@ class LabTelemetry:
         return CallCount(value, True)
 
 
-def _get_json(url: str, timeout: float) -> Any:
-    """A bounded anonymous GET (Jaeger); None on any error or oversize body."""
+def _get_json_sized(url: str, timeout: float) -> tuple[Any, int]:
+    """A bounded anonymous GET (Jaeger): (payload or None, bytes read)."""
     request = urllib.request.Request(url, method="GET")
     try:
         with kind_lab.OPENER.open(request, timeout=max(timeout, 0.01)) as response:
             if response.status != 200:
-                return None
+                return None, 0
             raw = response.read(MAX_TELEMETRY_BYTES + 1)
     except (urllib.error.URLError, OSError, ValueError, TimeoutError):
-        return None
+        return None, 0
     if len(raw) > MAX_TELEMETRY_BYTES:
-        return None
+        return None, len(raw)
     try:
-        return json.loads(raw)
+        return json.loads(raw), len(raw)
     except ValueError:
-        return None
+        return None, len(raw)
+
+
+def _collect_errors(
+    traces: list[Any], service: str, found: dict[tuple[str, str], ObservedSpan]
+) -> bool:
+    """Add ``service``'s error spans of a page to ``found``; False if malformed."""
+    try:
+        for trace in traces:
+            processes = {
+                key: value["serviceName"] for key, value in trace["processes"].items()
+            }
+            for span in trace["spans"]:
+                if processes.get(span["processID"]) != service:
+                    continue
+                tags = {tag["key"]: tag["value"] for tag in span.get("tags") or []}
+                if not span_error(tags):
+                    continue
+                key = (str(trace["traceID"]), str(span["spanID"]))
+                found.setdefault(
+                    key,
+                    ObservedSpan(
+                        trace_id=key[0],
+                        span_id=key[1],
+                        service=service,
+                        operation=str(span["operationName"]),
+                        start=datetime.fromtimestamp(
+                            span["startTime"] / 1_000_000, tz=timezone.utc
+                        ),
+                        tags=tags,
+                    ),
+                )
+    except (KeyError, TypeError, ValueError, AttributeError, OverflowError):
+        return False
+    return True
 
 
 class KindLabIdentity:
