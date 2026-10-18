@@ -306,6 +306,28 @@ def test_an_interrupt_while_writing_round_outputs_still_prints_and_exits_130(
     assert not (env["deps"].ledger_root / "fault-active.json").exists()
 
 
+def test_an_interrupt_while_writing_the_probe_report_still_prints_and_exits_130(
+    tmp_path, capsys, monkeypatch
+):
+    from scripts.eval_live_lab import Interrupted
+
+    env, deps = _probe_env(tmp_path)
+    real = eval_live.write_public_exclusive
+
+    def interrupted(directory, names, document):
+        written = real(directory, names, document)
+        if names == ["probe.json"]:  # the report is written, then the signal
+            raise Interrupted()
+        return written
+
+    monkeypatch.setattr(eval_live, "write_public_exclusive", interrupted)
+    code = eval_live.main([*ARGV, *_scenarios("eval-cart-failure")], deps=deps)
+    final = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    assert (code, final["exit_code"], final["status"]) == (130, 130, "interrupted")
+    assert (deps.evidence_root / "r1/probe.json").exists()
+    assert not (deps.ledger_root / "fault-active.json").exists()
+
+
 def test_a_second_concurrent_recovery_restores_nothing_and_is_refused(
     tmp_path, capsys, monkeypatch
 ):

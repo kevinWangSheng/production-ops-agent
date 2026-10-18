@@ -235,20 +235,40 @@ def run_probe(config: eval_live.RoundConfig, deps: LiveDeps) -> eval_live.RoundR
     except (Interrupted, KeyboardInterrupt):
         status, exit_code, reason = "interrupted", 130, "INTERRUPTED"
     evidence = eval_live.round_evidence(deps, config.round_id)
-    document = {
-        "schema": "opspilot-eval-live-probe-1",
-        "round": config.round_id,
-        "round_status": status,
-        "exit_code": exit_code,
-        "reason": reason,
-        "retained_fault": read_state(deps.ledger_root) is not None,
-        "scenarios": entries,
-    }
-    if not eval_live.write_public_exclusive(evidence, ["probe.json"], document):
+    # Like run_round: the report is written with signals held and an
+    # interrupt raised meanwhile is remembered, so the final JSON always
+    # comes out and the round then exits 130 (precedence 4 > 5 > 130).
+    late_interrupt = False
+    written = False
+    with eval_live._deferred_interrupts():
+        try:
+            retained = read_state(deps.ledger_root) is not None
+        except (Interrupted, KeyboardInterrupt):
+            retained, late_interrupt = read_state(deps.ledger_root) is not None, True
+        document = {
+            "schema": "opspilot-eval-live-probe-1",
+            "round": config.round_id,
+            "round_status": status,
+            "exit_code": exit_code,
+            "reason": reason,
+            "retained_fault": retained,
+            "scenarios": entries,
+        }
+        try:
+            written = eval_live.write_public_exclusive(
+                evidence, ["probe.json"], document
+            )
+        except (Interrupted, KeyboardInterrupt):
+            written = (evidence / "probe.json").is_file()
+            late_interrupt = True
+    late_interrupt = eval_live._take_pending() or late_interrupt
+    if not written:
         # r11: an evidence write failure is exit 5 with the final JSON; a
         # retained fault (4) keeps its own exit code.
         if exit_code != 4:
             status, exit_code, reason = "stopped", 5, "EVIDENCE_WRITE_FAILED"
+    if late_interrupt and exit_code in (0, 1):
+        status, exit_code, reason = "interrupted", 130, "INTERRUPTED"
     return eval_live.RoundResult(
         config.round_id, status, exit_code, reason, tuple(results)
     )
