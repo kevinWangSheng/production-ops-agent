@@ -69,6 +69,8 @@ from opspilot.evaluation import (
     write_summary,
 )
 from opspilot.observation.release_policy import sha256
+from opspilot.tools.executor import QueryScope
+from opspilot.tools.otel_demo import OtelDemoConfig
 from scripts.eval_live_lab import (
     AttemptLedger,
     FaultIntent,
@@ -356,10 +358,10 @@ def build_manifest(
     return Manifest(round_id, dims)
 
 
-def template_scope(config: Any = None) -> Any:
+def template_scope(config: OtelDemoConfig | None = None) -> QueryScope:
     """A QueryScope as ``otel_demo_executor_factory`` issues one for a fresh
     (non-alert) Run, with placeholder Run identity: only its policy part,
-    which ``scope_policy_hash`` keeps, is meaningful."""
+    which ``scope_policy_hash`` keeps, is meaningful (public, interface r5)."""
     from datetime import timezone
 
     from opspilot.tools import otel_demo

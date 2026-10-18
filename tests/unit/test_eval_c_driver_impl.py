@@ -1099,3 +1099,33 @@ def test_a_fresh_window_closing_exactly_at_the_budget_is_read(env):
     result = eval_live_lab.normal_window(sigs, not_before=start, deps=deps)
     assert result.passed and result.window.start == start + timedelta(seconds=300)
     assert env["clock"].mono - 1000.0 == 600
+
+
+def test_public_template_scope_separates_policy_from_run_identity():
+    from opspilot.evaluation.live import scope_policy_hash
+    from opspilot.tools import otel_demo
+
+    template = eval_live.template_scope()
+    run = replace(
+        template,
+        scope_id="otel-demo:run-9:3",
+        subject_id="incident-9",
+        run_id="run-9",
+        control_generation=4,
+        global_suspension_generation=5,
+        target_suspension_generation=6,
+        window=replace(
+            template.window,
+            start=template.window.start + timedelta(days=30),
+            end=template.window.end + timedelta(days=30),
+        ),
+        deadline=template.deadline + timedelta(days=31),
+    )
+    assert scope_policy_hash(run) == scope_policy_hash(template)
+    shorter = replace(
+        template,
+        window=replace(template.window, start=template.window.end - timedelta(hours=1)),
+    )
+    assert scope_policy_hash(shorter) != scope_policy_hash(template)
+    assert template.target_ids == frozenset({otel_demo.TARGET_ID})
+    assert template.default_query_window is None
