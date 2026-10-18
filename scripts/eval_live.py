@@ -456,6 +456,14 @@ def run_round(config: RoundConfig, deps: LiveDeps) -> RoundResult:
     refusal = preflight(config, deps)
     if refusal is not None:
         return _refuse(config, refusal)
+    # First external setup of the round (the LangSmith project), only once
+    # the preflight passed: a refused round makes no external call (r4).
+    begin = getattr(deps.investigator, "begin_round", None)
+    if begin is not None:
+        try:
+            begin(config.round_id)
+        except LabError as exc:
+            return _refuse(config, exc.code)
     try:
         append_run_start(
             deps.ledger_root,

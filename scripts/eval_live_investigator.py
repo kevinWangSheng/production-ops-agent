@@ -19,7 +19,7 @@ from __future__ import annotations
 import json
 import os
 from collections.abc import Callable, Mapping
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import timedelta
 from pathlib import Path
 from typing import Any
@@ -51,6 +51,7 @@ from opspilot.web.service import LEASE_SECONDS
 from opspilot.worker import Worker
 from scripts.eval_live_lab import LabError, LiveClock, write_private
 from scripts.lab_evidence import (
+    configure_lab_round,
     langsmith_client,
     prepare_lab_project,
     trace_evidence,
@@ -67,7 +68,12 @@ class RoundSession:
 
 
 def prepare_round(round_id: str) -> RoundSession:
-    """Credentials and the round's LangSmith project; never prints values."""
+    """Credentials and the round's project name, from local files only.
+
+    No network: the LangSmith project is created by
+    ``OtelDemoInvestigator.begin_round`` once the preflight passed, so a
+    refused round makes no external call (interface r4). Never prints values.
+    """
     from scripts.m1_live_flash_loop import load_langsmith_env, read_key
 
     explicit = os.environ.get("M0_ENV_FILE")
@@ -84,13 +90,13 @@ def prepare_round(round_id: str) -> RoundSession:
     ):
         raise LabError("ENV_UNCONFIRMED")
     try:
-        project = prepare_lab_project(env, round_id, client_factory=langsmith_client)
-    except SystemExit:
+        # Only names the round's project in the environment (no request).
+        configure_lab_round(env, round_id)
+    except ValueError:
         raise LabError("ENV_UNCONFIRMED") from None
     if tracing.check_lab_target(env):
         raise LabError("ENV_UNCONFIRMED")
-    tracing.configure(env)
-    return RoundSession(key, project, otel_demo.OtelDemoConfig.from_env(env))
+    return RoundSession(key, None, otel_demo.OtelDemoConfig.from_env(env))
 
 
 class _Delegate:
@@ -175,6 +181,20 @@ class OtelDemoInvestigator:
         )
         # The manifest's registry/permissions are built from the same config.
         self.config = session.config
+
+    def begin_round(self, round_id: str) -> None:
+        """After the preflight: the round's LangSmith project (longest
+        retention, set before any trace) and the lab tracer."""
+        try:
+            project = prepare_lab_project(
+                os.environ, round_id, client_factory=langsmith_client
+            )
+        except SystemExit:
+            raise LabError("ENV_UNCONFIRMED") from None
+        except Exception:  # noqa: BLE001 - a LangSmith outage refuses the round
+            raise LabError("TRACE_PROJECT_UNAVAILABLE") from None
+        self.session = replace(self.session, project=project)
+        tracing.configure(os.environ)
 
     def investigate(self, request: Any) -> Any:
         from scripts.eval_live import InvestigationResult

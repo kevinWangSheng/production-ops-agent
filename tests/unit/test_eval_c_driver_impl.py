@@ -891,3 +891,127 @@ def test_lab_telemetry_parses_jaeger_and_marks_a_full_page_incomplete(monkeypatc
 def test_flagd_url_must_be_a_bare_loopback_endpoint(url):
     with pytest.raises(LabError, match="LOCAL_FLAGD_URL_REQUIRED"):
         eval_live_lab.check_flagd_url(url)
+
+
+# -- r4: a refused round makes no external call ---------------------------------
+
+
+class _Counting:
+    """Wraps a seam and counts every method call made through it."""
+
+    def __init__(self, inner: Any, calls: list[str], name: str) -> None:
+        self._inner, self._calls, self._name = inner, calls, name
+
+    def __getattr__(self, attr: str) -> Any:
+        value = getattr(self._inner, attr)
+        if not callable(value):
+            return value
+
+        def call(*args: Any, **kwargs: Any) -> Any:
+            self._calls.append(f"{self._name}.{attr}")
+            return value(*args, **kwargs)
+
+        return call
+
+
+class _BeginningInvestigator(Investigator):
+    def __init__(self, lab: Lab, clock: Clock, deps_ref: dict[str, Any]) -> None:
+        super().__init__(lab, clock)
+        self.begun: list[tuple[str, bool]] = []
+        self.deps_ref = deps_ref
+        self.fail: str | None = None
+
+    def begin_round(self, round_id: str) -> None:
+        journals = list(self.deps_ref["deps"].evidence_root.rglob("attempt.json"))
+        self.begun.append((round_id, bool(journals)))
+        if self.fail is not None:
+            raise LabError(self.fail)
+
+
+def _counted(env: dict[str, Any]) -> tuple[LiveDeps, list[str], _BeginningInvestigator]:
+    deps, calls = env["deps"], []
+    investigator = _BeginningInvestigator(env["lab"], env["clock"], {"deps": deps})
+    counted = replace(
+        deps,
+        flags=_Counting(deps.flags, calls, "flags"),
+        flagd=_Counting(deps.flagd, calls, "flagd"),
+        telemetry=_Counting(deps.telemetry, calls, "telemetry"),
+        identity=_Counting(deps.identity, calls, "identity"),
+        ports=_Counting(deps.ports, calls, "ports"),
+        pg=_Counting(deps.pg, calls, "pg"),
+        balance=_Counting(deps.balance, calls, "balance"),
+        investigator=_Counting(investigator, calls, "investigator"),
+    )
+    investigator.deps_ref["deps"] = counted
+    return counted, calls, investigator
+
+
+def test_a_round_refused_before_any_lab_read_makes_zero_external_calls(env):
+    deps, calls, investigator = _counted(env)
+    (deps.ledger_root / "occupation.json").unlink()
+    result = eval_live.run_round(config(deps, ["eval-cart-failure"]), deps)
+    assert (result.exit_code, result.reason) == (3, "LAB_RESERVATION_REQUIRED")
+    assert calls == [] and investigator.begun == []
+
+
+def test_a_round_refused_at_the_flag_check_never_begins_or_spends(env):
+    deps, calls, investigator = _counted(env)
+    data = json.loads(ORIGINAL)
+    data["flags"]["cartFailure"]["defaultVariant"] = "on"
+    env["lab"].raw = json.dumps(data).encode()
+    result = eval_live.run_round(config(deps, ["eval-cart-failure"]), deps)
+    assert (result.exit_code, result.reason) == (3, "FLAGS_NOT_NORMAL")
+    assert investigator.begun == []
+    forbidden = ("pg.", "balance.", "investigator.", "telemetry.")
+    assert not [c for c in calls if c.startswith(forbidden)]
+    assert not [c for c in calls if c == "flags.replace"]
+
+
+def test_begin_round_runs_once_after_the_preflight_and_before_any_journal(env):
+    deps, calls, investigator = _counted(env)
+    eval_live.run_round(config(deps, ["eval-normal-1"], n=2), deps)
+    assert investigator.begun == [("r1", False)]
+    assert calls.index("investigator.begin_round") < calls.index("pg.start")
+
+
+def test_a_failed_round_begin_is_a_refusal_without_journal(env):
+    deps, calls, investigator = _counted(env)
+    investigator.fail = "TRACE_PROJECT_UNAVAILABLE"
+    result = eval_live.run_round(config(deps, ["eval-normal-1"]), deps)
+    assert (result.exit_code, result.reason) == (3, "TRACE_PROJECT_UNAVAILABLE")
+    assert not list(deps.evidence_root.rglob("attempt.json"))
+    assert not [c for c in calls if c.startswith(("pg.", "balance."))]
+    assert not (deps.ledger_root / "run-starts.jsonl").exists()
+
+
+def test_real_deps_build_makes_no_langsmith_call(tmp_path, monkeypatch):
+    from scripts import eval_live_investigator, lab_evidence
+
+    langsmith: list[str] = []
+
+    def no_project(*args: Any, **kwargs: Any) -> Any:
+        langsmith.append("project")
+        return {"project": "p", "project_id": "id", "trace_tier": "longlived"}
+
+    def no_client(*args: Any, **kwargs: Any) -> Any:
+        langsmith.append("client")
+        raise AssertionError("no LangSmith client before the preflight")
+
+    for module in (eval_live_investigator, lab_evidence):
+        monkeypatch.setattr(module, "prepare_lab_project", no_project, raising=False)
+        monkeypatch.setattr(module, "langsmith_client", no_client, raising=False)
+    monkeypatch.setattr(eval_live_investigator.tracing, "configure", lambda env: None)
+    env_file = tmp_path / "env"
+    env_file.write_text("DEEPSEEK_API_KEY=synthetic\nLANGSMITH_API_KEY=synthetic\n")
+    monkeypatch.setenv("M0_ENV_FILE", str(env_file))
+    monkeypatch.setenv("OPSPILOT_TRACE", "lab")
+    monkeypatch.setenv("OPSPILOT_TOOL_PROFILE", "otel-demo")
+    for name in ("LANGSMITH_API_KEY", "LANGSMITH_PROJECT", "LANGSMITH_ENDPOINT"):
+        # setenv first so monkeypatch restores the variables the code sets.
+        monkeypatch.setenv(name, "")
+        monkeypatch.delenv(name)
+    deps = eval_live.real_deps("http://127.0.0.1:18013", "r1")
+    assert langsmith == []
+    assert deps.env.check() is None
+    deps.investigator.begin_round("r1")
+    assert langsmith == ["project"]
