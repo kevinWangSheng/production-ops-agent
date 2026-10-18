@@ -429,3 +429,33 @@ docs/evidence/eval/<R>/aggregate.json                   # write_round，opspilot
   - 预检在 `begin_round` 之前完成 `append_run_start` 的全部检查（`check_run_start`：batch-journal guard 能打开、哈希链有效、round 未开始、`run-starts.jsonl` 或其目录可写），不满足则退出 3 且零外部调用。`begin_round` 之后追加仍失败（预检后才出现的变化）不再报 3，改为 stopped、退出 1，全部槽位 `not_started`，不写 journal。
   - run 与 `--probe` 中私有证据/状态写入（pre-observation、flags-*、wash、录制父目录）抛 OSError 时，原因记 `EVIDENCE_WRITE_FAILED`（不再归为 `DRIVER_ERROR`），照常恢复，整轮停止，后续槽位 `not_started`，退出 5；故障仍保留时 4 优先。
   - 退出码统一按 **4 > 5 > 130 > 1** 取最高。开始后以 3 停轮（预约消失）与 130 同级；同级时保留先出现者。`PG_STOP_FAILED`、`LAB_FAULT_FOREIGN` 被压过时仍记录在 lifecycle 的 reason/closure_reason 中。
+
+## 15. r16 协作式中断（#273，2026-10-18）
+
+动机：r7–r15 中信号处理器在任意字节码位置 raise `Interrupted`，任何没有包进 `_deferred_interrupts()` 的窄窗口都可能把收尾或证据写入打断一半（#273 列出 5 处）。r16 把中断改为协作式，从机制上关闭这类窗口。退出码语义（第 2 节、r13、r15 的 4 > 5 > 130 > 1）不变。
+
+- **信号处理器**：收到 SIGINT/SIGTERM 时只做一件事，置位 `stop_requested`（并记录首个信号与时间），绝不 raise。例外：第二次信号到达，且当前不在受保护段内时，按「强制中断」立即 raise `Interrupted`，让操作员能打断卡住的非收尾阶段；受保护段内的第二次信号同样只置位。
+- **检查点**：只在检查点把 `stop_requested` 转成 `Interrupted`，检查点函数为 `checkpoint()`，位置至少包括：
+  - 每个槽位开始前；
+  - 注入前；
+  - 每次预观察、洗净、gate 轮询的循环迭代；
+  - 每次模型调用或工具调用前后（经 investigator 接缝）；
+  - 每次外部命令（kubectl/pg_ctl/initdb/git）之前。
+  受保护段内调用 `checkpoint()` 不抛出。
+- **可中断等待**：真实 `Clock.sleep` 必须在置位后尽快返回，延迟不超过 1 秒（例如以 ≤1s 的片段睡眠并检查标志，或等待一个由处理器触发的 Event），返回后由调用方的下一个检查点抛出。外部命令照常受各自 timeout 约束，不在命令执行中途 kill。
+- **受保护段**：以下整段不可中断，段内既不 raise，也不执行检查点：
+  - 恢复与洗净：`restore_fault` 全程，从读取意图到 unlink 意图，再到最终 ledger 事件；
+  - PG 的启动清理与停止：`LocalPgLauncher.start` 的失败清理、closure 中的 stop 及其重试；
+  - closure 之后的冻结与证据写入：summary、journal、recording 封存、aggregate、lifecycle、probe.json、recovery 记录、`structural-replay.json`；
+  - 占用与 active marker 的创建和删除，以及 occupation release；
+  - `inject_fault` 中从写 ConfigMap 到记录 fault 元数据（含 hash 快照）这一段。fault 记录必须在等待 flagd 传播之前写入 attempt 状态，传播等待本身可以中断。
+  段结束后不自动 raise；由下一个检查点或收尾逻辑读取 `stop_requested`，按既有退出码规则处理。
+- **收尾读取**：run、`--probe`、`--recover`、`--verify-replay` 在写最终 JSON 前读取 `stop_requested`；若已置位且没有更高优先级的码，则退出 130。
+- **兼容**：测试中假对象直接抛 `Interrupted` 的做法保留，等价于一个检查点被触发；`KeyboardInterrupt` 同样处理。既有验收测试的断言不修改。
+
+#273 的 5 项与 r16 的对应：
+1. start 中断时清理失败：清理处于受保护段，先完成 stop 并检查 stop_failed，再由检查点处理中断。
+2. unlink 之后被中断：restore 全程受保护，不再报出虚假的 4。
+3. 传播等待中失败导致 fault 记录为 null：fault 记录先于传播等待写入。
+4. closure 之后 `clock.now()` 处于未保护窗口：冻结与证据写入都在受保护段内。
+5. active marker teardown：marker 的删除在受保护段内，aggregate/lifecycle 照常写出。
