@@ -96,8 +96,32 @@
   per-attempt source_manifest。正向例明确要求两层摘要不同仍被接受；另加
   static tools 不同、scope policy 不同的 IDENTITY_MISMATCH 反例。使用 §14
   已命名的公开 opspilot.evaluation.live.registry_hash / scope_policy_hash。
-  **工作副本冲突已记录**：当前 §14 的 r5 段落仍写「不再要求」比较这两维；
-  本次测试按用户最新 I3 的「MUST compare」执行，没有修改接口文档。
+  **T 轮历史冲突**：当时 §14 的 r5 段落写「不再要求」比较这两维，
+  测试按用户最新 I3 的「MUST compare」执行；本轮新增 §13 最后一条已明确
+  必须比较，并公开了 template_scope。没有修改接口文档。
 - r5 预算边界与原因保持严格：600s 端点窗口仍须通过；洗净失败仍断言
   NORMAL_WINDOW_UNCONFIRMED。新增 provenance 默认 None 的离线用例：继续
   执行本轮，code 为带原因的 unknown，网络和子进程守卫保持启用。
+
+## lead 的 G1–G4：fixture 与真实轮策略一致
+
+已全文阅读本轮 §1、§3（新增「轮策略模板」）、§13 最后条件。
+
+- **G1**：recording_context 不再使用通用 m1 的 registration/target/scope。
+  快照取 otel_demo_registrations() 的完整真实 DTO；scope 从公开纯函数
+  template_scope() 用 replace 只替换 Run 身份字段，授权框保留相同 24 h 长度、
+  default_query_window=None，运行 ID 与 scope_id 带实际 Run/epoch。
+  真实轮 manifest 与假 Investigator 的静态 registry/policy 因而同源。
+- **G2**：with_evidence 以相同 OTel DTO 和同一 scope 构建真实只读 executor，
+  control generations 与 scope 一致；真实 OtelDemoTransport 只接既有
+  FakeOpener，提供授权窗内的确定性 Prometheus matrix 样本。模型请求、
+  ToolRequest 与 binding 均使用真实 metrics_range_query/TARGET_ID。
+  fixture 先明确断言 status=ok 与 evidence 非空，再生成交付和 Outcome；
+  既有测试另核该 EvidenceRecord 的 ID 确实进入重新派生的 delivered。
+- **G3**：终态 None 等价回归先用 MemoryIncidentStore.accept 建立 incident/Run，
+  claim 后经 committer.commit_step 与 publish 完成，再执行两种 runner.resume。
+  保留 same outcome/already_completed/模型工具零调用，并核验 store 业务快照不变。
+- **G4**：不同静态工具反例的版本使用合法小写 v1-canary-other，确保进入
+  binding 比较后才出现 IDENTITY_MISMATCH；scope-policy 反例与正向例均保留。
+
+本轮只调整离线 fixture/断言证据，网络与子进程守卫保持原样，无真实外调。

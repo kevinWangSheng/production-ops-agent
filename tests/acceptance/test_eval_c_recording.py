@@ -108,7 +108,7 @@ def test_q1_each_identity_mismatch_is_rejected(tmp_path, mismatch):
     elif mismatch == "scenario-id":
         ctx = replace(ctx, scenario_id="CANARY-OTHER-SCENARIO")
     elif mismatch == "scenario-version":
-        ctx = replace(ctx, scenario_version="CANARY-OTHER-VERSION")
+        ctx = replace(ctx, scenario_version="v1-canary-other")
     elif mismatch == "missing-snapshots":
         ctx = replace(ctx, tool_snapshots=())
     elif mismatch in {"snapshot-run", "snapshot-scope"}:
@@ -485,7 +485,7 @@ def test_q1_round_manifest_must_match_snapshot_static_registration_and_policy(
     snapshot = recording.context.tool_snapshots[0]
     if mismatch == "static-tools":
         tools = (
-            replace(snapshot.tools[0], version="CANARY-OTHER-VERSION"),
+            replace(snapshot.tools[0], version="v1-canary-other"),
         ) + snapshot.tools[1:]
         dimension = "registry"
         wrong_hash = registry_hash(tools, snapshot.targets)
