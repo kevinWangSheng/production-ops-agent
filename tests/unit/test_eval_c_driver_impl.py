@@ -1390,3 +1390,38 @@ def test_an_interrupt_during_pg_stop_still_closes_and_writes_the_attempt(
         assert (result.exit_code, result.status) == (4, "stopped")
     else:
         assert (result.exit_code, result.status) == (130, "interrupted")
+
+
+def test_fault_gate_reports_each_span_once_across_service_queries(env):
+    """Live A11 probe: whole traces come back from both signature services."""
+    deps, clock = env["deps"], env["clock"]
+    start = clock.now()
+    rule = next(
+        answer.signature
+        for spec, answer in load_scenarios(SCENARIOS)
+        if spec.scenario_id == "eval-cart-failure"
+    )
+    whole_trace = tuple(
+        ObservedSpan(
+            "trace-1",
+            f"span-{index}",
+            matcher.service,
+            matcher.operation,
+            start + timedelta(seconds=1),
+            {"otel.status_code": "ERROR"},
+        )
+        for index, matcher in enumerate(rule.any_of)
+    )
+    services = {m.service for m in rule.any_of}
+    assert len(services) == 2
+
+    def spans(service, begin, end, timeout):
+        return SpanQuery(whole_trace if service in services else (), True)
+
+    env["lab"].spans = spans  # type: ignore[method-assign]
+    clock.advance(5)
+    gate = eval_live_lab.fault_gate(rule, confirmed_at=start, deps=deps)
+    assert gate.passed
+    ids = [span.span_id for span in gate.matched]
+    assert ids == ["span-0", "span-1"]
+    assert eval_live_lab.observation_json(gate)["matched_span_ids"] == ids

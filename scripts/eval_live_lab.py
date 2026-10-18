@@ -728,6 +728,18 @@ def _hits(
     ]
 
 
+def _unique(spans: Sequence[ObservedSpan]) -> list[ObservedSpan]:
+    """First occurrence of each (trace_id, span_id), order kept."""
+    seen: set[tuple[str, str]] = set()
+    unique: list[ObservedSpan] = []
+    for span in spans:
+        key = (span.trace_id, span.span_id)
+        if key not in seen:
+            seen.add(key)
+            unique.append(span)
+    return unique
+
+
 def _window_json(window: Window | None) -> dict[str, str] | None:
     if window is None:
         return None
@@ -810,6 +822,9 @@ def fault_gate(
         probes += 1
         raw.append({"checkout_calls": count.value, "complete": count.complete})
         calls = count.value
+        # Jaeger returns whole traces, so a span seen through two signature
+        # services' searches arrives twice; count and report it once.
+        matched = _unique(matched)
         if (
             complete
             and count.complete
