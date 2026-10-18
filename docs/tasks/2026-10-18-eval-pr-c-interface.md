@@ -114,10 +114,21 @@ class LiveDeps:
     scenarios_root: Path   # 真实值：evals/scenarios
     flagd_url: str
     env: EnvChecker        # r3 测试作者澄清 6
+    provenance: ProvenanceReader  # r5
 
 class EnvChecker(Protocol):
     def check(self) -> str | None: ...  # None = 环境前提满足；否则 "ENV_UNCONFIRMED"
+
+@dataclass(frozen=True)
+class Provenance:
+    commit: str | None   # 代码版本（git HEAD）；未知为 None
+    clean: bool          # 已跟踪文件无未提交改动
+
+class ProvenanceReader(Protocol):
+    def read(self) -> Provenance: ...
 ```
+
+- **来源版本（r5）**：驱动核心自己不启动任何子进程、不发网络请求；git commit 与是否干净只经 `LiveDeps.provenance` 读取，真实实现（调用 `git`）只在 `real_deps()` 中构造。每轮调用一次，时机为预检全部通过之后、`begin_round` 之前，结果用于轮 manifest 的 `code` 维度：`commit` 非 None 且 `clean` 为真时为 `version=<commit>`，否则为 `unknown`（带原因，不拒绝本轮，但会阻止基线完成）。它抛 `LabError(code)` 时整轮以退出 3、该 code 拒绝，不写 journal。预检拒绝的一轮不调用 `provenance`。场景、答案、投影、评估器与 kind 配置文件的 SHA256 由驱动直接读文件计算，不是子进程或网络调用。
 
 - `EnvChecker.check()` 在预检第一步调用，非 None 即退出 3（`ENV_UNCONFIRMED`），不调用其他接缝。真实实现在 `real_deps()` 构造时读取 `M0_ENV_FILE`；注入的 `LiveDeps` 由调用方负责，驱动不读任何环境文件。
 - **轮开始（r4）**：`Investigator` 可选实现 `begin_round(round_id: str) -> None`。驱动只在预检全部通过之后、追加 `run-starts.jsonl` 与写第一个 journal 之前调用它一次；未实现该方法的假 Investigator 视为无操作。它抛 `LabError(code)` 时整轮以退出 3、该 code 拒绝，不写 journal。真实实现在这里创建 LangSmith 项目并设置保留期；`real_deps()` 只读本地环境文件，不发起任何网络调用。因此预检拒绝的一轮对 LangSmith、DeepSeek 余额、PG 与 Investigator 全部零调用；预检本身只调用拒绝之前已经用到的接缝（`env` → 占用文件 → identity → port → flags/flagd）。
