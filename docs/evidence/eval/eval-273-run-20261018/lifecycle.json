@@ -1,0 +1,93 @@
+{
+  "balances": [
+    {
+      "attempt_id": "7da88102-73e3-4160-91bd-8af320edaa22",
+      "balance_after_cny": "188.52",
+      "balance_before_cny": "188.62",
+      "delta_cny": "0.10",
+      "shared_key_possible": true,
+      "status": "measured"
+    }
+  ],
+  "command": [
+    "--mode",
+    "live",
+    "--round",
+    "eval-273-run-20261018",
+    "--scenario",
+    "eval-payment-failure-1",
+    "--n",
+    "1",
+    "--parallel",
+    "1",
+    "--holder",
+    "lead",
+    "--batch",
+    "eval-273",
+    "--flagd-url",
+    "http://127.0.0.1:18013",
+    "--pg-port",
+    "55631"
+  ],
+  "manifest_hash": "959bddf426b135aff12da5cafc8ba10a469a5f38f5d082caf278fdabe41da641",
+  "reason": null,
+  "recovered_at": null,
+  "retained_fault": false,
+  "round": "eval-273-run-20261018",
+  "round_status": "finished",
+  "schema": "opspilot-eval-live-lifecycle-1",
+  "slots": [
+    {
+      "attempt_id": "7da88102-73e3-4160-91bd-8af320edaa22",
+      "closure_reason": null,
+      "fault": {
+        "effective_at": "2026-10-18T17:32:31.750866+00:00",
+        "injected_sha256": "e47d27c2fa01c72d8bc71d40d0f4223b1049fd84582e5789cbd9a5ccbdcc915d",
+        "normal_confirmed_at": "2026-10-18T17:36:27.405000+00:00",
+        "original_sha256": "1ee5c0258e3e13609ecec75979cee286ab00f442d288112e39e3db8433d176c6",
+        "restored_sha256": "1ee5c0258e3e13609ecec75979cee286ab00f442d288112e39e3db8433d176c6",
+        "washed_at": "2026-10-18T17:41:27.405000+00:00"
+      },
+      "pre_observation": {
+        "checkout_calls": 10.5334211118426,
+        "flag_confirmed_at": "2026-10-18T17:32:31.750866+00:00",
+        "kind": "fault",
+        "matched_span_ids": [
+          "dd55c07ad624087e",
+          "4b96e6638b44393e",
+          "bfe7ac258e116f41",
+          "1846805176a397a0"
+        ],
+        "passed": true,
+        "probes": 78,
+        "reason": null,
+        "trace_ids": [
+          "49dd876a7b4f86af700750c365a2e16a",
+          "fd0f3b87f6495cfe5c137695bb36037f"
+        ],
+        "window": {
+          "end": "2026-10-18T17:35:10.398991+00:00",
+          "start": "2026-10-18T17:32:31.750866+00:00"
+        }
+      },
+      "product_run_id": "4587e91e-4db6-4727-b4dc-fec4462d98f2",
+      "reason": null,
+      "repetition": 1,
+      "scenario_id": "eval-payment-failure-1",
+      "scenario_version": "1",
+      "stage": "investigate",
+      "status": "ran",
+      "summary": {
+        "path": "runs/7da88102-73e3-4160-91bd-8af320edaa22/summary.json",
+        "sha256": "f0eb3f4a17fa7df283155665c77e564376a9a4fba55ef3f7a67f2d813ca18db4"
+      },
+      "timings": {
+        "closure_s": 326.94,
+        "ended_at": "2026-10-18T17:41:29.317238+00:00",
+        "investigation_s": 50.515,
+        "setup_s": 167.512,
+        "started_at": "2026-10-18T17:32:24.139664+00:00"
+      }
+    }
+  ]
+}
