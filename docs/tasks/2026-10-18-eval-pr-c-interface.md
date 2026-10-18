@@ -293,7 +293,8 @@ docs/evidence/eval/<R>/aggregate.json                   # write_round，opspilot
   - `source_run_id == attempt.product_run_id`（不为 None）；
   - `scenario_id/scenario_version` 与 attempt 一致；
   - 录制包内有工具快照，且每个 `tool_snapshots[*].scope.run_id == attempt.product_run_id`、`scope_id == f"otel-demo:{run_id}:{epoch}"`；
-  - `source_manifest` 的全部维度中，除 registry、permissions 外，都与轮 manifest 相同。
+  - `source_manifest` 的全部维度中，除 registry、permissions 外，都与轮 manifest 相同（per-attempt 的 source_manifest 的这两个维度本就与轮 manifest 不同，这是设计）；
+  - 每个快照按第 14 节重算的 `live.registry_hash(snapshot.tools, snapshot.targets)` 等于轮 manifest 的 `registry` 值，`live.scope_policy_hash(snapshot.scope)` 等于轮 manifest 的 `permissions` 值（lead 2026-10-18 r5 裁决：`source_manifest_hash` 只证明录制自洽，这两项才证明它与本轮一致；静态工具集或 scope 策略不同的 attempt 一律 `IDENTITY_MISMATCH`）。
 - 驱动在写 summary 前执行这项核对，核对失败按 aborted 处理。`epoch` 是 runner 返回的实际领取 epoch，记录在 summary 的 `usage.epoch`。
 
 **Q2**：采用 `attempt_wrapper`，默认 None，不拆分 `resume`。**Q4**：occupation 由 lead claim/release，驱动只 check 并持有 `.active` 标记。
@@ -319,7 +320,7 @@ docs/evidence/eval/<R>/aggregate.json                   # write_round，opspilot
 - **失败原因不被覆盖**：attempt 的 `reason` 保留第一个失败；收尾失败另记 `closure_reason="RESTORE_FAILED:<code>"`，它同时是整轮停止原因（退出 4）。setup/调查中的非预期异常记 `DRIVER_ERROR`，仍执行恢复。
 - **fault guard 覆盖整个 attempt**：从 setup 到恢复与洗净结束一直持有，不在调查后释放再重取。
 - **恢复的写入结果未知**：恢复写入抛 `FLAG_WRITE_UNKNOWN` 时不立即失败，以回读决定：内容 SHA 等于 `original_sha256`、uid 不变且 resourceVersion 已前进才算恢复成功，否则 `FLAG_RESTORE_UNVERIFIED`。CAS 冲突（`FLAG_CAS_CONFLICT`）直接失败并保留状态。
-- **轮 manifest（Q1）的两个维度**：`registry = live.registry_hash(注册 DTO)`，`permissions = live.scope_policy_hash(scope)`；后者去掉 scope_id、subject_id、run_id、三个 generation、window、default_query_window、deadline，另加 `window_seconds` 与「是否有 default_query_window」。驱动用 `template_scope(config)` 预先算出，用于描述本轮冻结的授权策略。r5 更正：`check_recording_binding` 只核第 13 节列出的条件，不再要求轮 manifest 的 registry/permissions 等于由录制快照重算的值；每个 Run 的实际 registry/permissions 由录制自身的 `source_manifest_hash` 绑定（B2）。此前实现多做的这项比较已删除。
+- **轮 manifest（Q1）的两个维度**：`registry = live.registry_hash(注册 DTO)`，`permissions = live.scope_policy_hash(scope)`；后者去掉 scope_id、subject_id、run_id、三个 generation、window、default_query_window、deadline，另加 `window_seconds` 与「是否有 default_query_window」。驱动用 `template_scope(config)` 预先算出，真实领取的 scope 必须得到同一值；`check_recording_binding` 按第 13 节最后一条核对（6610ff5 中「删除该比较」的更正已按 lead 裁决撤回）。
 - **录制引用（r5）**：只有核验通过（第 14 节首条）的录制才写入 summary 的 `recording_ref`；未通过核验的 attempt 为 aborted，`recording_ref=null`，原始包仍留在私有录制目录。槽位的 `status/stage/reason` 以核验后的结果为准，与 summary 一致。
 - **录制父目录（r5 澄清第 8 节）**：驱动在调用 Investigator 之前以 700 权限创建缺失的 `recording_root`；包目录本身仍由 `record()` 独占创建。
 - **真实 Jaeger 探测的已知限制**：为避免整页 checkout trace 数十 MB，`LabTelemetry.spans` 只检索含 `error=true` 标签的 trace（每页 200 条、响应≤32 MiB，满页或超限即 `complete=False`）。只有 grpc/http 状态码、没有 error 标签的错误 span 不会被检索到；离线规则（第 6 节）不受影响。
