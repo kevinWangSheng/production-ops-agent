@@ -179,7 +179,7 @@ F11 兼容键: ledger(attempt 私有目录绝对路径), flag, normal, variant,
   1. 状态的 `round/attempt_id` 必须属于当前调用，否则 `FAULT_BELONGS_TO_ANOTHER_RUN`，不写入。
   2. 读取 live ConfigMap。uid 不等于 `configmap_uid` 时报 `FLAG_OBJECT_REPLACED` 并停止。
   3. live = injected：以当前版本为条件 CAS 写回 original。live = original：做一次带 fence 的 CAS（排除迟到的注入提交），内容不变。其他值：`FLAGS_CHANGED_REFUSE_RESTORE`，不覆盖他人改动，保留状态。
-  4. 回读 SHA = `original_sha256`，flagd 解析回正常 variant（≤600 s），然后把 phase 改为 restored_unwashed，执行洗净（第 6 节，≤600 s）。
+  4. 回读 SHA = `original_sha256`，flagd 解析回正常 variant（≤600 s），然后把 phase 改为 restored_unwashed，执行洗净（第 6 节，≤600 s；预算含端点，恰好在 600 s 结束的窗口照常判定）。洗净失败的原因码就是 `normal_window` 的 `reason`（`NORMAL_WINDOW_UNCONFIRMED`），因此 `closure_reason="RESTORE_FAILED:NORMAL_WINDOW_UNCONFIRMED"`（r5 更正：实现曾用未写入接口的 `WASH_FAILED`）。
   5. 洗净通过后才删除 `fault-active.json`。任一步失败都保留文件，本轮停止并退出 4，不释放占用。
 - 传播等待：每 5 s 轮询一次，单次探测 ≤5 s，总预算 ≤600 s（monotonic）。超时原因码 `FLAG_PROPAGATION_UNCONFIRMED`。
 - 硬终止不承诺执行 finally；保留的状态由 `--recover` 或 F11 的恢复逻辑处理。
@@ -319,7 +319,9 @@ docs/evidence/eval/<R>/aggregate.json                   # write_round，opspilot
 - **失败原因不被覆盖**：attempt 的 `reason` 保留第一个失败；收尾失败另记 `closure_reason="RESTORE_FAILED:<code>"`，它同时是整轮停止原因（退出 4）。setup/调查中的非预期异常记 `DRIVER_ERROR`，仍执行恢复。
 - **fault guard 覆盖整个 attempt**：从 setup 到恢复与洗净结束一直持有，不在调查后释放再重取。
 - **恢复的写入结果未知**：恢复写入抛 `FLAG_WRITE_UNKNOWN` 时不立即失败，以回读决定：内容 SHA 等于 `original_sha256`、uid 不变且 resourceVersion 已前进才算恢复成功，否则 `FLAG_RESTORE_UNVERIFIED`。CAS 冲突（`FLAG_CAS_CONFLICT`）直接失败并保留状态。
-- **轮 manifest（Q1）的两个维度**：`registry = live.registry_hash(注册 DTO)`，`permissions = live.scope_policy_hash(scope)`；后者去掉 scope_id、subject_id、run_id、三个 generation、window、default_query_window、deadline，另加 `window_seconds` 与「是否有 default_query_window」。驱动用 `template_scope(config)` 预先算出，真实领取的 scope 必须得到同一值。
+- **轮 manifest（Q1）的两个维度**：`registry = live.registry_hash(注册 DTO)`，`permissions = live.scope_policy_hash(scope)`；后者去掉 scope_id、subject_id、run_id、三个 generation、window、default_query_window、deadline，另加 `window_seconds` 与「是否有 default_query_window」。驱动用 `template_scope(config)` 预先算出，用于描述本轮冻结的授权策略。r5 更正：`check_recording_binding` 只核第 13 节列出的条件，不再要求轮 manifest 的 registry/permissions 等于由录制快照重算的值；每个 Run 的实际 registry/permissions 由录制自身的 `source_manifest_hash` 绑定（B2）。此前实现多做的这项比较已删除。
+- **录制引用（r5）**：只有核验通过（第 14 节首条）的录制才写入 summary 的 `recording_ref`；未通过核验的 attempt 为 aborted，`recording_ref=null`，原始包仍留在私有录制目录。槽位的 `status/stage/reason` 以核验后的结果为准，与 summary 一致。
+- **录制父目录（r5 澄清第 8 节）**：驱动在调用 Investigator 之前以 700 权限创建缺失的 `recording_root`；包目录本身仍由 `record()` 独占创建。
 - **真实 Jaeger 探测的已知限制**：为避免整页 checkout trace 数十 MB，`LabTelemetry.spans` 只检索含 `error=true` 标签的 trace（每页 200 条、响应≤32 MiB，满页或超限即 `complete=False`）。只有 grpc/http 状态码、没有 error 标签的错误 span 不会被检索到；离线规则（第 6 节）不受影响。
 - **lab 身份**：kube 身份改为经 lab kubeconfig/context 读取 `namespace/otel-demo`（`config current-context` 读的是文件默认 context，不能证明 `--context`）。
 - **PG**：每 attempt 新 initdb，只监听 127.0.0.1 TCP（不建 Unix socket：worktree 路径可能超过 103 字节上限），owner 只做迁移；intake 用 `eval_web`（`opspilot_web` 成员），Run 用 `eval_worker`（`opspilot_worker` 成员）。
