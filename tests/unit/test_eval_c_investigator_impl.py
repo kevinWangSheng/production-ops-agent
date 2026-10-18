@@ -160,3 +160,13 @@ def test_a_real_recorded_run_is_ran_and_reloads(tmp_path: Path, monkeypatch, req
     # The PG instance this attempt started is stopped again.
     pid = next((deps.pg_root / "r1").rglob("postmaster.pid"), None)
     assert pid is None
+    # r9: the real runner's recording passes the zero-model structural check.
+    from scripts.eval_live_verify import verify_replay
+
+    code, document = verify_replay(
+        "r1", evidence_root=deps.evidence_root, recording_root=deps.recording_root
+    )
+    assert code == 0, document
+    (item,) = document["results"]
+    assert item["binding_ok"] and item["structural_verified"]
+    assert item["event_counts"]["model"] == item["event_counts"]["http"] == 2

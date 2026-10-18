@@ -1259,12 +1259,15 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--scenario", action="append", default=[])
     parser.add_argument("--n", type=int)
     parser.add_argument("--parallel", type=int)
-    parser.add_argument("--holder", required=True)
-    parser.add_argument("--batch", required=True)
-    parser.add_argument("--flagd-url", required=True)
+    # Required by every mode except --verify-replay (checked in ``main``).
+    parser.add_argument("--holder")
+    parser.add_argument("--batch")
+    parser.add_argument("--flagd-url")
     parser.add_argument("--pg-port", type=int)
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--probe", action="store_true")
+    parser.add_argument("--verify-replay", action="store_true")
+    parser.add_argument("--attempt")
     return parser
 
 
@@ -1359,6 +1362,22 @@ def _signals() -> Iterator[None]:
             signal.signal(sig, old)
 
 
+def _verify(round_id: str, attempt_id: str | None, deps: LiveDeps | None) -> int:
+    """``--verify-replay`` (r9): local files only, no seam is called."""
+    from scripts.eval_live_verify import verify_replay
+
+    evidence_root = deps.evidence_root if deps else ROOT / "docs/evidence/eval"
+    recording_root = deps.recording_root if deps else ROOT / "tmp/eval"
+    code, document = verify_replay(
+        round_id,
+        evidence_root=evidence_root,
+        recording_root=recording_root,
+        attempt_id=attempt_id,
+    )
+    print(json.dumps(document, sort_keys=True))
+    return code
+
+
 def main(argv: Sequence[str] | None = None, *, deps: LiveDeps | None = None) -> int:
     import re
 
@@ -1367,6 +1386,24 @@ def main(argv: Sequence[str] | None = None, *, deps: LiveDeps | None = None) -> 
         args = _parser().parse_args(argv)
         if not re.fullmatch(ROUND_PATTERN, args.round):
             raise _Usage("invalid round")
+        if args.verify_replay:
+            mixed = (
+                args.mode,
+                args.scenario,
+                args.n,
+                args.parallel,
+                args.pg_port,
+                args.probe,
+                args.dry_run,
+                args.recover,
+            )
+            if any(value not in (None, [], False) for value in mixed):
+                raise _Usage("--verify-replay takes only --round [--attempt]")
+            return _verify(args.round, args.attempt, deps)
+        if args.attempt is not None:
+            raise _Usage("--attempt only applies to --verify-replay")
+        if not args.holder or not args.batch or not args.flagd_url:
+            raise _Usage("--holder, --batch and --flagd-url are required")
         try:
             check_flagd_url(args.flagd_url)
         except LabError as exc:
