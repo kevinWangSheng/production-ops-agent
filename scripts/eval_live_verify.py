@@ -89,6 +89,8 @@ def _verify_one(
         item["error"] = exc.code
     except (OSError, ValueError):
         item["error"] = "EVIDENCE_UNAVAILABLE"
+    except Exception:  # noqa: BLE001 - r9: every step failure is a fixed code
+        item["error"] = "VERIFY_FAILED"
     return item
 
 
@@ -108,7 +110,7 @@ def verify_replay(
                 continue
             try:
                 capture = decode(EvaluationCapture, parse(path.read_bytes())["capture"])
-            except (StorageError, OSError, KeyError):
+            except (StorageError, OSError, KeyError, TypeError, ValueError):
                 results.append(
                     {"attempt_id": path.parent.name, "error": "SCHEMA_INVALID"}
                 )
@@ -136,11 +138,21 @@ def verify_replay(
         "reason": None,
         "results": results,
     }
-    if not _write_exclusive(evidence_root / round_id, document, now):
+    from scripts.eval_live import _deferred_interrupts, _take_pending
+
+    # Signals are held while the record is created, so it is never left
+    # half-written; an interrupt then ends the run with 130 (5 outranks it).
+    with _deferred_interrupts():
+        written = _write_exclusive(evidence_root / round_id, document, now)
+    interrupted = _take_pending()
+    if not written:
         # Never overwrite and never raise: the result is still reported (r10).
         document["write_error"] = "EVIDENCE_WRITE_FAILED"
         document["exit_code"] = 5  # the JSON states the process exit code
         return 5, document
+    if interrupted:
+        document = {**document, "status": "interrupted", "exit_code": 130}
+        return 130, document
     return code, document
 
 

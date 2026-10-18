@@ -260,9 +260,15 @@ class AttemptLedger:
     clock: LiveClock
     seq: int = 0
     frozen: bool = False
+    # An append that failed (disk full, read-only, ...). Logging never stops
+    # a restore or a PG stop halfway; the caller turns this into exit 5.
+    write_failed: bool = False
 
     def __post_init__(self) -> None:
-        _private_dir(self.directory)
+        try:
+            _private_dir(self.directory)
+        except OSError:
+            self.write_failed = True
 
     def event(self, stage: str, event: str, **detail: Any) -> None:
         name = "recovery.jsonl" if self.frozen else "lifecycle.jsonl"
@@ -276,9 +282,12 @@ class AttemptLedger:
         }
         self.seq += 1
         path = self.directory / name
-        with path.open("a") as stream:
-            os.chmod(path, 0o600)
-            stream.write(canonical_json(row) + "\n")
+        try:
+            with path.open("a") as stream:
+                os.chmod(path, 0o600)
+                stream.write(canonical_json(row) + "\n")
+        except OSError:
+            self.write_failed = True
 
     def write(self, name: str, value: Any) -> None:
         write_private(self.directory / name, _json(value))
@@ -1598,13 +1607,18 @@ class LocalPgLauncher:
             # The caller never receives an instance it could stop, so the
             # server this call launched is stopped here (its own directory and
             # port only, through ``stop``'s pid check) before failing (r6).
+            stop_failed = False
             if started:
                 try:
                     self.stop(PgInstance(data, port, "", ""))
-                except LabError:
-                    pass
+                except Exception:  # noqa: BLE001 - reported as PG_STOP_FAILED
+                    stop_failed = True
             if not isinstance(exc, Exception):
                 raise  # Interrupted/KeyboardInterrupt keep their own path
+            if stop_failed:
+                # A server that may still listen outranks the start failure:
+                # the attempt stops the round (never swallowed, never exit 0).
+                raise LabError("PG_STOP_FAILED") from None
             code = exc.code if isinstance(exc, LabError) else "PG_START_FAILED"
             raise LabError(code) from None
         return PgInstance(

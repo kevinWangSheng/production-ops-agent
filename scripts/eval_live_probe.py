@@ -15,6 +15,7 @@ from collections.abc import Sequence
 from datetime import datetime
 from typing import Any, Literal
 
+from opspilot.evaluation import ScenarioError
 from scripts import eval_live
 from scripts.eval_live_lab import (
     AttemptLedger,
@@ -65,6 +66,8 @@ def probe_preflight(config: eval_live.RoundConfig, deps: LiveDeps) -> str | None
                 fault_for(injected.flag, injected.variant)
     except LabError as exc:
         return exc.code
+    except OSError:
+        return "LAB_LEDGER_UNAVAILABLE"
     return None
 
 
@@ -77,7 +80,8 @@ def _probe_one(
     deps: LiveDeps,
     slot: eval_live.Slot,
     signatures: Sequence[Any],
-) -> dict[str, Any]:
+) -> tuple[dict[str, Any], bool]:
+    """The probe.json entry, and whether its private ledger was complete."""
     spec, answer = slot.spec, slot.answer
     attempt_id = f"probe-{spec.scenario_id}"
     ledger = AttemptLedger(
@@ -140,15 +144,20 @@ def _probe_one(
                 entry["reason"] = entry["reason"] or "INTERRUPTED"
             except LabError as exc:
                 entry["reason"] = exc.code
+            except Exception:  # noqa: BLE001 - a driver bug still restores
+                entry["reason"] = entry["reason"] or "DRIVER_ERROR"
             finally:
                 if injected:
                     _restore(config, deps, attempt_id, signatures, ledger, entry)
     except LabError as exc:
         entry["reason"] = entry["reason"] or exc.code
+    except OSError:
+        # Occupation or guard file (any restore above already ran).
+        entry["reason"] = entry["reason"] or "LAB_LEDGER_UNAVAILABLE"
     if gate is not None:
         entry["gate"] = observation_json(gate)
     ledger.event("probe", "finished", reason=entry["reason"])
-    return entry
+    return entry, not ledger.write_failed
 
 
 def _restore(
@@ -181,6 +190,10 @@ def run_probe(config: eval_live.RoundConfig, deps: LiveDeps) -> eval_live.RoundR
     if refusal is not None:
         return eval_live._refuse(config, refusal)
     try:
+        signatures = eval_live.fault_signatures(deps)
+    except (OSError, ScenarioError):
+        return eval_live._refuse(config, "SCENARIO_DIRECTORY_INVALID")
+    try:
         append_run_start(
             deps.ledger_root,
             config.round_id,
@@ -190,7 +203,8 @@ def run_probe(config: eval_live.RoundConfig, deps: LiveDeps) -> eval_live.RoundR
         )
     except LabError as exc:
         return eval_live._refuse(config, exc.code)
-    signatures = eval_live.fault_signatures(deps)
+    except OSError:
+        return eval_live._refuse(config, "LAB_LEDGER_UNAVAILABLE")
     results = [
         eval_live.SlotResult(s.spec.scenario_id, s.spec.version, s.repetition)
         for s in config.slots
@@ -208,7 +222,7 @@ def run_probe(config: eval_live.RoundConfig, deps: LiveDeps) -> eval_live.RoundR
             deps.clock.now(),
         ):
             for index, slot in enumerate(config.slots):
-                entry = _probe_one(config, deps, slot, signatures)
+                entry, ledger_ok = _probe_one(config, deps, slot, signatures)
                 entries.append(entry)
                 out = results[index]
                 out.attempt_id = f"probe-{slot.spec.scenario_id}"
@@ -219,6 +233,9 @@ def run_probe(config: eval_live.RoundConfig, deps: LiveDeps) -> eval_live.RoundR
                 )
                 if entry["closure_reason"] is not None:
                     status, exit_code, reason = "stopped", 4, entry["closure_reason"]
+                elif not ledger_ok:
+                    # The private probe ledger is incomplete (r11, 5 > 130).
+                    status, exit_code, reason = "stopped", 5, "EVIDENCE_WRITE_FAILED"
                 elif entry["interrupted"]:
                     status, exit_code, reason = "interrupted", 130, "INTERRUPTED"
                 elif entry["reason"] == "LAB_FAULT_FOREIGN":
@@ -234,6 +251,10 @@ def run_probe(config: eval_live.RoundConfig, deps: LiveDeps) -> eval_live.RoundR
         status, exit_code, reason = "stopped", 3, exc.code
     except (Interrupted, KeyboardInterrupt):
         status, exit_code, reason = "interrupted", 130, "INTERRUPTED"
+    except OSError:
+        # The active marker could not be written or removed: never success.
+        if exit_code in (0, 1, 130):
+            status, exit_code, reason = "stopped", 1, "LAB_LEDGER_UNAVAILABLE"
     evidence = eval_live.round_evidence(deps, config.round_id)
     # Like run_round: the report is written with signals held and an
     # interrupt raised meanwhile is remembered, so the final JSON always
@@ -242,9 +263,15 @@ def run_probe(config: eval_live.RoundConfig, deps: LiveDeps) -> eval_live.RoundR
     written = False
     with eval_live._deferred_interrupts():
         try:
-            retained = read_state(deps.ledger_root) is not None
+            retained, own = eval_live._retained(deps, config.round_id)
         except (Interrupted, KeyboardInterrupt):
-            retained, late_interrupt = read_state(deps.ledger_root) is not None, True
+            (retained, own), late_interrupt = (
+                eval_live._retained(deps, config.round_id),
+                True,
+            )
+        if own and exit_code != 4:
+            # This round's intent survived a path cut short: --recover (r13).
+            status, exit_code, reason = "stopped", 4, "FAULT_RECOVERY_REQUIRED"
         document = {
             "schema": "opspilot-eval-live-probe-1",
             "round": config.round_id,

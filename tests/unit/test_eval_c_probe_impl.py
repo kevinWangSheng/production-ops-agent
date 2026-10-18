@@ -353,3 +353,24 @@ def test_a_second_concurrent_recovery_restores_nothing_and_is_refused(
     assert (result.exit_code, result.reason) == (3, "NO_RETAINED_FAULT")
     assert not list((deps.evidence_root / "r1").glob("recovery-*.json"))
     assert len(env["lab"].writes) == writes_before
+
+
+def test_an_os_error_inside_a_probe_scenario_restores_and_never_escapes(
+    tmp_path, capsys, monkeypatch
+):
+    from scripts import eval_live_probe
+
+    env, deps = _probe_env(tmp_path)
+
+    def unreadable(*args, **kwargs):
+        raise OSError("disk")
+
+    monkeypatch.setattr(eval_live_probe, "fault_gate", unreadable)
+    code = eval_live.main([*ARGV, *_scenarios("eval-cart-failure")], deps=deps)
+    final = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    assert (code, final["exit_code"]) == (1, 1)
+    report = json.loads((deps.evidence_root / "r1/probe.json").read_text())
+    assert report["scenarios"][0]["reason"] == "DRIVER_ERROR"
+    assert report["scenarios"][0]["fault"]["restored"] is True
+    assert env["lab"].raw == d.ORIGINAL
+    assert not (deps.ledger_root / "fault-active.json").exists()

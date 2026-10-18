@@ -1864,3 +1864,146 @@ def test_exit_precedence_is_restore_failure_then_evidence_then_interrupt(
         assert result.reason.startswith("RESTORE_FAILED")
     else:
         assert result.reason == "EVIDENCE_WRITE_FAILED"
+
+
+# -- PR #271 round-3 bot findings and the escape sweep ---------------------------
+
+LIVE_ARGV = [
+    "--mode", "live", "--round", "r1", "--n", "1", "--parallel", "1",
+    "--holder", "lead", "--batch", "b1", "--flagd-url", "http://127.0.0.1:18013",
+    "--pg-port", "55999",
+]  # fmt: skip
+RECOVER_ARGV = [
+    "--recover", "--round", "r1", "--holder", "lead", "--batch", "b1",
+    "--flagd-url", "http://127.0.0.1:18013",
+]  # fmt: skip
+
+
+def _last_json(capsys) -> dict[str, Any]:
+    return json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+
+
+@pytest.mark.parametrize("at", ["stop", "start_cleanup"])
+def test_a_pg_that_cannot_be_stopped_stops_the_round_and_never_exits_0(env, capsys, at):
+    deps, pg = env["deps"], env["pg"]
+
+    def failing(*args, **kwargs):
+        raise LabError("PG_STOP_FAILED")
+
+    if at == "stop":
+        pg.stop = failing  # type: ignore[method-assign]
+        scenarios = ["eval-cart-failure"]  # the last slot
+    else:
+        pg.start = failing  # type: ignore[method-assign]
+        scenarios = ["eval-cart-failure", "eval-normal-1"]
+    code = eval_live.main(
+        [*LIVE_ARGV, *(f"--scenario={s}" for s in scenarios)], deps=deps
+    )
+    final = _last_json(capsys)
+    assert (code, final["exit_code"], final["status"]) == (1, 1, "stopped")
+    assert final["reason"] == "PG_STOP_FAILED"
+    first = lifecycle(deps)["slots"][0]
+    assert first["status"] != "ran" and first["closure_reason"] == "PG_STOP_FAILED"
+    assert [s["status"] for s in final["slots"]][1:] == ["not_started"] * (
+        len(scenarios) - 1
+    )
+    assert env["lab"].raw == ORIGINAL
+    assert not (deps.ledger_root / "fault-active.json").exists()
+
+
+def test_an_unwritable_attempt_ledger_after_the_journal_exits_5_with_outputs(
+    env, capsys
+):
+    deps = env["deps"]
+    deps.ledger_root.mkdir(parents=True, exist_ok=True)
+    (deps.ledger_root / "r1").write_text("not a directory")  # the attempt ledger
+    code = eval_live.main(
+        [*LIVE_ARGV, "--scenario", "eval-cart-failure", "--scenario", "eval-normal-1"],
+        deps=deps,
+    )
+    final = _last_json(capsys)
+    assert (code, final["exit_code"], final["reason"]) == (
+        5,
+        5,
+        "EVIDENCE_WRITE_FAILED",
+    )
+    first, later = lifecycle(deps)["slots"]
+    assert first["attempt_id"] and first["summary"] is not None
+    assert first["status"] == "setup_failed" and later["status"] == "not_started"
+    stored = summary(deps, first["attempt_id"])["capture"]
+    assert stored["ledger_ref"] is None  # an incomplete ledger is never linked
+    assert env["lab"].writes == [] and env["pg"].started == []
+
+
+@pytest.mark.parametrize("when", ["during_restore", "after_restore"])
+def test_an_interrupted_recovery_prints_the_final_json(env, capsys, monkeypatch, when):
+    deps, lab = env["deps"], env["lab"]
+    lab.complete = False
+    eval_live.run_round(config(deps, ["eval-cart-failure"]), deps)
+    lab.complete = True
+    state = deps.ledger_root / "fault-active.json"
+    assert state.exists()
+    if when == "during_restore":
+
+        def interrupted(current, new_raw, *, fence):
+            raise Interrupted()
+
+        lab.replace = interrupted  # type: ignore[method-assign]
+    else:
+        real = eval_live.write_public_exclusive
+
+        def signal_while_held(*args, **kwargs):
+            written = real(*args, **kwargs)
+            eval_live._DEFER["pending"] = True  # what the handler does when held
+            return written
+
+        monkeypatch.setattr(eval_live, "write_public_exclusive", signal_while_held)
+    code = eval_live.main(RECOVER_ARGV, deps=deps)
+    final = _last_json(capsys)
+    if when == "during_restore":
+        assert (code, final["exit_code"]) == (4, 4)
+        assert final["reason"] == "RESTORE_FAILED:INTERRUPTED" and state.exists()
+    else:
+        assert (code, final["exit_code"], final["status"]) == (130, 130, "interrupted")
+        assert not state.exists()
+        assert list((deps.evidence_root / "r1").glob("recovery-*.json"))
+
+
+@pytest.mark.parametrize(
+    ("raised", "retained", "expected"),
+    [
+        (OSError(), False, (5, "EVIDENCE_WRITE_FAILED")),
+        (LabError("LAB_SOMETHING"), False, (1, "LAB_SOMETHING")),
+        (Interrupted(), False, (130, "INTERRUPTED")),
+        (OSError(), True, (4, "FAULT_RECOVERY_REQUIRED")),
+        (Interrupted(), True, (4, "FAULT_RECOVERY_REQUIRED")),
+    ],
+)
+def test_whatever_escapes_a_mode_still_gets_the_final_json_by_precedence(
+    env, capsys, monkeypatch, raised, retained, expected
+):
+    deps = env["deps"]
+
+    def escaping(config, deps):
+        if retained:
+            (deps.ledger_root / "fault-active.json").write_text(
+                json.dumps({"round": "r1", "attempt_id": "a1"})
+            )
+        raise raised
+
+    monkeypatch.setattr(eval_live, "run_round", escaping)
+    code = eval_live.main([*LIVE_ARGV, "--scenario", "eval-normal-1"], deps=deps)
+    final = _last_json(capsys)
+    assert (code, (final["exit_code"], final["reason"])) == (expected[0], expected)
+
+
+def test_an_interrupted_verify_replay_prints_the_final_json(env, capsys, monkeypatch):
+    from scripts import eval_live_verify
+
+    def interrupted(*args, **kwargs):
+        raise Interrupted()
+
+    monkeypatch.setattr(eval_live_verify, "verify_replay", interrupted)
+    code = eval_live.main(["--verify-replay", "--round", "r1"], deps=env["deps"])
+    final = _last_json(capsys)
+    assert (code, final["exit_code"], final["status"]) == (130, 130, "interrupted")
