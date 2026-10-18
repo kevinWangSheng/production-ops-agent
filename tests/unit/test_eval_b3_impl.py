@@ -853,7 +853,7 @@ def test_p7_46_boundary_and_sol_better_requires_decision(tmp_path, pack):
     assert selection.status == "pending_user_decision"
 
 
-def test_calibration_readback_recomputes_results_and_observations(tmp_path, pack):
+def test_calibration_readback_recomputes_results_and_records(tmp_path, pack):
     configs_ = configs()
     run_calibration(
         pack,
@@ -869,11 +869,9 @@ def test_calibration_readback_recomputes_results_and_observations(tmp_path, pack
     with pytest.raises(JudgeError, match="DERIVED_RESULT_MISMATCH"):
         load_verified_calibration(path, pack=pack, config=configs_["zai"])
     forged = original
-    forged["observations"]["zai"][0]["observation"]["result"]["verdict"] = not forged[
-        "observations"
-    ]["zai"][0]["observation"]["result"]["verdict"]
+    forged["records"]["zai"][0] = "0" * 64
     path.write_bytes(canonical_bytes(forged))
-    with pytest.raises(JudgeError):
+    with pytest.raises(JudgeError, match="HASH_MISMATCH"):
         load_verified_calibration(path, pack=pack, config=configs_["zai"])
 
 
@@ -1197,7 +1195,7 @@ def test_review_p2_summary_cache_cannot_detach_from_error_artifacts(tmp_path, pa
     originals = {p.name: p.read_bytes() for p in failed.glob("zai-*.json")}
     summary = json.loads((failed / "calibration.json").read_bytes())
     other = json.loads((good / "calibration.json").read_bytes())
-    summary["observations"]["zai"] = other["observations"]["zai"]
+    summary["records"]["zai"] = other["records"]["zai"]
     summary["selection"] = other["selection"]
     (failed / "calibration.json").write_bytes(canonical_bytes(summary))
     assert all((failed / name).read_bytes() == raw for name, raw in originals.items())
@@ -1780,10 +1778,8 @@ def r9_identity_artifact(tmp_path_factory):
         "response_model",
         "adapter_version",
         "schema_version",
-        "cached_item_id",
-        "cached_hash",
-        "cached_provider",
-        "cached_response_model",
+        "records_key",
+        "records_hash",
         "source_item_id",
         "source_hash",
         "source_provider",
@@ -1815,16 +1811,10 @@ def test_pr232_round5_calibration_identity_classes_fail_schema(
         "schema_version",
     }:
         doc["configs"]["zai"][field] = bad
-    elif field.startswith("cached_"):
-        observation = doc["observations"]["zai"][0]
-        if field == "cached_item_id":
-            observation["item_id"] = bad
-        elif field == "cached_hash":
-            observation["input_hash"] = bad
-        elif field == "cached_provider":
-            observation["observation"]["provider"] = bad
-        else:
-            observation["observation"]["response_model"] = bad
+    elif field == "records_key":
+        doc["records"][bad] = doc["records"].pop("zai")
+    elif field == "records_hash":
+        doc["records"]["zai"][0] = bad
     elif field.startswith("source_"):
         source = root / "zai-001.json"
         observation = json.loads(source.read_bytes())
@@ -2170,3 +2160,116 @@ def test_pr232_round5_frozen_otel_identity_fields_remain_compatible():
             _view_identifiers(record["view"])
             checked += 1
     assert checked == 76
+
+
+@pytest.mark.parametrize("size,allowed", [(63, True), (64, True), (65, False)])
+def test_r10_write_bound_precedes_file_creation(tmp_path, monkeypatch, size, allowed):
+    from opspilot.evaluation import calibration_flow
+
+    assert calibration_flow._MAX_FILE == 64 * 1024 * 1024
+    monkeypatch.setattr(calibration_flow, "_MAX_FILE", 64)
+    path = tmp_path / "artifact.json"
+    raw = b"x" * size
+    if allowed:
+        calibration_flow._write(path, raw)
+        assert calibration_flow._read(path) == raw
+        assert stat.S_IMODE(path.stat().st_mode) == 0o600
+    else:
+        with pytest.raises(JudgeError, match="ARTIFACT_UNWRITABLE") as caught:
+            calibration_flow._write(path, raw)
+        assert caught.value.__cause__ is None and caught.value.__context__ is None
+        assert not path.exists()
+
+
+def test_r10_oversize_label_freeze_stops_before_calls(tmp_path, pack, monkeypatch):
+    from opspilot.evaluation import calibration_flow
+
+    candidate_configs = configs()
+    transports = calibration_transports(pack, candidate_configs)
+    monkeypatch.setattr(calibration_flow, "_MAX_FILE", 1)
+    root = tmp_path / "oversize"
+    with pytest.raises(JudgeError, match="ARTIFACT_UNWRITABLE") as caught:
+        run_calibration(
+            pack, configs=candidate_configs, transports=transports, destination=root
+        )
+    assert caught.value.__cause__ is None and caught.value.__context__ is None
+    assert all(not transport.calls for transport in transports.values())
+    assert not (root / "label-pack/items.json").exists()
+    assert not (root / "calibration.json").exists()
+
+
+def test_r10_summary_records_bind_ordered_raw_bytes(r9_identity_artifact):
+    root, p, c = r9_identity_artifact
+    doc = json.loads((root / "calibration.json").read_bytes())
+    assert set(doc) == {"schema", "pack_hash", "configs", "records", "selection"}
+    assert doc["schema"] == "opspilot-judge-calibration-1"
+    assert set(doc["records"]) == {"zai", "openai", "deepseek"}
+    for provider, digests in doc["records"].items():
+        assert digests == [
+            hashlib.sha256((root / f"{provider}-{i:03d}.json").read_bytes()).hexdigest()
+            for i in range(1, 61)
+        ]
+    assert load_verified_calibration(root, pack=p, config=c["zai"]).result.passed
+
+
+@pytest.mark.parametrize(
+    "mutation,code",
+    [
+        ("missing_provider", "HASH_MISMATCH"),
+        ("extra_provider", "HASH_MISMATCH"),
+        ("short", "HASH_MISMATCH"),
+        ("long", "HASH_MISMATCH"),
+        ("digest", "HASH_MISMATCH"),
+        ("order", "HASH_MISMATCH"),
+        ("raw_whitespace", "HASH_MISMATCH"),
+        ("uppercase", "SCHEMA_INVALID"),
+        ("non_hex", "SCHEMA_INVALID"),
+        ("wrong_type", "SCHEMA_INVALID"),
+        ("extra_field", "SCHEMA_INVALID"),
+        ("missing_field", "SCHEMA_INVALID"),
+        ("missing_file", "EVIDENCE_UNAVAILABLE"),
+        ("selection_and_digest", "DERIVED_RESULT_MISMATCH"),
+    ],
+)
+def test_r10_records_readback_errors(tmp_path, r9_identity_artifact, mutation, code):
+    import shutil
+
+    original, p, c = r9_identity_artifact
+    root = tmp_path / "copy"
+    shutil.copytree(original, root)
+    path = root / "calibration.json"
+    doc = json.loads(path.read_bytes())
+    records = doc["records"]
+    source = root / "zai-001.json"
+    if mutation == "missing_provider":
+        del records["zai"]
+    elif mutation == "extra_provider":
+        records["other"] = records["zai"]
+    elif mutation == "short":
+        records["zai"].pop()
+    elif mutation == "long":
+        records["zai"].append(records["zai"][0])
+    elif mutation in {"digest", "selection_and_digest"}:
+        records["zai"][0] = "0" * 64
+        if mutation == "selection_and_digest":
+            doc["selection"]["results"]["zai"]["agreement"] = 47
+    elif mutation == "order":
+        records["zai"].reverse()
+    elif mutation == "raw_whitespace":
+        source.write_bytes(source.read_bytes() + b"\n")
+    elif mutation == "uppercase":
+        records["zai"][0] = "A" * 64
+    elif mutation == "non_hex":
+        records["zai"][0] = "g" * 64
+    elif mutation == "wrong_type":
+        records["zai"][0] = 1
+    elif mutation == "extra_field":
+        doc["observations"] = {}
+    elif mutation == "missing_field":
+        del doc["records"]
+    elif mutation == "missing_file":
+        source.unlink()
+    path.write_bytes(canonical_bytes(doc))
+    with pytest.raises(JudgeError, match=code) as caught:
+        load_verified_calibration(root, pack=p, config=c["zai"])
+    assert caught.value.__cause__ is None and caught.value.__context__ is None
