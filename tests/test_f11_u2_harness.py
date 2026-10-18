@@ -1930,7 +1930,7 @@ def test_compact_batch_summary_fields_match_round_summaries(tmp_path):
     runs = by_round(aggregate)
     assert set(runs) == {"compact-good", "compact-aborted"}
     for run in aggregate["runs"]:
-        assert {"sha256", "bytes", "path", "compact"} <= run.keys()
+        assert set(run) == {"sha256", "bytes", "path", "compact"}
         assert "summary" not in run
 
     ok = runs["compact-good"]["compact"]
@@ -2096,9 +2096,9 @@ def test_compact_timeline_drops_only_flagd_probes_and_counts_them(tmp_path):
         [good, aborted], tmp_path / "batch.json", batch="compact"
     )
     compact = by_round(aggregate)["compact-good"]["compact"]
-    assert compact["timeline"] == [
-        e for e in summary["timeline"] if e.get("kind") != "flagd_probe"
-    ]
+    # Expected events are the fixture's non-probe entries by fixed index, not a
+    # re-derivation of the implementation's filter (review of #264).
+    assert compact["timeline"] == [COMPACT_TIMELINE[i] for i in (0, 2, 4, 6)]
     assert [e.get("kind") for e in compact["timeline"]] == [
         "rollout",
         "fault",
