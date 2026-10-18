@@ -116,12 +116,21 @@ def check_recording_binding(
         frozen.pop(name, None)
     if bound != frozen:
         _mismatch()
-    # Exactly the r2 section 13 conditions: the per-Run registry/permissions
-    # are bound by the recording's own source_manifest_hash (B2), not compared
-    # with the round manifest's policy hashes here.
+    # source_manifest_hash only proves the recording is self-consistent; the
+    # snapshots must also recompute to the round's own registry and scope
+    # policy, so another tool set or permission policy never joins the round.
+    registry = manifest.dimensions.get("registry")
+    permissions = manifest.dimensions.get("permissions")
     for snapshot in context.tool_snapshots:
         scope = snapshot.scope
-        if scope.run_id != run_id or scope.scope_id != f"otel-demo:{run_id}:{epoch}":
+        if (
+            scope.run_id != run_id
+            or scope.scope_id != f"otel-demo:{run_id}:{epoch}"
+            or registry is None
+            or registry.value != registry_hash(snapshot.tools, snapshot.targets)
+            or permissions is None
+            or permissions.value != scope_policy_hash(scope)
+        ):
             _mismatch()
 
 

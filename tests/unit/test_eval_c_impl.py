@@ -417,23 +417,51 @@ def test_recording_binding_refuses_any_other_identity(change):
         check(recording, attempt, round_id=round_id, epoch=epoch, manifest=manifest)
 
 
-def test_recording_binding_ignores_round_registry_and_permissions_values():
-    """r5: the per-Run values are bound by source_manifest_hash, not compared
-    with the round manifest's policy hashes (interface section 13 list)."""
+@pytest.mark.parametrize(
+    "change", ["static_tools", "scope_policy", "round_registry", "round_permissions"]
+)
+def test_recording_binding_requires_the_rounds_tools_and_scope_policy(change):
+    """r5 lead ruling: snapshots must recompute to the round's registry and
+    permissions; source_manifest_hash alone only proves self-consistency."""
     from dataclasses import replace
 
-    from opspilot.evaluation import DimensionValue, check_recording_binding
+    from opspilot.evaluation import DimensionValue, RecordingError
+    from opspilot.evaluation import check_recording_binding as check
+    from tests.m1_tool_support import registration
 
     recording, attempt, manifest = _binding_case()
-    dims = dict(manifest.dimensions)
-    dims["registry"] = DimensionValue("hash", "1" * 64, None)
-    dims["permissions"] = DimensionValue("hash", "2" * 64, None)
+    snapshot = recording.context.tool_snapshots[0]
+    if change == "static_tools":
+        snapshot = replace(
+            snapshot, tools=(*snapshot.tools, registration(name="extra.query"))
+        )
+    elif change == "scope_policy":
+        snapshot = replace(snapshot, scope=replace(snapshot.scope, max_operations=1))
+    if change in ("static_tools", "scope_policy"):
+        recording = replace(
+            recording,
+            context=replace(recording.context, tool_snapshots=(snapshot,)),
+        )
+    else:
+        name = "registry" if change == "round_registry" else "permissions"
+        dims = dict(manifest.dimensions)
+        dims[name] = DimensionValue("hash", "1" * 64, None)
+        manifest = replace(manifest, dimensions=dims)
+    with pytest.raises(RecordingError, match="^IDENTITY_MISMATCH$"):
+        check(recording, attempt, round_id="r1", epoch=2, manifest=manifest)
+
+
+def test_recording_binding_allows_per_attempt_source_registry_and_permissions():
+    """The bound source_manifest's own registry/permissions differ from the
+    round's by design (per-Run scope); only the recomputed hashes must match."""
+    from opspilot.evaluation import check_recording_binding
+
+    recording, attempt, manifest = _binding_case()
+    source = recording.context.source_manifest
+    assert source is not None
+    assert source.dimensions["permissions"] != manifest.dimensions["permissions"]
     check_recording_binding(
-        recording,
-        attempt,
-        round_id="r1",
-        epoch=2,
-        manifest=replace(manifest, dimensions=dims),
+        recording, attempt, round_id="r1", epoch=2, manifest=manifest
     )
 
 
