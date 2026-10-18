@@ -297,3 +297,164 @@ def test_a_failed_replay_returns_no_unverified_map(tmp_path):
     capture = b2.run_replay(recording, tmp_path, driver=drive)
     assert capture.error == "DRIVER_ERROR"
     assert capture.id_map == {}
+
+
+# -- Q1: recording <-> attempt cross-check; evidence from a recording ------------
+
+
+def _binding_case(run_id="run-1", epoch=2, round_id="r1", attempt_id="att-1"):
+    from dataclasses import replace
+    from datetime import timedelta
+
+    from opspilot.evaluation import (
+        REQUIRED_DIMENSIONS,
+        AttemptRecord,
+        DimensionValue,
+        Manifest,
+        Recording,
+        ToolSnapshot,
+        bind_tool_snapshots,
+        manifest_hash,
+    )
+    from opspilot.evaluation.live import registry_hash, scope_policy_hash
+    from opspilot.tools import QueryScope, TargetRegistry, ToolRegistry
+    from tests.m1_tool_support import registration, target
+
+    b2 = _b2()
+    tools = (registration(name="metrics.query"),)
+    targets = (target(target_id="target"),)
+    scope = QueryScope(
+        f"otel-demo:{run_id}:{epoch}",
+        "incident",
+        "incident-1",
+        run_id,
+        0,
+        0,
+        0,
+        TargetRegistry(targets).revision,
+        ToolRegistry(tools).revision,
+        frozenset({"target"}),
+        frozenset({"metrics.query"}),
+        b2.AUTH,
+        b2.NOW + timedelta(seconds=360),
+    )
+    dims = {n: DimensionValue("hash", b2.HASH, None) for n in REQUIRED_DIMENSIONS}
+    dims["registry"] = DimensionValue("hash", registry_hash(tools, targets), None)
+    dims["permissions"] = DimensionValue("hash", scope_policy_hash(scope), None)
+    manifest = Manifest(round_id, dims)
+    ctx = replace(
+        b2.context(),
+        recording_id=f"eval-live-{round_id}-{attempt_id}",
+        source_run_id=run_id,
+    )
+    ctx = bind_tool_snapshots(ctx, (ToolSnapshot(tools, targets, scope),), manifest)
+    recording = Recording(Path("recording.json"), None, ctx, (), None, True, ())
+    attempt = AttemptRecord(
+        attempt_id,
+        round_id,
+        manifest_hash(manifest),
+        "synthetic-case",
+        "v1",
+        "live",
+        1,
+        True,
+        "ran",
+        False,
+        run_id,
+    )
+    return recording, attempt, manifest
+
+
+def test_recording_binding_accepts_its_own_attempt_and_run():
+    from opspilot.evaluation import check_recording_binding
+
+    recording, attempt, manifest = _binding_case()
+    check_recording_binding(
+        recording, attempt, round_id="r1", epoch=2, manifest=manifest
+    )
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        "epoch",
+        "run",
+        "attempt",
+        "round",
+        "scenario",
+        "dimension",
+        "no_snapshots",
+        "policy",
+    ],
+)
+def test_recording_binding_refuses_any_other_identity(change):
+    from dataclasses import replace
+
+    from opspilot.evaluation import DimensionValue, RecordingError
+    from opspilot.evaluation import check_recording_binding as check
+
+    recording, attempt, manifest = _binding_case()
+    epoch, round_id = 2, "r1"
+    if change == "epoch":
+        epoch = 1
+    elif change == "run":
+        attempt = replace(attempt, product_run_id="run-other")
+    elif change == "attempt":
+        attempt = replace(attempt, attempt_id="att-2")
+    elif change == "round":
+        round_id = "r2"
+    elif change == "scenario":
+        attempt = replace(attempt, scenario_version="v2")
+    elif change == "dimension":
+        dims = dict(manifest.dimensions)
+        dims["prompt"] = DimensionValue("version", "other", None)
+        manifest = replace(manifest, dimensions=dims)
+    elif change == "no_snapshots":
+        recording = replace(
+            recording,
+            context=replace(recording.context, tool_snapshots=(), source_manifest=None),
+        )
+    elif change == "policy":
+        dims = dict(manifest.dimensions)
+        dims["permissions"] = DimensionValue("hash", "0" * 64, None)
+        manifest = replace(manifest, dimensions=dims)
+    with pytest.raises(RecordingError, match="^IDENTITY_MISMATCH$"):
+        check(recording, attempt, round_id=round_id, epoch=epoch, manifest=manifest)
+
+
+def test_scope_policy_hash_ignores_run_identity_only():
+    from dataclasses import replace
+    from datetime import timedelta
+
+    from opspilot.evaluation.live import scope_policy_hash
+
+    recording, _attempt, _manifest = _binding_case()
+    scope = recording.context.tool_snapshots[0].scope
+    other_run = replace(
+        scope,
+        scope_id="otel-demo:run-9:5",
+        run_id="run-9",
+        subject_id="incident-9",
+        control_generation=3,
+        deadline=scope.deadline + timedelta(hours=1),
+    )
+    assert scope_policy_hash(other_run) == scope_policy_hash(scope)
+    assert scope_policy_hash(replace(scope, max_operations=1)) != scope_policy_hash(
+        scope
+    )
+
+
+def test_evidence_from_recording_marks_only_messages_that_reached_the_model(
+    tmp_path,
+):
+    from opspilot.evaluation import canonical_view_hash, evidence_from_recording
+
+    b2 = _b2()
+    recording = b2.source(tmp_path, driver=_same_view_driver(("e1",)))
+    live = evidence_from_recording(recording, outcome=recording.outcome)
+    assert set(live.delivered) == {"e1", "e2"}
+    assert live.delivered["e1"].delivered is True
+    assert live.delivered["e2"].delivered is False
+    record = live.delivered["e1"]
+    assert record.view_sha256 == canonical_view_hash(record.view)
+    assert set(live.delivery_records) == {"e1", "e2"}
