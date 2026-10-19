@@ -1,6 +1,6 @@
 # 评测 P7 judge 真实校准
 
-- 状态：进行中（合同 r2 已裁决；来源采集中）
+- 状态：进行中（合同 r2 已裁决；首轮采集 8/12 可用，待补采 4 个场景）
 - 目标：按 [评测任务记录](2026-10-12-eval-suite.md) P7 与 D16，用 36 份基于真实 Run 的样本、两份独立盲标和用户裁决，对 GLM-5.3、GPT-6.1 Sol、`deepseek-flash` 做一次正式校准，得出 D16 选择；合格后才进入第一轮基线（另记）。
 - 依据：[PR-B3 接口](2026-10-14-eval-pr-b3-interface.md)（LabelPack、freeze、run_calibration、r8–r11）；[PR-A 接口](2026-10-13-eval-pr-a-interface.md)（JudgeInput、JudgedDiagnosis）；C3 第 388–398 行。
 - 范围外：改判分规则、匹配口径或 D16 选择认证（如需改动，单列合同变更）；调查 loop、报告生成与恢复路径；翻任何 `passes`。
@@ -46,6 +46,8 @@
 ## 证据
 
 - 预审决定表原文保存在私有目录，未入库；本节随执行补充。
+- 来源采集第 1 轮 `eval-p7-src-20261019`（2026-10-19 06:07–07:38Z，dc/3e 确认空闲；轮次目录按 Q7 不入库）：12 槽 11 ran、1 aborted。确定性 gate 通过且证据完整 8 个（cart ×2、normal-1 #1、normal-2 ×2、payment-1 #1、payment-2 #1、product-catalog #2；judge 未校准，均记 judge_error）；normal-1 #2 与 payment-2 #2 转人工 `INCOMPLETE_INVESTIGATION`；product-catalog #1 `SIGNATURE_ABSENT`；payment-1 #2 录制被录制校验器误判 `IDENTITY_MISMATCH` 中止（#283，产品 Run 正常）。宿主：checkout p95 仅在 cartFailure 注入窗内为 15 s（故障本身），其余 88–180 ms，swap 7.78–7.92 GB 未上涨，无受污染 Run。调查模型余额差合计 2.07 CNY（可能与其他线共用 key）。
+- 来源缺口：normal-1、payment-1、payment-2、product-catalog 各缺 1 个可用来源族，待补采。
 
 ## 待决
 
