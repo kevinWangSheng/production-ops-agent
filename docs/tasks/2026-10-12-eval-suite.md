@@ -1,6 +1,6 @@
 # 场景评测套件（回放 + live，参照 HolmesGPT tests/llm）
 
-- 状态：合同 r8（r7 + D16）；PR-A（#221）、B1（#224）、B2（#229）、B3（#232）、PR-C（#271）、PR-D1 CI 结构重放入口（#274）已合并；第一轮基线、真实 P7 校准与 #250 归 M3，见执行节
+- 状态：合同 r8（r7 + D16）；PR-A（#221）、B1（#224）、B2（#229）、B3（#232）、PR-C（#271）、PR-D1 CI 结构重放入口（#274）已合并；#273/#278/#250/#272 已修；第一轮基线与真实 P7 校准归 M3，见执行节
 - 更新日期：2026-10-18
 - 依据：外部验收入口 `IncidentScenario -> IncidentOutcome`（AGENTS.md「验证与汇报」）；[v4 验收包](../testing/first-investigation-v4-2026-09-10.md)；[M1-01 收口记录](2026-09-28-m1-01-closure.md)中的上游评测口径；ADR-0006；C3 第 388–398 行（judge 校准）；上游 HolmesGPT `46e3a72` 的 `tests/llm/`
 - 工作区：每个 PR 一个 worktree，写在执行节
@@ -82,6 +82,7 @@
 - PR-C：已合并（#271，2026-10-18）；机器人第 4、5 轮剩余的中断窗口问题按停机规则转 #273。
 - PR-D：用户 2026-10-18 裁决拆分（D01）。D1 CI 结构重放入口已合并（#274）：合成 CANARY fixture 加确定性生成器，checks job 在断网 namespace 中运行，在 ubuntu-24.04 runner 上实跑得到 ENETUNREACH 并 verified。接口与决定表见 [PR-D1 接口](2026-10-18-eval-pr-d-interface.md)。独立验收 65 例加实现单测 20 例；astra 独立审查 pass；机器人无发现。第一轮基线、真实 P7 校准与 #250 归 M3。
 - #273 协作式中断（PR #276）：真实验证（2026-10-18，lab 占用 17:24–17:52Z，dc/3e 两会话确认空闲）。中断 probe `eval-273-probe-sigint-20261018`：17:25:40 注入 paymentFailure，17:26:00 向核实过的 probe PID 发 SIGINT（落在传播等待中），17:26:01 ConfigMap 恢复且 flagd 正常，300s 洗净 17:31:03 通过，退出 130，意图已删除。真实 Run `eval-273-run-20261018`：exit 0、ran、deterministic_pass、evidence complete、trace read-back found（[LangSmith](https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/7bade446-7c97-4ac7-815d-1b7bd5910258/r/00000000-0000-0000-424d-f087643cb961?poll=true)），failure_class=judge_error（judge 未校准，与 PR-C Run 相同，归 M3），余额差 0.10 CNY；`--verify-replay` verified（model 9 / http 9 / tool 16 / delivery 16）。
+- 后续修复（2026-10-18）：#276 合并（#273 协作式中断，机器人 6 轮，第 5、6 轮剩余两项转 #278）；#279 合并（#278）；#277 合并（#250：judge_once 发送前执行 r9 标识校验，r9 视图校验按容器限定槽位，普通 OTel 属性与 content/query 普通字段视为内容，接口 r11）；#280 合并（#272：M0 lab 与 F11 测试 PG 子进程白名单环境，F11 临时 PG 改 SCRAM；M0 lab 是持久化单用户开发库，保留 trust）。
 
 ## 下一步与交接
 
