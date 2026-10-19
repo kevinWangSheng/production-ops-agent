@@ -678,9 +678,23 @@ def _annotation(ws: Workspace, slot: int) -> tuple[bytes, AnnotationSet] | None:
     if not _exists(path):
         return None
     raw = _read_ws(ws, path)
+    # 6.2 step 6: every read is checked against its import provenance.
+    provenance_path = ws.root / f"annotations/annotations-{slot}.provenance.json"
+    if not _exists(provenance_path):
+        _fail("PACKET_STALE")
+    provenance = _decode(AnnotationProvenance, _read_ws(ws, provenance_path))
+    if provenance.annotation_sha256 != _sha(raw):
+        _fail("HASH_MISMATCH")
     annotation = _decode(AnnotationSet, raw)
     if canonical_bytes(annotation) != raw:
         _fail("SCHEMA_INVALID")
+    if (
+        provenance.slot != slot
+        or provenance.annotator_identity != annotation.annotator_identity
+        or provenance.model_identity != annotation.model_identity
+        or provenance.model_identity != SLOT_MODELS.get(slot)
+    ):
+        _fail("CALIBRATION_UNRESOLVED")
     return raw, annotation
 
 
@@ -1705,6 +1719,8 @@ def debug_judge(
     _check_bindings(ordered, configs, transports, exact_configs=False)
     if _exists(ws.root / "blind/packet.json"):
         _packet_binding(ws, require_annotations=False)
+    for slot in (1, 2):
+        _annotation(ws, slot)  # 6.2 step 6: imported annotations still bound.
     # 3. Costs.
     for provider in ordered:
         if provider != "deepseek" and not _exists(
@@ -1728,6 +1744,16 @@ def debug_judge(
             for phase in ("before", "after")
         ]
     _preflight(ws, files=targets)
+    # 2b. Cross-workspace use registration: the first write of this command.
+    _registry_ready(ws)
+    families, sources = _item_sources(ws, selected)
+    _register(
+        ws,
+        kind="debug",
+        families=families,
+        sources=sources,
+        fields={"session": session_id},
+    )
     if "deepseek" in ordered:
         _write_deepseek_balance(ws, session_id, "before", balance)
     records: list[DebugRecord] = []
@@ -1902,25 +1928,50 @@ def _sources(families: set[str]) -> set[tuple[str, str]]:
     return result
 
 
-def _register(ws: Workspace, run_id: str, pack_hash: str, pack: LabelPack) -> None:
-    """9.2 step 7: one cross-workspace check-and-append under ``flock``."""
-    lock = ws.private_root / "exposure.lock"
-    registry = ws.private_root / "exposure.jsonl"
-    for path in (lock, registry):
-        _inside_repo(ws, path)
+def _registry_ready(ws: Workspace) -> None:
+    """9.2 step 7 / 8 step 2b preconditions, side-effect free (1.2 steps 1-2)."""
+    for path in (ws.private_root / "exposure.lock", ws.private_root / "exposure.jsonl"):
+        _check_private(ws, path)
         try:
             regular = stat.S_ISREG(path.lstat().st_mode)
         except OSError:
             regular = False
         if not regular:
             _fail("EXPOSURE_REGISTRY_MISSING")
+        _ignored(ws, path)
+
+
+def _item_sources(
+    ws: Workspace, items: Sequence[CalibrationItem]
+) -> tuple[set[str], set[tuple[str, str]]]:
     records = _records(ws)
-    families = {i.source_family for i in pack.items if i.split == "validation"}
+    families = {i.source_family for i in items}
     sources = _sources(families) | {
         (r.provenance.round_id, r.provenance.attempt_id)
-        for i in pack.items
-        if i.split == "validation" and (r := records.get(i.item_id)) is not None
+        for i in items
+        if (r := records.get(i.item_id)) is not None
     }
+    return families, sources
+
+
+def _register(
+    ws: Workspace,
+    *,
+    kind: Literal["formal", "debug"],
+    families: set[str],
+    sources: set[tuple[str, str]],
+    fields: Mapping[str, Any],
+) -> None:
+    """One cross-workspace check-and-append under ``flock`` (9.2.7, 8.2b).
+
+    formal refuses any family/source already registered (formal validation or
+    debug) or present as validation in any workspace's calibration pack; debug
+    refuses only formal validation exposure. Rows without ``kind`` predate
+    debug registration and are formal rows.
+    """
+    _registry_ready(ws)
+    lock = ws.private_root / "exposure.lock"
+    registry = ws.private_root / "exposure.jsonl"
     fd = os.open(lock, os.O_RDWR | os.O_NOFOLLOW)
     try:
         fcntl.flock(fd, fcntl.LOCK_EX)
@@ -1930,19 +1981,24 @@ def _register(ws: Workspace, run_id: str, pack_hash: str, pack: LabelPack) -> No
             if not line.strip():
                 continue
             row = _loads(line)
+            row_kind = row.get("kind", "formal") if type(row) is dict else None
+            key = {"formal": "validation_families", "debug": "debug_families"}.get(
+                row_kind  # type: ignore[arg-type]
+            )
             if (
-                type(row) is not dict
-                or type(row.get("validation_families")) is not list
+                key is None
+                or type(row.get(key)) is not list
                 or type(row.get("sources")) is not list
+                or any(type(source) is not dict for source in row["sources"])
             ):
                 _fail("SCHEMA_INVALID")
-            seen_families.update(map(str, row["validation_families"]))
-            for source in row["sources"]:
-                if type(source) is not dict:
-                    _fail("SCHEMA_INVALID")
-                seen_sources.add(
-                    (str(source.get("round_id")), str(source.get("attempt_id")))
-                )
+            if kind == "debug" and row_kind == "debug":
+                continue  # Repeated debug use of one family is allowed.
+            seen_families.update(map(str, row[key]))
+            seen_sources.update(
+                (str(source.get("round_id")), str(source.get("attempt_id")))
+                for source in row["sources"]
+            )
         for path in sorted(
             ws.private_root.glob("*/calibration/*/label-pack/items.json")
         ):
@@ -1959,10 +2015,12 @@ def _register(ws: Workspace, run_id: str, pack_hash: str, pack: LabelPack) -> No
         if families & seen_families or sources & seen_sources:
             _fail("VALIDATION_EXPOSED")
         row = {
-            "run_id": run_id,
+            **fields,
+            "kind": kind,
             "workspace": ws.workspace_id,
-            "pack_hash": pack_hash,
-            "validation_families": sorted(families),
+            f"{'validation' if kind == 'formal' else 'debug'}_families": sorted(
+                families
+            ),
             "sources": [{"round_id": r, "attempt_id": a} for r, a in sorted(sources)],
             "at": datetime.now(UTC).isoformat(),
         }
@@ -2005,6 +2063,9 @@ def formal(
     _debug_precheck(ws, hashes)
     # 4.
     _packet_binding(ws, require_annotations=True)
+    for slot in (1, 2):
+        if _annotation(ws, slot) is None:  # 6.2 step 6.
+            _fail("PACKET_STALE")
     # 5.
     for provider in ("zai", "openai"):
         if not _exists(_balance_path(ws, run_id, provider, "before")):
@@ -2032,13 +2093,18 @@ def formal(
     _preflight(ws, files=files, dirs=(destination, destination / "label-pack"))
     # 7. The shared registry must exist and be ignored (1.2) before it is used;
     # a tracked or unignored registry is refused without any side effect.
-    for path in (ws.private_root / "exposure.lock", ws.private_root / "exposure.jsonl"):
-        _check_private(ws, path)
-        if not _exists(path):
-            _fail("EXPOSURE_REGISTRY_MISSING")
-        _ignored(ws, path)
+    _registry_ready(ws)
     # First write: the exposure registration.
-    _register(ws, run_id, pack_hash, pack)
+    families, sources = _item_sources(
+        ws, [i for i in pack.items if i.split == "validation"]
+    )
+    _register(
+        ws,
+        kind="formal",
+        families=families,
+        sources=sources,
+        fields={"run_id": run_id, "pack_hash": pack_hash},
+    )
     _ensure_dirs(ws, destination.parent)
     _write_deepseek_balance(ws, run_id, "before", balance)
     counting = {p: _CountingTransport(transports[p]) for p in PROVIDERS}
