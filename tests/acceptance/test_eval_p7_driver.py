@@ -1190,3 +1190,73 @@ def test_formal_provider_values_must_match_mapping_keys(harness, first, second):
     assert (h.private / "exposure.jsonl").read_bytes() == registry
     assert not (h.ws / "costs/canary-formal/deepseek-before.json").exists()
     assert not h.calls and not h.balance_calls and not balance_calls
+
+
+def test_freeze_annotation_create_failure_after_writing_is_stopped(harness):
+    """§0.1: an annotation create failure after pack writing begins is stopped/5."""
+    import os
+    from pathlib import Path
+
+    h = harness.seed().export().annotations()
+    target = h.ws / "label-pack/annotations-1.json"
+    assert not target.parent.exists()
+    original_open = os.open
+    failures = []
+
+    def fail_target_create(path, flags, mode=0o777, *, dir_fd=None):
+        candidate = Path(os.fsdecode(path))
+        if candidate.is_absolute() or dir_fd is None:
+            matches = candidate.absolute() == target
+        else:
+            # os.open also accepts paths relative to a directory descriptor.
+            # Match the actual parent directory, without guessing how the
+            # public storage writer represents its target path.
+            try:
+                matches = candidate.name == target.name and os.path.samestat(
+                    os.stat(candidate.parent, dir_fd=dir_fd), target.parent.stat()
+                )
+            except OSError:
+                matches = False
+        if matches and flags & os.O_CREAT:
+            assert target.parent.is_dir()  # an observable write already occurred
+            failures.append(target)
+            raise OSError("CANARY-P7-ANNOTATION-CREATE-FAILURE")
+        return original_open(path, flags, mode, dir_fd=dir_fd)
+
+    h.mp.setattr(os, "open", fail_target_create)
+    result = h.cli("freeze", code=5, reason="ARTIFACT_UNWRITABLE")
+    assert result["status"] == "stopped"
+    assert failures  # prove that this exact filesystem fault was exercised
+    assert not target.exists()
+    assert not h.calls and not h.balance_calls
+
+
+@pytest.mark.parametrize("tracked", ["exposure.jsonl", "exposure.lock"])
+def test_formal_tracked_exposure_registry_refuses_without_side_effects(
+    harness, tracked
+):
+    """§1.2 / §9.2.7: tracked shared registry artifacts are refused before exposure."""
+    h = harness.ready()
+    relative = f"tmp/eval-p7/{tracked}"
+    target = h.root / relative
+    git = ["git", "-C", str(h.root)]
+    assert (
+        subprocess.run([*git, "check-ignore", "-q", "--", str(target)]).returncode == 0
+    )
+    subprocess.run([*git, "add", "-f", "--", relative], check=True)
+    subprocess.run(
+        [*git, "ls-files", "--error-unmatch", "--", relative],
+        check=True,
+        capture_output=True,
+    )
+    # Default check-ignore consults the index: the ignore rule still exists,
+    # but a tracked lock/ledger is no longer a verified private artifact.
+    assert (
+        subprocess.run([*git, "check-ignore", "-q", "--", str(target)]).returncode == 1
+    )
+    registry = (h.private / "exposure.jsonl").read_bytes()
+    before = snapshot(h.root)
+    h.formal(code=3, reason="PRIVATE_PATH_NOT_IGNORED")
+    assert snapshot(h.root) == before
+    assert (h.private / "exposure.jsonl").read_bytes() == registry
+    assert not h.calls and not h.balance_calls
