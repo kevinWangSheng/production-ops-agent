@@ -475,6 +475,9 @@ def test_distribution_acceptance_is_usage_when_not_needed(harness):
         ("assembled", "PACKET_STALE"),
         ("provenance", "PACKET_STALE"),
         ("manual-cost", "COST_BEFORE_MISSING"),
+        ("manual-cost-truncated", "COST_BEFORE_MISSING"),
+        ("manual-cost-provider", "COST_BEFORE_MISSING"),
+        ("manual-cost-session", "COST_BEFORE_MISSING"),
         ("deepseek-cost", "OUTPUT_EXISTS"),
         ("destination", "OUTPUT_EXISTS"),
         ("ignored-descendant", "PRIVATE_PATH_NOT_IGNORED"),
@@ -519,6 +522,21 @@ def test_formal_preflight_failures_leave_every_artifact_unchanged(
         put(path, value)
     elif damage == "manual-cost":
         (h.ws / "costs/canary-formal/openai-before.json").unlink()
+    elif damage == "manual-cost-truncated":
+        # An interrupted manual `balance` write leaves a partial record.
+        path = h.ws / "costs/canary-formal/zai-before.json"
+        raw = path.read_bytes()
+        path.write_bytes(raw[: len(raw) // 2])
+    elif damage == "manual-cost-provider":
+        # Well-formed, but recorded for another provider.
+        cost = h.ws / "costs/canary-formal"
+        (cost / "zai-before.json").write_bytes(
+            (cost / "openai-before.json").read_bytes()
+        )
+    elif damage == "manual-cost-session":
+        # Well-formed, but copied from another session.
+        source = h.ws / "costs/canary-debug/zai-before.json"
+        (h.ws / "costs/canary-formal/zai-before.json").write_bytes(source.read_bytes())
     elif damage == "deepseek-cost":
         put(h.ws / "costs/canary-formal/deepseek-before.json", {})
     elif damage == "destination":
@@ -953,6 +971,37 @@ def test_debug_existing_deepseek_before_is_refused_without_calls(harness):
     )
     assert snapshot(h.root) == before
     assert not h.calls and not h.balance_calls
+
+
+@pytest.mark.parametrize("damage", ["truncated", "session"])
+def test_debug_invalid_manual_before_is_refused_without_side_effects(harness, damage):
+    """§§8.3,10: a manual before must decode and be bound to this session."""
+    h = harness.seed().export()
+    h.costs("canary-debug")
+    path = h.ws / "costs/canary-debug/openai-before.json"
+    if damage == "truncated":
+        raw = path.read_bytes()
+        path.write_bytes(raw[: len(raw) // 2])
+    else:
+        h.costs("canary-other")
+        path.write_bytes((h.ws / "costs/canary-other/openai-before.json").read_bytes())
+    h.calls.clear()
+    h.balance_calls.clear()
+    before = snapshot(h.root)
+    exposure = (h.private / "exposure.jsonl").read_bytes()
+    h.cli(
+        "debug",
+        "--session",
+        "canary-debug",
+        "--judge-env",
+        h.env,
+        code=3,
+        reason="COST_BEFORE_MISSING",
+    )
+    assert snapshot(h.root) == before
+    assert (h.private / "exposure.jsonl").read_bytes() == exposure
+    assert not h.calls and not h.balance_calls
+    assert not (h.ws / "costs/canary-debug/deepseek-before.json").exists()
 
 
 def test_summary_stdout_keeps_report_labels_decisions_and_credentials_private(harness):

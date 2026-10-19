@@ -1481,6 +1481,31 @@ def _balance_path(ws: Workspace, session_id: str, provider: str, phase: str) -> 
     return ws.root / "costs" / session_id / f"{provider}-{phase}.json"
 
 
+def _check_before(ws: Workspace, session_id: str, provider: str) -> None:
+    """Side-effect free: the before record exists, decodes and is bound."""
+    path = _balance_path(ws, session_id, provider, "before")
+    try:
+        record = _decode(BalanceRecord, _read_ws(ws, path))
+        bound = (
+            record.session_id == session_id
+            and record.provider == provider
+            and record.phase == "before"
+            and _balance_record(
+                record.session_id,
+                record.provider,
+                record.phase,
+                record.amount,
+                record.currency,
+                record.source,
+            )
+            == record
+        )
+    except (P7Error, StorageError):
+        bound = False
+    if not bound:
+        _fail("COST_BEFORE_MISSING")
+
+
 def _balance_record(
     session_id: str,
     provider: str,
@@ -1723,10 +1748,8 @@ def debug_judge(
         _annotation(ws, slot)  # 6.2 step 6: imported annotations still bound.
     # 3. Costs.
     for provider in ordered:
-        if provider != "deepseek" and not _exists(
-            _balance_path(ws, session_id, provider, "before")
-        ):
-            _fail("COST_BEFORE_MISSING")
+        if provider != "deepseek":
+            _check_before(ws, session_id, provider)
     if "deepseek" in ordered and _exists(
         _balance_path(ws, session_id, "deepseek", "before")
     ):
@@ -2068,8 +2091,7 @@ def formal(
             _fail("PACKET_STALE")
     # 5.
     for provider in ("zai", "openai"):
-        if not _exists(_balance_path(ws, run_id, provider, "before")):
-            _fail("COST_BEFORE_MISSING")
+        _check_before(ws, run_id, provider)
     if _exists(_balance_path(ws, run_id, "deepseek", "before")):
         _fail("OUTPUT_EXISTS")
     # 6.
