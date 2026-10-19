@@ -1,6 +1,6 @@
 """Acceptance of the P7 driver, independently authored before implementation.
 
-Sole contract: docs/tasks/2026-10-19-eval-p7-driver-interface.md (02eb1e2).
+Sole contract: docs/tasks/2026-10-19-eval-p7-driver-interface.md (bdcccfd).
 Section references on each test are the traceability map. No live services.
 """
 
@@ -550,10 +550,14 @@ def test_formal_registers_before_balance_and_sends_after_before_record(harness):
     h = harness.ready()
     registry = h.private / "exposure.jsonl"
     cost = h.ws / "costs/canary-formal"
+    prefix = registry.read_bytes()
 
     def at_balance():
-        rows = [json.loads(line) for line in registry.read_bytes().splitlines()]
+        raw = registry.read_bytes()
+        assert raw.startswith(prefix)
+        rows = [json.loads(line) for line in raw[len(prefix) :].splitlines()]
         assert len(rows) == 1
+        assert rows[0]["kind"] == "formal"
         assert rows[0]["workspace"] == h.workspace
         assert rows[0]["run_id"] == "canary-formal"
         assert rows[0]["pack_hash"] == h.pack_hash
@@ -581,7 +585,7 @@ def test_formal_registers_before_balance_and_sends_after_before_record(harness):
         assert value["source"] == "deepseek_balance_api"
         assert value["shared_account_possible"] is True
         assert Decimal(value["amount"]) == Decimal("100.00")
-    assert len(registry.read_bytes().splitlines()) == 1
+    assert len(registry.read_bytes()[len(prefix) :].splitlines()) == 1
 
 
 @pytest.mark.parametrize("phase", ["before", "after"])
@@ -1260,3 +1264,207 @@ def test_formal_tracked_exposure_registry_refuses_without_side_effects(
     assert snapshot(h.root) == before
     assert (h.private / "exposure.jsonl").read_bytes() == registry
     assert not h.calls and not h.balance_calls
+
+
+@pytest.mark.parametrize("command", ["brief", "freeze", "formal"])
+@pytest.mark.parametrize(
+    "damage,reason",
+    [
+        ("annotation", "HASH_MISMATCH"),
+        ("slot", "CALIBRATION_UNRESOLVED"),
+        ("annotator_identity", "CALIBRATION_UNRESOLVED"),
+        ("model_identity", "CALIBRATION_UNRESOLVED"),
+        ("missing-provenance", "PACKET_STALE"),
+    ],
+)
+def test_annotation_provenance_is_rechecked_on_read(harness, command, damage, reason):
+    """§6.2.6: imported annotation bytes and provenance remain bound on every read."""
+    h = harness
+    if command == "formal":
+        h.ready()
+    else:
+        h.seed().export().annotations(finalize=command != "brief")
+    annotation = h.ws / "annotations/annotations-1.json"
+    provenance_path = h.ws / "annotations/annotations-1.provenance.json"
+    provenance = json.loads(provenance_path.read_bytes())
+    assert provenance["annotation_sha256"] == sha(annotation.read_bytes())
+    if damage == "annotation":
+        value = json.loads(annotation.read_bytes())
+        label = next(label for label in value["labels"] if label["diagnoses"])
+        label["diagnoses"][0]["reason"] = "CANARY-P7-ALTERED-ANNOTATION-LABEL"
+        put(annotation, value)
+        assert sha(annotation.read_bytes()) != provenance["annotation_sha256"]
+    elif damage == "missing-provenance":
+        provenance_path.unlink()
+    else:
+        provenance[damage] = {
+            "slot": 2,
+            "annotator_identity": "CANARY-P7-DIFFERENT-ANNOTATOR",
+            "model_identity": "gpt-6-astra",
+        }[damage]
+        put(provenance_path, provenance)
+    before = snapshot(h.root)
+    registry = (h.private / "exposure.jsonl").read_bytes()
+    if command == "formal":
+        h.formal(code=3, reason=reason)
+    else:
+        h.cli(command, code=3, reason=reason)
+    assert snapshot(h.root) == before
+    assert (h.private / "exposure.jsonl").read_bytes() == registry
+    assert not h.calls and not h.balance_calls
+
+
+def original_records_by_family(h):
+    records = [
+        json.loads(path.read_bytes()) for path in (h.ws / "items").glob("*.json")
+    ]
+    return {
+        record["source_family"]: record
+        for record in records
+        if record["kind"] == "original"
+    }
+
+
+def test_formal_validation_exposure_blocks_other_workspace_debug(harness):
+    """§8.2b: a formal validation family cannot become debug in another workspace."""
+    h = harness.ready()
+    originals = original_records_by_family(h)
+    validation_families = {i.source_family for i in h.items if i.split == "validation"}
+    h.formal()
+    rows = [
+        json.loads(line)
+        for line in (h.private / "exposure.jsonl").read_bytes().splitlines()
+    ]
+    assert any(
+        row.get("kind") == "formal"
+        and set(row["validation_families"]) == validation_families
+        for row in rows
+    )
+    h.workspace = "canary-other-debug"
+    h.init().seed(swap_source_splits=True).export().annotations()
+    assert original_records_by_family(h) == originals
+    assert {
+        i.source_family for i in h.items if i.split == "debug"
+    } == validation_families
+    h.costs("canary-debug")
+    h.calls.clear()
+    h.balance_calls.clear()
+    before = snapshot(h.root)
+    registry = (h.private / "exposure.jsonl").read_bytes()
+    h.cli(
+        "debug",
+        "--session",
+        "canary-debug",
+        "--judge-env",
+        h.env,
+        code=3,
+        reason="VALIDATION_EXPOSED",
+    )
+    assert snapshot(h.root) == before
+    assert (h.private / "exposure.jsonl").read_bytes() == registry
+    assert not h.calls and not h.balance_calls
+
+
+def test_other_workspace_debug_exposure_blocks_formal_validation(harness):
+    """§8.2b / §9.2.7: debug-exposed families cannot enter formal validation."""
+    h = harness.ready()
+    first_workspace, first_pack_hash = h.workspace, h.pack_hash
+    originals = original_records_by_family(h)
+    validation_families = {i.source_family for i in h.items if i.split == "validation"}
+    h.workspace = "canary-other-debug"
+    h.init().seed(swap_source_splits=True).export().annotations()
+    assert original_records_by_family(h) == originals
+    assert {
+        i.source_family for i in h.items if i.split == "debug"
+    } == validation_families
+    h.debug()
+    rows = [
+        json.loads(line)
+        for line in (h.private / "exposure.jsonl").read_bytes().splitlines()
+    ]
+    assert any(
+        row.get("kind") == "debug"
+        and row["workspace"] == h.workspace
+        and set(row["debug_families"]) == validation_families
+        for row in rows
+    )
+    h.workspace, h.pack_hash = first_workspace, first_pack_hash
+    h.calls.clear()
+    h.balance_calls.clear()
+    before = snapshot(h.root)
+    registry = (h.private / "exposure.jsonl").read_bytes()
+    h.formal(code=3, reason="VALIDATION_EXPOSED")
+    assert snapshot(h.root) == before
+    assert (h.private / "exposure.jsonl").read_bytes() == registry
+    assert not h.calls and not h.balance_calls
+
+
+def test_debug_registers_first_and_allows_repeated_families(harness):
+    """§8.2b / §10: debug registration precedes other writes; repeated debug is allowed."""
+    import os
+
+    h = harness.seed().export().annotations()
+    session = "canary-debug-first"
+    h.costs(session)
+    registry = h.private / "exposure.jsonl"
+    deepseek_before = h.ws / f"costs/{session}/deepseek-before.json"
+    prefix = registry.read_bytes()
+    before = snapshot(h.root)
+    append_states, balance_states, send_states = [], [], []
+    original_open = os.open
+
+    def observe_append(path, flags, mode=0o777, *, dir_fd=None):
+        try:
+            is_registry = os.path.samestat(
+                os.stat(path, dir_fd=dir_fd), registry.stat()
+            )
+        except OSError:
+            is_registry = False
+        if is_registry and flags & os.O_APPEND:
+            append_states.append(snapshot(h.root))
+        return original_open(path, flags, mode, dir_fd=dir_fd)
+
+    def at_balance():
+        if not h.calls:
+            balance_states.append((registry.read_bytes(), deepseek_before.exists()))
+
+    def at_send(_payload):
+        send_states.append((registry.read_bytes(), deepseek_before.exists()))
+
+    h.balance_observer, h.observer = at_balance, at_send
+    with h.mp.context() as mutation:
+        mutation.setattr(os, "open", observe_append)
+        h.cli("debug", "--session", session, "--judge-env", h.env)
+    first = registry.read_bytes()
+    assert first.startswith(prefix)
+    rows = [json.loads(line) for line in first[len(prefix) :].splitlines()]
+    assert len(rows) == 1
+    row = rows[0]
+    families = {i.source_family for i in h.items if i.split == "debug"}
+    assert {
+        "kind",
+        "session",
+        "workspace",
+        "debug_families",
+        "sources",
+        "at",
+    } <= row.keys()
+    assert row["kind"] == "debug"
+    assert row["session"] == session
+    assert row["workspace"] == h.workspace
+    assert set(row["debug_families"]) == families
+    assert append_states and append_states[0] == before
+    assert balance_states == [(first, False)]
+    assert len(send_states) == len(h.calls) == 36
+    assert all(state == (first, True) for state in send_states)
+    h.balance_observer = h.observer = None
+    h.debug(session="canary-debug-repeat")
+    second = registry.read_bytes()
+    assert second.startswith(first)
+    added = [json.loads(line) for line in second[len(first) :].splitlines()]
+    assert len(added) == 1
+    assert added[0]["kind"] == "debug"
+    assert added[0]["session"] == "canary-debug-repeat"
+    assert added[0]["workspace"] == h.workspace
+    assert set(added[0]["debug_families"]) == families
+    assert len(h.calls) == 72

@@ -176,7 +176,7 @@ class DriverHarness:
         assert list(result) == sorted(result)
         assert {"command", "status", "exit_code", "reason"} <= result.keys()
         assert result["command"] == command
-        assert actual == result["exit_code"] == code
+        assert actual == result["exit_code"] == code, result
         expected_status = {
             0: {"ok", "selected"},
             1: {"failed", "no_baseline"},
@@ -198,7 +198,9 @@ class DriverHarness:
         self.cli("init")
         return self
 
-    def seed(self, *, balanced=True, debug_positive_counts=None):
+    def seed(
+        self, *, balanced=True, debug_positive_counts=None, swap_source_splits=False
+    ):
         """Write only contract DTOs (§9.3 explicitly allows direct fixture records).
 
         Every scenario/split uses one original and report-only rewrites. Labels
@@ -207,7 +209,15 @@ class DriverHarness:
         records, items, labels, families = [], [], [], {}
         for n, (spec, answer) in enumerate(load_scenarios(REPO / "evals/scenarios")):
             for split, count in (("debug", 2), ("validation", 4)):
-                attempt = f"00000000-0000-4000-8000-{n * 2 + (split == 'validation') + 1:012d}"
+                # Logical split can differ across workspaces. Keep the same
+                # original report, IDs and provenance for each source family;
+                # only the number of its report-only rewrites changes.
+                source_split = (
+                    ("validation" if split == "debug" else "debug")
+                    if swap_source_splits
+                    else split
+                )
+                attempt = f"00000000-0000-4000-8000-{n * 2 + (source_split == 'validation') + 1:012d}"
                 family = f"live/{ROUND}/{attempt}"
                 families[family] = split
                 negative = (
@@ -230,7 +240,7 @@ class DriverHarness:
                         spec, answer, split, k + 1, variant, COVERAGE
                     )
                     raw = json.loads(authored.item.request.report.raw)
-                    raw["next_steps"] = [f"{CANARY_REPORT}-{n}-{split}-{k}"]
+                    raw["next_steps"] = [f"{CANARY_REPORT}-{n}-{source_split}-{k}"]
                     request = replace(
                         authored.item.request,
                         report=replace(
@@ -269,7 +279,7 @@ class DriverHarness:
                         provenance = dict(
                             round_id=ROUND,
                             attempt_id=attempt,
-                            product_run_id=f"CANARY-P7-RUN-{n}-{split}",
+                            product_run_id=f"CANARY-P7-RUN-{n}-{source_split}",
                             summary_sha256="1" * 64,
                             recording_sha256="2" * 64,
                             manifest_hash="3" * 64,
@@ -346,7 +356,7 @@ class DriverHarness:
         )
         return path
 
-    def annotations(self, *, disagree=False):
+    def annotations(self, *, disagree=False, finalize=True):
         response = self.response()
         for slot, model in ((1, "claude-opus-5-5"), (2, "gpt-6-astra")):
             selected_response = response
@@ -382,6 +392,8 @@ class DriverHarness:
                 "--evidence-note",
                 "CANARY-ISOLATED-SESSION",
             )
+        if not finalize:
+            return self
         self.cli("brief")
         brief_hash = sha((self.ws / "adjudication/brief.json").read_bytes())
         decisions = self.root / "decisions.json"
