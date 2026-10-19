@@ -83,6 +83,11 @@ def test_init_private_modes_and_existing_output(harness):
             "debug",
             ["--session", "canary", "--item", "../canary", "--judge-env", "/CANARY"],
         ),
+        ("debug", ["--session", "canary", "--judge-env", "CANARY/.env.judge"]),
+        (
+            "formal",
+            ["--run", "canary", "--pack-hash", "1" * 64, "--judge-env", "CANARY"],
+        ),
         (
             "import-annotation",
             [

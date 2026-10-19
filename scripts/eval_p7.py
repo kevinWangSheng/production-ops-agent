@@ -2058,7 +2058,9 @@ def _register(
         try:
             out = os.open(registry, os.O_WRONLY | os.O_APPEND | os.O_NOFOLLOW)
             try:
-                os.write(out, json.dumps(row, sort_keys=True).encode("utf-8") + b"\n")
+                data = json.dumps(row, sort_keys=True).encode("utf-8") + b"\n"
+                if os.write(out, data) != len(data):
+                    raise OSError("short write")
                 os.fsync(out)
             finally:
                 os.close(out)
@@ -2343,6 +2345,7 @@ def _validate(args: argparse.Namespace) -> None:
         matches(_SHA256, getattr(args, "pack_hash", None)),
         matches(_SHA256, getattr(args, "accept_distribution", None)),
         all(_ITEM.fullmatch(i) for i in getattr(args, "item", None) or ()),
+        getattr(args, "judge_env", None) is None or Path(args.judge_env).is_absolute(),
     ]
     round_id = getattr(args, "round", None)
     if round_id is not None:
