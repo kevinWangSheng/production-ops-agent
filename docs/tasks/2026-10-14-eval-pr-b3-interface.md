@@ -1,4 +1,4 @@
-# PR-B3 judge 与校准公开接口（r9 / B6、B7）
+# PR-B3 judge 与校准公开接口（r10 / B6、B7）
 
 状态：实施接口；工作区 `poa-eval-b3`，分支 `feature/eval-b3-judge`，基线 `70bfb18`。依据 [PR-B 预审](2026-10-14-eval-pr-b-contract.md) 第4节 judge/P7 与第5节第3项、[r8/D16](2026-10-12-eval-suite-contract.md)。不改变 PR-A/B1、产品状态或 passes。所有接口同步，测试只注入假 transport。
 
@@ -143,3 +143,21 @@ assistant响应的`tool_calls`、`function_call`等工具调用字段按存在�
 **协议允许的缺失值与内容字段。** `SelectionRecord.selected_provider`、`JudgeObservation.response_model/error_code`、诊断service/operation和报告time_scope_ref可按原schema为null（缺失不是空ID）；校准逐次JudgeResult尚未认证时唯一允许`calibrated=False,calibration_hash=""`，并由_counts继续检查状态绑定，其他绑定hash不能为空。`quote/reason`、问题/摘要/说明、expected_output、acceptance_step、human_interaction、人工decision_record及提示词为内容；`injected.variant`为配置值（已有100%），不是身份ID。普通OTel属性值、span_groups.status中的标签表达式及计数（例如rpc.grpc.status_code=0）是内容，不被猜成身份，仍受r7敏感键拒绝；顶层view.status仍是规范枚举标识。已核查PR-A六份冻结包中的76个view，标识规范校验全部放行；文件路径不是ID。服务名/别名使用通用规范；操作名/别名按span名称的受限ASCII语法`[A-Za-z0-9._:/@(){}\[\]-]+(?: [A-Za-z0-9._:/@(){}\[\]-]+)*`，总长1–256；允许单个ASCII空格分隔词及路由括号，拒绝首尾/连续空白、控制字符及Unicode变体。理由：PR-A六包实际含`HTTP POST`、`orders publish`、`router frontend egress`、`GET /api/products/{productId}`、`executing api route (pages) /api/products/[productId]`及`{closure}`；这些是既有规范span名称，不是身份trim或自由文本豁免。ASCII大小写保留，P6仍用原比较规则。endpoint仍按固定URL校验，api_key只走认证且不作为身份或hash输入。
 
 **去重与模型排除。** annotator_identity先通过规范检查，再casefold比较；大小写不同仍视为同一标注者，报CALIBRATION_UNRESOLVED，不改写标注字节或hash。model_identity先通过规范检查，再小写去全部分隔符，含D16任一固定片段`glm53/gpt61sol/deepseekflash`即CALIBRATION_UNRESOLVED，允许误判；例如openai/gpt-6.1-sol、Z.ai-glm-5.3、DeepSeek/Flash@revision及任意前后缀都拒绝。`Z.ai glm-5.3`因空格先报SCHEMA_INVALID。两个独立标注者仍可共用同一个非候选模型；程序校验不能替代真实独立上下文证据。
+
+
+## r10：工件写入上限与汇总瘦身（2026-10-18，按用户 2026-10-17 常设指示采纳推荐，#237）
+
+理由：PR #232 机器人第 6 轮 P1。读取上限 64 MiB（67108864 字节），写入原先不设限：汇总内嵌 180 条 observation，单条平均超过约 360 KiB 就会跑完付费调用却读不回；36 项请求都接近 8 MiB 时 items.json 同样读不回。
+
+1. **写入与读取同一上限。** 所有校准工件（标签冻结件、pack.json、provider-NNN.json、calibration.json）写入前检查序列化字节数，超过 67108864 即报 ARTIFACT_UNWRITABLE（cause/context 为空），不创建该文件，立即中止，不再发起付费调用。标签冻结件在第一次付费调用之前写入，所以 items.json 超限在零付费调用时就会失败。单条 provider-NNN.json 受 2 MiB 响应上限约束，不会触及该上限。
+2. **calibration.json 只存缓存摘要。** 顶层字段固定为 `schema`（仍为 `opspilot-judge-calibration-1`，该格式尚无真实工件）、`pack_hash`、`configs`、`records`、`selection`，不再含 `observations`。`records` 的 key 为三家 provider，值为按 001–060 顺序排列的 60 个 SHA256（小写 64 位 hex），每个对应 `provider-NNN.json` 的原始字节。第 51 行「含全部 observations」与 r3 第 5 项「observations 与缓存逐项比对」按本条替换；observation 只以逐次文件为准。
+3. **loader 判定顺序。** 保留现有 pack/config/身份校验，然后：先从逐次文件与冻结标签重算 selection，与缓存 selection 不符报 DERIVED_RESULT_MISMATCH（保持 r4 「换入另一轮汇总」报该码）；selection 一致而 `records` 的 provider 集合、数量或任一 hash 与逐次文件原始字节不符，报 HASH_MISMATCH；缺件仍是 EVIDENCE_UNAVAILABLE，hash 非规范、顶层字段多余/缺失、provider key 不是 zai/openai/deepseek（r9）仍是 SCHEMA_INVALID。
+
+## r11：judge_once 对当前请求执行 r9 规范标识校验（2026-10-18，按用户常设指示采纳推荐，#250）
+
+理由：PR #232 机器人第 7 轮 P2。原来 r9 的规范标识校验覆盖了标签包、逐次记录、汇总和认证工件，但没有覆盖 `judge_once` 收到的当前请求。
+
+1. **范围。** 在 `judge_once` 中，`validated(JudgeInput, request)` 之后、构建请求体之前，对当前请求调用与 r9 相同的校验器。检查范围是 r9 字段清单第 2–4 类（版本/场景/主体、证据与授权、报告与结局），规则（含字符集、长度、操作名语法、null 语义）与 r9 完全一致，不另立规则。
+2. **已认证与未认证一视同仁。** 带 `VerifiedCalibration` 的调用和不带认证的调用都要做这项检查，这样「既有认证使用时均检查」就覆盖到每一次评测请求。理由：未认证调用同样会把字节发往外部供应商，标识规范是数据出口约束，与是否认证无关。
+3. **失败语义。** 标识不规范时，结果为 status `invalid`、code `SCHEMA_INVALID`，transport 调用次数为零，不发送任何字节；cause/context 为空。超大请求等既有检查的顺序不变：先做 DTO 校验，再做标识校验，再构建请求体，最后检查请求大小。
+4. **不变项。** 规范的请求（包括 PR-A 六个冻结包里的 76 个 view）照常放行；已有的 judge 和校准测试断言不修改。

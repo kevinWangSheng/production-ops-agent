@@ -1,0 +1,170 @@
+{
+  "attempt": {
+    "attempt_id": "canary-fault-v1-structural",
+    "manifest_hash": "d389356d2c0d41f311a915b98a7083393652871259d76427382c7df800da21a6",
+    "mode": "structural",
+    "product_run_id": null,
+    "repetition": 1,
+    "replay_miss": false,
+    "round_id": "canary-structural",
+    "scenario_id": "canary-fault",
+    "scenario_version": "canary-v1",
+    "started": true,
+    "status": "ran"
+  },
+  "expected_event_counts": {
+    "delivery": 1,
+    "http": 2,
+    "model": 2,
+    "refusal": 0,
+    "tool": 1
+  },
+  "manifest": {
+    "dimensions": {
+      "adapter": {
+        "kind": "version",
+        "reason": null,
+        "value": "canary-v1"
+      },
+      "answers": {
+        "kind": "version",
+        "reason": null,
+        "value": "canary-v1"
+      },
+      "calibration_pack": {
+        "kind": "version",
+        "reason": null,
+        "value": "canary-v1"
+      },
+      "clock_policy": {
+        "kind": "version",
+        "reason": null,
+        "value": "canary-v1"
+      },
+      "code": {
+        "kind": "version",
+        "reason": null,
+        "value": "canary-v1"
+      },
+      "command": {
+        "kind": "version",
+        "reason": null,
+        "value": "canary-v1"
+      },
+      "evaluator": {
+        "kind": "version",
+        "reason": null,
+        "value": "canary-v1"
+      },
+      "evidence_rules": {
+        "kind": "version",
+        "reason": null,
+        "value": "canary-v1"
+      },
+      "human_feedback": {
+        "kind": "version",
+        "reason": null,
+        "value": "canary-v1"
+      },
+      "judge_config": {
+        "kind": "version",
+        "reason": null,
+        "value": "canary-v1"
+      },
+      "kind_environment": {
+        "kind": "version",
+        "reason": null,
+        "value": "canary-v1"
+      },
+      "knowledge_snapshot": {
+        "kind": "version",
+        "reason": null,
+        "value": "canary-v1"
+      },
+      "limits": {
+        "kind": "version",
+        "reason": null,
+        "value": "canary-v1"
+      },
+      "model_request": {
+        "kind": "version",
+        "reason": null,
+        "value": "canary-v1"
+      },
+      "n": {
+        "kind": "version",
+        "reason": null,
+        "value": "canary-v1"
+      },
+      "permissions": {
+        "kind": "version",
+        "reason": null,
+        "value": "canary-v1"
+      },
+      "profile": {
+        "kind": "version",
+        "reason": null,
+        "value": "canary-v1"
+      },
+      "projection": {
+        "kind": "version",
+        "reason": null,
+        "value": "canary-v1"
+      },
+      "prompt": {
+        "kind": "version",
+        "reason": null,
+        "value": "canary-v1"
+      },
+      "registry": {
+        "kind": "version",
+        "reason": null,
+        "value": "canary-v1"
+      },
+      "replay_fixture": {
+        "kind": "hash",
+        "reason": null,
+        "value": "bc0fa06e428234ee4b07c5b81cfae9b6a3583e4710abcd151be01a675e9c70c9"
+      },
+      "scenarios": {
+        "kind": "version",
+        "reason": null,
+        "value": "canary-v1"
+      },
+      "seed": {
+        "kind": "version",
+        "reason": null,
+        "value": "canary-v1"
+      },
+      "session": {
+        "kind": "version",
+        "reason": null,
+        "value": "canary-v1"
+      },
+      "subject_initial_state": {
+        "kind": "version",
+        "reason": null,
+        "value": "canary-v1"
+      },
+      "tools_schema": {
+        "kind": "version",
+        "reason": null,
+        "value": "canary-v1"
+      },
+      "upstream": {
+        "kind": "version",
+        "reason": null,
+        "value": "canary-v1"
+      },
+      "workload": {
+        "kind": "version",
+        "reason": null,
+        "value": "canary-v1"
+      }
+    },
+    "round_id": "canary-structural"
+  },
+  "name": "canary-fault-v1",
+  "recording_sha256": "bc0fa06e428234ee4b07c5b81cfae9b6a3583e4710abcd151be01a675e9c70c9",
+  "schema": "opspilot-eval-structural-fixture-1"
+}

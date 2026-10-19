@@ -1,0 +1,24 @@
+{
+  "exit_code": 0,
+  "reason": null,
+  "results": [
+    {
+      "attempt_id": "5e2734b6-af45-476b-8efe-53678bd9ce4d",
+      "binding_ok": true,
+      "error": null,
+      "event_counts": {
+        "delivery": 12,
+        "http": 6,
+        "model": 6,
+        "refusal": 0,
+        "tool": 12
+      },
+      "loaded": true,
+      "recording_sha256": "ca73fece99e25813f46ec7de36e1341b16889d69dc43b429ef733a703d33d3cf",
+      "structural_verified": true
+    }
+  ],
+  "round": "eval-c-a11-run-20261018",
+  "schema": "opspilot-eval-structural-replay-1",
+  "status": "verified"
+}

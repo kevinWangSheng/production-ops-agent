@@ -203,9 +203,15 @@ def _report_identifiers(raw: str | None) -> None:
             _identifier(claim["time_scope_ref"])
 
 
-def _view_identifiers(value: Any, *, grouped: bool = False) -> None:
-    # Fixed projection metadata and references, not arbitrary OTel text values.
-    ids = {
+def _view_identifiers(
+    value: Any,
+    *,
+    container: Literal[
+        "view", "content", "query", "parent_references", "span_groups"
+    ] = "view",
+) -> None:
+    # r9 slots depend on their container; all other fields are content.
+    references = {
         "evidence_id",
         "operation_id",
         "run_id",
@@ -214,28 +220,38 @@ def _view_identifiers(value: Any, *, grouped: bool = False) -> None:
         "trace_id",
         "span_id",
         "parent_span_id",
-        "traceID",
-        "spanID",
-        "service_version",
     }
-    metadata = {
-        "tool",
-        "tool_version",
-        "source",
-        "registry_revision",
-        "tool_registry_revision",
-        "projection_revision",
-        "projection",
-        "trust",
-        "status",
-        "status_state",
-        "service",
-        "refType",
-    }
-    hashes = {"view_sha256", "raw_sha256", "source_response_sha256"}
+    optional_ids: set[str] = set()
+    identifiers: set[str] = set()
+    hashes: set[str] = set()
+    lists: set[str] = set()
+    if container == "view":
+        optional_ids = references
+        identifiers = {
+            "tool",
+            "tool_version",
+            "source",
+            "registry_revision",
+            "tool_registry_revision",
+            "projection_revision",
+            "projection",
+            "trust",
+            "status",
+        }
+        hashes = {"view_sha256", "raw_sha256", "source_response_sha256"}
+        lists = {"time_scope_refs", "backend_trace_ids"}
+    elif container == "content":
+        optional_ids = references | {"service_version"}
+        identifiers = {"service", "status_state"}
+        lists = {"time_scope_refs"}
+    elif container == "parent_references":
+        optional_ids = {"traceID", "spanID"}
+        identifiers = {"refType"}
+    else:  # query and span_groups
+        identifiers = {"service"}
     if isinstance(value, Mapping):
         for key, child in value.items():
-            if grouped and key == "status":
+            if container == "span_groups" and key == "status":
                 # span_groups.status contains rendered tag expressions and counts,
                 # e.g. rpc.grpc.status_code=0; it is not the view status enum.
                 if not isinstance(child, Mapping) or any(
@@ -244,28 +260,40 @@ def _view_identifiers(value: Any, *, grouped: bool = False) -> None:
                 ):
                     raise JudgeError("SCHEMA_INVALID")
                 continue
-            if key in ids and child is not None:
+            if key in optional_ids:
+                if child is not None:
+                    _identifier(child)
+            elif key in identifiers:
                 _identifier(child)
-            elif key in metadata:
-                _identifier(child)
-            elif key == "operation":
+            elif key == "operation" and container in {
+                "content",
+                "query",
+                "span_groups",
+            }:
                 _operation_name(child)
             elif key in hashes:
                 _hash_identifier(child)
-            elif key in {"time_scope_refs", "backend_trace_ids"}:
+            elif key in lists:
                 if not isinstance(child, (tuple, list, frozenset)):
                     raise JudgeError("SCHEMA_INVALID")
                 for ref in child:
                     _identifier(ref)
-            elif key == "backend_counts_by_service":
+            elif container == "view" and key == "backend_counts_by_service":
                 if not isinstance(child, Mapping):
                     raise JudgeError("SCHEMA_INVALID")
                 for service in child:
                     _identifier(service)
-            _view_identifiers(child, grouped=key == "span_groups")
+        if container == "view":
+            _view_identifiers(value.get("content"), container="content")
+            _view_identifiers(value.get("span_groups"), container="span_groups")
+            _view_identifiers(value.get("query"), container="query")
+        elif container == "content":
+            _view_identifiers(
+                value.get("parent_references"), container="parent_references"
+            )
     elif isinstance(value, (tuple, list)):
         for child in value:
-            _view_identifiers(child, grouped=grouped)
+            _view_identifiers(child, container=container)
 
 
 def _metadata_identifiers(value: Any) -> None:
@@ -542,6 +570,8 @@ def _create_directory(path: Path) -> None:
 
 
 def _write(path: Path, raw: bytes) -> None:
+    if len(raw) > _MAX_FILE:
+        raise JudgeError("ARTIFACT_UNWRITABLE")
     code: str | None = None
     try:
         fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
@@ -816,10 +846,11 @@ def run_calibration(
         raise JudgeError("HASH_MISMATCH")
     configs = dict(configs)
     transports = dict(transports)
-    observations: dict[str, tuple[CalibrationObservation, ...]] = {}
+    records: dict[str, list[str]] = {}
     results: dict[str, CalibrationResult] = {}
     for provider in ("zai", "openai", "deepseek"):
         entries: list[CalibrationObservation] = []
+        records[provider] = []
         for item in pack.items:
             for repetition in range(1, (2 if item.split == "validation" else 1) + 1):
                 observation = judge_once(
@@ -835,14 +866,15 @@ def run_calibration(
                 # Reject malformed returned identities before publication or another call.
                 _metadata_identifiers(entry)
                 # Persist each observation before proceeding, including failures.
+                raw = canonical_bytes(entry)
                 _write(
                     destination / f"{provider}-{len(entries) + 1:03d}.json",
-                    canonical_bytes(entry),
+                    raw,
                 )
+                records[provider].append(hashlib.sha256(raw).hexdigest())
                 entries.append(entry)
-        observations[provider] = tuple(entries)
         results[provider] = _counts(
-            pack, labels, configs[provider], observations[provider], pack_hash
+            pack, labels, configs[provider], tuple(entries), pack_hash
         )
     selection = _selection(pack_hash, results)
     _metadata_identifiers(selection)
@@ -855,7 +887,7 @@ def run_calibration(
                 "configs": {
                     p: replace(c, api_key="withheld") for p, c in configs.items()
                 },
-                "observations": observations,
+                "records": records,
                 "selection": selection,
             }
         ),
@@ -873,7 +905,7 @@ def _verify(
         labels = final_labels(pack)
         pack_hash = label_pack_hash(pack)
         obj = exact(
-            parse(raw), {"schema", "pack_hash", "configs", "observations", "selection"}
+            parse(raw), {"schema", "pack_hash", "configs", "records", "selection"}
         )
         if obj["schema"] != "opspilot-judge-calibration-1":
             raise JudgeError("SCHEMA_INVALID")
@@ -886,33 +918,32 @@ def _verify(
             raise JudgeError("SCHEMA_INVALID")
         if judge_config_hash(configs[config.provider]) != judge_config_hash(config):
             raise JudgeError("HASH_MISMATCH")
-        cached_observations = decode(
-            Mapping[str, tuple[CalibrationObservation, ...]], obj["observations"]
-        )
-        _provider_keys(cached_observations)
-        _metadata_identifiers(cached_observations)
+        records = decode(Mapping[str, tuple[str, ...]], obj["records"])
+        _provider_keys(records)
+        for hashes in records.values():
+            for digest in hashes:
+                _hash_identifier(digest)
         stored_selection = decode(SelectionRecord, obj["selection"])
         _metadata_identifiers(stored_selection)
-        if set(cached_observations) != _PROVIDERS:
-            raise JudgeError("SCHEMA_INVALID")
         frozen_pack = load_label_pack(
             directory / "label-pack", expected_pack_hash=pack_hash
         )
         if frozen_pack != pack:
             raise JudgeError("HASH_MISMATCH")
         observations: dict[str, tuple[CalibrationObservation, ...]] = {}
+        actual_records: dict[str, tuple[str, ...]] = {}
         for provider in ("zai", "openai", "deepseek"):
             entries: list[CalibrationObservation] = []
+            hashes = []
             for item in frozen_pack.items:
                 for repetition in range(
                     1, (2 if item.split == "validation" else 1) + 1
                 ):
-                    entry = decode(
-                        CalibrationObservation,
-                        parse(
-                            _read(directory / f"{provider}-{len(entries) + 1:03d}.json")
-                        ),
+                    entry_raw = _read(
+                        directory / f"{provider}-{len(entries) + 1:03d}.json"
                     )
+                    hashes.append(hashlib.sha256(entry_raw).hexdigest())
+                    entry = decode(CalibrationObservation, parse(entry_raw))
                     _metadata_identifiers(entry)
                     if (entry.item_id, entry.input_hash, entry.repetition) != (
                         item.item_id,
@@ -922,8 +953,7 @@ def _verify(
                         raise JudgeError("IDENTITY_MISMATCH")
                     entries.append(entry)
             observations[provider] = tuple(entries)
-        if cached_observations != observations:
-            raise JudgeError("DERIVED_RESULT_MISMATCH")
+            actual_records[provider] = tuple(hashes)
         results = {
             p: _counts(pack, labels, configs[p], observations[p], pack_hash)
             for p in _PROVIDERS
@@ -931,6 +961,8 @@ def _verify(
         selection = _selection(pack_hash, results)
         if stored_selection != selection:
             raise JudgeError("DERIVED_RESULT_MISMATCH")
+        if records != actual_records:
+            raise JudgeError("HASH_MISMATCH")
         if (
             selection.status != "selected"
             or selection.selected_provider != config.provider

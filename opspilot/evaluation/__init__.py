@@ -6,6 +6,11 @@ deterministic; the investigation runtime never imports this package.
 
 from opspilot.evaluation.baseline import write_baseline
 from opspilot.evaluation.gate import GATE_CHECKS, run_gate, signature_matches
+from opspilot.evaluation.live import (
+    LiveEvidence,
+    check_recording_binding,
+    evidence_from_recording,
+)
 from opspilot.evaluation.model import (
     Answer,
     AttemptRecord,
@@ -87,6 +92,9 @@ from opspilot.evaluation.storage import (
 from opspilot.evaluation.tool_provenance import ToolSnapshot, bind_tool_snapshots
 
 __all__ = [
+    "LiveEvidence",
+    "check_recording_binding",
+    "evidence_from_recording",
     "CaptureHooks",
     "Recording",
     "RecordingContext",
