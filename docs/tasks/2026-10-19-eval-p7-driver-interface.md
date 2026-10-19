@@ -306,6 +306,7 @@ CLI：`debug --workspace W --session S --judge-env PATH [--provider zai|openai|d
 
 1. 需要 `assembled/items.json`；`item_ids` 中任一项 `split != "debug"` 或不存在 → 3/`VALIDATION_EXPOSURE_FORBIDDEN` / `SCHEMA_INVALID`，**零调用**。
 2. 机械防护：驱动内 `judge_once` 只有两个调用来源——本函数（候选集合先过滤为 split=debug，再逐项断言）与 `run_calibration`。验收可用假 transport 记录全部请求体，断言任何 debug 会话中都不出现 validation 项 `p6_input`（按 `input_hash` 重算比较）。
+2a. 配置与判据预检（无副作用）：本次涉及的每家 `configs[p].provider == p` 且 `transports` 恰含这些 provider → 否则 `CONFIG_INVALID`；若已导出盲标包，按 §9.2 第 4 步同一规则核对约定仍逐字在当前 `judge.PROMPT`、items 与 packet hash 未变 → 否则 `JUDGE_PROMPT_CHANGED` / `PACKET_STALE`。理由：键名与配置错位会把费用和可用性证据记到错误的 provider；约定已失效时 debug 结果不能与标签比较，应在付费前拒绝。
 3. 成本前置（§10）：本次涉及的 zai/openai 须已有手填的 `costs/S/<provider>-before.json`，否则 3/`COST_BEFORE_MISSING`；deepseek 的 before 由本命令写，预检时须不存在，否则 3/`OUTPUT_EXISTS`。
 4. 预检全部目标路径（1.2）后，第一笔写入为 deepseek before（若涉及 deepseek，§10），随后按 provider 顺序 zai→openai→deepseek、items 按 item_id 升序，串行：`obs = judge_once(item.request, config=configs[p], calibration=None, transport=transports[p])`；立即写 `debug/S/<p>-NNN.json`（`DebugRecord`，`config_hash=judge_config_hash(config)`），写成功后才发下一次。写失败 → 5，不再调用。
 5. 结果不产生任何校准认证：不写 `calibration*`，`obs.passed` 恒为 False（`calibration=None`）。
@@ -321,7 +322,7 @@ CLI：`debug --workspace W --session S --judge-env PATH [--provider zai|openai|d
 freeze(ws: Workspace, *, accept_distribution: str | None = None) -> str   # pack_hash
 ```
 
-CLI：`freeze --workspace W [--accept-distribution BRIEF_SHA256]`。先按 Q2 核对每场景 validation 实际标签分布：每场景恰 1 正 3 负才放行；否则无参数时 `LABEL_DISTRIBUTION_MISMATCH`（退出 3，stdout 附每场景计数与 `adjudications_sha256`，供用户写接受记录）。`accept_distribution` 必须等于当前 `adjudication/brief.json`（§7 `brief` 写出的同一文件）原始字节的 SHA256（即用户书面接受偏差时所见简报），且工作区存在用户写入的 `adjudication/distribution-acceptance.json`（字段 `brief_sha256`、`adjudications_sha256`、`distribution`、非空 `decision_record`；`brief_sha256` 等于参数，`adjudications_sha256` 等于当前 `adjudication/adjudications.json` 原始字节的 SHA256，`distribution` 等于由当前最终标签重算的每场景 validation `{positive, negative}` 计数）；读取前对该文件执行 1.2 第 1–2 步（不在工作区内、是符号链接或未被忽略 → 对应 1.2 码）；文件缺失或任一字段不符为 `ACCEPTANCE_MISMATCH`（退出 3）。接受记录随 pack 一同进入 `summary` 输出。理由：brief 生成于裁决之前，只绑定 brief 时，同一份接受记录可被另一组裁决产生的不同分布复用；绑定裁决字节与最终分布后，接受记录只对用户实际看到的那一个分布有效。分布符合时传该参数为 `USAGE`（退出 2），不得预先豁免。然后组装 `LabelPack(items（assembled 顺序）, (annotations-1, annotations-2), adjudications)`；复核 §9.3 I1–I6；`freeze_label_pack(W/label-pack, pack)`；再 `load_label_pack(W/label-pack, expected_pack_hash=…) == pack`，否则 `HASH_MISMATCH`。无付费调用。stdout 给 `pack_hash`。
+CLI：`freeze --workspace W [--accept-distribution BRIEF_SHA256]`。先核对每场景 debug 最终标签恰 1 正 1 负（P7-D5，用于同时观测误放与漏判），不符 → `LABEL_DISTRIBUTION_MISMATCH`（退出 3），`--accept-distribution` 不豁免此项。再按 Q2 核对每场景 validation 实际标签分布：每场景恰 1 正 3 负才放行；否则无参数时 `LABEL_DISTRIBUTION_MISMATCH`（退出 3，stdout 附每场景计数与 `adjudications_sha256`，供用户写接受记录）。`accept_distribution` 必须等于当前 `adjudication/brief.json`（§7 `brief` 写出的同一文件）原始字节的 SHA256（即用户书面接受偏差时所见简报），且工作区存在用户写入的 `adjudication/distribution-acceptance.json`（字段 `brief_sha256`、`adjudications_sha256`、`distribution`、非空 `decision_record`；`brief_sha256` 等于参数，`adjudications_sha256` 等于当前 `adjudication/adjudications.json` 原始字节的 SHA256，`distribution` 等于由当前最终标签重算的每场景 validation `{positive, negative}` 计数）；读取前对该文件执行 1.2 第 1–2 步（不在工作区内、是符号链接或未被忽略 → 对应 1.2 码）；文件缺失或任一字段不符为 `ACCEPTANCE_MISMATCH`（退出 3）。接受记录随 pack 一同进入 `summary` 输出。理由：brief 生成于裁决之前，只绑定 brief 时，同一份接受记录可被另一组裁决产生的不同分布复用；绑定裁决字节与最终分布后，接受记录只对用户实际看到的那一个分布有效。分布符合时传该参数为 `USAGE`（退出 2），不得预先豁免。然后组装 `LabelPack(items（assembled 顺序）, (annotations-1, annotations-2), adjudications)`；复核 §9.3 I1–I6；`freeze_label_pack(W/label-pack, pack)`；再 `load_label_pack(W/label-pack, expected_pack_hash=…) == pack`，否则 `HASH_MISMATCH`。无付费调用。stdout 给 `pack_hash`。
 
 ### 9.2 `formal`
 
@@ -336,7 +337,7 @@ CLI：`formal --workspace W --run RUN --pack-hash H --judge-env PATH`。
 预检（全部通过才发第一次调用；失败 3）：
 
 1. `pack = load_label_pack(W/label-pack, expected_pack_hash=H)`。
-2. 三家配置均由 `load_judge_config` 得到；`configs` 与 `transports` 的键都恰为 zai/openai/deepseek → 否则 `CONFIG_INVALID`（在此预检，不留给 `run_calibration` 在登记之后才拒绝）。
+2. 三家配置均由 `load_judge_config` 得到；`configs` 与 `transports` 的键都恰为 zai/openai/deepseek，且每个 `configs[p].provider == p` → 否则 `CONFIG_INVALID`（在此预检，不留给 `run_calibration` 在登记之后才拒绝）。
 3. 可用性与冻结前置：存在至少一个 debug 会话，其中每家都有至少一条 `status == "ok"` 且 `config_hash` 等于本次 `judge_config_hash(configs[p])` 的记录 → 否则 `DEBUG_PRECHECK_MISSING`。理由：首次真实调用要核实 `gpt-6.1-sol` 等端点可用（B3 r3/r5 遗留），并保证正式运行用的是 debug 阶段已验证、已冻结的配置；若 Sol 不可用而直接正式跑，GLM 可能在没有有效对照的情况下被自动选中。
 4. 判据绑定（P7-D9、Q1）：包的 `convention` 仍逐字出现在当前 `judge.PROMPT` 中 → 否则 `JUDGE_PROMPT_CHANGED`；包的 `items_sha256` 等于当前 `assembled/items.json` 字节 sha256，且两份 `AnnotationProvenance.packet_sha256` 都等于当前 `blind/packet.json` 字节 sha256 → 否则 `PACKET_STALE`。`judge_prompt_sha256` 与当前 PROMPT 不同不拒绝，二者都写入运行记录（`summary` 输出）。理由：标签判断的是诊断本身对不对，标注者所见的约定须与 judge 所收一致；P7-D11 先盲标、后只调 judge，调优改动约定之外的 PROMPT 措辞不改变标签含义。若调优需要改约定本身，约定校验失败，lead 停下交用户（重新盲标需新工作区）。
 5. 成本前置（§10）：zai、openai 的 `costs/RUN/<p>-before.json` 均已存在 → 否则 `COST_BEFORE_MISSING`；`costs/RUN/deepseek-before.json` 须不存在 → 否则 `OUTPUT_EXISTS`。
