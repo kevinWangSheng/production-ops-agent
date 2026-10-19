@@ -1,6 +1,6 @@
 # 评测 P7 judge 真实校准
 
-- 状态：进行中（合同 r1 已裁决，待实施）
+- 状态：进行中（合同 r2 已裁决；来源采集中）
 - 目标：按 [评测任务记录](2026-10-12-eval-suite.md) P7 与 D16，用 36 份基于真实 Run 的样本、两份独立盲标和用户裁决，对 GLM-5.3、GPT-6.1 Sol、`deepseek-flash` 做一次正式校准，得出 D16 选择；合格后才进入第一轮基线（另记）。
 - 依据：[PR-B3 接口](2026-10-14-eval-pr-b3-interface.md)（LabelPack、freeze、run_calibration、r8–r11）；[PR-A 接口](2026-10-13-eval-pr-a-interface.md)（JudgeInput、JudgedDiagnosis）；C3 第 388–398 行。
 - 范围外：改判分规则、匹配口径或 D16 选择认证（如需改动，单列合同变更）；调查 loop、报告生成与恢复路径；翻任何 `passes`。
@@ -23,8 +23,15 @@
 | P7-D10 | 用户逐项裁决所有完整标签差异（最坏 36 项）；工具生成最终 BlindLabel 并绑定两份 annotation hash 与裁决记录 | 推荐 |
 | P7-D11 | 先只对 debug 项调 `judge_once` 调优，冻结 prompt/config 后才跑正式校准；validation 暴露后修 judge 须换新的 validation 来源族 | 推荐 |
 | P7-D12 | 校准与第一轮基线来源分离，先校准后基线 | 用户 |
-| P7-D13 | 新增 `chore` 评测执行 PR：capture→CalibrationItem 导入、改写记录、盲标包导出与导入、差异裁决、debug-only 调用、正式 freeze/run/read-back、费用记录；不改判分、匹配、认证与数据出口 | 推荐 |
+| P7-D13 | 新增 `chore` 评测执行 PR：capture→CalibrationItem 导入、改写记录、盲标包导出与导入、差异裁决、debug-only 调用、正式 freeze/run/read-back、费用记录；不改判分、匹配与认证；数据出口只按 r2 的 SPEC 扩展 | 推荐 |
 | P7-D14 | 结果为 pending（需选 Sol）时停在 pending 交用户，认证入口另行实现，不手改 selection | 推荐 |
+
+## 合同（r2，2026-10-19）
+
+| 编号 | 裁决要点 | 来源 |
+|---|---|---|
+| P7-D15 | 数据出口：SPEC 评测段加 2026-10-19 扩展，P7 盲标可由 Claude（Anthropic）与 Codex `gpt-6-astra`（OpenAI）接收与三家 judge 相同的输入，仅限开发评测与合成 lab 数据（PR #282 机器人 P1） | 用户 |
+| P7-D16 | 执行驱动接口见 [P7 驱动接口](2026-10-19-eval-p7-driver-interface.md)；其 Q1–Q8 采纳推荐：调优只改 `judge.PROMPT` 走独立小 PR；1+3 分布不符时 freeze 拒绝并交用户；导入时 diagnoses 稳定排序、reason 保留；36 项原件须过 gate；裁决简报对用户同样盲；进过 formal 的 validation 族不得再用；来源轮次以 `eval-p7-` 命名并被忽略；盲标包复制到仓库外目录交给标注者 | 推荐 |
 
 可逆默认（lead）：12 个来源一律新采（`--scenario all --n 2` 一轮），不复用 PR-C 与 #273 的两次 payment Run，理由是同一代码版本、一次覆盖六场景 live 路径，代价约 20 分钟 lab。
 
