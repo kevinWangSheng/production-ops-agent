@@ -1852,6 +1852,9 @@ def freeze(ws: Workspace, *, accept_distribution: str | None = None) -> str:
     _check_unique(records)
     directory = ws.root / "label-pack"
     _preflight(ws, files=tuple(directory / n for n in _PACK_FILES), dirs=(directory,))
+    # freeze_label_pack writes several files; any failure from here on may
+    # leave a partial pack, so it is a stop (exit 5), never a refusal.
+    _PROGRESS["started"] = True
     pack_hash = freeze_label_pack(directory, pack)
     if load_label_pack(directory, expected_pack_hash=pack_hash) != pack:
         _fail("HASH_MISMATCH")
@@ -2027,7 +2030,14 @@ def formal(
         ),
     ]
     _preflight(ws, files=files, dirs=(destination, destination / "label-pack"))
-    # 7. First write: the exposure registration.
+    # 7. The shared registry must exist and be ignored (1.2) before it is used;
+    # a tracked or unignored registry is refused without any side effect.
+    for path in (ws.private_root / "exposure.lock", ws.private_root / "exposure.jsonl"):
+        _check_private(ws, path)
+        if not _exists(path):
+            _fail("EXPOSURE_REGISTRY_MISSING")
+        _ignored(ws, path)
+    # First write: the exposure registration.
     _register(ws, run_id, pack_hash, pack)
     _ensure_dirs(ws, destination.parent)
     _write_deepseek_balance(ws, run_id, "before", balance)
