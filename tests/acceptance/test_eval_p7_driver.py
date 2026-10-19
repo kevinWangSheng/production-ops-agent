@@ -1,6 +1,6 @@
 """Acceptance of the P7 driver, independently authored before implementation.
 
-Sole contract: docs/tasks/2026-10-19-eval-p7-driver-interface.md (r2).
+Sole contract: docs/tasks/2026-10-19-eval-p7-driver-interface.md (02eb1e2).
 Section references on each test are the traceability map. No live services.
 """
 
@@ -24,7 +24,7 @@ from eval_p7_support import (
 from opspilot.evaluation import judge
 from opspilot.evaluation.codec import canonical_bytes
 from opspilot.evaluation.judge import safe_input
-from scripts import eval_p7  # expected RED: the driver has not been implemented
+from scripts import eval_p7
 
 
 @pytest.fixture
@@ -134,7 +134,8 @@ def test_git_negation_of_one_output_is_respected(harness):
     """§1.2: a single packet file exception defeats parent ignore."""
     h = harness.seed()
     (h.root / ".gitignore").write_text(
-        "tmp/eval-p7/**\n!tmp/eval-p7/canary-workspace/blind/\n"
+        "tmp/eval-p7/**\n!tmp/eval-p7/canary-workspace/\n"
+        "!tmp/eval-p7/canary-workspace/blind/\n"
         "tmp/eval-p7/canary-workspace/blind/**\n"
         "!tmp/eval-p7/canary-workspace/blind/packet.json\n"
     )
@@ -524,12 +525,18 @@ def test_formal_preflight_failures_leave_every_artifact_unchanged(
         (h.ws / "calibration/canary-formal").mkdir(parents=True)
     else:
         (h.root / ".gitignore").write_text(
-            "tmp/eval-p7/**\n!tmp/eval-p7/canary-workspace/calibration/\n"
+            "tmp/eval-p7/**\n!tmp/eval-p7/canary-workspace/\n"
+            "!tmp/eval-p7/canary-workspace/calibration/\n"
             "tmp/eval-p7/canary-workspace/calibration/**\n"
             "!tmp/eval-p7/canary-workspace/calibration/canary-formal/\n"
             "tmp/eval-p7/canary-workspace/calibration/canary-formal/**\n"
             "!tmp/eval-p7/canary-workspace/calibration/canary-formal/openai-060.json\n"
         )
+        target = h.ws / "calibration/canary-formal/openai-060.json"
+        result = subprocess.run(
+            ["git", "-C", str(h.root), "check-ignore", "-q", "--", str(target)]
+        )
+        assert result.returncode == 1
     before = snapshot(h.root)
     exposure = (h.private / "exposure.jsonl").read_bytes()
     h.formal(code=3, reason=reason)
@@ -988,3 +995,198 @@ def test_library_preserves_lower_storage_hash_error_without_chain(harness):
         ),
     )
     assert snapshot(h.root) == before
+
+
+def test_snapshot_reads_canary_without_disabling_runtime_env_guard(harness):
+    """Fixture regression: snapshots include .env while runtime reads stay blocked."""
+    import builtins
+
+    h = harness
+    state = snapshot(h.root)
+    assert state[".env"][1] == ("file", b"CANARY-P7-DOTENV-MUST-NOT-BE-READ=invalid\n")
+    with pytest.raises(AssertionError):
+        (h.root / ".env").read_bytes()
+    with pytest.raises(AssertionError):
+        builtins.open(h.root / ".env", "rb")
+    assert snapshot(h.root) == state
+
+
+@pytest.mark.parametrize(
+    "debug_distribution", ["all-positive", "all-negative", "compensating"]
+)
+@pytest.mark.parametrize("accept_deviation", [False, True])
+def test_freeze_debug_distribution_cannot_be_waived(
+    harness, debug_distribution, accept_deviation
+):
+    """§9.1 (02eb1e2): each scenario needs debug 1+1; acceptance never waives it."""
+    from eval_p7_support import REPO
+
+    from opspilot.evaluation import load_scenarios
+
+    h = harness
+    scenarios = [
+        spec.scenario_id for spec, _ in load_scenarios(REPO / "evals/scenarios")
+    ]
+    counts = {scenarios[0]: 2 if debug_distribution != "all-negative" else 0}
+    if debug_distribution == "compensating":
+        counts[scenarios[1]] = 0
+    # Without acceptance, validation is exactly 1+3, isolating the debug gate.
+    # With acceptance, validation is 0+4 and its deviation is legitimately
+    # accepted, so only the non-waivable debug gate can prevent freezing.
+    h.seed(
+        balanced=not accept_deviation, debug_positive_counts=counts
+    ).export().annotations()
+    by_id = {label.item_id: label for label in h.labels}
+    actual = {
+        scenario: sum(
+            by_id[item.item_id].verdict
+            for item in h.items
+            if item.split == "debug" and item.scenario_id == scenario
+        )
+        for scenario in scenarios
+    }
+    assert actual == {scenario: counts.get(scenario, 1) for scenario in scenarios}
+    if debug_distribution == "compensating":
+        assert sum(actual.values()) == len(scenarios)
+    args = []
+    if accept_deviation:
+        _, acceptance = h.acceptance()
+        assert all(
+            value == {"positive": 0, "negative": 4}
+            for value in acceptance["distribution"].values()
+        )
+        args = ["--accept-distribution", acceptance["brief_sha256"]]
+    assert not (h.ws / "label-pack").exists()
+    before = snapshot(h.root)
+    h.cli("freeze", *args, code=3, reason="LABEL_DISTRIBUTION_MISMATCH")
+    assert snapshot(h.root) == before
+    assert not (h.ws / "label-pack").exists()
+    assert not h.calls and not h.balance_calls
+
+
+@pytest.mark.parametrize(
+    "first,second", [("zai", "openai"), ("zai", "deepseek"), ("openai", "deepseek")]
+)
+def test_debug_provider_values_must_match_mapping_keys(harness, first, second):
+    """§8.2a (02eb1e2): correct keys with swapped configs refuse before any write/call."""
+    from opspilot.evaluation.judge import HTTPJudgeTransport
+
+    h = harness.seed().export().annotations()
+    h.costs("canary-debug")
+    configs = dict(h.configs)
+    configs[first], configs[second] = configs[second], configs[first]
+    assert set(configs) == {"zai", "openai", "deepseek"}
+    assert configs[first].provider != first
+    transports = {p: HTTPJudgeTransport() for p in configs}
+    balance_calls = []
+    before = snapshot(h.root)
+    assert_p7_error(
+        "CONFIG_INVALID",
+        lambda: eval_p7.debug_judge(
+            h.library_workspace,
+            session_id="canary-debug",
+            providers=tuple(configs),
+            item_ids=None,
+            configs=configs,
+            transports=transports,
+            balance=lambda provider: (
+                balance_calls.append(provider) or Decimal("100.00")
+            ),
+        ),
+    )
+    assert snapshot(h.root) == before
+    assert not (h.ws / "costs/canary-debug/deepseek-before.json").exists()
+    assert not h.calls and not h.balance_calls and not balance_calls
+
+
+@pytest.mark.parametrize(
+    "damage,reason",
+    [
+        ("prompt", "JUDGE_PROMPT_CHANGED"),
+        ("items", "PACKET_STALE"),
+        ("packet", "PACKET_STALE"),
+    ],
+)
+def test_debug_exported_packet_bindings_refuse_without_side_effects(
+    harness, damage, reason
+):
+    """§8.2a / §9.2.4 (02eb1e2): stale criterion or raw hashes forbid debug exposure."""
+    from opspilot.evaluation.judge import HTTPJudgeTransport
+
+    h = harness.seed().export().annotations()
+    h.costs("canary-debug")
+    configs = dict(h.configs)
+    if damage == "prompt":
+        new_prompt = "CANARY-P7-NEW-PROMPT-WITHOUT-EXPORTED-CONVENTION"
+        assert (
+            json.loads((h.ws / "blind/packet.json").read_bytes())["convention"]
+            not in new_prompt
+        )
+        h.mp.setattr(judge, "PROMPT", new_prompt)
+        # Keep each config valid against the current criterion. This isolates
+        # packet binding from the lower judge's separate config validation.
+        configs = {
+            p: replace(config, prompt=new_prompt) for p, config in configs.items()
+        }
+    else:
+        path = h.ws / (
+            "assembled/items.json" if damage == "items" else "blind/packet.json"
+        )
+        raw = path.read_bytes()
+        path.write_bytes(raw + b"\n")
+        assert sha(path.read_bytes()) != sha(raw)
+    transports = {p: HTTPJudgeTransport() for p in configs}
+    balance_calls = []
+    before = snapshot(h.root)
+    assert_p7_error(
+        reason,
+        lambda: eval_p7.debug_judge(
+            h.library_workspace,
+            session_id="canary-debug",
+            providers=tuple(configs),
+            item_ids=None,
+            configs=configs,
+            transports=transports,
+            balance=lambda provider: (
+                balance_calls.append(provider) or Decimal("100.00")
+            ),
+        ),
+    )
+    assert snapshot(h.root) == before
+    assert not (h.ws / "costs/canary-debug/deepseek-before.json").exists()
+    assert not h.calls and not h.balance_calls and not balance_calls
+
+
+@pytest.mark.parametrize(
+    "first,second", [("zai", "openai"), ("zai", "deepseek"), ("openai", "deepseek")]
+)
+def test_formal_provider_values_must_match_mapping_keys(harness, first, second):
+    """§9.2.2 (02eb1e2): swapped config values cannot occupy validation source families."""
+    from opspilot.evaluation.judge import HTTPJudgeTransport
+
+    h = harness.ready()
+    configs = dict(h.configs)
+    configs[first], configs[second] = configs[second], configs[first]
+    assert set(configs) == {"zai", "openai", "deepseek"}
+    assert configs[first].provider != first
+    transports = {p: HTTPJudgeTransport() for p in configs}
+    balance_calls = []
+    registry = (h.private / "exposure.jsonl").read_bytes()
+    before = snapshot(h.root)
+    assert_p7_error(
+        "CONFIG_INVALID",
+        lambda: eval_p7.formal(
+            h.library_workspace,
+            run_id="canary-formal",
+            pack_hash=h.pack_hash,
+            configs=configs,
+            transports=transports,
+            balance=lambda provider: (
+                balance_calls.append(provider) or Decimal("100.00")
+            ),
+        ),
+    )
+    assert snapshot(h.root) == before
+    assert (h.private / "exposure.jsonl").read_bytes() == registry
+    assert not (h.ws / "costs/canary-formal/deepseek-before.json").exists()
+    assert not h.calls and not h.balance_calls and not balance_calls

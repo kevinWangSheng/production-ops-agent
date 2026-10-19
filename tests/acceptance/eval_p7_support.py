@@ -46,6 +46,9 @@ SECRETS = (*CANARIES, CANARY_REPORT, CANARY_LABEL, CANARY_DECISION, CANARY_INTEN
 ROUND = "eval-p7-canary"
 ATTEMPT = "00000000-0000-4000-8000-000000000001"
 PROVIDERS = ("zai", "openai", "deepseek")
+# Keep a private reader for evidence snapshots; the runtime .env guard stays
+# installed while the driver runs and while snapshots are taken.
+_SNAPSHOT_OPEN = io.open
 
 
 def sha(raw):
@@ -69,7 +72,8 @@ def snapshot(root):
         if path.is_symlink():
             value = ("link", path.readlink().as_posix())
         elif path.is_file():
-            value = ("file", path.read_bytes())
+            with _SNAPSHOT_OPEN(path, "rb") as handle:
+                value = ("file", handle.read())
         else:
             value = ("dir",)
         result[str(relative)] = (mode, value)
@@ -194,7 +198,7 @@ class DriverHarness:
         self.cli("init")
         return self
 
-    def seed(self, *, balanced=True):
+    def seed(self, *, balanced=True, debug_positive_counts=None):
         """Write only contract DTOs (§9.3 explicitly allows direct fixture records).
 
         Every scenario/split uses one original and report-only rewrites. Labels
@@ -212,6 +216,11 @@ class DriverHarness:
                     else "extra_wrong_cause"
                 )
                 variants = ["positive"] + [negative] * (count - 1)
+                if split == "debug" and debug_positive_counts is not None:
+                    positives = debug_positive_counts.get(spec.scenario_id, 1)
+                    variants = ["positive"] * positives + [negative] * (
+                        count - positives
+                    )
                 if not balanced and split == "validation":
                     variants[0] = negative
                 source = None
