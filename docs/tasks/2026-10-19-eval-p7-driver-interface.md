@@ -389,7 +389,7 @@ CLI：`balance --workspace W --session S --provider P --phase before|after (--am
 - zai、openai：现有代码没有余额查询，**由调用方手填**（`source="manual"`），驱动不新增外部调用；也可显式记 `--unknown`。
 - deepseek：before/after 的唯一写入方是 `debug`/`formal`；`balance --provider deepseek` 一律 2/`USAGE`。before 在该命令全部无副作用预检通过之后（formal 还在暴露登记之后）、第一次付费调用之前写且只写一次，after 在最后一次调用之后写；用现有 `scripts.eval_live_lab.DeepSeekBalance(config.api_key).balance()`（CNY）记录 `source="deepseek_balance_api"`；返回 None 时记 `amount=None, source="unknown"`，不中断。预检时 deepseek before 已存在 → 3/`OUTPUT_EXISTS`（换新的 session/run ID）。`shared_account_possible` 对 deepseek 恒为 True（judge 与被测模型可能同账户，lab 同时运行会污染差值）。理由：沿用 `eval_live._cost` 的字段与 unknown 语义（`eval_live.py:1243-1256`）。
 - 同一 `(session, provider, phase)` 只能写一次（`OUTPUT_EXISTS`）；金额须为有限 Decimal 字符串，货币 `[A-Z]{3}`（`SCHEMA_INVALID`）。
-- `cost_report`：每家 `delta = before - after`（两者都已知且币种相同才计算，否则 `status="unknown"`），以及该会话观察记录 `usage` 的 prompt/completion/total_tokens 合计（缺值不计入并报告缺失数）、调用次数。
+- `cost_report`：每家 `delta = before - after`（两者都已知且币种相同才计算，否则 `status="unknown"`），以及该会话观察记录 `usage` 的 prompt/completion/total_tokens 合计（缺值不计入并报告缺失数）、调用次数。已存在的 before/after 记录须可解码为 session/provider/phase 与其路径一致且字段合法的 `BalanceRecord`，否则 3/`SCHEMA_INVALID`，不输出差值（`summary` 同）。
 
 ## 11. 汇总（只读）
 

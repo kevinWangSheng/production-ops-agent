@@ -1481,15 +1481,17 @@ def _balance_path(ws: Workspace, session_id: str, provider: str, phase: str) -> 
     return ws.root / "costs" / session_id / f"{provider}-{phase}.json"
 
 
-def _check_before(ws: Workspace, session_id: str, provider: str) -> None:
-    """Side-effect free: the before record exists, decodes and is bound."""
-    path = _balance_path(ws, session_id, provider, "before")
+def _bound_balance(
+    ws: Workspace, session_id: str, provider: str, phase: str, *, code: str
+) -> BalanceRecord:
+    """Read-only: the record decodes, is valid and bound to its path, else code."""
+    path = _balance_path(ws, session_id, provider, phase)
     try:
         record = _decode(BalanceRecord, _read_ws(ws, path))
         bound = (
             record.session_id == session_id
             and record.provider == provider
-            and record.phase == "before"
+            and record.phase == phase
             and _balance_record(
                 record.session_id,
                 record.provider,
@@ -1503,7 +1505,13 @@ def _check_before(ws: Workspace, session_id: str, provider: str) -> None:
     except (P7Error, StorageError):
         bound = False
     if not bound:
-        _fail("COST_BEFORE_MISSING")
+        _fail(code)
+    return record
+
+
+def _check_before(ws: Workspace, session_id: str, provider: str) -> None:
+    """Side-effect free: the before record exists, decodes and is bound."""
+    _bound_balance(ws, session_id, provider, "before", code="COST_BEFORE_MISSING")
 
 
 def _balance_record(
@@ -1623,7 +1631,9 @@ def cost_report(ws: Workspace, session_id: str) -> Mapping[str, Any]:
         for phase in ("before", "after"):
             path = _balance_path(ws, session_id, provider, phase)
             records[phase] = (
-                _decode(BalanceRecord, _read_ws(ws, path)) if _exists(path) else None
+                _bound_balance(ws, session_id, provider, phase, code="SCHEMA_INVALID")
+                if _exists(path)
+                else None
             )
         before, after = records["before"], records["after"]
         delta = None
@@ -1634,7 +1644,10 @@ def cost_report(ws: Workspace, session_id: str) -> Mapping[str, Any]:
             and after.amount is not None
             and before.currency == after.currency
         ):
-            delta = str(Decimal(before.amount) - Decimal(after.amount))
+            try:
+                delta = str(Decimal(before.amount) - Decimal(after.amount))
+            except ArithmeticError:
+                _fail("SCHEMA_INVALID")
         tokens: dict[str, int] = {}
         missing: dict[str, int] = {}
         for name in ("prompt_tokens", "completion_tokens", "total_tokens"):
@@ -2436,8 +2449,10 @@ def _run(
         return 0, "ok", "OK", {"annotation_sha256": digest, "slot": int(args.slot)}
     if command == "brief":
         digest = write_adjudication_brief(ws)
-        brief = _decode(
-            AdjudicationBrief, _read_file(ws.root / "adjudication/brief.json")
+        brief = _after_write(
+            lambda: _decode(
+                AdjudicationBrief, _read_file(ws.root / "adjudication/brief.json")
+            )
         )
         return (
             0,
@@ -2451,7 +2466,7 @@ def _run(
         )
     if command == "adjudicate":
         adjudications = apply_decisions(ws, Path(args.decisions))
-        pack, labels, _ = _public(_label_pack)(ws)
+        pack, labels, _ = _after_write(lambda: _label_pack(ws))
         return (
             0,
             "ok",
@@ -2576,6 +2591,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _main(command, argv)
     except KeyboardInterrupt:
         return _emit(command, "interrupted", 130, "INTERRUPTED")
+
+
+def _after_write(fn: Callable[[], T]) -> T:
+    """0.1: a read-back failing after this command wrote is exit 5, not 3."""
+    try:
+        return _public(fn)()
+    except P7Error as exc:
+        raise P7Error(exc.code, stopped=True, details=exc.details) from None
 
 
 def _main(command: str, argv: list[str]) -> int:

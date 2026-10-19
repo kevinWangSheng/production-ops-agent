@@ -1004,6 +1004,80 @@ def test_debug_invalid_manual_before_is_refused_without_side_effects(harness, da
     assert not (h.ws / "costs/canary-debug/deepseek-before.json").exists()
 
 
+@pytest.mark.parametrize("damage", ["session", "provider", "amount"])
+def test_cost_refuses_unbound_or_invalid_balance_records(harness, damage):
+    """§10: a copied or invalid record never yields a delta; one JSON on stdout."""
+    h = harness
+    for session in ("canary-cost", "canary-other"):
+        for provider in ("zai", "openai"):
+            for phase, amount in (("before", "12.00"), ("after", "10.00")):
+                h.cli(
+                    "balance",
+                    "--session",
+                    session,
+                    "--provider",
+                    provider,
+                    "--phase",
+                    phase,
+                    "--amount",
+                    amount,
+                    "--currency",
+                    "CNY",
+                )
+    target = h.ws / "costs/canary-cost/zai-after.json"
+    if damage == "session":
+        source = h.ws / "costs/canary-other/zai-after.json"
+        target.write_bytes(source.read_bytes())
+    elif damage == "provider":
+        target.write_bytes((h.ws / "costs/canary-cost/openai-after.json").read_bytes())
+    else:
+        value = json.loads(target.read_bytes())
+        value["amount"] = "CANARY-NOT-A-NUMBER"
+        put(target, value)
+    before = snapshot(h.root)
+    result = h.cli("cost", "--session", "canary-cost", code=3, reason="SCHEMA_INVALID")
+    assert "cost" not in result
+    h.cli("summary", code=3, reason="SCHEMA_INVALID")
+    assert snapshot(h.root) == before
+
+
+def test_brief_readback_failure_after_write_is_stopped(harness):
+    """§0.1: brief.json was written, so a failing read-back exits 5, not 3."""
+    h = harness.seed().export().annotations(finalize=False)
+    driver = h.driver
+    read = driver._read_file
+
+    def failing(path, **kwargs):
+        if path.name == "brief.json":
+            driver._fail("EVIDENCE_UNAVAILABLE")
+        return read(path, **kwargs)
+
+    h.mp.setattr(driver, "_read_file", failing)
+    h.cli("brief", code=5, reason="EVIDENCE_UNAVAILABLE")
+    assert (h.ws / "adjudication/brief.json").is_file()
+
+
+def test_adjudicate_readback_failure_after_write_is_stopped(harness):
+    """§0.1: adjudications were written, so a failing label read-back exits 5."""
+    h = harness.seed().export().annotations(finalize=False)
+    h.cli("brief")
+    brief = (h.ws / "adjudication/brief.json").read_bytes()
+    assert json.loads(brief)["differences"] == []
+    decisions = h.root / "decisions.json"
+    put(
+        decisions,
+        dict(schema="opspilot-p7-decisions-1", brief_sha256=sha(brief), decisions=[]),
+    )
+    driver = h.driver
+
+    def failing(_ws):
+        driver._fail("SCHEMA_INVALID")
+
+    h.mp.setattr(driver, "_label_pack", failing)
+    h.cli("adjudicate", "--decisions", decisions, code=5, reason="SCHEMA_INVALID")
+    assert (h.ws / "adjudication/adjudications.json").is_file()
+
+
 def test_summary_stdout_keeps_report_labels_decisions_and_credentials_private(harness):
     """§§0,7,11: exercise real private adjudication text, then safe public summary."""
     from eval_p7_support import CANARY_DECISION, CANARY_LABEL
