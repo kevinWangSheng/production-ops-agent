@@ -1,6 +1,6 @@
 # 评测 P7 judge 真实校准
 
-- 状态：进行中（合同 r2 已裁决；前 3 轮采集无效，重采中）
+- 状态：进行中（合同 r2 已裁决；重采 10/12 来源合格，payment-failure-1 与 product-catalog-failure 待补跑）
 - 目标：按 [评测任务记录](2026-10-12-eval-suite.md) P7 与 D16，用 36 份基于真实 Run 的样本、两份独立盲标和用户裁决，对 GLM-5.3、GPT-6.1 Sol、`deepseek-flash` 做一次正式校准，得出 D16 选择；合格后才进入第一轮基线（另记）。
 - 依据：[PR-B3 接口](2026-10-14-eval-pr-b3-interface.md)（LabelPack、freeze、run_calibration、r8–r11）；[PR-A 接口](2026-10-13-eval-pr-a-interface.md)（JudgeInput、JudgedDiagnosis）；C3 第 388–398 行。
 - 范围外：改判分规则、匹配口径或 D16 选择认证（如需改动，单列合同变更）；调查 loop、报告生成与恢复路径；翻任何 `passes`。
@@ -47,7 +47,7 @@
 
 - 预审决定表原文保存在私有目录，未入库；本节随执行补充。
 - **无效轮（保留原始记录，不作 P7 来源）**：`eval-p7-src-20261019`（12 槽）、`eval-p7-src2-20261019`（4 槽）、`eval-p7-src3-20261019`（1 槽后 SIGINT 中止，exit 130，故障已恢复）。启动时未载入调查侧 Prometheus 账号（docs/development.md:137），模型的 `metrics_range_query` 全部 401、显示为 `SOURCE_ERROR`，调查只能靠 trace 抽样（#284）。期间发现录制校验器误判 transport 发送前拒绝的调用（#283），以及 product-catalog 在只有 trace 小样本时常拿不到错误 span（匹配器核实无误）。宿主健康：checkout p95 仅在 cartFailure 注入窗内为 15 s（故障本身），swap 7.7–7.9 GB 未上涨。三轮调查模型余额差约 2.7 CNY。`eval-273-run-20261018` 同样未载入账号，只影响模型证据，不影响其中断验证结论。
-- 重采轮 `eval-p7-srcb-20261019`（2026-10-19 09:11Z 起，dc/3e 确认空闲；用户放行在子 shell 载入调查侧账号，开跑前用该账号实测 metrics 查询 200）：结果待补。
+- 重采轮 `eval-p7-srcb-20261019`（2026-10-19 09:11Z 起，dc/3e 确认空闲；用户放行在子 shell 载入调查侧账号，开跑前用该账号实测 metrics 查询 200）：09:11–10:53Z，12 槽 11 槽 `ran`，交付工具结果均为 `ok` 或 `no_data`，不再有 401。gate 通过 10 槽：cart-failure、normal-1、normal-2、payment-failure-2 各 2 槽；payment-failure-1 与 product-catalog-failure 各 1 槽。未通过 2 槽：payment-failure-1 第 2 槽录制校验 `IDENTITY_MISMATCH` 中止（#283），中止前故障已恢复；product-catalog-failure 第 1 槽 `SIGNATURE_ABSENT`。judge 未校准，其余槽 `JUDGE_NOT_RUN` 属预期。宿主健康：checkout p95 仅 cartFailure 注入窗（09:13–09:27Z）内 9–15 s，其余低于 300 ms；swap 7.4–8.3 GB。余额差 1.79 CNY（共享 key，可能含他线）。收尾：三个故障 flag 核实为 off，port-forward 与采样进程已停，occupation 已释放并通知 dc。缺口：payment-failure-1 与 product-catalog-failure 各缺 1 个 gate 合格来源，需补跑。
 
 ## 待决
 
