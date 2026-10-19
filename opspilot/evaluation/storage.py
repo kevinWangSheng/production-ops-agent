@@ -506,6 +506,13 @@ def load_summary(path: Path, *, manifest: Manifest, resolve: Resolver) -> RunEva
     return _load_summary(_read(path), manifest, resolve)[0]
 
 
+def load_summary_capture(
+    path: Path, *, manifest: Manifest, resolve: Resolver
+) -> tuple[RunEvaluation, EvaluationCapture]:
+    """Public alias of the summary loader that also returns the verified capture."""
+    return _load_summary(_read(path), manifest, resolve)
+
+
 def write_attempt(path: Path, journal: AttemptJournal) -> ArtifactRef:
     journal = validated(AttemptJournal, journal)
     _identity(journal.spec, journal.answer, journal.attempt)
