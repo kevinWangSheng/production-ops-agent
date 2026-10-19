@@ -1862,6 +1862,7 @@ class LocalPgLauncher:
                 # members of the migration's group roles are created here,
                 # each with its own random SCRAM password.
                 for login, group in self.logins.items():
+                    checkpoint()
                     conn.execute(
                         sql.SQL("CREATE ROLE {} LOGIN PASSWORD {} IN ROLE {}").format(
                             sql.Identifier(login),
@@ -1869,7 +1870,7 @@ class LocalPgLauncher:
                             sql.Identifier(group),
                         )
                     )
-            checkpoint()
+                    checkpoint()
         except BaseException as exc:
             if not isinstance(exc, Exception):
                 request_stop()  # a caught interrupt is a stop request (R3)
