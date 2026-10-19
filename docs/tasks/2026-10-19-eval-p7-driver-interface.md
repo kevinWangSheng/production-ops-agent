@@ -314,10 +314,10 @@ CLI：`debug --workspace W --session S --judge-env PATH [--provider zai|openai|d
 ### 9.1 `freeze`
 
 ```python
-freeze(ws: Workspace) -> str          # pack_hash
+freeze(ws: Workspace, *, accept_distribution: str | None = None) -> str   # pack_hash
 ```
 
-CLI：`freeze --workspace W`。组装 `LabelPack(items（assembled 顺序）, (annotations-1, annotations-2), adjudications)`；复核 §9.3 I1–I6；`freeze_label_pack(W/label-pack, pack)`；再 `load_label_pack(W/label-pack, expected_pack_hash=…) == pack`，否则 `HASH_MISMATCH`。无付费调用。stdout 给 `pack_hash`。
+CLI：`freeze --workspace W [--accept-distribution BRIEF_SHA256]`。先按 Q2 核对每场景 validation 实际标签分布：每场景恰 1 正 3 负才放行；否则无参数时 `LABEL_DISTRIBUTION_MISMATCH`（退出 3）。`accept_distribution` 必须等于当前 `brief/brief.json` 原始字节的 SHA256（即用户书面接受偏差时所见简报），且工作区存在用户写入的 `brief/distribution-acceptance.json`（字段 `brief_sha256`、非空 `decision_record`，前者等于参数）；任一不符为 `ACCEPTANCE_MISMATCH`（退出 3）。接受记录随 pack 一同进入 `summary` 输出。分布符合时传该参数为 `USAGE`（退出 2），不得预先豁免。然后组装 `LabelPack(items（assembled 顺序）, (annotations-1, annotations-2), adjudications)`；复核 §9.3 I1–I6；`freeze_label_pack(W/label-pack, pack)`；再 `load_label_pack(W/label-pack, expected_pack_hash=…) == pack`，否则 `HASH_MISMATCH`。无付费调用。stdout 给 `pack_hash`。
 
 ### 9.2 `formal`
 
@@ -334,7 +334,7 @@ CLI：`formal --workspace W --run RUN --pack-hash H --judge-env PATH`。
 1. `pack = load_label_pack(W/label-pack, expected_pack_hash=H)`。
 2. 三家配置均由 `load_judge_config` 得到；`configs` 键恰为 zai/openai/deepseek。
 3. 可用性与冻结前置：存在至少一个 debug 会话，其中每家都有至少一条 `status == "ok"` 且 `config_hash` 等于本次 `judge_config_hash(configs[p])` 的记录 → 否则 `DEBUG_PRECHECK_MISSING`。理由：首次真实调用要核实 `gpt-6.1-sol` 等端点可用（B3 r3/r5 遗留），并保证正式运行用的是 debug 阶段已验证、已冻结的配置；若 Sol 不可用而直接正式跑，GLM 可能在没有有效对照的情况下被自动选中。
-4. 暴露检查：工作区内任何已有 `calibration/*/label-pack/items.json` 中的 validation `source_family` 与本 pack 的 validation 族有交集 → `VALIDATION_EXPOSED`（重跑口径见待裁决 Q6）。
+4. 暴露检查（跨工作区）：读取私有根（默认 `<repo>/tmp/eval-p7`）下的追加式登记 `exposure.jsonl`，并扫描私有根下**所有**工作区的 `*/calibration/*/label-pack/items.json`；任一已登记或已出现的 validation `source_family`，或同一 `(round, attempt)` 来源，与本 pack 的 validation 族或来源有交集 → `VALIDATION_EXPOSED`。登记文件缺失而扫描发现任何 `calibration/*` 目录 → `EXPOSURE_REGISTRY_MISSING`。通过预检后、第一次调用前，以 `O_APPEND` 写入并 fsync 一行 `{run_id, workspace, pack_hash, validation_families, sources, at}`；写失败为 `WRITE_FAILED`（退出 5）且不发调用。驱动不提供删除或改写登记的入口。此登记是防止重跑挑结果的流程护栏，不是对能改私有目录者的安全边界。
 5. 成本前置：三家 `costs/RUN/<p>-before.json` 均存在 → 否则 `COST_BEFORE_MISSING`。
 6. 预检 `calibration/RUN/` 下全部将创建路径（1.2）；`calibration/` 父目录不存在则先创建（也须通过 1.2）。`calibration/RUN` 已存在 → `OUTPUT_EXISTS`。
 
@@ -409,7 +409,7 @@ CLI：`balance --workspace W --session S --provider P --phase before|after (--am
 
 ## 已裁决（P7 合同 r2）
 
-以下 Q1–Q8 是合同 r1 未覆盖的语义点，2026-10-19 按用户常设指示全部采纳推荐（Q1 A、Q2 A、Q3 B、Q4 A、Q5 A、Q6 A、Q7 A、Q8 A），裁决记录见 [P7 任务记录](2026-10-18-eval-p7-calibration.md)。Q7 的前缀修订为 `eval-p7-`（`.gitignore` 规则 `docs/evidence/eval/eval-p7-*/`），与已开跑的来源轮次 `eval-p7-src-20261019` 一致。下文保留选项原文供追溯。
+以下 Q1–Q8 是合同 r1 未覆盖的语义点，2026-10-19 按用户常设指示全部采纳推荐（Q1 A、Q2 A、Q3 B、Q4 A、Q5 A、Q6 A、Q7 A、Q8 A），裁决记录见 [P7 任务记录](2026-10-18-eval-p7-calibration.md)。Q7 的前缀修订为 `eval-p7-`，`.gitignore` 规则 `docs/evidence/eval/eval-p7-*/` 已随 PR #282 加入；已开跑的来源轮次 `eval-p7-src-20261019` 在该规则合入前写在主工作树未跟踪目录，采集结束后由 lead 移入 `tmp/` 私有目录，未提交。Q6 的暴露检查按 PR #282 机器人意见扩为跨工作区登记（§9.2 第 4 条）；Q2 的接受参数写入 §9.1。下文保留选项原文供追溯。
 
 **Q1 判据与 P7-D9 约定如何到达 judge（影响 debug 调优能否进行）。** 事实：`judge._check_config` 要求 `config.prompt == PROMPT`（`judge.py:183`），`load_judge_config` 不读 prompt，所以 debug 调优和「给三家 judge 同一份引文粒度与排序约定」只能改 `judge.PROMPT` 常量，而这属于 judge 模块代码。
 - A（推荐）：约定写进 `judge.PROMPT`，每次调优是一个独立小 PR（改 PROMPT 即改 config_hash），本驱动不提供 prompt 覆盖；盲标包的 `judge_prompt` 取当时的 `PROMPT`，`convention` 取同一份约定原文。代价：每轮调优走一次 PR；好处：冻结配置有代码与 hash 两重证据，不扩大驱动权限。
@@ -440,7 +440,7 @@ CLI：`balance --workspace W --session S --provider P --phase before|after (--am
 - C：只在配置 hash 变化时拒绝。允许同配置反复重跑，存在挑结果风险。
 
 **Q7 P7 来源 round 的 summary 是否进公开仓库。** 事实：`eval_live` 固定把 `summary.json`（含报告原文与 delivered 视图）写到 `docs/evidence/eval/<round>/`（`eval_live.py:1886`），该目录未被忽略、此前的 round 已入库；P7 计划第 2 步要求「原件放 ignored 私有目录」。
-- A（推荐）：本 chore PR 在 `.gitignore` 增加 `docs/evidence/eval/eval-p7-*/`，P7 来源 round 名必须以 `eval-p7-` 开头，`import` 对 summary 所在 round 目录也做 1.2 ignore 核验，不通过则 `PRIVATE_PATH_NOT_IGNORED`。不改 `eval_live`。
+- A（推荐）：本 chore PR 在 `.gitignore` 增加 `docs/evidence/eval/eval-p7-*/`（已随 PR #282 加入），P7 来源 round 名必须以 `eval-p7-` 开头，`import` 对 summary 所在 round 目录也做 1.2 ignore 核验，不通过则 `PRIVATE_PATH_NOT_IGNORED`。不改 `eval_live`。
 - B：照常写入 `docs/evidence`，跑完后把整个 round 目录移到 `tmp/` 再导入（`--evidence-root` 指过去）。中间存在误提交窗口。
 - C：允许 P7 来源 summary 公开入库（validation 报告原文公开，标签不公开）。
 

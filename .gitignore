@@ -33,3 +33,5 @@ Codex.local.md
 .Codex/config.toml
 .mcp.json
 .claude/settings.local.json
+# P7 calibration source rounds: report text stays private (eval P7-D16 Q7)
+docs/evidence/eval/eval-p7-*/
