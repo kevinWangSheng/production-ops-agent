@@ -67,7 +67,7 @@
 对每个目标路径 `p`（含尚不存在的路径；含 `run_calibration` 将创建的 `calibration/<run>/` 下全部 1+5+180+1 个路径，在第一次付费调用前一次性预检）：
 
 1. `p` 解析后位于 `<repo>` 之内，且从 `<repo>` 到 `p` 的已存在组件无符号链接；否则 `PRIVATE_PATH_OUTSIDE_REPO`。工作区工件解析后还须严格位于 `<private_root>/<W>/` 之下，暴露锁与登记须恰为 `<private_root>/exposure.{lock,jsonl}`；否则 `PRIVATE_PATH_OUTSIDE_WORKSPACE`。
-2. 运行 `git -C <repo> check-ignore -q -- <p>`：退出 0 → 通过；退出 1 → `PRIVATE_PATH_NOT_IGNORED`；其他退出码或无法执行 → `PRIVATE_PATH_UNVERIFIED`。不加 `--no-index`，因此已被跟踪的路径判为未忽略。
+2. 运行 `git -C <repo> check-ignore -q -- <p>`：退出 0 → 通过；退出 1 → `PRIVATE_PATH_NOT_IGNORED`；其他退出码或无法执行 → `PRIVATE_PATH_UNVERIFIED`。不加 `--no-index`，因此已被跟踪的路径判为未忽略。目标是尚不存在的目录时，Git 对仅匹配目录的规则（如 `!dir/`）按文件判定，结果可能与目录存在后不同；此时允许在 `<private_root>` 内逐级创建空探测目录、判定后立即删除。空目录不被 Git 跟踪、不含内容，此探测不计为「写入」，不改变退出码 3「未写任何文件」与「登记是第一笔写入」的含义。
 3. 文件以 `O_CREAT|O_EXCL|O_NOFOLLOW`、0600 独占创建，写后 flush+fsync、关闭、fsync 父目录；目录 0700 创建后 fsync 父目录（同 B3 r6）。目标已存在 → `OUTPUT_EXISTS`，从不覆盖；单文件 > 67108864 字节 → `ARTIFACT_UNWRITABLE`（同 r10）。
 
 库函数通过 `Workspace.ignore_check: Callable[[Path], bool | None]` 注入 2 的实现（`None`=无法判定）；CLI 用真实 git。理由：预审已指出 0600 不等于不会被提交，必须由 git 规则本身确认；按文件逐个检查，防止 `!` 反向规则把个别文件放出。
