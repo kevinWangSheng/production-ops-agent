@@ -110,6 +110,49 @@ def test_w1_pg_stop_failed_and_interrupt_are_both_kept(env, capsys):
     assert env["lab"].writes == []
 
 
+def test_a_stop_during_the_first_create_role_skips_the_second(tmp_path, monkeypatch):
+    import psycopg
+
+    from opspilot import schema
+
+    data = tmp_path / "pg"
+    calls: list[str] = []
+
+    def run(command, **kwargs):
+        if Path(command[0]).name == "initdb":
+            data.mkdir()
+        elif command[-1] == "start":
+            (data / "postmaster.pid").write_text(f"4242\n{data}\n0\n55998\n")
+        elif command[-1] == "stop":
+            calls.append("stop")
+        return d._Completed(0)
+
+    class Connection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def execute(self, statement):
+            if isinstance(statement, str):
+                calls.append("database")
+            else:
+                calls.append("role")
+                if calls.count("role") == 1:
+                    _signal()
+
+    monkeypatch.setattr(subprocess, "run", run)
+    monkeypatch.setattr(eval_live_lab, "_pg_binary", lambda name: f"/bin/{name}")
+    monkeypatch.setattr(psycopg, "connect", lambda *a, **kw: Connection())
+    monkeypatch.setattr(schema, "migrate", lambda *a, **kw: None)
+    with eval_live._signals():
+        with pytest.raises(Interrupted):
+            eval_live_lab.LocalPgLauncher().start(data, 55998)
+        assert eval_live_lab.stop_requested()
+    assert calls == ["database", "role", "stop"]
+
+
 # -- #273 item 2: interrupted after the intent was unlinked -------------------
 
 
@@ -279,6 +322,72 @@ def test_a_second_signal_outside_protected_sections_forces_the_interrupt(env, ca
 
 
 # -- R10: the final snapshot --------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("when", "signals"),
+    [
+        ("before_snapshot", 1),
+        ("serialize", 1),
+        ("stdout", 1),
+        ("serialize", 2),
+        ("stdout", 2),
+    ],
+)
+def test_dry_run_signals_obey_the_final_snapshot(
+    env, capsys, monkeypatch, when, signals
+):
+    fired: list[str] = []
+
+    def send_once():
+        if not fired:
+            fired.append(when)
+            _signal()
+            if signals == 2:
+                _signal(signal.SIGINT)
+
+    if when == "before_snapshot":
+        real_checkpoint = eval_live.checkpoint
+
+        def checkpoint():
+            real_checkpoint()
+            send_once()  # after parsing's checkpoint, before the final snapshot
+
+        monkeypatch.setattr(eval_live, "checkpoint", checkpoint)
+    elif when == "serialize":
+        real_dumps = json.dumps
+
+        def dumps(value, *args, **kwargs):
+            if isinstance(value, dict) and value.get("status") == "dry_run":
+                send_once()
+            return real_dumps(value, *args, **kwargs)
+
+        monkeypatch.setattr(json, "dumps", dumps)
+    else:
+        real_write = sys.stdout.write
+
+        def write(value):
+            send_once()
+            return real_write(value)
+
+        monkeypatch.setattr(sys.stdout, "write", write)
+
+    code = eval_live.main(
+        [*d.LIVE_ARGV, *p._scenarios(NORMAL), "--dry-run"], deps=env["deps"]
+    )
+    lines = capsys.readouterr().out.splitlines()
+    assert fired == [when] and len(lines) == 1
+    final = json.loads(lines[0])
+    expected = (130, "interrupted") if when == "before_snapshot" else (0, "dry_run")
+    assert (code, final["status"]) == expected
+    if code == 130:
+        # r14: the same minimal document as a stop seen while parsing.
+        assert final == {"status": "interrupted", "exit_code": 130}
+    else:
+        assert final["slots"][0]["scenario_id"] == NORMAL
+    assert env["lab"].resolve_calls == 0
+    assert env["pg"].started == []
+    assert not env["deps"].evidence_root.exists()
 
 
 @pytest.mark.parametrize("when", ["after_snapshot", "during_preflight"])
