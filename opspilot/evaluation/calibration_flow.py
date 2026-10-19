@@ -1024,3 +1024,4 @@ def calibration_matches(calibration: VerifiedCalibration, config: JudgeConfig) -
 check_blind_label = _check_label
 is_candidate_model_identity = _candidate_annotator
 check_identifiers = _metadata_identifiers
+check_candidates = _check_candidates

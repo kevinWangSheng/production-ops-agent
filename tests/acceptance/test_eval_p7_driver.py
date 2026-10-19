@@ -1285,6 +1285,91 @@ def test_debug_exported_packet_bindings_refuse_without_side_effects(
 
 
 @pytest.mark.parametrize(
+    "field,value",
+    [("api_key", ""), ("endpoint", "https://CANARY.invalid/chat/completions")],
+)
+def test_formal_invalid_judge_config_refused_before_exposure(harness, field, value):
+    """§9.2.2: full config validation runs before registration, not after."""
+    from opspilot.evaluation.judge import HTTPJudgeTransport
+
+    h = harness.ready()
+    configs = dict(h.configs)
+    configs["openai"] = replace(configs["openai"], **{field: value})
+    transports = {p: HTTPJudgeTransport() for p in configs}
+    balance_calls = []
+    registry = (h.private / "exposure.jsonl").read_bytes()
+    before = snapshot(h.root)
+    assert_p7_error(
+        "CONFIG_INVALID",
+        lambda: eval_p7.formal(
+            h.library_workspace,
+            run_id="canary-formal",
+            pack_hash=h.pack_hash,
+            configs=configs,
+            transports=transports,
+            balance=lambda provider: (
+                balance_calls.append(provider) or Decimal("100.00")
+            ),
+        ),
+    )
+    assert snapshot(h.root) == before
+    assert (h.private / "exposure.jsonl").read_bytes() == registry
+    assert not (h.ws / "costs/canary-formal/deepseek-before.json").exists()
+    assert not h.calls and not h.balance_calls and not balance_calls
+
+
+def test_debug_invalid_judge_config_refused_before_exposure(harness):
+    """§8.2a: each used provider's full config is validated before registration."""
+    from opspilot.evaluation.judge import HTTPJudgeTransport
+
+    h = harness.seed().export().annotations()
+    h.costs("canary-debug")
+    configs = dict(h.configs)
+    configs["zai"] = replace(configs["zai"], api_key="")
+    transports = {p: HTTPJudgeTransport() for p in configs}
+    balance_calls = []
+    registry = (h.private / "exposure.jsonl").read_bytes()
+    before = snapshot(h.root)
+    assert_p7_error(
+        "CONFIG_INVALID",
+        lambda: eval_p7.debug_judge(
+            h.library_workspace,
+            session_id="canary-debug",
+            providers=tuple(configs),
+            item_ids=None,
+            configs=configs,
+            transports=transports,
+            balance=lambda provider: (
+                balance_calls.append(provider) or Decimal("100.00")
+            ),
+        ),
+    )
+    assert snapshot(h.root) == before
+    assert (h.private / "exposure.jsonl").read_bytes() == registry
+    assert not (h.ws / "costs/canary-debug/deepseek-before.json").exists()
+    assert not h.calls and not h.balance_calls and not balance_calls
+
+
+def test_formal_failure_after_registration_is_stopped(harness):
+    """§§0.1,9.2: once the exposure row is written, any failure exits 5."""
+    from opspilot.evaluation.judge import JudgeError
+
+    h = harness.ready()
+    registry = h.private / "exposure.jsonl"
+    prefix = registry.read_bytes()
+
+    def failing(*_args, **_kwargs):
+        raise JudgeError("CONFIG_INVALID")
+
+    h.mp.setattr(eval_p7, "run_calibration", failing)
+    h.formal(code=5, reason="CONFIG_INVALID")
+    rows = registry.read_bytes()[len(prefix) :].splitlines()
+    assert len(rows) == 1 and json.loads(rows[0])["run_id"] == "canary-formal"
+    assert (h.ws / "costs/canary-formal/deepseek-before.json").is_file()
+    assert not h.calls
+
+
+@pytest.mark.parametrize(
     "first,second", [("zai", "openai"), ("zai", "deepseek"), ("openai", "deepseek")]
 )
 def test_formal_provider_values_must_match_mapping_keys(harness, first, second):

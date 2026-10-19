@@ -10,7 +10,7 @@
 | 项 | 约定 | 理由（可逆默认） |
 |---|---|---|
 | 模块 | `scripts/eval_p7.py`：CLI 与全部公开函数、DTO。不进 `opspilot/` 产品包 | 与 `scripts/eval_live.py`、`scripts/eval_structural_ci.py` 同为工程脚本；产品代码不新增评测执行入口 |
-| 复用的私有函数 | 在原模块加**纯别名**公开名，不改语义：`opspilot.evaluation.storage.load_summary_capture(path, *, manifest, resolve) -> tuple[RunEvaluation, EvaluationCapture]`（= 现 `_load_summary(_read(path), …)`）；`opspilot.evaluation.calibration_flow.check_blind_label(item, label)`（= `_check_label`）、`is_candidate_model_identity(s) -> bool`（= `_candidate_annotator`）、`check_identifiers(value)`（= `_metadata_identifiers`） | 驱动必须复用 storage 解析/身份/私有引用核验与 r4/r9 标签、标识规则，不另写一套；别名比跨模块调私有名稳定 |
+| 复用的私有函数 | 在原模块加**纯别名**公开名，不改语义：`opspilot.evaluation.storage.load_summary_capture(path, *, manifest, resolve) -> tuple[RunEvaluation, EvaluationCapture]`（= 现 `_load_summary(_read(path), …)`）；`opspilot.evaluation.calibration_flow.check_blind_label(item, label)`（= `_check_label`）、`is_candidate_model_identity(s) -> bool`（= `_candidate_annotator`）、`check_identifiers(value)`（= `_metadata_identifiers`）、`check_candidates(pack, configs)`（= `_check_candidates`）；`opspilot.evaluation.judge.check_config(config)`（= `_check_config`） | 驱动必须复用 storage 解析/身份/私有引用核验与 r4/r9 标签、标识规则，不另写一套；别名比跨模块调私有名稳定 |
 | CLI | `.venv/bin/python -m scripts.eval_p7 <子命令> --workspace W [选项]`；`W`、`--session`、`--run` 须 fullmatch `[a-z0-9][a-z0-9.-]{0,62}`（同 `eval_live.ROUND_PATTERN`）；`--round` 另须以 `eval-p7-` 开头；`--attempt` 须为小写 UUID；`--item`、`--provider`、`--slot` 只接受已定义值。任一不符 → 2/`USAGE`，在拼接任何路径之前检查 | 沿用现有 round 名规则；ID 不含 `/`，不能借路径片段跳出工作区 |
 | stdout | 每次调用恰好打印一个 JSON 对象（`sort_keys=True`），至少含 `command`、`status`、`exit_code`、`reason`；只含 ID、hash、计数、错误码，**不含**报告正文、标签、裁决文本、凭据 | 同 `eval_live._final`；终端输出可能被转贴，私有内容只留在文件 |
 | 错误 | 库函数只抛 `P7Error(code: str)`（`ValueError` 子类），`__cause__`/`__context__` 均为 None，消息只含固定码。下层 `StorageError`/`JudgeError` 的 `code` **原样**作为 `P7Error.code` | 同 B3 r2 第 6 项；测试只断言码 |
@@ -307,7 +307,7 @@ CLI：`debug --workspace W --session S --judge-env PATH [--provider zai|openai|d
 
 1. 需要 `assembled/items.json`；`item_ids` 中任一项 `split != "debug"` 或不存在 → 3/`VALIDATION_EXPOSURE_FORBIDDEN` / `SCHEMA_INVALID`，**零调用**。
 2. 机械防护：驱动内 `judge_once` 只有两个调用来源——本函数（候选集合先过滤为 split=debug，再逐项断言）与 `run_calibration`。验收可用假 transport 记录全部请求体，断言任何 debug 会话中都不出现 validation 项 `p6_input`（按 `input_hash` 重算比较）。
-2a. 配置与判据预检（无副作用）：本次涉及的每家 `configs[p].provider == p` 且 `transports` 恰含这些 provider → 否则 `CONFIG_INVALID`；若已导出盲标包，按 §9.2 第 4 步同一规则核对约定仍逐字在当前 `judge.PROMPT`、items 与 packet hash 未变 → 否则 `JUDGE_PROMPT_CHANGED` / `PACKET_STALE`。理由：键名与配置错位会把费用和可用性证据记到错误的 provider；约定已失效时 debug 结果不能与标签比较，应在付费前拒绝。
+2a. 配置与判据预检（无副作用）：本次涉及的每家 `configs[p].provider == p` 且 `transports` 恰含这些 provider → 否则 `CONFIG_INVALID`；每家再过 `judge.check_config`（与 `judge_once` 同一完整校验），其 `CONFIG_INVALID`/`JUDGE_IDENTITY_MISMATCH` 在此即退出 3；若已导出盲标包，按 §9.2 第 4 步同一规则核对约定仍逐字在当前 `judge.PROMPT`、items 与 packet hash 未变 → 否则 `JUDGE_PROMPT_CHANGED` / `PACKET_STALE`。理由：键名与配置错位会把费用和可用性证据记到错误的 provider；约定已失效时 debug 结果不能与标签比较，应在付费前拒绝。
 2b. 来源族用途预检与登记（#286，跨工作区，原子）：私有根下 `exposure.lock`、`exposure.jsonl` 按 §9.2 第 7 步同样核验（缺失 → `EXPOSURE_REGISTRY_MISSING`，未忽略 → 1.2 对应码）。在第 3–4 步其余无副作用预检全部通过之后、第一笔其他写入之前，持 `exposure.lock` 的 `flock(LOCK_EX)`：本次 debug 项的 `source_family` 或 `(round, attempt)` 来源，与登记中任一 `kind="formal"` 行的 validation 族或来源、或任一工作区 `*/calibration/*/label-pack/items.json` 中的 validation 项有交集 → 释放锁，`VALIDATION_EXPOSED`（退出 3，未写任何文件）；否则在锁内以 `O_APPEND` 写入并 fsync 一行 `{kind: "debug", session, workspace, debug_families, sources, at}`，即本命令第一笔写入，然后释放锁。同一来源族可被多个 debug 会话重复登记。理由：同一来源族在不同工作区可能分别标为 debug 与 validation；候选 judge 在调优中见过的族不能再作为冻结 validation 计分（P7-D11）。
 3. 成本前置（§10）：本次涉及的 zai/openai 须已有手填的 `costs/S/<provider>-before.json`，且可解码为 session/provider/phase 与本次一致（phase=before）的 `BalanceRecord`，否则 3/`COST_BEFORE_MISSING`；deepseek 的 before 由本命令写，预检时须不存在，否则 3/`OUTPUT_EXISTS`。
 4. 预检全部目标路径（1.2，在第 2b 步登记之前完成）后，第 2b 步登记为第一笔写入，随后写 deepseek before（若涉及 deepseek，§10），随后按 provider 顺序 zai→openai→deepseek、items 按 item_id 升序，串行：`obs = judge_once(item.request, config=configs[p], calibration=None, transport=transports[p])`；立即写 `debug/S/<p>-NNN.json`（`DebugRecord`，`config_hash=judge_config_hash(config)`），写成功后才发下一次。写失败 → 5，不再调用。
@@ -339,7 +339,7 @@ CLI：`formal --workspace W --run RUN --pack-hash H --judge-env PATH`。
 预检（全部通过才发第一次调用；失败 3）：
 
 1. `pack = load_label_pack(W/label-pack, expected_pack_hash=H)`。
-2. 三家配置均由 `load_judge_config` 得到；`configs` 与 `transports` 的键都恰为 zai/openai/deepseek，且每个 `configs[p].provider == p` → 否则 `CONFIG_INVALID`（在此预检，不留给 `run_calibration` 在登记之后才拒绝）。
+2. 三家配置均由 `load_judge_config` 得到；`configs` 与 `transports` 的键都恰为 zai/openai/deepseek，且每个 `configs[p].provider == p` → 否则 `CONFIG_INVALID`；随后 `calibration_flow.check_candidates(pack, configs)`（与 `run_calibration` 同一完整配置、身份与候选标注者校验），其 `CONFIG_INVALID`/`JUDGE_IDENTITY_MISMATCH`/`CALIBRATION_UNRESOLVED` 原样退出 3（在此预检，不留给 `run_calibration` 在登记之后才拒绝）。
 3. 可用性与冻结前置：存在至少一个 debug 会话，其中每家都有至少一条 `status == "ok"` 且 `config_hash` 等于本次 `judge_config_hash(configs[p])` 的记录 → 否则 `DEBUG_PRECHECK_MISSING`。理由：首次真实调用要核实 `gpt-6.1-sol` 等端点可用（B3 r3/r5 遗留），并保证正式运行用的是 debug 阶段已验证、已冻结的配置；若 Sol 不可用而直接正式跑，GLM 可能在没有有效对照的情况下被自动选中。
 4. 判据绑定（P7-D9、Q1）：包的 `convention` 仍逐字出现在当前 `judge.PROMPT` 中 → 否则 `JUDGE_PROMPT_CHANGED`；包的 `items_sha256` 等于当前 `assembled/items.json` 字节 sha256，且两份 `AnnotationProvenance.packet_sha256` 都等于当前 `blind/packet.json` 字节 sha256 → 否则 `PACKET_STALE`。`judge_prompt_sha256` 与当前 PROMPT 不同不拒绝，二者都写入运行记录（`summary` 输出）。理由：标签判断的是诊断本身对不对，标注者所见的约定须与 judge 所收一致；P7-D11 先盲标、后只调 judge，调优改动约定之外的 PROMPT 措辞不改变标签含义。若调优需要改约定本身，约定校验失败，lead 停下交用户（重新盲标需新工作区）。
 5. 成本前置（§10）：zai、openai 的 `costs/RUN/<p>-before.json` 均已存在，且可解码为 session/provider/phase 与本次一致（phase=before）的 `BalanceRecord` → 否则 `COST_BEFORE_MISSING`；`costs/RUN/deepseek-before.json` 须不存在 → 否则 `OUTPUT_EXISTS`。
@@ -348,7 +348,7 @@ CLI：`formal --workspace W --run RUN --pack-hash H --judge-env PATH`。
 
 第 1–6 步都无副作用；第 7 步的登记是第一笔写入，此前任何失败都是退出 3 且不写文件、不占用来源族。登记之后：`calibration/` 父目录不存在则创建，再按 §10 写 deepseek before，然后才发第一次调用。登记及其后的写失败为 5（`ARTIFACT_UNWRITABLE`），不发调用；已登记的来源族不再可用（重试须换 validation 来源族，见 P7-D11）。驱动不提供删除或改写登记的入口。此登记是防止重跑挑结果的流程护栏，不是对能改私有目录者的安全边界。
 
-执行：`selection = run_calibration(pack, configs=configs, transports=transports, destination=W/calibration/RUN)`；其中途 `JudgeError` 码原样透出，退出 5（`ARTIFACT_UNWRITABLE`/`OUTPUT_EXISTS`）或 3（发送前拒绝的码，如 `CALIBRATION_UNRESOLVED`、`CONFIG_INVALID`）。随后自动记录 DeepSeek 余额 after（§10）。
+执行：`selection = run_calibration(pack, configs=configs, transports=transports, destination=W/calibration/RUN)`；其中途 `JudgeError` 码原样透出，一律退出 5（登记已写入，§0.1）。随后自动记录 DeepSeek 余额 after（§10）。
 
 读回（只读、无付费调用）：
 

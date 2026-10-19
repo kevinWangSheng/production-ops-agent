@@ -53,6 +53,7 @@ from opspilot.evaluation.calibration_flow import (
     LabelPack,
     SelectionRecord,
     check_blind_label,
+    check_candidates,
     check_identifiers,
     final_labels,
     freeze_label_pack,
@@ -76,6 +77,7 @@ from opspilot.evaluation.judge import (
     JudgeInput,
     JudgeObservation,
     JudgeTransport,
+    check_config,
     judge_config_hash,
     judge_once,
     load_judge_config,
@@ -104,7 +106,6 @@ _PACK_FILES = (
     "adjudications.json",
     "pack.json",
 )
-_WRITE_CODES = frozenset({"ARTIFACT_UNWRITABLE", "OUTPUT_EXISTS"})
 _SCHEMAS = {
     "workspace": "opspilot-p7-workspace-1",
     "rewrite": "opspilot-p7-rewrite-1",
@@ -1755,6 +1756,8 @@ def debug_judge(
         selected = sorted((by_id[i] for i in item_ids), key=lambda i: i.item_id)
     # 2a. Provider binding and criterion binding, no side effects.
     _check_bindings(ordered, configs, transports, exact_configs=False)
+    for provider in ordered:
+        check_config(configs[provider])  # Same JudgeError code judge_once raises.
     if _exists(ws.root / "blind/packet.json"):
         _packet_binding(ws, require_annotations=False)
     for slot in (1, 2):
@@ -1926,16 +1929,6 @@ def freeze(ws: Workspace, *, accept_distribution: str | None = None) -> str:
 # -- section 9.2: formal ---------------------------------------------------------------------
 
 
-class _CountingTransport:
-    def __init__(self, inner: JudgeTransport) -> None:
-        self.inner = inner
-        self.sent = 0
-
-    def send(self, **kwargs: Any) -> Any:
-        self.sent += 1
-        return self.inner.send(**kwargs)
-
-
 def _debug_precheck(ws: Workspace, hashes: Mapping[str, str]) -> None:
     root = ws.root / "debug"
     if _exists(root):
@@ -2094,6 +2087,7 @@ def formal(
     pack = load_label_pack(ws.root / "label-pack", expected_pack_hash=pack_hash)
     # 2.
     _check_bindings(PROVIDERS, configs, transports, exact_configs=True)
+    check_candidates(pack, configs)  # Same JudgeError code run_calibration raises.
     hashes = {p: judge_config_hash(configs[p]) for p in PROVIDERS}
     # 3.
     _debug_precheck(ws, hashes)
@@ -2142,18 +2136,17 @@ def formal(
     )
     _ensure_dirs(ws, destination.parent)
     _write_deepseek_balance(ws, run_id, "before", balance)
-    counting = {p: _CountingTransport(transports[p]) for p in PROVIDERS}
     selection: SelectionRecord | None = None
     code: str | None = None
     try:
         selection = run_calibration(
-            pack, configs=configs, transports=counting, destination=destination
+            pack, configs=configs, transports=transports, destination=destination
         )
     except (JudgeError, StorageError) as exc:
         code = exc.code
     if selection is None:
-        sent = any(t.sent for t in counting.values())
-        raise P7Error(code or "SCHEMA_INVALID", stopped=sent or code in _WRITE_CODES)
+        # 0.1/9.2: the exposure row is already written, so this is always 5.
+        raise P7Error(code or "SCHEMA_INVALID", stopped=True)
     _write_deepseek_balance(ws, run_id, "after", balance)
     readback: Literal["verified", "unresolved_as_expected", "failed"] = "failed"
     readback_code: str | None = None
