@@ -440,9 +440,11 @@ def replay(
     try:
         ref = record(drive, destination=destination, context=context)
         assert session is not None
-        return replace(
-            base, outcome=outcome, recording_ref=ref, id_map=dict(session.id_map)
-        )
+        # The map comes from the re-verified new package, not from the
+        # driver-visible ``session.id_map`` (#234 P2).
+        verified = load_recording(destination / ref.path, expected_hash=ref.sha256)
+        id_map = verified.context.initial_state["replay_source"]["id_map"]
+        return replace(base, outcome=outcome, recording_ref=ref, id_map=dict(id_map))
     except StorageError as exc:
         if exc.code in ("OUTPUT_EXISTS", "EVIDENCE_UNAVAILABLE"):
             raise
@@ -473,5 +475,6 @@ def replay(
             outcome=outcome,
             recording_ref=ref,
             error=code,
-            id_map={} if session is None else dict(session.id_map),
+            # A failed package cannot be verified, so no map is derived from it.
+            id_map={},
         )

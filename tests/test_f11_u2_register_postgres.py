@@ -8,6 +8,7 @@ This module deliberately lives outside integration/ and its shared-DSN conftest.
 from __future__ import annotations
 
 import os
+import secrets
 import shutil
 import subprocess
 import tempfile
@@ -49,22 +50,37 @@ def private_postgres(monkeypatch):
         data, socket_dir = root / "data", root / "socket"
         socket_dir.mkdir(mode=0o700)
 
+        password = secrets.token_urlsafe(32)
+        # Same whitelist as eval_live_lab.pg_env: postmaster inherits no secrets.
+        pg_env = {
+            key: value
+            for key, value in os.environ.items()
+            if key in ("PATH", "HOME", "TMPDIR", "LANG", "TZ") or key.startswith("LC_")
+        }
+
         def run(name, *args):
             return subprocess.run(
                 [str(binary_dir / name), *map(str, args)],
                 capture_output=True,
                 check=True,
                 timeout=30,
+                env=pg_env,
             )
 
+        pwfile = root / "initdb-password"
         try:
+            with os.fdopen(
+                os.open(pwfile, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "w"
+            ) as stream:
+                stream.write(password + "\n")
             run(
                 "initdb",
                 "-D",
                 data,
                 "-U",
                 "u2_register_test",
-                "--auth=trust",
+                "--auth=scram-sha-256",
+                f"--pwfile={pwfile}",
                 "--no-locale",
                 "--encoding=UTF8",
             )
@@ -77,6 +93,8 @@ def private_postgres(monkeypatch):
                     "private initdb unavailable: sandbox denies shared memory; no shared DB used"
                 )
             raise
+        finally:
+            pwfile.unlink(missing_ok=True)
         with (data / "postgresql.conf").open("a") as config:
             config.write(
                 f"\nlisten_addresses=''\nport=55469\nunix_socket_directories='{socket_dir}'\nshared_buffers=16MB\nmax_connections=12\n"
@@ -88,6 +106,7 @@ def private_postgres(monkeypatch):
                 port=55469,
                 dbname="postgres",
                 user="u2_register_test",
+                password=password,
                 connect_timeout=5,
             )
             monkeypatch.setenv("OPSPILOT_LAB_DSN", dsn)

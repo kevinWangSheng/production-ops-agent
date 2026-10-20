@@ -1,0 +1,137 @@
+{
+  "exit_code": 0,
+  "reason": null,
+  "retained_fault": false,
+  "round": "eval-c-a11-probe-20261018",
+  "round_status": "finished",
+  "scenarios": [
+    {
+      "closure_reason": null,
+      "fault": {
+        "effective_at": "2026-10-18T07:57:05.897546+00:00",
+        "injected_sha256": "b1e5928b52fcb734f4b329a2eac1efe154b3a28c66b1156cb4ba27b0be71069b",
+        "original_sha256": "1ee5c0258e3e13609ecec75979cee286ab00f442d288112e39e3db8433d176c6",
+        "restored": true,
+        "washed": true
+      },
+      "flag": "cartFailure",
+      "gate": {
+        "checkout_calls": 2.0225,
+        "flag_confirmed_at": "2026-10-18T07:57:05.897546+00:00",
+        "kind": "fault",
+        "matched_span_ids": [
+          "816f085b9cbf6b4a",
+          "816f085b9cbf6b4a",
+          "60a8c013e2eac9de",
+          "60a8c013e2eac9de"
+        ],
+        "passed": true,
+        "probes": 60,
+        "reason": null,
+        "trace_ids": [
+          "a95b47a40db549815671821f41dfb307"
+        ],
+        "window": {
+          "end": "2026-10-18T07:59:05.396009+00:00",
+          "start": "2026-10-18T07:57:05.897546+00:00"
+        }
+      },
+      "interrupted": false,
+      "kind": "fault",
+      "reason": null,
+      "scenario_id": "eval-cart-failure"
+    },
+    {
+      "closure_reason": null,
+      "fault": {
+        "effective_at": "2026-10-18T08:04:44.903901+00:00",
+        "injected_sha256": "e47d27c2fa01c72d8bc71d40d0f4223b1049fd84582e5789cbd9a5ccbdcc915d",
+        "original_sha256": "1ee5c0258e3e13609ecec75979cee286ab00f442d288112e39e3db8433d176c6",
+        "restored": true,
+        "washed": true
+      },
+      "flag": "paymentFailure",
+      "gate": {
+        "checkout_calls": 32.8,
+        "flag_confirmed_at": "2026-10-18T08:04:44.903901+00:00",
+        "kind": "fault",
+        "matched_span_ids": [
+          "193d2279365a02b5",
+          "193d2279365a02b5",
+          "608b281d29f9e56c",
+          "608b281d29f9e56c",
+          "f2a1d854a9b4a6ac",
+          "f2a1d854a9b4a6ac",
+          "8611f218c11ccb51",
+          "8611f218c11ccb51",
+          "03aa42c746275cfc",
+          "03aa42c746275cfc",
+          "029ec7b779cf3d35",
+          "029ec7b779cf3d35",
+          "e8a036d84ab87285"
+        ],
+        "passed": true,
+        "probes": 42,
+        "reason": null,
+        "trace_ids": [
+          "a03a34009d38edf8cfd9bc37c6ec14bd",
+          "c5eecaeaf3c4320a371a28e3b9e8014d",
+          "d60eed452d01a40fa19e50fe02ed374c",
+          "e5a17b0fb205e728cef8a9113434e9aa"
+        ],
+        "window": {
+          "end": "2026-10-18T08:06:07.852299+00:00",
+          "start": "2026-10-18T08:04:44.903901+00:00"
+        }
+      },
+      "interrupted": false,
+      "kind": "fault",
+      "reason": null,
+      "scenario_id": "eval-payment-failure-1"
+    },
+    {
+      "closure_reason": null,
+      "fault": {
+        "effective_at": "2026-10-18T08:13:07.294239+00:00",
+        "injected_sha256": "50bcf7ce8a50db297c854f2be170fd194a9b27250114c9fc9912c6347123c2e2",
+        "original_sha256": "1ee5c0258e3e13609ecec75979cee286ab00f442d288112e39e3db8433d176c6",
+        "restored": true,
+        "washed": true
+      },
+      "flag": "productCatalogFailure",
+      "gate": {
+        "checkout_calls": 44.36666666666667,
+        "flag_confirmed_at": "2026-10-18T08:13:07.294239+00:00",
+        "kind": "fault",
+        "matched_span_ids": [
+          "cd332a2fb29a737f",
+          "ea6f079bc610d282",
+          "4d810f8825708531",
+          "99063d6636b1c8d6",
+          "25a55e389b94512c",
+          "89f18006b681e0b6"
+        ],
+        "passed": true,
+        "probes": 60,
+        "reason": null,
+        "trace_ids": [
+          "488aede4564b482cb4ea6d4031466bc2",
+          "4d6989391aabab318eca445b93033814",
+          "4db75b08a28da0110c981fbcd623bd1d",
+          "4f2ad7c7ff036a5aebfbc1adbc6a80ce",
+          "99b7701a865781753171396737bdbbd4",
+          "aab4c026fc78e775e94704f185dc5869"
+        ],
+        "window": {
+          "end": "2026-10-18T08:15:08.770451+00:00",
+          "start": "2026-10-18T08:13:07.294239+00:00"
+        }
+      },
+      "interrupted": false,
+      "kind": "fault",
+      "reason": null,
+      "scenario_id": "eval-product-catalog-failure"
+    }
+  ],
+  "schema": "opspilot-eval-live-probe-1"
+}

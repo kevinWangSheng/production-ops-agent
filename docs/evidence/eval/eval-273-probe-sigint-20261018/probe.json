@@ -1,0 +1,26 @@
+{
+  "exit_code": 130,
+  "reason": "INTERRUPTED",
+  "retained_fault": false,
+  "round": "eval-273-probe-sigint-20261018",
+  "round_status": "interrupted",
+  "scenarios": [
+    {
+      "closure_reason": null,
+      "fault": {
+        "effective_at": null,
+        "injected_sha256": "e47d27c2fa01c72d8bc71d40d0f4223b1049fd84582e5789cbd9a5ccbdcc915d",
+        "original_sha256": "1ee5c0258e3e13609ecec75979cee286ab00f442d288112e39e3db8433d176c6",
+        "restored": true,
+        "washed": true
+      },
+      "flag": "paymentFailure",
+      "gate": null,
+      "interrupted": true,
+      "kind": "fault",
+      "reason": "INTERRUPTED",
+      "scenario_id": "eval-payment-failure-1"
+    }
+  ],
+  "schema": "opspilot-eval-live-probe-1"
+}

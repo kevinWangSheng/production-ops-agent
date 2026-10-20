@@ -7,8 +7,8 @@
 1. **C:158 隔离第 1、2 条（调查客户端首请求、固定假回复后的全请求序列）**
    - B3 没有提供从场景驱动调查 loop 的公开入口；驱动属 PR-C，录制属 PR-B2。
    - 本文件只覆盖 judge 一侧的对应项：改 flag/variant、把场景目录换路径后，judge body 逐字节不变，且不含 flag、场景 ID、路径（`test_answer_flag_and_scenario_path_do_not_change_body`）。调查侧两条需要 lead 决定放进 B2 还是 C 的验收。
-2. **judge 内部 360 s 总时限、HTTPJudgeTransport**
-   - 不用真实时钟或 socket 无法验证。测试只断言传给 transport 的 `timeout_seconds == 360`，以及 transport 抛出 `TimeoutError` 时结果为 timeout。HTTPJudgeTransport 的禁重定向、分块读和单调钟都没有测。
+2. **judge 内部 900 s 总时限、HTTPJudgeTransport**
+   - 不用真实时钟或 socket 无法验证。测试只断言传给 transport 的 `timeout_seconds == 900`，以及 transport 抛出 `TimeoutError` 时结果为 timeout。HTTPJudgeTransport 的禁重定向、分块读和单调钟都没有测。
 3. **「VerifiedCalibration 只能经 load_verified_calibration 得到」**
    - 构造器没有公开，无法测试「不能伪造」。
 
