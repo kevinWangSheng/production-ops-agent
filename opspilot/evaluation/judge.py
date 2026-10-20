@@ -657,3 +657,7 @@ def judge_once(
         max(0.0, time.monotonic() - started),
         config.provider,
     )
+
+
+# Public alias for the P7 driver (scripts/eval_p7.py); no semantic change.
+check_config = _check_config

@@ -1018,3 +1018,10 @@ def calibration_matches(calibration: VerifiedCalibration, config: JudgeConfig) -
         )
     except (JudgeError, StorageError, ValueError, TypeError):
         return False
+
+
+# Public aliases for the P7 driver (scripts/eval_p7.py); no semantic change.
+check_blind_label = _check_label
+is_candidate_model_identity = _candidate_annotator
+check_identifiers = _metadata_identifiers
+check_candidates = _check_candidates
