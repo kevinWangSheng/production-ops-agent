@@ -369,24 +369,31 @@ class SSEAssembler:
         """Consume wire bytes; True once ``data: [DONE]`` is dispatched."""
         if self.done:
             return True
-        self._wire += len(data)
-        if self._wire > SSE_WIRE_LIMIT:
-            raise JudgeError("JUDGE_RESPONSE_OVERSIZE")
         pos = 1 if self._cr and data[:1] == b"\n" else 0
         self._cr = False
+        self._count(pos)
+        # Wire bytes are counted line by line, so bytes after [DONE] in the same
+        # network chunk are neither parsed nor counted (S8).
         for match in _EOL.finditer(data, pos):
+            self._count(match.end() - pos)
             self._line += data[pos : match.start()]
             pos = match.end()
             line = bytes(self._line)
             self._line.clear()
             if self._dispatch_line(line):
                 return True
+        self._count(len(data) - pos)
         # A trailing CR may be the first half of a CRLF split across chunks.
         self._cr = data.endswith(b"\r")
         self._line += data[pos:]
         if not self._line.startswith(b":") and len(self._line) > SSE_EVENT_LIMIT + 6:
             raise JudgeError("JUDGE_RESPONSE_OVERSIZE")
         return False
+
+    def _count(self, size: int) -> None:
+        self._wire += size
+        if self._wire > SSE_WIRE_LIMIT:
+            raise JudgeError("JUDGE_RESPONSE_OVERSIZE")
 
     def _dispatch_line(self, raw: bytes) -> bool:
         try:
@@ -433,7 +440,14 @@ class SSEAssembler:
         model, ident = obj.get("model"), obj.get("id")
         if not self._chunks:
             self._model, self._id = model, ident
-        if type(model) is not str or model != self._model or ident != self._id:
+        # Every data chunk carries the same non-empty string id and string model.
+        if (
+            type(model) is not str
+            or model != self._model
+            or type(ident) is not str
+            or not ident
+            or ident != self._id
+        ):
             self._identity_ok = False
         self._chunks += 1
         if obj.get("usage") is not None:

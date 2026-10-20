@@ -38,7 +38,7 @@ A 组：已按推荐裁决（2026-10-20，用户常设指示）
 | S5 | adapter 版本 | `judge-adapters-1` → `-2`，`_check_config` 只认 `-2`；hash 随之变化，`p7-debug-1` 记录与新 config 不可比（未正式校准，无已认证件受影响） | bump | config_hash、P7 debug 工件 |
 | S6 | 失败时可观察性 | a `JudgeObservation` 新增 `finish_reason: str\|None`（默认 None），usage 与 finish_reason 只要收到末块就记录，不论之后 invalid；calibration/P7 DebugRecord 的严格解码接受此字段 / b 不改 DTO，只改 usage 提前提取 | a（诊断已证明需要；旧件缺字段按 None 读） | B3 L22/L34、calibration_flow、eval_p7 |
 
-lead 补充（2026-10-20，验收作者提出的合同空白，可逆细节）：单事件 1 MiB 只计 `data` 字节；keep-alive 注释计入线上 32 MiB；流层面结构违规（finish 两次、finish 后有 content、finish 前空 choices、无 finish、index≠0、多 choice）一律 `JUDGE_OUTPUT_INVALID`；S6 的 usage/finish_reason 只在 transport 已组装出文档时记录，transport 层失败（无 `[DONE]`、超限、流中 error）不带回；旧工件缺 `finish_reason` 由 DTO 默认值 None 兼容（codec 解码）。
+lead 补充（2026-10-20，验收作者提出的合同空白，可逆细节）：单事件 1 MiB 只计 `data` 字节；keep-alive 注释计入线上 32 MiB；流层面结构违规（finish 两次、finish 后有 content、finish 前空 choices、无 finish、index≠0、多 choice）一律 `JUDGE_OUTPUT_INVALID`；S6 的 usage/finish_reason 只在 transport 已组装出文档时记录，transport 层失败（无 `[DONE]`、超限、流中 error）不带回；旧工件缺 `finish_reason` 由 DTO 默认值 None 兼容（codec 解码）。审查后补充：每个数据块 `id` 必须是非空字符串且全程相同，缺失/非字符串同 id 变化处理（组装文档 model=null → 既有身份码）；`[DONE]` 之后同一网络块内的字节不解析、不计入线上 32 MiB（S8 读到即停）。
 
 B 组：可逆默认（Agent 自定，一行理由）
 
@@ -51,7 +51,7 @@ B 组：可逆默认（Agent 自定，一行理由）
 | S11 | 流中错误 | 事件 JSON 顶层含 `error` 键 → `error/JUDGE_HTTP_ERROR`；非对象/坏 JSON → `JUDGE_OUTPUT_INVALID`。finish_reason 为 `network_error`/`insufficient_system_resource` 等仍按非 stop → invalid，靠 S6 字段区分。理由：不扩大错误码集合 |
 | S12 | 组装 content/推理 | 只拼接 `delta.content`；`reasoning_content` 只计入线上字节后丢弃，不保留不落盘；`delta.role` 若出现必须为 `assistant`、全程至少出现一次；`tool_calls`/`function_call` 非 null 或 `refusal` 非 null → 组装进文档由 `_output` 判 invalid；其他未知 delta 键忽略。理由：沿用 B3「只消费 content、私有协议不保留」 |
 | S13 | finish_reason / usage / choices | 每块 `choices` 长度 ≤1 且 index=0（否则组装为多 choice 交 `_output` 拒绝）；非 null finish_reason 恰一次且其后只允许无 content 的 usage 块；usage 取最后一个非 null 对象；`choices` 为空只允许在 finish 之后。理由：覆盖 OpenAI 空 choices 末块与 Z.ai/DeepSeek 末块带 usage 两种形态 |
-| S14 | 响应身份 | 每个数据块必须带 `model` 且全程字符串相同、`id` 全程相同；不一致时组装文档 `model=null`，由 `_output` 按 provider 给出 `JUDGE_IDENTITY_MISMATCH` 或 `JUDGE_RESPONSE_IDENTITY_INVALID`；一致则原规则 `response_identity_matches`。理由：复用现有分类，不在 transport 里重复 provider 逻辑 |
+| S14 | 响应身份 | 每个数据块必须带 `model` 且全程字符串相同、`id` 为非空字符串且全程相同（缺失/非字符串/空串按不一致处理，lead 2026-10-20 审查后裁决）；不一致时组装文档 `model=null`，由 `_output` 按 provider 给出 `JUDGE_IDENTITY_MISMATCH` 或 `JUDGE_RESPONSE_IDENTITY_INVALID`；一致则原规则 `response_identity_matches`。理由：复用现有分类，不在 transport 里重复 provider 逻辑 |
 | S15 | 超时 | 保持单一 900 s 总墙钟（asyncio deadline + judge_once 复核），不加空闲超时；httpx2 逐操作超时仍 900。理由：OpenAI 思考阶段可能长时间无字节，空闲超时会误杀，且零重试下提前失败不省钱 |
 
 ## B3 合同改动（`2026-10-14-eval-pr-b3-interface.md`）

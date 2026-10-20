@@ -588,3 +588,27 @@ def test_keepalive_bytes_do_not_extend_total_deadline(configs):
     observation = run(configs, Wire(trickle), timeout_seconds=0.3)
     assert_failed(observation, "timeout", "JUDGE_TIMEOUT")
     assert time.monotonic() - started < 1.5
+
+
+# ------------------------------------------- review regressions (astra P1s)
+
+
+@pytest.mark.parametrize("provider", PROVIDERS)
+@pytest.mark.parametrize("ident", ["missing", "", 7, None])
+def test_id_must_be_non_empty_string_in_every_chunk(configs, provider, ident):
+    """S14 (lead 2026-10-20): consistently absent/non-string id is not identity."""
+    events = answer_chunks(provider)
+    for event in events:
+        if ident == "missing":
+            del event["id"]
+        else:
+            event["id"] = ident
+    observation = run(configs, Wire(sse_body(events)), provider)
+    assert_failed(observation, *IDENTITY_CODE[provider])
+
+
+def test_bytes_after_done_in_same_chunk_are_not_counted(configs):
+    """S8: reading stops at [DONE]; trailing bytes in that chunk are ignored."""
+    body = sse_body(answer_chunks()) + b"x" * (33 * MIB)
+    observation = run(configs, Wire(body))  # one network chunk
+    assert_ok(observation)
