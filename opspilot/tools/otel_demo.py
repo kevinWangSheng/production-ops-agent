@@ -1579,6 +1579,27 @@ def _span_groups(rows: Sequence[object]) -> list[dict[str, Any]]:
 # -- composition -------------------------------------------------------------
 
 
+@dataclass(frozen=True)
+class OtelDemoRegistrations:
+    """The registration DTOs an executor of this profile is built from.
+
+    Read-only and credential-free (a target names only its ``credential_ref``
+    slot); evaluation drivers freeze them with the executor's own scope before
+    the first call (eval PR-C, A5).
+    """
+
+    tools: tuple[ToolRegistration, ...]
+    targets: tuple[RegisteredTarget, ...]
+
+
+def otel_demo_registrations(
+    config: OtelDemoConfig | None = None,
+) -> OtelDemoRegistrations:
+    """The same registrations ``otel_demo_executor_factory`` registers."""
+    config = config or OtelDemoConfig()
+    return OtelDemoRegistrations(tools=_registrations(), targets=(_target(config),))
+
+
 def otel_demo_executor_factory(
     store: DurableStore,
     *,
@@ -1597,8 +1618,9 @@ def otel_demo_executor_factory(
     # Resolved when the factory is built, not per Run: a worker with no usable
     # tokenizer fails at startup (``TOKENIZER_UNAVAILABLE``), not mid-Run.
     counter = token_counter if token_counter is not None else default_counter()
-    tools = ToolRegistry(_registrations())
-    targets = TargetRegistry([_target(config)])
+    registrations = otel_demo_registrations(config)
+    tools = ToolRegistry(registrations.tools)
+    targets = TargetRegistry(list(registrations.targets))
     pair = config.prometheus_basic_auth
     transport = OtelDemoTransport(
         credentials={CREDENTIAL_REF: config.token},

@@ -234,10 +234,10 @@ def test_zai_config_loads_fixed_identity_from_private_file(tmp_path):
     assert config.endpoint == ENDPOINTS["zai"]
     assert (config.request_model, config.response_model) == ("glm-5.3", "glm-5.3")
     assert config.api_key == ZAI_CANARY
-    assert config.timeout_seconds == 360
+    assert config.timeout_seconds == 900
     assert config.max_request_bytes == MAX_REQUEST
     assert config.max_response_bytes == MAX_RESPONSE
-    assert config.max_output_tokens == 16384
+    assert config.max_output_tokens == 65536
     for shown in (repr(config), str(config)):
         assert all(secret not in shown for secret in CANARIES)
 
@@ -469,14 +469,14 @@ def test_request_body_is_the_p6_whitelist_only(configs):
     assert observation.result.status == "ok"
     (call,) = transport.calls
     assert call.endpoint == ENDPOINTS["zai"]
-    assert call.timeout_seconds == 360
+    assert call.timeout_seconds == 900
     assert call.max_response_bytes == MAX_RESPONSE
     auth = {k.lower(): v for k, v in call.headers.items()}["authorization"]
     assert auth == f"Bearer {ZAI_CANARY}"
     body = payload(call.body)
     assert body["model"] == "glm-5.3"
     assert body["stream"] is False
-    assert body["max_tokens"] == 16384
+    assert body["max_tokens"] == 65536
     assert "max_completion_tokens" not in body
     assert "tools" not in body and "tool_choice" not in body
     assert [m["role"] for m in body["messages"]] == ["system", "user"]
@@ -511,7 +511,7 @@ def test_control_provider_request_shapes(configs, provider, limit_key):
     assert headers["authorization"] == f"Bearer {CANARY_OF[provider]}"
     body = payload(call.body)
     assert body["model"] == MODELS[provider]
-    assert body[limit_key] == 16384
+    assert body[limit_key] == 65536
     other = {"max_tokens", "max_completion_tokens"} - {limit_key}
     assert not other & set(body)
     assert user_payload(call.body) == expected_user_payload(request)

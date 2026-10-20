@@ -993,6 +993,9 @@ def validate_recording(recording: Recording) -> None:
     generated_evidence: dict[str, set[str]] = {}
     delivered_evidence: set[str] = set()
     evidence_by_view: dict[str, set[str]] = {}
+    # The evidence each physical tool event produced; a delivery delivers
+    # exactly its verified parent's evidence, never every same-view ID (#234).
+    event_evidence: dict[int, str] = {}
     tool_views: dict[int, str] = {}
     event_views: dict[int, str] = {}
     tools_waiting: list[int] = []
@@ -1202,6 +1205,7 @@ def validate_recording(recording: Recording) -> None:
                 and evidence_id
             ):
                 evidence_events[evidence_id] = seq
+                event_evidence[seq] = evidence_id
                 evidence_by_view.setdefault(sha(view_raw), set()).add(evidence_id)
             tool_views[seq] = sha(view_raw)
             event_views[seq] = sha(view_raw)
@@ -1283,6 +1287,10 @@ def validate_recording(recording: Recording) -> None:
                 ):
                     raise StorageError("IDENTITY_MISMATCH")
                 tools_waiting.remove(event.parent)
+                # A refusal parent delivers no evidence of its own: it only
+                # names the evidence its original tool already produced.
+                parent_evidence = event_evidence.get(event.parent)
+                delivers = set() if parent_evidence is None else {parent_evidence}
             else:
                 known_views = list(tool_views.values()) + [
                     sha(canonical_bytes(view))
@@ -1290,11 +1298,18 @@ def validate_recording(recording: Recording) -> None:
                 ]
                 if sha(request_raw) not in known_views:
                     raise StorageError("IDENTITY_MISMATCH")
+                # A cache hit has no parent: it may stand for one recorded
+                # evidence identity only, never for several byte-identical
+                # views with different evidence IDs (#234 P1).
+                delivers = set(evidence_by_view.get(sha(request_raw), set()))
+                claimed = view.get("evidence_id")
+                if isinstance(claimed, str):
+                    delivers &= {claimed}
+                if len(delivers) > 1:
+                    raise StorageError("IDENTITY_MISMATCH")
             pending.pop(call_id)
             generated[call_id] = sha(canonical_bytes(message))
-            generated_evidence[call_id] = set(
-                evidence_by_view.get(sha(request_raw), set())
-            )
+            generated_evidence[call_id] = delivers
     if set(recording.outcome.evidence_ids) - delivered_evidence:
         raise StorageError("IDENTITY_MISMATCH")
     if not saw_model or tools_waiting or pending:

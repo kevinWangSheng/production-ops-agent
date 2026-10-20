@@ -1,0 +1,1 @@
+{"content":"{\"content\":[{\"error\":true,\"operation\":\"canary-op\",\"service\":\"canary-svc\"}],\"evidence_id\":\"canary-ev-1\",\"operation_id\":\"canary-step-1-t0\",\"status\":\"ok\",\"tool\":\"canary_trace_search\"}","role":"tool","tool_call_id":"canary-call-1"}

@@ -81,8 +81,9 @@ def scan(binary: Path, mode: str, target: Path, scratch: Path):
     report = scratch / "report.json"
     report.unlink(missing_ok=True)
     config = scratch / "scanner.toml"
-    # Two reviewed non-credential source digests in one historical evidence manifest.
-    # Rule + exact manifest suffix + exact value all must match; no directory exclusion.
+    # Two reviewed non-credential source digests in one historical evidence manifest,
+    # and the B2 ``"key"`` digest frozen in the synthetic structural fixture.
+    # Rule + exact file suffix + exact value all must match; no directory exclusion.
     config.write_text(
         """[extend]
 useDefault = true
@@ -97,6 +98,12 @@ regexes = [
   '^b39dadc086f7d83346d9b5ff6ece87b956365ec9fde8c33912772bd0ec128ac1$',
   '^b3497adb93bd314032e83d974893e9d62adea82c24ad534dd223883cd794b67f$'
 ]
+[[rules.allowlists]]
+description = "B2 tool_key digest in the synthetic CANARY structural fixture (PR-D1)"
+condition = "AND"
+paths = ['(^|/)tests/fixtures/eval_structural/canary-fault-v1/recording/blobs/451b7afbb9c39771546fee37c00168d371922ce12d4d19f49f1fdfa236d8d75f$']
+regexTarget = "secret"
+regexes = ['^ea84b683d829cb9e57f5e39c094e25db6e0d2dee913183889b16631ab5193f76$']
 [[rules]]
 id = "m0-selftest-api-key"
 description = "Deterministic synthetic API-key canary used to verify the scanner"
