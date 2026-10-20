@@ -475,7 +475,8 @@ def test_request_body_is_the_p6_whitelist_only(configs):
     assert auth == f"Bearer {ZAI_CANARY}"
     body = payload(call.body)
     assert body["model"] == "glm-5.3"
-    assert body["stream"] is False
+    assert body["stream"] is True
+    assert "stream_options" not in body
     assert body["max_tokens"] == 65536
     assert "max_completion_tokens" not in body
     assert "tools" not in body and "tool_choice" not in body

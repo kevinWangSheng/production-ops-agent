@@ -38,6 +38,8 @@ A 组：已按推荐裁决（2026-10-20，用户常设指示）
 | S5 | adapter 版本 | `judge-adapters-1` → `-2`，`_check_config` 只认 `-2`；hash 随之变化，`p7-debug-1` 记录与新 config 不可比（未正式校准，无已认证件受影响） | bump | config_hash、P7 debug 工件 |
 | S6 | 失败时可观察性 | a `JudgeObservation` 新增 `finish_reason: str\|None`（默认 None），usage 与 finish_reason 只要收到末块就记录，不论之后 invalid；calibration/P7 DebugRecord 的严格解码接受此字段 / b 不改 DTO，只改 usage 提前提取 | a（诊断已证明需要；旧件缺字段按 None 读） | B3 L22/L34、calibration_flow、eval_p7 |
 
+lead 补充（2026-10-20，验收作者提出的合同空白，可逆细节）：单事件 1 MiB 只计 `data` 字节；keep-alive 注释计入线上 32 MiB；流层面结构违规（finish 两次、finish 后有 content、finish 前空 choices、无 finish、index≠0、多 choice）一律 `JUDGE_OUTPUT_INVALID`；S6 的 usage/finish_reason 只在 transport 已组装出文档时记录，transport 层失败（无 `[DONE]`、超限、流中 error）不带回；旧工件缺 `finish_reason` 由 DTO 默认值 None 兼容（codec 解码）。
+
 B 组：可逆默认（Agent 自定，一行理由）
 
 | 编号 | 问题 | 推荐与理由 |
