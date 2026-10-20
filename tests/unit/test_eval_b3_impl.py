@@ -337,7 +337,7 @@ def test_adapters_fresh_messages_no_retries_no_credentials_in_body(provider):
     assert body["model"] == config.request_model and body["stream"] is False
     assert [m["role"] for m in body["messages"]] == ["system", "user"]
     assert (
-        body["max_completion_tokens" if provider == "openai" else "max_tokens"] == 16384
+        body["max_completion_tokens" if provider == "openai" else "max_tokens"] == 65536
     )
     assert SECRET.encode() not in call["body"]
     assert observation.usage["total_tokens"] == 32

@@ -28,7 +28,7 @@
 - D7 存放：仓库保存每 Run 的 `summary.json` 与轮次汇总，LangSmith 每轮一个 project；原始 ledger 不入库。
 - D8 CI（r3）：PR CI 只跑不调用模型的结构重放，离线、不带任何凭据；调用模型的回放与 live 都由 lead 或用户手工跑。
 - D9 `passes`：不翻转。
-- D10 上限：只用每 Run 的技术上限（100 次请求、单次 360 s、Run 7200 s），不设套件级预算或墙钟上限（AGENTS.md「费用与真实调用」）；每轮记录余额差（用户 2026-10-12 按 PR #210 分诊结果裁决）。
+- D10 上限：只用每 Run 的技术上限（100 次请求、单次 360 s、Run 7200 s；此处单次 360 s 指调查模型请求，judge 调用上限见 P9），不设套件级预算或墙钟上限（AGENTS.md「费用与真实调用」）；每轮记录余额差（用户 2026-10-12 按 PR #210 分诊结果裁决）。
 - D11 证据：每 Run 冻结 `summary.json`；trace 回读不到时如实记 `not_found`。
 - D12 时间与状态：使用 Run 的授权时间框，模型在框内自选查询窗；回放不重签旧 hash；权限固定 read_only。
 - D13 回放未命中：该 Run 记为失败并计入分母（C3 第 394 行、v4 第 99 行），另单列 miss 率（用户 2026-10-12 按 PR #210 分诊结果改判）。
@@ -43,7 +43,7 @@
 - P6 judge 输入输出：输入报告全文、授权主体与时间、报告引用且已交付的证据内容/ID/hash、expected answer、证据规则结果；输出逐条诊断（定位/引文、是否事实型因果、服务/操作、引用、支持判定、理由）与二值 verdict；代码复核定位与引用并重算 AND；error/timeout/invalid/oversize/未校准均不通过。
 - P7 校准：两个独立全新上下文 Agent 盲标，分歧由用户裁决；每场景 2 份调试、4 份冻结验证（共 12+24）；24 份验证各判两次，≥46/48 与最终标签一致，且负例零误通过；不达标不记基线，修 judge 后换验证集。只服务开发基线，不关闭 SPEC 的 M0 formal calibration 入口项。
 - P8 证据特征：首版只认可见错误 span，评测侧 `answer.json` 存版本化 `any_of` 规则（精确 service/RPC operation、error=true、时间窗、min_matches=1）；容许故障服务 server span 或 checkout 上同一 RPC 的失败 client span；只靠 metrics 的报告不通过。
-- P9 judge 调用：每份报告一次、不自动重试或投票；单次 360 s、请求 8 MiB/响应 2 MiB、输出上限 16384；judge 单独串行（P5 改判后不占 DeepSeek 并发）；费用分供应商、分阶段记录，校准费用另列。
+- P9 judge 调用：每份报告一次、不自动重试或投票；单次 900 s、请求 8 MiB/响应 2 MiB、输出上限 65536（2026-10-20 用户裁决：P7 debug 推理耗尽输出上限）；judge 单独串行（P5 改判后不占 DeepSeek 并发）；费用分供应商、分阶段记录，校准费用另列。
 - P10 分母：setup 前登记 attempt；开始后的 setup/error/abort/unknown/replay_miss/judge_error/evidence_incomplete 都计失败，未开始的跳过单列；固定槽位，失败不重抽替换；基线完成 = 槽位执行完、校准合格、证据齐全，不是产品验收通过。
 - 可逆默认 R1–R6 与 P11–P13（场景与答案分文件隔离、版本化 eval summary/manifest/aggregate、多 trace `trace.entries[]` 与旧摘要只读兼容）见合同决定表。
 
