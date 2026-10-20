@@ -144,7 +144,11 @@ For summary/gaps/next_steps a linked_claim must be semantically equivalent; expl
 the link in reason. Normal requires zero factual causal diagnoses. Fault requires
 at least one, and ALL factual causal diagnoses must match the expected service and
 full operation, be supported, and cite a signature-matching delivered evidence ID.
-Pure hypotheses are not factual causal assertions. Return only JSON with schema
+Pure hypotheses are not factual causal assertions. Judge each field by its main
+assertion: an unhedged cause or propagation (X caused/is due to/propagates to Y) is
+factual even in a gap/next step or with a caveat on method, deeper trigger or a
+hypothesis label; hedged ones (likely, may, causation not established) are not, nor
+are telemetry or quoted error text alone, or open unknowns. Return only JSON with schema
 "opspilot-judge-1", diagnoses (all nine fields each), and boolean verdict. No private
 reasoning, credentials, extra fields, markdown, or self-certification.
 Citation convention: quote is the complete text of the field at location, copied
