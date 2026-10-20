@@ -10,7 +10,7 @@
 | 项 | 约定 | 理由（可逆默认） |
 |---|---|---|
 | 模块 | `scripts/eval_p7.py`：CLI 与全部公开函数、DTO。不进 `opspilot/` 产品包 | 与 `scripts/eval_live.py`、`scripts/eval_structural_ci.py` 同为工程脚本；产品代码不新增评测执行入口 |
-| 复用的私有函数 | 在原模块加**纯别名**公开名，不改语义：`opspilot.evaluation.storage.load_summary_capture(path, *, manifest, resolve) -> tuple[RunEvaluation, EvaluationCapture]`（= 现 `_load_summary(_read(path), …)`）；`opspilot.evaluation.calibration_flow.check_blind_label(item, label)`（= `_check_label`）、`is_candidate_model_identity(s) -> bool`（= `_candidate_annotator`）、`check_identifiers(value)`（= `_metadata_identifiers`） | 驱动必须复用 storage 解析/身份/私有引用核验与 r4/r9 标签、标识规则，不另写一套；别名比跨模块调私有名稳定 |
+| 复用的私有函数 | 在原模块加**纯别名**公开名，不改语义：`opspilot.evaluation.storage.load_summary_capture(path, *, manifest, resolve) -> tuple[RunEvaluation, EvaluationCapture]`（= 现 `_load_summary(_read(path), …)`）；`opspilot.evaluation.calibration_flow.check_blind_label(item, label)`（= `_check_label`）、`is_candidate_model_identity(s) -> bool`（= `_candidate_annotator`）、`check_identifiers(value)`（= `_metadata_identifiers`）、`check_candidates(pack, configs)`（= `_check_candidates`）；`opspilot.evaluation.judge.check_config(config)`（= `_check_config`） | 驱动必须复用 storage 解析/身份/私有引用核验与 r4/r9 标签、标识规则，不另写一套；别名比跨模块调私有名稳定 |
 | CLI | `.venv/bin/python -m scripts.eval_p7 <子命令> --workspace W [选项]`；`W`、`--session`、`--run` 须 fullmatch `[a-z0-9][a-z0-9.-]{0,62}`（同 `eval_live.ROUND_PATTERN`）；`--round` 另须以 `eval-p7-` 开头；`--attempt` 须为小写 UUID；`--item`、`--provider`、`--slot` 只接受已定义值。任一不符 → 2/`USAGE`，在拼接任何路径之前检查 | 沿用现有 round 名规则；ID 不含 `/`，不能借路径片段跳出工作区 |
 | stdout | 每次调用恰好打印一个 JSON 对象（`sort_keys=True`），至少含 `command`、`status`、`exit_code`、`reason`；只含 ID、hash、计数、错误码，**不含**报告正文、标签、裁决文本、凭据 | 同 `eval_live._final`；终端输出可能被转贴，私有内容只留在文件 |
 | 错误 | 库函数只抛 `P7Error(code: str)`（`ValueError` 子类），`__cause__`/`__context__` 均为 None，消息只含固定码。下层 `StorageError`/`JudgeError` 的 `code` **原样**作为 `P7Error.code` | 同 B3 r2 第 6 项；测试只断言码 |
@@ -67,7 +67,7 @@
 对每个目标路径 `p`（含尚不存在的路径；含 `run_calibration` 将创建的 `calibration/<run>/` 下全部 1+5+180+1 个路径，在第一次付费调用前一次性预检）：
 
 1. `p` 解析后位于 `<repo>` 之内，且从 `<repo>` 到 `p` 的已存在组件无符号链接；否则 `PRIVATE_PATH_OUTSIDE_REPO`。工作区工件解析后还须严格位于 `<private_root>/<W>/` 之下，暴露锁与登记须恰为 `<private_root>/exposure.{lock,jsonl}`；否则 `PRIVATE_PATH_OUTSIDE_WORKSPACE`。
-2. 运行 `git -C <repo> check-ignore -q -- <p>`：退出 0 → 通过；退出 1 → `PRIVATE_PATH_NOT_IGNORED`；其他退出码或无法执行 → `PRIVATE_PATH_UNVERIFIED`。不加 `--no-index`，因此已被跟踪的路径判为未忽略。
+2. 运行 `git -C <repo> check-ignore -q -- <p>`：退出 0 → 通过；退出 1 → `PRIVATE_PATH_NOT_IGNORED`；其他退出码或无法执行 → `PRIVATE_PATH_UNVERIFIED`。不加 `--no-index`，因此已被跟踪的路径判为未忽略。目标是尚不存在的目录时，Git 对仅匹配目录的规则（如 `!dir/`）按文件判定，结果可能与目录存在后不同；此时允许在 `<private_root>` 内逐级创建空探测目录、判定后立即删除。空目录不被 Git 跟踪、不含内容，此探测不计为「写入」，不改变退出码 3「未写任何文件」与「登记是第一笔写入」的含义。
 3. 文件以 `O_CREAT|O_EXCL|O_NOFOLLOW`、0600 独占创建，写后 flush+fsync、关闭、fsync 父目录；目录 0700 创建后 fsync 父目录（同 B3 r6）。目标已存在 → `OUTPUT_EXISTS`，从不覆盖；单文件 > 67108864 字节 → `ARTIFACT_UNWRITABLE`（同 r10）。
 
 库函数通过 `Workspace.ignore_check: Callable[[Path], bool | None]` 注入 2 的实现（`None`=无法判定）；CLI 用真实 git。理由：预审已指出 0600 不等于不会被提交，必须由 git 规则本身确认；按文件逐个检查，防止 `!` 反向规则把个别文件放出。
@@ -271,6 +271,7 @@ CLI：`import-annotation --workspace W --slot 1|2 --response PATH --annotator-id
 3. `annotator_identity`、`model_identity` 通过 r9 标识规则（`SCHEMA_INVALID`）；`model_identity` 不等于该 slot 的固定值（slot 1 `claude-opus-5-5`、slot 2 `gpt-6-astra`，精确相等）→ `ANNOTATOR_NOT_APPROVED`；`is_candidate_model_identity(model_identity)` 为真 → `CALIBRATION_UNRESOLVED`（r9：`glm53/gpt61sol/deepseekflash` 片段，含装饰写法）；`annotator_identity` 与另一 slot 或任一改写作者 casefold 相同 → `CALIBRATION_UNRESOLVED`。
 4. 每个标签 `check_blind_label(item, label)`；失败 → `CALIBRATION_LABEL_INVALID`，stdout 附 `invalid_items`（只列 item_id）。整份拒绝，不部分接收；标注者可交新响应文件重导入。
 5. 构造 `AnnotationSet(annotator_identity, model_identity, labels)`，`labels` 按 `item_id` 升序（诊断顺序见待裁决 Q3）；写 `annotations/annotations-<slot>.json` = `canonical_bytes(AnnotationSet)` 与 provenance 侧文件。slot 已存在 → `OUTPUT_EXISTS`。
+6. 读取核验（#285 机器人）：此后任何子命令（brief、adjudicate、debug、freeze、formal、summary）每次读取 `annotations-<slot>.json` 时，都须同时读取其 provenance 并核对：`annotation_sha256` 等于该文件原始字节 sha256 → 否则 `HASH_MISMATCH`；provenance 的 `slot` 等于文件槽位、`annotator_identity`/`model_identity` 与 `AnnotationSet` 中的相同、`model_identity` 等于该槽固定值 → 否则 `CALIBRATION_UNRESOLVED`；provenance 缺失 → `PACKET_STALE`。理由：导入后被改写或替换的标注不能冒充独立盲标进入 freeze 与正式校准。
 
 ## 7. 入口 4：差异简报与用户裁决（P7-D10）
 
@@ -306,9 +307,10 @@ CLI：`debug --workspace W --session S --judge-env PATH [--provider zai|openai|d
 
 1. 需要 `assembled/items.json`；`item_ids` 中任一项 `split != "debug"` 或不存在 → 3/`VALIDATION_EXPOSURE_FORBIDDEN` / `SCHEMA_INVALID`，**零调用**。
 2. 机械防护：驱动内 `judge_once` 只有两个调用来源——本函数（候选集合先过滤为 split=debug，再逐项断言）与 `run_calibration`。验收可用假 transport 记录全部请求体，断言任何 debug 会话中都不出现 validation 项 `p6_input`（按 `input_hash` 重算比较）。
-2a. 配置与判据预检（无副作用）：本次涉及的每家 `configs[p].provider == p` 且 `transports` 恰含这些 provider → 否则 `CONFIG_INVALID`；若已导出盲标包，按 §9.2 第 4 步同一规则核对约定仍逐字在当前 `judge.PROMPT`、items 与 packet hash 未变 → 否则 `JUDGE_PROMPT_CHANGED` / `PACKET_STALE`。理由：键名与配置错位会把费用和可用性证据记到错误的 provider；约定已失效时 debug 结果不能与标签比较，应在付费前拒绝。
-3. 成本前置（§10）：本次涉及的 zai/openai 须已有手填的 `costs/S/<provider>-before.json`，否则 3/`COST_BEFORE_MISSING`；deepseek 的 before 由本命令写，预检时须不存在，否则 3/`OUTPUT_EXISTS`。
-4. 预检全部目标路径（1.2）后，第一笔写入为 deepseek before（若涉及 deepseek，§10），随后按 provider 顺序 zai→openai→deepseek、items 按 item_id 升序，串行：`obs = judge_once(item.request, config=configs[p], calibration=None, transport=transports[p])`；立即写 `debug/S/<p>-NNN.json`（`DebugRecord`，`config_hash=judge_config_hash(config)`），写成功后才发下一次。写失败 → 5，不再调用。
+2a. 配置与判据预检（无副作用）：本次涉及的每家 `configs[p].provider == p` 且 `transports` 恰含这些 provider → 否则 `CONFIG_INVALID`；每家再过 `judge.check_config`（与 `judge_once` 同一完整校验），其 `CONFIG_INVALID`/`JUDGE_IDENTITY_MISMATCH` 在此即退出 3；若已导出盲标包，按 §9.2 第 4 步同一规则核对约定仍逐字在当前 `judge.PROMPT`、items 与 packet hash 未变 → 否则 `JUDGE_PROMPT_CHANGED` / `PACKET_STALE`。理由：键名与配置错位会把费用和可用性证据记到错误的 provider；约定已失效时 debug 结果不能与标签比较，应在付费前拒绝。
+2b. 来源族用途预检与登记（#286，跨工作区，原子）：私有根下 `exposure.lock`、`exposure.jsonl` 按 §9.2 第 7 步同样核验（缺失 → `EXPOSURE_REGISTRY_MISSING`，未忽略 → 1.2 对应码）。在第 3–4 步其余无副作用预检全部通过之后、第一笔其他写入之前，持 `exposure.lock` 的 `flock(LOCK_EX)`：本次 debug 项的 `source_family` 或 `(round, attempt)` 来源，与登记中任一 `kind="formal"` 行的 validation 族或来源、或任一工作区 `*/calibration/*/label-pack/items.json` 中的 validation 项有交集 → 释放锁，`VALIDATION_EXPOSED`（退出 3，未写任何文件）；否则在锁内以 `O_APPEND` 写入并 fsync 一行 `{kind: "debug", session, workspace, debug_families, sources, at}`，即本命令第一笔写入，然后释放锁。同一来源族可被多个 debug 会话重复登记。理由：同一来源族在不同工作区可能分别标为 debug 与 validation；候选 judge 在调优中见过的族不能再作为冻结 validation 计分（P7-D11）。
+3. 成本前置（§10）：本次涉及的 zai/openai 须已有手填的 `costs/S/<provider>-before.json`，且可解码为 session/provider/phase 与本次一致（phase=before）的 `BalanceRecord`，否则 3/`COST_BEFORE_MISSING`；deepseek 的 before 由本命令写，预检时须不存在，否则 3/`OUTPUT_EXISTS`。
+4. 预检全部目标路径（1.2，在第 2b 步登记之前完成）后，第 2b 步登记为第一笔写入，随后写 deepseek before（若涉及 deepseek，§10），随后按 provider 顺序 zai→openai→deepseek、items 按 item_id 升序，串行：`obs = judge_once(item.request, config=configs[p], calibration=None, transport=transports[p])`；立即写 `debug/S/<p>-NNN.json`（`DebugRecord`，`config_hash=judge_config_hash(config)`），写成功后才发下一次。写失败 → 5，不再调用。
 5. 结果不产生任何校准认证：不写 `calibration*`，`obs.passed` 恒为 False（`calibration=None`）。
 6. stdout：每家 ok/invalid/error 计数；若裁决已完成，额外给出每家「`result.verdict` 与 debug 最终标签相同」数与「关键因果诊断 `(location, quote)` 精确命中」数（同 `_missing_diagnosis` 口径）。是否「大量误判须停下交用户改规则」（P7-D9）由 lead 判断，工具不设阈值。
 
@@ -337,16 +339,16 @@ CLI：`formal --workspace W --run RUN --pack-hash H --judge-env PATH`。
 预检（全部通过才发第一次调用；失败 3）：
 
 1. `pack = load_label_pack(W/label-pack, expected_pack_hash=H)`。
-2. 三家配置均由 `load_judge_config` 得到；`configs` 与 `transports` 的键都恰为 zai/openai/deepseek，且每个 `configs[p].provider == p` → 否则 `CONFIG_INVALID`（在此预检，不留给 `run_calibration` 在登记之后才拒绝）。
+2. 三家配置均由 `load_judge_config` 得到；`configs` 与 `transports` 的键都恰为 zai/openai/deepseek，且每个 `configs[p].provider == p` → 否则 `CONFIG_INVALID`；随后 `calibration_flow.check_candidates(pack, configs)`（与 `run_calibration` 同一完整配置、身份与候选标注者校验），其 `CONFIG_INVALID`/`JUDGE_IDENTITY_MISMATCH`/`CALIBRATION_UNRESOLVED` 原样退出 3（在此预检，不留给 `run_calibration` 在登记之后才拒绝）。
 3. 可用性与冻结前置：存在至少一个 debug 会话，其中每家都有至少一条 `status == "ok"` 且 `config_hash` 等于本次 `judge_config_hash(configs[p])` 的记录 → 否则 `DEBUG_PRECHECK_MISSING`。理由：首次真实调用要核实 `gpt-6.1-sol` 等端点可用（B3 r3/r5 遗留），并保证正式运行用的是 debug 阶段已验证、已冻结的配置；若 Sol 不可用而直接正式跑，GLM 可能在没有有效对照的情况下被自动选中。
 4. 判据绑定（P7-D9、Q1）：包的 `convention` 仍逐字出现在当前 `judge.PROMPT` 中 → 否则 `JUDGE_PROMPT_CHANGED`；包的 `items_sha256` 等于当前 `assembled/items.json` 字节 sha256，且两份 `AnnotationProvenance.packet_sha256` 都等于当前 `blind/packet.json` 字节 sha256 → 否则 `PACKET_STALE`。`judge_prompt_sha256` 与当前 PROMPT 不同不拒绝，二者都写入运行记录（`summary` 输出）。理由：标签判断的是诊断本身对不对，标注者所见的约定须与 judge 所收一致；P7-D11 先盲标、后只调 judge，调优改动约定之外的 PROMPT 措辞不改变标签含义。若调优需要改约定本身，约定校验失败，lead 停下交用户（重新盲标需新工作区）。
-5. 成本前置（§10）：zai、openai 的 `costs/RUN/<p>-before.json` 均已存在 → 否则 `COST_BEFORE_MISSING`；`costs/RUN/deepseek-before.json` 须不存在 → 否则 `OUTPUT_EXISTS`。
+5. 成本前置（§10）：zai、openai 的 `costs/RUN/<p>-before.json` 均已存在，且可解码为 session/provider/phase 与本次一致（phase=before）的 `BalanceRecord` → 否则 `COST_BEFORE_MISSING`；`costs/RUN/deepseek-before.json` 须不存在 → 否则 `OUTPUT_EXISTS`。
 6. 预检 `calibration/RUN/` 下全部将创建路径与 `costs/RUN/deepseek-before.json`（1.2，只做判定不写）；`calibration/RUN` 已存在 → `OUTPUT_EXISTS`。
-7. 暴露检查与登记（跨工作区，原子）：私有根下 `exposure.lock`、`exposure.jsonl` 任一缺失 → `EXPOSURE_REGISTRY_MISSING`。以 `fcntl.flock(LOCK_EX)` 持有 `exposure.lock`，在锁内依次：读 `exposure.jsonl`，并扫描私有根下**所有**工作区的 `*/calibration/*/label-pack/items.json`；任一已登记或已出现的 validation `source_family`，或同一 `(round, attempt)` 来源，与本 pack 的 validation 族或来源有交集 → 释放锁，`VALIDATION_EXPOSED`（退出 3，未写任何文件）。无交集则仍在锁内完成本运行的第一笔写入：以 `O_APPEND` 写入并 fsync 一行 `{run_id, workspace, pack_hash, validation_families, sources, at}`，然后释放锁。并发的两个 formal 因此只有一个能登记同一来源族。
+7. 暴露检查与登记（跨工作区，原子）：私有根下 `exposure.lock`、`exposure.jsonl` 任一缺失 → `EXPOSURE_REGISTRY_MISSING`。以 `fcntl.flock(LOCK_EX)` 持有 `exposure.lock`，在锁内依次：读 `exposure.jsonl`，并扫描私有根下**所有**工作区的 `*/calibration/*/label-pack/items.json`；任一已登记（`kind="formal"` 行的 validation 族，或 `kind="debug"` 行的 debug 族，见 §8 第 2b 步）或已出现的 `source_family`，或同一 `(round, attempt)` 来源，与本 pack 的 validation 族或来源有交集 → 释放锁，`VALIDATION_EXPOSED`（退出 3，未写任何文件）。无交集则仍在锁内完成本运行的第一笔写入：以 `O_APPEND` 写入并 fsync 一行 `{kind: "formal", run_id, workspace, pack_hash, validation_families, sources, at}`，然后释放锁。并发的两个 formal 因此只有一个能登记同一来源族。
 
 第 1–6 步都无副作用；第 7 步的登记是第一笔写入，此前任何失败都是退出 3 且不写文件、不占用来源族。登记之后：`calibration/` 父目录不存在则创建，再按 §10 写 deepseek before，然后才发第一次调用。登记及其后的写失败为 5（`ARTIFACT_UNWRITABLE`），不发调用；已登记的来源族不再可用（重试须换 validation 来源族，见 P7-D11）。驱动不提供删除或改写登记的入口。此登记是防止重跑挑结果的流程护栏，不是对能改私有目录者的安全边界。
 
-执行：`selection = run_calibration(pack, configs=configs, transports=transports, destination=W/calibration/RUN)`；其中途 `JudgeError` 码原样透出，退出 5（`ARTIFACT_UNWRITABLE`/`OUTPUT_EXISTS`）或 3（发送前拒绝的码，如 `CALIBRATION_UNRESOLVED`、`CONFIG_INVALID`）。随后自动记录 DeepSeek 余额 after（§10）。
+执行：`selection = run_calibration(pack, configs=configs, transports=transports, destination=W/calibration/RUN)`；其中途 `JudgeError` 码原样透出，一律退出 5（登记已写入，§0.1）。随后自动记录 DeepSeek 余额 after（§10）。
 
 读回（只读、无付费调用）：
 
@@ -387,7 +389,7 @@ CLI：`balance --workspace W --session S --provider P --phase before|after (--am
 - zai、openai：现有代码没有余额查询，**由调用方手填**（`source="manual"`），驱动不新增外部调用；也可显式记 `--unknown`。
 - deepseek：before/after 的唯一写入方是 `debug`/`formal`；`balance --provider deepseek` 一律 2/`USAGE`。before 在该命令全部无副作用预检通过之后（formal 还在暴露登记之后）、第一次付费调用之前写且只写一次，after 在最后一次调用之后写；用现有 `scripts.eval_live_lab.DeepSeekBalance(config.api_key).balance()`（CNY）记录 `source="deepseek_balance_api"`；返回 None 时记 `amount=None, source="unknown"`，不中断。预检时 deepseek before 已存在 → 3/`OUTPUT_EXISTS`（换新的 session/run ID）。`shared_account_possible` 对 deepseek 恒为 True（judge 与被测模型可能同账户，lab 同时运行会污染差值）。理由：沿用 `eval_live._cost` 的字段与 unknown 语义（`eval_live.py:1243-1256`）。
 - 同一 `(session, provider, phase)` 只能写一次（`OUTPUT_EXISTS`）；金额须为有限 Decimal 字符串，货币 `[A-Z]{3}`（`SCHEMA_INVALID`）。
-- `cost_report`：每家 `delta = before - after`（两者都已知且币种相同才计算，否则 `status="unknown"`），以及该会话观察记录 `usage` 的 prompt/completion/total_tokens 合计（缺值不计入并报告缺失数）、调用次数。
+- `cost_report`：每家 `delta = before - after`（两者都已知且币种相同才计算，否则 `status="unknown"`），以及该会话观察记录 `usage` 的 prompt/completion/total_tokens 合计（缺值不计入并报告缺失数）、调用次数。已存在的 before/after 记录须可解码为 session/provider/phase 与其路径一致且字段合法的 `BalanceRecord`，否则 3/`SCHEMA_INVALID`，不输出差值（`summary` 同）。
 
 ## 11. 汇总（只读）
 
