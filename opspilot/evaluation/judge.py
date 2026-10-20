@@ -145,7 +145,13 @@ at least one, and ALL factual causal diagnoses must match the expected service a
 full operation, be supported, and cite a signature-matching delivered evidence ID.
 Pure hypotheses are not factual causal assertions. Return only JSON with schema
 "opspilot-judge-1", diagnoses (all nine fields each), and boolean verdict. No private
-reasoning, credentials, extra fields, markdown, or self-certification."""
+reasoning, credentials, extra fields, markdown, or self-certification.
+Citation convention: quote is the complete text of the field at location, copied
+verbatim; never quote a fragment. List causal assertions only, including hypotheses
+with factual_causal false; skip non-causal observations. When one field states
+several causes, return one diagnosis per distinct service and operation, each with
+the same full-field quote. Order diagnoses by location: summary, claims[0..],
+gaps[0..], next_steps[0..]; within a field, by first mention."""
 
 
 class JudgeError(ValueError):
