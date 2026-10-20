@@ -168,7 +168,13 @@ def decode(annotation: Any, value: Any) -> Any:
             return frozenset(values)
         return tuple(values) if origin is tuple else values
     if isinstance(annotation, type) and is_dataclass(annotation):
-        obj = exact(value, {f.name for f in fields(annotation)})
+        names = {f.name for f in fields(annotation)}
+        # Only fields explicitly marked absent_ok may be missing (legacy artifacts);
+        # they then take their declared default.
+        optional = {f.name for f in fields(annotation) if f.metadata.get("absent_ok")}
+        if type(value) is dict and names - optional <= set(value) <= names:
+            names = set(value)
+        obj = exact(value, names)
         hints = get_type_hints(annotation)
         try:
             return annotation(**{k: decode(hints[k], v) for k, v in obj.items()})
