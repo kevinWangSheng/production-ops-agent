@@ -1,7 +1,7 @@
 # F11 U2 发布观察校准证据
 
-- 状态：实验完成、证据已冻结并经独立数据一致性复核（2026-10-17 批次 `u2-20261017`；冻结 summary sha256 `908838ac…`）；待办仅剩用户批准 policy 项与 policy 写入（用户门）
-- 更新日期：2026-10-17
+- 状态：实验完成、证据已冻结并经独立数据一致性复核（2026-10-17 批次 `u2-20261017`；冻结 summary sha256 `908838ac…`）；原始 ledger 已上传 LangSmith（2026-10-20）；待办：下一个 kind 窗口补 M=1500 边界轮、用户批准 policy 项与 policy 写入（用户门）
+- 更新日期：2026-10-20
 - 依据：[F11 任务记录](2026-10-12-f11-post-release.md)（U2／P1-02）；[PR-2 合同](2026-10-13-f11-pr2-contract.md) §1 校准 policy、固定语义 1／4、P2-04、「校准证据不足」、r1–r7；[预审与决定表](2026-10-14-f11-u2-calibration-contract.md)；C3 §12「实验环境」；ADR-0006
 - 工作区：工具 PR #233 已合并（`e1b8867`），分支已清理。实验工具可在主仓库 `main` 运行（占用与原始 ledger 都在主仓库 `tmp/`）；提交证据与 policy 时另开 `chore/`／`feature/` 分支 worktree
 - 实验环境：kind-opspilot-m1／otel-demo；2026-10-17 04:05Z–22:46Z 由本任务占用（与 eval 会话 -00／-76／-87 协调，-87 同意延至 10-18 01:00Z；占用记录写的结束时间仍是 16:00Z，延长靠会话协调，记录到期也不会被抢占），已释放
@@ -35,9 +35,15 @@
 - 证据冻结：#264 把 `aggregate` 改为紧凑格式（逐轮完整 summary 以 sha256 绑定、留在 ledger，含非 flagd_probe 时间线与原始响应清单摘要），冻结文件 499KB。独立数据一致性复核（Codex gpt-6-astra）：字节绑定、13,008 条原始响应、272 个样本的离线重算全部一致；3 项 P2 均为 lead 录入的真值元数据问题（两轮缺陷分类为空、恢复配置时间为空、probe-1 口径），已修订真值并在原折叠代码上重新 fold、重新冻结。
 - 收尾四数（实验阶段）：新增合同问题 2（r8 两条）；因合同变更重写测试 3（B01 验收、两处实现测试断言）；环境重跑 0（缺陷重跑 3 轮另计）；新增用户裁决 3（方案 A、按意图修覆盖、窗口延长）。
 
-## 待决与交接（2026-10-17）
+## 待决与交接（2026-10-20）
 
-- **用户批准项**（policy 写入 `release-calibrations.json` 为用户门 PR，未做）：冻结 [`summary.json`](../evidence/f11-u2-calibration/summary.json)（compact-v1，#264）sha256 `908838acb33923046a446b813cbd12add660df8d4ca56f015478253db4693364`；目标五项身份（见 run.md）；profile `otel-demo-checkout@b72bbe2e30be`／`b72bbe2e30bea4775790519787da4ce107dbc1500ce87b87a2ee2af3f57cbfa4`；M（lead 推荐 1500：delayed-15m 余量约 6 分钟，1200 仅约 70s）及冻结参数（W300／F90／超时 20／I60／H600／deadline 3600／40 次）；覆盖限制（run.md「覆盖与限制」）。
+- **用户批准项**（policy 写入 `release-calibrations.json` 为用户门 PR，未做）：冻结 [`summary.json`](../evidence/f11-u2-calibration/summary.json)（compact-v1，#264）sha256 `908838acb33923046a446b813cbd12add660df8d4ca56f015478253db4693364`；目标五项身份（见 run.md）；profile `otel-demo-checkout@b72bbe2e30be`／`b72bbe2e30bea4775790519787da4ce107dbc1500ce87b87a2ee2af3f57cbfa4`；M（推荐 **1500**：delayed-15m 重跑检出余量约 6 分钟；备选 1200：同样满足全部判据，但 delayed-15m 余量仅约 70s，样本时刻正常抖动即可能漏检；≤900 漏检、≥1800 备用预算不足）及冻结参数（W300／F90／超时 20／I60／H600／deadline 3600／40 次）；覆盖限制（run.md「覆盖与限制」）。
+- **用户决定（2026-10-20，#266 机器人发现处置）**：
+  1. P1（原始 ledger 不可审查）：按合同与 ADR-0006 把批次 `u2-20261017` 原始 ledger 上传 LangSmith 项目 `opspilot-lab-u2-20261017`（longlived，最长 180 天）。13 个 run（12 轮＋批次级）、31,691 个文件、原始 241,379,177 字节、上传 40,670,010 字节，回读 sha256 一致；上传前凭据扫描无命中。链接与哈希在 [`platform-links.json`](../evidence/f11-u2-calibration/platform-links.json) 与 run.md；冻结 `summary.json` 字节未改（逐轮 `platform_links` 在被哈希绑定的逐轮 summary 内，补写会改变冻结字节）。
+  2. P2（边界只验证了 M=1200）：run.md 收窄为「临近终结边界只对 M=1200 验证」；M=1500 边界轮待补（下条）。
+  3. `INSUFFICIENT_TRAFFIC`（新版本流量低于 `effective_traffic.minimum`）unknown **不计为** U2-03「非预期 unknown」，单独报告（本批 2 个，均在 M≤1500 终态之后）。
+- **待补：M=1500 边界轮**：下一个 kind 窗口、policy PR 之前，按 R+1500 附近定时重跑 boundary（本批 boundary 按 R+1200 定时，起病比 M=1500 健康终结约 R+1693–1722s 早 4.5–5 分钟）。宿主内存压力下不开 kind；若用户改选 M=1200 则不需要。
+- **#264 测试隔离**：测试作者两次看到实现片段（失败堆栈中的去重／轮次集合校验；grep 出的 `_compact_run_summary` 字段列表与 flagd_probe 过滤），断言未放宽，已记入 #264 正文并请 astra 专项复核。
 - **实验库**：PG `127.0.0.1:55561` 仍运行，数据在主仓库 `tmp/f11-u2/pg`（勿删）；登录角色 `opspilot_observer_u2`、`opspilot_web_u2`。原始 ledger 在主仓库 `tmp/lab-ledgers/u2-*`（不入库，勿删）。
 - **已知坑**：harness `collect` 后台进程忽略 SIGINT（非交互 shell），提前停止只能 SIGTERM，之后须人工核实 PID 已退出再移走 `.active-*.json`（probe-2 已如此处理并存档）；Codex 沙箱内起不了 PG；审查提示避免「篡改／绕过」类措辞。
 - **相关待排**：[#230](https://github.com/kevinWangSheng/production-ops-agent/issues/230)（重放逐字段完整性），与 U2 无依赖。

@@ -3,6 +3,7 @@
 - 日期：2026-10-17（UTC），kind-opspilot-m1 / otel-demo，lead：lane-f11-u2
 - 合同：[任务记录](../../tasks/2026-10-14-f11-u2-calibration.md) r1/r2（U2-01–U2-04、L1–L4）；[PR-2 合同](../../tasks/2026-10-13-f11-pr2-contract.md) r8
 - 冻结汇总：[`summary.json`](summary.json)（`aggregate --batch u2-20261017`），逐轮哈希与原始响应哈希见下文「文件」
+- 原始 ledger：已上传 LangSmith 项目 `opspilot-lab-u2-20261017`（longlived），逐轮链接与归档哈希见 [`platform-links.json`](platform-links.json)（2026-10-20 补传，见下文「文件与复现」）
 - 性质：工程旁路采集＋离线折叠的**未批准**校准证据（`U2_CALIBRATION_UNAPPROVED`）；不是 policy，不开放授权
 
 ## 目标与固定参数
@@ -44,7 +45,7 @@ scrape 周期 59.3–60s（span metrics 与 KSM 相同）；最新样本年龄 s
 
 其他候选：M=600／900 在 delayed-15m（两次）与 boundary 中都在起病可见前健康终结（漏检）；M=1800 在 unrelated-1 因 12:43:43 一次真实低流量 `INSUFFICIENT_TRAFFIC` 重置跟踪，13:11:35 才终结、剩余 94s（<300s），M=2100 到 deadline 仍 unknown。
 
-**`INSUFFICIENT_TRAFFIC` unknown 的合同口径（lead 未归类，交批准者判断）**：有效轮共 2 个预热后、与起病无关的此类 unknown——unrelated-1 12:43:43（after 切片流量低于 `effective_traffic.minimum` 0.008/s）与 delayed5-2 19:57:08。二者均在 M≤1500 终态之后，不计入下表 M=1200／1500 的「预热后 unknown」，只影响 M≥1800。合同原文：U2-03「预热后非预期 unknown ≤5%（全程比例另报）」（[任务记录:17](../../tasks/2026-10-14-f11-u2-calibration.md)）没有定义何为「非预期」；PR-2 合同 :563「有效流量取切片后的 `profile.effective_traffic.signal`，要求值≥`effective_traffic.minimum`」、:583「充分证据要求：……新版本有效流量合格」、:595「纯版本／流量不足、context-only degradation 使用 `no_data`。这些仍可合法 adopted、计次」。即流量不足是合同规定的合法 unknown 来源，但合同没有把它明确列为 U2-03 的「预期 unknown」。
+**`INSUFFICIENT_TRAFFIC` unknown 的合同口径（用户 2026-10-20 裁决：不计为 U2-03「非预期 unknown」，单独报告）**：有效轮共 2 个预热后、与起病无关的此类 unknown——unrelated-1 12:43:43（after 切片流量低于 `effective_traffic.minimum` 0.008/s）与 delayed5-2 19:57:08。二者均在 M≤1500 终态之后，不计入下表 M=1200／1500 的「预热后 unknown」，只影响 M≥1800。合同原文：U2-03「预热后非预期 unknown ≤5%（全程比例另报）」（[任务记录:17](../../tasks/2026-10-14-f11-u2-calibration.md)）没有定义何为「非预期」；PR-2 合同 :563「有效流量取切片后的 `profile.effective_traffic.signal`，要求值≥`effective_traffic.minimum`」、:583「充分证据要求：……新版本有效流量合格」、:595「纯版本／流量不足、context-only degradation 使用 `no_data`。这些仍可合法 adopted、计次」。即流量不足是合同规定的合法 unknown 来源，但合同没有把它明确列为 U2-03 的「预期 unknown」；用户据此裁决不计入 U2-03 分子，本节单独报告这 2 个。
 
 ## 判据逐项（U2-03 r2，有效轮：healthy-1、unrelated-1、immediate-2、delayed5-2、delayed15-2；boundary-1 另列）
 
@@ -57,7 +58,7 @@ scrape 周期 59.3–60s（span metrics 与 KSM 相同）；最新样本年龄 s
 | 全程 unknown 比例（另报，五个验收轮，终态前） | 13/40（均为预热窗） | 13/44（均为预热窗） |
 | 参考：含 boundary-1 | 预热后 0/35，全程 16/51 | 预热后 0/39，全程 16/55 |
 
-- 余量：delayed-15m 重跑中，M=1200 的最早健康终结约为 T₀+M−W≈20:34:20，实际检出 20:33:09，余量约 70s；M=1500 余量约 6 分钟。boundary（起病 R+1234s）在 R+1422s 检出，两个 M 都在终结前。
+- 余量：delayed-15m 重跑中，M=1200 的最早健康终结约为 T₀+M−W≈20:34:20，实际检出 20:33:09，余量约 70s；M=1500 余量约 6 分钟。boundary（起病 R+1234s）在 R+1422s 检出，两个 M 都在终结前。**边界只对 M=1200 成立**：本轮按 R+1200 定时，M=1200 的健康终结约在 R+1410–1425s（healthy-1、unrelated-1），检出与之相当；M=1500 的健康终结约在 R+1693–1722s，本轮起病比它早约 4.5–5 分钟，按本轮首个错误至检出约 188s，不能证明临近 M=1500 终结起病的回归仍能在终结前检出。M=1500 的边界轮在下一个 kind 窗口、policy PR 之前重跑（定时 R+1500 附近）。
 - 全捕获（含终态后）unknown 18/165，均为预热或真实低流量。
 - 小样本（每类 1 次，r2）不构成统计可靠性保证。
 
@@ -94,10 +95,12 @@ probe-1（adFailure 生效 04:48:15–04:58:15）期间 5 个样本全 healthy�
 - 无关故障只测了弱的 `adFailure`。
 - 宿主内存压力下出现过无故障的延迟 degraded（终态后）。
 - M 余量：delayed-15m 重跑中 M=1200 只有约 70s 余量（最早健康终结 ≈20:34:20，检出 20:33:09），样本时刻的正常抖动即可能使其漏检；M=1500 余量约 6 分钟。
+- U2-01 边界（临近健康终结起病）本批只对 M=1200 验证；选 M=1500 须先补一轮按 R+1500 定时的边界轮。
 
 ## 文件与复现
 
 - `summary.json`（sha256 `908838acb33923046a446b813cbd12add660df8d4ca56f015478253db4693364`）：`aggregate --batch u2-20261017` 冻结的紧凑批次汇总（`run_format=compact-v1`；12 轮全部列入，含缺陷轮与 aborted 轮；每轮以完整 summary 文件 sha256 绑定，并绑定 `run-starts.jsonl` 前缀哈希）。policy 的 `evidence_sha256` 指向本文件确切字节。
 - `rounds.json`：逐轮摘要（场景、真值、各候选 M 终态、逐样本 verdict／原因、分类、错误序列核查）。
 - `raw-response-hashes.json`：全部原始 Prometheus 响应的 sha256 清单（按轮、样本、查询键）。
+- `platform-links.json`：原始 ledger 在 LangSmith 的位置（2026-10-20 上传，回应 #266 机器人 P1）。项目 `opspilot-lab-u2-20261017`（`trace_tier=longlived`，SaaS 最长 180 天，约 2027-04-18 到期；之后只能依据本目录冻结摘要复核，ADR-0006 决定 4）。每轮一个根 run（另有批次级 run 存 `run-starts.jsonl` 与 worktree `tmp/u2/` 顶层的真值 JSON／日志），附件 `<轮>_tar_gz` 为该轮 `tmp/lab-ledgers/<轮>/` 与 worktree `tmp/u2/<轮>/` 的 gzip tar，`manifest_json` 为逐文件路径／字节／sha256；13 个 run 共 31,691 个文件、原始 241,379,177 字节、上传 40,670,010 字节，上传后逐个下载回读 sha256 一致；包内各轮 `summary.json` 与本目录 `summary.json` 绑定的哈希一致。上传前扫描全部文件（authorization／bearer／password／api_key／secret／token／x-api-key／lsv2_ 及字面凭据模式），未发现凭据值（命中均为原因码、Kubernetes serviceaccount 挂载路径与代码快照中的 Secret 对象名）。**链接不写进 `summary.json`**：逐轮 `platform_links` 位于它按 sha256 绑定的逐轮 summary 内，补写会改变冻结字节，故单列本文件。审查者需有该 LangSmith workspace 的读权限。
 - 逐轮完整 summary 与原始 ledger 不入库，在主仓库 `tmp/lab-ledgers/<轮>/`（`summary.json`、`samples/`、`raw/`、`fault.jsonl`、`timeline.jsonl`、`release.json`、`before/after.json`、`context.json`、`code-snapshots/`）。逐轮 summary 由离线折叠生成，命令（在含 `capture-start.json` 冻结代码的 checkout 上，`OPSPILOT_LAB_LEDGERS` 指向 ledger 根）：`python -m scripts.f11_u2_harness --holder lane-f11-u2 --batch u2-20261017 fold --run <轮> --minimum 600 900 1200 1500 1800 2100 --scenario <场景> --truth <真值 JSON>`；aborted 轮由 `abort --run <轮> --scenario <场景> --reason <原因>` 生成。真值 JSON 原样嵌在每轮 summary 的 `truth` 字段。fold 拒绝覆盖已有 summary；复核时在 ledger 副本（连同 `run-starts.jsonl`）上删去该轮 summary 后重跑，比对 `candidates`／`capture`／`raw_response_hashes` 等判定字段（`fold_code` 快照与时间戳每次不同，整文件哈希不要求一致）；入库 summary.json 绑定的是原始那份文件的 sha256。
