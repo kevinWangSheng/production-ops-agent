@@ -13,7 +13,7 @@ judge_once(request: JudgeInput, *, config: JudgeConfig,
            calibration: VerifiedCalibration | None, transport: JudgeTransport) -> JudgeObservation
 ```
 
-`JudgeConfig` 为 frozen dataclass：provider（zai/openai/deepseek）、endpoint（完整 chat/completions URL）、request_model、response_model、api_key（repr隐藏）、prompt、adapter_version、schema_version、timeout_seconds=360、max_request_bytes=8388608、max_response_bytes=2097152、max_output_tokens=16384。参数不能扩大上限；hash 为上述全部非密钥字段的 canonical JSON SHA256，密钥只走认证头。config 的 repr 不显示密钥。
+`JudgeConfig` 为 frozen dataclass：provider（zai/openai/deepseek）、endpoint（完整 chat/completions URL）、request_model、response_model、api_key（repr隐藏）、prompt、adapter_version、schema_version、timeout_seconds=900、max_request_bytes=8388608、max_response_bytes=2097152、max_output_tokens=65536（2026-10-20 用户裁决：P7 debug 推理耗尽输出上限）。参数不能扩大上限；hash 为上述全部非密钥字段的 canonical JSON SHA256，密钥只走认证头。config 的 repr 不显示密钥。
 
 只接受 `ZAI_API_KEY/ZAI_BASE_URL/OPSPILOT_JUDGE_MODEL/OPENAI_API_KEY/OPENAI_BASE_URL/OPENAI_JUDGE_MODEL/OPENAI_JUDGE_RESPONSE_MODEL/DEEPSEEK_API_KEY/DEEPSEEK_BASE_URL`。文件必须绝对路径、当前用户拥有、普通文件、无符号链接、精确0600、≤16384字节；先用 O_NOFOLLOW 打开并 fstat，再读。空行/注释忽略，字面 KEY=VALUE，可成对引号，无执行/插值；重复/未知键拒绝。environ 不读取进程环境，只检查白名单键的冲突，不用其补齐文件凭据；无关环境键忽略。错误仅 `JudgeError.code`：CONFIG_ABSOLUTE_PATH_REQUIRED、CONFIG_PRIVATE_REGULAR_FILE_REQUIRED、CONFIG_UNREADABLE、CONFIG_SYNTAX、CONFIG_ENV_CONFLICT、CONFIG_INVALID、JUDGE_IDENTITY_MISMATCH。
 
