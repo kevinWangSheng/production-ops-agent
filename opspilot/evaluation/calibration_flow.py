@@ -345,7 +345,7 @@ def _metadata_identifiers(value: Any) -> None:
                     )
             elif child is None and (
                 isinstance(value, JudgeObservation)
-                and name in {"response_model", "error_code"}
+                and name in {"response_model", "error_code", "finish_reason"}
                 or name == "time_scope_ref"
             ):
                 continue  # Explicit optional, absent protocol values, never blank IDs.

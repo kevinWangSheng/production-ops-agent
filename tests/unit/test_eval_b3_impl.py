@@ -334,7 +334,11 @@ def test_adapters_fresh_messages_no_retries_no_credentials_in_body(provider):
     call = transport.calls[0]
     assert call["headers"]["Authorization"] == "Bearer " + SECRET
     body = json.loads(call["body"])
-    assert body["model"] == config.request_model and body["stream"] is False
+    assert body["model"] == config.request_model and body["stream"] is True
+    if provider in {"openai", "deepseek"}:
+        assert body["stream_options"] == {"include_usage": True}
+    else:
+        assert "stream_options" not in body
     assert [m["role"] for m in body["messages"]] == ["system", "user"]
     assert (
         body["max_completion_tokens" if provider == "openai" else "max_tokens"] == 65536
@@ -504,9 +508,36 @@ def test_http_transport_mock_redirect_size_and_total_deadline():
         request, config=config, calibration=None, transport=transport
     )
     assert len(calls) == 1 and observation.error_code == "JUDGE_HTTP_ERROR"
+    # Streaming (judge-streaming S2a): the limit bounds the assembled completion
+    # document, so a complete, well-formed SSE stream larger than 10 bytes once
+    # assembled is still oversize.
+    sse_events = [
+        {
+            "id": "c1",
+            "model": "glm-5.3",
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {"role": "assistant", "content": "x" * 20},
+                    "finish_reason": None,
+                }
+            ],
+        },
+        {
+            "id": "c1",
+            "model": "glm-5.3",
+            "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+        },
+    ]
+    sse = (
+        b"".join(b"data: " + json.dumps(e).encode() + b"\n\n" for e in sse_events)
+        + b"data: [DONE]\n\n"
+    )
     transport = HTTPJudgeTransport(
         transport=httpx2.MockTransport(
-            lambda _: httpx2.Response(200, content=b"x" * 20)
+            lambda _: httpx2.Response(
+                200, headers={"content-type": "text/event-stream"}, content=sse
+            )
         )
     )
     observation = judge_once(
@@ -523,11 +554,15 @@ def test_http_transport_mock_redirect_size_and_total_deadline():
 
             for _ in range(20):
                 await asyncio.sleep(0.002)
-                yield b"x"
+                yield b": keep-alive\n\n"
 
     transport = HTTPJudgeTransport(
         transport=httpx2.MockTransport(
-            lambda _: httpx2.Response(200, stream=SlowStream())
+            lambda _: httpx2.Response(
+                200,
+                headers={"content-type": "text/event-stream"},
+                stream=SlowStream(),
+            )
         )
     )
     observation = judge_once(

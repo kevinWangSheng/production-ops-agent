@@ -173,7 +173,7 @@ class JudgeConfig:
     response_model: str
     api_key: str = field(repr=False)
     prompt: str = PROMPT
-    adapter_version: str = "judge-adapters-1"
+    adapter_version: str = "judge-adapters-2"
     schema_version: str = "opspilot-judge-1"
     timeout_seconds: float = 900
     max_request_bytes: int = 8 * 1024 * 1024
@@ -192,7 +192,7 @@ def _check_config(config: JudgeConfig) -> None:
         )
         or any(c in config.api_key for c in "\r\n\x00")
         or config.prompt != PROMPT
-        or config.adapter_version != "judge-adapters-1"
+        or config.adapter_version != "judge-adapters-2"
         or config.schema_version != "opspilot-judge-1"
         or type(config.timeout_seconds) not in (float, int)
         or not 0 < config.timeout_seconds <= 900
@@ -328,8 +328,214 @@ class JudgeTransport(Protocol):
     ) -> JudgeHTTPResponse: ...
 
 
+# Fixed by judge-adapters-2 (judge-streaming S2): SSE wire bytes, keep-alive
+# comments included, and one event's data bytes. max_response_bytes bounds the
+# assembled completion document instead.
+SSE_WIRE_LIMIT = 32 * 1024 * 1024
+SSE_EVENT_LIMIT = 1024 * 1024
+_EOL = re.compile(rb"\r\n?|\n")
+
+
+class SSEAssembler:
+    """Incremental SSE framing (S7) and chat.completion.chunk assembly (S11-S14).
+
+    Structural violations are JUDGE_OUTPUT_INVALID; semantic checks (model
+    identity, role, finish_reason=stop, tool fields) stay in ``_output`` on the
+    assembled document. Reasoning deltas are counted as wire bytes and dropped.
+    """
+
+    def __init__(self, *, max_document_bytes: int) -> None:
+        self.max_document_bytes = max_document_bytes
+        self.done = False
+        self._wire = 0
+        self._line = bytearray()
+        self._cr = False
+        self._data: list[str] = []
+        self._data_size = 0
+        self._event = ""
+        self._chunks = 0
+        self._id: object = None
+        self._model: object = None
+        self._identity_ok = True
+        self._content: list[str] = []
+        self._content_size = 0
+        self._role: object = None
+        self._extra: dict[str, object] = {}
+        self._finished = False
+        self._finish: object = None
+        self._usage: object = None
+
+    def feed(self, data: bytes) -> bool:
+        """Consume wire bytes; True once ``data: [DONE]`` is dispatched."""
+        if self.done:
+            return True
+        pos = 1 if self._cr and data[:1] == b"\n" else 0
+        self._cr = False
+        self._count(pos)
+        # Wire bytes are counted line by line, so bytes after [DONE] in the same
+        # network chunk are neither parsed nor counted (S8).
+        for match in _EOL.finditer(data, pos):
+            self._count(match.end() - pos)
+            self._line += data[pos : match.start()]
+            pos = match.end()
+            line = bytes(self._line)
+            self._line.clear()
+            if self._dispatch_line(line):
+                return True
+        self._count(len(data) - pos)
+        # A trailing CR may be the first half of a CRLF split across chunks.
+        self._cr = data.endswith(b"\r")
+        self._line += data[pos:]
+        if not self._line.startswith(b":") and len(self._line) > SSE_EVENT_LIMIT + 6:
+            raise JudgeError("JUDGE_RESPONSE_OVERSIZE")
+        return False
+
+    def _count(self, size: int) -> None:
+        self._wire += size
+        if self._wire > SSE_WIRE_LIMIT:
+            raise JudgeError("JUDGE_RESPONSE_OVERSIZE")
+
+    def _dispatch_line(self, raw: bytes) -> bool:
+        try:
+            line = raw.decode("utf-8")
+        except UnicodeDecodeError:
+            raise JudgeError("JUDGE_OUTPUT_INVALID") from None
+        if not line:
+            return self._dispatch_event()
+        if line.startswith(":"):
+            return False  # comment / keep-alive
+        name, sep, value = line.partition(":")
+        if sep and value.startswith(" "):
+            value = value[1:]
+        if name == "data":
+            self._data_size += len(value.encode("utf-8")) + bool(self._data)
+            if self._data_size > SSE_EVENT_LIMIT:
+                raise JudgeError("JUDGE_RESPONSE_OVERSIZE")
+            self._data.append(value)
+        elif name == "event":
+            self._event = value
+        return False  # id:, retry: and unknown fields are ignored
+
+    def _dispatch_event(self) -> bool:
+        data, event = "\n".join(self._data), self._event
+        has_data = bool(self._data)
+        self._data, self._data_size, self._event = [], 0, ""
+        if not has_data:
+            return False
+        if event not in ("", "message"):
+            raise JudgeError("JUDGE_OUTPUT_INVALID")
+        if data == "[DONE]":
+            self.done = True
+            return True
+        try:
+            obj = parse(data.encode("utf-8"))
+        except StorageError:
+            raise JudgeError("JUDGE_OUTPUT_INVALID") from None
+        self._chunk(obj)
+        return False
+
+    def _chunk(self, obj: dict[str, Any]) -> None:
+        if "error" in obj:
+            raise JudgeError("JUDGE_HTTP_ERROR")
+        model, ident = obj.get("model"), obj.get("id")
+        if not self._chunks:
+            self._model, self._id = model, ident
+        # Every data chunk carries the same non-empty string id and string model.
+        if (
+            type(model) is not str
+            or model != self._model
+            or type(ident) is not str
+            or not ident
+            or ident != self._id
+        ):
+            self._identity_ok = False
+        self._chunks += 1
+        if obj.get("usage") is not None:
+            self._usage = obj["usage"]
+        choices = obj.get("choices")
+        if type(choices) is not list:
+            raise JudgeError("JUDGE_OUTPUT_INVALID")
+        if not choices:
+            if not self._finished:
+                raise JudgeError("JUDGE_OUTPUT_INVALID")
+            return
+        choice = choices[0] if len(choices) == 1 else None
+        if (
+            type(choice) is not dict
+            or type(choice.get("index")) is not int
+            or choice["index"] != 0
+            or type(delta := choice.get("delta")) is not dict
+        ):
+            raise JudgeError("JUDGE_OUTPUT_INVALID")
+        finish, content = choice.get("finish_reason"), delta.get("content")
+        if self._finished and (finish is not None or content is not None):
+            raise JudgeError("JUDGE_OUTPUT_INVALID")
+        if delta.get("role") is not None:
+            if delta["role"] != "assistant":
+                raise JudgeError("JUDGE_OUTPUT_INVALID")
+            self._role = "assistant"
+        if content is not None:
+            if type(content) is not str:
+                raise JudgeError("JUDGE_OUTPUT_INVALID")
+            self._content_size += len(content.encode("utf-8"))
+            if self._content_size > self.max_document_bytes:
+                raise JudgeError("JUDGE_RESPONSE_OVERSIZE")
+            self._content.append(content)
+        for name in ("tool_calls", "function_call", "refusal"):
+            if delta.get(name) is not None:
+                self._extra.setdefault(name, delta[name])
+        if finish is not None:
+            self._finished, self._finish = True, finish
+
+    def document(self) -> bytes:
+        """The equivalent non-streaming chat.completion, bounded by the config."""
+        if not self.done:
+            raise JudgeError("JUDGE_TRANSPORT_ERROR")
+        if not self._finished:
+            raise JudgeError("JUDGE_OUTPUT_INVALID")
+        doc: dict[str, Any] = {
+            "id": self._id,
+            "object": "chat.completion",
+            "model": self._model if self._identity_ok else None,
+            "choices": [
+                {
+                    "index": 0,
+                    "message": {
+                        "role": self._role,
+                        "content": "".join(self._content),
+                        **self._extra,
+                    },
+                    "finish_reason": self._finish,
+                }
+            ],
+        }
+        if self._usage is not None:
+            doc["usage"] = self._usage
+        raw = canonical_bytes(doc)
+        if len(raw) > self.max_document_bytes:
+            raise JudgeError("JUDGE_RESPONSE_OVERSIZE")
+        return raw
+
+
+def assemble_sse(chunks: Iterable[bytes], *, max_document_bytes: int) -> bytes:
+    """Pure form of the transport's SSE path; no ``[DONE]`` is a transport error."""
+    assembler = SSEAssembler(max_document_bytes=max_document_bytes)
+    for chunk in chunks:
+        if assembler.feed(chunk):
+            break
+    return assembler.document()
+
+
+def _is_event_stream(content_type: str | None) -> bool:
+    return (content_type or "").split(";", 1)[0].strip().lower() == "text/event-stream"
+
+
 class HTTPJudgeTransport:
-    """One non-streaming completion; asyncio deadline covers the entire HTTP read."""
+    """One streamed completion; asyncio deadline covers the entire HTTP read.
+
+    Returns the assembled non-streaming completion (S3); stops reading at
+    ``[DONE]``. Non-2xx bodies are read raw under ``max_response_bytes``.
+    """
 
     def __init__(self, *, transport: httpx2.AsyncBaseTransport | None = None) -> None:
         self.transport = transport
@@ -354,14 +560,23 @@ class HTTPJudgeTransport:
                     async with client.stream(
                         "POST", endpoint, headers=headers, content=body
                     ) as response:
-                        chunks: list[bytes] = []
-                        size = 0
+                        status = response.status_code
+                        if not 200 <= status < 300:
+                            chunks: list[bytes] = []
+                            size = 0
+                            async for chunk in response.aiter_bytes():
+                                size += len(chunk)
+                                if size > max_response_bytes:
+                                    raise JudgeError("JUDGE_RESPONSE_OVERSIZE")
+                                chunks.append(chunk)
+                            return JudgeHTTPResponse(status, tuple(chunks))
+                        if not _is_event_stream(response.headers.get("content-type")):
+                            raise JudgeError("JUDGE_OUTPUT_INVALID")
+                        assembler = SSEAssembler(max_document_bytes=max_response_bytes)
                         async for chunk in response.aiter_bytes():
-                            size += len(chunk)
-                            if size > max_response_bytes:
-                                raise JudgeError("JUDGE_RESPONSE_OVERSIZE")
-                            chunks.append(chunk)
-                        return JudgeHTTPResponse(response.status_code, tuple(chunks))
+                            if assembler.feed(chunk):
+                                break
+                        return JudgeHTTPResponse(status, (assembler.document(),))
 
         try:
             return asyncio.run(invoke())
@@ -424,6 +639,8 @@ def safe_input(request: JudgeInput) -> Mapping[str, Any]:
 class ZaiAdapter:
     provider: Provider = "zai"
     token_parameter = "max_tokens"
+    # Z.ai documents no stream_options; usage already rides on the final chunk.
+    stream_options: Mapping[str, Any] = {}
 
     def build(self, config: JudgeConfig, payload: Mapping[str, Any]) -> bytes:
         _check_config(config)
@@ -440,7 +657,8 @@ class ZaiAdapter:
                         "content": canonical_bytes(payload).decode("utf-8"),
                     },
                 ],
-                "stream": False,
+                "stream": True,
+                **self.stream_options,
                 self.token_parameter: config.max_output_tokens,
             }
         )
@@ -449,10 +667,12 @@ class ZaiAdapter:
 class OpenAIAdapter(ZaiAdapter):
     provider: Provider = "openai"
     token_parameter = "max_completion_tokens"
+    stream_options: Mapping[str, Any] = {"stream_options": {"include_usage": True}}
 
 
 class DeepSeekAdapter(ZaiAdapter):
     provider: Provider = "deepseek"
+    stream_options: Mapping[str, Any] = {"stream_options": {"include_usage": True}}
 
 
 _ADAPTERS = {
@@ -475,6 +695,8 @@ class JudgeObservation:
     provider: Provider
     phase: Literal["evaluation", "calibration"] = "evaluation"
     balance_delta: float | None = None
+    # judge-streaming S6; artifacts written before this field decode as None.
+    finish_reason: str | None = field(default=None, metadata={"absent_ok": True})
 
 
 def check_diagnoses(
@@ -510,10 +732,36 @@ def check_diagnoses(
     )
 
 
+_USAGE_KEYS = ("prompt_tokens", "completion_tokens", "total_tokens")
+_FINISH_REASON = re.compile(r"[A-Za-z0-9._:/@-]{1,256}")
+
+
+def _observed(obj: Mapping[str, Any]) -> tuple[dict[str, int | None], str | None]:
+    """S6: usage and finish_reason of any assembled document, before validation."""
+    usage_obj = obj.get("usage", {})
+    usage = (
+        {
+            k: v if type(v := usage_obj.get(k)) is int and v >= 0 else None
+            for k in _USAGE_KEYS
+        }
+        if isinstance(usage_obj, Mapping)
+        else dict.fromkeys(_USAGE_KEYS)
+    )
+    choices = obj.get("choices")
+    finish = (
+        choices[0].get("finish_reason")
+        if type(choices) is list and len(choices) == 1 and type(choices[0]) is dict
+        else None
+    )
+    # Provider text must stay a calibration-safe identifier; otherwise unknown.
+    if type(finish) is not str or _FINISH_REASON.fullmatch(finish) is None:
+        finish = None
+    return usage, finish
+
+
 def _output(
-    response: bytes, config: JudgeConfig
-) -> tuple[tuple[JudgedDiagnosis, ...], bool, str, dict[str, int | None]]:
-    obj = parse(response)
+    obj: Mapping[str, Any], config: JudgeConfig
+) -> tuple[tuple[JudgedDiagnosis, ...], bool, str]:
     if not response_identity_matches(config.provider, obj.get("model")):
         raise JudgeError(
             "JUDGE_RESPONSE_IDENTITY_INVALID"
@@ -537,7 +785,8 @@ def _output(
         or message.get("role") != "assistant"
         or type(message.get("content")) is not str
         or any(
-            message.get(field) is not None for field in ("tool_calls", "function_call")
+            message.get(field) is not None
+            for field in ("tool_calls", "function_call", "refusal")
         )
     ):
         raise JudgeError("JUDGE_OUTPUT_INVALID")
@@ -551,16 +800,7 @@ def _output(
     for diagnosis in diagnoses:
         if diagnosis.linked_claim is not None and diagnosis.linked_claim < 0:
             raise JudgeError("JUDGE_OUTPUT_INVALID")
-    usage_obj = obj.get("usage", {})
-    usage = (
-        {
-            k: v if type(v := usage_obj.get(k)) is int and v >= 0 else None
-            for k in ("prompt_tokens", "completion_tokens", "total_tokens")
-        }
-        if isinstance(usage_obj, Mapping)
-        else dict.fromkeys(("prompt_tokens", "completion_tokens", "total_tokens"))
-    )
-    return diagnoses, verdict, obj["model"], usage
+    return diagnoses, verdict, obj["model"]
 
 
 def judge_once(
@@ -586,9 +826,8 @@ def judge_once(
     verdict: bool | None = None
     recomputed: bool | None = None
     model: str | None = None
-    usage: Mapping[str, int | None] = dict.fromkeys(
-        ("prompt_tokens", "completion_tokens", "total_tokens")
-    )
+    usage: Mapping[str, int | None] = dict.fromkeys(_USAGE_KEYS)
+    finish_reason: str | None = None
     try:
         _check_config(config)
         request = validated(JudgeInput, request)
@@ -603,6 +842,7 @@ def judge_once(
             headers={
                 "Authorization": "Bearer " + config.api_key,
                 "Content-Type": "application/json",
+                "Accept": "text/event-stream",
             },
             body=body,
             timeout_seconds=float(config.timeout_seconds),
@@ -626,7 +866,9 @@ def judge_once(
             if size > config.max_response_bytes:
                 raise JudgeError("JUDGE_RESPONSE_OVERSIZE")
             chunks.append(chunk)
-        diagnoses, verdict, model, usage = _output(b"".join(chunks), config)
+        obj = parse(b"".join(chunks))
+        usage, finish_reason = _observed(obj)
+        diagnoses, verdict, model = _output(obj, config)
         recomputed = check_diagnoses(request, diagnoses, verdict)
         status = "ok"
     except TimeoutError:
@@ -667,6 +909,7 @@ def judge_once(
         usage,
         max(0.0, time.monotonic() - started),
         config.provider,
+        finish_reason=finish_reason,
     )
 
 
