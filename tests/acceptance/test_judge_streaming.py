@@ -707,16 +707,17 @@ def test_report_fields_block_stays_under_request_limit(configs):
         assert len(body) < configs[provider].max_request_bytes // 8
 
 
-def test_adapter_version_is_judge_adapters_5(configs):
-    """judge-adapters-5 (enforced JSON output, cheaper candidates); older refused."""
+def test_adapter_version_is_judge_adapters_6(configs):
+    """judge-adapters-6 (diagnosis identifier rule, PROMPT note); older refused."""
     for config in configs.values():
-        assert config.adapter_version == "judge-adapters-5"
+        assert config.adapter_version == "judge-adapters-6"
         check_config(config)
     for old in (
         "judge-adapters-1",
         "judge-adapters-2",
         "judge-adapters-3",
         "judge-adapters-4",
+        "judge-adapters-5",
     ):
         stale = replace(configs["zai"], adapter_version=old)
         with pytest.raises(JudgeError, match="CONFIG_INVALID"):

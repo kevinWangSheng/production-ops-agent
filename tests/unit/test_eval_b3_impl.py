@@ -2082,9 +2082,10 @@ def test_pr232_round5_operation_rejects_unicode_casefold_variants(
     assert not (tmp_path / "bad").exists()
 
 
-def test_pr232_round5_invalid_response_identity_stops_before_source_write(
-    tmp_path, pack
-):
+def test_pr232_round5_invalid_response_identity_is_an_invalid_answer(tmp_path, pack):
+    # judge-adapters-6: formerly aborted run_calibration (SCHEMA_INVALID, the
+    # p7-formal-1 failure); now each such answer is an invalid observation and
+    # the malformed identity is never persisted.
     c = configs()
     diagnosis = JudgedDiagnosis(
         "claims[0]",
@@ -2102,13 +2103,14 @@ def test_pr232_round5_invalid_response_identity_stops_before_source_write(
         for provider, config in c.items()
     }
     root = tmp_path / "bad"
-    with pytest.raises(JudgeError, match="SCHEMA_INVALID") as caught:
-        run_calibration(pack, configs=c, transports=transports, destination=root)
-    assert caught.value.__cause__ is None and caught.value.__context__ is None
-    assert len(transports["zai"].calls) == 1
-    assert not transports["openai"].calls and not transports["deepseek"].calls
-    assert not list(root.glob("zai-*.json"))
-    assert not (root / "calibration.json").exists()
+    run_calibration(pack, configs=c, transports=transports, destination=root)
+    assert all(len(t.calls) == 60 for t in transports.values())
+    written = sorted(root.glob("*-*.json"))
+    assert len(written) == 180 and (root / "calibration.json").exists()
+    for path in written:
+        entry = json.loads(path.read_text())
+        assert entry["observation"]["error_code"] == "JUDGE_OUTPUT_INVALID"
+        assert " bad " not in path.read_text()
 
 
 @pytest.mark.parametrize(
@@ -2334,3 +2336,105 @@ def test_r10_records_readback_errors(tmp_path, r9_identity_artifact, mutation, c
     with pytest.raises(JudgeError, match=code) as caught:
         load_verified_calibration(root, pack=p, config=c["zai"])
     assert caught.value.__cause__ is None and caught.value.__context__ is None
+
+
+# ---------------------------------------------- judge-adapters-6: identifiers
+# p7-formal-1 aborted (exit 5, SCHEMA_INVALID) when a judge answered with a
+# free-text service; the metadata rule is now an answer-level failure.
+
+BAD_DIAGNOSIS_FIELDS = [
+    {"service": "load generator"},
+    {"service": ""},
+    {"service": " cart"},
+    {"service": "cart\n"},
+    {"service": "s" * 257},
+    {"service": "购物车"},
+    {"operation": "add item, then checkout"},
+    {"operation": "POST  /cart"},
+    {"operation": " POST /cart"},
+    {"operation": "o" * 257},
+    {"cited_evidence_ids": ("e 1",)},
+]
+
+
+def _answer(provider, **changes):
+    request, diagnoses, _ = make_input()
+    config = configs()[provider]
+    diagnosis = replace(diagnoses[0], **changes)
+    return request, config, diagnosis
+
+
+@pytest.mark.parametrize("provider", ["zai", "openai", "deepseek"])
+def test_free_text_service_is_an_invalid_answer(provider):
+    for service, status in (("load-generator", "ok"), ("load generator", "invalid")):
+        request, config, diagnosis = _answer(provider, service=service)
+        observation, _ = invoke(request, (diagnosis,), False, config=config)
+        assert observation.result.status == status
+        if status == "invalid":
+            assert observation.error_code == "JUDGE_OUTPUT_INVALID"
+            assert not observation.valid and observation.result.diagnoses == ()
+
+
+@pytest.mark.parametrize("provider", ["zai", "openai", "deepseek"])
+def test_every_returned_observation_passes_metadata_identifiers(provider):
+    from opspilot.evaluation.calibration_flow import (
+        CalibrationObservation,
+        _metadata_identifiers,
+    )
+
+    cases = [{}, {"service": None, "operation": None}, *BAD_DIAGNOSIS_FIELDS]
+    for changes in cases:
+        request, config, diagnosis = _answer(provider, **changes)
+        for verdict in (True, False):
+            for extra in ({}, {"model": "other model"}):
+                response = completion(config, (diagnosis,), verdict, **extra)
+                observation, _ = invoke(request, config=config, response=response)
+                entry = CalibrationObservation("item-1", "0" * 64, 1, observation)
+                _metadata_identifiers(entry)  # never raises after judge_once
+                if changes in BAD_DIAGNOSIS_FIELDS:
+                    assert not observation.valid
+    weird = completion(
+        configs()[provider],
+        choices=[
+            {
+                "index": 0,
+                "finish_reason": "stop now",
+                "message": {"role": "assistant", "content": "x"},
+            }
+        ],
+    )
+    observation, _ = invoke(config=configs()[provider], response=weird)
+    assert observation.finish_reason is None
+    _metadata_identifiers(CalibrationObservation("item-1", "0" * 64, 1, observation))
+
+
+def test_free_text_service_does_not_abort_run_calibration(tmp_path, pack):
+    labels = final_labels(pack)
+    item = next(
+        i for i in pack.items if i.split == "validation" and labels[i.item_id].diagnoses
+    )
+    label = labels[item.item_id]
+    bad = BlindLabel(
+        item.item_id,
+        item.input_hash,
+        (replace(label.diagnoses[0], service="load generator"),),
+        label.verdict,
+    )
+    configs_ = configs()
+    transports = calibration_transports(
+        pack, configs_, replacements={("zai", item.item_id): bad}
+    )
+    selection = run_calibration(
+        pack, configs=configs_, transports=transports, destination=tmp_path / "run"
+    )
+    assert sum(len(t.calls) for t in transports.values()) == 180
+    assert (tmp_path / "run/calibration.json").is_file()
+    invalid = [
+        entry
+        for path in sorted((tmp_path / "run").glob("zai-*.json"))
+        if (entry := json.loads(path.read_text()))["observation"]["error_code"]
+    ]
+    assert [e["item_id"] for e in invalid] == [item.item_id, item.item_id]
+    assert {e["observation"]["error_code"] for e in invalid} == {"JUDGE_OUTPUT_INVALID"}
+    assert {e["observation"]["result"]["status"] for e in invalid} == {"invalid"}
+    assert "JUDGE_OBSERVATION_FAILED" in selection.results["zai"].reasons

@@ -33,6 +33,7 @@ from opspilot.evaluation.gate import (
     run_gate,
     run_scope,
 )
+from opspilot.evaluation.identifiers import is_identifier, is_operation_name
 from opspilot.evaluation.model import (
     Answer,
     DeliveredRecord,
@@ -169,6 +170,9 @@ Return only one JSON object of exactly this shape, with exactly these key names:
 Every diagnosis has all nine keys. No other keys, no renamed keys, no markdown
 fences or text around the JSON, no private reasoning, credentials or
 self-certification.
+service and operation are bare names written as in expected_output (for example
+"cart" and "POST /cart"): service has no spaces, and neither holds a description,
+role or parenthetical; use null when the assertion names none.
 Citation convention: quote is the complete text of the field at location, copied
 verbatim; never quote a fragment. List causal assertions only, including hypotheses
 with factual_causal false; skip non-causal observations. When one field states
@@ -191,7 +195,7 @@ class JudgeConfig:
     response_model: str
     api_key: str = field(repr=False)
     prompt: str = PROMPT
-    adapter_version: str = "judge-adapters-5"
+    adapter_version: str = "judge-adapters-6"
     schema_version: str = "opspilot-judge-1"
     timeout_seconds: float = 900
     max_request_bytes: int = 8 * 1024 * 1024
@@ -210,7 +214,7 @@ def _check_config(config: JudgeConfig) -> None:
         )
         or any(c in config.api_key for c in "\r\n\x00")
         or config.prompt != PROMPT
-        or config.adapter_version != "judge-adapters-5"
+        or config.adapter_version != "judge-adapters-6"
         or config.schema_version != "opspilot-judge-1"
         or type(config.timeout_seconds) not in (float, int)
         or not 0 < config.timeout_seconds <= 900
@@ -877,7 +881,6 @@ def check_diagnoses(
 
 
 _USAGE_KEYS = ("prompt_tokens", "completion_tokens", "total_tokens")
-_FINISH_REASON = re.compile(r"[A-Za-z0-9._:/@-]{1,256}")
 
 
 def _observed(obj: Mapping[str, Any]) -> tuple[dict[str, int | None], str | None]:
@@ -898,7 +901,7 @@ def _observed(obj: Mapping[str, Any]) -> tuple[dict[str, int | None], str | None
         else None
     )
     # Provider text must stay a calibration-safe identifier; otherwise unknown.
-    if type(finish) is not str or _FINISH_REASON.fullmatch(finish) is None:
+    if not is_identifier(finish):
         finish = None
     return usage, finish
 
@@ -943,6 +946,16 @@ def _output(
     verdict = decode(bool, content["verdict"])
     for diagnosis in diagnoses:
         if diagnosis.linked_claim is not None and diagnosis.linked_claim < 0:
+            raise JudgeError("JUDGE_OUTPUT_INVALID")
+        # judge-adapters-6: the calibration metadata rule is an answer-level
+        # failure here, so one free-text answer cannot abort run_calibration.
+        if (
+            diagnosis.service is not None
+            and not is_identifier(diagnosis.service)
+            or diagnosis.operation is not None
+            and not is_operation_name(diagnosis.operation)
+            or not all(map(is_identifier, diagnosis.cited_evidence_ids))
+        ):
             raise JudgeError("JUDGE_OUTPUT_INVALID")
     return diagnoses, verdict, obj["model"]
 
