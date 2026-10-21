@@ -205,6 +205,18 @@ def test_http_error_status_is_not_retried(configs, status):
     assert len(wire.requests) == 1
 
 
+@pytest.mark.parametrize("status", [429, 500, 503])
+def test_http_error_body_cut_short_is_not_retried(configs, status):
+    """A known non-2xx status stays JUDGE_HTTP_ERROR even if its body breaks."""
+    broken = Pieces(
+        [b'{"error":'], then_raise=httpx2.RemoteProtocolError("peer closed")
+    )
+    wire = Sequence(sse(broken, status=status), good())
+    observation = run(configs, wire)
+    assert_failed(observation, "error", "JUDGE_HTTP_ERROR", attempts=1)
+    assert len(wire.requests) == 1
+
+
 def test_in_stream_error_event_is_not_retried(configs):
     body = data_event(answer_chunks()[0]) + data_event({"error": {"code": "x"}})
     wire = Sequence(sse(body), good())

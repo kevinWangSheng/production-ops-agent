@@ -582,11 +582,18 @@ class HTTPJudgeTransport:
                         if not 200 <= status < 300:
                             chunks: list[bytes] = []
                             size = 0
-                            async for chunk in response.aiter_bytes():
-                                size += len(chunk)
-                                if size > max_response_bytes:
-                                    raise JudgeError("JUDGE_RESPONSE_OVERSIZE")
-                                chunks.append(chunk)
+                            try:
+                                async for chunk in response.aiter_bytes():
+                                    size += len(chunk)
+                                    if size > max_response_bytes:
+                                        raise JudgeError("JUDGE_RESPONSE_OVERSIZE")
+                                    chunks.append(chunk)
+                            except httpx2.TimeoutException:
+                                raise
+                            except httpx2.HTTPError:
+                                # The status is already known: a broken error body
+                                # stays an HTTP error and is never retried (R1).
+                                pass
                             return JudgeHTTPResponse(status, tuple(chunks))
                         if not _is_event_stream(response.headers.get("content-type")):
                             raise JudgeError("JUDGE_OUTPUT_INVALID")
