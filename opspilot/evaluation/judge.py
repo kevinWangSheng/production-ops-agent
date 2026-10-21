@@ -173,7 +173,7 @@ class JudgeConfig:
     response_model: str
     api_key: str = field(repr=False)
     prompt: str = PROMPT
-    adapter_version: str = "judge-adapters-2"
+    adapter_version: str = "judge-adapters-4"
     schema_version: str = "opspilot-judge-1"
     timeout_seconds: float = 900
     max_request_bytes: int = 8 * 1024 * 1024
@@ -192,7 +192,7 @@ def _check_config(config: JudgeConfig) -> None:
         )
         or any(c in config.api_key for c in "\r\n\x00")
         or config.prompt != PROMPT
-        or config.adapter_version != "judge-adapters-2"
+        or config.adapter_version != "judge-adapters-4"
         or config.schema_version != "opspilot-judge-1"
         or type(config.timeout_seconds) not in (float, int)
         or not 0 < config.timeout_seconds <= 900
@@ -697,6 +697,24 @@ class JudgeObservation:
     balance_delta: float | None = None
     # judge-streaming S6; artifacts written before this field decode as None.
     finish_reason: str | None = field(default=None, metadata={"absent_ok": True})
+    # judge-adapters-4 (R3): transport attempts made; artifacts before it decode as 1.
+    attempts: int = field(default=1, metadata={"absent_ok": True})
+
+
+# judge-adapters-4 (2026-10-21 user decision): one retry, only after a transport
+# failure in which no complete response arrived (connection failed or stream
+# ended before [DONE]). Timeout, HTTP status, oversize and every check of an
+# assembled document are final on the first attempt.
+MAX_ATTEMPTS = 2
+
+
+def _observation_code(exc: JudgeError) -> str:
+    """Fixed observation code of a JudgeError; unknown codes are transport errors."""
+    return (
+        exc.code
+        if type(exc.code) is str and exc.code in OBSERVATION_ERROR_CODES
+        else "JUDGE_TRANSPORT_ERROR"
+    )
 
 
 def check_diagnoses(
@@ -828,6 +846,8 @@ def judge_once(
     model: str | None = None
     usage: Mapping[str, int | None] = dict.fromkeys(_USAGE_KEYS)
     finish_reason: str | None = None
+    attempts = 0
+    attempt_started = started
     try:
         _check_config(config)
         request = validated(JudgeInput, request)
@@ -837,18 +857,37 @@ def judge_once(
         body = _ADAPTERS[config.provider].build(config, safe_input(request))
         if len(body) > config.max_request_bytes:
             raise JudgeError("JUDGE_REQUEST_OVERSIZE")
-        response = transport.send(
-            endpoint=config.endpoint,
-            headers={
-                "Authorization": "Bearer " + config.api_key,
-                "Content-Type": "application/json",
-                "Accept": "text/event-stream",
-            },
-            body=body,
-            timeout_seconds=float(config.timeout_seconds),
-            max_response_bytes=config.max_response_bytes,
-        )
-        if time.monotonic() - started >= config.timeout_seconds:
+        headers = {
+            "Authorization": "Bearer " + config.api_key,
+            "Content-Type": "application/json",
+            "Accept": "text/event-stream",
+        }
+        while True:
+            attempts += 1
+            # R2: the 900 s cap applies per attempt; elapsed_seconds is the total.
+            attempt_started = time.monotonic()
+            try:
+                response = transport.send(
+                    endpoint=config.endpoint,
+                    headers=headers,
+                    body=body,
+                    timeout_seconds=float(config.timeout_seconds),
+                    max_response_bytes=config.max_response_bytes,
+                )
+            except (TimeoutError, StorageError):
+                raise
+            except JudgeError as exc:
+                retryable = _observation_code(exc) == "JUDGE_TRANSPORT_ERROR"
+                if not retryable or attempts >= MAX_ATTEMPTS:
+                    raise
+            except Exception:
+                # Connection/protocol failures (httpx RemoteProtocolError,
+                # ReadError, ConnectError, ...): JUDGE_TRANSPORT_ERROR below.
+                if attempts >= MAX_ATTEMPTS:
+                    raise
+            else:
+                break
+        if time.monotonic() - attempt_started >= config.timeout_seconds:
             raise TimeoutError
         if (
             type(response.status_code) is not int
@@ -858,7 +897,7 @@ def judge_once(
         chunks: list[bytes] = []
         size = 0
         for chunk in response.chunks:
-            if time.monotonic() - started >= config.timeout_seconds:
+            if time.monotonic() - attempt_started >= config.timeout_seconds:
                 raise TimeoutError
             if type(chunk) is not bytes:
                 raise JudgeError("JUDGE_OUTPUT_INVALID")
@@ -874,11 +913,7 @@ def judge_once(
     except TimeoutError:
         status, code = "timeout", "JUDGE_TIMEOUT"
     except JudgeError as exc:
-        code = (
-            exc.code
-            if type(exc.code) is str and exc.code in OBSERVATION_ERROR_CODES
-            else "JUDGE_TRANSPORT_ERROR"
-        )
+        code = _observation_code(exc)
         if code.endswith("OVERSIZE"):
             status = "oversize"
         elif code in (
@@ -910,6 +945,7 @@ def judge_once(
         max(0.0, time.monotonic() - started),
         config.provider,
         finish_reason=finish_reason,
+        attempts=max(1, attempts),
     )
 
 

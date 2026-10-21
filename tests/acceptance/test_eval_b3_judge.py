@@ -222,7 +222,9 @@ def assert_failed(observation, transport, status):
     assert observation.passed is False
     assert observation.valid is False
     assert observation.error_code in OBSERVATION_CODES
-    assert len(transport.calls) <= 1  # P9: zero retries
+    # P9 (2026-10-21): one retry, only after a transport failure.
+    retries = observation.error_code == "JUDGE_TRANSPORT_ERROR"
+    assert len(transport.calls) <= (2 if retries else 1)
 
 
 # ============================================================ 1. config file
@@ -1024,7 +1026,8 @@ def test_transport_errors_map_to_error_without_leaking(configs, verified, error)
         judge_input(), configs["zai"], respond=lambda _c: error, calibration=verified
     )
     assert_failed(observation, transport, "error")
-    assert len(transport.calls) == 1
+    assert len(transport.calls) == 2  # P9 (2026-10-21): one transport retry
+    assert observation.attempts == 2
     shown = repr(observation)
     assert ZAI_CANARY not in shown and "provider said" not in shown
 
@@ -1625,6 +1628,33 @@ def test_calibration_calls_once_per_debug_twice_per_validation_serially(
     assert probe.max_active == 1
 
 
+def test_calibration_accepts_an_observation_retried_after_transport_failure(
+    world, pack, configs, selected, tmp_path
+):
+    """P9 (2026-10-21): the one retry is recorded and passes strict verification."""
+    item = next(a.item.item_id for a in world.authored if a.item.split == "debug")
+    ts = transports(
+        world, zai={(item, 1): lambda _l, _p: JudgeError("JUDGE_TRANSPORT_ERROR")}
+    )
+    destination = tmp_path / "cal"
+    record = run_calibration(
+        pack, configs=configs, transports=ts, destination=destination
+    )
+    assert len(ts["zai"].calls) == 12 + 48 + 1
+    assert ts["zai"].per_item[item] == 2  # the retry answered from the label
+    _, baseline = selected
+    assert record.results == baseline.results
+    assert record.selected_provider == baseline.selected_provider == "zai"
+    attempts = [
+        json.loads((destination / f"zai-{n:03d}.json").read_bytes())["observation"].get(
+            "attempts"
+        )
+        for n in range(1, 61)
+    ]
+    assert attempts.count(2) == 1 and attempts.count(1) == 59
+    load_verified_calibration(destination, pack=pack, config=configs["zai"])
+
+
 def test_selected_record_and_artifact(selected, frozen, configs, pack):
     destination, record = selected
     _, pack_hash = frozen
@@ -2023,7 +2053,7 @@ def test_r3_transport_error_codes_are_whitelisted(configs, verified, factory, co
     )
     assert_failed(observation, transport, "error")
     assert observation.error_code == "JUDGE_TRANSPORT_ERROR"
-    assert len(transport.calls) == 1
+    assert len(transport.calls) == 2  # P9 (2026-10-21): one transport retry
     assert ZAI_CANARY not in repr(observation)
     assert "TOTALLY_FINE" not in repr(observation)
 

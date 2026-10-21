@@ -43,7 +43,7 @@
 - P6 judge 输入输出：输入报告全文、授权主体与时间、报告引用且已交付的证据内容/ID/hash、expected answer、证据规则结果；输出逐条诊断（定位/引文、是否事实型因果、服务/操作、引用、支持判定、理由）与二值 verdict；代码复核定位与引用并重算 AND；error/timeout/invalid/oversize/未校准均不通过。
 - P7 校准：两个独立全新上下文 Agent 盲标，分歧由用户裁决；每场景 2 份调试、4 份冻结验证（共 12+24）；24 份验证各判两次，≥46/48 与最终标签一致，且负例零误通过；不达标不记基线，修 judge 后换验证集。只服务开发基线，不关闭 SPEC 的 M0 formal calibration 入口项。
 - P8 证据特征：首版只认可见错误 span，评测侧 `answer.json` 存版本化 `any_of` 规则（精确 service/RPC operation、error=true、时间窗、min_matches=1）；容许故障服务 server span 或 checkout 上同一 RPC 的失败 client span；只靠 metrics 的报告不通过。
-- P9 judge 调用：每份报告一次、不自动重试或投票；单次 900 s、请求 8 MiB/响应 2 MiB、输出上限 65536（2026-10-20 用户裁决：P7 debug 推理耗尽输出上限）；judge 单独串行（P5 改判后不占 DeepSeek 并发）；费用分供应商、分阶段记录，校准费用另列。
+- P9 judge 调用：每份报告一次、不投票；仅传输失败（连接失败或流在 `[DONE]` 前结束，未收到完整响应）自动重试一次，超时、HTTP 错误与输出校验失败不重试（2026-10-21 用户裁决：本机网络流中断）；每次尝试 900 s、请求 8 MiB/响应 2 MiB、输出上限 65536（2026-10-20 用户裁决：P7 debug 推理耗尽输出上限）；judge 单独串行（P5 改判后不占 DeepSeek 并发）；费用分供应商、分阶段记录，校准费用另列。
 - P10 分母：setup 前登记 attempt；开始后的 setup/error/abort/unknown/replay_miss/judge_error/evidence_incomplete 都计失败，未开始的跳过单列；固定槽位，失败不重抽替换；基线完成 = 槽位执行完、校准合格、证据齐全，不是产品验收通过。
 - 可逆默认 R1–R6 与 P11–P13（场景与答案分文件隔离、版本化 eval summary/manifest/aggregate、多 trace `trace.entries[]` 与旧摘要只读兼容）见合同决定表。
 

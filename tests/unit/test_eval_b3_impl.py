@@ -357,11 +357,16 @@ def test_adapters_fresh_messages_no_retries_no_credentials_in_body(provider):
         (b"not-json", "invalid", "SCHEMA_INVALID"),
     ],
 )
-def test_call_failures_are_credential_free_and_zero_retry(response, status, code):
+def test_call_failures_are_credential_free_and_retry_only_transport(
+    response, status, code
+):
     observation, transport = invoke(response=response)
     assert observation.result.status == status and observation.error_code == code
     assert not observation.passed and not observation.valid
-    assert len(transport.calls) == 1 and SECRET not in repr(observation)
+    # judge-adapters-4: only a transport failure is retried, once.
+    expected = 2 if code == "JUDGE_TRANSPORT_ERROR" else 1
+    assert len(transport.calls) == expected and SECRET not in repr(observation)
+    assert observation.attempts == expected
 
 
 @pytest.mark.parametrize(
@@ -1191,7 +1196,8 @@ def test_review_p2_arbitrary_transport_code_cannot_leak_authentication():
     observation, transport = invoke(response=fail)
     assert observation.error_code == "JUDGE_TRANSPORT_ERROR"
     assert SECRET not in repr(observation)
-    assert observation.result.status == "error" and len(transport.calls) == 1
+    # An unknown code is a transport error, so it gets the one retry.
+    assert observation.result.status == "error" and len(transport.calls) == 2
 
 
 def test_review_p2_wrong_openai_model_cannot_certify_d16(tmp_path, pack):

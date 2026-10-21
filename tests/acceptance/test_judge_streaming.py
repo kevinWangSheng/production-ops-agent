@@ -566,15 +566,16 @@ def test_request_streams_with_provider_stream_options_and_accept(configs, provid
         assert "stream_options" not in body
 
 
-def test_adapter_version_is_judge_adapters_2(configs):
+def test_adapter_version_is_judge_adapters_4(configs):
+    """judge-adapters-4 (judge-streaming R4) supersedes -2; older values refused."""
     for config in configs.values():
-        assert config.adapter_version == "judge-adapters-2"
+        assert config.adapter_version == "judge-adapters-4"
         check_config(config)
-    stale = replace(configs["zai"], adapter_version="judge-adapters-1")
+    stale = replace(configs["zai"], adapter_version="judge-adapters-2")
     with pytest.raises(JudgeError, match="CONFIG_INVALID"):
         check_config(stale)
     wire = Wire(sse_body(answer_chunks()))
-    observation = run(configs, wire, adapter_version="judge-adapters-1")
+    observation = run(configs, wire, adapter_version="judge-adapters-2")
     assert observation.error_code == "CONFIG_INVALID"
     assert wire.requests == []
 

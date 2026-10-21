@@ -66,3 +66,17 @@ B 组：可逆默认（Agent 自定，一行理由）
 
 - 完成条件：S1–S6 裁决写入本记录 r1；独立验收作者按 r1 改两处 `stream is False` 并新增 SSE 组装合同测试（keep-alive 注释、跨块拆行、无 `[DONE]` 断开、流中 error、身份跨块不一致、推理超 2 MiB 但 content 小仍 ok、线上超 32 MiB oversize、失败时 usage/finish_reason 已记录）；`test_eval_b3_impl.py:496-540` MockTransport 用例改 SSE 正文；`eval_p7_support` 假 transport 不变。触碰 judge 传输属 ADR-0006 范围：PR 附一次有界真实 debug 调用（每家 1 次即可核实上面的未确认项）。
 - 下一步：lead 收集裁决 → 实现者开工（本预审者不实施）。
+
+## 传输失败重试一次（judge-adapters-4，2026-10-21）
+
+用户裁决（2026-10-21）：流式后本机网络对三家仍在 15–120 s 内断流（`JUDGE_TRANSPORT_ERROR`：httpx `RemoteProtocolError` "peer closed connection without sending complete message body"、`ReadError`、`ConnectError`）。改 B3 与 eval-suite P9 的零重试：**仅当该次尝试以 `JUDGE_TRANSPORT_ERROR` 失败（连接失败或流在 `[DONE]` 前结束，未收到完整响应）时重试一次**；`JUDGE_TIMEOUT`、`JUDGE_HTTP_ERROR`（含 429/流中 error）、oversize、`JUDGE_OUTPUT_INVALID`、`SCHEMA_INVALID`、身份码以及收到完整组装文档之后的任何失败都不重试。工作区 `chore/judge-retry-once`，`/Users/shenghuikevin/dev/AI/poa-judge-retry`（基线 `239e32d`）。
+
+| 编号 | 决定 | 理由 |
+|---|---|---|
+| R1 | 重试放在 `judge_once` 的 `transport.send` 周围（`MAX_ATTEMPTS = 2`），重发同一 `body` 与 `headers` 对象；判定按观察码：`send` 抛出的异常映射为 `JUDGE_TRANSPORT_ERROR`（非 Timeout/StorageError 的任意异常，或码为 `JUDGE_TRANSPORT_ERROR`/不在白名单的 `JudgeError`）才重试；`send` 返回之后（状态码、块计数、解析、校验）一律不重试 | 假 transport 测试可直接覆盖；规则与观察码同一口径，`HTTPJudgeTransport` 仍是单次请求、`retries=0` |
+| R2 | 900 s 上限按每次尝试计（transport deadline 与 `judge_once` 复核都从本次尝试开始），`elapsed_seconds` 记各次合计；最坏约 1800 s。`calibration_flow._counts` 的有效观察耗时上限相应改为 `timeout_seconds × attempts` | 第二次尝试若只剩首轮余量，长推理在断流后几乎必然超时，重试形同虚设 |
+| R3 | `JudgeObservation.attempts: int = 1`（`absent_ok`，旧工件按 1 解码），重试后为 2；usage、finish_reason、response_model 取最后一次尝试；送出前失败（CONFIG_INVALID 等）记 1；`_counts` 校验 `1 ≤ attempts ≤ 2` | 可观察重试是否发生，旧 P7/校准工件不失效 |
+| R4 | adapter_version `judge-adapters-2` → `judge-adapters-4`，`_check_config` 只认 `-4`，config_hash 随之变化 | 行为变化须体现在 hash；跳过 `-3`，因未合并的 `chore/judge-zai-effort` 已占用 `-3`，两支合并时需统一取值 |
+| R5 | 校准计数口径不变：每 debug 项一次判定、validation 两次，重试是同一判定的物理重发，不算新的重复 | 重试只补偿未收到的响应，不形成投票 |
+
+费用：重试最多使一次判定的 token 消耗翻倍（首轮断流前已产生的推理仍计费），按供应商余额差对账。
