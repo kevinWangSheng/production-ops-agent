@@ -45,6 +45,7 @@ from opspilot.evaluation.judge import (
     JudgeHTTPResponse,
     JudgeInput,
     load_judge_config,
+    report_fields_block,
 )
 from opspilot.tools.registry import canonical_hash
 
@@ -58,8 +59,8 @@ OPENAI_CANARY = "canary-openai-b3-judge-credential"
 DEEPSEEK_CANARY = "canary-deepseek-b3-judge-credential"
 CANARIES = (ZAI_CANARY, OPENAI_CANARY, DEEPSEEK_CANARY)
 
-SOL_MODEL = "gpt-6.1-sol"  # B3:20 - unverified Sol API name, supplied explicitly
-MODELS = {"zai": "glm-5.3", "openai": SOL_MODEL, "deepseek": "deepseek-flash"}
+SOL_MODEL = "gpt-5.6-luna"  # judge-adapters-5 OpenAI control (2026-10-21)
+MODELS = {"zai": "glm-5.3-flashx", "openai": SOL_MODEL, "deepseek": "deepseek-flash"}
 ENDPOINTS = {  # B3:20 fixed endpoints
     "zai": "https://api.z.ai/api/paas/v4/chat/completions",
     "openai": "https://api.openai.com/v1/chat/completions",
@@ -99,7 +100,7 @@ def env_pairs() -> list[tuple[str, str]]:
     return [
         (CREDENTIAL_NAMES["zai"], ZAI_CANARY),
         ("ZAI_BASE_URL", "https://api.z.ai/api/paas/v4"),
-        ("OPSPILOT_JUDGE_MODEL", "glm-5.3"),
+        ("OPSPILOT_JUDGE_MODEL", "glm-5.3-flashx"),
         (CREDENTIAL_NAMES["openai"], OPENAI_CANARY),
         ("OPENAI_BASE_URL", "https://api.openai.com/v1"),
         ("OPENAI_JUDGE_MODEL", SOL_MODEL),
@@ -184,7 +185,11 @@ def user_payload(body: bytes) -> dict[str, Any]:
     content = users[0]["content"]
     if isinstance(content, list):  # tolerate content parts
         content = "".join(part["text"] for part in content)
-    return json.loads(content)
+    # judge-adapters-5: the whitelist JSON is followed by a delimited block of
+    # the report fields keyed by location, derived only from report_raw.
+    sent, end = json.JSONDecoder().raw_decode(content)
+    assert content[end:] == report_fields_block(sent)
+    return sent
 
 
 def http(
@@ -253,7 +258,7 @@ def content(diagnoses, verdict, **extra) -> str:
 def completion(
     text: str,
     *,
-    model: str = "glm-5.3",
+    model: str = "glm-5.3-flashx",
     finish_reason: str = "stop",
     message: Mapping[str, Any] | None = None,
     choices: list[Any] | None = None,
@@ -278,7 +283,7 @@ def completion(
 USAGE = {"prompt_tokens": 11, "completion_tokens": 7, "total_tokens": 18}
 
 
-def ok_reply(diagnoses, verdict, *, model="glm-5.3", **kw):
+def ok_reply(diagnoses, verdict, *, model="glm-5.3-flashx", **kw):
     return lambda _call: http(
         completion(content(diagnoses, verdict), model=model, usage=USAGE, **kw)
     )

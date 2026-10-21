@@ -15,6 +15,7 @@ from tests.unit.test_eval_b3_impl import (
     invoke,
     make_input,
     r9_identity_artifact,
+    user_json,
 )
 
 
@@ -148,7 +149,7 @@ def test_judge_otel_content_keys_are_not_projection_identities(
     assert observation.error_code is None
     assert observation.result.calibrated is certified
     assert len(transport.calls) == 1
-    sent = json.loads(json.loads(transport.calls[0]["body"])["messages"][1]["content"])
+    sent = user_json(json.loads(transport.calls[0]["body"])["messages"][1]["content"])
     assert sent["cited_evidence"][0]["view"] == view
 
 
@@ -190,7 +191,7 @@ def test_judge_nondeclared_row_and_query_fields_are_content(container, field):
     assert observation.result.status == "ok"
     assert observation.error_code is None
     assert len(transport.calls) == 1
-    sent = json.loads(json.loads(transport.calls[0]["body"])["messages"][1]["content"])
+    sent = user_json(json.loads(transport.calls[0]["body"])["messages"][1]["content"])
     assert sent["cited_evidence"][0]["view"] == view
 
 

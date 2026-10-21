@@ -26,6 +26,7 @@ from opspilot.evaluation.codec import (
 )
 from opspilot.evaluation.judge import (
     _MODELS,
+    MAX_ATTEMPTS,
     OBSERVATION_ERROR_CODES,
     JudgeConfig,
     JudgeError,
@@ -67,7 +68,11 @@ COVERAGE = frozenset(
 _IDENTIFIER = re.compile(r"[A-Za-z0-9._:/@-]{1,256}")
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 _OPERATION = re.compile(r"[A-Za-z0-9._:/@(){}\[\]-]+(?: [A-Za-z0-9._:/@(){}\[\]-]+)*")
-_CANDIDATE_FRAGMENTS = frozenset(_normalize_slot(m) for m in _MODELS.values())
+# Current candidates plus the judge-adapters-4 ones (glm-5.3, gpt-6.1-sol): a
+# past candidate must not annotate either.
+_CANDIDATE_FRAGMENTS = frozenset(
+    _normalize_slot(m) for m in (*_MODELS.values(), "glm-5.3", "gpt-6.1-sol")
+)
 _FAMILY_ID = re.compile(r"[a-z0-9][a-z0-9._:-]*(?:/[a-z0-9][a-z0-9._:-]*)*")
 _PROVIDERS = frozenset({"zai", "openai", "deepseek"})
 _FILES = (
@@ -727,8 +732,12 @@ def _counts(
             or observation.provider != config.provider
             or observation.phase != "calibration"
             or observation.balance_delta is not None
+            or type(observation.attempts) is not int
+            or not 1 <= observation.attempts <= MAX_ATTEMPTS
             or observation.elapsed_seconds < 0
-            or observation.elapsed_seconds > config.timeout_seconds
+            # judge-adapters-4 R2: the timeout caps each attempt, not the total.
+            or observation.elapsed_seconds
+            > config.timeout_seconds * observation.attempts
             and observation.valid
         ):
             raise JudgeError("DERIVED_RESULT_MISMATCH")

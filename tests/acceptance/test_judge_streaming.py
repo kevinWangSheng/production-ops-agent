@@ -10,6 +10,7 @@ every socket connect and DNS lookup.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import time
 from dataclasses import replace
@@ -43,13 +44,21 @@ from judge_stream_support import (
 )
 
 from opspilot.evaluation.calibration_flow import CalibrationObservation
-from opspilot.evaluation.codec import decode, encode
+from opspilot.evaluation.codec import canonical_bytes, decode, encode
 from opspilot.evaluation.judge import (
+    _ADAPTERS,
+    PROMPT,
+    REPORT_FIELDS_FOOTER,
+    REPORT_FIELDS_HEADER,
     JudgeError,
     JudgeObservation,
     check_config,
     judge_once,
+    safe_input,
 )
+from opspilot.evaluation.model import JudgedDiagnosis
+from opspilot.evaluation.runs import _location_text
+from opspilot.investigation.reports import parse_report
 
 PROVIDERS = ("zai", "openai", "deepseek")
 IDENTITY_CODE = {  # B3:20/30 - GLM/DeepSeek identity = error, OpenAI = invalid
@@ -542,10 +551,10 @@ def test_consistent_but_wrong_model_uses_existing_identity_code(configs, provide
 def test_openai_dated_snapshot_consistent_across_chunks_is_ok(configs):
     events = answer_chunks("openai", openai_usage_tail=True)
     for event in events:
-        event["model"] = "gpt-6.1-sol-2026-09-30"
+        event["model"] = "gpt-5.6-luna-2026-09-30"
     observation = run(configs, Wire(sse_body(events)), "openai")
     assert_ok(observation)
-    assert observation.response_model == "gpt-6.1-sol-2026-09-30"
+    assert observation.response_model == "gpt-5.6-luna-2026-09-30"
 
 
 # ----------------------------------------------- S1 / S4 / S5 request side
@@ -564,17 +573,156 @@ def test_request_streams_with_provider_stream_options_and_accept(configs, provid
         assert body["stream_options"] == {"include_usage": True}
     else:
         assert "stream_options" not in body
+    # zai runs GLM-5.3 at reasoning_effort=high (user decision 2026-10-21).
+    if provider == "zai":
+        assert body["reasoning_effort"] == "high"
+    else:
+        assert "reasoning_effort" not in body
 
 
-def test_adapter_version_is_judge_adapters_2(configs):
+_DIAGNOSIS_TYPES = {
+    "location": "string",
+    "quote": "string",
+    "factual_causal": "boolean",
+    "service": ["string", "null"],
+    "operation": ["string", "null"],
+    "cited_evidence_ids": "array",
+    "linked_claim": ["integer", "null"],
+    "supported": "boolean",
+    "reason": "string",
+}
+
+
+@pytest.mark.parametrize("provider", PROVIDERS)
+def test_request_enforces_json_output_per_provider(configs, provider):
+    """judge-adapters-5: OpenAI strict json_schema, Z.ai json_object, DeepSeek none."""
+    wire = Wire(sse_body(answer_chunks(provider)))
+    assert_ok(run(configs, wire, provider))
+    (request,) = wire.requests
+    body = json.loads(request.content)
+    if provider == "deepseek":
+        assert "response_format" not in body
+        return
+    if provider == "zai":
+        assert body["response_format"] == {"type": "json_object"}
+        return
+    fmt = body["response_format"]
+    assert fmt["type"] == "json_schema"
+    assert fmt["json_schema"]["name"] == "opspilot_judge_1"
+    assert fmt["json_schema"]["strict"] is True
+    top = fmt["json_schema"]["schema"]
+    assert top["type"] == "object" and top["additionalProperties"] is False
+    assert (
+        set(top["required"])
+        == set(top["properties"])
+        == {
+            "schema",
+            "diagnoses",
+            "verdict",
+        }
+    )
+    assert top["properties"]["schema"]["enum"] == ["opspilot-judge-1"]
+    assert top["properties"]["verdict"] == {"type": "boolean"}
+    item = top["properties"]["diagnoses"]["items"]
+    fields = [f.name for f in dataclasses.fields(JudgedDiagnosis)]
+    assert item["additionalProperties"] is False
+    assert sorted(item["required"]) == sorted(item["properties"]) == sorted(fields)
+    assert {k: v["type"] for k, v in item["properties"].items()} == _DIAGNOSIS_TYPES
+    assert item["properties"]["cited_evidence_ids"]["items"] == {"type": "string"}
+
+
+def test_prompt_names_exact_output_keys_and_keeps_citation_convention():
+    convention = PROMPT[PROMPT.index("Citation convention:") :]
+    assert convention.startswith("Citation convention: quote is the complete text")
+    assert convention.endswith("within a field, by first mention.")
+    for key in ("schema", "diagnoses", "verdict", "opspilot-judge-1"):
+        assert f'"{key}"' in PROMPT
+    for field in dataclasses.fields(JudgedDiagnosis):
+        assert f'"{field.name}":' in PROMPT
+    assert "markdown" in PROMPT and "fences" in PROMPT
+    assert "keyed by exact location" in PROMPT
+
+
+def _quoted_payload(claims=None):
+    payload = dict(safe_input(judge_input()))
+    report = json.loads(payload["report_raw"])
+    report["summary"] = 'cart "EmptyCart" failed and caused checkout failures.'
+    base = report["claims"][0]
+    report["claims"] = claims or [
+        {**base, "text": 'cart "EmptyCart" failed and caused checkout failures.'},
+        {**base, "kind": "hypothesis", "text": 'checkout "PlaceOrder" may retry.'},
+    ]
+    report["gaps"] = ["Broader impact remains unmeasured.", 'Is "redis" involved?']
+    payload["report_raw"] = json.dumps(report)
+    return payload, report
+
+
+@pytest.mark.parametrize("provider", PROVIDERS)
+def test_user_message_appends_location_labelled_report_fields(configs, provider):
+    """judge-adapters-5: payload unchanged, then a block keyed by exact location."""
+    payload, report = _quoted_payload()
+    body = json.loads(_ADAPTERS[provider].build(configs[provider], payload))
+    content = body["messages"][1]["content"]
+    sent, end = json.JSONDecoder().raw_decode(content)
+    # The whitelist payload (and so every input hash) is byte-identical.
+    assert content[:end] == canonical_bytes(payload).decode("utf-8")
+    assert sent == payload
+    block = content[end:]
+    assert block.startswith(REPORT_FIELDS_HEADER)
+    assert block.endswith(REPORT_FIELDS_FOOTER)
+    fields = json.loads(block[len(REPORT_FIELDS_HEADER) : -len(REPORT_FIELDS_FOOTER)])
+    assert list(fields) == [
+        "summary",
+        "claims[0]",
+        "claims[1]",
+        "gaps[0]",
+        "gaps[1]",
+        "next_steps[0]",
+    ]
+    parsed = parse_report(payload["report_raw"], finish_reason="stop")[0]
+    for location, value in fields.items():
+        text, claim_index = _location_text(parsed, location)
+        if claim_index is None:
+            assert value == text
+        else:
+            assert value == {
+                "text": text,
+                "evidence_ids": report["claims"][claim_index]["evidence_ids"],
+            }
+    # Quotes are single-escaped JSON in the block, not the doubly escaped
+    # report_raw string form.
+    assert '\\\\\\"EmptyCart\\\\\\"' in content[:end]
+    assert '"summary": "cart \\"EmptyCart\\" failed' in block
+    assert "\\\\" not in block
+
+
+def test_report_fields_block_stays_under_request_limit(configs):
+    """A large realistic report (60 claims x 2 KiB) still fits 8 MiB with the block."""
+    payload, report = _quoted_payload()
+    base = report["claims"][0]
+    big = [{**base, "text": f'claim {i} "quoted" ' + "x" * 2048} for i in range(60)]
+    payload, _ = _quoted_payload(claims=big)
+    for provider in PROVIDERS:
+        body = _ADAPTERS[provider].build(configs[provider], payload)
+        assert len(body) < configs[provider].max_request_bytes // 8
+
+
+def test_adapter_version_is_judge_adapters_5(configs):
+    """judge-adapters-5 (enforced JSON output, cheaper candidates); older refused."""
     for config in configs.values():
-        assert config.adapter_version == "judge-adapters-2"
+        assert config.adapter_version == "judge-adapters-5"
         check_config(config)
-    stale = replace(configs["zai"], adapter_version="judge-adapters-1")
-    with pytest.raises(JudgeError, match="CONFIG_INVALID"):
-        check_config(stale)
+    for old in (
+        "judge-adapters-1",
+        "judge-adapters-2",
+        "judge-adapters-3",
+        "judge-adapters-4",
+    ):
+        stale = replace(configs["zai"], adapter_version=old)
+        with pytest.raises(JudgeError, match="CONFIG_INVALID"):
+            check_config(stale)
     wire = Wire(sse_body(answer_chunks()))
-    observation = run(configs, wire, adapter_version="judge-adapters-1")
+    observation = run(configs, wire, adapter_version="judge-adapters-2")
     assert observation.error_code == "CONFIG_INVALID"
     assert wire.requests == []
 
