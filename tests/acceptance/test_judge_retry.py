@@ -362,15 +362,16 @@ def test_pre_send_failure_reports_one_attempt_and_no_call(configs):
 # ------------------------------------------------------- R4: adapter version
 
 
-def test_adapter_version_is_judge_adapters_5(configs):
+def test_adapter_version_is_judge_adapters_6(configs):
     for config in configs.values():
-        assert config.adapter_version == "judge-adapters-5"
+        assert config.adapter_version == "judge-adapters-6"
         check_config(config)
     for stale in (
         "judge-adapters-1",
         "judge-adapters-2",
         "judge-adapters-3",
         "judge-adapters-4",
+        "judge-adapters-5",
     ):
         with pytest.raises(JudgeError, match="CONFIG_INVALID"):
             check_config(replace(configs["zai"], adapter_version=stale))
