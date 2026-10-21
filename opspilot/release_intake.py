@@ -32,7 +32,10 @@ RELEASE_ACTOR = "release-deployer"
 RELEASE_MAX_BODY_BYTES = 128 * 1024
 #: ``min_tracking_seconds`` frozen into every release registered through the
 #: webhook: the M the user chose on 2026-10-21 (F11 PR-3 r1). Authorization
-#: still requires a calibrated policy carrying the same M.
+#: still requires a calibrated policy carrying the same M: authorization
+#: refuses unless the policy's ``min_tracking_seconds`` equals the frozen row
+#: value (``release_commands`` policy match), so this constant must stay in
+#: sync with ``observation/policies/release-calibrations.json``.
 RELEASE_MIN_TRACKING_SECONDS = 1500
 
 _TARGET_FIELDS = (
