@@ -1,7 +1,7 @@
 """Independent acceptance tests for F11 PR-3 on PostgreSQL: release intake.
 
 Written from ``docs/tasks/2026-10-21-f11-pr3-contract.md`` without reading the
-implementation. Behaviour is driven through ``POST /intake/releases`` on an
+implementation. Behaviour is driven through ``POST /intake/version-changes`` on an
 app whose release store is a ``ReleaseStore`` connected as the real web role;
 SQL only reads the tables the contract names and builds race fixtures.
 

@@ -2,7 +2,7 @@
 
 Covers contract behaviours 2, 3, 5 and 10 and the "refused before storage"
 half of 1, 6 and 15 of ``docs/tasks/2026-10-21-f11-pr3-contract.md`` through
-the public ``POST /intake/releases`` route. Storage is a recorder that
+the public ``POST /intake/version-changes`` route. Storage is a recorder that
 answers like an unavailable database, so a refusal that must happen before
 any write is observable as ``calls == []`` and a request that reaches storage
 is observable as a 503. The PostgreSQL half lives in

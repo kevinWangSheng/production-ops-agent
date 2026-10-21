@@ -45,7 +45,7 @@ from tests.m1_web_support import (
     call,
 )
 
-ROUTE = "/intake/releases"
+ROUTE = "/intake/version-changes"
 RELEASE_ACTOR = "release-deployer"
 RELEASE_TOKEN = "release-deployer-token-for-tests-only"
 ALERT_ACTOR = "alertmanager"
@@ -174,11 +174,11 @@ def error_code(response: Any) -> str | None:
 def assert_route_exists(response: Any) -> None:
     """A red-on-main guard: the feature is missing, not the test broken."""
     assert response.status != 404, (
-        "POST /intake/releases is not routed (F11 PR-3 feature missing); "
+        "POST /intake/version-changes is not routed (F11 PR-3 feature missing); "
         f"got {response.status} {response.text[:200]!r}"
     )
     assert response.status != 405, (
-        "POST /intake/releases rejects POST (feature missing)"
+        "POST /intake/version-changes rejects POST (feature missing)"
     )
 
 
