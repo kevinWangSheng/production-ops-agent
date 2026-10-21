@@ -17,6 +17,8 @@ import re
 import shlex
 import subprocess
 import time
+import urllib.error
+import urllib.request
 from collections import Counter
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
@@ -65,6 +67,11 @@ SUMMARY = ROOT / "docs/evidence/f11-u2-calibration/summary.json"
 TARGET_KEYS = ("integration_id", "cluster_uid", "namespace", "resource_uid", "workload")
 AD_FLAG = "adFailure"  # Lead verified in live flagd-config/demo.flagd.json.
 CONTRACT = "docs/tasks/2026-10-13-f11-pr2-contract.md"
+# F11 PR-3 (P3-03): the release webhook the harness sends after a rollout.
+RELEASE_WEBHOOK_SOURCE = "kind-harness"
+RELEASE_WEBHOOK_URL = "http://127.0.0.1:8080/intake/releases"
+RELEASE_WEBHOOK_ATTEMPTS = 3
+RELEASE_WEBHOOK_TIMEOUT_SECONDS = 15
 
 
 def resolve_ledger_root(root: Path = ROOT) -> Path:
@@ -1558,6 +1565,178 @@ def register_release(
         targets.close()
 
 
+def release_webhook_payload(
+    release: dict[str, Any], registry: dict[str, Any], resource_uid: str
+) -> dict[str, Any]:
+    """The standard ``POST /intake/releases`` body for a watched rollout (D6).
+
+    Needs the after identity ``watch`` records (digests, ReplicaSet UID,
+    pod-template hash) besides the patch's Deployment generation; without
+    it nothing is sent. The event part is checked with the product
+    ``ReleaseEvent`` so a malformed ledger fails here, not at the server.
+    """
+    if "after_revision" not in release:
+        raise ValueError("RELEASE_IDENTITY_INCOMPLETE_RUN_WATCH_FIRST")
+    try:
+        for side in ("before", "after"):
+            expected = "sha256:" + sha256(
+                canonical_json(release[f"{side}_template"]).encode()
+            )
+            if release[f"{side}_revision"]["pod_template_digest"] != expected:
+                raise ValueError("RELEASE_TEMPLATE_DIGEST_MISMATCH")
+        event = dict(
+            format_version=1,
+            source=RELEASE_WEBHOOK_SOURCE,
+            source_release_id=release["release_id"],
+            released_at=utc(release["released_at"]).isoformat(),
+            before=release["before_revision"],
+            after=release["after_revision"],
+            auxiliary={
+                key: release[key]
+                for key in (
+                    "deployment_uid",
+                    "deployment_generation",
+                    "before_replicaset_uid",
+                    "after_replicaset_uid",
+                    "before_pod_template_hash",
+                    "after_pod_template_hash",
+                )
+            },
+        )
+    except KeyError:
+        raise ValueError("RELEASE_EVENT_IDENTITY_UNCONFIRMED") from None
+    ReleaseEvent.model_validate_json(canonical_json(event))
+    entry = registry.get(resource_uid)
+    if entry is None:
+        raise ValueError("TARGET_NOT_REGISTERED")
+    target = {
+        key: resource_uid if key == "resource_uid" else entry[key]
+        for key in TARGET_KEYS
+    }
+    return dict(event, target=target)
+
+
+def _webhook_retryable(status: int | None) -> bool:
+    # Only a storage failure (503) or no answer at all may be retried; any
+    # other refusal is final for this payload (contract r1).
+    return status is None or status == 503
+
+
+def send_release_webhook(
+    ledger: Path,
+    registry_path: Path,
+    resource_uid: str,
+    url: str,
+    token: str,
+    *,
+    attempts: int = RELEASE_WEBHOOK_ATTEMPTS,
+    timeout: float = RELEASE_WEBHOOK_TIMEOUT_SECONDS,
+    sleep: Callable[[float], None] = time.sleep,
+) -> dict[str, Any]:
+    """Send the watched release to the workbench over real HTTP (P3-03).
+
+    Records the exact request bytes and every response (status, bytes and
+    their sha256) under ``webhook/`` plus one timeline event per attempt;
+    the token is never written. Retries only 503 and network failures.
+    """
+    release = read_json(ledger / "release.json")
+    body = canonical_json(
+        release_webhook_payload(
+            release, load_target_identities(registry_path), resource_uid
+        )
+    ).encode()
+    request_sha256 = sha256(body)
+    directory = ledger / "webhook" / uuid4().hex
+    directory.mkdir(parents=True, exist_ok=False)
+    with (directory / "request.json").open("xb") as stream:
+        os.chmod(directory / "request.json", 0o600)
+        stream.write(body)
+    # No proxy: the bearer token goes to the workbench and nowhere else.
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    records: list[dict[str, Any]] = []
+    for number in range(1, attempts + 1):
+        request = urllib.request.Request(
+            url,
+            data=body,
+            method="POST",
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {token}",
+            },
+        )
+        before = utc_now()
+        status: int | None = None
+        raw = b""
+        error = None
+        try:
+            with opener.open(request, timeout=timeout) as response:
+                status = response.status
+                raw = response.read()
+        except urllib.error.HTTPError as exc:
+            status = exc.code
+            raw = exc.read()
+        except (urllib.error.URLError, TimeoutError, ConnectionError) as exc:
+            error = type(exc).__name__
+        after = utc_now()
+        record = dict(
+            attempt=number,
+            status=status,
+            error=error,
+            request_sha256=request_sha256,
+            response_sha256=sha256(raw) if status is not None else None,
+            response_bytes=len(raw),
+        )
+        if status is not None:
+            # The exact bytes, so response_sha256 can be checked from the file.
+            with (directory / f"response-{number}.body").open("xb") as stream:
+                stream.write(raw)
+        records.append(record)
+        append_event(
+            ledger / "timeline.jsonl",
+            dict(
+                kind="release_webhook",
+                at=before.isoformat(),
+                request_before=before.isoformat(),
+                request_after=after.isoformat(),
+                release_id=release["release_id"],
+                url=url,
+                **record,
+            ),
+        )
+        if not _webhook_retryable(status) or number == attempts:
+            break
+        sleep(2 ** (number - 1))
+    final = records[-1]
+    try:
+        answer = json.loads(raw) if final["status"] is not None else None
+    except ValueError:
+        answer = None
+    value = dict(
+        url=url,
+        actor=kind_lab.RELEASE_ACTOR,
+        source=RELEASE_WEBHOOK_SOURCE,
+        source_release_id=release["release_id"],
+        resource_uid=resource_uid,
+        request_path=str((directory / "request.json").relative_to(ledger)),
+        request_sha256=request_sha256,
+        status=final["status"],
+        response_sha256=final["response_sha256"],
+        response=answer,
+        attempts=records,
+    )
+    write_json(directory / "result.json", value, exclusive=True)
+    write_json(ledger / "webhook.json", value)
+    return value
+
+
+def release_deployer_token(path: Path | None = None) -> str:
+    """The lab's release-deployer bearer token; never created here."""
+    path = kind_lab.RELEASE_TOKEN_FILE if path is None else path
+    if not path.exists():
+        raise ValueError("RELEASE_TOKEN_MISSING_RUN_KIND_LAB_UP")
+    return kind_lab.webhook_token(path)
+
+
 def candidate_context(
     ledger: Path,
     registry_path: Path,
@@ -2222,6 +2401,7 @@ def parser() -> argparse.ArgumentParser:
         "release",
         "watch",
         "register",
+        "webhook",
         "context",
         "fault",
         "restore",
@@ -2239,6 +2419,14 @@ def parser() -> argparse.ArgumentParser:
             command.add_argument("--release-id", required=True)
         if name == "watch":
             command.add_argument("--seconds", type=positive, default=600)
+        if name == "webhook":
+            command.add_argument(
+                "--registry",
+                type=Path,
+                default=os.environ.get("OPSPILOT_TARGET_IDENTITIES"),
+            )
+            command.add_argument("--resource-uid", required=True)
+            command.add_argument("--url", default=RELEASE_WEBHOOK_URL)
         if name in ("register", "context"):
             command.add_argument(
                 "--registry",
@@ -2447,6 +2635,20 @@ def main(argv: list[str] | None = None) -> int:
                     )
                 print(json.dumps(receipt, indent=2))
                 if receipt["outcome"] == "rejected":
+                    return 2
+            elif args.command == "webhook":
+                if not args.registry:
+                    raise ValueError("REGISTRY_REQUIRED")
+                with local_guard("webhook", blocking=False):
+                    sent = send_release_webhook(
+                        ledger,
+                        args.registry,
+                        args.resource_uid,
+                        args.url,
+                        release_deployer_token(),
+                    )
+                print(json.dumps(sent, indent=2))
+                if sent["status"] not in (200, 201):
                     return 2
             elif args.command == "fault":
                 scheduled_fault(

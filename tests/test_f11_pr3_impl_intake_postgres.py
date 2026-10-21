@@ -284,3 +284,109 @@ def test_storage_failure_is_503_and_retry_replays(web_dsn):
     retry = _post(app, p)
     assert retry.status == 201
     assert _count(p["source_release_id"]) == (1, 1)
+
+
+def test_harness_sends_over_real_http(web_dsn, tmp_path):
+    """P3-03 end to end: the harness sender, a real uvicorn server, PG."""
+    import socket
+    import threading
+    import time
+
+    import uvicorn
+
+    from opspilot.observation.release_policy import canonical_json, sha256
+    from scripts import f11_u2_harness as harness
+
+    uid = "pr3-" + uuid4().hex
+    registry = _registry(uid)
+    app = _app(web_dsn, registry)
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+    server = uvicorn.Server(
+        uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning")
+    )
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
+    deadline = time.monotonic() + 10
+    while not server.started and time.monotonic() < deadline:
+        time.sleep(0.05)
+    before_template = {"spec": {"containers": [{"name": "checkout"}]}}
+    after_template = {"spec": {"containers": [{"name": "checkout", "env": []}]}}
+    release = dict(
+        release_id="pr3-" + uuid4().hex,
+        released_at=(datetime.now(timezone.utc) - timedelta(seconds=5)).isoformat(),
+        before_template=before_template,
+        after_template=after_template,
+        before_revision=dict(
+            images={"checkout": A},
+            pod_template_digest="sha256:"
+            + sha256(canonical_json(before_template).encode()),
+        ),
+        after_revision=dict(
+            images={"checkout": B},
+            pod_template_digest="sha256:"
+            + sha256(canonical_json(after_template).encode()),
+        ),
+        deployment_uid="d",
+        deployment_generation=2,
+        before_replicaset_uid="rs1",
+        after_replicaset_uid="rs2",
+        before_pod_template_hash="h1",
+        after_pod_template_hash="h2",
+    )
+    run = tmp_path / "run"
+    run.mkdir()
+    (run / "release.json").write_text(json.dumps(release))
+    registry_path = tmp_path / "registry.json"
+    registry_path.write_text(json.dumps(registry))
+    url = f"http://127.0.0.1:{port}/intake/releases"
+    try:
+        first = harness.send_release_webhook(
+            run, registry_path, uid, url, RELEASE_TOKEN
+        )
+        again = harness.send_release_webhook(
+            run, registry_path, uid, url, RELEASE_TOKEN
+        )
+    finally:
+        server.should_exit = True
+        thread.join(timeout=10)
+    assert (first["status"], first["response"]["outcome"]) == (201, "created")
+    assert (again["status"], again["response"]["outcome"]) == (200, "replayed")
+    events = ReleaseStore(DSN).release_events(first["response"]["observation_id"])
+    assert [e.raw_sha256 for e in events] == [first["request_sha256"]] * 2
+    assert {e.actor for e in events} == {"release-deployer"}
+
+
+def test_registered_release_authorization_is_uncalibrated(web_dsn):
+    """P3-02: the webhook only registers; authorization with the empty
+    catalog is refused and leaves the release pending without a session."""
+    from uuid import UUID
+
+    from opspilot.persistence import PersistenceError
+
+    uid = "pr3-" + uuid4().hex
+    registry = _registry(uid)
+    app = _app(web_dsn, registry)
+    created = json.loads(_post(app, _payload(uid, registry)).body)
+    observation_id = UUID(created["observation_id"])
+    store = ReleaseStore(web_dsn)
+    try:
+        outcome = store.authorize_release(
+            observation_id,
+            actor="operator",
+            expected_control_generation=0,
+            idempotency_key="pr3-" + uuid4().hex,
+            calibrated_policy_revision="none@000000000000",
+        )
+        refusal = getattr(outcome, "reason", None) or getattr(outcome, "code", None)
+    except PersistenceError as exc:
+        refusal = str(exc)
+    assert refusal == "RELEASE_POLICY_UNCALIBRATED"
+    assert store.get_release(observation_id).status == "pending"
+    with psycopg.connect(DSN) as conn:
+        sessions = conn.execute(
+            "SELECT count(*) FROM opspilot_observation_sessions WHERE subject_id=%s",
+            (observation_id,),
+        ).fetchone()[0]
+    assert sessions == 0
