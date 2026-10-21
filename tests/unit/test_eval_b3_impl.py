@@ -72,15 +72,15 @@ def configs():
         "zai": JudgeConfig(
             "zai",
             "https://api.z.ai/api/paas/v4/chat/completions",
-            "glm-5.3",
-            "glm-5.3",
+            "glm-5.3-flashx",
+            "glm-5.3-flashx",
             SECRET,
         ),
         "openai": JudgeConfig(
             "openai",
             "https://api.openai.com/v1/chat/completions",
-            "gpt-6.1-sol",
-            "gpt-6.1-sol",
+            "gpt-5.6-luna",
+            "gpt-5.6-luna",
             SECRET,
         ),
         "deepseek": JudgeConfig(
@@ -519,7 +519,7 @@ def test_http_transport_mock_redirect_size_and_total_deadline():
     sse_events = [
         {
             "id": "c1",
-            "model": "glm-5.3",
+            "model": "glm-5.3-flashx",
             "choices": [
                 {
                     "index": 0,
@@ -530,7 +530,7 @@ def test_http_transport_mock_redirect_size_and_total_deadline():
         },
         {
             "id": "c1",
-            "model": "glm-5.3",
+            "model": "glm-5.3-flashx",
             "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
         },
     ]
@@ -1042,7 +1042,17 @@ def test_annotation_bytes_only_depend_on_annotation_set(tmp_path, pack):
     assert load_label_pack(second, expected_pack_hash=pack_hash) == swapped
 
 
-@pytest.mark.parametrize("model", ["glm-5.3", "deepseek-flash", "GLM-5.3"])
+@pytest.mark.parametrize(
+    "model",
+    [
+        "glm-5.3",
+        "deepseek-flash",
+        "GLM-5.3",
+        "glm-5.3-flashx",
+        "gpt-5.6-luna",
+        "gpt-6.1-sol",
+    ],
+)
 def test_fixed_candidate_annotator_rejected_during_freeze(tmp_path, pack, model):
     bad = replace(
         pack,
@@ -1248,12 +1258,12 @@ def test_review_p2_summary_cache_cannot_detach_from_error_artifacts(tmp_path, pa
 @pytest.mark.parametrize(
     "model,valid",
     [
-        ("gpt-6.1-sol", True),
-        ("gpt-6.1-sol-2026-10-14", True),
-        ("gpt-6.1-sol-2026-99-99", False),
-        ("gpt-6.1-sol-preview", False),
+        ("gpt-5.6-luna", True),
+        ("gpt-5.6-luna-2026-10-14", True),
+        ("gpt-5.6-luna-2026-99-99", False),
+        ("gpt-5.6-luna-preview", False),
         ("gpt-4o-mini", False),
-        ("gpt-6.1-sol-2026-10-14-extra", False),
+        ("gpt-5.6-luna-2026-10-14-extra", False),
     ],
 )
 def test_openai_response_identity_exact_or_calendar_snapshot(model, valid):
@@ -1782,6 +1792,8 @@ def test_pr232_round5_annotator_dedup_uses_casefold(pack):
         ("prefixGPT61SOLsuffix", "CALIBRATION_UNRESOLVED"),
         ("DeepSeek/Flash@revision", "CALIBRATION_UNRESOLVED"),
         ("other-deepseekflash-evaluator", "CALIBRATION_UNRESOLVED"),
+        ("openai/gpt-5.6-luna", "CALIBRATION_UNRESOLVED"),
+        ("Z.ai-GLM-5.3-FlashX", "CALIBRATION_UNRESOLVED"),
     ],
 )
 def test_pr232_round5_decorated_candidate_models_cannot_annotate(

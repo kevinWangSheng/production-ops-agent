@@ -234,7 +234,10 @@ def test_zai_config_loads_fixed_identity_from_private_file(tmp_path):
     config = load(write_env(tmp_path, env_text()))
     assert config.provider == "zai"
     assert config.endpoint == ENDPOINTS["zai"]
-    assert (config.request_model, config.response_model) == ("glm-5.3", "glm-5.3")
+    assert (config.request_model, config.response_model) == (
+        "glm-5.3-flashx",
+        "glm-5.3-flashx",
+    )
     assert config.api_key == ZAI_CANARY
     assert config.timeout_seconds == 900
     assert config.max_request_bytes == MAX_REQUEST
@@ -476,7 +479,7 @@ def test_request_body_is_the_p6_whitelist_only(configs):
     auth = {k.lower(): v for k, v in call.headers.items()}["authorization"]
     assert auth == f"Bearer {ZAI_CANARY}"
     body = payload(call.body)
-    assert body["model"] == "glm-5.3"
+    assert body["model"] == "glm-5.3-flashx"
     assert body["stream"] is True
     assert "stream_options" not in body
     assert body["max_tokens"] == 65536
@@ -725,7 +728,7 @@ def test_valid_uncalibrated_observation_cannot_pass(configs):
     assert observation.result.verdict is True
     assert observation.result.config_hash == judge_config_hash(configs["zai"])
     assert observation.passed is False
-    assert observation.response_model == "glm-5.3"
+    assert observation.response_model == "glm-5.3-flashx"
     assert observation.elapsed_seconds >= 0
     assert observation.provider == "zai"
     assert observation.phase == "evaluation"  # r2 item 7
@@ -924,7 +927,12 @@ def test_output_schema_is_strict(configs, verified, name):
 GOOD = content((diagnosis(),), True)
 ENVELOPE_CASES = {
     "model_mismatch": (lambda: completion(GOOD, model="glm-5.2"), 200, {"error"}),
-    "model_suffix": (lambda: completion(GOOD, model="glm-5.3-0901"), 200, {"error"}),
+    "model_previous": (lambda: completion(GOOD, model="glm-5.3"), 200, {"error"}),
+    "model_suffix": (
+        lambda: completion(GOOD, model="glm-5.3-flashx-0901"),
+        200,
+        {"error"},
+    ),
     "finish_length": (
         lambda: completion(GOOD, finish_reason="length"),
         200,
@@ -1500,7 +1508,9 @@ def test_invalid_pack_rejected_before_any_call(tmp_path, configs, world, name):
     )
 
 
-@pytest.mark.parametrize("model", ["glm-5.3", "deepseek-flash"])
+@pytest.mark.parametrize(
+    "model", ["glm-5.3", "deepseek-flash", "glm-5.3-flashx", "gpt-5.6-luna"]
+)
 def test_candidate_judge_cannot_be_annotator(tmp_path, configs, world, model):
     def build():
         return LabelPack(
@@ -2067,13 +2077,14 @@ def test_r3_transport_error_codes_are_whitelisted(configs, verified, factory, co
     [
         "gpt-6.1-astra",
         "gpt-6.1",
-        "gpt-6.1-sol-2026-09-30",
-        "GPT-6.1-SOL",
-        "gpt-6.1-sol-preview",
+        "gpt-6.1-sol",
+        "gpt-5.6-luna-2026-09-30",
+        "GPT-5.6-LUNA",
+        "gpt-5.6-luna-preview",
     ],
 )
 def test_r3_openai_config_identity_is_fixed(tmp_path, name, value):
-    """r3 item 4: config request/response identity is exactly gpt-6.1-sol."""
+    """r3 item 4: config request/response identity is exactly gpt-5.6-luna."""
     path = write_env(tmp_path, env_text(override={name: value}))
     config_error(path, {"JUDGE_IDENTITY_MISMATCH"}, provider="openai")
 
@@ -2082,22 +2093,23 @@ def test_r3_openai_dated_snapshot_response_accepted(configs):
     observation, _ = call_once(
         judge_input(),
         configs["openai"],
-        respond=ok_reply((diagnosis(),), True, model="gpt-6.1-sol-2026-09-30"),
+        respond=ok_reply((diagnosis(),), True, model="gpt-5.6-luna-2026-09-30"),
     )
     assert observation.valid is True
-    assert observation.response_model == "gpt-6.1-sol-2026-09-30"
+    assert observation.response_model == "gpt-5.6-luna-2026-09-30"
 
 
 @pytest.mark.parametrize(
     "model",
     [
         "gpt-6.1-astra",
-        "gpt-6.1-sol-preview",
-        "gpt-6.1-sol-20260930",
-        "gpt-6.1-sol-2026-02-30",  # impossible date
-        "gpt-6.1-sol-2026-13-01",
-        "gpt-6.1-sol-2026-09-30-x",
-        "GPT-6.1-SOL",
+        "gpt-5.6-luna-preview",
+        "gpt-5.6-luna-20260930",
+        "gpt-5.6-luna-2026-02-30",  # impossible date
+        "gpt-5.6-luna-2026-13-01",
+        "gpt-5.6-luna-2026-09-30-x",
+        "GPT-5.6-LUNA",
+        "gpt-6.1-sol",
         "glm-5.3",
     ],
 )

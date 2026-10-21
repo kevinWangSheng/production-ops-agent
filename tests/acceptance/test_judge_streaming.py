@@ -10,6 +10,7 @@ every socket connect and DNS lookup.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import time
 from dataclasses import replace
@@ -45,11 +46,13 @@ from judge_stream_support import (
 from opspilot.evaluation.calibration_flow import CalibrationObservation
 from opspilot.evaluation.codec import decode, encode
 from opspilot.evaluation.judge import (
+    PROMPT,
     JudgeError,
     JudgeObservation,
     check_config,
     judge_once,
 )
+from opspilot.evaluation.model import JudgedDiagnosis
 
 PROVIDERS = ("zai", "openai", "deepseek")
 IDENTITY_CODE = {  # B3:20/30 - GLM/DeepSeek identity = error, OpenAI = invalid
@@ -542,10 +545,10 @@ def test_consistent_but_wrong_model_uses_existing_identity_code(configs, provide
 def test_openai_dated_snapshot_consistent_across_chunks_is_ok(configs):
     events = answer_chunks("openai", openai_usage_tail=True)
     for event in events:
-        event["model"] = "gpt-6.1-sol-2026-09-30"
+        event["model"] = "gpt-5.6-luna-2026-09-30"
     observation = run(configs, Wire(sse_body(events)), "openai")
     assert_ok(observation)
-    assert observation.response_model == "gpt-6.1-sol-2026-09-30"
+    assert observation.response_model == "gpt-5.6-luna-2026-09-30"
 
 
 # ----------------------------------------------- S1 / S4 / S5 request side
@@ -571,12 +574,79 @@ def test_request_streams_with_provider_stream_options_and_accept(configs, provid
         assert "reasoning_effort" not in body
 
 
-def test_adapter_version_is_judge_adapters_4(configs):
-    """judge-adapters-4 (streaming retry R4 + zai reasoning_effort high); older refused."""
+_DIAGNOSIS_TYPES = {
+    "location": "string",
+    "quote": "string",
+    "factual_causal": "boolean",
+    "service": ["string", "null"],
+    "operation": ["string", "null"],
+    "cited_evidence_ids": "array",
+    "linked_claim": ["integer", "null"],
+    "supported": "boolean",
+    "reason": "string",
+}
+
+
+@pytest.mark.parametrize("provider", PROVIDERS)
+def test_request_enforces_json_output_per_provider(configs, provider):
+    """judge-adapters-5: OpenAI strict json_schema, Z.ai json_object, DeepSeek none."""
+    wire = Wire(sse_body(answer_chunks(provider)))
+    assert_ok(run(configs, wire, provider))
+    (request,) = wire.requests
+    body = json.loads(request.content)
+    if provider == "deepseek":
+        assert "response_format" not in body
+        return
+    if provider == "zai":
+        assert body["response_format"] == {"type": "json_object"}
+        return
+    fmt = body["response_format"]
+    assert fmt["type"] == "json_schema"
+    assert fmt["json_schema"]["name"] == "opspilot_judge_1"
+    assert fmt["json_schema"]["strict"] is True
+    top = fmt["json_schema"]["schema"]
+    assert top["type"] == "object" and top["additionalProperties"] is False
+    assert (
+        set(top["required"])
+        == set(top["properties"])
+        == {
+            "schema",
+            "diagnoses",
+            "verdict",
+        }
+    )
+    assert top["properties"]["schema"]["enum"] == ["opspilot-judge-1"]
+    assert top["properties"]["verdict"] == {"type": "boolean"}
+    item = top["properties"]["diagnoses"]["items"]
+    fields = [f.name for f in dataclasses.fields(JudgedDiagnosis)]
+    assert item["additionalProperties"] is False
+    assert sorted(item["required"]) == sorted(item["properties"]) == sorted(fields)
+    assert {k: v["type"] for k, v in item["properties"].items()} == _DIAGNOSIS_TYPES
+    assert item["properties"]["cited_evidence_ids"]["items"] == {"type": "string"}
+
+
+def test_prompt_names_exact_output_keys_and_keeps_citation_convention():
+    convention = PROMPT[PROMPT.index("Citation convention:") :]
+    assert convention.startswith("Citation convention: quote is the complete text")
+    assert convention.endswith("within a field, by first mention.")
+    for key in ("schema", "diagnoses", "verdict", "opspilot-judge-1"):
+        assert f'"{key}"' in PROMPT
+    for field in dataclasses.fields(JudgedDiagnosis):
+        assert f'"{field.name}":' in PROMPT
+    assert "markdown" in PROMPT and "fences" in PROMPT
+
+
+def test_adapter_version_is_judge_adapters_5(configs):
+    """judge-adapters-5 (enforced JSON output, cheaper candidates); older refused."""
     for config in configs.values():
-        assert config.adapter_version == "judge-adapters-4"
+        assert config.adapter_version == "judge-adapters-5"
         check_config(config)
-    for old in ("judge-adapters-1", "judge-adapters-2", "judge-adapters-3"):
+    for old in (
+        "judge-adapters-1",
+        "judge-adapters-2",
+        "judge-adapters-3",
+        "judge-adapters-4",
+    ):
         stale = replace(configs["zai"], adapter_version=old)
         with pytest.raises(JudgeError, match="CONFIG_INVALID"):
             check_config(stale)
