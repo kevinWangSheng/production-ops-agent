@@ -74,6 +74,19 @@ r1 只定方向。其余实现者需要猜的语义点，按 AGENTS.md「合同�
 - 锁：发布采样 release→session；授权/控制 scope→release→session；恢复采样保持 incident-first。
 - 拆为 PR-2a（存储、判定、守卫、重放）与 PR-2b（Prometheus 多序列读取、Observer 接线）。
 
+## PR-3 合同（r1）
+
+预审与完整决定表：[F11 PR-3 合同](2026-10-21-f11-pr3-contract.md)（Codex gpt-6-astra 起、gpt-6.1-sol 续，只读，基于 `91a011c`）。全部按推荐采纳（用户 2026-10-17 常设指示「决策先按推荐走」）；M 值用户 2026-10-21 选 1500。
+
+- U4 专用 `release-deployer` actor，沿用 `OPSPILOT_EVENT_TOKENS`；其他 actor → 403 `RELEASE_ACTOR_REQUIRED`。
+- U6 在 `OPSPILOT_TARGET_IDENTITIES` 中恰好命中一个；缺失、多义、不符 → 422，不建主体、不发查询。
+- U5 harness 发布完成后取基线，以 actor 证据区分实验写入；再核对产品路径未写 CI／门禁／rollout／流量策略。
+- P3-01 载荷必须有非空 `source_release_id` 与带时区 `released_at`，不推导、不以接收时间替代。
+- P3-02 webhook 只登记不授权；授权沿用 PR-2 原语，清单为空时照实记录 `RELEASE_POLICY_UNCALIBRATED`。
+- P3-03 harness 经真实 HTTP `POST /intake/releases` 发送，记录请求／响应哈希与状态。
+- D1–D6 可逆默认：业务字段 `extra=forbid`、未知字段只进脱敏限长审计；raw／semantic 双哈希；HTTP 错误映射见合同；独立 128 KiB body 上限；解析器独立模块；`publish()` 拿到 after 身份后才发送。
+- 一个请求一个发布事件；harness 仅对 503／网络失败重试。
+
 ## 执行进展与证据
 
 - 2026-10-12 建 worktree、任务记录、SPEC 草案、issue；派发 Codex 合同预审。
