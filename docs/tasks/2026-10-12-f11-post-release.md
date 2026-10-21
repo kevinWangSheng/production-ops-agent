@@ -83,9 +83,11 @@ r1 只定方向。其余实现者需要猜的语义点，按 AGENTS.md「合同�
 - U5 harness 发布完成后取基线，以 actor 证据区分实验写入；再核对产品路径未写 CI／门禁／rollout／流量策略。
 - P3-01 载荷必须有非空 `source_release_id` 与带时区 `released_at`，不推导、不以接收时间替代。
 - P3-02 webhook 只登记不授权；授权沿用 PR-2 原语，清单为空时照实记录 `RELEASE_POLICY_UNCALIBRATED`。
-- P3-03 harness 经真实 HTTP `POST /intake/releases` 发送，记录请求／响应哈希与状态。
+- P3-03 harness 经真实 HTTP `POST /intake/version-changes` 发送（路径见 r3），记录请求／响应哈希与状态。
 - D1–D6 可逆默认：业务字段 `extra=forbid`、未知字段只进脱敏限长审计；raw／semantic 双哈希；HTTP 错误映射见合同；独立 128 KiB body 上限；解析器独立模块；`publish()` 拿到 after 身份后才发送。
 - 一个请求一个发布事件；harness 仅对 503／网络失败重试。
+- r2（lead，2026-10-21，测试作者歧义 A3）：`resource_uid` 必填（缺失 400）；uid 未登记 → `TARGET_UNRESOLVED`；uid 命中 A 而 (cluster_uid, namespace, workload) 等于另一条 B → `TARGET_AMBIGUOUS`；uid 命中但五字段有差异 → `TARGET_MISMATCH`。M 取常量 1500，须与校准清单一致（authorize 要求相等，`release_commands.py:645`）；嵌套未知键 400，顶层未知键只入脱敏审计；空白 `source_release_id` 与 UTC 归一化溢出的 `released_at` → 400（独立审查 P2）；harness 不跟随重定向。
+- r3（lead，2026-10-21，`make check` 发现）：F7 验收 `MUTATION_WORDS` 禁止路由路径含 release/deploy/rollout/target，路由改名为 `POST /intake/version-changes`，F7 路由清单由独立测试作者按「新路由须分类」流程登记；不改 F7 断言。
 
 ## 执行进展与证据
 
