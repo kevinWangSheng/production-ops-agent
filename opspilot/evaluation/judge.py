@@ -173,7 +173,7 @@ class JudgeConfig:
     response_model: str
     api_key: str = field(repr=False)
     prompt: str = PROMPT
-    adapter_version: str = "judge-adapters-2"
+    adapter_version: str = "judge-adapters-3"
     schema_version: str = "opspilot-judge-1"
     timeout_seconds: float = 900
     max_request_bytes: int = 8 * 1024 * 1024
@@ -192,7 +192,7 @@ def _check_config(config: JudgeConfig) -> None:
         )
         or any(c in config.api_key for c in "\r\n\x00")
         or config.prompt != PROMPT
-        or config.adapter_version != "judge-adapters-2"
+        or config.adapter_version != "judge-adapters-3"
         or config.schema_version != "opspilot-judge-1"
         or type(config.timeout_seconds) not in (float, int)
         or not 0 < config.timeout_seconds <= 900
@@ -641,6 +641,9 @@ class ZaiAdapter:
     token_parameter = "max_tokens"
     # Z.ai documents no stream_options; usage already rides on the final chunk.
     stream_options: Mapping[str, Any] = {}
+    # GLM-5.3 defaults to reasoning_effort=max (~45K reasoning tokens, near the
+    # 900 s cap); P7 calibrates it at "high" (user decision 2026-10-21).
+    reasoning: Mapping[str, Any] = {"reasoning_effort": "high"}
 
     def build(self, config: JudgeConfig, payload: Mapping[str, Any]) -> bytes:
         _check_config(config)
@@ -659,6 +662,7 @@ class ZaiAdapter:
                 ],
                 "stream": True,
                 **self.stream_options,
+                **self.reasoning,
                 self.token_parameter: config.max_output_tokens,
             }
         )
@@ -668,11 +672,13 @@ class OpenAIAdapter(ZaiAdapter):
     provider: Provider = "openai"
     token_parameter = "max_completion_tokens"
     stream_options: Mapping[str, Any] = {"stream_options": {"include_usage": True}}
+    reasoning: Mapping[str, Any] = {}
 
 
 class DeepSeekAdapter(ZaiAdapter):
     provider: Provider = "deepseek"
     stream_options: Mapping[str, Any] = {"stream_options": {"include_usage": True}}
+    reasoning: Mapping[str, Any] = {}
 
 
 _ADAPTERS = {

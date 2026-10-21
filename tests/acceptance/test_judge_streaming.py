@@ -564,15 +564,21 @@ def test_request_streams_with_provider_stream_options_and_accept(configs, provid
         assert body["stream_options"] == {"include_usage": True}
     else:
         assert "stream_options" not in body
+    # zai runs GLM-5.3 at reasoning_effort=high (user decision 2026-10-21).
+    if provider == "zai":
+        assert body["reasoning_effort"] == "high"
+    else:
+        assert "reasoning_effort" not in body
 
 
-def test_adapter_version_is_judge_adapters_2(configs):
+def test_adapter_version_is_judge_adapters_3(configs):
     for config in configs.values():
-        assert config.adapter_version == "judge-adapters-2"
+        assert config.adapter_version == "judge-adapters-3"
         check_config(config)
-    stale = replace(configs["zai"], adapter_version="judge-adapters-1")
-    with pytest.raises(JudgeError, match="CONFIG_INVALID"):
-        check_config(stale)
+    for old in ("judge-adapters-1", "judge-adapters-2"):
+        stale = replace(configs["zai"], adapter_version=old)
+        with pytest.raises(JudgeError, match="CONFIG_INVALID"):
+            check_config(stale)
     wire = Wire(sse_body(answer_chunks()))
     observation = run(configs, wire, adapter_version="judge-adapters-1")
     assert observation.error_code == "CONFIG_INVALID"

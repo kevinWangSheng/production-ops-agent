@@ -13,7 +13,7 @@ judge_once(request: JudgeInput, *, config: JudgeConfig,
            calibration: VerifiedCalibration | None, transport: JudgeTransport) -> JudgeObservation
 ```
 
-`JudgeConfig` 为 frozen dataclass：provider（zai/openai/deepseek）、endpoint（完整 chat/completions URL）、request_model、response_model、api_key（repr隐藏）、prompt、adapter_version（`judge-adapters-2`）、schema_version、timeout_seconds=900、max_request_bytes=8388608、max_response_bytes=2097152（流式下指组装后 completion 文档字节；线上 SSE 字节另有固定 32 MiB、单事件 1 MiB（只计 data 字节）上限，keep-alive 注释计入线上字节，超出同为 oversize；[judge 流式](2026-10-20-judge-streaming.md) S2）、max_output_tokens=65536（2026-10-20 用户裁决：P7 debug 推理耗尽输出上限）。参数不能扩大上限；hash 为上述全部非密钥字段的 canonical JSON SHA256，密钥只走认证头。config 的 repr 不显示密钥。
+`JudgeConfig` 为 frozen dataclass：provider（zai/openai/deepseek）、endpoint（完整 chat/completions URL）、request_model、response_model、api_key（repr隐藏）、prompt、adapter_version（`judge-adapters-3`）、schema_version、timeout_seconds=900、max_request_bytes=8388608、max_response_bytes=2097152（流式下指组装后 completion 文档字节；线上 SSE 字节另有固定 32 MiB、单事件 1 MiB（只计 data 字节）上限，keep-alive 注释计入线上字节，超出同为 oversize；[judge 流式](2026-10-20-judge-streaming.md) S2）、max_output_tokens=65536（2026-10-20 用户裁决：P7 debug 推理耗尽输出上限）。参数不能扩大上限；hash 为上述全部非密钥字段的 canonical JSON SHA256，密钥只走认证头。config 的 repr 不显示密钥。
 
 只接受 `ZAI_API_KEY/ZAI_BASE_URL/OPSPILOT_JUDGE_MODEL/OPENAI_API_KEY/OPENAI_BASE_URL/OPENAI_JUDGE_MODEL/OPENAI_JUDGE_RESPONSE_MODEL/DEEPSEEK_API_KEY/DEEPSEEK_BASE_URL`。文件必须绝对路径、当前用户拥有、普通文件、无符号链接、精确0600、≤16384字节；先用 O_NOFOLLOW 打开并 fstat，再读。空行/注释忽略，字面 KEY=VALUE，可成对引号，无执行/插值；重复/未知键拒绝。environ 不读取进程环境，只检查白名单键的冲突，不用其补齐文件凭据；无关环境键忽略。错误仅 `JudgeError.code`：CONFIG_ABSOLUTE_PATH_REQUIRED、CONFIG_PRIVATE_REGULAR_FILE_REQUIRED、CONFIG_UNREADABLE、CONFIG_SYNTAX、CONFIG_ENV_CONFLICT、CONFIG_INVALID、JUDGE_IDENTITY_MISMATCH。
 
@@ -63,6 +63,7 @@ SelectionRecord(status=`selected|pending_user_decision|no_baseline`,selected_pro
 - pending记录无人工选择写入口，理由：合同要求停在选择记录处，裁决由lead后续接入。
 
 - judge 改 SSE 流式（adapter `judge-adapters-2`），理由：zai 非流式长推理 5–12 min 无字节，本机代理下长静默连接被断；流式使推理期间持续有字节，零重试与 900 s/65536/8 MiB/2 MiB 不变，见[judge 流式](2026-10-20-judge-streaming.md)。
+- zai 请求体加 `reasoning_effort: "high"`（adapter `judge-adapters-3`；用户 2026-10-21 裁决），理由：GLM-5.3 默认 max 档推理 4–5 万 token、约 75 tok/s，单次 10–11 分钟贴近 900 s 上限；官方仅支持 low/high/max（https://docs.z.ai/api-reference/llm/chat-completion），无 token 级推理预算。OpenAI、DeepSeek 请求体不变。
 - 余额差显式unknown并保存provider/phase，理由：本边界不自动增加余额查询，真实对账由驱动提供证据。
 - run_calibration发送前自动落盘标签包副本，理由：即使调用者仅给内存DTO，也保证先冻结标签再读judge输出。
 
