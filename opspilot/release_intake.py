@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass
+from datetime import timezone
 from typing import TYPE_CHECKING, Any
 
 from pydantic import ValidationError
@@ -145,6 +146,14 @@ def parse_release(body: bytes) -> ParsedRelease:
         )
     except (ValidationError, ValueError):
         # Never echo the failure: it may quote the rejected input.
+        raise _invalid() from None
+    # P3-01: a blank id is no identity; and an instant the store cannot
+    # normalize to UTC (its semantic hash does) is not a release time.
+    if not event.source_release_id.strip():
+        raise _invalid()
+    try:
+        event.released_at.astimezone(timezone.utc)
+    except OverflowError:
         raise _invalid() from None
     return ParsedRelease(event=event, target=parsed_target)
 

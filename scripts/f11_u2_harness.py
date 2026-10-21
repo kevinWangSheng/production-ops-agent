@@ -1622,6 +1622,11 @@ def _webhook_retryable(status: int | None) -> bool:
     return status is None or status == 503
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *args: Any, **kwargs: Any) -> None:
+        return None
+
+
 def send_release_webhook(
     ledger: Path,
     registry_path: Path,
@@ -1651,8 +1656,9 @@ def send_release_webhook(
     with (directory / "request.json").open("xb") as stream:
         os.chmod(directory / "request.json", 0o600)
         stream.write(body)
-    # No proxy: the bearer token goes to the workbench and nowhere else.
-    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    # No proxy and no redirects: the bearer token goes to the workbench URL
+    # and nowhere else; a 3xx is recorded as a final failure.
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirect())
     records: list[dict[str, Any]] = []
     for number in range(1, attempts + 1):
         request = urllib.request.Request(
