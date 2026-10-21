@@ -566,6 +566,14 @@ def test_related_incident_link_and_refired_marker_on_pages(web, database, alert)
     assert attached["outcome"] == "attached"
 
 
+def list_row(index, needle):
+    """The ``<tr>`` of the list page holding ``needle`` (other incidents on the
+    shared database must not leak into the assertion)."""
+    at = index.index(needle)
+    start = index.rindex("<tr", 0, at)
+    return index[start : index.index("</tr>", at)]
+
+
 def test_list_page_keeps_one_row_and_marks_refired_resolved_incident(
     web, database, alert
 ):
@@ -579,13 +587,13 @@ def test_list_page_keeps_one_row_and_marks_refired_resolved_incident(
     needle = f'href="/incidents/{a["incident_id"]}"'
     index = call(app, "GET", "/", headers=basic()).text
     assert index.count(needle) == 1
-    assert "re-fired" not in index.lower()
+    assert "re-fired" not in list_row(index, needle).lower()
     attached = fire(app, alert, T2)
     assert attached["outcome"] == "attached"
     index = call(app, "GET", "/", headers=basic()).text
     assert index.count(needle) == 1  # still one row per incident (C1-A)
     # AMBIGUOUS A4: marker wording for the list is not specified.
-    assert "re-fired" in index.lower()
+    assert "re-fired" in list_row(index, needle).lower()
 
 
 # -- migration, downgrade and grants --------------------------------------
