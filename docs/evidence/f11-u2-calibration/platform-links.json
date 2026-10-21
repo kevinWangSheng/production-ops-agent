@@ -1,0 +1,268 @@
+{
+  "format": "opspilot-platform-links-1",
+  "batch": "u2-20261017",
+  "summary_sha256": "908838acb33923046a446b813cbd12add660df8d4ca56f015478253db4693364",
+  "note": "Raw ledgers of batch u2-20261017 (synthetic lab traffic). Not embedded in summary.json: its per-round platform_links sit inside the round summaries it hashes, so adding links would change the frozen bytes.",
+  "platform": "LangSmith",
+  "project": "opspilot-lab-u2-20261017",
+  "project_id": "ba017ed0-ad27-48fc-9327-e85105b01af3",
+  "trace_tier": "longlived",
+  "retention": "longlived (SaaS maximum 180 days, docs data-purging-compliance); uploaded 2026-10-20, expected expiry around 2027-04-18",
+  "layout": "one root run per round (+ one batch-level run); attachment <unit>_tar_gz = gzip tar of tmp/lab-ledgers/<round>/ and worktree tmp/u2/<round>/, attachment manifest_json = per-file path/bytes/sha256",
+  "credential_scan": "pre-upload scan of all packed files for authorization/bearer/password/api_key/secret/token/x-api-key/lsv2_ and literal credential patterns: no credential values found (hits were reason codes, Kubernetes serviceaccount mount paths, Secret object names in code snapshots)",
+  "totals": {
+    "units": 13,
+    "file_count": 31691,
+    "raw_bytes": 241379177,
+    "uploaded_bytes": 40670010
+  },
+  "units": {
+    "u2-probe-1": {
+      "langsmith_run_id": "ab9a63fd-a2a0-5da5-82c3-e6d3f7e197c5",
+      "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/ba017ed0-ad27-48fc-9327-e85105b01af3/r/ab9a63fd-a2a0-5da5-82c3-e6d3f7e197c5?poll=true",
+      "file_count": 2874,
+      "raw_bytes": 25941047,
+      "attachments": {
+        "u2-probe-1_tar_gz": {
+          "file": "u2-probe-1.tar.gz",
+          "bytes": 3503259,
+          "sha256": "b8dc0ec0265c25aeba0463f9c8c9127439b1bcec4f1a43434ef8dda2de6a565d"
+        },
+        "manifest_json": {
+          "file": "u2-probe-1.manifest.json",
+          "bytes": 522854,
+          "sha256": "6414b17d6f526fde63dc70fcc679fe43d26ece6159efafa0d3ccce0fdd781766"
+        }
+      },
+      "read_back_sha256_match": true
+    },
+    "u2-probe-2": {
+      "langsmith_run_id": "33cd6ba4-4958-5c7b-b8db-249a5d662460",
+      "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/ba017ed0-ad27-48fc-9327-e85105b01af3/r/33cd6ba4-4958-5c7b-b8db-249a5d662460?poll=true",
+      "file_count": 1210,
+      "raw_bytes": 3976867,
+      "attachments": {
+        "u2-probe-2_tar_gz": {
+          "file": "u2-probe-2.tar.gz",
+          "bytes": 842478,
+          "sha256": "87cbb75ce37a885608250281db7129877157234c75d862631d940155cc5505c6"
+        },
+        "manifest_json": {
+          "file": "u2-probe-2.manifest.json",
+          "bytes": 216359,
+          "sha256": "63648c5035ca6e5519650cd40ce3da9e15d4a135509342ad4542b1b5faf9cd74"
+        }
+      },
+      "read_back_sha256_match": true
+    },
+    "u2-f-healthy-1": {
+      "langsmith_run_id": "5f4d5f0d-0b61-5a3c-8ea9-65b46b2e1951",
+      "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/ba017ed0-ad27-48fc-9327-e85105b01af3/r/5f4d5f0d-0b61-5a3c-8ea9-65b46b2e1951?poll=true",
+      "file_count": 2735,
+      "raw_bytes": 14328625,
+      "attachments": {
+        "u2-f-healthy-1_tar_gz": {
+          "file": "u2-f-healthy-1.tar.gz",
+          "bytes": 2165035,
+          "sha256": "efa30f55a6a5036568e6cb06ff1059e4c97339c0c27bb3e05522ebefbfebcc06"
+        },
+        "manifest_json": {
+          "file": "u2-f-healthy-1.manifest.json",
+          "bytes": 503925,
+          "sha256": "874e7fda96c9dd475f6d30ba63c05fc2c8aa79baf1b0f8abd3fd5e2bfbece2ec"
+        }
+      },
+      "read_back_sha256_match": true
+    },
+    "u2-f-immediate-1": {
+      "langsmith_run_id": "b702dc0a-6892-5b9e-aea1-88c4bd9ed82d",
+      "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/ba017ed0-ad27-48fc-9327-e85105b01af3/r/b702dc0a-6892-5b9e-aea1-88c4bd9ed82d?poll=true",
+      "file_count": 2970,
+      "raw_bytes": 23121895,
+      "attachments": {
+        "u2-f-immediate-1_tar_gz": {
+          "file": "u2-f-immediate-1.tar.gz",
+          "bytes": 3453051,
+          "sha256": "66d1713c8ceac0bbdd343c19bd843fd4e1a24ff240e61fd61974ca119eeb849b"
+        },
+        "manifest_json": {
+          "file": "u2-f-immediate-1.manifest.json",
+          "bytes": 557684,
+          "sha256": "5808c6d90c5d320d77ac1c5be5e8a35e020d321823db3fa92e67487a65da7ab2"
+        }
+      },
+      "read_back_sha256_match": true
+    },
+    "u2-f-delayed5-1": {
+      "langsmith_run_id": "c7892434-b041-5720-b380-14c8324d6435",
+      "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/ba017ed0-ad27-48fc-9327-e85105b01af3/r/c7892434-b041-5720-b380-14c8324d6435?poll=true",
+      "file_count": 3069,
+      "raw_bytes": 23720596,
+      "attachments": {
+        "u2-f-delayed5-1_tar_gz": {
+          "file": "u2-f-delayed5-1.tar.gz",
+          "bytes": 3492950,
+          "sha256": "aeaa3b42fa19c83e786c56f7b93412979f04175b62d01eca9d6107db89546765"
+        },
+        "manifest_json": {
+          "file": "u2-f-delayed5-1.manifest.json",
+          "bytes": 572852,
+          "sha256": "552d345db8b8a898d67a1bff2eddff1e875390e6264fe2934dc2332b06f4483c"
+        }
+      },
+      "read_back_sha256_match": true
+    },
+    "u2-f-delayed15-1": {
+      "langsmith_run_id": "00dcf39c-be4c-5306-a2a8-b18e3f8d95fd",
+      "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/ba017ed0-ad27-48fc-9327-e85105b01af3/r/00dcf39c-be4c-5306-a2a8-b18e3f8d95fd?poll=true",
+      "file_count": 2970,
+      "raw_bytes": 24144355,
+      "attachments": {
+        "u2-f-delayed15-1_tar_gz": {
+          "file": "u2-f-delayed15-1.tar.gz",
+          "bytes": 3473110,
+          "sha256": "70b8dea435fd35cdfeae5aaecb04f2835a29f2e55bf4bd64a40870d5654be7b2"
+        },
+        "manifest_json": {
+          "file": "u2-f-delayed15-1.manifest.json",
+          "bytes": 557684,
+          "sha256": "23bf5c9642170ba61960c3e72300ddda4bbf333cb235a473c8a5841caf1b7314"
+        }
+      },
+      "read_back_sha256_match": true
+    },
+    "u2-f-unrelated-1": {
+      "langsmith_run_id": "b679c0db-f199-5851-85ed-2f648d0e83e7",
+      "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/ba017ed0-ad27-48fc-9327-e85105b01af3/r/b679c0db-f199-5851-85ed-2f648d0e83e7?poll=true",
+      "file_count": 2971,
+      "raw_bytes": 24986676,
+      "attachments": {
+        "u2-f-unrelated-1_tar_gz": {
+          "file": "u2-f-unrelated-1.tar.gz",
+          "bytes": 3476948,
+          "sha256": "42f380743bb7a8f68db1ecc35ace614dafd991a430d5a404190a5979b4e2ec7f"
+        },
+        "manifest_json": {
+          "file": "u2-f-unrelated-1.manifest.json",
+          "bytes": 557839,
+          "sha256": "3a7bc72a26d86da05cd413bfbfb9e57de92ab4c6523984c2334d0b88617b4e88"
+        }
+      },
+      "read_back_sha256_match": true
+    },
+    "u2-f-immediate-2": {
+      "langsmith_run_id": "71fd8455-a6ea-5c20-8df7-cddf8258ccde",
+      "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/ba017ed0-ad27-48fc-9327-e85105b01af3/r/71fd8455-a6ea-5c20-8df7-cddf8258ccde?poll=true",
+      "file_count": 3268,
+      "raw_bytes": 24832536,
+      "attachments": {
+        "u2-f-immediate-2_tar_gz": {
+          "file": "u2-f-immediate-2.tar.gz",
+          "bytes": 3589920,
+          "sha256": "577631196ec70a5b13fba0f67815024797f57fa10dabaaad2fa304609fa9855c"
+        },
+        "manifest_json": {
+          "file": "u2-f-immediate-2.manifest.json",
+          "bytes": 612550,
+          "sha256": "eb5c276f6de2a30e922a8f5d09db6a45d92a36e1330124475feae5b9428f4fa0"
+        }
+      },
+      "read_back_sha256_match": true
+    },
+    "u2-f-delayed5-2": {
+      "langsmith_run_id": "459ee6d2-b852-5b5d-9af7-1d2e41beaa68",
+      "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/ba017ed0-ad27-48fc-9327-e85105b01af3/r/459ee6d2-b852-5b5d-9af7-1d2e41beaa68?poll=true",
+      "file_count": 3269,
+      "raw_bytes": 25268682,
+      "attachments": {
+        "u2-f-delayed5-2_tar_gz": {
+          "file": "u2-f-delayed5-2.tar.gz",
+          "bytes": 3605413,
+          "sha256": "7035abcac1cd74012d7820da7cd6b17f03f658143ba95e0692e0a6f31be5ca8b"
+        },
+        "manifest_json": {
+          "file": "u2-f-delayed5-2.manifest.json",
+          "bytes": 609464,
+          "sha256": "da94ff289ebcaf2c07114685e11925f356aecd9ce3a2e5b6b6bb1c5535ed1e12"
+        }
+      },
+      "read_back_sha256_match": true
+    },
+    "u2-f-delayed15-2": {
+      "langsmith_run_id": "d6b7318b-be9c-5cf5-b05c-a35d77a10824",
+      "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/ba017ed0-ad27-48fc-9327-e85105b01af3/r/d6b7318b-be9c-5cf5-b05c-a35d77a10824?poll=true",
+      "file_count": 3168,
+      "raw_bytes": 25221481,
+      "attachments": {
+        "u2-f-delayed15-2_tar_gz": {
+          "file": "u2-f-delayed15-2.tar.gz",
+          "bytes": 3562381,
+          "sha256": "8f79c08b82fb5336ef2ef3d22503f5dc09ac8f9cd36cff986de5207a04d659e6"
+        },
+        "manifest_json": {
+          "file": "u2-f-delayed15-2.manifest.json",
+          "bytes": 594158,
+          "sha256": "405eb6b0f717e8e4c13c2287304e953c72f9e88513b6b16b46c177469b9807d6"
+        }
+      },
+      "read_back_sha256_match": true
+    },
+    "u2-f-boundary-1": {
+      "langsmith_run_id": "2a0e9618-ba28-575a-8860-be9083ac2fd9",
+      "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/ba017ed0-ad27-48fc-9327-e85105b01af3/r/2a0e9618-ba28-575a-8860-be9083ac2fd9?poll=true",
+      "file_count": 3137,
+      "raw_bytes": 25313785,
+      "attachments": {
+        "u2-f-boundary-1_tar_gz": {
+          "file": "u2-f-boundary-1.tar.gz",
+          "bytes": 3561262,
+          "sha256": "2fdccb31c1c6a1c4dfe531c83039a351475a23a08ba7d8ecaf0b09069645a551"
+        },
+        "manifest_json": {
+          "file": "u2-f-boundary-1.manifest.json",
+          "bytes": 585273,
+          "sha256": "a10df109689c9d54a189eff2bae8caebde91cd6c2c9e98d7fb3f5cb8321d312e"
+        }
+      },
+      "read_back_sha256_match": true
+    },
+    "u2-observer-wiring-1": {
+      "langsmith_run_id": "b5c14dd3-4efc-5fbc-a42f-bcdef49b0835",
+      "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/ba017ed0-ad27-48fc-9327-e85105b01af3/r/b5c14dd3-4efc-5fbc-a42f-bcdef49b0835?poll=true",
+      "file_count": 22,
+      "raw_bytes": 374138,
+      "attachments": {
+        "u2-observer-wiring-1_tar_gz": {
+          "file": "u2-observer-wiring-1.tar.gz",
+          "bytes": 27932,
+          "sha256": "f3024ff870892ea675cff28a8661dc0344889cc480a4c169a9cffdd1889ce6de"
+        },
+        "manifest_json": {
+          "file": "u2-observer-wiring-1.manifest.json",
+          "bytes": 3695,
+          "sha256": "daab264b85a053418cae11b386dcda86f86b319d4b4b78a19e5c2d1ea062637d"
+        }
+      },
+      "read_back_sha256_match": true
+    },
+    "batch-u2-20261017": {
+      "langsmith_run_id": "ad9a6b88-0fe4-5d37-9c40-9b46a82e0e04",
+      "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/ba017ed0-ad27-48fc-9327-e85105b01af3/r/ad9a6b88-0fe4-5d37-9c40-9b46a82e0e04?poll=true",
+      "file_count": 28,
+      "raw_bytes": 148494,
+      "attachments": {
+        "batch-u2-20261017_tar_gz": {
+          "file": "batch-u2-20261017.tar.gz",
+          "bytes": 17830,
+          "sha256": "3d559fe46fedb75770cd30c6e66354ea544f7ee247a850f83f8ff3fc7f663c33"
+        },
+        "manifest_json": {
+          "file": "batch-u2-20261017.manifest.json",
+          "bytes": 4104,
+          "sha256": "3ceafd8906f7fb6cf09eedb10e19c15fdb4ee68cd56162d3422e803a7aa22c0c"
+        }
+      },
+      "read_back_sha256_match": true
+    }
+  }
+}
