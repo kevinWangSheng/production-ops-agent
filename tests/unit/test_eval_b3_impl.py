@@ -46,6 +46,7 @@ from opspilot.evaluation.judge import (
     judge_config_hash,
     judge_once,
     load_judge_config,
+    report_fields_block,
     safe_input,
 )
 from opspilot.investigation.loop import serialized_request
@@ -63,6 +64,13 @@ END = START + timedelta(minutes=5)
 SECRET = "fake-test-key-do-not-persist"
 
 
+def user_json(content):
+    """judge-adapters-5: whitelist JSON, then the location-labelled report block."""
+    payload, end = json.JSONDecoder().raw_decode(content)
+    assert content[end:] == report_fields_block(payload)
+    return payload
+
+
 def sha(value):
     return hashlib.sha256(canonical_bytes(value)).hexdigest()
 
@@ -72,15 +80,15 @@ def configs():
         "zai": JudgeConfig(
             "zai",
             "https://api.z.ai/api/paas/v4/chat/completions",
-            "glm-5.3",
-            "glm-5.3",
+            "glm-5.3-flashx",
+            "glm-5.3-flashx",
             SECRET,
         ),
         "openai": JudgeConfig(
             "openai",
             "https://api.openai.com/v1/chat/completions",
-            "gpt-6.1-sol",
-            "gpt-6.1-sol",
+            "gpt-5.6-luna",
+            "gpt-5.6-luna",
             SECRET,
         ),
         "deepseek": JudgeConfig(
@@ -334,7 +342,11 @@ def test_adapters_fresh_messages_no_retries_no_credentials_in_body(provider):
     call = transport.calls[0]
     assert call["headers"]["Authorization"] == "Bearer " + SECRET
     body = json.loads(call["body"])
-    assert body["model"] == config.request_model and body["stream"] is False
+    assert body["model"] == config.request_model and body["stream"] is True
+    if provider in {"openai", "deepseek"}:
+        assert body["stream_options"] == {"include_usage": True}
+    else:
+        assert "stream_options" not in body
     assert [m["role"] for m in body["messages"]] == ["system", "user"]
     assert (
         body["max_completion_tokens" if provider == "openai" else "max_tokens"] == 65536
@@ -353,11 +365,16 @@ def test_adapters_fresh_messages_no_retries_no_credentials_in_body(provider):
         (b"not-json", "invalid", "SCHEMA_INVALID"),
     ],
 )
-def test_call_failures_are_credential_free_and_zero_retry(response, status, code):
+def test_call_failures_are_credential_free_and_retry_only_transport(
+    response, status, code
+):
     observation, transport = invoke(response=response)
     assert observation.result.status == status and observation.error_code == code
     assert not observation.passed and not observation.valid
-    assert len(transport.calls) == 1 and SECRET not in repr(observation)
+    # judge-adapters-4: only a transport failure is retried, once.
+    expected = 2 if code == "JUDGE_TRANSPORT_ERROR" else 1
+    assert len(transport.calls) == expected and SECRET not in repr(observation)
+    assert observation.attempts == expected
 
 
 @pytest.mark.parametrize(
@@ -504,9 +521,36 @@ def test_http_transport_mock_redirect_size_and_total_deadline():
         request, config=config, calibration=None, transport=transport
     )
     assert len(calls) == 1 and observation.error_code == "JUDGE_HTTP_ERROR"
+    # Streaming (judge-streaming S2a): the limit bounds the assembled completion
+    # document, so a complete, well-formed SSE stream larger than 10 bytes once
+    # assembled is still oversize.
+    sse_events = [
+        {
+            "id": "c1",
+            "model": "glm-5.3-flashx",
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {"role": "assistant", "content": "x" * 20},
+                    "finish_reason": None,
+                }
+            ],
+        },
+        {
+            "id": "c1",
+            "model": "glm-5.3-flashx",
+            "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+        },
+    ]
+    sse = (
+        b"".join(b"data: " + json.dumps(e).encode() + b"\n\n" for e in sse_events)
+        + b"data: [DONE]\n\n"
+    )
     transport = HTTPJudgeTransport(
         transport=httpx2.MockTransport(
-            lambda _: httpx2.Response(200, content=b"x" * 20)
+            lambda _: httpx2.Response(
+                200, headers={"content-type": "text/event-stream"}, content=sse
+            )
         )
     )
     observation = judge_once(
@@ -523,11 +567,15 @@ def test_http_transport_mock_redirect_size_and_total_deadline():
 
             for _ in range(20):
                 await asyncio.sleep(0.002)
-                yield b"x"
+                yield b": keep-alive\n\n"
 
     transport = HTTPJudgeTransport(
         transport=httpx2.MockTransport(
-            lambda _: httpx2.Response(200, stream=SlowStream())
+            lambda _: httpx2.Response(
+                200,
+                headers={"content-type": "text/event-stream"},
+                stream=SlowStream(),
+            )
         )
     )
     observation = judge_once(
@@ -625,7 +673,7 @@ def calibration_transports(pack, candidate_configs, *, errors=(), replacements=N
             if provider in errors:
                 return JudgeHTTPResponse(500, (b"secret-error",))
             body = json.loads(call["body"])
-            payload = json.loads(body["messages"][1]["content"])
+            payload = user_json(body["messages"][1]["content"])
             label = by_input[sha(payload)]
             if replacements and (provider, label.item_id) in replacements:
                 label = replacements[provider, label.item_id]
@@ -1002,7 +1050,17 @@ def test_annotation_bytes_only_depend_on_annotation_set(tmp_path, pack):
     assert load_label_pack(second, expected_pack_hash=pack_hash) == swapped
 
 
-@pytest.mark.parametrize("model", ["glm-5.3", "deepseek-flash", "GLM-5.3"])
+@pytest.mark.parametrize(
+    "model",
+    [
+        "glm-5.3",
+        "deepseek-flash",
+        "GLM-5.3",
+        "glm-5.3-flashx",
+        "gpt-5.6-luna",
+        "gpt-6.1-sol",
+    ],
+)
 def test_fixed_candidate_annotator_rejected_during_freeze(tmp_path, pack, model):
     bad = replace(
         pack,
@@ -1156,7 +1214,8 @@ def test_review_p2_arbitrary_transport_code_cannot_leak_authentication():
     observation, transport = invoke(response=fail)
     assert observation.error_code == "JUDGE_TRANSPORT_ERROR"
     assert SECRET not in repr(observation)
-    assert observation.result.status == "error" and len(transport.calls) == 1
+    # An unknown code is a transport error, so it gets the one retry.
+    assert observation.result.status == "error" and len(transport.calls) == 2
 
 
 def test_review_p2_wrong_openai_model_cannot_certify_d16(tmp_path, pack):
@@ -1207,12 +1266,12 @@ def test_review_p2_summary_cache_cannot_detach_from_error_artifacts(tmp_path, pa
 @pytest.mark.parametrize(
     "model,valid",
     [
-        ("gpt-6.1-sol", True),
-        ("gpt-6.1-sol-2026-10-14", True),
-        ("gpt-6.1-sol-2026-99-99", False),
-        ("gpt-6.1-sol-preview", False),
+        ("gpt-5.6-luna", True),
+        ("gpt-5.6-luna-2026-10-14", True),
+        ("gpt-5.6-luna-2026-99-99", False),
+        ("gpt-5.6-luna-preview", False),
         ("gpt-4o-mini", False),
-        ("gpt-6.1-sol-2026-10-14-extra", False),
+        ("gpt-5.6-luna-2026-10-14-extra", False),
     ],
 )
 def test_openai_response_identity_exact_or_calendar_snapshot(model, valid):
@@ -1432,9 +1491,9 @@ def test_pr232_frozen_evidence_keys_are_not_blocked(pack_name):
         assert len(transport.calls) == 1
         assert observation.valid
         assert (
-            json.loads(
-                json.loads(transport.calls[0]["body"])["messages"][1]["content"]
-            )["cited_evidence"][0]["view"]
+            user_json(json.loads(transport.calls[0]["body"])["messages"][1]["content"])[
+                "cited_evidence"
+            ][0]["view"]
             == view
         )
 
@@ -1577,7 +1636,7 @@ def test_pr232_round4_raw_true_recheck_false_is_not_agreement(tmp_path, pack, go
 
     def send_one_bad_verdict(call):
         nonlocal injected_once
-        sent = json.loads(json.loads(call["body"])["messages"][1]["content"])
+        sent = user_json(json.loads(call["body"])["messages"][1]["content"])
         if sent["report_raw"] == request.report.raw and not injected_once:
             injected_once = True
             return completion(c["zai"], bad_diagnoses, True)
@@ -1741,6 +1800,8 @@ def test_pr232_round5_annotator_dedup_uses_casefold(pack):
         ("prefixGPT61SOLsuffix", "CALIBRATION_UNRESOLVED"),
         ("DeepSeek/Flash@revision", "CALIBRATION_UNRESOLVED"),
         ("other-deepseekflash-evaluator", "CALIBRATION_UNRESOLVED"),
+        ("openai/gpt-5.6-luna", "CALIBRATION_UNRESOLVED"),
+        ("Z.ai-GLM-5.3-FlashX", "CALIBRATION_UNRESOLVED"),
     ],
 )
 def test_pr232_round5_decorated_candidate_models_cannot_annotate(
