@@ -2231,7 +2231,9 @@ def _step_view(step: Mapping[str, Any]) -> dict[str, Any]:
                 "ordinal": item.get("ordinal"),
                 "evidence_id": result.get("evidence_id"),
                 "status": result.get("status"),
+                "reason": result.get("reason"),
                 "adopted": result.get("adopted"),
+                "source_contact": result.get("source_contact"),
                 "tool": result.get("tool"),
                 "target_id": result.get("target_id"),
             }

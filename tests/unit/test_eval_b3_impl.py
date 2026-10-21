@@ -46,6 +46,7 @@ from opspilot.evaluation.judge import (
     judge_config_hash,
     judge_once,
     load_judge_config,
+    report_fields_block,
     safe_input,
 )
 from opspilot.investigation.loop import serialized_request
@@ -63,6 +64,13 @@ END = START + timedelta(minutes=5)
 SECRET = "fake-test-key-do-not-persist"
 
 
+def user_json(content):
+    """judge-adapters-5: whitelist JSON, then the location-labelled report block."""
+    payload, end = json.JSONDecoder().raw_decode(content)
+    assert content[end:] == report_fields_block(payload)
+    return payload
+
+
 def sha(value):
     return hashlib.sha256(canonical_bytes(value)).hexdigest()
 
@@ -72,15 +80,15 @@ def configs():
         "zai": JudgeConfig(
             "zai",
             "https://api.z.ai/api/paas/v4/chat/completions",
-            "glm-5.3",
-            "glm-5.3",
+            "glm-5.3-flashx",
+            "glm-5.3-flashx",
             SECRET,
         ),
         "openai": JudgeConfig(
             "openai",
             "https://api.openai.com/v1/chat/completions",
-            "gpt-6.1-sol",
-            "gpt-6.1-sol",
+            "gpt-5.6-luna",
+            "gpt-5.6-luna",
             SECRET,
         ),
         "deepseek": JudgeConfig(
@@ -334,10 +342,14 @@ def test_adapters_fresh_messages_no_retries_no_credentials_in_body(provider):
     call = transport.calls[0]
     assert call["headers"]["Authorization"] == "Bearer " + SECRET
     body = json.loads(call["body"])
-    assert body["model"] == config.request_model and body["stream"] is False
+    assert body["model"] == config.request_model and body["stream"] is True
+    if provider in {"openai", "deepseek"}:
+        assert body["stream_options"] == {"include_usage": True}
+    else:
+        assert "stream_options" not in body
     assert [m["role"] for m in body["messages"]] == ["system", "user"]
     assert (
-        body["max_completion_tokens" if provider == "openai" else "max_tokens"] == 16384
+        body["max_completion_tokens" if provider == "openai" else "max_tokens"] == 65536
     )
     assert SECRET.encode() not in call["body"]
     assert observation.usage["total_tokens"] == 32
@@ -353,11 +365,16 @@ def test_adapters_fresh_messages_no_retries_no_credentials_in_body(provider):
         (b"not-json", "invalid", "SCHEMA_INVALID"),
     ],
 )
-def test_call_failures_are_credential_free_and_zero_retry(response, status, code):
+def test_call_failures_are_credential_free_and_retry_only_transport(
+    response, status, code
+):
     observation, transport = invoke(response=response)
     assert observation.result.status == status and observation.error_code == code
     assert not observation.passed and not observation.valid
-    assert len(transport.calls) == 1 and SECRET not in repr(observation)
+    # judge-adapters-4: only a transport failure is retried, once.
+    expected = 2 if code == "JUDGE_TRANSPORT_ERROR" else 1
+    assert len(transport.calls) == expected and SECRET not in repr(observation)
+    assert observation.attempts == expected
 
 
 @pytest.mark.parametrize(
@@ -504,9 +521,36 @@ def test_http_transport_mock_redirect_size_and_total_deadline():
         request, config=config, calibration=None, transport=transport
     )
     assert len(calls) == 1 and observation.error_code == "JUDGE_HTTP_ERROR"
+    # Streaming (judge-streaming S2a): the limit bounds the assembled completion
+    # document, so a complete, well-formed SSE stream larger than 10 bytes once
+    # assembled is still oversize.
+    sse_events = [
+        {
+            "id": "c1",
+            "model": "glm-5.3-flashx",
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {"role": "assistant", "content": "x" * 20},
+                    "finish_reason": None,
+                }
+            ],
+        },
+        {
+            "id": "c1",
+            "model": "glm-5.3-flashx",
+            "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+        },
+    ]
+    sse = (
+        b"".join(b"data: " + json.dumps(e).encode() + b"\n\n" for e in sse_events)
+        + b"data: [DONE]\n\n"
+    )
     transport = HTTPJudgeTransport(
         transport=httpx2.MockTransport(
-            lambda _: httpx2.Response(200, content=b"x" * 20)
+            lambda _: httpx2.Response(
+                200, headers={"content-type": "text/event-stream"}, content=sse
+            )
         )
     )
     observation = judge_once(
@@ -523,11 +567,15 @@ def test_http_transport_mock_redirect_size_and_total_deadline():
 
             for _ in range(20):
                 await asyncio.sleep(0.002)
-                yield b"x"
+                yield b": keep-alive\n\n"
 
     transport = HTTPJudgeTransport(
         transport=httpx2.MockTransport(
-            lambda _: httpx2.Response(200, stream=SlowStream())
+            lambda _: httpx2.Response(
+                200,
+                headers={"content-type": "text/event-stream"},
+                stream=SlowStream(),
+            )
         )
     )
     observation = judge_once(
@@ -625,7 +673,7 @@ def calibration_transports(pack, candidate_configs, *, errors=(), replacements=N
             if provider in errors:
                 return JudgeHTTPResponse(500, (b"secret-error",))
             body = json.loads(call["body"])
-            payload = json.loads(body["messages"][1]["content"])
+            payload = user_json(body["messages"][1]["content"])
             label = by_input[sha(payload)]
             if replacements and (provider, label.item_id) in replacements:
                 label = replacements[provider, label.item_id]
@@ -853,7 +901,7 @@ def test_p7_46_boundary_and_sol_better_requires_decision(tmp_path, pack):
     assert selection.status == "pending_user_decision"
 
 
-def test_calibration_readback_recomputes_results_and_observations(tmp_path, pack):
+def test_calibration_readback_recomputes_results_and_records(tmp_path, pack):
     configs_ = configs()
     run_calibration(
         pack,
@@ -869,11 +917,9 @@ def test_calibration_readback_recomputes_results_and_observations(tmp_path, pack
     with pytest.raises(JudgeError, match="DERIVED_RESULT_MISMATCH"):
         load_verified_calibration(path, pack=pack, config=configs_["zai"])
     forged = original
-    forged["observations"]["zai"][0]["observation"]["result"]["verdict"] = not forged[
-        "observations"
-    ]["zai"][0]["observation"]["result"]["verdict"]
+    forged["records"]["zai"][0] = "0" * 64
     path.write_bytes(canonical_bytes(forged))
-    with pytest.raises(JudgeError):
+    with pytest.raises(JudgeError, match="HASH_MISMATCH"):
         load_verified_calibration(path, pack=pack, config=configs_["zai"])
 
 
@@ -1004,7 +1050,17 @@ def test_annotation_bytes_only_depend_on_annotation_set(tmp_path, pack):
     assert load_label_pack(second, expected_pack_hash=pack_hash) == swapped
 
 
-@pytest.mark.parametrize("model", ["glm-5.3", "deepseek-flash", "GLM-5.3"])
+@pytest.mark.parametrize(
+    "model",
+    [
+        "glm-5.3",
+        "deepseek-flash",
+        "GLM-5.3",
+        "glm-5.3-flashx",
+        "gpt-5.6-luna",
+        "gpt-6.1-sol",
+    ],
+)
 def test_fixed_candidate_annotator_rejected_during_freeze(tmp_path, pack, model):
     bad = replace(
         pack,
@@ -1158,7 +1214,8 @@ def test_review_p2_arbitrary_transport_code_cannot_leak_authentication():
     observation, transport = invoke(response=fail)
     assert observation.error_code == "JUDGE_TRANSPORT_ERROR"
     assert SECRET not in repr(observation)
-    assert observation.result.status == "error" and len(transport.calls) == 1
+    # An unknown code is a transport error, so it gets the one retry.
+    assert observation.result.status == "error" and len(transport.calls) == 2
 
 
 def test_review_p2_wrong_openai_model_cannot_certify_d16(tmp_path, pack):
@@ -1197,7 +1254,7 @@ def test_review_p2_summary_cache_cannot_detach_from_error_artifacts(tmp_path, pa
     originals = {p.name: p.read_bytes() for p in failed.glob("zai-*.json")}
     summary = json.loads((failed / "calibration.json").read_bytes())
     other = json.loads((good / "calibration.json").read_bytes())
-    summary["observations"]["zai"] = other["observations"]["zai"]
+    summary["records"]["zai"] = other["records"]["zai"]
     summary["selection"] = other["selection"]
     (failed / "calibration.json").write_bytes(canonical_bytes(summary))
     assert all((failed / name).read_bytes() == raw for name, raw in originals.items())
@@ -1209,12 +1266,12 @@ def test_review_p2_summary_cache_cannot_detach_from_error_artifacts(tmp_path, pa
 @pytest.mark.parametrize(
     "model,valid",
     [
-        ("gpt-6.1-sol", True),
-        ("gpt-6.1-sol-2026-10-14", True),
-        ("gpt-6.1-sol-2026-99-99", False),
-        ("gpt-6.1-sol-preview", False),
+        ("gpt-5.6-luna", True),
+        ("gpt-5.6-luna-2026-10-14", True),
+        ("gpt-5.6-luna-2026-99-99", False),
+        ("gpt-5.6-luna-preview", False),
         ("gpt-4o-mini", False),
-        ("gpt-6.1-sol-2026-10-14-extra", False),
+        ("gpt-5.6-luna-2026-10-14-extra", False),
     ],
 )
 def test_openai_response_identity_exact_or_calendar_snapshot(model, valid):
@@ -1434,9 +1491,9 @@ def test_pr232_frozen_evidence_keys_are_not_blocked(pack_name):
         assert len(transport.calls) == 1
         assert observation.valid
         assert (
-            json.loads(
-                json.loads(transport.calls[0]["body"])["messages"][1]["content"]
-            )["cited_evidence"][0]["view"]
+            user_json(json.loads(transport.calls[0]["body"])["messages"][1]["content"])[
+                "cited_evidence"
+            ][0]["view"]
             == view
         )
 
@@ -1579,7 +1636,7 @@ def test_pr232_round4_raw_true_recheck_false_is_not_agreement(tmp_path, pack, go
 
     def send_one_bad_verdict(call):
         nonlocal injected_once
-        sent = json.loads(json.loads(call["body"])["messages"][1]["content"])
+        sent = user_json(json.loads(call["body"])["messages"][1]["content"])
         if sent["report_raw"] == request.report.raw and not injected_once:
             injected_once = True
             return completion(c["zai"], bad_diagnoses, True)
@@ -1743,6 +1800,8 @@ def test_pr232_round5_annotator_dedup_uses_casefold(pack):
         ("prefixGPT61SOLsuffix", "CALIBRATION_UNRESOLVED"),
         ("DeepSeek/Flash@revision", "CALIBRATION_UNRESOLVED"),
         ("other-deepseekflash-evaluator", "CALIBRATION_UNRESOLVED"),
+        ("openai/gpt-5.6-luna", "CALIBRATION_UNRESOLVED"),
+        ("Z.ai-GLM-5.3-FlashX", "CALIBRATION_UNRESOLVED"),
     ],
 )
 def test_pr232_round5_decorated_candidate_models_cannot_annotate(
@@ -1780,10 +1839,8 @@ def r9_identity_artifact(tmp_path_factory):
         "response_model",
         "adapter_version",
         "schema_version",
-        "cached_item_id",
-        "cached_hash",
-        "cached_provider",
-        "cached_response_model",
+        "records_key",
+        "records_hash",
         "source_item_id",
         "source_hash",
         "source_provider",
@@ -1815,16 +1872,10 @@ def test_pr232_round5_calibration_identity_classes_fail_schema(
         "schema_version",
     }:
         doc["configs"]["zai"][field] = bad
-    elif field.startswith("cached_"):
-        observation = doc["observations"]["zai"][0]
-        if field == "cached_item_id":
-            observation["item_id"] = bad
-        elif field == "cached_hash":
-            observation["input_hash"] = bad
-        elif field == "cached_provider":
-            observation["observation"]["provider"] = bad
-        else:
-            observation["observation"]["response_model"] = bad
+    elif field == "records_key":
+        doc["records"][bad] = doc["records"].pop("zai")
+    elif field == "records_hash":
+        doc["records"]["zai"][0] = bad
     elif field.startswith("source_"):
         source = root / "zai-001.json"
         observation = json.loads(source.read_bytes())
@@ -2031,9 +2082,10 @@ def test_pr232_round5_operation_rejects_unicode_casefold_variants(
     assert not (tmp_path / "bad").exists()
 
 
-def test_pr232_round5_invalid_response_identity_stops_before_source_write(
-    tmp_path, pack
-):
+def test_pr232_round5_invalid_response_identity_is_an_invalid_answer(tmp_path, pack):
+    # judge-adapters-6: formerly aborted run_calibration (SCHEMA_INVALID, the
+    # p7-formal-1 failure); now each such answer is an invalid observation and
+    # the malformed identity is never persisted.
     c = configs()
     diagnosis = JudgedDiagnosis(
         "claims[0]",
@@ -2051,13 +2103,14 @@ def test_pr232_round5_invalid_response_identity_stops_before_source_write(
         for provider, config in c.items()
     }
     root = tmp_path / "bad"
-    with pytest.raises(JudgeError, match="SCHEMA_INVALID") as caught:
-        run_calibration(pack, configs=c, transports=transports, destination=root)
-    assert caught.value.__cause__ is None and caught.value.__context__ is None
-    assert len(transports["zai"].calls) == 1
-    assert not transports["openai"].calls and not transports["deepseek"].calls
-    assert not list(root.glob("zai-*.json"))
-    assert not (root / "calibration.json").exists()
+    run_calibration(pack, configs=c, transports=transports, destination=root)
+    assert all(len(t.calls) == 60 for t in transports.values())
+    written = sorted(root.glob("*-*.json"))
+    assert len(written) == 180 and (root / "calibration.json").exists()
+    for path in written:
+        entry = json.loads(path.read_text())
+        assert entry["observation"]["error_code"] == "JUDGE_OUTPUT_INVALID"
+        assert " bad " not in path.read_text()
 
 
 @pytest.mark.parametrize(
@@ -2170,3 +2223,218 @@ def test_pr232_round5_frozen_otel_identity_fields_remain_compatible():
             _view_identifiers(record["view"])
             checked += 1
     assert checked == 76
+
+
+@pytest.mark.parametrize("size,allowed", [(63, True), (64, True), (65, False)])
+def test_r10_write_bound_precedes_file_creation(tmp_path, monkeypatch, size, allowed):
+    from opspilot.evaluation import calibration_flow
+
+    assert calibration_flow._MAX_FILE == 64 * 1024 * 1024
+    monkeypatch.setattr(calibration_flow, "_MAX_FILE", 64)
+    path = tmp_path / "artifact.json"
+    raw = b"x" * size
+    if allowed:
+        calibration_flow._write(path, raw)
+        assert calibration_flow._read(path) == raw
+        assert stat.S_IMODE(path.stat().st_mode) == 0o600
+    else:
+        with pytest.raises(JudgeError, match="ARTIFACT_UNWRITABLE") as caught:
+            calibration_flow._write(path, raw)
+        assert caught.value.__cause__ is None and caught.value.__context__ is None
+        assert not path.exists()
+
+
+def test_r10_oversize_label_freeze_stops_before_calls(tmp_path, pack, monkeypatch):
+    from opspilot.evaluation import calibration_flow
+
+    candidate_configs = configs()
+    transports = calibration_transports(pack, candidate_configs)
+    monkeypatch.setattr(calibration_flow, "_MAX_FILE", 1)
+    root = tmp_path / "oversize"
+    with pytest.raises(JudgeError, match="ARTIFACT_UNWRITABLE") as caught:
+        run_calibration(
+            pack, configs=candidate_configs, transports=transports, destination=root
+        )
+    assert caught.value.__cause__ is None and caught.value.__context__ is None
+    assert all(not transport.calls for transport in transports.values())
+    assert not (root / "label-pack/items.json").exists()
+    assert not (root / "calibration.json").exists()
+
+
+def test_r10_summary_records_bind_ordered_raw_bytes(r9_identity_artifact):
+    root, p, c = r9_identity_artifact
+    doc = json.loads((root / "calibration.json").read_bytes())
+    assert set(doc) == {"schema", "pack_hash", "configs", "records", "selection"}
+    assert doc["schema"] == "opspilot-judge-calibration-1"
+    assert set(doc["records"]) == {"zai", "openai", "deepseek"}
+    for provider, digests in doc["records"].items():
+        assert digests == [
+            hashlib.sha256((root / f"{provider}-{i:03d}.json").read_bytes()).hexdigest()
+            for i in range(1, 61)
+        ]
+    assert load_verified_calibration(root, pack=p, config=c["zai"]).result.passed
+
+
+@pytest.mark.parametrize(
+    "mutation,code",
+    [
+        ("missing_provider", "HASH_MISMATCH"),
+        ("extra_provider", "SCHEMA_INVALID"),
+        ("short", "HASH_MISMATCH"),
+        ("long", "HASH_MISMATCH"),
+        ("digest", "HASH_MISMATCH"),
+        ("order", "HASH_MISMATCH"),
+        ("raw_whitespace", "HASH_MISMATCH"),
+        ("uppercase", "SCHEMA_INVALID"),
+        ("non_hex", "SCHEMA_INVALID"),
+        ("wrong_type", "SCHEMA_INVALID"),
+        ("extra_field", "SCHEMA_INVALID"),
+        ("missing_field", "SCHEMA_INVALID"),
+        ("missing_file", "EVIDENCE_UNAVAILABLE"),
+        ("selection_and_digest", "DERIVED_RESULT_MISMATCH"),
+    ],
+)
+def test_r10_records_readback_errors(tmp_path, r9_identity_artifact, mutation, code):
+    import shutil
+
+    original, p, c = r9_identity_artifact
+    root = tmp_path / "copy"
+    shutil.copytree(original, root)
+    path = root / "calibration.json"
+    doc = json.loads(path.read_bytes())
+    records = doc["records"]
+    source = root / "zai-001.json"
+    if mutation == "missing_provider":
+        del records["zai"]
+    elif mutation == "extra_provider":
+        records["other"] = records["zai"]
+    elif mutation == "short":
+        records["zai"].pop()
+    elif mutation == "long":
+        records["zai"].append(records["zai"][0])
+    elif mutation in {"digest", "selection_and_digest"}:
+        records["zai"][0] = "0" * 64
+        if mutation == "selection_and_digest":
+            doc["selection"]["results"]["zai"]["agreement"] = 47
+    elif mutation == "order":
+        records["zai"].reverse()
+    elif mutation == "raw_whitespace":
+        source.write_bytes(source.read_bytes() + b"\n")
+    elif mutation == "uppercase":
+        records["zai"][0] = "A" * 64
+    elif mutation == "non_hex":
+        records["zai"][0] = "g" * 64
+    elif mutation == "wrong_type":
+        records["zai"][0] = 1
+    elif mutation == "extra_field":
+        doc["observations"] = {}
+    elif mutation == "missing_field":
+        del doc["records"]
+    elif mutation == "missing_file":
+        source.unlink()
+    path.write_bytes(canonical_bytes(doc))
+    with pytest.raises(JudgeError, match=code) as caught:
+        load_verified_calibration(root, pack=p, config=c["zai"])
+    assert caught.value.__cause__ is None and caught.value.__context__ is None
+
+
+# ---------------------------------------------- judge-adapters-6: identifiers
+# p7-formal-1 aborted (exit 5, SCHEMA_INVALID) when a judge answered with a
+# free-text service; the metadata rule is now an answer-level failure.
+
+BAD_DIAGNOSIS_FIELDS = [
+    {"service": "load generator"},
+    {"service": ""},
+    {"service": " cart"},
+    {"service": "cart\n"},
+    {"service": "s" * 257},
+    {"service": "购物车"},
+    {"operation": "add item, then checkout"},
+    {"operation": "POST  /cart"},
+    {"operation": " POST /cart"},
+    {"operation": "o" * 257},
+    {"cited_evidence_ids": ("e 1",)},
+]
+
+
+def _answer(provider, **changes):
+    request, diagnoses, _ = make_input()
+    config = configs()[provider]
+    diagnosis = replace(diagnoses[0], **changes)
+    return request, config, diagnosis
+
+
+@pytest.mark.parametrize("provider", ["zai", "openai", "deepseek"])
+def test_free_text_service_is_an_invalid_answer(provider):
+    for service, status in (("load-generator", "ok"), ("load generator", "invalid")):
+        request, config, diagnosis = _answer(provider, service=service)
+        observation, _ = invoke(request, (diagnosis,), False, config=config)
+        assert observation.result.status == status
+        if status == "invalid":
+            assert observation.error_code == "JUDGE_OUTPUT_INVALID"
+            assert not observation.valid and observation.result.diagnoses == ()
+
+
+@pytest.mark.parametrize("provider", ["zai", "openai", "deepseek"])
+def test_every_returned_observation_passes_metadata_identifiers(provider):
+    from opspilot.evaluation.calibration_flow import (
+        CalibrationObservation,
+        _metadata_identifiers,
+    )
+
+    cases = [{}, {"service": None, "operation": None}, *BAD_DIAGNOSIS_FIELDS]
+    for changes in cases:
+        request, config, diagnosis = _answer(provider, **changes)
+        for verdict in (True, False):
+            for extra in ({}, {"model": "other model"}):
+                response = completion(config, (diagnosis,), verdict, **extra)
+                observation, _ = invoke(request, config=config, response=response)
+                entry = CalibrationObservation("item-1", "0" * 64, 1, observation)
+                _metadata_identifiers(entry)  # never raises after judge_once
+                if changes in BAD_DIAGNOSIS_FIELDS:
+                    assert not observation.valid
+    weird = completion(
+        configs()[provider],
+        choices=[
+            {
+                "index": 0,
+                "finish_reason": "stop now",
+                "message": {"role": "assistant", "content": "x"},
+            }
+        ],
+    )
+    observation, _ = invoke(config=configs()[provider], response=weird)
+    assert observation.finish_reason is None
+    _metadata_identifiers(CalibrationObservation("item-1", "0" * 64, 1, observation))
+
+
+def test_free_text_service_does_not_abort_run_calibration(tmp_path, pack):
+    labels = final_labels(pack)
+    item = next(
+        i for i in pack.items if i.split == "validation" and labels[i.item_id].diagnoses
+    )
+    label = labels[item.item_id]
+    bad = BlindLabel(
+        item.item_id,
+        item.input_hash,
+        (replace(label.diagnoses[0], service="load generator"),),
+        label.verdict,
+    )
+    configs_ = configs()
+    transports = calibration_transports(
+        pack, configs_, replacements={("zai", item.item_id): bad}
+    )
+    selection = run_calibration(
+        pack, configs=configs_, transports=transports, destination=tmp_path / "run"
+    )
+    assert sum(len(t.calls) for t in transports.values()) == 180
+    assert (tmp_path / "run/calibration.json").is_file()
+    invalid = [
+        entry
+        for path in sorted((tmp_path / "run").glob("zai-*.json"))
+        if (entry := json.loads(path.read_text()))["observation"]["error_code"]
+    ]
+    assert [e["item_id"] for e in invalid] == [item.item_id, item.item_id]
+    assert {e["observation"]["error_code"] for e in invalid} == {"JUDGE_OUTPUT_INVALID"}
+    assert {e["observation"]["result"]["status"] for e in invalid} == {"invalid"}
+    assert "JUDGE_OBSERVATION_FAILED" in selection.results["zai"].reasons

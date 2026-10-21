@@ -1,0 +1,1 @@
+{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"{\"summary\":\"CANARY synthetic report\"}","reasoning_content":null,"role":"assistant","tool_calls":[]}}],"id":"canary-resp-2","model":"deepseek-flash","object":"chat.completion","usage":{"completion_tokens":5,"prompt_tokens":10}}

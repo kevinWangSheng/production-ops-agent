@@ -98,7 +98,13 @@ class TransportError(Exception):
 
 
 class TransportTimeout(TransportError):
-    """The request deadline elapsed. Whether the source ran it is unknown."""
+    """A query timed out, optionally confirmed by a source response."""
+
+    def __init__(
+        self, *args: object, source_contact: SourceContact = "possible"
+    ) -> None:
+        super().__init__(*args)
+        self.source_contact = source_contact
 
 
 class TransportUnavailable(TransportError):
@@ -942,8 +948,8 @@ class ReadOnlyToolExecutor:
         response: object = None
         try:
             response = self._transport.fetch(request)
-        except TransportTimeout:
-            failure = ("timeout", "TOOL_TIMEOUT", "possible")
+        except TransportTimeout as error:
+            failure = ("timeout", "TOOL_TIMEOUT", error.source_contact)
         except TransportResultTooLarge:
             failure = ("error", "RESULT_TOO_LARGE", "confirmed")
         except TransportUnavailable:

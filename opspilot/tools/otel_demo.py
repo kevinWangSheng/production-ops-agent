@@ -68,14 +68,15 @@ import base64
 import json
 import re
 import socket
+import threading
 import urllib.error
 import urllib.parse
 import urllib.request
 from collections.abc import Mapping, Sequence
+from concurrent.futures import Future
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from hashlib import sha256
-from http.client import HTTPResponse
 from typing import Any
 from urllib.parse import urlsplit
 from uuid import UUID
@@ -102,6 +103,7 @@ from opspilot.tools.executor import (
     TransportTimeout,
     TransportUnavailable,
 )
+from opspilot.tools.http_deadline import DeadlineHandlers, RequestSockets
 from opspilot.tools.ledger import DurableToolLedger
 from opspilot.tools.outcomes import PROJECTION_REVISION, Window
 from opspilot.tools.registry import (
@@ -483,7 +485,9 @@ def _registrations() -> tuple[ToolRegistration, ToolRegistration]:
                 "The whole view is limited to the registered max_view_tokens "
                 "(25,000 DeepSeek tokens): a larger result is refused with "
                 "RESULT_TOO_LARGE and no series, never truncated or "
-                "summarized."
+                "summarized. Prometheus HTTP 503 with JSON errorType=timeout "
+                "is timeout/TOOL_TIMEOUT with confirmed source contact; other "
+                "5xx responses are error/SOURCE_UNAVAILABLE."
             ),
             cannot_prove=(
                 "A returned series does not prove the service is healthy or "
@@ -535,8 +539,9 @@ def _registrations() -> tuple[ToolRegistration, ToolRegistration]:
         # ``start``/``end`` selection -- the per-call volume limit that used
         # to live here moved into the transport's frame-containment check.
         max_window_seconds=OBSERVATION_SECONDS,
-        # ``503`` is nominal: 5xx raises ``TransportUnavailable`` inside the
-        # transport before classification. The rest are the transport's own
+        # ``503`` is nominal: 5xx raises inside the transport (a confirmed
+        # timeout for Prometheus 503 errorType=timeout, otherwise unavailable).
+        # The rest are the transport's own
         # pre-dispatch refusal codes.
         error_classes={
             "400": "INVALID_PARAMS",
@@ -986,6 +991,8 @@ class OtelDemoTransport:
             urllib.request.ProxyHandler({}), _NoRedirect()
         )
 
+        self._deadline_handlers = DeadlineHandlers(self._opener)
+
     def fetch(self, request: TransportRequest) -> TransportResponse:
         if request.credential_ref not in self._credentials:
             raise TransportError("CREDENTIAL_REF_UNKNOWN")
@@ -1011,19 +1018,54 @@ class OtelDemoTransport:
         elif token:
             headers["Authorization"] = f"Bearer {token}"
         http_request = urllib.request.Request(url, headers=headers, method="GET")
+        sockets = RequestSockets(request.timeout_seconds)
+
+        def read() -> _Fetched:
+            self._deadline_handlers.local.sockets = sockets
+            try:
+                try:
+                    with self._opener.open(
+                        http_request, timeout=request.timeout_seconds
+                    ) as response:
+                        body = response.read(max_bytes + 1)
+                        status = int(response.status)
+                except urllib.error.HTTPError as error:
+                    with error:
+                        body = error.read(ERROR_BODY_BYTES)
+                    code = int(error.code)
+                    if code >= 500:
+                        if code == 503 and request.tool == METRICS_TOOL:
+                            try:
+                                payload = json.loads(body)
+                            except (ValueError, UnicodeDecodeError):
+                                payload = None
+                            if (
+                                isinstance(payload, dict)
+                                and payload.get("errorType") == "timeout"
+                            ):
+                                raise TransportTimeout(
+                                    "TIMEOUT", source_contact="confirmed"
+                                ) from None
+                        raise TransportUnavailable(str(code)) from None
+                    return _Fetched(code, body)
+                if len(body) > max_bytes:
+                    raise TransportResultTooLarge(str(max_bytes))
+                return _Fetched(status, body)
+            finally:
+                del self._deadline_handlers.local.sockets
+
+        future: Future[_Fetched] = Future()
+
+        def run() -> None:
+            try:
+                future.set_result(read())
+            except BaseException as error:
+                future.set_exception(error)
+
+        thread = threading.Thread(target=run, daemon=True, name="otel-query")
         try:
-            response: HTTPResponse
-            with self._opener.open(
-                http_request, timeout=request.timeout_seconds
-            ) as response:
-                body = response.read(max_bytes + 1)
-                status = int(response.status)
-        except urllib.error.HTTPError as error:
-            body = error.read(ERROR_BODY_BYTES)
-            code = int(error.code)
-            if code >= 500:
-                raise TransportUnavailable(str(code)) from None
-            return _Fetched(code, body)
+            thread.start()
+            return future.result(timeout=sockets.remaining())
         except (TimeoutError, socket.timeout):
             raise TransportTimeout("TIMEOUT") from None
         except urllib.error.URLError as error:
@@ -1032,9 +1074,8 @@ class OtelDemoTransport:
             raise TransportUnavailable("UNREACHABLE") from None
         except OSError:
             raise TransportUnavailable("UNREACHABLE") from None
-        if len(body) > max_bytes:
-            raise TransportResultTooLarge(str(max_bytes))
-        return _Fetched(status, body)
+        finally:
+            sockets.abort()
 
     # -- metrics ------------------------------------------------------------
 
@@ -1564,6 +1605,27 @@ def _span_groups(rows: Sequence[object]) -> list[dict[str, Any]]:
 # -- composition -------------------------------------------------------------
 
 
+@dataclass(frozen=True)
+class OtelDemoRegistrations:
+    """The registration DTOs an executor of this profile is built from.
+
+    Read-only and credential-free (a target names only its ``credential_ref``
+    slot); evaluation drivers freeze them with the executor's own scope before
+    the first call (eval PR-C, A5).
+    """
+
+    tools: tuple[ToolRegistration, ...]
+    targets: tuple[RegisteredTarget, ...]
+
+
+def otel_demo_registrations(
+    config: OtelDemoConfig | None = None,
+) -> OtelDemoRegistrations:
+    """The same registrations ``otel_demo_executor_factory`` registers."""
+    config = config or OtelDemoConfig()
+    return OtelDemoRegistrations(tools=_registrations(), targets=(_target(config),))
+
+
 def otel_demo_executor_factory(
     store: DurableStore,
     *,
@@ -1582,8 +1644,9 @@ def otel_demo_executor_factory(
     # Resolved when the factory is built, not per Run: a worker with no usable
     # tokenizer fails at startup (``TOKENIZER_UNAVAILABLE``), not mid-Run.
     counter = token_counter if token_counter is not None else default_counter()
-    tools = ToolRegistry(_registrations())
-    targets = TargetRegistry([_target(config)])
+    registrations = otel_demo_registrations(config)
+    tools = ToolRegistry(registrations.tools)
+    targets = TargetRegistry(list(registrations.targets))
     pair = config.prometheus_basic_auth
     transport = OtelDemoTransport(
         credentials={CREDENTIAL_REF: config.token},
