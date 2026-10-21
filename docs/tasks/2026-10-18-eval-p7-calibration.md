@@ -60,6 +60,7 @@
 
 - 新配置 debug（2026-10-21，p7-debug-10，judge-adapters-5：GLM-5.3-FlashX + GPT-5.6-Luna + deepseek-flash，流式、传输失败重试一次、JSON 强制、按位置标注的报告字段）：FlashX 有效 12/12、verdict 12/12、因果键 11/12；DeepSeek 12/12、12/12、12/12；Luna 11/12、verdict 7/11、键 11/11；0 次断连、0 次重试，全轮 23 分钟。费用：DeepSeek 余额差 2.88 CNY（共享账户）；按官方价估算 FlashX ≈ $0.27、Luna ≈ $0.17（588K/566K 输入 token）。
 - 正式校准 p7-formal-1（2026-10-21 11:32Z）在第 3 次调用后因 run_calibration 对 judge 自由文本 service 施加元数据标识符规则而整体中止（exit 5，SCHEMA_INVALID）；仅 1 个 validation 项（cart-failure 改写件）被 FlashX 判过 2 次，无调参；用户授权作废该次运行并复用同一 36 项（登记行移入 exposure-voided.jsonl）；修复后改为单条答案无效
+- 修复后 debug（2026-10-21，p7-debug-11，judge-adapters-6）：FlashX 有效 12/12、verdict 11/12、键 12/12；DeepSeek 12/12、12/12、12/12；Luna 有效 9/12（2 次 JUDGE_HTTP_ERROR，其一在传输重试之后；1 次输出无效），verdict 7/9、键 8/9；36 条观察全部通过 `_metadata_identifiers` 严格检查（p7-formal-1 中止的同一检查）；OpenAI 账户限额 5000 RPM / 2M TPM，HTTP 错误非限流（状态码未记录，推断为服务端瞬时错误）。DeepSeek 余额差 2.91 CNY（共享账户）。
 ## 待决
 
 - 无。
