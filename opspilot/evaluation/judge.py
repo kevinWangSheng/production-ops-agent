@@ -641,6 +641,9 @@ class ZaiAdapter:
     token_parameter = "max_tokens"
     # Z.ai documents no stream_options; usage already rides on the final chunk.
     stream_options: Mapping[str, Any] = {}
+    # GLM-5.3 defaults to reasoning_effort=max (~45K reasoning tokens, near the
+    # 900 s cap); P7 calibrates it at "high" (user decision 2026-10-21).
+    reasoning: Mapping[str, Any] = {"reasoning_effort": "high"}
 
     def build(self, config: JudgeConfig, payload: Mapping[str, Any]) -> bytes:
         _check_config(config)
@@ -659,6 +662,7 @@ class ZaiAdapter:
                 ],
                 "stream": True,
                 **self.stream_options,
+                **self.reasoning,
                 self.token_parameter: config.max_output_tokens,
             }
         )
@@ -668,11 +672,13 @@ class OpenAIAdapter(ZaiAdapter):
     provider: Provider = "openai"
     token_parameter = "max_completion_tokens"
     stream_options: Mapping[str, Any] = {"stream_options": {"include_usage": True}}
+    reasoning: Mapping[str, Any] = {}
 
 
 class DeepSeekAdapter(ZaiAdapter):
     provider: Provider = "deepseek"
     stream_options: Mapping[str, Any] = {"stream_options": {"include_usage": True}}
+    reasoning: Mapping[str, Any] = {}
 
 
 _ADAPTERS = {

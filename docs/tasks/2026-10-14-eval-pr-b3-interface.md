@@ -64,6 +64,7 @@ SelectionRecord(status=`selected|pending_user_decision|no_baseline`,selected_pro
 
 - judge 改 SSE 流式（adapter `judge-adapters-2`），理由：zai 非流式长推理 5–12 min 无字节，本机代理下长静默连接被断；流式使推理期间持续有字节，零重试与 900 s/65536/8 MiB/2 MiB 不变，见[judge 流式](2026-10-20-judge-streaming.md)。
 - 传输失败重试一次（adapter `judge-adapters-4`，2026-10-21 用户裁决：本机网络流中断），理由：流式后三家仍在 15–120 s 内断流（RemoteProtocolError/ReadError/ConnectError），未收到完整响应时重发相同请求不改变判分口径；其余失败照旧零重试，见[judge 流式](2026-10-20-judge-streaming.md) R1–R5。
+- zai 请求体加 `reasoning_effort: "high"`（与传输重试同一版本 adapter `judge-adapters-4`；用户 2026-10-21 裁决），理由：GLM-5.3 默认 max 档推理 4–5 万 token、约 75 tok/s，单次 10–11 分钟贴近 900 s 上限；官方仅支持 low/high/max（https://docs.z.ai/api-reference/llm/chat-completion），无 token 级推理预算。OpenAI、DeepSeek 请求体不变。
 - 余额差显式unknown并保存provider/phase，理由：本边界不自动增加余额查询，真实对账由驱动提供证据。
 - run_calibration发送前自动落盘标签包副本，理由：即使调用者仅给内存DTO，也保证先冻结标签再读judge输出。
 
