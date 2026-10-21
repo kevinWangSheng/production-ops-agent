@@ -2233,6 +2233,7 @@ def _step_view(step: Mapping[str, Any]) -> dict[str, Any]:
                 "status": result.get("status"),
                 "reason": result.get("reason"),
                 "adopted": result.get("adopted"),
+                "source_contact": result.get("source_contact"),
                 "tool": result.get("tool"),
                 "target_id": result.get("target_id"),
             }
