@@ -152,12 +152,13 @@ def parse_release(body: bytes) -> ParsedRelease:
 def resolve_target(
     target: ReleaseTarget, registry: TargetRegistry | None
 ) -> ResolvedTarget:
-    """Exactly one ``OPSPILOT_TARGET_IDENTITIES`` entry, or 422 (U6).
+    """Exactly one ``OPSPILOT_TARGET_IDENTITIES`` entry, or 422 (U6, r2).
 
-    A candidate is an entry keyed by the payload's ``resource_uid`` or one
-    whose ``(cluster_uid, namespace, workload)`` equals the payload's. None
-    is ``TARGET_UNRESOLVED``; more than one is ``TARGET_AMBIGUOUS``; a single
-    candidate that differs in any of the five fields is ``TARGET_MISMATCH``.
+    The payload's ``resource_uid`` must be a registry key, otherwise
+    ``TARGET_UNRESOLVED`` (a matching cluster/namespace/workload elsewhere
+    does not resolve it). When another entry has the payload's
+    ``(cluster_uid, namespace, workload)`` the target is ``TARGET_AMBIGUOUS``;
+    otherwise any of the five fields differing is ``TARGET_MISMATCH``.
     """
     entries: dict[str, Mapping[str, Any]] = {}
     if registry is not None:
@@ -166,20 +167,18 @@ def resolve_target(
             if found is not None:
                 entries[key] = asdict(found)
     wanted = target.model_dump()
-    natural = (wanted["cluster_uid"], wanted["namespace"], wanted["workload"])
-    candidates = sorted(
-        uid
-        for uid, entry in entries.items()
-        if uid == wanted["resource_uid"]
-        or (entry.get("cluster_uid"), entry.get("namespace"), entry.get("workload"))
-        == natural
-    )
-    if not candidates:
+    uid = wanted["resource_uid"]
+    entry = entries.get(uid)
+    if entry is None:
         raise ReleaseIntakeError(422, "TARGET_UNRESOLVED")
-    if len(candidates) > 1:
+    natural = (wanted["cluster_uid"], wanted["namespace"], wanted["workload"])
+    if any(
+        other != uid
+        and (found.get("cluster_uid"), found.get("namespace"), found.get("workload"))
+        == natural
+        for other, found in entries.items()
+    ):
         raise ReleaseIntakeError(422, "TARGET_AMBIGUOUS")
-    uid = candidates[0]
-    entry = entries[uid]
     identity = {
         field: uid if field == "resource_uid" else entry.get(field)
         for field in _TARGET_FIELDS
