@@ -17,8 +17,9 @@ Ambiguities (reported, tests use the strictest reasonable reading):
   inside ``target``/``before``/``after``/``auxiliary`` are 400; an unknown
   top-level key is accepted (PG file). The top-level case is its own test.
 * A2  the JSON key carrying the error code (``code`` or ``error``).
-* A3  whether ``target.resource_uid`` is required: TARGET_AMBIGUOUS can only
-  arise without it, so it is omitted there and a 422 is demanded.
+* A3  resolved by contract r2: resource_uid is required (400 if missing);
+  TARGET_AMBIGUOUS means the uid hits entry A while another entry B shares
+  (cluster_uid, namespace, workload).
 """
 
 from __future__ import annotations
@@ -293,18 +294,29 @@ def test_payload_cannot_choose_a_target_by_uuid_or_registry_alias() -> None:
     assert store.calls == []
 
 
-def test_several_registry_matches_is_422_ambiguous() -> None:
-    """A3: two registered targets share the four non-uid fields and the
-    payload omits resource_uid; the only safe answer is fail closed."""
+def test_uid_hit_with_another_entry_on_the_same_workload_is_422_ambiguous() -> None:
+    """Contract r2: resource_uid hits entry A while (cluster_uid, namespace,
+    workload) also equals a different entry B; fail closed."""
     twin = dict(REGISTRY[TARGET["resource_uid"]])
     registry = {**REGISTRY, "deployment/checkout-twin": twin}
-    target = {k: v for k, v in TARGET.items() if k != "resource_uid"}
     store = RecordingReleaseStore()
     app, _ = build_app(store, registry=registry)
-    response = post_release(app, release_payload(target=target))
+    response = post_release(app, release_payload())
     assert_route_exists(response)
     assert response.status == 422
     assert error_code(response) == "TARGET_AMBIGUOUS"
+    assert store.calls == []
+
+
+def test_missing_resource_uid_is_400() -> None:
+    """Contract r2: resource_uid is required."""
+    target = {k: v for k, v in TARGET.items() if k != "resource_uid"}
+    store = RecordingReleaseStore()
+    app, _ = build_app(store)
+    response = post_release(app, release_payload(target=target))
+    assert_route_exists(response)
+    assert response.status == 400
+    assert error_code(response) == "INVALID_RELEASE_PAYLOAD"
     assert store.calls == []
 
 
