@@ -315,6 +315,7 @@
       {% for tool in step.tools %}
         <br><code>{{ tool.tool }}</code> → <span class="badge">{{ tool.status }}</span>
         {% if tool.status == "timeout" and tool.source_contact == "possible" %}<span class="muted">source may have received the request</span>{% endif %}
+        {% if tool.status != "ok" and tool.reason %}<code>{{ tool.reason }}</code>{% endif %}
         {% if tool.evidence_id %}<a href="/incidents/{{ inc.incident_id }}/evidence/{{ tool.evidence_id }}"><code>{{ tool.evidence_id }}</code></a>{% endif %}
         {% if tool.adopted is sameas false %}<span class="muted">(not adopted)</span>{% endif %}
       {% endfor %}

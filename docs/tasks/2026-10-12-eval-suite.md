@@ -34,16 +34,16 @@
 - D13 回放未命中：该 Run 记为失败并计入分母（C3 第 394 行、v4 第 99 行），另单列 miss 率（用户 2026-10-12 按 PR #210 分诊结果改判）。
 - D14 SPEC 关系：定为开发基线，在 SPEC 有界开放段落中写明。
 - D15 kind lab：与其他会话共用，同一时间只有一个真实故障，开跑前先确认。
-- D16 judge 模型（r8，用户 2026-10-13 选定）：judge 与被测模型分属不同家族，避免同盲点抬高通过率。主候选 GLM-5.3（智谱按量付费 API；订阅制 Coding Plan 限编码工具，不用），对照 GPT-6.1 Sol 与被测的 `deepseek-flash`；三者判同一批人工标注样本，GLM-5.3 达到 P7 门槛且一致数不低于 Sol 即采用（与 P5 一致）；GLM-5.3 未达门槛或一致数低于 Sol 时，在冻结 judge 配置前交用户裁决：可选项只有达到 P7 门槛的 GLM-5.3 或 Sol（均为异家族），`deepseek-flash` 只作对照、不可选；两者都不达标则不记基线；裁决写入决定表，裁决前不记基线。judge 只在评测侧调用，不进调查 loop、报告生成或恢复路径。新增数据出口（judge 输入发往智谱与 OpenAI；校准阶段 `deepseek-flash` 作为对照也收到同一批标注样本的 judge 输入，含 expected answer，基线判分只用选定的 judge）属数据流合同变更，以本 PR 用户合并为准，SPEC 有界开放段同步扩到 r7 与 D16；凭据只放私有 `.env.judge`（模板 `evals/judge.env.example`；不放 `.env`，M0 配置加载器拒绝未知键），不进 PR CI（D8）；私有协议字段仍不进 judge（C3 §12）。选型依据（第三方来源，未经官方核对）：两家新版本均未涨价、未见退化报告；按 100 次判分粗估 GLM-5.3 约 $5、Sol 约 $9。
+- D16 judge 模型（r8，用户 2026-10-13 选定）：judge 与被测模型分属不同家族，避免同盲点抬高通过率。主候选 GLM-5.3（智谱按量付费 API；订阅制 Coding Plan 限编码工具，不用），对照 GPT-6.1 Sol 与被测的 `deepseek-flash`；三者判同一批人工标注样本，GLM-5.3 达到 P7 门槛且一致数不低于 Sol 即采用（与 P5 一致）；GLM-5.3 未达门槛或一致数低于 Sol 时，在冻结 judge 配置前交用户裁决：可选项只有达到 P7 门槛的 GLM-5.3 或 Sol（均为异家族），`deepseek-flash` 只作对照、不可选；两者都不达标则不记基线；裁决写入决定表，裁决前不记基线。judge 只在评测侧调用，不进调查 loop、报告生成或恢复路径。新增数据出口（judge 输入发往智谱与 OpenAI；校准阶段 `deepseek-flash` 作为对照也收到同一批标注样本的 judge 输入，含 expected answer，基线判分只用选定的 judge）属数据流合同变更，以本 PR 用户合并为准，SPEC 有界开放段同步扩到 r7 与 D16；凭据只放私有 `.env.judge`（模板 `evals/judge.env.example`；不放 `.env`，M0 配置加载器拒绝未知键），不进 PR CI（D8）；私有协议字段仍不进 judge（C3 §12）。选型依据（第三方来源，未经官方核对）：两家新版本均未涨价、未见退化报告；按 100 次判分粗估 GLM-5.3 约 $5、Sol 约 $9。2026-10-21 用户裁决（费用）：主候选改为 GLM-5.3-FlashX、对照改为 GPT-5.6-Luna，`deepseek-flash` 不变，上述选择规则中的 GLM-5.3/Sol 依次由二者替代；理由：GLM-5.3 与 Sol 每轮校准各约 $6，探针显示廉价模型的失败是提示词字段名与输出格式约束问题，加约束后回复有效（[P7 校准](2026-10-18-eval-p7-calibration.md)）。
 - P1 结局（#211-2/5）：通过须执行 completed、report_available、无 handoff 且 `assessment_status=completed`；正常场景仍允许 partial/inconclusive 但事实型因果诊断为零；故障场景至少一条诊断且每条满足 r6，空集不得通过。
 - P2 trace（#211-3）：必需 trace 回读不到或身份不匹配记 `evidence_incomplete`，判失败、计分母、保留 judge 判分，阻止宣告基线完成；补证另建 revision。
 - P3 权限：须含 `read_only`，额外只容许 `human_control`（持久化投影，`opspilot/acceptance.py:421`）；写或未知权限拒绝。
 - P4 manifest（#211-4）：C3 §11 每个维度必须有 version/hash 或带理由的显式 `none`；缺失为 unknown，阻止基线完成。
-- P5 judge 模型：GLM 5.3（异家族），独立配置、全新上下文；须通过 P7 校准。评测证据发往第二家供应商，仅限开发评测；凭据与端点在接入 judge 前核查。
+- P5 judge 模型：GLM 5.3（异家族），独立配置、全新上下文；须通过 P7 校准。2026-10-21 用户裁决（费用）改为 GLM-5.3-FlashX，对照 GPT-5.6-Luna（见 D16）。评测证据发往第二家供应商，仅限开发评测；凭据与端点在接入 judge 前核查。
 - P6 judge 输入输出：输入报告全文、授权主体与时间、报告引用且已交付的证据内容/ID/hash、expected answer、证据规则结果；输出逐条诊断（定位/引文、是否事实型因果、服务/操作、引用、支持判定、理由）与二值 verdict；代码复核定位与引用并重算 AND；error/timeout/invalid/oversize/未校准均不通过。
 - P7 校准：两个独立全新上下文 Agent 盲标，分歧由用户裁决；每场景 2 份调试、4 份冻结验证（共 12+24）；24 份验证各判两次，≥46/48 与最终标签一致，且负例零误通过；不达标不记基线，修 judge 后换验证集。只服务开发基线，不关闭 SPEC 的 M0 formal calibration 入口项。
 - P8 证据特征：首版只认可见错误 span，评测侧 `answer.json` 存版本化 `any_of` 规则（精确 service/RPC operation、error=true、时间窗、min_matches=1）；容许故障服务 server span 或 checkout 上同一 RPC 的失败 client span；只靠 metrics 的报告不通过。
-- P9 judge 调用：每份报告一次、不自动重试或投票；单次 900 s、请求 8 MiB/响应 2 MiB、输出上限 65536（2026-10-20 用户裁决：P7 debug 推理耗尽输出上限）；judge 单独串行（P5 改判后不占 DeepSeek 并发）；费用分供应商、分阶段记录，校准费用另列。
+- P9 judge 调用：每份报告一次、不投票；仅传输失败（连接失败或流在 `[DONE]` 前结束，未收到完整响应）自动重试一次，超时、HTTP 错误与输出校验失败不重试（2026-10-21 用户裁决：本机网络流中断）；每次尝试 900 s、请求 8 MiB/响应 2 MiB、输出上限 65536（2026-10-20 用户裁决：P7 debug 推理耗尽输出上限）；judge 单独串行（P5 改判后不占 DeepSeek 并发）；费用分供应商、分阶段记录，校准费用另列。
 - P10 分母：setup 前登记 attempt；开始后的 setup/error/abort/unknown/replay_miss/judge_error/evidence_incomplete 都计失败，未开始的跳过单列；固定槽位，失败不重抽替换；基线完成 = 槽位执行完、校准合格、证据齐全，不是产品验收通过。
 - 可逆默认 R1–R6 与 P11–P13（场景与答案分文件隔离、版本化 eval summary/manifest/aggregate、多 trace `trace.entries[]` 与旧摘要只读兼容）见合同决定表。
 
