@@ -40,8 +40,19 @@ from opspilot.domain.base import DomainError
 from opspilot.domain.intake import delivery_key
 from opspilot.intake import IntakeEnvelope, IntakeRequest, Principal, verify_channel
 from opspilot.knowledge.contract import ReviewCommand
+from opspilot.observation.releases import ReleaseStore
+from opspilot.observer.health_profile import canonical_content
 from opspilot.persistence import PersistenceError
 from opspilot.redaction import redact_json_bytes, redact_payload
+from opspilot.release_intake import (
+    REJECTION_STATUS,
+    RELEASE_ACTOR,
+    RELEASE_MAX_BODY_BYTES,
+    RELEASE_MIN_TRACKING_SECONDS,
+    ReleaseIntakeError,
+    parse_release,
+    resolve_target,
+)
 from opspilot.tools.executor import Clock
 from opspilot.web.auth import Authenticator, AuthError
 from opspilot.web.events import CursorTooOld
@@ -152,6 +163,7 @@ def create_app(
     sse_idle_seconds: float | None = 30.0,
     sse_repair_seconds: float = 5.0,
     review: PostmortemReview | None = None,
+    releases: ReleaseStore | None = None,
 ) -> FastAPI:
     # No unauthenticated schema surface: /openapi.json would list every route.
     app = FastAPI(
@@ -170,7 +182,7 @@ def create_app(
     async def refused(request: Request, exc: _Refusal) -> Response:
         headers = {}
         if exc.status == 401 and not request.url.path.startswith(
-            ("/intake/events", "/intake/alertmanager")
+            ("/intake/events", "/intake/alertmanager", "/intake/releases")
         ):
             headers["WWW-Authenticate"] = 'Basic realm="opspilot"'
         return JSONResponse(
@@ -585,6 +597,78 @@ def create_app(
         return JSONResponse(
             {"results": [result.as_json() for result in results]},
             status_code=503 if failed else 200,
+        )
+
+    release_stores: list[ReleaseStore] = [] if releases is None else [releases]
+
+    def release_store() -> ReleaseStore:
+        # Without an explicit store, share the workbench's database and pool
+        # settings, as the incident adapter does for its ObservationStore.
+        if not release_stores:
+            durable = getattr(workbench.incidents, "_store", None)
+            dsn = getattr(durable, "dsn", None)
+            if not isinstance(dsn, str):
+                raise _Refusal(503, "STORAGE_UNAVAILABLE")
+            release_stores.append(
+                ReleaseStore(dsn, pool=getattr(durable, "pool_config", None))
+            )
+        return release_stores[0]
+
+    @app.post("/intake/releases")
+    async def intake_release(request: Request) -> Response:
+        """Register one release event (F11 PR-3); never authorizes it.
+
+        Only the dedicated ``release-deployer`` actor may submit (U4). A
+        payload or target refusal writes nothing and queries nothing (U6);
+        a store-level rejection (identity conflict, future time, registry
+        mismatch) has its delivery audited by the store and is answered
+        with its code. A storage failure is 503 and safe to retry: the
+        ``(source, source_release_id)`` key turns a retry into a replay.
+        """
+        principal = await event_channel(request)
+        if principal.actor_id != RELEASE_ACTOR:
+            raise _Refusal(403, "RELEASE_ACTOR_REQUIRED")
+        body = await body_of(request, RELEASE_MAX_BODY_BYTES)
+        profile = workbench.health_profile
+        try:
+            parsed = parse_release(body)
+            resolved = resolve_target(parsed.target, workbench.targets)
+            if profile is None:
+                raise ReleaseIntakeError(409, "HEALTH_PROFILE_REQUIRED")
+            if resolved.health_profile_id != profile.profile_id:
+                raise ReleaseIntakeError(422, "HEALTH_PROFILE_TARGET_MISMATCH")
+        except ReleaseIntakeError as exc:
+            raise _Refusal(exc.status, exc.code) from None
+        store = release_store()
+
+        def register() -> Any:
+            target_id = workbench.incidents.register_target(resolved.resource_uid)
+            return store.record_release(
+                event=parsed.event,
+                target_id=target_id,
+                identity=resolved.identity,
+                health_profile_revision=profile.revision,
+                health_profile=canonical_content(profile),
+                min_tracking_seconds=RELEASE_MIN_TRACKING_SECONDS,
+                actor=principal.actor_id,
+                raw_body=body,
+            )
+
+        try:
+            receipt = await asyncio.to_thread(register)
+        except PersistenceError:
+            raise _Refusal(503, "STORAGE_UNAVAILABLE") from None
+        if receipt.outcome == "rejected":
+            code = receipt.reason or "RELEASE_REJECTED"
+            raise _Refusal(REJECTION_STATUS.get(code, 422), code)
+        return JSONResponse(
+            {
+                "outcome": receipt.outcome,
+                "observation_id": str(receipt.observation_id),
+                "status": receipt.status,
+                "reason": receipt.reason,
+            },
+            status_code=201 if receipt.outcome == "created" else 200,
         )
 
     # -- human control --------------------------------------------------
