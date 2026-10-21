@@ -24,6 +24,7 @@ from opspilot.evaluation.codec import (
     parse,
     validated,
 )
+from opspilot.evaluation.identifiers import is_identifier, is_operation_name
 from opspilot.evaluation.judge import (
     _MODELS,
     MAX_ATTEMPTS,
@@ -65,9 +66,7 @@ COVERAGE = frozenset(
         "insufficient_evidence",
     }
 )
-_IDENTIFIER = re.compile(r"[A-Za-z0-9._:/@-]{1,256}")
 _SHA256 = re.compile(r"[0-9a-f]{64}")
-_OPERATION = re.compile(r"[A-Za-z0-9._:/@(){}\[\]-]+(?: [A-Za-z0-9._:/@(){}\[\]-]+)*")
 # Current candidates plus the judge-adapters-4 ones (glm-5.3, gpt-6.1-sol): a
 # past candidate must not annotate either.
 _CANDIDATE_FRAGMENTS = frozenset(
@@ -155,7 +154,7 @@ class VerifiedCalibration:
 
 
 def _identifier(value: Any) -> None:
-    if type(value) is not str or _IDENTIFIER.fullmatch(value) is None:
+    if not is_identifier(value):
         raise JudgeError("SCHEMA_INVALID")
 
 
@@ -177,11 +176,7 @@ def _provider_keys(value: Mapping[str, Any]) -> None:
 
 def _operation_name(value: Any) -> None:
     # PR-A freezes HTTP routes, templated routes and names such as "orders publish".
-    if (
-        type(value) is not str
-        or len(value) > 256
-        or _OPERATION.fullmatch(value) is None
-    ):
+    if not is_operation_name(value):
         raise JudgeError("SCHEMA_INVALID")
 
 
