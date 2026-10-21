@@ -433,6 +433,41 @@ def test_mismatching_target_stores_nothing(env: Env) -> None:
     assert _counts() == before
 
 
+def test_ambiguous_target_stores_nothing(
+    owner: DurableStore, web: ReleaseStore
+) -> None:
+    env = Env(owner, web)
+    env.registry[f"{env.uid}-twin"] = dict(env.registry[env.uid])
+    env.app, env.workbench = build_app(
+        web,
+        registry=env.registry,
+        workbench_kwargs={
+            "incidents": DurableIncidentStore(owner),
+            "events": DurableEventLog(owner),
+            "evidence": DurableEvidenceStore(owner),
+            "ledger": DurableWebLedger(owner),
+            "run_versions": fixture_versions(),
+        },
+        clock=DurableClock(owner),
+    )
+    release_id = f"rel-{uuid4().hex[:12]}"
+    before = _counts()
+    response = env.post(env.payload(release_id))
+    assert (response.status, error_code(response)) == (422, "TARGET_AMBIGUOUS")
+    assert _observations(env, release_id) == []
+    assert _counts() == before
+
+
+def test_missing_resource_uid_stores_nothing(env: Env) -> None:
+    release_id = f"rel-{uuid4().hex[:12]}"
+    payload = env.payload(release_id)
+    del payload["target"]["resource_uid"]
+    response = env.post(payload)
+    assert (response.status, error_code(response)) == (400, "INVALID_RELEASE_PAYLOAD")
+    assert _observations(env, release_id) == []
+    assert _events(env, release_id) == []
+
+
 def test_target_whose_workload_the_profile_does_not_observe_is_422(env: Env) -> None:
     release_id = f"rel-{uuid4().hex[:12]}"
     payload = env.payload(release_id)
