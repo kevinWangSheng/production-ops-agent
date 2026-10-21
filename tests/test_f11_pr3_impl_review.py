@@ -116,7 +116,7 @@ def test_harness_does_not_follow_redirects(tmp_path: Path, code: int) -> None:
             run,
             registry,
             UID,
-            f"http://127.0.0.1:{origin.server_port}/intake/releases",
+            f"http://127.0.0.1:{origin.server_port}/intake/version-changes",
             TOKEN,
             sleep=lambda _: None,
         )

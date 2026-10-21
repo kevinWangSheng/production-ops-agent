@@ -138,7 +138,7 @@ WEBHOOK_SECRET = "alertmanager-opspilot-webhook"
 WEBHOOK_ACTOR = "alertmanager"
 WORKBENCH_EVENT_ENV = LAB_DIR / "workbench-alertmanager.env"
 # F11 PR-3 (U4): the experiment harness's bearer token for
-# ``POST /intake/releases``; same file discipline, its own dedicated actor.
+# ``POST /intake/version-changes``; same file discipline, its own dedicated actor.
 RELEASE_TOKEN_FILE = LAB_DIR / "release-deployer-token"
 RELEASE_ACTOR = "release-deployer"
 WORKBENCH_RELEASE_ENV = LAB_DIR / "workbench-release-deployer.env"

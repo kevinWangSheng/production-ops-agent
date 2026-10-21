@@ -182,7 +182,7 @@ def create_app(
     async def refused(request: Request, exc: _Refusal) -> Response:
         headers = {}
         if exc.status == 401 and not request.url.path.startswith(
-            ("/intake/events", "/intake/alertmanager", "/intake/releases")
+            ("/intake/events", "/intake/alertmanager", "/intake/version-changes")
         ):
             headers["WWW-Authenticate"] = 'Basic realm="opspilot"'
         return JSONResponse(
@@ -614,7 +614,7 @@ def create_app(
             )
         return release_stores[0]
 
-    @app.post("/intake/releases")
+    @app.post("/intake/version-changes")
     async def intake_release(request: Request) -> Response:
         """Register one release event (F11 PR-3); never authorizes it.
 

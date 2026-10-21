@@ -1,4 +1,4 @@
-"""Implementer checks for ``POST /intake/releases`` on PostgreSQL (F11 PR-3).
+"""Implementer checks for ``POST /intake/version-changes`` on PostgreSQL (F11 PR-3).
 
 The independent acceptance tests live elsewhere; these exercise the route
 as the web runtime role, through the real store, for the behaviours the
@@ -122,7 +122,7 @@ def _post(app, payload, token=RELEASE_TOKEN, raw: bytes | None = None):
     return call(
         app,
         "POST",
-        "/intake/releases",
+        "/intake/version-changes",
         headers={
             "content-type": "application/json",
             "authorization": f"Bearer {token}",
@@ -340,7 +340,7 @@ def test_harness_sends_over_real_http(web_dsn, tmp_path):
     (run / "release.json").write_text(json.dumps(release))
     registry_path = tmp_path / "registry.json"
     registry_path.write_text(json.dumps(registry))
-    url = f"http://127.0.0.1:{port}/intake/releases"
+    url = f"http://127.0.0.1:{port}/intake/version-changes"
     try:
         first = harness.send_release_webhook(
             run, registry_path, uid, url, RELEASE_TOKEN

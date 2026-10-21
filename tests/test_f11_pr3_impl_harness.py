@@ -98,7 +98,7 @@ class _Server:
                 pass
 
         self.httpd = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
-        self.url = f"http://127.0.0.1:{self.httpd.server_port}/intake/releases"
+        self.url = f"http://127.0.0.1:{self.httpd.server_port}/intake/version-changes"
         threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
 
     def close(self) -> None:

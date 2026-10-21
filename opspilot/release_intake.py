@@ -1,6 +1,6 @@
 """Release webhook payload parsing and target resolution (F11 PR-3).
 
-``POST /intake/releases`` only registers a release (contract P3-02): the
+``POST /intake/version-changes`` only registers a release (contract P3-02): the
 route in :mod:`opspilot.web.app` authenticates the dedicated actor, caps the
 body, and hands the bytes here. This module turns them into the frozen
 :class:`~opspilot.observation.releases.ReleaseEvent` plus the one registry

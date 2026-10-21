@@ -69,7 +69,7 @@ AD_FLAG = "adFailure"  # Lead verified in live flagd-config/demo.flagd.json.
 CONTRACT = "docs/tasks/2026-10-13-f11-pr2-contract.md"
 # F11 PR-3 (P3-03): the release webhook the harness sends after a rollout.
 RELEASE_WEBHOOK_SOURCE = "kind-harness"
-RELEASE_WEBHOOK_URL = "http://127.0.0.1:8080/intake/releases"
+RELEASE_WEBHOOK_URL = "http://127.0.0.1:8080/intake/version-changes"
 RELEASE_WEBHOOK_ATTEMPTS = 3
 RELEASE_WEBHOOK_TIMEOUT_SECONDS = 15
 
@@ -1568,7 +1568,7 @@ def register_release(
 def release_webhook_payload(
     release: dict[str, Any], registry: dict[str, Any], resource_uid: str
 ) -> dict[str, Any]:
-    """The standard ``POST /intake/releases`` body for a watched rollout (D6).
+    """The standard ``POST /intake/version-changes`` body for a watched rollout (D6).
 
     Needs the after identity ``watch`` records (digests, ReplicaSet UID,
     pod-template hash) besides the patch's Deployment generation; without
