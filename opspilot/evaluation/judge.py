@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 import os
 import re
 import stat
@@ -48,6 +49,7 @@ from opspilot.evaluation.runs import (
     _unqualified_diagnoses,
     judge_request,
 )
+from opspilot.investigation.reports import parse_report
 
 if TYPE_CHECKING:
     from opspilot.evaluation.calibration_flow import VerifiedCalibration
@@ -152,6 +154,9 @@ assertion: an unhedged cause or propagation (X caused/is due to/propagates to Y)
 factual even in a gap/next step or with a caveat on method, deeper trigger or a
 hypothesis label; hedged ones (likely, may, causation not established) are not, nor
 are telemetry or quoted error text alone, or open unknowns.
+The user message ends with the report's fields keyed by exact location: copy
+location and quote verbatim from that block, and take cited_evidence_ids from the
+evidence_ids of the claim at or linked to that location.
 Return only one JSON object of exactly this shape, with exactly these key names:
 {"schema": "opspilot-judge-1",
  "diagnoses": [{"location": <string: "summary" or "claims[N]"/"gaps[N]"/"next_steps[N]">,
@@ -694,6 +699,40 @@ OUTPUT_SCHEMA: Mapping[str, Any] = {
 }
 
 
+REPORT_FIELDS_HEADER = (
+    "\n\n=== REPORT FIELDS BY LOCATION (decoded from report_raw) ===\n"
+)
+REPORT_FIELDS_FOOTER = "\n=== END REPORT FIELDS ==="
+
+
+def report_fields(payload: Mapping[str, Any]) -> dict[str, Any]:
+    """judge-adapters-5: report_raw decoded into location -> exact field text.
+
+    Keys are the location strings ``runs._location_text`` resolves, in report
+    order; a claim maps to ``{"text", "evidence_ids"}``, every other location to
+    its text. Request-only: the payload and its hashes are unchanged.
+    """
+    report, _reason = parse_report(payload["report_raw"], finish_reason="stop")
+    if report is None:
+        raise JudgeError("SCHEMA_INVALID")
+    fields: dict[str, Any] = {"summary": report.summary}
+    for index, claim in enumerate(report.claims):
+        fields[f"claims[{index}]"] = {
+            "text": claim.text,
+            "evidence_ids": list(claim.evidence_ids),
+        }
+    for name in ("gaps", "next_steps"):
+        for index, text in enumerate(getattr(report, name)):
+            fields[f"{name}[{index}]"] = text
+    return fields
+
+
+def report_fields_block(payload: Mapping[str, Any]) -> str:
+    """Delimited, one-location-per-line JSON block appended to the user message."""
+    body = json.dumps(report_fields(payload), ensure_ascii=False, indent=1)
+    return REPORT_FIELDS_HEADER + body + REPORT_FIELDS_FOOTER
+
+
 class ZaiAdapter:
     provider: Provider = "zai"
     token_parameter = "max_tokens"
@@ -718,7 +757,8 @@ class ZaiAdapter:
                     {"role": "system", "content": config.prompt},
                     {
                         "role": "user",
-                        "content": canonical_bytes(payload).decode("utf-8"),
+                        "content": canonical_bytes(payload).decode("utf-8")
+                        + report_fields_block(payload),
                     },
                 ],
                 "stream": True,

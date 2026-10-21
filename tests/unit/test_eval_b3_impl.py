@@ -46,6 +46,7 @@ from opspilot.evaluation.judge import (
     judge_config_hash,
     judge_once,
     load_judge_config,
+    report_fields_block,
     safe_input,
 )
 from opspilot.investigation.loop import serialized_request
@@ -61,6 +62,13 @@ SCENARIOS = ROOT / "evals/scenarios"
 START = datetime(2026, 10, 14, tzinfo=UTC)
 END = START + timedelta(minutes=5)
 SECRET = "fake-test-key-do-not-persist"
+
+
+def user_json(content):
+    """judge-adapters-5: whitelist JSON, then the location-labelled report block."""
+    payload, end = json.JSONDecoder().raw_decode(content)
+    assert content[end:] == report_fields_block(payload)
+    return payload
 
 
 def sha(value):
@@ -665,7 +673,7 @@ def calibration_transports(pack, candidate_configs, *, errors=(), replacements=N
             if provider in errors:
                 return JudgeHTTPResponse(500, (b"secret-error",))
             body = json.loads(call["body"])
-            payload = json.loads(body["messages"][1]["content"])
+            payload = user_json(body["messages"][1]["content"])
             label = by_input[sha(payload)]
             if replacements and (provider, label.item_id) in replacements:
                 label = replacements[provider, label.item_id]
@@ -1483,9 +1491,9 @@ def test_pr232_frozen_evidence_keys_are_not_blocked(pack_name):
         assert len(transport.calls) == 1
         assert observation.valid
         assert (
-            json.loads(
-                json.loads(transport.calls[0]["body"])["messages"][1]["content"]
-            )["cited_evidence"][0]["view"]
+            user_json(json.loads(transport.calls[0]["body"])["messages"][1]["content"])[
+                "cited_evidence"
+            ][0]["view"]
             == view
         )
 
@@ -1628,7 +1636,7 @@ def test_pr232_round4_raw_true_recheck_false_is_not_agreement(tmp_path, pack, go
 
     def send_one_bad_verdict(call):
         nonlocal injected_once
-        sent = json.loads(json.loads(call["body"])["messages"][1]["content"])
+        sent = user_json(json.loads(call["body"])["messages"][1]["content"])
         if sent["report_raw"] == request.report.raw and not injected_once:
             injected_once = True
             return completion(c["zai"], bad_diagnoses, True)

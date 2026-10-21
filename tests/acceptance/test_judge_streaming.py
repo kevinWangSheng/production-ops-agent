@@ -44,15 +44,21 @@ from judge_stream_support import (
 )
 
 from opspilot.evaluation.calibration_flow import CalibrationObservation
-from opspilot.evaluation.codec import decode, encode
+from opspilot.evaluation.codec import canonical_bytes, decode, encode
 from opspilot.evaluation.judge import (
+    _ADAPTERS,
     PROMPT,
+    REPORT_FIELDS_FOOTER,
+    REPORT_FIELDS_HEADER,
     JudgeError,
     JudgeObservation,
     check_config,
     judge_once,
+    safe_input,
 )
 from opspilot.evaluation.model import JudgedDiagnosis
+from opspilot.evaluation.runs import _location_text
+from opspilot.investigation.reports import parse_report
 
 PROVIDERS = ("zai", "openai", "deepseek")
 IDENTITY_CODE = {  # B3:20/30 - GLM/DeepSeek identity = error, OpenAI = invalid
@@ -634,6 +640,71 @@ def test_prompt_names_exact_output_keys_and_keeps_citation_convention():
     for field in dataclasses.fields(JudgedDiagnosis):
         assert f'"{field.name}":' in PROMPT
     assert "markdown" in PROMPT and "fences" in PROMPT
+    assert "keyed by exact location" in PROMPT
+
+
+def _quoted_payload(claims=None):
+    payload = dict(safe_input(judge_input()))
+    report = json.loads(payload["report_raw"])
+    report["summary"] = 'cart "EmptyCart" failed and caused checkout failures.'
+    base = report["claims"][0]
+    report["claims"] = claims or [
+        {**base, "text": 'cart "EmptyCart" failed and caused checkout failures.'},
+        {**base, "kind": "hypothesis", "text": 'checkout "PlaceOrder" may retry.'},
+    ]
+    report["gaps"] = ["Broader impact remains unmeasured.", 'Is "redis" involved?']
+    payload["report_raw"] = json.dumps(report)
+    return payload, report
+
+
+@pytest.mark.parametrize("provider", PROVIDERS)
+def test_user_message_appends_location_labelled_report_fields(configs, provider):
+    """judge-adapters-5: payload unchanged, then a block keyed by exact location."""
+    payload, report = _quoted_payload()
+    body = json.loads(_ADAPTERS[provider].build(configs[provider], payload))
+    content = body["messages"][1]["content"]
+    sent, end = json.JSONDecoder().raw_decode(content)
+    # The whitelist payload (and so every input hash) is byte-identical.
+    assert content[:end] == canonical_bytes(payload).decode("utf-8")
+    assert sent == payload
+    block = content[end:]
+    assert block.startswith(REPORT_FIELDS_HEADER)
+    assert block.endswith(REPORT_FIELDS_FOOTER)
+    fields = json.loads(block[len(REPORT_FIELDS_HEADER) : -len(REPORT_FIELDS_FOOTER)])
+    assert list(fields) == [
+        "summary",
+        "claims[0]",
+        "claims[1]",
+        "gaps[0]",
+        "gaps[1]",
+        "next_steps[0]",
+    ]
+    parsed = parse_report(payload["report_raw"], finish_reason="stop")[0]
+    for location, value in fields.items():
+        text, claim_index = _location_text(parsed, location)
+        if claim_index is None:
+            assert value == text
+        else:
+            assert value == {
+                "text": text,
+                "evidence_ids": report["claims"][claim_index]["evidence_ids"],
+            }
+    # Quotes are single-escaped JSON in the block, not the doubly escaped
+    # report_raw string form.
+    assert '\\\\\\"EmptyCart\\\\\\"' in content[:end]
+    assert '"summary": "cart \\"EmptyCart\\" failed' in block
+    assert "\\\\" not in block
+
+
+def test_report_fields_block_stays_under_request_limit(configs):
+    """A large realistic report (60 claims x 2 KiB) still fits 8 MiB with the block."""
+    payload, report = _quoted_payload()
+    base = report["claims"][0]
+    big = [{**base, "text": f'claim {i} "quoted" ' + "x" * 2048} for i in range(60)]
+    payload, _ = _quoted_payload(claims=big)
+    for provider in PROVIDERS:
+        body = _ADAPTERS[provider].build(configs[provider], payload)
+        assert len(body) < configs[provider].max_request_bytes // 8
 
 
 def test_adapter_version_is_judge_adapters_5(configs):

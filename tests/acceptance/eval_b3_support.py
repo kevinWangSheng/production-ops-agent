@@ -45,6 +45,7 @@ from opspilot.evaluation.judge import (
     JudgeHTTPResponse,
     JudgeInput,
     load_judge_config,
+    report_fields_block,
 )
 from opspilot.tools.registry import canonical_hash
 
@@ -184,7 +185,11 @@ def user_payload(body: bytes) -> dict[str, Any]:
     content = users[0]["content"]
     if isinstance(content, list):  # tolerate content parts
         content = "".join(part["text"] for part in content)
-    return json.loads(content)
+    # judge-adapters-5: the whitelist JSON is followed by a delimited block of
+    # the report fields keyed by location, derived only from report_raw.
+    sent, end = json.JSONDecoder().raw_decode(content)
+    assert content[end:] == report_fields_block(sent)
+    return sent
 
 
 def http(
