@@ -55,6 +55,7 @@ from tests.integration.test_f11_pr2b_impl_postgres import (
     authorized_due,
     raw_evidence,
     release_harness,
+    shared_claim,
 )
 from tests.integration.test_f13_step4_contract_postgres import (
     _seed_incident,
@@ -213,7 +214,10 @@ def test_recovery_persists_redacted_bytes_replays_and_web_verifies(
             assert hashlib.sha256(body).hexdigest() == bundle[kind]["body_sha256"]
 
     output = io.StringIO()
-    assert replay_main(["--dsn", observer_dsn, "--session", str(session)], stdout=output) == 0
+    assert (
+        replay_main(["--dsn", observer_dsn, "--session", str(session)], stdout=output)
+        == 0
+    )
     assert all(item["consistent"] for item in json.loads(output.getvalue()))
 
     web_store = DurableStore(scratch_dsn)
@@ -232,7 +236,18 @@ def test_recovery_persists_redacted_bytes_replays_and_web_verifies(
         row = rows[0]
         old_raw = json.loads(bytes(row["raw"]))
         old_body = json.dumps(
-            {"status": "success", "data": {"resultType": "vector", "result": [{"metric": {"session": SECRET}, "value": [AT.timestamp(), "1.0"]}]}},
+            {
+                "status": "success",
+                "data": {
+                    "resultType": "vector",
+                    "result": [
+                        {
+                            "metric": {"session": SECRET},
+                            "value": [AT.timestamp(), "1.0"],
+                        }
+                    ],
+                },
+            },
             separators=(",", ":"),
         ).encode()
         old_raw["query"]["body_b64"] = base64.b64encode(old_body).decode()
@@ -267,7 +282,11 @@ class _ReleaseHTTP:
                 at = datetime.fromtimestamp(
                     float(parse_qs(urlsplit(self.path).query)["time"][0]), timezone.utc
                 )
-                answer = next(item for item in raw_evidence(outer.context, at).queries if item.query == query)
+                answer = next(
+                    item
+                    for item in raw_evidence(outer.context, at).queries
+                    if item.query == query
+                )
                 body = canonical_json(_inject_secret(json.loads(answer.raw))).encode()
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
@@ -294,14 +313,14 @@ def test_release_storage_replay_and_same_sample_redelivery(
     release_harness,
 ) -> None:
     web, observer, oid, _, _ = release_harness
-    authorized_due(release_harness)
-    leases = observer.claim_due_samples(uuid4(), limit=1, lease_seconds=120)
-    assert leases
-    lease = leases[0]
+    auth = authorized_due(release_harness)
+    lease = shared_claim(observer, auth.session_id)
     context = observer.release_context(lease.session_id)
     server = _ReleaseHTTP(context)
     try:
-        result = take_release_sample(lease, PrometheusReadOnlySource(server.url), observer)
+        result = take_release_sample(
+            lease, PrometheusReadOnlySource(server.url), observer
+        )
     finally:
         server.close()
     assert result.receipt.accepted
@@ -316,7 +335,9 @@ def test_release_storage_replay_and_same_sample_redelivery(
     replay = replay_release_history(history)
     assert replay.consistent
     assert not any(
-        code in item for item in replay.integrity for code in ("RAW_SHA256_MISMATCH", "SAMPLE_DECISION_MISMATCH")
+        code in item
+        for item in replay.integrity
+        for code in ("RAW_SHA256_MISMATCH", "SAMPLE_DECISION_MISMATCH")
     )
     saved = history["samples"][0]
     replay_lease = ReleaseSampleLease.model_validate_json(
@@ -328,7 +349,10 @@ def test_release_storage_replay_and_same_sample_redelivery(
         window=QueryWindow(start=saved["window_start"], end=saved["window_end"]),
         queries=tuple(
             ReleaseQueryResult.model_validate(
-                {**{key: value for key, value in row.items() if key != "sample_id"}, "raw": _blob(row["raw"])}
+                {
+                    **{key: value for key, value in row.items() if key != "sample_id"},
+                    "raw": _blob(row["raw"]),
+                }
             )
             for row in saved["queries"]
         ),
@@ -337,7 +361,9 @@ def test_release_storage_replay_and_same_sample_redelivery(
     assert again.replayed is True
 
 
-def test_f13_read_input_and_generation_payload_exclude_raw_secret(scratch_dsn: str) -> None:
+def test_f13_read_input_and_generation_payload_exclude_raw_secret(
+    scratch_dsn: str,
+) -> None:
     target_id, _ = _target(scratch_dsn)
     incident, watermark = _seed_incident(scratch_dsn, target_id)
     sample_id = uuid4()
@@ -347,7 +373,13 @@ def test_f13_read_input_and_generation_payload_exclude_raw_secret(scratch_dsn: s
         conn.execute(
             "INSERT INTO opspilot_observation_samples(sample_id,session_id,job_id,sequence,epoch,window_start,window_end,outcome,required_signals_present,subject_control_generation,observation_generation,health_profile_revision,disposition,reason,confirms_health,health_basis,subject_lifecycle,incident_control_generation,incident_observation_generation,scope_suspended,global_generation,target_generation,within_deadline,lease_valid,lease_stamps_match,readings_consistent) "
             "VALUES (%s,%s,%s,1,1,%s,%s,'healthy',true,0,1,'f7-test','adopted','adopted',true,'confirmed','observing_recovery',0,1,false,0,0,true,true,true,true)",
-            (sample_id, watermark.observation_session_id, uuid4(), now - timedelta(minutes=1), now),
+            (
+                sample_id,
+                watermark.observation_session_id,
+                uuid4(),
+                now - timedelta(minutes=1),
+                now,
+            ),
         )
         conn.execute(
             "INSERT INTO opspilot_observation_signal_readings(sample_id,signal_name,status,value,sample_count,query,window_start,window_end,source,raw_sha256,raw) VALUES (%s,'request_rate_per_second','ok',1.0,5,'up',%s,%s,'prometheus',%s,%s)",

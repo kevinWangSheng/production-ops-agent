@@ -77,7 +77,10 @@ def _large_body() -> bytes:
         "data": {
             "resultType": "vector",
             "result": [
-                {"metric": {"api_key": "x", "filler": ""}, "value": [AT.timestamp(), "0.5"]}
+                {
+                    "metric": {"api_key": "x", "filler": ""},
+                    "value": [AT.timestamp(), "0.5"],
+                }
             ],
         },
     }
@@ -101,7 +104,9 @@ class _ResponseServer:
     def _handler(self):
         class Handler(BaseHTTPRequestHandler):
             def do_GET(self) -> None:  # noqa: N802
-                request_query = parse_qs(urlsplit(self.path).query).get("query", [""])[0]
+                request_query = parse_qs(urlsplit(self.path).query).get("query", [""])[
+                    0
+                ]
                 case = parse_qs(request_query).get("case", ["clean"])[0]
                 if case in ("error", "clean_error"):
                     body = (
@@ -201,7 +206,13 @@ def test_instant_and_vector_redact_response_bytes_without_changing_verdict_field
     source = _source(source_server)
     clean = source.instant("case=clean", at=AT, timeout_seconds=1)
     secret = source.instant("case=secret", at=AT, timeout_seconds=1)
-    assert (secret.status, secret.value, secret.http_status, secret.detail, secret.body_complete) == (
+    assert (
+        secret.status,
+        secret.value,
+        secret.http_status,
+        secret.detail,
+        secret.body_complete,
+    ) == (
         clean.status,
         clean.value,
         clean.http_status,
@@ -228,7 +239,12 @@ def test_instant_and_vector_redact_response_bytes_without_changing_verdict_field
 
 @pytest.mark.parametrize(
     ("secret_case", "clean_case"),
-    [("error", "clean_error"), ("partial", "partial_clean"), ("timeout", "timeout_clean"), ("nonutf8", "nonutf8_clean")],
+    [
+        ("error", "clean_error"),
+        ("partial", "partial_clean"),
+        ("timeout", "timeout_clean"),
+        ("nonutf8", "nonutf8_clean"),
+    ],
 )
 def test_error_partial_timeout_and_non_utf8_bodies_close_without_secret_leaks(
     source_server: _ResponseServer, secret_case: str, clean_case: str
@@ -247,7 +263,9 @@ def test_error_partial_timeout_and_non_utf8_bodies_close_without_secret_leaks(
         assert result.status == "failed" and result.body == b""
 
 
-def test_clean_bytes_are_byte_for_byte_unchanged(source_server: _ResponseServer) -> None:
+def test_clean_bytes_are_byte_for_byte_unchanged(
+    source_server: _ResponseServer,
+) -> None:
     source = _source(source_server)
     expected = _vector(secret=False)
     result = source.instant("case=clean", at=AT, timeout_seconds=1)
@@ -310,7 +328,9 @@ def test_recovery_judgment_and_offline_replay_match_for_redacted_input(
 def test_release_parser_closes_credential_label_collision_as_query_failed(
     source_server: _ResponseServer,
 ) -> None:
-    result = _source(source_server).instant_vector("case=collision", at=AT, timeout_seconds=1)
+    result = _source(source_server).instant_vector(
+        "case=collision", at=AT, timeout_seconds=1
+    )
     evidence = ReleaseQueryResult(
         query_key="mapping:pod_owner:query",
         query="vector(1)",
@@ -367,7 +387,9 @@ def test_release_fingerprint_is_stable_for_same_evidence() -> None:
         target_suspension_generation=0,
     )
     ev = ReleaseSampleEvidence(
-        format_version=1, sample_id=uuid4(),
-        window=QueryWindow(start=AT, end=AT.replace(microsecond=1)), queries=(query,)
+        format_version=1,
+        sample_id=uuid4(),
+        window=QueryWindow(start=AT, end=AT.replace(microsecond=1)),
+        queries=(query,),
     )
     assert sample_fingerprint(lease_value, ev) == sample_fingerprint(lease_value, ev)
