@@ -27,7 +27,7 @@ lead 2026-10-22 按用户常设决定「预审待决项按推荐」裁决；完�
 
 ## 执行进展与证据
 
-实现（2026-10-22，实现者 Agent）：只改 `opspilot/observer/prometheus.py`。新增 `_stored(body)`（非 UTF-8 → `b""`，否则 `redact_json_bytes`）与 `_kept_prefix(body)`（`_stored` 后截到 2048）。`instant()`、`instant_vector()` 的 200 体先 `_stored` 再交 `_single_value`/`_vector_series` 并作为 `body` 返回；原始超限、不完整或脱敏后超 30720 → `failed/TOO_LARGE`、`body_complete=False`、`body` 为脱敏体前 2048 字节；非 200 体、超时与协议中断的部分体都走 `_kept_prefix`。sampler、release_sampling、存储、重放不改：它们本来就对 `result.body` 取哈希、编码与重判，因此自动基于脱敏字节。`docs/development.md` Observer 节加一句说明。
+实现（2026-10-22，实现者 Agent）：只改 `opspilot/observer/prometheus.py`。新增 `_stored(body)`（非 UTF-8 → `b""`，否则 `redact_json_bytes`）与 `_kept_prefix(body, complete=)`（截断处理见下方 P1/P2a 处置；本句为首版描述）。`instant()`、`instant_vector()` 的 200 体先 `_stored` 再交 `_single_value`/`_vector_series` 并作为 `body` 返回；原始超限、不完整或脱敏后超 30720 → `failed/TOO_LARGE`、`body_complete=False`、`body` 为脱敏体前 2048 字节；非 200 体、超时与协议中断的部分体都走 `_kept_prefix`。sampler、release_sampling、存储、重放不改：它们本来就对 `result.body` 取哈希、编码与重判，因此自动基于脱敏字节。`docs/development.md` Observer 节加一句说明。
 
 可逆默认（实现者自定，各一行理由）：
 - ~~先脱敏后截断……多字节截断整体存空~~：已按下方审查修复 P1/P2a 取代。
@@ -41,7 +41,7 @@ lead 2026-10-22 按用户常设决定「预审待决项按推荐」裁决；完�
 - 未做：独立验收/合同测试（另一作者并行编写）、Codex 独立审查、kind 真实 Observer 会话（U5-a 可选）。
 
 独立审查（Codex gpt-6-luna，对 `abbdd09`）三条发现的处置：
-- P1 截断边界泄漏 URL userinfo（已修）：`_kept_prefix(body, complete=)` 对未读完的体，先退回 UTF-8 字符边界，再把末尾仍未闭合的 URL authority（`//` 或 JSON 转义 `\/\/` 之后尚无 `/?#`、空白或引号）从 `//` 起截掉，并把 JSON 转义形态的 `\/\/user:pw@` 换成标记，然后脱敏、在字符边界截到 2048。理由：逐形态探测（每个截断点跑 `redact_credentials`）显示只有 userinfo 依赖截断点之后的 `@`；Bearer/Basic、`token=`/`key=`、凭据键名下的 JSON 值在截断前缀里已被现有规则替换，只截 authority 能保留其余诊断，`test_m1_observer.py` 的保留前缀断言原样通过。完整读取的体保持原样。合同文件 l.88「读取时先截断再脱敏」的描述已由此修正（合同原文不改）。
+- P1 截断边界泄漏 URL userinfo（已修）：`_kept_prefix(body, complete=)` 对未读完的体，先退回 UTF-8 字符边界，再把末尾仍未闭合的 URL authority（`//` 或 JSON 转义 `\/\/` 之后尚无 `/?#`、空白或引号）从 `//` 起截掉，并把 JSON 转义形态的 `\/\/user:pw@` 换成标记，然后脱敏、在字符边界截到 2048。理由：逐形态探测（每个截断点跑 `redact_credentials`）显示只有 userinfo 依赖截断点之后的 `@`；Bearer/Basic、`token=` 等共享策略识别的查询参数（裸 `key` 按 `redaction.py:74-77` 有意不识别，完整体同样不脱敏，不在 #254 范围）、凭据键名下的 JSON 值在截断前缀里已被现有规则替换，只截 authority 能保留其余诊断，`test_m1_observer.py` 的保留前缀断言原样通过。完整读取的体保持原样。合同文件 l.88「读取时先截断再脱敏」的描述已由此修正（合同原文不改）。
 - P2a 截断后 UTF-8 不完整（已修）：截断点回退到字符边界，保留诊断，不存空字节；超限路径同样走 `_kept_prefix`。
 - P2b 重复键规范化（只改表述）：不改 `redaction.py`；`docs/development.md` 与本记录改为「无凭据命中且无重复键时逐字节不变，有重复键时按 F7 策略规范化（失败闭合）」，自测固定该行为。
 - 审查修复验证：`tests/test_f7_observer_redaction.py` 10 passed、`tests/integration/test_f7_observer_redaction_postgres.py` 3 passed、`tests/test_observer_redaction_impl.py` 19 passed（新增 9 种凭据形态逐截断点、跨 2049/30721 读取上限、多字节截断、重复键）、`tests/test_m1_observer.py` 58 passed、`tests/test_redaction_payload.py` 33 passed、F7 step3 两文件 8+2 passed、m1_02 replay 7、recovery_outcome 5、f11_replay_partial_evidence 8、f11_release_store 75 passed（临时 PG 55651，用后已停）；ruff、format、mypy 对改动文件通过。
@@ -50,3 +50,5 @@ lead 2026-10-22 按用户常设决定「预审待决项按推荐」裁决；完�
 ## 下一步与交接
 
 - 实现与独立测试并行；完成后 Codex 全新会话审查。
+- 复验（同一审查会话续跑，gpt-6-sol）：P1 九种形态逐截断点 0 个 ≥8 字符片段、P2a 全部截断点 UTF-8 合法、增量无越界。审查另报裸 `key=` 未脱敏：lead 判定不属 #254 缺口——U1-a 是「与 `redact_credentials` 同一策略」，该策略有意不识别裸 `key`（完整体亦然），lead 给实现者的要求误写了「key=」；本记录表述已更正。P2b 表述两处已由 lead 更正。
+- 范围外（待用户决定是否开 issue）：共享 userinfo 规则只认字面 `//`，完整非 JSON 体里 JSON 转义的 `\/\/user:pw@host` 不脱敏；本 PR 只在未读完体路径补了该形态。
