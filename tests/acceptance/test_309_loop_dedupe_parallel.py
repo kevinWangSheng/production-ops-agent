@@ -112,6 +112,29 @@ class _BarrierTransport:
         )
 
 
+class _FenceTransport:
+    """Keep ordinals 0 and 1 in flight until ordinal 0 has been committed."""
+
+    def __init__(self) -> None:
+        self.barrier = threading.Barrier(2)
+        self.index0_committed = threading.Event()
+        self.requests = []
+        self.lock = threading.Lock()
+
+    def fetch(self, request):
+        index = int(request.operation_id.rsplit("-t", 1)[1])
+        with self.lock:
+            self.requests.append(request)
+        if index in (0, 1):
+            self.barrier.wait(timeout=5)
+        if index == 1:
+            self.index0_committed.wait(timeout=5)
+        return TransportResponse(
+            body=body([{"metric": "checkout", "value": 3}]),
+            data_as_of=WINDOW_START,
+        )
+
+
 def _fixture_loop(*, replies, cap=1, transport=None, model_requests=2, clock=None):
     clock = clock or FakeClock()
     executor, transport, _sink, clock = build(
@@ -315,11 +338,12 @@ def test_rejected_compaction_hands_off_with_compaction_failed():
     assert store.steps["ctx0:compact-1"]["response"]["compaction"]["accepted"] is False
 
 
-def test_same_batch_duplicate_is_committed_as_a_view_without_second_dispatch():
+@pytest.mark.parametrize("cap", [1, 2])
+def test_same_batch_duplicate_is_committed_as_a_view_without_second_dispatch(cap):
     call = tool_call("call-a")
     repeated = tool_call("call-b")
     loop, request, model, transport, store, _events = _fixture_loop(
-        replies=[reply(tool_calls=[call, repeated], finish="tool_calls"), report_from_transcript], cap=1
+        replies=[reply(tool_calls=[call, repeated], finish="tool_calls"), report_from_transcript], cap=cap
     )
     outcome = loop.run(request)
     assert outcome.execution == "completed"
@@ -329,7 +353,8 @@ def test_same_batch_duplicate_is_committed_as_a_view_without_second_dispatch():
     assert results[1]["result"]["reason"] == "DUPLICATE_TOOL_CALL"
 
 
-def test_same_batch_pure_refusal_is_dispatched_again():
+@pytest.mark.parametrize("cap", [1, 2])
+def test_same_batch_pure_refusal_is_dispatched_again(cap):
     class RefusingTransport:
         def __init__(self):
             self.requests = []
@@ -343,12 +368,13 @@ def test_same_batch_pure_refusal_is_dispatched_again():
     transport = RefusingTransport()
     loop, request, _model, _transport, store, _events = _fixture_loop(
         replies=[reply(tool_calls=[call, repeated], finish="tool_calls"), reply(content="no evidence")],
-        cap=1,
+        cap=cap,
         transport=transport,
     )
     loop.run(request)
     assert len(transport.requests) == 2
     results = next(iter(store.tool_results.values()))
+    assert [item["ordinal"] for item in results] == [0, 1]
     assert all(item["result"]["status"] == "error" for item in results)
 
 
@@ -361,11 +387,11 @@ def test_fence_failure_stops_dispatch_and_preserves_only_serial_prefix():
             if self.renewals >= 2:
                 self.deny_control()
 
-    calls = _two_calls()
+    calls = (*_two_calls(), tool_call("call-c", arguments='{"expr":"rate(http_errors[5m])","step_seconds":90}'))
 
-    def run_with_cap(cap):
+    def run_serial():
         loop, request, _model, transport, base_store, _events = _fixture_loop(
-            replies=[reply(tool_calls=list(calls), finish="tool_calls")], cap=cap
+            replies=[reply(tool_calls=list(calls), finish="tool_calls")], cap=1
         )
         store = FenceAfterFirstRenew(
             budget_limit=16,
@@ -382,23 +408,59 @@ def test_fence_failure_stops_dispatch_and_preserves_only_serial_prefix():
         ]
         return outcome, transport, store, committed
 
-    serial, serial_transport, serial_store, serial_results = run_with_cap(1)
+    serial, serial_transport, _serial_store, serial_results = run_serial()
     assert serial.execution == "failed"
     assert serial.handoff_reasons == ("CONTROL_DENIED",)
     assert len(serial_transport.requests) == 1
     assert [result["ordinal"] for result in serial_results] == [0]
 
-    parallel, parallel_transport, parallel_store, parallel_results = run_with_cap(2)
+    class FenceAfterOrdinalZero(MemoryStepStore):
+        def __init__(self, *args, commit_gate, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.commit_gate = commit_gate
+            self.commit_attempts = []
+            self.fenced = False
+
+        def commit_tool(self, step_id, ordinal, result):
+            self.commit_attempts.append(ordinal)
+            if ordinal == 0 and not self.fenced:
+                super().commit_tool(step_id, ordinal, result)
+                self.fenced = True
+                self.deny_control()
+                self.commit_gate.set()
+                return
+            super().commit_tool(step_id, ordinal, result)
+
+    fence_transport = _FenceTransport()
+    parallel_loop, parallel_request, _model, _transport, base_store, _events = _fixture_loop(
+        replies=[reply(tool_calls=list(calls), finish="tool_calls")],
+        cap=2,
+        transport=fence_transport,
+    )
+    parallel_store = FenceAfterOrdinalZero(
+        budget_limit=16,
+        deadline=base_store.deadline,
+        clock=parallel_loop.clock,
+        run_id=base_store.authorized_run_id,
+        commit_gate=fence_transport.index0_committed,
+    )
+    parallel_loop.store = parallel_store
+    parallel = parallel_loop.run(parallel_request)
+    parallel_results = [
+        item
+        for row in parallel_store.tool_results.values()
+        for item in row
+    ]
     assert parallel.execution == "failed"
     assert parallel.handoff_reasons == ("CONTROL_DENIED",)
-    assert len(parallel_transport.requests) == 1
-    assert [result["ordinal"] for result in parallel_results] in ([], [0])
-    if parallel_results:
-        assert _normalize(parallel_results[0]) == _normalize(serial_results[0])
-    # MemoryStepStore's fence guard does not materialize late_result rows;
-    # durable stores may expose them here, so preserve the conditional seam.
-    if parallel_store.late_results:
-        assert parallel_store.late_results
+    dispatched = sorted(
+        int(request.operation_id.rsplit("-t", 1)[1])
+        for request in fence_transport.requests
+    )
+    assert dispatched == [0, 1]
+    assert parallel_store.commit_attempts[:2] == [0, 1]
+    assert [result["ordinal"] for result in parallel_results] == [0]
+    assert _normalize(parallel_results[0]["result"]) == _normalize(serial_results[0]["result"])
 
 
 def test_single_tool_exception_keeps_lower_index_prefix():
