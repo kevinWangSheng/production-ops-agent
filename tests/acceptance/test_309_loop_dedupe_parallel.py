@@ -113,11 +113,12 @@ class _BarrierTransport:
 
 
 class _FenceTransport:
-    """Keep ordinals 0 and 1 in flight until ordinal 0 has been committed."""
+    """Keep ordinals 0 and 1 in flight while fencing before ordinal 0 returns."""
 
     def __init__(self) -> None:
         self.barrier = threading.Barrier(2)
-        self.index0_committed = threading.Event()
+        self.store = None
+        self.fence_set = threading.Event()
         self.requests = []
         self.lock = threading.Lock()
 
@@ -127,8 +128,11 @@ class _FenceTransport:
             self.requests.append(request)
         if index in (0, 1):
             self.barrier.wait(timeout=5)
+        if index == 0:
+            self.store.deny_control()
+            self.fence_set.set()
         if index == 1:
-            self.index0_committed.wait(timeout=5)
+            self.fence_set.wait(timeout=5)
         return TransportResponse(
             body=body([{"metric": "checkout", "value": 3}]),
             data_as_of=WINDOW_START,
@@ -414,21 +418,13 @@ def test_fence_failure_stops_dispatch_and_preserves_only_serial_prefix():
     assert len(serial_transport.requests) == 1
     assert [result["ordinal"] for result in serial_results] == [0]
 
-    class FenceAfterOrdinalZero(MemoryStepStore):
-        def __init__(self, *args, commit_gate, **kwargs):
+    class FencedStore(MemoryStepStore):
+        def __init__(self, *args, **kwargs):
             super().__init__(*args, **kwargs)
-            self.commit_gate = commit_gate
             self.commit_attempts = []
-            self.fenced = False
 
         def commit_tool(self, step_id, ordinal, result):
             self.commit_attempts.append(ordinal)
-            if ordinal == 0 and not self.fenced:
-                super().commit_tool(step_id, ordinal, result)
-                self.fenced = True
-                self.deny_control()
-                self.commit_gate.set()
-                return
             super().commit_tool(step_id, ordinal, result)
 
     fence_transport = _FenceTransport()
@@ -437,13 +433,13 @@ def test_fence_failure_stops_dispatch_and_preserves_only_serial_prefix():
         cap=2,
         transport=fence_transport,
     )
-    parallel_store = FenceAfterOrdinalZero(
+    parallel_store = FencedStore(
         budget_limit=16,
         deadline=base_store.deadline,
         clock=parallel_loop.clock,
         run_id=base_store.authorized_run_id,
-        commit_gate=fence_transport.index0_committed,
     )
+    fence_transport.store = parallel_store
     parallel_loop.store = parallel_store
     parallel = parallel_loop.run(parallel_request)
     parallel_results = [
@@ -458,9 +454,8 @@ def test_fence_failure_stops_dispatch_and_preserves_only_serial_prefix():
         for request in fence_transport.requests
     )
     assert dispatched == [0, 1]
-    assert parallel_store.commit_attempts[:2] == [0, 1]
-    assert [result["ordinal"] for result in parallel_results] == [0]
-    assert _normalize(parallel_results[0]["result"]) == _normalize(serial_results[0]["result"])
+    assert parallel_store.commit_attempts == [0]
+    assert parallel_results == []
 
 
 def test_single_tool_exception_keeps_lower_index_prefix():
