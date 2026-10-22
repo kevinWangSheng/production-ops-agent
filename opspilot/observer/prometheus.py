@@ -31,6 +31,7 @@ import base64
 import json
 import logging
 import math
+import re
 import socket
 import threading
 import time
@@ -54,7 +55,7 @@ from pydantic import AfterValidator, AwareDatetime, Field
 
 from opspilot.domain.base import DTO
 from opspilot.observation.release_policy import storable_text
-from opspilot.redaction import redact_json_bytes
+from opspilot.redaction import REDACTED_CREDENTIAL, redact_json_bytes
 
 __all__ = [
     "IN_FLIGHT_LIMIT",
@@ -239,7 +240,7 @@ class PrometheusReadOnlySource:
                 expr,
                 "timeout",
                 None,
-                _kept_prefix(cut.partial),
+                _kept_prefix(cut.partial, complete=False),
                 None,
                 "TIMEOUT",
                 body_complete=False,
@@ -261,7 +262,7 @@ class PrometheusReadOnlySource:
                 expr,
                 "failed",
                 None,
-                _kept_prefix(cut.partial),
+                _kept_prefix(cut.partial, complete=cut.body_complete),
                 cut.http_status,
                 "UNREACHABLE",
                 body_complete=cut.body_complete,
@@ -283,21 +284,22 @@ class PrometheusReadOnlySource:
                 expr,
                 "failed",
                 None,
-                _kept_prefix(body),
+                _kept_prefix(body, complete=complete),
                 http_status,
                 "HTTP",
                 body_complete=complete,
                 sent_at=sent_at,
             )
-        stored = _stored(body)
-        if not complete or max(len(body), len(stored)) > RESPONSE_LIMIT_BYTES:
+        whole = complete and len(body) <= RESPONSE_LIMIT_BYTES
+        stored = _stored(body) if whole else b""
+        if not whole or len(stored) > RESPONSE_LIMIT_BYTES:
             # also when only the redacted form outgrew the limit: the stored
             # body never exceeds what the release row and the bundle hold
             return InstantResult(
                 expr,
                 "failed",
                 None,
-                stored[:_ERROR_BODY_BYTES],
+                _kept_prefix(body, complete=whole),
                 http_status,
                 "TOO_LARGE",
                 body_complete=False,
@@ -342,7 +344,7 @@ class PrometheusReadOnlySource:
                 expr=expr,
                 status="timeout",
                 series=(),
-                body=_kept_prefix(cut.partial),
+                body=_kept_prefix(cut.partial, complete=False),
                 http_status=None,
                 detail="TIMEOUT",
                 body_complete=False,
@@ -364,7 +366,7 @@ class PrometheusReadOnlySource:
                 expr=expr,
                 status="failed",
                 series=(),
-                body=_kept_prefix(cut.partial),
+                body=_kept_prefix(cut.partial, complete=cut.body_complete),
                 http_status=cut.http_status,
                 detail="UNREACHABLE",
                 body_complete=cut.body_complete,
@@ -387,19 +389,20 @@ class PrometheusReadOnlySource:
                 expr=expr,
                 status="failed",
                 series=(),
-                body=_kept_prefix(body),
+                body=_kept_prefix(body, complete=complete),
                 http_status=http_status,
                 detail="HTTP",
                 body_complete=complete,
                 sent_at=sent_at,
             )
-        stored = _stored(body)
-        if not complete or max(len(body), len(stored)) > RESPONSE_LIMIT_BYTES:
+        whole = complete and len(body) <= RESPONSE_LIMIT_BYTES
+        stored = _stored(body) if whole else b""
+        if not whole or len(stored) > RESPONSE_LIMIT_BYTES:
             return VectorResult(
                 expr=expr,
                 status="failed",
                 series=(),
-                body=stored[:_ERROR_BODY_BYTES],
+                body=_kept_prefix(body, complete=whole),
                 http_status=http_status,
                 detail="TOO_LARGE",
                 body_complete=False,
@@ -466,12 +469,14 @@ class PrometheusReadOnlySource:
 
 
 def _stored(body: bytes) -> bytes:
-    """The form of a response body the Observer keeps and parses (#254).
+    """The form of a complete response body the Observer keeps and parses (#254).
 
     UTF-8 text is credential-redacted (JSON values and keys, or prose when
-    it is not JSON) and comes back unchanged when nothing matched; bytes
-    that are not UTF-8 cannot be inspected and are kept as none. The status,
-    HTTP status and detail of the result still say what arrived.
+    it is not JSON) and comes back unchanged when nothing matched -- except
+    a JSON body that repeats a key, which the shared F7 policy rewrites in
+    canonical form; bytes that are not UTF-8 cannot be inspected and are
+    kept as none. The status, HTTP status and detail of the result still
+    say what arrived.
     """
     try:
         body.decode("utf-8")
@@ -480,11 +485,62 @@ def _stored(body: bytes) -> bytes:
     return redact_json_bytes(body)
 
 
-def _kept_prefix(body: bytes) -> bytes:
-    """An error, cut or timed-out body: redacted first, then cut to the
-    error keep limit, so the cut never splits a span before it is redacted
-    and redaction never grows a kept prefix past the limit."""
-    return _stored(body)[:_ERROR_BODY_BYTES]
+#: A URL authority still open at the end of a cut body: ``//`` (or its JSON
+#: escape) with no path, query, fragment or space after it yet. Userinfo is
+#: only recognised once its ``@`` and host are seen, so a cut before them
+#: would keep ``https://user:secr`` as it is (#254 review P1).
+_OPEN_AUTHORITY = re.compile(r"(?://|\\/\\/)[^\s/?#\"'<>\\]*\Z")
+
+
+_ESCAPED_USERINFO = re.compile(r"(?<=\\/\\/)[^\s/@\\\"]+(?=@)")
+
+
+def _kept_prefix(body: bytes, *, complete: bool) -> bytes:
+    """An error, cut, timed-out or oversized body as kept: at most
+    ``_ERROR_BODY_BYTES``, redacted, valid UTF-8.
+
+    A body that was not read to its end (``complete`` False) is a prefix of
+    something unseen: a multi-byte character split by the read limit is
+    dropped rather than failing the whole prefix, and a URL authority left
+    open at the cut is dropped from its ``//`` -- the other credential forms
+    (``Bearer``/``Basic``, ``name=value``, a credential-named JSON value) are
+    already redacted by ``redact_credentials`` up to the cut. The text is
+    redacted before it is cut to the keep limit, and the cut falls on a
+    character boundary.
+    """
+    if not complete:
+        body = body[: len(body) - _split_tail(body)]
+    try:
+        text = body.decode("utf-8")
+    except UnicodeDecodeError:
+        return b""
+    if not complete:
+        open_authority = _OPEN_AUTHORITY.search(text)
+        if open_authority is not None:
+            text = text[: open_authority.start()]
+        # a cut JSON body is redacted as prose, whose userinfo rule needs a
+        # literal ``//``: the JSON-escaped form is redacted here
+        text = _ESCAPED_USERINFO.sub(REDACTED_CREDENTIAL, text)
+    kept = redact_json_bytes(text.encode("utf-8"))
+    if len(kept) <= _ERROR_BODY_BYTES:
+        return kept
+    end = _ERROR_BODY_BYTES
+    while end > 0 and kept[end] & 0xC0 == 0x80:
+        end -= 1
+    return kept[:end]
+
+
+def _split_tail(body: bytes) -> int:
+    """Bytes at the end of ``body`` that begin a UTF-8 character the cut
+    left unfinished (0 when the last character is whole)."""
+    for back in range(1, min(4, len(body)) + 1):
+        byte = body[-back]
+        if byte & 0xC0 != 0x80:
+            need = 2 if byte >= 0xC0 else 1
+            need = 3 if byte >= 0xE0 else need
+            need = 4 if byte >= 0xF0 else need
+            return back if need > back else 0
+    return 0
 
 
 def _utc_now() -> datetime:

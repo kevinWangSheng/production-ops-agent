@@ -126,3 +126,84 @@ def test_redaction_that_outgrows_the_limit_is_too_large_not_an_error(query):
         assert (result.status, result.detail) == ("failed", "TOO_LARGE")
         assert result.body_complete is False
         assert len(result.body) <= 2048
+
+
+# --- review fixes: cut bodies (P1), UTF-8 boundary (P2a), duplicate keys (P2b)
+
+LONG = "Zq7Wx9Kp3Lm5Nv8Rt2Yb"
+CUT_FORMS = {
+    "userinfo_json": '{"url":"https://user:%s@host.example/x"}',
+    "userinfo_prose": "proxy error at https://user:%s@host.example/x end",
+    "userinfo_escaped": '{"url":"https:\\/\\/user:%s@host.example\\/x"}',
+    "query_token": "GET /x?a=1&token=%s&b=2 end",
+    "query_key_json": '{"u":"https://h/x?api_key=%s&b=2"}',
+    "bearer": "Authorization: Bearer %s rejected",
+    "basic": "Authorization: Basic %s rejected",
+    "json_credential_key": '{"a":1,"password":"%s","b":2}',
+    "label": '{"metric":{"session":"%s"}}',
+}
+
+
+def _fragments(text: bytes) -> list[str]:
+    return [
+        LONG[i : i + 8]
+        for i in range(len(LONG) - 7)
+        if LONG[i : i + 8].encode() in text
+    ]
+
+
+@pytest.mark.parametrize("form", sorted(CUT_FORMS))
+def test_a_credential_cut_at_any_point_leaves_no_eight_character_fragment(form):
+    from opspilot.observer.prometheus import _kept_prefix
+
+    whole = (CUT_FORMS[form] % LONG).encode()
+    for cut in range(len(whole) + 1):
+        kept = _kept_prefix(whole[:cut], complete=False)
+        assert not _fragments(kept), (form, cut, kept)
+        kept.decode("utf-8")
+
+
+def test_an_error_body_whose_userinfo_crosses_the_read_limit_is_cut_before_it(query):
+    head = b'{"error":"' + b"e" * 2030 + b'","url":"https://user:'
+    body = head + LONG.encode() + b'@host.example/x"}'
+    result = query(502, body)
+    assert result.http_status == 502 and not result.body_complete
+    assert not _fragments(result.body) and result.body.startswith(b'{"error":"eee')
+    big = (
+        b'{"x":"' + b"y" * 30690 + b'","url":"https://user:' + LONG.encode() + b'@h/"}'
+    )
+    for vector in (False, True):
+        too_large = query(200, big, vector=vector)
+        assert too_large.detail == "TOO_LARGE" and not _fragments(too_large.body)
+
+
+def test_a_cut_through_a_multibyte_character_keeps_the_prefix_up_to_it():
+    from opspilot.observer.prometheus import _kept_prefix
+
+    body = b"x" * 2047 + "é".encode()
+    kept = _kept_prefix(body, complete=False)
+    assert kept == b"x" * 2047
+    assert _kept_prefix(b"ab" + "é".encode()[:1], complete=False) == b"ab"
+    grown = ("é" * 2000).encode()  # 4000 bytes, complete, cut at the keep limit
+    kept = _kept_prefix(grown, complete=True)
+    assert kept == ("é" * 1024).encode()
+
+
+def test_an_oversized_multibyte_body_keeps_a_valid_utf8_prefix(query):
+    body = ('{"x":"' + "é" * 16000 + '"}').encode()
+    for vector in (False, True):
+        result = query(200, body, vector=vector)
+        assert result.detail == "TOO_LARGE"
+        assert result.body and len(result.body) <= 2048
+        result.body.decode("utf-8")
+
+
+def test_a_repeated_key_is_rewritten_by_the_shared_policy_even_without_a_credential(
+    query,
+):
+    body = b'{"status":"success","status":"success","data":{"resultType":"vector","result":[]}}'
+    result = query(200, body)
+    assert result.status == "no_data"
+    assert result.body == (
+        b'{"data":{"result":[],"resultType":"vector"},"status":"success"}'
+    )
