@@ -56,6 +56,7 @@
 | R-9 | 恢复回放 | `worker.execute_pending` 保持串行，不在本 PR 范围 | — |
 | R-10 | 版本闸 | 不改 `CONTEXT_POLICY`、`prompt_revision`、tool schema：已提交行的形状和 rebuild 结果不变，升级时正在跑的 Run 照常续跑，不会被 `blocked` | `context.py` 不动 |
 | R-11 | 连接池 | 不自动扩池，也不改 B1 的校验；工具线程只在短事务里占连接。真实 Run 里观察不到 `TIMEOUT` 即可；嵌套事务的风险与 B1 同为**未确认**，如果 B1 先合并，可以把校验收紧为 `capacity×(1+P)`（另提 issue） | 文档 |
+| R-12 | cap>1 时续租与提交的相对顺序 | 第 i+1 个调用的续租可以早于第 i 个调用的提交（派发前续租，次数不变）。续租或 fence 失败表示人工决定已生效：之后按 index 尝试的提交按现有规则以 `CONTROL_DENIED` 停止，已完成未提交的结果记 late_result，不保证保留任何前缀；保证的是失败后不再派发新调用、已经提交的行不被改写。cap=1 不受影响。（lead 2026-10-22 补充，验收测试按此改） | `loop.py`、验收测试 |
 
 ## 允许改动的文件
 
