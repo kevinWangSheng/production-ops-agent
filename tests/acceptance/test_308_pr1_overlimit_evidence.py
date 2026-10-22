@@ -88,6 +88,11 @@ SPILLED_REFUSAL_KEYS = BASELINE_REFUSAL_KEYS | frozenset(
         "source_end_at",
         "result_count",
         "incomplete",
+        "source",
+        "tool_version",
+        "projection_revision",
+        "dispatch_started_at",
+        "freshness_seconds",
     }
 )
 
@@ -278,6 +283,11 @@ def test_pr1_view_overlimit_keeps_main_model_bytes_and_registers_non_adopted_rec
     assert view["source_end_at"] is None
     assert view["result_count"] == len(_rows())
     assert view["incomplete"] is False
+    assert view["source"] == "prometheus"
+    assert view["tool_version"] == "v1"
+    assert view["projection_revision"] == OLD_PROJECTION_REVISION
+    assert view["dispatch_started_at"] == outcome.operation.started_at.isoformat()
+    assert view["freshness_seconds"] is None
     assert b"password=xyz" not in record.raw
     view_text = canonical(view)
     assert "password=xyz" not in view_text
