@@ -443,7 +443,9 @@ def test_revisions_bump_only_the_tool_schema_and_trace_description_stays_equal()
     )
     assert TOOL_SCHEMA_REVISION == f"otel-demo-{digest[:12]}"
     assert TOOL_SCHEMA_REVISION != OLD_TOOL_SCHEMA_REVISION
-    assert PROJECTION_REVISION == OLD_PROJECTION_REVISION
+    # #308 PR2 bumps the projection once (contract R10 / acceptance 7).
+    assert PROJECTION_REVISION != OLD_PROJECTION_REVISION
+    assert PROJECTION_REVISION == "m1-01-tool-view-v9"
     assert investigation_versions()["prompt_revision"] == OLD_PROMPT_REVISION
     traces_description = next(
         schema["function"]["description"]
@@ -462,7 +464,10 @@ def test_factory_and_template_scope_contain_all_four_tools(prometheus_stub):
     expected = frozenset(
         {METRICS_TOOL, TRACES_TOOL, METRIC_NAMES_TOOL, LABEL_VALUES_TOOL}
     )
-    assert executor.scope.tool_names == expected
+    # #308 PR2 adds read_evidence; the four #307 A tools stay.
+    assert expected < executor.scope.tool_names
+    assert executor.scope.tool_names == expected | {"read_evidence"}
+    expected = executor.scope.tool_names
     assert template_scope().tool_names == expected
 
 

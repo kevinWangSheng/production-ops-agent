@@ -26,7 +26,7 @@ from opspilot.tools.registry import (
 from opspilot.web import DurableEvidenceStore
 from scripts.m0.postgres_lab import DSN
 from tests.acceptance.test_308_pr1_overlimit_evidence import (
-    OLD_PROJECTION_REVISION,
+    NEW_PROJECTION_REVISION,
     _byte_counter,
     _FixedClock,
     _redacted_body,
@@ -110,14 +110,15 @@ def test_pg_view_overlimit_persists_redacted_non_adopted_row(store):
     rows = _rows_for_run(store, run_id)
 
     assert (outcome.status, outcome.reason) == ("error", "RESULT_TOO_LARGE")
-    assert outcome.evidence is None
+    # PR2 (R1): the stored record is attached and is the model view.
+    assert outcome.evidence is not None
     assert len(rows) == 1
     row = rows[0]
     assert isinstance(row["evidence_id"], str) and row["evidence_id"]
     assert row["run_id"] == run_id
     assert row["status"] == "error"
     assert row["adopted"] is False
-    assert row["projection_revision"] == OLD_PROJECTION_REVISION
+    assert row["projection_revision"] == NEW_PROJECTION_REVISION
     assert bytes(row["raw"]) == _redacted_body()
     assert row["raw_sha256"] == hashlib.sha256(bytes(row["raw"])).hexdigest()
     assert row["view_sha256"] == canonical_hash(row["view"])
@@ -175,5 +176,5 @@ def test_pg_control_denial_does_not_persist_a_row(store):
     assert transport.called is False
 
 
-def test_pg_pr1_revision_value_is_still_the_main_value():
-    assert PROJECTION_REVISION == OLD_PROJECTION_REVISION
+def test_pg_pr2_projection_revision_is_v9():
+    assert PROJECTION_REVISION == NEW_PROJECTION_REVISION

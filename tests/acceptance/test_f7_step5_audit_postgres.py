@@ -473,6 +473,7 @@ def test_u4a_the_shipped_otel_demo_limits_bind_to_its_single_registered_target()
         "traces_search",
         "get_metric_names",
         "get_label_values",
+        "read_evidence",  # #308 PR2
     }
     for item in registrations:
         assert item.source == target.source, item.name

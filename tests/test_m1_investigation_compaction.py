@@ -370,7 +370,7 @@ def test_an_oversized_tool_view_reaches_the_model_as_a_provenance_stub():
     # result through so the loop's own single-view cap is what bites.
     executor, transport, _sink, _clock = build(
         registrations=[
-            registration(max_result_bytes=2_000_000, max_view_tokens=400_000)
+            registration(max_result_bytes=2_000_000, max_view_tokens=25_000)
         ],
         clock=loop.clock,
     )

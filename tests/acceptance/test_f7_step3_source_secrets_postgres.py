@@ -178,7 +178,7 @@ def test_s3c_s3d_source_secrets_are_absent_from_every_input_store_and_export(
         for row in rows:
             assert row["raw_sha256"] == sha256(row["raw"]).hexdigest()
             assert REDACTED_CREDENTIAL in text_of(row["raw"]), row["evidence_id"]
-            assert row["projection_revision"] == "m1-01-tool-view-v8"
+            assert row["projection_revision"] == "m1-01-tool-view-v9"
         sinks["pg raw"] = text_of([r["raw"] for r in rows])
         sinks["pg view"] = "\n".join(r["view"] for r in rows)
 

@@ -51,7 +51,7 @@ def _schema(name: str) -> dict[str, Any]:
 def test_revision_bumped_by_content_hash() -> None:
     assert otel_demo.TOOL_SCHEMA_REVISION != OLD_REVISION
     assert otel_demo.TOOL_SCHEMA_REVISION == otel_demo._tool_schema_revision()
-    assert otel_demo.PROJECTION_REVISION == "m1-01-tool-view-v8"
+    assert otel_demo.PROJECTION_REVISION == "m1-01-tool-view-v9"
 
 
 def test_traces_description_bytes_unchanged() -> None:

@@ -454,7 +454,7 @@ def test_a_view_over_the_token_cap_is_refused_and_no_raw_bytes_are_kept():
 
     rows = [{"series": index, "value": index * 2} for index in range(40)]
     payload = body(rows)
-    probe, transport, _, _ = _executor_with_byte_counter(1_000_000)
+    probe, transport, _, _ = _executor_with_byte_counter(25_000)
     transport.response = TransportResponse(body=payload)
     full = _tokens(probe.execute(request()).model_view)
 
@@ -477,7 +477,7 @@ def test_a_view_at_the_token_cap_keeps_the_raw_evidence_byte_identical():
 
     rows = [{"series": index, "value": index * 2} for index in range(40)]
     payload = body(rows)
-    executor, transport, _, _ = _executor_with_byte_counter(1_000_000)
+    executor, transport, _, _ = _executor_with_byte_counter(25_000)
     transport.response = TransportResponse(body=payload)
 
     outcome = executor.execute(request())

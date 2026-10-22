@@ -40,7 +40,7 @@ RUBRIC_SHA256 = "b58974b2c2a5ba309cb0efcf47c5af001d9f9c3a27440fec32d5d31b5cf1d95
 ANSWER_SHA256 = "a35361da83e8a314a2af54bf50aa74441ca16dcd7a533e96c22c85a71b14b37a"
 # #307 A's two discovery tools after merge main 6ff9d68; recomputed from the
 # registered model-visible content and frozen here for F3 step 5 evidence.
-EXPECTED_TOOL_SCHEMA_REVISION = "otel-demo-5270fd8c543f"
+EXPECTED_TOOL_SCHEMA_REVISION = "otel-demo-2a944edd110a"
 # PR-3a's pre-#307 A freeze, retained as the incompatibility boundary.
 PR3A_TOOL_SCHEMA_REVISION = "otel-demo-c7737da709ee"
 OLD_TOOL_SCHEMA_REVISION = "otel-demo-4d7168180749"
@@ -113,7 +113,7 @@ def test_tool_schema_revision_is_recomputed_and_other_versions_are_unchanged() -
     assert investigation_versions()["context_policy_revision"] == (
         "ctx-ctx-policy-v1-a30e65ea52f4"
     )
-    assert PROJECTION_REVISION == "m1-01-tool-view-v8"
+    assert PROJECTION_REVISION == "m1-01-tool-view-v9"
 
 
 def test_metrics_description_has_only_the_frozen_ksm_surface_and_traces_are_unchanged() -> (
@@ -147,6 +147,7 @@ def test_registry_remains_read_only_and_ksm_promql_is_allowed() -> None:
         "traces_search",
         METRIC_NAMES_TOOL,
         LABEL_VALUES_TOOL,
+        "read_evidence",  # #308 PR2
     }
     assert {
         registration.name: registration.verb for registration in registrations.tools
@@ -155,6 +156,7 @@ def test_registry_remains_read_only_and_ksm_promql_is_allowed() -> None:
         "traces_search": "query",
         METRIC_NAMES_TOOL: "list",
         LABEL_VALUES_TOOL: "list",
+        "read_evidence": "get",  # #308 PR2 (contract R3)
     }
     assert all(
         not registration.may_contain_secrets for registration in registrations.tools

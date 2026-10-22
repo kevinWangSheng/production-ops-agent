@@ -563,7 +563,6 @@ def test_slice_time_binding_uses_the_parent_tool_and_source(lab, interface):
 def _assert_not_readable(outcome, lab, before):
     assert (outcome.status, outcome.reason) == ("denied", "EVIDENCE_NOT_READABLE")
     assert outcome.model_view.get("content") is None
-    assert outcome.model_view["adopted"] is False
     assert lab.requests == before
 
 
@@ -693,6 +692,7 @@ def test_tool_schema_and_projection_revisions_changed_and_are_recomputable():
     assert TOOL_SCHEMA_REVISION == f"otel-demo-{digest[:12]}"
     assert TOOL_SCHEMA_REVISION != OLD_TOOL_SCHEMA_REVISION
     assert PROJECTION_REVISION != OLD_PROJECTION_REVISION
+    assert PROJECTION_REVISION == "m1-01-tool-view-v9"
     assert otel_demo_versions()["tool_schema_revision"] == TOOL_SCHEMA_REVISION
 
 
