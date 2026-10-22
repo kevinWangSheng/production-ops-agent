@@ -1,6 +1,6 @@
 # 评测 P7 judge 真实校准
 
-- 状态：本轮结束，未记基线（正式校准 p7-formal-2 为 `no_baseline`，2026-10-21）；重做见 #295
+- 状态：重做中（#295）：合同 r3 已裁决，实施 judge-adapters-7；p7-formal-2 为 `no_baseline`（2026-10-21）
 - 目标：按 [评测任务记录](2026-10-12-eval-suite.md) P7 与 D16，用 36 份基于真实 Run 的样本、两份独立盲标和用户裁决，对 GLM-5.3、GPT-6.1 Sol、`deepseek-flash` 做一次正式校准，得出 D16 选择；合格后才进入第一轮基线（另记）。
 - 依据：[PR-B3 接口](2026-10-14-eval-pr-b3-interface.md)（LabelPack、freeze、run_calibration、r8–r11）；[PR-A 接口](2026-10-13-eval-pr-a-interface.md)（JudgeInput、JudgedDiagnosis）；C3 第 388–398 行。
 - 范围外：改判分规则、匹配口径或 D16 选择认证（如需改动，单列合同变更）；调查 loop、报告生成与恢复路径；翻任何 `passes`。
@@ -34,6 +34,20 @@
 | P7-D16 | 执行驱动接口见 [P7 驱动接口](2026-10-19-eval-p7-driver-interface.md)；其 Q1–Q8 采纳推荐：调优只改 `judge.PROMPT` 走独立小 PR；1+3 分布不符时 freeze 拒绝并交用户；导入时 diagnoses 稳定排序、reason 保留；36 项原件须过 gate；裁决简报对用户同样盲；进过 formal 的 validation 族不得再用；来源轮次以 `eval-p7-` 命名并被忽略；盲标包复制到仓库外目录交给标注者 | 推荐 |
 
 可逆默认（lead）：12 个来源一律新采（`--scenario all --n 2` 一轮），不复用 PR-C 与 #273 的两次 payment Run，理由是同一代码版本、一次覆盖六场景 live 路径，代价约 20 分钟 lab。
+
+## 合同（r3，2026-10-22，重做 #295）
+
+依据：p7-formal-2 诊断（三个全新上下文 Agent 读取已保存观察并重放已作废的 validation 项抓取原始输出；结论见证据节）。
+
+| 编号 | 裁决要点 | 来源 |
+|---|---|---|
+| P7-D17 | 诊断与标签按 location 匹配：关键因果诊断漏检改为「标签中每个 factual_causal 的 location 都出现在 judge 的 factual_causal 诊断 location 中」，不再比较 quote。约定段改为 quote 取该字段中点明原因的一段逐字短语（不超过 200 字符），输出校验仍要求 quote 是该字段文本的子串。理由：原约定下 quote 由 location 唯一决定，不携带匹配信息，却让模型照抄 300–1,700 字符并出错（Luna 10 次无效中 8 次） | 用户 |
+| P7-D18 | verdict 取 judge 诊断经确定性规则重算的结果；模型自报 verdict 与重算不一致不再使答案无效，只记录（观察中保存模型 verdict 与是否一致）。取代 B3「P7 只计 judge 原始 verdict」条款；误通过按重算 verdict 计 | 用户 |
+| P7-D19 | judge.PROMPT 的因果判定按现有最终标签口径写明：指出故障所在位置的陈述（「failing dependency is X」「confined to X」「dominated by X」）算因果；声明为推断且带方法限定的不算；传播断言记录起源服务与操作；被否定或排除的假设、与事故无关的「so」从句不算。新 validation 集的盲标说明使用同一段文字 | 用户 |
+| P7-D20 | 可逆技术项（lead）：zai 使用 `response_format` json_schema strict（官方文档未列，2026-10-22 实测 4/4 遵守，调参轮继续验证）；按位置标注的报告字段块改为纯文本（不再 json.dumps 转义引号）；答案被拒时保存原始模型输出到私有工作区，并在观察中记录传输异常类名；adapter 升为 `judge-adapters-7`。不对无效答案重试（会掩盖不可靠并抬高分数） | 推荐 |
+| P7-D21 | 进过 formal 的 validation 项可作为调参（debug）项重用，永不再作 validation；暴露登记照常阻止其进入任何 formal。取代 P7-D16「进过 formal 的 validation 族不得再用」中对调参用途的限制 | 用户 |
+
+调参规则：在 36 项（原 12 debug + 已作废的 24 validation）上调 `judge.PROMPT`，最多 3 轮；达标线为整套零无效、零漏诊、零误通过且一致率不低于 46/48 等价；不达标停下交用户。达标后才新采 validation 来源族、两份新盲标与用户裁决。
 
 ## 计划
 
