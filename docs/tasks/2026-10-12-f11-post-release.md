@@ -105,6 +105,7 @@ r1 只定方向。其余实现者需要猜的语义点，按 AGENTS.md「合同�
 - 收尾四个数（#225）：新冒出的合同问题 3（issue 与合同 §9 口径；r6 旧归档证据边界；写入检查与重放的最小证据差异，lead 保留）；因合同变更重写的测试 0；环境重跑 2（uv 缓存权限；审查提示措辞触发内容过滤）；用户裁决轮数 1（r6 选 A）；机器人 4 轮，采纳 8。
 - 2026-10-14 重放部分证据缺陷（`feature/F11-replay-partial-evidence`，来自 #228 最终独立复核第 1 项；其余 5 类转 [#230](https://github.com/kevinWangSheng/production-ops-agent/issues/230)）：采样中途取消被重放误报 `QUERY_MISMATCH`。存储与重放改为共用同一判定函数，重放按存储顺序重算处置并比较（合同 r7）。Codex gpt-6.1-sol 实现，修复前 5／35 查询后取消为红；独立审查（Codex gpt-6-astra）无 P1/P2，存储端 8192 组条件组合与基线一致，回归 749 passed；实现者 `make check` 6786 passed。
 - 2026-10-22 PR-4a 对比采集（`feature/F11-pr4a-release-comparison`，worktree `poa-f11-pr4a`）：Claude Opus 5.5 实现。新表 `opspilot_release_comparisons`／`_comparison_queries`（迁移 `0019_release_comparisons` 接 0018；与 B1 #321 的 0019 撞号——若 B1 先合并，本迁移改为 `0020` 接 `0019_incident_priority`）。Observer 每轮在采样后取 1 个待对比的 anomaly ending，在 `released_at` 复用 PR-2 映射／判定求 before_service 与 before_old（49 查询／次，最多 3 次，仅失败或超时重试，每次 120 s 预算），after 两个 scope 取自 anomaly 样本；存储重算并幂等（先写者为准）；挂起时不取、不查，采集中被挂起则不提交。重放新增 `COMPARISON_MISMATCH`。可逆默认：原因码写成 `CODE:<scope>[:<signal>]`；值只在证据新鲜且充足时给出；对比行不进 `release_history`（PR-2 固定形状），由 `release_comparisons()` 与 `session_history` 提供；Observer 对两表有 SELECT（幂等读与待办查询需要）。
+- S3 澄清（lead 2026-10-22）：前后 pod-template-hash 相同即判 `VERSION_SLICE_NOT_DISTINGUISHABLE`，不再要求镜像也相同；镜像相同但 hash 不同照常切片。实现已按此（`before_context` 在 hash 相同时两侧都取 before 版本），单测覆盖 hash 相同而镜像不同。
 - 检查（PG 17 临时实例 56021）：实现测试 19 passed；F11／迁移／角色／M1-02／#184／F2 PR-C 相关单测与 PG 1508 passed；ruff、mypy 通过。同步旧测试只改迁移头与 0014 降级授权枚举。未做 kind 真实运行。
 
 ## 下一步与交接
