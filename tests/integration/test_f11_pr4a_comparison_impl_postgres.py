@@ -405,6 +405,21 @@ def test_attempts_are_durable_and_bounded_across_observers_and_crashes(
         _expire_attempts(lease.comparison_id)
         lease = _own_claim(observer, oid, second if attempt == 2 else first)
         assert lease.attempt == attempt
+    # r5: a live third attempt is not over, not even for its own owner
+    assert observer.claim_comparison(first) is None
+    assert observer.claim_comparison(uuid4()) is None
+    forged = lease.model_copy(update={"exhausted": True})
+    with pytest.raises(PersistenceError, match="COMPARISON_LEASE_LOST"):
+        observer.submit_comparison(
+            forged.model_copy(update={"owner": uuid4()}),
+            ReleaseComparisonEvidence(
+                format_version=1,
+                comparison_id=lease.comparison_id,
+                attempts=3,
+                window=before_window(context),
+                queries=(),
+            ),
+        )
     _expire_attempts(lease.comparison_id)
     final = _own_claim(observer, oid, uuid4())
     assert final.exhausted and final.attempt == 3
@@ -557,6 +572,50 @@ def test_only_the_live_holder_of_the_latest_attempt_files_the_record(
         "complete",
     )
     assert replay_release_history(_history(observer, oid)).consistent
+
+
+def test_a_record_and_a_takeover_claim_cannot_interleave(release_harness):
+    """The r4 race, step by step: A files under a live lease in an open
+    transaction; the lease lapses; B claims the next attempt. B must wait
+    for A's transaction and is then refused, leaving A's record alone."""
+    _, observer, oid, _, _ = release_harness
+    _anomalous(release_harness)
+    a, b = uuid4(), uuid4()
+    lease = _own_claim(observer, oid, a)
+    with login(DSN, "opspilot_observer") as dsn:
+        first = psycopg.connect(dsn)
+        try:
+            _record_insert(first, lease, owner=a, attempts=1)  # open transaction
+            _expire_attempts(lease.comparison_id)
+            outcome = {}
+
+            def takeover():
+                try:
+                    with psycopg.connect(dsn) as conn:
+                        conn.execute(
+                            "INSERT INTO opspilot_release_comparison_attempts(comparison_id,attempt,observation_id,ending_id,owner) VALUES(%s,2,%s,%s,%s)",
+                            (lease.comparison_id, oid, lease.ending_id, b),
+                        )
+                    outcome["result"] = "claimed"
+                except psycopg.errors.InsufficientPrivilege:
+                    outcome["result"] = "refused"
+
+            second = threading.Thread(target=takeover)
+            second.start()
+            second.join(1.0)
+            assert second.is_alive(), outcome  # blocked on the comparison lock
+            first.commit()
+            second.join(10)
+            assert outcome == {"result": "refused"}
+        finally:
+            first.close()
+    (stored,) = _comparisons(observer, oid)
+    assert (stored["attempts"], stored["owner"]) == (1, a)
+    with psycopg.connect(DSN) as conn:
+        assert conn.execute(
+            "SELECT count(*) FROM opspilot_release_comparison_attempts WHERE comparison_id=%s",
+            (lease.comparison_id,),
+        ).fetchone() == (1,)
 
 
 class _Blocking:

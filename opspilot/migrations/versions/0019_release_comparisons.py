@@ -18,7 +18,9 @@ Observer collects one bounded before/after comparison and stores it here.
   exclusive across Observers -- the next attempt needs every earlier one to
   be the claimer's own or past its lease -- so the queries spent on one
   ending stay within three plans whatever the number of Observers or
-  crashes. A record must come from the holder of the latest attempt inside its lease
+  crashes. Claims and records of one comparison take the same transaction
+  advisory lock (``'release-comparison:' || comparison_id``), in the guards
+  as well as in the store, so a lease check never races another claim. A record must come from the holder of the latest attempt inside its lease
   (r4 fencing); a spent, lapsed third attempt may only be filed unavailable.
 * ``opspilot_release_comparison_queries``: the raw before-window responses,
   evaluated at ``released_at`` (S8), as ``opspilot_release_query_results``
@@ -144,6 +146,8 @@ def upgrade() -> None:
     );
     CREATE FUNCTION opspilot_release_comparison_attempt_guard() RETURNS trigger LANGUAGE plpgsql SET search_path=pg_catalog,pg_temp AS $$
     BEGIN
+      -- r5: claims and records of one comparison serialize on one xact lock
+      PERFORM pg_advisory_xact_lock(hashtextextended('release-comparison:' || NEW.comparison_id::text, 0));
       IF NEW.comparison_id IS DISTINCT FROM public.opspilot_comparison_id(NEW.observation_id, NEW.ending_id)
         OR NOT EXISTS (
           SELECT 1 FROM public.opspilot_observation_endings e
@@ -161,6 +165,7 @@ def upgrade() -> None:
     CREATE FUNCTION opspilot_release_comparison_guard() RETURNS trigger LANGUAGE plpgsql SET search_path=pg_catalog,pg_temp AS $$
     DECLARE latest record;
     BEGIN
+      PERFORM pg_advisory_xact_lock(hashtextextended('release-comparison:' || NEW.comparison_id::text, 0));
       IF NEW.decision_at > clock_timestamp()
         OR NEW.comparison_id IS DISTINCT FROM public.opspilot_comparison_id(NEW.observation_id, NEW.ending_id)
         OR NOT EXISTS (
