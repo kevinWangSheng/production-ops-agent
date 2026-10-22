@@ -36,7 +36,6 @@ from opspilot.observation.releases import (
     ReleaseStore,
 )
 from opspilot.observer.loop import ObserverLoop
-from opspilot.observer.release_replay import replay_release_history
 from opspilot.persistence import DurableStore
 from opspilot.persistence.grants import RUNTIME_GRANTS, WEB_ROLE, WORKER_ROLE
 from scripts.m0.postgres_lab import DSN
@@ -759,6 +758,7 @@ def test_s8_raw_evidence_is_stored_with_its_sha256_and_replays_consistently(
     web: ReleaseStore,
     observer: ObservationStore,
     catalog: Catalog,
+    history: ObservationStore,
 ) -> None:
     anomaly, world = _collect(owner, web, observer, catalog)
 
@@ -768,7 +768,7 @@ def test_s8_raw_evidence_is_stored_with_its_sha256_and_replays_consistently(
 
     for row in stored:
         assert row["raw_sha256"] == hashlib.sha256(bytes(row["raw"])).hexdigest()
-    replay = replay_release_history(observer.release_history(anomaly.oid))
+    replay = history.replay_session(anomaly.session_id)
     assert replay.consistent, replay.integrity
     assert replay.external_queries == () and replay.model_requests == ()
     # the same plan, replayed twice, gives the same comparison
@@ -780,9 +780,10 @@ def test_s8_rewritten_comparison_evidence_makes_the_replay_inconsistent(
     web: ReleaseStore,
     observer: ObservationStore,
     catalog: Catalog,
+    history: ObservationStore,
 ) -> None:
     anomaly, _ = _collect(owner, web, observer, catalog)
-    assert replay_release_history(observer.release_history(anomaly.oid)).consistent
+    assert history.replay_session(anomaly.session_id).consistent
     table = next(
         t
         for t, columns in _tables().items()
@@ -804,7 +805,7 @@ def test_s8_rewritten_comparison_evidence_makes_the_replay_inconsistent(
         )
         assert done.rowcount == 1
 
-    replay = replay_release_history(observer.release_history(anomaly.oid))
+    replay = history.replay_session(anomaly.session_id)
 
     assert not replay.consistent
     assert replay.integrity
