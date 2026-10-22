@@ -209,12 +209,19 @@ def _control(app, incident: UUID, action: str, generation: int, **extra) -> int:
     return int(response.json()["generation"])
 
 
-def _counts(conn, incidents) -> Counter:
+def _counts(conn, incidents, *, owners: set[UUID] | None = None) -> Counter:
+    owner_filter = ""
+    params: tuple[object, ...]
+    if owners is not None:
+        owner_filter = " AND (r.state <> 'running' OR r.owner=ANY(%s))"
+        params = (list(incidents), list(owners))
+    else:
+        params = (list(incidents),)
     rows = conn.execute(
         "SELECT r.state,count(*) FROM opspilot_runs r "
         "JOIN opspilot_incidents i ON i.current_run_id=r.run_id "
-        "WHERE i.incident_id=ANY(%s) GROUP BY r.state",
-        (list(incidents),),
+        "WHERE i.incident_id=ANY(%s)" + owner_filter + " GROUP BY r.state",
+        params,
     ).fetchall()
     conn.commit()
     return Counter({state: int(count) for state, count in rows})
@@ -229,19 +236,49 @@ def _priorities(conn, incidents) -> dict[UUID, int]:
     return dict(rows)
 
 
+def _claimed_by_owners(conn, incidents, owners: set[UUID]) -> list[tuple]:
+    """Return run_claimed events whose Run is owned by this test's worker."""
+    if not owners:
+        return []
+    events = events_of(conn, incidents, "run_claimed")
+    run_ids = [UUID(event[2]["run_id"]) for event in events]
+    if not run_ids:
+        return []
+    rows = conn.execute(
+        "SELECT run_id FROM opspilot_runs WHERE run_id=ANY(%s) AND owner=ANY(%s)",
+        (run_ids, list(owners)),
+    ).fetchall()
+    conn.commit()
+    owned_run_ids = {row[0] for row in rows}
+    return [event for event in events if UUID(event[2]["run_id"]) in owned_run_ids]
+
+
 class _StateSampler:
-    def __init__(self, dsn: str, incidents):
+    def __init__(self, dsn: str, incidents, owners: set[UUID]):
         self.dsn = dsn
         self.incidents = list(incidents)
+        self.owners = set(owners)
+        self.owners_lock = threading.Lock()
         self.samples: list[tuple[float, Counter]] = []
         self.stop = threading.Event()
         self.thread = threading.Thread(target=self._run, daemon=True)
         self.thread.start()
 
+    def add_owners(self, owners: set[UUID]) -> None:
+        with self.owners_lock:
+            self.owners.update(owners)
+
     def _run(self):
         with psycopg.connect(self.dsn) as conn:
             while not self.stop.is_set():
-                self.samples.append((time.monotonic(), _counts(conn, self.incidents)))
+                with self.owners_lock:
+                    owners = set(self.owners)
+                self.samples.append(
+                    (
+                        time.monotonic(),
+                        _counts(conn, self.incidents, owners=owners),
+                    )
+                )
                 self.stop.wait(0.03)
 
     def close(self):
@@ -293,12 +330,16 @@ def test_b2_storm_preserves_all_alerts_and_holds_the_queue_at_eight(
     app = _app(web_dsn, 1800)
     severities = ["critical"] * 17 + ["warning"] * 17 + [None] * 16
     incidents: list[UUID] = []
+    tag_to_incident: dict[str, UUID] = {}
     for severity in severities:
         tag = new_tag()
         stub.plan(tag, Act("reject", hold=True))
-        incidents.append(_firing(app, tag, severity)[0])
+        incident = _firing(app, tag, severity)[0]
+        incidents.append(incident)
+        tag_to_incident[tag] = incident
 
-    sampler = _StateSampler(DSN, incidents)
+    worker_owners: set[UUID] = set()
+    sampler = _StateSampler(DSN, incidents, worker_owners)
     worker = workers(
         OPSPILOT_WORKER_CAPACITY="2", OPSPILOT_BACKLOG_MAX="8", poll_seconds=0.2
     )
@@ -306,14 +347,25 @@ def test_b2_storm_preserves_all_alerts_and_holds_the_queue_at_eight(
 
         def bounded():
             rows = run_rows(owner, incidents)
-            counts = _counts(owner, incidents)
-            claimed = events_of(owner, incidents, "run_claimed")
+            arrived = [
+                tag_to_incident[tag] for tag in stub.arrived() if tag in tag_to_incident
+            ]
+            new_owners = {
+                row["owner"]
+                for row in run_rows(owner, arrived).values()
+                if row["owner"] is not None
+            }
+            worker_owners.update(new_owners)
+            sampler.add_owners(new_owners)
+            counts = _counts(owner, incidents, owners=worker_owners)
+            claimed = _claimed_by_owners(owner, incidents, worker_owners)
             return (
                 rows
                 if len(rows) == 50
                 and counts["waiting_human"]
                 and counts["queued"] <= 8
                 and counts["running"] == 2
+                and len(worker_owners) == 2
                 and len(claimed) >= 2
                 else None
             )
@@ -345,7 +397,8 @@ def test_b2_storm_preserves_all_alerts_and_holds_the_queue_at_eight(
         ]
         priorities = _priorities(owner, incidents)
         claimed = [
-            subject for subject, _, _ in events_of(owner, incidents, "run_claimed")
+            subject
+            for subject, _, _ in _claimed_by_owners(owner, incidents, worker_owners)
         ]
         assert len(claimed) == 2
         assert [priorities[subject] for subject in claimed] == sorted(
