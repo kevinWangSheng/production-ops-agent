@@ -58,6 +58,23 @@ class EvidenceStore(Protocol):
 
     def get(self, evidence_id: str) -> StoredEvidence | None: ...
 
+    def count_spilled(self, run_id: str) -> tuple[int, int]:
+        """``(records, raw_bytes)`` of the Run's kept over-limit results (#308)."""
+        ...
+
+
+def _spilled(stored: StoredEvidence) -> bool:
+    """An un-adopted over-limit result kept by the executor (#308 PR1).
+
+    Its view is the ``RESULT_TOO_LARGE`` refusal the model received plus the
+    evidence identity; no other record carries that reason.
+    """
+    return (
+        not stored.adopted
+        and stored.status == "error"
+        and stored.view.get("reason") == "RESULT_TOO_LARGE"
+    )
+
 
 def _stored(record: EvidenceRecord) -> StoredEvidence:
     if not isinstance(record, EvidenceRecord):
@@ -153,6 +170,14 @@ class MemoryEvidenceStore:
     def get(self, evidence_id: str) -> StoredEvidence | None:
         return self._records.get(evidence_id)
 
+    def count_spilled(self, run_id: str) -> tuple[int, int]:
+        spilled = [
+            stored
+            for stored in self._records.values()
+            if stored.run_id == run_id and _spilled(stored)
+        ]
+        return len(spilled), sum(len(stored.raw) for stored in spilled)
+
 
 class DurableEvidenceStore:
     def __init__(self, store: DurableStore) -> None:
@@ -245,6 +270,20 @@ class DurableEvidenceStore:
         if row is None:
             return None
         return _from_row(row)
+
+    def count_spilled(self, run_id: str) -> tuple[int, int]:
+        # Same predicate as ``_spilled``. Read under the worker's existing
+        # SELECT grant; two parallel over-limit reads of one step can both see
+        # the count below the cap, so a Run may hold one record over it
+        # (contract r1, U2).
+        with self._store.transaction() as conn:
+            row = conn.execute(
+                "SELECT count(*) AS records,COALESCE(sum(octet_length(raw)),0) AS raw_bytes FROM opspilot_evidence WHERE run_id=%s AND NOT adopted AND status='error' AND view->>'reason'='RESULT_TOO_LARGE'",
+                (run_id,),
+            ).fetchone()
+        if row is None:
+            raise PersistenceError("INCONSISTENT_STATE")
+        return int(row["records"]), int(row["raw_bytes"])
 
 
 def _from_row(row: Mapping[str, Any]) -> StoredEvidence:
