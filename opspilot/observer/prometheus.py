@@ -16,6 +16,13 @@ issue #156): the Observer's UTC wall clock read right after the request
 bytes were handed to the socket. A request that never got that far -- the
 connection could not be made, the in-flight limit refused it -- carries
 none. The time is an audit fact only; no verdict reads it.
+
+Every body is redacted as soon as it is read and before anything parses it
+(issue #254): ``body`` -- what the bundle, the release ``raw``, their hashes,
+the verdict and the offline replay all use -- is the credential-redacted
+form (``opspilot.redaction.redact_json_bytes``), and a body that is not
+UTF-8 is kept as no bytes at all. A body without a credential is kept byte
+for byte.
 """
 
 from __future__ import annotations
@@ -47,6 +54,7 @@ from pydantic import AfterValidator, AwareDatetime, Field
 
 from opspilot.domain.base import DTO
 from opspilot.observation.release_policy import storable_text
+from opspilot.redaction import redact_json_bytes
 
 __all__ = [
     "IN_FLIGHT_LIMIT",
@@ -231,7 +239,7 @@ class PrometheusReadOnlySource:
                 expr,
                 "timeout",
                 None,
-                cut.partial[:_ERROR_BODY_BYTES],
+                _kept_prefix(cut.partial),
                 None,
                 "TIMEOUT",
                 body_complete=False,
@@ -253,7 +261,7 @@ class PrometheusReadOnlySource:
                 expr,
                 "failed",
                 None,
-                cut.partial[:_ERROR_BODY_BYTES],
+                _kept_prefix(cut.partial),
                 cut.http_status,
                 "UNREACHABLE",
                 body_complete=cut.body_complete,
@@ -275,26 +283,29 @@ class PrometheusReadOnlySource:
                 expr,
                 "failed",
                 None,
-                body[:_ERROR_BODY_BYTES],
+                _kept_prefix(body),
                 http_status,
                 "HTTP",
                 body_complete=complete,
                 sent_at=sent_at,
             )
-        if not complete or len(body) > RESPONSE_LIMIT_BYTES:
+        stored = _stored(body)
+        if not complete or max(len(body), len(stored)) > RESPONSE_LIMIT_BYTES:
+            # also when only the redacted form outgrew the limit: the stored
+            # body never exceeds what the release row and the bundle hold
             return InstantResult(
                 expr,
                 "failed",
                 None,
-                body[:_ERROR_BODY_BYTES],
+                stored[:_ERROR_BODY_BYTES],
                 http_status,
                 "TOO_LARGE",
                 body_complete=False,
                 sent_at=sent_at,
             )
-        status, value, detail = _single_value(body)
+        status, value, detail = _single_value(stored)
         return InstantResult(
-            expr, status, value, body, http_status, detail, sent_at=sent_at
+            expr, status, value, stored, http_status, detail, sent_at=sent_at
         )
 
     def instant_vector(
@@ -331,7 +342,7 @@ class PrometheusReadOnlySource:
                 expr=expr,
                 status="timeout",
                 series=(),
-                body=cut.partial[:_ERROR_BODY_BYTES],
+                body=_kept_prefix(cut.partial),
                 http_status=None,
                 detail="TIMEOUT",
                 body_complete=False,
@@ -353,7 +364,7 @@ class PrometheusReadOnlySource:
                 expr=expr,
                 status="failed",
                 series=(),
-                body=cut.partial[:_ERROR_BODY_BYTES],
+                body=_kept_prefix(cut.partial),
                 http_status=cut.http_status,
                 detail="UNREACHABLE",
                 body_complete=cut.body_complete,
@@ -376,29 +387,30 @@ class PrometheusReadOnlySource:
                 expr=expr,
                 status="failed",
                 series=(),
-                body=body[:_ERROR_BODY_BYTES],
+                body=_kept_prefix(body),
                 http_status=http_status,
                 detail="HTTP",
                 body_complete=complete,
                 sent_at=sent_at,
             )
-        if not complete or len(body) > RESPONSE_LIMIT_BYTES:
+        stored = _stored(body)
+        if not complete or max(len(body), len(stored)) > RESPONSE_LIMIT_BYTES:
             return VectorResult(
                 expr=expr,
                 status="failed",
                 series=(),
-                body=body[:_ERROR_BODY_BYTES],
+                body=stored[:_ERROR_BODY_BYTES],
                 http_status=http_status,
                 detail="TOO_LARGE",
                 body_complete=False,
                 sent_at=sent_at,
             )
-        status, series, detail = _vector_series(body)
+        status, series, detail = _vector_series(stored)
         return VectorResult(
             expr=expr,
             status=status,
             series=series,
-            body=body,
+            body=stored,
             http_status=http_status,
             detail=detail,
             body_complete=True,
@@ -451,6 +463,28 @@ class PrometheusReadOnlySource:
             raise
         except HTTPException as error:
             raise _Protocol.of(error, chunks, status) from None
+
+
+def _stored(body: bytes) -> bytes:
+    """The form of a response body the Observer keeps and parses (#254).
+
+    UTF-8 text is credential-redacted (JSON values and keys, or prose when
+    it is not JSON) and comes back unchanged when nothing matched; bytes
+    that are not UTF-8 cannot be inspected and are kept as none. The status,
+    HTTP status and detail of the result still say what arrived.
+    """
+    try:
+        body.decode("utf-8")
+    except UnicodeDecodeError:
+        return b""
+    return redact_json_bytes(body)
+
+
+def _kept_prefix(body: bytes) -> bytes:
+    """An error, cut or timed-out body: redacted first, then cut to the
+    error keep limit, so the cut never splits a span before it is redacted
+    and redaction never grows a kept prefix past the limit."""
+    return _stored(body)[:_ERROR_BODY_BYTES]
 
 
 def _utc_now() -> datetime:
