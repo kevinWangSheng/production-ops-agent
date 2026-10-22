@@ -8,7 +8,9 @@ joins the in-flight attempts for one bounded grace period. Up to
 ``DurableStore.claimable_incidents`` (a read-only hint), the claim and the
 attempt are ``InvestigationRunner.resume`` (lease fence, C3 §6-7 recovery,
 ADR-0005 settling), and every poll first runs the deadline sweep (ADR-0005
-decision 2) so an overdue Run is parked even when no page is open.
+decision 2) so an overdue Run is parked even when no page is open, then the
+backlog pass (F2 U4-A) that parks the lowest-priority queued Runs beyond
+``OPSPILOT_BACKLOG_MAX`` as ``BACKLOG_FULL`` handoffs.
 
 Safety properties, and where they come from:
 
@@ -35,6 +37,8 @@ Configuration (environment only):
 * ``OPSPILOT_WORKER_BATCH``         incidents per ``poll_once`` (default 20).
 * ``OPSPILOT_WORKER_CAPACITY``      concurrent attempts, one slot thread
   each (default 2); refused unless ``OPSPILOT_POOL_MAX_SIZE`` >= capacity + 2.
+* ``OPSPILOT_BACKLOG_MAX``          queued Runs kept before the backlog pass
+  parks the excess for a human (default 8, >= 1).
 * ``OPSPILOT_TOOL_PROFILE``         ``fixture`` (default) or ``otel-demo``;
   must match the workbench (``opspilot.tools.profiles``).
 * ``OPSPILOT_TRACE``                ``off`` (default) or ``lab``: LangSmith
@@ -68,7 +72,13 @@ from uuid import UUID
 
 from opspilot import tracing
 from opspilot.investigation.client import DeepSeekClient
-from opspilot.investigation.progress import ExpirySweeper, ProgressLog, sweep_expired
+from opspilot.investigation.progress import (
+    BacklogParker,
+    ExpirySweeper,
+    ProgressLog,
+    park_backlog,
+    sweep_expired,
+)
 from opspilot.investigation.runner import InvestigationRunner, RunnerOutcome
 from opspilot.knowledge import KnowledgeStore
 from opspilot.knowledge.jobs import GenerationStore
@@ -107,6 +117,10 @@ class WorkerLoop:
     ``stop`` is checked before every claim, never mid-attempt (the runner
     owns the attempt's fences).
 
+    ``backlog`` (F2 B2, R-B2-1): when set, every sweep is followed by one
+    backlog pass that parks the queued Runs beyond ``backlog_max`` --
+    after the sweep, before any slot is filled (U-B2-1); ``None`` skips it.
+
     ``run()`` (R-B1-2): every ``poll_seconds`` the polling thread sweeps,
     then lists ``claimable_incidents`` -- priority, then deadline -- for the
     free slots and dispatches; a slot that frees wakes it to list again at
@@ -132,6 +146,8 @@ class WorkerLoop:
     batch: int = 20
     capacity: int = 1
     runner_factory: Callable[[], Resumer] | None = None
+    backlog: BacklogParker | None = None
+    backlog_max: int = 8
     _runners: list[Resumer] = field(init=False, repr=False)
     _idle: list[Resumer] = field(init=False, repr=False)
     _cond: threading.Condition = field(init=False, repr=False)
@@ -142,6 +158,8 @@ class WorkerLoop:
     def __post_init__(self) -> None:
         if type(self.capacity) is not int or self.capacity < 1:
             raise ValueError("capacity must be a positive integer")
+        if type(self.backlog_max) is not int or self.backlog_max < 1:
+            raise ValueError("backlog_max must be a positive integer")
         factory = self.runner_factory
         self._runners = [self.runner] + [
             factory() if factory is not None else self.runner
@@ -187,6 +205,15 @@ class WorkerLoop:
                 _log.info("swept incident=%s run=%s", incident_id, run_id)
         except PersistenceError as exc:
             _log.warning("sweep refused code=%s", exc)
+        if self.backlog is None:
+            return
+        try:
+            for incident_id, run_id in park_backlog(
+                self.backlog, self.events, self.backlog_max
+            ):
+                _log.info("backlog parked incident=%s run=%s", incident_id, run_id)
+        except PersistenceError as exc:
+            _log.warning("backlog pass refused code=%s", exc)
 
     # -- slots -----------------------------------------------------------
 
@@ -434,6 +461,8 @@ def build_loop(
         batch=_int_env("OPSPILOT_WORKER_BATCH", 20),
         capacity=capacity,
         runner_factory=slot_runner,
+        backlog=store,
+        backlog_max=_int_env("OPSPILOT_BACKLOG_MAX", 8),
     )
 
 

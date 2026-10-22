@@ -417,6 +417,99 @@ class _RunOps(_StoreBase):
                     )
         return tuple(parked)
 
+    #: Every backlog pass takes this one transaction-scoped advisory lock
+    #: before it counts (F2 B2 contract R-B2-2), so two workers' passes
+    #: never both park against the same count.
+    _BACKLOG_LOCK_KEY = "opspilot:backlog_full"
+
+    #: The backlog (U-B2-1 A): the queued part of ``claimable_incidents``,
+    #: an open, automatic, unconcluded, unpaused incident's current Run
+    #: still ``queued`` and not yet overdue (an overdue one is the sweep's).
+    _BACKLOG_FROM = (
+        "FROM opspilot_incidents i JOIN opspilot_runs r ON r.run_id=i.current_run_id "
+        "WHERE i.state NOT IN ('paused','cancelled','completed') AND i.mode='automatic' "
+        "AND i.conclusion IS NULL AND r.state='queued' AND r.deadline>clock_timestamp()"
+    )
+
+    def park_backlog(
+        self, *, max_queued: int, limit: int = 100
+    ) -> tuple[tuple[UUID, UUID, int], ...]:
+        """Park queued Runs beyond ``max_queued`` as a human's (F2 U4-A).
+
+        Same primitive and shape as the deadline sweep: ``_park`` from
+        ``queued`` only, lease fields cleared, incident open, conclusion
+        untouched; the reason (``BACKLOG_FULL``) is the caller's to announce.
+        A human ``follow_up``/``correct``/``resume`` re-queues the Run.
+
+        Counted: the backlog above (U-B2-1). Parked: only a Run no human
+        decision has touched (``r.control_generation = 0``, U-B2-2 A) -- a
+        human re-queue, a renewed Run and a ``new_run`` count toward the
+        backlog but are never parked, so a human can hold it above the cap.
+        Order (U-B2-3 A): lowest priority first, then latest deadline, then
+        highest ``incident_id`` -- the exact reverse of the claim order.
+
+        One transaction per park (R-B2-2): the fixed advisory lock first,
+        then the lowest candidate, then incident before Run row locks with
+        the eligibility re-checked, then the count under those locks; a park
+        happens only while the count is still above ``max_queued``. A
+        concurrent pass therefore sees every park committed before it, and
+        two passes park exactly the excess between them. Returns the
+        ``(incident_id, run_id, control_generation)`` triples this call
+        parked, like ``sweep_expired_runs_with_generations``; at most
+        ``limit`` transactions are spent, so a pass stays bounded and the
+        next poll continues.
+        """
+        if (
+            type(max_queued) is not int
+            or max_queued < 1
+            or type(limit) is not int
+            or limit < 1
+        ):
+            raise PersistenceError("INVALID_INPUT")
+        parked: list[tuple[UUID, UUID, int]] = []
+        for _ in range(limit):
+            with self.transaction() as conn:
+                conn.execute(
+                    "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
+                    (self._BACKLOG_LOCK_KEY,),
+                )
+                candidate = conn.execute(
+                    "SELECT i.incident_id,r.run_id "
+                    + self._BACKLOG_FROM
+                    + " AND r.control_generation=0 "
+                    "ORDER BY i.priority DESC, r.deadline DESC, i.incident_id DESC LIMIT 1"
+                ).fetchone()
+                if candidate is None:
+                    break
+                conn.execute(
+                    "SELECT 1 FROM opspilot_incidents WHERE incident_id=%s FOR UPDATE",
+                    (candidate["incident_id"],),
+                )
+                row = conn.execute(
+                    "SELECT i.control_generation "
+                    + self._BACKLOG_FROM
+                    + " AND r.control_generation=0 AND i.incident_id=%s AND r.run_id=%s "
+                    "FOR UPDATE OF i,r",
+                    (candidate["incident_id"], candidate["run_id"]),
+                ).fetchone()
+                if row is None:
+                    # A claim or a human decision moved it first; pick again.
+                    continue
+                queued = self._require_row(
+                    conn.execute("SELECT count(*) AS n " + self._BACKLOG_FROM)
+                )
+                if int(queued["n"]) <= max_queued:
+                    break
+                if self._park(conn, candidate["run_id"], from_states=("queued",)):
+                    parked.append(
+                        (
+                            candidate["incident_id"],
+                            candidate["run_id"],
+                            int(row["control_generation"]),
+                        )
+                    )
+        return tuple(parked)
+
     def sweep_expired_runs(
         self, *, incident_id: UUID | None = None, limit: int = 100
     ) -> tuple[tuple[UUID, UUID], ...]:
