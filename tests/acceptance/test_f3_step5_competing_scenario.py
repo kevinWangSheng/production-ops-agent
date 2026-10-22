@@ -23,6 +23,8 @@ import pytest
 import scripts.f3_competing_scenario as driver
 from opspilot.investigation.loop import investigation_versions
 from opspilot.tools.otel_demo import (
+    LABEL_VALUES_TOOL,
+    METRIC_NAMES_TOOL,
     TOOL_SCHEMA_REVISION,
     TOOL_SCHEMAS,
     TRACE_PROJECTION,
@@ -36,7 +38,11 @@ from opspilot.tools.registry import ToolRegistry, canonical_hash
 ROOT = Path(__file__).resolve().parents[2]
 RUBRIC_SHA256 = "b58974b2c2a5ba309cb0efcf47c5af001d9f9c3a27440fec32d5d31b5cf1d956"
 ANSWER_SHA256 = "a35361da83e8a314a2af54bf50aa74441ca16dcd7a533e96c22c85a71b14b37a"
-EXPECTED_TOOL_SCHEMA_REVISION = "otel-demo-c7737da709ee"
+# #307 A's two discovery tools after merge main 6ff9d68; recomputed from the
+# registered model-visible content and frozen here for F3 step 5 evidence.
+EXPECTED_TOOL_SCHEMA_REVISION = "otel-demo-5270fd8c543f"
+# PR-3a's pre-#307 A freeze, retained as the incompatibility boundary.
+PR3A_TOOL_SCHEMA_REVISION = "otel-demo-c7737da709ee"
 OLD_TOOL_SCHEMA_REVISION = "otel-demo-4d7168180749"
 EXPECTED_TRACES_DESCRIPTION_SHA256 = (
     "559e4ed81e5c0f8624b5fd96f8434e164ce403d22545381253223bec893b55c3"
@@ -95,6 +101,7 @@ def test_tool_schema_revision_is_recomputed_and_other_versions_are_unchanged() -
     )
 
     assert TOOL_SCHEMA_REVISION != OLD_TOOL_SCHEMA_REVISION
+    assert TOOL_SCHEMA_REVISION != PR3A_TOOL_SCHEMA_REVISION
     assert TOOL_SCHEMA_REVISION == recomputed == EXPECTED_TOOL_SCHEMA_REVISION
     assert otel_demo_versions() == {
         **investigation_versions(),
@@ -138,8 +145,17 @@ def test_registry_remains_read_only_and_ksm_promql_is_allowed() -> None:
     assert {registration.name for registration in registrations.tools} == {
         "metrics_range_query",
         "traces_search",
+        METRIC_NAMES_TOOL,
+        LABEL_VALUES_TOOL,
     }
-    assert {registration.verb for registration in registrations.tools} == {"query"}
+    assert {
+        registration.name: registration.verb for registration in registrations.tools
+    } == {
+        "metrics_range_query": "query",
+        "traces_search": "query",
+        METRIC_NAMES_TOOL: "list",
+        LABEL_VALUES_TOOL: "list",
+    }
     assert all(
         not registration.may_contain_secrets for registration in registrations.tools
     )

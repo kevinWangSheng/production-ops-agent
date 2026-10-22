@@ -391,7 +391,7 @@ def template_scope(config: OtelDemoConfig | None = None) -> QueryScope:
         registry_revision=TargetRegistry(list(registrations.targets)).revision,
         tool_registry_revision=ToolRegistry(registrations.tools).revision,
         target_ids=frozenset({otel_demo.TARGET_ID}),
-        tool_names=frozenset({otel_demo.METRICS_TOOL, otel_demo.TRACES_TOOL}),
+        tool_names=frozenset(item.name for item in registrations.tools),
         window=ToolWindow(end - timedelta(seconds=otel_demo.OBSERVATION_SECONDS), end),
         default_query_window=None,
         deadline=end,
