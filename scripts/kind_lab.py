@@ -49,7 +49,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -138,10 +138,10 @@ WEBHOOK_SECRET = "alertmanager-opspilot-webhook"
 WEBHOOK_ACTOR = "alertmanager"
 WORKBENCH_EVENT_ENV = LAB_DIR / "workbench-alertmanager.env"
 # F11 PR-3 (U4): the experiment harness's bearer token for
-# ``POST /intake/version-changes``; same file discipline, its own dedicated actor.
+# ``POST /intake/version-changes``; same file discipline, its own dedicated
+# actor, and its hash in the same workbench env file as Alertmanager's.
 RELEASE_TOKEN_FILE = LAB_DIR / "release-deployer-token"
 RELEASE_ACTOR = "release-deployer"
-WORKBENCH_RELEASE_ENV = LAB_DIR / "workbench-release-deployer.env"
 # The variables each product role reads (only its own; no fallback).
 ROLE_ENV_VARS = {
     "observer": (
@@ -466,17 +466,23 @@ def webhook_token(path: Path | None = None) -> str:
 
 
 def workbench_event_env(
-    token: str, path: Path | None = None, *, actor: str = WEBHOOK_ACTOR
+    token: str,
+    path: Path | None = None,
+    *,
+    actor: str = WEBHOOK_ACTOR,
+    also: Mapping[str, str] | None = None,
 ) -> Path:
-    """``OPSPILOT_EVENT_TOKENS`` entry (sha256 of the token = the dedicated
-    ``actor``, ``alertmanager`` by default) for the workbench, sourced with
-    ``set -a; . <file>``.
+    """``OPSPILOT_EVENT_TOKENS`` entries (sha256 of the token = the dedicated
+    ``actor``, ``alertmanager`` by default, then one per ``also`` actor ->
+    token) for the workbench, sourced with ``set -a; . <file>``.
     It appends to an ``OPSPILOT_EVENT_TOKENS`` already in the environment
     instead of replacing it (the workbench parses ``,``-separated pairs into
-    a map, so sourcing twice is harmless). Holds the hash only."""
+    a map, so sourcing twice is harmless). Holds the hashes only."""
     path = WORKBENCH_EVENT_ENV if path is None else path
-    digest = hashlib.sha256(token.encode()).hexdigest()
-    entry = f"{digest}={actor}"
+    entry = ",".join(
+        f"{hashlib.sha256(value.encode()).hexdigest()}={name}"
+        for name, value in ((actor, token), *(also or {}).items())
+    )
     _private_write(
         path,
         "OPSPILOT_EVENT_TOKENS="
@@ -868,11 +874,12 @@ def cmd_up(args: argparse.Namespace) -> int:
     code = apply_webhook_secret(token)
     if code != 0:
         return code
-    print(f"+ wrote {workbench_event_env(token)} (token hash only)")
-    release_env = workbench_event_env(
-        webhook_token(RELEASE_TOKEN_FILE), WORKBENCH_RELEASE_ENV, actor=RELEASE_ACTOR
+    # One file for every webhook actor: the documented start-up sources only
+    # this one, so a second file would leave the release harness at 401.
+    event_env = workbench_event_env(
+        token, also={RELEASE_ACTOR: webhook_token(RELEASE_TOKEN_FILE)}
     )
-    print(f"+ wrote {release_env} (token hash only)")
+    print(f"+ wrote {event_env} ({WEBHOOK_ACTOR}, {RELEASE_ACTOR}; token hashes only)")
     # Helm repo config and chart cache stay under LAB_DIR (``lab_env``).
     for repo, url in (
         ("open-telemetry", DEMO_REPO),
