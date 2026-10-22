@@ -1,0 +1,25 @@
+{
+  "issue": 304,
+  "evidence": "D-U2-1 offline read-only rebuild of real rows",
+  "date": "2026-10-22",
+  "source": "poa-f2-c/tmp/pg-f2c-live (copied; original untouched)",
+  "run_id": "1b21375d-607b-51d9-9527-51992cde88c9",
+  "authorized_targets": ["m0-otel-20260909"],
+  "rows": {
+    "ctx0:round-8": {"tool_calls": 0, "final": false, "finish_reason": "stop", "rejected_plan": false, "validation": "REPORT_INVALID (parsed, citation check failed)"},
+    "ctx0:round-9": {"tool_calls": 0, "final": true, "finish_reason": "stop", "input_watermark": 0}
+  },
+  "root_cause_confirmed": true,
+  "rebuild": {
+    "main_a7b296a": {"rounds_1_8": "ok", "rounds_1_9": "INCOMPATIBLE_STATE", "full_run": "INCOMPATIBLE_STATE"},
+    "fix_8af441e": {"rounds_1_8": "ok", "rounds_1_9": "ok", "full_run": "ok", "next_round": 10}
+  },
+  "round9_hash": {
+    "recorded": "6ff95471636030b02bc6b697b37b5c33483e4e1fbf2ac0dfb8b53b744d06e729",
+    "rebuilt_with_feedback": "6ff95471636030b02bc6b697b37b5c33483e4e1fbf2ac0dfb8b53b744d06e729",
+    "rebuilt_without_feedback": "b28014bcf978953cd8914ab73194282b9f1aa699e5b1210d19e93af640c0bed8",
+    "match_with_feedback": true
+  },
+  "writes": 0,
+  "model_calls": 0
+}
