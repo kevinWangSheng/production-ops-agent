@@ -81,6 +81,7 @@ EXPECTED_ROUTES: dict[tuple[str, str], str] = {
     ("POST", "/intake/ui"): "write: OpsPilot incident intake",
     ("POST", "/intake/events"): "write: OpsPilot event intake",
     ("POST", "/intake/alertmanager"): "write: OpsPilot alert intake",
+    ("POST", "/intake/version-changes"): "write: OpsPilot release observation intake",
     ("POST", "/incidents/{incident_id}/control"): "write: OpsPilot incident control",
     ("GET", "/incidents/{incident_id}/events"): "read: progress stream",
     ("GET", "/incidents/{incident_id}/evidence/{evidence_id}"): "read: evidence",
