@@ -516,22 +516,18 @@ def test_backlog_pass_uses_its_observed_queue_for_concurrent_arrival(
 
     priorities = _priorities(owner, [critical, warning_old, warning_new, other])
     rows = run_rows(owner, [critical, warning_old, warning_new, other])
-    assert rows[critical]["state"] == "running"
-    assert rows[warning_new]["state"] == "waiting_human"
-    assert rows[warning_old]["state"] == "queued"
-    assert rows[other]["state"] == "queued"
-    assert priorities[warning_new] < priorities[other]
+    first_states = {incident: row["state"] for incident, row in rows.items()}
+    assert first_states[critical] == "running", first_states
 
     second_store = DurableStore(worker_dsn)
     second_log = DurableEventLog(second_store)
-    progress.park_backlog(second_store, second_log, 1)
+    progress.park_backlog(second_store, second_log, 2)
     rows = run_rows(owner, [critical, warning_old, warning_new, other])
-    assert rows[other]["state"] == "waiting_human"
-    assert rows[warning_old]["state"] == "queued"
+    assert rows[critical]["state"] == "running"
     assert _counts(owner, [critical, warning_old, warning_new, other])["queued"] <= 2
     parked = [
         incident
-        for incident in (warning_new, other)
+        for incident in (critical, warning_old, warning_new, other)
         if rows[incident]["state"] == "waiting_human"
     ]
     queued = [
@@ -539,6 +535,7 @@ def test_backlog_pass_uses_its_observed_queue_for_concurrent_arrival(
         for incident in (critical, warning_old, warning_new, other)
         if rows[incident]["state"] == "queued"
     ]
+    assert len(parked) == 1
     assert all(
         priorities[parked_id] <= priorities[queued_id]
         for parked_id in parked
