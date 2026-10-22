@@ -98,11 +98,12 @@ COUNTERS = [
 
 ROWS = [{"series": index, "value": index * 2} for index in range(14)]
 
-# The exact keys of an over-limit refusal view (the task record's "拒绝路径的
+# The keys every over-limit refusal view keeps (the task record's "拒绝路径的
 # 逐项澄清", as revised after the real Runs: ``query`` echoed, ``window`` is the
 # queried window): the ordinary refusal view plus ``query`` and the three limit
-# details. No ``adopted``, no ``evidence_id``, and the row fields are absent,
-# not zero.
+# details. #308 PR2 adds ``evidence_id``/``adopted`` and the U5 summary on top
+# (see tests/acceptance/test_308_pr2_read_evidence.py); the row fields stay
+# absent, not zero.
 REFUSAL_KEYS = {
     "operation_id",
     "trust",
@@ -180,7 +181,7 @@ def _stable(view):
 def _full_tokens(counter) -> int:
     """Token count of the complete, untruncated view of ``ROWS``."""
 
-    outcome, *_ = _run(ROWS, 1_000_000, counter)
+    outcome, *_ = _run(ROWS, MAX_VIEW_TOKENS, counter)
     assert outcome.status == "ok"
     return _tokens(outcome.model_view, counter)
 
@@ -211,7 +212,7 @@ def _assert_refused_as_too_large(outcome, sink, *, cap, tokens, marker=None):
     """Contract 2: the whole shape of an over-limit refusal."""
 
     view = outcome.model_view
-    assert set(view) == REFUSAL_KEYS
+    assert REFUSAL_KEYS <= set(view)
     assert outcome.status == "error"
     assert outcome.reason == "RESULT_TOO_LARGE"
     assert outcome.source_contact == "confirmed"
@@ -224,7 +225,6 @@ def _assert_refused_as_too_large(outcome, sink, *, cap, tokens, marker=None):
     assert view["content"] is None
     assert view["max_view_tokens"] == cap
     assert view["view_tokens"] == tokens
-    assert "evidence_id" not in view
     for field in ROW_FIELDS:
         assert field not in view, field
     message = view["message"]
@@ -275,7 +275,9 @@ def test_a_cap_far_below_the_fixed_fields_refuses_rather_than_returns_no_rows(
 
 def test_a_refusal_leaks_no_source_content():
     rows = [{"series": "SECRET-ROW-MARKER-" + "z" * 300}]
-    full = bytes_counter(canonical(_run(rows, 1_000_000, bytes_counter)[0].model_view))
+    full = bytes_counter(
+        canonical(_run(rows, MAX_VIEW_TOKENS, bytes_counter)[0].model_view)
+    )
     outcome, _, sink, *_ = _run(rows, full - 1, bytes_counter)
     _assert_refused_as_too_large(
         outcome, sink, cap=full - 1, tokens=full, marker="SECRET-ROW-MARKER"
@@ -305,7 +307,7 @@ def test_the_same_response_yields_the_same_outcome_twice():
 def test_a_view_under_the_cap_is_identical_at_any_larger_cap():
     full = _full_tokens(bytes_counter)
     tight, *_ = _run(ROWS, full, bytes_counter)
-    roomy, *_ = _run(ROWS, 1_000_000, bytes_counter)
+    roomy, *_ = _run(ROWS, MAX_VIEW_TOKENS, bytes_counter)
     assert _stable(tight.model_view) == _stable(roomy.model_view)
 
 
@@ -313,7 +315,7 @@ def test_a_view_under_the_cap_is_identical_at_any_larger_cap():
 
 
 def test_no_data_under_the_cap_is_unchanged():
-    outcome, _, _, *_ = _run([], 1_000_000, bytes_counter)
+    outcome, _, _, *_ = _run([], MAX_VIEW_TOKENS, bytes_counter)
     view = outcome.model_view
     assert outcome.status == "no_data"
     assert view["content"] == [] and view["truncated"] is False
@@ -321,7 +323,7 @@ def test_no_data_under_the_cap_is_unchanged():
 
 
 def test_the_projection_revision_moves_because_the_view_semantics_changed():
-    outcome, *_ = _run(ROWS, 1_000_000, bytes_counter)
+    outcome, *_ = _run(ROWS, MAX_VIEW_TOKENS, bytes_counter)
     assert outcome.model_view["projection_revision"] == PROJECTION_REVISION
     assert PROJECTION_REVISION != "m1-01-tool-view-v5"
     assert outcome.evidence.projection_revision == PROJECTION_REVISION
@@ -463,10 +465,17 @@ def test_max_view_tokens_must_be_an_int_of_at_least_one(bad):
         dataclasses.replace(registration(), max_view_tokens=bad)
 
 
-@pytest.mark.parametrize("ok", [1, 2, 8192, MAX_VIEW_TOKENS, 1_000_000])
+@pytest.mark.parametrize("ok", [1, 2, 8192, MAX_VIEW_TOKENS])
 def test_max_view_tokens_is_not_tied_to_max_result_bytes(ok):
     reg = dataclasses.replace(registration(), max_result_bytes=64, max_view_tokens=ok)
     assert reg.max_view_tokens == ok
+
+
+@pytest.mark.parametrize("over", [MAX_VIEW_TOKENS + 1, 400_000, 1_000_000])
+def test_max_view_tokens_above_the_registry_hard_cap_is_refused_at_registration(over):
+    """#308 U7: the registry holds every tool to ``MAX_VIEW_TOKENS`` (25,000)."""
+    with pytest.raises(ToolContractError):
+        dataclasses.replace(registration(), max_view_tokens=over)
 
 
 def test_the_old_byte_field_is_gone_without_an_alias():
@@ -501,6 +510,7 @@ def test_the_shipped_tools_describe_refusal_not_truncation():
         TRACES_TOOL,
         "get_metric_names",
         "get_label_values",
+        "read_evidence",  # #308 PR2
     }
     for reg in registrations:
         limits = reg.description.limits.lower()
@@ -747,7 +757,9 @@ def test_a_refusal_echoes_the_accepted_query_of_the_same_call_as_the_ok_view():
 
 def test_a_refusal_query_carries_no_row_content():
     rows = [{"series": "SECRET-ROW-MARKER-" + "z" * 300}]
-    full = bytes_counter(canonical(_run(rows, 1_000_000, bytes_counter)[0].model_view))
+    full = bytes_counter(
+        canonical(_run(rows, MAX_VIEW_TOKENS, bytes_counter)[0].model_view)
+    )
     outcome, *_ = _run(rows, full - 1, bytes_counter)
     view = outcome.model_view
     assert "SECRET-ROW-MARKER" not in json.dumps(view["query"])
@@ -812,7 +824,7 @@ def test_a_refusal_reports_the_queried_window_and_query_not_the_authorized_frame
     )
     view = refused.model_view
     assert (refused.status, refused.reason) == ("error", "RESULT_TOO_LARGE")
-    assert set(view) == REFUSAL_KEYS
+    assert REFUSAL_KEYS <= set(view)
     assert view["window"] == ok["window"]
     assert view["query"] == ok["query"]
     assert "start" in view["query"] and "end" in view["query"]

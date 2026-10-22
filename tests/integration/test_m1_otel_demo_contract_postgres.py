@@ -468,6 +468,7 @@ def test_a_workbench_run_under_the_otel_profile_records_real_shaped_evidence(
         TRACES_TOOL,
         METRIC_NAMES_TOOL,
         LABEL_VALUES_TOOL,
+        "read_evidence",  # #308 PR2, registered after the #307 A tools
     ]
 
     tool_round = reply(

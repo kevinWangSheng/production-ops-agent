@@ -42,23 +42,9 @@ from tests.m1_tool_support import (
     target,
 )
 
-# Frozen from the model view produced by main@aa57f9a + contract commit
-# 5da7be9 (2026-10-22).  The fixture fixes the clock and request index, so the
-# audit fields are deterministic and this is a byte-for-byte oracle for PR1's
-# "model view unchanged" requirement.
-BASELINE_REFUSAL_VIEW = (
-    b'{"citable_as_fact":false,"content":null,"max_view_tokens":25000,'
-    b'"message":"The tool call result is too large to return: 38695/25000 '
-    b"tokens.\\nTry to repeat the query but proactively narrow down the result "
-    b"(a narrower time window, a filter, or a smaller limit) so that the tool "
-    b'answer fits within the allowed number of tokens.","operation_id":"step-1-t0",'
-    b'"query":{"expr":"rate(http_errors[5m])"},"reason":"RESULT_TOO_LARGE",'
-    b'"requested_at":"2026-09-14T01:05:00+00:00","source_contact":"confirmed",'
-    b'"status":"error","target_id":"checkout-prod","tool":"metrics.range_query",'
-    b'"trust":"gateway","view_tokens":38695,"window":{"end":"2026-09-14T00:10:00+00:00",'
-    b'"start":"2026-09-14T00:00:00+00:00"}}'
-)
-
+# PR1 froze the refusal bytes; #308 PR2 deliberately changes the model view
+# (evidence_id, U5 summary fields, usage text) and projection v9, so the bytes
+# are no longer pinned.  The keys PR1 guaranteed stay.
 BASELINE_REFUSAL_KEYS = frozenset(
     {
         "operation_id",
@@ -107,12 +93,19 @@ BASELINE_CONTROL_GENERATION_REFUSAL_VIEW = (
     b'"start":"2026-09-14T00:00:00+00:00"}}'
 )
 
-OLD_OTEL_VERSIONS = {
+# Unchanged by #308 PR2.
+UNCHANGED_VERSIONS = {
     "prompt_revision": "prompt-replay-candidate-dd9018031487",
     "context_policy_revision": "ctx-ctx-policy-v1-a30e65ea52f4",
-    "tool_schema_revision": "otel-demo-5270fd8c543f",  # main after #318 (c38be65)
 }
+OLD_TOOL_SCHEMA_REVISION = "otel-demo-5270fd8c543f"  # main after #318 (c38be65)
 OLD_PROJECTION_REVISION = "m1-01-tool-view-v8"
+# #308 PR2 bumps each once (contract R10).
+NEW_PROJECTION_REVISION = "m1-01-tool-view-v9"
+NEW_TOOL_SCHEMA_REVISION = "otel-demo-2a944edd110a"
+# U5 fields every refusal view carries after PR2 (the usage-text key is not
+# named by the contract, so it is not listed).
+U5_REFUSAL_KEYS = frozenset({"total_rows", "row_unit", "suggested_limit"})
 
 RUN_ID = "run-308-pr1"
 
@@ -224,17 +217,6 @@ def _redacted_body() -> bytes:
     return json.dumps(expected, sort_keys=True, separators=(",", ":")).encode()
 
 
-def _baseline_for_index(index: int) -> bytes:
-    operation_id = BASELINE_REFUSAL_VIEW.replace(
-        b'"operation_id":"step-1-t0"',
-        f'"operation_id":"step-1-t{index}"'.encode(),
-    )
-    # The adopted view used to calculate the refusal count carries the
-    # operation id twice (as ``evidence_id`` and ``operation_id``).
-    tokens = 38_695 + 2 * (len(str(index)) - 1)
-    return operation_id.replace(b"38695", str(tokens).encode())
-
-
 def _overlimit_outcome(executor, transport, *, index: int = 0):
     transport.response = TransportResponse(body=body(_rows()))
     return executor.execute(_request(index))
@@ -251,30 +233,46 @@ def _large_overlimit_outcome(executor, transport, payload: bytes, *, index: int)
     return executor.execute(_request(index))
 
 
-def test_pr1_view_overlimit_keeps_main_model_bytes_and_registers_non_adopted_record():
+def test_pr1_view_overlimit_registers_non_adopted_record_and_pr2_attaches_it():
     sink = _CountingSink()
     executor, transport = _executor(sink=sink)
 
     outcome = _overlimit_outcome(executor, transport)
 
     assert (outcome.status, outcome.reason) == ("error", "RESULT_TOO_LARGE")
-    assert canonical(outcome.model_view).encode() == _baseline_for_index(0)
-    # R1: registration is through the sink; the refusal is not attached to the
-    # model outcome and therefore cannot alter eval/replay model bytes.
-    assert outcome.evidence is None
     assert len(sink.records) == 1
     record = sink.records[0]
+    # R1 (PR2): the model view is the stored view and the record is attached.
+    assert outcome.evidence == record
+    assert canonical(outcome.model_view) == canonical(record.view)
     assert record.operation.run_id == RUN_ID
     assert record.status == "error"
     assert record.adopted is False
-    assert record.projection_revision == OLD_PROJECTION_REVISION
+    assert record.projection_revision == NEW_PROJECTION_REVISION
     assert record.raw == _redacted_body()
     assert record.raw_sha256 == hashlib.sha256(record.raw).hexdigest()
     assert record.view_sha256 == canonical_hash(record.view)
     view = record.view
-    assert set(view) == SPILLED_REFUSAL_KEYS
-    for key in BASELINE_REFUSAL_KEYS:
+    # R12 provenance keys plus the U5 summary and usage keys (PR2); extra
+    # summary keys beyond these are not forbidden here, row content is.
+    assert SPILLED_REFUSAL_KEYS | U5_REFUSAL_KEYS <= set(view)
+    for key in (
+        "operation_id",
+        "trust",
+        "status",
+        "citable_as_fact",
+        "reason",
+        "source_contact",
+        "tool",
+        "target_id",
+        "window",
+        "requested_at",
+        "query",
+        "max_view_tokens",
+    ):
         assert view[key] == outcome.model_view[key]
+    assert view["content"] is None
+    assert view["total_rows"] == len(_rows())
     assert view["evidence_id"] == record.evidence_id
     assert view["adopted"] is False
     assert view["observed_at"] == outcome.operation.finished_at.isoformat()
@@ -285,13 +283,13 @@ def test_pr1_view_overlimit_keeps_main_model_bytes_and_registers_non_adopted_rec
     assert view["incomplete"] is False
     assert view["source"] == "prometheus"
     assert view["tool_version"] == "v1"
-    assert view["projection_revision"] == OLD_PROJECTION_REVISION
+    assert view["projection_revision"] == NEW_PROJECTION_REVISION
     assert view["dispatch_started_at"] == outcome.operation.started_at.isoformat()
     assert view["freshness_seconds"] is None
     assert b"password=xyz" not in record.raw
     view_text = canonical(view)
     assert "password=xyz" not in view_text
-    assert "series" not in view_text
+    assert '"series":' not in view_text  # no row key (the summary says "series")
     assert "xxxxxxxx" not in view_text
 
 
@@ -307,7 +305,7 @@ def test_pr1_byte_limit_refusal_does_not_register_a_row():
     assert sink.records == []
 
 
-def test_pr1_seventeenth_overlimit_result_is_not_stored_and_view_is_unchanged():
+def test_pr1_seventeenth_overlimit_result_is_not_stored():
     sink = _CountingSink()
     executor, transport = _executor(sink=sink)
 
@@ -319,10 +317,9 @@ def test_pr1_seventeenth_overlimit_result_is_not_stored_and_view_is_unchanged():
         (outcome.status, outcome.reason) == ("error", "RESULT_TOO_LARGE")
         for outcome in outcomes
     )
-    assert all(
-        canonical(outcome.model_view).encode() == _baseline_for_index(index)
-        for index, outcome in enumerate(outcomes)
-    )
+    assert all(outcome.evidence is not None for outcome in outcomes[:16])
+    assert outcomes[16].evidence is None
+    assert outcomes[16].model_view["stored"] is False  # U2, PR2
     assert len(sink.records) == 16
     assert sink.count_spilled(RUN_ID) == (
         16,
@@ -345,20 +342,14 @@ def test_pr1_cumulative_raw_bytes_stop_storage_after_the_16_mib_boundary():
     before = sink.count_spilled(RUN_ID)
     over_boundary = _large_overlimit_outcome(executor, transport, next_payload, index=8)
 
-    baseline_sink = _CountingSink()
-    baseline_executor, baseline_transport = _executor(
-        sink=baseline_sink, max_result_bytes=2 * 1024 * 1024
-    )
-    baseline = _large_overlimit_outcome(
-        baseline_executor, baseline_transport, next_payload, index=8
-    )
     assert all(
         (outcome.status, outcome.reason) == ("error", "RESULT_TOO_LARGE")
-        for outcome in (*stored, over_boundary, baseline)
+        for outcome in (*stored, over_boundary)
     )
     assert before == (8, 16 * 1024 * 1024)
     assert before[0] < 16
-    assert canonical(over_boundary.model_view) == canonical(baseline.model_view)
+    assert over_boundary.model_view["stored"] is False  # U2, PR2
+    assert over_boundary.evidence is None
     assert len(sink.records) == 8
     assert before == sink.count_spilled(RUN_ID)
 
@@ -370,7 +361,9 @@ def test_pr1_unavailable_spill_count_keeps_refusal_and_does_not_store():
     outcome = _overlimit_outcome(executor, transport)
 
     assert (outcome.status, outcome.reason) == ("error", "RESULT_TOO_LARGE")
-    assert canonical(outcome.model_view).encode() == _baseline_for_index(0)
+    assert outcome.model_view["adopted"] is False
+    assert outcome.model_view["citable_as_fact"] is False
+    assert outcome.model_view.get("content") is None
     assert outcome.evidence is None
     assert sink.records == []
 
@@ -421,17 +414,19 @@ def test_pr1_control_failure_keeps_the_existing_denied_path():
     assert transport.called is False
 
 
-def test_pr1_does_not_bump_any_model_or_projection_revision():
-    assert otel_demo.TOOL_SCHEMA_REVISION == OLD_OTEL_VERSIONS["tool_schema_revision"]
-    assert PROJECTION_REVISION == OLD_PROJECTION_REVISION
-    assert investigation_versions() == {
-        "prompt_revision": OLD_OTEL_VERSIONS["prompt_revision"],
-        "context_policy_revision": OLD_OTEL_VERSIONS["context_policy_revision"],
-    }
+def test_pr2_bumps_tool_schema_and_projection_once_and_keeps_the_rest():
+    assert otel_demo.TOOL_SCHEMA_REVISION != OLD_TOOL_SCHEMA_REVISION
+    assert otel_demo.TOOL_SCHEMA_REVISION == NEW_TOOL_SCHEMA_REVISION
+    assert PROJECTION_REVISION != OLD_PROJECTION_REVISION
+    assert PROJECTION_REVISION == NEW_PROJECTION_REVISION
+    assert investigation_versions() == UNCHANGED_VERSIONS
     assert context_policy_versions() == {
-        "context_policy_revision": OLD_OTEL_VERSIONS["context_policy_revision"]
+        "context_policy_revision": UNCHANGED_VERSIONS["context_policy_revision"]
     }
-    assert otel_demo.otel_demo_versions() == OLD_OTEL_VERSIONS
+    assert otel_demo.otel_demo_versions() == {
+        **UNCHANGED_VERSIONS,
+        "tool_schema_revision": NEW_TOOL_SCHEMA_REVISION,
+    }
 
 
 def test_pr1_transport_result_too_large_exception_stays_unstored():
