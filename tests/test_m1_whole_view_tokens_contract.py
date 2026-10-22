@@ -496,7 +496,12 @@ def test_the_shipped_tools_describe_refusal_not_truncation():
     from opspilot.tools import otel_demo
 
     registrations = otel_demo._registrations()
-    assert {r.name for r in registrations} == {METRICS_TOOL, TRACES_TOOL}
+    assert {r.name for r in registrations} == {
+        METRICS_TOOL,
+        TRACES_TOOL,
+        "get_metric_names",
+        "get_label_values",
+    }
     for reg in registrations:
         limits = reg.description.limits.lower()
         assert "max_view_bytes" not in limits, reg.name
