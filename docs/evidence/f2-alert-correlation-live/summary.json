@@ -1,0 +1,406 @@
+{
+  "schema": "opspilot-lab-summary-1",
+  "experiment": "f2-alert-correlation-live",
+  "round": "f2-alert-correlation-live-20261022",
+  "frozen_at": "2026-10-22T08:33:18.071462+00:00",
+  "category": "bounded real run (real Prometheus/Alertmanager webhooks from the kind lab, real model); not production proof",
+  "versions": {
+    "branch": "feature/F2-alert-correlation",
+    "commit": "91541db5e5db205bf82351b97b66a9fb7ba022e5",
+    "schema_head": "0018_alert_correlation",
+    "model": "deepseek-flash",
+    "tool_profile": "otel-demo",
+    "worker_versions": {
+      "prompt_revision": "prompt-replay-candidate-dd9018031487",
+      "tool_schema_revision": "otel-demo-4d7168180749",
+      "context_policy_revision": "ctx-ctx-policy-v1-a30e65ea52f4"
+    }
+  },
+  "environment": {
+    "postgres": "PostgreSQL 17.9, fresh tmp/pg-f2c-live on 127.0.0.1:55661; web/worker as opspilot_web_lab / opspilot_worker_lab",
+    "workbench": "127.0.0.1:8080 (Alertmanager webhook target 192.168.5.2:8080 -> host loopback); self-heal loop off",
+    "alert_rule": "CheckoutPlaceOrderErrorRatioHigh, for 2m, rate 5m; Alertmanager group_interval 1m, send_resolved true",
+    "fault": "kind_lab.py fault inject/restore paymentFailure, three cycles (experiment ids f2-alert-correlation-live-1..3)",
+    "lab_precheck": {
+      "at": "2026-10-22T07:46Z",
+      "swap_free_mib": 714.75,
+      "frontend_span_rate_2m": 1.817,
+      "checkout_placeorder_p95_ms": 92.5,
+      "otel_collector_restarted": false,
+      "kind_lab_health": "ok"
+    },
+    "lab_occupation": {
+      "holder": "lane-f2-c",
+      "batch": "f2-c-live",
+      "claimed": "2026-10-22T07:46:40Z",
+      "released": "2026-10-22T08:31:13Z",
+      "show_after_release": null
+    },
+    "flagd_after": "all 11 flags defaultVariant off"
+  },
+  "assertions": {
+    "1a_first_firing_creates_incident": {
+      "pass": true,
+      "delivery": 1,
+      "incident_id": "e4527304-0561-5feb-81a3-b49a16eb9d2f",
+      "run_id": "1b21375d-607b-51d9-9527-51992cde88c9"
+    },
+    "1b_refire_attached": {
+      "pass": true,
+      "delivery": 3,
+      "incident_lifecycle_at_attach": "open",
+      "runs_on_incident_at_attach_plus_14s": 1,
+      "subject_events_between_07_58_04Z_and_08_07_21Z": 0,
+      "event_inputs": 1,
+      "alert_identities_total": 2
+    },
+    "1c_after_close_new_incident_related": {
+      "pass": true,
+      "close_control_at": "2026-10-22T08:17:53.960988Z",
+      "delivery": 5,
+      "new_incident_id": "9fc2c586-a82b-5d4d-b8bb-fb333c9e9531",
+      "related_incident_id": "e4527304-0561-5feb-81a3-b49a16eb9d2f"
+    },
+    "2_followup_run_trace_has_event": {
+      "pass": true,
+      "followup_run_id": "8d7772e9-e9a2-509a-8bd1-e0a2fa730ba3",
+      "note": "first follow_up (control seq 30) re-queued handed-off Run 1b21375d and was blocked INCOMPATIBLE_STATE with 0 model calls (pre-existing rebuild hash mismatch on the rejected final-report round 9; reproduced with and without the event input). Passing trace is the follow_up on the published incident after a human cancel + new_run."
+    },
+    "pages": {
+      "refired_badge_on_incident_1": true,
+      "related_incident_link_on_incident_2": true,
+      "list_one_row_per_incident": true
+    }
+  },
+  "deliveries": [
+    {
+      "delivery_id": 1,
+      "fingerprint": "83f7541ae0105d42",
+      "starts_at": "2026-10-22T07:54:54Z",
+      "status": "firing",
+      "outcome": "created",
+      "incident_id": "e4527304-0561-5feb-81a3-b49a16eb9d2f",
+      "actor": "alertmanager",
+      "received_at": "2026-10-22T07:55:48.442059Z",
+      "annotation_revision": 1,
+      "truncated": false
+    },
+    {
+      "delivery_id": 2,
+      "fingerprint": "83f7541ae0105d42",
+      "starts_at": "2026-10-22T07:54:54Z",
+      "status": "resolved",
+      "outcome": "resolved_attached",
+      "incident_id": "e4527304-0561-5feb-81a3-b49a16eb9d2f",
+      "actor": "alertmanager",
+      "received_at": "2026-10-22T08:00:48.309009Z",
+      "annotation_revision": 2,
+      "truncated": false
+    },
+    {
+      "delivery_id": 3,
+      "fingerprint": "83f7541ae0105d42",
+      "starts_at": "2026-10-22T08:05:54Z",
+      "status": "firing",
+      "outcome": "attached",
+      "incident_id": "e4527304-0561-5feb-81a3-b49a16eb9d2f",
+      "actor": "alertmanager",
+      "received_at": "2026-10-22T08:06:47.971906Z",
+      "annotation_revision": 1,
+      "truncated": false
+    },
+    {
+      "delivery_id": 4,
+      "fingerprint": "83f7541ae0105d42",
+      "starts_at": "2026-10-22T08:05:54Z",
+      "status": "resolved",
+      "outcome": "resolved_attached",
+      "incident_id": "e4527304-0561-5feb-81a3-b49a16eb9d2f",
+      "actor": "alertmanager",
+      "received_at": "2026-10-22T08:12:47.225572Z",
+      "annotation_revision": 2,
+      "truncated": false
+    },
+    {
+      "delivery_id": 5,
+      "fingerprint": "83f7541ae0105d42",
+      "starts_at": "2026-10-22T08:24:54Z",
+      "status": "firing",
+      "outcome": "created",
+      "incident_id": "9fc2c586-a82b-5d4d-b8bb-fb333c9e9531",
+      "actor": "alertmanager",
+      "received_at": "2026-10-22T08:25:47.038828Z",
+      "annotation_revision": 1,
+      "truncated": false
+    },
+    {
+      "delivery_id": 6,
+      "fingerprint": "83f7541ae0105d42",
+      "starts_at": "2026-10-22T08:24:54Z",
+      "status": "resolved",
+      "outcome": "resolved_attached",
+      "incident_id": "9fc2c586-a82b-5d4d-b8bb-fb333c9e9531",
+      "actor": "alertmanager",
+      "received_at": "2026-10-22T08:30:46.935149Z",
+      "annotation_revision": 2,
+      "truncated": false
+    }
+  ],
+  "incidents": [
+    {
+      "incident_id": "e4527304-0561-5feb-81a3-b49a16eb9d2f",
+      "lifecycle": "closed",
+      "related_incident_id": null,
+      "created_at": "2026-10-22T07:55:48.463254Z",
+      "control_generation": 5
+    },
+    {
+      "incident_id": "9fc2c586-a82b-5d4d-b8bb-fb333c9e9531",
+      "lifecycle": "open",
+      "related_incident_id": "e4527304-0561-5feb-81a3-b49a16eb9d2f",
+      "created_at": "2026-10-22T08:25:47.077914Z",
+      "control_generation": 0
+    }
+  ],
+  "runs": [
+    {
+      "run_id": "1b21375d-607b-51d9-9527-51992cde88c9",
+      "incident_id": "e4527304-0561-5feb-81a3-b49a16eb9d2f",
+      "state": "cancelled",
+      "epoch": 2,
+      "model_requests": 9,
+      "tool_operations": 17,
+      "input_watermark": 0,
+      "opened_by": "alert firing delivery 1 (intake_accepted)",
+      "authorized_window": {
+        "end": "2026-10-22T07:55:48+00:00",
+        "start": "2026-10-21T07:55:48+00:00"
+      }
+    },
+    {
+      "run_id": "d1cc2750-7b76-55c5-a887-e349464bf7ef",
+      "incident_id": "e4527304-0561-5feb-81a3-b49a16eb9d2f",
+      "state": "completed",
+      "epoch": 1,
+      "model_requests": 7,
+      "tool_operations": 19,
+      "input_watermark": 2,
+      "opened_by": "human cancel + new_run (control seq 33/34)",
+      "authorized_window": {
+        "end": "2026-10-22T07:55:48+00:00",
+        "start": "2026-10-21T07:55:48+00:00"
+      }
+    },
+    {
+      "run_id": "8d7772e9-e9a2-509a-8bd1-e0a2fa730ba3",
+      "incident_id": "e4527304-0561-5feb-81a3-b49a16eb9d2f",
+      "state": "completed",
+      "epoch": 1,
+      "model_requests": 5,
+      "tool_operations": 7,
+      "input_watermark": 3,
+      "opened_by": "human follow_up on the published incident (control seq 63)",
+      "authorized_window": {
+        "end": "2026-10-22T07:55:48+00:00",
+        "start": "2026-10-21T07:55:48+00:00"
+      }
+    },
+    {
+      "run_id": "b52f01bd-c1cd-56fd-b919-8beb757dc03e",
+      "incident_id": "9fc2c586-a82b-5d4d-b8bb-fb333c9e9531",
+      "state": "completed",
+      "epoch": 1,
+      "model_requests": 10,
+      "tool_operations": 15,
+      "input_watermark": 0,
+      "opened_by": "alert firing delivery 5 (new incident)",
+      "authorized_window": {
+        "end": "2026-10-22T08:25:47+00:00",
+        "start": "2026-10-21T08:25:47+00:00"
+      }
+    }
+  ],
+  "inputs": [
+    {
+      "incident_id": "e4527304-0561-5feb-81a3-b49a16eb9d2f",
+      "sequence": 1,
+      "kind": "event",
+      "actor": "alertmanager",
+      "received_at": "2026-10-22T08:06:48.003538Z",
+      "content": {
+        "text": "Alertmanager alert 83f7541ae0105d42 fired again with startsAt 2026-10-22T08:05:54Z (status firing) on this incident's target; attached to this incident without a new Run.",
+        "status": "firing",
+        "channel": "alertmanager",
+        "starts_at": "2026-10-22T08:05:54Z",
+        "fingerprint": "83f7541ae0105d42",
+        "annotation_revision": 1
+      }
+    },
+    {
+      "incident_id": "e4527304-0561-5feb-81a3-b49a16eb9d2f",
+      "sequence": 2,
+      "kind": "follow_up",
+      "actor": "f2clab",
+      "received_at": "2026-10-22T08:07:21.255107Z",
+      "content": {
+        "text": "The checkout alert re-fired after recovering. Check whether the re-fired episode has the same payment cause as the first one."
+      }
+    },
+    {
+      "incident_id": "e4527304-0561-5feb-81a3-b49a16eb9d2f",
+      "sequence": 3,
+      "kind": "follow_up",
+      "actor": "f2clab",
+      "received_at": "2026-10-22T08:16:52.519719Z",
+      "content": {
+        "text": "Follow-up: the alert fired a second time (re-fired episode). Confirm whether the second episode has the same payment cause."
+      }
+    }
+  ],
+  "controls": [
+    {
+      "seq": 30,
+      "action": "follow_up",
+      "idempotency_label": "followup-1"
+    },
+    {
+      "seq": 33,
+      "action": "cancel",
+      "idempotency_label": "cancel-1"
+    },
+    {
+      "seq": 34,
+      "action": "new_run",
+      "idempotency_label": "newrun-1"
+    },
+    {
+      "seq": 63,
+      "action": "follow_up",
+      "idempotency_label": "followup-2"
+    },
+    {
+      "seq": 78,
+      "action": "close",
+      "idempotency_label": "close-1"
+    }
+  ],
+  "trace": {
+    "project": "opspilot-lab-f2-alert-correlation-live-20261022",
+    "project_id": "b51d14e7-6668-44bd-b02c-ae9ded1e21a5",
+    "trace_tier": "longlived",
+    "roots": [
+      {
+        "run_id": "1b21375d-607b-51d9-9527-51992cde88c9",
+        "otel_trace_id": "3d9235bbef5ef2ca95d53c7054e8d29a",
+        "langsmith_run_id": "00000000-0000-0000-d96f-3e5aff194ec5",
+        "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/b51d14e7-6668-44bd-b02c-ae9ded1e21a5/r/00000000-0000-0000-d96f-3e5aff194ec5?poll=true",
+        "status": "handed_off",
+        "reason": "REPORT_INVALID",
+        "llm_runs": 9,
+        "tool_runs": 17,
+        "llm_inputs_containing_event_text": [],
+        "tokens_in_out": [
+          213038,
+          24660
+        ]
+      },
+      {
+        "run_id": "1b21375d-607b-51d9-9527-51992cde88c9",
+        "otel_trace_id": "2d2daf88c2f96085db1a7e015b41060f",
+        "langsmith_run_id": "00000000-0000-0000-d469-fdabe54dc407",
+        "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/b51d14e7-6668-44bd-b02c-ae9ded1e21a5/r/00000000-0000-0000-d469-fdabe54dc407?poll=true",
+        "status": "blocked",
+        "reason": "INCOMPATIBLE_STATE",
+        "llm_runs": 0,
+        "tool_runs": 0,
+        "llm_inputs_containing_event_text": [],
+        "tokens_in_out": [
+          0,
+          0
+        ]
+      },
+      {
+        "run_id": "d1cc2750-7b76-55c5-a887-e349464bf7ef",
+        "otel_trace_id": "6bc9e9d59f3fe9800c5ca815fa1612aa",
+        "langsmith_run_id": "00000000-0000-0000-6220-00a25906efbc",
+        "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/b51d14e7-6668-44bd-b02c-ae9ded1e21a5/r/00000000-0000-0000-6220-00a25906efbc?poll=true",
+        "status": "published",
+        "reason": null,
+        "llm_runs": 7,
+        "tool_runs": 19,
+        "llm_inputs_containing_event_text": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ],
+        "tokens_in_out": [
+          191565,
+          17496
+        ]
+      },
+      {
+        "run_id": "8d7772e9-e9a2-509a-8bd1-e0a2fa730ba3",
+        "otel_trace_id": "b59f2bb14ea57ff8edb0c91709590c51",
+        "langsmith_run_id": "00000000-0000-0000-c56a-3225eb317c51",
+        "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/b51d14e7-6668-44bd-b02c-ae9ded1e21a5/r/00000000-0000-0000-c56a-3225eb317c51?poll=true",
+        "status": "published",
+        "reason": null,
+        "llm_runs": 5,
+        "tool_runs": 7,
+        "llm_inputs_containing_event_text": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ],
+        "tokens_in_out": [
+          97634,
+          6507
+        ]
+      },
+      {
+        "run_id": "b52f01bd-c1cd-56fd-b919-8beb757dc03e",
+        "otel_trace_id": "7cc79b54b1293114e11e80a39534097a",
+        "langsmith_run_id": "00000000-0000-0000-2f66-913a2828eae1",
+        "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/b51d14e7-6668-44bd-b02c-ae9ded1e21a5/r/00000000-0000-0000-2f66-913a2828eae1?poll=true",
+        "status": "published",
+        "reason": null,
+        "llm_runs": 10,
+        "tool_runs": 15,
+        "llm_inputs_containing_event_text": [],
+        "tokens_in_out": [
+          314782,
+          18089
+        ]
+      }
+    ]
+  },
+  "cost": {
+    "deepseek_balance_cny_before": "18.92",
+    "at_before": "2026-10-22T07:46:33Z",
+    "deepseek_balance_cny_after": "7.90",
+    "at_after": "2026-10-22T08:31:01Z",
+    "difference_cny": "11.02",
+    "note": "account shared with concurrent sessions; upper bound, not attributable to this run alone",
+    "tokens_in_out_this_run": [
+      817019,
+      66752
+    ]
+  },
+  "pg_log": {
+    "error": 1,
+    "fatal": 1,
+    "sqlstate_42501": 0,
+    "note": "both executor-side: first pg_ctl start without LC_ALL (FATAL 55000), executor psql typo (42703)"
+  },
+  "raw_ledger": {
+    "location": "tmp/lab-ledgers/f2-alert-correlation-live/20261022/ledger.json (not in repo)",
+    "sha256": "bce1c2dacea1d1dc17a150b1832425aa0a76fea6680035e500062a822cadd355",
+    "bytes": 440626
+  }
+}
