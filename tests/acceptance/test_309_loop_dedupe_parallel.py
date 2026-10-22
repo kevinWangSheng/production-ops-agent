@@ -377,7 +377,7 @@ def test_fence_failure_stops_dispatch_and_preserves_only_serial_prefix():
         loop.store = store
         outcome = loop.run(request)
         committed = [
-            item["result"]
+            item
             for row in store.tool_results.values()
             for item in row
         ]
