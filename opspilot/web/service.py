@@ -29,7 +29,7 @@ from markupsafe import Markup
 from psycopg import Error as DatabaseError
 from pydantic import ValidationError
 
-from opspilot.acceptance_alert import alert_intake_outcome
+from opspilot.acceptance_alert import alert_intake_outcome, utc_seconds
 from opspilot.acceptance_recovery import authorization_source
 from opspilot.alertmanager import (
     Alert,
@@ -407,7 +407,11 @@ class Workbench:
         a repeated notification, with or without changed annotations, adds
         a delivery record and nothing else. A first firing alert opens an
         incident: with a Run when exactly one registry entry matches its
-        labels, handed to a human without one otherwise (E5, E7). A
+        labels, handed to a human without one otherwise (E5, E7) -- unless
+        the same fingerprint already opened a non-closed incident on the
+        same target: then it is ``attached`` to that incident as one event,
+        without a Run or an announcement (F2 U1-A, R-C10), and a new
+        incident after a closed one relates to it. A
         resolved alert is only recorded, attached to the incident of the
         same identity when there is one (E8). A storage failure is
         ``failed`` and the caller answers 5xx so Alertmanager retries.
@@ -1733,6 +1737,8 @@ class Workbench:
             if latest is None
             else {
                 "annotation_revision": int(latest["annotation_revision"]),
+                # R-C6: an attached episode's delivery can be the latest.
+                "starts_at": utc_seconds(latest["starts_at"]),
                 "received_at": latest["received_at"],
                 "truncated": bool(latest["truncated"]),
                 **_stored_alert(latest["alert_json"]),

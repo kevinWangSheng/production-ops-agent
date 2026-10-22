@@ -297,12 +297,15 @@ def test_e2_i3_starts_at_spellings_share_identity(harness, database, alert):
         assert item["starts_at"] == NORMAL_START
         same_subject(first, item)
     assert len(project(database, first["incident_id"]).deliveries) == 5
-    # Same fingerprint, a different SECOND is a new episode (C3 section 6).
+    # Same fingerprint, a different SECOND is a new episode (C3 section 6). F2 PR-C
+    # (U1-A): the first incident is still open, so the episode is attached to it
+    # instead of opening a second incident and Run.
     (later,) = results(send(app, {**alert, "startsAt": "2026-10-10T10:41:55Z"}))
-    assert later["outcome"] == "created"
-    assert later["incident_id"] != first["incident_id"]
-    assert later["run_id"] != first["run_id"]
+    assert later["outcome"] == "attached"
+    assert later["incident_id"] == first["incident_id"]
+    assert later["run_id"] is None
     assert later["delivery_key"] != first["delivery_key"]
+    assert len(project(database, first["incident_id"]).run_ids) == 1
 
 
 @pytest.mark.parametrize(
