@@ -21,6 +21,9 @@ Field sources (``AlertIntakeOutcome``):
   row, its Runs (by deadline: creation time plus the Run wall) and its
   observation sessions (by ``created_at``). ``run_input``: the committed
   input snapshot of the intake Run, verbatim.
+* ``related_incident_id``: the incident row's ``related_incident_id``, the
+  closed incident of the same fingerprint and target this one was opened
+  after (F2 PR-C, R-C7); ``None`` otherwise.
 * ``deliveries``: ``opspilot_alert_deliveries`` of the incident by
   ``delivery_id`` (receipt order); ``alert_deliveries_for_identity`` and
   ``alert_delivery_count`` read the table regardless of incident (I11). A resolved notification that found no
@@ -111,6 +114,9 @@ class AlertIntakeOutcome:
     #: r7: every Run's committed input snapshot, verbatim, in ``run_ids``
     #: order; ``None`` for a Run recorded without one.
     run_inputs: tuple[Mapping[str, Any] | None, ...] = ()
+    #: F2 PR-C (R-C7): the closed incident this one relates to, or ``None``.
+    #: Attached episodes appear in ``deliveries`` as outcome ``attached``.
+    related_incident_id: str | None = None
 
 
 @contextmanager
@@ -136,7 +142,7 @@ def alert_intake_records(conn: Any, incident_id: UUID | str) -> AlertIntakeRecor
     subject = UUID(str(incident_id))
     with _cursor(conn) as cur:
         incident = cur.execute(
-            "SELECT incident_id,intake_key,state,lifecycle,mode,current_run_id,target_id,created_at FROM opspilot_incidents WHERE incident_id=%s",
+            "SELECT incident_id,intake_key,state,lifecycle,mode,current_run_id,target_id,created_at,related_incident_id FROM opspilot_incidents WHERE incident_id=%s",
             (subject,),
         ).fetchone()
         if incident is None:
@@ -270,4 +276,9 @@ def alert_intake_outcome(
         ),
         run_input=None if run is None or run["input"] is None else run["input"],
         run_inputs=tuple(row.get("input") for row in records.runs),
+        related_incident_id=(
+            None
+            if records.incident.get("related_incident_id") is None
+            else str(records.incident["related_incident_id"])
+        ),
     )
