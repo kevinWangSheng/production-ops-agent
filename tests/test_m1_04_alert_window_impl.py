@@ -452,8 +452,7 @@ def test_tool_descriptions_state_the_default_query_window():
     windowed_tools = tuple(
         schema
         for schema in TOOL_SCHEMAS
-        if {"start", "end"}
-        <= set(schema["function"]["parameters"]["properties"])
+        if {"start", "end"} <= set(schema["function"]["parameters"]["properties"])
     )
     assert windowed_tools
     # R3: every tool exposing a model-selected start/end window documents the

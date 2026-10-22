@@ -55,9 +55,7 @@ _BASIC_PASSWORD = "investigator-pw"
 OLD_TOOL_SCHEMA_REVISION = "otel-demo-4d7168180749"  # a4eea42 import value
 OLD_PROJECTION_REVISION = "m1-01-tool-view-v8"  # a4eea42 outcomes.py
 OLD_PROMPT_REVISION = "prompt-replay-candidate-dd9018031487"  # a4eea42
-OLD_TRACES_DESCRIPTION_SHA256 = (
-    "559e4ed81e5c0f8624b5fd96f8434e164ce403d22545381253223bec893b55c3"
-)  # sha256(TOOL_SCHEMAS traces description.encode()) at a4eea42
+OLD_TRACES_DESCRIPTION_SHA256 = "559e4ed81e5c0f8624b5fd96f8434e164ce403d22545381253223bec893b55c3"  # sha256(TOOL_SCHEMAS traces description.encode()) at a4eea42
 
 
 def _json_data(values: list[str], *, warnings: list[str] | None = None) -> bytes:
@@ -104,9 +102,7 @@ class _PrometheusStub:
             {},
         )
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
-        self.thread = threading.Thread(
-            target=self.server.serve_forever, daemon=True
-        )
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
         self.url = f"http://127.0.0.1:{self.server.server_port}"
 
@@ -193,7 +189,9 @@ def test_metric_names_request_shape_and_basic_auth(prometheus_stub):
     names = ["http_server_requests_total", "rpc_client_duration_seconds_count"]
     prometheus_stub.response = (200, _json_data(names), {})
     executor, sink = _executor(prometheus_stub)
-    selected = Window(WINDOW.start + timedelta(seconds=30), WINDOW.end - timedelta(seconds=30))
+    selected = Window(
+        WINDOW.start + timedelta(seconds=30), WINDOW.end - timedelta(seconds=30)
+    )
     outcome = executor.execute(
         _call(
             METRIC_NAMES_TOOL,
@@ -278,9 +276,7 @@ def test_discovery_window_outside_frame_is_refused_before_send(prometheus_stub):
         "start": (WINDOW.start - timedelta(seconds=1)).isoformat(),
         "end": WINDOW.start.isoformat(),
     }
-    outcome = executor.execute(
-        _call(METRIC_NAMES_TOOL, {"match": "up", **outside})
-    )
+    outcome = executor.execute(_call(METRIC_NAMES_TOOL, {"match": "up", **outside}))
     assert (outcome.status, outcome.reason) == ("error", "INVALID_PARAMS")
     assert prometheus_stub.requests == []
     assert sink.records == []
@@ -323,10 +319,13 @@ def test_no_warning_is_complete(prometheus_stub):
 
 
 # Contract item 4: source classifications, no-data, and both result limits.
-@pytest.mark.parametrize("tool,params", [
-    (METRIC_NAMES_TOOL, {"match": "up"}),
-    (LABEL_VALUES_TOOL, {"label": "service_name"}),
-])
+@pytest.mark.parametrize(
+    "tool,params",
+    [
+        (METRIC_NAMES_TOOL, {"match": "up"}),
+        (LABEL_VALUES_TOOL, {"label": "service_name"}),
+    ],
+)
 def test_empty_data_is_no_data_with_evidence(prometheus_stub, tool, params):
     body = _json_data([])
     prometheus_stub.response = (200, body, {})
@@ -348,7 +347,9 @@ def test_empty_data_is_no_data_with_evidence(prometheus_stub, tool, params):
         (504, "error", "SOURCE_UNAVAILABLE"),
     ],
 )
-def test_http_error_classification(status, expected_status, expected_reason, prometheus_stub):
+def test_http_error_classification(
+    status, expected_status, expected_reason, prometheus_stub
+):
     prometheus_stub.response = (
         status,
         json.dumps({"status": "error", "error": "synthetic"}).encode(),
@@ -449,7 +450,9 @@ def test_revisions_bump_only_the_tool_schema_and_trace_description_stays_equal()
         for schema in TOOL_SCHEMAS
         if schema["function"]["name"] == TRACES_TOOL
     )
-    assert sha256(traces_description.encode()).hexdigest() == OLD_TRACES_DESCRIPTION_SHA256
+    assert (
+        sha256(traces_description.encode()).hexdigest() == OLD_TRACES_DESCRIPTION_SHA256
+    )
 
 
 # Contract item 7: the executor scope and the live driver's template scope
@@ -465,7 +468,10 @@ def test_factory_and_template_scope_contain_all_four_tools(prometheus_stub):
 
 def test_discovery_registration_contract_is_public_and_bounded():
     assert getattr(otel_demo, "DISCOVERY_LIMIT", None) == 100
-    registrations = {registration.name: registration for registration in otel_demo_registrations().tools}
+    registrations = {
+        registration.name: registration
+        for registration in otel_demo_registrations().tools
+    }
     assert {METRIC_NAMES_TOOL, LABEL_VALUES_TOOL} <= registrations.keys()
     for name in (METRIC_NAMES_TOOL, LABEL_VALUES_TOOL):
         registration = registrations[name]
