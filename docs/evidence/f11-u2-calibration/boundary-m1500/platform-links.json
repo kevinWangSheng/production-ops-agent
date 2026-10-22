@@ -1,0 +1,79 @@
+{
+  "format": "opspilot-platform-links-1",
+  "batch": "u2-20261021-b1500",
+  "summary_sha256": "6951e1e39d158dc289f6259f9326e83b54ec0027f31fd4955a24f410e8b235c8",
+  "note": "Raw ledgers of batch u2-20261021-b1500 (synthetic lab traffic). Not embedded in summary.json: its per-round platform_links sit inside the round summaries it hashes.",
+  "platform": "LangSmith",
+  "project": "opspilot-lab-u2-20261021-b1500",
+  "project_id": "220b3c4b-6c4b-4c9d-a27f-6fe05037eed5",
+  "trace_tier": "longlived",
+  "retention": "longlived (SaaS maximum 180 days); uploaded 2026-10-22, expected expiry around 2027-04-20",
+  "layout": "one root run per round (+ one batch-level run); attachment <unit>_tar_gz = gzip tar of main-repo tmp/lab-ledgers/<round>/ and tmp/u2-b1500/<round>/, attachment manifest_json = per-file path/bytes/sha256",
+  "upload_notes": "u2-f-boundary1500-1 was first posted under run ids 07178d0d-4127-5582-a692-5f6ee7d4a979 and fdbe3b2b-8d7f-5366-9deb-c46bfd27728a; neither was ingested (404 on read, proxy connection drops seen), so it was re-posted under fc5fd68d-a79f-59ca-b7a4-10bd3ff45e32 (uuid5 salt /retry2). The project also holds five tiny debug-* runs (debug ingest probes with test inputs or copies of the round-1 archive/manifest); they are not evidence units.",
+  "credential_scan": "pre-upload scan of all packed files for authorization/bearer/password/api_key/secret/token/x-api-key/lsv2_ and literal credential patterns: 0 hits outside code snapshots; code-snapshot hits are Kubernetes Secret object names and doc examples; literal lab Prometheus password and Basic header value: 0 files",
+  "totals": {
+    "units": 3,
+    "file_count": 6080,
+    "raw_bytes": 49226323,
+    "uploaded_bytes": 8256231
+  },
+  "units": {
+    "u2-f-boundary1500-1": {
+      "langsmith_run_id": "fc5fd68d-a79f-59ca-b7a4-10bd3ff45e32",
+      "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/220b3c4b-6c4b-4c9d-a27f-6fe05037eed5/r/fc5fd68d-a79f-59ca-b7a4-10bd3ff45e32?poll=true",
+      "file_count": 3085,
+      "raw_bytes": 24531882,
+      "attachments": {
+        "u2-f-boundary1500-1_tar_gz": {
+          "file": "u2-f-boundary1500-1.tar.gz",
+          "bytes": 3562954,
+          "sha256": "164097e8367f5eed11c645ec2a26af09ecae67339e0e62f45265aa6bbec67812"
+        },
+        "manifest_json": {
+          "file": "u2-f-boundary1500-1.manifest.json",
+          "bytes": 588276,
+          "sha256": "1db7b644c9461ce12cbf375d026472947c81769b1918d5e21e6e9d09fe3f6ac9"
+        }
+      },
+      "read_back_sha256_match": true
+    },
+    "u2-f-boundary1500-2": {
+      "langsmith_run_id": "7fb76a3f-bae8-5ce3-9604-f10a9318e80f",
+      "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/220b3c4b-6c4b-4c9d-a27f-6fe05037eed5/r/7fb76a3f-bae8-5ce3-9604-f10a9318e80f?poll=true",
+      "file_count": 2986,
+      "raw_bytes": 24670540,
+      "attachments": {
+        "u2-f-boundary1500-2_tar_gz": {
+          "file": "u2-f-boundary1500-2.tar.gz",
+          "bytes": 3529774,
+          "sha256": "e1ba360df7b7e7ea0f7bbea0819125abad3ad076d567deae1187b3d1f5757eb8"
+        },
+        "manifest_json": {
+          "file": "u2-f-boundary1500-2.manifest.json",
+          "bytes": 569742,
+          "sha256": "3f094f043e91b11849af441055ea038b96dbd3eac19d74659191dcfb7dff1569"
+        }
+      },
+      "read_back_sha256_match": true
+    },
+    "batch-u2-20261021-b1500": {
+      "langsmith_run_id": "4232b646-e147-5a36-842c-b46d41f095ce",
+      "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/220b3c4b-6c4b-4c9d-a27f-6fe05037eed5/r/4232b646-e147-5a36-842c-b46d41f095ce?poll=true",
+      "file_count": 9,
+      "raw_bytes": 23901,
+      "attachments": {
+        "batch-u2-20261021-b1500_tar_gz": {
+          "file": "batch-u2-20261021-b1500.tar.gz",
+          "bytes": 4206,
+          "sha256": "fb8c3eb9a4eaa0d8fb5c885ca997d8aaca2b48e34350e0ef6c10cfb96ba00c97"
+        },
+        "manifest_json": {
+          "file": "batch-u2-20261021-b1500.manifest.json",
+          "bytes": 1279,
+          "sha256": "b07c748ff2feb0b14c0128ac3503a4ff255549b0743fac4334e5931f6394ff50"
+        }
+      },
+      "read_back_sha256_match": true
+    }
+  }
+}

@@ -455,18 +455,9 @@ def test_generation_by_the_worker_and_every_review_action_by_the_web(
     h.generate(incident, model)
     assert h.review(incident, "approve").status == 200
     entry, revision, generation = _entry_of(h, incident)
-    follow_up = h.post(
-        f"/incidents/{incident}/control",
-        {
-            "action": "follow_up",
-            "expected_generation": h.page(f"/incidents/{incident}").text(
-                "control-generation"
-            ),
-            "idempotency_key": uuid4().hex,
-            "text": "Re-check the checkout error window.",
-        },
-    )
+    follow_up = h.reopen_follow_up(incident, "Re-check the checkout error window.")
     assert follow_up.status == 200, follow_up.text
+    h.finish_run(incident)
     model.payload = output(ev, supersedes_revision=revision)
     view = h.generate(incident, model)["postmortem"]
     assert view["versions"][-1]["proposals"][0]["supersedes_entry_id"] == entry

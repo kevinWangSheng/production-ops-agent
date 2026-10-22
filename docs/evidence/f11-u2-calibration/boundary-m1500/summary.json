@@ -1,0 +1,1117 @@
+{
+  "approval": null,
+  "batch": "u2-20261021-b1500",
+  "batch_log": {
+    "bytes": 9571,
+    "path": "run-starts.jsonl",
+    "record_count": 25,
+    "sha256": "899693ce2bfe26b5e69f1b08b25c183557186ad5aae5bc9c64623017a8b1c5f2",
+    "starts": [
+      {
+        "batch": "u2-20261021-b1500",
+        "format_version": 1,
+        "holder": "lane-f11-u2-boundary",
+        "kind": "run_started",
+        "previous_sha256": "fb50043ef985306c37178f745eaf79e22ff704d2eec5bc5cf0c969757866ff39",
+        "record_sha256": "b52b27b314f8bc23d5c43c6932ca43f947c022d8cbac66f2f12bc1cf754000f3",
+        "round": "u2-f-boundary1500-1",
+        "start_id": "4f342fc7-5d9d-4c79-bf29-5307c2d9ae9b",
+        "started_at": "2026-10-22T03:18:12.382423+00:00"
+      },
+      {
+        "batch": "u2-20261021-b1500",
+        "format_version": 1,
+        "holder": "lane-f11-u2-boundary",
+        "kind": "run_started",
+        "previous_sha256": "b52b27b314f8bc23d5c43c6932ca43f947c022d8cbac66f2f12bc1cf754000f3",
+        "record_sha256": "1179984b3b41c15880de6c752efa5cb044ec741b4b9019cc6202f3626a696cc1",
+        "round": "u2-f-boundary1500-2",
+        "start_id": "311bef3a-1b2d-440e-ade5-7d291dd98b89",
+        "started_at": "2026-10-22T04:21:34.122690+00:00"
+      }
+    ]
+  },
+  "evidence_kind": "U2_CALIBRATION_UNAPPROVED",
+  "format_version": 1,
+  "round_status_counts": {
+    "summarized": 2
+  },
+  "run_format": "compact-v1",
+  "runs": [
+    {
+      "bytes": 3444891,
+      "compact": {
+        "authorized_at": "2026-10-22T03:18:16.469735+00:00",
+        "batch": "u2-20261021-b1500",
+        "candidates": {
+          "1200": {
+            "healthy_reserve_ok": null,
+            "post_warmup_unknown_count": 0,
+            "post_warmup_unknown_ratio": 0.0,
+            "post_warmup_unknown_reasons": {},
+            "reason": "anomaly_detected",
+            "remaining_samples": 33,
+            "remaining_seconds": 2688.699822,
+            "status": "anomalous",
+            "terminal_at": "2026-10-22T03:33:24.070092+00:00",
+            "unknown_ratio": 0.2857142857142857,
+            "used_sample_count": 7
+          },
+          "1500": {
+            "healthy_reserve_ok": null,
+            "post_warmup_unknown_count": 0,
+            "post_warmup_unknown_ratio": 0.0,
+            "post_warmup_unknown_reasons": {},
+            "reason": "anomaly_detected",
+            "remaining_samples": 33,
+            "remaining_seconds": 2688.699822,
+            "status": "anomalous",
+            "terminal_at": "2026-10-22T03:33:24.070092+00:00",
+            "unknown_ratio": 0.2857142857142857,
+            "used_sample_count": 7
+          },
+          "1800": {
+            "healthy_reserve_ok": null,
+            "post_warmup_unknown_count": 0,
+            "post_warmup_unknown_ratio": 0.0,
+            "post_warmup_unknown_reasons": {},
+            "reason": "anomaly_detected",
+            "remaining_samples": 33,
+            "remaining_seconds": 2688.699822,
+            "status": "anomalous",
+            "terminal_at": "2026-10-22T03:33:24.070092+00:00",
+            "unknown_ratio": 0.2857142857142857,
+            "used_sample_count": 7
+          },
+          "2100": {
+            "healthy_reserve_ok": null,
+            "post_warmup_unknown_count": 0,
+            "post_warmup_unknown_ratio": 0.0,
+            "post_warmup_unknown_reasons": {},
+            "reason": "anomaly_detected",
+            "remaining_samples": 33,
+            "remaining_seconds": 2688.699822,
+            "status": "anomalous",
+            "terminal_at": "2026-10-22T03:33:24.070092+00:00",
+            "unknown_ratio": 0.2857142857142857,
+            "used_sample_count": 7
+          },
+          "600": {
+            "healthy_reserve_ok": null,
+            "post_warmup_unknown_count": 0,
+            "post_warmup_unknown_ratio": 0.0,
+            "post_warmup_unknown_reasons": {},
+            "reason": "anomaly_detected",
+            "remaining_samples": 33,
+            "remaining_seconds": 2688.699822,
+            "status": "anomalous",
+            "terminal_at": "2026-10-22T03:33:24.070092+00:00",
+            "unknown_ratio": 0.2857142857142857,
+            "used_sample_count": 7
+          },
+          "900": {
+            "healthy_reserve_ok": null,
+            "post_warmup_unknown_count": 0,
+            "post_warmup_unknown_ratio": 0.0,
+            "post_warmup_unknown_reasons": {},
+            "reason": "anomaly_detected",
+            "remaining_samples": 33,
+            "remaining_seconds": 2688.699822,
+            "status": "anomalous",
+            "terminal_at": "2026-10-22T03:33:24.070092+00:00",
+            "unknown_ratio": 0.2857142857142857,
+            "used_sample_count": 7
+          }
+        },
+        "capture_end": {
+          "at": "2026-10-22T04:18:59.274314+00:00",
+          "reason": "deadline_expired"
+        },
+        "code_revision": "91a011c9459a0dfa66191d01c72227b5a6508e41",
+        "flagd_probe_count": 141,
+        "fold_code_revision": "91a011c9459a0dfa66191d01c72227b5a6508e41",
+        "profile_revision": "otel-demo-checkout@b72bbe2e30be",
+        "profile_sha256": "b72bbe2e30bea4775790519787da4ce107dbc1500ce87b87a2ee2af3f57cbfa4",
+        "raw_response_manifest": {
+          "count": 1307,
+          "sha256": "feffd2c00da77b0bf31010b8ac2633f06755fbf629e7765c8f1b2470b764165c"
+        },
+        "released_at": "2026-10-22T03:18:12.769914+00:00",
+        "round": "u2-f-boundary1500-1",
+        "round_start_id": "4f342fc7-5d9d-4c79-bf29-5307c2d9ae9b",
+        "round_status": "summarized",
+        "run_id": "848f5216-6332-4c5c-bc99-f0b2c8fcb52c",
+        "sample_count": 27,
+        "scenario": "boundary",
+        "target": {
+          "cluster_uid": "c8001471-8b7b-4449-83c0-924e6f46b857",
+          "integration_id": "m0-otel-20260909",
+          "namespace": "otel-demo",
+          "resource_uid": "m0-otel-20260909",
+          "workload": "checkout"
+        },
+        "timeline": [
+          {
+            "at": "2026-10-22T03:18:12.720726+00:00",
+            "kind": "release_patch_requested",
+            "release_id": "u2-f-boundary1500-1-20261022T031812Z",
+            "timeline_source": "timeline.jsonl"
+          },
+          {
+            "after_template": {
+              "metadata": {
+                "labels": {
+                  "app.kubernetes.io/component": "checkout",
+                  "app.kubernetes.io/name": "checkout",
+                  "opentelemetry.io/name": "checkout"
+                }
+              },
+              "spec": {
+                "containers": [
+                  {
+                    "env": [
+                      {
+                        "name": "OPSPILOT_U2_RELEASE_ID",
+                        "value": "u2-f-boundary1500-1-20261022T031812Z"
+                      },
+                      {
+                        "name": "OTEL_SERVICE_NAME",
+                        "valueFrom": {
+                          "fieldRef": {
+                            "apiVersion": "v1",
+                            "fieldPath": "metadata.labels['app.kubernetes.io/component']"
+                          }
+                        }
+                      },
+                      {
+                        "name": "OTEL_COLLECTOR_NAME",
+                        "value": "otel-collector"
+                      },
+                      {
+                        "name": "OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE",
+                        "value": "cumulative"
+                      },
+                      {
+                        "name": "CHECKOUT_PORT",
+                        "value": "8080"
+                      },
+                      {
+                        "name": "CART_ADDR",
+                        "value": "cart:8080"
+                      },
+                      {
+                        "name": "CURRENCY_ADDR",
+                        "value": "currency:8080"
+                      },
+                      {
+                        "name": "EMAIL_ADDR",
+                        "value": "http://email:8080"
+                      },
+                      {
+                        "name": "PAYMENT_ADDR",
+                        "value": "payment:8080"
+                      },
+                      {
+                        "name": "PRODUCT_CATALOG_ADDR",
+                        "value": "product-catalog:8080"
+                      },
+                      {
+                        "name": "SHIPPING_ADDR",
+                        "value": "shipping:8080"
+                      },
+                      {
+                        "name": "KAFKA_ADDR"
+                      },
+                      {
+                        "name": "FLAGD_HOST",
+                        "value": "flagd"
+                      },
+                      {
+                        "name": "FLAGD_PORT",
+                        "value": "8013"
+                      },
+                      {
+                        "name": "OTEL_EXPORTER_OTLP_ENDPOINT",
+                        "value": "http://$(OTEL_COLLECTOR_NAME):4317"
+                      },
+                      {
+                        "name": "OTEL_RESOURCE_ATTRIBUTES",
+                        "value": "service.name=$(OTEL_SERVICE_NAME),service.namespace=opentelemetry-demo,service.version=2.0.2,opspilot.integration.id=m0-otel-20260909"
+                      }
+                    ],
+                    "image": "ghcr.io/open-telemetry/demo:2.0.2-checkout",
+                    "imagePullPolicy": "IfNotPresent",
+                    "name": "checkout",
+                    "ports": [
+                      {
+                        "containerPort": 8080,
+                        "name": "service",
+                        "protocol": "TCP"
+                      }
+                    ],
+                    "resources": {
+                      "limits": {
+                        "memory": "20Mi"
+                      }
+                    },
+                    "terminationMessagePath": "/dev/termination-log",
+                    "terminationMessagePolicy": "File"
+                  }
+                ],
+                "dnsPolicy": "ClusterFirst",
+                "restartPolicy": "Always",
+                "schedulerName": "default-scheduler",
+                "securityContext": {},
+                "serviceAccount": "otel-demo",
+                "serviceAccountName": "otel-demo",
+                "terminationGracePeriodSeconds": 30
+              }
+            },
+            "before_pod_template_hash": "755fd5445b",
+            "before_replicaset_uid": "40241f84-de83-4c11-87d0-1d7d7155fc06",
+            "before_revision": {
+              "images": {
+                "checkout": "sha256:5ab0d7b9003206a32c72ef48b42a535c3f70565251d7d832f86fe9f249f16635"
+              },
+              "pod_template_digest": "sha256:ce1521df474bb5b5b25d198b27f5c24a87103022c63ed8f83f78f746145f4870"
+            },
+            "before_template": {
+              "metadata": {
+                "labels": {
+                  "app.kubernetes.io/component": "checkout",
+                  "app.kubernetes.io/name": "checkout",
+                  "opentelemetry.io/name": "checkout"
+                }
+              },
+              "spec": {
+                "containers": [
+                  {
+                    "env": [
+                      {
+                        "name": "OPSPILOT_U2_RELEASE_ID",
+                        "value": "u2-observer-wiring-1-20261017T221503Z"
+                      },
+                      {
+                        "name": "OTEL_SERVICE_NAME",
+                        "valueFrom": {
+                          "fieldRef": {
+                            "apiVersion": "v1",
+                            "fieldPath": "metadata.labels['app.kubernetes.io/component']"
+                          }
+                        }
+                      },
+                      {
+                        "name": "OTEL_COLLECTOR_NAME",
+                        "value": "otel-collector"
+                      },
+                      {
+                        "name": "OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE",
+                        "value": "cumulative"
+                      },
+                      {
+                        "name": "CHECKOUT_PORT",
+                        "value": "8080"
+                      },
+                      {
+                        "name": "CART_ADDR",
+                        "value": "cart:8080"
+                      },
+                      {
+                        "name": "CURRENCY_ADDR",
+                        "value": "currency:8080"
+                      },
+                      {
+                        "name": "EMAIL_ADDR",
+                        "value": "http://email:8080"
+                      },
+                      {
+                        "name": "PAYMENT_ADDR",
+                        "value": "payment:8080"
+                      },
+                      {
+                        "name": "PRODUCT_CATALOG_ADDR",
+                        "value": "product-catalog:8080"
+                      },
+                      {
+                        "name": "SHIPPING_ADDR",
+                        "value": "shipping:8080"
+                      },
+                      {
+                        "name": "KAFKA_ADDR"
+                      },
+                      {
+                        "name": "FLAGD_HOST",
+                        "value": "flagd"
+                      },
+                      {
+                        "name": "FLAGD_PORT",
+                        "value": "8013"
+                      },
+                      {
+                        "name": "OTEL_EXPORTER_OTLP_ENDPOINT",
+                        "value": "http://$(OTEL_COLLECTOR_NAME):4317"
+                      },
+                      {
+                        "name": "OTEL_RESOURCE_ATTRIBUTES",
+                        "value": "service.name=$(OTEL_SERVICE_NAME),service.namespace=opentelemetry-demo,service.version=2.0.2,opspilot.integration.id=m0-otel-20260909"
+                      }
+                    ],
+                    "image": "ghcr.io/open-telemetry/demo:2.0.2-checkout",
+                    "imagePullPolicy": "IfNotPresent",
+                    "name": "checkout",
+                    "ports": [
+                      {
+                        "containerPort": 8080,
+                        "name": "service",
+                        "protocol": "TCP"
+                      }
+                    ],
+                    "resources": {
+                      "limits": {
+                        "memory": "20Mi"
+                      }
+                    },
+                    "terminationMessagePath": "/dev/termination-log",
+                    "terminationMessagePolicy": "File"
+                  }
+                ],
+                "dnsPolicy": "ClusterFirst",
+                "restartPolicy": "Always",
+                "schedulerName": "default-scheduler",
+                "securityContext": {},
+                "serviceAccount": "otel-demo",
+                "serviceAccountName": "otel-demo",
+                "terminationGracePeriodSeconds": 30
+              }
+            },
+            "deployment_generation": 15,
+            "deployment_uid": "b32e1705-32d2-46a1-849c-ae88dacff4c6",
+            "kind": "release_patch",
+            "release_id": "u2-f-boundary1500-1-20261022T031812Z",
+            "released_at": "2026-10-22T03:18:12.769914+00:00",
+            "request_after": "2026-10-22T03:18:12.769914+00:00",
+            "request_before": "2026-10-22T03:18:12.720726+00:00",
+            "timeline_source": "timeline.jsonl"
+          },
+          {
+            "at": "2026-10-22T03:18:13.101012+00:00",
+            "duration_origin": "first_confirmed_flagd_variant",
+            "duration_seconds": 900,
+            "flag": "paymentFailure",
+            "kind": "injection_planned",
+            "planned_at": "2026-10-22T03:41:52.769914+00:00",
+            "timeline_source": "fault.jsonl",
+            "unrelated_flag_confirmed": null,
+            "unrelated_scenario_verified": null,
+            "variant": "100%"
+          },
+          {
+            "event_at": null,
+            "kind": "old_pod_gone",
+            "lower_bound": "2026-10-22T03:18:13.137423+00:00",
+            "pod_uid": "f2408cc6-a7bc-4e4b-bd65-0946130b9e74",
+            "timeline_source": "timeline.jsonl",
+            "upper_bound": "2026-10-22T03:18:15.378808+00:00"
+          },
+          {
+            "containers": [
+              {
+                "allocatedResources": {
+                  "memory": "20Mi"
+                },
+                "containerID": "containerd://4fac59746c39a4c88134e72a57d776095f29f0a232e9eaf6856cd1739c846a15",
+                "image": "ghcr.io/open-telemetry/demo:2.0.2-checkout",
+                "imageID": "ghcr.io/open-telemetry/demo@sha256:5ab0d7b9003206a32c72ef48b42a535c3f70565251d7d832f86fe9f249f16635",
+                "lastState": {},
+                "name": "checkout",
+                "ready": true,
+                "resources": {
+                  "limits": {
+                    "memory": "20Mi"
+                  },
+                  "requests": {
+                    "memory": "20Mi"
+                  }
+                },
+                "restartCount": 0,
+                "started": true,
+                "state": {
+                  "running": {
+                    "startedAt": "2026-10-22T03:18:14Z"
+                  }
+                },
+                "user": {
+                  "linux": {
+                    "gid": 0,
+                    "supplementalGroups": [
+                      0,
+                      1,
+                      2,
+                      3,
+                      4,
+                      6,
+                      10,
+                      11,
+                      20,
+                      26,
+                      27
+                    ],
+                    "uid": 0
+                  }
+                },
+                "volumeMounts": [
+                  {
+                    "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+                    "name": "kube-api-access-v8mbg",
+                    "readOnly": true,
+                    "recursiveReadOnly": "Disabled"
+                  }
+                ]
+              }
+            ],
+            "event_at": "2026-10-22T03:18:14+00:00",
+            "kind": "new_pod_ready",
+            "observed_at": "2026-10-22T03:18:15.378870+00:00",
+            "owners": [
+              {
+                "apiVersion": "apps/v1",
+                "blockOwnerDeletion": true,
+                "controller": true,
+                "kind": "ReplicaSet",
+                "name": "checkout-6b9b8545bb",
+                "uid": "b34a21b4-afc3-425e-ace3-aa78bebdd8a5"
+              }
+            ],
+            "pod": "checkout-6b9b8545bb-k8v5g",
+            "pod_uid": "4292c765-fd32-437a-8fe8-fe731b08b15c",
+            "timeline_source": "timeline.jsonl"
+          },
+          {
+            "kind": "injection_config_verified",
+            "planned_at": "2026-10-22T03:41:52.769914+00:00",
+            "request_after": "2026-10-22T03:41:53.168172+00:00",
+            "request_before": "2026-10-22T03:41:53.078909+00:00",
+            "sha256": "e47d27c2fa01c72d8bc71d40d0f4223b1049fd84582e5789cbd9a5ccbdcc915d",
+            "timeline_source": "fault.jsonl"
+          },
+          {
+            "application_onset_at": null,
+            "effective_at": "2026-10-22T03:42:54.282761+00:00",
+            "flag": "paymentFailure",
+            "kind": "flagd_variant_effective",
+            "limitation": "daemon resolution only; align request/span evidence separately",
+            "lower_bound": "2026-10-22T03:42:53.195805+00:00",
+            "timeline_source": "fault.jsonl",
+            "upper_bound": "2026-10-22T03:42:54.282761+00:00",
+            "variant": "100%"
+          },
+          {
+            "at": "2026-10-22T03:57:54.583984+00:00",
+            "kind": "restore_config_verified",
+            "planned_at": "2026-10-22T03:57:54.282761+00:00",
+            "timeline_source": "fault.jsonl"
+          },
+          {
+            "application_onset_at": null,
+            "effective_at": "2026-10-22T03:59:17.490435+00:00",
+            "flag": "paymentFailure",
+            "kind": "flagd_variant_effective",
+            "limitation": "daemon resolution only; align request/span evidence separately",
+            "lower_bound": "2026-10-22T03:59:16.419109+00:00",
+            "timeline_source": "fault.jsonl",
+            "upper_bound": "2026-10-22T03:59:17.490435+00:00",
+            "variant": "off"
+          }
+        ],
+        "truth": {
+          "expected_outcome": "anomaly",
+          "failure_classification": "environment_interference: email pod OOMKilled 2026-10-22T03:42:13Z (exit 137, containerStatuses.lastState); checkout PlaceOrder p95 8.5-14s from ~03:33Z to ~03:47Z, before paymentFailure became effective 03:42:54Z; all candidate M terminated anomalous on DEGRADED_SIGNAL latency_p95 (after+context) at 03:33:24Z, so the round does not test the M=1500 boundary; one rerun u2-f-boundary1500-2",
+          "fault": {
+            "config_written": [
+              [
+                "2026-10-22T03:41:53.078909+00:00",
+                "2026-10-22T03:41:53.168172+00:00"
+              ]
+            ],
+            "failures": [],
+            "flag": [
+              "paymentFailure"
+            ],
+            "flagd_effective": [
+              "2026-10-22T03:42:54.282761+00:00",
+              "2026-10-22T03:59:17.490435+00:00"
+            ],
+            "planned": [
+              "2026-10-22T03:41:52.769914+00:00"
+            ],
+            "restore_config_verified_at": [
+              "2026-10-22T03:57:54.583984+00:00"
+            ]
+          },
+          "independent_truth": {
+            "ad_error_spans": 0,
+            "ad_spans": 133,
+            "checkout_error_spans": 17,
+            "checkout_ok_spans_between_first_and_last_error": 0,
+            "checkout_pods": [
+              "checkout-6b9b8545bb-k8v5g",
+              "checkout-755fd5445b-9vsrc"
+            ],
+            "checkout_spans": 91,
+            "first_ad_error_span": null,
+            "first_checkout_error_span": "2026-10-22T03:43:42.831000+00:00",
+            "last_checkout_error_span": "2026-10-22T03:57:49.989466+00:00",
+            "source": "Jaeger server spans (checkout PlaceOrder, ad), snapshots every 20 min with 25-min lookback; fault.jsonl config receipts and flagd resolutions"
+          },
+          "platform_links": [],
+          "release": {
+            "release_id": "u2-f-boundary1500-1-20261022T031812Z",
+            "released_at": "2026-10-22T03:18:12.769914+00:00"
+          },
+          "scenario": "boundary"
+        }
+      },
+      "path": "tmp/lab-ledgers/u2-f-boundary1500-1/summary.json",
+      "sha256": "ab22c952b2de4c1afea57ed3402ff217074fa210f9da27baca8acd6c2f4b7281"
+    },
+    {
+      "bytes": 3500711,
+      "compact": {
+        "authorized_at": "2026-10-22T04:21:37.967353+00:00",
+        "batch": "u2-20261021-b1500",
+        "candidates": {
+          "1200": {
+            "healthy_reserve_ok": true,
+            "post_warmup_unknown_count": 0,
+            "post_warmup_unknown_ratio": 0.0,
+            "post_warmup_unknown_reasons": {},
+            "reason": "healthy_confirmed",
+            "remaining_samples": 30,
+            "remaining_seconds": 2230.632074,
+            "status": "healthy",
+            "terminal_at": "2026-10-22T04:44:23.752579+00:00",
+            "unknown_ratio": 0.2,
+            "used_sample_count": 10
+          },
+          "1500": {
+            "healthy_reserve_ok": true,
+            "post_warmup_unknown_count": 0,
+            "post_warmup_unknown_ratio": 0.0,
+            "post_warmup_unknown_reasons": {},
+            "reason": "healthy_confirmed",
+            "remaining_samples": 28,
+            "remaining_seconds": 1959.142921,
+            "status": "healthy",
+            "terminal_at": "2026-10-22T04:48:55.241732+00:00",
+            "unknown_ratio": 0.16666666666666666,
+            "used_sample_count": 12
+          },
+          "1800": {
+            "healthy_reserve_ok": null,
+            "post_warmup_unknown_count": 0,
+            "post_warmup_unknown_ratio": 0.0,
+            "post_warmup_unknown_reasons": {},
+            "reason": "anomaly_detected",
+            "remaining_samples": 27,
+            "remaining_seconds": 1815.928543,
+            "status": "anomalous",
+            "terminal_at": "2026-10-22T04:51:18.456110+00:00",
+            "unknown_ratio": 0.15384615384615385,
+            "used_sample_count": 13
+          },
+          "2100": {
+            "healthy_reserve_ok": null,
+            "post_warmup_unknown_count": 0,
+            "post_warmup_unknown_ratio": 0.0,
+            "post_warmup_unknown_reasons": {},
+            "reason": "anomaly_detected",
+            "remaining_samples": 27,
+            "remaining_seconds": 1815.928543,
+            "status": "anomalous",
+            "terminal_at": "2026-10-22T04:51:18.456110+00:00",
+            "unknown_ratio": 0.15384615384615385,
+            "used_sample_count": 13
+          },
+          "600": {
+            "healthy_reserve_ok": true,
+            "post_warmup_unknown_count": 0,
+            "post_warmup_unknown_ratio": 0.0,
+            "post_warmup_unknown_reasons": {},
+            "reason": "healthy_confirmed",
+            "remaining_samples": 32,
+            "remaining_seconds": 2510.359269,
+            "status": "healthy",
+            "terminal_at": "2026-10-22T04:39:44.025384+00:00",
+            "unknown_ratio": 0.25,
+            "used_sample_count": 8
+          },
+          "900": {
+            "healthy_reserve_ok": true,
+            "post_warmup_unknown_count": 0,
+            "post_warmup_unknown_ratio": 0.0,
+            "post_warmup_unknown_reasons": {},
+            "reason": "healthy_confirmed",
+            "remaining_samples": 32,
+            "remaining_seconds": 2510.359269,
+            "status": "healthy",
+            "terminal_at": "2026-10-22T04:39:44.025384+00:00",
+            "unknown_ratio": 0.25,
+            "used_sample_count": 8
+          }
+        },
+        "capture_end": {
+          "at": "2026-10-22T05:22:00.599068+00:00",
+          "reason": "deadline_expired"
+        },
+        "code_revision": "91a011c9459a0dfa66191d01c72227b5a6508e41",
+        "flagd_probe_count": 120,
+        "fold_code_revision": "91a011c9459a0dfa66191d01c72227b5a6508e41",
+        "profile_revision": "otel-demo-checkout@b72bbe2e30be",
+        "profile_sha256": "b72bbe2e30bea4775790519787da4ce107dbc1500ce87b87a2ee2af3f57cbfa4",
+        "raw_response_manifest": {
+          "count": 1258,
+          "sha256": "93f2eb08c534f51a33611b34493a65192bac9540428b8ca6a81cf8ae43e7af48"
+        },
+        "released_at": "2026-10-22T04:21:34.384653+00:00",
+        "round": "u2-f-boundary1500-2",
+        "round_start_id": "311bef3a-1b2d-440e-ade5-7d291dd98b89",
+        "round_status": "summarized",
+        "run_id": "00798f15-1379-4993-920e-e6ef2bd9968b",
+        "sample_count": 26,
+        "scenario": "boundary",
+        "target": {
+          "cluster_uid": "c8001471-8b7b-4449-83c0-924e6f46b857",
+          "integration_id": "m0-otel-20260909",
+          "namespace": "otel-demo",
+          "resource_uid": "m0-otel-20260909",
+          "workload": "checkout"
+        },
+        "timeline": [
+          {
+            "at": "2026-10-22T04:21:34.331711+00:00",
+            "kind": "release_patch_requested",
+            "release_id": "u2-f-boundary1500-2-20261022T042133Z",
+            "timeline_source": "timeline.jsonl"
+          },
+          {
+            "after_template": {
+              "metadata": {
+                "labels": {
+                  "app.kubernetes.io/component": "checkout",
+                  "app.kubernetes.io/name": "checkout",
+                  "opentelemetry.io/name": "checkout"
+                }
+              },
+              "spec": {
+                "containers": [
+                  {
+                    "env": [
+                      {
+                        "name": "OPSPILOT_U2_RELEASE_ID",
+                        "value": "u2-f-boundary1500-2-20261022T042133Z"
+                      },
+                      {
+                        "name": "OTEL_SERVICE_NAME",
+                        "valueFrom": {
+                          "fieldRef": {
+                            "apiVersion": "v1",
+                            "fieldPath": "metadata.labels['app.kubernetes.io/component']"
+                          }
+                        }
+                      },
+                      {
+                        "name": "OTEL_COLLECTOR_NAME",
+                        "value": "otel-collector"
+                      },
+                      {
+                        "name": "OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE",
+                        "value": "cumulative"
+                      },
+                      {
+                        "name": "CHECKOUT_PORT",
+                        "value": "8080"
+                      },
+                      {
+                        "name": "CART_ADDR",
+                        "value": "cart:8080"
+                      },
+                      {
+                        "name": "CURRENCY_ADDR",
+                        "value": "currency:8080"
+                      },
+                      {
+                        "name": "EMAIL_ADDR",
+                        "value": "http://email:8080"
+                      },
+                      {
+                        "name": "PAYMENT_ADDR",
+                        "value": "payment:8080"
+                      },
+                      {
+                        "name": "PRODUCT_CATALOG_ADDR",
+                        "value": "product-catalog:8080"
+                      },
+                      {
+                        "name": "SHIPPING_ADDR",
+                        "value": "shipping:8080"
+                      },
+                      {
+                        "name": "KAFKA_ADDR"
+                      },
+                      {
+                        "name": "FLAGD_HOST",
+                        "value": "flagd"
+                      },
+                      {
+                        "name": "FLAGD_PORT",
+                        "value": "8013"
+                      },
+                      {
+                        "name": "OTEL_EXPORTER_OTLP_ENDPOINT",
+                        "value": "http://$(OTEL_COLLECTOR_NAME):4317"
+                      },
+                      {
+                        "name": "OTEL_RESOURCE_ATTRIBUTES",
+                        "value": "service.name=$(OTEL_SERVICE_NAME),service.namespace=opentelemetry-demo,service.version=2.0.2,opspilot.integration.id=m0-otel-20260909"
+                      }
+                    ],
+                    "image": "ghcr.io/open-telemetry/demo:2.0.2-checkout",
+                    "imagePullPolicy": "IfNotPresent",
+                    "name": "checkout",
+                    "ports": [
+                      {
+                        "containerPort": 8080,
+                        "name": "service",
+                        "protocol": "TCP"
+                      }
+                    ],
+                    "resources": {
+                      "limits": {
+                        "memory": "20Mi"
+                      }
+                    },
+                    "terminationMessagePath": "/dev/termination-log",
+                    "terminationMessagePolicy": "File"
+                  }
+                ],
+                "dnsPolicy": "ClusterFirst",
+                "restartPolicy": "Always",
+                "schedulerName": "default-scheduler",
+                "securityContext": {},
+                "serviceAccount": "otel-demo",
+                "serviceAccountName": "otel-demo",
+                "terminationGracePeriodSeconds": 30
+              }
+            },
+            "before_pod_template_hash": "6b9b8545bb",
+            "before_replicaset_uid": "b34a21b4-afc3-425e-ace3-aa78bebdd8a5",
+            "before_revision": {
+              "images": {
+                "checkout": "sha256:5ab0d7b9003206a32c72ef48b42a535c3f70565251d7d832f86fe9f249f16635"
+              },
+              "pod_template_digest": "sha256:8a63ee70095cdaf595e67a52fc9aa9805c2697f1a3b28cc36274eb05765af212"
+            },
+            "before_template": {
+              "metadata": {
+                "labels": {
+                  "app.kubernetes.io/component": "checkout",
+                  "app.kubernetes.io/name": "checkout",
+                  "opentelemetry.io/name": "checkout"
+                }
+              },
+              "spec": {
+                "containers": [
+                  {
+                    "env": [
+                      {
+                        "name": "OPSPILOT_U2_RELEASE_ID",
+                        "value": "u2-f-boundary1500-1-20261022T031812Z"
+                      },
+                      {
+                        "name": "OTEL_SERVICE_NAME",
+                        "valueFrom": {
+                          "fieldRef": {
+                            "apiVersion": "v1",
+                            "fieldPath": "metadata.labels['app.kubernetes.io/component']"
+                          }
+                        }
+                      },
+                      {
+                        "name": "OTEL_COLLECTOR_NAME",
+                        "value": "otel-collector"
+                      },
+                      {
+                        "name": "OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE",
+                        "value": "cumulative"
+                      },
+                      {
+                        "name": "CHECKOUT_PORT",
+                        "value": "8080"
+                      },
+                      {
+                        "name": "CART_ADDR",
+                        "value": "cart:8080"
+                      },
+                      {
+                        "name": "CURRENCY_ADDR",
+                        "value": "currency:8080"
+                      },
+                      {
+                        "name": "EMAIL_ADDR",
+                        "value": "http://email:8080"
+                      },
+                      {
+                        "name": "PAYMENT_ADDR",
+                        "value": "payment:8080"
+                      },
+                      {
+                        "name": "PRODUCT_CATALOG_ADDR",
+                        "value": "product-catalog:8080"
+                      },
+                      {
+                        "name": "SHIPPING_ADDR",
+                        "value": "shipping:8080"
+                      },
+                      {
+                        "name": "KAFKA_ADDR"
+                      },
+                      {
+                        "name": "FLAGD_HOST",
+                        "value": "flagd"
+                      },
+                      {
+                        "name": "FLAGD_PORT",
+                        "value": "8013"
+                      },
+                      {
+                        "name": "OTEL_EXPORTER_OTLP_ENDPOINT",
+                        "value": "http://$(OTEL_COLLECTOR_NAME):4317"
+                      },
+                      {
+                        "name": "OTEL_RESOURCE_ATTRIBUTES",
+                        "value": "service.name=$(OTEL_SERVICE_NAME),service.namespace=opentelemetry-demo,service.version=2.0.2,opspilot.integration.id=m0-otel-20260909"
+                      }
+                    ],
+                    "image": "ghcr.io/open-telemetry/demo:2.0.2-checkout",
+                    "imagePullPolicy": "IfNotPresent",
+                    "name": "checkout",
+                    "ports": [
+                      {
+                        "containerPort": 8080,
+                        "name": "service",
+                        "protocol": "TCP"
+                      }
+                    ],
+                    "resources": {
+                      "limits": {
+                        "memory": "20Mi"
+                      }
+                    },
+                    "terminationMessagePath": "/dev/termination-log",
+                    "terminationMessagePolicy": "File"
+                  }
+                ],
+                "dnsPolicy": "ClusterFirst",
+                "restartPolicy": "Always",
+                "schedulerName": "default-scheduler",
+                "securityContext": {},
+                "serviceAccount": "otel-demo",
+                "serviceAccountName": "otel-demo",
+                "terminationGracePeriodSeconds": 30
+              }
+            },
+            "deployment_generation": 16,
+            "deployment_uid": "b32e1705-32d2-46a1-849c-ae88dacff4c6",
+            "kind": "release_patch",
+            "release_id": "u2-f-boundary1500-2-20261022T042133Z",
+            "released_at": "2026-10-22T04:21:34.384653+00:00",
+            "request_after": "2026-10-22T04:21:34.384653+00:00",
+            "request_before": "2026-10-22T04:21:34.331711+00:00",
+            "timeline_source": "timeline.jsonl"
+          },
+          {
+            "at": "2026-10-22T04:21:34.710180+00:00",
+            "duration_origin": "first_confirmed_flagd_variant",
+            "duration_seconds": 900,
+            "flag": "paymentFailure",
+            "kind": "injection_planned",
+            "planned_at": "2026-10-22T04:45:14.384653+00:00",
+            "timeline_source": "fault.jsonl",
+            "unrelated_flag_confirmed": null,
+            "unrelated_scenario_verified": null,
+            "variant": "100%"
+          },
+          {
+            "event_at": null,
+            "kind": "old_pod_gone",
+            "lower_bound": "2026-10-22T04:21:34.745049+00:00",
+            "pod_uid": "4292c765-fd32-437a-8fe8-fe731b08b15c",
+            "timeline_source": "timeline.jsonl",
+            "upper_bound": "2026-10-22T04:21:37.031646+00:00"
+          },
+          {
+            "containers": [
+              {
+                "allocatedResources": {
+                  "memory": "20Mi"
+                },
+                "containerID": "containerd://c2bb4a77174e60611c466845cc2585105bb32e4f501d311e25f7815f9494d029",
+                "image": "ghcr.io/open-telemetry/demo:2.0.2-checkout",
+                "imageID": "ghcr.io/open-telemetry/demo@sha256:5ab0d7b9003206a32c72ef48b42a535c3f70565251d7d832f86fe9f249f16635",
+                "lastState": {},
+                "name": "checkout",
+                "ready": true,
+                "resources": {
+                  "limits": {
+                    "memory": "20Mi"
+                  },
+                  "requests": {
+                    "memory": "20Mi"
+                  }
+                },
+                "restartCount": 0,
+                "started": true,
+                "state": {
+                  "running": {
+                    "startedAt": "2026-10-22T04:21:35Z"
+                  }
+                },
+                "user": {
+                  "linux": {
+                    "gid": 0,
+                    "supplementalGroups": [
+                      0,
+                      1,
+                      2,
+                      3,
+                      4,
+                      6,
+                      10,
+                      11,
+                      20,
+                      26,
+                      27
+                    ],
+                    "uid": 0
+                  }
+                },
+                "volumeMounts": [
+                  {
+                    "mountPath": "/var/run/secrets/kubernetes.io/serviceaccount",
+                    "name": "kube-api-access-tmkfp",
+                    "readOnly": true,
+                    "recursiveReadOnly": "Disabled"
+                  }
+                ]
+              }
+            ],
+            "event_at": "2026-10-22T04:21:35+00:00",
+            "kind": "new_pod_ready",
+            "observed_at": "2026-10-22T04:21:37.031711+00:00",
+            "owners": [
+              {
+                "apiVersion": "apps/v1",
+                "blockOwnerDeletion": true,
+                "controller": true,
+                "kind": "ReplicaSet",
+                "name": "checkout-ff6bd6fdc",
+                "uid": "6797aa93-43aa-48d9-bc28-75e92184e45c"
+              }
+            ],
+            "pod": "checkout-ff6bd6fdc-z5tvt",
+            "pod_uid": "6faa7e83-0df9-41af-b424-da159ece17c9",
+            "timeline_source": "timeline.jsonl"
+          },
+          {
+            "kind": "injection_config_verified",
+            "planned_at": "2026-10-22T04:45:14.384653+00:00",
+            "request_after": "2026-10-22T04:45:14.718246+00:00",
+            "request_before": "2026-10-22T04:45:14.644546+00:00",
+            "sha256": "e47d27c2fa01c72d8bc71d40d0f4223b1049fd84582e5789cbd9a5ccbdcc915d",
+            "timeline_source": "fault.jsonl"
+          },
+          {
+            "application_onset_at": null,
+            "effective_at": "2026-10-22T04:46:04.418152+00:00",
+            "flag": "paymentFailure",
+            "kind": "flagd_variant_effective",
+            "limitation": "daemon resolution only; align request/span evidence separately",
+            "lower_bound": "2026-10-22T04:46:03.363589+00:00",
+            "timeline_source": "fault.jsonl",
+            "upper_bound": "2026-10-22T04:46:04.418152+00:00",
+            "variant": "100%"
+          },
+          {
+            "at": "2026-10-22T05:01:04.685728+00:00",
+            "kind": "restore_config_verified",
+            "planned_at": "2026-10-22T05:01:04.418152+00:00",
+            "timeline_source": "fault.jsonl"
+          },
+          {
+            "application_onset_at": null,
+            "effective_at": "2026-10-22T05:02:17.159185+00:00",
+            "flag": "paymentFailure",
+            "kind": "flagd_variant_effective",
+            "limitation": "daemon resolution only; align request/span evidence separately",
+            "lower_bound": "2026-10-22T05:02:16.089623+00:00",
+            "timeline_source": "fault.jsonl",
+            "upper_bound": "2026-10-22T05:02:17.159185+00:00",
+            "variant": "off"
+          }
+        ],
+        "truth": {
+          "expected_outcome": "anomaly",
+          "failure_classification": "product_miss_at_boundary (M=1500): injection verified (flagd effective 04:46:04Z = R+1470s), environment clean (checkout p95 90-98ms before onset, no pod restarts in round); first checkout error span 04:47:33.7Z = R+1559s (low traffic ~0.03/s); M=1500 terminated healthy_confirmed at 04:48:55Z = R+1641s, first anomalous sample 04:51:18Z = R+1784s; U2-03 boundary criterion not met for M=1500 (met for M>=1800)",
+          "fault": {
+            "config_written": [
+              [
+                "2026-10-22T04:45:14.644546+00:00",
+                "2026-10-22T04:45:14.718246+00:00"
+              ]
+            ],
+            "failures": [],
+            "flag": [
+              "paymentFailure"
+            ],
+            "flagd_effective": [
+              "2026-10-22T04:46:04.418152+00:00",
+              "2026-10-22T05:02:17.159185+00:00"
+            ],
+            "planned": [
+              "2026-10-22T04:45:14.384653+00:00"
+            ],
+            "restore_config_verified_at": [
+              "2026-10-22T05:01:04.685728+00:00"
+            ]
+          },
+          "independent_truth": {
+            "ad_error_spans": 0,
+            "ad_spans": 159,
+            "checkout_error_spans": 17,
+            "checkout_ok_spans_between_first_and_last_error": 0,
+            "checkout_pods": [
+              "checkout-6b9b8545bb-k8v5g",
+              "checkout-ff6bd6fdc-z5tvt"
+            ],
+            "checkout_spans": 81,
+            "first_ad_error_span": null,
+            "first_checkout_error_span": "2026-10-22T04:47:33.687535+00:00",
+            "last_checkout_error_span": "2026-10-22T05:01:42.789551+00:00",
+            "source": "Jaeger server spans (checkout PlaceOrder, ad), snapshots every 20 min with 25-min lookback; fault.jsonl config receipts and flagd resolutions"
+          },
+          "platform_links": [],
+          "release": {
+            "release_id": "u2-f-boundary1500-2-20261022T042133Z",
+            "released_at": "2026-10-22T04:21:34.384653+00:00"
+          },
+          "scenario": "boundary"
+        }
+      },
+      "path": "tmp/lab-ledgers/u2-f-boundary1500-2/summary.json",
+      "sha256": "3394eaa62b05a05116a3ad27e81e07ff1af21098aa5864f76efe47549b243031"
+    }
+  ],
+  "scenario_counts": {
+    "boundary": 2
+  }
+}

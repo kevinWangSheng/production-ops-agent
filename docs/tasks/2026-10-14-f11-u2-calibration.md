@@ -1,7 +1,7 @@
 # F11 U2 发布观察校准证据
 
-- 状态：实验完成、证据已冻结并经独立数据一致性复核（2026-10-17 批次 `u2-20261017`；冻结 summary sha256 `908838ac…`）；原始 ledger 已上传 LangSmith（2026-10-20）；待办：下一个 kind 窗口补 M=1500 边界轮、用户批准 policy 项与 policy 写入（用户门）
-- 更新日期：2026-10-20
+- 状态：实验完成、证据已冻结并经独立数据一致性复核（2026-10-17 批次 `u2-20261017`；冻结 summary sha256 `908838ac…`）；原始 ledger 已上传 LangSmith（2026-10-20）；M=1500 边界轮已跑（2026-10-22 批次 `u2-20261021-b1500`）且**未通过**：重跑轮 M=1500 在检出前 143s 健康终结；用户裁决（2026-10-22）：M 保持 1500，边界覆盖收窄到已验证的「起病不晚于约 R+1230」，健康终结前约 4–5 分钟为已记录盲区，0／5／15 分钟承诺不变、不重跑；待办：policy 写入（用户门）
+- 更新日期：2026-10-22
 - 依据：[F11 任务记录](2026-10-12-f11-post-release.md)（U2／P1-02）；[PR-2 合同](2026-10-13-f11-pr2-contract.md) §1 校准 policy、固定语义 1／4、P2-04、「校准证据不足」、r1–r7；[预审与决定表](2026-10-14-f11-u2-calibration-contract.md)；C3 §12「实验环境」；ADR-0006
 - 工作区：工具 PR #233 已合并（`e1b8867`），分支已清理。实验工具可在主仓库 `main` 运行（占用与原始 ledger 都在主仓库 `tmp/`）；提交证据与 policy 时另开 `chore/`／`feature/` 分支 worktree
 - 实验环境：kind-opspilot-m1／otel-demo；2026-10-17 04:05Z–22:46Z 由本任务占用（与 eval 会话 -00／-76／-87 协调，-87 同意延至 10-18 01:00Z；占用记录写的结束时间仍是 16:00Z，延长靠会话协调，记录到期也不会被抢占），已释放
@@ -43,7 +43,7 @@
   1. P1（原始 ledger 不可审查）：按合同与 ADR-0006 把批次 `u2-20261017` 原始 ledger 上传 LangSmith 项目 `opspilot-lab-u2-20261017`（longlived，最长 180 天）。13 个 run（12 轮＋批次级）、31,691 个文件、原始 241,379,177 字节、上传 40,670,010 字节，回读 sha256 一致；上传前凭据扫描无命中。链接与哈希在 [`platform-links.json`](../evidence/f11-u2-calibration/platform-links.json) 与 run.md；冻结 `summary.json` 字节未改（逐轮 `platform_links` 在被哈希绑定的逐轮 summary 内，补写会改变冻结字节）。
   2. P2（边界只验证了 M=1200）：run.md 收窄为「临近终结边界只对 M=1200 验证」；M=1500 边界轮待补（下条）。
   3. `INSUFFICIENT_TRAFFIC`（新版本流量低于 `effective_traffic.minimum`）unknown **不计为** U2-03「非预期 unknown」，单独报告（本批 2 个，均在 M≤1500 终态之后）。
-- **待补：M=1500 边界轮**：下一个 kind 窗口、policy PR 之前，按 R+1500 附近定时重跑 boundary（本批 boundary 按 R+1200 定时，起病比 M=1500 健康终结约 R+1693–1722s 早 4.5–5 分钟）。宿主内存压力下不开 kind；若用户改选 M=1200 则不需要。
+- **M=1500 边界轮（2026-10-22，批次 `u2-20261021-b1500`，证据 [boundary-m1500/run.md](../evidence/f11-u2-calibration/boundary-m1500/run.md)，冻结 summary sha256 `6951e1e3…`）：未通过，判据未放宽。** `u2-f-boundary1500-1`（R 03:18:12）为环境干扰失败轮：email Pod 03:42:13Z OOMKilled，checkout p95 自约 03:33 升至 8.5–14s，全部候选在故障生效（R+1481）前因延迟判 anomalous。重跑 `u2-f-boundary1500-2`（R 04:21:34）为产品漏检：flagd 生效 R+1470、首错 R+1559（低流量），M=1500 在 R+1641 `healthy_confirmed`，首个 anomalous 样本 R+1784（余量 −143s；M≥1800 检出）；环境干净，预热后非预期 unknown 0。推断：首错到检出约 190–225s，任何 M 在健康终结前约 3–4 分钟内首错的回归都会漏检。**待用户裁决**：保留 M=1500 并把边界覆盖收窄到已验证的「起病不晚于约 R+1230」，或改 M（1800 在 10-17 unrelated 备用预算不足），或先定义 U2-01 边界可接受盲区。原始 ledger 已上传 LangSmith 项目 `opspilot-lab-u2-20261021-b1500`（[platform-links.json](../evidence/f11-u2-calibration/boundary-m1500/platform-links.json)）。
 - **#264 测试隔离**：测试作者两次看到实现片段（失败堆栈中的去重／轮次集合校验；grep 出的 `_compact_run_summary` 字段列表与 flagd_probe 过滤），断言未放宽，已记入 #264 正文并请 astra 专项复核。
 - **实验库**：PG `127.0.0.1:55561` 仍运行，数据在主仓库 `tmp/f11-u2/pg`（勿删）；登录角色 `opspilot_observer_u2`、`opspilot_web_u2`。原始 ledger 在主仓库 `tmp/lab-ledgers/u2-*`（不入库，勿删）。
 - **已知坑**：harness `collect` 后台进程忽略 SIGINT（非交互 shell），提前停止只能 SIGTERM，之后须人工核实 PID 已退出再移走 `.active-*.json`（probe-2 已如此处理并存档）；Codex 沙箱内起不了 PG；审查提示避免「篡改／绕过」类措辞。

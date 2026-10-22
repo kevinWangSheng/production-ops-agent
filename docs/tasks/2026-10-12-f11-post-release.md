@@ -74,6 +74,18 @@ r1 只定方向。其余实现者需要猜的语义点，按 AGENTS.md「合同�
 - 锁：发布采样 release→session；授权/控制 scope→release→session；恢复采样保持 incident-first。
 - 拆为 PR-2a（存储、判定、守卫、重放）与 PR-2b（Prometheus 多序列读取、Observer 接线）。
 
+## PR-4 合同（r1）
+
+预审与完整决定表：[F11 PR-4 合同](2026-10-21-f11-pr4-contract.md)（全新上下文 Claude 子 Agent，只读，基于 `91a011c`；Codex at capacity 后替代）。用户 2026-10-21 裁决 P4-01、P4-02/P4-03、P4-05 选推荐；P4-04 由 F2 PR-C 合同 C3 定（共享判据）；P4-06、P4-07 与 R1–R12 按推荐（用户 2026-10-17 常设指示）。
+
+- P4-01 Observer 在 anomaly ending 后做一次有界确定性对比采集（before 窗整体服务、before 窗旧实例切片、after 窗整体服务、新版本切片），写入新对比记录；PR-4 可拆 4a/4b。
+- P4-02 由 web 后台 pass（`opspilot_web`，与 `self_heal_pass` 同线程）消费 ending、建或关联事故，每个 ending 一个事务；不新增角色、不扩 worker 权限。
+- P4-03 新表 `opspilot_release_incident_links`；守卫只放行「anomalous 且 incident_id 为空 → 非空、同事务有 link 行」。
+- P4-04 采用 F2 PR-C C3 共享判据与 `choose_correlation`；锁顺序对齐 PR-C r3（advisory → scope → 挂起行 → 候选事故）。
+- P4-05 调查输入 v6，`release_observation` 事实经新边界常量作为不可信数据消息；接受所有 Run 的 `prompt_revision` 变化，worker 先于或与 web 同时升级。
+- P4-06 PR-4 在 PR-C 之后合并；迁移号取开工时 main head + 1。
+- P4-07 真实运行等正式 policy；kind 中健康发布、健康发布 + adFailure、延迟回归（静默告警，新建路径）、延迟回归（告警开启，追加路径）。
+
 ## 执行进展与证据
 
 - 2026-10-12 建 worktree、任务记录、SPEC 草案、issue；派发 Codex 合同预审。

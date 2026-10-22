@@ -30,6 +30,7 @@ from __future__ import annotations
 import json
 import math
 import re
+import threading
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
@@ -596,6 +597,11 @@ class ReadOnlyToolExecutor:
             default_counter() if token_counter is None else token_counter
         )
         self._tool_seconds_used = float(usage.tool_seconds_used)
+        # One turn's tool calls may run on worker threads at once (#309); the
+        # two attempt-local counters are the executor's only shared mutable
+        # state, so their increments go through this lock. The total stays
+        # the sum of every call's elapsed time, as in serial dispatch.
+        self._usage_lock = threading.Lock()
 
     @property
     def scope(self) -> QueryScope:
@@ -883,7 +889,8 @@ class ReadOnlyToolExecutor:
                 "denied",
                 self._control_invalid(self._clock.now()) or "CONTROL_UNAVAILABLE",
             )
-        self._operations_used += 1
+        with self._usage_lock:
+            self._operations_used += 1
 
         # The charge above is itself a ledger round trip of unbounded
         # duration, exactly like the Controller lookup ``_reserve()`` already
@@ -958,7 +965,8 @@ class ReadOnlyToolExecutor:
             # Vendor exception text may carry payload or credential material.
             failure = ("error", "SOURCE_ERROR", "possible")
         elapsed = max(0.0, self._clock.monotonic() - started)
-        self._tool_seconds_used += elapsed
+        with self._usage_lock:
+            self._tool_seconds_used += elapsed
         operation = replace(
             operation, finished_at=self._clock.now(), elapsed_seconds=elapsed
         )
