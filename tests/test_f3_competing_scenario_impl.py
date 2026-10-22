@@ -580,3 +580,69 @@ def test_command_line_checks_precede_holder_and_environment(
     out = io.StringIO()
     assert driver.main(argv, stdout=out) == 2
     assert lines(out)[-1]["reason"] == "CONFIG_RUN_NAME_INVALID"
+
+
+@pytest.mark.parametrize(
+    "defaults",
+    [{}, {"adFailure": "off"}, {"paymentFailure": ""}],
+    ids=["empty", "missing-injected-flag", "empty-variant"],
+)
+def test_incomplete_flag_set_is_unverified(
+    tmp_path: Path, defaults: dict[str, str]
+) -> None:
+    lab = FakeLab(tmp_path / "ledgers", flags=defaults)
+    out = io.StringIO()
+    code = driver.main(
+        [*GLOBAL, "preflight"], stdout=out, ports=ports(tmp_path, lab=lab)
+    )
+    report = json.loads(out.getvalue())
+    check = next(c for c in report["checks"] if c["id"] == "flags_off")
+    assert code == 3 and report["reason"] == "PRECONDITION_UNVERIFIED"
+    assert check["status"] == "unverified" and check["detail"] == "FLAG_SET_INCOMPLETE"
+
+
+def test_real_lab_refuses_flag_set_other_than_eleven(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    raw = json.dumps({"flags": {"paymentFailure": {"defaultVariant": "off"}}})
+    monkeypatch.setattr(harness, "flags", lambda: ({}, raw.encode()))
+    with pytest.raises(ValueError, match="FLAG_SET_INCOMPLETE"):
+        driver.RealLab().flag_defaults()
+
+
+@pytest.mark.parametrize("value", ["nan", "inf", "-inf", "-1"])
+@pytest.mark.parametrize("command", ["preflight", "run"])
+@pytest.mark.parametrize("dry_run", [[], ["--dry-run"]])
+def test_swap_stop_line_must_be_finite_nonnegative(
+    tmp_path: Path, value: str, command: str, dry_run: list[str]
+) -> None:
+    lab = FakeLab(tmp_path / "ledgers")
+    tail = ["preflight"] if command == "preflight" else RUN
+    out = io.StringIO()
+    code = driver.main(
+        [*dry_run, *GLOBAL, f"--swap-min-free-mib={value}", *tail],
+        stdout=out,
+        ports=ports(tmp_path, lab=lab),
+    )
+    assert code == 2 and lines(out)[-1]["reason"] == "CONFIG_SWAP_MIN_FREE_INVALID"
+    assert lab.calls == []
+
+
+@pytest.mark.parametrize("value", ["nan", "inf", "-5", "0"])
+@pytest.mark.parametrize(
+    ("option", "reason"),
+    [
+        ("--alert-timeout", "CONFIG_ALERT_TIMEOUT_INVALID"),
+        ("--poll-seconds", "CONFIG_POLL_SECONDS_INVALID"),
+    ],
+)
+def test_timeout_and_poll_must_be_finite_positive(
+    tmp_path: Path, value: str, option: str, reason: str
+) -> None:
+    lab = FakeLab(tmp_path / "ledgers")
+    argv = [*GLOBAL, *RUN]
+    argv[argv.index(option) + 1] = value
+    out = io.StringIO()
+    code = driver.main(argv, stdout=out, ports=ports(tmp_path, lab=lab))
+    assert code == 2 and lines(out)[-1]["reason"] == reason
+    assert lab.calls == []

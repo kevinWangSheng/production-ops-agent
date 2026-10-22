@@ -99,7 +99,12 @@ at top level). Credentials never appear on stdout or in the ledger.
 Configuration order: checks run in this fixed order and the first failure
 is the one reported: (1) argparse; (2) frozen files and plan (exit 4);
 (3) ``run`` only, also under --dry-run: ``--run`` name
-(CONFIG_RUN_NAME_INVALID), then ``--web`` (CONFIG_WEB_URL_INVALID);
+(CONFIG_RUN_NAME_INVALID), then ``--web`` (CONFIG_WEB_URL_INVALID), then
+``--alert-timeout`` (CONFIG_ALERT_TIMEOUT_INVALID), then ``--poll-seconds``
+(CONFIG_POLL_SECONDS_INVALID), each a finite number > 0; then for
+``preflight`` and ``run``, also under --dry-run: ``--swap-min-free-mib``
+(CONFIG_SWAP_MIN_FREE_INVALID), a finite number >= 0 (NaN, inf and
+negatives refused);
 (4) without --dry-run: --holder/--batch (CONFIG_HOLDER_BATCH_REQUIRED);
 (5) building ports (CONFIG_DSN_MISSING); (6) ``run`` only: UI credentials
 (CONFIG_UI_CREDENTIALS_MISSING); then the preflight. Command-line-only
@@ -109,7 +114,9 @@ Exit codes and reason codes:
     0  success (dry-run included).
     2  usage or configuration: argparse errors, CONFIG_HOLDER_BATCH_REQUIRED,
        CONFIG_RUN_NAME_INVALID, CONFIG_UI_CREDENTIALS_MISSING,
-       CONFIG_WEB_URL_INVALID, CONFIG_DSN_MISSING (real store only).
+       CONFIG_WEB_URL_INVALID, CONFIG_ALERT_TIMEOUT_INVALID,
+       CONFIG_POLL_SECONDS_INVALID, CONFIG_SWAP_MIN_FREE_INVALID,
+       CONFIG_DSN_MISSING (real store only).
        ``plan`` exits 4 after printing the plan when the plan is
        inconsistent; ``preflight`` refusals (2, 4) print
        {"command", "ok": false, "reason"}; ``run`` reports every refusal in
@@ -160,6 +167,10 @@ them, ``ports_factory(os.environ)`` builds them, default ``real_ports``)::
         def check_reservation(self, holder: str, batch: str) -> None  # ValueError(code)
         def fault_active(self) -> bool
         def flag_defaults(self) -> Mapping[str, str]   # flag -> defaultVariant
+            # flags_off is unverified (PRECONDITION_UNVERIFIED, detail
+            # FLAG_SET_INCOMPLETE) when the mapping lacks the injected flag
+            # paymentFailure or has a non-string/empty entry; the real lab
+            # port also refuses any set other than the lab's 11 flags.
         def firing_alert_count(self, alertname: str) -> int
         def recent_rollouts(self, since: datetime) -> Sequence[str]
         def swap_usage(self) -> SwapUsage
@@ -211,6 +222,7 @@ import base64
 import hashlib
 import ipaddress
 import json
+import math
 import os
 import re
 import subprocess
@@ -260,6 +272,7 @@ HARNESS_SCHEDULE_LIMIT = 7200
 MIN_ROLLOUT_TO_ONSET = 300
 RECENT_ROLLOUT_SECONDS = 4200  # R-6 item 6: 70 minutes
 DEFAULT_SWAP_MIN_FREE_MIB = 2048
+FLAGD_FLAG_COUNT = 11  # R-6 item 3, checked by RealLab.flag_defaults
 DEFAULT_ALERT_TIMEOUT = 1500
 DEFAULT_POLL_SECONDS = 10
 EXPECTED_GENERATION = 0  # R-8: before the worker's first claim
@@ -626,9 +639,19 @@ def preflight_checks(
         return "fault-active.json present" if lab.fault_active() else None
 
     def flags() -> str | None:
-        moved = sorted(
-            name for name, variant in lab.flag_defaults().items() if variant != "off"
-        )
+        defaults = lab.flag_defaults()
+        # An empty or partial answer proves nothing: the injected flag must
+        # be present and every entry a variant name (else unverified).
+        if (
+            not isinstance(defaults, Mapping)
+            or FLAG not in defaults
+            or not all(
+                isinstance(name, str) and isinstance(variant, str) and variant
+                for name, variant in defaults.items()
+            )
+        ):
+            raise ValueError("FLAG_SET_INCOMPLETE")
+        moved = sorted(name for name, variant in defaults.items() if variant != "off")
         return ",".join(moved) if moved else None
 
     def alert() -> str | None:
@@ -950,9 +973,13 @@ class RealLab:
     def flag_defaults(self) -> Mapping[str, str]:
         _, raw = harness.flags()
         data = json.loads(raw)
-        return {
-            name: str(item["defaultVariant"]) for name, item in data["flags"].items()
-        }
+        flags = data["flags"]
+        # R-6 item 3: the lab's flagd-config holds 11 flags (lab evidence,
+        # e.g. docs/evidence/f7-otlp-probe/run.md); anything else is not
+        # the configuration the precondition was written for.
+        if not isinstance(flags, dict) or len(flags) != FLAGD_FLAG_COUNT:
+            raise ValueError("FLAG_SET_INCOMPLETE")
+        return {name: str(item["defaultVariant"]) for name, item in flags.items()}
 
     def firing_alert_count(self, alertname: str) -> int:
         status, results = kind_lab.prom_instant(f'ALERTS{{alertname="{alertname}"}}')
@@ -1190,6 +1217,14 @@ def main(
             if not _RUN_NAME.fullmatch(args.run):
                 raise DriverError("CONFIG_RUN_NAME_INVALID", EXIT_CONFIG)
             check_web_url(args.web)
+            if not (math.isfinite(args.alert_timeout) and args.alert_timeout > 0):
+                raise DriverError("CONFIG_ALERT_TIMEOUT_INVALID", EXIT_CONFIG)
+            if not (math.isfinite(args.poll_seconds) and args.poll_seconds > 0):
+                raise DriverError("CONFIG_POLL_SECONDS_INVALID", EXIT_CONFIG)
+        if args.command != "plan" and not (
+            math.isfinite(args.swap_min_free_mib) and args.swap_min_free_mib >= 0
+        ):
+            raise DriverError("CONFIG_SWAP_MIN_FREE_INVALID", EXIT_CONFIG)
         if args.dry_run:
             report = preflight_report(None, dry_run=True)
             if not final_event:
