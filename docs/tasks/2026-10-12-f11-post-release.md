@@ -92,6 +92,7 @@ r1 只定方向。其余实现者需要猜的语义点，按 AGENTS.md「合同�
 - PR #228 第四轮（最后一轮，之后不再触发机器人）：0016 要求 deadline ending 无 sample，与重放一致；重放把样本回执与审计 result 快照中重复保存的引用与结果字段全部与权威记录比对。lead 决定：写入检查接受手写的、缺 job／result 字段或结束时间不精确的合法形状事务，与完整归档重放的要求存在差异，保留——守卫按合同只防代码／SQL 错误，完整性由重放负责，产品代码总写齐字段。实现者 `make check` 6417 passed。
 - 收尾四个数（#225）：新冒出的合同问题 3（issue 与合同 §9 口径；r6 旧归档证据边界；写入检查与重放的最小证据差异，lead 保留）；因合同变更重写的测试 0；环境重跑 2（uv 缓存权限；审查提示措辞触发内容过滤）；用户裁决轮数 1（r6 选 A）；机器人 4 轮，采纳 8。
 - 2026-10-14 重放部分证据缺陷（`feature/F11-replay-partial-evidence`，来自 #228 最终独立复核第 1 项；其余 5 类转 [#230](https://github.com/kevinWangSheng/production-ops-agent/issues/230)）：采样中途取消被重放误报 `QUERY_MISMATCH`。存储与重放改为共用同一判定函数，重放按存储顺序重算处置并比较（合同 r7）。Codex gpt-6.1-sol 实现，修复前 5／35 查询后取消为红；独立审查（Codex gpt-6-astra）无 P1/P2，存储端 8192 组条件组合与基线一致，回归 749 passed；实现者 `make check` 6786 passed。
+- 2026-10-22 三处「出厂清单恰为空」的测试钉子（`test_f11_release_observation_postgres`、`test_f11_pr2b_acceptance_postgres`、`test_f11_pr2b_impl_postgres`）改为钉死唯一已批准条目（M=1500，证据摘要 sha256 与 `docs/evidence/f11-u2-calibration/summary.json` 字节一致）：PR-2 合同预定的 policy 写入已落地，钉子随之收紧；未知 revision 仍判 `RELEASE_POLICY_UNCALIBRATED` 的行为检查保留。
 
 ## 下一步与交接
 

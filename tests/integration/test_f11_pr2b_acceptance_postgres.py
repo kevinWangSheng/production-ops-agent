@@ -18,13 +18,12 @@ from __future__ import annotations
 import functools
 from collections.abc import Callable
 from datetime import timedelta
-from pathlib import Path
 from typing import Any
 from uuid import UUID
 
 import pytest
 
-from opspilot.observation import ObservationStore, release_policy
+from opspilot.observation import ObservationStore
 from opspilot.observation.release_types import ReleaseSampleLease
 from opspilot.observation.releases import ReleaseStore
 from opspilot.observer.loop import ObserverLoop
@@ -34,6 +33,7 @@ from opspilot.persistence import DurableStore
 from tests.f11_release_support import (
     INTERVAL,
     WINDOW,
+    assert_shipped_catalog_is_the_approved_policy,
     pods_for,
     sha256_hex,
 )
@@ -217,23 +217,14 @@ def test_a_scope_interruption_before_any_request_is_an_adopted_zero_query_sample
 
 
 # ===========================================================================
-# 2. the shipped empty catalog still refuses authorization (no sampling job)
+# 2. the shipped catalog (the one approved policy) still refuses an unknown revision
 # ===========================================================================
 
 
-def test_with_the_shipped_empty_catalog_authorization_is_refused_and_nothing_is_claimable(
+def test_with_the_shipped_catalog_an_unknown_revision_is_refused_and_nothing_is_claimable(
     owner: DurableStore, web: ReleaseStore, observer: ObservationStore
 ) -> None:
-    shipped = (
-        Path(release_policy.__file__).resolve().parent
-        / "policies"
-        / "release-calibrations.json"
-    )
-    assert Path(release_policy.RELEASE_POLICY_CATALOG_PATH).resolve() == shipped
-    assert (
-        shipped.read_text(encoding="utf-8").strip()
-        == '{"format_version":1,"policies":[]}'
-    )
+    assert_shipped_catalog_is_the_approved_policy()
     release = _record_release(owner, web)
 
     receipt = _authorize(web, release.oid, "checkout-release@0123456789ab")
