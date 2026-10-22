@@ -1,0 +1,8 @@
+{
+  "version": "1",
+  "follow_up_template": "Operator note: Deployment otel-demo/checkout was rolled out at {released_at} (release {release_id}).",
+  "placeholders": {
+    "released_at": "R: the harness patch receipt time, UTC, second precision, YYYY-MM-DDTHH:MM:SSZ",
+    "release_id": "neutral release id, rel- followed by digits only"
+  }
+}
