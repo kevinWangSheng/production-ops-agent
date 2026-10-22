@@ -448,7 +448,8 @@ class WorkerProcess:
         return self.proc.poll() is None
 
     def log(self) -> str:
-        self._log.flush()
+        if not self._log.closed:
+            self._log.flush()
         return self.log_path.read_text(errors="replace")
 
     def wait_exit(self, timeout: float) -> int | None:
