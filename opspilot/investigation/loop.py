@@ -900,6 +900,16 @@ class InvestigationLoop:
                 if running >= self.tool_parallelism:
                     return
                 index = leaders[0]
+                # R-8: once a call has raised, nothing above it is dispatched;
+                # a lower repeat may still run (serially it came first), and
+                # the exception surfaces at the failed call's own turn.
+                failed = [
+                    i
+                    for i, f in dispatched.items()
+                    if f.done() and f.exception() is not None
+                ]
+                if failed and index > min(failed):
+                    return
                 try:
                     self._renew_before_dispatch()
                     tool_request = tool_request_for(

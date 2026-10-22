@@ -300,3 +300,26 @@ def test_executor_counters_are_exact_under_concurrency():
     for t in threads:
         t.join()
     assert executor.operations_used - before == 8
+
+
+def test_no_higher_call_is_dispatched_after_one_raised():
+    """R-8 regression (independent review): index 0 still in flight, index 1
+    raises at once -- index 2 must never be dispatched."""
+    loop, request, model, transport, store = _parallel(turn=_turn(30, 60, 90), cap=2)
+    original_execute = loop.executor.execute
+    release = threading.Event()
+    seen = []
+
+    def scripted(req):
+        seen.append(req.tool_index)
+        if req.tool_index == 0:
+            release.wait(timeout=1)
+        if req.tool_index == 1:
+            raise RuntimeError("boom")
+        return original_execute(req)
+
+    loop.executor.execute = scripted
+    with pytest.raises(RuntimeError, match="boom"):
+        loop.run(request)
+    assert sorted(seen) == [0, 1]
+    assert [row["ordinal"] for row in _tool_rows(store)] == [0]
