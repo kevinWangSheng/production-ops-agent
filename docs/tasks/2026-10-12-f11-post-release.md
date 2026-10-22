@@ -119,6 +119,7 @@ r1 只定方向。其余实现者需要猜的语义点，按 AGENTS.md「合同�
 - PR #228 第四轮（最后一轮，之后不再触发机器人）：0016 要求 deadline ending 无 sample，与重放一致；重放把样本回执与审计 result 快照中重复保存的引用与结果字段全部与权威记录比对。lead 决定：写入检查接受手写的、缺 job／result 字段或结束时间不精确的合法形状事务，与完整归档重放的要求存在差异，保留——守卫按合同只防代码／SQL 错误，完整性由重放负责，产品代码总写齐字段。实现者 `make check` 6417 passed。
 - 收尾四个数（#225）：新冒出的合同问题 3（issue 与合同 §9 口径；r6 旧归档证据边界；写入检查与重放的最小证据差异，lead 保留）；因合同变更重写的测试 0；环境重跑 2（uv 缓存权限；审查提示措辞触发内容过滤）；用户裁决轮数 1（r6 选 A）；机器人 4 轮，采纳 8。
 - 2026-10-14 重放部分证据缺陷（`feature/F11-replay-partial-evidence`，来自 #228 最终独立复核第 1 项；其余 5 类转 [#230](https://github.com/kevinWangSheng/production-ops-agent/issues/230)）：采样中途取消被重放误报 `QUERY_MISMATCH`。存储与重放改为共用同一判定函数，重放按存储顺序重算处置并比较（合同 r7）。Codex gpt-6.1-sol 实现，修复前 5／35 查询后取消为红；独立审查（Codex gpt-6-astra）无 P1/P2，存储端 8192 组条件组合与基线一致，回归 749 passed；实现者 `make check` 6786 passed。
+- 2026-10-22 PR-3 kind 真实运行（`68221a2`，轮次 `f11-pr3-live-1`，新建临时 PG 55651，工作台为本分支）：harness 发布→watch→真实 HTTP webhook 201 created，同载荷重放 200 replayed（主体仍为 1 条），授权返回 `RELEASE_POLICY_UNCALIBRATED`（清单为空；本分支无 HTTP 授权路由，以 web 角色调用存储原语）；alertmanager actor 403 `RELEASE_ACTOR_REQUIRED`，未登记目标 422，均不写主体。U5：harness 发布后取基线，到授权结束，308 个策略面对象零差异；harness 写入由 managedFields `kubectl-patch`@R 区分。kind 未开审计日志；集群外 CI 只有静态证据。证据见 [run.md](../evidence/f11-pr3-release-intake-live/run.md)、[summary.json](../evidence/f11-pr3-release-intake-live/summary.json)。无模型调用，费用 0。
 
 ## 下一步与交接
 
