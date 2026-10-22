@@ -1,5 +1,7 @@
 # HolmesGPT：原生入口、工具循环与不同状态路径
 
+> 2026-10-22 注：本文行号以旧 SHA `5e983c1` 为准，已过时。按上游 `a0009195` 的对照见 [上游设计对齐审计](upstream-design-audit-2026-10-22.md)。
+
 日期：2026-09-07。固定 SHA `5e983c17f30e93099c7d775167266d4cd1d586c4`，不声称本轮已刷新最新 main。整仓下载未完成，改用完整递归 tree 加固定 raw 文件追踪，下载文件与 Git blob 校验见 `holmes-source-manifest-2026-09-07.json`。未安装/执行上游、未运行其测试。
 
 范围：CLI ask/告警、普通 HTTP chat、可选 conversation worker、Operator check，以及这些入口实际连接的 prompt、工具、压缩和状态读写。不是全仓安全审计或生产认证。

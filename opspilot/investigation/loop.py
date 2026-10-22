@@ -60,14 +60,10 @@ from opspilot.investigation.reports import (
     RUN_COVERAGE_TEMPLATE,
     DeliveredView,
     ReportV2,
-    context_target_catalog,
-    context_time_policy_ids,
     delivered_from_context,
     evidence_context_projection,
-    parse_report,
-    report_retry_feedback,
     run_coverage_message,
-    unsupported_citations,
+    validated_report,
 )
 from opspilot.investigation.store import (
     StepCommitter,
@@ -133,9 +129,12 @@ def _final_messages(state: _State) -> tuple[dict[str, Any], ...]:
     """The final round's trailing user messages: the report instruction,
     then (B3) the previous failure's retry feedback when this final round was
     forced by one, then the run coverage summary over the views this Run
-    delivered so far (round 2 rule C). Rebuild re-derives the same
-    ``state.retry_feedback`` from the same committed row, so a resumed
-    attempt sends the same messages."""
+    delivered so far (round 2 rule C). Two other paths re-derive the same
+    feedback from the committed non-final row through ``validated_report``:
+    ``resume`` (a restart before the forced final round was sent, so the
+    resumed attempt sends these same messages) and the rebuild's hash check
+    (``context._check_snapshot_hash``, after the forced final row was
+    committed, #304)."""
     messages: list[dict[str, Any]] = [
         {"role": "user", "content": FINAL_REPORT_INSTRUCTION},
     ]
@@ -583,53 +582,17 @@ class InvestigationLoop:
     def _validated_report(
         self, state: _State, content: str, *, finish_reason: str | None
     ) -> tuple[ReportV2 | None, str, str]:
-        """``parse_report`` plus the citation check, as the live round applies
-        them. Returns ``(report, reason, retry_feedback)``: ``retry_feedback``
-        is B3/C2's fixed-template diagnostic message for this exact failure
-        ("" on success), computed here (not by the caller) so it always
-        reflects the parsed report the citation check actually saw."""
-        report, reason = parse_report(
-            content, finish_reason=finish_reason if finish_reason else "unknown"
-        )
+        """``validated_report`` over this attempt's state: the delivered views
+        so far, the Run's projected evidence context and its authorized
+        targets. The rebuild's hash check calls the same function (#304)."""
         request = state.request
-        target_catalog = context_target_catalog(
-            request.evidence_context, authorized_targets=request.scope.target_ids
-        )
-        time_policy_ids = context_time_policy_ids(request.evidence_context)
-        if report is None:
-            return (
-                None,
-                reason,
-                report_retry_feedback(
-                    reason,
-                    report=None,
-                    views=state.delivered,
-                    content=content,
-                    authorized_targets=request.scope.target_ids,
-                    time_policy_ids=time_policy_ids,
-                    target_catalog=target_catalog,
-                ),
-            )
-        if unsupported_citations(
-            report,
-            views=state.delivered,
+        return validated_report(
+            content,
+            finish_reason=finish_reason,
+            delivered=state.delivered,
+            evidence_context=request.evidence_context,
             authorized_targets=request.scope.target_ids,
-            time_policy_ids=time_policy_ids,
-            target_catalog=target_catalog,
-        ):
-            return (
-                None,
-                "REPORT_INVALID",
-                report_retry_feedback(
-                    "REPORT_INVALID",
-                    report=report,
-                    views=state.delivered,
-                    authorized_targets=request.scope.target_ids,
-                    time_policy_ids=time_policy_ids,
-                    target_catalog=target_catalog,
-                ),
-            )
-        return report, "", ""
+        )
 
     def _drive(self, state: _State) -> LoopOutcome:
         request = state.request

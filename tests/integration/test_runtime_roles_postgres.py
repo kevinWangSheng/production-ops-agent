@@ -174,8 +174,8 @@ def test_every_relation_has_a_decision_and_the_catalog_equals_it() -> None:
 F2_B1_WEB_INCIDENTS = frozenset(
     {
         "SELECT",
-        "INSERT(current_run_id,incident_id,intake_key,lifecycle,priority,state,"
-        "target_id)",
+        "INSERT(current_run_id,incident_id,intake_key,lifecycle,priority,"
+        "related_incident_id,state,target_id)",
         "UPDATE(conclusion,control_generation,current_run_id,lifecycle,mode,"
         "observation_generation,priority,state)",
     }
