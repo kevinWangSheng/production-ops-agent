@@ -24,7 +24,7 @@ Agent 不执行生产写操作，不拥有发布批准或阻断权。不纳入�
 | 服务语言 | Python 3.12 |
 | HTTP 与数据合同 | FastAPI、Pydantic |
 | 页面与实时更新 | Jinja、少量 JavaScript、SSE |
-| 调查循环 | LangGraph，作为待验证的编排底座 |
+| 调查循环 | 手写 loop（LangGraph 经 M0 比较推迟引入，见 ADR-0004） |
 | 模型接入 | AsyncOpenAI 兼容客户端、薄 provider 适配层 |
 | 首个模型服务 | DeepSeek 官方服务 |
 | 持久化 | PostgreSQL、psycopg |
@@ -34,9 +34,7 @@ Agent 不执行生产写操作，不拥有发布批准或阻断权。不纳入�
 
 暂不增加 Redis、Kafka、Temporal，也不同时引入 OpenAI Agents SDK 的另一套循环。
 
-**LangGraph 的职责限定为调查循环编排。**它的 checkpoint 可以作为尝试内的可重建缓存，但不拥有跨进程恢复权威。跨进程恢复以 PostgreSQL 中已提交的业务记录为准。
-
-由于这一职责比最初选型设想更小，M0 需要检查 LangGraph 是否仍能减少实现与维护成本。若没有净收益，再调整底座；不能为了保留框架降低恢复要求。
+**调查循环不引入 LangGraph。**最初选型把 LangGraph 限定为调查循环编排，checkpoint 只作尝试内的可重建缓存。M0 比较与 2026-09-21 复核（ADR-0004）没有发现净收益：`commit_step`、`commit_tool`、`rebuild()` 与 lease/epoch/人工代际栅栏已提供业务键粒度的等价物，因此循环为手写实现。跨进程恢复以 PostgreSQL 中已提交的业务记录为准。需要多节点并行 fan-out 且每节点独立持久时，另立合同重新比较。
 
 复用方式：
 
@@ -212,7 +210,7 @@ bump 后被重新领取的在途 Run 进入 `blocked(INCOMPATIBLE_STATE)`，按�
 
 `组装上下文 → 调用模型 → 提交完整响应和工具计划 → 执行并提交工具观察 → 下一轮`
 
-- 流式响应完整且校验通过后，才允许执行工具。
+- 模型响应完整接收且校验通过后，才允许执行工具。当前不对模型使用流式请求（`stream: false`）。
 - 每个工具调用必须有完整的结果或失败记录。
 - 模型给出的最终文本先作为候选结论，校验证据引用、目标身份和当前采纳权后才能发布。
 - 信息不足时允许明确给出无法确认或部分结论。
