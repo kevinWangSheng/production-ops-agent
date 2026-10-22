@@ -331,3 +331,50 @@ def test_main_refuses_an_oversized_capacity_before_touching_the_database(
 )
 def test_priority_of_is_the_fixed_severity_mapping(labels, priority):
     assert priority_of(labels) == priority
+
+
+def _stop_inside_checkout(loop):
+    """A SIGTERM landing after the caller's stop check, inside ``_checkout``."""
+    checkout = loop._checkout
+
+    def racing(*, wait):
+        runner = checkout(wait=wait)
+        loop.stop.set()
+        return runner
+
+    loop._checkout = racing
+
+
+def test_a_stop_racing_the_checkout_starts_no_attempt_in_run():
+    ids = [uuid4() for _ in range(3)]
+    queue = Queue(ids)
+    gate = Gate(queue)
+    loop, _ = _loop(queue, gate, capacity=2, poll=0.02)
+    _stop_inside_checkout(loop)
+    thread = _start(loop)
+    thread.join(3.0)
+    assert not thread.is_alive()
+    assert gate.started == []
+    assert len(loop._idle) == 2 and not loop._in_flight
+
+
+def test_a_stop_racing_the_checkout_starts_no_attempt_in_poll_once():
+    ids = [uuid4() for _ in range(3)]
+    queue = Queue(ids)
+    gate = Gate(queue)
+    loop, _ = _loop(queue, gate, capacity=2)
+    _stop_inside_checkout(loop)
+    assert loop.poll_once() == []
+    assert gate.started == []
+    assert len(loop._idle) == 2 and not loop._in_flight
+
+
+def test_a_stop_after_launch_but_before_the_slot_runs_claims_nothing():
+    incident = uuid4()
+    queue = Queue([incident])
+    gate = Gate(queue)
+    loop, runners = _loop(queue, gate, capacity=2)
+    runner = loop._checkout(wait=False)
+    loop.stop.set()
+    loop._slot(incident, runner, None)
+    assert gate.started == [] and len(loop._idle) == 2

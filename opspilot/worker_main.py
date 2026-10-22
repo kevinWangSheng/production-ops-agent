@@ -204,7 +204,11 @@ class WorkerLoop:
         incident_id: UUID,
         runner: Resumer,
         sink: dict[UUID, RunnerOutcome] | None,
-    ) -> threading.Thread:
+    ) -> bool:
+        """Start ``incident_id`` on ``runner``'s slot; ``False`` (slot
+        returned, nothing started) once ``stop`` is set -- a stop that lands
+        between the caller's check and here still dispatches nothing more
+        (R-B1-5). Only a thread started after this check is in flight."""
         thread = threading.Thread(
             target=self._slot,
             args=(incident_id, runner, sink),
@@ -212,9 +216,13 @@ class WorkerLoop:
             daemon=True,
         )
         with self._cond:
+            if self.stop.is_set():
+                self._idle.append(runner)
+                self._cond.notify_all()
+                return False
             self._in_flight[incident_id] = thread
         thread.start()
-        return thread
+        return True
 
     def _slot(
         self,
@@ -223,6 +231,10 @@ class WorkerLoop:
         sink: dict[UUID, RunnerOutcome] | None,
     ) -> None:
         try:
+            # Last check before the claim: a stop that arrived while the
+            # thread was starting leaves the incident unclaimed.
+            if self.stop.is_set():
+                return
             outcome = self._attempt(runner, incident_id)
             if outcome is not None and sink is not None:
                 sink[incident_id] = outcome
@@ -275,7 +287,8 @@ class WorkerLoop:
             runner = self._checkout(wait=True)
             if runner is None:
                 break
-            self._launch(incident_id, runner, sink)
+            if not self._launch(incident_id, runner, sink):
+                break
             started.append(incident_id)
         self._join_in_flight()
         return [(i, sink[i]) for i in started if i in sink]
@@ -300,7 +313,8 @@ class WorkerLoop:
             runner = self._checkout(wait=False)
             if runner is None:
                 return
-            self._launch(incident_id, runner, None)
+            if not self._launch(incident_id, runner, None):
+                return
 
     def run(self) -> int:
         """Poll until ``stop``; returns the number of timed passes made."""
