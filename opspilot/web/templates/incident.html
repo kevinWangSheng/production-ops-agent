@@ -15,6 +15,10 @@
   · budget {{ run.budget_spent }} spent / {{ run.budget_reserved }} reserved / {{ run.budget_unknown }} unknown of {{ run.budget_limit }}
   · deadline {{ run.deadline }}
 </p>
+{% if inc.related_incident_id %}
+<p>Opened after closed incident <a id="related-incident" href="/incidents/{{ inc.related_incident_id }}"><code>{{ inc.related_incident_id }}</code></a>
+  <span class="muted">(same alert on the same target; the closed incident was not reopened)</span></p>
+{% endif %}
 {% if snapshot.target_id %}
 <p>Target request: <code>{{ snapshot.target_id }}</code> <span class="muted">(unresolved operator input; identity is registry-resolved by the investigator)</span></p>
 {% endif %}

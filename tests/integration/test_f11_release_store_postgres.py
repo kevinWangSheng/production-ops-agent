@@ -1420,6 +1420,9 @@ def test_0014_downgrades_only_when_empty_and_keeps_data_otherwise() -> None:
                 }
                 if role == WEB_ROLE:
                     removals = {
+                        # 0018 grants the web role INSERT on the related
+                        # incident column; below it that grant is revoked.
+                        "opspilot_incidents": {"related_incident_id"},
                         "opspilot_observation_sessions": {
                             "release_observation_id",
                             "release_policy_revision",
