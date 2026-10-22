@@ -1191,11 +1191,8 @@
     },
     {
       "id": "queued_le_cap_after_one_pass",
-      "expected": "every sample after the first backlog pass that follows the last webhook shows queued <= 6 (R-B2-4 tolerance: one poll + the pass)",
+      "expected": "R-B2-4: from each moment the backlog first exceeds 6, queued is back to <= 6 within one 2 s poll plus that pass's work",
       "actual": {
-        "last_webhook_at": "2026-10-22T18:40:57.211470+00:00",
-        "pass_at": "2026-10-22T18:40:58.906640+00:00",
-        "pass_delay_seconds": 1.69517,
         "samples_before_pass_over_cap": [
           {
             "at": "2026-10-22T18:40:58.065204+00:00",
@@ -1216,7 +1213,32 @@
             "waiting_human": 4
           }
         },
-        "max_queued_after": 6
+        "max_queued_after": 6,
+        "crossings": [
+          {
+            "over_cap_at": "2026-10-22T18:40:56.335098+00:00",
+            "cause": "intake_accepted b6ec0292 (warning) -> queued 7",
+            "pass_at": "2026-10-22T18:40:56.895092+00:00",
+            "parked": [
+              "43403339",
+              "26e22a7f",
+              "85b99fcc"
+            ],
+            "queued_after": 6,
+            "convergence_seconds": 0.56
+          },
+          {
+            "over_cap_at": "2026-10-22T18:40:57.208594+00:00",
+            "cause": "intake_accepted f340e0ec (critical) -> queued 7",
+            "pass_at": "2026-10-22T18:40:58.906640+00:00",
+            "parked": [
+              "b6ec0292"
+            ],
+            "queued_after": 6,
+            "convergence_seconds": 1.698
+          }
+        ],
+        "method": "queued reconstructed from the incidents' events in recorded_at order: +1 intake_accepted, -1 run_claimed, -1 run_handoff BACKLOG_FULL, starting at 0. Cross-check: the pass at 18:40:56.89 parked exactly 3 when the reconstruction shows 9 queued (9-6=3). intake_accepted is appended after the intake transaction commits (checked for the generic path, web/service.py:364; the alert path not read line by line), so a crossing may be up to that commit-to-append gap earlier than shown (not measured). 2 s samples alone cannot pin the crossing: the only sample above 6 (18:40:58.07, queued 7) lies inside the second crossing."
       },
       "ok": true
     },
@@ -1315,5 +1337,9 @@
     "bytes": 134863,
     "path": "tmp/lab-ledgers/f2-b2-live/760e80aa-5fe5-5126-8ca7-e0ad2685e132/ledger.json",
     "in_repository": false
+  },
+  "amended": {
+    "at": "2026-10-22",
+    "what": "assertions[queued_le_cap_after_one_pass]: clock now starts at each over-cap crossing instead of the last webhook (coordinator re-check); raw ledger unchanged"
   }
 }
