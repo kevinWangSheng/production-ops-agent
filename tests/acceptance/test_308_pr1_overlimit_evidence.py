@@ -110,7 +110,7 @@ BASELINE_CONTROL_GENERATION_REFUSAL_VIEW = (
 OLD_OTEL_VERSIONS = {
     "prompt_revision": "prompt-replay-candidate-dd9018031487",
     "context_policy_revision": "ctx-ctx-policy-v1-a30e65ea52f4",
-    "tool_schema_revision": "otel-demo-c7737da709ee",
+    "tool_schema_revision": "otel-demo-5270fd8c543f",  # main after #318 (c38be65)
 }
 OLD_PROJECTION_REVISION = "m1-01-tool-view-v8"
 
