@@ -51,6 +51,7 @@ import argparse
 import json
 import os
 import time
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from uuid import uuid4
@@ -59,11 +60,17 @@ from opspilot import tracing
 from opspilot.investigation.client import DeepSeekClient
 from opspilot.investigation.inputs import continuation_input
 from opspilot.investigation.limits import M1_FROZEN_LIMITS
-from opspilot.investigation.loop import DISCIPLINE_VARIANT, prompt_revision_versions
+from opspilot.investigation.loop import (
+    DISCIPLINE_VARIANT,
+    MAX_TOOL_PARALLELISM,
+    prompt_revision_versions,
+)
 from opspilot.investigation.runner import InvestigationRunner
 from opspilot.persistence import DurableStore
 from opspilot.tools import TransportResponse
 from opspilot.tools.fixture import FIXTURE_TARGET, FIXTURE_TOOL, fixture_face
+from opspilot.tools.otel_demo import TARGET_ID as OTEL_TARGET_ID
+from opspilot.tools.profiles import PROFILE_ENV, select_profile
 from opspilot.web import DurableEventLog, DurableEvidenceStore
 from opspilot.web.service import LEASE_SECONDS
 from opspilot.worker import Worker
@@ -94,6 +101,11 @@ FOLLOWUP_OUT_ROOT = ROOT / "docs/evidence/m1-01-timeout-followup/live-runs"
 # here is built by the same ``ToolFace`` the workbench records on intake.
 LIVE_TOOL = FIXTURE_TOOL
 LIVE_TOOL_TARGET = FIXTURE_TARGET
+OTEL_QUESTION = (
+    "Checkout appears to show elevated errors. Investigate with the authorized "
+    "metrics and traces and return a json investigation report for the "
+    "authorized window."
+)
 VERSIONS = {
     **prompt_revision_versions(DISCIPLINE_VARIANT),
     "tool_schema_revision": "live-runner-1",
@@ -119,13 +131,13 @@ def resolve_out_dir(
     return (SWEEP_OUT_ROOT if sweep else OUT_ROOT) / run_id
 
 
-def successor_input(store, incident, run_id, deadline):
+def successor_input(store, incident, run_id, deadline, target_id=LIVE_TOOL_TARGET):
     """The renewed Run's input: the C3 continuation of the timed-out context."""
     return continuation_input(
         store.rebuild(incident),
         new_run_id=str(run_id),
         deadline=deadline,
-        authorized_targets=frozenset({LIVE_TOOL_TARGET}),
+        authorized_targets=frozenset({target_id}),
     )
 
 
@@ -260,7 +272,29 @@ def main() -> int:
     parser.add_argument("--timeout-follow-up", action="store_true")
     parser.add_argument("--renew-seconds", type=int, default=12 * 60)
     parser.add_argument("--lab-round", default=os.environ.get(LAB_ROUND_ENV) or None)
+    # #309 evidence: tool calls of one turn in flight (1 = serial, the
+    # earlier behaviour of this script), and a narrowed context window so a
+    # bounded Run reaches compaction (``RunLimits.within`` admits narrowing).
+    parser.add_argument("--tool-parallelism", type=int, default=1)
+    parser.add_argument("--context-tokens", type=int, default=None)
+    # ``otel-demo`` reads Prometheus/Jaeger at the OPSPILOT_OTEL_* URLs through
+    # the product profile (ledger, control, transport); the default keeps
+    # this script's canned fixture tool.
+    parser.add_argument(
+        "--tool-profile", choices=("fixture", "otel-demo"), default="fixture"
+    )
     args = parser.parse_args()
+    if not 1 <= args.tool_parallelism <= MAX_TOOL_PARALLELISM:
+        raise SystemExit(f"tool-parallelism must be 1-{MAX_TOOL_PARALLELISM}")
+    limits = M1_FROZEN_LIMITS
+    if args.context_tokens is not None:
+        if not (
+            M1_FROZEN_LIMITS.output_tokens
+            < args.context_tokens
+            <= M1_FROZEN_LIMITS.context_tokens
+        ):
+            raise SystemExit("context-tokens outside (output_tokens, frozen ceiling]")
+        limits = replace(M1_FROZEN_LIMITS, context_tokens=args.context_tokens)
     if args.timeout_follow_up and not args.sweep:
         raise SystemExit("--timeout-follow-up requires --sweep")
     if args.deadline_seconds < 1:
@@ -291,12 +325,22 @@ def main() -> int:
     clock = SystemClock()
     deadline = clock.now() + timedelta(seconds=args.deadline_seconds)
     incident, run_id = uuid4(), uuid4()
-    input = fixture_face().input_for(
+    if args.tool_profile == "otel-demo":
+        profile = select_profile({**os.environ, PROFILE_ENV: "otel-demo"})
+        versions = profile.versions()
+        face, target_id, question = profile.face(clock), OTEL_TARGET_ID, OTEL_QUESTION
+        factory = profile.executor_factory(store, evidence, clock)
+    else:
+        versions = dict(VERSIONS)
+        face, target_id, question = fixture_face(), LIVE_TOOL_TARGET, QUESTION
+        factory = executor_factory_for(evidence, clock, deadline)
+    input = face.input_for(
         run_id=str(run_id),
-        question=QUESTION,
-        target_id=LIVE_TOOL_TARGET,
+        question=question,
+        target_id=target_id,
         deadline=deadline,
         model_requests=args.model_requests,
+        limits=limits,
     )
     store.accept(
         incident,
@@ -304,20 +348,21 @@ def main() -> int:
         f"m1-live-runner-{run_id}",
         deadline=deadline,
         budget_limit=args.model_requests,
-        versions=VERSIONS,
+        versions=versions,
         input=input.as_json(),
     )
     recorder = RecordingClient(DeepSeekClient(key, clock=clock))
     del key
     runner = InvestigationRunner(
         store=store,
-        worker=Worker.create(store, dict(VERSIONS)),
+        worker=Worker.create(store, dict(versions)),
         model=recorder,
-        executor_factory=executor_factory_for(evidence, clock, deadline),
+        executor_factory=factory,
         clock=clock,
         lease_seconds=LEASE_SECONDS,
         events=log,
         evidence=evidence,
+        tool_parallelism=args.tool_parallelism,
     )
     started = clock.now()
     attempts = [{"label": "first", "outcome": _outcome(runner.resume(incident))}]
@@ -357,7 +402,9 @@ def main() -> int:
         generation = store.rebuild(incident)["control_generation"]
         renewed_run = uuid4()
         renewed_deadline = clock.now() + timedelta(seconds=args.renew_seconds)
-        renewed_input = successor_input(store, incident, renewed_run, renewed_deadline)
+        renewed_input = successor_input(
+            store, incident, renewed_run, renewed_deadline, target_id
+        )
         applied = store.control(
             incident,
             generation,
@@ -400,6 +447,10 @@ def main() -> int:
     ledger = {
         "experiment": experiment,
         "deadline_seconds": args.deadline_seconds,
+        "tool_parallelism": args.tool_parallelism,
+        "context_tokens": limits.context_tokens,
+        "tool_profile": args.tool_profile,
+        "question": question,
         "driver": "opspilot.investigation.runner.InvestigationRunner",
         "incident_id": str(incident),
         "run_id": str(run_id),
@@ -441,6 +492,9 @@ def main() -> int:
             "model": ledger["model"],
             "started": ledger["started"],
             "ended": ledger["ended"],
+            "tool_parallelism": ledger["tool_parallelism"],
+            "context_tokens": ledger["context_tokens"],
+            "tool_profile": ledger["tool_profile"],
             "verdicts": {
                 "status": attempts[0]["outcome"]["status"],
                 "reason": attempts[0]["outcome"]["reason"],
