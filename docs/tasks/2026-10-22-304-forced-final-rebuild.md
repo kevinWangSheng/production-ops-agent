@@ -25,6 +25,8 @@
 - D-U2 ② 未完成（[kind 运行](../evidence/304-forced-final-rebuild/live/run.md)）：kind 上 3 次自然真实 Run（f3dd8fc4、ca946e79、c9f7f63d，`m1_live_runner --follow-up`，不注入故障）都合格发布，没有 `REPORT_INVALID` 交接，follow_up 未执行；按约定 3 次后停止，未改代码或提示硬凑。kind 已 release，临时 PG 55741 已停。
 - 附带：ca946e79、c9f7f63d 自然走了强制最终轮且合格发布；对其真实行只读重建，main a7b296a 均 `INCOMPATIBLE_STATE`，修复 2fc953b 均通过（崩溃变体的重建一侧，未走 worker 重新领取）。费用：余额差 0.32 CNY（上界）。
 
+- 决定（2026-10-22，顾问 Codex gpt-6-sol，选 a）：D-U2 ② 未达成——3 次自然真实 Run 均合格发布、无 REPORT_INVALID 交接，follow_up 未执行；以 ① 离线重建 + 3 个真实 Run（trace、summary.json）+ 其中 2 个强制最终轮的离线重建（main INCOMPATIBLE_STATE、修复通过）+ PG 集成测试作为 #304 真实证据；follow_up 真实路径由 F2 PR-E 在 kind 上验证（C4-A 断言 2，F2 翻 passes 前提）。理由：现有证据已覆盖修复点，再碰运气概率低，改 runner 是新取舍。
+
 ## 待决
 
 无。
