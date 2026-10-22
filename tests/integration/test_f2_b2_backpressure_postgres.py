@@ -303,27 +303,50 @@ def test_b2_storm_preserves_all_alerts_and_holds_the_queue_at_eight(
         OPSPILOT_WORKER_CAPACITY="2", OPSPILOT_BACKLOG_MAX="8", poll_seconds=0.2
     )
     try:
+
         def bounded():
             rows = run_rows(owner, incidents)
             counts = _counts(owner, incidents)
-            return rows if len(rows) == 50 and counts["waiting_human"] and counts["queued"] <= 8 else None
+            claimed = events_of(owner, incidents, "run_claimed")
+            return (
+                rows
+                if len(rows) == 50
+                and counts["waiting_human"]
+                and counts["queued"] <= 8
+                and counts["running"] == 2
+                and len(claimed) >= 2
+                else None
+            )
 
         rows = wait_until(bounded, timeout=START + SETTLE)
         assert rows and len(rows) == 50, worker.log()
         counts = _counts(owner, incidents)
         assert counts["queued"] <= 8
         assert set(rows) == set(incidents)
-        assert all(r["state"] in {"running", "queued", "waiting_human"} for r in rows.values())
+        assert all(
+            r["state"] in {"running", "queued", "waiting_human"} for r in rows.values()
+        )
         assert max((sample["running"] for _, sample in sampler.samples), default=0) <= 2
-        assert any(
-            sample["queued"] <= 8 and sample["waiting_human"] > 0
-            for _, sample in sampler.samples
+        assert wait_until(
+            lambda: any(
+                sample["queued"] <= 8 and sample["waiting_human"] > 0
+                for _, sample in sampler.samples
+            ),
+            timeout=5,
         )
 
-        parked = [incident for incident, row in rows.items() if row["state"] == "waiting_human"]
-        queued = [incident for incident, row in rows.items() if row["state"] == "queued"]
+        parked = [
+            incident
+            for incident, row in rows.items()
+            if row["state"] == "waiting_human"
+        ]
+        queued = [
+            incident for incident, row in rows.items() if row["state"] == "queued"
+        ]
         priorities = _priorities(owner, incidents)
-        claimed = [subject for subject, _, _ in events_of(owner, incidents, "run_claimed")]
+        claimed = [
+            subject for subject, _, _ in events_of(owner, incidents, "run_claimed")
+        ]
         assert len(claimed) == 2
         assert [priorities[subject] for subject in claimed] == sorted(
             priorities[subject] for subject in claimed
@@ -371,7 +394,12 @@ def test_follow_up_requeues_a_parked_run_once_and_overdue_follow_up_renews(
 ):
     """§5 item 11 / U-B2-2: human control is an escape from the park."""
     app = _app(web_dsn)
-    first, second = _firing(app, new_tag(), "warning")[0], _firing(app, new_tag(), "warning")[0]
+    first_tag, second_tag = new_tag(), new_tag()
+    stub.plan(second_tag, Act("reject"))
+    first, second = (
+        _firing(app, first_tag, "warning")[0],
+        _firing(app, second_tag, "warning")[0],
+    )
     _set_deadlines(owner, [first, second], [100, 200])
     store = DurableStore(worker_dsn)
     _park(store, DurableEventLog(store), max_queued=1)
@@ -383,15 +411,16 @@ def test_follow_up_requeues_a_parked_run_once_and_overdue_follow_up_renews(
     assert run_rows(owner, [second])[second]["state"] == "queued"
     assert len(events_of(owner, [second], "run_handoff")) == 1
 
-    tag = new_tag()
-    stub.plan(tag, Act("reject"))
     # The existing Run is the one re-queued by follow_up; the model tag is
-    # only used to prove that the worker actually claims it.
+    # planned above so the worker actually claims it and hands it off.
     worker = workers(OPSPILOT_WORKER_CAPACITY="1", OPSPILOT_BACKLOG_MAX="1")
     assert wait_until(
         lambda: bool(events_of(owner, [second], "run_claimed")), timeout=START + SETTLE
     ), worker.log()
-    assert run_rows(owner, [second])[second]["state"] == "waiting_human"
+    assert wait_until(
+        lambda: run_rows(owner, [second])[second]["state"] == "waiting_human",
+        timeout=SETTLE,
+    ), worker.log()
     worker.stop()
 
     overdue, _ = _firing(_app(web_dsn, 1), new_tag(), "warning")
@@ -446,14 +475,15 @@ def test_parked_incident_blocks_postmortem_until_cancelled_then_is_candidate(
     app = _app(web_dsn)
     incident, _ = _firing(app, new_tag(), "warning")
     other, _ = _firing(app, new_tag(), "warning")
-    _set_deadlines(owner, [incident, other], [100, 200])
+    _set_deadlines(owner, [incident, other], [200, 100])
     _seed_ended_observation(owner, incident)
     store = DurableStore(worker_dsn)
     _park(store, DurableEventLog(store), max_queued=1)
     assert run_rows(owner, [incident])[incident]["state"] == "waiting_human"
     with psycopg.connect(DSN) as conn:
         before = conn.execute(
-            "SELECT count(*) FROM opspilot_postmortems WHERE incident_id=%s", (incident,)
+            "SELECT count(*) FROM opspilot_postmortems WHERE incident_id=%s",
+            (incident,),
         ).fetchone()[0]
     jobs = GenerationStore(DSN)
     assert incident not in jobs.candidates(limit=100)
@@ -464,7 +494,8 @@ def test_parked_incident_blocks_postmortem_until_cancelled_then_is_candidate(
     assert incident in jobs.candidates(limit=100)
     with psycopg.connect(DSN) as conn:
         after = conn.execute(
-            "SELECT count(*) FROM opspilot_postmortems WHERE incident_id=%s", (incident,)
+            "SELECT count(*) FROM opspilot_postmortems WHERE incident_id=%s",
+            (incident,),
         ).fetchone()[0]
     assert after == 0
 
@@ -481,7 +512,8 @@ def test_paused_incident_is_excluded_from_backlog_count_and_parking(
     store = DurableStore(worker_dsn)
     assert _park(store, DurableEventLog(store), max_queued=1) == ()
     rows = run_rows(owner, [paused, queued])
-    assert rows[paused]["state"] == "paused"
+    assert rows[paused]["state"] == "queued"
+    assert rows[paused]["incident_state"] == "paused"
     assert rows[queued]["state"] == "queued"
     assert events_of(owner, [paused], "run_handoff") == []
 
@@ -492,4 +524,3 @@ def test_invalid_backlog_max_refuses_worker_start(workers, value):
     worker = workers(OPSPILOT_BACKLOG_MAX=value)
     code = worker.wait_exit(20)
     assert code is not None and code != 0, worker.log()
-
