@@ -78,6 +78,7 @@ __all__ = [
     "build_release_comparison_plan",
     "comparison_fingerprint",
     "comparison_id_for",
+    "compare_evidence",
     "evaluate_release_comparison",
     "mapped_old_instances",
     "needs_retry",
@@ -129,15 +130,19 @@ class ComparisonSignal(DTO):
 
 
 class ReleaseComparison(DTO):
+    """Identity, attempts and the after window are None only when the pure
+    public evaluator is called without a stored ending; a stored record
+    always carries them (DB CHECK on the jsonb copy)."""
+
     format_version: FormatVersion
-    comparison_id: UUID
+    comparison_id: UUID | None
     observation_id: UUID
-    ending_id: UUID
-    sample_id: UUID
+    ending_id: UUID | None
+    sample_id: UUID | None
     status: Literal["complete", "partial", "unavailable"]
-    attempts: Annotated[int, Field(ge=1, le=COMPARISON_MAX_ATTEMPTS)]
+    attempts: Annotated[int, Field(ge=1, le=COMPARISON_MAX_ATTEMPTS)] | None
     window_before: QueryWindow
-    window_after: QueryWindow
+    window_after: QueryWindow | None
     before_instances: tuple[ReleaseInstance, ...]
     after_instances: tuple[ReleaseInstance, ...]
     signals: tuple[ComparisonSignal, ...]
@@ -270,12 +275,22 @@ def _to_stored_key(key: str) -> str:
 
 
 def build_release_comparison_plan(
-    context: ReleaseEvaluationContext, *, instance_uids: Sequence[UUID] = ()
+    context: ReleaseEvaluationContext,
+    *,
+    released_at: datetime,
+    after_window_end: datetime,
+    instance_uids: Sequence[UUID] = (),
 ) -> dict[str, str]:
     """Mapping and before_service first; a proven old UID set adds the slice.
 
+    Contract §4 signature. PromQL instant queries carry no time: the caller
+    evaluates every query at ``released_at`` (S1) and the after scopes come
+    from the anomaly sample ending at ``after_window_end``, so neither
+    changes the text. ``instance_uids`` (the old UIDs the mapping results
+    prove, see ``mapped_old_instances``) adds the 16 slice queries.
     Raises ``ValueError("HEALTH_PROFILE_INVALID")`` like PR-2's plan.
     """
+    del released_at, after_window_end
     plan = build_release_query_plan(
         before_context(context),
         window_end=before_window(context).end,
@@ -360,16 +375,17 @@ def _scoped(codes: Sequence[str], scope: str, name: str) -> tuple[str, ...]:
     return tuple(sorted(own))
 
 
-def evaluate_release_comparison(
+def compare_evidence(
     context: ReleaseEvaluationContext,
     *,
     observation_id: UUID,
-    ending_id: UUID,
-    sample_id: UUID,
-    window_after: QueryWindow,
+    ending_id: UUID | None,
+    sample_id: UUID | None,
+    window_after: QueryWindow | None,
     anomaly: ReleaseEvaluation,
     evidence: ReleaseComparisonEvidence,
     decision_at: datetime,
+    attempts: int | None = None,
 ) -> ReleaseComparison:
     """Pure: the stored before evidence and the anomaly sample's verdicts.
 
@@ -440,7 +456,7 @@ def evaluate_release_comparison(
         ending_id=ending_id,
         sample_id=sample_id,
         status=status,
-        attempts=evidence.attempts,
+        attempts=evidence.attempts if attempts is None else attempts,
         window_before=window,
         window_after=window_after,
         before_instances=instances,
@@ -448,6 +464,97 @@ def evaluate_release_comparison(
         signals=tuple(signals),
         reason_codes=tuple(ordered),
     )
+
+
+_NO_ANOMALY = ReleaseEvaluation(
+    verdict="unknown",
+    outcome="no_data",
+    evidence_sufficient=False,
+    reason_codes=(),
+    instances=(),
+    signals=(),
+)
+
+
+def evaluate_release_comparison(
+    context: ReleaseEvaluationContext,
+    plan: Mapping[str, str],
+    results: Mapping[str, ReleaseQueryResult] | Sequence[ReleaseQueryResult],
+) -> ReleaseComparison:
+    """Contract §4: the comparison from raw results alone, without I/O.
+
+    ``results`` holds the before-window results under the plan's keys
+    (``before_service:*``, ``before_old:*``) and, optionally, the anomaly
+    sample's own rows under PR-2's keys; the after scopes are evaluated from
+    those rows with PR-2's evaluator at their ``evaluated_at``. A ``plan``
+    other than this context's mapping plan, or results not matching the plan
+    (keys, text, evaluation time), make the comparison ``unavailable`` with
+    ``QUERY_EVIDENCE_INCONSISTENT``. Identity, attempts and the after window
+    are None: only the store knows the ending.
+    """
+    rows = list(results.values()) if isinstance(results, Mapping) else list(results)
+    before = tuple(
+        q for q in rows if q.query_key.startswith(("before_service:", "before_old:"))
+    )
+    after = tuple(q for q in rows if q not in before)
+    window = before_window(context)
+    anomaly = _NO_ANOMALY
+    window_after: QueryWindow | None = None
+    ends = {q.evaluated_at for q in after}
+    if len(ends) == 1:
+        (end,) = ends
+        window_after = QueryWindow(
+            start=end
+            - timedelta(seconds=context.health_profile.evaluation_window_seconds),
+            end=end,
+        )
+        anomaly = evaluate_release_sample(
+            context,
+            ReleaseSampleEvidence(
+                format_version=1,
+                sample_id=uuid5(context.release.observation_id, "after:" + str(end)),
+                window=window_after,
+                queries=after,
+            ),
+            decision_at=end,
+        )
+    evidence = ReleaseComparisonEvidence(
+        format_version=1,
+        comparison_id=uuid5(context.release.observation_id, "pure-comparison"),
+        attempts=1,
+        window=window,
+        queries=before,
+    )
+    comparison = compare_evidence(
+        context,
+        observation_id=context.release.observation_id,
+        ending_id=None,
+        sample_id=None,
+        window_after=window_after,
+        anomaly=anomaly,
+        evidence=evidence,
+        decision_at=window.end,
+    )
+    try:
+        expected = build_release_comparison_plan(
+            context, released_at=window.end, after_window_end=window.end
+        )
+    except ValueError:
+        expected = {}
+    if dict(plan) != expected or len(ends) > 1:
+        comparison = comparison.model_copy(
+            update={
+                "status": "unavailable",
+                "reason_codes": tuple(
+                    sorted({*comparison.reason_codes, EVIDENCE_INCONSISTENT})
+                ),
+                "signals": tuple(
+                    signal.model_copy(update={"value": None})
+                    for signal in comparison.signals
+                ),
+            }
+        )
+    return comparison.model_copy(update={"comparison_id": None, "attempts": None})
 
 
 def needs_retry(comparison: ReleaseComparison) -> bool:
@@ -584,7 +691,7 @@ class _ReleaseComparisonOps(_ReleaseSampleOps):
                 raise PersistenceError("INVALID_INPUT")
             context = context_in(conn, session, release)
             now = self._db_now(conn).astimezone(timezone.utc)
-            comparison = evaluate_release_comparison(
+            comparison = compare_evidence(
                 context,
                 observation_id=lease.observation_id,
                 ending_id=lease.ending_id,
@@ -645,7 +752,7 @@ class _ReleaseComparisonOps(_ReleaseSampleOps):
         conn: Connection, comparison_id: UUID
     ) -> ComparisonReceipt | None:
         row = conn.execute(
-            "SELECT comparison FROM opspilot_release_comparisons WHERE comparison_id=%s",
+            "SELECT comparison_id,observation_id,ending_id,comparison FROM opspilot_release_comparisons WHERE comparison_id=%s",
             (comparison_id,),
         ).fetchone()
         if row is None:
@@ -654,9 +761,9 @@ class _ReleaseComparisonOps(_ReleaseSampleOps):
             canonical_json(row["comparison"])
         )
         return ComparisonReceipt(
-            comparison_id=comparison.comparison_id,
-            observation_id=comparison.observation_id,
-            ending_id=comparison.ending_id,
+            comparison_id=row["comparison_id"],
+            observation_id=row["observation_id"],
+            ending_id=row["ending_id"],
             replayed=True,
             comparison=comparison,
         )

@@ -20,8 +20,8 @@ from opspilot.observation.release_comparison import (
     ReleaseComparisonEvidence,
     before_context,
     build_release_comparison_plan,
+    compare_evidence,
     comparison_id_for,
-    evaluate_release_comparison,
     needs_retry,
 )
 from opspilot.observation.releases import ReleaseAuxiliary
@@ -50,6 +50,7 @@ from tests.test_f11_release_evaluation import (
 )
 
 OLD_RS = f"{SERVICE}-{BEFORE_HASH}"
+TIMES = {"released_at": RELEASED_AT, "after_window_end": WINDOW_END}
 DECISION = WINDOW_END + timedelta(seconds=5)
 
 
@@ -109,7 +110,7 @@ def _evidence(builder, *, attempts=1, rename=None):
 
 def _compare(context, evidence, anomaly=None):
     anomaly = anomaly or _anomaly(context)
-    return evaluate_release_comparison(
+    return compare_evidence(
         context,
         observation_id=context.release.observation_id,
         ending_id=uuid4(),
@@ -124,8 +125,10 @@ def _compare(context, evidence, anomaly=None):
 def test_plan_is_evaluated_for_the_old_replicaset_with_scope_keys():
     context = _context()
     pods = pods_for(BEFORE_IMAGES, replicaset=OLD_RS)
-    mapping_only = build_release_comparison_plan(context)
-    full = build_release_comparison_plan(context, instance_uids=[p.uid for p in pods])
+    mapping_only = build_release_comparison_plan(context, **TIMES)
+    full = build_release_comparison_plan(
+        context, **TIMES, instance_uids=[p.uid for p in pods]
+    )
     assert len(mapping_only) == 9 + 24 and len(full) == 49
     assert all(k.startswith(("before_service:", "before_old:")) for k in full)
     text = " ".join(full.values())
@@ -164,7 +167,7 @@ def test_complete_comparison_lists_four_scopes_without_a_verdict():
 
 def test_missing_before_hash_keeps_only_the_service_scope():
     context = _context(auxiliary=ReleaseAuxiliary(after_pod_template_hash=AFTER_HASH))
-    plan = build_release_comparison_plan(context)
+    plan = build_release_comparison_plan(context, **TIMES)
     assert len(plan) == 24 and all(k.startswith("before_service:") for k in plan)
     comparison = _compare(context, _evidence(_before(context, ())))
     assert comparison.status == "partial"

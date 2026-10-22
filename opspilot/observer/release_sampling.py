@@ -19,7 +19,7 @@ from opspilot.observation.release_comparison import (
     ReleaseComparisonEvidence,
     before_window,
     build_release_comparison_plan,
-    evaluate_release_comparison,
+    compare_evidence,
     mapped_old_instances,
     needs_retry,
 )
@@ -273,20 +273,25 @@ def take_release_comparison(
         gathered.clear()
         budget_end = time.monotonic() + COMPARISON_ATTEMPT_SECONDS
         try:
-            plan = build_release_comparison_plan(context)
+            plan = build_release_comparison_plan(
+                context, released_at=at, after_window_end=lease.window_after.end
+            )
         except ValueError:
             # Unsupported profile: nothing to query; storage files it unavailable.
             break
         if not collect(plan, budget_end):
             return ReleaseComparisonTaken(None, issued, attempt, True)
         full = build_release_comparison_plan(
-            context, instance_uids=mapped_old_instances(context, evidence(attempt))
+            context,
+            released_at=at,
+            after_window_end=lease.window_after.end,
+            instance_uids=mapped_old_instances(context, evidence(attempt)),
         )
         if not collect(
             {key: expr for key, expr in full.items() if key not in plan}, budget_end
         ):
             return ReleaseComparisonTaken(None, issued, attempt, True)
-        draft = evaluate_release_comparison(
+        draft = compare_evidence(
             context,
             observation_id=lease.observation_id,
             ending_id=lease.ending_id,

@@ -74,7 +74,12 @@ class BeforeTelemetry:
 
     def instant_vector(self, expr, *, at, timeout_seconds):
         assert at == self.context.release.released_at
-        plan = build_release_comparison_plan(self.context, instance_uids=(OLD_UID,))
+        plan = build_release_comparison_plan(
+            self.context,
+            released_at=at,
+            after_window_end=at,
+            instance_uids=(OLD_UID,),
+        )
         key = next(k for k, v in plan.items() if v == expr)
         self.calls.append((key, at))
         if self.on_call:

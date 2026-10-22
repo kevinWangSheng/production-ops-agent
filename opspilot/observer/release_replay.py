@@ -1070,9 +1070,9 @@ def _comparison_issues(
     before-window evidence and the anomaly sample it is bound to."""
     from opspilot.observation.release_comparison import (
         ReleaseComparisonEvidence,
+        compare_evidence,
         comparison_fingerprint,
         comparison_id_for,
-        evaluate_release_comparison,
         iter_comparison_queries,
     )
 
@@ -1120,7 +1120,7 @@ def _comparison_issues(
             ),
             queries=tuple(queries),
         )
-        recomputed = evaluate_release_comparison(
+        recomputed = compare_evidence(
             ReleaseEvaluationContext(
                 release=release,
                 session_id=session["session_id"],
