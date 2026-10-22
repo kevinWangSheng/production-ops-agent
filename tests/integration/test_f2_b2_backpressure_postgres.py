@@ -440,6 +440,112 @@ def test_same_priority_parks_the_latest_deadlines_first(
         assert payload["parked"] is True and payload["execution"] == "not_started"
 
 
+def test_backlog_pass_uses_its_observed_queue_for_concurrent_arrival(
+    web_dsn, worker_dsn, owner
+):
+    """§5 item 9: a concurrent arrival is handled by the next pass."""
+    app = _app(web_dsn)
+    critical, warning_old, warning_new = [
+        _firing(app, new_tag(), severity)[0]
+        for severity in ("critical", "warning", "warning")
+    ]
+    _set_deadlines(owner, [critical, warning_old, warning_new], [100, 101, 200])
+
+    locker = psycopg.connect(DSN)
+    locker.execute(
+        "SELECT incident_id FROM opspilot_incidents WHERE incident_id=%s FOR UPDATE",
+        (warning_new,),
+    )
+    locker_pid = locker.execute("SELECT pg_backend_pid()").fetchone()[0]
+    locker.commit()
+    locker.execute(
+        "SELECT incident_id FROM opspilot_incidents WHERE incident_id=%s FOR UPDATE",
+        (warning_new,),
+    )
+
+    application_name = f"f2b2-concurrent-pass-{uuid4().hex}"
+    pass_store = DurableStore(f"{worker_dsn} application_name={application_name}")
+    pass_log = DurableEventLog(pass_store)
+    pass_result: list[tuple] = []
+    pass_error: list[BaseException] = []
+
+    def run_pass() -> None:
+        try:
+            pass_result.append(progress.park_backlog(pass_store, pass_log, 2))
+        except (
+            BaseException
+        ) as exc:  # pragma: no cover - reports implementation failures
+            pass_error.append(exc)
+
+    thread = threading.Thread(target=run_pass, daemon=True)
+    thread.start()
+
+    def pass_is_blocked() -> bool:
+        with psycopg.connect(DSN) as conn:
+            row = conn.execute(
+                "SELECT count(*) FROM pg_stat_activity "
+                "WHERE pid<>%s AND application_name=%s AND datname=current_database() "
+                "AND state='active' AND wait_event_type='Lock'",
+                (locker_pid, application_name),
+            ).fetchone()
+            return bool(row[0])
+
+    assert wait_until(pass_is_blocked, timeout=5), (
+        "backlog pass did not block on warning_new"
+    )
+
+    other, _ = _firing(app, new_tag(), None)
+    critical_row = run_rows(owner, [critical])[critical]
+    claim_store = DurableStore(worker_dsn)
+    claim_store.claim(
+        critical,
+        critical_row["run_id"],
+        uuid4(),
+        fixture_versions(),
+        lease_seconds=300,
+    )
+
+    locker.commit()
+    locker.close()
+    thread.join(10)
+    assert not thread.is_alive(), (
+        "blocked backlog pass did not finish after the row unlock"
+    )
+    assert not pass_error, pass_error
+    assert pass_result
+
+    priorities = _priorities(owner, [critical, warning_old, warning_new, other])
+    rows = run_rows(owner, [critical, warning_old, warning_new, other])
+    assert rows[critical]["state"] == "running"
+    assert rows[warning_new]["state"] == "waiting_human"
+    assert rows[warning_old]["state"] == "queued"
+    assert rows[other]["state"] == "queued"
+    assert priorities[warning_new] < priorities[other]
+
+    second_store = DurableStore(worker_dsn)
+    second_log = DurableEventLog(second_store)
+    progress.park_backlog(second_store, second_log, 1)
+    rows = run_rows(owner, [critical, warning_old, warning_new, other])
+    assert rows[other]["state"] == "waiting_human"
+    assert rows[warning_old]["state"] == "queued"
+    assert _counts(owner, [critical, warning_old, warning_new, other])["queued"] <= 2
+    parked = [
+        incident
+        for incident in (warning_new, other)
+        if rows[incident]["state"] == "waiting_human"
+    ]
+    queued = [
+        incident
+        for incident in (critical, warning_old, warning_new, other)
+        if rows[incident]["state"] == "queued"
+    ]
+    assert all(
+        priorities[parked_id] <= priorities[queued_id]
+        for parked_id in parked
+        for queued_id in queued
+    )
+
+
 def test_follow_up_requeues_a_parked_run_once_and_overdue_follow_up_renews(
     web_dsn, worker_dsn, owner, stub, workers
 ):
