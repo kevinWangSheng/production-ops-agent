@@ -48,6 +48,11 @@ class IncidentSummary:
     #: (``TARGET_UNRESOLVED`` / ``TARGET_AMBIGUOUS``; M1-04 E5, migration
     #: 0010); ``None`` for every incident that has a Run.
     handoff_reason: str | None = None
+    #: F2 PR-C: the closed incident this one was opened after (C3).
+    related_incident_id: UUID | None = None
+    #: R-C6: resolved, and an alert episode was attached after it resolved
+    #: (an attachment opens no Run, so only the page shows it).
+    refired_after_resolved: bool = False
 
     @property
     def handoff_only(self) -> bool:
@@ -808,7 +813,7 @@ class DurableIncidentStore:
     def list_incidents(self, *, limit: int = 50) -> tuple[IncidentSummary, ...]:
         with self._store.transaction(snapshot=True) as conn:
             rows = conn.execute(
-                "SELECT i.incident_id,i.intake_key,i.state,i.lifecycle,i.mode,i.control_generation,i.current_run_id,r.state AS run_state,i.conclusion IS NOT NULL AS concluded,i.created_at,a.handoff_reason FROM opspilot_incidents i LEFT JOIN opspilot_runs r ON r.run_id=i.current_run_id AND r.incident_id=i.incident_id LEFT JOIN opspilot_alert_identities a ON a.incident_id=i.incident_id ORDER BY i.created_at DESC, i.incident_id LIMIT %s",
+                f"SELECT i.incident_id,i.intake_key,i.state,i.lifecycle,i.mode,i.control_generation,i.current_run_id,r.state AS run_state,i.conclusion IS NOT NULL AS concluded,i.created_at,a.handoff_reason,i.related_incident_id,{_REFIRED} FROM opspilot_incidents i LEFT JOIN opspilot_runs r ON r.run_id=i.current_run_id AND r.incident_id=i.incident_id LEFT JOIN opspilot_alert_identities a ON a.incident_id=i.incident_id ORDER BY i.created_at DESC, i.incident_id LIMIT %s",
                 (limit,),
             ).fetchall()
         return tuple(_summary(row) for row in rows)
@@ -816,7 +821,7 @@ class DurableIncidentStore:
     def find_incident(self, incident_id: UUID) -> IncidentSummary | None:
         with self._store.transaction(snapshot=True) as conn:
             row = conn.execute(
-                "SELECT i.incident_id,i.intake_key,i.state,i.lifecycle,i.mode,i.control_generation,i.current_run_id,NULL::text AS run_state,i.conclusion IS NOT NULL AS concluded,i.created_at,a.handoff_reason FROM opspilot_incidents i LEFT JOIN opspilot_alert_identities a ON a.incident_id=i.incident_id WHERE i.incident_id=%s",
+                f"SELECT i.incident_id,i.intake_key,i.state,i.lifecycle,i.mode,i.control_generation,i.current_run_id,NULL::text AS run_state,i.conclusion IS NOT NULL AS concluded,i.created_at,a.handoff_reason,i.related_incident_id,{_REFIRED} FROM opspilot_incidents i LEFT JOIN opspilot_alert_identities a ON a.incident_id=i.incident_id WHERE i.incident_id=%s",
                 (incident_id,),
             ).fetchone()
         return None if row is None else _summary(row)
@@ -865,6 +870,17 @@ class DurableIncidentStore:
         return self._clock.now()
 
 
+# R-C6: a resolved incident that took an attached alert episode after its
+# latest recovery confirmation (the only way into ``resolved``).
+_REFIRED = (
+    "(i.lifecycle='resolved' AND EXISTS (SELECT 1 FROM opspilot_alert_deliveries d "
+    "WHERE d.incident_id=i.incident_id AND d.outcome='attached' AND d.received_at > "
+    "COALESCE((SELECT max(e.recorded_at) FROM opspilot_observation_endings e "
+    "WHERE e.incident_id=i.incident_id AND e.lifecycle_after='resolved'), "
+    "'-infinity'::timestamptz))) AS refired_after_resolved"
+)
+
+
 def _summary(row: Mapping[str, Any]) -> IncidentSummary:
     return IncidentSummary(
         incident_id=row["incident_id"],
@@ -878,4 +894,6 @@ def _summary(row: Mapping[str, Any]) -> IncidentSummary:
         run_state=row["run_state"],
         mode=str(row.get("mode", "automatic")),
         handoff_reason=row.get("handoff_reason"),
+        related_incident_id=row.get("related_incident_id"),
+        refired_after_resolved=bool(row.get("refired_after_resolved")),
     )

@@ -57,10 +57,13 @@ class _IncidentOps(_StoreBase):
         versions: dict[str, str],
         input: dict[str, Any] | None,
         target_id: UUID | None,
+        related_incident_id: UUID | None = None,
     ) -> bool:
         """``accept()`` inside the caller's transaction (the alert intake
         commits the incident with its alert identity, M1-04 E3); returns
-        whether this call created the incident."""
+        whether this call created the incident. ``related_incident_id``: the
+        closed incident a new anomaly relates to (F2 PR-C, C3), written once
+        and never updated."""
         scope = self._lock_scope(conn, None)
         if (
             target_id is not None
@@ -78,7 +81,7 @@ class _IncidentOps(_StoreBase):
             )
             scope["target_suspended"] = target_scope["suspended"]
         row = conn.execute(
-            "SELECT incident_id,current_run_id,target_id FROM opspilot_incidents WHERE intake_key=%s",
+            "SELECT incident_id,current_run_id,target_id,related_incident_id FROM opspilot_incidents WHERE intake_key=%s",
             (intake_key,),
         ).fetchone()
         if row:
@@ -86,17 +89,18 @@ class _IncidentOps(_StoreBase):
                 row["incident_id"] != incident_id
                 or row["current_run_id"] != run_id
                 or row["target_id"] != target_id
+                or row["related_incident_id"] != related_incident_id
             ):
                 raise PersistenceError("IDENTITY_CONFLICT")
             return False
         inserted = conn.execute(
             # 不限定冲突目标：同一身份并发重投会同时撞上 intake_key 唯一索引
             # 和 incident_id 主键，只声明前者会让后者漏成 UniqueViolation。
-            "INSERT INTO opspilot_incidents(incident_id,intake_key,state,lifecycle,current_run_id,target_id) VALUES(%s,%s,'queued','open',%s,%s) ON CONFLICT DO NOTHING RETURNING incident_id",
-            (incident_id, intake_key, run_id, target_id),
+            "INSERT INTO opspilot_incidents(incident_id,intake_key,state,lifecycle,current_run_id,target_id,related_incident_id) VALUES(%s,%s,'queued','open',%s,%s,%s) ON CONFLICT DO NOTHING RETURNING incident_id",
+            (incident_id, intake_key, run_id, target_id, related_incident_id),
         ).fetchone()
         existing = conn.execute(
-            "SELECT incident_id,current_run_id,target_id FROM opspilot_incidents WHERE intake_key=%s",
+            "SELECT incident_id,current_run_id,target_id,related_incident_id FROM opspilot_incidents WHERE intake_key=%s",
             (intake_key,),
         ).fetchone()
         if existing is None:
@@ -107,6 +111,7 @@ class _IncidentOps(_StoreBase):
             existing["incident_id"] != incident_id
             or existing["current_run_id"] != run_id
             or existing["target_id"] != target_id
+            or existing["related_incident_id"] != related_incident_id
         ):
             raise PersistenceError("IDENTITY_CONFLICT")
         if inserted is None:
