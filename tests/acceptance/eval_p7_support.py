@@ -119,6 +119,9 @@ class DriverHarness:
         self.configs = {p: load(env, p) for p in PROVIDERS}
         self.calls = []
         self.labels_by_raw = {}
+        # P7 r3: optional fn(payload, provider, label) -> response | None that
+        # replaces the label reply for one call (None keeps the label reply).
+        self.responder = None
         self.observer = None
         self.balance_observer = None
         self.balance_calls = []
@@ -134,7 +137,12 @@ class DriverHarness:
                 if config.api_key in kwargs["headers"].values()
                 or any(config.api_key in str(v) for v in kwargs["headers"].values())
             )
-            return label_reply(self.labels_by_raw[payload["report_raw"]], provider)
+            label = self.labels_by_raw[payload["report_raw"]]
+            if self.responder:
+                custom = self.responder(payload, provider, label)
+                if custom is not None:
+                    return custom
+            return label_reply(label, provider)
 
         def balance(_reader):
             if self.balance_observer:
@@ -578,3 +586,34 @@ def replace_source(path, aggregate, capture):
     value = json.loads(aggregate.read_bytes())
     value["capture"]["manifest"] = json.loads(canonical_bytes(capture.manifest))
     put(aggregate, value)
+
+
+# ---------------------------------------------------------------------------
+# P7 r3 interface assumptions (docs/tasks/2026-10-18-eval-p7-calibration.md
+# P7-D17..D21). r3 fixes the behaviour but not these names; each is the most
+# natural reading and is listed in EVAL_P7_R3_AMBIGUITIES.md. LEAD: if the
+# implementation chose differently, adapt ONLY this block.
+
+# D18: JudgeObservation records the model's self-reported verdict and whether
+# it equals the recomputed verdict (None when no valid answer was decoded).
+MODEL_VERDICT_FIELD = "model_verdict"
+VERDICT_MATCH_FIELD = "verdict_matches"
+# D20: JudgeObservation records the transport exception class name (None when
+# the transport raised nothing); absent in pre-r3 artifacts.
+TRANSPORT_EXCEPTION_FIELD = "transport_exception"
+
+
+def tuning_debug(h, session, *, items=None, code=0, reason=None):
+    """D21 CLI surface: one tuning (debug) session over ``items``.
+
+    Assumed mechanism: the existing ``debug`` command, whose ``--item`` now
+    also accepts validation items already exposed by a formal run (never
+    unexposed validation items), and whose packet binding no longer refuses
+    a workspace exported under an older convention. LEAD: if the implementer
+    chose a flag or a separate command, change only this function. Callers
+    record the session's manual balances first (``h.costs(session)``).
+    """
+    args = ["--session", session, "--judge-env", h.env]
+    if items:
+        args += ["--item", *items]
+    return h.cli("debug", *args, code=code, reason=reason)
