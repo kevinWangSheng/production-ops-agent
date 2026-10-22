@@ -417,10 +417,15 @@ def test_profile_constants_match_the_contract():
     assert TOOL_SCHEMA_REVISION != fixture_profile.TOOL_SCHEMA_REVISION
 
 
-def test_tool_schemas_are_two_function_schemas_named_as_registered():
-    assert isinstance(TOOL_SCHEMAS, tuple) and len(TOOL_SCHEMAS) == 2
+def test_tool_schemas_are_four_function_schemas_named_as_registered():
+    assert isinstance(TOOL_SCHEMAS, tuple) and len(TOOL_SCHEMAS) == 4
     by_name = {schema["function"]["name"]: schema for schema in TOOL_SCHEMAS}
-    assert set(by_name) == {METRICS_TOOL, TRACES_TOOL}
+    assert set(by_name) == {
+        METRICS_TOOL,
+        TRACES_TOOL,
+        "get_metric_names",
+        "get_label_values",
+    }
     for schema in TOOL_SCHEMAS:
         assert schema["type"] == "function"
         parameters = schema["function"]["parameters"]
@@ -500,6 +505,8 @@ def test_face_evidence_context_is_the_24h_frame_ending_at_the_clock():
     assert tuple(s["function"]["name"] for s in face.tool_schemas) == (
         METRICS_TOOL,
         TRACES_TOOL,
+        "get_metric_names",
+        "get_label_values",
     )
     context = face.evidence_context("run-1")
     assert context == {
@@ -1235,7 +1242,9 @@ def test_factory_scope_is_issued_from_the_lease_the_run_row_and_the_input(monkey
     executor, _, lease, store = _executor(monkeypatch, FakeOpener())
     scope = executor.scope
     assert scope.target_ids == frozenset({TARGET_ID})
-    assert scope.tool_names == frozenset({METRICS_TOOL, TRACES_TOOL})
+    assert scope.tool_names == frozenset(
+        {METRICS_TOOL, TRACES_TOOL, "get_metric_names", "get_label_values"}
+    )
     assert scope.window == WINDOW == scope_window(_input(str(lease.run_id)))
     assert scope.control_generation == lease.control_generation
     assert scope.global_suspension_generation == lease.global_suspension_generation
@@ -1521,7 +1530,9 @@ def test_profile_executor_factory_builds_the_otel_executor(monkeypatch):
     factory = profile.executor_factory(store, RecordingSink(), FakeClock(start=NOW))
     executor = factory(lease, _input(str(lease.run_id)))
     assert isinstance(executor, ReadOnlyToolExecutor)
-    assert executor.scope.tool_names == frozenset({METRICS_TOOL, TRACES_TOOL})
+    assert executor.scope.tool_names == frozenset(
+        {METRICS_TOOL, TRACES_TOOL, "get_metric_names", "get_label_values"}
+    )
     assert executor.scope.target_ids == frozenset({TARGET_ID})
 
 

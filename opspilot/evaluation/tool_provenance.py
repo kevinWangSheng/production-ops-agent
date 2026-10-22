@@ -37,12 +37,11 @@ from opspilot.tools.executor import (
     _view_refusal_detail,
 )
 from opspilot.tools.otel_demo import (
-    METRICS_TOOL,
-    TRACES_TOOL,
-    _query_window,
+    SOURCE as OTEL_SOURCE,
 )
 from opspilot.tools.otel_demo import (
-    SOURCE as OTEL_SOURCE,
+    TOOL_NAMES,
+    _query_window,
 )
 from opspilot.tools.outcomes import DENIED_REASONS, ToolOutcome, Window
 from opspilot.tools.registry import (
@@ -598,7 +597,9 @@ def _check_view(
             if (
                 reg.source == OTEL_SOURCE
                 and reg.version == "v1"
-                and reg.name in (METRICS_TOOL, TRACES_TOOL)
+                # Every otel-demo tool picks its window with ``_query_window``
+                # (#307 A R10: derived from the registrations).
+                and reg.name in TOOL_NAMES
             ):
                 # Replay the same profile selection from frozen, checked
                 # parameters. Never use the response's claimed query_window.
