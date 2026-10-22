@@ -91,6 +91,14 @@ __all__ = [
 MAX_OPERATIONS_PER_RUN = 20
 MAX_TOOL_SECONDS_PER_RUN = 240.0
 
+# #308 contract r1, U2: an over-limit view's redacted raw body is kept as
+# un-adopted evidence, at most 16 records or 16 MiB of raw per Run, whichever
+# is reached first; past that the read is refused exactly as before and
+# nothing is stored. Each record is already bounded by its registration's
+# ``max_result_bytes``.
+MAX_SPILLED_RECORDS_PER_RUN = 16
+MAX_SPILLED_BYTES_PER_RUN = 16 * 1024 * 1024
+
 _STEP_ID_MAX = 128
 
 
@@ -463,6 +471,29 @@ class EvidenceSink(Protocol):
 
     def register(self, record: EvidenceRecord) -> str: ...
 
+    def count_spilled(self, run_id: str) -> tuple[int, int]:
+        """``(records, raw_bytes)`` of the Run's stored over-limit results.
+
+        Over-limit results are the un-adopted ``RESULT_TOO_LARGE`` records the
+        executor keeps when a whole view does not fit (#308). A sink without
+        ``register_spilled`` is read before each such registration to enforce
+        the per-Run cap; a sink that cannot answer makes the executor store
+        nothing, the refusal itself unchanged.
+        """
+        ...
+
+    def register_spilled(
+        self, record: EvidenceRecord, *, max_records: int, max_bytes: int
+    ) -> bool:
+        """Register an over-limit result only if the Run stays within the cap.
+
+        Counting and registering must be atomic per Run (contract R13):
+        parallel tool calls (#309) and a superseded worker still finishing
+        after a lease takeover spill into the same Run. ``False`` stores
+        nothing; the executor prefers this over ``count_spilled``.
+        """
+        ...
+
 
 class ControlAuthority(Protocol):
     """Controller-owned control state. Raises ``ControlUnavailable`` if unknown."""
@@ -534,12 +565,26 @@ class _ViewTooLarge(Exception):
         limit: int,
         query: Mapping[str, object],
         window: Mapping[str, object],
+        *,
+        view: Mapping[str, object],
+        observed_at: datetime,
+        data_as_of: datetime | None,
+        source_start_at: datetime | None,
+        source_end_at: datetime | None,
     ) -> None:
         super().__init__("RESULT_TOO_LARGE")
         self.tokens = tokens
         self.limit = limit
         self.query = query
         self.window = window
+        # The whole view that did not fit and its provenance: what the
+        # un-adopted over-limit record (#308) is built from. Never shown to
+        # the model.
+        self.view = view
+        self.observed_at = observed_at
+        self.data_as_of = data_as_of
+        self.source_start_at = source_start_at
+        self.source_end_at = source_end_at
 
 
 class ReadOnlyToolExecutor:
@@ -1139,9 +1184,12 @@ class ReadOnlyToolExecutor:
             # A read that completed and would have been adopted, but whose
             # whole view does not fit: refused like every other post-fetch
             # refusal (a human decision landed meanwhile still outranks it).
-            # Nothing is registered -- like the byte-limit refusal, the raw
-            # body is not kept as evidence -- and the read stays charged.
-            return refuse_after_fetch(
+            # The read stays charged. The body is complete, redacted and
+            # within ``max_result_bytes``, so unlike the byte-limit refusal it
+            # is kept (#308 PR1): registered as un-adopted evidence through
+            # the sink only. The outcome carries no evidence and the model
+            # view is the unchanged refusal (contract r1, R1).
+            refused = refuse_after_fetch(
                 "error",
                 "RESULT_TOO_LARGE",
                 detail=_view_refusal_detail(
@@ -1151,6 +1199,12 @@ class ReadOnlyToolExecutor:
                     too_large.window,
                 ),
             )
+            if refused.reason == "RESULT_TOO_LARGE":
+                # A control decision or a denied settlement took the outcome
+                # down its own path (history, or nothing); only the plain
+                # over-limit refusal is kept here.
+                self._spill(dispatch_id, operation, response, too_large, refused)
+            return refused
         if invalid:
             try:
                 registered = self._register(
@@ -1457,6 +1511,85 @@ class ReadOnlyToolExecutor:
             return False
         return reference == record.evidence_id
 
+    def _spill(
+        self,
+        dispatch_id: UUID,
+        operation: ToolOperation,
+        response: TransportResponse,
+        too_large: _ViewTooLarge,
+        refused: ToolOutcome,
+    ) -> None:
+        """Keep an over-limit result as un-adopted evidence (#308 PR1).
+
+        ``response.body`` has been redacted by ``_inspect()`` and checked
+        against ``max_result_bytes``, so it is complete and bounded. The stored
+        view is the refusal the model received plus the evidence identity and
+        the observation's provenance; it never becomes a model view here, and
+        the outcome does not carry the record (contract r1, R1: recording
+        requires ``outcome.evidence.view == model_view``).
+
+        Best effort by design: the refusal is decided already, and anything
+        that keeps the record from being stored -- the per-Run cap (U2), a
+        sink that cannot count, a storage or control rejection -- leaves the
+        refusal exactly what it was before this existed.
+        """
+        full = too_large.view
+        evidence_id = f"{operation.operation_id}:{dispatch_id}"
+        view: dict[str, object] = dict(refused.model_view)
+        view.update(
+            {
+                "evidence_id": evidence_id,
+                "adopted": False,
+                **{key: full[key] for key in _SPILLED_PROVENANCE_KEYS},
+            }
+        )
+        result_count = cast(int, full["result_count"])
+        record = EvidenceRecord(
+            evidence_id=evidence_id,
+            operation=operation,
+            status=refused.status,
+            raw=response.body,
+            raw_sha256=sha256(response.body).hexdigest(),
+            _view=view,
+            view_sha256=canonical_hash(view),
+            projection_revision=PROJECTION_REVISION,
+            observed_at=too_large.observed_at,
+            data_as_of=too_large.data_as_of,
+            source_start_at=too_large.source_start_at,
+            source_end_at=too_large.source_end_at,
+            result_count=result_count,
+            incomplete=bool(full["incomplete"]),
+            truncated=False,
+            omitted_rows=0,
+            omitted_bytes=0,
+            adopted=False,
+        )
+        admit = getattr(self._evidence, "register_spilled", None)
+        try:
+            if admit is not None:
+                # The store counts and inserts under one per-Run lock (R13).
+                admit(
+                    record,
+                    max_records=MAX_SPILLED_RECORDS_PER_RUN,
+                    max_bytes=MAX_SPILLED_BYTES_PER_RUN,
+                )
+                return
+            # A sink without atomic admission: count, then register. Parallel
+            # spills into it can pass the same count.
+            count, size = self._evidence.count_spilled(operation.run_id)
+            if (
+                type(count) is not int
+                or type(size) is not int
+                or count >= MAX_SPILLED_RECORDS_PER_RUN
+                or size + len(response.body) > MAX_SPILLED_BYTES_PER_RUN
+            ):
+                return
+            self._register(record)
+        except Exception:
+            # Including ``ToolControlDenied``: a decision that landed after the
+            # refusal was settled keeps nothing, and the refusal stands.
+            return
+
     # -- evidence ------------------------------------------------------
 
     def _view_tokens(self, view: Mapping[str, object]) -> int:
@@ -1583,6 +1716,11 @@ class ReadOnlyToolExecutor:
                     registration.max_view_tokens,
                     cast(Mapping[str, object], view["query"]),
                     cast(Mapping[str, object], view["window"]),
+                    view=view,
+                    observed_at=observed_at,
+                    data_as_of=data_as_of,
+                    source_start_at=source_start_at,
+                    source_end_at=source_end_at,
                 )
         # Read back from ``view`` so the record's own audit fields match
         # exactly what the committed view says.
@@ -1832,6 +1970,25 @@ def _result_rows(
         # model-supplied params (bot review finding).
         return None, payload
     return cursor, payload
+
+
+# What an un-adopted over-limit record's view (#308 PR1, contract r1 U1)
+# copies from the whole view that did not fit, beside the refusal fields:
+# where and when the observation was taken and how many rows it held. Only
+# gateway-computed values, never a row.
+_SPILLED_PROVENANCE_KEYS = (
+    "source",
+    "tool_version",
+    "projection_revision",
+    "observed_at",
+    "dispatch_started_at",
+    "data_as_of",
+    "source_start_at",
+    "source_end_at",
+    "freshness_seconds",
+    "result_count",
+    "incomplete",
+)
 
 
 # Every key ``_record`` writes on a view; an adapter's ``view_fields`` may not
