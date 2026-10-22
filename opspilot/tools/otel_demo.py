@@ -313,7 +313,22 @@ TOOL_SCHEMAS: tuple[Mapping[str, Any], ...] = (
                 "{service_name,rpc_service,rpc_method,rpc_grpc_status_code}, "
                 "rpc_server_duration_milliseconds_bucket, "
                 "app_payment_transactions_total, "
-                "http_server_request_duration_seconds_count."
+                "http_server_request_duration_seconds_count. "
+                "Kubernetes object state from kube-state-metrics is also "
+                "available: "
+                "kube_deployment_status_replicas_available{namespace,"
+                "deployment}, kube_deployment_status_replicas_ready"
+                "{namespace,deployment}, kube_replicaset_owner{namespace,"
+                "replicaset,owner_kind,owner_name}, kube_pod_owner"
+                "{namespace,pod,uid,owner_kind,owner_name}, "
+                "kube_pod_container_info{namespace,pod,uid,image_id}. "
+                "These series use the namespace, deployment, replicaset, pod "
+                "and owner_name labels, not service_name. "
+                "A configuration-only deployment keeps the same image digest "
+                "in image_id. "
+                "Such a deployment shows as a new ReplicaSet series in "
+                "kube_replicaset_owner and as kube_pod_owner owner_name "
+                "moving to that ReplicaSet."
             ),
             "parameters": {
                 "type": "object",
@@ -321,9 +336,11 @@ TOOL_SCHEMAS: tuple[Mapping[str, Any], ...] = (
                     "expr": {
                         "type": "string",
                         "description": (
-                            "The PromQL expression to evaluate; label values "
-                            "come from the service names listed for "
-                            "traces_search."
+                            "The PromQL expression to evaluate; service_name "
+                            "label values come from the service names listed "
+                            "for traces_search. kube-state-metrics series "
+                            "take namespace, deployment, replicaset, pod and "
+                            "owner_name labels instead of service_name."
                         ),
                     },
                     "step_seconds": {

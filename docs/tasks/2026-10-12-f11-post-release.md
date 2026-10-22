@@ -89,6 +89,18 @@ r1 只定方向。其余实现者需要猜的语义点，按 AGENTS.md「合同�
 - r2（lead，2026-10-21，测试作者歧义 A3）：`resource_uid` 必填（缺失 400）；uid 未登记 → `TARGET_UNRESOLVED`；uid 命中 A 而 (cluster_uid, namespace, workload) 等于另一条 B → `TARGET_AMBIGUOUS`；uid 命中但五字段有差异 → `TARGET_MISMATCH`。M 取常量 1500，须与校准清单一致（authorize 要求相等，`release_commands.py:645`）；嵌套未知键 400，顶层未知键只入脱敏审计；空白 `source_release_id` 与 UTC 归一化溢出的 `released_at` → 400（独立审查 P2）；harness 不跟随重定向。
 - r3（lead，2026-10-21，`make check` 发现）：F7 验收 `MUTATION_WORDS` 禁止路由路径含 release/deploy/rollout/target，路由改名为 `POST /intake/version-changes`，F7 路由清单由独立测试作者按「新路由须分类」流程登记；不改 F7 断言。
 
+## PR-4 合同（r1）
+
+预审与完整决定表：[F11 PR-4 合同](2026-10-21-f11-pr4-contract.md)（全新上下文 Claude 子 Agent，只读，基于 `91a011c`；Codex at capacity 后替代）。用户 2026-10-21 裁决 P4-01、P4-02/P4-03、P4-05 选推荐；P4-04 由 F2 PR-C 合同 C3 定（共享判据）；P4-06、P4-07 与 R1–R12 按推荐（用户 2026-10-17 常设指示）。
+
+- P4-01 Observer 在 anomaly ending 后做一次有界确定性对比采集（before 窗整体服务、before 窗旧实例切片、after 窗整体服务、新版本切片），写入新对比记录；PR-4 可拆 4a/4b。
+- P4-02 由 web 后台 pass（`opspilot_web`，与 `self_heal_pass` 同线程）消费 ending、建或关联事故，每个 ending 一个事务；不新增角色、不扩 worker 权限。
+- P4-03 新表 `opspilot_release_incident_links`；守卫只放行「anomalous 且 incident_id 为空 → 非空、同事务有 link 行」。
+- P4-04 采用 F2 PR-C C3 共享判据与 `choose_correlation`；锁顺序对齐 PR-C r3（advisory → scope → 挂起行 → 候选事故）。
+- P4-05 调查输入 v6，`release_observation` 事实经新边界常量作为不可信数据消息；接受所有 Run 的 `prompt_revision` 变化，worker 先于或与 web 同时升级。
+- P4-06 PR-4 在 PR-C 之后合并；迁移号取开工时 main head + 1。
+- P4-07 真实运行等正式 policy；kind 中健康发布、健康发布 + adFailure、延迟回归（静默告警，新建路径）、延迟回归（告警开启，追加路径）。
+
 ## 执行进展与证据
 
 - 2026-10-12 建 worktree、任务记录、SPEC 草案、issue；派发 Codex 合同预审。
