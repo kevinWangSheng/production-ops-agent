@@ -1,6 +1,6 @@
 # #309 调查循环：压缩后重置去重、同轮工具有限并行
 
-- 状态：独立验收与审查通过；两次真实 Run 因 DeepSeek 余额为负未跑（draft PR）
+- 状态：独立验收与审查通过；两次真实 Run 已完成（draft PR #322）
 - 更新日期：2026-10-22
 - 依据：issue #309；C3 §5、§13（工具并行数 2）；`docs/research/upstream-design-audit-2026-10-22.md` 第二、三节；[合同 r1](2026-10-22-309-loop-dedupe-parallel-contract.md)
 - 工作区：实现 `/Users/shenghuikevin/dev/AI/poa-309`（`feature/309-loop-dedupe-parallel`）；独立测试 `/Users/shenghuikevin/dev/AI/poa-309-tests`（`feature/309-loop-dedupe-parallel-tests`）
@@ -21,7 +21,7 @@
 - 合同补充 R-12（lead 2026-10-22）：cap>1 时第 i+1 个调用的续租可早于第 i 个的提交；续租或 fence 失败后不再派发，提交按 CONTROL_DENIED 停止。
 - 独立审查（Codex，gpt-6-sol 起、续到 gpt-6.1-sol）：首审 3 条（R-8 异常后仍派发更高 index → `c685a18`；fence 测试无在途调用且有恒真断言、批内重复只测 cap=1 → 测试作者修）；复验发现纯拒绝重复未决时先派发更高 index（[0,2,3,1]）→ `3853c9e` 改为严格按 index 派发；二次复验无发现，可合并。
 - 最终：#309 独立验收 + 实现自测 33 passed，PG 2 passed，定向回归 416 passed；全仓 `ruff check`、`ruff format --check` 通过。
-- 未做：两次真实 Run（Run A cap=2 otel-demo、Run B `--context-tokens` 强制压缩）。2026-10-22T14:13Z DeepSeek 余额 −0.01 CNY，等用户充值。
+- 真实 Run（2026-10-22T17:00–17:07Z，[证据](../evidence/309-live/README.md)）：kind 由别的会话占用，工具后端是本机替身 `scripts/m1_otel_stub.py`（合成数据，单请求 1.5 s 延迟），走产品 `otel-demo` profile、真实 DeepSeek 和 PG。Run A（cap=2）`published`：3 个工具轮次（2/4/4 个调用），trace 里工具 span 全部挂在 run span 下且两两重叠，`tool_seconds_used` 为 15.1 s（各调用之和）。Run B 第 1 次（`--context-tokens 74036`）出现一次被接受的压缩，但压缩后仍放不下，`CONTEXT_EXHAUSTED`，失败记录保留；第 2 次（76536）`published`，两次压缩都被接受，压缩后重查同一调用**未发生**。余额 99.86→99.69 CNY。`m1_live_runner.py` 新增 `--tool-profile otel-demo`。
 
 ## 待决
 
