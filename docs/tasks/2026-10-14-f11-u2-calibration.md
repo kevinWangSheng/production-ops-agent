@@ -34,6 +34,7 @@
 - 2026-10-17 实验（证据 [run.md](../evidence/f11-u2-calibration/run.md)）：基线 scrape 60s、单查询中位 1.5s、单样本 61–91s。有效轮 healthy-1、unrelated-1、immediate-2、delayed5-2、delayed15-2、boundary-1；缺陷轮 probe-1、immediate-1、delayed5-1、delayed15-1 保留、不作证据；probe-2 与 Observer 接线轮以 `abort` 记入。M=1200 与 M=1500 均满足 U2-03 全部判据（五个验收轮预热后非预期 unknown 0/27、0/31（含 boundary 为 0/35、0/39）；健康终结剩余 ≥28 次、≥1878s）；M≤900 在 delayed-15m／boundary 漏检，M=1800 在 unrelated 备用预算 94s 不足。adFailure 实测不影响 checkout，但为弱故障（1/25、3/126）。Observer 接线：web 角色授权 applied，`opspilot_observer_u2` 14 个样本后 healthy_confirmed。实验库为 Observer 迁移 0016→0017（仅 GRANT）。
 - 证据冻结：#264 把 `aggregate` 改为紧凑格式（逐轮完整 summary 以 sha256 绑定、留在 ledger，含非 flagd_probe 时间线与原始响应清单摘要），冻结文件 499KB。独立数据一致性复核（Codex gpt-6-astra）：字节绑定、13,008 条原始响应、272 个样本的离线重算全部一致；3 项 P2 均为 lead 录入的真值元数据问题（两轮缺陷分类为空、恢复配置时间为空、probe-1 口径），已修订真值并在原折叠代码上重新 fold、重新冻结。
 - 收尾四数（实验阶段）：新增合同问题 2（r8 两条）；因合同变更重写测试 3（B01 验收、两处实现测试断言）；环境重跑 0（缺陷重跑 3 轮另计）；新增用户裁决 3（方案 A、按意图修覆盖、窗口延长）。
+- 2026-10-22 policy 写入（用户门 PR，分支 `feature/F11-release-calibration-policy`）：按用户 2026-10-22 裁决（M=1500，边界覆盖收窄到「起病不晚于约 R+1230」，健康终结前约 4–5 分钟为盲区，记录见 #302）写入 `release-calibrations.json`，revision `otel-demo-checkout-release@e2ed7b69b96b`；清单格式无覆盖限制字段，覆盖限制只在 run.md 与本记录，`approval_ref` 引用该裁决。
 
 ## 待决与交接（2026-10-20）
 
