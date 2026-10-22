@@ -646,3 +646,40 @@ def test_timeout_and_poll_must_be_finite_positive(
     code = driver.main(argv, stdout=out, ports=ports(tmp_path, lab=lab))
     assert code == 2 and lines(out)[-1]["reason"] == reason
     assert lab.calls == []
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://10.0.0.5:8013",
+        "http://example.com:8013",
+        "https://127.0.0.1:8013",
+        "grpc://127.0.0.1:8013",
+        "http://user:pw@127.0.0.1:8013",
+        "http://127.0.0.1",
+        "http://localhost",
+        "http://127.0.0.1:notaport",
+        "127.0.0.1:8013",
+        "not a url",
+        "http://127.0.0.1:8013/path",
+        "",
+    ],
+)
+@pytest.mark.parametrize("dry_run", [[], ["--dry-run"]])
+def test_flagd_url_is_checked_before_publish(
+    tmp_path: Path, url: str, dry_run: list[str]
+) -> None:
+    lab = FakeLab(tmp_path / "ledgers")
+    argv = [*dry_run, *GLOBAL, *RUN]
+    argv[argv.index("--flagd-url") + 1] = url
+    out = io.StringIO()
+    code = driver.main(argv, stdout=out, ports=ports(tmp_path, lab=lab))
+    assert code == 2 and lines(out)[-1]["reason"] == "CONFIG_FLAGD_URL_INVALID"
+    assert lab.calls == []
+
+
+@pytest.mark.parametrize(
+    "url", ["http://127.0.0.1:8013", "http://localhost:8013/", "http://[::1]:8013"]
+)
+def test_loopback_flagd_url_is_accepted(url: str) -> None:
+    assert driver.check_flagd_url(url) == url

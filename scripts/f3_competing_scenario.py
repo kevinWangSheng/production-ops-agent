@@ -100,7 +100,9 @@ Configuration order: checks run in this fixed order and the first failure
 is the one reported: (1) argparse; (2) frozen files and plan (exit 4);
 (3) ``run`` only, also under --dry-run: ``--run`` name
 (CONFIG_RUN_NAME_INVALID), then ``--web`` (CONFIG_WEB_URL_INVALID), then
-``--alert-timeout`` (CONFIG_ALERT_TIMEOUT_INVALID), then ``--poll-seconds``
+``--flagd-url`` (CONFIG_FLAGD_URL_INVALID: must be ``http://<loopback
+host>:<port>`` with an explicit port, no userinfo, query, fragment or path
+beyond ``/``), then ``--alert-timeout`` (CONFIG_ALERT_TIMEOUT_INVALID), then ``--poll-seconds``
 (CONFIG_POLL_SECONDS_INVALID), each a finite number > 0; then for
 ``preflight`` and ``run``, also under --dry-run: ``--swap-min-free-mib``
 (CONFIG_SWAP_MIN_FREE_INVALID), a finite number >= 0 (NaN, inf and
@@ -114,7 +116,8 @@ Exit codes and reason codes:
     0  success (dry-run included).
     2  usage or configuration: argparse errors, CONFIG_HOLDER_BATCH_REQUIRED,
        CONFIG_RUN_NAME_INVALID, CONFIG_UI_CREDENTIALS_MISSING,
-       CONFIG_WEB_URL_INVALID, CONFIG_ALERT_TIMEOUT_INVALID,
+       CONFIG_WEB_URL_INVALID, CONFIG_FLAGD_URL_INVALID,
+       CONFIG_ALERT_TIMEOUT_INVALID,
        CONFIG_POLL_SECONDS_INVALID, CONFIG_SWAP_MIN_FREE_INVALID,
        CONFIG_DSN_MISSING (real store only).
        ``plan`` exits 4 after printing the plan when the plan is
@@ -754,6 +757,33 @@ def check_web_url(url: str) -> str:
     return url.rstrip("/")
 
 
+def check_flagd_url(url: str) -> str:
+    """Same loopback rule as ``--web`` (and the harness's flagd probe),
+    checked before anything is published; http only, explicit port."""
+    parts = urlsplit(url)
+    host = parts.hostname or ""
+    try:
+        port = parts.port
+    except ValueError:  # non-numeric or out-of-range port
+        port = None
+    try:
+        loopback = ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        loopback = host in _LOOPBACK_NAMES
+    if (
+        parts.scheme != "http"
+        or not loopback
+        or port is None
+        or parts.username
+        or parts.password
+        or parts.query
+        or parts.fragment
+        or parts.path not in ("", "/")
+    ):
+        raise DriverError("CONFIG_FLAGD_URL_INVALID", EXIT_CONFIG)
+    return url
+
+
 def basic_authorization(env: Mapping[str, str]) -> str:
     user, password = env.get("F3_LAB_UI_USER"), env.get("F3_LAB_UI_PASSWORD")
     if not user or not password:
@@ -872,6 +902,7 @@ def run_live(
     if not _RUN_NAME.fullmatch(args.run):
         raise DriverError("CONFIG_RUN_NAME_INVALID", EXIT_CONFIG)
     web = check_web_url(args.web)
+    check_flagd_url(args.flagd_url)
     origin = args.origin or web_origin(web)
     basic_authorization(ports.env)  # fail before any lab call
     report = preflight_report(
@@ -1217,6 +1248,7 @@ def main(
             if not _RUN_NAME.fullmatch(args.run):
                 raise DriverError("CONFIG_RUN_NAME_INVALID", EXIT_CONFIG)
             check_web_url(args.web)
+            check_flagd_url(args.flagd_url)
             if not (math.isfinite(args.alert_timeout) and args.alert_timeout > 0):
                 raise DriverError("CONFIG_ALERT_TIMEOUT_INVALID", EXIT_CONFIG)
             if not (math.isfinite(args.poll_seconds) and args.poll_seconds > 0):
