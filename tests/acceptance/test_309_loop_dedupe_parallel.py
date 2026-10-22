@@ -12,7 +12,6 @@ from __future__ import annotations
 import hashlib
 import inspect
 import json
-import os
 import re
 import threading
 import time
@@ -496,12 +495,3 @@ def test_loop_exposes_tool_parallelism_default_one_for_compatibility():
     if parameter is None:
         pytest.fail("#309 implementation has not exposed tool_parallelism")
     assert parameter.default == 1
-
-
-@pytest.mark.skipif(
-    not os.environ.get("OPSPILOT_WORKER_DSN"),
-    reason="durable worker crash/resume acceptance requires the existing PostgreSQL fixture",
-)
-def test_batch_crash_resume_replays_only_pending_ordinals():
-    """The durable recovery half of U-3/R-8 is intentionally PG-gated."""
-    pytest.skip("PostgreSQL worker recovery fixture is not started in this test worktree")
