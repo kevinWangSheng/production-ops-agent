@@ -35,7 +35,8 @@ class Recorder:
         self.calls.append(f"backlog:{max_queued}")
         if self.refuse_backlog:
             raise PersistenceError("TIMEOUT")
-        return (self.parked,)
+        # A real store parks each Run once; the next call finds none.
+        return () if self.calls.count(f"backlog:{max_queued}") > 1 else (self.parked,)
 
     def claimable_incidents(self, *, limit: int = 20) -> tuple[UUID, ...]:
         self.calls.append("list")
@@ -67,7 +68,8 @@ def _loop(recorder: Recorder, **kwargs) -> WorkerLoop:
 def test_the_pass_runs_after_the_sweep_and_before_the_listing():
     recorder = Recorder()
     _loop(recorder, backlog=recorder, backlog_max=3).poll_once()
-    assert recorder.calls == ["sweep", "backlog:3", "list"]
+    # One pass repeats the store call until it parks nothing.
+    assert recorder.calls == ["sweep", "backlog:3", "backlog:3", "list"]
     [(subject, kind, payload, key)] = recorder.appended
     assert subject == recorder.parked[0] and kind == "run_handoff"
     assert payload["reasons"] == [BACKLOG_FULL]

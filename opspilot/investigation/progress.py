@@ -256,15 +256,21 @@ def park_backlog(
 
     The store is the authority (count, order and eligibility re-checked
     under its locks); the events are projections appended after each park
-    committed. Returns what this call parked.
+    committed. One pass ends at the cap (R-B2-4): the store spends at most
+    ``limit`` transactions per call, so calls repeat, each chunk announced
+    as it lands, until one parks nothing -- every repeat parks at least one
+    Run, so the pass is bounded by the backlog itself. Returns what this
+    pass parked.
     """
-    parked_with_generations = store.park_backlog(max_queued=max_queued)
-    if log is not None:
-        for subject_id, run_id, generation in parked_with_generations:
-            announce_backlog_full(log, subject_id, run_id, generation)
-    return tuple(
-        (subject_id, run_id) for subject_id, run_id, _ in parked_with_generations
-    )
+    parked: list[tuple[UUID, UUID]] = []
+    while True:
+        chunk = store.park_backlog(max_queued=max_queued)
+        if not chunk:
+            return tuple(parked)
+        for subject_id, run_id, generation in chunk:
+            if log is not None:
+                announce_backlog_full(log, subject_id, run_id, generation)
+            parked.append((subject_id, run_id))
 
 
 def _tool_committed_payload(

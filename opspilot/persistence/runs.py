@@ -431,6 +431,15 @@ class _RunOps(_StoreBase):
         "AND i.conclusion IS NULL AND r.state='queued' AND r.deadline>clock_timestamp()"
     )
 
+    #: The next Run to park (U-B2-1/2/3): never touched by a human, lowest
+    #: priority, then latest deadline, then highest incident id.
+    _BACKLOG_LOWEST = (
+        "SELECT i.incident_id,r.run_id "
+        + _BACKLOG_FROM
+        + " AND r.control_generation=0 "
+        "ORDER BY i.priority DESC, r.deadline DESC, i.incident_id DESC LIMIT 1"
+    )
+
     def park_backlog(
         self, *, max_queued: int, limit: int = 100
     ) -> tuple[tuple[UUID, UUID, int], ...]:
@@ -451,7 +460,9 @@ class _RunOps(_StoreBase):
         One transaction per park (R-B2-2): the fixed advisory lock first,
         then the lowest candidate, then incident before Run row locks with
         the eligibility re-checked, then the count under those locks; a park
-        happens only while the count is still above ``max_queued``. A
+        happens only while the count is still above ``max_queued`` and the
+        locked Run is still the lowest (an arrival committed meanwhile is
+        picked next instead). A
         concurrent pass therefore sees every park committed before it, and
         two passes park exactly the excess between them. Returns the
         ``(incident_id, run_id, control_generation)`` triples this call
@@ -473,12 +484,7 @@ class _RunOps(_StoreBase):
                     "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
                     (self._BACKLOG_LOCK_KEY,),
                 )
-                candidate = conn.execute(
-                    "SELECT i.incident_id,r.run_id "
-                    + self._BACKLOG_FROM
-                    + " AND r.control_generation=0 "
-                    "ORDER BY i.priority DESC, r.deadline DESC, i.incident_id DESC LIMIT 1"
-                ).fetchone()
+                candidate = conn.execute(self._BACKLOG_LOWEST).fetchone()
                 if candidate is None:
                     break
                 conn.execute(
@@ -500,6 +506,12 @@ class _RunOps(_StoreBase):
                 )
                 if int(queued["n"]) <= max_queued:
                     break
+                # Re-pick after the count (Codex review B2 #2): a lower Run
+                # committed since the first pick is counted, and it, not the
+                # locked one, is the one to park; go round and pick it.
+                lowest = conn.execute(self._BACKLOG_LOWEST).fetchone()
+                if lowest is None or lowest["run_id"] != candidate["run_id"]:
+                    continue
                 if self._park(conn, candidate["run_id"], from_states=("queued",)):
                     parked.append(
                         (

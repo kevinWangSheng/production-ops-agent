@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import os
 import threading
+import time
 from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 
@@ -239,3 +240,59 @@ def test_backlog_max_is_read_from_the_environment(store, monkeypatch):
     monkeypatch.delenv("OPSPILOT_BACKLOG_MAX")
     loop = build_loop(store, "unused-key", stop=threading.Event())
     assert loop.backlog_max == 8 and loop.backlog is store
+
+
+def test_one_pass_parks_past_the_store_limit_down_to_the_cap(store):
+    # Codex review B2 #1: 109 eligible over a cap of 8 must end at 8 in one
+    # pass, although one store call spends at most ``limit`` (100) parks.
+    ids = [_accept(store, priority=2, minutes=30 + n / 10) for n in range(109)]
+    parked = park_backlog(store, None, 8)
+    assert len(parked) == 101
+    assert list(_states(ids).values()).count("queued") == 8
+
+
+def _wait_blocked(pid_query: str, timeout: float = 10.0) -> None:
+    deadline = time.monotonic() + timeout
+    with psycopg.connect(DSN, autocommit=True) as conn:
+        while time.monotonic() < deadline:
+            row = conn.execute(pid_query).fetchone()
+            if row and row[0]:
+                return
+            time.sleep(0.02)
+    raise AssertionError("the pass never blocked on the held row lock")
+
+
+def test_a_lower_priority_arrival_mid_pass_is_the_one_parked(store):
+    # Codex review B2 #2, made deterministic: cap 2 with a critical and a
+    # warning queued (no excess). Hold the warning's incident row so the
+    # pass blocks right after picking it, commit an ``other`` arrival, then
+    # release: the end-of-pass state must park the ``other`` one, never the
+    # warning while a lower-priority Run stays queued.
+    critical = _accept(store, priority=0, minutes=30)
+    warning = _accept(store, priority=1, minutes=30)
+    holder = psycopg.connect(DSN)
+    holder.execute(
+        "SELECT 1 FROM opspilot_incidents WHERE incident_id=%s FOR UPDATE", (warning,)
+    )
+    result: list[tuple] = []
+    thread = threading.Thread(
+        target=lambda: result.append(store.park_backlog(max_queued=2))
+    )
+    thread.start()
+    try:
+        _wait_blocked(
+            "SELECT count(*) FROM pg_stat_activity WHERE wait_event_type='Lock' "
+            "AND query LIKE 'SELECT 1 FROM opspilot_incidents WHERE incident_id=%' "
+            "AND pid<>pg_backend_pid()"
+        )
+        other = _accept(store, priority=2, minutes=30)
+    finally:
+        holder.rollback()
+        holder.close()
+    thread.join(30)
+    assert [incident for incident, _, _ in result[0]] == [other]
+    assert _states([critical, warning, other]) == {
+        critical: "queued",
+        warning: "queued",
+        other: "waiting_human",
+    }
