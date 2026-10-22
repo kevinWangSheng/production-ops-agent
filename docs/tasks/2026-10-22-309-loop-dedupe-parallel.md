@@ -15,7 +15,9 @@
 
 ## 执行进展与证据
 
-（待填）
+- 实现（`feature/309-loop-dedupe-parallel`，本地提交，未推送）：`loop.py` 在被接受的压缩末尾清空 `seen_tool_calls`（U-5/R-1）；`tool_parallelism`（默认 1，1–16）>1 且一轮 ≥2 个调用时走 `_run_tools_parallel`：只有 `executor.execute` 进线程池，续租/fence 每次派发前一次、`commit_tool` 与 `delivered`/消息/`capture_delivery` 在主线程按 index（U-3/R-5）；同批重复按 R-2（首个先派发，后续到自己轮次按串行规则）；fence 失败停派发、提交前缀后交接；非预期异常提交更小 index 后原样抛出（R-8）。cap=1 与单调用不建线程池，串行路径只抽出帮助函数（R-4）。`executor.py` 计数加锁（R-6，秒数仍为总和，U-2）；`tracing.py` 增加 `carry()` 把 run span 带进工作线程、序号加锁（R-7）；`runner.py` 透传；`worker_main.py` 读 `OPSPILOT_TOOL_PARALLELISM`（默认 2，非法 `SystemExit`）；`scripts/m1_live_runner.py` 增加 `--tool-parallelism`（默认 1）与 `--context-tokens`（须在 (output_tokens, 冻结上限]），两值写入 ledger 与 summary。未改 `CONTEXT_POLICY`/`prompt_revision`/tool schema（R-10）。
+- 实现者自测（非独立验收）：`tests/test_309_loop_parallel_impl.py` 18 项（重叠用 Barrier 证明、cap=1 不建池、cap1/cap2 提交内容与请求数相同、同批重复与纯拒绝重复、fence 中断、异常、压缩后重查真实派发——去掉清空语句时该项失败）；`tests/test_309_parallel_postgres_impl.py` 1 项（PG + otel-demo profile，两工具真实重叠，span 挂在 run 下，ordinal 0,1）。既有回归：28 个定向文件 1082 passed；PG 回归 5 个文件 118 passed；`ruff check`、`ruff format --check`、`mypy` 通过。
+- 未做：两次真实 Run（Run A cap=2、Run B `--context-tokens` 强制压缩）由 lead 在审查后安排；独立验收测试在另一 worktree。
 
 ## 待决
 

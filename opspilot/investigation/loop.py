@@ -12,7 +12,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections import deque
 from collections.abc import Callable, Mapping, Sequence
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass, field, replace
 from typing import Any, Literal, Protocol
 from uuid import UUID, uuid4
@@ -74,10 +76,15 @@ from opspilot.investigation.store import (
     reservation_id_for,
 )
 from opspilot.tools.executor import Clock, QueryScope, ReadOnlyToolExecutor, ToolRequest
+from opspilot.tools.outcomes import ToolOutcome
 from opspilot.tools.registry import canonical
+from opspilot.tracing import tracer
 
 DISCIPLINE_VARIANT = "replay-candidate"
 ACCEPTED_RESPONSE_MODEL = "deepseek-flash"
+# Upper bound of ``InvestigationLoop.tool_parallelism`` (#309; upstream
+# HolmesGPT's pool size). The default stays C3 §13's 2, set by the worker.
+MAX_TOOL_PARALLELISM = 16
 
 LoopExecution = Literal["completed", "failed", "blocked", "budget_exhausted"]
 
@@ -358,6 +365,17 @@ class InvestigationLoop:
     capture_delivery: Callable[[Mapping[str, Any], Mapping[str, Any]], None] | None = (
         None
     )
+    # #309 (C3 §5 "工具采用有限并行", §13 工具并行数): at most this many of
+    # one turn's tool calls in flight. 1 dispatches serially on the calling
+    # thread with no pool; the worker reads OPSPILOT_TOOL_PARALLELISM.
+    tool_parallelism: int = 1
+
+    def __post_init__(self) -> None:
+        if (
+            type(self.tool_parallelism) is not int
+            or not 1 <= self.tool_parallelism <= MAX_TOOL_PARALLELISM
+        ):
+            raise ValueError("INVALID_TOOL_PARALLELISM")
 
     def _check_identity(self, request: InvestigationRequest) -> None:
         if not isinstance(request, InvestigationRequest):
@@ -793,17 +811,16 @@ class InvestigationLoop:
         step_id: UUID,
         calls: Sequence[Mapping[str, Any]],
     ) -> list[dict[str, Any]]:
+        if self.tool_parallelism > 1 and len(calls) > 1:
+            return self._run_tools_parallel(state, step_id, calls)
+        # Serial dispatch (cap 1, or a single call): no thread pool, every
+        # call runs on this thread exactly as before #309 (contract R-4).
         request = state.request
         results: list[dict[str, Any]] = []
         target_id = _bound_target(request)
         window = request.scope.window.as_json()
         for index, call in enumerate(calls):
-            function = call.get("function") if isinstance(call, Mapping) else None
-            fingerprint = _call_fingerprint(
-                function.get("name") if isinstance(function, Mapping) else None,
-                function.get("arguments") if isinstance(function, Mapping) else None,
-                target_id,
-            )
+            fingerprint = _fingerprint_of(call, target_id)
             duplicate_of = state.seen_tool_calls.get(fingerprint)
             if duplicate_of is not None:
                 # B5 (docs/tasks/2026-09-28-m1-01-upstream-alignment-b.md;
@@ -823,50 +840,180 @@ class InvestigationLoop:
                 # dispatch, as the pending-tool recovery path does, so a
                 # round within its limits is not fenced off mid-way (bot
                 # review finding, PR #29).
-                try:
-                    self.store.renew()
-                    self.store.assert_current()
-                except StepStoreError as exc:
-                    raise _halt_from_store(exc) from exc
+                self._renew_before_dispatch()
                 outcome = self.executor.execute(
                     tool_request_for(
                         step_id, index, call, target_ref=target_id, window=window
                     )
                 )
-                view = dict(outcome.model_view)
-                evidence_id = view.get("evidence_id")
-                if isinstance(evidence_id, str) and evidence_id:
-                    # Only a dispatched call that actually produced evidence
-                    # is remembered: a pure gateway refusal (no evidence_id,
-                    # e.g. WINDOW_TOO_LARGE) has nothing to point a repeat at,
-                    # so the repeat is left to run again rather than dedup
-                    # against nothing -- refusals are deterministic and cheap,
-                    # unlike a real source read.
-                    state.seen_tool_calls[fingerprint] = evidence_id
-            try:
-                self.store.commit_tool(step_id, index, view)
-            except StepStoreError as exc:
-                raise _halt_from_store(exc) from exc
-            citation = delivered_view(
-                view,
-                evidence_context=request.evidence_context,
-                authorized_targets=request.scope.target_ids,
-            )
-            if citation is not None:
-                state.evidence_ids.append(citation.evidence_id)
-                state.delivered.append(citation)
-            results.append(
-                {
-                    "role": "tool",
-                    "tool_call_id": call["id"],
-                    # Mechanism 1: an oversized view reaches the model as a
-                    # provenance stub; the row above keeps the full view.
-                    "content": canonical(visible_view(view, limits=request.limits)),
-                }
-            )
-            if self.capture_delivery is not None:
-                self.capture_delivery(view, results[-1])
+                view = self._dispatched_view(state, fingerprint, outcome)
+            self._deliver(state, step_id, index, call, view, results)
         return results
+
+    def _run_tools_parallel(
+        self,
+        state: _State,
+        step_id: UUID,
+        calls: Sequence[Mapping[str, Any]],
+    ) -> list[dict[str, Any]]:
+        """One turn's calls with at most ``tool_parallelism`` in flight (#309).
+
+        Only ``executor.execute`` runs on worker threads. Lease renewal and
+        fence (once before each dispatch, as in serial), ``commit_tool``, the
+        dedupe map, ``delivered``/``evidence_ids``, the tool messages and
+        ``capture_delivery`` all stay on this thread and run in index order,
+        so committed rows, the coverage message and the next request are
+        what serial dispatch produces (contract U-3, U-4, R-5).
+
+        Within the turn, the first call of each fingerprint not already seen
+        is dispatched in parallel; every later call is decided at its own
+        turn under the serial rule against the map as it stands then (R-2):
+        a repeat of a call that produced evidence gets the duplicate view, a
+        repeat of a pure refusal is dispatched again. A failed renewal or
+        fence stops new dispatches; in-flight calls finish (each bounded by
+        its own timeout), results before the first undispatched call are
+        committed in index order, then the failure halts the round as it
+        would serially. An unexpected exception from a call is re-raised at
+        that call's turn, after every earlier result is committed; later
+        results are dropped for recovery to re-dispatch (R-8).
+        """
+        request = state.request
+        results: list[dict[str, Any]] = []
+        target_id = _bound_target(request)
+        window = request.scope.window.as_json()
+        fingerprints = [_fingerprint_of(call, target_id) for call in calls]
+        leaders: deque[int] = deque()
+        first_seen: set[str] = set()
+        for index, fingerprint in enumerate(fingerprints):
+            if fingerprint in state.seen_tool_calls or fingerprint in first_seen:
+                continue
+            first_seen.add(fingerprint)
+            leaders.append(index)
+        dispatched: dict[int, Future[ToolOutcome]] = {}
+        stop: Exception | None = None
+        execute = tracer().carry(self.executor.execute)
+
+        def fill(pool: ThreadPoolExecutor) -> None:
+            nonlocal stop
+            while stop is None and leaders:
+                running = sum(1 for f in dispatched.values() if not f.done())
+                if running >= self.tool_parallelism:
+                    return
+                index = leaders[0]
+                try:
+                    self._renew_before_dispatch()
+                    tool_request = tool_request_for(
+                        step_id,
+                        index,
+                        calls[index],
+                        target_ref=target_id,
+                        window=window,
+                    )
+                except Exception as exc:  # raised at this call's turn
+                    stop = exc
+                    return
+                leaders.popleft()
+                dispatched[index] = pool.submit(execute, tool_request)
+
+        with ThreadPoolExecutor(
+            max_workers=self.tool_parallelism, thread_name_prefix="opspilot-tool"
+        ) as pool:
+            for index, call in enumerate(calls):
+                fill(pool)
+                fingerprint = fingerprints[index]
+                if index not in dispatched:
+                    # Every first call below this index is already dispatched,
+                    # so an undispatched first call is always at the front.
+                    if not (leaders and leaders[0] == index):
+                        duplicate_of = state.seen_tool_calls.get(fingerprint)
+                        if duplicate_of is not None:
+                            view = _duplicate_call_view(
+                                f"{step_id}-t{index}", evidence_id=duplicate_of
+                            )
+                            self._deliver(state, step_id, index, call, view, results)
+                            continue
+                        # A repeat whose first call was a pure refusal runs
+                        # again, as serially; it goes ahead of the remaining
+                        # first calls, which all have higher indexes.
+                        leaders.appendleft(index)
+                    while index not in dispatched and stop is None:
+                        fill(pool)
+                        if index not in dispatched:
+                            wait(
+                                [f for f in dispatched.values() if not f.done()],
+                                return_when=FIRST_COMPLETED,
+                            )
+                    if index not in dispatched:
+                        assert stop is not None
+                        raise stop
+                future = dispatched[index]
+                while not future.done():
+                    wait(
+                        [f for f in dispatched.values() if not f.done()],
+                        return_when=FIRST_COMPLETED,
+                    )
+                    fill(pool)
+                outcome = future.result()
+                view = self._dispatched_view(state, fingerprint, outcome)
+                self._deliver(state, step_id, index, call, view, results)
+        return results
+
+    def _renew_before_dispatch(self) -> None:
+        try:
+            self.store.renew()
+            self.store.assert_current()
+        except StepStoreError as exc:
+            raise _halt_from_store(exc) from exc
+
+    @staticmethod
+    def _dispatched_view(
+        state: _State, fingerprint: str, outcome: ToolOutcome
+    ) -> dict[str, Any]:
+        view = dict(outcome.model_view)
+        evidence_id = view.get("evidence_id")
+        if isinstance(evidence_id, str) and evidence_id:
+            # Only a dispatched call that actually produced evidence
+            # is remembered: a pure gateway refusal (no evidence_id,
+            # e.g. WINDOW_TOO_LARGE) has nothing to point a repeat at,
+            # so the repeat is left to run again rather than dedup
+            # against nothing -- refusals are deterministic and cheap,
+            # unlike a real source read.
+            state.seen_tool_calls[fingerprint] = evidence_id
+        return view
+
+    def _deliver(
+        self,
+        state: _State,
+        step_id: UUID,
+        index: int,
+        call: Mapping[str, Any],
+        view: dict[str, Any],
+        results: list[dict[str, Any]],
+    ) -> None:
+        request = state.request
+        try:
+            self.store.commit_tool(step_id, index, view)
+        except StepStoreError as exc:
+            raise _halt_from_store(exc) from exc
+        citation = delivered_view(
+            view,
+            evidence_context=request.evidence_context,
+            authorized_targets=request.scope.target_ids,
+        )
+        if citation is not None:
+            state.evidence_ids.append(citation.evidence_id)
+            state.delivered.append(citation)
+        results.append(
+            {
+                "role": "tool",
+                "tool_call_id": call["id"],
+                # Mechanism 1: an oversized view reaches the model as a
+                # provenance stub; the row above keeps the full view.
+                "content": canonical(visible_view(view, limits=request.limits)),
+            }
+        )
+        if self.capture_delivery is not None:
+            self.capture_delivery(view, results[-1])
 
     # -- context management (HolmesGPT mechanism 2, C3 §5) -------------------
 
@@ -1026,6 +1173,13 @@ class InvestigationLoop:
         state.segment = to_segment
         state.folded_since = []
         state.compactions = revision
+        # #309 (upstream RESET_REPEATED_TOOL_CALL_CHECK_AFTER_COMPACTION): the
+        # summary replaced the tool results the dedupe map points at, so an
+        # identical call after an accepted compaction runs again. Upstream
+        # keeps only calls guarded by its overflow path, which this loop does
+        # not have (one summary request, REQUEST_TOO_LARGE otherwise), so the
+        # whole map is cleared (contract U-5, R-1).
+        state.seen_tool_calls.clear()
 
     def _reserve(self, run_id: str, logical_key: str, *, seconds: float) -> None:
         try:
@@ -1353,6 +1507,15 @@ def _parse_arguments(raw: str) -> object:
     except (ValueError, RecursionError):
         return None
     return parsed
+
+
+def _fingerprint_of(call: Mapping[str, Any], target_ref: str | None) -> str:
+    function = call.get("function") if isinstance(call, Mapping) else None
+    return _call_fingerprint(
+        function.get("name") if isinstance(function, Mapping) else None,
+        function.get("arguments") if isinstance(function, Mapping) else None,
+        target_ref,
+    )
 
 
 def _call_fingerprint(name: object, arguments: object, target_ref: str | None) -> str:

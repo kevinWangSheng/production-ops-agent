@@ -132,6 +132,10 @@ class InvestigationRunner:
         ]
         | None
     ) = None
+    # #309: bound on one turn's tool calls in flight, handed to every loop.
+    # 1 (the default here) is serial dispatch; the worker passes
+    # OPSPILOT_TOOL_PARALLELISM (default 2, C3 §13).
+    tool_parallelism: int = 1
 
     def resume(self, incident_id: UUID) -> RunnerOutcome:
         """Continue (or start) the incident's current Run from committed rows."""
@@ -388,6 +392,7 @@ class InvestigationRunner:
             store=committer,
             clock=self.clock,
             capture_delivery=self.capture_delivery,
+            tool_parallelism=self.tool_parallelism,
         )
         outcome = loop.resume(transcript)
         if outcome.final_step_id is None or outcome.conclusion is None:

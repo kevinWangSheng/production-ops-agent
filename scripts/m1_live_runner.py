@@ -51,6 +51,7 @@ import argparse
 import json
 import os
 import time
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from uuid import uuid4
@@ -59,7 +60,11 @@ from opspilot import tracing
 from opspilot.investigation.client import DeepSeekClient
 from opspilot.investigation.inputs import continuation_input
 from opspilot.investigation.limits import M1_FROZEN_LIMITS
-from opspilot.investigation.loop import DISCIPLINE_VARIANT, prompt_revision_versions
+from opspilot.investigation.loop import (
+    DISCIPLINE_VARIANT,
+    MAX_TOOL_PARALLELISM,
+    prompt_revision_versions,
+)
 from opspilot.investigation.runner import InvestigationRunner
 from opspilot.persistence import DurableStore
 from opspilot.tools import TransportResponse
@@ -260,7 +265,23 @@ def main() -> int:
     parser.add_argument("--timeout-follow-up", action="store_true")
     parser.add_argument("--renew-seconds", type=int, default=12 * 60)
     parser.add_argument("--lab-round", default=os.environ.get(LAB_ROUND_ENV) or None)
+    # #309 evidence: tool calls of one turn in flight (1 = serial, the
+    # earlier behaviour of this script), and a narrowed context window so a
+    # bounded Run reaches compaction (``RunLimits.within`` admits narrowing).
+    parser.add_argument("--tool-parallelism", type=int, default=1)
+    parser.add_argument("--context-tokens", type=int, default=None)
     args = parser.parse_args()
+    if not 1 <= args.tool_parallelism <= MAX_TOOL_PARALLELISM:
+        raise SystemExit(f"tool-parallelism must be 1-{MAX_TOOL_PARALLELISM}")
+    limits = M1_FROZEN_LIMITS
+    if args.context_tokens is not None:
+        if not (
+            M1_FROZEN_LIMITS.output_tokens
+            < args.context_tokens
+            <= M1_FROZEN_LIMITS.context_tokens
+        ):
+            raise SystemExit("context-tokens outside (output_tokens, frozen ceiling]")
+        limits = replace(M1_FROZEN_LIMITS, context_tokens=args.context_tokens)
     if args.timeout_follow_up and not args.sweep:
         raise SystemExit("--timeout-follow-up requires --sweep")
     if args.deadline_seconds < 1:
@@ -297,6 +318,7 @@ def main() -> int:
         target_id=LIVE_TOOL_TARGET,
         deadline=deadline,
         model_requests=args.model_requests,
+        limits=limits,
     )
     store.accept(
         incident,
@@ -318,6 +340,7 @@ def main() -> int:
         lease_seconds=LEASE_SECONDS,
         events=log,
         evidence=evidence,
+        tool_parallelism=args.tool_parallelism,
     )
     started = clock.now()
     attempts = [{"label": "first", "outcome": _outcome(runner.resume(incident))}]
@@ -400,6 +423,8 @@ def main() -> int:
     ledger = {
         "experiment": experiment,
         "deadline_seconds": args.deadline_seconds,
+        "tool_parallelism": args.tool_parallelism,
+        "context_tokens": limits.context_tokens,
         "driver": "opspilot.investigation.runner.InvestigationRunner",
         "incident_id": str(incident),
         "run_id": str(run_id),
@@ -441,6 +466,8 @@ def main() -> int:
             "model": ledger["model"],
             "started": ledger["started"],
             "ended": ledger["ended"],
+            "tool_parallelism": ledger["tool_parallelism"],
+            "context_tokens": ledger["context_tokens"],
             "verdicts": {
                 "status": attempts[0]["outcome"]["status"],
                 "reason": attempts[0]["outcome"]["reason"],
