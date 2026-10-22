@@ -18,6 +18,7 @@ from opspilot.investigation.context import context_policy_versions
 from opspilot.investigation.loop import investigation_versions
 from opspilot.redaction import REDACTED_CREDENTIAL
 from opspilot.tools import (
+    ControlSnapshot,
     ReadOnlyToolExecutor,
     ToolRequest,
     TransportResponse,
@@ -55,6 +56,49 @@ BASELINE_REFUSAL_VIEW = (
     b'"requested_at":"2026-09-14T01:05:00+00:00","source_contact":"confirmed",'
     b'"status":"error","target_id":"checkout-prod","tool":"metrics.range_query",'
     b'"trust":"gateway","view_tokens":38695,"window":{"end":"2026-09-14T00:10:00+00:00",'
+    b'"start":"2026-09-14T00:00:00+00:00"}}'
+)
+
+BASELINE_REFUSAL_KEYS = frozenset(
+    {
+        "operation_id",
+        "trust",
+        "status",
+        "citable_as_fact",
+        "reason",
+        "source_contact",
+        "tool",
+        "target_id",
+        "window",
+        "requested_at",
+        "content",
+        "query",
+        "max_view_tokens",
+        "view_tokens",
+        "message",
+    }
+)
+SPILLED_REFUSAL_KEYS = BASELINE_REFUSAL_KEYS | frozenset(
+    {
+        "evidence_id",
+        "adopted",
+        "observed_at",
+        "data_as_of",
+        "source_start_at",
+        "source_end_at",
+        "result_count",
+        "incomplete",
+    }
+)
+
+# Frozen from main@aa57f9a + contract commit 5da7be9.  This is the existing
+# post-fetch control-generation refusal; PR1 must keep this model-facing view
+# unchanged while retaining the fetched result only as history.
+BASELINE_CONTROL_GENERATION_REFUSAL_VIEW = (
+    b'{"citable_as_fact":false,"content":null,"operation_id":"step-1-t0",'
+    b'"reason":"CONTROL_GENERATION_CHANGED","requested_at":"2026-09-14T01:05:00+00:00",'
+    b'"source_contact":"confirmed","status":"denied","target_id":"checkout-prod",'
+    b'"tool":"metrics.range_query","trust":"gateway","window":{"end":"2026-09-14T00:10:00+00:00",'
     b'"start":"2026-09-14T00:00:00+00:00"}}'
 )
 
@@ -222,6 +266,23 @@ def test_pr1_view_overlimit_keeps_main_model_bytes_and_registers_non_adopted_rec
     assert record.raw == _redacted_body()
     assert record.raw_sha256 == hashlib.sha256(record.raw).hexdigest()
     assert record.view_sha256 == canonical_hash(record.view)
+    view = record.view
+    assert set(view) == SPILLED_REFUSAL_KEYS
+    for key in BASELINE_REFUSAL_KEYS:
+        assert view[key] == outcome.model_view[key]
+    assert view["evidence_id"] == record.evidence_id
+    assert view["adopted"] is False
+    assert view["observed_at"] == outcome.operation.finished_at.isoformat()
+    assert view["data_as_of"] is None
+    assert view["source_start_at"] is None
+    assert view["source_end_at"] is None
+    assert view["result_count"] == len(_rows())
+    assert view["incomplete"] is False
+    assert b"password=xyz" not in record.raw
+    view_text = canonical(view)
+    assert "password=xyz" not in view_text
+    assert "series" not in view_text
+    assert "xxxxxxxx" not in view_text
 
 
 def test_pr1_byte_limit_refusal_does_not_register_a_row():
@@ -261,30 +322,35 @@ def test_pr1_seventeenth_overlimit_result_is_not_stored_and_view_is_unchanged():
 
 def test_pr1_cumulative_raw_bytes_stop_storage_after_the_16_mib_boundary():
     sink = _CountingSink()
-    executor, transport = _executor(sink=sink)
-    payload = _large_result_body()
-    assert len(payload) < 1_000_000
+    executor, transport = _executor(sink=sink, max_result_bytes=2 * 1024 * 1024)
+    exact_boundary_payload = _large_result_body(2 * 1024 * 1024)
+    next_payload = _large_result_body(30_000)
 
     stored = [
-        _large_overlimit_outcome(executor, transport, payload, index=index)
-        for index in range(16)
+        _large_overlimit_outcome(
+            executor, transport, exact_boundary_payload, index=index
+        )
+        for index in range(8)
     ]
     before = sink.count_spilled(RUN_ID)
-    seventeenth = _large_overlimit_outcome(executor, transport, payload, index=16)
+    over_boundary = _large_overlimit_outcome(executor, transport, next_payload, index=8)
 
     baseline_sink = _CountingSink()
-    baseline_executor, baseline_transport = _executor(sink=baseline_sink)
+    baseline_executor, baseline_transport = _executor(
+        sink=baseline_sink, max_result_bytes=2 * 1024 * 1024
+    )
     baseline = _large_overlimit_outcome(
-        baseline_executor, baseline_transport, payload, index=16
+        baseline_executor, baseline_transport, next_payload, index=8
     )
     assert all(
         (outcome.status, outcome.reason) == ("error", "RESULT_TOO_LARGE")
-        for outcome in (*stored, seventeenth, baseline)
+        for outcome in (*stored, over_boundary, baseline)
     )
-    assert canonical(seventeenth.model_view) == canonical(baseline.model_view)
-    assert len(sink.records) == 16
+    assert before == (8, 16 * 1024 * 1024)
+    assert before[0] < 16
+    assert canonical(over_boundary.model_view) == canonical(baseline.model_view)
+    assert len(sink.records) == 8
     assert before == sink.count_spilled(RUN_ID)
-    assert before[1] * 17 > 16 * 1024 * 1024
 
 
 def test_pr1_unavailable_spill_count_keeps_refusal_and_does_not_store():
@@ -297,6 +363,39 @@ def test_pr1_unavailable_spill_count_keeps_refusal_and_does_not_store():
     assert canonical(outcome.model_view).encode() == _baseline_for_index(0)
     assert outcome.evidence is None
     assert sink.records == []
+
+
+def test_pr1_post_fetch_generation_change_keeps_history_without_a_spill_record():
+    sink = _CountingSink()
+    moved = ControlSnapshot(
+        control_generation=8,
+        global_suspension_generation=0,
+        target_suspension_generation=0,
+        suspended=False,
+    )
+    control = FixedControl(later=moved, later_after=2)
+    executor, transport = _executor(sink=sink, control=control)
+
+    outcome = _overlimit_outcome(executor, transport)
+
+    assert (outcome.status, outcome.reason) == (
+        "denied",
+        "CONTROL_GENERATION_CHANGED",
+    )
+    assert outcome.source_contact == "confirmed"
+    assert outcome.operation.sent is True
+    assert transport.called is True
+    assert canonical(outcome.model_view).encode() == (
+        BASELINE_CONTROL_GENERATION_REFUSAL_VIEW
+    )
+    assert len(sink.records) == 1
+    history = sink.records[0]
+    assert outcome.evidence is history
+    assert history.status == "denied"
+    assert history.adopted is False
+    assert history.raw == _redacted_body()
+    assert history.view["content"] is None
+    assert sink.count_spilled(RUN_ID) == (0, 0)
 
 
 def test_pr1_control_failure_keeps_the_existing_denied_path():
