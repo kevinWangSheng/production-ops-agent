@@ -291,6 +291,10 @@ OBSERVER_GRANTS: Mapping[str, Mapping[str, Grant]] = {
             "comparison",
         ),
     },
+    "opspilot_release_comparison_attempts": {
+        "SELECT": "*",
+        "INSERT": ("comparison_id", "attempt", "observation_id", "ending_id", "owner"),
+    },
     "opspilot_release_comparison_queries": {
         "SELECT": "*",
         "INSERT": (

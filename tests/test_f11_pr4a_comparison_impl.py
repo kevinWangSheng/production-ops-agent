@@ -269,3 +269,17 @@ def test_lease_identity_is_derived_from_observation_and_ending():
     assert lease.comparison_id == comparison_id_for(observation, ending)
     with pytest.raises(ValidationError):
         ComparisonLease(comparison_id=uuid4(), **fields)
+
+
+def test_after_scopes_without_a_sufficient_anomaly_are_never_complete():
+    context = _context()
+    pods = pods_for(BEFORE_IMAGES, replicaset=OLD_RS)
+    anomaly = _anomaly(context)
+    for broken in (
+        anomaly.model_copy(update={"evidence_sufficient": False}),
+        anomaly.model_copy(update={"signals": ()}),
+        anomaly.model_copy(update={"verdict": "healthy"}),
+    ):
+        comparison = _compare(context, _evidence(_before(context, pods)), broken)
+        assert comparison.status == "partial"
+        assert "AFTER_EVIDENCE_INSUFFICIENT" in comparison.reason_codes

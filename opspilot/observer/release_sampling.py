@@ -201,9 +201,12 @@ def take_release_comparison(
 ) -> ReleaseComparisonTaken:
     """Collect the before evidence at ``released_at``, then submit it once.
 
-    Up to ``COMPARISON_MAX_ATTEMPTS`` attempts; another attempt only when the
-    last one had failed or timed-out queries. The last attempt's raw
-    evidence is submitted and storage computes the record. A suspended scope
+    An attempt with failed or timed-out queries claims the next durable
+    attempt row while attempts remain; the last attempt's raw evidence is
+    submitted and storage computes the record. Attempts are rows claimed
+    before their queries, so the total stays within
+    ``COMPARISON_MAX_ATTEMPTS`` plans per ending across Observers and
+    crashes. A suspended scope
     stops the collection without a submission: the ending stays pending and
     is collected again after the suspension is lifted.
     """
@@ -267,49 +270,63 @@ def take_release_comparison(
             )
         return True
 
-    attempt = 0
-    while attempt < COMPARISON_MAX_ATTEMPTS:
-        attempt += 1
+    # r3: every attempt is a durable row claimed before its first query; a
+    # spent ending (``exhausted``) is filed unavailable without any query.
+    attempt = lease.attempt or COMPARISON_MAX_ATTEMPTS
+    while not lease.exhausted:
+        attempt = lease.attempt or COMPARISON_MAX_ATTEMPTS
         gathered.clear()
         budget_end = time.monotonic() + COMPARISON_ATTEMPT_SECONDS
         try:
-            plan = build_release_comparison_plan(
+            plan: dict[str, str] | None = build_release_comparison_plan(
                 context, released_at=at, after_window_end=lease.window_after.end
             )
         except ValueError:
             # Unsupported profile: nothing to query; storage files it unavailable.
-            break
-        if not collect(plan, budget_end):
-            return ReleaseComparisonTaken(None, issued, attempt, True)
-        full = build_release_comparison_plan(
-            context,
-            released_at=at,
-            after_window_end=lease.window_after.end,
-            instance_uids=mapped_old_instances(context, evidence(attempt)),
-        )
-        if not collect(
-            {key: expr for key, expr in full.items() if key not in plan}, budget_end
-        ):
-            return ReleaseComparisonTaken(None, issued, attempt, True)
-        draft = compare_evidence(
-            context,
-            observation_id=lease.observation_id,
-            ending_id=lease.ending_id,
-            sample_id=lease.sample_id,
-            window_after=lease.window_after,
-            anomaly=ReleaseEvaluation(
-                verdict="unknown",
-                outcome="no_data",
-                evidence_sufficient=False,
-                reason_codes=(),
-                instances=(),
-                signals=(),
-            ),
-            evidence=evidence(attempt),
-            decision_at=at,
-        )
-        if not needs_retry(draft):
-            break
+            plan = None
+        if plan is not None:
+            if not collect(plan, budget_end):
+                return ReleaseComparisonTaken(None, issued, attempt, True)
+            full = build_release_comparison_plan(
+                context,
+                released_at=at,
+                after_window_end=lease.window_after.end,
+                instance_uids=mapped_old_instances(context, evidence(attempt)),
+            )
+            if not collect(
+                {key: expr for key, expr in full.items() if key not in plan},
+                budget_end,
+            ):
+                return ReleaseComparisonTaken(None, issued, attempt, True)
+            draft = compare_evidence(
+                context,
+                observation_id=lease.observation_id,
+                ending_id=lease.ending_id,
+                sample_id=lease.sample_id,
+                window_after=lease.window_after,
+                anomaly=ReleaseEvaluation(
+                    verdict="unknown",
+                    outcome="no_data",
+                    evidence_sufficient=False,
+                    reason_codes=(),
+                    instances=(),
+                    signals=(),
+                ),
+                evidence=evidence(attempt),
+                decision_at=at,
+            )
+            if needs_retry(draft) and attempt < COMPARISON_MAX_ATTEMPTS:
+                _log.info(
+                    "release comparison retry observation_id=%s attempt=%s requests=%s",
+                    lease.observation_id,
+                    attempt,
+                    issued,
+                )
+                # The next durable attempt row: a crash from here on still
+                # counts it, so the total never exceeds three plans.
+                lease = store.claim_next_attempt(lease)
+                continue
+        break
     receipt = store.submit_comparison(lease, evidence(attempt))
     _log.info(
         "release comparison observation_id=%s ending=%s attempts=%s requests=%s status=%s replayed=%s",

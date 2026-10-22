@@ -66,6 +66,10 @@ TRIGGER_GUARDED: Mapping[str, tuple[str, str]] = {
         WEB_ROLE,
     ),
     "opspilot_release_comparisons": ("release_comparison_guard", "opspilot_observer"),
+    "opspilot_release_comparison_attempts": (
+        "release_comparison_attempt_guard",
+        "opspilot_observer",
+    ),
 }
 
 RUNTIME_GRANTS: Mapping[str, Mapping[str, frozenset[str]]] = {
@@ -204,6 +208,7 @@ RUNTIME_GRANTS: Mapping[str, Mapping[str, frozenset[str]]] = {
         "opspilot_release_query_results": S,
         # F11 PR-4a: the Observer writes before/after comparisons; the web reads
         "opspilot_release_comparisons": S,
+        "opspilot_release_comparison_attempts": S,
         "opspilot_release_comparison_queries": S,
         "opspilot_release_audit": _g(
             "SELECT",
@@ -328,6 +333,7 @@ RUNTIME_GRANTS: Mapping[str, Mapping[str, frozenset[str]]] = {
         "opspilot_web_ledger": NONE,
         "opspilot_release_query_results": NONE,
         "opspilot_release_comparisons": NONE,
+        "opspilot_release_comparison_attempts": NONE,
         "opspilot_release_comparison_queries": NONE,
         "opspilot_release_audit": NONE,
     },

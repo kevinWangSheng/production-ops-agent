@@ -6,10 +6,14 @@ synthetic before-window source answering at ``released_at`` only.
 """
 
 import os
+import threading
+import time
+from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 
 import psycopg
 import pytest
+from psycopg.types.json import Jsonb
 
 from opspilot.observation.release_comparison import (
     COMPARISON_MAX_ATTEMPTS,
@@ -18,6 +22,8 @@ from opspilot.observation.release_comparison import (
     build_release_comparison_plan,
 )
 from opspilot.observation.release_policy import canonical_json, sha256
+from opspilot.observation.releases import ReleaseEvent
+from opspilot.observer.health_profile import canonical_content
 from opspilot.observer.loop import ObserverLoop
 from opspilot.observer.prometheus import PrometheusReadOnlySource, VectorResult
 from opspilot.observer.release_replay import replay_release_history
@@ -144,28 +150,44 @@ def _claim(observer, sid):
     return next(lease for lease in leases if lease.session_id == sid)
 
 
+DRAIN_OWNER = UUID("00000000-0000-4000-8000-00000000d1a1")
+
+
+def _drain(observer):
+    """File endings earlier tests left claimable as zero-query records, so
+    the oldest-first claim reaches this test's ending."""
+    for _ in range(200):
+        lease = observer.claim_comparison(DRAIN_OWNER)
+        if lease is None:
+            return
+        observer.submit_comparison(
+            lease,
+            ReleaseComparisonEvidence(
+                format_version=1,
+                comparison_id=lease.comparison_id,
+                attempts=lease.attempt,
+                window=before_window(observer.comparison_context(lease)),
+                queries=(),
+            ),
+        )
+    pytest.fail("could not drain pending comparisons")
+
+
 def _anomalous(h):
     web, observer, oid, _, _ = h
+    _drain(observer)
     auth = authorized_due(h)
     lease = _claim(observer, auth.session_id)
     context = observer.release_context(lease.session_id)
     taken = take_release_sample(lease, Telemetry(context, degraded=True), observer)
     assert taken.receipt.release_status == "anomalous"
-    # Endings left pending by earlier tests in this database would be taken
-    # first by the oldest-first loop; file them as zero-query records.
-    for other in observer.pending_comparisons(limit=100):
-        if other.observation_id != oid:
-            observer.submit_comparison(
-                other,
-                ReleaseComparisonEvidence(
-                    format_version=1,
-                    comparison_id=other.comparison_id,
-                    attempts=1,
-                    window=before_window(observer.comparison_context(other)),
-                    queries=(),
-                ),
-            )
     return context
+
+
+def _own_claim(observer, oid, owner=None):
+    lease = observer.claim_comparison(owner or uuid4())
+    assert lease is not None and lease.observation_id == oid, lease
+    return lease
 
 
 def _comparisons(observer, oid):
@@ -201,17 +223,14 @@ def test_anomaly_collects_one_comparison_at_released_at_and_replays(release_harn
     assert replay.consistent, replay.integrity
     # Nothing left to collect: the next pass sends no query.
     ObserverLoop(store=observer, source=source, batch=1).poll_once()
-    assert len(source.calls) == 49 and observer.pending_comparisons(limit=20) == ()
+    assert len(source.calls) == 49
+    assert all(p.observation_id != oid for p in observer.pending_comparisons(limit=100))
 
 
 def test_resubmission_returns_the_first_record(release_harness):
     _, observer, oid, _, _ = release_harness
     context = _anomalous(release_harness)
-    (lease,) = [
-        lease
-        for lease in observer.pending_comparisons(limit=20)
-        if lease.observation_id == oid
-    ]
+    lease = _own_claim(observer, oid)
     first = take_release_comparison(lease, BeforeTelemetry(context), observer)
     assert first.receipt is not None and not first.receipt.replayed
     again = observer.submit_comparison(
@@ -276,11 +295,7 @@ def test_suspension_during_collection_submits_nothing(release_harness):
     web, observer, oid, _, _ = release_harness
     context = _anomalous(release_harness)
     target = web.get_release(oid).target_id
-    (lease,) = [
-        lease
-        for lease in observer.pending_comparisons(limit=20)
-        if lease.observation_id == oid
-    ]
+    lease = _own_claim(observer, oid)
 
     def suspend(n):
         if n == 5:
@@ -362,6 +377,191 @@ def test_healthy_and_observing_releases_have_nothing_pending(release_harness):
     assert all(
         lease.observation_id != oid for lease in observer.pending_comparisons(limit=20)
     )
+
+
+def _expire_attempts(cid):
+    # Test-only: age the claim leases instead of waiting 150 s.
+    with psycopg.connect(DSN) as conn:
+        conn.execute("SET LOCAL session_replication_role=replica")
+        conn.execute(
+            "UPDATE opspilot_release_comparison_attempts SET lease_until=clock_timestamp()-interval '1 second' WHERE comparison_id=%s",
+            (cid,),
+        )
+
+
+def test_attempts_are_durable_and_bounded_across_observers_and_crashes(
+    release_harness,
+):
+    web, observer, oid, _, _ = release_harness
+    context = _anomalous(release_harness)
+    first, second = uuid4(), uuid4()
+    lease = _own_claim(observer, oid, first)
+    assert (lease.attempt, lease.exhausted) == (1, False)
+    # another Observer cannot take the ending while the claim is live
+    assert observer.claim_comparison(second) is None
+    # three crashes: each claimed attempt is spent, whoever claimed it
+    for attempt in (2, 3):
+        _expire_attempts(lease.comparison_id)
+        lease = _own_claim(observer, oid, second if attempt == 2 else first)
+        assert lease.attempt == attempt
+    _expire_attempts(lease.comparison_id)
+    final = _own_claim(observer, oid, uuid4())
+    assert final.exhausted and final.attempt == 3
+    source = BeforeTelemetry(context)
+    taken = take_release_comparison(final, source, observer)
+    assert source.calls == [] and taken.receipt is not None
+    assert taken.receipt.comparison.status == "unavailable"
+    (stored,) = _comparisons(observer, oid)
+    assert stored["attempts"] == 3
+    assert replay_release_history(_history(observer, oid)).consistent
+    with psycopg.connect(DSN) as conn:
+        assert conn.execute(
+            "SELECT count(*) FROM opspilot_release_comparison_attempts WHERE comparison_id=%s",
+            (lease.comparison_id,),
+        ).fetchone() == (3,)
+    with login(DSN, "opspilot_observer") as dsn, psycopg.connect(dsn) as conn:
+        # a fourth attempt: refused by the guard (a record exists) or CHECK
+        with pytest.raises(
+            (psycopg.errors.CheckViolation, psycopg.errors.InsufficientPrivilege)
+        ):
+            conn.execute(
+                "INSERT INTO opspilot_release_comparison_attempts(comparison_id,attempt,observation_id,ending_id,owner) VALUES(%s,4,%s,%s,%s)",
+                (lease.comparison_id, oid, lease.ending_id, uuid4()),
+            )
+
+
+def test_guards_refuse_a_wrong_derived_id_or_before_window(release_harness):
+    _, observer, oid, _, _ = release_harness
+    _anomalous(release_harness)
+    lease = _own_claim(observer, oid)
+    with login(DSN, "opspilot_observer") as dsn:
+        with (
+            psycopg.connect(dsn) as conn,
+            pytest.raises(psycopg.errors.InsufficientPrivilege),
+        ):
+            conn.execute(
+                "INSERT INTO opspilot_release_comparison_attempts(comparison_id,attempt,observation_id,ending_id,owner) VALUES(%s,1,%s,%s,%s)",
+                (uuid4(), oid, lease.ending_id, lease.owner),
+            )
+        good_start = lease.released_at - timedelta(
+            seconds=observer.comparison_context(
+                lease
+            ).health_profile.evaluation_window_seconds
+        )
+        for cid, start in (
+            (uuid4(), good_start),
+            (lease.comparison_id, good_start - timedelta(seconds=1)),
+        ):
+            comparison = {
+                "status": "unavailable",
+                "comparison_id": str(cid),
+                "ending_id": str(lease.ending_id),
+                "observation_id": str(oid),
+                "sample_id": str(lease.sample_id),
+                "attempts": 1,
+            }
+            with (
+                psycopg.connect(dsn) as conn,
+                pytest.raises(psycopg.errors.InsufficientPrivilege),
+            ):
+                conn.execute(
+                    "INSERT INTO opspilot_release_comparisons(comparison_id,observation_id,ending_id,session_id,sample_id,format_version,status,attempts,window_before_start,window_before_end,window_after_start,window_after_end,decision_at,evidence_sha256,comparison) VALUES(%s,%s,%s,%s,%s,1,'unavailable',1,%s,%s,%s,%s,clock_timestamp(),repeat('0',64),%s)",
+                    (
+                        cid,
+                        oid,
+                        lease.ending_id,
+                        lease.session_id,
+                        lease.sample_id,
+                        start,
+                        lease.released_at,
+                        lease.window_after.start,
+                        lease.window_after.end,
+                        Jsonb(comparison),
+                    ),
+                )
+    assert _comparisons(observer, oid) == []
+
+
+class _SlowComparisons:
+    """Comparison queries take 0.5 s each until ``released``; sampling
+    queries of every other release are answered at once."""
+
+    def __init__(self, comparison, sampling):
+        self.comparison, self.sampling = comparison, sampling
+        self.released = threading.Event()
+
+    def instant(self, *args, **kwargs):
+        pytest.fail("release telemetry must use vector")
+
+    def instant_vector(self, expr, *, at, timeout_seconds):
+        if at == self.comparison.context.release.released_at:
+            if not self.released.is_set():
+                self.released.wait(0.5)
+            return self.comparison.instant_vector(
+                expr, at=at, timeout_seconds=timeout_seconds
+            )
+        return self.sampling.instant_vector(
+            expr, at=at, timeout_seconds=timeout_seconds
+        )
+
+
+def test_a_slow_comparison_does_not_delay_due_samples(release_harness):
+    web, observer, oid, policy, catalog = release_harness
+    context = _anomalous(release_harness)
+    record = web.get_release(oid)
+    receipt = web.record_release(
+        event=ReleaseEvent(
+            format_version=1,
+            source="pr4a-cadence-" + uuid4().hex,
+            source_release_id=uuid4().hex,
+            released_at=datetime.now(timezone.utc) - timedelta(seconds=10),
+            before=record.before_revision,
+            after=record.after_revision,
+            auxiliary=record.auxiliary,
+        ),
+        target_id=record.target_id,
+        identity=record.target_snapshot,
+        health_profile_revision=record.health_profile_revision,
+        health_profile=canonical_content(context.health_profile),
+        min_tracking_seconds=record.min_tracking_seconds,
+        actor="tester",
+        raw_body=b"{}",
+    )
+    other = receipt.observation_id
+    auth = authorized_due((web, observer, other, policy, catalog))
+    source = _SlowComparisons(
+        BeforeTelemetry(context), Telemetry(observer.release_context(auth.session_id))
+    )
+    loop = ObserverLoop(store=observer, source=source, batch=5, poll_seconds=0.2)
+    runner = threading.Thread(target=loop.run, daemon=True)
+    runner.start()
+    try:
+        deadline = time.monotonic() + 6
+        while time.monotonic() < deadline:
+            if web.get_release(other).used_sample_count >= 3:
+                break
+            time.sleep(0.1)
+        used = web.get_release(other).used_sample_count
+        # sampling kept its 1 s cadence while the comparison (49 x 0.5 s)
+        # was still collecting on its own thread
+        assert used >= 3 or web.get_release(other).status == "healthy", used
+        assert _comparisons(observer, oid) == []
+        assert source.comparison.calls
+    finally:
+        source.released.set()
+        loop.stop.set()
+        runner.join(30)
+    assert not runner.is_alive()
+    assert len(_comparisons(observer, oid)) == 1
+    if web.get_release(other).status == "observing":
+        web.control_release(
+            other,
+            action="cancel",
+            actor="cleanup",
+            expected_control_generation=web.get_release(other).control_generation,
+            idempotency_key="cleanup",
+            calibrated_policy_revision=None,
+        )
 
 
 @pytest.fixture

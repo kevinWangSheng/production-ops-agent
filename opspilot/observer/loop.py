@@ -67,14 +67,17 @@ class ObserverLoop:
     # how long each claimed job is leased; the sampler keeps every sample
     # inside it (``sampler.SUBMIT_MARGIN_SECONDS``)
     lease_seconds: int = OBSERVER_LEASE_SECONDS
-    # before/after comparisons per pass (F11 PR-4a); one keeps a pass short,
-    # since a comparison may take up to three bounded attempts
+    # before/after comparisons claimed per comparison pass (F11 PR-4a)
     comparison_batch: int = 1
 
-    def poll_once(self) -> list[tuple[UUID, SampleReceipt | ReleaseSampleReceipt]]:
-        """One pass: sweep deadlines, claim due jobs, sample each. Storage
-        refusals and crashed samples are logged by code/type and skipped; the
-        lease lapses and the next claim retries the same logical sequence."""
+    def poll_once(
+        self, *, compare: bool = True
+    ) -> list[tuple[UUID, SampleReceipt | ReleaseSampleReceipt]]:
+        """One pass: sweep deadlines, claim due jobs, sample each, then (with
+        ``compare``) the comparison pass. ``run`` passes ``compare=False`` and
+        compares on its own thread. Storage refusals and crashed samples are
+        logged by code/type and skipped; the lease lapses and the next claim
+        retries the same logical sequence."""
         try:
             for session_id in self.store.sweep_expired_sessions(limit=self.batch):
                 _log.info("swept session=%s", session_id)
@@ -129,26 +132,30 @@ class ObserverLoop:
                 )
                 continue
             results.append((lease.session_id, receipt))
-        self.compare_once()
+        if compare:
+            self.compare_once()
         return results
 
     def compare_once(self) -> int:
-        """Collect the before/after comparison of pending anomaly endings.
+        """Claim and collect before/after comparisons of anomaly endings.
 
-        Runs after the samples so a comparison never delays a due sample of
-        this pass. Refusals and crashes are logged and skipped; the ending
-        stays pending until a record is stored."""
-        pending = getattr(self.store, "pending_comparisons", None)
-        if pending is None or self.stop.is_set():
-            return 0
-        try:
-            leases = pending(limit=self.comparison_batch)
-        except PersistenceError as exc:
-            _log.warning("comparison claim refused code=%s", exc)
+        Each claim is a durable attempt row (r3), so restarts and other
+        Observers cannot multiply the queries of one ending. Refusals and
+        crashes are logged and skipped; the ending stays pending until a
+        record is stored."""
+        claim = getattr(self.store, "claim_comparison", None)
+        if claim is None:
             return 0
         done = 0
-        for lease in leases:
+        for _ in range(self.comparison_batch):
             if self.stop.is_set():
+                break
+            try:
+                lease = claim(self.owner)
+            except PersistenceError as exc:
+                _log.warning("comparison claim refused code=%s", exc)
+                break
+            if lease is None:
                 break
             try:
                 taken = take_release_comparison(
@@ -170,6 +177,14 @@ class ObserverLoop:
                 continue
             done += taken.receipt is not None
         return done
+
+    def _compare_until_stopped(self) -> None:
+        while not self.stop.is_set():
+            try:
+                self.compare_once()
+            except Exception as exc:  # noqa: BLE001 - keep the thread alive
+                _log.error("comparison pass crashed error=%s", type(exc).__name__)
+            self.stop.wait(self.poll_seconds)
 
     def sample(
         self, lease: SampleLease | ReleaseSampleLease
@@ -243,9 +258,22 @@ class ObserverLoop:
         return profile, None, None
 
     def run(self) -> int:
+        """Sample on this thread; compare on another (r3 P1): a comparison
+        may take up to three bounded attempts against a slow Prometheus, and
+        no due sample may wait for it."""
+        comparer = threading.Thread(
+            target=self._compare_until_stopped,
+            name="opspilot-observer-comparisons",
+            daemon=True,
+        )
+        comparer.start()
         polls = 0
-        while not self.stop.is_set():
-            self.poll_once()
-            polls += 1
-            self.stop.wait(self.poll_seconds)
+        try:
+            while not self.stop.is_set():
+                self.poll_once(compare=False)
+                polls += 1
+                self.stop.wait(self.poll_seconds)
+        finally:
+            self.stop.set()
+            comparer.join()
         return polls

@@ -38,7 +38,7 @@ HEAD = "0019_release_comparisons"
 # conclusions, disputes, proposals, knowledge entries/revisions/revocations,
 # requests, audit) + 2 of 0009 (generation jobs, attempts) + 2 of 0010 (alert
 # identities, deliveries) + 1 of 0013 (self-heal authorizations).
-TABLES_AT_HEAD = 41
+TABLES_AT_HEAD = 42
 
 
 @pytest.fixture

@@ -91,6 +91,9 @@ COMPARISON_MAX_QUERIES = 49
 # Wall-clock budget of one attempt; queries past it are filed as timeouts
 # without being sent, so a hung source cannot hold the Observer loop.
 COMPARISON_ATTEMPT_SECONDS = 120
+# The claim lease stamped by the 0019 attempt guard (``ATTEMPT_LEASE_SECONDS``):
+# another Observer may take the next attempt only after it lapses.
+COMPARISON_LEASE_SECONDS = 150
 
 ComparisonScope = Literal["before_service", "before_old", "after_service", "after_new"]
 SCOPES: tuple[ComparisonScope, ...] = (
@@ -115,6 +118,8 @@ _QUALITY_PREFIXES = (
     "HEALTH_PROFILE_INVALID",
 )
 EVIDENCE_INCONSISTENT = "QUERY_EVIDENCE_INCONSISTENT"
+# The after scopes did not come from a sufficient degraded anomaly sample.
+AFTER_INSUFFICIENT = "AFTER_EVIDENCE_INSUFFICIENT"
 
 
 class ComparisonSignal(DTO):
@@ -150,7 +155,12 @@ class ReleaseComparison(DTO):
 
 
 class ComparisonLease(DTO):
-    """A pending comparison: one anomaly ending without a comparison record."""
+    """A pending comparison: one anomaly ending without a comparison record.
+
+    ``pending_comparisons`` lists them without claiming (``attempt`` None);
+    ``claim_comparison`` returns one with its durable attempt row, or with
+    ``exhausted`` when all three attempts were spent without a record and
+    only the ``unavailable`` filing is left."""
 
     comparison_id: UUID
     observation_id: UUID
@@ -162,6 +172,10 @@ class ComparisonLease(DTO):
     window_after: QueryWindow
     global_suspension_generation: Count
     target_suspension_generation: Count
+    attempt: Annotated[int, Field(ge=1, le=COMPARISON_MAX_ATTEMPTS)] | None = None
+    owner: UUID | None = None
+    lease_until: UtcDatetime | None = None
+    exhausted: bool = False
 
     @model_validator(mode="after")
     def derived_identity(self) -> ComparisonLease:
@@ -442,6 +456,17 @@ def compare_evidence(
                 )
             else:
                 signals.append(_signal(scope, name, found, keys, ()))
+    # P2 (r3): complete needs the after scopes too, from a sufficient
+    # degraded anomaly sample with every after signal valued.
+    afters = [s for s in signals if s.scope.startswith("after")]
+    if not (
+        anomaly.evidence_sufficient
+        and anomaly.verdict == "degraded"
+        and anomaly.instances
+        and afters
+        and all(s.value is not None for s in afters)
+    ):
+        ordered = sorted({*ordered, AFTER_INSUFFICIENT})
     befores = [s for s in signals if s.scope.startswith("before")]
     if not any(s.value is not None for s in befores):
         status: Literal["complete", "partial", "unavailable"] = "unavailable"
@@ -580,12 +605,14 @@ _QUERY_COLUMNS = "comparison_id,query_key,query,source,evaluated_at,sent_at,stat
 
 class _ReleaseComparisonOps(_ReleaseSampleOps):
     def pending_comparisons(self, *, limit: int = 1) -> tuple[ComparisonLease, ...]:
-        """Anomaly endings without a comparison, outside suspended scopes."""
+        """Anomaly endings without a comparison, outside suspended scopes and
+        not held by a live attempt claim (an attempt in flight is not
+        waiting; a crashed one reappears when its lease lapses)."""
         if type(limit) is not int or limit <= 0:
             raise PersistenceError("INVALID_INPUT")
         with self._release_transaction(snapshot=True) as conn:
             rows = conn.execute(
-                "SELECT e.ending_id,e.session_id,e.release_observation_id AS observation_id,e.sample_id,e.anomaly_key,r.released_at,m.window_start,m.window_end,g.global_generation,t.generation AS target_generation FROM opspilot_observation_endings e JOIN opspilot_release_observations r ON r.observation_id=e.release_observation_id JOIN opspilot_observation_samples m ON m.sample_id=e.sample_id JOIN opspilot_scope_controls g ON g.scope_id=1 JOIN opspilot_target_suspensions t ON t.target_id=r.target_id WHERE r.status='anomalous' AND e.anomaly_key IS NOT NULL AND NOT g.global_suspended AND NOT t.suspended AND NOT EXISTS(SELECT 1 FROM opspilot_release_comparisons c WHERE c.ending_id=e.ending_id) ORDER BY e.recorded_at,e.ending_id LIMIT %s",
+                "SELECT e.ending_id,e.session_id,e.release_observation_id AS observation_id,e.sample_id,e.anomaly_key,r.released_at,m.window_start,m.window_end,g.global_generation,t.generation AS target_generation FROM opspilot_observation_endings e JOIN opspilot_release_observations r ON r.observation_id=e.release_observation_id JOIN opspilot_observation_samples m ON m.sample_id=e.sample_id JOIN opspilot_scope_controls g ON g.scope_id=1 JOIN opspilot_target_suspensions t ON t.target_id=r.target_id WHERE r.status='anomalous' AND e.anomaly_key IS NOT NULL AND NOT g.global_suspended AND NOT t.suspended AND NOT EXISTS(SELECT 1 FROM opspilot_release_comparisons c WHERE c.ending_id=e.ending_id) AND NOT EXISTS(SELECT 1 FROM opspilot_release_comparison_attempts a WHERE a.ending_id=e.ending_id AND a.lease_until>clock_timestamp()) ORDER BY e.recorded_at,e.ending_id LIMIT %s",
                 (limit,),
             ).fetchall()
         return tuple(
@@ -602,6 +629,87 @@ class _ReleaseComparisonOps(_ReleaseSampleOps):
                 target_suspension_generation=r["target_generation"],
             )
             for r in utc_values(rows)
+        )
+
+    def claim_comparison(self, owner: UUID) -> ComparisonLease | None:
+        """Claim the next attempt of the oldest claimable pending ending.
+
+        The attempt row is the claim (r3): at most three per ending, the next
+        one only after every earlier attempt is this owner's or past its
+        lease, enforced by the 0019 guard and primary key. Three spent
+        attempts without a record return an ``exhausted`` lease: file
+        ``unavailable`` without querying. A lost race with another Observer
+        surfaces as ``INTEGRITY_REFUSED``; the next tick tries again.
+        """
+        if not isinstance(owner, UUID):
+            raise PersistenceError("INVALID_INPUT")
+        with self._release_transaction() as conn:
+            rows = conn.execute(
+                "SELECT e.ending_id,e.session_id,e.release_observation_id AS observation_id,e.sample_id,e.anomaly_key,r.released_at,m.window_start,m.window_end,g.global_generation,t.generation AS target_generation,(SELECT count(*) FROM opspilot_release_comparison_attempts a WHERE a.ending_id=e.ending_id) AS attempts FROM opspilot_observation_endings e JOIN opspilot_release_observations r ON r.observation_id=e.release_observation_id JOIN opspilot_observation_samples m ON m.sample_id=e.sample_id JOIN opspilot_scope_controls g ON g.scope_id=1 JOIN opspilot_target_suspensions t ON t.target_id=r.target_id WHERE r.status='anomalous' AND e.anomaly_key IS NOT NULL AND NOT g.global_suspended AND NOT t.suspended AND NOT EXISTS(SELECT 1 FROM opspilot_release_comparisons c WHERE c.ending_id=e.ending_id) AND NOT EXISTS(SELECT 1 FROM opspilot_release_comparison_attempts a WHERE a.ending_id=e.ending_id AND a.owner<>%s AND a.lease_until>clock_timestamp()) ORDER BY e.recorded_at,e.ending_id LIMIT 1",
+                (owner,),
+            ).fetchall()
+            if not rows:
+                return None
+            r = utc_values(rows[0])
+            cid = comparison_id_for(r["observation_id"], r["ending_id"])
+            attempts = int(r["attempts"])
+            exhausted = attempts >= COMPARISON_MAX_ATTEMPTS
+            if exhausted:
+                attempt = COMPARISON_MAX_ATTEMPTS
+                until = None
+            else:
+                attempt = attempts + 1
+                row = conn.execute(
+                    "INSERT INTO opspilot_release_comparison_attempts(comparison_id,attempt,observation_id,ending_id,owner) VALUES(%s,%s,%s,%s,%s) RETURNING lease_until",
+                    (cid, attempt, r["observation_id"], r["ending_id"], owner),
+                ).fetchone()
+                assert row is not None
+                until = row["lease_until"]
+            return ComparisonLease(
+                comparison_id=cid,
+                observation_id=r["observation_id"],
+                ending_id=r["ending_id"],
+                session_id=r["session_id"],
+                sample_id=r["sample_id"],
+                anomaly_key=r["anomaly_key"],
+                released_at=r["released_at"],
+                window_after=QueryWindow(start=r["window_start"], end=r["window_end"]),
+                global_suspension_generation=r["global_generation"],
+                target_suspension_generation=r["target_generation"],
+                attempt=attempt,
+                owner=owner,
+                lease_until=until,
+                exhausted=exhausted,
+            )
+
+    def claim_next_attempt(self, lease: ComparisonLease) -> ComparisonLease:
+        """The claimer's own next attempt after a transport failure; the guard
+        lets only the owner of the earlier attempts take it before they lapse."""
+        if (
+            not isinstance(lease, ComparisonLease)
+            or lease.attempt is None
+            or lease.owner is None
+            or lease.exhausted
+            or lease.attempt >= COMPARISON_MAX_ATTEMPTS
+        ):
+            raise PersistenceError("INVALID_INPUT")
+        with self._release_transaction() as conn:
+            row = conn.execute(
+                "INSERT INTO opspilot_release_comparison_attempts(comparison_id,attempt,observation_id,ending_id,owner) VALUES(%s,%s,%s,%s,%s) RETURNING lease_until",
+                (
+                    lease.comparison_id,
+                    lease.attempt + 1,
+                    lease.observation_id,
+                    lease.ending_id,
+                    lease.owner,
+                ),
+            ).fetchone()
+        assert row is not None
+        return lease.model_copy(
+            update={
+                "attempt": lease.attempt + 1,
+                "lease_until": utc_values(row["lease_until"]),
+            }
         )
 
     def comparison_scope_current(self, lease: ComparisonLease) -> bool:
@@ -639,12 +747,26 @@ class _ReleaseComparisonOps(_ReleaseSampleOps):
             evidence = ReleaseComparisonEvidence.model_validate(evidence.model_dump())
         except ValueError as exc:
             raise PersistenceError("INVALID_INPUT") from exc
-        if evidence.comparison_id != lease.comparison_id:
+        if (
+            evidence.comparison_id != lease.comparison_id
+            or lease.attempt is None
+            or lease.owner is None
+            or evidence.attempts != lease.attempt
+            or (lease.exhausted and evidence.queries)
+        ):
             raise PersistenceError("INVALID_INPUT")
         with self._release_transaction() as conn:
             stored = self._stored_comparison(conn, lease.comparison_id)
             if stored is not None:
                 return stored
+            claimed = conn.execute(
+                "SELECT owner FROM opspilot_release_comparison_attempts WHERE comparison_id=%s AND attempt=%s",
+                (lease.comparison_id, lease.attempt),
+            ).fetchone()
+            if claimed is None or (
+                not lease.exhausted and claimed["owner"] != lease.owner
+            ):
+                raise PersistenceError("INVALID_INPUT")
             ending = conn.execute(
                 "SELECT ending_id,session_id,release_observation_id,sample_id,anomaly_key FROM opspilot_observation_endings WHERE ending_id=%s",
                 (lease.ending_id,),

@@ -1418,13 +1418,14 @@ def test_0014_downgrades_only_when_empty_and_keeps_data_otherwise() -> None:
                     if table
                     not in ("opspilot_release_audit", "opspilot_release_query_results")
                 }
-                # 0019 adds the two comparison relations; below it they are gone.
+                # 0019 adds the three comparison relations; below it they are gone.
                 expected = {
                     table: held
                     for table, held in expected.items()
                     if table
                     not in (
                         "opspilot_release_comparisons",
+                        "opspilot_release_comparison_attempts",
                         "opspilot_release_comparison_queries",
                     )
                 }
