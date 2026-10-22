@@ -595,7 +595,7 @@ _DIAGNOSIS_TYPES = {
 
 @pytest.mark.parametrize("provider", PROVIDERS)
 def test_request_enforces_json_output_per_provider(configs, provider):
-    """judge-adapters-5: OpenAI strict json_schema, Z.ai json_object, DeepSeek none."""
+    """judge-adapters-5: OpenAI strict json_schema, DeepSeek none."""
     wire = Wire(sse_body(answer_chunks(provider)))
     assert_ok(run(configs, wire, provider))
     (request,) = wire.requests
@@ -603,12 +603,11 @@ def test_request_enforces_json_output_per_provider(configs, provider):
     if provider == "deepseek":
         assert "response_format" not in body
         return
-    if provider == "zai":
-        assert body["response_format"] == {"type": "json_object"}
-        return
+    # P7 r3 D20: Z.ai also sends the strict json_schema (was json_object).
     fmt = body["response_format"]
     assert fmt["type"] == "json_schema"
-    assert fmt["json_schema"]["name"] == "opspilot_judge_1"
+    if provider == "openai":
+        assert fmt["json_schema"]["name"] == "opspilot_judge_1"
     assert fmt["json_schema"]["strict"] is True
     top = fmt["json_schema"]["schema"]
     assert top["type"] == "object" and top["additionalProperties"] is False
@@ -632,9 +631,12 @@ def test_request_enforces_json_output_per_provider(configs, provider):
 
 
 def test_prompt_names_exact_output_keys_and_keeps_citation_convention():
-    convention = PROMPT[PROMPT.index("Citation convention:") :]
-    assert convention.startswith("Citation convention: quote is the complete text")
-    assert convention.endswith("within a field, by first mention.")
+    # P7 r3 D17: the convention now asks for a short verbatim phrase (at most
+    # 200 characters) naming the cause, no longer the complete field text.
+    assert "complete text of the field" not in PROMPT
+    assert "never quote a fragment" not in PROMPT
+    assert "full-field quote" not in PROMPT
+    assert "verbatim" in PROMPT and "200" in PROMPT
     for key in ("schema", "diagnoses", "verdict", "opspilot-judge-1"):
         assert f'"{key}"' in PROMPT
     for field in dataclasses.fields(JudgedDiagnosis):
@@ -670,8 +672,11 @@ def test_user_message_appends_location_labelled_report_fields(configs, provider)
     block = content[end:]
     assert block.startswith(REPORT_FIELDS_HEADER)
     assert block.endswith(REPORT_FIELDS_FOOTER)
-    fields = json.loads(block[len(REPORT_FIELDS_HEADER) : -len(REPORT_FIELDS_FOOTER)])
-    assert list(fields) == [
+    # P7 r3 D20: the block is plain text, not json.dumps output; only the
+    # labels, their report order, the verbatim texts and the claim evidence
+    # IDs are contract.
+    inner = block[len(REPORT_FIELDS_HEADER) : -len(REPORT_FIELDS_FOOTER)]
+    locations = [
         "summary",
         "claims[0]",
         "claims[1]",
@@ -679,20 +684,22 @@ def test_user_message_appends_location_labelled_report_fields(configs, provider)
         "gaps[1]",
         "next_steps[0]",
     ]
+    positions = [inner.index(location) for location in locations]
+    assert positions == sorted(positions)
     parsed = parse_report(payload["report_raw"], finish_reason="stop")[0]
-    for location, value in fields.items():
+    for index, location in enumerate(locations):
         text, claim_index = _location_text(parsed, location)
-        if claim_index is None:
-            assert value == text
-        else:
-            assert value == {
-                "text": text,
-                "evidence_ids": report["claims"][claim_index]["evidence_ids"],
-            }
-    # Quotes are single-escaped JSON in the block, not the doubly escaped
-    # report_raw string form.
+        end_of_field = positions[index + 1] if index + 1 < len(positions) else None
+        section = inner[positions[index] : end_of_field]
+        assert text in section, location
+        if claim_index is not None:
+            for evidence_id in report["claims"][claim_index]["evidence_ids"]:
+                assert evidence_id in section, location
+    # Report quotes reach the model unescaped; report_raw keeps its JSON form.
     assert '\\\\\\"EmptyCart\\\\\\"' in content[:end]
-    assert '"summary": "cart \\"EmptyCart\\" failed' in block
+    assert 'cart "EmptyCart" failed and caused checkout failures.' in inner
+    assert 'Is "redis" involved?' in inner
+    assert '\\"' not in inner
     assert "\\\\" not in block
 
 
@@ -707,10 +714,10 @@ def test_report_fields_block_stays_under_request_limit(configs):
         assert len(body) < configs[provider].max_request_bytes // 8
 
 
-def test_adapter_version_is_judge_adapters_6(configs):
-    """judge-adapters-6 (diagnosis identifier rule, PROMPT note); older refused."""
+def test_adapter_version_is_judge_adapters_7(configs):
+    """P7 r3 D20: judge-adapters-7; every older version is refused."""
     for config in configs.values():
-        assert config.adapter_version == "judge-adapters-6"
+        assert config.adapter_version == "judge-adapters-7"  # P7 r3 D20
         check_config(config)
     for old in (
         "judge-adapters-1",
@@ -718,6 +725,7 @@ def test_adapter_version_is_judge_adapters_6(configs):
         "judge-adapters-3",
         "judge-adapters-4",
         "judge-adapters-5",
+        "judge-adapters-6",  # P7 r3 D20
     ):
         stale = replace(configs["zai"], adapter_version=old)
         with pytest.raises(JudgeError, match="CONFIG_INVALID"):

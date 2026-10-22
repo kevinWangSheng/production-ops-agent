@@ -19,6 +19,7 @@ from eval_p7_support import (
     put,
     sha,
     snapshot,
+    tuning_debug,
 )
 
 from opspilot.evaluation import judge
@@ -1234,7 +1235,8 @@ def test_debug_provider_values_must_match_mapping_keys(harness, first, second):
 @pytest.mark.parametrize(
     "damage,reason",
     [
-        ("prompt", "JUDGE_PROMPT_CHANGED"),
+        # P7 r3 D21: an older exported convention no longer blocks (tuning)
+        # debug; see test_eval_p7_r3.py. The raw hash bindings still refuse.
         ("items", "PACKET_STALE"),
         ("packet", "PACKET_STALE"),
     ],
@@ -1538,8 +1540,8 @@ def original_records_by_family(h):
     }
 
 
-def test_formal_validation_exposure_blocks_other_workspace_debug(harness):
-    """§8.2b: a formal validation family cannot become debug in another workspace."""
+def test_formal_validation_exposure_allows_other_workspace_tuning_debug(harness):
+    """§8.2b as amended by P7 r3 D21: formal validation families may be tuned."""
     h = harness.ready()
     originals = original_records_by_family(h)
     validation_families = {i.source_family for i in h.items if i.split == "validation"}
@@ -1559,23 +1561,19 @@ def test_formal_validation_exposure_blocks_other_workspace_debug(harness):
     assert {
         i.source_family for i in h.items if i.split == "debug"
     } == validation_families
-    h.costs("canary-debug")
     h.calls.clear()
     h.balance_calls.clear()
-    before = snapshot(h.root)
     registry = (h.private / "exposure.jsonl").read_bytes()
-    h.cli(
-        "debug",
-        "--session",
-        "canary-debug",
-        "--judge-env",
-        h.env,
-        code=3,
-        reason="VALIDATION_EXPOSED",
-    )
-    assert snapshot(h.root) == before
-    assert (h.private / "exposure.jsonl").read_bytes() == registry
-    assert not h.calls and not h.balance_calls
+    # P7 r3 D21: was refused with VALIDATION_EXPOSED; reuse for tuning is allowed
+    # and is itself registered as debug use.
+    h.costs("canary-debug")
+    tuning_debug(h, "canary-debug")
+    assert len(h.calls) == 12 * 3
+    after = (h.private / "exposure.jsonl").read_bytes()
+    assert after.startswith(registry)
+    (row,) = [json.loads(line) for line in after[len(registry) :].splitlines()]
+    assert row["kind"] == "debug" and row["workspace"] == h.workspace
+    assert set(row["debug_families"]) == validation_families
 
 
 def test_other_workspace_debug_exposure_blocks_formal_validation(harness):
