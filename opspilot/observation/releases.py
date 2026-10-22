@@ -6,7 +6,7 @@ import hashlib
 import json
 from collections.abc import Mapping
 from datetime import datetime, timedelta, timezone
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, cast
 from uuid import UUID, uuid4
 
 import psycopg
@@ -182,7 +182,8 @@ class ReleaseStore(_ReleaseCommandOps):
         self,
         *,
         event: ReleaseEvent,
-        target_id: UUID,
+        target_id: UUID | None = None,
+        resource_uid: str | None = None,
         identity: Mapping[str, str] | None,
         health_profile_revision: str,
         health_profile: str,
@@ -190,11 +191,16 @@ class ReleaseStore(_ReleaseCommandOps):
         actor: str,
         raw_body: bytes,
     ) -> ReleaseReceipt:
+        """Name the target by its registered ``target_id`` or by
+        ``resource_uid``; an unregistered uid is registered inside this
+        transaction and only if the release is created, so a refused or
+        failed delivery leaves no target row behind (PR-3 behaviour 10)."""
         with self.transaction() as conn:
             return self.record_release_in(
                 conn,
                 event=event,
                 target_id=target_id,
+                resource_uid=resource_uid,
                 identity=identity,
                 health_profile_revision=health_profile_revision,
                 health_profile=health_profile,
@@ -208,7 +214,8 @@ class ReleaseStore(_ReleaseCommandOps):
         conn: Connection,
         *,
         event: ReleaseEvent,
-        target_id: UUID,
+        target_id: UUID | None = None,
+        resource_uid: str | None = None,
         identity: Mapping[str, str] | None,
         health_profile_revision: str,
         health_profile: str,
@@ -218,7 +225,12 @@ class ReleaseStore(_ReleaseCommandOps):
     ) -> ReleaseReceipt:
         if (
             not isinstance(event, ReleaseEvent)
-            or not isinstance(target_id, UUID)
+            or (target_id is None) == (resource_uid is None)
+            or (target_id is not None and not isinstance(target_id, UUID))
+            or (
+                resource_uid is not None
+                and (not isinstance(resource_uid, str) or not resource_uid)
+            )
             or not isinstance(actor, str)
             or not actor
             or not isinstance(raw_body, bytes)
@@ -231,6 +243,7 @@ class ReleaseStore(_ReleaseCommandOps):
                 conn,
                 event,
                 target_id,
+                resource_uid,
                 identity,
                 health_profile_revision,
                 health_profile,
@@ -246,7 +259,8 @@ class ReleaseStore(_ReleaseCommandOps):
         self,
         conn: Connection,
         event: ReleaseEvent,
-        target_id: UUID,
+        target_id: UUID | None,
+        resource_uid: str | None,
         identity: Mapping[str, str] | None,
         health_profile_revision: str,
         health_profile: str,
@@ -256,6 +270,19 @@ class ReleaseStore(_ReleaseCommandOps):
     ) -> ReleaseReceipt:
         now = self._db_now(conn)
         row = self._find_in(conn, event.source, event.source_release_id)
+        unregistered = None
+        if target_id is None:
+            known = conn.execute(
+                "SELECT target_id FROM opspilot_targets WHERE resource_uid=%s",
+                (resource_uid,),
+            ).fetchone()
+            if known is None:
+                # A tentative identity: registered below, inside the savepoint
+                # that a refusal rolls back. It can only differ from a stored
+                # release's target, so a replay never needs it registered.
+                target_id, unregistered = uuid4(), resource_uid
+            else:
+                target_id = known["target_id"]
         # The registry is authoritative; an omitted configuration identity is
         # the same target as its equivalent dictionary, not a semantic change.
         target_snapshot = conn.execute(
@@ -274,6 +301,10 @@ class ReleaseStore(_ReleaseCommandOps):
                     if event.released_at > now:
                         reason = "RELEASE_TIME_IN_FUTURE"
                     else:
+                        if unregistered is not None:
+                            target_id = self._register_target_in(
+                                conn, target_id, unregistered
+                            )
                         self._complete_identity(conn, target_id, identity)
                         target = self._registered_target(conn, target_id, None)
                         workload = self._require_row(
@@ -488,6 +519,33 @@ class ReleaseStore(_ReleaseCommandOps):
             status=None if row is None else row["status"],
             reason=reason,
         )
+
+    def _register_target_in(
+        self, conn: Connection, target_id: UUID, resource_uid: str
+    ) -> UUID:
+        """The rows ``register_target`` writes, inside the release's own
+        transaction (as alert intake does); a concurrent first registration
+        of the same uid is waited for and reused instead of failing."""
+        inserted = conn.execute(
+            "INSERT INTO opspilot_targets(target_id,resource_uid) VALUES(%s,%s) "
+            "ON CONFLICT (resource_uid) DO NOTHING RETURNING target_id",
+            (target_id, resource_uid),
+        ).fetchone()
+        if inserted is None:
+            return cast(
+                UUID,
+                self._require_row(
+                    conn.execute(
+                        "SELECT target_id FROM opspilot_targets WHERE resource_uid=%s",
+                        (resource_uid,),
+                    )
+                )["target_id"],
+            )
+        conn.execute(
+            "INSERT INTO opspilot_target_suspensions(target_id) VALUES(%s)",
+            (target_id,),
+        )
+        return target_id
 
     @staticmethod
     def _find_in(

@@ -1,0 +1,239 @@
+{
+ "artifact_sha256": {
+  "authorize.json": "55b06f2d166f4e3804a2e40309cef39edbd681f56fc9ce9ccbc3f535c6fa098d",
+  "negatives/alertmanager-actor.json": "f07846657d6b12be199c9c9729be0a17642755e1ae69d9712ff257e12ed532c1",
+  "negatives/target-unresolved.json": "82d394c1c329af5101fc3f02759d84404db7bee8008c5832a1c6aeabf090fb26",
+  "release.json": "fd06dfa6f905aa704eb16f1733487e0161fab685e6c24ce5af17ff653e1ce455",
+  "timeline.jsonl": "9b6f5886d0757cb6cc189b1a680956944c0222a37b6cd296197c85ede3ddf407",
+  "u5/authorize.py": "0da08fa533412ea5fef61db795b97eafe659d9b362db7072bb85d1ed8ae66570",
+  "u5/db-after-authorize.txt": "17e2711df81faac5ce1abf4d842f9bd499941f63c36a32e25a44a675bd39dbff",
+  "u5/db-before-authorize.txt": "c107f08d68ca07abeb3bb77ab6144e3290c59e4f13d3fc28ba3d9c49b6b1b85d",
+  "u5/k8s_diff.py": "6d6280ffd9c019f5eccbb5c15877fe8734323e1c920d064bd37385dca0912837",
+  "u5/k8s_snap.py": "4e784019b3958f3e8c06edeb151cf96b1646dfbb43ece5000a9c085cb91b06b2",
+  "u5/negatives.py": "74dddc9159da83fd0a4f43e53f0a89332909ab0f1acb7dbf008548c0a13e6871",
+  "u5/s0-pre-release.json": "6170dc7fc8a42c607effe0e69340d46252f96be8e3ca1c7abdbc9f227ce410e8",
+  "u5/s1-baseline-after-harness.json": "8381c7b3f5c6cd0bedc3c4a44e70c7d31ba7d4c1a4b62f2ef26ed0ac43ae46bd",
+  "u5/s2-after-product-path.json": "0aaaa19639f17fe63ff73462e10983b6588d2865fc6a2dac655629844bd5f6d9",
+  "webhook.json": "d3b87a12d762e1d853813fc9f6ad6746af9b20b554393a22458aa9ffe5591978"
+ },
+ "assertions": {
+  "A1_real_http_registration": {
+   "db": {
+    "events": [
+     {
+      "actor": "release-deployer",
+      "outcome": "created",
+      "raw_sha256": "8cf5f51670e8c2e313294b2b834b1412d1d34ab6eb0876f8269ad14ea8af379b",
+      "received_at": "2026-10-22T20:49:31.976792Z",
+      "semantic_sha256": "22c7fcf9a29052a034df785c10d51c71691d37b97fc7b4ab681ba86815413cfa",
+      "sequence": 1
+     }
+    ],
+    "observation": {
+     "control_generation": 0,
+     "deadline_at": "2026-10-22T21:49:02.035831Z",
+     "deadline_seconds": 3600,
+     "health_profile_revision": "otel-demo-checkout@b72bbe2e30be",
+     "min_tracking_seconds": 1500,
+     "observation_id": "9d684d46-b4f3-4b65-aa5e-0d9f6cd18ade",
+     "released_at": "2026-10-22T20:49:02.035831Z",
+     "status": "pending"
+    },
+    "observations": 1
+   },
+   "delivery": {
+    "attempts": 1,
+    "request_sha256": "8cf5f51670e8c2e313294b2b834b1412d1d34ab6eb0876f8269ad14ea8af379b",
+    "response": {
+     "observation_id": "9d684d46-b4f3-4b65-aa5e-0d9f6cd18ade",
+     "outcome": "created",
+     "reason": null,
+     "status": "pending"
+    },
+    "response_sha256": "a10df7f5f9ff445dc2dcf9862355a9478da93212fbbbfd77cd4cca976af8d17c",
+    "status": 201
+   },
+   "verdict": "PASS"
+  },
+  "A2_replay_idempotent": {
+   "db": {
+    "events": [
+     {
+      "outcome": "replayed",
+      "raw_sha256": "8cf5f51670e8c2e313294b2b834b1412d1d34ab6eb0876f8269ad14ea8af379b",
+      "received_at": "2026-10-22T20:49:35.643684Z",
+      "semantic_sha256": "22c7fcf9a29052a034df785c10d51c71691d37b97fc7b4ab681ba86815413cfa",
+      "sequence": 2
+     }
+    ],
+    "observation_unchanged": true,
+    "observations": 1
+   },
+   "delivery": {
+    "attempts": 1,
+    "request_sha256": "8cf5f51670e8c2e313294b2b834b1412d1d34ab6eb0876f8269ad14ea8af379b",
+    "response": {
+     "observation_id": "9d684d46-b4f3-4b65-aa5e-0d9f6cd18ade",
+     "outcome": "replayed",
+     "reason": null,
+     "status": "pending"
+    },
+    "response_sha256": "a09e781bfd8b54df0c573ed10953869959d4ff70dcf255f34573ff49fef63af2",
+    "status": 200
+   },
+   "verdict": "PASS"
+  },
+  "A3_authorize_uncalibrated": {
+   "at": "2026-10-22T20:50:18.544828+00:00",
+   "audit_row": {
+    "idempotency_label": "f11-pr3-live-authorize-1",
+    "outcome": "rejected",
+    "reason": "RELEASE_POLICY_UNCALIBRATED",
+    "status_after": "pending",
+    "status_before": "pending"
+   },
+   "path": "ReleaseStore.authorize_release as web login role (no HTTP authorize route exists on this branch)",
+   "receipt": {
+    "action": "authorize",
+    "audit_id": "5267b4ff-cdbc-456a-96b0-898729d79896",
+    "control_generation": 0,
+    "deadline_at": "2026-10-22T21:49:02.035831Z",
+    "ending_id": null,
+    "observation_generation": 0,
+    "observation_id": "9d684d46-b4f3-4b65-aa5e-0d9f6cd18ade",
+    "outcome": "rejected",
+    "paused": false,
+    "reason": "RELEASE_POLICY_UNCALIBRATED",
+    "replayed": false,
+    "sequence": 1,
+    "session_id": null,
+    "status": "pending",
+    "used_sample_count": 0
+   },
+   "sessions_after": 0,
+   "verdict": "PASS"
+  },
+  "A4_negative": {
+   "cases": [
+    {
+     "at": "2026-10-22T20:49:46.047840+00:00",
+     "case": "alertmanager-actor",
+     "request_sha256": "8cf5f51670e8c2e313294b2b834b1412d1d34ab6eb0876f8269ad14ea8af379b",
+     "response": {
+      "code": "RELEASE_ACTOR_REQUIRED"
+     },
+     "response_sha256": "6769f22b74a8ce0ceee4b513c5faffe4911e51f220c06b6c5e72cb2d2fafdc46",
+     "status": 403
+    },
+    {
+     "at": "2026-10-22T20:49:46.051742+00:00",
+     "case": "target-unresolved",
+     "request_sha256": "a9b6ca331ba7a0a6635618e5aeb9e3581a2581f70f9add2902115b57d82d0699",
+     "response": {
+      "code": "TARGET_UNRESOLVED"
+     },
+     "response_sha256": "c653cc15d2eb9837b05b72337b66a17ea62b73c685a42327cc12aed9802824f0",
+     "status": 422
+    }
+   ],
+   "db_effect": "no observation, no release_events row for either case (events stayed 2)",
+   "verdict": "PASS"
+  },
+  "A5_zero_release_gate_writes": {
+   "added": [],
+   "baseline": "s1 taken after harness release+watch+rollout status; s2 after webhook x2, negatives, authorize",
+   "changed": {},
+   "harness_actor_evidence": {
+    "deployment": "otel-demo/checkout",
+    "generation": "16->17",
+    "managedField": [
+     "kubectl-patch",
+     "Update",
+     "2026-10-22T20:49:02Z"
+    ],
+    "matches_released_at": true,
+    "replicaset": "checkout-645dc77999 created"
+   },
+   "limits": [
+    "kube-apiserver audit log not enabled in kind; actor evidence = managedFields manager/time + generation",
+    "s0 (pre-release) snapshot taken without managedFields; s1/s2 include them"
+   ],
+   "objects_compared": 308,
+   "removed": [],
+   "verdict": "PASS (kind cluster scope); CI/GitHub write absence by static evidence only"
+  }
+ },
+ "batch": "f11-pr3-live-20261022",
+ "branch": "feature/F11-pr3-release-intake",
+ "code_revision": "68221a2",
+ "cost": "no model calls; no LangSmith trace (no investigation run)",
+ "date_utc": "2026-10-22",
+ "environment": {
+  "cluster": "kind-opspilot-m1",
+  "database": "fresh PostgreSQL 17.9 instance (initdb, port 55651), migrated to 0017_web_suspension_grants",
+  "namespace": "otel-demo",
+  "observer": "not running",
+  "release_calibrations_policies": 0,
+  "self_heal": "off",
+  "workbench": "python -m opspilot.web serve @127.0.0.1:8080 (OPSPILOT_WEB_DSN login role IN ROLE opspilot_web, no KUBECONFIG in process env)"
+ },
+ "host_readings": {
+  "after": {
+   "checkout_p95_ms": 96.25,
+   "memory_free_pct": 44,
+   "pageouts": 15487693,
+   "swap_used_mib": 6500.25
+  },
+  "before": {
+   "checkout_p95_ms": 95,
+   "frontend_span_rate_per_s": 2.25,
+   "memory_free_pct": 45,
+   "pageouts": 15486522,
+   "swap_used_mib": 6604.25
+  }
+ },
+ "passes": "F11 passes stays false",
+ "raw_ledger": "tmp/lab-ledgers/f11-pr3-live-1 (main repo, not committed)",
+ "release": {
+  "after_pod_template_hash": "645dc77999",
+  "after_replicaset_uid": "2cd30e6c-1f9b-4f07-b8dd-fe8b11316f65",
+  "after_revision": {
+   "images": {
+    "checkout": "sha256:5ab0d7b9003206a32c72ef48b42a535c3f70565251d7d832f86fe9f249f16635"
+   },
+   "pod_template_digest": "sha256:7b6ddab1e1f84da7da73e18e2c243dc886f951ffca09c80ac62c34983a18a6d8"
+  },
+  "before_pod_template_hash": "ff6bd6fdc",
+  "before_replicaset_uid": "6797aa93-43aa-48d9-bc28-75e92184e45c",
+  "before_revision": {
+   "images": {
+    "checkout": "sha256:5ab0d7b9003206a32c72ef48b42a535c3f70565251d7d832f86fe9f249f16635"
+   },
+   "pod_template_digest": "sha256:55f12c286acc5061d6d3c3afcaa56b5762a59cf4e777235606e85ebc548702aa"
+  },
+  "deployment_generation": 17,
+  "deployment_uid": "b32e1705-32d2-46a1-849c-ae88dacff4c6",
+  "release_id": "f11-pr3-live-20261022-1",
+  "released_at": "2026-10-22T20:49:02.035831+00:00",
+  "request_after": "2026-10-22T20:49:02.035831+00:00",
+  "request_before": "2026-10-22T20:49:01.993530+00:00"
+ },
+ "run": "f11-pr3-live-1",
+ "watch_events": [
+  {
+   "event_at": "2026-10-22T20:49:03+00:00",
+   "kind": "new_pod_ready"
+  },
+  {
+   "kind": "old_pod_gone",
+   "lower_bound": "2026-10-22T20:49:02.369731+00:00",
+   "upper_bound": "2026-10-22T20:49:04.594340+00:00"
+  }
+ ],
+ "zero_query": {
+  "incidents": 0,
+  "observation_sessions": 0,
+  "release_query_results": 0,
+  "runs": 0
+ }
+}
