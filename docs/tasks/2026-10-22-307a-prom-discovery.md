@@ -16,7 +16,7 @@
 - 前提：lab 只读代理已放行发现端点（`scripts/kind_lab.py:328-365`），不需要新凭据；kind 与另一个会话共用，真实 Run 前确认没有观察窗在跑，并查 `vm.swapusage`。
 - 完成条件：lab 真实 Run 中模型调用发现工具并拿到有界结果（附 LangSmith trace 与 `summary.json`）；F7 审计与脱敏覆盖新工具；全新上下文 Agent 编写的验收测试全部通过；Codex 独立审查的发现已处置；功能 PR，合并前给用户简报。
 
-## 合同（r1）
+## 合同（r2）
 
 完整决定表见 [2026-10-22-307a-prom-discovery-contract.md](2026-10-22-307a-prom-discovery-contract.md)。U1、U2 由用户 2026-10-22 裁决，U3、U4、R1–R12 按用户 2026-10-17 常设指示采纳推荐。
 
@@ -24,11 +24,15 @@
 - U2-a：保留 D3-a 的 KSM 名单，metrics 描述加一句先发现再查询的引导；名单去留等本 PR 合入 main 后由 F3 第 5 步评测决定。
 - U3：两者都在 PR-3b 之前合并，后合并的一方 merge main 吸收对方；被钉住的合同测试由独立测试作者改。
 - U4-a：lab Run 提问不点名工具；模型至少一次调用发现工具，结果 ok 或 no_data、≤100 条、有证据、不完整标记与 warnings 一致。
+- U3 r2（实施中追加）：实现者发现另外两处「恰好两个工具」的断言（`tests/acceptance/test_f7_step5_audit_postgres.py:471`、`tests/test_m1_04_alert_window_impl.py:452`），同归测试作者更新；后者改为按带窗口参数的工具数推导。
 - R1–R12：两个工具照搬上游名；match、时间窗、label 校验、凭据样式 label 拒绝、limit=100、warnings 作不完整标记、exact bytes、错误分类扩到 Prometheus 类工具、auth 与 scope 从注册派生、引导写进工具描述、fixture 不改。
 
 ## 执行进展与证据
 
 - 2026-10-22 合同预审：Codex 三个模型 5 轮均返回 at capacity，改由全新上下文 Claude Opus 5.5 只读子 Agent 完成；r1 写入。
+- 实现：Opus 5.5 子 Agent，提交 `a78569d`，对齐 r1；`TOOL_SCHEMA_REVISION` `otel-demo-4d7168180749` → `otel-demo-021751107140`。可逆默认：start/end 用 `.3f` 秒（与 metrics 一致）；Prometheus 无视 limit 时只靠字节与 token 上限兜底。
+- 独立验收测试：Codex 先 gpt-6.1-sol，容量中断后续跑落 gpt-6-astra（同一会话 `01a1639d-1388-7092-a98c-a083c121558f`），worktree `poa-307a-tests`，提交 `f854a0c`，已 merge 进实现分支。
+- 定向测试（合并后）：6 个文件 283 passed、12 skipped（PG 门控）。全量 pytest 因本机 swap 紧张交 CI。
 
 ## 下一步与交接
 

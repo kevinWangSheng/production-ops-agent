@@ -1,4 +1,4 @@
-# #307 A 合同决定表（r1）
+# #307 A 合同决定表（r2）
 
 预审者：全新上下文 Claude Opus 5.5 子 Agent，只读，2026-10-22。原计划由 Codex gpt-6-astra 执行（会话 `01a16368-ec9c-7a30-90ac-aa160dded585`），但 gpt-6.1-sol、gpt-6-sol、gpt-6-astra 连续 5 轮均返回 at capacity，没有产出决定表。预审只要求预审者未参与实现，所以改由 Claude 子 Agent 执行。基线 `a4eea42`。
 
@@ -22,6 +22,7 @@
 | U1 | #307 审计评论（2026-10-22）把 A 扩大到 trace tag 发现，并要去掉写死的 `SERVICES` 和指标枚举 | **a，用户裁决**：本 PR 只做 Prometheus 发现，扩出来的部分另开 issue。 |
 | U2 | 写死的 KSM 名单（F3 D3-a）与完成条件「D3 不再需要写死名单」冲突 | **a，用户裁决**：保留名单；本 PR 在 metrics 描述里加一句「名单以外的指标或标签先用 get_metric_names / get_label_values 发现，只用返回过或已列出的名字」。用户原话要点：issue 的目的是给 Agent 查询工具，不靠人工输入；名单先保留，等发现工具合入 main 后由评测（F3 第 5 步）检验，再决定名单去留。 |
 | U3 | 与 F3 PR-3a 的合并顺序，以及被钉住的断言由谁改 | **按推荐**：两者都要在 PR-3b 之前合并；谁后合并，谁用 `git merge origin/main` 吸收对方。本 PR 的独立测试作者更新 main 上被钉住的两个合同测试文件（记为合同变更，实现者不改）。如果 PR-3a 先合并，它的 revision 常量 `test_f3_step5_competing_scenario.py:39,98` 也由本 PR 的测试作者更新；如果本 PR 先合并，由 PR-3a 的测试作者更新。traces 描述保持字节不变。 |
+| U3 r2 | 实施中发现另两处钉住两个工具的断言（F7 第 5 步审计测试、M1-04 告警窗口测试） | 同归测试作者；告警窗口断言改为按带窗口参数的工具数推导 |
 | U4 | lab 真实 Run 的通过判据 | **按推荐 a**：提问不点名任何工具。通过的条件：至少一次 `get_metric_names` 或 `get_label_values` 返回 `ok` 或 `no_data`，`result_count ≤ 100`，有 EvidenceRecord，`incomplete` 与 warnings 一致；附 trace 与 `summary.json`。模型没调用发现工具记为失败，可重跑一次，失败轮保留。 |
 
 ## 可逆默认
