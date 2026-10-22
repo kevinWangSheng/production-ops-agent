@@ -22,6 +22,8 @@
 - 实现（D-R1–D-R5）：`reports.validated_report` 纯函数，`InvestigationLoop._validated_report` 改为调用它（函数体除参数改名外与 a7b296a 逐行相同）；`rebuild_transcript` 对同代际、无工具、非最终、无 rejected_plan 的模型行用该函数重算，不合格时把 feedback 带到下一条模型行（跨 accepted 压缩行与 conclusion 行，未接受的压缩行清空），`_check_snapshot_hash` 按 instruction → feedback → coverage 插入；不 bump revision。
 - 本地验证：自测 `tests/test_304_forced_final_rebuild_impl.py` 8 例（含压缩跨越、finish_reason 篡改仍 `INCOMPATIBLE_STATE`、代际不符仍阻塞），去掉 context.py 修复时 4 例失败；相关单测文件共 352 passed + alignment C 20 passed。临时 PG 17.9（55714，自建自停）：`tests/integration/test_304_forced_final_rebuild_impl_postgres.py` 2 例 + resume/309 PG 文件共 34 passed，去修复时 2 例均为 `blocked(INCOMPATIBLE_STATE)`。ruff check/format、mypy（三个改动模块）通过。D-U2 真实证据未做。
 - D-U2 ① 已完成（[离线重建](../evidence/304-forced-final-rebuild/offline-rebuild.md)）：pg-f2c-live 副本上只读读取 1b21375d，确认 round-8 是无工具、非 final、`REPORT_INVALID` 的回复，round-9 是强制最终轮；main a7b296a 在 round-9 报 `INCOMPATIBLE_STATE`，修复 8af441e 能重建整个 Run，round-9 带 feedback 重算的哈希与库里记录一致。副本和临时 PG 已删除、已停止。D-U2 ② 未做。
+- D-U2 ② 未完成（[kind 运行](../evidence/304-forced-final-rebuild/live/run.md)）：kind 上 3 次自然真实 Run（f3dd8fc4、ca946e79、c9f7f63d，`m1_live_runner --follow-up`，不注入故障）都合格发布，没有 `REPORT_INVALID` 交接，follow_up 未执行；按约定 3 次后停止，未改代码或提示硬凑。kind 已 release，临时 PG 55741 已停。
+- 附带：ca946e79、c9f7f63d 自然走了强制最终轮且合格发布；对其真实行只读重建，main a7b296a 均 `INCOMPATIBLE_STATE`，修复 2fc953b 均通过（崩溃变体的重建一侧，未走 worker 重新领取）。费用：余额差 0.32 CNY（上界）。
 
 ## 待决
 
