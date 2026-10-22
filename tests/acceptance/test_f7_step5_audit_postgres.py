@@ -471,6 +471,8 @@ def test_u4a_the_shipped_otel_demo_limits_bind_to_its_single_registered_target()
     assert {r.name for r in registrations} == {
         "metrics_range_query",
         "traces_search",
+        "get_metric_names",
+        "get_label_values",
     }
     for item in registrations:
         assert item.source == target.source, item.name

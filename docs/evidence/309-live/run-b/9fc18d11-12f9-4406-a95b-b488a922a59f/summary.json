@@ -1,0 +1,329 @@
+{
+  "schema": "opspilot-lab-summary-1",
+  "experiment": "m1-01-handoff-runner",
+  "run_id": "9fc18d11-12f9-4406-a95b-b488a922a59f",
+  "frozen_at": "2026-10-22T17:06:42.226060+00:00",
+  "incident_id": "926e68da-bb63-4abf-aa36-55aa93f93624",
+  "driver": "opspilot.investigation.runner.InvestigationRunner",
+  "model": "deepseek-flash",
+  "started": "2026-10-22T17:04:51.024557+00:00",
+  "ended": "2026-10-22T17:06:31.075470+00:00",
+  "tool_parallelism": 2,
+  "context_tokens": 76536,
+  "tool_profile": "otel-demo",
+  "verdicts": {
+    "status": "published",
+    "reason": null,
+    "last_status": "published",
+    "last_reason": null,
+    "run_state": "completed",
+    "conclusion_published": true,
+    "attempts": [
+      {
+        "label": "first",
+        "status": "published",
+        "reason": null,
+        "handoff_reasons": []
+      }
+    ],
+    "control": null,
+    "event_kinds": [
+      "run_claimed",
+      "step_committed",
+      "tool_committed",
+      "tool_committed",
+      "step_committed",
+      "tool_committed",
+      "tool_committed",
+      "tool_committed",
+      "step_committed",
+      "tool_committed",
+      "tool_committed",
+      "tool_committed",
+      "step_committed",
+      "step_committed",
+      "tool_committed",
+      "tool_committed",
+      "tool_committed",
+      "step_committed",
+      "step_committed",
+      "tool_committed",
+      "tool_committed",
+      "step_committed",
+      "run_completed"
+    ]
+  },
+  "counts": {
+    "model_requests_bound": 10,
+    "http_count": 8,
+    "prompt_tokens": 60713,
+    "completion_tokens": 18405,
+    "run_usage": {
+      "budget_limit": 10,
+      "model_requests_used": 8,
+      "model_seconds_used": 87.43688445817679,
+      "tool_operations_used": 13,
+      "tool_seconds_used": 19.641458542784676
+    },
+    "current_run_id": "9fc18d11-12f9-4406-a95b-b488a922a59f",
+    "current_run_usage": {
+      "budget_limit": 10,
+      "model_requests_used": 8,
+      "model_seconds_used": 87.43688445817679,
+      "tool_operations_used": 13,
+      "tool_seconds_used": 19.641458542784676
+    },
+    "evidence_ids": [
+      "c3b03022-ddf6-4026-b607-c3fd6cba468b-t0:de9e726b-48ed-4ee2-94d1-f643d2a13056",
+      "c3b03022-ddf6-4026-b607-c3fd6cba468b-t1:c52fdb39-5279-4e9f-8dcc-48d16ec5013d",
+      "4101db3a-6b6e-4bac-b1b5-d2881215f5f1-t0:7b10d387-6d83-4ca5-88e4-3e5d4265e7e9",
+      "4101db3a-6b6e-4bac-b1b5-d2881215f5f1-t1:42df3e01-c799-4bcb-bff3-096c09c628d5",
+      "4101db3a-6b6e-4bac-b1b5-d2881215f5f1-t2:454a4b6e-e9de-4ef8-b08c-fe6cd39c3def",
+      "e2bba254-42c2-49c5-8244-ce09b7c8adc4-t0:591cfba4-6f0e-46e1-9ed1-a1f574701eec",
+      "e2bba254-42c2-49c5-8244-ce09b7c8adc4-t1:5b6153ee-182e-4706-b9cb-12c18085a8cd",
+      "e2bba254-42c2-49c5-8244-ce09b7c8adc4-t2:5f1167d4-56c8-4a8f-b9c0-36c1afa32955",
+      "bdda6c9e-f5c7-4117-8cf2-21f7f103a2ca-t0:f0a5dba4-9939-4c3c-9983-facf5956c581",
+      "bdda6c9e-f5c7-4117-8cf2-21f7f103a2ca-t1:0e2018fc-0f84-4a16-8b7e-79f999fc7870",
+      "bdda6c9e-f5c7-4117-8cf2-21f7f103a2ca-t2:2087ca64-c99b-49dc-b61a-a75699c90b0f",
+      "9fc3a08b-dd18-489e-995b-2180c11d07c7-t0:e4143f1a-f5c9-4c0f-9b63-829b34bc57c2",
+      "9fc3a08b-dd18-489e-995b-2180c11d07c7-t1:23d8f9cf-5429-4230-82ea-a60a333772a5"
+    ]
+  },
+  "cost": {
+    "known_cost_cny_upper": 0.29419
+  },
+  "report": {
+    "schema_version": "m0-report-v2",
+    "assessment_status": "completed",
+    "conclusion": "partial",
+    "summary": "Within the authorized 24h window (policy-window-1), ERROR-status checkout spans are present: an aggregated 24h increase query reports checkout STATUS_CODE_ERROR = 6 alongside checkout STATUS_CODE_UNSET = 30 at the final sample (2026-10-22T17:04:51Z), and the same three-series set (checkout UNSET 30, checkout ERROR 6, payment ERROR 9) is reproduced by an unfiltered service_name/status_code grouping. Raw hourly counter values show non-zero ERROR values at every sampled hour with no flat-zero stretch. The only trace returned for any checkout, payment or frontend search is a single 3-span trace (frontend/handle root, checkout/handle and payment/handle as children of the frontend root) in which the sole error-flagged span is payment/handle; checkout/handle in that trace is not error-flagged, and no checkout→payment parent edge exists in the delivered data. However, no baseline period is authorized, so 'elevated' relative to normal cannot be established; no request/success denominator was obtained from any query, so no error rate is computable; and several differently filtered queries and scoped searches returned an identical fixed series/trace shape (including a query on rpc_server_duration_milliseconds_bucket and a status_code=STATUS_CODE_ERROR matcher that was not honored), which weakens how far the trace and metric set can be generalized. Root cause, error-type detail, and whether checkout itself is faulty all remain unresolved, so the conclusion is partial rather than supported or refuted.",
+    "claims": [
+      {
+        "kind": "fact",
+        "text": "An aggregated 24h increase of traces_span_metrics_calls_total for service_name=\"checkout\" returns, at the final sample timestamp 1792688691 (2026-10-22T17:04:51Z), checkout STATUS_CODE_UNSET = 30 and checkout STATUS_CODE_ERROR = 6, so ERROR-status checkout spans are observed within the authorized window.",
+        "evidence_ids": [
+          "c3b03022-ddf6-4026-b607-c3fd6cba468b-t0:de9e726b-48ed-4ee2-94d1-f643d2a13056"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "fact",
+        "text": "An unfiltered query grouped by service_name and status_code over the same window returns exactly three series: checkout STATUS_CODE_UNSET = 30, checkout STATUS_CODE_ERROR = 6, and payment STATUS_CODE_ERROR = 9 at the final sample; no other service appears in the result.",
+        "evidence_ids": [
+          "bdda6c9e-f5c7-4117-8cf2-21f7f103a2ca-t1:0e2018fc-0f84-4a16-8b7e-79f999fc7870"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "fact",
+        "text": "Raw per-hour counter values over the window (25 samples) show checkout UNSET cycling 30,31,32,33,34 and checkout ERROR cycling 6,8,10,12,14 while payment ERROR cycles 9,12,15,18,21; ERROR values are non-zero at every sampled hour with no flat-zero stretch, and the pattern repeats in fixed five-sample cycles.",
+        "evidence_ids": [
+          "4101db3a-6b6e-4bac-b1b5-d2881215f5f1-t1:42df3e01-c799-4bcb-bff3-096c09c628d5"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "fact",
+        "text": "A checkout-scoped trace search over the full window (limit 20) returns exactly one trace, trace_id 30930930930930930930930930930901, with three spans: frontend/handle (span_id 3093090000000000, no parent, status not_recorded, 5000us), checkout/handle (span_id 3093090000000001, CHILD_OF 3093090000000000, not_recorded, 4000us), and payment/handle (span_id 3093090000000002, CHILD_OF 3093090000000000, error=true with otel.status_code=ERROR, 3000us); error_details is empty and raw_error_detail_field_count is 0.",
+        "evidence_ids": [
+          "c3b03022-ddf6-4026-b607-c3fd6cba468b-t1:c52fdb39-5279-4e9f-8dcc-48d16ec5013d"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "fact",
+        "text": "A frontend-scoped search over the same window returns the same three spans of the same trace, with span-group aggregation confirming error_rows=1 on payment/handle (status error=True, otel.status_code=ERROR) and 0 error rows on frontend/handle and checkout/handle; spans_omitted is 0 and backend_traces_returned is 1.",
+        "evidence_ids": [
+          "bdda6c9e-f5c7-4117-8cf2-21f7f103a2ca-t0:f0a5dba4-9939-4c3c-9983-facf5956c581"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "fact",
+        "text": "A payment-scoped search over the same window returns the identical single trace and span set, in which the only error-flagged span is payment/handle and checkout/handle is not error-flagged.",
+        "evidence_ids": [
+          "e2bba254-42c2-49c5-8244-ce09b7c8adc4-t1:5b6153ee-182e-4706-b9cb-12c18085a8cd"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "fact",
+        "text": "A narrower checkout search (2026-10-22T13:04:51 to 2026-10-22T17:04:51, limit 50) returns the same trace_id and span_ids with shifted start_us and data_as_of 2026-10-22T13:05:01.005000Z, indicating the returned trace's timestamp is anchored to the query start rather than to fixed event time.",
+        "evidence_ids": [
+          "4101db3a-6b6e-4bac-b1b5-d2881215f5f1-t2:454a4b6e-e9de-4ef8-b08c-fe6cd39c3def"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "fact",
+        "text": "A query on rpc_server_duration_milliseconds_bucket grouped by service_name, rpc_service, rpc_method and rpc_grpc_status_code returned the same three span-metric-shaped series (checkout UNSET 30, checkout ERROR 6, payment ERROR 9) instead of any rpc_grpc_status_code or rpc_method label values, so no gRPC status or method-level detail was obtained.",
+        "evidence_ids": [
+          "9fc3a08b-dd18-489e-995b-2180c11d07c7-t0:e4143f1a-f5c9-4c0f-9b63-829b34bc57c2"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "counter_evidence",
+        "text": "The status_code=\"STATUS_CODE_ERROR\" matcher was not honored: the result still contained the checkout STATUS_CODE_UNSET series alongside checkout ERROR and payment ERROR, so label-scoped filtering in these metric views cannot be relied on to isolate error series.",
+        "evidence_ids": [
+          "e2bba254-42c2-49c5-8244-ce09b7c8adc4-t0:591cfba4-6f0e-46e1-9ed1-a1f574701eec"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "counter_evidence",
+        "text": "A query on http_server_request_duration_seconds_count returned the same three traces_span_metrics_calls_total series rather than HTTP request counts, so no request denominator was obtained and no request-level error rate can be computed from the delivered data.",
+        "evidence_ids": [
+          "bdda6c9e-f5c7-4117-8cf2-21f7f103a2ca-t2:2087ca64-c99b-49dc-b61a-a75699c90b0f"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "counter_evidence",
+        "text": "A span_name-breakdown query returned the same three-series shape carrying only service_name and status_code labels, with no span_name values delivered, so error attribution to specific checkout operations is not supported.",
+        "evidence_ids": [
+          "4101db3a-6b6e-4bac-b1b5-d2881215f5f1-t0:7b10d387-6d83-4ca5-88e4-3e5d4265e7e9"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "hypothesis",
+        "text": "The visible error signal is centered on the payment service rather than checkout's own handler: the only error-flagged span in the single returned trace is payment/handle, checkout/handle in that same trace is not error-flagged, and the payment ERROR span count at the final sample (9) exceeds checkout's (6). This is an unverified hypothesis, not an established cause.",
+        "evidence_ids": [
+          "c3b03022-ddf6-4026-b607-c3fd6cba468b-t1:c52fdb39-5279-4e9f-8dcc-48d16ec5013d",
+          "bdda6c9e-f5c7-4117-8cf2-21f7f103a2ca-t1:0e2018fc-0f84-4a16-8b7e-79f999fc7870"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "hypothesis",
+        "text": "Checkout ERROR-status spans persisted across the window rather than forming a single discrete spike, based on non-zero ERROR values at every sampled hour; this is weakened by the strictly repeating five-sample cycles in the counter values, which resemble synthetic or reset-like data, and by the absence of any authorized baseline period.",
+        "evidence_ids": [
+          "4101db3a-6b6e-4bac-b1b5-d2881215f5f1-t1:42df3e01-c799-4bcb-bff3-096c09c628d5"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "rejected_hypothesis",
+        "text": "Rejected: that payment errors are checkout's downstream failures via a checkout-to-payment call. The supplied parent references place checkout/handle (3093090000000001) and payment/handle (3093090000000002) both as CHILD_OF the frontend root span_id 3093090000000000; no checkout-to-payment parent edge appears in the delivered spans, and the sampled view cannot be treated as a complete call chain.",
+        "evidence_ids": [
+          "c3b03022-ddf6-4026-b607-c3fd6cba468b-t1:c52fdb39-5279-4e9f-8dcc-48d16ec5013d",
+          "e2bba254-42c2-49c5-8244-ce09b7c8adc4-t1:5b6153ee-182e-4706-b9cb-12c18085a8cd"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "rejected_hypothesis",
+        "text": "Rejected: that no other service has error spans. Because the status_code matcher and metric/label breakdowns were not honored and results kept returning a fixed three-series set, the absence of other services from the result is not evidence that those services are error-free; a frontend-proxy trace search also failed to return data (status no_data), leaving that service's trace state unknown.",
+        "evidence_ids": [
+          "e2bba254-42c2-49c5-8244-ce09b7c8adc4-t0:591cfba4-6f0e-46e1-9ed1-a1f574701eec",
+          "9fc3a08b-dd18-489e-995b-2180c11d07c7-t0:e4143f1a-f5c9-4c0f-9b63-829b34bc57c2"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "rejected_hypothesis",
+        "text": "Rejected: that the returned trace reflects end-of-window behavior near 2026-10-22T17:04:51. Its data_as_of is 2026-10-21T17:05:01.005000Z for full-window queries and shifts to 2026-10-22T13:05:01.005000Z for a query starting 2026-10-22T13:04:51, so its placement in time is an artifact of query start rather than established chronology.",
+        "evidence_ids": [
+          "bdda6c9e-f5c7-4117-8cf2-21f7f103a2ca-t0:f0a5dba4-9939-4c3c-9983-facf5956c581",
+          "4101db3a-6b6e-4bac-b1b5-d2881215f5f1-t2:454a4b6e-e9de-4ef8-b08c-fe6cd39c3def"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "recommendation",
+        "text": "Treat the checkout error signal as an observed span-status fact, not a measured error rate or a confirmed regression: before acting, obtain a pre-window baseline period and a true request/success denominator (HTTP or RPC server counts) so that 'elevated' can be quantified, and validate that label matchers and metric-to-label mappings are honored before relying on filtered error enumerations.",
+        "evidence_ids": [
+          "c3b03022-ddf6-4026-b607-c3fd6cba468b-t0:de9e726b-48ed-4ee2-94d1-f643d2a13056",
+          "bdda6c9e-f5c7-4117-8cf2-21f7f103a2ca-t2:2087ca64-c99b-49dc-b61a-a75699c90b0f"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      }
+    ],
+    "gaps": [
+      "No baseline or comparison period is authorized (only policy-window-1 covers 2026-10-21T17:04:51 to 2026-10-22T17:04:51), so 'elevated errors' relative to normal and any latency trend are unassessable.",
+      "No request-level or success-level denominator was obtained (http_server_request_duration_seconds_count returned span-metric series; rpc_grpc_status_code and rpc_method labels were not delivered), so no error rate can be computed; the only derivable figure is a span ratio (6 ERROR of 36 status-bearing checkout spans at the final sample), not a request error rate.",
+      "No error message, exception type, HTTP status code or gRPC status code detail was available: error_details was empty with raw_error_detail_field_count 0, the span_name breakdown was not delivered, and the ERROR-only metric matcher was not honored.",
+      "No log source was queried, so error-type detail for checkout or payment remains unknown.",
+      "service_version was null on all returned spans, so no deploy or version correlation is possible.",
+      "Whether other services (frontend, cart, currency, quote, shipping, and others) carry error spans is unknown; the frontend-proxy trace search returned status no_data with zero traces, which is a missing result rather than evidence of no errors, and grep-able label coverage was not established because metric breakdowns returned a fixed series set.",
+      "Whether the single returned trace is representative is unknown; trace span counts are not unique request counts and the repeated identical results across different scopes and filters indicate opaque or fixture-like sampling."
+    ],
+    "next_steps": [
+      "Obtain authorization for a pre-window baseline (e.g., the preceding 24h) so the checkout/payment ERROR span counts can be compared against a comparable prior period before characterizing the signal as elevated.",
+      "Identify and query a real request-denominator metric (e.g., verified HTTP or gRPC server request counts with correct label mapping) to compute an error rate rather than a span ratio.",
+      "Have a human confirm whether the Jaeger/Prometheus backend in use is serving fixture or canned data, since label filters, metric names and trace timestamps did not vary as expected.",
+      "Query a log source for checkout and payment error details to determine error type or exception class, and check for deploy/version metadata to support any correlation.",
+      "Re-run error enumeration for all services once label matchers are verified to be honored, so absence of errors in other services can be treated as evidence rather than unknown."
+    ]
+  },
+  "report_content_sha256": "59742940dcc0075c2a06dc53369fa3e0de943d0e26d181c1363d06eb2785fc64",
+  "trace": {
+    "mode": "lab",
+    "otel_trace_id": "45862ebae36ba4804208755e6698be7a",
+    "dropped_spans": 0,
+    "project": "opspilot-lab-309-b",
+    "project_id": "ed676823-31e0-40d3-8911-f7894359ca9c",
+    "trace_tier": "longlived",
+    "langsmith_run_id": "00000000-0000-0000-bab6-b6d909fa4236",
+    "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/ed676823-31e0-40d3-8911-f7894359ca9c/r/00000000-0000-0000-bab6-b6d909fa4236?poll=true",
+    "read_back": "found"
+  },
+  "raw_ledger": {
+    "sha256": "316fbeae89e791a884fa272da1459a092f01f1181d84fd6efbecb47191c0789b",
+    "bytes": 20016,
+    "path": "tmp/lab-ledgers/m1-01-handoff-runner/9fc18d11-12f9-4406-a95b-b488a922a59f/ledger.json",
+    "in_repository": false
+  }
+}

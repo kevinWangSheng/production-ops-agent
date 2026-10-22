@@ -8,7 +8,7 @@ from uuid import UUID, uuid4
 
 from psycopg.types.json import Jsonb
 
-from opspilot.persistence.base import PersistenceError, _StoreBase
+from opspilot.persistence.base import Connection, PersistenceError, _StoreBase
 
 # 非 cancel 的人工动作只对这些 run 状态开放；其余一律拒绝（fail closed）。
 _CONTROL_OPEN_RUN_STATES = frozenset({"queued", "running", "paused", "waiting_human"})
@@ -636,47 +636,7 @@ class _ControlOps(_StoreBase):
         if not isinstance(content, dict):
             raise PersistenceError("INVALID_INPUT")
         with self.transaction() as conn:
-            row = conn.execute(
-                "SELECT control_generation FROM opspilot_incidents WHERE incident_id=%s FOR UPDATE",
-                (incident_id,),
-            ).fetchone()
-            if row is None:
-                raise PersistenceError("UNKNOWN_IDENTITY")
-            existing = conn.execute(
-                "SELECT * FROM opspilot_inputs WHERE input_id=%s", (input_id,)
-            ).fetchone()
-            if existing:
-                if (
-                    existing["incident_id"] != incident_id
-                    or existing["content"] != content
-                    or existing["actor"] != actor
-                ):
-                    raise PersistenceError("IDENTITY_CONFLICT")
-                return int(existing["sequence"])
-            seq = self._require_row(
-                conn.execute(
-                    "SELECT COALESCE(MAX(sequence),0)+1 AS sequence FROM opspilot_inputs WHERE incident_id=%s",
-                    (incident_id,),
-                )
-            )["sequence"]
-            conn.execute(
-                "INSERT INTO opspilot_inputs(input_id,incident_id,sequence,kind,content,actor,control_generation) VALUES(%s,%s,%s,'event',%s,%s,%s)",
-                (
-                    input_id,
-                    incident_id,
-                    seq,
-                    Jsonb(content),
-                    actor,
-                    row["control_generation"],
-                ),
-            )
-            # M1-03 D18: a new input moves the input watermark.
-            from opspilot.knowledge.store import mark_stale_in
-
-            mark_stale_in(
-                conn, incident_id, reason="input_added", source="append_input"
-            )
-            return int(seq)
+            return append_input_in(conn, incident_id, input_id, content, actor=actor)
 
     def read_inputs(
         self, incident_id: UUID, *, after_sequence: int = 0
@@ -688,3 +648,60 @@ class _ControlOps(_StoreBase):
                     (incident_id, after_sequence),
                 ).fetchall()
             )
+
+
+def append_input_in(
+    conn: Connection,
+    incident_id: UUID,
+    input_id: UUID,
+    content: dict[str, Any],
+    *,
+    actor: str,
+) -> int:
+    """``append_input`` inside the caller's transaction (the alert intake
+    appends a re-fired episode with its delivery record, F2 PR-C; F11 PR-4
+    reuses it). Locks the incident row, so a caller that also holds the scope
+    or target suspension locks must take them first (R-C2). Idempotent on
+    ``input_id``; a different incident, content or actor under the same id is
+    ``IDENTITY_CONFLICT``. Returns the input's sequence."""
+    if not isinstance(content, dict):
+        raise PersistenceError("INVALID_INPUT")
+    row = conn.execute(
+        "SELECT control_generation FROM opspilot_incidents WHERE incident_id=%s FOR UPDATE",
+        (incident_id,),
+    ).fetchone()
+    if row is None:
+        raise PersistenceError("UNKNOWN_IDENTITY")
+    existing = conn.execute(
+        "SELECT * FROM opspilot_inputs WHERE input_id=%s", (input_id,)
+    ).fetchone()
+    if existing:
+        if (
+            existing["incident_id"] != incident_id
+            or existing["content"] != content
+            or existing["actor"] != actor
+        ):
+            raise PersistenceError("IDENTITY_CONFLICT")
+        return int(existing["sequence"])
+    seq = _StoreBase._require_row(
+        conn.execute(
+            "SELECT COALESCE(MAX(sequence),0)+1 AS sequence FROM opspilot_inputs WHERE incident_id=%s",
+            (incident_id,),
+        )
+    )["sequence"]
+    conn.execute(
+        "INSERT INTO opspilot_inputs(input_id,incident_id,sequence,kind,content,actor,control_generation) VALUES(%s,%s,%s,'event',%s,%s,%s)",
+        (
+            input_id,
+            incident_id,
+            seq,
+            Jsonb(content),
+            actor,
+            row["control_generation"],
+        ),
+    )
+    # M1-03 D18: a new input moves the input watermark.
+    from opspilot.knowledge.store import mark_stale_in
+
+    mark_stale_in(conn, incident_id, reason="input_added", source="append_input")
+    return int(seq)

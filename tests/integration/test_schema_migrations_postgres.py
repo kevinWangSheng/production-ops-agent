@@ -299,6 +299,8 @@ EXPECTED_CHECKS = {
     "opspilot_incidents_lifecycle_check",
     # 0005 (M1-02 step 3b): the control mode, same discipline
     "opspilot_incidents_mode_check",
+    # 0018 (F2 PR-C): an incident never relates to itself
+    "opspilot_incidents_related_incident_check",
     # 0019 (F2 PR-B1): the claim priority domain, same discipline
     "opspilot_incidents_priority_check",
 }

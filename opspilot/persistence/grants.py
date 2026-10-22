@@ -102,8 +102,8 @@ RUNTIME_GRANTS: Mapping[str, Mapping[str, frozenset[str]]] = {
         ),
         "opspilot_incidents": _g(
             "SELECT",
-            "INSERT(current_run_id,incident_id,intake_key,lifecycle,priority,state,"
-            "target_id)",
+            "INSERT(current_run_id,incident_id,intake_key,lifecycle,priority,"
+            "related_incident_id,state,target_id)",
             "UPDATE(conclusion,control_generation,current_run_id,lifecycle,mode,"
             "observation_generation,priority,state)",
         ),

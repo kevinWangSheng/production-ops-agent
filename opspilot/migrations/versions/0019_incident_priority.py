@@ -11,8 +11,7 @@ the table and gets nothing new.
 from alembic import op
 
 revision = "0019_incident_priority"
-# TODO(F2 #299): re-point to PR-C's 0018 once #299 merges (contract §3).
-down_revision = "0017_web_suspension_grants"
+down_revision = "0018_alert_correlation"
 branch_labels = None
 depends_on = None
 
