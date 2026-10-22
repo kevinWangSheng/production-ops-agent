@@ -20,7 +20,7 @@
 | 工具集组合 | `Toolset` 可插拔，自带 prerequisites、`llm_instructions`、config（`holmes/core/tools.py:787-838`） | `OPSPILOT_TOOL_PROFILE` 二选一，profile 为整体（`profiles.py:45-90`） | 单 lab 阶段理由成立；接入 K8s/日志或第二个目标前需改为按数据源组合 |
 | 缺失数据源可见 | 列出 disabled/FAILED 工具集及错误（`_toolsets_instructions.jinja2:1-36`） | 模型看不到缺哪类数据源 | 该照搬（部分），对应 PRODUCT-CONSTRAINTS「缺失工具要可见」 |
 | 源错误回传 | PromQL 400/429 原文回传（`prometheus.py:1974`） | 映射为固定码，正文不进模型（`executor.py:1268-1274`） | 理由已不成立（PromQL 解析错误基本只回显模型自己的查询）；建议有长度上限地回传 `errorType` 与 error |
-| 结果过大 | 超限摘要（序列数、标签基数、topk 建议，`prometheus.py:767-852,1911-1950`）；通用层落盘给路径和预览（`tool_context_window_limiter.py:33-110`） | 整条拒绝 `RESULT_TOO_LARGE`（`executor.py:1674-1700`），无基数摘要，无回读工具 | 拒绝而不截断：理由成立；无回读：理由已不成立（C3 §5 承诺按 ID 和片段读取） |
+| 结果过大 | 超限摘要（序列数、标签基数、topk 建议，`prometheus.py:767-852,1911-1950`）；通用层落盘给路径和预览（`tool_context_window_limiter.py:33-110`） | 整条拒绝 `RESULT_TOO_LARGE`（`executor.py:1674-1700`），无基数摘要；超限结果不登记、不保留（`executor.py:1130-1136`），也无回读工具 | 拒绝而不截断：理由成立；不保留且无回读：理由已不成立（C3 §5 承诺大结果保存为持久证据，通过 ID 和片段读取） |
 | 无数据语义 | `NO_DATA` 状态 | `no_data` + cannot_prove 说明（`executor.py:1081`） | 无差距（OpsPilot 更强） |
 | 大输出压缩 | 可选 `llm_summarize` transformer | 确定性投影 | 理由成立 |
 
@@ -41,7 +41,7 @@
 
 | 维度点 | 上游 | OpsPilot | 分类 |
 |---|---|---|---|
-| 单结果超限 | 超过 `min(15% 窗口, 25000)` token 落盘，给路径、用法和预览（`tool_context_window_limiter.py:69-139`，`llm.py:364-375`） | 超过 25k 真实 token 整条拒绝（`executor.py:1563-1577,1675-1718`）；完整视图已持久存入 evidence store（`executor.py:1584-1600`），缺读回接口 | 理由一半成立：反对截断成立，反对落盘加指针不成立；应补只读「按 evidence_id 读片段」工具 |
+| 单结果超限 | 超过 `min(15% 窗口, 25000)` token 落盘，给路径、用法和预览（`tool_context_window_limiter.py:69-139`，`llm.py:364-375`） | 超过 25k 真实 token 整条拒绝（`executor.py:1563-1577,1675-1718`）。超限视图在登记前即被拒绝，「Nothing is registered」，原始内容不作为证据保留（`executor.py:1130-1136`）；只有成功登记的视图才进入 evidence store（`executor.py:1583-1600`） | 理由一半成立：反对截断成立，反对落盘加指针不成立。回读需要两步：先把超限结果作为未采纳的持久证据保存，再提供只读「按 evidence_id 读片段」工具 |
 | 上下文层第二道上限 | 无 | `visible_view` 约 233k 估算 token 的存根（`context.py:173-206,276-304`），网关已卡 25k，实际触发不到 | 理由成立（备用防线），两处单位与数值不一致，做回读时可合并 |
 | 视图投影 | 原始或过滤文本 | 结构化投影与有偏抽样（`otel_demo.py:244-246,1431-1449`） | 理由成立；视图重叠（#96）来自抽样，与上限分开处理 |
 | token 计数 | `litellm.token_counter`（`llm.py:620-695`） | 字节×0.25 + 供应商单调校准（`context.py:241-273`） | 理由成立（2026-10-01 对账与用户决定） |
