@@ -49,6 +49,7 @@
 | R8 | 只加到 otel_demo profile，fixture profile 不加 | 同 #307 R12；fixture 视图很小，触发不到超限 |
 | R9 | 操作员可见性：PR1 只能通过 evidence 页（`app.py:663-690`）按 ID 访问；PR2 在事故页工具行里显示链接和「(not adopted)」（`incident.html:320`） | PR1 的视图里没有 ID，`_tool_committed_payload` 取不到 |
 | R10 | eval：`tool_provenance` 接受新的 hint 键和 read_evidence；PR2 之前的录制因 revision 不同而不可比，不迁移 | C3 §5 规定 bump 之后在途 Run 进入 `blocked(INCOMPATIBLE_STATE)`，不为避免 blocked 而不 bump |
+| R11 | `count_spilled(run_id)` 的返回值 | 返回 `(records, raw_bytes)`：U2 的每 Run 上限同时按条数与字节数判断，两者都要；sink 无法回答（异常或类型不符）时执行器不存，拒绝结果不变。U2 的 16 MiB 读作「已存字节 + 本条 > 16 MiB 即不存」。（lead 2026-10-22 补充，验收测试按此改） |
 
 九类必答：时间见 U4、R4。计数见 U2、U6。状态：未采纳记录只在登记时写入，提交时 pin（R2）。权限：已有 grant 够用，无迁移。数据合同：表、列都不变，无迁移，部署顺序不限。旧数据：旧行不受影响。并发：U2 允许超 1 条。外部调用：read_evidence 不接触数据源。`passes`：不翻。
 
