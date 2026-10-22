@@ -642,10 +642,11 @@ def create_app(
         store = release_store()
 
         def register() -> Any:
-            target_id = workbench.incidents.register_target(resolved.resource_uid)
+            # The store registers a new target in the release's transaction,
+            # so a refused or failed delivery leaves no target row (r4).
             return store.record_release(
                 event=parsed.event,
-                target_id=target_id,
+                resource_uid=resolved.resource_uid,
                 identity=resolved.identity,
                 health_profile_revision=profile.revision,
                 health_profile=canonical_content(profile),
