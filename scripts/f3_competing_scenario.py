@@ -90,7 +90,20 @@ object), ``action`` ({"name", "skipped": true}; dry-run only), ``released``
 ``follow_up`` ({"status", "generation", "request_sha256"}),
 ``start_worker`` ({"incident_id"}: start the worker now), and last
 ``finished`` ({"ok": bool, "reason": str | null, "dry_run": bool, "ledger":
-str | null, ...}). Credentials never appear on stdout or in the ledger.
+str | null, ...}). Every event is one flat JSON object: the fields listed
+for an event are top-level keys next to ``"event"``, never nested under the
+event name (e.g. ``{"event": "action", "name": "publish", "skipped": true}``;
+the ``plan`` and ``preflight`` events carry the plan/preflight object's keys
+at top level). Credentials never appear on stdout or in the ledger.
+
+Configuration order: checks run in this fixed order and the first failure
+is the one reported: (1) argparse; (2) frozen files and plan (exit 4);
+(3) ``run`` only, also under --dry-run: ``--run`` name
+(CONFIG_RUN_NAME_INVALID), then ``--web`` (CONFIG_WEB_URL_INVALID);
+(4) without --dry-run: --holder/--batch (CONFIG_HOLDER_BATCH_REQUIRED);
+(5) building ports (CONFIG_DSN_MISSING); (6) ``run`` only: UI credentials
+(CONFIG_UI_CREDENTIALS_MISSING); then the preflight. Command-line-only
+checks therefore precede environment and lab checks.
 
 Exit codes and reason codes:
     0  success (dry-run included).
@@ -116,6 +129,13 @@ Exit codes and reason codes:
 
 Precondition ids (R-6, in order): lab_reserved, no_active_fault, flags_off,
 alert_not_firing, no_open_alert_incident, no_recent_rollout, swap_headroom.
+The preflight runs before anything is published, also as the first step of
+``run``: no_open_alert_incident fails on ANY incident from
+``IncidentStore.alert_incidents`` whose lifecycle is not ``closed`` (and
+whose alertname matches or is None), whatever its ``created_at``. A store
+fake for a successful ``run`` must therefore return no open incident on that
+first call and the new incident (created_at >= released_at) only on later
+polls, as the real alert would.
 Actions (run order): preflight, reserve, publish, schedule_fault,
 await_alert_incident, follow_up, start_worker, await_fault_restore.
 HARNESS_CALLS names every scripts.f11_u2_harness function this module
@@ -149,6 +169,10 @@ them, ``ports_factory(os.environ)`` builds them, default ``real_ports``)::
         def scheduled_fault(self, ledger: Path, *, offset: int, duration: int,
                             flag: str, variant: str, normal: str, url: str,
                             method: str) -> None   # blocks until restored
+            # called as scheduled_fault(ledger, offset=..., ...): ledger is
+            # positional, the rest keywords. It runs in a background thread;
+            # any exception it raises ends the run with FAULT_FAILED, and if
+            # that happens before the incident is found no follow-up is sent.
 
     class IncidentStore(Protocol):
         def alert_incidents(self, alertname: str, namespace: str,
@@ -1161,6 +1185,11 @@ def main(
             _emit(out, {"event": "plan", **plan})
         if problem:
             raise DriverError(problem, EXIT_FROZEN)
+        if final_event:
+            # Command-line-only checks first, dry-run included (fixed order).
+            if not _RUN_NAME.fullmatch(args.run):
+                raise DriverError("CONFIG_RUN_NAME_INVALID", EXIT_CONFIG)
+            check_web_url(args.web)
         if args.dry_run:
             report = preflight_report(None, dry_run=True)
             if not final_event:

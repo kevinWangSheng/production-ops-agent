@@ -569,3 +569,14 @@ def test_driver_never_calls_register_or_webhook() -> None:
     used = set(__import__("re").findall(r"harness\.([a-z_]+)", source))
     assert used <= set(driver.HARNESS_CALLS)
     assert all(hasattr(harness, name) for name in driver.HARNESS_CALLS)
+
+
+@pytest.mark.parametrize("dry_run", [[], ["--dry-run"]])
+def test_command_line_checks_precede_holder_and_environment(
+    dry_run: list[str],
+) -> None:
+    argv = [*dry_run, *RUN]
+    argv[argv.index("first")] = "bad!name"
+    out = io.StringIO()
+    assert driver.main(argv, stdout=out) == 2
+    assert lines(out)[-1]["reason"] == "CONFIG_RUN_NAME_INVALID"
