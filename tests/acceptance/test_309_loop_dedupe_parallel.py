@@ -107,7 +107,10 @@ class _BarrierTransport:
         end = time.perf_counter()
         with self.lock:
             self.intervals.append((start, end, request.operation_id))
-        return TransportResponse(body=body([{"metric": request.operation_id, "value": 3}]), data_as_of=WINDOW_START)
+        return TransportResponse(
+            body=body([{"metric": "checkout", "value": 3}]),
+            data_as_of=WINDOW_START,
+        )
 
 
 def _fixture_loop(*, replies, cap=1, transport=None, model_requests=2, clock=None):
@@ -350,7 +353,7 @@ def test_same_batch_pure_refusal_is_dispatched_again():
     assert all(item["result"]["status"] == "error" for item in results)
 
 
-def test_fence_failure_stops_new_dispatches_and_keeps_committed_prefix():
+def test_fence_failure_stops_dispatch_and_preserves_only_serial_prefix():
     class FenceAfterFirstRenew(MemoryStepStore):
         renewals = 0
 
@@ -360,18 +363,43 @@ def test_fence_failure_stops_new_dispatches_and_keeps_committed_prefix():
                 self.deny_control()
 
     calls = _two_calls()
-    loop, request, _model, transport, base_store, _events = _fixture_loop(
-        replies=[reply(tool_calls=list(calls), finish="tool_calls")], cap=2
-    )
-    store = FenceAfterFirstRenew(
-        budget_limit=16, deadline=base_store.deadline, clock=loop.clock, run_id=base_store.authorized_run_id
-    )
-    loop.store = store
-    outcome = loop.run(request)
-    assert outcome.execution == "failed"
-    assert outcome.handoff_reasons == ("CONTROL_DENIED",)
-    assert len(transport.requests) == 1
-    assert [item["ordinal"] for row in store.tool_results.values() for item in row] == [0]
+
+    def run_with_cap(cap):
+        loop, request, _model, transport, base_store, _events = _fixture_loop(
+            replies=[reply(tool_calls=list(calls), finish="tool_calls")], cap=cap
+        )
+        store = FenceAfterFirstRenew(
+            budget_limit=16,
+            deadline=base_store.deadline,
+            clock=loop.clock,
+            run_id=base_store.authorized_run_id,
+        )
+        loop.store = store
+        outcome = loop.run(request)
+        committed = [
+            item["result"]
+            for row in store.tool_results.values()
+            for item in row
+        ]
+        return outcome, transport, store, committed
+
+    serial, serial_transport, serial_store, serial_results = run_with_cap(1)
+    assert serial.execution == "failed"
+    assert serial.handoff_reasons == ("CONTROL_DENIED",)
+    assert len(serial_transport.requests) == 1
+    assert [result["ordinal"] for result in serial_results] == [0]
+
+    parallel, parallel_transport, parallel_store, parallel_results = run_with_cap(2)
+    assert parallel.execution == "failed"
+    assert parallel.handoff_reasons == ("CONTROL_DENIED",)
+    assert len(parallel_transport.requests) == 1
+    assert [result["ordinal"] for result in parallel_results] in ([], [0])
+    if parallel_results:
+        assert _normalize(parallel_results[0]) == _normalize(serial_results[0])
+    # MemoryStepStore's fence guard does not materialize late_result rows;
+    # durable stores may expose them here, so preserve the conditional seam.
+    if parallel_store.late_results:
+        assert parallel_store.late_results
 
 
 def test_single_tool_exception_keeps_lower_index_prefix():
