@@ -1,0 +1,900 @@
+{
+ "format_version": 1,
+ "batch": "u2-20261021-b1500",
+ "rounds": [
+  {
+   "round": "u2-f-boundary1500-1",
+   "scenario": "boundary",
+   "round_status": "summarized",
+   "summary_sha256": "ab22c952b2de4c1afea57ed3402ff217074fa210f9da27baca8acd6c2f4b7281",
+   "summary_bytes": 3444891,
+   "round_start_id": "4f342fc7-5d9d-4c79-bf29-5307c2d9ae9b",
+   "classification": "environment_interference (email OOMKilled 03:42:13Z; latency-triggered anomalous before fault); failed round, not boundary evidence",
+   "released_at": "2026-10-22T03:18:12.769914+00:00",
+   "authorized_at": "2026-10-22T03:18:16.469735+00:00",
+   "code_revision": "91a011c9459a0dfa66191d01c72227b5a6508e41",
+   "fold_code_revision": "91a011c9459a0dfa66191d01c72227b5a6508e41",
+   "profile_revision": "otel-demo-checkout@b72bbe2e30be",
+   "profile_sha256": "b72bbe2e30bea4775790519787da4ce107dbc1500ce87b87a2ee2af3f57cbfa4",
+   "target": {
+    "cluster_uid": "c8001471-8b7b-4449-83c0-924e6f46b857",
+    "integration_id": "m0-otel-20260909",
+    "namespace": "otel-demo",
+    "resource_uid": "m0-otel-20260909",
+    "workload": "checkout"
+   },
+   "truth": {
+    "expected_outcome": "anomaly",
+    "failure_classification": "environment_interference: email pod OOMKilled 2026-10-22T03:42:13Z (exit 137, containerStatuses.lastState); checkout PlaceOrder p95 8.5-14s from ~03:33Z to ~03:47Z, before paymentFailure became effective 03:42:54Z; all candidate M terminated anomalous on DEGRADED_SIGNAL latency_p95 (after+context) at 03:33:24Z, so the round does not test the M=1500 boundary; one rerun u2-f-boundary1500-2",
+    "fault": {
+     "config_written": [
+      [
+       "2026-10-22T03:41:53.078909+00:00",
+       "2026-10-22T03:41:53.168172+00:00"
+      ]
+     ],
+     "failures": [],
+     "flag": [
+      "paymentFailure"
+     ],
+     "flagd_effective": [
+      "2026-10-22T03:42:54.282761+00:00",
+      "2026-10-22T03:59:17.490435+00:00"
+     ],
+     "planned": [
+      "2026-10-22T03:41:52.769914+00:00"
+     ],
+     "restore_config_verified_at": [
+      "2026-10-22T03:57:54.583984+00:00"
+     ]
+    },
+    "independent_truth": {
+     "ad_error_spans": 0,
+     "ad_spans": 133,
+     "checkout_error_spans": 17,
+     "checkout_ok_spans_between_first_and_last_error": 0,
+     "checkout_pods": [
+      "checkout-6b9b8545bb-k8v5g",
+      "checkout-755fd5445b-9vsrc"
+     ],
+     "checkout_spans": 91,
+     "first_ad_error_span": null,
+     "first_checkout_error_span": "2026-10-22T03:43:42.831000+00:00",
+     "last_checkout_error_span": "2026-10-22T03:57:49.989466+00:00",
+     "source": "Jaeger server spans (checkout PlaceOrder, ad), snapshots every 20 min with 25-min lookback; fault.jsonl config receipts and flagd resolutions"
+    },
+    "platform_links": [],
+    "release": {
+     "release_id": "u2-f-boundary1500-1-20261022T031812Z",
+     "released_at": "2026-10-22T03:18:12.769914+00:00"
+    },
+    "scenario": "boundary"
+   },
+   "capture_end": {
+    "at": "2026-10-22T04:18:59.274314+00:00",
+    "reason": "deadline_expired"
+   },
+   "samples": 27,
+   "candidates": {
+    "1200": {
+     "status": "anomalous",
+     "reason": "anomaly_detected",
+     "terminal_at": "2026-10-22T03:33:24.070092+00:00",
+     "used_sample_count": 7,
+     "remaining_samples": 33,
+     "remaining_seconds": 2688.699822,
+     "healthy_reserve_ok": null,
+     "unknown_ratio": 0.2857142857142857,
+     "post_warmup_unknown_ratio": 0.0,
+     "unknown_reasons": {
+      "INSUFFICIENT_TRAFFIC": 1,
+      "REQUIRED_TELEMETRY_MISSING:after:dependency_error_ratio": 1,
+      "REQUIRED_TELEMETRY_MISSING:after:error_ratio": 1,
+      "REQUIRED_TELEMETRY_MISSING:after:latency_p95_milliseconds": 1,
+      "REQUIRED_TELEMETRY_MISSING:after:request_rate_per_second": 1,
+      "VERSION_MAPPING_INSUFFICIENT_SAMPLES": 1,
+      "WINDOW_BEFORE_AUTHORIZATION": 2
+     },
+     "coverage_gaps": []
+    },
+    "1500": {
+     "status": "anomalous",
+     "reason": "anomaly_detected",
+     "terminal_at": "2026-10-22T03:33:24.070092+00:00",
+     "used_sample_count": 7,
+     "remaining_samples": 33,
+     "remaining_seconds": 2688.699822,
+     "healthy_reserve_ok": null,
+     "unknown_ratio": 0.2857142857142857,
+     "post_warmup_unknown_ratio": 0.0,
+     "unknown_reasons": {
+      "INSUFFICIENT_TRAFFIC": 1,
+      "REQUIRED_TELEMETRY_MISSING:after:dependency_error_ratio": 1,
+      "REQUIRED_TELEMETRY_MISSING:after:error_ratio": 1,
+      "REQUIRED_TELEMETRY_MISSING:after:latency_p95_milliseconds": 1,
+      "REQUIRED_TELEMETRY_MISSING:after:request_rate_per_second": 1,
+      "VERSION_MAPPING_INSUFFICIENT_SAMPLES": 1,
+      "WINDOW_BEFORE_AUTHORIZATION": 2
+     },
+     "coverage_gaps": []
+    },
+    "1800": {
+     "status": "anomalous",
+     "reason": "anomaly_detected",
+     "terminal_at": "2026-10-22T03:33:24.070092+00:00",
+     "used_sample_count": 7,
+     "remaining_samples": 33,
+     "remaining_seconds": 2688.699822,
+     "healthy_reserve_ok": null,
+     "unknown_ratio": 0.2857142857142857,
+     "post_warmup_unknown_ratio": 0.0,
+     "unknown_reasons": {
+      "INSUFFICIENT_TRAFFIC": 1,
+      "REQUIRED_TELEMETRY_MISSING:after:dependency_error_ratio": 1,
+      "REQUIRED_TELEMETRY_MISSING:after:error_ratio": 1,
+      "REQUIRED_TELEMETRY_MISSING:after:latency_p95_milliseconds": 1,
+      "REQUIRED_TELEMETRY_MISSING:after:request_rate_per_second": 1,
+      "VERSION_MAPPING_INSUFFICIENT_SAMPLES": 1,
+      "WINDOW_BEFORE_AUTHORIZATION": 2
+     },
+     "coverage_gaps": []
+    },
+    "2100": {
+     "status": "anomalous",
+     "reason": "anomaly_detected",
+     "terminal_at": "2026-10-22T03:33:24.070092+00:00",
+     "used_sample_count": 7,
+     "remaining_samples": 33,
+     "remaining_seconds": 2688.699822,
+     "healthy_reserve_ok": null,
+     "unknown_ratio": 0.2857142857142857,
+     "post_warmup_unknown_ratio": 0.0,
+     "unknown_reasons": {
+      "INSUFFICIENT_TRAFFIC": 1,
+      "REQUIRED_TELEMETRY_MISSING:after:dependency_error_ratio": 1,
+      "REQUIRED_TELEMETRY_MISSING:after:error_ratio": 1,
+      "REQUIRED_TELEMETRY_MISSING:after:latency_p95_milliseconds": 1,
+      "REQUIRED_TELEMETRY_MISSING:after:request_rate_per_second": 1,
+      "VERSION_MAPPING_INSUFFICIENT_SAMPLES": 1,
+      "WINDOW_BEFORE_AUTHORIZATION": 2
+     },
+     "coverage_gaps": []
+    },
+    "600": {
+     "status": "anomalous",
+     "reason": "anomaly_detected",
+     "terminal_at": "2026-10-22T03:33:24.070092+00:00",
+     "used_sample_count": 7,
+     "remaining_samples": 33,
+     "remaining_seconds": 2688.699822,
+     "healthy_reserve_ok": null,
+     "unknown_ratio": 0.2857142857142857,
+     "post_warmup_unknown_ratio": 0.0,
+     "unknown_reasons": {
+      "INSUFFICIENT_TRAFFIC": 1,
+      "REQUIRED_TELEMETRY_MISSING:after:dependency_error_ratio": 1,
+      "REQUIRED_TELEMETRY_MISSING:after:error_ratio": 1,
+      "REQUIRED_TELEMETRY_MISSING:after:latency_p95_milliseconds": 1,
+      "REQUIRED_TELEMETRY_MISSING:after:request_rate_per_second": 1,
+      "VERSION_MAPPING_INSUFFICIENT_SAMPLES": 1,
+      "WINDOW_BEFORE_AUTHORIZATION": 2
+     },
+     "coverage_gaps": []
+    },
+    "900": {
+     "status": "anomalous",
+     "reason": "anomaly_detected",
+     "terminal_at": "2026-10-22T03:33:24.070092+00:00",
+     "used_sample_count": 7,
+     "remaining_samples": 33,
+     "remaining_seconds": 2688.699822,
+     "healthy_reserve_ok": null,
+     "unknown_ratio": 0.2857142857142857,
+     "post_warmup_unknown_ratio": 0.0,
+     "unknown_reasons": {
+      "INSUFFICIENT_TRAFFIC": 1,
+      "REQUIRED_TELEMETRY_MISSING:after:dependency_error_ratio": 1,
+      "REQUIRED_TELEMETRY_MISSING:after:error_ratio": 1,
+      "REQUIRED_TELEMETRY_MISSING:after:latency_p95_milliseconds": 1,
+      "REQUIRED_TELEMETRY_MISSING:after:request_rate_per_second": 1,
+      "VERSION_MAPPING_INSUFFICIENT_SAMPLES": 1,
+      "WINDOW_BEFORE_AUTHORIZATION": 2
+     },
+     "coverage_gaps": []
+    }
+   },
+   "per_sample": [
+    {
+     "decision_at": "2026-10-22T03:20:07.896045+00:00",
+     "verdict": "unknown",
+     "reasons": [
+      "INSUFFICIENT_TRAFFIC",
+      "REQUIRED_TELEMETRY_MISSING:after:dependency_error_ratio",
+      "REQUIRED_TELEMETRY_MISSING:after:error_ratio",
+      "REQUIRED_TELEMETRY_MISSING:after:latency_p95_milliseconds",
+      "REQUIRED_TELEMETRY_MISSING:after:request_rate_per_second",
+      "VERSION_MAPPING_INSUFFICIENT_SAMPLES",
+      "WINDOW_BEFORE_AUTHORIZATION"
+     ],
+     "elapsed_seconds": 51.41,
+     "queries": 33
+    },
+    {
+     "decision_at": "2026-10-22T03:22:23.462283+00:00",
+     "verdict": "unknown",
+     "reasons": [
+      "WINDOW_BEFORE_AUTHORIZATION"
+     ],
+     "elapsed_seconds": 75.56,
+     "queries": 49
+    },
+    {
+     "decision_at": "2026-10-22T03:24:35.281713+00:00",
+     "verdict": "healthy",
+     "reasons": [],
+     "elapsed_seconds": 71.81,
+     "queries": 49
+    },
+    {
+     "decision_at": "2026-10-22T03:26:47.885275+00:00",
+     "verdict": "healthy",
+     "reasons": [],
+     "elapsed_seconds": 72.6,
+     "queries": 49
+    },
+    {
+     "decision_at": "2026-10-22T03:29:04.598630+00:00",
+     "verdict": "healthy",
+     "reasons": [],
+     "elapsed_seconds": 76.8,
+     "queries": 49
+    },
+    {
+     "decision_at": "2026-10-22T03:31:23.331552+00:00",
+     "verdict": "healthy",
+     "reasons": [],
+     "elapsed_seconds": 78.73,
+     "queries": 49
+    },
+    {
+     "decision_at": "2026-10-22T03:33:24.070092+00:00",
+     "verdict": "degraded",
+     "reasons": [
+      "DEGRADED_SIGNAL:after:latency_p95_milliseconds",
+      "DEGRADED_SIGNAL:context:latency_p95_milliseconds"
+     ],
+     "elapsed_seconds": 60.73,
+     "queries": 49
+    },
+    {
+     "decision_at": "2026-10-22T03:35:27.144996+00:00",
+     "verdict": "degraded",
+     "reasons": [
+      "DEGRADED_SIGNAL:after:latency_p95_milliseconds",
+      "DEGRADED_SIGNAL:context:latency_p95_milliseconds"
+     ],
+     "elapsed_seconds": 63.07,
+     "queries": 49
+    },
+    {
+     "decision_at": "2026-10-22T03:37:40.280778+00:00",
+     "verdict": "degraded",
+     "reasons": [
+      "DEGRADED_SIGNAL:after:latency_p95_milliseconds",
+      "DEGRADED_SIGNAL:context:latency_p95_milliseconds"
+     ],
+     "elapsed_seconds": 73.13,
+     "queries": 49
+    },
+    {
+     "decision_at": "2026-10-22T03:40:00.730464+00:00",
+     "verdict": "degraded",
+     "reasons": [
+      "DEGRADED_SIGNAL:after:latency_p95_milliseconds",
+      "DEGRADED_SIGNAL:context:latency_p95_milliseconds"
+     ],
+     "elapsed_seconds": 80.44,
+     "queries": 49
+    },
+    {
+     "decision_at": "2026-10-22T03:42:20.830873+00:00",
+     "verdict": "degraded",
+     "reasons": [
+      "DEGRADED_SIGNAL:after:latency_p95_milliseconds",
+      "DEGRADED_SIGNAL:context:latency_p95_milliseconds"
+     ],
+     "elapsed_seconds": 80.09,
+     "queries": 49
+    },
+    {
+     "decision_at": "2026-10-22T03:44:43.389063+00:00",
+     "verdict": "degraded",
+     "reasons": [
+      "DEGRADED_SIGNAL:after:latency_p95_milliseconds",
+      "DEGRADED_SIGNAL:context:latency_p95_milliseconds"
+     ],
+     "elapsed_seconds": 82.45,
+     "queries": 49
+    },
+    {
+     "decision_at": "2026-10-22T03:47:03.929146+00:00",
+     "verdict": "degraded",
+     "reasons": [
+      "DEGRADED_SIGNAL:after:dependency_error_ratio",
+      "DEGRADED_SIGNAL:after:error_ratio",
+      "DEGRADED_SIGNAL:after:latency_p95_milliseconds",
+      "DEGRADED_SIGNAL:context:dependency_error_ratio",
+      "DEGRADED_SIGNAL:context:error_ratio",
+      "DEGRADED_SIGNAL:context:latency_p95_milliseconds"
+     ],
+     "elapsed_seconds": 80.53,
+     "queries": 49
+    },
+    {
+     "decision_at": "2026-10-22T03:49:23.727783+00:00",
+     "verdict": "degraded",
+     "reasons": [
+      "DEGRADED_SIGNAL:after:dependency_error_ratio",
+      "DEGRADED_SIGNAL:after:error_ratio",
+      "DEGRADED_SIGNAL:context:dependency_error_ratio",
+      "DEGRADED_SIGNAL:context:error_ratio"
+     ],
+     "elapsed_seconds": 79.79,
+     "queries": 49
+    },
+    {
+     "decision_at": "2026-10-22T03:51:42.516102+00:00",
+     "verdict": "degraded",
+     "reasons": [
+      "DEGRADED_SIGNAL:after:dependency_error_ratio",
+      "DEGRADED_SIGNAL:after:error_ratio",
+      "DEGRADED_SIGNAL:context:dependency_error_ratio",
+      "DEGRADED_SIGNAL:context:error_ratio"
+     ],
+     "elapsed_seconds": 78.78,
+     "queries": 49
+    },
+    {
+     "decision_at": "2026-10-22T03:54:02.400296+00:00",
+     "verdict": "degraded",
+     "reasons": [
+      "DEGRADED_SIGNAL:after:dependency_error_ratio",
+      "DEGRADED_SIGNAL:after:error_ratio",
+      "DEGRADED_SIGNAL:context:dependency_error_ratio",
+      "DEGRADED_SIGNAL:context:error_ratio"
+     ],
+     "elapsed_seconds": 79.87,
+     "queries": 49
+    },
+    {
+     "decision_at": "2026-10-22T03:56:21.554411+00:00",
+     "verdict": "degraded",
+     "reasons": [
+      "DEGRADED_SIGNAL:after:dependency_error_ratio",
+      "DEGRADED_SIGNAL:after:error_ratio",
+      "DEGRADED_SIGNAL:context:dependency_error_ratio",
+      "DEGRADED_SIGNAL:context:error_ratio"
+     ],
+     "elapsed_seconds": 79.15,
+     "queries": 49
+    },
+    {
+     "decision_at": "2026-10-22T03:58:38.498011+00:00",
+     "verdict": "degraded",
+     "reasons": [
+      "DEGRADED_SIGNAL:after:dependency_error_ratio",
+      "DEGRADED_SIGNAL:after:error_ratio",
+      "DEGRADED_SIGNAL:context:dependency_error_ratio",
+      "DEGRADED_SIGNAL:context:error_ratio"
+     ],
+     "elapsed_seconds": 76.93,
+     "queries": 49
+    },
+    {
+     "decision_at": "2026-10-22T04:00:58.173006+00:00",
+     "verdict": "degraded",
+     "reasons": [
+      "DEGRADED_SIGNAL:after:dependency_error_ratio",
+      "DEGRADED_SIGNAL:after:error_ratio",
+      "DEGRADED_SIGNAL:context:dependency_error_ratio",
+      "DEGRADED_SIGNAL:context:error_ratio"
+     ],
+     "elapsed_seconds": 79.65,
+     "queries": 49
+    },
+    {
+     "decision_at": "2026-10-22T04:03:14.662858+00:00",
+     "verdict": "degraded",
+     "reasons": [
+      "DEGRADED_SIGNAL:after:dependency_error_ratio",
+      "DEGRADED_SIGNAL:after:error_ratio",
+      "DEGRADED_SIGNAL:context:dependency_error_ratio",
+      "DEGRADED_SIGNAL:context:error_ratio"
+     ],
+     "elapsed_seconds": 76.48,
+     "queries": 49
+    },
+    {
+     "decision_at": "2026-10-22T04:05:31.705046+00:00",
+     "verdict": "healthy",
+     "reasons": [],
+     "elapsed_seconds": 77.03,
+     "queries": 49
+    },
+    {
+     "decision_at": "2026-10-22T04:07:43.804527+00:00",
+     "verdict": "healthy",
+     "reasons": [],
+     "elapsed_seconds": 72.09,
+     "queries": 49
+    },
+    {
+     "decision_at": "2026-10-22T04:09:54.940669+00:00",
+     "verdict": "healthy",
+     "reasons": [],
+     "elapsed_seconds": 71.13,
+     "queries": 49
+    },
+    {
+     "decision_at": "2026-10-22T04:12:07.271882+00:00",
+     "verdict": "healthy",
+     "reasons": [],
+     "elapsed_seconds": 72.32,
+     "queries": 49
+    },
+    {
+     "decision_at": "2026-10-22T04:14:24.393774+00:00",
+     "verdict": "healthy",
+     "reasons": [],
+     "elapsed_seconds": 77.11,
+     "queries": 49
+    },
+    {
+     "decision_at": "2026-10-22T04:16:45.397929+00:00",
+     "verdict": "healthy",
+     "reasons": [],
+     "elapsed_seconds": 81.01,
+     "queries": 49
+    },
+    {
+     "decision_at": "2026-10-22T04:18:59.258828+00:00",
+     "verdict": "healthy",
+     "reasons": [],
+     "elapsed_seconds": 73.85,
+     "queries": 49
+    }
+   ]
+  },
+  {
+   "round": "u2-f-boundary1500-2",
+   "scenario": "boundary",
+   "round_status": "summarized",
+   "summary_sha256": "3394eaa62b05a05116a3ad27e81e07ff1af21098aa5864f76efe47549b243031",
+   "summary_bytes": 3500711,
+   "round_start_id": "311bef3a-1b2d-440e-ade5-7d291dd98b89",
+   "classification": "product_miss_at_boundary for M=1500 (healthy_confirmed R+1641s before first anomalous sample R+1784s); failed round for M=1500, retained",
+   "released_at": "2026-10-22T04:21:34.384653+00:00",
+   "authorized_at": "2026-10-22T04:21:37.967353+00:00",
+   "code_revision": "91a011c9459a0dfa66191d01c72227b5a6508e41",
+   "fold_code_revision": "91a011c9459a0dfa66191d01c72227b5a6508e41",
+   "profile_revision": "otel-demo-checkout@b72bbe2e30be",
+   "profile_sha256": "b72bbe2e30bea4775790519787da4ce107dbc1500ce87b87a2ee2af3f57cbfa4",
+   "target": {
+    "cluster_uid": "c8001471-8b7b-4449-83c0-924e6f46b857",
+    "integration_id": "m0-otel-20260909",
+    "namespace": "otel-demo",
+    "resource_uid": "m0-otel-20260909",
+    "workload": "checkout"
+   },
+   "truth": {
+    "expected_outcome": "anomaly",
+    "failure_classification": "product_miss_at_boundary (M=1500): injection verified (flagd effective 04:46:04Z = R+1470s), environment clean (checkout p95 90-98ms before onset, no pod restarts in round); first checkout error span 04:47:33.7Z = R+1559s (low traffic ~0.03/s); M=1500 terminated healthy_confirmed at 04:48:55Z = R+1641s, first anomalous sample 04:51:18Z = R+1784s; U2-03 boundary criterion not met for M=1500 (met for M>=1800)",
+    "fault": {
+     "config_written": [
+      [
+       "2026-10-22T04:45:14.644546+00:00",
+       "2026-10-22T04:45:14.718246+00:00"
+      ]
+     ],
+     "failures": [],
+     "flag": [
+      "paymentFailure"
+     ],
+     "flagd_effective": [
+      "2026-10-22T04:46:04.418152+00:00",
+      "2026-10-22T05:02:17.159185+00:00"
+     ],
+     "planned": [
+      "2026-10-22T04:45:14.384653+00:00"
+     ],
+     "restore_config_verified_at": [
+      "2026-10-22T05:01:04.685728+00:00"
+     ]
+    },
+    "independent_truth": {
+     "ad_error_spans": 0,
+     "ad_spans": 159,
+     "checkout_error_spans": 17,
+     "checkout_ok_spans_between_first_and_last_error": 0,
+     "checkout_pods": [
+      "checkout-6b9b8545bb-k8v5g",
+      "checkout-ff6bd6fdc-z5tvt"
+     ],
+     "checkout_spans": 81,
+     "first_ad_error_span": null,
+     "first_checkout_error_span": "2026-10-22T04:47:33.687535+00:00",
+     "last_checkout_error_span": "2026-10-22T05:01:42.789551+00:00",
+     "source": "Jaeger server spans (checkout PlaceOrder, ad), snapshots every 20 min with 25-min lookback; fault.jsonl config receipts and flagd resolutions"
+    },
+    "platform_links": [],
+    "release": {
+     "release_id": "u2-f-boundary1500-2-20261022T042133Z",
+     "released_at": "2026-10-22T04:21:34.384653+00:00"
+    },
+    "scenario": "boundary"
+   },
+   "capture_end": {
+    "at": "2026-10-22T05:22:00.599068+00:00",
+    "reason": "deadline_expired"
+   },
+   "samples": 26,
+   "candidates": {
+    "1200": {
+     "status": "healthy",
+     "reason": "healthy_confirmed",
+     "terminal_at": "2026-10-22T04:44:23.752579+00:00",
+     "used_sample_count": 10,
+     "remaining_samples": 30,
+     "remaining_seconds": 2230.632074,
+     "healthy_reserve_ok": true,
+     "unknown_ratio": 0.2,
+     "post_warmup_unknown_ratio": 0.0,
+     "unknown_reasons": {
+      "INSUFFICIENT_TRAFFIC": 1,
+      "REQUIRED_TELEMETRY_MISSING:after:dependency_error_ratio": 1,
+      "REQUIRED_TELEMETRY_MISSING:after:error_ratio": 1,
+      "REQUIRED_TELEMETRY_MISSING:after:latency_p95_milliseconds": 1,
+      "REQUIRED_TELEMETRY_MISSING:after:request_rate_per_second": 1,
+      "VERSION_MAPPING_INSUFFICIENT_SAMPLES": 1,
+      "WINDOW_BEFORE_AUTHORIZATION": 2
+     },
+     "coverage_gaps": []
+    },
+    "1500": {
+     "status": "healthy",
+     "reason": "healthy_confirmed",
+     "terminal_at": "2026-10-22T04:48:55.241732+00:00",
+     "used_sample_count": 12,
+     "remaining_samples": 28,
+     "remaining_seconds": 1959.142921,
+     "healthy_reserve_ok": true,
+     "unknown_ratio": 0.16666666666666666,
+     "post_warmup_unknown_ratio": 0.0,
+     "unknown_reasons": {
+      "INSUFFICIENT_TRAFFIC": 1,
+      "REQUIRED_TELEMETRY_MISSING:after:dependency_error_ratio": 1,
+      "REQUIRED_TELEMETRY_MISSING:after:error_ratio": 1,
+      "REQUIRED_TELEMETRY_MISSING:after:latency_p95_milliseconds": 1,
+      "REQUIRED_TELEMETRY_MISSING:after:request_rate_per_second": 1,
+      "VERSION_MAPPING_INSUFFICIENT_SAMPLES": 1,
+      "WINDOW_BEFORE_AUTHORIZATION": 2
+     },
+     "coverage_gaps": []
+    },
+    "1800": {
+     "status": "anomalous",
+     "reason": "anomaly_detected",
+     "terminal_at": "2026-10-22T04:51:18.456110+00:00",
+     "used_sample_count": 13,
+     "remaining_samples": 27,
+     "remaining_seconds": 1815.928543,
+     "healthy_reserve_ok": null,
+     "unknown_ratio": 0.15384615384615385,
+     "post_warmup_unknown_ratio": 0.0,
+     "unknown_reasons": {
+      "INSUFFICIENT_TRAFFIC": 1,
+      "REQUIRED_TELEMETRY_MISSING:after:dependency_error_ratio": 1,
+      "REQUIRED_TELEMETRY_MISSING:after:error_ratio": 1,
+      "REQUIRED_TELEMETRY_MISSING:after:latency_p95_milliseconds": 1,
+      "REQUIRED_TELEMETRY_MISSING:after:request_rate_per_second": 1,
+      "VERSION_MAPPING_INSUFFICIENT_SAMPLES": 1,
+      "WINDOW_BEFORE_AUTHORIZATION": 2
+     },
+     "coverage_gaps": []
+    },
+    "2100": {
+     "status": "anomalous",
+     "reason": "anomaly_detected",
+     "terminal_at": "2026-10-22T04:51:18.456110+00:00",
+     "used_sample_count": 13,
+     "remaining_samples": 27,
+     "remaining_seconds": 1815.928543,
+     "healthy_reserve_ok": null,
+     "unknown_ratio": 0.15384615384615385,
+     "post_warmup_unknown_ratio": 0.0,
+     "unknown_reasons": {
+      "INSUFFICIENT_TRAFFIC": 1,
+      "REQUIRED_TELEMETRY_MISSING:after:dependency_error_ratio": 1,
+      "REQUIRED_TELEMETRY_MISSING:after:error_ratio": 1,
+      "REQUIRED_TELEMETRY_MISSING:after:latency_p95_milliseconds": 1,
+      "REQUIRED_TELEMETRY_MISSING:after:request_rate_per_second": 1,
+      "VERSION_MAPPING_INSUFFICIENT_SAMPLES": 1,
+      "WINDOW_BEFORE_AUTHORIZATION": 2
+     },
+     "coverage_gaps": []
+    },
+    "600": {
+     "status": "healthy",
+     "reason": "healthy_confirmed",
+     "terminal_at": "2026-10-22T04:39:44.025384+00:00",
+     "used_sample_count": 8,
+     "remaining_samples": 32,
+     "remaining_seconds": 2510.359269,
+     "healthy_reserve_ok": true,
+     "unknown_ratio": 0.25,
+     "post_warmup_unknown_ratio": 0.0,
+     "unknown_reasons": {
+      "INSUFFICIENT_TRAFFIC": 1,
+      "REQUIRED_TELEMETRY_MISSING:after:dependency_error_ratio": 1,
+      "REQUIRED_TELEMETRY_MISSING:after:error_ratio": 1,
+      "REQUIRED_TELEMETRY_MISSING:after:latency_p95_milliseconds": 1,
+      "REQUIRED_TELEMETRY_MISSING:after:request_rate_per_second": 1,
+      "VERSION_MAPPING_INSUFFICIENT_SAMPLES": 1,
+      "WINDOW_BEFORE_AUTHORIZATION": 2
+     },
+     "coverage_gaps": []
+    },
+    "900": {
+     "status": "healthy",
+     "reason": "healthy_confirmed",
+     "terminal_at": "2026-10-22T04:39:44.025384+00:00",
+     "used_sample_count": 8,
+     "remaining_samples": 32,
+     "remaining_seconds": 2510.359269,
+     "healthy_reserve_ok": true,
+     "unknown_ratio": 0.25,
+     "post_warmup_unknown_ratio": 0.0,
+     "unknown_reasons": {
+      "INSUFFICIENT_TRAFFIC": 1,
+      "REQUIRED_TELEMETRY_MISSING:after:dependency_error_ratio": 1,
+      "REQUIRED_TELEMETRY_MISSING:after:error_ratio": 1,
+      "REQUIRED_TELEMETRY_MISSING:after:latency_p95_milliseconds": 1,
+      "REQUIRED_TELEMETRY_MISSING:after:request_rate_per_second": 1,
+      "VERSION_MAPPING_INSUFFICIENT_SAMPLES": 1,
+      "WINDOW_BEFORE_AUTHORIZATION": 2
+     },
+     "coverage_gaps": []
+    }
+   },
+   "per_sample": [
+    {
+     "decision_at": "2026-10-22T04:23:28.120510+00:00",
+     "verdict": "unknown",
+     "reasons": [
+      "INSUFFICIENT_TRAFFIC",
+      "REQUIRED_TELEMETRY_MISSING:after:dependency_error_ratio",
+      "REQUIRED_TELEMETRY_MISSING:after:error_ratio",
+      "REQUIRED_TELEMETRY_MISSING:after:latency_p95_milliseconds",
+      "REQUIRED_TELEMETRY_MISSING:after:request_rate_per_second",
+      "VERSION_MAPPING_INSUFFICIENT_SAMPLES",
+      "WINDOW_BEFORE_AUTHORIZATION"
+     ],
+     "elapsed_seconds": 50.14,
+     "queries": 33
+    },
+    {
+     "decision_at": "2026-10-22T04:25:42.080959+00:00",
+     "verdict": "unknown",
+     "reasons": [
+      "WINDOW_BEFORE_AUTHORIZATION"
+     ],
+     "elapsed_seconds": 73.95,
+     "queries": 49
+    },
+    {
+     "decision_at": "2026-10-22T04:27:59.232569+00:00",
+     "verdict": "healthy",
+     "reasons": [],
+     "elapsed_seconds": 77.14,
+     "queries": 49
+    },
+    {
+     "decision_at": "2026-10-22T04:30:29.571458+00:00",
+     "verdict": "healthy",
+     "reasons": [],
+     "elapsed_seconds": 90.32,
+     "queries": 49
+    },
+    {
+     "decision_at": "2026-10-22T04:32:48.575142+00:00",
+     "verdict": "healthy",
+     "reasons": [],
+     "elapsed_seconds": 79.06,
+     "queries": 49
+    },
+    {
+     "decision_at": "2026-10-22T04:35:07.708154+00:00",
+     "verdict": "healthy",
+     "reasons": [],
+     "elapsed_seconds": 79.12,
+     "queries": 49
+    },
+    {
+     "decision_at": "2026-10-22T04:37:25.506933+00:00",
+     "verdict": "healthy",
+     "reasons": [],
+     "elapsed_seconds": 77.79,
+     "queries": 49
+    },
+    {
+     "decision_at": "2026-10-22T04:39:44.025384+00:00",
+     "verdict": "healthy",
+     "reasons": [],
+     "elapsed_seconds": 78.51,
+     "queries": 49
+    },
+    {
+     "decision_at": "2026-10-22T04:42:05.003650+00:00",
+     "verdict": "healthy",
+     "reasons": [],
+     "elapsed_seconds": 80.97,
+     "queries": 49
+    },
+    {
+     "decision_at": "2026-10-22T04:44:23.752579+00:00",
+     "verdict": "healthy",
+     "reasons": [],
+     "elapsed_seconds": 78.74,
+     "queries": 49
+    },
+    {
+     "decision_at": "2026-10-22T04:46:39.786018+00:00",
+     "verdict": "healthy",
+     "reasons": [],
+     "elapsed_seconds": 76.02,
+     "queries": 49
+    },
+    {
+     "decision_at": "2026-10-22T04:48:55.241732+00:00",
+     "verdict": "healthy",
+     "reasons": [],
+     "elapsed_seconds": 75.44,
+     "queries": 49
+    },
+    {
+     "decision_at": "2026-10-22T04:51:18.456110+00:00",
+     "verdict": "degraded",
+     "reasons": [
+      "DEGRADED_SIGNAL:after:dependency_error_ratio",
+      "DEGRADED_SIGNAL:after:error_ratio",
+      "DEGRADED_SIGNAL:context:dependency_error_ratio",
+      "DEGRADED_SIGNAL:context:error_ratio"
+     ],
+     "elapsed_seconds": 83.2,
+     "queries": 49
+    },
+    {
+     "decision_at": "2026-10-22T04:53:37.892628+00:00",
+     "verdict": "degraded",
+     "reasons": [
+      "DEGRADED_SIGNAL:after:dependency_error_ratio",
+      "DEGRADED_SIGNAL:after:error_ratio",
+      "DEGRADED_SIGNAL:context:dependency_error_ratio",
+      "DEGRADED_SIGNAL:context:error_ratio"
+     ],
+     "elapsed_seconds": 79.42,
+     "queries": 49
+    },
+    {
+     "decision_at": "2026-10-22T04:55:56.424689+00:00",
+     "verdict": "degraded",
+     "reasons": [
+      "DEGRADED_SIGNAL:after:dependency_error_ratio",
+      "DEGRADED_SIGNAL:after:error_ratio",
+      "DEGRADED_SIGNAL:context:dependency_error_ratio",
+      "DEGRADED_SIGNAL:context:error_ratio"
+     ],
+     "elapsed_seconds": 78.52,
+     "queries": 49
+    },
+    {
+     "decision_at": "2026-10-22T04:58:13.486381+00:00",
+     "verdict": "degraded",
+     "reasons": [
+      "DEGRADED_SIGNAL:after:dependency_error_ratio",
+      "DEGRADED_SIGNAL:after:error_ratio",
+      "DEGRADED_SIGNAL:context:dependency_error_ratio",
+      "DEGRADED_SIGNAL:context:error_ratio"
+     ],
+     "elapsed_seconds": 77.05,
+     "queries": 49
+    },
+    {
+     "decision_at": "2026-10-22T05:00:33.474720+00:00",
+     "verdict": "degraded",
+     "reasons": [
+      "DEGRADED_SIGNAL:after:dependency_error_ratio",
+      "DEGRADED_SIGNAL:after:error_ratio",
+      "DEGRADED_SIGNAL:context:dependency_error_ratio",
+      "DEGRADED_SIGNAL:context:error_ratio"
+     ],
+     "elapsed_seconds": 79.97,
+     "queries": 49
+    },
+    {
+     "decision_at": "2026-10-22T05:02:59.038200+00:00",
+     "verdict": "degraded",
+     "reasons": [
+      "DEGRADED_SIGNAL:after:dependency_error_ratio",
+      "DEGRADED_SIGNAL:after:error_ratio",
+      "DEGRADED_SIGNAL:context:dependency_error_ratio",
+      "DEGRADED_SIGNAL:context:error_ratio"
+     ],
+     "elapsed_seconds": 85.55,
+     "queries": 49
+    },
+    {
+     "decision_at": "2026-10-22T05:05:14.276854+00:00",
+     "verdict": "degraded",
+     "reasons": [
+      "DEGRADED_SIGNAL:after:dependency_error_ratio",
+      "DEGRADED_SIGNAL:after:error_ratio",
+      "DEGRADED_SIGNAL:context:dependency_error_ratio",
+      "DEGRADED_SIGNAL:context:error_ratio"
+     ],
+     "elapsed_seconds": 75.28,
+     "queries": 49
+    },
+    {
+     "decision_at": "2026-10-22T05:07:35.174384+00:00",
+     "verdict": "healthy",
+     "reasons": [],
+     "elapsed_seconds": 80.89,
+     "queries": 49
+    },
+    {
+     "decision_at": "2026-10-22T05:09:56.731227+00:00",
+     "verdict": "healthy",
+     "reasons": [],
+     "elapsed_seconds": 81.54,
+     "queries": 49
+    },
+    {
+     "decision_at": "2026-10-22T05:12:13.918291+00:00",
+     "verdict": "healthy",
+     "reasons": [],
+     "elapsed_seconds": 77.17,
+     "queries": 49
+    },
+    {
+     "decision_at": "2026-10-22T05:14:37.355358+00:00",
+     "verdict": "healthy",
+     "reasons": [],
+     "elapsed_seconds": 83.42,
+     "queries": 49
+    },
+    {
+     "decision_at": "2026-10-22T05:17:07.506786+00:00",
+     "verdict": "healthy",
+     "reasons": [],
+     "elapsed_seconds": 90.15,
+     "queries": 49
+    },
+    {
+     "decision_at": "2026-10-22T05:19:36.311772+00:00",
+     "verdict": "healthy",
+     "reasons": [],
+     "elapsed_seconds": 88.79,
+     "queries": 49
+    },
+    {
+     "decision_at": "2026-10-22T05:22:00.581191+00:00",
+     "verdict": "healthy",
+     "reasons": [],
+     "elapsed_seconds": 84.23,
+     "queries": 49
+    }
+   ]
+  }
+ ]
+}
