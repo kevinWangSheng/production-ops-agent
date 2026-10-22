@@ -86,7 +86,7 @@ from opspilot.investigation.inputs import ToolFace
 from opspilot.investigation.loop import DISCIPLINE_VARIANT, investigation_versions
 from opspilot.investigation.runner import ExecutorFactory
 from opspilot.persistence import DurableStore, Lease, PersistenceError
-from opspilot.redaction import redact_credentials
+from opspilot.redaction import _authentication_name, redact_credentials
 from opspilot.tools.executor import (
     MAX_OPERATIONS_PER_RUN,
     MAX_TOOL_SECONDS_PER_RUN,
@@ -121,12 +121,17 @@ from opspilot.tools.tokens import TokenCounter, default_counter
 
 __all__ = [
     "CREDENTIAL_REF",
+    "DISCOVERY_LIMIT",
+    "LABEL_VALUES_TOOL",
     "METRICS_TOOL",
+    "METRIC_NAMES_TOOL",
     "OBSERVATION_SECONDS",
+    "PROMETHEUS_TOOLS",
     "SERVICES",
     "SOURCE",
     "TARGET_ID",
     "TOOL_SCHEMAS",
+    "TOOL_NAMES",
     "TOOL_SCHEMA_REVISION",
     "TRACES_TOOL",
     "TRACE_PROJECTION",
@@ -147,6 +152,16 @@ TARGET_ID = "m0-otel-20260909"
 SOURCE = "otel-demo"
 METRICS_TOOL = "metrics_range_query"
 TRACES_TOOL = "traces_search"
+# #307 A (contract r1, R1): Prometheus discovery tools, names copied from
+# upstream HolmesGPT ``prometheus.py`` (``GetMetricNames`` / ``GetLabelValues``).
+METRIC_NAMES_TOOL = "get_metric_names"
+LABEL_VALUES_TOOL = "get_label_values"
+#: The tools whose backend is the target's Prometheus: basic auth and the
+#: ``503`` + ``errorType=timeout`` classification apply to every one of them
+#: (#307 A R9/R10; F3 U8-a).
+PROMETHEUS_TOOLS: frozenset[str] = frozenset(
+    {METRICS_TOOL, METRIC_NAMES_TOOL, LABEL_VALUES_TOOL}
+)
 CREDENTIAL_REF = "otel-demo-ro"
 TRACE_PROJECTION = "otel-demo-traces-v1"
 _TIME_POLICY = "policy-window-1"
@@ -211,6 +226,21 @@ OBSERVATION_SECONDS = 24 * 3600
 DEFAULT_STEP_SECONDS = 30
 MIN_STEP_SECONDS = 15
 MAX_PROMQL_CHARS = 2000
+#: #307 A R6: the fixed ``limit`` every discovery request sends (upstream
+#: ``PROMETHEUS_METADATA_API_LIMIT = 100``, ``prometheus.py:53``); the model
+#: cannot change it. Prometheus v3 returns at most this many values and adds a
+#: ``"results truncated due to limit"`` warning when more exist.
+DISCOVERY_LIMIT = 100
+# #307 A R4: a label name the transport may splice into the request path;
+# the same pattern the lab read-only proxy admits (``scripts/kind_lab.py``).
+_LABEL_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+# #307 A R7: the one reason a discovery result is ``incomplete`` -- the
+# response carried warnings (in practice the limit truncation warning).
+DISCOVERY_INCOMPLETE_REASON = (
+    "Prometheus returned warnings with this result (for example the "
+    "100-value limit was reached), so more values may exist; use a more "
+    "specific match selector to narrow the result."
+)
 # B1 (docs/tasks/2026-09-28-m1-01-upstream-alignment-b.md): no more count
 # ceiling on a trace search -- upstream's own trace-search tools (Grafana
 # Tempo, the closest upstream analog to a Jaeger trace search; no direct
@@ -313,7 +343,11 @@ TOOL_SCHEMAS: tuple[Mapping[str, Any], ...] = (
                 "{service_name,rpc_service,rpc_method,rpc_grpc_status_code}, "
                 "rpc_server_duration_milliseconds_bucket, "
                 "app_payment_transactions_total, "
-                "http_server_request_duration_seconds_count."
+                "http_server_request_duration_seconds_count. "
+                "For a metric or label not listed here, discover it with "
+                "get_metric_names or get_label_values first, and use only "
+                "metric names, label names and label values you have seen "
+                "returned by a tool or that are listed here."
             ),
             "parameters": {
                 "type": "object",
@@ -445,10 +479,162 @@ TOOL_SCHEMAS: tuple[Mapping[str, Any], ...] = (
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": METRIC_NAMES_TOOL,
+            "description": (
+                "List metric names in the registered target's Prometheus "
+                "that have series matching a selector inside a query window "
+                "you may choose within the authorized window. "
+                "Use it to discover which metrics exist before writing a "
+                "metrics_range_query expression. "
+                "content is the list of metric names returned; it carries "
+                "no values, types, descriptions or label sets. "
+                "At most 100 names are returned. "
+                "When more exist, the first 100 are returned, incomplete is "
+                "true and incomplete_reason says to narrow the match "
+                "selector; incomplete is also true whenever Prometheus "
+                "returned any warning. "
+                "limit in the view is that fixed 100 cap; you cannot change "
+                "it. "
+                "Combine several patterns in one call with a regular "
+                "expression alternation, for example "
+                '{__name__=~"rpc_.*|http_.*"} or '
+                '{service_name=~"checkout|payment"}. '
+                "A result whose whole view exceeds 25,000 tokens is refused "
+                "with RESULT_TOO_LARGE and no names are returned. "
+                "A listed name does not prove the metric has samples in the "
+                "query window, nor anything about its values or the "
+                "service's health. "
+                "A name that is not listed is unknown, not proven absent: "
+                "the list may be cut at 100 or limited by the selector and "
+                "window."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "match": {
+                        "type": "string",
+                        "description": (
+                            "Required PromQL series selector that filters "
+                            "the metrics, for example "
+                            '{__name__=~"traces_.*"} or '
+                            '{service_name="checkout"}; an empty value '
+                            "is refused."
+                        ),
+                    },
+                    "start": {
+                        "type": "string",
+                        "description": (
+                            "Absolute ISO-8601 start of the query window. "
+                            "Give both start and end, or neither. "
+                            "Must lie inside the authorized window; a query "
+                            "window outside it is refused and the refusal "
+                            "states the authorized window."
+                        ),
+                    },
+                    "end": {
+                        "type": "string",
+                        "description": (
+                            "Absolute ISO-8601 end of the query window. "
+                            "Give both start and end, or neither. "
+                            "Omitted with start also omitted, the query "
+                            "window is the time policy's "
+                            "default_query_window when it states one, "
+                            "otherwise the 1 hour ending at the authorized "
+                            "window's end."
+                        ),
+                    },
+                },
+                "required": ["match"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": LABEL_VALUES_TOOL,
+            "description": (
+                "List the values of one label in the registered target's "
+                "Prometheus, optionally only on series matching a selector, "
+                "inside a query window you may choose within the authorized "
+                "window. "
+                "Use it to discover services, span names, status codes, "
+                "jobs or other label values before writing a "
+                "metrics_range_query expression. "
+                "content is the list of label values returned. "
+                "At most 100 values are returned. "
+                "When more exist, the first 100 are returned, incomplete is "
+                "true and incomplete_reason says to narrow the match "
+                "selector; incomplete is also true whenever Prometheus "
+                "returned any warning. "
+                "limit in the view is that fixed 100 cap; you cannot change "
+                "it. "
+                "A label name must be letters, digits and underscores, not "
+                "starting with a digit; any other name, and a name that "
+                "looks like a credential, is refused before any request is "
+                "sent. "
+                "A result whose whole view exceeds 25,000 tokens is refused "
+                "with RESULT_TOO_LARGE and no values are returned. "
+                "A listed value does not prove the series has samples in "
+                "the query window, nor anything about metric values or the "
+                "service's health; the value may belong to an old series. "
+                "A value that is not listed is unknown, not proven absent: "
+                "the list may be cut at 100 or limited by the selector and "
+                "window."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "label": {
+                        "type": "string",
+                        "description": (
+                            "The label name whose values to list, for "
+                            "example service_name, span_name, job or "
+                            "__name__."
+                        ),
+                    },
+                    "match": {
+                        "type": "string",
+                        "description": (
+                            "Optional PromQL series selector that limits "
+                            "the series the values come from, for example "
+                            '{__name__="traces_span_metrics_calls_total"}; '
+                            "when given it must not be empty."
+                        ),
+                    },
+                    "start": {
+                        "type": "string",
+                        "description": (
+                            "Absolute ISO-8601 start of the query window. "
+                            "Give both start and end, or neither. "
+                            "Must lie inside the authorized window; a query "
+                            "window outside it is refused and the refusal "
+                            "states the authorized window."
+                        ),
+                    },
+                    "end": {
+                        "type": "string",
+                        "description": (
+                            "Absolute ISO-8601 end of the query window. "
+                            "Give both start and end, or neither. "
+                            "Omitted with start also omitted, the query "
+                            "window is the time policy's "
+                            "default_query_window when it states one, "
+                            "otherwise the 1 hour ending at the authorized "
+                            "window's end."
+                        ),
+                    },
+                },
+                "required": ["label"],
+            },
+        },
+    },
 )
 
 
-def _registrations() -> tuple[ToolRegistration, ToolRegistration]:
+def _registrations() -> tuple[ToolRegistration, ...]:
     metrics = ToolRegistration(
         name=METRICS_TOOL,
         version="v1",
@@ -645,7 +831,151 @@ def _registrations() -> tuple[ToolRegistration, ToolRegistration]:
         },
         incomplete_marker="incomplete",
     )
-    return metrics, traces
+    return metrics, traces, *_discovery_registrations()
+
+
+_DISCOVERY_WINDOW_FORMAT = (
+    "The authorized absolute query window, appended as {window}; the "
+    "discovery start/end are bound by the gateway. start/end tool "
+    "parameters pick a query window inside it; omitted, the query window "
+    "is the time policy's default_query_window when it states one (an "
+    "alert Run's, from an hour before the alert's start), otherwise the 1 "
+    "hour ending at the authorized window's end, and a chosen query window "
+    "outside the authorized window is refused."
+)
+_DISCOVERY_LIMITS = (
+    "Every request asks Prometheus for at most 100 values (a fixed limit the "
+    "model cannot change). When more exist the first 100 are returned with "
+    "incomplete true and incomplete_reason asking for a narrower match "
+    "selector; any Prometheus warning sets incomplete true; rows are never "
+    "dropped by the view (truncated stays false). The whole view is also "
+    "limited to the registered max_view_tokens (25,000 DeepSeek tokens): a "
+    "larger result is refused with RESULT_TOO_LARGE and no values, never "
+    "truncated. Prometheus HTTP 503 with JSON errorType=timeout is "
+    "timeout/TOOL_TIMEOUT with confirmed source contact; other 5xx "
+    "responses are error/SOURCE_UNAVAILABLE."
+)
+_DISCOVERY_CANNOT_PROVE = (
+    "A listed name does not prove the series has samples in the query "
+    "window, and says nothing about its values or the service's health; a "
+    "name that is not listed is unknown, not proof that it does not exist "
+    "(the list may be cut at 100 or narrowed by the selector and window)."
+)
+_DISCOVERY_ERROR_CLASSES = {
+    "400": "INVALID_PARAMS",
+    "422": "INVALID_PARAMS",
+    "503": "SOURCE_UNAVAILABLE",
+    "QUERY_OUT_OF_WINDOW": "INVALID_PARAMS",
+    "MATCH_INVALID": "INVALID_PARAMS",
+    "INVALID_LABEL": "INVALID_PARAMS",
+    "CREDENTIAL_LABEL_REFUSED": "INVALID_PARAMS",
+}
+
+
+def _window_parameters() -> dict[str, ParameterSpec]:
+    return {
+        "start": ParameterSpec(
+            "string",
+            description=(
+                "Absolute ISO-8601 start of the query window; give both "
+                "start and end or neither."
+            ),
+        ),
+        "end": ParameterSpec(
+            "string",
+            description=(
+                "Absolute ISO-8601 end of the query window; give both "
+                "start and end or neither."
+            ),
+        ),
+    }
+
+
+def _discovery_registrations() -> tuple[ToolRegistration, ToolRegistration]:
+    """#307 A: the two Prometheus discovery tools (contract r1, interface draft).
+
+    Same execution envelope as the metrics tool (1 MiB raw, 25k-token view,
+    30 s request, the 24 h frame as the window ceiling); the raw evidence is
+    the exact label-values response and the view rows are its ``data`` list.
+    """
+    common: dict[str, Any] = {
+        "version": "v1",
+        "source": SOURCE,
+        "verb": "list",
+        "may_contain_secrets": False,
+        "result_path": ("data",),
+        "request_timeout_seconds": 30.0,
+        "max_result_bytes": 1024 * 1024,
+        "max_view_tokens": MAX_VIEW_TOKENS,
+        "max_window_seconds": OBSERVATION_SECONDS,
+        "error_classes": _DISCOVERY_ERROR_CLASSES,
+        "incomplete_marker": "warnings",
+    }
+    metric_names = ToolRegistration(
+        name=METRIC_NAMES_TOOL,
+        description=ToolDescription(
+            returns=(
+                "The exact Prometheus label-values response for the metric "
+                "name label of the registered target: data holds the metric "
+                "names that have series matching the selector inside the "
+                "query window; the view adds incomplete_reason and limit."
+            ),
+            window_format=_DISCOVERY_WINDOW_FORMAT,
+            values_format=(
+                "The authorized target for this Run is appended as {values}. "
+                "match is a required, non-empty PromQL series selector; "
+                "Prometheus parses it and a selector it rejects is "
+                "INVALID_PARAMS."
+            ),
+            limits=_DISCOVERY_LIMITS,
+            cannot_prove=_DISCOVERY_CANNOT_PROVE,
+        ),
+        parameters={
+            "match": ParameterSpec(
+                "string",
+                required=True,
+                description="PromQL series selector that filters the metrics.",
+            ),
+            **_window_parameters(),
+        },
+        **common,
+    )
+    label_values = ToolRegistration(
+        name=LABEL_VALUES_TOOL,
+        description=ToolDescription(
+            returns=(
+                "The exact Prometheus label-values response for one label of "
+                "the registered target: data holds the values of that label "
+                "on series inside the query window, optionally only series "
+                "matching the selector; the view adds incomplete_reason and "
+                "limit."
+            ),
+            window_format=_DISCOVERY_WINDOW_FORMAT,
+            values_format=(
+                "The authorized target for this Run is appended as {values}. "
+                "label must match [A-Za-z_][A-Za-z0-9_]* (__name__ allowed) "
+                "and must not look like a credential name, or it is refused "
+                "before any request is sent; match, when given, is a "
+                "non-empty PromQL series selector."
+            ),
+            limits=_DISCOVERY_LIMITS,
+            cannot_prove=_DISCOVERY_CANNOT_PROVE,
+        ),
+        parameters={
+            "label": ParameterSpec(
+                "string",
+                required=True,
+                description="The label name whose values to list.",
+            ),
+            "match": ParameterSpec(
+                "string",
+                description="Optional PromQL series selector that limits the series.",
+            ),
+            **_window_parameters(),
+        },
+        **common,
+    )
+    return metric_names, label_values
 
 
 def _tool_schema_revision() -> str:
@@ -667,6 +997,11 @@ def _tool_schema_revision() -> str:
 
 
 TOOL_SCHEMA_REVISION = _tool_schema_revision()
+
+#: Every tool this profile registers, in registration order (#307 A R10): the
+#: scope, the evaluation template scope and the provenance replay derive
+#: their tool names from here instead of naming tools one by one.
+TOOL_NAMES: tuple[str, ...] = tuple(item.name for item in _registrations())
 
 
 # -- configuration -------------------------------------------------------
@@ -974,8 +1309,9 @@ class OtelDemoTransport:
     ``credentials`` maps ``credential_ref`` to a bearer token or ``None``;
     an unknown ref is refused (``TransportError``), never sent anonymously.
     ``basic_auth`` maps ``credential_ref`` to a ``(username, password)`` pair
-    sent as HTTP basic auth on *metrics* (Prometheus) requests only -- the
-    lab Prometheus authenticates since M1-02 step 4, Jaeger stays anonymous.
+    sent as HTTP basic auth on every Prometheus request (``PROMETHEUS_TOOLS``:
+    the range query and the #307 A discovery tools) -- the lab Prometheus
+    authenticates since M1-02 step 4, Jaeger stays anonymous.
     """
 
     def __init__(
@@ -1000,6 +1336,8 @@ class OtelDemoTransport:
             return self._metrics(request)
         if request.tool == TRACES_TOOL:
             return self._traces(request)
+        if request.tool in (METRIC_NAMES_TOOL, LABEL_VALUES_TOOL):
+            return self._discovery(request)
         raise TransportError("TOOL_NOT_SUPPORTED")
 
     # -- HTTP --------------------------------------------------------------
@@ -1009,7 +1347,7 @@ class OtelDemoTransport:
         token = self._credentials[request.credential_ref]
         pair = (
             self._basic_auth.get(request.credential_ref)
-            if request.tool == METRICS_TOOL
+            if request.tool in PROMETHEUS_TOOLS
             else None
         )
         if pair is not None:
@@ -1034,7 +1372,7 @@ class OtelDemoTransport:
                         body = error.read(ERROR_BODY_BYTES)
                     code = int(error.code)
                     if code >= 500:
-                        if code == 503 and request.tool == METRICS_TOOL:
+                        if code == 503 and request.tool in PROMETHEUS_TOOLS:
                             try:
                                 payload = json.loads(body)
                             except (ValueError, UnicodeDecodeError):
@@ -1133,6 +1471,70 @@ class OtelDemoTransport:
                 if _has_calls_total_selector(expr)
                 else None
             ),
+        )
+
+    # -- discovery (#307 A) ---------------------------------------------------
+
+    def _discovery(self, request: TransportRequest) -> TransportResponse:
+        """``get_metric_names`` / ``get_label_values`` (contract r1, R2-R9).
+
+        Every refusal is decided before anything is sent: an empty or
+        over-long ``match`` (syntax is left to Prometheus, whose 400 is
+        INVALID_PARAMS), a label name outside the proxy's pattern, a label
+        name that looks like a credential, a window outside the frame. The
+        request always carries ``limit=DISCOVERY_LIMIT``; the raw evidence is
+        the exact response bytes.
+        """
+        params = request.params
+        label: object
+        if request.tool == METRIC_NAMES_TOOL:
+            label = "__name__"
+            match = params.get("match")
+            if not _match_ok(match):
+                return _refused("MATCH_INVALID")
+        else:
+            label = params.get("label")
+            if not isinstance(label, str) or not _LABEL_NAME.fullmatch(label):
+                return _refused("INVALID_LABEL")
+            if _authentication_name(label):
+                return _refused("CREDENTIAL_LABEL_REFUSED")
+            match = params.get("match")
+            if match is not None and not _match_ok(match):
+                return _refused("MATCH_INVALID")
+        window, refusal = _query_window(request)
+        if refusal is not None:
+            return refusal
+        assert window is not None
+        query: list[tuple[str, str]] = []
+        if isinstance(match, str):
+            query.append(("match[]", match))
+        query += [
+            ("start", f"{window.start.timestamp():.3f}"),
+            ("end", f"{window.end.timestamp():.3f}"),
+            ("limit", str(DISCOVERY_LIMIT)),
+        ]
+        url = (
+            f"{request.endpoint}/api/v1/label/{label}/values?"
+            + urllib.parse.urlencode(query)
+        )
+        fetched = self._get(url, request, max_bytes=request.max_result_bytes)
+        if fetched.status != 200:
+            return TransportResponse(
+                body=fetched.body, source_status=str(fetched.status)
+            )
+        try:
+            payload = json.loads(fetched.body.decode("utf-8"))
+        except (UnicodeDecodeError, ValueError):
+            # Hand the executor the bytes; it classifies them MALFORMED_RESULT.
+            return TransportResponse(body=fetched.body)
+        warned = isinstance(payload, Mapping) and bool(payload.get("warnings"))
+        return TransportResponse(
+            body=fetched.body,
+            query_window=window,
+            view_fields={
+                "incomplete_reason": DISCOVERY_INCOMPLETE_REASON if warned else None,
+                "limit": DISCOVERY_LIMIT,
+            },
         )
 
     # -- traces -------------------------------------------------------------
@@ -1249,6 +1651,15 @@ def _query_window(
         # (PRODUCT-CONSTRAINTS "Query scope ... constrained").
         return None, _refused("QUERY_OUT_OF_WINDOW", frame=frame)
     return window, None
+
+
+def _match_ok(match: object) -> bool:
+    """#307 A R2: a non-empty selector no longer than ``MAX_PROMQL_CHARS``."""
+    return (
+        isinstance(match, str)
+        and bool(match.strip())
+        and len(match) <= MAX_PROMQL_CHARS
+    )
 
 
 def _refused(code: str, *, frame: Window | None = None) -> TransportResponse:
@@ -1667,7 +2078,7 @@ def otel_demo_executor_factory(
             registry_revision=targets.revision,
             tool_registry_revision=tools.revision,
             target_ids=frozenset({TARGET_ID}),
-            tool_names=frozenset({METRICS_TOOL, TRACES_TOOL}),
+            tool_names=frozenset(item.name for item in registrations.tools),
             window=scope_window(input),
             default_query_window=scope_default_query_window(input),
             deadline=run["deadline"],
