@@ -31,6 +31,17 @@ PR1 实现（2026-10-22，`feature/308-overlimit-evidence`）：
   - 最终：#308 验收 + 实现自测 + PG 24 passed；全仓 ruff format/check 通过。
   - 下一步：push、开 PR（正文注明不改模型可见面、无迁移与新 grant；审计时间线会多出无 `tool_committed` 的 register-only evidence 项，审计合同已允许）、CI、`@codex review` 分诊；不改调查 loop，按合同不需要真实 Run。
 
+PR2 实现（2026-10-22，`feature/308-pr2-read-evidence`，起点 main `1f701af`，实现提交 `c8516f3`）：
+
+- 超限拒绝：保留成功时模型视图就是保留记录的视图（拒绝字段 + U5 摘要 + `evidence_id`、`adopted:false`、R12 来源字段 + 固定 `usage` 文案），`outcome.evidence` 挂该记录（R1/R2），提交时照常 pin、去重记住它、事故页已有的链接与 `(not adopted)` 直接生效（R9，模板未改）。超过每 Run 上限：摘要 + `stored:false`，无 evidence_id。sink 不能回答（不能计数、存储异常、控制拒绝）：拒绝与 #308 之前完全一致（R11 字面）。摘要的 `suggested_limit` 按各行字节占整视图 token 的比例估算，不额外调用计数器（M1-01「整视图只计一次」）。
+- `read_evidence`（`opspilot/tools/evidence_read.py`）：source `opspilot-evidence`、verb `get`，经路由 transport 只读 `get`；本 Run、超限保留记录、父记录 target 等于请求 target 且仍在授权内，否则 `EVIDENCE_NOT_READABLE`（denied，发送前，contact none）；负 offset / limit<1 为 INVALID_PARAMS；offset 越界为 no_data；片段超 25k 整段拒绝且不再保留。片段 raw 按 R5，视图带 `parent_tool`、`slice`，`source`/`window`/`observed_at`/`dispatch_started_at`/`data_as_of`/`source_*_at`/`freshness_seconds`/`incomplete` 取父记录，`truncated` 与 `omitted_rows` 表示父记录中未展示的行。
+- 可逆决定（各一行理由）：executor 对 `EVIDENCE_SOURCE` 注册豁免 target/source 一致检查（R3 的 target 由 transport 对父记录核对）；`TransportRequest.target_id`、`TransportResponse.carried`（仅 evidence 源，固定键）为此新增；`EVIDENCE_NOT_READABLE` 进 `DENIED_REASONS` 与 `SOURCE_ERROR_REASONS`，executor 把映射到 denied 原因的 source_status 报为 denied；`label_cardinality` 用 `[{label, value_count}]` 列表保序（规范 JSON 会把 dict 键排序）；traces 与发现工具描述保持字节不变，只改 metrics 描述与 limits；替身 `scripts/m1_otel_stub.py` 加 `--wide-series`。
+- U7：`registry.MAX_VIEW_TOKENS = 25_000`，注册 `max_view_tokens` 超过即 `VIEW_LIMIT_OUT_OF_RANGE`；`visible_view` 与 `context_policy_revision` 不动。
+- revision：`PROJECTION_REVISION` `m1-01-tool-view-v8` → `v9`；`tool_schema_revision` `otel-demo-5270fd8c543f` → `otel-demo-2a944edd110a`；`prompt_revision`、`context_policy_revision` 不变。
+- 自测：`tests/test_308_pr2_read_evidence_impl.py`（18 项）与 `tests/integration/test_308_pr2_read_evidence_impl_postgres.py`（1 项，worker 角色）通过；PR1 实现自测与 #307A、F3 实现自测中钉住旧语义的断言已按 PR2 改（实现侧，理由写在注释）。受 bump 与 U7 影响、需独立作者更新的既有断言见交付清单（lead 处）。
+- 已知限制：eval 录制格式对 transport 发送前拒绝（`sent:false`）一律判不一致，这是既有行为，`EVIDENCE_NOT_READABLE` 同属此类；片段不带 `lookback_seconds`（PR1 保留视图未存该字段）。
+- 真实 Run：两次，第 1 次替身数据未触发超限（失败，保留），第 2 次通过：6 次超限保留拒绝、2 次 `read_evidence` ok，报告以片段为 fact 引用并通过校验。[证据](../evidence/308-pr2-read-evidence-live/README.md)；费用余额差 0.04 CNY。
+
 ## 待决
 
 无。

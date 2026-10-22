@@ -12,9 +12,10 @@ and the evidence README says so.
 Point the profile at it with ``OPSPILOT_OTEL_PROMETHEUS_URL=http://127.0.0.1:29317``
 and ``OPSPILOT_OTEL_JAEGER_URL=http://127.0.0.1:29317/jaeger/ui``.
 
-``--wide-series N`` (#308 PR2 evidence) adds N per-pod checkout series to
-every range query that neither names a pod nor asks for ``topk``, so an
-ordinary query's whole view exceeds the 25k-token view limit and is kept for
+``--wide-series N`` (#308 PR2 evidence) adds N short-lived per-pod checkout
+series (at most four points each) to every range query that neither names a
+pod nor asks for ``topk``, so an ordinary query's whole view exceeds the
+25k-token view limit, stays under the 1 MiB byte ceiling and is kept for
 ``read_evidence``.
 """
 
@@ -52,6 +53,10 @@ def prometheus_body(query: dict[str, list[str]], *, wide: int = 0) -> bytes:
             k += 1
         labels = {"service_name": service, "status_code": status}
         if status.startswith("pod-"):
+            # Short-lived per-pod series: the last few grid points only, so
+            # the result stays far below the 1 MiB byte ceiling at any step
+            # while its whole view still exceeds the 25k-token view limit.
+            values = values[-4:]
             labels = {
                 "service_name": service,
                 "status_code": "STATUS_CODE_ERROR",
