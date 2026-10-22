@@ -144,14 +144,20 @@ class _CountingSink:
         self.records.append(record)
         return record.evidence_id
 
-    def count_spilled(self, run_id: str) -> int:
-        return sum(
-            1
+    def count_spilled(self, run_id: str) -> tuple[int, int]:
+        records = [
+            record
             for record in self.records
             if record.operation.run_id == run_id
             and record.status == "error"
             and record.adopted is False
-        )
+        ]
+        return len(records), sum(len(record.raw) for record in records)
+
+
+class _UnanswerableSink(_CountingSink):
+    def count_spilled(self, run_id: str) -> tuple[int, int]:
+        raise RuntimeError("spill count unavailable")
 
 
 def _redacted_body() -> bytes:
@@ -182,6 +188,17 @@ def _baseline_for_index(index: int) -> bytes:
 
 def _overlimit_outcome(executor, transport, *, index: int = 0):
     transport.response = TransportResponse(body=body(_rows()))
+    return executor.execute(_request(index))
+
+
+def _large_result_body(target_bytes: int = 995_000) -> bytes:
+    prefix = b'{"data":{"result":[{"series":0,"message":"'
+    suffix = b'"}]}}'
+    return prefix + (b"x" * (target_bytes - len(prefix) - len(suffix))) + suffix
+
+
+def _large_overlimit_outcome(executor, transport, payload: bytes, *, index: int):
+    transport.response = TransportResponse(body=payload)
     return executor.execute(_request(index))
 
 
@@ -236,7 +253,50 @@ def test_pr1_seventeenth_overlimit_result_is_not_stored_and_view_is_unchanged():
         for index, outcome in enumerate(outcomes)
     )
     assert len(sink.records) == 16
-    assert sink.count_spilled(RUN_ID) == 16
+    assert sink.count_spilled(RUN_ID) == (
+        16,
+        sum(len(record.raw) for record in sink.records),
+    )
+
+
+def test_pr1_cumulative_raw_bytes_stop_storage_after_the_16_mib_boundary():
+    sink = _CountingSink()
+    executor, transport = _executor(sink=sink)
+    payload = _large_result_body()
+    assert len(payload) < 1_000_000
+
+    stored = [
+        _large_overlimit_outcome(executor, transport, payload, index=index)
+        for index in range(16)
+    ]
+    before = sink.count_spilled(RUN_ID)
+    seventeenth = _large_overlimit_outcome(executor, transport, payload, index=16)
+
+    baseline_sink = _CountingSink()
+    baseline_executor, baseline_transport = _executor(sink=baseline_sink)
+    baseline = _large_overlimit_outcome(
+        baseline_executor, baseline_transport, payload, index=16
+    )
+    assert all(
+        (outcome.status, outcome.reason) == ("error", "RESULT_TOO_LARGE")
+        for outcome in (*stored, seventeenth, baseline)
+    )
+    assert canonical(seventeenth.model_view) == canonical(baseline.model_view)
+    assert len(sink.records) == 16
+    assert before == sink.count_spilled(RUN_ID)
+    assert before[1] * 17 > 16 * 1024 * 1024
+
+
+def test_pr1_unavailable_spill_count_keeps_refusal_and_does_not_store():
+    sink = _UnanswerableSink()
+    executor, transport = _executor(sink=sink)
+
+    outcome = _overlimit_outcome(executor, transport)
+
+    assert (outcome.status, outcome.reason) == ("error", "RESULT_TOO_LARGE")
+    assert canonical(outcome.model_view).encode() == _baseline_for_index(0)
+    assert outcome.evidence is None
+    assert sink.records == []
 
 
 def test_pr1_control_failure_keeps_the_existing_denied_path():
