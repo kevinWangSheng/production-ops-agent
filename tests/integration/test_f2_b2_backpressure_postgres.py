@@ -537,7 +537,7 @@ def test_backlog_pass_uses_its_observed_queue_for_concurrent_arrival(
     ]
     assert len(parked) == 1
     assert all(
-        priorities[parked_id] <= priorities[queued_id]
+        priorities[parked_id] >= priorities[queued_id]
         for parked_id in parked
         for queued_id in queued
     )
