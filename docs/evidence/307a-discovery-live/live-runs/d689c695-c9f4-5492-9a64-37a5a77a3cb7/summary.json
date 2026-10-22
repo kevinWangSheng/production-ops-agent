@@ -1,0 +1,618 @@
+{
+  "schema": "opspilot-lab-summary-1",
+  "experiment": "307a-discovery-live",
+  "run_id": "d689c695-c9f4-5492-9a64-37a5a77a3cb7",
+  "frozen_at": "2026-10-22T16:29:37.542130+00:00",
+  "round": "307a-discovery-20261022",
+  "versions": {
+    "branch": "feature/F3-307-prom-discovery",
+    "commit": "4358a5b",
+    "model": "deepseek (worker default)",
+    "tool_profile": "otel-demo",
+    "worker_versions": {
+      "prompt_revision": "prompt-replay-candidate-dd9018031487",
+      "context_policy_revision": "ctx-ctx-policy-v1-a30e65ea52f4",
+      "tool_schema_revision": "otel-demo-5270fd8c543f"
+    },
+    "prometheus_buildinfo": {
+      "version": "3.5.0",
+      "revision": "8be3a9560fbdd18a94dedec4b747c35178177202",
+      "branch": "HEAD",
+      "buildUser": "root@4451b64cb451",
+      "buildDate": "20250714-16:18:17",
+      "goVersion": "go1.24.5"
+    }
+  },
+  "input_summary": {
+    "source": "POST /intake/ui (Basic Auth lab account), target m0-otel-20260909, idempotency_label u4a-live-1",
+    "question": "Is the recommendation service healthy over the last hour? Check its request rate, errors and resource usage, and tell me which signals are missing."
+  },
+  "checks": {
+    "u4_discovery_calls": [
+      {
+        "round": "ctx0:round-1",
+        "tool": "get_metric_names",
+        "params": {
+          "end": "2026-10-22T16:17:35+00:00",
+          "match": "{service_name=\"recommendation\"}",
+          "start": "2026-10-22T15:17:35+00:00"
+        },
+        "status": "ok",
+        "result_count": 28,
+        "returned_count": 28,
+        "limit": 100,
+        "incomplete": false,
+        "incomplete_reason": null,
+        "truncated": false,
+        "evidence_id": "408786e5-256b-442d-ba70-47ceead6154d-t0:8b328052-6773-4586-b570-c3b4f07b2918",
+        "content_head": [
+          "app_recommendations_counter_total",
+          "process_open_file_descriptor_count",
+          "process_runtime_cpython_context_switches_total",
+          "process_runtime_cpython_cpu_time_seconds_total",
+          "process_runtime_cpython_cpu_utilization_ratio"
+        ],
+        "evidence_record": {
+          "exists": true,
+          "status": "ok",
+          "adopted": true,
+          "committed": true,
+          "raw_bytes": 1029,
+          "raw_sha256": "fbdb215ff8afab4b97355331a27f6af5e95f1bf31bdc53dc22b22d428e6cfc03",
+          "raw_sha256_recomputed_matches": true,
+          "raw_status": "success",
+          "raw_data_len": 28,
+          "raw_warnings": null,
+          "view_result_count": 28,
+          "view_incomplete": false
+        },
+        "incomplete_matches_warnings": true,
+        "pass": true
+      },
+      {
+        "round": "ctx0:round-1",
+        "tool": "get_label_values",
+        "params": {
+          "end": "2026-10-22T16:17:35+00:00",
+          "label": "__name__",
+          "match": "{__name__=~\"traces_.*|rpc_.*|http_.*|container_.*|process_.*\"}",
+          "start": "2026-10-22T15:17:35+00:00"
+        },
+        "status": "ok",
+        "result_count": 100,
+        "returned_count": 100,
+        "limit": 100,
+        "incomplete": true,
+        "incomplete_reason": "Prometheus returned warnings with this result (for example the 100-value limit was reached), so more values may exist; use a more specific match selector to narrow the result.",
+        "truncated": false,
+        "evidence_id": "408786e5-256b-442d-ba70-47ceead6154d-t1:14afd9f9-bd2c-4e90-90e8-7287f8d5dd3f",
+        "content_head": [
+          "container_blkio_device_usage_total",
+          "container_cpu_cfs_burst_periods_total",
+          "container_cpu_usage_seconds_total",
+          "container_file_descriptors",
+          "container_fs_inodes_free"
+        ],
+        "evidence_record": {
+          "exists": true,
+          "status": "ok",
+          "adopted": true,
+          "committed": true,
+          "raw_bytes": 3973,
+          "raw_sha256": "7ae3a28275c8018fcc96ecf2aa472e7e67e6af89d041bbbb9a250207dc7119d4",
+          "raw_sha256_recomputed_matches": true,
+          "raw_status": "success",
+          "raw_data_len": 100,
+          "raw_warnings": [
+            "results truncated due to limit"
+          ],
+          "view_result_count": 100,
+          "view_incomplete": true
+        },
+        "incomplete_matches_warnings": true,
+        "pass": true
+      },
+      {
+        "round": "ctx0:round-2",
+        "tool": "get_label_values",
+        "params": {
+          "end": "2026-10-22T16:17:35+00:00",
+          "label": "span_name",
+          "match": "{service_name=\"recommendation\",__name__=\"traces_span_metrics_calls_total\"}",
+          "start": "2026-10-22T15:17:35+00:00"
+        },
+        "status": "ok",
+        "result_count": 4,
+        "returned_count": 4,
+        "limit": 100,
+        "incomplete": false,
+        "incomplete_reason": null,
+        "truncated": false,
+        "evidence_id": "baec0faa-8c19-4ff3-9ec7-a1b13b1ed7f4-t1:62d0dab6-53e0-45c1-ad84-0ff11f90ab79",
+        "content_head": [
+          "/flagd.evaluation.v1.Service/EventStream",
+          "/oteldemo.ProductCatalogService/ListProducts",
+          "/oteldemo.RecommendationService/ListRecommendations",
+          "get_product_list"
+        ],
+        "evidence_record": {
+          "exists": true,
+          "status": "ok",
+          "adopted": true,
+          "committed": true,
+          "raw_bytes": 192,
+          "raw_sha256": "325ba356f5d6a2bdff7a5bc4d45a6a3565173c4e78fe6885534cbdd6bc6bddae",
+          "raw_sha256_recomputed_matches": true,
+          "raw_status": "success",
+          "raw_data_len": 4,
+          "raw_warnings": null,
+          "view_result_count": 4,
+          "view_incomplete": false
+        },
+        "incomplete_matches_warnings": true,
+        "pass": true
+      },
+      {
+        "round": "ctx0:round-4",
+        "tool": "get_metric_names",
+        "params": {
+          "end": "2026-10-22T16:17:35+00:00",
+          "match": "{namespace=\"otel-demo\",pod=\"recommendation-9d497476-gqmk2\"}",
+          "start": "2026-10-22T15:17:35+00:00"
+        },
+        "status": "ok",
+        "result_count": 88,
+        "returned_count": 88,
+        "limit": 100,
+        "incomplete": false,
+        "incomplete_reason": null,
+        "truncated": false,
+        "evidence_id": "db32f3e0-8cb7-429a-92ba-9af4b7bce08f-t3:948726e4-bf26-43a0-bfce-360b9d6d10ee",
+        "content_head": [
+          "container_blkio_device_usage_total",
+          "container_cpu_system_seconds_total",
+          "container_cpu_usage_seconds_total",
+          "container_cpu_user_seconds_total",
+          "container_creation_time_seconds"
+        ],
+        "evidence_record": {
+          "exists": true,
+          "status": "ok",
+          "adopted": true,
+          "committed": true,
+          "raw_bytes": 3048,
+          "raw_sha256": "813384a1f78631fc3a2e24579d535458d0daa58688ef7e533453fad7609ee598",
+          "raw_sha256_recomputed_matches": true,
+          "raw_status": "success",
+          "raw_data_len": 88,
+          "raw_warnings": null,
+          "view_result_count": 88,
+          "view_incomplete": false
+        },
+        "incomplete_matches_warnings": true,
+        "pass": true
+      },
+      {
+        "round": "ctx0:round-9",
+        "tool": "get_metric_names",
+        "params": {
+          "end": "2026-10-22T16:17:35+00:00",
+          "match": "{__name__=~\".*cfs.*|.*throttl.*|.*_pressure_.*\", namespace=\"otel-demo\", pod=\"recommendation-9d497476-gqmk2\"}",
+          "start": "2026-10-22T15:17:35+00:00"
+        },
+        "status": "ok",
+        "result_count": 6,
+        "returned_count": 6,
+        "limit": 100,
+        "incomplete": false,
+        "incomplete_reason": null,
+        "truncated": false,
+        "evidence_id": "2efef311-2788-490e-b23c-3487ce79915e-t1:aed4e7cb-4ffc-4efc-8fa6-a38d962f63b1",
+        "content_head": [
+          "container_pressure_cpu_stalled_seconds_total",
+          "container_pressure_cpu_waiting_seconds_total",
+          "container_pressure_io_stalled_seconds_total",
+          "container_pressure_io_waiting_seconds_total",
+          "container_pressure_memory_stalled_seconds_total"
+        ],
+        "evidence_record": {
+          "exists": true,
+          "status": "ok",
+          "adopted": true,
+          "committed": true,
+          "raw_bytes": 315,
+          "raw_sha256": "fa22c40f42a41e1a41635edf4e429dae0c46d658c1d8d2d36932a4833ee0d575",
+          "raw_sha256_recomputed_matches": true,
+          "raw_status": "success",
+          "raw_data_len": 6,
+          "raw_warnings": null,
+          "view_result_count": 6,
+          "view_incomplete": false
+        },
+        "incomplete_matches_warnings": true,
+        "pass": true
+      }
+    ],
+    "u4_any_discovery_call": true,
+    "u4_all_discovery_calls_pass": true,
+    "u4_pass": true,
+    "tool_calls_by_tool": {
+      "get_metric_names": 3,
+      "get_label_values": 2,
+      "metrics_range_query": 22,
+      "traces_search": 2
+    },
+    "tool_status": {
+      "get_metric_names:ok": 3,
+      "get_label_values:ok": 2,
+      "metrics_range_query:ok": 22,
+      "traces_search:error": 1,
+      "traces_search:ok": 1
+    },
+    "model_steps": 12,
+    "evidence_rows": 28
+  },
+  "outcome": {
+    "incident_outcome": {
+      "scenario_id": "307a-discovery-live",
+      "final_state": "completed",
+      "evidence_ids": [
+        "408786e5-256b-442d-ba70-47ceead6154d-t0:8b328052-6773-4586-b570-c3b4f07b2918",
+        "408786e5-256b-442d-ba70-47ceead6154d-t1:14afd9f9-bd2c-4e90-90e8-7287f8d5dd3f",
+        "baec0faa-8c19-4ff3-9ec7-a1b13b1ed7f4-t0:88d45612-986a-496a-956d-2f3df2d4b08a",
+        "baec0faa-8c19-4ff3-9ec7-a1b13b1ed7f4-t1:62d0dab6-53e0-45c1-ad84-0ff11f90ab79",
+        "2e2c22af-4803-470d-88ad-3f0d5cb837e3-t0:20fae21d-04a1-4c6e-880f-7bb17caaf971",
+        "2e2c22af-4803-470d-88ad-3f0d5cb837e3-t1:8afaa49c-e2bb-4ea0-8e9d-6b05e55076a9",
+        "2e2c22af-4803-470d-88ad-3f0d5cb837e3-t2:e8ad1134-2db6-4233-8764-01d64eb2f346",
+        "2e2c22af-4803-470d-88ad-3f0d5cb837e3-t3:2169bbb4-902e-43ba-b104-a0fba4aed993",
+        "db32f3e0-8cb7-429a-92ba-9af4b7bce08f-t0:7e765b9d-9b52-46ba-a8e6-86ab37e81978",
+        "db32f3e0-8cb7-429a-92ba-9af4b7bce08f-t1:b0d77dbd-b32a-4a8f-a79f-cc974900d381",
+        "db32f3e0-8cb7-429a-92ba-9af4b7bce08f-t2:e9ff3d36-7626-4c5c-8af8-a999c3907b71",
+        "db32f3e0-8cb7-429a-92ba-9af4b7bce08f-t3:948726e4-bf26-43a0-bfce-360b9d6d10ee",
+        "7dac137d-b8a2-421e-8dde-dea24c5923bb-t0:8c55c7cb-6ef0-4e8d-bd4a-8cc5bd6ff068",
+        "7dac137d-b8a2-421e-8dde-dea24c5923bb-t1:1e943f86-aeab-4941-8281-1d6dea824dda",
+        "7dac137d-b8a2-421e-8dde-dea24c5923bb-t2:8fff2468-3b41-45ba-bf7c-bb93158405a0",
+        "4be9a101-fb50-401b-a1c1-667acc56ab62-t0:447e992c-f487-4e79-9563-9de34632a5a8",
+        "4be9a101-fb50-401b-a1c1-667acc56ab62-t1:5b045e6b-2dca-4b45-b507-e3851da05f11",
+        "4be9a101-fb50-401b-a1c1-667acc56ab62-t2:9be8da71-8f57-4509-8599-34c076a6f26e",
+        "4be9a101-fb50-401b-a1c1-667acc56ab62-t3:baf4515b-4eb6-44df-a458-caed46f2f4f1",
+        "58ed0428-bb41-4245-a3b1-5904b87c33c7-t0:a3c068df-b469-4518-849b-f681849f932b",
+        "58ed0428-bb41-4245-a3b1-5904b87c33c7-t1:57405788-6783-4527-92c8-6faaf246a35d",
+        "58ed0428-bb41-4245-a3b1-5904b87c33c7-t2:93398350-749d-48a3-b509-07502a27857e",
+        "58ed0428-bb41-4245-a3b1-5904b87c33c7-t3:fd9c0b54-81d7-4a20-b7fd-99b4a63b156a",
+        "0c0ab8ab-cdf3-4892-9613-a047e891c599-t0:5719cbef-8aee-4432-ba74-cbf21d663d15",
+        "2efef311-2788-490e-b23c-3487ce79915e-t0:1d274bac-9e81-45be-9d9c-2eabc4171da1",
+        "2efef311-2788-490e-b23c-3487ce79915e-t1:aed4e7cb-4ffc-4efc-8fa6-a38d962f63b1",
+        "8950ebcd-e402-449b-a5d0-7304e93c99a6-t0:303fa850-14b3-458c-a616-aa61521ba2b2",
+        "8950ebcd-e402-449b-a5d0-7304e93c99a6-t1:f35b3f1d-b5f2-46aa-af59-c0613b9c1605"
+      ],
+      "decision": "report_available",
+      "actions": [
+        "read_only_query"
+      ],
+      "permissions": [
+        "read_only",
+        "human_control"
+      ],
+      "human_interaction": null,
+      "handoff_reasons": [],
+      "report_available": true
+    },
+    "run_state": "completed",
+    "budget_spent": 11,
+    "tool_operations_used": 29,
+    "conclusion_meta": {
+      "rounds": 11,
+      "handoff": false,
+      "segment": "ctx0",
+      "execution": "completed",
+      "calibration": 1.233247512351263,
+      "compactions": 0,
+      "evidence_ids": [
+        "408786e5-256b-442d-ba70-47ceead6154d-t0:8b328052-6773-4586-b570-c3b4f07b2918",
+        "408786e5-256b-442d-ba70-47ceead6154d-t1:14afd9f9-bd2c-4e90-90e8-7287f8d5dd3f",
+        "baec0faa-8c19-4ff3-9ec7-a1b13b1ed7f4-t0:88d45612-986a-496a-956d-2f3df2d4b08a",
+        "baec0faa-8c19-4ff3-9ec7-a1b13b1ed7f4-t1:62d0dab6-53e0-45c1-ad84-0ff11f90ab79",
+        "2e2c22af-4803-470d-88ad-3f0d5cb837e3-t0:20fae21d-04a1-4c6e-880f-7bb17caaf971",
+        "2e2c22af-4803-470d-88ad-3f0d5cb837e3-t1:8afaa49c-e2bb-4ea0-8e9d-6b05e55076a9",
+        "2e2c22af-4803-470d-88ad-3f0d5cb837e3-t2:e8ad1134-2db6-4233-8764-01d64eb2f346",
+        "2e2c22af-4803-470d-88ad-3f0d5cb837e3-t3:2169bbb4-902e-43ba-b104-a0fba4aed993",
+        "db32f3e0-8cb7-429a-92ba-9af4b7bce08f-t0:7e765b9d-9b52-46ba-a8e6-86ab37e81978",
+        "db32f3e0-8cb7-429a-92ba-9af4b7bce08f-t1:b0d77dbd-b32a-4a8f-a79f-cc974900d381",
+        "db32f3e0-8cb7-429a-92ba-9af4b7bce08f-t2:e9ff3d36-7626-4c5c-8af8-a999c3907b71",
+        "db32f3e0-8cb7-429a-92ba-9af4b7bce08f-t3:948726e4-bf26-43a0-bfce-360b9d6d10ee",
+        "7dac137d-b8a2-421e-8dde-dea24c5923bb-t0:8c55c7cb-6ef0-4e8d-bd4a-8cc5bd6ff068",
+        "7dac137d-b8a2-421e-8dde-dea24c5923bb-t1:1e943f86-aeab-4941-8281-1d6dea824dda",
+        "7dac137d-b8a2-421e-8dde-dea24c5923bb-t2:8fff2468-3b41-45ba-bf7c-bb93158405a0",
+        "4be9a101-fb50-401b-a1c1-667acc56ab62-t0:447e992c-f487-4e79-9563-9de34632a5a8",
+        "4be9a101-fb50-401b-a1c1-667acc56ab62-t1:5b045e6b-2dca-4b45-b507-e3851da05f11",
+        "4be9a101-fb50-401b-a1c1-667acc56ab62-t2:9be8da71-8f57-4509-8599-34c076a6f26e",
+        "4be9a101-fb50-401b-a1c1-667acc56ab62-t3:baf4515b-4eb6-44df-a458-caed46f2f4f1",
+        "58ed0428-bb41-4245-a3b1-5904b87c33c7-t0:a3c068df-b469-4518-849b-f681849f932b",
+        "58ed0428-bb41-4245-a3b1-5904b87c33c7-t1:57405788-6783-4527-92c8-6faaf246a35d",
+        "58ed0428-bb41-4245-a3b1-5904b87c33c7-t2:93398350-749d-48a3-b509-07502a27857e",
+        "58ed0428-bb41-4245-a3b1-5904b87c33c7-t3:fd9c0b54-81d7-4a20-b7fd-99b4a63b156a",
+        "0c0ab8ab-cdf3-4892-9613-a047e891c599-t0:5719cbef-8aee-4432-ba74-cbf21d663d15",
+        "2efef311-2788-490e-b23c-3487ce79915e-t0:1d274bac-9e81-45be-9d9c-2eabc4171da1",
+        "2efef311-2788-490e-b23c-3487ce79915e-t1:aed4e7cb-4ffc-4efc-8fa6-a38d962f63b1",
+        "8950ebcd-e402-449b-a5d0-7304e93c99a6-t0:303fa850-14b3-458c-a616-aa61521ba2b2",
+        "8950ebcd-e402-449b-a5d0-7304e93c99a6-t1:f35b3f1d-b5f2-46aa-af59-c0613b9c1605"
+      ],
+      "source_step_id": "07c21798-c1ad-44a3-9f7c-b7c6b0108aa0",
+      "handoff_reasons": [],
+      "prompt_revision": "prompt-replay-candidate-dd9018031487",
+      "question_sha256": "43a8b2749f045ca6a344af59cdb80c6ed75fb61cadaf4150174be96ec760e029",
+      "model_seconds_used": 70.76048154453747,
+      "prompt_face_sha256": "bb0c066c3ca24faaf6baff478481e11945c8dd5d66be06eaf682a61743eec1aa",
+      "model_requests_used": 11,
+      "report_content_sha256": "a3da97e0adea8103d88d93d8a84742f9b2fe8c5bdff08a1c5ae82dbaf19415ce",
+      "report_schema_version": "m0-report-v2"
+    },
+    "report": {
+      "schema_version": "m0-report-v2",
+      "assessment_status": "completed",
+      "conclusion": "partial",
+      "summary": "Over the last hour (2026-10-22T15:17:35Z–16:17:35Z) the recommendation service shows steady span volume, no error status on its own server spans, latency comparable to the prior hour, and very low CPU/memory usage on a single healthy replica. The only error-status series present is a recurring client span to flagd's EventStream, and its counter advanced at the same rate in the preceding hour, so it is a steady background pattern rather than a new fault. Resource headroom is large (container CPU averaged ~0.009 cores, working set ~46 MB against a 500 MiB limit, zero memory pressure waiting) and the pod did not restart during the hour. However, a full 'healthy' verdict is not established: the service exposes no non-trace error-rate counter, no logs or span error details were available to explain the flagd errors, no latency SLO or alert state was provided, and the trace view is only a 4-trace sample. One internal inconsistency (stepped error increases reporting zero while the raw counter stepped +6) also limits confidence in the error timing.",
+      "claims": [
+        {
+          "kind": "fact",
+          "text": "Whole-window span increases over the last hour for recommendation were ~127.1 for the server span /oteldemo.RecommendationService/ListRecommendations, ~127.1 for the client span /oteldemo.ProductCatalogService/ListProducts and ~127.1 for the internal span get_product_list; these are span counts of every operation kind, not unique request counts.",
+          "evidence_ids": [
+            "baec0faa-8c19-4ff3-9ec7-a1b13b1ed7f4-t0:88d45612-986a-496a-956d-2f3df2d4b08a",
+            "baec0faa-8c19-4ff3-9ec7-a1b13b1ed7f4-t1:62d0dab6-53e0-45c1-ad84-0ff11f90ab79"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "fact",
+          "text": "Span volume is roughly steady versus the immediately preceding hour: the same server span increased by ~119.0 in 14:17:35Z–15:17:35Z versus ~127.1 in the reported hour (about +7%).",
+          "evidence_ids": [
+            "2efef311-2788-490e-b23c-3487ce79915e-t0:1d274bac-9e81-45be-9d9c-2eabc4171da1",
+            "baec0faa-8c19-4ff3-9ec7-a1b13b1ed7f4-t0:88d45612-986a-496a-956d-2f3df2d4b08a"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "fact",
+          "text": "The only ERROR-status series for service_name=recommendation in the hour was the client span /flagd.evaluation.v1.Service/EventStream; its raw counter rose from 856 at 15:17:35Z to 862 at 16:17:35Z (+6), and in the preceding hour it rose from 850 to 856 (+6).",
+          "evidence_ids": [
+            "0c0ab8ab-cdf3-4892-9613-a047e891c599-t0:5719cbef-8aee-4432-ba74-cbf21d663d15",
+            "db32f3e0-8cb7-429a-92ba-9af4b7bce08f-t2:e9ff3d36-7626-4c5c-8af8-a999c3907b71"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "fact",
+          "text": "Recommendation's own server span /oteldemo.RecommendationService/ListRecommendations carried STATUS_CODE_UNSET (no error status) in the whole-hour aggregation, and a 4-trace sample from 16:02:35Z–16:17:35Z shows rpc.grpc.status_code=0 on recommendation server and client spans with upstream frontend http.status_code=200 and zero error rows.",
+          "evidence_ids": [
+            "baec0faa-8c19-4ff3-9ec7-a1b13b1ed7f4-t0:88d45612-986a-496a-956d-2f3df2d4b08a",
+            "4be9a101-fb50-401b-a1c1-667acc56ab62-t3:baf4515b-4eb6-44df-a458-caed46f2f4f1"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "fact",
+          "text": "Latency was comparable to the prior hour rather than degraded: mean duration of the ListRecommendations server span was 5.85 ms in the reported hour versus 5.25 ms in 14:17:35Z–15:17:35Z, and the p95 from the span duration histogram was 25.0 ms versus 26.6 ms in the baseline hour.",
+          "evidence_ids": [
+            "db32f3e0-8cb7-429a-92ba-9af4b7bce08f-t0:7e765b9d-9b52-46ba-a8e6-86ab37e81978",
+            "db32f3e0-8cb7-429a-92ba-9af4b7bce08f-t1:b0d77dbd-b32a-4a8f-a79f-cc974900d381",
+            "58ed0428-bb41-4245-a3b1-5904b87c33c7-t0:a3c068df-b469-4518-849b-f681849f932b",
+            "58ed0428-bb41-4245-a3b1-5904b87c33c7-t1:57405788-6783-4527-92c8-6faaf246a35d"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "fact",
+          "text": "CPU usage was very low: max process_runtime_cpython_cpu_utilization_ratio over the hour was 0.012 and container CPU averaged ~0.00907 cores (cpu-seconds per hour divided by 3600).",
+          "evidence_ids": [
+            "2e2c22af-4803-470d-88ad-3f0d5cb837e3-t0:20fae21d-04a1-4c6e-880f-7bb17caaf971",
+            "7dac137d-b8a2-421e-8dde-dea24c5923bb-t0:8c55c7cb-6ef0-4e8d-bd4a-8cc5bd6ff068"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "fact",
+          "text": "Memory was far below its limit: process RSS max 49,881,088 bytes, container working set max 46,411,776 bytes against a 524,288,000-byte (500 MiB) container memory limit (~9%), and memory pressure waiting accrued 0 seconds in the hour.",
+          "evidence_ids": [
+            "2e2c22af-4803-470d-88ad-3f0d5cb837e3-t1:8afaa49c-e2bb-4ea0-8e9d-6b05e55076a9",
+            "2e2c22af-4803-470d-88ad-3f0d5cb837e3-t2:e8ad1134-2db6-4233-8764-01d64eb2f346",
+            "58ed0428-bb41-4245-a3b1-5904b87c33c7-t2:93398350-749d-48a3-b509-07502a27857e",
+            "8950ebcd-e402-449b-a5d0-7304e93c99a6-t1:f35b3f1d-b5f2-46aa-af59-c0613b9c1605"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "fact",
+          "text": "Availability was stable: kube_deployment_status_replicas_available for otel-demo/recommendation was 1 at every sample in the last 10 minutes; the container restart counter was flat during the hour (increase 0, value 11, also 11 in the prior hour), and container_oom_events_total increase was 0.",
+          "evidence_ids": [
+            "2e2c22af-4803-470d-88ad-3f0d5cb837e3-t3:2169bbb4-902e-43ba-b104-a0fba4aed993",
+            "4be9a101-fb50-401b-a1c1-667acc56ab62-t0:447e992c-f487-4e79-9563-9de34632a5a8",
+            "4be9a101-fb50-401b-a1c1-667acc56ab62-t1:5b045e6b-2dca-4b45-b507-e3851da05f11",
+            "7dac137d-b8a2-421e-8dde-dea24c5923bb-t1:1e943f86-aeab-4941-8281-1d6dea824dda",
+            "7dac137d-b8a2-421e-8dde-dea24c5923bb-t2:8fff2468-3b41-45ba-bf7c-bb93158405a0"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "fact",
+          "text": "CPU scheduling pressure was negligible: container_pressure_cpu_waiting_seconds_total increased by ~5.5 seconds over the 3600-second hour (about 0.15% of wall time) for the recommendation container.",
+          "evidence_ids": [
+            "8950ebcd-e402-449b-a5d0-7304e93c99a6-t0:303fa850-14b3-458c-a616-aa61521ba2b2"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "counter_evidence",
+          "text": "An error signal conflict: a 5-minute-stepped increase of traces_span_metrics_calls_total by status_code returned 0 for STATUS_CODE_ERROR in all 12 buckets of the hour, while the raw counter for the same series visibly stepped +1 about every 10 minutes (856 to 862 across the hour). The within-hour distribution of errors therefore cannot be established reliably from that stepped query, even though the raw counter endpoints agree with a +6 total.",
+          "evidence_ids": [
+            "58ed0428-bb41-4245-a3b1-5904b87c33c7-t3:fd9c0b54-81d7-4a20-b7fd-99b4a63b156a",
+            "0c0ab8ab-cdf3-4892-9613-a047e891c599-t0:5719cbef-8aee-4432-ba74-cbf21d663d15"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "counter_evidence",
+          "text": "The flagd EventStream ERROR spans are not a change in behaviour for this hour: the same series advanced by the same +6 in the preceding baseline hour, so its presence does not by itself indicate new degradation in the reported hour.",
+          "evidence_ids": [
+            "0c0ab8ab-cdf3-4892-9613-a047e891c599-t0:5719cbef-8aee-4432-ba74-cbf21d663d15",
+            "db32f3e0-8cb7-429a-92ba-9af4b7bce08f-t2:e9ff3d36-7626-4c5c-8af8-a999c3907b71"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "hypothesis",
+          "text": "The recurring ERROR spans on the flagd EventStream client span plausibly represent streaming connection open/close cycles from the flagd feature-flag client rather than failures on the ListRecommendations serving path, since the server span carries no error status and sampled server/client spans report rpc.grpc.status_code=0. This is unproven: no status message, log or span error detail was available.",
+          "evidence_ids": [
+            "baec0faa-8c19-4ff3-9ec7-a1b13b1ed7f4-t0:88d45612-986a-496a-956d-2f3df2d4b08a",
+            "4be9a101-fb50-401b-a1c1-667acc56ab62-t3:baf4515b-4eb6-44df-a458-caed46f2f4f1"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "rejected_hypothesis",
+          "text": "Rejected: that recommendation was unavailable or its traffic collapsed during the hour. Span volume stayed near the prior hour (~127.1 vs ~119.0 server-span increases), the replica count stayed at 1, and the restart counter did not move.",
+          "evidence_ids": [
+            "baec0faa-8c19-4ff3-9ec7-a1b13b1ed7f4-t0:88d45612-986a-496a-956d-2f3df2d4b08a",
+            "2efef311-2788-490e-b23c-3487ce79915e-t0:1d274bac-9e81-45be-9d9c-2eabc4171da1",
+            "2e2c22af-4803-470d-88ad-3f0d5cb837e3-t3:2169bbb4-902e-43ba-b104-a0fba4aed993",
+            "4be9a101-fb50-401b-a1c1-667acc56ab62-t0:447e992c-f487-4e79-9563-9de34632a5a8"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        },
+        {
+          "kind": "hypothesis",
+          "text": "Because the only error evidence comes from trace-derived span status and its hourly rate matched the baseline, the meaningful limitations here are observability coverage (no service-level error counter, no logs, no SLO) rather than an observed fault.",
+          "evidence_ids": [
+            "408786e5-256b-442d-ba70-47ceead6154d-t0:8b328052-6773-4586-b570-c3b4f07b2918",
+            "0c0ab8ab-cdf3-4892-9613-a047e891c599-t0:5719cbef-8aee-4432-ba74-cbf21d663d15"
+          ],
+          "target_refs": [
+            "m0-otel-20260909"
+          ],
+          "time_scope_ref": "policy-window-1"
+        }
+      ],
+      "gaps": [
+        "No service-scoped error-rate metric: discovery for {service_name=\"recommendation\"} returned 28 names, none of which was an RPC/HTTP server request, error or error-ratio counter; error visibility rests entirely on trace-derived span status, and absence from that listing is unknown rather than proof of absence.",
+        "No logs and no span error-detail fields were available (error_details was empty on every sampled recommendation span), so the cause and impact of the ~6 hourly /flagd.evaluation.v1.Service/EventStream ERROR spans is unknown.",
+        "No latency SLO/objective, error budget or alert state was supplied, so 'healthy' cannot be judged against defined targets; the latency assessment is limited to comparison with the single preceding hour.",
+        "No CFS CPU-throttling series was returned for the pod (only PSI pressure metrics), so container CPU throttling is unknown; container_cpu_cfs_burst_periods_total was listed at namespace level but no throttling counter was observed.",
+        "The restart counter sits at 11 with kube_pod_container_status_last_terminated_reason=\"Unknown\"; the age and cause of those historical restarts cannot be determined from the available series.",
+        "A full-hour traces_search for recommendation was refused as RESULT_TOO_LARGE (105,442 tokens) with status error, so trace evidence covers only a 4-trace sample from 16:02:35Z–16:17:35Z; the backend also reported more traces may exist, so the trace graph for the hour is incomplete.",
+        "The within-hour error distribution is unresolved: the 5-minute-stepped ERROR increase reported 0 in all buckets while the raw counter stepped +6 over the hour, an inconsistency not explained by the returned data.",
+        "Only one baseline hour was compared; longer-term seasonality of span volume, latency and the flagd error pattern is unknown."
+      ],
+      "next_steps": [
+        "Have a human add a service-level request/error counter (or an explicit gRPC server error ratio) for recommendation so health does not depend solely on trace-derived span status.",
+        "Ask the service owner whether the recurring flagd EventStream ERROR spans (about 6 per hour, present in the baseline hour too) are expected stream churn, and capture the accompanying status message or log line.",
+        "Define and supply latency/error objectives for recommendation so that 'healthy' can be evaluated against targets rather than only against a single prior hour.",
+        "Review the historical restart count of 11 and the 'Unknown' last-terminated reason for pod recommendation-9d497476-gqmk2 out of band to confirm whether earlier churn is expected.",
+        "Re-run a narrower trace review (per-trace or short windows) to obtain an unbiased view of the hour, since the full-hour trace query was rejected for size."
+      ]
+    }
+  },
+  "trace": {
+    "root_runs_found": 1,
+    "traces": [
+      {
+        "mode": "lab",
+        "otel_trace_id": "b28508b5b5b983ab2131cf1dfd64ad3d",
+        "dropped_spans": 0,
+        "project": "opspilot-lab-307a-discovery-20261022",
+        "project_id": "0e83e022-a3bd-4b81-9673-7a5119574180",
+        "trace_tier": "longlived",
+        "langsmith_run_id": "00000000-0000-0000-6afd-48097428da50",
+        "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/0e83e022-a3bd-4b81-9673-7a5119574180/r/00000000-0000-0000-6afd-48097428da50?poll=true",
+        "read_back": "found",
+        "start_time": "2026-10-22 16:17:36.270860+00:00",
+        "end_time": "2026-10-22 16:19:24.313987+00:00",
+        "prompt_tokens": 309600,
+        "completion_tokens": 16912,
+        "total_tokens": 326512,
+        "status": "success",
+        "metadata_run_id": "d689c695-c9f4-5492-9a64-37a5a77a3cb7",
+        "child_runs": {
+          "llm": 11,
+          "tool": 29
+        },
+        "child_names": {
+          "deepseek.chat.completions": 11,
+          "tool:metrics_range_query": 22,
+          "tool:get_metric_names": 3,
+          "tool:traces_search": 2,
+          "tool:get_label_values": 2
+        }
+      }
+    ]
+  },
+  "cost": {
+    "source": "supplier_balance_delta",
+    "balance_before": {
+      "at": "2026-10-22T16:17:21.326826+00:00",
+      "balance_infos": [
+        {
+          "currency": "CNY",
+          "total_balance": "99.98",
+          "granted_balance": "0.00",
+          "topped_up_balance": "99.98"
+        }
+      ]
+    },
+    "balance_after": {
+      "at": "2026-10-22T16:27:17.838187+00:00",
+      "balance_infos": [
+        {
+          "currency": "CNY",
+          "total_balance": "99.86",
+          "granted_balance": "0.00",
+          "topped_up_balance": "99.86"
+        }
+      ]
+    }
+  },
+  "raw_ledger": {
+    "sha256": "d477138db0119d8bfa073173ada534ff3baaac7485b826bd12394b3fc7b63fac",
+    "bytes": 1477566,
+    "path": "tmp/lab-ledgers/307a-discovery-live/d689c695-c9f4-5492-9a64-37a5a77a3cb7/ledger.json",
+    "in_repository": false
+  }
+}

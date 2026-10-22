@@ -33,6 +33,8 @@ Configuration (environment only):
 * ``OPSPILOT_WORKER_BATCH``         incidents per poll (default 20).
 * ``OPSPILOT_TOOL_PROFILE``         ``fixture`` (default) or ``otel-demo``;
   must match the workbench (``opspilot.tools.profiles``).
+* ``OPSPILOT_TOOL_PARALLELISM``     tool calls of one model turn in flight at
+  once, 1-16 (default 2, C3 §13); 1 is serial dispatch.
 * ``OPSPILOT_TRACE``                ``off`` (default) or ``lab``: LangSmith
   export of Run spans, lab targets only, fail-closed (``opspilot.tracing``).
 * ``OPSPILOT_POSTMORTEM_POLL_SECONDS`` postmortem scan interval (default 30).
@@ -63,6 +65,7 @@ from uuid import UUID
 
 from opspilot import tracing
 from opspilot.investigation.client import DeepSeekClient
+from opspilot.investigation.loop import MAX_TOOL_PARALLELISM
 from opspilot.investigation.progress import ExpirySweeper, ProgressLog, sweep_expired
 from opspilot.investigation.runner import InvestigationRunner, RunnerOutcome
 from opspilot.knowledge import KnowledgeStore
@@ -79,6 +82,9 @@ from opspilot.worker import Worker
 __all__ = ["WorkerLoop", "main"]
 
 _log = logging.getLogger("opspilot.worker")
+
+TOOL_PARALLELISM_ENV = "OPSPILOT_TOOL_PARALLELISM"
+DEFAULT_TOOL_PARALLELISM = 2
 
 
 class ClaimQueue(Protocol):
@@ -204,6 +210,16 @@ def _int_env(name: str, default: int) -> int:
     return value
 
 
+def _tool_parallelism() -> int:
+    """``OPSPILOT_TOOL_PARALLELISM``: 1-16, default 2 (#309, C3 §13)."""
+    value = _int_env(TOOL_PARALLELISM_ENV, DEFAULT_TOOL_PARALLELISM)
+    if value > MAX_TOOL_PARALLELISM:
+        raise SystemExit(
+            f"{TOOL_PARALLELISM_ENV} must be at most {MAX_TOOL_PARALLELISM}"
+        )
+    return value
+
+
 def build_loop(
     store: DurableStore,
     api_key: str,
@@ -212,6 +228,7 @@ def build_loop(
     profile: ToolProfile | None = None,
 ) -> WorkerLoop:
     """The product composition: durable events/evidence/ledger, one tool profile."""
+    tool_parallelism = _tool_parallelism()
     profile = profile or select_profile(os.environ)
     versions = profile.versions()
     events = DurableEventLog(store)
@@ -228,11 +245,13 @@ def build_loop(
         lease_seconds=LEASE_SECONDS,
         events=events,
         evidence=evidence,
+        tool_parallelism=tool_parallelism,
     )
     _log.info(
-        "worker owner=%s profile=%s versions=%s",
+        "worker owner=%s profile=%s tool_parallelism=%d versions=%s",
         runner.worker.owner,
         profile.name,
+        tool_parallelism,
         versions,
     )
     return WorkerLoop(

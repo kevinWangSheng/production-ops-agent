@@ -50,6 +50,7 @@ pytest 没有收集到测试返回 5，不算通过；make 可能将子命令错
 - `0015_release_observation_sessions`（F11 PR-2a）：双主体会话与证据、发布校准快照、控制审计和原子采纳守卫；补齐旧 incident 主体字段，保留恢复行为。新增权限同步 `RUNTIME_GRANTS` 与 Observer 声明；空校准清单拒绝授权。有发布会话、审计或已推进发布时拒绝降级。部署仍先停运行时，再迁移、校验 head、启动。
 - `0016_release_deadline_evidence`（#225）：收紧发布截止迁移的同事务结束证据校验，downgrade 恢复 0015 的冻结函数。
 - `0017_web_suspension_grants`（F7 操作员暂停入口，U5-a）：仅向 `opspilot_web` 增授全局暂停标志与代际的列级 UPDATE、目标暂停标志与代际的列级 INSERT/UPDATE，以及暂停审计的 actor/generation/suspended/target_id 列级 INSERT；复用 0011 已有的目标键 INSERT 与更新时间 UPDATE，不授审计 SELECT，不改 worker 权限。`RUNTIME_GRANTS` 同步；downgrade 只撤本迁移新增授权，不改暂停状态或审计数据。工作台 `/controls` 展示注册表全部目标，`/controls/suspension` 使用 Basic Auth、Origin、预期代际与独立账本幂等键；解除不自动恢复。部署仍先停运行时，再迁移、校验 head、启动。
+- `0018_alert_correlation`（F2 PR-C，告警关联 U1-A，合同见 [F2 PR-C 决定表](tasks/2026-10-21-f2-c-contract.md)）：`opspilot_alert_deliveries.outcome` 的 CHECK 在 0010 的 6 个值之外增加 `attached`（同 fingerprint、同目标的新 `startsAt` 附加到未关闭事故：只写投递行和一条 `kind='event'` 输入，不写 identity、不开 Run；该 episode 的重复 firing 仍记 `attached`，resolved 记 `resolved_attached`）；`opspilot_incidents` 加可空列 `related_incident_id`（引用事故，CHECK 不等于自身），在候选事故全部 closed 时指向最新的那个，旧事故不重开。授权：只向 `opspilot_web` 授该列 INSERT，任何角色都没有 UPDATE，worker 与 Observer 不变，`RUNTIME_GRANTS` 同步。有 `attached` 投递或非空 `related_incident_id` 时 downgrade 拒绝（会丢关联），否则撤授权、删列并恢复 0010 的 CHECK。部署顺序：先迁移再发 web，worker 无需同步升级。
 - 新增迁移：`.venv/bin/alembic revision -m "<说明>"`（配置在 `pyproject.toml` 的 `[tool.alembic]`，DSN 来自 `OPSPILOT_DSN`），文件名改成 `000N_<slug>.py`、`revision` 同名，SQL 写进 `op.execute`，补 `downgrade()`。改表结构属用户门 PR。
 - 测试：`tests/integration/conftest.py` 在 `M1_DURABLE_POSTGRES=1`/`M0_B_POSTGRES=1` 下先对 lab 库跑一次 `migrate`（lab 用户是 owner，测试夹具与多数既有测试仍以 owner 连接；运行角色的合法路径与越权测试自建、自删 `IN ROLE opspilot_web/opspilot_worker` 的登录角色，CI 的 `m0_lab` 是 superuser，可建角色），现有测试里的 `install()` 调用不动；设 `OPSPILOT_LAB_DSN`（库名仍须是 `m0_budget`；由 `scripts/m0/postgres_lab.py` 读取，子进程也继承）可把整套集成测试指向另一端口的临时实例，而不动 55431 的 lab 与其数据；lab 库是旧版建的时会走接管，所以本机也要有 PG 17 的 `pg_dump`（Homebrew：`/opt/homebrew/opt/postgresql@17/bin`）。两条 CI 路径（空库→head；旧 DDL 建库→接管→head，并比对两边 dump）在 `m0-postgres` 作业里。
 
@@ -130,7 +131,7 @@ curl -u demo:<密码> -H 'Origin: http://127.0.0.1:8080' \
 .venv/bin/python -m scripts.m0.postgres_lab stop
 ```
 
-worker 会领取、清扫或按版本不符记为 `blocked` 同一数据库里的**每一个** Run，包括测试套件和 `scripts/m1_live_runner.py`（`tool_schema_revision: live-runner-1`）留下的行：只对没有其他套件或脚本在用的数据库运行它。worker 可同时跑多个实例（租约栅栏保证一个 Run 只有一个执行者）；被杀的 worker 留下的租约最多 `LEASE_SECONDS`（420 秒）后过期，下一次 claim 从已提交的行继续。`OPSPILOT_WORKER_POLL_SECONDS`（默认 2）、`OPSPILOT_WORKER_BATCH`（默认 20）可调。`DurableStore.transaction()` 的连接来自进程内的 `psycopg_pool` 池（ADR-0007，#77）：`OPSPILOT_POOL_MIN_SIZE`（默认 1，空闲时保留的连接数）、`OPSPILOT_POOL_MAX_SIZE`（默认 4，单进程并发事务上限，超出的请求排队）、`OPSPILOT_POOL_TIMEOUT_SECONDS`（默认 5，排队等待上限，超时按 `TIMEOUT` 报给调用方）、`OPSPILOT_POOL_MAX_IDLE_SECONDS`（默认 60，多余空闲连接的回收时间）；同一进程里相同 DSN 与配置的 `DurableStore` 共用一个池，池在第一个事务时才建、每个事务仍是独立的 commit/rollback 与 `SET LOCAL` 超时，数据库侧 `max_connections` 要容得下 web 与 worker 各自的 `MAX_SIZE` 加运维连接（lab 实例是 12）。工具次数与秒数经 `DurableToolLedger` 落在 Run 行（`tool_operations_used` / `tool_seconds_used`），重启不归零。这是开发入口，启动时只校验 schema 版本（迁移见上文「数据库迁移」），不是部署工件。
+worker 会领取、清扫或按版本不符记为 `blocked` 同一数据库里的**每一个** Run，包括测试套件和 `scripts/m1_live_runner.py`（`tool_schema_revision: live-runner-1`）留下的行：只对没有其他套件或脚本在用的数据库运行它。worker 可同时跑多个实例（租约栅栏保证一个 Run 只有一个执行者）；被杀的 worker 留下的租约最多 `LEASE_SECONDS`（420 秒）后过期，下一次 claim 从已提交的行继续。`OPSPILOT_WORKER_POLL_SECONDS`（默认 2）、`OPSPILOT_WORKER_BATCH`（默认 20）可调。`OPSPILOT_TOOL_PARALLELISM`（默认 2，取值 1–16，非法值启动即退出）是同一轮模型回复里最多同时在途的工具调用数（#309，C3 §13）：只有工具执行进工作线程，续租、fence 与 `commit_tool` 仍在主线程按 index 顺序，下一次模型请求与覆盖消息与串行时相同；设为 1 即改动前的串行派发（不建线程池）。工具秒数仍是各调用耗时之和。并行时工具线程也从下文的连接池取短事务连接；本 PR 不自动扩池（合同 R-11），真实 Run 出现池 `TIMEOUT` 时再调大 `OPSPILOT_POOL_MAX_SIZE`。`DurableStore.transaction()` 的连接来自进程内的 `psycopg_pool` 池（ADR-0007，#77）：`OPSPILOT_POOL_MIN_SIZE`（默认 1，空闲时保留的连接数）、`OPSPILOT_POOL_MAX_SIZE`（默认 4，单进程并发事务上限，超出的请求排队）、`OPSPILOT_POOL_TIMEOUT_SECONDS`（默认 5，排队等待上限，超时按 `TIMEOUT` 报给调用方）、`OPSPILOT_POOL_MAX_IDLE_SECONDS`（默认 60，多余空闲连接的回收时间）；同一进程里相同 DSN 与配置的 `DurableStore` 共用一个池，池在第一个事务时才建、每个事务仍是独立的 commit/rollback 与 `SET LOCAL` 超时，数据库侧 `max_connections` 要容得下 web 与 worker 各自的 `MAX_SIZE` 加运维连接（lab 实例是 12）。工具次数与秒数经 `DurableToolLedger` 落在 Run 行（`tool_operations_used` / `tool_seconds_used`），重启不归零。这是开发入口，启动时只校验 schema 版本（迁移见上文「数据库迁移」），不是部署工件。
 
 ## 真实 OTel Demo 工具 profile（`OPSPILOT_TOOL_PROFILE=otel-demo`）
 
@@ -171,6 +172,8 @@ Prometheus 基本认证（M1-02 第 4 步，D3）：`up` 首次生成 `tmp/m1-ki
 ### 独立 Observer 进程（M1-02 第 4 步起）
 
 `python -m opspilot.observer` 是确定性的恢复观察进程（C3 §10，F6）：轮询 → `sweep_expired_sessions` → `claim_due_samples` → 对每个租约按会话绑定的 HealthProfile revision（内容取自 `opspilot_health_profiles`，须能重算出同一 revision）向 Prometheus 发即时查询（每个信号三条：`query`、`coverage_query`、`freshness_query`，都在窗口末尾求值；**每条请求前**重新校验租约的 scope generation，已变化则不再发请求、提交部分读数由存储按 `suspended` 结束会话）→ 查询返回后再取 `sample_time` → `evaluate_readings` → 原子 `submit_sample`。不调用模型，不 import 调查 worker、工具网关与 web（`tests/test_m1_observer.py` 以子进程校验）。
+
+Prometheus 响应体（200 体、错误体、中断或超时的部分体）在客户端读到后、解析与入库前统一按 `opspilot.redaction.redact_json_bytes` 脱敏（#254）；恢复读数捆绑、发布 `raw`、两者的哈希、判定与离线重放都基于这份脱敏字节，无凭据命中且无重复键的体逐字节不变，有重复键的 JSON 体按 F7 共享策略规范化（失败闭合）；完整体非 UTF-8 存为空字节；未读完的体（错误体前缀、中断、超时、超限）先在 UTF-8 字符边界与未闭合的 URL authority 前截住、再脱敏，最多保留 2048 字节；完整体脱敏后超过 30720 字节按 `failed/TOO_LARGE` 记。
 
 只读自己的环境变量，不回退到调查侧的 `OPSPILOT_DSN` / `OPSPILOT_OTEL_*` / `DEEPSEEK_API_KEY`：
 
@@ -346,6 +349,21 @@ M0_B_POSTGRES=1 .venv/bin/python -m pytest tests/integration/test_m0_live_postgr
 离线测试：`UV_CACHE_DIR=$PWD/tmp/uv-cache .venv/bin/python -m pytest tests/test_f11_u2_harness.py`。
 工具输出不构成正式校准批准；五类各三次、健康备用预算、非预期 unknown 比例、
 checkout 流量不受 ad 故障影响及临近健康终结边界仍需真实实验与独立真值审查。
+
+### F3 竞争原因场景驱动（PR-3a）
+
+入口：`.venv/bin/python -m scripts.f3_competing_scenario --help`；合同见 [PR-3a 预审](tasks/2026-10-22-f3-pr3a-contract.md)。仅供工程师在已协调的 kind 实验环境跑 F3 第 5 步：发布 checkout（只改一个环境变量，复用 F11 U2 harness 的 `publish`），R+420 s 开 `paymentFailure: off → 100%` 维持 1800 s（harness `scheduled_fault`，`finally` 自动恢复），告警建事故后经工作台控制入口发一条只陈述部署与时间的追问。不调用 harness 的 `register`、`webhook`，不写 F11 批次日志；ledger 在共享 `tmp/lab-ledgers/f3-competing-cause/<run>/`（`plan.json`、`release.json`、`fault.jsonl`、`follow-up.json`、`summary.json`），不入库。冻结的 rubric 与评测侧答案在 `docs/testing/f3-competing-cause-rubric.md`、`evals/f3/competing-cause/answer.json`，不进入模型输入或追问请求体。
+
+- 离线自检：`plan` 打印计划与冻结文件 sha256；`--dry-run preflight`、`--dry-run run ...` 不做任何外部调用、不写盘。
+- 环境：`F3_LAB_UI_USER`、`F3_LAB_UI_PASSWORD`（工作台 Basic Auth）、`F3_LAB_DSN`（只读查询事故与发布观察），lab Prometheus 账号按上节 `prometheus-lab.env`。凭据不打印、不写 ledger。
+- 前提（任一不过则退出码 3，原因码互不相同）：已 `occupation claim`、无 `fault-active.json`、flagd 全部 `off`、`ALERTS{alertname="CheckoutPlaceOrderErrorRatioHigh"}` 为空、该告警在 otel-demo/checkout 上没有未 closed 的事故、70 分钟内无其他 checkout 发布与 F11 发布观察、swap 余量 ≥ `--swap-min-free-mib`（默认 2048）。
+
+运行顺序（D1-a，**先 web、后追问、再起 worker**）：
+
+1. 起 web（`OPSPILOT_TOOL_PROFILE=otel-demo`，与稍后 worker 同一代码版本），不起 worker；准备 flagd 端口转发。
+2. `--holder <持有人> --batch <批次> run --run <新名字> --web http://127.0.0.1:<端口> --flagd-url http://127.0.0.1:<转发端口> --flag-method <flag 实际类型>`。驱动发布、调度故障、轮询新告警事故，确认 Run 仍 `queued`、无 step、代际为 0 后，以 `expected_generation=0` 和幂等键发 `follow_up`。
+3. stdout 出现 `{"event": "start_worker"}` 后再起 worker，第 1 轮即能在 `investigation_inputs` 看到追问。驱动继续等故障恢复，最后一行 `finished` 给出事故、Run、release id 与 ledger 路径。
+4. 追问在 worker 领取后才发会被拒（`WORKER_ALREADY_CLAIMED`），驱动不重试；该次执行按 U4-a 照实记录，重跑须用户批准，且换新 `--run` 名、等过 70 分钟窗口。
 
 Web 创建 Run 时默认读取同一目标的已审核知识。`OPSPILOT_KNOWLEDGE_HINTS=off` 关闭读取；`OPSPILOT_KNOWLEDGE_MAX_AGE_SECONDS` 设置非负整数新鲜度阈值（默认 `2592000` 秒，即 30 天），超过阈值的知识仍提供并标为 stale。
 
