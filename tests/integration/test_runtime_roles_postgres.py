@@ -167,6 +167,46 @@ def test_every_relation_has_a_decision_and_the_catalog_equals_it() -> None:
             assert not diff, (role, diff)
 
 
+# F2 PR-B1 U-B1-1 (contract change, pinned here independently of the
+# declaration): migration 0019 adds ``opspilot_incidents.priority``; the web
+# gains column-level INSERT(priority) and UPDATE(priority) and nothing else
+# on that table; the worker's grants on it are unchanged.
+F2_B1_WEB_INCIDENTS = frozenset(
+    {
+        "SELECT",
+        "INSERT(current_run_id,incident_id,intake_key,lifecycle,priority,state,"
+        "target_id)",
+        "UPDATE(conclusion,control_generation,current_run_id,lifecycle,mode,"
+        "observation_generation,priority,state)",
+    }
+)
+F2_B1_WORKER_INCIDENTS = frozenset({"SELECT", "UPDATE(conclusion)"})
+
+
+def test_f2_b1_priority_grants_web_gains_insert_update_worker_unchanged() -> None:
+    with psycopg.connect(DSN) as conn:
+        assert (
+            catalog_grants(conn, WEB_ROLE)["opspilot_incidents"] == F2_B1_WEB_INCIDENTS
+        )
+        assert (
+            catalog_grants(conn, WORKER_ROLE)["opspilot_incidents"]
+            == F2_B1_WORKER_INCIDENTS
+        )
+        for role, insert, update in (
+            (WEB_ROLE, True, True),
+            (WORKER_ROLE, False, False),
+        ):
+            assert conn.execute(
+                "SELECT "
+                "has_column_privilege(%s,'opspilot_incidents','priority','SELECT'),"
+                "has_column_privilege(%s,'opspilot_incidents','priority','INSERT'),"
+                "has_column_privilege(%s,'opspilot_incidents','priority','UPDATE')",
+                (role, role, role),
+            ).fetchone() == (True, insert, update), role
+    assert RUNTIME_GRANTS[WEB_ROLE]["opspilot_incidents"] == F2_B1_WEB_INCIDENTS
+    assert RUNTIME_GRANTS[WORKER_ROLE]["opspilot_incidents"] == F2_B1_WORKER_INCIDENTS
+
+
 def test_the_group_roles_are_bare_nologin_roles_owning_nothing() -> None:
     with psycopg.connect(DSN) as conn:
         for role in (WEB_ROLE, WORKER_ROLE):
