@@ -62,9 +62,23 @@
       "related_incident_id": "e4527304-0561-5feb-81a3-b49a16eb9d2f"
     },
     "2_followup_run_trace_has_event": {
-      "pass": true,
-      "followup_run_id": "8d7772e9-e9a2-509a-8bd1-e0a2fa730ba3",
-      "note": "first follow_up (control seq 30) re-queued handed-off Run 1b21375d and was blocked INCOMPATIBLE_STATE with 0 model calls (pre-existing rebuild hash mismatch on the rejected final-report round 9; reproduced with and without the event input). Passing trace is the follow_up on the published incident after a human cancel + new_run."
+      "pass": false,
+      "followup_control_seq": 30,
+      "followup_at": "2026-10-22T08:07:21Z",
+      "run_id": "1b21375d-607b-51d9-9527-51992cde88c9",
+      "outcome": "blocked INCOMPATIBLE_STATE at claim epoch 2; 0 model calls, 0 tool calls",
+      "defect": {
+        "prior_handoff": "REPORT_INVALID at ctx0:round-9 (context.final=true, input_watermark=0)",
+        "raised_at": "opspilot/investigation/context.py:1229 (_check_snapshot_hash, called from context.py:960)",
+        "mismatch_step": "ctx0:round-9 only; rounds 1-8 match",
+        "reproduces_without_event_input": true,
+        "in_pr_c_scope": false
+      },
+      "supplementary_not_satisfying_c4a": {
+        "path": "human cancel + new_run (seq 33/34, Run d1cc2750) then follow_up on the published incident (seq 63, Run 8d7772e9)",
+        "d1cc2750_llm_inputs_with_event": "7 of 7",
+        "8d7772e9_llm_inputs_with_event": "5 of 5"
+      }
     },
     "pages": {
       "refired_badge_on_incident_1": true,

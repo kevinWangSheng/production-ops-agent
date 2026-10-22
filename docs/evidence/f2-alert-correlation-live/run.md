@@ -5,7 +5,10 @@
 - 冻结摘要：[summary.json](summary.json)。原始 ledger 不入库（投递、identity、事故、Run、输入、subject events、页面 HTML、trace 回读、web/worker 日志），sha256 `bce1c2da…2cadd355`，440626 字节（ADR-0006）
 - 类别：有界真实运行。告警由 kind lab 里真实的 Prometheus 和 Alertmanager 产生，不是脚本伪造的 webhook；模型是真实的 DeepSeek `deepseek-flash`。这不是生产证明
 - 执行者：未参与 PR-C 实现的新上下文 Agent
-- **结论：C4-A 的四项断言全部通过，但有一处偏差。** 第一次 `follow_up` 落在一个已交接的 Run 上，被既有缺陷以 `INCOMPATIBLE_STATE` 挡下，一次模型都没调用。通过的 trace 来自后来的路径：人工 `cancel` + `new_run`，Run 发布后再做一次 `follow_up`。另外发现一个范围问题：后续 Run 沿用首个 Run 的授权窗口，所以模型看得到附加事件，却查不到附加 episode 的数据（见「观察到但不属本项判定」）
+- **结论：断言 1a、1b、1c 通过；断言 2 失败。**
+  - 断言 2 失败的原因：C4-A 要求的人工 `follow_up` 落在一个已交接的 Run 上，被一个既有缺陷以 `INCOMPATIBLE_STATE` 挡下，一次模型都没调用，见「缺陷」一节
+  - 补充证据：之后走了另一条路径，人工 `cancel` + `new_run`，Run 发布后再做一次 `follow_up`。这条路径证明附加事件进入了模型输入，但它不是 C4-A 规定的路径，不满足断言 2
+  - 范围问题：后续 Run 沿用首个 Run 的授权窗口，所以模型看得到附加事件，却查不到附加 episode 的数据（见「观察到但不属本项判定」）
 
 ## 环境
 
@@ -62,20 +65,43 @@
 | 1a 首次 firing 建事故 | 新事故，并开 Run | 投递 1 为 `firing` / `created`，事故 `e4527304-0561-…`，Run `1b21375d-607b-…` | 通过 |
 | 1b 同 fingerprint、同目标、新 startsAt、旧事故未关闭 → `attached`，不开第二个 Run，追加一条 event | 结果为 `attached`，同一事故；Run 数不变；`kind='event'` 输入恰好一条 | 投递 3：`firing` / `attached` / 事故 `e4527304`，当时 lifecycle 为 `open`（08:17:53 才关闭）。全库只有 1 条 `kind='event'` 输入，actor `alertmanager`，text 为 "Alertmanager alert 83f7541ae0105d42 fired again with startsAt 2026-10-22T08:05:54Z (status firing) on this incident's target; attached to this incident without a new Run."。08:07:01 的快照里该事故只有 1 个 Run。subject events 在 seq 29（07:58:04）和 seq 30（08:07:21 的人工 follow_up）之间没有任何事件，所以附加没有开 Run，也没有发 announce（R-C10）。identity 表共 2 行，分别对应投递 1 和投递 5，附加 episode 没有写 identity（C1-A）。之后该事故上的 Run 都能追溯到人工控制：`d1cc2750` 来自 new_run seq 34，`8d7772e9` 来自 follow_up seq 63 | 通过 |
 | 1c 关闭后再 firing → 新事故，并关联到已关闭的事故 | 新事故，`related_incident_id` 指向已关闭的事故 | 08:17:53 关闭 `e4527304`。投递 5 为 `firing` / `created`，新事故 `9fc2c586-a82b-…`，`related_incident_id = e4527304-…`，被关联的事故 lifecycle 为 `closed` | 通过 |
-| 2 人工 follow_up Run 的 trace 证明附加事件进入了模型输入 | follow_up 开的 Run，其 LLM 输入里有事件 text | follow_up Run `8d7772e9`（[根 run](https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/b51d14e7-6668-44bd-b02c-ae9ded1e21a5/r/00000000-0000-0000-c56a-3225eb317c51?poll=true)，OTel `b59f2bb14ea57ff8edb0c91709590c51`）有 5 个 llm 子 run，每一个的输入都含 `{"investigation_inputs":[{"content":{"channel":"alertmanager","text":"Alertmanager alert 83f7541ae0105d42 fired again with startsAt 2026-10-22T08:05:54Z …"},"kind":"event",…`。llm 5 个、tool 7 个，与库中 `budget_spent=5`、`tool_operations_used=7` 一致。**偏差**：第一次 follow_up（seq 30）落在已交接的 Run 上，被阻塞，没有调用模型，见下节 | 通过（有偏差） |
+| 2 人工 follow_up Run 的 trace 证明附加事件进入了模型输入 | 附加之后，人工 `follow_up` 让 Run 继续跑，其 LLM 输入里有事件 text | 附加后的人工 `follow_up`（control seq 30，08:07:21Z）把已交接的 Run `1b21375d` 重新排队。worker 在 epoch 2 领取后，以 `blocked(INCOMPATIBLE_STATE)` 结束，0 次模型调用、0 次工具调用（[根 run](https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/b51d14e7-6668-44bd-b02c-ae9ded1e21a5/r/00000000-0000-0000-d469-fdabe54dc407?poll=true)）。没有任何 LLM 输入可以检查 | **失败** |
 | 页面 | 附加可见；关联可见；列表一事故一行 | 事故 `e4527304` 页的投递表有 starts_at 列，投递 3 行标 `re-fired episode`。事故 `9fc2c586` 页有 `<a id="related-incident" href="/incidents/e4527304-…">`。列表页两个事故各出现一次 | 通过 |
 | PG 日志 | web 和 worker 没有错误 | 1025 行。ERROR 1、FATAL 1，都是执行者自己造成的：第一次 `pg_ctl start` 没设 `LC_ALL`（55000），以及只读查询写错列名（42703）。42501 为 0 | 通过 |
 
-## 偏差：follow_up 不能续跑一个因 REPORT_INVALID 交接的 Run
+## 缺陷：最终报告被拒而交接的 Run，人工 follow_up 后被阻塞（`INCOMPATIBLE_STATE`）
 
-- 事实：
-  - Run `1b21375d` 在第 9 轮（`final=true`）提交最终报告，被拒后交接（`REPORT_INVALID`）
-  - seq 30 的人工 `follow_up` 把同一个 Run 重新排队，没有新开 Run
-  - worker 领取时（epoch 2）在重建 transcript 阶段被 `_check_snapshot_hash` 拒绝（`opspilot/investigation/context.py:1229`），记为 `blocked(INCOMPATIBLE_STATE)`
-  - 这次尝试的 trace 是[根 run](https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/b51d14e7-6668-44bd-b02c-ae9ded1e21a5/r/00000000-0000-0000-d469-fdabe54dc407?poll=true)，0 llm、0 tool
-- 复现：执行者用 owner 连接只读调用 `rebuild_transcript`。第 1–8 轮的哈希都对上，只有第 9 轮对不上。这几轮的 `input_watermark` 都是 0
-- 判断：把 event 输入去掉后同样失败，PR-C 也不改 `opspilot/investigation/`，所以这不是 PR-C 引入的。它与附加事件无关，是「对最终报告轮被拒后交接的 Run 做 follow_up」这条既有路径的问题。根因没有继续追查
-- 后续处理：人工 `cancel` + `new_run` 开了 Run `d1cc2750`，它的 7 次 LLM 输入都含该事件（[根 run](https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/b51d14e7-6668-44bd-b02c-ae9ded1e21a5/r/00000000-0000-0000-6220-00a25906efbc?poll=true)）。它发布后，人工 `follow_up` 开出新 Run `8d7772e9`，即断言 2 的证据
+本节不含凭据或非公开数据，可直接整理成 issue。
+
+- 触发：
+  - Run `1b21375d-607b-51d9-9527-51992cde88c9` 在 `ctx0:round-9` 提交最终报告，这一步的 `context.final=true`、`input_watermark=0`
+  - 报告被拒，Run 交接：subject event `run_handoff`，`reasons: ["REPORT_INVALID"]`，`parked: true`，Run 进入 `waiting_human`
+  - 该 Run 的 step 依次是 `ctx0:round-1` … `ctx0:round-9`，再加一行 `conclusion:g0:ctx0:round-9`
+- 操作：人工 `follow_up`（`expected_generation=0`）。它把同一个 Run 重新排队，没有开新 Run
+- 结果：
+  - worker 领取（`run_claimed` epoch 2，control_generation 1）后立即交接
+  - subject event 为 `run_handoff`，内容是 `{"parked": false, "handoff": true, "reasons": ["INCOMPATIBLE_STATE"], "execution": "blocked", "published": false}`
+  - worker 日志：`attempt incident=e4527304-0561-5feb-81a3-b49a16eb9d2f status=blocked reason=INCOMPATIBLE_STATE`
+  - 0 次模型调用、0 次工具调用。这个 Run 之后只能 cancel，页面上不再出现 follow_up
+- 失败位置：
+  - `rebuild_transcript` 在 `opspilot/investigation/context.py:960` 调用 `_check_snapshot_hash`
+  - `_check_snapshot_hash` 在 `opspilot/investigation/context.py:1229` 抛出 `ContextError("INCOMPATIBLE_STATE")`
+  - 也就是 `messages_hash(sent) != recorded`：重建出来的 `sent` 是第 9 轮之前的消息加 `FINAL_REPORT_INSTRUCTION` 加 `run_coverage_message(delivered)`（同文件 1213–1228），它的哈希与该步记录的 `input_snapshot_hash` 不一致
+- 复现：
+  - 执行者在一份库副本里做了只读重建。副本里事故的 `current_run_id` 指回 `1b21375d`，用完即删
+  - `ctx0:round-1` 到 `ctx0:round-8`（`final=false`、`input_watermark=0`）的哈希全部一致，只有 `ctx0:round-9`（`final=true`、`input_watermark=0`）不一致
+  - 把 `kind='event'` 输入从快照里去掉再重建，在同一位置同样失败
+  - 所以与 PR-C 的附加事件无关。PR-C 也没有改 `opspilot/investigation/`
+  - 根因（例如 `delivered` 是否与该步发送时一致）没有追查，本 PR 不修
+- 影响：一旦最终报告被拒，C4-A 规定的「附加后人工 follow_up」这条路径就走不通，人只能 cancel + new_run
+
+## 补充证据（另一条路径，不满足 C4-A 断言 2）
+
+- 人工 `cancel` + `new_run`（control seq 33、34）开了 Run `d1cc2750`，它的 7 次 LLM 输入都含该事件（[根 run](https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/b51d14e7-6668-44bd-b02c-ae9ded1e21a5/r/00000000-0000-0000-6220-00a25906efbc?poll=true)）
+- 它发布后，人工 `follow_up`（seq 63）开出新 Run `8d7772e9`（[根 run](https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/b51d14e7-6668-44bd-b02c-ae9ded1e21a5/r/00000000-0000-0000-c56a-3225eb317c51?poll=true)，OTel `b59f2bb14ea57ff8edb0c91709590c51`）
+  - 5 个 llm 子 run 的输入都含 `{"investigation_inputs":[{"content":{"channel":"alertmanager","text":"Alertmanager alert 83f7541ae0105d42 fired again with startsAt 2026-10-22T08:05:54Z …"},"kind":"event",…`
+  - llm 5、tool 7，与库中 `budget_spent=5`、`tool_operations_used=7` 一致
+- 这说明附加事件能进入后续 Run 的模型输入，但路径多了一次人工 cancel + new_run，所以不算断言 2 通过
 
 ## 观察到但不属本项判定
 
@@ -90,7 +116,7 @@
 
 ## 失败与未覆盖
 
-- 断言没有失败项，也没有改代码或测试断言。上面的偏差是如实记录的路径变化：C4-A 写的是「人工 follow_up 开新 Run」，真实运行里第一次 follow_up 没能续跑
+- 断言 2 失败，原因见「缺陷」一节。没有改代码或测试断言，也没有在本 PR 里修 investigation 代码
 - 没有在真实环境里覆盖：多个开放候选时取最新者、交接事故不参与关联、并发投递的锁顺序、`resolved` 事故上的附加标记（列表页）。这些只由 PG 测试覆盖
 
 ## 费用
