@@ -172,6 +172,8 @@ Prometheus 基本认证（M1-02 第 4 步，D3）：`up` 首次生成 `tmp/m1-ki
 
 `python -m opspilot.observer` 是确定性的恢复观察进程（C3 §10，F6）：轮询 → `sweep_expired_sessions` → `claim_due_samples` → 对每个租约按会话绑定的 HealthProfile revision（内容取自 `opspilot_health_profiles`，须能重算出同一 revision）向 Prometheus 发即时查询（每个信号三条：`query`、`coverage_query`、`freshness_query`，都在窗口末尾求值；**每条请求前**重新校验租约的 scope generation，已变化则不再发请求、提交部分读数由存储按 `suspended` 结束会话）→ 查询返回后再取 `sample_time` → `evaluate_readings` → 原子 `submit_sample`。不调用模型，不 import 调查 worker、工具网关与 web（`tests/test_m1_observer.py` 以子进程校验）。
 
+Prometheus 响应体（200 体、错误体、中断或超时的部分体）在客户端读到后、解析与入库前统一按 `opspilot.redaction.redact_json_bytes` 脱敏（#254）；恢复读数捆绑、发布 `raw`、两者的哈希、判定与离线重放都基于这份脱敏字节，无凭据命中且无重复键的体逐字节不变，有重复键的 JSON 体按 F7 共享策略规范化（失败闭合）；完整体非 UTF-8 存为空字节；未读完的体（错误体前缀、中断、超时、超限）先在 UTF-8 字符边界与未闭合的 URL authority 前截住、再脱敏，最多保留 2048 字节；完整体脱敏后超过 30720 字节按 `failed/TOO_LARGE` 记。
+
 只读自己的环境变量，不回退到调查侧的 `OPSPILOT_DSN` / `OPSPILOT_OTEL_*` / `DEEPSEEK_API_KEY`：
 
 ```sh
