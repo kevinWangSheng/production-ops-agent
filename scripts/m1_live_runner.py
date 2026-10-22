@@ -131,13 +131,13 @@ def resolve_out_dir(
     return (SWEEP_OUT_ROOT if sweep else OUT_ROOT) / run_id
 
 
-def successor_input(store, incident, run_id, deadline):
+def successor_input(store, incident, run_id, deadline, target_id=LIVE_TOOL_TARGET):
     """The renewed Run's input: the C3 continuation of the timed-out context."""
     return continuation_input(
         store.rebuild(incident),
         new_run_id=str(run_id),
         deadline=deadline,
-        authorized_targets=frozenset({LIVE_TOOL_TARGET}),
+        authorized_targets=frozenset({target_id}),
     )
 
 
@@ -402,7 +402,9 @@ def main() -> int:
         generation = store.rebuild(incident)["control_generation"]
         renewed_run = uuid4()
         renewed_deadline = clock.now() + timedelta(seconds=args.renew_seconds)
-        renewed_input = successor_input(store, incident, renewed_run, renewed_deadline)
+        renewed_input = successor_input(
+            store, incident, renewed_run, renewed_deadline, target_id
+        )
         applied = store.control(
             incident,
             generation,
