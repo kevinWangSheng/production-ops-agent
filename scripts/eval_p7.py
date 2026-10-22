@@ -1735,6 +1735,51 @@ def _check_bindings(
         _fail("CONFIG_INVALID")
 
 
+def _request_input_hash(body: bytes) -> str | None:
+    """input_hash of a judge request body: its user message's leading P6 JSON."""
+    try:
+        content = json.loads(body)["messages"][1]["content"]
+        _, end = json.JSONDecoder().raw_decode(content)
+        return _sha(canonical_bytes(parse(content[:end].encode("utf-8"))))
+    except (ValueError, KeyError, IndexError, TypeError, StorageError):
+        return None
+
+
+def _formal_raw_outputs(
+    ws: Workspace,
+    destination: Path,
+    captures: Mapping[str, _CapturingTransport],
+    configs: Mapping[str, JudgeConfig],
+) -> None:
+    """P7-D20: map serial sends back to formal observations; keep rejected bodies.
+
+    Each observation consumed up to ``attempts`` sends of its own input_hash
+    (none when it failed before sending), the last of which it judged.
+    """
+    for provider, capture in captures.items():
+        queue = list(capture.sends)
+        n = 1
+        while _exists(path := destination / f"{provider}-{n:03d}.json"):
+            obj = _loads(_read_ws(ws, path))
+            observation = obj.get("observation") if type(obj) is dict else None
+            if type(observation) is not dict:
+                break
+            attempts = observation.get("attempts", 1)
+            last: bytearray | None = None
+            for _ in range(attempts if type(attempts) is int else 1):
+                if not queue or queue[0][0] != obj.get("input_hash"):
+                    break
+                last = queue.pop(0)[1]
+            status = (observation.get("result") or {}).get("status")
+            if status != "ok" and last:
+                _write_new(
+                    ws,
+                    destination / f"{provider}-{n:03d}.raw",
+                    bytes(last[: configs[provider].max_response_bytes]),
+                )
+            n += 1
+
+
 class _CapturingTransport:
     """Keeps the bytes of the last response judge_once read (P7-D20).
 
@@ -1745,6 +1790,8 @@ class _CapturingTransport:
     def __init__(self, inner: JudgeTransport) -> None:
         self.inner = inner
         self.body = bytearray()
+        # (input hash of the request, response bytes) per send, in order.
+        self.sends: list[tuple[str | None, bytearray]] = []
 
     def send(
         self,
@@ -1756,6 +1803,7 @@ class _CapturingTransport:
         max_response_bytes: int,
     ) -> JudgeHTTPResponse:
         self.body = bytearray()
+        self.sends.append((_request_input_hash(body), self.body))
         response = self.inner.send(
             endpoint=endpoint,
             headers=headers,
@@ -1854,7 +1902,8 @@ def debug_judge(
         families=families,
         sources=sources,
         fields={"session": session_id, **({"tuning": True} if tuning else {})},
-        reuse=_item_sources(ws, [i for i in selected if i.split != "debug"]),
+        # P7-D21: a formally exposed family is reusable for tuning in any split.
+        reuse=_item_sources(ws, [i for i in selected if i.source_family in exposed]),
     )
     if "deepseek" in ordered:
         _write_deepseek_balance(ws, session_id, "before", balance)
@@ -2205,6 +2254,11 @@ def formal(
         ),
         destination / "calibration.json",
         *(
+            destination / f"{p}-{n:03d}.raw"
+            for p in PROVIDERS
+            for n in range(1, per_provider + 1)
+        ),
+        *(
             _balance_path(ws, run_id, "deepseek", phase)
             for phase in ("before", "after")
         ),
@@ -2228,12 +2282,17 @@ def formal(
     _write_deepseek_balance(ws, run_id, "before", balance)
     selection: SelectionRecord | None = None
     code: str | None = None
+    captures = {p: _CapturingTransport(t) for p, t in transports.items()}
     try:
         selection = run_calibration(
-            pack, configs=configs, transports=transports, destination=destination
+            pack,
+            configs=configs,
+            transports=dict(captures),
+            destination=destination,
         )
     except (JudgeError, StorageError) as exc:
         code = exc.code
+    _formal_raw_outputs(ws, destination, captures, configs)
     if selection is None:
         # 0.1/9.2: the exposure row is already written, so this is always 5.
         raise P7Error(code or "SCHEMA_INVALID", stopped=True)

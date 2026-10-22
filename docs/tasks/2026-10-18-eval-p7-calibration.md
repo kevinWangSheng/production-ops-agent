@@ -49,7 +49,7 @@
 
 调参规则：在 36 项（原 12 debug + 已作废的 24 validation）上调 `judge.PROMPT`，最多 3 轮；达标线为整套零无效、零漏诊、零误通过且一致率不低于 46/48 等价；不达标停下交用户。达标后才新采 validation 来源族、两份新盲标与用户裁决。
 
-实施取舍（实现者，可逆）：P7-D21 用显式 `debug --tuning`——只额外放行已被 formal 登记暴露的 validation 族（不跳过 formal 暴露检查，未暴露的仍 `VALIDATION_EXPOSURE_FORBIDDEN`），并只跳过包约定与 PROMPT 的逐字绑定（`JUDGE_PROMPT_CHANGED`），items/标注绑定照查；登记行为 `kind=debug, tuning=true`，formal 路径不变。P7-D17 的 200 字符上限只写入 PROMPT、不入输出校验（入校验会使按旧约定整段引用的已有标签失效）。P7-D20 原始输出只在 debug 落盘（`debug/<session>/<provider>-NNN.raw`），formal 由库内 `run_calibration` 调用，不保存。
+实施取舍（实现者，可逆）：P7-D21 用显式 `debug --tuning`——只额外放行已被 formal 登记暴露的 validation 族（不跳过 formal 暴露检查，未暴露的仍 `VALIDATION_EXPOSURE_FORBIDDEN`），并只跳过包约定与 PROMPT 的逐字绑定（`JUDGE_PROMPT_CHANGED`），items/标注绑定照查；登记行为 `kind=debug, tuning=true`，formal 路径不变。P7-D17 的 200 字符上限只写入 PROMPT、不入输出校验（入校验会使按旧约定整段引用的已有标签失效）。P7-D20 原始输出在 debug 与 formal 均落盘（`debug/<session>/` 或 `calibration/<run>/` 下 `<provider>-NNN.raw`）：formal 由驱动包装传给 `run_calibration` 的 transport，按串行顺序与逐次观察的 input_hash/attempts 对回，库不改。--tuning 下已 formal 暴露的族无论在本工作区属哪个 split 都可复用。
 
 ## 计划
 
