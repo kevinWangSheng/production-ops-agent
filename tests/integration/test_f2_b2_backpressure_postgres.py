@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import concurrent.futures
 import os
+import re
 import threading
 import time
 from collections import Counter
@@ -70,6 +71,7 @@ pytestmark = pytest.mark.skipif(
 
 START = 45.0
 SETTLE = 30.0
+WORKER_OWNER_RE = re.compile(r"worker slot owner=([0-9a-f-]{36})")
 
 
 @pytest.fixture(scope="module")
@@ -330,13 +332,11 @@ def test_b2_storm_preserves_all_alerts_and_holds_the_queue_at_eight(
     app = _app(web_dsn, 1800)
     severities = ["critical"] * 17 + ["warning"] * 17 + [None] * 16
     incidents: list[UUID] = []
-    tag_to_incident: dict[str, UUID] = {}
     for severity in severities:
         tag = new_tag()
         stub.plan(tag, Act("reject", hold=True))
         incident = _firing(app, tag, severity)[0]
         incidents.append(incident)
-        tag_to_incident[tag] = incident
 
     worker_owners: set[UUID] = set()
     sampler = _StateSampler(DSN, incidents, worker_owners)
@@ -347,13 +347,11 @@ def test_b2_storm_preserves_all_alerts_and_holds_the_queue_at_eight(
 
         def bounded():
             rows = run_rows(owner, incidents)
-            arrived = [
-                tag_to_incident[tag] for tag in stub.arrived() if tag in tag_to_incident
-            ]
+            # WorkerProcess.log() reads this child process's own log.  The
+            # child prints one owner UUID per slot at startup, so a peer
+            # worker cannot enter this set through a shared Run row.
             new_owners = {
-                row["owner"]
-                for row in run_rows(owner, arrived).values()
-                if row["owner"] is not None
+                UUID(value) for value in WORKER_OWNER_RE.findall(worker.log())
             }
             worker_owners.update(new_owners)
             sampler.add_owners(new_owners)
