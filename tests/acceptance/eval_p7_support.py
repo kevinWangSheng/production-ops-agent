@@ -597,10 +597,10 @@ def replace_source(path, aggregate, capture):
 # D18: JudgeObservation records the model's self-reported verdict and whether
 # it equals the recomputed verdict (None when no valid answer was decoded).
 MODEL_VERDICT_FIELD = "model_verdict"
-VERDICT_MATCH_FIELD = "verdict_matches"
+VERDICT_MATCH_FIELD = "verdict_matched"
 # D20: JudgeObservation records the transport exception class name (None when
 # the transport raised nothing); absent in pre-r3 artifacts.
-TRANSPORT_EXCEPTION_FIELD = "transport_exception"
+TRANSPORT_EXCEPTION_FIELD = "transport_error"
 
 
 def tuning_debug(h, session, *, items=None, code=0, reason=None):
@@ -613,7 +613,7 @@ def tuning_debug(h, session, *, items=None, code=0, reason=None):
     chose a flag or a separate command, change only this function. Callers
     record the session's manual balances first (``h.costs(session)``).
     """
-    args = ["--session", session, "--judge-env", h.env]
+    args = ["--session", session, "--judge-env", h.env, "--tuning"]
     if items:
         args += ["--item", *items]
     return h.cli("debug", *args, code=code, reason=reason)

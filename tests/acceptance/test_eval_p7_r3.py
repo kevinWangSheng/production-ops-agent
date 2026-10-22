@@ -342,7 +342,9 @@ def test_d19_prompt_states_the_causal_rules_of_the_final_labels():
     assert any(w in lower for w in ("rejected", "ruled out", "excluded"))
     assert re.search(r"[\"'“‘]so[\"'”’]|\bso[- ]clause", lower)
     # The tuning-round-1 wording that made method caveats factual is gone.
-    assert "caveat on method" not in lower
+    # P7 r3 D19 (lead): the method-caveat phrase may stay in the not-causal list;
+    # what must go is the old rule that made such statements factual.
+    assert "or with a caveat on method" not in lower
 
 
 # ========================================================== D20: transport
