@@ -24,7 +24,7 @@ Agent 不执行生产写操作，不拥有发布批准或阻断权。不纳入�
 | 服务语言 | Python 3.12 |
 | HTTP 与数据合同 | FastAPI、Pydantic |
 | 页面与实时更新 | Jinja、少量 JavaScript、SSE |
-| 调查循环 | 手写 loop（LangGraph 经 M0 比较推迟引入，见 ADR-0004） |
+| 调查循环 | 当前为手写 loop；是否引入 LangGraph 待用户决定（ADR-0004 推荐推迟） |
 | 模型接入 | AsyncOpenAI 兼容客户端、薄 provider 适配层 |
 | 首个模型服务 | DeepSeek 官方服务 |
 | 持久化 | PostgreSQL、psycopg |
@@ -34,7 +34,7 @@ Agent 不执行生产写操作，不拥有发布批准或阻断权。不纳入�
 
 暂不增加 Redis、Kafka、Temporal，也不同时引入 OpenAI Agents SDK 的另一套循环。
 
-**调查循环不引入 LangGraph。**最初选型把 LangGraph 限定为调查循环编排，checkpoint 只作尝试内的可重建缓存。M0 比较与 2026-09-21 复核（ADR-0004）没有发现净收益：`commit_step`、`commit_tool`、`rebuild()` 与 lease/epoch/人工代际栅栏已提供业务键粒度的等价物，因此循环为手写实现。跨进程恢复以 PostgreSQL 中已提交的业务记录为准。需要多节点并行 fan-out 且每节点独立持久时，另立合同重新比较。
+**调查循环当前为手写实现，LangGraph 未引入；是否采用仍待用户决定（ADR-0004）。**最初选型把 LangGraph 限定为调查循环编排，checkpoint 只作尝试内的可重建缓存。ADR-0004 的 M0 比较与 2026-09-21 复核没有发现净收益、推荐推迟：`commit_step`、`commit_tool`、`rebuild()` 与 lease/epoch/人工代际栅栏已提供业务键粒度的等价物。跨进程恢复以 PostgreSQL 中已提交的业务记录为准。需要多节点并行 fan-out 且每节点独立持久时，另立合同重新比较。
 
 复用方式：
 
