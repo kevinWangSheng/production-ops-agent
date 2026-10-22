@@ -358,6 +358,7 @@ class FormalResult:
     selection: SelectionRecord
     readback: Literal["verified", "unresolved_as_expected", "failed"]
     readback_code: str | None
+    raw_output_error: str | None = None
 
 
 @dataclass(frozen=True)
@@ -1915,6 +1916,8 @@ def debug_judge(
             if not allowed(item):  # Mechanical guard (section 8 step 2).
                 _fail("VALIDATION_EXPOSURE_FORBIDDEN")
             _PROGRESS["started"] = True
+            # A pre-send failure must not inherit the previous item's body.
+            transport.body = bytearray()
             observation = judge_once(
                 item.request,
                 config=config,
@@ -2292,7 +2295,14 @@ def formal(
         )
     except (JudgeError, StorageError) as exc:
         code = exc.code
-    _formal_raw_outputs(ws, destination, captures, configs)
+    # Diagnosis only: a failed .raw write never fails a completed run.
+    raw_output_error: str | None = None
+    try:
+        _formal_raw_outputs(ws, destination, captures, configs)
+    except (P7Error, JudgeError, StorageError) as exc:
+        raw_output_error = exc.code
+    except OSError:
+        raw_output_error = "ARTIFACT_UNWRITABLE"
     if selection is None:
         # 0.1/9.2: the exposure row is already written, so this is always 5.
         raise P7Error(code or "SCHEMA_INVALID", stopped=True)
@@ -2312,7 +2322,9 @@ def formal(
             readback = "verified"
     elif verified is None and readback_code == "CALIBRATION_UNRESOLVED":
         readback, readback_code = "unresolved_as_expected", None
-    return FormalResult(run_id, pack_hash, hashes, selection, readback, readback_code)
+    return FormalResult(
+        run_id, pack_hash, hashes, selection, readback, readback_code, raw_output_error
+    )
 
 
 # -- section 11: summary --------------------------------------------------------------------
@@ -2688,6 +2700,8 @@ def _run(
             "readback": result.readback,
             "readback_code": result.readback_code,
         }
+        if result.raw_output_error is not None:
+            extra["raw_output_error"] = result.raw_output_error
         if result.readback == "failed":
             return 1, "failed", "READBACK_FAILED", extra
         if selection.status == "selected":

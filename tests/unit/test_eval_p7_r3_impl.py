@@ -121,3 +121,15 @@ def test_rejected_answers_keep_their_raw_response_body(harness):
         h.cli("cost", "--session", "raw-debug")["cost"]["providers"]["zai"]["calls"]
         == 12
     )
+
+
+def test_formal_raw_write_failure_does_not_fail_a_completed_run(harness):
+    h = harness.ready()
+
+    def broken(*_args):
+        raise eval_p7.P7Error("ARTIFACT_UNWRITABLE")
+
+    h.mp.setattr(eval_p7, "_formal_raw_outputs", broken)
+    result = h.formal()
+    assert result["raw_output_error"] == "ARTIFACT_UNWRITABLE"
+    assert result["status"] == "selected"

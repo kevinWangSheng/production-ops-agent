@@ -158,8 +158,9 @@ causal: hedged or pure hypotheses (likely, may, causation not established);
 statements declared inferred with a caveat on method; rejected or negated
 hypotheses; "so" clauses not about this incident; open unknowns.
 The user message ends with the report's fields keyed by exact location: copy
-location verbatim and quote verbatim from that block, and take cited_evidence_ids
-from the evidence_ids of the claim at or linked to that location.
+location verbatim and quote verbatim from that block (each field line there is
+indented two spaces; the indent is not part of the text), and take
+cited_evidence_ids from the evidence_ids of the claim at or linked to that location.
 Return only one JSON object of exactly this shape, with exactly these key names:
 {"schema": "opspilot-judge-1",
  "diagnoses": [{"location": <string: "summary" or "claims[N]"/"gaps[N]"/"next_steps[N]">,
@@ -360,6 +361,13 @@ SSE_EVENT_LIMIT = 1024 * 1024
 _EOL = re.compile(rb"\r\n?|\n")
 
 
+class StreamTruncated(JudgeError):
+    """The stream ended before ``data: [DONE]``: a JUDGE_TRANSPORT_ERROR."""
+
+    def __init__(self) -> None:
+        super().__init__("JUDGE_TRANSPORT_ERROR")
+
+
 class SSEAssembler:
     """Incremental SSE framing (S7) and chat.completion.chunk assembly (S11-S14).
 
@@ -514,7 +522,7 @@ class SSEAssembler:
     def document(self) -> bytes:
         """The equivalent non-streaming chat.completion, bounded by the config."""
         if not self.done:
-            raise JudgeError("JUDGE_TRANSPORT_ERROR")
+            raise StreamTruncated
         if not self._finished:
             raise JudgeError("JUDGE_OUTPUT_INVALID")
         doc: dict[str, Any] = {
@@ -745,17 +753,19 @@ def report_fields_block(payload: Mapping[str, Any]) -> str:
 
     judge-adapters-7: plain text, so quotes reach the model unescaped. Each
     section is a ``--- <location> ---`` line (a claim's line also lists its
-    evidence_ids) followed by the exact field text.
+    evidence_ids) followed by the exact field text with every line indented two
+    spaces, so report text can never forge a marker line. Indentation is only
+    whitespace, which the quote check (``runs._squash``) already collapses.
     """
     sections: list[str] = []
     for location, value in report_fields(payload).items():
+        text = value["text"] if isinstance(value, dict) else value
+        body = "\n".join("  " + line for line in text.split("\n"))
         if isinstance(value, dict):
             ids = ", ".join(value["evidence_ids"]) or "(none)"
-            sections.append(
-                f"--- {location} | evidence_ids: {ids} ---\n{value['text']}"
-            )
+            sections.append(f"--- {location} | evidence_ids: {ids} ---\n{body}")
         else:
-            sections.append(f"--- {location} ---\n{value}")
+            sections.append(f"--- {location} ---\n{body}")
     return REPORT_FIELDS_HEADER + "\n".join(sections) + REPORT_FIELDS_FOOTER
 
 
@@ -1093,6 +1103,8 @@ def judge_once(
         status, code = "timeout", "JUDGE_TIMEOUT"
     except JudgeError as exc:
         code = _observation_code(exc)
+        if isinstance(exc, StreamTruncated):
+            transport_error = "StreamTruncated"  # The main p7 disconnect mode.
         if code.endswith("OVERSIZE"):
             status = "oversize"
         elif code in (
