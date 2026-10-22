@@ -172,6 +172,8 @@ Prometheus 基本认证（M1-02 第 4 步，D3）：`up` 首次生成 `tmp/m1-ki
 
 `python -m opspilot.observer` 是确定性的恢复观察进程（C3 §10，F6）：轮询 → `sweep_expired_sessions` → `claim_due_samples` → 对每个租约按会话绑定的 HealthProfile revision（内容取自 `opspilot_health_profiles`，须能重算出同一 revision）向 Prometheus 发即时查询（每个信号三条：`query`、`coverage_query`、`freshness_query`，都在窗口末尾求值；**每条请求前**重新校验租约的 scope generation，已变化则不再发请求、提交部分读数由存储按 `suspended` 结束会话）→ 查询返回后再取 `sample_time` → `evaluate_readings` → 原子 `submit_sample`。不调用模型，不 import 调查 worker、工具网关与 web（`tests/test_m1_observer.py` 以子进程校验）。
 
+Prometheus 响应体（200 体、错误体、中断或超时的部分体）在客户端读到后、解析与入库前统一按 `opspilot.redaction.redact_json_bytes` 脱敏（#254）；恢复读数捆绑、发布 `raw`、两者的哈希、判定与离线重放都基于这份脱敏字节，无凭据命中且无重复键的体逐字节不变，有重复键的 JSON 体按 F7 共享策略规范化（失败闭合）；完整体非 UTF-8 存为空字节；未读完的体（错误体前缀、中断、超时、超限）先在 UTF-8 字符边界与未闭合的 URL authority 前截住、再脱敏，最多保留 2048 字节；完整体脱敏后超过 30720 字节按 `failed/TOO_LARGE` 记。
+
 只读自己的环境变量，不回退到调查侧的 `OPSPILOT_DSN` / `OPSPILOT_OTEL_*` / `DEEPSEEK_API_KEY`：
 
 ```sh
@@ -346,6 +348,21 @@ M0_B_POSTGRES=1 .venv/bin/python -m pytest tests/integration/test_m0_live_postgr
 离线测试：`UV_CACHE_DIR=$PWD/tmp/uv-cache .venv/bin/python -m pytest tests/test_f11_u2_harness.py`。
 工具输出不构成正式校准批准；五类各三次、健康备用预算、非预期 unknown 比例、
 checkout 流量不受 ad 故障影响及临近健康终结边界仍需真实实验与独立真值审查。
+
+### F3 竞争原因场景驱动（PR-3a）
+
+入口：`.venv/bin/python -m scripts.f3_competing_scenario --help`；合同见 [PR-3a 预审](tasks/2026-10-22-f3-pr3a-contract.md)。仅供工程师在已协调的 kind 实验环境跑 F3 第 5 步：发布 checkout（只改一个环境变量，复用 F11 U2 harness 的 `publish`），R+420 s 开 `paymentFailure: off → 100%` 维持 1800 s（harness `scheduled_fault`，`finally` 自动恢复），告警建事故后经工作台控制入口发一条只陈述部署与时间的追问。不调用 harness 的 `register`、`webhook`，不写 F11 批次日志；ledger 在共享 `tmp/lab-ledgers/f3-competing-cause/<run>/`（`plan.json`、`release.json`、`fault.jsonl`、`follow-up.json`、`summary.json`），不入库。冻结的 rubric 与评测侧答案在 `docs/testing/f3-competing-cause-rubric.md`、`evals/f3/competing-cause/answer.json`，不进入模型输入或追问请求体。
+
+- 离线自检：`plan` 打印计划与冻结文件 sha256；`--dry-run preflight`、`--dry-run run ...` 不做任何外部调用、不写盘。
+- 环境：`F3_LAB_UI_USER`、`F3_LAB_UI_PASSWORD`（工作台 Basic Auth）、`F3_LAB_DSN`（只读查询事故与发布观察），lab Prometheus 账号按上节 `prometheus-lab.env`。凭据不打印、不写 ledger。
+- 前提（任一不过则退出码 3，原因码互不相同）：已 `occupation claim`、无 `fault-active.json`、flagd 全部 `off`、`ALERTS{alertname="CheckoutPlaceOrderErrorRatioHigh"}` 为空、该告警在 otel-demo/checkout 上没有未 closed 的事故、70 分钟内无其他 checkout 发布与 F11 发布观察、swap 余量 ≥ `--swap-min-free-mib`（默认 2048）。
+
+运行顺序（D1-a，**先 web、后追问、再起 worker**）：
+
+1. 起 web（`OPSPILOT_TOOL_PROFILE=otel-demo`，与稍后 worker 同一代码版本），不起 worker；准备 flagd 端口转发。
+2. `--holder <持有人> --batch <批次> run --run <新名字> --web http://127.0.0.1:<端口> --flagd-url http://127.0.0.1:<转发端口> --flag-method <flag 实际类型>`。驱动发布、调度故障、轮询新告警事故，确认 Run 仍 `queued`、无 step、代际为 0 后，以 `expected_generation=0` 和幂等键发 `follow_up`。
+3. stdout 出现 `{"event": "start_worker"}` 后再起 worker，第 1 轮即能在 `investigation_inputs` 看到追问。驱动继续等故障恢复，最后一行 `finished` 给出事故、Run、release id 与 ledger 路径。
+4. 追问在 worker 领取后才发会被拒（`WORKER_ALREADY_CLAIMED`），驱动不重试；该次执行按 U4-a 照实记录，重跑须用户批准，且换新 `--run` 名、等过 70 分钟窗口。
 
 Web 创建 Run 时默认读取同一目标的已审核知识。`OPSPILOT_KNOWLEDGE_HINTS=off` 关闭读取；`OPSPILOT_KNOWLEDGE_MAX_AGE_SECONDS` 设置非负整数新鲜度阈值（默认 `2592000` 秒，即 30 天），超过阈值的知识仍提供并标为 stale。
 
