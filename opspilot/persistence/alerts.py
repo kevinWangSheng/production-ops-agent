@@ -19,7 +19,7 @@ from uuid import UUID, uuid4
 from psycopg.types.json import Jsonb
 
 from opspilot.persistence.base import Connection, PersistenceError
-from opspilot.persistence.incidents import _IncidentOps
+from opspilot.persistence.incidents import _check_priority, _IncidentOps
 
 
 class _AlertOps(_IncidentOps):
@@ -149,15 +149,20 @@ class _AlertOps(_IncidentOps):
                 versions=dict(opening["versions"]),
                 input=opening.get("input"),
                 target_id=self._alert_target(conn, opening["resource_uid"]),
+                priority=opening.get("priority", 2),
             )
             _ledger(conn, opening.get("ledger") or ())
         else:
             # E5: an incident handed to a human at intake. No Run, no target
             # binding; ``waiting_human`` like a parked Run, and invisible to
             # the claim listing, which joins the current Run.
+            # Its priority is recorded like any alert incident's (U-B1-2),
+            # though without a Run nothing ever claims it.
+            priority = opening.get("priority", 2)
+            _check_priority(priority)
             inserted = conn.execute(
-                "INSERT INTO opspilot_incidents(incident_id,intake_key,state,lifecycle,current_run_id,target_id) VALUES(%s,%s,'waiting_human','open',NULL,NULL) ON CONFLICT DO NOTHING RETURNING incident_id",
-                (incident_id, opening["intake_key"]),
+                "INSERT INTO opspilot_incidents(incident_id,intake_key,state,lifecycle,current_run_id,target_id,priority) VALUES(%s,%s,'waiting_human','open',NULL,NULL,%s) ON CONFLICT DO NOTHING RETURNING incident_id",
+                (incident_id, opening["intake_key"], priority),
             ).fetchone()
             if inserted is None:
                 raise PersistenceError("IDENTITY_CONFLICT")

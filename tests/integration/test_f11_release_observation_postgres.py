@@ -105,7 +105,7 @@ AUDIT = "opspilot_release_audit"
 QUERY_RESULTS = "opspilot_release_query_results"
 BEFORE_0015 = "0014_release_observations"
 REVISION_0015 = "0015_release_observation_sessions"
-HEAD = "0017_web_suspension_grants"
+HEAD = "0019_incident_priority"
 
 SESSION = PROFILE.session  # deadline 3600, max 40, cadence 60, window 600
 MIN_TRACKING = 600  # M: explicit test value, not a calibration

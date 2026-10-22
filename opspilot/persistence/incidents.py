@@ -12,6 +12,12 @@ from opspilot.persistence.base import Connection, PersistenceError, _StoreBase
 from opspilot.persistence.steps import _completed_tool_ordinals, _tool_plan
 
 
+def _check_priority(priority: object) -> None:
+    """``opspilot_incidents.priority`` domain (migration 0019 CHECK)."""
+    if type(priority) is not int or priority not in (0, 1, 2):
+        raise PersistenceError("INVALID_INPUT")
+
+
 class _IncidentOps(_StoreBase):
     def accept(
         self,
@@ -24,6 +30,7 @@ class _IncidentOps(_StoreBase):
         versions: dict[str, str],
         input: dict[str, Any] | None = None,
         target_id: UUID | None = None,
+        priority: int = 2,
     ) -> None:
         """Create incident/run atomically. Return only after commit.
 
@@ -31,6 +38,9 @@ class _IncidentOps(_StoreBase):
         evidence context, tool face, limits). It is what a later worker
         rebuilds the model context from; ``None`` keeps callers that never
         run the investigation loop (M0 harness, control tests) unchanged.
+        ``priority`` is the incident's claim priority (F2 U-B1-1/U-B1-2:
+        0 critical, 1 warning, 2 other; every Run of the incident inherits
+        it); a non-alert intake keeps the default 2.
         """
         with self.transaction() as conn:
             self._accept_in(
@@ -43,6 +53,7 @@ class _IncidentOps(_StoreBase):
                 versions=versions,
                 input=input,
                 target_id=target_id,
+                priority=priority,
             )
 
     def _accept_in(
@@ -57,10 +68,13 @@ class _IncidentOps(_StoreBase):
         versions: dict[str, str],
         input: dict[str, Any] | None,
         target_id: UUID | None,
+        priority: int = 2,
     ) -> bool:
         """``accept()`` inside the caller's transaction (the alert intake
         commits the incident with its alert identity, M1-04 E3); returns
-        whether this call created the incident."""
+        whether this call created the incident. A replay of an existing
+        incident leaves its stored priority as it is."""
+        _check_priority(priority)
         scope = self._lock_scope(conn, None)
         if (
             target_id is not None
@@ -92,8 +106,8 @@ class _IncidentOps(_StoreBase):
         inserted = conn.execute(
             # 不限定冲突目标：同一身份并发重投会同时撞上 intake_key 唯一索引
             # 和 incident_id 主键，只声明前者会让后者漏成 UniqueViolation。
-            "INSERT INTO opspilot_incidents(incident_id,intake_key,state,lifecycle,current_run_id,target_id) VALUES(%s,%s,'queued','open',%s,%s) ON CONFLICT DO NOTHING RETURNING incident_id",
-            (incident_id, intake_key, run_id, target_id),
+            "INSERT INTO opspilot_incidents(incident_id,intake_key,state,lifecycle,current_run_id,target_id,priority) VALUES(%s,%s,'queued','open',%s,%s,%s) ON CONFLICT DO NOTHING RETURNING incident_id",
+            (incident_id, intake_key, run_id, target_id, priority),
         ).fetchone()
         existing = conn.execute(
             "SELECT incident_id,current_run_id,target_id FROM opspilot_incidents WHERE intake_key=%s",
@@ -175,8 +189,11 @@ class _IncidentOps(_StoreBase):
         (a killed worker's), and not yet overdue; parked and blocked rows are
         a human's, and an overdue row (``running`` or ``queued``) is the
         sweep's (ADR-0005 decision 2), which every worker poll runs first.
-        Oldest deadline first, like the sweep, so a worker that falls behind
-        serves the Run that will time out soonest.
+        Highest priority first (F2 U5-A, R-B1-4: the incident's ``priority``,
+        0 critical before 1 warning before 2 other), then oldest deadline,
+        like the sweep, so a worker that falls behind serves the Run that
+        will time out soonest; a lapsed ``running`` Run follows the same
+        order as a ``queued`` one.
         """
         if type(limit) is not int or limit < 1:
             raise PersistenceError("INVALID_INPUT")
@@ -186,7 +203,7 @@ class _IncidentOps(_StoreBase):
                 "WHERE i.state NOT IN ('paused','cancelled','completed') AND i.mode='automatic' AND i.conclusion IS NULL "
                 "AND r.state IN ('queued','running') AND r.deadline>clock_timestamp() "
                 "AND (r.state='queued' OR r.lease_until IS NULL OR r.lease_until<=clock_timestamp()) "
-                "ORDER BY r.deadline, i.incident_id LIMIT %s",
+                "ORDER BY i.priority, r.deadline, i.incident_id LIMIT %s",
                 (limit,),
             ).fetchall()
         return tuple(row["incident_id"] for row in rows)

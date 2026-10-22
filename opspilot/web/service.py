@@ -37,6 +37,7 @@ from opspilot.alertmanager import (
     alert_context,
     alert_context_of_record,
     parse_alert,
+    priority_of,
     question_for,
     record_of,
     resolve_target,
@@ -503,6 +504,7 @@ class Workbench:
                 "incident_id": incident_id,
                 "intake_key": intake_key,
                 "handoff_reason": resolution.handoff_reason,
+                "priority": priority_of(alert.labels),
             }
         run_id = uuid5(_INTAKE_NAMESPACE, f"{intake_key}:run:0")
         request = IntakeRequest(
@@ -532,6 +534,8 @@ class Workbench:
             "deadline": deadline,
             "budget_limit": self.budget_limit,
             "versions": dict(self.run_versions),
+            # U-B1-2: the incident's claim priority, set once from severity.
+            "priority": priority_of(alert.labels),
             "input": self._fresh_input(
                 request,
                 run_id,

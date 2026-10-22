@@ -2,7 +2,9 @@
 
 Upstream shape (HolmesGPT ``conversations_worker``): poll the database
 queue, claim, run, write the terminal state; SIGTERM stops claiming and
-joins the in-flight attempt for a bounded grace period. Here the queue is
+joins the in-flight attempts for one bounded grace period. Up to
+``OPSPILOT_WORKER_CAPACITY`` attempts run at once, one per slot thread
+(F2 PR-B1), claimed by incident priority, then deadline. Here the queue is
 ``DurableStore.claimable_incidents`` (a read-only hint), the claim and the
 attempt are ``InvestigationRunner.resume`` (lease fence, C3 §6-7 recovery,
 ADR-0005 settling), and every poll first runs the deadline sweep (ADR-0005
@@ -30,7 +32,9 @@ Configuration (environment only):
 * ``OPSPILOT_ENV_FILE``             a private ``KEY=value`` file holding it.
 * ``OPSPILOT_WORKER_POLL_SECONDS``  idle poll interval (default 2).
 * ``OPSPILOT_WORKER_GRACE_SECONDS`` SIGTERM join bound (default 30).
-* ``OPSPILOT_WORKER_BATCH``         incidents per poll (default 20).
+* ``OPSPILOT_WORKER_BATCH``         incidents per ``poll_once`` (default 20).
+* ``OPSPILOT_WORKER_CAPACITY``      concurrent attempts, one slot thread
+  each (default 2); refused unless ``OPSPILOT_POOL_MAX_SIZE`` >= capacity + 2.
 * ``OPSPILOT_TOOL_PROFILE``         ``fixture`` (default) or ``otel-demo``;
   must match the workbench (``opspilot.tools.profiles``).
 * ``OPSPILOT_TRACE``                ``off`` (default) or ``lab``: LangSmith
@@ -55,7 +59,8 @@ import os
 import signal
 import sys
 import threading
-from collections.abc import Sequence
+import time
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
@@ -68,7 +73,7 @@ from opspilot.investigation.runner import InvestigationRunner, RunnerOutcome
 from opspilot.knowledge import KnowledgeStore
 from opspilot.knowledge.jobs import GenerationStore
 from opspilot.knowledge.worker import PostmortemWorker
-from opspilot.persistence import DurableStore, PersistenceError
+from opspilot.persistence import DurableStore, PersistenceError, PoolConfig
 from opspilot.tools.profiles import ToolProfile, select_profile
 from opspilot.web.events import DurableEventLog
 from opspilot.web.evidence import DurableEvidenceStore
@@ -76,7 +81,7 @@ from opspilot.web.service import LEASE_SECONDS
 from opspilot.web.store import DurableClock
 from opspilot.worker import Worker
 
-__all__ = ["WorkerLoop", "main"]
+__all__ = ["WorkerLoop", "main", "worker_capacity"]
 
 _log = logging.getLogger("opspilot.worker")
 
@@ -91,11 +96,31 @@ class Resumer(Protocol):
 
 @dataclass
 class WorkerLoop:
-    """Poll -> sweep -> resume each claimable incident, until ``stop`` is set.
+    """Poll -> sweep -> claim into free capacity slots, until ``stop`` is set.
 
-    One attempt at a time: ``resume`` is synchronous and holds the Run's
-    lease for its duration; ``stop`` is checked before every claim, never
-    mid-attempt (the runner owns the attempt's fences).
+    ``capacity`` slots (F2 R3, default 1 here, ``OPSPILOT_WORKER_CAPACITY``
+    in ``main``) each drive one attempt at a time on their own thread with
+    their own runner: slot 0 uses ``runner``, the others ``runner_factory()``
+    (or ``runner`` again when no factory is given, for test doubles only --
+    the product runner is not shared across threads, B1 contract U-B1-4).
+    ``resume`` is synchronous and holds the Run's lease for its duration;
+    ``stop`` is checked before every claim, never mid-attempt (the runner
+    owns the attempt's fences).
+
+    ``run()`` (R-B1-2): every ``poll_seconds`` the polling thread sweeps,
+    then lists ``claimable_incidents`` -- priority, then deadline -- for the
+    free slots and dispatches; a slot that frees wakes it to list again at
+    once, so a later critical incident takes the next free slot ahead of
+    queued lower-priority ones. Incidents in flight here, or attempted since
+    the last timed poll, are not dispatched again (R-B1-3, and at most one
+    attempt per incident per poll like before); ``claim()`` stays the
+    authority. On ``stop`` it dispatches nothing more and returns once every
+    in-flight attempt has returned; ``main`` bounds that by one shared grace
+    (R-B1-5).
+
+    ``poll_once()`` is the synchronous entry: one sweep, one listing of
+    ``batch``, every listed incident attempted (concurrently over the slots
+    when ``capacity > 1``, inline otherwise), results in listing order.
     """
 
     queue: ClaimQueue
@@ -105,55 +130,197 @@ class WorkerLoop:
     stop: threading.Event = field(default_factory=threading.Event)
     poll_seconds: float = 2.0
     batch: int = 20
+    capacity: int = 1
+    runner_factory: Callable[[], Resumer] | None = None
+    _runners: list[Resumer] = field(init=False, repr=False)
+    _idle: list[Resumer] = field(init=False, repr=False)
+    _cond: threading.Condition = field(init=False, repr=False)
+    _wake: threading.Event = field(init=False, repr=False)
+    _in_flight: dict[UUID, threading.Thread] = field(init=False, repr=False)
+    _recent: set[UUID] = field(init=False, repr=False)
 
-    def poll_once(self) -> list[tuple[UUID, RunnerOutcome]]:
-        """One pass. Storage refusals and crashed attempts are logged by
-        code/type and skipped; the next pass converges on the rows."""
+    def __post_init__(self) -> None:
+        if type(self.capacity) is not int or self.capacity < 1:
+            raise ValueError("capacity must be a positive integer")
+        factory = self.runner_factory
+        self._runners = [self.runner] + [
+            factory() if factory is not None else self.runner
+            for _ in range(self.capacity - 1)
+        ]
+        self._idle = list(reversed(self._runners))
+        self._cond = threading.Condition()
+        self._wake = threading.Event()
+        self._in_flight = {}
+        self._recent = set()
+
+    # -- one attempt -----------------------------------------------------
+
+    def _attempt(self, runner: Resumer, incident_id: UUID) -> RunnerOutcome | None:
+        """``runner.resume``; storage refusals and crashes are logged by
+        code/type and yield ``None`` -- the next pass converges on the rows."""
+        try:
+            outcome = runner.resume(incident_id)
+        except PersistenceError as exc:
+            _log.warning("attempt refused incident=%s code=%s", incident_id, exc)
+            return None
+        except Exception as exc:  # noqa: BLE001 - keep the worker alive
+            # A crashed attempt keeps its lease to expiry, like a killed
+            # worker; only the type is logged (a message could quote a
+            # provider response).
+            _log.error(
+                "attempt crashed incident=%s error=%s",
+                incident_id,
+                type(exc).__name__,
+            )
+            return None
+        _log.info(
+            "attempt incident=%s status=%s reason=%s",
+            incident_id,
+            outcome.status,
+            outcome.reason,
+        )
+        return outcome
+
+    def _sweep(self) -> None:
         try:
             for incident_id, run_id in sweep_expired(self.sweeper, self.events):
                 _log.info("swept incident=%s run=%s", incident_id, run_id)
         except PersistenceError as exc:
             _log.warning("sweep refused code=%s", exc)
+
+    # -- slots -----------------------------------------------------------
+
+    def _checkout(self, *, wait: bool) -> Resumer | None:
+        """A free slot's runner; ``wait`` blocks until one frees or ``stop``."""
+        with self._cond:
+            while not self._idle:
+                if not wait or self.stop.is_set():
+                    return None
+                self._cond.wait(0.1)
+            return self._idle.pop()
+
+    def _launch(
+        self,
+        incident_id: UUID,
+        runner: Resumer,
+        sink: dict[UUID, RunnerOutcome] | None,
+    ) -> threading.Thread:
+        thread = threading.Thread(
+            target=self._slot,
+            args=(incident_id, runner, sink),
+            name=f"opspilot-slot-{incident_id}",
+            daemon=True,
+        )
+        with self._cond:
+            self._in_flight[incident_id] = thread
+        thread.start()
+        return thread
+
+    def _slot(
+        self,
+        incident_id: UUID,
+        runner: Resumer,
+        sink: dict[UUID, RunnerOutcome] | None,
+    ) -> None:
+        try:
+            outcome = self._attempt(runner, incident_id)
+            if outcome is not None and sink is not None:
+                sink[incident_id] = outcome
+        finally:
+            # Release the slot whatever happened, and wake the poller to
+            # refill it (R-B1-2, R-B1-5).
+            with self._cond:
+                self._in_flight.pop(incident_id, None)
+                self._recent.add(incident_id)
+                self._idle.append(runner)
+                self._cond.notify_all()
+            self._wake.set()
+
+    def _join_in_flight(self) -> None:
+        while True:
+            with self._cond:
+                threads = list(self._in_flight.values())
+            if not threads:
+                return
+            for thread in threads:
+                thread.join()
+
+    # -- entry points ----------------------------------------------------
+
+    def poll_once(self) -> list[tuple[UUID, RunnerOutcome]]:
+        """One pass. Storage refusals and crashed attempts are logged by
+        code/type and skipped; the next pass converges on the rows."""
+        self._sweep()
+        with self._cond:
+            self._recent.clear()  # only ``run()`` reads it
         try:
             candidates = self.queue.claimable_incidents(limit=self.batch)
         except PersistenceError as exc:
             _log.warning("listing refused code=%s", exc)
             return []
         results: list[tuple[UUID, RunnerOutcome]] = []
+        if self.capacity == 1:
+            for incident_id in candidates:
+                if self.stop.is_set():
+                    break
+                outcome = self._attempt(self.runner, incident_id)
+                if outcome is not None:
+                    results.append((incident_id, outcome))
+            return results
+        sink: dict[UUID, RunnerOutcome] = {}
+        started: list[UUID] = []
         for incident_id in candidates:
             if self.stop.is_set():
                 break
-            try:
-                outcome = self.runner.resume(incident_id)
-            except PersistenceError as exc:
-                _log.warning("attempt refused incident=%s code=%s", incident_id, exc)
+            runner = self._checkout(wait=True)
+            if runner is None:
+                break
+            self._launch(incident_id, runner, sink)
+            started.append(incident_id)
+        self._join_in_flight()
+        return [(i, sink[i]) for i in started if i in sink]
+
+    def _refill(self) -> None:
+        """Fill the free slots from the claim listing, best first."""
+        with self._cond:
+            free = len(self._idle)
+            excluded = set(self._in_flight) | self._recent
+        if not free or self.stop.is_set():
+            return
+        try:
+            candidates = self.queue.claimable_incidents(limit=free + len(excluded) + 2)
+        except PersistenceError as exc:
+            _log.warning("listing refused code=%s", exc)
+            return
+        for incident_id in candidates:
+            if self.stop.is_set():
+                return
+            if incident_id in excluded:
                 continue
-            except Exception as exc:  # noqa: BLE001 - keep the worker alive
-                # A crashed attempt keeps its lease to expiry, like a killed
-                # worker; only the type is logged (a message could quote a
-                # provider response).
-                _log.error(
-                    "attempt crashed incident=%s error=%s",
-                    incident_id,
-                    type(exc).__name__,
-                )
-                continue
-            _log.info(
-                "attempt incident=%s status=%s reason=%s",
-                incident_id,
-                outcome.status,
-                outcome.reason,
-            )
-            results.append((incident_id, outcome))
-        return results
+            runner = self._checkout(wait=False)
+            if runner is None:
+                return
+            self._launch(incident_id, runner, None)
 
     def run(self) -> int:
-        """Poll until ``stop``; returns the number of passes made."""
+        """Poll until ``stop``; returns the number of timed passes made."""
         polls = 0
+        next_poll = time.monotonic()
         while not self.stop.is_set():
-            self.poll_once()
-            polls += 1
-            self.stop.wait(self.poll_seconds)
+            if time.monotonic() >= next_poll:
+                self._sweep()
+                with self._cond:
+                    self._recent.clear()
+                polls += 1
+                next_poll = time.monotonic() + self.poll_seconds
+            self._wake.clear()
+            self._refill()
+            # Until the next timed poll, a freed slot, or ``stop``.
+            while not self.stop.is_set():
+                remaining = next_poll - time.monotonic()
+                if remaining <= 0 or self._wake.wait(min(remaining, 0.1)):
+                    break
+        self._join_in_flight()
         return polls
 
 
@@ -212,38 +379,61 @@ def build_loop(
     profile: ToolProfile | None = None,
 ) -> WorkerLoop:
     """The product composition: durable events/evidence/ledger, one tool profile."""
+    capacity = worker_capacity(store.pool_config)
     profile = profile or select_profile(os.environ)
     versions = profile.versions()
     events = DurableEventLog(store)
     events.install()
     evidence = DurableEvidenceStore(store)
     evidence.install()
-    clock = DurableClock(store)
-    runner = InvestigationRunner(
-        store=store,
-        worker=Worker.create(store, versions),
-        model=DeepSeekClient(api_key, clock=clock),
-        executor_factory=profile.executor_factory(store, evidence, clock),
-        clock=clock,
-        lease_seconds=LEASE_SECONDS,
-        events=events,
-        evidence=evidence,
-    )
-    _log.info(
-        "worker owner=%s profile=%s versions=%s",
-        runner.worker.owner,
-        profile.name,
-        versions,
-    )
+
+    def slot_runner() -> InvestigationRunner:
+        # U-B1-4: one model client (its transport handler records a single
+        # in-flight connection), executor factory, clock and Worker identity
+        # per slot; the store, events and evidence are shared.
+        clock = DurableClock(store)
+        runner = InvestigationRunner(
+            store=store,
+            worker=Worker.create(store, versions),
+            model=DeepSeekClient(api_key, clock=clock),
+            executor_factory=profile.executor_factory(store, evidence, clock),
+            clock=clock,
+            lease_seconds=LEASE_SECONDS,
+            events=events,
+            evidence=evidence,
+        )
+        _log.info(
+            "worker slot owner=%s profile=%s versions=%s",
+            runner.worker.owner,
+            profile.name,
+            versions,
+        )
+        return runner
+
     return WorkerLoop(
         queue=store,
-        runner=runner,
+        runner=slot_runner(),
         sweeper=store,
         events=events,
         stop=stop,
         poll_seconds=_float_env("OPSPILOT_WORKER_POLL_SECONDS", 2.0),
         batch=_int_env("OPSPILOT_WORKER_BATCH", 20),
+        capacity=capacity,
+        runner_factory=slot_runner,
     )
+
+
+def worker_capacity(pool: PoolConfig) -> int:
+    """``OPSPILOT_WORKER_CAPACITY`` (default 2, >= 1), refused with
+    ``SystemExit`` unless the process pool holds one connection per slot
+    plus the polling and postmortem threads (B1 contract U-B1-3)."""
+    capacity = _int_env("OPSPILOT_WORKER_CAPACITY", 2)
+    if pool.max_size < capacity + 2:
+        raise SystemExit(
+            f"OPSPILOT_POOL_MAX_SIZE={pool.max_size} must be at least "
+            f"OPSPILOT_WORKER_CAPACITY+2={capacity + 2}"
+        )
+    return capacity
 
 
 def build_postmortem_worker(
@@ -272,6 +462,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     if not dsn:
         raise SystemExit("OPSPILOT_WORKER_DSN is required")
     grace = _float_env("OPSPILOT_WORKER_GRACE_SECONDS", 30.0)
+    # Refuse a capacity the pool cannot serve before touching the database.
+    worker_capacity(PoolConfig.from_env())
     store = DurableStore(dsn)
     store.install()
     stop = threading.Event()
@@ -283,7 +475,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
 
     def request_stop(signum: int, _frame: Any) -> None:
-        _log.info("signal=%s: stop claiming, finishing the in-flight attempt", signum)
+        _log.info("signal=%s: stop claiming, finishing the in-flight attempts", signum)
         stop.set()
 
     signal.signal(signal.SIGTERM, request_stop)
