@@ -82,7 +82,8 @@ def scan(binary: Path, mode: str, target: Path, scratch: Path):
     report.unlink(missing_ok=True)
     config = scratch / "scanner.toml"
     # Two reviewed non-credential source digests in one historical evidence manifest,
-    # and the B2 ``"key"`` digest frozen in the synthetic structural fixture.
+    # the B2 ``"key"`` digest frozen in the synthetic structural fixture,
+    # and the F2 PR-C acceptance ``auth_revision`` label.
     # Rule + exact file suffix + exact value all must match; no directory exclusion.
     config.write_text(
         """[extend]
@@ -104,6 +105,12 @@ condition = "AND"
 paths = ['(^|/)tests/fixtures/eval_structural/canary-fault-v1/recording/blobs/451b7afbb9c39771546fee37c00168d371922ce12d4d19f49f1fdfa236d8d75f$']
 regexTarget = "secret"
 regexes = ['^ea84b683d829cb9e57f5e39c094e25db6e0d2dee913183889b16631ab5193f76$']
+[[rules.allowlists]]
+description = "auth_revision label in the F2 PR-C acceptance test (not a credential)"
+condition = "AND"
+paths = ['(^|/)tests/acceptance/test_f2_alert_correlation\\.py$']
+regexTarget = "secret"
+regexes = ['^f2-correlation-acceptance-v1$']
 [[rules]]
 id = "m0-selftest-api-key"
 description = "Deterministic synthetic API-key canary used to verify the scanner"
