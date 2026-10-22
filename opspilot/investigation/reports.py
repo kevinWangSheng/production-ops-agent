@@ -977,6 +977,69 @@ def context_time_policy_ids(context: object) -> tuple[str, ...]:
     return tuple(ids)
 
 
+def validated_report(
+    content: str,
+    *,
+    finish_reason: str | None,
+    delivered: Sequence[DeliveredView],
+    evidence_context: Mapping[str, Any] | None,
+    authorized_targets: frozenset[str],
+) -> tuple[ReportV2 | None, str, str]:
+    """``parse_report`` plus the citation check, as the live round applies
+    them. Returns ``(report, reason, retry_feedback)``: ``retry_feedback``
+    is B3/C2's fixed-template diagnostic message for this exact failure
+    ("" on success), computed here (not by the caller) so it always
+    reflects the parsed report the citation check actually saw.
+
+    ``evidence_context`` is the Run's already projected context. The single
+    rule for the live round (``InvestigationLoop._validated_report``) and for
+    the rebuild's hash check over a forced-final row (#304): a pure function
+    of the committed reply and what had been delivered before it, so both
+    sides derive the same feedback bytes.
+    """
+    report, reason = parse_report(
+        content, finish_reason=finish_reason if finish_reason else "unknown"
+    )
+    target_catalog = context_target_catalog(
+        evidence_context, authorized_targets=authorized_targets
+    )
+    time_policy_ids = context_time_policy_ids(evidence_context)
+    if report is None:
+        return (
+            None,
+            reason,
+            report_retry_feedback(
+                reason,
+                report=None,
+                views=delivered,
+                content=content,
+                authorized_targets=authorized_targets,
+                time_policy_ids=time_policy_ids,
+                target_catalog=target_catalog,
+            ),
+        )
+    if unsupported_citations(
+        report,
+        views=delivered,
+        authorized_targets=authorized_targets,
+        time_policy_ids=time_policy_ids,
+        target_catalog=target_catalog,
+    ):
+        return (
+            None,
+            "REPORT_INVALID",
+            report_retry_feedback(
+                "REPORT_INVALID",
+                report=report,
+                views=delivered,
+                authorized_targets=authorized_targets,
+                time_policy_ids=time_policy_ids,
+                target_catalog=target_catalog,
+            ),
+        )
+    return report, "", ""
+
+
 def view_targets_authorized(
     view: DeliveredView,
     *,
