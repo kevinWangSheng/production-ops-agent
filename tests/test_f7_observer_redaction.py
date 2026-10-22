@@ -275,7 +275,9 @@ def test_clean_bytes_are_byte_for_byte_unchanged(
 def test_redaction_growth_over_limit_is_failed_without_throwing(
     source_server: _ResponseServer,
 ) -> None:
-    result = _source(source_server).instant("case=large", at=AT, timeout_seconds=1)
+    # The fixture builds the large body in the server thread (~0.8 s locally), so
+    # a 1 s budget timed out on a loaded CI runner; the deadline is not under test.
+    result = _source(source_server).instant("case=large", at=AT, timeout_seconds=10)
     assert (result.status, result.detail, result.body_complete) == (
         "failed",
         "TOO_LARGE",

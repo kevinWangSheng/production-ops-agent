@@ -55,7 +55,6 @@ from tests.integration.test_f11_pr2b_impl_postgres import (
     authorized_due,
     raw_evidence,
     release_harness,
-    shared_claim,
 )
 from tests.integration.test_f13_step4_contract_postgres import (
     _seed_incident,
@@ -314,7 +313,13 @@ def test_release_storage_replay_and_same_sample_redelivery(
 ) -> None:
     web, observer, oid, _, _ = release_harness
     auth = authorized_due(release_harness)
-    lease = shared_claim(observer, auth.session_id)
+    # The CI database keeps earlier tests' due sessions, so claim widely and
+    # pick this test's own session (shared_claim's limit=20 was not enough).
+    lease = next(
+        item
+        for item in observer.claim_due_samples(uuid4(), limit=1000, lease_seconds=120)
+        if item.session_id == auth.session_id
+    )
     context = observer.release_context(lease.session_id)
     server = _ReleaseHTTP(context)
     try:
