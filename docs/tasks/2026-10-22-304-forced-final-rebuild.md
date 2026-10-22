@@ -19,6 +19,9 @@
 
 ## 执行进展与证据
 
+- 实现（D-R1–D-R5）：`reports.validated_report` 纯函数，`InvestigationLoop._validated_report` 改为调用它（函数体除参数改名外与 a7b296a 逐行相同）；`rebuild_transcript` 对同代际、无工具、非最终、无 rejected_plan 的模型行用该函数重算，不合格时把 feedback 带到下一条模型行（跨 accepted 压缩行与 conclusion 行，未接受的压缩行清空），`_check_snapshot_hash` 按 instruction → feedback → coverage 插入；不 bump revision。
+- 本地验证：自测 `tests/test_304_forced_final_rebuild_impl.py` 8 例（含压缩跨越、finish_reason 篡改仍 `INCOMPATIBLE_STATE`、代际不符仍阻塞），去掉 context.py 修复时 4 例失败；相关单测文件共 352 passed + alignment C 20 passed。临时 PG 17.9（55714，自建自停）：`tests/integration/test_304_forced_final_rebuild_impl_postgres.py` 2 例 + resume/309 PG 文件共 34 passed，去修复时 2 例均为 `blocked(INCOMPATIBLE_STATE)`。ruff check/format、mypy（三个改动模块）通过。D-U2 真实证据未做。
+
 ## 待决
 
 无。
