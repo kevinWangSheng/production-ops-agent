@@ -42,6 +42,14 @@ PR2 实现（2026-10-22，`feature/308-pr2-read-evidence`，起点 main `1f701af
 - 已知限制：eval 录制格式对 transport 发送前拒绝（`sent:false`）一律判不一致，这是既有行为，`EVIDENCE_NOT_READABLE` 同属此类；片段不带 `lookback_seconds`（PR1 保留视图未存该字段）。
 - 真实 Run：两次，第 1 次替身数据未触发超限（失败，保留），第 2 次通过：6 次超限保留拒绝、2 次 `read_evidence` ok，报告以片段为 fact 引用并通过校验。[证据](../evidence/308-pr2-read-evidence-live/README.md)；费用余额差 0.04 CNY。
 
+- PR2 独立验收（测试分支 `e066635`，lead 本地 merge）：41 项中 34 过、7 败（KeyError `adopted`）。lead 裁决（R2 解读，可逆）：所有视图超限拒绝——保留的、超过每 Run 上限 `stored:false` 的、read_evidence 片段超 25k 的——都带 `adopted:false`、`citable_as_fact:false`；`EVIDENCE_NOT_READABLE`/`INVALID_PARAMS` 等视图不要求（测试作者去掉该断言）。实现：视图超限分支的拒绝 detail 加 `adopted:false`（`_view_refusal_detail` 文本不变），字节超限拒绝不变；projection 与 tool_schema revision 值不变（v9 / `otel-demo-2a944edd110a`）。由此另有两处钉住旧拒绝键集合的断言需独立作者更新：`tests/acceptance/test_308_pr1_overlimit_evidence.py:373`、`tests/test_m1_whole_view_tokens_contract.py:815`。
+- 实现者提出的 5 条可逆问题与 lead 处理（2026-10-22）：
+  1. R11/U2 边界（只有上限判否给 `stored:false`，sink 答不了时视图不变）：接受。
+  2. U7 使 M1-01 合同测试中钉大上限的断言失效：由独立作者改写；compaction 备用防线在产品中不可达，lead 另开 issue。
+  3. eval 录制对 `sent:false` 的发送前拒绝判 IDENTITY_MISMATCH（既有行为，`EVIDENCE_NOT_READABLE` 同类）：lead 另开 issue。
+  4. 片段不带 `lookback_seconds`：接受，不扩 R12。
+  5. 片段超限整段拒绝、不再保留、无摘要：接受。
+
 ## 待决
 
 无。

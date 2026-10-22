@@ -1233,12 +1233,19 @@ class ReadOnlyToolExecutor:
             refused = refuse_after_fetch(
                 "error",
                 "RESULT_TOO_LARGE",
-                detail=_view_refusal_detail(
-                    too_large.tokens,
-                    too_large.limit,
-                    too_large.query,
-                    too_large.window,
-                ),
+                detail={
+                    # #308 R2 (lead ruling 2026-10-22): every over-limit-view
+                    # refusal -- kept, past the per-Run cap, or a slice that
+                    # does not fit -- says it is not adopted; every refusal
+                    # already says ``citable_as_fact: false``.
+                    "adopted": False,
+                    **_view_refusal_detail(
+                        too_large.tokens,
+                        too_large.limit,
+                        too_large.query,
+                        too_large.window,
+                    ),
+                },
             )
             if (
                 refused.reason != "RESULT_TOO_LARGE"
