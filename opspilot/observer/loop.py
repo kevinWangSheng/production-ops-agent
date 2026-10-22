@@ -69,6 +69,10 @@ class ObserverLoop:
     lease_seconds: int = OBSERVER_LEASE_SECONDS
     # before/after comparisons claimed per comparison pass (F11 PR-4a)
     comparison_batch: int = 1
+    # how long ``run`` waits for the comparison thread after stop: the
+    # Observer's default shutdown grace (OPSPILOT_OBSERVER_GRACE_SECONDS),
+    # since an in-flight query can only end by its own timeout
+    comparison_join_seconds: float = 30.0
 
     def poll_once(
         self, *, compare: bool = True
@@ -159,7 +163,10 @@ class ObserverLoop:
                 break
             try:
                 taken = take_release_comparison(
-                    lease, cast(ReleaseSource, self.source), self.store
+                    lease,
+                    cast(ReleaseSource, self.source),
+                    self.store,
+                    stopped=self.stop.is_set,
                 )
             except PersistenceError as exc:
                 _log.warning(
@@ -275,5 +282,11 @@ class ObserverLoop:
                 self.stop.wait(self.poll_seconds)
         finally:
             self.stop.set()
-            comparer.join()
+            comparer.join(self.comparison_join_seconds)
+            if comparer.is_alive():
+                _log.warning(
+                    "comparison still in flight after %ss: exiting; its attempt "
+                    "lease lapses and another claim takes the next attempt",
+                    self.comparison_join_seconds,
+                )
         return polls

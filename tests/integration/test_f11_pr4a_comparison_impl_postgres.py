@@ -31,6 +31,7 @@ from opspilot.observer.release_sampling import (
     take_release_comparison,
     take_release_sample,
 )
+from opspilot.persistence.base import PersistenceError
 from scripts.m0.postgres_lab import DSN
 from tests.integration import test_f11_pr2b_impl_postgres as pr2b
 from tests.integration.test_f11_pr2b_impl_postgres import (
@@ -482,6 +483,146 @@ def test_guards_refuse_a_wrong_derived_id_or_before_window(release_harness):
     assert _comparisons(observer, oid) == []
 
 
+def _record_insert(conn, lease, *, owner, attempts):
+    start = lease.released_at - timedelta(seconds=2)  # fixture window W = 2 s
+    cid = lease.comparison_id
+    comparison = {
+        "status": "unavailable",
+        "comparison_id": str(cid),
+        "ending_id": str(lease.ending_id),
+        "observation_id": str(lease.observation_id),
+        "sample_id": str(lease.sample_id),
+        "attempts": attempts,
+    }
+    conn.execute(
+        "INSERT INTO opspilot_release_comparisons(comparison_id,observation_id,ending_id,session_id,sample_id,owner,format_version,status,attempts,window_before_start,window_before_end,window_after_start,window_after_end,decision_at,evidence_sha256,comparison) VALUES(%s,%s,%s,%s,%s,%s,1,'unavailable',%s,%s,%s,%s,%s,clock_timestamp(),repeat('0',64),%s)",
+        (
+            cid,
+            lease.observation_id,
+            lease.ending_id,
+            lease.session_id,
+            lease.sample_id,
+            owner,
+            attempts,
+            start,
+            lease.released_at,
+            lease.window_after.start,
+            lease.window_after.end,
+            Jsonb(comparison),
+        ),
+    )
+
+
+def test_only_the_live_holder_of_the_latest_attempt_files_the_record(
+    release_harness,
+):
+    _, observer, oid, _, _ = release_harness
+    context = _anomalous(release_harness)
+    a, b = uuid4(), uuid4()
+    lease_a = _own_claim(observer, oid, a)
+    empty = ReleaseComparisonEvidence(
+        format_version=1,
+        comparison_id=lease_a.comparison_id,
+        attempts=1,
+        window=before_window(context),
+        queries=(),
+    )
+    # A's lease lapses: A may no longer file, even before anyone else claims
+    _expire_attempts(lease_a.comparison_id)
+    with pytest.raises(PersistenceError, match="COMPARISON_LEASE_LOST"):
+        observer.submit_comparison(lease_a, empty)
+    lease_b = _own_claim(observer, oid, b)
+    assert lease_b.attempt == 2
+    with pytest.raises(PersistenceError, match="COMPARISON_LEASE_LOST"):
+        observer.submit_comparison(lease_a, empty)
+    # the guard enforces the same fence on a direct Observer-role insert
+    with login(DSN, "opspilot_observer") as dsn:
+        with (
+            psycopg.connect(dsn) as conn,
+            pytest.raises(psycopg.errors.InsufficientPrivilege, match="lease refused"),
+        ):
+            _record_insert(conn, lease_a, owner=a, attempts=1)
+        with (
+            psycopg.connect(dsn) as conn,
+            pytest.raises(psycopg.errors.InsufficientPrivilege, match="lease refused"),
+        ):
+            _record_insert(conn, lease_b, owner=a, attempts=2)
+    assert _comparisons(observer, oid) == []
+    taken = take_release_comparison(lease_b, BeforeTelemetry(context), observer)
+    assert taken.receipt is not None and not taken.receipt.replayed
+    (stored,) = _comparisons(observer, oid)
+    assert (stored["attempts"], stored["owner"], stored["status"]) == (
+        2,
+        b,
+        "complete",
+    )
+    assert replay_release_history(_history(observer, oid)).consistent
+
+
+class _Blocking:
+    """Comparison queries: the third stops the loop; with ``hang`` every
+    query blocks until ``released`` (a source that does not return)."""
+
+    def __init__(self, inner, loop_stop, *, hang=False):
+        self.inner, self.loop_stop, self.hang = inner, loop_stop, hang
+        self.released = threading.Event()
+        self.calls = 0
+
+    def instant(self, *args, **kwargs):
+        pytest.fail("release telemetry must use vector")
+
+    def instant_vector(self, expr, *, at, timeout_seconds):
+        if at != self.inner.context.release.released_at:
+            raise RuntimeError("only comparison queries are answered")
+        self.calls += 1
+        if self.hang:
+            self.released.wait(30)
+        elif self.calls == 3:
+            self.loop_stop.set()
+        return self.inner.instant_vector(expr, at=at, timeout_seconds=timeout_seconds)
+
+
+@pytest.mark.parametrize("hang", [False, True])
+def test_stop_during_a_comparison_exits_bounded_without_submitting(
+    release_harness, hang
+):
+    _, observer, oid, _, _ = release_harness
+    context = _anomalous(release_harness)
+    loop = ObserverLoop(
+        store=observer,
+        source=None,
+        batch=1,
+        poll_seconds=0.1,
+        comparison_join_seconds=1.0,
+    )
+    source = _Blocking(BeforeTelemetry(context), loop.stop, hang=hang)
+    loop.source = source
+    runner = threading.Thread(target=loop.run, daemon=True)
+    started = time.monotonic()
+    runner.start()
+    try:
+        if hang:
+            deadline = time.monotonic() + 5
+            while source.calls == 0 and time.monotonic() < deadline:
+                time.sleep(0.05)
+            assert source.calls == 1
+            loop.stop.set()
+        runner.join(10)
+        assert not runner.is_alive()
+        # a stop with a query still in flight waits at most the join bound
+        assert time.monotonic() - started < (8 if hang else 5)
+    finally:
+        source.released.set()
+    time.sleep(0.3)  # let a released query return and observe the stop
+    assert _comparisons(observer, oid) == []
+    assert source.calls == (1 if hang else 3)
+    with psycopg.connect(DSN) as conn:
+        assert conn.execute(
+            "SELECT count(*) FROM opspilot_release_comparison_attempts WHERE observation_id=%s",
+            (oid,),
+        ).fetchone() == (1,)
+
+
 class _SlowComparisons:
     """Comparison queries take 0.5 s each until ``released``; sampling
     queries of every other release are answered at once."""
@@ -552,7 +693,8 @@ def test_a_slow_comparison_does_not_delay_due_samples(release_harness):
         loop.stop.set()
         runner.join(30)
     assert not runner.is_alive()
-    assert len(_comparisons(observer, oid)) == 1
+    # the stop abandoned the in-flight attempt unsubmitted (r4)
+    assert _comparisons(observer, oid) == []
     if web.get_release(other).status == "observing":
         web.control_release(
             other,
@@ -597,8 +739,8 @@ def test_0019_downgrade_restores_0018_and_refuses_with_a_comparison(scratch):
         conn.execute("SET LOCAL session_replication_role=replica")
         cid = uuid4()
         conn.execute(
-            "INSERT INTO opspilot_release_comparisons(comparison_id,observation_id,ending_id,session_id,sample_id,format_version,status,attempts,window_before_start,window_before_end,window_after_start,window_after_end,decision_at,evidence_sha256,comparison) VALUES(%s,%s,%s,%s,%s,1,'unavailable',1,now()-interval '5 minutes',now()-interval '1 minute',now()-interval '1 minute',now(),now(),repeat('0',64),jsonb_build_object('status','unavailable','comparison_id',%s::text,'ending_id',%s::text,'observation_id',%s::text,'sample_id',%s::text,'attempts',1))",
-            (cid, cid, cid, cid, cid, str(cid), str(cid), str(cid), str(cid)),
+            "INSERT INTO opspilot_release_comparisons(comparison_id,observation_id,ending_id,session_id,sample_id,owner,format_version,status,attempts,window_before_start,window_before_end,window_after_start,window_after_end,decision_at,evidence_sha256,comparison) VALUES(%s,%s,%s,%s,%s,%s,1,'unavailable',1,now()-interval '5 minutes',now()-interval '1 minute',now()-interval '1 minute',now(),now(),repeat('0',64),jsonb_build_object('status','unavailable','comparison_id',%s::text,'ending_id',%s::text,'observation_id',%s::text,'sample_id',%s::text,'attempts',1))",
+            (cid, cid, cid, cid, cid, cid, str(cid), str(cid), str(cid), str(cid)),
         )
     with pytest.raises(RuntimeError, match="refusing to downgrade"):
         schema.command.downgrade(schema._config(scratch), "0018_alert_correlation")

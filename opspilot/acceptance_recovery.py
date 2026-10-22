@@ -279,6 +279,7 @@ OBSERVER_GRANTS: Mapping[str, Mapping[str, Grant]] = {
             "ending_id",
             "session_id",
             "sample_id",
+            "owner",
             "format_version",
             "status",
             "attempts",

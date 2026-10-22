@@ -108,6 +108,7 @@ r1 只定方向。其余实现者需要猜的语义点，按 AGENTS.md「合同�
 - S3 澄清（lead 2026-10-22）：前后 pod-template-hash 相同即判 `VERSION_SLICE_NOT_DISTINGUISHABLE`，不再要求镜像也相同；镜像相同但 hash 不同照常切片。实现已按此（`before_context` 在 hash 相同时两侧都取 before 版本），单测覆盖 hash 相同而镜像不同。
 - 检查（PG 17 临时实例 56021）：实现测试 19 passed；F11／迁移／角色／M1-02／#184／F2 PR-C 相关单测与 PG 1508 passed；ruff、mypy 通过。同步旧测试只改迁移头与 0014 降级授权枚举。未做 kind 真实运行。
 - r3（独立审查 Codex gpt-6-luna FAIL，3 P1 + 1 P2，均采纳）：① 生产 `ObserverLoop.run` 把对比放到独立线程，采样线程用 `poll_once(compare=False)`，慢 Prometheus 下到期采样不等待对比（`poll_once()` 默认仍同步做对比，供测试与单次调用）；② 新表 `opspilot_release_comparison_attempts`（追加式，Observer 只有 SELECT／列级 INSERT）：每次尝试在发查询前先插一行作为领取，主键加守卫保证每个 ending 至多 3 行，且其他 Observer 只能在前一次 150 s 租约过期后领下一次；三次都用完仍无记录时，不再查询，直接记 unavailable。总查询 ≤ 3×49，与 Observer 数量和崩溃次数无关。取代「重试不持久化」「两 Observer 可各采一次」两条可逆默认；③ 0019 守卫在库内用 PL/pgSQL SHA-1 重算 `uuid5(observation_id,'comparison:'||ending_id)`（不引入扩展），并核对 before 窗起点 = `released_at` − 冻结 profile 的 `evaluation_window_seconds`，以及 after 窗、`decision_at` 与已领取的尝试行；④ complete 还要求 anomaly 样本证据充足、判为 degraded、after 信号全部有值，否则加 `AFTER_EVIDENCE_INSUFFICIENT`。`pending_comparisons` 不列出持有有效租约的 ending。
+- r4（r3 复验 Codex gpt-6-sol，修复引入的 2 条 P1，采纳）：① 停机：对比在每个查询前、领取下一次尝试前、提交前检查 stop，停机即放弃当前尝试，不提交（尝试行仍计次，按租约规则由后续接管）；`run` 等待对比线程最多 `comparison_join_seconds`=30 s（与 Observer 默认停机宽限 `OPSPILOT_OBSERVER_GRACE_SECONDS` 一致；在途查询只能靠它自身的超时结束），超时记日志后退出；② 租约 fencing：对比记录新增 `owner` 列。守卫与存储（`COMPARISON_LEASE_LOST`）都要求提交者持有该 comparison 的最新尝试，且按 DB 时钟仍在租约内；唯一例外是第 3 次尝试租约已过期时，只能记 unavailable（exhausted 路径）。
 
 ## 下一步与交接
 

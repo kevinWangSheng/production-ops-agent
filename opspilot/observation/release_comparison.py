@@ -599,7 +599,7 @@ def comparison_fingerprint(evidence: ReleaseComparisonEvidence) -> str:
     return sha256(canonical_json(_fingerprint_json(data)).encode())
 
 
-_COMPARISON_COLUMNS = "comparison_id,observation_id,ending_id,session_id,sample_id,format_version,status,attempts,window_before_start,window_before_end,window_after_start,window_after_end,decision_at,evidence_sha256,comparison,recorded_at"
+_COMPARISON_COLUMNS = "comparison_id,observation_id,ending_id,session_id,sample_id,owner,format_version,status,attempts,window_before_start,window_before_end,window_after_start,window_after_end,decision_at,evidence_sha256,comparison,recorded_at"
 _QUERY_COLUMNS = "comparison_id,query_key,query,source,evaluated_at,sent_at,status,http_status,detail,body_complete,raw,raw_sha256"
 
 
@@ -735,8 +735,9 @@ class _ReleaseComparisonOps(_ReleaseSampleOps):
     ) -> ComparisonReceipt:
         """Storage evaluates the raw evidence; the first record is kept.
 
-        A second submission for the same ending -- a retry, or a concurrent
-        Observer -- returns the stored record with ``replayed=True``.
+        Only the holder of the ending's latest attempt, inside its lease,
+        may submit (``COMPARISON_LEASE_LOST`` otherwise); its resubmission
+        returns the stored record with ``replayed=True``.
         """
         if not isinstance(lease, ComparisonLease) or not isinstance(
             evidence, ReleaseComparisonEvidence
@@ -756,17 +757,29 @@ class _ReleaseComparisonOps(_ReleaseSampleOps):
         ):
             raise PersistenceError("INVALID_INPUT")
         with self._release_transaction() as conn:
+            # r4 fencing, also enforced by the 0019 guard: the latest attempt
+            # is this lease's and still within its lease on the DB clock, or
+            # a lapsed third attempt is filed unavailable.
+            latest = conn.execute(
+                "SELECT attempt,owner,lease_until>clock_timestamp() AS live FROM opspilot_release_comparison_attempts WHERE comparison_id=%s ORDER BY attempt DESC LIMIT 1",
+                (lease.comparison_id,),
+            ).fetchone()
+            if (
+                latest is None
+                or latest["attempt"] != lease.attempt
+                or not (
+                    (latest["owner"] == lease.owner and latest["live"])
+                    or (
+                        lease.exhausted
+                        and latest["attempt"] == COMPARISON_MAX_ATTEMPTS
+                        and not latest["live"]
+                    )
+                )
+            ):
+                raise PersistenceError("COMPARISON_LEASE_LOST")
             stored = self._stored_comparison(conn, lease.comparison_id)
             if stored is not None:
                 return stored
-            claimed = conn.execute(
-                "SELECT owner FROM opspilot_release_comparison_attempts WHERE comparison_id=%s AND attempt=%s",
-                (lease.comparison_id, lease.attempt),
-            ).fetchone()
-            if claimed is None or (
-                not lease.exhausted and claimed["owner"] != lease.owner
-            ):
-                raise PersistenceError("INVALID_INPUT")
             ending = conn.execute(
                 "SELECT ending_id,session_id,release_observation_id,sample_id,anomaly_key FROM opspilot_observation_endings WHERE ending_id=%s",
                 (lease.ending_id,),
@@ -826,13 +839,14 @@ class _ReleaseComparisonOps(_ReleaseSampleOps):
                 decision_at=now,
             )
             inserted = conn.execute(
-                "INSERT INTO opspilot_release_comparisons(comparison_id,observation_id,ending_id,session_id,sample_id,format_version,status,attempts,window_before_start,window_before_end,window_after_start,window_after_end,decision_at,evidence_sha256,comparison) VALUES(%s,%s,%s,%s,%s,1,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING RETURNING comparison_id",
+                "INSERT INTO opspilot_release_comparisons(comparison_id,observation_id,ending_id,session_id,sample_id,owner,format_version,status,attempts,window_before_start,window_before_end,window_after_start,window_after_end,decision_at,evidence_sha256,comparison) VALUES(%s,%s,%s,%s,%s,%s,1,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING RETURNING comparison_id",
                 (
                     lease.comparison_id,
                     lease.observation_id,
                     lease.ending_id,
                     lease.session_id,
                     lease.sample_id,
+                    lease.owner,
                     comparison.status,
                     evidence.attempts,
                     evidence.window.start,

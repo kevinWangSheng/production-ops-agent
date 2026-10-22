@@ -18,7 +18,8 @@ Observer collects one bounded before/after comparison and stores it here.
   exclusive across Observers -- the next attempt needs every earlier one to
   be the claimer's own or past its lease -- so the queries spent on one
   ending stay within three plans whatever the number of Observers or
-  crashes. A record must name a claimed attempt.
+  crashes. A record must come from the holder of the latest attempt inside its lease
+  (r4 fencing); a spent, lapsed third attempt may only be filed unavailable.
 * ``opspilot_release_comparison_queries``: the raw before-window responses,
   evaluated at ``released_at`` (S8), as ``opspilot_release_query_results``
   stores a sample's.
@@ -48,7 +49,7 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 # Frozen: equal to ``OBSERVER_GRANTS`` in ``opspilot.acceptance_recovery``.
-COMPARISON_INSERT = "comparison_id,observation_id,ending_id,session_id,sample_id,format_version,status,attempts,window_before_start,window_before_end,window_after_start,window_after_end,decision_at,evidence_sha256,comparison"
+COMPARISON_INSERT = "comparison_id,observation_id,ending_id,session_id,sample_id,owner,format_version,status,attempts,window_before_start,window_before_end,window_after_start,window_after_end,decision_at,evidence_sha256,comparison"
 ATTEMPT_INSERT = "comparison_id,attempt,observation_id,ending_id,owner"
 # The claim lease the guard stamps; the Observer's attempt budget is shorter.
 ATTEMPT_LEASE_SECONDS = 150
@@ -115,6 +116,7 @@ def upgrade() -> None:
       ending_id uuid NOT NULL UNIQUE REFERENCES opspilot_observation_endings,
       session_id uuid NOT NULL REFERENCES opspilot_observation_sessions,
       sample_id uuid NOT NULL REFERENCES opspilot_observation_samples,
+      owner uuid NOT NULL,
       format_version integer NOT NULL CHECK (format_version = 1),
       status text NOT NULL CHECK (status IN ('complete','partial','unavailable')),
       attempts integer NOT NULL CHECK (attempts BETWEEN 1 AND 3),
@@ -157,6 +159,7 @@ def upgrade() -> None:
       RETURN NEW;
     END $$;
     CREATE FUNCTION opspilot_release_comparison_guard() RETURNS trigger LANGUAGE plpgsql SET search_path=pg_catalog,pg_temp AS $$
+    DECLARE latest record;
     BEGIN
       IF NEW.decision_at > clock_timestamp()
         OR NEW.comparison_id IS DISTINCT FROM public.opspilot_comparison_id(NEW.observation_id, NEW.ending_id)
@@ -173,6 +176,15 @@ def upgrade() -> None:
             AND m.window_start=NEW.window_after_start AND m.window_end=NEW.window_after_end
             AND NEW.decision_at >= m.window_end)
       THEN RAISE insufficient_privilege USING MESSAGE='release comparison subject refused'; END IF;
+      -- r4 fencing: only the holder of the latest attempt, inside its lease
+      -- (DB clock), files the record; a spent third attempt whose lease
+      -- lapsed may only be filed unavailable.
+      SELECT * INTO latest FROM public.opspilot_release_comparison_attempts a
+        WHERE a.comparison_id=NEW.comparison_id ORDER BY a.attempt DESC LIMIT 1;
+      IF latest.attempt IS NULL OR NEW.attempts <> latest.attempt OR NOT (
+        (latest.owner = NEW.owner AND latest.lease_until > clock_timestamp())
+        OR (latest.attempt = 3 AND latest.lease_until <= clock_timestamp() AND NEW.status = 'unavailable'))
+      THEN RAISE insufficient_privilege USING MESSAGE='release comparison lease refused'; END IF;
       NEW.recorded_at := clock_timestamp();
       RETURN NEW;
     END $$;

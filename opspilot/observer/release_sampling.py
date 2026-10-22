@@ -190,6 +190,8 @@ class ReleaseComparisonTaken:
     requests_issued: int
     attempts: int
     scope_interrupted: bool
+    # the Observer is stopping: the attempt was abandoned, nothing submitted
+    stopped: bool = False
 
 
 def take_release_comparison(
@@ -198,6 +200,7 @@ def take_release_comparison(
     store: ObservationStore,
     *,
     scope_current: Callable[[ComparisonLease], bool] | None = None,
+    stopped: Callable[[], bool] | None = None,
 ) -> ReleaseComparisonTaken:
     """Collect the before evidence at ``released_at``, then submit it once.
 
@@ -208,13 +211,16 @@ def take_release_comparison(
     ``COMPARISON_MAX_ATTEMPTS`` plans per ending across Observers and
     crashes. A suspended scope
     stops the collection without a submission: the ending stays pending and
-    is collected again after the suspension is lifted.
+    is collected again after the suspension is lifted. ``stopped`` (the
+    Observer shutting down) is checked before every query, before the next
+    attempt and before submission; it abandons the attempt unsubmitted.
     """
     context = store.comparison_context(lease)
     check = scope_current or store.comparison_scope_current
     window = before_window(context)
     at = window.end
     issued = 0
+    halted = False
     gathered: list[ReleaseQueryResult] = []
 
     def evidence(attempt: int) -> ReleaseComparisonEvidence:
@@ -227,9 +233,12 @@ def take_release_comparison(
         )
 
     def collect(queries: dict[str, str], budget_end: float) -> bool:
-        """False when the scope stopped the collection."""
-        nonlocal issued
+        """False when the scope or an Observer stop ended the collection."""
+        nonlocal issued, halted
         for key, expr in queries.items():
+            if stopped is not None and stopped():
+                halted = True
+                return False
             if not check(lease):
                 return False
             left = budget_end - time.monotonic()
@@ -286,7 +295,7 @@ def take_release_comparison(
             plan = None
         if plan is not None:
             if not collect(plan, budget_end):
-                return ReleaseComparisonTaken(None, issued, attempt, True)
+                return ReleaseComparisonTaken(None, issued, attempt, not halted, halted)
             full = build_release_comparison_plan(
                 context,
                 released_at=at,
@@ -297,7 +306,7 @@ def take_release_comparison(
                 {key: expr for key, expr in full.items() if key not in plan},
                 budget_end,
             ):
-                return ReleaseComparisonTaken(None, issued, attempt, True)
+                return ReleaseComparisonTaken(None, issued, attempt, not halted, halted)
             draft = compare_evidence(
                 context,
                 observation_id=lease.observation_id,
@@ -324,9 +333,15 @@ def take_release_comparison(
                 )
                 # The next durable attempt row: a crash from here on still
                 # counts it, so the total never exceeds three plans.
+                if stopped is not None and stopped():
+                    return ReleaseComparisonTaken(None, issued, attempt, False, True)
                 lease = store.claim_next_attempt(lease)
                 continue
         break
+    if stopped is not None and stopped():
+        # Stop wins over submission; the claimed attempt stays spent and the
+        # ending is taken over under the lease rules.
+        return ReleaseComparisonTaken(None, issued, attempt, False, True)
     receipt = store.submit_comparison(lease, evidence(attempt))
     _log.info(
         "release comparison observation_id=%s ending=%s attempts=%s requests=%s status=%s replayed=%s",
