@@ -33,7 +33,11 @@ from opspilot.observation.store import (
     SampleReceipt,
 )
 from opspilot.observer.health_profile import HealthProfile
-from opspilot.observer.release_sampling import ReleaseSource, take_release_sample
+from opspilot.observer.release_sampling import (
+    ReleaseSource,
+    take_release_comparison,
+    take_release_sample,
+)
 from opspilot.observer.sampler import (
     PROFILE_INVALID,
     PROFILE_UNAVAILABLE,
@@ -63,6 +67,9 @@ class ObserverLoop:
     # how long each claimed job is leased; the sampler keeps every sample
     # inside it (``sampler.SUBMIT_MARGIN_SECONDS``)
     lease_seconds: int = OBSERVER_LEASE_SECONDS
+    # before/after comparisons per pass (F11 PR-4a); one keeps a pass short,
+    # since a comparison may take up to three bounded attempts
+    comparison_batch: int = 1
 
     def poll_once(self) -> list[tuple[UUID, SampleReceipt | ReleaseSampleReceipt]]:
         """One pass: sweep deadlines, claim due jobs, sample each. Storage
@@ -122,7 +129,47 @@ class ObserverLoop:
                 )
                 continue
             results.append((lease.session_id, receipt))
+        self.compare_once()
         return results
+
+    def compare_once(self) -> int:
+        """Collect the before/after comparison of pending anomaly endings.
+
+        Runs after the samples so a comparison never delays a due sample of
+        this pass. Refusals and crashes are logged and skipped; the ending
+        stays pending until a record is stored."""
+        pending = getattr(self.store, "pending_comparisons", None)
+        if pending is None or self.stop.is_set():
+            return 0
+        try:
+            leases = pending(limit=self.comparison_batch)
+        except PersistenceError as exc:
+            _log.warning("comparison claim refused code=%s", exc)
+            return 0
+        done = 0
+        for lease in leases:
+            if self.stop.is_set():
+                break
+            try:
+                taken = take_release_comparison(
+                    lease, cast(ReleaseSource, self.source), self.store
+                )
+            except PersistenceError as exc:
+                _log.warning(
+                    "comparison refused observation_id=%s code=%s",
+                    lease.observation_id,
+                    exc,
+                )
+                continue
+            except Exception as exc:  # noqa: BLE001 - keep the observer alive
+                _log.error(
+                    "comparison crashed observation_id=%s error=%s",
+                    lease.observation_id,
+                    type(exc).__name__,
+                )
+                continue
+            done += taken.receipt is not None
+        return done
 
     def sample(
         self, lease: SampleLease | ReleaseSampleLease

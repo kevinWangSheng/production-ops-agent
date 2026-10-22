@@ -65,6 +65,7 @@ TRIGGER_GUARDED: Mapping[str, tuple[str, str]] = {
         "release_update_guard",
         WEB_ROLE,
     ),
+    "opspilot_release_comparisons": ("release_comparison_guard", "opspilot_observer"),
 }
 
 RUNTIME_GRANTS: Mapping[str, Mapping[str, frozenset[str]]] = {
@@ -201,6 +202,9 @@ RUNTIME_GRANTS: Mapping[str, Mapping[str, frozenset[str]]] = {
         "opspilot_tool_charges": NONE,
         "opspilot_web_ledger": _g("SELECT", "INSERT(key,namespace,value)", "DELETE"),
         "opspilot_release_query_results": S,
+        # F11 PR-4a: the Observer writes before/after comparisons; the web reads
+        "opspilot_release_comparisons": S,
+        "opspilot_release_comparison_queries": S,
         "opspilot_release_audit": _g(
             "SELECT",
             "INSERT(action,actor,audit_id,control_generation_after,control_generation_before,ending_id,expected_control_generation,idempotency_key,observation_generation_after,observation_generation_before,observation_id,outcome,paused_after,paused_before,principal_kind,reason,request_sha256,result,sequence,session_id,status_after,status_before)",
@@ -323,6 +327,8 @@ RUNTIME_GRANTS: Mapping[str, Mapping[str, frozenset[str]]] = {
         ),
         "opspilot_web_ledger": NONE,
         "opspilot_release_query_results": NONE,
+        "opspilot_release_comparisons": NONE,
+        "opspilot_release_comparison_queries": NONE,
         "opspilot_release_audit": NONE,
     },
 }

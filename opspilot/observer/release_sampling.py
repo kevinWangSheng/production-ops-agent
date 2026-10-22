@@ -11,8 +11,21 @@ from typing import Protocol
 from uuid import uuid4
 
 from opspilot.domain.evidence import QueryWindow
+from opspilot.observation.release_comparison import (
+    COMPARISON_ATTEMPT_SECONDS,
+    COMPARISON_MAX_ATTEMPTS,
+    ComparisonLease,
+    ComparisonReceipt,
+    ReleaseComparisonEvidence,
+    before_window,
+    build_release_comparison_plan,
+    evaluate_release_comparison,
+    mapped_old_instances,
+    needs_retry,
+)
 from opspilot.observation.release_policy import sha256
 from opspilot.observation.release_types import (
+    ReleaseEvaluation,
     ReleaseQueryResult,
     ReleaseSampleEvidence,
     ReleaseSampleLease,
@@ -26,7 +39,13 @@ from opspilot.observer.release_evaluation import (
 )
 from opspilot.observer.sampler import SUBMIT_MARGIN_SECONDS, InstantSource
 
-__all__ = ["ReleaseSource", "ReleaseSampleTaken", "take_release_sample"]
+__all__ = [
+    "ReleaseComparisonTaken",
+    "ReleaseSource",
+    "ReleaseSampleTaken",
+    "take_release_comparison",
+    "take_release_sample",
+]
 
 _log = logging.getLogger("opspilot.observer")
 
@@ -163,3 +182,137 @@ def take_release_sample(
         receipt.release_status,
     )
     return ReleaseSampleTaken(receipt, issued, interrupted, exhausted)
+
+
+@dataclass(frozen=True)
+class ReleaseComparisonTaken:
+    receipt: ComparisonReceipt | None
+    requests_issued: int
+    attempts: int
+    scope_interrupted: bool
+
+
+def take_release_comparison(
+    lease: ComparisonLease,
+    source: ReleaseSource,
+    store: ObservationStore,
+    *,
+    scope_current: Callable[[ComparisonLease], bool] | None = None,
+) -> ReleaseComparisonTaken:
+    """Collect the before evidence at ``released_at``, then submit it once.
+
+    Up to ``COMPARISON_MAX_ATTEMPTS`` attempts; another attempt only when the
+    last one had failed or timed-out queries. The last attempt's raw
+    evidence is submitted and storage computes the record. A suspended scope
+    stops the collection without a submission: the ending stays pending and
+    is collected again after the suspension is lifted.
+    """
+    context = store.comparison_context(lease)
+    check = scope_current or store.comparison_scope_current
+    window = before_window(context)
+    at = window.end
+    issued = 0
+    gathered: list[ReleaseQueryResult] = []
+
+    def evidence(attempt: int) -> ReleaseComparisonEvidence:
+        return ReleaseComparisonEvidence(
+            format_version=1,
+            comparison_id=lease.comparison_id,
+            attempts=attempt,
+            window=window,
+            queries=tuple(gathered),
+        )
+
+    def collect(queries: dict[str, str], budget_end: float) -> bool:
+        """False when the scope stopped the collection."""
+        nonlocal issued
+        for key, expr in queries.items():
+            if not check(lease):
+                return False
+            left = budget_end - time.monotonic()
+            if left < 1.0:
+                result = VectorResult(
+                    expr=expr,
+                    status="timeout",
+                    series=(),
+                    body=b"",
+                    http_status=None,
+                    detail="COMPARISON_BUDGET",
+                    body_complete=False,
+                    sent_at=None,
+                )
+            else:
+                result = source.instant_vector(
+                    expr,
+                    at=at,
+                    timeout_seconds=min(
+                        context.health_profile.query_timeout_seconds, int(left)
+                    ),
+                )
+                issued += 1
+            gathered.append(
+                ReleaseQueryResult(
+                    query_key=key,
+                    query=expr,
+                    source="prometheus",
+                    evaluated_at=at,
+                    sent_at=result.sent_at,
+                    status=result.status,
+                    http_status=result.http_status,
+                    detail=result.detail,
+                    body_complete=result.body_complete,
+                    raw=result.body,
+                    raw_sha256=sha256(result.body),
+                )
+            )
+        return True
+
+    attempt = 0
+    while attempt < COMPARISON_MAX_ATTEMPTS:
+        attempt += 1
+        gathered.clear()
+        budget_end = time.monotonic() + COMPARISON_ATTEMPT_SECONDS
+        try:
+            plan = build_release_comparison_plan(context)
+        except ValueError:
+            # Unsupported profile: nothing to query; storage files it unavailable.
+            break
+        if not collect(plan, budget_end):
+            return ReleaseComparisonTaken(None, issued, attempt, True)
+        full = build_release_comparison_plan(
+            context, instance_uids=mapped_old_instances(context, evidence(attempt))
+        )
+        if not collect(
+            {key: expr for key, expr in full.items() if key not in plan}, budget_end
+        ):
+            return ReleaseComparisonTaken(None, issued, attempt, True)
+        draft = evaluate_release_comparison(
+            context,
+            observation_id=lease.observation_id,
+            ending_id=lease.ending_id,
+            sample_id=lease.sample_id,
+            window_after=lease.window_after,
+            anomaly=ReleaseEvaluation(
+                verdict="unknown",
+                outcome="no_data",
+                evidence_sufficient=False,
+                reason_codes=(),
+                instances=(),
+                signals=(),
+            ),
+            evidence=evidence(attempt),
+            decision_at=at,
+        )
+        if not needs_retry(draft):
+            break
+    receipt = store.submit_comparison(lease, evidence(attempt))
+    _log.info(
+        "release comparison observation_id=%s ending=%s attempts=%s requests=%s status=%s replayed=%s",
+        lease.observation_id,
+        lease.ending_id,
+        attempt,
+        issued,
+        receipt.comparison.status,
+        receipt.replayed,
+    )
+    return ReleaseComparisonTaken(receipt, issued, attempt, False)
