@@ -175,11 +175,17 @@ def test_batch_crash_resume_replays_only_pending_ordinals(monkeypatch):
         return _CrashAfterSecondExecutor(base_factory(lease, input), state)
 
     with pytest.raises(Crash, match="ordinal 1"):
-        _runner(store, evidence, events, clock, crashing_factory, [_batch_reply()]).resume(incident)
+        _runner(
+            store, evidence, events, clock, crashing_factory, [_batch_reply()]
+        ).resume(incident)
 
     after_crash = store.rebuild(incident)
-    live_steps = [step for step in after_crash["steps"] if step["status"] != "late_result"]
-    tool_step = next(step for step in live_steps if step["response"].get("kind") is None)
+    live_steps = [
+        step for step in after_crash["steps"] if step["status"] != "late_result"
+    ]
+    tool_step = next(
+        step for step in live_steps if step["response"].get("kind") is None
+    )
     committed = {item["ordinal"]: item["result"] for item in tool_step["tool_results"]}
     pending = sorted(item["ordinal"] for item in after_crash["pending_tools"])
     assert sorted(committed) in ([], [0])
@@ -209,9 +215,13 @@ def test_batch_crash_resume_replays_only_pending_ordinals(monkeypatch):
     final = store.rebuild(incident)
     assert final["pending_tools"] == []
     final_step = next(
-        step for step in final["steps"] if step["status"] != "late_result" and step["response"].get("kind") is None
+        step
+        for step in final["steps"]
+        if step["status"] != "late_result" and step["response"].get("kind") is None
     )
-    final_results = {item["ordinal"]: item["result"] for item in final_step["tool_results"]}
+    final_results = {
+        item["ordinal"]: item["result"] for item in final_step["tool_results"]
+    }
     assert sorted(final_results) == [0, 1]
     for ordinal, result in committed.items():
         assert final_results[ordinal] == result

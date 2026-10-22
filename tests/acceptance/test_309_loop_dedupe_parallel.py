@@ -50,7 +50,12 @@ from tests.test_m1_investigation_compaction import (
 BASELINE_CAP1 = {
     "model_request_count": 2,
     "tool_ordinals": [0, 1],
-    "event_kinds": ["step_committed", "tool_committed", "tool_committed", "step_committed"],
+    "event_kinds": [
+        "step_committed",
+        "tool_committed",
+        "tool_committed",
+        "step_committed",
+    ],
     "tool_message_ids": ["call-a", "call-b"],
     # SHA-256 of the complete public projection generated on c7326c9 with
     # the deterministic UUID stream installed by the test below.
@@ -69,8 +74,12 @@ def _cap(loop: InvestigationLoop, value: int) -> InvestigationLoop:
 
 def _two_calls() -> tuple[dict[str, Any], dict[str, Any]]:
     return (
-        tool_call("call-a", arguments='{"expr":"rate(http_errors[5m])","step_seconds":30}'),
-        tool_call("call-b", arguments='{"expr":"rate(http_errors[5m])","step_seconds":60}'),
+        tool_call(
+            "call-a", arguments='{"expr":"rate(http_errors[5m])","step_seconds":30}'
+        ),
+        tool_call(
+            "call-b", arguments='{"expr":"rate(http_errors[5m])","step_seconds":60}'
+        ),
     )
 
 
@@ -82,7 +91,9 @@ class _Events:
         self.rows.append((kind, dict(payload)))
         return len(self.rows)
 
-    def append_once(self, _subject: Any, kind: str, payload: dict[str, Any], *, key=None) -> int:
+    def append_once(
+        self, _subject: Any, kind: str, payload: dict[str, Any], *, key=None
+    ) -> int:
         return self.append(_subject, kind, payload)
 
 
@@ -164,7 +175,9 @@ def _fixture_loop(*, replies, cap=1, transport=None, model_requests=2, clock=Non
         UUID("00000000-0000-0000-0000-000000000042"),
         UUID("00000000-0000-0000-0000-000000000009"),
     )
-    loop = InvestigationLoop(model=model, executor=executor, store=emitting_store, clock=clock)
+    loop = InvestigationLoop(
+        model=model, executor=executor, store=emitting_store, clock=clock
+    )
     loop = _cap(loop, cap)
     request = InvestigationRequest(
         run_id=executor.scope.run_id,
@@ -215,7 +228,11 @@ def _normalize(value):
     if isinstance(value, dict):
         normalized = {}
         for key, item in value.items():
-            if key.endswith("sha256") or key.endswith("_hash") or key in {"elapsed_seconds", "model_seconds_used", "timeout_seconds"}:
+            if (
+                key.endswith("sha256")
+                or key.endswith("_hash")
+                or key in {"elapsed_seconds", "model_seconds_used", "timeout_seconds"}
+            ):
                 normalized[key] = "<timing-or-derived>"
             else:
                 normalized[key] = _normalize(item)
@@ -228,10 +245,7 @@ def _normalize(value):
 
 
 def _messages_projection(model):
-    return [
-        [dict(message) for message in call.messages]
-        for call in model.calls
-    ]
+    return [[dict(message) for message in call.messages] for call in model.calls]
 
 
 def _strict_observation_digest(model, store, events):
@@ -249,7 +263,9 @@ def _strict_observation_digest(model, store, events):
         "rows": rows,
         "events": events.rows,
     }
-    return hashlib.sha256(json.dumps(payload, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, ensure_ascii=False).encode()
+    ).hexdigest()
 
 
 def test_cap_one_matches_the_frozen_main_c7326c9_observations(monkeypatch):
@@ -258,7 +274,10 @@ def test_cap_one_matches_the_frozen_main_c7326c9_observations(monkeypatch):
     monkeypatch.setattr(executor_module, "uuid4", lambda: UUID(int=next(sequence)))
     calls = _two_calls()
     loop, request, model, _transport, store, events = _fixture_loop(
-        replies=[reply(tool_calls=list(calls), finish="tool_calls"), report_from_transcript],
+        replies=[
+            reply(tool_calls=list(calls), finish="tool_calls"),
+            report_from_transcript,
+        ],
         cap=1,
     )
     outcome = loop.run(request)
@@ -266,33 +285,66 @@ def test_cap_one_matches_the_frozen_main_c7326c9_observations(monkeypatch):
     committed = next(iter(store.tool_results.values()))
     assert [item["ordinal"] for item in committed] == BASELINE_CAP1["tool_ordinals"]
     assert len(model.calls) == BASELINE_CAP1["model_request_count"]
-    assert [message["tool_call_id"] for message in model.calls[1].messages if message["role"] == "tool"] == BASELINE_CAP1["tool_message_ids"]
+    assert [
+        message["tool_call_id"]
+        for message in model.calls[1].messages
+        if message["role"] == "tool"
+    ] == BASELINE_CAP1["tool_message_ids"]
     assert [kind for kind, _payload in events.rows] == BASELINE_CAP1["event_kinds"]
-    assert _strict_observation_digest(model, store, events) == BASELINE_CAP1["observation_sha256"]
+    assert (
+        _strict_observation_digest(model, store, events)
+        == BASELINE_CAP1["observation_sha256"]
+    )
 
 
 def test_cap_two_overlaps_and_preserves_cap_one_outcome_and_model_order():
     calls = _two_calls()
-    replies = [reply(tool_calls=list(calls), finish="tool_calls"), report_from_transcript]
-    serial_loop, serial_request, serial_model, _serial_transport, serial_store, _serial_events = _fixture_loop(replies=replies, cap=1)
+    replies = [
+        reply(tool_calls=list(calls), finish="tool_calls"),
+        report_from_transcript,
+    ]
+    (
+        serial_loop,
+        serial_request,
+        serial_model,
+        _serial_transport,
+        serial_store,
+        _serial_events,
+    ) = _fixture_loop(replies=replies, cap=1)
     serial_outcome = serial_loop.run(serial_request)
 
     barrier = _BarrierTransport()
-    parallel_loop, parallel_request, parallel_model, parallel_transport, parallel_store, parallel_events = _fixture_loop(
-        replies=[reply(tool_calls=list(calls), finish="tool_calls"), report_from_transcript],
+    (
+        parallel_loop,
+        parallel_request,
+        parallel_model,
+        parallel_transport,
+        parallel_store,
+        parallel_events,
+    ) = _fixture_loop(
+        replies=[
+            reply(tool_calls=list(calls), finish="tool_calls"),
+            report_from_transcript,
+        ],
         cap=2,
         transport=barrier,
     )
     parallel_outcome = parallel_loop.run(parallel_request)
 
-    assert _normalize(_outcome_projection(parallel_outcome)) == _normalize(_outcome_projection(serial_outcome))
+    assert _normalize(_outcome_projection(parallel_outcome)) == _normalize(
+        _outcome_projection(serial_outcome)
+    )
     serial_tools = [m for m in serial_model.calls[1].messages if m["role"] == "tool"]
-    parallel_tools = [m for m in parallel_model.calls[1].messages if m["role"] == "tool"]
+    parallel_tools = [
+        m for m in parallel_model.calls[1].messages if m["role"] == "tool"
+    ]
     assert _normalize(parallel_tools) == _normalize(serial_tools)
     assert [kind for kind, _payload in parallel_events.rows] == [
         kind for kind, _payload in _serial_events.rows
     ]
-    assert [item["ordinal"] for item in next(iter(parallel_store.tool_results.values()))] == [0, 1]
+    assert [
+        item["ordinal"] for item in next(iter(parallel_store.tool_results.values()))
+    ] == [0, 1]
     assert len(parallel_transport.intervals) == 2
     first, second = parallel_transport.intervals
     assert max(first[0], second[0]) < min(first[1], second[1])
@@ -302,7 +354,10 @@ def test_cap_two_tool_seconds_are_the_sum_of_each_call():
     calls = _two_calls()
     barrier = _BarrierTransport()
     loop, request, _model, transport, _store, _events = _fixture_loop(
-        replies=[reply(tool_calls=list(calls), finish="tool_calls"), report_from_transcript],
+        replies=[
+            reply(tool_calls=list(calls), finish="tool_calls"),
+            report_from_transcript,
+        ],
         cap=2,
         transport=barrier,
     )
@@ -310,7 +365,9 @@ def test_cap_two_tool_seconds_are_the_sum_of_each_call():
     elapsed_sum = sum(end - start for start, end, _ in transport.intervals)
     assert outcome.execution == "completed"
     assert loop.executor.operations_used == 2
-    assert loop.executor.tool_seconds_used == pytest.approx(elapsed_sum, rel=0.15, abs=0.005)
+    assert loop.executor.tool_seconds_used == pytest.approx(
+        elapsed_sum, rel=0.15, abs=0.005
+    )
 
 
 def test_accepted_compaction_clears_dedupe_but_pre_compaction_repeat_is_refused():
@@ -332,7 +389,11 @@ def test_accepted_compaction_clears_dedupe_but_pre_compaction_repeat_is_refused(
 def test_rejected_compaction_hands_off_with_compaction_failed():
     first = tool_call("call-a")
     loop, request, model, _transport, store, _sink = assemble(
-        replies=[reply(tool_calls=[first], finish="tool_calls"), reply(tool_calls=[first], finish="tool_calls"), reply(content="")],
+        replies=[
+            reply(tool_calls=[first], finish="tool_calls"),
+            reply(tool_calls=[first], finish="tool_calls"),
+            reply(content=""),
+        ],
         model_requests=5,
     )
     request = replace(request, limits=_limits_between_rounds(2))
@@ -347,7 +408,11 @@ def test_same_batch_duplicate_is_committed_as_a_view_without_second_dispatch(cap
     call = tool_call("call-a")
     repeated = tool_call("call-b")
     loop, request, model, transport, store, _events = _fixture_loop(
-        replies=[reply(tool_calls=[call, repeated], finish="tool_calls"), report_from_transcript], cap=cap
+        replies=[
+            reply(tool_calls=[call, repeated], finish="tool_calls"),
+            report_from_transcript,
+        ],
+        cap=cap,
     )
     outcome = loop.run(request)
     assert outcome.execution == "completed"
@@ -371,7 +436,10 @@ def test_same_batch_pure_refusal_is_dispatched_again(cap):
     repeated = tool_call("call-b")
     transport = RefusingTransport()
     loop, request, _model, _transport, store, _events = _fixture_loop(
-        replies=[reply(tool_calls=[call, repeated], finish="tool_calls"), reply(content="no evidence")],
+        replies=[
+            reply(tool_calls=[call, repeated], finish="tool_calls"),
+            reply(content="no evidence"),
+        ],
         cap=cap,
         transport=transport,
     )
@@ -391,7 +459,12 @@ def test_fence_failure_stops_dispatch_and_preserves_only_serial_prefix():
             if self.renewals >= 2:
                 self.deny_control()
 
-    calls = (*_two_calls(), tool_call("call-c", arguments='{"expr":"rate(http_errors[5m])","step_seconds":90}'))
+    calls = (
+        *_two_calls(),
+        tool_call(
+            "call-c", arguments='{"expr":"rate(http_errors[5m])","step_seconds":90}'
+        ),
+    )
 
     def run_serial():
         loop, request, _model, transport, base_store, _events = _fixture_loop(
@@ -405,11 +478,7 @@ def test_fence_failure_stops_dispatch_and_preserves_only_serial_prefix():
         )
         loop.store = store
         outcome = loop.run(request)
-        committed = [
-            item
-            for row in store.tool_results.values()
-            for item in row
-        ]
+        committed = [item for row in store.tool_results.values() for item in row]
         return outcome, transport, store, committed
 
     serial, serial_transport, _serial_store, serial_results = run_serial()
@@ -428,10 +497,12 @@ def test_fence_failure_stops_dispatch_and_preserves_only_serial_prefix():
             super().commit_tool(step_id, ordinal, result)
 
     fence_transport = _FenceTransport()
-    parallel_loop, parallel_request, _model, _transport, base_store, _events = _fixture_loop(
-        replies=[reply(tool_calls=list(calls), finish="tool_calls")],
-        cap=2,
-        transport=fence_transport,
+    parallel_loop, parallel_request, _model, _transport, base_store, _events = (
+        _fixture_loop(
+            replies=[reply(tool_calls=list(calls), finish="tool_calls")],
+            cap=2,
+            transport=fence_transport,
+        )
     )
     parallel_store = FencedStore(
         budget_limit=16,
@@ -443,9 +514,7 @@ def test_fence_failure_stops_dispatch_and_preserves_only_serial_prefix():
     parallel_loop.store = parallel_store
     parallel = parallel_loop.run(parallel_request)
     parallel_results = [
-        item
-        for row in parallel_store.tool_results.values()
-        for item in row
+        item for row in parallel_store.tool_results.values() for item in row
     ]
     assert parallel.execution == "failed"
     assert parallel.handoff_reasons == ("CONTROL_DENIED",)
@@ -486,10 +555,14 @@ def test_single_tool_exception_keeps_lower_index_prefix():
     loop.executor = FailingExecutor(loop.executor)
     with pytest.raises(RuntimeError, match="fixture tool failure"):
         loop.run(request)
-    assert [item["ordinal"] for row in store.tool_results.values() for item in row] == [0]
+    assert [item["ordinal"] for row in store.tool_results.values() for item in row] == [
+        0
+    ]
 
 
-def test_parallelism_configuration_has_default_two_and_accepts_only_one_to_sixteen(monkeypatch):
+def test_parallelism_configuration_has_default_two_and_accepts_only_one_to_sixteen(
+    monkeypatch,
+):
     class FakeStore:
         pass
 
@@ -532,18 +605,24 @@ def test_parallelism_configuration_has_default_two_and_accepts_only_one_to_sixte
     monkeypatch.setattr(worker_main, "InvestigationRunner", FakeRunner)
 
     monkeypatch.delenv("OPSPILOT_TOOL_PARALLELISM", raising=False)
-    worker_main.build_loop(FakeStore(), "key", stop=threading.Event(), profile=FakeProfile())
+    worker_main.build_loop(
+        FakeStore(), "key", stop=threading.Event(), profile=FakeProfile()
+    )
     assert FakeRunner.calls[-1]["tool_parallelism"] == 2
 
     for value in ("1", "16"):
         monkeypatch.setenv("OPSPILOT_TOOL_PARALLELISM", value)
-        worker_main.build_loop(FakeStore(), "key", stop=threading.Event(), profile=FakeProfile())
+        worker_main.build_loop(
+            FakeStore(), "key", stop=threading.Event(), profile=FakeProfile()
+        )
         assert FakeRunner.calls[-1]["tool_parallelism"] == int(value)
 
     for value in ("0", "17", "bad"):
         monkeypatch.setenv("OPSPILOT_TOOL_PARALLELISM", value)
         with pytest.raises(SystemExit):
-            worker_main.build_loop(FakeStore(), "key", stop=threading.Event(), profile=FakeProfile())
+            worker_main.build_loop(
+                FakeStore(), "key", stop=threading.Event(), profile=FakeProfile()
+            )
 
 
 def test_loop_exposes_tool_parallelism_default_one_for_compatibility():
