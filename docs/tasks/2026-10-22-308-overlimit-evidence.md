@@ -20,6 +20,7 @@ PR1 实现（2026-10-22，`feature/308-overlimit-evidence`）：
 - 视图超限且结果仍是 `RESULT_TOO_LARGE`（未被控制决定或结算拒绝改写）时，executor 通过 sink 登记一条 `adopted=false`、`status=error` 的记录：raw 为 `_inspect` 脱敏后的 body，view 为模型收到的拒绝视图加 `evidence_id`、`adopted:false` 与来源字段（source、tool_version、projection_revision、observed_at、dispatch_started_at、data_as_of、source_*_at、freshness_seconds、result_count、incomplete）。`outcome.evidence` 仍为 `None`（R1），模型视图不变，无 revision 变更。字节超限不存。
 - 每 Run 上限：登记前读 `count_spilled(run_id)`，已有 16 条或「已存字节 + 本条」超过 16 MiB 即不存（解读：16 MiB 不被越过）。识别条件为 `NOT adopted AND status='error' AND view->>'reason'='RESULT_TOO_LARGE'`；worker 现有 SELECT/INSERT/UPDATE 足够，无迁移、无新 grant。sink 不能计数、登记失败或控制拒绝时不存，拒绝照旧。
 - U2 的 `stored:false` 是模型面字段，留给 PR2。
+- 并发准入（R13，机器人 P1 两条）：`DurableEvidenceStore.register_spilled` 在一个事务内取 Run 级 advisory 锁后计数再插入，内存实现用锁；executor 优先调用它。无迁移、无新 grant（worker 已有 opspilot_evidence SELECT/INSERT，advisory 锁无需授权）。新增并发测试（6 线程、已有 15 条 → 恰 16 条；字节上限只容 1 条 → 恰 2 条；内存与 PG worker 角色各 2 项）修复前 4 败（21≠16、7≠2）、修复后通过；定向 360 项通过（#308 验收/实现/PG、#309、evidence 与 web/worker、runtime roles）。
 - 证据：自写 `tests/test_308_overlimit_evidence_impl.py`（7 项）与 `tests/integration/test_308_overlimit_evidence_impl_postgres.py`（3 项，worker 角色登录）通过；相关既有测试定向 1167 项通过；`mypy`、`ruff` 通过。
 - 已知副作用：审计时间线（`acceptance_audit.py`）会多出一条无 `tool_committed` 事件的 evidence 项，计入 `opspilot_evidence.result` 未定时计数，与崩溃遗留的 register-only 记录同类；`acceptance_investigation.py` 只收 ok/no_data，不受影响。
 

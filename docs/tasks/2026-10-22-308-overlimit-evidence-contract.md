@@ -51,8 +51,9 @@
 | R10 | eval：`tool_provenance` 接受新的 hint 键和 read_evidence；PR2 之前的录制因 revision 不同而不可比，不迁移 | C3 §5 规定 bump 之后在途 Run 进入 `blocked(INCOMPATIBLE_STATE)`，不为避免 blocked 而不 bump |
 | R11 | `count_spilled(run_id)` 的返回值 | 返回 `(records, raw_bytes)`：U2 的每 Run 上限同时按条数与字节数判断，两者都要；sink 无法回答（异常或类型不符）时执行器不存，拒绝结果不变。U2 的 16 MiB 读作「已存字节 + 本条 > 16 MiB 即不存」。（lead 2026-10-22 补充，验收测试按此改） |
 | R12 | 超限记录 view 的来源字段范围 | U1 括号所列字段之外，另允许网关计算的 `source`、`tool_version`、`projection_revision`、`dispatch_started_at`、`freshness_seconds`：PR2 的片段按 U4 继承父记录的来源与时间字段需要它们；均不含行内容。除此之外不得新增键。（lead 2026-10-22 补充） |
+| R13 | 每 Run 上限的并发准入 | 存储层原子准入：`register_spilled(record, max_records, max_bytes) -> bool` 在单个事务里先取以 Run 派生的 advisory 事务锁（`hashtextextended('opspilot_evidence:spilled:'||run_id, 0)`），再按 `_spilled` 条件计数，未超限才 INSERT，超限返回 False 不写；内存实现用锁。上限因此严格不越过，取代 U2「并行最多超 1 条」。没有该方法的 sink 仍走 `count_spilled` + `register`。（lead 采纳机器人 P1、顾问选 B，2026-10-22；理由：#309 同轮并行与租约接管期间新旧 worker 会对同一 Run 并发 spill，`register` 不受租约 fence 约束） |
 
-九类必答：时间见 U4、R4。计数见 U2、U6。状态：未采纳记录只在登记时写入，提交时 pin（R2）。权限：已有 grant 够用，无迁移。数据合同：表、列都不变，无迁移，部署顺序不限。旧数据：旧行不受影响。并发：U2 允许超 1 条。外部调用：read_evidence 不接触数据源。`passes`：不翻。
+九类必答：时间见 U4、R4。计数见 U2、U6。状态：未采纳记录只在登记时写入，提交时 pin（R2）。权限：已有 grant 够用，无迁移。数据合同：表、列都不变，无迁移，部署顺序不限。旧数据：旧行不受影响。并发：见 R13，不越过上限。外部调用：read_evidence 不接触数据源。`passes`：不翻。
 
 ## 允许修改的文件
 

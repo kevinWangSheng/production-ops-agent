@@ -475,10 +475,22 @@ class EvidenceSink(Protocol):
         """``(records, raw_bytes)`` of the Run's stored over-limit results.
 
         Over-limit results are the un-adopted ``RESULT_TOO_LARGE`` records the
-        executor keeps when a whole view does not fit (#308). The executor
-        reads this before each such registration to enforce the per-Run cap;
-        a sink that cannot answer makes the executor store nothing, the
-        refusal itself unchanged.
+        executor keeps when a whole view does not fit (#308). A sink without
+        ``register_spilled`` is read before each such registration to enforce
+        the per-Run cap; a sink that cannot answer makes the executor store
+        nothing, the refusal itself unchanged.
+        """
+        ...
+
+    def register_spilled(
+        self, record: EvidenceRecord, *, max_records: int, max_bytes: int
+    ) -> bool:
+        """Register an over-limit result only if the Run stays within the cap.
+
+        Counting and registering must be atomic per Run (contract R13):
+        parallel tool calls (#309) and a superseded worker still finishing
+        after a lease takeover spill into the same Run. ``False`` stores
+        nothing; the executor prefers this over ``count_spilled``.
         """
         ...
 
@@ -1521,17 +1533,6 @@ class ReadOnlyToolExecutor:
         sink that cannot count, a storage or control rejection -- leaves the
         refusal exactly what it was before this existed.
         """
-        try:
-            count, size = self._evidence.count_spilled(operation.run_id)
-        except Exception:
-            return
-        if (
-            type(count) is not int
-            or type(size) is not int
-            or count >= MAX_SPILLED_RECORDS_PER_RUN
-            or size + len(response.body) > MAX_SPILLED_BYTES_PER_RUN
-        ):
-            return
         full = too_large.view
         evidence_id = f"{operation.operation_id}:{dispatch_id}"
         view: dict[str, object] = dict(refused.model_view)
@@ -1563,11 +1564,30 @@ class ReadOnlyToolExecutor:
             omitted_bytes=0,
             adopted=False,
         )
+        admit = getattr(self._evidence, "register_spilled", None)
         try:
+            if admit is not None:
+                # The store counts and inserts under one per-Run lock (R13).
+                admit(
+                    record,
+                    max_records=MAX_SPILLED_RECORDS_PER_RUN,
+                    max_bytes=MAX_SPILLED_BYTES_PER_RUN,
+                )
+                return
+            # A sink without atomic admission: count, then register. Parallel
+            # spills into it can pass the same count.
+            count, size = self._evidence.count_spilled(operation.run_id)
+            if (
+                type(count) is not int
+                or type(size) is not int
+                or count >= MAX_SPILLED_RECORDS_PER_RUN
+                or size + len(response.body) > MAX_SPILLED_BYTES_PER_RUN
+            ):
+                return
             self._register(record)
-        except ToolControlDenied:
-            # A decision landed after the refusal was settled; nothing is kept
-            # and the refusal stands, as before #308.
+        except Exception:
+            # Including ``ToolControlDenied``: a decision that landed after the
+            # refusal was settled keeps nothing, and the refusal stands.
             return
 
     # -- evidence ------------------------------------------------------

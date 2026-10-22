@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from hashlib import sha256
 
 import pytest
@@ -173,3 +175,81 @@ def test_a_sink_that_cannot_store_or_count_leaves_the_refusal_unchanged(sink):
     outcome = _run(sink, payload)
     assert canonical(outcome.model_view) == canonical(baseline.model_view)
     assert outcome.evidence is None
+
+
+def racing(store_cls, barrier):
+    """``store_cls`` whose spill admission lines all threads up (R13).
+
+    A separate count waits after reading, so every thread decides on the same
+    stored count; an atomic admission waits before entering, so all threads
+    contend for it at once.
+    """
+
+    def line_up() -> None:
+        try:
+            barrier.wait()
+        except threading.BrokenBarrierError:
+            pass
+
+    class Racing(store_cls):
+        def count_spilled(self, run_id):
+            counted = super().count_spilled(run_id)
+            line_up()
+            return counted
+
+        def register_spilled(self, record, **caps):
+            line_up()
+            return super().register_spilled(record, **caps)
+
+    if not hasattr(store_cls, "register_spilled"):
+        del Racing.register_spilled
+    return Racing
+
+
+THREADS = 6
+
+
+def _spill_concurrently(build) -> None:
+    executors = [build(index) for index in range(THREADS)]
+    with ThreadPoolExecutor(THREADS) as pool:
+        outcomes = list(pool.map(lambda pair: pair[0].execute(pair[1]), executors))
+    assert {outcome.reason for outcome in outcomes} == {"RESULT_TOO_LARGE"}
+
+
+def _spill_into(store, index):
+    executor, transport = _build(store)
+    transport.response = TransportResponse(body=body(ROWS))
+    return executor, request(step_id=f"race-{index}")
+
+
+def test_parallel_spills_into_a_run_at_fifteen_store_exactly_sixteen():
+    barrier = threading.Barrier(THREADS, timeout=2)
+    store = racing(MemoryEvidenceStore, barrier)()
+    executor, transport = _build(store)
+    transport.response = TransportResponse(body=body(ROWS))
+    barrier.abort()  # the prefill runs alone
+    for index in range(15):
+        executor.execute(request(step_id=f"step-{index}"))
+    assert store.count_spilled("run-9")[0] == 15
+    barrier.reset()
+
+    _spill_concurrently(lambda index: _spill_into(store, index))
+    barrier.abort()
+
+    assert store.count_spilled("run-9")[0] == 16
+
+
+def test_parallel_spills_never_pass_the_run_byte_cap(monkeypatch):
+    barrier = threading.Barrier(THREADS, timeout=2)
+    store = racing(MemoryEvidenceStore, barrier)()
+    barrier.abort()
+    _run(store, body(ROWS))
+    _, first = store.count_spilled("run-9")
+    # Room for exactly one more record of the same size.
+    monkeypatch.setattr(executor_module, "MAX_SPILLED_BYTES_PER_RUN", 3 * first - 1)
+    barrier.reset()
+
+    _spill_concurrently(lambda index: _spill_into(store, index))
+    barrier.abort()
+
+    assert store.count_spilled("run-9") == (2, 2 * first)

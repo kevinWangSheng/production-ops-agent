@@ -4,20 +4,24 @@ The executor registers an over-limit view's redacted raw body as un-adopted
 evidence through ``DurableEvidenceStore`` connected as a throwaway login in
 ``WORKER_ROLE``: the existing evidence grants (SELECT, INSERT, UPDATE) suffice,
 no migration. ``count_spilled`` counts only those records, per Run, and the
-per-Run cap of 16 holds against the stored rows.
+per-Run cap of 16 holds against the stored rows, also when parallel workers
+spill into one Run at once (R13).
 """
 
 from __future__ import annotations
 
 import dataclasses
 import os
+import threading
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
 from uuid import uuid4
 
 import psycopg
 import pytest
 from psycopg.rows import dict_row
 
+import opspilot.tools.executor as executor_module
 from opspilot.persistence import DurableStore, PoolConfig
 from opspilot.persistence.grants import WORKER_ROLE
 from opspilot.tools import (
@@ -42,6 +46,7 @@ from tests.m1_tool_support import (
     target,
 )
 from tests.runtime_roles_support import login
+from tests.test_308_overlimit_evidence_impl import racing
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("M1_DURABLE_POSTGRES") != "1",
@@ -137,3 +142,65 @@ def test_byte_over_limit_is_not_stored(worker_evidence):
     outcome = _executor(worker_evidence, run_id, reg=reg).execute(request())
     assert outcome.reason == "RESULT_TOO_LARGE"
     assert _rows(run_id) == []
+
+
+THREADS = 6
+
+
+@pytest.fixture
+def racing_evidence():
+    """A worker-role store per test whose spill admission lines threads up."""
+    barrier = threading.Barrier(THREADS, timeout=5)
+    with login(DSN, WORKER_ROLE) as dsn:
+        store = DurableStore(
+            dsn, pool=PoolConfig(min_size=1, max_size=THREADS + 1, timeout=10.0)
+        )
+        yield racing(DurableEvidenceStore, barrier)(store), barrier
+        store.close()
+
+
+def _spill_concurrently(evidence, run_id: str) -> None:
+    executors = [_executor(evidence, run_id) for _ in range(THREADS)]
+    with ThreadPoolExecutor(THREADS) as pool:
+        outcomes = list(
+            pool.map(
+                lambda pair: pair[1].execute(request(step_id=f"race-{pair[0]}")),
+                enumerate(executors),
+            )
+        )
+    assert {outcome.reason for outcome in outcomes} == {"RESULT_TOO_LARGE"}
+
+
+def test_parallel_workers_at_fifteen_store_exactly_sixteen(racing_evidence):
+    evidence, barrier = racing_evidence
+    run_id = f"run-{uuid4()}"
+    barrier.abort()  # the prefill runs alone
+    executor = _executor(evidence, run_id)
+    for index in range(15):
+        executor.execute(request(step_id=f"step-{index}"))
+    assert len(_rows(run_id)) == 15
+    barrier.reset()
+
+    _spill_concurrently(evidence, run_id)
+    barrier.abort()
+
+    assert len(_rows(run_id)) == 16
+
+
+def test_parallel_workers_never_pass_the_run_byte_cap(racing_evidence, monkeypatch):
+    evidence, barrier = racing_evidence
+    run_id = f"run-{uuid4()}"
+    barrier.abort()
+    _executor(evidence, run_id).execute(request())
+    (row,) = _rows(run_id)
+    first = len(bytes(row["raw"]))
+    # Room for exactly one more record of the same size.
+    monkeypatch.setattr(executor_module, "MAX_SPILLED_BYTES_PER_RUN", 3 * first - 1)
+    barrier.reset()
+
+    _spill_concurrently(evidence, run_id)
+    barrier.abort()
+
+    rows = _rows(run_id)
+    assert len(rows) == 2
+    assert sum(len(bytes(row["raw"])) for row in rows) == 2 * first

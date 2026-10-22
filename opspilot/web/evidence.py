@@ -10,6 +10,7 @@ a second registration with different bytes is an identity conflict.
 from __future__ import annotations
 
 import hashlib
+import threading
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
@@ -60,6 +61,12 @@ class EvidenceStore(Protocol):
 
     def count_spilled(self, run_id: str) -> tuple[int, int]:
         """``(records, raw_bytes)`` of the Run's kept over-limit results (#308)."""
+        ...
+
+    def register_spilled(
+        self, record: EvidenceRecord, *, max_records: int, max_bytes: int
+    ) -> bool:
+        """Count and register one over-limit result atomically per Run (#308)."""
         ...
 
 
@@ -148,16 +155,34 @@ def _pinned(existing: StoredEvidence, view: Mapping[str, Any]) -> StoredEvidence
 class MemoryEvidenceStore:
     def __init__(self) -> None:
         self._records: dict[str, StoredEvidence] = {}
+        self._lock = threading.RLock()
 
     def register(self, record: EvidenceRecord) -> str:
         stored = _stored(record)
-        existing = self._records.get(stored.evidence_id)
-        if existing is not None:
-            _require_same_bytes(existing.raw_sha256, stored.raw_sha256)
-            if existing.committed:
-                return existing.evidence_id
-        self._records[stored.evidence_id] = stored
+        with self._lock:
+            existing = self._records.get(stored.evidence_id)
+            if existing is not None:
+                _require_same_bytes(existing.raw_sha256, stored.raw_sha256)
+                if existing.committed:
+                    return existing.evidence_id
+            self._records[stored.evidence_id] = stored
         return stored.evidence_id
+
+    def register_spilled(
+        self, record: EvidenceRecord, *, max_records: int, max_bytes: int
+    ) -> bool:
+        with self._lock:
+            spilled = [
+                stored
+                for stored in self._records.values()
+                if stored.run_id == record.operation.run_id
+                and stored.evidence_id != record.evidence_id
+                and _spilled(stored)
+            ]
+            size = sum(len(stored.raw) for stored in spilled)
+            if len(spilled) >= max_records or size + len(record.raw) > max_bytes:
+                return False
+            return self.register(record) == record.evidence_id
 
     def commit(self, evidence_id: str, view: Mapping[str, Any]) -> None:
         existing = self._records.get(evidence_id)
@@ -190,34 +215,41 @@ class DurableEvidenceStore:
     def register(self, record: EvidenceRecord) -> str:
         stored = _stored(record)
         with self._store.transaction() as conn:
+            _insert(conn, stored)
+        return stored.evidence_id
+
+    def register_spilled(
+        self, record: EvidenceRecord, *, max_records: int, max_bytes: int
+    ) -> bool:
+        """Admit one over-limit result under the per-Run cap, or store nothing.
+
+        Count and insert share one transaction serialized per Run by a
+        transaction-scoped advisory lock, so parallel tool calls (#309) and a
+        superseded worker still finishing after a lease takeover cannot both
+        pass the count (contract R13). The key is namespaced so it never meets
+        the subject-event or alert locks taken on raw ids.
+        """
+        stored = _stored(record)
+        with self._store.transaction() as conn:
             conn.execute(
-                # Same bytes: the replayed projection replaces the earlier,
-                # never-committed one. Different bytes: leave the row and let
-                # the check below raise IDENTITY_CONFLICT.
-                "INSERT INTO opspilot_evidence(evidence_id,run_id,subject_id,status,adopted,raw,raw_sha256,view,view_sha256,projection_revision,observed_at,data_as_of) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (evidence_id) DO UPDATE SET status=EXCLUDED.status,adopted=EXCLUDED.adopted,view=EXCLUDED.view,view_sha256=EXCLUDED.view_sha256,projection_revision=EXCLUDED.projection_revision,observed_at=EXCLUDED.observed_at,data_as_of=EXCLUDED.data_as_of WHERE opspilot_evidence.raw_sha256=EXCLUDED.raw_sha256 AND NOT opspilot_evidence.committed",
-                (
-                    stored.evidence_id,
-                    stored.run_id,
-                    stored.subject_id,
-                    stored.status,
-                    stored.adopted,
-                    stored.raw,
-                    stored.raw_sha256,
-                    Jsonb(dict(stored.view)),
-                    stored.view_sha256,
-                    stored.projection_revision,
-                    stored.observed_at,
-                    stored.data_as_of,
-                ),
+                "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
+                ("opspilot_evidence:spilled:" + stored.run_id,),
             )
             row = conn.execute(
-                "SELECT raw_sha256,view_sha256 FROM opspilot_evidence WHERE evidence_id=%s",
-                (stored.evidence_id,),
+                # Same predicate as ``_spilled``; a replay of this record does
+                # not count against itself.
+                "SELECT count(*) AS records,COALESCE(sum(octet_length(raw)),0) AS raw_bytes FROM opspilot_evidence WHERE run_id=%s AND evidence_id<>%s AND NOT adopted AND status='error' AND view->>'reason'='RESULT_TOO_LARGE'",
+                (stored.run_id, stored.evidence_id),
             ).fetchone()
             if row is None:
                 raise PersistenceError("INCONSISTENT_STATE")
-            _require_same_bytes(row["raw_sha256"], stored.raw_sha256)
-        return stored.evidence_id
+            if (
+                int(row["records"]) >= max_records
+                or int(row["raw_bytes"]) + len(stored.raw) > max_bytes
+            ):
+                return False
+            _insert(conn, stored)
+        return True
 
     def commit(self, evidence_id: str, view: Mapping[str, Any]) -> None:
         with self._store.transaction() as conn:
@@ -272,10 +304,8 @@ class DurableEvidenceStore:
         return _from_row(row)
 
     def count_spilled(self, run_id: str) -> tuple[int, int]:
-        # Same predicate as ``_spilled``. Read under the worker's existing
-        # SELECT grant; two parallel over-limit reads of one step can both see
-        # the count below the cap, so a Run may hold one record over it
-        # (contract r1, U2).
+        # Same predicate as ``_spilled``, under the worker's existing SELECT
+        # grant. The cap itself is enforced by ``register_spilled`` (R13).
         with self._store.transaction() as conn:
             row = conn.execute(
                 "SELECT count(*) AS records,COALESCE(sum(octet_length(raw)),0) AS raw_bytes FROM opspilot_evidence WHERE run_id=%s AND NOT adopted AND status='error' AND view->>'reason'='RESULT_TOO_LARGE'",
@@ -284,6 +314,36 @@ class DurableEvidenceStore:
         if row is None:
             raise PersistenceError("INCONSISTENT_STATE")
         return int(row["records"]), int(row["raw_bytes"])
+
+
+def _insert(conn: Any, stored: StoredEvidence) -> None:
+    conn.execute(
+        # Same bytes: the replayed projection replaces the earlier,
+        # never-committed one. Different bytes: leave the row and let
+        # the check below raise IDENTITY_CONFLICT.
+        "INSERT INTO opspilot_evidence(evidence_id,run_id,subject_id,status,adopted,raw,raw_sha256,view,view_sha256,projection_revision,observed_at,data_as_of) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (evidence_id) DO UPDATE SET status=EXCLUDED.status,adopted=EXCLUDED.adopted,view=EXCLUDED.view,view_sha256=EXCLUDED.view_sha256,projection_revision=EXCLUDED.projection_revision,observed_at=EXCLUDED.observed_at,data_as_of=EXCLUDED.data_as_of WHERE opspilot_evidence.raw_sha256=EXCLUDED.raw_sha256 AND NOT opspilot_evidence.committed",
+        (
+            stored.evidence_id,
+            stored.run_id,
+            stored.subject_id,
+            stored.status,
+            stored.adopted,
+            stored.raw,
+            stored.raw_sha256,
+            Jsonb(dict(stored.view)),
+            stored.view_sha256,
+            stored.projection_revision,
+            stored.observed_at,
+            stored.data_as_of,
+        ),
+    )
+    row = conn.execute(
+        "SELECT raw_sha256,view_sha256 FROM opspilot_evidence WHERE evidence_id=%s",
+        (stored.evidence_id,),
+    ).fetchone()
+    if row is None:
+        raise PersistenceError("INCONSISTENT_STATE")
+    _require_same_bytes(row["raw_sha256"], stored.raw_sha256)
 
 
 def _from_row(row: Mapping[str, Any]) -> StoredEvidence:
