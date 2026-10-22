@@ -27,6 +27,8 @@
 
 - 决定（2026-10-22，顾问 Codex gpt-6-sol，选 a）：D-U2 ② 未达成——3 次自然真实 Run 均合格发布、无 REPORT_INVALID 交接，follow_up 未执行；以 ① 离线重建 + 3 个真实 Run（trace、summary.json）+ 其中 2 个强制最终轮的离线重建（main INCOMPATIBLE_STATE、修复通过）+ PG 集成测试作为 #304 真实证据；follow_up 真实路径由 F2 PR-E 在 kind 上验证（C4-A 断言 2，F2 翻 passes 前提）。理由：现有证据已覆盖修复点，再碰运气概率低，改 runner 是新取舍。
 
+- 独立审查（Fable，全新上下文，`3952622`）PASS：live 发送字节不变；重建插入条件与 live 强制最终轮触发条件逐项对应（含 length 截断、压缩被拒、resume 中途、多次 follow_up）；fail-closed 保持；5 个相关测试文件 155 passed。已知限制：重算的 feedback 文本依赖 `json.loads` 异常与 pydantic 校验文案，Python/pydantic 升级可能使升级前已存的强制最终轮在重建时报 INCOMPATIBLE_STATE（方向 A 的既定代价）。Codex 四个模型均 at capacity 后改由 Fable。
+
 ## 待决
 
 无。
