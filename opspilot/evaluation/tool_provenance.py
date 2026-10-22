@@ -10,7 +10,7 @@ import math
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, NoReturn
+from typing import TYPE_CHECKING, Any, NoReturn, cast
 
 from opspilot.evaluation.codec import (
     StorageError,
@@ -28,6 +28,10 @@ from opspilot.evaluation.rounds import (
 )
 from opspilot.tools.executor import (
     _GENERIC_VIEW_KEYS,
+    _SPILLED_PROVENANCE_KEYS,
+    _SPILLED_USAGE,
+    _UNSTORED_USAGE,
+    EVIDENCE_SOURCE,
     QueryScope,
     ToolRequest,
     TransportRequest,
@@ -37,11 +41,15 @@ from opspilot.tools.executor import (
     _view_refusal_detail,
 )
 from opspilot.tools.otel_demo import (
-    SOURCE as OTEL_SOURCE,
-)
-from opspilot.tools.otel_demo import (
+    MAX_SUMMARY_LABEL_CHARS,
+    MAX_SUMMARY_LABELS,
+    METRICS_TOOL,
     TOOL_NAMES,
     _query_window,
+    topk_suggestion,
+)
+from opspilot.tools.otel_demo import (
+    SOURCE as OTEL_SOURCE,
 )
 from opspilot.tools.outcomes import DENIED_REASONS, ToolOutcome, Window
 from opspilot.tools.registry import (
@@ -254,7 +262,9 @@ def check_result(
         resolved.update(tool=reg.name, tool_version=reg.version, source=reg.source)
         if target.target_id not in scope.target_ids:
             failure = ("denied", "TARGET_NOT_AUTHORIZED")
-        elif target.source != reg.source:
+        elif target.source != reg.source and reg.source != EVIDENCE_SOURCE:
+            # ``read_evidence`` (#308 R3) reads the gateway's own store for
+            # any registered target; the executor waives the same check.
             failure = ("denied", "TARGET_SOURCE_MISMATCH")
         else:
             resolved["target_id"] = target.target_id
@@ -301,6 +311,10 @@ def check_result(
             "credential_ref": target.credential_ref,
             "query": parse(resolved["query"].encode()),
         }
+        if reg.source == EVIDENCE_SOURCE:
+            # A slice carries its parent's source (#308 U4); the operation
+            # header above still names this registration's.
+            del identities["source"]
         # Evidence keeps source payload, but its top-level identity projections
         # cannot disagree with the same frozen headers merely by rehashing it.
         for view in (outcome.model_view, outcome.evidence.view):
@@ -461,19 +475,102 @@ def check_result(
             mismatch()
     if outcome.evidence is None:
         _check_view(outcome, reg, target, scope)
+    elif outcome.reason == "RESULT_TOO_LARGE":
+        _check_kept_view(outcome, reg, target, scope)
     else:
-        _check_evidence_view(outcome, scope, event_clock)
+        _check_evidence_view(outcome, reg, scope, event_clock)
+
+
+def _check_kept_view(
+    outcome: ToolOutcome,
+    reg: ToolRegistration,
+    target: RegisteredTarget,
+    scope: QueryScope,
+) -> None:
+    """An over-limit refusal whose result was kept (#308 PR2): the refusal,
+    its row summary, the record identity and the observation's provenance;
+    never adopted, never a row."""
+    evidence, op, view = outcome.evidence, outcome.operation, outcome.model_view
+    assert evidence is not None
+    if (
+        reg.source == EVIDENCE_SOURCE
+        or evidence.adopted
+        or outcome.status != "error"
+        or evidence.status != "error"
+        or not op.dispatched
+        or len(evidence.raw) > reg.max_result_bytes
+    ):
+        mismatch()
+    same(view.get("evidence_id"), evidence.evidence_id)
+    same(view.get("adopted"), False)
+    same(view.get("usage"), _SPILLED_USAGE)
+    expected: dict[str, Any] = {
+        "source": reg.source,
+        "tool_version": reg.version,
+        "projection_revision": evidence.projection_revision,
+        "observed_at": evidence.observed_at.isoformat(),
+        "dispatch_started_at": None
+        if op.started_at is None
+        else op.started_at.isoformat(),
+        "data_as_of": None
+        if evidence.data_as_of is None
+        else evidence.data_as_of.isoformat(),
+        "source_start_at": None
+        if evidence.source_start_at is None
+        else evidence.source_start_at.isoformat(),
+        "source_end_at": None
+        if evidence.source_end_at is None
+        else evidence.source_end_at.isoformat(),
+        "freshness_seconds": evidence.freshness_seconds,
+        "result_count": evidence.result_count,
+        "incomplete": evidence.incomplete,
+    }
+    for name in _SPILLED_PROVENANCE_KEYS:
+        same(view.get(name), expected[name])
+    same(evidence.observed_at, op.finished_at)
+    same(view.get("total_rows"), evidence.result_count)
+    if (
+        evidence.truncated
+        or evidence.omitted_rows
+        or evidence.omitted_bytes
+        or not isinstance(evidence.result_count, int)
+    ):
+        mismatch()
+    refusal = {
+        key: value
+        for key, value in view.items()
+        if key not in {"evidence_id", "adopted", *_SPILLED_PROVENANCE_KEYS}
+    }
+    _check_view(
+        replace(outcome, model_view=refusal, evidence=None),
+        reg,
+        target,
+        scope,
+        kept=True,
+    )
 
 
 def _check_evidence_view(
-    outcome: ToolOutcome, scope: QueryScope, event_clock: datetime
+    outcome: ToolOutcome,
+    reg: ToolRegistration,
+    scope: QueryScope,
+    event_clock: datetime,
 ) -> None:
     evidence, op, view = outcome.evidence, outcome.operation, outcome.model_view
     assert evidence is not None
     if not _GENERIC_VIEW_KEYS <= view.keys():
         mismatch()
+    # A ``read_evidence`` slice (#308 U4) states its parent's observation:
+    # observed and dispatched before this read, and the rows of the parent it
+    # does not show as omitted.
+    slice_read = reg.source == EVIDENCE_SOURCE
     same(evidence.status, outcome.status)
-    same(evidence.observed_at, op.finished_at)
+    if slice_read:
+        if op.finished_at is None or evidence.observed_at > op.finished_at:
+            mismatch()
+        _check_slice_fields(view)
+    else:
+        same(evidence.observed_at, op.finished_at)
     if evidence.observed_at > event_clock:
         mismatch()
     if evidence.data_as_of is not None and evidence.data_as_of > evidence.observed_at:
@@ -503,7 +600,13 @@ def _check_evidence_view(
     else:
         same(content, None)
         returned = 0
-    same(evidence.omitted_rows, evidence.result_count - returned)
+    if slice_read and evidence.adopted:
+        slice_header = view["slice"]
+        assert isinstance(slice_header, Mapping)  # _check_slice_fields
+        same(slice_header["returned"], returned)
+        same(evidence.omitted_rows, slice_header["total_rows"] - returned)
+    else:
+        same(evidence.omitted_rows, evidence.result_count - returned)
     same(evidence.truncated, bool(evidence.omitted_rows))
     expected = {
         "evidence_id": evidence.evidence_id,
@@ -514,9 +617,6 @@ def _check_evidence_view(
         "citable_as_fact": evidence.adopted and outcome.status == "ok",
         "projection_revision": evidence.projection_revision,
         "observed_at": evidence.observed_at.isoformat(),
-        "dispatch_started_at": None
-        if op.started_at is None
-        else op.started_at.isoformat(),
         "data_as_of": None
         if evidence.data_as_of is None
         else evidence.data_as_of.isoformat(),
@@ -530,6 +630,18 @@ def _check_evidence_view(
         "omitted_rows": evidence.omitted_rows,
         "omitted_bytes": evidence.omitted_bytes,
     }
+    if not slice_read:
+        expected["dispatch_started_at"] = (
+            None if op.started_at is None else op.started_at.isoformat()
+        )
+    elif view["dispatch_started_at"] is not None:
+        dispatched = view["dispatch_started_at"]
+        try:
+            moment = datetime.fromisoformat(cast(str, dispatched))
+        except (TypeError, ValueError):
+            mismatch()
+        if not isinstance(dispatched, str) or moment > evidence.observed_at:
+            mismatch()
     for name, value in expected.items():
         same(view[name], value)
     window = Window.parse(view["window"])
@@ -546,11 +658,103 @@ def _check_evidence_view(
     )
 
 
+def _check_slice_fields(view: Mapping[str, Any]) -> None:
+    """The fixed ``read_evidence`` header (#308 U4): counts and hashes only."""
+    header = view.get("slice")
+    if not isinstance(view.get("parent_tool"), str) or not isinstance(header, Mapping):
+        mismatch()
+    assert isinstance(header, Mapping)
+    if set(header) != {
+        "parent_evidence_id",
+        "parent_raw_sha256",
+        "offset",
+        "returned",
+        "total_rows",
+    }:
+        mismatch()
+    for name in ("offset", "returned", "total_rows"):
+        if type(header[name]) is not int or header[name] < 0:
+            mismatch()
+    for name in ("parent_evidence_id", "parent_raw_sha256"):
+        if not isinstance(header[name], str) or not header[name]:
+            mismatch()
+    same(view["query"].get("evidence_id"), header["parent_evidence_id"])
+
+
+# The over-limit row summary (#308 U5) and the metrics tool's additions.
+_SUMMARY = {"total_rows", "row_unit", "suggested_limit"}
+_METRICS_SUMMARY = {"series_count", "total_points", "label_cardinality", "suggestion"}
+
+
+def _summary_expected(
+    view: Mapping[str, Any], reg: ToolRegistration, query: object, *, kept: bool
+) -> dict[str, Any]:
+    """Shape-check the row summary of an over-limit refusal; counts only.
+
+    The rows are not in the recording, so the counts are bounded rather than
+    recomputed; label names are the one source-derived text and are bounded
+    in number and length (U5).
+    """
+    keys = set(view) & (_SUMMARY | _METRICS_SUMMARY | {"stored", "usage"})
+    if not keys:
+        return {}
+    metrics = reg.source == OTEL_SOURCE and reg.name == METRICS_TOOL
+    expected_keys = _SUMMARY | {"usage"} | (_METRICS_SUMMARY if metrics else set())
+    if not kept:
+        expected_keys |= {"stored"}
+    if keys != expected_keys or reg.source == EVIDENCE_SOURCE:
+        mismatch()
+    for name in ("total_rows", "suggested_limit"):
+        if type(view[name]) is not int or view[name] < 0:
+            mismatch()
+    if view["suggested_limit"] > view["total_rows"]:
+        mismatch()
+    if not isinstance(view["row_unit"], str) or not view["row_unit"]:
+        mismatch()
+    summary: dict[str, Any] = {name: view[name] for name in _SUMMARY}
+    summary["usage"] = _SPILLED_USAGE if kept else _UNSTORED_USAGE
+    if not kept:
+        summary["stored"] = False
+    if metrics:
+        same(view["series_count"], view["total_rows"])
+        if type(view["total_points"]) is not int or view["total_points"] < 0:
+            mismatch()
+        cardinality = view["label_cardinality"]
+        if not isinstance(cardinality, list) or len(cardinality) > MAX_SUMMARY_LABELS:
+            mismatch()
+        counts = []
+        for item in cardinality:
+            if (
+                not isinstance(item, Mapping)
+                or set(item) != {"label", "value_count"}
+                or not isinstance(item["label"], str)
+                or len(item["label"]) > MAX_SUMMARY_LABEL_CHARS
+                or type(item["value_count"]) is not int
+                or item["value_count"] < 1
+            ):
+                mismatch()
+            counts.append(item["value_count"])
+        if counts != sorted(counts, reverse=True):
+            mismatch()
+        expr = query.get("expr") if isinstance(query, Mapping) else None
+        summary.update(
+            series_count=view["series_count"],
+            total_points=view["total_points"],
+            label_cardinality=cardinality,
+            suggestion=topk_suggestion(
+                view["series_count"], expr if isinstance(expr, str) else ""
+            ),
+        )
+    return summary
+
+
 def _check_view(
     outcome: ToolOutcome,
     reg: ToolRegistration,
     target: RegisteredTarget,
     scope: QueryScope,
+    *,
+    kept: bool = False,
 ) -> None:
     op, view = outcome.operation, outcome.model_view
     expected = {
@@ -574,6 +778,9 @@ def _check_view(
         "max_view_tokens",
         "view_tokens",
     }
+    summary_keys = set(view) & (_SUMMARY | _METRICS_SUMMARY | {"stored", "usage"})
+    if kept and not summary_keys:
+        mismatch()
     if hints:
         if not op.dispatched or outcome.reason != "RESULT_TOO_LARGE":
             mismatch()
@@ -624,6 +831,13 @@ def _check_view(
                 )
                 if refusal is not None or window is None:
                     mismatch()
+            elif reg.source == EVIDENCE_SOURCE:
+                # A slice refusal reports its parent's query window, which
+                # the store holds and the recording does not (#308 U4).
+                window = Window.parse(view["window"])
+                if window is None:
+                    mismatch()
+                assert window is not None
             if not op.window.contains(window) or not scope.window.contains(window):
                 mismatch()
             expected.update(
@@ -631,8 +845,11 @@ def _check_view(
                     tokens, reg.max_view_tokens, query, window.as_json()
                 )
             )
+            expected.update(_summary_expected(view, reg, query, kept=kept))
         else:
             mismatch()
+    elif summary_keys:
+        mismatch()
     if set(view) - set(expected):
         mismatch()
     for name, value in view.items():

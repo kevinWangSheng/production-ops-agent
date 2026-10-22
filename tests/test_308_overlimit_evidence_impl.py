@@ -1,9 +1,10 @@
 """#308 PR1 implementer tests: an over-limit view is kept as un-adopted evidence.
 
 Contract: ``docs/tasks/2026-10-22-308-overlimit-evidence-contract.md`` (U1-U3,
-R1). The model view stays byte-for-byte the refusal it was before; the redacted
-raw body and the refusal view (plus ``evidence_id``) are registered through the
-sink only, at most 16 records or 16 MiB per Run. The PostgreSQL side (worker
+R1). The redacted raw body and the refusal view (plus ``evidence_id``) are
+kept, at most 16 records or 16 MiB per Run. Since PR2 the kept view is also
+the model view and the outcome carries the record (R1, U5); a sink that cannot
+store or count still leaves the refusal exactly as it was before #308. The PostgreSQL side (worker
 grants, ``count_spilled`` SQL) is in
 ``tests/integration/test_308_overlimit_evidence_impl_postgres.py``.
 """
@@ -88,9 +89,9 @@ def test_over_limit_view_is_stored_unadopted_and_model_view_is_unchanged():
     outcome = _run(store, payload)
 
     assert (outcome.status, outcome.reason) == ("error", "RESULT_TOO_LARGE")
-    assert canonical(outcome.model_view) == canonical(baseline.model_view)
-    assert "evidence_id" not in outcome.model_view
-    assert outcome.evidence is None  # R1: sink only
+    # PR2 (R1): the model view is the kept record's view.
+    assert outcome.evidence is not None and outcome.evidence.adopted is False
+    assert canonical(outcome.model_view) == canonical(outcome.evidence.view)
 
     count, size = store.count_spilled("run-9")
     assert count == 1
@@ -111,6 +112,7 @@ def test_over_limit_view_is_stored_unadopted_and_model_view_is_unchanged():
     extra = {key: view.pop(key) for key in list(view) if key not in baseline.model_view}
     assert view == dict(baseline.model_view)
     assert "evidence_id" in extra and "content" not in extra
+    assert {"total_rows", "row_unit", "suggested_limit", "usage"} <= set(extra)
 
 
 def test_byte_over_limit_body_is_not_stored():
@@ -132,7 +134,9 @@ def test_run_cap_of_sixteen_records_then_refused_without_storing():
         assert outcome.reason == "RESULT_TOO_LARGE"
         views.append(outcome.model_view)
     assert store.count_spilled("run-9")[0] == 16
-    assert set(views[16]) == set(views[0])
+    # PR2 (U2): past the cap the refusal says so and carries no evidence id.
+    assert views[16]["stored"] is False and "evidence_id" not in views[16]
+    assert "evidence_id" in views[15]
     # Another Run is counted on its own.
     other = _run(store, body(ROWS), run_id="run-10")
     assert other.reason == "RESULT_TOO_LARGE"

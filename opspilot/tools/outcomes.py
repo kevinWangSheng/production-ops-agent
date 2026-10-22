@@ -59,7 +59,10 @@ __all__ = [
 # v7: successful OTel Demo calls over ``traces_span_metrics_calls_total``
 # carry the ``series_note`` semantic annotation in the hashed view.
 # v8: credential-redact data source return values (F7 U7-a).
-PROJECTION_REVISION = "m1-01-tool-view-v8"
+# v9: an over-limit refusal carries the kept result's ``evidence_id`` and a
+# row-count summary (or ``stored: false``), and ``read_evidence`` slices of
+# it carry ``parent_tool``/``slice`` and the parent's provenance (#308 PR2).
+PROJECTION_REVISION = "m1-01-tool-view-v9"
 
 ToolStatus = Literal["ok", "no_data", "error", "timeout", "denied"]
 SourceContact = Literal["none", "possible", "confirmed"]
@@ -69,6 +72,8 @@ DENIED_REASONS = frozenset(
         "CONTROL_GENERATION_CHANGED",
         "CONTROL_UNAVAILABLE",
         "DEADLINE_EXCEEDED",
+        # #308 R3: an evidence read of a record this Run may not read.
+        "EVIDENCE_NOT_READABLE",
         "OPERATION_BUDGET_EXHAUSTED",
         "PARAM_NOT_ALLOWED",
         "SUSPENDED",

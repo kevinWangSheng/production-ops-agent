@@ -48,6 +48,7 @@ __all__ = [
     "FORBIDDEN_VERBS",
     "MAX_REQUEST_TIMEOUT_SECONDS",
     "MAX_RESULT_BYTES",
+    "MAX_VIEW_TOKENS",
     "READ_ONLY_VERBS",
     "RESERVED_PARAMETERS",
     "SOURCE_ERROR_REASONS",
@@ -76,6 +77,12 @@ class ToolContractError(Exception):
 # acceptance packet, not a code change alone.
 MAX_REQUEST_TIMEOUT_SECONDS = 30.0
 MAX_RESULT_BYTES = 2 * 1024 * 1024
+# #308 contract r1, U7-a: the hard ceiling on a registration's model-view
+# limit, upstream's per-tool ``TOOL_MAX_ALLOCATED_CONTEXT_WINDOW_TOKENS``
+# (``holmes/common/env_vars.py:142``). The context layer's ``visible_view``
+# stub stays as a backstop in its own (estimated) unit; the two are not
+# merged.
+MAX_VIEW_TOKENS = 25_000
 
 # Technical plan section 8: Kubernetes exposes only get/list/watch/logs, and no
 # arbitrary shell, SQL or code execution is offered at all.
@@ -192,8 +199,11 @@ def _utf8_text(value: str) -> bool:
 
 # Outcome reasons a registration may map a source-reported status onto. The
 # vocabulary is fixed so a data source cannot invent its own outcome class.
+# ``EVIDENCE_NOT_READABLE`` (#308 R3) is the one denial a transport may name:
+# the evidence-read transport refuses a record this Run may not read before
+# anything is read, and the executor reports it as ``denied``.
 SOURCE_ERROR_REASONS = frozenset(
-    {"INVALID_PARAMS", "SOURCE_ERROR", "SOURCE_UNAVAILABLE"}
+    {"EVIDENCE_NOT_READABLE", "INVALID_PARAMS", "SOURCE_ERROR", "SOURCE_UNAVAILABLE"}
 )
 
 _NAME = re.compile(r"[a-z0-9][a-z0-9._-]{2,63}")
@@ -503,7 +513,10 @@ class ToolRegistration:
             or not 0 < self.max_result_bytes <= MAX_RESULT_BYTES
         ):
             raise ToolContractError("RESULT_LIMIT_OUT_OF_RANGE")
-        if type(self.max_view_tokens) is not int or self.max_view_tokens < 1:
+        if (
+            type(self.max_view_tokens) is not int
+            or not 1 <= self.max_view_tokens <= MAX_VIEW_TOKENS
+        ):
             raise ToolContractError("VIEW_LIMIT_OUT_OF_RANGE")
         if type(self.max_window_seconds) is not int or self.max_window_seconds <= 0:
             raise ToolContractError("WINDOW_LIMIT_OUT_OF_RANGE")

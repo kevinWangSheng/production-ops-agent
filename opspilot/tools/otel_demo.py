@@ -77,7 +77,7 @@ from concurrent.futures import Future
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from hashlib import sha256
-from typing import Any
+from typing import Any, cast
 from urllib.parse import urlsplit
 from uuid import UUID
 
@@ -87,6 +87,14 @@ from opspilot.investigation.loop import DISCIPLINE_VARIANT, investigation_versio
 from opspilot.investigation.runner import ExecutorFactory
 from opspilot.persistence import DurableStore, Lease, PersistenceError
 from opspilot.redaction import _authentication_name, redact_credentials
+from opspilot.tools.evidence_read import (
+    EVIDENCE_TOOL,
+    EVIDENCE_TOOL_SCHEMA,
+    EvidenceReader,
+    EvidenceReadTransport,
+    RoutedTransport,
+    evidence_registration,
+)
 from opspilot.tools.executor import (
     MAX_OPERATIONS_PER_RUN,
     MAX_TOOL_SECONDS_PER_RUN,
@@ -122,6 +130,7 @@ from opspilot.tools.tokens import TokenCounter, default_counter
 __all__ = [
     "CREDENTIAL_REF",
     "DISCOVERY_LIMIT",
+    "EVIDENCE_TOOL",
     "LABEL_VALUES_TOOL",
     "METRICS_TOOL",
     "METRIC_NAMES_TOOL",
@@ -141,10 +150,12 @@ __all__ = [
     "otel_demo_executor_factory",
     "otel_demo_face",
     "otel_demo_versions",
+    "overflow_summary",
     "project_traces",
     "promql_lookback_seconds",
     "promql_problem",
     "scope_default_query_window",
+    "topk_suggestion",
     "scope_window",
 ]
 
@@ -332,8 +343,13 @@ TOOL_SCHEMAS: tuple[Mapping[str, Any], ...] = (
                 "offset is refused. "
                 "@ is refused. "
                 "A result whose whole view exceeds 25,000 tokens is refused "
-                "with RESULT_TOO_LARGE and no series are returned; narrow "
-                "the query window, add label filters or aggregate. "
+                "with RESULT_TOO_LARGE and no series are returned. The "
+                "refusal gives series_count, total_points, label_cardinality "
+                "(label names with their number of values) and a topk "
+                "suggestion; when it also carries an evidence_id the whole "
+                "result was kept, and read_evidence reads its series in "
+                "ranges. Otherwise narrow the query window, add label "
+                "filters or aggregate. "
                 "A series that is not returned is unknown, not zero. "
                 "A returned series does not by itself prove the service is "
                 "healthy or unhealthy. "
@@ -648,6 +664,8 @@ TOOL_SCHEMAS: tuple[Mapping[str, Any], ...] = (
             },
         },
     },
+    # #308 PR2: reads row ranges of a kept over-limit result of this Run.
+    EVIDENCE_TOOL_SCHEMA,
 )
 
 
@@ -687,8 +705,11 @@ def _registrations() -> tuple[ToolRegistration, ...]:
             limits=(
                 "The whole view is limited to the registered max_view_tokens "
                 "(25,000 DeepSeek tokens): a larger result is refused with "
-                "RESULT_TOO_LARGE and no series, never truncated or "
-                "summarized. Prometheus HTTP 503 with JSON errorType=timeout "
+                "RESULT_TOO_LARGE and no series, never truncated; the "
+                "refusal states counts only (series, points, label names "
+                "with their value counts) and, when the result was kept, its "
+                "evidence_id for read_evidence. Prometheus HTTP 503 with "
+                "JSON errorType=timeout "
                 "is timeout/TOOL_TIMEOUT with confirmed source contact; other "
                 "5xx responses are error/SOURCE_UNAVAILABLE."
             ),
@@ -848,7 +869,12 @@ def _registrations() -> tuple[ToolRegistration, ...]:
         },
         incomplete_marker="incomplete",
     )
-    return metrics, traces, *_discovery_registrations()
+    return (
+        metrics,
+        traces,
+        *_discovery_registrations(),
+        evidence_registration(max_window_seconds=OBSERVATION_SECONDS),
+    )
 
 
 _DISCOVERY_WINDOW_FORMAT = (
@@ -2030,6 +2056,74 @@ def _span_groups(rows: Sequence[object]) -> list[dict[str, Any]]:
     return [groups[key] for key in sorted(groups)]
 
 
+# -- over-limit summary (#308 U5) -------------------------------------------
+
+#: At most this many label names in a metrics refusal's ``label_cardinality``,
+#: each clipped to ``MAX_SUMMARY_LABEL_CHARS``: names and counts only.
+MAX_SUMMARY_LABELS = 10
+MAX_SUMMARY_LABEL_CHARS = 64
+_ROW_UNITS = {
+    TRACES_TOOL: "spans",
+    METRIC_NAMES_TOOL: "metric_names",
+    LABEL_VALUES_TOOL: "label_values",
+}
+
+
+def overflow_summary(
+    tool: str, rows: Sequence[object], query: Mapping[str, object]
+) -> dict[str, object]:
+    """What an over-limit refusal of this profile says about its rows.
+
+    The executor's ``OverflowSummary`` hook (#308 contract r1, U5). Every
+    tool names its row unit; the metrics tool adds upstream's large-result
+    summary (``create_data_summary_for_large_result``, HolmesGPT
+    ``prometheus.py:767-813``): the series and point counts, the label names
+    with how many distinct values each has -- highest first, at most
+    ``MAX_SUMMARY_LABELS``, never a value -- and the topk suggestion text.
+    """
+    if tool != METRICS_TOOL:
+        unit = _ROW_UNITS.get(tool)
+        return {} if unit is None else {"row_unit": unit}
+    labels: dict[str, set[str]] = {}
+    points = 0
+    for series in rows:
+        if not isinstance(series, Mapping):
+            continue
+        values = series.get("values")
+        if isinstance(values, list):
+            points += len(values)
+        elif isinstance(series.get("value"), list):
+            points += 1
+        metric = series.get("metric")
+        if isinstance(metric, Mapping):
+            for key, value in metric.items():
+                name = redact_credentials(str(key))[:MAX_SUMMARY_LABEL_CHARS]
+                labels.setdefault(name, set()).add(canonical(value))
+    ranked = sorted(labels.items(), key=lambda item: (-len(item[1]), item[0]))
+    expr = query.get("expr")
+    return {
+        "row_unit": "series",
+        "series_count": len(rows),
+        "total_points": points,
+        "label_cardinality": [
+            {"label": name, "value_count": len(values)}
+            for name, values in ranked[:MAX_SUMMARY_LABELS]
+        ],
+        "suggestion": topk_suggestion(len(rows), expr if isinstance(expr, str) else ""),
+    }
+
+
+def topk_suggestion(series_count: int, expr: str) -> str:
+    """Upstream's topk suggestion text (``prometheus.py:808``), verbatim."""
+    top = min(5, series_count)
+    return (
+        f"Consider using topk({top}, {expr}) to limit results to the top {top} "
+        f"series. To also capture remaining data as 'other': topk({top}, {expr}) "
+        f'or label_replace((sum({expr}) - sum(topk({top}, {expr}))), "pod", '
+        f'"other", "", "")'
+    )
+
+
 # -- composition -------------------------------------------------------------
 
 
@@ -2081,6 +2175,18 @@ def otel_demo_executor_factory(
         basic_auth={} if pair is None else {CREDENTIAL_REF: pair},
     )
     control = DurableControl(store)
+    # #308 PR2: ``read_evidence`` reads back the sink's own kept records; a
+    # sink that cannot read back (no ``get``) makes every such read
+    # EVIDENCE_NOT_READABLE.
+    reader = cast(
+        "EvidenceReader | None",
+        evidence if callable(getattr(evidence, "get", None)) else None,
+    )
+    result_paths = {
+        item.name: item.result_path
+        for item in registrations.tools
+        if item.source == SOURCE
+    }
 
     def factory(lease: Lease, input: InvestigationInput) -> ReadOnlyToolExecutor:
         run = store.rebuild(lease.incident_id)["run"]
@@ -2104,7 +2210,15 @@ def otel_demo_executor_factory(
             scope=scope,
             tools=tools,
             targets=targets,
-            transport=transport,
+            transport=RoutedTransport(
+                evidence=EvidenceReadTransport(
+                    store=reader,
+                    run_id=scope.run_id,
+                    target_ids=scope.target_ids,
+                    result_paths=result_paths,
+                ),
+                sources=transport,
+            ),
             evidence=evidence,
             control=control,
             clock=clock,
@@ -2115,6 +2229,7 @@ def otel_demo_executor_factory(
                 max_tool_seconds=MAX_TOOL_SECONDS_PER_RUN,
             ),
             token_counter=counter,
+            overflow_summary=overflow_summary,
         )
 
     return factory

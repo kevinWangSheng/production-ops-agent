@@ -31,7 +31,7 @@ import json
 import math
 import re
 import threading
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from hashlib import sha256
@@ -43,6 +43,7 @@ from opspilot.redaction import has_duplicate_keys, redact_payload
 from opspilot.tracing import tracer
 
 from .outcomes import (
+    DENIED_REASONS,
     PROJECTION_REVISION,
     EvidenceRecord,
     SourceContact,
@@ -64,9 +65,11 @@ from .registry import (
 from .tokens import TokenCounter, default_counter
 
 __all__ = [
+    "EVIDENCE_SOURCE",
     "MAX_OPERATIONS_PER_RUN",
     "MAX_TOOL_SECONDS_PER_RUN",
     "ControlAuthority",
+    "OverflowSummary",
     "ControlSnapshot",
     "ControlUnavailable",
     "EvidenceSink",
@@ -98,6 +101,24 @@ MAX_TOOL_SECONDS_PER_RUN = 240.0
 # ``max_result_bytes``.
 MAX_SPILLED_RECORDS_PER_RUN = 16
 MAX_SPILLED_BYTES_PER_RUN = 16 * 1024 * 1024
+
+#: The source of a registration that reads this gateway's own kept evidence
+#: (#308 PR2, ``read_evidence``), not a data source at the target: such a
+#: registration may serve a target of any source, and its transport may carry
+#: over the provenance of the record it reads (``TransportResponse.carried``).
+EVIDENCE_SOURCE = "opspilot-evidence"
+
+#: An adapter hook naming the rows of an over-limit result for the refusal
+#: summary (#308 U5): ``(tool, rows, query) -> fields``. ``row_unit`` names
+#: what one row is; every other field is added to the refusal as is. Counts
+#: and label *names* only -- never a row's values.
+OverflowSummary = Callable[
+    [str, Sequence[object], Mapping[str, object]], Mapping[str, object]
+]
+
+# Allowance for the fields a ``read_evidence`` slice view carries beside its
+# rows, when ``suggested_limit`` is estimated from the refused view (U5).
+_SLICE_OVERHEAD_TOKENS = 512
 
 _STEP_ID_MAX = 128
 
@@ -357,11 +378,14 @@ class TransportRequest:
     # The scope's ``default_query_window`` when it lies inside ``window``
     # (M1-04 J4); a transport that picks a default query window uses it.
     default_window: Window | None = None
+    # The registered target this read was resolved to (#308 R3: an evidence
+    # read serves only a record taken from this same target).
+    target_id: str = ""
 
     def __post_init__(self) -> None:
         if self.read_only is not True or self.verb not in READ_ONLY_VERBS:
             raise ToolContractError("WRITE_CAPABILITY_FORBIDDEN")
-        if not isinstance(self.tool, str):
+        if not isinstance(self.tool, str) or not isinstance(self.target_id, str):
             raise ToolContractError("INVALID_REQUEST")
 
 
@@ -417,6 +441,13 @@ class TransportResponse:
     (round 2 rule B). ``view_fields`` are further adapter-verified,
     tool-specific view fields copied onto the view verbatim; a key that
     collides with a generic view field is MALFORMED_RESULT.
+
+    ``carried`` is only for an ``EVIDENCE_SOURCE`` registration (#308 U4): the
+    generic provenance a slice of kept evidence takes from the record it
+    reads -- ``source``, ``observed_at``, ``dispatch_started_at`` (aware
+    datetimes or ``None``), ``incomplete`` and the parent rows the slice does
+    not show (``omitted_rows``/``omitted_bytes``) -- instead of this read's
+    own. Any other key, type or registration is MALFORMED_RESULT.
     """
 
     body: bytes
@@ -430,6 +461,7 @@ class TransportResponse:
     backend_rows_returned: int | None = None
     view_fields: Mapping[str, object] | None = None
     query_window: Window | None = None
+    carried: Mapping[str, object] | None = None
 
 
 @runtime_checkable
@@ -602,6 +634,7 @@ class ReadOnlyToolExecutor:
         clock: Clock,
         ledger: ToolUsageLedger,
         token_counter: TokenCounter | None = None,
+        overflow_summary: OverflowSummary | None = None,
     ) -> None:
         if not isinstance(scope, QueryScope):
             raise ToolContractError("INVALID_SCOPE")
@@ -642,6 +675,7 @@ class ReadOnlyToolExecutor:
             default_counter() if token_counter is None else token_counter
         )
         self._tool_seconds_used = float(usage.tool_seconds_used)
+        self._overflow_summary = overflow_summary
         # One turn's tool calls may run on worker threads at once (#309); the
         # two attempt-local counters are the executor's only shared mutable
         # state, so their increments go through this lock. The total stays
@@ -733,7 +767,13 @@ class ReadOnlyToolExecutor:
             return self._refuse(operation, "denied", "TARGET_NOT_REGISTERED")
         if target.target_id not in scope.target_ids:
             return self._refuse(operation, "denied", "TARGET_NOT_AUTHORIZED")
-        if target.source != registration.source:
+        if (
+            target.source != registration.source
+            and registration.source != EVIDENCE_SOURCE
+        ):
+            # An evidence read (#308) reads the gateway's own store, not the
+            # target's source; its transport serves only records taken from
+            # this same target (R3).
             return self._refuse(operation, "denied", "TARGET_SOURCE_MISMATCH")
         operation = replace(operation, target_id=target.target_id)
         window = Window.parse(request.window)
@@ -886,6 +926,7 @@ class ReadOnlyToolExecutor:
             max_result_bytes=plan.registration.max_result_bytes,
             credential_ref=plan.target.credential_ref,
             tool=plan.registration.name,
+            target_id=plan.target.target_id,
             default_window=(
                 default
                 if (default := self._scope.default_query_window) is not None
@@ -1186,9 +1227,9 @@ class ReadOnlyToolExecutor:
             # refusal (a human decision landed meanwhile still outranks it).
             # The read stays charged. The body is complete, redacted and
             # within ``max_result_bytes``, so unlike the byte-limit refusal it
-            # is kept (#308 PR1): registered as un-adopted evidence through
-            # the sink only. The outcome carries no evidence and the model
-            # view is the unchanged refusal (contract r1, R1).
+            # is kept (#308): registered as un-adopted evidence, and the
+            # refusal the model receives is that record's view -- its
+            # evidence_id, for ``read_evidence``, and a row summary (PR2).
             refused = refuse_after_fetch(
                 "error",
                 "RESULT_TOO_LARGE",
@@ -1199,12 +1240,19 @@ class ReadOnlyToolExecutor:
                     too_large.window,
                 ),
             )
-            if refused.reason == "RESULT_TOO_LARGE":
+            if (
+                refused.reason != "RESULT_TOO_LARGE"
+                or plan.registration.source == EVIDENCE_SOURCE
+            ):
                 # A control decision or a denied settlement took the outcome
                 # down its own path (history, or nothing); only the plain
-                # over-limit refusal is kept here.
-                self._spill(dispatch_id, operation, response, too_large, refused)
-            return refused
+                # over-limit refusal is kept. A slice of kept evidence that
+                # does not fit is refused whole and not kept again: its
+                # parent already is (#308 U6).
+                return refused
+            return self._spill(
+                dispatch_id, operation, plan, response, too_large, refused
+            )
         if invalid:
             try:
                 registered = self._register(
@@ -1333,7 +1381,12 @@ class ReadOnlyToolExecutor:
             # the audit trail; the error body itself is not registered as
             # evidence and its vendor text never reaches model context.
             source_reason = plan.registration.classify(str(response.source_status))
-            return _problem("error", source_reason)
+            # The one source-named denial (#308 R3, ``EVIDENCE_NOT_READABLE``)
+            # is reported as one; every other mapped reason is an error.
+            return _problem(
+                "denied" if source_reason in DENIED_REASONS else "error",
+                source_reason,
+            )
         rows, payload = _result_rows(plan.registration, response.body)
         if rows is None:
             return _problem("error", "MALFORMED_RESULT")
@@ -1383,6 +1436,10 @@ class ReadOnlyToolExecutor:
         if _unit_fields_problem(response, len(rows)):
             return _problem("error", "MALFORMED_RESULT")
         assert operation.finished_at is not None
+        if response.carried is not None and _carried_problem(
+            plan.registration, response, operation.finished_at
+        ):
+            return _problem("error", "MALFORMED_RESULT")
         if any(
             moment is not None and moment > operation.finished_at
             for moment in (response.data_as_of, source_start_at, source_end_at)
@@ -1515,32 +1572,39 @@ class ReadOnlyToolExecutor:
         self,
         dispatch_id: UUID,
         operation: ToolOperation,
+        plan: _Plan,
         response: TransportResponse,
         too_large: _ViewTooLarge,
         refused: ToolOutcome,
-    ) -> None:
-        """Keep an over-limit result as un-adopted evidence (#308 PR1).
+    ) -> ToolOutcome:
+        """Keep an over-limit result as un-adopted evidence (#308).
 
         ``response.body`` has been redacted by ``_inspect()`` and checked
-        against ``max_result_bytes``, so it is complete and bounded. The stored
-        view is the refusal the model received plus the evidence identity and
-        the observation's provenance; it never becomes a model view here, and
-        the outcome does not carry the record (contract r1, R1: recording
-        requires ``outcome.evidence.view == model_view``).
+        against ``max_result_bytes``, so it is complete and bounded. The kept
+        record's view is the refusal plus the row summary (U5), the evidence
+        identity and the observation's provenance (U1, R12); once it is kept
+        that view *is* the model view and the outcome carries the record
+        (PR2, R1/R2), so the loop commits and pins it, remembers it for the
+        duplicate check and the incident page links it as not adopted. It is
+        never citable: ``adopted`` is false.
 
-        Best effort by design: the refusal is decided already, and anything
-        that keeps the record from being stored -- the per-Run cap (U2), a
-        sink that cannot count, a storage or control rejection -- leaves the
-        refusal exactly what it was before this existed.
+        Best effort by design: the refusal is decided already. The per-Run
+        cap (U2) leaves the refusal with the summary and ``stored: false``;
+        a sink that cannot answer -- it cannot count, storage fails, control
+        rejects the write -- leaves the refusal exactly as it was (R11). In
+        both the outcome carries no evidence and the view no evidence_id.
         """
         full = too_large.view
+        summary = self._row_summary(plan, response, too_large)
         evidence_id = f"{operation.operation_id}:{dispatch_id}"
         view: dict[str, object] = dict(refused.model_view)
+        view.update(summary)
         view.update(
             {
                 "evidence_id": evidence_id,
                 "adopted": False,
                 **{key: full[key] for key in _SPILLED_PROVENANCE_KEYS},
+                "usage": _SPILLED_USAGE,
             }
         )
         result_count = cast(int, full["result_count"])
@@ -1564,31 +1628,103 @@ class ReadOnlyToolExecutor:
             omitted_bytes=0,
             adopted=False,
         )
+        admitted = self._admit_spilled(record, operation.run_id)
+        if admitted is None:
+            return refused
+        if admitted:
+            return replace(refused, model_view=record.view, evidence=record)
+        unkept: dict[str, object] = dict(refused.model_view)
+        unkept.update(summary)
+        unkept.update({"stored": False, "usage": _UNSTORED_USAGE})
+        return replace(refused, model_view=unkept)
+
+    def _admit_spilled(self, record: EvidenceRecord, run_id: str) -> bool | None:
+        """Store one over-limit record within the per-Run cap (U2, R13).
+
+        ``True`` kept, ``False`` refused by the cap, ``None`` the sink could
+        not answer.
+        """
         admit = getattr(self._evidence, "register_spilled", None)
         try:
             if admit is not None:
                 # The store counts and inserts under one per-Run lock (R13).
-                admit(
+                admitted = admit(
                     record,
                     max_records=MAX_SPILLED_RECORDS_PER_RUN,
                     max_bytes=MAX_SPILLED_BYTES_PER_RUN,
                 )
-                return
+                return admitted if type(admitted) is bool else None
             # A sink without atomic admission: count, then register. Parallel
             # spills into it can pass the same count.
-            count, size = self._evidence.count_spilled(operation.run_id)
+            count, size = self._evidence.count_spilled(run_id)
+            if type(count) is not int or type(size) is not int:
+                return None
             if (
-                type(count) is not int
-                or type(size) is not int
-                or count >= MAX_SPILLED_RECORDS_PER_RUN
-                or size + len(response.body) > MAX_SPILLED_BYTES_PER_RUN
+                count >= MAX_SPILLED_RECORDS_PER_RUN
+                or size + len(record.raw) > MAX_SPILLED_BYTES_PER_RUN
             ):
-                return
-            self._register(record)
+                return False
+            return True if self._register(record) else None
         except Exception:
             # Including ``ToolControlDenied``: a decision that landed after the
             # refusal was settled keeps nothing, and the refusal stands.
-            return
+            return None
+
+    def _row_summary(
+        self,
+        plan: _Plan,
+        response: TransportResponse,
+        too_large: _ViewTooLarge,
+    ) -> dict[str, object]:
+        """The over-limit refusal's row summary (#308 U5): counts, no rows.
+
+        ``total_rows`` and ``row_unit`` say what a ``read_evidence`` offset
+        counts; ``suggested_limit`` is how many leading rows fit one slice,
+        estimated from each row's own tokens plus the refused view's other
+        fields. The adapter hook may name the unit and add counts (metrics:
+        series, points, label cardinality); a hook that fails or returns a
+        field this gateway owns adds nothing.
+        """
+        rows = cast(Sequence[object], too_large.view["content"])
+        extra: dict[str, object] = {}
+        if self._overflow_summary is not None:
+            try:
+                given = dict(
+                    self._overflow_summary(
+                        plan.registration.name, rows, too_large.query
+                    )
+                )
+                for key, value in given.items():
+                    json.dumps(value, allow_nan=False)
+                    canonical(value).encode("utf-8")
+                    if not isinstance(key, str) or key in _GENERIC_VIEW_KEYS:
+                        raise ValueError("RESERVED_SUMMARY_KEY")
+                    if key in _SUMMARY_RESERVED_KEYS and key != "row_unit":
+                        raise ValueError("RESERVED_SUMMARY_KEY")
+                extra = given
+            except Exception:
+                extra = {}
+        unit = extra.pop("row_unit", None)
+        if not isinstance(unit, str) or not _ROW_UNIT.fullmatch(unit):
+            unit = response.row_unit or "rows"
+        # Each row's share of the refused view's measured tokens, by its
+        # canonical bytes: the view is counted once (M1-01), never per row.
+        per_byte = too_large.tokens / max(1, len(canonical(too_large.view).encode()))
+        costs = [per_byte * (len(canonical(row).encode("utf-8")) + 1) for row in rows]
+        overhead = max(0.0, too_large.tokens - sum(costs)) + _SLICE_OVERHEAD_TOKENS
+        budget = too_large.limit - overhead
+        fit, used = 0, 0.0
+        for cost in costs:
+            if used + cost > budget:
+                break
+            used += cost
+            fit += 1
+        return {
+            "total_rows": len(rows),
+            "row_unit": unit,
+            "suggested_limit": fit,
+            **extra,
+        }
 
     # -- evidence ------------------------------------------------------
 
@@ -1613,9 +1749,26 @@ class ReadOnlyToolExecutor:
         adopted: bool,
     ) -> EvidenceRecord:
         registration = plan.registration
-        observed_at = operation.finished_at or operation.started_at
+        # A slice of kept evidence (#308 U4) states when the parent was
+        # observed, not when this read of the store finished; ``_inspect()``
+        # admitted ``carried`` only for an ``EVIDENCE_SOURCE`` registration.
+        carried = response.carried
+        observed_at = (
+            cast(datetime, carried["observed_at"])
+            if carried is not None
+            else operation.finished_at or operation.started_at
+        )
         assert observed_at is not None
-        incomplete = _incomplete(registration, payload)
+        incomplete = (
+            bool(carried["incomplete"])
+            if carried is not None
+            else _incomplete(registration, payload)
+        )
+        dispatch_started_at = (
+            cast("datetime | None", carried["dispatch_started_at"])
+            if carried is not None
+            else operation.started_at
+        )
         # Every row of an adopted observation goes to the model, or the whole
         # view is refused below (``_ViewTooLarge``): a view is never partly
         # delivered. An invalidated observation survives as history; none of
@@ -1657,7 +1810,7 @@ class ReadOnlyToolExecutor:
             "citable_as_fact": adopted and status == "ok",
             "tool": registration.name,
             "tool_version": registration.version,
-            "source": registration.source,
+            "source": registration.source if carried is None else carried["source"],
             "target_id": plan.target.target_id,
             "registry_revision": operation.registry_revision,
             "tool_registry_revision": operation.tool_registry_revision,
@@ -1666,8 +1819,8 @@ class ReadOnlyToolExecutor:
             "window": effective_window.as_json(),
             "observed_at": observed_at.isoformat(),
             "dispatch_started_at": None
-            if operation.started_at is None
-            else operation.started_at.isoformat(),
+            if dispatch_started_at is None
+            else dispatch_started_at.isoformat(),
             "data_as_of": None if data_as_of is None else data_as_of.isoformat(),
             "source_start_at": None
             if source_start_at is None
@@ -1701,6 +1854,17 @@ class ReadOnlyToolExecutor:
                 backend_rows_returned=response.backend_rows_returned,
             )
         )
+        if carried is not None and adopted:
+            # A slice shows every row it read, and omits the parent's rows
+            # outside its range: that is what ``truncated`` says here (U4).
+            omitted = cast(int, carried["omitted_rows"])
+            view.update(
+                {
+                    "omitted_rows": omitted,
+                    "omitted_bytes": carried["omitted_bytes"],
+                    "truncated": bool(omitted),
+                }
+            )
         if adopted:
             # The one size check (M1-01, A): the whole view, all fixed fields
             # and every row, in the counter's tokens -- what would reach the
@@ -1989,6 +2153,98 @@ _SPILLED_PROVENANCE_KEYS = (
     "result_count",
     "incomplete",
 )
+
+# The row summary every over-limit refusal carries (#308 U5).
+_SUMMARY_KEYS = ("total_rows", "row_unit", "suggested_limit")
+# Keys an adapter's summary may not add: the summary's own, and every key of
+# the refusal it is added to.
+_SUMMARY_RESERVED_KEYS = frozenset(
+    {
+        *_SUMMARY_KEYS,
+        "reason",
+        "source_contact",
+        "requested_at",
+        "message",
+        "max_result_bytes",
+        "max_view_tokens",
+        "view_tokens",
+        "stored",
+        "usage",
+    }
+)
+# Fixed gateway text on a kept over-limit refusal (#308 U5).
+_SPILLED_USAGE = (
+    "The whole result is kept as un-adopted evidence under evidence_id; it "
+    "is not citable as it is. Read its rows with read_evidence(evidence_id, "
+    "offset, limit): offset and limit count rows of row_unit, total_rows "
+    "rows exist, and about suggested_limit rows starting at offset 0 fit one "
+    "read. A read slice is adopted evidence of its own that may be cited for "
+    "the rows it shows. Narrowing the query instead also works."
+)
+# ... and on one that could not be kept (U2: the per-Run cap, or storage).
+_UNSTORED_USAGE = (
+    "The result could not be kept for read_evidence (stored is false); "
+    "narrow the query instead."
+)
+_CARRIED_KEYS = frozenset(
+    {
+        "source",
+        "observed_at",
+        "dispatch_started_at",
+        "incomplete",
+        "omitted_rows",
+        "omitted_bytes",
+    }
+)
+
+
+def _aware_moment(value: object) -> bool:
+    return (
+        isinstance(value, datetime)
+        and value.tzinfo is not None
+        and value.utcoffset() is not None
+    )
+
+
+def _carried_problem(
+    registration: ToolRegistration,
+    response: TransportResponse,
+    finished_at: datetime,
+) -> bool:
+    """``True`` unless ``response.carried`` is a well-formed slice provenance.
+
+    Only an ``EVIDENCE_SOURCE`` registration may carry provenance (#308 U4),
+    and only the fixed keys: a parent observation no later than this read,
+    a dispatch no later than that observation, no data claimed after it.
+    """
+    carried = response.carried
+    if registration.source != EVIDENCE_SOURCE or not isinstance(carried, Mapping):
+        return True
+    if set(carried) != _CARRIED_KEYS:
+        return True
+    source = carried["source"]
+    observed = carried["observed_at"]
+    dispatched = carried["dispatch_started_at"]
+    if not isinstance(source, str) or not source:
+        return True
+    if not isinstance(observed, datetime) or not _aware_moment(observed):
+        return True
+    if observed > finished_at:
+        return True
+    if dispatched is not None and (
+        not isinstance(dispatched, datetime)
+        or not _aware_moment(dispatched)
+        or dispatched > observed
+    ):
+        return True
+    if response.data_as_of is not None and response.data_as_of > observed:
+        return True
+    if response.source_end_at is not None and response.source_end_at > observed:
+        return True
+    if type(carried["incomplete"]) is not bool:
+        return True
+    counts = (carried["omitted_rows"], carried["omitted_bytes"])
+    return any(type(count) is not int or count < 0 for count in counts)
 
 
 # Every key ``_record`` writes on a view; an adapter's ``view_fields`` may not

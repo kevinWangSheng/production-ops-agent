@@ -108,8 +108,12 @@ def test_worker_role_stores_the_over_limit_result_unadopted(worker_evidence):
     outcome = _executor(worker_evidence, run_id).execute(request())
 
     assert (outcome.status, outcome.reason) == ("error", "RESULT_TOO_LARGE")
-    assert canonical(outcome.model_view) == canonical(baseline.model_view)
-    assert outcome.evidence is None
+    # PR2 (R1): the kept record's view is the model view.
+    assert outcome.evidence is not None
+    assert canonical(outcome.model_view) == canonical(outcome.evidence.view)
+    assert {
+        k: v for k, v in outcome.model_view.items() if k in baseline.model_view
+    } == dict(baseline.model_view)
 
     (row,) = _rows(run_id)
     assert row["adopted"] is False and row["status"] == "error"
@@ -131,7 +135,8 @@ def test_worker_role_cap_of_sixteen_per_run(worker_evidence):
     for index in range(17):
         outcome = executor.execute(request(step_id=f"step-{index}"))
         assert outcome.reason == "RESULT_TOO_LARGE"
-        assert outcome.evidence is None
+        # PR2: kept refusals carry the record; the 17th says stored: false.
+        assert (outcome.evidence is None) == (index == 16)
     assert worker_evidence.count_spilled(run_id)[0] == 16
     assert len(_rows(run_id)) == 16
 
