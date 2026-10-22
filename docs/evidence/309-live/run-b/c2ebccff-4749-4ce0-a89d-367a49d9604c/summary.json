@@ -1,0 +1,102 @@
+{
+  "schema": "opspilot-lab-summary-1",
+  "experiment": "m1-01-handoff-runner",
+  "run_id": "c2ebccff-4749-4ce0-a89d-367a49d9604c",
+  "frozen_at": "2026-10-22T17:03:54.269884+00:00",
+  "incident_id": "ad99086b-d19a-4b85-af25-b24d14a8bd24",
+  "driver": "opspilot.investigation.runner.InvestigationRunner",
+  "model": "deepseek-flash",
+  "started": "2026-10-22T17:03:06.759834+00:00",
+  "ended": "2026-10-22T17:03:47.269219+00:00",
+  "tool_parallelism": 2,
+  "context_tokens": 74036,
+  "tool_profile": "otel-demo",
+  "verdicts": {
+    "status": "handed_off",
+    "reason": "CONTEXT_EXHAUSTED",
+    "last_status": "handed_off",
+    "last_reason": "CONTEXT_EXHAUSTED",
+    "run_state": "waiting_human",
+    "conclusion_published": false,
+    "attempts": [
+      {
+        "label": "first",
+        "status": "handed_off",
+        "reason": "CONTEXT_EXHAUSTED",
+        "handoff_reasons": [
+          "CONTEXT_EXHAUSTED"
+        ]
+      }
+    ],
+    "control": null,
+    "event_kinds": [
+      "run_claimed",
+      "step_committed",
+      "tool_committed",
+      "tool_committed",
+      "step_committed",
+      "tool_committed",
+      "tool_committed",
+      "step_committed",
+      "tool_committed",
+      "tool_committed",
+      "tool_committed",
+      "tool_committed",
+      "step_committed",
+      "run_handoff"
+    ]
+  },
+  "counts": {
+    "model_requests_bound": 8,
+    "http_count": 4,
+    "prompt_tokens": 26364,
+    "completion_tokens": 6769,
+    "run_usage": {
+      "budget_limit": 8,
+      "model_requests_used": 4,
+      "model_seconds_used": 34.19030783302151,
+      "tool_operations_used": 8,
+      "tool_seconds_used": 12.09202833310701
+    },
+    "current_run_id": "c2ebccff-4749-4ce0-a89d-367a49d9604c",
+    "current_run_usage": {
+      "budget_limit": 8,
+      "model_requests_used": 4,
+      "model_seconds_used": 34.19030783302151,
+      "tool_operations_used": 8,
+      "tool_seconds_used": 12.09202833310701
+    },
+    "evidence_ids": [
+      "44f8435c-8765-497d-b5cb-aa6731c0ebe4-t0:efaf2f09-ca9a-406e-814c-4a116cfb7d42",
+      "44f8435c-8765-497d-b5cb-aa6731c0ebe4-t1:777fce1a-49d9-43e8-9d4d-6c7e6c1d2d73",
+      "42e9b289-24f0-4e84-bcd1-b280fb7afdd6-t0:b2c2bde1-a0b4-40c3-aa43-5fe5b169d387",
+      "42e9b289-24f0-4e84-bcd1-b280fb7afdd6-t1:910b833b-c7cf-4581-b19c-1faf0bc27661",
+      "ce36feec-05ef-444a-bf43-34247c23d360-t0:9a81b04f-3d8e-4185-9ff1-22cbb06565a1",
+      "ce36feec-05ef-444a-bf43-34247c23d360-t1:12d54719-5f55-4b20-9087-869605308aa3",
+      "ce36feec-05ef-444a-bf43-34247c23d360-t2:50c251f4-d43d-4659-afc5-5ae39064546b",
+      "ce36feec-05ef-444a-bf43-34247c23d360-t3:42833aa1-6f18-43de-b9df-8844827713d5"
+    ]
+  },
+  "cost": {
+    "known_cost_cny_upper": 0.117034
+  },
+  "report": null,
+  "report_content_sha256": null,
+  "trace": {
+    "mode": "lab",
+    "otel_trace_id": "04e3b1d17fade58a51fff6ab444c0928",
+    "dropped_spans": 0,
+    "project": "opspilot-lab-309-b",
+    "project_id": "ed676823-31e0-40d3-8911-f7894359ca9c",
+    "trace_tier": "longlived",
+    "langsmith_run_id": "00000000-0000-0000-95f3-a45c21a27092",
+    "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/ed676823-31e0-40d3-8911-f7894359ca9c/r/00000000-0000-0000-95f3-a45c21a27092?poll=true",
+    "read_back": "found"
+  },
+  "raw_ledger": {
+    "sha256": "50e241d56e978a672f9366d85c790a826bde44ee4a0630bf5b91b248896c26cd",
+    "bytes": 12606,
+    "path": "tmp/lab-ledgers/m1-01-handoff-runner/c2ebccff-4749-4ce0-a89d-367a49d9604c/ledger.json",
+    "in_repository": false
+  }
+}
