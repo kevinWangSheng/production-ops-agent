@@ -277,7 +277,13 @@ class PostmortemWorker:
         return outcome
 
     def _attempt(self, claim: Claim) -> GenerationOutcome:
-        raw = self.jobs.read_input(claim.incident_id)
+        try:
+            raw = self.jobs.read_input(claim.incident_id)
+        except PersistenceError as exc:
+            superseded = _SUPERSEDED.get(str(exc))
+            if superseded is None:
+                raise
+            return self._finish(claim, "superseded", None, superseded)
         watermark = raw["watermark"]
         try:
             built = self.input_builder(raw)
