@@ -49,6 +49,8 @@
 
 调参规则：在 36 项（原 12 debug + 已作废的 24 validation）上调 `judge.PROMPT`，最多 3 轮；达标线为整套零无效、零漏诊、零误通过且一致率不低于 46/48 等价；不达标停下交用户。达标后才新采 validation 来源族、两份新盲标与用户裁决。
 
+实施取舍（实现者，可逆）：P7-D21 用显式 `debug --tuning`——只额外放行已被 formal 登记暴露的 validation 族（不跳过 formal 暴露检查，未暴露的仍 `VALIDATION_EXPOSURE_FORBIDDEN`），并只跳过包约定与 PROMPT 的逐字绑定（`JUDGE_PROMPT_CHANGED`），items/标注绑定照查；登记行为 `kind=debug, tuning=true`，formal 路径不变。P7-D17 的 200 字符上限只写入 PROMPT、不入输出校验（入校验会使按旧约定整段引用的已有标签失效）。P7-D20 原始输出只在 debug 落盘（`debug/<session>/<provider>-NNN.raw`），formal 由库内 `run_calibration` 调用，不保存。
+
 ## 计划
 
 1. 执行驱动 chore PR（P7-D13）：Opus 实现，sol 按接口写验收测试，astra 审。
@@ -76,6 +78,7 @@
 - 正式校准 p7-formal-1（2026-10-21 11:32Z）在第 3 次调用后因 run_calibration 对 judge 自由文本 service 施加元数据标识符规则而整体中止（exit 5，SCHEMA_INVALID）；仅 1 个 validation 项（cart-failure 改写件）被 FlashX 判过 2 次，无调参；用户授权作废该次运行并复用同一 36 项（登记行移入 exposure-voided.jsonl）；修复后改为单条答案无效（#294）。该次 label-pack 副本仍在 `calibration/` 下会使 formal 报 VALIDATION_EXPOSED，已移至 `voided-calibration/p7-formal-1/` 保留并在作废记录登记。
 - 修复后 debug（2026-10-21，p7-debug-11，judge-adapters-6）：FlashX 有效 12/12、verdict 11/12、键 12/12；DeepSeek 12/12、12/12、12/12；Luna 有效 9/12（2 次 JUDGE_HTTP_ERROR，其一在传输重试之后；1 次输出无效），verdict 7/9、键 8/9；36 条观察全部通过 `_metadata_identifiers` 严格检查（p7-formal-1 中止的同一检查）；OpenAI 账户限额 5000 RPM / 2M TPM，HTTP 错误非限流（状态码未记录，推断为服务端瞬时错误）。DeepSeek 余额差 2.91 CNY（共享账户）。
 - 正式校准 p7-formal-2（2026-10-21，judge-adapters-6，180 次调用约 2.4 小时，pack hash `bcb83332…796b`）：`no_baseline`，三家均不合格，D16 无选择。计入一致 / validation 无效观察 / 误通过：FlashX 30/48、7、0；Luna 28/48、12、2；DeepSeek（对照）39/48、1、0。有效输出上 verdict 一致率高（FlashX 40/41、DeepSeek 46/47），主要失分为 KEY_DIAGNOSIS_MISSING：verdict 正确但漏列标签中的因果字段（多为 summary/claims 对同一原因的重述，约 6 项、三家重叠），FlashX 因此失 10 分；其次为无效观察（FlashX 3 次输出无效、3 次 verdict 与自身诊断不一致、1 次断连；Luna 8 次输出无效、3 次断连）。不计漏诊时 FlashX 40、Luna 31，仍不达 46。费用：DeepSeek 余额差 15.60 CNY（共享账户）；zai/openai 余额未记，按 token 与官方价估 FlashX ≈ $1.4、Luna ≈ $0.9。用户裁决（2026-10-21）：按合同记录不达标、不记基线，M3 暂以确定性断言推进；修 judge 并换新 validation 来源族另立 #295。
+- r3 实施（2026-10-22，`chore/p7-r3-judge`，judge-adapters-7）：仅假 transport 的单元测试（`tests/unit/test_eval_b3_impl.py`、`tests/unit/test_eval_p7_r3_impl.py`）；未发真实调用；按 r2 行为写的验收测试待独立作者按 r3 重写。
 
 ## 待决
 
