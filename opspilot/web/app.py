@@ -215,6 +215,16 @@ def create_app(
         except DomainError:
             raise _Refusal(403, "CHANNEL_MISMATCH") from None
 
+    async def generic_event_channel(request: Request) -> Principal:
+        """An event principal for the generic intake routes. The release
+        actor's token is shared in ``OPSPILOT_EVENT_TOKENS`` but grants only
+        ``/intake/version-changes`` (F11 PR-3 U4); refused before the body
+        is read, as that route refuses other actors."""
+        principal = await event_channel(request)
+        if principal.actor_id == RELEASE_ACTOR:
+            raise _Refusal(403, "RELEASE_ACTOR_FORBIDDEN")
+        return principal
+
     async def body_of(request: Request, limit: int = MAX_BODY_BYTES) -> bytes:
         declared = request.headers.get("content-length")
         if declared is not None and declared.isdigit() and int(declared) > limit:
@@ -534,7 +544,7 @@ def create_app(
 
     @app.post("/intake/events")
     async def intake_event(request: Request) -> Response:
-        principal = await event_channel(request)
+        principal = await generic_event_channel(request)
         payload = await json_of(request)
         try:
             state_time = payload.get("state_time")
@@ -580,7 +590,7 @@ def create_app(
         Alertmanager retries the group (it retries 5xx only); the alerts
         already committed then come back as replays.
         """
-        principal = await event_channel(request)
+        principal = await generic_event_channel(request)
         body = await body_of(request, ALERTMANAGER_MAX_BODY_BYTES)
         try:
             alerts = parse_payload(json.loads(body.decode("utf-8")))
