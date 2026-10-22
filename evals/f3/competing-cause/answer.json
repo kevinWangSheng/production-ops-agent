@@ -1,0 +1,72 @@
+{
+  "scenario_id": "F3:competing-cause",
+  "version": "1",
+  "frozen_at": "2026-10-22",
+  "rubric": "docs/testing/f3-competing-cause-rubric.md",
+  "expected_output": [
+    "The report names failing payment Charge calls (checkout's oteldemo.PaymentService/Charge RPC returning errors) as the cause of the checkout errors, citing error spans or error-rate readings it observed in this Run.",
+    "The report rejects the presented checkout deployment as the cause with a rejected_hypothesis or counter_evidence that cites this Run's ok evidence and meets at least one of the D5 criteria; no fact attributes the cause to that deployment."
+  ],
+  "injected": {
+    "service": "payment",
+    "service_aliases": [
+      "paymentservice",
+      "payment-service"
+    ],
+    "operation": "Charge",
+    "operation_aliases": [
+      "oteldemo.PaymentService/Charge",
+      "PaymentService/Charge",
+      "grpc.oteldemo.PaymentService/Charge"
+    ],
+    "flag": "paymentFailure",
+    "normal_variant": "off",
+    "variant": "100%"
+  },
+  "deployment": {
+    "namespace": "otel-demo",
+    "deployment": "checkout",
+    "change_kind": "configuration_only",
+    "change": "one container environment variable (OPSPILOT_U2_RELEASE_ID) on container checkout; image digest unchanged",
+    "related_to_fault_cause": false,
+    "released_at": "R = harness patch receipt time (scripts/f11_u2_harness.py publish), recorded per Run in the ledger release.json",
+    "fault_offset_seconds": 420,
+    "fault_duration_seconds": 1800,
+    "expected_ksm_signal": "a new ReplicaSet series in kube_replicaset_owner and kube_pod_owner owner_name moving to it; kube_pod_container_info image_id unchanged",
+    "review_tolerance": "R, rollout-complete bounds and flagd-effective bounds come from the Run ledger; tolerance is plus or minus 60 s plus the rollout duration"
+  },
+  "signature": {
+    "rule_id": "payment-charge-error-span-v1",
+    "any_of": [
+      {
+        "service": "payment",
+        "operation": "grpc.oteldemo.PaymentService/Charge"
+      },
+      {
+        "service": "checkout",
+        "operation": "oteldemo.PaymentService/Charge"
+      }
+    ],
+    "min_matches": 1
+  },
+  "deployment_rejection": {
+    "decision": "D5-a",
+    "requires_ok_evidence_from_this_run": true,
+    "any_of": [
+      "(i) after the deployment (R to rollout complete) and before the fault took effect, checkout PlaceOrder error rate or error spans did not rise",
+      "(ii) the error spans sit on payment Charge (signature payment-charge-error-span-v1)",
+      "(iii) the error onset is at least 300 s after rollout complete, with kube-state-metrics or span evidence for that time"
+    ],
+    "not_sufficient": "restating the deployment time from the operator note without citing evidence",
+    "ksm_citation": "diagnostic only for U1-b; not a pass gate"
+  },
+  "preconditions": [
+    {"id": "lab_reserved", "rule": "a lab occupation is claimed by this holder and batch"},
+    {"id": "no_active_fault", "rule": "no fault-active.json in the shared lab ledgers"},
+    {"id": "flags_off", "rule": "every flag in flagd-config has defaultVariant off"},
+    {"id": "alert_not_firing", "rule": "ALERTS{alertname=\"CheckoutPlaceOrderErrorRatioHigh\"} is empty"},
+    {"id": "no_open_alert_incident", "rule": "no incident of that alert on otel-demo/checkout whose lifecycle is not closed"},
+    {"id": "no_recent_rollout", "rule": "no other checkout rollout and no F11 release observation in the last 4200 s"},
+    {"id": "swap_headroom", "rule": "host swap free is at or above the stop line (default 2048 MiB)"}
+  ]
+}
