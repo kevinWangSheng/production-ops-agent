@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections import deque
 from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass, field, replace
@@ -865,11 +864,13 @@ class InvestigationLoop:
         so committed rows, the coverage message and the next request are
         what serial dispatch produces (contract U-3, U-4, R-5).
 
-        Within the turn, the first call of each fingerprint not already seen
-        is dispatched in parallel; every later call is decided at its own
-        turn under the serial rule against the map as it stands then (R-2):
-        a repeat of a call that produced evidence gets the duplicate view, a
-        repeat of a pure refusal is dispatched again. A failed renewal or
+        Dispatch is strictly in index order: the next call is dispatched
+        only when a slot is free, no earlier call has raised, and -- when an
+        earlier call of this turn has the same fingerprint -- that one is
+        committed, so the call is decided under the serial rule against the
+        map as it stands then (R-2): a repeat of a call that produced
+        evidence gets the duplicate view, a repeat of a pure refusal is
+        dispatched again. A failed renewal or
         fence stops new dispatches; in-flight calls finish (each bounded by
         its own timeout), results before the first undispatched call are
         committed in index order, then the failure halts the round as it
@@ -882,34 +883,39 @@ class InvestigationLoop:
         target_id = _bound_target(request)
         window = request.scope.window.as_json()
         fingerprints = [_fingerprint_of(call, target_id) for call in calls]
-        leaders: deque[int] = deque()
-        first_seen: set[str] = set()
+        # The nearest earlier call of the same fingerprint in this turn: a
+        # later call's fate (duplicate view or dispatch) is decided only once
+        # that one is committed, exactly as the serial loop decides it.
+        previous: list[int | None] = []
+        last: dict[str, int] = {}
         for index, fingerprint in enumerate(fingerprints):
-            if fingerprint in state.seen_tool_calls or fingerprint in first_seen:
-                continue
-            first_seen.add(fingerprint)
-            leaders.append(index)
+            previous.append(last.get(fingerprint))
+            last[fingerprint] = index
         dispatched: dict[int, Future[ToolOutcome]] = {}
         stop: Exception | None = None
+        next_dispatch = 0  # dispatch is strictly in index order
+        next_commit = 0
         execute = tracer().carry(self.executor.execute)
 
         def fill(pool: ThreadPoolExecutor) -> None:
-            nonlocal stop
-            while stop is None and leaders:
+            nonlocal stop, next_dispatch
+            while stop is None and next_dispatch < len(calls):
                 running = sum(1 for f in dispatched.values() if not f.done())
                 if running >= self.tool_parallelism:
                     return
-                index = leaders[0]
+                index = next_dispatch
                 # R-8: once a call has raised, nothing above it is dispatched;
-                # a lower repeat may still run (serially it came first), and
                 # the exception surfaces at the failed call's own turn.
-                failed = [
-                    i
-                    for i, f in dispatched.items()
-                    if f.done() and f.exception() is not None
-                ]
-                if failed and index > min(failed):
+                if any(
+                    f.done() and f.exception() is not None for f in dispatched.values()
+                ):
                     return
+                earlier = previous[index]
+                if earlier is not None and earlier >= next_commit:
+                    return  # undecided until the earlier same call commits
+                if fingerprints[index] in state.seen_tool_calls:
+                    next_dispatch += 1  # a duplicate view at its turn
+                    continue
                 try:
                     self._renew_before_dispatch()
                     tool_request = tool_request_for(
@@ -922,46 +928,34 @@ class InvestigationLoop:
                 except Exception as exc:  # raised at this call's turn
                     stop = exc
                     return
-                leaders.popleft()
                 dispatched[index] = pool.submit(execute, tool_request)
+                next_dispatch += 1
+
+        def running_futures() -> list[Future[ToolOutcome]]:
+            return [f for f in dispatched.values() if not f.done()]
 
         with ThreadPoolExecutor(
             max_workers=self.tool_parallelism, thread_name_prefix="opspilot-tool"
         ) as pool:
             for index, call in enumerate(calls):
+                next_commit = index
                 fill(pool)
                 fingerprint = fingerprints[index]
-                if index not in dispatched:
-                    # Every first call below this index is already dispatched,
-                    # so an undispatched first call is always at the front.
-                    if not (leaders and leaders[0] == index):
-                        duplicate_of = state.seen_tool_calls.get(fingerprint)
-                        if duplicate_of is not None:
-                            view = _duplicate_call_view(
-                                f"{step_id}-t{index}", evidence_id=duplicate_of
-                            )
-                            self._deliver(state, step_id, index, call, view, results)
-                            continue
-                        # A repeat whose first call was a pure refusal runs
-                        # again, as serially; it goes ahead of the remaining
-                        # first calls, which all have higher indexes.
-                        leaders.appendleft(index)
-                    while index not in dispatched and stop is None:
-                        fill(pool)
-                        if index not in dispatched:
-                            wait(
-                                [f for f in dispatched.values() if not f.done()],
-                                return_when=FIRST_COMPLETED,
-                            )
-                    if index not in dispatched:
-                        assert stop is not None
+                if index not in dispatched and index < next_dispatch:
+                    view = _duplicate_call_view(
+                        f"{step_id}-t{index}",
+                        evidence_id=state.seen_tool_calls[fingerprint],
+                    )
+                    self._deliver(state, step_id, index, call, view, results)
+                    continue
+                while index not in dispatched:
+                    if stop is not None:
                         raise stop
+                    wait(running_futures(), return_when=FIRST_COMPLETED)
+                    fill(pool)
                 future = dispatched[index]
                 while not future.done():
-                    wait(
-                        [f for f in dispatched.values() if not f.done()],
-                        return_when=FIRST_COMPLETED,
-                    )
+                    wait(running_futures(), return_when=FIRST_COMPLETED)
                     fill(pool)
                 outcome = future.result()
                 view = self._dispatched_view(state, fingerprint, outcome)

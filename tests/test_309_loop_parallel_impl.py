@@ -323,3 +323,27 @@ def test_no_higher_call_is_dispatched_after_one_raised():
         loop.run(request)
     assert sorted(seen) == [0, 1]
     assert [row["ordinal"] for row in _tool_rows(store)] == [0]
+
+
+def test_dispatch_is_strictly_in_index_order(monkeypatch):
+    """R-2 regression (independent review): index 1 repeats a pure refusal at
+    index 0, so it is undecided until 0 commits; 2 and 3 must not jump ahead
+    of it (the reviewer saw [0, 2, 3, 1])."""
+    order = []
+    original = loop_module.tool_request_for
+
+    def recording(step_id, index, *args, **kwargs):
+        order.append(index)
+        return original(step_id, index, *args, **kwargs)
+
+    monkeypatch.setattr(loop_module, "tool_request_for", recording)
+    views = {}
+    for cap in (1, 2):
+        order.clear()
+        loop, request, model, transport, store = _parallel(
+            turn=_turn("x", "x", 60, 90), cap=cap
+        )
+        loop.run(request)
+        assert order == [0, 1, 2, 3], (cap, order)
+        views[cap] = _strip([row["result"] for row in _tool_rows(store)])
+    assert views[1] == views[2]
