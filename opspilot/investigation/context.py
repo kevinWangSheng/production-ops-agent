@@ -42,6 +42,7 @@ from opspilot.investigation.reports import (
     eligible_time_policies,
     evidence_context_projection,
     parse_report,
+    validated_report,
     view_targets_authorized,
 )
 from opspilot.knowledge.hints import valid_knowledge
@@ -876,6 +877,12 @@ def rebuild_transcript(
     compaction_attempts = 0
     dropped: list[UUID] = []
     pending_publish: tuple[UUID, dict[str, Any]] | None = None
+    # B3 (#304): the retry feedback the live loop carried from a non-final,
+    # no-tool, invalid reply into the forced final round right after it,
+    # keyed by that reply's control generation. Survives an accepted
+    # compaction row and a conclusion row (the live state keeps it across
+    # ``_manage_context``); any other row clears it.
+    retry_feedback: tuple[object, str] | None = None
     for step in ordered:
         if step.get("status") == "late_result":
             continue
@@ -905,6 +912,7 @@ def rebuild_transcript(
                 raise ContextError("INCONSISTENT_STATE")
             compaction_attempts += 1
             if record.get("accepted") is not True:
+                retry_feedback = None
                 # The live attempt handed off on this row (COMPACTION_FAILED);
                 # a resume must reach the same verdict instead of compacting
                 # again onto the same key (independent review, PR #29).
@@ -957,7 +965,19 @@ def rebuild_transcript(
             # did not reproduce (a lost compaction row, or rows out of order).
             raise ContextError("INCOMPATIBLE_STATE")
         if not diverged:
-            _check_snapshot_hash(response, messages, inputs=inputs, delivered=delivered)
+            _check_snapshot_hash(
+                response,
+                messages,
+                inputs=inputs,
+                delivered=delivered,
+                retry_feedback=(
+                    retry_feedback[1]
+                    if retry_feedback is not None
+                    and retry_feedback[0] == step.get("control_generation")
+                    else ""
+                ),
+            )
+        retry_feedback = None
         last_step_id = step_id
         assistant = response.get("assistant")
         if not isinstance(assistant, Mapping):
@@ -991,6 +1011,24 @@ def rebuild_transcript(
             # (bot review finding, PR #29).
             concluded=step.get("control_generation") != generation,
         )
+        if (
+            not diverged
+            and not calls
+            and not committed.final
+            and committed.rejection is None
+        ):
+            # The live round validated this reply against the views delivered
+            # so far; when it failed, the next (forced final) round sent the
+            # resulting feedback, so its recorded hash covers those bytes.
+            report, _reason, feedback = validated_report(
+                content or "",
+                finish_reason=committed.finish_reason,
+                delivered=delivered,
+                evidence_context=context,
+                authorized_targets=authorized_targets,
+            )
+            if report is None:
+                retry_feedback = (step.get("control_generation"), feedback)
         if not calls:
             messages.append(
                 assistant_message(
@@ -1193,6 +1231,7 @@ def _check_snapshot_hash(
     *,
     inputs: Sequence[Mapping[str, Any]] = (),
     delivered: Sequence[DeliveredView] = (),
+    retry_feedback: str = "",
 ) -> None:
     """Refuse a rebuild whose bytes differ from what that step actually sent.
 
@@ -1201,6 +1240,10 @@ def _check_snapshot_hash(
     recorded ``context.input_watermark`` (from ``inputs``), then the
     final-report or the compaction instruction -- are added from the
     recorded ``context`` / the row kind, in the order ``_round`` sends them.
+    A final row's trailing messages are ``loop._final_messages``': the report
+    instruction, then ``retry_feedback`` when non-empty (the caller re-derives
+    it with ``validated_report`` from the committed non-final reply that
+    forced this round, #304), then the run coverage summary.
     Rows without a recorded hash (pre-segment rows) are not checked.
     """
     context = response.get("context")
@@ -1222,6 +1265,8 @@ def _check_snapshot_hash(
         )
 
         sent.append({"role": "user", "content": FINAL_REPORT_INSTRUCTION})
+        if retry_feedback:
+            sent.append({"role": "user", "content": retry_feedback})
         # The coverage summary is computed from the views delivered before
         # this step, exactly as ``_round`` computed it when the step was sent.
         sent.append({"role": "user", "content": run_coverage_message(delivered)})
