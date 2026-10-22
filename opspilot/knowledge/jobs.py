@@ -34,6 +34,7 @@ from uuid import UUID, uuid4
 
 from psycopg.types.json import Jsonb
 
+from opspilot.domain.runs import RUN_EXECUTION
 from opspilot.knowledge.contract import (
     POSTMORTEM_INPUT_POLICY_VERSION,
     RETRYABLE_ATTEMPT_ERRORS,
@@ -59,6 +60,11 @@ MAX_ATTEMPTS_PER_WATERMARK = 3
 _COUNTED_ERRORS = RETRYABLE_ATTEMPT_ERRORS | {"LEASE_LOST"}
 BACKOFF_BASE_SECONDS = 60
 BACKOFF_MAX_SECONDS = 3600
+
+# #255: candidate admission and input snapshots share the state machine's terminals.
+TERMINAL_RUN_STATES = tuple(
+    sorted(state for state in RUN_EXECUTION.states if RUN_EXECUTION.terminal(state))
+)
 
 # The failure key compared with ``failure_watermark`` (SQL and Python must
 # agree): control generation, observation generation, Run count, current
@@ -96,6 +102,11 @@ LEFT JOIN opspilot_postmortems p ON p.incident_id = i.incident_id
 WHERE NOT EXISTS (
     SELECT 1 FROM opspilot_observation_sessions a
     WHERE a.incident_id = i.incident_id AND a.state = 'authorized')
+  -- #255: any unfinished Run (including unknown states) holds generation back.
+  AND NOT EXISTS (
+    SELECT 1 FROM opspilot_runs r
+    WHERE r.incident_id = i.incident_id
+      AND r.state <> ALL(%(terminal_run_states)s))
   AND (j.lease_until IS NULL OR j.lease_until <= clock_timestamp())
   AND (j.next_attempt_at IS NULL OR j.next_attempt_at <= clock_timestamp()
        OR j.failure_watermark IS DISTINCT FROM {_KEY_SQL})
@@ -204,6 +215,7 @@ class GenerationStore(_StoreBase):
                 "incident_id": incident_id,
                 "max_attempts": MAX_ATTEMPTS_PER_WATERMARK,
                 "input_policy_version": input_policy_version,
+                "terminal_run_states": list(TERMINAL_RUN_STATES),
             },
         ).fetchall()
 
@@ -497,6 +509,15 @@ class GenerationStore(_StoreBase):
             ).fetchone()
             if incident is None:
                 raise PersistenceError("NOT_FOUND")
+            runs = conn.execute(
+                "SELECT run_id, state, control_generation, budget_limit, budget_spent, "
+                "deadline, input_watermark FROM opspilot_runs WHERE incident_id=%s "
+                "ORDER BY control_generation, run_id",
+                (incident_id,),
+            ).fetchall()
+            # #255: close the claim-to-snapshot window before any model call.
+            if any(run["state"] not in TERMINAL_RUN_STATES for run in runs):
+                raise PersistenceError("WATERMARK_MOVED")
             watermark = current_watermark(conn, incident_id)
             head = conn.execute(
                 "SELECT postmortem_id, generation, latest_version FROM opspilot_postmortems "
@@ -532,12 +553,6 @@ class GenerationStore(_StoreBase):
                         "revision": row["revision"],
                         "name": row["name"],
                     }
-            runs = conn.execute(
-                "SELECT run_id, state, control_generation, budget_limit, budget_spent, "
-                "deadline, input_watermark FROM opspilot_runs WHERE incident_id=%s "
-                "ORDER BY control_generation, run_id",
-                (incident_id,),
-            ).fetchall()
             controls = conn.execute(
                 "SELECT action, actor, expected_generation, resulting_generation, created_at, "
                 "payload FROM opspilot_controls WHERE incident_id=%s "
