@@ -300,22 +300,29 @@ class WorkerLoop:
         return [(i, sink[i]) for i in started if i in sink]
 
     def _refill(self) -> None:
-        """Fill the free slots from the claim listing, best first."""
+        """Fill the free slots from the claim listing, best first. With
+        several slots only those free before the listing take from it: one
+        that frees while it is walked waits for a fresh listing (its wake is
+        still set), so an incident listed ahead in the meantime takes it
+        rather than a stale lower candidate (R-B1-2). One slot keeps walking
+        the listing in order, as before capacity existed."""
         with self._cond:
             free = len(self._idle)
             excluded = set(self._in_flight) | self._recent
         if not free or self.stop.is_set():
             return
+        budget = free if self.capacity > 1 else len(excluded) + free + 2
         try:
             candidates = self.queue.claimable_incidents(limit=free + len(excluded) + 2)
         except PersistenceError as exc:
             _log.warning("listing refused code=%s", exc)
             return
         for incident_id in candidates:
-            if self.stop.is_set():
+            if self.stop.is_set() or not budget:
                 return
             if incident_id in excluded:
                 continue
+            budget -= 1
             runner = self._checkout(wait=False)
             if runner is None:
                 return
