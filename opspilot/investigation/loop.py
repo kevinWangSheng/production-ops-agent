@@ -856,7 +856,7 @@ class InvestigationLoop:
         fingerprints = [_fingerprint_of(call, target_id) for call in calls]
         # The nearest earlier call of the same fingerprint in this turn: a
         # later call's fate (duplicate view or dispatch) is decided only once
-        # that one is committed, exactly as the serial loop decides it.
+        # that one is delivered, exactly as the serial loop decides it.
         previous: list[int | None] = []
         last: dict[str, int] = {}
         for index, fingerprint in enumerate(fingerprints):

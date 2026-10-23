@@ -22,7 +22,9 @@
 - 自测：`tests/test_332_commit_on_completion_impl.py` 4 例（兄弟在途时已提交且模型可见面与 cap=1 相同；提前提交被 `CONTROL_DENIED` 拒绝即停、无行；低 index 抛异常时高 index 已提交；每个 ordinal 只提交一次且按完成顺序）、`tests/test_332_commit_on_completion_postgres_impl.py` 1 例（PG 上 t0 在途时 ordinal 1 已落库，行排序为 `[0,1]`）。用 `git apply -R` 去掉 loop.py 修复后 5 例全部失败，恢复后通过。
 - 调整：`tests/test_309_loop_parallel_impl.py` 的异常用例按 r2 (b) 允许 `[0]` 或 `[0,2]`；`tests/test_309_parallel_postgres_impl.py` 只改 docstring。
 - 独立验收测试（`fix/332-commit-on-completion-tests` `86f30e8`）已 merge：`tests/acceptance/test_332_commit_on_completion.py` 4 例、`tests/integration/test_332_commit_on_completion_postgres.py` 1 例、#309 验收两处断言改写，未改断言即通过；去掉 loop.py 修复时内存版 3/4、PG 版 1/1 失败。
-- 断点③ harness 改动与真实复跑未做（见待决）。
+- 独立审查 PASS（lead 安排）；可选项 O-4 已改：loop.py 中 R-2 闸门注释「committed」改为「delivered」。
+- U-3 harness（merge main `d24b7a0` 后）：`scripts/f2_kill_resume.py` 快照新增每个 step 的 `tool_ordinals`（`tool_results` 计数保留，旧 ledger 无此字段时 `committed_ops` 按计数前缀回退，`rejudge` 兼容）；`committed_ops`/`settled_uncommitted` 读实际 ordinal；③ 的 kill 条件改为 `tool_breakpoint_state`：卡住的调用是本 epoch 唯一未结算 charge，且同 step 本 epoch 已结算的兄弟都在 `tool_results`，该状态（含兄弟 ordinal 与已结算 dispatch 集）经 `dwell` 稳定 1 s（`SIBLING_DWELL_SECONDS`）；超过 25 s 未就绪仍 `STALL_NOT_ISOLATED`。U7 判据不变。`tests/test_f2_kill_resume.py` 新增 6 例（非前缀 ordinal、等兄弟提交、状态变化、dwell、乱序提交后只重派卡住的一条）。snapshot SQL 在临时 PG 的真实 schema 上跑过一次，返回 `(2, [0, 1])`。
+- 断点③ 真实复跑未做：等 #335 合并、kind 空出后由 lead 通知。
 
 ## 验证
 
@@ -30,4 +32,4 @@
 
 ## 待决
 
-- U-3 harness（`scripts/f2_kill_resume.py`）在 PR #333，未进 main；#333 合并后 merge main 再改。
+- 断点③ 真实复跑（默认并行 2，证据进新目录，保留旧 FAIL 记录）。
