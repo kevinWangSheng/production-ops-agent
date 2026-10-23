@@ -468,3 +468,24 @@ def test_a_settled_but_uncommitted_sibling_counts_as_a_second_redispatch():
     assert tool["redispatched"] == [f"{STEP2}-t0", f"{STEP2}-t1"]
     assert tool["settled_uncommitted_at_kill"] == [f"{STEP2}-t1"]
     assert not tool["passed"] and not result["passed"]
+
+
+def test_a_kept_tool_error_need_not_be_cited_but_must_stay_unchanged():
+    pre, post, final = _model_case()
+    error = {
+        "evidence_id": f"{STEP1}-t1:y",
+        "committed": True,
+        "adopted": False,
+        "raw_sha256": "ee",
+    }
+    for snap in (pre, post, final):
+        snap["evidence"].append(dict(error))
+    kwargs = dict(epoch_started_at="2026-10-22T20:07:01+00:00", poll_seconds=2.0)
+    ok = h.verdicts("model_in_flight", pre=pre, post=post, final=final, **kwargs)
+    assert ok["criteria"]["evidence_kept"]["passed"]
+    assert ok["criteria"]["evidence_kept"]["not_adopted_before_kill"] == [
+        error["evidence_id"]
+    ]
+    final["evidence"][-1]["raw_sha256"] = "ff"
+    changed = h.verdicts("model_in_flight", pre=pre, post=post, final=final, **kwargs)
+    assert not changed["criteria"]["evidence_kept"]["passed"]

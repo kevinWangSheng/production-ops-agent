@@ -112,7 +112,7 @@ def snapshot(conn: Any, run_id: str) -> dict[str, Any]:
         (run_id,),
     ).fetchall()
     evidence = conn.execute(
-        "SELECT evidence_id,committed,raw_sha256 FROM opspilot_evidence "
+        "SELECT evidence_id,committed,adopted,raw_sha256 FROM opspilot_evidence "
         "WHERE run_id=%s ORDER BY evidence_id",
         (run_id,),
     ).fetchall()
@@ -384,22 +384,26 @@ def verdicts(
         tool["pending_planned"] = planned
         tool["passed"] = tool["passed"] and all(n == 1 for n in counts.values())
 
-    # 3. evidence committed before the kill is kept and citable.
+    # 3. evidence committed before the kill is kept unchanged, and the
+    # adopted part of it is citable by the conclusion. A non-adopted record
+    # (a tool error) is kept as history and is never citable, killed or not.
     kept_before = committed_evidence(post)
     kept_after = committed_evidence(final)
+    adopted = {e["evidence_id"] for e in post["evidence"] if e.get("adopted", True)}
     citable = final.get("conclusion_evidence_ids")
     missing = sorted(k for k, v in kept_before.items() if kept_after.get(k) != v)
+    should_cite = set(kept_before) & adopted
     not_citable = (
-        sorted(kept_before)
-        if citable is None
-        else sorted(set(kept_before) - set(citable))
+        sorted(should_cite) if citable is None else sorted(should_cite - set(citable))
     )
     evidence = {
         "before_kill": len(kept_before),
+        "adopted_before_kill": len(should_cite),
+        "not_adopted_before_kill": sorted(set(kept_before) - adopted),
         "missing_or_changed": missing,
         "not_in_conclusion": not_citable,
         "conclusion_present": citable is not None,
-        "passed": bool(kept_before) and not missing and not not_citable,
+        "passed": bool(should_cite) and not missing and not not_citable,
     }
 
     # 4. unsettled cost stays occupied.
@@ -953,6 +957,19 @@ def rejudge(args: argparse.Namespace) -> int:
         json.loads((directory / f"{name}.json").read_text())
         for name in ("pre", "post", "final")
     )
+    backfilled = False
+    if args.owner_dsn:
+        import psycopg
+
+        with psycopg.connect(args.owner_dsn) as conn:
+            for snap in (pre, post, final):
+                for e in snap["evidence"]:
+                    if "adopted" not in e:
+                        e["adopted"] = conn.execute(
+                            "SELECT adopted FROM opspilot_evidence WHERE evidence_id=%s",
+                            (e["evidence_id"],),
+                        ).fetchone()[0]
+                        backfilled = True
     summary_path = Path(args.summary)
     summary = json.loads(summary_path.read_text())
     epoch_at = next(
@@ -977,6 +994,7 @@ def rejudge(args: argparse.Namespace) -> int:
             ).stdout.strip(),
             "reason": args.reason,
             "passed_before": previous,
+            "adopted_backfilled_from_db": backfilled,
         }
     )
     summary_path.write_text(
@@ -1019,6 +1037,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     r.add_argument("--ledger", required=True)
     r.add_argument("--summary", required=True)
     r.add_argument("--reason", required=True)
+    r.add_argument(
+        "--owner-dsn",
+        default="",
+        help="fill evidence.adopted for ledgers frozen before it was captured",
+    )
     r.add_argument("--poll-seconds", type=float, default=2.0)
     args = parser.parse_args(argv)
     return run(args) if args.command == "run" else rejudge(args)
