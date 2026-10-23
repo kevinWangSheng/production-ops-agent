@@ -79,3 +79,11 @@
 - Run A（otel-demo 档，cap=2，真实 DeepSeek）：trace 里至少一轮 ≥2 个工具 span 挂在 run span 下，时间区间有重叠；summary 记录每轮的工具数、并行峰值、ledger 计数，以及没有 `TIMEOUT`/`CONTROL_DENIED`。
 - Run B（压缩）：生产窗口是 1M token（`limits.py:63`），实际触发不到 95% 阈值 → 用缩窄的 `RunLimits(context_tokens≈120k)` 强制压缩（`within()` 允许缩窄，`limits.py:131-135`），必须出现 ≥1 次被接受的压缩。压缩后模型是否会重查同一调用无法强制：如果出现，summary 记下它被真实派发（新 evidence_id）；如果没出现，照实写「未发生」，该行为以第 1 条确定性测试为准。
 - 每轮跑前查 swap 和 lab 负载（有记录：并行线路会挤垮 kind 实验）。
+
+## r2（#332，用户 2026-10-23 裁决）
+
+F2 断点③ 暴露：并行时兄弟调用已结算的结果在内存里排在卡住的低 index 调用之后，崩溃后被重派。新口径：**持久提交按完成顺序，模型可见面按 index**。替换 U-3 A 中「`commit_tool` 按 index」、R-5 中「`commit_tool` … 都在主线程按 index 处理」两处；去重表、`delivered`/`evidence_ids`、tool 消息、`capture_delivery`、覆盖消息与下一次模型请求仍按 index，U-4 不变；`commit_tool` 仍只在主线程调用。存储按 ordinal 排序保存行，完整 step 的行与串行逐字节相同。预审与决定表见 [#332 合同](2026-10-23-332-commit-on-completion-contract.md)。
+
+- (a) `tool_committed` 事件与 late_result 可能乱序（例如 ordinal 1 先于 0）；页面实时日志按事件序号原样显示。
+- (b) R-8 改为：某条调用抛出非预期异常时，已被观察到完成的更高 index 结果可能已经提交，恢复只重派缺失的 ordinal。
+- (c) R-12 改为：fence 失败后第一次提交遇到 `CONTROL_DENIED` 就停，这一次可能是任意 index。

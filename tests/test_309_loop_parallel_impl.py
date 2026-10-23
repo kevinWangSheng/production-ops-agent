@@ -201,7 +201,11 @@ def test_an_unexpected_exception_commits_earlier_results_and_reraises():
     loop.executor.execute = explode_on_second
     with pytest.raises(RuntimeError, match="boom"):
         loop.run(request)
-    assert [row["ordinal"] for row in _tool_rows(store)] == [0]
+    # #309 r2 (b): index 2 may have taken index 0's free slot and been seen
+    # finished before index 1's turn, so it may be committed too; the failed
+    # call never is.
+    ordinals = [row["ordinal"] for row in _tool_rows(store)]
+    assert ordinals in ([0], [0, 2])
 
 
 def test_an_accepted_compaction_lets_the_same_call_run_again():
