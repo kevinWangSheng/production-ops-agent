@@ -334,9 +334,10 @@ def test_the_forced_final_round_messages_and_revisions_are_unchanged():
     row = store.steps["ctx0:round-3"]["response"]["context"]
     assert row["final"] is True
     assert row["input_snapshot_hash"] == messages_hash(final_call.messages)
-    # No revision bump (D-R4).
+    # No revision bump (D-R4). F3 PR-2 (#311 + #310) contract change: #310 moves prompt_revision,
+    # so the #304 freeze is now compared for inequality.
     assert context_policy_revision() == "ctx-ctx-policy-v1-a30e65ea52f4"
-    assert prompt_revision_versions(DISCIPLINE_VARIANT) == {
+    assert prompt_revision_versions(DISCIPLINE_VARIANT) != {
         "prompt_revision": "prompt-replay-candidate-dd9018031487"
     }
 

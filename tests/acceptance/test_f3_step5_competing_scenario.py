@@ -40,7 +40,13 @@ RUBRIC_SHA256 = "b58974b2c2a5ba309cb0efcf47c5af001d9f9c3a27440fec32d5d31b5cf1d95
 ANSWER_SHA256 = "a35361da83e8a314a2af54bf50aa74441ca16dcd7a533e96c22c85a71b14b37a"
 # #307 A's two discovery tools after merge main 6ff9d68; recomputed from the
 # registered model-visible content and frozen here for F3 step 5 evidence.
-EXPECTED_TOOL_SCHEMA_REVISION = "otel-demo-2a944edd110a"
+# F3 PR-2 (#311 + #310) contract change: #311 moves the revision again (source_error, metrics limits text,
+# projection v10). The new value is not pasted (the independent test author
+# does not read the implementation); this is now the previous freeze and the
+# live value must differ from it and equal the recomputation below.
+PR2_PREVIOUS_TOOL_SCHEMA_REVISION = "otel-demo-2a944edd110a"
+# #310 (same PR) moves prompt_revision; compared for inequality only.
+PR2_PREVIOUS_PROMPT_REVISION = "prompt-replay-candidate-dd9018031487"
 # PR-3a's pre-#307 A freeze, retained as the incompatibility boundary.
 PR3A_TOOL_SCHEMA_REVISION = "otel-demo-c7737da709ee"
 OLD_TOOL_SCHEMA_REVISION = "otel-demo-4d7168180749"
@@ -102,18 +108,17 @@ def test_tool_schema_revision_is_recomputed_and_other_versions_are_unchanged() -
 
     assert TOOL_SCHEMA_REVISION != OLD_TOOL_SCHEMA_REVISION
     assert TOOL_SCHEMA_REVISION != PR3A_TOOL_SCHEMA_REVISION
-    assert TOOL_SCHEMA_REVISION == recomputed == EXPECTED_TOOL_SCHEMA_REVISION
+    assert TOOL_SCHEMA_REVISION == recomputed
+    assert TOOL_SCHEMA_REVISION != PR2_PREVIOUS_TOOL_SCHEMA_REVISION
     assert otel_demo_versions() == {
         **investigation_versions(),
         "tool_schema_revision": TOOL_SCHEMA_REVISION,
     }
-    assert investigation_versions()["prompt_revision"] == (
-        "prompt-replay-candidate-dd9018031487"
-    )
+    assert investigation_versions()["prompt_revision"] != (PR2_PREVIOUS_PROMPT_REVISION)
     assert investigation_versions()["context_policy_revision"] == (
         "ctx-ctx-policy-v1-a30e65ea52f4"
     )
-    assert PROJECTION_REVISION == "m1-01-tool-view-v9"
+    assert PROJECTION_REVISION == "m1-01-tool-view-v10"
 
 
 def test_metrics_description_has_only_the_frozen_ksm_surface_and_traces_are_unchanged() -> (

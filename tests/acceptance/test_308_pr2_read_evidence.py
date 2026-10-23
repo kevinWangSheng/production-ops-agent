@@ -692,15 +692,17 @@ def test_tool_schema_and_projection_revisions_changed_and_are_recomputable():
     assert TOOL_SCHEMA_REVISION == f"otel-demo-{digest[:12]}"
     assert TOOL_SCHEMA_REVISION != OLD_TOOL_SCHEMA_REVISION
     assert PROJECTION_REVISION != OLD_PROJECTION_REVISION
-    assert PROJECTION_REVISION == "m1-01-tool-view-v9"
+    # F3 PR-2 (#311 + #310) contract change: #311 bumps the projection to v10.
+    assert PROJECTION_REVISION == "m1-01-tool-view-v10"
     assert otel_demo_versions()["tool_schema_revision"] == TOOL_SCHEMA_REVISION
 
 
-def test_prompt_and_context_policy_revisions_are_unchanged():
-    assert investigation_versions() == {
-        "prompt_revision": OLD_PROMPT_REVISION,
-        "context_policy_revision": OLD_CONTEXT_POLICY_REVISION,
-    }
+def test_context_policy_is_unchanged_and_prompt_moves_only_with_310():
+    # F3 PR-2 (#311 + #310) contract change: #308 PR2 left prompt_revision unchanged; #310 (same
+    # PR-2) moves it, so it is compared for inequality.
+    versions = investigation_versions()
+    assert versions["prompt_revision"] != OLD_PROMPT_REVISION
+    assert versions["context_policy_revision"] == OLD_CONTEXT_POLICY_REVISION
     assert context_policy_versions() == {
         "context_policy_revision": OLD_CONTEXT_POLICY_REVISION
     }
