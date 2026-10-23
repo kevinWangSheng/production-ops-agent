@@ -729,11 +729,36 @@ def test_item7_the_fixture_profile_lists_its_own_single_tool():
 # -- item 9: revisions and eval provenance ---------------------------------------
 
 
+def _recomputed_tool_schema_revision() -> str:
+    """The OTel tool schema revision recomputed independently from its five
+    hash inputs, read through public interfaces: the model-visible schemas,
+    the registry revision, the trace projection, the projection revision and
+    (#311 U5) the face's ``data_sources`` template. Comparing the module's
+    value with ``otel_demo._tool_schema_revision()`` would be a tautology
+    (F3 PR-2 review F2); this rebuild turns red when any input is dropped."""
+    from opspilot.tools import otel_demo as otel
+    from opspilot.tools.outcomes import PROJECTION_REVISION as projection
+    from opspilot.tools.registry import ToolRegistry, canonical_hash
+    from tests.m1_tool_support import FakeClock
+
+    context = otel.otel_demo_face(FakeClock()).evidence_context("revision-run")
+    digest = canonical_hash(
+        {
+            "tool_schemas": [dict(item) for item in otel.TOOL_SCHEMAS],
+            "registry": ToolRegistry(otel.otel_demo_registrations().tools).revision,
+            "trace_projection": otel.TRACE_PROJECTION,
+            "projection_revision": projection,
+            "data_sources": context["data_sources"],
+        }
+    )
+    return f"otel-demo-{digest[:12]}"
+
+
 def test_item9_revisions_bump_once():
     assert PROJECTION_REVISION == NEW_PROJECTION_REVISION
     assert otel_demo.TOOL_SCHEMA_REVISION != OLD_OTEL_TOOL_SCHEMA_REVISION
-    # Recomputable from the module's own inputs, not a pasted literal.
-    assert otel_demo._tool_schema_revision() == otel_demo.TOOL_SCHEMA_REVISION
+    # Recomputed independently from its five inputs, not a pasted literal.
+    assert otel_demo.TOOL_SCHEMA_REVISION == _recomputed_tool_schema_revision()
     assert otel_demo.otel_demo_versions() == {
         **investigation_versions(),
         "tool_schema_revision": otel_demo.TOOL_SCHEMA_REVISION,
