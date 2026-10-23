@@ -346,9 +346,10 @@ def test_cap_two_overlaps_and_preserves_cap_one_outcome_and_model_order():
     assert [kind for kind, _payload in parallel_events.rows] == [
         kind for kind, _payload in _serial_events.rows
     ]
-    assert [
+    # #309 合同 r2（#332，用户 2026-10-23）：持久提交按完成顺序，只比较集合。
+    assert sorted(
         item["ordinal"] for item in next(iter(parallel_store.tool_results.values()))
-    ] == [0, 1]
+    ) == [0, 1]
     assert len(parallel_transport.intervals) == 2
     first, second = parallel_transport.intervals
     assert max(first[0], second[0]) < min(first[1], second[1])
@@ -527,7 +528,9 @@ def test_fence_failure_stops_dispatch_and_preserves_only_serial_prefix():
         for request in fence_transport.requests
     )
     assert dispatched == [0, 1]
-    assert parallel_store.commit_attempts == [0]
+    # #309 合同 r2（#332，用户 2026-10-23）：fence 后第一次提交即被拒，可为任一 index。
+    assert len(parallel_store.commit_attempts) == 1
+    assert parallel_store.commit_attempts[0] in (0, 1)
     assert parallel_results == []
 
 
