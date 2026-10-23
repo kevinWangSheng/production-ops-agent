@@ -38,6 +38,7 @@ from opspilot.investigation.context import (
 )
 from opspilot.investigation.inputs import ToolFace
 from opspilot.investigation.loop import DISCIPLINE_VARIANT, investigation_versions
+from opspilot.investigation.reports import DATA_SOURCES_INSTRUCTION
 from opspilot.investigation.runner import ExecutorFactory
 from opspilot.persistence import DurableStore, Lease
 from opspilot.tools.executor import (
@@ -80,7 +81,7 @@ FIXTURE_TARGET = "checkout-prod"
 FIXTURE_EXPR = "rate(http_errors[5m])"
 WINDOW_START = datetime(2026, 9, 14, 0, 0, tzinfo=timezone.utc)
 WINDOW_END = datetime(2026, 9, 14, 1, 0, tzinfo=timezone.utc)
-TOOL_SCHEMA_REVISION = "fixture-3"
+TOOL_SCHEMA_REVISION = "fixture-4"
 _TIME_POLICY = "policy-window-1"
 _MAX_WINDOW_SECONDS = 3600
 _CANNED_BODY = b'{"data": {"result": [{"metric": "http_errors_rate", "value": 0.042}]}}'
@@ -199,6 +200,18 @@ def _evidence_context(run_id: str) -> Mapping[str, Any]:
                 "reference_rule": "response_received_at",
             }
         ],
+        # #311 U5: this profile's static source list (one canned Prometheus
+        # tool; no traces either).
+        "data_sources": {
+            "available": {"prometheus": [FIXTURE_TOOL]},
+            "not_integrated": [
+                "traces",
+                "kubernetes_state",
+                "pod_logs",
+                "change_history",
+            ],
+            "instruction": DATA_SOURCES_INSTRUCTION,
+        },
     }
 
 

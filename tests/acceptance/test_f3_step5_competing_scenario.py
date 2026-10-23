@@ -27,20 +27,24 @@ from opspilot.tools.otel_demo import (
     METRIC_NAMES_TOOL,
     TOOL_SCHEMA_REVISION,
     TOOL_SCHEMAS,
-    TRACE_PROJECTION,
     otel_demo_registrations,
     otel_demo_versions,
     promql_problem,
 )
 from opspilot.tools.outcomes import PROJECTION_REVISION
-from opspilot.tools.registry import ToolRegistry, canonical_hash
 
 ROOT = Path(__file__).resolve().parents[2]
 RUBRIC_SHA256 = "b58974b2c2a5ba309cb0efcf47c5af001d9f9c3a27440fec32d5d31b5cf1d956"
 ANSWER_SHA256 = "a35361da83e8a314a2af54bf50aa74441ca16dcd7a533e96c22c85a71b14b37a"
 # #307 A's two discovery tools after merge main 6ff9d68; recomputed from the
 # registered model-visible content and frozen here for F3 step 5 evidence.
-EXPECTED_TOOL_SCHEMA_REVISION = "otel-demo-2a944edd110a"
+# F3 PR-2 (#311 + #310) contract change: #311 moves the revision again (source_error, metrics limits text,
+# projection v10). The new value is not pasted (the independent test author
+# does not read the implementation); this is now the previous freeze and the
+# live value must differ from it and equal the recomputation below.
+PR2_PREVIOUS_TOOL_SCHEMA_REVISION = "otel-demo-2a944edd110a"
+# #310 (same PR) moves prompt_revision; compared for inequality only.
+PR2_PREVIOUS_PROMPT_REVISION = "prompt-replay-candidate-dd9018031487"
 # PR-3a's pre-#307 A freeze, retained as the incompatibility boundary.
 PR3A_TOOL_SCHEMA_REVISION = "otel-demo-c7737da709ee"
 OLD_TOOL_SCHEMA_REVISION = "otel-demo-4d7168180749"
@@ -84,36 +88,57 @@ def _injected_answer_strings(answer: dict[str, Any]) -> set[str]:
     return {value.casefold() for value in values}
 
 
+def _recomputed_tool_schema_revision() -> str:
+    """The OTel tool schema revision recomputed independently from its five
+    hash inputs, read through public interfaces: the model-visible schemas,
+    the registry revision, the trace projection, the projection revision and
+    (#311 U5) the face's ``data_sources`` template. Comparing the module's
+    value with ``otel_demo._tool_schema_revision()`` would be a tautology
+    (F3 PR-2 review F2); this rebuild turns red when any input is dropped."""
+    from opspilot.tools import otel_demo as otel
+    from opspilot.tools.outcomes import PROJECTION_REVISION as projection
+    from opspilot.tools.registry import ToolRegistry, canonical_hash
+    from tests.m1_tool_support import FakeClock
+
+    context = otel.otel_demo_face(FakeClock()).evidence_context("revision-run")
+    digest = canonical_hash(
+        {
+            "tool_schemas": [dict(item) for item in otel.TOOL_SCHEMAS],
+            "registry": ToolRegistry(otel.otel_demo_registrations().tools).revision,
+            "trace_projection": otel.TRACE_PROJECTION,
+            "projection_revision": projection,
+            "data_sources": context["data_sources"],
+        }
+    )
+    return f"otel-demo-{digest[:12]}"
+
+
 def test_tool_schema_revision_is_recomputed_and_other_versions_are_unchanged() -> None:
     """Assertion 1: only the model-visible OTel schema revision moves."""
 
-    registrations = otel_demo_registrations()
-    recomputed = (
-        "otel-demo-"
-        + canonical_hash(
-            {
-                "tool_schemas": [dict(item) for item in TOOL_SCHEMAS],
-                "registry": ToolRegistry(registrations.tools).revision,
-                "trace_projection": TRACE_PROJECTION,
-                "projection_revision": PROJECTION_REVISION,
-            }
-        )[:12]
-    )
+    # F3 PR-2 (#311 + #310) contract change: #311 U5 puts the data_sources
+    # template in the TOOL_SCHEMA_REVISION hash input, so the independent
+    # rebuild (``_recomputed_tool_schema_revision``) carries it as a fifth
+    # input; the value also differs from the previous ones (2a944edd110a:
+    # #308 PR2; b14dc5d5c2fe: the rebuild without the data_sources template).
 
     assert TOOL_SCHEMA_REVISION != OLD_TOOL_SCHEMA_REVISION
     assert TOOL_SCHEMA_REVISION != PR3A_TOOL_SCHEMA_REVISION
-    assert TOOL_SCHEMA_REVISION == recomputed == EXPECTED_TOOL_SCHEMA_REVISION
+    assert TOOL_SCHEMA_REVISION == _recomputed_tool_schema_revision()
+    assert TOOL_SCHEMA_REVISION not in (
+        "otel-demo-2a944edd110a",
+        "otel-demo-b14dc5d5c2fe",
+    )
+    assert TOOL_SCHEMA_REVISION != PR2_PREVIOUS_TOOL_SCHEMA_REVISION
     assert otel_demo_versions() == {
         **investigation_versions(),
         "tool_schema_revision": TOOL_SCHEMA_REVISION,
     }
-    assert investigation_versions()["prompt_revision"] == (
-        "prompt-replay-candidate-dd9018031487"
-    )
+    assert investigation_versions()["prompt_revision"] != (PR2_PREVIOUS_PROMPT_REVISION)
     assert investigation_versions()["context_policy_revision"] == (
         "ctx-ctx-policy-v1-a30e65ea52f4"
     )
-    assert PROJECTION_REVISION == "m1-01-tool-view-v9"
+    assert PROJECTION_REVISION == "m1-01-tool-view-v10"
 
 
 def test_metrics_description_has_only_the_frozen_ksm_surface_and_traces_are_unchanged() -> (

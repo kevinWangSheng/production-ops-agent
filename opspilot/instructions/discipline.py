@@ -30,6 +30,9 @@ baseline 两变体靠的是漂移断言——逐字节锚定 ``holmes_baseline.p
    两个历史 baseline 变体中。迁往工具描述须等 ``opspilot/tools/registry.py`` 进 main
    （PR #20），本模块只负责把它标出来，不改历史字节。
 
+``replay-candidate`` 另有两段非历史段落 ``INVESTIGATION_METHOD`` 与 ``IMPACT_SCOPE``
+（#310，2026-10-22 用户裁决），没有冻结哈希，只受句数普查与 revision 变化约束。
+
 本模块不发起调用、不读环境变量、不依赖 ``scripts/``。L2 报告契约的文本由调用方传入，
 以免产品包反向依赖 M0 实验脚手架。
 """
@@ -79,6 +82,36 @@ PROJECTION_DISCIPLINE: Final = " Prometheus authorization start/end only constra
 MISSING_SERIES: Final = " Missing metric series, including ERROR, are unknown rather than zero; do not invent zero values or complete label coverage."
 """缺失序列不等于零值（1 句）。三个变体共用。"""
 
+INVESTIGATION_METHOD: Final = (
+    " Investigate toward the deepest cause the evidence supports: when a problem in one service traces to a dependency, investigate that dependency too."
+    " After finding a likely cause, keep checking for other possible causes before you conclude, and report each candidate that remains as its own hypothesis."
+    " Report the specific identities the evidence shows, such as exact service, operation, metric and label names, not generic examples."
+    " If a named service, operation or metric returns nothing, compare the name with the names the tools list or have returned before treating it as absent; never query outside the authorized targets."
+    " When the exact entity named has no data but a similarly named one does, report both facts: that nothing was found under the exact name, and what was found for the related entity, labeled as a different entity."
+    " Treat error text as exact diagnostic evidence; do not add alternatives that the message itself rules out."
+    " Data often contains errors that are irrelevant to the question; leave them out of the conclusion unless the evidence ties them to this problem."
+    " A service that is up or ready can still be failing; check its own error and latency signals before calling it healthy."
+)
+"""调查方法（8 句），#310 U1-a（2026-10-22 用户裁决）新增，改写自 HolmesGPT
+``generic_ask.jinja2`` 的调查方法段：不点工具名（工具知识属 L3），不含 K8s 专用信号，
+不要求无界追查（开场已有停止规则）。仅 ``replay-candidate`` 含此段。"""
+
+IMPACT_SCOPE: Final = (
+    " Name an entity as affected only when you observed evidence for that entity itself, such as its own error spans, error-rate reading or failed operations, and cite that evidence."
+    " Never widen the impact by inference: a failing dependency does not show which of its callers broke, and a sample describes the service or operation it was taken from, not requests you did not see."
+    " A change, restart or error burst on an entity during the incident window is not impact until its own evidence ties it to this cause; coincidence in time is not causation, and also affected is a claim that needs its own evidence."
+    " Clearing an entity needs evidence too: say it was unaffected only after checking it, and say so when you did not check."
+    " Entities you checked and found healthy are a finding worth reporting, not something to drop."
+    " Consequences you did not observe, such as downstream or customer impact, are either verified before you state them or stated as unverified with what would confirm them."
+    " Counts and scope words such as all, several or also affected must match what you actually observed."
+    " When you describe impact, place every entity you name in exactly one group and express the group through the report: affected is a fact citing that entity's own failure evidence tied to this cause; checked and healthy is a fact or counter-evidence citing the evidence you looked at; changed during the window for another reason is a fact that cites the change and names what caused it, plus a rejected hypothesis when it was considered as this cause; not checked is a gap."
+    " Anything that changed during the window and that you cannot place as affected or as changed for another reason is not impact; record it as a gap."
+)
+"""影响面纪律（9 句），#310 U1-a/U2-a/U5-a 新增，改写自上游影响面段：
+四组（受影响、已查且健康、因别的原因变化、未检查）只在提示里映射到现有报告类别与
+gaps，报告 schema 与校验不变；用普通词而不内联 L2 字段名。仅 ``replay-candidate``
+含此段。"""
+
 FIXED_WINDOW: Final = " The authorized query window is fixed by the trusted runner; do not supply start/end tool parameters."
 """查询时间窗由可信 runner 固定（1 句）。三个变体共用。"""
 
@@ -125,6 +158,8 @@ _PROJECTION: Final = Segment(
 )
 _MISSING: Final = Segment("missing_series", LAYER_TEMPLATE, MISSING_SERIES)
 _WINDOW: Final = Segment("fixed_window", LAYER_TEMPLATE, FIXED_WINDOW)
+_METHOD: Final = Segment("investigation_method", LAYER_TEMPLATE, INVESTIGATION_METHOD)
+_IMPACT: Final = Segment("impact_scope", LAYER_TEMPLATE, IMPACT_SCOPE)
 # 同一句话，baseline 里随 scope 出现，候选臂里无条件出现。
 _WINDOW_SCOPED: Final = _WINDOW._replace(scoped=True)
 _SERVICES_PREFIX: Final = Segment(
@@ -170,10 +205,14 @@ _VARIANTS: Final[dict[str, tuple[Segment, ...]]] = {
     # runner 在授权外框内校验），"不得提供 start/end 参数"这句与产品当前行为
     # 矛盾。两个历史 baseline 变体逐字节锚定 M0 脚本字面量，不受影响，继续用
     # _WINDOW_SCOPED（同一句文字）。
+    # #310（2026-10-22 用户裁决 U1-a）：调查方法与影响面两段放在报告契约之前，
+    # 前三段字节不变（R1）；两个 baseline 变体不变（R2）。
     "replay-candidate": (
         _OPENING_REPLAY,
         _EVIDENCE,
         _MISSING,
+        _METHOD,
+        _IMPACT,
         _REPORT_SLOT,
     ),
 }

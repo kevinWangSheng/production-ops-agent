@@ -176,5 +176,6 @@ def test_pg_control_denial_does_not_persist_a_row(store):
     assert transport.called is False
 
 
-def test_pg_pr2_projection_revision_is_v9():
+# F3 PR-2 (#311 + #310) contract change: NEW_PROJECTION_REVISION is now v10 (#311).
+def test_pg_pr2_projection_revision_is_v10():
     assert PROJECTION_REVISION == NEW_PROJECTION_REVISION

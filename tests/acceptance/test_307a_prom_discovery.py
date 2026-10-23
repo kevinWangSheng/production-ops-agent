@@ -24,13 +24,12 @@ from opspilot.tools.otel_demo import (
     METRICS_TOOL,
     TOOL_SCHEMA_REVISION,
     TOOL_SCHEMAS,
-    TRACE_PROJECTION,
     TRACES_TOOL,
     OtelDemoConfig,
     otel_demo_executor_factory,
     otel_demo_registrations,
 )
-from opspilot.tools.registry import ToolRegistry, canonical, canonical_hash
+from opspilot.tools.registry import canonical, canonical_hash
 from scripts.eval_live import template_scope
 from tests.m1_tool_support import FakeClock, RecordingSink
 from tests.test_m1_otel_demo_contract import (
@@ -55,6 +54,8 @@ _BASIC_PASSWORD = "investigator-pw"
 OLD_TOOL_SCHEMA_REVISION = "otel-demo-4d7168180749"  # a4eea42 import value
 OLD_PROJECTION_REVISION = "m1-01-tool-view-v8"  # a4eea42 outcomes.py
 OLD_PROMPT_REVISION = "prompt-replay-candidate-dd9018031487"  # a4eea42
+# F3 PR-2 (#311 + #310) contract change: #310 adds L1a sections, so prompt_revision now differs from
+# the a4eea42 value (inequality only); #311 bumps the projection to v10.
 OLD_TRACES_DESCRIPTION_SHA256 = "559e4ed81e5c0f8624b5fd96f8434e164ce403d22545381253223bec893b55c3"  # sha256(TOOL_SCHEMAS traces description.encode()) at a4eea42
 
 
@@ -429,24 +430,48 @@ def test_discovery_values_are_redacted_in_raw_evidence_and_view(
     assert sink.records == [evidence]
 
 
-# Contract item 6: revision relationships and the unchanged trace face.
-def test_revisions_bump_only_the_tool_schema_and_trace_description_stays_equal():
-    registrations = otel_demo_registrations()
-    registry_revision = ToolRegistry(registrations.tools).revision
+def _recomputed_tool_schema_revision() -> str:
+    """The OTel tool schema revision recomputed independently from its five
+    hash inputs, read through public interfaces: the model-visible schemas,
+    the registry revision, the trace projection, the projection revision and
+    (#311 U5) the face's ``data_sources`` template. Comparing the module's
+    value with ``otel_demo._tool_schema_revision()`` would be a tautology
+    (F3 PR-2 review F2); this rebuild turns red when any input is dropped."""
+    from opspilot.tools import otel_demo as otel
+    from opspilot.tools.outcomes import PROJECTION_REVISION as projection
+    from opspilot.tools.registry import ToolRegistry, canonical_hash
+    from tests.m1_tool_support import FakeClock
+
+    context = otel.otel_demo_face(FakeClock()).evidence_context("revision-run")
     digest = canonical_hash(
         {
-            "tool_schemas": [dict(item) for item in TOOL_SCHEMAS],
-            "registry": registry_revision,
-            "trace_projection": TRACE_PROJECTION,
-            "projection_revision": PROJECTION_REVISION,
+            "tool_schemas": [dict(item) for item in otel.TOOL_SCHEMAS],
+            "registry": ToolRegistry(otel.otel_demo_registrations().tools).revision,
+            "trace_projection": otel.TRACE_PROJECTION,
+            "projection_revision": projection,
+            "data_sources": context["data_sources"],
         }
     )
-    assert TOOL_SCHEMA_REVISION == f"otel-demo-{digest[:12]}"
+    return f"otel-demo-{digest[:12]}"
+
+
+# Contract item 6: revision relationships and the unchanged trace face.
+def test_revisions_bump_only_the_tool_schema_and_trace_description_stays_equal():
+    # F3 PR-2 (#311 + #310) contract change: #311 U5 puts the data_sources
+    # template in the TOOL_SCHEMA_REVISION hash input, so the independent
+    # rebuild (``_recomputed_tool_schema_revision``) carries it as a fifth
+    # input; the value also differs from the previous ones (2a944edd110a:
+    # #308 PR2; b14dc5d5c2fe: the rebuild without the data_sources template).
+    assert TOOL_SCHEMA_REVISION == _recomputed_tool_schema_revision()
+    assert TOOL_SCHEMA_REVISION not in (
+        "otel-demo-2a944edd110a",
+        "otel-demo-b14dc5d5c2fe",
+    )
     assert TOOL_SCHEMA_REVISION != OLD_TOOL_SCHEMA_REVISION
     # #308 PR2 bumps the projection once (contract R10 / acceptance 7).
     assert PROJECTION_REVISION != OLD_PROJECTION_REVISION
-    assert PROJECTION_REVISION == "m1-01-tool-view-v9"
-    assert investigation_versions()["prompt_revision"] == OLD_PROMPT_REVISION
+    assert PROJECTION_REVISION == "m1-01-tool-view-v10"
+    assert investigation_versions()["prompt_revision"] != OLD_PROMPT_REVISION
     traces_description = next(
         schema["function"]["description"]
         for schema in TOOL_SCHEMAS

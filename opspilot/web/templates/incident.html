@@ -320,6 +320,8 @@
         <br><code>{{ tool.tool }}</code> → <span class="badge">{{ tool.status }}</span>
         {% if tool.status == "timeout" and tool.source_contact == "possible" %}<span class="muted">source may have received the request</span>{% endif %}
         {% if tool.status != "ok" and tool.reason %}<code>{{ tool.reason }}</code>{% endif %}
+        {% if tool.http_status %}<span class="muted">HTTP {{ tool.http_status }}</span>{% endif %}
+        {% if tool.source_error %}<br><span class="muted">source said (untrusted):</span> <code class="source-error">{{ tool.source_error }}</code>{% if tool.source_error_truncated %} <span class="muted">(truncated)</span>{% endif %}{% endif %}
         {% if tool.evidence_id %}<a href="/incidents/{{ inc.incident_id }}/evidence/{{ tool.evidence_id }}"><code>{{ tool.evidence_id }}</code></a>{% endif %}
         {% if tool.adopted is sameas false %}<span class="muted">(not adopted)</span>{% endif %}
       {% endfor %}
@@ -331,6 +333,9 @@
 {% if snapshot.pending_tools %}<p class="muted">{{ snapshot.pending_tools }} planned tool operation(s) not yet committed.</p>{% endif %}
 {% else %}
 <p class="muted">No committed steps.</p>
+{% endif %}
+{% if snapshot.not_integrated %}
+<p id="not-integrated">Not integrated for this Run (cannot be queried): {% for name in snapshot.not_integrated %}<code>{{ name }}</code>{% if not loop.last %}, {% endif %}{% endfor %}</p>
 {% endif %}
 
 <h2>Investigation history</h2>

@@ -27,15 +27,16 @@ from opspilot.tools.otel_demo import (
     TOOL_NAMES,
     TOOL_SCHEMA_REVISION,
     TOOL_SCHEMAS,
+    TRACE_PROJECTION,
     TRACES_TOOL,
     OtelDemoConfig,
     _registrations,
-    _tool_schema_revision,
     otel_demo_executor_factory,
+    otel_demo_face,
     otel_demo_registrations,
 )
 from opspilot.tools.outcomes import PROJECTION_REVISION, Window
-from opspilot.tools.registry import ToolRegistry
+from opspilot.tools.registry import ToolRegistry, canonical_hash
 from tests.m1_tool_support import FakeClock, RecordingSink
 from tests.test_m1_otel_demo_contract import (
     JAEGER_URL,
@@ -389,7 +390,20 @@ def test_metrics_description_carries_the_discovery_sentence():
 
 
 def test_revision_is_recomputable_and_changed():
-    assert TOOL_SCHEMA_REVISION == _tool_schema_revision()
+    # Recomputed here from the five model-visible inputs (C3 §5), not by
+    # calling the module's own function, so dropping an input from the hash
+    # turns this red. #311 U5 added ``data_sources``.
+    data_sources = otel_demo_face(FakeClock()).evidence_context("run-1")["data_sources"]
+    digest = canonical_hash(
+        {
+            "tool_schemas": [dict(item) for item in TOOL_SCHEMAS],
+            "registry": ToolRegistry(otel_demo_registrations().tools).revision,
+            "trace_projection": TRACE_PROJECTION,
+            "projection_revision": PROJECTION_REVISION,
+            "data_sources": data_sources,
+        }
+    )
+    assert TOOL_SCHEMA_REVISION == f"otel-demo-{digest[:12]}"
     assert TOOL_SCHEMA_REVISION != "otel-demo-4d7168180749"  # pre-#307 A value
     assert TOOL_SCHEMA_REVISION != fixture_profile.TOOL_SCHEMA_REVISION
     assert PROJECTION_REVISION  # unchanged module constant, not part of this PR
