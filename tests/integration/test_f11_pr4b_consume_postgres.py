@@ -352,7 +352,7 @@ def _release_incident(oid: UUID) -> UUID | None:
 def _incident(incident_id: UUID) -> dict[str, Any]:
     return _one(
         "SELECT incident_id,intake_key,state,lifecycle,mode,control_generation,"
-        "observation_generation,current_run_id,target_id,related_incident_id,"
+        "observation_generation,current_run_id,target_id,related_incident_id,priority,"
         "conclusion IS NULL AS unconcluded,created_at FROM opspilot_incidents "
         "WHERE incident_id=%s",
         (incident_id,),
@@ -509,11 +509,13 @@ def test_an_anomaly_on_a_quiet_target_opens_one_incident_with_one_queued_run(
     assert receipt.ending_id == case.anomaly.ending_id
     assert receipt.anomaly_key == case.anomaly_key
     assert receipt.related_incident_id is None and receipt.input_id is None
+    assert receipt.handoff_reason is None  # r3 G3
     assert receipt.replayed is False
     link = _link(case.oid)
     assert link["ending_id"] == case.anomaly.ending_id
     assert link["anomaly_key"] == case.anomaly_key
     assert link["related_incident_id"] is None and link["input_id"] is None
+    assert link["handoff_reason"] is None  # r3 G3
     assert link["consumed_at"] is not None
     # the release itself stays anomalous: only the association is written
     assert _one(
@@ -809,6 +811,40 @@ def test_p4_01_consumption_waits_for_the_comparison_record(
     _expect_created(case)
 
 
+#: r3 G9 (lead 2026-10-22): without a comparison record the consumer waits
+#: until DB clock >= ending.recorded_at + 510 s, then consumes with
+#: ``{status: unavailable, reason_codes: [COMPARISON_NOT_RECORDED]}``.
+COMPARISON_WAIT = timedelta(seconds=510)
+
+
+def test_g9_without_a_record_the_ending_is_consumed_after_the_wait_bound(
+    owner: DurableStore,
+    web: ReleaseStore,
+    observer: ObservationStore,
+    catalog: Catalog,
+    bench: Callable[..., Workbench],
+) -> None:
+    _settle(observer, bench, web)
+    case = _case(owner, web, observer, catalog)
+    assert _comparison_row(case) is None
+    recorded = _one(
+        "SELECT recorded_at FROM opspilot_observation_endings WHERE ending_id=%s",
+        (case.anomaly.ending_id,),
+    )["recorded_at"]
+    _tamper(
+        "UPDATE opspilot_observation_endings SET recorded_at=%s WHERE ending_id=%s",
+        (recorded - COMPARISON_WAIT - timedelta(seconds=30), case.anomaly.ending_id),
+    )
+
+    bench(case.registry()).release_anomaly_pass()
+
+    _, run = _expect_created(case)
+    assert _comparison_row(case) is None  # the consumer files no PR-4a record
+    fact = _text(_fact(_run_input(run["run_id"])))
+    assert "COMPARISON_NOT_RECORDED" in fact
+    assert "unavailable" in fact
+
+
 def test_item_11_an_unavailable_comparison_does_not_block_and_the_snapshot_says_so(
     owner: DurableStore,
     web: ReleaseStore,
@@ -870,6 +906,7 @@ def test_an_unclosed_incident_on_the_target_takes_one_event_and_nothing_else(
         "control_generation",
         "current_run_id",
         "state",
+        "priority",  # r3: B1's LEAST escalation is for alerts only
     ):
         assert after[column] == before[column], column
     (event,) = _events(existing)
@@ -1079,28 +1116,19 @@ def test_healthy_cancelled_and_pending_releases_produce_no_work(
 # ===========================================================================
 
 
-def _reason_is_observable(workbench: Workbench, case: Case, incident_id: UUID) -> bool:
-    """``RELEASE_TARGET_UNRESOLVED`` must be recorded somewhere observable;
-    the contract does not say where (gap G3), so every durable record of the
-    incident and the page snapshot are searched."""
-    code = "RELEASE_TARGET_UNRESOLVED"
-    places: list[Any] = [
-        _links(case.oid),
-        _rows("SELECT * FROM opspilot_incidents WHERE incident_id=%s", (incident_id,)),
-        _rows("SELECT * FROM opspilot_inputs WHERE incident_id=%s", (incident_id,)),
-        _rows(
-            "SELECT * FROM opspilot_subject_events WHERE subject_id=%s", (incident_id,)
-        ),
-        _rows(
-            "SELECT * FROM opspilot_web_ledger WHERE key LIKE %s",
-            (f"%{case.anomaly_key}%",),
-        ),
-    ]
-    try:
-        places.append(workbench.snapshot(incident_id))
-    except Exception as exc:  # the page view is one place among several
-        places.append(repr(exc))
-    return any(code in _text(place) for place in places)
+def _damage_target_row(case: Case, how: str) -> None:
+    """r3 G2: R7 resolves the five ``opspilot_targets`` fields against the
+    release's ``target_snapshot``; the web identities file plays no part.
+    ``missing``: the row has lost its identity; ``mismatch``: one field
+    differs. Test-only owner change, triggers off."""
+    change = (
+        "integration_id=NULL,cluster_uid=NULL,namespace=NULL,workload=NULL"
+        if how == "missing"
+        else "namespace='elsewhere'"
+    )
+    _tamper(
+        f"UPDATE opspilot_targets SET {change} WHERE target_id=%s", (case.target_id,)
+    )
 
 
 @pytest.mark.parametrize("registry", ["missing", "mismatch"])
@@ -1113,8 +1141,9 @@ def test_r7_an_unresolvable_target_is_handed_off_without_a_run(
     registry: str,
 ) -> None:
     case = _ready(owner, web, observer, catalog, bench)
-    entries = {} if registry == "missing" else case.registry(namespace="elsewhere")
-    workbench = bench(entries)
+    _damage_target_row(case, registry)
+    # the web identities file still lists the target unchanged (not R7's registry)
+    workbench = bench(case.registry())
 
     receipts = _receipts(workbench.release_anomaly_pass(), case)
 
@@ -1127,7 +1156,9 @@ def test_r7_an_unresolvable_target_is_handed_off_without_a_run(
     assert _release_incident(case.oid) == incident["incident_id"]
     (receipt,) = receipts
     assert (receipt.disposition, receipt.run_id) == ("handoff_created", None)
-    assert _reason_is_observable(workbench, case, incident["incident_id"])
+    # r3 G3: the reason is on the link row and on the receipt
+    assert link["handoff_reason"] == "RELEASE_TARGET_UNRESOLVED"
+    assert receipt.handoff_reason == "RELEASE_TARGET_UNRESOLVED"
     # not pending any more: a later pass adds nothing
     later = _receipts(workbench.release_anomaly_pass(), case)
     assert all(r.replayed for r in later), later
@@ -1296,10 +1327,9 @@ def test_a_suspended_target_still_gets_its_incident_and_run(
         bench(case.registry()).release_anomaly_pass()
 
         incident, run = _expect_created(case)
-        # R10 says "queued Run"; the existing accept path parks a Run created
-        # under suspension as ``paused`` (alert intake does the same). Either
-        # way nothing may run before the suspension is lifted (gap G4).
-        assert run["state"] in {"queued", "paused"}, run
+        # r3 G4: R10 and item 8 literally -- a queued Run, not the paused
+        # path of ``_accept_in``; the worker's scope gate holds the queries.
+        assert run["state"] == "queued", run
         assert incident["lifecycle"] == "open"
     finally:
         owner.set_target_suspension(

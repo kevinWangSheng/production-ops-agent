@@ -170,12 +170,19 @@ def test_the_link_receipt_carries_the_contract_fields_and_dispositions() -> None
         "run_id": uuid4(),
         "input_id": None,
         "replayed": False,
+        "handoff_reason": None,  # r3 G3
     }
     for disposition in DISPOSITIONS:
-        receipt = receipt_type(**{**fields, "disposition": disposition})
+        reason = (
+            "RELEASE_TARGET_UNRESOLVED" if disposition == "handoff_created" else None
+        )
+        receipt = receipt_type(
+            **{**fields, "disposition": disposition, "handoff_reason": reason}
+        )
+        assert receipt.handoff_reason == reason
         assert receipt.disposition == disposition
         for name, value in fields.items():
-            if name != "disposition":
+            if name not in {"disposition", "handoff_reason"}:
                 assert getattr(receipt, name) == value, name
     with pytest.raises((ValueError, TypeError)):
         receipt_type(**{**fields, "disposition": "merged"})
