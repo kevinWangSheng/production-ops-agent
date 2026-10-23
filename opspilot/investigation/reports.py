@@ -24,6 +24,14 @@ from opspilot.domain.base import DTO, Text, sanitized_errors
 
 REPORT_SCHEMA_VERSION = "m0-report-v2"
 EVIDENCE_CONTEXT_TYPE = "opspilot-evidence-context-v4"
+#: #311 U5: the one guidance text ``data_sources`` may carry; the projection
+#: drops any other, so a context cannot hand the model its own instructions.
+DATA_SOURCES_INSTRUCTION = (
+    "Only the sources under available can be queried in this Run. When the "
+    "data a question needs belongs to an integration under not_integrated, "
+    "state in gaps which integration is missing; its absence is not evidence "
+    "and says nothing about health."
+)
 CLAIM_KINDS = (
     "fact",
     "hypothesis",
@@ -657,6 +665,34 @@ def _project_target_catalog_entry(entry: object) -> dict[str, Any]:
     return _project_fields(entry, _TARGET_CATALOG_ENTRY_FIELDS)
 
 
+def _project_data_sources(value: object) -> dict[str, Any]:
+    """#311 U5/R7: the profile's static source list, shape-checked.
+
+    ``available`` maps a source name to its tool names, ``not_integrated``
+    names integrations this profile does not have, ``instruction`` is the
+    fixed ``DATA_SOURCES_INSTRUCTION``. A field of any other shape -- or any
+    other text -- is dropped; nothing else is kept.
+    """
+    if not isinstance(value, Mapping):
+        return {}
+    projected: dict[str, Any] = {}
+    available = value.get("available")
+    if isinstance(available, Mapping):
+        projected["available"] = {
+            source: list(tools)
+            for source, tools in available.items()
+            if isinstance(source, str)
+            and isinstance(tools, list)
+            and all(isinstance(tool, str) for tool in tools)
+        }
+    missing = value.get("not_integrated")
+    if isinstance(missing, list) and all(isinstance(name, str) for name in missing):
+        projected["not_integrated"] = list(missing)
+    if value.get("instruction") == DATA_SOURCES_INSTRUCTION:
+        projected["instruction"] = DATA_SOURCES_INSTRUCTION
+    return projected
+
+
 def _project_time_policy(policy: object) -> dict[str, Any]:
     """Project one time policy, or drop it whole when any field is malformed.
 
@@ -754,6 +790,9 @@ def evidence_context_projection(
             for entry in (_project_time_policy(policy) for policy in policies)
             if entry
         ]
+    sources = _project_data_sources(context.get("data_sources"))
+    if sources:
+        projected["data_sources"] = sources
     return projected
 
 

@@ -62,7 +62,10 @@ __all__ = [
 # v9: an over-limit refusal carries the kept result's ``evidence_id`` and a
 # row-count summary (or ``stored: false``), and ``read_evidence`` slices of
 # it carry ``parent_tool``/``slice`` and the parent's provenance (#308 PR2).
-PROJECTION_REVISION = "m1-01-tool-view-v9"
+# v10: a refusal of a sent read the source answered with a 4xx carries a
+# ``source_error`` object (HTTP status; for a Prometheus 400/422 envelope its
+# redacted, bounded errorType/error text), marked untrusted (#311).
+PROJECTION_REVISION = "m1-01-tool-view-v10"
 
 ToolStatus = Literal["ok", "no_data", "error", "timeout", "denied"]
 SourceContact = Literal["none", "possible", "confirmed"]

@@ -249,7 +249,7 @@ def test_module_constants_still_match_the_historical_script_literals() -> None:
 
 
 def test_sentence_census_matches_the_recorded_layer_analysis() -> None:
-    """句数普查：两个 baseline 变体各 24 句、并集 30 句、候选臂 13 句。
+    """句数普查：两个 baseline 变体各 24 句、并集 30 句、候选臂 30 句。
 
     这些数字是分层分析的结论（任务记录 F1/P2-2/P2-4）。收敛只准搬运不准增删，
     所以普查在这里固定下来；有人顺手补一句纪律，这条会先转红。
@@ -264,6 +264,11 @@ def test_sentence_census_matches_the_recorded_layer_analysis() -> None:
     段被整句删掉——第二批 B2 把时间窗改成工具参数后，"不得提供 start/end
     参数"这句与产品当前行为矛盾；两个 baseline 变体仍逐字节锚定 M0 脚本，
     继续保留同一句文字（``_WINDOW_SCOPED``），不受影响。
+
+    13 → 30 是 #310（2026-10-22 用户裁决 U1-a，
+    docs/tasks/2026-10-22-310-investigation-method-contract.md）的有意变化：
+    候选臂在报告契约前新增 :data:`d.INVESTIGATION_METHOD`（8 句）与
+    :data:`d.IMPACT_SCOPE`（9 句）；两个 baseline 变体不变。
     """
 
     def sentences(text: str) -> int:
@@ -278,7 +283,9 @@ def test_sentence_census_matches_the_recorded_layer_analysis() -> None:
 
     assert variant_sentences("baseline-multi-step") == 24
     assert variant_sentences("baseline-final-report") == 24
-    assert variant_sentences("replay-candidate") == 13
+    assert variant_sentences("replay-candidate") == 30
+    assert sentences(d.INVESTIGATION_METHOD) == 8
+    assert sentences(d.IMPACT_SCOPE) == 9
     assert sentences(d.REPLAY_OPENING) == 5
     shared = variant_sentences("baseline-multi-step") - sentences(d.READ_ONLY_OPENING)
     assert shared == 18

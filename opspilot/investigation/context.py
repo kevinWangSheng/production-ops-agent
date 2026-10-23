@@ -1507,6 +1507,10 @@ def continuation_context(
     if isinstance(context, Mapping):
         if "time_policies" in context:
             carried["time_policies"] = context["time_policies"]
+        if "data_sources" in context:
+            # #311 U5: the successor runs on the same profile; the projection
+            # below re-checks the shape.
+            carried["data_sources"] = context["data_sources"]
         if isinstance(context.get("target_catalog"), Mapping):
             # Carry the catalog with the mapping the previous Run resolved
             # it under: an entry that bound to the predecessor's sole target
