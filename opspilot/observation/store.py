@@ -2381,6 +2381,19 @@ class ObservationStore(_ReleaseComparisonOps, _TargetProfileOps):
         row = conn.execute(query, params).fetchone()
         return row is not None and bool(row["held"])
 
+    @staticmethod
+    def _release_link_history(conn: Connection, observation_id: UUID) -> dict[str, Any]:
+        """F11 PR-4b R9: the anomaly's consumption link (or ``None``) as
+        ``link`` for a login that may read it. The Observer may not (no new
+        Observer grant); its history then has no ``link`` and replay checks
+        everything else."""
+        readable = conn.execute(
+            "SELECT has_table_privilege('opspilot_release_incident_links','SELECT') AS ok"
+        ).fetchone()
+        if readable is None or not readable["ok"]:
+            return {}
+        return {"link": _ReleaseCommandOps._link_in(conn, observation_id)}
+
     def _session_history_in(self, conn: Connection, session_id: UUID) -> dict[str, Any]:
         row = conn.execute(
             f"SELECT {_SESSION_VIEW_COLUMNS} FROM opspilot_observation_sessions WHERE session_id=%s",
@@ -2399,11 +2412,8 @@ class ObservationStore(_ReleaseComparisonOps, _TargetProfileOps):
                 "comparisons": self._release_comparisons_in(
                     conn, subject["release_observation_id"]
                 ),
-                # F11 PR-4b R9: the anomaly's consumption link, or None.
-                "link": _ReleaseCommandOps._link_in(
-                    conn, subject["release_observation_id"]
-                ),
                 "selected_session_id": session_id,
+                **self._release_link_history(conn, subject["release_observation_id"]),
             }
         incident = self._require_row(
             conn.execute(

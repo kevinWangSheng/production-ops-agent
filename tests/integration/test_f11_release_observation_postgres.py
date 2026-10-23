@@ -1976,7 +1976,9 @@ def test_release_grants_match_the_contract_table() -> None:
     update = sorted(
         "status,paused,control_generation,observation_generation,ended_reason,"
         "ended_at,updated_at,calibrated_policy_revision,calibrated_policy_content,"
-        "calibrated_policy_sha256".split(",")
+        "calibrated_policy_sha256,incident_id".split(
+            ","
+        )  # incident_id: 0021, F11 PR-4b
     )
     assert f"UPDATE({','.join(update)})" in web[RELEASES]
     assert not {"DELETE", "TRUNCATE", "UPDATE"} & web[RELEASES]

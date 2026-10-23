@@ -1043,8 +1043,8 @@ def test_the_web_role_holds_only_select_and_column_insert_on_the_new_tables() ->
             or (
                 table == OBSERVATIONS
                 and p
-                == "UPDATE(calibrated_policy_content,calibrated_policy_revision,calibrated_policy_sha256,control_generation,ended_at,ended_reason,observation_generation,paused,status,updated_at)"
-            )
+                == "UPDATE(calibrated_policy_content,calibrated_policy_revision,calibrated_policy_sha256,control_generation,ended_at,ended_reason,incident_id,observation_generation,paused,status,updated_at)"
+            )  # 0021 adds incident_id (F11 PR-4b)
             for p in declared
         ), declared
         assert RUNTIME_GRANTS[WORKER_ROLE][table] == frozenset()

@@ -143,7 +143,8 @@ r1 只定方向。其余实现者需要猜的语义点，按 AGENTS.md「合同�
 - 裁决（lead 2026-10-22，顾问 Codex gpt-6-luna，写入合同 §9 r3）：① 等对比上限 510 s（3×150 s 租约 + 60 s），过后 comparison 记 `unavailable`／`COMPARISON_NOT_RECORDED`，挂起不缩短——理由：P4-01「消费照常」与验收 6.11 不卡住，挂起时 Observer 不取对比，无上限会让挂起挡住建事故。② 挂起期间按 R10／验收 8 建 queued Run，不沿用 `_accept_in` 的 paused——理由：改 paused 即改验收步骤（用户门）；与现有不变式冲突时停下回报（见下条）。③ 追加不改已有事故优先级——理由：B1 的 LEAST 只覆盖告警，R11。可逆默认 ①②⑥ 均获接受；⑥ 中 `discipline.py` 与 `store.py` 两处在 4b 文件清单之外，是 prompt_revision 计入新边界与重放读到 link 所必需，同 4a 加 comparisons 的先例。
 - 裁决 ② 的冲突（2026-10-22 已回报 lead，待复裁）：挂起写入把目标上全部在途事故置 paused（`controls.py:180`）；queued 的新事故会被 `claimable_incidents` 每次轮询列出，`claim` 以 CONTROL_DENIED 拒绝（不改行、无查询），但 `runner.py:186-200` 对看似可运行的 Run 每次被拒都写 `run_claim_refused` 事件，挂起期间持续刷屏。当前代码仍为 paused。
 - 既有测试：迁移头常量与 0014 降级授权枚举照 4a 同步；两个实现测试中充当「未知版本」的 v6 改为 v7。以下其他功能的验收测试钉了旧 `prompt_revision`／版本串，因 P4-05 接受的 `prompt_revision` 变化而失败，未改、待 lead 裁决：`test_304_forced_final_rebuild`、`test_307a_prom_discovery`、`test_308_pr1_overlimit_evidence`、`test_308_pr2_read_evidence`、`test_309_loop_dedupe_parallel`（cap-1 观测摘要）、`test_f3_step5_competing_scenario`、`test_m1_04_alert_context::test_k4`（v6 作未知版本）。
-- 验证（PG 17 临时实例 56141，未调用模型、未碰 kind）：见下方回报与提交说明。
+- 合并独立测试（`d38ece8`）后的实现调整：事实的实例带 `pod_uid`；release 事故的 link 丢失时续开判 `INCOMPATIBLE_STATE`（按 intake key 前缀识别）；去掉 link 的 `anomaly_key` 形状 CHECK（插入守卫已绑定 ending，CHECK 会让重放的篡改检测无从验证）；`session_history` 只对能读 link 表的登录带 `link`（Observer 无新授权，其历史不含 link）；receipt 的 `comparison_id`／`consumed_at` 为可选加法字段。
+- 验证（PG 17 临时实例 56141，未调用模型、未碰 kind）：独立测试 50 条（41 PG＋9 单元）49 过，1 红为挂起 queued（待复裁）；实现测试 16 条全过；F11 全部单测与 PG、F2 PR-C、迁移／角色／授权 PG 共 1445 条，除挂起 queued、`test_m1_04_alert_context::test_k4`（v6 作未知版本，待裁决）外全过；全量单测（非 integration）另有 6 条钉旧 `prompt_revision` 的验收测试红（同上待裁决）。ruff、mypy 通过。
 
 ## 下一步与交接
 
