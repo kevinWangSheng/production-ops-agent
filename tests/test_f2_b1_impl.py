@@ -418,3 +418,21 @@ def test_a_stop_after_launch_but_before_the_slot_runs_claims_nothing():
     loop.stop.set()
     loop._slot(incident, runner, None)
     assert gate.started == [] and len(loop._idle) == 2
+
+
+def test_shutdown_joins_every_thread_within_one_shared_grace():
+    release = threading.Event()
+    stuck = [
+        threading.Thread(target=release.wait, args=(10.0,), daemon=True)
+        for _ in range(2)
+    ]
+    for thread in stuck:
+        thread.start()
+    try:
+        began = time.monotonic()
+        assert worker_main.join_within(stuck, 0.5) is False
+        # One grace in all, not one per thread (R-B1-5).
+        assert time.monotonic() - began < 0.5 + 0.2
+    finally:
+        release.set()
+    assert worker_main.join_within(stuck, 2.0) is True

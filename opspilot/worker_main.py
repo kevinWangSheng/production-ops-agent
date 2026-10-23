@@ -84,7 +84,7 @@ from opspilot.web.service import LEASE_SECONDS
 from opspilot.web.store import DurableClock
 from opspilot.worker import Worker
 
-__all__ = ["WorkerLoop", "main", "worker_capacity"]
+__all__ = ["WorkerLoop", "join_within", "main", "worker_capacity"]
 
 _log = logging.getLogger("opspilot.worker")
 
@@ -541,9 +541,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         if not thread.is_alive() or not postmortem_thread.is_alive():
             _log.error("worker loop died; exiting")
             return 1
-    thread.join(grace)
-    postmortem_thread.join(grace)
-    if thread.is_alive() or postmortem_thread.is_alive():
+    if not join_within((thread, postmortem_thread), grace):
         _log.warning(
             "attempt still in flight after grace=%ss: exiting; its lease lapses "
             "within %ss and the next claim resumes from the committed rows",
@@ -558,6 +556,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     tracing.shutdown()
     _log.info("worker stopped")
     return 0
+
+
+def join_within(threads: Sequence[threading.Thread], grace: float) -> bool:
+    """Join ``threads`` against one deadline ``grace`` seconds from now, so
+    shutdown waits at most one grace in all (R-B1-5); ``True`` when every
+    thread has ended."""
+    deadline = time.monotonic() + grace
+    for thread in threads:
+        thread.join(max(0.0, deadline - time.monotonic()))
+    return not any(thread.is_alive() for thread in threads)
 
 
 def _configure_tracing() -> None:
