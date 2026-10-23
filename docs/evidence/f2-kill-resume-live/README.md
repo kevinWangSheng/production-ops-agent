@@ -2,7 +2,7 @@
 
 - 日期：2026-10-23 03:20–04:17Z；分支 `test/F2-kill-resume`。harness 在运行之间有两处读数修正（见「harness 修正与重判」），对应 commit 记在各 `summary.json` 的 `versions.commit` 和 `rejudged[]` 里
 - 合同：[F2 合同 r1](../../tasks/2026-10-17-f2-contract.md) U7（三断点与判据）、R7（宿主侧卡顿代理）、U8-A（#242 压缩取证）
-- 冻结摘要：每个断点一份，见 [model_in_flight](model_in_flight/summary.json)、[response_committed](response_committed/summary.json)、[tool_in_flight](tool_in_flight/summary.json)；另有补充轮 [tool_in_flight-serial](tool_in_flight-serial/summary.json)。原始 ledger（kill 前后与结束时的行快照、代理日志、两个 worker 的日志、事件）在被忽略的 `tmp/lab-ledgers/f2-kill-resume-live/<断点>-<时间>/` 下，不入库，sha256 记在各 summary 的 `raw_ledger`（ADR-0006）
+- 冻结摘要：每个断点一份，见 [model_in_flight](model_in_flight/summary.json)、[response_committed](response_committed/summary.json)、[tool_in_flight](tool_in_flight/summary.json)；另有补充轮 [tool_in_flight-serial](tool_in_flight-serial/summary.json)（补充证据，不替代默认档结果）。原始 ledger（kill 前后与结束时的行快照、代理日志、两个 worker 的日志、事件）在被忽略的 `tmp/lab-ledgers/f2-kill-resume-live/<断点>-<时间>/` 下，不入库，sha256 记在各 summary 的 `raw_ledger`（ADR-0006）
 - 类别：有界真实运行。真实 DeepSeek `deepseek-flash`，真实 kind OTel Demo 实验环境（otel-demo 档，注入 paymentFailure），真实 `kill -9`。不是生产证明
 - **结论：断点 ① 和 ② 的判据全部通过；断点 ③ 在产品默认 `OPSPILOT_TOOL_PARALLELISM=2` 下，「重派工具查询 ≤ 1」判据失败**：重派了 2 条，除了在途那条，还有一条已经结算、但结果没落库的同轮兄弟查询。`OPSPILOT_TOOL_PARALLELISM=1` 的补充轮里这条判据通过，但它不替代默认档的结果。#242 的压缩取证没做，阻塞点见最后一节
 
@@ -33,7 +33,7 @@
 
 判据编号对应 U7。每格的数字取自对应 summary 的 `verdicts.criteria`。
 
-| 判据 | ① 模型请求在途 | ② 响应已提交、工具未派发 | ③ 工具在途（默认并行 2） | ③ 补充（并行 1） |
+| 判据 | ① 模型请求在途 | ② 响应已提交、工具未派发 | ③ 工具在途（默认并行 2） | ③ 补充（并行 1；补充证据，不替代默认档结果） |
 |---|---|---|---|---|
 | Run / 事故 | `ea71b863…` / `9b833598…` | `68ede1ac…` / `eb052afa…` | `ce40bf5d…` / `06bfdebd…` | `29fe15e2…` / `e7802238…` |
 | kill 时点 | 第 2 轮模型请求在途，已有 1 个模型 step、2 条证据 | 第 2 轮 step 已提交，计划 `metrics_range_query` 和 `traces_search`，都未派发 | 第 3 轮 `t0` 被代理卡住 1.1 s 后 kill | 第 2 轮 `t2` 被卡住后 kill |
@@ -44,7 +44,7 @@
 | 未结算费用保持占用 | 被杀的预约到结束时仍是 `reserved`，`budget_reserved=1`，按 360 s 上界计入 | kill 时没有未结算项 | 被杀的 dispatch 到结束时仍是 `seconds=NULL`，按 30 s 占用，`tool_operations_used=34` 等于 charge 行数 | 同左，30 s，22 = 22 |
 | 新 epoch 在租约到期 + 一个轮询周期内开始 | 到期后 0.87 s（上界 2.2 s：轮询 2 s + 采样 0.2 s） | 1.82 s | 0.96 s | 0.14 s |
 | Run 结局 | `completed`，已发布 | `completed`，已发布 | `completed`，已发布 | `completed`，已发布 |
-| **整体** | **通过** | **通过** | **失败** | 通过（补充） |
+| **整体** | **通过** | **通过** | **失败** | 通过（补充证据，不替代默认档结果） |
 
 「可被结论引用」只按已采纳的证据判：工具错误记录不论有没有被 kill 都不会进入结论的 `evidence_ids`。在本库四个 Run 里，已提交证据是否被引用与 `adopted` 完全一致（已采纳 26+15+31+18 条全部被引用，未采纳 2+2+0+3 条都没被引用）。这是本次执行者对判据的读法，如果要按「全部已提交证据」判，补充轮会失败。
 
@@ -54,7 +54,8 @@ PG 日志里只有两条 `57P01 FATAL`，都是 harness 在 ② 中用 `pg_termi
 
 - 现象：同一轮两条并行查询，`t0` 卡住，`t1` 先完成并结算。按 #309 的合同 R-5，工具结果在主线程按序号提交，所以 `t1` 的结果在内存里等 `t0`。进程被杀时 `t1` 的证据行 `committed=false`、step 的 `tool_results=0`，新 epoch 只能把这一轮当作整轮未完成，两条都重新派发
 - 上界：一次 kill 最多重派 `OPSPILOT_TOOL_PARALLELISM` 条，默认 2。并行 1 的补充轮符合 U7 的 ≤ 1
-- 没有改产品代码，也没有放宽判据。待决选项已报给 lead：A 把 U7 的上界改成 `tool_parallelism`（合同变更，用户门）；B 产品修复，让已结算的兄弟结果先落库（改 #309 R-5，用户门）；C 记为 FAIL，另立 issue
+- 观察值：重派 2 条（`70a55e84…-t0` 在途，`70a55e84…-t1` 已结算未落库），判据 ≤ 1，判为 FAIL。没有改产品代码，也没有放宽判据
+- 用户裁决（2026-10-22，经 lead 转达）：选 C + B 预审。③ 记为 FAIL，U7 判据不变；另立 issue，对「已结算的兄弟结果先落库」（改 #309 R-5）做合同预审。并行 1 的补充轮是补充证据，不替代默认档结果
 
 ## harness 修正与重判
 
@@ -82,7 +83,7 @@ DeepSeek 余额（CNY），每轮前后各读一次：① 98.77 → 98.58，② 
 
 - web 建 Run 走 `opspilot/investigation/inputs.py:164` 的默认值 `limits=M1_FROZEN_LIMITS`，web 和 worker 都没有覆盖 `context_tokens` 的环境变量
 - 压缩阈值是 (1_000_000 − 65_536) × 0.95 ≈ 888k 估算 token（`opspilot/investigation/loop.py:1009`，`context.py:181`）。本次四个 Run 只有 10–17 个模型 step，四个 Run 都没有发生压缩（没有 `kind=compaction` 的 step）
-- 唯一不改代码的旁路是：在 worker claim 之前，harness 用 owner 连接改写 `opspilot_runs.input` 里的 `limits`。这样就绕过了 web 入口，性质接近开发开关，按 lead 的指示没有做，已上报。#242 的压缩项仍然开放
+- #242 压缩取证阻塞：产品路径没有旋钮（`opspilot/investigation/inputs.py:164`、`opspilot/investigation/loop.py:1009`），#242 压缩项保持开放。直接改写库里的输入快照会绕过产品入口，没做；输入快照层的开发开关属于用户门，由 lead 报用户（合同 U8，第 51 行）
 
 ## 实验环境释放与清理
 
