@@ -74,6 +74,21 @@ r1 只定方向。其余实现者需要猜的语义点，按 AGENTS.md「合同�
 - 锁：发布采样 release→session；授权/控制 scope→release→session；恢复采样保持 incident-first。
 - 拆为 PR-2a（存储、判定、守卫、重放）与 PR-2b（Prometheus 多序列读取、Observer 接线）。
 
+## PR-3 合同（r1）
+
+预审与完整决定表：[F11 PR-3 合同](2026-10-21-f11-pr3-contract.md)（Codex gpt-6-astra 起、gpt-6.1-sol 续，只读，基于 `91a011c`）。全部按推荐采纳（用户 2026-10-17 常设指示「决策先按推荐走」）；M 值用户 2026-10-21 选 1500。
+
+- U4 专用 `release-deployer` actor，沿用 `OPSPILOT_EVENT_TOKENS`；其他 actor → 403 `RELEASE_ACTOR_REQUIRED`。
+- U6 在 `OPSPILOT_TARGET_IDENTITIES` 中恰好命中一个；缺失、多义、不符 → 422，不建主体、不发查询。
+- U5 harness 发布完成后取基线，以 actor 证据区分实验写入；再核对产品路径未写 CI／门禁／rollout／流量策略。
+- P3-01 载荷必须有非空 `source_release_id` 与带时区 `released_at`，不推导、不以接收时间替代。
+- P3-02 webhook 只登记不授权；授权沿用 PR-2 原语，清单为空时照实记录 `RELEASE_POLICY_UNCALIBRATED`。
+- P3-03 harness 经真实 HTTP `POST /intake/version-changes` 发送（路径见 r3），记录请求／响应哈希与状态。
+- D1–D6 可逆默认：业务字段 `extra=forbid`、未知字段只进脱敏限长审计；raw／semantic 双哈希；HTTP 错误映射见合同；独立 128 KiB body 上限；解析器独立模块；`publish()` 拿到 after 身份后才发送。
+- 一个请求一个发布事件；harness 仅对 503／网络失败重试。
+- r2（lead，2026-10-21，测试作者歧义 A3）：`resource_uid` 必填（缺失 400）；uid 未登记 → `TARGET_UNRESOLVED`；uid 命中 A 而 (cluster_uid, namespace, workload) 等于另一条 B → `TARGET_AMBIGUOUS`；uid 命中但五字段有差异 → `TARGET_MISMATCH`。M 取常量 1500，须与校准清单一致（authorize 要求相等，`release_commands.py:645`）；嵌套未知键 400，顶层未知键只入脱敏审计；空白 `source_release_id` 与 UTC 归一化溢出的 `released_at` → 400（独立审查 P2）；harness 不跟随重定向。
+- r3（lead，2026-10-21，`make check` 发现）：F7 验收 `MUTATION_WORDS` 禁止路由路径含 release/deploy/rollout/target，路由改名为 `POST /intake/version-changes`，F7 路由清单由独立测试作者按「新路由须分类」流程登记；不改 F7 断言。
+
 ## PR-4 合同（r1）
 
 预审与完整决定表：[F11 PR-4 合同](2026-10-21-f11-pr4-contract.md)（全新上下文 Claude 子 Agent，只读，基于 `91a011c`；Codex at capacity 后替代）。用户 2026-10-21 裁决 P4-01、P4-02/P4-03、P4-05 选推荐；P4-04 由 F2 PR-C 合同 C3 定（共享判据）；P4-06、P4-07 与 R1–R12 按推荐（用户 2026-10-17 常设指示）。
@@ -104,6 +119,11 @@ r1 只定方向。其余实现者需要猜的语义点，按 AGENTS.md「合同�
 - PR #228 第四轮（最后一轮，之后不再触发机器人）：0016 要求 deadline ending 无 sample，与重放一致；重放把样本回执与审计 result 快照中重复保存的引用与结果字段全部与权威记录比对。lead 决定：写入检查接受手写的、缺 job／result 字段或结束时间不精确的合法形状事务，与完整归档重放的要求存在差异，保留——守卫按合同只防代码／SQL 错误，完整性由重放负责，产品代码总写齐字段。实现者 `make check` 6417 passed。
 - 收尾四个数（#225）：新冒出的合同问题 3（issue 与合同 §9 口径；r6 旧归档证据边界；写入检查与重放的最小证据差异，lead 保留）；因合同变更重写的测试 0；环境重跑 2（uv 缓存权限；审查提示措辞触发内容过滤）；用户裁决轮数 1（r6 选 A）；机器人 4 轮，采纳 8。
 - 2026-10-14 重放部分证据缺陷（`feature/F11-replay-partial-evidence`，来自 #228 最终独立复核第 1 项；其余 5 类转 [#230](https://github.com/kevinWangSheng/production-ops-agent/issues/230)）：采样中途取消被重放误报 `QUERY_MISMATCH`。存储与重放改为共用同一判定函数，重放按存储顺序重算处置并比较（合同 r7）。Codex gpt-6.1-sol 实现，修复前 5／35 查询后取消为红；独立审查（Codex gpt-6-astra）无 P1/P2，存储端 8192 组条件组合与基线一致，回归 749 passed；实现者 `make check` 6786 passed。
+- 2026-10-22 PR-3 kind 真实运行（`68221a2`，轮次 `f11-pr3-live-1`，新建临时 PG 55651，工作台为本分支）：harness 发布→watch→真实 HTTP webhook 201 created，同载荷重放 200 replayed（主体仍为 1 条），授权返回 `RELEASE_POLICY_UNCALIBRATED`（清单为空；本分支无 HTTP 授权路由，以 web 角色调用存储原语）；alertmanager actor 403 `RELEASE_ACTOR_REQUIRED`，未登记目标 422，均不写主体。U5：harness 发布后取基线，到授权结束，308 个策略面对象零差异；harness 写入由 managedFields `kubectl-patch`@R 区分。kind 未开审计日志；集群外 CI 只有静态证据。证据见 [run.md](../evidence/f11-pr3-release-intake-live/run.md)、[summary.json](../evidence/f11-pr3-release-intake-live/summary.json)。无模型调用，费用 0。
+- r4（2026-10-22，lead 采纳 PR #298 机器人 P2，依据 PR-3 合同验收第 10 项「无半个主体」）：发布投递不再由 web 层先在独立事务登记目标；`ReleaseStore.record_release` 增加 `resource_uid` 入口，未登记目标在发布事务的拒绝回滚点内登记（同告警接入 `ON CONFLICT` 复用并发首次登记），拒绝（未来时间、身份冲突、profile 不符）与存储失败不留 `opspilot_targets`／`opspilot_target_suspensions` 行；不新增权限与迁移（web 角色 0011 已有两表 SELECT 与键列 INSERT）。新增 `tests/integration/test_f11_pr3_impl_target_txn_postgres.py` 5 项，修复前 4 红（含并发首次登记）；本机临时 PG 55791：PR-3 单元＋PG、发布存储 PR-1/PR-2 集成共 341 passed。
+- r5（2026-10-22，lead 采纳 PR #298 机器人安全 P2，依据 U4 与「合同外权限扩张不在授权范围」）：release-deployer token 与其他事件 token 同在 `OPSPILOT_EVENT_TOKENS`，原先可经 `/intake/events` 建事故与 Run、经 `/intake/alertmanager` 投告警。两路由改为认证后、读 body 前拒绝该 actor：`403 RELEASE_ACTOR_FORBIDDEN`，不写任何行；其他 actor 不变，无权限与迁移改动。新增 `tests/integration/test_f11_pr3_impl_generic_intake_postgres.py` 4 项，修复前 3 红（`/intake/events` 实际 201 建出事故）；临时 PG 55793：F7 入口、M1 接入/认证、M1-04 告警、PR-3 全部相关测试 489 passed。
+- r6（2026-10-22，lead 采纳 PR #298 机器人 P1，kind-298 实跑可复现）：`kind_lab up` 原把 release-deployer 哈希写进第二个 `workbench-release-deployer.env`，按文档只 source `workbench-alertmanager.env` 启动的工作台对 harness webhook 全部 401。改为两条 `<sha256>=actor` 并入标准文件的同一个 `OPSPILOT_EVENT_TOKENS`（600、只含哈希），不再写第二个文件；选并入而非改文档，因为既有启动流程与证据都只 source 一个文件。`docs/development.md` 告警段补一句。新增单测：source 该文件后经 `_pairs`→`Authenticator` 两个 actor 都认证通过、保留已有 token；kind_lab/harness/PR-3 单测 183 passed、1 skipped（nginx 不可用）。`up` 本身的接线未在 kind 上复跑。
+  - 独立审查（全新上下文 Claude Opus，c96308d）PASS：失败路径零残留、与告警接入并发登记同一 uid 无死锁路径（读码推断）、无新权限。已知：从未登记的目标首次投递被拒时，审计行 semantic_sha256 用随机暂定 target_id 计算，同一载荷两次被拒的值不同；该字段只用于成功投递的核对，不违反合同 D2／验收第 13 项，lead 决定不改。
 
 ## 下一步与交接
 
