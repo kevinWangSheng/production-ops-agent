@@ -6,7 +6,7 @@
 
 ## 1. lab 直连（#311，不经模型）
 
-[`probe_311.py`](probe_311.py) 用产品 `otel_demo_executor_factory` 建真实 `ReadOnlyToolExecutor` 和真实 HTTP 传输（investigator 账号，经代理），只把 DurableStore 换成测试用 `FakeStore`（租约与控制快照），发一条少右括号的 PromQL：`sum(rate(traces_span_metrics_calls_total{service_name="checkout"}[5m])`。同一表达式另用原始 GET 各发一次到代理和 Prometheus 本体（`kubectl port-forward svc/prometheus`，F7 后本体只认上游账号，用代理转发时用的 `proxy` 账号）。输出冻结在 [lab-probe-311.json](lab-probe-311.json)（07:13:21Z）。
+一次性直连脚本（未入库，副本留在被忽略的 `tmp/`；做法如下）用产品 `otel_demo_executor_factory` 建真实 `ReadOnlyToolExecutor` 和真实 HTTP 传输（investigator 账号，经代理），只把 DurableStore 换成测试用 `FakeStore`（租约与控制快照），发一条少右括号的 PromQL：`sum(rate(traces_span_metrics_calls_total{service_name="checkout"}[5m])`。同一表达式另用原始 GET 各发一次到代理和 Prometheus 本体（`kubectl port-forward svc/prometheus`，F7 后本体只认上游账号，用代理转发时用的 `proxy` 账号）。输出冻结在 [lab-probe-311.json](lab-probe-311.json)（07:13:21Z）。
 
 - 执行器结果：`status=error`，`reason=INVALID_PARAMS`，`source_contact=confirmed`，无 evidence；视图 `trust=gateway`、`citable_as_fact=false`、`content=null`、无 `evidence_id`。
 - `source_error`：`{"trust":"untrusted-evidence","http_status":400,"error_type":"bad_data","error":"invalid parameter \"query\": 1:71: parse error: unclosed left parenthesis","error_truncated":false}`。原文不含凭据，脱敏后与原文一致。
