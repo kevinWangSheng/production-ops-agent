@@ -1,0 +1,157 @@
+{
+  "breakpoint": "model_in_flight",
+  "category": "bounded real run (real DeepSeek, real kind OTel Demo lab, real kill -9 of worker_main); not production proof",
+  "cost": {
+    "deepseek_balance_cny_after": "98.58",
+    "deepseek_balance_cny_before": "98.77",
+    "note": "upper bound; the account may have other callers"
+  },
+  "experiment": "f2-kill-resume-live",
+  "final_usage": {
+    "budget_reserved": 1,
+    "budget_spent": 16,
+    "budget_unknown": 0,
+    "epoch": 2,
+    "lease_until": null,
+    "owner": null,
+    "state": "completed",
+    "tool_operations_used": 28,
+    "tool_seconds_used": 49.36814845702611
+  },
+  "frozen_at": "2026-10-23T03:36:24.689916+00:00",
+  "incident_id": "9b833598-2f54-509c-960d-afec6ca73fa3",
+  "kill": {
+    "epoch_at_kill": 1,
+    "lease_until_at_kill": "2026-10-23T03:31:57.915941+00:00",
+    "pid": 27162,
+    "returncode": -9,
+    "signal": "SIGKILL"
+  },
+  "proxy": {
+    "requests": 24,
+    "stalled": []
+  },
+  "raw_ledger": {
+    "bytes": 28368,
+    "in_repository": false,
+    "path": "tmp/lab-ledgers/f2-kill-resume-live/model_in_flight-20261023T032446Z",
+    "sha256": "1c7c2941170058a919246387d4bf3b4710e3b5f194b1cad1c04b0e7ff49b5180"
+  },
+  "rejudged": [
+    {
+      "at": "2026-10-23T03:37:45.780989+00:00",
+      "commit": "264a271e7495515d21f29f827742c22bed80d377",
+      "passed_before": false,
+      "reason": "model_resend counted the published conclusion step (kind=conclusion, no model request) as an answered request; harness fixed in this commit"
+    },
+    {
+      "adopted_backfilled_from_db": true,
+      "at": "2026-10-23T04:16:38.927826+00:00",
+      "commit": "3ee1f8f6be07c0f0affafe66f98bf3b2820370f2",
+      "passed_before": true,
+      "reason": "citability judged over adopted evidence only (tool-error records are never citable, killed or not); adopted backfilled from the run's evidence rows"
+    }
+  ],
+  "run_id": "ea71b863-f0fe-5cc0-bc72-be7a1a48c7f3",
+  "schema": "opspilot-lab-summary-1",
+  "timeline": {
+    "epoch_previous_poll": "2026-10-23T03:31:58.580741+00:00",
+    "killed": "2026-10-23T03:24:59.049664+00:00",
+    "submitted": {
+      "delivery_key": "evt:d0ef0788e4aaa43b5c1b6e5436d137fb7bb0be0ea66013e62775adf1902479df",
+      "http_status": 201,
+      "incident_id": "9b833598-2f54-509c-960d-afec6ca73fa3",
+      "replayed": false,
+      "run_id": "ea71b863-f0fe-5cc0-bc72-be7a1a48c7f3"
+    },
+    "terminated_backends": []
+  },
+  "trace": {
+    "project": {
+      "project": "opspilot-lab-f2-kill-resume-live-20261023",
+      "project_id": "8f326138-25a7-40bb-a096-cd68cce3539c",
+      "trace_tier": "longlived"
+    },
+    "roots": [
+      {
+        "langsmith_run_id": "00000000-0000-0000-a487-91f31f233707",
+        "start_time": "2026-10-23T03:31:58.707556+00:00",
+        "status": "success",
+        "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/8f326138-25a7-40bb-a096-cd68cce3539c/r/00000000-0000-0000-a487-91f31f233707?poll=true"
+      }
+    ]
+  },
+  "verdicts": {
+    "criteria": {
+      "breakpoint_held": {
+        "live_steps_post": 1,
+        "live_steps_pre": 1,
+        "passed": true,
+        "post_unsettled": [
+          "5575a325-f637-5769-8e8d-bd6b51cae335"
+        ],
+        "reservation_id": "5575a325-f637-5769-8e8d-bd6b51cae335"
+      },
+      "evidence_kept": {
+        "adopted_before_kill": 2,
+        "before_kill": 2,
+        "conclusion_present": true,
+        "missing_or_changed": [],
+        "not_adopted_before_kill": [],
+        "not_in_conclusion": [],
+        "passed": true
+      },
+      "model_resend": {
+        "expected": 1,
+        "in_flight_at_kill": [
+          "5575a325-f637-5769-8e8d-bd6b51cae335"
+        ],
+        "model_steps": 16,
+        "passed": true,
+        "resent": 1,
+        "reservations_total": 17,
+        "reservations_unknown": 0
+      },
+      "new_epoch_timely": {
+        "bound": "2026-10-23T03:32:00.115941+00:00",
+        "final_epoch": 2,
+        "kill_epoch": 1,
+        "lease_until_at_kill": "2026-10-23T03:31:57.915941+00:00",
+        "observed_at": "2026-10-23T03:31:58.781811+00:00",
+        "passed": true,
+        "seconds_after_lease_expiry": 0.86587
+      },
+      "tool_redispatch": {
+        "in_flight_at_kill": [],
+        "passed": true,
+        "redispatched": [],
+        "settled_uncommitted_at_kill": []
+      },
+      "unsettled_cost_kept": {
+        "budget_reserved_at_end": 1,
+        "kind": "model_reservation",
+        "passed": true,
+        "still_reserved_at_end": [
+          "5575a325-f637-5769-8e8d-bd6b51cae335"
+        ],
+        "unsettled_at_kill": [
+          "5575a325-f637-5769-8e8d-bd6b51cae335"
+        ]
+      }
+    },
+    "passed": true,
+    "run": {
+      "final_state": "completed",
+      "incident_state": "queued",
+      "terminal": true
+    }
+  },
+  "versions": {
+    "commit": "424a6bf4efb3038b0a126a655445b21607fd2fd1",
+    "worker_versions": {
+      "context_policy_revision": "ctx-ctx-policy-v1-a30e65ea52f4",
+      "prompt_revision": "prompt-replay-candidate-dd9018031487",
+      "tool_schema_revision": "otel-demo-2a944edd110a"
+    }
+  }
+}
