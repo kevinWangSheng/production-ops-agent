@@ -27,6 +27,7 @@ import json
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -65,6 +66,62 @@ MAX_PODS = 64
 EVALUATOR = "release-after-v1"
 MAPPING = "pod-uid-replicaset-image-v1"
 EMPTY_CATALOG = '{"format_version":1,"policies":[]}'
+
+APPROVED_POLICY_REVISION = "otel-demo-checkout-release@e2ed7b69b96b"
+APPROVED_POLICY_SHA256 = (
+    "e2ed7b69b96bf50d50e6632c022f27da35d0592c412ea70dcf5fac249d0633ee"
+)
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+def assert_shipped_catalog_is_the_approved_policy() -> None:
+    """The shipped catalog holds exactly the one user-approved policy (2026-10-22, M=1500)."""
+    from opspilot.observation import release_policy
+
+    shipped = (
+        Path(release_policy.__file__).resolve().parent
+        / "policies"
+        / "release-calibrations.json"
+    )
+    assert Path(release_policy.RELEASE_POLICY_CATALOG_PATH).resolve() == shipped
+    raw = json.loads(shipped.read_text(encoding="utf-8"))
+    assert set(raw) == {"format_version", "policies"}
+    assert raw["format_version"] == 1
+    (entry,) = raw["policies"]
+    assert set(entry) == {"policy_id", "revision", "content_sha256", "content"}
+    assert entry["policy_id"] == "otel-demo-checkout-release"
+    assert entry["revision"] == APPROVED_POLICY_REVISION
+    assert entry["content_sha256"] == APPROVED_POLICY_SHA256
+    content = entry["content"]
+    assert content["target"] == {
+        "integration_id": "m0-otel-20260909",
+        "cluster_uid": "c8001471-8b7b-4449-83c0-924e6f46b857",
+        "namespace": "otel-demo",
+        "resource_uid": "m0-otel-20260909",
+        "workload": "checkout",
+    }
+    assert content["health_profile_revision"] == "otel-demo-checkout@b72bbe2e30be"
+    assert content["health_profile_sha256"] == (
+        "b72bbe2e30bea4775790519787da4ce107dbc1500ce87b87a2ee2af3f57cbfa4"
+    )
+    assert content["min_tracking_seconds"] == 1500
+    assert content["evaluator"] == "release-after-v1"
+    assert content["mapping"] == "pod-uid-replicaset-image-v1"
+    assert content["evidence_path"] == "docs/evidence/f11-u2-calibration/summary.json"
+    # the pinned evidence digest is the digest of the committed summary bytes
+    summary = (_REPO_ROOT / content["evidence_path"]).read_bytes()
+    assert content["evidence_sha256"] == hashlib.sha256(summary).hexdigest()
+    assert content["evidence_sha256"] == (
+        "908838acb33923046a446b813cbd12add660df8d4ca56f015478253db4693364"
+    )
+    # the loader (hash and revision validation) accepts it as the only policy
+    from opspilot.observation.release_policy import load_release_policy_catalog
+
+    loaded = load_release_policy_catalog().policies
+    assert [p.revision for p in loaded] == [APPROVED_POLICY_REVISION]
+    assert loaded[0].content.min_tracking_seconds == 1500
+
+
 TARGET_KEYS = ("integration_id", "cluster_uid", "namespace", "resource_uid", "workload")
 
 #: The four slice signals (固定语义 5) and the eight context signals.
