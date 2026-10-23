@@ -209,6 +209,70 @@ def sweep_expired(
     )
 
 
+#: The handoff reason a backlog-parked Run carries (F2 U4-A).
+BACKLOG_FULL = "BACKLOG_FULL"
+
+
+class BacklogParker(Protocol):
+    def park_backlog(
+        self, *, max_queued: int, limit: int = 100
+    ) -> tuple[tuple[UUID, UUID, int], ...]: ...
+
+
+def announce_backlog_full(
+    log: ProgressLog, subject_id: UUID, run_id: UUID, control_generation: int
+) -> int:
+    """The ``run_handoff`` a backlog park shows on the page, keyed by run
+    exactly like ``announce_deadline_exceeded`` (same at-most-once append,
+    same ``Workbench.reconcile`` repair). The Run was never claimed, so its
+    ``execution`` is ``not_started`` (B2 contract R-B2-3; the page prints the
+    value as is and branches on no execution value)."""
+    key = {"run_id": str(run_id), "parked": True}
+    if control_generation != 0:
+        key["control_generation"] = control_generation
+    return log.append_once(
+        subject_id,
+        "run_handoff",
+        {
+            "run_id": str(run_id),
+            "published": False,
+            "execution": "not_started",
+            "handoff": True,
+            "parked": True,
+            "reasons": [BACKLOG_FULL],
+            "report_sha256": None,
+            "evidence_ids": [],
+            "reconciled": False,
+            "control_generation": control_generation,
+        },
+        key={**key, "reconciled": False},
+    )
+
+
+def park_backlog(
+    store: BacklogParker, log: ProgressLog | None, max_queued: int
+) -> tuple[tuple[UUID, UUID], ...]:
+    """Park the queued Runs beyond ``max_queued`` and announce each park.
+
+    The store is the authority (count, order and eligibility re-checked
+    under its locks); the events are projections appended after each park
+    committed. One pass ends at the cap (R-B2-4): the store spends at most
+    ``limit`` transactions per call, so calls repeat, each chunk announced
+    as it lands, until one parks nothing -- every repeat parks at least one
+    Run, so the pass is bounded by the backlog itself. Returns what this
+    pass parked.
+    """
+    parked: list[tuple[UUID, UUID]] = []
+    while True:
+        chunk = store.park_backlog(max_queued=max_queued)
+        if not chunk:
+            return tuple(parked)
+        for subject_id, run_id, generation in chunk:
+            if log is not None:
+                announce_backlog_full(log, subject_id, run_id, generation)
+            parked.append((subject_id, run_id))
+
+
 def _tool_committed_payload(
     run_id: UUID, step_id: UUID, ordinal: int, result: Mapping[str, Any]
 ) -> dict[str, Any]:

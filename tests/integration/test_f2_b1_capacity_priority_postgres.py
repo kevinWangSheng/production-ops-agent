@@ -662,8 +662,9 @@ def test_a_storm_of_50_under_the_default_configuration_has_no_pool_timeout(
         incidents.append(_ui(app, tag)[0])
     sampler = Sampler(DSN, incidents)
     try:
-        # Neither OPSPILOT_WORKER_CAPACITY nor OPSPILOT_POOL_* is set.
-        worker = workers()
+        # Neither OPSPILOT_WORKER_CAPACITY nor OPSPILOT_POOL_* is set. The
+        # backlog cap (PR-B2, default 8) is lifted so all 50 stay claimable.
+        worker = workers(OPSPILOT_BACKLOG_MAX="50")
         assert wait_until(lambda: _all_parked(owner, incidents), timeout=START + 60), (
             worker.log()
         )
