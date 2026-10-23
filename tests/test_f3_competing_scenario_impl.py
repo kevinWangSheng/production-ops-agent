@@ -20,6 +20,7 @@ from typing import Any, Iterator
 import pytest
 
 from opspilot.tools import otel_demo
+from opspilot.tools.registry import ToolRegistry, canonical_hash
 from scripts import f3_competing_scenario as driver
 from scripts import f11_u2_harness as harness
 from scripts import kind_lab
@@ -50,7 +51,23 @@ def _schema(name: str) -> dict[str, Any]:
 
 def test_revision_bumped_by_content_hash() -> None:
     assert otel_demo.TOOL_SCHEMA_REVISION != OLD_REVISION
-    assert otel_demo.TOOL_SCHEMA_REVISION == otel_demo._tool_schema_revision()
+    # Independent recomputation from the five model-visible inputs (C3 §5);
+    # comparing with ``_tool_schema_revision()`` would be always true.
+    data_sources = otel_demo.otel_demo_face(FakeClock()).evidence_context("run-1")[
+        "data_sources"
+    ]
+    digest = canonical_hash(
+        {
+            "tool_schemas": [dict(item) for item in otel_demo.TOOL_SCHEMAS],
+            "registry": ToolRegistry(
+                otel_demo.otel_demo_registrations().tools
+            ).revision,
+            "trace_projection": otel_demo.TRACE_PROJECTION,
+            "projection_revision": otel_demo.PROJECTION_REVISION,
+            "data_sources": data_sources,
+        }
+    )
+    assert otel_demo.TOOL_SCHEMA_REVISION == f"otel-demo-{digest[:12]}"
     # #308 PR2 bumped the projection to v9 (kept over-limit refusals, slices);
     # #311 to v10 (``source_error`` on 4xx refusals).
     assert otel_demo.PROJECTION_REVISION == "m1-01-tool-view-v10"
