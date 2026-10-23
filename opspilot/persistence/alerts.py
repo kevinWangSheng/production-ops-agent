@@ -12,7 +12,8 @@ composes a question: the workbench hands both in.
 
 A firing alert with a new identity on a target whose same-fingerprint alert
 incident is not closed is attached to it (F2 U1-A, C1-A): an ``attached``
-delivery row and one event input, no identity row, no Run. When every such
+delivery row and one event input, no identity row, no Run; a higher
+severity raises the incident's claim priority (B1 U-B1-2). When every such
 incident is closed, the new incident relates to the latest of them
 (``choose_correlation``).
 """
@@ -33,7 +34,7 @@ from opspilot.persistence.correlation import (
     CorrelationCandidate,
     choose_correlation,
 )
-from opspilot.persistence.incidents import _IncidentOps
+from opspilot.persistence.incidents import _check_priority, _IncidentOps
 
 #: The delivery outcomes migration 0018 allows.
 OUTCOMES = (
@@ -131,6 +132,7 @@ class _AlertOps(_IncidentOps):
                 if correlation.attach_to is not None:
                     incident_id = correlation.attach_to
                     _append_attached_event(conn, delivery, incident_id, revision)
+                    _escalate_priority(conn, incident_id, opening.get("priority", 2))
                     outcome = "attached"
                 else:
                     related = correlation.related_to
@@ -252,6 +254,7 @@ class _AlertOps(_IncidentOps):
                 versions=dict(opening["versions"]),
                 input=opening.get("input"),
                 target_id=self._alert_target(conn, opening["resource_uid"]),
+                priority=opening.get("priority", 2),
                 related_incident_id=related_incident_id,
             )
             _ledger(conn, opening.get("ledger") or ())
@@ -259,9 +262,13 @@ class _AlertOps(_IncidentOps):
             # E5: an incident handed to a human at intake. No Run, no target
             # binding; ``waiting_human`` like a parked Run, and invisible to
             # the claim listing, which joins the current Run.
+            # Its priority is recorded like any alert incident's (U-B1-2),
+            # though without a Run nothing ever claims it.
+            priority = opening.get("priority", 2)
+            _check_priority(priority)
             inserted = conn.execute(
-                "INSERT INTO opspilot_incidents(incident_id,intake_key,state,lifecycle,current_run_id,target_id,related_incident_id) VALUES(%s,%s,'waiting_human','open',NULL,NULL,%s) ON CONFLICT DO NOTHING RETURNING incident_id",
-                (incident_id, opening["intake_key"], related_incident_id),
+                "INSERT INTO opspilot_incidents(incident_id,intake_key,state,lifecycle,current_run_id,target_id,priority,related_incident_id) VALUES(%s,%s,'waiting_human','open',NULL,NULL,%s,%s) ON CONFLICT DO NOTHING RETURNING incident_id",
+                (incident_id, opening["intake_key"], priority, related_incident_id),
             ).fetchone()
             if inserted is None:
                 raise PersistenceError("IDENTITY_CONFLICT")
@@ -296,6 +303,17 @@ def _ledger(
             "INSERT INTO opspilot_web_ledger(namespace,key,value) VALUES(%s,%s,%s) ON CONFLICT (namespace, key) DO NOTHING",
             (namespace, key, Jsonb(dict(value))),
         )
+
+
+def _escalate_priority(conn: Connection, incident_id: UUID, priority: int) -> None:
+    """U-B1-2: an attached episode only ever raises its incident's claim
+    priority (lower value first), never lowers it. Nothing else of the
+    incident changes: no Run, no state or control field."""
+    _check_priority(priority)
+    conn.execute(
+        "UPDATE opspilot_incidents SET priority=%s WHERE incident_id=%s AND priority>%s",
+        (priority, incident_id, priority),
+    )
 
 
 def _append_attached_event(

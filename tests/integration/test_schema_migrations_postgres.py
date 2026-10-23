@@ -32,7 +32,7 @@ LEGACY_DDL = (
     pathlib.Path(__file__).parent / "legacy_schema_2026-10-05.sql"
 ).read_text()
 PG_DUMP = os.environ.get("OPSPILOT_PG_DUMP", "pg_dump")
-HEAD = "0018_alert_correlation"
+HEAD = "0019_incident_priority"
 # opspilot_* tables at head: 15 in the baseline + 5 of 0003 (profiles,
 # sessions, samples, readings, endings) + 10 of 0008 (postmortems, versions,
 # conclusions, disputes, proposals, knowledge entries/revisions/revocations,
@@ -301,6 +301,8 @@ EXPECTED_CHECKS = {
     "opspilot_incidents_mode_check",
     # 0018 (F2 PR-C): an incident never relates to itself
     "opspilot_incidents_related_incident_check",
+    # 0019 (F2 PR-B1): the claim priority domain, same discipline
+    "opspilot_incidents_priority_check",
 }
 
 
