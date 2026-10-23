@@ -101,7 +101,16 @@ from tests.integration.test_f11_release_observation_postgres import (  # noqa: F
     web_dsn,
     worker_dsn,
 )
-from tests.m1_web_support import EVENT_TOKEN, ORIGIN, UI_PASSWORD, UI_USER, basic, call
+from tests.m1_web_support import (
+    EVENT_TOKEN,
+    ORIGIN,
+    UI_PASSWORD,
+    UI_USER,
+    basic,
+    call,
+    post_form,
+    same_origin,
+)
 from tests.runtime_roles_support import catalog_grants
 from tests.target_support import IDENTITY, PROFILE_ID, WORKLOAD
 
@@ -1662,6 +1671,16 @@ def test_item_12_a_pass_makes_no_outbound_call_or_subprocess(
 # ===========================================================================
 
 
+def _app(workbench: Workbench, owner: DurableStore) -> Any:
+    auth = AuthConfig(
+        ui_users={UI_USER: hash_password(UI_PASSWORD)},
+        event_tokens={token_digest(EVENT_TOKEN): "alertmanager"},
+        auth_revision="f11-pr4b-acceptance",
+        allowed_origins=frozenset({ORIGIN}),
+    )
+    return create_app(workbench, Authenticator(auth), DurableClock(owner))
+
+
 def test_the_release_incident_page_renders(
     owner: DurableStore,
     web: ReleaseStore,
@@ -1670,14 +1689,7 @@ def test_the_release_incident_page_renders(
     bench: Callable[..., Workbench],
 ) -> None:
     case, workbench, incident, _ = _created_case(owner, web, observer, catalog, bench)
-    auth = AuthConfig(
-        ui_users={UI_USER: hash_password(UI_PASSWORD)},
-        event_tokens={token_digest(EVENT_TOKEN): "alertmanager"},
-        auth_revision="f11-pr4b-acceptance",
-        allowed_origins=frozenset({ORIGIN}),
-    )
-    clock = DurableClock(owner)
-    app = create_app(workbench, Authenticator(auth), clock)
+    app = _app(workbench, owner)
 
     response = call(
         app, "GET", f"/incidents/{incident['incident_id']}", headers=basic()
@@ -1685,6 +1697,59 @@ def test_the_release_incident_page_renders(
 
     assert response.status == 200, response.text
     assert str(incident["incident_id"]) in response.text
+
+
+@pytest.mark.parametrize(
+    ("action", "text"),
+    [("new_run", None), ("follow_up", "Is the release the cause?"), ("pause", None)],
+)
+def test_r7_a_release_handoff_incident_pages_and_refuses_controls_like_an_alert_handoff(
+    owner: DurableStore,
+    web: ReleaseStore,
+    observer: ObservationStore,
+    catalog: Catalog,
+    bench: Callable[..., Workbench],
+    action: str,
+    text: str | None,
+) -> None:
+    """Item 6 / R7 through the public web interface (independent review gap):
+    the ``handoff_created`` incident has no Run to steer, so it is shown with
+    its reason and every control is refused exactly as for an alert handoff
+    incident (E5: ``409 HANDOFF_ONLY``, nothing written)."""
+    case = _ready(owner, web, observer, catalog, bench)
+    _damage_target_row(case, "mismatch")
+    workbench = bench(case.registry())
+    workbench.release_anomaly_pass()
+    link = _link(case.oid)
+    assert link["disposition"] == "handoff_created", link
+    subject = link["incident_id"]
+    app = _app(workbench, owner)
+
+    page = call(app, "GET", f"/incidents/{subject}", headers=basic())
+
+    assert page.status == 200, page.text
+    assert "RELEASE_TARGET_UNRESOLVED" in page.text
+
+    before = _incident(subject)
+    fields = {
+        "action": action,
+        "expected_generation": str(before["control_generation"]),
+        "idempotency_key": f"handoff-{action}-{uuid4()}",
+    }
+    if text is not None:
+        fields["text"] = text
+    refused = post_form(
+        app,
+        f"/incidents/{subject}/control",
+        fields,
+        headers={**basic(), **same_origin()},
+    )
+
+    assert refused.status == 409, refused.text
+    assert refused.json()["code"] == "HANDOFF_ONLY"
+    assert _incident(subject) == before
+    assert _runs(subject) == []
+    assert subject not in owner.claimable_incidents(limit=1000)
 
 
 # ===========================================================================
