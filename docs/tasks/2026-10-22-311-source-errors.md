@@ -80,3 +80,4 @@ U1–U6 用户裁决：按推荐（2026-10-22）。R1–R10 可逆默认照做�
 
 - 实现 → 并入独立验收测试 → 定向测试 → 推送分支，回报 lead。
 - 真实证据由 lead 在 kind 窗口安排。
+- 真实证据（2026-10-23，kind，代码 `9bdd640`）：lab 直连 400 信封经代理未改写，`source_error` 形状正确；有界真实 Run `b442e7c5` 版本（prompt `2f30c2380b23`、projection v10、tool_schema `otel-demo-68ed2ca8f5d6`）、两段新提示、`data_sources`、只读全部核对通过；Run 按既有规则交接（REPORT_INVALID：模型给一个 step id 加了不存在的 `-meta` 后缀），模型未自然触发 400。见 [证据](../evidence/f3-pr2-live/README.md)。
