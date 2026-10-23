@@ -1,1 +1,29 @@
-{"format_version":1,"policies":[]}
+{
+  "format_version": 1,
+  "policies": [
+    {
+      "policy_id": "otel-demo-checkout-release",
+      "revision": "otel-demo-checkout-release@e2ed7b69b96b",
+      "content_sha256": "e2ed7b69b96bf50d50e6632c022f27da35d0592c412ea70dcf5fac249d0633ee",
+      "content": {
+        "format_version": 1,
+        "target": {
+          "integration_id": "m0-otel-20260909",
+          "cluster_uid": "c8001471-8b7b-4449-83c0-924e6f46b857",
+          "namespace": "otel-demo",
+          "resource_uid": "m0-otel-20260909",
+          "workload": "checkout"
+        },
+        "health_profile_revision": "otel-demo-checkout@b72bbe2e30be",
+        "health_profile_sha256": "b72bbe2e30bea4775790519787da4ce107dbc1500ce87b87a2ee2af3f57cbfa4",
+        "min_tracking_seconds": 1500,
+        "evaluator": "release-after-v1",
+        "mapping": "pod-uid-replicaset-image-v1",
+        "evidence_path": "docs/evidence/f11-u2-calibration/summary.json",
+        "evidence_sha256": "908838acb33923046a446b813cbd12add660df8d4ca56f015478253db4693364",
+        "approval_ref": "user decision 2026-10-22 in docs/tasks/2026-10-14-f11-u2-calibration.md (PR #302): M=1500; boundary coverage narrowed to onset no later than about R+1230",
+        "approved_at": "2026-10-22T07:42:45Z"
+      }
+    }
+  ]
+}
