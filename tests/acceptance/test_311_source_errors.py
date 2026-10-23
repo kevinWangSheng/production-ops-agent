@@ -373,7 +373,14 @@ def test_item2_secrets_in_the_error_text_are_redacted_in_view_and_trace(stub):
 def test_item3_a_2000_char_error_is_cut_to_1024_chars_and_flagged(stub):
     long_error = "marker311long " + "é" * 1986  # non-ASCII: cut by code point
     assert len(long_error) == 2000
-    stub.always(400, _envelope(long_error))
+    # Raw UTF-8, not ``\u00e9`` escapes: about 4 KB, under the transport's
+    # ERROR_BODY_BYTES read bound, so the envelope stays parseable.
+    body = json.dumps(
+        {"status": "error", "errorType": "bad_data", "error": long_error},
+        ensure_ascii=False,
+    ).encode("utf-8")
+    assert len(body) < ERROR_BODY_BYTES
+    stub.always(400, body)
     executor, sink, _ = _executor(stub)
 
     outcome = executor.execute(_call())
