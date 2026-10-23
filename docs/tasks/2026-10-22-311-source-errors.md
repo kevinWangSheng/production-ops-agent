@@ -50,7 +50,7 @@ U1–U6 用户裁决：按推荐（2026-10-22）。R1–R7 可逆默认照做。
 
 - 新 revision：`PROJECTION_REVISION=m1-01-tool-view-v10`，otel `TOOL_SCHEMA_REVISION=otel-demo-68ed2ca8f5d6`（重算），fixture `fixture-4`。
 - 实现测试 `tests/test_311_source_errors_impl.py`：37 passed（真实 socket 桩覆盖 400/422 回传、脱敏含 JSON 转义 userinfo、截断、非信封/重复键、401/403/404/429、5xx、预发送拒绝、请求途中暂停；provenance 形状；data_sources 投影与续接；页面投影）。
-- 定向回归（`tests/test_m1_*`、`tests/test_f3_*`、`tests/test_f7_*`、`tests/acceptance/test_30[78]*`）：8 failed / 2734 passed，失败均为既有钉值或与 U1 冲突的旧断言，清单已报 lead；受影响 PG 测试 14 个文件：2 failed / 107 passed（308 PR1 PG 钉 v9）。ruff、ruff format、mypy 通过。
+- 定向回归（`tests/test_m1_*`、`tests/test_f3_*`、`tests/test_f7_*`、`tests/acceptance/test_30[78]*`）：改实现测试钉值后 7 failed，均为非本人测试的既有钉值或与 U1 冲突的旧断言，清单已报 lead；受影响 PG 测试 14 个文件：2 failed / 107 passed（308 PR1 PG 钉 v9）。ruff、ruff format、mypy 通过。
 - 并入独立验收测试 `774f543`：51 passed / 1 failed。`test_item3_a_2000_char_error_is_cut_to_1024_chars_and_flagged` 的信封用 `json.dumps` 默认转义 `é`，body 11,987 字节超过 `ERROR_BODY_BYTES=8192`，按 R1 截断后不可解析即不回传，实现返回 `error=null`；已报 lead 裁决。
 
 ## 下一步与交接
