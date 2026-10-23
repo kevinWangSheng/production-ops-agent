@@ -57,6 +57,7 @@ from opspilot.domain.observation import (
 )
 from opspilot.domain.subjects import INCIDENT_LIFECYCLE, SubjectRef
 from opspilot.observation.bindings import _TargetProfileOps
+from opspilot.observation.release_commands import _ReleaseCommandOps
 from opspilot.observation.release_comparison import _ReleaseComparisonOps
 from opspilot.observation.release_types import ReleaseSampleLease
 from opspilot.observation.revocation import end_session, revoke_authorized_sessions
@@ -2396,6 +2397,10 @@ class ObservationStore(_ReleaseComparisonOps, _TargetProfileOps):
             return {
                 **self._release_history_in(conn, subject["release_observation_id"]),
                 "comparisons": self._release_comparisons_in(
+                    conn, subject["release_observation_id"]
+                ),
+                # F11 PR-4b R9: the anomaly's consumption link, or None.
+                "link": _ReleaseCommandOps._link_in(
                     conn, subject["release_observation_id"]
                 ),
                 "selected_session_id": session_id,

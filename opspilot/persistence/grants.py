@@ -165,7 +165,7 @@ RUNTIME_GRANTS: Mapping[str, Mapping[str, frozenset[str]]] = {
         "opspilot_release_observations": _g(
             "INSERT(after_revision,auxiliary,before_revision,deadline_at,deadline_seconds,ended_at,ended_reason,format_version,health_profile_revision,max_samples,min_tracking_seconds,observation_id,released_at,sample_interval_seconds,semantic_sha256,source,source_release_id,status,sustained_window_seconds,target_id,target_snapshot,timing_policy_version)",
             "SELECT",
-            "UPDATE(calibrated_policy_content,calibrated_policy_revision,calibrated_policy_sha256,control_generation,ended_at,ended_reason,observation_generation,paused,status,updated_at)",
+            "UPDATE(calibrated_policy_content,calibrated_policy_revision,calibrated_policy_sha256,control_generation,ended_at,ended_reason,incident_id,observation_generation,paused,status,updated_at)",
         ),
         # human controls and the deadline sweep clear owner/lease_until; no
         # epoch, so the web cannot issue a lease of its own (claim() sets it)
@@ -210,6 +210,12 @@ RUNTIME_GRANTS: Mapping[str, Mapping[str, frozenset[str]]] = {
         "opspilot_release_comparisons": S,
         "opspilot_release_comparison_attempts": S,
         "opspilot_release_comparison_queries": S,
+        # F11 PR-4b: the web consumes anomaly endings into incident links
+        "opspilot_release_incident_links": _g(
+            "SELECT",
+            "INSERT(anomaly_key,comparison_id,disposition,ending_id,handoff_reason,"
+            "incident_id,input_id,observation_id,related_incident_id,run_id)",
+        ),
         "opspilot_release_audit": _g(
             "SELECT",
             "INSERT(action,actor,audit_id,control_generation_after,control_generation_before,ending_id,expected_control_generation,idempotency_key,observation_generation_after,observation_generation_before,observation_id,outcome,paused_after,paused_before,principal_kind,reason,request_sha256,result,sequence,session_id,status_after,status_before)",
@@ -335,6 +341,7 @@ RUNTIME_GRANTS: Mapping[str, Mapping[str, frozenset[str]]] = {
         "opspilot_release_comparisons": NONE,
         "opspilot_release_comparison_attempts": NONE,
         "opspilot_release_comparison_queries": NONE,
+        "opspilot_release_incident_links": NONE,
         "opspilot_release_audit": NONE,
     },
 }

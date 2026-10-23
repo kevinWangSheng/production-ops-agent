@@ -1418,7 +1418,8 @@ def test_0014_downgrades_only_when_empty_and_keeps_data_otherwise() -> None:
                     if table
                     not in ("opspilot_release_audit", "opspilot_release_query_results")
                 }
-                # 0020 adds the three comparison relations; below it they are gone.
+                # 0020 adds the three comparison relations and 0021 the
+                # incident links; below them they are gone.
                 expected = {
                     table: held
                     for table, held in expected.items()
@@ -1427,6 +1428,7 @@ def test_0014_downgrades_only_when_empty_and_keeps_data_otherwise() -> None:
                         "opspilot_release_comparisons",
                         "opspilot_release_comparison_attempts",
                         "opspilot_release_comparison_queries",
+                        "opspilot_release_incident_links",
                     )
                 }
                 if role == WEB_ROLE:
