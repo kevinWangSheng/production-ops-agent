@@ -1,8 +1,8 @@
-# #311 数据源 400/422 错误原文回传与不可用数据源可见（F3 PR-2）
+# F3 PR-2：#311 数据源 4xx 错误原文与不可用数据源；#310 调查方法与影响面纪律
 
 - 状态：进行中
 - 更新日期：2026-10-22
-- 依据：GitHub issue #311；C3 §5（revision bump 规则）；PRODUCT-CONSTRAINTS（缺失工具与数据对操作员可见）；[合同预审全文](2026-10-22-311-source-errors-contract.md)
+- 依据：GitHub issue #311、#310；C3 §5（revision bump 规则）；PRODUCT-CONSTRAINTS（缺失工具与数据对操作员可见）；[合同预审全文](2026-10-22-311-source-errors-contract.md)
 - 工作区：`/Users/shenghuikevin/dev/AI/poa-311`，分支 `feature/F3-311-source-errors`（起点 main `200172c`）；独立验收测试分支 `feature/F3-311-source-errors-tests`
 
 ## 目标与范围
@@ -46,12 +46,32 @@ U1–U6 用户裁决：按推荐（2026-10-22）。R1–R7 可逆默认照做。
 - 信封含重复键（`has_duplicate_keys`）视同不可解析。理由：`json.loads` 取末值，前一个值可能是未被脱敏检查的秘密。
 - `evaluation/live.py` 不改：它读录制里的 Run 输入，新键随录制带入，白名单投影处理。
 
+## #310 合同（r1）
+
+U1–U6 用户裁决：按推荐（2026-10-22）。R1–R10 可逆默认照做。完整表见 [#310 合同预审全文](2026-10-22-310-investigation-method-contract.md)。2026-10-22 lead 把 #310 并入 F3 PR-2，同分支同 PR、单独提交。
+
+| 编号 | 裁决要点 |
+|---|---|
+| U1 | 按预审第 1 节草稿：`INVESTIGATION_METHOD` 8 句、`IMPACT_SCOPE` 9 句 |
+| U2 | 影响面四组只进提示，映射到现有 claim 类别与 gaps；`m0-report-v2` 不变 |
+| U3 | 报告校验不强制分组 |
+| U4 | C3 §5 L1a 格补「调查方法与影响面纪律」 |
+| U5 | 映射用普通词，不内联 L2 字段名 |
+| U6 | 接受：F3 第 5 步（PR-3b）在新的模型可见面上跑；PR 说明须写明 |
+| R1–R2 | 两段插在 `MISSING_SERIES` 之后、报告契约之前；只改 `replay-candidate`，baseline 变体逐字节不变 |
+| R3 | `discipline_revision`、`prompt_revision` 随内容哈希变；其他 revision 不变 |
+| R4 | 在途 Run 重新领取进入 `blocked(INCOMPATIBLE_STATE)` |
+| R7 | 独立验收测试里钉住的 `prompt_revision` 不由实现者改，清单报 lead |
+
 ## 执行进展与证据
 
 - 新 revision：`PROJECTION_REVISION=m1-01-tool-view-v10`，otel `TOOL_SCHEMA_REVISION=otel-demo-68ed2ca8f5d6`（重算），fixture `fixture-4`。
 - 实现测试 `tests/test_311_source_errors_impl.py`：37 passed（真实 socket 桩覆盖 400/422 回传、脱敏含 JSON 转义 userinfo、截断、非信封/重复键、401/403/404/429、5xx、预发送拒绝、请求途中暂停；provenance 形状；data_sources 投影与续接；页面投影）。
 - 定向回归（`tests/test_m1_*`、`tests/test_f3_*`、`tests/test_f7_*`、`tests/acceptance/test_30[78]*`）：改实现测试钉值后 7 failed，均为非本人测试的既有钉值或与 U1 冲突的旧断言，清单已报 lead；受影响 PG 测试 14 个文件：2 failed / 107 passed（308 PR1 PG 钉 v9）。ruff、ruff format、mypy 通过。
 - 并入独立验收测试 `774f543`：51 passed / 1 failed。`test_item3_a_2000_char_error_is_cut_to_1024_chars_and_flagged` 的信封用 `json.dumps` 默认转义 `é`，body 11,987 字节超过 `ERROR_BODY_BYTES=8192`，按 R1 截断后不可解析即不回传，实现返回 `error=null`；已报 lead 裁决。
+
+- #310：`discipline_revision(replay-candidate)` `l1a-replay-candidate-e70df72344d9` → `l1a-replay-candidate-9a45deb526fe`（与预审估算一致），`prompt_revision` `prompt-replay-candidate-dd9018031487` → `prompt-replay-candidate-2f30c2380b23`；两段 1205 / 1704 字符，候选臂 13 → 30 句。`tests/test_instruction_discipline.py` 句数普查已改。
+- 两项合并后的全量 `tests/acceptance/` + 定向集：15 failed / 5371 passed / 152 skipped。失败全是独立作者测试里的钉值（projection/tool_schema/prompt revision、309 冻结观测哈希）、与 U1 冲突的旧断言，以及上面的 item3 截断用例；清单已报 lead。
 
 ## 下一步与交接
 
