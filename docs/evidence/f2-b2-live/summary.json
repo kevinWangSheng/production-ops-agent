@@ -1,0 +1,1345 @@
+{
+  "schema": "opspilot-lab-summary-1",
+  "experiment": "f2-b2-live",
+  "run_id": "760e80aa-5fe5-5126-8ca7-e0ad2685e132",
+  "frozen_at": "2026-10-22T18:45:19.121602+00:00",
+  "round": "f2-b2-live-20261022",
+  "category": "bounded real run (real DeepSeek model, fixture tool profile, local PostgreSQL); not production proof",
+  "versions": {
+    "branch": "feature/F2-backpressure",
+    "commit": "f98e9aa72ff58ef6983cb32c2ad2867085daa81f",
+    "schema_head": "0019_incident_priority",
+    "model": "deepseek-flash",
+    "tool_profile": "fixture",
+    "worker_versions": {
+      "prompt_revision": "prompt-replay-candidate-dd9018031487",
+      "tool_schema_revision": "fixture-3",
+      "context_policy_revision": "ctx-ctx-policy-v1-a30e65ea52f4",
+      "source": "opspilot_runs.versions"
+    }
+  },
+  "environment": {
+    "postgres": "PostgreSQL 17, throwaway tmp/pg-55742 on 127.0.0.1:55742, fresh database f2_b2_live at 0019; web/worker as opspilot_web_lab / opspilot_worker_lab",
+    "workbench": "127.0.0.1:8094, POST /intake/alertmanager (event token), OPSPILOT_RUN_SECONDS=1800, self-heal off",
+    "worker": "OPSPILOT_WORKER_CAPACITY=2, OPSPILOT_BACKLOG_MAX=6, default pool (max_size 4), poll 2 s, OPSPILOT_TRACE=lab",
+    "storm": "12 synthetic Alertmanager v4 webhooks via scripts/f2_backlog_storm.py send, 0.2 s apart, lowest priority first: 4 without severity, 4 warning, 4 critical; worker already running",
+    "attempts": "1 attempt, no retry"
+  },
+  "incidents": [
+    {
+      "send_order": 0,
+      "alertname": "F2B2StormA1N00",
+      "severity_label": null,
+      "sent_at": "2026-10-22T18:40:54.801144+00:00",
+      "intake_outcome": "created",
+      "incident_id": "fe9f8798-18da-5a16-8c0a-ad9aa7797f24",
+      "run_id": "760e80aa-5fe5-5126-8ca7-e0ad2685e132",
+      "priority": 2,
+      "intake_accepted_at": "2026-10-22T18:40:54.799762+00:00",
+      "claims": [
+        "2026-10-22T18:40:54.884680+00:00"
+      ],
+      "handoffs": [
+        {
+          "at": "2026-10-22T18:41:13.735625+00:00",
+          "reasons": [
+            "INCOMPLETE_INVESTIGATION"
+          ],
+          "execution": "completed",
+          "control_generation": 0
+        }
+      ],
+      "completed_at": [],
+      "run_state": "waiting_human",
+      "run_control_generation": 0,
+      "model_requests": 2,
+      "tool_operations": 1,
+      "steps": 3,
+      "trace": {
+        "langsmith_run_id": "00000000-0000-0000-0e3d-79f5933df4c1",
+        "otel_trace_id": "5c1aab4af4be8f266d0fe4589d183acf",
+        "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/7154e080-adbb-4104-90e3-562b0ce91aba/r/00000000-0000-0000-0e3d-79f5933df4c1?poll=true",
+        "child_runs": {
+          "llm": 2,
+          "tool": 1
+        },
+        "prompt_tokens": 3471,
+        "completion_tokens": 3353
+      }
+    },
+    {
+      "send_order": 1,
+      "alertname": "F2B2StormA1N01",
+      "severity_label": null,
+      "sent_at": "2026-10-22T18:40:55.016071+00:00",
+      "intake_outcome": "created",
+      "incident_id": "85b99fcc-570a-5965-b409-28dcdd255047",
+      "run_id": "4652c90f-2da1-52c9-8bb3-48a0988bec1e",
+      "priority": 2,
+      "intake_accepted_at": "2026-10-22T18:40:55.015047+00:00",
+      "claims": [],
+      "handoffs": [
+        {
+          "at": "2026-10-22T18:40:56.895092+00:00",
+          "reasons": [
+            "BACKLOG_FULL"
+          ],
+          "execution": "not_started",
+          "control_generation": 0
+        }
+      ],
+      "completed_at": [],
+      "run_state": "waiting_human",
+      "run_control_generation": 0,
+      "model_requests": 0,
+      "tool_operations": 0,
+      "steps": 0,
+      "trace": null
+    },
+    {
+      "send_order": 2,
+      "alertname": "F2B2StormA1N02",
+      "severity_label": null,
+      "sent_at": "2026-10-22T18:40:55.235953+00:00",
+      "intake_outcome": "created",
+      "incident_id": "26e22a7f-eed8-5ec9-85f4-56be688c8b99",
+      "run_id": "099c9971-4cb0-52ab-aef7-6bcd8477994c",
+      "priority": 2,
+      "intake_accepted_at": "2026-10-22T18:40:55.234871+00:00",
+      "claims": [],
+      "handoffs": [
+        {
+          "at": "2026-10-22T18:40:56.893728+00:00",
+          "reasons": [
+            "BACKLOG_FULL"
+          ],
+          "execution": "not_started",
+          "control_generation": 0
+        }
+      ],
+      "completed_at": [],
+      "run_state": "waiting_human",
+      "run_control_generation": 0,
+      "model_requests": 0,
+      "tool_operations": 0,
+      "steps": 0,
+      "trace": null
+    },
+    {
+      "send_order": 3,
+      "alertname": "F2B2StormA1N03",
+      "severity_label": null,
+      "sent_at": "2026-10-22T18:40:55.447706+00:00",
+      "intake_outcome": "created",
+      "incident_id": "43403339-7b89-5f49-a9b8-3b44ae840900",
+      "run_id": "33217955-ad87-5d0a-9716-05d92d7d0dc1",
+      "priority": 2,
+      "intake_accepted_at": "2026-10-22T18:40:55.446784+00:00",
+      "claims": [],
+      "handoffs": [
+        {
+          "at": "2026-10-22T18:40:56.891780+00:00",
+          "reasons": [
+            "BACKLOG_FULL"
+          ],
+          "execution": "not_started",
+          "control_generation": 0
+        }
+      ],
+      "completed_at": [],
+      "run_state": "waiting_human",
+      "run_control_generation": 0,
+      "model_requests": 0,
+      "tool_operations": 0,
+      "steps": 0,
+      "trace": null
+    },
+    {
+      "send_order": 4,
+      "alertname": "F2B2StormA1N04",
+      "severity_label": "warning",
+      "sent_at": "2026-10-22T18:40:55.667426+00:00",
+      "intake_outcome": "created",
+      "incident_id": "401f0b5b-e21a-5837-bfe6-f76b0b985db8",
+      "run_id": "82c73fa0-9424-5a90-8d98-14e00eef670b",
+      "priority": 1,
+      "intake_accepted_at": "2026-10-22T18:40:55.665938+00:00",
+      "claims": [
+        "2026-10-22T18:41:28.839553+00:00"
+      ],
+      "handoffs": [
+        {
+          "at": "2026-10-22T18:41:42.400078+00:00",
+          "reasons": [
+            "INCOMPLETE_INVESTIGATION"
+          ],
+          "execution": "completed",
+          "control_generation": 0
+        }
+      ],
+      "completed_at": [],
+      "run_state": "waiting_human",
+      "run_control_generation": 0,
+      "model_requests": 2,
+      "tool_operations": 1,
+      "steps": 3,
+      "trace": {
+        "langsmith_run_id": "00000000-0000-0000-de89-dd3e2376d7b0",
+        "otel_trace_id": "0e2e42419cead8e8e70a7766348c0b97",
+        "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/7154e080-adbb-4104-90e3-562b0ce91aba/r/00000000-0000-0000-de89-dd3e2376d7b0?poll=true",
+        "child_runs": {
+          "llm": 2,
+          "tool": 1
+        },
+        "prompt_tokens": 3422,
+        "completion_tokens": 2507
+      }
+    },
+    {
+      "send_order": 5,
+      "alertname": "F2B2StormA1N05",
+      "severity_label": "warning",
+      "sent_at": "2026-10-22T18:40:55.889456+00:00",
+      "intake_outcome": "created",
+      "incident_id": "4406fb97-2e09-5204-8676-837240a50a13",
+      "run_id": "45956253-3bc1-5782-a92b-13d2e027c5cf",
+      "priority": 1,
+      "intake_accepted_at": "2026-10-22T18:40:55.886887+00:00",
+      "claims": [
+        "2026-10-22T18:41:40.027827+00:00"
+      ],
+      "handoffs": [],
+      "completed_at": [
+        "2026-10-22T18:41:57.301991+00:00"
+      ],
+      "run_state": "completed",
+      "run_control_generation": 0,
+      "model_requests": 2,
+      "tool_operations": 1,
+      "steps": 3,
+      "trace": {
+        "langsmith_run_id": "00000000-0000-0000-27b0-7cc31b1f2da3",
+        "otel_trace_id": "bc2896a453d3dc220346e0aae265a346",
+        "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/7154e080-adbb-4104-90e3-562b0ce91aba/r/00000000-0000-0000-27b0-7cc31b1f2da3?poll=true",
+        "child_runs": {
+          "llm": 2,
+          "tool": 1
+        },
+        "prompt_tokens": 3403,
+        "completion_tokens": 3107
+      }
+    },
+    {
+      "send_order": 6,
+      "alertname": "F2B2StormA1N06",
+      "severity_label": "warning",
+      "sent_at": "2026-10-22T18:40:56.122607+00:00",
+      "intake_outcome": "created",
+      "incident_id": "8c1123a9-0fc9-5ca8-8e12-2d2722f45405",
+      "run_id": "da162ffe-8c4d-5b16-908b-a256db1a227a",
+      "priority": 1,
+      "intake_accepted_at": "2026-10-22T18:40:56.117489+00:00",
+      "claims": [
+        "2026-10-22T18:41:42.407926+00:00"
+      ],
+      "handoffs": [
+        {
+          "at": "2026-10-22T18:41:56.837299+00:00",
+          "reasons": [
+            "INCOMPLETE_INVESTIGATION"
+          ],
+          "execution": "completed",
+          "control_generation": 0
+        }
+      ],
+      "completed_at": [],
+      "run_state": "waiting_human",
+      "run_control_generation": 0,
+      "model_requests": 2,
+      "tool_operations": 1,
+      "steps": 3,
+      "trace": {
+        "langsmith_run_id": "00000000-0000-0000-b0bc-29466fc86f04",
+        "otel_trace_id": "3b5fff902a7ed387ab0769004ddcbb5c",
+        "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/7154e080-adbb-4104-90e3-562b0ce91aba/r/00000000-0000-0000-b0bc-29466fc86f04?poll=true",
+        "child_runs": {
+          "llm": 2,
+          "tool": 1
+        },
+        "prompt_tokens": 3407,
+        "completion_tokens": 2572
+      }
+    },
+    {
+      "send_order": 7,
+      "alertname": "F2B2StormA1N07",
+      "severity_label": "warning",
+      "sent_at": "2026-10-22T18:40:56.336564+00:00",
+      "intake_outcome": "created",
+      "incident_id": "b6ec0292-d0a2-5645-95e4-62ae040940e5",
+      "run_id": "4e9ff751-c4eb-537f-865e-5762f76dcb4c",
+      "priority": 1,
+      "intake_accepted_at": "2026-10-22T18:40:56.335098+00:00",
+      "claims": [
+        "2026-10-22T18:42:21.290113+00:00"
+      ],
+      "handoffs": [
+        {
+          "at": "2026-10-22T18:40:58.906640+00:00",
+          "reasons": [
+            "BACKLOG_FULL"
+          ],
+          "execution": "not_started",
+          "control_generation": 0
+        },
+        {
+          "at": "2026-10-22T18:42:36.778267+00:00",
+          "reasons": [
+            "INCOMPLETE_INVESTIGATION"
+          ],
+          "execution": "completed",
+          "control_generation": 1
+        }
+      ],
+      "completed_at": [],
+      "run_state": "waiting_human",
+      "run_control_generation": 1,
+      "model_requests": 2,
+      "tool_operations": 1,
+      "steps": 3,
+      "trace": {
+        "langsmith_run_id": "00000000-0000-0000-5724-42de3513acde",
+        "otel_trace_id": "9c264291a8b768d42087cb32f4a52bfa",
+        "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/7154e080-adbb-4104-90e3-562b0ce91aba/r/00000000-0000-0000-5724-42de3513acde?poll=true",
+        "child_runs": {
+          "llm": 2,
+          "tool": 1
+        },
+        "prompt_tokens": 3482,
+        "completion_tokens": 2786
+      }
+    },
+    {
+      "send_order": 8,
+      "alertname": "F2B2StormA1N08",
+      "severity_label": "critical",
+      "sent_at": "2026-10-22T18:40:56.548545+00:00",
+      "intake_outcome": "created",
+      "incident_id": "ce409f89-6d6f-5e2b-b116-127149c6999f",
+      "run_id": "dff76e0d-5670-5846-a62c-05446f96b2b7",
+      "priority": 0,
+      "intake_accepted_at": "2026-10-22T18:40:56.547445+00:00",
+      "claims": [
+        "2026-10-22T18:40:56.907874+00:00"
+      ],
+      "handoffs": [],
+      "completed_at": [
+        "2026-10-22T18:41:13.552259+00:00"
+      ],
+      "run_state": "completed",
+      "run_control_generation": 0,
+      "model_requests": 3,
+      "tool_operations": 1,
+      "steps": 4,
+      "trace": {
+        "langsmith_run_id": "00000000-0000-0000-e01d-1e050cfa5ab4",
+        "otel_trace_id": "72d1439bfe917adbf79816c400ee4772",
+        "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/7154e080-adbb-4104-90e3-562b0ce91aba/r/00000000-0000-0000-e01d-1e050cfa5ab4?poll=true",
+        "child_runs": {
+          "llm": 3,
+          "tool": 1
+        },
+        "prompt_tokens": 6391,
+        "completion_tokens": 2822
+      }
+    },
+    {
+      "send_order": 9,
+      "alertname": "F2B2StormA1N09",
+      "severity_label": "critical",
+      "sent_at": "2026-10-22T18:40:56.765051+00:00",
+      "intake_outcome": "created",
+      "incident_id": "e1f19f3c-d42e-5b89-bac7-ef01e9c9693f",
+      "run_id": "29d40f18-e7b4-564f-be9b-a97ea64566f4",
+      "priority": 0,
+      "intake_accepted_at": "2026-10-22T18:40:56.763420+00:00",
+      "claims": [
+        "2026-10-22T18:41:13.564534+00:00"
+      ],
+      "handoffs": [
+        {
+          "at": "2026-10-22T18:41:28.830228+00:00",
+          "reasons": [
+            "INCOMPLETE_INVESTIGATION"
+          ],
+          "execution": "completed",
+          "control_generation": 0
+        }
+      ],
+      "completed_at": [],
+      "run_state": "waiting_human",
+      "run_control_generation": 0,
+      "model_requests": 2,
+      "tool_operations": 1,
+      "steps": 3,
+      "trace": {
+        "langsmith_run_id": "00000000-0000-0000-1371-b836e0cd6c57",
+        "otel_trace_id": "231f68fe715928292d88427672be4da0",
+        "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/7154e080-adbb-4104-90e3-562b0ce91aba/r/00000000-0000-0000-1371-b836e0cd6c57?poll=true",
+        "child_runs": {
+          "llm": 2,
+          "tool": 1
+        },
+        "prompt_tokens": 3415,
+        "completion_tokens": 2731
+      }
+    },
+    {
+      "send_order": 10,
+      "alertname": "F2B2StormA1N10",
+      "severity_label": "critical",
+      "sent_at": "2026-10-22T18:40:56.981790+00:00",
+      "intake_outcome": "created",
+      "incident_id": "5c4225ee-58cf-51b8-8c70-de7b31c60d8c",
+      "run_id": "5b440f12-cde1-584c-98d2-2bc59b3e0e2f",
+      "priority": 0,
+      "intake_accepted_at": "2026-10-22T18:40:56.980096+00:00",
+      "claims": [
+        "2026-10-22T18:41:13.740749+00:00"
+      ],
+      "handoffs": [
+        {
+          "at": "2026-10-22T18:41:27.749885+00:00",
+          "reasons": [
+            "INCOMPLETE_INVESTIGATION"
+          ],
+          "execution": "completed",
+          "control_generation": 0
+        }
+      ],
+      "completed_at": [],
+      "run_state": "waiting_human",
+      "run_control_generation": 0,
+      "model_requests": 2,
+      "tool_operations": 1,
+      "steps": 3,
+      "trace": {
+        "langsmith_run_id": "00000000-0000-0000-650a-481bbd902aec",
+        "otel_trace_id": "c590ec67cea770e3029bec6dde578fa1",
+        "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/7154e080-adbb-4104-90e3-562b0ce91aba/r/00000000-0000-0000-650a-481bbd902aec?poll=true",
+        "child_runs": {
+          "llm": 2,
+          "tool": 1
+        },
+        "prompt_tokens": 3440,
+        "completion_tokens": 2510
+      }
+    },
+    {
+      "send_order": 11,
+      "alertname": "F2B2StormA1N11",
+      "severity_label": "critical",
+      "sent_at": "2026-10-22T18:40:57.211470+00:00",
+      "intake_outcome": "created",
+      "incident_id": "f340e0ec-f999-5340-97cf-d12f6d88a32c",
+      "run_id": "291e1874-2916-55d3-83c7-242376eb1665",
+      "priority": 0,
+      "intake_accepted_at": "2026-10-22T18:40:57.208594+00:00",
+      "claims": [
+        "2026-10-22T18:41:27.760376+00:00"
+      ],
+      "handoffs": [],
+      "completed_at": [
+        "2026-10-22T18:41:40.020920+00:00"
+      ],
+      "run_state": "completed",
+      "run_control_generation": 0,
+      "model_requests": 2,
+      "tool_operations": 1,
+      "steps": 3,
+      "trace": {
+        "langsmith_run_id": "00000000-0000-0000-2467-69b4187eced6",
+        "otel_trace_id": "a5b5d7c655ebfa870038cdc42227020d",
+        "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/7154e080-adbb-4104-90e3-562b0ce91aba/r/00000000-0000-0000-2467-69b4187eced6?poll=true",
+        "child_runs": {
+          "llm": 2,
+          "tool": 1
+        },
+        "prompt_tokens": 3427,
+        "completion_tokens": 2208
+      }
+    }
+  ],
+  "claim_order": [
+    {
+      "at": "2026-10-22T18:40:54.884680+00:00",
+      "incident_id": "fe9f8798",
+      "severity": "other",
+      "send_order": 0
+    },
+    {
+      "at": "2026-10-22T18:40:56.907874+00:00",
+      "incident_id": "ce409f89",
+      "severity": "critical",
+      "send_order": 8
+    },
+    {
+      "at": "2026-10-22T18:41:13.564534+00:00",
+      "incident_id": "e1f19f3c",
+      "severity": "critical",
+      "send_order": 9
+    },
+    {
+      "at": "2026-10-22T18:41:13.740749+00:00",
+      "incident_id": "5c4225ee",
+      "severity": "critical",
+      "send_order": 10
+    },
+    {
+      "at": "2026-10-22T18:41:27.760376+00:00",
+      "incident_id": "f340e0ec",
+      "severity": "critical",
+      "send_order": 11
+    },
+    {
+      "at": "2026-10-22T18:41:28.839553+00:00",
+      "incident_id": "401f0b5b",
+      "severity": "warning",
+      "send_order": 4
+    },
+    {
+      "at": "2026-10-22T18:41:40.027827+00:00",
+      "incident_id": "4406fb97",
+      "severity": "warning",
+      "send_order": 5
+    },
+    {
+      "at": "2026-10-22T18:41:42.407926+00:00",
+      "incident_id": "8c1123a9",
+      "severity": "warning",
+      "send_order": 6
+    },
+    {
+      "at": "2026-10-22T18:42:21.290113+00:00",
+      "incident_id": "b6ec0292",
+      "severity": "warning",
+      "send_order": 7
+    }
+  ],
+  "parked": [
+    {
+      "incident_id": "43403339",
+      "severity": "other",
+      "at": "2026-10-22T18:40:56.891780+00:00",
+      "reasons": [
+        "BACKLOG_FULL"
+      ],
+      "execution": "not_started"
+    },
+    {
+      "incident_id": "26e22a7f",
+      "severity": "other",
+      "at": "2026-10-22T18:40:56.893728+00:00",
+      "reasons": [
+        "BACKLOG_FULL"
+      ],
+      "execution": "not_started"
+    },
+    {
+      "incident_id": "85b99fcc",
+      "severity": "other",
+      "at": "2026-10-22T18:40:56.895092+00:00",
+      "reasons": [
+        "BACKLOG_FULL"
+      ],
+      "execution": "not_started"
+    },
+    {
+      "incident_id": "b6ec0292",
+      "severity": "warning",
+      "at": "2026-10-22T18:40:58.906640+00:00",
+      "reasons": [
+        "BACKLOG_FULL"
+      ],
+      "execution": "not_started"
+    }
+  ],
+  "human_follow_up": {
+    "at": "2026-10-22T18:42:21.109661+00:00",
+    "incident_id": "b6ec0292-d0a2-5645-95e4-62ae040940e5",
+    "action": "follow_up",
+    "generation": 1,
+    "replayed": false,
+    "sequence": 3,
+    "claims_after": [
+      "2026-10-22T18:42:21.290113+00:00"
+    ],
+    "handoffs": [
+      {
+        "at": "2026-10-22T18:40:58.906640+00:00",
+        "reasons": [
+          "BACKLOG_FULL"
+        ],
+        "execution": "not_started",
+        "control_generation": 0
+      },
+      {
+        "at": "2026-10-22T18:42:36.778267+00:00",
+        "reasons": [
+          "INCOMPLETE_INVESTIGATION"
+        ],
+        "execution": "completed",
+        "control_generation": 1
+      }
+    ],
+    "completed_at": []
+  },
+  "timeline": [
+    {
+      "at": "2026-10-22T18:40:56.057386+00:00",
+      "running_live": 1,
+      "counts": {
+        "queued": 5,
+        "running": 1
+      }
+    },
+    {
+      "at": "2026-10-22T18:40:58.065204+00:00",
+      "running_live": 2,
+      "counts": {
+        "queued": 7,
+        "running": 2,
+        "waiting_human": 3
+      }
+    },
+    {
+      "at": "2026-10-22T18:41:00.071616+00:00",
+      "running_live": 2,
+      "counts": {
+        "queued": 6,
+        "running": 2,
+        "waiting_human": 4
+      }
+    },
+    {
+      "at": "2026-10-22T18:41:02.078389+00:00",
+      "running_live": 2,
+      "counts": {
+        "queued": 6,
+        "running": 2,
+        "waiting_human": 4
+      }
+    },
+    {
+      "at": "2026-10-22T18:41:04.090115+00:00",
+      "running_live": 2,
+      "counts": {
+        "queued": 6,
+        "running": 2,
+        "waiting_human": 4
+      }
+    },
+    {
+      "at": "2026-10-22T18:41:06.101769+00:00",
+      "running_live": 2,
+      "counts": {
+        "queued": 6,
+        "running": 2,
+        "waiting_human": 4
+      }
+    },
+    {
+      "at": "2026-10-22T18:41:08.105616+00:00",
+      "running_live": 2,
+      "counts": {
+        "queued": 6,
+        "running": 2,
+        "waiting_human": 4
+      }
+    },
+    {
+      "at": "2026-10-22T18:41:10.117862+00:00",
+      "running_live": 2,
+      "counts": {
+        "queued": 6,
+        "running": 2,
+        "waiting_human": 4
+      }
+    },
+    {
+      "at": "2026-10-22T18:41:12.127273+00:00",
+      "running_live": 2,
+      "counts": {
+        "queued": 6,
+        "running": 2,
+        "waiting_human": 4
+      }
+    },
+    {
+      "at": "2026-10-22T18:41:14.143948+00:00",
+      "running_live": 2,
+      "counts": {
+        "completed": 1,
+        "queued": 4,
+        "running": 2,
+        "waiting_human": 5
+      }
+    },
+    {
+      "at": "2026-10-22T18:41:16.158121+00:00",
+      "running_live": 2,
+      "counts": {
+        "completed": 1,
+        "queued": 4,
+        "running": 2,
+        "waiting_human": 5
+      }
+    },
+    {
+      "at": "2026-10-22T18:41:18.162978+00:00",
+      "running_live": 2,
+      "counts": {
+        "completed": 1,
+        "queued": 4,
+        "running": 2,
+        "waiting_human": 5
+      }
+    },
+    {
+      "at": "2026-10-22T18:41:20.173235+00:00",
+      "running_live": 2,
+      "counts": {
+        "completed": 1,
+        "queued": 4,
+        "running": 2,
+        "waiting_human": 5
+      }
+    },
+    {
+      "at": "2026-10-22T18:41:22.186476+00:00",
+      "running_live": 2,
+      "counts": {
+        "completed": 1,
+        "queued": 4,
+        "running": 2,
+        "waiting_human": 5
+      }
+    },
+    {
+      "at": "2026-10-22T18:41:24.195164+00:00",
+      "running_live": 2,
+      "counts": {
+        "completed": 1,
+        "queued": 4,
+        "running": 2,
+        "waiting_human": 5
+      }
+    },
+    {
+      "at": "2026-10-22T18:41:26.204102+00:00",
+      "running_live": 2,
+      "counts": {
+        "completed": 1,
+        "queued": 4,
+        "running": 2,
+        "waiting_human": 5
+      }
+    },
+    {
+      "at": "2026-10-22T18:41:28.216419+00:00",
+      "running_live": 2,
+      "counts": {
+        "completed": 1,
+        "running": 2,
+        "waiting_human": 6,
+        "queued": 3
+      }
+    },
+    {
+      "at": "2026-10-22T18:41:30.221746+00:00",
+      "running_live": 2,
+      "counts": {
+        "completed": 1,
+        "running": 2,
+        "waiting_human": 7,
+        "queued": 2
+      }
+    },
+    {
+      "at": "2026-10-22T18:41:32.232588+00:00",
+      "running_live": 2,
+      "counts": {
+        "completed": 1,
+        "running": 2,
+        "waiting_human": 7,
+        "queued": 2
+      }
+    },
+    {
+      "at": "2026-10-22T18:41:34.248564+00:00",
+      "running_live": 2,
+      "counts": {
+        "completed": 1,
+        "running": 2,
+        "waiting_human": 7,
+        "queued": 2
+      }
+    },
+    {
+      "at": "2026-10-22T18:41:36.255039+00:00",
+      "running_live": 2,
+      "counts": {
+        "completed": 1,
+        "running": 2,
+        "waiting_human": 7,
+        "queued": 2
+      }
+    },
+    {
+      "at": "2026-10-22T18:41:38.261140+00:00",
+      "running_live": 2,
+      "counts": {
+        "completed": 1,
+        "running": 2,
+        "waiting_human": 7,
+        "queued": 2
+      }
+    },
+    {
+      "at": "2026-10-22T18:41:40.274656+00:00",
+      "running_live": 2,
+      "counts": {
+        "completed": 2,
+        "waiting_human": 7,
+        "queued": 1,
+        "running": 2
+      }
+    },
+    {
+      "at": "2026-10-22T18:41:42.293761+00:00",
+      "running_live": 2,
+      "counts": {
+        "completed": 2,
+        "waiting_human": 7,
+        "queued": 1,
+        "running": 2
+      }
+    },
+    {
+      "at": "2026-10-22T18:41:44.302246+00:00",
+      "running_live": 2,
+      "counts": {
+        "completed": 2,
+        "waiting_human": 8,
+        "running": 2
+      }
+    },
+    {
+      "at": "2026-10-22T18:41:46.326607+00:00",
+      "running_live": 2,
+      "counts": {
+        "completed": 2,
+        "waiting_human": 8,
+        "running": 2
+      }
+    },
+    {
+      "at": "2026-10-22T18:41:48.343109+00:00",
+      "running_live": 2,
+      "counts": {
+        "completed": 2,
+        "waiting_human": 8,
+        "running": 2
+      }
+    },
+    {
+      "at": "2026-10-22T18:41:50.361812+00:00",
+      "running_live": 2,
+      "counts": {
+        "completed": 2,
+        "waiting_human": 8,
+        "running": 2
+      }
+    },
+    {
+      "at": "2026-10-22T18:41:52.378841+00:00",
+      "running_live": 2,
+      "counts": {
+        "completed": 2,
+        "waiting_human": 8,
+        "running": 2
+      }
+    },
+    {
+      "at": "2026-10-22T18:41:54.405291+00:00",
+      "running_live": 2,
+      "counts": {
+        "completed": 2,
+        "waiting_human": 8,
+        "running": 2
+      }
+    },
+    {
+      "at": "2026-10-22T18:41:56.422551+00:00",
+      "running_live": 2,
+      "counts": {
+        "completed": 2,
+        "waiting_human": 8,
+        "running": 2
+      }
+    },
+    {
+      "at": "2026-10-22T18:41:58.430036+00:00",
+      "running_live": 0,
+      "counts": {
+        "completed": 3,
+        "waiting_human": 9
+      }
+    },
+    {
+      "at": "2026-10-22T18:42:00.444017+00:00",
+      "running_live": 0,
+      "counts": {
+        "completed": 3,
+        "waiting_human": 9
+      }
+    },
+    {
+      "at": "2026-10-22T18:42:02.449652+00:00",
+      "running_live": 0,
+      "counts": {
+        "completed": 3,
+        "waiting_human": 9
+      }
+    },
+    {
+      "at": "2026-10-22T18:42:04.472780+00:00",
+      "running_live": 0,
+      "counts": {
+        "completed": 3,
+        "waiting_human": 9
+      }
+    },
+    {
+      "at": "2026-10-22T18:42:06.481869+00:00",
+      "running_live": 0,
+      "counts": {
+        "completed": 3,
+        "waiting_human": 9
+      }
+    },
+    {
+      "at": "2026-10-22T18:42:08.492400+00:00",
+      "running_live": 0,
+      "counts": {
+        "completed": 3,
+        "waiting_human": 9
+      }
+    },
+    {
+      "at": "2026-10-22T18:42:10.505857+00:00",
+      "running_live": 0,
+      "counts": {
+        "completed": 3,
+        "waiting_human": 9
+      }
+    },
+    {
+      "at": "2026-10-22T18:42:12.514048+00:00",
+      "running_live": 0,
+      "counts": {
+        "completed": 3,
+        "waiting_human": 9
+      }
+    },
+    {
+      "at": "2026-10-22T18:42:14.527044+00:00",
+      "running_live": 0,
+      "counts": {
+        "completed": 3,
+        "waiting_human": 9
+      }
+    },
+    {
+      "at": "2026-10-22T18:42:16.546129+00:00",
+      "running_live": 0,
+      "counts": {
+        "completed": 3,
+        "waiting_human": 9
+      }
+    },
+    {
+      "at": "2026-10-22T18:42:18.560383+00:00",
+      "running_live": 0,
+      "counts": {
+        "completed": 3,
+        "waiting_human": 9
+      }
+    },
+    {
+      "at": "2026-10-22T18:42:20.567209+00:00",
+      "running_live": 0,
+      "counts": {
+        "completed": 3,
+        "waiting_human": 9
+      }
+    },
+    {
+      "at": "2026-10-22T18:42:22.576222+00:00",
+      "running_live": 1,
+      "counts": {
+        "completed": 3,
+        "waiting_human": 8,
+        "running": 1
+      }
+    },
+    {
+      "at": "2026-10-22T18:42:24.580367+00:00",
+      "running_live": 1,
+      "counts": {
+        "completed": 3,
+        "waiting_human": 8,
+        "running": 1
+      }
+    },
+    {
+      "at": "2026-10-22T18:42:26.592264+00:00",
+      "running_live": 1,
+      "counts": {
+        "completed": 3,
+        "waiting_human": 8,
+        "running": 1
+      }
+    },
+    {
+      "at": "2026-10-22T18:42:28.603975+00:00",
+      "running_live": 1,
+      "counts": {
+        "completed": 3,
+        "waiting_human": 8,
+        "running": 1
+      }
+    },
+    {
+      "at": "2026-10-22T18:42:30.616254+00:00",
+      "running_live": 1,
+      "counts": {
+        "completed": 3,
+        "waiting_human": 8,
+        "running": 1
+      }
+    },
+    {
+      "at": "2026-10-22T18:42:32.627690+00:00",
+      "running_live": 1,
+      "counts": {
+        "completed": 3,
+        "waiting_human": 8,
+        "running": 1
+      }
+    },
+    {
+      "at": "2026-10-22T18:42:34.635691+00:00",
+      "running_live": 1,
+      "counts": {
+        "completed": 3,
+        "waiting_human": 8,
+        "running": 1
+      }
+    },
+    {
+      "at": "2026-10-22T18:42:36.640190+00:00",
+      "running_live": 1,
+      "counts": {
+        "completed": 3,
+        "waiting_human": 8,
+        "running": 1
+      }
+    },
+    {
+      "at": "2026-10-22T18:42:38.656519+00:00",
+      "running_live": 0,
+      "counts": {
+        "completed": 3,
+        "waiting_human": 9
+      }
+    },
+    {
+      "at": "2026-10-22T18:42:40.667269+00:00",
+      "running_live": 0,
+      "counts": {
+        "completed": 3,
+        "waiting_human": 9
+      }
+    },
+    {
+      "at": "2026-10-22T18:42:42.681644+00:00",
+      "running_live": 0,
+      "counts": {
+        "completed": 3,
+        "waiting_human": 9
+      }
+    },
+    {
+      "at": "2026-10-22T18:42:44.686708+00:00",
+      "running_live": 0,
+      "counts": {
+        "completed": 3,
+        "waiting_human": 9
+      }
+    },
+    {
+      "at": "2026-10-22T18:42:46.697834+00:00",
+      "running_live": 0,
+      "counts": {
+        "completed": 3,
+        "waiting_human": 9
+      }
+    },
+    {
+      "at": "2026-10-22T18:42:48.712097+00:00",
+      "running_live": 0,
+      "counts": {
+        "completed": 3,
+        "waiting_human": 9
+      }
+    },
+    {
+      "at": "2026-10-22T18:42:50.726441+00:00",
+      "running_live": 0,
+      "counts": {
+        "completed": 3,
+        "waiting_human": 9
+      }
+    },
+    {
+      "at": "2026-10-22T18:42:52.742790+00:00",
+      "running_live": 0,
+      "counts": {
+        "completed": 3,
+        "waiting_human": 9
+      }
+    },
+    {
+      "at": "2026-10-22T18:42:54.750706+00:00",
+      "running_live": 0,
+      "counts": {
+        "completed": 3,
+        "waiting_human": 9
+      }
+    },
+    {
+      "at": "2026-10-22T18:42:56.765646+00:00",
+      "running_live": 0,
+      "counts": {
+        "completed": 3,
+        "waiting_human": 9
+      }
+    },
+    {
+      "at": "2026-10-22T18:42:58.773598+00:00",
+      "running_live": 0,
+      "counts": {
+        "completed": 3,
+        "waiting_human": 9
+      }
+    },
+    {
+      "at": "2026-10-22T18:43:00.793217+00:00",
+      "running_live": 0,
+      "counts": {
+        "completed": 3,
+        "waiting_human": 9
+      }
+    },
+    {
+      "at": "2026-10-22T18:43:02.806222+00:00",
+      "running_live": 0,
+      "counts": {
+        "completed": 3,
+        "waiting_human": 9
+      }
+    },
+    {
+      "at": "2026-10-22T18:43:04.826719+00:00",
+      "running_live": 0,
+      "counts": {
+        "completed": 3,
+        "waiting_human": 9
+      }
+    }
+  ],
+  "assertions": [
+    {
+      "id": "all_12_traceable",
+      "expected": "12 webhooks -> 12 incidents each with one Run and an intake_accepted event",
+      "actual": {
+        "incidents": 12,
+        "created": 12,
+        "with_intake_event": 12
+      },
+      "ok": true
+    },
+    {
+      "id": "peak_running_le_2",
+      "expected": "running with a live lease <= 2 in every 2 s sample",
+      "actual": {
+        "peak": 2,
+        "samples": 65
+      },
+      "ok": true
+    },
+    {
+      "id": "queued_le_cap_after_one_pass",
+      "expected": "R-B2-4: from each moment the backlog first exceeds 6, queued is back to <= 6 within one 2 s poll plus that pass's work",
+      "actual": {
+        "samples_before_pass_over_cap": [
+          {
+            "at": "2026-10-22T18:40:58.065204+00:00",
+            "running_live": 2,
+            "counts": {
+              "queued": 7,
+              "running": 2,
+              "waiting_human": 3
+            }
+          }
+        ],
+        "first_after": {
+          "at": "2026-10-22T18:41:00.071616+00:00",
+          "running_live": 2,
+          "counts": {
+            "queued": 6,
+            "running": 2,
+            "waiting_human": 4
+          }
+        },
+        "max_queued_after": 6,
+        "crossings": [
+          {
+            "over_cap_at": "2026-10-22T18:40:56.335098+00:00",
+            "cause": "intake_accepted b6ec0292 (warning) -> queued 7",
+            "pass_at": "2026-10-22T18:40:56.895092+00:00",
+            "parked": [
+              "43403339",
+              "26e22a7f",
+              "85b99fcc"
+            ],
+            "queued_after": 6,
+            "convergence_seconds": 0.56
+          },
+          {
+            "over_cap_at": "2026-10-22T18:40:57.208594+00:00",
+            "cause": "intake_accepted f340e0ec (critical) -> queued 7",
+            "pass_at": "2026-10-22T18:40:58.906640+00:00",
+            "parked": [
+              "b6ec0292"
+            ],
+            "queued_after": 6,
+            "convergence_seconds": 1.698
+          }
+        ],
+        "method": "queued reconstructed from the incidents' events in recorded_at order: +1 intake_accepted, -1 run_claimed, -1 run_handoff BACKLOG_FULL, starting at 0. Cross-check: the pass at 18:40:56.89 parked exactly 3 when the reconstruction shows 9 queued (9-6=3). intake_accepted is appended after the intake transaction commits (checked for the generic path, web/service.py:364; the alert path not read line by line), so a crossing may be up to that commit-to-append gap earlier than shown (not measured). 2 s samples alone cannot pin the crossing: the only sample above 6 (18:40:58.07, queued 7) lies inside the second crossing."
+      },
+      "ok": true
+    },
+    {
+      "id": "parked_lowest_first_with_reason",
+      "expected": "BACKLOG_FULL handoffs, waiting_human, never a parked Run of higher priority than one claimed after it (before the human follow_up)",
+      "actual": {
+        "parked": [
+          {
+            "incident_id": "43403339",
+            "severity": "other",
+            "at": "2026-10-22T18:40:56.891780+00:00",
+            "reasons": [
+              "BACKLOG_FULL"
+            ],
+            "execution": "not_started"
+          },
+          {
+            "incident_id": "26e22a7f",
+            "severity": "other",
+            "at": "2026-10-22T18:40:56.893728+00:00",
+            "reasons": [
+              "BACKLOG_FULL"
+            ],
+            "execution": "not_started"
+          },
+          {
+            "incident_id": "85b99fcc",
+            "severity": "other",
+            "at": "2026-10-22T18:40:56.895092+00:00",
+            "reasons": [
+              "BACKLOG_FULL"
+            ],
+            "execution": "not_started"
+          },
+          {
+            "incident_id": "b6ec0292",
+            "severity": "warning",
+            "at": "2026-10-22T18:40:58.906640+00:00",
+            "reasons": [
+              "BACKLOG_FULL"
+            ],
+            "execution": "not_started"
+          }
+        ],
+        "violations": 0
+      },
+      "ok": true
+    },
+    {
+      "id": "human_follow_up_requeues_and_is_claimed",
+      "expected": "follow_up of a parked Run -> claimed again, not re-parked",
+      "actual": {
+        "incident": "b6ec0292",
+        "was_parked": true,
+        "claimed_after": [
+          "2026-10-22T18:42:21.290113+00:00"
+        ],
+        "rehandoff_reasons": [
+          [
+            "INCOMPLETE_INVESTIGATION"
+          ]
+        ]
+      },
+      "ok": true
+    },
+    {
+      "id": "no_model_errors",
+      "expected": "no MODEL_*/TIMEOUT handoff",
+      "actual": 0,
+      "ok": true
+    }
+  ],
+  "trace": {
+    "project": "opspilot-lab-f2-b2-live-20261022",
+    "project_id": "7154e080-adbb-4104-90e3-562b0ce91aba",
+    "trace_tier": "longlived",
+    "roots": 9
+  },
+  "cost": {
+    "deepseek_balance_cny": {
+      "before": "99.58",
+      "after": "99.57"
+    },
+    "balance_at": {
+      "before": "2026-10-22T18:40:00.117949+00:00",
+      "after": "2026-10-22T18:43:19.468660+00:00"
+    },
+    "tokens": {
+      "prompt": 33858,
+      "completion": 24596
+    }
+  },
+  "raw_ledger": {
+    "sha256": "7c1557f9da7954513be67acc0be76e0a2fa53237a8078bd50b3dfeceb8c68e34",
+    "bytes": 134863,
+    "path": "tmp/lab-ledgers/f2-b2-live/760e80aa-5fe5-5126-8ca7-e0ad2685e132/ledger.json",
+    "in_repository": false
+  },
+  "amended": {
+    "at": "2026-10-22",
+    "what": "assertions[queued_le_cap_after_one_pass]: clock now starts at each over-cap crossing instead of the last webhook (coordinator re-check); raw ledger unchanged"
+  }
+}
