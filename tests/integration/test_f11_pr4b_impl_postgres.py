@@ -434,6 +434,8 @@ def test_release_handoff_is_a_handoff_incident_on_the_web(world, monkeypatch):
     page = call(app, "GET", f"/incidents/{receipt.incident_id}", headers=basic())
     assert page.status == 200
     assert 'id="handoff-reason">RELEASE_TARGET_UNRESOLVED' in page.text
+    assert "no longer matches the registered target record" in page.text
+    assert "The alert's labels matched" not in page.text
     for action in ("new_run", "follow_up", "pause"):
         refused = post_form(
             app,
