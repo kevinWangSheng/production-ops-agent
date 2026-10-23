@@ -78,11 +78,10 @@ OLD_OTEL_TOOL_SCHEMA_REVISION = "otel-demo-2a944edd110a"
 OLD_FIXTURE_TOOL_SCHEMA_REVISION = "fixture-3"
 NEW_PROJECTION_REVISION = "m1-01-tool-view-v10"
 # U5-a puts the data-source list in the evidence context, not the discipline
-# variant (U5-b would have bumped prompt_revision); unchanged.
-UNCHANGED_VERSIONS = {
-    "prompt_revision": "prompt-replay-candidate-dd9018031487",
-    "context_policy_revision": "ctx-ctx-policy-v1-a30e65ea52f4",
-}
+# variant, so #311 itself leaves the context policy unchanged. prompt_revision
+# is not pinned: F3 PR-2 also carries #310, which moves it
+# (tests/acceptance/test_310_investigation_method.py).
+CONTEXT_POLICY_REVISION = "ctx-ctx-policy-v1-a30e65ea52f4"
 
 SOURCE_ERROR_KEYS = frozenset(
     {"trust", "http_status", "error_type", "error", "error_truncated"}
@@ -729,10 +728,12 @@ def test_item9_revisions_bump_once():
     # Recomputable from the module's own inputs, not a pasted literal.
     assert otel_demo._tool_schema_revision() == otel_demo.TOOL_SCHEMA_REVISION
     assert otel_demo.otel_demo_versions() == {
-        **UNCHANGED_VERSIONS,
+        **investigation_versions(),
         "tool_schema_revision": otel_demo.TOOL_SCHEMA_REVISION,
     }
-    assert investigation_versions() == UNCHANGED_VERSIONS
+    assert investigation_versions()["context_policy_revision"] == (
+        CONTEXT_POLICY_REVISION
+    )
     assert fixture_profile.TOOL_SCHEMA_REVISION != OLD_FIXTURE_TOOL_SCHEMA_REVISION
     assert (
         fixture_profile.fixture_versions()["tool_schema_revision"]
