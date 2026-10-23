@@ -55,6 +55,8 @@ _BASIC_PASSWORD = "investigator-pw"
 OLD_TOOL_SCHEMA_REVISION = "otel-demo-4d7168180749"  # a4eea42 import value
 OLD_PROJECTION_REVISION = "m1-01-tool-view-v8"  # a4eea42 outcomes.py
 OLD_PROMPT_REVISION = "prompt-replay-candidate-dd9018031487"  # a4eea42
+# F3 PR-2 (#311 + #310) contract change: #310 adds L1a sections, so prompt_revision now differs from
+# the a4eea42 value (inequality only); #311 bumps the projection to v10.
 OLD_TRACES_DESCRIPTION_SHA256 = "559e4ed81e5c0f8624b5fd96f8434e164ce403d22545381253223bec893b55c3"  # sha256(TOOL_SCHEMAS traces description.encode()) at a4eea42
 
 
@@ -445,8 +447,8 @@ def test_revisions_bump_only_the_tool_schema_and_trace_description_stays_equal()
     assert TOOL_SCHEMA_REVISION != OLD_TOOL_SCHEMA_REVISION
     # #308 PR2 bumps the projection once (contract R10 / acceptance 7).
     assert PROJECTION_REVISION != OLD_PROJECTION_REVISION
-    assert PROJECTION_REVISION == "m1-01-tool-view-v9"
-    assert investigation_versions()["prompt_revision"] == OLD_PROMPT_REVISION
+    assert PROJECTION_REVISION == "m1-01-tool-view-v10"
+    assert investigation_versions()["prompt_revision"] != OLD_PROMPT_REVISION
     traces_description = next(
         schema["function"]["description"]
         for schema in TOOL_SCHEMAS

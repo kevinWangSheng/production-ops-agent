@@ -28,6 +28,7 @@ from opspilot.investigation.loop import InvestigationLoop, InvestigationRequest
 from opspilot.investigation.progress import EmittingCommitter
 from opspilot.investigation.store import MemoryStepStore
 from opspilot.tools import TransportResponse
+from opspilot.tools.outcomes import PROJECTION_REVISION
 from tests.m1_investigation_support import (
     TOOL_SCHEMAS,
     ScriptedModel,
@@ -64,6 +65,15 @@ BASELINE_CAP1 = {
     # projection with only that revision string changed (the c7326c9 value was
     # 5879616ffde1423b7acaae2b787093c732c679e02b0fd4104b2d44432a133039).
     "observation_sha256": "1cd05b51933c28494b8ce545cacb6c662ab95ce996db50ae17f89c56cd2c137e",
+    # F3 PR-2 (#311 + #310) contract change: #310 rewrites the system message
+    # (new L1a sections) and #311 bumps PROJECTION_REVISION to v10, both of
+    # which the strict digest above covers. Its new value cannot be produced
+    # without reading the implementation, so the cap-one observations are now
+    # compared through a digest that replaces exactly those two parts with
+    # placeholders (``_pr2_normalized_digest``); everything else stays byte
+    # for byte. Generated on main 200172c, where it equals the strict
+    # projection under the same two substitutions.
+    "pr2_normalized_sha256": "5cfbc3eb1a089445e58325e9bc3b25d83ba569b9f6a25afe23220b7cb439dfd8",
 }
 
 
@@ -272,6 +282,37 @@ def _strict_observation_digest(model, store, events):
     ).hexdigest()
 
 
+def _pr2_normalized_digest(model, store, events):
+    """``_strict_observation_digest`` with the system message content and the
+    projection revision string replaced by placeholders (see BASELINE_CAP1)."""
+    rows = []
+    for key, row in sorted(store.steps.items(), key=lambda item: item[1]["sequence"]):
+        rows.append(
+            {
+                "logical_key": key,
+                "response": row["response"],
+                "tool_results": store.tool_results.get(row["step_id"], []),
+            }
+        )
+    messages = [
+        [
+            {**message, "content": "<L1 system message>"}
+            if message.get("role") == "system"
+            else message
+            for message in call
+        ]
+        for call in _messages_projection(model)
+    ]
+    text = json.dumps(
+        {"messages": messages, "rows": rows, "events": events.rows},
+        sort_keys=True,
+        ensure_ascii=False,
+    )
+    return hashlib.sha256(
+        text.replace(PROJECTION_REVISION, "<PROJECTION_REVISION>").encode()
+    ).hexdigest()
+
+
 def test_cap_one_matches_the_frozen_main_c7326c9_observations(monkeypatch):
     sequence = iter(range(1, 100))
     monkeypatch.setattr(store_module, "uuid4", lambda: UUID(int=next(sequence)))
@@ -296,8 +337,8 @@ def test_cap_one_matches_the_frozen_main_c7326c9_observations(monkeypatch):
     ] == BASELINE_CAP1["tool_message_ids"]
     assert [kind for kind, _payload in events.rows] == BASELINE_CAP1["event_kinds"]
     assert (
-        _strict_observation_digest(model, store, events)
-        == BASELINE_CAP1["observation_sha256"]
+        _pr2_normalized_digest(model, store, events)
+        == BASELINE_CAP1["pr2_normalized_sha256"]
     )
 
 

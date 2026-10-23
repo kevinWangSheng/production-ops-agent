@@ -51,8 +51,9 @@ def _schema(name: str) -> dict[str, Any]:
 def test_revision_bumped_by_content_hash() -> None:
     assert otel_demo.TOOL_SCHEMA_REVISION != OLD_REVISION
     assert otel_demo.TOOL_SCHEMA_REVISION == otel_demo._tool_schema_revision()
-    # #308 PR2 bumped the projection to v9 (kept over-limit refusals, slices).
-    assert otel_demo.PROJECTION_REVISION == "m1-01-tool-view-v9"
+    # #308 PR2 bumped the projection to v9 (kept over-limit refusals, slices);
+    # F3 PR-2 (#311 + #310) contract change: #311 adds ``source_error`` to refusal views -> v10.
+    assert otel_demo.PROJECTION_REVISION == "m1-01-tool-view-v10"
 
 
 def test_traces_description_bytes_unchanged() -> None:
