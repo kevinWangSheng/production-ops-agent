@@ -610,6 +610,22 @@ def _column_exists(dsn):
         )
 
 
+def _assert_revision_stops_at_correlation(dsn, before):
+    """The refused downgrade leaves the data-bearing migration in place.
+
+    Advisor ruling (option A): R-C8 only requires 0018 to refuse and keep its
+    data; B1 U-B1-1 makes 0019 downgrade unconditionally and the runner commits
+    per migration, so from head 0019 the chain stops at 0018. With head still
+    0018 nothing changes.
+    """
+    with psycopg.connect(dsn) as conn:
+        current = schema.current_revision(conn)
+    if before == "0018_alert_correlation":
+        assert current == before
+    else:
+        assert current == "0018_alert_correlation", (before, current)
+
+
 def test_downgrade_refused_when_attached_rows_exist(isolated_database, make_app, alert):
     app = make_app(isolated_database)
     first = fire(app, alert, T1)
@@ -622,8 +638,7 @@ def test_downgrade_refused_when_attached_rows_exist(isolated_database, make_app,
         command.downgrade(
             schema._config(isolated_database), "0017_web_suspension_grants"
         )
-    with psycopg.connect(isolated_database) as conn:
-        assert schema.current_revision(conn) == revision
+    _assert_revision_stops_at_correlation(isolated_database, revision)
     assert _column_exists(isolated_database)
     assert project(isolated_database, first["incident_id"]).deliveries[-1].outcome == (
         "attached"
@@ -645,8 +660,7 @@ def test_downgrade_refused_when_relations_exist(isolated_database, make_app, ale
         command.downgrade(
             schema._config(isolated_database), "0017_web_suspension_grants"
         )
-    with psycopg.connect(isolated_database) as conn:
-        assert schema.current_revision(conn) == revision
+    _assert_revision_stops_at_correlation(isolated_database, revision)
     assert (
         project(isolated_database, b["incident_id"]).related_incident_id
         == (a["incident_id"])
