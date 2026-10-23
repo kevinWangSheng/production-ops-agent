@@ -1,0 +1,48 @@
+{
+  "at": "2026-10-23T07:13:21.586008+00:00",
+  "expr": "sum(rate(traces_span_metrics_calls_total{service_name=\"checkout\"}[5m])",
+  "executor": {
+    "status": "error",
+    "reason": "INVALID_PARAMS",
+    "source_contact": "confirmed",
+    "evidence_is_none": true,
+    "model_view": {
+      "operation_id": "step-1-t0",
+      "trust": "gateway",
+      "status": "error",
+      "citable_as_fact": false,
+      "reason": "INVALID_PARAMS",
+      "source_contact": "confirmed",
+      "tool": "metrics_range_query",
+      "target_id": "m0-otel-20260909",
+      "window": {
+        "start": "2026-10-22T07:13:19+00:00",
+        "end": "2026-10-23T07:13:19+00:00"
+      },
+      "requested_at": "2026-10-23T07:13:19.471225+00:00",
+      "content": null,
+      "source_error": {
+        "trust": "untrusted-evidence",
+        "http_status": 400,
+        "error_type": "bad_data",
+        "error": "invalid parameter \"query\": 1:71: parse error: unclosed left parenthesis",
+        "error_truncated": false
+      }
+    }
+  },
+  "raw_via_proxy": {
+    "http_status": 400,
+    "content_type": "application/json",
+    "body": "{\"status\":\"error\",\"errorType\":\"bad_data\",\"error\":\"invalid parameter \\\"query\\\": 1:71: parse error: unclosed left parenthesis\"}",
+    "sha256": "c4cd53c40fc68d963822eb3afaf37ca82892a5c68078e9c89ab206ac304dc248",
+    "bytes": 125
+  },
+  "raw_direct_prometheus": {
+    "http_status": 400,
+    "content_type": "application/json",
+    "body": "{\"status\":\"error\",\"errorType\":\"bad_data\",\"error\":\"invalid parameter \\\"query\\\": 1:71: parse error: unclosed left parenthesis\"}",
+    "sha256": "c4cd53c40fc68d963822eb3afaf37ca82892a5c68078e9c89ab206ac304dc248",
+    "bytes": 125
+  },
+  "bodies_identical": true
+}

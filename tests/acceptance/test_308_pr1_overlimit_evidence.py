@@ -93,15 +93,18 @@ BASELINE_CONTROL_GENERATION_REFUSAL_VIEW = (
     b'"start":"2026-09-14T00:00:00+00:00"}}'
 )
 
-# Unchanged by #308 PR2.
+# Unchanged by #308 PR2. F3 PR-2 (#311 + #310) contract change: #310 moves prompt_revision, so it
+# is now compared for inequality against this value; the context policy stays.
 UNCHANGED_VERSIONS = {
     "prompt_revision": "prompt-replay-candidate-dd9018031487",
     "context_policy_revision": "ctx-ctx-policy-v1-a30e65ea52f4",
 }
 OLD_TOOL_SCHEMA_REVISION = "otel-demo-5270fd8c543f"  # main after #318 (c38be65)
 OLD_PROJECTION_REVISION = "m1-01-tool-view-v8"
-# #308 PR2 bumps each once (contract R10).
-NEW_PROJECTION_REVISION = "m1-01-tool-view-v9"
+# #308 PR2 bumps each once (contract R10). F3 PR-2 (#311 + #310) contract change: #311 bumps the
+# projection to v10 and moves the tool schema revision again; the #308 PR2
+# tool schema value is kept as the previous freeze (inequality only).
+NEW_PROJECTION_REVISION = "m1-01-tool-view-v10"
 NEW_TOOL_SCHEMA_REVISION = "otel-demo-2a944edd110a"
 # U5 fields every refusal view carries after PR2 (the usage-text key is not
 # named by the contract, so it is not listed).
@@ -414,18 +417,51 @@ def test_pr1_control_failure_keeps_the_existing_denied_path():
     assert transport.called is False
 
 
+def _recomputed_tool_schema_revision() -> str:
+    """The OTel tool schema revision recomputed independently from its five
+    hash inputs, read through public interfaces: the model-visible schemas,
+    the registry revision, the trace projection, the projection revision and
+    (#311 U5) the face's ``data_sources`` template. Comparing the module's
+    value with ``otel_demo._tool_schema_revision()`` would be a tautology
+    (F3 PR-2 review F2); this rebuild turns red when any input is dropped."""
+    from opspilot.tools import otel_demo as otel
+    from opspilot.tools.outcomes import PROJECTION_REVISION as projection
+    from opspilot.tools.registry import ToolRegistry, canonical_hash
+    from tests.m1_tool_support import FakeClock
+
+    context = otel.otel_demo_face(FakeClock()).evidence_context("revision-run")
+    digest = canonical_hash(
+        {
+            "tool_schemas": [dict(item) for item in otel.TOOL_SCHEMAS],
+            "registry": ToolRegistry(otel.otel_demo_registrations().tools).revision,
+            "trace_projection": otel.TRACE_PROJECTION,
+            "projection_revision": projection,
+            "data_sources": context["data_sources"],
+        }
+    )
+    return f"otel-demo-{digest[:12]}"
+
+
 def test_pr2_bumps_tool_schema_and_projection_once_and_keeps_the_rest():
     assert otel_demo.TOOL_SCHEMA_REVISION != OLD_TOOL_SCHEMA_REVISION
-    assert otel_demo.TOOL_SCHEMA_REVISION == NEW_TOOL_SCHEMA_REVISION
+    assert otel_demo.TOOL_SCHEMA_REVISION != NEW_TOOL_SCHEMA_REVISION
+    assert otel_demo.TOOL_SCHEMA_REVISION == _recomputed_tool_schema_revision()
     assert PROJECTION_REVISION != OLD_PROJECTION_REVISION
     assert PROJECTION_REVISION == NEW_PROJECTION_REVISION
-    assert investigation_versions() == UNCHANGED_VERSIONS
+    assert (
+        investigation_versions()["prompt_revision"]
+        != UNCHANGED_VERSIONS["prompt_revision"]
+    )
+    assert (
+        investigation_versions()["context_policy_revision"]
+        == UNCHANGED_VERSIONS["context_policy_revision"]
+    )
     assert context_policy_versions() == {
         "context_policy_revision": UNCHANGED_VERSIONS["context_policy_revision"]
     }
     assert otel_demo.otel_demo_versions() == {
-        **UNCHANGED_VERSIONS,
-        "tool_schema_revision": NEW_TOOL_SCHEMA_REVISION,
+        **investigation_versions(),
+        "tool_schema_revision": otel_demo.TOOL_SCHEMA_REVISION,
     }
 
 

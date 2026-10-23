@@ -1875,6 +1875,7 @@ class Workbench:
         report = _report_view(rebuilt.get("conclusion"))
         knowledge_view = None
         input_snapshot = run.get("input") or {}
+        not_integrated = _not_integrated(input_snapshot)
         fact = input_snapshot.get("scope_facts", {}).get(KNOWLEDGE)
         if fact is not None:
             committed = rebuilt.get("conclusion")
@@ -1905,6 +1906,7 @@ class Workbench:
                 "deadline": run["deadline"],
             },
             "steps": steps,
+            "not_integrated": not_integrated,
             "pending_tools": len(rebuilt["pending_tools"]),
             "report": report,
             "knowledge": knowledge_view,
@@ -2497,11 +2499,28 @@ def _last_live_response(steps: list[Mapping[str, Any]]) -> Mapping[str, Any] | N
     return None
 
 
+def _not_integrated(input_snapshot: Mapping[str, Any]) -> list[str] | None:
+    """#311 U6: the Run's recorded ``not_integrated`` list; ``None`` for a
+    Run recorded before ``data_sources`` existed."""
+    context = input_snapshot.get("evidence_context")
+    sources = context.get("data_sources") if isinstance(context, Mapping) else None
+    names = sources.get("not_integrated") if isinstance(sources, Mapping) else None
+    if not isinstance(names, list):
+        return None
+    return [name for name in names if isinstance(name, str)]
+
+
 def _step_view(step: Mapping[str, Any]) -> dict[str, Any]:
     response = step.get("response") or {}
     tools = []
     for item in step.get("tool_results") or []:
         result = item.get("result") or {}
+        # #311 U6: the source's own 4xx answer -- status, and the redacted,
+        # bounded envelope text the executor already put on the view.
+        source_error = result.get("source_error")
+        if not isinstance(source_error, Mapping):
+            source_error = {}
+        error = source_error.get("error")
         tools.append(
             {
                 "ordinal": item.get("ordinal"),
@@ -2512,6 +2531,9 @@ def _step_view(step: Mapping[str, Any]) -> dict[str, Any]:
                 "source_contact": result.get("source_contact"),
                 "tool": result.get("tool"),
                 "target_id": result.get("target_id"),
+                "http_status": source_error.get("http_status"),
+                "source_error": error if isinstance(error, str) else None,
+                "source_error_truncated": source_error.get("error_truncated") is True,
             }
         )
     assistant = response.get("assistant") if isinstance(response, Mapping) else None
