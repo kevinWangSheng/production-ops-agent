@@ -83,7 +83,8 @@ def scan(binary: Path, mode: str, target: Path, scratch: Path):
     config = scratch / "scanner.toml"
     # Two reviewed non-credential source digests in one historical evidence manifest,
     # the B2 ``"key"`` digest frozen in the synthetic structural fixture,
-    # and the F2 PR-C acceptance ``auth_revision`` label.
+    # the F2 PR-C acceptance ``auth_revision`` label, and the #311 implementation
+    # test's synthetic fake token.
     # Rule + exact file suffix + exact value all must match; no directory exclusion.
     config.write_text(
         """[extend]
@@ -111,6 +112,12 @@ condition = "AND"
 paths = ['(^|/)tests/acceptance/test_f2_alert_correlation\\.py$']
 regexTarget = "secret"
 regexes = ['^f2-correlation-acceptance-v1$']
+[[rules.allowlists]]
+description = "Synthetic fake token in the #311 implementation test (not a credential)"
+condition = "AND"
+paths = ['(^|/)tests/test_311_source_errors_impl\\.py$']
+regexTarget = "secret"
+regexes = ['^tok-311-abcdefghijkl$']
 [[rules]]
 id = "m0-selftest-api-key"
 description = "Deterministic synthetic API-key canary used to verify the scanner"
