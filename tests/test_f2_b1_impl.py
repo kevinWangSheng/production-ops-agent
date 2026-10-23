@@ -170,6 +170,46 @@ def test_a_later_higher_priority_incident_takes_the_next_free_slot():
     assert not thread.is_alive()
 
 
+def test_a_slot_freed_after_the_listing_is_filled_from_a_fresh_listing():
+    # The CI flake of the test above, made deterministic: a slot that frees
+    # while the poller still walks an older listing must not take a stale,
+    # lower candidate; the critical that arrived meanwhile takes it.
+    x, w, y, z = (uuid4() for _ in range(4))
+    critical = uuid4()
+    queue = Queue([x, w])
+    gate = Gate(queue)
+    loop, _ = _loop(queue, gate, capacity=2, poll=30.0)
+    listed = queue.claimable_incidents
+    calls = []
+
+    def claimable(*, limit=20):
+        snapshot = listed(limit=limit)
+        calls.append(snapshot)
+        if len(calls) == 2:  # the refill after ``w`` freed one slot
+            gate.event(x).set()
+            assert _wait_for(lambda: len(loop._idle) == 2)
+            with queue.lock:
+                queue.listing.insert(0, critical)
+        return snapshot
+
+    queue.claimable_incidents = claimable  # type: ignore[method-assign]
+    thread = _start(loop)
+    try:
+        assert _wait_for(lambda: len(gate.started) == 2)
+        with queue.lock:
+            queue.listing.extend([y, z])
+        gate.event(w).set()
+        assert _wait_for(lambda: len(gate.started) == 4, timeout=1.0)
+        assert set(gate.started[:2]) == {x, w}
+        assert gate.started[2:] == [y, critical]
+    finally:
+        loop.stop.set()
+        for incident_id in (x, w, y, z, critical):
+            gate.event(incident_id).set()
+        thread.join(3.0)
+    assert not thread.is_alive()
+
+
 def test_an_in_flight_incident_is_not_dispatched_to_a_second_slot():
     incident = uuid4()
     queue = Queue([incident])
@@ -378,3 +418,21 @@ def test_a_stop_after_launch_but_before_the_slot_runs_claims_nothing():
     loop.stop.set()
     loop._slot(incident, runner, None)
     assert gate.started == [] and len(loop._idle) == 2
+
+
+def test_shutdown_joins_every_thread_within_one_shared_grace():
+    release = threading.Event()
+    stuck = [
+        threading.Thread(target=release.wait, args=(10.0,), daemon=True)
+        for _ in range(2)
+    ]
+    for thread in stuck:
+        thread.start()
+    try:
+        began = time.monotonic()
+        assert worker_main.join_within(stuck, 0.5) is False
+        # One grace in all, not one per thread (R-B1-5).
+        assert time.monotonic() - began < 0.5 + 0.2
+    finally:
+        release.set()
+    assert worker_main.join_within(stuck, 2.0) is True

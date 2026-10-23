@@ -41,6 +41,8 @@ Configuration (environment only):
   parks the excess for a human (default 8, >= 1).
 * ``OPSPILOT_TOOL_PROFILE``         ``fixture`` (default) or ``otel-demo``;
   must match the workbench (``opspilot.tools.profiles``).
+* ``OPSPILOT_TOOL_PARALLELISM``     tool calls of one model turn in flight at
+  once, 1-16 (default 2, C3 §13); 1 is serial dispatch.
 * ``OPSPILOT_TRACE``                ``off`` (default) or ``lab``: LangSmith
   export of Run spans, lab targets only, fail-closed (``opspilot.tracing``).
 * ``OPSPILOT_POSTMORTEM_POLL_SECONDS`` postmortem scan interval (default 30).
@@ -72,6 +74,7 @@ from uuid import UUID
 
 from opspilot import tracing
 from opspilot.investigation.client import DeepSeekClient
+from opspilot.investigation.loop import MAX_TOOL_PARALLELISM
 from opspilot.investigation.progress import (
     BacklogParker,
     ExpirySweeper,
@@ -91,9 +94,12 @@ from opspilot.web.service import LEASE_SECONDS
 from opspilot.web.store import DurableClock
 from opspilot.worker import Worker
 
-__all__ = ["WorkerLoop", "main", "worker_capacity"]
+__all__ = ["WorkerLoop", "join_within", "main", "worker_capacity"]
 
 _log = logging.getLogger("opspilot.worker")
+
+TOOL_PARALLELISM_ENV = "OPSPILOT_TOOL_PARALLELISM"
+DEFAULT_TOOL_PARALLELISM = 2
 
 
 class ClaimQueue(Protocol):
@@ -321,22 +327,29 @@ class WorkerLoop:
         return [(i, sink[i]) for i in started if i in sink]
 
     def _refill(self) -> None:
-        """Fill the free slots from the claim listing, best first."""
+        """Fill the free slots from the claim listing, best first. With
+        several slots only those free before the listing take from it: one
+        that frees while it is walked waits for a fresh listing (its wake is
+        still set), so an incident listed ahead in the meantime takes it
+        rather than a stale lower candidate (R-B1-2). One slot keeps walking
+        the listing in order, as before capacity existed."""
         with self._cond:
             free = len(self._idle)
             excluded = set(self._in_flight) | self._recent
         if not free or self.stop.is_set():
             return
+        budget = free if self.capacity > 1 else len(excluded) + free + 2
         try:
             candidates = self.queue.claimable_incidents(limit=free + len(excluded) + 2)
         except PersistenceError as exc:
             _log.warning("listing refused code=%s", exc)
             return
         for incident_id in candidates:
-            if self.stop.is_set():
+            if self.stop.is_set() or not budget:
                 return
             if incident_id in excluded:
                 continue
+            budget -= 1
             runner = self._checkout(wait=False)
             if runner is None:
                 return
@@ -412,6 +425,16 @@ def _int_env(name: str, default: int) -> int:
     return value
 
 
+def _tool_parallelism() -> int:
+    """``OPSPILOT_TOOL_PARALLELISM``: 1-16, default 2 (#309, C3 §13)."""
+    value = _int_env(TOOL_PARALLELISM_ENV, DEFAULT_TOOL_PARALLELISM)
+    if value > MAX_TOOL_PARALLELISM:
+        raise SystemExit(
+            f"{TOOL_PARALLELISM_ENV} must be at most {MAX_TOOL_PARALLELISM}"
+        )
+    return value
+
+
 def build_loop(
     store: DurableStore,
     api_key: str,
@@ -420,7 +443,9 @@ def build_loop(
     profile: ToolProfile | None = None,
 ) -> WorkerLoop:
     """The product composition: durable events/evidence/ledger, one tool profile."""
-    capacity = worker_capacity(store.pool_config)
+    # main() has refused a capacity the pool cannot serve (U-B1-3).
+    capacity = _int_env(CAPACITY_ENV, 2)
+    tool_parallelism = _tool_parallelism()
     profile = profile or select_profile(os.environ)
     versions = profile.versions()
     events = DurableEventLog(store)
@@ -442,11 +467,13 @@ def build_loop(
             lease_seconds=LEASE_SECONDS,
             events=events,
             evidence=evidence,
+            tool_parallelism=tool_parallelism,
         )
         _log.info(
-            "worker slot owner=%s profile=%s versions=%s",
+            "worker slot owner=%s profile=%s tool_parallelism=%d versions=%s",
             runner.worker.owner,
             profile.name,
+            tool_parallelism,
             versions,
         )
         return runner
@@ -466,11 +493,14 @@ def build_loop(
     )
 
 
+CAPACITY_ENV = "OPSPILOT_WORKER_CAPACITY"
+
+
 def worker_capacity(pool: PoolConfig) -> int:
     """``OPSPILOT_WORKER_CAPACITY`` (default 2, >= 1), refused with
     ``SystemExit`` unless the process pool holds one connection per slot
     plus the polling and postmortem threads (B1 contract U-B1-3)."""
-    capacity = _int_env("OPSPILOT_WORKER_CAPACITY", 2)
+    capacity = _int_env(CAPACITY_ENV, 2)
     if pool.max_size < capacity + 2:
         raise SystemExit(
             f"OPSPILOT_POOL_MAX_SIZE={pool.max_size} must be at least "
@@ -540,9 +570,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         if not thread.is_alive() or not postmortem_thread.is_alive():
             _log.error("worker loop died; exiting")
             return 1
-    thread.join(grace)
-    postmortem_thread.join(grace)
-    if thread.is_alive() or postmortem_thread.is_alive():
+    if not join_within((thread, postmortem_thread), grace):
         _log.warning(
             "attempt still in flight after grace=%ss: exiting; its lease lapses "
             "within %ss and the next claim resumes from the committed rows",
@@ -557,6 +585,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     tracing.shutdown()
     _log.info("worker stopped")
     return 0
+
+
+def join_within(threads: Sequence[threading.Thread], grace: float) -> bool:
+    """Join ``threads`` against one deadline ``grace`` seconds from now, so
+    shutdown waits at most one grace in all (R-B1-5); ``True`` when every
+    thread has ended."""
+    deadline = time.monotonic() + grace
+    for thread in threads:
+        thread.join(max(0.0, deadline - time.monotonic()))
+    return not any(thread.is_alive() for thread in threads)
 
 
 def _configure_tracing() -> None:

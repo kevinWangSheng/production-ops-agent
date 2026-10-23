@@ -34,4 +34,3 @@ def test_b2_store_and_progress_interfaces_are_public_and_keyword_safe():
     }.items():
         assert hasattr(progress, name), f"progress.{name}"
         assert list(inspect.signature(getattr(progress, name)).parameters) == expected
-
