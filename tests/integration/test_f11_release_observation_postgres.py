@@ -45,7 +45,6 @@ from opspilot.observation import (
     SampleLease,
     release_policy,
 )
-from opspilot.observation.release_policy import load_release_policy_catalog
 from opspilot.observation.release_types import (
     ReleaseSampleEvidence,
     ReleaseSampleLease,
@@ -76,6 +75,7 @@ from tests.f11_release_support import (
     WINDOW,
     EvidenceBuilder,
     Pod,
+    assert_shipped_catalog_is_the_approved_policy,
     canonical_json,
     catalog_text,
     digest,
@@ -613,18 +613,11 @@ def _expiring(owner: DurableStore, web: ReleaseStore, seconds: float = 6.0) -> R
 # ===========================================================================
 
 
-def test_the_shipped_catalog_is_exactly_empty() -> None:
-    shipped = (
-        Path(release_policy.__file__).resolve().parent
-        / "policies"
-        / "release-calibrations.json"
-    )
-    assert Path(release_policy.RELEASE_POLICY_CATALOG_PATH).resolve() == shipped
-    assert shipped.read_text(encoding="utf-8").strip() == EMPTY_CATALOG
-    assert load_release_policy_catalog().policies == ()
+def test_the_shipped_catalog_is_exactly_the_approved_policy() -> None:
+    assert_shipped_catalog_is_the_approved_policy()
 
 
-def test_authorizing_under_the_shipped_catalog_is_uncalibrated(
+def test_authorizing_an_unknown_revision_under_the_shipped_catalog_is_uncalibrated(
     owner: DurableStore, web: ReleaseStore, reader: ReleaseStore
 ) -> None:
     release = _record_release(owner, web)

@@ -124,6 +124,7 @@ r1 只定方向。其余实现者需要猜的语义点，按 AGENTS.md「合同�
 - r5（2026-10-22，lead 采纳 PR #298 机器人安全 P2，依据 U4 与「合同外权限扩张不在授权范围」）：release-deployer token 与其他事件 token 同在 `OPSPILOT_EVENT_TOKENS`，原先可经 `/intake/events` 建事故与 Run、经 `/intake/alertmanager` 投告警。两路由改为认证后、读 body 前拒绝该 actor：`403 RELEASE_ACTOR_FORBIDDEN`，不写任何行；其他 actor 不变，无权限与迁移改动。新增 `tests/integration/test_f11_pr3_impl_generic_intake_postgres.py` 4 项，修复前 3 红（`/intake/events` 实际 201 建出事故）；临时 PG 55793：F7 入口、M1 接入/认证、M1-04 告警、PR-3 全部相关测试 489 passed。
 - r6（2026-10-22，lead 采纳 PR #298 机器人 P1，kind-298 实跑可复现）：`kind_lab up` 原把 release-deployer 哈希写进第二个 `workbench-release-deployer.env`，按文档只 source `workbench-alertmanager.env` 启动的工作台对 harness webhook 全部 401。改为两条 `<sha256>=actor` 并入标准文件的同一个 `OPSPILOT_EVENT_TOKENS`（600、只含哈希），不再写第二个文件；选并入而非改文档，因为既有启动流程与证据都只 source 一个文件。`docs/development.md` 告警段补一句。新增单测：source 该文件后经 `_pairs`→`Authenticator` 两个 actor 都认证通过、保留已有 token；kind_lab/harness/PR-3 单测 183 passed、1 skipped（nginx 不可用）。`up` 本身的接线未在 kind 上复跑。
   - 独立审查（全新上下文 Claude Opus，c96308d）PASS：失败路径零残留、与告警接入并发登记同一 uid 无死锁路径（读码推断）、无新权限。已知：从未登记的目标首次投递被拒时，审计行 semantic_sha256 用随机暂定 target_id 计算，同一载荷两次被拒的值不同；该字段只用于成功投递的核对，不违反合同 D2／验收第 13 项，lead 决定不改。
+- 2026-10-22 三处「出厂清单恰为空」的测试钉子（`test_f11_release_observation_postgres`、`test_f11_pr2b_acceptance_postgres`、`test_f11_pr2b_impl_postgres`）改为钉死唯一已批准条目（M=1500，证据摘要 sha256 与 `docs/evidence/f11-u2-calibration/summary.json` 字节一致）：PR-2 合同预定的 policy 写入已落地，钉子随之收紧；未知 revision 仍判 `RELEASE_POLICY_UNCALIBRATED` 的行为检查保留。
 
 ## 下一步与交接
 
