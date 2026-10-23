@@ -1392,12 +1392,23 @@ class _Fetched:
 _ECHOED_STATUSES = frozenset({400, 422})
 
 
+def _utf8(text: str) -> bool:
+    """Valid UTF-8 bytes can still decode to a lone surrogate (``"\\ud800"``),
+    which no view can be hashed or stored with (review F1, #311)."""
+    try:
+        text.encode("utf-8")
+    except UnicodeEncodeError:
+        return False
+    return True
+
+
 def _source_error_response(fetched: _Fetched, tool: str) -> TransportResponse:
     """A non-200 answer the source sent (5xx already raised in ``_get``).
 
     Every one reports its HTTP status (#311 U2). Only a Prometheus tool's
     400/422 whose body is one complete error envelope -- ``{"status":
     "error", "errorType": str, "error": str}``, valid UTF-8, no repeated key
+    -- whose strings encode back to UTF-8 (no lone surrogate)
     -- hands its decoded strings on (U1, R1); a body cut at
     ``ERROR_BODY_BYTES`` does not parse and echoes nothing. The executor
     redacts and bounds the text.
@@ -1415,6 +1426,8 @@ def _source_error_response(fetched: _Fetched, tool: str) -> TransportResponse:
             and payload.get("status") == "error"
             and isinstance(payload.get("errorType"), str)
             and isinstance(payload.get("error"), str)
+            and _utf8(payload["errorType"])
+            and _utf8(payload["error"])
             and not has_duplicate_keys(text)
         ):
             error_type, error_text = payload["errorType"], payload["error"]

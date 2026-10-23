@@ -74,6 +74,7 @@ U1–U6 用户裁决：按推荐（2026-10-22）。R1–R10 可逆默认照做�
 - 两项合并后的全量 `tests/acceptance/` + 定向集：15 failed / 5371 passed / 152 skipped。失败全是独立作者测试里的钉值（projection/tool_schema/prompt revision、309 冻结观测哈希）、与 U1 冲突的旧断言，以及上面的 item3 截断用例；清单已报 lead。
 - 独立作者在 a26d82d/6e3842e 按合同变更迁移了 projection/tool_schema/prompt 钉值（字面量改为不等比较或公开重算；test_309 改为规范化摘要，遮罩 system 消息、projection 字符串与 5 个由提示派生的字段）；item3_a 构造修正 7eaf64a。
 - 并入 6e3842e 后：定向广集（`tests/acceptance/`、`test_m1_*`、`test_f3_*`、`test_f7_*`、`test_instruction_discipline`、实现测试）5406 passed / 152 skipped / 0 failed；受影响 PG 17 个文件 172 passed（临时 PG 17 端口 56161，已停）。
+- 独立审查 F1（孤立代理项 `\ud800` 使视图不可哈希、工具结果不提交、Run 进 waiting_human）：适配器把编码不回 UTF-8 的 `errorType`/`error` 视同不可解析，执行器对任何传输同样丢弃该文本；`error` 为 null、保留 `http_status`、仍为 INVALID_PARAMS。实现测试新增单元 3 例与 PG 产品路径 1 例（`tests/integration/test_311_source_errors_impl_postgres.py`），撤掉修复时均转红（PG 例只发 1 次模型请求）。
 
 ## 下一步与交接
 

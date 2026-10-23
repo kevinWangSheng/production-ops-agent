@@ -39,6 +39,7 @@ from opspilot.tools.otel_demo import (
     otel_demo_executor_factory,
     otel_demo_face,
 )
+from opspilot.tools.registry import canonical
 from opspilot.web.service import _not_integrated, _step_view
 from tests.m1_tool_support import RecordingSink
 from tests.test_m1_otel_demo_contract import (
@@ -89,6 +90,11 @@ ROUTES: dict[str, tuple[int, bytes]] = {
         + b'","error":"clean"}',
     ),
     "odd_type": (400, _envelope("e", "Bad-Data!")),
+    # Review F1: valid UTF-8 and valid JSON, but decodes to a lone surrogate.
+    "surrogate": (
+        400,
+        b'{"status":"error","errorType":"bad_data","error":"parse \\ud800 error"}',
+    ),
     "wrong_status": (400, b'{"status":"success","errorType":"x","error":"y"}'),
     "auth401": (401, f"Authorization: Bearer {SECRET_TOKEN}".encode()),
     "forbidden": (403, _envelope("forbidden")),
@@ -204,7 +210,7 @@ def test_long_error_is_cut_after_redaction(prometheus):
     assert error["error_truncated"] is True
 
 
-@pytest.mark.parametrize("expr", ["not_json", "dup", "wrong_status"])
+@pytest.mark.parametrize("expr", ["not_json", "dup", "wrong_status", "surrogate"])
 def test_a_body_that_is_not_one_clean_envelope_echoes_nothing(prometheus, expr):
     outcome = _metrics(prometheus["url"], expr)
     assert outcome.reason == "INVALID_PARAMS"
@@ -272,6 +278,35 @@ def test_traces_400_and_jaeger_bodies_are_never_echoed():
     )
     assert response.http_status == 400
     assert response.source_error_text is None and response.source_error_type is None
+
+
+def test_a_lone_surrogate_is_unparseable_and_the_view_still_hashes(prometheus):
+    # Review F1: the text would make the view unhashable and the tool result
+    # uncommittable; it is dropped, the status and reason stay.
+    outcome = _metrics(prometheus["url"], "surrogate")
+    assert outcome.reason == "INVALID_PARAMS"
+    assert outcome.model_view["source_error"]["error"] is None
+    canonical(outcome.model_view).encode("utf-8")
+    assert (
+        _source_error_response(
+            _Fetched(400, ROUTES["surrogate"][1]), METRICS_TOOL
+        ).source_error_text
+        is None
+    )
+
+
+def test_executor_drops_a_lone_surrogate_from_any_transport():
+    response = TransportResponse(
+        body=b"{}",
+        source_status="400",
+        http_status=400,
+        source_error_type="bad_data",
+        source_error_text="parse \ud800 error",
+    )
+    error = _source_error(response)
+    assert error is not None and error["error"] is None
+    assert error["http_status"] == 400 and error["error_type"] == "bad_data"
+    canonical(error).encode("utf-8")
 
 
 def test_executor_ignores_a_status_from_an_unsent_or_non_4xx_response():

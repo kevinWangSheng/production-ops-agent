@@ -1961,9 +1961,11 @@ class ReadOnlyToolExecutor:
         """Build a refusal outcome whose model view carries no source content.
 
         ``detail`` (B1 review disposition P2) adds fixed, reason-specific,
-        content-free extra fields -- never a source's own bytes -- so a
-        refusal the model can act on (retry with a smaller ``limit`` or a
-        narrower window) is not just a bare code.
+        content-free extra fields so a refusal the model can act on (retry
+        with a smaller ``limit`` or a narrower window) is not just a bare
+        code. The one exception is #311's ``source_error``: a source 4xx's
+        redacted, bounded text in its own object marked untrusted, never the
+        raw bytes.
         """
 
         view: dict[str, object] = {
@@ -2021,6 +2023,14 @@ def _source_error(response: TransportResponse) -> dict[str, object] | None:
         error_type = None
     text = response.source_error_text
     truncated = False
+    try:
+        if isinstance(text, str):
+            text.encode("utf-8")
+    except UnicodeEncodeError:
+        # A lone surrogate would make the view unhashable and the tool result
+        # uncommittable (review F1); the adapter already drops it, any other
+        # transport is held to the same rule.
+        text = None
     if isinstance(text, str):
         text = redact_credentials(text)
         truncated = len(text) > MAX_SOURCE_ERROR_CHARS
