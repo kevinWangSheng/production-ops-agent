@@ -813,7 +813,7 @@ class DurableIncidentStore:
     def list_incidents(self, *, limit: int = 50) -> tuple[IncidentSummary, ...]:
         with self._store.transaction(snapshot=True) as conn:
             rows = conn.execute(
-                f"SELECT i.incident_id,i.intake_key,i.state,i.lifecycle,i.mode,i.control_generation,i.current_run_id,r.state AS run_state,i.conclusion IS NOT NULL AS concluded,i.created_at,a.handoff_reason,i.related_incident_id,{_REFIRED} FROM opspilot_incidents i LEFT JOIN opspilot_runs r ON r.run_id=i.current_run_id AND r.incident_id=i.incident_id LEFT JOIN opspilot_alert_identities a ON a.incident_id=i.incident_id ORDER BY i.created_at DESC, i.incident_id LIMIT %s",
+                f"SELECT i.incident_id,i.intake_key,i.state,i.lifecycle,i.mode,i.control_generation,i.current_run_id,r.state AS run_state,i.conclusion IS NOT NULL AS concluded,i.created_at,COALESCE(a.handoff_reason,{_RELEASE_HANDOFF}) AS handoff_reason,i.related_incident_id,{_REFIRED} FROM opspilot_incidents i LEFT JOIN opspilot_runs r ON r.run_id=i.current_run_id AND r.incident_id=i.incident_id LEFT JOIN opspilot_alert_identities a ON a.incident_id=i.incident_id ORDER BY i.created_at DESC, i.incident_id LIMIT %s",
                 (limit,),
             ).fetchall()
         return tuple(_summary(row) for row in rows)
@@ -821,7 +821,7 @@ class DurableIncidentStore:
     def find_incident(self, incident_id: UUID) -> IncidentSummary | None:
         with self._store.transaction(snapshot=True) as conn:
             row = conn.execute(
-                f"SELECT i.incident_id,i.intake_key,i.state,i.lifecycle,i.mode,i.control_generation,i.current_run_id,NULL::text AS run_state,i.conclusion IS NOT NULL AS concluded,i.created_at,a.handoff_reason,i.related_incident_id,{_REFIRED} FROM opspilot_incidents i LEFT JOIN opspilot_alert_identities a ON a.incident_id=i.incident_id WHERE i.incident_id=%s",
+                f"SELECT i.incident_id,i.intake_key,i.state,i.lifecycle,i.mode,i.control_generation,i.current_run_id,NULL::text AS run_state,i.conclusion IS NOT NULL AS concluded,i.created_at,COALESCE(a.handoff_reason,{_RELEASE_HANDOFF}) AS handoff_reason,i.related_incident_id,{_REFIRED} FROM opspilot_incidents i LEFT JOIN opspilot_alert_identities a ON a.incident_id=i.incident_id WHERE i.incident_id=%s",
                 (incident_id,),
             ).fetchone()
         return None if row is None else _summary(row)
@@ -872,6 +872,14 @@ class DurableIncidentStore:
 
 # R-C6: a resolved incident that took an attached alert episode after its
 # latest recovery confirmation (the only way into ``resolved``).
+#: F11 PR-4b R7: an incident a release anomaly handed to a human (no
+#: resolvable target) is a handoff incident like an alert's (E5), with the
+#: reason its consumption link recorded. A scalar subquery, so the listing
+#: stays one row per incident.
+_RELEASE_HANDOFF = (
+    "(SELECT l.handoff_reason FROM opspilot_release_incident_links l"
+    " WHERE l.incident_id=i.incident_id AND l.disposition='handoff_created')"
+)
 _REFIRED = (
     "(i.lifecycle='resolved' AND EXISTS (SELECT 1 FROM opspilot_alert_deliveries d "
     "WHERE d.incident_id=i.incident_id AND d.outcome='attached' AND d.received_at > "

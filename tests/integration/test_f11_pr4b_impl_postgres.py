@@ -387,3 +387,72 @@ def test_suspended_target_still_opens_the_incident_paused(world, monkeypatch):
                 "UPDATE opspilot_target_suspensions SET suspended=false,generation=generation+1 WHERE target_id=%s",
                 (_target(web, oid),),
             )
+
+
+def test_release_handoff_is_a_handoff_incident_on_the_web(world, monkeypatch):
+    """Review F1: an R7 handoff renders like an alert handoff (E5): the page
+    is the handoff page with the link's reason, every control HANDOFF_ONLY."""
+    from opspilot.web import AuthConfig, Authenticator, create_app, hash_password
+    from opspilot.web.store import DurableClock
+    from tests.m1_web_support import (
+        ORIGIN,
+        UI_PASSWORD,
+        UI_USER,
+        basic,
+        call,
+        post_form,
+        same_origin,
+    )
+
+    workbench, web, _, oid, store = world
+    monkeypatch.setattr(release_commands, "comparison_wait_seconds", lambda: 0)
+    with psycopg.connect(DSN) as conn:
+        conn.execute("SET LOCAL session_replication_role=replica")
+        conn.execute(
+            "UPDATE opspilot_targets SET workload='elsewhere' WHERE target_id=%s",
+            (_target(web, oid),),
+        )
+    receipt = _consume(workbench, oid)
+    assert receipt is not None and receipt.disposition == "handoff_created"
+    summary = workbench.incidents.find_incident(receipt.incident_id)
+    assert summary is not None and summary.handoff_only
+    assert summary.handoff_reason == "RELEASE_TARGET_UNRESOLVED"
+    listed = {s.incident_id: s for s in workbench.incidents.list_incidents(limit=500)}
+    assert listed[receipt.incident_id].handoff_reason == "RELEASE_TARGET_UNRESOLVED"
+    app = create_app(
+        workbench,
+        Authenticator(
+            AuthConfig(
+                ui_users={UI_USER: hash_password(UI_PASSWORD)},
+                event_tokens={},
+                auth_revision="pr4b",
+                allowed_origins=frozenset({ORIGIN}),
+            )
+        ),
+        DurableClock(store),
+    )
+    page = call(app, "GET", f"/incidents/{receipt.incident_id}", headers=basic())
+    assert page.status == 200
+    assert 'id="handoff-reason">RELEASE_TARGET_UNRESOLVED' in page.text
+    for action in ("new_run", "follow_up", "pause"):
+        refused = post_form(
+            app,
+            f"/incidents/{receipt.incident_id}/control",
+            {
+                "action": action,
+                "expected_generation": "0",
+                "idempotency_key": f"k-{action}",
+                **({"text": "note"} if action == "follow_up" else {}),
+            },
+            headers={**basic(), **same_origin()},
+        )
+        assert refused.status == 409 and refused.json()["code"] == "HANDOFF_ONLY", (
+            action,
+            refused.status,
+        )
+    with psycopg.connect(DSN) as conn:
+        runs = conn.execute(
+            "SELECT count(*) FROM opspilot_runs WHERE incident_id=%s",
+            (receipt.incident_id,),
+        ).fetchone()
+    assert runs == (0,)
