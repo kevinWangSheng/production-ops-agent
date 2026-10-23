@@ -22,18 +22,17 @@ import pytest
 
 import scripts.f3_competing_scenario as driver
 from opspilot.investigation.loop import investigation_versions
+from opspilot.tools import otel_demo
 from opspilot.tools.otel_demo import (
     LABEL_VALUES_TOOL,
     METRIC_NAMES_TOOL,
     TOOL_SCHEMA_REVISION,
     TOOL_SCHEMAS,
-    TRACE_PROJECTION,
     otel_demo_registrations,
     otel_demo_versions,
     promql_problem,
 )
 from opspilot.tools.outcomes import PROJECTION_REVISION
-from opspilot.tools.registry import ToolRegistry, canonical_hash
 
 ROOT = Path(__file__).resolve().parents[2]
 RUBRIC_SHA256 = "b58974b2c2a5ba309cb0efcf47c5af001d9f9c3a27440fec32d5d31b5cf1d956"
@@ -93,22 +92,19 @@ def _injected_answer_strings(answer: dict[str, Any]) -> set[str]:
 def test_tool_schema_revision_is_recomputed_and_other_versions_are_unchanged() -> None:
     """Assertion 1: only the model-visible OTel schema revision moves."""
 
-    registrations = otel_demo_registrations()
-    recomputed = (
-        "otel-demo-"
-        + canonical_hash(
-            {
-                "tool_schemas": [dict(item) for item in TOOL_SCHEMAS],
-                "registry": ToolRegistry(registrations.tools).revision,
-                "trace_projection": TRACE_PROJECTION,
-                "projection_revision": PROJECTION_REVISION,
-            }
-        )[:12]
-    )
+    # F3 PR-2 (#311 + #310) contract change: #311 U5 puts the data_sources
+    # template in the TOOL_SCHEMA_REVISION hash input, so the hash is no
+    # longer rebuilt here; it equals the module's recomputation and differs
+    # from the previous values (2a944edd110a: #308 PR2; b14dc5d5c2fe: the
+    # rebuild without the data_sources template).
 
     assert TOOL_SCHEMA_REVISION != OLD_TOOL_SCHEMA_REVISION
     assert TOOL_SCHEMA_REVISION != PR3A_TOOL_SCHEMA_REVISION
-    assert TOOL_SCHEMA_REVISION == recomputed
+    assert TOOL_SCHEMA_REVISION == otel_demo._tool_schema_revision()
+    assert TOOL_SCHEMA_REVISION not in (
+        "otel-demo-2a944edd110a",
+        "otel-demo-b14dc5d5c2fe",
+    )
     assert TOOL_SCHEMA_REVISION != PR2_PREVIOUS_TOOL_SCHEMA_REVISION
     assert otel_demo_versions() == {
         **investigation_versions(),

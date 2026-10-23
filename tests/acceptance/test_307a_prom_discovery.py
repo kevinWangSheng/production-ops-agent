@@ -24,13 +24,12 @@ from opspilot.tools.otel_demo import (
     METRICS_TOOL,
     TOOL_SCHEMA_REVISION,
     TOOL_SCHEMAS,
-    TRACE_PROJECTION,
     TRACES_TOOL,
     OtelDemoConfig,
     otel_demo_executor_factory,
     otel_demo_registrations,
 )
-from opspilot.tools.registry import ToolRegistry, canonical, canonical_hash
+from opspilot.tools.registry import canonical, canonical_hash
 from scripts.eval_live import template_scope
 from tests.m1_tool_support import FakeClock, RecordingSink
 from tests.test_m1_otel_demo_contract import (
@@ -433,17 +432,16 @@ def test_discovery_values_are_redacted_in_raw_evidence_and_view(
 
 # Contract item 6: revision relationships and the unchanged trace face.
 def test_revisions_bump_only_the_tool_schema_and_trace_description_stays_equal():
-    registrations = otel_demo_registrations()
-    registry_revision = ToolRegistry(registrations.tools).revision
-    digest = canonical_hash(
-        {
-            "tool_schemas": [dict(item) for item in TOOL_SCHEMAS],
-            "registry": registry_revision,
-            "trace_projection": TRACE_PROJECTION,
-            "projection_revision": PROJECTION_REVISION,
-        }
+    # F3 PR-2 (#311 + #310) contract change: #311 U5 puts the data_sources
+    # template in the TOOL_SCHEMA_REVISION hash input, so the hash is no
+    # longer rebuilt here; it equals the module's recomputation and differs
+    # from the previous values (2a944edd110a: #308 PR2; b14dc5d5c2fe: the
+    # rebuild without the data_sources template).
+    assert TOOL_SCHEMA_REVISION == otel_demo._tool_schema_revision()
+    assert TOOL_SCHEMA_REVISION not in (
+        "otel-demo-2a944edd110a",
+        "otel-demo-b14dc5d5c2fe",
     )
-    assert TOOL_SCHEMA_REVISION == f"otel-demo-{digest[:12]}"
     assert TOOL_SCHEMA_REVISION != OLD_TOOL_SCHEMA_REVISION
     # #308 PR2 bumps the projection once (contract R10 / acceptance 7).
     assert PROJECTION_REVISION != OLD_PROJECTION_REVISION

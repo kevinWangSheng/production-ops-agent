@@ -69,11 +69,14 @@ BASELINE_CAP1 = {
     # (new L1a sections) and #311 bumps PROJECTION_REVISION to v10, both of
     # which the strict digest above covers. Its new value cannot be produced
     # without reading the implementation, so the cap-one observations are now
-    # compared through a digest that replaces exactly those two parts with
-    # placeholders (``_pr2_normalized_digest``); everything else stays byte
-    # for byte. Generated on main 200172c, where it equals the strict
-    # projection under the same two substitutions.
-    "pr2_normalized_sha256": "5cfbc3eb1a089445e58325e9bc3b25d83ba569b9f6a25afe23220b7cb439dfd8",
+    # compared through a digest that replaces exactly those parts with
+    # placeholders (``_pr2_normalized_digest``): the system message content,
+    # the five step-row fields derived from its bytes (request_sha256,
+    # context.input_snapshot_hash, context.estimated_prompt_tokens,
+    # conclusion.prompt_revision, conclusion.prompt_face_sha256) and the
+    # projection revision string; everything else stays byte for byte.
+    # Generated on main 200172c under the same substitutions.
+    "pr2_normalized_sha256": "f1ff1167964d67f0ec5dfc34fb1bc547f260fbd42cc6211581ea21edaa3c79c0",
 }
 
 
@@ -282,15 +285,40 @@ def _strict_observation_digest(model, store, events):
     ).hexdigest()
 
 
+# Step-row fields derived from the system message bytes (#310 lengthens it):
+# masked by path, only where present.
+_PROMPT_DERIVED = (
+    ("request_sha256",),
+    ("context", "input_snapshot_hash"),
+    ("context", "estimated_prompt_tokens"),
+    ("conclusion", "prompt_revision"),
+    ("conclusion", "prompt_face_sha256"),
+)
+
+
+def _mask_prompt_derived(response):
+    if not isinstance(response, dict):
+        return response
+    masked = json.loads(json.dumps(response))
+    for path in _PROMPT_DERIVED:
+        parent = masked
+        for key in path[:-1]:
+            parent = parent.get(key) if isinstance(parent, dict) else None
+        if isinstance(parent, dict) and path[-1] in parent:
+            parent[path[-1]] = "<" + ".".join(path) + ">"
+    return masked
+
+
 def _pr2_normalized_digest(model, store, events):
-    """``_strict_observation_digest`` with the system message content and the
-    projection revision string replaced by placeholders (see BASELINE_CAP1)."""
+    """``_strict_observation_digest`` with the system message content, the
+    step-row fields derived from it (``_PROMPT_DERIVED``) and the projection
+    revision string replaced by placeholders (see BASELINE_CAP1)."""
     rows = []
     for key, row in sorted(store.steps.items(), key=lambda item: item[1]["sequence"]):
         rows.append(
             {
                 "logical_key": key,
-                "response": row["response"],
+                "response": _mask_prompt_derived(row["response"]),
                 "tool_results": store.tool_results.get(row["step_id"], []),
             }
         )
