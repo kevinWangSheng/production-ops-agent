@@ -1,6 +1,6 @@
 # #308 超限结果存为未采纳证据 + 按 ID 读片段
 
-- 状态：PR1 独立验收与审查通过（可合并），未推送、未开 PR；PR2 待 #318（#307 A）与 #322（#309）合并后开工
+- 状态：PR1 已合并（#324）；PR2 独立验收与复审通过，开 PR 待合并（模型可见，须无 kind 观察窗）
 - 更新日期：2026-10-22
 - 依据：issue #308（含更正评论）；C3 §5「大结果保存为持久证据，通过 ID 和片段读取」；`docs/research/upstream-design-audit-2026-10-22.md` 第一、三节；[合同 r1](2026-10-22-308-overlimit-evidence-contract.md)
 - 工作区：PR1 实现 `/Users/shenghuikevin/dev/AI/poa-308`（`feature/308-overlimit-evidence`）；PR1 独立测试 `/Users/shenghuikevin/dev/AI/poa-308-tests`（`feature/308-overlimit-evidence-tests`）
@@ -51,6 +51,7 @@ PR2 实现（2026-10-22，`feature/308-pr2-read-evidence`，起点 main `1f701af
   5. 片段超限整段拒绝、不再保留、无摘要：接受。
 
 - PR2 独立审查（Codex gpt-6-luna）FAIL 两条 + 一条可选，均已修：read_evidence 读父记录先做完整性校验（raw 与 view 两个 sha 复算、记录与视图的 evidence_id 都等于请求 ID），任一不符即 `EVIDENCE_NOT_READABLE`，不读 raw；eval `tool_provenance` 校验片段 raw 是 R5 规范 JSON（键集合、规范字节、父 ID/offset/limit 等于调用参数、rows 等于 content、slice 头与 raw 一致、returned 等于区间能容纳的行数）；目标/来源豁免与 `carried` 改为同时要求 source `opspilot-evidence` 与工具名 `read_evidence`。revision 不变（v9 / `otel-demo-2a944edd110a`）。
+- PR2 复审（Codex gpt-6-sol，`9e8ace4`）PASS：定向 65 过、扩展回归 347 过、全量 pytest 8893 过；新测试在修复前提交 `5ef9956` 上 6 败，有区分力。
 
 ## 待决
 
