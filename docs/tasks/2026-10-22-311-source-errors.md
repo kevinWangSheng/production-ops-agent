@@ -72,6 +72,8 @@ U1–U6 用户裁决：按推荐（2026-10-22）。R1–R10 可逆默认照做�
 
 - #310：`discipline_revision(replay-candidate)` `l1a-replay-candidate-e70df72344d9` → `l1a-replay-candidate-9a45deb526fe`（与预审估算一致），`prompt_revision` `prompt-replay-candidate-dd9018031487` → `prompt-replay-candidate-2f30c2380b23`；两段 1205 / 1704 字符，候选臂 13 → 30 句。`tests/test_instruction_discipline.py` 句数普查已改。
 - 两项合并后的全量 `tests/acceptance/` + 定向集：15 failed / 5371 passed / 152 skipped。失败全是独立作者测试里的钉值（projection/tool_schema/prompt revision、309 冻结观测哈希）、与 U1 冲突的旧断言，以及上面的 item3 截断用例；清单已报 lead。
+- 独立作者在 a26d82d/6e3842e 按合同变更迁移了 projection/tool_schema/prompt 钉值（字面量改为不等比较或公开重算；test_309 改为规范化摘要，遮罩 system 消息、projection 字符串与 5 个由提示派生的字段）；item3_a 构造修正 7eaf64a。
+- 并入 6e3842e 后：定向广集（`tests/acceptance/`、`test_m1_*`、`test_f3_*`、`test_f7_*`、`test_instruction_discipline`、实现测试）5406 passed / 152 skipped / 0 failed；受影响 PG 17 个文件 172 passed（临时 PG 17 端口 56161，已停）。
 
 ## 下一步与交接
 
