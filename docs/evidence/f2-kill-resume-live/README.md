@@ -16,6 +16,7 @@
   3. `POST /intake/events` 建一个事故，目标 `m0-otel-20260909`
   4. 用 owner 连接每 0.1 s 读一次 PG 行，定位断点（见下表）。kill 前核对 PID：`ps` 显示的父进程必须是 harness，命令行必须含 `-m opspilot.worker_main`，然后 `os.kill(pid, SIGKILL)`；之后 `pg_terminate_backend` 结束 `opspilot_worker_lab` 剩下的后端
   5. 起 worker B，每 0.2 s 读一次 `opspilot_runs.epoch`，等 Run 结束后 SIGTERM 停掉 worker B
+- 工具并行度：①②③ 用产品默认 2（环境未设 `OPSPILOT_TOOL_PARALLELISM`），补充轮设为 1。实际值只记在未入库的 worker 日志（`worker slot ... tool_parallelism=N`）和 ledger 事件里，`summary.json` 没有记录
 - 防循环上限：产品默认，每个 Run 最多 100 次模型请求；工具注册超时 30 s
 - 版本（`opspilot_runs.versions`）：`prompt-replay-candidate-dd9018031487` / `ctx-ctx-policy-v1-a30e65ea52f4` / `otel-demo-2a944edd110a`
 - 实验环境：`occupation claim`，holder `lane-f2-d`，batch `f2-d-live`（03:20:54Z），`release` 在 04:16Z，之后 `show` 回读为 `null`。注入前检查（03:21Z）：`kind_lab.py health` ok；frontend 2 分钟请求率 1.53/s；checkout PlaceOrder p95 90 ms；内存空闲 45%；swap 已用 6909/8192 MiB（84%，偏高，如实标注）。补充轮之前再查一次：swap 已用 7640 MiB，frontend 2.47/s，p95 48 ms
