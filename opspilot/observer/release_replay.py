@@ -1029,6 +1029,16 @@ def _replay_release_history(history: Mapping[str, object]) -> ReleaseReplay:
             issues.add("ENDING_MISMATCH")
     elif not (late_delivery and release.ended_at == release.received_at):
         issues.add("ENDING_MISMATCH")
+    if "comparisons" in history:
+        issues |= _comparison_issues(
+            release,
+            history["comparisons"],
+            profile,
+            policy,
+            by_session,
+            samples,
+            endings,
+        )
     verdict: Literal["healthy", "degraded", "unknown"] = "unknown"
     if not issues:
         if status == "healthy":
@@ -1045,6 +1055,99 @@ def _replay_release_history(history: Mapping[str, object]) -> ReleaseReplay:
         integrity=tuple(sorted(issues)),
         sample_evaluations=tuple(evaluations),
     )
+
+
+def _comparison_issues(
+    release: ReleaseRecord,
+    comparisons: Any,
+    profile: HealthProfile | None,
+    policy: ReleasePolicy | None,
+    sessions: Mapping[UUID, Any],
+    samples: Any,
+    endings: Any,
+) -> set[str]:
+    """PR-4a S8: a stored comparison is recomputed from its stored raw
+    before-window evidence and the anomaly sample it is bound to."""
+    from opspilot.observation.release_comparison import (
+        ReleaseComparisonEvidence,
+        compare_evidence,
+        comparison_fingerprint,
+        comparison_id_for,
+        iter_comparison_queries,
+    )
+
+    if not comparisons:
+        return set()
+    if len(comparisons) != 1 or release.status != "anomalous":
+        return {"COMPARISON_MISMATCH"}
+    c = comparisons[0]
+    try:
+        ending = next(
+            e
+            for e in endings
+            if e["ending_id"] == c["ending_id"] and e.get("anomaly_key") is not None
+        )
+        sample = next(m for m in samples if m["sample_id"] == c["sample_id"])
+        session = sessions[c["session_id"]]
+        if (
+            profile is None
+            or policy is None
+            or c["observation_id"] != release.observation_id
+            or c["comparison_id"]
+            != comparison_id_for(release.observation_id, c["ending_id"])
+            or ending["sample_id"] != c["sample_id"]
+            or ending["session_id"] != c["session_id"]
+            or c["format_version"] != 1
+        ):
+            return {"COMPARISON_MISMATCH"}
+        window_after = QueryWindow(
+            start=sample["window_start"], end=sample["window_end"]
+        )
+        if (c["window_after_start"], c["window_after_end"]) != (
+            window_after.start,
+            window_after.end,
+        ):
+            return {"COMPARISON_MISMATCH"}
+        queries = list(iter_comparison_queries(c["queries"]))
+        if any(q["comparison_id"] != c["comparison_id"] for q in c["queries"]):
+            return {"COMPARISON_MISMATCH"}
+        evidence = ReleaseComparisonEvidence(
+            format_version=1,
+            comparison_id=c["comparison_id"],
+            attempts=c["attempts"],
+            window=QueryWindow(
+                start=c["window_before_start"], end=c["window_before_end"]
+            ),
+            queries=tuple(queries),
+        )
+        recomputed = compare_evidence(
+            ReleaseEvaluationContext(
+                release=release,
+                session_id=session["session_id"],
+                authorized_at=session["authorized_at"],
+                policy=policy,
+                health_profile=profile,
+            ),
+            observation_id=release.observation_id,
+            ending_id=c["ending_id"],
+            sample_id=c["sample_id"],
+            window_after=window_after,
+            anomaly=ReleaseEvaluation.model_validate_json(
+                canonical_json(sample["release_evaluation"])
+            ),
+            evidence=evidence,
+            decision_at=c["decision_at"],
+        )
+    except (StopIteration, KeyError, TypeError, ValueError, ValidationError):
+        return {"COMPARISON_MISMATCH"}
+    if (
+        recomputed.model_dump(mode="json") != c["comparison"]
+        or recomputed.status != c["status"]
+        or comparison_fingerprint(evidence) != c["evidence_sha256"]
+        or not c["decision_at"] <= c["recorded_at"]
+    ):
+        return {"COMPARISON_MISMATCH"}
+    return set()
 
 
 def replay_release_history(history: Mapping[str, object]) -> ReleaseReplay:

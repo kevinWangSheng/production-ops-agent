@@ -57,7 +57,7 @@ from opspilot.domain.observation import (
 )
 from opspilot.domain.subjects import INCIDENT_LIFECYCLE, SubjectRef
 from opspilot.observation.bindings import _TargetProfileOps
-from opspilot.observation.release_samples import _ReleaseSampleOps
+from opspilot.observation.release_comparison import _ReleaseComparisonOps
 from opspilot.observation.release_types import ReleaseSampleLease
 from opspilot.observation.revocation import end_session, revoke_authorized_sessions
 from opspilot.persistence.base import Connection, PersistenceError, _StoreBase
@@ -1074,7 +1074,7 @@ class SelfHealGrant:
     identity: Mapping[str, str] | None
 
 
-class ObservationStore(_ReleaseSampleOps, _TargetProfileOps):
+class ObservationStore(_ReleaseComparisonOps, _TargetProfileOps):
     """Observation sessions, sampling jobs and samples on PostgreSQL."""
 
     # --- authorization (Controller side; step 3 wraps this in the human action)
@@ -2395,6 +2395,9 @@ class ObservationStore(_ReleaseSampleOps, _TargetProfileOps):
             assert subject is not None
             return {
                 **self._release_history_in(conn, subject["release_observation_id"]),
+                "comparisons": self._release_comparisons_in(
+                    conn, subject["release_observation_id"]
+                ),
                 "selected_session_id": session_id,
             }
         incident = self._require_row(
