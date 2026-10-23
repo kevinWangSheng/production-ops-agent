@@ -1,0 +1,331 @@
+{
+  "schema": "opspilot-lab-summary-1",
+  "experiment": "m1-01-handoff-runner",
+  "run_id": "ca946e79-75db-45a0-8294-7b347e3c5b55",
+  "frozen_at": "2026-10-22T21:21:42.126475+00:00",
+  "incident_id": "ae3b10f8-c4a5-4c1c-921a-6f39029378b7",
+  "driver": "opspilot.investigation.runner.InvestigationRunner",
+  "model": "deepseek-flash",
+  "started": "2026-10-22T21:19:16.967149+00:00",
+  "ended": "2026-10-22T21:21:35.481620+00:00",
+  "tool_parallelism": 1,
+  "context_tokens": 1000000,
+  "tool_profile": "otel-demo",
+  "verdicts": {
+    "status": "published",
+    "reason": null,
+    "last_status": "published",
+    "last_reason": null,
+    "run_state": "completed",
+    "conclusion_published": true,
+    "attempts": [
+      {
+        "label": "first",
+        "status": "published",
+        "reason": null,
+        "handoff_reasons": []
+      }
+    ],
+    "control": null,
+    "event_kinds": [
+      "run_claimed",
+      "step_committed",
+      "tool_committed",
+      "tool_committed",
+      "step_committed",
+      "tool_committed",
+      "tool_committed",
+      "step_committed",
+      "tool_committed",
+      "tool_committed",
+      "step_committed",
+      "tool_committed",
+      "tool_committed",
+      "step_committed",
+      "tool_committed",
+      "tool_committed",
+      "step_committed",
+      "tool_committed",
+      "tool_committed",
+      "step_committed",
+      "tool_committed",
+      "step_committed",
+      "tool_committed",
+      "step_committed",
+      "step_committed",
+      "run_completed"
+    ]
+  },
+  "counts": {
+    "model_requests_bound": 20,
+    "http_count": 10,
+    "prompt_tokens": 406192,
+    "completion_tokens": 26563,
+    "run_usage": {
+      "budget_limit": 20,
+      "model_requests_used": 10,
+      "model_seconds_used": 125.54110891604796,
+      "tool_operations_used": 14,
+      "tool_seconds_used": 12.57515008118935
+    },
+    "current_run_id": "ca946e79-75db-45a0-8294-7b347e3c5b55",
+    "current_run_usage": {
+      "budget_limit": 20,
+      "model_requests_used": 10,
+      "model_seconds_used": 125.54110891604796,
+      "tool_operations_used": 14,
+      "tool_seconds_used": 12.57515008118935
+    },
+    "evidence_ids": [
+      "f42d318d-d38a-4b14-ad7c-c0ffc6d71a5f-t0:0d35cc78-b36c-4ecc-9bfa-ff57000122bb",
+      "f42d318d-d38a-4b14-ad7c-c0ffc6d71a5f-t1:ba7d9661-934e-46e5-b012-cf734ad7cf7c",
+      "75e3e20d-c89a-48e2-93c6-85dd0ed3c8cd-t0:b157d4f8-81cd-47c9-a815-0847f45d120c",
+      "75e3e20d-c89a-48e2-93c6-85dd0ed3c8cd-t1:0e1e62e8-31f9-4c7c-9c27-e55ca124f0b8",
+      "e479114a-7ff4-43ca-bc57-99f16aebbab8-t0:95d56eec-75a9-4f99-9ead-779f8fa90836",
+      "e479114a-7ff4-43ca-bc57-99f16aebbab8-t1:dabbdab5-97fc-4f8e-8e7f-8bea23b34fca",
+      "fb2a5ba4-6459-47e6-a20e-8681d10111f3-t0:bf175898-632b-4a5a-9f82-bfd188944612",
+      "fb2a5ba4-6459-47e6-a20e-8681d10111f3-t1:bff7ab00-a9f3-428e-a1d6-4aacaa375bb3",
+      "c54e7c88-4b42-49b5-9b5b-ee61960ed87f-t0:84ceea4d-2b63-416a-a84d-fd30bb6643b3",
+      "c54e7c88-4b42-49b5-9b5b-ee61960ed87f-t1:da10b210-dcd4-49cb-9320-6bad9ccbb739",
+      "636134a7-6ac7-42bc-b7ea-30cf0ae47424-t0:59a74856-45b4-40c1-a4e8-35f0f010f746",
+      "636134a7-6ac7-42bc-b7ea-30cf0ae47424-t1:72f5997d-9c44-4b45-9a32-e3879855eef1",
+      "7a240f8f-b917-476d-8127-6b8ab91691c4-t0:8e3b2fdc-69dd-460c-8415-4b5204a041d0",
+      "06cc2d23-3dcc-4f0e-83c3-1addba060501-t0:77be7a89-6d8d-4ea2-a410-c324b0819ff6"
+    ]
+  },
+  "cost": {
+    "known_cost_cny_upper": 1.122251
+  },
+  "report": {
+    "schema_version": "m0-report-v2",
+    "assessment_status": "completed",
+    "conclusion": "partial",
+    "summary": "Checkout's elevated errors are real but time-bounded and ended roughly 12 hours before the end of the authorized window. Over the full 24h window checkout emitted about 70.02 error spans on oteldemo.CheckoutService/PlaceOrder against 2,073.25 spans without an error status (STATUS_CODE_UNSET, which does not mean success), about 3.3% of PlaceOrder spans; the same view shows an identical ~70.02 error count on checkout's client span oteldemo.PaymentService/Charge. Those errors are not spread across the window: at hourly resolution 20 of 24 buckets are zero and errors appear only in the hours ending 2026-10-22T04:19:16Z, 05:19:16Z, 08:19:16Z and 09:19:16Z, and the 30-minute series places all nonzero checkout error buckets between 2026-10-22T03:49:16Z and 09:19:16Z (two clusters with a zero-error gap), with every bucket from 09:49:16Z to the window end at zero. The best-supported explanation is failure at the payment Charge hop: checkout's PlaceOrder error counts match its client-side Charge error counts bucket for bucket, payment's own server span grpc.oteldemo.PaymentService/Charge carries ~70.05 error spans, and frontend's POST /api/checkout path carries the same ~70.05 count. That is correlation from span counts only - no error trace, status code, message or log was retrievable, so the origin and cause of the Charge failures remain unresolved. Counterevidence against a checkout-local defect: checkout's HTTP POST span has only ~2.00 error spans in 24h and its CartService/EmptyCart and ProductCatalogService/GetProduct error counts are 0. A separate steady background of flagd EventStream error spans in ad, recommendation and flagd runs through every hour of the window, including hours when checkout had no errors, so a nonzero ERROR series alone is not a checkout signal.",
+    "claims": [
+      {
+        "kind": "fact",
+        "text": "Over the 24h window checkout produced about 70.02 error spans on oteldemo.CheckoutService/PlaceOrder against 2,073.25 spans with no error status (STATUS_CODE_UNSET), roughly 3.3% of PlaceOrder spans; the same view shows about 70.02 error spans on checkout's client span oteldemo.PaymentService/Charge and 0 error spans on oteldemo.CartService/EmptyCart and oteldemo.ProductCatalogService/GetProduct. These are span counts, not unique request counts.",
+        "evidence_ids": [
+          "f42d318d-d38a-4b14-ad7c-c0ffc6d71a5f-t0:0d35cc78-b36c-4ecc-9bfa-ff57000122bb"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "fact",
+        "text": "Checkout PlaceOrder errors are not distributed across the window: at hourly resolution the error series is 0 in 20 of 24 buckets and nonzero only in the buckets ending 2026-10-22T04:19:16Z (17.09), 05:19:16Z (17.12), 08:19:16Z (22.38) and 09:19:16Z (13.22), against 66.09, 56.24, 68.16 and 73.23 non-error PlaceOrder spans in those same hours (about 20.5%, 23.3%, 24.7% and 15.3% of PlaceOrder spans in those hours).",
+        "evidence_ids": [
+          "e479114a-7ff4-43ca-bc57-99f16aebbab8-t0:95d56eec-75a9-4f99-9ead-779f8fa90836"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "fact",
+        "text": "At 30-minute steps with a 1h lookback, checkout's first nonzero error bucket is the one ending 2026-10-22T03:49:16Z and the last is the one ending 09:19:16Z, forming two clusters separated by zero buckets (e.g. 06:19:16Z, 06:49:16Z, 07:19:16Z); every bucket ending from 09:49:16Z through the window end 21:19:16Z is zero, so checkout errors had stopped about 12h before the end of the authorized window.",
+        "evidence_ids": [
+          "75e3e20d-c89a-48e2-93c6-85dd0ed3c8cd-t0:b157d4f8-81cd-47c9-a815-0847f45d120c"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "fact",
+        "text": "The payment service's own server span grpc.oteldemo.PaymentService/Charge recorded about 70.05 error spans against 2,073.55 spans with no error status in the same 24h window, and its internal charge span recorded about 2,143.61 spans with no error status.",
+        "evidence_ids": [
+          "75e3e20d-c89a-48e2-93c6-85dd0ed3c8cd-t1:0e1e62e8-31f9-4c7c-9c27-e55ca124f0b8"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "fact",
+        "text": "Checkout's user-facing HTTP POST span shows only about 2.00 error spans over 24h against 2,071.25 spans with no error status - roughly one order of magnitude fewer than the ~70 PlaceOrder error spans in the same view.",
+        "evidence_ids": [
+          "f42d318d-d38a-4b14-ad7c-c0ffc6d71a5f-t0:0d35cc78-b36c-4ecc-9bfa-ff57000122bb"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "fact",
+        "text": "Frontend-side error spans over 24h total about 70.05 on span POST, 70.05 on 'executing api route (pages) /api/checkout' and 70.05 on grpc.oteldemo.CheckoutService/PlaceOrder, while frontend-proxy shows about 70.05 on 'router frontend egress' and 77.06 on 'ingress'; frontend's GET span and its other api-route spans are 0 in the same view.",
+        "evidence_ids": [
+          "c54e7c88-4b42-49b5-9b5b-ee61960ed87f-t0:84ceea4d-2b63-416a-a84d-fd30bb6643b3"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "fact",
+        "text": "Error spans in ad, recommendation and flagd are entirely on flagd EventStream spans (about 144.11 for ad, 144.11 for recommendation, 194.15 for flagd over 24h) and appear at a steady rate across every sampled hour of the window (about 6.10 per hour for ad and recommendation, about 6-11 per hour for flagd), including hours in which checkout had no PlaceOrder errors; frontend error spans in that same hourly series are 0 except in the buckets ending 04:19:16Z (51.86) and 08:19:16Z (67.15).",
+        "evidence_ids": [
+          "c54e7c88-4b42-49b5-9b5b-ee61960ed87f-t0:84ceea4d-2b63-416a-a84d-fd30bb6643b3",
+          "c54e7c88-4b42-49b5-9b5b-ee61960ed87f-t1:da10b210-dcd4-49cb-9320-6bad9ccbb739"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "fact",
+        "text": "Error-span totals by service over 24h are: checkout about 142.04, frontend about 210.16, frontend-proxy about 147.11, flagd about 194.15, ad about 144.11, recommendation about 144.11, payment about 70.05, and cart and product-catalog 0. The checkout total is consistent with its ~70 PlaceOrder plus ~70 client-side Charge plus ~2 HTTP POST error spans.",
+        "evidence_ids": [
+          "fb2a5ba4-6459-47e6-a20e-8681d10111f3-t0:bf175898-632b-4a5a-9f82-bfd188944612"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "fact",
+        "text": "Trace search for checkout across the whole authorized window returned only 2 traces (106 spans) whose timestamps fall around 2026-10-22T21:17-21:18Z, and every span in that sample carries a success-style status (rpc.grpc.status_code=0 or http.status_code 200); no error-status span appears in the returned sample, and the sample was not truncated.",
+        "evidence_ids": [
+          "f42d318d-d38a-4b14-ad7c-c0ffc6d71a5f-t1:ba7d9661-934e-46e5-b012-cf734ad7cf7c"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "fact",
+        "text": "Checkout pods reported a single unchanged image digest (ghcr.io/open-telemetry/demo@sha256:5ab0d7b9003206a32c72ef48b42a535c3f70565251d7d832f86fe9f249f16635) at every 2h sample across the window.",
+        "evidence_ids": [
+          "06cc2d23-3dcc-4f0e-83c3-1addba060501-t0:77be7a89-6d8d-4ea2-a410-c324b0819ff6"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "fact",
+        "text": "Checkout is owned by 14 distinct ReplicaSet series over the window; new series first appear at the 2h samples for 2026-10-22T03:19:16Z (checkout-6b9b8545bb), 05:19:16Z (checkout-ff6bd6fdc) and 21:19:16Z (checkout-645dc77999), and checkout-6b5d9bf456 is last present at 03:19:16Z.",
+        "evidence_ids": [
+          "7a240f8f-b917-476d-8127-6b8ab91691c4-t0:8e3b2fdc-69dd-460c-8415-4b5204a041d0"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "hypothesis",
+        "text": "The failing hop in the checkout errors was the payment Charge call rather than checkout's own request handling: checkout's PlaceOrder error counts coincide with its client-side oteldemo.PaymentService/Charge error counts in the 24h totals and in every 30-minute bucket, payment's server span grpc.oteldemo.PaymentService/Charge carries the same ~70 error spans, and the frontend POST /api/checkout path carries the same ~70.05 count. This rests on span-count correlation only; no error trace, status code or message was available to confirm direction or cause.",
+        "evidence_ids": [
+          "f42d318d-d38a-4b14-ad7c-c0ffc6d71a5f-t0:0d35cc78-b36c-4ecc-9bfa-ff57000122bb",
+          "75e3e20d-c89a-48e2-93c6-85dd0ed3c8cd-t0:b157d4f8-81cd-47c9-a815-0847f45d120c",
+          "75e3e20d-c89a-48e2-93c6-85dd0ed3c8cd-t1:0e1e62e8-31f9-4c7c-9c27-e55ca124f0b8"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "hypothesis",
+        "text": "The new checkout ReplicaSet series first seen at the 03:19:16Z and 05:19:16Z samples roughly coincide with the first error cluster; because the checkout image digest stayed identical, these look like configuration-only pod replacements, but the 2h sampling cannot pin rollout timing, no ReplicaSet change is visible at the second cluster starting 08:19:16Z, and ReplicaSet ownership series do not by themselves prove which pods served traffic, so a causal link is unproven.",
+        "evidence_ids": [
+          "7a240f8f-b917-476d-8127-6b8ab91691c4-t0:8e3b2fdc-69dd-460c-8415-4b5204a041d0",
+          "06cc2d23-3dcc-4f0e-83c3-1addba060501-t0:77be7a89-6d8d-4ea2-a410-c324b0819ff6"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "rejected_hypothesis",
+        "text": "Rejected: that checkout's errors came from its own outbound HTTP POST (order-confirmation) path. Checkout's HTTP POST error spans total only about 2.00 over 24h versus ~70 PlaceOrder error spans, and its EmptyCart and GetProduct error counts are 0 in the same view.",
+        "evidence_ids": [
+          "f42d318d-d38a-4b14-ad7c-c0ffc6d71a5f-t0:0d35cc78-b36c-4ecc-9bfa-ff57000122bb"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "counter_evidence",
+        "text": "Counterevidence against reading every nonzero ERROR series as part of the checkout incident: ad, recommendation and flagd show a steady ~6-11 error spans per hour on flagd EventStream spans across all sampled hours, including the hours when checkout reported no PlaceOrder errors, and checkout's total 24h error spans (~142) are smaller than frontend's (~210) and flagd's (~194).",
+        "evidence_ids": [
+          "c54e7c88-4b42-49b5-9b5b-ee61960ed87f-t1:da10b210-dcd4-49cb-9320-6bad9ccbb739",
+          "fb2a5ba4-6459-47e6-a20e-8681d10111f3-t0:bf175898-632b-4a5a-9f82-bfd188944612"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "counter_evidence",
+        "text": "The trace evidence that was available does not corroborate errors at the end of the window: the only checkout traces returned (2 traces, 106 spans, around 21:17-21:18Z) contain only success-status spans, which is consistent with the metric error buckets being zero after 09:49:16Z rather than with an ongoing failure.",
+        "evidence_ids": [
+          "f42d318d-d38a-4b14-ad7c-c0ffc6d71a5f-t1:ba7d9661-934e-46e5-b012-cf734ad7cf7c"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "recommendation",
+        "text": "Advisory follow-up (not executed here): have a human retrieve checkout and payment error traces, gRPC status codes, messages or application logs from the 2026-10-22T03:00-09:30Z clusters from a backend with retained history, and check payment service health and configuration changes for those hours.",
+        "evidence_ids": [
+          "e479114a-7ff4-43ca-bc57-99f16aebbab8-t0:95d56eec-75a9-4f99-9ead-779f8fa90836"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      }
+    ],
+    "gaps": [
+      "No error-status trace, status code, message or log was obtained. Trace search for payment over 2026-10-22T07:50-08:50Z returned status no_data (evidence_id e479114a-7ff4-43ca-bc57-99f16aebbab8-t1:dabbdab5-97fc-4f8e-8e7f-8bea23b34fca) and for checkout over 2026-10-22T07:20-09:20Z returned status no_data (evidence_id 636134a7-6ac7-42bc-b7ea-30cf0ae47424-t1:72f5997d-9c44-4b45-9a32-e3879855eef1); the only returned checkout traces are from about 21:17Z and contain no error spans. The root cause of the ~70 Charge/PlaceOrder failures is therefore unknown.",
+      "The payment server-latency/status query keyed by rpc_grpc_status_code returned status no_data (evidence_id 636134a7-6ac7-42bc-b7ea-30cf0ae47424-t0:59a74856-45b4-40c1-a4e8-35f0f010f746), so payment's server-side gRPC error codes and latency for the failing Charge calls are unknown rather than zero, and label coverage for that metric is unverified.",
+      "No data exists in this run before the authorized window start 2026-10-21T21:19:16Z, so the zero-error hours inside the window are the only comparable baseline; any claim about whether the 3.3% PlaceOrder error share is above normal cannot be established.",
+      "No latency comparison was performed: checkout and payment span-duration series were not queried, so whether the error clusters coincided with increased latency is unknown.",
+      "ReplicaSet and image observations are sampled every 2h and 'kube_replicaset_owner' records ownership series rather than running pods, so exact deployment/restart times near 03:19:16Z and 05:19:16Z and the pods that served the failing requests are unknown.",
+      "Span-count metrics aggregate spans of all kinds (internal, client and server) and STATUS_CODE_UNSET means 'no status carried', not success, so request-level failure rates and customer impact cannot be derived from these views."
+    ],
+    "next_steps": [
+      "Retrieve retained checkout and payment error traces or application logs for 2026-10-22T03:00-09:30Z to capture the gRPC status code and message on oteldemo.PaymentService/Charge.",
+      "Check payment service logs, resource saturation and dependency health for the same two error clusters, since the error is recorded on payment's server span in the metrics.",
+      "Correlate the new checkout ReplicaSets around 03:19:16Z and 05:19:16Z with deployment and configuration-change records to test the configuration-replacement hypothesis.",
+      "Confirm with checkout and payment owners whether the ~70 failed orders around 03:00-09:20Z were user-visible and whether any retry or compensation path masked them."
+    ]
+  },
+  "report_content_sha256": "5e2a1f85f24b3e43c40d417c3262186211bd2c70265ac42b909cec9d3892a44a",
+  "trace": {
+    "mode": "lab",
+    "otel_trace_id": "ecdd073527df05196377add1391a00cc",
+    "dropped_spans": 0,
+    "project": "opspilot-lab-304-forced-final-rebuild-live",
+    "project_id": "3378346b-c326-4f7c-aff3-e4eda4ab940c",
+    "trace_tier": "longlived",
+    "langsmith_run_id": "00000000-0000-0000-7edf-3ce20fd6a9da",
+    "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/3378346b-c326-4f7c-aff3-e4eda4ab940c/r/00000000-0000-0000-7edf-3ce20fd6a9da?poll=true",
+    "read_back": "found"
+  },
+  "raw_ledger": {
+    "sha256": "c33a31fb00debe93bdb6fe8b194d9d1c0c81f992add111efa46e6a3183f370ab",
+    "bytes": 22815,
+    "path": "tmp/lab-ledgers/m1-01-handoff-runner/ca946e79-75db-45a0-8294-7b347e3c5b55/ledger.json",
+    "in_repository": false
+  }
+}

@@ -1,0 +1,801 @@
+{
+  "schema": "opspilot-lab-summary-1",
+  "experiment": "f2-b1-live",
+  "run_id": "9ed14131-6992-59ca-b77d-7d056c999bfc",
+  "frozen_at": "2026-10-22T17:05:10.135225+00:00",
+  "round": "f2-b1-live-20261022",
+  "category": "bounded real run (real DeepSeek model, fixture tool profile, local PostgreSQL); not production proof",
+  "versions": {
+    "branch": "feature/F2-capacity-priority",
+    "commit": "818fdab79125b5f40e304b94baba46428930b087",
+    "schema_head": "0019_incident_priority",
+    "model": "deepseek-flash",
+    "tool_profile": "fixture",
+    "worker_versions": {
+      "prompt_revision": "prompt-replay-candidate-dd9018031487",
+      "tool_schema_revision": "fixture-3",
+      "context_policy_revision": "ctx-ctx-policy-v1-a30e65ea52f4",
+      "source": "opspilot_runs.versions"
+    }
+  },
+  "environment": {
+    "postgres": "PostgreSQL 17, throwaway tmp/pg-55722 on 127.0.0.1:55722, fresh database f2_b1_live at 0019; web/worker as opspilot_web_lab / opspilot_worker_lab",
+    "workbench": "127.0.0.1:8093, intake via POST /intake/alertmanager (event token), self-heal loop off",
+    "worker": "OPSPILOT_WORKER_CAPACITY=2, default pool (max_size 4), poll 2 s, OPSPILOT_TRACE=lab",
+    "attempts": "2 bounded attempts, both kept: attempt 1 = 2 alerts (warning then critical) before worker start; attempt 2 = 3 warnings then 1 critical with the worker running"
+  },
+  "runs": [
+    {
+      "attempt": 1,
+      "incident_id": "10bba002-ece9-569c-940c-0a64197605ce",
+      "run_id": "9ed14131-6992-59ca-b77d-7d056c999bfc",
+      "severity": "warning",
+      "priority": 1,
+      "intake_accepted_at": "2026-10-22T16:57:57.631343+00:00",
+      "run_claimed_at": "2026-10-22T16:58:12.937657+00:00",
+      "ended_at": "2026-10-22T16:58:25.064606+00:00",
+      "end_event": "run_handoff",
+      "end_reasons": [
+        "INCOMPLETE_INVESTIGATION"
+      ],
+      "run_state": "waiting_human",
+      "epoch": 1,
+      "slot_owner": null,
+      "model_requests": 2,
+      "tool_operations": 1,
+      "steps": [
+        {
+          "logical_key": "ctx0:round-1",
+          "status": "tool_result_committed",
+          "observed_at": "2026-10-22T16:58:14.052424+00:00"
+        },
+        {
+          "logical_key": "ctx0:round-2",
+          "status": "response_committed",
+          "observed_at": "2026-10-22T16:58:25.054644+00:00"
+        },
+        {
+          "logical_key": "conclusion:g0:ctx0:round-2",
+          "status": "response_committed",
+          "observed_at": "2026-10-22T16:58:25.060030+00:00"
+        }
+      ],
+      "trace": {
+        "langsmith_run_id": "00000000-0000-0000-136d-7060d8573ea0",
+        "otel_trace_id": "48b8af3d01b914fe5a889600af530c64",
+        "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/815f6c2b-7942-4fa8-b4d5-6088e86e65ff/r/00000000-0000-0000-136d-7060d8573ea0?poll=true",
+        "child_runs": {
+          "llm": 2,
+          "tool": 1
+        },
+        "prompt_tokens": 3424,
+        "completion_tokens": 2063
+      }
+    },
+    {
+      "attempt": 1,
+      "incident_id": "53778dd9-3d3d-5130-8a49-663db0a91376",
+      "run_id": "a2fd4512-ab41-5e78-a8b2-93c54a2d3694",
+      "severity": "critical",
+      "priority": 0,
+      "intake_accepted_at": "2026-10-22T16:57:58.728091+00:00",
+      "run_claimed_at": "2026-10-22T16:58:12.937682+00:00",
+      "ended_at": "2026-10-22T16:58:27.172782+00:00",
+      "end_event": "run_handoff",
+      "end_reasons": [
+        "INCOMPLETE_INVESTIGATION"
+      ],
+      "run_state": "waiting_human",
+      "epoch": 1,
+      "slot_owner": null,
+      "model_requests": 2,
+      "tool_operations": 1,
+      "steps": [
+        {
+          "logical_key": "ctx0:round-1",
+          "status": "tool_result_committed",
+          "observed_at": "2026-10-22T16:58:14.319553+00:00"
+        },
+        {
+          "logical_key": "ctx0:round-2",
+          "status": "response_committed",
+          "observed_at": "2026-10-22T16:58:27.166424+00:00"
+        },
+        {
+          "logical_key": "conclusion:g0:ctx0:round-2",
+          "status": "response_committed",
+          "observed_at": "2026-10-22T16:58:27.169321+00:00"
+        }
+      ],
+      "trace": {
+        "langsmith_run_id": "00000000-0000-0000-be50-1fd0ee6a8e85",
+        "otel_trace_id": "4320f44b76d1b3bb55c326fba4cda451",
+        "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/815f6c2b-7942-4fa8-b4d5-6088e86e65ff/r/00000000-0000-0000-be50-1fd0ee6a8e85?poll=true",
+        "child_runs": {
+          "llm": 2,
+          "tool": 1
+        },
+        "prompt_tokens": 3475,
+        "completion_tokens": 2594
+      }
+    },
+    {
+      "attempt": 2,
+      "incident_id": "e2d3a115-7876-57a1-9fe9-c1f6299f4af8",
+      "run_id": "266a05b7-dced-5db3-80a8-e4fc3687c84c",
+      "severity": "warning",
+      "priority": 1,
+      "intake_accepted_at": "2026-10-22T17:01:35.265418+00:00",
+      "run_claimed_at": "2026-10-22T17:01:35.746277+00:00",
+      "ended_at": "2026-10-22T17:01:52.214851+00:00",
+      "end_event": "run_handoff",
+      "end_reasons": [
+        "INCOMPLETE_INVESTIGATION"
+      ],
+      "run_state": "waiting_human",
+      "epoch": 1,
+      "slot_owner": null,
+      "model_requests": 2,
+      "tool_operations": 1,
+      "steps": [
+        {
+          "logical_key": "ctx0:round-1",
+          "status": "tool_result_committed",
+          "observed_at": "2026-10-22T17:01:37.027827+00:00"
+        },
+        {
+          "logical_key": "ctx0:round-2",
+          "status": "response_committed",
+          "observed_at": "2026-10-22T17:01:52.201452+00:00"
+        },
+        {
+          "logical_key": "conclusion:g0:ctx0:round-2",
+          "status": "response_committed",
+          "observed_at": "2026-10-22T17:01:52.209320+00:00"
+        }
+      ],
+      "trace": {
+        "langsmith_run_id": "00000000-0000-0000-c534-5acbc20460bb",
+        "otel_trace_id": "bd19a2af5b648b68744e8fb0f0b09182",
+        "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/815f6c2b-7942-4fa8-b4d5-6088e86e65ff/r/00000000-0000-0000-c534-5acbc20460bb?poll=true",
+        "child_runs": {
+          "llm": 1
+        },
+        "prompt_tokens": 2010,
+        "completion_tokens": 2709
+      }
+    },
+    {
+      "attempt": 2,
+      "incident_id": "2fa2466f-26bc-5386-ac39-1524281d8fc4",
+      "run_id": "f6ada557-d71b-5048-99f4-cb134d17a19f",
+      "severity": "warning",
+      "priority": 1,
+      "intake_accepted_at": "2026-10-22T17:01:35.218026+00:00",
+      "run_claimed_at": "2026-10-22T17:01:35.749683+00:00",
+      "ended_at": "2026-10-22T17:01:53.137691+00:00",
+      "end_event": "run_completed",
+      "end_reasons": null,
+      "run_state": "completed",
+      "epoch": 1,
+      "slot_owner": null,
+      "model_requests": 2,
+      "tool_operations": 1,
+      "steps": [
+        {
+          "logical_key": "ctx0:round-1",
+          "status": "tool_result_committed",
+          "observed_at": "2026-10-22T17:01:36.872351+00:00"
+        },
+        {
+          "logical_key": "ctx0:round-2",
+          "status": "response_committed",
+          "observed_at": "2026-10-22T17:01:53.120407+00:00"
+        },
+        {
+          "logical_key": "conclusion:g0:ctx0:round-2",
+          "status": "response_committed",
+          "observed_at": "2026-10-22T17:01:53.128681+00:00"
+        }
+      ],
+      "trace": {
+        "langsmith_run_id": "00000000-0000-0000-6265-94a4655069d6",
+        "otel_trace_id": "580fb6b9950cd53b08bfff38a214e0ec",
+        "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/815f6c2b-7942-4fa8-b4d5-6088e86e65ff/r/00000000-0000-0000-6265-94a4655069d6?poll=true",
+        "child_runs": {
+          "llm": 1
+        },
+        "prompt_tokens": 2048,
+        "completion_tokens": 2793
+      }
+    },
+    {
+      "attempt": 2,
+      "incident_id": "8c4dd384-9727-58f5-ba5e-241fd044a01c",
+      "run_id": "0390f9b2-9b29-5a41-afe4-521d545ac0b7",
+      "severity": "critical",
+      "priority": 0,
+      "intake_accepted_at": "2026-10-22T17:01:37.425620+00:00",
+      "run_claimed_at": "2026-10-22T17:01:52.220444+00:00",
+      "ended_at": "2026-10-22T17:02:05.990048+00:00",
+      "end_event": "run_handoff",
+      "end_reasons": [
+        "INCOMPLETE_INVESTIGATION"
+      ],
+      "run_state": "waiting_human",
+      "epoch": 1,
+      "slot_owner": null,
+      "model_requests": 2,
+      "tool_operations": 1,
+      "steps": [
+        {
+          "logical_key": "ctx0:round-1",
+          "status": "tool_result_committed",
+          "observed_at": "2026-10-22T17:01:53.636746+00:00"
+        },
+        {
+          "logical_key": "ctx0:round-2",
+          "status": "response_committed",
+          "observed_at": "2026-10-22T17:02:05.975389+00:00"
+        },
+        {
+          "logical_key": "conclusion:g0:ctx0:round-2",
+          "status": "response_committed",
+          "observed_at": "2026-10-22T17:02:05.984391+00:00"
+        }
+      ],
+      "trace": {
+        "langsmith_run_id": "00000000-0000-0000-9370-91103db29a00",
+        "otel_trace_id": "4560f6617f9a7ba58fe05ba473f17da8",
+        "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/815f6c2b-7942-4fa8-b4d5-6088e86e65ff/r/00000000-0000-0000-9370-91103db29a00?poll=true",
+        "child_runs": {
+          "llm": 2,
+          "tool": 1
+        },
+        "prompt_tokens": 3462,
+        "completion_tokens": 2332
+      }
+    },
+    {
+      "attempt": 2,
+      "incident_id": "3ba9da9c-61a0-5fb6-b4fe-d64c6fd14e29",
+      "run_id": "7b7f87c8-6761-5a5a-b059-1c1dafae9564",
+      "severity": "warning",
+      "priority": 1,
+      "intake_accepted_at": "2026-10-22T17:01:36.364630+00:00",
+      "run_claimed_at": "2026-10-22T17:01:53.146514+00:00",
+      "ended_at": "2026-10-22T17:02:08.547289+00:00",
+      "end_event": "run_handoff",
+      "end_reasons": [
+        "INCOMPLETE_INVESTIGATION"
+      ],
+      "run_state": "waiting_human",
+      "epoch": 1,
+      "slot_owner": null,
+      "model_requests": 2,
+      "tool_operations": 1,
+      "steps": [
+        {
+          "logical_key": "ctx0:round-1",
+          "status": "tool_result_committed",
+          "observed_at": "2026-10-22T17:01:54.254901+00:00"
+        },
+        {
+          "logical_key": "ctx0:round-2",
+          "status": "response_committed",
+          "observed_at": "2026-10-22T17:02:08.537858+00:00"
+        },
+        {
+          "logical_key": "conclusion:g0:ctx0:round-2",
+          "status": "response_committed",
+          "observed_at": "2026-10-22T17:02:08.543206+00:00"
+        }
+      ],
+      "trace": {
+        "langsmith_run_id": "00000000-0000-0000-b049-7a806635e989",
+        "otel_trace_id": "f166cd991cdd7a92bbebd0b6a4e997a9",
+        "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/815f6c2b-7942-4fa8-b4d5-6088e86e65ff/r/00000000-0000-0000-b049-7a806635e989?poll=true",
+        "child_runs": {
+          "llm": 2,
+          "tool": 1
+        },
+        "prompt_tokens": 3450,
+        "completion_tokens": 2626
+      }
+    }
+  ],
+  "timeline": {
+    "attempt_1": [
+      {
+        "at": "2026-10-22T16:58:12.044384+00:00",
+        "running_live": 0,
+        "states": {
+          "a2fd4512": "queued",
+          "9ed14131": "queued"
+        }
+      },
+      {
+        "at": "2026-10-22T16:58:14.486395+00:00",
+        "running_live": 2,
+        "states": {
+          "a2fd4512": "running",
+          "9ed14131": "running"
+        }
+      },
+      {
+        "at": "2026-10-22T16:58:17.024888+00:00",
+        "running_live": 2,
+        "states": {
+          "a2fd4512": "running",
+          "9ed14131": "running"
+        }
+      },
+      {
+        "at": "2026-10-22T16:58:19.522798+00:00",
+        "running_live": 2,
+        "states": {
+          "a2fd4512": "running",
+          "9ed14131": "running"
+        }
+      },
+      {
+        "at": "2026-10-22T16:58:22.002825+00:00",
+        "running_live": 2,
+        "states": {
+          "a2fd4512": "running",
+          "9ed14131": "running"
+        }
+      },
+      {
+        "at": "2026-10-22T16:58:24.502042+00:00",
+        "running_live": 2,
+        "states": {
+          "a2fd4512": "running",
+          "9ed14131": "running"
+        }
+      },
+      {
+        "at": "2026-10-22T16:58:26.999474+00:00",
+        "running_live": 1,
+        "states": {
+          "a2fd4512": "running",
+          "9ed14131": "waiting_human"
+        }
+      },
+      {
+        "at": "2026-10-22T16:58:29.477857+00:00",
+        "running_live": 0,
+        "states": {
+          "a2fd4512": "waiting_human",
+          "9ed14131": "waiting_human"
+        }
+      },
+      {
+        "at": "2026-10-22T16:58:31.888844+00:00",
+        "running_live": 0,
+        "states": {
+          "a2fd4512": "waiting_human",
+          "9ed14131": "waiting_human"
+        }
+      },
+      {
+        "at": "2026-10-22T16:58:34.397281+00:00",
+        "running_live": 0,
+        "states": {
+          "a2fd4512": "waiting_human",
+          "9ed14131": "waiting_human"
+        }
+      },
+      {
+        "at": "2026-10-22T16:58:36.893569+00:00",
+        "running_live": 0,
+        "states": {
+          "a2fd4512": "waiting_human",
+          "9ed14131": "waiting_human"
+        }
+      },
+      {
+        "at": "2026-10-22T16:58:39.340294+00:00",
+        "running_live": 0,
+        "states": {
+          "a2fd4512": "waiting_human",
+          "9ed14131": "waiting_human"
+        }
+      },
+      {
+        "at": "2026-10-22T16:58:41.767872+00:00",
+        "running_live": 0,
+        "states": {
+          "a2fd4512": "waiting_human",
+          "9ed14131": "waiting_human"
+        }
+      },
+      {
+        "at": "2026-10-22T16:58:44.203215+00:00",
+        "running_live": 0,
+        "states": {
+          "a2fd4512": "waiting_human",
+          "9ed14131": "waiting_human"
+        }
+      },
+      {
+        "at": "2026-10-22T16:58:46.612030+00:00",
+        "running_live": 0,
+        "states": {
+          "a2fd4512": "waiting_human",
+          "9ed14131": "waiting_human"
+        }
+      },
+      {
+        "at": "2026-10-22T16:58:49.089701+00:00",
+        "running_live": 0,
+        "states": {
+          "a2fd4512": "waiting_human",
+          "9ed14131": "waiting_human"
+        }
+      },
+      {
+        "at": "2026-10-22T16:58:51.582557+00:00",
+        "running_live": 0,
+        "states": {
+          "a2fd4512": "waiting_human",
+          "9ed14131": "waiting_human"
+        }
+      },
+      {
+        "at": "2026-10-22T16:58:54.003581+00:00",
+        "running_live": 0,
+        "states": {
+          "a2fd4512": "waiting_human",
+          "9ed14131": "waiting_human"
+        }
+      },
+      {
+        "at": "2026-10-22T16:58:56.545354+00:00",
+        "running_live": 0,
+        "states": {
+          "a2fd4512": "waiting_human",
+          "9ed14131": "waiting_human"
+        }
+      },
+      {
+        "at": "2026-10-22T16:58:59.087100+00:00",
+        "running_live": 0,
+        "states": {
+          "a2fd4512": "waiting_human",
+          "9ed14131": "waiting_human"
+        }
+      },
+      {
+        "at": "2026-10-22T16:59:01.561632+00:00",
+        "running_live": 0,
+        "states": {
+          "a2fd4512": "waiting_human",
+          "9ed14131": "waiting_human"
+        }
+      },
+      {
+        "at": "2026-10-22T16:59:03.995477+00:00",
+        "running_live": 0,
+        "states": {
+          "a2fd4512": "waiting_human",
+          "9ed14131": "waiting_human"
+        }
+      },
+      {
+        "at": "2026-10-22T16:59:06.547573+00:00",
+        "running_live": 0,
+        "states": {
+          "a2fd4512": "waiting_human",
+          "9ed14131": "waiting_human"
+        }
+      },
+      {
+        "at": "2026-10-22T16:59:09.035426+00:00",
+        "running_live": 0,
+        "states": {
+          "a2fd4512": "waiting_human",
+          "9ed14131": "waiting_human"
+        }
+      },
+      {
+        "at": "2026-10-22T16:59:11.492469+00:00",
+        "running_live": 0,
+        "states": {
+          "a2fd4512": "waiting_human",
+          "9ed14131": "waiting_human"
+        }
+      }
+    ],
+    "attempt_2": [
+      {
+        "at": "2026-10-22T17:01:37.792139+00:00",
+        "running_live": 2,
+        "states": {
+          "0390f9b2": "queued",
+          "f6ada557": "running",
+          "266a05b7": "running",
+          "7b7f87c8": "queued"
+        }
+      },
+      {
+        "at": "2026-10-22T17:01:40.220574+00:00",
+        "running_live": 2,
+        "states": {
+          "0390f9b2": "queued",
+          "f6ada557": "running",
+          "266a05b7": "running",
+          "7b7f87c8": "queued"
+        }
+      },
+      {
+        "at": "2026-10-22T17:01:42.681112+00:00",
+        "running_live": 2,
+        "states": {
+          "0390f9b2": "queued",
+          "f6ada557": "running",
+          "266a05b7": "running",
+          "7b7f87c8": "queued"
+        }
+      },
+      {
+        "at": "2026-10-22T17:01:45.111274+00:00",
+        "running_live": 2,
+        "states": {
+          "0390f9b2": "queued",
+          "f6ada557": "running",
+          "266a05b7": "running",
+          "7b7f87c8": "queued"
+        }
+      },
+      {
+        "at": "2026-10-22T17:01:47.500094+00:00",
+        "running_live": 2,
+        "states": {
+          "0390f9b2": "queued",
+          "f6ada557": "running",
+          "266a05b7": "running",
+          "7b7f87c8": "queued"
+        }
+      },
+      {
+        "at": "2026-10-22T17:01:49.973268+00:00",
+        "running_live": 2,
+        "states": {
+          "0390f9b2": "queued",
+          "f6ada557": "running",
+          "266a05b7": "running",
+          "7b7f87c8": "queued"
+        }
+      },
+      {
+        "at": "2026-10-22T17:01:52.451797+00:00",
+        "running_live": 2,
+        "states": {
+          "0390f9b2": "running",
+          "f6ada557": "running",
+          "7b7f87c8": "queued",
+          "266a05b7": "waiting_human"
+        }
+      },
+      {
+        "at": "2026-10-22T17:01:54.944033+00:00",
+        "running_live": 2,
+        "states": {
+          "0390f9b2": "running",
+          "f6ada557": "completed",
+          "7b7f87c8": "running",
+          "266a05b7": "waiting_human"
+        }
+      },
+      {
+        "at": "2026-10-22T17:01:57.510714+00:00",
+        "running_live": 2,
+        "states": {
+          "0390f9b2": "running",
+          "f6ada557": "completed",
+          "7b7f87c8": "running",
+          "266a05b7": "waiting_human"
+        }
+      },
+      {
+        "at": "2026-10-22T17:01:59.973815+00:00",
+        "running_live": 2,
+        "states": {
+          "0390f9b2": "running",
+          "f6ada557": "completed",
+          "7b7f87c8": "running",
+          "266a05b7": "waiting_human"
+        }
+      },
+      {
+        "at": "2026-10-22T17:02:02.425470+00:00",
+        "running_live": 2,
+        "states": {
+          "0390f9b2": "running",
+          "f6ada557": "completed",
+          "7b7f87c8": "running",
+          "266a05b7": "waiting_human"
+        }
+      },
+      {
+        "at": "2026-10-22T17:02:04.866288+00:00",
+        "running_live": 2,
+        "states": {
+          "0390f9b2": "running",
+          "f6ada557": "completed",
+          "7b7f87c8": "running",
+          "266a05b7": "waiting_human"
+        }
+      },
+      {
+        "at": "2026-10-22T17:02:07.395251+00:00",
+        "running_live": 1,
+        "states": {
+          "0390f9b2": "waiting_human",
+          "f6ada557": "completed",
+          "7b7f87c8": "running",
+          "266a05b7": "waiting_human"
+        }
+      },
+      {
+        "at": "2026-10-22T17:02:09.838892+00:00",
+        "running_live": 0,
+        "states": {
+          "0390f9b2": "waiting_human",
+          "f6ada557": "completed",
+          "7b7f87c8": "waiting_human",
+          "266a05b7": "waiting_human"
+        }
+      },
+      {
+        "at": "2026-10-22T17:02:12.314929+00:00",
+        "running_live": 0,
+        "states": {
+          "0390f9b2": "waiting_human",
+          "f6ada557": "completed",
+          "7b7f87c8": "waiting_human",
+          "266a05b7": "waiting_human"
+        }
+      },
+      {
+        "at": "2026-10-22T17:02:14.871658+00:00",
+        "running_live": 0,
+        "states": {
+          "0390f9b2": "waiting_human",
+          "f6ada557": "completed",
+          "7b7f87c8": "waiting_human",
+          "266a05b7": "waiting_human"
+        }
+      },
+      {
+        "at": "2026-10-22T17:02:17.585277+00:00",
+        "running_live": 0,
+        "states": {
+          "0390f9b2": "waiting_human",
+          "f6ada557": "completed",
+          "7b7f87c8": "waiting_human",
+          "266a05b7": "waiting_human"
+        }
+      },
+      {
+        "at": "2026-10-22T17:02:20.113724+00:00",
+        "running_live": 0,
+        "states": {
+          "0390f9b2": "waiting_human",
+          "f6ada557": "completed",
+          "7b7f87c8": "waiting_human",
+          "266a05b7": "waiting_human"
+        }
+      },
+      {
+        "at": "2026-10-22T17:02:22.579874+00:00",
+        "running_live": 0,
+        "states": {
+          "0390f9b2": "waiting_human",
+          "f6ada557": "completed",
+          "7b7f87c8": "waiting_human",
+          "266a05b7": "waiting_human"
+        }
+      },
+      {
+        "at": "2026-10-22T17:02:25.007414+00:00",
+        "running_live": 0,
+        "states": {
+          "0390f9b2": "waiting_human",
+          "f6ada557": "completed",
+          "7b7f87c8": "waiting_human",
+          "266a05b7": "waiting_human"
+        }
+      }
+    ]
+  },
+  "assertions": [
+    {
+      "id": "peak_running_le_2",
+      "expected": "running Runs with a live lease <= 2 at every sample, = 2 while both slots busy",
+      "actual": {
+        "attempt_1_peak": 2,
+        "attempt_2_peak": 2,
+        "samples": 45
+      },
+      "ok": true
+    },
+    {
+      "id": "concurrent_model_requests",
+      "expected": "two Runs' model rounds overlap in time",
+      "actual": "attempt 1: both claimed at 16:58:12.937; round-1 steps at 14.055/14.320; round-2 model requests in flight concurrently until 16:58:25.056 and 16:58:27.167",
+      "ok": true
+    },
+    {
+      "id": "no_cross_abort",
+      "expected": "no Run ends on a model timeout/abort caused by the other; each settles on its own",
+      "actual": {
+        "9ed14131": [
+          "INCOMPLETE_INVESTIGATION"
+        ],
+        "a2fd4512": [
+          "INCOMPLETE_INVESTIGATION"
+        ],
+        "266a05b7": [
+          "INCOMPLETE_INVESTIGATION"
+        ],
+        "f6ada557": "run_completed",
+        "0390f9b2": [
+          "INCOMPLETE_INVESTIGATION"
+        ],
+        "7b7f87c8": [
+          "INCOMPLETE_INVESTIGATION"
+        ]
+      },
+      "ok": true
+    },
+    {
+      "id": "later_critical_takes_next_free_slot",
+      "expected": "attempt 2: critical (queued 17:01:37) claimed before the earlier-queued warning w3 (17:01:36) when the first slot frees",
+      "actual": {
+        "first_slot_free": "2026-10-22T17:01:52.214851+00:00",
+        "critical_claimed": "2026-10-22T17:01:52.220444+00:00",
+        "w3_claimed": "2026-10-22T17:01:53.146514+00:00"
+      },
+      "ok": true
+    },
+    {
+      "id": "attempt_1_claim_order",
+      "expected": "critical before warning",
+      "actual": "not observable: both slots were free, both claims committed within 25 us (warning first by 25 us); order only matters when slots are scarce, shown by attempt 2",
+      "ok": null
+    }
+  ],
+  "trace": {
+    "project": "opspilot-lab-f2-b1-live-20261022",
+    "project_id": "815f6c2b-7942-4fa8-b4d5-6088e86e65ff",
+    "trace_tier": "longlived",
+    "dropped_spans": 4,
+    "dropped_note": "17:01:48Z one OTLP export batch timed out (LangSmith read timeout 10 s): attempt-2 warning traces 266a05b7/f6ada557 lack their round-2 llm and tool spans; DB rows are complete"
+  },
+  "cost": {
+    "deepseek_balance_cny": {
+      "before": "99.86",
+      "mid": "99.84",
+      "after": "99.84"
+    },
+    "balance_at": {
+      "before": "2026-10-22T16:57:09.322882+00:00",
+      "mid": "2026-10-22T17:01:35.110166+00:00",
+      "after": "2026-10-22T17:03:05.724250+00:00"
+    },
+    "delta_cny_upper_bound": "0.02",
+    "tokens": {
+      "prompt": 17869,
+      "completion": 15117,
+      "note": "from exported LangSmith root runs; attempt-2 warning traces miss one llm span each"
+    }
+  },
+  "raw_ledger": {
+    "sha256": "2a24bc7c9b4f7f0c7b7ab2f396845e4dd15aa9aecbd6a00dff710deaf41bea22",
+    "bytes": 191558,
+    "path": "tmp/lab-ledgers/f2-b1-live/9ed14131-6992-59ca-b77d-7d056c999bfc/ledger.json",
+    "in_repository": false
+  }
+}

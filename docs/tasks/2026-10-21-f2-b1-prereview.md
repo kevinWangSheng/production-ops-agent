@@ -1,0 +1,123 @@
+# F2 PR-B1 / PR-B2 合同预审（容量线程池 + 优先级领取；积压上限与 BACKLOG_FULL 停放）
+
+- 预审者：Claude（Opus 5.5，代 Codex，未参与实现），只读，基于 main `91a011c`，2026-10-21。
+- 未启动 PG／kind／服务，未调用模型，未跑测试。「已核对」= 读代码所得，未在库上验证。
+- 依据：F2 任务记录与合同 r1（U4-A、U5-A、R3、R4，`docs/tasks/2026-10-17-f2-contract.md:47-48,60-61,78,107-108`）；ADR-0005；#255 r1（`docs/tasks/2026-10-17-defect-decisions.md:9-12`）；C3 §6:233、§13:455；F11 PR-4 预审（`tmp/m2-orch/f11-pr4-out.md` P4-02/P4-06/R11）。
+
+## 0. 现状要点（已核对）
+
+- **领取循环是单线程、同步的**：`WorkerLoop.poll_once` 先清扫，再按列表逐个同步 `runner.resume`（`opspilot/worker_main.py:109-148`）；`run()` 每轮后 `stop.wait(poll)`（:150-157）。清扫只在两次 attempt 之间跑，一个长 Run 会推迟清扫。`main()` 只 join 一个 loop 线程（:291,308）。
+- `poll_once` 被 20 个测试文件约 100 处同步调用（`grep -rn poll_once tests`），依赖「一次调用 = 处理完本批并返回结果」的语义。
+- **领取顺序只按 deadline**：`claimable_incidents` `ORDER BY r.deadline, i.incident_id`（`opspilot/persistence/incidents.py:168-192`）。`claim()` 是 `FOR UPDATE` 而非 C3 §6:233 的 `SKIP LOCKED`（`persistence/runs.py:167-238`）；同进程两槽抢同一事故只会得到 `LEASE_ACTIVE`。
+- **租约**：每个 Run 一份租约，工具派发前后各续一次（`opspilot/worker.py:174-196`）；租约 = 模型超时 + 60 s（`web/service.py:107`）。续租以 Run 为单位、不涉及进程级共享状态 → 线程池不改变续租语义（已核对）。
+- **共享可变状态**：`build_loop` 只建一个 `InvestigationRunner`、一个 `Worker`（一个 owner UUID）、一个 `DeepSeekClient`（`worker_main.py:222-231`）。`_RecordingHTTPSHandler.current` 只有一个槽（`investigation/client.py:62-103`），超时 `_abort_transport` 会关掉「当前」连接 → 两个 Run 并发时，一个 Run 超时可能中止另一个 Run 的模型请求（合同:108 已点名）。`tracing` 用 `threading.local`（`tracing.py:769`）；OtelDemo 传输已线程化（`tools/http_deadline.py:21,93`）。fixture 执行器是否线程安全**未确认**。
+- **连接池**：每进程按 (pid, dsn, 配置) 共享一个池，默认 `max_size=4`、排队 5 s 后 `PoolTimeout→TIMEOUT`（`persistence/base.py:31-55,157-160,186-200`）。worker 进程里调查 loop、清扫、事件、证据与复盘线程的 `KnowledgeStore`/`GenerationStore`（同 dsn、默认配置）共用这一个池（`worker_main.py:253-256,275`）。lab PG `max_connections=12`（`scripts/m0/postgres_lab.py:126`）。是否存在「持有一条连接时再开第二个事务」的嵌套路径**未确认**（若有，池满时会自锁）。
+- **权限（关键）**：worker 角色对 `opspilot_alert_identities`、`opspilot_alert_deliveries` 为 **NONE**（`persistence/grants.py` worker 段，约 :211-212）；对 `opspilot_incidents` 有 SELECT，对 `opspilot_runs` 有 SELECT 与 `UPDATE(...,lease_until,owner,state,...)`。web 对 `opspilot_incidents` 的 INSERT/UPDATE 与对 `opspilot_runs` 的 INSERT 都是**列级清单**，不含任何 priority 列（grants.py web 段 :100-106,166-171）。
+- **`alert_json` 不可靠**：超过 `MAX_ALERT_RECORD_BYTES` 时被截断，截断后不是合法 JSON（`alertmanager.py:280-299`）；且它在 deliveries 表，不在 identities 表（`persistence/alerts.py:83-101,164-178`）。
+- **建事故入口**：告警 `_open → _accept_in`（`alerts.py:133-153`）；web/通用入口 `accept`（`web/service.py:336-352`）；追问续开在 `control()` 内 INSERT 新 Run（`persistence/controls.py:546-563`）；`new_run`（`web/service.py:925-937`）；F11 PR-4 预审推荐由 web 后台 pass 调 `_accept_in` 建发布异常事故（f11-pr4-out P4-02）。
+- **停放原语**：`_park` 是唯一 `→ waiting_human` 写入，可从 `queued`（`runs.py:344-356`）；清扫逐候选单独事务、先锁 incident 再锁 run（:358-418）；停放事件 `run_handoff`，`append_once` 按 run_id+generation 去重（`investigation/progress.py:96-189`）。原因只存在事件里，无需迁移。
+- **人工重新排队**：automatic 事故上 `follow_up`/`correct` 把 `waiting_human` 改回 `queued`（`controls.py:580-583`），`resume` 同样（:575-578）；Run 已过 deadline 时走续开新 Run（:430-432,546-563，web 侧自动带 renew 参数 `web/service.py:893-905`）。→ U4-A 的「人工 follow_up 重新排队」路径**已存在，兼容**。
+
+## 1. 九类必答
+
+1. **时间**：已定——租约、期限、清扫一律 DB 时钟（`runs.py:186,215,404`）；轮询 `OPSPILOT_WORKER_POLL_SECONDS` 默认 2（`worker_main.py:244`）。待决/默认：停放生效容差（R-B2-4：入口越限后 ≤ 一个轮询周期 + 本轮处理时间）；优先级「在每次槽位空出时」生效（R-B1-2）。
+2. **计数与口径**：已定——容量按每 worker（R3，默认 2）；积压上限 `OPSPILOT_BACKLOG_MAX` 默认 8（U4-A）。待决：「排队 Run」的计数口径（U-B2-1）；并发计量 = 同一时刻 `state='running'` 且租约未过期的 Run 数峰值（合同第三节第 2 类已定）。
+3. **状态转移**：已定——停放 `queued→waiting_human` 复用 `_park`，人工 `follow_up/correct/resume` 重新排队（见第 0 节）。待决：人工重新排队后能否被再次 BACKLOG_FULL 停放（U-B2-2）；停放谁（U-B2-3）。
+4. **主体与权限**：已定——worker 已有停放所需的 runs `UPDATE(state,owner,lease_until)` 与事件 INSERT，B2 不需新授权（若由 worker 执行，见 R-B2-1）。待决：优先级列需要 web 新增列级 INSERT/UPDATE（U-B1-1，权限变更，用户门）。worker 不需新授权（读 incidents 已有 SELECT）。
+5. **数据合同/迁移/部署顺序**：待决——优先级存哪（U-B1-1，推荐 `opspilot_incidents.priority`，迁移 0019）。合同 R4 的两条路都不可行：①`opspilot_alert_identities.priority`：worker 对该表 NONE，领取查询 JOIN 它会权限拒绝；②「从 `alert_json` 现算」：同样权限拒绝，且截断后无法解析。→ R4 的「B1 先于 C 就绪则不加迁移」备选作废，B1 必须带迁移。部署：先迁移，再同时升级 web 与 worker（新 worker 的排序 SQL 依赖新列；旧 web 在新库上靠列默认值仍可写）。
+6. **旧数据与归档证据**：推荐不回填——上线时已有事故取默认「其他」，排序退化为现状的 deadline 序；`docs/evidence/` 不改写；`m1-04-intake-live` 等按当时行为解读。已有 BACKLOG 概念不存在，无旧停放行。
+7. **并发与水位**：已定——Run 单租约互斥（`runs.py:178-181`）。待决/默认：同进程槽间去重（R-B1-3）；多个 worker 同时做积压 pass 会重复停放，需串行化（R-B2-2）；池大小与容量的关系（U-B1-3）。
+8. **外部调用**：已定——每 Run 上限不变（U6-A）；模型请求有整请求期限与中止（`client.py:258-275`）。待决：每槽独立模型客户端（U-B1-4）。真实风暴：真实 DeepSeek + fixture 工具档（U5-A 已定）。
+9. **验收投影与 `passes`**：B1/B2 不翻 `passes`（E 翻，用户门）。步骤 4 的验收投影与停放顺序选择相关（U-B2-3）。`test_runtime_roles_postgres.py` 的授权断言会因 U-B1-1 改变，按合同变更由测试作者改，实现者不改。
+
+## 2. 决定表
+
+### 需用户裁决
+
+| 编号 | 问题 | 选项与代价 | 推荐 | 影响面 | 裁决 |
+|---|---|---|---|---|---|
+| U-B1-1 | 优先级存储位置（修正合同 R4） | **A** `opspilot_incidents.priority smallint NOT NULL DEFAULT 2 CHECK (priority IN (0,1,2))`（0=critical,1=warning,2=其他），迁移 0019（down_revision 0018），web 增 `INSERT(priority)` 与 `UPDATE(priority)`；worker 已能读。所有 Run 继承事故优先级，续开/new_run 无需改 `controls.py`。代价：一次权限变更、`test_runtime_roles` 断言更新。**B** 放 `opspilot_runs.priority`：每个 Run 自带，续开路径（`controls.py:551`）与 `new_run` 都要复制该列，web 需 runs `INSERT(priority)`，改动面大于 A。**C** 按 R4 放 identities 或现算：worker 需新增对告警表的 SELECT（扩大 worker 对告警原文的读权限），且截断记录无法解析。 | **A** | 迁移 0019、`grants.py`、`incidents.py`、`alerts.py`、`web/service.py` | |
+| U-B1-2 | 非告警来源与关联告警的优先级 | **A** 优先级是事故属性，建事故时定一次：告警按 severity 映射；web/通用入口 `accept` → 2（其他）；F11 PR-4 发布异常新建事故 → 1（warning，确定性异常判定、无 severity 标签）；追问/纠正续开、`new_run`、F12 结论后追问的新 Run 继承事故优先级；PR-C U1-A 追加到开放事故的告警若更高则**只升不降**（`LEAST`），resolved 不降级。**B** 人工触发的 Run（续开、`new_run`、人工重新排队）一律置 0：值班者等待时最快，但人工连续追问可插到 critical 告警前。**C** 非告警来源一律 2：最简单，但发布异常在风暴中可能被优先停放。 | **A** | `alerts.py`（含 PR-C 的追加路径，B1 在 C 之后合并时由 B1 补升级写入）、`web/service.py`、F11 PR-4 R11 照此执行 | |
+| U-B2-1 | 「排队 Run 数」口径与积压 pass 位置 | **A** 计数 = 全库 `queued` 状态、事故 open/automatic/无结论/未暂停/未过期的 Run（即 `claimable_incidents` 中的 queued 部分，不含 running 与租约失效的 running）；由 worker 轮询线程在「过期清扫之后、补充槽位之前」执行，每轮一次。**B** 在入口事务里即时判断：越限立刻停放，但 web 告警入口要加全局锁、与入口并发竞争。**C** 计数含 running：容量变化会改变积压语义。 | **A** | `worker_main.py`、`runs.py` 新方法 | |
+| U-B2-2 | 人工重新排队的 Run 能否再被 BACKLOG_FULL 停放 | **A** 不能：只有自动进入排队、且未经人工控制的 Run（`r.control_generation = 0`，即从未有事故级人工决定）可被停放；人工 `follow_up/correct/resume` 后的 Run、续开 Run、`new_run` 计入积压但不被停放。否则风暴期间人工重新排队会被下一轮立刻再停放，U4-A 的出路形同虚设。代价：人工可让积压暂时超过上限。**B** 一视同仁：严格守上限，但人工操作可能无效、来回弹跳。 | **A** | `runs.py` 停放候选谓词、验收步骤 4 | |
+| U-B2-3 | 越限时停放哪些 | **A** 按优先级最低者先停，同级停 deadline 最晚（最新进入）者，再按 incident_id；停到 `queued ≤ BACKLOG_MAX` 为止。保留已排队较久的，与领取「同级按 deadline」一致。**B** 同级停 deadline 最早者：先到的反而被丢给人。 | **A** | 验收步骤 4 断言、真实风暴期望值 | |
+| U-B1-3 | 容量与连接池的约束 | **A** worker 启动时校验 `OPSPILOT_POOL_MAX_SIZE ≥ OPSPILOT_WORKER_CAPACITY + 2`（槽 + 轮询线程 + 复盘线程），不满足即 `SystemExit`；默认 2 与 4 正好满足，lab 12 连接不变。**B** 按容量自动放大池：可能突破 lab `max_connections=12`（web 4 + worker + observer + 运维）。**C** 不校验：池满时 5 s 后 `TIMEOUT` 打断在途 attempt，表现为偶发交接。 | **A** | `worker_main.py`、`docs/development.md` | |
+
+### 可逆默认（Agent 自定，写一行理由）
+
+| 编号 | 问题 | 选项与代价 | 推荐 | 影响面 | 裁决 |
+|---|---|---|---|---|---|
+| U-B1-4 | 每槽是否独立模型客户端与 runner | 共享（需让 handler 并发安全）vs 每槽独立 `DeepSeekClient` + `InvestigationRunner` + `Worker` | 每槽独立：`_RecordingHTTPSHandler` 单槽设计（`client.py:81`）原样保留，零共享可变状态；每槽 owner 不同，证据可区分槽位。store、events、evidence 共享 | `worker_main.py` | 按推荐 |
+| R-B1-1 | severity 映射细节 | 原值精确匹配 vs 去空白后小写匹配 | 读解析后的 `alert.labels["severity"]`（内存值，不读 `alert_json`），`strip().lower()`：`critical`→0，`warning`→1，其余与缺失→2；不扩展 `page`/`error` 等别名（U5-A 是固定映射） | `alertmanager.py` 新纯函数 | 按推荐 |
+| R-B1-2 | 何时选下一个候选 | 每批列表一次性分发 vs 槽位空出时重新查询 | `run()`：轮询线程每轮做清扫与积压 pass，然后按空闲槽数 `claimable_incidents(limit=空闲槽数+少量余量)` 补充；槽位空出时唤醒轮询线程立即补充。这样「后到的 critical 在下一个槽位空出时先于已排队的低优先级被领取」成立。`poll_once()` 保留为同步兼容入口（并发跑完本批再返回），既有测试不改 | `worker_main.py` | 按推荐 |
+| R-B1-3 | 同进程槽间去重 | 靠 `LEASE_ACTIVE` vs 本地在途集合 | 本地在途 incident 集合排除重复分发；`claim()` 仍是权威。不改为 `SKIP LOCKED`（可选改进，非本 PR） | `worker_main.py` | 按推荐 |
+| R-B1-4 | 排序 SQL | — | `ORDER BY i.priority, r.deadline, i.incident_id`；租约失效的 running 与 queued 同规则 | `incidents.py:184-190` | 按推荐 |
+| R-B1-5 | 停止与崩溃 | — | SIGTERM：停止补充，所有在途槽共享同一 grace 上限 join；任一槽异常只记类型并释放槽，不杀轮询线程；轮询线程死亡时进程退出（沿用 :304-307） | `worker_main.py` | 按推荐 |
+| R-B1-6 | 旧事故回填 | 迁移按告警原文回填 vs 不回填 | 不回填：上线时开放事故少，默认 2 退化为现状 deadline 序 | 迁移 0019 | 按推荐 |
+| R-B2-1 | 停放执行者 | worker vs web | worker 轮询线程（与过期清扫同构，ADR-0005 §2），无需新授权 | `worker_main.py`、`runs.py` | 按推荐 |
+| R-B2-2 | 多 worker 并发积压 pass | — | 每个候选一个事务；事务开头取 `pg_advisory_xact_lock` 固定键串行化计数，再按「先 incident 后 run」锁序复查状态与计数后 `_park(from_states=("queued",))`；避免两个 worker 过量停放 | `runs.py` | 按推荐 |
+| R-B2-3 | 停放事件 | — | `run_handoff`，`reasons=["BACKLOG_FULL"]`、`parked=True`、`execution="not_started"`（从未领取；若页面只认既有取值则用 `failed`，**未确认**页面是否按 execution 分支），`append_once` 同键规则；常量放 `investigation/progress.py` | `progress.py`、页面原因文案 | 按推荐 |
+| R-B2-4 | 生效容差 | — | 入口越限后，在一个轮询周期 + 本轮处理时间内 `queued ≤ BACKLOG_MAX`（人工重新排队的 Run 除外，见 U-B2-2） | 验收断言 | 按推荐 |
+
+已裁决、不再重复：U4-A（停放为 `waiting_human` + `BACKLOG_FULL`，人工 follow_up 重新排队，默认 8）、U5-A（critical > warning > 其他，同级按 deadline，只影响领取顺序；风暴规模）、U6-A、R3（每 worker 容量默认 2）。
+
+### 与 ADR-0005、#255 的交互（已定，引出处）
+
+- BACKLOG_FULL 与过期清扫同一停放原语与同一事件形态；停放后 Run 的 deadline 继续计时，`waiting_human` 不被过期清扫再动（清扫只扫 queued/running，`runs.py:390-392`）；人工在过期后 follow_up 自动走续开新 Run（`controls.py:430-432,546-563`）。不发布结论，符合 ADR-0005 决定 1。
+- #255 r1 (a)(b)：`waiting_human` 计为未终态，事故任一 Run 未终态即不触发复盘生成（`defect-decisions.md:9-11`）。→ 被停放的风暴事故在人工处理或取消前不生成复盘，这是既有裁决的直接后果，不另立规则。B2 不改 `knowledge/jobs.py`。
+
+## 3. 公开接口草案
+
+- 迁移 `opspilot/migrations/versions/0019_incident_priority.py`（down_revision = PR-C 的 0018）：
+  - `ALTER TABLE opspilot_incidents ADD COLUMN priority smallint NOT NULL DEFAULT 2 CHECK (priority IN (0,1,2))`
+  - `GRANT INSERT(priority), UPDATE(priority) ON opspilot_incidents TO opspilot_web`；worker 不变。
+  - 编号规则沿用 F11 PR-4 P4-06：PR-C 先合；与 F11 PR-4 撞号时后合并者改号（未合并前可逆）。
+- `opspilot.alertmanager.priority_of(labels: Mapping[str, str]) -> int`（纯函数，0/1/2）。
+- `_IncidentOps.accept(..., priority: int = 2)`、`_accept_in(conn, ..., priority: int = 2)`；`priority ∉ {0,1,2}` → `PersistenceError("INVALID_INPUT")`。
+- `claimable_incidents(limit)`：签名不变，排序改为 R-B1-4。
+- B2：`DurableStore.park_backlog(*, max_queued: int, limit: int = 100) -> tuple[tuple[UUID, UUID, int], ...]`（返回 incident_id、run_id、control_generation，与 `sweep_expired_runs_with_generations` 同形）；`progress.BACKLOG_FULL = "BACKLOG_FULL"`、`announce_backlog_full(log, subject_id, run_id, control_generation)`、`park_backlog(store, log, max_queued)`。
+- 环境变量：`OPSPILOT_WORKER_CAPACITY`（默认 2，≥1）、`OPSPILOT_BACKLOG_MAX`（默认 8，≥1，worker 读取）；违反 U-B1-3 时 `SystemExit`。
+- 错误码：不新增；池满仍是 `TIMEOUT`。
+
+## 4. 允许改动的文件
+
+- B1：`opspilot/worker_main.py`；`opspilot/persistence/incidents.py`（`accept`/`_accept_in`/`claimable_incidents`）；`opspilot/persistence/alerts.py`（`_open` 传优先级；PR-C 已合并时追加路径只升不降）；`opspilot/alertmanager.py`（`priority_of`）；`opspilot/web/service.py`（`_alert_opening` 带优先级）；`opspilot/persistence/grants.py`；新迁移 0019；`docs/development.md` 环境变量段；新测试文件。
+- B2：`opspilot/persistence/runs.py`（新方法，复用 `_park`）；`opspilot/investigation/progress.py`；`opspilot/worker_main.py`；页面原因文案（若模板对原因码有映射，**未确认**位置）；`docs/development.md`；新测试与 `scripts/` 下风暴脚本。
+- 两者都不改：`controls.py`、`claim()`、执行器、loop、`knowledge/jobs.py`、既有验收测试断言。`tests/integration/test_runtime_roles_postgres.py` 的授权期望由测试作者按 U-B1-1 改。
+
+## 5. 验收测试作者应覆盖的可观察行为
+
+按 `IncidentScenario -> IncidentOutcome` 或公开接口，不看实现：
+
+B1：
+1. 容量：N（≥5）个排队事故、容量 2、替身 Runner 阻塞可控 → 任一时刻 `running` 且租约有效的 Run ≤ 2；释放一个后另一个在一个轮询周期内被领取。容量 1 时行为与现状一致。
+2. 优先级：critical、warning、无 severity 各若干，deadline 交错 → 首次领取（`run_claimed` 事件的 `recorded_at`）按 priority 非降序，同级按 deadline。
+3. 后到优先：两槽占满时到达一条 critical → 下一个空出的槽领取它，先于已排队的 warning。
+4. 非告警来源：web 通用入口事故为「其他」；追问续开的新 Run 与原事故同优先级；（PR-C 合并后）追加更高 severity 告警后事故升级、追加更低不降级。
+5. 并发隔离：两个 Run 的模型请求重叠，其中一个超时 → 另一个请求正常完成，不被中止。
+6. 隔离失败：一个槽 attempt 抛异常 → 另一槽继续，worker 不退出，失败 Run 的租约到期后可再领。
+7. 池约束：容量 + 2 > 池上限时 worker 拒绝启动；默认配置下 50 条风暴测试中无 `TIMEOUT`。
+8. 暂停/取消/人工接管的事故不被任何槽领取（回归）。
+
+B2：
+9. 50 条混合 severity 告警经真实入口（PG）→ 50 个事故全部存在、无丢失；一轮 pass 后 `queued ≤ 8`；被停放者均为 `waiting_human`、带一次 `BACKLOG_FULL` 的 `run_handoff`；不存在「某停放 Run 的优先级高于某仍排队 Run」。
+10. 同级停 deadline 最晚者（U-B2-3）。
+11. 人工 `follow_up` 被停放的 Run → 重新 `queued`，后续 pass 不再停放它，最终被领取；过期后 follow_up → 新 Run（续开）。
+12. 两个 worker 同时 pass 不过量停放（停放数 = 超出数）。
+13. 停放的 Run 所在事故不生成复盘（#255），人工取消后恢复候选。
+14. 暂停中的事故不计入积压、不被停放。
+
+## 6. 真实运行与证据
+
+- 不需要 kind（合同 PR 表已定）。
+- B1：建议附一次有界真实运行：真实 DeepSeek + fixture 工具档、容量 2、两个事故同时在跑，证明并发 Run 各自完成、无交叉中止；附 LangSmith trace 与 `summary.json`（AGENTS「触碰恢复路径的 PR」，worker 领取属恢复路径——是否必须按 ADR-0006 **未确认**，推荐附）。
+- B2（U5-A 真实风暴）：12 条合成 Alertmanager v4 webhook 直投（R8），severity 混合（建议 4 critical / 4 warning / 4 无），按低优先级先发；容量 2、`OPSPILOT_BACKLOG_MAX=6`；`OPSPILOT_RUN_SECONDS` 设足够长（建议 ≥ 1800）以免排队 Run 先被过期清扫混淆结论。证据：每 2 s 采样的 running/queued/waiting_human 计数时间线（峰值 running ≤ 2；一轮 pass 后 queued ≤ 6）、领取顺序、停放清单与原因、一次人工 follow_up 后被领取、全部 12 个事故可追溯、费用余额差、trace 链接与 `summary.json`；失败轮保留不算通过。
+- 观察窗内不跑 `make check`、全量 pytest 或新 Codex，注入前查 swap（记忆：kind 外的真实运行同样受本机压力影响）。
+
+## 7. 未确认项
+
+- 是否存在持有一条池连接时再开事务的嵌套路径（影响 U-B1-3 的 +2 是否足够）。
+- fixture 工具执行器与 `executor_factory` 产物是否线程安全。
+- observer 进程池大小与 lab 12 连接的总账。
+- 工作台页面对 `run_handoff.execution` 与原因码的渲染方式（R-B2-3）。
+- B1 PR 是否按 ADR-0006 必须附真实 Run trace。
