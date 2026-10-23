@@ -50,6 +50,8 @@ PR2 实现（2026-10-22，`feature/308-pr2-read-evidence`，起点 main `1f701af
   4. 片段不带 `lookback_seconds`：接受，不扩 R12。
   5. 片段超限整段拒绝、不再保留、无摘要：接受。
 
+- PR2 独立审查（Codex gpt-6-luna）FAIL 两条 + 一条可选，均已修：read_evidence 读父记录先做完整性校验（raw 与 view 两个 sha 复算、记录与视图的 evidence_id 都等于请求 ID），任一不符即 `EVIDENCE_NOT_READABLE`，不读 raw；eval `tool_provenance` 校验片段 raw 是 R5 规范 JSON（键集合、规范字节、父 ID/offset/limit 等于调用参数、rows 等于 content、slice 头与 raw 一致、returned 等于区间能容纳的行数）；目标/来源豁免与 `carried` 改为同时要求 source `opspilot-evidence` 与工具名 `read_evidence`。revision 不变（v9 / `otel-demo-2a944edd110a`）。
+
 ## 待决
 
 无。

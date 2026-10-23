@@ -66,6 +66,7 @@ from .tokens import TokenCounter, default_counter
 
 __all__ = [
     "EVIDENCE_SOURCE",
+    "EVIDENCE_TOOL",
     "MAX_OPERATIONS_PER_RUN",
     "MAX_TOOL_SECONDS_PER_RUN",
     "ControlAuthority",
@@ -107,6 +108,15 @@ MAX_SPILLED_BYTES_PER_RUN = 16 * 1024 * 1024
 #: registration may serve a target of any source, and its transport may carry
 #: over the provenance of the record it reads (``TransportResponse.carried``).
 EVIDENCE_SOURCE = "opspilot-evidence"
+#: The one tool name such a registration may have: the relaxations below key
+#: on both, so a future registration that merely shares the source gets none.
+EVIDENCE_TOOL = "read_evidence"
+
+
+def reads_evidence(registration: ToolRegistration) -> bool:
+    """Whether ``registration`` is the gateway's own evidence read (#308)."""
+    return registration.source == EVIDENCE_SOURCE and registration.name == EVIDENCE_TOOL
+
 
 #: An adapter hook naming the rows of an over-limit result for the refusal
 #: summary (#308 U5): ``(tool, rows, query) -> fields``. ``row_unit`` names
@@ -767,10 +777,7 @@ class ReadOnlyToolExecutor:
             return self._refuse(operation, "denied", "TARGET_NOT_REGISTERED")
         if target.target_id not in scope.target_ids:
             return self._refuse(operation, "denied", "TARGET_NOT_AUTHORIZED")
-        if (
-            target.source != registration.source
-            and registration.source != EVIDENCE_SOURCE
-        ):
+        if target.source != registration.source and not reads_evidence(registration):
             # An evidence read (#308) reads the gateway's own store, not the
             # target's source; its transport serves only records taken from
             # this same target (R3).
@@ -1247,9 +1254,8 @@ class ReadOnlyToolExecutor:
                     ),
                 },
             )
-            if (
-                refused.reason != "RESULT_TOO_LARGE"
-                or plan.registration.source == EVIDENCE_SOURCE
+            if refused.reason != "RESULT_TOO_LARGE" or reads_evidence(
+                plan.registration
             ):
                 # A control decision or a denied settlement took the outcome
                 # down its own path (history, or nothing); only the plain
@@ -2225,7 +2231,7 @@ def _carried_problem(
     a dispatch no later than that observation, no data claimed after it.
     """
     carried = response.carried
-    if registration.source != EVIDENCE_SOURCE or not isinstance(carried, Mapping):
+    if not reads_evidence(registration) or not isinstance(carried, Mapping):
         return True
     if set(carried) != _CARRIED_KEYS:
         return True

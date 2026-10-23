@@ -29,6 +29,7 @@ from typing import Any, Protocol
 
 from .executor import (
     EVIDENCE_SOURCE,
+    EVIDENCE_TOOL,
     ReadOnlyTransport,
     TransportRequest,
     TransportResponse,
@@ -41,6 +42,7 @@ from .registry import (
     ToolDescription,
     ToolRegistration,
     canonical,
+    canonical_hash,
 )
 
 __all__ = [
@@ -52,7 +54,6 @@ __all__ = [
     "evidence_registration",
 ]
 
-EVIDENCE_TOOL = "read_evidence"
 # An evidence_id is ``<operation_id>:<dispatch uuid>``; anything longer is not
 # one this gateway issued.
 _MAX_EVIDENCE_ID_CHARS = 512
@@ -205,6 +206,25 @@ def _kept_over_limit(stored: Any) -> bool:
     )
 
 
+def _intact(stored: Any, evidence_id: str) -> bool:
+    """Both digests recompute (``StoredEvidence.hashes_verified``) and the
+    record and its view are the requested evidence_id."""
+    raw = getattr(stored, "raw", None)
+    view = getattr(stored, "view", None)
+    if not isinstance(raw, bytes) or not isinstance(view, Mapping):
+        return False
+    try:
+        view_digest = canonical_hash(view)
+    except Exception:
+        return False
+    return (
+        sha256(raw).hexdigest() == getattr(stored, "raw_sha256", None)
+        and view_digest == getattr(stored, "view_sha256", None)
+        and getattr(stored, "evidence_id", None) == evidence_id
+        and view.get("evidence_id") == evidence_id
+    )
+
+
 def _moment(value: object) -> datetime | None:
     if not isinstance(value, str):
         return None
@@ -267,7 +287,14 @@ class EvidenceReadTransport:
         except Exception:
             # Storage error text stays inside the store.
             raise TransportUnavailable("EVIDENCE_STORE_UNAVAILABLE") from None
-        if stored is None or not _kept_over_limit(stored):
+        if (
+            stored is None
+            or not _intact(stored, evidence_id)
+            or not _kept_over_limit(stored)
+        ):
+            # Integrity first, fail closed: every check below reads the stored
+            # view, so a view that does not hash to its recorded digest, or a
+            # record or view naming another evidence_id, is never trusted.
             return _refused("EVIDENCE_NOT_READABLE")
         view: Mapping[str, Any] = stored.view
         target = view.get("target_id")
@@ -283,11 +310,7 @@ class EvidenceReadTransport:
             # target is no longer authorized, or a tool this profile does not
             # serve: refused before any row is read.
             return _refused("EVIDENCE_NOT_READABLE")
-        raw = getattr(stored, "raw", None)
-        if not isinstance(raw, bytes) or sha256(raw).hexdigest() != getattr(
-            stored, "raw_sha256", None
-        ):
-            return TransportResponse(body=b"{}", source_status="EVIDENCE_CORRUPT")
+        raw: bytes = stored.raw
         rows = _rows(raw, self._result_paths[tool])
         window = Window.parse(view.get("window"))
         observed = _moment(view.get("observed_at"))

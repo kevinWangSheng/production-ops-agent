@@ -470,3 +470,111 @@ def test_eval_provenance_accepts_a_refusal_past_the_cap(monkeypatch):
     executor, _, _, _, outcome = _over_limit(monkeypatch, _FullStore())
     ctx = _eval_context(executor)
     _check(executor, ctx, _call(METRICS_TOOL, {"expr": GOOD_EXPR}), outcome)
+
+
+# -- review fixes: integrity of the parent, R5 raw in eval, tool-name gate ---
+
+
+def _tamper(evidence, evidence_id, *, key=None, **changes):
+    stored = evidence._records[evidence_id]
+    evidence._records[key or evidence_id] = dataclasses.replace(stored, **changes)
+
+
+@pytest.mark.parametrize("case", ["stale_view_hash", "record_id", "view_id", "digest"])
+def test_a_parent_that_fails_integrity_is_not_readable(monkeypatch, case):
+    from opspilot.tools.registry import canonical_hash
+
+    executor, evidence, _, _, outcome = _over_limit(monkeypatch)
+    evidence_id = outcome.model_view["evidence_id"]
+    view = dict(evidence.get(evidence_id).view)
+    request_id = evidence_id
+    if case == "stale_view_hash":
+        # A forged view (another window and tool) under the old digest.
+        _tamper(
+            evidence,
+            evidence_id,
+            view={**view, "tool": "get_metric_names", "window": WINDOW.as_json()},
+        )
+    elif case == "record_id":
+        request_id = evidence_id + "x"
+        _tamper(evidence, evidence_id, key=request_id)
+    elif case == "view_id":
+        forged = {**view, "evidence_id": "other:1"}
+        _tamper(evidence, evidence_id, view=forged, view_sha256=canonical_hash(forged))
+    else:
+        _tamper(evidence, evidence_id, view_sha256="0" * 64)
+    refused = _read(executor, {"evidence_id": request_id, "limit": 1})
+    assert (refused.status, refused.reason) == ("denied", "EVIDENCE_NOT_READABLE")
+    assert refused.evidence is None and refused.operation.sent is False
+
+
+def test_eval_rejects_a_slice_whose_raw_disagrees_with_its_view(monkeypatch):
+    from hashlib import sha256
+
+    from opspilot.evaluation.codec import StorageError
+
+    executor, _, _, _, outcome = _over_limit(monkeypatch)
+    ctx = _eval_context(executor)
+    call = _call(
+        EVIDENCE_TOOL,
+        {"evidence_id": outcome.model_view["evidence_id"], "offset": 1, "limit": 3},
+        index=1,
+    )
+    sliced = executor.execute(call)
+    _check(executor, ctx, call, sliced)
+    record = json.loads(sliced.evidence.raw)
+
+    def forged(raw: bytes):
+        evidence = dataclasses.replace(
+            sliced.evidence, raw=raw, raw_sha256=sha256(raw).hexdigest()
+        )
+        return dataclasses.replace(sliced, evidence=evidence)
+
+    wrong_rows = canonical({**record, "rows": record["rows"][::-1]}).encode()
+    wrong_parent = canonical({**record, "parent_raw_sha256": "0" * 64}).encode()
+    wrong_offset = canonical({**record, "offset": 0}).encode()
+    extra_key = canonical({**record, "note": 1}).encode()
+    not_canonical = json.dumps(record, indent=1).encode()
+    for raw in (wrong_rows, wrong_parent, wrong_offset, extra_key, not_canonical):
+        with pytest.raises(StorageError):
+            _check(executor, ctx, call, forged(raw))
+
+
+def test_only_read_evidence_gets_the_target_source_waiver():
+    from opspilot.tools import QueryScope, TargetRegistry
+    from opspilot.tools.evidence_read import evidence_registration
+    from opspilot.tools.executor import reads_evidence
+    from tests.m1_tool_support import (
+        FakeTransport,
+        FixedControl,
+        RecordingLedger,
+        RecordingSink,
+        request,
+        scope,
+        target,
+    )
+
+    genuine = evidence_registration(max_window_seconds=3600)
+    impostor = dataclasses.replace(genuine, name="evidence.lookalike")
+    assert reads_evidence(genuine) and not reads_evidence(impostor)
+    clock = FakeClock()
+    tools = ToolRegistry([impostor])
+    targets = TargetRegistry([target()])
+    built: QueryScope = scope(
+        targets, tool_registry=tools, tool_names=frozenset({"evidence.lookalike"})
+    )
+    executor = ReadOnlyToolExecutor(
+        scope=built,
+        tools=tools,
+        targets=targets,
+        transport=FakeTransport(clock=clock),
+        evidence=RecordingSink(),
+        control=FixedControl(),
+        clock=clock,
+        ledger=RecordingLedger(),
+        token_counter=quarter_counter,
+    )
+    outcome = executor.execute(
+        dataclasses.replace(request(), tool_name="evidence.lookalike", params={})
+    )
+    assert (outcome.status, outcome.reason) == ("denied", "TARGET_SOURCE_MISMATCH")

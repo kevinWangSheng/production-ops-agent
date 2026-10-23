@@ -39,6 +39,7 @@ from opspilot.tools.executor import (
     _result_size_message,
     _status_for,
     _view_refusal_detail,
+    reads_evidence,
 )
 from opspilot.tools.otel_demo import (
     MAX_SUMMARY_LABEL_CHARS,
@@ -262,7 +263,7 @@ def check_result(
         resolved.update(tool=reg.name, tool_version=reg.version, source=reg.source)
         if target.target_id not in scope.target_ids:
             failure = ("denied", "TARGET_NOT_AUTHORIZED")
-        elif target.source != reg.source and reg.source != EVIDENCE_SOURCE:
+        elif target.source != reg.source and not reads_evidence(reg):
             # ``read_evidence`` (#308 R3) reads the gateway's own store for
             # any registered target; the executor waives the same check.
             failure = ("denied", "TARGET_SOURCE_MISMATCH")
@@ -311,7 +312,7 @@ def check_result(
             "credential_ref": target.credential_ref,
             "query": parse(resolved["query"].encode()),
         }
-        if reg.source == EVIDENCE_SOURCE:
+        if reads_evidence(reg):
             # A slice carries its parent's source (#308 U4); the operation
             # header above still names this registration's.
             del identities["source"]
@@ -563,12 +564,12 @@ def _check_evidence_view(
     # A ``read_evidence`` slice (#308 U4) states its parent's observation:
     # observed and dispatched before this read, and the rows of the parent it
     # does not show as omitted.
-    slice_read = reg.source == EVIDENCE_SOURCE
+    slice_read = reads_evidence(reg)
     same(evidence.status, outcome.status)
     if slice_read:
         if op.finished_at is None or evidence.observed_at > op.finished_at:
             mismatch()
-        _check_slice_fields(view)
+        _check_slice_raw(evidence.raw, view, adopted=evidence.adopted)
     else:
         same(evidence.observed_at, op.finished_at)
     if evidence.observed_at > event_clock:
@@ -656,6 +657,59 @@ def _check_evidence_view(
         view["lookback_start_at"],
         None if lookback is None else window.start.isoformat(),
     )
+
+
+_SLICE_RAW_KEYS = {"parent_evidence_id", "parent_raw_sha256", "offset", "limit", "rows"}
+
+
+def _check_slice_raw(raw: bytes, view: Mapping[str, Any], *, adopted: bool) -> None:
+    """A slice's raw is exactly R5's canonical record and agrees with its view.
+
+    ``{parent_evidence_id, parent_raw_sha256, offset, limit, rows}`` in
+    canonical bytes; the parent id, offset and limit are the call's own
+    parameters; on an adopted slice the rows are the view's content and the
+    ``slice`` header repeats the parent hash, the offset and the row count,
+    with ``returned`` the rows ``[offset, offset + limit)`` of ``total_rows``
+    can hold. The parent's own bytes are not in the recording, so the rows
+    themselves are bound to the parent only through ``parent_raw_sha256``.
+    """
+    try:
+        record = parse(raw)
+    except StorageError:
+        mismatch()
+    if not isinstance(record, Mapping) or set(record) != _SLICE_RAW_KEYS:
+        mismatch()
+    if canonical(record).encode("utf-8") != raw:
+        mismatch()
+    query = view.get("query")
+    if not isinstance(query, Mapping):
+        mismatch()
+    assert isinstance(query, Mapping)
+    offset, limit, rows = record["offset"], record["limit"], record["rows"]
+    if (
+        type(offset) is not int
+        or offset < 0
+        or type(limit) is not int
+        or limit < 1
+        or not isinstance(rows, list)
+        or len(rows) > limit
+        or not isinstance(record["parent_raw_sha256"], str)
+    ):
+        mismatch()
+    same(record["parent_evidence_id"], query.get("evidence_id"))
+    same(offset, query.get("offset", 0))
+    same(limit, query.get("limit"))
+    if not adopted:
+        return
+    _check_slice_fields(view)
+    header = view["slice"]
+    same(rows, view["content"])
+    same(
+        (header["parent_evidence_id"], header["parent_raw_sha256"]),
+        (record["parent_evidence_id"], record["parent_raw_sha256"]),
+    )
+    same((header["offset"], header["returned"]), (offset, len(rows)))
+    same(len(rows), max(0, min(limit, header["total_rows"] - offset)))
 
 
 def _check_slice_fields(view: Mapping[str, Any]) -> None:
@@ -831,7 +885,7 @@ def _check_view(
                 )
                 if refusal is not None or window is None:
                     mismatch()
-            elif reg.source == EVIDENCE_SOURCE:
+            elif reads_evidence(reg):
                 # A slice refusal reports its parent's query window, which
                 # the store holds and the recording does not (#308 U4).
                 window = Window.parse(view["window"])
