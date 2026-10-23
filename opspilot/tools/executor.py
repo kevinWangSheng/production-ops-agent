@@ -39,7 +39,7 @@ from types import MappingProxyType
 from typing import Protocol, cast, runtime_checkable
 from uuid import UUID, uuid4
 
-from opspilot.redaction import has_duplicate_keys, redact_payload
+from opspilot.redaction import has_duplicate_keys, redact_credentials, redact_payload
 from opspilot.tracing import tracer
 
 from .outcomes import (
@@ -68,6 +68,7 @@ __all__ = [
     "EVIDENCE_SOURCE",
     "EVIDENCE_TOOL",
     "MAX_OPERATIONS_PER_RUN",
+    "MAX_SOURCE_ERROR_CHARS",
     "MAX_TOOL_SECONDS_PER_RUN",
     "ControlAuthority",
     "OverflowSummary",
@@ -458,6 +459,14 @@ class TransportResponse:
     datetimes or ``None``), ``incomplete`` and the parent rows the slice does
     not show (``omitted_rows``/``omitted_bytes``) -- instead of this read's
     own. Any other key, type or registration is MALFORMED_RESULT.
+
+    ``http_status`` is the HTTP status of a ``sent`` response the source
+    answered with an error (#311 U2/U3); the refusal view then carries it in a
+    ``source_error`` object the source, not the gateway, is trusted for.
+    ``source_error_type``/``source_error_text`` are the ``errorType``/``error``
+    strings the adapter decoded from an error envelope it allows echoing
+    (#311 U1: Prometheus 400/422); the executor validates, redacts and bounds
+    them (R1/R2). All three stay ``None`` for any other response.
     """
 
     body: bytes
@@ -472,6 +481,9 @@ class TransportResponse:
     view_fields: Mapping[str, object] | None = None
     query_window: Window | None = None
     carried: Mapping[str, object] | None = None
+    http_status: int | None = None
+    source_error_type: str | None = None
+    source_error_text: str | None = None
 
 
 @runtime_checkable
@@ -596,6 +608,10 @@ class _Plan:
     target: RegisteredTarget
     window: Window
     params: Mapping[str, object]
+
+
+#: ``_inspect``'s refusal: status, reason and the view detail it carries.
+_Problem = tuple[ToolStatus, str, Mapping[str, object] | None]
 
 
 class _ViewTooLarge(Exception):
@@ -1366,7 +1382,7 @@ class ReadOnlyToolExecutor:
 
     def _inspect(
         self, plan: _Plan, operation: ToolOperation, response: object
-    ) -> tuple[tuple[ToolStatus, str] | None, list[object], object, object]:
+    ) -> tuple[_Problem | None, list[object], object, object]:
         """Validate one returned response; the only place these rules live.
 
         Returns ``(problem, rows, payload, sanitized_response)``. A ``None``
@@ -1378,9 +1394,11 @@ class ReadOnlyToolExecutor:
         """
 
         def _problem(
-            status: ToolStatus, reason: str
-        ) -> tuple[tuple[ToolStatus, str], list[object], object, object]:
-            return (status, reason), [], None, response
+            status: ToolStatus,
+            reason: str,
+            detail: Mapping[str, object] | None = None,
+        ) -> tuple[_Problem, list[object], object, object]:
+            return (status, reason, detail), [], None, response
 
         if not isinstance(response, TransportResponse) or not isinstance(
             response.body, bytes
@@ -1392,13 +1410,17 @@ class ReadOnlyToolExecutor:
             # A source error is not an observation of the target's state, so it
             # is classified onto a fixed reason and the operation record keeps
             # the audit trail; the error body itself is not registered as
-            # evidence and its vendor text never reaches model context.
+            # evidence (#311 U4). Only what ``_source_error`` admits -- the
+            # status, and an envelope's redacted, bounded text where the
+            # adapter allows it -- reaches model context, marked untrusted.
             source_reason = plan.registration.classify(str(response.source_status))
             # The one source-named denial (#308 R3, ``EVIDENCE_NOT_READABLE``)
             # is reported as one; every other mapped reason is an error.
+            source_error = _source_error(response)
             return _problem(
                 "denied" if source_reason in DENIED_REASONS else "error",
                 source_reason,
+                None if source_error is None else {"source_error": source_error},
             )
         rows, payload = _result_rows(plan.registration, response.body)
         if rows is None:
@@ -1969,6 +1991,49 @@ class ReadOnlyToolExecutor:
             model_view=view,
             evidence=evidence,
         )
+
+
+#: #311 R2: the longest source error text a view carries, in code points.
+MAX_SOURCE_ERROR_CHARS = 1024
+_SOURCE_ERROR_TYPE = re.compile(r"[a-z_]{1,32}")
+
+
+def _source_error_type_ok(value: object) -> bool:
+    """An ``errorType`` a view may carry (#311 R2); shared with provenance."""
+    return isinstance(value, str) and _SOURCE_ERROR_TYPE.fullmatch(value) is not None
+
+
+def _source_error(response: TransportResponse) -> dict[str, object] | None:
+    """The ``source_error`` object of a sent source-error response (#311 U3).
+
+    ``None`` -- no object at all -- unless the adapter reported the HTTP
+    status of a response that really went out (R3): pre-dispatch refusals,
+    transports that report no status and every 5xx (raised, never returned)
+    keep their views unchanged. Text is the decoded envelope string, credential
+    redacted first and then cut to ``MAX_SOURCE_ERROR_CHARS`` (R1/R2), so a
+    credential is never cut into an unrecognisable fragment.
+    """
+    status = response.http_status
+    if response.sent is not True or type(status) is not int or not 400 <= status <= 499:
+        return None
+    error_type = response.source_error_type
+    if not _source_error_type_ok(error_type):
+        error_type = None
+    text = response.source_error_text
+    truncated = False
+    if isinstance(text, str):
+        text = redact_credentials(text)
+        truncated = len(text) > MAX_SOURCE_ERROR_CHARS
+        text = text[:MAX_SOURCE_ERROR_CHARS]
+    else:
+        text = None
+    return {
+        "trust": "untrusted-evidence",
+        "http_status": status,
+        "error_type": error_type,
+        "error": text,
+        "error_truncated": truncated,
+    }
 
 
 def _status_for(problem: str) -> ToolStatus:

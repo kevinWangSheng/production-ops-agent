@@ -84,9 +84,14 @@ from uuid import UUID
 from opspilot.investigation.context import ContextError, InvestigationInput
 from opspilot.investigation.inputs import ToolFace
 from opspilot.investigation.loop import DISCIPLINE_VARIANT, investigation_versions
+from opspilot.investigation.reports import DATA_SOURCES_INSTRUCTION
 from opspilot.investigation.runner import ExecutorFactory
 from opspilot.persistence import DurableStore, Lease, PersistenceError
-from opspilot.redaction import _authentication_name, redact_credentials
+from opspilot.redaction import (
+    _authentication_name,
+    has_duplicate_keys,
+    redact_credentials,
+)
 from opspilot.tools.evidence_read import (
     EVIDENCE_TOOL,
     EVIDENCE_TOOL_SCHEMA,
@@ -97,6 +102,7 @@ from opspilot.tools.evidence_read import (
 )
 from opspilot.tools.executor import (
     MAX_OPERATIONS_PER_RUN,
+    MAX_SOURCE_ERROR_CHARS,
     MAX_TOOL_SECONDS_PER_RUN,
     Clock,
     ControlSnapshot,
@@ -173,6 +179,9 @@ LABEL_VALUES_TOOL = "get_label_values"
 PROMETHEUS_TOOLS: frozenset[str] = frozenset(
     {METRICS_TOOL, METRIC_NAMES_TOOL, LABEL_VALUES_TOOL}
 )
+#: #311 U5: integrations the investigation may need that this profile does
+#: not have; shared by every profile's ``data_sources``.
+NOT_INTEGRATED: tuple[str, ...] = ("kubernetes_state", "pod_logs", "change_history")
 CREDENTIAL_REF = "otel-demo-ro"
 TRACE_PROJECTION = "otel-demo-traces-v1"
 _TIME_POLICY = "policy-window-1"
@@ -303,6 +312,16 @@ _DETAIL_KEYS = frozenset(
 _STATUS_KEYS = ("error", "otel.status_code", "rpc.grpc.status_code", "http.status_code")
 _DURATION = re.compile(r"[1-9][0-9]*[smh]")
 _DURATIONS = {"s": 1, "m": 60, "h": 3600}
+
+#: #311 R5: what a Prometheus tool's 4xx refusal carries, in the registered
+#: ``limits`` of every ``PROMETHEUS_TOOLS`` registration.
+_SOURCE_ERROR_LIMITS = (
+    "Prometheus HTTP 400/422 is error/INVALID_PARAMS and its refusal's "
+    "source_error carries Prometheus's own errorType and error text "
+    "(untrusted, credential-redacted, at most "
+    f"{MAX_SOURCE_ERROR_CHARS:,} characters, never citable as a fact) so the "
+    "query can be corrected; other 4xx carry only the HTTP status. "
+)
 
 TOOL_SCHEMAS: tuple[Mapping[str, Any], ...] = (
     {
@@ -708,7 +727,9 @@ def _registrations() -> tuple[ToolRegistration, ...]:
                 "RESULT_TOO_LARGE and no series, never truncated; the "
                 "refusal states counts only (series, points, label names "
                 "with their value counts) and, when the result was kept, its "
-                "evidence_id for read_evidence. Prometheus HTTP 503 with "
+                "evidence_id for read_evidence. "
+                + _SOURCE_ERROR_LIMITS
+                + "Prometheus HTTP 503 with "
                 "JSON errorType=timeout "
                 "is timeout/TOOL_TIMEOUT with confirmed source contact; other "
                 "5xx responses are error/SOURCE_UNAVAILABLE."
@@ -894,7 +915,9 @@ _DISCOVERY_LIMITS = (
     "dropped by the view (truncated stays false). The whole view is also "
     "limited to the registered max_view_tokens (25,000 DeepSeek tokens): a "
     "larger result is refused with RESULT_TOO_LARGE and no values, never "
-    "truncated. Prometheus HTTP 503 with JSON errorType=timeout is "
+    "truncated. "
+    + _SOURCE_ERROR_LIMITS
+    + "Prometheus HTTP 503 with JSON errorType=timeout is "
     "timeout/TOOL_TIMEOUT with confirmed source contact; other 5xx "
     "responses are error/SOURCE_UNAVAILABLE."
 )
@@ -1021,6 +1044,22 @@ def _discovery_registrations() -> tuple[ToolRegistration, ToolRegistration]:
     return metric_names, label_values
 
 
+def _data_sources() -> dict[str, Any]:
+    """#311 U5: what this profile can and cannot query, fixed per profile.
+
+    Static: no source is probed (a runtime FAILED state is deferred), so the
+    list says what is integrated, not whether it is healthy right now.
+    """
+    return {
+        "available": {
+            "prometheus": sorted(PROMETHEUS_TOOLS),
+            "jaeger": [TRACES_TOOL],
+        },
+        "not_integrated": list(NOT_INTEGRATED),
+        "instruction": DATA_SOURCES_INSTRUCTION,
+    }
+
+
 def _tool_schema_revision() -> str:
     """C3 §5: a content hash of the template bytes, never a hand-kept number.
 
@@ -1034,6 +1073,8 @@ def _tool_schema_revision() -> str:
             "registry": ToolRegistry(_registrations()).revision,
             "trace_projection": TRACE_PROJECTION,
             "projection_revision": PROJECTION_REVISION,
+            # #311 U5: the model-visible source list is template text too.
+            "data_sources": _data_sources(),
         }
     )
     return f"otel-demo-{digest[:12]}"
@@ -1146,6 +1187,7 @@ def _evidence_context(run_id: str, window: Window) -> Mapping[str, Any]:
                 "reference_rule": "response_received_at",
             }
         ],
+        "data_sources": _data_sources(),
     }
 
 
@@ -1346,6 +1388,45 @@ class _Fetched:
     body: bytes
 
 
+#: #311 U1: the statuses whose Prometheus error envelope is echoed to the model.
+_ECHOED_STATUSES = frozenset({400, 422})
+
+
+def _source_error_response(fetched: _Fetched, tool: str) -> TransportResponse:
+    """A non-200 answer the source sent (5xx already raised in ``_get``).
+
+    Every one reports its HTTP status (#311 U2). Only a Prometheus tool's
+    400/422 whose body is one complete error envelope -- ``{"status":
+    "error", "errorType": str, "error": str}``, valid UTF-8, no repeated key
+    -- hands its decoded strings on (U1, R1); a body cut at
+    ``ERROR_BODY_BYTES`` does not parse and echoes nothing. The executor
+    redacts and bounds the text.
+    """
+    error_type: str | None = None
+    error_text: str | None = None
+    if tool in PROMETHEUS_TOOLS and fetched.status in _ECHOED_STATUSES:
+        try:
+            text = fetched.body.decode("utf-8")
+            payload = json.loads(text)
+        except (UnicodeDecodeError, ValueError, RecursionError):
+            payload = None
+        if (
+            isinstance(payload, dict)
+            and payload.get("status") == "error"
+            and isinstance(payload.get("errorType"), str)
+            and isinstance(payload.get("error"), str)
+            and not has_duplicate_keys(text)
+        ):
+            error_type, error_text = payload["errorType"], payload["error"]
+    return TransportResponse(
+        body=fetched.body,
+        source_status=str(fetched.status),
+        http_status=fetched.status,
+        source_error_type=error_type,
+        source_error_text=error_text,
+    )
+
+
 class OtelDemoTransport:
     """The one outbound seam: GET only, no proxy, no redirects, bounded read.
 
@@ -1496,9 +1577,7 @@ class OtelDemoTransport:
         )
         fetched = self._get(url, request, max_bytes=request.max_result_bytes)
         if fetched.status != 200:
-            return TransportResponse(
-                body=fetched.body, source_status=str(fetched.status)
-            )
+            return _source_error_response(fetched, request.tool)
         start_at, end_at = _prometheus_bounds(fetched.body)
         return TransportResponse(
             body=fetched.body,
@@ -1562,9 +1641,7 @@ class OtelDemoTransport:
         )
         fetched = self._get(url, request, max_bytes=request.max_result_bytes)
         if fetched.status != 200:
-            return TransportResponse(
-                body=fetched.body, source_status=str(fetched.status)
-            )
+            return _source_error_response(fetched, request.tool)
         try:
             payload = json.loads(fetched.body.decode("utf-8"))
         except (UnicodeDecodeError, ValueError):
@@ -1609,9 +1686,7 @@ class OtelDemoTransport:
         )
         fetched = self._get(url, request, max_bytes=TRACE_SOURCE_READ_BYTES)
         if fetched.status != 200:
-            return TransportResponse(
-                body=fetched.body, source_status=str(fetched.status)
-            )
+            return _source_error_response(fetched, request.tool)
         try:
             payload = json.loads(fetched.body.decode("utf-8"))
         except (UnicodeDecodeError, ValueError):

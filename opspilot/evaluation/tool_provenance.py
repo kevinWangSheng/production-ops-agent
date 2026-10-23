@@ -32,11 +32,13 @@ from opspilot.tools.executor import (
     _SPILLED_USAGE,
     _UNSTORED_USAGE,
     EVIDENCE_SOURCE,
+    MAX_SOURCE_ERROR_CHARS,
     QueryScope,
     ToolRequest,
     TransportRequest,
     _accept_params,
     _result_size_message,
+    _source_error_type_ok,
     _status_for,
     _view_refusal_detail,
     reads_evidence,
@@ -904,7 +906,59 @@ def _check_view(
             mismatch()
     elif summary_keys:
         mismatch()
+    if "source_error" in view:
+        # #311 R6: only a dispatched read the source answered with a 4xx
+        # carries one. The error body is not recorded, so its text cannot be
+        # recomputed; its shape, bound and trust marking are what is checked.
+        if (
+            not op.dispatched
+            or (outcome.status, outcome.reason, outcome.source_contact)
+            not in _SOURCE_ERROR_OUTCOMES
+            or not _source_error_ok(view["source_error"])
+        ):
+            mismatch()
+        expected["source_error"] = view["source_error"]
     if set(view) - set(expected):
         mismatch()
     for name, value in view.items():
         same(value, expected[name])
+
+
+_SOURCE_ERROR_OUTCOMES = frozenset(
+    {
+        ("error", "INVALID_PARAMS", "confirmed"),
+        ("error", "SOURCE_ERROR", "confirmed"),
+    }
+)
+
+
+def _source_error_ok(value: object) -> bool:
+    """The ``source_error`` shape ``executor._source_error`` builds (#311 U3)."""
+    if not isinstance(value, dict) or set(value) != {
+        "trust",
+        "http_status",
+        "error_type",
+        "error",
+        "error_truncated",
+    }:
+        return False
+    status, error, truncated = (
+        value["http_status"],
+        value["error"],
+        value["error_truncated"],
+    )
+    return (
+        value["trust"] == "untrusted-evidence"
+        and type(status) is int
+        and 400 <= status <= 499
+        and (value["error_type"] is None or _source_error_type_ok(value["error_type"]))
+        and type(truncated) is bool
+        and (
+            (error is None and not truncated)
+            or (
+                isinstance(error, str)
+                and len(error) <= MAX_SOURCE_ERROR_CHARS
+                and (not truncated or len(error) == MAX_SOURCE_ERROR_CHARS)
+            )
+        )
+    )
