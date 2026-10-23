@@ -11,6 +11,12 @@ and the evidence README says so.
 
 Point the profile at it with ``OPSPILOT_OTEL_PROMETHEUS_URL=http://127.0.0.1:29317``
 and ``OPSPILOT_OTEL_JAEGER_URL=http://127.0.0.1:29317/jaeger/ui``.
+
+``--wide-series N`` (#308 PR2 evidence) adds N short-lived per-pod checkout
+series (at most four points each) to every range query that neither names a
+pod nor asks for ``topk``, so an ordinary query's whole view exceeds the
+25k-token view limit, stays under the 1 MiB byte ceiling and is kept for
+``read_evidence``.
 """
 
 from __future__ import annotations
@@ -24,18 +30,20 @@ from urllib.parse import parse_qs, urlsplit
 SERVICES = ("frontend", "checkout", "payment")
 
 
-def prometheus_body(query: dict[str, list[str]]) -> bytes:
+def prometheus_body(query: dict[str, list[str]], *, wide: int = 0) -> bytes:
     start = float(query["start"][0])
     end = min(float(query["end"][0]), time.time())
     step = max(1, int(float(query.get("step", ["30"])[0])))
     series = []
-    for offset, (service, status, base) in enumerate(
-        (
-            ("checkout", "STATUS_CODE_UNSET", 30.0),
-            ("checkout", "STATUS_CODE_ERROR", 6.0),
-            ("payment", "STATUS_CODE_ERROR", 9.0),
-        )
-    ):
+    expr = query.get("query", [""])[0]
+    if "topk" in expr or "pod=" in expr:
+        wide = 0
+    shapes = [
+        ("checkout", "STATUS_CODE_UNSET", 30.0),
+        ("checkout", "STATUS_CODE_ERROR", 6.0),
+        ("payment", "STATUS_CODE_ERROR", 9.0),
+    ] + [("checkout", f"pod-{i:03d}", 1.0 + i % 7) for i in range(wide)]
+    for offset, (service, status, base) in enumerate(shapes):
         values = []
         t = start
         k = 0
@@ -43,12 +51,19 @@ def prometheus_body(query: dict[str, list[str]]) -> bytes:
             values.append([round(t, 3), f"{base + (k % 5) * (1 + offset):.4f}"])
             t += step
             k += 1
-        series.append(
-            {
-                "metric": {"service_name": service, "status_code": status},
-                "values": values,
+        labels = {"service_name": service, "status_code": status}
+        if status.startswith("pod-"):
+            # Short-lived per-pod series: the last few grid points only, so
+            # the result stays far below the 1 MiB byte ceiling at any step
+            # while its whole view still exceeds the 25k-token view limit.
+            values = values[-4:]
+            labels = {
+                "service_name": service,
+                "status_code": "STATUS_CODE_ERROR",
+                "pod": f"checkout-7d9f8b-{status}",
+                "instance": f"10.0.{offset // 200}.{offset % 200}:8080",
             }
-        )
+        series.append({"metric": labels, "values": values})
     return json.dumps(
         {"status": "success", "data": {"resultType": "matrix", "result": series}}
     ).encode("utf-8")
@@ -103,14 +118,14 @@ def jaeger_body(query: dict[str, list[str]]) -> bytes:
     return json.dumps(body).encode("utf-8")
 
 
-def handler(latency: float) -> type[BaseHTTPRequestHandler]:
+def handler(latency: float, wide: int = 0) -> type[BaseHTTPRequestHandler]:
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self) -> None:  # noqa: N802 - http.server API
             parts = urlsplit(self.path)
             query = parse_qs(parts.query)
             time.sleep(latency)
             if parts.path.endswith("/api/v1/query_range"):
-                body = prometheus_body(query)
+                body = prometheus_body(query, wide=wide)
             elif parts.path.endswith("/api/traces"):
                 body = jaeger_body(query)
             else:
@@ -132,9 +147,10 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--port", type=int, default=29317)
     parser.add_argument("--latency-seconds", type=float, default=1.5)
+    parser.add_argument("--wide-series", type=int, default=0)
     args = parser.parse_args()
     server = ThreadingHTTPServer(
-        ("127.0.0.1", args.port), handler(args.latency_seconds)
+        ("127.0.0.1", args.port), handler(args.latency_seconds, args.wide_series)
     )
     print(f"stub listening on 127.0.0.1:{args.port}", flush=True)
     server.serve_forever()

@@ -697,6 +697,13 @@ def delivered_view(
     # assumed true.
     flag = view.get("citable_as_fact")
     citable = flag if isinstance(flag, bool) else status == "ok"
+    # A ``read_evidence`` slice (#308 R4) is matched against the time
+    # policies as the tool that observed its rows: ``parent_tool``, and the
+    # parent's ``source``, which the slice view carries. An ``interfaces``
+    # list naming only the metrics tool would otherwise leave every slice
+    # ``time_scope_not_bound``.
+    parent_tool = view.get("parent_tool")
+    tool = parent_tool if isinstance(parent_tool, str) else view.get("tool")
     return DeliveredView(
         evidence_id=evidence_id,
         target_ids=target_ids,
@@ -711,7 +718,7 @@ def delivered_view(
             if isinstance(evidence_context, Mapping)
             else None,
             source=view.get("source"),
-            tool=view.get("tool"),
+            tool=tool,
             target_ids=target_ids,
             window=view.get("window"),
             freshness_seconds=view.get("freshness_seconds"),

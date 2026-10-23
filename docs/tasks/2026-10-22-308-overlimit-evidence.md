@@ -1,6 +1,6 @@
 # #308 超限结果存为未采纳证据 + 按 ID 读片段
 
-- 状态：PR1 独立验收与审查通过（可合并），未推送、未开 PR；PR2 待 #318（#307 A）与 #322（#309）合并后开工
+- 状态：PR1 已合并（#324）；PR2 独立验收与复审通过，开 PR 待合并（模型可见，须无 kind 观察窗）
 - 更新日期：2026-10-22
 - 依据：issue #308（含更正评论）；C3 §5「大结果保存为持久证据，通过 ID 和片段读取」；`docs/research/upstream-design-audit-2026-10-22.md` 第一、三节；[合同 r1](2026-10-22-308-overlimit-evidence-contract.md)
 - 工作区：PR1 实现 `/Users/shenghuikevin/dev/AI/poa-308`（`feature/308-overlimit-evidence`）；PR1 独立测试 `/Users/shenghuikevin/dev/AI/poa-308-tests`（`feature/308-overlimit-evidence-tests`）
@@ -30,6 +30,28 @@ PR1 实现（2026-10-22，`feature/308-overlimit-evidence`）：
   - 独立审查（Codex gpt-6-astra 等）：首审 3 条均为测试缺口，已补；复验无发现，可合并。
   - 最终：#308 验收 + 实现自测 + PG 24 passed；全仓 ruff format/check 通过。
   - 下一步：push、开 PR（正文注明不改模型可见面、无迁移与新 grant；审计时间线会多出无 `tool_committed` 的 register-only evidence 项，审计合同已允许）、CI、`@codex review` 分诊；不改调查 loop，按合同不需要真实 Run。
+
+PR2 实现（2026-10-22，`feature/308-pr2-read-evidence`，起点 main `1f701af`，实现提交 `c8516f3`）：
+
+- 超限拒绝：保留成功时模型视图就是保留记录的视图（拒绝字段 + U5 摘要 + `evidence_id`、`adopted:false`、R12 来源字段 + 固定 `usage` 文案），`outcome.evidence` 挂该记录（R1/R2），提交时照常 pin、去重记住它、事故页已有的链接与 `(not adopted)` 直接生效（R9，模板未改）。超过每 Run 上限：摘要 + `stored:false`，无 evidence_id。sink 不能回答（不能计数、存储异常、控制拒绝）：拒绝与 #308 之前完全一致（R11 字面）。摘要的 `suggested_limit` 按各行字节占整视图 token 的比例估算，不额外调用计数器（M1-01「整视图只计一次」）。
+- `read_evidence`（`opspilot/tools/evidence_read.py`）：source `opspilot-evidence`、verb `get`，经路由 transport 只读 `get`；本 Run、超限保留记录、父记录 target 等于请求 target 且仍在授权内，否则 `EVIDENCE_NOT_READABLE`（denied，发送前，contact none）；负 offset / limit<1 为 INVALID_PARAMS；offset 越界为 no_data；片段超 25k 整段拒绝且不再保留。片段 raw 按 R5，视图带 `parent_tool`、`slice`，`source`/`window`/`observed_at`/`dispatch_started_at`/`data_as_of`/`source_*_at`/`freshness_seconds`/`incomplete` 取父记录，`truncated` 与 `omitted_rows` 表示父记录中未展示的行。
+- 可逆决定（各一行理由）：executor 对 `EVIDENCE_SOURCE` 注册豁免 target/source 一致检查（R3 的 target 由 transport 对父记录核对）；`TransportRequest.target_id`、`TransportResponse.carried`（仅 evidence 源，固定键）为此新增；`EVIDENCE_NOT_READABLE` 进 `DENIED_REASONS` 与 `SOURCE_ERROR_REASONS`，executor 把映射到 denied 原因的 source_status 报为 denied；`label_cardinality` 用 `[{label, value_count}]` 列表保序（规范 JSON 会把 dict 键排序）；traces 与发现工具描述保持字节不变，只改 metrics 描述与 limits；替身 `scripts/m1_otel_stub.py` 加 `--wide-series`。
+- U7：`registry.MAX_VIEW_TOKENS = 25_000`，注册 `max_view_tokens` 超过即 `VIEW_LIMIT_OUT_OF_RANGE`；`visible_view` 与 `context_policy_revision` 不动。
+- revision：`PROJECTION_REVISION` `m1-01-tool-view-v8` → `v9`；`tool_schema_revision` `otel-demo-5270fd8c543f` → `otel-demo-2a944edd110a`；`prompt_revision`、`context_policy_revision` 不变。
+- 自测：`tests/test_308_pr2_read_evidence_impl.py`（18 项）与 `tests/integration/test_308_pr2_read_evidence_impl_postgres.py`（1 项，worker 角色）通过；PR1 实现自测与 #307A、F3 实现自测中钉住旧语义的断言已按 PR2 改（实现侧，理由写在注释）。受 bump 与 U7 影响、需独立作者更新的既有断言见交付清单（lead 处）。
+- 已知限制：eval 录制格式对 transport 发送前拒绝（`sent:false`）一律判不一致，这是既有行为，`EVIDENCE_NOT_READABLE` 同属此类；片段不带 `lookback_seconds`（PR1 保留视图未存该字段）。
+- 真实 Run：两次，第 1 次替身数据未触发超限（失败，保留），第 2 次通过：6 次超限保留拒绝、2 次 `read_evidence` ok，报告以片段为 fact 引用并通过校验。[证据](../evidence/308-pr2-read-evidence-live/README.md)；费用余额差 0.04 CNY。
+
+- PR2 独立验收（测试分支 `e066635`，lead 本地 merge）：41 项中 34 过、7 败（KeyError `adopted`）。lead 裁决（R2 解读，可逆）：所有视图超限拒绝——保留的、超过每 Run 上限 `stored:false` 的、read_evidence 片段超 25k 的——都带 `adopted:false`、`citable_as_fact:false`；`EVIDENCE_NOT_READABLE`/`INVALID_PARAMS` 等视图不要求（测试作者去掉该断言）。实现：视图超限分支的拒绝 detail 加 `adopted:false`（`_view_refusal_detail` 文本不变），字节超限拒绝不变；projection 与 tool_schema revision 值不变（v9 / `otel-demo-2a944edd110a`）。由此另有两处钉住旧拒绝键集合的断言需独立作者更新：`tests/acceptance/test_308_pr1_overlimit_evidence.py:373`、`tests/test_m1_whole_view_tokens_contract.py:815`。
+- 实现者提出的 5 条可逆问题与 lead 处理（2026-10-22）：
+  1. R11/U2 边界（只有上限判否给 `stored:false`，sink 答不了时视图不变）：接受。
+  2. U7 使 M1-01 合同测试中钉大上限的断言失效：由独立作者改写；compaction 备用防线在产品中不可达，lead 另开 issue。
+  3. eval 录制对 `sent:false` 的发送前拒绝判 IDENTITY_MISMATCH（既有行为，`EVIDENCE_NOT_READABLE` 同类）：lead 另开 issue。
+  4. 片段不带 `lookback_seconds`：接受，不扩 R12。
+  5. 片段超限整段拒绝、不再保留、无摘要：接受。
+
+- PR2 独立审查（Codex gpt-6-luna）FAIL 两条 + 一条可选，均已修：read_evidence 读父记录先做完整性校验（raw 与 view 两个 sha 复算、记录与视图的 evidence_id 都等于请求 ID），任一不符即 `EVIDENCE_NOT_READABLE`，不读 raw；eval `tool_provenance` 校验片段 raw 是 R5 规范 JSON（键集合、规范字节、父 ID/offset/limit 等于调用参数、rows 等于 content、slice 头与 raw 一致、returned 等于区间能容纳的行数）；目标/来源豁免与 `carried` 改为同时要求 source `opspilot-evidence` 与工具名 `read_evidence`。revision 不变（v9 / `otel-demo-2a944edd110a`）。
+- PR2 复审（Codex gpt-6-sol，`9e8ace4`）PASS：定向 65 过、扩展回归 347 过、全量 pytest 8893 过；新测试在修复前提交 `5ef9956` 上 6 败，有区分力。
 
 ## 待决
 

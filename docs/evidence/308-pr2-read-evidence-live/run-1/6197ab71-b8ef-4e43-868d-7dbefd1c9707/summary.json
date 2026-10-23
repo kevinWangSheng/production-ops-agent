@@ -1,0 +1,264 @@
+{
+  "schema": "opspilot-lab-summary-1",
+  "experiment": "m1-01-handoff-runner",
+  "run_id": "6197ab71-b8ef-4e43-868d-7dbefd1c9707",
+  "frozen_at": "2026-10-22T23:20:24.428063+00:00",
+  "incident_id": "cfa5cd60-8971-42de-aa6e-81c0d788afc6",
+  "driver": "opspilot.investigation.runner.InvestigationRunner",
+  "model": "deepseek-flash",
+  "started": "2026-10-22T23:19:15.214350+00:00",
+  "ended": "2026-10-22T23:20:19.921239+00:00",
+  "tool_parallelism": 2,
+  "context_tokens": 1000000,
+  "tool_profile": "otel-demo",
+  "verdicts": {
+    "status": "handed_off",
+    "reason": "INCOMPLETE_INVESTIGATION",
+    "last_status": "handed_off",
+    "last_reason": "INCOMPLETE_INVESTIGATION",
+    "run_state": "waiting_human",
+    "conclusion_published": false,
+    "attempts": [
+      {
+        "label": "first",
+        "status": "handed_off",
+        "reason": "INCOMPLETE_INVESTIGATION",
+        "handoff_reasons": [
+          "INCOMPLETE_INVESTIGATION"
+        ]
+      }
+    ],
+    "control": null,
+    "event_kinds": [
+      "run_claimed",
+      "step_committed",
+      "tool_committed",
+      "tool_committed",
+      "step_committed",
+      "tool_committed",
+      "tool_committed",
+      "step_committed",
+      "tool_committed",
+      "tool_committed",
+      "step_committed",
+      "tool_committed",
+      "tool_committed",
+      "tool_committed",
+      "step_committed",
+      "tool_committed",
+      "tool_committed",
+      "step_committed",
+      "tool_committed",
+      "tool_committed",
+      "tool_committed",
+      "step_committed",
+      "run_handoff"
+    ]
+  },
+  "counts": {
+    "model_requests_bound": 8,
+    "http_count": 7,
+    "prompt_tokens": 124877,
+    "completion_tokens": 10967,
+    "run_usage": {
+      "budget_limit": 8,
+      "model_requests_used": 7,
+      "model_seconds_used": 60.27046099957079,
+      "tool_operations_used": 14,
+      "tool_seconds_used": 7.105187832610682
+    },
+    "current_run_id": "6197ab71-b8ef-4e43-868d-7dbefd1c9707",
+    "current_run_usage": {
+      "budget_limit": 8,
+      "model_requests_used": 7,
+      "model_seconds_used": 60.27046099957079,
+      "tool_operations_used": 14,
+      "tool_seconds_used": 7.105187832610682
+    },
+    "evidence_ids": [
+      "1c2ace9a-7dea-4240-85d9-09e13c1fbbe0-t0:4a1bafd9-421d-4802-b93f-20424a04bea7",
+      "1c2ace9a-7dea-4240-85d9-09e13c1fbbe0-t1:2dfe9211-e96c-4838-9dff-62bbbee6ac26",
+      "189f985c-e5f6-4b33-850e-0827665f8149-t0:1f525466-79d7-4f70-97b2-becd0da75dde",
+      "189f985c-e5f6-4b33-850e-0827665f8149-t1:74f630aa-c3b7-476b-a487-6f6b5d1663f2",
+      "3d667e03-8500-40ce-a105-f16e881f2fe7-t0:3dcc3333-4eed-4a60-b553-f31ba112d1b9",
+      "3d667e03-8500-40ce-a105-f16e881f2fe7-t1:17449d83-2b0e-4e7d-b01f-1b600dd2d25d",
+      "3d667e03-8500-40ce-a105-f16e881f2fe7-t2:f41d83c9-0194-4013-a766-43db188d137a",
+      "a075f880-c1c4-41ef-a00c-ccecd576f18d-t0:0a8cacc1-e071-4741-a7e4-eb7eab97834a",
+      "725af36c-847b-4808-9d88-faae7e18eaa5-t0:d9408cfe-a18c-47b1-8e64-e51d923584bf",
+      "725af36c-847b-4808-9d88-faae7e18eaa5-t1:d5fc266e-95bd-45b8-82ff-cd732e825356",
+      "725af36c-847b-4808-9d88-faae7e18eaa5-t2:7e1b66e6-b27e-41c0-ada5-ecfaefe6f806"
+    ]
+  },
+  "cost": {
+    "known_cost_cny_upper": 0.369551
+  },
+  "report": {
+    "schema_version": "m0-report-v2",
+    "assessment_status": "incomplete",
+    "conclusion": "inconclusive",
+    "summary": "The reported 'elevated checkout errors' could not be verified or refuted from this Run's evidence. The metrics tool did return a payload containing a checkout STATUS_CODE_ERROR series and a payment STATUS_CODE_ERROR series, but that payload was not responsive to my queries: a filtered request for service_name=\"cart\", a request for http_server_request_duration_seconds_count, and a request for kube_deployment_status_replicas_ready all returned the same checkout/payment status_code series. The kube request is decisive: kube-state-metrics series carry namespace/deployment/pod labels, yet the returned rows had service_name and status_code labels and no namespace or deployment label at all. The payload is also internally inconsistent: at the final timestamp the 30 per-pod checkout STATUS_CODE_ERROR series carry values from 17 to 134 while the aggregate service-level checkout STATUS_CODE_ERROR series reads 14 for the same label set and timestamp, so both cannot be a checkout error count. Trace evidence is equally thin: both the checkout and the payment trace search returned the identical single trace (trace_id 30930930930930930930930930930901) with the same three spans, shifted to whatever the query window start was, and only 1 of 30 requested traces existed. In that trace the only error-tagged span is payment/handle, not checkout/handle. Metric and label discovery both failed with source errors. Because the returned numbers cannot be attributed to checkout, no error rate, error ratio, latency trend or causal statement is supportable, and the premise remains unconfirmed rather than disproven.",
+    "claims": [
+      {
+        "kind": "fact",
+        "text": "A 24-hour query aggregating traces_span_metrics_calls_total by service_name and status_code returned, among 33 series, a checkout STATUS_CODE_UNSET series and a checkout STATUS_CODE_ERROR series, plus a payment STATUS_CODE_ERROR series.",
+        "evidence_ids": [
+          "189f985c-e5f6-4b33-850e-0827665f8149-t0:1f525466-79d7-4f70-97b2-becd0da75dde"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "fact",
+        "text": "A query whose selector was restricted to service_name=\"cart\" returned the same content as the checkout-restricted query: checkout and payment status_code series with no cart series present.",
+        "evidence_ids": [
+          "a075f880-c1c4-41ef-a00c-ccecd576f18d-t0:0a8cacc1-e071-4741-a7e4-eb7eab97834a",
+          "3d667e03-8500-40ce-a105-f16e881f2fe7-t0:3dcc3333-4eed-4a60-b553-f31ba112d1b9"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "fact",
+        "text": "A query for http_server_request_duration_seconds_count returned the same traces-style checkout/payment series with status_code, instance and pod labels rather than an HTTP request count for the requested metric name.",
+        "evidence_ids": [
+          "3d667e03-8500-40ce-a105-f16e881f2fe7-t2:f41d83c9-0194-4013-a766-43db188d137a"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "fact",
+        "text": "A query for kube_deployment_status_replicas_ready returned 25 points of checkout and payment series labelled only with service_name, status_code, instance and pod; no namespace, deployment or replicaset labels were present, although kube-state-metrics series are defined to carry those labels instead of service_name.",
+        "evidence_ids": [
+          "725af36c-847b-4808-9d88-faae7e18eaa5-t2:7e1b66e6-b27e-41c0-ada5-ecfaefe6f806"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "fact",
+        "text": "In that same 25-point view the checkout STATUS_CODE_ERROR series repeats a 6,8,10,12,14 cycle on a five-point period, while the 30 per-pod checkout STATUS_CODE_ERROR series rise across each cycle to values between 17 and 134 at the final timestamp.",
+        "evidence_ids": [
+          "725af36c-847b-4808-9d88-faae7e18eaa5-t2:7e1b66e6-b27e-41c0-ada5-ecfaefe6f806"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "counter_evidence",
+        "text": "The aggregate service-level checkout STATUS_CODE_ERROR series (14 at the final timestamp) and the per-pod checkout STATUS_CODE_ERROR series (17 to 134 per pod at the same timestamp) share the same service_name and status_code labels but are mutually inconsistent by two orders of magnitude, so neither can be used as a checkout error count.",
+        "evidence_ids": [
+          "725af36c-847b-4808-9d88-faae7e18eaa5-t2:7e1b66e6-b27e-41c0-ada5-ecfaefe6f806"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "counter_evidence",
+        "text": "Because a selector that excludes checkout still returned checkout and payment series, and because a kube-state metric query returned non-kube series, the returned numbers cannot be treated as evidence that checkout error counts are elevated.",
+        "evidence_ids": [
+          "a075f880-c1c4-41ef-a00c-ccecd576f18d-t0:0a8cacc1-e071-4741-a7e4-eb7eab97834a",
+          "725af36c-847b-4808-9d88-faae7e18eaa5-t2:7e1b66e6-b27e-41c0-ada5-ecfaefe6f806"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "fact",
+        "text": "The checkout trace search for the authorized window returned the same single trace (trace_id 30930930930930930930930930930901) as the payment trace search, containing three spans: frontend/handle with no status tag, checkout/handle with no status tag, and payment/handle tagged error=true and otel.status_code=ERROR; only 1 of the 30 requested traces was returned and no spans were omitted from that trace.",
+        "evidence_ids": [
+          "1c2ace9a-7dea-4240-85d9-09e13c1fbbe0-t1:2dfe9211-e96c-4838-9dff-62bbbee6ac26",
+          "725af36c-847b-4808-9d88-faae7e18eaa5-t1:d5fc266e-95bd-45b8-82ff-cd732e825356"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "fact",
+        "text": "The identical trace was returned for a narrow recent sub-window (2026-10-22T22:19:15 to 23:19:15) with span timestamps at 22:19:25 and data_as_of 22:19:25, about 3617 s behind the sub-window end, while for the full window the same spans were stamped 2026-10-21T23:19:25 with data_as_of the same, about 86400 s behind the window end.",
+        "evidence_ids": [
+          "725af36c-847b-4808-9d88-faae7e18eaa5-t0:d9408cfe-a18c-47b1-8e64-e51d923584bf",
+          "1c2ace9a-7dea-4240-85d9-09e13c1fbbe0-t1:2dfe9211-e96c-4838-9dff-62bbbee6ac26"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "hypothesis",
+        "text": "If the fixture values mean anything at all, the residual error signal points to payment rather than checkout: the only error-tagged span in the sampled trace is payment/handle, and the payment STATUS_CODE_ERROR series in the returned payload is numerically larger than checkout's. This is untested because the payload did not respond to filters and no selector-independent series was obtainable.",
+        "evidence_ids": [
+          "725af36c-847b-4808-9d88-faae7e18eaa5-t1:d5fc266e-95bd-45b8-82ff-cd732e825356",
+          "725af36c-847b-4808-9d88-faae7e18eaa5-t2:7e1b66e6-b27e-41c0-ada5-ecfaefe6f806"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "rejected_hypothesis",
+        "text": "Rejected: that the sampled trace evidences a checkout failure. The checkout/handle span carries no status tag at all (status_state not_recorded, which is Unset, not OK and not a status code), so it neither confirms nor denies a checkout error, and no checkout error path is visible in this trace.",
+        "evidence_ids": [
+          "1c2ace9a-7dea-4240-85d9-09e13c1fbbe0-t1:2dfe9211-e96c-4838-9dff-62bbbee6ac26"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      }
+    ],
+    "gaps": [
+      "Metric and label discovery both failed: get_metric_names and get_label_values each returned status error with reason SOURCE_ERROR, so the available metric inventory, label values and label coverage are unknown for this target and window.",
+      "No trustworthy error-rate or error-ratio series exists for checkout in this Run. The only numeric payload returned was invariant to metric name, service filter and selector, so it cannot be attributed to checkout; the checkout error level is unknown, not zero.",
+      "The per-pod and aggregate error series conflict (17-134 per pod versus 14 aggregate at the same timestamp), which indicates the metrics payload is not a faithful Prometheus evaluation; the true provenance of these numbers is unknown.",
+      "No latency evidence was obtained for checkout or its downstream calls (rpc_client_duration_milliseconds_* , histogram buckets) and no baseline period exists outside the authorized 24-hour window, so no latency level or trend can be asserted; ERROR-labelled metric series that were never returned remain unknown rather than zero.",
+      "Trace coverage of the authorized window is effectively absent: only 1 of 30 requested traces was returned for checkout, the same trace answered both the checkout and payment queries, and its timestamps follow the query window start, so the error rate across the window is unknown and omitted spans are unknown.",
+      "No Kubernetes pod or deployment state was retrievable, because the kube-state-metrics query returned service-level series with no namespace, deployment or pod labels; pod readiness, restarts and image changes for checkout are unknown.",
+      "Whether any checkout workload changed (deployment, ReplicaSet or image) during the window could not be established, so a deploy-related cause cannot be tested.",
+      "The premise itself ('checkout shows elevated errors') is unverified: no comparable error baseline inside or outside the window supports the word 'elevated'."
+    ],
+    "next_steps": [
+      "Have a human verify the Prometheus adapter wiring behind this target: a selector for service_name=\"cart\" and a kube-state-metrics metric name both returned the same checkout/payment status_code series, which indicates the query is not being forwarded or the response is being served from a fixed fixture.",
+      "Re-run metric discovery (metric names, label values, then a filtered error-count query) once the adapter is confirmed to honor selectors, and only then compute a checkout error ratio against a baseline period outside the authorized window.",
+      "Check the trace backend's data freshness and ingestion: only one trace existed for checkout across 24 hours and its timestamps tracked the query window start rather than the events, so Jaeger may be stale or mis-joined.",
+      "If real telemetry becomes available, prioritize the checkout-to-payment dependency: the sole error-tagged span in the sample is payment/handle, and payment's error series was the largest in the returned payload.",
+      "Confirm checkout pod-level health (readiness, restarts, ReplicaSet/image changes) from kube-state-metrics separately, since this Run returned no kube-labelled series."
+    ]
+  },
+  "report_content_sha256": "8f412c64d94884e208a0d35c3fbf78d18512f58170809d852bbf336e5323e1bd",
+  "trace": {
+    "mode": "lab",
+    "otel_trace_id": "30f5ae653d75946aa500dd352163af94",
+    "dropped_spans": 0,
+    "project": "opspilot-lab-308-pr2-a",
+    "project_id": "f1c2527d-7eb2-4be1-8d47-b08f11a3f798",
+    "trace_tier": "longlived",
+    "langsmith_run_id": "00000000-0000-0000-b7dc-8a83de096886",
+    "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/f1c2527d-7eb2-4be1-8d47-b08f11a3f798/r/00000000-0000-0000-b7dc-8a83de096886?poll=true",
+    "read_back": "found"
+  },
+  "raw_ledger": {
+    "sha256": "dd026771744ad80238c67e43a50a813da39caf462992e82b490627cd9435f73f",
+    "bytes": 18977,
+    "path": "tmp/lab-ledgers/m1-01-handoff-runner/6197ab71-b8ef-4e43-868d-7dbefd1c9707/ledger.json",
+    "in_repository": false
+  }
+}

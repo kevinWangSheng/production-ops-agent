@@ -17,6 +17,7 @@ from urllib.parse import parse_qs, urlsplit
 import pytest
 
 from opspilot.tools import fixture as fixture_profile
+from opspilot.tools.evidence_read import EVIDENCE_TOOL
 from opspilot.tools.otel_demo import (
     DISCOVERY_LIMIT,
     LABEL_VALUES_TOOL,
@@ -343,6 +344,8 @@ def test_registrations_and_schemas_cover_four_tools():
             TRACES_TOOL,
             METRIC_NAMES_TOOL,
             LABEL_VALUES_TOOL,
+            # #308 PR2 adds the evidence read-back tool to the profile.
+            EVIDENCE_TOOL,
         }
     )
     assert {s["function"]["name"] for s in TOOL_SCHEMAS} == names
