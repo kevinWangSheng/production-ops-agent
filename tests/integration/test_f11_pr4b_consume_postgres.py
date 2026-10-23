@@ -1308,33 +1308,65 @@ def test_web_cannot_relink_an_associated_release_or_change_other_columns(
 # ===========================================================================
 
 
-def test_a_suspended_target_still_gets_its_incident_and_run(
+def test_a_suspended_target_gets_a_paused_incident_and_run_claimable_after_lifting(
     owner: DurableStore,
     web: ReleaseStore,
     observer: ObservationStore,
     catalog: Catalog,
     bench: Callable[..., Workbench],
 ) -> None:
+    """Item 8 as amended (user 2026-10-22): during suspension the incident and
+    its Run are created ``paused`` (as alert intake and the suspend write
+    path), no query or model call before lifting; after lifting the Run can
+    be claimed."""
     case = _ready(owner, web, observer, catalog, bench)
     generation = _one(
         "SELECT generation FROM opspilot_target_suspensions WHERE target_id=%s",
         (case.target_id,),
     )["generation"]
-    resumed = owner.set_target_suspension(
+    current = owner.set_target_suspension(
         case.target_id, True, expected_generation=generation, actor="test:pr4b"
     )
+    lifted = False
     try:
-        bench(case.registry()).release_anomaly_pass()
+        workbench = bench(case.registry())
+        workbench.release_anomaly_pass()
 
         incident, run = _expect_created(case)
-        # r3 G4: R10 and item 8 literally -- a queued Run, not the paused
-        # path of ``_accept_in``; the worker's scope gate holds the queries.
-        assert run["state"] == "queued", run
+        assert run["state"] == "paused", run
+        assert incident["state"] == "paused", incident
         assert incident["lifecycle"] == "open"
-    finally:
-        owner.set_target_suspension(
-            case.target_id, False, expected_generation=resumed, actor="test:pr4b"
+        assert incident["incident_id"] not in owner.claimable_incidents(limit=1000)
+
+        # lift through the public controls: the operator's target gate, then
+        # the incident's resume (a Run parked by suspension is a human's to
+        # resume, as for every other incident)
+        workbench.suspension(
+            scope="target",
+            target_id=case.resource_uid,
+            suspended=False,
+            expected_generation=current,
+            idempotency_key=f"lift-{uuid4()}",
+            actor_id="operator:test",
         )
+        lifted = True
+        workbench.control(
+            incident["incident_id"],
+            actor_id="operator:test",
+            action="resume",
+            expected_generation=_generation(incident["incident_id"]),
+            idempotency_key=f"resume-{uuid4()}",
+        )
+
+        (after,) = _runs(incident["incident_id"])
+        assert after["run_id"] == run["run_id"]
+        assert after["state"] == "queued", after
+        assert incident["incident_id"] in owner.claimable_incidents(limit=1000)
+    finally:
+        if not lifted:
+            owner.set_target_suspension(
+                case.target_id, False, expected_generation=current, actor="test:pr4b"
+            )
 
 
 # ===========================================================================
