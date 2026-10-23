@@ -171,6 +171,13 @@ def _model_case():
             *steps,
             _step(STEP2, 1),
             _step("33333333-3333-3333-3333-333333333333", 2),
+            # The published conclusion record: no model request of its own
+            # (first live run, 2026-10-23, counted it and read 0 re-sends).
+            dict(
+                _step("44444444-4444-4444-4444-444444444444", 3),
+                kind="conclusion",
+                logical_key="conclusion:g0:ctx0:round-3",
+            ),
         ],
         reservations=[_res("r1"), _res("r2", "reserved"), _res("r3"), _res("r4")],
         charges=[_charge(f"{STEP1}-t0")],

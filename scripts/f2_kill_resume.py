@@ -183,6 +183,13 @@ def live_steps(snap: Mapping[str, Any]) -> list[Mapping[str, Any]]:
     return [s for s in snap["steps"] if s["status"] != "late_result"]
 
 
+def model_steps(snap: Mapping[str, Any]) -> list[Mapping[str, Any]]:
+    """Steps that answer one model request: rounds and compactions. The
+    published ``conclusion`` step is a record of the report round, not a
+    request of its own."""
+    return [s for s in live_steps(snap) if s["kind"] != "conclusion"]
+
+
 def unsettled_reservations(snap: Mapping[str, Any]) -> list[str]:
     return [
         r["reservation_id"] for r in snap["reservations"] if r["state"] == "reserved"
@@ -214,7 +221,7 @@ def unsettled_charges(snap: Mapping[str, Any], epoch: int) -> list[Mapping[str, 
 
 def pending_step(snap: Mapping[str, Any]) -> Mapping[str, Any] | None:
     """The last live step when it planned tools and none of them ran yet."""
-    steps = live_steps(snap)
+    steps = model_steps(snap)
     if not steps:
         return None
     last = steps[-1]
@@ -323,7 +330,7 @@ def verdicts(
     # again -- the only re-send a kill may cost.
     killed_unsettled = unsettled_reservations(post)
     unknown = sum(1 for r in final["reservations"] if r["state"] == "unknown")
-    lost = len(final["reservations"]) - unknown - len(live_steps(final))
+    lost = len(final["reservations"]) - unknown - len(model_steps(final))
     expected_resent = 1 if breakpoint == "model_in_flight" else 0
     model = {
         "in_flight_at_kill": killed_unsettled,
@@ -334,7 +341,7 @@ def verdicts(
         and len(killed_unsettled) == expected_resent,
         "reservations_total": len(final["reservations"]),
         "reservations_unknown": unknown,
-        "live_model_steps": len(live_steps(final)),
+        "model_steps": len(model_steps(final)),
     }
 
     # 2. tool queries re-dispatched: operations charged in the killed epoch
@@ -805,7 +812,7 @@ def run(args: argparse.Namespace) -> int:
                 break
             last_seen = _iso(row["now"])
             time.sleep(EPOCH_POLL_SECONDS)
-        ledger.event("epoch_observed", at=epoch_started_at)
+        ledger.event("epoch_observed", observed_at=epoch_started_at)
         final = snapshot(owner, run_id)
         while time.monotonic() < wait_until and final["run"]["state"] in OPEN_STATES:
             time.sleep(2)
@@ -916,6 +923,50 @@ def run(args: argparse.Namespace) -> int:
     return 0 if result["passed"] else 1
 
 
+def rejudge(args: argparse.Namespace) -> int:
+    """Recompute the verdicts of a finished run from its ledger snapshots.
+
+    For a harness-side reading fix only: the rows are the ones frozen at
+    run time; the summary records that, and when, they were re-read.
+    """
+    directory = Path(args.ledger)
+    pre, post, final = (
+        json.loads((directory / f"{name}.json").read_text())
+        for name in ("pre", "post", "final")
+    )
+    summary_path = Path(args.summary)
+    summary = json.loads(summary_path.read_text())
+    epoch_at = next(
+        e.get("observed_at", e.get("at"))
+        for e in json.loads((directory / "events.json").read_text())
+        if e["event"] == "epoch_observed"
+    )
+    previous = summary["verdicts"]["passed"]
+    summary["verdicts"] = verdicts(
+        summary["breakpoint"],
+        pre=pre,
+        post=post,
+        final=final,
+        epoch_started_at=epoch_at,
+        poll_seconds=args.poll_seconds,
+    )
+    summary.setdefault("rejudged", []).append(
+        {
+            "at": datetime.now(timezone.utc).isoformat(),
+            "commit": subprocess.run(
+                ["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True, text=True
+            ).stdout.strip(),
+            "reason": args.reason,
+            "passed_before": previous,
+        }
+    )
+    summary_path.write_text(
+        json.dumps(summary, indent=2, sort_keys=True, default=str) + "\n"
+    )
+    print(json.dumps({"passed": summary["verdicts"]["passed"]}))
+    return 0 if summary["verdicts"]["passed"] else 1
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -939,8 +990,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     p.add_argument("--lab-round", default="")
     p.add_argument("--ledger-dir", required=True)
     p.add_argument("--summary", required=True)
+    r = sub.add_parser("rejudge")
+    r.add_argument("--ledger", required=True)
+    r.add_argument("--summary", required=True)
+    r.add_argument("--reason", required=True)
+    r.add_argument("--poll-seconds", type=float, default=2.0)
     args = parser.parse_args(argv)
-    return run(args)
+    return run(args) if args.command == "run" else rejudge(args)
 
 
 if __name__ == "__main__":
