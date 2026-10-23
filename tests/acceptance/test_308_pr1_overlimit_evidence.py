@@ -417,10 +417,35 @@ def test_pr1_control_failure_keeps_the_existing_denied_path():
     assert transport.called is False
 
 
+def _recomputed_tool_schema_revision() -> str:
+    """The OTel tool schema revision recomputed independently from its five
+    hash inputs, read through public interfaces: the model-visible schemas,
+    the registry revision, the trace projection, the projection revision and
+    (#311 U5) the face's ``data_sources`` template. Comparing the module's
+    value with ``otel_demo._tool_schema_revision()`` would be a tautology
+    (F3 PR-2 review F2); this rebuild turns red when any input is dropped."""
+    from opspilot.tools import otel_demo as otel
+    from opspilot.tools.outcomes import PROJECTION_REVISION as projection
+    from opspilot.tools.registry import ToolRegistry, canonical_hash
+    from tests.m1_tool_support import FakeClock
+
+    context = otel.otel_demo_face(FakeClock()).evidence_context("revision-run")
+    digest = canonical_hash(
+        {
+            "tool_schemas": [dict(item) for item in otel.TOOL_SCHEMAS],
+            "registry": ToolRegistry(otel.otel_demo_registrations().tools).revision,
+            "trace_projection": otel.TRACE_PROJECTION,
+            "projection_revision": projection,
+            "data_sources": context["data_sources"],
+        }
+    )
+    return f"otel-demo-{digest[:12]}"
+
+
 def test_pr2_bumps_tool_schema_and_projection_once_and_keeps_the_rest():
     assert otel_demo.TOOL_SCHEMA_REVISION != OLD_TOOL_SCHEMA_REVISION
     assert otel_demo.TOOL_SCHEMA_REVISION != NEW_TOOL_SCHEMA_REVISION
-    assert otel_demo.TOOL_SCHEMA_REVISION == otel_demo._tool_schema_revision()
+    assert otel_demo.TOOL_SCHEMA_REVISION == _recomputed_tool_schema_revision()
     assert PROJECTION_REVISION != OLD_PROJECTION_REVISION
     assert PROJECTION_REVISION == NEW_PROJECTION_REVISION
     assert (

@@ -22,7 +22,6 @@ import pytest
 
 import scripts.f3_competing_scenario as driver
 from opspilot.investigation.loop import investigation_versions
-from opspilot.tools import otel_demo
 from opspilot.tools.otel_demo import (
     LABEL_VALUES_TOOL,
     METRIC_NAMES_TOOL,
@@ -89,18 +88,43 @@ def _injected_answer_strings(answer: dict[str, Any]) -> set[str]:
     return {value.casefold() for value in values}
 
 
+def _recomputed_tool_schema_revision() -> str:
+    """The OTel tool schema revision recomputed independently from its five
+    hash inputs, read through public interfaces: the model-visible schemas,
+    the registry revision, the trace projection, the projection revision and
+    (#311 U5) the face's ``data_sources`` template. Comparing the module's
+    value with ``otel_demo._tool_schema_revision()`` would be a tautology
+    (F3 PR-2 review F2); this rebuild turns red when any input is dropped."""
+    from opspilot.tools import otel_demo as otel
+    from opspilot.tools.outcomes import PROJECTION_REVISION as projection
+    from opspilot.tools.registry import ToolRegistry, canonical_hash
+    from tests.m1_tool_support import FakeClock
+
+    context = otel.otel_demo_face(FakeClock()).evidence_context("revision-run")
+    digest = canonical_hash(
+        {
+            "tool_schemas": [dict(item) for item in otel.TOOL_SCHEMAS],
+            "registry": ToolRegistry(otel.otel_demo_registrations().tools).revision,
+            "trace_projection": otel.TRACE_PROJECTION,
+            "projection_revision": projection,
+            "data_sources": context["data_sources"],
+        }
+    )
+    return f"otel-demo-{digest[:12]}"
+
+
 def test_tool_schema_revision_is_recomputed_and_other_versions_are_unchanged() -> None:
     """Assertion 1: only the model-visible OTel schema revision moves."""
 
     # F3 PR-2 (#311 + #310) contract change: #311 U5 puts the data_sources
-    # template in the TOOL_SCHEMA_REVISION hash input, so the hash is no
-    # longer rebuilt here; it equals the module's recomputation and differs
-    # from the previous values (2a944edd110a: #308 PR2; b14dc5d5c2fe: the
-    # rebuild without the data_sources template).
+    # template in the TOOL_SCHEMA_REVISION hash input, so the independent
+    # rebuild (``_recomputed_tool_schema_revision``) carries it as a fifth
+    # input; the value also differs from the previous ones (2a944edd110a:
+    # #308 PR2; b14dc5d5c2fe: the rebuild without the data_sources template).
 
     assert TOOL_SCHEMA_REVISION != OLD_TOOL_SCHEMA_REVISION
     assert TOOL_SCHEMA_REVISION != PR3A_TOOL_SCHEMA_REVISION
-    assert TOOL_SCHEMA_REVISION == otel_demo._tool_schema_revision()
+    assert TOOL_SCHEMA_REVISION == _recomputed_tool_schema_revision()
     assert TOOL_SCHEMA_REVISION not in (
         "otel-demo-2a944edd110a",
         "otel-demo-b14dc5d5c2fe",
