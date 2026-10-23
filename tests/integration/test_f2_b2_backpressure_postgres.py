@@ -19,6 +19,7 @@ from uuid import UUID, uuid4
 
 import psycopg
 import pytest
+from psycopg.types.json import Jsonb
 
 from opspilot.investigation import progress
 from opspilot.knowledge.jobs import GenerationStore
@@ -300,9 +301,21 @@ def _set_deadlines(conn, incidents: list[UUID], seconds: list[int]) -> None:
 
 def _seed_ended_observation(conn, incident: UUID) -> None:
     session_id, ending_id = uuid4(), uuid4()
-    target_id = conn.execute(
-        "SELECT target_id FROM opspilot_incidents WHERE incident_id=%s", (incident,)
-    ).fetchone()[0]
+    target_id, resource_uid = conn.execute(
+        "SELECT i.target_id,t.resource_uid FROM opspilot_incidents i "
+        "JOIN opspilot_targets t ON t.target_id=i.target_id WHERE i.incident_id=%s",
+        (incident,),
+    ).fetchone()
+    # The snapshot a real session records (``Target.model_dump()``): the
+    # shared lab target's later sessions compare their identity with it.
+    identity = REGISTRY[resource_uid]
+    target = {
+        "integration_id": identity["integration_id"],
+        "cluster_uid": identity["cluster_uid"],
+        "namespace": identity["namespace"],
+        "resource_uid": resource_uid,
+        "revision": None,
+    }
     conn.execute(
         "UPDATE opspilot_incidents SET observation_generation=1 WHERE incident_id=%s",
         (incident,),
@@ -311,9 +324,9 @@ def _seed_ended_observation(conn, incident: UUID) -> None:
         "INSERT INTO opspilot_observation_sessions(session_id,incident_id,purpose,target_id,target,"
         "subject_control_generation,observation_generation,authorized_by,state,ended_reason,"
         "authorized_global_generation,authorized_target_generation,deadline_at,max_samples,"
-        "sample_interval_seconds,sustained_window_seconds) VALUES(%s,%s,'incident_recovery',%s,'{}',"
+        "sample_interval_seconds,sustained_window_seconds) VALUES(%s,%s,'incident_recovery',%s,%s,"
         "0,1,'op','completed','recovery_confirmed',0,0,clock_timestamp(),1,60,60)",
-        (session_id, incident, target_id),
+        (session_id, incident, target_id, Jsonb(target)),
     )
     conn.execute(
         "INSERT INTO opspilot_observation_endings(ending_id,session_id,incident_id,ended_reason,"
