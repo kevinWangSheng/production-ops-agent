@@ -42,10 +42,16 @@ U1–U6 用户裁决：按推荐（2026-10-22）。R1–R7 可逆默认照做。
 
 - 适配器（`otel_demo`）负责「哪些响应可回传」和信封解析，经 `TransportResponse.http_status`/`source_error_type`/`source_error_text` 交给执行器；执行器负责校验、脱敏、截断与 trust 包装。理由：Prometheus 信封知识留在 profile，安全边界留在通用执行器，fixture 等其他传输不受影响。
 - `data_sources.instruction` 是固定文本常量，投影只放行与常量逐字相同的指引。理由：防止输入里伪造的指引文本进模型上下文。
+- 发现工具（`get_metric_names`/`get_label_values`）的 `limits` 也补同一句 400/422 语义（R5 只点名 metrics）。理由：它们同属 `PROMETHEUS_TOOLS`、行为相同，描述不同步会误导模型；只动注册描述，不动 `TOOL_SCHEMAS`。
+- 信封含重复键（`has_duplicate_keys`）视同不可解析。理由：`json.loads` 取末值，前一个值可能是未被脱敏检查的秘密。
+- `evaluation/live.py` 不改：它读录制里的 Run 输入，新键随录制带入，白名单投影处理。
 
 ## 执行进展与证据
 
-（实施中）
+- 新 revision：`PROJECTION_REVISION=m1-01-tool-view-v10`，otel `TOOL_SCHEMA_REVISION=otel-demo-68ed2ca8f5d6`（重算），fixture `fixture-4`。
+- 实现测试 `tests/test_311_source_errors_impl.py`：37 passed（真实 socket 桩覆盖 400/422 回传、脱敏含 JSON 转义 userinfo、截断、非信封/重复键、401/403/404/429、5xx、预发送拒绝、请求途中暂停；provenance 形状；data_sources 投影与续接；页面投影）。
+- 定向回归（`tests/test_m1_*`、`tests/test_f3_*`、`tests/test_f7_*`、`tests/acceptance/test_30[78]*`）：8 failed / 2734 passed，失败均为既有钉值或与 U1 冲突的旧断言，清单已报 lead；受影响 PG 测试 14 个文件：2 failed / 107 passed（308 PR1 PG 钉 v9）。ruff、ruff format、mypy 通过。
+- 并入独立验收测试 `774f543`：51 passed / 1 failed。`test_item3_a_2000_char_error_is_cut_to_1024_chars_and_flagged` 的信封用 `json.dumps` 默认转义 `é`，body 11,987 字节超过 `ERROR_BODY_BYTES=8192`，按 R1 截断后不可解析即不回传，实现返回 `error=null`；已报 lead 裁决。
 
 ## 下一步与交接
 
