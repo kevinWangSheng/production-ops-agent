@@ -1418,7 +1418,7 @@ def test_0014_downgrades_only_when_empty_and_keeps_data_otherwise() -> None:
                     if table
                     not in ("opspilot_release_audit", "opspilot_release_query_results")
                 }
-                # 0019 adds the three comparison relations; below it they are gone.
+                # 0020 adds the three comparison relations; below it they are gone.
                 expected = {
                     table: held
                     for table, held in expected.items()
@@ -1432,8 +1432,9 @@ def test_0014_downgrades_only_when_empty_and_keeps_data_otherwise() -> None:
                 if role == WEB_ROLE:
                     removals = {
                         # 0018 grants the web role INSERT on the related
-                        # incident column; below it that grant is revoked.
-                        "opspilot_incidents": {"related_incident_id"},
+                        # incident column and 0019 INSERT/UPDATE on the
+                        # priority column; below them both are revoked.
+                        "opspilot_incidents": {"related_incident_id", "priority"},
                         "opspilot_observation_sessions": {
                             "release_observation_id",
                             "release_policy_revision",
@@ -1449,12 +1450,13 @@ def test_0014_downgrades_only_when_empty_and_keeps_data_otherwise() -> None:
                     for table, columns in removals.items():
                         normalized = set()
                         for privilege in expected[table]:
-                            if privilege.startswith("INSERT("):
+                            kind, _, listed = privilege.partition("(")
+                            if listed and kind in ("INSERT", "UPDATE"):
                                 remaining_columns = (
-                                    set(privilege[7:-1].split(",")) - columns
+                                    set(listed[:-1].split(",")) - columns
                                 )
                                 privilege = (
-                                    "INSERT("
+                                    f"{kind}("
                                     + ",".join(sorted(remaining_columns))
                                     + ")"
                                 )

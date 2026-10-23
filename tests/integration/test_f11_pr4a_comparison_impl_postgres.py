@@ -781,15 +781,15 @@ def scratch():
         _drop_db(name)
 
 
-def test_0019_downgrade_restores_0018_and_refuses_with_a_comparison(scratch):
+def test_0020_downgrade_restores_0019_and_refuses_with_a_comparison(scratch):
     from opspilot import schema
 
     pg_dump = os.environ.get("OPSPILOT_PG_DUMP", "pg_dump")
     schema.migrate(scratch, pg_dump=pg_dump)
     head = schema.schema_dump(scratch, pg_dump=pg_dump)
-    schema.command.downgrade(schema._config(scratch), "0018_alert_correlation")
+    schema.command.downgrade(schema._config(scratch), "0019_incident_priority")
     assert schema.schema_dump(scratch, pg_dump=pg_dump) == schema.fresh_dump(
-        scratch, "0018_alert_correlation", pg_dump=pg_dump
+        scratch, "0019_incident_priority", pg_dump=pg_dump
     )
     schema.migrate(scratch, pg_dump=pg_dump)
     assert schema.schema_dump(scratch, pg_dump=pg_dump) == head
@@ -802,6 +802,6 @@ def test_0019_downgrade_restores_0018_and_refuses_with_a_comparison(scratch):
             (cid, cid, cid, cid, cid, cid, str(cid), str(cid), str(cid), str(cid)),
         )
     with pytest.raises(RuntimeError, match="refusing to downgrade"):
-        schema.command.downgrade(schema._config(scratch), "0018_alert_correlation")
+        schema.command.downgrade(schema._config(scratch), "0019_incident_priority")
     with psycopg.connect(scratch) as conn:
-        assert schema.current_revision(conn) == "0019_release_comparisons"
+        assert schema.current_revision(conn) == "0020_release_comparisons"

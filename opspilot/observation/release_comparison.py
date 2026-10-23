@@ -91,7 +91,7 @@ COMPARISON_MAX_QUERIES = 49
 # Wall-clock budget of one attempt; queries past it are filed as timeouts
 # without being sent, so a hung source cannot hold the Observer loop.
 COMPARISON_ATTEMPT_SECONDS = 120
-# The claim lease stamped by the 0019 attempt guard (``ATTEMPT_LEASE_SECONDS``):
+# The claim lease stamped by the 0020 attempt guard (``ATTEMPT_LEASE_SECONDS``):
 # another Observer may take the next attempt only after it lapses.
 COMPARISON_LEASE_SECONDS = 150
 
@@ -604,7 +604,7 @@ _QUERY_COLUMNS = "comparison_id,query_key,query,source,evaluated_at,sent_at,stat
 
 
 def _lock_comparison(conn: Connection, comparison_id: UUID) -> None:
-    """r5: claims and records of one comparison serialize here; the 0019
+    """r5: claims and records of one comparison serialize here; the 0020
     guards take the same lock, so direct SQL cannot skip it."""
     conn.execute(
         "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
@@ -646,7 +646,7 @@ class _ReleaseComparisonOps(_ReleaseSampleOps):
         The attempt row is the claim (r3): at most three per ending, and an
         ending with any live attempt lease is not claimable (the claimer's
         own continuation goes through ``claim_next_attempt``), enforced by
-        the 0019 guard, primary key and the per-comparison lock (r5). Three spent
+        the 0020 guard, primary key and the per-comparison lock (r5). Three spent
         attempts without a record return an ``exhausted`` lease: file
         ``unavailable`` without querying. A lost race with another Observer
         surfaces as ``INTEGRITY_REFUSED``; the next tick tries again.
@@ -779,7 +779,7 @@ class _ReleaseComparisonOps(_ReleaseSampleOps):
             raise PersistenceError("INVALID_INPUT")
         with self._release_transaction() as conn:
             _lock_comparison(conn, lease.comparison_id)
-            # r4 fencing, also enforced by the 0019 guard: the latest attempt
+            # r4 fencing, also enforced by the 0020 guard: the latest attempt
             # is this lease's and still within its lease on the DB clock, or
             # a lapsed third attempt is filed unavailable.
             latest = conn.execute(

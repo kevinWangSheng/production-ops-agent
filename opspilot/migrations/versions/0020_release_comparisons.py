@@ -1,7 +1,7 @@
-"""0019 release before/after comparisons (F11 PR-4a).
+"""0020 release before/after comparisons (F11 PR-4a).
 
-Revision ID: 0019_release_comparisons
-Revises: 0018_alert_correlation
+Revision ID: 0020_release_comparisons
+Revises: 0019_incident_priority
 Create Date: 2026-10-22
 
 F11 PR-4 contract P4-01=A and r2 S1-S9: after an anomaly ending the
@@ -45,8 +45,8 @@ from collections.abc import Sequence
 from alembic import op
 from sqlalchemy import text
 
-revision: str = "0019_release_comparisons"
-down_revision: str | Sequence[str] | None = "0018_alert_correlation"
+revision: str = "0020_release_comparisons"
+down_revision: str | Sequence[str] | None = "0019_incident_priority"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
@@ -221,7 +221,7 @@ def downgrade() -> None:
     if count:
         raise RuntimeError(
             f"{count} release comparison attempt(s) or record(s); the schema "
-            "before 0019 cannot represent them, refusing to downgrade"
+            "before 0020 cannot represent them, refusing to downgrade"
         )
     op.execute("""
     DROP TABLE opspilot_release_comparison_queries;
