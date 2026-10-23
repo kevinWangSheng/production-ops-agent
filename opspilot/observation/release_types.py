@@ -185,6 +185,8 @@ class ReleaseLinkReceipt(DTO):
     handoff_reason: ReleaseText | None
     #: The before/after comparison the incident's input was built with;
     #: ``None`` when the wait for one ran out (P4-01).
-    comparison_id: UUID | None
-    consumed_at: UtcDatetime
+    comparison_id: UUID | None = None
+    #: The consuming transaction's database time (the new Run's frame end);
+    #: always set on a receipt the store returns.
+    consumed_at: UtcDatetime | None = None
     replayed: bool

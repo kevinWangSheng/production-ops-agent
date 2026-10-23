@@ -378,6 +378,7 @@ def release_observation_fact(
     def instances(items: object) -> list[dict[str, Any]]:
         return [
             {
+                "pod_uid": text(item.get("pod_uid")),
                 "pod_name": text(item.get("pod_name")),
                 "replicaset_name": text(item.get("replicaset_name")),
             }

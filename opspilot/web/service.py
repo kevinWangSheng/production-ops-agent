@@ -111,6 +111,8 @@ _INTAKE_NAMESPACE = UUID("0f4c9d3e-2b7a-4a6e-9c1d-5e8f7a6b3c21")
 _RELEASE_PRINCIPAL = Principal(
     actor_id="release_observation", channel="event_token", auth_revision="system"
 )
+#: R1: the intake key prefix of every incident an anomaly opened.
+_RELEASE_INTAKE_PREFIX = "intake:release-anomaly:"
 #: R4: how many reason codes the appended event's text lists.
 _RELEASE_EVENT_CODES = 16
 _log = logging.getLogger(__name__)
@@ -1202,7 +1204,7 @@ class Workbench:
                 authorized_targets=frozenset({request.target_id}),
             )
             facts = dict(fresh.scope_facts)
-            self._check_release_fact(summary.incident_id, facts)
+            self._check_release_fact(summary.incident_id, summary.intake_key, facts)
             facts.pop(KNOWLEDGE, None)
             if self.knowledge is not None:
                 facts[KNOWLEDGE] = self._knowledge(request)
@@ -1222,7 +1224,9 @@ class Workbench:
             )
             try:
                 service, alert, context = self._alert_rebuild(summary.incident_id)
-                released, anchor, fact = self._release_rebuild(summary.incident_id)
+                released, anchor, fact = self._release_rebuild(
+                    summary.incident_id, summary.intake_key
+                )
             except ContextError as rebuild_exc:
                 # Same fail-closed refusal as rows that cannot be continued.
                 raise PersistenceError(rebuild_exc.code) from rebuild_exc
@@ -1395,7 +1399,7 @@ class Workbench:
         }
 
     def _release_rebuild(
-        self, incident_id: UUID
+        self, incident_id: UUID, intake_key: str
     ) -> tuple[
         Mapping[str, str] | None, ReleaseAnchor | None, Mapping[str, Any] | None
     ]:
@@ -1408,6 +1412,11 @@ class Workbench:
         store = self._release_store()
         records = None if store is None else store.release_incident_records(incident_id)
         if records is None:
+            # An anomaly's intake key whose link is gone is damage, not an
+            # incident some other source opened.
+            if intake_key.startswith(_RELEASE_INTAKE_PREFIX):
+                _log.warning("release link missing incident=%s", incident_id)
+                raise ContextError("INCOMPATIBLE_STATE")
             return None, None, None
         link, release, ending = records["link"], records["release"], records["ending"]
         if (
@@ -1437,13 +1446,15 @@ class Workbench:
             ),
         )
 
-    def _check_release_fact(self, incident_id: UUID, facts: Mapping[str, Any]) -> None:
+    def _check_release_fact(
+        self, incident_id: UUID, intake_key: str, facts: Mapping[str, Any]
+    ) -> None:
         """R6 on the continuation path: a successor keeps the previous Run's
         release fact only when it still equals the one the stored records
         give; a missing, extra or different fact refuses the action
         (``INCOMPATIBLE_STATE``) rather than carry or drop it silently."""
         try:
-            _, _, fact = self._release_rebuild(incident_id)
+            _, _, fact = self._release_rebuild(incident_id, intake_key)
         except ContextError as exc:
             raise PersistenceError(exc.code) from exc
         if facts.get(RELEASE_OBSERVATION) != fact:

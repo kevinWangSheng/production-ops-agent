@@ -66,7 +66,6 @@ def upgrade() -> None:
       handoff_reason text CHECK (handoff_reason IS NULL OR handoff_reason <> ''),
       comparison_id uuid REFERENCES opspilot_release_comparisons,
       consumed_at timestamptz NOT NULL DEFAULT transaction_timestamp(),
-      CHECK (anomaly_key = 'release-anomaly:' || observation_id::text),
       CHECK ((disposition = 'created_related') = (related_incident_id IS NOT NULL)),
       CHECK ((disposition IN ('created','created_related')) = (run_id IS NOT NULL)),
       CHECK ((disposition = 'attached') = (input_id IS NOT NULL)),
