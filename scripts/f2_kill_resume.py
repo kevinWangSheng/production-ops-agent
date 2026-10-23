@@ -354,9 +354,23 @@ def verdicts(
         tool_ok = len(redispatched) == 1 and redispatched == in_flight_ops
     else:
         tool_ok = not redispatched
+    # Settled in the killed epoch but never committed to its step: a
+    # parallel sibling whose result waited behind the in-flight call (#309
+    # commits tool results in index order).
+    committed_ops = {
+        f"{s['step_id']}-t{i}" for s in post["steps"] for i in range(s["tool_results"])
+    }
+    uncommitted = sorted(
+        c["operation_id"]
+        for c in post["charges"]
+        if c["epoch"] == kill_epoch
+        and c["seconds"] is not None
+        and c["operation_id"] not in committed_ops
+    )
     tool = {
         "redispatched": redispatched,
         "in_flight_at_kill": in_flight_ops,
+        "settled_uncommitted_at_kill": uncommitted,
         "passed": len(redispatched) <= 1 and tool_ok,
     }
     if breakpoint == "response_committed" and held_detail.get("step_id"):
@@ -558,6 +572,11 @@ def start_worker(
         "OPSPILOT_TOOL_PROFILE": "otel-demo",
         "OPSPILOT_OTEL_PROMETHEUS_URL": proxy_url,
         "OPSPILOT_WORKER_POLL_SECONDS": str(args.poll_seconds),
+        **(
+            {"OPSPILOT_TOOL_PARALLELISM": str(args.tool_parallelism)}
+            if args.tool_parallelism
+            else {}
+        ),
         "OPSPILOT_TRACE": "lab" if args.lab_round else "off",
         **read_env_file(Path(args.prometheus_env_file)),
     }
@@ -984,6 +1003,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     p.add_argument("--upstream-prometheus", default="http://127.0.0.1:19090")
     p.add_argument("--proxy-listen", default="127.0.0.1:19092")
     p.add_argument("--poll-seconds", type=float, default=2.0)
+    p.add_argument(
+        "--tool-parallelism",
+        type=int,
+        default=0,
+        help="OPSPILOT_TOOL_PARALLELISM for both workers; 0 keeps the product default",
+    )
     p.add_argument("--arm-after-evidence", type=int, default=1)
     p.add_argument("--breakpoint-timeout", type=float, default=900.0)
     p.add_argument("--resume-timeout", type=float, default=2400.0)

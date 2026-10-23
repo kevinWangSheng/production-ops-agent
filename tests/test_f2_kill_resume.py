@@ -421,3 +421,50 @@ def test_env_helpers_keep_only_path_home_and_declared_values(
     file = tmp_path / "x.env"
     file.write_text("# c\nexport A='1'\nB=\"two\"\nC=3\n\nbad line\n")
     assert h.read_env_file(file) == {"A": "1", "B": "two", "C": "3"}
+
+
+def test_a_settled_but_uncommitted_sibling_counts_as_a_second_redispatch():
+    # Live finding 2026-10-23: with two calls in flight, the sibling settles
+    # but its result waits behind the stalled call (#309 index-order commit),
+    # so the next epoch runs both again.
+    first = _step(STEP1, 0, tools=["traces_search"], results=1)
+    planned = _step(
+        STEP2,
+        1,
+        tools=["metrics_range_query", "metrics_range_query"],
+        status="response_committed",
+    )
+    stalled = _charge(f"{STEP2}-t0", seconds=None, dispatch="stalled")
+    sibling = _charge(f"{STEP2}-t1", seconds=1.0, dispatch="sibling")
+    pre = _snap(
+        steps=[first, planned],
+        reservations=[_res("r1"), _res("r2")],
+        charges=[_charge(f"{STEP1}-t0"), stalled, sibling],
+        evidence=[EV1],
+    )
+    post = copy.deepcopy(pre)
+    final = _snap(
+        epoch=2,
+        state="completed",
+        steps=[first, dict(planned, results=2)],
+        reservations=[_res("r1"), _res("r2")],
+        charges=[
+            *pre["charges"],
+            _charge(f"{STEP2}-t0", 2),
+            _charge(f"{STEP2}-t1", 2),
+        ],
+        evidence=[EV1],
+        cited=[EV1["evidence_id"]],
+    )
+    result = h.verdicts(
+        "tool_in_flight",
+        pre=pre,
+        post=post,
+        final=final,
+        epoch_started_at="2026-10-22T20:07:00+00:00",
+        poll_seconds=2.0,
+    )
+    tool = result["criteria"]["tool_redispatch"]
+    assert tool["redispatched"] == [f"{STEP2}-t0", f"{STEP2}-t1"]
+    assert tool["settled_uncommitted_at_kill"] == [f"{STEP2}-t1"]
+    assert not tool["passed"] and not result["passed"]
