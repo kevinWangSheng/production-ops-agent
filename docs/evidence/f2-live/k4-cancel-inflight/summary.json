@@ -1,0 +1,240 @@
+{
+  "assertions": [
+    {
+      "actual": {
+        "http_body": {
+          "action": "cancel",
+          "generation": 1,
+          "incident_id": "ed2f705e-170f-5582-8da0-c8c2fd81716b",
+          "replayed": false,
+          "sequence": 3
+        },
+        "located": {
+          "held_seconds": 1.051,
+          "reservation_id": "d8db6feb-fec9-5dfe-b97c-9f7223d9b939"
+        },
+        "posted_at": "2026-10-24T15:11:17.656824+00:00"
+      },
+      "assertion": "model request in flight (one unsettled reservation >= 1 s) when cancel was posted",
+      "pass": true
+    },
+    {
+      "actual": {
+        "after_control": {
+          "concluded": false,
+          "control_generation": 1,
+          "current_run_id": "21808ee2-fbdc-5c41-84dd-c10fcf38990c",
+          "lifecycle": "open",
+          "mode": "automatic",
+          "priority": 2,
+          "state": "cancelled"
+        },
+        "first_step": {
+          "control_generation": 0,
+          "logical_key": "late_result:step:ctx0:round-1:e1",
+          "observed_at": "2026-10-24T15:11:18.380830+00:00",
+          "sequence": 0,
+          "status": "late_result",
+          "step_id": "c824c196-be60-4324-aa87-3d108b5342d4",
+          "tool_results": 0
+        },
+        "late_result_steps": [
+          {
+            "control_generation": 0,
+            "logical_key": "late_result:step:ctx0:round-1:e1",
+            "observed_at": "2026-10-24T15:11:18.380830+00:00",
+            "sequence": 0,
+            "status": "late_result",
+            "step_id": "c824c196-be60-4324-aa87-3d108b5342d4",
+            "tool_results": 0
+          }
+        ],
+        "run_after_control": {
+          "budget_reserved": 1,
+          "budget_spent": 0,
+          "control_generation": 1,
+          "deadline": "2026-10-24 10:11:16.010831-07:00",
+          "epoch": 1,
+          "run_id": "21808ee2-fbdc-5c41-84dd-c10fcf38990c",
+          "state": "cancelled",
+          "tool_operations_used": 0
+        }
+      },
+      "assertion": "Run cancelled; the in-flight reply came back as late_result at the older control generation, no step advanced before cancel",
+      "pass": true
+    },
+    {
+      "actual": {
+        "before_close": {
+          "db_now": "2026-10-24 08:12:26.124355-07:00",
+          "incident": [
+            {
+              "concluded": false,
+              "control_generation": 1,
+              "current_run_id": "21808ee2-fbdc-5c41-84dd-c10fcf38990c",
+              "lifecycle": "open",
+              "mode": "automatic",
+              "priority": 2,
+              "state": "cancelled"
+            }
+          ],
+          "runs": [
+            {
+              "budget_reserved": 1,
+              "budget_spent": 0,
+              "control_generation": 1,
+              "deadline": "2026-10-24 10:11:16.010831-07:00",
+              "epoch": 1,
+              "run_id": "21808ee2-fbdc-5c41-84dd-c10fcf38990c",
+              "state": "cancelled",
+              "tool_operations_used": 0
+            }
+          ],
+          "sessions": []
+        },
+        "subject_events": [
+          [
+            1,
+            "intake_accepted"
+          ],
+          [
+            2,
+            "run_claimed"
+          ],
+          [
+            3,
+            "control_applied"
+          ],
+          [
+            4,
+            "control_applied"
+          ]
+        ]
+      },
+      "assertion": "cancel is final: Run and incident cancelled, no conclusion, no new Run (until the closing control)",
+      "pass": true
+    },
+    {
+      "actual": {
+        "actions": [
+          "late_result_rejected"
+        ],
+        "final_state": "cancelled",
+        "handoff_reasons": [
+          "STALE_CONTROL_GENERATION"
+        ],
+        "human_interaction": null,
+        "note": "projected after the session's closing control, so human_interaction reflects the incident's last control state, not the pause/cancel"
+      },
+      "assertion": "acceptance projection (taken after the incidents were closed): late_result_rejected with STALE_CONTROL_GENERATION",
+      "pass": true
+    }
+  ],
+  "category": "bounded real run (kind lab, real DeepSeek); not production proof",
+  "code": {
+    "commit": "b5276a9af5827bdcf4de68ec0d29d8c6d0317d71",
+    "run_versions": [
+      "{\"context_policy_revision\": \"ctx-ctx-policy-v1-a30e65ea52f4\", \"prompt_revision\": \"prompt-replay-candidate-bef70649a3a8\", \"tool_schema_revision\": \"otel-demo-68ed2ca8f5d6\"}"
+    ]
+  },
+  "incident_id": "ed2f705e-170f-5582-8da0-c8c2fd81716b",
+  "lab_readings_before": {
+    "alerts": [],
+    "at": "2026-10-24T15:11:05.043550+00:00",
+    "checkout_placeorder_p95_ms": [
+      {
+        "metric": {},
+        "value": "96.5"
+      }
+    ],
+    "fault_active": false,
+    "flagd": {
+      "non_off": {},
+      "sha256": "1ee5c0258e3e13609ecec75979cee286ab00f442d288112e39e3db8433d176c6"
+    },
+    "frontend_span_rate_2m": [
+      {
+        "metric": {},
+        "value": "2.6"
+      }
+    ],
+    "host": {
+      "memory_free_percentage": "41%",
+      "swapusage": "total = 9216.00M  used = 7850.94M  free = 1365.06M  (encrypted)"
+    }
+  },
+  "ledger": [
+    {
+      "bytes": 3328,
+      "file": "k4-cancel.json",
+      "sha256": "5ebf05bb7cd88ca34c16a3b7c2614ac494c3435e0cbb2608d8724b81ccab98a1"
+    },
+    {
+      "bytes": 1690,
+      "file": "k4-close.json",
+      "sha256": "9720e28a466b0fb03f32c21a62626d23367e0e89ae855f703ec0276b9f705164"
+    },
+    {
+      "bytes": 440,
+      "file": "k4-intake.json",
+      "sha256": "19ea55144675ec4fe60839c511785be4eb8439872154c7e401480c86c4cf8cf9"
+    },
+    {
+      "bytes": 11683,
+      "file": "k4-page.html",
+      "sha256": "ab92ebc25f36ad8979f1ff90763ca8863af7540074744b3ac4ed69ddf7a6e1c7"
+    },
+    {
+      "bytes": 523,
+      "file": "k4-pre.json",
+      "sha256": "9755fe0290d2ba65c0c0f1ff30d759f54b819e9677e42872a2e5a16957a4c678"
+    }
+  ],
+  "projection": {
+    "actions": [
+      "late_result_rejected"
+    ],
+    "decision": "durable_state",
+    "evidence_ids": [],
+    "final_state": "cancelled",
+    "handoff_reasons": [
+      "STALE_CONTROL_GENERATION"
+    ],
+    "human_interaction": null,
+    "permissions": [
+      "read_only",
+      "human_control"
+    ],
+    "report_available": false,
+    "scenario_id": "f2-live-k4"
+  },
+  "reservations": [
+    {
+      "reservation_id": "d8db6feb-fec9-5dfe-b97c-9f7223d9b939",
+      "seconds": null,
+      "state": "reserved"
+    }
+  ],
+  "run_id": "21808ee2-fbdc-5c41-84dd-c10fcf38990c",
+  "runs": [
+    {
+      "budget_limit": 100,
+      "budget_reserved": 1,
+      "budget_spent": 0,
+      "control_generation": 1,
+      "deadline": "2026-10-24T17:11:16.010831+00:00",
+      "epoch": 1,
+      "input_watermark": 0,
+      "run_id": "21808ee2-fbdc-5c41-84dd-c10fcf38990c",
+      "state": "cancelled",
+      "tool_operations_used": 0,
+      "versions": {
+        "context_policy_revision": "ctx-ctx-policy-v1-a30e65ea52f4",
+        "prompt_revision": "prompt-replay-candidate-bef70649a3a8",
+        "tool_schema_revision": "otel-demo-68ed2ca8f5d6"
+      }
+    }
+  ],
+  "scenario": "K4 incident-level cancel while a model request is in flight",
+  "verdict": "PASS"
+}
