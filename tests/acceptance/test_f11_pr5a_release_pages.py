@@ -250,11 +250,12 @@ def test_control_without_a_same_site_origin_is_refused_before_storage(
 # -- D6: the entry point from the existing pages -----------------------------
 
 
-@pytest.mark.parametrize("page", ["/", "/controls"])
-def test_d6_the_workbench_pages_link_to_the_release_list(page: str):
+def test_d6_the_workbench_pages_link_to_the_release_list():
+    """``/controls`` needs the durable suspension state, which the in-memory
+    incident store does not have; it is checked in the PostgreSQL module."""
     app, _, _ = build_workbench()
 
-    response = call(app, "GET", page, headers={**basic(), **HTML})
+    response = call(app, "GET", "/", headers={**basic(), **HTML})
 
     assert response.status == 200, response.text
     assert 'href="/version-changes"' in response.text, response.text[:2000]

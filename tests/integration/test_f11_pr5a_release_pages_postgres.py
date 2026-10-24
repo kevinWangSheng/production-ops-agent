@@ -490,6 +490,14 @@ def test_d6_the_list_shows_releases_newest_received_first(
     assert newer.record.source_release_id in page
 
 
+@pytest.mark.parametrize("page", ["/", "/controls"])
+def test_d6_the_workbench_pages_link_to_the_release_list(app: Any, page: str) -> None:
+    response = call(app, "GET", page, headers={**basic(), **HTML_ACCEPT})
+
+    assert response.status == 200, (page, response.status, response.text[:500])
+    assert 'href="/version-changes"' in response.text, response.text[:2000]
+
+
 # ===========================================================================
 # D5: projection labels
 # ===========================================================================
