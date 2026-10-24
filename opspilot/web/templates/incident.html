@@ -257,6 +257,9 @@
     {% if report.incomplete %}<strong>Incomplete investigation, not an uncertain finding.</strong>{% endif %}
     · content sha256 <code>{{ report.content_sha256 }}</code>
   </p>
+  {% if snapshot.collection_truncated %}
+  <p id="collection-truncated"><strong>Collection was truncated at the model-request limit</strong>: the investigator was made to report on its last request, so evidence it might still have gathered is missing.</p>
+  {% endif %}
   <p>{{ report.summary }}</p>
   {% macro claims(title, items, css) %}
     <section class="{{ css }}">
@@ -291,6 +294,41 @@
     <h3>Advisory next steps</h3>
     {% if report.next_steps %}<ul>{% for step in report.next_steps %}<li>{{ step }}</li>{% endfor %}</ul>{% else %}<p class="muted">none</p>{% endif %}
   </section>
+{% endif %}
+
+{% if snapshot.coverage %}
+{% set labels = {
+  "all_ok": "every query ran without an error or refusal (no-data counts shown separately)",
+  "partial_failure": "some queries did not succeed",
+  "failed": "no query succeeded",
+  "no_data_only": "returned no data (not evidence of health)",
+  "not_queried": "not queried this Run",
+  "not_authorized": "not authorized for this Run",
+  "not_integrated": "not integrated (cannot be queried)",
+  "internal": "internal evidence store, not a data source",
+} %}
+<section id="coverage-gaps">
+  <h2>Coverage gaps <span class="muted">(counted from this Run's committed tool results, not written by the investigator)</span></h2>
+  {% if not snapshot.coverage.sources_recorded %}<p class="muted" id="coverage-sources-unrecorded">Source list not recorded for this Run; counted per tool.</p>{% endif %}
+  {% if snapshot.coverage.sources %}
+  <table>
+    <thead><tr><th>Source</th><th>State</th><th>ok</th><th>no data</th><th>not ok</th><th>Reasons</th></tr></thead>
+    <tbody>
+    {% for row in snapshot.coverage.sources %}
+    <tr class="coverage-source{% if row.gap %} coverage-gap{% endif %}" data-source="{{ row.name }}" data-state="{{ row.state }}">
+      <td><code>{{ row.name }}</code></td>
+      <td><span class="badge">{{ row.state }}</span> {% if row.gap %}<strong>gap</strong>: {% endif %}<span class="muted">{{ labels[row.state] }}</span></td>
+      <td>{{ row.ok }}</td>
+      <td>{{ row.no_data }}</td>
+      <td>{{ row.non_ok }}</td>
+      <td>{% for reason, count in row.reasons %}<code>{{ reason }}</code> ×{{ count }}{% if not loop.last %}, {% endif %}{% endfor %}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<p class="muted">No tool results committed yet.</p>{% endif %}
+  {% if snapshot.coverage.duplicates_skipped %}<p class="muted" id="coverage-duplicates">{{ snapshot.coverage.duplicates_skipped }} duplicate call(s) not re-executed (not counted against any source).</p>{% endif %}
+</section>
 {% endif %}
 
 {% if snapshot.charts %}

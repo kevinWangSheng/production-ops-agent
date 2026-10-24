@@ -1,4 +1,7 @@
-"""Read-only F3 projection of stored observations, refusals and report claims.
+"""Read-only F3 projection of stored observations, refusals and report claims,
+plus each Run's per-source coverage and whether a report's collection was
+truncated at the model-request limit (step 3; ``opspilot.investigation.coverage``,
+the same reading the workbench page shows).
 
 Call in a stable snapshot. Missing legacy view fields are labelled, never
 backfilled. Evidence integrity uses the workbench's read-back decoder and
@@ -17,6 +20,12 @@ from psycopg import Connection
 from psycopg.rows import dict_row
 
 from opspilot.acceptance_audit import audit_timeline
+from opspilot.investigation.coverage import (
+    RunCoverage,
+    SourceCoverage,
+    collection_truncated,
+    run_coverage,
+)
 from opspilot.investigation.reports import CLAIM_KINDS, parse_report
 from opspilot.web.evidence import StoredEvidence, _from_row
 from opspilot.web.service import _committed_report
@@ -95,6 +104,8 @@ class Claim:
 class ReportClaims:
     run_id: UUID
     claims: Mapping[str, tuple[Claim, ...]]
+    #: U7-a: ``None`` when the stored rows lack what the rule reads.
+    collection_truncated: bool | None = None
 
 
 @dataclass(frozen=True)
@@ -103,6 +114,22 @@ class InvestigationEvidence:
     observations: tuple[ObservationEntry, ...]
     refused_operations: tuple[RefusedOperation, ...]
     reports: tuple[ReportClaims, ...]
+    #: U5-a: one entry per Run of the incident, in start order (Runs without
+    #: steps last).
+    coverage: tuple[RunCoverage, ...] = ()
+
+
+__all__ = [
+    "Claim",
+    "EvidenceReference",
+    "InvestigationEvidence",
+    "ObservationEntry",
+    "RefusedOperation",
+    "ReportClaims",
+    "RunCoverage",
+    "SourceCoverage",
+    "investigation_evidence",
+]
 
 
 def _resolves(record: StoredEvidence, run_id: str, incident_id: UUID) -> bool:
@@ -120,10 +147,31 @@ def investigation_evidence(
     timeline = audit_timeline(conn, incident_id)
     with conn.cursor(row_factory=dict_row) as cursor:
         runs = cursor.execute(
-            "SELECT run_id FROM opspilot_runs WHERE incident_id=%s",
+            # Start order as in DurableStore.investigation_history.
+            """SELECT r.run_id,r.input FROM opspilot_runs r
+               WHERE r.incident_id=%s
+               ORDER BY (SELECT MIN(s.observed_at) FROM opspilot_steps s
+                         WHERE s.run_id=r.run_id) NULLS LAST,
+                        r.control_generation,r.run_id""",
             (incident_id,),
         ).fetchall()
         run_ids = {str(row["run_id"]) for row in runs}
+        step_rows = cursor.execute(
+            """SELECT s.run_id,s.step_id,s.status,s.response,s.tool_results
+               FROM opspilot_steps s JOIN opspilot_runs r USING(run_id)
+               WHERE r.incident_id=%s ORDER BY s.sequence,s.step_id""",
+            (incident_id,),
+        ).fetchall()
+        steps_by_run: dict[str, list[dict[str, Any]]] = {}
+        for step in step_rows:
+            steps_by_run.setdefault(str(step["run_id"]), []).append(step)
+        inputs = {str(row["run_id"]): row["input"] for row in runs}
+        coverage = tuple(
+            run_coverage(
+                row["run_id"], row["input"], steps_by_run.get(str(row["run_id"]), [])
+            )
+            for row in runs
+        )
         rows = cursor.execute(
             """SELECT e.*,EXISTS (
                  SELECT 1 FROM opspilot_steps s JOIN opspilot_runs r USING(run_id)
@@ -273,8 +321,13 @@ def investigation_evidence(
                     MappingProxyType(
                         {kind: tuple(items) for kind, items in grouped.items()}
                     ),
+                    collection_truncated(
+                        inputs.get(str(row["run_id"])),
+                        steps_by_run.get(str(row["run_id"]), []),
+                        row["response"],
+                    ),
                 )
             )
     return InvestigationEvidence(
-        incident_id, tuple(observations), tuple(refused), tuple(reports)
+        incident_id, tuple(observations), tuple(refused), tuple(reports), coverage
     )

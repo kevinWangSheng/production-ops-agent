@@ -366,6 +366,10 @@ checkout 流量不受 ad 故障影响及临近健康终结边界仍需真实实�
 3. stdout 出现 `{"event": "start_worker"}` 后再起 worker，第 1 轮即能在 `investigation_inputs` 看到追问。驱动继续等故障恢复，最后一行 `finished` 给出事故、Run、release id 与 ledger 路径。
 4. 追问在 worker 领取后才发会被拒（`WORKER_ALREADY_CLAIMED`），驱动不重试；该次执行按 U4-a 照实记录，重跑须用户批准，且换新 `--run` 名、等过 70 分钟窗口。
 
+### F3 覆盖缺口真实 Run（PR-2）
+
+`scripts/m1_live_runner.py --f3-coverage` 在 Run 结束后用同一 DSN 只读读取验收投影的覆盖与截断字段，并经工作台路由渲染一次事故页，把 `#coverage-gaps` / `#collection-truncated` 是否出现写进 summary 的 `f3_coverage`；再加 `--f3-answer evals/f3/missing-source/answer.json` 时按冻结答案计算 U6 判定。工具后端用本机替身 `scripts/m1_otel_stub.py`（含发现工具的 `/api/v1/label/<label>/values`），缺源场景把 `OPSPILOT_OTEL_JAEGER_URL` 指向未监听的回环端口。命令与结果见 [证据](evidence/f3-step3-coverage/README.md)。
+
 Web 创建 Run 时默认读取同一目标的已审核知识。`OPSPILOT_KNOWLEDGE_HINTS=off` 关闭读取；`OPSPILOT_KNOWLEDGE_MAX_AGE_SECONDS` 设置非负整数新鲜度阈值（默认 `2592000` 秒，即 30 天），超过阈值的知识仍提供并标为 stale。
 
 F7 lab Prometheus 的宿主入口仍为 `http://127.0.0.1:19090`，由只读 nginx

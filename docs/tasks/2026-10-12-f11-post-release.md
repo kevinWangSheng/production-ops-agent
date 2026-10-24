@@ -19,6 +19,7 @@ C3 §14 把 F11 排在 M2；本切片是提前开放。F11 `passes` 只在四步
 
 - 前提：用户裁决决定表（发布来源、版本身份、观察参数、对比口径、拆步）；实验环境能做「改镜像或配置」的真实发布。
 - 完成条件（草案）：F11 四步在 kind 实验环境真实跑通——健康发布、带无关并发故障的发布、延迟回归；输出区分 healthy / degraded / unknown；零发布门或流量策略写入；独立审查与独立验收测试作者按 AGENTS.md 执行；四步都有证据后翻 `passes`。
+- M2 剩余实施的授权范围与条件（用户 2026-10-24 Q1–Q11）：[2026-10-24-m2-remaining.md](2026-10-24-m2-remaining.md)。
 
 ## 合同（r1）
 
@@ -146,6 +147,8 @@ r1 只定方向。其余实现者需要猜的语义点，按 AGENTS.md「合同�
 - 合并独立测试（`d38ece8`）后的实现调整：事实的实例带 `pod_uid`；release 事故的 link 丢失时续开判 `INCOMPATIBLE_STATE`（按 intake key 前缀识别）；去掉 link 的 `anomaly_key` 形状 CHECK（插入守卫已绑定 ending，CHECK 会让重放的篡改检测无从验证）；`session_history` 只对能读 link 表的登录带 `link`（Observer 无新授权，其历史不含 link）；receipt 的 `comparison_id`／`consumed_at` 为可选加法字段。
 - 独立审查（全新上下文 Claude Opus 5.5）FAIL，F1 已修：R7 交接事故在 web 上不是交接事故（`IncidentSummary.handoff_reason` 只读告警 identity），页面 409、控制报 INCONSISTENT_STATE。lead 批准改清单外的 `opspilot/web/store.py`：`list_incidents`／`find_incident` 的交接原因取 `COALESCE(告警 identity, link 表 handoff_created 行的 handoff_reason)`（标量子查询，列表仍一事故一行；web 已有 link 表 SELECT）。实现测试：交接页 200 显示 `RELEASE_TARGET_UNRESOLVED`，new_run／follow_up／pause 均 409 `HANDOFF_ONLY`，不建 Run。`incident_handoff.html`（清单外模板，lead 批准）按原因加一行条件：`RELEASE_TARGET_UNRESOLVED` 显示发布专用说明（目标身份与登记记录不符、需人工确认目标），告警措辞不变；理由：沿用告警说明会误导操作员，交接说明属于 R7「显式交接」的一部分，不等 PR-5。F2（6 条旧 `prompt_revision` 钉子）按计划等 F3 PR-2 先合并。
 - 验证（PG 17 临时实例 56141，未调用模型、未碰 kind）：独立测试 50 条（41 PG＋9 单元）（fb08e2b）全过；实现测试 16 条全过；F11 全部单测与 PG、F2 PR-C、迁移／角色／授权 PG 共 1445 条，除挂起 queued、`test_m1_04_alert_context::test_k4`（v6 作未知版本，待裁决）外全过；全量单测（非 integration）另有 6 条钉旧 `prompt_revision` 的验收测试红（同上待裁决）。ruff、mypy 通过。
+
+- 2026-10-24 lead merge `origin/main`（含 F3 PR-2 #341）：`opspilot/web/service.py` 仅 import 冲突，两边都保留；#341 的两处版本钉子（`tests/acceptance/test_f3_step3_coverage.py`、`tests/test_f3_pr2_coverage_impl.py`）`prompt_revision` 改为本 PR 合同批准的 `prompt-replay-candidate-bef70649a3a8`，其余 revision 不变。临时 PG 17：本 PR 改动的测试文件 + F3 PR-2 测试 + 工作台测试 505 passed，钉子更新后 2 条复绿。
 
 ## 下一步与交接
 
