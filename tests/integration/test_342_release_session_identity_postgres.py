@@ -10,17 +10,21 @@ session, and an earlier session that recorded another identity is still
 ``TARGET_MISMATCH``.
 """
 
-# ruff: noqa: F811 - pytest fixtures imported from the PR-2a module
 from __future__ import annotations
 
 import os
 from collections.abc import Iterator
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
 
+import psycopg
 import pytest
+from psycopg import sql
+from psycopg.conninfo import make_conninfo
 
+from opspilot import schema
 from opspilot.observation import ObservationStore
 from opspilot.observation.releases import ReleaseStore
 from opspilot.observer.health_profile import (
@@ -29,6 +33,7 @@ from opspilot.observer.health_profile import (
     load_health_profile,
 )
 from opspilot.persistence import DurableStore, PersistenceError
+from opspilot.persistence.grants import WEB_ROLE
 from opspilot.web import (
     DurableEventLog,
     DurableEvidenceStore,
@@ -37,36 +42,80 @@ from opspilot.web import (
     Workbench,
 )
 from scripts.m0.postgres_lab import DSN
-from tests.integration.test_f11_release_observation_postgres import (  # noqa: F401 - fixtures
+from tests.integration.test_f11_release_observation_postgres import (
     POOL,
     Catalog,
     Observing,
     _observing,
-    catalog,
-    owner,
-    web,
-    web_dsn,
 )
 from tests.integration.test_m1_184_self_heal_impl_postgres import ui_envelope
+from tests.runtime_roles_support import login
 from tests.target_support import ANY_TARGETS, identity_of
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("M1_DURABLE_POSTGRES") != "1", reason="explicit PG opt-in required"
 )
 
+PG_DUMP = os.environ.get("OPSPILOT_PG_DUMP", "pg_dump")
 PROFILE = load_health_profile(PROFILE_DIRECTORY / "otel-demo-checkout.json")
 VERSIONS = {"state": "v1"}
 
 
+# One scratch database for the module: the observing releases these tests
+# leave behind must not reach the shared lab database, where other modules
+# assume no release is observing (#344).
 @pytest.fixture(scope="module")
-def controller() -> Iterator[ObservationStore]:
-    store = ObservationStore(DSN, pool=POOL)
+def scratch_dsn() -> Iterator[str]:
+    name = f"opspilot_342_{uuid4().hex[:12]}"
+    with psycopg.connect(DSN, autocommit=True) as conn:
+        conn.execute(
+            sql.SQL("CREATE DATABASE {} TEMPLATE template0").format(
+                sql.Identifier(name)
+            )
+        )
+    dsn = make_conninfo(DSN, dbname=name)
+    schema.migrate(dsn, pg_dump=PG_DUMP)
+    try:
+        yield dsn
+    finally:
+        with psycopg.connect(DSN, autocommit=True) as conn:
+            conn.execute(
+                sql.SQL("DROP DATABASE IF EXISTS {} WITH (FORCE)").format(
+                    sql.Identifier(name)
+                )
+            )
+
+
+@pytest.fixture(scope="module")
+def owner(scratch_dsn: str) -> Iterator[DurableStore]:
+    store = DurableStore(scratch_dsn, pool=POOL)
+    store.install()
+    yield store
+    store.close()
+
+
+@pytest.fixture(scope="module")
+def web(scratch_dsn: str) -> Iterator[ReleaseStore]:
+    with login(scratch_dsn, WEB_ROLE) as dsn:
+        store = ReleaseStore(dsn, pool=POOL)
+        yield store
+        store.close()
+
+
+@pytest.fixture
+def catalog(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Catalog:
+    return Catalog(monkeypatch, tmp_path)
+
+
+@pytest.fixture(scope="module")
+def controller(scratch_dsn: str) -> Iterator[ObservationStore]:
+    store = ObservationStore(scratch_dsn, pool=POOL)
     yield store
     store.close()
 
 
 def _released(owner: DurableStore, web: ReleaseStore, catalog: Catalog) -> Observing:
-    observing = _observing(owner, web, catalog)
+    observing = _observing(owner, web, catalog, dsn=owner.dsn)
     with owner.transaction(snapshot=True) as conn:
         (stored,) = conn.execute(
             "SELECT target FROM opspilot_observation_sessions WHERE target_id=%s AND purpose='release_observation'",
