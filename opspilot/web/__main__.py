@@ -32,12 +32,17 @@ Configuration comes from the environment only, and only as hashes:
   projections count the automatic authorization as the system's, not a
   human action, #184 step 2); ``0`` turns it off, any other positive value
   sets the interval, and a value that is not ``0`` or a positive finite
-  number refuses to start. The same thread then runs the release anomaly
-  pass (``Workbench.release_anomaly_pass``, F11 PR-4b R8): every anomalous
+  number refuses to start. The same thread then runs the release
+  authorization pass (``Workbench.release_authorize_pass``, F11 PR-5 D7):
+  every newly registered release whose target and HealthProfile have
+  exactly one calibrated policy is authorized once as ``system``, and a
+  refusal is audited and final; and then the release anomaly pass
+  (``Workbench.release_anomaly_pass``, F11 PR-4b R8): every anomalous
   release's anomaly ending is consumed into a new incident and queued Run,
-  one event on the target's open incident, or a handoff; ``0`` turns it off
-  with the automatic observation pass (ending records are durable, so a
-  stopped pass loses nothing and the next one consumes them).
+  one event on the target's open incident, or a handoff. ``0`` turns all
+  three off: no release is then observed (it stays pending until its
+  deadline sweep ends it ``unknown``), and ending records are durable, so
+  a stopped anomaly pass loses nothing and the next one consumes them.
 
 ``hash-password`` and ``token-digest`` print the value to put in the
 environment; the secret itself is read from stdin and never echoed. This
@@ -128,16 +133,21 @@ def _self_heal_interval() -> float:
 def self_heal_loop(
     workbench: Workbench, interval: float, stop: threading.Event
 ) -> None:
-    """Run ``workbench.self_heal_pass()`` and then
+    """Run ``workbench.self_heal_pass()``,
+    ``workbench.release_authorize_pass()`` and then
     ``workbench.release_anomaly_pass()`` every ``interval`` seconds until
     ``stop`` is set. Each pass catches its own failure, which is logged; the
-    other still runs and the next round runs on time: every decision is
+    others still run and the next round runs on time: every decision is
     durable and keyed, so nothing is lost by retrying."""
     while not stop.wait(interval):
         try:
             workbench.self_heal_pass()
         except Exception:
             _log.exception("automatic observation pass failed")
+        try:
+            workbench.release_authorize_pass()
+        except Exception:
+            _log.exception("release authorize pass failed")
         try:
             workbench.release_anomaly_pass()
         except Exception:

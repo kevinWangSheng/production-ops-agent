@@ -91,7 +91,10 @@ from opspilot.investigation.progress import (
 from opspilot.investigation.reports import ReportV2, parse_report
 from opspilot.investigation.store import StepCommitter, StepStoreError
 from opspilot.knowledge.hints import knowledge_checks, unavailable_fact
-from opspilot.observation.release_commands import ReleaseConsumption
+from opspilot.observation.release_commands import (
+    ReleaseCommandReceipt,
+    ReleaseConsumption,
+)
 from opspilot.observation.release_types import ReleaseLinkReceipt
 from opspilot.observation.store import SelfHealGrant, SelfHealState
 from opspilot.observer.health_profile import HealthProfile, canonical_content
@@ -129,6 +132,22 @@ RELEASE_CONTROL_ACTIONS = ("pause", "resume", "cancel")
 #: D4: the fixed reminder every release page carries (C3 line 374), in the
 #: contract's own words; the page adds the English gloss.
 RELEASE_NOTICE = "观察健康结论，仅供参考；不批准、不阻断、不执行发布"
+#: D7: the idempotency key prefix of an automatic release authorization,
+#: one key per release, so a repeated or concurrent pass replays and a
+#: refusal stays the release's answer (the primitive refuses ``system:``).
+RELEASE_AUTHORIZE_KEY_PREFIX = "auto-authorize:"
+#: D7: the actor every automatic authorization is audited under; the
+#: primitive records it with principal ``system``.
+RELEASE_AUTHORIZE_ACTOR = "system"
+#: How many of the newest releases one authorization pass looks at. A
+#: release is authorizable only before its deadline (one hour under the
+#: shipped profile), so a single-team stream never has this many pending.
+RELEASE_AUTHORIZE_SCAN = 200
+#: The revision an automatic authorization names when the catalog has no
+#: entry for the release, so the primitive records the refusal
+#: (``RELEASE_POLICY_UNCALIBRATED`` or an earlier one) on the release: no
+#: catalog revision can equal it, every one is ``<policy_id>@<digest>``.
+_UNCALIBRATED_REVISION = "uncalibrated"
 _log = logging.getLogger(__name__)
 #: Lease granted per attempt and re-extended before every committer call.
 #: The loop is synchronous, so nothing can renew while one model request is
@@ -1357,7 +1376,7 @@ class Workbench:
     def release_anomaly_pass(self, *, limit: int = 20) -> list[ReleaseLinkReceipt]:
         """Consume every pending anomaly ending into an incident (P4-02):
         Controller work in the web process, after the automatic observation
-        pass and on its interval. Each ending is decided in its own
+        and release authorization passes and on their interval. Each ending is decided in its own
         transaction by ``ReleaseStore.consume_anomaly`` -- a new incident and
         queued Run with the v6 input, one event on the target's open
         incident, a new incident related to the latest closed one, or a
@@ -1394,6 +1413,76 @@ class Workbench:
                         receipt.run_id,
                         _envelope_from_json(intake["envelope"]),
                     )
+            receipts.append(receipt)
+        return receipts
+
+    def release_authorize_pass(self, *, limit: int = 20) -> list[ReleaseCommandReceipt]:
+        """Start the observation of every newly registered release once
+        (F11 PR-5 U-1=A, D7): Controller work in the web process, before
+        the anomaly pass and on its interval. Recording a release never
+        authorizes it (P3-02); this pass does, as ``system``, through the
+        PR-2 primitive ``authorize_release`` -- the one place a release
+        observation is started.
+
+        A candidate is a release still ``pending``, not paused, never
+        observed (``observation_generation`` 0, no frozen policy), with no
+        ``authorize`` audit and before its deadline by the database clock.
+        It is tried once under the key ``auto-authorize:<id>``, naming the
+        catalog entry for exactly its target and HealthProfile
+        (``calibrated_revision_for``, the page's resume rule); the
+        primitive re-checks all of it under the release's locks. A refusal
+        (suspended scope, policy mismatch, a human pause racing the pass,
+        ...) is audited by the primitive and is final: the release is not
+        tried again, and lifting a suspension starts nothing (C3 "lifting
+        does not resume"); its deadline sweep ends it ``unknown``. A storage
+        failure writes nothing and the next pass retries it, as it does an
+        ambiguous or unreadable catalog, which is never guessed through.
+        No external call: sampling is the Observer's.
+        """
+        store = self._release_store()
+        if store is None:
+            return []
+        from opspilot.observation.releases import calibrated_revision_for
+
+        now = self.incidents.now()
+        receipts: list[ReleaseCommandReceipt] = []
+        for release in store.list_releases(limit=RELEASE_AUTHORIZE_SCAN):
+            if len(receipts) >= limit:
+                break
+            if (
+                release.status != "pending"
+                or release.paused
+                or release.observation_generation != 0
+                or release.calibrated_policy_revision is not None
+                or now >= release.deadline_at
+            ):
+                continue
+            oid = release.observation_id
+            try:
+                if any(
+                    row["action"] == "authorize" for row in store.release_audit(oid)
+                ):
+                    continue
+                try:
+                    revision = calibrated_revision_for(release)
+                except PersistenceError as exc:
+                    if str(exc) != "RELEASE_POLICY_UNCALIBRATED":
+                        raise
+                    revision = _UNCALIBRATED_REVISION
+                receipt = store.authorize_release(
+                    oid,
+                    actor=RELEASE_AUTHORIZE_ACTOR,
+                    expected_control_generation=release.control_generation,
+                    idempotency_key=RELEASE_AUTHORIZE_KEY_PREFIX + str(oid),
+                    calibrated_policy_revision=revision,
+                )
+            except PersistenceError as exc:
+                _log.warning(
+                    "release authorization failed observation=%s code=%s",
+                    oid,
+                    str(exc),
+                )
+                continue
             receipts.append(receipt)
         return receipts
 

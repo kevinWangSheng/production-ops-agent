@@ -171,6 +171,13 @@ r1 只定方向。其余实现者需要猜的语义点，按 AGENTS.md「合同�
 - 可逆细节（Agent 自定）：① 读取全部放在 `ReleaseStore.release_detail` 一个快照事务内，页面与验收投影读同一份记录，避免两处不一致。② 发布控制的 HTTP 状态用独立映射表：事故控制表里 `TARGET_*` 为 409，D2 要求发布侧为 422，共用会改动事故语义。③ 页面按钮：非终态时按 `paused` 给 pause 或 resume，observing 且无 authorized 会话（挂起撤销）时额外给 resume，cancel 常在；服务端不依赖按钮，原语决定。④ 审计在页面与 JSON 中不显示幂等键、请求哈希与 result 快照（操作员不需要，键是表单 nonce）。⑤ 投影把 unknown 的 `ended_reason` 计入 `handoff_reasons`（PRODUCT-CONSTRAINTS「unknown handoff」），cancelled 不算结论。⑥ 交接事故页（`incident_handoff.html`）不在本 PR 允许清单内，R7 交接事故暂不显示反向链接；发布详情页仍链到该事故。
 - 验证（PG 17 临时实例 56400，未调模型、未碰 kind）：实现测试 `tests/test_f11_pr5a_impl.py` 25 passed、`tests/integration/test_f11_pr5a_impl_postgres.py` 12 passed；回归（F7 第 1 步、全部 F11 单测与 PG、工作台与 #184、#343、F6／F7 其余验收、架构测试）1776 passed、1 skipped、2 xfailed、1 failed；ruff、mypy 通过。失败的是 F7 `test_s1b_web_routes_equal_the_classified_allow_list` 因三条新路由未登记而红，等独立作者登记。
 
+## PR-5b 自动授权
+
+- worktree `poa-f11-5b`，分支 `feature/F11-pr5b-auto-authorize`（起点 main `c2af4b6`，含 PR-5a）。实现者 Claude Opus 5.5；验收测试由独立作者在另一分支写。
+- 行为（D7）：`Workbench.release_authorize_pass` 在 web 后台线程中排在 `self_heal_pass` 之后、`release_anomaly_pass` 之前，各自捕获异常，共用 `OPSPILOT_SELF_HEAL_INTERVAL_SECONDS`（设 0 时新发布不被观察，到期 unknown）。候选＝pending、未暂停、`observation_generation=0`、无冻结 policy、无 `authorize` 审计、DB 时钟早于 deadline；每个候选以 actor `system` 调一次 PR-2 原语 `authorize_release`，幂等键 `auto-authorize:<observation_id>`，`expected_control_generation` 取当轮读到的值，revision 由 D3 的 `calibrated_revision_for` 解析；单轮上限 20。业务拒绝由原语写审计、不再重试，挂起解除不补开；存储故障不写、下轮重试。未改迁移、grants、Observer、采样／判定／对比／消费、调查输入；web 角色既有权限足够（PG 测试以 `opspilot_web` 登录角色跑通授权与拒绝）。
+- 可逆细节（Agent 自定）：① 清单无匹配条目时以哨兵 revision `uncalibrated`（清单 revision 必为 `<policy_id>@<digest>`，不可能命中）调用原语，让 `RELEASE_POLICY_UNCALIBRATED`（或更早的拒绝，如挂起）落审计、详情页可见且不再重试（合同 §4 第 1 步第 5 条要求拒绝原因可见）；清单多条匹配（`AMBIGUOUS`）或不可读不调原语、记 warning、下轮重试，不替操作员挑 policy。② 候选从 `list_releases` 最新 200 条中挑（发布只在 deadline 前可授权，单团队量远小于此），不加新查询以守住文件清单。③ 先查审计再调原语：两个 web 进程并发时同键同参收敛为 replay，人工在两者之间操作则得 `CONTROL_CONFLICT`（持久拒绝）或 `IDEMPOTENCY_CONFLICT`（不写、下轮看到审计后跳过）。
+- 验证（PG 17 临时实例 56550，未调模型、未碰 kind）：实现测试 `tests/integration/test_f11_pr5b_impl_postgres.py` 10 passed、`tests/test_f11_pr5b_impl.py` 2 passed；回归（全部 F11 PG 与单测、F11/F7 验收、#184 self-heal 与投影、#343、挂起、登记处置、运行角色授权矩阵）1748 passed、1 skipped（PR-3 空清单用例，已有）；5 条迁移往返用例首轮因 `pg_dump`／`OPSPILOT_PG_DUMP` 未设为环境前提失败，设置后全过。ruff check／format、mypy（`opspilot`）通过。真实证据并入 PR-5c 窗口。
+
 ## 下一步与交接
 
 PR-1 已合并（#218，`8299970`）。PR-2a 已合并（#223，`e0d39f9`）；PR-2b 已合并（#227，`92920f1`）；#225 加固已合并（#228，`147115d`）；重放部分证据缺陷已合并（#231，`50cc62a`）；#230 待排；U2 校准证据任务进行中，见 [U2 任务记录](2026-10-14-f11-u2-calibration.md)（实验工具 #233 已合并，待开跑）。
