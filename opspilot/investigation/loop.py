@@ -823,9 +823,15 @@ class InvestigationLoop:
         Only ``executor.execute`` runs on worker threads. Lease renewal and
         fence (once before each dispatch, as in serial), ``commit_tool``, the
         dedupe map, ``delivered``/``evidence_ids``, the tool messages and
-        ``capture_delivery`` all stay on this thread and run in index order,
-        so committed rows, the coverage message and the next request are
-        what serial dispatch produces (contract U-3, U-4, R-5).
+        ``capture_delivery`` all stay on this thread. The dedupe map and
+        everything the model sees run in index order, so the coverage
+        message and the next request are what serial dispatch produces
+        (contract U-3, U-4). ``commit_tool`` (with its evidence pin and
+        ``tool_committed`` event) runs as soon as this thread sees a call
+        finish, so a crash while one call hangs does not lose a sibling's
+        settled result to re-dispatch (#332, #309 contract r2: durable
+        commits in completion order, the model-visible side in index order;
+        the store keeps rows sorted by ordinal).
 
         Dispatch is strictly in index order: the next call is dispatched
         only when a slot is free, no earlier call has raised, and -- when an
@@ -836,10 +842,12 @@ class InvestigationLoop:
         dispatched again. A failed renewal or
         fence stops new dispatches; in-flight calls finish (each bounded by
         its own timeout), results before the first undispatched call are
-        committed in index order, then the failure halts the round as it
-        would serially. An unexpected exception from a call is re-raised at
-        that call's turn, after every earlier result is committed; later
-        results are dropped for recovery to re-dispatch (R-8).
+        committed, then the failure halts the round as it would serially;
+        the first commit refused by the store halts it at whatever index
+        that is (r2 (c)). An unexpected exception from a call is re-raised
+        at that call's turn, after every earlier result is committed; a
+        higher result already seen finished may be committed too, the rest
+        are dropped for recovery to re-dispatch (R-8, r2 (b)).
         """
         request = state.request
         results: list[dict[str, Any]] = []
@@ -848,7 +856,7 @@ class InvestigationLoop:
         fingerprints = [_fingerprint_of(call, target_id) for call in calls]
         # The nearest earlier call of the same fingerprint in this turn: a
         # later call's fate (duplicate view or dispatch) is decided only once
-        # that one is committed, exactly as the serial loop decides it.
+        # that one is delivered, exactly as the serial loop decides it.
         previous: list[int | None] = []
         last: dict[str, int] = {}
         for index, fingerprint in enumerate(fingerprints):
@@ -858,6 +866,7 @@ class InvestigationLoop:
         stop: Exception | None = None
         next_dispatch = 0  # dispatch is strictly in index order
         next_commit = 0
+        committed: set[int] = set()
         execute = tracer().carry(self.executor.execute)
 
         def fill(pool: ThreadPoolExecutor) -> None:
@@ -897,6 +906,31 @@ class InvestigationLoop:
         def running_futures() -> list[Future[ToolOutcome]]:
             return [f for f in dispatched.values() if not f.done()]
 
+        def commit_finished() -> None:
+            # #332 (R-1): a later call seen finished is committed now, not
+            # at its turn; the dedupe map and the model-visible side still
+            # wait for the turn. A call that raised is left to its turn.
+            for later in sorted(dispatched):
+                future = dispatched[later]
+                if (
+                    later <= next_commit
+                    or later in committed
+                    or not future.done()
+                    or future.exception() is not None
+                ):
+                    continue
+                self._commit_durable(step_id, later, dict(future.result().model_view))
+                committed.add(later)
+
+        def await_any() -> None:
+            # Snapshot first: a call that finished before the snapshot is
+            # not waited on, so commit it before blocking on the rest.
+            running = running_futures()
+            commit_finished()
+            wait(running, return_when=FIRST_COMPLETED)
+            commit_finished()
+            fill(pool)
+
         with ThreadPoolExecutor(
             max_workers=self.tool_parallelism, thread_name_prefix="opspilot-tool"
         ) as pool:
@@ -914,15 +948,16 @@ class InvestigationLoop:
                 while index not in dispatched:
                     if stop is not None:
                         raise stop
-                    wait(running_futures(), return_when=FIRST_COMPLETED)
-                    fill(pool)
+                    await_any()
                 future = dispatched[index]
                 while not future.done():
-                    wait(running_futures(), return_when=FIRST_COMPLETED)
-                    fill(pool)
+                    await_any()
                 outcome = future.result()
                 view = self._dispatched_view(state, fingerprint, outcome)
-                self._deliver(state, step_id, index, call, view, results)
+                if index in committed:
+                    self._deliver_visible(state, call, view, results)
+                else:
+                    self._deliver(state, step_id, index, call, view, results)
         return results
 
     def _renew_before_dispatch(self) -> None:
@@ -957,11 +992,25 @@ class InvestigationLoop:
         view: dict[str, Any],
         results: list[dict[str, Any]],
     ) -> None:
-        request = state.request
+        self._commit_durable(step_id, index, view)
+        self._deliver_visible(state, call, view, results)
+
+    def _commit_durable(
+        self, step_id: UUID, index: int, view: Mapping[str, Any]
+    ) -> None:
         try:
             self.store.commit_tool(step_id, index, view)
         except StepStoreError as exc:
             raise _halt_from_store(exc) from exc
+
+    def _deliver_visible(
+        self,
+        state: _State,
+        call: Mapping[str, Any],
+        view: dict[str, Any],
+        results: list[dict[str, Any]],
+    ) -> None:
+        request = state.request
         citation = delivered_view(
             view,
             evidence_context=request.evidence_context,

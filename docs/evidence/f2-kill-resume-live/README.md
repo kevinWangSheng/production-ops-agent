@@ -67,6 +67,15 @@ PG 日志里只有两条 `57P01 FATAL`，都是 harness 在 ② 中用 `pg_termi
 
 另外在 ③ 失败后，为了把失败原因写清楚，增加了 `settled_uncommitted_at_kill` 字段，只报告，不改通过逻辑。
 
+## #332 修复后断点 ③ 复跑（2026-10-23，默认并行 2）
+
+代码：`fix/332-commit-on-completion`（完成即提交，#309 合同 r2）。harness 按 #332 U-3：被卡住的 step 至少有 2 个工具调用、至少 1 个兄弟已结算并已提交、本 epoch 已结算的兄弟都已提交，且该状态稳定 1 s 才 kill；不满足则不 kill。提问改为让模型同一轮并排查询 checkout 与 payment（`--question`，只是输入，产品提示不变）。原 ③ FAIL 记录（`tool_in_flight/`）保留。
+
+- 第 1 轮 [`tool_in_flight-332-r1-invalid/`](tool_in_flight-332-r1-invalid/summary.json)：**无效轮**。被卡住的 step 只有 1 个工具调用，没有兄弟，不构成 U-3 定义的断点 ③；数据照实保留，不计 PASS 或 FAIL。harness 随后补了「无兄弟不 kill、重新布设代理」的条件。[trace](https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/1ea4099d-9b16-4590-aecf-e2ac4bfdce5d/r/00000000-0000-0000-97c3-6d2ff08eab21?poll=true)
+- 第 2 轮 [`tool_in_flight-332/`](tool_in_flight-332/summary.json)：**通过**。卡住的 `t0`（metrics_range_query）在途，兄弟 `t1`/`t2`/`t3` 在 epoch 1 已结算并乱序提交（ordinal [1,2,3]），稳定 1 s 后 kill -9。恢复后只重派 `t0`（判据 ≤ 1）；kill 时没有「已结算未提交」的兄弟；模型重发 0；kill 前 8 条证据全部保留并被结论引用；被杀 dispatch 的 30 s 预约保持占用；新 epoch 在租约到期后 0.28 s 开始；Run `completed`。[trace](https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/1ea4099d-9b16-4590-aecf-e2ac4bfdce5d/r/00000000-0000-0000-c752-91ddbd69cd28?poll=true)（只有 epoch 2 的根 run）
+- 仍有的毫秒窗口（U-3，照实写）：兄弟已结算、主线程尚未提交的极短时间内被 kill，该兄弟仍会被重派；本轮 kill 条件排除了这个窗口，判据不覆盖它。
+- 费用：DeepSeek 余额 97.43 → 97.04 → 96.14 CNY（两轮合计 1.29，有其他调用方，均为上界）。kind 占用 `lane-f2-332` 已释放；harness 起的 web 与临时 PG 由 lead 在会话恢复后核对 PID 停止。
+
 ## Trace
 
 project `opspilot-lab-f2-kill-resume-live-20261023`（longlived）。每个 Run 只能读回 worker B 那次尝试的根 run。被杀进程的根 span 没有结束，也没有导出，所以 epoch 1 没有根 run；epoch 1 是否有子 span 被导出，未确认。
