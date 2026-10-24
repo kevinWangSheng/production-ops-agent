@@ -233,6 +233,8 @@ class _StepOps(_StoreBase):
             if any(item.get("ordinal") == ordinal for item in results):
                 return
             results.append({"ordinal": ordinal, "result": result})
+            # 并行时按完成顺序提交（#332）；行内按 ordinal 保存，完整 step 与串行逐字节相同。
+            results.sort(key=lambda item: item["ordinal"])
             conn.execute(
                 "UPDATE opspilot_steps SET tool_results=%s,status='tool_result_committed' WHERE step_id=%s",
                 (Jsonb(results), step_id),

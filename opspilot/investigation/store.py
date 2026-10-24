@@ -273,6 +273,8 @@ class MemoryStepStore:
         if any(item["ordinal"] == ordinal for item in existing):
             return
         existing.append({"ordinal": ordinal, "result": dict(result)})
+        # Parallel calls commit in completion order (#332); rows stay sorted.
+        existing.sort(key=lambda item: item["ordinal"])
         for step in self.steps.values():
             if step["step_id"] == step_id:
                 step["status"] = "tool_result_committed"
