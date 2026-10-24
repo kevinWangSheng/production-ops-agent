@@ -92,6 +92,7 @@ r2：第 1、2 步预审 E1–E15 用户 2026-10-10 全部按推荐采纳，R1�
   - 输入版本递增为 v3（只对告警 Run；其他入口仍写现有版本）；v1/v2 照常可读。
 - **J4 默认查询窗**：工具调用没给 `start`/`end` 时，告警 Run 用 `default_query_window`，其他 Run 不变（框终点前 1 小时）。显式给出的查询窗仍须在框内，框外拒绝。
 - **J5 续开**（F5）：超时续开沿用前一 Run 的 `time_policies` 与 `scope_facts.alert_starts_at`；无法续接而 fresh 回退时，按 J1–J3 用同一事故最早那次告警投递的 `received_at` 与锚点重建，不用续开时刻。
+- **J5 修订（#305，用户 2026-10-22 裁决 W1-B / W2-A / W3-A）**：后继 Run（new_run、结论发布后或超时的追问/纠正续开、fresh 回退）创建时，若该事故有 `received_at` 晚于前一 Run 框终点的告警 `attached` firing episode（每个 episode 取其第一条 attached 投递），框改为以后继 Run 创建时的 DB 时刻为终点的 24h，锚点取其中 `received_at` 最新那个 episode 的 `startsAt`（按 J2 截入框），默认查询窗 `[max(锚点−1h, 框起点), 框终点]`；只替换 `time_policies[0]` 的 `window`、`anchor`、`default_query_window` 与 `scope_facts.alert_starts_at`，输入版本不变，`alert_context` 仍取首次投递（K6）。没有这样的附加时 J5 原文不变。同一 Run 重新排队（follow_up、resume）输入不变；发布附加不触发。合同见 [#305 决定表](2026-10-24-305-successor-window-contract.md)。
 - **J6 验收投影**：I8 的 `run_input` 原样反映 J3 字段，不新增投影字段。
 - **r6（lead 2026-10-10，第 3 步实施中）J3 修订**：`reference_rule` 是 v4 证据新鲜度的参照时刻字段，报告校验只认 `dispatch_started_at` / `response_received_at`（`opspilot/investigation/reports.py:868-874`），改成其他值会让告警 Run 的事实陈述全部 `MISSING_TIME_SCOPE_REF`、无法发布报告。因此保持 `response_received_at`，锚点规则另记 `anchor_rule`；`anchor`、`anchor_rule`、`default_query_window` 须加入时间策略字段白名单（`_TIME_POLICY_FIELDS`，同文件约 606 行），否则投影与续开会丢弃。由实现者发现。
 - **r7（lead 2026-10-10，第 3 步独立测试缺口）J6 补充**：`AlertIntakeOutcome` 增加 `run_inputs: tuple[Mapping[str, Any] | None, ...]`，与 `run_ids` 同序，逐个为该 Run 已提交的输入快照原样（无输入为 `None`）；用于验证续开与 fresh 回退（J5）保留锚点。`run_input` 不变（仍为接收时建的 Run）。
