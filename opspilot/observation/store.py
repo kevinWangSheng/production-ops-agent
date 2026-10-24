@@ -804,6 +804,15 @@ def _identity(target: Target) -> tuple[str, str, str, str]:
     )
 
 
+def _stored_identity(stored: Mapping[str, Any]) -> tuple[Any, ...]:
+    """:func:`_identity` of a session's stored ``target`` snapshot; a missing
+    field reads as ``None`` and so never matches a registered identity."""
+    return tuple(
+        stored.get(field)
+        for field in ("integration_id", "cluster_uid", "namespace", "resource_uid")
+    )
+
+
 def _domain_session(
     row: dict[str, Any],
     *,
@@ -1237,12 +1246,14 @@ class ObservationStore(_ReleaseComparisonOps, _TargetProfileOps):
         # authorized with; the registry row must still say the same (a
         # rebound or edited registry row is not this target any more, C3
         # section 4: rebinding is its own transaction that revokes first).
+        # Only the four identity fields are read: a release session's
+        # snapshot carries no ``revision`` (#342).
         expected_identity = _identity(target)
         for earlier in conn.execute(
             "SELECT target FROM opspilot_observation_sessions WHERE target_id=%s",
             (incident["target_id"],),
         ).fetchall():
-            if _identity(Target(**earlier["target"])) != expected_identity:
+            if _stored_identity(earlier["target"]) != expected_identity:
                 raise PersistenceError("TARGET_MISMATCH")
         if conn.execute(
             "SELECT 1 FROM opspilot_observation_sessions WHERE incident_id=%s AND state='authorized'",
