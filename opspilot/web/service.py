@@ -91,7 +91,10 @@ from opspilot.investigation.progress import (
 from opspilot.investigation.reports import ReportV2, parse_report
 from opspilot.investigation.store import StepCommitter, StepStoreError
 from opspilot.knowledge.hints import knowledge_checks, unavailable_fact
-from opspilot.observation.release_commands import ReleaseConsumption
+from opspilot.observation.release_commands import (
+    ReleaseCommandReceipt,
+    ReleaseConsumption,
+)
 from opspilot.observation.release_types import ReleaseLinkReceipt
 from opspilot.observation.store import SelfHealGrant, SelfHealState
 from opspilot.observer.health_profile import HealthProfile, canonical_content
@@ -129,6 +132,28 @@ RELEASE_CONTROL_ACTIONS = ("pause", "resume", "cancel")
 #: D4: the fixed reminder every release page carries (C3 line 374), in the
 #: contract's own words; the page adds the English gloss.
 RELEASE_NOTICE = "观察健康结论，仅供参考；不批准、不阻断、不执行发布"
+#: D7: the idempotency key prefix of an automatic release authorization,
+#: one key per release, so a repeated or concurrent pass replays and a
+#: refusal stays the release's answer (the primitive refuses ``system:``).
+RELEASE_AUTHORIZE_KEY_PREFIX = "auto-authorize:"
+#: D7: the actor every automatic authorization is audited under; the
+#: primitive records it with principal ``system``.
+RELEASE_AUTHORIZE_ACTOR = "system"
+#: How many candidates one authorization pass reads (oldest first). Only
+#: one whose catalog is ambiguous or unreadable stays a candidate after a
+#: pass, so up to this many of those never hold back a decidable one.
+RELEASE_AUTHORIZE_SCAN = 200
+#: D7 (r2): what the pages say about a release the target rule holds back.
+RELEASE_HOLD_TEXT = {
+    "waiting_for_target": "waiting for the observation of another release"
+    " on this target to end",
+    "superseded": "superseded by a newer release on this target; not observed",
+}
+#: The revision an automatic authorization names when the catalog has no
+#: entry for the release, so the primitive records the refusal
+#: (``RELEASE_POLICY_UNCALIBRATED`` or an earlier one) on the release: no
+#: catalog revision can equal it, every one is ``<policy_id>@<digest>``.
+_UNCALIBRATED_REVISION = "uncalibrated"
 _log = logging.getLogger(__name__)
 #: Lease granted per attempt and re-extended before every committer call.
 #: The loop is synchronous, so nothing can renew while one model request is
@@ -1357,7 +1382,7 @@ class Workbench:
     def release_anomaly_pass(self, *, limit: int = 20) -> list[ReleaseLinkReceipt]:
         """Consume every pending anomaly ending into an incident (P4-02):
         Controller work in the web process, after the automatic observation
-        pass and on its interval. Each ending is decided in its own
+        and release authorization passes and on their interval. Each ending is decided in its own
         transaction by ``ReleaseStore.consume_anomaly`` -- a new incident and
         queued Run with the v6 input, one event on the target's open
         incident, a new incident related to the latest closed one, or a
@@ -1394,6 +1419,76 @@ class Workbench:
                         receipt.run_id,
                         _envelope_from_json(intake["envelope"]),
                     )
+            receipts.append(receipt)
+        return receipts
+
+    def release_authorize_pass(self, *, limit: int = 20) -> list[ReleaseCommandReceipt]:
+        """Start the observation of every newly registered release once
+        (F11 PR-5 U-1=A, D7): Controller work in the web process, before
+        the anomaly pass and on its interval. Recording a release never
+        authorizes it (P3-02); this pass does, as ``system``, through the
+        PR-2 primitive ``authorize_release`` -- the one place a release
+        observation is started.
+
+        A candidate is a release still ``pending``, not paused, never
+        observed (``observation_generation`` 0, no frozen policy), with no
+        ``authorize`` audit and before its deadline, which is also the
+        newest release of its target, on a target with no authorized
+        release session (r2: one observed release per target, however many
+        a deployer delivers; a held release is not refused or audited, it
+        waits for the running observation to end, or is superseded and
+        ends at its deadline) (``ReleaseStore.authorizable_releases``:
+        filtered in SQL before the
+        limit, oldest first, the deadline against the database clock of
+        that read; the primitive re-checks the deadline against the
+        database clock of its own transaction). Up to ``limit`` candidates
+        a pass reach the primitive; one whose catalog cannot be resolved
+        does not count, so it never holds back the others. Each is tried
+        once under the key ``auto-authorize:<id>``, naming the
+        catalog entry for exactly its target and HealthProfile
+        (``calibrated_revision_for``, the page's resume rule); the
+        primitive re-checks all of it under the release's locks. A refusal
+        (suspended scope, policy mismatch, a human pause racing the pass,
+        ...) is audited by the primitive and is final: the release is not
+        tried again, and lifting a suspension starts nothing (C3 "lifting
+        does not resume"); its deadline sweep ends it ``unknown``. A storage
+        failure writes nothing and the next pass retries it, as it does an
+        ambiguous or unreadable catalog, which is never guessed through.
+        No external call: sampling is the Observer's.
+        """
+        store = self._release_store()
+        if store is None:
+            return []
+        from opspilot.observation.releases import calibrated_revision_for
+
+        receipts: list[ReleaseCommandReceipt] = []
+        attempts = 0
+        for release in store.authorizable_releases(limit=RELEASE_AUTHORIZE_SCAN):
+            if attempts >= limit:
+                break
+            oid = release.observation_id
+            try:
+                try:
+                    revision = calibrated_revision_for(release)
+                except PersistenceError as exc:
+                    if str(exc) != "RELEASE_POLICY_UNCALIBRATED":
+                        raise
+                    revision = _UNCALIBRATED_REVISION
+                attempts += 1
+                receipt = store.authorize_release(
+                    oid,
+                    actor=RELEASE_AUTHORIZE_ACTOR,
+                    expected_control_generation=release.control_generation,
+                    idempotency_key=RELEASE_AUTHORIZE_KEY_PREFIX + str(oid),
+                    calibrated_policy_revision=revision,
+                )
+            except PersistenceError as exc:
+                _log.warning(
+                    "release authorization failed observation=%s code=%s",
+                    oid,
+                    str(exc),
+                )
+                continue
             receipts.append(receipt)
         return receipts
 
@@ -1527,7 +1622,12 @@ class Workbench:
         store = self._release_store()
         if store is None:
             return []
-        return [_release_summary(release) for release in store.list_releases()]
+        releases = store.list_releases()
+        holds = store.authorization_holds([r.observation_id for r in releases])
+        return [
+            _release_summary(release, holds.get(release.observation_id))
+            for release in releases
+        ]
 
     def release_page(self, observation_id: UUID) -> dict[str, Any]:
         """One release as its page shows it (D4), JSON-safe; the verdict is
@@ -1537,7 +1637,8 @@ class Workbench:
         if detail is None:
             raise WorkbenchError("UNKNOWN_RELEASE")
         release = detail["release"]
-        page = _release_summary(release)
+        holds = store.authorization_holds([observation_id])
+        page = _release_summary(release, holds.get(observation_id))
         page.update(
             {
                 "target_id": str(release.target_id),
@@ -2607,8 +2708,9 @@ def _json_safe(value: Any) -> Any:
     return value
 
 
-def _release_summary(release: Any) -> dict[str, Any]:
-    """The list row of one release (D6), also the head of its page."""
+def _release_summary(release: Any, hold: str | None = None) -> dict[str, Any]:
+    """The list row of one release (D6), also the head of its page;
+    ``hold`` is why its automatic authorization waits (D7 r2), if it does."""
     return {
         "observation_id": str(release.observation_id),
         "verdict": release_verdict(release.status),
@@ -2616,6 +2718,8 @@ def _release_summary(release: Any) -> dict[str, Any]:
         "status": release.status,
         "paused": release.paused,
         "ended_reason": release.ended_reason,
+        "authorization_hold": hold,
+        "hold_text": RELEASE_HOLD_TEXT.get(hold or ""),
         "source": release.source,
         "source_release_id": release.source_release_id,
         "target": dict(release.target_snapshot),

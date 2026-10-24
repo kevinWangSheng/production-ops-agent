@@ -15,6 +15,7 @@
 <p>
   verdict <span class="badge" id="verdict">{{ page.verdict }}</span>
   {% if page.paused %}<span class="badge" id="paused">paused</span>{% endif %}
+  {% if page.hold_text %}<span class="muted" id="hold">{{ page.hold_text }}</span>{% endif %}
   {% if page.ended_reason %}· ended reason <code id="ended-reason">{{ page.ended_reason }}</code>{% endif %}
   · stored status <code>{{ page.status }}</code>
   · control generation <strong id="control-generation">{{ page.control_generation }}</strong>

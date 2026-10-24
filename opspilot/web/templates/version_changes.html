@@ -10,7 +10,7 @@
   {% for r in releases %}
     <tr>
       <td><a href="/version-changes/{{ r.observation_id }}"><code>{{ r.observation_id }}</code></a></td>
-      <td><span class="badge verdict">{{ r.verdict }}</span>{% if r.paused %} <span class="badge">paused</span>{% endif %}{% if r.ended_reason %} <span class="muted">{{ r.ended_reason }}</span>{% endif %}</td>
+      <td><span class="badge verdict">{{ r.verdict }}</span>{% if r.paused %} <span class="badge">paused</span>{% endif %}{% if r.ended_reason %} <span class="muted">{{ r.ended_reason }}</span>{% endif %}{% if r.hold_text %} <span class="muted">{{ r.hold_text }}</span>{% endif %}</td>
       <td><code>{{ r.target.namespace }}/{{ r.target.workload }}</code></td>
       <td><code>{{ r.source }}</code> · <code>{{ r.source_release_id }}</code></td>
       <td>{{ r.released_at }}</td>
