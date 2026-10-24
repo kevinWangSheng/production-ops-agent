@@ -299,8 +299,8 @@
 {% if snapshot.coverage %}
 {% set labels = {
   "all_ok": "all queries returned data",
-  "partial_failure": "some queries failed",
-  "failed": "every query failed",
+  "partial_failure": "some queries did not succeed",
+  "failed": "no query succeeded",
   "no_data_only": "returned no data (not evidence of health)",
   "not_queried": "not queried this Run",
   "not_authorized": "not authorized for this Run",
@@ -327,7 +327,7 @@
     </tbody>
   </table>
   {% else %}<p class="muted">No tool results committed yet.</p>{% endif %}
-  {% if snapshot.coverage.duplicates_skipped %}<p class="muted" id="coverage-duplicates">Repeated calls not executed: {{ snapshot.coverage.duplicates_skipped }} (not counted against any source).</p>{% endif %}
+  {% if snapshot.coverage.duplicates_skipped %}<p class="muted" id="coverage-duplicates">{{ snapshot.coverage.duplicates_skipped }} duplicate call(s) not re-executed (not counted against any source).</p>{% endif %}
 </section>
 {% endif %}
 
