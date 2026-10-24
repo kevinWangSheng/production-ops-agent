@@ -59,6 +59,11 @@ from opspilot.investigation.context import (
     ContextError,
     conclusion_publishable,
 )
+from opspilot.investigation.coverage import (
+    RunCoverage,
+    collection_truncated,
+    run_coverage,
+)
 from opspilot.investigation.inputs import AlertAnchor, ToolFace, continuation_input
 from opspilot.investigation.limits import (
     MAX_MODEL_REQUESTS_PER_RUN,
@@ -1665,8 +1670,19 @@ class Workbench:
             knowledge_view = {**fact, "checks": knowledge_checks(fact, parsed_report)}
         observation_sessions = self.incidents.observation_sessions(incident_id)
         handoff_report = None
+        shown_conclusion = rebuilt.get("conclusion")
         if report is None and outcome is not None and outcome.kind == "run_handoff":
-            handoff_report = _report_view(_last_live_response(rebuilt["steps"]))
+            shown_conclusion = _last_live_response(rebuilt["steps"])
+            handoff_report = _report_view(shown_conclusion)
+        # F3 step 3 (U5-a, U7-a): read from the same rows, never stored and
+        # never shown to the model.
+        coverage = run_coverage(run["run_id"], input_snapshot, rebuilt["steps"])
+        shown = report or handoff_report
+        truncated = (
+            collection_truncated(input_snapshot, rebuilt["steps"], shown_conclusion)
+            if shown is not None and shown.get("parsed")
+            else None
+        )
         return {
             "incident": summary,
             "question": None if request is None else request.question,
@@ -1684,6 +1700,10 @@ class Workbench:
             },
             "steps": steps,
             "not_integrated": not_integrated,
+            "coverage": _coverage_view(coverage)
+            if rebuilt["steps"] or coverage.sources_recorded
+            else None,
+            "collection_truncated": truncated,
             "pending_tools": len(rebuilt["pending_tools"]),
             "report": report,
             "knowledge": knowledge_view,
@@ -2242,6 +2262,25 @@ def _not_integrated(input_snapshot: Mapping[str, Any]) -> list[str] | None:
     if not isinstance(names, list):
         return None
     return [name for name in names if isinstance(name, str)]
+
+
+def _coverage_view(coverage: RunCoverage) -> dict[str, Any]:
+    return {
+        "sources_recorded": coverage.sources_recorded,
+        "duplicates_skipped": coverage.duplicates_skipped,
+        "sources": [
+            {
+                "name": row.name,
+                "ok": row.ok,
+                "no_data": row.no_data,
+                "non_ok": row.non_ok,
+                "reasons": list(row.reasons.items()),
+                "state": row.state,
+                "gap": row.gap,
+            }
+            for row in coverage.sources
+        ],
+    }
 
 
 def _step_view(step: Mapping[str, Any]) -> dict[str, Any]:
