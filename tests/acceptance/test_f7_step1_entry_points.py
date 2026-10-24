@@ -85,6 +85,13 @@ EXPECTED_ROUTES: dict[tuple[str, str], str] = {
     ("POST", "/incidents/{incident_id}/control"): "write: OpsPilot incident control",
     ("GET", "/incidents/{incident_id}/events"): "read: progress stream",
     ("GET", "/incidents/{incident_id}/evidence/{evidence_id}"): "read: evidence",
+    # F11 PR-5a (pre-review D1), registered by the independent test author.
+    ("GET", "/version-changes"): "read: release observation list",
+    ("GET", "/version-changes/{observation_id}"): "read: release observation page",
+    (
+        "POST",
+        "/version-changes/{observation_id}/control",
+    ): "write: OpsPilot release observation control",
 }
 
 #: Words that would name a target mutation or a release gate (C3 sections 8, 9).
