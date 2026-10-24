@@ -56,7 +56,7 @@
 - 一个 PR 对应一个 C3 合同条款或一个明确缺陷；PR 目标始终是 `main`，不做 stacked PR，前置 PR 先合。CI 覆盖所有 PR。
 - 就绪顺序：CI 成功、独立审查完成且发现已处置 → 触发一次 `@codex review` 分诊：能引用 PRODUCT-CONSTRAINTS、C3 原文或可复现失败的发现采纳修复，其余按类回复拒绝并 resolve → 最终 HEAD CI 成功、`mergeStateStatus` 为 `CLEAN`、无未处理 thread，即为就绪。分诊后只有实质返工才再触发一次；机器人不可用不阻塞。
 - 合并统一用 squash merge（`gh pr merge --squash` 或 GitHub 按钮），分支历史不改写。提交格式 `{type}: {description} [#{feature-id}]`，类型 `feat`、`fix`、`refactor`、`test`、`docs`、`chore`；无功能 ID 的维护省略后缀。
-- 预授权自动合并：文档、证据记录、chore、flake 与测试修复。用户门：功能 PR，以及 PRODUCT-CONSTRAINTS、SPEC、C3、验收步骤与 `passes`、权限、状态恢复、数据流与凭据的变更。用户门的 PR 在简报中列决策点，等用户合并。
+- 预授权自动合并：文档、证据记录、chore、flake 与测试修复。用户门：功能 PR，以及 PRODUCT-CONSTRAINTS、SPEC、C3、验收步骤与 `passes`、权限、状态恢复、数据流与凭据的变更。用户门的 PR 在简报中列决策点，等用户合并（或者用户授权可以自动合并）。
 - PR 正文五条以内：问题与变更、任务记录链接、实际验证、未完成项、风险。细节放任务记录。
 - 合并后停止任务进程，确认工作已整合（squash 后按内容核对），无未提交工作后 `git worktree remove` 并删本地分支；条件不满足则保留并说明。外部 issue、发布须另有授权。
 
