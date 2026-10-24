@@ -299,17 +299,56 @@ def settled_uncommitted(
     )
 
 
-def tool_breakpoint_state(snap: Mapping[str, Any]) -> str | None:
-    """A key for the ``tool_in_flight`` kill state, or None when it is not
-    reached: the stalled dispatch is the epoch's only unsettled one, and
-    every sibling of its step settled in this epoch is already committed
-    (#332 U-3). The key changes whenever a sibling commits or settles."""
+def stalled_step(snap: Mapping[str, Any]) -> Mapping[str, Any] | None:
+    """The step of the stalled dispatch, when there is one."""
     charge = stalled_dispatch(snap)
     if charge is None:
         return None
     step_id = charge["operation_id"].rpartition("-t")[0]
+    return next((s for s in snap["steps"] if s["step_id"] == step_id), None)
+
+
+def stall_without_sibling(snap: Mapping[str, Any]) -> Mapping[str, Any] | None:
+    """The stalled dispatch when its step planned a single call: such a stall
+    can never form breakpoint 3, so the harness lets it time out and arms
+    the proxy again instead of killing."""
+    step = stalled_step(snap)
+    if step is None or len(step["tool_calls"]) >= 2:
+        return None
+    return stalled_dispatch(snap)
+
+
+def committed_siblings(snap: Mapping[str, Any]) -> list[str]:
+    """Calls of the stalled dispatch's step that settled in this epoch and
+    whose result is committed (the stalled call itself excluded)."""
+    charge = stalled_dispatch(snap)
+    if charge is None:
+        return []
+    step_id = charge["operation_id"].rpartition("-t")[0]
+    committed = committed_ops(snap)
+    return sorted(
+        c["operation_id"]
+        for c in snap["charges"]
+        if c["epoch"] == snap["run"]["epoch"]
+        and c["seconds"] is not None
+        and c["operation_id"].startswith(f"{step_id}-t")
+        and c["operation_id"] in committed
+    )
+
+
+def tool_breakpoint_state(snap: Mapping[str, Any]) -> str | None:
+    """A key for the ``tool_in_flight`` kill state, or None when it is not
+    reached: the stalled dispatch is the epoch's only unsettled one, its
+    step planned at least two calls, at least one sibling settled and is
+    committed, and every sibling settled in this epoch is committed (#332
+    U-3). The key changes whenever a sibling commits or settles."""
+    charge = stalled_dispatch(snap)
+    step = stalled_step(snap)
+    if charge is None or step is None or len(step["tool_calls"]) < 2:
+        return None
+    step_id = step["step_id"]
     epoch = snap["run"]["epoch"]
-    if settled_uncommitted(snap, epoch, step_id):
+    if settled_uncommitted(snap, epoch, step_id) or not committed_siblings(snap):
         return None
     ordinals = sorted(op for op in committed_ops(snap) if op.startswith(f"{step_id}-t"))
     settled = sorted(
@@ -677,7 +716,7 @@ def submit(args: argparse.Namespace, label: str) -> dict[str, Any]:
         "source": "f2-kill-resume",
         "external_event_id": label,
         "target_id": TARGET_ID,
-        "question": QUESTION,
+        "question": args.question,
     }
     request = urllib.request.Request(
         args.web_url.rstrip("/") + "/intake/events",
@@ -859,6 +898,33 @@ def run(args: argparse.Namespace) -> int:
                             timeline["proxy_armed"] = snap["db_now"]
                             ledger.event("proxy_armed")
                         engaged = proxy.remaining == 0
+                    held_op = stall_without_sibling(snap) if engaged else None
+                    if held_op is not None:
+                        # This stall cannot form breakpoint 3 (no sibling):
+                        # never kill on it; re-arm once it has settled.
+                        if timeline.get("stall_single") != held_op["dispatch_id"]:
+                            timeline["stall_single"] = held_op["dispatch_id"]
+                            timeline["stalls_without_sibling"] = (
+                                timeline.get("stalls_without_sibling", 0) + 1
+                            )
+                            ledger.event(
+                                "stall_without_sibling",
+                                operation_id=held_op["operation_id"],
+                            )
+                        timeline.pop("stall_seen", None)
+                        candidate = None
+                        engaged = False
+                    elif engaged and "stall_single" in timeline:
+                        pending = unsettled_charges(snap, snap["run"]["epoch"])
+                        if not any(
+                            c["dispatch_id"] == timeline["stall_single"]
+                            for c in pending
+                        ):
+                            with proxy.lock:
+                                proxy.remaining = 1
+                            del timeline["stall_single"]
+                            ledger.event("proxy_rearmed")
+                        engaged = False
                     if engaged:
                         timeline.setdefault("stall_seen", time.monotonic())
                         candidate, ready = dwell(
@@ -872,7 +938,8 @@ def run(args: argparse.Namespace) -> int:
                             and time.monotonic() - timeline["stall_seen"]
                             > STALL_KILL_BEFORE_SECONDS
                         ):
-                            raise RuntimeError("STALL_NOT_ISOLATED")
+                            # 未形成断点③: no kill; the summary is not written.
+                            raise RuntimeError("BREAKPOINT_3_NOT_FORMED")
             if ready:
                 pre = snap
                 break
@@ -970,6 +1037,7 @@ def run(args: argparse.Namespace) -> int:
         "schema": "opspilot-lab-summary-1",
         "experiment": "f2-kill-resume-live",
         "breakpoint": breakpoint,
+        "question": args.question,
         "incident_id": intake["incident_id"],
         "run_id": run_id,
         "frozen_at": datetime.now(timezone.utc).isoformat(),
@@ -1107,6 +1175,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     p.add_argument("--breakpoint-timeout", type=float, default=900.0)
     p.add_argument("--resume-timeout", type=float, default=2400.0)
     p.add_argument("--lab-round", default="")
+    p.add_argument(
+        "--question",
+        default=QUESTION,
+        help="incident question (input only; the product prompt is unchanged)",
+    )
     p.add_argument("--ledger-dir", required=True)
     p.add_argument("--summary", required=True)
     r = sub.add_parser("rejudge")

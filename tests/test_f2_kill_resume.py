@@ -613,3 +613,46 @@ def test_a_committed_higher_ordinal_is_not_reported_as_uncommitted():
         ],
     )
     assert h.settled_uncommitted(snap, 1) == []
+
+
+def _single_call_stall_snap():
+    return _snap(
+        steps=[
+            _step(STEP1, 0, tools=["traces_search"], results=1),
+            _step(
+                STEP2,
+                1,
+                tools=["metrics_range_query"],
+                ordinals=[],
+                status="response_committed",
+            ),
+        ],
+        charges=[
+            _charge(f"{STEP1}-t0"),
+            _charge(f"{STEP2}-t0", seconds=None, dispatch="stalled"),
+        ],
+        evidence=[EV1],
+    )
+
+
+def test_a_stall_in_a_single_call_step_never_forms_breakpoint_three():
+    # Live 2026-10-23 (invalid round): the stalled step planned one call.
+    snap = _single_call_stall_snap()
+    assert h.stalled_dispatch(snap) is not None
+    assert h.tool_breakpoint_state(snap) is None
+    assert h.stall_without_sibling(snap)["dispatch_id"] == "stalled"
+
+
+def test_breakpoint_three_needs_at_least_one_committed_sibling():
+    snap = _stall_snap([0])
+    assert h.committed_siblings(snap) == [f"{STEP2}-t0"]
+    assert h.stall_without_sibling(snap) is None
+    # Two planned calls but the sibling has no charge (never dispatched):
+    # no sibling settled and committed, so no kill.
+    no_sibling = copy.deepcopy(snap)
+    no_sibling["charges"] = [
+        c for c in no_sibling["charges"] if c["dispatch_id"] != "sibling"
+    ]
+    no_sibling["steps"][1] = _parallel_step([])
+    assert h.committed_siblings(no_sibling) == []
+    assert h.tool_breakpoint_state(no_sibling) is None

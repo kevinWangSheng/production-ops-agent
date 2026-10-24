@@ -26,6 +26,8 @@
 - U-3 harness（merge main `d24b7a0` 后）：`scripts/f2_kill_resume.py` 快照新增每个 step 的 `tool_ordinals`（`tool_results` 计数保留，旧 ledger 无此字段时 `committed_ops` 按计数前缀回退，`rejudge` 兼容）；`committed_ops`/`settled_uncommitted` 读实际 ordinal；③ 的 kill 条件改为 `tool_breakpoint_state`：卡住的调用是本 epoch 唯一未结算 charge，且同 step 本 epoch 已结算的兄弟都在 `tool_results`，该状态（含兄弟 ordinal 与已结算 dispatch 集）经 `dwell` 稳定 1 s（`SIBLING_DWELL_SECONDS`）；超过 25 s 未就绪仍 `STALL_NOT_ISOLATED`。U7 判据不变。`tests/test_f2_kill_resume.py` 新增 6 例（非前缀 ordinal、等兄弟提交、状态变化、dwell、乱序提交后只重派卡住的一条）。snapshot SQL 在临时 PG 的真实 schema 上跑过一次，返回 `(2, [0, 1])`。
 - 断点③ 真实复跑未做：等 #335 合并、kind 空出后由 lead 通知。
 
+- 断点 ③ 真实复跑（2026-10-23，kind，默认并行 2）：第 1 轮无效（被卡 step 无兄弟，不构成断点）；harness 加「至少 1 个已提交兄弟」条件后第 2 轮**通过**，只重派在途的 `t0`。见 [证据](../evidence/f2-kill-resume-live/README.md)「#332 修复后断点 ③ 复跑」。
+
 ## 验证
 
 - 临时 PG 17（56201，本 worktree `tmp/pg`，自建自停），`M1_DURABLE_POSTGRES=1 M0_STEP_POSTGRES=1`。merge 验收分支后：`tests/test_309_*`、`tests/test_332_*`、`tests/acceptance/test_309_*`、`tests/acceptance/test_332_*`、`tests/test_m1_loop*`、`tests/test_m1_investigation*`、`tests/test_m0_step_store_*`、`tests/integration/` 下 `test_309_parallel_crash_resume_postgres.py`、`test_332_commit_on_completion_postgres.py`、`test_m1_loop_resume_postgres.py`、`test_m1_durable_state_postgres.py`、`test_m0_step_store_postgres.py`：403 passed、0 skipped。ruff check/format、mypy 通过。未跑全量 make check。
