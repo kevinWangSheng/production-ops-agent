@@ -178,7 +178,8 @@ def collect(dsn: str, incident: UUID, ledger: Path) -> dict[str, Any]:
             {"run_id": str(r["run_id"]), "control_generation": r["control_generation"], "state": r["state"]}
             for r in runs
         ],
-        "alert_delivery_outcomes": plain([dict(d) for d in deliveries]),
+        "alert_delivery_outcomes": [d["outcome"] for d in deliveries],
+        "alert_deliveries": plain([dict(d) for d in deliveries]),
         "run_versions": otel_demo_versions(),
         "collected_at_db": plain(db_now),
     }

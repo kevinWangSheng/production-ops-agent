@@ -1,6 +1,6 @@
 {
  "f3_acceptance": {
-  "alert_delivery_outcomes": [
+  "alert_deliveries": [
    {
     "delivery_id": 2,
     "fingerprint": "83f7541ae0105d42",
@@ -17,6 +17,10 @@
     "starts_at": "2026-10-24T17:12:54+00:00",
     "status": "resolved"
    }
+  ],
+  "alert_delivery_outcomes": [
+   "created",
+   "resolved_attached"
   ],
   "audit_queries": [
    {
