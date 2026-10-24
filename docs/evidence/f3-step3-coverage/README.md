@@ -43,6 +43,10 @@ env -u OPSPILOT_OTEL_TOKEN -u OPSPILOT_OTEL_PROMETHEUS_USERNAME -u OPSPILOT_OTEL
 - 结果是**交接**，不是发布：强制最终轮的报告合格但 `assessment_status=incomplete`，按现有规则（ADR-0005）以 `INCOMPLETE_INVESTIGATION` 交接，Run `waiting_human`。合同第 8 节判据允许「照实记录为交接」。
 - 截断标注：投影 `collection_truncated=True`；页面显示交接报告，`#collection-truncated` 出现。判据**通过**。覆盖节：prometheus `all_ok`（ok 3、no_data 1），jaeger `not_queried`。
 
+## 页面文案修正（#341 审查 F1）
+
+两份 summary 冻结时，页面上 `all_ok` 行的说明是「all queries returned data」。场景 B 的 prometheus 行有 1 个 no_data，这句话与事实不符。之后已改为「every query ran without an error or refusal (no-data counts shown separately)」，状态、计数与判据不变，冻结文件未改。
+
 ## 失败轮与费用
 
 - 无失败轮，未重跑。

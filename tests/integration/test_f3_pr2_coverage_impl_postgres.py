@@ -210,3 +210,6 @@ def test_a_report_forced_by_the_bound_is_marked_truncated(monkeypatch):
     (coverage,) = projected.coverage
     rows = {row.name: row.state for row in coverage.sources}
     assert rows["jaeger"] == "not_queried"
+    # #341 F1: all_ok says nothing about data having come back.
+    assert "returned data" not in html
+    assert "without an error or refusal (no-data counts shown separately)" in html

@@ -298,7 +298,7 @@
 
 {% if snapshot.coverage %}
 {% set labels = {
-  "all_ok": "all queries returned data",
+  "all_ok": "every query ran without an error or refusal (no-data counts shown separately)",
   "partial_failure": "some queries did not succeed",
   "failed": "no query succeeded",
   "no_data_only": "returned no data (not evidence of health)",
