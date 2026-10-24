@@ -272,8 +272,6 @@ def collection_truncated(
     used = inner.get("model_requests_used")
     if type(limit) is not int or type(used) is not int:
         return None
-    if used < limit:
-        return False
     source = inner.get("source_step_id")
     rounds = [
         step
@@ -290,8 +288,10 @@ def collection_truncated(
     context = rounds[index]["response"].get("context")
     final = context.get("final") if isinstance(context, Mapping) else None
     if not isinstance(final, bool):
+        # R-10: a row without ``context.final`` cannot be judged, even when
+        # the request count alone would say "not at the limit".
         return None
-    if not final:
+    if used < limit or not final:
         return False
     if index == 0:
         return True

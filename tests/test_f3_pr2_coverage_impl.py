@@ -316,6 +316,8 @@ def test_missing_fields_give_none():
         "response": {"assistant": {"role": "assistant"}},
     }
     assert collection_truncated(_otel_input(1), [legacy], _conclusion(1, "s1")) is None
+    # Below the limit is still unjudgeable without ``context.final`` (R-10).
+    assert collection_truncated(_otel_input(6), [legacy], _conclusion(1, "s1")) is None
     assert collection_truncated({}, steps, _conclusion(1, "s1")) is None
     assert collection_truncated(_otel_input(1), steps, None) is None
     assert collection_truncated(_otel_input(1), steps, {"assistant": {}}) is None
