@@ -150,6 +150,8 @@ r1 只定方向。其余实现者需要猜的语义点，按 AGENTS.md「合同�
 
 - 2026-10-24 lead merge `origin/main`（含 F3 PR-2 #341）：`opspilot/web/service.py` 仅 import 冲突，两边都保留；#341 的两处版本钉子（`tests/acceptance/test_f3_step3_coverage.py`、`tests/test_f3_pr2_coverage_impl.py`）`prompt_revision` 改为本 PR 合同批准的 `prompt-replay-candidate-bef70649a3a8`，其余 revision 不变。临时 PG 17：本 PR 改动的测试文件 + F3 PR-2 测试 + 工作台测试 505 passed，钉子更新后 2 条复绿。
 
+- 2026-10-24 kind 四场景真实运行（合同 §7，代码 `5943b0f`，[run.md](../evidence/f11-pr4b-live/run.md)）：健康发布、健康发布＋adFailure、回归＋告警静默、回归＋告警开启全部 PASS，无失败轮。S3 新建事故与 v6 Run，报告引用新旧 Pod 与前后 hash，[trace](https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/8a425aef-71dc-4a29-8ac3-63dcd516f10c/r/00000000-0000-0000-3322-a454dfc71354?poll=true)；S4 追加 1 条事件、无第二个 Run（为保证告警先开，S4 期间先关 web 后台 pass、告警事故建出后再开）。四轮策略面对象除 Deployment／RS／flagd 外无变化；四个发布会话重放一致。DeepSeek 余额差 0.55 CNY（上界）。另见既有缺陷：发布观察过的目标上 `self_heal_pass` 因旧会话 `target` 缺 `revision` 报错（`observation/store.py:1243-1246`，非本 PR 引入），待开 issue。
+
 ## 下一步与交接
 
 PR-1 已合并（#218，`8299970`）。PR-2a 已合并（#223，`e0d39f9`）；PR-2b 已合并（#227，`92920f1`）；#225 加固已合并（#228，`147115d`）；重放部分证据缺陷已合并（#231，`50cc62a`）；#230 待排；U2 校准证据任务进行中，见 [U2 任务记录](2026-10-14-f11-u2-calibration.md)（实验工具 #233 已合并，待开跑）。

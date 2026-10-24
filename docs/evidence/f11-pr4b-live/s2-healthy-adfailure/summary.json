@@ -1,0 +1,198 @@
+{
+ "assertions": {
+  "alert_deliveries_total_at_scenario_end": 0,
+  "event_inputs_total_at_scenario_end": 0,
+  "incidents_created_in_window": [],
+  "links_for_observation": [],
+  "runs_total_at_scenario_end": 0,
+  "source": "s1/s2 DB snapshots taken ~65 s (two consumption passes) after the healthy ending; incidents/runs/links/events/deliveries all 0",
+  "verdict": "PASS"
+ },
+ "authorize": {
+  "at": "2026-10-24T09:55:52.162800+00:00",
+  "db_role": "web login IN ROLE opspilot_web",
+  "idempotency_label": "pr4b-s2-authorize-1",
+  "outcome": "applied",
+  "policy_revision": "otel-demo-checkout-release@e2ed7b69b96b",
+  "status_after": "observing"
+ },
+ "batch": "f11-pr4b-live",
+ "code_revision": "5943b0f",
+ "comparison": [],
+ "ending": [
+  {
+   "anomaly_key": null,
+   "ended_reason": "healthy_confirmed",
+   "ending_id": "73e9c09a-3f11-5750-a906-da54e47d133b",
+   "recorded_at": "2026-10-24 03:23:42.489644-07",
+   "subject_state_after": "healthy",
+   "transition": "release_healthy"
+  }
+ ],
+ "fault": [
+  {
+   "at": "2026-10-24T09:55:47.258168+00:00",
+   "duration_seconds": 900,
+   "flag": "adFailure",
+   "kind": "injection_planned",
+   "planned_at": "2026-10-24T10:00:41.481100+00:00",
+   "variant": "on"
+  },
+  {
+   "kind": "injection_config_verified",
+   "planned_at": "2026-10-24T10:00:41.481100+00:00",
+   "sha256": "462e0cbd16066d5ba8f477b811aa65c478846b1dca4972ce643d2fdcb18cae09"
+  },
+  {
+   "effective_at": "2026-10-24T10:01:01.203083+00:00",
+   "flag": "adFailure",
+   "kind": "flagd_variant_effective",
+   "variant": "on"
+  },
+  {
+   "at": "2026-10-24T10:16:01.377427+00:00",
+   "kind": "restore_config_verified",
+   "planned_at": "2026-10-24T10:16:01.203083+00:00"
+  },
+  {
+   "effective_at": "2026-10-24T10:16:11.700720+00:00",
+   "flag": "adFailure",
+   "kind": "flagd_variant_effective",
+   "variant": "off"
+  }
+ ],
+ "harness_run": "pr4b-s2-adfailure",
+ "intake": {
+  "http_status": 201,
+  "request_sha256": "abdb26e49e66c0acb8a513f72eabdfb573ad9d023d0bc09e8184e0a68692aca5",
+  "response": {
+   "observation_id": "0f692cbd-174e-437e-adc5-1a8fffd0bdec",
+   "outcome": "created",
+   "reason": null,
+   "status": "pending"
+  }
+ },
+ "k8s_policy_surface": {
+  "added": [],
+  "changed": [
+   "configmaps/otel-demo/flagd-config"
+  ],
+  "changed_outside_deployment_replicaset_flagd": [],
+  "kinds": 23,
+  "objects_compared": 308,
+  "removed": [],
+  "verdict": "PASS"
+ },
+ "link": [],
+ "observation": {
+  "calibrated_policy_revision": "otel-demo-checkout-release@e2ed7b69b96b",
+  "deadline_at": "2026-10-24 03:55:41.4811-07",
+  "ended_at": "2026-10-24 03:23:42.456585-07",
+  "ended_reason": "healthy_confirmed",
+  "health_profile_revision": "otel-demo-checkout@b72bbe2e30be",
+  "incident_id": null,
+  "min_tracking_seconds": 1500,
+  "observation_id": "0f692cbd-174e-437e-adc5-1a8fffd0bdec",
+  "released_at": "2026-10-24 02:55:41.4811-07",
+  "source": "kind-harness",
+  "source_release_id": "pr4b-s2-adfailure-20261024T095540Z",
+  "status": "healthy",
+  "used_sample_count": 12
+ },
+ "raw_ledger": {
+  "artifact_sha256": {
+   "after.json": "abfedd924c0dd75c537663c33dbd7d20c18e7330ce98794d9346e41bcba4494d",
+   "authorize.json": "bf7650a10dad8a84cd37f9b7da2bdf9bb3acf20aa132b2a2d05aa6d4ac1692cf",
+   "before.json": "1ce972a448634e09c00efec6e96418907ee3c8edef9ff6ecbc8f3d5e2d5f71ed",
+   "db-extract.json": "90f9c22cef2a3693d9b2dfa412dd1820bc5be65fd3ff4ae156dd6b5e0b13c573",
+   "fault.jsonl": "caf7b95339ff84c5bd71e7013687055826120fc8c066fa981bf3be37377e6d9a",
+   "release.json": "dc37274559d2789109d2f2864e59385c6e884b0eae23541b80d7bd72358b523f",
+   "timeline.jsonl": "43c694a7f035299bc6f02c0d9e283922a8fedff278e9b208ca2fb084d5846eb2",
+   "webhook.json": "1a4da4f1467d8b1b4fc569db0fbfcc0b108ea2197bbbc35ff508488daf871572"
+  },
+  "location": "main repo tmp/lab-ledgers/pr4b-s2-adfailure/ (not committed)"
+ },
+ "release": {
+  "after_pod_template_hash": "f8956c665",
+  "before_pod_template_hash": "f96c97d6",
+  "deployment_generation": 19,
+  "release_id": "pr4b-s2-adfailure-20261024T095540Z",
+  "released_at_patch_receipt": "2026-10-24T09:55:41.481100+00:00"
+ },
+ "samples": [
+  {
+   "disposition": "adopted",
+   "outcome": "no_data",
+   "sequence": 1,
+   "window_end": "2026-10-24 02:56:56.931655-07"
+  },
+  {
+   "disposition": "adopted",
+   "outcome": "no_data",
+   "sequence": 2,
+   "window_end": "2026-10-24 02:58:52.205306-07"
+  },
+  {
+   "disposition": "adopted",
+   "outcome": "healthy",
+   "sequence": 3,
+   "window_end": "2026-10-24 03:01:12.09587-07"
+  },
+  {
+   "disposition": "adopted",
+   "outcome": "healthy",
+   "sequence": 4,
+   "window_end": "2026-10-24 03:03:26.428956-07"
+  },
+  {
+   "disposition": "adopted",
+   "outcome": "healthy",
+   "sequence": 5,
+   "window_end": "2026-10-24 03:05:49.761713-07"
+  },
+  {
+   "disposition": "adopted",
+   "outcome": "healthy",
+   "sequence": 6,
+   "window_end": "2026-10-24 03:08:08.795175-07"
+  },
+  {
+   "disposition": "adopted",
+   "outcome": "healthy",
+   "sequence": 7,
+   "window_end": "2026-10-24 03:10:28.03744-07"
+  },
+  {
+   "disposition": "adopted",
+   "outcome": "healthy",
+   "sequence": 8,
+   "window_end": "2026-10-24 03:12:54.463096-07"
+  },
+  {
+   "disposition": "adopted",
+   "outcome": "healthy",
+   "sequence": 9,
+   "window_end": "2026-10-24 03:15:17.93979-07"
+  },
+  {
+   "disposition": "adopted",
+   "outcome": "healthy",
+   "sequence": 10,
+   "window_end": "2026-10-24 03:17:38.864841-07"
+  },
+  {
+   "disposition": "adopted",
+   "outcome": "healthy",
+   "sequence": 11,
+   "window_end": "2026-10-24 03:19:57.274073-07"
+  },
+  {
+   "disposition": "adopted",
+   "outcome": "healthy",
+   "sequence": 12,
+   "window_end": "2026-10-24 03:22:17.133036-07"
+  }
+ ],
+ "scenario": "s2-healthy-adfailure",
+ "schema": "f11-pr4b-live-scenario-v1"
+}

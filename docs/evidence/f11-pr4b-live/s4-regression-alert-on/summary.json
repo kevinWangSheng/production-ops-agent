@@ -1,0 +1,321 @@
+{
+ "assertions": {
+  "alert_deliveries": [
+   {
+    "fingerprint": "83f7541ae0105d42",
+    "incident_id": "60eff8f1-eff2-5cba-9bc8-4430dbfc4199",
+    "outcome": "created",
+    "received_at": "2026-10-24 04:04:41.490714-07",
+    "starts_at": "2026-10-24 04:03:54-07",
+    "status": "firing"
+   },
+   {
+    "fingerprint": "83f7541ae0105d42",
+    "incident_id": "60eff8f1-eff2-5cba-9bc8-4430dbfc4199",
+    "outcome": "resolved_attached",
+    "received_at": "2026-10-24 04:16:41.649186-07",
+    "starts_at": "2026-10-24 04:03:54-07",
+    "status": "resolved"
+   }
+  ],
+  "alert_delivery_created_at_utc": "2026-10-24T11:04:41Z",
+  "alert_run_input_watermark_after": 1,
+  "alert_run_trace": "root span not found in LangSmith: worker logged an OTLP export read timeout at 11:08:41Z dropping 2 spans (and 2 more at shutdown); not required by the contract for this scenario",
+  "event_inputs": [
+   {
+    "actor": "release_observation",
+    "channel": "release_observation",
+    "incident_id": "60eff8f1-eff2-5cba-9bc8-4430dbfc4199",
+    "input_id": "21b3bdd3-2866-5b9b-85a2-43d0ace5ba0f",
+    "received_at": "2026-10-24 04:05:25.877092-07",
+    "sequence": 1,
+    "text": "Release observation 96e375ef-c146-49ad-a620-11529e74028a ended anomalous (ending 465579b2-720b-54e3-957a-f72215a85b99, verdict degraded) on this incident's target; pod template sha256:41f001c5b7af2591ee5c8663784d514f50158684bdab333cf5b40cd29acfc959 -> sha256:d63997ed43acf5103f798d090a8b01eb86b2f13b0c9fc8fa6f01ecdcdf8cee78; evaluation reasons: DEGRADED_SIGNAL:after:dependency_error_ratio, DEGRADED_SIGNAL:after:error_ratio, DEGRADED_SIGNAL:context:dependency_error_ratio, DEGRADED_SIGNAL:context:error_ratio; before/after comparison complete; attached to this incident without a new Run."
+   }
+  ],
+  "incident": [
+   {
+    "control_generation": 0,
+    "created_at": "2026-10-24 04:04:41.590164-07",
+    "current_run_id": "2398b632-ea06-5654-9b39-730607c98fdf",
+    "incident_id": "60eff8f1-eff2-5cba-9bc8-4430dbfc4199",
+    "intake_key": "intake:evt:28a419d7dc24b73099ef0c17de9008d153d37c90c999be9b112658837f39df71",
+    "lifecycle": "open",
+    "mode": "automatic",
+    "priority": 0,
+    "related_incident_id": null
+   }
+  ],
+  "link_consumed_at_utc": "2026-10-24T11:05:25Z",
+  "ordering_control": "web started with OPSPILOT_SELF_HEAL_INTERVAL_SECONDS=0 before the release (consumption off; ending is durable), restarted with 30 after the alert incident existed",
+  "release_anomalous_before_alert": true,
+  "release_ending_recorded_at_utc": "2026-10-24T11:02:35Z",
+  "runs_on_incident": [
+   {
+    "incident_id": "60eff8f1-eff2-5cba-9bc8-4430dbfc4199",
+    "input_version": "opspilot-investigation-input-v5",
+    "model_requests": 16,
+    "prompt_revision": "prompt-replay-candidate-bef70649a3a8",
+    "run_id": "2398b632-ea06-5654-9b39-730607c98fdf",
+    "state": "completed",
+    "tool_operations_used": 32
+   }
+  ],
+  "runs_total_db": 2,
+  "verdict": "PASS"
+ },
+ "authorize": {
+  "at": "2026-10-24T10:53:44.688399+00:00",
+  "db_role": "web login IN ROLE opspilot_web",
+  "idempotency_label": "pr4b-s4-authorize-1",
+  "outcome": "applied",
+  "policy_revision": "otel-demo-checkout-release@e2ed7b69b96b",
+  "status_after": "observing"
+ },
+ "batch": "f11-pr4b-live",
+ "code_revision": "5943b0f",
+ "comparison": [
+  {
+   "after_instances": [
+    {
+     "images": {
+      "checkout": "sha256:5ab0d7b9003206a32c72ef48b42a535c3f70565251d7d832f86fe9f249f16635"
+     },
+     "pod_name": "checkout-69d54df8dc-lmz7m",
+     "pod_uid": "2606a54a-3be2-480f-8e11-aaa5f707e4be",
+     "replicaset_name": "checkout-69d54df8dc"
+    }
+   ],
+   "attempts": 1,
+   "before_instances": [
+    {
+     "images": {
+      "checkout": "sha256:5ab0d7b9003206a32c72ef48b42a535c3f70565251d7d832f86fe9f249f16635"
+     },
+     "pod_name": "checkout-659b547476-vswj4",
+     "pod_uid": "700b6d45-c35c-4653-bf19-73770bd3adf8",
+     "replicaset_name": "checkout-659b547476"
+    }
+   ],
+   "comparison_id": "a0efd8d6-9314-5767-aac3-07e9bcfcaebf",
+   "recorded_at": "2026-10-24 04:03:43.087628-07",
+   "signals": [
+    {
+     "reason_codes": [],
+     "scope": "before_service",
+     "signal_name": "request_rate_per_second",
+     "value": 0.004166666666666667
+    },
+    {
+     "reason_codes": [],
+     "scope": "before_service",
+     "signal_name": "error_ratio",
+     "value": 0.0
+    },
+    {
+     "reason_codes": [],
+     "scope": "before_service",
+     "signal_name": "latency_p95_milliseconds",
+     "value": 97.49999999999999
+    },
+    {
+     "reason_codes": [],
+     "scope": "before_old",
+     "signal_name": "request_rate_per_second",
+     "value": 0.004166666666666667
+    },
+    {
+     "reason_codes": [],
+     "scope": "before_old",
+     "signal_name": "error_ratio",
+     "value": 0.0
+    },
+    {
+     "reason_codes": [],
+     "scope": "before_old",
+     "signal_name": "latency_p95_milliseconds",
+     "value": 97.49999999999999
+    },
+    {
+     "reason_codes": [],
+     "scope": "after_service",
+     "signal_name": "request_rate_per_second",
+     "value": 0.026898593356777387
+    },
+    {
+     "reason_codes": [],
+     "scope": "after_service",
+     "signal_name": "error_ratio",
+     "value": 0.5352916848028972
+    },
+    {
+     "reason_codes": [],
+     "scope": "after_service",
+     "signal_name": "latency_p95_milliseconds",
+     "value": 109.19163685604042
+    },
+    {
+     "reason_codes": [],
+     "scope": "after_new",
+     "signal_name": "request_rate_per_second",
+     "value": 0.026898593356777387
+    },
+    {
+     "reason_codes": [],
+     "scope": "after_new",
+     "signal_name": "error_ratio",
+     "value": 0.5352916848028972
+    },
+    {
+     "reason_codes": [],
+     "scope": "after_new",
+     "signal_name": "latency_p95_milliseconds",
+     "value": 109.19163685604042
+    }
+   ],
+   "status": "complete",
+   "window_after_end": "2026-10-24 04:01:19.722614-07",
+   "window_after_start": "2026-10-24 03:56:19.722614-07",
+   "window_before_end": "2026-10-24 03:53:34.576707-07",
+   "window_before_start": "2026-10-24 03:48:34.576707-07"
+  }
+ ],
+ "ending": [
+  {
+   "anomaly_key": "release-anomaly:96e375ef-c146-49ad-a620-11529e74028a",
+   "ended_reason": "anomaly_detected",
+   "ending_id": "465579b2-720b-54e3-957a-f72215a85b99",
+   "recorded_at": "2026-10-24 04:02:35.951216-07",
+   "subject_state_after": "anomalous",
+   "transition": "release_anomalous"
+  }
+ ],
+ "fault": [
+  {
+   "at": "2026-10-24T10:53:40.727568+00:00",
+   "duration_seconds": 900,
+   "flag": "paymentFailure",
+   "kind": "injection_planned",
+   "planned_at": "2026-10-24T10:58:34.576707+00:00",
+   "variant": "100%"
+  },
+  {
+   "kind": "injection_config_verified",
+   "planned_at": "2026-10-24T10:58:34.576707+00:00",
+   "sha256": "e47d27c2fa01c72d8bc71d40d0f4223b1049fd84582e5789cbd9a5ccbdcc915d"
+  },
+  {
+   "effective_at": "2026-10-24T10:59:23.337991+00:00",
+   "flag": "paymentFailure",
+   "kind": "flagd_variant_effective",
+   "variant": "100%"
+  },
+  {
+   "at": "2026-10-24T11:14:23.644043+00:00",
+   "kind": "restore_config_verified",
+   "planned_at": "2026-10-24T11:14:23.337991+00:00"
+  },
+  {
+   "effective_at": "2026-10-24T11:14:30.877557+00:00",
+   "flag": "paymentFailure",
+   "kind": "flagd_variant_effective",
+   "variant": "off"
+  }
+ ],
+ "harness_run": "pr4b-s4-regress-alert",
+ "intake": {
+  "http_status": 201,
+  "request_sha256": "143ff0b83853340456563b965bbede32d0706b032025f2cbd358b76b06a43b12",
+  "response": {
+   "observation_id": "96e375ef-c146-49ad-a620-11529e74028a",
+   "outcome": "created",
+   "reason": null,
+   "status": "pending"
+  }
+ },
+ "k8s_policy_surface": {
+  "added": [],
+  "changed": [
+   "configmaps/otel-demo/flagd-config"
+  ],
+  "changed_outside_deployment_replicaset_flagd": [],
+  "kinds": 23,
+  "objects_compared": 308,
+  "removed": [],
+  "verdict": "PASS"
+ },
+ "link": [
+  {
+   "comparison_id": "a0efd8d6-9314-5767-aac3-07e9bcfcaebf",
+   "consumed_at": "2026-10-24 04:05:25.863986-07",
+   "disposition": "attached",
+   "handoff_reason": null,
+   "incident_id": "60eff8f1-eff2-5cba-9bc8-4430dbfc4199",
+   "input_id": "21b3bdd3-2866-5b9b-85a2-43d0ace5ba0f",
+   "related_incident_id": null,
+   "run_id": null
+  }
+ ],
+ "observation": {
+  "calibrated_policy_revision": "otel-demo-checkout-release@e2ed7b69b96b",
+  "deadline_at": "2026-10-24 04:53:34.576707-07",
+  "ended_at": "2026-10-24 04:02:35.902385-07",
+  "ended_reason": "anomaly_detected",
+  "health_profile_revision": "otel-demo-checkout@b72bbe2e30be",
+  "incident_id": "60eff8f1-eff2-5cba-9bc8-4430dbfc4199",
+  "min_tracking_seconds": 1500,
+  "observation_id": "96e375ef-c146-49ad-a620-11529e74028a",
+  "released_at": "2026-10-24 03:53:34.576707-07",
+  "source": "kind-harness",
+  "source_release_id": "pr4b-s4-regress-alert-20261024T105334Z",
+  "status": "anomalous",
+  "used_sample_count": 4
+ },
+ "raw_ledger": {
+  "artifact_sha256": {
+   "after.json": "8d4e2165674e71b89128c064c40b57c0a87965de84c1f87ff997aaa5ed01882d",
+   "authorize.json": "bdf50968236885c24fe84935b04a5b85940c5412b2389b5a5cdf86e6e2dbbcc7",
+   "before.json": "c4cf9b1b11fab40bba4a1c741541490d3e4635925478539ba215de4287a0af53",
+   "db-extract.json": "048d5cfe411534042a4a747745f658c85c4db7a8f6dbb8f1c560ee9e96db6db5",
+   "fault.jsonl": "e22570a63cc3300c7567c32a832526690e1aeef12c53c17373797faeb8b0a3f9",
+   "release.json": "dc7adba0964d935b9a168ad2fd0ced301249d0bcfc9257095401a2e1d288eafa",
+   "timeline.jsonl": "7c99ca233e94442e4c47f4ad61f64239dfb8c358ac0b276cbad569c8ec5c488a",
+   "webhook.json": "4a64d28b13f5c2ba811b5501f272c6a1dc3349092c72ba9eb4a8f213ed08b9fb"
+  },
+  "location": "main repo tmp/lab-ledgers/pr4b-s4-regress-alert/ (not committed)"
+ },
+ "release": {
+  "after_pod_template_hash": "69d54df8dc",
+  "before_pod_template_hash": "659b547476",
+  "deployment_generation": 21,
+  "release_id": "pr4b-s4-regress-alert-20261024T105334Z",
+  "released_at_patch_receipt": "2026-10-24T10:53:34.576707+00:00"
+ },
+ "samples": [
+  {
+   "disposition": "adopted",
+   "outcome": "no_data",
+   "sequence": 1,
+   "window_end": "2026-10-24 03:54:47.475939-07"
+  },
+  {
+   "disposition": "adopted",
+   "outcome": "no_data",
+   "sequence": 2,
+   "window_end": "2026-10-24 03:56:37.22787-07"
+  },
+  {
+   "disposition": "adopted",
+   "outcome": "healthy",
+   "sequence": 3,
+   "window_end": "2026-10-24 03:58:55.081729-07"
+  },
+  {
+   "disposition": "adopted",
+   "outcome": "degraded",
+   "sequence": 4,
+   "window_end": "2026-10-24 04:01:19.722614-07"
+  }
+ ],
+ "scenario": "s4-regression-alert-on",
+ "schema": "f11-pr4b-live-scenario-v1"
+}
