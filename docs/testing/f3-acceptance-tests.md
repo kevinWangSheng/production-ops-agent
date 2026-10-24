@@ -15,19 +15,19 @@
 
 | 步 | 确定性测试 | 已有证据 | 新证据 |
 |---|---|---|---|
-| 1 观测带来源、查询、窗、新鲜度、目标、可解析引用 | PG：`test_step1_every_observation_carries_its_attribution`、`test_step1_legacy_view_lists_missing_fields_in_a_read_only_transaction`；冻结：`test_step1_every_observation_of_the_real_run_is_attributed_and_resolvable[run-1/2]` | PR-1 验收 `tests/integration/test_f3_pr1_projection_acceptance_postgres.py`（合成数据） | 两次 kind Run 的 summary：待 PR-3b 会话；R4 旧库检查 `docs/evidence/f3-step1-legacy-compat/`（可选，R-7）：待 PR-3b 会话 |
-| 2 五类可区分 | PG：`test_step2_five_claim_kinds_stay_apart`；冻结：`test_step2_real_run_keeps_the_five_claim_kinds_apart[run-1/2]` | PR-1 验收（同上） | summary：待 PR-3b 会话；审查者 summary 一致性判定（第 2 步门槛）：待 PR-3b 会话 |
-| 3 缺源被点名、不当作已支持结论 | PG：`test_step3_a_failed_source_is_named_as_a_gap`；冻结：`test_step3_d9_rerun_of_scenario_a_on_the_current_prompt_revision` | [PR-2 证据](../evidence/f3-step3-coverage/README.md) A、B；`tests/acceptance/test_f3_step3_coverage*.py`、`tests/integration/test_f3_step3_coverage_postgres.py` | D9 重跑场景 A：`docs/evidence/f3-step3-coverage/missing-source-rerun-<revision>/`（替身，不占 kind）：待 PR-3b 会话 |
+| 1 观测带来源、查询、窗、新鲜度、目标、可解析引用 | PG：`test_step1_every_observation_carries_its_attribution`、`test_step1_legacy_view_lists_missing_fields_in_a_read_only_transaction`；冻结：`test_step1_every_observation_of_the_real_run_is_attributed_and_resolvable[run-1/2]` | PR-1 验收 `tests/integration/test_f3_pr1_projection_acceptance_postgres.py`（合成数据） | 两次 kind Run 的 summary：[run-1](../evidence/f3-step5-competing-cause/run-1/summary.json)、[run-2](../evidence/f3-step5-competing-cause/run-2/summary.json)；R4 旧库检查：无可用归档库，按 R-7 引用 PR-1 合成旧行测试（见 [run.md](../evidence/f3-acceptance-live/run.md)） |
+| 2 五类可区分 | PG：`test_step2_five_claim_kinds_stay_apart`；冻结：`test_step2_real_run_keeps_the_five_claim_kinds_apart[run-1/2]` | PR-1 验收（同上） | summary：同上；审查者 summary 一致性判定（第 2 步门槛）：[审查者结论](../evidence/f3-step5-competing-cause/run.md)，两次 Run 均两名审查者判一致 |
+| 3 缺源被点名、不当作已支持结论 | PG：`test_step3_a_failed_source_is_named_as_a_gap`；冻结：`test_step3_d9_rerun_of_scenario_a_on_the_current_prompt_revision` | [PR-2 证据](../evidence/f3-step3-coverage/README.md) A、B；`tests/acceptance/test_f3_step3_coverage*.py`、`tests/integration/test_f3_step3_coverage_postgres.py` | D9 重跑场景 A：`docs/evidence/f3-step3-coverage/missing-source-rerun-<revision>/`（替身，不占 kind）：[已完成](../evidence/f3-step3-coverage/README.md) |
 | 4 输入错误、连通失败、超时、无数据可区分 | PG：`test_step4_input_connectivity_timeout_and_no_data_are_distinguished` | PR-1 验收；`tests/acceptance/test_311_source_errors.py` | 无（复用） |
-| 5 无关部署 + 依赖故障，按 rubric 检验竞争原因 | 判定器单元测试（门 1–4 各自失败、签名、探测）；冻结文件 `test_step5_frozen_rubric_answer_stimulus_are_unchanged`；R11 `test_scenario_index_lists_the_competing_cause_scenario`；PG：`test_step5_alert_follow_up_and_one_run_published`、`test_step5_follow_up_is_visible_in_the_first_model_round`、`test_step5_rubric_deterministic_gates_hold_on_the_product_path`、`test_step5_signature_is_on_the_cited_trace_evidence`；冻结：`test_step5_real_run_used_the_frozen_files_and_current_model_surface`、`test_step5_real_run_meets_rubric_gates_1_to_4`、`test_step5_two_independent_real_runs` | PR-3a 驱动与冻结 rubric/answer（`tests/acceptance/test_f3_step5_competing_scenario.py`） | `docs/evidence/f3-step5-competing-cause/run-{1,2}/summary.json` + `run.md`（LangSmith、余额差、两名审查者结论）：待 PR-3b 会话 |
-| 6 调查不能改动目标环境 | 静态：`test_step6_registered_tools_are_read_only_verbs`；PG：`test_step6_tool_requests_are_read_only_gets_on_the_bound_target`、`test_step6_unregistered_write_tool_is_refused_without_an_outbound_request`；冻结：`test_step6_real_run_tool_requests_are_read_only_on_the_bound_target[run-1/2]`、`test_step6_authorization_probe_in_the_f3_window_denies_writes` | F7：[代理探测 2026-10-16](../evidence/f7-authz-probe/run.md)、`tests/acceptance/test_f7_step1_entry_points.py`、`tests/integration/test_runtime_roles_postgres.py` | R10 探测 `docs/evidence/f3-step6-authz-probe/probe.json`：待 PR-3b 会话 |
+| 5 无关部署 + 依赖故障，按 rubric 检验竞争原因 | 判定器单元测试（门 1–4 各自失败、签名、探测）；冻结文件 `test_step5_frozen_rubric_answer_stimulus_are_unchanged`；R11 `test_scenario_index_lists_the_competing_cause_scenario`；PG：`test_step5_alert_follow_up_and_one_run_published`、`test_step5_follow_up_is_visible_in_the_first_model_round`、`test_step5_rubric_deterministic_gates_hold_on_the_product_path`、`test_step5_signature_is_on_the_cited_trace_evidence`；冻结：`test_step5_real_run_used_the_frozen_files_and_current_model_surface`、`test_step5_real_run_meets_rubric_gates_1_to_4`、`test_step5_two_independent_real_runs` | PR-3a 驱动与冻结 rubric/answer（`tests/acceptance/test_f3_step5_competing_scenario.py`） | `docs/evidence/f3-step5-competing-cause/run-{1,2}/summary.json`、[审查者结论](../evidence/f3-step5-competing-cause/run.md)（rubric 2/2）、[运行记录](../evidence/f3-acceptance-live/run.md)（LangSmith、余额差） |
+| 6 调查不能改动目标环境 | 静态：`test_step6_registered_tools_are_read_only_verbs`；PG：`test_step6_tool_requests_are_read_only_gets_on_the_bound_target`、`test_step6_unregistered_write_tool_is_refused_without_an_outbound_request`；冻结：`test_step6_real_run_tool_requests_are_read_only_on_the_bound_target[run-1/2]`、`test_step6_authorization_probe_in_the_f3_window_denies_writes` | F7：[代理探测 2026-10-16](../evidence/f7-authz-probe/run.md)、`tests/acceptance/test_f7_step1_entry_points.py`、`tests/integration/test_runtime_roles_postgres.py` | R10 探测 [probe.json](../evidence/f3-step6-authz-probe/probe.json)（136/136） |
 
 `IncidentOutcome.permissions` 是常量，任何测试都不以它为证据（U9-a）。
 
 ## main 上的状态（3c18bdb）
 
 - 绿：判定器与静态测试 14 个；PG 产品路径 11 个（需 `M1_DURABLE_POSTGRES=1`，否则跳过）。
-- 红 14 个，均为预期缺口：场景索引缺 `F3:competing-cause`（R11）1 个；冻结证据未入库 13 个（缺文件即失败，不跳过）。PR-3b 入库证据、加索引后应全绿；任何一项仍红即该步未通过。
+- （编写时在 main `3c18bdb` 上）红 14 个，均为预期缺口：场景索引缺 `F3:competing-cause`（R11）1 个；冻结证据未入库 13 个（缺文件即失败，不跳过）。PR-3b 入库证据、加索引后应全绿；任何一项仍红即该步未通过。
 
 ## 运行
 
@@ -39,3 +39,4 @@ OPSPILOT_PG_DUMP=/opt/homebrew/opt/postgresql@17/bin/pg_dump M1_DURABLE_POSTGRES
 ```
 
 PG 测试自建并删除临时库，不写共享 lab 库。这些是确定性合同与集成测试，不是真实模型或生产证明。
+- PR-3b 证据入库并加 R11 索引后：本文件所列测试全绿（2026-10-24）。
