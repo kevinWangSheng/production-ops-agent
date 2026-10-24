@@ -19,6 +19,9 @@
 <p>Opened after closed incident <a id="related-incident" href="/incidents/{{ inc.related_incident_id }}"><code>{{ inc.related_incident_id }}</code></a>
   <span class="muted">(same alert on the same target; the closed incident was not reopened)</span></p>
 {% endif %}
+{% for link in release_links or [] %}
+<p class="release-link">Linked from version change observation <a href="/version-changes/{{ link.observation_id }}"><code>{{ link.observation_id }}</code></a> <span class="badge">{{ link.disposition }}</span> <span class="muted">(its health verdict is advisory; causal findings are this incident's)</span></p>
+{% endfor %}
 {% if snapshot.target_id %}
 <p>Target request: <code>{{ snapshot.target_id }}</code> <span class="muted">(unresolved operator input; identity is registry-resolved by the investigator)</span></p>
 {% endif %}

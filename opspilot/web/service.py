@@ -31,6 +31,7 @@ from pydantic import ValidationError
 
 from opspilot.acceptance_alert import alert_intake_outcome, utc_seconds
 from opspilot.acceptance_recovery import authorization_source
+from opspilot.acceptance_release import CONCLUDED_VERDICTS, release_verdict
 from opspilot.alertmanager import (
     Alert,
     InvalidAlert,
@@ -121,6 +122,13 @@ _RELEASE_PRINCIPAL = Principal(
 _RELEASE_INTAKE_PREFIX = "intake:release-anomaly:"
 #: R4: how many reason codes the appended event's text lists.
 _RELEASE_EVENT_CODES = 16
+#: C3 section 9: the only controls a release observation has. Approving,
+#: blocking, rolling back or promoting a release is outside the product
+#: (PRODUCT-CONSTRAINTS); such an action is refused before any write.
+RELEASE_CONTROL_ACTIONS = ("pause", "resume", "cancel")
+#: D4: the fixed reminder every release page carries (C3 line 374), in the
+#: contract's own words; the page adds the English gloss.
+RELEASE_NOTICE = "观察健康结论，仅供参考；不批准、不阻断、不执行发布"
 _log = logging.getLogger(__name__)
 #: Lease granted per attempt and re-extended before every committer call.
 #: The loop is synchronous, so nothing can renew while one model request is
@@ -1511,6 +1519,121 @@ class Workbench:
             _log.warning("release fact differs from records incident=%s", incident_id)
             raise PersistenceError("INCOMPATIBLE_STATE")
 
+    # -- release observation pages (F11 PR-5a) ---------------------------
+
+    def list_releases(self) -> list[dict[str, Any]]:
+        """The release list (D6): newest 50 by reception; none without a
+        durable store."""
+        store = self._release_store()
+        if store is None:
+            return []
+        return [_release_summary(release) for release in store.list_releases()]
+
+    def release_page(self, observation_id: UUID) -> dict[str, Any]:
+        """One release as its page shows it (D4), JSON-safe; the verdict is
+        the acceptance projection's (``release_verdict``)."""
+        store = self._release_store()
+        detail = None if store is None else store.release_detail(observation_id)
+        if detail is None:
+            raise WorkbenchError("UNKNOWN_RELEASE")
+        release = detail["release"]
+        page = _release_summary(release)
+        page.update(
+            {
+                "target_id": str(release.target_id),
+                "before": release.before_revision.model_dump(mode="json"),
+                "after": release.after_revision.model_dump(mode="json"),
+                "auxiliary": release.auxiliary.model_dump(mode="json"),
+                "ended_at": _iso(release.ended_at),
+                "deadline_seconds": release.deadline_seconds,
+                "min_tracking_seconds": release.min_tracking_seconds,
+                "sample_interval_seconds": release.sample_interval_seconds,
+                "sustained_window_seconds": release.sustained_window_seconds,
+                "health_profile_revision": release.health_profile_revision,
+                "calibrated_policy_revision": release.calibrated_policy_revision,
+                "calibrated_policy_sha256": release.calibrated_policy_sha256,
+                "control_generation": release.control_generation,
+                "observation_generation": release.observation_generation,
+                "sessions": _json_safe(detail["sessions"]),
+                "endings": _json_safe(detail["endings"]),
+                "comparisons": _json_safe(detail["comparisons"]),
+                "link": _json_safe(detail["link"]),
+                "audit": [
+                    _json_safe(
+                        {
+                            k: v
+                            for k, v in row.items()
+                            if k not in ("idempotency_key", "request_sha256", "result")
+                        }
+                    )
+                    for row in detail["audit"]
+                ],
+                "deliveries": _json_safe(detail["deliveries"]),
+                "actions": _release_actions(release, detail["sessions"]),
+                "notice": RELEASE_NOTICE,
+            }
+        )
+        return page
+
+    def release_control(
+        self,
+        observation_id: UUID,
+        *,
+        action: str,
+        actor_id: str,
+        expected_control_generation: int,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        """Pause, resume or cancel one release observation through the PR-2
+        primitive (C3 section 9); nothing else is accepted, and nothing here
+        approves, blocks, rolls back or deploys a release. A resume names
+        the release's calibrated policy revision (D3); a refusal the
+        primitive audited is raised with the release's current generation.
+        """
+        if action not in RELEASE_CONTROL_ACTIONS:
+            raise WorkbenchError("INVALID_INPUT")
+        store = self._release_store()
+        if store is None:
+            raise WorkbenchError("UNKNOWN_RELEASE")
+        try:
+            release = store.get_release(observation_id)
+        except PersistenceError as exc:
+            if str(exc) == "NOT_FOUND":
+                raise WorkbenchError("UNKNOWN_RELEASE") from None
+            raise
+        revision = None
+        if action == "resume":
+            from opspilot.observation.releases import calibrated_revision_for
+
+            try:
+                revision = calibrated_revision_for(release)
+            except PersistenceError as exc:
+                raise WorkbenchError(str(exc)) from None
+        receipt = store.control_release(
+            observation_id,
+            action=action,
+            actor=actor_id,
+            expected_control_generation=expected_control_generation,
+            idempotency_key=idempotency_key,
+            calibrated_policy_revision=revision,
+        )
+        if receipt.outcome == "rejected":
+            raise WorkbenchError(
+                receipt.reason or "RELEASE_REJECTED",
+                current_generation=receipt.control_generation,
+            )
+        return cast(dict[str, Any], receipt.model_dump(mode="json"))
+
+    def release_links_for(self, incident_id: UUID) -> list[dict[str, Any]]:
+        """The release observations linked to ``incident_id`` (D9)."""
+        store = self._release_store()
+        if store is None:
+            return []
+        return [
+            cast(dict[str, Any], _json_safe(link))
+            for link in store.incident_release_links(incident_id)
+        ]
+
     def _audit_matches(
         self,
         intent: Mapping[str, Any],
@@ -2465,6 +2588,61 @@ def _stored_alert(alert_json: str) -> dict[str, Any]:
         "ends_at": ends_at if isinstance(ends_at, str) else None,
         "record_text": None,
     }
+
+
+def _iso(value: datetime | None) -> str | None:
+    return None if value is None else value.isoformat()
+
+
+def _json_safe(value: Any) -> Any:
+    """Stored rows as JSON values: instants as ISO text, ids as text."""
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, UUID):
+        return str(value)
+    if isinstance(value, Mapping):
+        return {str(k): _json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(v) for v in value]
+    return value
+
+
+def _release_summary(release: Any) -> dict[str, Any]:
+    """The list row of one release (D6), also the head of its page."""
+    return {
+        "observation_id": str(release.observation_id),
+        "verdict": release_verdict(release.status),
+        "concluded": release_verdict(release.status) in CONCLUDED_VERDICTS,
+        "status": release.status,
+        "paused": release.paused,
+        "ended_reason": release.ended_reason,
+        "source": release.source,
+        "source_release_id": release.source_release_id,
+        "target": dict(release.target_snapshot),
+        "released_at": release.released_at.isoformat(),
+        "received_at": release.received_at.isoformat(),
+        "deadline_at": release.deadline_at.isoformat(),
+        "used_sample_count": release.used_sample_count,
+        "max_samples": release.max_samples,
+        "incident_id": None
+        if release.incident_id is None
+        else str(release.incident_id),
+    }
+
+
+def _release_actions(release: Any, sessions: Iterable[Mapping[str, Any]]) -> list[str]:
+    """The controls the page offers: none on a concluded or cancelled
+    release; pause or resume by the paused flag, plus resume for an
+    observing release whose session authority ended (a suspension revoked
+    it); cancel always. The primitive decides; this only picks buttons."""
+    if release.status not in ("pending", "observing"):
+        return []
+    if release.paused:
+        return ["resume", "cancel"]
+    live = any(s.get("state") == "authorized" for s in sessions)
+    if release.status == "observing" and not live:
+        return ["pause", "resume", "cancel"]
+    return ["pause", "cancel"]
 
 
 def _utc_second(moment: datetime) -> datetime:

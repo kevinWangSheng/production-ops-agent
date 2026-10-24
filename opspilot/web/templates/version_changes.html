@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}OpsPilot · version changes{% endblock %}
+{% block body %}
+<h1>Version changes</h1>
+<p class="muted">Independent post-change observations: a health conclusion per observed version change, advisory only. It does not approve, block or perform any change.</p>
+{% if releases %}
+<table id="version-changes">
+  <thead><tr><th>Observation</th><th>Verdict</th><th>Service</th><th>Source</th><th>Changed at</th><th>Received</th><th>Deadline</th><th>Samples</th><th>Incident</th></tr></thead>
+  <tbody>
+  {% for r in releases %}
+    <tr>
+      <td><a href="/version-changes/{{ r.observation_id }}"><code>{{ r.observation_id }}</code></a></td>
+      <td><span class="badge verdict">{{ r.verdict }}</span>{% if r.paused %} <span class="badge">paused</span>{% endif %}{% if r.ended_reason %} <span class="muted">{{ r.ended_reason }}</span>{% endif %}</td>
+      <td><code>{{ r.target.namespace }}/{{ r.target.workload }}</code></td>
+      <td><code>{{ r.source }}</code> · <code>{{ r.source_release_id }}</code></td>
+      <td>{{ r.released_at }}</td>
+      <td>{{ r.received_at }}</td>
+      <td>{{ r.deadline_at }}</td>
+      <td>{{ r.used_sample_count }} / {{ r.max_samples }}</td>
+      <td>{% if r.incident_id %}<a href="/incidents/{{ r.incident_id }}"><code>{{ r.incident_id }}</code></a>{% endif %}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+<p class="muted">Newest 50 by reception. Reload the page for current state.</p>
+{% else %}
+<p class="muted">No version changes observed yet.</p>
+{% endif %}
+{% endblock %}
