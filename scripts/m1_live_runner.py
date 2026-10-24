@@ -60,9 +60,11 @@ import os
 import re
 import secrets
 import time
+from collections.abc import Mapping
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Any
 from uuid import uuid4
 
 import psycopg
@@ -70,6 +72,12 @@ import psycopg
 from opspilot import tracing
 from opspilot.acceptance_investigation import investigation_evidence
 from opspilot.investigation.client import DeepSeekClient
+from opspilot.investigation.context import (
+    COMPACTION_KIND,
+    ContextError,
+    parse_step_key,
+    rebuild_transcript,
+)
 from opspilot.investigation.inputs import continuation_input
 from opspilot.investigation.limits import M1_FROZEN_LIMITS
 from opspilot.investigation.loop import (
@@ -512,6 +520,9 @@ def main() -> int:
         "events": _events(log, incident),
         "trace": trace_record,
     }
+    # #242: the compaction rows as PostgreSQL holds them, and the product's
+    # own rebuild of the next model call from those rows (what a resume reads).
+    snapshot = store.rebuild(incident)
     out = resolve_out_dir(
         str(run_id), sweep=args.sweep, follow_up_after_timeout=args.timeout_follow_up
     )
@@ -520,6 +531,8 @@ def main() -> int:
     # (Codex review, PR #110 B1).
     first = final_loop(attempts)
     report = None if first is None else runner_report(store, incident)
+    parsed_report = parse_report(report)
+    compaction_fields = compaction_summary(snapshot, target_id, parsed_report)
     # Frozen summary (ADR-0006 decision 3): report, verdicts, counts, cost,
     # trace link; the raw ledger (HTTP attempts, row snapshots, event stream)
     # stays out of the repository and is identified by its sha256.
@@ -564,7 +577,8 @@ def main() -> int:
             },
             "counts": summary_counts(ledger, args.model_requests, first),
             "cost": {"known_cost_cny_upper": ledger["known_cost_cny_upper"]},
-            "report": parse_report(report),
+            "report": parsed_report,
+            **compaction_fields,
             "report_content_sha256": None
             if first is None
             else first["report_content_sha256"],
@@ -581,6 +595,8 @@ def main() -> int:
         **frozen["verdicts"],
         "http_count": ledger["http_count"],
         "known_cost_cny_upper": ledger["known_cost_cny_upper"],
+        "compactions": compaction_fields["compactions"],
+        "offline_rebuild": compaction_fields["offline_rebuild"],
         "trace": frozen["trace"],
         "f3_coverage": frozen.get("f3_coverage"),
         "ledger_sha256": frozen["raw_ledger"]["sha256"],
@@ -771,6 +787,143 @@ def final_loop(attempts) -> dict | None:
         if loop is not None:
             return loop
     return None
+
+
+def _live_steps(snapshot: Mapping[str, Any]) -> list[Mapping[str, Any]]:
+    return sorted(
+        (s for s in snapshot["steps"] if s.get("status") != "late_result"),
+        key=lambda s: (int(s.get("sequence", 0)), str(s.get("step_id"))),
+    )
+
+
+def compaction_record(snapshot: Mapping[str, Any]) -> dict[str, Any]:
+    """The compaction rows of the current Run as committed in PostgreSQL
+    (#242 R-3): counts, one entry per row, and the committed step keys in
+    order, so the frozen summary shows a round after the accepted fold."""
+    rows = []
+    keys = []
+    for step in _live_steps(snapshot):
+        response = step.get("response") or {}
+        keys.append(step.get("logical_key"))
+        if response.get("kind") != COMPACTION_KIND:
+            continue
+        record = response.get("compaction") or {}
+        rows.append(
+            {
+                "logical_key": step.get("logical_key"),
+                "accepted": record.get("accepted") is True,
+                "revision": record.get("revision"),
+                "from_segment": record.get("from_segment"),
+                "to_segment": record.get("to_segment"),
+                "folded_step_ids": len(record.get("folded_step_ids") or ()),
+            }
+        )
+    accepted = [row for row in rows if row["accepted"]]
+    after = 0
+    if accepted:
+        segments = [parse_step_key(key) for key in keys]
+        after = sum(
+            1 for p in segments if p is not None and p[0] == accepted[-1]["to_segment"]
+        )
+    return {
+        "attempted": len(rows),
+        "accepted": len(accepted),
+        "rows": rows,
+        "step_keys": keys,
+        "rounds_after_last_accepted": after,
+    }
+
+
+def offline_rebuild(snapshot: Mapping[str, Any], target_id: str) -> dict[str, Any]:
+    """Rebuild the next model call from the PostgreSQL rows with the product's
+    ``rebuild_transcript`` -- the same walk ``InvestigationRunner`` runs on a
+    resume, including the snapshot-hash check of every compaction row and
+    every round after it (#242 U-1 A). Offline: no claim, no model call."""
+    run_id = str(snapshot["run"]["run_id"])
+    try:
+        transcript = rebuild_transcript(
+            snapshot, run_id=run_id, authorized_targets=frozenset({target_id})
+        )
+    except ContextError as exc:
+        return {"segment": None, "compactions": None, "error": exc.code}
+    except Exception as exc:  # noqa: BLE001 -- recorded as evidence, not hidden
+        return {"segment": None, "compactions": None, "error": type(exc).__name__}
+    return {
+        "segment": transcript.segment,
+        "error": None,
+        "compactions": transcript.compactions,
+        "compaction_attempts": transcript.compaction_attempts,
+        "live_steps": transcript.live_steps,
+        "next_round": transcript.next_round,
+        "evidence_ids": list(transcript.evidence_ids),
+    }
+
+
+def compaction_summary(
+    snapshot: Mapping[str, Any], target_id: str, report: object
+) -> dict[str, Any]:
+    """The #242 fields of the frozen summary. ``compactions`` and
+    ``offline_rebuild`` carry exactly the keys the acceptance reads; the
+    per-row record and the rest of the rebuild sit beside them."""
+    record = compaction_record(snapshot)
+    rebuilt = offline_rebuild(snapshot, target_id)
+    head = ("segment", "compactions", "error")
+    return {
+        "compactions": {k: record[k] for k in ("accepted", "attempted")},
+        "compaction_rows": {
+            k: v for k, v in record.items() if k not in ("accepted", "attempted")
+        },
+        "offline_rebuild": {k: rebuilt[k] for k in head},
+        "offline_rebuild_detail": {k: v for k, v in rebuilt.items() if k not in head},
+        "citations": citation_provenance(report, snapshot, rebuilt),
+    }
+
+
+def citation_provenance(
+    report: object, snapshot: Mapping[str, Any], rebuilt: Mapping[str, Any]
+) -> dict[str, Any] | None:
+    """Where each evidence id the report cites came from: the segment of the
+    round that produced it, whether an accepted compaction folded that round,
+    and whether the PG rebuild still delivers it (PRODUCT-CONSTRAINTS:
+    compression preserves evidence provenance)."""
+    if not isinstance(report, dict):
+        return None
+    segment_of: dict[str, str | None] = {}
+    folded: set[str] = set()
+    for step in _live_steps(snapshot):
+        response = step.get("response") or {}
+        parsed = parse_step_key(step.get("logical_key"))
+        segment_of[str(step.get("step_id"))] = None if parsed is None else parsed[0]
+        record = response.get("compaction") or {}
+        if response.get("kind") == COMPACTION_KIND and record.get("accepted") is True:
+            folded.update(str(i) for i in record.get("folded_step_ids") or ())
+    delivered = set(rebuilt.get("evidence_ids") or ())
+    cited = []
+    for claim in report.get("claims") or ():
+        for evidence_id in claim.get("evidence_ids") or ():
+            if evidence_id not in cited:
+                cited.append(evidence_id)
+    entries = []
+    for evidence_id in cited:
+        # Tool evidence ids are ``<step_id>-t<ordinal>:<uuid>``.
+        step_id = str(evidence_id).split(":", 1)[0].rsplit("-t", 1)[0]
+        entries.append(
+            {
+                "evidence_id": evidence_id,
+                "segment": segment_of.get(step_id),
+                "folded_by_accepted_compaction": step_id in folded,
+                "delivered_after_rebuild": evidence_id in delivered,
+            }
+        )
+    return {
+        "cited": entries,
+        "cited_from_folded_rounds": sum(
+            e["folded_by_accepted_compaction"] for e in entries
+        ),
+        "cited_not_delivered": [
+            e["evidence_id"] for e in entries if not e["delivered_after_rebuild"]
+        ],
+    }
 
 
 def runner_report(store, incident) -> str | None:
