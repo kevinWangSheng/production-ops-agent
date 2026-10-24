@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import datetime, timedelta, timezone
 from typing import Annotated, Any, Literal, cast
 from uuid import UUID, uuid4
@@ -161,6 +161,30 @@ _PAGE_LINK_COLUMNS = (
 _PAGE_DELIVERY_COLUMNS = "event_id,sequence,outcome,reason,actor,received_at,raw_sha256"
 #: D6: one page, newest first, no paging.
 RELEASE_LIST_LIMIT = 50
+
+
+#: D7 (r2): a release still awaiting its automatic authorization, as a
+#: predicate on ``opspilot_release_observations r``.
+_AWAITING_AUTHORIZATION = (
+    "r.status='pending' AND NOT r.paused AND r.observation_generation=0"
+    " AND r.calibrated_policy_revision IS NULL"
+    " AND NOT EXISTS (SELECT 1 FROM opspilot_release_audit a"
+    " WHERE a.observation_id=r.observation_id AND a.action='authorize')"
+)
+#: D7 (r2): a newer release of the same target exists (by release time,
+#: then reception and id), whatever its state; only the newest is observed.
+_SUPERSEDED = (
+    "EXISTS (SELECT 1 FROM opspilot_release_observations n"
+    " WHERE n.target_id=r.target_id AND (n.released_at,n.received_at,n.observation_id)"
+    ">(r.released_at,r.received_at,r.observation_id))"
+)
+#: D7 (r2): a release session is authorized on the same target.
+_TARGET_OBSERVING = (
+    "EXISTS (SELECT 1 FROM opspilot_observation_sessions s"
+    " WHERE s.target_id=r.target_id AND s.release_observation_id IS NOT NULL"
+    " AND s.state='authorized')"
+)
+ReleaseHold = Literal["superseded", "waiting_for_target"]
 
 
 def calibrated_revision_for(release: ReleaseRecord) -> str:
@@ -641,6 +665,55 @@ class ReleaseStore(_ReleaseCommandOps):
                 (limit,),
             ).fetchall()
         return tuple(ReleaseRecord.model_validate(row) for row in rows)
+
+    def authorizable_releases(self, *, limit: int) -> tuple[ReleaseRecord, ...]:
+        """The oldest ``limit`` releases the automatic authorization may
+        try now (F11 PR-5b D7, r2): awaiting authorization (pending, not
+        paused, never observed, no frozen policy, no ``authorize`` audit),
+        before their deadline by the database clock at this read, the
+        newest release of their target, and on a target where no release
+        session is authorized. So each target has at most one candidate,
+        and a target observes one release at a time however many are
+        delivered. The filter runs before the limit, so releases that were
+        decided or are held never take a place; the command primitive
+        re-checks the release itself under its locks (the target rule is
+        this read's, not the primitive's)."""
+        if type(limit) is not int or limit <= 0:
+            raise PersistenceError("INVALID_INPUT")
+        with self.transaction(snapshot=True) as conn:
+            rows = conn.execute(
+                "SELECT " + _RELEASE_COLUMNS + " FROM opspilot_release_observations r"
+                " WHERE "
+                + _AWAITING_AUTHORIZATION
+                + " AND deadline_at>clock_timestamp()"
+                " AND NOT " + _SUPERSEDED + " AND NOT " + _TARGET_OBSERVING + ""
+                " ORDER BY received_at,observation_id LIMIT %s",
+                (limit,),
+            ).fetchall()
+        return tuple(ReleaseRecord.model_validate(row) for row in rows)
+
+    def authorization_holds(
+        self, observation_ids: Sequence[UUID]
+    ) -> dict[UUID, ReleaseHold]:
+        """Why each of ``observation_ids`` still awaiting authorization is
+        held back by the target rule of ``authorizable_releases``:
+        ``superseded`` (a newer release of its target exists; it is never
+        observed and ends at its deadline) or ``waiting_for_target``
+        (another release of its target is being observed). Releases not
+        held are absent."""
+        if not all(isinstance(oid, UUID) for oid in observation_ids):
+            raise PersistenceError("INVALID_INPUT")
+        if not observation_ids:
+            return {}
+        with self.transaction(snapshot=True) as conn:
+            rows = conn.execute(
+                "SELECT observation_id,CASE WHEN " + _SUPERSEDED + " THEN 'superseded'"
+                " WHEN " + _TARGET_OBSERVING + " THEN 'waiting_for_target' END AS hold"
+                " FROM opspilot_release_observations r"
+                " WHERE observation_id=ANY(%s) AND " + _AWAITING_AUTHORIZATION,
+                (list(observation_ids),),
+            ).fetchall()
+        return {row["observation_id"]: row["hold"] for row in rows if row["hold"]}
 
     def release_detail(self, observation_id: UUID) -> dict[str, Any] | None:
         """Everything a release page shows, read in one snapshot (D4): the
