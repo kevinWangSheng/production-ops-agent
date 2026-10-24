@@ -138,23 +138,34 @@ class AlertAnchor(_FrameAnchor):
     ``startsAt`` and ``original`` the ``startsAt`` text as Alertmanager sent
     it. Everything else is computed, so a fresh rebuild (J5) from the same
     three facts yields the same frame and anchor byte for byte.
+
+    ``frame_end`` (#305 W1-B) moves the frame off the receipt: a successor
+    Run opened after an attached episode is framed at its own creation
+    instant and anchored at that episode's ``startsAt``.
     """
 
     received_at: datetime
     starts_at: datetime
     original: str
+    frame_end: datetime | None = None
 
     def __post_init__(self) -> None:
         for moment in (self.received_at, self.starts_at):
             if not isinstance(moment, datetime) or moment.utcoffset() is None:
                 raise ContextError("INPUT_INVALID")
+        if self.frame_end is not None and (
+            not isinstance(self.frame_end, datetime)
+            or self.frame_end.utcoffset() is None
+        ):
+            raise ContextError("INPUT_INVALID")
         if not isinstance(self.original, str):
             raise ContextError("INPUT_INVALID")
 
     _anchor_rule = ALERT_ANCHOR_RULE
 
     def _instants(self) -> tuple[datetime, datetime]:
-        return self.received_at, self.starts_at
+        end = self.received_at if self.frame_end is None else self.frame_end
+        return end, self.starts_at
 
     def scope_fact(self) -> dict[str, Any]:
         anchor, adjusted = self.anchor
@@ -262,6 +273,7 @@ def continuation_input(
     new_run_id: str,
     deadline: datetime,
     authorized_targets: frozenset[str],
+    alert: AlertAnchor | None = None,
 ) -> InvestigationInput:
     """The successor Run's input: the C3 continuation of ``snapshot``'s Run.
 
@@ -271,7 +283,12 @@ def continuation_input(
     scope facts (a renewed Run must not keep refusing on the old wall). An
     alert Run's frame, anchor and default query window carry over unchanged
     (F5, J5): the time policies and ``alert_starts_at`` are the previous
-    Run's, never re-taken at renewal.
+    Run's, never re-taken at renewal -- unless ``alert`` is given (#305
+    W1-B, an attached episode after the previous frame): then the first
+    time policy and ``alert_starts_at`` are re-taken from it, and nothing
+    else, so the input version stays the previous one's (R2). Only an
+    alert Run (one that already carries ``alert_starts_at``) can be
+    re-framed; any other is ``ContextError("INPUT_INVALID")``.
     Raises ``ContextError`` (``INPUT_MISSING`` when the previous Run has no
     snapshot) exactly as ``continuation_context`` does.
     """
@@ -282,11 +299,18 @@ def continuation_input(
     cont = continuation_context(
         snapshot, new_run_id=new_run_id, authorized_targets=authorized_targets
     )
+    context = cont.evidence_context
+    facts = {**previous.scope_facts, "deadline": deadline.isoformat()}
+    if alert is not None:
+        if ALERT_STARTS_AT not in previous.scope_facts:
+            raise ContextError("INPUT_INVALID")
+        context = alert.anchored(context)
+        facts[ALERT_STARTS_AT] = alert.scope_fact()
     return replace(
         previous,
         question=f"{previous.question}\n\n{cont.handoff_note}",
-        evidence_context=cont.evidence_context,
-        scope_facts={**previous.scope_facts, "deadline": deadline.isoformat()},
+        evidence_context=context,
+        scope_facts=facts,
     )
 
 
