@@ -54,6 +54,7 @@ from opspilot.intake import (
 from opspilot.investigation.context import (
     AFFECTED_SERVICE,
     ALERT_CONTEXT,
+    ALERT_STARTS_AT,
     CONCLUSION_KIND,
     INPUT_CONTENT_FIELD_MAX_CHARS,
     KNOWLEDGE,
@@ -1207,14 +1208,21 @@ class Workbench:
             _log.warning("intake row missing incident=%s", summary.incident_id)
             return None
         request = _envelope_from_json(intake["envelope"]).request
+        # #305 W1-B: the successor's creation is the control's database
+        # instant, the deadline less the Run wall.
+        created = deadline - timedelta(seconds=self.run_seconds)
         try:
-            fresh = continuation_input(
+            basis = (
                 snapshot
                 if snapshot is not None
-                else self.incidents.rebuild(summary.incident_id),
+                else self.incidents.rebuild(summary.incident_id)
+            )
+            fresh = continuation_input(
+                basis,
                 new_run_id=str(run_id),
                 deadline=deadline,
                 authorized_targets=frozenset({request.target_id}),
+                alert=self._attached_reframe(summary.incident_id, basis, created),
             )
             facts = dict(fresh.scope_facts)
             self._check_release_fact(summary.incident_id, summary.intake_key, facts)
@@ -1236,7 +1244,9 @@ class Workbench:
                 exc.code,
             )
             try:
-                service, alert, context = self._alert_rebuild(summary.incident_id)
+                service, alert, context = self._alert_rebuild(
+                    summary.incident_id, created=created
+                )
                 released, anchor, fact = self._release_rebuild(
                     summary.incident_id, summary.intake_key
                 )
@@ -1257,14 +1267,43 @@ class Workbench:
         # control action fails closed and the operator retries (bot review,
         # PR #52).
 
+    def _attached_reframe(
+        self, incident_id: UUID, snapshot: Mapping[str, Any], created: datetime
+    ) -> AlertAnchor | None:
+        """#305 W1-B: the frame a continued alert Run's successor moves to,
+        or ``None`` to keep the previous Run's (J5). It moves only when an
+        attached episode was received after the previous frame's end; a Run
+        without an alert anchor (submitted, release) never moves (W3-A)."""
+        run = snapshot.get("run")
+        raw = run.get("input") if isinstance(run, Mapping) else None
+        if not isinstance(raw, Mapping):
+            return None
+        facts = raw.get("scope_facts")
+        if not isinstance(facts, Mapping) or ALERT_STARTS_AT not in facts:
+            return None
+        try:
+            end = datetime.fromisoformat(
+                raw["evidence_context"]["time_policies"][0]["window"]["end"]
+            )
+        except (KeyError, IndexError, TypeError, ValueError):
+            raise ContextError("INPUT_INVALID") from None
+        reader = getattr(self.incidents, "alert_records", None)
+        records = None if reader is None else reader(incident_id)
+        if records is None:
+            return None
+        return _attached_anchor(records.deliveries, after=end, created=created)
+
     def _alert_rebuild(
-        self, incident_id: UUID
+        self, incident_id: UUID, *, created: datetime | None = None
     ) -> tuple[Mapping[str, str] | None, AlertAnchor | None, Mapping[str, Any] | None]:
         """What a fresh rebuild of an alert incident's Run keeps (F5, J5,
         K6): its affected service, and the anchor and alert context of the
         incident's earliest delivery, never the renewal instant or a later
         replay's annotations. ``(None, None, None)`` for an incident no
-        alert opened.
+        alert opened. With ``created`` (the successor's creation instant),
+        an attached episode received after the earliest delivery's frame
+        moves the frame and anchor as a continuation would (#305 R5); the
+        alert context stays the earliest delivery's (R3).
 
         The alert context is rebuilt from that delivery's audit text. A
         record cut at its byte bound is no longer JSON and cannot rebuild
@@ -1292,6 +1331,12 @@ class Workbench:
             starts_at=identity["starts_at"],
             original=identity["starts_at_raw"],
         )
+        if created is not None:
+            moved = _attached_anchor(
+                records.deliveries, after=anchor.frame[1], created=created
+            )
+            if moved is not None:
+                anchor = moved
         return service, anchor, context
 
     # -- release anomalies (F11 PR-4b) ----------------------------------
@@ -2598,6 +2643,45 @@ def _release_actions(release: Any, sessions: Iterable[Mapping[str, Any]]) -> lis
     if release.status == "observing" and not live:
         return ["pause", "resume", "cancel"]
     return ["pause", "cancel"]
+
+
+def _utc_second(moment: datetime) -> datetime:
+    return moment.astimezone(timezone.utc).replace(microsecond=0)
+
+
+def _attached_anchor(
+    deliveries: Iterable[Mapping[str, Any]], *, after: datetime, created: datetime
+) -> AlertAnchor | None:
+    """#305 W1-B, R1: the latest attached episode received after ``after``
+    (the previous frame's end), as a frame ending at ``created`` and
+    anchored at the episode's ``startsAt``; ``None`` when there is none.
+
+    An episode's event is its first ``attached`` firing delivery (R-C3: a
+    repeat of an attached episode adds no event), so a repeat received
+    after the frame does not move it, nor does a replay or a resolved
+    notification. A receipt counts after the frame only when its whole UTC
+    second is later than the frame's end (the frame's grain): an episode
+    received before a Run's creation never reads as after that Run's frame,
+    which ends at the creation truncated to the second. Ties on
+    ``received_at`` go to the later delivery."""
+    first: dict[str, Mapping[str, Any]] = {}
+    for row in deliveries:
+        if row["outcome"] == "attached" and row["status"] == "firing":
+            first.setdefault(row["delivery_key"], row)
+    latest = None
+    for row in first.values():
+        if _utc_second(row["received_at"]) > after and (
+            latest is None or row["received_at"] >= latest["received_at"]
+        ):
+            latest = row
+    if latest is None:
+        return None
+    return AlertAnchor(
+        received_at=latest["received_at"],
+        starts_at=latest["starts_at"],
+        original=latest["starts_at_raw"],
+        frame_end=created,
+    )
 
 
 def _release_question(service: Mapping[str, str]) -> str:
