@@ -27,7 +27,8 @@
 
 | 时间 | 动作 | 结果 |
 |---|---|---|
-| 09:25:21 | S1 发布（R），watch、登记 201、授权 applied | 观察 `f0b94758` |
+| 09:24:58 | 失败轮 `pr4b-s1-healthy`（保留，不算通过）：harness 写入开始记录（`run-starts.jsonl`，record `03a8605b…`）后，`release` 读 checkout 时报 `EXTERNAL_CALL_FAILED`（本 worktree 缺 `tmp/m1-kind-lab/kubeconfig`），`watch` 报 `FileNotFoundError` | 没有发生发布（Deployment generation 仍为 17）、没有注入、没有登记或授权，未生成 ledger 目录；属环境前提，补齐 kubeconfig 后按规则换新轮次名 `pr4b-s1-healthy-b` |
+| 09:25:21 | S1 发布（R，轮次 `pr4b-s1-healthy-b`），watch、登记 201、授权 applied | 观察 `f0b94758` |
 | 09:54:06 | S1 观察结束 | healthy（`healthy_confirmed`，12 个样本） |
 | 09:55:41 | S2 发布，排 adFailure R+300 | 观察 `0f692cbd` |
 | 10:01:01–10:16:11 | adFailure 生效至恢复（flagd 确认 variant） | ad 与 frontend 出现错误 span，checkout 错误为 0 |
