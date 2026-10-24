@@ -152,6 +152,25 @@ r1 只定方向。其余实现者需要猜的语义点，按 AGENTS.md「合同�
 
 - 2026-10-24 kind 四场景真实运行（合同 §7，代码 `5943b0f`，[run.md](../evidence/f11-pr4b-live/run.md)）：健康发布、健康发布＋adFailure、回归＋告警静默、回归＋告警开启全部 PASS，无失败轮。S3 新建事故与 v6 Run，报告引用新旧 Pod 与前后 hash，[trace](https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/8a425aef-71dc-4a29-8ac3-63dcd516f10c/r/00000000-0000-0000-3322-a454dfc71354?poll=true)；S4 追加 1 条事件、无第二个 Run（为保证告警先开，S4 期间先关 web 后台 pass、告警事故建出后再开；默认时序下发布先于告警，告警会另开事故与第二个 Run，反向顺序无合同条款，见 #343）。四轮策略面对象除 Deployment／RS／flagd 外无变化；四个发布会话重放一致。DeepSeek 余额差 0.55 CNY（上界）。另见既有缺陷：发布观察过的目标上 `self_heal_pass` 因旧会话 `target` 缺 `revision` 报错（`observation/store.py:1243-1246`，非本 PR 引入），见 #342。
 
+## PR-5 合同（r1）
+
+预审全文：[F11 PR-5 合同](2026-10-24-f11-pr5-contract.md)（全新上下文 Claude 子 Agent，只读，基于 `2c19cb2`）。lead 2026-10-24 按 M2 Q1 裁决：
+
+- U-1 = A：web 后台 pass 以 `system` 身份自动授权新登记、清单恰好匹配的发布（改 P3-02「登记不自动授权」；不新增角色、列或凭据）。挂起中被拒的发布解除后不补开、不加人工授权按钮，到期 unknown。落在 PR-5b（D7）。
+- U-2 = A：#342 先以独立 fix PR 合并，再跑 PR-5c kind。
+- U-3 = A：#343 不作 F11 passes 前提；新回归场景静默告警，简报列为已知限制。
+- U-4 = A：复用 PR-4b S1–S4 证明第 2、3 步；新跑一个 kind 窗口、3 个发布全走产品授权路径；前提是 PR-5 各 PR 不改采样／判定／对比／消费／调查输入。
+- U-5 待用户：A11「不改变 CI 检查」在实验环境只能以代码面与凭据缺失证明（无 CI 门禁可前后核对），涉及验收步骤字面解释，停在 PR-5c 简报。
+- 可逆默认 D1–D12 照做：D1 路由 `/version-changes`、`/version-changes/{id}`、`POST /version-changes/{id}/control`；D2 拒绝映射；D3 resume 的 policy 解析；D4 详情页内容；D5 投影标签（anomalous→degraded）；D6 列表；D7 自动授权 pass；D8 `opspilot/acceptance_release.py`；D9 事故页反向链接；D10 不做 SSE；D11 表单 nonce 作幂等键；D12 新 GET 只走 Basic Auth。
+- 切分：#342 fix 与 PR-5a 并行 → PR-5b → PR-5c（用户合并）。
+
+## PR-5a 页面与人工操作
+
+- worktree `poa-f11-5a`，分支 `feature/F11-pr5a-release-pages`（起点 main `2cc2fcd`）。实现者 Claude Opus 5.5；F7 `EXPECTED_ROUTES` 登记与 PR-5 验收测试由独立作者在另一分支写，本分支不改。
+- 行为：`GET /version-changes`（最新 50 条，按 `received_at` 倒序）、`GET /version-changes/{id}`（HTML／JSON 按 Accept 切换）、`POST /version-changes/{id}/control`（`action ∈ {pause,resume,cancel}`，其余 400 且不写行；Basic Auth＋Origin；表单 nonce 作幂等键）。控制只调 PR-2 原语 `control_release`；resume 的 policy 按 D3 解析，0／多条匹配返回 422 且不调原语。原语拒绝已写审计，HTTP 按 D2 映射并带 `current_generation`。详情页显示前后版本全部 digest、目标五字段与辅助身份、时间与上限、冻结 policy、会话与 ending、对比信号、link、审计与投递记录，固定文案「仅供参考，不批准、不阻断、不执行发布」。事故页对每条 link 显示一行反向链接。投影 `release_verdict` 由 `acceptance_release.py` 定义，页面与 `release_outcome_from_durable` 共用。未加迁移、grants、Observer、采样／判定／对比／消费、调查输入改动。
+- 可逆细节（Agent 自定）：① 读取全部放在 `ReleaseStore.release_detail` 一个快照事务内，页面与验收投影读同一份记录，避免两处不一致。② 发布控制的 HTTP 状态用独立映射表：事故控制表里 `TARGET_*` 为 409，D2 要求发布侧为 422，共用会改动事故语义。③ 页面按钮：非终态时按 `paused` 给 pause 或 resume，observing 且无 authorized 会话（挂起撤销）时额外给 resume，cancel 常在；服务端不依赖按钮，原语决定。④ 审计在页面与 JSON 中不显示幂等键、请求哈希与 result 快照（操作员不需要，键是表单 nonce）。⑤ 投影把 unknown 的 `ended_reason` 计入 `handoff_reasons`（PRODUCT-CONSTRAINTS「unknown handoff」），cancelled 不算结论。⑥ 交接事故页（`incident_handoff.html`）不在本 PR 允许清单内，R7 交接事故暂不显示反向链接；发布详情页仍链到该事故。
+- 验证（PG 17 临时实例 56400，未调模型、未碰 kind）：实现测试 `tests/test_f11_pr5a_impl.py` 25 passed、`tests/integration/test_f11_pr5a_impl_postgres.py` 12 passed；回归（F7 第 1 步、全部 F11 单测与 PG、工作台与 #184、#343、F6／F7 其余验收、架构测试）1776 passed、1 skipped、2 xfailed、1 failed；ruff、mypy 通过。失败的是 F7 `test_s1b_web_routes_equal_the_classified_allow_list` 因三条新路由未登记而红，等独立作者登记。
+
 ## 下一步与交接
 
 PR-1 已合并（#218，`8299970`）。PR-2a 已合并（#223，`e0d39f9`）；PR-2b 已合并（#227，`92920f1`）；#225 加固已合并（#228，`147115d`）；重放部分证据缺陷已合并（#231，`50cc62a`）；#230 待排；U2 校准证据任务进行中，见 [U2 任务记录](2026-10-14-f11-u2-calibration.md)（实验工具 #233 已合并，待开跑）。

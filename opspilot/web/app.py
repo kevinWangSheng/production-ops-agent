@@ -2,7 +2,8 @@
 
 Routes (C3 section 9): incident list and detail, the SSE progress stream
 with cursor resume, the UI intake form, the token-authenticated event
-intake, a human-control endpoint and evidence read-back. Every handler
+intake, a human-control endpoint, evidence read-back and the release
+observation list, detail and pause/resume/cancel (F11 PR-5a). Every handler
 authenticates first and parses the path second, so a caller without
 credentials learns nothing about what exists.
 
@@ -110,6 +111,7 @@ _AUTH_STATUS = {
 _WORKBENCH_STATUS = {
     "UNKNOWN_INCIDENT": 404,
     "UNKNOWN_TARGET": 404,
+    "UNKNOWN_RELEASE": 404,
     "INVALID_INPUT": 400,
     "INVALID_ACTION": 400,
     "TEXT_REQUIRED": 400,
@@ -133,6 +135,40 @@ _WORKBENCH_STATUS = {
     "RETRY": 503,
     "TIMEOUT": 503,
 }
+
+
+#: F11 PR-5a D2: a release control refused for the release's current state
+#: is a conflict (reload and decide again); a calibration, target or profile
+#: refusal is final for the request (422). Kept apart from the incident
+#: table, where TARGET_* codes are 409.
+_RELEASE_CONFLICTS = frozenset(
+    {
+        "CONTROL_CONFLICT",
+        "RELEASE_TERMINAL",
+        "ALREADY_PAUSED",
+        "OBSERVATION_ALREADY_AUTHORIZED",
+        "REAUTHORIZATION_REQUIRED",
+        "RELEASE_PAUSED",
+        "SCOPE_SUSPENDED",
+        "RELEASE_DEADLINE_EXPIRED",
+        "RELEASE_SAMPLE_BUDGET_EXHAUSTED",
+        "IDEMPOTENCY_CONFLICT",
+    }
+)
+_RELEASE_STATUS = {
+    "UNKNOWN_RELEASE": 404,
+    "NOT_FOUND": 404,
+    "INVALID_INPUT": 400,
+    "INVALID_RELEASE_POLICY": 422,
+}
+
+
+def _release_status(code: str, default: int) -> int:
+    if code in _RELEASE_CONFLICTS:
+        return 409
+    if code.startswith(("RELEASE_POLICY_", "TARGET_", "HEALTH_PROFILE_")):
+        return 422
+    return _RELEASE_STATUS.get(code, default)
 
 
 #: R3: a conflict asks for a reload, a refusal is final for this request.
@@ -373,10 +409,12 @@ def create_app(
         postmortem = None
         if review is not None:
             postmortem = await reviewed(review.incident_view, subject)
+        release_links = await in_thread(workbench.release_links_for, subject)
         return render(
             "incident.html",
             principal=principal,
             snapshot=snapshot,
+            release_links=release_links,
             postmortem=postmortem,
             postmortem_kinds=EVENT_KINDS,
             actions=available_actions(snapshot),
@@ -681,6 +719,77 @@ def create_app(
             },
             status_code=201 if receipt.outcome == "created" else 200,
         )
+
+    # -- release observation pages (F11 PR-5a) ---------------------------
+    # Paths avoid the F7 mutation words ("release", "target", ...) and sit
+    # in the intake route's ``version-changes`` family (D1). Basic Auth only:
+    # an event token, the release deployer's included, opens none of them.
+
+    def release_of(raw: str) -> UUID:
+        try:
+            return UUID(raw)
+        except ValueError:
+            raise _Refusal(404, "UNKNOWN_RELEASE") from None
+
+    @app.get("/version-changes")
+    async def release_list(request: Request) -> Response:
+        principal = await ui(request)
+        releases = await in_thread(workbench.list_releases)
+        if wants_html(request):
+            return render(
+                "version_changes.html", principal=principal, releases=releases
+            )
+        return JSONResponse({"releases": releases})
+
+    @app.get("/version-changes/{observation_id}")
+    async def release_detail(request: Request, observation_id: str) -> Response:
+        principal = await ui(request)
+        subject = release_of(observation_id)
+        page = await in_thread(workbench.release_page, subject)
+        if wants_html(request):
+            return render(
+                "version_change.html",
+                principal=principal,
+                page=page,
+                form_nonce=uuid4().hex,
+            )
+        return JSONResponse(page)
+
+    @app.post("/version-changes/{observation_id}/control")
+    async def release_control(request: Request, observation_id: str) -> Response:
+        """Pause, resume or cancel one release observation (C3 section 9)."""
+        principal = await ui_mutation(request)
+        subject = release_of(observation_id)
+        fields = await form_of(request)
+        generation = fields.get("expected_control_generation", "")
+        action = fields.get("action", "")
+        if (
+            not generation.isascii()
+            or not generation.isdigit()
+            or len(generation) > 19
+            or action not in ("pause", "resume", "cancel")
+        ):
+            raise _Refusal(400, "INVALID_INPUT")
+        try:
+            result = await asyncio.to_thread(
+                workbench.release_control,
+                subject,
+                action=action,
+                actor_id=principal.actor_id,
+                expected_control_generation=int(generation),
+                idempotency_key=fields.get("idempotency_key", ""),
+            )
+        except WorkbenchError as exc:
+            extra = {}
+            if exc.current_generation is not None:
+                extra["current_generation"] = exc.current_generation
+            raise _Refusal(_release_status(exc.code, 409), exc.code, **extra) from None
+        except PersistenceError as exc:
+            code = str(exc)
+            raise _Refusal(_release_status(code, 503), code) from None
+        if wants_html(request):
+            return RedirectResponse(f"/version-changes/{subject}", status_code=303)
+        return JSONResponse(result)
 
     # -- human control --------------------------------------------------
 
