@@ -13,9 +13,12 @@ composes a question: the workbench hands both in.
 A firing alert with a new identity on a target whose same-fingerprint alert
 incident is not closed is attached to it (F2 U1-A, C1-A): an ``attached``
 delivery row and one event input, no identity row, no Run; a higher
-severity raises the incident's claim priority (B1 U-B1-2). When every such
-incident is closed, the new incident relates to the latest of them
-(``choose_correlation``).
+severity raises the incident's claim priority (B1 U-B1-2). An incident a
+release anomaly opened on the same target is a candidate too, unless another
+fingerprint already attached to it (#343 U1-A, the claim), so an alert that
+arrives after the release incident joins it the way a release joins an
+earlier alert incident. When every candidate is closed, the new incident
+relates to the latest of them (``choose_correlation``).
 """
 
 from __future__ import annotations
@@ -60,7 +63,7 @@ class _AlertOps(_IncidentOps):
     ) -> dict[str, Any]:
         """Record one delivery; open its incident if it is the first firing
         one, or attach it to the open incident of the same fingerprint and
-        target.
+        target, or to an unclaimed release incident on that target (#343).
 
         ``delivery``: ``delivery_key``, ``fingerprint``, ``starts_at``
         (aware datetime), ``starts_at_raw``, ``status``, ``actor``,
@@ -128,10 +131,16 @@ class _AlertOps(_IncidentOps):
                 outcome = "resolved_recorded"
             else:
                 assert opening is not None
-                correlation = self._correlate(conn, delivery, opening)
+                correlation, released = self._correlate(conn, delivery, opening)
                 if correlation.attach_to is not None:
                     incident_id = correlation.attach_to
-                    _append_attached_event(conn, delivery, incident_id, revision)
+                    _append_attached_event(
+                        conn,
+                        delivery,
+                        incident_id,
+                        revision,
+                        release=incident_id in released,
+                    )
                     _escalate_priority(conn, incident_id, opening.get("priority", 2))
                     outcome = "attached"
                 else:
@@ -172,44 +181,65 @@ class _AlertOps(_IncidentOps):
         conn: Connection,
         delivery: Mapping[str, Any],
         opening: Mapping[str, Any],
-    ) -> Correlation:
+    ) -> tuple[Correlation, frozenset[UUID]]:
         """C3 for an alert: the candidates are the incidents opened by the
-        same fingerprint on the same resolved target; a handoff (no target)
-        is never correlated.
+        same fingerprint on the same resolved target, and those a release
+        anomaly opened on that target (``created``/``created_related`` link)
+        that no other fingerprint has attached to (#343 U1-A); a handoff (no
+        target) is never correlated, nor is a manual incident. Returns the
+        decision and the release-opened candidates.
 
         Lock order (R-C2): the fingerprint lock is held; then the scope and
         the target suspension row (FOR SHARE, the order every control and
         suspension write takes) and only then the candidate incident rows,
         FOR UPDATE in id order, so a concurrent close or reopen either
         commits before the lifecycle is read here or waits for this commit.
+        The claim is read by a statement of its own after those row locks
+        (#343 R2): under READ COMMITTED it sees an attachment another
+        fingerprint committed while this one waited, so two fingerprints
+        never both claim one release incident.
         """
         resource_uid = opening.get("resource_uid")
         if opening.get("run_id") is None or resource_uid is None:
-            return Correlation(attach_to=None, related_to=None)
+            return Correlation(attach_to=None, related_to=None), frozenset()
         self._lock_scope(conn, None)
         target = conn.execute(
             "SELECT target_id FROM opspilot_targets WHERE resource_uid=%s",
             (resource_uid,),
         ).fetchone()
-        if target is not None:
+        target_id = None if target is None else target["target_id"]
+        if target_id is not None:
             self._require_row(
                 conn.execute(
                     "SELECT suspended FROM opspilot_target_suspensions WHERE target_id=%s FOR SHARE",
-                    (target["target_id"],),
+                    (target_id,),
                 )
             )
+        fingerprint = delivery["fingerprint"]
         rows = conn.execute(
-            "SELECT i.incident_id,i.lifecycle,i.created_at FROM opspilot_incidents i JOIN opspilot_alert_identities a ON a.incident_id=i.incident_id WHERE a.fingerprint=%s AND a.target_id=%s AND a.handoff_reason IS NULL ORDER BY i.incident_id FOR UPDATE OF i",
-            (delivery["fingerprint"], resource_uid),
+            "SELECT i.incident_id,i.lifecycle,i.created_at,EXISTS(SELECT 1 FROM opspilot_release_incident_links l WHERE l.incident_id=i.incident_id AND l.disposition IN ('created','created_related')) AS released FROM opspilot_incidents i WHERE EXISTS(SELECT 1 FROM opspilot_alert_identities a WHERE a.incident_id=i.incident_id AND a.fingerprint=%s AND a.target_id=%s AND a.handoff_reason IS NULL) OR (i.target_id=%s AND EXISTS(SELECT 1 FROM opspilot_release_incident_links l WHERE l.incident_id=i.incident_id AND l.disposition IN ('created','created_related'))) ORDER BY i.incident_id FOR UPDATE OF i",
+            (fingerprint, resource_uid, target_id),
         ).fetchall()
-        return choose_correlation(
+        released = [row["incident_id"] for row in rows if row["released"]]
+        claimed: set[UUID] = set()
+        if released:
+            claimed = {
+                row["incident_id"]
+                for row in conn.execute(
+                    "SELECT DISTINCT incident_id FROM opspilot_alert_deliveries WHERE incident_id=ANY(%s) AND outcome='attached' AND fingerprint<>%s",
+                    (released, fingerprint),
+                ).fetchall()
+            }
+        correlation = choose_correlation(
             [
                 CorrelationCandidate(
                     row["incident_id"], row["lifecycle"], row["created_at"]
                 )
                 for row in rows
+                if row["incident_id"] not in claimed
             ]
         )
+        return correlation, frozenset(released) - claimed
 
     def _alert_target(self, conn: Connection, resource_uid: str) -> UUID:
         """Register the bound target inside the alert's transaction, so a
@@ -321,23 +351,35 @@ def _append_attached_event(
     delivery: Mapping[str, Any],
     incident_id: UUID,
     annotation_revision: int,
+    *,
+    release: bool = False,
 ) -> None:
     """The one event of an attached episode (R-C4): whitelisted fields of
     the validated identity only. Annotations stay out; they reach a model
-    only as the opening Run's redacted alert context (M1-04 K2)."""
+    only as the opening Run's redacted alert context (M1-04 K2). On an
+    incident a release anomaly opened (#343 R3) the alert has not fired
+    there before, so the text says so; the keys are the same."""
     key = delivery["delivery_key"]
     starts_at = (
         delivery["starts_at"].astimezone(UTC).replace(microsecond=0).isoformat()
     ).replace("+00:00", "Z")
     fingerprint = delivery["fingerprint"]
     status = delivery["status"]
-    content = {
-        "channel": "alertmanager",
-        "text": (
+    if release:
+        text = (
+            f"Alertmanager alert {fingerprint} fired with startsAt "
+            f"{starts_at} (status {status}) on this incident's target; "
+            "attached to this release-anomaly incident without a new Run."
+        )
+    else:
+        text = (
             f"Alertmanager alert {fingerprint} fired again with startsAt "
             f"{starts_at} (status {status}) on this incident's target; "
             "attached to this incident without a new Run."
-        ),
+        )
+    content = {
+        "channel": "alertmanager",
+        "text": text,
         "fingerprint": fingerprint,
         "starts_at": starts_at,
         "status": status,
