@@ -1,8 +1,9 @@
 """The shared open-incident rule for a new anomaly (F2 U1-A, PR-C C3).
 
 Each source picks its own candidates -- an alert the incidents opened by the
-same fingerprint on the same target, a release (F11 PR-4) the incidents on
-the same target -- and both decide with ``choose_correlation``. A candidate
+same fingerprint on the same target plus those a release anomaly opened there
+and no other fingerprint has attached to (#343), a release (F11 PR-4) the
+incidents on the same target -- and both decide with ``choose_correlation``. A candidate
 that is not ``closed`` takes the anomaly as an event; when every candidate is
 closed, a new incident relates to the latest of them; with no candidate the
 new incident stands alone (C3 section 4: a closed incident is never reopened
