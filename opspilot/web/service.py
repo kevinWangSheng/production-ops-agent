@@ -143,6 +143,12 @@ RELEASE_AUTHORIZE_ACTOR = "system"
 #: one whose catalog is ambiguous or unreadable stays a candidate after a
 #: pass, so up to this many of those never hold back a decidable one.
 RELEASE_AUTHORIZE_SCAN = 200
+#: D7 (r2): what the pages say about a release the target rule holds back.
+RELEASE_HOLD_TEXT = {
+    "waiting_for_target": "waiting for the observation of another release"
+    " on this target to end",
+    "superseded": "superseded by a newer release on this target; not observed",
+}
 #: The revision an automatic authorization names when the catalog has no
 #: entry for the release, so the primitive records the refusal
 #: (``RELEASE_POLICY_UNCALIBRATED`` or an earlier one) on the release: no
@@ -1426,8 +1432,13 @@ class Workbench:
 
         A candidate is a release still ``pending``, not paused, never
         observed (``observation_generation`` 0, no frozen policy), with no
-        ``authorize`` audit and before its deadline
-        (``ReleaseStore.authorizable_releases``: filtered in SQL before the
+        ``authorize`` audit and before its deadline, which is also the
+        newest release of its target, on a target with no authorized
+        release session (r2: one observed release per target, however many
+        a deployer delivers; a held release is not refused or audited, it
+        waits for the running observation to end, or is superseded and
+        ends at its deadline) (``ReleaseStore.authorizable_releases``:
+        filtered in SQL before the
         limit, oldest first, the deadline against the database clock of
         that read; the primitive re-checks the deadline against the
         database clock of its own transaction). Up to ``limit`` candidates
@@ -1611,7 +1622,12 @@ class Workbench:
         store = self._release_store()
         if store is None:
             return []
-        return [_release_summary(release) for release in store.list_releases()]
+        releases = store.list_releases()
+        holds = store.authorization_holds([r.observation_id for r in releases])
+        return [
+            _release_summary(release, holds.get(release.observation_id))
+            for release in releases
+        ]
 
     def release_page(self, observation_id: UUID) -> dict[str, Any]:
         """One release as its page shows it (D4), JSON-safe; the verdict is
@@ -1621,7 +1637,8 @@ class Workbench:
         if detail is None:
             raise WorkbenchError("UNKNOWN_RELEASE")
         release = detail["release"]
-        page = _release_summary(release)
+        holds = store.authorization_holds([observation_id])
+        page = _release_summary(release, holds.get(observation_id))
         page.update(
             {
                 "target_id": str(release.target_id),
@@ -2691,8 +2708,9 @@ def _json_safe(value: Any) -> Any:
     return value
 
 
-def _release_summary(release: Any) -> dict[str, Any]:
-    """The list row of one release (D6), also the head of its page."""
+def _release_summary(release: Any, hold: str | None = None) -> dict[str, Any]:
+    """The list row of one release (D6), also the head of its page;
+    ``hold`` is why its automatic authorization waits (D7 r2), if it does."""
     return {
         "observation_id": str(release.observation_id),
         "verdict": release_verdict(release.status),
@@ -2700,6 +2718,8 @@ def _release_summary(release: Any) -> dict[str, Any]:
         "status": release.status,
         "paused": release.paused,
         "ended_reason": release.ended_reason,
+        "authorization_hold": hold,
+        "hold_text": RELEASE_HOLD_TEXT.get(hold or ""),
         "source": release.source,
         "source_release_id": release.source_release_id,
         "target": dict(release.target_snapshot),
