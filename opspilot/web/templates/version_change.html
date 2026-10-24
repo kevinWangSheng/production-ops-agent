@@ -11,7 +11,7 @@
 {% block body %}
 <h1>Version change <code id="observation-id">{{ page.observation_id }}</code></h1>
 <p><a href="/version-changes">All version changes</a></p>
-<p class="unknown" id="notice">{{ page.notice }}</p>
+<p class="unknown" id="notice">{{ page.notice }}<br>Observation health conclusion, advisory only; it does not approve, block or perform a release. Causal findings belong to the linked incident.</p>
 <p>
   verdict <span class="badge" id="verdict">{{ page.verdict }}</span>
   {% if page.paused %}<span class="badge" id="paused">paused</span>{% endif %}

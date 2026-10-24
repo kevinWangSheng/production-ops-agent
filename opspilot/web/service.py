@@ -125,11 +125,9 @@ _RELEASE_EVENT_CODES = 16
 #: blocking, rolling back or promoting a release is outside the product
 #: (PRODUCT-CONSTRAINTS); such an action is refused before any write.
 RELEASE_CONTROL_ACTIONS = ("pause", "resume", "cancel")
-#: D4: the fixed reminder every release page carries (C3 line 374).
-RELEASE_NOTICE = (
-    "Observation health conclusion, advisory only; it does not approve, block "
-    "or perform a release. Causal findings belong to the linked incident."
-)
+#: D4: the fixed reminder every release page carries (C3 line 374), in the
+#: contract's own words; the page adds the English gloss.
+RELEASE_NOTICE = "观察健康结论，仅供参考；不批准、不阻断、不执行发布"
 _log = logging.getLogger(__name__)
 #: Lease granted per attempt and re-extended before every committer call.
 #: The loop is synchronous, so nothing can renew while one model request is
