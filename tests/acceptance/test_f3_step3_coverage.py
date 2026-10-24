@@ -143,8 +143,9 @@ def duplicate_count(section: str) -> int | None:
 
 # -- item 17: the model-visible surface does not move -------------------------------
 
-# Printed on main @ e2fcea4 (pre-review section 0, re-printed by this author).
-MAIN_PROMPT_REVISION = "prompt-replay-candidate-2f30c2380b23"
+# Printed on main @ e2fcea4 (pre-review section 0, re-printed by this author);
+# prompt revision moved to F11 PR-4b's contract-approved bump when #336 merged main.
+MAIN_PROMPT_REVISION = "prompt-replay-candidate-bef70649a3a8"
 MAIN_CONTEXT_POLICY_REVISION = "ctx-ctx-policy-v1-a30e65ea52f4"
 MAIN_OTEL_TOOL_SCHEMA_REVISION = "otel-demo-68ed2ca8f5d6"
 MAIN_FIXTURE_TOOL_SCHEMA_REVISION = "fixture-4"

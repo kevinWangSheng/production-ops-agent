@@ -1,0 +1,328 @@
+{
+ "assertions": {
+  "alert_silence": {
+   "alert_deliveries_in_scenario": 0,
+   "alertmanager_state_during_fault": "suppressed (silencedBy the lab silence)",
+   "created_at": "2026-10-24T10:25:38Z",
+   "expired_at": "2026-10-24T10:49:06Z",
+   "matcher": "alertname=CheckoutPlaceOrderErrorRatioHigh"
+  },
+  "closed_after_run": {
+   "action": "close",
+   "generation": "0->1",
+   "http_status": 200,
+   "idempotency_label": "pr4b-s3-close-1"
+  },
+  "incident": [
+   {
+    "control_generation": 1,
+    "created_at": "2026-10-24 03:38:44.952263-07",
+    "current_run_id": "0c3d6233-02fd-5b03-846d-9654c70cfc3a",
+    "incident_id": "eaef0fb4-a79f-592a-8602-aa515dfc6936",
+    "intake_key": "intake:release-anomaly:7bcaa45b-4f26-4470-af50-2f2fe2f0c65a",
+    "lifecycle": "closed",
+    "mode": "automatic",
+    "priority": 1,
+    "related_incident_id": null
+   }
+  ],
+  "report_conclusion": "partial",
+  "report_references": {
+   "10:25:42": true,
+   "659b547476": true,
+   "700b6d45-c35c-4653-bf19-73770bd3adf8": true,
+   "checkout-659b547476-vswj4": true,
+   "checkout-f8956c665-4cks7": true,
+   "e083fc52-3272-478f-b9e4-04cf35c25fd7": true,
+   "f8956c665": true
+  },
+  "report_summary": "The post-release anomaly of otel-demo/checkout is a hard failure of order placement, not a latency or availability problem. The release replaced checkout's pod/ReplicaSet while keeping the identical image digest (sha256:5ab0d7b9... on both checkout-f8956c665-4cks7 and checkout-659b547476-vswj4), i.e. a configuration/pod-template change. After it, every observed checkout PlaceOrder span was an error whose description is a downstream payment rejection ('failed to charge card: ... rpc error: code = Unknown desc = Payment request failed. Invalid token. app.loyalty.level=gold', rpc.grpc.status_code=13), and checkout's client Charge calls returned gRPC status 2 (UNKNOWN) instead of 0. payment's own server span grpc.oteldemo.PaymentService/Charge throws 'Payment request failed. Invalid token. app.loyalty.level=gold' at /usr/src/app/charge.js:37:13; payment's pod, image digest, ReplicaSet and readiness never changed. The deepest observed change: payment began calling flagd's ResolveFloat only after the release (0 in every bucket 09:30:42-10:30:42), and flagd's paymentFailure flag impressions - zero for the preceding hour - appear from ~10:31 onward with both the 'off' and '100%' variants, immediately before the Charge errors start. frontend and frontend-proxy show their own 500/status-13 error spans on the same visible parent chain. The exact configuration key that changed in checkout, and the exact attribute that steers payment into the flag-gated failure, cannot be read with the available integrations (no change_history, no pod_logs, no span attributes), so the mechanism is supported but not fully proven.",
+  "run": [
+   {
+    "incident_id": "eaef0fb4-a79f-592a-8602-aa515dfc6936",
+    "input_version": "opspilot-investigation-input-v6",
+    "model_requests": 18,
+    "prompt_revision": "prompt-replay-candidate-bef70649a3a8",
+    "run_id": "0c3d6233-02fd-5b03-846d-9654c70cfc3a",
+    "state": "completed",
+    "tool_operations_used": 37
+   }
+  ],
+  "trace": {
+   "llm_children": 18,
+   "llm_inputs_with_release_boundary_message": "14/18; the last 4 are condensed by the tracer's 48-message cap (head 2 + last 46, opspilot/tracing.py _MAX_PROMPT_MESSAGES), compactions=0 in the Run",
+   "otel_trace_id": "8b46dcb02687c0b0c69c537a52422008",
+   "project": "opspilot-lab-f11-pr4b-live-20261024",
+   "tokens_in_out": [
+    1114793,
+    52852
+   ],
+   "tool_children": 37,
+   "trace_tier": "longlived",
+   "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/8a425aef-71dc-4a29-8ac3-63dcd516f10c/r/00000000-0000-0000-3322-a454dfc71354?poll=true"
+  },
+  "verdict": "PASS"
+ },
+ "authorize": {
+  "at": "2026-10-24T10:25:52.369195+00:00",
+  "db_role": "web login IN ROLE opspilot_web",
+  "idempotency_label": "pr4b-s3-authorize-1",
+  "outcome": "applied",
+  "policy_revision": "otel-demo-checkout-release@e2ed7b69b96b",
+  "status_after": "observing"
+ },
+ "batch": "f11-pr4b-live",
+ "code_revision": "5943b0f",
+ "comparison": [
+  {
+   "after_instances": [
+    {
+     "images": {
+      "checkout": "sha256:5ab0d7b9003206a32c72ef48b42a535c3f70565251d7d832f86fe9f249f16635"
+     },
+     "pod_name": "checkout-659b547476-vswj4",
+     "pod_uid": "700b6d45-c35c-4653-bf19-73770bd3adf8",
+     "replicaset_name": "checkout-659b547476"
+    }
+   ],
+   "attempts": 1,
+   "before_instances": [
+    {
+     "images": {
+      "checkout": "sha256:5ab0d7b9003206a32c72ef48b42a535c3f70565251d7d832f86fe9f249f16635"
+     },
+     "pod_name": "checkout-f8956c665-4cks7",
+     "pod_uid": "e083fc52-3272-478f-b9e4-04cf35c25fd7",
+     "replicaset_name": "checkout-f8956c665"
+    }
+   ],
+   "comparison_id": "c60821d7-4626-58ae-9ad0-1a6a8f14fbca",
+   "recorded_at": "2026-10-24 03:38:42.108043-07",
+   "signals": [
+    {
+     "reason_codes": [],
+     "scope": "before_service",
+     "signal_name": "request_rate_per_second",
+     "value": 0.025000104167100697
+    },
+    {
+     "reason_codes": [],
+     "scope": "before_service",
+     "signal_name": "error_ratio",
+     "value": 0.0
+    },
+    {
+     "reason_codes": [],
+     "scope": "before_service",
+     "signal_name": "latency_p95_milliseconds",
+     "value": 92.5
+    },
+    {
+     "reason_codes": [],
+     "scope": "before_old",
+     "signal_name": "request_rate_per_second",
+     "value": 0.025000104167100697
+    },
+    {
+     "reason_codes": [],
+     "scope": "before_old",
+     "signal_name": "error_ratio",
+     "value": 0.0
+    },
+    {
+     "reason_codes": [],
+     "scope": "before_old",
+     "signal_name": "latency_p95_milliseconds",
+     "value": 92.5
+    },
+    {
+     "reason_codes": [],
+     "scope": "after_service",
+     "signal_name": "request_rate_per_second",
+     "value": 0.026853630668318525
+    },
+    {
+     "reason_codes": [],
+     "scope": "after_service",
+     "signal_name": "error_ratio",
+     "value": 1.0
+    },
+    {
+     "reason_codes": [],
+     "scope": "after_service",
+     "signal_name": "latency_p95_milliseconds",
+     "value": 89.99999999999999
+    },
+    {
+     "reason_codes": [],
+     "scope": "after_new",
+     "signal_name": "request_rate_per_second",
+     "value": 0.026853630668318525
+    },
+    {
+     "reason_codes": [],
+     "scope": "after_new",
+     "signal_name": "error_ratio",
+     "value": 1.0
+    },
+    {
+     "reason_codes": [],
+     "scope": "after_new",
+     "signal_name": "latency_p95_milliseconds",
+     "value": 89.99999999999999
+    }
+   ],
+   "status": "complete",
+   "window_after_end": "2026-10-24 03:35:54.591477-07",
+   "window_after_start": "2026-10-24 03:30:54.591477-07",
+   "window_before_end": "2026-10-24 03:25:42.472639-07",
+   "window_before_start": "2026-10-24 03:20:42.472639-07"
+  }
+ ],
+ "ending": [
+  {
+   "anomaly_key": "release-anomaly:7bcaa45b-4f26-4470-af50-2f2fe2f0c65a",
+   "ended_reason": "anomaly_detected",
+   "ending_id": "fc5367cd-e2e1-57b9-980a-8ab3e35fdf83",
+   "recorded_at": "2026-10-24 03:37:10.009021-07",
+   "subject_state_after": "anomalous",
+   "transition": "release_anomalous"
+  }
+ ],
+ "fault": [
+  {
+   "at": "2026-10-24T10:25:48.486550+00:00",
+   "duration_seconds": 900,
+   "flag": "paymentFailure",
+   "kind": "injection_planned",
+   "planned_at": "2026-10-24T10:30:42.472639+00:00",
+   "variant": "100%"
+  },
+  {
+   "kind": "injection_config_verified",
+   "planned_at": "2026-10-24T10:30:42.472639+00:00",
+   "sha256": "e47d27c2fa01c72d8bc71d40d0f4223b1049fd84582e5789cbd9a5ccbdcc915d"
+  },
+  {
+   "effective_at": "2026-10-24T10:30:44.740426+00:00",
+   "flag": "paymentFailure",
+   "kind": "flagd_variant_effective",
+   "variant": "100%"
+  },
+  {
+   "at": "2026-10-24T10:45:45.080549+00:00",
+   "kind": "restore_config_verified",
+   "planned_at": "2026-10-24T10:45:44.740426+00:00"
+  },
+  {
+   "effective_at": "2026-10-24T10:46:50.125636+00:00",
+   "flag": "paymentFailure",
+   "kind": "flagd_variant_effective",
+   "variant": "off"
+  }
+ ],
+ "harness_run": "pr4b-s3-regress-silenced",
+ "intake": {
+  "http_status": 201,
+  "request_sha256": "e64c1328a17ec6e3b0513e7814bb6d9a49cf9bdaddebaaaf2a1bb8c69345fc1e",
+  "response": {
+   "observation_id": "7bcaa45b-4f26-4470-af50-2f2fe2f0c65a",
+   "outcome": "created",
+   "reason": null,
+   "status": "pending"
+  }
+ },
+ "k8s_policy_surface": {
+  "added": [],
+  "changed": [
+   "configmaps/otel-demo/flagd-config"
+  ],
+  "changed_outside_deployment_replicaset_flagd": [],
+  "kinds": 23,
+  "objects_compared": 308,
+  "removed": [],
+  "verdict": "PASS"
+ },
+ "link": [
+  {
+   "comparison_id": "c60821d7-4626-58ae-9ad0-1a6a8f14fbca",
+   "consumed_at": "2026-10-24 03:38:44.925699-07",
+   "disposition": "created",
+   "handoff_reason": null,
+   "incident_id": "eaef0fb4-a79f-592a-8602-aa515dfc6936",
+   "input_id": null,
+   "related_incident_id": null,
+   "run_id": "0c3d6233-02fd-5b03-846d-9654c70cfc3a"
+  }
+ ],
+ "observation": {
+  "calibrated_policy_revision": "otel-demo-checkout-release@e2ed7b69b96b",
+  "deadline_at": "2026-10-24 04:25:42.472639-07",
+  "ended_at": "2026-10-24 03:37:09.983931-07",
+  "ended_reason": "anomaly_detected",
+  "health_profile_revision": "otel-demo-checkout@b72bbe2e30be",
+  "incident_id": "eaef0fb4-a79f-592a-8602-aa515dfc6936",
+  "min_tracking_seconds": 1500,
+  "observation_id": "7bcaa45b-4f26-4470-af50-2f2fe2f0c65a",
+  "released_at": "2026-10-24 03:25:42.472639-07",
+  "source": "kind-harness",
+  "source_release_id": "pr4b-s3-regress-silenced-20261024T102541Z",
+  "status": "anomalous",
+  "used_sample_count": 5
+ },
+ "raw_ledger": {
+  "artifact_sha256": {
+   "after.json": "92a046b8be48e0727242062eb0c90d866a99da3e25d05ac8d356fcd8301aa6a6",
+   "authorize.json": "ea9b7c47b462e8b7d72d8179029be5a73e4eb848c848909c59d943b6c0305854",
+   "before.json": "d8a37d249b11e2938afef149f453ed4a8390da85c64b6d576664f6758e3e60fc",
+   "close.json": "727cffc2cb50c1f1264e7fa43debd2573225c2df62ff7b4b480b0d48d57af717",
+   "db-extract.json": "26e9d0616c0461c5993392eb4811e321d2128010963a73906c860ccc05a3145d",
+   "fault.jsonl": "aa1ddbd80d48c3dcbbc321a727b11822680472fbfef66ade514caeded529f836",
+   "release.json": "95585e0bd685350d19c5f906d52cd72f2c5a16ec284f7270e530617940b04738",
+   "timeline.jsonl": "017912d0deade516dcb1a4510c43a2af0d9990f42a1f4bb7eacf75c906554124",
+   "webhook.json": "86a5ced3d24f3b54bf32bf51a5403bba21e887bd19db0d9453cfd3764680c776"
+  },
+  "location": "main repo tmp/lab-ledgers/pr4b-s3-regress-silenced/ (not committed)"
+ },
+ "release": {
+  "after_pod_template_hash": "659b547476",
+  "before_pod_template_hash": "f8956c665",
+  "deployment_generation": 20,
+  "release_id": "pr4b-s3-regress-silenced-20261024T102541Z",
+  "released_at_patch_receipt": "2026-10-24T10:25:42.472639+00:00"
+ },
+ "samples": [
+  {
+   "disposition": "adopted",
+   "outcome": "no_data",
+   "sequence": 1,
+   "window_end": "2026-10-24 03:26:52.934686-07"
+  },
+  {
+   "disposition": "adopted",
+   "outcome": "no_data",
+   "sequence": 2,
+   "window_end": "2026-10-24 03:28:47.287276-07"
+  },
+  {
+   "disposition": "adopted",
+   "outcome": "healthy",
+   "sequence": 3,
+   "window_end": "2026-10-24 03:31:06.411283-07"
+  },
+  {
+   "disposition": "adopted",
+   "outcome": "healthy",
+   "sequence": 4,
+   "window_end": "2026-10-24 03:33:30.621373-07"
+  },
+  {
+   "disposition": "adopted",
+   "outcome": "degraded",
+   "sequence": 5,
+   "window_end": "2026-10-24 03:35:54.591477-07"
+  }
+ ],
+ "scenario": "s3-regression-alert-silenced",
+ "schema": "f11-pr4b-live-scenario-v1"
+}

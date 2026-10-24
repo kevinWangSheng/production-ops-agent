@@ -56,6 +56,7 @@ from opspilot.investigation.context import (
     CONCLUSION_KIND,
     INPUT_CONTENT_FIELD_MAX_CHARS,
     KNOWLEDGE,
+    RELEASE_OBSERVATION,
     ContextError,
     conclusion_publishable,
 )
@@ -64,7 +65,13 @@ from opspilot.investigation.coverage import (
     collection_truncated,
     run_coverage,
 )
-from opspilot.investigation.inputs import AlertAnchor, ToolFace, continuation_input
+from opspilot.investigation.inputs import (
+    AlertAnchor,
+    ReleaseAnchor,
+    ToolFace,
+    continuation_input,
+    release_observation_fact,
+)
 from opspilot.investigation.limits import (
     MAX_MODEL_REQUESTS_PER_RUN,
     MODEL_REQUEST_TIMEOUT_SECONDS,
@@ -82,6 +89,8 @@ from opspilot.investigation.progress import (
 from opspilot.investigation.reports import ReportV2, parse_report
 from opspilot.investigation.store import StepCommitter, StepStoreError
 from opspilot.knowledge.hints import knowledge_checks, unavailable_fact
+from opspilot.observation.release_commands import ReleaseConsumption
+from opspilot.observation.release_types import ReleaseLinkReceipt
 from opspilot.observation.store import SelfHealGrant, SelfHealState
 from opspilot.observer.health_profile import HealthProfile, canonical_content
 from opspilot.observer.replay import SessionReplay, replay_history
@@ -101,6 +110,16 @@ from opspilot.web.store import (
 )
 
 _INTAKE_NAMESPACE = UUID("0f4c9d3e-2b7a-4a6e-9c1d-5e8f7a6b3c21")
+#: The system principal a release-anomaly incident's intake row records
+#: (F11 PR-4b): no human and no webhook asked for it; the web process's
+#: consumption pass opened it from a stored anomaly ending.
+_RELEASE_PRINCIPAL = Principal(
+    actor_id="release_observation", channel="event_token", auth_revision="system"
+)
+#: R1: the intake key prefix of every incident an anomaly opened.
+_RELEASE_INTAKE_PREFIX = "intake:release-anomaly:"
+#: R4: how many reason codes the appended event's text lists.
+_RELEASE_EVENT_CODES = 16
 _log = logging.getLogger(__name__)
 #: Lease granted per attempt and re-extended before every committer call.
 #: The loop is synchronous, so nothing can renew while one model request is
@@ -312,6 +331,11 @@ class Workbench:
     targets: TargetRegistry | None = None
     knowledge: Any = None
     knowledge_max_age_seconds: int = 2592000
+    #: The ``ReleaseStore`` the anomaly consumption pass and release
+    #: rebuilds use (F11 PR-4b); ``None`` derives one on first use from the
+    #: durable incident store's DSN and pool settings, as the release intake
+    #: route does, and a store without one (in-memory tests) has no releases.
+    releases: Any = None
     _owner: UUID = field(default_factory=uuid4)
 
     # -- intake ---------------------------------------------------------
@@ -1076,6 +1100,8 @@ class Workbench:
         affected_service: Mapping[str, str] | None = None,
         alert: AlertAnchor | None = None,
         alert_context: Mapping[str, Any] | None = None,
+        release: ReleaseAnchor | None = None,
+        release_fact: Mapping[str, Any] | None = None,
     ) -> dict[str, Any] | None:
         """A first Run's input over the intake question (``None`` without a face).
 
@@ -1084,7 +1110,9 @@ class Workbench:
         ``alert`` frames an alert Run at the alert's receipt and anchors its
         default query window at ``startsAt`` (J1-J3); ``alert_context`` (its
         processed labels and annotations, K1-K4) makes the input v4 and
-        reaches the model as labelled untrusted context.
+        reaches the model as labelled untrusted context. ``release`` frames a
+        release-anomaly Run at the consumption and anchors it at
+        ``released_at`` (R3); ``release_fact`` (P4-05) makes the input v6.
         """
         if self.tool_face is None:
             return None
@@ -1095,6 +1123,7 @@ class Workbench:
             deadline=deadline,
             model_requests=self.budget_limit,
             alert=alert,
+            release=release,
         )
         if affected_service is not None:
             fresh = replace(
@@ -1108,6 +1137,14 @@ class Workbench:
             fresh = replace(
                 fresh,
                 scope_facts={**fresh.scope_facts, ALERT_CONTEXT: dict(alert_context)},
+            )
+        if release_fact is not None:
+            fresh = replace(
+                fresh,
+                scope_facts={
+                    **fresh.scope_facts,
+                    RELEASE_OBSERVATION: dict(release_fact),
+                },
             )
         if self.knowledge is not None:
             fresh = replace(
@@ -1172,6 +1209,7 @@ class Workbench:
                 authorized_targets=frozenset({request.target_id}),
             )
             facts = dict(fresh.scope_facts)
+            self._check_release_fact(summary.incident_id, summary.intake_key, facts)
             facts.pop(KNOWLEDGE, None)
             if self.knowledge is not None:
                 facts[KNOWLEDGE] = self._knowledge(request)
@@ -1191,6 +1229,9 @@ class Workbench:
             )
             try:
                 service, alert, context = self._alert_rebuild(summary.incident_id)
+                released, anchor, fact = self._release_rebuild(
+                    summary.incident_id, summary.intake_key
+                )
             except ContextError as rebuild_exc:
                 # Same fail-closed refusal as rows that cannot be continued.
                 raise PersistenceError(rebuild_exc.code) from rebuild_exc
@@ -1198,9 +1239,11 @@ class Workbench:
                 request,
                 run_id,
                 deadline,
-                affected_service=service,
+                affected_service=service or released,
                 alert=alert,
                 alert_context=context,
+                release=anchor,
+                release_fact=fact,
             )
         # A PersistenceError (storage outage, lock timeout) propagates: the
         # control action fails closed and the operator retries (bot review,
@@ -1242,6 +1285,186 @@ class Workbench:
             original=identity["starts_at_raw"],
         )
         return service, anchor, context
+
+    # -- release anomalies (F11 PR-4b) ----------------------------------
+
+    def _release_store(self) -> Any:
+        if self.releases is None:
+            durable = getattr(self.incidents, "_store", None)
+            dsn = getattr(durable, "dsn", None)
+            if not isinstance(dsn, str):
+                return None
+            from opspilot.observation.releases import ReleaseStore
+
+            self.releases = ReleaseStore(
+                dsn, pool=getattr(durable, "pool_config", None)
+            )
+        return self.releases
+
+    def release_anomaly_pass(self, *, limit: int = 20) -> list[ReleaseLinkReceipt]:
+        """Consume every pending anomaly ending into an incident (P4-02):
+        Controller work in the web process, after the automatic observation
+        pass and on its interval. Each ending is decided in its own
+        transaction by ``ReleaseStore.consume_anomaly`` -- a new incident and
+        queued Run with the v6 input, one event on the target's open
+        incident, a new incident related to the latest closed one, or a
+        handoff when the target cannot be resolved -- so a repeated or
+        concurrent pass, or a retry after a failure, finds the committed
+        link and opens nothing twice. An ending still waiting for its
+        before/after comparison is left to a later pass and not reported;
+        one that fails is logged and retried by the next pass. Healthy,
+        unknown and cancelled releases are never pending, so a healthy
+        stretch costs one read per pass and nothing else. No external call:
+        the Run's queries and model requests are the worker's.
+        """
+        store = self._release_store()
+        if store is None:
+            return []
+        receipts: list[ReleaseLinkReceipt] = []
+        for ending in store.pending_anomaly_endings(limit=limit):
+            try:
+                receipt = store.consume_anomaly(ending, opening=self._release_opening)
+            except (PersistenceError, ContextError, ValidationError) as exc:
+                _log.warning(
+                    "release anomaly consumption failed observation=%s code=%s",
+                    ending.observation_id,
+                    getattr(exc, "code", None) or str(exc),
+                )
+                continue
+            if receipt is None:
+                continue
+            if receipt.run_id is not None:
+                intake = self.ledger.get("intake", "intake:" + receipt.anomaly_key)
+                if intake is not None:
+                    self._announce_intake(
+                        receipt.incident_id,
+                        receipt.run_id,
+                        _envelope_from_json(intake["envelope"]),
+                    )
+            receipts.append(receipt)
+        return receipts
+
+    def _release_opening(self, plan: ReleaseConsumption) -> dict[str, Any]:
+        """What the store cannot build for ``plan``: the new Run's input
+        and intake row (R3, R5, P4-05), or the appended event (R4)."""
+        if plan.disposition == "handoff_created":
+            return {}
+        if plan.disposition == "attached":
+            return {"content": _release_event(plan)}
+        assert plan.run_id is not None
+        snapshot = plan.release.target_snapshot
+        service = {
+            "namespace": snapshot["namespace"],
+            "workload": snapshot["workload"],
+        }
+        request = IntakeRequest(
+            target_id=snapshot["resource_uid"],
+            question=_release_question(service),
+            idempotency_key=plan.ending.anomaly_key,
+        )
+        envelope = IntakeEnvelope(
+            request_id=str(uuid4()),
+            principal=_RELEASE_PRINCIPAL,
+            request=request,
+            received_at=plan.consumed_at,
+        )
+        deadline = plan.consumed_at + timedelta(seconds=self.run_seconds)
+        anchor = ReleaseAnchor(
+            released_at=plan.release.released_at, consumed_at=plan.consumed_at
+        )
+        return {
+            "deadline": deadline,
+            "budget_limit": self.budget_limit,
+            "versions": dict(self.run_versions),
+            "input": self._fresh_input(
+                request,
+                plan.run_id,
+                deadline,
+                affected_service=service,
+                release=anchor,
+                release_fact=release_observation_fact(
+                    plan.release.model_dump(mode="json"),
+                    plan.ending.model_dump(mode="json"),
+                    plan.comparison,
+                    anchor,
+                ),
+            ),
+            "ledger": [
+                (
+                    "intake",
+                    plan.intake_key,
+                    {
+                        "incident_id": str(plan.incident_id),
+                        "run_id": str(plan.run_id),
+                        "envelope": _envelope_json(envelope),
+                        "source": "release_observation",
+                    },
+                )
+            ],
+        }
+
+    def _release_rebuild(
+        self, incident_id: UUID, intake_key: str
+    ) -> tuple[
+        Mapping[str, str] | None, ReleaseAnchor | None, Mapping[str, Any] | None
+    ]:
+        """What a rebuild of a release-anomaly incident's Run keeps (R6): its
+        affected service, the frame of its consumption and the v6 release
+        fact, recomputed from the stored link, release, anomaly ending and
+        the comparison the link names. ``(None, None, None)`` for an
+        incident no anomaly created; records that cannot be read or do not
+        agree fail closed with ``ContextError("INCOMPATIBLE_STATE")``."""
+        store = self._release_store()
+        records = None if store is None else store.release_incident_records(incident_id)
+        if records is None:
+            # An anomaly's intake key whose link is gone is damage, not an
+            # incident some other source opened.
+            if intake_key.startswith(_RELEASE_INTAKE_PREFIX):
+                _log.warning("release link missing incident=%s", incident_id)
+                raise ContextError("INCOMPATIBLE_STATE")
+            return None, None, None
+        link, release, ending = records["link"], records["release"], records["ending"]
+        if (
+            link is None
+            or release is None
+            or ending is None
+            or release.incident_id != incident_id
+            or release.status != "anomalous"
+            or link["ending_id"] != ending.ending_id
+            or link["anomaly_key"] != ending.anomaly_key
+            or (link["comparison_id"] is not None and records["comparison"] is None)
+        ):
+            _log.warning("release record unreadable incident=%s", incident_id)
+            raise ContextError("INCOMPATIBLE_STATE")
+        anchor = ReleaseAnchor(
+            released_at=release.released_at, consumed_at=link["consumed_at"]
+        )
+        snapshot = release.target_snapshot
+        return (
+            {"namespace": snapshot["namespace"], "workload": snapshot["workload"]},
+            anchor,
+            release_observation_fact(
+                release.model_dump(mode="json"),
+                ending.model_dump(mode="json"),
+                records["comparison"],
+                anchor,
+            ),
+        )
+
+    def _check_release_fact(
+        self, incident_id: UUID, intake_key: str, facts: Mapping[str, Any]
+    ) -> None:
+        """R6 on the continuation path: a successor keeps the previous Run's
+        release fact only when it still equals the one the stored records
+        give; a missing, extra or different fact refuses the action
+        (``INCOMPATIBLE_STATE``) rather than carry or drop it silently."""
+        try:
+            _, _, fact = self._release_rebuild(incident_id, intake_key)
+        except ContextError as exc:
+            raise PersistenceError(exc.code) from exc
+        if facts.get(RELEASE_OBSERVATION) != fact:
+            _log.warning("release fact differs from records incident=%s", incident_id)
+            raise PersistenceError("INCOMPATIBLE_STATE")
 
     def _audit_matches(
         self,
@@ -2196,6 +2419,49 @@ def _stored_alert(alert_json: str) -> dict[str, Any]:
         "annotations": annotations if isinstance(annotations, dict) else None,
         "ends_at": ends_at if isinstance(ends_at, str) else None,
         "record_text": None,
+    }
+
+
+def _release_question(service: Mapping[str, str]) -> str:
+    """R5: the fixed question of a release-anomaly incident; namespace and
+    workload come from the registry-checked target, every untrusted release
+    field reaches the model only inside the labelled release fact."""
+    return (
+        "A post-release observation of "
+        f"{service['namespace']}/{service['workload']} ended anomalous. Compare "
+        "the versions before and after the release and the old and new "
+        "instances, and find the cause of the degradation."
+    )
+
+
+def _release_event(plan: ReleaseConsumption) -> dict[str, Any]:
+    """R4: the one event an anomaly appends to an open incident. The model
+    sees ``channel`` and the bounded ``text``, built from system-made values
+    only (ids, digests, reason codes, statuses); the release's own texts stay
+    out. The ids ride along for audit."""
+    evaluation = plan.ending.release_evaluation
+    codes = ", ".join(c[:128] for c in evaluation.reason_codes[:_RELEASE_EVENT_CODES])
+    comparison = plan.comparison or {}
+    compared = str(comparison.get("status", "unavailable"))[:32]
+    compared_codes = ", ".join(
+        str(c)[:128]
+        for c in list(comparison.get("reason_codes") or ())[:_RELEASE_EVENT_CODES]
+    )
+    text = (
+        f"Release observation {plan.release.observation_id} ended anomalous "
+        f"(ending {plan.ending.ending_id}, verdict {evaluation.verdict}) on this "
+        f"incident's target; pod template {plan.release.before_revision.pod_template_digest}"
+        f" -> {plan.release.after_revision.pod_template_digest}; evaluation reasons: "
+        f"{codes or 'none'}; before/after comparison {compared}"
+        + (f" ({compared_codes})" if compared_codes else "")
+        + "; attached to this incident without a new Run."
+    )
+    return {
+        "channel": "release_observation",
+        "text": text[:_MAX_TEXT],
+        "observation_id": str(plan.release.observation_id),
+        "ending_id": str(plan.ending.ending_id),
+        "anomaly_key": plan.ending.anomaly_key,
     }
 
 

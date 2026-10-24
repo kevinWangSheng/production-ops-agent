@@ -1039,6 +1039,8 @@ def _replay_release_history(history: Mapping[str, object]) -> ReleaseReplay:
             samples,
             endings,
         )
+    if "link" in history:
+        issues |= _link_issues(release, history["link"], endings)
     verdict: Literal["healthy", "degraded", "unknown"] = "unknown"
     if not issues:
         if status == "healthy":
@@ -1147,6 +1149,50 @@ def _comparison_issues(
         or not c["decision_at"] <= c["recorded_at"]
     ):
         return {"COMPARISON_MISMATCH"}
+    return set()
+
+
+_LINK_SHAPES = {
+    # disposition -> (related set, run set, input set, handoff reason set)
+    "created": (False, True, False, False),
+    "attached": (False, False, True, False),
+    "created_related": (True, True, False, False),
+    "handoff_created": (False, False, False, True),
+}
+
+
+def _link_issues(release: ReleaseRecord, link: Any, endings: Any) -> set[str]:
+    """R9: the consumption link agrees with the release's unique anomaly
+    ending and with the incident the release names; a release that names an
+    incident without a link, or a link on a release that names none or
+    another, is a mismatch."""
+    if link is None:
+        return set() if release.incident_id is None else {"LINK_MISMATCH"}
+    try:
+        anomalies = [e for e in endings if e.get("anomaly_key") is not None]
+        shape = _LINK_SHAPES[link["disposition"]]
+        if (
+            release.status != "anomalous"
+            or len(anomalies) != 1
+            or link["observation_id"] != release.observation_id
+            or link["anomaly_key"] != "release-anomaly:" + str(release.observation_id)
+            or link["ending_id"] != anomalies[0]["ending_id"]
+            or link["anomaly_key"] != anomalies[0]["anomaly_key"]
+            or anomalies[0].get("ended_reason") != "anomaly_detected"
+            or link["incident_id"] is None
+            or release.incident_id != link["incident_id"]
+            or shape
+            != (
+                link["related_incident_id"] is not None,
+                link["run_id"] is not None,
+                link["input_id"] is not None,
+                link["handoff_reason"] is not None,
+            )
+            or not anomalies[0]["recorded_at"] <= link["consumed_at"]
+        ):
+            return {"LINK_MISMATCH"}
+    except (KeyError, TypeError, AttributeError):
+        return {"LINK_MISMATCH"}
     return set()
 
 

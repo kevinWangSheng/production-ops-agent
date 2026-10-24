@@ -366,6 +366,6 @@ def test_model_visible_revisions_are_unchanged():
     assert TOOL_SCHEMA_REVISION == "otel-demo-68ed2ca8f5d6"
     assert PROJECTION_REVISION == "m1-01-tool-view-v10"
     assert prompt_revision_versions(DISCIPLINE_VARIANT) == {
-        "prompt_revision": "prompt-replay-candidate-2f30c2380b23"
+        "prompt_revision": "prompt-replay-candidate-bef70649a3a8"
     }
     assert context_policy_revision() == "ctx-ctx-policy-v1-a30e65ea52f4"

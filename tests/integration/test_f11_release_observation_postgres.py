@@ -105,7 +105,7 @@ AUDIT = "opspilot_release_audit"
 QUERY_RESULTS = "opspilot_release_query_results"
 BEFORE_0015 = "0014_release_observations"
 REVISION_0015 = "0015_release_observation_sessions"
-HEAD = "0020_release_comparisons"
+HEAD = "0021_release_incident_links"
 
 SESSION = PROFILE.session  # deadline 3600, max 40, cadence 60, window 600
 MIN_TRACKING = 600  # M: explicit test value, not a calibration
@@ -1976,7 +1976,9 @@ def test_release_grants_match_the_contract_table() -> None:
     update = sorted(
         "status,paused,control_generation,observation_generation,ended_reason,"
         "ended_at,updated_at,calibrated_policy_revision,calibrated_policy_content,"
-        "calibrated_policy_sha256".split(",")
+        "calibrated_policy_sha256,incident_id".split(
+            ","
+        )  # incident_id: 0021, F11 PR-4b
     )
     assert f"UPDATE({','.join(update)})" in web[RELEASES]
     assert not {"DELETE", "TRUNCATE", "UPDATE"} & web[RELEASES]

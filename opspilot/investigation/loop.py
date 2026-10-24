@@ -27,6 +27,7 @@ from opspilot.investigation.context import (
     CONTEXT_POLICY,
     INITIAL_SEGMENT,
     KNOWLEDGE_BOUNDARY,
+    RELEASE_CONTEXT_BOUNDARY,
     InvestigationInput,
     Transcript,
     calibrated,
@@ -121,6 +122,7 @@ def prompt_revision_versions(
             report_retry_template=REPORT_RETRY_TEMPLATE,
             alert_context_template=ALERT_CONTEXT_BOUNDARY,
             knowledge_template=KNOWLEDGE_BOUNDARY,
+            release_context_template=RELEASE_CONTEXT_BOUNDARY,
         )
     }
 

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any, Literal, cast
 from uuid import UUID, uuid4, uuid5
@@ -25,7 +27,83 @@ from opspilot.observer.health_profile import HealthProfile
 from opspilot.persistence.base import Connection, PersistenceError
 
 if TYPE_CHECKING:
-    from opspilot.observation.release_types import ReleaseAnomalyEnding
+    from opspilot.observation.release_types import (
+        ReleaseAnomalyEnding,
+        ReleaseLinkDisposition,
+        ReleaseLinkReceipt,
+    )
+    from opspilot.observation.releases import ReleaseRecord
+
+#: Equal to ``opspilot.web.service._INTAKE_NAMESPACE`` (F11 R1): the ids a
+#: consumption creates derive from the anomaly key like the intake ids do
+#: from an idempotency key, so every later control treats the incident like
+#: any other and a retry finds the same rows.
+INTAKE_NAMESPACE = UUID("0f4c9d3e-2b7a-4a6e-9c1d-5e8f7a6b3c21")
+#: F2 U-B1-2: a new release-anomaly incident is a warning (no severity).
+RELEASE_INCIDENT_PRIORITY = 1
+#: The actor of the event an anomaly appends to an open incident (R4).
+RELEASE_EVENT_ACTOR = "release_observation"
+#: R7: the handoff reason when the release's target is not resolvable.
+RELEASE_TARGET_UNRESOLVED = "RELEASE_TARGET_UNRESOLVED"
+_TARGET_FIELDS = (
+    "integration_id",
+    "cluster_uid",
+    "namespace",
+    "resource_uid",
+    "workload",
+)
+_LINK_COLUMNS = "observation_id,ending_id,anomaly_key,disposition,incident_id,related_incident_id,run_id,input_id,handoff_reason,comparison_id,consumed_at"
+
+
+def release_intake_ids(anomaly_key: str) -> tuple[str, UUID, UUID]:
+    """R1: the intake key, incident id and first Run id an anomaly opens."""
+    intake_key = "intake:" + anomaly_key
+    return (
+        intake_key,
+        uuid5(INTAKE_NAMESPACE, intake_key),
+        uuid5(INTAKE_NAMESPACE, intake_key + ":run:0"),
+    )
+
+
+def release_event_id(anomaly_key: str, incident_id: UUID) -> UUID:
+    """R1: the id of the one event an anomaly appends to ``incident_id``."""
+    return uuid5(INTAKE_NAMESPACE, f"{anomaly_key}:event:{incident_id}")
+
+
+def comparison_wait_seconds() -> int:
+    """How long after its anomaly ending a consumption waits for the
+    before/after comparison (P4-01): the Observer's three attempt leases plus
+    a minute. Past it the anomaly is consumed with the comparison stated
+    ``unavailable``, so a missing Observer, or a suspended scope the Observer
+    does not compare in, never keeps the anomaly from an incident."""
+    from opspilot.observation.release_comparison import (
+        COMPARISON_LEASE_SECONDS,
+        COMPARISON_MAX_ATTEMPTS,
+    )
+
+    return COMPARISON_MAX_ATTEMPTS * COMPARISON_LEASE_SECONDS + 60
+
+
+@dataclass(frozen=True)
+class ReleaseConsumption:
+    """What ``consume_anomaly_in`` decided for one anomaly ending, handed to
+    the caller's ``opening`` before anything is written: the disposition
+    and the ids it writes under, the release, its ending and the stored
+    comparison (``None`` when the wait for one ran out), and
+    ``consumed_at``, the transaction's database time the new Run's frame
+    ends at (R3)."""
+
+    disposition: ReleaseLinkDisposition
+    release: ReleaseRecord
+    ending: ReleaseAnomalyEnding
+    comparison: Mapping[str, Any] | None
+    consumed_at: datetime
+    intake_key: str
+    incident_id: UUID
+    run_id: UUID | None
+    related_incident_id: UUID | None
+    input_id: UUID | None
+    handoff_reason: str | None
 
 
 class ReleaseCommandReceipt(DTO):
@@ -711,6 +789,336 @@ class _ReleaseCommandOps(_TargetProfileOps):
             )
             for r in rows
         )
+
+    # -- anomaly consumption (F11 PR-4b) --------------------------------
+
+    def consume_anomaly(
+        self,
+        ending: ReleaseAnomalyEnding,
+        *,
+        opening: Callable[[ReleaseConsumption], Mapping[str, Any]],
+    ) -> ReleaseLinkReceipt | None:
+        """``consume_anomaly_in`` in its own transaction."""
+        with self.transaction() as conn:
+            return self.consume_anomaly_in(conn, ending, opening=opening)
+
+    def consume_anomaly_in(
+        self,
+        conn: Connection,
+        ending: ReleaseAnomalyEnding,
+        *,
+        opening: Callable[[ReleaseConsumption], Mapping[str, Any]],
+    ) -> ReleaseLinkReceipt | None:
+        """Consume one anomaly ending (P4-02, P4-03): open or correlate its
+        incident and link it to the release, all in the caller's
+        transaction, or nothing.
+
+        The disposition follows the shared open-incident rule (F2 PR-C C3,
+        ``choose_correlation``) over every incident on the release's target:
+        a non-closed one takes the anomaly as one event (``attached``, no
+        Run, nothing else of the incident changes); when all are closed a
+        new incident relates to the latest (``created_related``); with none
+        a new incident stands alone (``created``). A target whose registry
+        row is incomplete or differs from the release's snapshot is not
+        correlated: the anomaly is handed to a human (``handoff_created``,
+        R7). ``opening`` is called once with the decision and returns what
+        only the caller can build -- for a new Run its ``deadline``,
+        ``budget_limit``, ``versions``, ``input`` and intake ``ledger`` rows,
+        for an event its ``content``.
+
+        Returns ``None`` while the ending still waits for its comparison
+        (``comparison_wait_seconds``); the receipt of the committed link
+        otherwise, ``replayed`` when an earlier consumption made it.
+
+        Locks (R2 as aligned with PR-C r3): a transaction advisory lock on
+        the observation, then the scope and the target suspension row (FOR
+        SHARE), then the candidate incidents (FOR UPDATE, id order), then
+        the release row; the same scope -> incidents -> release order the
+        suspension and release command paths take.
+        """
+        from opspilot.observation.release_types import ReleaseAnomalyEnding
+
+        if not isinstance(ending, ReleaseAnomalyEnding) or not callable(opening):
+            raise PersistenceError("INVALID_INPUT")
+        try:
+            return self._consume_locked(conn, ending, opening)
+        except psycopg.Error as exc:
+            raise PersistenceError(self._error_code(exc)) from exc
+
+    def _consume_locked(
+        self,
+        conn: Connection,
+        ending: ReleaseAnomalyEnding,
+        opening: Callable[[ReleaseConsumption], Mapping[str, Any]],
+    ) -> ReleaseLinkReceipt | None:
+        from opspilot.observation.releases import ReleaseRecord
+        from opspilot.persistence.alerts import _ledger
+        from opspilot.persistence.controls import append_input_in
+        from opspilot.persistence.correlation import (
+            Correlation,
+            CorrelationCandidate,
+            choose_correlation,
+        )
+        from opspilot.persistence.incidents import _check_priority, _IncidentOps
+
+        oid = ending.observation_id
+        conn.execute(
+            "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
+            ("release-link:" + str(oid),),
+        )
+        link = self._link_in(conn, oid)
+        if link is not None:
+            if (
+                link["ending_id"] != ending.ending_id
+                or link["anomaly_key"] != ending.anomaly_key
+            ):
+                raise PersistenceError("IDENTITY_CONFLICT")
+            return _link_receipt(link, replayed=True)
+        stored = self._anomaly_ending_in(conn, oid)
+        if stored is None or stored != ending:
+            raise PersistenceError("IDENTITY_CONFLICT")
+        release = release_row(conn, oid)
+        if release["status"] != "anomalous" or release["incident_id"] is not None:
+            raise PersistenceError("INCONSISTENT_STATE")
+        comparison = conn.execute(
+            "SELECT comparison_id,comparison FROM opspilot_release_comparisons WHERE ending_id=%s",
+            (ending.ending_id,),
+        ).fetchone()
+        if comparison is None and self._db_now(conn) < ending.recorded_at + timedelta(
+            seconds=comparison_wait_seconds()
+        ):
+            return None
+        target = conn.execute(
+            "SELECT "
+            + ",".join(_TARGET_FIELDS)
+            + " FROM opspilot_targets WHERE target_id=%s",
+            (release["target_id"],),
+        ).fetchone()
+        resolved = (
+            target is not None
+            and all(isinstance(v, str) and v for v in target.values())
+            and dict(target) == release["target_snapshot"]
+        )
+        self._lock_scope(conn, None)
+        correlation = Correlation(attach_to=None, related_to=None)
+        if resolved:
+            self._require_row(
+                conn.execute(
+                    "SELECT suspended FROM opspilot_target_suspensions WHERE target_id=%s FOR SHARE",
+                    (release["target_id"],),
+                )
+            )
+            rows = conn.execute(
+                "SELECT incident_id,lifecycle,created_at FROM opspilot_incidents WHERE target_id=%s ORDER BY incident_id FOR UPDATE",
+                (release["target_id"],),
+            ).fetchall()
+            correlation = choose_correlation(
+                [
+                    CorrelationCandidate(
+                        row["incident_id"], row["lifecycle"], row["created_at"]
+                    )
+                    for row in rows
+                ]
+            )
+        release = release_row(conn, oid, lock=True)
+        if release["status"] != "anomalous" or release["incident_id"] is not None:
+            raise PersistenceError("INCONSISTENT_STATE")
+        consumed_at = self._require_row(
+            conn.execute("SELECT transaction_timestamp() AS at")
+        )["at"]
+        intake_key, new_incident, new_run = release_intake_ids(ending.anomaly_key)
+        disposition: ReleaseLinkDisposition
+        incident_id = new_incident
+        run_id: UUID | None = new_run
+        input_id: UUID | None = None
+        handoff_reason: str | None = None
+        if not resolved:
+            disposition, run_id = "handoff_created", None
+            handoff_reason = RELEASE_TARGET_UNRESOLVED
+        elif correlation.attach_to is not None:
+            disposition, run_id = "attached", None
+            incident_id = correlation.attach_to
+            input_id = release_event_id(ending.anomaly_key, incident_id)
+        elif correlation.related_to is not None:
+            disposition = "created_related"
+        else:
+            disposition = "created"
+        plan = ReleaseConsumption(
+            disposition=disposition,
+            release=ReleaseRecord.model_validate(release),
+            ending=ending,
+            comparison=None if comparison is None else comparison["comparison"],
+            consumed_at=consumed_at,
+            intake_key=intake_key,
+            incident_id=incident_id,
+            run_id=run_id,
+            related_incident_id=correlation.related_to,
+            input_id=input_id,
+            handoff_reason=handoff_reason,
+        )
+        spec = opening(plan)
+        if disposition == "attached":
+            assert input_id is not None
+            append_input_in(
+                conn,
+                incident_id,
+                input_id,
+                dict(spec["content"]),
+                actor=RELEASE_EVENT_ACTOR,
+            )
+        elif disposition == "handoff_created":
+            # R7, like an alert handed to a human at intake (E5): no Run, no
+            # target binding, ``waiting_human`` and outside the claim listing.
+            _check_priority(RELEASE_INCIDENT_PRIORITY)
+            inserted = conn.execute(
+                "INSERT INTO opspilot_incidents(incident_id,intake_key,state,lifecycle,current_run_id,target_id,priority) VALUES(%s,%s,'waiting_human','open',NULL,NULL,%s) ON CONFLICT DO NOTHING RETURNING incident_id",
+                (incident_id, intake_key, RELEASE_INCIDENT_PRIORITY),
+            ).fetchone()
+            if inserted is None:
+                raise PersistenceError("IDENTITY_CONFLICT")
+        else:
+            assert run_id is not None
+            _IncidentOps(self.dsn, pool=self.pool_config)._accept_in(
+                conn,
+                incident_id,
+                run_id,
+                intake_key,
+                deadline=spec["deadline"],
+                budget_limit=spec["budget_limit"],
+                versions=dict(spec["versions"]),
+                input=spec.get("input"),
+                target_id=release["target_id"],
+                priority=RELEASE_INCIDENT_PRIORITY,
+                related_incident_id=correlation.related_to,
+            )
+            _ledger(conn, spec.get("ledger") or ())
+        conn.execute(
+            "INSERT INTO opspilot_release_incident_links(observation_id,ending_id,anomaly_key,disposition,incident_id,related_incident_id,run_id,input_id,handoff_reason,comparison_id) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+            (
+                oid,
+                ending.ending_id,
+                ending.anomaly_key,
+                disposition,
+                incident_id,
+                correlation.related_to,
+                run_id,
+                input_id,
+                handoff_reason,
+                None if comparison is None else comparison["comparison_id"],
+            ),
+        )
+        conn.execute(
+            "UPDATE opspilot_release_observations SET incident_id=%s WHERE observation_id=%s",
+            (incident_id, oid),
+        )
+        committed = self._link_in(conn, oid)
+        assert committed is not None
+        return _link_receipt(committed, replayed=False)
+
+    @staticmethod
+    def _link_in(conn: Connection, observation_id: UUID) -> dict[str, Any] | None:
+        row = conn.execute(
+            "SELECT "
+            + _LINK_COLUMNS
+            + " FROM opspilot_release_incident_links WHERE observation_id=%s",
+            (observation_id,),
+        ).fetchone()
+        return None if row is None else dict(row)
+
+    @staticmethod
+    def _anomaly_ending_in(
+        conn: Connection, observation_id: UUID
+    ) -> ReleaseAnomalyEnding | None:
+        """The release's unique anomaly ending, as ``pending_anomaly_endings``
+        reads it (``None`` without one)."""
+        from opspilot.observation.release_types import (
+            ReleaseAnomalyEnding,
+            ReleaseEvaluation,
+        )
+
+        rows = conn.execute(
+            "SELECT e.ending_id,e.session_id,e.release_observation_id AS observation_id,e.sample_id,e.job_id,e.job_sequence,s.subject_control_generation,s.observation_generation,s.release_policy_revision AS calibrated_policy_revision,m.release_evidence_sha256,m.release_evaluation,e.anomaly_key,e.recorded_at FROM opspilot_observation_endings e JOIN opspilot_observation_sessions s ON s.session_id=e.session_id JOIN opspilot_observation_samples m ON m.sample_id=e.sample_id WHERE e.release_observation_id=%s AND e.anomaly_key IS NOT NULL",
+            (observation_id,),
+        ).fetchall()
+        if len(rows) != 1:
+            return None
+        r = rows[0]
+        return ReleaseAnomalyEnding(
+            **{
+                **r,
+                "result_sha256": sha256(
+                    canonical_json(r["release_evaluation"]).encode()
+                ),
+                "release_evaluation": ReleaseEvaluation.model_validate_json(
+                    canonical_json(r["release_evaluation"])
+                ),
+            }
+        )
+
+    def release_link(self, observation_id: UUID) -> ReleaseLinkReceipt | None:
+        """The committed consumption of ``observation_id``'s anomaly, if any."""
+        if not isinstance(observation_id, UUID):
+            raise PersistenceError("INVALID_INPUT")
+        with self.transaction(snapshot=True) as conn:
+            row = self._link_in(conn, observation_id)
+        return None if row is None else _link_receipt(row, replayed=False)
+
+    def release_incident_records(self, incident_id: UUID) -> dict[str, Any] | None:
+        """What a rebuild of the release incident ``incident_id`` reads (R6),
+        one snapshot: the link that created it (``created`` or
+        ``created_related``), the release, its anomaly ending and the
+        comparison the link names. ``None`` for an incident no anomaly
+        created; a part that cannot be read is ``None`` in the result."""
+        if not isinstance(incident_id, UUID):
+            raise PersistenceError("INVALID_INPUT")
+        from opspilot.observation.releases import ReleaseRecord
+
+        with self.transaction(snapshot=True) as conn:
+            link = conn.execute(
+                "SELECT "
+                + _LINK_COLUMNS
+                + " FROM opspilot_release_incident_links WHERE incident_id=%s AND disposition IN ('created','created_related')",
+                (incident_id,),
+            ).fetchall()
+            if not link:
+                return None
+            if len(link) != 1:
+                return {
+                    "link": None,
+                    "release": None,
+                    "ending": None,
+                    "comparison": None,
+                }
+            row = dict(link[0])
+            release = conn.execute(
+                "SELECT "
+                + ",".join(ReleaseRecord.model_fields)
+                + " FROM opspilot_release_observations WHERE observation_id=%s",
+                (row["observation_id"],),
+            ).fetchone()
+            ending = self._anomaly_ending_in(conn, row["observation_id"])
+            comparison = (
+                None
+                if row["comparison_id"] is None
+                else conn.execute(
+                    "SELECT comparison FROM opspilot_release_comparisons WHERE comparison_id=%s",
+                    (row["comparison_id"],),
+                ).fetchone()
+            )
+        return {
+            "link": utc_values(row),
+            "release": None
+            if release is None
+            else ReleaseRecord.model_validate(utc_values(release)),
+            "ending": ending,
+            "comparison": None if comparison is None else comparison["comparison"],
+        }
+
+
+def _link_receipt(row: Mapping[str, Any], *, replayed: bool) -> ReleaseLinkReceipt:
+    from opspilot.observation.release_types import ReleaseLinkReceipt
+
+    return ReleaseLinkReceipt(**dict(utc_values(dict(row))), replayed=replayed)
 
 
 def _release_session_columns() -> str:
