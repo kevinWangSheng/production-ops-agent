@@ -47,7 +47,9 @@ SCENARIO_ID = "F3:competing-cause"
 def plain(value: Any) -> Any:
     """Dataclasses, mappings, tuples, datetimes and UUIDs as plain JSON."""
     if dataclasses.is_dataclass(value) and not isinstance(value, type):
-        return {f.name: plain(getattr(value, f.name)) for f in dataclasses.fields(value)}
+        return {
+            f.name: plain(getattr(value, f.name)) for f in dataclasses.fields(value)
+        }
     if isinstance(value, Mapping):
         return {str(k): plain(v) for k, v in value.items()}
     if isinstance(value, (list, tuple)):
@@ -87,7 +89,10 @@ def report_of(steps: list[Mapping[str, Any]]) -> Any:
 
 def collect(dsn: str, incident: UUID, ledger: Path) -> dict[str, Any]:
     plan = json.loads((ledger / "plan.json").read_text())
-    frozen = {k: plan["frozen"][k] for k in ("rubric_sha256", "stimulus_sha256", "answer_sha256")}
+    frozen = {
+        k: plan["frozen"][k]
+        for k in ("rubric_sha256", "stimulus_sha256", "answer_sha256")
+    }
 
     with psycopg.connect(dsn, row_factory=dict_row, connect_timeout=5) as conn:
         conn.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ")
@@ -112,7 +117,11 @@ def collect(dsn: str, incident: UUID, ledger: Path) -> dict[str, Any]:
         ).fetchall()
         report = report_of(steps)
         cited_ids = sorted(
-            {e for c in (report or {}).get("claims", []) for e in c.get("evidence_ids", [])}
+            {
+                e
+                for c in (report or {}).get("claims", [])
+                for e in c.get("evidence_ids", [])
+            }
         )
         cited_rows = conn.execute(
             "SELECT evidence_id, run_id, subject_id, status, view FROM opspilot_evidence"
@@ -125,7 +134,8 @@ def collect(dsn: str, incident: UUID, ledger: Path) -> dict[str, Any]:
     try:
         snapshot = store.rebuild(incident)
         controls = tuple(
-            dataclasses.asdict(row) for row in DurableIncidentStore(store).control_audit(incident)
+            dataclasses.asdict(row)
+            for row in DurableIncidentStore(store).control_audit(incident)
         )
         handoffs = tuple(
             dict(event.payload)
@@ -175,7 +185,11 @@ def collect(dsn: str, incident: UUID, ledger: Path) -> dict[str, Any]:
             if e.category == "query"
         ],
         "incident_runs": [
-            {"run_id": str(r["run_id"]), "control_generation": r["control_generation"], "state": r["state"]}
+            {
+                "run_id": str(r["run_id"]),
+                "control_generation": r["control_generation"],
+                "state": r["state"],
+            }
             for r in runs
         ],
         "alert_delivery_outcomes": [d["outcome"] for d in deliveries],
@@ -198,7 +212,9 @@ def main(argv: list[str] | None = None) -> int:
         summary["lab_readings"] = json.loads(args.lab_readings.read_text())
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(summary, indent=1, sort_keys=True) + "\n")
-    print(json.dumps({"out": str(args.out), "run_id": summary["f3_acceptance"]["run_id"]}))
+    print(
+        json.dumps({"out": str(args.out), "run_id": summary["f3_acceptance"]["run_id"]})
+    )
     return 0
 
 
