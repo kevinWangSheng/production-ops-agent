@@ -38,6 +38,12 @@ attempt run into it (its writes are fenced), waits for the deadline to pass
 and polls once more: that poll is where the runner sweeps the overdue Run
 into a ``DEADLINE_EXCEEDED`` handoff (ADR-0005 decision 2). Ledgers for
 that mode go under docs/evidence/m1-01-deadline-sweep/live-runs/.
+``--f3-coverage`` (F3 PR-2 R-13) adds an ``f3_coverage`` block to the frozen
+summary, read after the Run with the same DSN: the acceptance projection's
+coverage and ``collection_truncated`` for the Run, and which of
+``#coverage-gaps`` / ``#collection-truncated`` the workbench page rendered
+for the incident. ``--f3-answer evals/f3/missing-source/answer.json`` also
+computes that scenario's deterministic U6-a verdict.
 ``--sweep --timeout-follow-up`` then applies one follow_up to the timed-out
 Run: control() records the note and starts a fresh Run (user decision
 2026-09-25, ``renew_*``) whose input is the C3 continuation of the timed-out
@@ -48,15 +54,21 @@ context, and a final poll investigates it for real (renewed wall
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
+import re
+import secrets
 import time
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from uuid import uuid4
 
+import psycopg
+
 from opspilot import tracing
+from opspilot.acceptance_investigation import investigation_evidence
 from opspilot.investigation.client import DeepSeekClient
 from opspilot.investigation.inputs import continuation_input
 from opspilot.investigation.limits import M1_FROZEN_LIMITS
@@ -65,13 +77,25 @@ from opspilot.investigation.loop import (
     MAX_TOOL_PARALLELISM,
     prompt_revision_versions,
 )
+from opspilot.investigation.reports import parse_report as parse_report_v2
 from opspilot.investigation.runner import InvestigationRunner
 from opspilot.persistence import DurableStore
 from opspilot.tools import TransportResponse
 from opspilot.tools.fixture import FIXTURE_TARGET, FIXTURE_TOOL, fixture_face
 from opspilot.tools.otel_demo import TARGET_ID as OTEL_TARGET_ID
 from opspilot.tools.profiles import PROFILE_ENV, select_profile
-from opspilot.web import DurableEventLog, DurableEvidenceStore
+from opspilot.web import (
+    AuthConfig,
+    Authenticator,
+    DurableClock,
+    DurableEventLog,
+    DurableEvidenceStore,
+    DurableIncidentStore,
+    DurableWebLedger,
+    Workbench,
+    create_app,
+    hash_password,
+)
 from opspilot.web.service import LEASE_SECONDS
 from opspilot.worker import Worker
 from scripts.lab_evidence import (
@@ -92,6 +116,7 @@ from scripts.m1_live_flash_loop import (
     resolve_env_file,
 )
 from tests.m1_tool_support import WINDOW_START, body, build, registration
+from tests.m1_web_support import call
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT_ROOT = ROOT / "docs/evidence/m1-01-handoff-runner/live-runs"
@@ -283,7 +308,19 @@ def main() -> int:
     parser.add_argument(
         "--tool-profile", choices=("fixture", "otel-demo"), default="fixture"
     )
+    parser.add_argument("--f3-coverage", action="store_true")
+    parser.add_argument("--f3-answer", type=Path, default=None)
     args = parser.parse_args()
+    if args.f3_answer is not None and not args.f3_coverage:
+        raise SystemExit("--f3-answer requires --f3-coverage")
+    answer = None
+    if args.f3_answer is not None:
+        answer_bytes = args.f3_answer.read_bytes()
+        answer = {
+            "path": str(args.f3_answer),
+            "sha256": hashlib.sha256(answer_bytes).hexdigest(),
+            "content": json.loads(answer_bytes),
+        }
     if not 1 <= args.tool_parallelism <= MAX_TOOL_PARALLELISM:
         raise SystemExit(f"tool-parallelism must be 1-{MAX_TOOL_PARALLELISM}")
     limits = M1_FROZEN_LIMITS
@@ -432,6 +469,11 @@ def main() -> int:
         attempts[-1]["rows_after"] = _rows(store, incident)
     ended = clock.now()
     tracing.shutdown()
+    f3 = (
+        f3_coverage(store, log, evidence, incident, face, versions, answer)
+        if args.f3_coverage
+        else None
+    )
     trace_record = {
         "mode": trace.mode,
         "trace_id": trace.last_trace_id,
@@ -532,6 +574,7 @@ def main() -> int:
                 project=project,
                 client_factory=langsmith_client,
             ),
+            **({} if f3 is None else {"f3_coverage": f3}),
         },
     )
     summary = {
@@ -539,6 +582,7 @@ def main() -> int:
         "http_count": ledger["http_count"],
         "known_cost_cny_upper": ledger["known_cost_cny_upper"],
         "trace": frozen["trace"],
+        "f3_coverage": frozen.get("f3_coverage"),
         "ledger_sha256": frozen["raw_ledger"]["sha256"],
         "summary": str(summary_path.relative_to(ROOT))
         if summary_path.is_relative_to(ROOT)
@@ -546,6 +590,178 @@ def main() -> int:
     }
     print(json.dumps(summary, default=str))
     return 0
+
+
+_ROW = re.compile(r'data-source="([^"]*)" data-state="([^"]*)"')
+
+
+def page_elements(app, incident) -> dict:
+    """Render the incident page once through the workbench route and record
+    which F3 step-3 elements it carries (R-13). A throwaway UI password is
+    generated and hashed in process; it is never printed or stored."""
+    html = call(app["app"], "GET", f"/incidents/{incident}", headers=app["headers"])
+    text = html.text
+    truncated = re.search(r'<p id="collection-truncated">(.*?)</p>', text, re.S)
+    return {
+        "http_status": html.status,
+        "coverage_gaps": 'id="coverage-gaps"' in text,
+        "coverage_rows": [
+            {"source": source, "state": state} for source, state in _ROW.findall(text)
+        ],
+        "collection_truncated": truncated is not None,
+        "collection_truncated_text": None
+        if truncated is None
+        else re.sub(r"<[^>]+>", "", truncated.group(1)).strip(),
+        "not_integrated": 'id="not-integrated"' in text,
+    }
+
+
+def _workbench_app(store, log, evidence, face, versions) -> dict:
+    import base64
+
+    ledger = DurableWebLedger(store)
+    ledger.install()
+    workbench = Workbench(
+        incidents=DurableIncidentStore(store),
+        events=log,
+        evidence=evidence,
+        ledger=ledger,
+        run_versions=versions,
+        run_seconds=600,
+        tool_face=face,
+    )
+    password = secrets.token_urlsafe(24)
+    auth = Authenticator(
+        AuthConfig(
+            ui_users={"f3-reader": hash_password(password)},
+            event_tokens={},
+            auth_revision="f3-pr2-page-check",
+            allowed_origins=frozenset(),
+        )
+    )
+    token = base64.b64encode(f"f3-reader:{password}".encode()).decode()
+    return {
+        "app": create_app(workbench, auth, DurableClock(store)),
+        "headers": {"authorization": f"Basic {token}"},
+    }
+
+
+def _signature_match(view, signature) -> bool:
+    """D7-a: the cited view is an ok result of the signature's tool with an
+    error span on one of the named services."""
+    if (
+        view.get("tool") != signature["tool"]
+        or view.get("status") != signature["status"]
+    ):
+        return False
+    services = set(signature["error_span_services_any_of"])
+    found = 0
+    stack = [view.get("content")]
+    while stack:
+        item = stack.pop()
+        if isinstance(item, dict):
+            if item.get("service") in services and item.get("error_by_visible_tags"):
+                found += 1
+            stack.extend(item.values())
+        elif isinstance(item, list):
+            stack.extend(item)
+    return found >= signature["min_matches"]
+
+
+def u6_verdict(conn, run_id, report_content, coverage, answer) -> dict:
+    """F3 U6-a over the frozen answer: (not supported, or no fact cites an
+    evidence matching the signature) and the required source is a gap."""
+    expected = answer["content"]
+    report, reason = parse_report_v2(report_content, finish_reason="stop")
+    required = expected["required_source"]
+    row = next((r for r in coverage["sources"] if r["name"] == required), None)
+    fact_ids = (
+        []
+        if report is None
+        else [eid for c in report.claims if c.kind == "fact" for eid in c.evidence_ids]
+    )
+    views = {}
+    if fact_ids:
+        with conn.cursor() as cursor:
+            for evidence_id, view in cursor.execute(
+                "SELECT evidence_id,view FROM opspilot_evidence"
+                " WHERE evidence_id=ANY(%s) AND run_id=%s",
+                (fact_ids, str(run_id)),
+            ).fetchall():
+                views[evidence_id] = view
+    matching = sorted(
+        eid
+        for eid, view in views.items()
+        if _signature_match(view, expected["signature"])
+    )
+    supported = report is not None and report.conclusion == "supported"
+    gap = row is not None and row["gap"]
+    gaps_text = [] if report is None else list(report.gaps)
+    return {
+        "answer_path": answer["path"],
+        "answer_sha256": answer["sha256"],
+        "report_parsed": report is not None,
+        "report_parse_reason": reason,
+        "conclusion": None if report is None else report.conclusion,
+        "assessment_status": None if report is None else report.assessment_status,
+        "fact_evidence_matching_signature": matching,
+        "required_source": required,
+        "required_source_state": None if row is None else row["state"],
+        "required_source_gap": gap,
+        "passed": report is not None and (not supported or not matching) and gap,
+        # Recorded as observed, not a gate (contract section 8).
+        "model_gaps_name_traces": any(
+            word in text.lower() for text in gaps_text for word in ("trace", "jaeger")
+        ),
+    }
+
+
+def _coverage_json(entry) -> dict:
+    return {
+        "run_id": str(entry.run_id),
+        "sources_recorded": entry.sources_recorded,
+        "duplicates_skipped": entry.duplicates_skipped,
+        "sources": [
+            {
+                "name": row.name,
+                "ok": row.ok,
+                "no_data": row.no_data,
+                "non_ok": row.non_ok,
+                "reasons": dict(row.reasons),
+                "state": row.state,
+                "gap": row.gap,
+            }
+            for row in entry.sources
+        ],
+    }
+
+
+def f3_coverage(store, log, evidence, incident, face, versions, answer) -> dict:
+    """R-13: the Run's coverage and truncation as the acceptance projection
+    and the workbench page show them, read in one READ ONLY transaction."""
+    current = store.rebuild(incident)["run"]["run_id"]
+    with psycopg.connect(DSN) as conn:
+        conn.read_only = True
+        projected = investigation_evidence(conn, incident)
+        coverage = next(
+            (_coverage_json(c) for c in projected.coverage if c.run_id == current),
+            None,
+        )
+        reports = [r for r in projected.reports if r.run_id == current]
+        verdict = None
+        if answer is not None and coverage is not None:
+            verdict = u6_verdict(
+                conn, current, runner_report(store, incident), coverage, answer
+            )
+        conn.rollback()
+    app = _workbench_app(store, log, evidence, face, versions)
+    return {
+        "run_id": str(current),
+        "coverage": coverage,
+        "report_collection_truncated": [r.collection_truncated for r in reports],
+        "page": page_elements(app, incident),
+        "u6": verdict,
+    }
 
 
 def final_loop(attempts) -> dict | None:

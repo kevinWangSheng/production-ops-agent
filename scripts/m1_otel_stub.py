@@ -1,6 +1,7 @@
 """Loopback stand-in for the OTel Demo Prometheus + Jaeger read APIs (#309 evidence).
 
-Serves ``/api/v1/query_range`` and ``<prefix>/api/traces`` on one loopback
+Serves ``/api/v1/query_range``, ``/api/v1/label/<label>/values`` (the
+discovery tools, F3 PR-2 R-12) and ``<prefix>/api/traces`` on one loopback
 port with synthetic checkout/payment data inside whatever window the request
 names, after a fixed per-request latency, so a real-model Run under the
 ``otel-demo`` tool profile can be driven without the kind lab (another
@@ -69,6 +70,24 @@ def prometheus_body(query: dict[str, list[str]], *, wide: int = 0) -> bytes:
     ).encode("utf-8")
 
 
+LABEL_VALUES = {
+    "__name__": [
+        "traces_span_metrics_calls_total",
+        "traces_span_metrics_duration_milliseconds_bucket",
+    ],
+    "service_name": list(SERVICES),
+    "status_code": ["STATUS_CODE_ERROR", "STATUS_CODE_UNSET"],
+}
+
+
+def label_values_body(label: str) -> bytes:
+    """Synthetic ``/api/v1/label/<label>/values``: a fixed list per label
+    (empty for any other label), whatever ``match[]`` or window is asked."""
+    return json.dumps(
+        {"status": "success", "data": LABEL_VALUES.get(label, [])}
+    ).encode("utf-8")
+
+
 def jaeger_body(query: dict[str, list[str]]) -> bytes:
     service = query.get("service", ["checkout"])[0]
     start = int(query["start"][0]) + 10_000_000
@@ -124,8 +143,11 @@ def handler(latency: float, wide: int = 0) -> type[BaseHTTPRequestHandler]:
             parts = urlsplit(self.path)
             query = parse_qs(parts.query)
             time.sleep(latency)
+            label = parts.path.removeprefix("/api/v1/label/")
             if parts.path.endswith("/api/v1/query_range"):
                 body = prometheus_body(query, wide=wide)
+            elif label != parts.path and label.endswith("/values"):
+                body = label_values_body(label.removesuffix("/values"))
             elif parts.path.endswith("/api/traces"):
                 body = jaeger_body(query)
             else:

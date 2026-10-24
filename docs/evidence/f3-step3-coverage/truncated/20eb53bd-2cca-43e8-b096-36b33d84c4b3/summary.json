@@ -1,0 +1,258 @@
+{
+  "schema": "opspilot-lab-summary-1",
+  "experiment": "m1-01-handoff-runner",
+  "run_id": "20eb53bd-2cca-43e8-b096-36b33d84c4b3",
+  "frozen_at": "2026-10-24T08:08:31.185058+00:00",
+  "incident_id": "463abf94-8b37-4982-a506-714287a063cd",
+  "driver": "opspilot.investigation.runner.InvestigationRunner",
+  "model": "deepseek-flash",
+  "started": "2026-10-24T08:08:08.108603+00:00",
+  "ended": "2026-10-24T08:08:27.381917+00:00",
+  "tool_parallelism": 1,
+  "context_tokens": 1000000,
+  "tool_profile": "otel-demo",
+  "verdicts": {
+    "status": "handed_off",
+    "reason": "INCOMPLETE_INVESTIGATION",
+    "last_status": "handed_off",
+    "last_reason": "INCOMPLETE_INVESTIGATION",
+    "run_state": "waiting_human",
+    "conclusion_published": false,
+    "attempts": [
+      {
+        "label": "first",
+        "status": "handed_off",
+        "reason": "INCOMPLETE_INVESTIGATION",
+        "handoff_reasons": [
+          "INCOMPLETE_INVESTIGATION"
+        ]
+      }
+    ],
+    "control": null,
+    "event_kinds": [
+      "run_claimed",
+      "step_committed",
+      "tool_committed",
+      "tool_committed",
+      "step_committed",
+      "tool_committed",
+      "tool_committed",
+      "step_committed",
+      "run_handoff"
+    ]
+  },
+  "counts": {
+    "model_requests_bound": 3,
+    "http_count": 3,
+    "prompt_tokens": 15139,
+    "completion_tokens": 2692,
+    "run_usage": {
+      "budget_limit": 3,
+      "model_requests_used": 3,
+      "model_seconds_used": 15.077951124869287,
+      "tool_operations_used": 4,
+      "tool_seconds_used": 4.023214251035824
+    },
+    "current_run_id": "20eb53bd-2cca-43e8-b096-36b33d84c4b3",
+    "current_run_usage": {
+      "budget_limit": 3,
+      "model_requests_used": 3,
+      "model_seconds_used": 15.077951124869287,
+      "tool_operations_used": 4,
+      "tool_seconds_used": 4.023214251035824
+    },
+    "evidence_ids": [
+      "92aa1a49-73e3-4a52-bafc-0ec633f476a2-t0:8e321c6a-1118-4dd3-9854-ece03c6745c7",
+      "92aa1a49-73e3-4a52-bafc-0ec633f476a2-t1:bd256abd-aa65-4567-9020-7abaab52271b",
+      "69fbe148-659c-455f-baed-aa43f8c2f889-t0:1c925a4d-8f2c-448c-97ff-a09860ac8db0",
+      "69fbe148-659c-455f-baed-aa43f8c2f889-t1:3ed35b47-2258-4c47-abb4-cc0ea844b300"
+    ]
+  },
+  "cost": {
+    "known_cost_cny_upper": 0.056736
+  },
+  "report": {
+    "schema_version": "m0-report-v2",
+    "assessment_status": "incomplete",
+    "conclusion": "inconclusive",
+    "summary": "The premise that checkout shows elevated errors could not be verified from the delivered evidence. The only checkout-specific signal obtained is that the span-call metric series for service_name=checkout carries the status_code label values STATUS_CODE_ERROR and STATUS_CODE_UNSET, alongside frontend and payment as the only services present in traces_span_metrics_calls_total. No error counts, error ratios, time series or spans were retrieved, and no latency baseline exists, so the magnitude, timing and cause of any checkout error elevation remain unknown. Dependencies were not cleared or implicated: no error evidence was gathered for payment or frontend, and cart, shipping, currency, email, fraud-detection, product-catalog, quote, ad, recommendation and accounting have no series in the span-call metric at all, which is unknown rather than zero.",
+    "claims": [
+      {
+        "kind": "fact",
+        "text": "traces_span_metrics_calls_total exposes exactly three service_name values: frontend, checkout and payment.",
+        "evidence_ids": [
+          "92aa1a49-73e3-4a52-bafc-0ec633f476a2-t0:8e321c6a-1118-4dd3-9854-ece03c6745c7"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "fact",
+        "text": "Only two metric series names exist for the matched services: traces_span_metrics_calls_total and traces_span_metrics_duration_milliseconds_bucket; no dedicated error-rate or request-error metric is present.",
+        "evidence_ids": [
+          "92aa1a49-73e3-4a52-bafc-0ec633f476a2-t1:bd256abd-aa65-4567-9020-7abaab52271b"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "fact",
+        "text": "The span-call metric series labelled service_name=checkout carries both status_code values STATUS_CODE_ERROR and STATUS_CODE_UNSET; this establishes that the label values are attached to the checkout series, but the delivered view contains no call counts, so it does not establish how many error spans occurred or the error rate.",
+        "evidence_ids": [
+          "69fbe148-659c-455f-baed-aa43f8c2f889-t0:1c925a4d-8f2c-448c-97ff-a09860ac8db0"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "hypothesis",
+        "text": "Checkout may be emitting error-status spans in the authorized window, consistent with the user's report, but the elevation is unquantified: no error-count or error-ratio values were retrieved for checkout and no pre-window baseline was obtained for comparison.",
+        "evidence_ids": [
+          "69fbe148-659c-455f-baed-aa43f8c2f889-t0:1c925a4d-8f2c-448c-97ff-a09860ac8db0"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "hypothesis",
+        "text": "Because payment and frontend are the only other services present in traces_span_metrics_calls_total, one of them could be the origin of checkout errors through a call edge; however no error spans, error-rate readings or parent references were retrieved for either, so neither is implicated and no call edge is established.",
+        "evidence_ids": [
+          "92aa1a49-73e3-4a52-bafc-0ec633f476a2-t0:8e321c6a-1118-4dd3-9854-ece03c6745c7"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      }
+    ],
+    "gaps": [
+      "No metric values or range series were retrieved (no metrics_range_query result), so checkout's error count, error ratio, throughput and latency behavior over the window are unknown; the error elevation cannot be confirmed or sized.",
+      "No trace search was performed, so there are no individual checkout spans, exception messages, parent references or per-operation breakdowns to identify which checkout operations failed or which dependency they called.",
+      "The span_name label lookup for traces_span_metrics_calls_total returned status no_data (result_count 0), so operation-level attribution of checkout errors is unavailable; the sampled view shows no operation names.",
+      "No baseline window preceding 2026-10-23T08:08:08+00:00 was collected, so no latency or error trend can be inferred.",
+      "cart, shipping, currency, email, fraud-detection, product-catalog, quote, ad, recommendation and accounting returned no series in the span-call metric; their health is unknown, not healthy and not zero-error.",
+      "payment and frontend were never checked for their own error or latency signals, so they can be neither named as affected nor cleared.",
+      "Integrations not available in this Run: kubernetes_state, pod_logs, change_history — pod health, logs and any deployment or configuration changes during the window are unexamined."
+    ],
+    "next_steps": [
+      "Run a metrics_range_query on traces_span_metrics_calls_total filtered to service_name=checkout with status_code=STATUS_CODE_ERROR, and the same for STATUS_CODE_UNSET, over the authorized window and a preceding baseline window, to quantify the error ratio and its onset.",
+      "Run a metrics_range_query on traces_span_metrics_duration_milliseconds_bucket for checkout and compare against a pre-window baseline before making any latency claim.",
+      "Use traces_search filtered to service_name=checkout and error status to obtain actual failing spans, their operation names, parent references and error messages, then trace any called dependency such as payment before assigning a cause.",
+      "Repeat the same error and latency checks for payment and frontend explicitly, so those two services can be either named as affected with their own evidence or cleared."
+    ]
+  },
+  "report_content_sha256": "bed228db38dc3aad38de7be3a7ccb1368a2fe3e72b458040be7d848e37c64e28",
+  "trace": {
+    "mode": "lab",
+    "otel_trace_id": "701a2cfab3174becdfdf164f9e12105f",
+    "dropped_spans": 0,
+    "project": "opspilot-lab-f3-pr2-truncated",
+    "project_id": "5bdbd112-f611-4811-9783-47637a26502e",
+    "trace_tier": "longlived",
+    "langsmith_run_id": "00000000-0000-0000-bc56-91bb22eef779",
+    "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/5bdbd112-f611-4811-9783-47637a26502e/r/00000000-0000-0000-bc56-91bb22eef779?poll=true",
+    "read_back": "found"
+  },
+  "f3_coverage": {
+    "run_id": "20eb53bd-2cca-43e8-b096-36b33d84c4b3",
+    "coverage": {
+      "run_id": "20eb53bd-2cca-43e8-b096-36b33d84c4b3",
+      "sources_recorded": true,
+      "duplicates_skipped": 0,
+      "sources": [
+        {
+          "name": "jaeger",
+          "ok": 0,
+          "no_data": 0,
+          "non_ok": 0,
+          "reasons": {},
+          "state": "not_queried",
+          "gap": true
+        },
+        {
+          "name": "prometheus",
+          "ok": 3,
+          "no_data": 1,
+          "non_ok": 0,
+          "reasons": {},
+          "state": "all_ok",
+          "gap": false
+        },
+        {
+          "name": "kubernetes_state",
+          "ok": 0,
+          "no_data": 0,
+          "non_ok": 0,
+          "reasons": {},
+          "state": "not_integrated",
+          "gap": true
+        },
+        {
+          "name": "pod_logs",
+          "ok": 0,
+          "no_data": 0,
+          "non_ok": 0,
+          "reasons": {},
+          "state": "not_integrated",
+          "gap": true
+        },
+        {
+          "name": "change_history",
+          "ok": 0,
+          "no_data": 0,
+          "non_ok": 0,
+          "reasons": {},
+          "state": "not_integrated",
+          "gap": true
+        }
+      ]
+    },
+    "report_collection_truncated": [
+      true
+    ],
+    "page": {
+      "http_status": 200,
+      "coverage_gaps": true,
+      "coverage_rows": [
+        {
+          "source": "jaeger",
+          "state": "not_queried"
+        },
+        {
+          "source": "prometheus",
+          "state": "all_ok"
+        },
+        {
+          "source": "kubernetes_state",
+          "state": "not_integrated"
+        },
+        {
+          "source": "pod_logs",
+          "state": "not_integrated"
+        },
+        {
+          "source": "change_history",
+          "state": "not_integrated"
+        }
+      ],
+      "collection_truncated": true,
+      "collection_truncated_text": "Collection was truncated at the model-request limit: the investigator was made to report on its last request, so evidence it might still have gathered is missing.",
+      "not_integrated": true
+    },
+    "u6": null
+  },
+  "raw_ledger": {
+    "sha256": "a95e41c96c0e0e2c0f417101e2d2fe0abf9833f4b00bc9b1d07b10f5124f1654",
+    "bytes": 9145,
+    "path": "tmp/lab-ledgers/m1-01-handoff-runner/20eb53bd-2cca-43e8-b096-36b33d84c4b3/ledger.json",
+    "in_repository": false
+  }
+}
