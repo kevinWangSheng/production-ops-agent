@@ -17,6 +17,6 @@
 
 ## 证据说明
 
-- `run-{1,2}/summary.json` 的 `run_versions` 由 `collect.py` 取收集时代码的 `otel_demo_versions()`，与测试约定的「Run 行记录的 versions」来源不同。已交叉核对：两次 Run 行 `versions`（见 `f3-acceptance-live/run-{1,2}/summary.json` 的 `runs[].versions`）均为 `prompt-replay-candidate-bef70649a3a8` / `otel-demo-68ed2ca8f5d6` / `ctx-ctx-policy-v1-a30e65ea52f4`，与 `run_versions` 相同。
+- `run_versions` 取自 Run 行持久化的 `versions`（`collect.py` 于 2026-10-24 按独立审查 F2 与 Codex P1 改正；初版取的是收集时代码的 `otel_demo_versions()`）。两份 summary 未重新生成：已交叉核对两次 Run 行 `versions`（`f3-acceptance-live/run-{1,2}/summary.json` 的 `runs[].versions`）均为 `prompt-replay-candidate-bef70649a3a8` / `otel-demo-68ed2ca8f5d6` / `ctx-ctx-policy-v1-a30e65ea52f4`，与已冻结的 `run_versions` 相同。
 - `alert_delivery_outcomes` 由 lead 规整为结果字符串列表以对齐判定器约定，原明细保留为 `alert_deliveries`，数据不变。
 - `lab_readings` 中 `swap_below_300_mib_observed: false` 与 `p95_above_500_ms_observed: false` 表示「未观察到」，不表示「已排除」：两次 Run 期间无连续监控（`continuous_monitoring: false`），只有开跑前与结束后的点读数。lead 判定不算环境失败，独立审查同意。

@@ -38,7 +38,6 @@ from opspilot.acceptance import IncidentScenario, outcome_from_durable  # noqa: 
 from opspilot.acceptance_audit import audit_records  # noqa: E402
 from opspilot.acceptance_investigation import investigation_evidence  # noqa: E402
 from opspilot.persistence import DurableStore  # noqa: E402
-from opspilot.tools.otel_demo import otel_demo_versions  # noqa: E402
 from opspilot.web import DurableEventLog, DurableIncidentStore  # noqa: E402
 
 SCENARIO_ID = "F3:competing-cause"
@@ -100,7 +99,7 @@ def collect(dsn: str, incident: UUID, ledger: Path) -> dict[str, Any]:
         evidence = investigation_evidence(conn, incident)
         timeline, _ = audit_records(conn, incident)
         runs = conn.execute(
-            "SELECT run_id, control_generation, state, input FROM opspilot_runs"
+            "SELECT run_id, control_generation, state, input, versions FROM opspilot_runs"
             " WHERE incident_id=%s ORDER BY run_id",
             (incident,),
         ).fetchall()
@@ -194,7 +193,8 @@ def collect(dsn: str, incident: UUID, ledger: Path) -> dict[str, Any]:
         ],
         "alert_delivery_outcomes": [d["outcome"] for d in deliveries],
         "alert_deliveries": plain([dict(d) for d in deliveries]),
-        "run_versions": otel_demo_versions(),
+        # The versions the Run row persisted, never the collector checkout's.
+        "run_versions": plain(run["versions"]),
         "collected_at_db": plain(db_now),
     }
     return relabel({"frozen": frozen, "f3_acceptance": block})
