@@ -15,15 +15,16 @@ from __future__ import annotations
 
 import os
 import threading
-from datetime import timedelta
+import time
+from datetime import datetime, timedelta, timezone
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import psycopg
 import pytest
 
 from opspilot.observation import release_policy
-from opspilot.observation.releases import calibrated_revision_for
+from opspilot.observation.releases import ReleaseEvent, calibrated_revision_for
 from opspilot.persistence import DurableStore, PersistenceError
 from opspilot.tools.fixture import fixture_face, fixture_versions
 from opspilot.web.events import DurableEventLog
@@ -40,7 +41,7 @@ release_harness = pr2b.release_harness
 
 
 class _Only:
-    """The web role's ``ReleaseStore`` with its listing narrowed to one
+    """The web role's ``ReleaseStore`` with its candidates narrowed to one
     release, so a pass never touches another test's rows."""
 
     def __init__(self, store: Any, oid: UUID) -> None:
@@ -50,10 +51,12 @@ class _Only:
     def __getattr__(self, name: str) -> Any:
         return getattr(self._store, name)
 
-    def list_releases(self, *, limit: int) -> tuple[Any, ...]:
+    def authorizable_releases(self, *, limit: int) -> tuple[Any, ...]:
+        # The whole eligible set, then this test's release: narrowing must
+        # not reintroduce a limit before the filter.
         return tuple(
             r
-            for r in self._store.list_releases(limit=limit)
+            for r in self._store.authorizable_releases(limit=100_000)
             if r.observation_id == self._oid
         )
 
@@ -236,10 +239,11 @@ def test_a_human_pause_first_is_left_alone(release_harness, workbench):
 
 def test_a_pause_racing_the_pass_is_a_final_refusal(release_harness, workbench):
     web, _, oid, _, _ = release_harness
-    real = web.release_audit
+    real = workbench.releases.authorizable_releases
 
-    def pause_then_read(observation_id: UUID, **kwargs: Any) -> Any:
+    def read_then_pause(**kwargs: Any) -> Any:
         # The human's pause lands between the pass's read and its command.
+        candidates = real(**kwargs)
         web.control_release(
             oid,
             action="pause",
@@ -248,14 +252,14 @@ def test_a_pause_racing_the_pass_is_a_final_refusal(release_harness, workbench):
             idempotency_key="pr5b-race",
             calibrated_policy_revision=None,
         )
-        return real(observation_id, **kwargs)
+        return candidates
 
-    workbench.releases.release_audit = pause_then_read
+    workbench.releases.authorizable_releases = read_then_pause
     receipts = workbench.release_authorize_pass()
     assert [(r.outcome, r.reason) for r in receipts] == [
         ("rejected", "CONTROL_CONFLICT")
     ]
-    del workbench.releases.release_audit
+    workbench.releases.authorizable_releases = real
     assert workbench.release_authorize_pass() == []
     assert [(a["action"], a["outcome"]) for a in _audit(oid)] == [
         ("pause", "applied"),
@@ -263,14 +267,18 @@ def test_a_pause_racing_the_pass_is_a_final_refusal(release_harness, workbench):
     ]
 
 
-def test_after_the_deadline_nothing_is_tried(release_harness, workbench, monkeypatch):
+def test_after_the_deadline_nothing_is_tried(release_harness, workbench):
     web, _, oid, _, _ = release_harness
-    deadline = web.get_release(oid).deadline_at
-    monkeypatch.setattr(
-        workbench.incidents, "now", lambda: deadline + timedelta(seconds=1)
-    )
-    assert workbench.release_authorize_pass() == []
-    assert _audit(oid) == []
+    model = web.get_release(oid)
+    (late,) = _register(web, model, 1, released_ago=model.deadline_seconds - 1.5)
+    try:
+        assert web.get_release(late).status == "pending"
+        time.sleep(2)
+        workbench.releases._oid = late
+        assert workbench.release_authorize_pass() == []
+        assert _audit(late) == []
+    finally:
+        _cancel_all(web, [late])
 
 
 def test_a_storage_failure_writes_nothing_and_is_retried(release_harness, workbench):
@@ -294,3 +302,116 @@ def test_the_limit_bounds_one_pass(release_harness, workbench):
     _, _, oid, _, _ = release_harness
     assert workbench.release_authorize_pass(limit=0) == []
     assert _audit(oid) == []
+
+
+def _register(
+    web: Any, model: Any, count: int, *, released_ago: float = 10
+) -> list[UUID]:
+    """``count`` more pending releases on ``model``'s target, profile and
+    policy, newest last."""
+    with psycopg.connect(DSN) as conn:
+        row = conn.execute(
+            "SELECT content FROM opspilot_health_profiles WHERE health_profile_revision=%s",
+            (model.health_profile_revision,),
+        ).fetchone()
+    assert row is not None
+    source = "pr5b-" + uuid4().hex
+    oids = []
+    for _ in range(count):
+        receipt = web.record_release(
+            event=ReleaseEvent(
+                format_version=1,
+                source=source,
+                source_release_id=uuid4().hex,
+                released_at=datetime.now(timezone.utc)
+                - timedelta(seconds=released_ago),
+                before=model.before_revision,
+                after=model.after_revision,
+                auxiliary=model.auxiliary,
+            ),
+            target_id=model.target_id,
+            identity=model.target_snapshot,
+            health_profile_revision=model.health_profile_revision,
+            health_profile=row[0],
+            min_tracking_seconds=model.min_tracking_seconds,
+            actor="pr5b-impl",
+            raw_body=b"{}",
+        )
+        assert receipt.outcome == "created", receipt
+        oids.append(receipt.observation_id)
+    return oids
+
+
+def _cancel_all(web: Any, oids: list[UUID]) -> None:
+    for oid in oids:
+        row = web.get_release(oid)
+        if row.status in ("pending", "observing"):
+            web.control_release(
+                oid,
+                action="cancel",
+                actor="cleanup",
+                expected_control_generation=row.control_generation,
+                idempotency_key="cleanup",
+                calibrated_policy_revision=None,
+            )
+
+
+def _authorized_by_pass(oids: list[UUID]) -> set[UUID]:
+    with psycopg.connect(DSN) as conn:
+        return {
+            row[0]
+            for row in conn.execute(
+                "SELECT observation_id FROM opspilot_release_audit"
+                " WHERE observation_id=ANY(%s) AND idempotency_key LIKE 'auto-authorize:%%'",
+                (oids,),
+            )
+        }
+
+
+def test_authorized_releases_never_crowd_out_older_pending_ones(release_harness):
+    """Codex P2 on #349: more pending releases than one listing holds, and
+    newer already-authorized ones on top. Every pending one is still tried,
+    oldest first, within a bounded number of passes."""
+    web, _, oid, policy, _ = release_harness
+    model = web.get_release(oid)
+    waiting: list[UUID] = []
+    occupants: list[UUID] = []
+    try:
+        waiting = _register(web, model, 201)
+        occupants = _register(web, model, 200)
+        for occupant in occupants:
+            assert (
+                web.authorize_release(
+                    occupant,
+                    actor="operator",
+                    expected_control_generation=0,
+                    idempotency_key="pr5b-occupant",
+                    calibrated_policy_revision=policy.revision,
+                ).outcome
+                == "applied"
+            )
+        store = DurableStore(web.dsn)
+        try:
+            bench = Workbench(
+                incidents=DurableIncidentStore(store),
+                events=DurableEventLog(store),
+                evidence=DurableEvidenceStore(store),
+                ledger=DurableWebLedger(store),
+                run_versions=fixture_versions(),
+                run_seconds=600,
+                tool_face=fixture_face(),
+                releases=web,
+            )
+            # The shared lab may hold other tests' pending releases too; each
+            # pass decides up to 20, so the bound leaves room for them.
+            for _ in range(60):
+                if _authorized_by_pass(waiting) == set(waiting):
+                    break
+                bench.release_authorize_pass()
+        finally:
+            store.close()
+        assert _authorized_by_pass(waiting) == set(waiting)
+        assert {web.get_release(o).status for o in waiting} == {"observing"}
+        assert not _authorized_by_pass(occupants)
+    finally:
+        _cancel_all(web, waiting + occupants)

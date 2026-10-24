@@ -642,6 +642,29 @@ class ReleaseStore(_ReleaseCommandOps):
             ).fetchall()
         return tuple(ReleaseRecord.model_validate(row) for row in rows)
 
+    def authorizable_releases(self, *, limit: int) -> tuple[ReleaseRecord, ...]:
+        """The oldest ``limit`` releases the automatic authorization may
+        still try (F11 PR-5b D7): pending, not paused, never observed (no
+        observation generation, no frozen policy), without any
+        ``authorize`` audit, and before their deadline by the database
+        clock at this read. The filter runs before the limit, so releases
+        that were authorized or refused never take a place; the command
+        primitive re-checks all of it under the release's locks."""
+        if type(limit) is not int or limit <= 0:
+            raise PersistenceError("INVALID_INPUT")
+        with self.transaction(snapshot=True) as conn:
+            rows = conn.execute(
+                "SELECT " + _RELEASE_COLUMNS + " FROM opspilot_release_observations r"
+                " WHERE status='pending' AND NOT paused AND observation_generation=0"
+                " AND calibrated_policy_revision IS NULL"
+                " AND deadline_at>clock_timestamp()"
+                " AND NOT EXISTS (SELECT 1 FROM opspilot_release_audit a"
+                " WHERE a.observation_id=r.observation_id AND a.action='authorize')"
+                " ORDER BY received_at,observation_id LIMIT %s",
+                (limit,),
+            ).fetchall()
+        return tuple(ReleaseRecord.model_validate(row) for row in rows)
+
     def release_detail(self, observation_id: UUID) -> dict[str, Any] | None:
         """Everything a release page shows, read in one snapshot (D4): the
         release, its sessions, endings, comparisons, incident link, control

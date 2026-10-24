@@ -139,9 +139,9 @@ RELEASE_AUTHORIZE_KEY_PREFIX = "auto-authorize:"
 #: D7: the actor every automatic authorization is audited under; the
 #: primitive records it with principal ``system``.
 RELEASE_AUTHORIZE_ACTOR = "system"
-#: How many of the newest releases one authorization pass looks at. A
-#: release is authorizable only before its deadline (one hour under the
-#: shipped profile), so a single-team stream never has this many pending.
+#: How many candidates one authorization pass reads (oldest first). Only
+#: one whose catalog is ambiguous or unreadable stays a candidate after a
+#: pass, so up to this many of those never hold back a decidable one.
 RELEASE_AUTHORIZE_SCAN = 200
 #: The revision an automatic authorization names when the catalog has no
 #: entry for the release, so the primitive records the refusal
@@ -1426,8 +1426,14 @@ class Workbench:
 
         A candidate is a release still ``pending``, not paused, never
         observed (``observation_generation`` 0, no frozen policy), with no
-        ``authorize`` audit and before its deadline by the database clock.
-        It is tried once under the key ``auto-authorize:<id>``, naming the
+        ``authorize`` audit and before its deadline
+        (``ReleaseStore.authorizable_releases``: filtered in SQL before the
+        limit, oldest first, the deadline against the database clock of
+        that read; the primitive re-checks the deadline against the
+        database clock of its own transaction). Up to ``limit`` candidates
+        a pass reach the primitive; one whose catalog cannot be resolved
+        does not count, so it never holds back the others. Each is tried
+        once under the key ``auto-authorize:<id>``, naming the
         catalog entry for exactly its target and HealthProfile
         (``calibrated_revision_for``, the page's resume rule); the
         primitive re-checks all of it under the release's locks. A refusal
@@ -1444,31 +1450,20 @@ class Workbench:
             return []
         from opspilot.observation.releases import calibrated_revision_for
 
-        now = self.incidents.now()
         receipts: list[ReleaseCommandReceipt] = []
-        for release in store.list_releases(limit=RELEASE_AUTHORIZE_SCAN):
-            if len(receipts) >= limit:
+        attempts = 0
+        for release in store.authorizable_releases(limit=RELEASE_AUTHORIZE_SCAN):
+            if attempts >= limit:
                 break
-            if (
-                release.status != "pending"
-                or release.paused
-                or release.observation_generation != 0
-                or release.calibrated_policy_revision is not None
-                or now >= release.deadline_at
-            ):
-                continue
             oid = release.observation_id
             try:
-                if any(
-                    row["action"] == "authorize" for row in store.release_audit(oid)
-                ):
-                    continue
                 try:
                     revision = calibrated_revision_for(release)
                 except PersistenceError as exc:
                     if str(exc) != "RELEASE_POLICY_UNCALIBRATED":
                         raise
                     revision = _UNCALIBRATED_REVISION
+                attempts += 1
                 receipt = store.authorize_release(
                     oid,
                     actor=RELEASE_AUTHORIZE_ACTOR,
