@@ -16,6 +16,7 @@ from scripts.lab_evidence import parse_report
 from scripts.m1_live_runner import (
     citation_provenance,
     compaction_record,
+    compaction_summary,
     offline_rebuild,
 )
 from tests.m1_investigation_support import (
@@ -104,7 +105,7 @@ def test_an_accepted_compaction_is_counted_and_described_per_row():
 def test_the_offline_rebuild_crosses_the_compaction_row():
     snapshot, target, _ = _run()
     rebuilt = offline_rebuild(snapshot, target)
-    assert rebuilt["ok"] is True and rebuilt["error"] is None
+    assert rebuilt["error"] is None
     assert rebuilt["segment"] == "ctx1"
     assert rebuilt["compactions"] == compaction_record(snapshot)["accepted"]
     assert rebuilt["compaction_attempts"] == 1
@@ -117,7 +118,13 @@ def test_a_tampered_compaction_row_is_recorded_as_a_failed_rebuild():
         if record is not None:
             record["folded_step_ids"] = record["folded_step_ids"][:1]
     rebuilt = offline_rebuild(snapshot, target)
-    assert rebuilt == {"ok": False, "error": "INCOMPATIBLE_STATE", "segment": None}
+    assert rebuilt == {
+        "segment": None,
+        "compactions": None,
+        "error": "INCOMPATIBLE_STATE",
+    }
+    summary = compaction_summary(snapshot, target, None)
+    assert summary["offline_rebuild"]["error"] == "INCOMPATIBLE_STATE"
 
 
 def test_a_citation_from_a_folded_round_is_traced_and_still_delivered():
@@ -139,7 +146,7 @@ def test_a_run_without_compaction_reports_zero_and_stays_on_ctx0():
     assert (record["attempted"], record["accepted"]) == (0, 0)
     assert record["rounds_after_last_accepted"] == 0
     rebuilt = offline_rebuild(snapshot, target)
-    assert rebuilt["ok"] is True and rebuilt["segment"] == "ctx0"
+    assert rebuilt["error"] is None and rebuilt["segment"] == "ctx0"
     provenance = citation_provenance(report, snapshot, rebuilt)
     assert provenance["cited_from_folded_rounds"] == 0
 
@@ -149,3 +156,18 @@ def test_no_parsed_report_means_no_citation_block():
     rebuilt = offline_rebuild(snapshot, target)
     assert citation_provenance(None, snapshot, rebuilt) is None
     assert citation_provenance("not json", snapshot, rebuilt) is None
+
+
+def test_the_summary_fields_carry_the_agreed_keys():
+    snapshot, target, report = _run()
+    summary = compaction_summary(snapshot, target, report)
+    assert summary["compactions"] == {"accepted": 1, "attempted": 1}
+    assert summary["offline_rebuild"] == {
+        "segment": "ctx1",
+        "compactions": 1,
+        "error": None,
+    }
+    (row,) = summary["compaction_rows"]["rows"]
+    assert row["to_segment"] == summary["offline_rebuild"]["segment"]
+    assert summary["offline_rebuild_detail"]["compaction_attempts"] == 1
+    assert summary["citations"]["cited_from_folded_rounds"] == 1

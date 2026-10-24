@@ -490,8 +490,7 @@ def main() -> int:
     first = final_loop(attempts)
     report = None if first is None else runner_report(store, incident)
     parsed_report = parse_report(report)
-    compactions = compaction_record(snapshot)
-    pg_rebuild = offline_rebuild(snapshot, target_id)
+    compaction_fields = compaction_summary(snapshot, target_id, parsed_report)
     # Frozen summary (ADR-0006 decision 3): report, verdicts, counts, cost,
     # trace link; the raw ledger (HTTP attempts, row snapshots, event stream)
     # stays out of the repository and is identified by its sha256.
@@ -537,9 +536,7 @@ def main() -> int:
             "counts": summary_counts(ledger, args.model_requests, first),
             "cost": {"known_cost_cny_upper": ledger["known_cost_cny_upper"]},
             "report": parsed_report,
-            "compactions": compactions,
-            "pg_rebuild": pg_rebuild,
-            "citations": citation_provenance(parsed_report, snapshot, pg_rebuild),
+            **compaction_fields,
             "report_content_sha256": None
             if first is None
             else first["report_content_sha256"],
@@ -555,8 +552,8 @@ def main() -> int:
         **frozen["verdicts"],
         "http_count": ledger["http_count"],
         "known_cost_cny_upper": ledger["known_cost_cny_upper"],
-        "compactions": {k: compactions[k] for k in ("attempted", "accepted")},
-        "pg_rebuild": {k: pg_rebuild[k] for k in ("ok", "error", "segment")},
+        "compactions": compaction_fields["compactions"],
+        "offline_rebuild": compaction_fields["offline_rebuild"],
         "trace": frozen["trace"],
         "ledger_sha256": frozen["raw_ledger"]["sha256"],
         "summary": str(summary_path.relative_to(ROOT))
@@ -632,13 +629,12 @@ def offline_rebuild(snapshot: Mapping[str, Any], target_id: str) -> dict[str, An
             snapshot, run_id=run_id, authorized_targets=frozenset({target_id})
         )
     except ContextError as exc:
-        return {"ok": False, "error": exc.code, "segment": None}
+        return {"segment": None, "compactions": None, "error": exc.code}
     except Exception as exc:  # noqa: BLE001 -- recorded as evidence, not hidden
-        return {"ok": False, "error": type(exc).__name__, "segment": None}
+        return {"segment": None, "compactions": None, "error": type(exc).__name__}
     return {
-        "ok": True,
-        "error": None,
         "segment": transcript.segment,
+        "error": None,
         "compactions": transcript.compactions,
         "compaction_attempts": transcript.compaction_attempts,
         "live_steps": transcript.live_steps,
@@ -647,8 +643,28 @@ def offline_rebuild(snapshot: Mapping[str, Any], target_id: str) -> dict[str, An
     }
 
 
+def compaction_summary(
+    snapshot: Mapping[str, Any], target_id: str, report: object
+) -> dict[str, Any]:
+    """The #242 fields of the frozen summary. ``compactions`` and
+    ``offline_rebuild`` carry exactly the keys the acceptance reads; the
+    per-row record and the rest of the rebuild sit beside them."""
+    record = compaction_record(snapshot)
+    rebuilt = offline_rebuild(snapshot, target_id)
+    head = ("segment", "compactions", "error")
+    return {
+        "compactions": {k: record[k] for k in ("accepted", "attempted")},
+        "compaction_rows": {
+            k: v for k, v in record.items() if k not in ("accepted", "attempted")
+        },
+        "offline_rebuild": {k: rebuilt[k] for k in head},
+        "offline_rebuild_detail": {k: v for k, v in rebuilt.items() if k not in head},
+        "citations": citation_provenance(report, snapshot, rebuilt),
+    }
+
+
 def citation_provenance(
-    report: object, snapshot: Mapping[str, Any], pg_rebuild: Mapping[str, Any]
+    report: object, snapshot: Mapping[str, Any], rebuilt: Mapping[str, Any]
 ) -> dict[str, Any] | None:
     """Where each evidence id the report cites came from: the segment of the
     round that produced it, whether an accepted compaction folded that round,
@@ -665,7 +681,7 @@ def citation_provenance(
         record = response.get("compaction") or {}
         if response.get("kind") == COMPACTION_KIND and record.get("accepted") is True:
             folded.update(str(i) for i in record.get("folded_step_ids") or ())
-    delivered = set(pg_rebuild.get("evidence_ids") or ())
+    delivered = set(rebuilt.get("evidence_ids") or ())
     cited = []
     for claim in report.get("claims") or ():
         for evidence_id in claim.get("evidence_ids") or ():
