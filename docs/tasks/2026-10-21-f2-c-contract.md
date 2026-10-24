@@ -2,6 +2,7 @@
 
 - 预审者：Claude（Opus 5.5，代 Codex，未参与实现），只读，基于 main `91a011c`，2026-10-21。未启动 PG、kind 或服务，未调用模型；「已核对」均为读代码所得，没有在库上跑过。
 - 依据：F2 合同 r1（U1-A、U2-A、R4–R6，`docs/tasks/2026-10-17-f2-contract.md`）、F2 任务记录、F11 PR-4 预审（`tmp/m2-orch/f11-pr4-out.md` 中的 P4-04、R2、R4）、C3 §4:105、§6:227。
+- 修订（2026-10-24，#343 U1-A）：§6 第 5 条由「发布或手工开的同目标事故不参与告警附加」改为「手工开的不参与，发布开的按认领参与」。
 
 ## 0. 现状要点（已核对）
 
@@ -161,7 +162,7 @@ AlertIntakeOutcome.related_incident_id: str | None = None
    - 不同 fingerprint、同目标：各自成事故。
    - 同 fingerprint 但解析出不同目标：新事故。
    - 本次解析为交接：交接事故，无关联。
-   - 发布或手工开的同目标事故：不参与告警附加。
+   - 手工开的同目标事故：不参与告警附加。发布开的同目标事故按认领参与：未被其他 fingerprint 附加过的才是候选（#343 U1-A，r1 改写，见 [#343 合同](2026-10-24-343-alert-joins-release-incident-contract.md)）。
 6. 幂等：
    - 附加 episode 的重复 firing（含注解变化）：结果 `attached`，事件仍是 1 条。
    - 附加 episode 的 resolved：`resolved_attached`，挂到被附加的事故，不产生事件，状态不变。
