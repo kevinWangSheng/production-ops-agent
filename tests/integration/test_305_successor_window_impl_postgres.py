@@ -82,6 +82,14 @@ def _attached_case(store, app):
     attached = _post_alert(app, _z(later), fingerprint)
     assert attached["outcome"] == "attached"
     assert attached["incident_id"] == first["incident_id"]
+    # Both posts land within a second; the episode counts after the first
+    # frame only from the next whole second (#305 item 6), so its receipt is
+    # set two seconds after the first one.
+    with psycopg.connect(DSN) as conn:
+        conn.execute(
+            "UPDATE opspilot_alert_deliveries SET received_at=received_at + interval '2 seconds' WHERE incident_id=%s AND outcome='attached'",
+            (UUID(first["incident_id"]),),
+        )
     return first, _second(later)
 
 
@@ -197,6 +205,13 @@ def test_a_new_episode_after_the_moved_frame_moves_it_again():
     fingerprint = _records(incident_id).deliveries[0]["fingerprint"]
     newest = _second(_now(store) - timedelta(seconds=30))
     assert _post_alert(app, _z(newest), fingerprint)["outcome"] == "attached"
+    # As in ``_attached_case``: the new episode's receipt a whole second
+    # after the moved frame's end.
+    with psycopg.connect(DSN) as conn:
+        conn.execute(
+            "UPDATE opspilot_alert_deliveries SET received_at=received_at + interval '2 seconds' WHERE incident_id=%s AND outcome='attached' AND starts_at=%s",
+            (UUID(incident_id), newest),
+        )
     summary = workbench.incidents.find_incident(UUID(incident_id))
     deadline = workbench.incidents.now() + timedelta(hours=2)
     successor = workbench._successor_input(summary, uuid4(), deadline)

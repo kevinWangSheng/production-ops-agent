@@ -2467,6 +2467,10 @@ def _stored_alert(alert_json: str) -> dict[str, Any]:
     }
 
 
+def _utc_second(moment: datetime) -> datetime:
+    return moment.astimezone(timezone.utc).replace(microsecond=0)
+
+
 def _attached_anchor(
     deliveries: Iterable[Mapping[str, Any]], *, after: datetime, created: datetime
 ) -> AlertAnchor | None:
@@ -2477,14 +2481,18 @@ def _attached_anchor(
     An episode's event is its first ``attached`` firing delivery (R-C3: a
     repeat of an attached episode adds no event), so a repeat received
     after the frame does not move it, nor does a replay or a resolved
-    notification. Ties on ``received_at`` go to the later delivery."""
+    notification. A receipt counts after the frame only when its whole UTC
+    second is later than the frame's end (the frame's grain): an episode
+    received before a Run's creation never reads as after that Run's frame,
+    which ends at the creation truncated to the second. Ties on
+    ``received_at`` go to the later delivery."""
     first: dict[str, Mapping[str, Any]] = {}
     for row in deliveries:
         if row["outcome"] == "attached" and row["status"] == "firing":
             first.setdefault(row["delivery_key"], row)
     latest = None
     for row in first.values():
-        if row["received_at"] > after and (
+        if _utc_second(row["received_at"]) > after and (
             latest is None or row["received_at"] >= latest["received_at"]
         ):
             latest = row

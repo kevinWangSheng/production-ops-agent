@@ -226,3 +226,14 @@ def test_revisions_are_unchanged():
         "tool_schema_revision": "otel-demo-68ed2ca8f5d6",
     }
     assert fixture_versions() == {**common, "tool_schema_revision": "fixture-4"}
+
+
+def test_a_receipt_in_the_frames_last_second_is_inside_it():
+    """Item 6 (lead 2026-10-24): receipts compare at whole UTC seconds, so an
+    episode received in the second a frame ends at (before the Run's
+    creation) does not move the next frame; the next second does."""
+    same = [_row("a", FRAME_END + timedelta(microseconds=900_000))]
+    assert _attached_anchor(same, after=FRAME_END, created=CREATED) is None
+    next_second = [_row("a", FRAME_END + timedelta(seconds=1))]
+    moved = _attached_anchor(next_second, after=FRAME_END, created=CREATED)
+    assert moved is not None and moved.frame_end == CREATED
