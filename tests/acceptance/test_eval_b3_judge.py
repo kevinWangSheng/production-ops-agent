@@ -816,30 +816,38 @@ def test_valid_negative_is_valid_but_not_passed(configs, verified):
 
 
 RECOMPUTE_CASES = {
-    # (diagnoses, claimed verdict): the code-side AND disagrees with the model.
-    "wrong_service_claimed_true": ((diagnosis(service="payment"),), True),
-    "wrong_operation_claimed_true": ((diagnosis(operation="Charge"),), True),
-    "unsupported_claimed_true": ((diagnosis(supported=False),), True),
-    "no_diagnosis_on_fault_claimed_true": ((), True),
-    "correct_diagnosis_claimed_false": ((diagnosis(),), False),
+    # (diagnoses, claimed verdict, recomputed verdict): the code-side AND
+    # disagrees with the model.
+    "wrong_service_claimed_true": ((diagnosis(service="payment"),), True, False),
+    "wrong_operation_claimed_true": ((diagnosis(operation="Charge"),), True, False),
+    "unsupported_claimed_true": ((diagnosis(supported=False),), True, False),
+    "no_diagnosis_on_fault_claimed_true": ((), True, False),
+    "correct_diagnosis_claimed_false": ((diagnosis(),), False, True),
     "extra_wrong_cause_claimed_true": (
         (diagnosis(), diagnosis(service="currency", operation="Convert")),
         True,
+        False,
     ),
 }
 
 
 @pytest.mark.parametrize("name", sorted(RECOMPUTE_CASES))
 def test_verdict_is_recomputed_by_code(configs, verified, name):
-    """P6 / B3:30: a verdict that differs from the recomputed AND is invalid."""
-    diagnoses, verdict = RECOMPUTE_CASES[name]
+    """P6 / B3:30: the code recomputes the verdict from the diagnoses."""
+    diagnoses, verdict, recomputed = RECOMPUTE_CASES[name]
     observation, transport = call_once(
         judge_input(),
         configs["zai"],
         respond=ok_reply(diagnoses, verdict),
         calibration=verified,
     )
-    assert_failed(observation, transport, "invalid")
+    # P7 r3 D18: a differing model verdict no longer invalidates the answer;
+    # the observation carries the recomputed verdict.
+    assert observation.valid is True and observation.error_code is None
+    assert observation.result.status == "ok"
+    assert observation.result.verdict is recomputed
+    assert observation.recomputed_verdict is recomputed
+    assert observation.passed is recomputed
     assert len(transport.calls) == 1
 
 
@@ -855,7 +863,11 @@ def test_signature_less_citation_recomputes_false(configs, verified):
         respond=ok_reply((diagnosis(),), True),
         calibration=verified,
     )
-    assert_failed(observation, transport, "invalid")
+    # P7 r3 D18: the model's True is recorded, the recomputed False counts.
+    assert observation.valid is True and observation.error_code is None
+    assert observation.result.verdict is False
+    assert observation.passed is False
+    assert len(transport.calls) == 1
 
 
 LOCATION_CASES = {

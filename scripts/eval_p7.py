@@ -1,7 +1,7 @@
 """P7 calibration driver (chore): private workspace, blind labels, debug, formal.
 
 Interface: docs/tasks/2026-10-19-eval-p7-driver-interface.md (r2). Contract:
-docs/tasks/2026-10-18-eval-p7-calibration.md (P7-D1..D14).
+docs/tasks/2026-10-18-eval-p7-calibration.md (P7-D1..D14; r3 P7-D17..D21).
 
     .venv/bin/python -m scripts.eval_p7 <command> --workspace W [options]
 
@@ -28,7 +28,7 @@ import stat
 import subprocess
 import sys
 from collections import Counter
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
@@ -74,6 +74,7 @@ from opspilot.evaluation.judge import (
     HTTPJudgeTransport,
     JudgeConfig,
     JudgeError,
+    JudgeHTTPResponse,
     JudgeInput,
     JudgeObservation,
     JudgeTransport,
@@ -357,6 +358,7 @@ class FormalResult:
     selection: SelectionRecord
     readback: Literal["verified", "unresolved_as_expected", "failed"]
     readback_code: str | None
+    raw_output_error: str | None = None
 
 
 @dataclass(frozen=True)
@@ -1677,11 +1679,19 @@ def cost_report(ws: Workspace, session_id: str) -> Mapping[str, Any]:
 # -- section 8: debug -----------------------------------------------------------------------
 
 
-def _packet_binding(ws: Workspace, *, require_annotations: bool) -> None:
-    """9.2 step 4 (also debug 2a when a packet exists)."""
+def _packet_binding(
+    ws: Workspace, *, require_annotations: bool, check_convention: bool = True
+) -> None:
+    """9.2 step 4 (also debug 2a when a packet exists).
+
+    Tuning debug (P7-D21) skips only the convention check: its prompt may have
+    moved on from the exported packet, which no formal run can then use.
+    """
     packet_raw = _read_ws(ws, ws.root / "blind/packet.json")
     packet = _decode(BlindPacket, packet_raw)
-    if not packet.convention or packet.convention not in judge.PROMPT:
+    if check_convention and (
+        not packet.convention or packet.convention not in judge.PROMPT
+    ):
         _fail("JUDGE_PROMPT_CHANGED")
     items_raw = _read_ws(ws, ws.root / "assembled/items.json")
     if packet.items_sha256 != _sha(items_raw):
@@ -1726,6 +1736,97 @@ def _check_bindings(
         _fail("CONFIG_INVALID")
 
 
+def _request_input_hash(body: bytes) -> str | None:
+    """input_hash of a judge request body: its user message's leading P6 JSON."""
+    try:
+        content = json.loads(body)["messages"][1]["content"]
+        _, end = json.JSONDecoder().raw_decode(content)
+        return _sha(canonical_bytes(parse(content[:end].encode("utf-8"))))
+    except (ValueError, KeyError, IndexError, TypeError, StorageError):
+        return None
+
+
+def _formal_raw_outputs(
+    ws: Workspace,
+    destination: Path,
+    captures: Mapping[str, _CapturingTransport],
+    configs: Mapping[str, JudgeConfig],
+) -> None:
+    """P7-D20: map serial sends back to formal observations; keep rejected bodies.
+
+    Each observation consumed up to ``attempts`` sends of its own input_hash
+    (none when it failed before sending), the last of which it judged.
+    """
+    for provider, capture in captures.items():
+        queue = list(capture.sends)
+        n = 1
+        while _exists(path := destination / f"{provider}-{n:03d}.json"):
+            obj = _loads(_read_ws(ws, path))
+            observation = obj.get("observation") if type(obj) is dict else None
+            if type(observation) is not dict:
+                break
+            attempts = observation.get("attempts", 1)
+            last: bytearray | None = None
+            for _ in range(attempts if type(attempts) is int else 1):
+                if not queue or queue[0][0] != obj.get("input_hash"):
+                    break
+                last = queue.pop(0)[1]
+            status = (observation.get("result") or {}).get("status")
+            if status != "ok" and last:
+                _write_new(
+                    ws,
+                    destination / f"{provider}-{n:03d}.raw",
+                    bytes(last[: configs[provider].max_response_bytes]),
+                )
+            n += 1
+
+
+class _CapturingTransport:
+    """Keeps the bytes of the last response judge_once read (P7-D20).
+
+    The body stays in memory; debug writes it only for a rejected answer. A
+    non-2xx body is read here, bounded, since judge_once never iterates it.
+    """
+
+    def __init__(self, inner: JudgeTransport) -> None:
+        self.inner = inner
+        self.body = bytearray()
+        # (input hash of the request, response bytes) per send, in order.
+        self.sends: list[tuple[str | None, bytearray]] = []
+
+    def send(
+        self,
+        *,
+        endpoint: str,
+        headers: Mapping[str, str],
+        body: bytes,
+        timeout_seconds: float,
+        max_response_bytes: int,
+    ) -> JudgeHTTPResponse:
+        self.body = bytearray()
+        self.sends.append((_request_input_hash(body), self.body))
+        response = self.inner.send(
+            endpoint=endpoint,
+            headers=headers,
+            body=body,
+            timeout_seconds=timeout_seconds,
+            max_response_bytes=max_response_bytes,
+        )
+        if type(response.status_code) is int and 200 <= response.status_code < 300:
+            return JudgeHTTPResponse(response.status_code, self._kept(response.chunks))
+        for chunk in response.chunks:
+            if type(chunk) is not bytes or len(self.body) > max_response_bytes:
+                break
+            self.body += chunk
+        return JudgeHTTPResponse(response.status_code, (bytes(self.body),))
+
+    def _kept(self, chunks: Iterable[bytes]) -> Iterator[bytes]:
+        for chunk in chunks:
+            if type(chunk) is bytes:
+                self.body += chunk
+            yield chunk
+
+
 @_public
 def debug_judge(
     ws: Workspace,
@@ -1736,20 +1837,29 @@ def debug_judge(
     configs: Mapping[str, JudgeConfig],
     transports: Mapping[str, JudgeTransport],
     balance: BalanceReader | None = None,
+    tuning: bool = False,
 ) -> tuple[DebugRecord, ...]:
     _check_workspace(ws)
     _check_id(session_id)
     ordered = _ordered_providers(providers)
     _, items = _assembled(ws)
     by_id = {i.item_id: i for i in items}
+    # P7-D21: tuning debug may also send validation items whose family a formal
+    # run already exposed; every formal path still refuses those families.
+    exposed: set[str] = set()
+    if tuning:
+        _registry_ready(ws)
+        exposed = _exposure(ws, kind="debug")[0]
+
+    def allowed(item: CalibrationItem) -> bool:
+        return item.split == "debug" or item.source_family in exposed
+
     if item_ids is None:
-        selected = sorted(
-            (i for i in items if i.split == "debug"), key=lambda i: i.item_id
-        )
+        selected = sorted((i for i in items if allowed(i)), key=lambda i: i.item_id)
     else:
         if len(set(item_ids)) != len(item_ids) or not item_ids:
             _fail("SCHEMA_INVALID")
-        if any(i in by_id and by_id[i].split != "debug" for i in item_ids):
+        if any(i in by_id and not allowed(by_id[i]) for i in item_ids):
             _fail("VALIDATION_EXPOSURE_FORBIDDEN")
         if any(i not in by_id for i in item_ids):
             _fail("SCHEMA_INVALID")
@@ -1759,7 +1869,7 @@ def debug_judge(
     for provider in ordered:
         check_config(configs[provider])  # Same JudgeError code judge_once raises.
     if _exists(ws.root / "blind/packet.json"):
-        _packet_binding(ws, require_annotations=False)
+        _packet_binding(ws, require_annotations=False, check_convention=not tuning)
     for slot in (1, 2):
         _annotation(ws, slot)  # 6.2 step 6: imported annotations still bound.
     # 3. Costs.
@@ -1773,9 +1883,10 @@ def debug_judge(
     # 4. Every target, then the first write.
     directory = ws.root / "debug" / session_id
     targets = [
-        directory / f"{p}-{n:03d}.json"
+        directory / f"{p}-{n:03d}.{suffix}"
         for p in ordered
         for n in range(1, len(selected) + 1)
+        for suffix in ("json", "raw")
     ]
     if "deepseek" in ordered:
         targets += [
@@ -1791,22 +1902,27 @@ def debug_judge(
         kind="debug",
         families=families,
         sources=sources,
-        fields={"session": session_id},
+        fields={"session": session_id, **({"tuning": True} if tuning else {})},
+        # P7-D21: a formally exposed family is reusable for tuning in any split.
+        reuse=_item_sources(ws, [i for i in selected if i.source_family in exposed]),
     )
     if "deepseek" in ordered:
         _write_deepseek_balance(ws, session_id, "before", balance)
     records: list[DebugRecord] = []
     for provider in ordered:
         config = configs[provider]
+        transport = _CapturingTransport(transports[provider])
         for n, item in enumerate(selected, 1):
-            if item.split != "debug":  # Mechanical guard (section 8 step 2).
+            if not allowed(item):  # Mechanical guard (section 8 step 2).
                 _fail("VALIDATION_EXPOSURE_FORBIDDEN")
             _PROGRESS["started"] = True
+            # A pre-send failure must not inherit the previous item's body.
+            transport.body = bytearray()
             observation = judge_once(
                 item.request,
                 config=config,
                 calibration=None,
-                transport=transports[provider],
+                transport=transport,
             )
             record = DebugRecord(
                 session_id,
@@ -1819,6 +1935,13 @@ def debug_judge(
             _write_new(
                 ws, directory / f"{provider}-{n:03d}.json", canonical_bytes(record)
             )
+            # P7-D20: a rejected answer's response body, for diagnosis only.
+            if observation.result.status != "ok" and transport.body:
+                _write_new(
+                    ws,
+                    directory / f"{provider}-{n:03d}.raw",
+                    bytes(transport.body[: config.max_response_bytes]),
+                )
             records.append(record)
     if "deepseek" in ordered:
         _write_deepseek_balance(ws, session_id, "after", balance)
@@ -1842,8 +1965,9 @@ def _debug_comparison(
         observed = record.observation.result
         if observed.status == "ok" and observed.verdict is label.verdict:
             counts["verdict_match"] += 1
-        expected = {(d.location, d.quote) for d in label.diagnoses if d.factual_causal}
-        actual = {(d.location, d.quote) for d in observed.diagnoses if d.factual_causal}
+        # P7-D17: key diagnoses match by location, as in _missing_diagnosis.
+        expected = {d.location for d in label.diagnoses if d.factual_causal}
+        actual = {d.location for d in observed.diagnoses if d.factual_causal}
         if observed.status == "ok" and expected <= actual:
             counts["key_hit"] += 1
     return result
@@ -1983,6 +2107,53 @@ def _item_sources(
     return families, sources
 
 
+def _exposure(
+    ws: Workspace, *, kind: Literal["formal", "debug"]
+) -> tuple[set[str], set[tuple[str, str]]]:
+    """Families and sources a ``kind`` registration must not reuse.
+
+    formal: every registered family/source (formal validation or debug) and
+    every validation family in any workspace's calibration pack; debug: the
+    formal exposure only. Rows without ``kind`` predate debug registration and
+    are formal rows.
+    """
+    seen_families: set[str] = set()
+    seen_sources: set[tuple[str, str]] = set()
+    for line in _read_file(ws.private_root / "exposure.jsonl").splitlines():
+        if not line.strip():
+            continue
+        row = _loads(line)
+        row_kind = row.get("kind", "formal") if type(row) is dict else None
+        key = {"formal": "validation_families", "debug": "debug_families"}.get(
+            row_kind  # type: ignore[arg-type]
+        )
+        if (
+            key is None
+            or type(row.get(key)) is not list
+            or type(row.get("sources")) is not list
+            or any(type(source) is not dict for source in row["sources"])
+        ):
+            _fail("SCHEMA_INVALID")
+        if kind == "debug" and row_kind == "debug":
+            continue  # Repeated debug use of one family is allowed.
+        seen_families.update(map(str, row[key]))
+        seen_sources.update(
+            (str(source.get("round_id")), str(source.get("attempt_id")))
+            for source in row["sources"]
+        )
+    for path in sorted(ws.private_root.glob("*/calibration/*/label-pack/items.json")):
+        obj = _loads(_read_file(path))
+        entries = obj.get("items") if type(obj) is dict else None
+        if type(entries) is not list or any(type(e) is not dict for e in entries):
+            _fail("SCHEMA_INVALID")
+        seen_families.update(
+            str(e.get("source_family"))
+            for e in entries
+            if e.get("split") == "validation"
+        )
+    return seen_families, seen_sources | _sources(seen_families)
+
+
 def _register(
     ws: Workspace,
     *,
@@ -1990,13 +2161,13 @@ def _register(
     families: set[str],
     sources: set[tuple[str, str]],
     fields: Mapping[str, Any],
+    reuse: tuple[set[str], set[tuple[str, str]]] = (set(), set()),
 ) -> None:
     """One cross-workspace check-and-append under ``flock`` (9.2.7, 8.2b).
 
-    formal refuses any family/source already registered (formal validation or
-    debug) or present as validation in any workspace's calibration pack; debug
-    refuses only formal validation exposure. Rows without ``kind`` predate
-    debug registration and are formal rows.
+    Refuses any family/source in ``_exposure(kind)``, except that tuning debug
+    (P7-D21) names in ``reuse`` the formally exposed validation families it
+    re-sends; those must still be exposed when the lock is held.
     """
     _registry_ready(ws)
     lock = ws.private_root / "exposure.lock"
@@ -2004,44 +2175,13 @@ def _register(
     fd = os.open(lock, os.O_RDWR | os.O_NOFOLLOW)
     try:
         fcntl.flock(fd, fcntl.LOCK_EX)
-        seen_families: set[str] = set()
-        seen_sources: set[tuple[str, str]] = set()
-        for line in _read_file(registry).splitlines():
-            if not line.strip():
-                continue
-            row = _loads(line)
-            row_kind = row.get("kind", "formal") if type(row) is dict else None
-            key = {"formal": "validation_families", "debug": "debug_families"}.get(
-                row_kind  # type: ignore[arg-type]
-            )
-            if (
-                key is None
-                or type(row.get(key)) is not list
-                or type(row.get("sources")) is not list
-                or any(type(source) is not dict for source in row["sources"])
-            ):
-                _fail("SCHEMA_INVALID")
-            if kind == "debug" and row_kind == "debug":
-                continue  # Repeated debug use of one family is allowed.
-            seen_families.update(map(str, row[key]))
-            seen_sources.update(
-                (str(source.get("round_id")), str(source.get("attempt_id")))
-                for source in row["sources"]
-            )
-        for path in sorted(
-            ws.private_root.glob("*/calibration/*/label-pack/items.json")
-        ):
-            obj = _loads(_read_file(path))
-            entries = obj.get("items") if type(obj) is dict else None
-            if type(entries) is not list or any(type(e) is not dict for e in entries):
-                _fail("SCHEMA_INVALID")
-            seen_families.update(
-                str(e.get("source_family"))
-                for e in entries
-                if e.get("split") == "validation"
-            )
-        seen_sources |= _sources(seen_families)
-        if families & seen_families or sources & seen_sources:
+        seen_families, seen_sources = _exposure(ws, kind=kind)
+        reuse_families, reuse_sources = reuse
+        if not reuse_families <= seen_families:
+            _fail("VALIDATION_EXPOSURE_FORBIDDEN")
+        if (families - reuse_families) & seen_families or (
+            sources - reuse_sources
+        ) & seen_sources:
             _fail("VALIDATION_EXPOSED")
         row = {
             **fields,
@@ -2117,6 +2257,11 @@ def formal(
         ),
         destination / "calibration.json",
         *(
+            destination / f"{p}-{n:03d}.raw"
+            for p in PROVIDERS
+            for n in range(1, per_provider + 1)
+        ),
+        *(
             _balance_path(ws, run_id, "deepseek", phase)
             for phase in ("before", "after")
         ),
@@ -2140,12 +2285,24 @@ def formal(
     _write_deepseek_balance(ws, run_id, "before", balance)
     selection: SelectionRecord | None = None
     code: str | None = None
+    captures = {p: _CapturingTransport(t) for p, t in transports.items()}
     try:
         selection = run_calibration(
-            pack, configs=configs, transports=transports, destination=destination
+            pack,
+            configs=configs,
+            transports=dict(captures),
+            destination=destination,
         )
     except (JudgeError, StorageError) as exc:
         code = exc.code
+    # Diagnosis only: a failed .raw write never fails a completed run.
+    raw_output_error: str | None = None
+    try:
+        _formal_raw_outputs(ws, destination, captures, configs)
+    except (P7Error, JudgeError, StorageError) as exc:
+        raw_output_error = exc.code
+    except OSError:
+        raw_output_error = "ARTIFACT_UNWRITABLE"
     if selection is None:
         # 0.1/9.2: the exposure row is already written, so this is always 5.
         raise P7Error(code or "SCHEMA_INVALID", stopped=True)
@@ -2165,7 +2322,9 @@ def formal(
             readback = "verified"
     elif verified is None and readback_code == "CALIBRATION_UNRESOLVED":
         readback, readback_code = "unresolved_as_expected", None
-    return FormalResult(run_id, pack_hash, hashes, selection, readback, readback_code)
+    return FormalResult(
+        run_id, pack_hash, hashes, selection, readback, readback_code, raw_output_error
+    )
 
 
 # -- section 11: summary --------------------------------------------------------------------
@@ -2314,6 +2473,7 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--judge-env", required=True)
     p.add_argument("--provider", action="extend", nargs="+", choices=PROVIDERS)
     p.add_argument("--item", action="extend", nargs="+")
+    p.add_argument("--tuning", action="store_true")
     command("freeze").add_argument("--accept-distribution")
     p = command("formal")
     p.add_argument("--run", required=True)
@@ -2486,6 +2646,7 @@ def _run(
             configs=configs,
             transports={p: HTTPJudgeTransport() for p in providers},
             balance=_deepseek_reader(configs),
+            tuning=args.tuning,
         )
         counts: dict[str, dict[str, int]] = {}
         for record in records:
@@ -2539,6 +2700,8 @@ def _run(
             "readback": result.readback,
             "readback_code": result.readback_code,
         }
+        if result.raw_output_error is not None:
+            extra["raw_output_error"] = result.raw_output_error
         if result.readback == "failed":
             return 1, "failed", "READBACK_FAILED", extra
         if selection.status == "selected":
