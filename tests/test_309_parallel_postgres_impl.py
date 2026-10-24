@@ -1,6 +1,7 @@
 """#309 on the durable product path: one turn's two otel-demo tool calls run
 at once under ``tool_parallelism=2`` against PostgreSQL (pooled store,
-durable evidence, ledger and control), committed in index order.
+durable evidence, ledger and control); rows are stored in ordinal order
+(commits follow completion order since #332, #309 contract r2).
 
 Run with ``M1_DURABLE_POSTGRES=1`` and ``OPSPILOT_LAB_DSN``; a scratch
 database is created and dropped.

@@ -14,8 +14,16 @@ STEP2 = "22222222-2222-2222-2222-222222222222"
 LEASE = "2026-10-22T20:07:00+00:00"
 
 
-def _step(step_id, seq, *, tools=(), results=0, status="tool_result_committed"):
-    return {
+def _step(
+    step_id,
+    seq,
+    *,
+    tools=(),
+    results=0,
+    ordinals=None,
+    status="tool_result_committed",
+):
+    step = {
         "step_id": step_id,
         "sequence": seq,
         "logical_key": f"ctx0:round-{seq + 1}",
@@ -25,6 +33,11 @@ def _step(step_id, seq, *, tools=(), results=0, status="tool_result_committed"):
         "tool_results": results,
         "observed_at": "2026-10-22T20:00:00+00:00",
     }
+    # Ledgers frozen before #332 have only the count.
+    if ordinals is not None:
+        step["tool_ordinals"] = list(ordinals)
+        step["tool_results"] = len(ordinals)
+    return step
 
 
 def _snap(
@@ -489,3 +502,157 @@ def test_a_kept_tool_error_need_not_be_cited_but_must_stay_unchanged():
     final["evidence"][-1]["raw_sha256"] = "ff"
     changed = h.verdicts("model_in_flight", pre=pre, post=post, final=final, **kwargs)
     assert not changed["criteria"]["evidence_kept"]["passed"]
+
+
+# -- #332 U-3: siblings committed out of order ---------------------------------
+
+
+def _parallel_step(ordinals):
+    return _step(
+        STEP2,
+        1,
+        tools=["traces_search", "metrics_range_query"],
+        ordinals=ordinals,
+        status="tool_result_committed" if ordinals else "response_committed",
+    )
+
+
+def test_committed_ops_reads_actual_ordinals_and_falls_back_to_the_count():
+    snap = _snap(
+        steps=[_step(STEP1, 0, tools=["traces_search"], results=1), _parallel_step([1])]
+    )
+    # Ordinal 1 without 0 is not a prefix: only the actual ordinal counts.
+    assert h.committed_ops(snap) == {f"{STEP1}-t0", f"{STEP2}-t1"}
+
+
+def _stall_snap(ordinals, sibling_seconds=1.0, epoch=1):
+    return _snap(
+        epoch=epoch,
+        steps=[
+            _step(STEP1, 0, tools=["traces_search"], results=1),
+            _parallel_step(ordinals),
+        ],
+        reservations=[_res("r1"), _res("r2")],
+        charges=[
+            _charge(f"{STEP1}-t0", epoch),
+            _charge(f"{STEP2}-t0", epoch, seconds=sibling_seconds, dispatch="sibling"),
+            _charge(f"{STEP2}-t1", epoch, seconds=None, dispatch="stalled"),
+        ],
+        evidence=[EV1],
+    )
+
+
+def test_tool_breakpoint_waits_for_a_settled_sibling_to_commit():
+    # The sibling (ordinal 0) settled; its result is not in tool_results yet.
+    assert h.tool_breakpoint_state(_stall_snap([])) is None
+    assert h.settled_uncommitted(_stall_snap([]), 1, STEP2) == [f"{STEP2}-t0"]
+    assert h.tool_breakpoint_state(_stall_snap([0])) is not None
+    # A sibling still in flight: the stall is not the only unsettled dispatch.
+    assert h.tool_breakpoint_state(_stall_snap([], sibling_seconds=None)) is None
+
+
+def test_tool_breakpoint_state_changes_when_a_sibling_lands():
+    before = _stall_snap([0])
+    after = copy.deepcopy(before)
+    after["charges"].append(_charge(f"{STEP2}-tX", seconds=1.0, dispatch="late"))
+    assert h.tool_breakpoint_state(before) != h.tool_breakpoint_state(after)
+    assert h.tool_breakpoint_state(before) == h.tool_breakpoint_state(
+        copy.deepcopy(before)
+    )
+
+
+def test_dwell_needs_the_same_state_for_the_whole_interval():
+    candidate, ready = h.dwell(None, "a", 10.0, 1.0)
+    assert candidate == ("a", 10.0) and not ready
+    candidate, ready = h.dwell(candidate, "a", 10.5, 1.0)
+    assert not ready
+    candidate, ready = h.dwell(candidate, "b", 10.9, 1.0)
+    assert candidate == ("b", 10.9) and not ready
+    candidate, ready = h.dwell(candidate, "b", 11.9, 1.0)
+    assert ready
+    assert h.dwell(candidate, None, 12.0, 1.0) == (None, False)
+
+
+def test_a_sibling_committed_out_of_order_is_not_redispatched():
+    # After #332: ordinal 0 settled and committed while ordinal 1 is stalled;
+    # the next epoch dispatches only ordinal 1 again.
+    pre = _stall_snap([0])
+    post = copy.deepcopy(pre)
+    final = _snap(
+        epoch=2,
+        state="completed",
+        steps=[pre["steps"][0], _parallel_step([0, 1])],
+        reservations=[_res("r1"), _res("r2")],
+        charges=[*pre["charges"], _charge(f"{STEP2}-t1", 2)],
+        evidence=[EV1],
+        cited=[EV1["evidence_id"]],
+    )
+    result = h.verdicts(
+        "tool_in_flight",
+        pre=pre,
+        post=post,
+        final=final,
+        epoch_started_at="2026-10-22T20:07:00+00:00",
+        poll_seconds=2.0,
+    )
+    tool = result["criteria"]["tool_redispatch"]
+    assert tool["redispatched"] == [f"{STEP2}-t1"]
+    assert tool["settled_uncommitted_at_kill"] == []
+    assert tool["passed"]
+    assert result["criteria"]["breakpoint_held"]["passed"]
+
+
+def test_a_committed_higher_ordinal_is_not_reported_as_uncommitted():
+    # Ordinal 1 committed, ordinal 0 stalled: a prefix reading of the count
+    # would call t1 uncommitted and t0 committed.
+    snap = _snap(
+        steps=[_parallel_step([1])],
+        charges=[
+            _charge(f"{STEP2}-t0", seconds=None, dispatch="stalled"),
+            _charge(f"{STEP2}-t1", dispatch="sibling"),
+        ],
+    )
+    assert h.settled_uncommitted(snap, 1) == []
+
+
+def _single_call_stall_snap():
+    return _snap(
+        steps=[
+            _step(STEP1, 0, tools=["traces_search"], results=1),
+            _step(
+                STEP2,
+                1,
+                tools=["metrics_range_query"],
+                ordinals=[],
+                status="response_committed",
+            ),
+        ],
+        charges=[
+            _charge(f"{STEP1}-t0"),
+            _charge(f"{STEP2}-t0", seconds=None, dispatch="stalled"),
+        ],
+        evidence=[EV1],
+    )
+
+
+def test_a_stall_in_a_single_call_step_never_forms_breakpoint_three():
+    # Live 2026-10-23 (invalid round): the stalled step planned one call.
+    snap = _single_call_stall_snap()
+    assert h.stalled_dispatch(snap) is not None
+    assert h.tool_breakpoint_state(snap) is None
+    assert h.stall_without_sibling(snap)["dispatch_id"] == "stalled"
+
+
+def test_breakpoint_three_needs_at_least_one_committed_sibling():
+    snap = _stall_snap([0])
+    assert h.committed_siblings(snap) == [f"{STEP2}-t0"]
+    assert h.stall_without_sibling(snap) is None
+    # Two planned calls but the sibling has no charge (never dispatched):
+    # no sibling settled and committed, so no kill.
+    no_sibling = copy.deepcopy(snap)
+    no_sibling["charges"] = [
+        c for c in no_sibling["charges"] if c["dispatch_id"] != "sibling"
+    ]
+    no_sibling["steps"][1] = _parallel_step([])
+    assert h.committed_siblings(no_sibling) == []
+    assert h.tool_breakpoint_state(no_sibling) is None

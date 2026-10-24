@@ -1,0 +1,152 @@
+{
+  "breakpoint": "tool_in_flight",
+  "category": "bounded real run (real DeepSeek, real kind OTel Demo lab, real kill -9 of worker_main); not production proof",
+  "cost": {
+    "deepseek_balance_cny_after": "97.04",
+    "deepseek_balance_cny_before": "97.43",
+    "note": "upper bound; the account may have other callers"
+  },
+  "experiment": "f2-kill-resume-live",
+  "final_usage": {
+    "budget_reserved": 0,
+    "budget_spent": 27,
+    "budget_unknown": 0,
+    "epoch": 2,
+    "lease_until": null,
+    "owner": null,
+    "state": "completed",
+    "tool_operations_used": 48,
+    "tool_seconds_used": 123.08209812361747
+  },
+  "frozen_at": "2026-10-23T08:59:27.455354+00:00",
+  "incident_id": "42ee0f6b-bfd2-5fb6-ab33-1da283012e87",
+  "kill": {
+    "epoch_at_kill": 1,
+    "lease_until_at_kill": "2026-10-23T08:52:25.709888+00:00",
+    "pid": 29034,
+    "returncode": -9,
+    "signal": "SIGKILL"
+  },
+  "proxy": {
+    "requests": 41,
+    "stalled": [
+      {
+        "client_disconnected_at": "2026-10-23T08:45:26.835223+00:00",
+        "path": "/api/v1/query_range",
+        "stalled": true,
+        "time": "2026-10-23T08:45:25.723207+00:00"
+      }
+    ]
+  },
+  "raw_ledger": {
+    "bytes": 48756,
+    "in_repository": false,
+    "path": "tmp/lab-ledgers/f2-kill-resume-live/tool_in_flight-20261023T084511Z",
+    "sha256": "8cfccdeeca59eff694151376c46c1b3f3edba2d668260f60115e90121c36c26a"
+  },
+  "run_id": "ec70b590-aa77-5467-945f-943d2ad035e1",
+  "schema": "opspilot-lab-summary-1",
+  "timeline": {
+    "epoch_previous_poll": "2026-10-23T08:52:26.658643+00:00",
+    "killed": "2026-10-23T08:45:26.835506+00:00",
+    "proxy_armed": "2026-10-23T08:45:18.968109+00:00",
+    "stall_seen": 1901166.850611458,
+    "submitted": {
+      "delivery_key": "evt:6e565dd179fdd6ed6465cad4e6ea7297df905c0d238052deed6b90591c7ef333",
+      "http_status": 201,
+      "incident_id": "42ee0f6b-bfd2-5fb6-ab33-1da283012e87",
+      "replayed": false,
+      "run_id": "ec70b590-aa77-5467-945f-943d2ad035e1"
+    },
+    "terminated_backends": []
+  },
+  "trace": {
+    "project": {
+      "project": "opspilot-lab-f2-kill-resume-live-332-20261023",
+      "project_id": "1ea4099d-9b16-4590-aecf-e2ac4bfdce5d",
+      "trace_tier": "longlived"
+    },
+    "roots": [
+      {
+        "langsmith_run_id": "00000000-0000-0000-97c3-6d2ff08eab21",
+        "start_time": "2026-10-23T08:52:26.836198+00:00",
+        "status": "success",
+        "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/1ea4099d-9b16-4590-aecf-e2ac4bfdce5d/r/00000000-0000-0000-97c3-6d2ff08eab21?poll=true"
+      }
+    ]
+  },
+  "verdicts": {
+    "criteria": {
+      "breakpoint_held": {
+        "dispatch_id": "f44f1b45-a407-4604-85b1-28b6feb4df96",
+        "operation_id": "36a353df-6de8-435c-a50a-3abd155c5910-t0",
+        "passed": true,
+        "post_unsettled_reservations": []
+      },
+      "evidence_kept": {
+        "adopted_before_kill": 4,
+        "before_kill": 4,
+        "conclusion_present": true,
+        "missing_or_changed": [],
+        "not_adopted_before_kill": [],
+        "not_in_conclusion": [],
+        "passed": true
+      },
+      "model_resend": {
+        "expected": 0,
+        "in_flight_at_kill": [],
+        "model_steps": 27,
+        "passed": true,
+        "resent": 0,
+        "reservations_total": 27,
+        "reservations_unknown": 0
+      },
+      "new_epoch_timely": {
+        "bound": "2026-10-23T08:52:27.909888+00:00",
+        "final_epoch": 2,
+        "kill_epoch": 1,
+        "lease_until_at_kill": "2026-10-23T08:52:25.709888+00:00",
+        "observed_at": "2026-10-23T08:52:26.868234+00:00",
+        "passed": true,
+        "seconds_after_lease_expiry": 1.158346
+      },
+      "tool_redispatch": {
+        "in_flight_at_kill": [
+          "36a353df-6de8-435c-a50a-3abd155c5910-t0"
+        ],
+        "passed": true,
+        "redispatched": [
+          "36a353df-6de8-435c-a50a-3abd155c5910-t0"
+        ],
+        "settled_uncommitted_at_kill": []
+      },
+      "unsettled_cost_kept": {
+        "charge_rows": 48,
+        "kind": "tool_dispatch",
+        "passed": true,
+        "reserved_seconds_occupied": 30.0,
+        "still_unsettled_at_end": [
+          "f44f1b45-a407-4604-85b1-28b6feb4df96"
+        ],
+        "tool_operations_used": 48,
+        "unsettled_at_kill": [
+          "f44f1b45-a407-4604-85b1-28b6feb4df96"
+        ]
+      }
+    },
+    "passed": true,
+    "run": {
+      "final_state": "completed",
+      "incident_state": "queued",
+      "terminal": true
+    }
+  },
+  "versions": {
+    "commit": "a41622b8e706e1c635f6167d84d3500e537eee08",
+    "worker_versions": {
+      "context_policy_revision": "ctx-ctx-policy-v1-a30e65ea52f4",
+      "prompt_revision": "prompt-replay-candidate-2f30c2380b23",
+      "tool_schema_revision": "otel-demo-68ed2ca8f5d6"
+    }
+  }
+}
