@@ -241,6 +241,18 @@ class _ReleaseSampleOps(_StoreBase):
     def claim_due_samples(
         self, owner: UUID, *, limit: int = 20, lease_seconds: int = 120
     ) -> list[SampleLease | ReleaseSampleLease]:
+        """Lease up to ``limit`` due samples across both session purposes.
+
+        Eligibility is the real ``active_sample_due_at <= now`` plus the
+        authorization, lease, deadline and suspension filters; no session is
+        claimed before it is due. Among due sessions the order key (#350,
+        C3 section 10) is ``active_sample_due_at - sample_interval_seconds``
+        for incident recovery and ``active_sample_due_at`` for release
+        observation, tie-broken by ``session_id``. A recovery thus leads by
+        at most its own interval: a release due more than one interval
+        earlier still goes first, so release waiting is bounded and cannot
+        starve. The keyset cursor pages on the same key.
+        """
         if (
             not isinstance(owner, UUID)
             or type(limit) is not int
@@ -251,6 +263,8 @@ class _ReleaseSampleOps(_StoreBase):
             raise PersistenceError("INVALID_INPUT")
         leases: list[SampleLease | ReleaseSampleLease] = []
         probe_budget = 8 * limit
+        # One order key for SELECT, keyset cursor and ORDER BY (#350).
+        claim_order = "(CASE WHEN s.purpose='incident_recovery' THEN s.active_sample_due_at-s.sample_interval_seconds*interval '1 second' ELSE s.active_sample_due_at END)"
         probed = 0
         now: datetime | None = None
         cursor: tuple[datetime, UUID] | None = None
@@ -259,18 +273,22 @@ class _ReleaseSampleOps(_StoreBase):
             with self.transaction(snapshot=True) as conn:
                 if now is None:
                     now = self._db_now(conn).astimezone(timezone.utc)
-                query = "SELECT session_id,purpose,active_sample_due_at FROM opspilot_observation_sessions s JOIN opspilot_scope_controls g ON g.scope_id=1 LEFT JOIN opspilot_target_suspensions t ON t.target_id=s.target_id WHERE s.state='authorized' AND s.authorized AND s.active_sample_job_id IS NOT NULL AND s.active_sample_due_at<=%s AND (s.active_sample_lease_until IS NULL OR s.active_sample_lease_until<=%s) AND s.deadline_at>%s AND NOT g.global_suspended AND NOT COALESCE(t.suspended,false)"
+                query = (
+                    "SELECT session_id,purpose,"
+                    + claim_order
+                    + " AS claim_order FROM opspilot_observation_sessions s JOIN opspilot_scope_controls g ON g.scope_id=1 LEFT JOIN opspilot_target_suspensions t ON t.target_id=s.target_id WHERE s.state='authorized' AND s.authorized AND s.active_sample_job_id IS NOT NULL AND s.active_sample_due_at<=%s AND (s.active_sample_lease_until IS NULL OR s.active_sample_lease_until<=%s) AND s.deadline_at>%s AND NOT g.global_suspended AND NOT COALESCE(t.suspended,false)"
+                )
                 parameters: list[object] = [now, now, now]
                 if cursor is not None:
-                    query += " AND (active_sample_due_at,session_id)>(%s,%s)"
+                    query += " AND (" + claim_order + ",session_id)>(%s,%s)"
                     parameters.extend(cursor)
-                query += " ORDER BY active_sample_due_at,session_id LIMIT %s"
+                query += " ORDER BY " + claim_order + ",session_id LIMIT %s"
                 parameters.append(page_limit)
                 candidates = conn.execute(query, parameters).fetchall()
             if not candidates:
                 break
             cursor = (
-                candidates[-1]["active_sample_due_at"],
+                candidates[-1]["claim_order"],
                 candidates[-1]["session_id"],
             )
             for row in candidates:
