@@ -23,6 +23,7 @@ contract (documented on :class:`EvidenceBuilder`), not a contract fact.
 from __future__ import annotations
 
 import hashlib
+import itertools
 import json
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -328,12 +329,17 @@ def image_id_for(image_digest: str, container: str) -> str:
     return f"registry.example/otel/{container}@{image_digest}"
 
 
+#: Module-wide Pod name suffix sequence: names stay unique within one call and
+#: across calls on the same ReplicaSet (#323: random 5-hex suffixes collided).
+_POD_SEQ = itertools.count()
+
+
 def pods_for(
     images: Mapping[str, str], count: int = 2, *, replicaset: str = REPLICASET
 ) -> tuple[Pod, ...]:
     return tuple(
         Pod(
-            name=f"{replicaset}-{uuid4().hex[:5]}",
+            name=f"{replicaset}-{next(_POD_SEQ):05x}",
             uid=uuid4(),
             replicaset=replicaset,
             image_ids={c: image_id_for(d, c) for c, d in images.items()},
