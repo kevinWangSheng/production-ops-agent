@@ -1,6 +1,6 @@
 # #319 共享 userinfo 脱敏覆盖 JSON 转义写法的 URL authority
 
-- 状态：进行中（实现与真实 Run 完成；独立验收测试与独立审查待做）
+- 状态：就绪待合并（实现、真实 Run、独立验收测试、独立审查完成）
 - 更新日期：2026-10-26
 - 依据：issue #319 的 Agent Brief（实现合同）；F7 合同第 3 节第 6 类（[f7-contract](2026-10-15-f7-contract.md)）；C3 §5 投影版本条款（#361）；#315 记录 [f7-observer-redaction](2026-10-22-f7-observer-redaction.md)
 - 工作区：`feature/F7-319-escaped-userinfo-redaction`，`/Users/shenghuikevin/dev/AI/poa-319-impl`（起点 origin/main c968783）
@@ -36,8 +36,10 @@
 - `_redact_quoted` 对无空白 `name:value` 重复文本的平方级耗时（main 上已存在，与本项无关）另开 [#365](https://github.com/kevinWangSheng/production-ops-agent/issues/365)。
 - 负对照：只回退 `redaction.py` 后 `--dry-check` 拒绝写证据（`unsafe_artifact_withheld`），即旧规则下合成秘密会出现在落点里。
 
+- 独立验收测试（Codex gpt-6.1-sol，worktree `poa-319-tests`，分支 `chore/319-acceptance-tests`，已合入本分支）：新增 `tests/acceptance/test_319_escaped_userinfo.py`（27）与 `_postgres.py`（4），并按 U2-A 改 10 个验收文件的固定值（brief 写 8 个，实际 10 个）。lead 按预审原文做了四处测试构造修正：GitHub 把 brief 中的 `\u002f`/`\u002F` 渲染成 `/`，测试作者漏了大写形态、截断用例误用字面 `//`；两条「JSON 里套 JSON」多套了一层 `json.dumps`（成了 M3 的双重转义）；一处断言引用不存在的 `RunnerOutcome.evidence_ids`。在 main 上红（单测 18/27 失败、PG 4/4 失败），在本分支全绿；10 个改固定值的验收文件单测 200 passed、PG 71 passed（临时 PG 55652）。
+- 独立审查（code-review 两轴，Codex gpt-6-astra，全新上下文、只读）：首轮 Standards 1（验收文件未 ruff format，已修）、Spec 1（`//u@host\/\/v@w` 输出与 main 不同）——不采纳：brief 的「逐字不变」指只含字面 `//` 的输入，该例差异正是新规则要脱敏的转义段；复验审查者同意不采纳，并审 live 脚本 READ_TOOLS 改动（写工具、admin 路径、POST、多余路径段仍判 fail），两轴 0 发现。
+
 ## 下一步与交接
 
-- 独立验收测试（另一模型、另一 worktree）合入本分支后复跑；独立审查未做。
-- PR 属用户门（数据流与凭据），就绪后由用户合并。
+- `@codex review` 分诊一次；CI 绿、CLEAN 后合并（用户 2026-10-26 授权本批由 Agent 合并，含用户门 PR）。
 - 临时 PG：`tmp/pg55653`（端口 55653），已停止，数据目录保留。
