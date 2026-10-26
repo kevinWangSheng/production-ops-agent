@@ -386,6 +386,14 @@ class IncidentStore(Protocol):
         when no alert opened it."""
         ...
 
+    def attached_alert_deliveries(
+        self, incident_id: UUID
+    ) -> tuple[Mapping[str, Any], ...]:
+        """Every alert delivery filed as ``attached`` to the incident, in
+        receipt order, whichever source opened it (#347: a release-anomaly
+        incident has no alert identity, so ``alert_records`` is ``None``)."""
+        ...
+
     def find_incident(self, incident_id: UUID) -> IncidentSummary | None: ...
 
     def run_ids(self, incident_id: UUID) -> frozenset[str]: ...
@@ -838,6 +846,16 @@ class DurableIncidentStore:
         with self._store.transaction(snapshot=True) as conn:
             records = alert_intake_records(conn, incident_id)
         return None if records.identity is None else records
+
+    def attached_alert_deliveries(
+        self, incident_id: UUID
+    ) -> tuple[Mapping[str, Any], ...]:
+        with self._store.transaction(snapshot=True) as conn:
+            rows = conn.execute(
+                "SELECT delivery_key,status,outcome,received_at,starts_at,starts_at_raw FROM opspilot_alert_deliveries WHERE incident_id=%s AND outcome='attached' ORDER BY delivery_id",
+                (incident_id,),
+            ).fetchall()
+        return tuple(rows)
 
     def run_ids(self, incident_id: UUID) -> frozenset[str]:
         with self._store.transaction(snapshot=True) as conn:
