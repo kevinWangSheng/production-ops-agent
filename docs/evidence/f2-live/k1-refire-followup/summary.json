@@ -1,0 +1,1345 @@
+{
+  "assertions": [
+    {
+      "actual": {
+        "all_deliveries_in_db": 4,
+        "deliveries": [
+          {
+            "actor": "alertmanager",
+            "annotation_revision": 1,
+            "fingerprint": "83f7541ae0105d42",
+            "outcome": "created",
+            "received_at": "2026-10-24T14:32:40.836857+00:00",
+            "starts_at": "2026-10-24T14:31:54+00:00",
+            "status": "firing"
+          },
+          {
+            "actor": "alertmanager",
+            "annotation_revision": 2,
+            "fingerprint": "83f7541ae0105d42",
+            "outcome": "resolved_attached",
+            "received_at": "2026-10-24T14:37:40.987991+00:00",
+            "starts_at": "2026-10-24T14:31:54+00:00",
+            "status": "resolved"
+          },
+          {
+            "actor": "alertmanager",
+            "annotation_revision": 1,
+            "fingerprint": "83f7541ae0105d42",
+            "outcome": "attached",
+            "received_at": "2026-10-24T14:45:41.215696+00:00",
+            "starts_at": "2026-10-24T14:44:54+00:00",
+            "status": "firing"
+          },
+          {
+            "actor": "alertmanager",
+            "annotation_revision": 1,
+            "fingerprint": "83f7541ae0105d42",
+            "outcome": "resolved_attached",
+            "received_at": "2026-10-24T14:50:41.318498+00:00",
+            "starts_at": "2026-10-24T14:44:54+00:00",
+            "status": "resolved"
+          }
+        ]
+      },
+      "assertion": "deliveries: firing created -> resolved resolved_attached -> new startsAt firing attached -> resolved resolved_attached",
+      "pass": true
+    },
+    {
+      "actual": {
+        "event_content_keys": [
+          "annotation_revision",
+          "channel",
+          "delivery_key",
+          "fingerprint",
+          "starts_at",
+          "status",
+          "text"
+        ],
+        "event_input": {
+          "actor": "alertmanager",
+          "content": {
+            "annotation_revision": 1,
+            "channel": "alertmanager",
+            "fingerprint": "83f7541ae0105d42",
+            "starts_at": "2026-10-24T14:44:54Z",
+            "status": "firing",
+            "text": "Alertmanager alert 83f7541ae0105d42 fired again with startsAt 2026-10-24T14:44:54Z (status firing) on this incident's target; attached to this incident without a new Run."
+          },
+          "control_generation": 0,
+          "input_id": "309e1c54-c4f1-5a0c-b8f8-c959ede2d5a4",
+          "kind": "event",
+          "received_at": "2026-10-24T14:45:41.242357+00:00",
+          "sequence": 1
+        },
+        "identity_rows": 1,
+        "runs_before_follow_up": [
+          {
+            "budget_reserved": 0,
+            "budget_spent": 11,
+            "control_generation": 0,
+            "deadline": "2026-10-24 09:32:40.847926-07:00",
+            "epoch": 1,
+            "run_id": "5598fc8e-059d-5641-aae2-57687e934eac",
+            "state": "completed",
+            "tool_operations_used": 21
+          }
+        ],
+        "subject_events_between_attach_and_follow_up": []
+      },
+      "assertion": "attach: same incident, no new Run, no announce between attach and follow_up, one event input with whitelisted keys, no identity row",
+      "pass": true
+    },
+    {
+      "actual": {
+        "branch": "first Run concluded -> follow_up opened a successor Run (E-R4 branch A1)",
+        "follow_up": {
+          "at": "2026-10-24T14:46:56.016586+00:00",
+          "http_body": {
+            "action": "follow_up",
+            "generation": 1,
+            "incident_id": "9373ca99-e5bd-5570-9008-ad403fffe162",
+            "replayed": false,
+            "run_id": "9b8f040f-7431-54d2-8cd3-35c156a8a138",
+            "sequence": 36
+          },
+          "http_status": 200
+        },
+        "handoff_events": [],
+        "successor_run": {
+          "budget_limit": 100,
+          "budget_reserved": 0,
+          "budget_spent": 8,
+          "control_generation": 1,
+          "deadline": "2026-10-24T16:46:56.059832+00:00",
+          "epoch": 1,
+          "input_watermark": 2,
+          "run_id": "9b8f040f-7431-54d2-8cd3-35c156a8a138",
+          "state": "completed",
+          "tool_operations_used": 18,
+          "versions": {
+            "context_policy_revision": "ctx-ctx-policy-v1-a30e65ea52f4",
+            "prompt_revision": "prompt-replay-candidate-bef70649a3a8",
+            "tool_schema_revision": "otel-demo-68ed2ca8f5d6"
+          }
+        },
+        "trace": [
+          {
+            "input_tokens": 304343,
+            "langsmith_run_id": "00000000-0000-0000-d5a9-cca45c511ec1",
+            "llm_inputs_with_text": 7,
+            "llm_spans": 7,
+            "otel_trace_id": "6cf4546468483fe73087bf804fb76490",
+            "output_tokens": 22963,
+            "start_time": "2026-10-24T14:46:57.993596+00:00",
+            "status": "success",
+            "tool_spans": 18,
+            "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/dab51aa2-332e-4335-b385-98ef9c9fb91d/r/00000000-0000-0000-d5a9-cca45c511ec1?poll=true"
+          }
+        ]
+      },
+      "assertion": "C4-A assertion 2: follow_up after the attachment runs a Run with model calls, no INCOMPATIBLE_STATE, trace inputs carry the event text",
+      "pass": true
+    },
+    {
+      "actual": {
+        "first_run_time_policy": {
+          "all_authorized_targets": true,
+          "anchor": "2026-10-24T14:31:54+00:00",
+          "anchor_rule": "alert_starts_at",
+          "default_query_window": {
+            "end": "2026-10-24T14:32:40+00:00",
+            "start": "2026-10-24T13:31:54+00:00"
+          },
+          "id": "policy-window-1",
+          "mode": "historical_window",
+          "reference_rule": "response_received_at",
+          "window": {
+            "end": "2026-10-24T14:32:40+00:00",
+            "start": "2026-10-23T14:32:40+00:00"
+          }
+        },
+        "successor_created_at_from_deadline": "2026-10-24T14:46:56.059832+00:00",
+        "successor_time_policy": {
+          "all_authorized_targets": true,
+          "anchor": "2026-10-24T14:44:54+00:00",
+          "anchor_rule": "alert_starts_at",
+          "default_query_window": {
+            "end": "2026-10-24T14:46:56+00:00",
+            "start": "2026-10-24T13:44:54+00:00"
+          },
+          "id": "policy-window-1",
+          "mode": "historical_window",
+          "reference_rule": "response_received_at",
+          "window": {
+            "end": "2026-10-24T14:46:56+00:00",
+            "start": "2026-10-23T14:46:56+00:00"
+          }
+        }
+      },
+      "assertion": "#305 W1-B: successor frame ends at its creation DB instant (UTC second), 24 h long, anchor = attached episode startsAt, default window [anchor-1h, frame end]",
+      "pass": true
+    },
+    {
+      "actual": {
+        "covering_ok_queries": 12,
+        "episode_starts_at": "2026-10-24T14:44:54+00:00",
+        "first": {
+          "adopted": "true",
+          "ordinal": 0,
+          "query": {
+            "end": "2026-10-24T14:46:56Z",
+            "expr": "sum by (status_code) (rate(traces_span_metrics_calls_total{service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}[5m]))",
+            "start": "2026-10-24T13:44:54Z",
+            "step_seconds": 60
+          },
+          "sequence": 0,
+          "status": "ok"
+        },
+        "trace_tool_spans": [
+          {
+            "operation_id": "9fc6710e-cd11-4947-841e-f1be107a7ec8-t1",
+            "output_status_ok": true,
+            "tool_span": "00000000-0000-0000-3567-66aade9f4567"
+          },
+          {
+            "operation_id": "9fc6710e-cd11-4947-841e-f1be107a7ec8-t0",
+            "output_status_ok": true,
+            "tool_span": "00000000-0000-0000-96fc-48f0b0266b87"
+          },
+          {
+            "operation_id": "3648adb0-a961-4471-8631-7ae286c45d09-t1",
+            "output_status_ok": true,
+            "tool_span": "00000000-0000-0000-0040-1d369bfe30b3"
+          }
+        ]
+      },
+      "assertion": "#305: at least one metric query covering the attached episode returned ok (rows) and its tool span is in the trace",
+      "pass": true
+    },
+    {
+      "actual": {
+        "page_sha256": "29fe52eb61af897854d9401252b1e777d5f2e8447cfe9bbc6b87df0b620e56ba"
+      },
+      "assertion": "page: re-fired episode visible on the incident page",
+      "pass": true
+    }
+  ],
+  "category": "bounded real run (kind lab, real DeepSeek); not production proof",
+  "code": {
+    "commit": "b5276a9af5827bdcf4de68ec0d29d8c6d0317d71",
+    "run_versions": [
+      "{\"context_policy_revision\": \"ctx-ctx-policy-v1-a30e65ea52f4\", \"prompt_revision\": \"prompt-replay-candidate-bef70649a3a8\", \"tool_schema_revision\": \"otel-demo-68ed2ca8f5d6\"}"
+    ]
+  },
+  "first_run_trace": [
+    {
+      "input_tokens": 566792,
+      "langsmith_run_id": "00000000-0000-0000-6457-16a6aa0cf3c6",
+      "llm_spans": 11,
+      "otel_trace_id": "e35ab32678d5b3f3791a85e88bb75134",
+      "output_tokens": 26636,
+      "start_time": "2026-10-24T14:32:42.255189+00:00",
+      "status": "success",
+      "tool_spans": 21,
+      "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/dab51aa2-332e-4335-b385-98ef9c9fb91d/r/00000000-0000-0000-6457-16a6aa0cf3c6?poll=true"
+    }
+  ],
+  "incident_id": "9373ca99-e5bd-5570-9008-ad403fffe162",
+  "intake_projection": {
+    "affected_service": [
+      "otel-demo",
+      "checkout"
+    ],
+    "deliveries": [
+      {
+        "actor": "alertmanager",
+        "annotation_revision": 1,
+        "audit_json": "{\"annotations\":{\"description\":\"100% of checkout PlaceOrder server spans ended in error over the last 5 minutes.\",\"summary\":\"checkout PlaceOrder error ratio above 50%\"},\"endsAt\":\"0001-01-01T00:00:00Z\",\"fingerprint\":\"83f7541ae0105d42\",\"generatorURL\":\"http://prometheus-55bf8799d4-xvnb5:9090/graph?g0.expr=label_replace%28label_replace%28%28sum+by+%28k8s_namespace_name%2C+service_name%29+%28rate%28traces_span_metrics_calls_total%7Bk8s_namespace_name%3D%22otel-demo%22%2Cservice_name%3D%22checkout%22%2Cspan_kind%3D%22SPAN_KIND_SERVER%22%2Cspan_name%3D~%22.%2ACheckoutService%2FPlaceOrder%22%2Cstatus_code%3D%22STATUS_CODE_ERROR%22%7D%5B5m%5D%29%29%29+%2F+%28sum+by+%28k8s_namespace_name%2C+service_name%29+%28rate%28traces_span_metrics_calls_total%7Bk8s_namespace_name%3D%22otel-demo%22%2Cservice_name%3D%22checkout%22%2Cspan_kind%3D%22SPAN_KIND_SERVER%22%2Cspan_name%3D~%22.%2ACheckoutService%2FPlaceOrder%22%7D%5B5m%5D%29%29%29%2C+%22namespace%22%2C+%22%241%22%2C+%22k8s_namespace_name%22%2C+%22%28.%2A%29%22%29%2C+%22service%22%2C+%22%241%22%2C+%22service_name%22%2C+%22%28.%2A%29%22%29+%3E+0.5&g0.tab=1\",\"labels\":{\"alertname\":\"CheckoutPlaceOrderErrorRatioHigh\",\"cluster\":\"opspilot-m1\",\"k8s_namespace_name\":\"otel-demo\",\"namespace\":\"otel-demo\",\"opspilot_integration_id\":\"m0-otel-20260909\",\"service\":\"checkout\",\"service_name\":\"checkout\",\"severity\":\"critical\"},\"startsAt\":\"2026-10-24T14:31:54.365Z\",\"status\":\"firing\"}",
+        "fingerprint": "83f7541ae0105d42",
+        "original_starts_at": "2026-10-24T14:31:54.365Z",
+        "outcome": "created",
+        "raw_sha256": "0e73b78f8e781b7a54bddbc66df53294f47feae85d5773855ffceb28ea4e171b",
+        "received_at": "2026-10-24T14:32:40.836857Z",
+        "starts_at": "2026-10-24T14:31:54Z",
+        "status": "firing",
+        "truncated": false
+      },
+      {
+        "actor": "alertmanager",
+        "annotation_revision": 2,
+        "audit_json": "{\"annotations\":{\"description\":\"55.56% of checkout PlaceOrder server spans ended in error over the last 5 minutes.\",\"summary\":\"checkout PlaceOrder error ratio above 50%\"},\"endsAt\":\"2026-10-24T14:36:54.365Z\",\"fingerprint\":\"83f7541ae0105d42\",\"generatorURL\":\"http://prometheus-55bf8799d4-xvnb5:9090/graph?g0.expr=label_replace%28label_replace%28%28sum+by+%28k8s_namespace_name%2C+service_name%29+%28rate%28traces_span_metrics_calls_total%7Bk8s_namespace_name%3D%22otel-demo%22%2Cservice_name%3D%22checkout%22%2Cspan_kind%3D%22SPAN_KIND_SERVER%22%2Cspan_name%3D~%22.%2ACheckoutService%2FPlaceOrder%22%2Cstatus_code%3D%22STATUS_CODE_ERROR%22%7D%5B5m%5D%29%29%29+%2F+%28sum+by+%28k8s_namespace_name%2C+service_name%29+%28rate%28traces_span_metrics_calls_total%7Bk8s_namespace_name%3D%22otel-demo%22%2Cservice_name%3D%22checkout%22%2Cspan_kind%3D%22SPAN_KIND_SERVER%22%2Cspan_name%3D~%22.%2ACheckoutService%2FPlaceOrder%22%7D%5B5m%5D%29%29%29%2C+%22namespace%22%2C+%22%241%22%2C+%22k8s_namespace_name%22%2C+%22%28.%2A%29%22%29%2C+%22service%22%2C+%22%241%22%2C+%22service_name%22%2C+%22%28.%2A%29%22%29+%3E+0.5&g0.tab=1\",\"labels\":{\"alertname\":\"CheckoutPlaceOrderErrorRatioHigh\",\"cluster\":\"opspilot-m1\",\"k8s_namespace_name\":\"otel-demo\",\"namespace\":\"otel-demo\",\"opspilot_integration_id\":\"m0-otel-20260909\",\"service\":\"checkout\",\"service_name\":\"checkout\",\"severity\":\"critical\"},\"startsAt\":\"2026-10-24T14:31:54.365Z\",\"status\":\"resolved\"}",
+        "fingerprint": "83f7541ae0105d42",
+        "original_starts_at": "2026-10-24T14:31:54.365Z",
+        "outcome": "resolved_attached",
+        "raw_sha256": "32e850a9efb7138d22757d65a25ff53bdfdde2b9d4c648db0b637e75545ff1d9",
+        "received_at": "2026-10-24T14:37:40.987991Z",
+        "starts_at": "2026-10-24T14:31:54Z",
+        "status": "resolved",
+        "truncated": false
+      },
+      {
+        "actor": "alertmanager",
+        "annotation_revision": 1,
+        "audit_json": "{\"annotations\":{\"description\":\"100% of checkout PlaceOrder server spans ended in error over the last 5 minutes.\",\"summary\":\"checkout PlaceOrder error ratio above 50%\"},\"endsAt\":\"0001-01-01T00:00:00Z\",\"fingerprint\":\"83f7541ae0105d42\",\"generatorURL\":\"http://prometheus-55bf8799d4-xvnb5:9090/graph?g0.expr=label_replace%28label_replace%28%28sum+by+%28k8s_namespace_name%2C+service_name%29+%28rate%28traces_span_metrics_calls_total%7Bk8s_namespace_name%3D%22otel-demo%22%2Cservice_name%3D%22checkout%22%2Cspan_kind%3D%22SPAN_KIND_SERVER%22%2Cspan_name%3D~%22.%2ACheckoutService%2FPlaceOrder%22%2Cstatus_code%3D%22STATUS_CODE_ERROR%22%7D%5B5m%5D%29%29%29+%2F+%28sum+by+%28k8s_namespace_name%2C+service_name%29+%28rate%28traces_span_metrics_calls_total%7Bk8s_namespace_name%3D%22otel-demo%22%2Cservice_name%3D%22checkout%22%2Cspan_kind%3D%22SPAN_KIND_SERVER%22%2Cspan_name%3D~%22.%2ACheckoutService%2FPlaceOrder%22%7D%5B5m%5D%29%29%29%2C+%22namespace%22%2C+%22%241%22%2C+%22k8s_namespace_name%22%2C+%22%28.%2A%29%22%29%2C+%22service%22%2C+%22%241%22%2C+%22service_name%22%2C+%22%28.%2A%29%22%29+%3E+0.5&g0.tab=1\",\"labels\":{\"alertname\":\"CheckoutPlaceOrderErrorRatioHigh\",\"cluster\":\"opspilot-m1\",\"k8s_namespace_name\":\"otel-demo\",\"namespace\":\"otel-demo\",\"opspilot_integration_id\":\"m0-otel-20260909\",\"service\":\"checkout\",\"service_name\":\"checkout\",\"severity\":\"critical\"},\"startsAt\":\"2026-10-24T14:44:54.365Z\",\"status\":\"firing\"}",
+        "fingerprint": "83f7541ae0105d42",
+        "original_starts_at": "2026-10-24T14:44:54.365Z",
+        "outcome": "attached",
+        "raw_sha256": "14b71f729af7d75dae3d280ca4819cef37b612d49f443dd764a5076e5c2068f7",
+        "received_at": "2026-10-24T14:45:41.215696Z",
+        "starts_at": "2026-10-24T14:44:54Z",
+        "status": "firing",
+        "truncated": false
+      },
+      {
+        "actor": "alertmanager",
+        "annotation_revision": 1,
+        "audit_json": "{\"annotations\":{\"description\":\"100% of checkout PlaceOrder server spans ended in error over the last 5 minutes.\",\"summary\":\"checkout PlaceOrder error ratio above 50%\"},\"endsAt\":\"2026-10-24T14:48:54.365Z\",\"fingerprint\":\"83f7541ae0105d42\",\"generatorURL\":\"http://prometheus-55bf8799d4-xvnb5:9090/graph?g0.expr=label_replace%28label_replace%28%28sum+by+%28k8s_namespace_name%2C+service_name%29+%28rate%28traces_span_metrics_calls_total%7Bk8s_namespace_name%3D%22otel-demo%22%2Cservice_name%3D%22checkout%22%2Cspan_kind%3D%22SPAN_KIND_SERVER%22%2Cspan_name%3D~%22.%2ACheckoutService%2FPlaceOrder%22%2Cstatus_code%3D%22STATUS_CODE_ERROR%22%7D%5B5m%5D%29%29%29+%2F+%28sum+by+%28k8s_namespace_name%2C+service_name%29+%28rate%28traces_span_metrics_calls_total%7Bk8s_namespace_name%3D%22otel-demo%22%2Cservice_name%3D%22checkout%22%2Cspan_kind%3D%22SPAN_KIND_SERVER%22%2Cspan_name%3D~%22.%2ACheckoutService%2FPlaceOrder%22%7D%5B5m%5D%29%29%29%2C+%22namespace%22%2C+%22%241%22%2C+%22k8s_namespace_name%22%2C+%22%28.%2A%29%22%29%2C+%22service%22%2C+%22%241%22%2C+%22service_name%22%2C+%22%28.%2A%29%22%29+%3E+0.5&g0.tab=1\",\"labels\":{\"alertname\":\"CheckoutPlaceOrderErrorRatioHigh\",\"cluster\":\"opspilot-m1\",\"k8s_namespace_name\":\"otel-demo\",\"namespace\":\"otel-demo\",\"opspilot_integration_id\":\"m0-otel-20260909\",\"service\":\"checkout\",\"service_name\":\"checkout\",\"severity\":\"critical\"},\"startsAt\":\"2026-10-24T14:44:54.365Z\",\"status\":\"resolved\"}",
+        "fingerprint": "83f7541ae0105d42",
+        "original_starts_at": "2026-10-24T14:44:54.365Z",
+        "outcome": "resolved_attached",
+        "raw_sha256": "4ac2a05432e0094c480b6791d4d8f684eff9d3834bf0021c208370e87cb5b5b7",
+        "received_at": "2026-10-24T14:50:41.318498Z",
+        "starts_at": "2026-10-24T14:44:54Z",
+        "status": "resolved",
+        "truncated": false
+      }
+    ],
+    "handoff": false,
+    "handoff_reason": null,
+    "incident_id": "9373ca99-e5bd-5570-9008-ad403fffe162",
+    "lifecycle": "closed",
+    "observation_session_ids": [
+      "d39caef7-bce6-5e32-b51d-9c75219ed51a",
+      "5842b0e4-e59c-5e30-a612-7ee2258a6b94"
+    ],
+    "related_incident_id": null,
+    "run_id": "5598fc8e-059d-5641-aae2-57687e934eac",
+    "run_ids": [
+      "5598fc8e-059d-5641-aae2-57687e934eac",
+      "9b8f040f-7431-54d2-8cd3-35c156a8a138"
+    ],
+    "run_input": {
+      "bound_target_id": "m0-otel-20260909",
+      "evidence_context": {
+        "data_sources": {
+          "available": {
+            "jaeger": [
+              "traces_search"
+            ],
+            "prometheus": [
+              "get_label_values",
+              "get_metric_names",
+              "metrics_range_query"
+            ]
+          },
+          "instruction": "Only the sources under available can be queried in this Run. When the data a question needs belongs to an integration under not_integrated, state in gaps which integration is missing; its absence is not evidence and says nothing about health.",
+          "not_integrated": [
+            "kubernetes_state",
+            "pod_logs",
+            "change_history"
+          ]
+        },
+        "run_id": "5598fc8e-059d-5641-aae2-57687e934eac",
+        "time_policies": [
+          {
+            "all_authorized_targets": true,
+            "anchor": "2026-10-24T14:31:54+00:00",
+            "anchor_rule": "alert_starts_at",
+            "default_query_window": {
+              "end": "2026-10-24T14:32:40+00:00",
+              "start": "2026-10-24T13:31:54+00:00"
+            },
+            "id": "policy-window-1",
+            "mode": "historical_window",
+            "reference_rule": "response_received_at",
+            "window": {
+              "end": "2026-10-24T14:32:40+00:00",
+              "start": "2026-10-23T14:32:40+00:00"
+            }
+          }
+        ],
+        "type": "opspilot-evidence-context-v4"
+      },
+      "limits": {
+        "active_seconds": 7200.0,
+        "context_tokens": 1000000,
+        "model_request_timeout_seconds": 360.0,
+        "model_requests": 100,
+        "output_tokens": 65536,
+        "request_bytes": 8388608
+      },
+      "model_requests": 100,
+      "question": "Alertmanager alert CheckoutPlaceOrderErrorRatioHigh (severity critical) is firing for service otel-demo/checkout since 2026-10-24T14:31:54Z.\nAlert expression (PromQL): label_replace(label_replace((sum by (k8s_namespace_name, service_name) (rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\",status_code=\"STATUS_CODE_ERROR\"}[5m]))) / (sum by (k8s_namespace_name, service_name) (rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}[5m]))), \"namespace\", \"$1\", \"k8s_namespace_name\", \"(.*)\"), \"service\", \"$1\", \"service_name\", \"(.*)\") > 0.5\nInvestigate why this alert is firing.",
+      "scope_facts": {
+        "affected_service": {
+          "namespace": "otel-demo",
+          "workload": "checkout"
+        },
+        "alert_context": {
+          "annotations": {
+            "description": "100% of checkout PlaceOrder server spans ended in error over the last 5 minutes.",
+            "summary": "checkout PlaceOrder error ratio above 50%"
+          },
+          "labels": {
+            "alertname": "CheckoutPlaceOrderErrorRatioHigh",
+            "cluster": "opspilot-m1",
+            "k8s_namespace_name": "otel-demo",
+            "namespace": "otel-demo",
+            "opspilot_integration_id": "m0-otel-20260909",
+            "service": "checkout",
+            "service_name": "checkout",
+            "severity": "critical"
+          },
+          "omitted": 0,
+          "truncated": false
+        },
+        "alert_starts_at": {
+          "adjusted": null,
+          "anchor": "2026-10-24T14:31:54+00:00",
+          "original": "2026-10-24T14:31:54.365Z"
+        },
+        "deadline": "2026-10-24T09:32:40.847926-07:00",
+        "knowledge": {
+          "entries": [],
+          "max_age_seconds": 2592000,
+          "omitted_for_size": 0,
+          "policy_version": "knowledge-hint-v1",
+          "retrieved_at": "2026-10-24T07:32:40.858584-07:00",
+          "status": "ok"
+        },
+        "target_ids": [
+          "m0-otel-20260909"
+        ]
+      },
+      "tool_face_sha256": "748ae8a79e96c3f97cefd43cef151a8ff1c3d59a87ae1614965eb611444cb144",
+      "tool_schemas": [
+        {
+          "function": {
+            "description": "Evaluate one PromQL range query against the registered target's Prometheus inside a query window you may choose within the authorized window. The result is the raw response series: data.result holds one entry per label set with [timestamp, value] points. Counters such as *_calls_total are cumulative. Wrap a counter in rate() or increase() for per-window activity. A range selector may be at most the query window length. A point at time t with range selector [r] covers [t - r, t]. A subquery (inner)[a:b] covers a plus what inner covers, and that total may be at most the query window length. Every point covers samples inside the query window only. No point reads samples from before the query window. The expression's total lookback is its longest range selector, or a subquery range plus its inner lookback. The first point is at the query window start plus the total lookback. The view reports the total lookback as lookback_seconds and the earliest instant read as lookback_start_at. source_start_at is the first returned sample inside the query window. A whole-window total, maximum or minimum comes from one evaluation of a range selector equal to the query window's length in seconds, written as increase(x[Ws]), max_over_time(x[Ws]) or min_over_time(x[Ws]) where W is that many seconds. Do not compute totals, maxima or minima from the point list yourself. A range selector longer than the query window is refused. offset is refused. @ is refused. A result whose whole view exceeds 25,000 tokens is refused with RESULT_TOO_LARGE and no series are returned. The refusal gives series_count, total_points, label_cardinality (label names with their number of values) and a topk suggestion; when it also carries an evidence_id the whole result was kept, and read_evidence reads its series in ranges. Otherwise narrow the query window, add label filters or aggregate. A series that is not returned is unknown, not zero. A returned series does not by itself prove the service is healthy or unhealthy. Available metrics include traces_span_metrics_calls_total{service_name,span_name,status_code}, rpc_client_duration_milliseconds_count{service_name,rpc_service,rpc_method,rpc_grpc_status_code}, rpc_server_duration_milliseconds_bucket, app_payment_transactions_total, http_server_request_duration_seconds_count. Kubernetes object state from kube-state-metrics is also available: kube_deployment_status_replicas_available{namespace,deployment}, kube_deployment_status_replicas_ready{namespace,deployment}, kube_replicaset_owner{namespace,replicaset,owner_kind,owner_name}, kube_pod_owner{namespace,pod,uid,owner_kind,owner_name}, kube_pod_container_info{namespace,pod,uid,image_id}. These series use the namespace, deployment, replicaset, pod and owner_name labels, not service_name. A configuration-only deployment keeps the same image digest in image_id. Such a deployment shows as a new ReplicaSet series in kube_replicaset_owner and as kube_pod_owner owner_name moving to that ReplicaSet. For a metric or label not listed here, discover it with get_metric_names or get_label_values first, and use only metric names, label names and label values you have seen returned by a tool or that are listed here.",
+            "name": "metrics_range_query",
+            "parameters": {
+              "properties": {
+                "end": {
+                  "description": "Absolute ISO-8601 end of the query window. Give both start and end, or neither. Omitted with start also omitted, the query window is the time policy's default_query_window when it states one, otherwise the 1 hour ending at the authorized window's end.",
+                  "type": "string"
+                },
+                "expr": {
+                  "description": "The PromQL expression to evaluate; service_name label values come from the service names listed for traces_search. kube-state-metrics series take namespace, deployment, replicaset, pod and owner_name labels instead of service_name.",
+                  "type": "string"
+                },
+                "start": {
+                  "description": "Absolute ISO-8601 start of the query window. Give both start and end, or neither. Must lie inside the authorized window; a query window outside it is refused and the refusal states the authorized window.",
+                  "type": "string"
+                },
+                "step_seconds": {
+                  "description": "Resolution between returned points, 15 to the query window length; omitted means 30.",
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "expr"
+              ],
+              "type": "object"
+            }
+          },
+          "type": "function"
+        },
+        {
+          "function": {
+            "description": "Search the registered target's Jaeger for traces of one service inside a query window you may choose within the authorized window, and return a projected sample of their spans: spans of the requested service first, then spans with an error status tag, then the longest, each with trace_id, span_id, service, operation, start_us, duration_us, status tags, parent references and up to 4 clipped error detail fields. A result whose whole view exceeds 25,000 tokens is refused with RESULT_TOO_LARGE and no spans are returned; narrow the time window or lower limit. traces_requested is the number of traces asked of the backend. backend_traces_returned is the number of traces the backend returned. backend_spans_returned is the number of spans in those traces. spans_shown is the number of span rows in this view. spans_omitted is the number of backend spans not shown because the adapter sampled them out. span_groups summarizes the shown spans by (service, operation): rows, status counts, error_rows and duration_us_min/max, computed from every span in spans_shown. incomplete_reason states why incomplete is true, or is null. status_state is recorded when the row has at least one status tag and not_recorded when it has none. not_recorded means the span carries no status tag, which is Unset in OTel terms, not status code 0 and not OK. This is a biased sample, not the complete trace graph or a failure rate: an omitted span is unknown, an error detail applies only to the span it is shown on, and an empty result means no trace of that service was returned for the query window, not that the service made no calls. Available services: [\"accounting\", \"ad\", \"cart\", \"checkout\", \"currency\", \"email\", \"fraud-detection\", \"frontend\", \"frontend-proxy\", \"image-provider\", \"kafka\", \"load-generator\", \"payment\", \"product-catalog\", \"quote\", \"recommendation\", \"shipping\"]; any other value returns an error.",
+            "name": "traces_search",
+            "parameters": {
+              "properties": {
+                "end": {
+                  "description": "Absolute ISO-8601 end of the query window. Give both start and end, or neither. Omitted with start also omitted, the query window is the time policy's default_query_window when it states one, otherwise the 1 hour ending at the authorized window's end.",
+                  "type": "string"
+                },
+                "limit": {
+                  "description": "How many traces to ask the backend for, at least 1; omitted means 20.",
+                  "type": "integer"
+                },
+                "service": {
+                  "description": "Exact value from the available services list.",
+                  "type": "string"
+                },
+                "start": {
+                  "description": "Absolute ISO-8601 start of the query window. Give both start and end, or neither. Must lie inside the authorized window; a query window outside it is refused and the refusal states the authorized window.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "service"
+              ],
+              "type": "object"
+            }
+          },
+          "type": "function"
+        },
+        {
+          "function": {
+            "description": "List metric names in the registered target's Prometheus that have series matching a selector inside a query window you may choose within the authorized window. Use it to discover which metrics exist before writing a metrics_range_query expression. content is the list of metric names returned; it carries no values, types, descriptions or label sets. At most 100 names are returned. When more exist, the first 100 are returned, incomplete is true and incomplete_reason says to narrow the match selector; incomplete is also true whenever Prometheus returned any warning. limit in the view is that fixed 100 cap; you cannot change it. Combine several patterns in one call with a regular expression alternation, for example {__name__=~\"rpc_.*|http_.*\"} or {service_name=~\"checkout|payment\"}. A result whose whole view exceeds 25,000 tokens is refused with RESULT_TOO_LARGE and no names are returned. A listed name does not prove the metric has samples in the query window, nor anything about its values or the service's health. A name that is not listed is unknown, not proven absent: the list may be cut at 100 or limited by the selector and window.",
+            "name": "get_metric_names",
+            "parameters": {
+              "properties": {
+                "end": {
+                  "description": "Absolute ISO-8601 end of the query window. Give both start and end, or neither. Omitted with start also omitted, the query window is the time policy's default_query_window when it states one, otherwise the 1 hour ending at the authorized window's end.",
+                  "type": "string"
+                },
+                "match": {
+                  "description": "Required PromQL series selector that filters the metrics, for example {__name__=~\"traces_.*\"} or {service_name=\"checkout\"}; an empty value is refused.",
+                  "type": "string"
+                },
+                "start": {
+                  "description": "Absolute ISO-8601 start of the query window. Give both start and end, or neither. Must lie inside the authorized window; a query window outside it is refused and the refusal states the authorized window.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "match"
+              ],
+              "type": "object"
+            }
+          },
+          "type": "function"
+        },
+        {
+          "function": {
+            "description": "List the values of one label in the registered target's Prometheus, optionally only on series matching a selector, inside a query window you may choose within the authorized window. Use it to discover services, span names, status codes, jobs or other label values before writing a metrics_range_query expression. content is the list of label values returned. At most 100 values are returned. When more exist, the first 100 are returned, incomplete is true and incomplete_reason says to narrow the match selector; incomplete is also true whenever Prometheus returned any warning. limit in the view is that fixed 100 cap; you cannot change it. A label name must be letters, digits and underscores, not starting with a digit; any other name, and a name that looks like a credential, is refused before any request is sent. A result whose whole view exceeds 25,000 tokens is refused with RESULT_TOO_LARGE and no values are returned. A listed value does not prove the series has samples in the query window, nor anything about metric values or the service's health; the value may belong to an old series. A value that is not listed is unknown, not proven absent: the list may be cut at 100 or limited by the selector and window.",
+            "name": "get_label_values",
+            "parameters": {
+              "properties": {
+                "end": {
+                  "description": "Absolute ISO-8601 end of the query window. Give both start and end, or neither. Omitted with start also omitted, the query window is the time policy's default_query_window when it states one, otherwise the 1 hour ending at the authorized window's end.",
+                  "type": "string"
+                },
+                "label": {
+                  "description": "The label name whose values to list, for example service_name, span_name, job or __name__.",
+                  "type": "string"
+                },
+                "match": {
+                  "description": "Optional PromQL series selector that limits the series the values come from, for example {__name__=\"traces_span_metrics_calls_total\"}; when given it must not be empty.",
+                  "type": "string"
+                },
+                "start": {
+                  "description": "Absolute ISO-8601 start of the query window. Give both start and end, or neither. Must lie inside the authorized window; a query window outside it is refused and the refusal states the authorized window.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "label"
+              ],
+              "type": "object"
+            }
+          },
+          "type": "function"
+        },
+        {
+          "function": {
+            "description": "Read a range of rows from a result this investigation kept because its whole view exceeded 25,000 tokens. Such a RESULT_TOO_LARGE refusal carries an evidence_id, adopted false, total_rows, row_unit and suggested_limit; that evidence_id is not citable itself. read_evidence returns rows offset to offset + limit - 1 of that result as they were captured (series for metrics_range_query, spans for traces_search, names or values for the discovery tools), with the parent's window, observed_at, data_as_of and source_start_at/source_end_at, parent_tool and a slice header (parent_evidence_id, parent_raw_sha256, offset, returned, total_rows). truncated is true when the slice omits rows of the result. The slice has its own evidence_id and may be cited for the rows it shows only; rows outside the slice are unknown, so no total, maximum, minimum or absence follows from one slice. A slice whose view exceeds 25,000 tokens is refused with RESULT_TOO_LARGE; read fewer rows. A single row that does not fit cannot be read; narrow the original query instead. Only an evidence_id from an over-limit refusal of this investigation is readable; any other is denied with EVIDENCE_NOT_READABLE.",
+            "name": "read_evidence",
+            "parameters": {
+              "properties": {
+                "evidence_id": {
+                  "description": "The evidence_id of a RESULT_TOO_LARGE refusal that says the result was kept.",
+                  "type": "string"
+                },
+                "limit": {
+                  "description": "How many rows to return, at least 1; the refusal's suggested_limit is about how many fit one read.",
+                  "type": "integer"
+                },
+                "offset": {
+                  "description": "First row to return, from 0; omitted means 0.",
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "evidence_id",
+                "limit"
+              ],
+              "type": "object"
+            }
+          },
+          "type": "function"
+        }
+      ],
+      "variant_id": "replay-candidate",
+      "version": "opspilot-investigation-input-v5"
+    },
+    "run_inputs": [
+      {
+        "bound_target_id": "m0-otel-20260909",
+        "evidence_context": {
+          "data_sources": {
+            "available": {
+              "jaeger": [
+                "traces_search"
+              ],
+              "prometheus": [
+                "get_label_values",
+                "get_metric_names",
+                "metrics_range_query"
+              ]
+            },
+            "instruction": "Only the sources under available can be queried in this Run. When the data a question needs belongs to an integration under not_integrated, state in gaps which integration is missing; its absence is not evidence and says nothing about health.",
+            "not_integrated": [
+              "kubernetes_state",
+              "pod_logs",
+              "change_history"
+            ]
+          },
+          "run_id": "5598fc8e-059d-5641-aae2-57687e934eac",
+          "time_policies": [
+            {
+              "all_authorized_targets": true,
+              "anchor": "2026-10-24T14:31:54+00:00",
+              "anchor_rule": "alert_starts_at",
+              "default_query_window": {
+                "end": "2026-10-24T14:32:40+00:00",
+                "start": "2026-10-24T13:31:54+00:00"
+              },
+              "id": "policy-window-1",
+              "mode": "historical_window",
+              "reference_rule": "response_received_at",
+              "window": {
+                "end": "2026-10-24T14:32:40+00:00",
+                "start": "2026-10-23T14:32:40+00:00"
+              }
+            }
+          ],
+          "type": "opspilot-evidence-context-v4"
+        },
+        "limits": {
+          "active_seconds": 7200.0,
+          "context_tokens": 1000000,
+          "model_request_timeout_seconds": 360.0,
+          "model_requests": 100,
+          "output_tokens": 65536,
+          "request_bytes": 8388608
+        },
+        "model_requests": 100,
+        "question": "Alertmanager alert CheckoutPlaceOrderErrorRatioHigh (severity critical) is firing for service otel-demo/checkout since 2026-10-24T14:31:54Z.\nAlert expression (PromQL): label_replace(label_replace((sum by (k8s_namespace_name, service_name) (rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\",status_code=\"STATUS_CODE_ERROR\"}[5m]))) / (sum by (k8s_namespace_name, service_name) (rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}[5m]))), \"namespace\", \"$1\", \"k8s_namespace_name\", \"(.*)\"), \"service\", \"$1\", \"service_name\", \"(.*)\") > 0.5\nInvestigate why this alert is firing.",
+        "scope_facts": {
+          "affected_service": {
+            "namespace": "otel-demo",
+            "workload": "checkout"
+          },
+          "alert_context": {
+            "annotations": {
+              "description": "100% of checkout PlaceOrder server spans ended in error over the last 5 minutes.",
+              "summary": "checkout PlaceOrder error ratio above 50%"
+            },
+            "labels": {
+              "alertname": "CheckoutPlaceOrderErrorRatioHigh",
+              "cluster": "opspilot-m1",
+              "k8s_namespace_name": "otel-demo",
+              "namespace": "otel-demo",
+              "opspilot_integration_id": "m0-otel-20260909",
+              "service": "checkout",
+              "service_name": "checkout",
+              "severity": "critical"
+            },
+            "omitted": 0,
+            "truncated": false
+          },
+          "alert_starts_at": {
+            "adjusted": null,
+            "anchor": "2026-10-24T14:31:54+00:00",
+            "original": "2026-10-24T14:31:54.365Z"
+          },
+          "deadline": "2026-10-24T09:32:40.847926-07:00",
+          "knowledge": {
+            "entries": [],
+            "max_age_seconds": 2592000,
+            "omitted_for_size": 0,
+            "policy_version": "knowledge-hint-v1",
+            "retrieved_at": "2026-10-24T07:32:40.858584-07:00",
+            "status": "ok"
+          },
+          "target_ids": [
+            "m0-otel-20260909"
+          ]
+        },
+        "tool_face_sha256": "748ae8a79e96c3f97cefd43cef151a8ff1c3d59a87ae1614965eb611444cb144",
+        "tool_schemas": [
+          {
+            "function": {
+              "description": "Evaluate one PromQL range query against the registered target's Prometheus inside a query window you may choose within the authorized window. The result is the raw response series: data.result holds one entry per label set with [timestamp, value] points. Counters such as *_calls_total are cumulative. Wrap a counter in rate() or increase() for per-window activity. A range selector may be at most the query window length. A point at time t with range selector [r] covers [t - r, t]. A subquery (inner)[a:b] covers a plus what inner covers, and that total may be at most the query window length. Every point covers samples inside the query window only. No point reads samples from before the query window. The expression's total lookback is its longest range selector, or a subquery range plus its inner lookback. The first point is at the query window start plus the total lookback. The view reports the total lookback as lookback_seconds and the earliest instant read as lookback_start_at. source_start_at is the first returned sample inside the query window. A whole-window total, maximum or minimum comes from one evaluation of a range selector equal to the query window's length in seconds, written as increase(x[Ws]), max_over_time(x[Ws]) or min_over_time(x[Ws]) where W is that many seconds. Do not compute totals, maxima or minima from the point list yourself. A range selector longer than the query window is refused. offset is refused. @ is refused. A result whose whole view exceeds 25,000 tokens is refused with RESULT_TOO_LARGE and no series are returned. The refusal gives series_count, total_points, label_cardinality (label names with their number of values) and a topk suggestion; when it also carries an evidence_id the whole result was kept, and read_evidence reads its series in ranges. Otherwise narrow the query window, add label filters or aggregate. A series that is not returned is unknown, not zero. A returned series does not by itself prove the service is healthy or unhealthy. Available metrics include traces_span_metrics_calls_total{service_name,span_name,status_code}, rpc_client_duration_milliseconds_count{service_name,rpc_service,rpc_method,rpc_grpc_status_code}, rpc_server_duration_milliseconds_bucket, app_payment_transactions_total, http_server_request_duration_seconds_count. Kubernetes object state from kube-state-metrics is also available: kube_deployment_status_replicas_available{namespace,deployment}, kube_deployment_status_replicas_ready{namespace,deployment}, kube_replicaset_owner{namespace,replicaset,owner_kind,owner_name}, kube_pod_owner{namespace,pod,uid,owner_kind,owner_name}, kube_pod_container_info{namespace,pod,uid,image_id}. These series use the namespace, deployment, replicaset, pod and owner_name labels, not service_name. A configuration-only deployment keeps the same image digest in image_id. Such a deployment shows as a new ReplicaSet series in kube_replicaset_owner and as kube_pod_owner owner_name moving to that ReplicaSet. For a metric or label not listed here, discover it with get_metric_names or get_label_values first, and use only metric names, label names and label values you have seen returned by a tool or that are listed here.",
+              "name": "metrics_range_query",
+              "parameters": {
+                "properties": {
+                  "end": {
+                    "description": "Absolute ISO-8601 end of the query window. Give both start and end, or neither. Omitted with start also omitted, the query window is the time policy's default_query_window when it states one, otherwise the 1 hour ending at the authorized window's end.",
+                    "type": "string"
+                  },
+                  "expr": {
+                    "description": "The PromQL expression to evaluate; service_name label values come from the service names listed for traces_search. kube-state-metrics series take namespace, deployment, replicaset, pod and owner_name labels instead of service_name.",
+                    "type": "string"
+                  },
+                  "start": {
+                    "description": "Absolute ISO-8601 start of the query window. Give both start and end, or neither. Must lie inside the authorized window; a query window outside it is refused and the refusal states the authorized window.",
+                    "type": "string"
+                  },
+                  "step_seconds": {
+                    "description": "Resolution between returned points, 15 to the query window length; omitted means 30.",
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "expr"
+                ],
+                "type": "object"
+              }
+            },
+            "type": "function"
+          },
+          {
+            "function": {
+              "description": "Search the registered target's Jaeger for traces of one service inside a query window you may choose within the authorized window, and return a projected sample of their spans: spans of the requested service first, then spans with an error status tag, then the longest, each with trace_id, span_id, service, operation, start_us, duration_us, status tags, parent references and up to 4 clipped error detail fields. A result whose whole view exceeds 25,000 tokens is refused with RESULT_TOO_LARGE and no spans are returned; narrow the time window or lower limit. traces_requested is the number of traces asked of the backend. backend_traces_returned is the number of traces the backend returned. backend_spans_returned is the number of spans in those traces. spans_shown is the number of span rows in this view. spans_omitted is the number of backend spans not shown because the adapter sampled them out. span_groups summarizes the shown spans by (service, operation): rows, status counts, error_rows and duration_us_min/max, computed from every span in spans_shown. incomplete_reason states why incomplete is true, or is null. status_state is recorded when the row has at least one status tag and not_recorded when it has none. not_recorded means the span carries no status tag, which is Unset in OTel terms, not status code 0 and not OK. This is a biased sample, not the complete trace graph or a failure rate: an omitted span is unknown, an error detail applies only to the span it is shown on, and an empty result means no trace of that service was returned for the query window, not that the service made no calls. Available services: [\"accounting\", \"ad\", \"cart\", \"checkout\", \"currency\", \"email\", \"fraud-detection\", \"frontend\", \"frontend-proxy\", \"image-provider\", \"kafka\", \"load-generator\", \"payment\", \"product-catalog\", \"quote\", \"recommendation\", \"shipping\"]; any other value returns an error.",
+              "name": "traces_search",
+              "parameters": {
+                "properties": {
+                  "end": {
+                    "description": "Absolute ISO-8601 end of the query window. Give both start and end, or neither. Omitted with start also omitted, the query window is the time policy's default_query_window when it states one, otherwise the 1 hour ending at the authorized window's end.",
+                    "type": "string"
+                  },
+                  "limit": {
+                    "description": "How many traces to ask the backend for, at least 1; omitted means 20.",
+                    "type": "integer"
+                  },
+                  "service": {
+                    "description": "Exact value from the available services list.",
+                    "type": "string"
+                  },
+                  "start": {
+                    "description": "Absolute ISO-8601 start of the query window. Give both start and end, or neither. Must lie inside the authorized window; a query window outside it is refused and the refusal states the authorized window.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "service"
+                ],
+                "type": "object"
+              }
+            },
+            "type": "function"
+          },
+          {
+            "function": {
+              "description": "List metric names in the registered target's Prometheus that have series matching a selector inside a query window you may choose within the authorized window. Use it to discover which metrics exist before writing a metrics_range_query expression. content is the list of metric names returned; it carries no values, types, descriptions or label sets. At most 100 names are returned. When more exist, the first 100 are returned, incomplete is true and incomplete_reason says to narrow the match selector; incomplete is also true whenever Prometheus returned any warning. limit in the view is that fixed 100 cap; you cannot change it. Combine several patterns in one call with a regular expression alternation, for example {__name__=~\"rpc_.*|http_.*\"} or {service_name=~\"checkout|payment\"}. A result whose whole view exceeds 25,000 tokens is refused with RESULT_TOO_LARGE and no names are returned. A listed name does not prove the metric has samples in the query window, nor anything about its values or the service's health. A name that is not listed is unknown, not proven absent: the list may be cut at 100 or limited by the selector and window.",
+              "name": "get_metric_names",
+              "parameters": {
+                "properties": {
+                  "end": {
+                    "description": "Absolute ISO-8601 end of the query window. Give both start and end, or neither. Omitted with start also omitted, the query window is the time policy's default_query_window when it states one, otherwise the 1 hour ending at the authorized window's end.",
+                    "type": "string"
+                  },
+                  "match": {
+                    "description": "Required PromQL series selector that filters the metrics, for example {__name__=~\"traces_.*\"} or {service_name=\"checkout\"}; an empty value is refused.",
+                    "type": "string"
+                  },
+                  "start": {
+                    "description": "Absolute ISO-8601 start of the query window. Give both start and end, or neither. Must lie inside the authorized window; a query window outside it is refused and the refusal states the authorized window.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "match"
+                ],
+                "type": "object"
+              }
+            },
+            "type": "function"
+          },
+          {
+            "function": {
+              "description": "List the values of one label in the registered target's Prometheus, optionally only on series matching a selector, inside a query window you may choose within the authorized window. Use it to discover services, span names, status codes, jobs or other label values before writing a metrics_range_query expression. content is the list of label values returned. At most 100 values are returned. When more exist, the first 100 are returned, incomplete is true and incomplete_reason says to narrow the match selector; incomplete is also true whenever Prometheus returned any warning. limit in the view is that fixed 100 cap; you cannot change it. A label name must be letters, digits and underscores, not starting with a digit; any other name, and a name that looks like a credential, is refused before any request is sent. A result whose whole view exceeds 25,000 tokens is refused with RESULT_TOO_LARGE and no values are returned. A listed value does not prove the series has samples in the query window, nor anything about metric values or the service's health; the value may belong to an old series. A value that is not listed is unknown, not proven absent: the list may be cut at 100 or limited by the selector and window.",
+              "name": "get_label_values",
+              "parameters": {
+                "properties": {
+                  "end": {
+                    "description": "Absolute ISO-8601 end of the query window. Give both start and end, or neither. Omitted with start also omitted, the query window is the time policy's default_query_window when it states one, otherwise the 1 hour ending at the authorized window's end.",
+                    "type": "string"
+                  },
+                  "label": {
+                    "description": "The label name whose values to list, for example service_name, span_name, job or __name__.",
+                    "type": "string"
+                  },
+                  "match": {
+                    "description": "Optional PromQL series selector that limits the series the values come from, for example {__name__=\"traces_span_metrics_calls_total\"}; when given it must not be empty.",
+                    "type": "string"
+                  },
+                  "start": {
+                    "description": "Absolute ISO-8601 start of the query window. Give both start and end, or neither. Must lie inside the authorized window; a query window outside it is refused and the refusal states the authorized window.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "label"
+                ],
+                "type": "object"
+              }
+            },
+            "type": "function"
+          },
+          {
+            "function": {
+              "description": "Read a range of rows from a result this investigation kept because its whole view exceeded 25,000 tokens. Such a RESULT_TOO_LARGE refusal carries an evidence_id, adopted false, total_rows, row_unit and suggested_limit; that evidence_id is not citable itself. read_evidence returns rows offset to offset + limit - 1 of that result as they were captured (series for metrics_range_query, spans for traces_search, names or values for the discovery tools), with the parent's window, observed_at, data_as_of and source_start_at/source_end_at, parent_tool and a slice header (parent_evidence_id, parent_raw_sha256, offset, returned, total_rows). truncated is true when the slice omits rows of the result. The slice has its own evidence_id and may be cited for the rows it shows only; rows outside the slice are unknown, so no total, maximum, minimum or absence follows from one slice. A slice whose view exceeds 25,000 tokens is refused with RESULT_TOO_LARGE; read fewer rows. A single row that does not fit cannot be read; narrow the original query instead. Only an evidence_id from an over-limit refusal of this investigation is readable; any other is denied with EVIDENCE_NOT_READABLE.",
+              "name": "read_evidence",
+              "parameters": {
+                "properties": {
+                  "evidence_id": {
+                    "description": "The evidence_id of a RESULT_TOO_LARGE refusal that says the result was kept.",
+                    "type": "string"
+                  },
+                  "limit": {
+                    "description": "How many rows to return, at least 1; the refusal's suggested_limit is about how many fit one read.",
+                    "type": "integer"
+                  },
+                  "offset": {
+                    "description": "First row to return, from 0; omitted means 0.",
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "evidence_id",
+                  "limit"
+                ],
+                "type": "object"
+              }
+            },
+            "type": "function"
+          }
+        ],
+        "variant_id": "replay-candidate",
+        "version": "opspilot-investigation-input-v5"
+      },
+      {
+        "bound_target_id": "m0-otel-20260909",
+        "evidence_context": {
+          "data_sources": {
+            "available": {
+              "jaeger": [
+                "traces_search"
+              ],
+              "prometheus": [
+                "get_label_values",
+                "get_metric_names",
+                "metrics_range_query"
+              ]
+            },
+            "instruction": "Only the sources under available can be queried in this Run. When the data a question needs belongs to an integration under not_integrated, state in gaps which integration is missing; its absence is not evidence and says nothing about health.",
+            "not_integrated": [
+              "kubernetes_state",
+              "pod_logs",
+              "change_history"
+            ]
+          },
+          "run_id": "9b8f040f-7431-54d2-8cd3-35c156a8a138",
+          "time_policies": [
+            {
+              "all_authorized_targets": true,
+              "anchor": "2026-10-24T14:44:54+00:00",
+              "anchor_rule": "alert_starts_at",
+              "default_query_window": {
+                "end": "2026-10-24T14:46:56+00:00",
+                "start": "2026-10-24T13:44:54+00:00"
+              },
+              "id": "policy-window-1",
+              "mode": "historical_window",
+              "reference_rule": "response_received_at",
+              "window": {
+                "end": "2026-10-24T14:46:56+00:00",
+                "start": "2026-10-23T14:46:56+00:00"
+              }
+            }
+          ],
+          "type": "opspilot-evidence-context-v4",
+          "view_bindings": {
+            "0a585e14-9afa-403a-b4a9-bc3008bf9d1a-t0:286a96d2-5ba5-40f5-981d-892e427ea192": {
+              "citable_as_fact": true,
+              "status": "ok",
+              "target_refs": [
+                "m0-otel-20260909"
+              ],
+              "time_scope_refs": [
+                "policy-window-1"
+              ]
+            },
+            "0a585e14-9afa-403a-b4a9-bc3008bf9d1a-t1:8ebe3692-d2a8-4e8b-8fe3-86a3f7eb4401": {
+              "citable_as_fact": true,
+              "status": "ok",
+              "target_refs": [
+                "m0-otel-20260909"
+              ],
+              "time_scope_refs": [
+                "policy-window-1"
+              ]
+            },
+            "1b61fcc5-6c45-4fd6-90d3-a2e32fe4e7ce-t0:76a9750a-8415-4b63-bc7d-92986fc5809b": {
+              "citable_as_fact": true,
+              "status": "ok",
+              "target_refs": [
+                "m0-otel-20260909"
+              ],
+              "time_scope_refs": [
+                "policy-window-1"
+              ]
+            },
+            "3b0ac8f2-4000-4169-9b8b-8194886cd9b9-t0:d07f71fc-4336-4c37-8442-74107dd102ff": {
+              "citable_as_fact": true,
+              "status": "ok",
+              "target_refs": [
+                "m0-otel-20260909"
+              ],
+              "time_scope_refs": [
+                "policy-window-1"
+              ]
+            },
+            "41c3f745-bfdf-4ad1-9e96-9cdb71d415f8-t0:f95bcebb-fd81-42bf-a8b5-5c1deffbfa6c": {
+              "citable_as_fact": false,
+              "status": "no_data",
+              "target_refs": [
+                "m0-otel-20260909"
+              ],
+              "time_scope_refs": [
+                "policy-window-1"
+              ]
+            },
+            "60431c6d-8dc7-43a9-b71a-c4b4c4e98c8f-t0:7d285ecc-13dd-4fe4-9c87-67eca577f64a": {
+              "citable_as_fact": true,
+              "status": "ok",
+              "target_refs": [
+                "m0-otel-20260909"
+              ],
+              "time_scope_refs": [
+                "policy-window-1"
+              ]
+            },
+            "60431c6d-8dc7-43a9-b71a-c4b4c4e98c8f-t1:c6c68f04-c087-4108-ab8a-e9e6a2831f14": {
+              "citable_as_fact": true,
+              "status": "ok",
+              "target_refs": [
+                "m0-otel-20260909"
+              ],
+              "time_scope_refs": [
+                "policy-window-1"
+              ]
+            },
+            "60431c6d-8dc7-43a9-b71a-c4b4c4e98c8f-t2:ff395b8d-ca8f-4d4a-832b-b9f9ad643af6": {
+              "citable_as_fact": true,
+              "status": "ok",
+              "target_refs": [
+                "m0-otel-20260909"
+              ],
+              "time_scope_refs": [
+                "policy-window-1"
+              ]
+            },
+            "91ce85d5-4ba2-4505-9c56-52e505a63ade-t1:fb03cb33-ed5c-4ebc-83c8-433ecc687466": {
+              "citable_as_fact": true,
+              "status": "ok",
+              "target_refs": [
+                "m0-otel-20260909"
+              ],
+              "time_scope_refs": [
+                "policy-window-1"
+              ]
+            },
+            "b9f09fe0-c6cc-4cb1-b3ac-76bec8f999ea-t0:66136d1a-d1f0-4d03-afc0-59a3a45836b6": {
+              "citable_as_fact": true,
+              "status": "ok",
+              "target_refs": [
+                "m0-otel-20260909"
+              ],
+              "time_scope_refs": [
+                "policy-window-1"
+              ]
+            },
+            "b9f09fe0-c6cc-4cb1-b3ac-76bec8f999ea-t1:b5a7f02c-33d8-4633-b30f-28b30ce6d63c": {
+              "citable_as_fact": true,
+              "status": "ok",
+              "target_refs": [
+                "m0-otel-20260909"
+              ],
+              "time_scope_refs": [
+                "policy-window-1"
+              ]
+            },
+            "cef73ca8-9f96-4dd9-82a8-a3fa0879f08f-t0:e7feed51-d375-4853-8539-e28a4536428a": {
+              "citable_as_fact": true,
+              "status": "ok",
+              "target_refs": [
+                "m0-otel-20260909"
+              ],
+              "time_scope_refs": [
+                "policy-window-1"
+              ]
+            },
+            "cef73ca8-9f96-4dd9-82a8-a3fa0879f08f-t1:4f3eef05-047f-49c4-8059-874a3f7c9200": {
+              "citable_as_fact": true,
+              "status": "ok",
+              "target_refs": [
+                "m0-otel-20260909"
+              ],
+              "time_scope_refs": [
+                "policy-window-1"
+              ]
+            },
+            "cef73ca8-9f96-4dd9-82a8-a3fa0879f08f-t2:92f1d871-8c7b-463d-8d3c-fd44a628aa12": {
+              "citable_as_fact": true,
+              "status": "ok",
+              "target_refs": [
+                "m0-otel-20260909"
+              ],
+              "time_scope_refs": [
+                "policy-window-1"
+              ]
+            },
+            "cef73ca8-9f96-4dd9-82a8-a3fa0879f08f-t3:6e8bec65-8ed2-4cd8-bf31-ade389d31d8e": {
+              "citable_as_fact": true,
+              "status": "ok",
+              "target_refs": [
+                "m0-otel-20260909"
+              ],
+              "time_scope_refs": [
+                "policy-window-1"
+              ]
+            },
+            "d45962a1-efa8-4130-b402-b1981799098f-t0:6ead9e52-2a76-43ab-877e-6ca2e0fba2d9": {
+              "citable_as_fact": true,
+              "status": "ok",
+              "target_refs": [
+                "m0-otel-20260909"
+              ],
+              "time_scope_refs": [
+                "policy-window-1"
+              ]
+            },
+            "d45962a1-efa8-4130-b402-b1981799098f-t1:32c6931c-4820-45e9-8d5c-ab5ff9e8cde3": {
+              "citable_as_fact": false,
+              "status": "no_data",
+              "target_refs": [
+                "m0-otel-20260909"
+              ],
+              "time_scope_refs": [
+                "policy-window-1"
+              ]
+            },
+            "d45962a1-efa8-4130-b402-b1981799098f-t2:c5228d91-ee26-4ca4-92bc-08f2bf885241": {
+              "citable_as_fact": true,
+              "status": "ok",
+              "target_refs": [
+                "m0-otel-20260909"
+              ],
+              "time_scope_refs": [
+                "policy-window-1"
+              ]
+            },
+            "f65b4879-d64d-4f72-b4ea-837aa651f1b1-t0:7f89ab3b-3e16-4076-bd3a-e4d095a7d7ee": {
+              "citable_as_fact": true,
+              "status": "ok",
+              "target_refs": [
+                "m0-otel-20260909"
+              ],
+              "time_scope_refs": [
+                "policy-window-1"
+              ]
+            }
+          }
+        },
+        "limits": {
+          "active_seconds": 7200.0,
+          "context_tokens": 1000000,
+          "model_request_timeout_seconds": 360.0,
+          "model_requests": 100,
+          "output_tokens": 65536,
+          "request_bytes": 8388608
+        },
+        "model_requests": 100,
+        "question": "Alertmanager alert CheckoutPlaceOrderErrorRatioHigh (severity critical) is firing for service otel-demo/checkout since 2026-10-24T14:31:54Z.\nAlert expression (PromQL): label_replace(label_replace((sum by (k8s_namespace_name, service_name) (rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\",status_code=\"STATUS_CODE_ERROR\"}[5m]))) / (sum by (k8s_namespace_name, service_name) (rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}[5m]))), \"namespace\", \"$1\", \"k8s_namespace_name\", \"(.*)\"), \"service\", \"$1\", \"service_name\", \"(.*)\") > 0.5\nInvestigate why this alert is firing.\n\nContinuation of investigation Run 5598fc8e-059d-5641-aae2-57687e934eac.\nPrevious outcome: execution=completed, handoff_reasons=[], rounds=11.\nCarried evidence (19 adopted views, cite by evidence_id): f65b4879-d64d-4f72-b4ea-837aa651f1b1-t0:7f89ab3b-3e16-4076-bd3a-e4d095a7d7ee, 3b0ac8f2-4000-4169-9b8b-8194886cd9b9-t0:d07f71fc-4336-4c37-8442-74107dd102ff, 91ce85d5-4ba2-4505-9c56-52e505a63ade-t1:fb03cb33-ed5c-4ebc-83c8-433ecc687466, 1b61fcc5-6c45-4fd6-90d3-a2e32fe4e7ce-t0:76a9750a-8415-4b63-bc7d-92986fc5809b, d45962a1-efa8-4130-b402-b1981799098f-t0:6ead9e52-2a76-43ab-877e-6ca2e0fba2d9, d45962a1-efa8-4130-b402-b1981799098f-t1:32c6931c-4820-45e9-8d5c-ab5ff9e8cde3, d45962a1-efa8-4130-b402-b1981799098f-t2:c5228d91-ee26-4ca4-92bc-08f2bf885241, cef73ca8-9f96-4dd9-82a8-a3fa0879f08f-t0:e7feed51-d375-4853-8539-e28a4536428a, cef73ca8-9f96-4dd9-82a8-a3fa0879f08f-t1:4f3eef05-047f-49c4-8059-874a3f7c9200, cef73ca8-9f96-4dd9-82a8-a3fa0879f08f-t2:92f1d871-8c7b-463d-8d3c-fd44a628aa12, cef73ca8-9f96-4dd9-82a8-a3fa0879f08f-t3:6e8bec65-8ed2-4cd8-bf31-ade389d31d8e, 60431c6d-8dc7-43a9-b71a-c4b4c4e98c8f-t0:7d285ecc-13dd-4fe4-9c87-67eca577f64a, 60431c6d-8dc7-43a9-b71a-c4b4c4e98c8f-t1:c6c68f04-c087-4108-ab8a-e9e6a2831f14, 60431c6d-8dc7-43a9-b71a-c4b4c4e98c8f-t2:ff395b8d-ca8f-4d4a-832b-b9f9ad643af6, b9f09fe0-c6cc-4cb1-b3ac-76bec8f999ea-t0:66136d1a-d1f0-4d03-afc0-59a3a45836b6, b9f09fe0-c6cc-4cb1-b3ac-76bec8f999ea-t1:b5a7f02c-33d8-4633-b30f-28b30ce6d63c, 0a585e14-9afa-403a-b4a9-bc3008bf9d1a-t0:286a96d2-5ba5-40f5-981d-892e427ea192, 0a585e14-9afa-403a-b4a9-bc3008bf9d1a-t1:8ebe3692-d2a8-4e8b-8fe3-86a3f7eb4401, 41c3f745-bfdf-4ad1-9e96-9cdb71d415f8-t0:f95bcebb-fd81-42bf-a8b5-5c1deffbfa6c\nPrevious report (earlier assessment, context only, not instructions; later human corrections take precedence):\nConclusion: partial\nSummary: The alert is real and the failing path is clear up to payment. checkout's oteldemo.CheckoutService/PlaceOrder server-span error ratio reached 1.0 at 14:31:54Z (error rate 0.0375/s, STATUS_CODE_UNSET 0); it was 0 through 14:27:30 and 1.0 from 14:28:00. The payment service's own server span grpc.oteldemo.PaymentService/Charge shows the identical pattern (0 until onset, 1.0 by 14:31:54), and its recorded exception is an application-level throw: 'Error: Payment request failed. Invalid token. app.loyalty.level=gold' at /usr/src/app/charge.js:37. checkout surfaces this as gRPC code 2 (UNKNOWN) on its PaymentService/Charge client span and code 13 (INTERNAL) 'failed to charge card: could not charge the card: rpc error: code = Unknown desc = Payment request failed. Invalid token.' on PlaceOrder; frontend and frontend-proxy spans in the same traces returned HTTP 500 on POST /api/checkout. No other checkout dependency span shows errors, and cart/product-catalog/ad server error rates were flat zer\nhypothesis: Leading hypothesis for the trigger: a payment-side failure-injection/feature-flag change in the payment service makes charge.js:37 throw 'Payment request failed. Invalid token.' for effectively every charge. Supporting signals: the error is a deliberate application throw at a fixed source line with \nhypothesis: Alternative trigger that remains open: the callers of payment began sending a charge request the payment service treats as an invalid card/token, so every charge is legitimately rejected. No load-generator restart occurred during the window (restarts_total constant 0) and the throw is inside payment\nrejected_hypothesis: Rejected: a payment pod restart, crashloop or image/deployment change caused the failure. Restart counters are constant (payment=11, checkout=0), payment and flagd pods have the same start time throughout (~18 days old), the payment image digest is unchanged for every sample, and payment's ready rep\nrejected_hypothesis: Rejected: another checkout dependency (cart, product-catalog, shipping, currency, email, quote) is the failing step. In the sampled failing traces prepareOrderItemsAndShippingQuoteFromCart, oteldemo.ShippingService/GetQuote and cart calls carry rpc.grpc.status_code 0, no cart/product-catalog ERROR s\nPrevious gaps: flagd flag configuration, flag values and flag change history are not available (change_history is not an integrated source), so neither hypothesis about what made payment reject charges can be confirmed or refuted. | Pod logs are not integrated, so payment's log lines around 14:27-14:28 and the inbound charge payload (card/token fields) could not be inspected. | rpc_server_duration_milliseconds_count{service_name=\"payment\"} returned no data, so gRPC server status-code and latency readings from that metric family are unknown; error assessment relies on traces_span_metrics_calls_total and trace spans. | The earlier 100% Charge-failure stretch (~02:37-09:17) could not be characterized further: traces_search for service payment over 03:00-03:05 returned no traces (no_data), so whether that episode had the same 'Invalid token' error text is unknown. | Trace views are biased samples: the checkout search held 790 spans (60 read) and the payment search 296 spans (40 read); spans omitted by sampling are unknown and span counts are not unique request counts, so exact request-level impact counts cannot be stated. | load-generator request behaviour/configuration changes during the window were not verified beyond its unchanged restart counter (0) and one ready replica. | No Kubernetes event stream or rollout history is available beyond kube-state snapshots, so configuration-only changes to pods that do not alter image or start time cannot be detected.\nPrevious next steps: Inspect the flagd flag configuration (especially any payment-failure flag) and its change history around 14:27Z, and compare it with the earlier ~09:17Z clearing, to confirm or refute the failure-injection hypothesis. | Read payment pod logs for /usr/src/app/charge.js:37 throws around 14:27-14:28Z and inspect the inbound charge request fields (card/token) to test the invalid-payload hypothesis. | Compare the current credit-card/token configuration of the load-generator or frontend checkout payload with the period before 14:27Z. | Confirm whether other payment callers or synthetic probes see the same rejection, and whether the earlier 02:37-09:17Z episode shared this exact error text.\nCarried views keep their original observation time; query again for current state instead of re-dating them.",
+        "scope_facts": {
+          "affected_service": {
+            "namespace": "otel-demo",
+            "workload": "checkout"
+          },
+          "alert_context": {
+            "annotations": {
+              "description": "100% of checkout PlaceOrder server spans ended in error over the last 5 minutes.",
+              "summary": "checkout PlaceOrder error ratio above 50%"
+            },
+            "labels": {
+              "alertname": "CheckoutPlaceOrderErrorRatioHigh",
+              "cluster": "opspilot-m1",
+              "k8s_namespace_name": "otel-demo",
+              "namespace": "otel-demo",
+              "opspilot_integration_id": "m0-otel-20260909",
+              "service": "checkout",
+              "service_name": "checkout",
+              "severity": "critical"
+            },
+            "omitted": 0,
+            "truncated": false
+          },
+          "alert_starts_at": {
+            "adjusted": null,
+            "anchor": "2026-10-24T14:44:54+00:00",
+            "original": "2026-10-24T14:44:54.365Z"
+          },
+          "deadline": "2026-10-24T09:46:56.059832-07:00",
+          "knowledge": {
+            "entries": [],
+            "max_age_seconds": 2592000,
+            "omitted_for_size": 0,
+            "policy_version": "knowledge-hint-v1",
+            "retrieved_at": "2026-10-24T07:46:56.066846-07:00",
+            "status": "ok"
+          },
+          "target_ids": [
+            "m0-otel-20260909"
+          ]
+        },
+        "tool_face_sha256": "748ae8a79e96c3f97cefd43cef151a8ff1c3d59a87ae1614965eb611444cb144",
+        "tool_schemas": [
+          {
+            "function": {
+              "description": "Evaluate one PromQL range query against the registered target's Prometheus inside a query window you may choose within the authorized window. The result is the raw response series: data.result holds one entry per label set with [timestamp, value] points. Counters such as *_calls_total are cumulative. Wrap a counter in rate() or increase() for per-window activity. A range selector may be at most the query window length. A point at time t with range selector [r] covers [t - r, t]. A subquery (inner)[a:b] covers a plus what inner covers, and that total may be at most the query window length. Every point covers samples inside the query window only. No point reads samples from before the query window. The expression's total lookback is its longest range selector, or a subquery range plus its inner lookback. The first point is at the query window start plus the total lookback. The view reports the total lookback as lookback_seconds and the earliest instant read as lookback_start_at. source_start_at is the first returned sample inside the query window. A whole-window total, maximum or minimum comes from one evaluation of a range selector equal to the query window's length in seconds, written as increase(x[Ws]), max_over_time(x[Ws]) or min_over_time(x[Ws]) where W is that many seconds. Do not compute totals, maxima or minima from the point list yourself. A range selector longer than the query window is refused. offset is refused. @ is refused. A result whose whole view exceeds 25,000 tokens is refused with RESULT_TOO_LARGE and no series are returned. The refusal gives series_count, total_points, label_cardinality (label names with their number of values) and a topk suggestion; when it also carries an evidence_id the whole result was kept, and read_evidence reads its series in ranges. Otherwise narrow the query window, add label filters or aggregate. A series that is not returned is unknown, not zero. A returned series does not by itself prove the service is healthy or unhealthy. Available metrics include traces_span_metrics_calls_total{service_name,span_name,status_code}, rpc_client_duration_milliseconds_count{service_name,rpc_service,rpc_method,rpc_grpc_status_code}, rpc_server_duration_milliseconds_bucket, app_payment_transactions_total, http_server_request_duration_seconds_count. Kubernetes object state from kube-state-metrics is also available: kube_deployment_status_replicas_available{namespace,deployment}, kube_deployment_status_replicas_ready{namespace,deployment}, kube_replicaset_owner{namespace,replicaset,owner_kind,owner_name}, kube_pod_owner{namespace,pod,uid,owner_kind,owner_name}, kube_pod_container_info{namespace,pod,uid,image_id}. These series use the namespace, deployment, replicaset, pod and owner_name labels, not service_name. A configuration-only deployment keeps the same image digest in image_id. Such a deployment shows as a new ReplicaSet series in kube_replicaset_owner and as kube_pod_owner owner_name moving to that ReplicaSet. For a metric or label not listed here, discover it with get_metric_names or get_label_values first, and use only metric names, label names and label values you have seen returned by a tool or that are listed here.",
+              "name": "metrics_range_query",
+              "parameters": {
+                "properties": {
+                  "end": {
+                    "description": "Absolute ISO-8601 end of the query window. Give both start and end, or neither. Omitted with start also omitted, the query window is the time policy's default_query_window when it states one, otherwise the 1 hour ending at the authorized window's end.",
+                    "type": "string"
+                  },
+                  "expr": {
+                    "description": "The PromQL expression to evaluate; service_name label values come from the service names listed for traces_search. kube-state-metrics series take namespace, deployment, replicaset, pod and owner_name labels instead of service_name.",
+                    "type": "string"
+                  },
+                  "start": {
+                    "description": "Absolute ISO-8601 start of the query window. Give both start and end, or neither. Must lie inside the authorized window; a query window outside it is refused and the refusal states the authorized window.",
+                    "type": "string"
+                  },
+                  "step_seconds": {
+                    "description": "Resolution between returned points, 15 to the query window length; omitted means 30.",
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "expr"
+                ],
+                "type": "object"
+              }
+            },
+            "type": "function"
+          },
+          {
+            "function": {
+              "description": "Search the registered target's Jaeger for traces of one service inside a query window you may choose within the authorized window, and return a projected sample of their spans: spans of the requested service first, then spans with an error status tag, then the longest, each with trace_id, span_id, service, operation, start_us, duration_us, status tags, parent references and up to 4 clipped error detail fields. A result whose whole view exceeds 25,000 tokens is refused with RESULT_TOO_LARGE and no spans are returned; narrow the time window or lower limit. traces_requested is the number of traces asked of the backend. backend_traces_returned is the number of traces the backend returned. backend_spans_returned is the number of spans in those traces. spans_shown is the number of span rows in this view. spans_omitted is the number of backend spans not shown because the adapter sampled them out. span_groups summarizes the shown spans by (service, operation): rows, status counts, error_rows and duration_us_min/max, computed from every span in spans_shown. incomplete_reason states why incomplete is true, or is null. status_state is recorded when the row has at least one status tag and not_recorded when it has none. not_recorded means the span carries no status tag, which is Unset in OTel terms, not status code 0 and not OK. This is a biased sample, not the complete trace graph or a failure rate: an omitted span is unknown, an error detail applies only to the span it is shown on, and an empty result means no trace of that service was returned for the query window, not that the service made no calls. Available services: [\"accounting\", \"ad\", \"cart\", \"checkout\", \"currency\", \"email\", \"fraud-detection\", \"frontend\", \"frontend-proxy\", \"image-provider\", \"kafka\", \"load-generator\", \"payment\", \"product-catalog\", \"quote\", \"recommendation\", \"shipping\"]; any other value returns an error.",
+              "name": "traces_search",
+              "parameters": {
+                "properties": {
+                  "end": {
+                    "description": "Absolute ISO-8601 end of the query window. Give both start and end, or neither. Omitted with start also omitted, the query window is the time policy's default_query_window when it states one, otherwise the 1 hour ending at the authorized window's end.",
+                    "type": "string"
+                  },
+                  "limit": {
+                    "description": "How many traces to ask the backend for, at least 1; omitted means 20.",
+                    "type": "integer"
+                  },
+                  "service": {
+                    "description": "Exact value from the available services list.",
+                    "type": "string"
+                  },
+                  "start": {
+                    "description": "Absolute ISO-8601 start of the query window. Give both start and end, or neither. Must lie inside the authorized window; a query window outside it is refused and the refusal states the authorized window.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "service"
+                ],
+                "type": "object"
+              }
+            },
+            "type": "function"
+          },
+          {
+            "function": {
+              "description": "List metric names in the registered target's Prometheus that have series matching a selector inside a query window you may choose within the authorized window. Use it to discover which metrics exist before writing a metrics_range_query expression. content is the list of metric names returned; it carries no values, types, descriptions or label sets. At most 100 names are returned. When more exist, the first 100 are returned, incomplete is true and incomplete_reason says to narrow the match selector; incomplete is also true whenever Prometheus returned any warning. limit in the view is that fixed 100 cap; you cannot change it. Combine several patterns in one call with a regular expression alternation, for example {__name__=~\"rpc_.*|http_.*\"} or {service_name=~\"checkout|payment\"}. A result whose whole view exceeds 25,000 tokens is refused with RESULT_TOO_LARGE and no names are returned. A listed name does not prove the metric has samples in the query window, nor anything about its values or the service's health. A name that is not listed is unknown, not proven absent: the list may be cut at 100 or limited by the selector and window.",
+              "name": "get_metric_names",
+              "parameters": {
+                "properties": {
+                  "end": {
+                    "description": "Absolute ISO-8601 end of the query window. Give both start and end, or neither. Omitted with start also omitted, the query window is the time policy's default_query_window when it states one, otherwise the 1 hour ending at the authorized window's end.",
+                    "type": "string"
+                  },
+                  "match": {
+                    "description": "Required PromQL series selector that filters the metrics, for example {__name__=~\"traces_.*\"} or {service_name=\"checkout\"}; an empty value is refused.",
+                    "type": "string"
+                  },
+                  "start": {
+                    "description": "Absolute ISO-8601 start of the query window. Give both start and end, or neither. Must lie inside the authorized window; a query window outside it is refused and the refusal states the authorized window.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "match"
+                ],
+                "type": "object"
+              }
+            },
+            "type": "function"
+          },
+          {
+            "function": {
+              "description": "List the values of one label in the registered target's Prometheus, optionally only on series matching a selector, inside a query window you may choose within the authorized window. Use it to discover services, span names, status codes, jobs or other label values before writing a metrics_range_query expression. content is the list of label values returned. At most 100 values are returned. When more exist, the first 100 are returned, incomplete is true and incomplete_reason says to narrow the match selector; incomplete is also true whenever Prometheus returned any warning. limit in the view is that fixed 100 cap; you cannot change it. A label name must be letters, digits and underscores, not starting with a digit; any other name, and a name that looks like a credential, is refused before any request is sent. A result whose whole view exceeds 25,000 tokens is refused with RESULT_TOO_LARGE and no values are returned. A listed value does not prove the series has samples in the query window, nor anything about metric values or the service's health; the value may belong to an old series. A value that is not listed is unknown, not proven absent: the list may be cut at 100 or limited by the selector and window.",
+              "name": "get_label_values",
+              "parameters": {
+                "properties": {
+                  "end": {
+                    "description": "Absolute ISO-8601 end of the query window. Give both start and end, or neither. Omitted with start also omitted, the query window is the time policy's default_query_window when it states one, otherwise the 1 hour ending at the authorized window's end.",
+                    "type": "string"
+                  },
+                  "label": {
+                    "description": "The label name whose values to list, for example service_name, span_name, job or __name__.",
+                    "type": "string"
+                  },
+                  "match": {
+                    "description": "Optional PromQL series selector that limits the series the values come from, for example {__name__=\"traces_span_metrics_calls_total\"}; when given it must not be empty.",
+                    "type": "string"
+                  },
+                  "start": {
+                    "description": "Absolute ISO-8601 start of the query window. Give both start and end, or neither. Must lie inside the authorized window; a query window outside it is refused and the refusal states the authorized window.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "label"
+                ],
+                "type": "object"
+              }
+            },
+            "type": "function"
+          },
+          {
+            "function": {
+              "description": "Read a range of rows from a result this investigation kept because its whole view exceeded 25,000 tokens. Such a RESULT_TOO_LARGE refusal carries an evidence_id, adopted false, total_rows, row_unit and suggested_limit; that evidence_id is not citable itself. read_evidence returns rows offset to offset + limit - 1 of that result as they were captured (series for metrics_range_query, spans for traces_search, names or values for the discovery tools), with the parent's window, observed_at, data_as_of and source_start_at/source_end_at, parent_tool and a slice header (parent_evidence_id, parent_raw_sha256, offset, returned, total_rows). truncated is true when the slice omits rows of the result. The slice has its own evidence_id and may be cited for the rows it shows only; rows outside the slice are unknown, so no total, maximum, minimum or absence follows from one slice. A slice whose view exceeds 25,000 tokens is refused with RESULT_TOO_LARGE; read fewer rows. A single row that does not fit cannot be read; narrow the original query instead. Only an evidence_id from an over-limit refusal of this investigation is readable; any other is denied with EVIDENCE_NOT_READABLE.",
+              "name": "read_evidence",
+              "parameters": {
+                "properties": {
+                  "evidence_id": {
+                    "description": "The evidence_id of a RESULT_TOO_LARGE refusal that says the result was kept.",
+                    "type": "string"
+                  },
+                  "limit": {
+                    "description": "How many rows to return, at least 1; the refusal's suggested_limit is about how many fit one read.",
+                    "type": "integer"
+                  },
+                  "offset": {
+                    "description": "First row to return, from 0; omitted means 0.",
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "evidence_id",
+                  "limit"
+                ],
+                "type": "object"
+              }
+            },
+            "type": "function"
+          }
+        ],
+        "variant_id": "replay-candidate",
+        "version": "opspilot-investigation-input-v5"
+      }
+    ],
+    "scenario_id": "f2-live-k1",
+    "target_id": "m0-otel-20260909"
+  },
+  "lab_readings_before": {
+    "alerts": [],
+    "at": "2026-10-24T14:24:57.573825+00:00",
+    "checkout_placeorder_p95_ms": [
+      {
+        "metric": {},
+        "value": "169.99999999999994"
+      }
+    ],
+    "fault_active": false,
+    "flagd": {
+      "non_off": {},
+      "sha256": "1ee5c0258e3e13609ecec75979cee286ab00f442d288112e39e3db8433d176c6"
+    },
+    "frontend_span_rate_2m": [
+      {
+        "metric": {},
+        "value": "2.4985026097373146"
+      }
+    ],
+    "host": {
+      "memory_free_percentage": "36%",
+      "swapusage": "total = 9216.00M  used = 7868.69M  free = 1347.31M  (encrypted)"
+    }
+  },
+  "ledger": [
+    {
+      "bytes": 2620,
+      "file": "k1-follow-up.json",
+      "sha256": "97018e5248d6eff9835c0038a13b3a99772ea608a245adbacd63e5a4d142bbeb"
+    },
+    {
+      "bytes": 138984,
+      "file": "k1-page-after-attach.html",
+      "sha256": "29fe52eb61af897854d9401252b1e777d5f2e8447cfe9bbc6b87df0b620e56ba"
+    },
+    {
+      "bytes": 174303,
+      "file": "k1-page-end.html",
+      "sha256": "7761c4c8ddfce4a134194dc32bfe1aed4cfc20f075a62d94477bc36a987e1b90"
+    },
+    {
+      "bytes": 3095,
+      "file": "k1-close.json",
+      "sha256": "7eef8b690672423144e2d40a5f547326f21299af24660498294c8dab32655368"
+    }
+  ],
+  "runs": [
+    {
+      "budget_limit": 100,
+      "budget_reserved": 0,
+      "budget_spent": 11,
+      "control_generation": 0,
+      "deadline": "2026-10-24T16:32:40.847926+00:00",
+      "epoch": 1,
+      "input_watermark": 0,
+      "run_id": "5598fc8e-059d-5641-aae2-57687e934eac",
+      "state": "completed",
+      "tool_operations_used": 21,
+      "versions": {
+        "context_policy_revision": "ctx-ctx-policy-v1-a30e65ea52f4",
+        "prompt_revision": "prompt-replay-candidate-bef70649a3a8",
+        "tool_schema_revision": "otel-demo-68ed2ca8f5d6"
+      }
+    },
+    {
+      "budget_limit": 100,
+      "budget_reserved": 0,
+      "budget_spent": 8,
+      "control_generation": 1,
+      "deadline": "2026-10-24T16:46:56.059832+00:00",
+      "epoch": 1,
+      "input_watermark": 2,
+      "run_id": "9b8f040f-7431-54d2-8cd3-35c156a8a138",
+      "state": "completed",
+      "tool_operations_used": 18,
+      "versions": {
+        "context_policy_revision": "ctx-ctx-policy-v1-a30e65ea52f4",
+        "prompt_revision": "prompt-replay-candidate-bef70649a3a8",
+        "tool_schema_revision": "otel-demo-68ed2ca8f5d6"
+      }
+    }
+  ],
+  "scenario": "K1 re-firing -> attached -> human follow_up (+ #305)",
+  "verdict": "PASS"
+}
