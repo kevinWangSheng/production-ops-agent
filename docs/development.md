@@ -164,6 +164,8 @@ Compose 环境目录已不存在；M1-02 起实验环境是 colima profile `m1-k
 .venv/bin/python scripts/kind_lab.py stop      # 只 colima stop；集群与 release 保留，再 up 约 90 s
 ```
 
+开 kind 窗口前先跑 `gh issue list --label needs-kind-run --state open`，把待补跑的真实 Run 并入本窗口；跑完在对应 issue 附证据并关闭。需要留到下一个 kind 窗口补跑的项，开 issue 时打 `needs-kind-run` 标签。
+
 Prometheus 基本认证（M1-02 第 4 步，D3）：`up` 首次生成 `tmp/m1-kind-lab/prometheus-auth.json`（600，四个账号 observer / investigator / collector / lab 的口令），把 bcrypt 哈希渲染成 Secret `prometheus-web-config`（Prometheus `--web.config.file`）、把 collector 推送用的口令渲染成 Secret `prometheus-web-auth`（collector `basicauth` 扩展），并写 `prometheus-observer.env` / `prometheus-investigator.env`（600，各只含该角色自己的变量名）；`kind_lab.py env-file <role>` 可重写。口令不进仓库、values、日志与证据。限制：Prometheus 自带 basic auth 对所有账号权限相同，合同要求的是独立凭据而非不同权限；Prometheus 探针改为 TCP、configmap-reload 侧车关闭（二者否则需要凭据或会 401）。工程脚本（`kind_lab.py health`、`scripts/otel_demo_observe.py`、`docs/evidence/m1-02-health-profile/collect_baseline.py`）经 `kind_lab.lab_authorization()` 用 `lab` 账号：优先 `OPSPILOT_LAB_PROMETHEUS_USERNAME/_PASSWORD`（`kind_lab.py env-file lab`），否则读 auth 文件；都没有时请求匿名、401 如实报出。
 
 脚本在宿主上只写 git 忽略的 `tmp/m1-kind-lab/`：故障历史（`engineer-only/<experiment-id>/`，越出该目录的 id 或符号链接被拒绝）、实验环境专用 kubeconfig（kubectl/helm/kind 都显式用它，不碰 `~/.kube/config` 的当前上下文）和 Helm 的仓库配置与 chart 缓存（`HELM_CONFIG_HOME`/`HELM_CACHE_HOME`/`HELM_DATA_HOME`）。`fault` 在 patch 后重新读取 ConfigMap 比对 SHA-256，不一致则非零退出。

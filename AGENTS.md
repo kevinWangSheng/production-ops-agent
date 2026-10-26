@@ -68,6 +68,11 @@
 
 见 [开发指南](docs/development.md)。`make setup` 准备环境，`make check` 执行开发检查，`make test` 运行测试；定向测试用 `.venv/bin/python -m pytest <路径>`。检查失败先区分环境前提与代码问题，检查命令不自动修复代码。
 
+## Agent skills
+
+- Issue tracker：本仓库的 GitHub Issues，用 `gh` 操作，约定见 [docs/agents/issue-tracker.md](docs/agents/issue-tracker.md)。
+- 领域文档：single-context，根目录 `GLOSSARY.md`（只做词汇表）加 `docs/adr/`。
+
 ## 指令维护
 
 公共项目指令以中文维护在本文件，`CLAUDE.md` 仅导入本文件。违反规则时先定位已有条款，判断是措辞失效还是执行失效，只有措辞确实未覆盖才改本文件；改动需用户授权。跨项目共享 skills 用 `skills-maintenance` 流程，源在 `~/dev/AI/agent-skills`。

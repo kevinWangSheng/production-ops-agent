@@ -24,7 +24,7 @@
 - `../PRD.md`: user-facing capabilities with stable feature IDs; exact checks live only in `../feature_list.json`.
 - `../feature_list.json`: machine-readable acceptance inventory. All passes remain false. Freeze the revised steps after technical review; do not change an approved check to conceal failure.
 - `../ROADMAP.md`: order, decision gates and work status; it is not another feature specification.
-- `../CONTEXT.md`: glossary only.
+- `../GLOSSARY.md`: glossary only.
 - [AGENTS.md](../AGENTS.md): sole shared project instruction source; [CLAUDE.md](../CLAUDE.md) imports it. Legacy `.Codex/rules/` and `.Codex/skills/` were removed on 2026-09-21; [instruction migration](agents/instruction-migration-2026-09-08.md) is history.
 
 Use explicit Markdown links from the repository entry point. If current sources disagree, resolve the inconsistency before implementation; historical drafts cannot override current SPEC. User instructions remain authoritative.
