@@ -27,9 +27,10 @@ Assumptions (also marked ``ASSUMPTION`` where used):
 from __future__ import annotations
 
 import os
+import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -356,7 +357,7 @@ def test_global_suspension_still_attaches_without_a_run(
 
 
 # ===========================================================================
-# 13. successor Runs keep the release frame and see the attached event
+# 13. #347 revises R6: successor reframes, keeps release anchor and sees event
 # ===========================================================================
 
 
@@ -366,7 +367,7 @@ def _policy(run_input: dict[str, Any]) -> dict[str, Any]:
     return policies[0]
 
 
-def test_a_new_run_after_an_attachment_keeps_the_release_frame_and_sees_the_event(
+def test_a_new_run_after_an_attachment_reframes_at_creation_and_keeps_release_anchor(
     owner: DurableStore,
     web: ReleaseStore,
     observer: ObservationStore,
@@ -377,6 +378,14 @@ def test_a_new_run_after_an_attachment_keeps_the_release_frame_and_sees_the_even
         owner, web, observer, catalog, bench
     )
     original = _run_input(release_run)
+    # #347: only an episode received in a strictly later UTC second moves
+    # the frame. Separate the real DB receipt from consumption deterministically.
+    with psycopg.connect(DSN) as conn:
+        now = conn.execute("SELECT clock_timestamp()").fetchone()[0]
+    end = datetime.fromisoformat(_policy(original)["window"]["end"])
+    delay = (end + timedelta(seconds=1.05) - now).total_seconds()
+    if delay > 0:
+        time.sleep(delay)
     alert = new_alert()
     assert_attached(fire(current.app, alert, T1), release_incident)
     (event,) = [e for e in _events(release_incident) if e["actor"] == "alertmanager"]
@@ -388,8 +397,17 @@ def test_a_new_run_after_an_attachment_keeps_the_release_frame_and_sees_the_even
     successor = _run_input(successor_id)
     assert successor["version"] == INPUT_VERSION_RELEASE
     assert _fact(successor) == _fact(original)
-    # R6: no alert reframe -- still anchored at the release, not at startsAt.
+    # #347 replaces R6: reframe at successor creation, still anchored at
+    # released_at. This recent release keeps the same default-window start.
     before, after = _policy(original), _policy(successor)
+    (row,) = _rows(
+        "SELECT deadline FROM opspilot_runs WHERE run_id=%s", (successor_id,)
+    )
+    created = row["deadline"] - timedelta(seconds=600)
+    assert datetime.fromisoformat(after["window"]["end"]) == created.replace(
+        microsecond=0
+    )
+    assert datetime.fromisoformat(after["window"]["end"]) > end
     assert after["anchor"] == before["anchor"]
     assert (
         after["default_query_window"]["start"]

@@ -23,6 +23,7 @@ from opspilot.investigation.context import (
     ALERT_STARTS_AT,
     RELEASE_CONTEXT_TOTAL_CHARS,
     RELEASE_CONTEXT_VALUE_CHARS,
+    RELEASE_OBSERVATION,
     ContextError,
     InvestigationInput,
     continuation_context,
@@ -183,20 +184,35 @@ class ReleaseAnchor(_FrameAnchor):
     the database instant the anomaly was consumed into the incident, and
     the anchor is ``released_at`` clamped into it (J2), so the default query
     window starts an hour before the release. A rebuild from the stored link
-    and release yields the same frame byte for byte."""
+    and release yields the same frame byte for byte.
+
+    ``frame_end`` (#347, the #305 W1-B rule) moves the frame off the
+    consumption: a successor Run opened after an attached alert episode is
+    framed at its own creation instant, still anchored at ``released_at``
+    (clamped to the new frame's start once the release is older than it).
+    The ``release_observation`` fact is always built from the consumption
+    anchor, without ``frame_end``.
+    """
 
     released_at: datetime
     consumed_at: datetime
+    frame_end: datetime | None = None
 
     def __post_init__(self) -> None:
         for moment in (self.released_at, self.consumed_at):
             if not isinstance(moment, datetime) or moment.utcoffset() is None:
                 raise ContextError("INPUT_INVALID")
+        if self.frame_end is not None and (
+            not isinstance(self.frame_end, datetime)
+            or self.frame_end.utcoffset() is None
+        ):
+            raise ContextError("INPUT_INVALID")
 
     _anchor_rule = RELEASE_ANCHOR_RULE
 
     def _instants(self) -> tuple[datetime, datetime]:
-        return self.consumed_at, self.released_at
+        end = self.consumed_at if self.frame_end is None else self.frame_end
+        return end, self.released_at
 
     def scope_fact(self) -> dict[str, Any]:
         anchor, adjusted = self.anchor
@@ -274,6 +290,7 @@ def continuation_input(
     deadline: datetime,
     authorized_targets: frozenset[str],
     alert: AlertAnchor | None = None,
+    release: ReleaseAnchor | None = None,
 ) -> InvestigationInput:
     """The successor Run's input: the C3 continuation of ``snapshot``'s Run.
 
@@ -288,7 +305,12 @@ def continuation_input(
     time policy and ``alert_starts_at`` are re-taken from it, and nothing
     else, so the input version stays the previous one's (R2). Only an
     alert Run (one that already carries ``alert_starts_at``) can be
-    re-framed; any other is ``ContextError("INPUT_INVALID")``.
+    re-framed; any other is ``ContextError("INPUT_INVALID")``. ``release``
+    (#347, a release-anomaly Run's successor after an attached episode)
+    re-takes the first time policy alone: the ``release_observation`` fact
+    keeps the consumption anchor, so it still equals the stored records'.
+    Only a Run that carries ``release_observation`` takes it; any other is
+    ``ContextError("INPUT_INVALID")``.
     Raises ``ContextError`` (``INPUT_MISSING`` when the previous Run has no
     snapshot) exactly as ``continuation_context`` does.
     """
@@ -306,6 +328,10 @@ def continuation_input(
             raise ContextError("INPUT_INVALID")
         context = alert.anchored(context)
         facts[ALERT_STARTS_AT] = alert.scope_fact()
+    if release is not None:
+        if RELEASE_OBSERVATION not in previous.scope_facts:
+            raise ContextError("INPUT_INVALID")
+        context = release.anchored(context)
     return replace(
         previous,
         question=f"{previous.question}\n\n{cont.handoff_note}",

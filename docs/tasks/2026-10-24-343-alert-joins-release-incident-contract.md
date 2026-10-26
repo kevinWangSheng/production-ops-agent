@@ -48,7 +48,7 @@
 | R3 | 附加到发布事故的事件用单独英文模板（如 "Alertmanager alert {fp} fired with startsAt {ts} (status firing) on this incident's target; attached to this release-anomaly incident without a new Run."），content 键集合与 R-C4 相同；同 fingerprint 附加的原模板逐字不变。 | 原文 "fired again" 对首次附加不真；键不变则输入版本与读侧不变。 |
 | R4 | 优先级：附加到发布事故也按 B1 `_escalate_priority` 只升不降（发布事故默认 1，`release_commands.py:43`）。 | 与告警附加一致；F11 r3 的「发布追加不改优先级」只约束发布侧。 |
 | R5 | 发布消费与告警首投真正并发（两边都未见对方）时可能两个事故，沿用 F11 R2 接受，不加 target 级 advisory 锁。 | 实测两者相隔约 1 分钟；加锁需改发布路径，超出本项。 |
-| R6 | 告警附加到发布事故不触发 #305 换框；告警注解/alert_context 不进发布 Run（R-C4）；发布事故续开仍按 `_release_rebuild`。 | 与 W3-A 镜像；#305 实现已按「无告警锚点不动」处理。 |
+| R6 | 告警附加到发布事故不触发 #305 换框；告警注解/alert_context 不进发布 Run（R-C4）；发布事故续开仍按 `_release_rebuild`。**2026-10-26 修订（[#347](https://github.com/kevinWangSheng/production-ops-agent/issues/347)）：首句作废，附加告警 episode 晚于前一框终点时后继按 #305 W1-B 换框，锚点仍为 `released_at`，发布事实不变；后两句不变。** | 与 W3-A 镜像；#305 实现已按「无告警锚点不动」处理。 |
 | R7 | 页面不加新区块：发布事故的 `alert_records` 仍为 None，附加通过事件流可见，`_REFIRED` 照常。 | 最小改动；独立的告警投递视图可另开 issue（可选）。 |
 | R8 | 手工/提交事故、交接事故（target NULL，含 `RELEASE_TARGET_UNRESOLVED`）、他目标事故仍不是告警候选；告警自身解析为交接时不关联（不变）。 | 保留 PR-C §6.5 中仍成立的部分。 |
 | R9 | 文档：`alerts.py` 模块与 `_correlate` docstring、`correlation.py` 模块 docstring、F2 任务记录 #343 节、PR-C 合同修订行（§6.5 改写）、F11 PR-4 合同 §8 注明实测为发布先开；`docs/development.md:53` 一句补「或同目标由发布开出、未被其他 fingerprint 认领的事故」。 | 合同与代码同 PR 落地。 |

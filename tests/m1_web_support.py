@@ -807,6 +807,10 @@ class MemoryIncidentStore:
             if r["incident_id"] == incident_id
         )
 
+    def attached_alert_deliveries(self, incident_id):
+        # No alert intake in memory: nothing is ever attached (#347).
+        return ()
+
     @staticmethod
     def _summary(row):
         return IncidentSummary(
