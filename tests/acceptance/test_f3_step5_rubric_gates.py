@@ -540,7 +540,7 @@ def _obs(evidence_id: str, tool: str, **over: Any) -> dict[str, Any]:
         "observed_at": "2026-10-24T09:51:00+00:00",
         "data_as_of": "2026-10-24T09:50:00+00:00",
         "freshness_seconds": 60.0,
-        "projection_revision": "m1-01-tool-view-v10",
+        "projection_revision": "m1-01-tool-view-v11",
         "resolvable": True,
         "missing_fields": [],
     }

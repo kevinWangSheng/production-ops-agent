@@ -138,7 +138,7 @@ def test_tool_schema_revision_is_recomputed_and_other_versions_are_unchanged() -
     assert investigation_versions()["context_policy_revision"] == (
         "ctx-ctx-policy-v1-a30e65ea52f4"
     )
-    assert PROJECTION_REVISION == "m1-01-tool-view-v10"
+    assert PROJECTION_REVISION == "m1-01-tool-view-v11"
 
 
 def test_metrics_description_has_only_the_frozen_ksm_surface_and_traces_are_unchanged() -> (
