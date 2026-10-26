@@ -6,6 +6,7 @@
 - 性质：有界真实运行。告警来自实验环境真实的 Prometheus 与 Alertmanager；发布是 F11 harness 的真实 `kubectl patch` 滚动；故障是 flagd 真实注入；模型是真实 DeepSeek `deepseek-flash`。不是生产证明
 - 执行者：未参与 F2 任何实现的 Agent，没有改产品代码与测试断言
 - **结论：五步确定性测试 26/26 通过；K1、K2、K3、K4 PASS；K5 两轮都是告警先开，按 #343 U3-A 与 Q6 停线，判 FAIL（未取到「发布先开、告警附加」的真实证据）。F2 `passes` 保持 `false`。**
+- 2026-10-25 补记：K5 按裁决 A 接受，F2 `passes` 翻为 `true`，见 [F2 任务记录 PR-E 节](../../tasks/2026-10-17-f2.md)。本文件其余内容为当时的原始记录，不改。
 
 ## 系统做了什么
 

@@ -2,7 +2,7 @@
 
 验收测试由未参与 F2 任何实现的 Agent 编写，依据是 [F2 原文](../../feature_list.json) 五步、PR-E 合同预审（`~/.agent/handoffs/opspilot-prereview-f2-pre-2026-10-24.md` §6 确定性行为清单与 E-R8；E-R1–E-R10 已按推荐裁决）、[F2 合同](../tasks/2026-10-17-f2-contract.md)（U1–U9），以及它引用的子合同：PR-C 的 C1–C3、R-C4，#343 的 U1–U3，#305 的 W1-B 与 W2-A，B1/B2。实现方不改这些断言。
 
-这些都是 PostgreSQL 上的确定性测试，不调用真实模型，也不是生产证明。F2 `passes` 的门槛（U9）是三项同时满足：本文件的五步测试全绿；一次 kind 串行会话，覆盖第 1、2、3、5 步；第 4 步的非 kind 真实风暴。`passes` 由用户合并翻转（Q5）。
+这些都是 PostgreSQL 上的确定性测试，不调用真实模型，也不是生产证明。F2 `passes` 的门槛（U9）是三项同时满足：本文件的五步测试全绿；一次 kind 串行会话，覆盖第 1、2、3、5 步；第 4 步的非 kind 真实风暴。`passes` 由 PR-E 翻转，按 [M2 记录 Q12](../tasks/2026-10-24-m2-remaining.md) 由 Agent 合并。
 
 ## 外部入口与投影
 
