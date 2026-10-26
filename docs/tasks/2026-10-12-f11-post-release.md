@@ -160,7 +160,7 @@ r1 只定方向。其余实现者需要猜的语义点，按 AGENTS.md「合同�
 - U-2 = A：#342 先以独立 fix PR 合并，再跑 PR-5c kind。
 - U-3 = A：#343 不作 F11 passes 前提；新回归场景静默告警，简报列为已知限制。
 - U-4 = A：复用 PR-4b S1–S4 证明第 2、3 步；新跑一个 kind 窗口、3 个发布全走产品授权路径；前提是 PR-5 各 PR 不改采样／判定／对比／消费／调查输入。
-- U-5 待用户：A11「不改变 CI 检查」在实验环境只能以代码面与凭据缺失证明（无 CI 门禁可前后核对），涉及验收步骤字面解释，停在 PR-5c 简报。
+- U-5 = A（2026-10-25，按推荐，依据用户 2026-10-25 常设指示，见 [M2 记录 Q12](2026-10-24-m2-remaining.md)）：A11「不改变 CI 检查」在实验环境以代码面测试与凭据缺失证明；实验环境无 CI 门禁，真实前后核对中 CI 一项记「不适用」，证据里明写。
 - 可逆默认 D1–D12 照做：D1 路由 `/version-changes`、`/version-changes/{id}`、`POST /version-changes/{id}/control`；D2 拒绝映射；D3 resume 的 policy 解析；D4 详情页内容；D5 投影标签（anomalous→degraded）；D6 列表；D7 自动授权 pass；D8 `opspilot/acceptance_release.py`；D9 事故页反向链接；D10 不做 SSE；D11 表单 nonce 作幂等键；D12 新 GET 只走 Basic Auth。
 - 切分：#342 fix 与 PR-5a 并行 → PR-5b → PR-5c（用户合并）。
 
