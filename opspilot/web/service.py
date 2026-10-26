@@ -2692,13 +2692,18 @@ def _stored_alert(alert_json: str) -> dict[str, Any]:
 
 
 def _iso(value: datetime | None) -> str | None:
-    return None if value is None else value.isoformat()
+    return None if value is None else _utc(value).isoformat()
+
+
+def _utc(value: datetime) -> datetime:
+    """Aware instants in UTC, whatever the DB session zone; naive as is."""
+    return value if value.tzinfo is None else value.astimezone(timezone.utc)
 
 
 def _json_safe(value: Any) -> Any:
     """Stored rows as JSON values: instants as ISO text, ids as text."""
     if isinstance(value, datetime):
-        return value.isoformat()
+        return _utc(value).isoformat()
     if isinstance(value, UUID):
         return str(value)
     if isinstance(value, Mapping):
@@ -2723,9 +2728,9 @@ def _release_summary(release: Any, hold: str | None = None) -> dict[str, Any]:
         "source": release.source,
         "source_release_id": release.source_release_id,
         "target": dict(release.target_snapshot),
-        "released_at": release.released_at.isoformat(),
-        "received_at": release.received_at.isoformat(),
-        "deadline_at": release.deadline_at.isoformat(),
+        "released_at": release.released_at.astimezone(timezone.utc).isoformat(),
+        "received_at": release.received_at.astimezone(timezone.utc).isoformat(),
+        "deadline_at": release.deadline_at.astimezone(timezone.utc).isoformat(),
         "used_sample_count": release.used_sample_count,
         "max_samples": release.max_samples,
         "incident_id": None

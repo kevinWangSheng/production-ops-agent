@@ -38,6 +38,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import timezone
 from typing import Any
 
 __all__ = [
@@ -136,7 +137,7 @@ def release_outcome(scenario: Any, detail: Mapping[str, Any]) -> ReleaseOutcome:
         paused=release.paused,
         source=release.source,
         source_release_id=release.source_release_id,
-        released_at=release.released_at.isoformat(),
+        released_at=release.released_at.astimezone(timezone.utc).isoformat(),
         target=dict(release.target_snapshot),
         before_revision=release.before_revision.model_dump(mode="json"),
         after_revision=release.after_revision.model_dump(mode="json"),

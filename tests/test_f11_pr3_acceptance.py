@@ -396,15 +396,17 @@ def test_alertmanager_token_cannot_submit_a_release() -> None:
     assert store.calls == []
 
 
-# --- 16. passes stays false ---------------------------------------------
+# --- 16. passes flips only with PR-5c ------------------------------------
 
 
-def test_f11_passes_is_still_false() -> None:
+def test_f11_passes_is_flipped_by_pr5c() -> None:
+    """PR-3 kept ``passes`` false; PR-5c flips it once all four steps
+    passed with evidence (docs/evidence/f11-acceptance-live/)."""
     features = json.loads(
         (Path(__file__).resolve().parents[1] / "feature_list.json").read_text()
     )
     f11 = next(f for f in features if f["id"] == "F11")
-    assert f11["passes"] is False
+    assert f11["passes"] is True
 
 
 # --- 12-14 need kind -------------------------------------------------------

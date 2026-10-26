@@ -1,0 +1,366 @@
+{
+ "actual_verdict": "unknown",
+ "authorization": {
+  "actor": [
+   "system"
+  ],
+  "count": 1,
+  "outcome": [
+   "applied"
+  ],
+  "principal_kind": [
+   "system"
+  ],
+  "recorded_at": [
+   "2026-10-26T04:57:19.423255+00:00"
+  ]
+ },
+ "batch": "f11-5c-live",
+ "code_revision": "e028064",
+ "db_totals_at_collection": {
+  "alert_deliveries": 0,
+  "incidents": 1,
+  "links": 1,
+  "runs": 1
+ },
+ "expected": "unknown",
+ "harness_run": "f11-5c-a",
+ "incident": [],
+ "k8s_policy_surface": {
+  "diffs": {
+   "a1-after-harness-rollout:a2-after-page-pause": {
+    "added": [],
+    "changed": [],
+    "changed_outside_deployment_replicaset_flagd": [],
+    "new_manager_entries": {},
+    "objects_compared": 308,
+    "removed": []
+   },
+   "a2-after-page-pause:c1-after-harness-rollout": {
+    "added": [
+     "replicasets.apps/otel-demo/checkout-7bcc99987c"
+    ],
+    "changed": [
+     "deployments.apps/otel-demo/checkout",
+     "replicasets.apps/otel-demo/checkout-57865f4f46"
+    ],
+    "changed_outside_deployment_replicaset_flagd": [],
+    "new_manager_entries": {
+     "deployments.apps/otel-demo/checkout": [
+      [
+       "kubectl-patch",
+       "Update",
+       "2026-10-26T04:58:14Z",
+       ""
+      ]
+     ],
+     "replicasets.apps/otel-demo/checkout-57865f4f46": [
+      [
+       "kube-controller-manager",
+       "Update",
+       "2026-10-26T04:58:15Z",
+       ""
+      ]
+     ]
+    },
+    "objects_compared": 307,
+    "removed": [
+     "replicasets.apps/otel-demo/checkout-ff6bd6fdc"
+    ]
+   },
+   "s0-pre-window:a1-after-harness-rollout": {
+    "added": [
+     "replicasets.apps/otel-demo/checkout-57865f4f46"
+    ],
+    "changed": [
+     "deployments.apps/otel-demo/checkout",
+     "replicasets.apps/otel-demo/checkout-5f6d95b5c7"
+    ],
+    "changed_outside_deployment_replicaset_flagd": [],
+    "new_manager_entries": {
+     "deployments.apps/otel-demo/checkout": [
+      [
+       "kubectl-patch",
+       "Update",
+       "2026-10-26T04:56:10Z",
+       ""
+      ]
+     ],
+     "replicasets.apps/otel-demo/checkout-5f6d95b5c7": [
+      [
+       "kube-controller-manager",
+       "Update",
+       "2026-10-26T04:56:11Z",
+       ""
+      ]
+     ]
+    },
+    "objects_compared": 307,
+    "removed": [
+     "replicasets.apps/otel-demo/checkout-6b9b8545bb"
+    ]
+   }
+  },
+  "kinds": 23
+ },
+ "matches_expected": true,
+ "page": {
+  "actions": [],
+  "after": {
+   "images": {
+    "checkout": "sha256:5ab0d7b9003206a32c72ef48b42a535c3f70565251d7d832f86fe9f249f16635"
+   },
+   "pod_template_digest": "sha256:3fc3a8c506b24b6d2ff426fc164fd50c384a4a69724f1417e4e1a19867778631"
+  },
+  "audit": [
+   {
+    "action": "authorize",
+    "actor": "system",
+    "audit_id": "8b0bb1b4-9973-4255-9fc8-8fdcd694568b",
+    "control_generation_after": 0,
+    "control_generation_before": 0,
+    "ending_id": null,
+    "expected_control_generation": 0,
+    "observation_generation_after": 1,
+    "observation_generation_before": 0,
+    "observation_id": "3ac2493b-3f0d-41c4-beb4-00d832e9a3ac",
+    "outcome": "applied",
+    "paused_after": false,
+    "paused_before": false,
+    "principal_kind": "system",
+    "reason": null,
+    "recorded_at": "2026-10-26T04:57:19.423255+00:00",
+    "sequence": 1,
+    "session_id": "1c2f2094-7ba1-4475-bcea-0e6b862b48e7",
+    "status_after": "observing",
+    "status_before": "pending"
+   },
+   {
+    "action": "pause",
+    "actor": "f115clab",
+    "audit_id": "1f4484ed-bcf2-4885-a36c-6907e890d277",
+    "control_generation_after": 1,
+    "control_generation_before": 0,
+    "ending_id": "33a12975-fd3c-5c52-a72b-9d82db809bff",
+    "expected_control_generation": 0,
+    "observation_generation_after": 2,
+    "observation_generation_before": 1,
+    "observation_id": "3ac2493b-3f0d-41c4-beb4-00d832e9a3ac",
+    "outcome": "applied",
+    "paused_after": true,
+    "paused_before": false,
+    "principal_kind": "basic_auth",
+    "reason": null,
+    "recorded_at": "2026-10-26T04:57:19.794475+00:00",
+    "sequence": 2,
+    "session_id": null,
+    "status_after": "observing",
+    "status_before": "observing"
+   },
+   {
+    "action": "deadline_expired",
+    "actor": "observer",
+    "audit_id": "8db46a05-d460-4b56-a5bc-c6dae07c6cd0",
+    "control_generation_after": 1,
+    "control_generation_before": 1,
+    "ending_id": null,
+    "expected_control_generation": 1,
+    "observation_generation_after": 2,
+    "observation_generation_before": 2,
+    "observation_id": "3ac2493b-3f0d-41c4-beb4-00d832e9a3ac",
+    "outcome": "applied",
+    "paused_after": true,
+    "paused_before": true,
+    "principal_kind": "observer",
+    "reason": "deadline_expired",
+    "recorded_at": "2026-10-26T05:56:39.505783+00:00",
+    "sequence": 3,
+    "session_id": null,
+    "status_after": "unknown",
+    "status_before": "observing"
+   }
+  ],
+  "authorization_hold": null,
+  "auxiliary": {
+   "after_pod_template_hash": "57865f4f46",
+   "after_replicaset_uid": "50f198eb-c828-4ecc-be2f-2e2e3812f1cc",
+   "before_pod_template_hash": "5f6d95b5c7",
+   "before_replicaset_uid": "a34119a6-5315-43a3-b722-fc3d31e78d0c",
+   "deployment_generation": 26,
+   "deployment_uid": "b32e1705-32d2-46a1-849c-ae88dacff4c6"
+  },
+  "before": {
+   "images": {
+    "checkout": "sha256:5ab0d7b9003206a32c72ef48b42a535c3f70565251d7d832f86fe9f249f16635"
+   },
+   "pod_template_digest": "sha256:f8c015f61b980a1a4dfe37617f7f07b0f04216e2e8b9acc2add02c54018c188d"
+  },
+  "calibrated_policy_revision": "otel-demo-checkout-release@e2ed7b69b96b",
+  "comparisons": [],
+  "control_generation": 1,
+  "deadline_at": "2026-10-26T05:56:09.344588+00:00",
+  "deliveries": [
+   {
+    "actor": "release-deployer",
+    "event_id": 1,
+    "outcome": "created",
+    "raw_sha256": "efe0c7b837b3ff1f0b425c2c50dcdfea5c6f79bda1af71be335e596c5ccfb866",
+    "reason": null,
+    "received_at": "2026-10-26T04:56:57.489566+00:00",
+    "sequence": 1
+   }
+  ],
+  "ended_at": "2026-10-25T22:56:39.505783-07:00",
+  "ended_reason": "deadline_expired",
+  "endings": [
+   {
+    "anomaly_key": null,
+    "ended_reason": "authority_revoked",
+    "ending_id": "33a12975-fd3c-5c52-a72b-9d82db809bff",
+    "recorded_at": "2026-10-26T04:57:19.791159+00:00",
+    "session_id": "1c2f2094-7ba1-4475-bcea-0e6b862b48e7",
+    "subject_state_after": "observing",
+    "subject_state_before": "observing",
+    "transition": null
+   }
+  ],
+  "incident_id": null,
+  "link": null,
+  "max_samples": 40,
+  "min_tracking_seconds": 1500,
+  "notice": "\u89c2\u5bdf\u5065\u5eb7\u7ed3\u8bba\uff0c\u4ec5\u4f9b\u53c2\u8003\uff1b\u4e0d\u6279\u51c6\u3001\u4e0d\u963b\u65ad\u3001\u4e0d\u6267\u884c\u53d1\u5e03",
+  "observation_generation": 2,
+  "observation_id": "3ac2493b-3f0d-41c4-beb4-00d832e9a3ac",
+  "paused": true,
+  "received_at": "2026-10-26T04:56:57.489566+00:00",
+  "released_at": "2026-10-26T04:56:09.344588+00:00",
+  "sessions": [
+   {
+    "adopted_count": 0,
+    "authorized_at": "2026-10-26T04:57:19.413774+00:00",
+    "authorized_by": "system",
+    "created_at": "2026-10-26T04:57:19.411687+00:00",
+    "deadline_at": "2026-10-26T05:56:09.344588+00:00",
+    "ended_reason": "authority_revoked",
+    "healthy_since": null,
+    "observation_generation": 1,
+    "release_budget_used_at_authorization": 0,
+    "release_policy_revision": "otel-demo-checkout-release@e2ed7b69b96b",
+    "session_id": "1c2f2094-7ba1-4475-bcea-0e6b862b48e7",
+    "state": "revoked",
+    "subject_control_generation": 0,
+    "tracking_since": null,
+    "tracking_until": null,
+    "updated_at": "2026-10-26T04:57:19.790526+00:00"
+   }
+  ],
+  "source": "kind-harness",
+  "source_release_id": "f11-5c-a-20261026T045608Z",
+  "status": "unknown",
+  "target": {
+   "cluster_uid": "c8001471-8b7b-4449-83c0-924e6f46b857",
+   "integration_id": "m0-otel-20260909",
+   "namespace": "otel-demo",
+   "resource_uid": "m0-otel-20260909",
+   "workload": "checkout"
+  },
+  "used_sample_count": 0,
+  "verdict": "unknown"
+ },
+ "page_controls": [
+  {
+   "action": "pause",
+   "authorization_seen_at": null,
+   "control_generation_after": 1,
+   "expected_control_generation": 0,
+   "http_status": 200,
+   "idempotency_label": "f11-5c-a-pause-1",
+   "origin_header": "http://127.0.0.1:8080",
+   "outcome": "applied",
+   "request_before": "2026-10-26T04:57:19.771133+00:00",
+   "route": "POST /version-changes/{id}/control",
+   "sessions_after": [
+    [
+     "1c2f2094",
+     "revoked",
+     "authority_revoked"
+    ]
+   ],
+   "used_samples_at_control": 0
+  }
+ ],
+ "page_matches_payload": {
+  "after": true,
+  "before": true,
+  "released_at": true,
+  "source_release_id": true
+ },
+ "product_path": {
+  "authorization": "web process release_authorize_pass (actor system), no direct primitive call",
+  "controls": "workbench page route only",
+  "intake": "POST /intake/version-changes (release-deployer event token, harness webhook)"
+ },
+ "raw_ledger": {
+  "files": {
+   "f11-5c-a/after.json": "e8f2e471f2b8fae1563868952f7ee434088a5e05e8980627ed9ce0f03295e39f",
+   "f11-5c-a/before.json": "add163f9196c9e73f4d86d252ea9f61d965cd5475e9329260127e263b953de45",
+   "f11-5c-a/release.json": "826fa4e34b6051963fe63916785cd9adaa671f2a631917b61fd2d8cda24dff91",
+   "f11-5c-a/timeline.jsonl": "1f2b7249def257dd9a279f064f8a411270c7eae8d848328805fca833201127fc",
+   "f11-5c-a/watch/1e12e03e1fa24ee59da898e6b018f8f1.json": "7353883fb3082c9a8c59218410b48958db8b95c442b9112cae36fb56502ca5f3",
+   "f11-5c-a/watch/908973f4967541f3a4aa9cd558ca343b.json": "e8f2e471f2b8fae1563868952f7ee434088a5e05e8980627ed9ce0f03295e39f",
+   "f11-5c-a/webhook.json": "a666f391079261dde0a1c9d50edec96f77661d134ef9bbb4b5d06cf144fa19f7",
+   "f11-5c-a/webhook/f2266d3a03eb4c73bf4a335c70eff4c9/request.json": "efe0c7b837b3ff1f0b425c2c50dcdfea5c6f79bda1af71be335e596c5ccfb866",
+   "f11-5c-a/webhook/f2266d3a03eb4c73bf4a335c70eff4c9/response-1.body": "ebe376929efdcf285b48f8242c2c1481b209ecc138ff7846ba70b969e1ec36be",
+   "f11-5c-a/webhook/f2266d3a03eb4c73bf4a335c70eff4c9/result.json": "957c376c38e33fbac40aefca19ec0151542d0e302d90c86206a53361fe21ed1f",
+   "f11-5c-a/webhook/f882f7d0c79f42a3a42632c06d9b9919/request.json": "efe0c7b837b3ff1f0b425c2c50dcdfea5c6f79bda1af71be335e596c5ccfb866",
+   "f11-5c-a/webhook/f882f7d0c79f42a3a42632c06d9b9919/response-1.body": "ac1a576c830f15e2d74feb93c445841b41c72cafa2a7ebb0e3784942ec7b13c5",
+   "f11-5c-a/webhook/f882f7d0c79f42a3a42632c06d9b9919/result.json": "a666f391079261dde0a1c9d50edec96f77661d134ef9bbb4b5d06cf144fa19f7"
+  },
+  "location": "main repository tmp/lab-ledgers/f11-5c-a/ (not committed)"
+ },
+ "release": "A",
+ "replay": [
+  {
+   "consistent": true,
+   "exit_code": 0,
+   "external_queries": [],
+   "integrity": [],
+   "model_requests": [],
+   "replayed_status": "unknown",
+   "session_id": "1c2f2094-7ba1-4475-bcea-0e6b862b48e7",
+   "stored_status": "unknown",
+   "used_sample_count": 0,
+   "verdict": "unknown"
+  }
+ ],
+ "rollout": {
+  "after_pod_template_hash": "57865f4f46",
+  "after_replicaset_uid": "50f198eb-c828-4ecc-be2f-2e2e3812f1cc",
+  "before_pod_template_hash": "5f6d95b5c7",
+  "before_replicaset_uid": "a34119a6-5315-43a3-b722-fc3d31e78d0c",
+  "deployment_uid": "b32e1705-32d2-46a1-849c-ae88dacff4c6",
+  "patch_requested_at": "2026-10-26T04:56:09.280799+00:00",
+  "released_at_R": "2026-10-26T04:56:09.344588+00:00",
+  "source_release_id": "f11-5c-a-20261026T045608Z"
+ },
+ "runs": [],
+ "samples": [],
+ "webhook_attempts": [
+  {
+   "at": "2026-10-26T04:56:24.623312+00:00",
+   "outcome": null,
+   "request_sha256": "efe0c7b837b3ff1f0b425c2c50dcdfea5c6f79bda1af71be335e596c5ccfb866",
+   "response_code": "INVALID_CREDENTIALS",
+   "response_sha256": "ebe376929efdcf285b48f8242c2c1481b209ecc138ff7846ba70b969e1ec36be",
+   "status": 401
+  },
+  {
+   "at": "2026-10-26T04:56:57.476823+00:00",
+   "outcome": "created",
+   "request_sha256": "efe0c7b837b3ff1f0b425c2c50dcdfea5c6f79bda1af71be335e596c5ccfb866",
+   "response_code": null,
+   "response_sha256": "ac1a576c830f15e2d74feb93c445841b41c72cafa2a7ebb0e3784942ec7b13c5",
+   "status": 201
+  }
+ ]
+}
