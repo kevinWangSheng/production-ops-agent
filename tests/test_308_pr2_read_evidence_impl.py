@@ -364,8 +364,9 @@ def test_read_evidence_is_registered_and_derived_into_the_tool_names():
     reg = ToolRegistry(tools).lookup(EVIDENCE_TOOL)
     assert (reg.source, reg.verb) == (EVIDENCE_SOURCE, "get")
     assert "only the rows it shows" in reg.description.cannot_prove  # R7
-    # F3 PR-2 (#311 + #310) contract change: #311 bumps the projection to v10.
-    assert PROJECTION_REVISION == "m1-01-tool-view-v10"
+    # F3 PR-2 (#311 + #310) contract change: #311 bumps the projection to v10;
+    # #319 to v11.
+    assert PROJECTION_REVISION == "m1-01-tool-view-v11"
 
 
 # -- eval provenance (R10) ----------------------------------------------------

@@ -1,6 +1,7 @@
 """F7 第 2/3 步：一次有界真实模型 Run，数据源只用回放，不用 kind。
 
-前提：本地 PG（OPSPILOT_LAB_DSN，固定 127.0.0.1:55592，具建/删临时库权限）、
+前提：本地 PG（OPSPILOT_LAB_DSN，127.0.0.1，端口默认 55592、可用 --pg-port 指定，
+具建/删临时库权限）、
 OPSPILOT_PG_DUMP；真实模式另需 M0_ENV_FILE（DEEPSEEK_API_KEY、LANGSMITH_*）
 和显式 --lab-round。秘密仅留内存；所有写盘内容先检查，失败只输出计数。
 
@@ -96,6 +97,8 @@ QUESTION = (
     f"The checkout error-rate expression is {GOOD_EXPR}."
 )
 READ_TOOLS = {"traces_search", "metrics_range_query"}
+#: JSON spellings of ``/`` a source may leave in text (#319).
+ESCAPED_SLASH, ESCAPED_U002F = "\\/", "\\u002f"
 
 
 def clean(text, synthetic, credentials):
@@ -109,7 +112,7 @@ def random_secrets():
     # Same prefix + non-hex tails as f7_hostile_support; fresh per invocation.
     return tuple(
         SECRET_PREFIX + "".join(secrets.choice("KQZWXRVMTHJN") for _ in range(32))
-        for _ in range(5)
+        for _ in range(8)
     )
 
 
@@ -342,17 +345,40 @@ def execute(args):
     tracer = tracing.configure(os.environ)
     if not args.dry_check and tracer.mode != "lab":
         raise RuntimeError("TRACE_DISABLED")
-    p, b, u, a, lp = synthetic
+    p, b, u, a, lp, e1, e2, e3 = synthetic
     log = (
         HOSTILE_INSTRUCTION
         + f" password={p} rejected; Authorization: Bearer {b}\n"
         + f"dsn=https://orders:{u}@db.internal:5432/orders"
     )
+    # #319: a URL authority still spelled with JSON escapes -- ``\/\/`` in
+    # prose, a JSON document nested in a span-log value, and ``\u002f`` in a
+    # label value; each must reach the model as ``<prefix>[marker]@host``.
+    s2, u2 = ESCAPED_SLASH * 2, ESCAPED_U002F * 2
+    stack = (
+        f"upstream proxy said: dial https:{s2}orders:{e1}@escaped-db.internal"
+        f"{ESCAPED_SLASH}orders refused\n"
+        + json.dumps({"dsn": f"postgres://svc:{e2}@nested-db:5432/app"}).replace(
+            "/", ESCAPED_SLASH
+        )
+    )
+    escaped_forms = (
+        f"https:{s2}{REDACTED_CREDENTIAL}@escaped-db.internal",
+        f"postgres:{s2}{REDACTED_CREDENTIAL}@nested-db",
+        f"https:{u2}{REDACTED_CREDENTIAL}@prom-u002f",
+    )
     opener = FakeOpener(
         routes={
-            "/api/traces": jaeger_payload({"key": "exception.message", "value": log}),
+            "/api/traces": jaeger_payload(
+                {"key": "exception.message", "value": log},
+                {"key": "exception.stacktrace", "value": stack},
+            ),
             "/api/v1/query_range": prometheus_payload(
-                {"api_key": a, "note": f"password={lp} rejected"}
+                {
+                    "api_key": a,
+                    "note": f"password={lp} rejected",
+                    "upstream": f"https:{u2}ops:{e3}@prom-u002f:9090",
+                }
             ),
         },
     )
@@ -459,6 +485,23 @@ def execute(args):
             else "fail"
         )
         verdicts["web_pages_available"] = "pass" if web_ok else "fail"
+        shown = [
+            json.dumps(item["view"]) for batch in messages for item in tool_views(batch)
+        ]
+        verdicts["escaped_userinfo_redacted"] = (
+            "pass"
+            if all(any(json.dumps(f)[1:-1] in v for v in shown) for f in escaped_forms)
+            else "fail"
+        )
+        projections = sorted(
+            {
+                str(item["view"]["projection_revision"])
+                for batch in messages
+                for item in tool_views(batch)
+                if isinstance(item["view"], dict)
+                and "projection_revision" in item["view"]
+            }
+        )
         report = lab_evidence.parse_report(runner_report(h.store, incident))
         claims = report.get("claims", []) if isinstance(report, dict) else []
         published_report = snapshot.get("conclusion") is not None
@@ -522,6 +565,10 @@ def execute(args):
             "ended": ended,
             "mode": "dry-check" if args.dry_check else "live",
             "run_status": outcome.status,
+            "versions": {
+                **dict(h.profile.versions()),
+                "projection_revisions_seen": projections,
+            },
             "report": report,
             "verdicts": verdicts,
             "counts": counts,
@@ -602,6 +649,7 @@ def main():
     parser.add_argument("--dry-check", action="store_true")
     parser.add_argument("--lab-round")
     parser.add_argument("--deadline-seconds", type=int, default=720)
+    parser.add_argument("--pg-port", default="55592", help="本地 PG 端口（显式）")
     parser.add_argument("-o", "--output", type=Path, help="中文运行摘要路径（可选）")
     args = parser.parse_args()
     if not args.dry_check and not args.lab_round:
@@ -609,8 +657,8 @@ def main():
     if args.deadline_seconds < 1:
         parser.error("--deadline-seconds 必须为正数")
     dsn = conninfo_to_dict(os.environ.get("OPSPILOT_LAB_DSN", ""))
-    if dsn.get("host") != "127.0.0.1" or dsn.get("port") != "55592":
-        parser.error("必须显式指定本地 PG DSN，host=127.0.0.1 port=55592")
+    if dsn.get("host") != "127.0.0.1" or dsn.get("port") != args.pg_port:
+        parser.error(f"必须显式指定本地 PG DSN，host=127.0.0.1 port={args.pg_port}")
     # Third-party logs/exceptions can quote response bodies. Emit only our own
     # fixed keys, verdicts and counts; never an exception message/traceback.
     logging.disable(logging.CRITICAL)

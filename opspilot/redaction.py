@@ -102,7 +102,10 @@ def _authentication_name(name: str) -> bool:
 # by a fixed marker and the surrounding text is kept, so the operator's note
 # still reads and the output is deterministic (a rebuild reproduces it).
 # Known limit, same as everywhere in this module: a bare secret string with
-# no naming context is not decidable here.
+# no naming context is not decidable here. A URL authority still spelled
+# with JSON escapes (``\/\/``, ``\u002f\u002f``, mixed) is covered; userinfo that
+# itself holds an escaped quote (``\"``, not a valid URL) is not, and other
+# encodings (``%2F``, double escapes, HTML entities) are out of scope (#359).
 REDACTED_CREDENTIAL = "[REDACTED_CREDENTIAL]"
 #
 # Linear-time by construction: a name is only tried at a token start (the
@@ -136,6 +139,16 @@ _CREDENTIAL_SCHEME = re.compile(
 )
 _AUTHORITY_USERINFO = re.compile(
     r"(?P<prefix>//)(?P<userinfo>[^\s/@]++)@(?P<host>[^\s/:?#]+)"
+)
+# The same authority with each ``/`` still JSON-escaped (``\/`` or
+# ``\u002f``/``\u002F``, mixed freely, with or without a scheme), as in text that
+# is not JSON (an HTML error page, a cut body) or in JSON nested inside a
+# JSON string value (#319). Userinfo and host stop at ``\`` and ``"`` too, so
+# a match never crosses into the next JSON string; the output has the same
+# shape as the literal rule's: prefix as written, marker, ``@``, host.
+_ESCAPED_AUTHORITY_USERINFO = re.compile(
+    r"(?P<prefix>(?:\\/|\\u002[fF]){2})(?P<userinfo>[^\s/@\\\"]++)@"
+    r"(?P<host>[^\s/:?#\\\"]+)"
 )
 # The forms the unquoted value above stops at: JSON ``"name":"v"``, YAML
 # ``name: "v"``, ``name='v'``, and a JSON value that is an object, an array
@@ -380,9 +393,12 @@ def _redact_assignments(text: str) -> str:
 def redact_credentials(text: str) -> str:
     """Replace credential-bearing spans in prose with ``REDACTED_CREDENTIAL``."""
 
-    redacted = _AUTHORITY_USERINFO.sub(
-        lambda m: f"{m.group('prefix')}{REDACTED_CREDENTIAL}@{m.group('host')}", text
-    )
+    redacted = text
+    for rule in (_AUTHORITY_USERINFO, _ESCAPED_AUTHORITY_USERINFO):
+        redacted = rule.sub(
+            lambda m: f"{m.group('prefix')}{REDACTED_CREDENTIAL}@{m.group('host')}",
+            redacted,
+        )
     redacted = _redact_assignments(redacted)
     redacted = _redact_escaped_keys(redacted)
     redacted = _redact_quoted(redacted)
