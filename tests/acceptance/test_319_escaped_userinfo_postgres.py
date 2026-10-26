@@ -168,7 +168,9 @@ def release_store(dsn):
 
 @pytest.fixture
 def release_request(dsn):
-    profile = load_health_profile(Path("opspilot/observer/profiles/otel-demo-checkout.json"))
+    profile = load_health_profile(
+        Path("opspilot/observer/profiles/otel-demo-checkout.json")
+    )
     uid = "319-release-" + uuid4().hex
     owner = DurableStore(dsn)
     try:
@@ -204,7 +206,9 @@ def release_request(dsn):
     }
 
 
-def test_release_audit_text_redacts_escaped_userinfo(release_store, release_request) -> None:
+def test_release_audit_text_redacts_escaped_userinfo(
+    release_store, release_request
+) -> None:
     receipt = release_store.record_release(**release_request)
     assert receipt.outcome == "created"
     [audit] = release_store.release_events(receipt.observation_id)
@@ -263,7 +267,12 @@ def test_legacy_observer_reading_web_display_redacts_and_keeps_hashes(
         conn.execute(
             "UPDATE opspilot_observation_signal_readings SET raw=%s,raw_sha256=%s "
             "WHERE sample_id=%s AND signal_name=%s",
-            (legacy, hashlib.sha256(legacy).hexdigest(), result.receipt.sample_id, signal),
+            (
+                legacy,
+                hashlib.sha256(legacy).hexdigest(),
+                result.receipt.sample_id,
+                signal,
+            ),
         )
 
     web_store = DurableStore(scratch_dsn)
