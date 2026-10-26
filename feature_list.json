@@ -116,7 +116,7 @@
       "Introduce a delayed regression and verify scheduled follow-up observes it without endlessly re-investigating healthy releases",
       "Verify outputs distinguish healthy, degraded and unknown; no result changes a required CI check, deployment gate, rollout or traffic policy"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": "F12",

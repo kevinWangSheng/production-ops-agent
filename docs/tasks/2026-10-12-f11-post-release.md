@@ -187,6 +187,15 @@ r1 只定方向。其余实现者需要猜的语义点，按 AGENTS.md「合同�
   已知局限：① 判据在候选读取时成立、原语不复核目标规则，多个 web 进程并发时是软约束（两个进程可能各授权同目标的一个发布，前提是两者同时都是该目标最新——实际只有同一发布，由幂等键收敛；跨目标无影响）。② 人工 resume 一个被暂停的旧发布不受目标规则约束（人工动作，原语决定）。③ 恢复会话在 Observer 队列里无优先权（lead 另开 issue）。④ 与 F11 合同 7「旧／新发布交叠」待决项相关：选择「等待」而非「取代」正在观察的旧发布，进用户简报。
   测试：`test_one_target_observes_one_release_at_a_time`（同目标先授权一个，再投 3 个：任何时刻该目标活动发布会话 ≤1；前一观察取消后只授权最新那个；两个较旧的保持 pending、无审计、页面标签 `superseded`，到期清扫后 unknown／`deadline_expired`），`git diff` 补丁 `apply -R` 退回时红（3 个都被授权）、apply 后绿；P2 回归用例改为 250 个已结束的较旧发布（另一目标）不占候选位。验证（PG 17 临时实例 56550）：F11 全部 PG 与单测、F11 验收（含 PR-5b 独立验收两文件，未改）、F7 第 1 步、#342、#343、self-heal 循环共 48 个文件 1517 passed、1 skipped（PR-3 空清单用例，原有）；ruff、mypy 通过。
 
+### PR-5c（四步验收、kind 窗口、passes）
+
+- worktree `poa-f11-5c`，分支 `feature/F11-acceptance`；独立验收测试 `test/F11-acceptance-tests`（`poa-f11-5c-tests`，全新上下文作者只按合同 §4 与公开接口编写）。
+- 独立验收测试：`tests/acceptance/test_f11_step{1,2,3,4}_*.py` 62 例，解释项见 `tests/acceptance/EVAL_F11_STEPS_AMBIGUITIES.md`。在 main `377e091` 上 61 过 1 败：数据库会话时区非 UTC 时发布页 `released_at` 与载荷不逐字节相等（§4 第 1 步第 3 条），属产品缺陷。修复 `be0c789`：页面 JSON／HTML 的时间一律按 UTC 输出（只改展示，不动调查输入）；kind 窗口后发现 `ended_at` 等经 `_iso`/`_json_safe` 的字段同样带会话时区，一并改为 UTC。四步测试连同 F7 第 1 步共 136 passed（一次性 PG 17）。
+- `tests/test_f11_pr3_acceptance.py` 的 passes 守卫由「仍为 false」改为「PR-5c 翻为 true」，这是合同预期的翻转，不是验收断言变更。
+- kind 窗口（2026-10-26 04:53–06:00Z，未参与实现的执行者，代码 `e028064`）：[run.md](../evidence/f11-acceptance-live/run.md)。发布 A 授权后经页面暂停 → 到期 unknown／`deadline_expired`；C 中途页面 pause→resume（新会话、deadline 不变）→ healthy（14 采样）；B 为最后一次滚动，R+300 注入 paymentFailure、告警静默 → degraded → 1 事故 1 真实模型 Run（LangSmith 项目 `opspilot-lab-f11-acceptance-live-20261026`），发布页与事故页互链。全程只经 webhook、自动授权 pass（`system`）与页面控制。零发布门 23 类 308 对象，每段快照间（含每次页面 pause/resume 前后）Deployment/RS/flagd 之外零变化；CI 层按 U-5 记「不适用」。三进程环境变量名无 K8s／CI 凭据。4 个会话 `replay_session` 一致；PG 无 42501；web 日志授权／异常 pass 失败 0、self-heal 报错 0。余额差 0.55 CNY（上界）。A 首次 webhook 因启动 web 漏配 release-deployer token 被拒 401（环境前提，产品未写入），修正后同载荷重发 201。
+- 复用 PR-4b（U-4=A）的前提核对：`git diff 5943b0f..e028064` 在合同列出的路径上不为空，唯一变化是 `opspilot/investigation/inputs.py`（#346 #305 W1-B），只作用于告警附加后的后继 Run 换框，发布事故的首个 Run 输入不受影响。lead 2026-10-25 按 Q12 裁决：S1 健康、S2 健康＋adFailure、S3 回归新建事故照合同复用，作第 2、3 步证据；S4（告警先开时发布追加）依赖的告警关联已被 #343 改动，不再复用，改以 F2 PR-E K5 两轮（main 含 #343，[f2-live](../evidence/f2-live/run.md)）为真实证据——告警先开、发布异常附加到该事故、不开第二个 Run。PR-4b 各场景的授权是直接调用原语，不是产品路径；第 1 步的产品链路由本窗口证明。
+- `passes`：四步确定性测试全过、真实证据齐全 → F11 `passes` → `true`（按 [M2 记录 Q12](2026-10-24-m2-remaining.md) 由 Agent 合并）。
+
 ## 下一步与交接
 
 PR-1 已合并（#218，`8299970`）。PR-2a 已合并（#223，`e0d39f9`）；PR-2b 已合并（#227，`92920f1`）；#225 加固已合并（#228，`147115d`）；重放部分证据缺陷已合并（#231，`50cc62a`）；#230 待排；U2 校准证据任务进行中，见 [U2 任务记录](2026-10-14-f11-u2-calibration.md)（实验工具 #233 已合并，待开跑）。
