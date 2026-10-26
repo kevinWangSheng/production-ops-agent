@@ -27,7 +27,7 @@
       "Generate an alert storm and verify priority, concurrency limits, backpressure and per-incident budgets bound work",
       "Cancel or pause an incident while work is in flight and verify late completions cannot overwrite the newer human decision"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": "F3",
