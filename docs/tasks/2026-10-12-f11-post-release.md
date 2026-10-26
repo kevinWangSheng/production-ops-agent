@@ -184,7 +184,7 @@ r1 只定方向。其余实现者需要猜的语义点，按 AGENTS.md「合同�
   |---|---|---|---|
   | D7-r2 | release-deployer 对同一已校准目标投递任意多发布，每个都被自动授权、各自采样，放大 Prometheus 流量并挤占 Observer 队列（PRODUCT-CONSTRAINTS:24/36/38 有界与限速） | `authorizable_releases` 只给出「同目标最新（`released_at`，再 `received_at`、id）且该目标上没有 `state='authorized'` 的发布会话」的待授权发布；每目标至多一个候选，单轮至多尝试一次。被挡住的不写拒绝审计、保持 pending：最新的等前一观察结束后由下一轮授权；较旧的「已被取代」，永不观察，到期由清扫判 unknown／`deadline_expired`。页面与列表 JSON 加 `authorization_hold`（`waiting_for_target`／`superseded`）与英文说明，与候选查询共用同一 SQL 判据（`ReleaseStore.authorization_holds`） | 不迁移、不加权限、不改原语；活动发布会话数 ≤ 已校准目标数 |
 
-  已知局限：① 判据在候选读取时成立、原语不复核目标规则，多个 web 进程并发时是软约束（两个进程可能各授权同目标的一个发布，前提是两者同时都是该目标最新——实际只有同一发布，由幂等键收敛；跨目标无影响）。② 人工 resume 一个被暂停的旧发布不受目标规则约束（人工动作，原语决定）。③ 恢复会话在 Observer 队列里无优先权（lead 另开 issue）。④ 与 F11 合同 7「旧／新发布交叠」待决项相关：选择「等待」而非「取代」正在观察的旧发布，进用户简报。
+  已知局限：① 判据在候选读取时成立、原语不复核目标规则，多个 web 进程并发时是软约束（两个进程可能各授权同目标的一个发布，前提是两者同时都是该目标最新——实际只有同一发布，由幂等键收敛；跨目标无影响）。② 人工 resume 一个被暂停的旧发布不受目标规则约束（人工动作，原语决定）。③ 恢复会话在 Observer 队列里无优先权——由 [#350](https://github.com/kevinWangSheng/production-ops-agent/issues/350) 处置：恢复会话按「到期 − 采样间隔」排序，有界提前、无饥饿（C3 §10「采样与提交」）。④ 与 F11 合同 7「旧／新发布交叠」待决项相关：选择「等待」而非「取代」正在观察的旧发布，进用户简报。
   测试：`test_one_target_observes_one_release_at_a_time`（同目标先授权一个，再投 3 个：任何时刻该目标活动发布会话 ≤1；前一观察取消后只授权最新那个；两个较旧的保持 pending、无审计、页面标签 `superseded`，到期清扫后 unknown／`deadline_expired`），`git diff` 补丁 `apply -R` 退回时红（3 个都被授权）、apply 后绿；P2 回归用例改为 250 个已结束的较旧发布（另一目标）不占候选位。验证（PG 17 临时实例 56550）：F11 全部 PG 与单测、F11 验收（含 PR-5b 独立验收两文件，未改）、F7 第 1 步、#342、#343、self-heal 循环共 48 个文件 1517 passed、1 skipped（PR-3 空清单用例，原有）；ruff、mypy 通过。
 
 ### PR-5c（四步验收、kind 窗口、passes）
