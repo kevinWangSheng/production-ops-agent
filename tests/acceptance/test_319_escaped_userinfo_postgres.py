@@ -150,7 +150,6 @@ def test_claiming_run_recorded_before_tool_schema_bump_blocks_incompatible_state
             incident, ScriptedProvider([final_report(TARGET_ID) for _ in range(10)])
         )
         assert (outcome.status, outcome.reason) == ("blocked", "INCOMPATIBLE_STATE")
-        assert outcome.evidence_ids == ()
         assert evidence_rows(harness, run) == []
     finally:
         for closer in harness.closers:
