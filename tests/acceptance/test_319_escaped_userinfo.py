@@ -78,7 +78,11 @@ def test_html_pre_and_truncated_json_text_are_redacted() -> None:
 
 
 def test_redact_json_bytes_redacts_nested_json_and_html_body() -> None:
-    inner = json.dumps({"dsn": f"https:{UNICODE_PREFIX}{SECRET}@{HOST}/orders"})
+    # In scope (pre-review §0): one JSON decode leaves an escaped authority.
+    # ``json.dumps`` of a string that already holds the escape would escape
+    # its backslash again (double escape, M3 / #359), so write the inner
+    # JSON text literally.
+    inner = f'{{"dsn":"https:{UNICODE_PREFIX}{SECRET}@{HOST}/orders"}}'
     body = json.dumps({"message": inner}).encode()
     redacted = redact_json_bytes(body)
     assert SECRET.encode() not in redacted
@@ -165,7 +169,9 @@ def test_prometheus_400_error_envelope_with_nested_escaped_json_is_redacted(
     from tests.acceptance.test_311_source_errors import _call as source_call
     from tests.acceptance.test_311_source_errors import _executor as source_executor
 
-    inner = json.dumps({"url": f"https:\\/\\/{SECRET}@{HOST}"})
+    # Inner JSON text written literally so one envelope decode leaves
+    # ``\/\/`` (pre-review §0); json.dumps would double-escape it (M3).
+    inner = f'{{"url":"https:{ESCAPED_PREFIX}{SECRET}@{HOST}"}}'
     stub.always(400, _envelope(inner))
     executor, sink, _store = source_executor(stub)
     outcome = executor.execute(source_call())
