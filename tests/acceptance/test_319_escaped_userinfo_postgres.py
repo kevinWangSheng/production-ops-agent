@@ -59,7 +59,7 @@ pytestmark = pytest.mark.skipif(
 
 SECRET = "alice:s3cr3t-319"
 HOST = "db.example.test"
-MIXED_PREFIX = r"/\/"
+UNICODE_PREFIX = r"\u002f\u002f"
 # Publicly observed origin/main value before #319.  The new value is derived
 # from public schema inputs, so this test only needs the old value as a
 # compatibility fixture.
@@ -78,7 +78,7 @@ def _opener() -> FakeOpener:
             "/api/traces": jaeger_payload(
                 {
                     "key": "exception.message",
-                    "value": f"https:\\/\\/{SECRET}@{HOST}/orders",
+                    "value": f"https:{UNICODE_PREFIX}{SECRET}@{HOST}/orders",
                 }
             )
         },
@@ -108,7 +108,7 @@ def test_legacy_tool_evidence_web_redacts_display_and_preserves_hashes(
 
         # Simulate bytes written by a pre-#319 worker.  Only the web display is
         # allowed to transform them; the persisted raw hash must still verify.
-        legacy = f'{{"dsn":"https:\\/\\/{SECRET}@{HOST}/orders"}}'.encode()
+        legacy = f'{{"dsn":"https:{UNICODE_PREFIX}{SECRET}@{HOST}/orders"}}'.encode()
         digest = hashlib.sha256(legacy).hexdigest()
         with psycopg.connect(dsn) as conn:
             conn.execute(
@@ -201,7 +201,7 @@ def release_request(dsn):
         "health_profile": canonical_content(profile),
         "min_tracking_seconds": 1200,
         "actor": "319-test",
-        "raw_body": f'{{"note":"https:\\/\\/{SECRET}@{HOST}/orders"}}'.encode(),
+        "raw_body": f'{{"note":"https:{UNICODE_PREFIX}{SECRET}@{HOST}/orders"}}'.encode(),
     }
 
 
@@ -235,7 +235,7 @@ def test_legacy_observer_reading_web_display_redacts_and_keeps_hashes(
             for row in data["result"]:
                 if isinstance(row, dict) and isinstance(row.get("metric"), dict):
                     row["metric"]["url"] = (
-                        f"https:{MIXED_PREFIX}{SECRET}@{HOST}/orders"
+                        f"https:{UNICODE_PREFIX}{SECRET}@{HOST}/orders"
                     )
         return document
 
@@ -256,7 +256,7 @@ def test_legacy_observer_reading_web_display_redacts_and_keeps_hashes(
         signal, raw = row[0], row[1]
     raw_bytes = raw.encode() if isinstance(raw, str) else bytes(raw)
     bundle = json.loads(raw_bytes)
-    body = f"upstream https:{MIXED_PREFIX}{SECRET}@{HOST}/orders".encode()
+    body = f"upstream https:{UNICODE_PREFIX}{SECRET}@{HOST}/orders".encode()
     bundle["query"]["body_b64"] = base64.b64encode(body).decode()
     bundle["query"]["body_sha256"] = hashlib.sha256(body).hexdigest()
     legacy = json.dumps(bundle, sort_keys=True, separators=(",", ":")).encode()

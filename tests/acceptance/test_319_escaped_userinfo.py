@@ -41,6 +41,8 @@ from tests.test_m1_otel_demo_contract import GOOD_EXPR, FakeOpener
 
 SECRET = "alice:s3cr3t-319"
 HOST = "db.example.test"
+ESCAPED_PREFIX = r"\/\/"
+UNICODE_PREFIX = r"\u002f\u002f"
 
 
 @pytest.fixture
@@ -52,7 +54,10 @@ def stub():
         server.close()
 
 
-@pytest.mark.parametrize("prefix", [r"//", r"\/\/", r"\//", r"/\/"])
+@pytest.mark.parametrize(
+    "prefix",
+    [r"//", r"\/\/", UNICODE_PREFIX, r"\u002F\u002F", r"\/\u002f", r"\u002f\/", r"\u002F\/"],
+)
 @pytest.mark.parametrize("scheme", ["", "https:"])
 def test_each_authority_prefix_shape_is_redacted_exactly(prefix: str, scheme: str) -> None:
     source = f"{scheme}{prefix}{SECRET}@{HOST}/orders"
@@ -61,8 +66,8 @@ def test_each_authority_prefix_shape_is_redacted_exactly(prefix: str, scheme: st
 
 
 def test_html_pre_and_truncated_json_text_are_redacted() -> None:
-    html = f'<html><pre>{{"dsn":"https:\\/\\/{SECRET}@{HOST}/orders"}}</pre></html>'
-    truncated = f'{{"dsn":"https:\\/\\/{SECRET}@{HOST}/orders"'
+    html = f'<html><pre>{{"dsn":"https:{ESCAPED_PREFIX}{SECRET}@{HOST}/orders"}}</pre></html>'
+    truncated = f'{{"dsn":"https:{UNICODE_PREFIX}{SECRET}@{HOST}/orders"'
     for source in (html, truncated):
         output = redact_credentials(source)
         assert SECRET not in output
@@ -73,13 +78,13 @@ def test_html_pre_and_truncated_json_text_are_redacted() -> None:
 
 
 def test_redact_json_bytes_redacts_nested_json_and_html_body() -> None:
-    inner = json.dumps({"dsn": f"https:\\/\\/{SECRET}@{HOST}/orders"})
+    inner = json.dumps({"dsn": f"https:{UNICODE_PREFIX}{SECRET}@{HOST}/orders"})
     body = json.dumps({"message": inner}).encode()
     redacted = redact_json_bytes(body)
     assert SECRET.encode() not in redacted
     assert REDACTED_CREDENTIAL.encode() in redacted
 
-    html = f'<pre>{{"dsn":"https:\\/\\/{SECRET}@{HOST}/orders"}}</pre>'.encode()
+    html = f'<pre>{{"dsn":"https:{ESCAPED_PREFIX}{SECRET}@{HOST}/orders"}}</pre>'.encode()
     redacted_html = redact_json_bytes(html)
     assert SECRET.encode() not in redacted_html
     assert REDACTED_CREDENTIAL.encode() in redacted_html
@@ -103,9 +108,9 @@ def test_existing_literal_authority_and_three_no_false_positive_examples_are_byt
 
 def test_redaction_is_idempotent() -> None:
     source = (
-        f"https:\\/\\/{SECRET}@{HOST}/orders "
+        f"https:{UNICODE_PREFIX}{SECRET}@{HOST}/orders "
         f"password={SECRET} "
-        f"{{\"nested\":\"https:\\/\\/{SECRET}@{HOST}\"}}"
+        f"{{\"nested\":\"https:{UNICODE_PREFIX}{SECRET}@{HOST}\"}}"
     )
     once = redact_credentials(source)
     assert redact_credentials(once) == once
@@ -117,13 +122,14 @@ def test_512_kib_pathological_input_is_linear_enough_for_ci() -> None:
     # Many almost-authorities exercise the scanner without relying on a
     # provider, socket or database.  Compare two sizes to avoid a fragile
     # absolute benchmark while still detecting quadratic rescans.
-    half = (r"\//" + ("a" * 4093)) * 64
-    full = half + half
-    start = time.perf_counter()
-    redact_credentials(full)
-    elapsed = time.perf_counter() - start
-    assert len(full) >= 512 * 1024
-    assert elapsed < 3.0
+    for prefix in (ESCAPED_PREFIX, UNICODE_PREFIX):
+        half = (prefix + ("a" * 4093)) * 64
+        full = half + half
+        start = time.perf_counter()
+        redact_credentials(full)
+        elapsed = time.perf_counter() - start
+        assert len(full) >= 512 * 1024
+        assert elapsed < 3.0
 
 
 def test_tool_span_log_value_has_no_escaped_userinfo_secret(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -131,7 +137,10 @@ def test_tool_span_log_value_has_no_escaped_userinfo_secret(monkeypatch: pytest.
         by_query={GOOD_EXPR: prometheus_payload()},
         routes={
             "/api/traces": jaeger_payload(
-                {"key": "exception.message", "value": f"https:\\/\\/{SECRET}@{HOST}/orders"}
+                {
+                    "key": "exception.message",
+                    "value": f"https:{UNICODE_PREFIX}{SECRET}@{HOST}/orders",
+                }
             )
         },
     )
@@ -212,7 +221,7 @@ def _observer_source(status: int, body: bytes) -> PrometheusReadOnlySource:
 
 
 def test_observer_stores_complete_non_json_error_body_redacted() -> None:
-    body = f"upstream error at https:\\/\\/{SECRET}@{HOST}/orders".encode()
+    body = f"upstream error at https:{ESCAPED_PREFIX}{SECRET}@{HOST}/orders".encode()
     result = _observer_source(400, body).instant(
         "up", at=datetime(2026, 10, 26, tzinfo=timezone.utc), timeout_seconds=2
     )
@@ -222,8 +231,12 @@ def test_observer_stores_complete_non_json_error_body_redacted() -> None:
     assert REDACTED_CREDENTIAL.encode() in result.body
 
 
-def test_observer_truncation_path_redacts_mixed_authority_prefix() -> None:
-    body = (f"prefix /\\/{SECRET}@{HOST}/orders ".encode() + b"x" * 4096)
+@pytest.mark.parametrize("prefix", ["//", r"\u002f\u002f", r"\u002F\u002F", r"\/\u002F"])
+def test_observer_truncation_path_redacts_open_literal_authority(prefix: str) -> None:
+    # The read stops inside an open authority (literal or JSON-escaped
+    # slashes followed by ``alice:...``) with no ``@`` or host yet, so the
+    # whole fragment must be dropped.
+    body = (b"x" * 2040 + f"{prefix}{SECRET}".encode() + b"x" * 4096)
     result = _observer_source(400, body).instant(
         "up", at=datetime(2026, 10, 26, tzinfo=timezone.utc), timeout_seconds=2
     )
