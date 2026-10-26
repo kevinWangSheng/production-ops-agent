@@ -43,10 +43,6 @@ if TYPE_CHECKING:
     from opspilot.observation.store import SampleLease
 
 
-# Claim order key shared by SELECT, keyset cursor and ORDER BY (#350).
-_CLAIM_ORDER = "(CASE WHEN s.purpose='incident_recovery' THEN s.active_sample_due_at-s.sample_interval_seconds*interval '1 second' ELSE s.active_sample_due_at END)"
-
-
 def context_in(
     conn: Connection, session: dict[str, Any], release: dict[str, Any]
 ) -> ReleaseEvaluationContext:
@@ -267,6 +263,8 @@ class _ReleaseSampleOps(_StoreBase):
             raise PersistenceError("INVALID_INPUT")
         leases: list[SampleLease | ReleaseSampleLease] = []
         probe_budget = 8 * limit
+        # One order key for SELECT, keyset cursor and ORDER BY (#350).
+        claim_order = "(CASE WHEN s.purpose='incident_recovery' THEN s.active_sample_due_at-s.sample_interval_seconds*interval '1 second' ELSE s.active_sample_due_at END)"
         probed = 0
         now: datetime | None = None
         cursor: tuple[datetime, UUID] | None = None
@@ -277,14 +275,14 @@ class _ReleaseSampleOps(_StoreBase):
                     now = self._db_now(conn).astimezone(timezone.utc)
                 query = (
                     "SELECT session_id,purpose,"
-                    + _CLAIM_ORDER
+                    + claim_order
                     + " AS claim_order FROM opspilot_observation_sessions s JOIN opspilot_scope_controls g ON g.scope_id=1 LEFT JOIN opspilot_target_suspensions t ON t.target_id=s.target_id WHERE s.state='authorized' AND s.authorized AND s.active_sample_job_id IS NOT NULL AND s.active_sample_due_at<=%s AND (s.active_sample_lease_until IS NULL OR s.active_sample_lease_until<=%s) AND s.deadline_at>%s AND NOT g.global_suspended AND NOT COALESCE(t.suspended,false)"
                 )
                 parameters: list[object] = [now, now, now]
                 if cursor is not None:
-                    query += " AND (" + _CLAIM_ORDER + ",session_id)>(%s,%s)"
+                    query += " AND (" + claim_order + ",session_id)>(%s,%s)"
                     parameters.extend(cursor)
-                query += " ORDER BY " + _CLAIM_ORDER + ",session_id LIMIT %s"
+                query += " ORDER BY " + claim_order + ",session_id LIMIT %s"
                 parameters.append(page_limit)
                 candidates = conn.execute(query, parameters).fetchall()
             if not candidates:
