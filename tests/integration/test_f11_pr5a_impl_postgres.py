@@ -10,6 +10,7 @@ D2 status mapping and D3 policy resolution, the incident back-reference
 from __future__ import annotations
 
 import os
+from datetime import UTC
 from urllib.parse import urlencode
 from uuid import uuid4
 
@@ -116,7 +117,7 @@ def test_list_and_detail_show_the_frozen_versions(release_harness, app):
     assert body["after"] == release.after_revision.model_dump(mode="json")
     assert body["target"] == release.target_snapshot
     assert body["source_release_id"] == release.source_release_id
-    assert body["released_at"] == release.released_at.isoformat()
+    assert body["released_at"] == release.released_at.astimezone(UTC).isoformat()
     assert body["actions"] == ["pause", "cancel"]
     assert body["sessions"] == [] and body["link"] is None
     assert [d["outcome"] for d in body["deliveries"]] == ["created"]

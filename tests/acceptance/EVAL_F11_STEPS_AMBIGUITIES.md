@@ -2,9 +2,9 @@
 
 依据：`docs/tasks/2026-10-24-f11-pr5-contract.md` §4 第 1–4 步与裁决（U-1..U-4 = A，U-5 见下）。测试文件 `test_f11_step{1,2,3,4}_*.py`，共用 `f11_steps_support.py`。
 
-## 已知产品缺口（测试保留为红）
+## 已知产品缺口
 
-- G1 第 1 步第 3 条「`released_at` 与载荷逐字节相等」：页面（JSON 与 HTML）按数据库会话时区渲染该时刻。会话时区为 UTC 时字节相等；非 UTC 时（本测试库固定为 `America/Los_Angeles`）显示 `...-07:00`，时刻相同、字节不同。对应测试：`test_item3_released_at_is_shown_byte_for_byte_as_delivered`。其余字段（digest、目标五字段、`source_release_id`）字节相等，已通过。
+- G1（已修，`be0c789`：页面时间一律按 UTC 输出，该测试转绿） 第 1 步第 3 条「`released_at` 与载荷逐字节相等」：页面（JSON 与 HTML）按数据库会话时区渲染该时刻。会话时区为 UTC 时字节相等；非 UTC 时（本测试库固定为 `America/Los_Angeles`）显示 `...-07:00`，时刻相同、字节不同。对应测试：`test_item3_released_at_is_shown_byte_for_byte_as_delivered`。其余字段（digest、目标五字段、`source_release_id`）字节相等，已通过。
 
 ## 解释
 

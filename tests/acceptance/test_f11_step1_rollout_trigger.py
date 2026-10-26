@@ -150,7 +150,7 @@ def test_item3_html_and_json_pages_show_versions_and_identity_exactly(
 
 
 def test_item3_released_at_is_shown_byte_for_byte_as_delivered(env: s.Env) -> None:
-    """PRODUCT GAP (contract section 4 step 1 item 3: ``released_at`` 与载荷
+    """Was a PRODUCT GAP, fixed in ``be0c789`` (contract section 4 step 1 item 3: ``released_at`` 与载荷
     **逐字节相等**). The payload carries ``released_at`` as an explicit-offset
     UTC instant (PR-3 r2 normalizes it to UTC). The page must show those
     bytes whatever the database session time zone is; this module pins a
