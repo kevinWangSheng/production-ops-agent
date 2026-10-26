@@ -715,8 +715,8 @@ def test_tool_schema_and_projection_revisions_changed_and_are_recomputable():
     )
     assert TOOL_SCHEMA_REVISION != OLD_TOOL_SCHEMA_REVISION
     assert PROJECTION_REVISION != OLD_PROJECTION_REVISION
-    # F3 PR-2 (#311 + #310) contract change: #311 bumps the projection to v10.
-    assert PROJECTION_REVISION == "m1-01-tool-view-v10"
+    # #319 bumps the projection to v11.
+    assert PROJECTION_REVISION == "m1-01-tool-view-v11"
     assert otel_demo_versions()["tool_schema_revision"] == TOOL_SCHEMA_REVISION
 
 

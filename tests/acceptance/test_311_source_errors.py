@@ -76,7 +76,7 @@ from tests.test_m1_otel_demo_contract import (
 OLD_PROJECTION_REVISION = "m1-01-tool-view-v9"
 OLD_OTEL_TOOL_SCHEMA_REVISION = "otel-demo-2a944edd110a"
 OLD_FIXTURE_TOOL_SCHEMA_REVISION = "fixture-3"
-NEW_PROJECTION_REVISION = "m1-01-tool-view-v10"
+NEW_PROJECTION_REVISION = "m1-01-tool-view-v11"
 # U5-a puts the data-source list in the evidence context, not the discipline
 # variant, so #311 itself leaves the context policy unchanged. prompt_revision
 # is not pinned: F3 PR-2 also carries #310, which moves it

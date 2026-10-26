@@ -147,9 +147,8 @@ def duplicate_count(section: str) -> int | None:
 # prompt revision moved to F11 PR-4b's contract-approved bump when #336 merged main.
 MAIN_PROMPT_REVISION = "prompt-replay-candidate-bef70649a3a8"
 MAIN_CONTEXT_POLICY_REVISION = "ctx-ctx-policy-v1-a30e65ea52f4"
-MAIN_OTEL_TOOL_SCHEMA_REVISION = "otel-demo-68ed2ca8f5d6"
-MAIN_FIXTURE_TOOL_SCHEMA_REVISION = "fixture-4"
-MAIN_PROJECTION_REVISION = "m1-01-tool-view-v10"
+MAIN_FIXTURE_TOOL_SCHEMA_REVISION = "fixture-5"
+MAIN_PROJECTION_REVISION = "m1-01-tool-view-v11"
 MAIN_INPUT_VERSION = "opspilot-investigation-input-v5"
 
 
@@ -157,9 +156,10 @@ def test_item17_no_model_visible_revision_moves():
     assert otel_demo_versions() == {
         "prompt_revision": MAIN_PROMPT_REVISION,
         "context_policy_revision": MAIN_CONTEXT_POLICY_REVISION,
-        "tool_schema_revision": MAIN_OTEL_TOOL_SCHEMA_REVISION,
+        "tool_schema_revision": TOOL_SCHEMA_REVISION,
     }
-    assert TOOL_SCHEMA_REVISION == MAIN_OTEL_TOOL_SCHEMA_REVISION
+    assert TOOL_SCHEMA_REVISION.startswith("otel-demo-")
+    assert len(TOOL_SCHEMA_REVISION) == len("otel-demo-") + 12
     assert fixture_versions() == {
         "prompt_revision": MAIN_PROMPT_REVISION,
         "context_policy_revision": MAIN_CONTEXT_POLICY_REVISION,

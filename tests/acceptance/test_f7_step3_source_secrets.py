@@ -330,9 +330,9 @@ def test_a_payload_without_secrets_keeps_raw_byte_identical(monkeypatch, tool):
 
 
 def test_class6_projection_and_tool_schema_revisions_are_bumped():
-    # F3 PR-2 (#311 + #310) contract change: #311 bumps the projection to v10 and the fixture
-    # revision past fixture-3 (inequality; the contract names fixture-4).
-    assert PROJECTION_REVISION == "m1-01-tool-view-v10"
+    # #319 bumps the projection to v11 and the fixture
+    # revision past fixture-3 (inequality; the contract names fixture-5).
+    assert PROJECTION_REVISION == "m1-01-tool-view-v11"
     assert fixture_profile.TOOL_SCHEMA_REVISION != "fixture-3"
     assert otel_demo.TOOL_SCHEMA_REVISION != OLD_OTEL_TOOL_SCHEMA_REVISION
     assert (
@@ -351,4 +351,4 @@ def test_class6_new_evidence_carries_the_new_projection_revision(monkeypatch):
     executor, _ = _executor(monkeypatch, opener)
     outcome = executor.execute(_call(METRICS_TOOL, {"expr": GOOD_EXPR}))
     assert outcome.evidence is not None
-    assert outcome.evidence.projection_revision == "m1-01-tool-view-v10"
+    assert outcome.evidence.projection_revision == "m1-01-tool-view-v11"
