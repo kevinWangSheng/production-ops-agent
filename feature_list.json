@@ -43,7 +43,7 @@
       "Present a recent unrelated deployment and a dependency fault and verify the investigation tests competing causes against the accepted outcome rubric",
       "Inspect runtime permissions and tool requests and verify investigation cannot mutate the target environment"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": "F6",
