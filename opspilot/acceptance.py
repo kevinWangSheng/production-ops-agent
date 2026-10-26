@@ -491,6 +491,7 @@ PRODUCT_CONSTRAINT_SCENARIO_INDEX: dict[str, tuple[str, ...]] = {
         "F3:fault",
         "F3:missing-source",
         "F3:truncated-at-limit",
+        "F3:competing-cause",
     ),
     "evidence_context": ("F3:normal", "F7:hostile-input"),
     "runtime_human_control": ("F2:pause-cancel", "F2:late-result"),

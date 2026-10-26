@@ -51,3 +51,17 @@ env -u OPSPILOT_OTEL_TOKEN -u OPSPILOT_OTEL_PROMETHEUS_USERNAME -u OPSPILOT_OTEL
 
 - 无失败轮，未重跑。
 - DeepSeek 余额：08:05:46Z 为 95.48 CNY，08:08:38Z 为 95.45 CNY，差额 0.03 CNY。两次 `known_cost_cny_upper` 合计 0.660 CNY（A 0.603、B 0.057），是不计缓存折扣的上界，实际扣费以余额差为准。
+
+## D9 重跑：场景 A（PR-3b，2026-10-24）
+
+F3 PR-2 预审 D9-a：PR-3b 开工时 `prompt_revision` 已由 `prompt-replay-candidate-2f30c2380b23` 变为 `prompt-replay-candidate-bef70649a3a8`（#336 把 `release_context_template` 加入哈希输入），所以在新的模型可见面上把场景 A 重跑一次。场景 B 不在 D9 范围内。上面两份冻结 summary 和 `answer.json` 都没改。
+
+- 起点 main `3c18bdb`。Run 行 `versions` 为 `prompt-replay-candidate-bef70649a3a8` / `otel-demo-68ed2ca8f5d6` / `ctx-ctx-policy-v1-a30e65ea52f4`，`PROJECTION_REVISION=m1-01-tool-view-v10`。
+- 做法与上面「命令」一节相同（替身 + 真实 DeepSeek `deepseek-flash` + 一次性 PG 17，schema head `0021_release_incident_links`，Jaeger 指向无监听端口，`--model-requests 100 --f3-coverage --f3-answer evals/f3/missing-source/answer.json`），只是 PG 端口换成 56157，`--lab-round f3-3b-d9-missing-source`，输出目录换成 `missing-source-rerun-bef70649a3a8`。
+- Run `521ee511-6ed4-45e0-a5f8-69d85a429c0f`（16:17:27–16:18:59Z），结果 `published`，11 次 HTTP。
+- [summary](missing-source-rerun-bef70649a3a8/521ee511-6ed4-45e0-a5f8-69d85a429c0f/summary.json) · [LangSmith trace](https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/500716c2-3cad-4ab0-b9b2-c3361ffcb75f/r/00000000-0000-0000-079a-a83c2711b653?poll=true)（回读 `found`，`trace_tier=longlived`）
+- 覆盖节（投影与页面一致）：jaeger `failed`（ok 0 / 非 ok 3，`SOURCE_UNAVAILABLE ×3`）；prometheus `all_ok`（ok 14、no_data 3）；kubernetes_state、pod_logs、change_history 为 `not_integrated`。页面 `#coverage-gaps` 与 `#not-integrated` 都在，没有 `#collection-truncated`；投影 `collection_truncated=False`。
+- U6-a 判定（脚本按冻结答案计算，答案 sha256 不变）：**通过**。报告 `completed / partial`，没有 fact 引用满足签名的证据，jaeger 行 `gap=true`。模型自己的 gaps 也点名了 Jaeger 不可达（「all three attempts」，与确定性计数 3 一致）。
+- 与 PR-2 的差异照实记录（不设门）：prometheus 这次没有非 ok，状态从 `partial_failure` 变成 `all_ok`；jaeger 尝试次数从 5 次降到 3 次。
+- 失败轮：无，没有重跑。
+- DeepSeek 余额：16:17:08Z 为 92.59 CNY，16:19:16Z 为 92.59 CNY，差额低于 0.01 CNY（余额只精确到 0.01）。`known_cost_cny_upper` 0.439 CNY，是不计缓存折扣的上界。
