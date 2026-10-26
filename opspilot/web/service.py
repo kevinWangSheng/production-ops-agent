@@ -2723,9 +2723,9 @@ def _release_summary(release: Any, hold: str | None = None) -> dict[str, Any]:
         "source": release.source,
         "source_release_id": release.source_release_id,
         "target": dict(release.target_snapshot),
-        "released_at": release.released_at.isoformat(),
-        "received_at": release.received_at.isoformat(),
-        "deadline_at": release.deadline_at.isoformat(),
+        "released_at": release.released_at.astimezone(timezone.utc).isoformat(),
+        "received_at": release.received_at.astimezone(timezone.utc).isoformat(),
+        "deadline_at": release.deadline_at.astimezone(timezone.utc).isoformat(),
         "used_sample_count": release.used_sample_count,
         "max_samples": release.max_samples,
         "incident_id": None
