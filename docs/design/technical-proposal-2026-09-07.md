@@ -189,6 +189,9 @@ revision 生成规则：
 任何改变模板字节的改动都 bump，包括改一个词或调整顺序。
 bump 后被重新领取的在途 Run 进入 `blocked(INCOMPATIBLE_STATE)`，按第 7 节处理；
 **不得为避免 blocked 而不 bump**。
+工具结果的模型视图投影变化同样必须升 projection revision（`PROJECTION_REVISION`），
+包括脱敏规则扩展导致模型可见字节变化；projection revision 计入 `tool_schema_revision`，
+在途 Run 按上述规则进入 `blocked(INCOMPATIBLE_STATE)`，同样不得为避免 blocked 而不升。
 
 四类变化走四套机制，不得互相顶替：
 
