@@ -45,6 +45,10 @@
 
 - 2026-10-27：合同 r1 写入；PR-1 实现开为 #377，实现中追加 r2-L1；#374（90 天归档）、#375（steps/inputs/runs 恢复合同）已开；#244 已贴 Agent Brief。
 
+- 独立验收测试：Codex（gpt-6.1-sol 起，容量中断后 gpt-6-astra 续跑），`tests/acceptance/test_244_pr1_retention_schema_roles.py` 7 例；main 上 6 红 1 绿，本分支 7 绿。lead 修了两处测试构造错误（TRUNCATE 探针误传参数、F13 写入探针的 object_id 用了文本），并按实现裁定 `RETENTION_GRANTS` 为单一角色「关系 → 权限」映射。
+- 独立审查：Codex astra/sol 均容量满，按用户 10-26 规则回落全新上下文 Claude Fable 5.1；两轴 0 阻塞、6 可选（另跑 23 条 SQL 越权探针，结果均符合合同）。处置：development.md 的 r1/r2 措辞已改；其余记为已知：retention 空更新 `SET raw=raw` 在运行时三表放行（无数据影响）、迁移外删 `opspilot_retention` 角色会使三表 UPDATE 报错（运维边界）、INSERT 即 closed 也写 `closed_at`（产品无此路径）。
+- PR-3 必须覆盖（审查预警）：`hashes_verified=None` 在图表投影被当作 `hash_mismatch`，工具层证据读取对 `raw=None` 会 `AttributeError`。
+
 ## 下一步与交接
 
 - 派 PR-1 实现与独立测试作者，与 #245 PR-1 并行；全量 `tests/acceptance` 两条线错开跑（本机 swap 紧）。预审未确认项 1–8 由实现者按需核对，属可逆细节的写一行理由。
