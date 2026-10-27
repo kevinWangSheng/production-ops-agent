@@ -4,7 +4,7 @@
 - 更新日期：2026-10-27
 - 依据：[issue #245](https://github.com/kevinWangSheng/production-ops-agent/issues/245) Agent Brief；C3 §4（核心句「重绑定/合并/拆分」）、§7（撤权后旧证据不得进入新输入）、§10（关联已有事故只增加事件）；[F12 合同](2026-10-15-f12-contract.md) U6；ROADMAP F12 行已知限制。功能 F12。
 - 裁决：`~/.agent/handoffs/opspilot-rulings-2026-10-27.md` 第 1、3 节（下称「裁决」）；预审：`~/.agent/handoffs/opspilot-prereview-245-2026-10-27.md`（Fable 5.1，基线 `17bc865e`，下称「预审」）。
-- 工作区：PR-1、PR-2 开工时填写。
+- 工作区：PR-1 `/Users/shenghuikevin/dev/AI/poa-245-impl`，分支 `feature/F12-245-rebind-target`；PR-2 开工时填写。
 
 ## 目标与范围
 
@@ -38,6 +38,12 @@ F12 只做了「假设纠正」，事故挂错目标或两条告警其实是同�
 ## 执行进展与证据
 
 - 2026-10-27：合同 r1 写入；#373（拆分）已开；#245 已贴 Agent Brief。
+- 2026-10-27：PR-1 实现（迁移 0022、`rebind_target`、G6/G7、U5 ①、页面、G11）。实现者自定的可逆细节：
+  - 事件投影白名单（未确认 1）：PR-1 不写事件输入，不涉及；留给 PR-2。
+  - 审计投影版本（未确认 2）：`acceptance_audit` 没有版本钉值（ROADMAP「投影 v11」是脱敏投影），加动作不递增。另把挂起时间线的目标集合扩为「当前目标 ∪ 改目标审计行的 `from_target`」，否则改目标前旧目标的挂起记录会从时间线消失。
+  - `_alert_rebuild` 取值（未确认 4）：改目标后的 fresh 输入只沿用其告警锚点与告警上下文；`affected_service` 取新目标登记行（无 workload 则不写），不取告警身份行（旧目标）；发布事实描述旧目标的发布，不沿用。
+  - 错误码：非登记键 `UNKNOWN_TARGET`（404，沿用挂起入口）、相同目标 `TARGET_UNCHANGED`（409）、缺目标 `TARGET_REQUIRED` / 其他动作带目标 `TARGET_NOT_ALLOWED`（400）。表单字段 `to_target`，`text` 可选。
+  - `merge_into` 不进动作集合（PR-2）。
 
 ## 下一步与交接
 
