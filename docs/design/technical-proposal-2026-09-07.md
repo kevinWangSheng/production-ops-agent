@@ -30,7 +30,7 @@ Agent 不执行生产写操作，不拥有发布批准或阻断权。不纳入�
 | 持久化 | PostgreSQL、psycopg |
 | Agent trace 与 eval | LangSmith |
 | 服务运行观测 | OpenTelemetry、Prometheus、Grafana |
-| 本地与实验部署 | Docker Compose、Helm，共用应用镜像 |
+| 本地与实验部署 | 产品单一应用镜像，控制侧 Docker Compose（2026-10-27 起不提供产品 Helm chart，见 §12）；实验目标侧 OTel Demo 仍用其固定版本 Helm chart 部署在 kind |
 
 暂不增加 Redis、Kafka、Temporal，也不同时引入 OpenAI Agents SDK 的另一套循环。
 
@@ -428,7 +428,7 @@ schema 迁移在全部运行时（web、worker、Observer）停止的状态下�
 
 本机 16 GB 内存、约 45 GB 可用磁盘属于此前观察的机器条件，不代表可全部分配给实验，实施前复核。
 
-本地开发，按需使用 Linux 实验环境；持续运行测试期间，将控制服务与被调查目标隔离。候选容量为控制侧 4 CPU / 8 GB、目标侧 8 CPU / 16 GB，先测容量再采购，不要求常驻两台服务器或部署 HA。Compose 与 Helm 共用应用镜像。
+本地开发，按需使用 Linux 实验环境；持续运行测试期间，将控制服务与被调查目标隔离。候选容量为控制侧 4 CPU / 8 GB、目标侧 8 CPU / 16 GB，先测容量再采购，不要求常驻两台服务器或部署 HA。产品以单一应用镜像交付，控制侧用 Compose 部署；产品不部署在被调查集群内，不提供 Helm chart（用户 2026-10-27 决定，见 [M3 开放决策](../tasks/2026-10-27-m2-exit-m3-opening-decision.md) Q4）。
 
 | 用途 | 初始规划额度 |
 |---|---:|
