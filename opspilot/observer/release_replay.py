@@ -1336,7 +1336,7 @@ def _cleaned_comparison_issues(
                     old,
                     expected,
                     c["decision_at"],
-                    [row for row in rows if row[0] in needs_none],
+                    [(k, q, s, at) for k, q, s, at in rows if k in needs_none],
                     (),
                     require_complete=False,
                 )
