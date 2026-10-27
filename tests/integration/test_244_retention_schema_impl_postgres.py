@@ -40,7 +40,7 @@ pytestmark = pytest.mark.skipif(
 )
 
 PG_DUMP = os.environ.get("OPSPILOT_PG_DUMP", "pg_dump")
-BEFORE = "0021_release_incident_links"
+BEFORE = "0022_incident_association"
 release_harness = pr4a.release_harness
 PAYLOAD_TABLES = {
     "opspilot_evidence": "raw",
@@ -184,7 +184,7 @@ def test_upgrade_backfills_absent_and_present_and_never_cleaned(scratch) -> None
         ).fetchone() == ("closed", None)
 
 
-def test_runtime_catalogs_are_the_same_at_0021_and_at_head(scratch) -> None:
+def test_runtime_catalogs_are_the_same_at_0022_and_at_head(scratch) -> None:
     schema.command.upgrade(schema._config(scratch), BEFORE)
     roles = ("opspilot_web", "opspilot_worker", "opspilot_observer")
     with psycopg.connect(scratch) as conn:

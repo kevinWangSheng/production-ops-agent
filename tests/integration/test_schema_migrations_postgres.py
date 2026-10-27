@@ -303,6 +303,8 @@ EXPECTED_CHECKS = {
     "opspilot_incidents_related_incident_check",
     # 0019 (F2 PR-B1): the claim priority domain, same discipline
     "opspilot_incidents_priority_check",
+    # 0022 (#245): an incident is never merged into itself
+    "opspilot_incidents_merged_into_incident_check",
     # 0023 (#244): a close time only on a closed incident
     "opspilot_incidents_closed_at_check",
 }

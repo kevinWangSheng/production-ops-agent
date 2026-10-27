@@ -469,8 +469,9 @@ EXPECTED_GRANTS = {  # ASSUMPTION S6
         "opspilot_incidents": frozenset(
             {
                 "SELECT",
-                "UPDATE(conclusion,control_generation,current_run_id,lifecycle,mode,"
-                "observation_generation,priority,state)",
+                "UPDATE(conclusion,control_generation,current_run_id,lifecycle,"
+                "merged_into_incident_id,mode,observation_generation,priority,"
+                "state,target_id)",
                 "INSERT(current_run_id,incident_id,intake_key,lifecycle,priority,"
                 "related_incident_id,state,target_id)",
             }

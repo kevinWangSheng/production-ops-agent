@@ -1,11 +1,8 @@
 """0023 retention raw cleanup: payload state, close time, retention role (#244 PR-1).
 
 Revision ID: 0023_retention_raw_cleanup
-Revises: 0021_release_incident_links
+Revises: 0022_incident_association
 Create Date: 2026-10-27
-
-TODO(#245): 0022 合并后改为 down_revision=0022_incident_association（并更新
-head 钉值）。
 
 C3 section 11 (raw material is kept 30 days after close), contract r1 of
 ``docs/tasks/2026-10-27-244-retention-cleanup.md``. Schema and guards only;
@@ -53,7 +50,7 @@ from alembic import op
 from sqlalchemy import text
 
 revision: str = "0023_retention_raw_cleanup"
-down_revision: str | Sequence[str] | None = "0021_release_incident_links"
+down_revision: str | Sequence[str] | None = "0022_incident_association"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

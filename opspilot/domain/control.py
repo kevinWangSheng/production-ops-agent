@@ -27,6 +27,7 @@ ControlAction = Literal[
     "cancel_run",
     "close",
     "reopen",
+    "rebind_target",
     "authorize_observation",
     "revoke_observation",
 ]
@@ -113,7 +114,8 @@ def apply_control(
         # The authorization covers observation only; it does not restore
         # automatic investigation.
         update["observation_authorized"] = True
-    elif action == "revoke_observation":
+    elif action in {"revoke_observation", "rebind_target"}:
+        # Rebinding revokes the old target's observation first (C3 section 4).
         update["observation_authorized"] = False
     return state.model_copy(update=update)
 
@@ -128,6 +130,7 @@ _ACTIONS = frozenset(
         "cancel_run",
         "close",
         "reopen",
+        "rebind_target",
         "authorize_observation",
         "revoke_observation",
     )
