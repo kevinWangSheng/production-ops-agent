@@ -42,7 +42,7 @@ C3 §14 的 M2 退出条件是「以相关合同测试和验收证据退出」�
 替代：合成一台主机、用 cgroup 限额隔离两侧，更便宜，但偏离 C3 §12 的隔离写法，需要你明确认可；或本机跑缩小规模、非 72 小时的 soak，F8 第 4 步达不到原文要求。
 
 **Q4 产品怎么交付？**
-推荐：一个产品镜像，按 digest 固定，web、worker、Observer 共用；控制侧用 Compose 部署（一键安装就是它），目标侧 kind 只放被调查的 OTel Demo。这样 Compose 落在控制侧、与目标隔离，符合 C3 §12 与 SPEC 选定的 Compose/Helm 共用镜像。Helm chart 不做，属于偏离 C3 §12「Compose 与 Helm 共用应用镜像」中的 Helm 一半，需要你认可；理由是产品不部署在被调查集群内，Helm 没有使用场景。「干净机器」定义为全新 Linux 主机；macOS + colima 只保留为开发环境。镜像推送到 GHCR 属于对外发布，目前仓库没有发布 workflow（现有 CI 只有 `contents: read`，`.github/workflows/ci.yml:9`）；设计为新增一个只在打 tag 时运行的 workflow，仅它授予 `packages: write`，用仓库自带的 `GITHUB_TOKEN`，不新增凭据；首次推送前在简报里告诉你（Q10 用户门）。
+推荐：一个产品镜像，按 digest 固定，web、worker、Observer 共用；控制侧用 Compose 部署（一键安装就是它），目标侧 kind 只放被调查的 OTel Demo。这样 Compose 落在控制侧、与目标隔离。产品不提供 Helm chart：这偏离了原 C3 §12 与 SPEC 选定的「Compose/Helm 共用镜像」，理由是产品不部署在被调查集群内，Helm 没有使用场景；用户 2026-10-27 已认可，C3 §2/§12 与 SPEC 已同步修订，产品范围只有 Compose，Helm 只用于实验目标侧的 OTel Demo。「干净机器」定义为全新 Linux 主机；macOS + colima 只保留为开发环境。镜像推送到 GHCR 属于对外发布，目前仓库没有发布 workflow（现有 CI 只有 `contents: read`，`.github/workflows/ci.yml:9`）；设计为新增一个只在打 tag 时运行的 workflow，仅它授予 `packages: write`，用仓库自带的 `GITHUB_TOKEN`，不新增凭据；首次推送前在简报里告诉你（Q10 用户门）。
 
 **Q5 「外部探测」做到什么程度？**
 推荐：给 web、worker、Observer 加 `/healthz`、`/readyz`，只在内网监听、不经公网暴露，响应只含 schema 是否在 head、队列深度、最近一次模型调用的状态类别（成功 / 超时 / 错误码类），不含任何报告、证据或凭据内容。lab 的 Prometheus 抓取，Alertmanager 配两条规则：Agent 不在了，或模型连续失败。演练时停掉 worker、断掉模型出口各一次，看外部告警响起、Run 按合同交接给人。这只覆盖 F8 第 2 步和第 1 步的一部分；第 1 步要求的 provider 状态、工具错误、卡住的 Run、token 与成本按事故和版本关联，在 F8 任务记录里列成字段对照表，合同预审时逐项定。
