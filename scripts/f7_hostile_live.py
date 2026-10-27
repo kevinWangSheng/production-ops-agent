@@ -12,7 +12,8 @@ OPSPILOT_PG_DUMP；真实模式另需 M0_ENV_FILE（DEEPSEEK_API_KEY、LANGSMITH
     --lab-round f7-hostile-20261016 --deadline-seconds 720 -o tmp/f7-live-report.md
 
 预计真实 Run 2–12 分钟，另加有界 trace 回读约 1 分钟；dry-check 通常数秒。
-费用来自供应商运行前后余额差，由 lead 填入 summary 的 cost 占位，不按 token 推算。
+费用来自供应商运行前后余额差（脚本在 Run 前后各读一次余额写入 summary 的 cost；余额精度 0.01 且有延迟，
+读不到时记 balance_unavailable），不按 token 推算。
 默认使用产品防循环上限，不另设模型请求次数。临时 PG 库结束即删除。
 """
 
@@ -28,6 +29,7 @@ import sys
 import time
 from contextlib import ExitStack, contextmanager
 from datetime import datetime
+from decimal import Decimal, InvalidOperation
 from hashlib import sha256
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
@@ -55,6 +57,7 @@ from opspilot.web import DurableClock  # noqa: E402
 from opspilot.web.service import LEASE_SECONDS  # noqa: E402
 from opspilot.worker import Worker  # noqa: E402
 from scripts import lab_evidence  # noqa: E402
+from scripts.m1_context_latency import balance as supplier_balance  # noqa: E402
 from scripts.m1_live_flash_loop import (  # noqa: E402
     RecordingClient,
     load_langsmith_env,
@@ -106,6 +109,27 @@ SECRET_SOURCES = ("traces_search", "metrics_range_query")
 _LABEL_VALUES = re.compile(r"/api/v1/label/[A-Za-z_][A-Za-z0-9_]*/values")
 #: JSON spellings of ``/`` a source may leave in text (#319).
 ESCAPED_SLASH, ESCAPED_U002F = "\\/", "\\u002f"
+
+
+def read_balance(key, fetch=supplier_balance):
+    """The CNY account balance, or None when it cannot be read."""
+    try:
+        infos = fetch(key)["balance_infos"]
+        cny = next(item for item in infos if item.get("currency") == "CNY")
+        return Decimal(str(cny["total_balance"]))
+    except (OSError, ValueError, KeyError, TypeError, StopIteration, InvalidOperation):
+        return None
+
+
+def supplier_cost(before, after):
+    measured = before is not None and after is not None
+    return {
+        "source": "supplier_balance_delta",
+        "balance_before": None if before is None else str(before),
+        "balance_after": None if after is None else str(after),
+        "delta": str(before - after) if measured else None,
+        "status": "measured" if measured else "balance_unavailable",
+    }
 
 
 def clean(text, synthetic, credentials):
@@ -333,6 +357,7 @@ def execute(args):
     ]
     project = None
     key = MODEL_KEY
+    balance_before = None
     os.environ["OPSPILOT_TRACE"] = "off" if args.dry_check else "lab"
     os.environ["OPSPILOT_TOOL_PROFILE"] = "otel-demo"
     os.environ["OPSPILOT_OTEL_PROMETHEUS_URL"] = PROMETHEUS_URL
@@ -344,6 +369,7 @@ def execute(args):
         key = read_key(env_file)
         if not key:
             raise RuntimeError("MODEL_KEY_MISSING")
+        balance_before = read_balance(key)
         load_langsmith_env(env_file)
         credentials += [key] + [
             v
@@ -593,13 +619,11 @@ def execute(args):
             "report": report,
             "verdicts": verdicts,
             "counts": counts,
-            "cost": {
-                "source": "supplier_balance_delta",
-                "balance_before": None,
-                "balance_after": None,
-                "delta": None,
-                "status": "lead_to_fill" if not args.dry_check else "not_applicable",
-            },
+            "cost": (
+                {"source": "supplier_balance_delta", "status": "not_applicable"}
+                if args.dry_check
+                else supplier_cost(balance_before, read_balance(key))
+            ),
             "trace": trace,
             "synthetic_secret_sha256": [
                 sha256(s.encode()).hexdigest() for s in synthetic
