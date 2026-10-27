@@ -440,3 +440,51 @@ def test_only_the_comparison_cleaned_still_replays_the_samples(
     )
     assert replay.integrity == ("REPLAY_DATA_CLEANED",)
     assert replay.sample_evaluations
+
+
+def test_a_tampered_body_kept_beside_a_cleaned_one_is_still_reported(
+    release_harness,
+) -> None:
+    """Bot review #382: a cleaned row skips only its own hash; a row that
+    still holds its body is re-hashed, in samples and comparisons alike."""
+    _, observer, oid, _, _ = release_harness
+    context = pr4a._anomalous(release_harness)
+    ObserverLoop(
+        store=observer, source=pr4a.BeforeTelemetry(context), batch=1
+    ).poll_once()
+    history = {
+        **observer.release_history(oid),
+        "comparisons": observer.release_comparisons(oid),
+    }
+
+    def mixed(rows, tamper):
+        first, second, *rest = rows
+        cleaned = {**first, "raw": None, "payload_state": "cleaned"}
+        kept = {**second, "raw": bytes(second["raw"]) + (b" " if tamper else b"")}
+        return [cleaned, kept, *rest]
+
+    sample, *samples = history["samples"]
+    comparison, *comparisons = history["comparisons"]
+    for tamper in (False, True):
+        replay = replay_release_history(
+            {
+                **history,
+                "samples": [
+                    {**sample, "queries": mixed(sample["queries"], tamper)},
+                    *samples,
+                ],
+            }
+        )
+        assert "REPLAY_DATA_CLEANED" in replay.integrity
+        assert ("RAW_SHA256_MISMATCH" in replay.integrity) is tamper
+        replay = replay_release_history(
+            {
+                **history,
+                "comparisons": [
+                    {**comparison, "queries": mixed(comparison["queries"], tamper)},
+                    *comparisons,
+                ],
+            }
+        )
+        assert "REPLAY_DATA_CLEANED" in replay.integrity
+        assert ("COMPARISON_MISMATCH" in replay.integrity) is tamper

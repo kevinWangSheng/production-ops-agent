@@ -57,6 +57,21 @@ def _cleaned(rows: Any) -> bool:
     )
 
 
+def _retained_tampered(rows: Any) -> bool:
+    """#244: rows beside a cleaned one that still hold a body are re-hashed."""
+    for row in rows or ():
+        if row.get("payload_state") == "cleaned":
+            continue
+        raw = row.get("raw")
+        if raw is None:
+            return True
+        if sha256(raw if isinstance(raw, bytes) else bytes(raw)) != row.get(
+            "raw_sha256"
+        ):
+            return True
+    return False
+
+
 _AUDIT_ENDING_REASONS = {
     "pause": "authority_revoked",
     "resume": "authority_revoked",
@@ -382,6 +397,9 @@ def _replay_release_history(history: Mapping[str, object]) -> ReleaseReplay:
             # every other check (bindings, decision, status, audit, ending)
             # still runs; the verdict is unknown with DATA_CLEANED.
             cleaned = _cleaned(m["queries"])
+            if cleaned and _retained_tampered(m["queries"]):
+                issues.add("RAW_SHA256_MISMATCH")
+                issues.add("QUERY_MISMATCH")
             for q in m["queries"]:
                 if q.get("sample_id") != m["sample_id"]:
                     issues.add("SUBJECT_BINDING_MISMATCH")
@@ -1152,7 +1170,8 @@ def _comparison_issues(
             # own row here, its numbers cannot be redone
             stored = c["comparison"]
             if (
-                not isinstance(stored, Mapping)
+                _retained_tampered(c["queries"])
+                or not isinstance(stored, Mapping)
                 or stored.get("status") != c["status"]
                 or not c["decision_at"] <= c["recorded_at"]
             ):
