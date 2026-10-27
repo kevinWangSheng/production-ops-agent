@@ -345,3 +345,52 @@ RUNTIME_GRANTS: Mapping[str, Mapping[str, frozenset[str]]] = {
         "opspilot_release_audit": NONE,
     },
 }
+
+RETENTION_ROLE = "opspilot_retention"
+
+#: The raw payload columns the retention cleanup may set to NULL (#244, C3
+#: section 11), each with its ``payload_state``. Only these five.
+RETENTION_PAYLOADS: Mapping[str, str] = {
+    "opspilot_alert_deliveries": "alert_json",
+    "opspilot_evidence": "raw",
+    "opspilot_observation_signal_readings": "raw",
+    "opspilot_release_comparison_queries": "raw",
+    "opspilot_release_query_results": "raw",
+}
+
+#: What the retention cleanup group role may do (#244, migration 0023). Kept
+#: apart from ``RUNTIME_GRANTS``: no web, worker or Observer process holds it,
+#: and its login is made outside the repository like theirs. Same notation and
+#: the same rule that every relation has an entry. The determination reads
+#: (incident, Run, observation, postmortem and knowledge state; the release
+#: and alert links from a payload row to its incident) are table-wide SELECT;
+#: the only write is UPDATE of a payload column and its ``payload_state``,
+#: and the 0023 guard trigger narrows that to present -> cleaned with the
+#: payload set to NULL (SQLSTATE 42501 otherwise). No INSERT, DELETE,
+#: TRUNCATE, and nothing on the F13 tables but SELECT.
+RETENTION_GRANTS: Mapping[str, frozenset[str]] = (
+    {relation: NONE for relation in RUNTIME_GRANTS[WEB_ROLE]}
+    | {
+        "alembic_version": S,
+        "opspilot_incidents": S,
+        "opspilot_runs": S,
+        "opspilot_observation_sessions": S,
+        "opspilot_observation_samples": S,
+        "opspilot_observation_endings": S,
+        "opspilot_postmortems": S,
+        "opspilot_postmortem_versions": S,
+        "opspilot_postmortem_conclusions": S,
+        "opspilot_postmortem_generation_jobs": S,
+        "opspilot_postmortem_generation_attempts": S,
+        "opspilot_knowledge_entries": S,
+        "opspilot_knowledge_revisions": S,
+        "opspilot_knowledge_revision_states": S,
+        "opspilot_release_observations": S,
+        "opspilot_release_incident_links": S,
+        "opspilot_release_comparisons": S,
+    }
+    | {
+        relation: _g("SELECT", f"UPDATE({','.join(sorted((column, 'payload_state')))})")
+        for relation, column in RETENTION_PAYLOADS.items()
+    }
+)
