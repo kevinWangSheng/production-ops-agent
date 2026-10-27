@@ -464,7 +464,9 @@ def test_pr1_retention_role_has_only_declared_columns_and_can_clean_one_row(
         ):
             with pytest.raises(psycopg.Error) as refused:
                 with psycopg.connect(retention_dsn) as conn:
-                    conn.execute(statement, (evidence_id,))
+                    conn.execute(
+                        statement, (evidence_id,) if "%s" in statement else None
+                    )
             assert (
                 getattr(refused.value, "sqlstate", None) == "42501"
                 or "refus" in str(refused.value).lower()
