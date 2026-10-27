@@ -45,6 +45,8 @@ from types import TracebackType
 from typing import TYPE_CHECKING, Any, Literal, TypeVar
 from urllib.parse import urlsplit
 
+from opspilot import redaction
+
 if TYPE_CHECKING:
     from opentelemetry.sdk.trace import TracerProvider
     from opentelemetry.sdk.trace.export import SpanExporter
@@ -121,19 +123,15 @@ _EXPORT_BATCH = 512
 _CLUSTER_SUFFIXES = (".svc", ".svc.cluster.local")
 # Generic scrub applied to every string attribute at the single write point
 # (independent review round 3, PR #108). (a) exact values of credential-like
-# environment variables; (b) ``key: value`` / ``key=value`` credential text,
-# bearer tokens and well-known key shapes. ``scripts/check_secrets.py`` has no
-# Python pattern list to share (it runs gitleaks' Go-side default rules), so
-# the text patterns live here.
+# environment variables; (b) credential text, through the shared
+# ``redaction.redact_credentials`` and no pattern of its own, so the trace
+# fallback covers whatever the shared policy covers (#357, Q15-A); (c)
+# well-known provider key shapes, which carry no naming context the shared
+# policy could match on.
 _SECRET_ENV_NAMES = frozenset({"LANGSMITH_API_KEY", "DEEPSEEK_API_KEY"})
 _SECRET_ENV_SUFFIX = re.compile(r"(_API_KEY|_TOKEN|_SECRET|_PASSWORD)$")
 _MIN_SECRET_LEN = 8
 _REDACTED = "[REDACTED]"
-_CREDENTIAL_TEXT = re.compile(
-    r"(?i)\b(authorization|bearer|api[_-]?key|token|secret|password|passwd)"
-    r"(\s*[:=]\s*)(\S+)"
-)
-_BEARER_TEXT = re.compile(r"(?i)\b(bearer)(\s+)([A-Za-z0-9._~+/=-]{8,})")
 _KEY_SHAPES = re.compile(r"\b(?:sk-[A-Za-z0-9_-]{16,}|lsv2_[A-Za-z0-9_]{16,})\b")
 
 
@@ -246,8 +244,8 @@ def _scrub(text: str) -> str:
     for value in _secret_values():
         if value in text:
             text = text.replace(value, _REDACTED)
-    text = _CREDENTIAL_TEXT.sub(lambda m: m.group(1) + m.group(2) + _REDACTED, text)
-    text = _BEARER_TEXT.sub(lambda m: m.group(1) + m.group(2) + _REDACTED, text)
+    # Looked up at call time, so the shared policy is the one in force.
+    text = redaction.redact_credentials(text)
     return _KEY_SHAPES.sub(_REDACTED, text)
 
 

@@ -789,10 +789,10 @@ def test_round2_3_tool_call_arguments_redact_credential_like_keys():
     ):
         assert leaked not in text
     assert "visible-value" in text and "rate(http_errors[5m])" in text
-    assert "[REDACTED]" in text
+    assert "[REDACTED_CREDENTIAL]" in text
     # Unparseable arguments still pass the generic scrub (review round 3).
     assert "fake-arg-plain-4040" not in text
-    assert "Authorization=[REDACTED]" in text and "expr=up" in text
+    assert "Authorization=[REDACTED_CREDENTIAL]" in text and "expr=up" in text
 
 
 # -- independent review round 3 (2026-10-05): one generic scrub ---------------
@@ -842,7 +842,7 @@ def test_round3_env_secret_values_and_credential_text_never_reach_spans(monkeypa
         assert leaked not in text, leaked
     assert "keep=visible" in text
     assert "abc" in text  # short env values are not treated as secrets
-    assert "Authorization: [REDACTED]" in text
+    assert "Authorization: [REDACTED_CREDENTIAL]" in text
 
 
 def test_round3_scrub_is_the_single_write_path():
