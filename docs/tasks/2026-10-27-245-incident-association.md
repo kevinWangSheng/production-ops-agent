@@ -46,6 +46,10 @@ F12 只做了「假设纠正」，事故挂错目标或两条告警其实是同�
   - `merge_into` 不进动作集合（PR-2）。
 - 2026-10-27：PR-1 有界真实 Run（kind，[run.md](../evidence/f12-245-rebind-live/run.md)，[summary.json](../evidence/f12-245-rebind-live/summary.json) 14/14 通过）：A=`checkout-misbound` → 改目标到 B=`m0-otel-20260909` → 追问 → 新 Run 输入绑定 B、是 fresh 输入，对 B 的 21 次只读查询（17 ok / 4 no_data）后发布结论；旧 Run cancelled，会话 authority_revoked。[trace](https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/7037e7fc-a4f9-466c-9f3b-612b77c10e7d/r/00000000-0000-0000-a998-c462d3287004?poll=true)。费用 0.10 CNY。限制：otel-demo 网关只登记一个真实目标，A 没有后端，A 上的 Run 在 worker 启动前就被取消。
 
+- 独立验收测试（PR-1）：Codex gpt-6.1-sol（容量中断两次后由 gpt-6-astra 续完），`tests/acceptance/test_245_rebind_target.py` 15 例，另按合同变更改 F7 第 1 步动作集合与 #347 head/授权指纹钉值；main 上 14 红 1 绿，本分支全绿。lead 按 #378 公开接口裁定表单字段 `to_target`、审计在 `opspilot_controls.payload`、页面标记 `#current-target` / `.rebind`；修一处测试构造错误（观察会话改由 `ObservationStore` 读取）。
+- 独立审查（PR-1）：Codex gpt-6-astra。首轮 3 阻塞：拒绝路径先提交了目标登记、幂等重放排在同目标检查之后、observing_recovery 起点的结束记录未记 `observation_ended_unconfirmed`。前两条以先红后绿修复（c166b14b）；第三条 lead 裁决不改：`ending_consistent` 要求撤销类结束记录 transition 为 NULL、前后 lifecycle 相同，close 与续开先例同写法，G2 的领域边指事故行 observing_recovery→open。复验两轴 0 发现。
+- lead 接受的超字面改动：暂停审计时间线的目标集合 = 当前目标 + 改目标审计行的 `from_target`（G11 字面只要求动作集合），避免改目标后旧目标的暂停记录脱出时间线；审查未提异议。
+
 ## 下一步与交接
 
 - 派 PR-1 实现与独立测试作者。预审未确认项 1–7（事件投影白名单、审计投影版本、F11 消费路径指针跟随、`_alert_rebuild` 取值来源等）由实现者核对，属可逆细节的写一行理由。
