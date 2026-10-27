@@ -4,7 +4,7 @@ The lab database is at head (``conftest``). Covered: ``payload_state`` on the
 five raw payload tables (backfill, insert paths, consistency), ``closed_at``
 written and cleared by close / reopen, the ``opspilot_retention`` catalog
 equal to ``RETENTION_GRANTS`` while web / worker / Observer stay what they
-were at 0021, the restricted cleaning update (and every refusal around it),
+were at 0022, the restricted cleaning update (and every refusal around it),
 the release immutability exemption, and the downgrade refusal while a
 ``cleaned`` row exists.
 """
