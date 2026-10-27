@@ -7,7 +7,7 @@
 ## 1. 结论
 
 1. **三家都建议先拿 LLM judge 和人工标注对齐，再用于判分（是建议与流程，不是强制门槛）；三家的官方文档都没有给出数值门槛。** 本项目的硬门槛来自 C3 与 F1 第 5 步，不来自厂商。 Anthropic 只写「closely calibrated」，LangSmith 把 alignment score 定义为与专家一致的百分比、建议至少 20 例且 0/1 平衡，但不给门槛。唯一的数字来自 Braintrust 一篇比较平台的营销文章，原话是「below 80%」需要改进，属于经验值。我们的 46/48（95.8%），再加零误通过和逐诊断包含，严于所有来源。Q7 把门槛收窄到 verdict 一致率，方向有来源支持（LangSmith 的 alignment 就是按二值标签算的一致率）。
-2. **「完全照上游、不做事前校准」这个替代方案没有任何厂商来源支持。** 三家都把与人工校准写成 judge 的前提。HolmesGPT（`a0009195`）没有事前校准，靠固定 judge 模型、10 次迭代和事后三类失败分诊（H2–H4）。
+2. **「完全照上游、不做事前校准」这个替代方案没有任何厂商来源支持。** 三家都建议 judge 先与人工校准（厂商建议，不是强制门槛；本项目的硬门槛来自 C3 与 F1 第 5 步）。HolmesGPT（`a0009195`）没有事前校准，靠固定 judge 模型、10 次迭代和事后三类失败分诊（H2–H4）。
 3. **Anthropic 明确建议不要评路径、要评结果，对多部分任务给部分分，每个维度各用一个独立 judge。** 这条建议针对的是被测 Agent 的执行路径；把它类推到 judge 校准里的「逐诊断精确包含」规则属推断，不直接支持 #312 方案 1。另注：用户 2026-10-22 已裁决 P7 r3（PR #300 分支），把 quote 精确比较改为按 location 匹配。
 4. **两人独立判定一致，是题目本身清晰的标准。** Anthropic 原话是「two domain experts would independently reach the same pass/fail verdict」。P7 的两份盲标之间的分歧，可以先当作题目或标签有歧义的信号，不必全部交用户逐字段裁定（推断）。
 5. **生产监控、A/B 测试和用户反馈飞轮以真实用户与生产流量为前提**，OpsPilot 没有，这些不适用；平台的在线评估器也可以对已上传的实验 trace 运行，但我们的判分在评测侧离线完成，暂不需要。可以移植的只有一点：把 lab 中观察到的真实失败转成开发集用例。
@@ -102,7 +102,7 @@
 | task/trial/grader 结构 | A1-1、L1 | 任务、多次尝试、评分者、最终状态 | 场景 + attempt 槽位 + gate/judge + Outcome（`docs/tasks/2026-10-12-eval-suite.md:22-27,47`） | 适用（已有） | 结构一致 |
 | 评结果而非路径 | A1-2、L3 | 路径评分过于僵硬 | 主判据看 Outcome 和证据，不看调用顺序（`AGENTS.md`「验证与汇报」）；但 P7 要求 judge 枚举出的 `(location, quote)` 必须包含标签（`opspilot/evaluation/calibration_flow.py:687-692,756-757`） | 部分适用 | 被测 Agent 已按结果评；类推到 judge 校准属推断 |
 | 代码、模型、人工三层 | A1-3、A2-1、B5 | 能用确定性检查的都交给代码；judge 只判语义 | D6 r6：`overall = deterministic_pass AND judge_pass`（`docs/tasks/2026-10-12-eval-suite-contract.md:74-75`） | 适用（已有） | 与 B5 的分工一致 |
-| judge 校准方法与门槛 | A1-4、B1、B6、B7、L5 | 必须与人工对齐；指标是一致率或 Kappa；样本 20 例到 100–200 例；官方文档无门槛，营销文的经验值是 80% | 24 项 × 2 次，≥46/48，负例零误通过，外加逐诊断包含，任一观察失败即整轮不合格（`docs/tasks/2026-10-12-eval-suite.md:44`；`calibration_flow.py:768-797`）；p7-formal-2 结果为 `no_baseline`（`docs/tasks/2026-10-18-eval-p7-calibration.md:64`） | 部分适用 | 要校准，这点有来源支持；门槛与附加规则严于所有来源 |
+| judge 校准方法与门槛 | A1-4、B1、B6、B7、L5 | 建议与人工对齐；指标是一致率或 Kappa；样本 20 例到 100–200 例；官方文档无门槛，营销文的经验值是 80% | 24 项 × 2 次，≥46/48，负例零误通过，外加逐诊断包含，任一观察失败即整轮不合格（`docs/tasks/2026-10-12-eval-suite.md:44`；`calibration_flow.py:768-797`）；p7-formal-2 结果为 `no_baseline`（`docs/tasks/2026-10-18-eval-p7-calibration.md:64`） | 部分适用 | 要校准，这点有来源支持；门槛与附加规则严于所有来源 |
 | judge 的 Unknown 出口 | A1-5 | 允许 judge 返回 Unknown | P6 规定 error/invalid 都判不通过，没有 Unknown（`eval-suite.md:43`） | 部分适用 | 可增加 `unknown` 类别，计入失败分母、单独列出，交人工复核（推断） |
 | 每维度一个 judge | A1-6、B4、A2-2 | 每个维度用独立 judge 或 scorer | judge 只判一个维度（因果支持），其余维度由 gate 负责 | 适用（已有） | — |
 | 部分分 | A1-7、B4 | 多部分任务给部分分 | overall 为二值；summary 已经记录 gate 分项（`eval-suite-contract.md:157`） | 部分适用 | 门槛仍保持二值，聚合表可加各分项通过率（推断） |
