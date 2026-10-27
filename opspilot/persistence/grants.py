@@ -366,15 +366,18 @@ RETENTION_PAYLOADS: Mapping[str, str] = {
 #: and alert links from a payload row to its incident) are table-wide SELECT;
 #: the only write is UPDATE of a payload column and its ``payload_state``,
 #: and the 0023 guard trigger narrows that to present -> cleaned with the
-#: payload set to NULL (SQLSTATE 42501 otherwise). No INSERT, DELETE,
-#: TRUNCATE, and nothing on the F13 tables but SELECT.
+#: payload set to NULL (SQLSTATE 42501 otherwise); plus lock-only UPDATE on
+#: one column of incidents, Runs and observation sessions. No INSERT, DELETE,
+#: TRUNCATE, and nothing on the F13 tables but SELECT (no lock either).
 RETENTION_GRANTS: Mapping[str, frozenset[str]] = (
     {relation: NONE for relation in RUNTIME_GRANTS[WEB_ROLE]}
     | {
         "alembic_version": S,
-        "opspilot_incidents": S,
-        "opspilot_runs": S,
-        "opspilot_observation_sessions": S,
+        # lock-only (contract r2): FOR UPDATE needs UPDATE on some column;
+        # the 0023 ``retention_lock_guard`` refuses every real UPDATE
+        "opspilot_incidents": _g("SELECT", "UPDATE(incident_id)"),
+        "opspilot_runs": _g("SELECT", "UPDATE(run_id)"),
+        "opspilot_observation_sessions": _g("SELECT", "UPDATE(session_id)"),
         "opspilot_observation_samples": S,
         "opspilot_observation_endings": S,
         "opspilot_postmortems": S,
@@ -394,3 +397,20 @@ RETENTION_GRANTS: Mapping[str, frozenset[str]] = (
         for relation, column in RETENTION_PAYLOADS.items()
     }
 )
+
+#: The 0023 guard triggers that narrow each retention UPDATE grant (SQLSTATE
+#: 42501), like ``TRIGGER_GUARDED`` for the runtime roles: the payload tables
+#: allow only present -> cleaned with the payload set to NULL; the incident,
+#: Run and session grants exist only for row locks (contract r2: the cleanup
+#: locks incident -> Run/session and rechecks), so every real UPDATE by a
+#: retention member is refused.
+RETENTION_TRIGGER_GUARDED: Mapping[str, tuple[str, str]] = {
+    relation: ("payload_clean_guard", RETENTION_ROLE) for relation in RETENTION_PAYLOADS
+} | {
+    relation: ("retention_lock_guard", RETENTION_ROLE)
+    for relation in (
+        "opspilot_incidents",
+        "opspilot_observation_sessions",
+        "opspilot_runs",
+    )
+}

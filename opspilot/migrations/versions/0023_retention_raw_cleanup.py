@@ -32,7 +32,11 @@ the cleanup CLI (PR-2) and the cleaned read side (PR-3) come later.
 * ``opspilot_retention``: a ``NOLOGIN`` group, reused untouched only when it is
   a plain group (same rule as 0011), granted ``RETENTION_GRANTS``: SELECT for
   the determination, UPDATE of the payload column and ``payload_state`` on
-  the five tables, nothing else. A guard trigger narrows that UPDATE to
+  the five tables, lock-only UPDATE of one column of incidents, Runs and
+  observation sessions (contract r2: the cleanup locks incident -> Run /
+  session and rechecks; ``retention_lock_guard`` refuses every real update by
+  a member), nothing else -- no F13 lock or write. A guard trigger narrows the
+  payload UPDATE to
   present -> cleaned with the payload set to NULL and every other column
   unchanged (42501 otherwise); superusers and the owner pass on the three
   runtime tables. The release tables stay append-only for every role, the
@@ -64,15 +68,17 @@ PAYLOADS = {
     "opspilot_release_comparison_queries": "raw",
     "opspilot_release_query_results": "raw",
 }
+# lock-only grants (contract r2): the cleanup locks these rows FOR UPDATE
+LOCKED = ("opspilot_incidents", "opspilot_runs", "opspilot_observation_sessions")
 RELEASE = {
     "opspilot_release_query_results": "release_query",
     "opspilot_release_comparison_queries": "release_comparison_query",
 }
 GRANTS: dict[str, tuple[str, ...]] = {
     "alembic_version": ("SELECT",),
-    "opspilot_incidents": ("SELECT",),
-    "opspilot_runs": ("SELECT",),
-    "opspilot_observation_sessions": ("SELECT",),
+    "opspilot_incidents": ("SELECT", "UPDATE(incident_id)"),
+    "opspilot_runs": ("SELECT", "UPDATE(run_id)"),
+    "opspilot_observation_sessions": ("SELECT", "UPDATE(session_id)"),
     "opspilot_observation_samples": ("SELECT",),
     "opspilot_observation_endings": ("SELECT",),
     "opspilot_postmortems": ("SELECT",),
@@ -172,6 +178,19 @@ FUNCTIONS = """
       END IF;
       RAISE insufficient_privilege USING MESSAGE = pg_catalog.format(
         'only opspilot_retention may clean a present payload of %s, and nothing else', TG_TABLE_NAME);
+    END
+    $$;
+    CREATE FUNCTION opspilot_retention_lock_guard() RETURNS trigger
+    LANGUAGE plpgsql SET search_path = pg_catalog, pg_temp AS $$
+    BEGIN
+      IF pg_catalog.pg_has_role(current_user, 'opspilot_retention', 'MEMBER')
+        AND NOT (SELECT r.rolsuper FROM pg_catalog.pg_roles r WHERE r.rolname = current_user)
+        AND current_user <> (SELECT pg_catalog.pg_get_userbyid(c.relowner) FROM pg_catalog.pg_class c WHERE c.oid = TG_RELID)
+      THEN
+        RAISE insufficient_privilege USING MESSAGE = pg_catalog.format(
+          'opspilot_retention may lock %s rows but not update them', TG_TABLE_NAME);
+      END IF;
+      RETURN NEW;
     END
     $$;
     CREATE FUNCTION opspilot_release_update_gate() RETURNS trigger
@@ -275,6 +294,12 @@ def upgrade() -> None:
               WHEN (OLD.{column} IS DISTINCT FROM NEW.{column} OR OLD.payload_state IS DISTINCT FROM NEW.payload_state)
               EXECUTE FUNCTION opspilot_payload_clean_guard('{column}', 'runtime');
             """)
+    for table in LOCKED:
+        statements.append(f"""
+        CREATE TRIGGER retention_lock_guard BEFORE UPDATE ON {table} FOR EACH ROW
+          WHEN (pg_catalog.pg_has_role(current_user, '{ROLE}', 'MEMBER'))
+          EXECUTE FUNCTION opspilot_retention_lock_guard();
+        """)
     for relation, privileges in GRANTS.items():
         statements.extend(_privilege("GRANT", p, relation) for p in privileges)
     op.execute("\n".join(statements))
@@ -303,6 +328,8 @@ def downgrade() -> None:
     statements = [f"REVOKE USAGE ON SCHEMA public FROM {ROLE};"]
     for relation, privileges in GRANTS.items():
         statements.extend(_privilege("REVOKE", p, relation) for p in privileges)
+    for table in LOCKED:
+        statements.append(f"DROP TRIGGER retention_lock_guard ON {table};")
     for table, column in PAYLOADS.items():
         statements.append(f"""
         DROP TRIGGER payload_clean_guard ON {table};
@@ -329,6 +356,7 @@ def downgrade() -> None:
     statements.append(f"""
     DROP TRIGGER opspilot_incident_closed_at ON opspilot_incidents;
     ALTER TABLE opspilot_incidents DROP COLUMN closed_at;
+    DROP FUNCTION opspilot_retention_lock_guard();
     DROP FUNCTION opspilot_release_update_gate();
     DROP FUNCTION opspilot_payload_clean_guard();
     DROP FUNCTION opspilot_payload_state_insert();

@@ -24,7 +24,11 @@ from psycopg.conninfo import make_conninfo
 from opspilot import schema
 from opspilot.observer.loop import ObserverLoop
 from opspilot.persistence import DurableStore
-from opspilot.persistence.grants import RETENTION_GRANTS, RETENTION_ROLE
+from opspilot.persistence.grants import (
+    RETENTION_GRANTS,
+    RETENTION_ROLE,
+    RETENTION_TRIGGER_GUARDED,
+)
 from opspilot.web.evidence import DurableEvidenceStore
 from scripts.m0.postgres_lab import DSN
 from tests.f13_acceptance_support import seed_upstream
@@ -433,6 +437,66 @@ def test_retention_refuses_everything_but_the_cleaning_update(
             (psycopg.errors.InsufficientPrivilege, psycopg.errors.CheckViolation)
         ):
             conn.execute(statement, params)
+
+
+LOCKED = {
+    "opspilot_incidents": "incident_id",
+    "opspilot_runs": "run_id",
+    "opspilot_observation_sessions": "session_id",
+}
+
+
+def test_retention_may_lock_incident_run_and_session_rows_but_never_update_them(
+    retention_dsn,
+) -> None:
+    """Contract r2: lock-only UPDATE on one column of each, for the cleanup's
+    incident -> run/session lock order; any real update is refused."""
+    incident = seed_upstream(DSN)
+    for table, column in LOCKED.items():
+        where = sql.SQL("WHERE {} = %s").format(
+            sql.Identifier("incident_id" if table != "opspilot_incidents" else column)
+        )
+        with psycopg.connect(retention_dsn) as conn:
+            locked = conn.execute(
+                sql.SQL("SELECT {} FROM {} ").format(
+                    sql.Identifier(column), sql.Identifier(table)
+                )
+                + where
+                + sql.SQL(" FOR UPDATE"),
+                (incident,),
+            ).fetchall()
+            assert locked, table
+        with psycopg.connect(retention_dsn) as conn:
+            with pytest.raises(psycopg.errors.InsufficientPrivilege):
+                conn.execute(
+                    sql.SQL("UPDATE {} SET {} = {} ").format(
+                        sql.Identifier(table),
+                        sql.Identifier(column),
+                        sql.Identifier(column),
+                    )
+                    + where,
+                    (incident,),
+                )
+    # the F13 tables get no lock grant: no F13 write privilege at all
+    with psycopg.connect(retention_dsn) as conn:
+        with pytest.raises(psycopg.errors.InsufficientPrivilege):
+            conn.execute("SELECT 1 FROM opspilot_postmortems FOR SHARE")
+
+
+def test_the_retention_guard_triggers_named_next_to_the_grants_exist() -> None:
+    with psycopg.connect(DSN) as conn:
+        for table, (trigger, role) in RETENTION_TRIGGER_GUARDED.items():
+            assert role == RETENTION_ROLE
+            assert conn.execute(
+                "SELECT count(*) FROM pg_trigger WHERE tgrelid=%s::regclass "
+                "AND tgname=%s",
+                (table, trigger),
+            ).fetchone() == (1,), table
+    assert set(RETENTION_TRIGGER_GUARDED) == {
+        table
+        for table, held in RETENTION_GRANTS.items()
+        if any(p.startswith("UPDATE") for p in held)
+    }
 
 
 def test_a_cleaned_payload_is_never_restored(retention_dsn) -> None:
