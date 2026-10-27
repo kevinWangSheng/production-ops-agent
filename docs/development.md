@@ -242,6 +242,7 @@ A/B/C批次是合成机制证据；后续M0-01已有受批准合同约束的live
 - 数据库由创建该专属实例的任务worktree中的 `.venv/bin/python -m scripts.m0.postgres_lab start/stop` 控制；先核对[资源与归属](evidence/m0-b/results.md)。本机实验使用PostgreSQL17.9，专属55431及各自worktree的tmp/m0-b/postgres，数据始终保留；不要在另一个worktree同时创建同端口实例。原生配置不是容器硬资源限额，不证明产品数据库身份隔离。
 - 数据库由所属worktree启动并核对归属后，执行 `M0_B_POSTGRES=1 .venv/bin/python -m pytest tests/integration -q`；数据库重启测试只从实例所属工作区额外设置 `M0_B_RESTART=1`。任务完成后由该实例所属脚本停止，不删除数据。
 - 秘密扫描：`python3 scripts/install_gitleaks.py --directory tmp/gitleaks` 下载固定8.30.1官方发行包并校验固定SHA256；已存在目标拒绝覆盖，可直接复用已核查binary。支持macOS arm64/Linux x86_64。
+- 推送前：`make secrets-branch` 只扫本分支相对 `origin/main` 的新提交（gitleaks 装在 git 公共目录，各 worktree 共用）；`make hooks` 把它装成 pre-push。CI 用 `fetch-depth: 0` 加全部 refs 扫描，误报一旦推送，所有 PR 的 CI 都会失败，只能从 main 单提交重建分支并删除原远程分支（#367 → #368）。测试里的合成凭据用低熵值（如 `aaaaaaaa357`）。
 - `python3 scripts/check_secrets.py --binary tmp/gitleaks/gitleaks`先运行实际合成泄漏/干净样本自检，再分别扫描 Git 索引暂存 blob、已跟踪路径的当前工作区快照，以及全部本地 Git refs 历史。索引内容按列举时固定的 blob ID 读取，工作区后续清理或删除不会掩盖已暂存内容；未暂存更改仍单独检查。未合并的索引、symlink/submodule 与误暂存私有配置均拒绝；不宣称检查与后续 commit 对并发 git add 原子绑定。使用默认规则并禁用仓库抑制/inline allow；仅对指定证据manifest的两个已核实源码SHA256设规则+路径+值AND例外，并实测同路径canary/同值不同路径仍拒绝；输出只含固定结果，发现/扫描错误非零退出。Git未跟踪/ignored私有文件不读取；误跟踪.env直接拒绝，不读内容。扫描当前新增文件前需按任务范围`git add`，不能把漏扫未跟踪源码误当安全证明。
 
 CI 的checks增加同一扫描与自检；m0-postgres使用官方17.9固定digest、1CPU/512MiB的临时合成服务，执行真实数据库集成（不执行原生实例restart）。无业务Secrets、模型/trace/部署。该服务账本没有真实额度权威；新建CI库不授权付费。维护首次源代码状态/结果见[汇合任务](tasks/2026-09-08-m0-integration.md)。

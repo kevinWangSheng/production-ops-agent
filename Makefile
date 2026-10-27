@@ -1,4 +1,4 @@
-.PHONY: setup doctor check test migrate acceptance red-proof eval-structural
+.PHONY: setup doctor check test migrate acceptance red-proof eval-structural secrets-branch hooks
 
 setup:
 	UV_PROJECT_ENVIRONMENT=.venv uv sync --locked --python "$${UV_PYTHON:-3.12}"
@@ -28,6 +28,14 @@ acceptance:
 	.venv/bin/python scripts/m1_acceptance.py
 	test -x tmp/gitleaks/gitleaks || python3 scripts/install_gitleaks.py --directory tmp/gitleaks
 	python3 scripts/check_secrets.py --binary tmp/gitleaks/gitleaks
+
+# 只扫本分支相对 origin/main 新增的提交（CI 扫全部分支历史，误报一旦推送只能重建分支）。
+secrets-branch:
+	sh scripts/branch_secrets.sh
+
+# 把 pre-push 设为推送前执行 secrets-branch（对所有 worktree 生效）。
+hooks:
+	git config core.hooksPath scripts/git-hooks
 
 red-proof:
 	.venv/bin/python scripts/check_red_proof.py --base origin/main
