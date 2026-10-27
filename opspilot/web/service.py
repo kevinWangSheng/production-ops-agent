@@ -185,6 +185,7 @@ ControlAction = Literal[
     "close",
     "reopen",
     "rebind_target",
+    "merge_into",
 ]
 #: "The incident was handled outside the system": increments the control
 #: generation, authorizes an observation session and moves the incident to
@@ -200,6 +201,10 @@ TAKEOVER = "takeover"
 #: and the lifecycle returns to ``open``; no Run starts. A later successor
 #: gets a fresh input over the new target (G7).
 REBIND_TARGET = "rebind_target"
+#: Merge this incident into a surviving incident of the same target (#245
+#: U3/U4): this one is closed with a pointer (generation steps, observation
+#: revoked, unfinished Runs cancelled); the survivor only takes one event.
+MERGE_INTO = "merge_into"
 CONTROL_ACTIONS: frozenset[str] = frozenset(
     {
         "follow_up",
@@ -213,6 +218,7 @@ CONTROL_ACTIONS: frozenset[str] = frozenset(
         "close",
         "reopen",
         REBIND_TARGET,
+        MERGE_INTO,
     }
 )
 #: Report claim categories in page order; chart order follows it.
@@ -241,10 +247,14 @@ def available_actions(snapshot: Mapping[str, Any]) -> list[str]:
     concluded = incident.concluded or incident.state in {"completed", "cancelled"}
     run_state = snapshot["run"]["state"]
     actions = {TAKEOVER}
+    merged = getattr(incident, "merged_into_incident_id", None) is not None
     if lifecycle in {"open", "observing_recovery", "resolved"}:
         actions.add("close")
-    if lifecycle in {"resolved", "closed"}:
+    if lifecycle in {"resolved", "closed"} and not merged:
         actions.add("reopen")
+    if not merged:
+        # #245 G4/G5: any incident with a Run may be merged once.
+        actions.add(MERGE_INTO)
     if lifecycle in {"open", "observing_recovery"} and snapshot.get("rebind_targets"):
         # #245 U2: only these lifecycles take a rebind, and only to another
         # registry key.
@@ -777,6 +787,7 @@ class Workbench:
         text: str | None = None,
         revision: str | None = None,
         to_target: str | None = None,
+        into_incident_id: str | None = None,
     ) -> ControlResult:
         """Apply one human decision through the ledger/audit idempotency path.
 
@@ -787,8 +798,10 @@ class Workbench:
         decision 2026-10-07). ``to_target`` belongs to ``rebind_target``
         (#245 U2): a key of the target registry (``OPSPILOT_TARGET_IDENTITIES``),
         never a name from a model or evidence; another key, or the current
-        target, is refused before anything is written. Each is refused on
-        an action that does not take it.
+        target, is refused before anything is written. ``into_incident_id``
+        belongs to ``merge_into`` (#245 U3): the surviving incident's id;
+        ``text`` may annotate the merge. Each is refused on an action that
+        does not take it.
         """
         if action not in CONTROL_ACTIONS:
             raise WorkbenchError("INVALID_ACTION")
@@ -810,12 +823,24 @@ class Workbench:
             raise WorkbenchError("INVALID_INPUT") from None
         if action in _TEXT_ACTIONS and text is None:
             raise WorkbenchError("TEXT_REQUIRED")
-        if action not in {*_TEXT_ACTIONS, REBIND_TARGET} and text is not None:
+        if (
+            action not in {*_TEXT_ACTIONS, REBIND_TARGET, MERGE_INTO}
+            and text is not None
+        ):
             raise WorkbenchError("TEXT_NOT_ALLOWED")
         if action == REBIND_TARGET and to_target is None:
             raise WorkbenchError("TARGET_REQUIRED")
         if action != REBIND_TARGET and to_target is not None:
             raise WorkbenchError("TARGET_NOT_ALLOWED")
+        if action == MERGE_INTO and into_incident_id is None:
+            raise WorkbenchError("INTO_INCIDENT_REQUIRED")
+        if action != MERGE_INTO and into_incident_id is not None:
+            raise WorkbenchError("INTO_INCIDENT_NOT_ALLOWED")
+        if into_incident_id is not None:
+            try:
+                into_incident_id = str(UUID(into_incident_id))
+            except ValueError:
+                raise WorkbenchError("INVALID_INPUT") from None
         if to_target is not None and (to_target not in self._registry_keys()):
             raise WorkbenchError("UNKNOWN_TARGET")
         if action == REGISTER_REMEDIATION and revision is None:
@@ -846,6 +871,8 @@ class Workbench:
             intent["revision"] = revision
         if to_target is not None:
             intent["to_target"] = to_target
+        if into_incident_id is not None:
+            intent["into_incident_id"] = into_incident_id
         # Intent first: the operator's text is durable before the store
         # commits the decision, so neither a crash nor event-log retention
         # can lose what the next Run must read.
@@ -867,6 +894,7 @@ class Workbench:
                 revision,
                 key,
                 to_target=to_target,
+                into_incident_id=into_incident_id,
             )
         except PersistenceError as exc:
             code = str(exc)
@@ -936,6 +964,7 @@ class Workbench:
         key: str | None = None,
         *,
         to_target: str | None = None,
+        into_incident_id: str | None = None,
     ) -> tuple[int, UUID | None]:
         # The run id is derived from ``expected + 1`` so a stale form either
         # conflicts on identity or replays the very run it already created;
@@ -1005,6 +1034,10 @@ class Workbench:
                 # replay check (#378 review).
                 assert to_target is not None
                 payload["to_target"] = to_target
+            if action == MERGE_INTO:
+                # The store checks the survivor under both row locks.
+                assert into_incident_id is not None
+                payload["into_incident_id"] = into_incident_id
             for attempt in range(3):
                 renewal: dict[str, Any] = {}
                 if action in _TEXT_ACTIONS:
@@ -1917,6 +1950,10 @@ class Workbench:
                 "to_target"
             ) != intent.get("to_target"):
                 return False
+            if intent["action"] == MERGE_INTO and payload.get(
+                "into_incident_id"
+            ) != intent.get("into_incident_id"):
+                return False
             return text is None or bool(payload.get("text") == text)
         if text is None:
             return False
@@ -2372,12 +2409,19 @@ class Workbench:
             "alert": self._alert_view(incident_id),
             # #245 G8: the bound target now, every rebind with its database
             # time, and the registry keys a rebind may name.
+            # #245 G8: incidents merged into this one (the other way is
+            # ``incident.merged_into_incident_id``).
+            "merged_from": self._merged_from(incident_id),
             "current_target": self._target_uid(summary),
             "rebinds": self._rebinds(incident_id),
             "rebind_targets": [
                 uid for uid in self._registry_keys() if uid != self._target_uid(summary)
             ],
         }
+
+    def _merged_from(self, incident_id: UUID) -> list[str]:
+        reader = getattr(self.incidents, "merged_from", None)
+        return [] if reader is None else [str(i) for i in reader(incident_id)]
 
     def _rebound(self, incident_id: UUID) -> bool:
         """Whether a ``rebind_target`` decision was ever committed."""
