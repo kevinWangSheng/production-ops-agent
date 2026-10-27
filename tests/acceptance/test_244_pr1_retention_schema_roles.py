@@ -29,7 +29,7 @@ pytestmark = pytest.mark.skipif(
     reason="explicit PG opt-in required",
 )
 
-BEFORE_RETENTION = "0021_release_incident_links"
+BEFORE_RETENTION = "0022_incident_association"
 RETENTION_HEAD = "0023_retention_raw_cleanup"
 
 
@@ -60,9 +60,8 @@ def _upgrade_before_retention(dsn: str) -> None:
 
 
 def _upgrade_head(dsn: str) -> None:
-    # The expected revision is a contract value. The implementation may
-    # temporarily point 0023 at 0021 while 0022 is being merged, so this test
-    # never asserts 0023's down_revision.
+    # The expected revision is a contract value; this test never asserts
+    # 0023's down_revision.
     schema.upgrade_head(dsn)
     with psycopg.connect(dsn) as conn:
         assert conn.execute("SELECT version_num FROM alembic_version").fetchone() == (
