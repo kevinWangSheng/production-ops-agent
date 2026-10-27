@@ -362,9 +362,10 @@ def test_missing_source_answer_is_frozen():
 
 
 def test_model_visible_revisions_are_unchanged():
-    # R-14: the values on main e2fcea4; this PR only adds read-side views.
-    assert TOOL_SCHEMA_REVISION == "otel-demo-68ed2ca8f5d6"
-    assert PROJECTION_REVISION == "m1-01-tool-view-v10"
+    # R-14: the values on main e2fcea4 (bumped since by #319); this PR only
+    # adds read-side views.
+    assert TOOL_SCHEMA_REVISION == "otel-demo-a3a95a0f888e"
+    assert PROJECTION_REVISION == "m1-01-tool-view-v11"
     assert prompt_revision_versions(DISCIPLINE_VARIANT) == {
         "prompt_revision": "prompt-replay-candidate-bef70649a3a8"
     }

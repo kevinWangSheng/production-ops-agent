@@ -486,10 +486,11 @@ def _stored(body: bytes) -> bytes:
 
 
 #: A URL authority still open at the end of a cut body: ``//`` (or its JSON
-#: escape) with no path, query, fragment or space after it yet. Userinfo is
-#: only recognised once its ``@`` and host are seen, so a cut before them
-#: would keep ``https://user:secr`` as it is (#254 review P1).
-_OPEN_AUTHORITY = re.compile(r"(?://|\\/\\/)[^\s/?#\"'<>\\]*\Z")
+#: escape, each ``/`` spelled ``\/`` or ``\u002f``/``\u002F``, #319) with no
+#: path, query, fragment or space after it yet. Userinfo is only recognised
+#: once its ``@`` and host are seen, so a cut before them would keep
+#: ``https://user:secr`` as it is (#254 review P1).
+_OPEN_AUTHORITY = re.compile(r"(?://|(?:\\/|\\u002[fF]){2})[^\s/?#\"'<>\\]*\Z")
 
 
 _ESCAPED_USERINFO = re.compile(r"(?<=\\/\\/)[^\s/@\\\"]+(?=@)")
@@ -518,8 +519,8 @@ def _kept_prefix(body: bytes, *, complete: bool) -> bytes:
         open_authority = _OPEN_AUTHORITY.search(text)
         if open_authority is not None:
             text = text[: open_authority.start()]
-        # a cut JSON body is redacted as prose, whose userinfo rule needs a
-        # literal ``//``: the JSON-escaped form is redacted here
+        # a cut JSON body is redacted as prose; the shared rule covers the
+        # JSON-escaped authority since #319, this #254 pass is kept as is
         text = _ESCAPED_USERINFO.sub(REDACTED_CREDENTIAL, text)
     kept = redact_json_bytes(text.encode("utf-8"))
     if len(kept) <= _ERROR_BODY_BYTES:

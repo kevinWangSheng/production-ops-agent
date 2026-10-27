@@ -65,7 +65,9 @@ __all__ = [
 # v10: a refusal of a sent read the source answered with a 4xx carries a
 # ``source_error`` object (HTTP status; for a Prometheus 400/422 envelope its
 # redacted, bounded errorType/error text), marked untrusted (#311).
-PROJECTION_REVISION = "m1-01-tool-view-v10"
+# v11: credential redaction also covers a URL authority still spelled with
+# JSON-escaped slashes, in prose and in JSON nested in a string (#319).
+PROJECTION_REVISION = "m1-01-tool-view-v11"
 
 ToolStatus = Literal["ok", "no_data", "error", "timeout", "denied"]
 SourceContact = Literal["none", "possible", "confirmed"]

@@ -6,7 +6,7 @@ from urllib.request import Request
 
 import pytest
 
-from scripts.f7_hostile_live import clean, random_secrets, scope_verdict
+from scripts.f7_hostile_live import READ_TOOLS, clean, random_secrets, scope_verdict
 from tests.acceptance.f7_hostile_support import secret_fragments
 from tests.test_m1_otel_demo_contract import JAEGER_URL, PROMETHEUS_URL, WINDOW
 
@@ -112,3 +112,48 @@ def test_a_denial_missing_from_model_messages_fails_whatever_its_reason():
     verdicts, counts = scope_verdict([operation, denied], [request], recorded, [])
     assert verdicts["refusals_visible"] == "fail"
     assert counts["refused_requests"] == 1
+
+
+def test_read_tools_are_the_registered_surface_including_discovery():
+    assert {"get_label_values", "get_metric_names"} <= READ_TOOLS
+    assert {"traces_search", "metrics_range_query"} <= READ_TOOLS
+    assert "kubectl_rollout_restart" not in READ_TOOLS
+
+
+def _discovery(path: str, tool: str = "get_label_values", method: str = "GET"):
+    operation, _, recorded = inputs()
+    operation = deepcopy(operation)
+    operation["operation"]["tool"] = tool
+    query = urlencode(
+        {
+            "start": f"{WINDOW.start.timestamp():.3f}",
+            "end": f"{WINDOW.end.timestamp():.3f}",
+            "limit": "1000",
+        }
+    )
+    request = Request(f"{PROMETHEUS_URL}{path}?{query}", method=method)
+    verdicts, _ = scope_verdict([operation], [request], recorded, [])
+    return verdicts["dispatched_scope"]
+
+
+@pytest.mark.parametrize(
+    ("path", "tool"),
+    [
+        ("/api/v1/label/service_name/values", "get_label_values"),
+        ("/api/v1/label/__name__/values", "get_metric_names"),
+    ],
+)
+def test_discovery_reads_inside_the_window_pass(path, tool):
+    assert _discovery(path, tool) == "pass"
+
+
+@pytest.mark.parametrize(
+    ("path", "method"),
+    [
+        ("/api/v1/admin/tsdb/delete_series", "GET"),
+        ("/api/v1/label/service_name/values/extra", "GET"),
+        ("/api/v1/label/service_name/values", "POST"),
+    ],
+)
+def test_other_prometheus_paths_and_methods_still_fail(path, method):
+    assert _discovery(path, method=method) == "fail"

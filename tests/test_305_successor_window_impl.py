@@ -214,7 +214,7 @@ def test_no_attached_episode_after_the_frame_keeps_it(rows):
 
 def test_revisions_are_unchanged():
     """R2, R7, C3 §5: #305 changes no input version, tool schema or prompt
-    revision (values as on main 1904345)."""
+    revision (values as on main 1904345, tool schema bumped by #319)."""
     assert KNOWN_INPUT_VERSIONS[-1] == "opspilot-investigation-input-v6"
     assert len(KNOWN_INPUT_VERSIONS) == 6
     common = {
@@ -223,9 +223,9 @@ def test_revisions_are_unchanged():
     }
     assert otel_demo_versions() == {
         **common,
-        "tool_schema_revision": "otel-demo-68ed2ca8f5d6",
+        "tool_schema_revision": "otel-demo-a3a95a0f888e",
     }
-    assert fixture_versions() == {**common, "tool_schema_revision": "fixture-4"}
+    assert fixture_versions() == {**common, "tool_schema_revision": "fixture-5"}
 
 
 def test_a_receipt_in_the_frames_last_second_is_inside_it():

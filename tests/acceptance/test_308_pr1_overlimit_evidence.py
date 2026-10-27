@@ -102,10 +102,9 @@ UNCHANGED_VERSIONS = {
 OLD_TOOL_SCHEMA_REVISION = "otel-demo-5270fd8c543f"  # main after #318 (c38be65)
 OLD_PROJECTION_REVISION = "m1-01-tool-view-v8"
 # #308 PR2 bumps each once (contract R10). F3 PR-2 (#311 + #310) contract change: #311 bumps the
-# projection to v10 and moves the tool schema revision again; the #308 PR2
+# projection to v11 and moves the tool schema revision again; the #308 PR2
 # tool schema value is kept as the previous freeze (inequality only).
-NEW_PROJECTION_REVISION = "m1-01-tool-view-v10"
-NEW_TOOL_SCHEMA_REVISION = "otel-demo-2a944edd110a"
+NEW_PROJECTION_REVISION = "m1-01-tool-view-v11"
 # U5 fields every refusal view carries after PR2 (the usage-text key is not
 # named by the contract, so it is not listed).
 U5_REFUSAL_KEYS = frozenset({"total_rows", "row_unit", "suggested_limit"})
@@ -444,7 +443,10 @@ def _recomputed_tool_schema_revision() -> str:
 
 def test_pr2_bumps_tool_schema_and_projection_once_and_keeps_the_rest():
     assert otel_demo.TOOL_SCHEMA_REVISION != OLD_TOOL_SCHEMA_REVISION
-    assert otel_demo.TOOL_SCHEMA_REVISION != NEW_TOOL_SCHEMA_REVISION
+    # The post-#319 hash is derived from public schema inputs; its exact value
+    # is intentionally not pasted into this historical acceptance file.
+    assert otel_demo.TOOL_SCHEMA_REVISION.startswith("otel-demo-")
+    assert len(otel_demo.TOOL_SCHEMA_REVISION) == len("otel-demo-") + 12
     assert otel_demo.TOOL_SCHEMA_REVISION == _recomputed_tool_schema_revision()
     assert PROJECTION_REVISION != OLD_PROJECTION_REVISION
     assert PROJECTION_REVISION == NEW_PROJECTION_REVISION

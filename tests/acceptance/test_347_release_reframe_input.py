@@ -195,8 +195,8 @@ def test_ac10_versions_revisions_alembic_head_and_all_runtime_grants_are_frozen(
     assert KNOWN_INPUT_VERSIONS == tuple(
         f"opspilot-investigation-input-v{i}" for i in range(1, 7)
     )
-    assert fixture_versions()["tool_schema_revision"] == "fixture-4"
-    assert otel_demo_versions()["tool_schema_revision"] == "otel-demo-68ed2ca8f5d6"
+    assert fixture_versions()["tool_schema_revision"] == "fixture-5"
+    assert otel_demo_versions()["tool_schema_revision"] == "otel-demo-a3a95a0f888e"
     assert (
         fixture_versions()["prompt_revision"]
         == otel_demo_versions()["prompt_revision"]

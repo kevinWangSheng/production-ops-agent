@@ -34,9 +34,9 @@ Assumptions where the contract leaves a name or a value open:
   firing, item 6 says repeats do not re-frame); it is not asserted here.
 * S5 item 7 (R5): with a NULL input the fresh fallback re-frames whenever an
   attached firing exists ("有附加就按 B 取框").
-* S6 item 8: the pinned strings are those on ``main`` 1904345
-  (``fixture-4``, ``otel-demo-68ed2ca8f5d6``, input v4 for an alert Run,
-  ``prompt_revision`` unchanged by R7).
+* S6 item 8: fixture revision is pinned to ``fixture-5``.  The OTel schema
+  revision is derived from the public schema inputs and is therefore checked
+  for shape and cross-interface agreement rather than pasted here.
 """
 
 from __future__ import annotations
@@ -376,11 +376,12 @@ def _hand_off(env, incident_id):
 
 
 def test_item8_tool_schema_and_prompt_revisions_are_unchanged():
-    assert FIXTURE_REVISION == "fixture-4"
-    assert otel_demo.TOOL_SCHEMA_REVISION == "otel-demo-68ed2ca8f5d6"
-    assert fixture_versions()["tool_schema_revision"] == "fixture-4"
+    assert FIXTURE_REVISION == "fixture-5"
+    assert otel_demo.TOOL_SCHEMA_REVISION.startswith("otel-demo-")
+    assert len(otel_demo.TOOL_SCHEMA_REVISION) == len("otel-demo-") + 12
+    assert fixture_versions()["tool_schema_revision"] == "fixture-5"
     assert otel_demo.otel_demo_versions()["tool_schema_revision"] == (
-        "otel-demo-68ed2ca8f5d6"
+        otel_demo.TOOL_SCHEMA_REVISION
     )
     # R7: no handoff note or prompt constant changes.
     assert investigation_versions()["prompt_revision"] == (
@@ -602,4 +603,4 @@ def test_item8_reframed_successor_keeps_input_version_and_tool_schema_revision(e
     assert successor["input"]["version"] == ALERT_INPUT_VERSION
     assert first["input"]["version"] == ALERT_INPUT_VERSION
     assert successor["versions"] == first["versions"] == fixture_versions()
-    assert successor["versions"]["tool_schema_revision"] == "fixture-4"
+    assert successor["versions"]["tool_schema_revision"] == "fixture-5"
