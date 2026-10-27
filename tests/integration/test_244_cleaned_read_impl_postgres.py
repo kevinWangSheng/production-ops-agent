@@ -258,6 +258,56 @@ def test_a_cleaned_session_replays_as_data_cleaned_not_as_tampering(
     assert all(r.query and r.raw_sha256 for r in readings)
 
 
+@pytest.mark.parametrize("digest", [None, "forged", "A" * 64])
+def test_a_cleaned_reading_with_a_malformed_kept_digest_is_a_mismatch(
+    loop, owner, controller, scratch_dsn, digest
+) -> None:
+    """Bot #382: the readings table lets a cleaned row carry any digest; the
+    replay holds the kept ``raw_sha256`` to the sha256 hex shape."""
+    incident, _, target = _incident(owner)
+    session = _authorize(controller, incident, target, sustained=1)
+    _backdate_authorization(owner, session)
+    _run(loop, owner, session, 2)
+    _clean_session(scratch_dsn, session)
+    assert replay_stored_session(controller, session).integrity == (DATA_CLEANED,)
+    with psycopg.connect(scratch_dsn) as conn:
+        assert (
+            conn.execute(
+                "UPDATE opspilot_observation_signal_readings SET raw_sha256=%s "
+                "WHERE sample_id IN (SELECT sample_id FROM opspilot_observation_samples "
+                "WHERE session_id=%s AND sequence=1) AND signal_name='error_ratio'",
+                (digest, session),
+            ).rowcount
+            == 1
+        )
+    result = replay_stored_session(controller, session)
+    assert DATA_CLEANED in result.integrity
+    assert INTEGRITY_MISMATCH in result.integrity
+    assert "RAW_HASH_MISMATCH:error_ratio" in result.samples[0].integrity
+
+
+def test_cleaned_evidence_with_a_malformed_kept_digest_is_not_verified() -> None:
+    app, _, _ = _build()
+    incident = seed_upstream(DSN)
+    evidence = f"ev-{incident}"
+    _clean(
+        DSN,
+        "UPDATE opspilot_evidence SET raw=NULL,payload_state='cleaned' "
+        "WHERE evidence_id=%s",
+        evidence,
+    )
+    with psycopg.connect(DSN) as conn:
+        conn.execute(
+            "UPDATE opspilot_evidence SET raw_sha256='forged' WHERE evidence_id=%s",
+            (evidence,),
+        )
+    body = call(
+        app, "GET", f"/incidents/{incident}/evidence/{evidence}", headers=basic()
+    ).json()
+    assert body["payload_state"] == "cleaned"
+    assert body["hashes_verified"] is False
+
+
 def test_tampering_next_to_cleaned_data_is_still_an_integrity_mismatch(
     loop, owner, controller, scratch_dsn
 ) -> None:

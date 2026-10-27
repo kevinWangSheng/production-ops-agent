@@ -522,6 +522,10 @@ def _basis_only(
     )
 
 
+def _is_sha256(value: object) -> bool:
+    return isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value) is not None
+
+
 def _altered(codes: Sequence[str]) -> list[str]:
     """The codes that say a stored row disagrees, cleaned bundles aside."""
     return [code for code in codes if not code.startswith(_RAW_CLEANED)]
@@ -545,9 +549,12 @@ def _readings(
         name = str(row["signal_name"])
         raw = row.get("raw")
         if raw is None and row.get("payload_state") == "cleaned":
-            # #244: removed by the retention cleanup, not lost or altered
+            # #244: removed by the retention cleanup, not lost or altered;
+            # the kept digest must still be one (the table does not say so)
             verified[name] = None
             codes.append(f"{_RAW_CLEANED}{name}")
+            if not _is_sha256(row.get("raw_sha256")):
+                codes.append(f"RAW_HASH_MISMATCH:{name}")
             cleaned = True
             continue
         if raw is None:

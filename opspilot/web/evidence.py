@@ -10,6 +10,7 @@ a second registration with different bytes is an identity conflict.
 from __future__ import annotations
 
 import hashlib
+import re
 import threading
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -50,8 +51,11 @@ class StoredEvidence:
         """Recompute both digests from what is stored, not from what was said.
 
         ``None`` when the payload was cleaned: the raw digest can no longer be
-        checked, which is not a mismatch."""
+        checked, which is not a mismatch -- unless the kept digest is not one
+        (``False``; the table does not constrain its shape)."""
         if self.raw is None:
+            if re.fullmatch(r"[0-9a-f]{64}", self.raw_sha256 or "") is None:
+                return False
             return None
         return (
             hashlib.sha256(self.raw).hexdigest() == self.raw_sha256

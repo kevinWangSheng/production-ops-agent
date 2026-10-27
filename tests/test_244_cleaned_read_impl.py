@@ -47,6 +47,16 @@ def test_a_missing_raw_that_is_not_cleaned_never_charts() -> None:
     assert html is not None and 'data-reason="hash_mismatch"' in html
 
 
+def test_a_cleaned_record_with_a_malformed_kept_digest_fails_verification() -> None:
+    """Bot #382: a cleaned record's kept ``raw_sha256`` must still be a
+    sha256 hex digest; the chart refuses it like a hash mismatch."""
+    for digest in ("forged", "A" * 64, ""):
+        record = replace(_cleaned(evidence("ev-c")), raw_sha256=digest)
+        assert record.hashes_verified is False, digest
+        html = render(record)
+        assert html is not None and 'data-reason="hash_mismatch"' in html
+
+
 class _Store:
     def __init__(self, record):
         self.record = record
