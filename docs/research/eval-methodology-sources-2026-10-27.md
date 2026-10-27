@@ -7,7 +7,7 @@
 ## 1. 结论
 
 1. **三家都要求先拿 LLM judge 和人工标注对齐，再用于判分；但三家的官方文档都没有给出数值门槛。** Anthropic 只写「closely calibrated」，LangSmith 把 alignment score 定义为与专家一致的百分比、建议至少 20 例且 0/1 平衡，但不给门槛。唯一的数字来自 Braintrust 一篇比较平台的营销文章，原话是「below 80%」需要改进，属于经验值。我们的 46/48（95.8%），再加零误通过和逐诊断包含，严于所有来源。Q7 把门槛收窄到 verdict 一致率，方向有来源支持（LangSmith 的 alignment 就是按二值标签算的一致率）。
-2. **「完全照上游、不做事前校准」这个替代方案没有任何厂商来源支持。** 三家都把与人工校准写成 judge 的前提。HolmesGPT 公开的评测文档里，本次没有找到校准相关内容。
+2. **「完全照上游、不做事前校准」这个替代方案没有任何厂商来源支持。** 三家都把与人工校准写成 judge 的前提。HolmesGPT（`a0009195`）没有事前校准，靠固定 judge 模型、10 次迭代和事后三类失败分诊（H2–H4）。
 3. **Anthropic 明确建议不要评路径、要评结果，对多部分任务给部分分，每个维度各用一个独立 judge。** 我们「逐诊断 `(location, quote)` 精确包含」这条规则，本质上是在评 judge 的枚举路径，与这条建议相悖，支持 #312 方案 1。
 4. **两人独立判定一致，是题目本身清晰的标准。** Anthropic 原话是「two domain experts would independently reach the same pass/fail verdict」。P7 的两份盲标之间的分歧，可以先当作题目或标签有歧义的信号，不必全部交用户逐字段裁定（推断）。
 5. **在线评测、生产监控、A/B 测试和用户反馈飞轮都以生产流量为前提**，OpsPilot 没有生产流量，这些不适用。可以移植的只有一点：把 lab 中观察到的真实失败转成开发集用例。
@@ -80,7 +80,20 @@
 
 ### 2.4 HolmesGPT 官方仓库（选读）
 
-<https://github.com/HolmesGPT/holmesgpt/blob/master/docs/development/evaluations/index.md>："We use 150+ evaluations…"、"We also use the evals as regression tests on every commit."、"ITERATIONS=10"；regression 标签的含义是 "Critical scenarios that must always pass"。<https://github.com/HolmesGPT/holmesgpt/blob/master/docs/development/evaluations/benchmarking-new-models.md>："Use `CLASSIFIER_MODEL=gpt-4.1` for consistent evaluation across all benchmarks"。这两页都没有讲 judge 校准、统计处理或失败分诊。#312 引用的「事后失败分诊」出自 10-22 审计对上游源码的阅读，本次没有复核。
+<https://github.com/HolmesGPT/holmesgpt/blob/master/docs/development/evaluations/index.md>："We use 150+ evaluations…"、"We also use the evals as regression tests on every commit."、"ITERATIONS=10"；regression 标签的含义是 "Critical scenarios that must always pass"。<https://github.com/HolmesGPT/holmesgpt/blob/master/docs/development/evaluations/benchmarking-new-models.md>："Use `CLASSIFIER_MODEL=gpt-4.1` for consistent evaluation across all benchmarks"。这两页都没有讲 judge 校准或统计处理。
+
+**补读（lead，2026-10-27，按固定提交 `a0009195`（2026-10-21）经 raw.githubusercontent.com 取原文；该提交与当日 master `49804bd` 的四份评测文档字节数一致）：**
+
+| 编号 | 要点 | 原文引文 |
+|---|---|---|
+| H1 | 分回归与难度档；回归档必须一直通过 | `running-evals.md`："`easy` - regression tests - scenarios that HolmesGPT passes today and must continue to pass after any change"（<https://github.com/HolmesGPT/holmesgpt/blob/a0009195468ebc55a7dff7d602b61feabe3cda1b/docs/development/evaluations/running-evals.md>） |
+| H2 | 重复次数经验值 10 | `running-evals.md`："LLMs are non-deterministic … **10 iterations is a good rule of thumb** for reliable results." |
+| H3 | judge 二值，按要素「实质出现」判 | `tests/llm/utils/classifiers.py`："ELEMENTS do not need to appear verbatim or be a perfect match but their essence should be present in the whole OUTPUT"；选项 A 全部出现 / B 其余（<https://github.com/HolmesGPT/holmesgpt/blob/a0009195468ebc55a7dff7d602b61feabe3cda1b/tests/llm/utils/classifiers.py>）。`reporting.md`："Correctness Score … Values: 0 or 1"；固定 `CLASSIFIER_MODEL` 跨模型一致判分 |
+| H4 | 事后失败分诊（#312 所述，已复核属实） | `.claude/skills/review-eval-run/SKILL.md`："Goal: separate real model failures from broken evals, harness bugs and judge mistakes before anyone trusts the numbers." 每个失败归入 "Eval/harness bug"、"Judge false negative"、"Real model failure"，并 "Quote the specific tool output or line of the answer that proves each verdict"；未打分的运行 "count them separately from model failures"；「passes only on first iteration」提示共享环境状态衰减（<https://github.com/HolmesGPT/holmesgpt/blob/a0009195468ebc55a7dff7d602b61feabe3cda1b/.claude/skills/review-eval-run/SKILL.md>） |
+| H5 | 防作弊出题 | `.claude/skills/create-eval/references/anti-hallucination.md`：唯一随机标识注入后让模型查出、中性资源名、不在问题里泄露指标名、按具体值验证 |
+| H6 | 结果平台 | `reporting.md`：结果进 Braintrust experiment，按分数排序看失败、看工具调用；"HolmesGPT evals can be used without Braintrust" |
+
+判断：上游没有事前 judge 校准，可靠性靠固定 judge 模型、10 次迭代与事后三类分诊；与 Anthropic / LangSmith「先与人工对齐」不冲突，可叠加——事后分诊即 A1「读 transcript」的制度化。
 
 ## 3. 对照表
 
@@ -138,5 +151,6 @@
 
 - 加载失败后重试成功的页面：`braintrust.dev/docs/evaluate`、`.../best-human-in-the-loop-llm-evaluation-platforms-2026`、`.../llm-evaluation-metrics-guide`、`docs.langchain.com/langsmith/repetition`、`.../evaluate-pairwise`。均为首次请求报「Socket is closed」，重试后成功，上文引文来自重试结果。
 - 没有最终失败的页面。
-- 未读：LangSmith 的 Align Evals 博客（blog.langchain.com），Braintrust 的 multiple reviewers 合并规则页，HolmesGPT 的 `running-evals.md`、`reporting.md` 和 `tests/llm` 源码。#312 所说上游「事后失败分诊」本次未复核。
+- 补读完成（lead）：HolmesGPT 评测文档与 `classifiers.py`、`review-eval-run` skill（见 2.4 H1–H6），#312 所述上游事后分诊已复核属实；LangChain「Introducing Align Evals」<https://blog.langchain.com/introducing-align-evals/>：对齐流程为选评测准则 → 选数据 → 人工逐例打分形成 "golden set" → 写 judge prompt 对照人工结果迭代，界面显示 "alignment score" 并保存 "baseline alignment score" 供改 prompt 前后对比；文中同样没有给数值门槛。
+- 仍未读：Braintrust 的 multiple reviewers 合并规则页。
 - 未核实：除 A2-1、A2-2 外，所有引文都经 WebFetch 的摘要模型抽取，没有逐字节对照原文。Anthropic 文章的发布日期未取得。B6、B7、B11、B12 是 Braintrust 域名下的 articles，属于厂商教育或营销内容，不是产品文档。
