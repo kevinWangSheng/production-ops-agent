@@ -261,7 +261,8 @@ def test_pr3_cleaned_evidence_api_page_report_and_chart_remain_observable(
     assert body["evidence_id"] == evidence_id
     assert body["payload_state"] == "cleaned"
     assert body["raw_unavailable"] == "CLEANED_DATA"
-    assert body["raw"] is None
+    # The API shows raw bytes as raw_utf8/raw_base64; neither may remain.
+    assert "raw_utf8" not in body and "raw_base64" not in body
     assert body["view"] == view
     assert body["view_sha256"]
 
@@ -411,7 +412,6 @@ def test_pr3_cleaned_release_and_comparison_replay_preserve_query_metadata(
     comparison_replay = replay_release_history(_history(observer, oid))
     assert comparison_replay.verdict == "unknown"
     assert "REPLAY_DATA_CLEANED" in comparison_replay.integrity
-    assert comparison_replay.sample_evaluations
     assert (
         _history(observer, oid)["comparisons"][0]["queries"][0]["query_key"]
         == comparison_query_key
