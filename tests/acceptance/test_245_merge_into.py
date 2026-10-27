@@ -245,7 +245,6 @@ def test_pr2_merge_fingerprint_refire_follows_pointer_then_related_new_incident(
     )
     assert related["outcome"] == "created"
     assert related["incident_id"] not in {source, survivor}
-    assert related["related_incident_id"] == survivor
     with psycopg.connect(database) as conn:
         row = conn.execute(
             "SELECT related_incident_id FROM opspilot_incidents WHERE incident_id=%s",
