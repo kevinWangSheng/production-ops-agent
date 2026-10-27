@@ -19,6 +19,7 @@ import asyncio
 import base64
 import hashlib
 import json
+import re
 from collections.abc import AsyncIterator, Mapping
 from datetime import datetime
 from pathlib import Path
@@ -1024,9 +1025,15 @@ def _recovery_reading(evidence_id: str, found: Mapping[str, Any]) -> dict[str, A
         "window_end": reading["window_end"].isoformat(),
         "source": reading["source"],
         "raw_sha256": raw_sha256,
-        # None: no raw bundle was stored for this reading
+        # None: no raw bundle was stored for this reading; a cleaned one
+        # (#244) must still keep a digest, else it is not verified
         "hashes_verified": (
-            None
+            (
+                False
+                if reading.get("payload_state") == "cleaned"
+                and re.fullmatch(r"[0-9a-f]{64}", raw_sha256 or "") is None
+                else None
+            )
             if raw is None
             else hashlib.sha256(bytes(raw)).hexdigest() == raw_sha256
         ),

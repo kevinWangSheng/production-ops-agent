@@ -880,3 +880,31 @@ def test_a_cleaned_comparison_keeps_its_signal_list_and_status_derivation(
     ).integrity
     assert "REPLAY_DATA_CLEANED" in integrity
     assert "COMPARISON_MISMATCH" in integrity
+
+
+def test_a_cleaned_recovery_reading_with_a_malformed_digest_is_not_verified() -> None:
+    """Bot review #382: the recovery API agrees with the evidence API and
+    the replay -- a cleaned reading's kept digest must still be one."""
+    app, _, _ = _build()
+    incident = seed_upstream(DSN)
+    sample, _ = _present_reading(incident)
+    _clean(
+        DSN,
+        "UPDATE opspilot_observation_signal_readings SET raw=NULL,"
+        "payload_state='cleaned' WHERE sample_id=%s AND signal_name='latency'",
+        sample,
+    )
+    with psycopg.connect(DSN) as conn:
+        conn.execute(
+            "UPDATE opspilot_observation_signal_readings SET raw_sha256='forged' "
+            "WHERE sample_id=%s AND signal_name='latency'",
+            (sample,),
+        )
+    body = call(
+        app,
+        "GET",
+        f"/incidents/{incident}/evidence/{sample}:latency",
+        headers=basic(),
+    ).json()
+    assert body["payload_state"] == "cleaned"
+    assert body["hashes_verified"] is False
