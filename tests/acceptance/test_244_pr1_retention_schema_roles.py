@@ -460,7 +460,7 @@ def test_pr1_retention_role_has_only_declared_columns_and_can_clean_one_row(
             "UPDATE opspilot_evidence SET status='tampered' WHERE evidence_id=%s",
             "DELETE FROM opspilot_evidence WHERE evidence_id=%s",
             "TRUNCATE opspilot_evidence",
-            "INSERT INTO opspilot_f13_audit(event_id,idempotency_key,object_kind,object_id,action,actor_id,principal_kind,expected_generation,resulting_generation) VALUES(gen_random_uuid(),'retention-denied','test',%s,'test','retention','retention',0,0)",
+            "INSERT INTO opspilot_f13_audit(event_id,idempotency_key,object_kind,object_id,action,actor_id,principal_kind,expected_generation,resulting_generation) VALUES(gen_random_uuid(),'retention-denied','test',gen_random_uuid(),'test','retention','retention',0,0)",
         ):
             with pytest.raises(psycopg.Error) as refused:
                 with psycopg.connect(retention_dsn) as conn:
