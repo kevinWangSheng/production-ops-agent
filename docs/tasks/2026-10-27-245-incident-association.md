@@ -1,6 +1,6 @@
 # #245 事故关联纠正：改目标与合并
 
-- 状态：进行中（合同 r1 已定，待实施 PR-1）
+- 状态：PR-1 #378（squash 5b959d40）、PR-2 #380（squash 2ee94a95）已合并；PR-3 文档 C3 §4 补句用户 2026-10-27 确认，合并后关闭 #245
 - 更新日期：2026-10-27
 - 依据：[issue #245](https://github.com/kevinWangSheng/production-ops-agent/issues/245) Agent Brief；C3 §4（核心句「重绑定/合并/拆分」）、§7（撤权后旧证据不得进入新输入）、§10（关联已有事故只增加事件）；[F12 合同](2026-10-15-f12-contract.md) U6；ROADMAP F12 行已知限制。功能 F12。
 - 裁决：`~/.agent/handoffs/opspilot-rulings-2026-10-27.md` 第 1、3 节（下称「裁决」）；预审：`~/.agent/handoffs/opspilot-prereview-245-2026-10-27.md`（Fable 5.1，基线 `17bc865e`，下称「预审」）。
@@ -59,6 +59,16 @@ F12 只做了「假设纠正」，事故挂错目标或两条告警其实是同�
   - F11 发布消费：改为与告警同一对函数（`lock_merge_closure` + `resolve_merged`），候选沿指针映射到保留方、去重、丢弃被改目标的保留方。新测试：被并入方比保留方新且两者都 closed 时，`related_incident_id` 指向保留方（修前指向被并入方）。上一条「F11 不改」的自定作废。
   - 链超界：超过 `MERGE_CHAIN_LIMIT`（16，可注入）仍带指针的候选丢弃，绝不关联或附加到被并入事故。新测试以上限 2 / 3 跑 3 跳链（修前 `related_incident_id` 指向中间节点）。
 
+- PR-2 独立验收测试：Codex gpt-6.1-sol，`tests/acceptance/test_245_merge_into.py` 11 例 + F7 第 1 步动作集合加 `merge_into`；main 上 10 红 1 绿。lead 修两处测试构造：`related_incident_id` 从事故行读（告警接收响应本无该字段）；PR-1 夹具改为显式导入（原 `pytest_plugins` 让 PR-1 模块的 autouse 夹具全局生效，无 PG 的 checks job 9581 个 error）。复验 0 未解决；`@codex review` 在 beae6582 无发现。
+- 合并：PR-1 由用户合并（5b959d40）；PR-2 用户授权后 lead 合并（2ee94a95）。
+
+## 收尾数
+
+- 新冒出的合同问题：PR-1 1 项（暂停时间线目标集合，lead 接受）；PR-2 0 项。
+- 重写测试：0（lead 修测试构造 3 处：PR-1 1、PR-2 2，均不改断言）。
+- 环境重跑：PR-1 测试作者 Codex 容量中断 2 次；CI 网络/排队重试数次，无产品失败。
+- 裁决轮数：1（2026-10-27 合同 r1）；C3 §4 补句用户 2026-10-27 确认。
+
 ## 下一步与交接
 
-- 派 PR-1 实现与独立测试作者。预审未确认项 1–7（事件投影白名单、审计投影版本、F11 消费路径指针跟随、`_alert_rebuild` 取值来源等）由实现者核对，属可逆细节的写一行理由。
+- PR-3 文档（本记录、F12 合同步骤 2 映射、ROADMAP、C3 §4 补句）用户已确认，合并后关闭 #245；拆分见 #373。
