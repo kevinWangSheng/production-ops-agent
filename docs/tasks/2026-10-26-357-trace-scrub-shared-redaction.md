@@ -1,6 +1,6 @@
 # #357 trace 导出兜底改用共享 `redact_credentials`
 
-- 状态：实现与真实 Run 完成；独立验收测试与独立审查待做
+- 状态：实现与真实 Run 完成，M1 已由 lead 裁决；独立验收测试与独立审查待做
 - 更新日期：2026-10-26
 - 依据：issue #357 的 Agent Brief 与「Brief 补充（用户 2026-10-26 裁决）」；前置 #319（[任务记录](2026-10-26-319-escaped-userinfo-redaction.md)）；已知误伤 #366
 - 工作区：`feature/F7-357-trace-scrub-shared-redaction`，`/Users/shenghuikevin/dev/AI/poa-357-impl`（起点 origin/main 5b158b1）
@@ -15,7 +15,7 @@ trace 导出前的兜底 `_scrub`（`opspilot/tracing.py`）原先只有自己�
 |---|---|---|
 | Q15-A | 兜底直接调用共享 `redact_credentials`，兜底里不另写、不复制凭据正则；其他既有清洗保留 | 用户 2026-10-26 |
 | 补充 | 验收第 3 条收窄为「共享策略无匹配的 trace 载荷经兜底后逐字节不变」；`*_tokens` 计数、`session_id`、`auth: ok` 等误伤列明不修（#366） | 用户 2026-10-26 |
-| M1 | 导出 trace 的凭据标记从 `[REDACTED]` 变为共享的 `[REDACTED_CREDENTIAL]`；`tests/test_tracing.py` 三处标记字面量（:792、:795、:845）随之改写，秘密不出现的断言一条未改（选项 A，待 lead 确认） | 实现中发现，2026-10-26 报 lead |
+| M1 | 导出 trace 的凭据标记从 `[REDACTED]` 变为共享的 `[REDACTED_CREDENTIAL]`，这是 Q15-A 的直接后果；`tests/test_tracing.py` 三处标记字面量（:792、:795、:845）随之改写，没有断言变弱，秘密不出现的断言一条未改。:792 改写的原因：键级 `_redact` 写入 JSON 文本的 `[REDACTED]` 会被共享策略再次标记为 `[REDACTED_CREDENTIAL]` | lead 2026-10-26 裁决（选项 A） |
 
 ## 实现决定（可逆，Agent 自定）
 
@@ -39,6 +39,5 @@ trace 导出前的兜底 `_scrub`（`opspilot/tracing.py`）原先只有自己�
 
 ## 下一步与交接
 
-- 等 lead 确认 M1（A：沿用共享标记；B：兜底把新标记译回 `[REDACTED]`）。
 - 独立验收测试（Codex，另一个 worktree，不碰本分支 `tests/acceptance/`）合入后复跑；独立审查；`@codex review` 由 lead 触发。用户门（凭据），就绪后打 `ready-for-human`。
 - 临时 PG：`tmp/pg55654`（端口 55654），已停止，数据目录保留。
