@@ -14,7 +14,7 @@ Public surface only: ``Workbench.release_anomaly_pass``, ``/intake/alertmanager`
 
 Assumptions (also marked ``ASSUMPTION`` where used):
 
-* S5 the alembic head stays ``0021_release_incident_links`` (head of ``main``
+* S5 the alembic head stays ``0022_incident_association`` (head of ``main``
   at 1904345, no migration in #343); a rebase onto a newer migration updates
   this constant, not the assertion.
 * S6 the declared grants of the five tables the attach path touches are

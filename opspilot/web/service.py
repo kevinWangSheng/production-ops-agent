@@ -834,8 +834,6 @@ class Workbench:
             # An alert handed to a human at intake (E5) has no Run to steer
             # and no bound target to observe; the human handles it outside.
             raise WorkbenchError("HANDOFF_ONLY")
-        if to_target is not None and to_target == self._target_uid(summary):
-            raise WorkbenchError("TARGET_UNCHANGED")
         key = f"{incident_id}:{idempotency_key}"
         intent: dict[str, Any] = {
             "action": action,
@@ -999,11 +997,13 @@ class Workbench:
             if text is not None:
                 payload["text"] = text
             if action == REBIND_TARGET:
-                # A registry key without a registry row yet (no intake on it
-                # so far) is registered first, as intake does; the store
-                # records ``from_target`` from the locked incident row.
+                # The registry key was checked above; the store registers a
+                # key with no registry row yet in the decision's own
+                # transaction, after every refusal, and records
+                # ``from_target`` from the locked incident row. Lifecycle and
+                # same-target refusals are the store's, after the ledger's
+                # replay check (#378 review).
                 assert to_target is not None
-                self.incidents.register_target(to_target)
                 payload["to_target"] = to_target
             for attempt in range(3):
                 renewal: dict[str, Any] = {}

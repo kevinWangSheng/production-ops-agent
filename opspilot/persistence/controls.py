@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, cast
 from uuid import UUID, uuid4
 
 from psycopg.types.json import Jsonb
@@ -286,12 +286,16 @@ class _ControlOps(_StoreBase):
         if payload is not None and not isinstance(payload, dict):
             raise PersistenceError("INVALID_INPUT")
         with self.transaction() as conn:
-            # #245 U2: a rebind names its new target by the registered uid
-            # in ``payload["to_target"]``; the store records ``from_target``
-            # itself from the locked row. Registry rows are immutable, so the
-            # lookup needs no lock; the new target's suspension row is locked
-            # with the current one's (G10).
+            # #245 U2: a rebind names its new target by its uid in
+            # ``payload["to_target"]`` (the caller admits only registry keys,
+            # as intake does); the store records ``from_target`` itself from
+            # the locked row. Registry rows are immutable, so the lookup needs
+            # no lock; an existing new target's suspension row is locked with
+            # the current one's (G10). A uid with no row yet is registered
+            # only once every refusal below has passed, in this transaction,
+            # so a refused rebind writes nothing (#378 review).
             rebind_to = None
+            to_uid = None
             if action == "rebind_target":
                 to_uid = None if payload is None else payload.get("to_target")
                 if not isinstance(to_uid, str) or not to_uid:
@@ -302,9 +306,8 @@ class _ControlOps(_StoreBase):
                     "SELECT target_id FROM opspilot_targets WHERE resource_uid=%s",
                     (to_uid,),
                 ).fetchone()
-                if registered is None:
-                    raise PersistenceError("UNKNOWN_TARGET")
-                rebind_to = registered["target_id"]
+                if registered is not None:
+                    rebind_to = registered["target_id"]
             scope = self._lock_scope(
                 conn,
                 incident_id,
@@ -392,7 +395,7 @@ class _ControlOps(_StoreBase):
                 )
                 return nxt
             if action == "rebind_target":
-                assert rebind_to is not None and payload is not None
+                assert to_uid is not None and payload is not None
                 # #245 U2/G2：只在 open / observing_recovery 上改目标；
                 # resolved/closed 要先 reopen，与 F12 r2 同向。没有绑定目标的
                 # 事故（handoff）无可改。同一事务里代际 +1、撤销旧目标上的授权
@@ -408,6 +411,8 @@ class _ControlOps(_StoreBase):
                     raise PersistenceError("ILLEGAL_TRANSITION")
                 if row["target_id"] == rebind_to:
                     raise PersistenceError("TARGET_UNCHANGED")
+                if rebind_to is None:
+                    rebind_to = _register_target_in(conn, to_uid)
                 from_uid = self._require_row(
                     conn.execute(
                         "SELECT resource_uid FROM opspilot_targets WHERE target_id=%s",
@@ -734,6 +739,31 @@ class _ControlOps(_StoreBase):
                     (incident_id, after_sequence),
                 ).fetchall()
             )
+
+
+def _register_target_in(conn: Connection, resource_uid: str) -> UUID:
+    """Register ``resource_uid`` in the caller's transaction (the rows
+    ``register_target`` writes); a concurrent first registration of the same
+    uid is waited for and reused."""
+    inserted = conn.execute(
+        "INSERT INTO opspilot_targets(target_id,resource_uid) VALUES(%s,%s) ON CONFLICT (resource_uid) DO NOTHING RETURNING target_id",
+        (uuid4(), resource_uid),
+    ).fetchone()
+    if inserted is not None:
+        conn.execute(
+            "INSERT INTO opspilot_target_suspensions(target_id) VALUES(%s)",
+            (inserted["target_id"],),
+        )
+        return cast(UUID, inserted["target_id"])
+    return cast(
+        UUID,
+        _StoreBase._require_row(
+            conn.execute(
+                "SELECT target_id FROM opspilot_targets WHERE resource_uid=%s",
+                (resource_uid,),
+            )
+        )["target_id"],
+    )
 
 
 def append_input_in(

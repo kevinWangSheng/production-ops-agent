@@ -118,14 +118,14 @@ def env(web_dsn):
     return app, workbench, store, UUID(response.json()["incident_id"])
 
 
-def _control(app, incident, generation, action, **fields):
+def _control(app, incident, generation, action, *, key=None, **fields):
     return post_form(
         app,
         f"/incidents/{incident}/control",
         {
             "action": action,
             "expected_generation": str(generation),
-            "idempotency_key": f"{action}-{uuid4()}",
+            "idempotency_key": key or f"{action}-{uuid4()}",
             **fields,
         },
         headers={**basic(), **same_origin()},
@@ -244,10 +244,18 @@ def test_rebind_from_observing_recovery_revokes_and_returns_to_open(web_dsn):
     assert sessions and all(s["state"] != "authorized" for s in sessions)
     with psycopg.connect(DSN) as conn:
         ending = conn.execute(
-            "SELECT ended_reason,lifecycle_before FROM opspilot_observation_endings WHERE session_id=%s",
+            "SELECT ended_reason,transition,lifecycle_before,lifecycle_after FROM opspilot_observation_endings WHERE session_id=%s",
             (session,),
         ).fetchone()
-    assert ending == ("authority_revoked", "observing_recovery")
+    # A revocation ending, as close and a renewal write it: no transition,
+    # lifecycle unchanged in the record (the replay's ending_consistent rule:
+    # "a revocation carries nothing"); the incident row then moves to open.
+    assert ending == (
+        "authority_revoked",
+        None,
+        "observing_recovery",
+        "observing_recovery",
+    )
     assert all(r["state"] == "cancelled" for r in runs)
 
 
@@ -298,7 +306,6 @@ def test_store_refusals_under_the_lock(env, web_dsn):
     before = _state(incident)
     cases = [
         (0, {"to_target": "checkout-prod"}, "TARGET_UNCHANGED"),
-        (0, {"to_target": f"never-registered-{uuid4()}"}, "UNKNOWN_TARGET"),
         (0, {"text": "no target"}, "INVALID_INPUT"),
         (0, {"to_target": "payment-prod", "from_target": "x"}, "INVALID_INPUT"),
         (1, {"to_target": "payment-prod"}, "CONTROL_CONFLICT"),
@@ -308,6 +315,98 @@ def test_store_refusals_under_the_lock(env, web_dsn):
         with pytest.raises(PersistenceError, match=f"^{code}$"):
             web.control(incident, generation, "rebind_target", "operator", payload)
         assert _state(incident) == before
+
+
+def _registered(uid: str) -> bool:
+    with psycopg.connect(DSN) as conn:
+        return (
+            conn.execute(
+                "SELECT 1 FROM opspilot_targets WHERE resource_uid=%s", (uid,)
+            ).fetchone()
+            is not None
+        )
+
+
+def _fresh_key_registry():
+    """A registry key no intake or test has registered yet."""
+    uid = f"checkout-new-{uuid4().hex[:8]}"
+    entry = {k: v for k, v in REGISTRY["checkout-prod"].items() if k != "match"}
+    return uid, {**REGISTRY, uid: entry}
+
+
+def _submit(app):
+    response = post_form(
+        app,
+        "/intake/ui",
+        {
+            "target_id": "checkout-prod",
+            "question": QUESTION,
+            "idempotency_key": f"rebind-{uuid4()}",
+        },
+        headers={**basic(), **same_origin()},
+    )
+    assert response.status == 201, response.text
+    return UUID(response.json()["incident_id"])
+
+
+@pytest.mark.parametrize("refusal", ["resolved", "closed", "stale"])
+def test_a_refused_rebind_registers_no_target(web_dsn, refusal):
+    uid, registry = _fresh_key_registry()
+    app, _, _ = _build(web_dsn, registry=registry)
+    incident = _submit(app)
+    generation = 0
+    if refusal == "stale":
+        generation = 1
+    else:
+        _admin(
+            "UPDATE opspilot_incidents SET lifecycle=%s WHERE incident_id=%s",
+            refusal,
+            incident,
+        )
+    before = _state(incident)
+    response = _control(app, incident, generation, "rebind_target", to_target=uid)
+    assert response.status == 409, response.text
+    assert response.json()["code"] == (
+        "CONTROL_CONFLICT" if refusal == "stale" else "REOPEN_REQUIRED"
+    )
+    assert _state(incident) == before
+    assert not _registered(uid)
+    # The same request on an open incident at its generation registers the
+    # target in the decision's own transaction.
+    if refusal == "stale":
+        assert _control(
+            app, incident, 0, "rebind_target", to_target=uid
+        ).status == 200
+        assert _registered(uid) and _uid(incident) == uid
+
+
+def test_a_replayed_rebind_returns_the_first_result(env):
+    app, _, _, incident = env
+    first = _control(
+        app, incident, 0, "rebind_target", key="rebind-once", to_target="payment-prod"
+    )
+    assert first.status == 200, first.text
+    again = _control(
+        app, incident, 0, "rebind_target", key="rebind-once", to_target="payment-prod"
+    )
+    assert again.status == 200, again.text
+    assert again.json()["replayed"] is True
+    assert again.json()["generation"] == first.json()["generation"] == 1
+    assert _state(incident)[2] == 1  # one audit row
+
+
+@pytest.mark.parametrize("lifecycle", ["resolved", "closed"])
+def test_lifecycle_is_refused_before_the_same_target(env, lifecycle):
+    app, _, _, incident = env
+    _admin(
+        "UPDATE opspilot_incidents SET lifecycle=%s WHERE incident_id=%s",
+        lifecycle,
+        incident,
+    )
+    before = _state(incident)
+    response = _control(app, incident, 0, "rebind_target", to_target="checkout-prod")
+    assert (response.status, response.json()["code"]) == (409, "REOPEN_REQUIRED")
+    assert _state(incident) == before
 
 
 # -- page ---------------------------------------------------------------
