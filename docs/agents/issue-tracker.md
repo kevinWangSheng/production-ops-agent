@@ -12,6 +12,8 @@ Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all o
 - **Apply / remove labels**: `gh issue edit <number> --add-label "..."` / `--remove-label "..."`
 - **Close**: `gh issue close <number> --comment "..."`
 
+- **Byte-level text in briefs and comments**: Text passed through an agent's write tool or a shell string can lose escapes before it reaches GitHub: the #319 brief was stored with `/` where the pre-review had `\u002f`. Put escapes, regexes and other byte-exact samples in fenced code blocks and cite the pre-review file's original (path and line). After posting, check the bytes landed: `gh issue view <n> --json comments --jq '.comments[].body' | grep -c 'u002'`.
+
 Infer the repo from `git remote -v`; `gh` does this automatically when run inside a clone.
 
 ## Pull requests as a triage surface
