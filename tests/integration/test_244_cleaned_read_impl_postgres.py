@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import hashlib
 import os
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import psycopg
 import pytest
@@ -517,3 +517,37 @@ def test_the_kept_metadata_of_a_cleaned_reading_stays_bound_to_the_profile(
     assert result.recovery_verdict == "unknown"
     assert INTEGRITY_MISMATCH in result.integrity
     assert DATA_CLEANED in result.integrity
+
+
+def test_a_cleaned_comparison_query_stays_bound_to_its_comparison(
+    release_harness,
+) -> None:
+    """Bot review #382: a cleaned query row moved to another comparison is
+    a mismatch, not just cleaned data."""
+    _, observer, oid, _, _ = release_harness
+    context = pr4a._anomalous(release_harness)
+    ObserverLoop(
+        store=observer, source=pr4a.BeforeTelemetry(context), batch=1
+    ).poll_once()
+    _clean(
+        DSN,
+        "UPDATE opspilot_release_comparison_queries SET raw=NULL,"
+        "payload_state='cleaned' WHERE comparison_id IN (SELECT comparison_id "
+        "FROM opspilot_release_comparisons WHERE observation_id=%s)",
+        oid,
+    )
+    history = {
+        **observer.release_history(oid),
+        "comparisons": observer.release_comparisons(oid),
+    }
+    assert replay_release_history(history).integrity == ("REPLAY_DATA_CLEANED",)
+    comparison, *comparisons = history["comparisons"]
+    first, *rest = comparison["queries"]
+    moved = {**first, "comparison_id": uuid4()}
+    replay = replay_release_history(
+        {
+            **history,
+            "comparisons": [{**comparison, "queries": [moved, *rest]}, *comparisons],
+        }
+    )
+    assert "COMPARISON_MISMATCH" in replay.integrity

@@ -1164,6 +1164,8 @@ def _comparison_issues(
             window_after.end,
         ):
             return {"COMPARISON_MISMATCH"}
+        if any(q["comparison_id"] != c["comparison_id"] for q in c["queries"]):
+            return {"COMPARISON_MISMATCH"}
         if _cleaned(c["queries"]):
             # #244: the before-window bodies were cleaned; the comparison's
             # bindings are checked above and its stored record against its
@@ -1178,8 +1180,6 @@ def _comparison_issues(
                 return {DATA_CLEANED, "COMPARISON_MISMATCH"}
             return {DATA_CLEANED}
         queries = list(iter_comparison_queries(c["queries"]))
-        if any(q["comparison_id"] != c["comparison_id"] for q in c["queries"]):
-            return {"COMPARISON_MISMATCH"}
         evidence = ReleaseComparisonEvidence(
             format_version=1,
             comparison_id=c["comparison_id"],
