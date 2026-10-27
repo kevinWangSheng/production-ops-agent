@@ -1,10 +1,10 @@
 # #244 原始资料保留期清理（关闭后 30 天）
 
-- 状态：进行中（合同 r1 已定，待实施 PR-1）
+- 状态：进行中（合同 r2；PR-1 #377 实现完成，待独立验收测试与审查）
 - 更新日期：2026-10-27
 - 依据：[issue #244](https://github.com/kevinWangSheng/production-ops-agent/issues/244) Agent Brief；C3 §11（保留与删除）、§7（PostgreSQL 业务记录是恢复权威）；[F13 第 4 步合同](2026-10-15-f13-step4-contract.md) U7；[M1-03 记录](2026-10-05-m1-03-postmortem.md) D12；ADR-0006。功能 F13 相关，不改 F13 验收。
 - 裁决：`~/.agent/handoffs/opspilot-rulings-2026-10-27.md` 第 2、3 节（下称「裁决」）；预审：`~/.agent/handoffs/opspilot-prereview-244-2026-10-27.md`（Codex gpt-6-astra→gpt-6-sol，r0.1，基线 `17bc865e`，下称「预审」）。
-- 工作区：PR-1 开工时填写。
+- 工作区：PR-1 `feature/F13-244-retention-schema`，`/Users/shenghuikevin/dev/AI/poa-244-impl`（起点 origin/main 17bc865e，PR #377）；独立测试 `chore/244-pr1-acceptance-tests`，`poa-244-tests`。
 
 ## 目标与范围
 
@@ -17,7 +17,7 @@
 - 前提：`main` `17bc865e`；迁移编号用 0023（#245 PR-1 先占 0022，本项 PR-1 等其合并后再合）。
 - 完成条件：PR-1–PR-3 合并，#244 独立验收（独立测试作者编写）通过、独立审查无未处置发现。F13 步骤与 `passes` 不变。不需要 kind。
 
-## 合同（r1）
+## 合同（r2）
 
 | 编号 | 裁决要点 | 出处 |
 |---|---|---|
@@ -33,6 +33,7 @@
 | P1 | 旧 Observer 行（raw 与 hash 皆空）迁移时回填 `absent`，不得标为 `cleaned` | 裁决 §2；预审 §4「本次 narrowed raw 形态草稿」 |
 | P2 | 仅靠 `DEFAULT 'present'` 会破坏现有 raw=NULL 写入路径；须加插入触发器，或所有写路径显式写 `payload_state` | 同上 |
 | R1–R6 | 可逆默认照预审：三态取值与回填（R1）；已清理证据 API 返回 200 + `cleaned`（R2）；F6 用 `STORED_OBSERVATION_DATA_CLEANED`、发布重放用 `REPLAY_DATA_CLEANED`，与「被篡改」区分（R3）；CLI 输出对象 ID、hash、原因与依赖（R4）；小事务批次、失败项单独记录（R5）；`RETENTION_GRANTS` 独立声明，不入 `RUNTIME_GRANTS`（R6） | 预审 §2 可逆默认 |
+| r2-L1 | 行锁需要表上至少一列 UPDATE：`opspilot_retention` 对 incidents、runs、observation_sessions 各授一列 lock-only UPDATE，配守卫触发器拒绝其任何实际 UPDATE（42501）；F13 表无锁或写权限，靠事故行锁 + 锁后复查（新增知识引用都要经过本事故 under_review 版本，生成与批准路径先锁事故行；论证见 PR #377） | lead 2026-10-27，按 0011 lock-only 先例 |
 
 ## 实施切分（均目标 main，不 stacked）
 
@@ -42,7 +43,7 @@
 
 ## 执行进展与证据
 
-- 2026-10-27：合同 r1 写入；#374（90 天归档）、#375（steps/inputs/runs 恢复合同）已开；#244 已贴 Agent Brief。
+- 2026-10-27：合同 r1 写入；PR-1 实现开为 #377，实现中追加 r2-L1；#374（90 天归档）、#375（steps/inputs/runs 恢复合同）已开；#244 已贴 Agent Brief。
 
 ## 下一步与交接
 
