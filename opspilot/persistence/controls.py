@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Any, cast
-from uuid import UUID, uuid4
+from uuid import UUID, uuid4, uuid5
 
 from psycopg.types.json import Jsonb
 
@@ -308,17 +308,35 @@ class _ControlOps(_StoreBase):
                 ).fetchone()
                 if registered is not None:
                     rebind_to = registered["target_id"]
-            scope = self._lock_scope(
-                conn,
-                incident_id,
-                extra_target_ids=() if rebind_to is None else (rebind_to,),
-            )
+            # #245 U3/U4: a merge names its survivor in
+            # ``payload["into_incident_id"]``. The survivor's target row is
+            # locked with the source's (G10; a mismatch is refused below),
+            # then both incident rows in ``incident_id`` order.
+            survivor_id = None
+            extra = [] if rebind_to is None else [rebind_to]
+            if action == "merge_into":
+                try:
+                    survivor_id = UUID(str((payload or {})["into_incident_id"]))
+                except (KeyError, ValueError):
+                    raise PersistenceError("INVALID_INPUT") from None
+                survivor_target = conn.execute(
+                    "SELECT target_id FROM opspilot_incidents WHERE incident_id=%s",
+                    (survivor_id,),
+                ).fetchone()
+                if survivor_target and survivor_target["target_id"] is not None:
+                    extra.append(survivor_target["target_id"])
+            scope = self._lock_scope(conn, incident_id, extra_target_ids=extra)
+            if survivor_id is not None:
+                conn.execute(
+                    "SELECT incident_id FROM opspilot_incidents WHERE incident_id=ANY(%s) ORDER BY incident_id FOR UPDATE",
+                    ([incident_id, survivor_id],),
+                )
             # 分两步读，而不是一条 JOIN：JOIN 取不到行时无法区分「事故不存在」
             # 与「事故存在但 run 行缺失」，两者都会落到 CONTROL_CONFLICT，
             # 而该码的约定处置是「重读代际后重试」——两种情况重试都不会成功。
             # 顺序仍是先锁 incident 再锁 run，与三条写路径一致。
             row = conn.execute(
-                "SELECT control_generation,state,mode,lifecycle,conclusion,current_run_id,target_id FROM opspilot_incidents WHERE incident_id=%s FOR UPDATE",
+                "SELECT control_generation,state,mode,lifecycle,conclusion,current_run_id,target_id,merged_into_incident_id FROM opspilot_incidents WHERE incident_id=%s FOR UPDATE",
                 (incident_id,),
             ).fetchone()
             if not row:
@@ -335,8 +353,16 @@ class _ControlOps(_StoreBase):
                 "close",
                 "reopen",
                 "rebind_target",
+                "merge_into",
             }:
                 raise PersistenceError("INVALID_INPUT")
+            # #245 G4: a merged incident is final; the pointer stays one way.
+            if row["merged_into_incident_id"] is not None and action in {
+                "reopen",
+                "rebind_target",
+                "merge_into",
+            }:
+                raise PersistenceError("ILLEGAL_TRANSITION")
             note = action in {"follow_up", "correct"}
             human_owned = row["mode"] == "human_owned"
             human_note = human_owned and note
@@ -458,6 +484,17 @@ class _ControlOps(_StoreBase):
                     source="control.rebind_target",
                 )
                 return nxt
+            if action == "merge_into":
+                assert survivor_id is not None and payload is not None
+                return self._merge_into(
+                    conn,
+                    incident_id,
+                    row,
+                    survivor_id,
+                    expected_generation,
+                    actor,
+                    payload,
+                )
             if action == "takeover":
                 # C3 §10 接管：mode -> human_owned，同一事务递增代际、撤销观察
                 # 授权、停下自动调查：当前 Run 交给人（waiting_human，收回租约），
@@ -715,6 +752,94 @@ class _ControlOps(_StoreBase):
             )
             return nxt
 
+    def _merge_into(
+        self,
+        conn: Connection,
+        incident_id: UUID,
+        row: dict[str, Any],
+        survivor_id: UUID,
+        expected_generation: int,
+        actor: str,
+        payload: dict[str, Any],
+    ) -> int:
+        """#245 U3/U4/G3-G5 under the locks ``control`` took.
+
+        The source (``incident_id``) is decided like a close: generation +1,
+        observation revoked (the ending keeps the current lifecycle, written
+        before ``closed``), every unfinished Run cancelled, lifecycle
+        ``closed`` with ``merged_into_incident_id``, audit, ``mark_stale_in``.
+        The survivor only takes one event input from a fixed template (no
+        conclusion text): its generation, Runs and observation stay as they
+        are (C3 section 10, the #343 attach precedent); ``begin_round`` reads
+        the event at its next safe boundary.
+        """
+        survivor = conn.execute(
+            "SELECT lifecycle,current_run_id,target_id,merged_into_incident_id FROM opspilot_incidents WHERE incident_id=%s",
+            (survivor_id,),
+        ).fetchone()
+        if survivor is None:
+            raise PersistenceError("UNKNOWN_IDENTITY")
+        if survivor_id == incident_id:
+            raise PersistenceError("ILLEGAL_TRANSITION")
+        # An incident handed to a human at intake has no Run and no target.
+        if row["current_run_id"] is None or survivor["current_run_id"] is None:
+            raise PersistenceError("HANDOFF_ONLY")
+        if (
+            survivor["lifecycle"] == "closed"
+            or survivor["merged_into_incident_id"] is not None
+        ):
+            raise PersistenceError("ILLEGAL_TRANSITION")
+        if survivor["target_id"] != row["target_id"]:
+            raise PersistenceError("TARGET_MISMATCH")
+        content = _merge_event(conn, incident_id, row)
+        nxt = expected_generation + 1
+        conn.execute(
+            "UPDATE opspilot_incidents SET control_generation=%s WHERE incident_id=%s",
+            (nxt, incident_id),
+        )
+        from opspilot.observation.revocation import revoke_authorized_sessions
+
+        revoke_authorized_sessions(conn, incident_id)
+        cancelled = conn.execute(
+            "UPDATE opspilot_runs SET state='cancelled',owner=NULL,lease_until=NULL,control_generation=%s WHERE incident_id=%s AND state IN ('queued','paused','running','waiting_human','blocked') RETURNING run_id",
+            (nxt, incident_id),
+        ).fetchall()
+        state = row["state"]
+        if any(r["run_id"] == row["current_run_id"] for r in cancelled):
+            state = "cancelled"
+        conn.execute(
+            "UPDATE opspilot_incidents SET lifecycle='closed',state=%s,merged_into_incident_id=%s WHERE incident_id=%s",
+            (state, survivor_id, incident_id),
+        )
+        conn.execute(
+            "INSERT INTO opspilot_controls(audit_id,incident_id,action,expected_generation,resulting_generation,actor,payload) VALUES(%s,%s,'merge_into',%s,%s,%s,%s)",
+            (
+                uuid4(),
+                incident_id,
+                expected_generation,
+                nxt,
+                actor,
+                Jsonb({**payload, "into_incident_id": str(survivor_id)}),
+            ),
+        )
+        from opspilot.knowledge.store import mark_stale_in
+
+        mark_stale_in(
+            conn,
+            incident_id,
+            reason="control_generation_changed",
+            source="control.merge_into",
+        )
+        # The survivor's event (its own mark_stale_in, input_added).
+        append_input_in(
+            conn,
+            survivor_id,
+            uuid5(_MERGE_NAMESPACE, f"merge:{incident_id}:{survivor_id}"),
+            content,
+            actor=actor,
+        )
+        return nxt
+
     def append_input(
         self,
         incident_id: UUID,
@@ -739,6 +864,67 @@ class _ControlOps(_StoreBase):
                     (incident_id, after_sequence),
                 ).fetchall()
             )
+
+
+_MERGE_NAMESPACE = UUID("2b4f6d55-8f0e-4c1a-9d35-245a7e0e5e01")
+#: Bounds of the merge event's lists: episodes and release links named.
+_MERGE_EVENT_ITEMS = 16
+
+
+def _merge_event(
+    conn: Connection, incident_id: UUID, row: dict[str, Any]
+) -> dict[str, Any]:
+    """The fixed-template event a survivor takes for a merged source (#245
+    U3): the source's id, its alert fingerprints with ``startsAt`` (opening
+    identity first, then attached episodes), the release observations that
+    opened or joined it, its lifecycle at the merge and whether it had a
+    conclusion -- never the conclusion's text. Only ``text`` and
+    ``channel`` reach the model (``INPUT_CONTENT_FIELDS``); the rest is for
+    people reading the input row."""
+    alerts = [
+        {"fingerprint": r["fingerprint"], "starts_at": r["starts_at_raw"]}
+        for r in conn.execute(
+            "SELECT fingerprint,starts_at_raw FROM opspilot_alert_identities WHERE incident_id=%s AND handoff_reason IS NULL",
+            (incident_id,),
+        ).fetchall()
+    ]
+    for r in conn.execute(
+        "SELECT fingerprint,starts_at_raw,min(delivery_id) AS first FROM opspilot_alert_deliveries WHERE incident_id=%s AND outcome='attached' GROUP BY fingerprint,starts_at_raw ORDER BY first LIMIT %s",
+        (incident_id, _MERGE_EVENT_ITEMS),
+    ).fetchall():
+        item = {"fingerprint": r["fingerprint"], "starts_at": r["starts_at_raw"]}
+        if item not in alerts:
+            alerts.append(item)
+    alerts = alerts[:_MERGE_EVENT_ITEMS]
+    releases = [
+        str(r["observation_id"])
+        for r in conn.execute(
+            "SELECT observation_id FROM opspilot_release_incident_links WHERE incident_id=%s ORDER BY consumed_at,observation_id LIMIT %s",
+            (incident_id, _MERGE_EVENT_ITEMS),
+        ).fetchall()
+    ]
+    concluded = row["conclusion"] is not None
+    alert_text = (
+        ", ".join(f"{a['fingerprint']} (startsAt {a['starts_at']})" for a in alerts)
+        or "none"
+    )
+    text = (
+        f"Incident {incident_id} was merged into this incident by a human "
+        f"decision (same target). Its alerts: {alert_text}. Its release "
+        f"observations: {', '.join(releases) or 'none'}. Its lifecycle at the "
+        f"merge: {row['lifecycle']}; "
+        + ("it had a published conclusion" if concluded else "it had no conclusion")
+        + ". Its records stay on that incident."
+    )
+    return {
+        "channel": "merge",
+        "text": text,
+        "source_incident_id": str(incident_id),
+        "source_alerts": alerts,
+        "source_release_observations": releases,
+        "source_lifecycle": row["lifecycle"],
+        "source_concluded": concluded,
+    }
 
 
 def _register_target_in(conn: Connection, resource_uid: str) -> UUID:

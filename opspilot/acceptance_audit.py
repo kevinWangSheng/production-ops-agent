@@ -337,7 +337,7 @@ def _audit_records(
                          SELECT audit_id,created_at,actor FROM opspilot_controls c
                          WHERE c.incident_id=r.incident_id
                            AND c.resulting_generation=r.control_generation
-                           AND c.action IN ('cancel','close','follow_up','correct','rebind_target')
+                           AND c.action IN ('cancel','close','follow_up','correct','rebind_target','merge_into')
                          ORDER BY created_at,audit_id LIMIT 1
                        ) c ON r.state='cancelled'
                        WHERE r.incident_id=%s"""):
