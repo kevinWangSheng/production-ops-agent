@@ -170,14 +170,16 @@ def test_every_relation_has_a_decision_and_the_catalog_equals_it() -> None:
 # F2 PR-B1 U-B1-1 (contract change, pinned here independently of the
 # declaration): migration 0019 adds ``opspilot_incidents.priority``; the web
 # gains column-level INSERT(priority) and UPDATE(priority) and nothing else
-# on that table; the worker's grants on it are unchanged.
+# on that table; the worker's grants on it are unchanged. #245 U6 (migration
+# 0022) adds UPDATE(merged_into_incident_id,target_id) for the web.
 F2_B1_WEB_INCIDENTS = frozenset(
     {
         "SELECT",
         "INSERT(current_run_id,incident_id,intake_key,lifecycle,priority,"
         "related_incident_id,state,target_id)",
-        "UPDATE(conclusion,control_generation,current_run_id,lifecycle,mode,"
-        "observation_generation,priority,state)",
+        "UPDATE(conclusion,control_generation,current_run_id,lifecycle,"
+        "merged_into_incident_id,mode,observation_generation,priority,state,"
+        "target_id)",
     }
 )
 F2_B1_WORKER_INCIDENTS = frozenset({"SELECT", "UPDATE(conclusion)"})

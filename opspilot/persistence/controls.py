@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, cast
 from uuid import UUID, uuid4
 
 from psycopg.types.json import Jsonb
@@ -286,13 +286,39 @@ class _ControlOps(_StoreBase):
         if payload is not None and not isinstance(payload, dict):
             raise PersistenceError("INVALID_INPUT")
         with self.transaction() as conn:
-            scope = self._lock_scope(conn, incident_id)
+            # #245 U2: a rebind names its new target by its uid in
+            # ``payload["to_target"]`` (the caller admits only registry keys,
+            # as intake does); the store records ``from_target`` itself from
+            # the locked row. Registry rows are immutable, so the lookup needs
+            # no lock; an existing new target's suspension row is locked with
+            # the current one's (G10). A uid with no row yet is registered
+            # only once every refusal below has passed, in this transaction,
+            # so a refused rebind writes nothing (#378 review).
+            rebind_to = None
+            to_uid = None
+            if action == "rebind_target":
+                to_uid = None if payload is None else payload.get("to_target")
+                if not isinstance(to_uid, str) or not to_uid:
+                    raise PersistenceError("INVALID_INPUT")
+                if payload is not None and "from_target" in payload:
+                    raise PersistenceError("INVALID_INPUT")
+                registered = conn.execute(
+                    "SELECT target_id FROM opspilot_targets WHERE resource_uid=%s",
+                    (to_uid,),
+                ).fetchone()
+                if registered is not None:
+                    rebind_to = registered["target_id"]
+            scope = self._lock_scope(
+                conn,
+                incident_id,
+                extra_target_ids=() if rebind_to is None else (rebind_to,),
+            )
             # 分两步读，而不是一条 JOIN：JOIN 取不到行时无法区分「事故不存在」
             # 与「事故存在但 run 行缺失」，两者都会落到 CONTROL_CONFLICT，
             # 而该码的约定处置是「重读代际后重试」——两种情况重试都不会成功。
             # 顺序仍是先锁 incident 再锁 run，与三条写路径一致。
             row = conn.execute(
-                "SELECT control_generation,state,mode,lifecycle,conclusion,current_run_id FROM opspilot_incidents WHERE incident_id=%s FOR UPDATE",
+                "SELECT control_generation,state,mode,lifecycle,conclusion,current_run_id,target_id FROM opspilot_incidents WHERE incident_id=%s FOR UPDATE",
                 (incident_id,),
             ).fetchone()
             if not row:
@@ -308,6 +334,7 @@ class _ControlOps(_StoreBase):
                 "takeover",
                 "close",
                 "reopen",
+                "rebind_target",
             }:
                 raise PersistenceError("INVALID_INPUT")
             note = action in {"follow_up", "correct"}
@@ -365,6 +392,70 @@ class _ControlOps(_StoreBase):
                     incident_id,
                     reason="control_generation_changed",
                     source=f"control.{action}",
+                )
+                return nxt
+            if action == "rebind_target":
+                assert to_uid is not None and payload is not None
+                # #245 U2/G2：只在 open / observing_recovery 上改目标；
+                # resolved/closed 要先 reopen，与 F12 r2 同向。没有绑定目标的
+                # 事故（handoff）无可改。同一事务里代际 +1、撤销旧目标上的授权
+                # 观察（结束记录按当前生命周期写，必须先于写回 open；
+                # observing_recovery -> open 即领域边 observation_ended_unconfirmed）、
+                # 取消全部未终态 Run（含 waiting_human，与 close 一致）、换目标、
+                # 写审计。不开 Run：之后的追问 / new_run 按新目标拿 fresh 输入（G7）。
+                if row["lifecycle"] in {"resolved", "closed"}:
+                    raise PersistenceError("REOPEN_REQUIRED")
+                if row["lifecycle"] not in {"open", "observing_recovery"}:
+                    raise PersistenceError("ILLEGAL_TRANSITION")
+                if row["target_id"] is None:
+                    raise PersistenceError("ILLEGAL_TRANSITION")
+                if row["target_id"] == rebind_to:
+                    raise PersistenceError("TARGET_UNCHANGED")
+                if rebind_to is None:
+                    rebind_to = _register_target_in(conn, to_uid)
+                from_uid = self._require_row(
+                    conn.execute(
+                        "SELECT resource_uid FROM opspilot_targets WHERE target_id=%s",
+                        (row["target_id"],),
+                    )
+                )["resource_uid"]
+                nxt = expected_generation + 1
+                conn.execute(
+                    "UPDATE opspilot_incidents SET control_generation=%s WHERE incident_id=%s",
+                    (nxt, incident_id),
+                )
+                from opspilot.observation.revocation import revoke_authorized_sessions
+
+                revoke_authorized_sessions(conn, incident_id)
+                cancelled = conn.execute(
+                    "UPDATE opspilot_runs SET state='cancelled',owner=NULL,lease_until=NULL,control_generation=%s WHERE incident_id=%s AND state IN ('queued','paused','running','waiting_human','blocked') RETURNING run_id",
+                    (nxt, incident_id),
+                ).fetchall()
+                state = row["state"]
+                if any(r["run_id"] == row["current_run_id"] for r in cancelled):
+                    state = "cancelled"
+                conn.execute(
+                    "UPDATE opspilot_incidents SET lifecycle='open',state=%s,target_id=%s WHERE incident_id=%s",
+                    (state, rebind_to, incident_id),
+                )
+                conn.execute(
+                    "INSERT INTO opspilot_controls(audit_id,incident_id,action,expected_generation,resulting_generation,actor,payload) VALUES(%s,%s,'rebind_target',%s,%s,%s,%s)",
+                    (
+                        uuid4(),
+                        incident_id,
+                        expected_generation,
+                        nxt,
+                        actor,
+                        Jsonb({**payload, "from_target": from_uid}),
+                    ),
+                )
+                from opspilot.knowledge.store import mark_stale_in
+
+                mark_stale_in(
+                    conn,
+                    incident_id,
+                    reason="control_generation_changed",
+                    source="control.rebind_target",
                 )
                 return nxt
             if action == "takeover":
@@ -648,6 +739,31 @@ class _ControlOps(_StoreBase):
                     (incident_id, after_sequence),
                 ).fetchall()
             )
+
+
+def _register_target_in(conn: Connection, resource_uid: str) -> UUID:
+    """Register ``resource_uid`` in the caller's transaction (the rows
+    ``register_target`` writes); a concurrent first registration of the same
+    uid is waited for and reused."""
+    inserted = conn.execute(
+        "INSERT INTO opspilot_targets(target_id,resource_uid) VALUES(%s,%s) ON CONFLICT (resource_uid) DO NOTHING RETURNING target_id",
+        (uuid4(), resource_uid),
+    ).fetchone()
+    if inserted is not None:
+        conn.execute(
+            "INSERT INTO opspilot_target_suspensions(target_id) VALUES(%s)",
+            (inserted["target_id"],),
+        )
+        return cast(UUID, inserted["target_id"])
+    return cast(
+        UUID,
+        _StoreBase._require_row(
+            conn.execute(
+                "SELECT target_id FROM opspilot_targets WHERE resource_uid=%s",
+                (resource_uid,),
+            )
+        )["target_id"],
+    )
 
 
 def append_input_in(
