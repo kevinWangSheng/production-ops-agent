@@ -62,7 +62,7 @@ from opspilot.observer.release_evaluation import (
     query_evidence_consistent,
     supported_profile,
 )
-from opspilot.persistence.base import Connection, PersistenceError
+from opspilot.persistence.base import Connection, PersistenceError, mark_cleaned
 
 __all__ = [
     "COMPARISON_ATTEMPT_SECONDS",
@@ -600,7 +600,7 @@ def comparison_fingerprint(evidence: ReleaseComparisonEvidence) -> str:
 
 
 _COMPARISON_COLUMNS = "comparison_id,observation_id,ending_id,session_id,sample_id,owner,format_version,status,attempts,window_before_start,window_before_end,window_after_start,window_after_end,decision_at,evidence_sha256,comparison,recorded_at"
-_QUERY_COLUMNS = "comparison_id,query_key,query,source,evaluated_at,sent_at,status,http_status,detail,body_complete,raw,raw_sha256"
+_QUERY_COLUMNS = "comparison_id,query_key,query,source,evaluated_at,sent_at,status,http_status,detail,body_complete,raw,raw_sha256,payload_state"
 
 
 def _lock_comparison(conn: Connection, comparison_id: UUID) -> None:
@@ -936,12 +936,15 @@ class _ReleaseComparisonOps(_ReleaseSampleOps):
             (observation_id,),
         ).fetchall()
         for comparison in comparisons:
-            comparison["queries"] = conn.execute(
-                "SELECT "
-                + _QUERY_COLUMNS
-                + ' FROM opspilot_release_comparison_queries WHERE comparison_id=%s ORDER BY query_key COLLATE "C"',
-                (comparison["comparison_id"],),
-            ).fetchall()
+            comparison["queries"] = [
+                mark_cleaned(row)
+                for row in conn.execute(
+                    "SELECT "
+                    + _QUERY_COLUMNS
+                    + ' FROM opspilot_release_comparison_queries WHERE comparison_id=%s ORDER BY query_key COLLATE "C"',
+                    (comparison["comparison_id"],),
+                ).fetchall()
+            ]
         return cast(list[dict[str, Any]], utc_values(comparisons))
 
     def release_comparisons(self, observation_id: UUID) -> list[dict[str, Any]]:
@@ -957,9 +960,13 @@ class _ReleaseComparisonOps(_ReleaseSampleOps):
 
 
 def iter_comparison_queries(rows: Sequence[Mapping[str, Any]]) -> Iterator[Any]:
-    """Stored query rows as DTOs; raw bytes re-hashed by the DTO validator."""
+    """Stored query rows as DTOs; raw bytes re-hashed by the DTO validator.
+    A cleaned row (#244, no raw) is no DTO: callers check ``payload_state``
+    first."""
     for row in rows:
-        data = {k: v for k, v in row.items() if k != "comparison_id"}
+        data = {
+            k: v for k, v in row.items() if k not in ("comparison_id", "payload_state")
+        }
         raw = data["raw"]
         data["raw"] = raw if isinstance(raw, bytes) else bytes(raw)
         yield ReleaseQueryResult.model_validate(data)

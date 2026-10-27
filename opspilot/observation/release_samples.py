@@ -37,7 +37,12 @@ from opspilot.observer.release_evaluation import (
     evaluate_release_sample,
     query_evidence_consistent,
 )
-from opspilot.persistence.base import Connection, PersistenceError, _StoreBase
+from opspilot.persistence.base import (
+    Connection,
+    PersistenceError,
+    _StoreBase,
+    mark_cleaned,
+)
 
 if TYPE_CHECKING:
     from opspilot.observation.store import SampleLease
@@ -743,10 +748,13 @@ class _ReleaseSampleOps(_StoreBase):
             (observation_id,),
         ).fetchall()
         for sample in samples:
-            sample["queries"] = conn.execute(
-                'SELECT sample_id,query_key,query,source,evaluated_at,sent_at,status,http_status,detail,body_complete,raw,raw_sha256 FROM opspilot_release_query_results WHERE sample_id=%s ORDER BY query_key COLLATE "C"',
-                (sample["sample_id"],),
-            ).fetchall()
+            sample["queries"] = [
+                mark_cleaned(row)
+                for row in conn.execute(
+                    'SELECT sample_id,query_key,query,source,evaluated_at,sent_at,status,http_status,detail,body_complete,raw,raw_sha256,payload_state FROM opspilot_release_query_results WHERE sample_id=%s ORDER BY query_key COLLATE "C"',
+                    (sample["sample_id"],),
+                ).fetchall()
+            ]
         endings = conn.execute(
             "SELECT "
             + _ENDING_COLUMNS

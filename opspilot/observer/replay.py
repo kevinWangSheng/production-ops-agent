@@ -73,6 +73,7 @@ from opspilot.observer.sampler import (
 from opspilot.persistence.base import PersistenceError
 
 __all__ = [
+    "DATA_CLEANED",
     "INTEGRITY_MISMATCH",
     "PROFILE_SENTINEL",
     "PROFILE_UNREADABLE",
@@ -91,6 +92,12 @@ _log = logging.getLogger("opspilot.observer")
 #: The one code the acceptance harness freezes for a replay that cannot
 #: vouch for the stored basis (docs/testing/f6-acceptance-tests.md).
 INTEGRITY_MISMATCH = "STORED_OBSERVATION_INTEGRITY_MISMATCH"
+#: The retention cleanup removed raw bundles of the session (#244): the
+#: stored verdict can no longer be re-verified. Not a mismatch -- nothing
+#: was altered -- so the verdict is ``unknown`` without INTEGRITY_MISMATCH.
+DATA_CLEANED = "STORED_OBSERVATION_DATA_CLEANED"
+#: Per-reading code prefix of a cleaned bundle (a finding, not a mismatch).
+_RAW_CLEANED = "RAW_CLEANED:"
 #: The stored profile content does not validate or does not reproduce the
 #: session's revision: nothing can be recomputed against it.
 PROFILE_UNREADABLE = "HEALTH_PROFILE_UNREADABLE"
@@ -505,6 +512,11 @@ def _basis_only(
     )
 
 
+def _altered(codes: Sequence[str]) -> list[str]:
+    """The codes that say a stored row disagrees, cleaned bundles aside."""
+    return [code for code in codes if not code.startswith(_RAW_CLEANED)]
+
+
 def _readings(
     profile: HealthProfile | None,
     rows: Sequence[Mapping[str, Any]],
@@ -518,9 +530,16 @@ def _readings(
     (codex review of PR #139, P2-4)."""
     codes: list[str] = []
     verified: dict[str, bool | None] = {}
+    cleaned = False
     for row in rows:
         name = str(row["signal_name"])
         raw = row.get("raw")
+        if raw is None and row.get("payload_state") == "cleaned":
+            # #244: removed by the retention cleanup, not lost or altered
+            verified[name] = None
+            codes.append(f"{_RAW_CLEANED}{name}")
+            cleaned = True
+            continue
         if raw is None:
             verified[name] = None
             codes.append(f"RAW_MISSING:{name}")
@@ -529,7 +548,10 @@ def _readings(
         verified[name] = ok
         if not ok:
             codes.append(f"RAW_HASH_MISMATCH:{name}")
-    if profile is None:
+    if profile is None or cleaned:
+        # A sample with a cleaned bundle cannot be recomputed; the session
+        # fold then checks its stored outcome structurally, and the hashes
+        # of the bundles still present were checked above.
         return _basis_only(rows, verified), None, codes
     for row in rows:
         codes.extend(
@@ -583,6 +605,8 @@ def _sentinel_window_codes(
     codes: list[str] = []
     if (row.get("window_start"), row.get("window_end")) != sample_window:
         codes.append("SENTINEL_MISMATCH:window")
+    if row.get("raw") is None and row.get("payload_state") == "cleaned":
+        return codes  # the bundle window went with the cleaned bundle (#244)
     try:
         bundle = json.loads(bytes(row["raw"]))
         window = (
@@ -715,6 +739,8 @@ def replay_history(history: Mapping[str, Any]) -> SessionReplay | ReleaseReplay:
                         bool(stored["required_signals_present"]),
                     ):
                         codes.append("OUTCOME_MISMATCH")
+                elif any(code.startswith(_RAW_CLEANED) for code in more):
+                    skipped = DATA_CLEANED
                 else:
                     skipped = "BASIS_UNPARSABLE"
         partial.append(
@@ -771,7 +797,13 @@ def replay_history(history: Mapping[str, Any]) -> SessionReplay | ReleaseReplay:
         if parameter_codes:
             integrity.append(INTEGRITY_MISMATCH)
             integrity.extend(parameter_codes)
-    if any(sample.integrity for sample in samples) or not report.consistent:
+    if any(
+        reading.get("payload_state") == "cleaned"
+        for stored in stored_samples
+        for reading in stored.get("readings") or ()
+    ):
+        integrity.append(DATA_CLEANED)
+    if any(_altered(sample.integrity) for sample in samples) or not report.consistent:
         integrity.append(INTEGRITY_MISMATCH)
     if not report.ending_consistent:
         integrity.append("ENDING_MISMATCH")

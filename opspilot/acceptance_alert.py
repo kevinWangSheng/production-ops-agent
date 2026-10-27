@@ -91,8 +91,9 @@ class AlertDelivery:
     #: ``startsAt`` exactly as the payload carried it.
     original_starts_at: str
     #: The committed redacted, bounded audit text, verbatim (``truncated``
-    #: marks a cut at 16 KiB; whole JSON otherwise).
-    audit_json: str
+    #: marks a cut at 16 KiB; whole JSON otherwise). ``None`` once the
+    #: retention cleanup removed it (#244); hashes and times stay.
+    audit_json: str | None
 
 
 @dataclass(frozen=True)

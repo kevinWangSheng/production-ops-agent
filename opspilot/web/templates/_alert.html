@@ -21,7 +21,10 @@
 {% endif %}
 {% if alert.latest %}
 <h3>Annotations <span class="muted">(startsAt <code id="alert-latest-starts-at">{{ alert.latest.starts_at }}</code>, revision {{ alert.latest.annotation_revision }}, untrusted alert text, credentials redacted)</span></h3>
-{% if alert.latest.annotations is not none %}
+{% if alert.latest.cleaned %}
+<p id="alert-cleaned"><strong>Original alert cleaned</strong> <code>CLEANED_DATA</code>
+  <span class="muted">(removed by the retention cleanup after the incident closed; hashes, times and delivery records are kept)</span></p>
+{% elif alert.latest.annotations is not none %}
 <table id="alert-annotations">
   <tbody>
   {% for name, value in alert.latest.annotations | dictsort %}
@@ -40,7 +43,7 @@
   <thead><tr><th>Received</th><th>Ends at</th><th>Actor</th><th>Annotation revision</th><th>Raw sha256</th></tr></thead>
   <tbody>
   {% for r in alert.resolved %}
-  <tr><td>{{ r.received_at }}</td><td><code>{{ r.ends_at or "" }}</code></td><td><code>{{ r.actor }}</code></td><td>{{ r.annotation_revision }}</td><td><code>{{ r.raw_sha256 }}</code></td></tr>
+  <tr><td>{{ r.received_at }}</td><td>{% if r.cleaned %}<span class="muted">cleaned</span>{% else %}<code>{{ r.ends_at or "" }}</code>{% endif %}</td><td><code>{{ r.actor }}</code></td><td>{{ r.annotation_revision }}</td><td><code>{{ r.raw_sha256 }}</code></td></tr>
   {% endfor %}
   </tbody>
 </table>

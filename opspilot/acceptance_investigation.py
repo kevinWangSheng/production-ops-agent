@@ -136,7 +136,12 @@ def _resolves(record: StoredEvidence, run_id: str, incident_id: UUID) -> bool:
     return (
         record.run_id == run_id
         and record.subject_id == str(incident_id)
-        and record.hashes_verified is True
+        and (
+            record.hashes_verified is True
+            # a cleaned record (#244) keeps its view and both digests; the
+            # citation resolves on the view, which still has to hash
+            or (record.payload_state == "cleaned" and record.view_verified)
+        )
     )
 
 

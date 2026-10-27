@@ -44,6 +44,19 @@ class ReleaseReplay(DTO):
     model_requests: tuple[()] = ()
 
 
+#: The retention cleanup removed raw query bodies of this release (#244):
+#: the replay cannot redo the comparison and says so instead of reporting a
+#: mismatch; its verdict is ``unknown``.
+DATA_CLEANED = "REPLAY_DATA_CLEANED"
+
+
+def _cleaned(rows: Any) -> bool:
+    return any(
+        isinstance(row, Mapping) and row.get("payload_state") == "cleaned"
+        for row in rows or ()
+    )
+
+
 _AUDIT_ENDING_REASONS = {
     "pause": "authority_revoked",
     "resume": "authority_revoked",
@@ -92,6 +105,20 @@ def _replay_release_history(history: Mapping[str, object]) -> ReleaseReplay:
         }
     )
     samples: Any = history.get("samples", [])
+    if any(_cleaned(m.get("queries")) for m in samples):
+        # #244: the retention cleanup removed raw query bodies. Nothing can be
+        # recomputed, and nothing was altered either: unknown, not a mismatch.
+        # The rows (query, key, window, hash) stay in the history.
+        return ReleaseReplay(
+            observation_id=release.observation_id,
+            consistent=False,
+            stored_status=release.status,
+            replayed_status="unknown",
+            verdict="unknown",
+            used_sample_count=0,
+            integrity=(DATA_CLEANED,),
+            sample_evaluations=(),
+        )
     sessions: Any = history.get("sessions", [])
     endings: Any = history.get("endings", [])
     audits: Any = history.get("audit", [])
@@ -368,7 +395,11 @@ def _replay_release_history(history: Mapping[str, object]) -> ReleaseReplay:
                 if q.get("sample_id") != m["sample_id"]:
                     issues.add("SUBJECT_BINDING_MISMATCH")
                     issues.add("QUERY_MISMATCH")
-                data = {k: v for k, v in q.items() if k != "sample_id"}
+                data = {
+                    k: v
+                    for k, v in q.items()
+                    if k not in ("sample_id", "payload_state")
+                }
                 raw = data["raw"]
                 if not isinstance(raw, bytes):
                     raw = bytes(raw)
@@ -1110,6 +1141,10 @@ def _comparison_issues(
             window_after.end,
         ):
             return {"COMPARISON_MISMATCH"}
+        if _cleaned(c["queries"]):
+            # #244: the before-window bodies were cleaned; the comparison's
+            # bindings checked above still hold, its numbers cannot be redone
+            return {DATA_CLEANED}
         queries = list(iter_comparison_queries(c["queries"]))
         if any(q["comparison_id"] != c["comparison_id"] for q in c["queries"]):
             return {"COMPARISON_MISMATCH"}

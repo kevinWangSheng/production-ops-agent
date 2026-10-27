@@ -58,6 +58,12 @@ class StoredEvidence:
             and canonical_hash(self.view) == self.view_sha256
         )
 
+    @property
+    def view_verified(self) -> bool:
+        """The stored view still hashes to ``view_sha256``: what a reader of
+        the view alone (charts, report citations) needs, cleaned or not."""
+        return canonical_hash(self.view) == self.view_sha256
+
 
 class EvidenceStore(Protocol):
     def register(self, record: EvidenceRecord) -> str: ...

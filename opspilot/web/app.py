@@ -879,7 +879,12 @@ def create_app(
             if found is None:
                 raise _Refusal(404, "UNKNOWN_EVIDENCE")
             return JSONResponse(_recovery_reading(evidence_id, found))
-        raw, raw_redacted = _raw_fields(record.raw)
+        # A cleaned record (#244) keeps its identity, hashes and view; the
+        # two cleaned keys appear only then, so a present record keeps the
+        # page's established key set.
+        raw, raw_redacted = (
+            (_CLEANED, False) if record.raw is None else _raw_fields(record.raw)
+        )
         stored_view = dict(record.view)
         view = redact_payload(stored_view)
         payload = {
@@ -915,6 +920,10 @@ def create_app(
         return JSONResponse(payload)
 
     return app
+
+
+#: What a cleaned payload shows in place of its raw fields (#244 PR-3).
+_CLEANED = {"payload_state": "cleaned", "raw_unavailable": "CLEANED_DATA"}
 
 
 def _raw_fields(raw: bytes) -> tuple[dict[str, str], bool]:
@@ -1012,6 +1021,7 @@ def _recovery_reading(evidence_id: str, found: Mapping[str, Any]) -> dict[str, A
             else hashlib.sha256(bytes(raw)).hexdigest() == raw_sha256
         ),
         **raw_fields,
+        **(_CLEANED if reading.get("payload_state") == "cleaned" else {}),
         **(
             {"display_redacted": True}
             if raw_redacted
