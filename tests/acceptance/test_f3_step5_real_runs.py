@@ -7,8 +7,11 @@ the judge in ``tests/acceptance/test_f3_step5_rubric_gates.py`` to those
 frozen files. It reads only files under ``docs/evidence/`` and ``evals/``.
 
 Red until PR-3b freezes the evidence: a missing file fails (never skips),
-because a step without its evidence has not passed. Paths and the record
-shape are ASSUMED as listed in the judge module's docstring.
+because a step without its evidence has not passed. A change to the
+model-visible surface normally voids step-5 evidence; the only exception is
+an already registered change with an attached equivalence proof (user ruling
+2026-10-26, #319). Paths and the record shape are ASSUMED as listed in the
+judge module's docstring.
 
 Not decided here (reviewer judgements, U3-a; recorded in each Run's
 ``run.md``): rubric items 5-8 and the step-2 summary-consistency check. Per
@@ -26,7 +29,9 @@ from typing import Any
 import pytest
 
 from opspilot.investigation.loop import investigation_versions
+from opspilot.redaction import redact_credentials, redact_json_bytes
 from opspilot.tools.otel_demo import otel_demo_versions
+from opspilot.tools.outcomes import PROJECTION_REVISION
 from tests.acceptance.test_f3_step5_rubric_gates import (
     ANSWER_SHA256,
     MISSING_SOURCE_ANSWER_SHA256,
@@ -45,6 +50,7 @@ from tests.acceptance.test_f3_step5_rubric_gates import (
 )
 
 STEP5 = ROOT / "docs/evidence/f3-step5-competing-cause"
+LIVE = ROOT / "docs/evidence/f3-acceptance-live"
 PROBE = ROOT / "docs/evidence/f3-step6-authz-probe/probe.json"
 STEP3 = ROOT / "docs/evidence/f3-step3-coverage"
 RUNS = ("run-1", "run-2")
@@ -64,6 +70,63 @@ def _record(run: str) -> dict[str, Any]:
     return record
 
 
+def _equivalence() -> dict[str, Any]:
+    path = STEP5 / "v11-equivalence.json"
+    assert path.is_file(), (
+        f"surface equivalence proof missing: {path.relative_to(ROOT)}"
+    )
+    proof = json.loads(path.read_text())
+    assert proof.get("schema") == "f3-surface-equivalence-v1"
+    return proof
+
+
+def _check_version_surface(run: str, record: dict[str, Any]) -> None:
+    recorded = record["run_versions"]
+    today = otel_demo_versions()
+    proof: dict[str, Any] | None = None
+    for key, value in today.items():
+        if recorded.get(key) == value:
+            continue
+        if proof is None:
+            proof = _equivalence()
+        change = proof.get("change")
+        assert isinstance(change, dict), "surface equivalence proof has no change"
+        assert change.get("key") == key
+        assert recorded.get(key) == change.get("from")
+        assert value == change.get("to")
+
+        computed = proof.get("computed_with")
+        assert isinstance(computed, dict), (
+            "surface equivalence proof has no computed_with"
+        )
+        assert computed.get("tool_schema_revision") == today["tool_schema_revision"]
+        assert computed.get("projection_revision") == PROJECTION_REVISION
+
+        runs = proof.get("runs")
+        assert isinstance(runs, dict) and run in runs
+        run_proof = runs[run]
+        assert isinstance(run_proof, dict)
+        assert run_proof.get("run_id") == record["run_id"]
+        assert run_proof.get("tool_messages", 0) > 0
+        assert run_proof.get("llm_calls", 0) > 0
+        assert run_proof.get("changed_by_current_redaction") == 0
+        assert run_proof.get("escaped_authority_matches") == 0
+
+
+def _assert_live_views_are_currently_redacted(byte_views: dict[str, Any]) -> None:
+    assert byte_views, "live summary has no cited_evidence_views"
+    for evidence_id, evidence in byte_views.items():
+        assert isinstance(evidence, dict), evidence_id
+        view = evidence.get("view")
+        assert isinstance(view, dict), evidence_id
+        canonical = json.dumps(
+            view, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+        )
+        assert redact_credentials(canonical) == canonical, evidence_id
+        encoded = canonical.encode("utf-8")
+        assert redact_json_bytes(encoded) == encoded, evidence_id
+
+
 @pytest.mark.parametrize("run", RUNS)
 def test_step5_real_run_used_the_frozen_files_and_current_model_surface(
     run: str,
@@ -77,11 +140,15 @@ def test_step5_real_run_used_the_frozen_files_and_current_model_surface(
     }
     for key, value in registered.items():
         assert summary["frozen"][key] == value, (sc.scenario_id, key)
-    # A model-visible change after the Run voids step-5 evidence (task
-    # record "顺序"): the Run's recorded versions must be today's.
-    recorded = _record(run)["run_versions"]
-    for key, value in otel_demo_versions().items():
-        assert recorded.get(key) == value, (sc.scenario_id, key)
+    _check_version_surface(run, _record(run))
+
+
+@pytest.mark.parametrize("run", RUNS)
+def test_step5_live_cited_views_are_stable_under_current_redaction(run: str) -> None:
+    path = LIVE / run / "summary.json"
+    assert path.is_file(), f"live acceptance summary missing: {path.relative_to(ROOT)}"
+    summary = json.loads(path.read_text())
+    _assert_live_views_are_currently_redacted(summary.get("cited_evidence_views", {}))
 
 
 @pytest.mark.parametrize("run", RUNS)
