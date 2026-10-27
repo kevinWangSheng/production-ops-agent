@@ -561,7 +561,19 @@ def _readings(
     if profile is None or cleaned:
         # A sample with a cleaned bundle cannot be recomputed; the session
         # fold then checks its stored outcome structurally, and the hashes
-        # of the bundles still present were checked above.
+        # of the bundles still present were checked above. The kept
+        # metadata of every row is still bound to the frozen profile.
+        if profile is not None:
+            for row in rows:
+                codes.extend(
+                    _basis_codes(
+                        profile,
+                        row,
+                        verified=verified[str(row["signal_name"])],
+                        sample_window=sample_window,
+                    )
+                )
+            codes.extend(_bundle_time_codes(rows, verified, sample_window))
         return _basis_only(rows, verified), None, codes
     for row in rows:
         codes.extend(

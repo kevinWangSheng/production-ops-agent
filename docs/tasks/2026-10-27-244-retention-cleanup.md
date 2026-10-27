@@ -55,6 +55,7 @@
 - PR-3 独立审查阻塞 2 处置：发布重放不再遇 cleaned 提前返回；被清理样本只跳过重算与指纹，改用存储的评估参与折叠，发布/样本/审计/结束/对比绑定等校验照常执行，篡改与 `REPLAY_DATA_CLEANED` 并存、结论 unknown；对比仅 cleaned 时另校验存储记录的状态与时间顺序。F6 侧同理补了 cleaned 哨兵读数。`_impl` 测试（伪造 release.status 与样本 outcome）先红后绿。
 - PR-3 复验阻塞处置：已清理的 profile-unavailable 哨兵读数仍校验保留的 `query` 等于会话 profile revision，不一致报 `SENTINEL_MISMATCH:query`（与 `STORED_OBSERVATION_DATA_CLEANED` 并报 INTEGRITY_MISMATCH）；只跳过需要 bundle 的校验。`_impl` 测试先红后绿。
 - PR-3 机器人分诊（lead 2026-10-27）：同一样本或对比中部分查询已清理时，仍保留原文的行照常重算哈希，被篡改报 `RAW_SHA256_MISMATCH`/`COMPARISON_MISMATCH`（与 `REPLAY_DATA_CLEANED` 并存）；另 3 条已由 7d49eb78 覆盖。改动小，lead 自核：`_impl` 测试先红后绿，重放相关 220 条通过。
+- PR-3 机器人对 8076e164 新提 1 条（采纳）：F6 有已清理读数的样本仍把每行保留的信号名、查询、来源、时间窗与冻结 profile 核对，只跳过依赖原文的检查；`_impl` 测试先红后绿，F6/F7/F11 相关 333 条通过。
 
 ## 下一步与交接
 

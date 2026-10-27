@@ -488,3 +488,32 @@ def test_a_tampered_body_kept_beside_a_cleaned_one_is_still_reported(
         )
         assert "REPLAY_DATA_CLEANED" in replay.integrity
         assert ("COMPARISON_MISMATCH" in replay.integrity) is tamper
+
+
+def test_the_kept_metadata_of_a_cleaned_reading_stays_bound_to_the_profile(
+    loop, owner, controller, scratch_dsn
+) -> None:
+    """Bot review #382: a cleaned reading skips only its bundle checks; its
+    kept signal, query, source and window still match the frozen profile."""
+    incident, _, target = _incident(owner)
+    session = _authorize(controller, incident, target, sustained=1)
+    _backdate_authorization(owner, session)
+    _run(loop, owner, session, 2)
+    _clean_session(scratch_dsn, session)
+    assert replay_stored_session(controller, session).integrity == (DATA_CLEANED,)
+    with psycopg.connect(scratch_dsn) as conn:
+        assert (
+            conn.execute(
+                "UPDATE opspilot_observation_signal_readings r SET query='forged' "
+                "FROM opspilot_observation_samples s WHERE r.sample_id=s.sample_id "
+                "AND s.session_id=%s AND s.sequence=1 AND r.ctid=("
+                "SELECT r2.ctid FROM opspilot_observation_signal_readings r2 "
+                "WHERE r2.sample_id=s.sample_id LIMIT 1)",
+                (session,),
+            ).rowcount
+            == 1
+        )
+    result = replay_stored_session(controller, session)
+    assert result.recovery_verdict == "unknown"
+    assert INTEGRITY_MISMATCH in result.integrity
+    assert DATA_CLEANED in result.integrity
