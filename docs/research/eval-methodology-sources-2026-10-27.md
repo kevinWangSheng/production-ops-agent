@@ -6,11 +6,11 @@
 
 ## 1. 结论
 
-1. **三家都要求先拿 LLM judge 和人工标注对齐，再用于判分；但三家的官方文档都没有给出数值门槛。** Anthropic 只写「closely calibrated」，LangSmith 把 alignment score 定义为与专家一致的百分比、建议至少 20 例且 0/1 平衡，但不给门槛。唯一的数字来自 Braintrust 一篇比较平台的营销文章，原话是「below 80%」需要改进，属于经验值。我们的 46/48（95.8%），再加零误通过和逐诊断包含，严于所有来源。Q7 把门槛收窄到 verdict 一致率，方向有来源支持（LangSmith 的 alignment 就是按二值标签算的一致率）。
+1. **三家都建议先拿 LLM judge 和人工标注对齐，再用于判分（是建议与流程，不是强制门槛）；三家的官方文档都没有给出数值门槛。** 本项目的硬门槛来自 C3 与 F1 第 5 步，不来自厂商。 Anthropic 只写「closely calibrated」，LangSmith 把 alignment score 定义为与专家一致的百分比、建议至少 20 例且 0/1 平衡，但不给门槛。唯一的数字来自 Braintrust 一篇比较平台的营销文章，原话是「below 80%」需要改进，属于经验值。我们的 46/48（95.8%），再加零误通过和逐诊断包含，严于所有来源。Q7 把门槛收窄到 verdict 一致率，方向有来源支持（LangSmith 的 alignment 就是按二值标签算的一致率）。
 2. **「完全照上游、不做事前校准」这个替代方案没有任何厂商来源支持。** 三家都把与人工校准写成 judge 的前提。HolmesGPT（`a0009195`）没有事前校准，靠固定 judge 模型、10 次迭代和事后三类失败分诊（H2–H4）。
-3. **Anthropic 明确建议不要评路径、要评结果，对多部分任务给部分分，每个维度各用一个独立 judge。** 我们「逐诊断 `(location, quote)` 精确包含」这条规则，本质上是在评 judge 的枚举路径，与这条建议相悖，支持 #312 方案 1。
+3. **Anthropic 明确建议不要评路径、要评结果，对多部分任务给部分分，每个维度各用一个独立 judge。** 这条建议针对的是被测 Agent 的执行路径；把它类推到 judge 校准里的「逐诊断精确包含」规则属推断，不直接支持 #312 方案 1。另注：用户 2026-10-22 已裁决 P7 r3（PR #300 分支），把 quote 精确比较改为按 location 匹配。
 4. **两人独立判定一致，是题目本身清晰的标准。** Anthropic 原话是「two domain experts would independently reach the same pass/fail verdict」。P7 的两份盲标之间的分歧，可以先当作题目或标签有歧义的信号，不必全部交用户逐字段裁定（推断）。
-5. **在线评测、生产监控、A/B 测试和用户反馈飞轮都以生产流量为前提**，OpsPilot 没有生产流量，这些不适用。可以移植的只有一点：把 lab 中观察到的真实失败转成开发集用例。
+5. **生产监控、A/B 测试和用户反馈飞轮以真实用户与生产流量为前提**，OpsPilot 没有，这些不适用；平台的在线评估器也可以对已上传的实验 trace 运行，但我们的判分在评测侧离线完成，暂不需要。可以移植的只有一点：把 lab 中观察到的真实失败转成开发集用例。
 6. **保留集方面**：LangSmith 建议用 split 区分 train/validation/test，并给数据集打版本标签；Anthropic 建议从 20–50 个来自真实失败的任务起步、正例负例平衡、每题附参考解。Q9 的六类场景应当每类都配「应该触发」和「不应触发」两种用例。
 7. **基线对比方面**：pass@k 与 pass^k 应当分开报告。值班场景更接近 Anthropic 所说的「consistency is essential」，所以用 pass^k。两家平台都提供 pairwise 比较，但会受位置偏差影响。我们的主判据是确定性的二值判断，pairwise 只适合作为报告质量的辅助视图。
 
@@ -100,7 +100,7 @@
 | 方法点 | 来源 | 来源怎么说 | OpsPilot 现状 | 适配 | 理由 |
 |---|---|---|---|---|---|
 | task/trial/grader 结构 | A1-1、L1 | 任务、多次尝试、评分者、最终状态 | 场景 + attempt 槽位 + gate/judge + Outcome（`docs/tasks/2026-10-12-eval-suite.md:22-27,47`） | 适用（已有） | 结构一致 |
-| 评结果而非路径 | A1-2、L3 | 路径评分过于僵硬 | 主判据看 Outcome 和证据，不看调用顺序（`AGENTS.md`「验证与汇报」）；但 P7 要求 judge 枚举出的 `(location, quote)` 必须包含标签（`opspilot/evaluation/calibration_flow.py:687-692,756-757`） | 部分适用 | 被测 Agent 已按结果评；judge 校准却在评枚举路径 |
+| 评结果而非路径 | A1-2、L3 | 路径评分过于僵硬 | 主判据看 Outcome 和证据，不看调用顺序（`AGENTS.md`「验证与汇报」）；但 P7 要求 judge 枚举出的 `(location, quote)` 必须包含标签（`opspilot/evaluation/calibration_flow.py:687-692,756-757`） | 部分适用 | 被测 Agent 已按结果评；类推到 judge 校准属推断 |
 | 代码、模型、人工三层 | A1-3、A2-1、B5 | 能用确定性检查的都交给代码；judge 只判语义 | D6 r6：`overall = deterministic_pass AND judge_pass`（`docs/tasks/2026-10-12-eval-suite-contract.md:74-75`） | 适用（已有） | 与 B5 的分工一致 |
 | judge 校准方法与门槛 | A1-4、B1、B6、B7、L5 | 必须与人工对齐；指标是一致率或 Kappa；样本 20 例到 100–200 例；官方文档无门槛，营销文的经验值是 80% | 24 项 × 2 次，≥46/48，负例零误通过，外加逐诊断包含，任一观察失败即整轮不合格（`docs/tasks/2026-10-12-eval-suite.md:44`；`calibration_flow.py:768-797`）；p7-formal-2 结果为 `no_baseline`（`docs/tasks/2026-10-18-eval-p7-calibration.md:64`） | 部分适用 | 要校准，这点有来源支持；门槛与附加规则严于所有来源 |
 | judge 的 Unknown 出口 | A1-5 | 允许 judge 返回 Unknown | P6 规定 error/invalid 都判不通过，没有 Unknown（`eval-suite.md:43`） | 部分适用 | 可增加 `unknown` 类别，计入失败分母、单独列出，交人工复核（推断） |
@@ -127,7 +127,7 @@
 
 1. 支持把门槛改为 verdict 一致率。依据：L5 的 alignment score 就是「judge 判定与专家相同的比例」；A1-2 反对评路径。逐诊断包含降为复核材料。
 2. 46/48 不必放宽，但应在决策稿中写明：这个门槛是项目自定的，严于所有来源（来源中唯一的数字是 B7 的 80% 经验值），并不是对标得来的数字。
-3. 「完全照上游、不做事前校准」这个替代方案，应在决策稿里写明没有厂商来源支持（A1-4、B1、B5、L5 都要求先与人工对齐），而不仅仅是「不满足 F1 第 5 步」。
+3. 「完全照上游、不做事前校准」这个替代方案，应在决策稿里写明没有厂商来源支持（A1-4、B1、B5、L5 都建议先与人工对齐），而不仅仅是「不满足 F1 第 5 步」。
 4. 降低用户裁定成本（推断，依据 A1-12、L5）：verdict 口径下，只有两份盲标在二值 verdict 上不一致的项才交用户；逐字段差异不再需要裁定。两份盲标之间的 verdict 一致率单独记录，作为题目清晰度的参考上限。
 5. 可选（推断，依据 A1-5）：judge 输出允许 `unknown`，计入失败分母，单独列出，并进入人工复核队列。这项会改 P6 的输出合同，需要单独裁决。
 6. 校准通过后，按 B5 和 A1-4 的建议，每轮基线抽样少量 judge 判分做人工复核，监测漂移（推断）。
@@ -153,4 +153,4 @@
 - 没有最终失败的页面。
 - 补读完成（lead）：HolmesGPT 评测文档与 `classifiers.py`、`review-eval-run` skill（见 2.4 H1–H6），#312 所述上游事后分诊已复核属实；LangChain「Introducing Align Evals」<https://blog.langchain.com/introducing-align-evals/>：对齐流程为选评测准则 → 选数据 → 人工逐例打分形成 "golden set" → 写 judge prompt 对照人工结果迭代，界面显示 "alignment score" 并保存 "baseline alignment score" 供改 prompt 前后对比；文中同样没有给数值门槛。
 - 仍未读：Braintrust 的 multiple reviewers 合并规则页。
-- 未核实：除 A2-1、A2-2 外，所有引文都经 WebFetch 的摘要模型抽取，没有逐字节对照原文。Anthropic 文章的发布日期未取得。B6、B7、B11、B12 是 Braintrust 域名下的 articles，属于厂商教育或营销内容，不是产品文档。
+- 未核实：除 A2-1、A2-2，以及第 5 行所列经 lead curl 逐字复核的 A1/L5/B7 引文和 H1–H6 外，其余引文都经 WebFetch 的摘要模型抽取，没有逐字节对照原文；复核未保存页面快照。Anthropic 文章的发布日期未取得。B6、B7、B11、B12 是 Braintrust 域名下的 articles，属于厂商教育或营销内容，不是产品文档。
