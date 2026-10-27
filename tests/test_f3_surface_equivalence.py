@@ -2,14 +2,19 @@
 
 import json
 from hashlib import sha256
+from types import SimpleNamespace
 
 import pytest
 
 from opspilot import redaction
 from scripts.f3_surface_equivalence import (
+    LLM_RUN,
+    Incomplete,
     check,
     escaped_matches,
     extract_texts,
+    ordered_calls,
+    require_complete,
     rules_of,
     tool_messages,
 )
@@ -88,3 +93,78 @@ def test_extract_texts_cover_evidence_views_and_step_results():
         }
     }
     assert extract_texts(extract) == ['{"a": 1}', '{"r": 2}', '{"r": 3}']
+
+
+# -- completeness -----------------------------------------------------------------
+
+RUN = "run-x"
+SUMMARY = {"model_rounds_per_run": {RUN: 3}, "tool_requests": [{}] * 4}
+
+
+def _complete(**overrides):
+    values = {
+        "llm_calls": 3,
+        "tool_messages": 4,
+        "truncated": 1,
+        "extract_texts_checked": 5,
+        "summary": SUMMARY,
+    }
+    require_complete(RUN, **{**values, **overrides})
+
+
+def test_a_trace_matching_the_run_summary_is_complete():
+    _complete()
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"llm_calls": 2},  # the trace lost a model round
+        {"tool_messages": 3},  # ... or a tool result
+        {"extract_texts_checked": 0},  # empty or missing DB extract
+        {"truncated": 6},  # fewer extract texts than trace-cut messages
+        {"summary": {"model_rounds_per_run": {}, "tool_requests": [{}] * 4}},
+    ],
+)
+def test_an_incomplete_surface_fails(overrides):
+    with pytest.raises(Incomplete):
+        _complete(**overrides)
+
+
+def test_an_empty_db_extract_yields_no_texts_and_fails():
+    texts = extract_texts({"raw": {"evidence": [], "steps": []}})
+    with pytest.raises(Incomplete):
+        _complete(extract_texts_checked=len(texts))
+
+
+def _row(seq, *tools, omitted=0, name=LLM_RUN):
+    return SimpleNamespace(
+        name=name,
+        extra={
+            "metadata": {
+                "model_call_seq": seq,
+                "otel.span.opspilot.model.prompt_messages_omitted": omitted,
+            }
+        },
+        inputs={"messages": _call(*tools)},
+    )
+
+
+def test_calls_are_ordered_by_sequence_and_other_runs_ignored():
+    rows = [_row(2, "a", "b"), _row(1, "a"), _row(9, name="tool:x")]
+    assert [len(c) for c in ordered_calls(rows)] == [2, 3]
+
+
+@pytest.mark.parametrize(
+    "seqs",
+    [(1, 1), (1, 3), (2, 3), (None, 1)],
+    ids=["duplicate", "gap", "missing-first", "no-seq"],
+)
+def test_duplicate_missing_or_absent_call_numbers_fail(seqs):
+    with pytest.raises(Incomplete):
+        ordered_calls([_row(seq, "a") for seq in seqs])
+
+
+def test_a_prompt_with_omitted_messages_fails():
+    with pytest.raises(Incomplete):
+        ordered_calls([_row(1, "a", omitted=2)])

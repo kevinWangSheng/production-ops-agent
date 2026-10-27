@@ -55,6 +55,7 @@ from opspilot.tools.otel_demo import otel_demo_versions  # noqa: E402
 from opspilot.tools.outcomes import PROJECTION_REVISION  # noqa: E402
 
 SCHEMA = "f3-surface-equivalence-v1"
+SUMMARIES = ROOT / "docs/evidence/f3-acceptance-live"
 LLM_RUN = "deepseek.chat.completions"
 TRUNCATED = "...[truncated]"
 #: main before #319 (the v10 projection): the rules F3 step 5 ran under.
@@ -197,21 +198,69 @@ def extract_texts(extract: dict[str, Any]) -> list[str]:
     ]
 
 
+class Incomplete(ValueError):
+    """The inputs cannot show the whole model-visible surface of a Run."""
+
+
+def ordered_calls(rows: Iterable[Any]) -> list[list[dict[str, Any]]]:
+    """Prompt messages of the trace's LLM calls, in ``model_call_seq`` order.
+
+    The sequence numbers must be exactly 1..N (no duplicate, gap or missing
+    number) and no traced prompt may omit messages.
+    """
+    llm = [r for r in rows if r.name == LLM_RUN]
+    metadata = [(r.extra or {}).get("metadata") or {} for r in llm]
+    try:
+        seqs = [int(m["model_call_seq"]) for m in metadata]
+    except (KeyError, TypeError, ValueError):
+        raise Incomplete("an LLM call has no model_call_seq") from None
+    if sorted(seqs) != list(range(1, len(llm) + 1)):
+        raise Incomplete("LLM call sequence numbers are not exactly 1..N")
+    if any(
+        m.get("otel.span.opspilot.model.prompt_messages_omitted", 0) for m in metadata
+    ):
+        raise Incomplete("a traced prompt omits messages")
+    order = sorted(range(len(llm)), key=lambda i: seqs[i])
+    return [list((llm[i].inputs or {})["messages"]) for i in order]
+
+
 def fetch_calls(client: Any, trace_url: str) -> list[list[dict[str, Any]]]:
     """Prompt messages of every LLM call of the trace, in call order."""
     path = urlsplit(trace_url).path.split("/")
     project_id, root_id = path[path.index("p") + 1], path[path.index("r") + 1]
     root = client.read_run(root_id)
-    rows = list(client.list_runs(project_id=project_id, trace_id=root.trace_id))
-    llm = [r for r in rows if r.name == LLM_RUN]
-    llm.sort(key=lambda r: int((r.extra or {})["metadata"]["model_call_seq"]))
-    for row in llm:
-        omitted = (row.extra or {})["metadata"].get(
-            "otel.span.opspilot.model.prompt_messages_omitted", 0
+    return ordered_calls(
+        client.list_runs(project_id=project_id, trace_id=root.trace_id)
+    )
+
+
+def require_complete(
+    run_id: str,
+    *,
+    llm_calls: int,
+    tool_messages: int,
+    truncated: int,
+    extract_texts_checked: int,
+    summary: dict[str, Any],
+) -> None:
+    """Raise unless the trace holds every model round and tool result the
+    frozen Run summary records, and the DB extract can cover the trace's cut
+    messages."""
+    rounds = summary["model_rounds_per_run"].get(run_id)
+    if llm_calls != rounds:
+        raise Incomplete(f"{run_id}: trace has {llm_calls} LLM calls, Run had {rounds}")
+    requests = len(summary["tool_requests"])
+    if tool_messages != requests:
+        raise Incomplete(
+            f"{run_id}: trace has {tool_messages} tool messages, Run had {requests}"
         )
-        if omitted:
-            raise ValueError("a traced prompt omits messages")
-    return [list((r.inputs or {})["messages"]) for r in llm]
+    if extract_texts_checked == 0:
+        raise Incomplete(f"{run_id}: the DB extract yields no texts")
+    if extract_texts_checked < truncated:
+        raise Incomplete(
+            f"{run_id}: {extract_texts_checked} DB extract texts cannot cover "
+            f"{truncated} trace-truncated messages"
+        )
 
 
 def main() -> int:
@@ -244,7 +293,18 @@ def main() -> int:
     for name, (run_id, url) in RUNS.items():
         calls = fetch_calls(client, url)
         counts = check(tool_messages(calls), now=now, before=before)
-        texts = extract_texts(json.loads(Path(extracts[name]).read_text()))
+        try:
+            texts = extract_texts(json.loads(Path(extracts[name]).read_text()))
+        except (OSError, ValueError, KeyError, TypeError) as error:
+            raise Incomplete(f"{run_id}: DB extract unreadable") from error
+        require_complete(
+            run_id,
+            llm_calls=len(calls),
+            tool_messages=int(counts["tool_messages"]),
+            truncated=int(counts["trace_truncated_messages"]),
+            extract_texts_checked=len(texts),
+            summary=json.loads((SUMMARIES / name / "summary.json").read_text()),
+        )
         result["runs"][name] = {
             "run_id": run_id,
             "trace_url": url,
@@ -273,4 +333,9 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    try:
+        raise SystemExit(main())
+    except Incomplete as error:
+        # nothing is written: a partial surface proves nothing
+        print(json.dumps({"status": "incomplete", "reason": str(error)}))
+        raise SystemExit(2) from None
