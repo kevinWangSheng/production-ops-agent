@@ -12,9 +12,10 @@ fi
 [ "$#" -gt 0 ] || set -- HEAD
 status=0
 for rev in "$@"; do
-	if ! "$dir/gitleaks" git --no-banner --redact --ignore-gitleaks-allow \
-		--log-opts="origin/main..$rev" . >/dev/null 2>&1; then
-		echo "BRANCH_SECRET_DETECTED in origin/main..$rev; rerun: $dir/gitleaks git --redact --ignore-gitleaks-allow --log-opts=origin/main..$rev ." >&2
+	# Same rules and reviewed exceptions as CI (scripts/check_secrets.py).
+	result=$(python3 scripts/check_secrets.py --binary "$dir/gitleaks" --range "origin/main..$rev") || true
+	if [ "$result" != "BRANCH_SECRET_SCAN_PASSED" ]; then
+		echo "$result in origin/main..$rev; inspect: $dir/gitleaks git --redact --ignore-gitleaks-allow --log-opts=origin/main..$rev ." >&2
 		status=1
 	fi
 done

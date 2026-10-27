@@ -105,3 +105,40 @@ def test_private_index_entry_is_rejected_before_any_blob_read(tmp_path, monkeypa
     monkeypatch.setattr(scanner, "command", guarded)
     with pytest.raises(ScanError, match="PRIVATE_CONFIG_TRACKED"):
         tracked_snapshot(root, tmp_path / "out")
+
+
+def test_range_scan_uses_ci_rules_on_only_that_range(tmp_path, monkeypatch):
+    import scripts.check_secrets as scanner
+
+    calls = []
+
+    def fake(args, *, cwd, timeout=60, text=True):
+        calls.append(list(args))
+        if args[-1] == "version":
+            return subprocess.CompletedProcess(args, 0, scanner.VERSION + "\n", "")
+        report = next(a for a in args if a.startswith("--report-path=")).split("=", 1)[
+            1
+        ]
+        config = next(a for a in args if a.startswith("--config=")).split("=", 1)[1]
+        calls.append(Path(config).read_text())
+        Path(report).write_text("[]")
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    monkeypatch.setattr(scanner, "command", fake)
+    binary = tmp_path / "gitleaks"
+    binary.write_text("")
+    result = scanner.check_range(tmp_path, binary, "origin/main..HEAD")
+    assert result == "BRANCH_SECRET_SCAN_PASSED"
+    scan_args = calls[1]
+    assert scan_args[1] == "git"
+    assert "--log-opts=origin/main..HEAD --no-ext-diff --no-textconv" in scan_args
+    assert "tests/test_311_source_errors_impl" in calls[2]  # CI exceptions travel along
+
+
+def test_range_scan_rejects_option_shaped_range(tmp_path):
+    import scripts.check_secrets as scanner
+
+    binary = tmp_path / "gitleaks"
+    binary.write_text("")
+    with pytest.raises(ScanError, match="RANGE_INVALID"):
+        scanner.check_range(tmp_path, binary, "--all")
