@@ -374,9 +374,7 @@ def test_a_refused_rebind_registers_no_target(web_dsn, refusal):
     # The same request on an open incident at its generation registers the
     # target in the decision's own transaction.
     if refusal == "stale":
-        assert _control(
-            app, incident, 0, "rebind_target", to_target=uid
-        ).status == 200
+        assert _control(app, incident, 0, "rebind_target", to_target=uid).status == 200
         assert _registered(uid) and _uid(incident) == uid
 
 
