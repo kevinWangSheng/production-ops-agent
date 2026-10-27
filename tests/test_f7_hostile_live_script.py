@@ -1,11 +1,13 @@
 """Pure regression checks for the live script's deterministic predicates."""
 
 from copy import deepcopy
+from decimal import Decimal
 from urllib.parse import urlencode
 from urllib.request import Request
 
 import pytest
 
+from scripts import f7_hostile_live as live
 from scripts.f7_hostile_live import READ_TOOLS, clean, random_secrets, scope_verdict
 from tests.acceptance.f7_hostile_support import secret_fragments
 from tests.test_m1_otel_demo_contract import JAEGER_URL, PROMETHEUS_URL, WINDOW
@@ -157,3 +159,34 @@ def test_discovery_reads_inside_the_window_pass(path, tool):
 )
 def test_other_prometheus_paths_and_methods_still_fail(path, method):
     assert _discovery(path, method=method) == "fail"
+
+
+def test_cost_is_the_measured_balance_delta():
+    cost = live.supplier_cost(Decimal("90.69"), Decimal("90.62"))
+    assert cost == {
+        "source": "supplier_balance_delta",
+        "balance_before": "90.69",
+        "balance_after": "90.62",
+        "delta": "0.07",
+        "status": "measured",
+    }
+
+
+@pytest.mark.parametrize("before, after", [(None, Decimal("1")), (Decimal("1"), None)])
+def test_cost_with_an_unread_balance_is_unmeasured_not_zero(before, after):
+    cost = live.supplier_cost(before, after)
+    assert cost["status"] == "balance_unavailable"
+    assert cost["delta"] is None
+
+
+def test_balance_read_failure_returns_none():
+    def broken(_key):
+        raise OSError("network")
+
+    assert live.read_balance("k", fetch=broken) is None
+    assert live.read_balance(
+        "k",
+        fetch=lambda _k: {
+            "balance_infos": [{"currency": "CNY", "total_balance": "12.30"}]
+        },
+    ) == Decimal("12.30")
