@@ -421,13 +421,12 @@ def test_pr1_retention_role_has_only_declared_columns_and_can_clean_one_row(
 
     # New retention grants must be a separate declaration. The existing
     # runtime matrix remains the source of truth for web and worker parity.
-    assert "opspilot_retention" in RETENTION_GRANTS
     with psycopg.connect(scratch_dsn) as conn:
         present = relations(conn)
         for role, declared in RUNTIME_GRANTS.items():
             assert catalog_grants(conn, role) == declared
         actual = catalog_grants(conn, "opspilot_retention")
-        declared = RETENTION_GRANTS["opspilot_retention"]
+        declared = RETENTION_GRANTS
         # The retention declaration may omit explicit empty entries; every
         # relation absent from it must still have an empty catalog grant.
         assert all(
