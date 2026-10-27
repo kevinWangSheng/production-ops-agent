@@ -30,6 +30,7 @@ from psycopg.conninfo import make_conninfo
 from psycopg.rows import dict_row
 
 from opspilot import schema
+from opspilot.observation.store import ObservationStore
 from opspilot.observer.health_profile import PROFILE_DIRECTORY, load_health_profile
 from opspilot.persistence import DurableStore
 from opspilot.persistence.grants import WEB_ROLE, WORKER_ROLE
@@ -241,7 +242,7 @@ def _remember_dsn(app, database):
 
 
 def _sessions(app, incident_id: str) -> tuple[dict, ...]:
-    store = DurableStore(_app_dsn[id(app)])
+    store = ObservationStore(_app_dsn[id(app)])
     try:
         return tuple(store.incident_sessions(UUID(incident_id)))
     finally:
