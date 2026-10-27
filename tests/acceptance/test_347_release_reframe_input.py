@@ -202,7 +202,7 @@ def test_ac10_versions_revisions_alembic_head_and_all_runtime_grants_are_frozen(
         == otel_demo_versions()["prompt_revision"]
         == "prompt-replay-candidate-bef70649a3a8"
     )
-    assert schema.head_revision() == "0022_incident_association"
+    assert schema.head_revision() == "0023_retention_raw_cleanup"
     grants = {
         role: {table: sorted(values) for table, values in tables.items()}
         for role, tables in RUNTIME_GRANTS.items()

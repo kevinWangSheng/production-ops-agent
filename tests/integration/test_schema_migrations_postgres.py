@@ -32,7 +32,7 @@ LEGACY_DDL = (
     pathlib.Path(__file__).parent / "legacy_schema_2026-10-05.sql"
 ).read_text()
 PG_DUMP = os.environ.get("OPSPILOT_PG_DUMP", "pg_dump")
-HEAD = "0022_incident_association"
+HEAD = "0023_retention_raw_cleanup"
 # opspilot_* tables at head: 15 in the baseline + 5 of 0003 (profiles,
 # sessions, samples, readings, endings) + 10 of 0008 (postmortems, versions,
 # conclusions, disputes, proposals, knowledge entries/revisions/revocations,
@@ -305,6 +305,8 @@ EXPECTED_CHECKS = {
     "opspilot_incidents_priority_check",
     # 0022 (#245): an incident is never merged into itself
     "opspilot_incidents_merged_into_incident_check",
+    # 0023 (#244): a close time only on a closed incident
+    "opspilot_incidents_closed_at_check",
 }
 
 
