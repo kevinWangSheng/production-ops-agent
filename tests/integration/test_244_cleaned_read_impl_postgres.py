@@ -681,3 +681,92 @@ def test_a_cleaned_comparison_record_stays_bound_to_its_row(
     ).integrity
     assert "REPLAY_DATA_CLEANED" in integrity
     assert "COMPARISON_MISMATCH" in integrity, field
+
+
+# --- recheck of #382: after signals and the inconsistency code
+
+
+def _forge_signal(history, scope, **changes):
+    stored = dict(history["comparisons"][0]["comparison"])
+    signals = [dict(s) for s in stored["signals"]]
+    target = next(s for s in signals if s["scope"] == scope)
+    target.update(changes)
+    stored["signals"] = signals
+    return _with_comparison(history, comparison=stored)
+
+
+@pytest.mark.parametrize(
+    "scope,changes",
+    [
+        ("after_service", {"value": 999.0}),
+        ("after_new", {"query_keys": []}),
+    ],
+)
+def test_a_cleaned_comparison_keeps_its_after_signals_bound_to_the_anomaly(
+    release_harness, scope, changes
+) -> None:
+    history = _partly_cleaned_history(release_harness)
+    integrity = replay_release_history(_forge_signal(history, scope, **changes)).integrity
+    assert "REPLAY_DATA_CLEANED" in integrity
+    assert "COMPARISON_MISMATCH" in integrity
+
+
+def test_a_forged_inconsistency_code_does_not_switch_off_the_plan_check(
+    release_harness,
+) -> None:
+    history = _partly_cleaned_history(release_harness)
+    (c,) = history["comparisons"]
+    queries = [dict(q) for q in c["queries"]]
+    assert queries[0].get("payload_state") == "cleaned"
+    queries[0]["query"] = "forged"
+    stored = dict(c["comparison"])
+    stored["reason_codes"] = sorted(
+        {*stored["reason_codes"], "QUERY_EVIDENCE_INCONSISTENT"}
+    )
+    integrity = replay_release_history(
+        _with_comparison(history, queries=queries, comparison=stored)
+    ).integrity
+    assert "REPLAY_DATA_CLEANED" in integrity
+    assert "COMPARISON_MISMATCH" in integrity
+    # the code alone on a record whose plan holds is no proof either: an
+    # inconsistent record carries no before instances and no before values
+    stored = dict(c["comparison"])
+    stored["reason_codes"] = sorted(
+        {*stored["reason_codes"], "QUERY_EVIDENCE_INCONSISTENT"}
+    )
+    integrity = replay_release_history(_with_comparison(history, comparison=stored)).integrity
+    assert "COMPARISON_MISMATCH" in integrity
+
+
+def test_a_record_marked_inconsistent_still_checks_rows_that_need_no_instance(
+    release_harness,
+) -> None:
+    """Boundary (#382 recheck, item 2): QUERY_EVIDENCE_INCONSISTENT can come
+    from the mapping bodies, so a cleaned replay cannot refute it; a record
+    carrying it must still look like one (no before instances or values,
+    ``unavailable``) and its instance-free rows must still match the plan."""
+    history = _partly_cleaned_history(release_harness)
+    (c,) = history["comparisons"]
+    stored = dict(c["comparison"])
+    stored["reason_codes"] = sorted(
+        {*stored["reason_codes"], "QUERY_EVIDENCE_INCONSISTENT"}
+    )
+    stored["before_instances"] = []
+    stored["status"] = "unavailable"
+    stored["signals"] = [
+        {**s, "value": None} if s["scope"].startswith("before") else s
+        for s in stored["signals"]
+    ]
+    shaped = _with_comparison(history, comparison=stored, status="unavailable")
+    assert replay_release_history(shaped).integrity == ("REPLAY_DATA_CLEANED",)
+    queries = [dict(q) for q in c["queries"]]
+    mapping = next(
+        i for i, q in enumerate(queries) if q["query_key"].startswith("before_mapping")
+        or "mapping:" in q["query_key"]
+    )
+    queries[mapping]["query"] = "forged"
+    integrity = replay_release_history(
+        _with_comparison(shaped, queries=queries)
+    ).integrity
+    assert "REPLAY_DATA_CLEANED" in integrity
+    assert "COMPARISON_MISMATCH" in integrity

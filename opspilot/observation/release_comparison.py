@@ -19,7 +19,7 @@ quality only: no verdict, and the release status is never touched (A5).
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from datetime import datetime, timedelta, timezone
 from typing import Annotated, Any, Literal, cast
 from uuid import UUID, uuid5
@@ -371,6 +371,46 @@ def _signal(
     )
 
 
+def after_scope_signals(
+    context: ReleaseEvaluationContext, anomaly: ReleaseEvaluation
+) -> dict[tuple[str, str], ComparisonSignal]:
+    """The after-scope signals of a comparison: read from the anomaly
+    sample's evaluation alone, never from the before-window bodies (so a
+    replay whose bodies were cleaned, #244, can still check them)."""
+    verdicts = {
+        (_AFTER_SCOPES[v.scope], v.signal_name): v
+        for v in anomaly.signals
+        if v.scope in _AFTER_SCOPES
+    }
+    signals: dict[tuple[str, str], ComparisonSignal] = {}
+    for scope in SCOPES:
+        if scope.startswith("before"):
+            continue
+        for signal in context.health_profile.signals:
+            name = signal.name
+            if scope == "after_new" and name not in AFTER_SIGNALS:
+                continue
+            found = verdicts.get((scope, name))
+            keys = found.query_keys if found else ()
+            signals[(scope, name)] = _signal(scope, name, found, keys, ())
+    return signals
+
+
+def after_insufficient(
+    anomaly: ReleaseEvaluation, afters: Iterable[ComparisonSignal]
+) -> bool:
+    """P2 (r3): complete needs the after scopes too, from a sufficient
+    degraded anomaly sample with every after signal valued."""
+    afters = list(afters)
+    return not (
+        anomaly.evidence_sufficient
+        and anomaly.verdict == "degraded"
+        and anomaly.instances
+        and afters
+        and all(s.value is not None for s in afters)
+    )
+
+
 def _scoped(codes: Sequence[str], scope: str, name: str) -> tuple[str, ...]:
     own = []
     for code in codes:
@@ -431,41 +471,30 @@ def compare_evidence(
                 codes.add(mapped)
         for verdict in evaluation.signals:
             before[(_BEFORE_SCOPES[verdict.scope], verdict.signal_name)] = verdict
-    after = {
-        (_AFTER_SCOPES[v.scope], v.signal_name): v
-        for v in anomaly.signals
-        if v.scope in _AFTER_SCOPES
-    }
+    after = after_scope_signals(context, anomaly)
     ordered = sorted(codes)
     signals: list[ComparisonSignal] = []
     for scope in SCOPES:
         for name in names:
             if scope in ("before_old", "after_new") and name not in AFTER_SIGNALS:
                 continue
-            found = (before if scope.startswith("before") else after).get((scope, name))
+            if not scope.startswith("before"):
+                signals.append(after[(scope, name)])
+                continue
+            found = before.get((scope, name))
             keys = found.query_keys if found else ()
-            if scope.startswith("before"):
-                signals.append(
-                    _signal(
-                        scope,
-                        name,
-                        found,
-                        tuple(_to_stored_key(key) for key in keys),
-                        _scoped(ordered, scope, name),
-                    )
+            signals.append(
+                _signal(
+                    scope,
+                    name,
+                    found,
+                    tuple(_to_stored_key(key) for key in keys),
+                    _scoped(ordered, scope, name),
                 )
-            else:
-                signals.append(_signal(scope, name, found, keys, ()))
+            )
     # P2 (r3): complete needs the after scopes too, from a sufficient
     # degraded anomaly sample with every after signal valued.
-    afters = [s for s in signals if s.scope.startswith("after")]
-    if not (
-        anomaly.evidence_sufficient
-        and anomaly.verdict == "degraded"
-        and anomaly.instances
-        and afters
-        and all(s.value is not None for s in afters)
-    ):
+    if after_insufficient(anomaly, after.values()):
         ordered = sorted({*ordered, AFTER_INSUFFICIENT})
     befores = [s for s in signals if s.scope.startswith("before")]
     if not any(s.value is not None for s in befores):

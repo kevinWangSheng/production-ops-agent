@@ -1286,13 +1286,17 @@ def _cleaned_comparison_issues(
     stored record names), attempts stay in range, the before window is the
     frozen profile's, and the stored record is the one of this row."""
     from opspilot.observation.release_comparison import (
+        AFTER_INSUFFICIENT,
         EVIDENCE_INCONSISTENT,
         ReleaseComparison,
         ReleaseComparisonEvidence,
         _to_pr2_key,
+        after_insufficient,
+        after_scope_signals,
         before_context,
         before_window,
     )
+    from opspilot.observer.release_evaluation import build_release_query_plan
 
     try:
         window = QueryWindow(start=c["window_before_start"], end=c["window_before_end"])
@@ -1306,16 +1310,47 @@ def _cleaned_comparison_issues(
         kept = [_cleaned_metadata(q, "comparison_id") for q in c["queries"]]
         stored = ReleaseComparison.model_validate_json(canonical_json(c["comparison"]))
         expected = before_window(context)
-        consistent_rows = (
-            EVIDENCE_INCONSISTENT in stored.reason_codes
-            or query_plan_consistent(
-                before_context(context),
+        old = before_context(context)
+        rows = [(_to_pr2_key(k), q, s, at) for k, q, s, at in kept]
+        befores = [s for s in stored.signals if s.scope.startswith("before")]
+        if EVIDENCE_INCONSISTENT in stored.reason_codes:
+            # The code can come from the bodies (the mapping bodies decide
+            # the instance set, hence the slice keys), so it cannot be
+            # refuted from metadata. What it implies still has to hold: no
+            # before instances or values, ``unavailable``, and every row
+            # whose plan needs no instance reproduces that plan.
+            needs_none = build_release_query_plan(
+                old, window_end=expected.end, instance_uids=()
+            )
+            consistent_rows = (
+                not stored.before_instances
+                and stored.status == "unavailable"
+                and all(s.value is None for s in befores)
+                and query_plan_consistent(
+                    old,
+                    expected,
+                    c["decision_at"],
+                    [row for row in rows if row[0] in needs_none],
+                    (),
+                    require_complete=False,
+                )
+            )
+        else:
+            # without the code the plan must hold, exactly as recomputed
+            consistent_rows = query_plan_consistent(
+                old,
                 expected,
                 c["decision_at"],
-                [(_to_pr2_key(k), q, s, at) for k, q, s, at in kept],
+                rows,
                 tuple(i.pod_uid for i in stored.before_instances),
             )
-        )
+        after = after_scope_signals(context, anomaly)
+        if [s for s in stored.signals if not s.scope.startswith("before")] != list(
+            after.values()
+        ) or (AFTER_INSUFFICIENT in stored.reason_codes) != after_insufficient(
+            anomaly, after.values()
+        ):
+            return {"COMPARISON_MISMATCH"}
         if (
             _retained_tampered(c["queries"])
             or window != expected
