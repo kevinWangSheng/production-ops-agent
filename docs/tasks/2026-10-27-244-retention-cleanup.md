@@ -50,6 +50,7 @@
 - 改接 0022（#378 合并后）：0023 `down_revision` 改为 `0022_incident_association`，非验收 head 钉值由实现者更新。三个验收文件的钉值由 lead 按合同变更改（00fe27a2、测试分支下一提交）：#347 head 改 0023（`RUNTIME_GRANTS` 指纹不变）；#244 `BEFORE_RETENTION` 改 0022（0022 的 web 新授权本就不属 0023）；#245 AC8 head 改 0023，拒绝降级后停在 0022（迁移逐个提交，0023 先退回，0022 再拒绝）。三文件 27 例在本分支通过。
 - 合并顺序（lead 2026-10-27，可逆执行细节）：读侧 PR-3 先于清理 CLI PR-2 合并，保证出现 cleaned 行之前，evidence API 与工具层已能处理 `raw=None`（#377 机器人 P1 指出 `opspilot/web/evidence.py` 对 cleaned 证据会抛异常；PR-1 无产品代码写 cleaned，故不在 PR-1 修）。
 - PR-3 必须覆盖（审查预警）：`hashes_verified=None` 在图表投影被当作 `hash_mismatch`，工具层证据读取对 `raw=None` 会 `AttributeError`。
+- PR-3（#382）已知限制（lead 裁决 2026-10-27）：告警已清理的事故 reopen 后开新 Run，若需重建告警上下文（`_alert_rebuild`：续开输入回退路径与 #245 改绑路径），仍按 `INCOMPATIBLE_STATE` 拒绝该控制动作，仅日志区分「cleaned」与「unreadable」。理由：只在关闭满 30 天被清理后又 reopen 再开 Run 时发生；改为无告警上下文起 Run 会改调查输入构建，需有界真实 Run，超出读侧范围；fail-closed 可逆。工具层证据读取经核对无 `AttributeError`（`_intact()` 已把 `raw=None` 拒为 `EVIDENCE_NOT_READABLE`），PR-3 以测试钉住。
 
 ## 下一步与交接
 
