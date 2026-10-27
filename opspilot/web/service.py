@@ -1737,12 +1737,20 @@ class Workbench:
         """R6 on the continuation path: a successor keeps the previous Run's
         release fact only when it still equals the one the stored records
         give; a missing, extra or different fact refuses the action
-        (``INCOMPATIBLE_STATE``) rather than carry or drop it silently."""
+        (``INCOMPATIBLE_STATE``) rather than carry or drop it silently.
+
+        #245 G7: once the incident was rebound, its first successor started
+        fresh without the release fact (the old target's, C3 section 7), so
+        a later continuation legitimately has none and its absence is
+        accepted. A fact that is present must still equal the records'."""
         try:
             _, _, fact = self._release_rebuild(incident_id, intake_key)
         except ContextError as exc:
             raise PersistenceError(exc.code) from exc
-        if facts.get(RELEASE_OBSERVATION) != fact:
+        carried = facts.get(RELEASE_OBSERVATION)
+        if carried is None and fact is not None and self._rebound(incident_id):
+            return
+        if carried != fact:
             _log.warning("release fact differs from records incident=%s", incident_id)
             raise PersistenceError("INCOMPATIBLE_STATE")
 
@@ -2370,6 +2378,13 @@ class Workbench:
                 uid for uid in self._registry_keys() if uid != self._target_uid(summary)
             ],
         }
+
+    def _rebound(self, incident_id: UUID) -> bool:
+        """Whether a ``rebind_target`` decision was ever committed."""
+        return any(
+            audit.action == REBIND_TARGET
+            for audit in self.incidents.control_audit(incident_id)
+        )
 
     def _rebinds(self, incident_id: UUID) -> list[dict[str, Any]]:
         """Committed ``rebind_target`` decisions from the store's audit rows
