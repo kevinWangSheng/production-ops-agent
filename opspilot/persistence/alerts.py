@@ -34,8 +34,9 @@ from opspilot.persistence.base import Connection, PersistenceError
 from opspilot.persistence.controls import append_input_in
 from opspilot.persistence.correlation import (
     Correlation,
-    CorrelationCandidate,
     choose_correlation,
+    lock_merge_closure,
+    resolve_merged,
 )
 from opspilot.persistence.incidents import _check_priority, _IncidentOps
 
@@ -52,8 +53,6 @@ OUTCOMES = (
 #: Equal to ``opspilot.web.service._INTAKE_NAMESPACE`` (R-C4): an attached
 #: episode's event id derives from its delivery key like the intake ids do.
 ATTACH_NAMESPACE = UUID("0f4c9d3e-2b7a-4a6e-9c1d-5e8f7a6b3c21")
-#: #245 U5 ②: the most merge pointers one correlation follows.
-_MERGE_CHAIN_LIMIT = 16
 
 
 class _AlertOps(_IncidentOps):
@@ -221,10 +220,15 @@ class _AlertOps(_IncidentOps):
                 )
             )
         fingerprint = delivery["fingerprint"]
+        # The candidates are found without locks, then locked together with
+        # the incidents their merge pointers lead to, in incident_id order
+        # (#245, review on #380); the lifecycle and pointers decided on are
+        # the locked rows'.
         rows = conn.execute(
-            "SELECT i.incident_id,i.lifecycle,i.created_at,i.merged_into_incident_id,EXISTS(SELECT 1 FROM opspilot_release_incident_links l WHERE l.incident_id=i.incident_id AND l.disposition IN ('created','created_related')) AS released FROM opspilot_incidents i WHERE (i.target_id=%s AND EXISTS(SELECT 1 FROM opspilot_alert_identities a WHERE a.incident_id=i.incident_id AND a.fingerprint=%s AND a.target_id=%s AND a.handoff_reason IS NULL)) OR (i.target_id=%s AND EXISTS(SELECT 1 FROM opspilot_release_incident_links l WHERE l.incident_id=i.incident_id AND l.disposition IN ('created','created_related'))) ORDER BY i.incident_id FOR UPDATE OF i",
+            "SELECT i.incident_id,EXISTS(SELECT 1 FROM opspilot_release_incident_links l WHERE l.incident_id=i.incident_id AND l.disposition IN ('created','created_related')) AS released FROM opspilot_incidents i WHERE (i.target_id=%s AND EXISTS(SELECT 1 FROM opspilot_alert_identities a WHERE a.incident_id=i.incident_id AND a.fingerprint=%s AND a.target_id=%s AND a.handoff_reason IS NULL)) OR (i.target_id=%s AND EXISTS(SELECT 1 FROM opspilot_release_incident_links l WHERE l.incident_id=i.incident_id AND l.disposition IN ('created','created_related'))) ORDER BY i.incident_id",
             (target_id, fingerprint, resource_uid, target_id),
         ).fetchall()
+        locked = lock_merge_closure(conn, [row["incident_id"] for row in rows])
         released = [row["incident_id"] for row in rows if row["released"]]
         claimed: set[UUID] = set()
         if released:
@@ -235,41 +239,18 @@ class _AlertOps(_IncidentOps):
                     (released, fingerprint),
                 ).fetchall()
             }
-        candidates: dict[UUID, CorrelationCandidate] = {}
-        for row in rows:
-            if row["incident_id"] in claimed:
-                continue
-            resolved = self._merge_survivor(conn, row, target_id)
-            if resolved is not None:
-                candidates[resolved.incident_id] = resolved
-        correlation = choose_correlation(list(candidates.values()))
-        return correlation, frozenset(released) - claimed
-
-    def _merge_survivor(
-        self, conn: Connection, row: Mapping[str, Any], target_id: UUID | None
-    ) -> CorrelationCandidate | None:
-        """#245 U5 ②: a candidate merged into another incident stands for
-        its survivor, followed along the pointer chain (acyclic: a merged
-        incident is never merged again, G4; bounded all the same). Each
-        survivor row is locked FOR UPDATE as it is read; one now bound to
-        another target (rebound after the merge) is not a candidate (U5 ①).
-        A chain longer than the bound stops at the last row read."""
-        current = row
-        for _ in range(_MERGE_CHAIN_LIMIT):
-            if current["merged_into_incident_id"] is None:
-                break
-            survivor = conn.execute(
-                "SELECT incident_id,lifecycle,created_at,merged_into_incident_id,target_id FROM opspilot_incidents WHERE incident_id=%s FOR UPDATE",
-                (current["merged_into_incident_id"],),
-            ).fetchone()
-            if survivor is None:
-                break
-            if survivor["target_id"] != target_id:
-                return None
-            current = survivor
-        return CorrelationCandidate(
-            current["incident_id"], current["lifecycle"], current["created_at"]
+        correlation = choose_correlation(
+            resolve_merged(
+                locked,
+                [
+                    row["incident_id"]
+                    for row in rows
+                    if row["incident_id"] not in claimed
+                ],
+                target_id,
+            )
         )
+        return correlation, frozenset(released) - claimed
 
     def _alert_target(self, conn: Connection, resource_uid: str) -> UUID:
         """Register the bound target inside the alert's transaction, so a

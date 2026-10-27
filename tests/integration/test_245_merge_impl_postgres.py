@@ -11,6 +11,8 @@ pointer (U5 ②). No model calls.
 from __future__ import annotations
 
 import os
+import threading
+import time
 from uuid import UUID, uuid4
 
 import psycopg
@@ -433,3 +435,78 @@ def test_unmerged_correlation_is_unchanged(app):
     assert new["outcome"] == "created" and _related(new["incident_id"]) == UUID(
         incident
     )
+
+
+# -- review on #380: lock order, release path, chain bound ----------------
+
+
+def _pair(app):
+    """Two alert incidents on one target, ``(source, survivor, source
+    fingerprint)`` with the source's id above the survivor's: the order in
+    which following a pointer after locking the source used to invert the
+    merge's id-ordered locks."""
+    f1, f2 = uuid4().hex[:16], uuid4().hex[:16]
+    a = UUID(_fire(app, f1, "2026-10-27T13:00:00Z")["incident_id"])
+    b = UUID(_fire(app, f2, "2026-10-27T13:00:00Z")["incident_id"])
+    return (a, b, f1) if a > b else (b, a, f2)
+
+
+def test_a_late_alert_locks_incidents_in_id_order(app):
+    source, survivor, fingerprint = _pair(app)
+    assert _merge(app, source, survivor).status == 200
+    outcome: dict = {}
+    with psycopg.connect(DSN) as blocker:
+        blocker.execute("SET lock_timeout='10s'")
+        # Another writer holds the survivor (lower id) and will want the
+        # source next, exactly the merge's id order.
+        blocker.execute(
+            "SELECT 1 FROM opspilot_incidents WHERE incident_id=%s FOR UPDATE",
+            (survivor,),
+        )
+        worker = threading.Thread(
+            target=lambda: outcome.update(
+                result=_fire(app, fingerprint, "2026-10-27T13:05:00Z")
+            )
+        )
+        worker.start()
+        time.sleep(1.5)
+        # The alert must not hold the source while it waits for the survivor.
+        blocker.execute(
+            "SELECT 1 FROM opspilot_incidents WHERE incident_id=%s FOR UPDATE",
+            (source,),
+        )
+        blocker.commit()
+        worker.join(timeout=20)
+    assert outcome["result"]["outcome"] == "attached", outcome
+    assert outcome["result"]["incident_id"] == str(survivor)
+
+
+def _chain(app, length: int) -> tuple[str, list[UUID]]:
+    """An alert incident followed by ``length`` merges, each into the next
+    incident on the same target; returns the head's fingerprint and the
+    incidents from head to tail."""
+    fingerprint = uuid4().hex[:16]
+    incidents = [UUID(_fire(app, fingerprint, "2026-10-27T14:00:00Z")["incident_id"])]
+    for _ in range(length):
+        incidents.append(
+            UUID(_fire(app, uuid4().hex[:16], "2026-10-27T14:00:00Z")["incident_id"])
+        )
+    for source, survivor in zip(incidents, incidents[1:]):
+        assert _merge(app, source, survivor).status == 200
+    return fingerprint, incidents
+
+
+def test_a_chain_past_the_bound_never_relates_to_a_merged_incident(app, monkeypatch):
+    from opspilot.persistence import correlation
+
+    fingerprint, incidents = _chain(app, 3)
+    # Within the bound the chain reaches its open tail.
+    monkeypatch.setattr(correlation, "MERGE_CHAIN_LIMIT", 3)
+    tail = _fire(app, fingerprint, "2026-10-27T14:05:00Z")
+    assert (tail["outcome"], tail["incident_id"]) == ("attached", str(incidents[-1]))
+    # Past the bound the head is dropped: no attachment, and no relation to
+    # any merged (closed + pointer) incident on the way.
+    monkeypatch.setattr(correlation, "MERGE_CHAIN_LIMIT", 2)
+    new = _fire(app, fingerprint, "2026-10-27T14:06:00Z")
+    assert new["outcome"] == "created"
+    assert _related(new["incident_id"]) is None

@@ -856,8 +856,9 @@ class _ReleaseCommandOps(_TargetProfileOps):
         from opspilot.persistence.controls import append_input_in
         from opspilot.persistence.correlation import (
             Correlation,
-            CorrelationCandidate,
             choose_correlation,
+            lock_merge_closure,
+            resolve_merged,
         )
         from opspilot.persistence.incidents import _check_priority, _IncidentOps
 
@@ -908,17 +909,17 @@ class _ReleaseCommandOps(_TargetProfileOps):
                     (release["target_id"],),
                 )
             )
-            rows = conn.execute(
-                "SELECT incident_id,lifecycle,created_at FROM opspilot_incidents WHERE target_id=%s ORDER BY incident_id FOR UPDATE",
-                (release["target_id"],),
-            ).fetchall()
+            # #245 U5 ②: the incidents on the target, each standing for the
+            # end of its merge chain, all locked in incident_id order.
+            ids = [
+                row["incident_id"]
+                for row in conn.execute(
+                    "SELECT incident_id FROM opspilot_incidents WHERE target_id=%s ORDER BY incident_id",
+                    (release["target_id"],),
+                ).fetchall()
+            ]
             correlation = choose_correlation(
-                [
-                    CorrelationCandidate(
-                        row["incident_id"], row["lifecycle"], row["created_at"]
-                    )
-                    for row in rows
-                ]
+                resolve_merged(lock_merge_closure(conn, ids), ids, release["target_id"])
             )
         release = release_row(conn, oid, lock=True)
         if release["status"] != "anomalous" or release["incident_id"] is not None:

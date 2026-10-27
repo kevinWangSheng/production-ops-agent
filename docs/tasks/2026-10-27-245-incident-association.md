@@ -54,6 +54,10 @@ F12 只做了「假设纠正」，事故挂错目标或两条告警其实是同�
   - 错误码：保留方不存在 `UNKNOWN_IDENTITY`（404）；合并到自身、保留方 closed 或已被并入、被并入事故再 reopen/改目标/合并 → `ILLEGAL_TRANSITION`；任一方无 Run（handoff）→ `HANDOFF_ONLY`；跨目标 `TARGET_MISMATCH`。表单字段 `into_incident_id`（缺 → `INTO_INCIDENT_REQUIRED`，其他动作带 → `INTO_INCIDENT_NOT_ALLOWED`，非 UUID → `INVALID_INPUT`），`text` 可选。源事故任何 lifecycle 都可被并入（brief 未限制）。
   - 指针跟随（U5 ②）：`_correlate` 对每个候选沿指针走到保留方（最多 16 跳，逐行 FOR UPDATE），保留方已改绑到别的目标则不作候选；去重后交 `choose_correlation`，所以保留方 closed 时按「全 closed」规则取最新的 closed 候选作 `related_incident_id`。
   - F11 发布消费（未确认 3）：不改。它的候选是同目标的全部事故，保留方本就在内，被并入事故已 closed，不需要跟指针。
+- 独立审查（PR-2）：Codex gpt-6-astra，Spec 轴 3 阻塞，lead 全部采纳，均先红后绿修复：
+  - 锁序：告警路径先锁候选再沿指针锁保留方，与 `merge_into` 的按 id 加锁反向，可复现 DeadlockDetected。改为共享函数 `lock_merge_closure`：先不加锁读出候选与指针闭包，再按 `incident_id` 一次性 FOR UPDATE；锁后发现指针变了则 `RETRY`。新测试按原死锁顺序持锁复现（修前 DeadlockDetected，修后附加到保留方）。
+  - F11 发布消费：改为与告警同一对函数（`lock_merge_closure` + `resolve_merged`），候选沿指针映射到保留方、去重、丢弃被改目标的保留方。新测试：被并入方比保留方新且两者都 closed 时，`related_incident_id` 指向保留方（修前指向被并入方）。上一条「F11 不改」的自定作废。
+  - 链超界：超过 `MERGE_CHAIN_LIMIT`（16，可注入）仍带指针的候选丢弃，绝不关联或附加到被并入事故。新测试以上限 2 / 3 跑 3 跳链（修前 `related_incident_id` 指向中间节点）。
 
 ## 下一步与交接
 
