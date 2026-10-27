@@ -520,7 +520,7 @@ def test_ac8_alembic_head_and_all_runtime_grants_stay_at_main_baseline(
     scene: Scene,
 ) -> None:
     """AC8: baseline main 78a9603; canonical full role/table/privilege matrix."""
-    head = "0022_incident_association"
+    head = "0023_retention_raw_cleanup"
     assert schema.head_revision() == head
     with scene.owner.transaction(snapshot=True) as conn:
         assert schema.current_revision(conn) == head
