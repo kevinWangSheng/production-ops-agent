@@ -337,7 +337,7 @@ def _audit_records(
                          SELECT audit_id,created_at,actor FROM opspilot_controls c
                          WHERE c.incident_id=r.incident_id
                            AND c.resulting_generation=r.control_generation
-                           AND c.action IN ('cancel','close','follow_up','correct')
+                           AND c.action IN ('cancel','close','follow_up','correct','rebind_target')
                          ORDER BY created_at,audit_id LIMIT 1
                        ) c ON r.state='cancelled'
                        WHERE r.incident_id=%s"""):
@@ -407,11 +407,23 @@ def _audit_records(
                 key = f"opspilot_runs.{action}"
                 undated[key] = undated.get(key, 0) + 1
 
+    # #245: a rebound incident was fenced by its earlier targets' gates
+    # too; their uids are on the rebind audit rows (``from_target``).
+    bound_targets = [
+        row["target_id"]
+        for row in cursor.execute(
+            """SELECT t.target_id FROM opspilot_targets t
+               WHERE t.target_id=%s OR t.resource_uid IN (
+                 SELECT c.payload->>'from_target' FROM opspilot_controls c
+                 WHERE c.incident_id=%s AND c.action='rebind_target')""",
+            (incident["target_id"], incident_id),
+        ).fetchall()
+    ]
     for row in cursor.execute(
         """WITH scoped AS (
              SELECT audit_id,target_id,suspended,generation,actor,created_at
              FROM opspilot_suspension_audit
-             WHERE target_id IS NULL OR target_id=%s
+             WHERE target_id IS NULL OR target_id=ANY(%s)
            )
            SELECT audit_id,target_id,suspended,generation,actor,created_at,
                   false AS baseline
@@ -425,7 +437,7 @@ def _audit_records(
              FROM scoped WHERE created_at < %s
              ORDER BY target_id,created_at DESC,audit_id DESC
            ) prior""",
-        (incident["target_id"], incident["created_at"], incident["created_at"]),
+        (bound_targets, incident["created_at"], incident["created_at"]),
     ).fetchall():
         add(
             row,

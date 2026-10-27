@@ -186,8 +186,11 @@ class _AlertOps(_IncidentOps):
         same fingerprint on the same resolved target, and those a release
         anomaly opened on that target (``created``/``created_related`` link)
         that no other fingerprint has attached to (#343 U1-A); a handoff (no
-        target) is never correlated, nor is a manual incident. Returns the
-        decision and the release-opened candidates.
+        target) is never correlated, nor is a manual incident. Either way the
+        candidate must be bound to that target now (#245 U5 ①): an incident a
+        human rebound elsewhere keeps its identity row as history, but its old
+        target's alerts no longer attach to it. Returns the decision and the
+        release-opened candidates.
 
         Lock order (R-C2): the fingerprint lock is held; then the scope and
         the target suspension row (FOR SHARE, the order every control and
@@ -217,8 +220,8 @@ class _AlertOps(_IncidentOps):
             )
         fingerprint = delivery["fingerprint"]
         rows = conn.execute(
-            "SELECT i.incident_id,i.lifecycle,i.created_at,EXISTS(SELECT 1 FROM opspilot_release_incident_links l WHERE l.incident_id=i.incident_id AND l.disposition IN ('created','created_related')) AS released FROM opspilot_incidents i WHERE EXISTS(SELECT 1 FROM opspilot_alert_identities a WHERE a.incident_id=i.incident_id AND a.fingerprint=%s AND a.target_id=%s AND a.handoff_reason IS NULL) OR (i.target_id=%s AND EXISTS(SELECT 1 FROM opspilot_release_incident_links l WHERE l.incident_id=i.incident_id AND l.disposition IN ('created','created_related'))) ORDER BY i.incident_id FOR UPDATE OF i",
-            (fingerprint, resource_uid, target_id),
+            "SELECT i.incident_id,i.lifecycle,i.created_at,EXISTS(SELECT 1 FROM opspilot_release_incident_links l WHERE l.incident_id=i.incident_id AND l.disposition IN ('created','created_related')) AS released FROM opspilot_incidents i WHERE (i.target_id=%s AND EXISTS(SELECT 1 FROM opspilot_alert_identities a WHERE a.incident_id=i.incident_id AND a.fingerprint=%s AND a.target_id=%s AND a.handoff_reason IS NULL)) OR (i.target_id=%s AND EXISTS(SELECT 1 FROM opspilot_release_incident_links l WHERE l.incident_id=i.incident_id AND l.disposition IN ('created','created_related'))) ORDER BY i.incident_id FOR UPDATE OF i",
+            (target_id, fingerprint, resource_uid, target_id),
         ).fetchall()
         released = [row["incident_id"] for row in rows if row["released"]]
         claimed: set[UUID] = set()

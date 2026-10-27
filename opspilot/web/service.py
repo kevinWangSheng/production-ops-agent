@@ -184,6 +184,7 @@ ControlAction = Literal[
     "takeover",
     "close",
     "reopen",
+    "rebind_target",
 ]
 #: "The incident was handled outside the system": increments the control
 #: generation, authorizes an observation session and moves the incident to
@@ -194,6 +195,11 @@ REGISTER_REMEDIATION = "register_remediation"
 #: stops; ``register_remediation`` may still authorize an observation under
 #: ``human_owned``, which does not resume investigation.
 TAKEOVER = "takeover"
+#: Point the incident at another registered target (#245 U2): the
+#: generation steps, observation is revoked, unfinished Runs are cancelled
+#: and the lifecycle returns to ``open``; no Run starts. A later successor
+#: gets a fresh input over the new target (G7).
+REBIND_TARGET = "rebind_target"
 CONTROL_ACTIONS: frozenset[str] = frozenset(
     {
         "follow_up",
@@ -206,6 +212,7 @@ CONTROL_ACTIONS: frozenset[str] = frozenset(
         TAKEOVER,
         "close",
         "reopen",
+        REBIND_TARGET,
     }
 )
 #: Report claim categories in page order; chart order follows it.
@@ -238,6 +245,10 @@ def available_actions(snapshot: Mapping[str, Any]) -> list[str]:
         actions.add("close")
     if lifecycle in {"resolved", "closed"}:
         actions.add("reopen")
+    if lifecycle in {"open", "observing_recovery"} and snapshot.get("rebind_targets"):
+        # #245 U2: only these lifecycles take a rebind, and only to another
+        # registry key.
+        actions.add(REBIND_TARGET)
     if (
         lifecycle in {"open", "observing_recovery"}
         and control != "paused"
@@ -765,14 +776,19 @@ class Workbench:
         idempotency_key: str,
         text: str | None = None,
         revision: str | None = None,
+        to_target: str | None = None,
     ) -> ControlResult:
         """Apply one human decision through the ledger/audit idempotency path.
 
-        ``text`` belongs to ``follow_up``/``correct``; ``revision`` belongs to
-        ``register_remediation`` (M1-02 step 3): the target revision after the
-        handling, recorded on the audit row and the observation session (not
-        identity, user decision 2026-10-07). Each is refused on an action that
-        does not take it.
+        ``text`` belongs to ``follow_up``/``correct`` and may annotate a
+        ``rebind_target``; ``revision`` belongs to ``register_remediation``
+        (M1-02 step 3): the target revision after the handling, recorded on
+        the audit row and the observation session (not identity, user
+        decision 2026-10-07). ``to_target`` belongs to ``rebind_target``
+        (#245 U2): a key of the target registry (``OPSPILOT_TARGET_IDENTITIES``),
+        never a name from a model or evidence; another key, or the current
+        target, is refused before anything is written. Each is refused on
+        an action that does not take it.
         """
         if action not in CONTROL_ACTIONS:
             raise WorkbenchError("INVALID_ACTION")
@@ -794,8 +810,14 @@ class Workbench:
             raise WorkbenchError("INVALID_INPUT") from None
         if action in _TEXT_ACTIONS and text is None:
             raise WorkbenchError("TEXT_REQUIRED")
-        if action not in _TEXT_ACTIONS and text is not None:
+        if action not in {*_TEXT_ACTIONS, REBIND_TARGET} and text is not None:
             raise WorkbenchError("TEXT_NOT_ALLOWED")
+        if action == REBIND_TARGET and to_target is None:
+            raise WorkbenchError("TARGET_REQUIRED")
+        if action != REBIND_TARGET and to_target is not None:
+            raise WorkbenchError("TARGET_NOT_ALLOWED")
+        if to_target is not None and (to_target not in self._registry_keys()):
+            raise WorkbenchError("UNKNOWN_TARGET")
         if action == REGISTER_REMEDIATION and revision is None:
             raise WorkbenchError("REVISION_REQUIRED")
         if action != REGISTER_REMEDIATION and revision is not None:
@@ -812,6 +834,8 @@ class Workbench:
             # An alert handed to a human at intake (E5) has no Run to steer
             # and no bound target to observe; the human handles it outside.
             raise WorkbenchError("HANDOFF_ONLY")
+        if to_target is not None and to_target == self._target_uid(summary):
+            raise WorkbenchError("TARGET_UNCHANGED")
         key = f"{incident_id}:{idempotency_key}"
         intent: dict[str, Any] = {
             "action": action,
@@ -822,6 +846,8 @@ class Workbench:
             intent["text"] = text
         if revision is not None:
             intent["revision"] = revision
+        if to_target is not None:
+            intent["to_target"] = to_target
         # Intent first: the operator's text is durable before the store
         # commits the decision, so neither a crash nor event-log retention
         # can lose what the next Run must read.
@@ -835,7 +861,14 @@ class Workbench:
             # Intent recorded, decision not confirmed: fall through and apply.
         try:
             generation, new_run_id = self._apply(
-                summary, action, expected_generation, actor_id, text, revision, key
+                summary,
+                action,
+                expected_generation,
+                actor_id,
+                text,
+                revision,
+                key,
+                to_target=to_target,
             )
         except PersistenceError as exc:
             code = str(exc)
@@ -903,6 +936,8 @@ class Workbench:
         text: str | None,
         revision: str | None = None,
         key: str | None = None,
+        *,
+        to_target: str | None = None,
     ) -> tuple[int, UUID | None]:
         # The run id is derived from ``expected + 1`` so a stale form either
         # conflicts on identity or replays the very run it already created;
@@ -915,7 +950,7 @@ class Workbench:
             # same decision re-creates the same session or conflicts on it.
             assert self.health_profile is not None and revision is not None
             parameters = self.health_profile.session
-            identity = self._configured_identity(summary.intake_key)
+            identity = self._configured_identity(summary)
             # Without a configured identity there is nothing to observe
             # (fail closed before any write, even for a registry row that an
             # earlier registration completed: the profile binding below
@@ -963,6 +998,13 @@ class Workbench:
             payload: dict[str, Any] = {"channel": "web", "idempotency_key": key}
             if text is not None:
                 payload["text"] = text
+            if action == REBIND_TARGET:
+                # A registry key without a registry row yet (no intake on it
+                # so far) is registered first, as intake does; the store
+                # records ``from_target`` from the locked incident row.
+                assert to_target is not None
+                self.incidents.register_target(to_target)
+                payload["to_target"] = to_target
             for attempt in range(3):
                 renewal: dict[str, Any] = {}
                 if action in _TEXT_ACTIONS:
@@ -1024,16 +1066,34 @@ class Workbench:
             else None
         )
 
-    def _configured_identity(self, intake_key: str) -> TargetIdentity | None:
-        """The configured identity of the intake's ``target_id`` (the
+    def _configured_identity(self, summary: IncidentSummary) -> TargetIdentity | None:
+        """The configured identity of the incident's current target (the
         registry file, never an operator), or ``None`` without one; both
         observation authorizations resolve the target through it."""
-        intake = self.ledger.get("intake", intake_key)
-        if self.targets is None or intake is None:
+        if self.targets is None:
             return None
-        return self.targets.resolve(
-            _envelope_from_json(intake["envelope"]).request.target_id
-        )
+        uid = self._target_uid(summary)
+        return None if uid is None else self.targets.resolve(uid)
+
+    def _registry_keys(self) -> tuple[str, ...]:
+        """The registry keys a rebind may name; none without a registry (a
+        registry that lists no keys, like the tests' resolve-anything one,
+        offers none)."""
+        keys = None if self.targets is None else self.targets.keys()
+        return tuple(keys or ())
+
+    def _target_uid(self, summary: IncidentSummary) -> str | None:
+        """The resource uid the incident is bound to now (#245 G6): the
+        incident row's target, which a rebind changes. The intake envelope
+        only records the first intake; it is read only for a store that
+        reports no bound target (the in-memory test store), where no rebind
+        can have happened (``rebind_target`` needs a bound target)."""
+        if summary.target_uid is not None:
+            return summary.target_uid
+        intake = self.ledger.get("intake", summary.intake_key)
+        if intake is None:
+            return None
+        return _envelope_from_json(intake["envelope"]).request.target_id
 
     # -- automatic observation (#184; the r3 interface keeps "self-heal") ---
 
@@ -1096,7 +1156,8 @@ class Workbench:
         if profile is None:
             refusal = "HEALTH_PROFILE_REQUIRED"
         else:
-            identity = self._configured_identity(intake_key)
+            summary = self.incidents.find_incident(incident_id)
+            identity = None if summary is None else self._configured_identity(summary)
             if identity is None:
                 refusal = "TARGET_IDENTITY_MISSING"
             elif identity.health_profile_id != profile.profile_id:
@@ -1233,6 +1294,10 @@ class Workbench:
             _log.warning("intake row missing incident=%s", summary.incident_id)
             return None
         request = _envelope_from_json(intake["envelope"]).request
+        # #245 G6: the successor is authorized for the incident's current
+        # target; the envelope's question stays the intake's.
+        target_uid = self._target_uid(summary) or request.target_id
+        request = request.model_copy(update={"target_id": target_uid})
         # #305 W1-B: the successor's creation is the control's database
         # instant, the deadline less the Run wall.
         created = deadline - timedelta(seconds=self.run_seconds)
@@ -1242,11 +1307,15 @@ class Workbench:
                 if snapshot is not None
                 else self.incidents.rebuild(summary.incident_id)
             )
+            if _bound_elsewhere(basis, target_uid):
+                return self._rebound_input(
+                    summary.incident_id, request, run_id, deadline, created
+                )
             fresh = continuation_input(
                 basis,
                 new_run_id=str(run_id),
                 deadline=deadline,
-                authorized_targets=frozenset({request.target_id}),
+                authorized_targets=frozenset({target_uid}),
                 alert=self._attached_reframe(summary.incident_id, basis, created),
                 release=self._release_reframe(summary, basis, created),
             )
@@ -1298,6 +1367,45 @@ class Workbench:
         # A PersistenceError (storage outage, lock timeout) propagates: the
         # control action fails closed and the operator retries (bot review,
         # PR #52).
+
+    def _rebound_input(
+        self,
+        incident_id: UUID,
+        request: IntakeRequest,
+        run_id: UUID,
+        deadline: datetime,
+        created: datetime,
+    ) -> dict[str, Any] | None:
+        """#245 G7: the successor of a Run bound to another target than the
+        incident's current one (a rebind happened since) starts from a fresh
+        input over the new target, never a continuation: the old Run's
+        evidence was authorized for the old target and must not reach the new
+        input (C3 section 7). ``request`` already names the new target; the
+        question is the intake's. The affected service is the new target's
+        registry entry (none without one, never the old target's), the alert
+        anchor and context are the incident's rebuilt ones and knowledge is
+        taken for the new target. A release fact describes the old target's
+        release and is not carried."""
+        try:
+            _, alert, context = self._alert_rebuild(incident_id, created=created)
+        except ContextError as exc:
+            raise PersistenceError(exc.code) from exc
+        identity = (
+            None if self.targets is None else self.targets.resolve(request.target_id)
+        )
+        service = (
+            None
+            if identity is None or identity.workload is None
+            else {"namespace": identity.namespace, "workload": identity.workload}
+        )
+        return self._fresh_input(
+            request,
+            run_id,
+            deadline,
+            affected_service=service,
+            alert=alert,
+            alert_context=context,
+        )
 
     def _attached_reframe(
         self, incident_id: UUID, snapshot: Mapping[str, Any], created: datetime
@@ -1797,6 +1905,10 @@ class Workbench:
                 return False
             if intent["action"] == REGISTER_REMEDIATION:
                 return bool(payload.get("revision") == intent.get("revision"))
+            if intent["action"] == REBIND_TARGET and payload.get(
+                "to_target"
+            ) != intent.get("to_target"):
+                return False
             return text is None or bool(payload.get("text") == text)
         if text is None:
             return False
@@ -2250,7 +2362,42 @@ class Workbench:
             else self.events.latest(incident_id),
             "handoff_only": False,
             "alert": self._alert_view(incident_id),
+            # #245 G8: the bound target now, every rebind with its database
+            # time, and the registry keys a rebind may name.
+            "current_target": self._target_uid(summary),
+            "rebinds": self._rebinds(incident_id),
+            "rebind_targets": [
+                uid for uid in self._registry_keys() if uid != self._target_uid(summary)
+            ],
         }
+
+    def _rebinds(self, incident_id: UUID) -> list[dict[str, Any]]:
+        """Committed ``rebind_target`` decisions from the store's audit rows
+        (``from_target`` is recorded there under the incident lock)."""
+        rebinds = [
+            audit
+            for audit in self.incidents.control_audit(incident_id)
+            if audit.action == REBIND_TARGET
+        ]
+        if not rebinds:
+            return []
+        times = {
+            int(row["resulting_generation"]): row["created_at"]
+            for row in self.incidents.control_times(incident_id)
+        }
+        return [
+            {
+                "from_target": (audit.payload or {}).get("from_target"),
+                "to_target": (audit.payload or {}).get("to_target"),
+                "actor": audit.actor,
+                "decided_at": None
+                if audit.resulting_generation not in times
+                else times[audit.resulting_generation]
+                .astimezone(timezone.utc)
+                .isoformat(),
+            }
+            for audit in rebinds
+        ]
 
     def _alert_view(self, incident_id: UUID) -> dict[str, Any] | None:
         """The alert section of the page (I9): the acceptance projection
@@ -2498,6 +2645,10 @@ class Workbench:
         if intake is None:
             raise WorkbenchError("INCONSISTENT_STATE")
         request = _envelope_from_json(intake["envelope"]).request
+        # #245 G6: the Run works on the incident's current target.
+        request = request.model_copy(
+            update={"target_id": self._target_uid(summary) or request.target_id}
+        )
         # Notes applied by another worker but not yet confirmed must be
         # visible to this attempt (pre-#31 fallback composes them).
         self.reconcile(incident_id)
@@ -2824,6 +2975,23 @@ def _attached_episode(
         ):
             latest = row
     return latest
+
+
+def _bound_elsewhere(snapshot: Mapping[str, Any], target_uid: str) -> bool:
+    """Whether the snapshot's Run input names a target other than
+    ``target_uid`` (#245 G7): its ``bound_target_id`` or its recorded
+    ``target_ids``. A Run without an input (older than the face) has no
+    recorded target and is decided by the existing fallback."""
+    run = snapshot.get("run")
+    raw = run.get("input") if isinstance(run, Mapping) else None
+    if not isinstance(raw, Mapping):
+        return False
+    bound = raw.get("bound_target_id")
+    facts = raw.get("scope_facts")
+    targets = facts.get("target_ids") if isinstance(facts, Mapping) else None
+    return (bound is not None and bound != target_uid) or (
+        targets is not None and list(targets) != [target_uid]
+    )
 
 
 def _previous_frame_end(snapshot: Mapping[str, Any], fact: str) -> datetime | None:
