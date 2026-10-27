@@ -287,6 +287,7 @@ def test_pr3_cleaned_evidence_api_page_report_and_chart_remain_observable(
         view_sha256=canonical_hash(view),
         projection_revision="pr3",
         observed_at=datetime.now(timezone.utc),
+        data_as_of=None,
         payload_state="cleaned",
     )
     chart = evidence_chart(stored, ("claim-1",))
