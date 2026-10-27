@@ -475,7 +475,8 @@ def _profile_unavailable_record(
         and str(row.get("status")) == "failed"
     ):
         # #244: the sentinel's bundle was cleaned; its row still says what
-        # it was, the recorded reason cannot be re-read
+        # it was, the recorded reason cannot be re-read (the caller checks
+        # the kept query against the revision)
         return DATA_CLEANED
     if (
         str(row.get("signal_name")) != PROFILE_SENTINEL
@@ -722,6 +723,10 @@ def replay_history(history: Mapping[str, Any]) -> SessionReplay | ReleaseReplay:
                 if bool(stored["required_signals_present"]):
                     codes.append("SENTINEL_MISMATCH:required_signals_present")
                 codes.extend(_sentinel_window_codes(rows[0], sample_window=window))
+                if recorded == DATA_CLEANED and rows[0].get("query") != revision:
+                    # the kept metadata still binds the sentinel to the
+                    # session's revision; only the bundle went (#244)
+                    codes.append("SENTINEL_MISMATCH:query")
             elif not rows:
                 skipped = "NO_READINGS"
                 readings = ()

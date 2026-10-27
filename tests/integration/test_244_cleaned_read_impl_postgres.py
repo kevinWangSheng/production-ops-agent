@@ -42,7 +42,7 @@ from tests.integration.test_m1_02_observer_postgres import (  # noqa: F401 - fix
     scratch_dsn,
     telemetry,
 )
-from tests.integration.test_m1_02_replay_postgres import _authorize, _run
+from tests.integration.test_m1_02_replay_postgres import _authorize, _due_now, _run
 from tests.integration.test_m1_04_alert_intake_impl_postgres import (
     _alert,
     _build,
@@ -276,6 +276,49 @@ def test_tampering_next_to_cleaned_data_is_still_an_integrity_mismatch(
     assert result.recovery_verdict == "unknown"
     assert INTEGRITY_MISMATCH in result.integrity
     assert DATA_CLEANED in result.integrity
+
+
+def test_a_cleaned_profile_sentinel_keeps_its_query_bound_to_the_revision(
+    loop, owner, controller, scratch_dsn, monkeypatch
+) -> None:
+    """Review #382 recheck: a cleaned profile-unavailable sentinel skips only
+    what needs its bundle; its kept query must still name the revision."""
+    from opspilot.persistence import PersistenceError
+
+    observer_loop, _ = loop
+    incident, _, target = _incident(owner)
+    session = _authorize(controller, incident, target, sustained=1, max_samples=3)
+    _backdate_authorization(owner, session)
+    original = observer_loop.store.health_profile
+
+    def unavailable(revision):
+        raise PersistenceError("STORAGE_UNAVAILABLE")
+
+    monkeypatch.setattr(observer_loop.store, "health_profile", unavailable)
+    (first,) = _run(loop, owner, session, 1)
+    monkeypatch.setattr(observer_loop.store, "health_profile", original)
+    _due_now(owner, session)
+    _run(loop, owner, session, 2)
+    assert replay_stored_session(controller, session).consistent
+    _clean_session(scratch_dsn, session)
+
+    result = replay_stored_session(controller, session)
+    assert result.integrity == (DATA_CLEANED,)
+    assert result.samples[0].recompute_skipped == DATA_CLEANED
+
+    with psycopg.connect(scratch_dsn) as conn:
+        assert (
+            conn.execute(
+                "UPDATE opspilot_observation_signal_readings SET query='forged-profile-revision' "
+                "WHERE sample_id=%s",
+                (first.sample_id,),
+            ).rowcount
+            == 1
+        )
+    result = replay_stored_session(controller, session)
+    assert result.recovery_verdict == "unknown"
+    assert DATA_CLEANED in result.integrity
+    assert INTEGRITY_MISMATCH in result.integrity
 
 
 # --- release replay
