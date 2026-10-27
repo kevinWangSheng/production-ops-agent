@@ -111,6 +111,22 @@ def _check_version_surface(run: str, record: dict[str, Any]) -> None:
         assert run_proof.get("llm_calls", 0) > 0
         assert run_proof.get("changed_by_current_redaction") == 0
         assert run_proof.get("escaped_authority_matches") == 0
+        assert run_proof.get("db_extract_texts_checked", 0) > 0
+        assert (
+            run_proof["db_extract_texts_checked"]
+            >= run_proof["trace_truncated_messages"]
+        )
+        assert run_proof.get("db_extract_v10_v11_diff") == 0
+        assert run_proof.get("db_extract_escaped_authority_matches") == 0
+
+        live_path = LIVE / run / "summary.json"
+        assert live_path.is_file(), (
+            f"live acceptance summary missing: {live_path.relative_to(ROOT)}"
+        )
+        live_summary = json.loads(live_path.read_text())
+        run_id = record["run_id"]
+        assert run_proof["llm_calls"] == live_summary["model_rounds_per_run"][run_id]
+        assert run_proof["tool_messages"] == len(live_summary["tool_requests"])
 
 
 def _assert_live_views_are_currently_redacted(byte_views: dict[str, Any]) -> None:
