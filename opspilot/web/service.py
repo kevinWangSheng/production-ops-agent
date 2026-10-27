@@ -1248,6 +1248,7 @@ class Workbench:
                 deadline=deadline,
                 authorized_targets=frozenset({request.target_id}),
                 alert=self._attached_reframe(summary.incident_id, basis, created),
+                release=self._release_reframe(summary, basis, created),
             )
             facts = dict(fresh.scope_facts)
             self._check_release_fact(summary.incident_id, summary.intake_key, facts)
@@ -1275,6 +1276,12 @@ class Workbench:
                 released, anchor, fact = self._release_rebuild(
                     summary.incident_id, summary.intake_key
                 )
+                if anchor is not None and self._attached_after(
+                    summary.incident_id, anchor.frame[1]
+                ):
+                    # #347: the fact keeps the consumption anchor; only
+                    # the frame moves, as a continuation would.
+                    anchor = replace(anchor, frame_end=created)
             except ContextError as rebuild_exc:
                 # Same fail-closed refusal as rows that cannot be continued.
                 raise PersistenceError(rebuild_exc.code) from rebuild_exc
@@ -1298,25 +1305,42 @@ class Workbench:
         """#305 W1-B: the frame a continued alert Run's successor moves to,
         or ``None`` to keep the previous Run's (J5). It moves only when an
         attached episode was received after the previous frame's end; a Run
-        without an alert anchor (submitted, release) never moves (W3-A)."""
-        run = snapshot.get("run")
-        raw = run.get("input") if isinstance(run, Mapping) else None
-        if not isinstance(raw, Mapping):
+        without an alert anchor never moves here (W3-A; a release Run moves
+        by ``_release_reframe``)."""
+        end = _previous_frame_end(snapshot, ALERT_STARTS_AT)
+        if end is None:
             return None
-        facts = raw.get("scope_facts")
-        if not isinstance(facts, Mapping) or ALERT_STARTS_AT not in facts:
-            return None
-        try:
-            end = datetime.fromisoformat(
-                raw["evidence_context"]["time_policies"][0]["window"]["end"]
-            )
-        except (KeyError, IndexError, TypeError, ValueError):
-            raise ContextError("INPUT_INVALID") from None
         reader = getattr(self.incidents, "alert_records", None)
         records = None if reader is None else reader(incident_id)
         if records is None:
             return None
         return _attached_anchor(records.deliveries, after=end, created=created)
+
+    def _release_reframe(
+        self, summary: IncidentSummary, snapshot: Mapping[str, Any], created: datetime
+    ) -> ReleaseAnchor | None:
+        """#347: the #305 W1-B rule on a release-anomaly Run's successor.
+        When an alert episode attached to the incident was received after
+        the previous frame's end, the frame moves to the 24 h ending at
+        ``created``; the anchor stays ``released_at`` (V2-A). ``None`` keeps
+        the previous Run's frame (F11 R6), as for any Run without a release
+        fact. Only the alert deliveries trigger it: a second anomaly
+        attached to the incident adds no alert delivery."""
+        end = _previous_frame_end(snapshot, RELEASE_OBSERVATION)
+        if end is None or not self._attached_after(summary.incident_id, end):
+            return None
+        _, anchor, _ = self._release_rebuild(summary.incident_id, summary.intake_key)
+        # No stored release behind a release fact: ``_check_release_fact``
+        # refuses the successor (INCOMPATIBLE_STATE), nothing to move.
+        return None if anchor is None else replace(anchor, frame_end=created)
+
+    def _attached_after(self, incident_id: UUID, end: datetime) -> bool:
+        """Whether an attached alert episode was received after ``end``
+        (``_attached_episode``), read by incident whichever source opened
+        it."""
+        reader = getattr(self.incidents, "attached_alert_deliveries", None)
+        deliveries = () if reader is None else reader(incident_id)
+        return _attached_episode(deliveries, after=end) is not None
 
     def _alert_rebuild(
         self, incident_id: UUID, *, created: datetime | None = None
@@ -2773,6 +2797,22 @@ def _attached_anchor(
     received before a Run's creation never reads as after that Run's frame,
     which ends at the creation truncated to the second. Ties on
     ``received_at`` go to the later delivery."""
+    latest = _attached_episode(deliveries, after=after)
+    if latest is None:
+        return None
+    return AlertAnchor(
+        received_at=latest["received_at"],
+        starts_at=latest["starts_at"],
+        original=latest["starts_at_raw"],
+        frame_end=created,
+    )
+
+
+def _attached_episode(
+    deliveries: Iterable[Mapping[str, Any]], *, after: datetime
+) -> Mapping[str, Any] | None:
+    """The trigger of ``_attached_anchor`` (#305 R1, #347): the latest
+    episode event received in a whole UTC second later than ``after``."""
     first: dict[str, Mapping[str, Any]] = {}
     for row in deliveries:
         if row["outcome"] == "attached" and row["status"] == "firing":
@@ -2783,14 +2823,26 @@ def _attached_anchor(
             latest is None or row["received_at"] >= latest["received_at"]
         ):
             latest = row
-    if latest is None:
+    return latest
+
+
+def _previous_frame_end(snapshot: Mapping[str, Any], fact: str) -> datetime | None:
+    """The end of the first time policy of ``snapshot``'s Run when its
+    input carries the scope fact ``fact`` (the Run kind that can move),
+    else ``None``; an end that cannot be read is ``INPUT_INVALID``."""
+    run = snapshot.get("run")
+    raw = run.get("input") if isinstance(run, Mapping) else None
+    if not isinstance(raw, Mapping):
         return None
-    return AlertAnchor(
-        received_at=latest["received_at"],
-        starts_at=latest["starts_at"],
-        original=latest["starts_at_raw"],
-        frame_end=created,
-    )
+    facts = raw.get("scope_facts")
+    if not isinstance(facts, Mapping) or fact not in facts:
+        return None
+    try:
+        return datetime.fromisoformat(
+            raw["evidence_context"]["time_policies"][0]["window"]["end"]
+        )
+    except (KeyError, IndexError, TypeError, ValueError):
+        raise ContextError("INPUT_INVALID") from None
 
 
 def _release_question(service: Mapping[str, str]) -> str:
