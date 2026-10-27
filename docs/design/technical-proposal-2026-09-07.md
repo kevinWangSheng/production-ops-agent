@@ -30,7 +30,7 @@ Agent 不执行生产写操作，不拥有发布批准或阻断权。不纳入�
 | 持久化 | PostgreSQL、psycopg |
 | Agent trace 与 eval | LangSmith |
 | 服务运行观测 | OpenTelemetry、Prometheus、Grafana |
-| 本地与实验部署 | Docker Compose、Helm，共用应用镜像 |
+| 本地与实验部署 | 产品单一应用镜像，控制侧 Docker Compose（2026-10-27 起不提供产品 Helm chart，见 §12）；实验目标侧 OTel Demo 仍用其固定版本 Helm chart 部署在 kind |
 
 暂不增加 Redis、Kafka、Temporal，也不同时引入 OpenAI Agents SDK 的另一套循环。
 
