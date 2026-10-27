@@ -11,6 +11,7 @@ Signature assumption (the brief leaves this form field implicit):
 the same target id under ``into_incident_id``.
 """
 
+# ruff: noqa: F811 - pytest fixtures imported from the PR-1 module
 from __future__ import annotations
 
 import json
@@ -23,16 +24,17 @@ import psycopg
 import pytest
 from psycopg.rows import dict_row
 
-from tests.acceptance.test_245_rebind_target import (
+from tests.acceptance.test_245_rebind_target import (  # noqa: F401 - fixtures
     TARGET_A,
     TARGET_B,
     UI,
     _control,
+    _remember_dsn,
     _submit,
+    app,
+    database,
 )
 from tests.m1_web_support import basic, bearer, call, post_form, post_json
-
-pytest_plugins = ("tests.acceptance.test_245_rebind_target",)
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("M1_DURABLE_POSTGRES") != "1",
