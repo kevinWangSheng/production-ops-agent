@@ -1,0 +1,17 @@
+#!/bin/sh
+# Installed by `make hooks`. Blocks a push whose new commits trip gitleaks.
+set -eu
+zero=0000000000000000000000000000000000000000
+revs=""
+while read -r _local_ref local_sha _remote_ref _remote_sha; do
+	[ "$local_sha" = "$zero" ] && continue
+	revs="$revs $local_sha"
+done
+[ -n "$revs" ] || exit 0
+cd "$(git rev-parse --show-toplevel)"
+if [ ! -f scripts/branch_secrets.sh ]; then
+	echo "pre-push: scripts/branch_secrets.sh not on this branch; secret scan skipped" >&2
+	exit 0
+fi
+# shellcheck disable=SC2086
+exec sh scripts/branch_secrets.sh $revs
