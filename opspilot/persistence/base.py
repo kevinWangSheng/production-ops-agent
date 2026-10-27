@@ -12,7 +12,7 @@ import os
 import threading
 import weakref
 from collections import deque
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterable, Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
@@ -343,12 +343,21 @@ class _StoreBase:
                 raise PersistenceError("SCHEMA_VERSION_UNREADABLE") from exc
 
     def _lock_scope(
-        self, conn: Connection, incident_id: UUID | None = None, *, lock: bool = True
+        self,
+        conn: Connection,
+        incident_id: UUID | None = None,
+        *,
+        lock: bool = True,
+        extra_target_ids: Iterable[UUID] = (),
     ) -> dict[str, Any]:
         # ``lock=False`` is the read-only snapshot path (``control_state``):
         # a REPEATABLE READ transaction is opened read-only and PostgreSQL
         # refuses ``FOR SHARE`` there; the snapshot itself is the consistency
         # guarantee (independent review P1).
+        # ``extra_target_ids`` (#245 G10): further target suspension rows a
+        # decision touches (a rebind's new target), locked with the
+        # incident's own in ``target_id`` order; the returned gate is still
+        # the incident's current target's.
         share = " FOR SHARE" if lock else ""
         scope = self._require_row(
             conn.execute(
@@ -357,19 +366,26 @@ class _StoreBase:
             )
         )
         scope.update(target_suspended=False, target_generation=0)
+        current = None
         if incident_id is not None:
             target = conn.execute(
                 "SELECT target_id FROM opspilot_incidents WHERE incident_id=%s",
                 (incident_id,),
             ).fetchone()
             if target and target["target_id"] is not None:
-                row = conn.execute(
-                    "SELECT suspended,generation FROM opspilot_target_suspensions WHERE target_id=%s"
-                    + share,
-                    (target["target_id"],),
-                ).fetchone()
-                if row is None:
-                    raise PersistenceError("INCONSISTENT_STATE")
+                current = target["target_id"]
+        targets = set(extra_target_ids)
+        if current is not None:
+            targets.add(current)
+        for target_id in sorted(targets):
+            row = conn.execute(
+                "SELECT suspended,generation FROM opspilot_target_suspensions WHERE target_id=%s"
+                + share,
+                (target_id,),
+            ).fetchone()
+            if row is None:
+                raise PersistenceError("INCONSISTENT_STATE")
+            if target_id == current:
                 scope.update(
                     target_suspended=row["suspended"],
                     target_generation=row["generation"],

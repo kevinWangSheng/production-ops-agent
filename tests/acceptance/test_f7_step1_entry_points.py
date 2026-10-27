@@ -125,6 +125,7 @@ EXPECTED_CONTROL_ACTIONS = frozenset(
         "takeover",
         "close",
         "reopen",
+        "rebind_target",
     }
 )
 
