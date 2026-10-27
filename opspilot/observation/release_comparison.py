@@ -396,6 +396,51 @@ def after_scope_signals(
     return signals
 
 
+def comparison_status(
+    signals: Iterable[ComparisonSignal], reason_codes: Sequence[str]
+) -> Literal["complete", "partial", "unavailable"]:
+    """From the before values and the final reason codes alone."""
+    befores = [s for s in signals if s.scope.startswith("before")]
+    if not any(s.value is not None for s in befores):
+        return "unavailable"
+    if all(s.value is not None for s in befores) and not reason_codes:
+        return "complete"
+    return "partial"
+
+
+def before_signal_frame(
+    context: ReleaseEvaluationContext, *, evaluated: bool, reason_codes: Sequence[str]
+) -> list[tuple[str, str, tuple[str, ...], tuple[str, ...]]]:
+    """What ``compare_evidence`` gives each before signal without reading a
+    body: its scope and name in order, its query keys (the fixed per-signal
+    keys when the before sample was evaluated, none otherwise) and its scoped
+    reason codes (from the record's codes before ``AFTER_INSUFFICIENT``). A
+    replay whose bodies were cleaned (#244) checks the stored record against
+    it; values, counts and times stay unknowable."""
+    ordered = sorted(set(reason_codes) - {AFTER_INSUFFICIENT})
+    frame: list[tuple[str, str, tuple[str, ...], tuple[str, ...]]] = []
+    for scope in SCOPES:
+        if not scope.startswith("before"):
+            continue
+        pr2 = next(k for k, v in _BEFORE_SCOPES.items() if v == scope)
+        for signal in context.health_profile.signals:
+            name = signal.name
+            if scope == "before_old" and name not in AFTER_SIGNALS:
+                continue
+            kinds = (
+                ("query", "coverage", "freshness", "instances")
+                if pr2 == "after"
+                else ("query", "coverage", "freshness")
+            )
+            keys = (
+                tuple(_to_stored_key(f"{pr2}:{name}:{kind}") for kind in kinds)
+                if evaluated
+                else ()
+            )
+            frame.append((scope, name, keys, _scoped(ordered, scope, name)))
+    return frame
+
+
 def after_insufficient(
     anomaly: ReleaseEvaluation, afters: Iterable[ComparisonSignal]
 ) -> bool:
@@ -496,13 +541,7 @@ def compare_evidence(
     # degraded anomaly sample with every after signal valued.
     if after_insufficient(anomaly, after.values()):
         ordered = sorted({*ordered, AFTER_INSUFFICIENT})
-    befores = [s for s in signals if s.scope.startswith("before")]
-    if not any(s.value is not None for s in befores):
-        status: Literal["complete", "partial", "unavailable"] = "unavailable"
-    elif all(s.value is not None for s in befores) and not ordered:
-        status = "complete"
-    else:
-        status = "partial"
+    status = comparison_status(signals, ordered)
     return ReleaseComparison(
         format_version=1,
         comparison_id=evidence.comparison_id,

@@ -640,9 +640,7 @@ def test_a_forged_comparison_query_beside_a_cleaned_one_is_a_mismatch(
 def test_a_cleaned_comparison_keeps_its_before_window_bound(release_harness) -> None:
     history = _partly_cleaned_history(release_harness)
     integrity = replay_release_history(
-        _with_comparison(
-            history, window_before_start=history["release"].released_at
-        )
+        _with_comparison(history, window_before_start=history["release"].released_at)
     ).integrity
     assert "REPLAY_DATA_CLEANED" in integrity
     assert "COMPARISON_MISMATCH" in integrity
@@ -664,7 +662,10 @@ def test_a_cleaned_comparison_keeps_its_attempts_range(release_harness) -> None:
         ("sample_id", "00000000-0000-0000-0000-000000000001"),
         ("format_version", 2),
         ("attempts", 3),
-        ("window_after", {"start": "2020-01-01T00:00:00Z", "end": "2020-01-01T00:01:00Z"}),
+        (
+            "window_after",
+            {"start": "2020-01-01T00:00:00Z", "end": "2020-01-01T00:01:00Z"},
+        ),
     ],
 )
 def test_a_cleaned_comparison_record_stays_bound_to_its_row(
@@ -686,10 +687,10 @@ def test_a_cleaned_comparison_record_stays_bound_to_its_row(
 # --- recheck of #382: after signals and the inconsistency code
 
 
-def _forge_signal(history, scope, **changes):
+def _forge_signal(history, which, **changes):
     stored = dict(history["comparisons"][0]["comparison"])
     signals = [dict(s) for s in stored["signals"]]
-    target = next(s for s in signals if s["scope"] == scope)
+    target = next(s for s in signals if s["scope"] == which)
     target.update(changes)
     stored["signals"] = signals
     return _with_comparison(history, comparison=stored)
@@ -706,7 +707,9 @@ def test_a_cleaned_comparison_keeps_its_after_signals_bound_to_the_anomaly(
     release_harness, scope, changes
 ) -> None:
     history = _partly_cleaned_history(release_harness)
-    integrity = replay_release_history(_forge_signal(history, scope, **changes)).integrity
+    integrity = replay_release_history(
+        _forge_signal(history, scope, **changes)
+    ).integrity
     assert "REPLAY_DATA_CLEANED" in integrity
     assert "COMPARISON_MISMATCH" in integrity
 
@@ -734,7 +737,9 @@ def test_a_forged_inconsistency_code_does_not_switch_off_the_plan_check(
     stored["reason_codes"] = sorted(
         {*stored["reason_codes"], "QUERY_EVIDENCE_INCONSISTENT"}
     )
-    integrity = replay_release_history(_with_comparison(history, comparison=stored)).integrity
+    integrity = replay_release_history(
+        _with_comparison(history, comparison=stored)
+    ).integrity
     assert "COMPARISON_MISMATCH" in integrity
 
 
@@ -754,19 +759,74 @@ def test_a_record_marked_inconsistent_still_checks_rows_that_need_no_instance(
     stored["before_instances"] = []
     stored["status"] = "unavailable"
     stored["signals"] = [
-        {**s, "value": None} if s["scope"].startswith("before") else s
+        {
+            **s,
+            "value": None,
+            "sample_count": None,
+            "latest_sample_at": None,
+            "query_keys": [],
+        }
+        if s["scope"].startswith("before")
+        else s
         for s in stored["signals"]
     ]
     shaped = _with_comparison(history, comparison=stored, status="unavailable")
     assert replay_release_history(shaped).integrity == ("REPLAY_DATA_CLEANED",)
     queries = [dict(q) for q in c["queries"]]
     mapping = next(
-        i for i, q in enumerate(queries) if q["query_key"].startswith("before_mapping")
-        or "mapping:" in q["query_key"]
+        i
+        for i, q in enumerate(queries)
+        if q["query_key"].startswith("before_mapping") or "mapping:" in q["query_key"]
     )
     queries[mapping]["query"] = "forged"
     integrity = replay_release_history(
         _with_comparison(shaped, queries=queries)
+    ).integrity
+    assert "REPLAY_DATA_CLEANED" in integrity
+    assert "COMPARISON_MISMATCH" in integrity
+
+
+# --- second recheck of #382: every derivable field of the stored record
+
+
+@pytest.mark.parametrize(
+    "scope,changes",
+    [
+        ("before_service", {"signal_name": "forged"}),
+        ("before_service", {"scope": "after_service"}),
+        ("before_service", {"query_keys": ["before_service:forged:query"]}),
+        ("before_old", {"query_keys": []}),
+        ("before_service", {"reason_codes": ["FORGED:before_service:error_ratio"]}),
+    ],
+)
+def test_a_cleaned_comparison_keeps_its_before_signal_identity(
+    release_harness, scope, changes
+) -> None:
+    history = _partly_cleaned_history(release_harness)
+    integrity = replay_release_history(
+        _forge_signal(history, scope, **changes)
+    ).integrity
+    assert "REPLAY_DATA_CLEANED" in integrity
+    assert "COMPARISON_MISMATCH" in integrity, changes
+
+
+def test_a_cleaned_comparison_keeps_its_signal_list_and_status_derivation(
+    release_harness,
+) -> None:
+    history = _partly_cleaned_history(release_harness)
+    (c,) = history["comparisons"]
+    stored = dict(c["comparison"])
+    # a dropped signal
+    integrity = replay_release_history(
+        _with_comparison(
+            history, comparison={**stored, "signals": stored["signals"][1:]}
+        )
+    ).integrity
+    assert "COMPARISON_MISMATCH" in integrity
+    # a status the stored values and codes do not give, on row and record alike
+    other = "complete" if stored["status"] != "complete" else "partial"
+    integrity = replay_release_history(
+        _with_comparison(history, status=other, comparison={**stored, "status": other})
     ).integrity
     assert "REPLAY_DATA_CLEANED" in integrity
     assert "COMPARISON_MISMATCH" in integrity

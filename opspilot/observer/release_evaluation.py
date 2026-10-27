@@ -532,6 +532,18 @@ def query_plan_consistent(
     )
 
 
+def profile_usable(context: ReleaseEvaluationContext) -> bool:
+    """The frozen profile is the release's and the policy's: otherwise a
+    sample is evaluated to no signals at all (``HEALTH_PROFILE_INVALID``)."""
+    profile = context.health_profile
+    return (
+        supported_profile(profile)
+        and profile.revision == context.release.health_profile_revision
+        and sha256(canonical_content(profile).encode())
+        == context.policy.content.health_profile_sha256
+    )
+
+
 def evaluate_release_sample(
     context: ReleaseEvaluationContext,
     evidence: ReleaseSampleEvidence,
@@ -540,12 +552,7 @@ def evaluate_release_sample(
 ) -> ReleaseEvaluation:
     reasons: set[str] = set()
     profile = context.health_profile
-    if (
-        not supported_profile(profile)
-        or profile.revision != context.release.health_profile_revision
-        or sha256(canonical_content(profile).encode())
-        != context.policy.content.health_profile_sha256
-    ):
+    if not profile_usable(context):
         reasons.add("HEALTH_PROFILE_INVALID")
         if evidence.window.start < context.authorized_at:
             reasons.add("WINDOW_BEFORE_AUTHORIZATION")

@@ -1294,9 +1294,15 @@ def _cleaned_comparison_issues(
         after_insufficient,
         after_scope_signals,
         before_context,
+        before_signal_frame,
         before_window,
+        comparison_status,
     )
-    from opspilot.observer.release_evaluation import build_release_query_plan
+    from opspilot.observer.release_evaluation import (
+        build_release_query_plan,
+        profile_usable,
+        supported_profile,
+    )
 
     try:
         window = QueryWindow(start=c["window_before_start"], end=c["window_before_end"])
@@ -1349,6 +1355,34 @@ def _cleaned_comparison_issues(
             after.values()
         ) or (AFTER_INSUFFICIENT in stored.reason_codes) != after_insufficient(
             anomaly, after.values()
+        ):
+            return {"COMPARISON_MISMATCH"}
+        # Every before signal's identity, keys and scoped codes, and the
+        # status, follow from the record and the frozen profile; only the
+        # values, counts and times (and before_instances) need the bodies.
+        evaluated = (
+            supported_profile(context.health_profile)
+            and EVIDENCE_INCONSISTENT not in stored.reason_codes
+            and profile_usable(old)
+        )
+        frame = before_signal_frame(
+            context, evaluated=evaluated, reason_codes=stored.reason_codes
+        )
+        if (
+            [(s.scope, s.signal_name, s.query_keys, s.reason_codes) for s in befores]
+            != frame
+            or [s.scope for s in stored.signals]
+            != [scope for scope, *_ in frame] + [scope for scope, _ in after]
+            or (
+                not evaluated
+                and any(
+                    s.value is not None
+                    or s.sample_count is not None
+                    or s.latest_sample_at is not None
+                    for s in befores
+                )
+            )
+            or comparison_status(stored.signals, stored.reason_codes) != stored.status
         ):
             return {"COMPARISON_MISMATCH"}
         if (
