@@ -44,6 +44,7 @@ F12 只做了「假设纠正」，事故挂错目标或两条告警其实是同�
   - `_alert_rebuild` 取值（未确认 4）：改目标后的 fresh 输入只沿用其告警锚点与告警上下文；`affected_service` 取新目标登记行（无 workload 则不写），不取告警身份行（旧目标）；发布事实描述旧目标的发布，不沿用。
   - 错误码：非登记键 `UNKNOWN_TARGET`（404，沿用挂起入口）、相同目标 `TARGET_UNCHANGED`（409）、缺目标 `TARGET_REQUIRED` / 其他动作带目标 `TARGET_NOT_ALLOWED`（400）。表单字段 `to_target`，`text` 可选。
   - `merge_into` 不进动作集合（PR-2）。
+- 2026-10-27：PR-1 有界真实 Run（kind，[run.md](../evidence/f12-245-rebind-live/run.md)，[summary.json](../evidence/f12-245-rebind-live/summary.json) 14/14 通过）：A=`checkout-misbound` → 改目标到 B=`m0-otel-20260909` → 追问 → 新 Run 输入绑定 B、是 fresh 输入，对 B 的 21 次只读查询（17 ok / 4 no_data）后发布结论；旧 Run cancelled，会话 authority_revoked。[trace](https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/7037e7fc-a4f9-466c-9f3b-612b77c10e7d/r/00000000-0000-0000-a998-c462d3287004?poll=true)。费用 0.10 CNY。限制：otel-demo 网关只登记一个真实目标，A 没有后端，A 上的 Run 在 worker 启动前就被取消。
 
 ## 下一步与交接
 
