@@ -109,8 +109,9 @@ RUNTIME_GRANTS: Mapping[str, Mapping[str, frozenset[str]]] = {
             "SELECT",
             "INSERT(current_run_id,incident_id,intake_key,lifecycle,priority,"
             "related_incident_id,state,target_id)",
-            "UPDATE(conclusion,control_generation,current_run_id,lifecycle,mode,"
-            "observation_generation,priority,state)",
+            "UPDATE(conclusion,control_generation,current_run_id,lifecycle,"
+            "merged_into_incident_id,mode,observation_generation,priority,state,"
+            "target_id)",
         ),
         "opspilot_input_rounds": S,
         "opspilot_inputs": _g(
@@ -344,4 +345,73 @@ RUNTIME_GRANTS: Mapping[str, Mapping[str, frozenset[str]]] = {
         "opspilot_release_incident_links": NONE,
         "opspilot_release_audit": NONE,
     },
+}
+
+RETENTION_ROLE = "opspilot_retention"
+
+#: The raw payload columns the retention cleanup may set to NULL (#244, C3
+#: section 11), each with its ``payload_state``. Only these five.
+RETENTION_PAYLOADS: Mapping[str, str] = {
+    "opspilot_alert_deliveries": "alert_json",
+    "opspilot_evidence": "raw",
+    "opspilot_observation_signal_readings": "raw",
+    "opspilot_release_comparison_queries": "raw",
+    "opspilot_release_query_results": "raw",
+}
+
+#: What the retention cleanup group role may do (#244, migration 0023). Kept
+#: apart from ``RUNTIME_GRANTS``: no web, worker or Observer process holds it,
+#: and its login is made outside the repository like theirs. Same notation and
+#: the same rule that every relation has an entry. The determination reads
+#: (incident, Run, observation, postmortem and knowledge state; the release
+#: and alert links from a payload row to its incident) are table-wide SELECT;
+#: the only write is UPDATE of a payload column and its ``payload_state``,
+#: and the 0023 guard trigger narrows that to present -> cleaned with the
+#: payload set to NULL (SQLSTATE 42501 otherwise); plus lock-only UPDATE on
+#: one column of incidents, Runs and observation sessions. No INSERT, DELETE,
+#: TRUNCATE, and nothing on the F13 tables but SELECT (no lock either).
+RETENTION_GRANTS: Mapping[str, frozenset[str]] = (
+    {relation: NONE for relation in RUNTIME_GRANTS[WEB_ROLE]}
+    | {
+        "alembic_version": S,
+        # lock-only (contract r2): FOR UPDATE needs UPDATE on some column;
+        # the 0023 ``retention_lock_guard`` refuses every real UPDATE
+        "opspilot_incidents": _g("SELECT", "UPDATE(incident_id)"),
+        "opspilot_runs": _g("SELECT", "UPDATE(run_id)"),
+        "opspilot_observation_sessions": _g("SELECT", "UPDATE(session_id)"),
+        "opspilot_observation_samples": S,
+        "opspilot_observation_endings": S,
+        "opspilot_postmortems": S,
+        "opspilot_postmortem_versions": S,
+        "opspilot_postmortem_conclusions": S,
+        "opspilot_postmortem_generation_jobs": S,
+        "opspilot_postmortem_generation_attempts": S,
+        "opspilot_knowledge_entries": S,
+        "opspilot_knowledge_revisions": S,
+        "opspilot_knowledge_revision_states": S,
+        "opspilot_release_observations": S,
+        "opspilot_release_incident_links": S,
+        "opspilot_release_comparisons": S,
+    }
+    | {
+        relation: _g("SELECT", f"UPDATE({','.join(sorted((column, 'payload_state')))})")
+        for relation, column in RETENTION_PAYLOADS.items()
+    }
+)
+
+#: The 0023 guard triggers that narrow each retention UPDATE grant (SQLSTATE
+#: 42501), like ``TRIGGER_GUARDED`` for the runtime roles: the payload tables
+#: allow only present -> cleaned with the payload set to NULL; the incident,
+#: Run and session grants exist only for row locks (contract r2: the cleanup
+#: locks incident -> Run/session and rechecks), so every real UPDATE by a
+#: retention member is refused.
+RETENTION_TRIGGER_GUARDED: Mapping[str, tuple[str, str]] = {
+    relation: ("payload_clean_guard", RETENTION_ROLE) for relation in RETENTION_PAYLOADS
+} | {
+    relation: ("retention_lock_guard", RETENTION_ROLE)
+    for relation in (
+        "opspilot_incidents",
+        "opspilot_observation_sessions",
+        "opspilot_runs",
+    )
 }

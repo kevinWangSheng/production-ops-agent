@@ -1,0 +1,263 @@
+{
+ "all_pass": true,
+ "balance": [
+  {
+   "at": "2026-10-27T12:38:02.212039+00:00",
+   "balance": [
+    {
+     "currency": "CNY",
+     "granted_balance": "0.00",
+     "topped_up_balance": "90.14",
+     "total_balance": "90.14"
+    }
+   ],
+   "label": "before"
+  },
+  {
+   "at": "2026-10-27T12:44:44.841947+00:00",
+   "balance": [
+    {
+     "currency": "CNY",
+     "granted_balance": "0.00",
+     "topped_up_balance": "90.04",
+     "total_balance": "90.04"
+    }
+   ],
+   "label": "after"
+  }
+ ],
+ "checks": [
+  {
+   "check": "intake bound the incident to A",
+   "observed": {
+    "first_run_bound_target_id": "checkout-misbound",
+    "target": "checkout-misbound"
+   },
+   "pass": true
+  },
+  {
+   "check": "register_remediation authorized an observation on A (observing_recovery)",
+   "observed": {
+    "incident": [
+     {
+      "concluded": false,
+      "control_generation": 1,
+      "current_run_id": "19445791-7a04-5a0d-9123-e80a82823fd0",
+      "lifecycle": "observing_recovery",
+      "mode": "automatic",
+      "state": "queued",
+      "target": "checkout-misbound"
+     }
+    ],
+    "runs": [
+     {
+      "control_generation": 0,
+      "run_id": "19445791-7a04-5a0d-9123-e80a82823fd0",
+      "state": "queued"
+     }
+    ],
+    "sessions": [
+     {
+      "authorization_source": "post_remediation",
+      "ended_reason": null,
+      "session_id": "4bd00a2f-eeee-5fdd-ae4b-b0f5cd7a9d52",
+      "state": "authorized"
+     }
+    ]
+   },
+   "pass": true
+  },
+  {
+   "check": "rebind via the workbench form: 200, generation +1, no Run started",
+   "observed": {
+    "action": "rebind_target",
+    "generation": 2,
+    "incident_id": "6f4a57f7-676a-5a2d-9bd5-7f42b65abc5d",
+    "replayed": false,
+    "sequence": 3
+   },
+   "pass": true
+  },
+  {
+   "check": "after rebind: target B, lifecycle open, old Run cancelled, session revoked",
+   "observed": {
+    "incident": [
+     {
+      "concluded": false,
+      "control_generation": 2,
+      "current_run_id": "19445791-7a04-5a0d-9123-e80a82823fd0",
+      "lifecycle": "open",
+      "mode": "automatic",
+      "state": "cancelled",
+      "target": "m0-otel-20260909"
+     }
+    ],
+    "runs": [
+     {
+      "control_generation": 2,
+      "run_id": "19445791-7a04-5a0d-9123-e80a82823fd0",
+      "state": "cancelled"
+     }
+    ],
+    "sessions": [
+     {
+      "authorization_source": "post_remediation",
+      "ended_reason": "authority_revoked",
+      "session_id": "4bd00a2f-eeee-5fdd-ae4b-b0f5cd7a9d52",
+      "state": "revoked"
+     }
+    ]
+   },
+   "pass": true
+  },
+  {
+   "check": "observation ending recorded from observing_recovery (authority_revoked)",
+   "observed": [
+    {
+     "ended_reason": "authority_revoked",
+     "lifecycle_after": "observing_recovery",
+     "lifecycle_before": "observing_recovery",
+     "recorded_at": "2026-10-27 05:39:14.912775-07:00"
+    }
+   ],
+   "pass": true
+  },
+  {
+   "check": "audit row: rebind_target by the operator with from A / to B",
+   "observed": [
+    {
+     "action": "rebind_target",
+     "actor": "f245-lab",
+     "created_at": "2026-10-27 05:39:14.913911-07:00",
+     "expected_generation": 1,
+     "payload": {
+      "channel": "web",
+      "from_target": "checkout-misbound",
+      "text": "Alert was bound to the wrong registry entry; the lab checkout target is m0-otel-20260909",
+      "to_target": "m0-otel-20260909"
+     },
+     "resulting_generation": 2
+    }
+   ],
+   "pass": true
+  },
+  {
+   "check": "page shows the current target B and the rebind record",
+   "observed": null,
+   "pass": true
+  },
+  {
+   "check": "follow_up started a new Run; the old Run stays cancelled",
+   "observed": {
+    "new_run": "ec062969-5f20-58e9-9c52-1a8e919dfe4c",
+    "old": "cancelled"
+   },
+   "pass": true
+  },
+  {
+   "check": "new Run input is bound to B: bound_target_id and target_ids",
+   "observed": {
+    "bound_target_id": "m0-otel-20260909",
+    "target_ids": [
+     "m0-otel-20260909"
+    ]
+   },
+   "pass": true
+  },
+  {
+   "check": "new Run input is fresh, not a continuation (intake question, no handoff note)",
+   "observed": {
+    "question": "Checkout PlaceOrder errors since the last deploy: what is failing and why?"
+   },
+   "pass": true
+  },
+  {
+   "check": "new Run's read-only queries ran against B and returned data",
+   "observed": {
+    "by_status": {
+     "no_data": 4,
+     "ok": 17
+    },
+    "evidence": 21,
+    "targets": [
+     "m0-otel-20260909"
+    ],
+    "tool_steps": 9
+   },
+   "pass": true
+  },
+  {
+   "check": "new Run completed and its conclusion is published on the incident",
+   "observed": {
+    "current_run_id": "ec062969-5f20-58e9-9c52-1a8e919dfe4c",
+    "state": "completed"
+   },
+   "pass": true
+  },
+  {
+   "check": "the old Run on A never ran (no steps, no evidence)",
+   "observed": null,
+   "pass": true
+  },
+  {
+   "check": "a LangSmith root trace exists for the new Run",
+   "observed": [
+    "ec062969-5f20-58e9-9c52-1a8e919dfe4c",
+    null
+   ],
+   "pass": true
+  }
+ ],
+ "executed_commit": "9358d25edbc5227be69e425ac4146a21e247f12c",
+ "experiment": "f12-245-rebind-20261027",
+ "incident_id": "6f4a57f7-676a-5a2d-9bd5-7f42b65abc5d",
+ "pages": {
+  "p0-after-intake": "aae29619194f764176415514757aa545b5c7bcaca7e16d77e770534691f93f33",
+  "p1-observing": "be8d2b3c8caf0b28980ed5f604746db4ab8c01ad8b45834a00d745be05717013",
+  "p2-rebound": "a8befa0d7015737094167caf00beaa738e2c7472a50d5a58b050d4c620685309",
+  "p3-concluded": "85d194ded40a5121b150f3d911cbc76b878177fb94074c3e74162292bc512337"
+ },
+ "postmortem_attempts": [
+  {
+   "error_code": "WATERMARK_MOVED",
+   "model_requests": 1,
+   "status": "superseded"
+  }
+ ],
+ "raw_ledger": {
+  "bytes": 203023,
+  "path": "tmp/f245-live/ledger.json",
+  "sha256": "8530cd897cc4d28e4e14794a553947d33b81112f87f4245b8f16d92e23722453"
+ },
+ "runs": {
+  "new": "ec062969-5f20-58e9-9c52-1a8e919dfe4c",
+  "old": "19445791-7a04-5a0d-9123-e80a82823fd0"
+ },
+ "targets": {
+  "A": "checkout-misbound",
+  "B": "m0-otel-20260909"
+ },
+ "trace": {
+  "project": {
+   "project": "opspilot-lab-f12-245-rebind-20261027",
+   "project_id": "7037e7fc-a4f9-466c-9f3b-612b77c10e7d",
+   "trace_tier": "longlived"
+  },
+  "roots": [
+   {
+    "incident_id": "6f4a57f7-676a-5a2d-9bd5-7f42b65abc5d",
+    "name": "opspilot.run",
+    "run_id": "ec062969-5f20-58e9-9c52-1a8e919dfe4c",
+    "start_time": "2026-10-27 12:39:23.957690+00:00",
+    "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/7037e7fc-a4f9-466c-9f3b-612b77c10e7d/r/00000000-0000-0000-a998-c462d3287004?poll=true"
+   },
+   {
+    "incident_id": "6f4a57f7-676a-5a2d-9bd5-7f42b65abc5d",
+    "name": "opspilot.postmortem_generation",
+    "run_id": null,
+    "start_time": "2026-10-27 12:42:24.018445+00:00",
+    "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/7037e7fc-a4f9-466c-9f3b-612b77c10e7d/r/00000000-0000-0000-1101-eeb633d167d2?poll=true"
+   }
+  ]
+ }
+}

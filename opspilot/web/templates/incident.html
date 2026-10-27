@@ -22,6 +22,19 @@
 {% for link in release_links or [] %}
 <p class="release-link">Linked from version change observation <a href="/version-changes/{{ link.observation_id }}"><code>{{ link.observation_id }}</code></a> <span class="badge">{{ link.disposition }}</span> <span class="muted">(its health verdict is advisory; causal findings are this incident's)</span></p>
 {% endfor %}
+{% if inc.merged_into_incident_id %}
+<p>Merged into <a id="merged-into" href="/incidents/{{ inc.merged_into_incident_id }}"><code>{{ inc.merged_into_incident_id }}</code></a>
+  <span class="muted">(closed by a human merge; its records stay here)</span></p>
+{% endif %}
+{% if snapshot.merged_from %}
+<p>Merged from{% for source in snapshot.merged_from %} <a class="merged-from" href="/incidents/{{ source }}"><code>{{ source }}</code></a>{% endfor %}</p>
+{% endif %}
+{% if snapshot.current_target %}
+<p>Current target: <code id="current-target">{{ snapshot.current_target }}</code></p>
+{% endif %}
+{% for rebind in snapshot.rebinds or [] %}
+<p class="rebind">Rebound from <code>{{ rebind.from_target }}</code> to <code>{{ rebind.to_target }}</code> at {{ rebind.decided_at or "unknown time" }} by {{ rebind.actor }}</p>
+{% endfor %}
 {% if snapshot.target_id %}
 <p>Target request: <code>{{ snapshot.target_id }}</code> <span class="muted">(unresolved operator input; identity is registry-resolved by the investigator)</span></p>
 {% endif %}
@@ -45,6 +58,14 @@
     <input name="text" placeholder="{{ 'follow-up question' if action == 'follow_up' else 'correction / added fact' }}" required maxlength="8192">
   {% elif action == "register_remediation" %}
     <input name="revision" placeholder="target revision after handling" required maxlength="256">
+  {% elif action == "rebind_target" %}
+    <select name="to_target" required>
+      {% for uid in snapshot.rebind_targets %}<option value="{{ uid }}">{{ uid }}</option>{% endfor %}
+    </select>
+    <input name="text" placeholder="why (optional)" maxlength="8192">
+  {% elif action == "merge_into" %}
+    <input name="into_incident_id" placeholder="surviving incident id (same target)" required maxlength="36">
+    <input name="text" placeholder="why (optional)" maxlength="8192">
   {% endif %}
   <button type="submit">{{ action }}</button>
 </form>

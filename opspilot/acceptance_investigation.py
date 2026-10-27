@@ -136,7 +136,7 @@ def _resolves(record: StoredEvidence, run_id: str, incident_id: UUID) -> bool:
     return (
         record.run_id == run_id
         and record.subject_id == str(incident_id)
-        and record.hashes_verified
+        and record.hashes_verified is True
     )
 
 

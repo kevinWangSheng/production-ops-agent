@@ -30,7 +30,9 @@ class StoredEvidence:
     subject_id: str
     status: str
     adopted: bool
-    raw: bytes
+    #: ``None`` once the retention cleanup removed the payload (#244); the
+    #: hash, view and times stay.
+    raw: bytes | None
     raw_sha256: str
     view: Mapping[str, Any]
     view_sha256: str
@@ -40,10 +42,17 @@ class StoredEvidence:
     #: Set once the tool result citing this evidence committed; from then on
     #: the projection is final and a same-bytes replay cannot replace it.
     committed: bool = False
+    #: ``present`` / ``cleaned`` (0023); a cleaned row has no ``raw``.
+    payload_state: str = "present"
 
     @property
-    def hashes_verified(self) -> bool:
-        """Recompute both digests from what is stored, not from what was said."""
+    def hashes_verified(self) -> bool | None:
+        """Recompute both digests from what is stored, not from what was said.
+
+        ``None`` when the payload was cleaned: the raw digest can no longer be
+        checked, which is not a mismatch."""
+        if self.raw is None:
+            return None
         return (
             hashlib.sha256(self.raw).hexdigest() == self.raw_sha256
             and canonical_hash(self.view) == self.view_sha256
@@ -133,6 +142,7 @@ def _pinned(existing: StoredEvidence, view: Mapping[str, Any]) -> StoredEvidence
         adopted=bool(pinned.get("adopted", existing.adopted)),
         raw=existing.raw,
         raw_sha256=existing.raw_sha256,
+        payload_state=existing.payload_state,
         view=pinned,
         view_sha256=canonical_hash(pinned),
         projection_revision=str(
@@ -179,7 +189,7 @@ class MemoryEvidenceStore:
                 and stored.evidence_id != record.evidence_id
                 and _spilled(stored)
             ]
-            size = sum(len(stored.raw) for stored in spilled)
+            size = sum(len(stored.raw or b"") for stored in spilled)
             if len(spilled) >= max_records or size + len(record.raw) > max_bytes:
                 return False
             return self.register(record) == record.evidence_id
@@ -201,7 +211,7 @@ class MemoryEvidenceStore:
             for stored in self._records.values()
             if stored.run_id == run_id and _spilled(stored)
         ]
-        return len(spilled), sum(len(stored.raw) for stored in spilled)
+        return len(spilled), sum(len(stored.raw or b"") for stored in spilled)
 
 
 class DurableEvidenceStore:
@@ -245,7 +255,7 @@ class DurableEvidenceStore:
                 raise PersistenceError("INCONSISTENT_STATE")
             if (
                 int(row["records"]) >= max_records
-                or int(row["raw_bytes"]) + len(stored.raw) > max_bytes
+                or int(row["raw_bytes"]) + len(record.raw) > max_bytes
             ):
                 return False
             _insert(conn, stored)
@@ -254,7 +264,7 @@ class DurableEvidenceStore:
     def commit(self, evidence_id: str, view: Mapping[str, Any]) -> None:
         with self._store.transaction() as conn:
             row = conn.execute(
-                "SELECT evidence_id,run_id,subject_id,status,adopted,raw,raw_sha256,view,view_sha256,projection_revision,observed_at,data_as_of,committed FROM opspilot_evidence WHERE evidence_id=%s FOR UPDATE",
+                "SELECT evidence_id,run_id,subject_id,status,adopted,raw,raw_sha256,view,view_sha256,projection_revision,observed_at,data_as_of,committed,payload_state FROM opspilot_evidence WHERE evidence_id=%s FOR UPDATE",
                 (evidence_id,),
             ).fetchone()
             if row is None:
@@ -296,7 +306,7 @@ class DurableEvidenceStore:
             return None
         with self._store.transaction(snapshot=True) as conn:
             row = conn.execute(
-                "SELECT evidence_id,run_id,subject_id,status,adopted,raw,raw_sha256,view,view_sha256,projection_revision,observed_at,data_as_of,committed FROM opspilot_evidence WHERE evidence_id=%s",
+                "SELECT evidence_id,run_id,subject_id,status,adopted,raw,raw_sha256,view,view_sha256,projection_revision,observed_at,data_as_of,committed,payload_state FROM opspilot_evidence WHERE evidence_id=%s",
                 (evidence_id,),
             ).fetchone()
         if row is None:
@@ -353,8 +363,9 @@ def _from_row(row: Mapping[str, Any]) -> StoredEvidence:
         subject_id=row["subject_id"],
         status=row["status"],
         adopted=bool(row["adopted"]),
-        raw=bytes(row["raw"]),
+        raw=None if row["raw"] is None else bytes(row["raw"]),
         raw_sha256=row["raw_sha256"],
+        payload_state=row["payload_state"],
         view=row["view"],
         view_sha256=row["view_sha256"],
         projection_revision=row["projection_revision"],

@@ -53,6 +53,14 @@ class IncidentSummary:
     #: R-C6: resolved, and an alert episode was attached after it resolved
     #: (an attachment opens no Run, so only the page shows it).
     refired_after_resolved: bool = False
+    #: #245 G6: the ``resource_uid`` the incident row is bound to now (a
+    #: rebind changes it); ``None`` for an incident without a bound target.
+    #: Observation identity and successor authorization resolve from it,
+    #: never from the intake envelope, which only records the first intake.
+    target_uid: str | None = None
+    #: #245 G3: the surviving incident this one was merged into (it is then
+    #: ``closed``); ``None`` for an incident never merged.
+    merged_into_incident_id: UUID | None = None
 
     @property
     def handoff_only(self) -> bool:
@@ -821,7 +829,7 @@ class DurableIncidentStore:
     def list_incidents(self, *, limit: int = 50) -> tuple[IncidentSummary, ...]:
         with self._store.transaction(snapshot=True) as conn:
             rows = conn.execute(
-                f"SELECT i.incident_id,i.intake_key,i.state,i.lifecycle,i.mode,i.control_generation,i.current_run_id,r.state AS run_state,i.conclusion IS NOT NULL AS concluded,i.created_at,COALESCE(a.handoff_reason,{_RELEASE_HANDOFF}) AS handoff_reason,i.related_incident_id,{_REFIRED} FROM opspilot_incidents i LEFT JOIN opspilot_runs r ON r.run_id=i.current_run_id AND r.incident_id=i.incident_id LEFT JOIN opspilot_alert_identities a ON a.incident_id=i.incident_id ORDER BY i.created_at DESC, i.incident_id LIMIT %s",
+                f"SELECT i.incident_id,i.intake_key,i.state,i.lifecycle,i.mode,i.control_generation,i.current_run_id,r.state AS run_state,i.conclusion IS NOT NULL AS concluded,i.created_at,COALESCE(a.handoff_reason,{_RELEASE_HANDOFF}) AS handoff_reason,i.related_incident_id,{_REFIRED},t.resource_uid AS target_uid,i.merged_into_incident_id FROM opspilot_incidents i LEFT JOIN opspilot_targets t ON t.target_id=i.target_id LEFT JOIN opspilot_runs r ON r.run_id=i.current_run_id AND r.incident_id=i.incident_id LEFT JOIN opspilot_alert_identities a ON a.incident_id=i.incident_id ORDER BY i.created_at DESC, i.incident_id LIMIT %s",
                 (limit,),
             ).fetchall()
         return tuple(_summary(row) for row in rows)
@@ -829,7 +837,7 @@ class DurableIncidentStore:
     def find_incident(self, incident_id: UUID) -> IncidentSummary | None:
         with self._store.transaction(snapshot=True) as conn:
             row = conn.execute(
-                f"SELECT i.incident_id,i.intake_key,i.state,i.lifecycle,i.mode,i.control_generation,i.current_run_id,NULL::text AS run_state,i.conclusion IS NOT NULL AS concluded,i.created_at,COALESCE(a.handoff_reason,{_RELEASE_HANDOFF}) AS handoff_reason,i.related_incident_id,{_REFIRED} FROM opspilot_incidents i LEFT JOIN opspilot_alert_identities a ON a.incident_id=i.incident_id WHERE i.incident_id=%s",
+                f"SELECT i.incident_id,i.intake_key,i.state,i.lifecycle,i.mode,i.control_generation,i.current_run_id,NULL::text AS run_state,i.conclusion IS NOT NULL AS concluded,i.created_at,COALESCE(a.handoff_reason,{_RELEASE_HANDOFF}) AS handoff_reason,i.related_incident_id,{_REFIRED},t.resource_uid AS target_uid,i.merged_into_incident_id FROM opspilot_incidents i LEFT JOIN opspilot_targets t ON t.target_id=i.target_id LEFT JOIN opspilot_alert_identities a ON a.incident_id=i.incident_id WHERE i.incident_id=%s",
                 (incident_id,),
             ).fetchone()
         return None if row is None else _summary(row)
@@ -841,6 +849,15 @@ class DurableIncidentStore:
         opening: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         return self._store.record_alert(delivery, opening=opening)
+
+    def merged_from(self, incident_id: UUID) -> tuple[UUID, ...]:
+        """Incidents merged into ``incident_id`` (#245), oldest first."""
+        with self._store.transaction(snapshot=True) as conn:
+            rows = conn.execute(
+                "SELECT incident_id FROM opspilot_incidents WHERE merged_into_incident_id=%s ORDER BY created_at,incident_id",
+                (incident_id,),
+            ).fetchall()
+        return tuple(row["incident_id"] for row in rows)
 
     def alert_records(self, incident_id: UUID) -> AlertIntakeRecords | None:
         with self._store.transaction(snapshot=True) as conn:
@@ -922,4 +939,6 @@ def _summary(row: Mapping[str, Any]) -> IncidentSummary:
         handoff_reason=row.get("handoff_reason"),
         related_incident_id=row.get("related_incident_id"),
         refired_after_resolved=bool(row.get("refired_after_resolved")),
+        target_uid=row.get("target_uid"),
+        merged_into_incident_id=row.get("merged_into_incident_id"),
     )

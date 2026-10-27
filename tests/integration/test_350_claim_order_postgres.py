@@ -520,7 +520,7 @@ def test_ac8_alembic_head_and_all_runtime_grants_stay_at_main_baseline(
     scene: Scene,
 ) -> None:
     """AC8: baseline main 78a9603; canonical full role/table/privilege matrix."""
-    head = "0021_release_incident_links"
+    head = "0023_retention_raw_cleanup"
     assert schema.head_revision() == head
     with scene.owner.transaction(snapshot=True) as conn:
         assert schema.current_revision(conn) == head
@@ -530,5 +530,5 @@ def test_ac8_alembic_head_and_all_runtime_grants_stay_at_main_baseline(
     }
     encoded = json.dumps(grants, sort_keys=True, separators=(",", ":")).encode()
     assert hashlib.sha256(encoded).hexdigest() == (
-        "a1721d08506cd2692b21630bcde220b82771144ce181db608a3b34c73fa8e516"
+        "d4d18f74ad4263b6a0d7695f1c1cec25e3d94e2df1f30be25d151cf674861c09"
     )

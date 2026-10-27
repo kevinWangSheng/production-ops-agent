@@ -4,7 +4,7 @@
 - 更新日期：2026-10-27
 - 依据：[issue #245](https://github.com/kevinWangSheng/production-ops-agent/issues/245) Agent Brief；C3 §4（核心句「重绑定/合并/拆分」）、§7（撤权后旧证据不得进入新输入）、§10（关联已有事故只增加事件）；[F12 合同](2026-10-15-f12-contract.md) U6；ROADMAP F12 行已知限制。功能 F12。
 - 裁决：`~/.agent/handoffs/opspilot-rulings-2026-10-27.md` 第 1、3 节（下称「裁决」）；预审：`~/.agent/handoffs/opspilot-prereview-245-2026-10-27.md`（Fable 5.1，基线 `17bc865e`，下称「预审」）。
-- 工作区：PR-1、PR-2 开工时填写。
+- 工作区：PR-1 `/Users/shenghuikevin/dev/AI/poa-245-impl`，分支 `feature/F12-245-rebind-target`；PR-2 开工时填写。
 
 ## 目标与范围
 
@@ -38,6 +38,26 @@ F12 只做了「假设纠正」，事故挂错目标或两条告警其实是同�
 ## 执行进展与证据
 
 - 2026-10-27：合同 r1 写入；#373（拆分）已开；#245 已贴 Agent Brief。
+- 2026-10-27：PR-1 实现（迁移 0022、`rebind_target`、G6/G7、U5 ①、页面、G11）。实现者自定的可逆细节：
+  - 事件投影白名单（未确认 1）：PR-1 不写事件输入，不涉及；留给 PR-2。
+  - 审计投影版本（未确认 2）：`acceptance_audit` 没有版本钉值（ROADMAP「投影 v11」是脱敏投影），加动作不递增。另把挂起时间线的目标集合扩为「当前目标 ∪ 改目标审计行的 `from_target`」，否则改目标前旧目标的挂起记录会从时间线消失。
+  - `_alert_rebuild` 取值（未确认 4）：改目标后的 fresh 输入只沿用其告警锚点与告警上下文；`affected_service` 取新目标登记行（无 workload 则不写），不取告警身份行（旧目标）；发布事实描述旧目标的发布，不沿用。
+  - 错误码：非登记键 `UNKNOWN_TARGET`（404，沿用挂起入口）、相同目标 `TARGET_UNCHANGED`（409）、缺目标 `TARGET_REQUIRED` / 其他动作带目标 `TARGET_NOT_ALLOWED`（400）。表单字段 `to_target`，`text` 可选。
+  - `merge_into` 不进动作集合（PR-2）。
+- 2026-10-27：PR-1 有界真实 Run（kind，[run.md](../evidence/f12-245-rebind-live/run.md)，[summary.json](../evidence/f12-245-rebind-live/summary.json) 14/14 通过）：A=`checkout-misbound` → 改目标到 B=`m0-otel-20260909` → 追问 → 新 Run 输入绑定 B、是 fresh 输入，对 B 的 21 次只读查询（17 ok / 4 no_data）后发布结论；旧 Run cancelled，会话 authority_revoked。[trace](https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/7037e7fc-a4f9-466c-9f3b-612b77c10e7d/r/00000000-0000-0000-a998-c462d3287004?poll=true)。费用 0.10 CNY。限制：otel-demo 网关只登记一个真实目标，A 没有后端，A 上的 Run 在 worker 启动前就被取消。
+
+- 独立验收测试（PR-1）：Codex gpt-6.1-sol（容量中断两次后由 gpt-6-astra 续完），`tests/acceptance/test_245_rebind_target.py` 15 例，另按合同变更改 F7 第 1 步动作集合与 #347 head/授权指纹钉值；main 上 14 红 1 绿，本分支全绿。lead 按 #378 公开接口裁定表单字段 `to_target`、审计在 `opspilot_controls.payload`、页面标记 `#current-target` / `.rebind`；修一处测试构造错误（观察会话改由 `ObservationStore` 读取）。
+- 独立审查（PR-1）：Codex gpt-6-astra。首轮 3 阻塞：拒绝路径先提交了目标登记、幂等重放排在同目标检查之后、observing_recovery 起点的结束记录未记 `observation_ended_unconfirmed`。前两条以先红后绿修复（c166b14b）；第三条 lead 裁决不改：`ending_consistent` 要求撤销类结束记录 transition 为 NULL、前后 lifecycle 相同，close 与续开先例同写法，G2 的领域边指事故行 observing_recovery→open。复验两轴 0 发现。
+- lead 接受的超字面改动：暂停审计时间线的目标集合 = 当前目标 + 改目标审计行的 `from_target`（G11 字面只要求动作集合），避免改目标后旧目标的暂停记录脱出时间线；审查未提异议。
+- 2026-10-27：PR-2 实现（`merge_into`、U5 ②、页面、G11），工作区 `/Users/shenghuikevin/dev/AI/poa-245-merge-impl`，分支 `feature/F12-245-merge-into`。实现者自定的可逆细节：
+  - 事件模板（未确认 1）：投影白名单不改。保留方事件 `channel="merge"`，`text` 里写源事故 id、告警 fingerprint/startsAt（开事故身份 + 附加 episode，最多 16 条）、发布观察 id（最多 16）、合并时 lifecycle、是否有结论（不含结论正文）；同样的字段以结构化键留在输入行供人读，模型只看到 `text`/`channel`。输入 id 由 (源, 保留方) 派生，actor 为操作员。
+  - 错误码：保留方不存在 `UNKNOWN_IDENTITY`（404）；合并到自身、保留方 closed 或已被并入、被并入事故再 reopen/改目标/合并 → `ILLEGAL_TRANSITION`；任一方无 Run（handoff）→ `HANDOFF_ONLY`；跨目标 `TARGET_MISMATCH`。表单字段 `into_incident_id`（缺 → `INTO_INCIDENT_REQUIRED`，其他动作带 → `INTO_INCIDENT_NOT_ALLOWED`，非 UUID → `INVALID_INPUT`），`text` 可选。源事故任何 lifecycle 都可被并入（brief 未限制）。
+  - 指针跟随（U5 ②）：`_correlate` 对每个候选沿指针走到保留方（最多 16 跳，逐行 FOR UPDATE），保留方已改绑到别的目标则不作候选；去重后交 `choose_correlation`，所以保留方 closed 时按「全 closed」规则取最新的 closed 候选作 `related_incident_id`。
+  - F11 发布消费（未确认 3）：不改。它的候选是同目标的全部事故，保留方本就在内，被并入事故已 closed，不需要跟指针。
+- 独立审查（PR-2）：Codex gpt-6-astra，Spec 轴 3 阻塞，lead 全部采纳，均先红后绿修复：
+  - 锁序：告警路径先锁候选再沿指针锁保留方，与 `merge_into` 的按 id 加锁反向，可复现 DeadlockDetected。改为共享函数 `lock_merge_closure`：先不加锁读出候选与指针闭包，再按 `incident_id` 一次性 FOR UPDATE；锁后发现指针变了则 `RETRY`。新测试按原死锁顺序持锁复现（修前 DeadlockDetected，修后附加到保留方）。
+  - F11 发布消费：改为与告警同一对函数（`lock_merge_closure` + `resolve_merged`），候选沿指针映射到保留方、去重、丢弃被改目标的保留方。新测试：被并入方比保留方新且两者都 closed 时，`related_incident_id` 指向保留方（修前指向被并入方）。上一条「F11 不改」的自定作废。
+  - 链超界：超过 `MERGE_CHAIN_LIMIT`（16，可注入）仍带指针的候选丢弃，绝不关联或附加到被并入事故。新测试以上限 2 / 3 跑 3 跳链（修前 `related_incident_id` 指向中间节点）。
 
 ## 下一步与交接
 

@@ -118,6 +118,11 @@ _WORKBENCH_STATUS = {
     "TEXT_NOT_ALLOWED": 400,
     "REVISION_REQUIRED": 400,
     "REVISION_NOT_ALLOWED": 400,
+    "TARGET_REQUIRED": 400,
+    "TARGET_NOT_ALLOWED": 400,
+    "INTO_INCIDENT_REQUIRED": 400,
+    "INTO_INCIDENT_NOT_ALLOWED": 400,
+    "TARGET_UNCHANGED": 409,
     "HEALTH_PROFILE_REQUIRED": 409,
     "SCOPE_SUSPENDED": 409,
     "TARGET_MISMATCH": 409,
@@ -803,6 +808,8 @@ def create_app(
             raise _Refusal(400, "INVALID_INPUT")
         text = fields.get("text")
         revision = fields.get("revision")
+        to_target = fields.get("to_target")
+        into_incident_id = fields.get("into_incident_id")
         result = await in_thread(
             workbench.control,
             subject,
@@ -812,6 +819,8 @@ def create_app(
             idempotency_key=fields.get("idempotency_key", ""),
             text=text if text else None,
             revision=revision if revision else None,
+            to_target=to_target if to_target else None,
+            into_incident_id=into_incident_id if into_incident_id else None,
         )
         if wants_html(request):
             return RedirectResponse(f"/incidents/{subject}", status_code=303)
