@@ -16,6 +16,7 @@
 | U1-B | 两个转义斜杠，每个是 `\/` 或 `\u002f`/`\u002F`，可混写，有无 scheme 都算；Observer `_OPEN_AUTHORITY` 同步认 `\u002f`；其他编码另开 issue | 用户 2026-10-26 |
 | U2-A | `PROJECTION_REVISION` → `m1-01-tool-view-v11`，fixture → `fixture-5`；8 个独立验收文件的固定值由独立测试作者改 | 用户 2026-10-26；C3 §5（#361） |
 | U3-A | 一次有界回放真实 Run（`scripts/f7_hostile_live.py`，不占 kind），三种形态在各落点零命中，`versions` 显示 v11 | 用户 2026-10-26 |
+| F3-E | F3 第 5 步证据（用户 2026-10-26 裁决：等价证明）：v11 只改脱敏，用 LangSmith trace 中全部模型可见工具结果在当前规则下逐字不变 + 新规则零匹配证明 F3 两次 Run 的模型可见面不变；验收测试改为允许已登记且有等价证明的版本差。判据细化（lead 2026-10-26，选项 A）：「逐字不变」= 当前规则与 v10 规则（`c968783`）输出相同；两版下都会发生的幂等改写单列为 `idempotence_changes_pre_existing` | 用户 2026-10-26；lead 2026-10-26 |
 
 注：issue 正文与 brief 在 GitHub 上把 `\u002f` 显示成了 `/`（转义被解码），本记录与代码按预审原文 `\u002f`/`\u002F` 实现。
 
@@ -38,6 +39,7 @@
 
 - 独立验收测试（Codex gpt-6.1-sol，worktree `poa-319-tests`，分支 `chore/319-acceptance-tests`，已合入本分支）：新增 `tests/acceptance/test_319_escaped_userinfo.py`（27）与 `_postgres.py`（4），并按 U2-A 改 10 个验收文件的固定值（brief 写 8 个，实际 10 个）。lead 按预审原文做了四处测试构造修正：GitHub 把 brief 中的 `\u002f`/`\u002F` 渲染成 `/`，测试作者漏了大写形态、截断用例误用字面 `//`；两条「JSON 里套 JSON」多套了一层 `json.dumps`（成了 M3 的双重转义）；一处断言引用不存在的 `RunnerOutcome.evidence_ids`。在 main 上红（单测 18/27 失败、PG 4/4 失败），在本分支全绿；10 个改固定值的验收文件单测 200 passed、PG 71 passed（临时 PG 55652）。
 - 独立审查（code-review 两轴，Codex gpt-6-astra，全新上下文、只读）：首轮 Standards 1（验收文件未 ruff format，已修）、Spec 1（`//u@host\/\/v@w` 输出与 main 不同）——不采纳：brief 的「逐字不变」指只含字面 `//` 的输入，该例差异正是新规则要脱敏的转义段；复验审查者同意不采纳，并审 live 脚本 READ_TOOLS 改动（写工具、admin 路径、POST、多余路径段仍判 fail），两轴 0 发现。
+- F3 第 5 步 v11 等价证明（`scripts/f3_surface_equivalence.py`，单测 `tests/test_f3_surface_equivalence.py` 8 条）：[v11-equivalence.json](../evidence/f3-step5-competing-cause/v11-equivalence.json)。run-1：12 次 LLM 调用、21 条工具消息；run-2：11 次、26 条；两次 `changed_by_current_redaction`（当前 vs v10 `c968783`）= 0，新规则匹配 = 0。各有 1 条幂等改写（网关 `RESULT_TOO_LARGE` 拒绝视图的 `max_view_tokens`/`view_tokens` 键名命中凭据名规则，非源数据，v10/v11 相同）。trace 把单条属性截到 20000 字符（run-1 1 条、run-2 3 条被截），用 Run 的 DB 抽取（主仓 `tmp/lab-ledgers/f3-competing-cause/`，sha256 与 summary 的 `raw_ledger` 一致，不入库）交叉核对 42 / 52 条完整视图与工具结果：v10/v11 差异 0、新规则匹配 0。未覆盖：被 v10 视图截断隐藏的部分（DB 抽取只有原始源数据的哈希）。
 
 ## 下一步与交接
 

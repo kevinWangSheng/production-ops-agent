@@ -1,0 +1,50 @@
+{
+  "schema": "f3-surface-equivalence-v1",
+  "change": {
+    "key": "tool_schema_revision",
+    "from": "otel-demo-68ed2ca8f5d6",
+    "to": "otel-demo-a3a95a0f888e",
+    "projection_from": "m1-01-tool-view-v10",
+    "projection_to": "m1-01-tool-view-v11",
+    "cause": "#319"
+  },
+  "computed_with": {
+    "tool_schema_revision": "otel-demo-a3a95a0f888e",
+    "projection_revision": "m1-01-tool-view-v11",
+    "v10_rules_commit": "c968783b92d2d5bfa560cfe027c38cb7b330a194"
+  },
+  "runs": {
+    "run-1": {
+      "run_id": "dbf02dca-b980-5f66-b9e7-5c62b200f411",
+      "trace_url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/fddc0e84-a2c2-4978-8098-649395630411/r/00000000-0000-0000-3f27-476a5c84f334?poll=true",
+      "llm_calls": 12,
+      "tool_messages": 21,
+      "tool_message_bytes": 121255,
+      "tool_messages_sha256": "241edf064cfd39dce5a30ec3eca79e2335ce7f9284ca51dcaf46d46025dcaae8",
+      "changed_by_current_redaction": 0,
+      "escaped_authority_matches": 0,
+      "idempotence_changes_pre_existing": 1,
+      "trace_truncated_messages": 1,
+      "idempotence_change_note": "gateway RESULT_TOO_LARGE refusal view: max_view_tokens/view_tokens keys match the credential-name rule on re-redaction; not source data, identical under v10 and v11",
+      "db_extract_texts_checked": 42,
+      "db_extract_v10_v11_diff": 0,
+      "db_extract_escaped_authority_matches": 0
+    },
+    "run-2": {
+      "run_id": "1a9b37f1-3bfd-5a04-aa6f-0ad3b8f83530",
+      "trace_url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/fddc0e84-a2c2-4978-8098-649395630411/r/00000000-0000-0000-936e-285b738d4089?poll=true",
+      "llm_calls": 11,
+      "tool_messages": 26,
+      "tool_message_bytes": 142825,
+      "tool_messages_sha256": "0e06c4bedcf8c0e7b03768ee6363a3e7e74b776643c27738364562e1eb0cc2d7",
+      "changed_by_current_redaction": 0,
+      "escaped_authority_matches": 0,
+      "idempotence_changes_pre_existing": 1,
+      "trace_truncated_messages": 3,
+      "idempotence_change_note": "gateway RESULT_TOO_LARGE refusal view: max_view_tokens/view_tokens keys match the credential-name rule on re-redaction; not source data, identical under v10 and v11",
+      "db_extract_texts_checked": 52,
+      "db_extract_v10_v11_diff": 0,
+      "db_extract_escaped_authority_matches": 0
+    }
+  }
+}
