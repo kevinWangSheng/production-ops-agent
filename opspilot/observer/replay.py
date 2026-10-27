@@ -469,6 +469,15 @@ def _profile_unavailable_record(
     row = rows[0]
     raw = row.get("raw")
     if (
+        row.get("payload_state") == "cleaned"
+        and str(row.get("signal_name")) == PROFILE_SENTINEL
+        and str(row.get("source")) == PROFILE_SENTINEL_SOURCE
+        and str(row.get("status")) == "failed"
+    ):
+        # #244: the sentinel's bundle was cleaned; its row still says what
+        # it was, the recorded reason cannot be re-read
+        return DATA_CLEANED
+    if (
         str(row.get("signal_name")) != PROFILE_SENTINEL
         or str(row.get("source")) != PROFILE_SENTINEL_SOURCE
         or str(row.get("status")) != "failed"

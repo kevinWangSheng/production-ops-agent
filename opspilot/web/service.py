@@ -1483,7 +1483,7 @@ class Workbench:
         if context is None:
             # Still fail closed: a cleaned record (#244) cannot rebuild the
             # context either; the log says which of the two it was.
-            if first["alert_json"] is None:
+            if first.get("payload_state") == "cleaned":
                 _log.warning("alert record cleaned incident=%s", incident_id)
             else:
                 _log.warning("alert record unreadable incident=%s", incident_id)
@@ -2450,7 +2450,7 @@ class Workbench:
                 "starts_at": utc_seconds(latest["starts_at"]),
                 "received_at": latest["received_at"],
                 "truncated": bool(latest["truncated"]),
-                **_stored_alert(latest["alert_json"]),
+                **_stored_alert(latest),
             },
             "resolved": [
                 {
@@ -2458,7 +2458,7 @@ class Workbench:
                     "actor": row["actor"],
                     "annotation_revision": int(row["annotation_revision"]),
                     "raw_sha256": row["raw_sha256"],
-                    **_stored_alert(row["alert_json"]),
+                    **_stored_alert(row),
                 }
                 for row in rows
                 if row["status"] == "resolved"
@@ -2873,16 +2873,18 @@ def _invalid_alert(item: object, code: str) -> AlertResult:
     )
 
 
-def _stored_alert(alert_json: str | None) -> dict[str, Any]:
+def _stored_alert(row: Mapping[str, Any]) -> dict[str, Any]:
     """The stored (redacted, bounded) alert for display: its annotations and
     ``endsAt`` when the record is whole JSON, else the cut text as is; a
-    record the retention cleanup removed (#244) is shown as cleaned."""
-    if alert_json is None:
+    record the retention cleanup removed (#244, by its ``payload_state``) is
+    shown as cleaned, and a missing text in any other state as no text."""
+    alert_json = row["alert_json"]
+    if row.get("payload_state") == "cleaned" or alert_json is None:
         return {
             "annotations": None,
             "ends_at": None,
             "record_text": None,
-            "cleaned": True,
+            "cleaned": row.get("payload_state") == "cleaned",
         }
     try:
         stored = json.loads(alert_json)

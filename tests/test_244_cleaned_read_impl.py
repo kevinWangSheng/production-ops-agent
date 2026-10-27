@@ -41,6 +41,12 @@ def test_a_cleaned_record_with_a_rewritten_view_is_still_a_hash_mismatch() -> No
     assert html is not None and 'data-reason="hash_mismatch"' in html
 
 
+def test_a_missing_raw_that_is_not_cleaned_never_charts() -> None:
+    """Review #382: the state, not a NULL raw, says cleaned."""
+    html = render(replace(evidence("ev-c"), raw=None))
+    assert html is not None and 'data-reason="hash_mismatch"' in html
+
+
 class _Store:
     def __init__(self, record):
         self.record = record

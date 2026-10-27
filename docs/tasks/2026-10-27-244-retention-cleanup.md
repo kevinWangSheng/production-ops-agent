@@ -51,6 +51,8 @@
 - 合并顺序（lead 2026-10-27，可逆执行细节）：读侧 PR-3 先于清理 CLI PR-2 合并，保证出现 cleaned 行之前，evidence API 与工具层已能处理 `raw=None`（#377 机器人 P1 指出 `opspilot/web/evidence.py` 对 cleaned 证据会抛异常；PR-1 无产品代码写 cleaned，故不在 PR-1 修）。
 - PR-3 必须覆盖（审查预警）：`hashes_verified=None` 在图表投影被当作 `hash_mismatch`，工具层证据读取对 `raw=None` 会 `AttributeError`。
 - PR-3（#382）已知限制（lead 裁决 2026-10-27）：告警已清理的事故 reopen 后开新 Run，若需重建告警上下文（`_alert_rebuild`：续开输入回退路径与 #245 改绑路径），仍按 `INCOMPATIBLE_STATE` 拒绝该控制动作，仅日志区分「cleaned」与「unreadable」。理由：只在关闭满 30 天被清理后又 reopen 再开 Run 时发生；改为无告警上下文起 Run 会改调查输入构建，需有界真实 Run，超出读侧范围；fail-closed 可逆。工具层证据读取经核对无 `AttributeError`（`_intact()` 已把 `raw=None` 拒为 `EVIDENCE_NOT_READABLE`），PR-3 以测试钉住。
+- PR-3 独立审查（Codex gpt-6-astra）阻塞 1 处置：读侧一律以 `payload_state == 'cleaned'` 判定已清理（evidence API/页面、图表、告警页与告警上下文日志、恢复读数、F6 均改为看状态字段，告警投递行读出 `payload_state`）；`raw` 为空但状态非 cleaned 时不显示已清理、不画图（`hashes_verified=None` 即 hash_mismatch），API 只省略 raw 字段。`_impl` 测试先红后绿。
+- PR-3 独立审查阻塞 2 处置：发布重放不再遇 cleaned 提前返回；被清理样本只跳过重算与指纹，改用存储的评估参与折叠，发布/样本/审计/结束/对比绑定等校验照常执行，篡改与 `REPLAY_DATA_CLEANED` 并存、结论 unknown；对比仅 cleaned 时另校验存储记录的状态与时间顺序。F6 侧同理补了 cleaned 哨兵读数。`_impl` 测试（伪造 release.status 与样本 outcome）先红后绿。
 
 ## 下一步与交接
 

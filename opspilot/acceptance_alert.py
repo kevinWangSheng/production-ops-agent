@@ -42,6 +42,8 @@ from uuid import UUID
 
 from psycopg.rows import dict_row
 
+from opspilot.persistence.base import mark_cleaned
+
 __all__ = [
     "AlertDelivery",
     "AlertIntakeOutcome",
@@ -55,7 +57,7 @@ __all__ = [
 _DELIVERY_COLUMNS = (
     "delivery_id,delivery_key,fingerprint,starts_at,starts_at_raw,status,outcome,"
     "incident_id,actor,received_at,raw_sha256,annotations_sha256,"
-    "annotation_revision,alert_json,truncated"
+    "annotation_revision,alert_json,truncated,payload_state"
 )
 
 
@@ -158,10 +160,14 @@ def alert_intake_records(conn: Any, incident_id: UUID | str) -> AlertIntakeRecor
                 "SELECT run_id,incident_id,state,input FROM opspilot_runs WHERE run_id=%s",
                 (identity["run_id"],),
             ).fetchone()
-        deliveries = cur.execute(
-            f"SELECT {_DELIVERY_COLUMNS} FROM opspilot_alert_deliveries WHERE incident_id=%s ORDER BY delivery_id",
-            (subject,),
-        ).fetchall()
+        # a delivery row carries ``payload_state`` only once cleaned (#244)
+        deliveries = [
+            mark_cleaned(row)
+            for row in cur.execute(
+                f"SELECT {_DELIVERY_COLUMNS} FROM opspilot_alert_deliveries WHERE incident_id=%s ORDER BY delivery_id",
+                (subject,),
+            ).fetchall()
+        ]
         # Runs carry no creation time; each one's deadline is its creation
         # (database clock) plus the Run wall, so it orders them.
         runs = cur.execute(

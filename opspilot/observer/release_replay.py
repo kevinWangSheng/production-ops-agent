@@ -105,20 +105,6 @@ def _replay_release_history(history: Mapping[str, object]) -> ReleaseReplay:
         }
     )
     samples: Any = history.get("samples", [])
-    if any(_cleaned(m.get("queries")) for m in samples):
-        # #244: the retention cleanup removed raw query bodies. Nothing can be
-        # recomputed, and nothing was altered either: unknown, not a mismatch.
-        # The rows (query, key, window, hash) stay in the history.
-        return ReleaseReplay(
-            observation_id=release.observation_id,
-            consistent=False,
-            stored_status=release.status,
-            replayed_status="unknown",
-            verdict="unknown",
-            used_sample_count=0,
-            integrity=(DATA_CLEANED,),
-            sample_evaluations=(),
-        )
     sessions: Any = history.get("sessions", [])
     endings: Any = history.get("endings", [])
     audits: Any = history.get("audit", [])
@@ -391,10 +377,17 @@ def _replay_release_history(history: Mapping[str, object]) -> ReleaseReplay:
             from opspilot.observation.release_types import ReleaseQueryResult
 
             queries = []
+            # #244: a sample whose raw query bodies were cleaned cannot be
+            # re-evaluated. Its stored evaluation stands in for the fold, so
+            # every other check (bindings, decision, status, audit, ending)
+            # still runs; the verdict is unknown with DATA_CLEANED.
+            cleaned = _cleaned(m["queries"])
             for q in m["queries"]:
                 if q.get("sample_id") != m["sample_id"]:
                     issues.add("SUBJECT_BINDING_MISMATCH")
                     issues.add("QUERY_MISMATCH")
+                if cleaned:
+                    continue
                 data = {
                     k: v
                     for k, v in q.items()
@@ -414,17 +407,26 @@ def _replay_release_history(history: Mapping[str, object]) -> ReleaseReplay:
                 window=QueryWindow(start=m["window_start"], end=m["window_end"]),
                 queries=tuple(queries),
             )
-            evaluation = evaluate_release_sample(
-                context, evidence, decision_at=m["decision_at"]
-            )
-            evaluations.append(evaluation)
-            consistent = query_evidence_consistent(context, evidence, m["decision_at"])
-            # A missing key can be legitimate interrupted history. Existing
-            # rows must still match the plan even when adoption was fenced.
-            if not query_evidence_consistent(
-                context, evidence, m["decision_at"], require_complete=False
-            ):
-                issues.add("QUERY_MISMATCH")
+            if cleaned:
+                issues.add(DATA_CLEANED)
+                evaluation = ReleaseEvaluation.model_validate_json(
+                    canonical_json(m["release_evaluation"])
+                )
+                consistent = bool(m["readings_consistent"])
+            else:
+                evaluation = evaluate_release_sample(
+                    context, evidence, decision_at=m["decision_at"]
+                )
+                evaluations.append(evaluation)
+                consistent = query_evidence_consistent(
+                    context, evidence, m["decision_at"]
+                )
+                # A missing key can be legitimate interrupted history. Existing
+                # rows must still match the plan even when adoption was fenced.
+                if not query_evidence_consistent(
+                    context, evidence, m["decision_at"], require_complete=False
+                ):
+                    issues.add("QUERY_MISMATCH")
             if (
                 evaluation.model_dump(mode="json") != m["release_evaluation"]
                 or evaluation.outcome != m["outcome"]
@@ -439,7 +441,10 @@ def _replay_release_history(history: Mapping[str, object]) -> ReleaseReplay:
                 sample_fingerprint,
             )
 
-            if sample_fingerprint(lease, evidence) != m["release_evidence_sha256"]:
+            if (
+                not cleaned
+                and sample_fingerprint(lease, evidence) != m["release_evidence_sha256"]
+            ):
                 issues.add("RAW_SHA256_MISMATCH")
             if (
                 lease.job_id != m["job_id"]
@@ -1143,7 +1148,15 @@ def _comparison_issues(
             return {"COMPARISON_MISMATCH"}
         if _cleaned(c["queries"]):
             # #244: the before-window bodies were cleaned; the comparison's
-            # bindings checked above still hold, its numbers cannot be redone
+            # bindings are checked above and its stored record against its
+            # own row here, its numbers cannot be redone
+            stored = c["comparison"]
+            if (
+                not isinstance(stored, Mapping)
+                or stored.get("status") != c["status"]
+                or not c["decision_at"] <= c["recorded_at"]
+            ):
+                return {DATA_CLEANED, "COMPARISON_MISMATCH"}
             return {DATA_CLEANED}
         queries = list(iter_comparison_queries(c["queries"]))
         if any(q["comparison_id"] != c["comparison_id"] for q in c["queries"]):

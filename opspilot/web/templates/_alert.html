@@ -33,7 +33,7 @@
   </tbody>
 </table>
 {% else %}
-<pre id="alert-record-text">{{ alert.latest.record_text }}</pre>
+<pre id="alert-record-text">{{ alert.latest.record_text or "" }}</pre>
 {% endif %}
 {% if alert.latest.truncated %}<p class="muted">The stored record was cut at 16 KiB.</p>{% endif %}
 {% endif %}

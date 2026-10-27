@@ -882,8 +882,14 @@ def create_app(
         # A cleaned record (#244) keeps its identity, hashes and view; the
         # two cleaned keys appear only then, so a present record keeps the
         # page's established key set.
+        # Only the state says cleaned; a record without raw in any other
+        # state is unverifiable (``hashes_verified`` None) and shows no raw.
         raw, raw_redacted = (
-            (_CLEANED, False) if record.raw is None else _raw_fields(record.raw)
+            (_CLEANED, False)
+            if record.payload_state == "cleaned"
+            else ({}, False)
+            if record.raw is None
+            else _raw_fields(record.raw)
         )
         stored_view = dict(record.view)
         view = redact_payload(stored_view)

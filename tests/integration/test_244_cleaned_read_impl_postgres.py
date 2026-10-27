@@ -115,6 +115,25 @@ def test_present_evidence_keeps_its_established_key_set() -> None:
     assert "raw_utf8" in body
 
 
+def test_a_missing_raw_without_the_cleaned_state_is_not_shown_as_cleaned() -> None:
+    """Review #382: only ``payload_state == "cleaned"`` reads as cleaned; a
+    record without raw in any other state is unverifiable, nothing more."""
+    from dataclasses import replace
+
+    app, workbench, _ = _build()
+    incident = seed_upstream(DSN)
+    record = workbench.evidence_for(incident, f"ev-{incident}")
+    assert record is not None
+    workbench.evidence_for = lambda *_: replace(record, raw=None)
+    response = call(
+        app, "GET", f"/incidents/{incident}/evidence/ev-{incident}", headers=basic()
+    )
+    assert response.status == 200, response.text
+    body = response.json()
+    assert "raw_unavailable" not in body and "payload_state" not in body
+    assert "raw_utf8" not in body and body["hashes_verified"] is None
+
+
 def _present_reading(incident: UUID) -> tuple[UUID, str]:
     raw = b'{"status":"success"}'
     with psycopg.connect(DSN) as conn:
@@ -316,6 +335,43 @@ def test_cleaned_release_and_comparison_replay_as_data_cleaned_keeping_queries(
     (session,) = observer.release_history(oid)["sessions"]
     stored = observer.replay_session(session["session_id"])
     assert not stored.consistent and "REPLAY_DATA_CLEANED" in stored.integrity
+
+
+def test_tampering_next_to_cleaned_release_data_is_still_reported(
+    release_harness,
+) -> None:
+    """Review #382: cleaned queries skip only their own recompute; the
+    release, sample and audit checks still run."""
+    _, observer, oid, _, _ = release_harness
+    pr4a._anomalous(release_harness)
+    _clean(
+        DSN,
+        "UPDATE opspilot_release_query_results SET raw=NULL,payload_state='cleaned' "
+        "WHERE sample_id IN (SELECT sample_id FROM opspilot_observation_samples "
+        "WHERE subject_id=%s)",
+        oid,
+    )
+    history = observer.release_history(oid)
+    assert replay_release_history(history).integrity == ("REPLAY_DATA_CLEANED",)
+    for status in ("healthy", "observing"):
+        forged = {
+            **history,
+            "release": history["release"].model_copy(update={"status": status}),
+        }
+        replay = replay_release_history(forged)
+        assert "REPLAY_DATA_CLEANED" in replay.integrity
+        assert set(replay.integrity) - {"REPLAY_DATA_CLEANED"}, status
+        assert replay.verdict == "unknown"
+    forged = {
+        **history,
+        "samples": [
+            {**history["samples"][0], "outcome": "healthy"},
+            *history["samples"][1:],
+        ],
+    }
+    replay = replay_release_history(forged)
+    assert "SAMPLE_DECISION_MISMATCH" in replay.integrity
+    assert "REPLAY_DATA_CLEANED" in replay.integrity
 
 
 def test_only_the_comparison_cleaned_still_replays_the_samples(
