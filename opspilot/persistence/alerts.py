@@ -34,8 +34,9 @@ from opspilot.persistence.base import Connection, PersistenceError
 from opspilot.persistence.controls import append_input_in
 from opspilot.persistence.correlation import (
     Correlation,
-    CorrelationCandidate,
     choose_correlation,
+    lock_merge_closure,
+    resolve_merged,
 )
 from opspilot.persistence.incidents import _check_priority, _IncidentOps
 
@@ -219,10 +220,15 @@ class _AlertOps(_IncidentOps):
                 )
             )
         fingerprint = delivery["fingerprint"]
+        # The candidates are found without locks, then locked together with
+        # the incidents their merge pointers lead to, in incident_id order
+        # (#245, review on #380); the lifecycle and pointers decided on are
+        # the locked rows'.
         rows = conn.execute(
-            "SELECT i.incident_id,i.lifecycle,i.created_at,EXISTS(SELECT 1 FROM opspilot_release_incident_links l WHERE l.incident_id=i.incident_id AND l.disposition IN ('created','created_related')) AS released FROM opspilot_incidents i WHERE (i.target_id=%s AND EXISTS(SELECT 1 FROM opspilot_alert_identities a WHERE a.incident_id=i.incident_id AND a.fingerprint=%s AND a.target_id=%s AND a.handoff_reason IS NULL)) OR (i.target_id=%s AND EXISTS(SELECT 1 FROM opspilot_release_incident_links l WHERE l.incident_id=i.incident_id AND l.disposition IN ('created','created_related'))) ORDER BY i.incident_id FOR UPDATE OF i",
+            "SELECT i.incident_id,EXISTS(SELECT 1 FROM opspilot_release_incident_links l WHERE l.incident_id=i.incident_id AND l.disposition IN ('created','created_related')) AS released FROM opspilot_incidents i WHERE (i.target_id=%s AND EXISTS(SELECT 1 FROM opspilot_alert_identities a WHERE a.incident_id=i.incident_id AND a.fingerprint=%s AND a.target_id=%s AND a.handoff_reason IS NULL)) OR (i.target_id=%s AND EXISTS(SELECT 1 FROM opspilot_release_incident_links l WHERE l.incident_id=i.incident_id AND l.disposition IN ('created','created_related'))) ORDER BY i.incident_id",
             (target_id, fingerprint, resource_uid, target_id),
         ).fetchall()
+        locked = lock_merge_closure(conn, [row["incident_id"] for row in rows])
         released = [row["incident_id"] for row in rows if row["released"]]
         claimed: set[UUID] = set()
         if released:
@@ -234,13 +240,15 @@ class _AlertOps(_IncidentOps):
                 ).fetchall()
             }
         correlation = choose_correlation(
-            [
-                CorrelationCandidate(
-                    row["incident_id"], row["lifecycle"], row["created_at"]
-                )
-                for row in rows
-                if row["incident_id"] not in claimed
-            ]
+            resolve_merged(
+                locked,
+                [
+                    row["incident_id"]
+                    for row in rows
+                    if row["incident_id"] not in claimed
+                ],
+                target_id,
+            )
         )
         return correlation, frozenset(released) - claimed
 

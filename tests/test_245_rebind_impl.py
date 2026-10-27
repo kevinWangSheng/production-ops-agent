@@ -53,7 +53,6 @@ def test_rebind_needs_another_registry_key():
 
 def test_vocabulary():
     assert "rebind_target" in CONTROL_ACTIONS
-    assert "merge_into" not in CONTROL_ACTIONS  # PR-2
     state = ControlState(observation_authorized=True)
     after = apply_control(state, "rebind_target", 0)
     assert (after.control_generation, after.observation_authorized) == (1, False)

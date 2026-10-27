@@ -126,6 +126,7 @@ EXPECTED_CONTROL_ACTIONS = frozenset(
         "close",
         "reopen",
         "rebind_target",
+        "merge_into",
     }
 )
 

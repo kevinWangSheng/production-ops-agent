@@ -159,7 +159,7 @@ _HUMAN_OR_BLOCKED = frozenset({"paused", "cancelled", "blocked"})
 # no product path writes to the row.
 _FINAL_ROW_STATES = frozenset({"completed", "waiting_human"}) | _HUMAN_OR_BLOCKED
 _HUMAN_ACTIONS = frozenset(
-    {"pause", "cancel", "resume", "follow_up", "correct", "rebind_target"}
+    {"pause", "cancel", "resume", "follow_up", "correct", "rebind_target", "merge_into"}
 )
 
 
