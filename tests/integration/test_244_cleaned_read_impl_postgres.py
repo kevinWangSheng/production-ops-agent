@@ -551,3 +551,133 @@ def test_a_cleaned_comparison_query_stays_bound_to_its_comparison(
         }
     )
     assert "COMPARISON_MISMATCH" in replay.integrity
+
+
+# --- sweep of #382: cleaned skips only the recompute that needs the body
+
+
+def _partly_cleaned_history(release_harness):
+    """An anomalous release with its comparison; the first query row of the
+    first sample and the first comparison query cleaned, every other row
+    still holding its body."""
+    _, observer, oid, _, _ = release_harness
+    context = pr4a._anomalous(release_harness)
+    ObserverLoop(
+        store=observer, source=pr4a.BeforeTelemetry(context), batch=1
+    ).poll_once()
+    history = {
+        **observer.release_history(oid),
+        "comparisons": observer.release_comparisons(oid),
+    }
+    first = history["samples"][0]["queries"][0]
+    _clean(
+        DSN,
+        "UPDATE opspilot_release_query_results SET raw=NULL,payload_state='cleaned' "
+        "WHERE sample_id=%s AND query_key=%s",
+        first["sample_id"],
+        first["query_key"],
+    )
+    compared = history["comparisons"][0]["queries"][0]
+    _clean(
+        DSN,
+        "UPDATE opspilot_release_comparison_queries SET raw=NULL,"
+        "payload_state='cleaned' WHERE comparison_id=%s AND query_key=%s",
+        compared["comparison_id"],
+        compared["query_key"],
+    )
+    history = {
+        **observer.release_history(oid),
+        "comparisons": observer.release_comparisons(oid),
+    }
+    assert replay_release_history(history).integrity == ("REPLAY_DATA_CLEANED",)
+    return history
+
+
+def _with_comparison(history, **changes):
+    (c,) = history["comparisons"]
+    return {**history, "comparisons": [{**c, **changes}]}
+
+
+def test_a_forged_retained_sample_query_beside_a_cleaned_one_is_a_query_mismatch(
+    release_harness,
+) -> None:
+    history = _partly_cleaned_history(release_harness)
+    sample = history["samples"][0]
+    queries = [dict(q) for q in sample["queries"]]
+    assert queries[1].get("payload_state") is None
+    queries[1]["query"] = "forged-retained"
+    forged = {
+        **history,
+        "samples": [{**sample, "queries": queries}, *history["samples"][1:]],
+    }
+    integrity = replay_release_history(forged).integrity
+    assert "REPLAY_DATA_CLEANED" in integrity and "QUERY_MISMATCH" in integrity
+    # a cleaned row's kept metadata is checked against the plan too
+    queries = [dict(q) for q in sample["queries"]]
+    queries[0]["query"] = "forged-cleaned"
+    forged = {
+        **history,
+        "samples": [{**sample, "queries": queries}, *history["samples"][1:]],
+    }
+    integrity = replay_release_history(forged).integrity
+    assert "REPLAY_DATA_CLEANED" in integrity and "QUERY_MISMATCH" in integrity
+
+
+def test_a_forged_comparison_query_beside_a_cleaned_one_is_a_mismatch(
+    release_harness,
+) -> None:
+    history = _partly_cleaned_history(release_harness)
+    for index, text in ((1, "forged-retained"), (0, "forged-cleaned")):
+        queries = [dict(q) for q in history["comparisons"][0]["queries"]]
+        queries[index]["query"] = text
+        integrity = replay_release_history(
+            _with_comparison(history, queries=queries)
+        ).integrity
+        assert "REPLAY_DATA_CLEANED" in integrity
+        assert "COMPARISON_MISMATCH" in integrity, text
+
+
+def test_a_cleaned_comparison_keeps_its_before_window_bound(release_harness) -> None:
+    history = _partly_cleaned_history(release_harness)
+    integrity = replay_release_history(
+        _with_comparison(
+            history, window_before_start=history["release"].released_at
+        )
+    ).integrity
+    assert "REPLAY_DATA_CLEANED" in integrity
+    assert "COMPARISON_MISMATCH" in integrity
+
+
+def test_a_cleaned_comparison_keeps_its_attempts_range(release_harness) -> None:
+    history = _partly_cleaned_history(release_harness)
+    integrity = replay_release_history(_with_comparison(history, attempts=99)).integrity
+    assert "REPLAY_DATA_CLEANED" in integrity
+    assert "COMPARISON_MISMATCH" in integrity
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("observation_id", "forged"),
+        ("comparison_id", "00000000-0000-0000-0000-000000000001"),
+        ("ending_id", "00000000-0000-0000-0000-000000000001"),
+        ("sample_id", "00000000-0000-0000-0000-000000000001"),
+        ("format_version", 2),
+        ("attempts", 3),
+        ("window_after", {"start": "2020-01-01T00:00:00Z", "end": "2020-01-01T00:01:00Z"}),
+    ],
+)
+def test_a_cleaned_comparison_record_stays_bound_to_its_row(
+    release_harness, field, value
+) -> None:
+    history = _partly_cleaned_history(release_harness)
+    stored = dict(history["comparisons"][0]["comparison"])
+    assert field in stored
+    if stored[field] == value:
+        pytest.skip("the stored value already equals the forgery")
+    stored[field] = value
+    integrity = replay_release_history(
+        _with_comparison(history, comparison=stored)
+    ).integrity
+    assert "REPLAY_DATA_CLEANED" in integrity
+    assert "COMPARISON_MISMATCH" in integrity, field

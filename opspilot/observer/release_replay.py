@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Mapping
 from datetime import datetime, timedelta, timezone
 from typing import Any, Literal
@@ -28,6 +29,7 @@ from opspilot.observer.release_evaluation import (
     advance_release_window,
     evaluate_release_sample,
     query_evidence_consistent,
+    query_plan_consistent,
 )
 
 
@@ -57,19 +59,38 @@ def _cleaned(rows: Any) -> bool:
     )
 
 
+def _cleaned_metadata(
+    row: Mapping[str, Any], subject: str
+) -> tuple[str, str, str, datetime]:
+    """A cleaned query row validated as its DTO minus the body (#244): every
+    field but ``raw`` must still be well formed, the kept digest included.
+    Returns what the plan checks need."""
+    from opspilot.observation.release_types import ReleaseQueryResult
+
+    if not isinstance(row.get("raw_sha256"), str) or not re.fullmatch(
+        r"[0-9a-f]{64}", row["raw_sha256"]
+    ):
+        raise ValueError("RAW_SHA256_INVALID")
+    data = {k: v for k, v in row.items() if k not in (subject, "payload_state", "raw")}
+    shell = ReleaseQueryResult.model_validate(
+        {**data, "raw": b"", "raw_sha256": sha256(b"")}
+    )
+    return shell.query_key, shell.query, shell.source, shell.evaluated_at
+
+
+def _body_intact(row: Mapping[str, Any]) -> bool:
+    raw = row.get("raw")
+    return raw is not None and sha256(
+        raw if isinstance(raw, bytes) else bytes(raw)
+    ) == row.get("raw_sha256")
+
+
 def _retained_tampered(rows: Any) -> bool:
     """#244: rows beside a cleaned one that still hold a body are re-hashed."""
-    for row in rows or ():
-        if row.get("payload_state") == "cleaned":
-            continue
-        raw = row.get("raw")
-        if raw is None:
-            return True
-        if sha256(raw if isinstance(raw, bytes) else bytes(raw)) != row.get(
-            "raw_sha256"
-        ):
-            return True
-    return False
+    return any(
+        row.get("payload_state") != "cleaned" and not _body_intact(row)
+        for row in rows or ()
+    )
 
 
 _AUDIT_ENDING_REASONS = {
@@ -397,14 +418,22 @@ def _replay_release_history(history: Mapping[str, object]) -> ReleaseReplay:
             # every other check (bindings, decision, status, audit, ending)
             # still runs; the verdict is unknown with DATA_CLEANED.
             cleaned = _cleaned(m["queries"])
+            if cleaned:
+                issues.add(DATA_CLEANED)
             if cleaned and _retained_tampered(m["queries"]):
                 issues.add("RAW_SHA256_MISMATCH")
                 issues.add("QUERY_MISMATCH")
+            kept: list[tuple[str, str, str, datetime]] = []
             for q in m["queries"]:
                 if q.get("sample_id") != m["sample_id"]:
                     issues.add("SUBJECT_BINDING_MISMATCH")
                     issues.add("QUERY_MISMATCH")
-                if cleaned:
+                if q.get("payload_state") == "cleaned" or (
+                    # beside a cleaned row a tampered body is already
+                    # reported; its metadata is still checked below
+                    cleaned and not _body_intact(q)
+                ):
+                    kept.append(_cleaned_metadata(q, "sample_id"))
                     continue
                 data = {
                     k: v
@@ -419,6 +448,14 @@ def _replay_release_history(history: Mapping[str, object]) -> ReleaseReplay:
                     issues.add("RAW_SHA256_MISMATCH")
                     issues.add("QUERY_MISMATCH")
                 queries.append(ReleaseQueryResult.model_validate(data))
+                kept.append(
+                    (
+                        queries[-1].query_key,
+                        queries[-1].query,
+                        queries[-1].source,
+                        queries[-1].evaluated_at,
+                    )
+                )
             evidence = ReleaseSampleEvidence(
                 format_version=1,
                 sample_id=m["sample_id"],
@@ -426,11 +463,25 @@ def _replay_release_history(history: Mapping[str, object]) -> ReleaseReplay:
                 queries=tuple(queries),
             )
             if cleaned:
-                issues.add(DATA_CLEANED)
                 evaluation = ReleaseEvaluation.model_validate_json(
                     canonical_json(m["release_evaluation"])
                 )
-                consistent = bool(m["readings_consistent"])
+                # Every row's kept metadata, cleaned or not, still has to
+                # reproduce the plan; the instances are the ones the stored
+                # evaluation recorded (the mapping bodies may be gone).
+                uids = tuple(i.pod_uid for i in evaluation.instances)
+                consistent = query_plan_consistent(
+                    context, evidence.window, m["decision_at"], kept, uids
+                )
+                if not query_plan_consistent(
+                    context,
+                    evidence.window,
+                    m["decision_at"],
+                    kept,
+                    uids,
+                    require_complete=False,
+                ):
+                    issues.add("QUERY_MISMATCH")
             else:
                 evaluation = evaluate_release_sample(
                     context, evidence, decision_at=m["decision_at"]
@@ -1167,18 +1218,22 @@ def _comparison_issues(
         if any(q["comparison_id"] != c["comparison_id"] for q in c["queries"]):
             return {"COMPARISON_MISMATCH"}
         if _cleaned(c["queries"]):
-            # #244: the before-window bodies were cleaned; the comparison's
-            # bindings are checked above and its stored record against its
-            # own row here, its numbers cannot be redone
-            stored = c["comparison"]
-            if (
-                _retained_tampered(c["queries"])
-                or not isinstance(stored, Mapping)
-                or stored.get("status") != c["status"]
-                or not c["decision_at"] <= c["recorded_at"]
-            ):
-                return {DATA_CLEANED, "COMPARISON_MISMATCH"}
-            return {DATA_CLEANED}
+            # #244: the before-window bodies were cleaned, so its numbers
+            # cannot be redone; everything that needs no body still holds
+            return {DATA_CLEANED} | _cleaned_comparison_issues(
+                c,
+                ReleaseEvaluationContext(
+                    release=release,
+                    session_id=session["session_id"],
+                    authorized_at=session["authorized_at"],
+                    policy=policy,
+                    health_profile=profile,
+                ),
+                window_after,
+                ReleaseEvaluation.model_validate_json(
+                    canonical_json(sample["release_evaluation"])
+                ),
+            )
         queries = list(iter_comparison_queries(c["queries"]))
         evidence = ReleaseComparisonEvidence(
             format_version=1,
@@ -1215,6 +1270,70 @@ def _comparison_issues(
         or comparison_fingerprint(evidence) != c["evidence_sha256"]
         or not c["decision_at"] <= c["recorded_at"]
     ):
+        return {"COMPARISON_MISMATCH"}
+    return set()
+
+
+def _cleaned_comparison_issues(
+    c: Mapping[str, Any],
+    context: ReleaseEvaluationContext,
+    window_after: QueryWindow,
+    anomaly: ReleaseEvaluation,
+) -> set[str]:
+    """#244: the checks on a comparison whose before bodies were (partly)
+    cleaned that need no body: retained bodies still hash, every query row
+    is well formed and reproduces the before plan (for the instances the
+    stored record names), attempts stay in range, the before window is the
+    frozen profile's, and the stored record is the one of this row."""
+    from opspilot.observation.release_comparison import (
+        EVIDENCE_INCONSISTENT,
+        ReleaseComparison,
+        ReleaseComparisonEvidence,
+        _to_pr2_key,
+        before_context,
+        before_window,
+    )
+
+    try:
+        window = QueryWindow(start=c["window_before_start"], end=c["window_before_end"])
+        ReleaseComparisonEvidence(
+            format_version=1,
+            comparison_id=c["comparison_id"],
+            attempts=c["attempts"],
+            window=window,
+            queries=(),
+        )
+        kept = [_cleaned_metadata(q, "comparison_id") for q in c["queries"]]
+        stored = ReleaseComparison.model_validate_json(canonical_json(c["comparison"]))
+        expected = before_window(context)
+        consistent_rows = (
+            EVIDENCE_INCONSISTENT in stored.reason_codes
+            or query_plan_consistent(
+                before_context(context),
+                expected,
+                c["decision_at"],
+                [(_to_pr2_key(k), q, s, at) for k, q, s, at in kept],
+                tuple(i.pod_uid for i in stored.before_instances),
+            )
+        )
+        if (
+            _retained_tampered(c["queries"])
+            or window != expected
+            or not consistent_rows
+            or stored.comparison_id != c["comparison_id"]
+            or stored.observation_id != context.release.observation_id
+            or stored.ending_id != c["ending_id"]
+            or stored.sample_id != c["sample_id"]
+            or stored.format_version != c["format_version"]
+            or stored.attempts != c["attempts"]
+            or stored.status != c["status"]
+            or stored.window_before != expected
+            or stored.window_after != window_after
+            or stored.after_instances != anomaly.instances
+            or not c["decision_at"] <= c["recorded_at"]
+        ):
+            return {"COMPARISON_MISMATCH"}
+    except (KeyError, TypeError, ValueError, ValidationError):
         return {"COMPARISON_MISMATCH"}
     return set()
 
