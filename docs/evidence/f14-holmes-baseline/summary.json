@@ -1,0 +1,376 @@
+{
+  "run_id": "f14-holmes-run1",
+  "scenario_id": "eval-payment-failure-1",
+  "diagnosis_scored": false,
+  "outcome": {
+    "final_state": "completed",
+    "report_available": true,
+    "tool_calls": 47,
+    "proxied_queries_ok": 18,
+    "model_calls_ok": 25,
+    "handoff_reasons": []
+  },
+  "fault": {
+    "flag": "paymentFailure",
+    "injected_at": "2026-10-28T18:36:55Z",
+    "restored": true
+  },
+  "started_at": "2026-10-28T18:41:57Z",
+  "finished_at": "2026-10-28T18:44:50Z",
+  "wall_seconds": 172.7,
+  "prompt_sha256": "238951087cb1b72a0a8e24dc110e351ff1a80fca96afb3a5c982376b4c139e33",
+  "prompt_window_seconds": 300,
+  "exit_code": 0,
+  "timed_out": false,
+  "finish_reason": "stop",
+  "usage": {
+    "num_llm_calls": 25,
+    "prompt_tokens": 1634408,
+    "completion_tokens": 21631,
+    "reasoning_tokens": 10689,
+    "total_tokens": 1656039,
+    "total_cost": 0.0,
+    "num_compactions": 0
+  },
+  "tool_calls": [
+    {
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "elapsed_seconds": 0.009204387664794922
+    },
+    {
+      "tool": "get_metric_names",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "elapsed_seconds": 0.9699220657348633
+    },
+    {
+      "tool": "get_label_values",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "elapsed_seconds": 2.369643449783325
+    },
+    {
+      "tool": "get_metric_names",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "elapsed_seconds": 2.3698596954345703
+    },
+    {
+      "tool": "get_all_labels",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "elapsed_seconds": 2.475921154022217
+    },
+    {
+      "tool": "get_series",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "elapsed_seconds": 2.4717750549316406
+    },
+    {
+      "tool": "get_metric_names",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "elapsed_seconds": 2.2688210010528564
+    },
+    {
+      "tool": "execute_prometheus_instant_query",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "elapsed_seconds": 2.271435022354126
+    },
+    {
+      "tool": "execute_prometheus_instant_query",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "elapsed_seconds": 2.3298845291137695
+    },
+    {
+      "tool": "execute_prometheus_instant_query",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "elapsed_seconds": 2.3477158546447754
+    },
+    {
+      "tool": "execute_prometheus_instant_query",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "elapsed_seconds": 2.2209038734436035
+    },
+    {
+      "tool": "execute_prometheus_instant_query",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "elapsed_seconds": 2.244243621826172
+    },
+    {
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "error",
+      "elapsed_seconds": 0.0594935417175293
+    },
+    {
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "error",
+      "elapsed_seconds": 0.0960378646850586
+    },
+    {
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "error",
+      "elapsed_seconds": 0.08564281463623047
+    },
+    {
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "elapsed_seconds": 0.0721895694732666
+    },
+    {
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "elapsed_seconds": 0.11118078231811523
+    },
+    {
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "error",
+      "elapsed_seconds": 0.013577461242675781
+    },
+    {
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "elapsed_seconds": 0.029241085052490234
+    },
+    {
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "error",
+      "elapsed_seconds": 0.005700826644897461
+    },
+    {
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "error",
+      "elapsed_seconds": 1.556976556777954
+    },
+    {
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "elapsed_seconds": 0.021730661392211914
+    },
+    {
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "elapsed_seconds": 0.019832134246826172
+    },
+    {
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "elapsed_seconds": 0.006384372711181641
+    },
+    {
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "elapsed_seconds": 0.005642890930175781
+    },
+    {
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "elapsed_seconds": 0.009016036987304688
+    },
+    {
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "elapsed_seconds": 0.07660889625549316
+    },
+    {
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "elapsed_seconds": 0.009859800338745117
+    },
+    {
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "elapsed_seconds": 0.010081052780151367
+    },
+    {
+      "tool": "get_metric_names",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "elapsed_seconds": 2.305978298187256
+    },
+    {
+      "tool": "execute_prometheus_instant_query",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "elapsed_seconds": 2.308946132659912
+    },
+    {
+      "tool": "execute_prometheus_instant_query",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "elapsed_seconds": 2.4927375316619873
+    },
+    {
+      "tool": "execute_prometheus_instant_query",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "elapsed_seconds": 2.496434211730957
+    },
+    {
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "elapsed_seconds": 0.016178607940673828
+    },
+    {
+      "tool": "execute_prometheus_instant_query",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "elapsed_seconds": 1.230140209197998
+    },
+    {
+      "tool": "get_metric_names",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "elapsed_seconds": 2.3156607151031494
+    },
+    {
+      "tool": "execute_prometheus_range_query",
+      "toolset": "prometheus/metrics",
+      "status": "error",
+      "elapsed_seconds": 2.31280779838562
+    },
+    {
+      "tool": "get_series",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "elapsed_seconds": 2.8113934993743896
+    },
+    {
+      "tool": "execute_prometheus_range_query",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "elapsed_seconds": 2.8363914489746094
+    },
+    {
+      "tool": "get_series",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "elapsed_seconds": 2.407282590866089
+    },
+    {
+      "tool": "execute_prometheus_instant_query",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "elapsed_seconds": 2.4060254096984863
+    },
+    {
+      "tool": "execute_prometheus_instant_query",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "elapsed_seconds": 2.354343891143799
+    },
+    {
+      "tool": "execute_prometheus_range_query",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "elapsed_seconds": 2.354519844055176
+    },
+    {
+      "tool": "execute_prometheus_instant_query",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "elapsed_seconds": 2.6018612384796143
+    },
+    {
+      "tool": "execute_prometheus_range_query",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "elapsed_seconds": 2.6441643238067627
+    },
+    {
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "elapsed_seconds": 0.012455224990844727
+    },
+    {
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "elapsed_seconds": 0.011857271194458008
+    }
+  ],
+  "proxy_requests_holmes": {
+    "GET /api/v1/label/__name__/values 200": 5,
+    "GET /api/v1/label/service_name/values 200": 1,
+    "GET /api/v1/labels 200": 1,
+    "GET /api/v1/query 200": 2,
+    "GET /api/v1/series 200": 3,
+    "POST /api/v1/query 200": 12,
+    "POST /api/v1/query_range 200": 4
+  },
+  "egress": {
+    "allowed": 1,
+    "denied": [
+      "target raw.githubusercontent.com:443"
+    ],
+    "targets": [
+      "api.deepseek.com:443"
+    ]
+  },
+  "relay_connections": 49,
+  "pre_run": {
+    "frontend_span_rate": 1.8500308338472307,
+    "clock_skew": {
+      "host_vm": 1.401,
+      "host_container": 1.531,
+      "measure_seconds": 0.488
+    },
+    "host_swap": "total = 10240.00M  used = 9175.06M  free = 1064.94M  (encrypted)"
+  },
+  "versions": {
+    "upstream": "a0009195 sha256:3f2995d1a448b34a0dbd3c07aa9276e8c812e96e8fc4ebcc9653b01d9ab2a30e",
+    "config_sha256": "932098d5b0fba4d7f625ebb782bf50198893cd79128790caee2af24930cba830"
+  },
+  "raw_output_sha256": "6a1e6e04076e7832fea0f0aa4f43787d2451e85492cf15d34efd2573f0e17572",
+  "balance": {
+    "before": {
+      "is_available": true,
+      "balance_infos": [
+        {
+          "currency": "CNY",
+          "total_balance": "89.75",
+          "granted_balance": "0.00",
+          "topped_up_balance": "89.75"
+        }
+      ]
+    },
+    "after": {
+      "is_available": true,
+      "balance_infos": [
+        {
+          "currency": "CNY",
+          "total_balance": "89.75",
+          "granted_balance": "0.00",
+          "topped_up_balance": "89.75"
+        }
+      ]
+    }
+  }
+}
