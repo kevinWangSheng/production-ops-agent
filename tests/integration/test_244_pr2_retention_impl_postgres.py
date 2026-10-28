@@ -11,6 +11,9 @@ recheck, one failing row does not roll back the other incidents, and the
 process entry's exit codes.
 """
 
+# ruff: noqa: F811 - the F13 harness fixtures are imported by name and then
+# named again as test parameters, which is how pytest binds them
+
 from __future__ import annotations
 
 import hashlib
