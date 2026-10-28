@@ -81,7 +81,14 @@ def evidence_chart(
     view = evidence.view
     if view.get("tool") != METRICS_TOOL:
         return None
-    if not evidence.hashes_verified:
+    # A cleaned record (#244) has no raw to re-hash; the chart reads the
+    # view alone, so the view digest is the one that has to hold.
+    verified = (
+        evidence.view_verified and evidence.hashes_verified is not False
+        if evidence.payload_state == "cleaned"
+        else evidence.hashes_verified
+    )
+    if not verified:
         return _unavailable(evidence, "hash_mismatch")
     if not (
         view.get("status") == "ok"

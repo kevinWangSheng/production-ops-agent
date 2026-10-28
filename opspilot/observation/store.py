@@ -61,7 +61,12 @@ from opspilot.observation.release_commands import _ReleaseCommandOps
 from opspilot.observation.release_comparison import _ReleaseComparisonOps
 from opspilot.observation.release_types import ReleaseSampleLease
 from opspilot.observation.revocation import end_session, revoke_authorized_sessions
-from opspilot.persistence.base import Connection, PersistenceError, _StoreBase
+from opspilot.persistence.base import (
+    Connection,
+    PersistenceError,
+    _StoreBase,
+    mark_cleaned,
+)
 from opspilot.persistence.events import append_once_in
 
 # How long one claimed sampling job stays leased to its owner. A Prometheus
@@ -107,7 +112,7 @@ _ENDING_COLUMNS = (
 )
 _READING_COLUMNS = (
     "sample_id,signal_name,status,value,sample_count,query,window_start,"
-    "window_end,source,raw_sha256,raw"
+    "window_end,source,raw_sha256,raw,payload_state"
 )
 # The columns the replay reads per record table (``session_history``): a
 # login must be able to SELECT all of them to be a read-only observer of
@@ -2454,6 +2459,7 @@ class ObservationStore(_ReleaseComparisonOps, _TargetProfileOps):
         ).fetchall()
         by_sample: dict[UUID, list[dict[str, Any]]] = {}
         for reading in readings:
+            mark_cleaned(reading)
             by_sample.setdefault(reading["sample_id"], []).append(reading)
         for sample in samples:
             sample["readings"] = by_sample.get(sample["sample_id"], [])

@@ -391,3 +391,11 @@ class _StoreBase:
                     target_generation=row["generation"],
                 )
         return scope
+
+
+def mark_cleaned(row: dict[str, Any]) -> dict[str, Any]:
+    """A payload row keeps its established shape; only a row the retention
+    cleanup emptied (#244) carries ``payload_state: "cleaned"``."""
+    if row.pop("payload_state", None) == "cleaned":
+        row["payload_state"] = "cleaned"
+    return row

@@ -107,7 +107,8 @@
     · profile <code>{{ r.health_profile_revision or "none" }}</code>
     · {{ "authorized at" if r.authorization_source == "automatic" else "handled at" }} {{ r.handled_at }}
     · offline replay:
-    {% if r.replay.consistent %}<span class="badge">replay consistent</span>{% else %}<strong>integrity mismatch</strong> <code>{{ r.replay.integrity | join(", ") }}</code>{% if r.replay.available %} <span class="muted">(bundles recompute to <code>{{ r.replay.recomputed_verdict }}</code>; the stored verdict is not repeated)</span>{% endif %}{% endif %}
+    {% if "STORED_OBSERVATION_DATA_CLEANED" in r.replay.integrity %}<strong class="recovery-data-cleaned">raw data cleaned, cannot be re-verified</strong> <code>STORED_OBSERVATION_DATA_CLEANED</code> <span class="muted">(removed by the retention cleanup after the incident closed; the stored verdict is not repeated)</span>{% endif %}
+    {% if r.replay.consistent %}<span class="badge">replay consistent</span>{% elif r.replay.integrity | reject("equalto", "STORED_OBSERVATION_DATA_CLEANED") | list %}<strong>integrity mismatch</strong> <code>{{ r.replay.integrity | join(", ") }}</code>{% if r.replay.available %} <span class="muted">(bundles recompute to <code>{{ r.replay.recomputed_verdict }}</code>; the stored verdict is not repeated)</span>{% endif %}{% endif %}
     {% if r.replay.reasons %}<br><span class="muted">reasons:</span> {{ r.replay.reasons | join("; ") }}{% endif %}
     {% if r.replay.expected_lifecycle or r.replay.recorded_lifecycle %}<br><span class="muted">lifecycle implied by replay:</span> <code>{{ r.replay.expected_lifecycle or "no claim" }}</code> <span class="muted">· recorded with the samples:</span> <code>{{ r.replay.recorded_lifecycle or "none" }}</code>{% endif %}
   </p>
@@ -123,7 +124,7 @@
         → {% if s.replayed_outcome %}<span class="badge">{{ s.replayed_outcome }}</span>{% if s.replayed_required_signals_present %} required present{% else %} <span class="muted">required missing</span>{% endif %}{% else %}<span class="muted">not recomputed ({{ s.recompute_skipped }})</span>{% endif %}
         {% if s.replayed_reason %}<br><span class="muted">{{ s.replayed_reason }}</span>{% endif %}</td>
       <td><code>{{ s.disposition }}</code> · {{ s.reason }} · {% if s.confirms_health %}<strong>confirms health</strong>{% else %}no health{% endif %} <span class="muted">({{ s.health_basis }})</span>{% if s.transition %}<br>transition <code>{{ s.transition }}</code>{% endif %}</td>
-      <td>{% if s.consistent %}<span class="badge">consistent</span>{% else %}<strong>mismatch</strong> <code>{{ s.integrity | join(", ") }}</code>{% endif %}</td>
+      <td>{% if s.consistent %}<span class="badge">consistent</span>{% elif s.raw_cleaned_only %}<span class="muted">raw cleaned, not recomputed</span>{% else %}<strong>mismatch</strong> <code>{{ s.integrity | join(", ") }}</code>{% endif %}</td>
     </tr>
     <tr>
       <td></td>

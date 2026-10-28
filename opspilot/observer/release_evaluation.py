@@ -13,6 +13,7 @@ from uuid import UUID
 from pydantic import AwareDatetime, field_validator
 
 from opspilot.domain.base import DTO
+from opspilot.domain.evidence import QueryWindow
 from opspilot.observation.release_policy import ReleasePolicy, sha256, storable_text
 from opspilot.observation.release_types import (
     ReleaseEvaluation,
@@ -478,31 +479,68 @@ def query_evidence_consistent(
         evidence.window.end,
         reasons,
     )
+    return query_plan_consistent(
+        context,
+        evidence.window,
+        decision_at,
+        [(q.query_key, q.query, q.source, q.evaluated_at) for q in evidence.queries],
+        tuple(i.pod_uid for i in instances),
+        require_complete=require_complete,
+    )
+
+
+def query_plan_consistent(
+    context: ReleaseEvaluationContext,
+    window: QueryWindow,
+    decision_at: datetime,
+    queries: Sequence[tuple[str, str, str, datetime]],
+    instance_uids: Sequence[UUID],
+    *,
+    require_complete: bool = True,
+) -> bool:
+    """The part of ``query_evidence_consistent`` that reads no response body:
+    each ``(query_key, query, source, evaluated_at)`` against the plan for
+    ``instance_uids``, the window length and ``window.end <= decision_at``.
+    A replay whose bodies were cleaned (#244) runs it with the instances the
+    stored evaluation recorded."""
+    if not supported_profile(context.health_profile):
+        return False
     plan = build_release_query_plan(
         context,
-        window_end=evidence.window.end,
-        instance_uids=tuple(i.pod_uid for i in instances),
+        window_end=window.end,
+        instance_uids=tuple(instance_uids),
     )
+    keys = [key for key, _, _, _ in queries]
+    if len(set(keys)) != len(keys):
+        return False
     # Empty evidence is a counted unknown; partial evidence must match the
     # complete plan (after keys exist only when mapping produces a UID set).
-    if (
-        require_complete
-        and evidence.queries
-        and not set(plan).issubset(q.query_key for q in evidence.queries)
-    ):
+    if require_complete and queries and not set(plan).issubset(keys):
         return False
     if (
-        (evidence.window.end - evidence.window.start).total_seconds()
-        != context.health_profile.evaluation_window_seconds
-        or evidence.window.end > decision_at
+        window.end - window.start
+    ).total_seconds() != context.health_profile.evaluation_window_seconds or (
+        window.end > decision_at
     ):
         return False
     return all(
-        q.query_key in plan
-        and normalize_query(q.query) == normalize_query(plan[q.query_key])
-        and q.source == "prometheus"
-        and q.evaluated_at == evidence.window.end
-        for q in evidence.queries
+        key in plan
+        and normalize_query(query) == normalize_query(plan[key])
+        and source == "prometheus"
+        and evaluated_at == window.end
+        for key, query, source, evaluated_at in queries
+    )
+
+
+def profile_usable(context: ReleaseEvaluationContext) -> bool:
+    """The frozen profile is the release's and the policy's: otherwise a
+    sample is evaluated to no signals at all (``HEALTH_PROFILE_INVALID``)."""
+    profile = context.health_profile
+    return (
+        supported_profile(profile)
+        and profile.revision == context.release.health_profile_revision
+        and sha256(canonical_content(profile).encode())
+        == context.policy.content.health_profile_sha256
     )
 
 
@@ -514,12 +552,7 @@ def evaluate_release_sample(
 ) -> ReleaseEvaluation:
     reasons: set[str] = set()
     profile = context.health_profile
-    if (
-        not supported_profile(profile)
-        or profile.revision != context.release.health_profile_revision
-        or sha256(canonical_content(profile).encode())
-        != context.policy.content.health_profile_sha256
-    ):
+    if not profile_usable(context):
         reasons.add("HEALTH_PROFILE_INVALID")
         if evidence.window.start < context.authorized_at:
             reasons.add("WINDOW_BEFORE_AUTHORIZATION")

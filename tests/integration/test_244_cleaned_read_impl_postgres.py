@@ -1,0 +1,910 @@
+"""#244 PR-3: what the read side shows once the retention cleanup ran.
+
+Cleaned rows are made the only way the product allows: a login in
+``opspilot_retention`` running the guarded present -> cleaned update. Covered:
+the evidence API and page (investigation evidence and a recovery reading),
+the alert section and the alert context, the F6 replay (cleaned versus
+absent versus tampered) and the release / comparison replay.
+"""
+
+# ruff: noqa: F811 - the M1-02 suite's fixtures are imported by name and
+# then named again as test parameters, which is how pytest binds them
+
+from __future__ import annotations
+
+import hashlib
+import os
+from uuid import UUID, uuid4
+
+import psycopg
+import pytest
+
+from opspilot.alertmanager import alert_context_of_record
+from opspilot.observer.loop import ObserverLoop
+from opspilot.observer.release_replay import replay_release_history
+from opspilot.observer.replay import (
+    DATA_CLEANED,
+    INTEGRITY_MISMATCH,
+    replay_stored_session,
+)
+from opspilot.persistence.grants import RETENTION_ROLE
+from scripts.m0.postgres_lab import DSN
+from tests.f13_acceptance_support import seed_upstream
+from tests.integration import test_f11_pr4a_comparison_impl_postgres as pr4a
+from tests.integration.test_m1_02_observer_postgres import (  # noqa: F401 - fixtures
+    _backdate_authorization,
+    _incident,
+    controller,
+    loop,
+    observer,
+    observer_dsn,
+    owner,
+    scratch_dsn,
+    telemetry,
+)
+from tests.integration.test_m1_02_replay_postgres import _authorize, _due_now, _run
+from tests.integration.test_m1_04_alert_intake_impl_postgres import (
+    _alert,
+    _build,
+    _post,
+    _webhook,
+)
+from tests.m1_web_support import basic, call
+from tests.runtime_roles_support import login
+
+pytestmark = pytest.mark.skipif(
+    os.environ.get("M1_DURABLE_POSTGRES") != "1", reason="explicit PG opt-in required"
+)
+
+release_harness = pr4a.release_harness
+
+
+def _clean(dsn: str, statement: str, *args) -> int:
+    """The guarded cleaning update, as a retention login."""
+    with login(dsn, RETENTION_ROLE) as retention, psycopg.connect(retention) as conn:
+        return conn.execute(statement, args).rowcount
+
+
+# --- evidence
+
+
+def test_cleaned_evidence_is_200_with_the_cleaned_state_as_json_and_page() -> None:
+    app, _, _ = _build()
+    incident = seed_upstream(DSN)
+    evidence = f"ev-{incident}"
+    assert (
+        _clean(
+            DSN,
+            "UPDATE opspilot_evidence SET raw=NULL,payload_state='cleaned' "
+            "WHERE evidence_id=%s",
+            evidence,
+        )
+        == 1
+    )
+    response = call(
+        app, "GET", f"/incidents/{incident}/evidence/{evidence}", headers=basic()
+    )
+    assert response.status == 200, response.text
+    body = response.json()
+    assert body["evidence_id"] == evidence
+    assert body["payload_state"] == "cleaned"
+    assert body["raw_unavailable"] == "CLEANED_DATA"
+    assert "raw_utf8" not in body and "raw_base64" not in body
+    assert body["raw_sha256"] == "0" * 64 and body["view_sha256"] == "1" * 64
+    assert body["hashes_verified"] is None
+    assert body["view"]["evidence_id"] == evidence
+    page = call(
+        app,
+        "GET",
+        f"/incidents/{incident}/evidence/{evidence}",
+        headers={**basic(), "accept": "text/html"},
+    )
+    assert page.status == 200, page.text
+    assert "CLEANED_DATA" in page.text and 'id="raw-cleaned"' in page.text
+
+
+def test_present_evidence_keeps_its_established_key_set() -> None:
+    """The two cleaned keys appear only on a cleaned record (F12 G2 pins the
+    key set of a present one)."""
+    app, _, _ = _build()
+    incident = seed_upstream(DSN)
+    body = call(
+        app, "GET", f"/incidents/{incident}/evidence/ev-{incident}", headers=basic()
+    ).json()
+    assert "payload_state" not in body and "raw_unavailable" not in body
+    assert "raw_utf8" in body
+
+
+def test_a_missing_raw_without_the_cleaned_state_is_not_shown_as_cleaned() -> None:
+    """Review #382: only ``payload_state == "cleaned"`` reads as cleaned; a
+    record without raw in any other state is unverifiable, nothing more."""
+    from dataclasses import replace
+
+    app, workbench, _ = _build()
+    incident = seed_upstream(DSN)
+    record = workbench.evidence_for(incident, f"ev-{incident}")
+    assert record is not None
+    workbench.evidence_for = lambda *_: replace(record, raw=None)
+    response = call(
+        app, "GET", f"/incidents/{incident}/evidence/ev-{incident}", headers=basic()
+    )
+    assert response.status == 200, response.text
+    body = response.json()
+    assert "raw_unavailable" not in body and "payload_state" not in body
+    assert "raw_utf8" not in body and body["hashes_verified"] is None
+
+
+def _present_reading(incident: UUID) -> tuple[UUID, str]:
+    raw = b'{"status":"success"}'
+    with psycopg.connect(DSN) as conn:
+        sample, signal = conn.execute(
+            "SELECT r.sample_id, r.signal_name FROM opspilot_observation_signal_readings r "
+            "JOIN opspilot_observation_samples s USING (sample_id) "
+            "JOIN opspilot_observation_sessions o ON o.session_id=s.session_id "
+            "WHERE o.incident_id=%s ORDER BY s.sequence, r.signal_name LIMIT 1",
+            (incident,),
+        ).fetchone()
+        conn.execute(
+            "INSERT INTO opspilot_observation_signal_readings(sample_id,signal_name,status,"
+            "value,sample_count,query,window_start,window_end,source,raw_sha256,raw) "
+            "SELECT sample_id,'latency',status,value,sample_count,query,window_start,"
+            "window_end,source,%s,%s FROM opspilot_observation_signal_readings "
+            "WHERE sample_id=%s AND signal_name=%s",
+            (hashlib.sha256(raw).hexdigest(), raw, sample, signal),
+        )
+    return sample, signal
+
+
+def test_a_cleaned_recovery_reading_is_200_and_says_cleaned_an_absent_one_absent() -> (
+    None
+):
+    app, _, _ = _build()
+    incident = seed_upstream(DSN)
+    sample, absent = _present_reading(incident)
+    _clean(
+        DSN,
+        "UPDATE opspilot_observation_signal_readings SET raw=NULL,"
+        "payload_state='cleaned' WHERE sample_id=%s AND signal_name='latency'",
+        sample,
+    )
+    cleaned = call(
+        app,
+        "GET",
+        f"/incidents/{incident}/evidence/{sample}:latency",
+        headers=basic(),
+    )
+    assert cleaned.status == 200
+    body = cleaned.json()
+    assert body["payload_state"] == "cleaned"
+    assert body["raw_unavailable"] == "CLEANED_DATA"
+    assert body["hashes_verified"] is None and body["raw_sha256"]
+    other = call(
+        app,
+        "GET",
+        f"/incidents/{incident}/evidence/{sample}:{absent}",
+        headers=basic(),
+    ).json()
+    assert "raw_unavailable" not in other and "payload_state" not in other
+    assert other["hashes_verified"] is None
+    # the incident page's recovery section says the data was cleaned
+    page = call(app, "GET", f"/incidents/{incident}", headers=basic())
+    assert page.status == 200, page.text
+    assert 'class="recovery-data-cleaned"' in page.text
+    assert "STORED_OBSERVATION_DATA_CLEANED" in page.text
+
+
+# --- alerts
+
+
+def test_a_cleaned_alert_shows_as_cleaned_not_as_a_cut_record() -> None:
+    app, _, _ = _build()
+    alert = _alert(annotations={"summary": "checkout errors"})
+    result = _post(app, _webhook(alert)).json()["results"][0]
+    incident = result["incident_id"]
+    assert (
+        _clean(
+            DSN,
+            "UPDATE opspilot_alert_deliveries SET alert_json=NULL,"
+            "payload_state='cleaned' WHERE incident_id=%s",
+            incident,
+        )
+        == 1
+    )
+    page = call(app, "GET", f"/incidents/{incident}", headers=basic())
+    assert page.status == 200, page.text
+    assert 'id="alert-cleaned"' in page.text and "CLEANED_DATA" in page.text
+    assert 'id="alert-record-text"' not in page.text
+    assert "checkout errors" not in page.text
+    # the deliveries table keeps its hash and metadata
+    assert result["incident_id"] in page.text
+
+
+def test_the_alert_context_of_a_cleaned_record_is_none_without_raising() -> None:
+    assert alert_context_of_record(None) is None
+
+
+# --- F6 replay
+
+
+def _clean_session(dsn: str, session: object) -> int:
+    return _clean(
+        dsn,
+        "UPDATE opspilot_observation_signal_readings SET raw=NULL,"
+        "payload_state='cleaned' WHERE payload_state='present' AND sample_id IN "
+        "(SELECT sample_id FROM opspilot_observation_samples WHERE session_id=%s)",
+        session,
+    )
+
+
+def test_a_cleaned_session_replays_as_data_cleaned_not_as_tampering(
+    loop, owner, controller, scratch_dsn
+) -> None:
+    incident, _, target = _incident(owner)
+    session = _authorize(controller, incident, target, sustained=1)
+    _backdate_authorization(owner, session)
+    _run(loop, owner, session, 2)
+    assert replay_stored_session(controller, session).consistent
+    assert _clean_session(scratch_dsn, session) > 0
+
+    result = replay_stored_session(controller, session)
+
+    assert result.recovery_verdict == "unknown" and not result.recovery_confirmed
+    assert DATA_CLEANED in result.integrity
+    assert INTEGRITY_MISMATCH not in result.integrity
+    assert DATA_CLEANED in result.recovery_reasons
+    readings = [r for s in result.samples for r in s.readings]
+    assert readings and all(r.raw_verified is None for r in readings)
+    # the query metadata of every reading stays
+    assert all(r.query and r.raw_sha256 for r in readings)
+
+
+@pytest.mark.parametrize("digest", [None, "forged", "A" * 64])
+def test_a_cleaned_reading_with_a_malformed_kept_digest_is_a_mismatch(
+    loop, owner, controller, scratch_dsn, digest
+) -> None:
+    """Bot #382: the readings table lets a cleaned row carry any digest; the
+    replay holds the kept ``raw_sha256`` to the sha256 hex shape."""
+    incident, _, target = _incident(owner)
+    session = _authorize(controller, incident, target, sustained=1)
+    _backdate_authorization(owner, session)
+    _run(loop, owner, session, 2)
+    _clean_session(scratch_dsn, session)
+    assert replay_stored_session(controller, session).integrity == (DATA_CLEANED,)
+    with psycopg.connect(scratch_dsn) as conn:
+        assert (
+            conn.execute(
+                "UPDATE opspilot_observation_signal_readings SET raw_sha256=%s "
+                "WHERE sample_id IN (SELECT sample_id FROM opspilot_observation_samples "
+                "WHERE session_id=%s AND sequence=1) AND signal_name='error_ratio'",
+                (digest, session),
+            ).rowcount
+            == 1
+        )
+    result = replay_stored_session(controller, session)
+    assert DATA_CLEANED in result.integrity
+    assert INTEGRITY_MISMATCH in result.integrity
+    assert "RAW_HASH_MISMATCH:error_ratio" in result.samples[0].integrity
+
+
+def test_cleaned_evidence_with_a_malformed_kept_digest_is_not_verified() -> None:
+    app, _, _ = _build()
+    incident = seed_upstream(DSN)
+    evidence = f"ev-{incident}"
+    _clean(
+        DSN,
+        "UPDATE opspilot_evidence SET raw=NULL,payload_state='cleaned' "
+        "WHERE evidence_id=%s",
+        evidence,
+    )
+    with psycopg.connect(DSN) as conn:
+        conn.execute(
+            "UPDATE opspilot_evidence SET raw_sha256='forged' WHERE evidence_id=%s",
+            (evidence,),
+        )
+    body = call(
+        app, "GET", f"/incidents/{incident}/evidence/{evidence}", headers=basic()
+    ).json()
+    assert body["payload_state"] == "cleaned"
+    assert body["hashes_verified"] is False
+
+
+def test_tampering_next_to_cleaned_data_is_still_an_integrity_mismatch(
+    loop, owner, controller, scratch_dsn
+) -> None:
+    incident, _, target = _incident(owner)
+    session = _authorize(controller, incident, target, sustained=1)
+    _backdate_authorization(owner, session)
+    _run(loop, owner, session, 2)
+    _clean_session(scratch_dsn, session)
+    with psycopg.connect(scratch_dsn) as conn:
+        conn.execute(
+            "UPDATE opspilot_observation_samples SET outcome='degraded' "
+            "WHERE session_id=%s AND sequence=1",
+            (session,),
+        )
+    result = replay_stored_session(controller, session)
+    assert result.recovery_verdict == "unknown"
+    assert INTEGRITY_MISMATCH in result.integrity
+    assert DATA_CLEANED in result.integrity
+
+
+def test_a_cleaned_profile_sentinel_keeps_its_query_bound_to_the_revision(
+    loop, owner, controller, scratch_dsn, monkeypatch
+) -> None:
+    """Review #382 recheck: a cleaned profile-unavailable sentinel skips only
+    what needs its bundle; its kept query must still name the revision."""
+    from opspilot.persistence import PersistenceError
+
+    observer_loop, _ = loop
+    incident, _, target = _incident(owner)
+    session = _authorize(controller, incident, target, sustained=1, max_samples=3)
+    _backdate_authorization(owner, session)
+    original = observer_loop.store.health_profile
+
+    def unavailable(revision):
+        raise PersistenceError("STORAGE_UNAVAILABLE")
+
+    monkeypatch.setattr(observer_loop.store, "health_profile", unavailable)
+    (first,) = _run(loop, owner, session, 1)
+    monkeypatch.setattr(observer_loop.store, "health_profile", original)
+    _due_now(owner, session)
+    _run(loop, owner, session, 2)
+    assert replay_stored_session(controller, session).consistent
+    _clean_session(scratch_dsn, session)
+
+    result = replay_stored_session(controller, session)
+    assert result.integrity == (DATA_CLEANED,)
+    assert result.samples[0].recompute_skipped == DATA_CLEANED
+
+    with psycopg.connect(scratch_dsn) as conn:
+        assert (
+            conn.execute(
+                "UPDATE opspilot_observation_signal_readings SET query='forged-profile-revision' "
+                "WHERE sample_id=%s",
+                (first.sample_id,),
+            ).rowcount
+            == 1
+        )
+    result = replay_stored_session(controller, session)
+    assert result.recovery_verdict == "unknown"
+    assert DATA_CLEANED in result.integrity
+    assert INTEGRITY_MISMATCH in result.integrity
+
+
+# --- release replay
+
+
+def test_cleaned_release_and_comparison_replay_as_data_cleaned_keeping_queries(
+    release_harness,
+) -> None:
+    _, observer, oid, _, _ = release_harness
+    context = pr4a._anomalous(release_harness)
+    ObserverLoop(
+        store=observer, source=pr4a.BeforeTelemetry(context), batch=1
+    ).poll_once()
+    history = {
+        **observer.release_history(oid),
+        "comparisons": observer.release_comparisons(oid),
+    }
+    assert replay_release_history(history).consistent
+    queries = sum(len(m["queries"]) for m in history["samples"])
+    compared = sum(len(c["queries"]) for c in history["comparisons"])
+    assert (
+        _clean(
+            DSN,
+            "UPDATE opspilot_release_query_results SET raw=NULL,payload_state='cleaned' "
+            "WHERE sample_id IN (SELECT sample_id FROM opspilot_observation_samples "
+            "WHERE subject_id=%s)",
+            oid,
+        )
+        == queries
+    )
+    assert (
+        _clean(
+            DSN,
+            "UPDATE opspilot_release_comparison_queries SET raw=NULL,"
+            "payload_state='cleaned' WHERE comparison_id IN (SELECT comparison_id "
+            "FROM opspilot_release_comparisons WHERE observation_id=%s)",
+            oid,
+        )
+        == compared
+    )
+    history = {
+        **observer.release_history(oid),
+        "comparisons": observer.release_comparisons(oid),
+    }
+    # query metadata stays: every row, its key, query text and hash
+    assert sum(len(m["queries"]) for m in history["samples"]) == queries
+    for row in [q for m in history["samples"] for q in m["queries"]] + [
+        q for c in history["comparisons"] for q in c["queries"]
+    ]:
+        assert row["raw"] is None and row["payload_state"] == "cleaned"
+        assert row["query_key"] and row["query"] and row["raw_sha256"]
+
+    replay = replay_release_history(history)
+    assert not replay.consistent and replay.verdict == "unknown"
+    assert replay.integrity == ("REPLAY_DATA_CLEANED",)
+
+    (session,) = observer.release_history(oid)["sessions"]
+    stored = observer.replay_session(session["session_id"])
+    assert not stored.consistent and "REPLAY_DATA_CLEANED" in stored.integrity
+
+
+def test_tampering_next_to_cleaned_release_data_is_still_reported(
+    release_harness,
+) -> None:
+    """Review #382: cleaned queries skip only their own recompute; the
+    release, sample and audit checks still run."""
+    _, observer, oid, _, _ = release_harness
+    pr4a._anomalous(release_harness)
+    _clean(
+        DSN,
+        "UPDATE opspilot_release_query_results SET raw=NULL,payload_state='cleaned' "
+        "WHERE sample_id IN (SELECT sample_id FROM opspilot_observation_samples "
+        "WHERE subject_id=%s)",
+        oid,
+    )
+    history = observer.release_history(oid)
+    assert replay_release_history(history).integrity == ("REPLAY_DATA_CLEANED",)
+    for status in ("healthy", "observing"):
+        forged = {
+            **history,
+            "release": history["release"].model_copy(update={"status": status}),
+        }
+        replay = replay_release_history(forged)
+        assert "REPLAY_DATA_CLEANED" in replay.integrity
+        assert set(replay.integrity) - {"REPLAY_DATA_CLEANED"}, status
+        assert replay.verdict == "unknown"
+    forged = {
+        **history,
+        "samples": [
+            {**history["samples"][0], "outcome": "healthy"},
+            *history["samples"][1:],
+        ],
+    }
+    replay = replay_release_history(forged)
+    assert "SAMPLE_DECISION_MISMATCH" in replay.integrity
+    assert "REPLAY_DATA_CLEANED" in replay.integrity
+
+
+def test_only_the_comparison_cleaned_still_replays_the_samples(
+    release_harness,
+) -> None:
+    _, observer, oid, _, _ = release_harness
+    context = pr4a._anomalous(release_harness)
+    ObserverLoop(
+        store=observer, source=pr4a.BeforeTelemetry(context), batch=1
+    ).poll_once()
+    _clean(
+        DSN,
+        "UPDATE opspilot_release_comparison_queries SET raw=NULL,"
+        "payload_state='cleaned' WHERE comparison_id IN (SELECT comparison_id "
+        "FROM opspilot_release_comparisons WHERE observation_id=%s)",
+        oid,
+    )
+    replay = replay_release_history(
+        {
+            **observer.release_history(oid),
+            "comparisons": observer.release_comparisons(oid),
+        }
+    )
+    assert replay.integrity == ("REPLAY_DATA_CLEANED",)
+    assert replay.sample_evaluations
+
+
+def test_a_tampered_body_kept_beside_a_cleaned_one_is_still_reported(
+    release_harness,
+) -> None:
+    """Bot review #382: a cleaned row skips only its own hash; a row that
+    still holds its body is re-hashed, in samples and comparisons alike."""
+    _, observer, oid, _, _ = release_harness
+    context = pr4a._anomalous(release_harness)
+    ObserverLoop(
+        store=observer, source=pr4a.BeforeTelemetry(context), batch=1
+    ).poll_once()
+    history = {
+        **observer.release_history(oid),
+        "comparisons": observer.release_comparisons(oid),
+    }
+
+    def mixed(rows, tamper):
+        first, second, *rest = rows
+        cleaned = {**first, "raw": None, "payload_state": "cleaned"}
+        kept = {**second, "raw": bytes(second["raw"]) + (b" " if tamper else b"")}
+        return [cleaned, kept, *rest]
+
+    sample, *samples = history["samples"]
+    comparison, *comparisons = history["comparisons"]
+    for tamper in (False, True):
+        replay = replay_release_history(
+            {
+                **history,
+                "samples": [
+                    {**sample, "queries": mixed(sample["queries"], tamper)},
+                    *samples,
+                ],
+            }
+        )
+        assert "REPLAY_DATA_CLEANED" in replay.integrity
+        assert ("RAW_SHA256_MISMATCH" in replay.integrity) is tamper
+        replay = replay_release_history(
+            {
+                **history,
+                "comparisons": [
+                    {**comparison, "queries": mixed(comparison["queries"], tamper)},
+                    *comparisons,
+                ],
+            }
+        )
+        assert "REPLAY_DATA_CLEANED" in replay.integrity
+        assert ("COMPARISON_MISMATCH" in replay.integrity) is tamper
+
+
+def test_the_kept_metadata_of_a_cleaned_reading_stays_bound_to_the_profile(
+    loop, owner, controller, scratch_dsn
+) -> None:
+    """Bot review #382: a cleaned reading skips only its bundle checks; its
+    kept signal, query, source and window still match the frozen profile."""
+    incident, _, target = _incident(owner)
+    session = _authorize(controller, incident, target, sustained=1)
+    _backdate_authorization(owner, session)
+    _run(loop, owner, session, 2)
+    _clean_session(scratch_dsn, session)
+    assert replay_stored_session(controller, session).integrity == (DATA_CLEANED,)
+    with psycopg.connect(scratch_dsn) as conn:
+        assert (
+            conn.execute(
+                "UPDATE opspilot_observation_signal_readings r SET query='forged' "
+                "FROM opspilot_observation_samples s WHERE r.sample_id=s.sample_id "
+                "AND s.session_id=%s AND s.sequence=1 AND r.ctid=("
+                "SELECT r2.ctid FROM opspilot_observation_signal_readings r2 "
+                "WHERE r2.sample_id=s.sample_id LIMIT 1)",
+                (session,),
+            ).rowcount
+            == 1
+        )
+    result = replay_stored_session(controller, session)
+    assert result.recovery_verdict == "unknown"
+    assert INTEGRITY_MISMATCH in result.integrity
+    assert DATA_CLEANED in result.integrity
+
+
+def test_a_cleaned_comparison_query_stays_bound_to_its_comparison(
+    release_harness,
+) -> None:
+    """Bot review #382: a cleaned query row moved to another comparison is
+    a mismatch, not just cleaned data."""
+    _, observer, oid, _, _ = release_harness
+    context = pr4a._anomalous(release_harness)
+    ObserverLoop(
+        store=observer, source=pr4a.BeforeTelemetry(context), batch=1
+    ).poll_once()
+    _clean(
+        DSN,
+        "UPDATE opspilot_release_comparison_queries SET raw=NULL,"
+        "payload_state='cleaned' WHERE comparison_id IN (SELECT comparison_id "
+        "FROM opspilot_release_comparisons WHERE observation_id=%s)",
+        oid,
+    )
+    history = {
+        **observer.release_history(oid),
+        "comparisons": observer.release_comparisons(oid),
+    }
+    assert replay_release_history(history).integrity == ("REPLAY_DATA_CLEANED",)
+    comparison, *comparisons = history["comparisons"]
+    first, *rest = comparison["queries"]
+    moved = {**first, "comparison_id": uuid4()}
+    replay = replay_release_history(
+        {
+            **history,
+            "comparisons": [{**comparison, "queries": [moved, *rest]}, *comparisons],
+        }
+    )
+    assert "COMPARISON_MISMATCH" in replay.integrity
+
+
+# --- sweep of #382: cleaned skips only the recompute that needs the body
+
+
+def _partly_cleaned_history(release_harness):
+    """An anomalous release with its comparison; the first query row of the
+    first sample and the first comparison query cleaned, every other row
+    still holding its body."""
+    _, observer, oid, _, _ = release_harness
+    context = pr4a._anomalous(release_harness)
+    ObserverLoop(
+        store=observer, source=pr4a.BeforeTelemetry(context), batch=1
+    ).poll_once()
+    history = {
+        **observer.release_history(oid),
+        "comparisons": observer.release_comparisons(oid),
+    }
+    first = history["samples"][0]["queries"][0]
+    _clean(
+        DSN,
+        "UPDATE opspilot_release_query_results SET raw=NULL,payload_state='cleaned' "
+        "WHERE sample_id=%s AND query_key=%s",
+        first["sample_id"],
+        first["query_key"],
+    )
+    compared = history["comparisons"][0]["queries"][0]
+    _clean(
+        DSN,
+        "UPDATE opspilot_release_comparison_queries SET raw=NULL,"
+        "payload_state='cleaned' WHERE comparison_id=%s AND query_key=%s",
+        compared["comparison_id"],
+        compared["query_key"],
+    )
+    history = {
+        **observer.release_history(oid),
+        "comparisons": observer.release_comparisons(oid),
+    }
+    assert replay_release_history(history).integrity == ("REPLAY_DATA_CLEANED",)
+    return history
+
+
+def _with_comparison(history, **changes):
+    (c,) = history["comparisons"]
+    return {**history, "comparisons": [{**c, **changes}]}
+
+
+def test_a_forged_retained_sample_query_beside_a_cleaned_one_is_a_query_mismatch(
+    release_harness,
+) -> None:
+    history = _partly_cleaned_history(release_harness)
+    sample = history["samples"][0]
+    queries = [dict(q) for q in sample["queries"]]
+    assert queries[1].get("payload_state") is None
+    queries[1]["query"] = "forged-retained"
+    forged = {
+        **history,
+        "samples": [{**sample, "queries": queries}, *history["samples"][1:]],
+    }
+    integrity = replay_release_history(forged).integrity
+    assert "REPLAY_DATA_CLEANED" in integrity and "QUERY_MISMATCH" in integrity
+    # a cleaned row's kept metadata is checked against the plan too
+    queries = [dict(q) for q in sample["queries"]]
+    queries[0]["query"] = "forged-cleaned"
+    forged = {
+        **history,
+        "samples": [{**sample, "queries": queries}, *history["samples"][1:]],
+    }
+    integrity = replay_release_history(forged).integrity
+    assert "REPLAY_DATA_CLEANED" in integrity and "QUERY_MISMATCH" in integrity
+
+
+def test_a_forged_comparison_query_beside_a_cleaned_one_is_a_mismatch(
+    release_harness,
+) -> None:
+    history = _partly_cleaned_history(release_harness)
+    for index, text in ((1, "forged-retained"), (0, "forged-cleaned")):
+        queries = [dict(q) for q in history["comparisons"][0]["queries"]]
+        queries[index]["query"] = text
+        integrity = replay_release_history(
+            _with_comparison(history, queries=queries)
+        ).integrity
+        assert "REPLAY_DATA_CLEANED" in integrity
+        assert "COMPARISON_MISMATCH" in integrity, text
+
+
+def test_a_cleaned_comparison_keeps_its_before_window_bound(release_harness) -> None:
+    history = _partly_cleaned_history(release_harness)
+    integrity = replay_release_history(
+        _with_comparison(history, window_before_start=history["release"].released_at)
+    ).integrity
+    assert "REPLAY_DATA_CLEANED" in integrity
+    assert "COMPARISON_MISMATCH" in integrity
+
+
+def test_a_cleaned_comparison_keeps_its_attempts_range(release_harness) -> None:
+    history = _partly_cleaned_history(release_harness)
+    integrity = replay_release_history(_with_comparison(history, attempts=99)).integrity
+    assert "REPLAY_DATA_CLEANED" in integrity
+    assert "COMPARISON_MISMATCH" in integrity
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("observation_id", "forged"),
+        ("comparison_id", "00000000-0000-0000-0000-000000000001"),
+        ("ending_id", "00000000-0000-0000-0000-000000000001"),
+        ("sample_id", "00000000-0000-0000-0000-000000000001"),
+        ("format_version", 2),
+        ("attempts", 3),
+        (
+            "window_after",
+            {"start": "2020-01-01T00:00:00Z", "end": "2020-01-01T00:01:00Z"},
+        ),
+    ],
+)
+def test_a_cleaned_comparison_record_stays_bound_to_its_row(
+    release_harness, field, value
+) -> None:
+    history = _partly_cleaned_history(release_harness)
+    stored = dict(history["comparisons"][0]["comparison"])
+    assert field in stored
+    if stored[field] == value:
+        pytest.skip("the stored value already equals the forgery")
+    stored[field] = value
+    integrity = replay_release_history(
+        _with_comparison(history, comparison=stored)
+    ).integrity
+    assert "REPLAY_DATA_CLEANED" in integrity
+    assert "COMPARISON_MISMATCH" in integrity, field
+
+
+# --- recheck of #382: after signals and the inconsistency code
+
+
+def _forge_signal(history, which, **changes):
+    stored = dict(history["comparisons"][0]["comparison"])
+    signals = [dict(s) for s in stored["signals"]]
+    target = next(s for s in signals if s["scope"] == which)
+    target.update(changes)
+    stored["signals"] = signals
+    return _with_comparison(history, comparison=stored)
+
+
+@pytest.mark.parametrize(
+    "scope,changes",
+    [
+        ("after_service", {"value": 999.0}),
+        ("after_new", {"query_keys": []}),
+    ],
+)
+def test_a_cleaned_comparison_keeps_its_after_signals_bound_to_the_anomaly(
+    release_harness, scope, changes
+) -> None:
+    history = _partly_cleaned_history(release_harness)
+    integrity = replay_release_history(
+        _forge_signal(history, scope, **changes)
+    ).integrity
+    assert "REPLAY_DATA_CLEANED" in integrity
+    assert "COMPARISON_MISMATCH" in integrity
+
+
+def test_a_forged_inconsistency_code_does_not_switch_off_the_plan_check(
+    release_harness,
+) -> None:
+    history = _partly_cleaned_history(release_harness)
+    (c,) = history["comparisons"]
+    queries = [dict(q) for q in c["queries"]]
+    assert queries[0].get("payload_state") == "cleaned"
+    queries[0]["query"] = "forged"
+    stored = dict(c["comparison"])
+    stored["reason_codes"] = sorted(
+        {*stored["reason_codes"], "QUERY_EVIDENCE_INCONSISTENT"}
+    )
+    integrity = replay_release_history(
+        _with_comparison(history, queries=queries, comparison=stored)
+    ).integrity
+    assert "REPLAY_DATA_CLEANED" in integrity
+    assert "COMPARISON_MISMATCH" in integrity
+    # the code alone on a record whose plan holds is no proof either: an
+    # inconsistent record carries no before instances and no before values
+    stored = dict(c["comparison"])
+    stored["reason_codes"] = sorted(
+        {*stored["reason_codes"], "QUERY_EVIDENCE_INCONSISTENT"}
+    )
+    integrity = replay_release_history(
+        _with_comparison(history, comparison=stored)
+    ).integrity
+    assert "COMPARISON_MISMATCH" in integrity
+
+
+def test_a_record_marked_inconsistent_still_checks_rows_that_need_no_instance(
+    release_harness,
+) -> None:
+    """Boundary (#382 recheck, item 2): QUERY_EVIDENCE_INCONSISTENT can come
+    from the mapping bodies, so a cleaned replay cannot refute it; a record
+    carrying it must still look like one (no before instances or values,
+    ``unavailable``) and its instance-free rows must still match the plan."""
+    history = _partly_cleaned_history(release_harness)
+    (c,) = history["comparisons"]
+    stored = dict(c["comparison"])
+    stored["reason_codes"] = sorted(
+        {*stored["reason_codes"], "QUERY_EVIDENCE_INCONSISTENT"}
+    )
+    stored["before_instances"] = []
+    stored["status"] = "unavailable"
+    stored["signals"] = [
+        {
+            **s,
+            "value": None,
+            "sample_count": None,
+            "latest_sample_at": None,
+            "query_keys": [],
+        }
+        if s["scope"].startswith("before")
+        else s
+        for s in stored["signals"]
+    ]
+    shaped = _with_comparison(history, comparison=stored, status="unavailable")
+    assert replay_release_history(shaped).integrity == ("REPLAY_DATA_CLEANED",)
+    queries = [dict(q) for q in c["queries"]]
+    mapping = next(
+        i
+        for i, q in enumerate(queries)
+        if q["query_key"].startswith("before_mapping") or "mapping:" in q["query_key"]
+    )
+    queries[mapping]["query"] = "forged"
+    integrity = replay_release_history(
+        _with_comparison(shaped, queries=queries)
+    ).integrity
+    assert "REPLAY_DATA_CLEANED" in integrity
+    assert "COMPARISON_MISMATCH" in integrity
+
+
+# --- second recheck of #382: every derivable field of the stored record
+
+
+@pytest.mark.parametrize(
+    "scope,changes",
+    [
+        ("before_service", {"signal_name": "forged"}),
+        ("before_service", {"scope": "after_service"}),
+        ("before_service", {"query_keys": ["before_service:forged:query"]}),
+        ("before_old", {"query_keys": []}),
+        ("before_service", {"reason_codes": ["FORGED:before_service:error_ratio"]}),
+    ],
+)
+def test_a_cleaned_comparison_keeps_its_before_signal_identity(
+    release_harness, scope, changes
+) -> None:
+    history = _partly_cleaned_history(release_harness)
+    integrity = replay_release_history(
+        _forge_signal(history, scope, **changes)
+    ).integrity
+    assert "REPLAY_DATA_CLEANED" in integrity
+    assert "COMPARISON_MISMATCH" in integrity, changes
+
+
+def test_a_cleaned_comparison_keeps_its_signal_list_and_status_derivation(
+    release_harness,
+) -> None:
+    history = _partly_cleaned_history(release_harness)
+    (c,) = history["comparisons"]
+    stored = dict(c["comparison"])
+    # a dropped signal
+    integrity = replay_release_history(
+        _with_comparison(
+            history, comparison={**stored, "signals": stored["signals"][1:]}
+        )
+    ).integrity
+    assert "COMPARISON_MISMATCH" in integrity
+    # a status the stored values and codes do not give, on row and record alike
+    other = "complete" if stored["status"] != "complete" else "partial"
+    integrity = replay_release_history(
+        _with_comparison(history, status=other, comparison={**stored, "status": other})
+    ).integrity
+    assert "REPLAY_DATA_CLEANED" in integrity
+    assert "COMPARISON_MISMATCH" in integrity
+
+
+def test_a_cleaned_recovery_reading_with_a_malformed_digest_is_not_verified() -> None:
+    """Bot review #382: the recovery API agrees with the evidence API and
+    the replay -- a cleaned reading's kept digest must still be one."""
+    app, _, _ = _build()
+    incident = seed_upstream(DSN)
+    sample, _ = _present_reading(incident)
+    _clean(
+        DSN,
+        "UPDATE opspilot_observation_signal_readings SET raw=NULL,"
+        "payload_state='cleaned' WHERE sample_id=%s AND signal_name='latency'",
+        sample,
+    )
+    with psycopg.connect(DSN) as conn:
+        conn.execute(
+            "UPDATE opspilot_observation_signal_readings SET raw_sha256='forged' "
+            "WHERE sample_id=%s AND signal_name='latency'",
+            (sample,),
+        )
+    body = call(
+        app,
+        "GET",
+        f"/incidents/{incident}/evidence/{sample}:latency",
+        headers=basic(),
+    ).json()
+    assert body["payload_state"] == "cleaned"
+    assert body["hashes_verified"] is False

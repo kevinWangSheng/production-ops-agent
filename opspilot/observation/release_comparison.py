@@ -19,7 +19,7 @@ quality only: no verdict, and the release status is never touched (A5).
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from datetime import datetime, timedelta, timezone
 from typing import Annotated, Any, Literal, cast
 from uuid import UUID, uuid5
@@ -62,7 +62,7 @@ from opspilot.observer.release_evaluation import (
     query_evidence_consistent,
     supported_profile,
 )
-from opspilot.persistence.base import Connection, PersistenceError
+from opspilot.persistence.base import Connection, PersistenceError, mark_cleaned
 
 __all__ = [
     "COMPARISON_ATTEMPT_SECONDS",
@@ -371,6 +371,91 @@ def _signal(
     )
 
 
+def after_scope_signals(
+    context: ReleaseEvaluationContext, anomaly: ReleaseEvaluation
+) -> dict[tuple[str, str], ComparisonSignal]:
+    """The after-scope signals of a comparison: read from the anomaly
+    sample's evaluation alone, never from the before-window bodies (so a
+    replay whose bodies were cleaned, #244, can still check them)."""
+    verdicts = {
+        (_AFTER_SCOPES[v.scope], v.signal_name): v
+        for v in anomaly.signals
+        if v.scope in _AFTER_SCOPES
+    }
+    signals: dict[tuple[str, str], ComparisonSignal] = {}
+    for scope in SCOPES:
+        if scope.startswith("before"):
+            continue
+        for signal in context.health_profile.signals:
+            name = signal.name
+            if scope == "after_new" and name not in AFTER_SIGNALS:
+                continue
+            found = verdicts.get((scope, name))
+            keys = found.query_keys if found else ()
+            signals[(scope, name)] = _signal(scope, name, found, keys, ())
+    return signals
+
+
+def comparison_status(
+    signals: Iterable[ComparisonSignal], reason_codes: Sequence[str]
+) -> Literal["complete", "partial", "unavailable"]:
+    """From the before values and the final reason codes alone."""
+    befores = [s for s in signals if s.scope.startswith("before")]
+    if not any(s.value is not None for s in befores):
+        return "unavailable"
+    if all(s.value is not None for s in befores) and not reason_codes:
+        return "complete"
+    return "partial"
+
+
+def before_signal_frame(
+    context: ReleaseEvaluationContext, *, evaluated: bool, reason_codes: Sequence[str]
+) -> list[tuple[str, str, tuple[str, ...], tuple[str, ...]]]:
+    """What ``compare_evidence`` gives each before signal without reading a
+    body: its scope and name in order, its query keys (the fixed per-signal
+    keys when the before sample was evaluated, none otherwise) and its scoped
+    reason codes (from the record's codes before ``AFTER_INSUFFICIENT``). A
+    replay whose bodies were cleaned (#244) checks the stored record against
+    it; values, counts and times stay unknowable."""
+    ordered = sorted(set(reason_codes) - {AFTER_INSUFFICIENT})
+    frame: list[tuple[str, str, tuple[str, ...], tuple[str, ...]]] = []
+    for scope in SCOPES:
+        if not scope.startswith("before"):
+            continue
+        pr2 = next(k for k, v in _BEFORE_SCOPES.items() if v == scope)
+        for signal in context.health_profile.signals:
+            name = signal.name
+            if scope == "before_old" and name not in AFTER_SIGNALS:
+                continue
+            kinds = (
+                ("query", "coverage", "freshness", "instances")
+                if pr2 == "after"
+                else ("query", "coverage", "freshness")
+            )
+            keys = (
+                tuple(_to_stored_key(f"{pr2}:{name}:{kind}") for kind in kinds)
+                if evaluated
+                else ()
+            )
+            frame.append((scope, name, keys, _scoped(ordered, scope, name)))
+    return frame
+
+
+def after_insufficient(
+    anomaly: ReleaseEvaluation, afters: Iterable[ComparisonSignal]
+) -> bool:
+    """P2 (r3): complete needs the after scopes too, from a sufficient
+    degraded anomaly sample with every after signal valued."""
+    afters = list(afters)
+    return not (
+        anomaly.evidence_sufficient
+        and anomaly.verdict == "degraded"
+        and anomaly.instances
+        and afters
+        and all(s.value is not None for s in afters)
+    )
+
+
 def _scoped(codes: Sequence[str], scope: str, name: str) -> tuple[str, ...]:
     own = []
     for code in codes:
@@ -431,49 +516,32 @@ def compare_evidence(
                 codes.add(mapped)
         for verdict in evaluation.signals:
             before[(_BEFORE_SCOPES[verdict.scope], verdict.signal_name)] = verdict
-    after = {
-        (_AFTER_SCOPES[v.scope], v.signal_name): v
-        for v in anomaly.signals
-        if v.scope in _AFTER_SCOPES
-    }
+    after = after_scope_signals(context, anomaly)
     ordered = sorted(codes)
     signals: list[ComparisonSignal] = []
     for scope in SCOPES:
         for name in names:
             if scope in ("before_old", "after_new") and name not in AFTER_SIGNALS:
                 continue
-            found = (before if scope.startswith("before") else after).get((scope, name))
+            if not scope.startswith("before"):
+                signals.append(after[(scope, name)])
+                continue
+            found = before.get((scope, name))
             keys = found.query_keys if found else ()
-            if scope.startswith("before"):
-                signals.append(
-                    _signal(
-                        scope,
-                        name,
-                        found,
-                        tuple(_to_stored_key(key) for key in keys),
-                        _scoped(ordered, scope, name),
-                    )
+            signals.append(
+                _signal(
+                    scope,
+                    name,
+                    found,
+                    tuple(_to_stored_key(key) for key in keys),
+                    _scoped(ordered, scope, name),
                 )
-            else:
-                signals.append(_signal(scope, name, found, keys, ()))
+            )
     # P2 (r3): complete needs the after scopes too, from a sufficient
     # degraded anomaly sample with every after signal valued.
-    afters = [s for s in signals if s.scope.startswith("after")]
-    if not (
-        anomaly.evidence_sufficient
-        and anomaly.verdict == "degraded"
-        and anomaly.instances
-        and afters
-        and all(s.value is not None for s in afters)
-    ):
+    if after_insufficient(anomaly, after.values()):
         ordered = sorted({*ordered, AFTER_INSUFFICIENT})
-    befores = [s for s in signals if s.scope.startswith("before")]
-    if not any(s.value is not None for s in befores):
-        status: Literal["complete", "partial", "unavailable"] = "unavailable"
-    elif all(s.value is not None for s in befores) and not ordered:
-        status = "complete"
-    else:
-        status = "partial"
+    status = comparison_status(signals, ordered)
     return ReleaseComparison(
         format_version=1,
         comparison_id=evidence.comparison_id,
@@ -600,7 +668,7 @@ def comparison_fingerprint(evidence: ReleaseComparisonEvidence) -> str:
 
 
 _COMPARISON_COLUMNS = "comparison_id,observation_id,ending_id,session_id,sample_id,owner,format_version,status,attempts,window_before_start,window_before_end,window_after_start,window_after_end,decision_at,evidence_sha256,comparison,recorded_at"
-_QUERY_COLUMNS = "comparison_id,query_key,query,source,evaluated_at,sent_at,status,http_status,detail,body_complete,raw,raw_sha256"
+_QUERY_COLUMNS = "comparison_id,query_key,query,source,evaluated_at,sent_at,status,http_status,detail,body_complete,raw,raw_sha256,payload_state"
 
 
 def _lock_comparison(conn: Connection, comparison_id: UUID) -> None:
@@ -936,12 +1004,15 @@ class _ReleaseComparisonOps(_ReleaseSampleOps):
             (observation_id,),
         ).fetchall()
         for comparison in comparisons:
-            comparison["queries"] = conn.execute(
-                "SELECT "
-                + _QUERY_COLUMNS
-                + ' FROM opspilot_release_comparison_queries WHERE comparison_id=%s ORDER BY query_key COLLATE "C"',
-                (comparison["comparison_id"],),
-            ).fetchall()
+            comparison["queries"] = [
+                mark_cleaned(row)
+                for row in conn.execute(
+                    "SELECT "
+                    + _QUERY_COLUMNS
+                    + ' FROM opspilot_release_comparison_queries WHERE comparison_id=%s ORDER BY query_key COLLATE "C"',
+                    (comparison["comparison_id"],),
+                ).fetchall()
+            ]
         return cast(list[dict[str, Any]], utc_values(comparisons))
 
     def release_comparisons(self, observation_id: UUID) -> list[dict[str, Any]]:
@@ -957,9 +1028,13 @@ class _ReleaseComparisonOps(_ReleaseSampleOps):
 
 
 def iter_comparison_queries(rows: Sequence[Mapping[str, Any]]) -> Iterator[Any]:
-    """Stored query rows as DTOs; raw bytes re-hashed by the DTO validator."""
+    """Stored query rows as DTOs; raw bytes re-hashed by the DTO validator.
+    A cleaned row (#244, no raw) is no DTO: callers check ``payload_state``
+    first."""
     for row in rows:
-        data = {k: v for k, v in row.items() if k != "comparison_id"}
+        data = {
+            k: v for k, v in row.items() if k not in ("comparison_id", "payload_state")
+        }
         raw = data["raw"]
         data["raw"] = raw if isinstance(raw, bytes) else bytes(raw)
         yield ReleaseQueryResult.model_validate(data)

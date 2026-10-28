@@ -433,14 +433,19 @@ def alert_context(
     return fact(count)
 
 
-def alert_context_of_record(alert_json: str) -> dict[str, Any] | None:
+def alert_context_of_record(alert_json: str | None) -> dict[str, Any] | None:
     """K6: the alert context rebuilt from a delivery's stored audit text.
 
     The audit record keeps the alert redacted by the same rule, which K2
     applies again without changing it, so this equals ``alert_context`` of
     the alert as received. ``None`` when the record was cut at its byte
-    bound (it is then not JSON) or lacks the two objects.
+    bound (it is then not JSON) or lacks the two objects, and when the
+    retention cleanup removed the record (``alert_json`` is ``None``, #244):
+    there is nothing to rebuild from, which callers tell apart from a
+    damaged record by the ``None`` they passed.
     """
+    if alert_json is None:
+        return None
     try:
         alert = json.loads(alert_json)
     except ValueError:

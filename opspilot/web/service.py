@@ -1514,7 +1514,12 @@ class Workbench:
         )
         context = alert_context_of_record(first["alert_json"])
         if context is None:
-            _log.warning("alert record unreadable incident=%s", incident_id)
+            # Still fail closed: a cleaned record (#244) cannot rebuild the
+            # context either; the log says which of the two it was.
+            if first.get("payload_state") == "cleaned":
+                _log.warning("alert record cleaned incident=%s", incident_id)
+            else:
+                _log.warning("alert record unreadable incident=%s", incident_id)
             raise ContextError("INCOMPATIBLE_STATE")
         anchor = AlertAnchor(
             received_at=first["received_at"],
@@ -2489,7 +2494,7 @@ class Workbench:
                 "starts_at": utc_seconds(latest["starts_at"]),
                 "received_at": latest["received_at"],
                 "truncated": bool(latest["truncated"]),
-                **_stored_alert(latest["alert_json"]),
+                **_stored_alert(latest),
             },
             "resolved": [
                 {
@@ -2497,7 +2502,7 @@ class Workbench:
                     "actor": row["actor"],
                     "annotation_revision": int(row["annotation_revision"]),
                     "raw_sha256": row["raw_sha256"],
-                    **_stored_alert(row["alert_json"]),
+                    **_stored_alert(row),
                 }
                 for row in rows
                 if row["status"] == "resolved"
@@ -2544,6 +2549,9 @@ class Workbench:
                 "replayed_decision": sample.decision.replayed,
                 "integrity": sample.integrity,
                 "consistent": sample.consistent,
+                # #244: only cleaned bundles, nothing that disagrees
+                "raw_cleaned_only": bool(sample.integrity)
+                and all(code.startswith("RAW_CLEANED:") for code in sample.integrity),
                 "readings": [
                     {
                         "signal_name": reading.signal_name,
@@ -2909,9 +2917,19 @@ def _invalid_alert(item: object, code: str) -> AlertResult:
     )
 
 
-def _stored_alert(alert_json: str) -> dict[str, Any]:
+def _stored_alert(row: Mapping[str, Any]) -> dict[str, Any]:
     """The stored (redacted, bounded) alert for display: its annotations and
-    ``endsAt`` when the record is whole JSON, else the cut text as is."""
+    ``endsAt`` when the record is whole JSON, else the cut text as is; a
+    record the retention cleanup removed (#244, by its ``payload_state``) is
+    shown as cleaned, and a missing text in any other state as no text."""
+    alert_json = row["alert_json"]
+    if row.get("payload_state") == "cleaned" or alert_json is None:
+        return {
+            "annotations": None,
+            "ends_at": None,
+            "record_text": None,
+            "cleaned": row.get("payload_state") == "cleaned",
+        }
     try:
         stored = json.loads(alert_json)
     except ValueError:
