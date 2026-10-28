@@ -30,6 +30,7 @@ from pathlib import Path
 import psycopg
 from psycopg import sql
 from psycopg.conninfo import conninfo_to_dict, make_conninfo
+from psycopg.rows import DictRow, dict_row
 
 from opspilot.schema import SchemaNotMigrated, head_revision, verify_head
 
@@ -117,37 +118,28 @@ def read_passfile(path: Path) -> tuple[str, str]:
 
 
 def _attributes(
-    conn: psycopg.Connection[tuple[object, ...]], login: str
+    conn: psycopg.Connection[DictRow], login: str
 ) -> LoginAttributes | None:
     row = conn.execute(
         "SELECT r.rolcanlogin, r.rolinherit, r.rolsuper, r.rolcreaterole, "
         "r.rolcreatedb, r.rolreplication, r.rolbypassrls, "
         "array(SELECT g.rolname FROM pg_auth_members m JOIN pg_roles g "
-        "ON g.oid = m.roleid WHERE m.member = r.oid ORDER BY 1) "
+        "ON g.oid = m.roleid WHERE m.member = r.oid ORDER BY 1) AS groups "
         "FROM pg_roles r WHERE r.rolname = %s",
         (login,),
     ).fetchone()
     if row is None:
         return None
-    (
-        can_login,
-        inherit,
-        superuser,
-        createrole,
-        createdb,
-        replication,
-        bypassrls,
-        groups,
-    ) = row
+    groups = row["groups"]
     assert isinstance(groups, list)
     return LoginAttributes(
-        login=bool(can_login),
-        inherit=bool(inherit),
-        superuser=bool(superuser),
-        createrole=bool(createrole),
-        createdb=bool(createdb),
-        replication=bool(replication),
-        bypassrls=bool(bypassrls),
+        login=bool(row["rolcanlogin"]),
+        inherit=bool(row["rolinherit"]),
+        superuser=bool(row["rolsuper"]),
+        createrole=bool(row["rolcreaterole"]),
+        createdb=bool(row["rolcreatedb"]),
+        replication=bool(row["rolreplication"]),
+        bypassrls=bool(row["rolbypassrls"]),
         groups=tuple(str(name) for name in groups),
     )
 
@@ -165,13 +157,13 @@ def ensure_logins(
                 f"{spec.secret}: names login {name!r}, expected {spec.login!r}"
             )
         passwords[spec.login] = password
-    with psycopg.connect(owner_dsn, autocommit=True) as conn:
+    with psycopg.connect(owner_dsn, autocommit=True, row_factory=dict_row) as conn:
         verify_head(conn)
-        database = conn.execute("SELECT current_database()").fetchone()
+        database = conn.execute("SELECT current_database() AS name").fetchone()
         assert database is not None
         conn.execute(
             sql.SQL("REVOKE TEMP ON DATABASE {} FROM PUBLIC").format(
-                sql.Identifier(str(database[0]))
+                sql.Identifier(str(database["name"]))
             )
         )
         for spec in logins:
@@ -209,7 +201,7 @@ def ensure_logins(
             "", **{**owner, "user": spec.login, "passfile": str(secrets / spec.secret)}
         )
         try:
-            with psycopg.connect(dsn) as conn:
+            with psycopg.connect(dsn, row_factory=dict_row) as conn:
                 verify_head(conn)
         except psycopg.OperationalError:
             raise RoleSetupError(
