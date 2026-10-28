@@ -196,42 +196,46 @@ def _present_rows(conn: psycopg.Connection[Any]) -> list[_Row]:
     return rows
 
 
+class _Sets:
+    """Union-find over incident ids; a set's root is its smallest id."""
+
+    def __init__(self) -> None:
+        self.parent: dict[UUID, UUID] = {}
+
+    def find(self, x: UUID) -> UUID:
+        self.parent.setdefault(x, x)
+        while self.parent[x] != x:
+            x = self.parent[x]
+        return x
+
+    def union(self, a: UUID, b: UUID) -> None:
+        ra, rb = self.find(a), self.find(b)
+        if ra != rb:
+            self.parent[max(ra, rb, key=str)] = min(ra, rb, key=str)
+
+    def members(self) -> dict[UUID, set[UUID]]:
+        out: dict[UUID, set[UUID]] = {}
+        for x in list(self.parent):
+            out.setdefault(self.find(x), set()).add(x)
+        return out
+
+
 def _merge_groups(
     conn: psycopg.Connection[Any], incidents: Iterable[UUID]
 ) -> dict[UUID, frozenset[UUID]]:
     """Each of ``incidents`` -> its merge group (r3-B), every pointer
     followed."""
-    incidents = list(incidents)
-    parent: dict[UUID, UUID] = {}
-
-    def find(x: UUID) -> UUID:
-        while parent.get(x, x) != x:
-            x = parent[x]
-        return x
-
-    def union(a: UUID, b: UUID) -> None:
-        parent.setdefault(a, a)
-        parent.setdefault(b, b)
-        ra, rb = find(a), find(b)
-        if ra != rb:
-            parent[max(ra, rb, key=str)] = min(ra, rb, key=str)
-
-    for incident in incidents:
-        parent.setdefault(incident, incident)
+    wanted = set(incidents)
+    sets = _Sets()
+    for incident in wanted:
+        sets.find(incident)
     for row in conn.execute(
         "SELECT incident_id, merged_into_incident_id FROM opspilot_incidents "
         "WHERE merged_into_incident_id IS NOT NULL"
     ):
-        union(row["incident_id"], row["merged_into_incident_id"])
-    members: dict[UUID, set[UUID]] = {}
-    for incident in parent:
-        members.setdefault(find(incident), set()).add(incident)
-    wanted = set(incidents)
-    return {
-        incident: frozenset(members[find(incident)])
-        for incident in parent
-        if incident in wanted
-    }
+        sets.union(row["incident_id"], row["merged_into_incident_id"])
+    members = sets.members()
+    return {i: frozenset(members[sets.find(i)]) for i in wanted}
 
 
 def _reasons(
@@ -305,9 +309,7 @@ class _Plan:
     reasons: dict[UUID, list[str]]
 
     def cleanable(self, incident: UUID) -> bool:
-        return all(
-            not self.reasons.get(m, ["NOT_CLOSED"]) for m in self.groups[incident]
-        )
+        return all(not self.reasons[m] for m in self.groups[incident])
 
     def blocked_by(self, incident: UUID) -> list[str]:
         own = self.reasons[incident]
@@ -324,33 +326,20 @@ def _scan(conn: psycopg.Connection[Any], days: int) -> _Plan:
 
 def _units(plan: _Plan, rows: list[_Row]) -> list[tuple[frozenset[UUID], list[_Row]]]:
     """Merge groups joined by the rows that belong to several of them."""
-    parent: dict[UUID, UUID] = {}
-
-    def find(x: UUID) -> UUID:
-        while parent.get(x, x) != x:
-            x = parent[x]
-        return x
-
+    sets = _Sets()
     for row in rows:
-        anchors = [min(plan.groups[i], key=str) for i in row.incidents]
-        for a in anchors:
-            parent.setdefault(a, a)
-        for a in anchors[1:]:
-            ra, rb = find(anchors[0]), find(a)
-            if ra != rb:
-                parent[max(ra, rb, key=str)] = min(ra, rb, key=str)
-    units: dict[UUID, tuple[set[UUID], list[_Row]]] = {}
+        first = row.incidents[0]
+        for i in (*plan.groups[first], *row.incidents[1:]):
+            sets.union(first, i)
+            for m in plan.groups[i]:
+                sets.union(first, m)
+    units: dict[UUID, list[_Row]] = {}
     for row in rows:
-        root = find(min(plan.groups[row.incidents[0]], key=str))
-        incidents, unit_rows = units.setdefault(root, (set(), []))
-        for i in row.incidents:
-            incidents |= plan.groups[i]
-        unit_rows.append(row)
+        units.setdefault(sets.find(row.incidents[0]), []).append(row)
+    members = sets.members()
     return [
-        (frozenset(incidents), unit_rows)
-        for _, (incidents, unit_rows) in sorted(
-            units.items(), key=lambda kv: str(kv[0])
-        )
+        (frozenset(members[root]), unit_rows)
+        for root, unit_rows in sorted(units.items(), key=lambda kv: str(kv[0]))
     ]
 
 
@@ -432,8 +421,16 @@ def run_retention(
             plan = _scan(conn, days)
         ready = [r for r in plan.rows if all(plan.cleanable(i) for i in r.incidents)]
         candidates = len(ready)
+        # r3-D: every incident with a present payload that is kept, and
+        # every member of a kept merge group (the one keeping it included)
         held = sorted(
-            {i for row in plan.rows for i in row.incidents if not plan.cleanable(i)},
+            {
+                m
+                for row in plan.rows
+                for i in row.incidents
+                if not plan.cleanable(i)
+                for m in plan.groups[i]
+            },
             key=str,
         )
         blocked = [
@@ -446,7 +443,26 @@ def run_retention(
             lines.extend(_line("candidate", row) for row in ready)
         else:
             for incidents, rows in _units(plan, ready):
-                outcome = _apply_unit(conn, incidents, rows, days)
+                try:
+                    outcome = _apply_unit(conn, incidents, rows, days)
+                except psycopg.Error as exc:
+                    # the unit rolled back as a whole (a lock not granted, a
+                    # deadlock, a lost connection): one line per incident
+                    for i in sorted(incidents, key=str):
+                        lines.append(
+                            {
+                                "kind": "failed",
+                                "incident_id": str(i),
+                                "table": None,
+                                "object_id": None,
+                                "raw_sha256": None,
+                                "error": _error(exc),
+                            }
+                        )
+                        failed += 1
+                    if conn.broken or conn.closed:
+                        break
+                    continue
                 if outcome is None:
                     blocked.extend(
                         {

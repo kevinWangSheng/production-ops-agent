@@ -386,3 +386,58 @@ def test_one_failing_row_is_recorded_and_other_incidents_still_commit(
     assert _states(h, fine)["opspilot_evidence"] == ["cleaned"]
     assert _states(h, broken)["opspilot_evidence"] == ["present"]
     assert process.returncode == 1
+
+
+# --- independent review of #388 (optional items adopted)
+
+
+def test_a_unit_that_fails_outside_its_rows_is_reported_and_the_next_commits(
+    h, retention
+) -> None:
+    """A lock that cannot be taken fails the whole unit: one ``failed`` line
+    per incident (no table / object), nothing of it written, the other units
+    still commit and the pass still ends with its summary."""
+    from psycopg.conninfo import make_conninfo
+
+    locked, _, _, _ = h.seed()
+    fine, _, _, _ = h.seed()
+    _closed(h, locked)
+    _closed(h, fine)
+    impatient = make_conninfo(retention, options="-c lock_timeout=200")
+    with psycopg.connect(h.dsn) as holder:
+        holder.execute(
+            "SELECT 1 FROM opspilot_incidents WHERE incident_id=%s FOR UPDATE",
+            (locked,),
+        )
+        report = run_retention(impatient, apply=True)
+        holder.rollback()
+    failed = [line for line in _mine(report, locked) if line["kind"] == "failed"]
+    assert len(failed) == 1
+    assert failed[0]["table"] is None and failed[0]["object_id"] is None
+    assert failed[0]["error"].startswith("LockNotAvailable: ")
+    assert _states(h, locked)["opspilot_evidence"] == ["present"]
+    assert _states(h, fine)["opspilot_evidence"] == ["cleaned"]
+    assert report.failed >= 1 and report.lines[-1]["kind"] == "summary"
+    assert report.lines[-1]["failed"] == report.failed
+
+
+def test_every_member_of_a_blocked_group_is_reported_with_its_own_codes(
+    h, retention
+) -> None:
+    """The member that keeps the group is listed even with no present
+    payload of its own."""
+    member, _, _, _ = h.seed()
+    _closed(h, member)
+    run_retention(retention, apply=True)
+    assert "present" not in _states(h, member)["opspilot_evidence"]
+    assert h.control(member, "reopen").status == 200
+    keeper, _, _, _ = h.seed()
+    _closed(h, keeper)
+    with psycopg.connect(h.dsn) as conn:
+        conn.execute(
+            "UPDATE opspilot_incidents SET merged_into_incident_id=%s WHERE incident_id=%s",
+            (keeper, member),
+        )
+    report = run_retention(retention)
+    assert _blocked(report, member) == ["NOT_CLOSED"]
+    assert _blocked(report, keeper) == ["MERGE_GROUP_BLOCKED"]

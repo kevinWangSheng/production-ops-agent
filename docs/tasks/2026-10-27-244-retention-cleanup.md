@@ -52,7 +52,7 @@
 - 库函数（测试接缝）：`opspilot.retention.run_retention(dsn: str, *, days: int = 30, apply: bool = False, after_scan: Callable[[], None] | None = None) -> RetentionReport`。`after_scan` 在扫描出候选之后、对任何事故加锁之前调用一次（竞态测试用）。`days < 30` 抛 `ValueError("RETENTION_DAYS_INVALID")`。
 - `RetentionReport`：`lines: tuple[dict, ...]`（即下面的 JSON 行）、`failed: int`。
 - 输出：stdout 每行一个 JSON 对象，三种：
-  - `{"kind": "blocked", "incident_id": str, "blocked_by": [str, ...]}`：仍有 `present` 载荷但不可清理的事故（含 r3-B 同组）。`blocked_by` 取值：`NOT_CLOSED`、`CLOSED_AT_MISSING`、`WITHIN_RETENTION`、`ACTIVE_RUN`、`ACTIVE_OBSERVATION`、`POSTMORTEM_GENERATION_PENDING`、`DRAFT_UNDER_REVIEW`、`ACTIVE_KNOWLEDGE`、`MERGE_GROUP_BLOCKED`、`CHANGED_AFTER_SCAN`（锁后复查不再满足）。
+  - `{"kind": "blocked", "incident_id": str, "blocked_by": [str, ...]}`：仍有 `present` 载荷的事故，及被阻挡合并组的全部成员（各列自己的原因；本身无阻挡的成员为 `MERGE_GROUP_BLOCKED`）。`blocked_by` 取值：`NOT_CLOSED`、`CLOSED_AT_MISSING`、`WITHIN_RETENTION`、`ACTIVE_RUN`、`ACTIVE_OBSERVATION`、`POSTMORTEM_GENERATION_PENDING`、`DRAFT_UNDER_REVIEW`、`ACTIVE_KNOWLEDGE`、`MERGE_GROUP_BLOCKED`、`CHANGED_AFTER_SCAN`（锁后复查不再满足）。
   - `{"kind": "candidate" | "cleaned" | "failed", "incident_id": str, "table": <五个表名之一>, "object_id": str, "raw_sha256": str | null, "error"?: str}`。`object_id`：evidence 为 `evidence_id`；读数 `"<sample_id>:<signal_name>"`；发布查询 `"<sample_id>:<query_key>"`；发布对比 `"<comparison_id>:<query_key>"`；告警投递 `str(delivery_id)`。dry-run 只出 `candidate`；`--apply` 出 `cleaned` / `failed`。
   - 最后一行 `{"kind": "summary", "apply": bool, "days": int, "candidates": int, "cleaned": int, "failed": int, "blocked": int}`。
 - 退出码：0 无失败；1 有 `failed` 行；2 配置错误。
@@ -86,6 +86,11 @@
 - PR-3 机器人对 00853272 新提 1 条（采纳）：对比查询行属于本对比的绑定校验提到 cleaned 分支之前；`_impl` 测试先红后绿，发布重放相关 332 条通过。
 - PR-3 机器人对 0fa60d24 新提 1 条（lead 采纳并修）：恢复读数 API 对已清理读数的畸形保留哈希返回 `hashes_verified: false`，与证据 API 和重放一致；absent 读数不变。`_impl` 测试先红后绿，Web/证据相关 392 条通过。
 - PR-2 实现（`opspilot/retention.py`，`make retention` / `make retention-apply`）可逆决定：「复盘生成待定」= 生成尝试 `running`、生成租约未过期或退回后待重新生成（`pending_regeneration_version` 非空）；「活跃 Run」= `close` 会取消的 5 个状态；「活跃观察」= 会话 `authorized`；事务单元为合并组，并与跨组归属行（发布关联 `incident_id` + `related_incident_id`）所涉的组合并；多事故归属行的输出 `incident_id` 取归属中 id 最小者；锁后复查失败时对该单元涉及的事故各出一行 `CHANGED_AFTER_SCAN`。`RETENTION_GRANTS` 未改。
+- PR-2 独立审查（Claude Fable 5.1，Codex 容量满）0 阻塞，2 可选采纳：① 单元级错误（加锁/复查的锁超时、死锁、断连）回滚该单元，每个事故一行 `failed`（`table`/`object_id`/`raw_sha256` 为 null，`error` 同规则），继续下一单元；连接已断则停止但仍输出 summary。② 被阻挡合并组的全部成员都输出 `blocked`（r3-D 措辞已改）。`_impl` 测试先红后绿。
+- PR-2 lead 裁决（不改代码）：「复盘生成待定」保持窄定义（running 尝试、未过期租约、待重新生成），生成只读 view 与元数据、不读 raw（`jobs.py:567-571`），清理不影响之后的生成；F13「未终态」即非终态尝试。
+- PR-2 lead 裁决：`GenerationStore.claim` 不锁事故行，可能落在复查与提交之间；同理无害（生成不读 raw）。
+- PR-2 lead 裁决：发布观察会话不计入 `ACTIVE_OBSERVATION`；产品中不可达（关联需要 ending，已结束的发布会话不会再变）。
+- PR-2 小清理：合并组与事务单元共用一个 union-find（`_Sets`），去掉 `reasons.get(m, ["NOT_CLOSED"])` 的死哨兵。
 
 ## 下一步与交接
 
