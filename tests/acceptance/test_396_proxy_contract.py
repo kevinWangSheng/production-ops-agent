@@ -180,7 +180,7 @@ def test_f7_probe_has_holmes_rows_and_preserves_other_account_expectations(
         and row["path"] not in {"/api/v1/query", "/api/v1/query_range"}
     ]
     assert other_path_rows
-    assert all(row["status"] in {403, 413} for row in other_path_rows)
+    assert all(400 <= row["status"] < 500 and row["matches"] for row in other_path_rows)
 
     for role in ("investigator", "observer", "lab"):
         for path in ("/api/v1/query", "/api/v1/query_range"):
