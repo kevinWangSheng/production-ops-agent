@@ -223,8 +223,9 @@ class _Sets:
 def _merge_groups(
     conn: psycopg.Connection[Any], incidents: Iterable[UUID]
 ) -> dict[UUID, frozenset[UUID]]:
-    """Each of ``incidents`` -> its merge group (r3-B), every pointer
-    followed."""
+    """Each of ``incidents`` and every member of their merge groups (r3-B,
+    every pointer followed) -> its group; members that own no present row
+    are keys too, so a group is never looked up through a missing key."""
     wanted = set(incidents)
     sets = _Sets()
     for incident in wanted:
@@ -235,7 +236,11 @@ def _merge_groups(
     ):
         sets.union(row["incident_id"], row["merged_into_incident_id"])
     members = sets.members()
-    return {i: frozenset(members[sets.find(i)]) for i in wanted}
+    return {
+        m: frozenset(members[root])
+        for root in {sets.find(i) for i in wanted}
+        for m in members[root]
+    }
 
 
 def _reasons(

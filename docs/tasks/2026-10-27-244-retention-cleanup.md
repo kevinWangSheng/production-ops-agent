@@ -91,6 +91,7 @@
 - PR-2 lead 裁决：`GenerationStore.claim` 不锁事故行，可能落在复查与提交之间；同理无害（生成不读 raw）。
 - PR-2 lead 裁决：发布观察会话不计入 `ACTIVE_OBSERVATION`；产品中不可达（关联需要 ending，已结束的发布会话不会再变）。
 - PR-2 小清理：合并组与事务单元共用一个 union-find（`_Sets`），去掉 `reasons.get(m, ["NOT_CLOSED"])` 的死哨兵。
+- PR-2 机器人 P2（b20805f2，采纳）：合并组中已无 present 行的成员不在组映射里，apply 建单元时 `KeyError`（部分清理后重试即可触发）；`_merge_groups` 改为给组内全部成员建键。`_impl` 测试先红后绿。
 
 ## 下一步与交接
 

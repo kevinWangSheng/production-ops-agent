@@ -441,3 +441,35 @@ def test_every_member_of_a_blocked_group_is_reported_with_its_own_codes(
     report = run_retention(retention)
     assert _blocked(report, member) == ["NOT_CLOSED"]
     assert _blocked(report, keeper) == ["MERGE_GROUP_BLOCKED"]
+
+
+def test_a_group_member_with_nothing_left_does_not_stop_the_pass(h, retention) -> None:
+    """Bot #388: a retry after a partial cleanup -- one member already fully
+    cleaned, the other still holding present rows -- cleans the rest."""
+    done, _, _, _ = h.seed()
+    left, _, _, _ = h.seed()
+    _closed(h, done)
+    _closed(h, left)
+    with psycopg.connect(h.dsn) as conn:
+        conn.execute(
+            "UPDATE opspilot_incidents SET merged_into_incident_id=%s WHERE incident_id=%s",
+            (left, done),
+        )
+    with login(h.dsn, RETENTION_ROLE) as only, psycopg.connect(only) as conn:
+        conn.execute(
+            "UPDATE opspilot_evidence SET raw=NULL,payload_state='cleaned' "
+            "WHERE evidence_id=%s",
+            (f"ev-{done}",),
+        )
+    assert "present" not in sum(_states(h, done).values(), [])
+    report = run_retention(retention, apply=True)
+    assert report.lines[-1]["kind"] == "summary" and report.failed == 0
+    assert _states(h, left)["opspilot_evidence"] == ["cleaned"]
+    process = subprocess.run(
+        [sys.executable, "-m", "opspilot.retention", "--apply"],
+        capture_output=True,
+        text=True,
+        env={**os.environ, "OPSPILOT_RETENTION_DSN": retention},
+        timeout=120,
+    )
+    assert process.returncode == 0, process.stderr
