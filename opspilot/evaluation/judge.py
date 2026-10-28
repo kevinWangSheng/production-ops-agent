@@ -1105,6 +1105,11 @@ def judge_once(
         code = _observation_code(exc)
         if isinstance(exc, StreamTruncated):
             transport_error = "StreamTruncated"  # The main p7 disconnect mode.
+        elif code == "JUDGE_TRANSPORT_ERROR":
+            # A transport that wraps its failure: name the underlying class.
+            cause = exc.__cause__ or exc.__context__ or exc
+            if is_identifier(name := type(cause).__name__):
+                transport_error = name
         if code.endswith("OVERSIZE"):
             status = "oversize"
         elif code in (

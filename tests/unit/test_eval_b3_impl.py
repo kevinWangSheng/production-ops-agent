@@ -2510,6 +2510,29 @@ def test_transport_error_records_the_exception_class_name_only():
     assert ok.transport_error is None
 
 
+@pytest.mark.parametrize("link", ["__cause__", "__context__"])
+def test_wrapped_transport_error_records_the_underlying_class_name(link):
+    class ReadError(Exception):
+        pass
+
+    error = JudgeError("JUDGE_TRANSPORT_ERROR")
+    setattr(error, link, ReadError(SECRET))
+    request, diagnoses, verdict = make_input()
+    observation, transport = invoke(request, diagnoses, verdict, response=error)
+    assert observation.error_code == "JUDGE_TRANSPORT_ERROR"
+    assert observation.transport_error == "ReadError"
+    assert len(transport.calls) == 2
+    assert SECRET not in repr(observation)
+
+
+def test_bare_transport_judge_error_records_its_own_class_name():
+    request, diagnoses, verdict = make_input()
+    observation, _ = invoke(
+        request, diagnoses, verdict, response=JudgeError("JUDGE_TRANSPORT_ERROR")
+    )
+    assert observation.transport_error == "JudgeError"
+
+
 def test_key_diagnosis_matches_by_location_not_quote():
     from opspilot.evaluation.calibration_flow import _missing_diagnosis
 
