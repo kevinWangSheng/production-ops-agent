@@ -1573,6 +1573,7 @@ def test_formal_validation_exposure_allows_other_workspace_tuning_debug(harness)
     assert after.startswith(registry)
     (row,) = [json.loads(line) for line in after[len(registry) :].splitlines()]
     assert row["kind"] == "debug" and row["workspace"] == h.workspace
+    assert row["tuning"] is True
     assert set(row["debug_families"]) == validation_families
 
 
@@ -1723,6 +1724,7 @@ def test_debug_registers_first_and_allows_repeated_families(harness):
         "at",
     } <= row.keys()
     assert row["kind"] == "debug"
+    assert row.get("tuning") is not True
     assert row["session"] == session
     assert row["workspace"] == h.workspace
     assert set(row["debug_families"]) == families
@@ -1737,6 +1739,7 @@ def test_debug_registers_first_and_allows_repeated_families(harness):
     added = [json.loads(line) for line in second[len(first) :].splitlines()]
     assert len(added) == 1
     assert added[0]["kind"] == "debug"
+    assert added[0].get("tuning") is not True
     assert added[0]["session"] == "canary-debug-repeat"
     assert added[0]["workspace"] == h.workspace
     assert set(added[0]["debug_families"]) == families

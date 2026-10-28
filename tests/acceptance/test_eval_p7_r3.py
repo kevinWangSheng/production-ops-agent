@@ -334,8 +334,48 @@ def test_d19_prompt_states_the_causal_rules_of_the_final_labels():
     # Locating statements are causal (contract examples, quoted in English).
     for phrase in ("failing dependency is", "confined to", "dominated by"):
         assert phrase in lower, phrase
-    # Inferred statements with a method caveat are not causal.
-    assert "infer" in lower and "method" in lower
+    # Inferred statements with a method caveat are not causal.  Locate the
+    # category bodies instead of accepting those concepts anywhere in the
+    # prompt, so a factual/causal rule cannot smuggle the item back in.
+    categories = list(
+        re.finditer(
+            r"\b(?P<kind>(?:not|non)[-\s](?:factual\s+)?causal|"
+            r"(?:factual\s+)?causal)"
+            r"(?:\s+(?:assertions?|statements?|diagnoses?))?\s*[:\-]",
+            lower,
+        )
+    )
+    assert categories
+
+    def method_qualified_inference(clause):
+        return (
+            re.search(r"\binfer\w*\b", clause)
+            and re.search(r"\bmethod\w*\b", clause)
+            and re.search(
+                r"\b(?:caveat\w*|qualif\w*|limit\w*|condition\w*|"
+                r"disclaim\w*)\b",
+                clause,
+            )
+        )
+
+    bodies = []
+    for index, category in enumerate(categories):
+        end = categories[index + 1].start() if index + 1 < len(categories) else len(lower)
+        bodies.append((category.group("kind"), lower[category.end() : end]))
+    not_causal = [body for kind, body in bodies if kind.startswith(("not", "non"))]
+    factual_causal = [body for kind, body in bodies if not kind.startswith(("not", "non"))]
+    assert not_causal
+    assert any(
+        method_qualified_inference(clause)
+        for body in not_causal
+        for clause in re.split(r"[.;!?]|\n+", body)
+    )
+    assert factual_causal
+    assert not any(
+        method_qualified_inference(clause)
+        for body in factual_causal
+        for clause in re.split(r"[.;!?]|\n+", body)
+    )
     # Propagation records the origin service and operation.
     assert "propagat" in lower and "origin" in lower
     # Rejected / ruled-out hypotheses and off-incident "so" clauses are not.
@@ -501,6 +541,7 @@ def test_d21_formal_exposed_validation_items_are_tuning_items_never_validation(
     assert after.startswith(registry)
     (row,) = [json.loads(line) for line in after[len(registry) :].splitlines()]
     assert row["kind"] == "debug"
+    assert row["tuning"] is True
     assert validation_families <= set(row["debug_families"])
     # The exposure registry still keeps them out of any later formal run.
     h.costs("canary-formal-2")
