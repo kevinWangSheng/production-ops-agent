@@ -143,7 +143,7 @@ def test_f7_probe_has_holmes_rows_and_preserves_other_account_expectations(
         if row["method"] == "POST"
         and row["path"] in {"/api/v1/query", "/api/v1/query_range"}
         and row.get("body") is not None
-        and len(str(row["body"]).encode()) <= 64 * 1024
+        and len(probe_module.form_body(row["path"], row["body"])) <= 64 * 1024
     ]
     assert {row["path"] for row in form_holmes_rows} >= {
         "/api/v1/query",
