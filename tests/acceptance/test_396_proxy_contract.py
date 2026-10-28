@@ -43,6 +43,10 @@ def test_holmes_is_a_proxy_account_without_changing_existing_accounts() -> None:
     assert {"investigator", "observer", "lab"}.issubset(
         set(lab.PROMETHEUS_ACCOUNTS)
     )
+    assert lab.ROLE_ENV_VARS["holmes"] == (
+        "OPSPILOT_HOLMES_PROMETHEUS_USERNAME",
+        "OPSPILOT_HOLMES_PROMETHEUS_PASSWORD",
+    )
 
     config = lab.proxy_nginx_config(_accounts(lab))
     # The existing read-only gate remains the default for every account.
@@ -52,6 +56,7 @@ def test_holmes_is_a_proxy_account_without_changing_existing_accounts() -> None:
     assert "client_max_body_size 64k;" in config
     assert "proxy_pass_request_body on;" in config
     assert "proxy_pass_request_body off;" in config
+    assert "application/x-www-form-urlencoded" in config
 
     _block(config, "location = /api/v1/query")
     _block(config, "location = /api/v1/query_range")
@@ -86,7 +91,12 @@ def test_f7_probe_has_holmes_rows_and_preserves_other_account_expectations(
         return 200, {}
 
     def fake_request(
-        base_url: str, method: str, path: str, auth: str | None
+        base_url: str,
+        method: str,
+        path: str,
+        auth: str | None,
+        *args: Any,
+        **kwargs: Any,
     ) -> tuple[int, bytes]:
         role = str(auth).removeprefix("auth-")
         clean_path = path.split("?", 1)[0]
@@ -143,4 +153,13 @@ def test_f7_probe_has_holmes_rows_and_preserves_other_account_expectations(
             ]
             assert matching, (role, path)
             assert all(row["status"] == 403 and row["matches"] for row in matching)
+
+    form_rows = [
+        row
+        for row in rows
+        if row["method"] == "POST"
+        and row["path"] in {"/api/v1/query", "/api/v1/query_range"}
+    ]
+    assert form_rows
+    assert all("body" in row and row["body"] for row in form_rows)
 

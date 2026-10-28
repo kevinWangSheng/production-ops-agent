@@ -90,15 +90,19 @@ def test_project_outcome_projects_terminal_run_and_counts_successful_queries() -
     module = _holmes_module()
     outcome = module.project.project_outcome(
         {
-            "status": "completed",
-            "report": "observed payment failure",
+            "result": "observed payment failure",
             "tool_calls": ["prometheus.query", "http.jaeger"],
-            "model_calls": [{"status": "ok"}],
+            "num_llm_calls": 3,
+            "exit_code": 0,
         },
         [
-            'user=holmes method=POST path=/api/v1/query status=200',
-            'user=holmes method=POST path=/api/v1/query_range status=204',
-            'user=holmes method=POST path=/api/v1/query status=500',
+            "2026-10-28T10:00:00Z holmes POST /api/v1/query?query=up 200 128 64 0.012",
+            "2026-10-28T10:00:01Z holmes POST "
+            "/api/v1/query_range?query=up 204 128 64 0.013",
+            "2026-10-28T10:00:02Z holmes GET /api/v1/query?query=up 200 64 32 0.004",
+            "2026-10-28T10:00:03Z holmes POST /api/v1/query 500 128 64 0.014",
+            "2026-10-28T10:00:04Z observer GET /api/v1/query 200 64 32 0.004",
+            "2026-10-28T10:00:05Z holmes POST /api/v1/rules 200 64 32 0.004",
         ],
     )
     assert set(outcome) == {
@@ -111,10 +115,81 @@ def test_project_outcome_projects_terminal_run_and_counts_successful_queries() -
     }
     assert outcome["final_state"] == "completed"
     assert outcome["report_available"] is True
-    assert outcome["proxied_queries_ok"] == 2
-    assert outcome["model_calls_ok"] is True
+    assert isinstance(outcome["report_available"], bool)
+    assert isinstance(outcome["tool_calls"], int)
+    assert outcome["tool_calls"] == 2
+    assert outcome["proxied_queries_ok"] == 3
+    assert isinstance(outcome["proxied_queries_ok"], int)
+    assert outcome["model_calls_ok"] == 3
+    assert isinstance(outcome["model_calls_ok"], int)
     assert outcome["handoff_reasons"] == []
-    assert outcome["tool_calls"]
+
+
+@pytest.mark.parametrize(
+    ("holmes_output", "expected_state"),
+    [
+        (
+            {"result": "", "tool_calls": [], "exit_code": 1, "error": "crashed"},
+            "failed",
+        ),
+        ({"tool_calls": [], "num_llm_calls": 1}, "failed"),
+        (
+            {
+                "result": "partial report",
+                "tool_calls": ["prometheus.query"],
+                "num_llm_calls": 2,
+                "timed_out": True,
+            },
+            "budget_exhausted",
+        ),
+        (
+            {
+                "result": "partial report",
+                "tool_calls": ["prometheus.query"],
+                "num_llm_calls": 2,
+                "error": "exceeded max_steps during run",
+            },
+            "budget_exhausted",
+        ),
+        (
+            {
+                "result": "run exceeded max_steps",
+                "tool_calls": [],
+                "num_llm_calls": 2,
+            },
+            "budget_exhausted",
+        ),
+    ],
+)
+def test_project_outcome_maps_failed_and_budget_exhausted_runs(
+    holmes_output: dict[str, Any], expected_state: str
+) -> None:
+    module = _holmes_module()
+    outcome = module.project.project_outcome(
+        holmes_output,
+        [
+            "2026-10-28T10:00:00Z holmes POST /api/v1/query 200 128 64 0.012",
+        ],
+    )
+    assert outcome["final_state"] == expected_state
+    assert outcome["final_state"] in {"completed", "failed", "budget_exhausted"}
+    assert set(outcome) == {
+        "final_state",
+        "report_available",
+        "tool_calls",
+        "proxied_queries_ok",
+        "model_calls_ok",
+        "handoff_reasons",
+    }
+    assert outcome["tool_calls"] == len(holmes_output.get("tool_calls", []))
+    assert outcome["proxied_queries_ok"] == 1
+    assert outcome["model_calls_ok"] == holmes_output.get("num_llm_calls", 0)
+    assert isinstance(outcome["tool_calls"], int)
+    assert isinstance(outcome["proxied_queries_ok"], int)
+    assert isinstance(outcome["model_calls_ok"], int)
+    assert outcome["report_available"] is bool(holmes_output.get("result"))
+    assert isinstance(outcome["report_available"], bool)
+    assert outcome["handoff_reasons"] == []
 
 
 def test_f14_remains_unpassed_until_the_whole_feature_is_complete() -> None:
