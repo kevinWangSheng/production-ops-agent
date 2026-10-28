@@ -95,8 +95,8 @@ def test_f7_probe_has_holmes_rows_and_preserves_other_account_expectations(
         method: str,
         path: str,
         auth: str | None,
-        *args: Any,
-        **kwargs: Any,
+        *,
+        body: str | None = None,
     ) -> tuple[int, bytes]:
         role = str(auth).removeprefix("auth-")
         clean_path = path.split("?", 1)[0]
@@ -107,11 +107,13 @@ def test_f7_probe_has_holmes_rows_and_preserves_other_account_expectations(
             or clean_path != clean_path.lower()
         ):
             return 400, b""
-        if method == "POST" and clean_path in {
-            "/api/v1/query",
-            "/api/v1/query_range",
-        }:
-            return (200 if role == "holmes" else 403), b""
+        if method == "POST":
+            if role == "holmes" and body is not None:
+                if len(body.encode()) > 64 * 1024:
+                    return 413, b""
+                if clean_path in {"/api/v1/query", "/api/v1/query_range"}:
+                    return 200, b""
+            return 403, b""
         if method in {"GET", "HEAD"} and (
             clean_path in {
                 "/api/v1/query",
@@ -134,13 +136,59 @@ def test_f7_probe_has_holmes_rows_and_preserves_other_account_expectations(
     report = probe_module.probe(base_url="http://probe.invalid", directory=Path("."))
 
     rows = report["requests"]
-    holmes_posts = {
-        row["path"]: row
+    holmes_rows = [
+        row
         for row in rows
-        if row["account"] == "holmes" and row["method"] == "POST"
+        if row["account"] == "holmes"
+    ]
+    assert holmes_rows
+    assert all(row["matches"] is True for row in holmes_rows)
+
+    form_holmes_rows = [
+        row
+        for row in holmes_rows
+        if row["method"] == "POST"
+        and row["path"] in {"/api/v1/query", "/api/v1/query_range"}
+        and row.get("body") is not None
+        and len(str(row["body"]).encode()) <= 64 * 1024
+    ]
+    assert {row["path"] for row in form_holmes_rows} >= {
+        "/api/v1/query",
+        "/api/v1/query_range",
     }
-    assert set(holmes_posts) >= {"/api/v1/query", "/api/v1/query_range"}
-    assert all(row["status"] == 200 and row["matches"] for row in holmes_posts.values())
+    assert all(
+        row["status"] == 200 and row["matches"] is True
+        for row in form_holmes_rows
+    )
+
+    non_form_rows = [
+        row
+        for row in holmes_rows
+        if row["method"] == "POST"
+        and row["path"] in {"/api/v1/query", "/api/v1/query_range"}
+        and row.get("body") is None
+    ]
+    assert non_form_rows
+    assert all(row["status"] == 403 for row in non_form_rows)
+
+    oversized_rows = [
+        row
+        for row in holmes_rows
+        if row["method"] == "POST"
+        and row.get("body") is not None
+        and len(str(row["body"]).encode()) > 64 * 1024
+    ]
+    assert oversized_rows
+    assert all(row["status"] == 413 for row in oversized_rows)
+
+    other_path_rows = [
+        row
+        for row in holmes_rows
+        if row["method"] == "POST"
+        and row["path"] not in {"/api/v1/query", "/api/v1/query_range"}
+    ]
+    assert other_path_rows
+    assert all(row["status"] in {403, 413} for row in other_path_rows)
 
     for role in ("investigator", "observer", "lab"):
         for path in ("/api/v1/query", "/api/v1/query_range"):
@@ -153,13 +201,3 @@ def test_f7_probe_has_holmes_rows_and_preserves_other_account_expectations(
             ]
             assert matching, (role, path)
             assert all(row["status"] == 403 and row["matches"] for row in matching)
-
-    form_rows = [
-        row
-        for row in rows
-        if row["method"] == "POST"
-        and row["path"] in {"/api/v1/query", "/api/v1/query_range"}
-    ]
-    assert form_rows
-    assert all("body" in row and row["body"] for row in form_rows)
-
