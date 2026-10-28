@@ -99,6 +99,9 @@ def test_fresh_install_migrates_before_the_workbench_starts(stack):
             r"\[opspilot-install (\S+)\] (migrate: done|init-roles: done)", log
         )
     }
+    for one_shot in ("migrate", "init-roles"):
+        state = _inspect(_container(one_shot))["State"]
+        assert (state["Status"], state["ExitCode"]) == ("exited", 0), one_shot
     started = _inspect(_container("web"))["State"]["StartedAt"]
     assert stamps["migrate: done"] <= stamps["init-roles: done"] <= started[:19] + "Z"
 

@@ -17,7 +17,8 @@
 # and reused by later runs unless given again):
 #   OPSPILOT_SECRETS_DIR      secrets and settings, outside the repository
 #                             (default ${XDG_CONFIG_HOME:-~/.config}/opspilot)
-#   OPSPILOT_PROJECT          Compose project name (default opspilot)
+#   OPSPILOT_PROJECT          Compose project name (default $COMPOSE_PROJECT_NAME,
+#                             else opspilot)
 #   OPSPILOT_WEB_HOST_PORT    workbench port on 127.0.0.1 (default 18080)
 #   OPSPILOT_ALLOWED_ORIGINS  default http://127.0.0.1:<port>,http://localhost:<port>
 #   OPSPILOT_IMAGE            product image; opspilot:local (default) is built
@@ -76,7 +77,7 @@ resolve_settings() {
         done < "$SECRETS_DIR/install.env"
     fi
     export OPSPILOT_SECRETS_DIR="$SECRETS_DIR"
-    export OPSPILOT_PROJECT="${OPSPILOT_PROJECT:-opspilot}"
+    export OPSPILOT_PROJECT="${OPSPILOT_PROJECT:-${COMPOSE_PROJECT_NAME:-opspilot}}"
     export OPSPILOT_WEB_HOST_PORT="${OPSPILOT_WEB_HOST_PORT:-18080}"
     case "$OPSPILOT_WEB_HOST_PORT" in
         '' | *[!0-9]*) die "OPSPILOT_WEB_HOST_PORT must be a port number" ;;
@@ -123,9 +124,10 @@ write_once() {
 pgpass_line() { printf '*:*:*:%s:%s\n' "$1" "$2"; }
 owner_pgpass() { pgpass_line opspilot_owner "$(cat "$SECRETS_DIR/postgres_password")"; }
 login_pgpass() { pgpass_line "$1" "$(random_hex)"; }
+# Hashes on the host (standard-library script), so no image is needed yet.
 credential_entry() {
-    docker run --rm -i --network none --entrypoint python "$OPSPILOT_IMAGE" \
-        -m opspilot.deploy.credentials "$1" "$2" < "$SECRETS_DIR/$3"
+    command -v python3 > /dev/null || die "python3 is required to hash the generated credentials"
+    python3 -I "$REPO_ROOT/opspilot/deploy/credentials.py" "$1" "$2" < "$SECRETS_DIR/$3"
 }
 placeholder_env() {
     printf '# %s: KEY=value lines read by the %s (see deploy/compose/compose.yaml)\n' "$1" "$2"
@@ -179,10 +181,10 @@ deploy() {
     log "starting postgres"
     compose up --detach --wait postgres
     log "migrate: start"
-    compose run --rm --no-deps -T migrate
+    compose up --no-deps --exit-code-from migrate migrate
     log "migrate: done"
     log "init-roles: start"
-    compose run --rm --no-deps -T init-roles
+    compose up --no-deps --exit-code-from init-roles init-roles
     log "init-roles: done"
     # shellcheck disable=SC2046
     set -- $(runtimes_to_start)

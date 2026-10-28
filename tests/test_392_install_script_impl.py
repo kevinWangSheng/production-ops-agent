@@ -1,5 +1,5 @@
 """#392 install.sh without Docker: a stand-in ``docker`` on PATH records each
-call (and computes the credential entries with this checkout's code), so the
+call, so the
 secret files, their idempotence and the order of the install steps are
 observable in PR CI. The real stack runs in the opt-in end-to-end test."""
 
@@ -26,10 +26,6 @@ with open(os.environ["FAKE_DOCKER_LOG"], "a") as log:
     log.write(json.dumps({{"args": args, "env": {{k: os.environ.get(k) for k in (
         "OPSPILOT_ALLOWED_ORIGINS", "OPSPILOT_WEB_HOST_PORT", "OPSPILOT_SECRETS_DIR",
         "OPSPILOT_RUNTIME_UID", "OPSPILOT_AUTH_REVISION", "COMPOSE_PROFILES")}}}}) + "\\n")
-if "opspilot.deploy.credentials" in args:
-    tail = args[args.index("opspilot.deploy.credentials") + 1:]
-    sys.exit(subprocess.call([sys.executable, "-m", "opspilot.deploy.credentials", *tail],
-                             cwd={str(ROOT)!r}))
 """
 
 SECRET_FILES = (
@@ -146,15 +142,15 @@ def test_install_migrates_and_creates_roles_before_any_runtime_starts(host):
     lines = _compose(host.calls())
     stop = _index(lines, lambda line: line[0] == "stop")
     postgres = _index(lines, lambda line: line[0] == "up" and line[-1] == "postgres")
-    migrate = _index(lines, lambda line: line[0] == "run" and line[-1] == "migrate")
-    roles = _index(lines, lambda line: line[0] == "run" and line[-1] == "init-roles")
+    migrate = _index(lines, lambda line: line[0] == "up" and line[-1] == "migrate")
+    roles = _index(lines, lambda line: line[0] == "up" and line[-1] == "init-roles")
     runtimes = _index(lines, lambda line: line[0] == "up" and "web" in line)
     assert {"web", "worker", "observer"} <= set(lines[stop])
     assert stop < postgres < migrate < roles < runtimes
     assert "--no-deps" in lines[runtimes] and "--wait" in lines[runtimes]
 
 
-def test_the_build_happens_before_the_credential_entries_and_compose(host):
+def test_the_image_is_built_before_any_compose_step(host):
     assert host().returncode == 0
     calls = [c["args"] for c in host.calls()]
     assert calls[0][:1] == ["build"]
@@ -182,7 +178,7 @@ def test_upgrade_stops_runtimes_then_migrates_then_starts(host):
     assert result.returncode == 0, result.stderr
     lines = _compose(host.calls())
     stop = _index(lines, lambda line: line[0] == "stop")
-    migrate = _index(lines, lambda line: line[0] == "run" and line[-1] == "migrate")
+    migrate = _index(lines, lambda line: line[0] == "up" and line[-1] == "migrate")
     start = _index(lines, lambda line: line[0] == "up" and "web" in line)
     assert stop < migrate < start
 
@@ -190,7 +186,7 @@ def test_upgrade_stops_runtimes_then_migrates_then_starts(host):
 def test_upgrade_without_an_install_is_refused(host):
     result = host("upgrade")
     assert result.returncode != 0
-    assert not any(c["args"][5:6] == ["run"] for c in host.calls())
+    assert not any(c["args"][-1:] == ["migrate"] for c in host.calls())
 
 
 def test_uninstall_keeps_volumes_and_secrets(host):
@@ -262,3 +258,12 @@ def test_compose_passthrough_runs_with_the_installed_settings(host):
     assert call["args"][5:] == ["logs", "web"]
     assert call["env"]["OPSPILOT_SECRETS_DIR"] == str(host.secrets.resolve())
     assert call["env"]["OPSPILOT_WEB_HOST_PORT"] == "18180"
+
+
+def test_the_compose_project_name_is_honoured_when_no_project_is_given(host):
+    assert host(COMPOSE_PROJECT_NAME="from-compose-env").returncode == 0
+    assert all(
+        c["args"][:3] == ["compose", "-p", "from-compose-env"]
+        for c in host.calls()
+        if c["args"][:1] == ["compose"]
+    )

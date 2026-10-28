@@ -28,11 +28,19 @@ def test_postgres_is_pinned_by_digest_and_publishes_no_port():
 
 def test_the_workbench_is_published_on_host_loopback_only():
     assert SERVICES["web"]["ports"] == [
-        "127.0.0.1:${OPSPILOT_WEB_HOST_PORT:-18080}:8080"
+        {
+            "target": 8080,
+            "host_ip": "127.0.0.1",
+            "published": "${OPSPILOT_WEB_HOST_PORT:-18080}",
+            "protocol": "tcp",
+        }
     ]
     env = SERVICES["web"]["environment"]
     assert env["OPSPILOT_BIND"] == "0.0.0.0:8080"
-    assert env["OPSPILOT_ALLOWED_ORIGINS"].startswith("${OPSPILOT_ALLOWED_ORIGINS:?")
+    assert env["OPSPILOT_ALLOWED_ORIGINS"] == (
+        "${OPSPILOT_ALLOWED_ORIGINS:-http://127.0.0.1:${OPSPILOT_WEB_HOST_PORT:-18080},"
+        "http://localhost:${OPSPILOT_WEB_HOST_PORT:-18080}}"
+    )
 
 
 def test_runtimes_start_only_after_migrate_and_init_roles_completed():
@@ -96,7 +104,10 @@ def test_the_image_is_built_from_pinned_bases_and_runs_non_root():
     assert froms and all(re.search(r"@sha256:[0-9a-f]{64}$", ref) for ref in froms)
     users = re.findall(r"^USER (\S+)", DOCKERFILE, re.MULTILINE)
     assert users and users[-1].split(":")[0] not in ("0", "root")
-    assert "uv sync --locked --no-dev" in DOCKERFILE
+    assert (
+        "uv sync --locked --no-dev --no-default-groups --group m0 --group web"
+        in DOCKERFILE
+    )
 
 
 def test_the_build_context_excludes_env_files_tmp_evidence_and_vcs():
