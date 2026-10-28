@@ -90,7 +90,9 @@ def test_fresh_install_reaches_a_migrated_loopback_workbench(tmp_path: Path) -> 
         by_service = {str(record.get("Service")): record for record in records}
         for service in ("migrate", "init-roles"):
             assert service in by_service, by_service
-            assert "exited (0)" in str(by_service[service].get("State", "")).lower()
+            # `docker compose ps --format json`: State is "exited"; the code is ExitCode.
+            assert str(by_service[service].get("State", "")).lower() == "exited"
+            assert by_service[service].get("ExitCode") == 0, by_service[service]
         assert "web" in by_service, by_service
         assert str(by_service["web"].get("State", "")).lower() in {"running", "healthy"}
 
