@@ -1,0 +1,394 @@
+{
+  "assertions": [
+    {
+      "actual": {
+        "http_body": {
+          "action": "pause",
+          "generation": 1,
+          "incident_id": "d32dfce1-dc09-5e2e-a308-4003e66798b9",
+          "replayed": false,
+          "sequence": 3
+        },
+        "located": {
+          "held_seconds": 1.061,
+          "reservation_id": "8dd38d98-c42b-510c-bfdd-98c121f37141"
+        },
+        "posted_at": "2026-10-24T14:59:40.802479+00:00"
+      },
+      "assertion": "model request in flight (one unsettled reservation >= 1 s) when pause was posted",
+      "pass": true
+    },
+    {
+      "actual": {
+        "after_control": {
+          "concluded": false,
+          "control_generation": 1,
+          "current_run_id": "d55f42e7-d79e-5194-ac3f-a09aecb46b64",
+          "lifecycle": "open",
+          "mode": "automatic",
+          "priority": 2,
+          "state": "paused"
+        },
+        "first_step": {
+          "control_generation": 0,
+          "logical_key": "late_result:step:ctx0:round-1:e1",
+          "observed_at": "2026-10-24T14:59:41.512031+00:00",
+          "sequence": 0,
+          "status": "late_result",
+          "step_id": "70096395-e909-47f0-9013-8192e709acb9",
+          "tool_results": 0
+        },
+        "late_result_steps": [
+          {
+            "control_generation": 0,
+            "logical_key": "late_result:step:ctx0:round-1:e1",
+            "observed_at": "2026-10-24T14:59:41.512031+00:00",
+            "sequence": 0,
+            "status": "late_result",
+            "step_id": "70096395-e909-47f0-9013-8192e709acb9",
+            "tool_results": 0
+          }
+        ],
+        "run_after_control": {
+          "budget_reserved": 1,
+          "budget_spent": 0,
+          "control_generation": 1,
+          "deadline": "2026-10-24 09:59:38.943423-07:00",
+          "epoch": 1,
+          "run_id": "d55f42e7-d79e-5194-ac3f-a09aecb46b64",
+          "state": "paused",
+          "tool_operations_used": 0
+        }
+      },
+      "assertion": "Run paused; the in-flight reply came back as late_result at the older control generation, no step advanced before pause",
+      "pass": true
+    },
+    {
+      "actual": {
+        "resume": {
+          "at": "2026-10-24T15:04:02.068023+00:00",
+          "http_body": {
+            "action": "resume",
+            "generation": 2,
+            "incident_id": "d32dfce1-dc09-5e2e-a308-4003e66798b9",
+            "replayed": false,
+            "sequence": 4
+          },
+          "http_status": 200
+        },
+        "runs": [
+          {
+            "budget_limit": 100,
+            "budget_reserved": 1,
+            "budget_spent": 19,
+            "control_generation": 2,
+            "deadline": "2026-10-24T16:59:38.943423+00:00",
+            "epoch": 2,
+            "input_watermark": 0,
+            "run_id": "d55f42e7-d79e-5194-ac3f-a09aecb46b64",
+            "state": "completed",
+            "tool_operations_used": 38,
+            "versions": {
+              "context_policy_revision": "ctx-ctx-policy-v1-a30e65ea52f4",
+              "prompt_revision": "prompt-replay-candidate-bef70649a3a8",
+              "tool_schema_revision": "otel-demo-68ed2ca8f5d6"
+            }
+          }
+        ]
+      },
+      "assertion": "no conclusion while paused; resume requeues the same Run, which continues (epoch +1) and publishes",
+      "pass": true
+    },
+    {
+      "actual": {
+        "actions": [
+          "read_only_query",
+          "late_result_rejected",
+          "worker_resumed"
+        ],
+        "final_state": "completed",
+        "handoff_reasons": [
+          "STALE_CONTROL_GENERATION"
+        ],
+        "human_interaction": null,
+        "note": "projected after the session's closing control, so human_interaction reflects the incident's last control state, not the pause/cancel"
+      },
+      "assertion": "acceptance projection (taken after the incidents were closed): late_result_rejected with STALE_CONTROL_GENERATION",
+      "pass": true
+    }
+  ],
+  "category": "bounded real run (kind lab, real DeepSeek); not production proof",
+  "code": {
+    "commit": "b5276a9af5827bdcf4de68ec0d29d8c6d0317d71",
+    "run_versions": [
+      "{\"context_policy_revision\": \"ctx-ctx-policy-v1-a30e65ea52f4\", \"prompt_revision\": \"prompt-replay-candidate-bef70649a3a8\", \"tool_schema_revision\": \"otel-demo-68ed2ca8f5d6\"}"
+    ]
+  },
+  "incident_id": "d32dfce1-dc09-5e2e-a308-4003e66798b9",
+  "lab_readings_before": {
+    "alerts": [],
+    "at": "2026-10-24T14:59:27.294968+00:00",
+    "checkout_placeorder_p95_ms": [
+      {
+        "metric": {},
+        "value": "319.9999999999999"
+      }
+    ],
+    "fault_active": false,
+    "flagd": {
+      "non_off": {},
+      "sha256": "1ee5c0258e3e13609ecec75979cee286ab00f442d288112e39e3db8433d176c6"
+    },
+    "frontend_span_rate_2m": [
+      {
+        "metric": {},
+        "value": "1.6000266671111183"
+      }
+    ],
+    "host": {
+      "memory_free_percentage": "38%",
+      "swapusage": "total = 9216.00M  used = 7831.69M  free = 1384.31M  (encrypted)"
+    }
+  },
+  "ledger": [
+    {
+      "bytes": 2091,
+      "file": "k3-close.json",
+      "sha256": "0be0d9fae6e987a98e25f7f15b056171bda08560b0f7f3c15c9c02baf532d623"
+    },
+    {
+      "bytes": 440,
+      "file": "k3-intake.json",
+      "sha256": "86b76e1db4fca4f567a97a34a4c00a138cbe2ab5f34413c67bed26868f05116d"
+    },
+    {
+      "bytes": 408,
+      "file": "k3-intake.out",
+      "sha256": "26f872a48e751ef13d033f9089847b12dc0fd8c2d8ca22b64bc2eb15581f9d36"
+    },
+    {
+      "bytes": 139776,
+      "file": "k3-page-end.html",
+      "sha256": "778f62e887f28ea1b964701cd99cde55311b2cff96c85f72f82ffe3e36540a37"
+    },
+    {
+      "bytes": 11529,
+      "file": "k3-page-paused.html",
+      "sha256": "5356788a686382887893341df052e54146d03e0a8578a4ca6d3bba34f8309f9a"
+    },
+    {
+      "bytes": 3443,
+      "file": "k3-pause.json",
+      "sha256": "db6acef712a7924356856988111aee4d8b7d4ca7117451be14395e5874eee184"
+    },
+    {
+      "bytes": 551,
+      "file": "k3-pre.json",
+      "sha256": "88c5c1183dd8107d7d596a5b687c74e9cee7095cf693a50301c186092702aab2"
+    },
+    {
+      "bytes": 1680,
+      "file": "k3-resume.json",
+      "sha256": "deaa603d1a94c3b135402195dce07d9ee84419f4f0d4e8192b58e72ca664f616"
+    }
+  ],
+  "projection": {
+    "actions": [
+      "read_only_query",
+      "late_result_rejected",
+      "worker_resumed"
+    ],
+    "decision": "report_available",
+    "evidence_ids": [
+      "10dbe5a6-80aa-4940-9f38-c06ec1dabc85-t0:dbf5e8c0-d7eb-4129-99bb-491b79df55a5",
+      "10dbe5a6-80aa-4940-9f38-c06ec1dabc85-t1:6d643e93-1deb-4e8f-aa13-6e28ce82dc55",
+      "57d6990d-1ece-4164-ab12-5d4da07156ed-t0:95a9fcb0-f753-49f8-9c1e-a4e346f7e4f0",
+      "57d6990d-1ece-4164-ab12-5d4da07156ed-t1:e20c0f27-22a3-4425-818e-0dcb0a1c9e6f",
+      "4a7c860f-238b-49d9-948f-18c9bf5a589d-t0:cd175468-9326-4403-ade3-1b4d1a641ff4",
+      "a1b27ad9-6d76-45ad-a065-973ceb0177e7-t0:8539bf5f-a975-4dea-a78d-b0157cf6e836",
+      "a1b27ad9-6d76-45ad-a065-973ceb0177e7-t1:cfb749f4-d112-4c0c-a3e4-1bcc092c4a07",
+      "4c7535eb-5cf1-4671-9ba7-3f37e176c42c-t0:23bcbb49-c1f6-4220-82d5-c50ac6d2d8b7",
+      "59e369d0-3b3d-4e13-8a52-eb256952a3f0-t0:b876c22b-c536-415e-bc26-288aced095c8",
+      "59e369d0-3b3d-4e13-8a52-eb256952a3f0-t1:769051cf-0e1a-4552-b478-06e53353bfc3",
+      "6d0f5300-5fb6-421d-9d1f-af6e8821414d-t0:bef70f6e-78d6-4fe6-8417-48a71cefecd3",
+      "6d0f5300-5fb6-421d-9d1f-af6e8821414d-t1:d11ec427-2206-4589-a1b0-e63bfae1c3d3",
+      "6d0f5300-5fb6-421d-9d1f-af6e8821414d-t2:79ff882f-f48d-467c-a781-d9524e567bd7",
+      "47c2b919-2fc6-4023-97f3-5ea064f27a03-t0:658b4a87-3a5c-4adf-9663-49c72f5ecfcd",
+      "47c2b919-2fc6-4023-97f3-5ea064f27a03-t1:9de942af-1ff6-45e6-87b0-ecf94b3d8431",
+      "47c2b919-2fc6-4023-97f3-5ea064f27a03-t2:0a0a81c6-7cee-4fb7-8b97-c750c10fb86f",
+      "b0f006cd-044b-4584-866c-aac1009b1eb3-t0:cd2254e7-e55e-48d1-81a4-ecc31f3be758",
+      "b0f006cd-044b-4584-866c-aac1009b1eb3-t1:62446f22-5331-462e-9bed-77f0479cd279",
+      "b0f006cd-044b-4584-866c-aac1009b1eb3-t2:c874b8c9-68f8-4ddb-8b15-3125086affff",
+      "334315f1-9842-4154-8569-c89d195e1b56-t0:2c318f40-623f-40b0-b3df-99694674ed90",
+      "334315f1-9842-4154-8569-c89d195e1b56-t1:008b63ca-d0ec-44d3-b9dc-bfae18543de9",
+      "b8a27ed7-0d51-4b41-a3ef-b89ac483802f-t0:2ce49d0b-5aa2-491a-a53c-846dbc426c55",
+      "b8a27ed7-0d51-4b41-a3ef-b89ac483802f-t1:0bc827a0-47c4-41a1-85af-6e40091995bf",
+      "b8a27ed7-0d51-4b41-a3ef-b89ac483802f-t2:7a3a09ee-54a2-436c-9e2c-451a4994fce5",
+      "3a95f32f-e73e-4585-a359-5a7bd66ee017-t0:6afea92d-1e28-4358-85d6-c3a0ac0964b8",
+      "3a95f32f-e73e-4585-a359-5a7bd66ee017-t1:daa3df77-bd1b-4bf2-9988-dc8fe4d891e4",
+      "9b3cf61c-8160-4bbe-9889-1becea9d3884-t0:a756266c-54a6-402e-b377-793302e7fbdd",
+      "9b3cf61c-8160-4bbe-9889-1becea9d3884-t1:5399be8c-7255-4819-8b97-b51f6decd4dc",
+      "08264aaa-0cc8-4388-85ae-7bf55c8fbf13-t0:c049755e-46ec-418c-a6c0-acca3dcb4c14",
+      "08264aaa-0cc8-4388-85ae-7bf55c8fbf13-t1:589b14d9-c4dd-4dd5-9167-fd1f9e51a409",
+      "f2f26543-eb4f-41b3-a964-03bb7bd18a0c-t0:76e52c4b-8bd4-49d0-bd01-83bc3c4be7c1",
+      "f2f26543-eb4f-41b3-a964-03bb7bd18a0c-t1:3037fdb1-61be-4509-9709-f5bad31d8bce",
+      "58c81f5e-5507-401c-8a9d-a24f7e517fc2-t0:728576b9-8f8c-48f1-94e8-ef29b8684df6",
+      "58c81f5e-5507-401c-8a9d-a24f7e517fc2-t1:f7ffb30f-97fc-4da8-9c7d-961079cbfdf9",
+      "58c81f5e-5507-401c-8a9d-a24f7e517fc2-t2:66d003fb-5172-4686-92aa-5328098ba4d5",
+      "fb328940-7c97-488b-bb0a-50477c824cdb-t0:192ea8d5-df38-481d-bb00-1a5ca5c4c5b8"
+    ],
+    "final_state": "completed",
+    "handoff_reasons": [
+      "STALE_CONTROL_GENERATION"
+    ],
+    "human_interaction": null,
+    "permissions": [
+      "read_only",
+      "human_control"
+    ],
+    "report_available": true,
+    "scenario_id": "f2-live-k3"
+  },
+  "reservations": [
+    {
+      "reservation_id": "3d0cf787-85c3-5758-a572-c98792a879ff",
+      "seconds": 10.658292249776423,
+      "state": "spent"
+    },
+    {
+      "reservation_id": "52cd8c1c-670a-5eff-bcb1-f1d4de385b2b",
+      "seconds": 360.0,
+      "state": "unknown"
+    },
+    {
+      "reservation_id": "5d000d53-7d61-593f-a845-c9ab5ccdadc5",
+      "seconds": 3.4533136249519885,
+      "state": "spent"
+    },
+    {
+      "reservation_id": "699f4f6f-11d6-5483-9b39-3e31759eccbf",
+      "seconds": 1.6071962919086218,
+      "state": "spent"
+    },
+    {
+      "reservation_id": "6d311626-a7f9-5694-a94e-28e5b7b3a943",
+      "seconds": 9.329172499943525,
+      "state": "spent"
+    },
+    {
+      "reservation_id": "70808447-71c4-5788-b337-7846c179a8cc",
+      "seconds": 27.116839790949598,
+      "state": "spent"
+    },
+    {
+      "reservation_id": "7143c35d-3b30-5aa5-b870-1cd525a5b3c7",
+      "seconds": 5.156359334010631,
+      "state": "spent"
+    },
+    {
+      "reservation_id": "76ddfbc1-2e97-56f0-91fa-f1561d115d1e",
+      "seconds": 6.035042374860495,
+      "state": "spent"
+    },
+    {
+      "reservation_id": "80f3fec2-2cfd-544b-bbd6-eb9e7411d2f8",
+      "seconds": 7.186877041822299,
+      "state": "spent"
+    },
+    {
+      "reservation_id": "87b982bb-3152-5837-9ed7-c93d03b9af8b",
+      "seconds": 10.559944542124867,
+      "state": "spent"
+    },
+    {
+      "reservation_id": "8dd38d98-c42b-510c-bfdd-98c121f37141",
+      "seconds": null,
+      "state": "reserved"
+    },
+    {
+      "reservation_id": "93f9a856-be59-59a1-b944-b190375d0e99",
+      "seconds": 7.759463667171076,
+      "state": "spent"
+    },
+    {
+      "reservation_id": "9f1e8a27-67d9-55ed-b32a-a229e1057b67",
+      "seconds": 6.437185958959162,
+      "state": "spent"
+    },
+    {
+      "reservation_id": "a670f4f5-b420-5ecb-ab41-f4c6c9cac30e",
+      "seconds": 40.24150570901111,
+      "state": "spent"
+    },
+    {
+      "reservation_id": "a6b255c4-0195-52ab-ad94-e0255559b78b",
+      "seconds": 2.726832917192951,
+      "state": "spent"
+    },
+    {
+      "reservation_id": "b46bbf5d-ca11-5b68-abfb-58e256d73d3a",
+      "seconds": 13.027523374883458,
+      "state": "spent"
+    },
+    {
+      "reservation_id": "c7a86cc6-49fe-51f8-aa1a-47351c646099",
+      "seconds": 12.902427166933194,
+      "state": "spent"
+    },
+    {
+      "reservation_id": "d91d15ad-2ebc-5813-9098-ce844e6c0b30",
+      "seconds": 12.103440583217889,
+      "state": "spent"
+    },
+    {
+      "reservation_id": "de6793e5-6040-5646-90f1-1a43cc874f20",
+      "seconds": 3.3661071248352528,
+      "state": "spent"
+    },
+    {
+      "reservation_id": "e693457d-8006-54ef-a5a0-980deba8d66a",
+      "seconds": 1.997993249911815,
+      "state": "spent"
+    },
+    {
+      "reservation_id": "fb82506d-dc87-5108-994f-02893b245b81",
+      "seconds": 7.552150415955111,
+      "state": "spent"
+    }
+  ],
+  "run_id": "d55f42e7-d79e-5194-ac3f-a09aecb46b64",
+  "runs": [
+    {
+      "budget_limit": 100,
+      "budget_reserved": 1,
+      "budget_spent": 19,
+      "control_generation": 2,
+      "deadline": "2026-10-24T16:59:38.943423+00:00",
+      "epoch": 2,
+      "input_watermark": 0,
+      "run_id": "d55f42e7-d79e-5194-ac3f-a09aecb46b64",
+      "state": "completed",
+      "tool_operations_used": 38,
+      "versions": {
+        "context_policy_revision": "ctx-ctx-policy-v1-a30e65ea52f4",
+        "prompt_revision": "prompt-replay-candidate-bef70649a3a8",
+        "tool_schema_revision": "otel-demo-68ed2ca8f5d6"
+      }
+    }
+  ],
+  "scenario": "K3 incident-level pause while a model request is in flight",
+  "trace": [
+    {
+      "input_tokens": 1198509,
+      "langsmith_run_id": "00000000-0000-0000-4ac3-c61dbe575dd6",
+      "llm_spans": 19,
+      "otel_trace_id": "1161b96802b0a76733f5caa8b67bf51e",
+      "output_tokens": 34966,
+      "start_time": "2026-10-24T15:04:02.731582+00:00",
+      "status": "success",
+      "tool_spans": 37,
+      "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/dab51aa2-332e-4335-b385-98ef9c9fb91d/r/00000000-0000-0000-4ac3-c61dbe575dd6?poll=true"
+    }
+  ],
+  "verdict": "PASS"
+}

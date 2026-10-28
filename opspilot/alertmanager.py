@@ -198,6 +198,30 @@ def resolve_target(matches: Sequence[Any]) -> Resolution:
     return Resolution(None, None, None, reason)
 
 
+# -- claim priority (F2 U5-A, B1 contract R-B1-1) --------------------------
+
+#: ``opspilot_incidents.priority`` (migration 0019): lower is claimed first.
+PRIORITY_CRITICAL = 0
+PRIORITY_WARNING = 1
+PRIORITY_OTHER = 2
+_SEVERITY_PRIORITY = {"critical": PRIORITY_CRITICAL, "warning": PRIORITY_WARNING}
+
+
+def priority_of(labels: Mapping[str, str]) -> int:
+    """The claim priority of an alert's incident from its ``severity`` label.
+
+    A fixed mapping (U5-A): ``critical`` -> 0, ``warning`` -> 1, anything
+    else or no label -> 2, compared after ``strip().lower()``; no aliases
+    (``page``, ``error``). Reads the parsed labels, never the stored
+    ``alert_json`` (which may be truncated). It orders claims only; budget
+    and permissions do not depend on it.
+    """
+    severity = labels.get("severity")
+    if not isinstance(severity, str):
+        return PRIORITY_OTHER
+    return _SEVERITY_PRIORITY.get(severity.strip().lower(), PRIORITY_OTHER)
+
+
 # -- question template (I6) ----------------------------------------------
 
 
@@ -409,14 +433,19 @@ def alert_context(
     return fact(count)
 
 
-def alert_context_of_record(alert_json: str) -> dict[str, Any] | None:
+def alert_context_of_record(alert_json: str | None) -> dict[str, Any] | None:
     """K6: the alert context rebuilt from a delivery's stored audit text.
 
     The audit record keeps the alert redacted by the same rule, which K2
     applies again without changing it, so this equals ``alert_context`` of
     the alert as received. ``None`` when the record was cut at its byte
-    bound (it is then not JSON) or lacks the two objects.
+    bound (it is then not JSON) or lacks the two objects, and when the
+    retention cleanup removed the record (``alert_json`` is ``None``, #244):
+    there is nothing to rebuild from, which callers tell apart from a
+    damaged record by the ``None`` they passed.
     """
+    if alert_json is None:
+        return None
     try:
         alert = json.loads(alert_json)
     except ValueError:

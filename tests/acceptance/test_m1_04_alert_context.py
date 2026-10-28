@@ -438,7 +438,9 @@ def test_k6_k7_timeout_successor_preserves_first_context(harness, database, fres
 def test_k4_unknown_later_version_is_incompatible(harness, database):
     _, _, outcome = _create(harness, database)
     snapshot = deepcopy(outcome.run_input)
-    snapshot["version"] = "opspilot-investigation-input-v6"
+    # v6 is the F11 PR-4b release input (INPUT_VERSION_RELEASE), no longer
+    # unknown; v999 stays well-formed and never used.
+    snapshot["version"] = "opspilot-investigation-input-v999"
     with pytest.raises(ContextError) as excinfo:
         InvestigationInput.from_json(snapshot)
     assert excinfo.value.code == "INCOMPATIBLE_STATE"

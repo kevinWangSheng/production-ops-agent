@@ -1,0 +1,274 @@
+{
+  "assertions": [
+    {
+      "actual": {
+        "gateway_seconds": 30.010235083987936,
+        "proxy_stalled_record": [
+          {
+            "client_disconnected_at": "2026-10-24T14:52:28.583344+00:00",
+            "path": "/api/v1/query_range",
+            "stalled": true,
+            "time": "2026-10-24T14:51:58.577203+00:00"
+          }
+        ],
+        "request_to_client_close_seconds": 30.014635,
+        "tool_result": {
+          "adopted": null,
+          "operation_id": "6b2250f5-ec2d-4a45-bd5e-e5d9c317e2e9-t0",
+          "ordinal": 0,
+          "reason": "TOOL_TIMEOUT",
+          "requested_at": "2026-10-24T07:51:58.568709-07:00",
+          "sequence": 2,
+          "source_contact": "possible",
+          "status": "timeout"
+        }
+      },
+      "assertion": "stalled query_range ends timeout / TOOL_TIMEOUT / possible within 30 s (+1 s), not adopted",
+      "pass": true
+    },
+    {
+      "actual": {
+        "sibling_evidence": [
+          {
+            "adopted": true,
+            "committed": true,
+            "evidence_id": "6b2250f5-ec2d-4a45-bd5e-e5d9c317e2e9-t1:bd680b9e-8055-4bc0-86ae-45023e59e083"
+          },
+          {
+            "adopted": true,
+            "committed": true,
+            "evidence_id": "6b2250f5-ec2d-4a45-bd5e-e5d9c317e2e9-t2:d4da82f3-1ba0-47bc-8084-fe90d6121b4e"
+          }
+        ],
+        "siblings": [
+          {
+            "adopted": "true",
+            "operation_id": "6b2250f5-ec2d-4a45-bd5e-e5d9c317e2e9-t1",
+            "ordinal": 1,
+            "status": "ok",
+            "tool": "metrics_range_query"
+          },
+          {
+            "adopted": "true",
+            "operation_id": "6b2250f5-ec2d-4a45-bd5e-e5d9c317e2e9-t2",
+            "ordinal": 2,
+            "status": "ok",
+            "tool": "metrics_range_query"
+          }
+        ]
+      },
+      "assertion": "same-round sibling(s) ran, committed and kept",
+      "pass": true
+    },
+    {
+      "actual": {
+        "charges_for_stalled_operation": 1,
+        "proxy_query_range_during_run": 41,
+        "run_metrics_range_query": 41
+      },
+      "assertion": "no gateway retry: the stalled operation dispatched once; every query_range at the proxy is one metrics_range_query in the Run",
+      "pass": true
+    },
+    {
+      "actual": {
+        "handoff_events": [],
+        "run": {
+          "budget_limit": 100,
+          "budget_reserved": 0,
+          "budget_spent": 22,
+          "control_generation": 0,
+          "deadline": "2026-10-24T16:51:33.999919+00:00",
+          "epoch": 1,
+          "input_watermark": 0,
+          "run_id": "67d8ee31-3756-589b-ac86-cf48b0246c3f",
+          "state": "completed",
+          "tool_operations_used": 54,
+          "versions": {
+            "context_policy_revision": "ctx-ctx-policy-v1-a30e65ea52f4",
+            "prompt_revision": "prompt-replay-candidate-bef70649a3a8",
+            "tool_schema_revision": "otel-demo-68ed2ca8f5d6"
+          }
+        }
+      },
+      "assertion": "Run ends completed (or an explicit handoff with reason), never silently hangs",
+      "pass": true
+    },
+    {
+      "actual": {
+        "after_run": [
+          8
+        ],
+        "during_stall": [
+          12,
+          13
+        ],
+        "five_seconds_after_timeout": [
+          {
+            "at": "2026-10-24T14:52:33.113384+00:00",
+            "threads": 10
+          }
+        ],
+        "in_run_before_stall": [
+          10,
+          10,
+          10,
+          10,
+          10
+        ],
+        "measure": "ps -M -p <worker pid> line count minus header; 1 s samples",
+        "pre_run_baseline": [
+          8
+        ]
+      },
+      "assertion": "worker threads (ps -M) return to the in-Run level 5 s after the timeout and to the pre-Run baseline after the Run",
+      "pass": true
+    },
+    {
+      "actual": {
+        "occurrences": 1
+      },
+      "assertion": "workbench tool row says the source may have received the request",
+      "pass": true
+    }
+  ],
+  "category": "bounded real run (kind lab, real DeepSeek); not production proof",
+  "code": {
+    "commit": "b5276a9af5827bdcf4de68ec0d29d8c6d0317d71",
+    "run_versions": [
+      "{\"context_policy_revision\": \"ctx-ctx-policy-v1-a30e65ea52f4\", \"prompt_revision\": \"prompt-replay-candidate-bef70649a3a8\", \"tool_schema_revision\": \"otel-demo-68ed2ca8f5d6\"}"
+    ]
+  },
+  "incident_id": "4a35618c-8278-5127-8029-00ca4b6f4681",
+  "lab_readings_before": {
+    "alerts": [],
+    "at": "2026-10-24T14:51:22.274670+00:00",
+    "checkout_placeorder_p95_ms": [
+      {
+        "metric": {},
+        "value": "96.5"
+      }
+    ],
+    "fault_active": false,
+    "flagd": {
+      "non_off": {},
+      "sha256": "1ee5c0258e3e13609ecec75979cee286ab00f442d288112e39e3db8433d176c6"
+    },
+    "frontend_span_rate_2m": [
+      {
+        "metric": {},
+        "value": "2.466707778462974"
+      }
+    ],
+    "host": {
+      "memory_free_percentage": "40%",
+      "swapusage": "total = 9216.00M  used = 7950.19M  free = 1265.81M  (encrypted)"
+    }
+  },
+  "ledger": [
+    {
+      "bytes": 482,
+      "file": "k2-intake.json",
+      "sha256": "8274838ca358e09d8501e252515f6446c15f9c775c20e2daf067e5d9f459c4c5"
+    },
+    {
+      "bytes": 10456,
+      "file": "proxy-k2.log",
+      "sha256": "fa155af34a136228037b9ca76bec8fe90b07965c1b8c1a763129c29ee247a8e5"
+    },
+    {
+      "bytes": 5089,
+      "file": "k2-threads.jsonl",
+      "sha256": "374ef08febf9b9cf1130e259fffcb06452b4a0c94433d4230207cc6d3408cfa7"
+    },
+    {
+      "bytes": 119562,
+      "file": "k2-page.html",
+      "sha256": "d9724622fe1ee56aa2e60b7d5ecc4d79d11d94efb2b8b1192ea2160af3c7a03b"
+    }
+  ],
+  "projection": {
+    "actions": [
+      "read_only_query"
+    ],
+    "decision": "report_available",
+    "evidence_ids": [
+      "847ce33f-af29-450b-b750-00ba30fc3da5-t0:42900e8f-3fc0-4030-b70b-080add1ffe02",
+      "aa05929c-6370-4d23-ab6e-bb1992cc3c3a-t0:e9704e6f-1c95-4b3e-87ca-d1959965112a",
+      "aa05929c-6370-4d23-ab6e-bb1992cc3c3a-t1:05130e12-70b5-4963-85dc-dfdb5a21a18b",
+      "aa05929c-6370-4d23-ab6e-bb1992cc3c3a-t2:edb32169-2dd6-4d9c-ab67-fabc970b4cc0",
+      "6b2250f5-ec2d-4a45-bd5e-e5d9c317e2e9-t1:bd680b9e-8055-4bc0-86ae-45023e59e083",
+      "6b2250f5-ec2d-4a45-bd5e-e5d9c317e2e9-t2:d4da82f3-1ba0-47bc-8084-fe90d6121b4e",
+      "9d3ce5b6-8c27-4579-800a-27da4a55c0f3-t0:a69fa781-5f69-41fa-9f18-6f15a4a98e33",
+      "9d3ce5b6-8c27-4579-800a-27da4a55c0f3-t1:c9102aab-2791-4c81-a8b0-1ee1b2d9c723",
+      "9d3ce5b6-8c27-4579-800a-27da4a55c0f3-t2:3ab91db1-7ddd-4d79-a965-005c641eaaf7",
+      "c196a74b-8d97-4edb-97a5-55fa87001977-t0:f4881ed6-dc8d-465b-b5b9-ec7cfe980359",
+      "c196a74b-8d97-4edb-97a5-55fa87001977-t1:79493bc5-c45f-41b0-8b9d-a3e7a3e94182",
+      "c196a74b-8d97-4edb-97a5-55fa87001977-t2:78837ecb-277d-488f-b0be-c5887717e848",
+      "880b9426-6ea5-4cd0-97b6-971c0722ffc7-t0:ee2e19b7-de3d-4062-920e-396e5af32078",
+      "880b9426-6ea5-4cd0-97b6-971c0722ffc7-t1:5bee964e-0a87-4b9f-96ad-b3012bf88459",
+      "880b9426-6ea5-4cd0-97b6-971c0722ffc7-t2:2b5d9d81-6690-4f19-8346-2913d5115206",
+      "2ac8243a-3f90-4573-993c-0eadac05c701-t0:0966a69d-fa86-4abd-920d-5c0c453d1914",
+      "2ac8243a-3f90-4573-993c-0eadac05c701-t1:d0df8a65-c2d1-4265-a3be-a904863ba70d",
+      "2ac8243a-3f90-4573-993c-0eadac05c701-t2:98955b62-017b-4e3d-9b07-0b9fce73d27b",
+      "6d9e0b63-a068-4e7e-9d62-9577c947bbc1-t0:b98d6124-e124-493f-8587-9d010357c353",
+      "6d9e0b63-a068-4e7e-9d62-9577c947bbc1-t1:6f1b540d-9534-4eb5-a44e-4a0925848894",
+      "6d9e0b63-a068-4e7e-9d62-9577c947bbc1-t2:7d720451-e498-48f0-a8c1-dee072aca546",
+      "a53b2770-b19a-4eb7-80c7-1ecee6749ad9-t0:61df9a19-81a6-4c0a-bb55-302955ab9fe1",
+      "a53b2770-b19a-4eb7-80c7-1ecee6749ad9-t1:91dfc9a0-ca85-4698-a9f3-16dc8f5fe8bd",
+      "a53b2770-b19a-4eb7-80c7-1ecee6749ad9-t2:8062b7ae-1165-4b14-9143-f8d3eee96402",
+      "53df5c4f-017b-4a7b-a386-fb6669ba4e7a-t0:807ef885-0d40-4359-8b97-0c03a8d6b139",
+      "53df5c4f-017b-4a7b-a386-fb6669ba4e7a-t1:0f7ba589-fc63-487e-8b31-1626e241883f",
+      "53df5c4f-017b-4a7b-a386-fb6669ba4e7a-t2:08d90f53-5ea6-405f-a061-4204b30cd1e8",
+      "696bbb97-0721-4fe9-b205-2eddec14dc32-t0:8e5f90db-50cb-4e1a-98dc-d88a7fc0e9ff",
+      "696bbb97-0721-4fe9-b205-2eddec14dc32-t1:3bfd8228-848c-478c-a596-307e400a5a7e",
+      "696bbb97-0721-4fe9-b205-2eddec14dc32-t2:686e2242-4145-4909-b9c0-0ffa2d45377d",
+      "1171ff7b-169b-4c6f-8dc4-05245ffba69d-t0:604c46df-e0e7-40f0-9107-7c69cf77a8da",
+      "1171ff7b-169b-4c6f-8dc4-05245ffba69d-t1:5ee91073-b64d-48a9-af45-b537784ff2bb",
+      "1171ff7b-169b-4c6f-8dc4-05245ffba69d-t2:d0a53877-277f-49c0-9c45-5dd1959fc38d",
+      "da2b6830-4444-4cd8-8c59-3ab6f566e004-t0:34d528f8-e489-4610-a691-d18f75759924",
+      "da2b6830-4444-4cd8-8c59-3ab6f566e004-t1:54c5c0a4-c21c-4628-a90b-5b7ecfc5763b",
+      "da2b6830-4444-4cd8-8c59-3ab6f566e004-t2:eaf39a15-96f2-472b-9ca6-3505022a65fe",
+      "b02dd1cc-614e-47e6-8aa4-18c21a1db361-t0:722b68da-3cfe-44a0-aac6-d32582074441",
+      "a060ffe5-7067-4862-a94b-6e80d3c6a39a-t0:0a4bd092-dad2-4a4e-834a-17109edebb13",
+      "a060ffe5-7067-4862-a94b-6e80d3c6a39a-t1:e8ad0e89-07b7-42a4-9558-f75adaff7f56",
+      "e7acf5c4-3e65-46cd-9403-dd502c10f110-t0:85b765af-d17f-46ce-a4bf-f395a6801ea7",
+      "e7acf5c4-3e65-46cd-9403-dd502c10f110-t1:e64eb219-9a67-4542-8208-e19bc2efa5a0",
+      "06c75336-6fb8-42f3-819d-083c6673c3f2-t0:e2efbeb2-06c8-4409-8937-e96ca6b8a271",
+      "06c75336-6fb8-42f3-819d-083c6673c3f2-t1:2ad83fbc-5b92-4dee-9258-1e5aba1aff25",
+      "3b05e135-8f52-44ca-afa0-2ea32708e804-t0:544454d5-79d7-426d-97ac-7c30f8de70a7",
+      "3b05e135-8f52-44ca-afa0-2ea32708e804-t1:ee38177c-ebfd-4733-9528-0e64c3140b33",
+      "3b05e135-8f52-44ca-afa0-2ea32708e804-t2:8c91ee62-8b77-4a42-af02-aae47e878898",
+      "f2d9bf61-4662-4f48-91e6-93bb5c89fb52-t0:5f384269-e5e4-4955-a2de-684d3d4e9144",
+      "cf93d955-b822-4476-8a7e-b26b7866c280-t0:a0344841-f52c-455a-a29c-93638048c6a2",
+      "cf93d955-b822-4476-8a7e-b26b7866c280-t1:46b3118d-5ee5-4aa4-b207-6cee6a309506",
+      "163f60ba-7951-418d-9cfc-32e00ca90f5e-t0:940fc80b-2b38-4154-a035-7d06eee819f2",
+      "163f60ba-7951-418d-9cfc-32e00ca90f5e-t1:44223ef7-7132-4fe2-b854-a3edd7805ad8"
+    ],
+    "final_state": "completed",
+    "handoff_reasons": [],
+    "human_interaction": null,
+    "permissions": [
+      "read_only",
+      "human_control"
+    ],
+    "report_available": true,
+    "scenario_id": "f2-live-k2"
+  },
+  "report_gaps_mention_timed_out_operation": false,
+  "run_id": "67d8ee31-3756-589b-ac86-cf48b0246c3f",
+  "scenario": "K2 one stalled query with a same-round sibling (current main, parallel 2)",
+  "trace": [
+    {
+      "input_tokens": 1148416,
+      "langsmith_run_id": "00000000-0000-0000-05f0-6b7760ac4e69",
+      "llm_spans": 23,
+      "otel_trace_id": "6541853d849968d6b8fec89ce6384524",
+      "output_tokens": 50136,
+      "start_time": "2026-10-24T14:51:35.314229+00:00",
+      "status": "success",
+      "tool_spans": 54,
+      "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/dab51aa2-332e-4335-b385-98ef9c9fb91d/r/00000000-0000-0000-05f0-6b7760ac4e69?poll=true"
+    }
+  ],
+  "verdict": "PASS"
+}

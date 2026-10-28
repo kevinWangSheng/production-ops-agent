@@ -324,3 +324,5 @@
   - P2 非 UTC 偏移被接受——已修：`sent_at` 偏移非零即 `SENT_AT_INVALID`（Observer 只写 UTC），补 `+08:00` 负例（修复前失败）。
   - P2 注入 opener 的取时点——不改：生产唯一构造点 `observer/__main__.py` 不注入 opener，opener 只是测试接缝；其取时点（opener 返回之后，只会偏晚）已在 `_fetch_via_opener` 文档写明为限制。真实 socket 路径另有直接测试。
   - 可选：RFC3339 小数位上限 6 位——保留，与 Observer 自身 `isoformat()` 输出一致。
+
+- #342 修复（2026-10-24，分支 `fix/342-release-session-identity`，worktree `../poa-342`）：`authorize_session_in` 对同目标旧会话只取四个身份字段比较（缺字段视为不同），不再经 `Target(**)`；发布观察会话（无 `revision`）不再让人工登记处置与 #184 自动授权报 pydantic 错误，两条路径都经此函数、同一缺陷；身份不一致仍 `TARGET_MISMATCH`。PG 测试 `tests/integration/test_342_release_session_identity_postgres.py` 3 例（修复前 3 failed，修复后 3 passed）；F6/#184/F11 相关 PG 回归 440 passed。

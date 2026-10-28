@@ -33,6 +33,7 @@ from opspilot.observer.release_replay import replay_release_history
 from opspilot.observer.release_sampling import take_release_sample
 from opspilot.persistence import DurableStore
 from scripts.m0.postgres_lab import DSN
+from tests.f11_release_support import assert_shipped_catalog_is_the_approved_policy
 from tests.runtime_roles_support import login
 from tests.test_f11_pr2b_impl import Opener
 
@@ -368,13 +369,8 @@ def test_observer_tick_dispatches_release_in_real_store(release_harness):
     assert web.get_release(oid).status == "observing" and len(source.calls) == 49
 
 
-def test_shipped_catalog_remains_empty():
-    path = release_policy.__file__
-    from pathlib import Path
-
-    assert json.loads(
-        (Path(path).parent / "policies/release-calibrations.json").read_text()
-    ) == {"format_version": 1, "policies": []}
+def test_shipped_catalog_is_exactly_the_approved_policy():
+    assert_shipped_catalog_is_the_approved_policy()
 
 
 @pytest.mark.parametrize("after_mapping", [False, True])

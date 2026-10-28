@@ -162,3 +162,31 @@ class ReleaseAnomalyEnding(DTO):
     anomaly_key: ReleaseText
     result_sha256: Sha256
     recorded_at: UtcDatetime
+
+
+ReleaseLinkDisposition = Literal[
+    "created", "attached", "created_related", "handoff_created"
+]
+
+
+class ReleaseLinkReceipt(DTO):
+    """What consuming one anomaly ending did (F11 PR-4 section 4): the
+    committed ``opspilot_release_incident_links`` row, ``replayed`` when an
+    earlier consumption had already committed it."""
+
+    observation_id: UUID
+    ending_id: UUID
+    anomaly_key: ReleaseText
+    disposition: ReleaseLinkDisposition
+    incident_id: UUID
+    related_incident_id: UUID | None
+    run_id: UUID | None
+    input_id: UUID | None
+    handoff_reason: ReleaseText | None
+    #: The before/after comparison the incident's input was built with;
+    #: ``None`` when the wait for one ran out (P4-01).
+    comparison_id: UUID | None = None
+    #: The consuming transaction's database time (the new Run's frame end);
+    #: always set on a receipt the store returns.
+    consumed_at: UtcDatetime | None = None
+    replayed: bool

@@ -20,8 +20,11 @@
   <span class="muted">(focus for the investigation; it does not narrow what the tools may query)</span></p>
 {% endif %}
 {% if alert.latest %}
-<h3>Annotations <span class="muted">(revision {{ alert.latest.annotation_revision }}, untrusted alert text, credentials redacted)</span></h3>
-{% if alert.latest.annotations is not none %}
+<h3>Annotations <span class="muted">(startsAt <code id="alert-latest-starts-at">{{ alert.latest.starts_at }}</code>, revision {{ alert.latest.annotation_revision }}, untrusted alert text, credentials redacted)</span></h3>
+{% if alert.latest.cleaned %}
+<p id="alert-cleaned"><strong>Original alert cleaned</strong> <code>CLEANED_DATA</code>
+  <span class="muted">(removed by the retention cleanup after the incident closed; hashes, times and delivery records are kept)</span></p>
+{% elif alert.latest.annotations is not none %}
 <table id="alert-annotations">
   <tbody>
   {% for name, value in alert.latest.annotations | dictsort %}
@@ -30,7 +33,7 @@
   </tbody>
 </table>
 {% else %}
-<pre id="alert-record-text">{{ alert.latest.record_text }}</pre>
+<pre id="alert-record-text">{{ alert.latest.record_text or "" }}</pre>
 {% endif %}
 {% if alert.latest.truncated %}<p class="muted">The stored record was cut at 16 KiB.</p>{% endif %}
 {% endif %}
@@ -40,7 +43,7 @@
   <thead><tr><th>Received</th><th>Ends at</th><th>Actor</th><th>Annotation revision</th><th>Raw sha256</th></tr></thead>
   <tbody>
   {% for r in alert.resolved %}
-  <tr><td>{{ r.received_at }}</td><td><code>{{ r.ends_at or "" }}</code></td><td><code>{{ r.actor }}</code></td><td>{{ r.annotation_revision }}</td><td><code>{{ r.raw_sha256 }}</code></td></tr>
+  <tr><td>{{ r.received_at }}</td><td>{% if r.cleaned %}<span class="muted">cleaned</span>{% else %}<code>{{ r.ends_at or "" }}</code>{% endif %}</td><td><code>{{ r.actor }}</code></td><td>{{ r.annotation_revision }}</td><td><code>{{ r.raw_sha256 }}</code></td></tr>
   {% endfor %}
   </tbody>
 </table>
@@ -48,10 +51,10 @@
 {% endif %}
 <h3>Deliveries</h3>
 <table id="alert-deliveries">
-  <thead><tr><th>#</th><th>Status</th><th>Outcome</th><th>Actor</th><th>Annotation revision</th><th>Raw sha256</th></tr></thead>
+  <thead><tr><th>#</th><th>Starts at</th><th>Status</th><th>Outcome</th><th>Actor</th><th>Annotation revision</th><th>Raw sha256</th></tr></thead>
   <tbody>
   {% for d in ao.deliveries %}
-  <tr><td>{{ loop.index }}</td><td>{{ d.status }}</td><td><code>{{ d.outcome }}</code></td><td><code>{{ d.actor }}</code></td><td>{{ d.annotation_revision }}{% if d.truncated %} <span class="muted">(cut)</span>{% endif %}</td><td><code>{{ d.raw_sha256 }}</code></td></tr>
+  <tr><td>{{ loop.index }}</td><td><code>{{ d.starts_at }}</code></td><td>{{ d.status }}</td><td><code>{{ d.outcome }}</code>{% if d.outcome == "attached" %} <span class="badge">re-fired episode</span>{% endif %}</td><td><code>{{ d.actor }}</code></td><td>{{ d.annotation_revision }}{% if d.truncated %} <span class="muted">(cut)</span>{% endif %}</td><td><code>{{ d.raw_sha256 }}</code></td></tr>
   {% endfor %}
   </tbody>
 </table>

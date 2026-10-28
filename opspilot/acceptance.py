@@ -158,7 +158,9 @@ _HUMAN_OR_BLOCKED = frozenset({"paused", "cancelled", "blocked"})
 # ``queued``/``running`` are not outcomes and are refused, as is anything
 # no product path writes to the row.
 _FINAL_ROW_STATES = frozenset({"completed", "waiting_human"}) | _HUMAN_OR_BLOCKED
-_HUMAN_ACTIONS = frozenset({"pause", "cancel", "resume", "follow_up", "correct"})
+_HUMAN_ACTIONS = frozenset(
+    {"pause", "cancel", "resume", "follow_up", "correct", "rebind_target", "merge_into"}
+)
 
 
 def _string_list(value: object) -> tuple[str, ...]:
@@ -487,7 +489,12 @@ def outcome_from_live_record(
 # assertion itself and not a claim that the product feature has passed.
 PRODUCT_CONSTRAINT_SCENARIO_INDEX: dict[str, tuple[str, ...]] = {
     "explicit_exclusions": ("F7:readonly",),
-    "workflow_uncertainty_visible": ("F3:fault",),
+    "workflow_uncertainty_visible": (
+        "F3:fault",
+        "F3:missing-source",
+        "F3:truncated-at-limit",
+        "F3:competing-cause",
+    ),
     "evidence_context": ("F3:normal", "F7:hostile-input"),
     "runtime_human_control": ("F2:pause-cancel", "F2:late-result"),
     "recovery_observations": ("F6:not_implemented",),

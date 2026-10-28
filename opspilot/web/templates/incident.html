@@ -15,6 +15,26 @@
   · budget {{ run.budget_spent }} spent / {{ run.budget_reserved }} reserved / {{ run.budget_unknown }} unknown of {{ run.budget_limit }}
   · deadline {{ run.deadline }}
 </p>
+{% if inc.related_incident_id %}
+<p>Opened after closed incident <a id="related-incident" href="/incidents/{{ inc.related_incident_id }}"><code>{{ inc.related_incident_id }}</code></a>
+  <span class="muted">(same alert on the same target; the closed incident was not reopened)</span></p>
+{% endif %}
+{% for link in release_links or [] %}
+<p class="release-link">Linked from version change observation <a href="/version-changes/{{ link.observation_id }}"><code>{{ link.observation_id }}</code></a> <span class="badge">{{ link.disposition }}</span> <span class="muted">(its health verdict is advisory; causal findings are this incident's)</span></p>
+{% endfor %}
+{% if inc.merged_into_incident_id %}
+<p>Merged into <a id="merged-into" href="/incidents/{{ inc.merged_into_incident_id }}"><code>{{ inc.merged_into_incident_id }}</code></a>
+  <span class="muted">(closed by a human merge; its records stay here)</span></p>
+{% endif %}
+{% if snapshot.merged_from %}
+<p>Merged from{% for source in snapshot.merged_from %} <a class="merged-from" href="/incidents/{{ source }}"><code>{{ source }}</code></a>{% endfor %}</p>
+{% endif %}
+{% if snapshot.current_target %}
+<p>Current target: <code id="current-target">{{ snapshot.current_target }}</code></p>
+{% endif %}
+{% for rebind in snapshot.rebinds or [] %}
+<p class="rebind">Rebound from <code>{{ rebind.from_target }}</code> to <code>{{ rebind.to_target }}</code> at {{ rebind.decided_at or "unknown time" }} by {{ rebind.actor }}</p>
+{% endfor %}
 {% if snapshot.target_id %}
 <p>Target request: <code>{{ snapshot.target_id }}</code> <span class="muted">(unresolved operator input; identity is registry-resolved by the investigator)</span></p>
 {% endif %}
@@ -38,6 +58,14 @@
     <input name="text" placeholder="{{ 'follow-up question' if action == 'follow_up' else 'correction / added fact' }}" required maxlength="8192">
   {% elif action == "register_remediation" %}
     <input name="revision" placeholder="target revision after handling" required maxlength="256">
+  {% elif action == "rebind_target" %}
+    <select name="to_target" required>
+      {% for uid in snapshot.rebind_targets %}<option value="{{ uid }}">{{ uid }}</option>{% endfor %}
+    </select>
+    <input name="text" placeholder="why (optional)" maxlength="8192">
+  {% elif action == "merge_into" %}
+    <input name="into_incident_id" placeholder="surviving incident id (same target)" required maxlength="36">
+    <input name="text" placeholder="why (optional)" maxlength="8192">
   {% endif %}
   <button type="submit">{{ action }}</button>
 </form>
@@ -79,7 +107,8 @@
     · profile <code>{{ r.health_profile_revision or "none" }}</code>
     · {{ "authorized at" if r.authorization_source == "automatic" else "handled at" }} {{ r.handled_at }}
     · offline replay:
-    {% if r.replay.consistent %}<span class="badge">replay consistent</span>{% else %}<strong>integrity mismatch</strong> <code>{{ r.replay.integrity | join(", ") }}</code>{% if r.replay.available %} <span class="muted">(bundles recompute to <code>{{ r.replay.recomputed_verdict }}</code>; the stored verdict is not repeated)</span>{% endif %}{% endif %}
+    {% if "STORED_OBSERVATION_DATA_CLEANED" in r.replay.integrity %}<strong class="recovery-data-cleaned">raw data cleaned, cannot be re-verified</strong> <code>STORED_OBSERVATION_DATA_CLEANED</code> <span class="muted">(removed by the retention cleanup after the incident closed; the stored verdict is not repeated)</span>{% endif %}
+    {% if r.replay.consistent %}<span class="badge">replay consistent</span>{% elif r.replay.integrity | reject("equalto", "STORED_OBSERVATION_DATA_CLEANED") | list %}<strong>integrity mismatch</strong> <code>{{ r.replay.integrity | join(", ") }}</code>{% if r.replay.available %} <span class="muted">(bundles recompute to <code>{{ r.replay.recomputed_verdict }}</code>; the stored verdict is not repeated)</span>{% endif %}{% endif %}
     {% if r.replay.reasons %}<br><span class="muted">reasons:</span> {{ r.replay.reasons | join("; ") }}{% endif %}
     {% if r.replay.expected_lifecycle or r.replay.recorded_lifecycle %}<br><span class="muted">lifecycle implied by replay:</span> <code>{{ r.replay.expected_lifecycle or "no claim" }}</code> <span class="muted">· recorded with the samples:</span> <code>{{ r.replay.recorded_lifecycle or "none" }}</code>{% endif %}
   </p>
@@ -95,7 +124,7 @@
         → {% if s.replayed_outcome %}<span class="badge">{{ s.replayed_outcome }}</span>{% if s.replayed_required_signals_present %} required present{% else %} <span class="muted">required missing</span>{% endif %}{% else %}<span class="muted">not recomputed ({{ s.recompute_skipped }})</span>{% endif %}
         {% if s.replayed_reason %}<br><span class="muted">{{ s.replayed_reason }}</span>{% endif %}</td>
       <td><code>{{ s.disposition }}</code> · {{ s.reason }} · {% if s.confirms_health %}<strong>confirms health</strong>{% else %}no health{% endif %} <span class="muted">({{ s.health_basis }})</span>{% if s.transition %}<br>transition <code>{{ s.transition }}</code>{% endif %}</td>
-      <td>{% if s.consistent %}<span class="badge">consistent</span>{% else %}<strong>mismatch</strong> <code>{{ s.integrity | join(", ") }}</code>{% endif %}</td>
+      <td>{% if s.consistent %}<span class="badge">consistent</span>{% elif s.raw_cleaned_only %}<span class="muted">raw cleaned, not recomputed</span>{% else %}<strong>mismatch</strong> <code>{{ s.integrity | join(", ") }}</code>{% endif %}</td>
     </tr>
     <tr>
       <td></td>
@@ -253,6 +282,9 @@
     {% if report.incomplete %}<strong>Incomplete investigation, not an uncertain finding.</strong>{% endif %}
     · content sha256 <code>{{ report.content_sha256 }}</code>
   </p>
+  {% if snapshot.collection_truncated %}
+  <p id="collection-truncated"><strong>Collection was truncated at the model-request limit</strong>: the investigator was made to report on its last request, so evidence it might still have gathered is missing.</p>
+  {% endif %}
   <p>{{ report.summary }}</p>
   {% macro claims(title, items, css) %}
     <section class="{{ css }}">
@@ -289,6 +321,41 @@
   </section>
 {% endif %}
 
+{% if snapshot.coverage %}
+{% set labels = {
+  "all_ok": "every query ran without an error or refusal (no-data counts shown separately)",
+  "partial_failure": "some queries did not succeed",
+  "failed": "no query succeeded",
+  "no_data_only": "returned no data (not evidence of health)",
+  "not_queried": "not queried this Run",
+  "not_authorized": "not authorized for this Run",
+  "not_integrated": "not integrated (cannot be queried)",
+  "internal": "internal evidence store, not a data source",
+} %}
+<section id="coverage-gaps">
+  <h2>Coverage gaps <span class="muted">(counted from this Run's committed tool results, not written by the investigator)</span></h2>
+  {% if not snapshot.coverage.sources_recorded %}<p class="muted" id="coverage-sources-unrecorded">Source list not recorded for this Run; counted per tool.</p>{% endif %}
+  {% if snapshot.coverage.sources %}
+  <table>
+    <thead><tr><th>Source</th><th>State</th><th>ok</th><th>no data</th><th>not ok</th><th>Reasons</th></tr></thead>
+    <tbody>
+    {% for row in snapshot.coverage.sources %}
+    <tr class="coverage-source{% if row.gap %} coverage-gap{% endif %}" data-source="{{ row.name }}" data-state="{{ row.state }}">
+      <td><code>{{ row.name }}</code></td>
+      <td><span class="badge">{{ row.state }}</span> {% if row.gap %}<strong>gap</strong>: {% endif %}<span class="muted">{{ labels[row.state] }}</span></td>
+      <td>{{ row.ok }}</td>
+      <td>{{ row.no_data }}</td>
+      <td>{{ row.non_ok }}</td>
+      <td>{% for reason, count in row.reasons %}<code>{{ reason }}</code> ×{{ count }}{% if not loop.last %}, {% endif %}{% endfor %}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<p class="muted">No tool results committed yet.</p>{% endif %}
+  {% if snapshot.coverage.duplicates_skipped %}<p class="muted" id="coverage-duplicates">{{ snapshot.coverage.duplicates_skipped }} duplicate call(s) not re-executed (not counted against any source).</p>{% endif %}
+</section>
+{% endif %}
+
 {% if snapshot.charts %}
 <section id="evidence-charts">
   <h2>Evidence charts</h2>
@@ -316,6 +383,8 @@
         <br><code>{{ tool.tool }}</code> → <span class="badge">{{ tool.status }}</span>
         {% if tool.status == "timeout" and tool.source_contact == "possible" %}<span class="muted">source may have received the request</span>{% endif %}
         {% if tool.status != "ok" and tool.reason %}<code>{{ tool.reason }}</code>{% endif %}
+        {% if tool.http_status %}<span class="muted">HTTP {{ tool.http_status }}</span>{% endif %}
+        {% if tool.source_error %}<br><span class="muted">source said (untrusted):</span> <code class="source-error">{{ tool.source_error }}</code>{% if tool.source_error_truncated %} <span class="muted">(truncated)</span>{% endif %}{% endif %}
         {% if tool.evidence_id %}<a href="/incidents/{{ inc.incident_id }}/evidence/{{ tool.evidence_id }}"><code>{{ tool.evidence_id }}</code></a>{% endif %}
         {% if tool.adopted is sameas false %}<span class="muted">(not adopted)</span>{% endif %}
       {% endfor %}
@@ -327,6 +396,9 @@
 {% if snapshot.pending_tools %}<p class="muted">{{ snapshot.pending_tools }} planned tool operation(s) not yet committed.</p>{% endif %}
 {% else %}
 <p class="muted">No committed steps.</p>
+{% endif %}
+{% if snapshot.not_integrated %}
+<p id="not-integrated">Not integrated for this Run (cannot be queried): {% for name in snapshot.not_integrated %}<code>{{ name }}</code>{% if not loop.last %}, {% endif %}{% endfor %}</p>
 {% endif %}
 
 <h2>Investigation history</h2>

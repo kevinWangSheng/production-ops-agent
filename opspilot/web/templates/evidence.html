@@ -4,7 +4,7 @@
 <h1>Evidence <code>{{ evidence.evidence_id }}</code></h1>
 <p><a href="/incidents/{{ incident_id }}">Back to incident</a></p>
 <dl>
-{% for key in ["run_id", "status", "adopted", "observed_at", "data_as_of", "raw_sha256", "view_sha256", "hashes_verified", "display_redacted", "projection_revision"] %}
+{% for key in ["run_id", "status", "adopted", "observed_at", "data_as_of", "raw_sha256", "view_sha256", "hashes_verified", "payload_state", "display_redacted", "projection_revision"] %}
 {% if key in evidence %}
   <dt>{{ key }}</dt><dd><code>{{ evidence[key] }}</code></dd>
 {% endif %}
@@ -12,6 +12,12 @@
 </dl>
 <h2>View</h2>
 <pre>{{ evidence.view | tojson(indent=2) }}</pre>
+{% if evidence.raw_unavailable is defined %}
+<h2>Raw</h2>
+<p id="raw-cleaned"><strong>Raw data cleaned</strong> <code>{{ evidence.raw_unavailable }}</code>
+  <span class="muted">(removed by the retention cleanup after the incident closed; the hashes, times and view above are kept, the raw bytes cannot be re-verified)</span></p>
+{% else %}
 <h2>Raw {% if evidence.raw_base64 is defined %}(base64){% else %}text{% endif %}</h2>
 <pre>{{ evidence.raw_utf8 if evidence.raw_utf8 is defined else evidence.raw_base64 }}</pre>
+{% endif %}
 {% endblock %}

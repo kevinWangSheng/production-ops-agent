@@ -2,7 +2,8 @@
 
 Routes (C3 section 9): incident list and detail, the SSE progress stream
 with cursor resume, the UI intake form, the token-authenticated event
-intake, a human-control endpoint and evidence read-back. Every handler
+intake, a human-control endpoint, evidence read-back and the release
+observation list, detail and pause/resume/cancel (F11 PR-5a). Every handler
 authenticates first and parses the path second, so a caller without
 credentials learns nothing about what exists.
 
@@ -18,6 +19,7 @@ import asyncio
 import base64
 import hashlib
 import json
+import re
 from collections.abc import AsyncIterator, Mapping
 from datetime import datetime
 from pathlib import Path
@@ -40,8 +42,19 @@ from opspilot.domain.base import DomainError
 from opspilot.domain.intake import delivery_key
 from opspilot.intake import IntakeEnvelope, IntakeRequest, Principal, verify_channel
 from opspilot.knowledge.contract import ReviewCommand
+from opspilot.observation.releases import ReleaseStore
+from opspilot.observer.health_profile import canonical_content
 from opspilot.persistence import PersistenceError
 from opspilot.redaction import redact_json_bytes, redact_payload
+from opspilot.release_intake import (
+    REJECTION_STATUS,
+    RELEASE_ACTOR,
+    RELEASE_MAX_BODY_BYTES,
+    RELEASE_MIN_TRACKING_SECONDS,
+    ReleaseIntakeError,
+    parse_release,
+    resolve_target,
+)
 from opspilot.tools.executor import Clock
 from opspilot.web.auth import Authenticator, AuthError
 from opspilot.web.events import CursorTooOld
@@ -99,12 +112,18 @@ _AUTH_STATUS = {
 _WORKBENCH_STATUS = {
     "UNKNOWN_INCIDENT": 404,
     "UNKNOWN_TARGET": 404,
+    "UNKNOWN_RELEASE": 404,
     "INVALID_INPUT": 400,
     "INVALID_ACTION": 400,
     "TEXT_REQUIRED": 400,
     "TEXT_NOT_ALLOWED": 400,
     "REVISION_REQUIRED": 400,
     "REVISION_NOT_ALLOWED": 400,
+    "TARGET_REQUIRED": 400,
+    "TARGET_NOT_ALLOWED": 400,
+    "INTO_INCIDENT_REQUIRED": 400,
+    "INTO_INCIDENT_NOT_ALLOWED": 400,
+    "TARGET_UNCHANGED": 409,
     "HEALTH_PROFILE_REQUIRED": 409,
     "SCOPE_SUSPENDED": 409,
     "TARGET_MISMATCH": 409,
@@ -122,6 +141,40 @@ _WORKBENCH_STATUS = {
     "RETRY": 503,
     "TIMEOUT": 503,
 }
+
+
+#: F11 PR-5a D2: a release control refused for the release's current state
+#: is a conflict (reload and decide again); a calibration, target or profile
+#: refusal is final for the request (422). Kept apart from the incident
+#: table, where TARGET_* codes are 409.
+_RELEASE_CONFLICTS = frozenset(
+    {
+        "CONTROL_CONFLICT",
+        "RELEASE_TERMINAL",
+        "ALREADY_PAUSED",
+        "OBSERVATION_ALREADY_AUTHORIZED",
+        "REAUTHORIZATION_REQUIRED",
+        "RELEASE_PAUSED",
+        "SCOPE_SUSPENDED",
+        "RELEASE_DEADLINE_EXPIRED",
+        "RELEASE_SAMPLE_BUDGET_EXHAUSTED",
+        "IDEMPOTENCY_CONFLICT",
+    }
+)
+_RELEASE_STATUS = {
+    "UNKNOWN_RELEASE": 404,
+    "NOT_FOUND": 404,
+    "INVALID_INPUT": 400,
+    "INVALID_RELEASE_POLICY": 422,
+}
+
+
+def _release_status(code: str, default: int) -> int:
+    if code in _RELEASE_CONFLICTS:
+        return 409
+    if code.startswith(("RELEASE_POLICY_", "TARGET_", "HEALTH_PROFILE_")):
+        return 422
+    return _RELEASE_STATUS.get(code, default)
 
 
 #: R3: a conflict asks for a reload, a refusal is final for this request.
@@ -152,6 +205,7 @@ def create_app(
     sse_idle_seconds: float | None = 30.0,
     sse_repair_seconds: float = 5.0,
     review: PostmortemReview | None = None,
+    releases: ReleaseStore | None = None,
 ) -> FastAPI:
     # No unauthenticated schema surface: /openapi.json would list every route.
     app = FastAPI(
@@ -170,7 +224,7 @@ def create_app(
     async def refused(request: Request, exc: _Refusal) -> Response:
         headers = {}
         if exc.status == 401 and not request.url.path.startswith(
-            ("/intake/events", "/intake/alertmanager")
+            ("/intake/events", "/intake/alertmanager", "/intake/version-changes")
         ):
             headers["WWW-Authenticate"] = 'Basic realm="opspilot"'
         return JSONResponse(
@@ -202,6 +256,16 @@ def create_app(
             raise _Refusal(_AUTH_STATUS.get(exc.code, 401), exc.code) from None
         except DomainError:
             raise _Refusal(403, "CHANNEL_MISMATCH") from None
+
+    async def generic_event_channel(request: Request) -> Principal:
+        """An event principal for the generic intake routes. The release
+        actor's token is shared in ``OPSPILOT_EVENT_TOKENS`` but grants only
+        ``/intake/version-changes`` (F11 PR-3 U4); refused before the body
+        is read, as that route refuses other actors."""
+        principal = await event_channel(request)
+        if principal.actor_id == RELEASE_ACTOR:
+            raise _Refusal(403, "RELEASE_ACTOR_FORBIDDEN")
+        return principal
 
     async def body_of(request: Request, limit: int = MAX_BODY_BYTES) -> bytes:
         declared = request.headers.get("content-length")
@@ -351,10 +415,12 @@ def create_app(
         postmortem = None
         if review is not None:
             postmortem = await reviewed(review.incident_view, subject)
+        release_links = await in_thread(workbench.release_links_for, subject)
         return render(
             "incident.html",
             principal=principal,
             snapshot=snapshot,
+            release_links=release_links,
             postmortem=postmortem,
             postmortem_kinds=EVENT_KINDS,
             actions=available_actions(snapshot),
@@ -522,7 +588,7 @@ def create_app(
 
     @app.post("/intake/events")
     async def intake_event(request: Request) -> Response:
-        principal = await event_channel(request)
+        principal = await generic_event_channel(request)
         payload = await json_of(request)
         try:
             state_time = payload.get("state_time")
@@ -568,7 +634,7 @@ def create_app(
         Alertmanager retries the group (it retries 5xx only); the alerts
         already committed then come back as replays.
         """
-        principal = await event_channel(request)
+        principal = await generic_event_channel(request)
         body = await body_of(request, ALERTMANAGER_MAX_BODY_BYTES)
         try:
             alerts = parse_payload(json.loads(body.decode("utf-8")))
@@ -587,6 +653,150 @@ def create_app(
             status_code=503 if failed else 200,
         )
 
+    release_stores: list[ReleaseStore] = [] if releases is None else [releases]
+
+    def release_store() -> ReleaseStore:
+        # Without an explicit store, share the workbench's database and pool
+        # settings, as the incident adapter does for its ObservationStore.
+        if not release_stores:
+            durable = getattr(workbench.incidents, "_store", None)
+            dsn = getattr(durable, "dsn", None)
+            if not isinstance(dsn, str):
+                raise _Refusal(503, "STORAGE_UNAVAILABLE")
+            release_stores.append(
+                ReleaseStore(dsn, pool=getattr(durable, "pool_config", None))
+            )
+        return release_stores[0]
+
+    @app.post("/intake/version-changes")
+    async def intake_release(request: Request) -> Response:
+        """Register one release event (F11 PR-3); never authorizes it.
+
+        Only the dedicated ``release-deployer`` actor may submit (U4). A
+        payload or target refusal writes nothing and queries nothing (U6);
+        a store-level rejection (identity conflict, future time, registry
+        mismatch) has its delivery audited by the store and is answered
+        with its code. A storage failure is 503 and safe to retry: the
+        ``(source, source_release_id)`` key turns a retry into a replay.
+        """
+        principal = await event_channel(request)
+        if principal.actor_id != RELEASE_ACTOR:
+            raise _Refusal(403, "RELEASE_ACTOR_REQUIRED")
+        body = await body_of(request, RELEASE_MAX_BODY_BYTES)
+        profile = workbench.health_profile
+        try:
+            parsed = parse_release(body)
+            resolved = resolve_target(parsed.target, workbench.targets)
+            if profile is None:
+                raise ReleaseIntakeError(409, "HEALTH_PROFILE_REQUIRED")
+            if resolved.health_profile_id != profile.profile_id:
+                raise ReleaseIntakeError(422, "HEALTH_PROFILE_TARGET_MISMATCH")
+        except ReleaseIntakeError as exc:
+            raise _Refusal(exc.status, exc.code) from None
+        store = release_store()
+
+        def register() -> Any:
+            # The store registers a new target in the release's transaction,
+            # so a refused or failed delivery leaves no target row (r4).
+            return store.record_release(
+                event=parsed.event,
+                resource_uid=resolved.resource_uid,
+                identity=resolved.identity,
+                health_profile_revision=profile.revision,
+                health_profile=canonical_content(profile),
+                min_tracking_seconds=RELEASE_MIN_TRACKING_SECONDS,
+                actor=principal.actor_id,
+                raw_body=body,
+            )
+
+        try:
+            receipt = await asyncio.to_thread(register)
+        except PersistenceError:
+            raise _Refusal(503, "STORAGE_UNAVAILABLE") from None
+        if receipt.outcome == "rejected":
+            code = receipt.reason or "RELEASE_REJECTED"
+            raise _Refusal(REJECTION_STATUS.get(code, 422), code)
+        return JSONResponse(
+            {
+                "outcome": receipt.outcome,
+                "observation_id": str(receipt.observation_id),
+                "status": receipt.status,
+                "reason": receipt.reason,
+            },
+            status_code=201 if receipt.outcome == "created" else 200,
+        )
+
+    # -- release observation pages (F11 PR-5a) ---------------------------
+    # Paths avoid the F7 mutation words ("release", "target", ...) and sit
+    # in the intake route's ``version-changes`` family (D1). Basic Auth only:
+    # an event token, the release deployer's included, opens none of them.
+
+    def release_of(raw: str) -> UUID:
+        try:
+            return UUID(raw)
+        except ValueError:
+            raise _Refusal(404, "UNKNOWN_RELEASE") from None
+
+    @app.get("/version-changes")
+    async def release_list(request: Request) -> Response:
+        principal = await ui(request)
+        releases = await in_thread(workbench.list_releases)
+        if wants_html(request):
+            return render(
+                "version_changes.html", principal=principal, releases=releases
+            )
+        return JSONResponse({"releases": releases})
+
+    @app.get("/version-changes/{observation_id}")
+    async def release_detail(request: Request, observation_id: str) -> Response:
+        principal = await ui(request)
+        subject = release_of(observation_id)
+        page = await in_thread(workbench.release_page, subject)
+        if wants_html(request):
+            return render(
+                "version_change.html",
+                principal=principal,
+                page=page,
+                form_nonce=uuid4().hex,
+            )
+        return JSONResponse(page)
+
+    @app.post("/version-changes/{observation_id}/control")
+    async def release_control(request: Request, observation_id: str) -> Response:
+        """Pause, resume or cancel one release observation (C3 section 9)."""
+        principal = await ui_mutation(request)
+        subject = release_of(observation_id)
+        fields = await form_of(request)
+        generation = fields.get("expected_control_generation", "")
+        action = fields.get("action", "")
+        if (
+            not generation.isascii()
+            or not generation.isdigit()
+            or len(generation) > 19
+            or action not in ("pause", "resume", "cancel")
+        ):
+            raise _Refusal(400, "INVALID_INPUT")
+        try:
+            result = await asyncio.to_thread(
+                workbench.release_control,
+                subject,
+                action=action,
+                actor_id=principal.actor_id,
+                expected_control_generation=int(generation),
+                idempotency_key=fields.get("idempotency_key", ""),
+            )
+        except WorkbenchError as exc:
+            extra = {}
+            if exc.current_generation is not None:
+                extra["current_generation"] = exc.current_generation
+            raise _Refusal(_release_status(exc.code, 409), exc.code, **extra) from None
+        except PersistenceError as exc:
+            code = str(exc)
+            raise _Refusal(_release_status(code, 503), code) from None
+        if wants_html(request):
+            return RedirectResponse(f"/version-changes/{subject}", status_code=303)
+        return JSONResponse(result)
+
     # -- human control --------------------------------------------------
 
     @app.post("/incidents/{incident_id}/control")
@@ -599,6 +809,8 @@ def create_app(
             raise _Refusal(400, "INVALID_INPUT")
         text = fields.get("text")
         revision = fields.get("revision")
+        to_target = fields.get("to_target")
+        into_incident_id = fields.get("into_incident_id")
         result = await in_thread(
             workbench.control,
             subject,
@@ -608,6 +820,8 @@ def create_app(
             idempotency_key=fields.get("idempotency_key", ""),
             text=text if text else None,
             revision=revision if revision else None,
+            to_target=to_target if to_target else None,
+            into_incident_id=into_incident_id if into_incident_id else None,
         )
         if wants_html(request):
             return RedirectResponse(f"/incidents/{subject}", status_code=303)
@@ -670,7 +884,18 @@ def create_app(
             if found is None:
                 raise _Refusal(404, "UNKNOWN_EVIDENCE")
             return JSONResponse(_recovery_reading(evidence_id, found))
-        raw, raw_redacted = _raw_fields(record.raw)
+        # A cleaned record (#244) keeps its identity, hashes and view; the
+        # two cleaned keys appear only then, so a present record keeps the
+        # page's established key set.
+        # Only the state says cleaned; a record without raw in any other
+        # state is unverifiable (``hashes_verified`` None) and shows no raw.
+        raw, raw_redacted = (
+            (_CLEANED, False)
+            if record.payload_state == "cleaned"
+            else ({}, False)
+            if record.raw is None
+            else _raw_fields(record.raw)
+        )
         stored_view = dict(record.view)
         view = redact_payload(stored_view)
         payload = {
@@ -706,6 +931,10 @@ def create_app(
         return JSONResponse(payload)
 
     return app
+
+
+#: What a cleaned payload shows in place of its raw fields (#244 PR-3).
+_CLEANED = {"payload_state": "cleaned", "raw_unavailable": "CLEANED_DATA"}
 
 
 def _raw_fields(raw: bytes) -> tuple[dict[str, str], bool]:
@@ -796,13 +1025,20 @@ def _recovery_reading(evidence_id: str, found: Mapping[str, Any]) -> dict[str, A
         "window_end": reading["window_end"].isoformat(),
         "source": reading["source"],
         "raw_sha256": raw_sha256,
-        # None: no raw bundle was stored for this reading
+        # None: no raw bundle was stored for this reading; a cleaned one
+        # (#244) must still keep a digest, else it is not verified
         "hashes_verified": (
-            None
+            (
+                False
+                if reading.get("payload_state") == "cleaned"
+                and re.fullmatch(r"[0-9a-f]{64}", raw_sha256 or "") is None
+                else None
+            )
             if raw is None
             else hashlib.sha256(bytes(raw)).hexdigest() == raw_sha256
         ),
         **raw_fields,
+        **(_CLEANED if reading.get("payload_state") == "cleaned" else {}),
         **(
             {"display_redacted": True}
             if raw_redacted

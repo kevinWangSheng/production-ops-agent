@@ -1043,8 +1043,8 @@ def test_the_web_role_holds_only_select_and_column_insert_on_the_new_tables() ->
             or (
                 table == OBSERVATIONS
                 and p
-                == "UPDATE(calibrated_policy_content,calibrated_policy_revision,calibrated_policy_sha256,control_generation,ended_at,ended_reason,observation_generation,paused,status,updated_at)"
-            )
+                == "UPDATE(calibrated_policy_content,calibrated_policy_revision,calibrated_policy_sha256,control_generation,ended_at,ended_reason,incident_id,observation_generation,paused,status,updated_at)"
+            )  # 0021 adds incident_id (F11 PR-4b)
             for p in declared
         ), declared
         assert RUNTIME_GRANTS[WORKER_ROLE][table] == frozenset()
@@ -1418,8 +1418,30 @@ def test_0014_downgrades_only_when_empty_and_keeps_data_otherwise() -> None:
                     if table
                     not in ("opspilot_release_audit", "opspilot_release_query_results")
                 }
+                # 0020 adds the three comparison relations and 0021 the
+                # incident links; below them they are gone.
+                expected = {
+                    table: held
+                    for table, held in expected.items()
+                    if table
+                    not in (
+                        "opspilot_release_comparisons",
+                        "opspilot_release_comparison_attempts",
+                        "opspilot_release_comparison_queries",
+                        "opspilot_release_incident_links",
+                    )
+                }
                 if role == WEB_ROLE:
                     removals = {
+                        # 0018 grants the web role INSERT on the related
+                        # incident column and 0019 INSERT/UPDATE on the
+                        # priority column; below them both are revoked.
+                        # 0022 (#245) UPDATE on the merge pointer.
+                        "opspilot_incidents": {
+                            "related_incident_id",
+                            "priority",
+                            "merged_into_incident_id",
+                        },
                         "opspilot_observation_sessions": {
                             "release_observation_id",
                             "release_policy_revision",
@@ -1435,17 +1457,26 @@ def test_0014_downgrades_only_when_empty_and_keeps_data_otherwise() -> None:
                     for table, columns in removals.items():
                         normalized = set()
                         for privilege in expected[table]:
-                            if privilege.startswith("INSERT("):
+                            kind, _, listed = privilege.partition("(")
+                            if listed and kind in ("INSERT", "UPDATE"):
                                 remaining_columns = (
-                                    set(privilege[7:-1].split(",")) - columns
+                                    set(listed[:-1].split(",")) - columns
                                 )
                                 privilege = (
-                                    "INSERT("
+                                    f"{kind}("
                                     + ",".join(sorted(remaining_columns))
                                     + ")"
                                 )
                             normalized.add(privilege)
                         expected[table] = frozenset(normalized)
+                    # 0022 (#245) also grants UPDATE(target_id); INSERT on it
+                    # predates 0014 and stays.
+                    expected["opspilot_incidents"] = frozenset(
+                        privilege.replace(",target_id)", ")")
+                        if privilege.startswith("UPDATE(")
+                        else privilege
+                        for privilege in expected["opspilot_incidents"]
+                    )
                     # 0017 grants the operator suspension writes; below it
                     # the web role holds the lock-only privileges again.
                     expected.update(

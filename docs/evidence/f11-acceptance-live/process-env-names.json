@@ -1,0 +1,58 @@
+{
+ "web": {
+  "recorded_at": "2026-10-26T04:56:48.960229+00:00",
+  "entry": "-m opspilot.web serve",
+  "names": [
+   "HOME",
+   "LC_CTYPE",
+   "OPSPILOT_EVENT_TOKENS",
+   "OPSPILOT_SELF_HEAL_INTERVAL_SECONDS",
+   "OPSPILOT_TARGET_IDENTITIES",
+   "OPSPILOT_TOOL_PROFILE",
+   "OPSPILOT_UI_USERS",
+   "OPSPILOT_WEB_DSN",
+   "PATH",
+   "PWD",
+   "SHLVL",
+   "__CF_USER_TEXT_ENCODING"
+  ],
+  "kubernetes_or_ci_names": []
+ },
+ "observer": {
+  "recorded_at": "2026-10-26T04:55:32.786600+00:00",
+  "entry": "-m opspilot.observer",
+  "names": [
+   "HOME",
+   "LC_CTYPE",
+   "OPSPILOT_OBSERVER_DSN",
+   "OPSPILOT_OBSERVER_ENV_FILE",
+   "OPSPILOT_OBSERVER_PROMETHEUS_URL",
+   "PATH",
+   "__CF_USER_TEXT_ENCODING"
+  ],
+  "kubernetes_or_ci_names": []
+ },
+ "worker": {
+  "recorded_at": "2026-10-26T04:55:36.057900+00:00",
+  "entry": "-m opspilot.worker_main",
+  "names": [
+   "HOME",
+   "LANGSMITH_PROJECT",
+   "LC_CTYPE",
+   "OPSPILOT_ENV_FILE",
+   "OPSPILOT_LAB_ROUND",
+   "OPSPILOT_OTEL_PROMETHEUS_PASSWORD",
+   "OPSPILOT_OTEL_PROMETHEUS_USERNAME",
+   "OPSPILOT_TOOL_PROFILE",
+   "OPSPILOT_TRACE",
+   "OPSPILOT_WORKER_DSN",
+   "PATH",
+   "PWD",
+   "SHLVL",
+   "__CF_USER_TEXT_ENCODING"
+  ],
+  "kubernetes_or_ci_names": []
+ },
+ "method": "each process was started through `python -m scripts.f11_pr5c_lab exec-env <file> -- <entry>`, which writes sorted(os.environ) names and then execs the entry in place (same PID, same environment); values are never written",
+ "note": "the worker additionally reads DEEPSEEK_API_KEY and LANGSMITH_API_KEY from the private OPSPILOT_ENV_FILE after start; the Observer reads its Prometheus account from OPSPILOT_OBSERVER_ENV_FILE; neither file holds Kubernetes or CI credentials"
+}

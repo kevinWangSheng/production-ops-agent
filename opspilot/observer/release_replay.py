@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Mapping
 from datetime import datetime, timedelta, timezone
 from typing import Any, Literal
@@ -28,6 +29,7 @@ from opspilot.observer.release_evaluation import (
     advance_release_window,
     evaluate_release_sample,
     query_evidence_consistent,
+    query_plan_consistent,
 )
 
 
@@ -42,6 +44,53 @@ class ReleaseReplay(DTO):
     sample_evaluations: tuple[ReleaseEvaluation, ...]
     external_queries: tuple[()] = ()
     model_requests: tuple[()] = ()
+
+
+#: The retention cleanup removed raw query bodies of this release (#244):
+#: the replay cannot redo the comparison and says so instead of reporting a
+#: mismatch; its verdict is ``unknown``.
+DATA_CLEANED = "REPLAY_DATA_CLEANED"
+
+
+def _cleaned(rows: Any) -> bool:
+    return any(
+        isinstance(row, Mapping) and row.get("payload_state") == "cleaned"
+        for row in rows or ()
+    )
+
+
+def _cleaned_metadata(
+    row: Mapping[str, Any], subject: str
+) -> tuple[str, str, str, datetime]:
+    """A cleaned query row validated as its DTO minus the body (#244): every
+    field but ``raw`` must still be well formed, the kept digest included.
+    Returns what the plan checks need."""
+    from opspilot.observation.release_types import ReleaseQueryResult
+
+    if not isinstance(row.get("raw_sha256"), str) or not re.fullmatch(
+        r"[0-9a-f]{64}", row["raw_sha256"]
+    ):
+        raise ValueError("RAW_SHA256_INVALID")
+    data = {k: v for k, v in row.items() if k not in (subject, "payload_state", "raw")}
+    shell = ReleaseQueryResult.model_validate(
+        {**data, "raw": b"", "raw_sha256": sha256(b"")}
+    )
+    return shell.query_key, shell.query, shell.source, shell.evaluated_at
+
+
+def _body_intact(row: Mapping[str, Any]) -> bool:
+    raw = row.get("raw")
+    return raw is not None and sha256(
+        raw if isinstance(raw, bytes) else bytes(raw)
+    ) == row.get("raw_sha256")
+
+
+def _retained_tampered(rows: Any) -> bool:
+    """#244: rows beside a cleaned one that still hold a body are re-hashed."""
+    return any(
+        row.get("payload_state") != "cleaned" and not _body_intact(row)
+        for row in rows or ()
+    )
 
 
 _AUDIT_ENDING_REASONS = {
@@ -364,11 +413,33 @@ def _replay_release_history(history: Mapping[str, object]) -> ReleaseReplay:
             from opspilot.observation.release_types import ReleaseQueryResult
 
             queries = []
+            # #244: a sample whose raw query bodies were cleaned cannot be
+            # re-evaluated. Its stored evaluation stands in for the fold, so
+            # every other check (bindings, decision, status, audit, ending)
+            # still runs; the verdict is unknown with DATA_CLEANED.
+            cleaned = _cleaned(m["queries"])
+            if cleaned:
+                issues.add(DATA_CLEANED)
+            if cleaned and _retained_tampered(m["queries"]):
+                issues.add("RAW_SHA256_MISMATCH")
+                issues.add("QUERY_MISMATCH")
+            kept: list[tuple[str, str, str, datetime]] = []
             for q in m["queries"]:
                 if q.get("sample_id") != m["sample_id"]:
                     issues.add("SUBJECT_BINDING_MISMATCH")
                     issues.add("QUERY_MISMATCH")
-                data = {k: v for k, v in q.items() if k != "sample_id"}
+                if q.get("payload_state") == "cleaned" or (
+                    # beside a cleaned row a tampered body is already
+                    # reported; its metadata is still checked below
+                    cleaned and not _body_intact(q)
+                ):
+                    kept.append(_cleaned_metadata(q, "sample_id"))
+                    continue
+                data = {
+                    k: v
+                    for k, v in q.items()
+                    if k not in ("sample_id", "payload_state")
+                }
                 raw = data["raw"]
                 if not isinstance(raw, bytes):
                     raw = bytes(raw)
@@ -377,23 +448,54 @@ def _replay_release_history(history: Mapping[str, object]) -> ReleaseReplay:
                     issues.add("RAW_SHA256_MISMATCH")
                     issues.add("QUERY_MISMATCH")
                 queries.append(ReleaseQueryResult.model_validate(data))
+                kept.append(
+                    (
+                        queries[-1].query_key,
+                        queries[-1].query,
+                        queries[-1].source,
+                        queries[-1].evaluated_at,
+                    )
+                )
             evidence = ReleaseSampleEvidence(
                 format_version=1,
                 sample_id=m["sample_id"],
                 window=QueryWindow(start=m["window_start"], end=m["window_end"]),
                 queries=tuple(queries),
             )
-            evaluation = evaluate_release_sample(
-                context, evidence, decision_at=m["decision_at"]
-            )
-            evaluations.append(evaluation)
-            consistent = query_evidence_consistent(context, evidence, m["decision_at"])
-            # A missing key can be legitimate interrupted history. Existing
-            # rows must still match the plan even when adoption was fenced.
-            if not query_evidence_consistent(
-                context, evidence, m["decision_at"], require_complete=False
-            ):
-                issues.add("QUERY_MISMATCH")
+            if cleaned:
+                evaluation = ReleaseEvaluation.model_validate_json(
+                    canonical_json(m["release_evaluation"])
+                )
+                # Every row's kept metadata, cleaned or not, still has to
+                # reproduce the plan; the instances are the ones the stored
+                # evaluation recorded (the mapping bodies may be gone).
+                uids = tuple(i.pod_uid for i in evaluation.instances)
+                consistent = query_plan_consistent(
+                    context, evidence.window, m["decision_at"], kept, uids
+                )
+                if not query_plan_consistent(
+                    context,
+                    evidence.window,
+                    m["decision_at"],
+                    kept,
+                    uids,
+                    require_complete=False,
+                ):
+                    issues.add("QUERY_MISMATCH")
+            else:
+                evaluation = evaluate_release_sample(
+                    context, evidence, decision_at=m["decision_at"]
+                )
+                evaluations.append(evaluation)
+                consistent = query_evidence_consistent(
+                    context, evidence, m["decision_at"]
+                )
+                # A missing key can be legitimate interrupted history. Existing
+                # rows must still match the plan even when adoption was fenced.
+                if not query_evidence_consistent(
+                    context, evidence, m["decision_at"], require_complete=False
+                ):
+                    issues.add("QUERY_MISMATCH")
             if (
                 evaluation.model_dump(mode="json") != m["release_evaluation"]
                 or evaluation.outcome != m["outcome"]
@@ -408,7 +510,10 @@ def _replay_release_history(history: Mapping[str, object]) -> ReleaseReplay:
                 sample_fingerprint,
             )
 
-            if sample_fingerprint(lease, evidence) != m["release_evidence_sha256"]:
+            if (
+                not cleaned
+                and sample_fingerprint(lease, evidence) != m["release_evidence_sha256"]
+            ):
                 issues.add("RAW_SHA256_MISMATCH")
             if (
                 lease.job_id != m["job_id"]
@@ -1029,6 +1134,18 @@ def _replay_release_history(history: Mapping[str, object]) -> ReleaseReplay:
             issues.add("ENDING_MISMATCH")
     elif not (late_delivery and release.ended_at == release.received_at):
         issues.add("ENDING_MISMATCH")
+    if "comparisons" in history:
+        issues |= _comparison_issues(
+            release,
+            history["comparisons"],
+            profile,
+            policy,
+            by_session,
+            samples,
+            endings,
+        )
+    if "link" in history:
+        issues |= _link_issues(release, history["link"], endings)
     verdict: Literal["healthy", "degraded", "unknown"] = "unknown"
     if not issues:
         if status == "healthy":
@@ -1045,6 +1162,293 @@ def _replay_release_history(history: Mapping[str, object]) -> ReleaseReplay:
         integrity=tuple(sorted(issues)),
         sample_evaluations=tuple(evaluations),
     )
+
+
+def _comparison_issues(
+    release: ReleaseRecord,
+    comparisons: Any,
+    profile: HealthProfile | None,
+    policy: ReleasePolicy | None,
+    sessions: Mapping[UUID, Any],
+    samples: Any,
+    endings: Any,
+) -> set[str]:
+    """PR-4a S8: a stored comparison is recomputed from its stored raw
+    before-window evidence and the anomaly sample it is bound to."""
+    from opspilot.observation.release_comparison import (
+        ReleaseComparisonEvidence,
+        compare_evidence,
+        comparison_fingerprint,
+        comparison_id_for,
+        iter_comparison_queries,
+    )
+
+    if not comparisons:
+        return set()
+    if len(comparisons) != 1 or release.status != "anomalous":
+        return {"COMPARISON_MISMATCH"}
+    c = comparisons[0]
+    try:
+        ending = next(
+            e
+            for e in endings
+            if e["ending_id"] == c["ending_id"] and e.get("anomaly_key") is not None
+        )
+        sample = next(m for m in samples if m["sample_id"] == c["sample_id"])
+        session = sessions[c["session_id"]]
+        if (
+            profile is None
+            or policy is None
+            or c["observation_id"] != release.observation_id
+            or c["comparison_id"]
+            != comparison_id_for(release.observation_id, c["ending_id"])
+            or ending["sample_id"] != c["sample_id"]
+            or ending["session_id"] != c["session_id"]
+            or c["format_version"] != 1
+        ):
+            return {"COMPARISON_MISMATCH"}
+        window_after = QueryWindow(
+            start=sample["window_start"], end=sample["window_end"]
+        )
+        if (c["window_after_start"], c["window_after_end"]) != (
+            window_after.start,
+            window_after.end,
+        ):
+            return {"COMPARISON_MISMATCH"}
+        if any(q["comparison_id"] != c["comparison_id"] for q in c["queries"]):
+            return {"COMPARISON_MISMATCH"}
+        if _cleaned(c["queries"]):
+            # #244: the before-window bodies were cleaned, so its numbers
+            # cannot be redone; everything that needs no body still holds
+            return {DATA_CLEANED} | _cleaned_comparison_issues(
+                c,
+                ReleaseEvaluationContext(
+                    release=release,
+                    session_id=session["session_id"],
+                    authorized_at=session["authorized_at"],
+                    policy=policy,
+                    health_profile=profile,
+                ),
+                window_after,
+                ReleaseEvaluation.model_validate_json(
+                    canonical_json(sample["release_evaluation"])
+                ),
+            )
+        queries = list(iter_comparison_queries(c["queries"]))
+        evidence = ReleaseComparisonEvidence(
+            format_version=1,
+            comparison_id=c["comparison_id"],
+            attempts=c["attempts"],
+            window=QueryWindow(
+                start=c["window_before_start"], end=c["window_before_end"]
+            ),
+            queries=tuple(queries),
+        )
+        recomputed = compare_evidence(
+            ReleaseEvaluationContext(
+                release=release,
+                session_id=session["session_id"],
+                authorized_at=session["authorized_at"],
+                policy=policy,
+                health_profile=profile,
+            ),
+            observation_id=release.observation_id,
+            ending_id=c["ending_id"],
+            sample_id=c["sample_id"],
+            window_after=window_after,
+            anomaly=ReleaseEvaluation.model_validate_json(
+                canonical_json(sample["release_evaluation"])
+            ),
+            evidence=evidence,
+            decision_at=c["decision_at"],
+        )
+    except (StopIteration, KeyError, TypeError, ValueError, ValidationError):
+        return {"COMPARISON_MISMATCH"}
+    if (
+        recomputed.model_dump(mode="json") != c["comparison"]
+        or recomputed.status != c["status"]
+        or comparison_fingerprint(evidence) != c["evidence_sha256"]
+        or not c["decision_at"] <= c["recorded_at"]
+    ):
+        return {"COMPARISON_MISMATCH"}
+    return set()
+
+
+def _cleaned_comparison_issues(
+    c: Mapping[str, Any],
+    context: ReleaseEvaluationContext,
+    window_after: QueryWindow,
+    anomaly: ReleaseEvaluation,
+) -> set[str]:
+    """#244: the checks on a comparison whose before bodies were (partly)
+    cleaned that need no body: retained bodies still hash, every query row
+    is well formed and reproduces the before plan (for the instances the
+    stored record names), attempts stay in range, the before window is the
+    frozen profile's, and the stored record is the one of this row."""
+    from opspilot.observation.release_comparison import (
+        AFTER_INSUFFICIENT,
+        EVIDENCE_INCONSISTENT,
+        ReleaseComparison,
+        ReleaseComparisonEvidence,
+        _to_pr2_key,
+        after_insufficient,
+        after_scope_signals,
+        before_context,
+        before_signal_frame,
+        before_window,
+        comparison_status,
+    )
+    from opspilot.observer.release_evaluation import (
+        build_release_query_plan,
+        profile_usable,
+        supported_profile,
+    )
+
+    try:
+        window = QueryWindow(start=c["window_before_start"], end=c["window_before_end"])
+        ReleaseComparisonEvidence(
+            format_version=1,
+            comparison_id=c["comparison_id"],
+            attempts=c["attempts"],
+            window=window,
+            queries=(),
+        )
+        kept = [_cleaned_metadata(q, "comparison_id") for q in c["queries"]]
+        stored = ReleaseComparison.model_validate_json(canonical_json(c["comparison"]))
+        expected = before_window(context)
+        old = before_context(context)
+        rows = [(_to_pr2_key(k), q, s, at) for k, q, s, at in kept]
+        befores = [s for s in stored.signals if s.scope.startswith("before")]
+        if EVIDENCE_INCONSISTENT in stored.reason_codes:
+            # The code can come from the bodies (the mapping bodies decide
+            # the instance set, hence the slice keys), so it cannot be
+            # refuted from metadata. What it implies still has to hold: no
+            # before instances or values, ``unavailable``, and every row
+            # whose plan needs no instance reproduces that plan.
+            needs_none = build_release_query_plan(
+                old, window_end=expected.end, instance_uids=()
+            )
+            consistent_rows = (
+                not stored.before_instances
+                and stored.status == "unavailable"
+                and all(s.value is None for s in befores)
+                and query_plan_consistent(
+                    old,
+                    expected,
+                    c["decision_at"],
+                    [(k, q, s, at) for k, q, s, at in rows if k in needs_none],
+                    (),
+                    require_complete=False,
+                )
+            )
+        else:
+            # without the code the plan must hold, exactly as recomputed
+            consistent_rows = query_plan_consistent(
+                old,
+                expected,
+                c["decision_at"],
+                rows,
+                tuple(i.pod_uid for i in stored.before_instances),
+            )
+        after = after_scope_signals(context, anomaly)
+        if [s for s in stored.signals if not s.scope.startswith("before")] != list(
+            after.values()
+        ) or (AFTER_INSUFFICIENT in stored.reason_codes) != after_insufficient(
+            anomaly, after.values()
+        ):
+            return {"COMPARISON_MISMATCH"}
+        # Every before signal's identity, keys and scoped codes, and the
+        # status, follow from the record and the frozen profile; only the
+        # values, counts and times (and before_instances) need the bodies.
+        evaluated = (
+            supported_profile(context.health_profile)
+            and EVIDENCE_INCONSISTENT not in stored.reason_codes
+            and profile_usable(old)
+        )
+        frame = before_signal_frame(
+            context, evaluated=evaluated, reason_codes=stored.reason_codes
+        )
+        if (
+            [(s.scope, s.signal_name, s.query_keys, s.reason_codes) for s in befores]
+            != frame
+            or [s.scope for s in stored.signals]
+            != [scope for scope, *_ in frame] + [scope for scope, _ in after]
+            or (
+                not evaluated
+                and any(
+                    s.value is not None
+                    or s.sample_count is not None
+                    or s.latest_sample_at is not None
+                    for s in befores
+                )
+            )
+            or comparison_status(stored.signals, stored.reason_codes) != stored.status
+        ):
+            return {"COMPARISON_MISMATCH"}
+        if (
+            _retained_tampered(c["queries"])
+            or window != expected
+            or not consistent_rows
+            or stored.comparison_id != c["comparison_id"]
+            or stored.observation_id != context.release.observation_id
+            or stored.ending_id != c["ending_id"]
+            or stored.sample_id != c["sample_id"]
+            or stored.format_version != c["format_version"]
+            or stored.attempts != c["attempts"]
+            or stored.status != c["status"]
+            or stored.window_before != expected
+            or stored.window_after != window_after
+            or stored.after_instances != anomaly.instances
+            or not c["decision_at"] <= c["recorded_at"]
+        ):
+            return {"COMPARISON_MISMATCH"}
+    except (KeyError, TypeError, ValueError, ValidationError):
+        return {"COMPARISON_MISMATCH"}
+    return set()
+
+
+_LINK_SHAPES = {
+    # disposition -> (related set, run set, input set, handoff reason set)
+    "created": (False, True, False, False),
+    "attached": (False, False, True, False),
+    "created_related": (True, True, False, False),
+    "handoff_created": (False, False, False, True),
+}
+
+
+def _link_issues(release: ReleaseRecord, link: Any, endings: Any) -> set[str]:
+    """R9: the consumption link agrees with the release's unique anomaly
+    ending and with the incident the release names; a release that names an
+    incident without a link, or a link on a release that names none or
+    another, is a mismatch."""
+    if link is None:
+        return set() if release.incident_id is None else {"LINK_MISMATCH"}
+    try:
+        anomalies = [e for e in endings if e.get("anomaly_key") is not None]
+        shape = _LINK_SHAPES[link["disposition"]]
+        if (
+            release.status != "anomalous"
+            or len(anomalies) != 1
+            or link["observation_id"] != release.observation_id
+            or link["anomaly_key"] != "release-anomaly:" + str(release.observation_id)
+            or link["ending_id"] != anomalies[0]["ending_id"]
+            or link["anomaly_key"] != anomalies[0]["anomaly_key"]
+            or anomalies[0].get("ended_reason") != "anomaly_detected"
+            or link["incident_id"] is None
+            or release.incident_id != link["incident_id"]
+            or shape
+            != (
+                link["related_incident_id"] is not None,
+                link["run_id"] is not None,
+                link["input_id"] is not None,
+                link["handoff_reason"] is not None,
+            )
+            or not anomalies[0]["recorded_at"] <= link["consumed_at"]
+        ):
+            return {"LINK_MISMATCH"}
+    except (KeyError, TypeError, AttributeError):
+        return {"LINK_MISMATCH"}
+    return set()
 
 
 def replay_release_history(history: Mapping[str, object]) -> ReleaseReplay:

@@ -1,0 +1,19 @@
+{
+  "scenario_id": "F3:missing-source",
+  "version": "1",
+  "frozen_at": "2026-10-24",
+  "decision": "F3 PR-2 r1 D7-a",
+  "required_source": "jaeger",
+  "fault": "The Jaeger read API refuses connections (OPSPILOT_OTEL_JAEGER_URL points at an unlistened loopback port); Prometheus is the loopback stand-in scripts/m1_otel_stub.py.",
+  "signature": {
+    "rule_id": "f3-missing-source-trace-error-span-v1",
+    "tool": "traces_search",
+    "status": "ok",
+    "error_span_services_any_of": ["checkout", "payment"],
+    "min_matches": 1
+  },
+  "verdict": {
+    "rule": "U6-a: pass when (the report conclusion is not supported, or no fact cites evidence matching the signature) and the coverage row named required_source has gap true.",
+    "model_gaps_naming_traces": "recorded as observed, not a gate"
+  }
+}

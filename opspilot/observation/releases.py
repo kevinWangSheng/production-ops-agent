@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import datetime, timedelta, timezone
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, cast
 from uuid import UUID, uuid4
 
 import psycopg
@@ -19,9 +19,15 @@ from opspilot.observation.release_commands import (
     ReleaseCommandReceipt as ReleaseCommandReceipt,
 )
 from opspilot.observation.release_commands import (
+    _audit_columns,
     _ReleaseCommandOps,
+    utc_values,
 )
-from opspilot.observation.release_policy import ReleaseText, Sha256
+from opspilot.observation.release_policy import (
+    ReleaseText,
+    Sha256,
+    load_release_policy_catalog,
+)
 from opspilot.observer.health_profile import HealthProfile
 from opspilot.persistence.base import Connection, PersistenceError
 from opspilot.redaction import redact_credentials
@@ -132,6 +138,83 @@ class ReleaseEventRecord(DTO):
 
 _RELEASE_COLUMNS = ",".join(ReleaseRecord.model_fields)
 _EVENT_COLUMNS = ",".join(ReleaseEventRecord.model_fields)
+#: What the release pages show of each session, ending and comparison (F11
+#: PR-5a D4); read-only, the web role's existing SELECT grants.
+_PAGE_SESSION_COLUMNS = (
+    "session_id,state,ended_reason,authorized_by,authorized_at,"
+    "subject_control_generation,observation_generation,release_policy_revision,"
+    "release_budget_used_at_authorization,deadline_at,adopted_count,healthy_since,"
+    "tracking_since,tracking_until,created_at,updated_at"
+)
+_PAGE_ENDING_COLUMNS = (
+    "ending_id,session_id,ended_reason,transition,subject_state_before,"
+    "subject_state_after,anomaly_key,recorded_at"
+)
+_PAGE_COMPARISON_COLUMNS = (
+    "comparison_id,ending_id,status,attempts,window_before_start,window_before_end,"
+    "window_after_start,window_after_end,decision_at,comparison,recorded_at"
+)
+_PAGE_LINK_COLUMNS = (
+    "observation_id,ending_id,disposition,incident_id,related_incident_id,run_id,"
+    "input_id,handoff_reason,comparison_id,consumed_at"
+)
+_PAGE_DELIVERY_COLUMNS = "event_id,sequence,outcome,reason,actor,received_at,raw_sha256"
+#: D6: one page, newest first, no paging.
+RELEASE_LIST_LIMIT = 50
+
+
+#: D7 (r2): a release still awaiting its automatic authorization, as a
+#: predicate on ``opspilot_release_observations r``.
+_AWAITING_AUTHORIZATION = (
+    "r.status='pending' AND NOT r.paused AND r.observation_generation=0"
+    " AND r.calibrated_policy_revision IS NULL"
+    " AND NOT EXISTS (SELECT 1 FROM opspilot_release_audit a"
+    " WHERE a.observation_id=r.observation_id AND a.action='authorize')"
+)
+#: D7 (r2): a newer release of the same target exists (by release time,
+#: then reception and id), whatever its state; only the newest is observed.
+_SUPERSEDED = (
+    "EXISTS (SELECT 1 FROM opspilot_release_observations n"
+    " WHERE n.target_id=r.target_id AND (n.released_at,n.received_at,n.observation_id)"
+    ">(r.released_at,r.received_at,r.observation_id))"
+)
+#: D7 (r2): a release session is authorized on the same target.
+_TARGET_OBSERVING = (
+    "EXISTS (SELECT 1 FROM opspilot_observation_sessions s"
+    " WHERE s.target_id=r.target_id AND s.release_observation_id IS NOT NULL"
+    " AND s.state='authorized')"
+)
+ReleaseHold = Literal["superseded", "waiting_for_target"]
+
+
+def calibrated_revision_for(release: ReleaseRecord) -> str:
+    """The calibrated policy revision a resume of ``release`` names (D3).
+
+    The release's own frozen revision once it has one; otherwise the one
+    catalog entry for exactly its target snapshot and HealthProfile
+    revision. No entry is ``RELEASE_POLICY_UNCALIBRATED``, several are
+    ``RELEASE_POLICY_AMBIGUOUS``: the operator never picks a numeric policy,
+    and the command primitive still checks the whole entry.
+    """
+    if release.calibrated_policy_revision is not None:
+        return release.calibrated_policy_revision
+    try:
+        catalog = load_release_policy_catalog()
+    except (OSError, ValueError):
+        raise PersistenceError("RELEASE_POLICY_CATALOG_INVALID") from None
+    matches = [
+        policy.revision
+        for policy in catalog.policies
+        if policy.content.target == release.target_snapshot
+        and policy.content.health_profile_revision == release.health_profile_revision
+    ]
+    if not matches:
+        raise PersistenceError("RELEASE_POLICY_UNCALIBRATED")
+    if len(matches) > 1:
+        raise PersistenceError("RELEASE_POLICY_AMBIGUOUS")
+    return matches[0]
+
+
 _BUSINESS_REFUSALS = frozenset(
     {
         "TARGET_MISMATCH",
@@ -182,7 +265,8 @@ class ReleaseStore(_ReleaseCommandOps):
         self,
         *,
         event: ReleaseEvent,
-        target_id: UUID,
+        target_id: UUID | None = None,
+        resource_uid: str | None = None,
         identity: Mapping[str, str] | None,
         health_profile_revision: str,
         health_profile: str,
@@ -190,11 +274,16 @@ class ReleaseStore(_ReleaseCommandOps):
         actor: str,
         raw_body: bytes,
     ) -> ReleaseReceipt:
+        """Name the target by its registered ``target_id`` or by
+        ``resource_uid``; an unregistered uid is registered inside this
+        transaction and only if the release is created, so a refused or
+        failed delivery leaves no target row behind (PR-3 behaviour 10)."""
         with self.transaction() as conn:
             return self.record_release_in(
                 conn,
                 event=event,
                 target_id=target_id,
+                resource_uid=resource_uid,
                 identity=identity,
                 health_profile_revision=health_profile_revision,
                 health_profile=health_profile,
@@ -208,7 +297,8 @@ class ReleaseStore(_ReleaseCommandOps):
         conn: Connection,
         *,
         event: ReleaseEvent,
-        target_id: UUID,
+        target_id: UUID | None = None,
+        resource_uid: str | None = None,
         identity: Mapping[str, str] | None,
         health_profile_revision: str,
         health_profile: str,
@@ -218,7 +308,12 @@ class ReleaseStore(_ReleaseCommandOps):
     ) -> ReleaseReceipt:
         if (
             not isinstance(event, ReleaseEvent)
-            or not isinstance(target_id, UUID)
+            or (target_id is None) == (resource_uid is None)
+            or (target_id is not None and not isinstance(target_id, UUID))
+            or (
+                resource_uid is not None
+                and (not isinstance(resource_uid, str) or not resource_uid)
+            )
             or not isinstance(actor, str)
             or not actor
             or not isinstance(raw_body, bytes)
@@ -231,6 +326,7 @@ class ReleaseStore(_ReleaseCommandOps):
                 conn,
                 event,
                 target_id,
+                resource_uid,
                 identity,
                 health_profile_revision,
                 health_profile,
@@ -246,7 +342,8 @@ class ReleaseStore(_ReleaseCommandOps):
         self,
         conn: Connection,
         event: ReleaseEvent,
-        target_id: UUID,
+        target_id: UUID | None,
+        resource_uid: str | None,
         identity: Mapping[str, str] | None,
         health_profile_revision: str,
         health_profile: str,
@@ -256,6 +353,19 @@ class ReleaseStore(_ReleaseCommandOps):
     ) -> ReleaseReceipt:
         now = self._db_now(conn)
         row = self._find_in(conn, event.source, event.source_release_id)
+        unregistered = None
+        if target_id is None:
+            known = conn.execute(
+                "SELECT target_id FROM opspilot_targets WHERE resource_uid=%s",
+                (resource_uid,),
+            ).fetchone()
+            if known is None:
+                # A tentative identity: registered below, inside the savepoint
+                # that a refusal rolls back. It can only differ from a stored
+                # release's target, so a replay never needs it registered.
+                target_id, unregistered = uuid4(), resource_uid
+            else:
+                target_id = known["target_id"]
         # The registry is authoritative; an omitted configuration identity is
         # the same target as its equivalent dictionary, not a semantic change.
         target_snapshot = conn.execute(
@@ -274,6 +384,10 @@ class ReleaseStore(_ReleaseCommandOps):
                     if event.released_at > now:
                         reason = "RELEASE_TIME_IN_FUTURE"
                     else:
+                        if unregistered is not None:
+                            target_id = self._register_target_in(
+                                conn, target_id, unregistered
+                            )
                         self._complete_identity(conn, target_id, identity)
                         target = self._registered_target(conn, target_id, None)
                         workload = self._require_row(
@@ -489,6 +603,33 @@ class ReleaseStore(_ReleaseCommandOps):
             reason=reason,
         )
 
+    def _register_target_in(
+        self, conn: Connection, target_id: UUID, resource_uid: str
+    ) -> UUID:
+        """The rows ``register_target`` writes, inside the release's own
+        transaction (as alert intake does); a concurrent first registration
+        of the same uid is waited for and reused instead of failing."""
+        inserted = conn.execute(
+            "INSERT INTO opspilot_targets(target_id,resource_uid) VALUES(%s,%s) "
+            "ON CONFLICT (resource_uid) DO NOTHING RETURNING target_id",
+            (target_id, resource_uid),
+        ).fetchone()
+        if inserted is None:
+            return cast(
+                UUID,
+                self._require_row(
+                    conn.execute(
+                        "SELECT target_id FROM opspilot_targets WHERE resource_uid=%s",
+                        (resource_uid,),
+                    )
+                )["target_id"],
+            )
+        conn.execute(
+            "INSERT INTO opspilot_target_suspensions(target_id) VALUES(%s)",
+            (target_id,),
+        )
+        return target_id
+
     @staticmethod
     def _find_in(
         conn: Connection, source: str, source_release_id: str
@@ -510,6 +651,135 @@ class ReleaseStore(_ReleaseCommandOps):
         if row is None:
             raise PersistenceError("NOT_FOUND")
         return ReleaseRecord.model_validate(row)
+
+    def list_releases(
+        self, *, limit: int = RELEASE_LIST_LIMIT
+    ) -> tuple[ReleaseRecord, ...]:
+        """The newest ``limit`` releases by ``received_at`` (D6)."""
+        if type(limit) is not int or limit <= 0:
+            raise PersistenceError("INVALID_INPUT")
+        with self.transaction(snapshot=True) as conn:
+            rows = conn.execute(
+                "SELECT " + _RELEASE_COLUMNS + " FROM opspilot_release_observations"
+                " ORDER BY received_at DESC,observation_id LIMIT %s",
+                (limit,),
+            ).fetchall()
+        return tuple(ReleaseRecord.model_validate(row) for row in rows)
+
+    def authorizable_releases(self, *, limit: int) -> tuple[ReleaseRecord, ...]:
+        """The oldest ``limit`` releases the automatic authorization may
+        try now (F11 PR-5b D7, r2): awaiting authorization (pending, not
+        paused, never observed, no frozen policy, no ``authorize`` audit),
+        before their deadline by the database clock at this read, the
+        newest release of their target, and on a target where no release
+        session is authorized. So each target has at most one candidate,
+        and a target observes one release at a time however many are
+        delivered. The filter runs before the limit, so releases that were
+        decided or are held never take a place; the command primitive
+        re-checks the release itself under its locks (the target rule is
+        this read's, not the primitive's)."""
+        if type(limit) is not int or limit <= 0:
+            raise PersistenceError("INVALID_INPUT")
+        with self.transaction(snapshot=True) as conn:
+            rows = conn.execute(
+                "SELECT " + _RELEASE_COLUMNS + " FROM opspilot_release_observations r"
+                " WHERE "
+                + _AWAITING_AUTHORIZATION
+                + " AND deadline_at>clock_timestamp()"
+                " AND NOT " + _SUPERSEDED + " AND NOT " + _TARGET_OBSERVING + ""
+                " ORDER BY received_at,observation_id LIMIT %s",
+                (limit,),
+            ).fetchall()
+        return tuple(ReleaseRecord.model_validate(row) for row in rows)
+
+    def authorization_holds(
+        self, observation_ids: Sequence[UUID]
+    ) -> dict[UUID, ReleaseHold]:
+        """Why each of ``observation_ids`` still awaiting authorization is
+        held back by the target rule of ``authorizable_releases``:
+        ``superseded`` (a newer release of its target exists; it is never
+        observed and ends at its deadline) or ``waiting_for_target``
+        (another release of its target is being observed). Releases not
+        held are absent."""
+        if not all(isinstance(oid, UUID) for oid in observation_ids):
+            raise PersistenceError("INVALID_INPUT")
+        if not observation_ids:
+            return {}
+        with self.transaction(snapshot=True) as conn:
+            rows = conn.execute(
+                "SELECT observation_id,CASE WHEN " + _SUPERSEDED + " THEN 'superseded'"
+                " WHEN " + _TARGET_OBSERVING + " THEN 'waiting_for_target' END AS hold"
+                " FROM opspilot_release_observations r"
+                " WHERE observation_id=ANY(%s) AND " + _AWAITING_AUTHORIZATION,
+                (list(observation_ids),),
+            ).fetchall()
+        return {row["observation_id"]: row["hold"] for row in rows if row["hold"]}
+
+    def release_detail(self, observation_id: UUID) -> dict[str, Any] | None:
+        """Everything a release page shows, read in one snapshot (D4): the
+        release, its sessions, endings, comparisons, incident link, control
+        audit and deliveries. ``None`` for an unknown id."""
+        if not isinstance(observation_id, UUID):
+            raise PersistenceError("INVALID_INPUT")
+        with self.transaction(snapshot=True) as conn:
+            row = conn.execute(
+                "SELECT "
+                + _RELEASE_COLUMNS
+                + " FROM opspilot_release_observations WHERE observation_id=%s",
+                (observation_id,),
+            ).fetchone()
+            if row is None:
+                return None
+            reads = {
+                "sessions": "SELECT "
+                + _PAGE_SESSION_COLUMNS
+                + " FROM opspilot_observation_sessions WHERE release_observation_id=%s"
+                " ORDER BY authorized_at,session_id",
+                "endings": "SELECT "
+                + _PAGE_ENDING_COLUMNS
+                + " FROM opspilot_observation_endings WHERE release_observation_id=%s"
+                " ORDER BY recorded_at,ending_id",
+                "comparisons": "SELECT "
+                + _PAGE_COMPARISON_COLUMNS
+                + " FROM opspilot_release_comparisons WHERE observation_id=%s"
+                " ORDER BY recorded_at,comparison_id",
+                "links": "SELECT "
+                + _PAGE_LINK_COLUMNS
+                + " FROM opspilot_release_incident_links WHERE observation_id=%s",
+                "audit": "SELECT "
+                + _audit_columns()
+                + " FROM opspilot_release_audit WHERE observation_id=%s"
+                " ORDER BY sequence",
+                "deliveries": "SELECT "
+                + _PAGE_DELIVERY_COLUMNS
+                + " FROM opspilot_release_events WHERE observation_id=%s"
+                " ORDER BY sequence",
+            }
+            parts = {
+                name: [dict(r) for r in conn.execute(sql, (observation_id,))]
+                for name, sql in reads.items()
+            }
+        links = parts.pop("links")
+        return {
+            "release": ReleaseRecord.model_validate(row),
+            "link": utc_values(links[0]) if links else None,
+            **{name: utc_values(rows) for name, rows in parts.items()},
+        }
+
+    def incident_release_links(self, incident_id: UUID) -> tuple[dict[str, Any], ...]:
+        """The release links that name ``incident_id`` (created, attached,
+        related or handoff), for the incident page's back-reference (D9)."""
+        if not isinstance(incident_id, UUID):
+            raise PersistenceError("INVALID_INPUT")
+        with self.transaction(snapshot=True) as conn:
+            rows = conn.execute(
+                "SELECT "
+                + _PAGE_LINK_COLUMNS
+                + " FROM opspilot_release_incident_links WHERE incident_id=%s"
+                " ORDER BY consumed_at,observation_id",
+                (incident_id,),
+            ).fetchall()
+        return tuple(utc_values(dict(row)) for row in rows)
 
     def find_release(self, source: str, source_release_id: str) -> ReleaseRecord | None:
         with self.transaction(snapshot=True) as conn:

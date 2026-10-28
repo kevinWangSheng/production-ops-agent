@@ -25,6 +25,8 @@ from opspilot.investigation.runner import InvestigationRunner
 from opspilot.persistence import DurableStore, PersistenceError
 from opspilot.tools import ReadOnlyToolExecutor, ToolRequest, Window
 from opspilot.tools.otel_demo import (
+    LABEL_VALUES_TOOL,
+    METRIC_NAMES_TOOL,
     METRICS_TOOL,
     TARGET_ID,
     TRACES_TOOL,
@@ -464,6 +466,9 @@ def test_a_workbench_run_under_the_otel_profile_records_real_shaped_evidence(
     assert [s["function"]["name"] for s in recorded["tool_schemas"]] == [
         METRICS_TOOL,
         TRACES_TOOL,
+        METRIC_NAMES_TOOL,
+        LABEL_VALUES_TOOL,
+        "read_evidence",  # #308 PR2, registered after the #307 A tools
     ]
 
     tool_round = reply(

@@ -24,6 +24,14 @@ from opspilot.domain.base import DTO, Text, sanitized_errors
 
 REPORT_SCHEMA_VERSION = "m0-report-v2"
 EVIDENCE_CONTEXT_TYPE = "opspilot-evidence-context-v4"
+#: #311 U5: the one guidance text ``data_sources`` may carry; the projection
+#: drops any other, so a context cannot hand the model its own instructions.
+DATA_SOURCES_INSTRUCTION = (
+    "Only the sources under available can be queried in this Run. When the "
+    "data a question needs belongs to an integration under not_integrated, "
+    "state in gaps which integration is missing; its absence is not evidence "
+    "and says nothing about health."
+)
 CLAIM_KINDS = (
     "fact",
     "hypothesis",
@@ -657,6 +665,34 @@ def _project_target_catalog_entry(entry: object) -> dict[str, Any]:
     return _project_fields(entry, _TARGET_CATALOG_ENTRY_FIELDS)
 
 
+def _project_data_sources(value: object) -> dict[str, Any]:
+    """#311 U5/R7: the profile's static source list, shape-checked.
+
+    ``available`` maps a source name to its tool names, ``not_integrated``
+    names integrations this profile does not have, ``instruction`` is the
+    fixed ``DATA_SOURCES_INSTRUCTION``. A field of any other shape -- or any
+    other text -- is dropped; nothing else is kept.
+    """
+    if not isinstance(value, Mapping):
+        return {}
+    projected: dict[str, Any] = {}
+    available = value.get("available")
+    if isinstance(available, Mapping):
+        projected["available"] = {
+            source: list(tools)
+            for source, tools in available.items()
+            if isinstance(source, str)
+            and isinstance(tools, list)
+            and all(isinstance(tool, str) for tool in tools)
+        }
+    missing = value.get("not_integrated")
+    if isinstance(missing, list) and all(isinstance(name, str) for name in missing):
+        projected["not_integrated"] = list(missing)
+    if value.get("instruction") == DATA_SOURCES_INSTRUCTION:
+        projected["instruction"] = DATA_SOURCES_INSTRUCTION
+    return projected
+
+
 def _project_time_policy(policy: object) -> dict[str, Any]:
     """Project one time policy, or drop it whole when any field is malformed.
 
@@ -754,6 +790,9 @@ def evidence_context_projection(
             for entry in (_project_time_policy(policy) for policy in policies)
             if entry
         ]
+    sources = _project_data_sources(context.get("data_sources"))
+    if sources:
+        projected["data_sources"] = sources
     return projected
 
 
@@ -975,6 +1014,69 @@ def context_time_policy_ids(context: object) -> tuple[str, ...]:
             if isinstance(ident, str) and ident:
                 ids.append(ident)
     return tuple(ids)
+
+
+def validated_report(
+    content: str,
+    *,
+    finish_reason: str | None,
+    delivered: Sequence[DeliveredView],
+    evidence_context: Mapping[str, Any] | None,
+    authorized_targets: frozenset[str],
+) -> tuple[ReportV2 | None, str, str]:
+    """``parse_report`` plus the citation check, as the live round applies
+    them. Returns ``(report, reason, retry_feedback)``: ``retry_feedback``
+    is B3/C2's fixed-template diagnostic message for this exact failure
+    ("" on success), computed here (not by the caller) so it always
+    reflects the parsed report the citation check actually saw.
+
+    ``evidence_context`` is the Run's already projected context. The single
+    rule for the live round (``InvestigationLoop._validated_report``) and for
+    the rebuild's hash check over a forced-final row (#304): a pure function
+    of the committed reply and what had been delivered before it, so both
+    sides derive the same feedback bytes.
+    """
+    report, reason = parse_report(
+        content, finish_reason=finish_reason if finish_reason else "unknown"
+    )
+    target_catalog = context_target_catalog(
+        evidence_context, authorized_targets=authorized_targets
+    )
+    time_policy_ids = context_time_policy_ids(evidence_context)
+    if report is None:
+        return (
+            None,
+            reason,
+            report_retry_feedback(
+                reason,
+                report=None,
+                views=delivered,
+                content=content,
+                authorized_targets=authorized_targets,
+                time_policy_ids=time_policy_ids,
+                target_catalog=target_catalog,
+            ),
+        )
+    if unsupported_citations(
+        report,
+        views=delivered,
+        authorized_targets=authorized_targets,
+        time_policy_ids=time_policy_ids,
+        target_catalog=target_catalog,
+    ):
+        return (
+            None,
+            "REPORT_INVALID",
+            report_retry_feedback(
+                "REPORT_INVALID",
+                report=report,
+                views=delivered,
+                authorized_targets=authorized_targets,
+                time_policy_ids=time_policy_ids,
+                target_catalog=target_catalog,
+            ),
+        )
+    return report, "", ""
 
 
 def view_targets_authorized(

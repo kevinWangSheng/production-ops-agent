@@ -21,6 +21,9 @@ Field sources (``AlertIntakeOutcome``):
   row, its Runs (by deadline: creation time plus the Run wall) and its
   observation sessions (by ``created_at``). ``run_input``: the committed
   input snapshot of the intake Run, verbatim.
+* ``related_incident_id``: the incident row's ``related_incident_id``, the
+  closed incident of the same fingerprint and target this one was opened
+  after (F2 PR-C, R-C7); ``None`` otherwise.
 * ``deliveries``: ``opspilot_alert_deliveries`` of the incident by
   ``delivery_id`` (receipt order); ``alert_deliveries_for_identity`` and
   ``alert_delivery_count`` read the table regardless of incident (I11). A resolved notification that found no
@@ -39,6 +42,8 @@ from uuid import UUID
 
 from psycopg.rows import dict_row
 
+from opspilot.persistence.base import mark_cleaned
+
 __all__ = [
     "AlertDelivery",
     "AlertIntakeOutcome",
@@ -52,7 +57,7 @@ __all__ = [
 _DELIVERY_COLUMNS = (
     "delivery_id,delivery_key,fingerprint,starts_at,starts_at_raw,status,outcome,"
     "incident_id,actor,received_at,raw_sha256,annotations_sha256,"
-    "annotation_revision,alert_json,truncated"
+    "annotation_revision,alert_json,truncated,payload_state"
 )
 
 
@@ -88,8 +93,9 @@ class AlertDelivery:
     #: ``startsAt`` exactly as the payload carried it.
     original_starts_at: str
     #: The committed redacted, bounded audit text, verbatim (``truncated``
-    #: marks a cut at 16 KiB; whole JSON otherwise).
-    audit_json: str
+    #: marks a cut at 16 KiB; whole JSON otherwise). ``None`` once the
+    #: retention cleanup removed it (#244); hashes and times stay.
+    audit_json: str | None
 
 
 @dataclass(frozen=True)
@@ -111,6 +117,9 @@ class AlertIntakeOutcome:
     #: r7: every Run's committed input snapshot, verbatim, in ``run_ids``
     #: order; ``None`` for a Run recorded without one.
     run_inputs: tuple[Mapping[str, Any] | None, ...] = ()
+    #: F2 PR-C (R-C7): the closed incident this one relates to, or ``None``.
+    #: Attached episodes appear in ``deliveries`` as outcome ``attached``.
+    related_incident_id: str | None = None
 
 
 @contextmanager
@@ -136,7 +145,7 @@ def alert_intake_records(conn: Any, incident_id: UUID | str) -> AlertIntakeRecor
     subject = UUID(str(incident_id))
     with _cursor(conn) as cur:
         incident = cur.execute(
-            "SELECT incident_id,intake_key,state,lifecycle,mode,current_run_id,target_id,created_at FROM opspilot_incidents WHERE incident_id=%s",
+            "SELECT incident_id,intake_key,state,lifecycle,mode,current_run_id,target_id,created_at,related_incident_id FROM opspilot_incidents WHERE incident_id=%s",
             (subject,),
         ).fetchone()
         if incident is None:
@@ -151,10 +160,14 @@ def alert_intake_records(conn: Any, incident_id: UUID | str) -> AlertIntakeRecor
                 "SELECT run_id,incident_id,state,input FROM opspilot_runs WHERE run_id=%s",
                 (identity["run_id"],),
             ).fetchone()
-        deliveries = cur.execute(
-            f"SELECT {_DELIVERY_COLUMNS} FROM opspilot_alert_deliveries WHERE incident_id=%s ORDER BY delivery_id",
-            (subject,),
-        ).fetchall()
+        # a delivery row carries ``payload_state`` only once cleaned (#244)
+        deliveries = [
+            mark_cleaned(row)
+            for row in cur.execute(
+                f"SELECT {_DELIVERY_COLUMNS} FROM opspilot_alert_deliveries WHERE incident_id=%s ORDER BY delivery_id",
+                (subject,),
+            ).fetchall()
+        ]
         # Runs carry no creation time; each one's deadline is its creation
         # (database clock) plus the Run wall, so it orders them.
         runs = cur.execute(
@@ -270,4 +283,9 @@ def alert_intake_outcome(
         ),
         run_input=None if run is None or run["input"] is None else run["input"],
         run_inputs=tuple(row.get("input") for row in records.runs),
+        related_incident_id=(
+            None
+            if records.incident.get("related_incident_id") is None
+            else str(records.incident["related_incident_id"])
+        ),
     )

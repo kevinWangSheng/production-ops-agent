@@ -471,9 +471,18 @@ def test_u4a_the_shipped_otel_demo_limits_bind_to_its_single_registered_target()
     assert {r.name for r in registrations} == {
         "metrics_range_query",
         "traces_search",
+        "get_metric_names",
+        "get_label_values",
+        "read_evidence",  # #308 PR2
     }
     for item in registrations:
-        assert item.source == target.source, item.name
+        if item.name == "read_evidence":
+            # #308 contract R3: the audit source is the local evidence store,
+            # a read-only get; the parent target is still authorized at read.
+            assert item.source == "opspilot-evidence", item.name
+            assert item.verb == "get", item.name
+        else:
+            assert item.source == target.source, item.name
         assert item.request_timeout_seconds <= MAX_REQUEST_TIMEOUT_SECONDS
         assert item.max_result_bytes <= MAX_RESULT_BYTES
         assert item.max_view_tokens == otel_demo.MAX_VIEW_TOKENS == 25_000

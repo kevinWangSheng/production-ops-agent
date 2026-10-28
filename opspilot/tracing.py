@@ -40,10 +40,12 @@ import logging
 import os
 import re
 import threading
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from types import TracebackType
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, TypeVar
 from urllib.parse import urlsplit
+
+from opspilot import redaction
 
 if TYPE_CHECKING:
     from opentelemetry.sdk.trace import TracerProvider
@@ -67,6 +69,7 @@ __all__ = [
 ]
 
 _log = logging.getLogger("opspilot.tracing")
+_T = TypeVar("_T")
 
 TRACE_ENV = "OPSPILOT_TRACE"
 TraceMode = Literal["off", "lab"]
@@ -120,19 +123,15 @@ _EXPORT_BATCH = 512
 _CLUSTER_SUFFIXES = (".svc", ".svc.cluster.local")
 # Generic scrub applied to every string attribute at the single write point
 # (independent review round 3, PR #108). (a) exact values of credential-like
-# environment variables; (b) ``key: value`` / ``key=value`` credential text,
-# bearer tokens and well-known key shapes. ``scripts/check_secrets.py`` has no
-# Python pattern list to share (it runs gitleaks' Go-side default rules), so
-# the text patterns live here.
+# environment variables; (b) credential text, through the shared
+# ``redaction.redact_credentials`` and no pattern of its own, so the trace
+# fallback covers whatever the shared policy covers (#357, Q15-A); (c)
+# well-known provider key shapes, which carry no naming context the shared
+# policy could match on.
 _SECRET_ENV_NAMES = frozenset({"LANGSMITH_API_KEY", "DEEPSEEK_API_KEY"})
 _SECRET_ENV_SUFFIX = re.compile(r"(_API_KEY|_TOKEN|_SECRET|_PASSWORD)$")
 _MIN_SECRET_LEN = 8
 _REDACTED = "[REDACTED]"
-_CREDENTIAL_TEXT = re.compile(
-    r"(?i)\b(authorization|bearer|api[_-]?key|token|secret|password|passwd)"
-    r"(\s*[:=]\s*)(\S+)"
-)
-_BEARER_TEXT = re.compile(r"(?i)\b(bearer)(\s+)([A-Za-z0-9._~+/=-]{8,})")
 _KEY_SHAPES = re.compile(r"\b(?:sk-[A-Za-z0-9_-]{16,}|lsv2_[A-Za-z0-9_]{16,})\b")
 
 
@@ -245,8 +244,8 @@ def _scrub(text: str) -> str:
     for value in _secret_values():
         if value in text:
             text = text.replace(value, _REDACTED)
-    text = _CREDENTIAL_TEXT.sub(lambda m: m.group(1) + m.group(2) + _REDACTED, text)
-    text = _BEARER_TEXT.sub(lambda m: m.group(1) + m.group(2) + _REDACTED, text)
+    # Looked up at call time, so the shared policy is the one in force.
+    text = redaction.redact_credentials(text)
     return _KEY_SHAPES.sub(_REDACTED, text)
 
 
@@ -743,6 +742,10 @@ class NullTracer:
     ) -> _NullSpan:
         return _NULL_SPAN
 
+    def carry(self, fn: Callable[..., _T]) -> Callable[..., _T]:
+        """Nothing to carry: ``off`` mode opens no spans on any thread."""
+        return fn
+
     @property
     def last_trace_id(self) -> str | None:
         return None
@@ -767,6 +770,9 @@ class Tracer:
         self._env = env
         self._otel = provider.get_tracer("opspilot")
         self._current = threading.local()
+        # Guards the per-Run sequence counters: a turn's tool calls may open
+        # their spans from worker threads at once (#309).
+        self._seq_lock = threading.Lock()
         self._last_trace_id: str | None = None
 
     @property
@@ -837,10 +843,12 @@ class Tracer:
         parent = getattr(self._current, "run", None)
         if parent is None:
             return _NULL_SPAN
-        parent.model_calls += 1
+        with self._seq_lock:
+            parent.model_calls += 1
+            seq = parent.model_calls
         return self._child(
             "deepseek.chat.completions",
-            _model_call_attributes(call, seq=parent.model_calls),
+            _model_call_attributes(call, seq=seq),
         )
 
     def tool_call(
@@ -855,13 +863,37 @@ class Tracer:
         parent = getattr(self._current, "run", None)
         if parent is None:
             return _NULL_SPAN
-        parent.tool_calls += 1
+        with self._seq_lock:
+            parent.tool_calls += 1
+            seq = parent.tool_calls
         return self._child(
             f"tool:{'unknown' if tool_name is None else _bounded(tool_name)[:80]}",
             _tool_request_attributes(
-                request, seq=parent.tool_calls, tool_name=tool_name, target_id=target_id
+                request, seq=seq, tool_name=tool_name, target_id=target_id
             ),
         )
+
+    def carry(self, fn: Callable[..., _T]) -> Callable[..., _T]:
+        """``fn`` bound to the calling thread's active Run slot (#309).
+
+        The slot is thread-local, so a tool call run on a worker thread would
+        otherwise find no Run and drop its span. The returned callable sets
+        the captured slot -- a live Run, a refused Run's ``None``, or no Run
+        at all -- for the duration of the call and restores the worker
+        thread's previous value afterwards. ``seq`` stays the order spans are
+        opened in; ``step_id`` and ``opspilot.tool.index`` identify the call.
+        """
+        captured = getattr(self._current, "run", None)
+
+        def bound(*args: Any, **kwargs: Any) -> _T:
+            previous = getattr(self._current, "run", None)
+            self._current.run = captured
+            try:
+                return fn(*args, **kwargs)
+            finally:
+                self._current.run = previous
+
+        return bound
 
     def shutdown(self, timeout_seconds: float = _EXPORT_TIMEOUT_S) -> None:
         """Flush what the queue still holds, bounded, then stop the thread."""

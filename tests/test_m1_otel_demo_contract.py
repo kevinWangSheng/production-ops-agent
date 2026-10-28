@@ -417,10 +417,16 @@ def test_profile_constants_match_the_contract():
     assert TOOL_SCHEMA_REVISION != fixture_profile.TOOL_SCHEMA_REVISION
 
 
-def test_tool_schemas_are_two_function_schemas_named_as_registered():
-    assert isinstance(TOOL_SCHEMAS, tuple) and len(TOOL_SCHEMAS) == 2
+def test_tool_schemas_are_five_function_schemas_named_as_registered():
+    assert isinstance(TOOL_SCHEMAS, tuple) and len(TOOL_SCHEMAS) == 5
     by_name = {schema["function"]["name"]: schema for schema in TOOL_SCHEMAS}
-    assert set(by_name) == {METRICS_TOOL, TRACES_TOOL}
+    assert set(by_name) == {
+        METRICS_TOOL,
+        TRACES_TOOL,
+        "get_metric_names",
+        "get_label_values",
+        "read_evidence",  # #308 PR2
+    }
     for schema in TOOL_SCHEMAS:
         assert schema["type"] == "function"
         parameters = schema["function"]["parameters"]
@@ -500,8 +506,36 @@ def test_face_evidence_context_is_the_24h_frame_ending_at_the_clock():
     assert tuple(s["function"]["name"] for s in face.tool_schemas) == (
         METRICS_TOOL,
         TRACES_TOOL,
+        "get_metric_names",
+        "get_label_values",
+        "read_evidence",  # #308 PR2, registered after the #307 A tools
     )
-    context = face.evidence_context("run-1")
+    context = dict(face.evidence_context("run-1"))
+    # F3 PR-2 (#311 + #310) contract change, #311 U5-a: the face also lists
+    # the data sources. Shape as the contract states it: ``available`` maps
+    # each source to its tool names, ``not_integrated`` has three entries and
+    # one fixed guidance sentence (key not named by the contract) is a string.
+    data_sources = context.pop("data_sources")
+    assert isinstance(data_sources, dict)
+    available = data_sources["available"]
+    assert isinstance(available, dict) and len(available) == 2
+    assert all(
+        isinstance(source, str)
+        and isinstance(tools, list)
+        and all(isinstance(tool, str) for tool in tools)
+        for source, tools in available.items()
+    )
+    assert {METRICS_TOOL, TRACES_TOOL} <= {
+        tool for tools in available.values() for tool in tools
+    }
+    assert isinstance(data_sources["not_integrated"], list)
+    assert len(data_sources["not_integrated"]) == 3
+    guidance = [
+        value
+        for key, value in data_sources.items()
+        if key not in ("available", "not_integrated")
+    ]
+    assert len(guidance) == 1 and isinstance(guidance[0], str) and guidance[0]
     assert context == {
         "type": "opspilot-evidence-context-v4",
         "run_id": "run-1",
@@ -1235,7 +1269,15 @@ def test_factory_scope_is_issued_from_the_lease_the_run_row_and_the_input(monkey
     executor, _, lease, store = _executor(monkeypatch, FakeOpener())
     scope = executor.scope
     assert scope.target_ids == frozenset({TARGET_ID})
-    assert scope.tool_names == frozenset({METRICS_TOOL, TRACES_TOOL})
+    assert scope.tool_names == frozenset(
+        {
+            METRICS_TOOL,
+            TRACES_TOOL,
+            "get_metric_names",
+            "get_label_values",
+            "read_evidence",  # #308 PR2
+        }
+    )
     assert scope.window == WINDOW == scope_window(_input(str(lease.run_id)))
     assert scope.control_generation == lease.control_generation
     assert scope.global_suspension_generation == lease.global_suspension_generation
@@ -1304,7 +1346,12 @@ def test_metrics_400_is_invalid_params_and_the_error_body_is_not_evidence(monkey
     assert outcome.source_contact == "confirmed"
     assert outcome.evidence is None and sink.records == []
     assert outcome.model_view["content"] is None
-    assert "unclosed left parenthesis" not in json.dumps(outcome.model_view)
+    # F3 PR-2 (#311 + #310) contract change, #311 U1-a/U3: the Prometheus
+    # parse error now comes back, but only inside the nested untrusted
+    # ``source_error.error``; it is still neither content nor evidence.
+    outer = {k: v for k, v in outcome.model_view.items() if k != "source_error"}
+    assert "unclosed left parenthesis" not in json.dumps(outer)
+    assert "unclosed left parenthesis" in outcome.model_view["source_error"]["error"]
 
 
 def test_metrics_503_is_source_unavailable(monkeypatch):
@@ -1521,7 +1568,15 @@ def test_profile_executor_factory_builds_the_otel_executor(monkeypatch):
     factory = profile.executor_factory(store, RecordingSink(), FakeClock(start=NOW))
     executor = factory(lease, _input(str(lease.run_id)))
     assert isinstance(executor, ReadOnlyToolExecutor)
-    assert executor.scope.tool_names == frozenset({METRICS_TOOL, TRACES_TOOL})
+    assert executor.scope.tool_names == frozenset(
+        {
+            METRICS_TOOL,
+            TRACES_TOOL,
+            "get_metric_names",
+            "get_label_values",
+            "read_evidence",  # #308 PR2
+        }
+    )
     assert executor.scope.target_ids == frozenset({TARGET_ID})
 
 

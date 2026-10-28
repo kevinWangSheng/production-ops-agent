@@ -1,0 +1,886 @@
+{
+ "actual_verdict": "degraded",
+ "alert_silence": {
+  "alert_deliveries_in_window": 0,
+  "alertmanager_state_during_fault": "suppressed (silencedBy the lab silence), alert startsAt 2026-10-26T05:45:54Z",
+  "created_at": "2026-10-26T05:33:50.339416+00:00",
+  "matcher": "alertname=CheckoutPlaceOrderErrorRatioHigh",
+  "silence_id": "f3b60a3b-bc30-4921-9b71-8cdce41fe65d"
+ },
+ "authorization": {
+  "actor": [
+   "system"
+  ],
+  "count": 1,
+  "outcome": [
+   "applied"
+  ],
+  "principal_kind": [
+   "system"
+  ],
+  "recorded_at": [
+   "2026-10-26T05:34:20.662032+00:00"
+  ]
+ },
+ "batch": "f11-5c-live",
+ "code_revision": "e028064",
+ "cross_links": {
+  "incident_page_html": {
+   "bytes": 134106,
+   "deadline_expired": false,
+   "degraded": false,
+   "has_notice": false,
+   "healthy": true,
+   "links_to_incident": [],
+   "links_to_release": [
+    "/version-changes/c01d4872-bfb2-4699-9f5d-fc92663f5a82"
+   ],
+   "sha256": "09841aaa89505f80f625de94de1efe2f535609f7a2b222765b22210fc8bd543d",
+   "status": 200,
+   "unknown": true
+  },
+  "incident_page_links_release": true,
+  "release_page_html": {
+   "bytes": 10300,
+   "deadline_expired": false,
+   "degraded": true,
+   "has_notice": true,
+   "healthy": false,
+   "links_to_incident": [
+    "/incidents/61fd54cc-c311-52cb-8d58-bde07cda3bc6"
+   ],
+   "links_to_release": [],
+   "sha256": "f3b68498d1b1ca05e00795c981c36f0289e041acff18a2d35e9c40cd27b6b762",
+   "status": 200,
+   "unknown": true
+  },
+  "release_page_links_incident": true
+ },
+ "db_totals_at_collection": {
+  "alert_deliveries": 0,
+  "incidents": 1,
+  "links": 1,
+  "runs": 1
+ },
+ "expected": "degraded",
+ "fault": {
+  "duration_seconds": 900,
+  "effective_at": "2026-10-26T05:39:58.506526+00:00",
+  "flag": "paymentFailure",
+  "ledger_events": 78,
+  "planned_at": "2026-10-26T05:38:57.268780+00:00",
+  "restored_effective_at": "2026-10-26T05:55:11.041918+00:00",
+  "variant": "100%"
+ },
+ "harness_run": "f11-5c-b",
+ "incident": [
+  {
+   "control_generation": 0,
+   "created_at": "2026-10-25 22:47:21.192749-07:00",
+   "current_run_id": "41498afd-8b3d-574e-a4bf-137529776548",
+   "incident_id": "61fd54cc-c311-52cb-8d58-bde07cda3bc6",
+   "intake_key": "intake:release-anomaly:c01d4872-bfb2-4699-9f5d-fc92663f5a82",
+   "lifecycle": "observing_recovery",
+   "mode": "automatic",
+   "priority": 1
+  }
+ ],
+ "k8s_policy_surface": {
+  "diffs": {
+   "b1-after-harness-rollout:b2-after-anomaly-consumed": {
+    "added": [],
+    "changed": [
+     "configmaps/otel-demo/flagd-config"
+    ],
+    "changed_outside_deployment_replicaset_flagd": [],
+    "new_manager_entries": {
+     "configmaps/otel-demo/flagd-config": [
+      [
+       "kubectl-patch",
+       "Update",
+       "2026-10-26T05:38:58Z",
+       ""
+      ]
+     ]
+    },
+    "objects_compared": 308,
+    "removed": []
+   },
+   "b1-after-harness-rollout:z-end-of-window": {
+    "added": [],
+    "changed": [
+     "configmaps/otel-demo/flagd-config"
+    ],
+    "changed_outside_deployment_replicaset_flagd": [],
+    "new_manager_entries": {
+     "configmaps/otel-demo/flagd-config": [
+      [
+       "kubectl-patch",
+       "Update",
+       "2026-10-26T05:54:59Z",
+       ""
+      ]
+     ]
+    },
+    "objects_compared": 308,
+    "removed": []
+   },
+   "s0-pre-window:z-end-of-window": {
+    "added": [
+     "replicasets.apps/otel-demo/checkout-57865f4f46",
+     "replicasets.apps/otel-demo/checkout-7765446c4b",
+     "replicasets.apps/otel-demo/checkout-7bcc99987c"
+    ],
+    "changed": [
+     "configmaps/otel-demo/flagd-config",
+     "deployments.apps/otel-demo/checkout",
+     "replicasets.apps/otel-demo/checkout-5f6d95b5c7"
+    ],
+    "changed_outside_deployment_replicaset_flagd": [],
+    "new_manager_entries": {
+     "configmaps/otel-demo/flagd-config": [
+      [
+       "kubectl-patch",
+       "Update",
+       "2026-10-26T05:54:59Z",
+       ""
+      ]
+     ],
+     "deployments.apps/otel-demo/checkout": [
+      [
+       "kubectl-patch",
+       "Update",
+       "2026-10-26T05:33:57Z",
+       ""
+      ]
+     ],
+     "replicasets.apps/otel-demo/checkout-5f6d95b5c7": [
+      [
+       "kube-controller-manager",
+       "Update",
+       "2026-10-26T04:56:11Z",
+       ""
+      ]
+     ]
+    },
+    "objects_compared": 305,
+    "removed": [
+     "replicasets.apps/otel-demo/checkout-645dc77999",
+     "replicasets.apps/otel-demo/checkout-6b9b8545bb",
+     "replicasets.apps/otel-demo/checkout-ff6bd6fdc"
+    ]
+   }
+  },
+  "kinds": 23
+ },
+ "matches_expected": true,
+ "page": {
+  "actions": [],
+  "after": {
+   "images": {
+    "checkout": "sha256:5ab0d7b9003206a32c72ef48b42a535c3f70565251d7d832f86fe9f249f16635"
+   },
+   "pod_template_digest": "sha256:9bb6bdc6bb0ce307a665703efafabde428910ba76dd8ec113463508fdd16ff0c"
+  },
+  "audit": [
+   {
+    "action": "authorize",
+    "actor": "system",
+    "audit_id": "0edbf4a2-3332-46ff-b4dd-5281f4db4d63",
+    "control_generation_after": 0,
+    "control_generation_before": 0,
+    "ending_id": null,
+    "expected_control_generation": 0,
+    "observation_generation_after": 1,
+    "observation_generation_before": 0,
+    "observation_id": "c01d4872-bfb2-4699-9f5d-fc92663f5a82",
+    "outcome": "applied",
+    "paused_after": false,
+    "paused_before": false,
+    "principal_kind": "system",
+    "reason": null,
+    "recorded_at": "2026-10-26T05:34:20.662032+00:00",
+    "sequence": 1,
+    "session_id": "399779ed-2778-4079-aaac-a950b06ca4bd",
+    "status_after": "observing",
+    "status_before": "pending"
+   }
+  ],
+  "authorization_hold": null,
+  "auxiliary": {
+   "after_pod_template_hash": "7765446c4b",
+   "after_replicaset_uid": "ba3fb981-5f32-4159-bc7b-061b57ab4c0e",
+   "before_pod_template_hash": "7bcc99987c",
+   "before_replicaset_uid": "4242134d-ae4d-4fcd-be93-8adad6d5a73d",
+   "deployment_generation": 28,
+   "deployment_uid": "b32e1705-32d2-46a1-849c-ae88dacff4c6"
+  },
+  "before": {
+   "images": {
+    "checkout": "sha256:5ab0d7b9003206a32c72ef48b42a535c3f70565251d7d832f86fe9f249f16635"
+   },
+   "pod_template_digest": "sha256:655ca8613916432a33f61ce002d05f851ec9db01a6bd6b6d8a6d199b54c8e69e"
+  },
+  "calibrated_policy_revision": "otel-demo-checkout-release@e2ed7b69b96b",
+  "comparisons": [
+   {
+    "attempts": 1,
+    "comparison": {
+     "after_instances": [
+      {
+       "images": {
+        "checkout": "sha256:5ab0d7b9003206a32c72ef48b42a535c3f70565251d7d832f86fe9f249f16635"
+       },
+       "pod_name": "checkout-7765446c4b-qvd72",
+       "pod_uid": "e90ba4a1-ff20-44d7-98ec-5610a5828fca",
+       "replicaset_name": "checkout-7765446c4b"
+      }
+     ],
+     "attempts": 1,
+     "before_instances": [
+      {
+       "images": {
+        "checkout": "sha256:5ab0d7b9003206a32c72ef48b42a535c3f70565251d7d832f86fe9f249f16635"
+       },
+       "pod_name": "checkout-7bcc99987c-9cx98",
+       "pod_uid": "56416307-4df5-49b5-b836-e64e4a898fa7",
+       "replicaset_name": "checkout-7bcc99987c"
+      }
+     ],
+     "comparison_id": "9373b7c0-d6b2-5ed2-9a31-dbbbea2ac52f",
+     "ending_id": "5a75367c-4bb2-5661-8b10-3809d4e6ded6",
+     "format_version": 1,
+     "observation_id": "c01d4872-bfb2-4699-9f5d-fc92663f5a82",
+     "reason_codes": [],
+     "sample_id": "8180fcfa-60e0-40ca-beaa-a5b325024a52",
+     "signals": [
+      {
+       "latest_sample_at": "2026-10-26T05:33:56.174000Z",
+       "query_keys": [
+        "before_service:deployment_available_replicas:query",
+        "before_service:deployment_available_replicas:coverage",
+        "before_service:deployment_available_replicas:freshness"
+       ],
+       "reason_codes": [],
+       "sample_count": 5,
+       "scope": "before_service",
+       "signal_name": "deployment_available_replicas",
+       "value": 1.0
+      },
+      {
+       "latest_sample_at": "2026-10-26T05:33:01.612000Z",
+       "query_keys": [
+        "before_service:request_rate_per_second:query",
+        "before_service:request_rate_per_second:coverage",
+        "before_service:request_rate_per_second:freshness"
+       ],
+       "reason_codes": [],
+       "sample_count": 5,
+       "scope": "before_service",
+       "signal_name": "request_rate_per_second",
+       "value": 0.025
+      },
+      {
+       "latest_sample_at": "2026-10-26T05:33:01.612000Z",
+       "query_keys": [
+        "before_service:error_ratio:query",
+        "before_service:error_ratio:coverage",
+        "before_service:error_ratio:freshness"
+       ],
+       "reason_codes": [],
+       "sample_count": 5,
+       "scope": "before_service",
+       "signal_name": "error_ratio",
+       "value": 0.0
+      },
+      {
+       "latest_sample_at": "2026-10-26T05:33:01.612000Z",
+       "query_keys": [
+        "before_service:latency_p95_milliseconds:query",
+        "before_service:latency_p95_milliseconds:coverage",
+        "before_service:latency_p95_milliseconds:freshness"
+       ],
+       "reason_codes": [],
+       "sample_count": 5,
+       "scope": "before_service",
+       "signal_name": "latency_p95_milliseconds",
+       "value": 95.0
+      },
+      {
+       "latest_sample_at": "2026-10-26T05:33:56.174000Z",
+       "query_keys": [
+        "before_service:deployment_ready_replicas:query",
+        "before_service:deployment_ready_replicas:coverage",
+        "before_service:deployment_ready_replicas:freshness"
+       ],
+       "reason_codes": [],
+       "sample_count": 5,
+       "scope": "before_service",
+       "signal_name": "deployment_ready_replicas",
+       "value": 1.0
+      },
+      {
+       "latest_sample_at": "2026-10-26T05:33:56.174000Z",
+       "query_keys": [
+        "before_service:deployment_available_replicas_min_in_window:query",
+        "before_service:deployment_available_replicas_min_in_window:coverage",
+        "before_service:deployment_available_replicas_min_in_window:freshness"
+       ],
+       "reason_codes": [],
+       "sample_count": 5,
+       "scope": "before_service",
+       "signal_name": "deployment_available_replicas_min_in_window",
+       "value": 1.0
+      },
+      {
+       "latest_sample_at": "2026-10-26T05:33:56.174000Z",
+       "query_keys": [
+        "before_service:dependency_deployments_available:query",
+        "before_service:dependency_deployments_available:coverage",
+        "before_service:dependency_deployments_available:freshness"
+       ],
+       "reason_codes": [],
+       "sample_count": 5,
+       "scope": "before_service",
+       "signal_name": "dependency_deployments_available",
+       "value": 8.0
+      },
+      {
+       "latest_sample_at": "2026-10-26T05:33:01.612000Z",
+       "query_keys": [
+        "before_service:dependency_error_ratio:query",
+        "before_service:dependency_error_ratio:coverage",
+        "before_service:dependency_error_ratio:freshness"
+       ],
+       "reason_codes": [],
+       "sample_count": 5,
+       "scope": "before_service",
+       "signal_name": "dependency_error_ratio",
+       "value": 0.0
+      },
+      {
+       "latest_sample_at": "2026-10-26T05:33:01.612000Z",
+       "query_keys": [
+        "before_old:request_rate_per_second:query",
+        "before_old:request_rate_per_second:coverage",
+        "before_old:request_rate_per_second:freshness",
+        "before_old:request_rate_per_second:instances"
+       ],
+       "reason_codes": [],
+       "sample_count": 5,
+       "scope": "before_old",
+       "signal_name": "request_rate_per_second",
+       "value": 0.025
+      },
+      {
+       "latest_sample_at": "2026-10-26T05:33:01.612000Z",
+       "query_keys": [
+        "before_old:error_ratio:query",
+        "before_old:error_ratio:coverage",
+        "before_old:error_ratio:freshness",
+        "before_old:error_ratio:instances"
+       ],
+       "reason_codes": [],
+       "sample_count": 5,
+       "scope": "before_old",
+       "signal_name": "error_ratio",
+       "value": 0.0
+      },
+      {
+       "latest_sample_at": "2026-10-26T05:33:01.612000Z",
+       "query_keys": [
+        "before_old:latency_p95_milliseconds:query",
+        "before_old:latency_p95_milliseconds:coverage",
+        "before_old:latency_p95_milliseconds:freshness",
+        "before_old:latency_p95_milliseconds:instances"
+       ],
+       "reason_codes": [],
+       "sample_count": 5,
+       "scope": "before_old",
+       "signal_name": "latency_p95_milliseconds",
+       "value": 95.0
+      },
+      {
+       "latest_sample_at": "2026-10-26T05:33:01.612000Z",
+       "query_keys": [
+        "before_old:dependency_error_ratio:query",
+        "before_old:dependency_error_ratio:coverage",
+        "before_old:dependency_error_ratio:freshness",
+        "before_old:dependency_error_ratio:instances"
+       ],
+       "reason_codes": [],
+       "sample_count": 5,
+       "scope": "before_old",
+       "signal_name": "dependency_error_ratio",
+       "value": 0.0
+      },
+      {
+       "latest_sample_at": "2026-10-26T05:43:56.650000Z",
+       "query_keys": [
+        "context:deployment_available_replicas:query",
+        "context:deployment_available_replicas:coverage",
+        "context:deployment_available_replicas:freshness"
+       ],
+       "reason_codes": [],
+       "sample_count": 5,
+       "scope": "after_service",
+       "signal_name": "deployment_available_replicas",
+       "value": 1.0
+      },
+      {
+       "latest_sample_at": "2026-10-26T05:44:02.091000Z",
+       "query_keys": [
+        "context:request_rate_per_second:query",
+        "context:request_rate_per_second:coverage",
+        "context:request_rate_per_second:freshness"
+       ],
+       "reason_codes": [],
+       "sample_count": 5,
+       "scope": "after_service",
+       "signal_name": "request_rate_per_second",
+       "value": 0.01526441225979567
+      },
+      {
+       "latest_sample_at": "2026-10-26T05:44:02.091000Z",
+       "query_keys": [
+        "context:error_ratio:query",
+        "context:error_ratio:coverage",
+        "context:error_ratio:freshness"
+       ],
+       "reason_codes": [],
+       "sample_count": 5,
+       "scope": "after_service",
+       "signal_name": "error_ratio",
+       "value": 1.0
+      },
+      {
+       "latest_sample_at": "2026-10-26T05:44:02.091000Z",
+       "query_keys": [
+        "context:latency_p95_milliseconds:query",
+        "context:latency_p95_milliseconds:coverage",
+        "context:latency_p95_milliseconds:freshness"
+       ],
+       "reason_codes": [],
+       "sample_count": 5,
+       "scope": "after_service",
+       "signal_name": "latency_p95_milliseconds",
+       "value": 48.0
+      },
+      {
+       "latest_sample_at": "2026-10-26T05:43:56.650000Z",
+       "query_keys": [
+        "context:deployment_ready_replicas:query",
+        "context:deployment_ready_replicas:coverage",
+        "context:deployment_ready_replicas:freshness"
+       ],
+       "reason_codes": [],
+       "sample_count": 5,
+       "scope": "after_service",
+       "signal_name": "deployment_ready_replicas",
+       "value": 1.0
+      },
+      {
+       "latest_sample_at": "2026-10-26T05:43:56.650000Z",
+       "query_keys": [
+        "context:deployment_available_replicas_min_in_window:query",
+        "context:deployment_available_replicas_min_in_window:coverage",
+        "context:deployment_available_replicas_min_in_window:freshness"
+       ],
+       "reason_codes": [],
+       "sample_count": 5,
+       "scope": "after_service",
+       "signal_name": "deployment_available_replicas_min_in_window",
+       "value": 1.0
+      },
+      {
+       "latest_sample_at": "2026-10-26T05:43:56.650000Z",
+       "query_keys": [
+        "context:dependency_deployments_available:query",
+        "context:dependency_deployments_available:coverage",
+        "context:dependency_deployments_available:freshness"
+       ],
+       "reason_codes": [],
+       "sample_count": 5,
+       "scope": "after_service",
+       "signal_name": "dependency_deployments_available",
+       "value": 8.0
+      },
+      {
+       "latest_sample_at": "2026-10-26T05:44:02.091000Z",
+       "query_keys": [
+        "context:dependency_error_ratio:query",
+        "context:dependency_error_ratio:coverage",
+        "context:dependency_error_ratio:freshness"
+       ],
+       "reason_codes": [],
+       "sample_count": 5,
+       "scope": "after_service",
+       "signal_name": "dependency_error_ratio",
+       "value": 0.09723971714219479
+      },
+      {
+       "latest_sample_at": "2026-10-26T05:44:02.091000Z",
+       "query_keys": [
+        "after:request_rate_per_second:query",
+        "after:request_rate_per_second:coverage",
+        "after:request_rate_per_second:freshness",
+        "after:request_rate_per_second:instances"
+       ],
+       "reason_codes": [],
+       "sample_count": 5,
+       "scope": "after_new",
+       "signal_name": "request_rate_per_second",
+       "value": 0.01526441225979567
+      },
+      {
+       "latest_sample_at": "2026-10-26T05:44:02.091000Z",
+       "query_keys": [
+        "after:error_ratio:query",
+        "after:error_ratio:coverage",
+        "after:error_ratio:freshness",
+        "after:error_ratio:instances"
+       ],
+       "reason_codes": [],
+       "sample_count": 5,
+       "scope": "after_new",
+       "signal_name": "error_ratio",
+       "value": 1.0
+      },
+      {
+       "latest_sample_at": "2026-10-26T05:44:02.091000Z",
+       "query_keys": [
+        "after:latency_p95_milliseconds:query",
+        "after:latency_p95_milliseconds:coverage",
+        "after:latency_p95_milliseconds:freshness",
+        "after:latency_p95_milliseconds:instances"
+       ],
+       "reason_codes": [],
+       "sample_count": 5,
+       "scope": "after_new",
+       "signal_name": "latency_p95_milliseconds",
+       "value": 48.0
+      },
+      {
+       "latest_sample_at": "2026-10-26T05:44:02.091000Z",
+       "query_keys": [
+        "after:dependency_error_ratio:query",
+        "after:dependency_error_ratio:coverage",
+        "after:dependency_error_ratio:freshness",
+        "after:dependency_error_ratio:instances"
+       ],
+       "reason_codes": [],
+       "sample_count": 5,
+       "scope": "after_new",
+       "signal_name": "dependency_error_ratio",
+       "value": 0.09723971714219479
+      }
+     ],
+     "status": "complete",
+     "window_after": {
+      "end": "2026-10-26T05:44:19.471259Z",
+      "start": "2026-10-26T05:39:19.471259Z"
+     },
+     "window_before": {
+      "end": "2026-10-26T05:33:57.268780Z",
+      "start": "2026-10-26T05:28:57.268780Z"
+     }
+    },
+    "comparison_id": "9373b7c0-d6b2-5ed2-9a31-dbbbea2ac52f",
+    "decision_at": "2026-10-26T05:47:02.092550+00:00",
+    "ending_id": "5a75367c-4bb2-5661-8b10-3809d4e6ded6",
+    "recorded_at": "2026-10-26T05:47:02.101130+00:00",
+    "status": "complete",
+    "window_after_end": "2026-10-26T05:44:19.471259+00:00",
+    "window_after_start": "2026-10-26T05:39:19.471259+00:00",
+    "window_before_end": "2026-10-26T05:33:57.268780+00:00",
+    "window_before_start": "2026-10-26T05:28:57.268780+00:00"
+   }
+  ],
+  "control_generation": 0,
+  "deadline_at": "2026-10-26T06:33:57.268780+00:00",
+  "deliveries": [
+   {
+    "actor": "release-deployer",
+    "event_id": 3,
+    "outcome": "created",
+    "raw_sha256": "f5940dc6ddafed4ae9fa6ad86cc0d1d3f8164dfd806ba050ea9d4ad8ef682c0d",
+    "reason": null,
+    "received_at": "2026-10-26T05:34:09.211963+00:00",
+    "sequence": 1
+   }
+  ],
+  "ended_at": "2026-10-25T22:45:39.522576-07:00",
+  "ended_reason": "anomaly_detected",
+  "endings": [
+   {
+    "anomaly_key": "release-anomaly:c01d4872-bfb2-4699-9f5d-fc92663f5a82",
+    "ended_reason": "anomaly_detected",
+    "ending_id": "5a75367c-4bb2-5661-8b10-3809d4e6ded6",
+    "recorded_at": "2026-10-26T05:45:39.548105+00:00",
+    "session_id": "399779ed-2778-4079-aaac-a950b06ca4bd",
+    "subject_state_after": "anomalous",
+    "subject_state_before": "observing",
+    "transition": "release_anomalous"
+   }
+  ],
+  "incident_id": "61fd54cc-c311-52cb-8d58-bde07cda3bc6",
+  "link": {
+   "comparison_id": "9373b7c0-d6b2-5ed2-9a31-dbbbea2ac52f",
+   "consumed_at": "2026-10-26T05:47:21.145719+00:00",
+   "disposition": "created",
+   "ending_id": "5a75367c-4bb2-5661-8b10-3809d4e6ded6",
+   "handoff_reason": null,
+   "incident_id": "61fd54cc-c311-52cb-8d58-bde07cda3bc6",
+   "input_id": null,
+   "observation_id": "c01d4872-bfb2-4699-9f5d-fc92663f5a82",
+   "related_incident_id": null,
+   "run_id": "41498afd-8b3d-574e-a4bf-137529776548"
+  },
+  "max_samples": 40,
+  "min_tracking_seconds": 1500,
+  "notice": "\u89c2\u5bdf\u5065\u5eb7\u7ed3\u8bba\uff0c\u4ec5\u4f9b\u53c2\u8003\uff1b\u4e0d\u6279\u51c6\u3001\u4e0d\u963b\u65ad\u3001\u4e0d\u6267\u884c\u53d1\u5e03",
+  "observation_generation": 1,
+  "observation_id": "c01d4872-bfb2-4699-9f5d-fc92663f5a82",
+  "paused": false,
+  "received_at": "2026-10-26T05:34:09.211963+00:00",
+  "released_at": "2026-10-26T05:33:57.268780+00:00",
+  "sessions": [
+   {
+    "adopted_count": 5,
+    "authorized_at": "2026-10-26T05:34:20.660040+00:00",
+    "authorized_by": "system",
+    "created_at": "2026-10-26T05:34:20.659961+00:00",
+    "deadline_at": "2026-10-26T06:33:57.268780+00:00",
+    "ended_reason": "anomaly_detected",
+    "healthy_since": null,
+    "observation_generation": 1,
+    "release_budget_used_at_authorization": 0,
+    "release_policy_revision": "otel-demo-checkout-release@e2ed7b69b96b",
+    "session_id": "399779ed-2778-4079-aaac-a950b06ca4bd",
+    "state": "completed",
+    "subject_control_generation": 0,
+    "tracking_since": "2026-10-26T05:34:38.278177+00:00",
+    "tracking_until": "2026-10-26T05:44:19.471259+00:00",
+    "updated_at": "2026-10-26T05:45:39.547691+00:00"
+   }
+  ],
+  "source": "kind-harness",
+  "source_release_id": "f11-5c-b-20261026T053356Z",
+  "status": "anomalous",
+  "target": {
+   "cluster_uid": "c8001471-8b7b-4449-83c0-924e6f46b857",
+   "integration_id": "m0-otel-20260909",
+   "namespace": "otel-demo",
+   "resource_uid": "m0-otel-20260909",
+   "workload": "checkout"
+  },
+  "used_sample_count": 5,
+  "verdict": "degraded"
+ },
+ "page_controls": [],
+ "page_matches_payload": {
+  "after": true,
+  "before": true,
+  "released_at": true,
+  "source_release_id": true
+ },
+ "product_path": {
+  "authorization": "web process release_authorize_pass (actor system), no direct primitive call",
+  "controls": "workbench page route only",
+  "intake": "POST /intake/version-changes (release-deployer event token, harness webhook)"
+ },
+ "raw_ledger": {
+  "files": {
+   "f11-5c-b/after.json": "e25d7f336a883bd1f023a0623807420d74793c607a8878e01c72facb27522888",
+   "f11-5c-b/before.json": "fa4b98e5654211b0eadda076bf29c16abd4df2c7a22519ad16125b9ca5a37508",
+   "f11-5c-b/fault.jsonl": "33be21cf34380aa24da40cc4444bb755e7ff719b7d75ffbe2224228566f68921",
+   "f11-5c-b/release.json": "4910e8f120d627075377929f4c228fbab9eba967881a848e6ff07717818cf329",
+   "f11-5c-b/timeline.jsonl": "a007008e0ccf3326dac091c48ae63afd8f12accc5da357b7e85bcfb5b94fb103",
+   "f11-5c-b/watch/8d44a7dfeb084366aaf6ed0510dca85f.json": "ab23eeb7bf966a2564af2ef06282ed30114bcaed17ac9755c03e2edb927fce17",
+   "f11-5c-b/watch/a778c6b0cc4b426ba00282b06a3e180c.json": "e25d7f336a883bd1f023a0623807420d74793c607a8878e01c72facb27522888",
+   "f11-5c-b/webhook.json": "17bf36a766b15fe022ebc2d08edf8e0b5655b475d1928ca1e46b0bf9ecbae179",
+   "f11-5c-b/webhook/f843b58e8cdb423e9d96d0abdcef3688/request.json": "f5940dc6ddafed4ae9fa6ad86cc0d1d3f8164dfd806ba050ea9d4ad8ef682c0d",
+   "f11-5c-b/webhook/f843b58e8cdb423e9d96d0abdcef3688/response-1.body": "0c59fdf01a815313353cead9121637d73f3e792422c81878f2c12a4c93e6e33e",
+   "f11-5c-b/webhook/f843b58e8cdb423e9d96d0abdcef3688/result.json": "17bf36a766b15fe022ebc2d08edf8e0b5655b475d1928ca1e46b0bf9ecbae179"
+  },
+  "location": "main repository tmp/lab-ledgers/f11-5c-b/ (not committed)"
+ },
+ "release": "B",
+ "replay": [
+  {
+   "consistent": true,
+   "exit_code": 0,
+   "external_queries": [],
+   "integrity": [],
+   "model_requests": [],
+   "replayed_status": "anomalous",
+   "session_id": "399779ed-2778-4079-aaac-a950b06ca4bd",
+   "stored_status": "anomalous",
+   "used_sample_count": 5,
+   "verdict": "degraded"
+  }
+ ],
+ "report": {
+  "assessment_status": "completed",
+  "claims": 27,
+  "conclusion": "partial",
+  "gaps": 9,
+  "references": {
+   "after_pod_template_hash": true,
+   "before_pod_template_hash": true,
+   "checkout_image_digest": true,
+   "flagd_paymentFailure": true,
+   "payment_invalid_token": true,
+   "pod_names": [
+    "checkout-7765446c4b-qvd72",
+    "checkout-7bcc99987c-9cx98"
+   ]
+  },
+  "summary": "The post-release degradation is a hard failure of the CheckoutService/PlaceOrder path: checkout's error_ratio went from 0 to 1.0 in the after window and every observed order from the new checkout instance after ~05:41:57 failed at PaymentService/Charge, with the failing response text being payment's own application error 'Payment request failed. Invalid token. app.loyalty.level=gold' (checkout sees rpc status 13 / Charge client status 2). Before the release checkout had zero error spans for an hour (PlaceOrder and Charge client spans all non-error), payment's Charge server spans had zero errors, and payment made no flagd ResolveFloat calls. Kubernetes data show the release is configuration-only for checkout: pod checkout-7bcc99987c-9cx98 (uid 56416307-4df5-49b5-b836-e64e4a898fa7) was replaced by checkout-7765446c4b-qvd72 (uid e90ba4a1-ff20-44d7-98ec-5610a5828fca) with an identical checkout image_id (sha256:5ab0d7b9003206a32c72ef48b42a535c3f70565251d7d832f86fe9f249f16635), while the payment pod (payment-6f7bc865d6-bfxbv, uid 6998b25a-8cd8-48d1-bcc9-6edc1ff46661, image sha256:33f327b3...) kept one unchanged identity across the whole window. The old instance's Charge calls were all non-error and stopped at handover; the new instance's Charge calls were still non-error in the 2-minute windows ending 05:36:57, 05:37:57, 05:39:57 and 05:40:57 (e.g. a successful Charge at 05:39:21) and then all failing from the window ending 05:43:57 onward, so the pod's configuration alone does not make every charge fail from startup - the rejecting condition is attached to the requests. The deepest evidence-backed cause is therefore in the request the new checkout instance sends: payment's unchanged charge handler (charge.js:37) rejects it as an invalid token and reports the request attribute app.loyalty.level=gold. A second candidate that is not excluded is the flagd flag 'paymentFailure': payment began evaluating it (ResolveFloat, flagd impressions variants 'off' and '100%', reason STATIC) exactly in 05:38:57-05:42:57, but only one of the four sampled failing charges contains a flag evaluation, most evaluations in that burst returned 'off', and failures continued after the last '100%' increment, so the flag is not shown to be the cause. flagd, cart, currency, product-catalog, quote and shipping showed no new error signals, and frontend/frontend-proxy errors are the propagated user-facing 500s."
+ },
+ "rollout": {
+  "after_pod_template_hash": "7765446c4b",
+  "after_replicaset_uid": "ba3fb981-5f32-4159-bc7b-061b57ab4c0e",
+  "before_pod_template_hash": "7bcc99987c",
+  "before_replicaset_uid": "4242134d-ae4d-4fcd-be93-8adad6d5a73d",
+  "deployment_uid": "b32e1705-32d2-46a1-849c-ae88dacff4c6",
+  "patch_requested_at": "2026-10-26T05:33:57.219969+00:00",
+  "released_at_R": "2026-10-26T05:33:57.268780+00:00",
+  "source_release_id": "f11-5c-b-20261026T053356Z"
+ },
+ "run_input_release_fact": {
+  "auxiliary": {
+   "after_pod_template_hash": "7765446c4b",
+   "after_replicaset_uid": "ba3fb981-5f32-4159-bc7b-061b57ab4c0e",
+   "before_pod_template_hash": "7bcc99987c",
+   "before_replicaset_uid": "4242134d-ae4d-4fcd-be93-8adad6d5a73d"
+  },
+  "comparison_status": "complete",
+  "ending_id": "5a75367c-4bb2-5661-8b10-3809d4e6ded6",
+  "input_version": "opspilot-investigation-input-v6",
+  "release_observation_keys": [
+   "after_revision",
+   "anchor",
+   "anomaly_key",
+   "auxiliary",
+   "before_revision",
+   "calibrated_policy_revision",
+   "comparison",
+   "ending_id",
+   "observation_id",
+   "release_evaluation",
+   "released_at",
+   "sample_id",
+   "source",
+   "source_release_id",
+   "target",
+   "truncated"
+  ],
+  "target": {
+   "cluster_uid": "c8001471-8b7b-4449-83c0-924e6f46b857",
+   "integration_id": "m0-otel-20260909",
+   "namespace": "otel-demo",
+   "resource_uid": "m0-otel-20260909",
+   "workload": "checkout"
+  }
+ },
+ "runs": [
+  {
+   "incident_id": "61fd54cc-c311-52cb-8d58-bde07cda3bc6",
+   "input_version": null,
+   "input_version_alt": "opspilot-investigation-input-v6",
+   "model_requests": 27,
+   "prompt_revision": "prompt-replay-candidate-bef70649a3a8",
+   "run_id": "41498afd-8b3d-574e-a4bf-137529776548",
+   "state": "completed",
+   "tool_operations_used": 43
+  }
+ ],
+ "samples": [
+  {
+   "confirms_health": false,
+   "disposition": "adopted",
+   "outcome": "no_data",
+   "reason": "adopted",
+   "sequence": 1,
+   "session_id": "399779ed-2778-4079-aaac-a950b06ca4bd",
+   "submitted_at": "2026-10-25 22:36:18.353571-07:00",
+   "window_end": "2026-10-25 22:35:23.403212-07:00",
+   "window_start": "2026-10-25 22:30:23.403212-07:00"
+  },
+  {
+   "confirms_health": false,
+   "disposition": "adopted",
+   "outcome": "no_data",
+   "reason": "adopted",
+   "sequence": 2,
+   "session_id": "399779ed-2778-4079-aaac-a950b06ca4bd",
+   "submitted_at": "2026-10-25 22:38:38.122765-07:00",
+   "window_end": "2026-10-25 22:37:18.529175-07:00",
+   "window_start": "2026-10-25 22:32:18.529175-07:00"
+  },
+  {
+   "confirms_health": true,
+   "disposition": "adopted",
+   "outcome": "healthy",
+   "reason": "adopted",
+   "sequence": 3,
+   "session_id": "399779ed-2778-4079-aaac-a950b06ca4bd",
+   "submitted_at": "2026-10-25 22:41:00.651286-07:00",
+   "window_end": "2026-10-25 22:39:38.278177-07:00",
+   "window_start": "2026-10-25 22:34:38.278177-07:00"
+  },
+  {
+   "confirms_health": true,
+   "disposition": "adopted",
+   "outcome": "healthy",
+   "reason": "adopted",
+   "sequence": 4,
+   "session_id": "399779ed-2778-4079-aaac-a950b06ca4bd",
+   "submitted_at": "2026-10-25 22:43:19.282210-07:00",
+   "window_end": "2026-10-25 22:42:00.824554-07:00",
+   "window_start": "2026-10-25 22:37:00.824554-07:00"
+  },
+  {
+   "confirms_health": false,
+   "disposition": "adopted",
+   "outcome": "degraded",
+   "reason": "adopted",
+   "sequence": 5,
+   "session_id": "399779ed-2778-4079-aaac-a950b06ca4bd",
+   "submitted_at": "2026-10-25 22:45:39.538081-07:00",
+   "window_end": "2026-10-25 22:44:19.471259-07:00",
+   "window_start": "2026-10-25 22:39:19.471259-07:00"
+  }
+ ],
+ "self_heal_after_run": {
+  "note": "#184 pass authorized one incident_recovery session (system, automatic) on B's incident after the Run published; web log has 0 'automatic observation pass failed' (#342 fixed)"
+ },
+ "trace": {
+  "db_model_requests": 27,
+  "db_tool_operations": 43,
+  "langsmith_run_id": "00000000-0000-0000-3723-0f0f84360596",
+  "llm_children": 27,
+  "otel_trace_id": "cfdbe0d09ce32a288c6e14446312b6c5",
+  "project": "opspilot-lab-f11-acceptance-live-20261026",
+  "project_id": "bf7b4352-361d-47da-98a7-32b337b563b0",
+  "root_status": "published",
+  "tokens_in_out": [
+   2339862,
+   66766
+  ],
+  "tool_children": 43,
+  "trace_tier": "longlived",
+  "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/bf7b4352-361d-47da-98a7-32b337b563b0/r/00000000-0000-0000-3723-0f0f84360596?poll=true"
+ },
+ "webhook_attempts": [
+  {
+   "at": "2026-10-26T05:34:09.198166+00:00",
+   "outcome": "created",
+   "request_sha256": "f5940dc6ddafed4ae9fa6ad86cc0d1d3f8164dfd806ba050ea9d4ad8ef682c0d",
+   "response_code": null,
+   "response_sha256": "0c59fdf01a815313353cead9121637d73f3e792422c81878f2c12a4c93e6e33e",
+   "status": 201
+  }
+ ]
+}

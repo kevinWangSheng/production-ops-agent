@@ -77,13 +77,14 @@ def tracked_snapshot(root: Path, destination: Path, *, index=True):
         target.write_bytes(content)
 
 
-def scan(binary: Path, mode: str, target: Path, scratch: Path):
+def scan(binary: Path, mode: str, target: Path, scratch: Path, log_opts: str = "--all"):
     report = scratch / "report.json"
     report.unlink(missing_ok=True)
     config = scratch / "scanner.toml"
     # Two reviewed non-credential source digests in one historical evidence manifest,
     # the B2 ``"key"`` digest frozen in the synthetic structural fixture,
-    # and the F2 PR-C acceptance ``auth_revision`` label.
+    # the F2 PR-C acceptance ``auth_revision`` label, and the #311 implementation
+    # test's synthetic fake token.
     # Rule + exact file suffix + exact value all must match; no directory exclusion.
     config.write_text(
         """[extend]
@@ -111,6 +112,12 @@ condition = "AND"
 paths = ['(^|/)tests/acceptance/test_f2_alert_correlation\\.py$']
 regexTarget = "secret"
 regexes = ['^f2-correlation-acceptance-v1$']
+[[rules.allowlists]]
+description = "Synthetic fake token in the #311 implementation test (not a credential)"
+condition = "AND"
+paths = ['(^|/)tests/test_311_source_errors_impl\\.py$']
+regexTarget = "secret"
+regexes = ['^tok-311-abcdefghijkl$']
 [[rules]]
 id = "m0-selftest-api-key"
 description = "Deterministic synthetic API-key canary used to verify the scanner"
@@ -130,7 +137,7 @@ keywords = ["api_key"]
         f"--report-path={report}",
     ]
     if mode == "git":
-        args.append("--log-opts=--all --no-ext-diff --no-textconv")
+        args.append(f"--log-opts={log_opts} --no-ext-diff --no-textconv")
     result = command([*args, str(target)], cwd=scratch)
     if result.returncode not in (0, 1) or not report.is_file():
         raise ScanError("SCANNER_FAILED")
@@ -186,13 +193,37 @@ def check(root: Path, binary: Path):
     return "SECRET_SCAN_PASSED"
 
 
+def check_range(root: Path, binary: Path, rev_range: str):
+    """Scan only ``rev_range`` (for example ``origin/main..HEAD``) with the CI rules.
+
+    The pre-push path: same pinned binary and the same reviewed exceptions as
+    ``check``, without the self-test and snapshot passes.
+    """
+    binary = binary.resolve(strict=True)
+    root = root.resolve(strict=True)
+    if rev_range.startswith("-"):
+        raise ScanError("RANGE_INVALID")
+    with tempfile.TemporaryDirectory(prefix="m0-secret-scan-") as tmp:
+        scratch = Path(tmp)
+        version = command([str(binary), "version"], cwd=scratch)
+        if version.returncode or version.stdout.strip() != VERSION:
+            raise ScanError("SCANNER_VERSION_INVALID")
+        if scan(binary, "git", root, scratch, log_opts=rev_range):
+            raise ScanError("SECRET_DETECTED")
+    return "BRANCH_SECRET_SCAN_PASSED"
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=Path.cwd())
     parser.add_argument("--binary", type=Path, required=True)
+    parser.add_argument("--range", dest="rev_range", help="scan only this rev range")
     args = parser.parse_args()
     try:
-        print(check(args.root, args.binary))
+        if args.rev_range:
+            print(check_range(args.root, args.binary, args.rev_range))
+        else:
+            print(check(args.root, args.binary))
     except ScanError as error:
         print(str(error))
         raise SystemExit(1) from None

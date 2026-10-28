@@ -32,13 +32,13 @@ LEGACY_DDL = (
     pathlib.Path(__file__).parent / "legacy_schema_2026-10-05.sql"
 ).read_text()
 PG_DUMP = os.environ.get("OPSPILOT_PG_DUMP", "pg_dump")
-HEAD = "0017_web_suspension_grants"
+HEAD = "0023_retention_raw_cleanup"
 # opspilot_* tables at head: 15 in the baseline + 5 of 0003 (profiles,
 # sessions, samples, readings, endings) + 10 of 0008 (postmortems, versions,
 # conclusions, disputes, proposals, knowledge entries/revisions/revocations,
 # requests, audit) + 2 of 0009 (generation jobs, attempts) + 2 of 0010 (alert
 # identities, deliveries) + 1 of 0013 (self-heal authorizations).
-TABLES_AT_HEAD = 39
+TABLES_AT_HEAD = 43
 
 
 @pytest.fixture
@@ -299,6 +299,14 @@ EXPECTED_CHECKS = {
     "opspilot_incidents_lifecycle_check",
     # 0005 (M1-02 step 3b): the control mode, same discipline
     "opspilot_incidents_mode_check",
+    # 0018 (F2 PR-C): an incident never relates to itself
+    "opspilot_incidents_related_incident_check",
+    # 0019 (F2 PR-B1): the claim priority domain, same discipline
+    "opspilot_incidents_priority_check",
+    # 0022 (#245): an incident is never merged into itself
+    "opspilot_incidents_merged_into_incident_check",
+    # 0023 (#244): a close time only on a closed incident
+    "opspilot_incidents_closed_at_check",
 }
 
 

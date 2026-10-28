@@ -1,0 +1,166 @@
+{% extends "base.html" %}
+{% block title %}Version change {{ page.observation_id }}{% endblock %}
+{% macro revision(rev) %}
+<table>
+  <tr><th>Pod template / config digest</th><td><code class="digest">{{ rev.pod_template_digest }}</code></td></tr>
+  {% for name, image in rev.images | dictsort %}
+  <tr><th>Image <code>{{ name }}</code></th><td><code class="digest">{{ image }}</code></td></tr>
+  {% endfor %}
+</table>
+{% endmacro %}
+{% block body %}
+<h1>Version change <code id="observation-id">{{ page.observation_id }}</code></h1>
+<p><a href="/version-changes">All version changes</a></p>
+<p class="unknown" id="notice">{{ page.notice }}<br>Observation health conclusion, advisory only; it does not approve, block or perform a release. Causal findings belong to the linked incident.</p>
+<p>
+  verdict <span class="badge" id="verdict">{{ page.verdict }}</span>
+  {% if page.paused %}<span class="badge" id="paused">paused</span>{% endif %}
+  {% if page.hold_text %}<span class="muted" id="hold">{{ page.hold_text }}</span>{% endif %}
+  {% if page.ended_reason %}· ended reason <code id="ended-reason">{{ page.ended_reason }}</code>{% endif %}
+  · stored status <code>{{ page.status }}</code>
+  · control generation <strong id="control-generation">{{ page.control_generation }}</strong>
+  · observation generation {{ page.observation_generation }}
+</p>
+{% if not page.concluded and page.verdict in ("pending", "observing") %}
+<p class="muted">Not concluded yet: pending and observing are no health verdict.</p>
+{% endif %}
+
+<h2>Source and service</h2>
+<table id="identity">
+  <tr><th>Source</th><td><code>{{ page.source }}</code></td></tr>
+  <tr><th>Source change id</th><td><code id="source-release-id">{{ page.source_release_id }}</code></td></tr>
+  {% for key in ("integration_id", "cluster_uid", "namespace", "resource_uid", "workload") %}
+  <tr><th>{{ key }}</th><td><code>{{ page.target[key] }}</code></td></tr>
+  {% endfor %}
+  {% for key, value in page.auxiliary | dictsort %}
+  <tr><th class="muted">{{ key }} (auxiliary)</th><td><code>{{ value if value is not none else "" }}</code></td></tr>
+  {% endfor %}
+</table>
+
+<h2>Versions</h2>
+<h3>Before</h3>
+<div id="before">{{ revision(page.before) }}</div>
+<h3>After</h3>
+<div id="after">{{ revision(page.after) }}</div>
+
+<h2>Observation bounds</h2>
+<table>
+  <tr><th>Changed at (source)</th><td>{{ page.released_at }}</td></tr>
+  <tr><th>Received</th><td>{{ page.received_at }}</td></tr>
+  <tr><th>Deadline</th><td>{{ page.deadline_at }}</td></tr>
+  <tr><th>Minimum tracking</th><td>{{ page.min_tracking_seconds }} s</td></tr>
+  <tr><th>Ended at</th><td>{{ page.ended_at or "" }}</td></tr>
+  <tr><th>HealthProfile</th><td><code>{{ page.health_profile_revision }}</code></td></tr>
+  <tr><th>Calibrated traffic policy</th><td><code id="policy-revision">{{ page.calibrated_policy_revision or "none (not authorized yet)" }}</code></td></tr>
+  <tr><th>Samples</th><td><span id="samples">{{ page.used_sample_count }} / {{ page.max_samples }}</span></td></tr>
+</table>
+
+<h2>Human control</h2>
+{% if page.actions %}
+<p class="muted">Every action is a conditional update against control generation {{ page.control_generation }}; a stale form is refused, never applied. Pause, resume and cancel act on this observation only.</p>
+{% for action in page.actions %}
+<form class="inline" method="post" action="/version-changes/{{ page.observation_id }}/control">
+  <input type="hidden" name="action" value="{{ action }}">
+  <input type="hidden" name="expected_control_generation" value="{{ page.control_generation }}">
+  <input type="hidden" name="idempotency_key" value="{{ action }}-{{ page.control_generation }}-{{ form_nonce }}">
+  <button type="submit">{{ action }}</button>
+</form>
+{% endfor %}
+{% else %}
+<p class="muted">No control: the observation has ended.</p>
+{% endif %}
+
+<h2>Incident</h2>
+{% if page.link %}
+<p id="incident-link">Disposition <span class="badge">{{ page.link.disposition }}</span>
+  · incident <a href="/incidents/{{ page.link.incident_id }}"><code>{{ page.link.incident_id }}</code></a>
+  {% if page.link.related_incident_id %}· related to <a href="/incidents/{{ page.link.related_incident_id }}"><code>{{ page.link.related_incident_id }}</code></a>{% endif %}
+  {% if page.link.run_id %}· run <code>{{ page.link.run_id }}</code>{% endif %}
+  {% if page.link.handoff_reason %}· handed to a human: <code>{{ page.link.handoff_reason }}</code>{% endif %}
+  · consumed {{ page.link.consumed_at }}</p>
+{% else %}
+<p class="muted">No incident: only a degraded verdict opens or joins one.</p>
+{% endif %}
+
+<h2>Before/after comparison</h2>
+{% if page.comparisons %}
+{% for c in page.comparisons %}
+<div class="comparison">
+<p>Status <span class="badge">{{ c.status }}</span> · attempts {{ c.attempts }}
+  · before {{ c.window_before_start }} → {{ c.window_before_end }}
+  · after {{ c.window_after_start }} → {{ c.window_after_end }}</p>
+{% if c.comparison.reason_codes %}<p class="muted">Reasons: {% for code in c.comparison.reason_codes %}<code>{{ code }}</code> {% endfor %}</p>{% endif %}
+<table>
+  <thead><tr><th>Scope</th><th>Signal</th><th>Value</th><th>Points</th><th>Reasons</th></tr></thead>
+  <tbody>
+  {% for s in c.comparison.signals %}
+  <tr><td>{{ s.scope }}</td><td>{{ s.signal_name }}</td><td>{{ s.value if s.value is not none else "—" }}</td><td>{{ s.sample_count if s.sample_count is not none else "" }}</td>
+    <td>{% for code in s.reason_codes %}<code>{{ code }}</code> {% endfor %}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endfor %}
+{% else %}
+<p class="muted">No comparison recorded (taken only after a degraded verdict).</p>
+{% endif %}
+
+<h2>Observation sessions</h2>
+{% if page.sessions %}
+<table id="release-sessions">
+  <thead><tr><th>Session</th><th>State</th><th>Authorized</th><th>Generations</th><th>Policy</th><th>Adopted</th><th>Tracking</th></tr></thead>
+  <tbody>
+  {% for s in page.sessions %}
+  <tr><td><code>{{ s.session_id }}</code></td>
+    <td><span class="badge">{{ s.state }}</span>{% if s.ended_reason %} <span class="muted">{{ s.ended_reason }}</span>{% endif %}</td>
+    <td>{{ s.authorized_at }} by <code>{{ s.authorized_by }}</code></td>
+    <td>{{ s.subject_control_generation }} / {{ s.observation_generation }}</td>
+    <td><code>{{ s.release_policy_revision or "" }}</code></td>
+    <td>{{ s.adopted_count }}</td>
+    <td>{{ s.tracking_since or "" }}{% if s.tracking_until %} → {{ s.tracking_until }}{% endif %}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="muted">No session: the observation was never authorized.</p>
+{% endif %}
+{% if page.endings %}
+<h3>Endings</h3>
+<table id="release-endings">
+  <thead><tr><th>Recorded</th><th>Session</th><th>Reason</th><th>Status</th></tr></thead>
+  <tbody>
+  {% for e in page.endings %}
+  <tr><td>{{ e.recorded_at }}</td><td><code>{{ e.session_id }}</code></td><td>{{ e.ended_reason }}</td><td>{{ e.subject_state_before }} → {{ e.subject_state_after }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+<h2>Control audit</h2>
+{% if page.audit %}
+<table id="release-audit">
+  <thead><tr><th>#</th><th>Recorded</th><th>Action</th><th>By</th><th>Outcome</th><th>Status</th><th>Control generation</th></tr></thead>
+  <tbody>
+  {% for a in page.audit %}
+  <tr><td>{{ a.sequence }}</td><td>{{ a.recorded_at }}</td><td>{{ a.action }}</td><td><code>{{ a.actor }}</code> ({{ a.principal_kind }})</td>
+    <td><span class="badge">{{ a.outcome }}</span>{% if a.reason %} <code>{{ a.reason }}</code>{% endif %}</td>
+    <td>{{ a.status_before }} → {{ a.status_after }}{% if a.paused_after %} (paused){% endif %}</td>
+    <td>{{ a.control_generation_before }} → {{ a.control_generation_after }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="muted">No control recorded.</p>
+{% endif %}
+
+<h2>Deliveries</h2>
+<table id="release-deliveries">
+  <thead><tr><th>#</th><th>Received</th><th>Outcome</th><th>By</th><th>Body sha256</th></tr></thead>
+  <tbody>
+  {% for d in page.deliveries %}
+  <tr><td>{{ d.sequence }}</td><td>{{ d.received_at }}</td><td>{{ d.outcome }}{% if d.reason %} <code>{{ d.reason }}</code>{% endif %}</td><td><code>{{ d.actor }}</code></td><td><code>{{ d.raw_sha256 }}</code></td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+<p class="muted">Reload the page for current state.</p>
+{% endblock %}

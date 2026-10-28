@@ -18,7 +18,7 @@
 | P7-D5 | 每场景 validation 1 正 + 3 负（共 6 正 18 负），debug 1 正 + 1 负；最终标签由盲标与裁决决定，作者不能指定 | 推荐 |
 | P7-D6 | 七类覆盖指 gate 合格、诊断语义错误的样本，不用坏 schema 或伪 ID 代替；正常场景的纯假设不是负例；作者对每项写覆盖说明，供独立复核 | 推荐 |
 | P7-D7 | 改写作者与两位标注者分离。标注者拿到 P6 输入、expected answer、签名规则结果、判据与输出 schema；拿不到作者意图、coverage、split、来源关联、另一份标注和候选 judge 输出 | 推荐 |
-| P7-D8 | 两位标注者：Claude Opus 5.5 全新子 Agent 与 Codex `gpt-6-astra`，记录实际模型身份；均非候选 judge（隔离方式见[驱动接口](2026-10-19-eval-p7-driver-interface.md) Q8：Claude 以独立全新进程运行） | 用户 |
+| P7-D8 | 两位标注者：Claude Opus 5.5 全新子 Agent 与 Codex `gpt-6-astra`，记录实际模型身份；均非候选 judge（隔离方式见[驱动接口](2026-10-19-eval-p7-driver-interface.md) Q8：Claude 以独立全新进程运行）。2026-10-28 补：slot 2 不可用时依次换 `gpt-6-sol`、Claude Fable 5.1，用 Fable 的批次披露两份盲标同属 Anthropic（[M3 决策稿第二轮](2026-10-27-m2-exit-m3-opening-decision.md#第二轮裁决2026-10-28) Q12） | 用户 |
 | P7-D9 | 保持现行严格口径（完整标签、`(location, quote)` 精确相等）；debug 阶段给标注者与三家 judge 同一份引文粒度与排序约定；debug 仍大量误判则停下交用户改规则 | 用户 |
 | P7-D10 | 用户逐项裁决所有完整标签差异（最坏 36 项）；工具生成最终 BlindLabel 并绑定两份 annotation hash 与裁决记录 | 推荐 |
 | P7-D11 | 先只对 debug 项调 `judge_once` 调优，冻结 prompt/config 后才跑正式校准；validation 暴露后修 judge 须换新的 validation 来源族 | 推荐 |

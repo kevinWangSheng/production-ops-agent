@@ -227,7 +227,7 @@ def test_an_unknown_later_version_is_incompatible(monkeypatch):
     raw = _alert_input(FRAME_END).as_json()
     with pytest.raises(ContextError, match="INCOMPATIBLE_STATE"):
         InvestigationInput.from_json(
-            {**raw, "version": "opspilot-investigation-input-v6"}
+            {**raw, "version": "opspilot-investigation-input-v7"}
         )
     # F4: a worker that predates v3 blocks the row instead of dropping facts.
     monkeypatch.setattr(
@@ -449,7 +449,16 @@ def test_query_scope_refuses_a_default_outside_its_window():
 
 def test_tool_descriptions_state_the_default_query_window():
     text = json.dumps(TOOL_SCHEMAS)
-    assert text.count("default_query_window") == 2
+    windowed_tools = tuple(
+        schema
+        for schema in TOOL_SCHEMAS
+        if {"start", "end"} <= set(schema["function"]["parameters"]["properties"])
+    )
+    assert windowed_tools
+    # R3: every tool exposing a model-selected start/end window documents the
+    # same default-query-window fallback.  Derive the expected count from the
+    # schemas so a new windowed tool cannot leave this check stale.
+    assert text.count("default_query_window") == len(windowed_tools)
 
 
 # -- the fixture profile ---------------------------------------------------------

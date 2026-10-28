@@ -189,3 +189,37 @@ def test_readiness_covers_statefulsets(monkeypatch) -> None:
     monkeypatch.setattr(kind_lab, "capture", fake_capture)
     assert kind_lab.deployments_not_ready() == ["alertmanager"]
     assert "deployments,statefulsets" in seen[0]
+
+
+def test_one_workbench_env_authenticates_alertmanager_and_release_deployer(
+    tmp_path: Path,
+) -> None:
+    """F11 PR-3 r6: the documented start-up sources only the standard env
+    file, so the release harness's hash must be in it, not in a second file."""
+    from opspilot.web.__main__ import _pairs
+    from opspilot.web.auth import AuthConfig, Authenticator
+
+    alert, release = "lab-token-value", "release-token-value"
+    path = kind_lab.workbench_event_env(
+        alert, tmp_path / "wb.env", also={kind_lab.RELEASE_ACTOR: release}
+    )
+    text = path.read_text()
+    assert alert not in text and release not in text
+    assert stat.S_IMODE(path.stat().st_mode) == 0o600
+    existing = hashlib.sha256(b"other").hexdigest()
+    sourced = _source(path, f"{existing}=ui-events")
+    authenticator = Authenticator(
+        AuthConfig(
+            ui_users={},
+            event_tokens=_pairs(sourced),
+            auth_revision="r6",
+            allowed_origins=frozenset(),
+        )
+    )
+    for token, actor in (
+        (alert, kind_lab.WEBHOOK_ACTOR),
+        (release, kind_lab.RELEASE_ACTOR),
+    ):
+        principal = authenticator.event_principal({"authorization": f"Bearer {token}"})
+        assert principal.actor_id == actor
+    assert _pairs(sourced)[existing] == "ui-events"

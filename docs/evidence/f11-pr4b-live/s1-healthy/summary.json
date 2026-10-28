@@ -1,0 +1,171 @@
+{
+ "assertions": {
+  "alert_deliveries_total_at_scenario_end": 0,
+  "event_inputs_total_at_scenario_end": 0,
+  "incidents_created_in_window": [],
+  "links_for_observation": [],
+  "runs_total_at_scenario_end": 0,
+  "source": "s1/s2 DB snapshots taken ~65 s (two consumption passes) after the healthy ending; incidents/runs/links/events/deliveries all 0",
+  "verdict": "PASS"
+ },
+ "authorize": {
+  "at": "2026-10-24T09:25:37.164095+00:00",
+  "db_role": "web login IN ROLE opspilot_web",
+  "idempotency_label": "pr4b-s1-authorize-1",
+  "outcome": "applied",
+  "policy_revision": "otel-demo-checkout-release@e2ed7b69b96b",
+  "status_after": "observing"
+ },
+ "batch": "f11-pr4b-live",
+ "code_revision": "5943b0f",
+ "comparison": [],
+ "ending": [
+  {
+   "anomaly_key": null,
+   "ended_reason": "healthy_confirmed",
+   "ending_id": "18e04ba6-287d-55a8-aeed-b22b3901857e",
+   "recorded_at": "2026-10-24 02:54:06.505419-07",
+   "subject_state_after": "healthy",
+   "transition": "release_healthy"
+  }
+ ],
+ "fault": [],
+ "harness_run": "pr4b-s1-healthy-b",
+ "intake": {
+  "http_status": 201,
+  "request_sha256": "885ec01dae8cf3bd82f783f2f6456a6188684283e954cd81e337a894d859b767",
+  "response": {
+   "observation_id": "f0b94758-002d-485e-a2ff-7510076601bb",
+   "outcome": "created",
+   "reason": null,
+   "status": "pending"
+  }
+ },
+ "k8s_policy_surface": {
+  "added": [
+   "replicasets.apps/otel-demo/checkout-f96c97d6"
+  ],
+  "changed": [
+   "deployments.apps/otel-demo/checkout",
+   "replicasets.apps/otel-demo/checkout-645dc77999"
+  ],
+  "changed_outside_deployment_replicaset_flagd": [],
+  "kinds": 23,
+  "objects_compared": 307,
+  "removed": [
+   "replicasets.apps/otel-demo/checkout-5c644f8ff6"
+  ],
+  "verdict": "PASS"
+ },
+ "link": [],
+ "observation": {
+  "calibrated_policy_revision": "otel-demo-checkout-release@e2ed7b69b96b",
+  "deadline_at": "2026-10-24 03:25:21.242022-07",
+  "ended_at": "2026-10-24 02:54:06.471919-07",
+  "ended_reason": "healthy_confirmed",
+  "health_profile_revision": "otel-demo-checkout@b72bbe2e30be",
+  "incident_id": null,
+  "min_tracking_seconds": 1500,
+  "observation_id": "f0b94758-002d-485e-a2ff-7510076601bb",
+  "released_at": "2026-10-24 02:25:21.242022-07",
+  "source": "kind-harness",
+  "source_release_id": "pr4b-s1-healthy-b-20261024T092520Z",
+  "status": "healthy",
+  "used_sample_count": 12
+ },
+ "raw_ledger": {
+  "artifact_sha256": {
+   "after.json": "061d9024dde96aaef9f5bc48018c6ebc5fe76c61e29cde4c870f73d33de58073",
+   "authorize.json": "c0e9c632e7dbe22e82d6a058e314203c6c8886a14c73c365afa474e53c220a5a",
+   "before.json": "4a337ad9796cc02e1c96a099cba0b8120c9b1fd478a7e12231e6c2941806651e",
+   "db-extract.json": "e0f1e5cda50afd8fc8678da235e5ecee0c91526819089575840a509423728c42",
+   "release.json": "9cf751ebc0d12887bbce04596f6156c7dd28917ec7b8d0949d92ecb2c14373ad",
+   "timeline.jsonl": "8144a25b57a4d01dec21ccfc53348d3edd61e903e40f8987cdd3bdc4a4c46606",
+   "webhook.json": "0b98b0b7827e8916e8b1da5b557f32062df59c32e867f209be926f788d751e3a"
+  },
+  "location": "main repo tmp/lab-ledgers/pr4b-s1-healthy-b/ (not committed)"
+ },
+ "release": {
+  "after_pod_template_hash": "f96c97d6",
+  "before_pod_template_hash": "645dc77999",
+  "deployment_generation": 18,
+  "release_id": "pr4b-s1-healthy-b-20261024T092520Z",
+  "released_at_patch_receipt": "2026-10-24T09:25:21.242022+00:00"
+ },
+ "samples": [
+  {
+   "disposition": "adopted",
+   "outcome": "no_data",
+   "sequence": 1,
+   "window_end": "2026-10-24 02:26:41.755004-07"
+  },
+  {
+   "disposition": "adopted",
+   "outcome": "no_data",
+   "sequence": 2,
+   "window_end": "2026-10-24 02:28:35.255047-07"
+  },
+  {
+   "disposition": "adopted",
+   "outcome": "healthy",
+   "sequence": 3,
+   "window_end": "2026-10-24 02:31:01.346338-07"
+  },
+  {
+   "disposition": "adopted",
+   "outcome": "healthy",
+   "sequence": 4,
+   "window_end": "2026-10-24 02:33:31.954872-07"
+  },
+  {
+   "disposition": "adopted",
+   "outcome": "healthy",
+   "sequence": 5,
+   "window_end": "2026-10-24 02:36:08.459599-07"
+  },
+  {
+   "disposition": "adopted",
+   "outcome": "healthy",
+   "sequence": 6,
+   "window_end": "2026-10-24 02:38:30.936215-07"
+  },
+  {
+   "disposition": "adopted",
+   "outcome": "healthy",
+   "sequence": 7,
+   "window_end": "2026-10-24 02:40:52.647978-07"
+  },
+  {
+   "disposition": "adopted",
+   "outcome": "healthy",
+   "sequence": 8,
+   "window_end": "2026-10-24 02:43:13.779693-07"
+  },
+  {
+   "disposition": "adopted",
+   "outcome": "healthy",
+   "sequence": 9,
+   "window_end": "2026-10-24 02:45:38.928863-07"
+  },
+  {
+   "disposition": "adopted",
+   "outcome": "healthy",
+   "sequence": 10,
+   "window_end": "2026-10-24 02:47:57.840515-07"
+  },
+  {
+   "disposition": "adopted",
+   "outcome": "healthy",
+   "sequence": 11,
+   "window_end": "2026-10-24 02:50:14.696006-07"
+  },
+  {
+   "disposition": "adopted",
+   "outcome": "healthy",
+   "sequence": 12,
+   "window_end": "2026-10-24 02:52:38.468716-07"
+  }
+ ],
+ "scenario": "s1-healthy",
+ "schema": "f11-pr4b-live-scenario-v1"
+}

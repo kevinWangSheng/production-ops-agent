@@ -29,14 +29,16 @@ from markupsafe import Markup
 from psycopg import Error as DatabaseError
 from pydantic import ValidationError
 
-from opspilot.acceptance_alert import alert_intake_outcome
+from opspilot.acceptance_alert import alert_intake_outcome, utc_seconds
 from opspilot.acceptance_recovery import authorization_source
+from opspilot.acceptance_release import CONCLUDED_VERDICTS, release_verdict
 from opspilot.alertmanager import (
     Alert,
     InvalidAlert,
     alert_context,
     alert_context_of_record,
     parse_alert,
+    priority_of,
     question_for,
     record_of,
     resolve_target,
@@ -52,13 +54,26 @@ from opspilot.intake import (
 from opspilot.investigation.context import (
     AFFECTED_SERVICE,
     ALERT_CONTEXT,
+    ALERT_STARTS_AT,
     CONCLUSION_KIND,
     INPUT_CONTENT_FIELD_MAX_CHARS,
     KNOWLEDGE,
+    RELEASE_OBSERVATION,
     ContextError,
     conclusion_publishable,
 )
-from opspilot.investigation.inputs import AlertAnchor, ToolFace, continuation_input
+from opspilot.investigation.coverage import (
+    RunCoverage,
+    collection_truncated,
+    run_coverage,
+)
+from opspilot.investigation.inputs import (
+    AlertAnchor,
+    ReleaseAnchor,
+    ToolFace,
+    continuation_input,
+    release_observation_fact,
+)
 from opspilot.investigation.limits import (
     MAX_MODEL_REQUESTS_PER_RUN,
     MODEL_REQUEST_TIMEOUT_SECONDS,
@@ -76,6 +91,11 @@ from opspilot.investigation.progress import (
 from opspilot.investigation.reports import ReportV2, parse_report
 from opspilot.investigation.store import StepCommitter, StepStoreError
 from opspilot.knowledge.hints import knowledge_checks, unavailable_fact
+from opspilot.observation.release_commands import (
+    ReleaseCommandReceipt,
+    ReleaseConsumption,
+)
+from opspilot.observation.release_types import ReleaseLinkReceipt
 from opspilot.observation.store import SelfHealGrant, SelfHealState
 from opspilot.observer.health_profile import HealthProfile, canonical_content
 from opspilot.observer.replay import SessionReplay, replay_history
@@ -95,6 +115,45 @@ from opspilot.web.store import (
 )
 
 _INTAKE_NAMESPACE = UUID("0f4c9d3e-2b7a-4a6e-9c1d-5e8f7a6b3c21")
+#: The system principal a release-anomaly incident's intake row records
+#: (F11 PR-4b): no human and no webhook asked for it; the web process's
+#: consumption pass opened it from a stored anomaly ending.
+_RELEASE_PRINCIPAL = Principal(
+    actor_id="release_observation", channel="event_token", auth_revision="system"
+)
+#: R1: the intake key prefix of every incident an anomaly opened.
+_RELEASE_INTAKE_PREFIX = "intake:release-anomaly:"
+#: R4: how many reason codes the appended event's text lists.
+_RELEASE_EVENT_CODES = 16
+#: C3 section 9: the only controls a release observation has. Approving,
+#: blocking, rolling back or promoting a release is outside the product
+#: (PRODUCT-CONSTRAINTS); such an action is refused before any write.
+RELEASE_CONTROL_ACTIONS = ("pause", "resume", "cancel")
+#: D4: the fixed reminder every release page carries (C3 line 374), in the
+#: contract's own words; the page adds the English gloss.
+RELEASE_NOTICE = "观察健康结论，仅供参考；不批准、不阻断、不执行发布"
+#: D7: the idempotency key prefix of an automatic release authorization,
+#: one key per release, so a repeated or concurrent pass replays and a
+#: refusal stays the release's answer (the primitive refuses ``system:``).
+RELEASE_AUTHORIZE_KEY_PREFIX = "auto-authorize:"
+#: D7: the actor every automatic authorization is audited under; the
+#: primitive records it with principal ``system``.
+RELEASE_AUTHORIZE_ACTOR = "system"
+#: How many candidates one authorization pass reads (oldest first). Only
+#: one whose catalog is ambiguous or unreadable stays a candidate after a
+#: pass, so up to this many of those never hold back a decidable one.
+RELEASE_AUTHORIZE_SCAN = 200
+#: D7 (r2): what the pages say about a release the target rule holds back.
+RELEASE_HOLD_TEXT = {
+    "waiting_for_target": "waiting for the observation of another release"
+    " on this target to end",
+    "superseded": "superseded by a newer release on this target; not observed",
+}
+#: The revision an automatic authorization names when the catalog has no
+#: entry for the release, so the primitive records the refusal
+#: (``RELEASE_POLICY_UNCALIBRATED`` or an earlier one) on the release: no
+#: catalog revision can equal it, every one is ``<policy_id>@<digest>``.
+_UNCALIBRATED_REVISION = "uncalibrated"
 _log = logging.getLogger(__name__)
 #: Lease granted per attempt and re-extended before every committer call.
 #: The loop is synchronous, so nothing can renew while one model request is
@@ -125,6 +184,8 @@ ControlAction = Literal[
     "takeover",
     "close",
     "reopen",
+    "rebind_target",
+    "merge_into",
 ]
 #: "The incident was handled outside the system": increments the control
 #: generation, authorizes an observation session and moves the incident to
@@ -135,6 +196,15 @@ REGISTER_REMEDIATION = "register_remediation"
 #: stops; ``register_remediation`` may still authorize an observation under
 #: ``human_owned``, which does not resume investigation.
 TAKEOVER = "takeover"
+#: Point the incident at another registered target (#245 U2): the
+#: generation steps, observation is revoked, unfinished Runs are cancelled
+#: and the lifecycle returns to ``open``; no Run starts. A later successor
+#: gets a fresh input over the new target (G7).
+REBIND_TARGET = "rebind_target"
+#: Merge this incident into a surviving incident of the same target (#245
+#: U3/U4): this one is closed with a pointer (generation steps, observation
+#: revoked, unfinished Runs cancelled); the survivor only takes one event.
+MERGE_INTO = "merge_into"
 CONTROL_ACTIONS: frozenset[str] = frozenset(
     {
         "follow_up",
@@ -147,6 +217,8 @@ CONTROL_ACTIONS: frozenset[str] = frozenset(
         TAKEOVER,
         "close",
         "reopen",
+        REBIND_TARGET,
+        MERGE_INTO,
     }
 )
 #: Report claim categories in page order; chart order follows it.
@@ -175,10 +247,18 @@ def available_actions(snapshot: Mapping[str, Any]) -> list[str]:
     concluded = incident.concluded or incident.state in {"completed", "cancelled"}
     run_state = snapshot["run"]["state"]
     actions = {TAKEOVER}
+    merged = getattr(incident, "merged_into_incident_id", None) is not None
     if lifecycle in {"open", "observing_recovery", "resolved"}:
         actions.add("close")
-    if lifecycle in {"resolved", "closed"}:
+    if lifecycle in {"resolved", "closed"} and not merged:
         actions.add("reopen")
+    if not merged:
+        # #245 G4/G5: any incident with a Run may be merged once.
+        actions.add(MERGE_INTO)
+    if lifecycle in {"open", "observing_recovery"} and snapshot.get("rebind_targets"):
+        # #245 U2: only these lifecycles take a rebind, and only to another
+        # registry key.
+        actions.add(REBIND_TARGET)
     if (
         lifecycle in {"open", "observing_recovery"}
         and control != "paused"
@@ -306,6 +386,11 @@ class Workbench:
     targets: TargetRegistry | None = None
     knowledge: Any = None
     knowledge_max_age_seconds: int = 2592000
+    #: The ``ReleaseStore`` the anomaly consumption pass and release
+    #: rebuilds use (F11 PR-4b); ``None`` derives one on first use from the
+    #: durable incident store's DSN and pool settings, as the release intake
+    #: route does, and a store without one (in-memory tests) has no releases.
+    releases: Any = None
     _owner: UUID = field(default_factory=uuid4)
 
     # -- intake ---------------------------------------------------------
@@ -407,7 +492,11 @@ class Workbench:
         a repeated notification, with or without changed annotations, adds
         a delivery record and nothing else. A first firing alert opens an
         incident: with a Run when exactly one registry entry matches its
-        labels, handed to a human without one otherwise (E5, E7). A
+        labels, handed to a human without one otherwise (E5, E7) -- unless
+        the same fingerprint already opened a non-closed incident on the
+        same target: then it is ``attached`` to that incident as one event,
+        without a Run or an announcement (F2 U1-A, R-C10), and a new
+        incident after a closed one relates to it. A
         resolved alert is only recorded, attached to the incident of the
         same identity when there is one (E8). A storage failure is
         ``failed`` and the caller answers 5xx so Alertmanager retries.
@@ -503,6 +592,7 @@ class Workbench:
                 "incident_id": incident_id,
                 "intake_key": intake_key,
                 "handoff_reason": resolution.handoff_reason,
+                "priority": priority_of(alert.labels),
             }
         run_id = uuid5(_INTAKE_NAMESPACE, f"{intake_key}:run:0")
         request = IntakeRequest(
@@ -532,6 +622,8 @@ class Workbench:
             "deadline": deadline,
             "budget_limit": self.budget_limit,
             "versions": dict(self.run_versions),
+            # U-B1-2: the incident's claim priority, set once from severity.
+            "priority": priority_of(alert.labels),
             "input": self._fresh_input(
                 request,
                 run_id,
@@ -694,13 +786,21 @@ class Workbench:
         idempotency_key: str,
         text: str | None = None,
         revision: str | None = None,
+        to_target: str | None = None,
+        into_incident_id: str | None = None,
     ) -> ControlResult:
         """Apply one human decision through the ledger/audit idempotency path.
 
-        ``text`` belongs to ``follow_up``/``correct``; ``revision`` belongs to
-        ``register_remediation`` (M1-02 step 3): the target revision after the
-        handling, recorded on the audit row and the observation session (not
-        identity, user decision 2026-10-07). Each is refused on an action that
+        ``text`` belongs to ``follow_up``/``correct`` and may annotate a
+        ``rebind_target``; ``revision`` belongs to ``register_remediation``
+        (M1-02 step 3): the target revision after the handling, recorded on
+        the audit row and the observation session (not identity, user
+        decision 2026-10-07). ``to_target`` belongs to ``rebind_target``
+        (#245 U2): a key of the target registry (``OPSPILOT_TARGET_IDENTITIES``),
+        never a name from a model or evidence; another key, or the current
+        target, is refused before anything is written. ``into_incident_id``
+        belongs to ``merge_into`` (#245 U3): the surviving incident's id;
+        ``text`` may annotate the merge. Each is refused on an action that
         does not take it.
         """
         if action not in CONTROL_ACTIONS:
@@ -723,8 +823,26 @@ class Workbench:
             raise WorkbenchError("INVALID_INPUT") from None
         if action in _TEXT_ACTIONS and text is None:
             raise WorkbenchError("TEXT_REQUIRED")
-        if action not in _TEXT_ACTIONS and text is not None:
+        if (
+            action not in {*_TEXT_ACTIONS, REBIND_TARGET, MERGE_INTO}
+            and text is not None
+        ):
             raise WorkbenchError("TEXT_NOT_ALLOWED")
+        if action == REBIND_TARGET and to_target is None:
+            raise WorkbenchError("TARGET_REQUIRED")
+        if action != REBIND_TARGET and to_target is not None:
+            raise WorkbenchError("TARGET_NOT_ALLOWED")
+        if action == MERGE_INTO and into_incident_id is None:
+            raise WorkbenchError("INTO_INCIDENT_REQUIRED")
+        if action != MERGE_INTO and into_incident_id is not None:
+            raise WorkbenchError("INTO_INCIDENT_NOT_ALLOWED")
+        if into_incident_id is not None:
+            try:
+                into_incident_id = str(UUID(into_incident_id))
+            except ValueError:
+                raise WorkbenchError("INVALID_INPUT") from None
+        if to_target is not None and (to_target not in self._registry_keys()):
+            raise WorkbenchError("UNKNOWN_TARGET")
         if action == REGISTER_REMEDIATION and revision is None:
             raise WorkbenchError("REVISION_REQUIRED")
         if action != REGISTER_REMEDIATION and revision is not None:
@@ -751,6 +869,10 @@ class Workbench:
             intent["text"] = text
         if revision is not None:
             intent["revision"] = revision
+        if to_target is not None:
+            intent["to_target"] = to_target
+        if into_incident_id is not None:
+            intent["into_incident_id"] = into_incident_id
         # Intent first: the operator's text is durable before the store
         # commits the decision, so neither a crash nor event-log retention
         # can lose what the next Run must read.
@@ -764,7 +886,15 @@ class Workbench:
             # Intent recorded, decision not confirmed: fall through and apply.
         try:
             generation, new_run_id = self._apply(
-                summary, action, expected_generation, actor_id, text, revision, key
+                summary,
+                action,
+                expected_generation,
+                actor_id,
+                text,
+                revision,
+                key,
+                to_target=to_target,
+                into_incident_id=into_incident_id,
             )
         except PersistenceError as exc:
             code = str(exc)
@@ -832,6 +962,9 @@ class Workbench:
         text: str | None,
         revision: str | None = None,
         key: str | None = None,
+        *,
+        to_target: str | None = None,
+        into_incident_id: str | None = None,
     ) -> tuple[int, UUID | None]:
         # The run id is derived from ``expected + 1`` so a stale form either
         # conflicts on identity or replays the very run it already created;
@@ -844,7 +977,7 @@ class Workbench:
             # same decision re-creates the same session or conflicts on it.
             assert self.health_profile is not None and revision is not None
             parameters = self.health_profile.session
-            identity = self._configured_identity(summary.intake_key)
+            identity = self._configured_identity(summary)
             # Without a configured identity there is nothing to observe
             # (fail closed before any write, even for a registry row that an
             # earlier registration completed: the profile binding below
@@ -892,6 +1025,19 @@ class Workbench:
             payload: dict[str, Any] = {"channel": "web", "idempotency_key": key}
             if text is not None:
                 payload["text"] = text
+            if action == REBIND_TARGET:
+                # The registry key was checked above; the store registers a
+                # key with no registry row yet in the decision's own
+                # transaction, after every refusal, and records
+                # ``from_target`` from the locked incident row. Lifecycle and
+                # same-target refusals are the store's, after the ledger's
+                # replay check (#378 review).
+                assert to_target is not None
+                payload["to_target"] = to_target
+            if action == MERGE_INTO:
+                # The store checks the survivor under both row locks.
+                assert into_incident_id is not None
+                payload["into_incident_id"] = into_incident_id
             for attempt in range(3):
                 renewal: dict[str, Any] = {}
                 if action in _TEXT_ACTIONS:
@@ -953,16 +1099,34 @@ class Workbench:
             else None
         )
 
-    def _configured_identity(self, intake_key: str) -> TargetIdentity | None:
-        """The configured identity of the intake's ``target_id`` (the
+    def _configured_identity(self, summary: IncidentSummary) -> TargetIdentity | None:
+        """The configured identity of the incident's current target (the
         registry file, never an operator), or ``None`` without one; both
         observation authorizations resolve the target through it."""
-        intake = self.ledger.get("intake", intake_key)
-        if self.targets is None or intake is None:
+        if self.targets is None:
             return None
-        return self.targets.resolve(
-            _envelope_from_json(intake["envelope"]).request.target_id
-        )
+        uid = self._target_uid(summary)
+        return None if uid is None else self.targets.resolve(uid)
+
+    def _registry_keys(self) -> tuple[str, ...]:
+        """The registry keys a rebind may name; none without a registry (a
+        registry that lists no keys, like the tests' resolve-anything one,
+        offers none)."""
+        keys = None if self.targets is None else self.targets.keys()
+        return tuple(keys or ())
+
+    def _target_uid(self, summary: IncidentSummary) -> str | None:
+        """The resource uid the incident is bound to now (#245 G6): the
+        incident row's target, which a rebind changes. The intake envelope
+        only records the first intake; it is read only for a store that
+        reports no bound target (the in-memory test store), where no rebind
+        can have happened (``rebind_target`` needs a bound target)."""
+        if summary.target_uid is not None:
+            return summary.target_uid
+        intake = self.ledger.get("intake", summary.intake_key)
+        if intake is None:
+            return None
+        return _envelope_from_json(intake["envelope"]).request.target_id
 
     # -- automatic observation (#184; the r3 interface keeps "self-heal") ---
 
@@ -1025,7 +1189,8 @@ class Workbench:
         if profile is None:
             refusal = "HEALTH_PROFILE_REQUIRED"
         else:
-            identity = self._configured_identity(intake_key)
+            summary = self.incidents.find_incident(incident_id)
+            identity = None if summary is None else self._configured_identity(summary)
             if identity is None:
                 refusal = "TARGET_IDENTITY_MISSING"
             elif identity.health_profile_id != profile.profile_id:
@@ -1063,6 +1228,8 @@ class Workbench:
         affected_service: Mapping[str, str] | None = None,
         alert: AlertAnchor | None = None,
         alert_context: Mapping[str, Any] | None = None,
+        release: ReleaseAnchor | None = None,
+        release_fact: Mapping[str, Any] | None = None,
     ) -> dict[str, Any] | None:
         """A first Run's input over the intake question (``None`` without a face).
 
@@ -1071,7 +1238,9 @@ class Workbench:
         ``alert`` frames an alert Run at the alert's receipt and anchors its
         default query window at ``startsAt`` (J1-J3); ``alert_context`` (its
         processed labels and annotations, K1-K4) makes the input v4 and
-        reaches the model as labelled untrusted context.
+        reaches the model as labelled untrusted context. ``release`` frames a
+        release-anomaly Run at the consumption and anchors it at
+        ``released_at`` (R3); ``release_fact`` (P4-05) makes the input v6.
         """
         if self.tool_face is None:
             return None
@@ -1082,6 +1251,7 @@ class Workbench:
             deadline=deadline,
             model_requests=self.budget_limit,
             alert=alert,
+            release=release,
         )
         if affected_service is not None:
             fresh = replace(
@@ -1095,6 +1265,14 @@ class Workbench:
             fresh = replace(
                 fresh,
                 scope_facts={**fresh.scope_facts, ALERT_CONTEXT: dict(alert_context)},
+            )
+        if release_fact is not None:
+            fresh = replace(
+                fresh,
+                scope_facts={
+                    **fresh.scope_facts,
+                    RELEASE_OBSERVATION: dict(release_fact),
+                },
             )
         if self.knowledge is not None:
             fresh = replace(
@@ -1149,16 +1327,33 @@ class Workbench:
             _log.warning("intake row missing incident=%s", summary.incident_id)
             return None
         request = _envelope_from_json(intake["envelope"]).request
+        # #245 G6: the successor is authorized for the incident's current
+        # target; the envelope's question stays the intake's.
+        target_uid = self._target_uid(summary) or request.target_id
+        request = request.model_copy(update={"target_id": target_uid})
+        # #305 W1-B: the successor's creation is the control's database
+        # instant, the deadline less the Run wall.
+        created = deadline - timedelta(seconds=self.run_seconds)
         try:
-            fresh = continuation_input(
+            basis = (
                 snapshot
                 if snapshot is not None
-                else self.incidents.rebuild(summary.incident_id),
+                else self.incidents.rebuild(summary.incident_id)
+            )
+            if _bound_elsewhere(basis, target_uid):
+                return self._rebound_input(
+                    summary.incident_id, request, run_id, deadline, created
+                )
+            fresh = continuation_input(
+                basis,
                 new_run_id=str(run_id),
                 deadline=deadline,
-                authorized_targets=frozenset({request.target_id}),
+                authorized_targets=frozenset({target_uid}),
+                alert=self._attached_reframe(summary.incident_id, basis, created),
+                release=self._release_reframe(summary, basis, created),
             )
             facts = dict(fresh.scope_facts)
+            self._check_release_fact(summary.incident_id, summary.intake_key, facts)
             facts.pop(KNOWLEDGE, None)
             if self.knowledge is not None:
                 facts[KNOWLEDGE] = self._knowledge(request)
@@ -1177,7 +1372,18 @@ class Workbench:
                 exc.code,
             )
             try:
-                service, alert, context = self._alert_rebuild(summary.incident_id)
+                service, alert, context = self._alert_rebuild(
+                    summary.incident_id, created=created
+                )
+                released, anchor, fact = self._release_rebuild(
+                    summary.incident_id, summary.intake_key
+                )
+                if anchor is not None and self._attached_after(
+                    summary.incident_id, anchor.frame[1]
+                ):
+                    # #347: the fact keeps the consumption anchor; only
+                    # the frame moves, as a continuation would.
+                    anchor = replace(anchor, frame_end=created)
             except ContextError as rebuild_exc:
                 # Same fail-closed refusal as rows that cannot be continued.
                 raise PersistenceError(rebuild_exc.code) from rebuild_exc
@@ -1185,22 +1391,109 @@ class Workbench:
                 request,
                 run_id,
                 deadline,
-                affected_service=service,
+                affected_service=service or released,
                 alert=alert,
                 alert_context=context,
+                release=anchor,
+                release_fact=fact,
             )
         # A PersistenceError (storage outage, lock timeout) propagates: the
         # control action fails closed and the operator retries (bot review,
         # PR #52).
 
+    def _rebound_input(
+        self,
+        incident_id: UUID,
+        request: IntakeRequest,
+        run_id: UUID,
+        deadline: datetime,
+        created: datetime,
+    ) -> dict[str, Any] | None:
+        """#245 G7: the successor of a Run bound to another target than the
+        incident's current one (a rebind happened since) starts from a fresh
+        input over the new target, never a continuation: the old Run's
+        evidence was authorized for the old target and must not reach the new
+        input (C3 section 7). ``request`` already names the new target; the
+        question is the intake's. The affected service is the new target's
+        registry entry (none without one, never the old target's), the alert
+        anchor and context are the incident's rebuilt ones and knowledge is
+        taken for the new target. A release fact describes the old target's
+        release and is not carried."""
+        try:
+            _, alert, context = self._alert_rebuild(incident_id, created=created)
+        except ContextError as exc:
+            raise PersistenceError(exc.code) from exc
+        identity = (
+            None if self.targets is None else self.targets.resolve(request.target_id)
+        )
+        service = (
+            None
+            if identity is None or identity.workload is None
+            else {"namespace": identity.namespace, "workload": identity.workload}
+        )
+        return self._fresh_input(
+            request,
+            run_id,
+            deadline,
+            affected_service=service,
+            alert=alert,
+            alert_context=context,
+        )
+
+    def _attached_reframe(
+        self, incident_id: UUID, snapshot: Mapping[str, Any], created: datetime
+    ) -> AlertAnchor | None:
+        """#305 W1-B: the frame a continued alert Run's successor moves to,
+        or ``None`` to keep the previous Run's (J5). It moves only when an
+        attached episode was received after the previous frame's end; a Run
+        without an alert anchor never moves here (W3-A; a release Run moves
+        by ``_release_reframe``)."""
+        end = _previous_frame_end(snapshot, ALERT_STARTS_AT)
+        if end is None:
+            return None
+        reader = getattr(self.incidents, "alert_records", None)
+        records = None if reader is None else reader(incident_id)
+        if records is None:
+            return None
+        return _attached_anchor(records.deliveries, after=end, created=created)
+
+    def _release_reframe(
+        self, summary: IncidentSummary, snapshot: Mapping[str, Any], created: datetime
+    ) -> ReleaseAnchor | None:
+        """#347: the #305 W1-B rule on a release-anomaly Run's successor.
+        When an alert episode attached to the incident was received after
+        the previous frame's end, the frame moves to the 24 h ending at
+        ``created``; the anchor stays ``released_at`` (V2-A). ``None`` keeps
+        the previous Run's frame (F11 R6), as for any Run without a release
+        fact. Only the alert deliveries trigger it: a second anomaly
+        attached to the incident adds no alert delivery."""
+        end = _previous_frame_end(snapshot, RELEASE_OBSERVATION)
+        if end is None or not self._attached_after(summary.incident_id, end):
+            return None
+        _, anchor, _ = self._release_rebuild(summary.incident_id, summary.intake_key)
+        # No stored release behind a release fact: ``_check_release_fact``
+        # refuses the successor (INCOMPATIBLE_STATE), nothing to move.
+        return None if anchor is None else replace(anchor, frame_end=created)
+
+    def _attached_after(self, incident_id: UUID, end: datetime) -> bool:
+        """Whether an attached alert episode was received after ``end``
+        (``_attached_episode``), read by incident whichever source opened
+        it."""
+        reader = getattr(self.incidents, "attached_alert_deliveries", None)
+        deliveries = () if reader is None else reader(incident_id)
+        return _attached_episode(deliveries, after=end) is not None
+
     def _alert_rebuild(
-        self, incident_id: UUID
+        self, incident_id: UUID, *, created: datetime | None = None
     ) -> tuple[Mapping[str, str] | None, AlertAnchor | None, Mapping[str, Any] | None]:
         """What a fresh rebuild of an alert incident's Run keeps (F5, J5,
         K6): its affected service, and the anchor and alert context of the
         incident's earliest delivery, never the renewal instant or a later
         replay's annotations. ``(None, None, None)`` for an incident no
-        alert opened.
+        alert opened. With ``created`` (the successor's creation instant),
+        an attached episode received after the earliest delivery's frame
+        moves the frame and anchor as a continuation would (#305 R5); the
+        alert context stays the earliest delivery's (R3).
 
         The alert context is rebuilt from that delivery's audit text. A
         record cut at its byte bound is no longer JSON and cannot rebuild
@@ -1221,14 +1514,404 @@ class Workbench:
         )
         context = alert_context_of_record(first["alert_json"])
         if context is None:
-            _log.warning("alert record unreadable incident=%s", incident_id)
+            # Still fail closed: a cleaned record (#244) cannot rebuild the
+            # context either; the log says which of the two it was.
+            if first.get("payload_state") == "cleaned":
+                _log.warning("alert record cleaned incident=%s", incident_id)
+            else:
+                _log.warning("alert record unreadable incident=%s", incident_id)
             raise ContextError("INCOMPATIBLE_STATE")
         anchor = AlertAnchor(
             received_at=first["received_at"],
             starts_at=identity["starts_at"],
             original=identity["starts_at_raw"],
         )
+        if created is not None:
+            moved = _attached_anchor(
+                records.deliveries, after=anchor.frame[1], created=created
+            )
+            if moved is not None:
+                anchor = moved
         return service, anchor, context
+
+    # -- release anomalies (F11 PR-4b) ----------------------------------
+
+    def _release_store(self) -> Any:
+        if self.releases is None:
+            durable = getattr(self.incidents, "_store", None)
+            dsn = getattr(durable, "dsn", None)
+            if not isinstance(dsn, str):
+                return None
+            from opspilot.observation.releases import ReleaseStore
+
+            self.releases = ReleaseStore(
+                dsn, pool=getattr(durable, "pool_config", None)
+            )
+        return self.releases
+
+    def release_anomaly_pass(self, *, limit: int = 20) -> list[ReleaseLinkReceipt]:
+        """Consume every pending anomaly ending into an incident (P4-02):
+        Controller work in the web process, after the automatic observation
+        and release authorization passes and on their interval. Each ending is decided in its own
+        transaction by ``ReleaseStore.consume_anomaly`` -- a new incident and
+        queued Run with the v6 input, one event on the target's open
+        incident, a new incident related to the latest closed one, or a
+        handoff when the target cannot be resolved -- so a repeated or
+        concurrent pass, or a retry after a failure, finds the committed
+        link and opens nothing twice. An ending still waiting for its
+        before/after comparison is left to a later pass and not reported;
+        one that fails is logged and retried by the next pass. Healthy,
+        unknown and cancelled releases are never pending, so a healthy
+        stretch costs one read per pass and nothing else. No external call:
+        the Run's queries and model requests are the worker's.
+        """
+        store = self._release_store()
+        if store is None:
+            return []
+        receipts: list[ReleaseLinkReceipt] = []
+        for ending in store.pending_anomaly_endings(limit=limit):
+            try:
+                receipt = store.consume_anomaly(ending, opening=self._release_opening)
+            except (PersistenceError, ContextError, ValidationError) as exc:
+                _log.warning(
+                    "release anomaly consumption failed observation=%s code=%s",
+                    ending.observation_id,
+                    getattr(exc, "code", None) or str(exc),
+                )
+                continue
+            if receipt is None:
+                continue
+            if receipt.run_id is not None:
+                intake = self.ledger.get("intake", "intake:" + receipt.anomaly_key)
+                if intake is not None:
+                    self._announce_intake(
+                        receipt.incident_id,
+                        receipt.run_id,
+                        _envelope_from_json(intake["envelope"]),
+                    )
+            receipts.append(receipt)
+        return receipts
+
+    def release_authorize_pass(self, *, limit: int = 20) -> list[ReleaseCommandReceipt]:
+        """Start the observation of every newly registered release once
+        (F11 PR-5 U-1=A, D7): Controller work in the web process, before
+        the anomaly pass and on its interval. Recording a release never
+        authorizes it (P3-02); this pass does, as ``system``, through the
+        PR-2 primitive ``authorize_release`` -- the one place a release
+        observation is started.
+
+        A candidate is a release still ``pending``, not paused, never
+        observed (``observation_generation`` 0, no frozen policy), with no
+        ``authorize`` audit and before its deadline, which is also the
+        newest release of its target, on a target with no authorized
+        release session (r2: one observed release per target, however many
+        a deployer delivers; a held release is not refused or audited, it
+        waits for the running observation to end, or is superseded and
+        ends at its deadline) (``ReleaseStore.authorizable_releases``:
+        filtered in SQL before the
+        limit, oldest first, the deadline against the database clock of
+        that read; the primitive re-checks the deadline against the
+        database clock of its own transaction). Up to ``limit`` candidates
+        a pass reach the primitive; one whose catalog cannot be resolved
+        does not count, so it never holds back the others. Each is tried
+        once under the key ``auto-authorize:<id>``, naming the
+        catalog entry for exactly its target and HealthProfile
+        (``calibrated_revision_for``, the page's resume rule); the
+        primitive re-checks all of it under the release's locks. A refusal
+        (suspended scope, policy mismatch, a human pause racing the pass,
+        ...) is audited by the primitive and is final: the release is not
+        tried again, and lifting a suspension starts nothing (C3 "lifting
+        does not resume"); its deadline sweep ends it ``unknown``. A storage
+        failure writes nothing and the next pass retries it, as it does an
+        ambiguous or unreadable catalog, which is never guessed through.
+        No external call: sampling is the Observer's.
+        """
+        store = self._release_store()
+        if store is None:
+            return []
+        from opspilot.observation.releases import calibrated_revision_for
+
+        receipts: list[ReleaseCommandReceipt] = []
+        attempts = 0
+        for release in store.authorizable_releases(limit=RELEASE_AUTHORIZE_SCAN):
+            if attempts >= limit:
+                break
+            oid = release.observation_id
+            try:
+                try:
+                    revision = calibrated_revision_for(release)
+                except PersistenceError as exc:
+                    if str(exc) != "RELEASE_POLICY_UNCALIBRATED":
+                        raise
+                    revision = _UNCALIBRATED_REVISION
+                attempts += 1
+                receipt = store.authorize_release(
+                    oid,
+                    actor=RELEASE_AUTHORIZE_ACTOR,
+                    expected_control_generation=release.control_generation,
+                    idempotency_key=RELEASE_AUTHORIZE_KEY_PREFIX + str(oid),
+                    calibrated_policy_revision=revision,
+                )
+            except PersistenceError as exc:
+                _log.warning(
+                    "release authorization failed observation=%s code=%s",
+                    oid,
+                    str(exc),
+                )
+                continue
+            receipts.append(receipt)
+        return receipts
+
+    def _release_opening(self, plan: ReleaseConsumption) -> dict[str, Any]:
+        """What the store cannot build for ``plan``: the new Run's input
+        and intake row (R3, R5, P4-05), or the appended event (R4)."""
+        if plan.disposition == "handoff_created":
+            return {}
+        if plan.disposition == "attached":
+            return {"content": _release_event(plan)}
+        assert plan.run_id is not None
+        snapshot = plan.release.target_snapshot
+        service = {
+            "namespace": snapshot["namespace"],
+            "workload": snapshot["workload"],
+        }
+        request = IntakeRequest(
+            target_id=snapshot["resource_uid"],
+            question=_release_question(service),
+            idempotency_key=plan.ending.anomaly_key,
+        )
+        envelope = IntakeEnvelope(
+            request_id=str(uuid4()),
+            principal=_RELEASE_PRINCIPAL,
+            request=request,
+            received_at=plan.consumed_at,
+        )
+        deadline = plan.consumed_at + timedelta(seconds=self.run_seconds)
+        anchor = ReleaseAnchor(
+            released_at=plan.release.released_at, consumed_at=plan.consumed_at
+        )
+        return {
+            "deadline": deadline,
+            "budget_limit": self.budget_limit,
+            "versions": dict(self.run_versions),
+            "input": self._fresh_input(
+                request,
+                plan.run_id,
+                deadline,
+                affected_service=service,
+                release=anchor,
+                release_fact=release_observation_fact(
+                    plan.release.model_dump(mode="json"),
+                    plan.ending.model_dump(mode="json"),
+                    plan.comparison,
+                    anchor,
+                ),
+            ),
+            "ledger": [
+                (
+                    "intake",
+                    plan.intake_key,
+                    {
+                        "incident_id": str(plan.incident_id),
+                        "run_id": str(plan.run_id),
+                        "envelope": _envelope_json(envelope),
+                        "source": "release_observation",
+                    },
+                )
+            ],
+        }
+
+    def _release_rebuild(
+        self, incident_id: UUID, intake_key: str
+    ) -> tuple[
+        Mapping[str, str] | None, ReleaseAnchor | None, Mapping[str, Any] | None
+    ]:
+        """What a rebuild of a release-anomaly incident's Run keeps (R6): its
+        affected service, the frame of its consumption and the v6 release
+        fact, recomputed from the stored link, release, anomaly ending and
+        the comparison the link names. ``(None, None, None)`` for an
+        incident no anomaly created; records that cannot be read or do not
+        agree fail closed with ``ContextError("INCOMPATIBLE_STATE")``."""
+        store = self._release_store()
+        records = None if store is None else store.release_incident_records(incident_id)
+        if records is None:
+            # An anomaly's intake key whose link is gone is damage, not an
+            # incident some other source opened.
+            if intake_key.startswith(_RELEASE_INTAKE_PREFIX):
+                _log.warning("release link missing incident=%s", incident_id)
+                raise ContextError("INCOMPATIBLE_STATE")
+            return None, None, None
+        link, release, ending = records["link"], records["release"], records["ending"]
+        if (
+            link is None
+            or release is None
+            or ending is None
+            or release.incident_id != incident_id
+            or release.status != "anomalous"
+            or link["ending_id"] != ending.ending_id
+            or link["anomaly_key"] != ending.anomaly_key
+            or (link["comparison_id"] is not None and records["comparison"] is None)
+        ):
+            _log.warning("release record unreadable incident=%s", incident_id)
+            raise ContextError("INCOMPATIBLE_STATE")
+        anchor = ReleaseAnchor(
+            released_at=release.released_at, consumed_at=link["consumed_at"]
+        )
+        snapshot = release.target_snapshot
+        return (
+            {"namespace": snapshot["namespace"], "workload": snapshot["workload"]},
+            anchor,
+            release_observation_fact(
+                release.model_dump(mode="json"),
+                ending.model_dump(mode="json"),
+                records["comparison"],
+                anchor,
+            ),
+        )
+
+    def _check_release_fact(
+        self, incident_id: UUID, intake_key: str, facts: Mapping[str, Any]
+    ) -> None:
+        """R6 on the continuation path: a successor keeps the previous Run's
+        release fact only when it still equals the one the stored records
+        give; a missing, extra or different fact refuses the action
+        (``INCOMPATIBLE_STATE``) rather than carry or drop it silently.
+
+        #245 G7: once the incident was rebound, its first successor started
+        fresh without the release fact (the old target's, C3 section 7), so
+        a later continuation legitimately has none and its absence is
+        accepted. A fact that is present must still equal the records'."""
+        try:
+            _, _, fact = self._release_rebuild(incident_id, intake_key)
+        except ContextError as exc:
+            raise PersistenceError(exc.code) from exc
+        carried = facts.get(RELEASE_OBSERVATION)
+        if carried is None and fact is not None and self._rebound(incident_id):
+            return
+        if carried != fact:
+            _log.warning("release fact differs from records incident=%s", incident_id)
+            raise PersistenceError("INCOMPATIBLE_STATE")
+
+    # -- release observation pages (F11 PR-5a) ---------------------------
+
+    def list_releases(self) -> list[dict[str, Any]]:
+        """The release list (D6): newest 50 by reception; none without a
+        durable store."""
+        store = self._release_store()
+        if store is None:
+            return []
+        releases = store.list_releases()
+        holds = store.authorization_holds([r.observation_id for r in releases])
+        return [
+            _release_summary(release, holds.get(release.observation_id))
+            for release in releases
+        ]
+
+    def release_page(self, observation_id: UUID) -> dict[str, Any]:
+        """One release as its page shows it (D4), JSON-safe; the verdict is
+        the acceptance projection's (``release_verdict``)."""
+        store = self._release_store()
+        detail = None if store is None else store.release_detail(observation_id)
+        if detail is None:
+            raise WorkbenchError("UNKNOWN_RELEASE")
+        release = detail["release"]
+        holds = store.authorization_holds([observation_id])
+        page = _release_summary(release, holds.get(observation_id))
+        page.update(
+            {
+                "target_id": str(release.target_id),
+                "before": release.before_revision.model_dump(mode="json"),
+                "after": release.after_revision.model_dump(mode="json"),
+                "auxiliary": release.auxiliary.model_dump(mode="json"),
+                "ended_at": _iso(release.ended_at),
+                "deadline_seconds": release.deadline_seconds,
+                "min_tracking_seconds": release.min_tracking_seconds,
+                "sample_interval_seconds": release.sample_interval_seconds,
+                "sustained_window_seconds": release.sustained_window_seconds,
+                "health_profile_revision": release.health_profile_revision,
+                "calibrated_policy_revision": release.calibrated_policy_revision,
+                "calibrated_policy_sha256": release.calibrated_policy_sha256,
+                "control_generation": release.control_generation,
+                "observation_generation": release.observation_generation,
+                "sessions": _json_safe(detail["sessions"]),
+                "endings": _json_safe(detail["endings"]),
+                "comparisons": _json_safe(detail["comparisons"]),
+                "link": _json_safe(detail["link"]),
+                "audit": [
+                    _json_safe(
+                        {
+                            k: v
+                            for k, v in row.items()
+                            if k not in ("idempotency_key", "request_sha256", "result")
+                        }
+                    )
+                    for row in detail["audit"]
+                ],
+                "deliveries": _json_safe(detail["deliveries"]),
+                "actions": _release_actions(release, detail["sessions"]),
+                "notice": RELEASE_NOTICE,
+            }
+        )
+        return page
+
+    def release_control(
+        self,
+        observation_id: UUID,
+        *,
+        action: str,
+        actor_id: str,
+        expected_control_generation: int,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        """Pause, resume or cancel one release observation through the PR-2
+        primitive (C3 section 9); nothing else is accepted, and nothing here
+        approves, blocks, rolls back or deploys a release. A resume names
+        the release's calibrated policy revision (D3); a refusal the
+        primitive audited is raised with the release's current generation.
+        """
+        if action not in RELEASE_CONTROL_ACTIONS:
+            raise WorkbenchError("INVALID_INPUT")
+        store = self._release_store()
+        if store is None:
+            raise WorkbenchError("UNKNOWN_RELEASE")
+        try:
+            release = store.get_release(observation_id)
+        except PersistenceError as exc:
+            if str(exc) == "NOT_FOUND":
+                raise WorkbenchError("UNKNOWN_RELEASE") from None
+            raise
+        revision = None
+        if action == "resume":
+            from opspilot.observation.releases import calibrated_revision_for
+
+            try:
+                revision = calibrated_revision_for(release)
+            except PersistenceError as exc:
+                raise WorkbenchError(str(exc)) from None
+        receipt = store.control_release(
+            observation_id,
+            action=action,
+            actor=actor_id,
+            expected_control_generation=expected_control_generation,
+            idempotency_key=idempotency_key,
+            calibrated_policy_revision=revision,
+        )
+        if receipt.outcome == "rejected":
+            raise WorkbenchError(
+                receipt.reason or "RELEASE_REJECTED",
+                current_generation=receipt.control_generation,
+            )
+        return cast(dict[str, Any], receipt.model_dump(mode="json"))
+
+    def release_links_for(self, incident_id: UUID) -> list[dict[str, Any]]:
+        """The release observations linked to ``incident_id`` (D9)."""
+        store = self._release_store()
+        if store is None:
+            return []
+        return [
+            cast(dict[str, Any], _json_safe(link))
+            for link in store.incident_release_links(incident_id)
+        ]
 
     def _audit_matches(
         self,
@@ -1268,6 +1951,14 @@ class Workbench:
                 return False
             if intent["action"] == REGISTER_REMEDIATION:
                 return bool(payload.get("revision") == intent.get("revision"))
+            if intent["action"] == REBIND_TARGET and payload.get(
+                "to_target"
+            ) != intent.get("to_target"):
+                return False
+            if intent["action"] == MERGE_INTO and payload.get(
+                "into_incident_id"
+            ) != intent.get("into_incident_id"):
+                return False
             return text is None or bool(payload.get("text") == text)
         if text is None:
             return False
@@ -1644,6 +2335,7 @@ class Workbench:
         report = _report_view(rebuilt.get("conclusion"))
         knowledge_view = None
         input_snapshot = run.get("input") or {}
+        not_integrated = _not_integrated(input_snapshot)
         fact = input_snapshot.get("scope_facts", {}).get(KNOWLEDGE)
         if fact is not None:
             committed = rebuilt.get("conclusion")
@@ -1656,8 +2348,19 @@ class Workbench:
             knowledge_view = {**fact, "checks": knowledge_checks(fact, parsed_report)}
         observation_sessions = self.incidents.observation_sessions(incident_id)
         handoff_report = None
+        shown_conclusion = rebuilt.get("conclusion")
         if report is None and outcome is not None and outcome.kind == "run_handoff":
-            handoff_report = _report_view(_last_live_response(rebuilt["steps"]))
+            shown_conclusion = _last_live_response(rebuilt["steps"])
+            handoff_report = _report_view(shown_conclusion)
+        # F3 step 3 (U5-a, U7-a): read from the same rows, never stored and
+        # never shown to the model.
+        coverage = run_coverage(run["run_id"], input_snapshot, rebuilt["steps"])
+        shown = report or handoff_report
+        truncated = (
+            collection_truncated(input_snapshot, rebuilt["steps"], shown_conclusion)
+            if shown is not None and shown.get("parsed")
+            else None
+        )
         return {
             "incident": summary,
             "question": None if request is None else request.question,
@@ -1674,6 +2377,11 @@ class Workbench:
                 "deadline": run["deadline"],
             },
             "steps": steps,
+            "not_integrated": not_integrated,
+            "coverage": _coverage_view(coverage)
+            if rebuilt["steps"] or coverage.sources_recorded
+            else None,
+            "collection_truncated": truncated,
             "pending_tools": len(rebuilt["pending_tools"]),
             "report": report,
             "knowledge": knowledge_view,
@@ -1704,7 +2412,56 @@ class Workbench:
             else self.events.latest(incident_id),
             "handoff_only": False,
             "alert": self._alert_view(incident_id),
+            # #245 G8: the bound target now, every rebind with its database
+            # time, and the registry keys a rebind may name.
+            # #245 G8: incidents merged into this one (the other way is
+            # ``incident.merged_into_incident_id``).
+            "merged_from": self._merged_from(incident_id),
+            "current_target": self._target_uid(summary),
+            "rebinds": self._rebinds(incident_id),
+            "rebind_targets": [
+                uid for uid in self._registry_keys() if uid != self._target_uid(summary)
+            ],
         }
+
+    def _merged_from(self, incident_id: UUID) -> list[str]:
+        reader = getattr(self.incidents, "merged_from", None)
+        return [] if reader is None else [str(i) for i in reader(incident_id)]
+
+    def _rebound(self, incident_id: UUID) -> bool:
+        """Whether a ``rebind_target`` decision was ever committed."""
+        return any(
+            audit.action == REBIND_TARGET
+            for audit in self.incidents.control_audit(incident_id)
+        )
+
+    def _rebinds(self, incident_id: UUID) -> list[dict[str, Any]]:
+        """Committed ``rebind_target`` decisions from the store's audit rows
+        (``from_target`` is recorded there under the incident lock)."""
+        rebinds = [
+            audit
+            for audit in self.incidents.control_audit(incident_id)
+            if audit.action == REBIND_TARGET
+        ]
+        if not rebinds:
+            return []
+        times = {
+            int(row["resulting_generation"]): row["created_at"]
+            for row in self.incidents.control_times(incident_id)
+        }
+        return [
+            {
+                "from_target": (audit.payload or {}).get("from_target"),
+                "to_target": (audit.payload or {}).get("to_target"),
+                "actor": audit.actor,
+                "decided_at": None
+                if audit.resulting_generation not in times
+                else times[audit.resulting_generation]
+                .astimezone(timezone.utc)
+                .isoformat(),
+            }
+            for audit in rebinds
+        ]
 
     def _alert_view(self, incident_id: UUID) -> dict[str, Any] | None:
         """The alert section of the page (I9): the acceptance projection
@@ -1733,9 +2490,11 @@ class Workbench:
             if latest is None
             else {
                 "annotation_revision": int(latest["annotation_revision"]),
+                # R-C6: an attached episode's delivery can be the latest.
+                "starts_at": utc_seconds(latest["starts_at"]),
                 "received_at": latest["received_at"],
                 "truncated": bool(latest["truncated"]),
-                **_stored_alert(latest["alert_json"]),
+                **_stored_alert(latest),
             },
             "resolved": [
                 {
@@ -1743,7 +2502,7 @@ class Workbench:
                     "actor": row["actor"],
                     "annotation_revision": int(row["annotation_revision"]),
                     "raw_sha256": row["raw_sha256"],
-                    **_stored_alert(row["alert_json"]),
+                    **_stored_alert(row),
                 }
                 for row in rows
                 if row["status"] == "resolved"
@@ -1790,6 +2549,9 @@ class Workbench:
                 "replayed_decision": sample.decision.replayed,
                 "integrity": sample.integrity,
                 "consistent": sample.consistent,
+                # #244: only cleaned bundles, nothing that disagrees
+                "raw_cleaned_only": bool(sample.integrity)
+                and all(code.startswith("RAW_CLEANED:") for code in sample.integrity),
                 "readings": [
                     {
                         "signal_name": reading.signal_name,
@@ -1950,6 +2712,10 @@ class Workbench:
         if intake is None:
             raise WorkbenchError("INCONSISTENT_STATE")
         request = _envelope_from_json(intake["envelope"]).request
+        # #245 G6: the Run works on the incident's current target.
+        request = request.model_copy(
+            update={"target_id": self._target_uid(summary) or request.target_id}
+        )
         # Notes applied by another worker but not yet confirmed must be
         # visible to this attempt (pre-#31 fallback composes them).
         self.reconcile(incident_id)
@@ -2151,9 +2917,19 @@ def _invalid_alert(item: object, code: str) -> AlertResult:
     )
 
 
-def _stored_alert(alert_json: str) -> dict[str, Any]:
+def _stored_alert(row: Mapping[str, Any]) -> dict[str, Any]:
     """The stored (redacted, bounded) alert for display: its annotations and
-    ``endsAt`` when the record is whole JSON, else the cut text as is."""
+    ``endsAt`` when the record is whole JSON, else the cut text as is; a
+    record the retention cleanup removed (#244, by its ``payload_state``) is
+    shown as cleaned, and a missing text in any other state as no text."""
+    alert_json = row["alert_json"]
+    if row.get("payload_state") == "cleaned" or alert_json is None:
+        return {
+            "annotations": None,
+            "ends_at": None,
+            "record_text": None,
+            "cleaned": row.get("payload_state") == "cleaned",
+        }
     try:
         stored = json.loads(alert_json)
     except ValueError:
@@ -2164,6 +2940,196 @@ def _stored_alert(alert_json: str) -> dict[str, Any]:
         "annotations": annotations if isinstance(annotations, dict) else None,
         "ends_at": ends_at if isinstance(ends_at, str) else None,
         "record_text": None,
+    }
+
+
+def _iso(value: datetime | None) -> str | None:
+    return None if value is None else _utc(value).isoformat()
+
+
+def _utc(value: datetime) -> datetime:
+    """Aware instants in UTC, whatever the DB session zone; naive as is."""
+    return value if value.tzinfo is None else value.astimezone(timezone.utc)
+
+
+def _json_safe(value: Any) -> Any:
+    """Stored rows as JSON values: instants as ISO text, ids as text."""
+    if isinstance(value, datetime):
+        return _utc(value).isoformat()
+    if isinstance(value, UUID):
+        return str(value)
+    if isinstance(value, Mapping):
+        return {str(k): _json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(v) for v in value]
+    return value
+
+
+def _release_summary(release: Any, hold: str | None = None) -> dict[str, Any]:
+    """The list row of one release (D6), also the head of its page;
+    ``hold`` is why its automatic authorization waits (D7 r2), if it does."""
+    return {
+        "observation_id": str(release.observation_id),
+        "verdict": release_verdict(release.status),
+        "concluded": release_verdict(release.status) in CONCLUDED_VERDICTS,
+        "status": release.status,
+        "paused": release.paused,
+        "ended_reason": release.ended_reason,
+        "authorization_hold": hold,
+        "hold_text": RELEASE_HOLD_TEXT.get(hold or ""),
+        "source": release.source,
+        "source_release_id": release.source_release_id,
+        "target": dict(release.target_snapshot),
+        "released_at": release.released_at.astimezone(timezone.utc).isoformat(),
+        "received_at": release.received_at.astimezone(timezone.utc).isoformat(),
+        "deadline_at": release.deadline_at.astimezone(timezone.utc).isoformat(),
+        "used_sample_count": release.used_sample_count,
+        "max_samples": release.max_samples,
+        "incident_id": None
+        if release.incident_id is None
+        else str(release.incident_id),
+    }
+
+
+def _release_actions(release: Any, sessions: Iterable[Mapping[str, Any]]) -> list[str]:
+    """The controls the page offers: none on a concluded or cancelled
+    release; pause or resume by the paused flag, plus resume for an
+    observing release whose session authority ended (a suspension revoked
+    it); cancel always. The primitive decides; this only picks buttons."""
+    if release.status not in ("pending", "observing"):
+        return []
+    if release.paused:
+        return ["resume", "cancel"]
+    live = any(s.get("state") == "authorized" for s in sessions)
+    if release.status == "observing" and not live:
+        return ["pause", "resume", "cancel"]
+    return ["pause", "cancel"]
+
+
+def _utc_second(moment: datetime) -> datetime:
+    return moment.astimezone(timezone.utc).replace(microsecond=0)
+
+
+def _attached_anchor(
+    deliveries: Iterable[Mapping[str, Any]], *, after: datetime, created: datetime
+) -> AlertAnchor | None:
+    """#305 W1-B, R1: the latest attached episode received after ``after``
+    (the previous frame's end), as a frame ending at ``created`` and
+    anchored at the episode's ``startsAt``; ``None`` when there is none.
+
+    An episode's event is its first ``attached`` firing delivery (R-C3: a
+    repeat of an attached episode adds no event), so a repeat received
+    after the frame does not move it, nor does a replay or a resolved
+    notification. A receipt counts after the frame only when its whole UTC
+    second is later than the frame's end (the frame's grain): an episode
+    received before a Run's creation never reads as after that Run's frame,
+    which ends at the creation truncated to the second. Ties on
+    ``received_at`` go to the later delivery."""
+    latest = _attached_episode(deliveries, after=after)
+    if latest is None:
+        return None
+    return AlertAnchor(
+        received_at=latest["received_at"],
+        starts_at=latest["starts_at"],
+        original=latest["starts_at_raw"],
+        frame_end=created,
+    )
+
+
+def _attached_episode(
+    deliveries: Iterable[Mapping[str, Any]], *, after: datetime
+) -> Mapping[str, Any] | None:
+    """The trigger of ``_attached_anchor`` (#305 R1, #347): the latest
+    episode event received in a whole UTC second later than ``after``."""
+    first: dict[str, Mapping[str, Any]] = {}
+    for row in deliveries:
+        if row["outcome"] == "attached" and row["status"] == "firing":
+            first.setdefault(row["delivery_key"], row)
+    latest = None
+    for row in first.values():
+        if _utc_second(row["received_at"]) > after and (
+            latest is None or row["received_at"] >= latest["received_at"]
+        ):
+            latest = row
+    return latest
+
+
+def _bound_elsewhere(snapshot: Mapping[str, Any], target_uid: str) -> bool:
+    """Whether the snapshot's Run input names a target other than
+    ``target_uid`` (#245 G7): its ``bound_target_id`` or its recorded
+    ``target_ids``. A Run without an input (older than the face) has no
+    recorded target and is decided by the existing fallback."""
+    run = snapshot.get("run")
+    raw = run.get("input") if isinstance(run, Mapping) else None
+    if not isinstance(raw, Mapping):
+        return False
+    bound = raw.get("bound_target_id")
+    facts = raw.get("scope_facts")
+    targets = facts.get("target_ids") if isinstance(facts, Mapping) else None
+    return (bound is not None and bound != target_uid) or (
+        targets is not None and list(targets) != [target_uid]
+    )
+
+
+def _previous_frame_end(snapshot: Mapping[str, Any], fact: str) -> datetime | None:
+    """The end of the first time policy of ``snapshot``'s Run when its
+    input carries the scope fact ``fact`` (the Run kind that can move),
+    else ``None``; an end that cannot be read is ``INPUT_INVALID``."""
+    run = snapshot.get("run")
+    raw = run.get("input") if isinstance(run, Mapping) else None
+    if not isinstance(raw, Mapping):
+        return None
+    facts = raw.get("scope_facts")
+    if not isinstance(facts, Mapping) or fact not in facts:
+        return None
+    try:
+        return datetime.fromisoformat(
+            raw["evidence_context"]["time_policies"][0]["window"]["end"]
+        )
+    except (KeyError, IndexError, TypeError, ValueError):
+        raise ContextError("INPUT_INVALID") from None
+
+
+def _release_question(service: Mapping[str, str]) -> str:
+    """R5: the fixed question of a release-anomaly incident; namespace and
+    workload come from the registry-checked target, every untrusted release
+    field reaches the model only inside the labelled release fact."""
+    return (
+        "A post-release observation of "
+        f"{service['namespace']}/{service['workload']} ended anomalous. Compare "
+        "the versions before and after the release and the old and new "
+        "instances, and find the cause of the degradation."
+    )
+
+
+def _release_event(plan: ReleaseConsumption) -> dict[str, Any]:
+    """R4: the one event an anomaly appends to an open incident. The model
+    sees ``channel`` and the bounded ``text``, built from system-made values
+    only (ids, digests, reason codes, statuses); the release's own texts stay
+    out. The ids ride along for audit."""
+    evaluation = plan.ending.release_evaluation
+    codes = ", ".join(c[:128] for c in evaluation.reason_codes[:_RELEASE_EVENT_CODES])
+    comparison = plan.comparison or {}
+    compared = str(comparison.get("status", "unavailable"))[:32]
+    compared_codes = ", ".join(
+        str(c)[:128]
+        for c in list(comparison.get("reason_codes") or ())[:_RELEASE_EVENT_CODES]
+    )
+    text = (
+        f"Release observation {plan.release.observation_id} ended anomalous "
+        f"(ending {plan.ending.ending_id}, verdict {evaluation.verdict}) on this "
+        f"incident's target; pod template {plan.release.before_revision.pod_template_digest}"
+        f" -> {plan.release.after_revision.pod_template_digest}; evaluation reasons: "
+        f"{codes or 'none'}; before/after comparison {compared}"
+        + (f" ({compared_codes})" if compared_codes else "")
+        + "; attached to this incident without a new Run."
+    )
+    return {
+        "channel": "release_observation",
+        "text": text[:_MAX_TEXT],
+        "observation_id": str(plan.release.observation_id),
+        "ending_id": str(plan.ending.ending_id),
+        "anomaly_key": plan.ending.anomaly_key,
     }
 
 
@@ -2221,11 +3187,47 @@ def _last_live_response(steps: list[Mapping[str, Any]]) -> Mapping[str, Any] | N
     return None
 
 
+def _not_integrated(input_snapshot: Mapping[str, Any]) -> list[str] | None:
+    """#311 U6: the Run's recorded ``not_integrated`` list; ``None`` for a
+    Run recorded before ``data_sources`` existed."""
+    context = input_snapshot.get("evidence_context")
+    sources = context.get("data_sources") if isinstance(context, Mapping) else None
+    names = sources.get("not_integrated") if isinstance(sources, Mapping) else None
+    if not isinstance(names, list):
+        return None
+    return [name for name in names if isinstance(name, str)]
+
+
+def _coverage_view(coverage: RunCoverage) -> dict[str, Any]:
+    return {
+        "sources_recorded": coverage.sources_recorded,
+        "duplicates_skipped": coverage.duplicates_skipped,
+        "sources": [
+            {
+                "name": row.name,
+                "ok": row.ok,
+                "no_data": row.no_data,
+                "non_ok": row.non_ok,
+                "reasons": list(row.reasons.items()),
+                "state": row.state,
+                "gap": row.gap,
+            }
+            for row in coverage.sources
+        ],
+    }
+
+
 def _step_view(step: Mapping[str, Any]) -> dict[str, Any]:
     response = step.get("response") or {}
     tools = []
     for item in step.get("tool_results") or []:
         result = item.get("result") or {}
+        # #311 U6: the source's own 4xx answer -- status, and the redacted,
+        # bounded envelope text the executor already put on the view.
+        source_error = result.get("source_error")
+        if not isinstance(source_error, Mapping):
+            source_error = {}
+        error = source_error.get("error")
         tools.append(
             {
                 "ordinal": item.get("ordinal"),
@@ -2236,6 +3238,9 @@ def _step_view(step: Mapping[str, Any]) -> dict[str, Any]:
                 "source_contact": result.get("source_contact"),
                 "tool": result.get("tool"),
                 "target_id": result.get("target_id"),
+                "http_status": source_error.get("http_status"),
+                "source_error": error if isinstance(error, str) else None,
+                "source_error_truncated": source_error.get("error_truncated") is True,
             }
         )
     assistant = response.get("assistant") if isinstance(response, Mapping) else None

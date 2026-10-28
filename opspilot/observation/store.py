@@ -57,10 +57,16 @@ from opspilot.domain.observation import (
 )
 from opspilot.domain.subjects import INCIDENT_LIFECYCLE, SubjectRef
 from opspilot.observation.bindings import _TargetProfileOps
-from opspilot.observation.release_samples import _ReleaseSampleOps
+from opspilot.observation.release_commands import _ReleaseCommandOps
+from opspilot.observation.release_comparison import _ReleaseComparisonOps
 from opspilot.observation.release_types import ReleaseSampleLease
 from opspilot.observation.revocation import end_session, revoke_authorized_sessions
-from opspilot.persistence.base import Connection, PersistenceError, _StoreBase
+from opspilot.persistence.base import (
+    Connection,
+    PersistenceError,
+    _StoreBase,
+    mark_cleaned,
+)
 from opspilot.persistence.events import append_once_in
 
 # How long one claimed sampling job stays leased to its owner. A Prometheus
@@ -106,7 +112,7 @@ _ENDING_COLUMNS = (
 )
 _READING_COLUMNS = (
     "sample_id,signal_name,status,value,sample_count,query,window_start,"
-    "window_end,source,raw_sha256,raw"
+    "window_end,source,raw_sha256,raw,payload_state"
 )
 # The columns the replay reads per record table (``session_history``): a
 # login must be able to SELECT all of them to be a read-only observer of
@@ -803,6 +809,15 @@ def _identity(target: Target) -> tuple[str, str, str, str]:
     )
 
 
+def _stored_identity(stored: Mapping[str, Any]) -> tuple[Any, ...]:
+    """:func:`_identity` of a session's stored ``target`` snapshot; a missing
+    field reads as ``None`` and so never matches a registered identity."""
+    return tuple(
+        stored.get(field)
+        for field in ("integration_id", "cluster_uid", "namespace", "resource_uid")
+    )
+
+
 def _domain_session(
     row: dict[str, Any],
     *,
@@ -1074,7 +1089,7 @@ class SelfHealGrant:
     identity: Mapping[str, str] | None
 
 
-class ObservationStore(_ReleaseSampleOps, _TargetProfileOps):
+class ObservationStore(_ReleaseComparisonOps, _TargetProfileOps):
     """Observation sessions, sampling jobs and samples on PostgreSQL."""
 
     # --- authorization (Controller side; step 3 wraps this in the human action)
@@ -1236,12 +1251,14 @@ class ObservationStore(_ReleaseSampleOps, _TargetProfileOps):
         # authorized with; the registry row must still say the same (a
         # rebound or edited registry row is not this target any more, C3
         # section 4: rebinding is its own transaction that revokes first).
+        # Only the four identity fields are read: a release session's
+        # snapshot carries no ``revision`` (#342).
         expected_identity = _identity(target)
         for earlier in conn.execute(
             "SELECT target FROM opspilot_observation_sessions WHERE target_id=%s",
             (incident["target_id"],),
         ).fetchall():
-            if _identity(Target(**earlier["target"])) != expected_identity:
+            if _stored_identity(earlier["target"]) != expected_identity:
                 raise PersistenceError("TARGET_MISMATCH")
         if conn.execute(
             "SELECT 1 FROM opspilot_observation_sessions WHERE incident_id=%s AND state='authorized'",
@@ -2380,6 +2397,19 @@ class ObservationStore(_ReleaseSampleOps, _TargetProfileOps):
         row = conn.execute(query, params).fetchone()
         return row is not None and bool(row["held"])
 
+    @staticmethod
+    def _release_link_history(conn: Connection, observation_id: UUID) -> dict[str, Any]:
+        """F11 PR-4b R9: the anomaly's consumption link (or ``None``) as
+        ``link`` for a login that may read it. The Observer may not (no new
+        Observer grant); its history then has no ``link`` and replay checks
+        everything else."""
+        readable = conn.execute(
+            "SELECT has_table_privilege('opspilot_release_incident_links','SELECT') AS ok"
+        ).fetchone()
+        if readable is None or not readable["ok"]:
+            return {}
+        return {"link": _ReleaseCommandOps._link_in(conn, observation_id)}
+
     def _session_history_in(self, conn: Connection, session_id: UUID) -> dict[str, Any]:
         row = conn.execute(
             f"SELECT {_SESSION_VIEW_COLUMNS} FROM opspilot_observation_sessions WHERE session_id=%s",
@@ -2395,7 +2425,11 @@ class ObservationStore(_ReleaseSampleOps, _TargetProfileOps):
             assert subject is not None
             return {
                 **self._release_history_in(conn, subject["release_observation_id"]),
+                "comparisons": self._release_comparisons_in(
+                    conn, subject["release_observation_id"]
+                ),
                 "selected_session_id": session_id,
+                **self._release_link_history(conn, subject["release_observation_id"]),
             }
         incident = self._require_row(
             conn.execute(
@@ -2425,6 +2459,7 @@ class ObservationStore(_ReleaseSampleOps, _TargetProfileOps):
         ).fetchall()
         by_sample: dict[UUID, list[dict[str, Any]]] = {}
         for reading in readings:
+            mark_cleaned(reading)
             by_sample.setdefault(reading["sample_id"], []).append(reading)
         for sample in samples:
             sample["readings"] = by_sample.get(sample["sample_id"], [])

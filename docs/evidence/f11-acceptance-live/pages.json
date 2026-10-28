@@ -1,0 +1,72 @@
+{
+ "release-B": {
+  "status": 200,
+  "sha256": "f3b68498d1b1ca05e00795c981c36f0289e041acff18a2d35e9c40cd27b6b762",
+  "bytes": 10300,
+  "links_to_incident": [
+   "/incidents/61fd54cc-c311-52cb-8d58-bde07cda3bc6"
+  ],
+  "links_to_release": [],
+  "has_notice": true,
+  "degraded": true,
+  "unknown": true,
+  "healthy": false,
+  "deadline_expired": false
+ },
+ "incident-B": {
+  "status": 200,
+  "sha256": "09841aaa89505f80f625de94de1efe2f535609f7a2b222765b22210fc8bd543d",
+  "bytes": 134106,
+  "links_to_incident": [],
+  "links_to_release": [
+   "/version-changes/c01d4872-bfb2-4699-9f5d-fc92663f5a82"
+  ],
+  "has_notice": false,
+  "degraded": false,
+  "unknown": true,
+  "healthy": true,
+  "deadline_expired": false
+ },
+ "release-A": {
+  "status": 200,
+  "sha256": "f8c8ca5efde7bf6ec65312ad836faa52babe4e04cf834c80300bd541cb05f674",
+  "bytes": 7634,
+  "links_to_incident": [],
+  "links_to_release": [],
+  "has_notice": true,
+  "degraded": true,
+  "unknown": true,
+  "healthy": false,
+  "deadline_expired": true
+ },
+ "release-C": {
+  "status": 200,
+  "sha256": "1c3eda625cf5fb9a7874df5bf4e8ab303bcc5952c314369813a6bc25ef7b4246",
+  "bytes": 8139,
+  "links_to_incident": [],
+  "links_to_release": [],
+  "has_notice": true,
+  "degraded": true,
+  "unknown": true,
+  "healthy": true,
+  "deadline_expired": false
+ },
+ "list": {
+  "status": 200,
+  "sha256": "67faebc93bdffc83afee1431774a0fe69863261d5bfeba78de3524fc83812a68",
+  "bytes": 3878,
+  "links_to_incident": [
+   "/incidents/61fd54cc-c311-52cb-8d58-bde07cda3bc6"
+  ],
+  "links_to_release": [
+   "/version-changes/3ac2493b-3f0d-41c4-beb4-00d832e9a3ac",
+   "/version-changes/c01d4872-bfb2-4699-9f5d-fc92663f5a82",
+   "/version-changes/d8d5cf8d-9005-4f3c-9db9-29e8e32ec131"
+  ],
+  "has_notice": false,
+  "degraded": true,
+  "unknown": true,
+  "healthy": true,
+  "deadline_expired": true
+ }
+}
