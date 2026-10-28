@@ -15,7 +15,6 @@ from pathlib import Path
 
 import pytest
 
-
 REPO = Path(__file__).resolve().parents[2]
 INSTALL = REPO / "deploy" / "compose" / "install.sh"
 COMPOSE = REPO / "deploy" / "compose" / "compose.yaml"
@@ -29,7 +28,15 @@ pytestmark = pytest.mark.skipif(
 
 def _compose(*args: str, env: dict[str, str]) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        ["docker", "compose", "-f", str(COMPOSE), "-p", env["COMPOSE_PROJECT_NAME"], *args],
+        [
+            "docker",
+            "compose",
+            "-f",
+            str(COMPOSE),
+            "-p",
+            env["COMPOSE_PROJECT_NAME"],
+            *args,
+        ],
         cwd=REPO,
         env=env,
         capture_output=True,
@@ -84,7 +91,9 @@ def test_fresh_install_reaches_a_migrated_loopback_workbench() -> None:
 
         port = env["OPSPILOT_WEB_HOST_PORT"]
         try:
-            with urllib.request.urlopen(f"http://127.0.0.1:{port}/", timeout=10) as response:
+            with urllib.request.urlopen(
+                f"http://127.0.0.1:{port}/", timeout=10
+            ) as response:
                 assert response.status < 500
         except urllib.error.HTTPError as response:
             # Authentication is expected at the public seam; a reachable 4xx
@@ -103,4 +112,3 @@ def test_fresh_install_reaches_a_migrated_loopback_workbench() -> None:
             text=True,
             check=False,
         )
-
