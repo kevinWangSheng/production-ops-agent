@@ -157,14 +157,10 @@ def test_the_image_is_built_before_any_compose_step(host):
     assert "opspilot:local" in calls[0]
 
 
-def test_the_workbench_origin_follows_the_host_port_and_is_remembered(host):
+def test_the_workbench_port_is_passed_to_compose_and_remembered(host):
     assert host(OPSPILOT_WEB_HOST_PORT="18180").returncode == 0
     up = [c for c in host.calls() if c["args"][5:6] == ["up"]][-1]
     assert up["env"]["OPSPILOT_WEB_HOST_PORT"] == "18180"
-    assert set(up["env"]["OPSPILOT_ALLOWED_ORIGINS"].split(",")) == {
-        "http://127.0.0.1:18180",
-        "http://localhost:18180",
-    }
     host.reset()
     assert host("upgrade").returncode == 0
     up = [c for c in host.calls() if c["args"][5:6] == ["up"]][-1]

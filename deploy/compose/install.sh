@@ -20,7 +20,7 @@
 #   OPSPILOT_PROJECT          Compose project name (default $COMPOSE_PROJECT_NAME,
 #                             else opspilot)
 #   OPSPILOT_WEB_HOST_PORT    workbench port on 127.0.0.1 (default 18080)
-#   OPSPILOT_ALLOWED_ORIGINS  default http://127.0.0.1:<port>,http://localhost:<port>
+#                             (allowed origins follow it: 127.0.0.1 and localhost)
 #   OPSPILOT_IMAGE            product image; opspilot:local (default) is built
 #                             from this checkout, anything else is pulled
 #   OPSPILOT_TOOL_PROFILE     fixture (default) or otel-demo
@@ -41,7 +41,7 @@ readonly LOCAL_IMAGE="opspilot:local"
 readonly UI_USER="operator"
 readonly EVENT_ACTOR="alertmanager"
 readonly RUNTIMES=(web worker observer)
-readonly SETTINGS=(OPSPILOT_PROJECT OPSPILOT_WEB_HOST_PORT OPSPILOT_ALLOWED_ORIGINS
+readonly SETTINGS=(OPSPILOT_PROJECT OPSPILOT_WEB_HOST_PORT
     OPSPILOT_IMAGE OPSPILOT_TOOL_PROFILE OPSPILOT_START_AGENT)
 
 log() { printf '[opspilot-install %s] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*"; }
@@ -82,7 +82,6 @@ resolve_settings() {
     case "$OPSPILOT_WEB_HOST_PORT" in
         '' | *[!0-9]*) die "OPSPILOT_WEB_HOST_PORT must be a port number" ;;
     esac
-    export OPSPILOT_ALLOWED_ORIGINS="${OPSPILOT_ALLOWED_ORIGINS:-http://127.0.0.1:$OPSPILOT_WEB_HOST_PORT,http://localhost:$OPSPILOT_WEB_HOST_PORT}"
     export OPSPILOT_IMAGE="${OPSPILOT_IMAGE:-$LOCAL_IMAGE}"
     export OPSPILOT_TOOL_PROFILE="${OPSPILOT_TOOL_PROFILE:-fixture}"
     export OPSPILOT_START_AGENT="${OPSPILOT_START_AGENT:-0}"

@@ -38,8 +38,8 @@ def test_the_workbench_is_published_on_host_loopback_only():
     env = SERVICES["web"]["environment"]
     assert env["OPSPILOT_BIND"] == "0.0.0.0:8080"
     assert env["OPSPILOT_ALLOWED_ORIGINS"] == (
-        "${OPSPILOT_ALLOWED_ORIGINS:-http://127.0.0.1:${OPSPILOT_WEB_HOST_PORT:-18080},"
-        "http://localhost:${OPSPILOT_WEB_HOST_PORT:-18080}}"
+        "http://127.0.0.1:${OPSPILOT_WEB_HOST_PORT:-18080},"
+        "http://localhost:${OPSPILOT_WEB_HOST_PORT:-18080}"
     )
 
 

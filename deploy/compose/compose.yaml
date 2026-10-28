@@ -83,7 +83,8 @@ services:
     environment:
       OPSPILOT_WEB_DSN: "host=postgres port=5432 dbname=opspilot user=opspilot_web_app passfile=/run/secrets/web_pgpass"
       OPSPILOT_BIND: "0.0.0.0:8080"
-      OPSPILOT_ALLOWED_ORIGINS: "${OPSPILOT_ALLOWED_ORIGINS:-http://127.0.0.1:${OPSPILOT_WEB_HOST_PORT:-18080},http://localhost:${OPSPILOT_WEB_HOST_PORT:-18080}}"
+      # Derived from the published port only, so the two cannot drift.
+      OPSPILOT_ALLOWED_ORIGINS: "http://127.0.0.1:${OPSPILOT_WEB_HOST_PORT:-18080},http://localhost:${OPSPILOT_WEB_HOST_PORT:-18080}"
       OPSPILOT_UI_USERS_FILE: /run/secrets/web_ui_users
       OPSPILOT_EVENT_TOKENS_FILE: /run/secrets/web_event_tokens
       OPSPILOT_AUTH_REVISION: "${OPSPILOT_AUTH_REVISION:-compose}"
