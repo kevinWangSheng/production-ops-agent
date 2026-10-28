@@ -47,7 +47,7 @@ uninstall --purge-data（OPSPILOT_PURGE_CONFIRM=项目名）：Volume opspilot-3
 
 ## 自动化 e2e（opt-in）
 
-`OPSPILOT_COMPOSE_E2E=1 OPSPILOT_E2E_PROJECT=opspilot-392pytest OPSPILOT_E2E_WEB_PORT=18180 python3 -m pytest --noconftest -p no:cacheprovider tests/test_392_compose_e2e_impl.py`（VM 内，pytest 取自本 worktree 的 .venv 纯 Python 包）：6 passed in 18.07s；结束后该项目 0 容器、0 卷。
+`OPSPILOT_COMPOSE_E2E=1 OPSPILOT_E2E_PROJECT=opspilot-392pytest OPSPILOT_E2E_WEB_PORT=18180 python3 -m pytest --noconftest -p no:cacheprovider tests/test_392_compose_e2e_impl.py`（VM 内，pytest 取自本 worktree 的 .venv 纯 Python 包）：6 passed in 18.07s；结束后该项目 0 容器、0 卷。`init-roles` 改为按列名读行（`1566fac5`）后重跑：6 passed in 22.88s，同样无残留。
 
 ## 过程中发现并已修
 
