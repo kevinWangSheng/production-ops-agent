@@ -127,7 +127,17 @@ KUBECTL = "kubectl"
 # ``KEY=value`` env file per product role for the engineer to source. They
 # never go into the repository, the chart values, logs or evidence.
 AUTH_FILE = LAB_DIR / "prometheus-auth.json"
-PROMETHEUS_ACCOUNTS = ("observer", "investigator", "collector", "lab", "proxy")
+PROMETHEUS_ACCOUNTS = (
+    "observer",
+    "investigator",
+    "collector",
+    "lab",
+    "proxy",
+    "holmes",
+)
+# Accounts an older lab auth file may lack; ``prometheus_accounts`` adds them
+# without touching the existing passwords (F7 PR-C added proxy, #396 holmes).
+ADDED_ACCOUNTS = frozenset({"proxy", "holmes"})
 WEB_CONFIG_SECRET = "prometheus-web-config"
 COLLECTOR_AUTH_SECRET = "prometheus-web-auth"
 # M1-04 (E13): Alertmanager's bearer token for the workbench webhook. The
@@ -157,6 +167,13 @@ ROLE_ENV_VARS = {
     "lab": (
         "OPSPILOT_LAB_PROMETHEUS_USERNAME",
         "OPSPILOT_LAB_PROMETHEUS_PASSWORD",
+    ),
+    # F14 step 1 (#396, decision Q6): the pinned HolmesGPT baseline's own
+    # proxy account; not a product role. The proxy lets only this account
+    # POST form bodies, and only to query/query_range (``proxy_nginx_config``).
+    "holmes": (
+        "OPSPILOT_HOLMES_PROMETHEUS_USERNAME",
+        "OPSPILOT_HOLMES_PROMETHEUS_PASSWORD",
     ),
 }
 
@@ -272,15 +289,21 @@ def _private_write(path: Path, content: str) -> None:
 def prometheus_accounts(path: Path = AUTH_FILE) -> dict[str, str]:
     """``{account: password}`` from the private auth file, created on first use.
 
-    Product read accounts authenticate only at the readonly proxy. Existing
-    four-account labs gain only the proxy password; all other drift is refused.
+    Product read accounts authenticate only at the readonly proxy. Older labs
+    gain only the missing proxy/holmes passwords; all other drift is refused.
     """
     if path.exists():
         if stat.S_IMODE(path.stat().st_mode) & 0o077:
             raise SystemExit(f"{path} must not be group/world readable; refusing")
         accounts = json.loads(path.read_text())
-        if set(accounts) == set(PROMETHEUS_ACCOUNTS) - {"proxy"}:
-            accounts["proxy"] = secrets.token_urlsafe(24)
+        missing = set(PROMETHEUS_ACCOUNTS) - set(accounts)
+        if (
+            missing
+            and missing <= ADDED_ACCOUNTS
+            and set(accounts) < set(PROMETHEUS_ACCOUNTS)
+        ):
+            for name in sorted(missing):
+                accounts[name] = secrets.token_urlsafe(24)
             _private_write(path, json.dumps(accounts, indent=2) + "\n")
         if set(accounts) != set(PROMETHEUS_ACCOUNTS):
             raise SystemExit(f"{path} does not list exactly {PROMETHEUS_ACCOUNTS}")
@@ -347,6 +370,14 @@ def proxy_htpasswd(
 def proxy_nginx_config(accounts: dict[str, str]) -> str:
     # try_files runs AFTER basic authentication. A rewrite-phase return at
     # the public location would incorrectly give anonymous callers 403.
+    #
+    # #396 (decision Q6): upstream HolmesGPT sends query/query_range as POST
+    # form bodies. Only the authenticated ``holmes`` account, only those two
+    # paths, only a form body (<= 64k) jumps from @read to @holmes_form, the
+    # one location that forwards a body. Every other request keeps the
+    # GET/HEAD-only, body-dropping @read rule. ``$remote_user`` is read after
+    # auth_basic accepted the password, so a wrong password never gets here.
+    # Only holmes requests are logged, without headers, args or bodies.
     locations = "\n".join(
         f"    location = {path} {{ try_files /__absent__ @read; }}"
         for path in READ_PATHS
@@ -358,10 +389,22 @@ pid /tmp/nginx.pid;
 events { worker_connections 128; }
 http {
   access_log off;
+  map "$remote_user:$request_method:$uri:$content_type" $opspilot_holmes_form {
+    default 0;
+    "~^holmes:POST:/api/v1/query(_range)?:application/x-www-form-urlencoded(;.*)?$" 1;
+  }
+  map $remote_user $opspilot_holmes_log {
+    default 0;
+    holmes 1;
+  }
+  log_format opspilot_holmes '$time_iso8601 $remote_user $request_method $uri '
+                             '$status $request_length $body_bytes_sent $request_time';
   upstream prometheus_backend { server prometheus:9090; }
   server {
     listen 8080;
     root /var/empty;
+    client_max_body_size 64k;
+    access_log /dev/stdout opspilot_holmes if=$opspilot_holmes_log;
     auth_basic "lab readonly";
     auth_basic_user_file /etc/opspilot-proxy/htpasswd;
 """
@@ -373,9 +416,15 @@ http {
     location / { try_files /__absent__ @denied; }
     location @denied { return 403; }
     location @read {
+      error_page 418 = @holmes_form;
+      if ($opspilot_holmes_form) { return 418; }
       if ($request_method !~ ^(GET|HEAD)$) { return 403; }
       proxy_pass_request_body off;
       proxy_set_header Content-Length "";
+      proxy_set_header Authorization "AUTHORIZATION";
+      proxy_pass http://prometheus_backend$uri$is_args$args;
+    }
+    location @holmes_form {
       proxy_set_header Authorization "AUTHORIZATION";
       proxy_pass http://prometheus_backend$uri$is_args$args;
     }
@@ -1010,6 +1059,16 @@ def cmd_env_file(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_proxy(args: argparse.Namespace) -> int:
+    """Re-render the readonly proxy (accounts, per-role env files, Secret,
+    rollout) on a running lab without the chart upgrades of ``up`` (#396)."""
+    accounts = prometheus_accounts()
+    for role in ROLE_ENV_VARS:
+        role_env_file(role, accounts, LAB_DIR / f"prometheus-{role}.env")
+    print(f"+ wrote {LAB_DIR}/prometheus-<role>.env for {sorted(ROLE_ENV_VARS)}")
+    return apply_readonly_proxy(accounts)
+
+
 def cmd_stop(args: argparse.Namespace) -> int:
     """Stop the VM only: the kind cluster and both releases stay installed."""
     if colima_status() != "Running":
@@ -1171,6 +1230,9 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser(
         "health", help="check Prometheus, kube-state-metrics, Jaeger"
     ).set_defaults(func=cmd_health)
+    sub.add_parser(
+        "proxy", help="re-render and roll only the readonly Prometheus proxy"
+    ).set_defaults(func=cmd_proxy)
     sub.add_parser("stop", help="stop the VM; keep cluster and releases").set_defaults(
         func=cmd_stop
     )

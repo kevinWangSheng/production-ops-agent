@@ -32,17 +32,21 @@ def test_upstream_and_read_accounts_are_disjoint() -> None:
         "investigator",
         "observer",
         "lab",
+        "holmes",
     }
     assert all(line.endswith(":$2y$10$fake") for line in auth.splitlines())
 
 
-def test_old_auth_gains_only_proxy(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    "absent", [{"proxy", "holmes"}, {"holmes"}], ids=["four-accounts", "five-accounts"]
+)
+def test_old_auth_gains_only_proxy_and_holmes(tmp_path: Path, absent: set[str]) -> None:
     path = tmp_path / "auth.json"
-    old = {k: v for k, v in accounts().items() if k != "proxy"}
+    old = {k: v for k, v in accounts().items() if k not in absent}
     lab._private_write(path, json.dumps(old))
     new = lab.prometheus_accounts(path)
     assert {k: new[k] for k in old} == old
-    assert set(new) - set(old) == {"proxy"}
+    assert set(new) - set(old) == absent
     assert lab.prometheus_accounts(path) == new
     assert stat.S_IMODE(path.stat().st_mode) == 0o600
     del new["lab"]
@@ -168,3 +172,63 @@ def test_nginx_syntax_if_available(tmp_path: Path) -> None:
         check=False,
     )
     assert result.returncode == 0, result.stderr
+
+
+# --- #396: the holmes account (POST form bodies on query/query_range only)
+
+
+def test_holmes_form_post_is_limited_to_the_query_paths() -> None:
+    config = lab.proxy_nginx_config(accounts())
+    # Only holmes, only POST, only the two query paths, only a form body.
+    assert (
+        '"~^holmes:POST:/api/v1/query(_range)?:'
+        'application/x-www-form-urlencoded(;.*)?$" 1;' in config
+    )
+    read = config.split("location @read {", 1)[1].split("\n    }", 1)[0]
+    assert "error_page 418 = @holmes_form;" in read
+    assert "if ($opspilot_holmes_form) { return 418; }" in read
+    # Everyone else keeps the frozen GET/HEAD rule and never forwards a body.
+    assert "proxy_pass_request_body off;" in read
+    form = config.split("location @holmes_form {", 1)[1].split("\n    }", 1)[0]
+    assert "proxy_pass_request_body off;" not in form
+    assert (
+        f'proxy_set_header Authorization "{lab.basic_auth_header(accounts(), "proxy")}";'
+        in form
+    )
+    assert "proxy_pass http://prometheus_backend$uri$is_args$args;" in form
+    assert "client_max_body_size 64k;" in config
+    for denied in ("/api/v1/metadata", "/api/v1/rules"):
+        assert denied not in lab.READ_PATHS and denied not in config
+
+
+def test_holmes_access_log_only_and_without_credentials() -> None:
+    config = lab.proxy_nginx_config(accounts())
+    fmt = config.split("log_format opspilot_holmes", 1)[1].split(";", 1)[0]
+    assert "$remote_user" in fmt and "$uri" in fmt and "$status" in fmt
+    for leaked in ("$http_authorization", "$request_body", "$request ", "$args"):
+        assert leaked not in fmt
+    assert "access_log /dev/stdout opspilot_holmes if=$opspilot_holmes_log;" in config
+    assert "map $remote_user $opspilot_holmes_log" in config
+
+
+def test_holmes_env_file_carries_only_its_own_account(tmp_path: Path) -> None:
+    env = lab.role_env_file("holmes", accounts(), tmp_path / "h.env")
+    assert env.read_text() == (
+        "OPSPILOT_HOLMES_PROMETHEUS_USERNAME=holmes\n"
+        "OPSPILOT_HOLMES_PROMETHEUS_PASSWORD=secret-holmes\n"
+    )
+    assert "holmes" not in lab.web_config_yaml(accounts(), hasher=lambda _: "h")
+
+
+def test_proxy_command_rewrites_env_files_and_applies_only_the_proxy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(lab, "LAB_DIR", tmp_path)
+    monkeypatch.setattr(lab, "prometheus_accounts", accounts)
+    applied: list[dict[str, str]] = []
+    monkeypatch.setattr(lab, "apply_readonly_proxy", lambda a: applied.append(a) or 0)
+    assert lab.main(["proxy"]) == 0
+    assert applied == [accounts()]
+    assert sorted(p.name for p in tmp_path.iterdir()) == sorted(
+        f"prometheus-{role}.env" for role in lab.ROLE_ENV_VARS
+    )
