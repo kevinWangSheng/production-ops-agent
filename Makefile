@@ -1,4 +1,4 @@
-.PHONY: setup doctor check test migrate acceptance red-proof eval-structural secrets-branch hooks
+.PHONY: setup doctor check test migrate retention retention-apply acceptance red-proof eval-structural secrets-branch hooks
 
 setup:
 	UV_PROJECT_ENVIRONMENT=.venv uv sync --locked --python "$${UV_PYTHON:-3.12}"
@@ -23,6 +23,15 @@ test: doctor
 MIGRATE_FLAGS ?=
 migrate:
 	.venv/bin/python -m opspilot.schema migrate $(MIGRATE_FLAGS)
+
+# 原始资料保留期清理（#244）：以属于 opspilot_retention 的 login 连接，
+# 需要 OPSPILOT_RETENTION_DSN；先 dry-run 复核，再显式 apply。DAYS 默认 30，不得更小。
+DAYS ?= 30
+retention:
+	.venv/bin/python -m opspilot.retention --days $(DAYS)
+
+retention-apply:
+	.venv/bin/python -m opspilot.retention --apply --days $(DAYS)
 
 acceptance:
 	.venv/bin/python scripts/m1_acceptance.py

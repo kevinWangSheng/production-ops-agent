@@ -84,6 +84,7 @@
 - PR-3 机器人对 8076e164 新提 1 条（采纳）：F6 有已清理读数的样本仍把每行保留的信号名、查询、来源、时间窗与冻结 profile 核对，只跳过依赖原文的检查；`_impl` 测试先红后绿，F6/F7/F11 相关 333 条通过。
 - PR-3 机器人对 00853272 新提 1 条（采纳）：对比查询行属于本对比的绑定校验提到 cleaned 分支之前；`_impl` 测试先红后绿，发布重放相关 332 条通过。
 - PR-3 机器人对 0fa60d24 新提 1 条（lead 采纳并修）：恢复读数 API 对已清理读数的畸形保留哈希返回 `hashes_verified: false`，与证据 API 和重放一致；absent 读数不变。`_impl` 测试先红后绿，Web/证据相关 392 条通过。
+- PR-2 实现（`opspilot/retention.py`，`make retention` / `make retention-apply`）可逆决定：「复盘生成待定」= 生成尝试 `running`、生成租约未过期或退回后待重新生成（`pending_regeneration_version` 非空）；「活跃 Run」= `close` 会取消的 5 个状态；「活跃观察」= 会话 `authorized`；事务单元为合并组，并与跨组归属行（发布关联 `incident_id` + `related_incident_id`）所涉的组合并；多事故归属行的输出 `incident_id` 取归属中 id 最小者；锁后复查失败时对该单元涉及的事故各出一行 `CHANGED_AFTER_SCAN`。`RETENTION_GRANTS` 未改。
 
 ## 下一步与交接
 
