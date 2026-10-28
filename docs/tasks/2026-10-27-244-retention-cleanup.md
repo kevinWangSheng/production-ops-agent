@@ -1,6 +1,6 @@
 # #244 原始资料保留期清理（关闭后 30 天）
 
-- 状态：进行中（合同 r3；PR-1 #377、PR-3 #382 已合并；PR-2 清理 CLI 实施中，worktree `poa-244-cli-impl`（分支 `feature/F13-244-retention-cli`）/ 独立测试 `poa-244-cli-tests`（`chore/244-pr2-acceptance-tests`））
+- 状态：PR-1 #377、PR-3 #382、PR-2 #388（squash ad33c86c，2026-10-28）已合并；收尾文档 PR 含 C3 §11 两处已知偏离，待用户确认后合并并关闭 #244
 - 更新日期：2026-10-28
 - 依据：[issue #244](https://github.com/kevinWangSheng/production-ops-agent/issues/244) Agent Brief；C3 §11（保留与删除）、§7（PostgreSQL 业务记录是恢复权威）；[F13 第 4 步合同](2026-10-15-f13-step4-contract.md) U7；[M1-03 记录](2026-10-05-m1-03-postmortem.md) D12；ADR-0006。功能 F13 相关，不改 F13 验收。
 - 裁决：`~/.agent/handoffs/opspilot-rulings-2026-10-27.md` 第 2、3 节（下称「裁决」）；预审：`~/.agent/handoffs/opspilot-prereview-244-2026-10-27.md`（Codex gpt-6-astra→gpt-6-sol，r0.1，基线 `17bc865e`，下称「预审」）。
@@ -95,4 +95,6 @@
 
 ## 下一步与交接
 
-- 派 PR-1 实现与独立测试作者，与 #245 PR-1 并行；全量 `tests/acceptance` 两条线错开跑（本机 swap 紧）。预审未确认项 1–8 由实现者按需核对，属可逆细节的写一行理由。
+- PR-2 收尾：独立验收 22 例（Codex，main 上 21 红）全部通过；独立审查（Codex 容量满，回落全新上下文 Claude Fable 5.1）0 阻塞、可选 7 采纳 2；机器人 P2 1 条采纳（部分清理后重试的 KeyError）。最终 33 例通过、CI 绿。
+- 本文档 PR：C3 §11 写入当前实现与两处已知偏离（90 天归档 #374；外部平台副本依赖平台保留期，#243），ROADMAP F13 行更新。用户确认后合并并关闭 #244。
+- 延后项各有 issue：#374（90 天归档）、#375（steps/inputs/runs 恢复合同）、#243（outbox 与外部副本删除）。
