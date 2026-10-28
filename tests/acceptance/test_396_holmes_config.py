@@ -67,4 +67,3 @@ def test_holmes_config_enables_only_metrics_and_get_only_jaeger_http() -> None:
     assert endpoint["hosts"] == [urlsplit(jaeger_url).netloc]
     expected_path = urlsplit(jaeger_url).path.rstrip("/") + "/api/*"
     assert endpoint["paths"] == [expected_path]
-

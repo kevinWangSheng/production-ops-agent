@@ -40,9 +40,7 @@ def _block(config: str, marker: str) -> str:
 def test_holmes_is_a_proxy_account_without_changing_existing_accounts() -> None:
     lab = _kind_lab()
     assert "holmes" in lab.PROMETHEUS_ACCOUNTS
-    assert {"investigator", "observer", "lab"}.issubset(
-        set(lab.PROMETHEUS_ACCOUNTS)
-    )
+    assert {"investigator", "observer", "lab"}.issubset(set(lab.PROMETHEUS_ACCOUNTS))
     assert lab.ROLE_ENV_VARS["holmes"] == (
         "OPSPILOT_HOLMES_PROMETHEUS_USERNAME",
         "OPSPILOT_HOLMES_PROMETHEUS_PASSWORD",
@@ -85,9 +83,7 @@ def test_f7_probe_has_holmes_rows_and_preserves_other_account_expectations(
     def fake_authorization(role: str, directory: Path) -> str:
         return f"auth-{role}"
 
-    def fake_latest_samples(
-        base_url: str, auth: str
-    ) -> tuple[int, dict[str, float]]:
+    def fake_latest_samples(base_url: str, auth: str) -> tuple[int, dict[str, float]]:
         return 200, {}
 
     def fake_request(
@@ -109,13 +105,14 @@ def test_f7_probe_has_holmes_rows_and_preserves_other_account_expectations(
             return 400, b""
         if method == "POST":
             if role == "holmes" and body is not None:
-                if len(body.encode()) > 64 * 1024:
+                if len(probe_module.form_body(path, body)) > 64 * 1024:
                     return 413, b""
                 if clean_path in {"/api/v1/query", "/api/v1/query_range"}:
                     return 200, b""
             return 403, b""
         if method in {"GET", "HEAD"} and (
-            clean_path in {
+            clean_path
+            in {
                 "/api/v1/query",
                 "/api/v1/query_range",
                 "/api/v1/series",
@@ -136,11 +133,7 @@ def test_f7_probe_has_holmes_rows_and_preserves_other_account_expectations(
     report = probe_module.probe(base_url="http://probe.invalid", directory=Path("."))
 
     rows = report["requests"]
-    holmes_rows = [
-        row
-        for row in rows
-        if row["account"] == "holmes"
-    ]
+    holmes_rows = [row for row in rows if row["account"] == "holmes"]
     assert holmes_rows
     assert all(row["matches"] is True for row in holmes_rows)
 
@@ -157,8 +150,7 @@ def test_f7_probe_has_holmes_rows_and_preserves_other_account_expectations(
         "/api/v1/query_range",
     }
     assert all(
-        row["status"] == 200 and row["matches"] is True
-        for row in form_holmes_rows
+        row["status"] == 200 and row["matches"] is True for row in form_holmes_rows
     )
 
     non_form_rows = [

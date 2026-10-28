@@ -76,9 +76,7 @@ def test_container_run_args_enforce_the_read_only_non_root_boundary() -> None:
     assert "/tmp/holmes/config.yaml" in rendered
     assert "/tmp/holmes/output" in rendered
     assert any(
-        "ro" in mount or "readonly" in mount
-        for mount in mounts
-        if "config" in mount
+        "ro" in mount or "readonly" in mount for mount in mounts if "config" in mount
     )
     assert not any(
         forbidden in rendered
@@ -219,4 +217,3 @@ def test_pin_record_contains_contractual_provenance_and_is_non_reproducible() ->
         values = [pin[name] for name in aliases if name in pin]
         assert values, f"pin is missing {label} record"
         assert all(value not in (None, "", [], {}) for value in values), label
-
