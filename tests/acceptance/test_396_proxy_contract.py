@@ -168,7 +168,7 @@ def test_f7_probe_has_holmes_rows_and_preserves_other_account_expectations(
         for row in holmes_rows
         if row["method"] == "POST"
         and row.get("body") is not None
-        and len(str(row["body"]).encode()) > 64 * 1024
+        and len(probe_module.form_body(row["path"], row["body"])) > 64 * 1024
     ]
     assert oversized_rows
     assert all(row["status"] == 413 for row in oversized_rows)
