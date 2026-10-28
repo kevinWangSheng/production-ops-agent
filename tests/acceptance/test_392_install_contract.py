@@ -8,7 +8,6 @@ import stat
 import subprocess
 from pathlib import Path
 
-
 REPO = Path(__file__).resolve().parents[2]
 INSTALL = REPO / "deploy" / "compose" / "install.sh"
 
@@ -28,9 +27,10 @@ def _fake_docker_environment(tmp_path: Path) -> tuple[dict[str, str], Path]:
     docker.write_text(
         "#!/bin/sh\n"
         "set -eu\n"
-        "printf '%s\\n' \"$*\" >> \"$OPSPILOT_392_DOCKER_LOG\"\n"
-        "case \" $* \" in\n"
+        'printf \'%s\\n\' "$*" >> "$OPSPILOT_392_DOCKER_LOG"\n'
+        'case " $* " in\n'
         "  *' compose version '*) printf 'Docker Compose version v2\\n' ;;\n"
+        "  *' run '*) printf 'fake-docker-run-output\\n' ;;\n"
         "esac\n"
     )
     docker.chmod(0o755)
@@ -86,16 +86,16 @@ def test_install_script_exposes_install_upgrade_and_safe_uninstall_modes() -> No
 
 def test_install_script_uses_a_repo_external_default_secret_directory() -> None:
     text = _script()
-    assignment = re.search(
-        r"OPSPILOT_SECRETS_DIR[^\n]*:?[-=]\s*([^\s;]+)", text
-    )
+    assignment = re.search(r"OPSPILOT_SECRETS_DIR[^\n]*:?[-=]\s*([^\s;]+)", text)
     assert assignment, "installer must define a default secrets directory"
     default = assignment.group(1).strip("'\"()")
     assert default not in {".", "./secrets", "${PWD}/secrets", "$PWD/secrets"}
     assert "OPSPILOT_SECRETS_DIR" in text
 
 
-def test_install_and_upgrade_observe_migration_before_runtime_start(tmp_path: Path) -> None:
+def test_install_and_upgrade_observe_migration_before_runtime_start(
+    tmp_path: Path,
+) -> None:
     assert INSTALL.is_file(), (
         f"required #392 seam is missing: {INSTALL.relative_to(REPO)}"
     )
@@ -153,7 +153,10 @@ def test_install_is_idempotent_for_secret_bytes_and_modes(tmp_path: Path) -> Non
     secrets = Path(env["OPSPILOT_SECRETS_DIR"])
     assert secrets.is_dir()
     snapshot = {
-        path.relative_to(secrets): (path.read_bytes(), stat.S_IMODE(path.stat().st_mode))
+        path.relative_to(secrets): (
+            path.read_bytes(),
+            stat.S_IMODE(path.stat().st_mode),
+        )
         for path in secrets.rglob("*")
         if path.is_file()
     }
@@ -162,10 +165,12 @@ def test_install_is_idempotent_for_secret_bytes_and_modes(tmp_path: Path) -> Non
     second = _run_install(env, "install")
     assert second.returncode == 0, second.stdout + second.stderr
     current = {
-        path.relative_to(secrets): (path.read_bytes(), stat.S_IMODE(path.stat().st_mode))
+        path.relative_to(secrets): (
+            path.read_bytes(),
+            stat.S_IMODE(path.stat().st_mode),
+        )
         for path in secrets.rglob("*")
         if path.is_file()
     }
     assert current == snapshot
     assert all(mode == 0o600 for _, mode in current.values())
-

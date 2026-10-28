@@ -11,7 +11,6 @@ from pathlib import Path
 
 import pytest
 
-
 REPO = Path(__file__).resolve().parents[2]
 
 
@@ -86,13 +85,23 @@ def test_dockerfile_installs_only_locked_runtime_groups_and_exposes_all_roles() 
         ("tmp/", {"tmp", "tmp/", "**/tmp", "**/tmp/"}),
         (
             "docs/evidence/",
-            {"docs/evidence", "docs/evidence/", "**/docs/evidence", "**/docs/evidence/"},
+            {
+                "docs/evidence",
+                "docs/evidence/",
+                "**/docs/evidence",
+                "**/docs/evidence/",
+            },
         ),
         (".venv", {".venv", ".venv/", "**/.venv", "**/.venv/"}),
         (".git", {".git", ".git/", "**/.git", "**/.git/"}),
         (
             ".playwright-mcp",
-            {".playwright-mcp", ".playwright-mcp/", "**/.playwright-mcp", "**/.playwright-mcp/"},
+            {
+                ".playwright-mcp",
+                ".playwright-mcp/",
+                "**/.playwright-mcp",
+                "**/.playwright-mcp/",
+            },
         ),
     ],
 )

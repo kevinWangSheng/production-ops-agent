@@ -8,14 +8,15 @@ from typing import Any
 
 import pytest
 
-
 REPO = Path(__file__).resolve().parents[2]
 COMPOSE = REPO / "deploy" / "compose" / "compose.yaml"
 DIGEST = re.compile(r"@sha256:[0-9a-f]{64}$", re.I)
 
 
 def _compose() -> dict[str, Any]:
-    assert COMPOSE.is_file(), f"required #392 seam is missing: {COMPOSE.relative_to(REPO)}"
+    assert COMPOSE.is_file(), (
+        f"required #392 seam is missing: {COMPOSE.relative_to(REPO)}"
+    )
     try:
         import yaml
     except Exception as exc:  # pragma: no cover - environment failure is a test failure
@@ -29,7 +30,10 @@ def _compose() -> dict[str, Any]:
 def _environment(service: dict[str, Any]) -> dict[str, str | None]:
     raw = service.get("environment", {})
     if isinstance(raw, dict):
-        return {str(key): None if value is None else str(value) for key, value in raw.items()}
+        return {
+            str(key): None if value is None else str(value)
+            for key, value in raw.items()
+        }
     if isinstance(raw, list):
         result: dict[str, str | None] = {}
         for entry in raw:
@@ -55,16 +59,24 @@ def _published_ports(service: dict[str, Any]) -> list[tuple[str | None, str]]:
     result: list[tuple[str | None, str]] = []
     for entry in service.get("ports", []) or []:
         if isinstance(entry, str):
-            parts = entry.split(":")
-            if len(parts) >= 3:
-                result.append((parts[-3], ":".join(parts[-2:])))
+            # Short syntax [HOST_IP:]PUBLISHED:TARGET[/proto]; PUBLISHED may be
+            # an interpolation such as ${VAR:-18080}, which itself contains ":".
+            match = re.fullmatch(
+                r"(?:(?P<ip>\d{1,3}(?:\.\d{1,3}){3}|\[[0-9a-fA-F:]+\]):)?"
+                r"(?P<published>.+):(?P<target>\d+)(?:/\w+)?",
+                entry,
+            )
+            if match:
+                result.append((match["ip"], f"{match['published']}:{match['target']}"))
             else:
                 result.append((None, entry))
         elif isinstance(entry, dict):
             host_ip = entry.get("host_ip")
             published = entry.get("published")
             if published is not None:
-                result.append((None if host_ip is None else str(host_ip), str(published)))
+                result.append(
+                    (None if host_ip is None else str(host_ip), str(published))
+                )
     return result
 
 
@@ -79,7 +91,9 @@ def test_required_services_include_one_shot_migration_and_role_initialization() 
         )
 
 
-def test_all_product_services_share_web_image_and_all_images_are_digest_pinned() -> None:
+def test_all_product_services_share_web_image_and_all_images_are_digest_pinned() -> (
+    None
+):
     services = _compose()["services"]
     web_image = services["web"].get("image")
     assert isinstance(web_image, str) and DIGEST.search(web_image), web_image
@@ -95,7 +109,9 @@ def test_all_product_services_share_web_image_and_all_images_are_digest_pinned()
             assert isinstance(image, str) and DIGEST.search(image), (name, image)
 
 
-def test_postgres_has_no_host_port_and_web_is_loopback_only_with_configurable_default() -> None:
+def test_postgres_has_no_host_port_and_web_is_loopback_only_with_configurable_default() -> (
+    None
+):
     services = _compose()["services"]
     postgres = services["postgres"]
     assert not postgres.get("ports"), "Postgres must remain Compose-internal"
@@ -119,7 +135,9 @@ def test_web_uses_file_secrets_without_plaintext_credentials_in_compose() -> Non
     document = _compose()
     services = document["services"]
     secrets = document.get("secrets")
-    assert isinstance(secrets, dict) and secrets, "Compose must declare file-backed secrets"
+    assert isinstance(secrets, dict) and secrets, (
+        "Compose must declare file-backed secrets"
+    )
 
     web_secret_names = _secret_names(services["web"].get("secrets"))
     assert len(web_secret_names) >= 3, (
@@ -136,7 +154,8 @@ def test_web_uses_file_secrets_without_plaintext_credentials_in_compose() -> Non
     for key in ("POSTGRES_PASSWORD", "OPSPILOT_UI_USERS", "OPSPILOT_EVENT_TOKENS"):
         if key in environment:
             value = environment[key]
-            assert value is None or value.startswith("/run/secrets/") or key.endswith("_FILE"), (
-                f"{key} must not carry a plaintext credential in Compose"
-            )
-
+            assert (
+                value is None
+                or value.startswith("/run/secrets/")
+                or key.endswith("_FILE")
+            ), f"{key} must not carry a plaintext credential in Compose"
