@@ -12,7 +12,7 @@
   "image_architecture": "arm64",
   "archive_sha256": "75a302a47db232e143802c9b4d4115665e60e4868a11c366a1a3e3fa9152118a",
   "archive_bytes": 279761408,
-  "base_images": {
+  "base_image_digests": {
     "docker.io/library/python:3.11-alpine": "sha256:79440cc1dfa86a5f98d67efcd219726a8e9d8083cc0aafd27c7bef5976c38868"
   },
   "build": {
@@ -104,7 +104,7 @@
       "ENABLE_TELEMETRY": "false"
     }
   },
-  "budgets": {
+  "budget": {
     "max_steps": 100,
     "run_wall_seconds": 7200,
     "tool_timeout_seconds": 30,

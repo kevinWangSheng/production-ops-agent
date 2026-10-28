@@ -20,12 +20,15 @@ def proxied_queries_ok(proxy_log_lines: Iterable[str]) -> int:
 
     Line format (``kind_lab.proxy_nginx_config`` ``log_format opspilot_holmes``):
     ``<time> <user> <method> <uri> <status> <request_length> <bytes> <seconds>``.
-    Anything else (other accounts, kubectl prefixes, error lines) is skipped.
+    A query string on the uri is ignored. Anything else (other accounts,
+    kubectl prefixes, error lines) is skipped.
     """
     count = 0
     for line in proxy_log_lines:
         fields = line.split()
-        if len(fields) < 5 or fields[1] != "holmes" or fields[3] not in QUERY_PATHS:
+        if len(fields) < 5 or fields[1] != "holmes":
+            continue
+        if fields[3].split("?", 1)[0] not in QUERY_PATHS:
             continue
         if fields[4].isdigit() and 200 <= int(fields[4]) < 300:
             count += 1

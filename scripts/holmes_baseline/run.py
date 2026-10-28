@@ -364,7 +364,7 @@ def cmd_pin(args: argparse.Namespace) -> int:
         "image_architecture": inspect.get("Architecture"),
         "archive_sha256": sha256_file(archive),
         "archive_bytes": archive.stat().st_size,
-        "base_images": base_images(build_log),
+        "base_image_digests": base_images(build_log),
         "build": {
             "command": "docker buildx build --load -t "
             f"{IMAGE} <checkout of {commit[0][:8]}> (colima m1-kind, buildx "
@@ -403,7 +403,7 @@ def cmd_pin(args: argparse.Namespace) -> int:
             "host": hconfig.MODEL_HOST,
             "env": hconfig.MODEL_ENV,
         },
-        "budgets": {
+        "budget": {
             "max_steps": hconfig.MAX_STEPS,
             "run_wall_seconds": hconfig.RUN_WALL_SECONDS,
             "tool_timeout_seconds": hconfig.TOOL_TIMEOUT_SECONDS,

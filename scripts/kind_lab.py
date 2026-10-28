@@ -425,6 +425,7 @@ http {
       proxy_pass http://prometheus_backend$uri$is_args$args;
     }
     location @holmes_form {
+      proxy_pass_request_body on;
       proxy_set_header Authorization "AUTHORIZATION";
       proxy_pass http://prometheus_backend$uri$is_args$args;
     }

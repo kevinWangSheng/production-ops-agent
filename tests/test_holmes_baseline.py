@@ -138,6 +138,7 @@ LOG = [
     "2026-10-28T12:00:07+00:00 holmes GET /api/v1/metadata 403 300 0 0.000",
     "2026-10-28T12:00:08+00:00 holmes POST /api/v1/query 422 300 90 0.001",
     "2026-10-28T12:00:09+00:00 investigator GET /api/v1/query 200 300 90 0.001",
+    "2026-10-28T12:00:10+00:00 holmes GET /api/v1/query?query=up 200 300 90 0.001",
     "not an access log line",
 ]
 
@@ -156,7 +157,7 @@ def test_completed_run_projection() -> None:
         "final_state": "completed",
         "report_available": True,
         "tool_calls": 3,
-        "proxied_queries_ok": 3,
+        "proxied_queries_ok": 4,
         "model_calls_ok": 4,
         "handoff_reasons": [],
     }
@@ -205,10 +206,10 @@ def test_pin_record_is_marked_non_reproducible() -> None:
     pin = json.loads((ROOT / "docs/evidence/f14-holmes-baseline/pin.json").read_text())
     assert pin["reproducible"] is False
     assert pin["upstream"]["commit"].startswith("a0009195")
-    for key in ("image_id", "archive_sha256", "base_images", "license"):
+    for key in ("image_id", "archive_sha256", "base_image_digests", "license"):
         assert pin[key]
     assert pin["model"]["name"] == hconfig.MODEL
-    assert pin["budgets"]["max_steps"] == 100
+    assert pin["budget"]["max_steps"] == 100
 
 
 # --- relay / capture helpers

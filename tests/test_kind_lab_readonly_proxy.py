@@ -191,6 +191,7 @@ def test_holmes_form_post_is_limited_to_the_query_paths() -> None:
     assert "proxy_pass_request_body off;" in read
     form = config.split("location @holmes_form {", 1)[1].split("\n    }", 1)[0]
     assert "proxy_pass_request_body off;" not in form
+    assert "proxy_pass_request_body on;" in form
     assert (
         f'proxy_set_header Authorization "{lab.basic_auth_header(accounts(), "proxy")}";'
         in form
