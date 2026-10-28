@@ -360,10 +360,14 @@ def test_d19_prompt_states_the_causal_rules_of_the_final_labels():
 
     bodies = []
     for index, category in enumerate(categories):
-        end = categories[index + 1].start() if index + 1 < len(categories) else len(lower)
+        end = (
+            categories[index + 1].start() if index + 1 < len(categories) else len(lower)
+        )
         bodies.append((category.group("kind"), lower[category.end() : end]))
     not_causal = [body for kind, body in bodies if kind.startswith(("not", "non"))]
-    factual_causal = [body for kind, body in bodies if not kind.startswith(("not", "non"))]
+    factual_causal = [
+        body for kind, body in bodies if not kind.startswith(("not", "non"))
+    ]
     assert not_causal
     assert any(
         method_qualified_inference(clause)
