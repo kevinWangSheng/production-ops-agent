@@ -250,7 +250,10 @@ def test_root_is_refused(host, monkeypatch):
 
 
 def test_compose_passthrough_runs_with_the_installed_settings(host):
-    assert host(OPSPILOT_PROJECT="opspilot-t", OPSPILOT_WEB_HOST_PORT="18180").returncode == 0
+    assert (
+        host(OPSPILOT_PROJECT="opspilot-t", OPSPILOT_WEB_HOST_PORT="18180").returncode
+        == 0
+    )
     host.reset()
     result = host("compose", "logs", "web")
     assert result.returncode == 0, result.stderr
