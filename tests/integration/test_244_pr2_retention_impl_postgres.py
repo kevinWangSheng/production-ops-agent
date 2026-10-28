@@ -375,7 +375,10 @@ def test_one_failing_row_is_recorded_and_other_incidents_still_commit(
             conn.execute("DROP FUNCTION impl_244_boom()")
     failed = [line for line in _mine(report, broken) if line["kind"] == "failed"]
     assert [line["object_id"] for line in failed] == [f"ev-{broken}"]
-    assert failed[0]["error"]
+    # r3-D: "<ExceptionClass>: <primary message>", no detail/context/hint
+    assert failed[0]["error"].startswith("RaiseException: ")
+    assert "injected" in failed[0]["error"]
+    assert "PL/pgSQL" not in failed[0]["error"]
     assert report.failed >= 1 and report.lines[-1]["failed"] == report.failed
     assert _states(h, fine)["opspilot_evidence"] == ["cleaned"]
     assert _states(h, broken)["opspilot_evidence"] == ["present"]

@@ -43,6 +43,7 @@
 | r3-B 合并 | 按 `merged_into_incident_id` 指针把被并入事故与保留事故视为一组：组内任一事故不满足清理条件，整组都不清理 | #245 合并语义：被并入事故的告警与发布已挂到保留事故 |
 | r3-C 评测依赖 | 已核对：评测资料是仓库文件（`evals/`），PG 中没有引用事故、Run 或证据的评测表，「冻结评测依赖」在 PG 侧无可阻挡的对象；本轮不写判定、不写测试。将来评测引用 PG 行时再加 | `grep opspilot_ opspilot/evaluation/` 无表；C3 §11「评测资料独立归档」 |
 | r3-D 接口 | 见下「清理 CLI 公开接口」 | 可逆技术细节，lead 钉死以便独立测试作者与实现者对齐 |
+| r3-D 补充 | `failed` 行的 `error` = `"<异常类名>: <主消息>"`，psycopg 错误取 `diag.message_primary`；不含 detail/context/hint，避免行值进运维日志 | lead 2026-10-28，独立验收 AC4 |
 
 #### 清理 CLI 公开接口（r3-D）
 

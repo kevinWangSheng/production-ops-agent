@@ -393,6 +393,14 @@ def _clean(conn: psycopg.Connection[Any], row: _Row) -> bool:
     return conn.execute(statement, row.keys).rowcount == 1
 
 
+def _error(exc: psycopg.Error) -> str:
+    """r3-D: ``"<ExceptionClass>: <primary message>"``. Only the primary
+    message: detail, context and hint can carry row values and stay out of
+    the operator's log."""
+    message = exc.diag.message_primary or ""
+    return f"{type(exc).__name__}: {message}"
+
+
 def _line(kind: str, row: _Row, **extra: Any) -> dict[str, Any]:
     return {
         "kind": kind,
@@ -493,7 +501,7 @@ def _apply_unit(
                     if not _clean(conn, row):
                         continue
             except psycopg.Error as exc:
-                out.append(_line("failed", row, error=type(exc).__name__))
+                out.append(_line("failed", row, error=_error(exc)))
                 continue
             out.append(_line("cleaned", row))
     return out
