@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import gzip
 import json
 import sys
 from pathlib import Path
 from types import SimpleNamespace
 
+import httpx2
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "acceptance"))
@@ -15,9 +17,13 @@ from eval_p7_support import DriverHarness, snapshot  # noqa: E402
 
 from opspilot.evaluation.judge import (  # noqa: E402
     HTTPJudgeTransport,
+    JudgeError,
     JudgeHTTPResponse,
 )
 from scripts import eval_p7  # noqa: E402
+
+# Captured before any harness patches send (the harness fakes every call).
+ORIGINAL_SEND = HTTPJudgeTransport.send
 
 
 @pytest.fixture
@@ -133,3 +139,77 @@ def test_formal_raw_write_failure_does_not_fail_a_completed_run(harness):
     result = h.formal()
     assert result["raw_output_error"] == "ARTIFACT_UNWRITABLE"
     assert result["status"] == "selected"
+
+
+def _wire(content_type, body, **headers):
+    def handler(_request):
+        return httpx2.Response(
+            200, headers={"content-type": content_type, **headers}, content=body
+        )
+
+    return httpx2.MockTransport(handler)
+
+
+def _send(capture, limit=1000):
+    return capture.send(
+        endpoint="https://judge.invalid/v1/chat/completions",
+        headers={},
+        body=b"{}",
+        timeout_seconds=5.0,
+        max_response_bytes=limit,
+    )
+
+
+@pytest.mark.parametrize(
+    ("content_type", "body", "code"),
+    [
+        ("application/json", b'{"not": "a stream"}', "JUDGE_OUTPUT_INVALID"),
+        ("text/event-stream", b"data: {broken\n\n", "JUDGE_OUTPUT_INVALID"),
+        ("text/event-stream", b": keepalive\n\n", "JUDGE_TRANSPORT_ERROR"),
+    ],
+)
+def test_a_body_the_http_transport_rejects_is_still_captured(content_type, body, code):
+    capture = eval_p7._CapturingTransport(
+        HTTPJudgeTransport(transport=_wire(content_type, body))
+    )
+    with pytest.raises(JudgeError) as caught:
+        _send(capture)
+    assert caught.value.code == code
+    assert bytes(capture.body) == body and capture.sends[-1][1] == body
+
+
+def test_captured_rejected_body_is_bounded_and_decoded():
+    body = b"x" * 50
+    capture = eval_p7._CapturingTransport(
+        HTTPJudgeTransport(
+            transport=_wire(
+                "application/json", gzip.compress(body), **{"content-encoding": "gzip"}
+            )
+        )
+    )
+    with pytest.raises(JudgeError):
+        _send(capture, limit=20)
+    assert bytes(capture.body) == body[:20]
+
+
+def test_debug_keeps_the_raw_body_of_a_stream_the_transport_rejected(harness):
+    h = harness.seed().export()
+    patched = HTTPJudgeTransport.send
+
+    def send(transport, **kwargs):
+        if "z.ai" in kwargs["endpoint"]:
+            return ORIGINAL_SEND(transport, **kwargs)
+        return patched(transport, **kwargs)
+
+    h.mp.setattr(HTTPJudgeTransport, "send", send)
+    h.mp.setattr(
+        httpx2,
+        "AsyncHTTPTransport",
+        lambda **_: _wire("text/event-stream", b"data: {broken\n\n"),
+    )
+    debug(h, "wire-debug")
+    directory = h.ws / "debug/wire-debug"
+    assert (directory / "zai-001.raw").read_bytes() == b"data: {broken\n\n"
+    record = json.loads((directory / "zai-001.json").read_bytes())
+    assert record["observation"]["error_code"] == "JUDGE_OUTPUT_INVALID"
+    assert len(list(directory.glob("zai-*.raw"))) == 12

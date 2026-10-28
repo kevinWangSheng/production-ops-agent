@@ -27,13 +27,23 @@ import re
 import stat
 import subprocess
 import sys
+import zlib
 from collections import Counter
-from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from collections.abc import (
+    AsyncIterator,
+    Callable,
+    Iterable,
+    Iterator,
+    Mapping,
+    Sequence,
+)
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any, Literal, NoReturn, TypeVar
+
+import httpx2
 
 from opspilot.evaluation import (
     Manifest,
@@ -1781,11 +1791,77 @@ def _formal_raw_outputs(
             n += 1
 
 
+class _WireTap(httpx2.AsyncBaseTransport):
+    """Copies response bytes off the wire, bounded, as the client reads them."""
+
+    def __init__(self, inner: httpx2.AsyncBaseTransport, limit: int) -> None:
+        self.inner = inner
+        self.limit = limit
+        self.wire = bytearray()
+        self.encoding = ""
+
+    async def handle_async_request(self, request: httpx2.Request) -> httpx2.Response:
+        response = await self.inner.handle_async_request(request)
+        self.encoding = response.headers.get("content-encoding", "").strip().lower()
+        stream = response.stream
+        tap = self
+        media = response.headers.get("content-type", "").split(";", 1)[0]
+        if (
+            200 <= response.status_code < 300
+            and media.strip().lower() != "text/event-stream"
+        ):
+            # HTTPJudgeTransport rejects this body unread; read it here, bounded.
+            try:
+                async for chunk in stream:  # type: ignore[union-attr]
+                    self.wire += chunk[: max(0, self.limit - len(self.wire))]
+                    if len(self.wire) >= self.limit:
+                        break
+            finally:
+                await stream.aclose()  # type: ignore[union-attr]
+            return httpx2.Response(
+                response.status_code,
+                headers=response.headers,
+                content=bytes(self.wire),
+                extensions=response.extensions,
+            )
+
+        class Tee(httpx2.AsyncByteStream):
+            async def __aiter__(self) -> AsyncIterator[bytes]:
+                async for chunk in stream:  # type: ignore[union-attr]
+                    tap.wire += chunk[: max(0, tap.limit - len(tap.wire))]
+                    yield chunk
+
+            async def aclose(self) -> None:
+                await stream.aclose()  # type: ignore[union-attr]
+
+        return httpx2.Response(
+            response.status_code,
+            headers=response.headers,
+            stream=Tee(),
+            extensions=response.extensions,
+        )
+
+    async def aclose(self) -> None:
+        await self.inner.aclose()
+
+    def body(self) -> bytes:
+        """The tapped bytes, gzip/deflate undone where possible (same bound)."""
+        if self.encoding in ("gzip", "deflate"):
+            try:
+                return zlib.decompressobj(47).decompress(bytes(self.wire), self.limit)
+            except zlib.error:
+                pass
+        return bytes(self.wire)
+
+
 class _CapturingTransport:
     """Keeps the bytes of the last response judge_once read (P7-D20).
 
     The body stays in memory; debug writes it only for a rejected answer. A
-    non-2xx body is read here, bounded, since judge_once never iterates it.
+    non-2xx body is read here, bounded, since judge_once never iterates it. An
+    HTTPJudgeTransport that rejects a 2xx body itself (wrong content type,
+    malformed or cut stream) returns nothing, so its bytes come from a tap on
+    the HTTP transport underneath; the library is unchanged.
     """
 
     def __init__(self, inner: JudgeTransport) -> None:
@@ -1805,13 +1881,25 @@ class _CapturingTransport:
     ) -> JudgeHTTPResponse:
         self.body = bytearray()
         self.sends.append((_request_input_hash(body), self.body))
-        response = self.inner.send(
-            endpoint=endpoint,
-            headers=headers,
-            body=body,
-            timeout_seconds=timeout_seconds,
-            max_response_bytes=max_response_bytes,
-        )
+        inner, tap = self.inner, None
+        if type(inner) is HTTPJudgeTransport:
+            tap = _WireTap(
+                inner.transport or httpx2.AsyncHTTPTransport(retries=0),
+                max_response_bytes,
+            )
+            inner = HTTPJudgeTransport(transport=tap)
+        try:
+            response = inner.send(
+                endpoint=endpoint,
+                headers=headers,
+                body=body,
+                timeout_seconds=timeout_seconds,
+                max_response_bytes=max_response_bytes,
+            )
+        except BaseException:
+            if tap is not None:
+                self.body += tap.body()
+            raise
         if type(response.status_code) is int and 200 <= response.status_code < 300:
             return JudgeHTTPResponse(response.status_code, self._kept(response.chunks))
         for chunk in response.chunks:
