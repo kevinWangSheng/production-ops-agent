@@ -1,7 +1,7 @@
 # #244 原始资料保留期清理（关闭后 30 天）
 
-- 状态：进行中（合同 r2；PR-1 #377 实现完成，待独立验收测试与审查）
-- 更新日期：2026-10-27
+- 状态：进行中（合同 r3；PR-1 #377、PR-3 #382 已合并；PR-2 清理 CLI 实施中，worktree `poa-244-cli-impl`（分支 `feature/F13-244-retention-cli`）/ 独立测试 `poa-244-cli-tests`（`chore/244-pr2-acceptance-tests`））
+- 更新日期：2026-10-28
 - 依据：[issue #244](https://github.com/kevinWangSheng/production-ops-agent/issues/244) Agent Brief；C3 §11（保留与删除）、§7（PostgreSQL 业务记录是恢复权威）；[F13 第 4 步合同](2026-10-15-f13-step4-contract.md) U7；[M1-03 记录](2026-10-05-m1-03-postmortem.md) D12；ADR-0006。功能 F13 相关，不改 F13 验收。
 - 裁决：`~/.agent/handoffs/opspilot-rulings-2026-10-27.md` 第 2、3 节（下称「裁决」）；预审：`~/.agent/handoffs/opspilot-prereview-244-2026-10-27.md`（Codex gpt-6-astra→gpt-6-sol，r0.1，基线 `17bc865e`，下称「预审」）。
 - 工作区：PR-1 `feature/F13-244-retention-schema`，`/Users/shenghuikevin/dev/AI/poa-244-impl`（起点 origin/main 17bc865e，PR #377）；独立测试 `chore/244-pr1-acceptance-tests`，`poa-244-tests`。
@@ -35,6 +35,29 @@
 | R1–R6 | 可逆默认照预审：三态取值与回填（R1）；已清理证据 API 返回 200 + `cleaned`（R2）；F6 用 `STORED_OBSERVATION_DATA_CLEANED`、发布重放用 `REPLAY_DATA_CLEANED`，与「被篡改」区分（R3）；CLI 输出对象 ID、hash、原因与依赖（R4）；小事务批次、失败项单独记录（R5）；`RETENTION_GRANTS` 独立声明，不入 `RUNTIME_GRANTS`（R6） | 预审 §2 可逆默认 |
 | r2-L1 | 行锁需要表上至少一列 UPDATE：`opspilot_retention` 对 incidents、runs、observation_sessions 各授一列 lock-only UPDATE，配守卫触发器拒绝其任何实际 UPDATE（42501）；F13 表无锁或写权限，靠事故行锁 + 锁后复查（新增知识引用都要经过本事故 under_review 版本，生成与批准路径先锁事故行；论证见 PR #377） | lead 2026-10-27，按 0011 lock-only 先例 |
 
+### PR-2 合同补充（r3，lead 2026-10-28，均为「多保留」方向的可逆默认，依据见各行）
+
+| 编号 | 要点 | 依据 |
+|---|---|---|
+| r3-A 归属 | 五类行按下面的方式归到事故：evidence → `run_id` 所属 Run 的事故；恢复读数 → 观察会话的事故；告警投递 → `incident_id`；发布查询结果 / 发布对比查询 → `opspilot_release_incident_links` 的 `incident_id` 与 `related_incident_id`（经样本 / 对比找到发布观察）。一行只在它归属的**全部**事故都可清理时才清理；归属不到任何事故的行（`incident_id` 为空的告警投递、未关联事故的发布观察）不清理 | 合同 U1「无 close 时间的不动」同向保守；0021 只在异常被消费时建立事故关联 |
+| r3-B 合并 | 按 `merged_into_incident_id` 指针把被并入事故与保留事故视为一组：组内任一事故不满足清理条件，整组都不清理 | #245 合并语义：被并入事故的告警与发布已挂到保留事故 |
+| r3-C 评测依赖 | 已核对：评测资料是仓库文件（`evals/`），PG 中没有引用事故、Run 或证据的评测表，「冻结评测依赖」在 PG 侧无可阻挡的对象；本轮不写判定、不写测试。将来评测引用 PG 行时再加 | `grep opspilot_ opspilot/evaluation/` 无表；C3 §11「评测资料独立归档」 |
+| r3-D 接口 | 见下「清理 CLI 公开接口」 | 可逆技术细节，lead 钉死以便独立测试作者与实现者对齐 |
+| r3-D 补充 | `failed` 行的 `error` = `"<异常类名>: <主消息>"`，psycopg 错误取 `diag.message_primary`；不含 detail/context/hint，避免行值进运维日志 | lead 2026-10-28，独立验收 AC4 |
+
+#### 清理 CLI 公开接口（r3-D）
+
+- 进程入口：`python -m opspilot.retention [--apply] [--days N]`。DSN 只读环境变量 `OPSPILOT_RETENTION_DSN`（以属于 `opspilot_retention` 的 login 连接）；未设置时退出码 2。另加 `make retention`（dry-run）与 `make retention-apply` 两个运维入口，与 `make migrate` 同级。
+- 天数：默认 30；`N < 30`（含 0、负数、非整数）退出码 2，stderr 写 `RETENTION_DAYS_INVALID`，零写入。没有关闭开关。
+- 库函数（测试接缝）：`opspilot.retention.run_retention(dsn: str, *, days: int = 30, apply: bool = False, after_scan: Callable[[], None] | None = None) -> RetentionReport`。`after_scan` 在扫描出候选之后、对任何事故加锁之前调用一次（竞态测试用）。`days < 30` 抛 `ValueError("RETENTION_DAYS_INVALID")`。
+- `RetentionReport`：`lines: tuple[dict, ...]`（即下面的 JSON 行）、`failed: int`。
+- 输出：stdout 每行一个 JSON 对象，三种：
+  - `{"kind": "blocked", "incident_id": str, "blocked_by": [str, ...]}`：仍有 `present` 载荷的事故，及被阻挡合并组的全部成员（各列自己的原因；本身无阻挡的成员为 `MERGE_GROUP_BLOCKED`）。`blocked_by` 取值：`NOT_CLOSED`、`CLOSED_AT_MISSING`、`WITHIN_RETENTION`、`ACTIVE_RUN`、`ACTIVE_OBSERVATION`、`POSTMORTEM_GENERATION_PENDING`、`DRAFT_UNDER_REVIEW`、`ACTIVE_KNOWLEDGE`、`MERGE_GROUP_BLOCKED`、`CHANGED_AFTER_SCAN`（锁后复查不再满足）。
+  - `{"kind": "candidate" | "cleaned" | "failed", "incident_id": str, "table": <五个表名之一>, "object_id": str, "raw_sha256": str | null, "error"?: str}`。`object_id`：evidence 为 `evidence_id`；读数 `"<sample_id>:<signal_name>"`；发布查询 `"<sample_id>:<query_key>"`；发布对比 `"<comparison_id>:<query_key>"`；告警投递 `str(delivery_id)`。dry-run 只出 `candidate`；`--apply` 出 `cleaned` / `failed`。
+  - 最后一行 `{"kind": "summary", "apply": bool, "days": int, "candidates": int, "cleaned": int, "failed": int, "blocked": int}`。
+- 退出码：0 无失败；1 有 `failed` 行；2 配置错误。
+- 批次：一个事故（r3-B 为一组）一个事务；锁序 incident（按 id 升序）→ run / session → postmortem / knowledge；锁后复查全部条件，不满足输出 `blocked` + `CHANGED_AFTER_SCAN` 且不写；单行更新失败记 `failed`，同批其余事故照常提交。
+
 ## 实施切分（均目标 main，不 stacked）
 
 1. PR-1 schema + 角色 + 守卫（用户门：新数据库角色与权限、迁移 0023）：`closed_at`、raw 可空、`payload_state` 与回填、P2 写入路径、`opspilot_retention` 与 `RETENTION_GRANTS`、不可变触发器对清理更新的受限豁免。
@@ -62,6 +85,13 @@
 - PR-3 机器人对 8076e164 新提 1 条（采纳）：F6 有已清理读数的样本仍把每行保留的信号名、查询、来源、时间窗与冻结 profile 核对，只跳过依赖原文的检查；`_impl` 测试先红后绿，F6/F7/F11 相关 333 条通过。
 - PR-3 机器人对 00853272 新提 1 条（采纳）：对比查询行属于本对比的绑定校验提到 cleaned 分支之前；`_impl` 测试先红后绿，发布重放相关 332 条通过。
 - PR-3 机器人对 0fa60d24 新提 1 条（lead 采纳并修）：恢复读数 API 对已清理读数的畸形保留哈希返回 `hashes_verified: false`，与证据 API 和重放一致；absent 读数不变。`_impl` 测试先红后绿，Web/证据相关 392 条通过。
+- PR-2 实现（`opspilot/retention.py`，`make retention` / `make retention-apply`）可逆决定：「复盘生成待定」= 生成尝试 `running`、生成租约未过期或退回后待重新生成（`pending_regeneration_version` 非空）；「活跃 Run」= `close` 会取消的 5 个状态；「活跃观察」= 会话 `authorized`；事务单元为合并组，并与跨组归属行（发布关联 `incident_id` + `related_incident_id`）所涉的组合并；多事故归属行的输出 `incident_id` 取归属中 id 最小者；锁后复查失败时对该单元涉及的事故各出一行 `CHANGED_AFTER_SCAN`。`RETENTION_GRANTS` 未改。
+- PR-2 独立审查（Claude Fable 5.1，Codex 容量满）0 阻塞，2 可选采纳：① 单元级错误（加锁/复查的锁超时、死锁、断连）回滚该单元，每个事故一行 `failed`（`table`/`object_id`/`raw_sha256` 为 null，`error` 同规则），继续下一单元；连接已断则停止但仍输出 summary。② 被阻挡合并组的全部成员都输出 `blocked`（r3-D 措辞已改）。`_impl` 测试先红后绿。
+- PR-2 lead 裁决（不改代码）：「复盘生成待定」保持窄定义（running 尝试、未过期租约、待重新生成），生成只读 view 与元数据、不读 raw（`jobs.py:567-571`），清理不影响之后的生成；F13「未终态」即非终态尝试。
+- PR-2 lead 裁决：`GenerationStore.claim` 不锁事故行，可能落在复查与提交之间；同理无害（生成不读 raw）。
+- PR-2 lead 裁决：发布观察会话不计入 `ACTIVE_OBSERVATION`；产品中不可达（关联需要 ending，已结束的发布会话不会再变）。
+- PR-2 小清理：合并组与事务单元共用一个 union-find（`_Sets`），去掉 `reasons.get(m, ["NOT_CLOSED"])` 的死哨兵。
+- PR-2 机器人 P2（b20805f2，采纳）：合并组中已无 present 行的成员不在组映射里，apply 建单元时 `KeyError`（部分清理后重试即可触发）；`_merge_groups` 改为给组内全部成员建键。`_impl` 测试先红后绿。
 
 ## 下一步与交接
 
