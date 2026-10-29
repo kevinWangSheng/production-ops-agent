@@ -349,3 +349,38 @@ def test_formal_keeps_an_empty_rejected_response_but_not_a_refused_connection(
     assert (directory / "zai-001.raw").read_bytes() == b""
     assert (directory / "openai-001.json").exists()
     assert not list(directory.glob("openai-*.raw"))
+
+
+def test_tuning_debug_ignores_a_calibration_pack_without_a_formal_row(harness):
+    h = harness.seed().export().annotations()
+    validation = [i for i in h.items if i.split == "validation"]
+    # A stale pack on disk, never registered: still blocks formal, never frees.
+    pack = h.private / "stale-workspace/calibration/old-run/label-pack/items.json"
+    pack.parent.mkdir(parents=True)
+    pack.write_text(
+        json.dumps(
+            {
+                "items": [
+                    {"split": "validation", "source_family": i.source_family}
+                    for i in validation
+                ]
+            }
+        )
+    )
+    h.costs("tuning-debug")
+    before = snapshot(h.root)
+    h.cli(
+        "debug",
+        "--session",
+        "tuning-debug",
+        "--judge-env",
+        h.env,
+        "--tuning",
+        "--item",
+        validation[0].item_id,
+        code=3,
+        reason="VALIDATION_EXPOSURE_FORBIDDEN",
+    )
+    assert snapshot(h.root) == before and not h.calls
+    h.cli("debug", "--session", "tuning-debug", "--judge-env", h.env, "--tuning")
+    assert len(h.calls) == 12 * 3

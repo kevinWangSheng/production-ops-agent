@@ -1977,7 +1977,7 @@ def debug_judge(
     exposed: set[str] = set()
     if tuning:
         _registry_ready(ws)
-        exposed = _exposure(ws, kind="debug")[0]
+        exposed = _exposure(ws, kind="debug", registered_only=True)[0]
 
     def allowed(item: CalibrationItem) -> bool:
         return item.split == "debug" or item.source_family in exposed
@@ -2241,14 +2241,18 @@ def _item_sources(
 
 
 def _exposure(
-    ws: Workspace, *, kind: Literal["formal", "debug"]
+    ws: Workspace,
+    *,
+    kind: Literal["formal", "debug"],
+    registered_only: bool = False,
 ) -> tuple[set[str], set[tuple[str, str]]]:
     """Families and sources a ``kind`` registration must not reuse.
 
     formal: every registered family/source (formal validation or debug) and
     every validation family in any workspace's calibration pack; debug: the
     formal exposure only. Rows without ``kind`` predate debug registration and
-    are formal rows.
+    are formal rows. ``registered_only`` skips the pack scan: P7-D21 frees for
+    tuning only what a formal row registered, never a pack found on disk.
     """
     seen_families: set[str] = set()
     seen_sources: set[tuple[str, str]] = set()
@@ -2274,7 +2278,8 @@ def _exposure(
             (str(source.get("round_id")), str(source.get("attempt_id")))
             for source in row["sources"]
         )
-    for path in sorted(ws.private_root.glob("*/calibration/*/label-pack/items.json")):
+    packs = ws.private_root.glob("*/calibration/*/label-pack/items.json")
+    for path in () if registered_only else sorted(packs):
         obj = _loads(_read_file(path))
         entries = obj.get("items") if type(obj) is dict else None
         if type(entries) is not list or any(type(e) is not dict for e in entries):
@@ -2310,8 +2315,10 @@ def _register(
         fcntl.flock(fd, fcntl.LOCK_EX)
         seen_families, seen_sources = _exposure(ws, kind=kind)
         reuse_families, reuse_sources = reuse
-        if not reuse_families <= seen_families:
-            _fail("VALIDATION_EXPOSURE_FORBIDDEN")
+        if reuse_families:
+            registered = _exposure(ws, kind=kind, registered_only=True)[0]
+            if not reuse_families <= registered:
+                _fail("VALIDATION_EXPOSURE_FORBIDDEN")
         if (families - reuse_families) & seen_families or (
             sources - reuse_sources
         ) & seen_sources:
