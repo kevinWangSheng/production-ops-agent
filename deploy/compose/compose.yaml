@@ -1,0 +1,185 @@
+# OpsPilot control-side install (#392). Run it through deploy/compose/install.sh,
+# which generates the secret files, builds or pulls the product image and
+# orders the steps: postgres -> migrate -> init-roles -> runtimes (C3 §11:
+# migrations run with every runtime stopped; runtimes verify the schema head
+# on start). The depends_on conditions below encode the same order for a
+# plain `docker compose up`, but upgrades must not rely on them.
+#
+# Every credential is a per-service file secret from OPSPILOT_SECRETS_DIR
+# (outside the repository); nothing secret is written in this file. Database
+# passwords reach libpq through `passfile=`; the web's user hashes and event
+# token digests through <NAME>_FILE, and the worker's OPSPILOT_OTEL_* settings
+# from its worker_env file (both by deploy/docker-entrypoint.sh).
+# PostgreSQL publishes no host port; the workbench is published on the host
+# loopback only.
+
+x-product: &product
+  image: ${OPSPILOT_IMAGE:-opspilot:local}
+  pull_policy: never
+  # The operator's own non-root uid, so the 0600 secret files are readable
+  # in the container (install.sh refuses to run as root).
+  user: "${OPSPILOT_RUNTIME_UID:?run deploy/compose/install.sh}:${OPSPILOT_RUNTIME_GID:?run deploy/compose/install.sh}"
+  read_only: true
+  tmpfs:
+    - /tmp
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+
+x-owner-dsn: &owner-dsn "host=postgres port=5432 dbname=opspilot user=opspilot_owner passfile=/run/secrets/owner_pgpass"
+
+services:
+  postgres:
+    # Official postgres:17.9 multi-platform index (same digest as CI).
+    image: postgres@sha256:2a0d0fe14825b0939f78a8cad5cd4e6aa68bf94d0e5dd96e24b6d23af4315545
+    environment:
+      POSTGRES_USER: opspilot_owner
+      POSTGRES_DB: opspilot
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    secrets:
+      - postgres_password
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # TCP, not the socket: during first-time init the entrypoint's
+      # temporary server listens on the socket only.
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "opspilot_owner", "-d", "opspilot"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
+  migrate:
+    <<: *product
+    command: ["python", "-m", "opspilot.schema", "migrate"]
+    environment:
+      OPSPILOT_DSN: *owner-dsn
+    secrets:
+      - owner_pgpass
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  init-roles:
+    <<: *product
+    command: ["python", "-m", "opspilot.deploy.roles"]
+    environment:
+      OPSPILOT_DSN: *owner-dsn
+    secrets:
+      - owner_pgpass
+      - web_pgpass
+      - worker_pgpass
+      - observer_pgpass
+      - retention_pgpass
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: "no"
+
+  web:
+    <<: *product
+    command: ["python", "-m", "opspilot.web", "serve"]
+    environment:
+      OPSPILOT_WEB_DSN: "host=postgres port=5432 dbname=opspilot user=opspilot_web_app passfile=/run/secrets/web_pgpass"
+      OPSPILOT_BIND: "0.0.0.0:8080"
+      # Derived from the published port only, so the two cannot drift.
+      OPSPILOT_ALLOWED_ORIGINS: "http://127.0.0.1:${OPSPILOT_WEB_HOST_PORT:-18080},http://localhost:${OPSPILOT_WEB_HOST_PORT:-18080}"
+      OPSPILOT_UI_USERS_FILE: /run/secrets/web_ui_users
+      OPSPILOT_EVENT_TOKENS_FILE: /run/secrets/web_event_tokens
+      OPSPILOT_AUTH_REVISION: "${OPSPILOT_AUTH_REVISION:-compose}"
+      OPSPILOT_TOOL_PROFILE: "${OPSPILOT_TOOL_PROFILE:-fixture}"
+    secrets:
+      - web_pgpass
+      - web_ui_users
+      - web_event_tokens
+    ports:
+      - target: 8080
+        host_ip: 127.0.0.1
+        published: "${OPSPILOT_WEB_HOST_PORT:-18080}"
+        protocol: tcp
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 8080), 2)"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    depends_on:
+      init-roles:
+        condition: service_completed_successfully
+    # One replica only: the web runs the automatic observation passes.
+    restart: unless-stopped
+
+  # Exercised by #393 (real investigation through the stack); started only
+  # with COMPOSE_PROFILES=agent once worker_env / observer_env are filled in.
+  worker:
+    <<: *product
+    profiles: ["agent"]
+    command: ["python", "-m", "opspilot.worker_main"]
+    environment:
+      OPSPILOT_WORKER_DSN: "host=postgres port=5432 dbname=opspilot user=opspilot_worker_app passfile=/run/secrets/worker_pgpass"
+      # Model and LangSmith keys, and for OPSPILOT_TOOL_PROFILE=otel-demo the
+      # OPSPILOT_OTEL_* endpoints and credentials (exported by the entrypoint).
+      OPSPILOT_ENV_FILE: /run/secrets/worker_env
+      OPSPILOT_WORKER_CAPACITY: "2"
+      OPSPILOT_POOL_MAX_SIZE: "4"
+      OPSPILOT_TOOL_PROFILE: "${OPSPILOT_TOOL_PROFILE:-fixture}"
+    secrets:
+      - worker_pgpass
+      - worker_env
+    depends_on:
+      init-roles:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  observer:
+    <<: *product
+    profiles: ["agent"]
+    command: ["python", "-m", "opspilot.observer"]
+    environment:
+      OPSPILOT_OBSERVER_DSN: "host=postgres port=5432 dbname=opspilot user=opspilot_observer_app passfile=/run/secrets/observer_pgpass"
+      OPSPILOT_OBSERVER_ENV_FILE: /run/secrets/observer_env
+      OPSPILOT_OBSERVER_PROMETHEUS_URL: "${OPSPILOT_OBSERVER_PROMETHEUS_URL:-}"
+    secrets:
+      - observer_pgpass
+      - observer_env
+    depends_on:
+      init-roles:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  # Manual raw-payload cleanup (#244): dry run by default.
+  retention:
+    <<: *product
+    profiles: ["maintenance"]
+    command: ["python", "-m", "opspilot.retention", "--days", "30"]
+    environment:
+      OPSPILOT_RETENTION_DSN: "host=postgres port=5432 dbname=opspilot user=opspilot_retention_app passfile=/run/secrets/retention_pgpass"
+    secrets:
+      - retention_pgpass
+    restart: "no"
+
+volumes:
+  pgdata:
+
+secrets:
+  postgres_password:
+    file: ${OPSPILOT_SECRETS_DIR:?run deploy/compose/install.sh}/postgres_password
+  owner_pgpass:
+    file: ${OPSPILOT_SECRETS_DIR:?run deploy/compose/install.sh}/owner_pgpass
+  web_pgpass:
+    file: ${OPSPILOT_SECRETS_DIR:?run deploy/compose/install.sh}/web_pgpass
+  worker_pgpass:
+    file: ${OPSPILOT_SECRETS_DIR:?run deploy/compose/install.sh}/worker_pgpass
+  observer_pgpass:
+    file: ${OPSPILOT_SECRETS_DIR:?run deploy/compose/install.sh}/observer_pgpass
+  retention_pgpass:
+    file: ${OPSPILOT_SECRETS_DIR:?run deploy/compose/install.sh}/retention_pgpass
+  web_ui_users:
+    file: ${OPSPILOT_SECRETS_DIR:?run deploy/compose/install.sh}/web_ui_users
+  web_event_tokens:
+    file: ${OPSPILOT_SECRETS_DIR:?run deploy/compose/install.sh}/web_event_tokens
+  worker_env:
+    file: ${OPSPILOT_SECRETS_DIR:?run deploy/compose/install.sh}/worker_env
+  observer_env:
+    file: ${OPSPILOT_SECRETS_DIR:?run deploy/compose/install.sh}/observer_env
