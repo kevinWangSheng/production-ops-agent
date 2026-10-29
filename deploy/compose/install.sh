@@ -82,18 +82,24 @@ valid_project() {
     esac
 }
 
+# Whether this project's database volume exists. Output is captured first
+# (no early-exiting pipe), so a failing docker stops the run.
+volume_exists() {
+    local volumes
+    volumes="$(docker volume ls --quiet --filter "label=com.docker.compose.project=$OPSPILOT_PROJECT")"
+    case $'\n'"$volumes"$'\n' in
+        *$'\n'"${OPSPILOT_PROJECT}_pgdata"$'\n'*) return 0 ;;
+    esac
+    return 1
+}
+
 # A database volume belongs to the secrets it was initialised with; a second
 # set would lock every login out of it.
 check_install_binding() {
-    local recorded volumes
+    local recorded
     recorded="$(recorded_secrets_dir "$OPSPILOT_PROJECT")"
     [ -n "$recorded" ] && [ "$recorded" != "$SECRETS_DIR" ] || return 0
-    # Captured first (no early-exiting pipe): a failing docker stops the run.
-    volumes="$(docker volume ls --quiet --filter "label=com.docker.compose.project=$OPSPILOT_PROJECT")"
-    case $'\n'"$volumes"$'\n' in
-        *$'\n'"${OPSPILOT_PROJECT}_pgdata"$'\n'*) ;;
-        *) return 0 ;;
-    esac
+    volume_exists || return 0
     die "project $OPSPILOT_PROJECT's database was installed with secrets in $recorded; set OPSPILOT_SECRETS_DIR=$recorded (or remove its data first: uninstall --purge-data with that directory)"
 }
 
@@ -180,6 +186,25 @@ placeholder_env() {
     printf '# %s: KEY=value lines read by the %s (see deploy/compose/compose.yaml)\n' "$1" "$2"
 }
 
+# Every file ensure_secrets writes.
+readonly SECRET_FILES=(postgres_password owner_pgpass web_pgpass worker_pgpass
+    observer_pgpass retention_pgpass ui_password alertmanager_token
+    web_ui_users web_event_tokens worker_env observer_env)
+
+# Secrets are generated only for a database that does not exist yet: against
+# a live volume a regenerated password no longer matches its role (or
+# silently changes the operator's), so a missing or empty file is refused
+# before anything is built, written or started.
+require_secrets_for_live_volume() {
+    volume_exists || return 0
+    local name missing=()
+    for name in "${SECRET_FILES[@]}"; do
+        [ -s "$SECRETS_DIR/$name" ] || missing+=("$name")
+    done
+    [ ${#missing[@]} -eq 0 ] ||
+        die "project $OPSPILOT_PROJECT's database volume exists but ${missing[*]} in $SECRETS_DIR is missing or empty; restore it from a backup (it is never regenerated for an existing database), or remove the data first with uninstall --purge-data"
+}
+
 ensure_secrets() {
     umask 077
     write_once postgres_password random_hex
@@ -244,6 +269,7 @@ deploy() {
 
 cmd_install() {
     resolve_settings
+    require_secrets_for_live_volume
     prepare_image
     ensure_secrets
     save_settings
@@ -253,6 +279,7 @@ cmd_install() {
 cmd_upgrade() {
     resolve_settings
     [ -s "$SECRETS_DIR/postgres_password" ] || die "no install found in $SECRETS_DIR; run install first"
+    require_secrets_for_live_volume
     prepare_image
     ensure_secrets
     save_settings

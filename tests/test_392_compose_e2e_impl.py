@@ -42,6 +42,8 @@ def stack(tmp_path_factory):
     env = {
         **os.environ,
         "OPSPILOT_SECRETS_DIR": str(secrets),
+        # The install record stays with the test, not in the real ~/.local/state.
+        "XDG_STATE_HOME": str(tmp_path_factory.mktemp("state")),
         "OPSPILOT_PROJECT": PROJECT,
         "OPSPILOT_WEB_HOST_PORT": PORT,
     }

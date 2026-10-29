@@ -154,7 +154,7 @@ def test_install_migrates_and_creates_roles_before_any_runtime_starts(host):
 
 def test_the_image_is_built_before_any_compose_step(host):
     assert host().returncode == 0
-    calls = [c["args"] for c in host.calls()]
+    calls = [c["args"] for c in host.calls() if c["args"][:1] != ["volume"]]
     assert calls[0][:1] == ["build"]
     assert "opspilot:local" in calls[0]
 
@@ -323,3 +323,56 @@ def test_another_secrets_dir_is_accepted_once_the_volume_is_gone(host, tmp_path)
     host.reset()
     assert host("compose", "ps", OPSPILOT_PROJECT="opspilot-t").returncode == 0
     assert _secrets_dirs(host.calls()) == {str(other.resolve())}
+
+
+LIVE_VOLUME = {
+    "OPSPILOT_PROJECT": "opspilot-t",
+    "FAKE_DOCKER_VOLUMES": "opspilot-t_pgdata",
+}
+
+
+@pytest.mark.parametrize("command", ["install", "upgrade"])
+@pytest.mark.parametrize("damage", ["missing", "empty"])
+def test_a_missing_or_empty_secret_for_a_live_volume_is_refused_untouched(
+    host, command, damage
+):
+    assert host(OPSPILOT_PROJECT="opspilot-t").returncode == 0
+    for name in ("web_pgpass", "ui_password"):
+        path = host.secrets / name
+        if damage == "missing":
+            path.unlink()
+        else:
+            path.write_text("")
+    before = {
+        path.name: path.read_bytes()
+        for path in host.secrets.iterdir()
+        if path.is_file()
+    }
+    host.reset()
+
+    result = host(command, **LIVE_VOLUME)
+
+    assert result.returncode != 0
+    assert "web_pgpass" in result.stderr and "ui_password" in result.stderr
+    after = {
+        path.name: path.read_bytes()
+        for path in host.secrets.iterdir()
+        if path.is_file()
+    }
+    assert after == before
+    assert not any(c["args"][:1] in (["compose"], ["build"]) for c in host.calls())
+    output = result.stdout + result.stderr
+    assert (host.secrets / "postgres_password").read_text().strip() not in output
+
+
+def test_a_complete_secret_set_for_a_live_volume_is_reused(host):
+    assert host(OPSPILOT_PROJECT="opspilot-t").returncode == 0
+    result = host("install", **LIVE_VOLUME)
+    assert result.returncode == 0, result.stderr
+    assert "generated" not in result.stdout
+
+
+def test_a_first_install_without_a_volume_generates_every_secret(host):
+    result = host(OPSPILOT_PROJECT="opspilot-t")
+    assert result.returncode == 0, result.stderr
+    assert all((host.secrets / name).stat().st_size > 0 for name in SECRET_FILES)
