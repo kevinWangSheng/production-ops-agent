@@ -6,7 +6,8 @@ docs/tasks/2026-10-18-eval-p7-calibration.md (P7-D1..D14; r3 P7-D17..D21).
     .venv/bin/python -m scripts.eval_p7 <command> --workspace W [options]
 
 Commands: init, import, rewrite, assemble, export-blind, import-annotation,
-brief, adjudicate, debug, freeze, formal, balance, cost, summary.
+brief, adjudicate, debug, freeze, formal, balance, cost, tune, triage-check,
+summary.
 
 Engineer script, not product code. It only calls the B3 judge/calibration
 functions (``judge_once``, ``freeze_label_pack``, ``run_calibration``,
@@ -39,7 +40,7 @@ from collections.abc import (
     Mapping,
     Sequence,
 )
-from dataclasses import dataclass, replace
+from dataclasses import asdict, dataclass, replace
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -98,6 +99,17 @@ from opspilot.evaluation.judge import (
 )
 from opspilot.evaluation.model import JudgedDiagnosis, ReportCapture
 from opspilot.evaluation.storage import load_summary_capture
+from opspilot.evaluation.tuning import CATEGORIES as TUNING_CATEGORIES
+
+# score_tuning and triage_rows are re-exported for the driver's callers.
+from opspilot.evaluation.tuning import (  # noqa: F401
+    TuningScore,
+    assess_tuning,
+    round_outcome,
+    score_tuning,
+    triage_rows,
+)
+from opspilot.evaluation.tuning import schedule as tuning_schedule
 from scripts import eval_live, eval_live_lab
 
 ID_PATTERN = re.compile(eval_live.ROUND_PATTERN)
@@ -1992,6 +2004,44 @@ def debug_judge(
         if any(i not in by_id for i in item_ids):
             _fail("SCHEMA_INVALID")
         selected = sorted((by_id[i] for i in item_ids), key=lambda i: i.item_id)
+    return _judge_session(
+        ws,
+        session_id=session_id,
+        ordered=ordered,
+        selected=selected,
+        exposed=exposed,
+        configs=configs,
+        transports=transports,
+        balance=balance,
+        tuning=tuning,
+        fields={"session": session_id, **({"tuning": True} if tuning else {})},
+    )
+
+
+def _judge_session(
+    ws: Workspace,
+    *,
+    session_id: str,
+    ordered: tuple[str, ...],
+    selected: Sequence[CalibrationItem],
+    exposed: set[str],
+    configs: Mapping[str, JudgeConfig],
+    transports: Mapping[str, JudgeTransport],
+    balance: BalanceReader | None,
+    tuning: bool,
+    fields: Mapping[str, Any],
+    precheck: Callable[[], None] | None = None,
+    outputs: Sequence[Path] = (),
+) -> tuple[DebugRecord, ...]:
+    """Section 8 steps 2a-4 and the serial sends; ``selected`` may repeat items.
+
+    ``precheck`` runs under the registry lock before the registration row is
+    appended; ``outputs`` are further files the caller writes afterwards.
+    """
+
+    def allowed(item: CalibrationItem) -> bool:
+        return item.split == "debug" or item.source_family in exposed
+
     # 2a. Provider binding and criterion binding, no side effects.
     _check_bindings(ordered, configs, transports, exact_configs=False)
     for provider in ordered:
@@ -2021,7 +2071,7 @@ def debug_judge(
             _balance_path(ws, session_id, "deepseek", phase)
             for phase in ("before", "after")
         ]
-    _preflight(ws, files=targets)
+    _preflight(ws, files=[*targets, *outputs])
     # 2b. Cross-workspace use registration: the first write of this command.
     _registry_ready(ws)
     families, sources = _item_sources(ws, selected)
@@ -2030,9 +2080,10 @@ def debug_judge(
         kind="debug",
         families=families,
         sources=sources,
-        fields={"session": session_id, **({"tuning": True} if tuning else {})},
+        fields=fields,
         # P7-D21: a formally exposed family is reusable for tuning in any split.
         reuse=_item_sources(ws, [i for i in selected if i.source_family in exposed]),
+        precheck=precheck,
     )
     if "deepseek" in ordered:
         _write_deepseek_balance(ws, session_id, "before", balance)
@@ -2104,6 +2155,268 @@ def _debug_comparison(
         if observed.status == "ok" and expected <= actual:
             counts["key_hit"] += 1
     return result
+
+
+# -- #398: tuning rounds -------------------------------------------------------------------
+
+MAX_TUNING_ROUNDS = 3
+
+
+@dataclass(frozen=True)
+class TuningRound:
+    session_id: str
+    round: int
+    rerun_of: str | None
+    scores: Mapping[str, TuningScore]
+    outcome: Literal["passed", "pending_user_decision", "failed"]
+    triage_rows: int
+
+
+def _frozen_pack(ws: Workspace) -> tuple[LabelPack, Mapping[str, BlindLabel], str]:
+    """The frozen label pack, still equal to the workspace's current labels."""
+    pack_hash = _sha(_read_ws(ws, ws.root / "label-pack/pack.json"))
+    pack = load_label_pack(ws.root / "label-pack", expected_pack_hash=pack_hash)
+    current, labels, adjudications_raw = _label_pack(ws)
+    # Byte-bound, not only decoded: the workspace files are written canonically,
+    # exactly as the frozen pack's files, so any edit is a mismatch.
+    annotations = [_annotation(ws, slot) for slot in (1, 2)]
+    current_raw = {
+        "items.json": _assembled(ws)[0],
+        "annotations-1.json": annotations[0][0] if annotations[0] else b"",
+        "annotations-2.json": annotations[1][0] if annotations[1] else b"",
+        "adjudications.json": adjudications_raw,
+    }
+    if current != pack or any(
+        raw != _read_ws(ws, ws.root / "label-pack" / name)
+        for name, raw in current_raw.items()
+    ):
+        _fail("HASH_MISMATCH")
+    return pack, labels, pack_hash
+
+
+def _tuning_rows(ws: Workspace) -> list[Mapping[str, Any]]:
+    """This workspace's ``tune`` registrations; older tuning debug rows have no round."""
+    found = []
+    for line in _read_file(ws.private_root / "exposure.jsonl").splitlines():
+        row = _loads(line) if line.strip() else None
+        if (
+            type(row) is dict
+            and row.get("kind") == "debug"
+            and row.get("tuning") is True
+            and row.get("workspace") == ws.workspace_id
+            and "round" in row
+        ):
+            if type(row["round"]) is not int or type(row.get("session")) is not str:
+                _fail("SCHEMA_INVALID")
+            found.append(row)
+    return found
+
+
+def _tuning_dir(ws: Workspace, session_id: str) -> Path:
+    return ws.root / "tuning" / session_id
+
+
+def _session_records(
+    ws: Workspace, session_id: str, provider: str
+) -> list[DebugRecord]:
+    records = []
+    n = 1
+    while _exists(path := ws.root / "debug" / session_id / f"{provider}-{n:03d}.json"):
+        record = _decode(DebugRecord, _read_ws(ws, path))
+        if record.session_id != session_id or record.provider != provider:
+            _fail("IDENTITY_MISMATCH")
+        records.append(record)
+        n += 1
+    return records
+
+
+_TRIAGE_FIELDS = ("item_id", "provider", "repetition", "hint")
+
+
+def _checked_triage(
+    ws: Workspace, session_id: str
+) -> tuple[Mapping[str, Any], list[Mapping[str, Any]]]:
+    """Score and triage files of a session, recomputed from its debug records.
+
+    Only ``category`` and ``label_concern`` are hand-edited; every machine field
+    and the score must still equal the recomputation, else TRIAGE_MISMATCH.
+    Uncategorised rows are TRIAGE_INCOMPLETE.
+    """
+    directory = _tuning_dir(ws, session_id)
+    score = _loads(_read_ws(ws, directory / "score.json"))
+    value = _loads(_read_ws(ws, directory / "triage.json"))
+    if (
+        type(score) is not dict
+        or type(score.get("providers")) is not dict
+        or type(value) is not dict
+        or set(value) != {"round", "session", "rows"}
+        or type(value["rows"]) is not list
+        or any(type(row) is not dict for row in value["rows"])
+    ):
+        _fail("SCHEMA_INVALID")
+    rows: list[Mapping[str, Any]] = value["rows"]
+    for row in rows:
+        if (
+            not {*_TRIAGE_FIELDS, "category"} <= set(row)
+            or not set(row) <= {*_TRIAGE_FIELDS, "category", "label_concern"}
+            or row["category"] is not None
+            and row["category"] not in TUNING_CATEGORIES
+            or type(row.get("label_concern", "")) is not str
+        ):
+            _fail("SCHEMA_INVALID")
+    pack, labels, _ = _frozen_pack(ws)
+    expected_rows: list[Mapping[str, Any]] = []
+    scores: dict[str, Any] = {}
+    # Rows were written in tune's provider order; the stored keys are sorted.
+    for provider in _ordered_providers(tuple(score["providers"])):
+        result, triage = assess_tuning(
+            pack, labels, _session_records(ws, session_id, provider)
+        )
+        scores[provider] = asdict(result)
+        expected_rows += [
+            {name: getattr(row, name) for name in _TRIAGE_FIELDS} for row in triage
+        ]
+    if (
+        scores != score["providers"]
+        or (value["round"], value["session"]) != (score.get("round"), session_id)
+        or [{k: row[k] for k in _TRIAGE_FIELDS} for row in rows] != expected_rows
+    ):
+        _fail("TRIAGE_MISMATCH")
+    if any(row["category"] is None for row in rows):
+        _fail("TRIAGE_INCOMPLETE")
+    return score, rows
+
+
+def _round_check(
+    ws: Workspace, round_number: int, rerun_of: str | None, prompt_hash: str
+) -> None:
+    """Q10/Q11: rounds 1..3 in order; one environment-only rerun per round."""
+    rows = _tuning_rows(ws)
+    highest = max((r["round"] for r in rows), default=0)
+    if rerun_of is None:
+        if round_number > MAX_TUNING_ROUNDS:
+            _fail("TUNING_ROUNDS_EXHAUSTED")
+        if round_number != highest + 1:
+            _fail("TUNING_ROUND_MISMATCH")
+        return
+    original = [r for r in rows if r["session"] == rerun_of and "rerun_of" not in r]
+    if not original:
+        _fail("TUNING_RERUN_FORBIDDEN")
+    if round_number != original[0]["round"] or round_number != highest:
+        _fail("TUNING_ROUND_MISMATCH")
+    if any("rerun_of" in r and r["round"] == round_number for r in rows):
+        _fail("TUNING_RERUN_USED")
+    try:
+        score, triage = _checked_triage(ws, rerun_of)
+    except P7Error as exc:
+        if exc.code != "TRIAGE_INCOMPLETE":
+            raise
+        _fail("TUNING_RERUN_FORBIDDEN")
+    if score.get("prompt_hash") != prompt_hash:
+        _fail("JUDGE_PROMPT_CHANGED")
+    if not triage or any(row["category"] != "eval_env" for row in triage):
+        _fail("TUNING_RERUN_FORBIDDEN")
+
+
+@_public
+def tune(
+    ws: Workspace,
+    *,
+    session_id: str,
+    round_number: int,
+    providers: tuple[str, ...],
+    configs: Mapping[str, JudgeConfig],
+    transports: Mapping[str, JudgeTransport],
+    balance: BalanceReader | None = None,
+    rerun_of: str | None = None,
+) -> TuningRound:
+    """#398: one formal-shape tuning round through the tuning debug path."""
+    _check_workspace(ws)
+    _check_id(session_id)
+    if rerun_of is not None:
+        _check_id(rerun_of)
+        if rerun_of == session_id:
+            _fail("SCHEMA_INVALID")
+    if type(round_number) is not int or round_number < 1:
+        _fail("SCHEMA_INVALID")
+    ordered = _ordered_providers(providers)
+    pack, labels, pack_hash = _frozen_pack(ws)
+    _registry_ready(ws)
+    exposed = _exposure(ws, kind="debug", registered_only=True)[0]
+    if any(i.split != "debug" and i.source_family not in exposed for i in pack.items):
+        _fail("VALIDATION_EXPOSURE_FORBIDDEN")
+    prompt_hash = _sha(judge.PROMPT.encode("utf-8"))
+
+    def precheck() -> None:
+        _round_check(ws, round_number, rerun_of, prompt_hash)
+
+    precheck()
+    directory = _tuning_dir(ws, session_id)
+    records = _judge_session(
+        ws,
+        session_id=session_id,
+        ordered=ordered,
+        selected=[item for item, _ in tuning_schedule(pack)],
+        exposed=exposed,
+        configs=configs,
+        transports=transports,
+        balance=balance,
+        tuning=True,
+        fields={
+            "session": session_id,
+            "tuning": True,
+            "round": round_number,
+            **({"rerun_of": rerun_of} if rerun_of is not None else {}),
+        },
+        precheck=precheck,
+        outputs=(directory / "score.json", directory / "triage.json"),
+    )
+    scores: dict[str, TuningScore] = {}
+    rows: list[Mapping[str, Any]] = []
+    for provider in ordered:
+        scores[provider], triage = assess_tuning(
+            pack, labels, [r for r in records if r.provider == provider]
+        )
+        rows += [asdict(row) for row in triage]
+    outcome = round_outcome(scores)
+    _write_new(
+        ws,
+        directory / "score.json",
+        canonical_bytes(
+            {
+                "round": round_number,
+                "session": session_id,
+                "rerun_of": rerun_of,
+                "prompt_hash": prompt_hash,
+                "label_pack_hash": pack_hash,
+                "providers": {p: asdict(v) for p, v in scores.items()},
+                "outcome": outcome,
+            }
+        ),
+    )
+    _write_new(
+        ws,
+        directory / "triage.json",
+        canonical_bytes({"round": round_number, "session": session_id, "rows": rows}),
+    )
+    return TuningRound(session_id, round_number, rerun_of, scores, outcome, len(rows))
+
+
+@_public
+def triage_check(ws: Workspace, session_id: str) -> Mapping[str, Mapping[str, int]]:
+    """Counts per provider and category; every started attempt is the denominator."""
+    _check_workspace(ws)
+    _check_id(session_id)
+    score, rows = _checked_triage(ws, session_id)
+    counts: dict[str, dict[str, int]] = {}
+    for provider, result in score["providers"].items():
+        counts[provider] = {"started": result["started"]}
+        for category in TUNING_CATEGORIES:
+            counts[provider][category] = sum(
+                row["provider"] == provider and row["category"] == category
+                for row in rows
+            )
+    return counts
 
 
 # -- section 9.1: freeze ---------------------------------------------------------------------
@@ -2300,6 +2613,7 @@ def _register(
     sources: set[tuple[str, str]],
     fields: Mapping[str, Any],
     reuse: tuple[set[str], set[tuple[str, str]]] = (set(), set()),
+    precheck: Callable[[], None] | None = None,
 ) -> None:
     """One cross-workspace check-and-append under ``flock`` (9.2.7, 8.2b).
 
@@ -2313,6 +2627,8 @@ def _register(
     fd = os.open(lock, os.O_RDWR | os.O_NOFOLLOW)
     try:
         fcntl.flock(fd, fcntl.LOCK_EX)
+        if precheck is not None:
+            precheck()  # #398: the round counter, rechecked while locked.
         seen_families, seen_sources = _exposure(ws, kind=kind)
         reuse_families, reuse_sources = reuse
         if reuse_families:
@@ -2627,6 +2943,13 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--currency")
     p.add_argument("--unknown", action="store_true")
     command("cost").add_argument("--session", required=True)
+    p = command("tune")
+    p.add_argument("--session", required=True)
+    p.add_argument("--round", dest="tuning_round", required=True)
+    p.add_argument("--providers", required=True)
+    p.add_argument("--judge-env", required=True)
+    p.add_argument("--rerun-of")
+    command("triage-check").add_argument("--session", required=True)
     command("summary")
     return parser
 
@@ -2647,6 +2970,14 @@ def _validate(args: argparse.Namespace) -> None:
         all(_ITEM.fullmatch(i) for i in getattr(args, "item", None) or ()),
         getattr(args, "judge_env", None) is None or Path(args.judge_env).is_absolute(),
     ]
+    checks.append(matches(ID_PATTERN, getattr(args, "rerun_of", None)))
+    if args.command == "tune":
+        providers = args.providers.split(",")
+        checks.append(re.fullmatch(r"[1-9][0-9]{0,2}", args.tuning_round) is not None)
+        checks.append(
+            len(set(providers)) == len(providers) <= len(PROVIDERS)
+            and set(providers) <= set(PROVIDERS)
+        )
     round_id = getattr(args, "round", None)
     if round_id is not None:
         checks.append(
@@ -2871,6 +3202,35 @@ def _run(
         )
     if command == "cost":
         return 0, "ok", "OK", {"cost": dict(cost_report(ws, args.session))}
+    if command == "tune":
+        providers = tuple(args.providers.split(","))
+        configs = _configs(args.judge_env, providers)
+        tuned = tune(
+            ws,
+            session_id=args.session,
+            round_number=int(args.tuning_round),
+            providers=providers,
+            configs=configs,
+            transports={p: HTTPJudgeTransport() for p in providers},
+            balance=_deepseek_reader(configs),
+            rerun_of=args.rerun_of,
+        )
+        extra = {
+            "session": tuned.session_id,
+            "round": tuned.round,
+            "rerun_of": tuned.rerun_of,
+            "outcome": tuned.outcome,
+            "scores": {p: asdict(v) for p, v in tuned.scores.items()},
+            "triage_rows": tuned.triage_rows,
+        }
+        if tuned.outcome == "passed":
+            return 0, "ok", "OK", extra
+        if tuned.outcome == "pending_user_decision":
+            return 6, "pending_user_decision", "PENDING_USER_DECISION", extra
+        return 1, "failed", "TUNING_FAILED", extra
+    if command == "triage-check":
+        triage_counts = triage_check(ws, args.session)
+        return 0, "ok", "OK", {"session": args.session, "triage": dict(triage_counts)}
     return 0, "ok", "OK", dict(summary(ws))
 
 
