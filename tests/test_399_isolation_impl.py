@@ -256,7 +256,7 @@ def raw_probe(**over: Any) -> dict[str, Any]:
             ],
             "kube_api": [
                 {"target": "n:6443", **NO_DNS},
-                {"target": "r:6443", **REFUSED},
+                {"target": "172.20.0.1:59424", **REFUSED},
             ],
             "prometheus_backend": [{"target": "10.0.0.9:9090", **UNREACH}],
             "internet": [{"target": "1.1.1.1:443", **UNREACH}],
@@ -504,3 +504,26 @@ def test_proxy_403_is_not_an_ip_level_failure_for_dns() -> None:
     raw = raw_probe()
     raw["tcp"]["internet"] = [{"target": "example.com:443", **NO_DNS}]
     assert "internet" not in isolation.observed_from_raw(raw, GOOD_LOG)["reach"]
+
+
+@pytest.mark.parametrize(
+    "companion,definitive",
+    [
+        ("other-name.example:443", False),
+        ("10.0.0.1:443", True),
+        ("[fd00::1]:443", True),
+        ("fd00::1:443", True),
+        ("10.0.0.1.example:443", False),
+    ],
+)
+def test_dns_pairing_needs_an_ip_literal_companion(
+    companion: str, definitive: bool
+) -> None:
+    raw = raw_probe()
+    raw["tcp"]["kube_api"] = [
+        {"target": "dns-only.example:443", **NO_DNS},
+        {"target": companion, **REFUSED},
+    ]
+    observed = isolation.observed_from_raw(raw, GOOD_LOG)
+    assert ("kube_api" in observed["reach"]) is definitive
+    assert evaluated(raw)["kube_api_unreachable"] is definitive

@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import ipaddress
 import json
 import re
 import subprocess
@@ -409,7 +410,9 @@ def observed_from_raw(
         reached = [r for r in attempts if r.get("ok") is True or r.get("status") == 200]
         # a DNS failure counts only beside an IP-level definitive failure
         ip_level = any(
-            r.get("ok") is False and r.get("errno") in DEFINITIVE_ERRNOS
+            r.get("ok") is False
+            and r.get("errno") in DEFINITIVE_ERRNOS
+            and _ip_literal(_target(r))
             for r in tcp.get(key, [])
         )
         unsure = [
@@ -459,6 +462,18 @@ CONTROL_MODEL = f"{hconfig.MODEL_HOST}:443"
 
 def _target(attempt: Any) -> Any:
     return attempt.get("target") if isinstance(attempt, Mapping) else None
+
+
+def _ip_literal(target: Any) -> bool:
+    """``host:port`` whose host is an IPv4/IPv6 literal (brackets allowed)."""
+    if not isinstance(target, str) or ":" not in target:
+        return False
+    host = target.rsplit(":", 1)[0].removeprefix("[").removesuffix("]")
+    try:
+        ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return True
 
 
 def _definitive(attempt: Mapping[str, Any], *, dns_counts: bool) -> bool:
