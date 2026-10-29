@@ -1,0 +1,21 @@
+# Build context of the product image (#392): only what the Dockerfile copies.
+*
+!pyproject.toml
+!uv.lock
+!.python-version
+!opspilot/
+!deploy/docker-entrypoint.sh
+
+# Never in the image, even below an allowed path.
+**/__pycache__
+**/*.pyc
+**/.env
+**/.env.*
+**/tmp/
+**/*.pem
+**/*.key
+.git
+.venv
+tmp/
+docs/evidence/
+.playwright-mcp
