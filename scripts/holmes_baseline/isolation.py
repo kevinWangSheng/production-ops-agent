@@ -25,6 +25,7 @@ import re
 import subprocess
 import sys
 import time
+from collections import Counter
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -323,7 +324,9 @@ with open("/proc/self/status") as f:
         if key in ("CapEff", "CapPrm", "CapBnd", "NoNewPrivs"):
             status[key] = value.strip()
 with open("/proc/self/mounts") as f:
-    mounts = sorted({line.split()[1] for line in f})
+    table = [line.split() for line in f]
+mounts = sorted({row[1] for row in table})
+fstypes = {row[1]: row[2] for row in table}
 out = {
     "uid": uid,
     "env_names": sorted(os.environ),
@@ -333,6 +336,7 @@ out = {
     "root_write_denied": root_write_denied,
     "proc_status": status,
     "mounts": mounts,
+    "fstypes": fstypes,
 }
 print("ISOLATION-PROBE " + json.dumps(out, sort_keys=True), flush=True)
 """
@@ -341,13 +345,62 @@ PROBE_MARK = "ISOLATION-PROBE "
 
 def probe_args(image: str, *, targets: Mapping[str, Any], **kw: Any) -> list[str]:
     """The real Run's ``docker run`` with only the entrypoint and command
-    replaced."""
-    return container.run_args(
+    replaced, and without ``--rm`` so ``docker inspect`` can read the
+    container's mounts after it exits (teardown removes it)."""
+    args = container.run_args(
         image,
         entrypoint="python",
         command=["-c", PROBE_SCRIPT, json.dumps(targets, sort_keys=True)],
         **kw,
     )
+    assert args[2] == "--rm"
+    return args[:2] + args[3:]
+
+
+def declared_mounts(argv: Sequence[str]) -> dict[str, Any]:
+    """The mounts a ``docker run`` argv declares: binds and tmpfs."""
+    binds, tmpfs = [], {}
+    for flag, value in zip(argv, argv[1:]):
+        if flag == "-v":
+            source, destination, mode = value.rsplit(":", 2)
+            binds.append(
+                {
+                    "type": "bind",
+                    "source": source,
+                    "destination": destination,
+                    "rw": mode == "rw",
+                }
+            )
+        elif flag == "--tmpfs":
+            destination, _, options = value.partition(":")
+            tmpfs[destination] = options
+    binds.sort(key=lambda b: str(b["destination"]))
+    return {"binds": binds, "tmpfs": tmpfs}
+
+
+def inspected_mounts(inspect: Any) -> dict[str, Any] | None:
+    """``declared_mounts``' shape from one ``docker inspect`` object; None
+    when it is not a usable inspect result."""
+    if not isinstance(inspect, Mapping) or not isinstance(inspect.get("Mounts"), list):
+        return None
+    if not all(isinstance(m, Mapping) for m in inspect["Mounts"]):
+        return None
+    tmpfs = (inspect.get("HostConfig") or {}).get("Tmpfs") or {}
+    return {
+        "binds": sorted(
+            (
+                {
+                    "type": m.get("Type"),
+                    "source": m.get("Source"),
+                    "destination": m.get("Destination"),
+                    "rw": m.get("RW"),
+                }
+                for m in inspect["Mounts"]
+            ),
+            key=lambda b: str(b["destination"]),
+        ),
+        "tmpfs": dict(tmpfs),
+    }
 
 
 # Paths the probe user could not stat, checked in the same image as root with
@@ -391,6 +444,40 @@ def image_check_args(image: str, paths: Sequence[str]) -> list[str]:
         IMAGE_PATHS_SCRIPT,
         json.dumps(list(paths)),
     ]
+
+
+def _mount_shape(value: Any) -> bool:
+    return (
+        isinstance(value, Mapping)
+        and isinstance(value.get("binds"), list)
+        and all(isinstance(b, Mapping) for b in value["binds"])
+        and isinstance(value.get("tmpfs"), Mapping)
+    )
+
+
+def _mount_mismatches(raw: Mapping[str, Any]) -> list[str]:
+    """``mount:<dest>`` for every bind/tmpfs where the container's inspected
+    mounts differ from what the run argv declared (type, source,
+    destination, rw; tmpfs options), plus a declared tmpfs whose in-container
+    fstype is not tmpfs. No usable inspect or declaration fails closed."""
+    declared, inspected = raw.get("declared_mounts"), raw.get("docker_inspect")
+    if not _mount_shape(declared):
+        return ["mount:<declared missing>"]
+    if not _mount_shape(inspected):
+        return ["mount:<inspect unavailable>"]
+
+    def key(b: Mapping[str, Any]) -> tuple[Any, ...]:
+        return (b.get("type"), b.get("source"), b.get("destination"), b.get("rw"))
+
+    want = Counter(key(b) for b in declared["binds"])
+    got = Counter(key(b) for b in inspected["binds"])
+    dests = {k[2] for k in (want - got) + (got - want)}
+    for d in set(declared["tmpfs"]) | set(inspected["tmpfs"]):
+        if declared["tmpfs"].get(d) != inspected["tmpfs"].get(d):
+            dests.add(d)
+    fstypes = raw.get("fstypes") if isinstance(raw.get("fstypes"), Mapping) else {}
+    dests |= {d for d in declared["tmpfs"] if fstypes.get(d) != "tmpfs"}
+    return [f"mount:{d}" for d in sorted(dests, key=str)]
 
 
 def _unexpected_mounts(mounts: Any) -> list[str]:
@@ -478,7 +565,9 @@ def observed_from_raw(
                 for p, v in (raw.get("paths") or {}).items()
                 if _present(p, v, raw.get("mounts") or [], image_paths or {})
             ),
-            *_unexpected_mounts(raw.get("mounts")),
+            *dict.fromkeys(
+                [*_unexpected_mounts(raw.get("mounts")), *_mount_mismatches(raw)]
+            ),
         ],
         "env_names": raw.get("env_names"),
         "reach": reach,
@@ -649,6 +738,10 @@ def cmd_probe(args: argparse.Namespace) -> int:
             argv, capture_output=True, text=True, env=env, timeout=300
         )
         egress = run.egress_log(run.EGRESS)
+        try:
+            inspect = json.loads(run.docker("inspect", run.HOLMES, check=False))[0]
+        except (ValueError, IndexError, TypeError):
+            inspect = None
     finally:
         run.teardown()
     window_lines = run.proxy_log_lines(started)
@@ -664,6 +757,8 @@ def cmd_probe(args: argparse.Namespace) -> int:
     (out / "proxy-window.txt").write_text("".join(f"{x}\n" for x in window_lines))
     marked = [x for x in proc.stdout.splitlines() if x.startswith(PROBE_MARK)]
     raw = json.loads(marked[-1][len(PROBE_MARK) :]) if marked else {}
+    raw["declared_mounts"] = declared_mounts(argv)
+    raw["docker_inspect"] = inspected_mounts(inspect)
     (out / "raw.json").write_text(json.dumps(raw, indent=2) + "\n")
     unreadable = [p for p, v in (raw.get("paths") or {}).items() if v is None]
     image_paths: dict[str, Any] = {}
@@ -698,6 +793,9 @@ def cmd_probe(args: argparse.Namespace) -> int:
                 "root_write_denied": raw.get("root_write_denied"),
                 "proc_status": raw.get("proc_status"),
                 "mounts": raw.get("mounts"),
+                "fstypes": raw.get("fstypes"),
+                "mounts_declared": raw.get("declared_mounts"),
+                "mounts_inspected": raw.get("docker_inspect"),
                 "docker_run_argv": shown,
             },
         }

@@ -20,6 +20,19 @@ STANDARD_MOUNTS = [
     "/proc/acpi", "/proc/kcore", "/sys", "/sys/firmware", "/sys/fs/cgroup", "/tmp",
 ]  # fmt: skip
 
+DECLARED = {
+    "binds": [
+        {
+            "type": "bind",
+            "source": "/abs/config.yaml",
+            "destination": "/etc/holmes/config.yaml",
+            "rw": False,
+        },
+        {"type": "bind", "source": "/abs/out", "destination": "/out", "rw": True},
+    ],
+    "tmpfs": {"/tmp": "rw,nosuid,nodev,size=256m"},
+}
+
 GOOD_LOG = [
     "2026-10-28T18:42:06+00:00 holmes GET /api/v1/query 200 251 705 0.981",
     "2026-10-28T18:42:10+00:00 holmes GET /api/v1/label/__name__/values 200 4 2 0.9",
@@ -217,7 +230,9 @@ def test_probe_container_matches_the_run_shape_except_entrypoint() -> None:
     probe = isolation.probe_args("img", **kw, targets={"a": 1})
     image_at = probe.index("img")
     assert probe[image_at - 2 : image_at] == ["--entrypoint", "python"]
-    assert probe[: image_at - 2] == real[: real.index("img")]
+    shape = real[: real.index("img")]
+    assert shape[2] == "--rm"
+    assert probe[: image_at - 2] == shape[:2] + shape[3:]
     assert probe[image_at + 1] == "-c"
     assert json.loads(probe[-1]) == {"a": 1}
 
@@ -256,6 +271,9 @@ def raw_probe(**over: Any) -> dict[str, Any]:
         "env_names": ["PATH"],
         "paths": {"/a": False},
         "mounts": STANDARD_MOUNTS,
+        "fstypes": {"/tmp": "tmpfs", "/out": "virtiofs", "/": "overlay"},
+        "declared_mounts": copy.deepcopy(DECLARED),
+        "docker_inspect": copy.deepcopy(DECLARED),
         "tcp": {
             "allowed": [
                 {"target": "f14-lab-relay:9090", "ok": True},
@@ -392,6 +410,7 @@ def test_probe_script_records_the_errno_name() -> None:
 
 def test_unreadable_path_is_present_unless_the_image_check_shows_it_absent() -> None:
     raw = {
+        **{k: v for k, v in raw_probe().items() if k not in ("paths", "mounts")},
         "paths": {"/root/.kube": None, "/out/.env": None, "/repo": False},
         "mounts": ["/", "/etc/holmes/config.yaml", "/out", "/tmp"],
     }
@@ -574,3 +593,123 @@ def test_missing_mount_table_fails_closed() -> None:
     raw.pop("mounts", None)
     observed = isolation.observed_from_raw(raw, GOOD_LOG)
     assert observed["paths_present"] == ["mount:<table missing>"]
+
+
+def test_declared_mounts_come_from_run_args() -> None:
+    argv = container.run_args(
+        "img",
+        network="n",
+        egress_proxy="http://e:3128",
+        config_path="/abs/config.yaml",
+        output_dir="/abs/out",
+    )
+    assert isolation.declared_mounts(argv) == DECLARED
+
+
+def test_docker_inspect_is_normalized_to_the_declared_shape() -> None:
+    inspect = {
+        "Mounts": [
+            {
+                "Type": "bind",
+                "Source": "/abs/out",
+                "Destination": "/out",
+                "Mode": "rw",
+                "RW": True,
+                "Propagation": "rprivate",
+            },
+            {
+                "Type": "bind",
+                "Source": "/abs/config.yaml",
+                "Destination": "/etc/holmes/config.yaml",
+                "Mode": "ro",
+                "RW": False,
+                "Propagation": "rprivate",
+            },
+        ],
+        "HostConfig": {"Tmpfs": {"/tmp": "rw,nosuid,nodev,size=256m"}},
+    }
+    assert isolation.inspected_mounts(inspect) == DECLARED
+    assert isolation.inspected_mounts({"Mounts": None}) is None
+    assert isolation.inspected_mounts({"Mounts": ["x"]}) is None
+    assert isolation.inspected_mounts(None) is None
+
+
+def _with_inspect(change: Any) -> list[str]:
+    raw = raw_probe()
+    change(raw["docker_inspect"])
+    return isolation.observed_from_raw(raw, GOOD_LOG)["paths_present"]
+
+
+def test_matching_inspect_adds_nothing() -> None:
+    assert _with_inspect(lambda i: None) == []
+    raw = raw_probe()
+    raw["docker_inspect"]["binds"].reverse()  # order does not matter
+    assert isolation.observed_from_raw(raw, GOOD_LOG)["paths_present"] == []
+
+
+@pytest.mark.parametrize("index,dest", [(0, "/etc/holmes/config.yaml"), (1, "/out")])
+def test_bind_source_substitution_is_forbidden(index: int, dest: str) -> None:
+    def change(i: dict[str, Any]) -> None:
+        i["binds"][index]["source"] = "/Users/someone"
+
+    assert _with_inspect(change) == [f"mount:{dest}"]
+
+
+def test_tmpfs_replaced_by_a_host_dir_is_forbidden() -> None:
+    def change(i: dict[str, Any]) -> None:
+        i["tmpfs"] = {}
+        i["binds"].append(
+            {"type": "bind", "source": "/Users/x", "destination": "/tmp", "rw": True}
+        )
+
+    assert _with_inspect(change) == ["mount:/tmp"]
+
+
+def test_tmpfs_options_changed_is_forbidden() -> None:
+    assert _with_inspect(lambda i: i["tmpfs"].update({"/tmp": "rw,exec"})) == [
+        "mount:/tmp"
+    ]
+
+
+def test_extra_and_missing_mounts_are_forbidden() -> None:
+    def extra(i: dict[str, Any]) -> None:
+        i["binds"].append(
+            {"type": "bind", "source": "/x", "destination": "/srv", "rw": False}
+        )
+
+    assert _with_inspect(extra) == ["mount:/srv"]
+    assert _with_inspect(lambda i: i["binds"].pop(1)) == ["mount:/out"]
+    vol = {"type": "volume", "source": "v", "destination": "/data", "rw": True}
+    assert _with_inspect(lambda i: i["binds"].append(vol)) == ["mount:/data"]
+
+
+def test_read_only_flipped_to_rw_is_forbidden() -> None:
+    def change(i: dict[str, Any]) -> None:
+        i["binds"][0]["rw"] = True
+
+    assert _with_inspect(change) == ["mount:/etc/holmes/config.yaml"]
+
+
+@pytest.mark.parametrize("value", [None, {}, {"binds": None, "tmpfs": {}}])
+def test_inspect_failure_fails_closed(value: Any) -> None:
+    raw = raw_probe()
+    raw["docker_inspect"] = value
+    observed = isolation.observed_from_raw(raw, GOOD_LOG)
+    assert "mount:<inspect unavailable>" in observed["paths_present"]
+    assert evaluated(raw)["forbidden_paths_absent"] is False
+    raw.pop("docker_inspect")
+    assert (
+        "mount:<inspect unavailable>"
+        in isolation.observed_from_raw(raw, GOOD_LOG)["paths_present"]
+    )
+
+
+@pytest.mark.parametrize("fstypes", [{"/tmp": "ext4"}, {}, None])
+def test_tmpfs_must_be_tmpfs_inside_the_container(fstypes: Any) -> None:
+    raw = raw_probe()
+    raw["fstypes"] = fstypes
+    assert isolation.observed_from_raw(raw, GOOD_LOG)["paths_present"] == ["mount:/tmp"]
+
+
+def test_probe_script_records_fstypes() -> None:
+    assert '"fstypes"' in isolation.PROBE_SCRIPT

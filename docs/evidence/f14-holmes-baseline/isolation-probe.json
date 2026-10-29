@@ -338,10 +338,76 @@
           "/sys/fs/cgroup",
           "/tmp"
         ],
+        "fstypes": {
+          "/": "overlay",
+          "/dev": "tmpfs",
+          "/dev/mqueue": "mqueue",
+          "/dev/pts": "devpts",
+          "/dev/shm": "tmpfs",
+          "/etc/holmes/config.yaml": "virtiofs",
+          "/etc/hostname": "ext4",
+          "/etc/hosts": "ext4",
+          "/etc/resolv.conf": "ext4",
+          "/out": "virtiofs",
+          "/proc": "proc",
+          "/proc/acpi": "tmpfs",
+          "/proc/bus": "proc",
+          "/proc/fs": "proc",
+          "/proc/interrupts": "tmpfs",
+          "/proc/irq": "proc",
+          "/proc/kcore": "tmpfs",
+          "/proc/keys": "tmpfs",
+          "/proc/latency_stats": "tmpfs",
+          "/proc/scsi": "tmpfs",
+          "/proc/sys": "proc",
+          "/proc/sysrq-trigger": "proc",
+          "/proc/timer_list": "tmpfs",
+          "/sys": "sysfs",
+          "/sys/firmware": "tmpfs",
+          "/sys/fs/cgroup": "cgroup2",
+          "/tmp": "tmpfs"
+        },
+        "mounts_declared": {
+          "binds": [
+            {
+              "type": "bind",
+              "source": "~/dev/AI/production-ops-agent/tmp/f14-holmes/isolation-live4/test_live_probe_passes_every_c0/config.yaml",
+              "destination": "/etc/holmes/config.yaml",
+              "rw": false
+            },
+            {
+              "type": "bind",
+              "source": "~/dev/AI/production-ops-agent/tmp/f14-holmes/isolation-live4/test_live_probe_passes_every_c0/out",
+              "destination": "/out",
+              "rw": true
+            }
+          ],
+          "tmpfs": {
+            "/tmp": "rw,nosuid,nodev,size=256m"
+          }
+        },
+        "mounts_inspected": {
+          "binds": [
+            {
+              "type": "bind",
+              "source": "~/dev/AI/production-ops-agent/tmp/f14-holmes/isolation-live4/test_live_probe_passes_every_c0/config.yaml",
+              "destination": "/etc/holmes/config.yaml",
+              "rw": false
+            },
+            {
+              "type": "bind",
+              "source": "~/dev/AI/production-ops-agent/tmp/f14-holmes/isolation-live4/test_live_probe_passes_every_c0/out",
+              "destination": "/out",
+              "rw": true
+            }
+          ],
+          "tmpfs": {
+            "/tmp": "rw,nosuid,nodev,size=256m"
+          }
+        },
         "docker_run_argv": [
           "docker",
           "run",
-          "--rm",
           "--name",
           "f14-holmes",
           "--network",
@@ -360,9 +426,9 @@
           "--memory",
           "1g",
           "-v",
-          "~/dev/AI/production-ops-agent/tmp/f14-holmes/isolation-live3/test_live_probe_passes_every_c0/config.yaml:/etc/holmes/config.yaml:ro",
+          "~/dev/AI/production-ops-agent/tmp/f14-holmes/isolation-live4/test_live_probe_passes_every_c0/config.yaml:/etc/holmes/config.yaml:ro",
           "-v",
-          "~/dev/AI/production-ops-agent/tmp/f14-holmes/isolation-live3/test_live_probe_passes_every_c0/out:/out:rw",
+          "~/dev/AI/production-ops-agent/tmp/f14-holmes/isolation-live4/test_live_probe_passes_every_c0/out:/out:rw",
           "-e",
           "HTTPS_PROXY=http://f14-egress:3128",
           "-e",
@@ -444,5 +510,5 @@
     ],
     "passed": true
   },
-  "probed_at": "2026-10-29T03:45:54.878967+00:00"
+  "probed_at": "2026-10-29T03:52:23.081610+00:00"
 }
