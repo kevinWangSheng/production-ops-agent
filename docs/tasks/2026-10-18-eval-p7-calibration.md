@@ -46,6 +46,8 @@
 | P7-D19 | judge.PROMPT 的因果判定按现有最终标签口径写明：指出故障所在位置的陈述（「failing dependency is X」「confined to X」「dominated by X」）算因果；声明为推断且带方法限定的不算；传播断言记录起源服务与操作；被否定或排除的假设、与事故无关的「so」从句不算。新 validation 集的盲标说明使用同一段文字 | 用户 |
 | P7-D20 | 可逆技术项（lead）：zai 使用 `response_format` json_schema strict（官方文档未列，2026-10-22 实测 4/4 遵守，调参轮继续验证）；按位置标注的报告字段块改为纯文本（不再 json.dumps 转义引号）；答案被拒时保存原始模型输出到私有工作区，并在观察中记录传输异常类名；adapter 升为 `judge-adapters-7`。不对无效答案重试（会掩盖不可靠并抬高分数） | 推荐 |
 | P7-D21 | 进过 formal 的 validation 项可作为调参（debug）项重用，永不再作 validation；暴露登记照常阻止其进入任何 formal。取代 P7-D16「进过 formal 的 validation 族不得再用」中对调参用途的限制 | 用户 |
+| P7-D22 | 修订 P7-D19「声明为推断且带方法限定的不算」：只有声明原因本身是推断、未确认的陈述不算因果；断言了原因、只补充推断方法（如「Causation is inferred from span nesting and durations within one trace only」）的仍算因果。依据：两位标注者均标为因果，标签冻结；第 1 轮 FlashX/Luna 各 1 次因旧措辞漏诊 | 用户 2026-10-29 |
+| P7-D23 | 收窄 P7-D19「指出故障所在位置的陈述算因果」：只指本次事故的故障或变慢所在；只报告哪些服务、序列或 span 名带错误计数/状态的句子（「only X has error spans」、另一窗口内错误集中于 X）是观察，不算因果。依据：与最终标签一致；第 1 轮 FlashX 1 次、Luna 3 次因此多判 | 用户 2026-10-29 |
 
 调参规则：在 36 项（原 12 debug + 已作废的 24 validation）上调 `judge.PROMPT`，最多 3 轮；达标线为整套零无效、零漏诊、零误通过且一致率不低于 46/48 等价；不达标停下交用户。达标后才新采 validation 来源族、两份新盲标与用户裁决。
 
@@ -90,6 +92,11 @@
   - `tune` 额外要求 `--judge-env`（与 debug/formal 同，否则无法加载配置）。
   - 验证（仅假 transport，未发任何真实调用、未查余额）：`tests/unit/test_eval_p7_398_impl.py` 14 passed；独立验收 `tests/acceptance/test_398_tuning.py` 31 passed（含测试作者按 P7-D20 修正的 .raw 用例）；P7 验收与 r3 单元 168 passed；其余 eval 单元 656 + 194 passed（5 项需 PG 跳过）；B3 单元与 judge 验收 717 passed；ruff、format、mypy 通过。
   - 真实第 1 轮（180 次调用）未运行：用户门，待用户审过合并后的计分器由 lead 运行。
+- 调参第 1 轮（2026-10-29，只跑 FlashX + Luna，按合同 R4；`--providers zai,openai`）：
+  - 首次运行 `p7-tune-r1`（12:20–13:02Z）环境无效：OpenAI key 过期（52 次 401）+ 8 次断连，FlashX 46/60 断连（ConnectError 成段出现），120 次只有 14 次拿到答案。用户 2026-10-29 授权作废重跑：登记行移入 `exposure-voided.jsonl`，记录移到 `voided-tuning/p7-tune-r1`，全部保留。
+  - 重跑 `p7-tune-r1b`（13:55–15:17Z，提示词未改，计第 1 轮）不达标：FlashX 一致 25/48、无效 27（26 断连 + 1 输出）、漏诊 1、误通过 0；Luna 26/48、无效 23（9 断连 + 14 输出）、漏诊 4、误通过 2。分诊（全部已开始次数计入）：FlashX eval_env 26 / judge_error 3；Luna 9 / 21；real_failure 0；`triage-check` 通过。费用：zai/openai 无余额接口，记 unknown；按 token 与官方价估 FlashX ≈ $0.85、Luna ≈ $0.64。
+  - 失败归因（全新上下文 Agent 按冻结标签重放原始输出，拒绝码与出错字段经重放核实，模式归类为推断）：quote 非连续逐字（省略号、丢括号、补字）Luna 12；引用其他 claim 的证据 ID 或抄错 FlashX 1、Luna 3；hypothesis 标签被当作对冲 Luna 3（含 2 次误通过）；断言原因并附推断方法被当作不算（P7-D22）各 1；只报告错误分布的句子被判因果（P7-D23）FlashX 1、Luna 3。疑似标签问题只记录、不改标签：同族改写件共享的 claims[8] 反复引发借用引用。
+  - 第 2 轮改动（`chore/398-judge-tune`，只改 `judge.PROMPT`）：quote 为单段逐字子串、禁止省略；cited_evidence_ids 只取该 claim 行的 ID；hypothesis 标签不算对冲；P7-D22、P7-D23 措辞。
 
 ## 待决
 
