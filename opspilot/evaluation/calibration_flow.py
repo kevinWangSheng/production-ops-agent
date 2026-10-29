@@ -694,6 +694,83 @@ def _missing_diagnosis(label: BlindLabel, observation: JudgeObservation) -> bool
     return not expected <= actual
 
 
+@dataclass(frozen=True)
+class JudgedObservation:
+    """One observation measured against its final label (formal counting)."""
+
+    valid: bool
+    # P7-D18: counted on the verdict derived from the judge's diagnoses, never
+    # on a veto-corrected substitute: a failed P6 recheck (derived True, full
+    # AND False) is still a false pass on a negative label. Invalid counts False.
+    effective: bool
+    recheck_failed: bool
+    # KEY_DIAGNOSIS_MISSING (P7-D17); valid answers only.
+    missing: bool
+    agrees: bool
+    false_pass: bool
+
+    @property
+    def compromised(self) -> bool:
+        # Errors, omissions and failed P6 rechecks receive no agreement credit.
+        return not self.valid or self.recheck_failed or self.missing
+
+
+def judged_observation(
+    item: CalibrationItem,
+    label: BlindLabel,
+    provider: str,
+    observation: JudgeObservation,
+) -> JudgedObservation:
+    """The per-observation part of ``_counts``; raises on an inconsistent record."""
+    result = observation.result
+    recheck_failed = missing = False
+    if result.status == "ok":
+        if result.verdict is None:
+            raise JudgeError("SCHEMA_INVALID")
+        derived, recomputed = recheck_diagnoses(item.request, result.diagnoses)
+        # P7-D18: result.verdict is the verdict recomputed from the diagnoses;
+        # the model's own verdict is only recorded (absent before adapter-7).
+        if (
+            not observation.valid
+            or observation.error_code is not None
+            or not response_identity_matches(
+                cast(Any, provider), observation.response_model
+            )
+            or result.verdict is not derived
+            or observation.recomputed_verdict is not recomputed
+            or (observation.model_verdict is None)
+            is not (observation.verdict_matched is None)
+            or observation.model_verdict is not None
+            and observation.verdict_matched
+            is not (observation.model_verdict is result.verdict)
+            or observation.transport_error is not None
+        ):
+            raise JudgeError("DERIVED_RESULT_MISMATCH")
+        recheck_failed = recomputed is not result.verdict
+        missing = _missing_diagnosis(label, observation)
+    elif (
+        observation.valid
+        or observation.recomputed_verdict is not None
+        or result.verdict is not None
+        or result.diagnoses
+        or observation.error_code not in OBSERVATION_ERROR_CODES
+        or observation.model_verdict is not None
+        or observation.verdict_matched is not None
+        or observation.transport_error is not None
+        and observation.error_code != "JUDGE_TRANSPORT_ERROR"
+    ):
+        raise JudgeError("DERIVED_RESULT_MISMATCH")
+    effective = bool(result.verdict) if observation.valid else False
+    return JudgedObservation(
+        valid=observation.valid,
+        effective=effective,
+        recheck_failed=recheck_failed,
+        missing=missing,
+        agrees=effective == label.verdict,
+        false_pass=effective and not label.verdict,
+    )
+
+
 def _counts(
     pack: LabelPack,
     labels: Mapping[str, BlindLabel],
@@ -738,63 +815,18 @@ def _counts(
             and observation.valid
         ):
             raise JudgeError("DERIVED_RESULT_MISMATCH")
-        recheck_failed = False
-        if result.status == "ok":
-            if result.verdict is None:
-                raise JudgeError("SCHEMA_INVALID")
-            derived, recomputed = recheck_diagnoses(item.request, result.diagnoses)
-            # P7-D18: result.verdict is the verdict recomputed from the diagnoses;
-            # the model's own verdict is only recorded (absent before adapter-7).
-            if (
-                not observation.valid
-                or observation.error_code is not None
-                or not response_identity_matches(
-                    config.provider, observation.response_model
-                )
-                or result.verdict is not derived
-                or observation.recomputed_verdict is not recomputed
-                or (observation.model_verdict is None)
-                is not (observation.verdict_matched is None)
-                or observation.model_verdict is not None
-                and observation.verdict_matched
-                is not (observation.model_verdict is result.verdict)
-                or observation.transport_error is not None
-            ):
-                raise JudgeError("DERIVED_RESULT_MISMATCH")
-            recheck_failed = recomputed is not result.verdict
-            if recheck_failed:
-                problems.add("P6_RECHECK_FAILED")
-            if _missing_diagnosis(labels[item.item_id], observation):
-                problems.add("KEY_DIAGNOSIS_MISSING")
-        else:
-            if (
-                observation.valid
-                or observation.recomputed_verdict is not None
-                or result.verdict is not None
-                or result.diagnoses
-                or observation.error_code not in OBSERVATION_ERROR_CODES
-                or observation.model_verdict is not None
-                or observation.verdict_matched is not None
-                or observation.transport_error is not None
-                and observation.error_code != "JUDGE_TRANSPORT_ERROR"
-            ):
-                raise JudgeError("DERIVED_RESULT_MISMATCH")
+        judged = judged_observation(
+            item, labels[item.item_id], config.provider, observation
+        )
+        if not observation.valid:
             problems.add("JUDGE_OBSERVATION_FAILED")
-        # P7-D18: counted on the verdict derived from the judge's diagnoses, never
-        # on a veto-corrected substitute: a failed P6 recheck (derived True, full
-        # AND False) is still a false pass on a negative label. Errors, omissions
-        # and failed P6 rechecks receive no agreement credit.
+        if judged.recheck_failed:
+            problems.add("P6_RECHECK_FAILED")
+        if judged.missing:
+            problems.add("KEY_DIAGNOSIS_MISSING")
         if item.split == "validation":
-            effective = result.verdict if observation.valid else False
-            compromised = (
-                not observation.valid
-                or recheck_failed
-                or _missing_diagnosis(labels[item.item_id], observation)
-            )
-            invalid_agreements += (
-                compromised and effective == labels[item.item_id].verdict
-            )
-            verdicts.append((item.item_id, bool(effective)))
+            invalid_agreements += judged.compromised and judged.agrees
+            verdicts.append((item.item_id, judged.effective))
     counted = calibrate(
         {
             i.item_id: labels[i.item_id].verdict

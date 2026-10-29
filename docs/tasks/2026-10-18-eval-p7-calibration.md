@@ -79,6 +79,16 @@
 - 修复后 debug（2026-10-21，p7-debug-11，judge-adapters-6）：FlashX 有效 12/12、verdict 11/12、键 12/12；DeepSeek 12/12、12/12、12/12；Luna 有效 9/12（2 次 JUDGE_HTTP_ERROR，其一在传输重试之后；1 次输出无效），verdict 7/9、键 8/9；36 条观察全部通过 `_metadata_identifiers` 严格检查（p7-formal-1 中止的同一检查）；OpenAI 账户限额 5000 RPM / 2M TPM，HTTP 错误非限流（状态码未记录，推断为服务端瞬时错误）。DeepSeek 余额差 2.91 CNY（共享账户）。
 - 正式校准 p7-formal-2（2026-10-21，judge-adapters-6，180 次调用约 2.4 小时，pack hash `bcb83332…796b`）：`no_baseline`，三家均不合格，D16 无选择。计入一致 / validation 无效观察 / 误通过：FlashX 30/48、7、0；Luna 28/48、12、2；DeepSeek（对照）39/48、1、0。有效输出上 verdict 一致率高（FlashX 40/41、DeepSeek 46/47），主要失分为 KEY_DIAGNOSIS_MISSING：verdict 正确但漏列标签中的因果字段（多为 summary/claims 对同一原因的重述，约 6 项、三家重叠），FlashX 因此失 10 分；其次为无效观察（FlashX 3 次输出无效、3 次 verdict 与自身诊断不一致、1 次断连；Luna 8 次输出无效、3 次断连）。不计漏诊时 FlashX 40、Luna 31，仍不达 46。费用：DeepSeek 余额差 15.60 CNY（共享账户）；zai/openai 余额未记，按 token 与官方价估 FlashX ≈ $1.4、Luna ≈ $0.9。用户裁决（2026-10-21）：按合同记录不达标、不记基线，M3 暂以确定性断言推进；修 judge 并换新 validation 来源族另立 #295。
 - r3 实施（2026-10-22，`chore/p7-r3-judge`，judge-adapters-7）：仅假 transport 的单元测试（`tests/unit/test_eval_b3_impl.py`、`tests/unit/test_eval_p7_r3_impl.py`）；未发真实调用；按 r2 行为写的验收测试待独立作者按 r3 重写。
+- #398 调参计分器（2026-10-29，`chore/398-judge-tuning-scorer`，worktree `poa-398-impl`）：新命令 `tune --session S --round N --providers zai,openai,deepseek --judge-env E [--rerun-of S0]` 从冻结 label-pack 读标签（与工作区当前 items/标注/裁决不一致即拒绝），走现有 `debug --tuning` 路径（同一暴露规则、`debug/<S>/<provider>-NNN.{json,raw}`、余额与 `cost`），按 formal 的提供方与项顺序每家发 60 次（12 debug 各 1 次 + 24 validation 各 2 次）。计分复用 formal 逐条规则：一致率只计 48 个 validation 观察且受损观察不得分，无效、漏诊、误通过、已开始次数计全部 60 次（debug 项也计误通过）；`agreement ≥ 46` 且其余为零、started=60 才达标。FlashX 达标为 `passed`，仅 Luna 达标为 `pending_user_decision`（exit 6），DeepSeek 只报告。结果写 `tuning/<S>/score.json` 与 `triage.json`（每个非干净一致的已开始调用一行，带机器 hint，`category` 为空）；`triage-check` 按调试记录重算并校验分诊文件，输出每家 started 与各类计数。轮次登记在暴露行 `round`（与可选 `rerun_of`），按序 1..3，第 4 轮 `TUNING_ROUNDS_EXHAUSTED`；重跑沿用原轮次、每轮一次，要求提示词 hash 未变且原分诊全部为 `eval_env`，原记录不改。
+  - 逐条计数从 `_counts` 抽为 `judged_observation`，formal 与调参共用；formal 行为不变（B3 单元与验收 717 项通过）。
+  - P6 复核失败（重算 verdict 与完整 AND 不一致）计入 `invalid`、hint 为 `output_invalid`：formal 中它与无效观察同样不得分并使整轮不达标，计入才不比 formal 宽松。
+  - 漏诊只计有效答案（formal 的 KEY_DIAGNOSIS_MISSING 同样只对 ok 结果）；每行一个 hint，优先级 transport/http/timeout/output_invalid > false_pass > missed_diagnosis > disagreement。
+  - `score_tuning` 每次计一家；中途停止的记录按前缀计分，started 照实、不会达标；顺序或身份不符报 `IDENTITY_MISMATCH`。
+  - 重跑只允许针对最近一轮；轮次检查在登记锁内复查一次，防两个 tune 并发同号。
+  - 旧的无 `round` 的 `debug --tuning` 行不计轮次；轮次只看本工作区。
+  - `tune` 额外要求 `--judge-env`（与 debug/formal 同，否则无法加载配置）。
+  - 验证（仅假 transport，未发任何真实调用、未查余额）：`tests/unit/test_eval_p7_398_impl.py` 12 passed；P7 验收与 r3 单元 168 passed；其余 eval 单元 656 + 194 passed（5 项需 PG 跳过）；B3 单元与 judge 验收 717 passed；ruff、format、mypy 通过。
+  - 真实第 1 轮（180 次调用）未运行：用户门，待用户审过合并后的计分器由 lead 运行。
 
 ## 待决
 
