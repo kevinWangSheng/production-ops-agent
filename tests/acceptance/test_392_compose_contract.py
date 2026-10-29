@@ -100,7 +100,14 @@ def test_all_product_services_share_web_image_and_third_party_images_are_digest_
     web_image = services["web"].get("image")
     assert isinstance(web_image, str) and web_image, web_image
 
-    product_services = {"migrate", "init-roles", "web", "worker", "observer"}
+    product_services = {
+        "migrate",
+        "init-roles",
+        "web",
+        "worker",
+        "observer",
+        "retention",
+    }
     for name in product_services & set(services):
         image = services[name].get("image")
         assert image == web_image, f"{name} must use the single product image"
