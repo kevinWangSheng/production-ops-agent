@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import gzip
 import json
 import sys
+import zlib
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -19,6 +21,7 @@ from opspilot.evaluation.judge import (  # noqa: E402
     HTTPJudgeTransport,
     JudgeError,
     JudgeHTTPResponse,
+    judge_once,
 )
 from scripts import eval_p7  # noqa: E402
 
@@ -175,7 +178,7 @@ def test_a_body_the_http_transport_rejects_is_still_captured(content_type, body,
     with pytest.raises(JudgeError) as caught:
         _send(capture)
     assert caught.value.code == code
-    assert bytes(capture.body) == body and capture.sends[-1][1] == body
+    assert bytes(capture.body) == body and capture.sends[-1].body == body
 
 
 def test_captured_rejected_body_is_bounded_and_decoded():
@@ -213,3 +216,97 @@ def test_debug_keeps_the_raw_body_of_a_stream_the_transport_rejected(harness):
     record = json.loads((directory / "zai-001.json").read_bytes())
     assert record["observation"]["error_code"] == "JUDGE_OUTPUT_INVALID"
     assert len(list(directory.glob("zai-*.raw"))) == 12
+
+
+class _BrokenBody(httpx2.AsyncByteStream):
+    def __init__(self, failure):
+        self.failure = failure
+
+    async def __aiter__(self):
+        yield b"partial"
+        if self.failure == "stall":
+            await asyncio.sleep(60)
+        raise httpx2.ReadError("connection reset")
+
+
+@pytest.mark.parametrize("failure", ["raise", "stall"])
+def test_capturing_a_wrong_content_type_body_never_changes_the_outcome(
+    failure, monkeypatch
+):
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from test_eval_b3_impl import configs, make_input
+
+    monkeypatch.setattr(eval_p7, "_CAPTURE_SECONDS", 0.2)
+    sends = []
+
+    def handler(request):
+        sends.append(request)
+        return httpx2.Response(
+            200,
+            headers={"content-type": "application/json"},
+            stream=_BrokenBody(failure),
+        )
+
+    capture = eval_p7._CapturingTransport(
+        HTTPJudgeTransport(transport=httpx2.MockTransport(handler))
+    )
+    request, _, _ = make_input()
+    observation = judge_once(
+        request, config=configs()["zai"], calibration=None, transport=capture
+    )
+    assert observation.error_code == "JUDGE_OUTPUT_INVALID"
+    assert observation.attempts == 1 and len(sends) == 1
+    assert observation.elapsed_seconds < 5
+    assert bytes(capture.body) == b"partial"
+
+
+def test_captured_raw_deflate_body_is_decoded():
+    body = b"y" * 50
+    packer = zlib.compressobj(wbits=-15)
+    raw = packer.compress(body) + packer.flush()
+    capture = eval_p7._CapturingTransport(
+        HTTPJudgeTransport(
+            transport=_wire("application/json", raw, **{"content-encoding": "deflate"})
+        )
+    )
+    with pytest.raises(JudgeError):
+        _send(capture, limit=20)
+    assert bytes(capture.body) == body[:20]
+
+
+def _empty_zai_refused_openai(h):
+    answer = HTTPJudgeTransport.send
+
+    def send(transport, **kwargs):
+        if "z.ai" in kwargs["endpoint"]:
+            return JudgeHTTPResponse(200, ())
+        if "openai" in kwargs["endpoint"]:
+            raise httpx2.ConnectError("connection refused")
+        return answer(transport, **kwargs)
+
+    h.mp.setattr(HTTPJudgeTransport, "send", send)
+
+
+def test_debug_keeps_an_empty_rejected_response_but_not_a_refused_connection(
+    harness,
+):
+    h = harness.seed().export()
+    _empty_zai_refused_openai(h)
+    debug(h, "empty-debug")
+    directory = h.ws / "debug/empty-debug"
+    assert (directory / "zai-001.raw").read_bytes() == b""
+    record = json.loads((directory / "openai-001.json").read_bytes())
+    assert record["observation"]["error_code"] == "JUDGE_TRANSPORT_ERROR"
+    assert not list(directory.glob("openai-*.raw"))
+
+
+def test_formal_keeps_an_empty_rejected_response_but_not_a_refused_connection(
+    harness,
+):
+    h = harness.ready()
+    _empty_zai_refused_openai(h)
+    assert h.formal(code=1)["status"] == "no_baseline"
+    directory = h.ws / "calibration/canary-formal"
+    assert (directory / "zai-001.raw").read_bytes() == b""
+    assert (directory / "openai-001.json").exists()
+    assert not list(directory.glob("openai-*.raw"))

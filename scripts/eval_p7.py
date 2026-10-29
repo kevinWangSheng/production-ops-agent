@@ -18,6 +18,7 @@ per-path Git ignore check; stdout carries only IDs, hashes, counts and codes.
 from __future__ import annotations
 
 import argparse
+import asyncio
 import fcntl
 import functools
 import hashlib
@@ -27,6 +28,7 @@ import re
 import stat
 import subprocess
 import sys
+import time
 import zlib
 from collections import Counter
 from collections.abc import (
@@ -1776,32 +1778,43 @@ def _formal_raw_outputs(
             if type(observation) is not dict:
                 break
             attempts = observation.get("attempts", 1)
-            last: bytearray | None = None
+            last: _Sent | None = None
             for _ in range(attempts if type(attempts) is int else 1):
-                if not queue or queue[0][0] != obj.get("input_hash"):
+                if not queue or queue[0].input_hash != obj.get("input_hash"):
                     break
-                last = queue.pop(0)[1]
+                last = queue.pop(0)
             status = (observation.get("result") or {}).get("status")
-            if status != "ok" and last:
+            if status != "ok" and last is not None and last.responded:
                 _write_new(
                     ws,
                     destination / f"{provider}-{n:03d}.raw",
-                    bytes(last[: configs[provider].max_response_bytes]),
+                    bytes(last.body[: configs[provider].max_response_bytes]),
                 )
             n += 1
+
+
+# P7-D20: seconds an unread rejected body may take to capture; never a retry.
+_CAPTURE_SECONDS = 5.0
 
 
 class _WireTap(httpx2.AsyncBaseTransport):
     """Copies response bytes off the wire, bounded, as the client reads them."""
 
-    def __init__(self, inner: httpx2.AsyncBaseTransport, limit: int) -> None:
+    def __init__(
+        self, inner: httpx2.AsyncBaseTransport, limit: int, timeout_seconds: float
+    ) -> None:
         self.inner = inner
         self.limit = limit
         self.wire = bytearray()
         self.encoding = ""
+        self.responded = False
+        # The library's per-attempt deadline; an unread-body capture ends well
+        # before it so the library's own rejection always surfaces first.
+        self.deadline = time.monotonic() + timeout_seconds
 
     async def handle_async_request(self, request: httpx2.Request) -> httpx2.Response:
         response = await self.inner.handle_async_request(request)
+        self.responded = True
         self.encoding = response.headers.get("content-encoding", "").strip().lower()
         stream = response.stream
         tap = self
@@ -1810,14 +1823,23 @@ class _WireTap(httpx2.AsyncBaseTransport):
             200 <= response.status_code < 300
             and media.strip().lower() != "text/event-stream"
         ):
-            # HTTPJudgeTransport rejects this body unread; read it here, bounded.
+            # HTTPJudgeTransport rejects this body unread. Read what arrives within
+            # a short budget; any error or stall only shortens the capture.
+            budget = min(_CAPTURE_SECONDS, self.deadline - time.monotonic() - 1.0)
+            if budget > 0:
+                try:
+                    async with asyncio.timeout(budget):
+                        async for chunk in stream:  # type: ignore[union-attr]
+                            self.wire += chunk[: max(0, self.limit - len(self.wire))]
+                            if len(self.wire) >= self.limit:
+                                break
+                except Exception:
+                    pass
             try:
-                async for chunk in stream:  # type: ignore[union-attr]
-                    self.wire += chunk[: max(0, self.limit - len(self.wire))]
-                    if len(self.wire) >= self.limit:
-                        break
-            finally:
-                await stream.aclose()  # type: ignore[union-attr]
+                async with asyncio.timeout(max(0.0, budget)):
+                    await stream.aclose()  # type: ignore[union-attr]
+            except Exception:
+                pass
             return httpx2.Response(
                 response.status_code,
                 headers=response.headers,
@@ -1846,12 +1868,24 @@ class _WireTap(httpx2.AsyncBaseTransport):
 
     def body(self) -> bytes:
         """The tapped bytes, gzip/deflate undone where possible (same bound)."""
-        if self.encoding in ("gzip", "deflate"):
+        # As httpx: gzip framing; deflate zlib-wrapped, else raw deflate.
+        wbits = {"gzip": (31,), "deflate": (15, -15)}.get(self.encoding, ())
+        for bits in wbits:
             try:
-                return zlib.decompressobj(47).decompress(bytes(self.wire), self.limit)
+                return zlib.decompressobj(bits).decompress(bytes(self.wire), self.limit)
             except zlib.error:
                 pass
         return bytes(self.wire)
+
+
+@dataclass
+class _Sent:
+    """One send: its request's input hash and the response bytes kept."""
+
+    input_hash: str | None
+    body: bytearray
+    # A response arrived; a refused connection has no model output to keep.
+    responded: bool = False
 
 
 class _CapturingTransport:
@@ -1867,8 +1901,8 @@ class _CapturingTransport:
     def __init__(self, inner: JudgeTransport) -> None:
         self.inner = inner
         self.body = bytearray()
-        # (input hash of the request, response bytes) per send, in order.
-        self.sends: list[tuple[str | None, bytearray]] = []
+        # Every send, in order.
+        self.sends: list[_Sent] = []
 
     def send(
         self,
@@ -1880,12 +1914,14 @@ class _CapturingTransport:
         max_response_bytes: int,
     ) -> JudgeHTTPResponse:
         self.body = bytearray()
-        self.sends.append((_request_input_hash(body), self.body))
+        sent = _Sent(_request_input_hash(body), self.body)
+        self.sends.append(sent)
         inner, tap = self.inner, None
         if type(inner) is HTTPJudgeTransport:
             tap = _WireTap(
                 inner.transport or httpx2.AsyncHTTPTransport(retries=0),
                 max_response_bytes,
+                timeout_seconds,
             )
             inner = HTTPJudgeTransport(transport=tap)
         try:
@@ -1898,8 +1934,10 @@ class _CapturingTransport:
             )
         except BaseException:
             if tap is not None:
+                sent.responded = tap.responded
                 self.body += tap.body()
             raise
+        sent.responded = True
         if type(response.status_code) is int and 200 <= response.status_code < 300:
             return JudgeHTTPResponse(response.status_code, self._kept(response.chunks))
         for chunk in response.chunks:
@@ -2004,8 +2042,7 @@ def debug_judge(
             if not allowed(item):  # Mechanical guard (section 8 step 2).
                 _fail("VALIDATION_EXPOSURE_FORBIDDEN")
             _PROGRESS["started"] = True
-            # A pre-send failure must not inherit the previous item's body.
-            transport.body = bytearray()
+            sends = len(transport.sends)
             observation = judge_once(
                 item.request,
                 config=config,
@@ -2023,12 +2060,18 @@ def debug_judge(
             _write_new(
                 ws, directory / f"{provider}-{n:03d}.json", canonical_bytes(record)
             )
-            # P7-D20: a rejected answer's response body, for diagnosis only.
-            if observation.result.status != "ok" and transport.body:
+            # P7-D20: a rejected answer's response body, for diagnosis only; a
+            # pre-send failure or a refused connection leaves none.
+            last = transport.sends[-1] if len(transport.sends) > sends else None
+            if (
+                observation.result.status != "ok"
+                and last is not None
+                and last.responded
+            ):
                 _write_new(
                     ws,
                     directory / f"{provider}-{n:03d}.raw",
-                    bytes(transport.body[: config.max_response_bytes]),
+                    bytes(last.body[: config.max_response_bytes]),
                 )
             records.append(record)
     if "deepseek" in ordered:
