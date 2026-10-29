@@ -383,6 +383,17 @@ F7 lab Prometheus 的宿主入口仍为 `http://127.0.0.1:19090`，由只读 ngi
 investigator、observer、lab，只允许 GET/HEAD 的查询白名单，collector 与 proxy
 账号仅用于集群内上游。已有 auth 文件只补 proxy 密码，原角色 env 不失效。
 `kind_lab.py up` 应用 Secret 与代理清单并等待就绪；本地只记录鉴权结果用
-`.venv/bin/python -m scripts.f7_authz_probe`。审计冻结通过
+`.venv/bin/python -m scripts.f7_authz_probe`。
+
+F14 第 1 步（#396，裁决 Q6）给代理加了 `holmes` 账号（固定版 HolmesGPT 基线专用，
+不是产品角色）：只有它能对 `/api/v1/query`、`/api/v1/query_range` 发 POST 表单体
+（`application/x-www-form-urlencoded`，≤64k，超出 413），其他账号仍只有 GET/HEAD 且不转发请求体；
+`metadata`/`rules` 对所有账号仍是 403。代理只为 holmes 账号写访问日志（时间、账号、方法、路径、
+状态、字节、耗时，不含头、参数和请求体）。旧 auth 文件只补缺的 proxy/holmes 密码；补了 holmes
+之后，main 上旧版 `kind_lab.py` 读 auth 文件会以 `does not list exactly` 退出（设置了
+`OPSPILOT_LAB_PROMETHEUS_*` 的路径不受影响），本分支合并前 lab 的 `up`/`proxy` 用本分支脚本。
+`kind_lab.py proxy` 只重渲染并滚动代理（账号、各角色 env 文件、Secret），不升级 chart。
+基线 harness 在 `scripts/holmes_baseline/`（`python -m scripts.holmes_baseline.run toolsets|pin|check-request|live`），
+说明与证据见 [F14 上游对照任务记录](tasks/2026-10-27-m3-f14-upstream.md) 与 `docs/evidence/f14-holmes-baseline/`。审计冻结通过
 `OPSPILOT_LAB_DSN=… .venv/bin/python -m scripts.f7_audit_rebuild <incident-id> --out <目录>/summary.json`
 在只读快照事务中执行，输出计数与哈希，不导出原始 payload。
