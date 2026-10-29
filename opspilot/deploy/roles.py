@@ -4,14 +4,19 @@ Runs once per install or upgrade, after ``python -m opspilot.schema migrate``
 and before any runtime starts, on the owner connection (``OPSPILOT_DSN``,
 password through libpq ``passfile=``). Migrations only create the NOLOGIN
 groups (0003, 0011, 0023); this creates one SCRAM login per group, its
-password taken from that runtime's own pgpass secret file
+password taken from that runtime's own pgpass secret file and sent only as a
+client-computed SCRAM-SHA-256 verifier (the server's ``password_encryption``
+plays no part)
 (``OPSPILOT_ROLE_SECRETS_DIR``, default ``/run/secrets``), and then connects
 as each login with that same file and checks the schema is at head -- the
 check every runtime repeats on start.
 
 An existing login is reused untouched when it is a plain ``LOGIN INHERIT``
-member of its group and nothing else, and refused otherwise (same rule as
-``scripts/m0/postgres_lab.py runtime-roles``); its password is never reset,
+member of its group and nothing else with a SCRAM verifier stored (read from
+``pg_authid``, so the owner must be a superuser), and refused otherwise (same
+rule as ``scripts/m0/postgres_lab.py runtime-roles``, plus SCRAM); every
+existing login is checked before anything is created or revoked, so a refusal
+leaves the cluster as it was. Its password is never reset,
 so a login whose secret file was regenerated fails the login check instead
 of being silently re-keyed. ``TEMP`` on the product database is revoked from
 ``PUBLIC`` (the database belongs to this install): a login that can create
@@ -76,6 +81,8 @@ class LoginAttributes:
     createdb: bool
     replication: bool
     bypassrls: bool
+    #: the stored password is a SCRAM-SHA-256 verifier (not MD5, not none)
+    scram: bool
     groups: tuple[str, ...]
 
 
@@ -87,6 +94,7 @@ _PLAIN = {
     "createdb": False,
     "replication": False,
     "bypassrls": False,
+    "scram": True,
 }
 
 
@@ -123,9 +131,10 @@ def _attributes(
     row = conn.execute(
         "SELECT r.rolcanlogin, r.rolinherit, r.rolsuper, r.rolcreaterole, "
         "r.rolcreatedb, r.rolreplication, r.rolbypassrls, "
+        "coalesce(r.rolpassword LIKE 'SCRAM-SHA-256$%%', false) AS scram, "
         "array(SELECT g.rolname FROM pg_auth_members m JOIN pg_roles g "
         "ON g.oid = m.roleid WHERE m.member = r.oid ORDER BY 1) AS groups "
-        "FROM pg_roles r WHERE r.rolname = %s",
+        "FROM pg_authid r WHERE r.rolname = %s",
         (login,),
     ).fetchone()
     if row is None:
@@ -140,6 +149,7 @@ def _attributes(
         createdb=bool(row["rolcreatedb"]),
         replication=bool(row["rolreplication"]),
         bypassrls=bool(row["rolbypassrls"]),
+        scram=bool(row["scram"]),
         groups=tuple(str(name) for name in groups),
     )
 
@@ -159,13 +169,7 @@ def ensure_logins(
         passwords[spec.login] = password
     with psycopg.connect(owner_dsn, autocommit=True, row_factory=dict_row) as conn:
         verify_head(conn)
-        database = conn.execute("SELECT current_database() AS name").fetchone()
-        assert database is not None
-        conn.execute(
-            sql.SQL("REVOKE TEMP ON DATABASE {} FROM PUBLIC").format(
-                sql.Identifier(str(database["name"]))
-            )
-        )
+        missing = []
         for spec in logins:
             if not conn.execute(
                 "SELECT 1 FROM pg_roles WHERE rolname = %s", (spec.group,)
@@ -173,22 +177,33 @@ def ensure_logins(
                 raise RoleSetupError(f"ROLE_MISSING: {spec.group} (migrate first)")
             existing = _attributes(conn, spec.login)
             if existing is None:
-                conn.execute(
-                    sql.SQL(
-                        "CREATE ROLE {} LOGIN INHERIT PASSWORD {} IN ROLE {}"
-                    ).format(
-                        sql.Identifier(spec.login),
-                        sql.Literal(passwords[spec.login]),
-                        sql.Identifier(spec.group),
-                    )
-                )
+                missing.append(spec)
                 continue
             problems = conflicts(existing, spec.group)
             if problems:
                 raise RoleSetupError(
                     f"ROLE_CONFLICT: {spec.login} ({', '.join(problems)}; expected a "
-                    f"LOGIN INHERIT member of {spec.group} only); not altered"
+                    f"LOGIN INHERIT member of {spec.group} only, SCRAM password); "
+                    "not altered"
                 )
+        database = conn.execute("SELECT current_database() AS name").fetchone()
+        assert database is not None
+        conn.execute(
+            sql.SQL("REVOKE TEMP ON DATABASE {} FROM PUBLIC").format(
+                sql.Identifier(str(database["name"]))
+            )
+        )
+        for spec in missing:
+            verifier = conn.pgconn.encrypt_password(
+                passwords[spec.login].encode(), spec.login.encode(), b"scram-sha-256"
+            ).decode()
+            conn.execute(
+                sql.SQL("CREATE ROLE {} LOGIN INHERIT PASSWORD {} IN ROLE {}").format(
+                    sql.Identifier(spec.login),
+                    sql.Literal(verifier),
+                    sql.Identifier(spec.group),
+                )
+            )
     owner = {
         key: str(value)
         for key, value in conninfo_to_dict(owner_dsn).items()

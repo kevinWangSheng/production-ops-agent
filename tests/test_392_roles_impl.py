@@ -57,6 +57,7 @@ PLAIN = roles.LoginAttributes(
     createdb=False,
     replication=False,
     bypassrls=False,
+    scram=True,
     groups=("opspilot_web",),
 )
 
@@ -73,6 +74,7 @@ def test_a_plain_inheriting_member_of_its_group_only_is_reusable():
         ({"superuser": True}, "SUPERUSER=True"),
         ({"createrole": True}, "CREATEROLE=True"),
         ({"bypassrls": True}, "BYPASSRLS=True"),
+        ({"scram": False}, "SCRAM=False"),
         ({"groups": ("opspilot_web", "opspilot_worker")}, "membership"),
         ({"groups": ()}, "membership"),
     ],

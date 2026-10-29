@@ -7,6 +7,8 @@ from pathlib import Path
 
 import pytest
 
+from opspilot.tools.otel_demo import OtelDemoConfig
+
 ENTRYPOINT = Path(__file__).resolve().parents[1] / "deploy" / "docker-entrypoint.sh"
 
 
@@ -47,18 +49,70 @@ def test_a_secret_file_is_imported_into_its_variable_and_the_file_variable_dropp
 
 
 def test_the_runtimes_own_env_file_variables_are_passed_through_untouched(tmp_path):
+    worker_env = tmp_path / "worker_env"
+    worker_env.write_text("# placeholder\n")
+    observer_env = tmp_path / "observer_env"
+    observer_env.write_text("OPSPILOT_OTEL_TOKEN=not-for-the-observer\n")
     result = _run(
         {
-            "OPSPILOT_ENV_FILE": "/run/secrets/worker_env",
-            "OPSPILOT_OBSERVER_ENV_FILE": "/run/secrets/observer_env",
+            "OPSPILOT_ENV_FILE": str(worker_env),
+            "OPSPILOT_OBSERVER_ENV_FILE": str(observer_env),
         },
         "env",
     )
     assert result.returncode == 0, result.stderr
     env = _environment(result.stdout)
-    assert env["OPSPILOT_ENV_FILE"] == "/run/secrets/worker_env"
-    assert env["OPSPILOT_OBSERVER_ENV_FILE"] == "/run/secrets/observer_env"
+    assert env["OPSPILOT_ENV_FILE"] == str(worker_env)
+    assert env["OPSPILOT_OBSERVER_ENV_FILE"] == str(observer_env)
     assert "OPSPILOT_ENV" not in env
+    assert "OPSPILOT_OTEL_TOKEN" not in env
+
+
+def test_the_workers_otel_settings_come_from_its_env_file_into_its_config(tmp_path):
+    worker_env = tmp_path / "worker_env"
+    worker_env.write_text(
+        "# worker_env\n"
+        "DEEPSEEK_API_KEY=sk-model-key\n"
+        "  OPSPILOT_OTEL_PROMETHEUS_URL= http://prometheus:9090 \n"
+        "OPSPILOT_OTEL_JAEGER_URL=http://jaeger:16686/jaeger/ui\n"
+        "OPSPILOT_OTEL_PROMETHEUS_USERNAME='reader'\n"
+        'OPSPILOT_OTEL_PROMETHEUS_PASSWORD="p=ss word"\n'
+        "OPSPILOT_OTEL_PROMETHEUS_PASSWORD=second-ignored\n"
+        "OPSPILOT_OTEL_TOKEN=bearer-value"
+    )
+    result = _run({"OPSPILOT_ENV_FILE": str(worker_env)}, "env")
+    assert result.returncode == 0, result.stderr
+    env = _environment(result.stdout)
+    # The model key stays in the file; worker_main reads it from there.
+    assert "DEEPSEEK_API_KEY" not in env
+    config = OtelDemoConfig.from_env(env)
+    assert config.prometheus_url == "http://prometheus:9090"
+    assert config.jaeger_url == "http://jaeger:16686/jaeger/ui"
+    assert config.prometheus_basic_auth == ("reader", "p=ss word")
+    assert config.token == "bearer-value"
+    assert "bearer-value" not in result.stderr
+
+
+def test_an_otel_setting_both_inline_and_in_the_env_file_is_refused(tmp_path):
+    worker_env = tmp_path / "worker_env"
+    worker_env.write_text("OPSPILOT_OTEL_PROMETHEUS_PASSWORD=from-file\n")
+    result = _run(
+        {
+            "OPSPILOT_ENV_FILE": str(worker_env),
+            "OPSPILOT_OTEL_PROMETHEUS_PASSWORD": "inline-value",
+        },
+        "env",
+    )
+    assert result.returncode != 0
+    assert "OPSPILOT_OTEL_PROMETHEUS_PASSWORD" in result.stderr
+    assert "from-file" not in result.stderr + result.stdout
+    assert "inline-value" not in result.stderr + result.stdout
+
+
+def test_an_unreadable_worker_env_file_refuses_to_start(tmp_path):
+    result = _run({"OPSPILOT_ENV_FILE": str(tmp_path / "absent")}, "env")
+    assert result.returncode != 0
+    assert "OPSPILOT_ENV_FILE" in result.stderr
 
 
 def test_a_missing_secret_file_refuses_to_start_without_printing_a_value(tmp_path):

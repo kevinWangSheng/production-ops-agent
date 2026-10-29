@@ -122,3 +122,14 @@ def test_the_build_context_excludes_env_files_tmp_evidence_and_vcs():
         "opspilot/",
         "deploy/docker-entrypoint.sh",
     }
+
+
+def test_the_workers_otel_settings_reach_it_only_through_its_env_file_secret():
+    # deploy/docker-entrypoint.sh exports them from OPSPILOT_ENV_FILE
+    # (tests/test_392_entrypoint_impl.py), so nothing here names them.
+    worker = SERVICES["worker"]
+    assert worker["environment"]["OPSPILOT_ENV_FILE"] == "/run/secrets/worker_env"
+    assert "worker_env" in worker["secrets"]
+    assert not [
+        name for name in worker["environment"] if name.startswith("OPSPILOT_OTEL_")
+    ]

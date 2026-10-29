@@ -144,7 +144,7 @@ ensure_secrets() {
     write_once alertmanager_token random_hex
     write_once web_ui_users credential_entry ui-user "$UI_USER" ui_password
     write_once web_event_tokens credential_entry event-token "$EVENT_ACTOR" alertmanager_token
-    write_once worker_env placeholder_env worker_env "worker (DEEPSEEK_API_KEY)"
+    write_once worker_env placeholder_env worker_env "worker (DEEPSEEK_API_KEY; OPSPILOT_OTEL_* for otel-demo)"
     write_once observer_env placeholder_env observer_env "observer (Prometheus credentials)"
     export_auth_revision
 }

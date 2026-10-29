@@ -8,7 +8,8 @@
 # Every credential is a per-service file secret from OPSPILOT_SECRETS_DIR
 # (outside the repository); nothing secret is written in this file. Database
 # passwords reach libpq through `passfile=`; the web's user hashes and event
-# token digests through <NAME>_FILE (deploy/docker-entrypoint.sh).
+# token digests through <NAME>_FILE, and the worker's OPSPILOT_OTEL_* settings
+# from its worker_env file (both by deploy/docker-entrypoint.sh).
 # PostgreSQL publishes no host port; the workbench is published on the host
 # loopback only.
 
@@ -117,6 +118,8 @@ services:
     command: ["python", "-m", "opspilot.worker_main"]
     environment:
       OPSPILOT_WORKER_DSN: "host=postgres port=5432 dbname=opspilot user=opspilot_worker_app passfile=/run/secrets/worker_pgpass"
+      # Model and LangSmith keys, and for OPSPILOT_TOOL_PROFILE=otel-demo the
+      # OPSPILOT_OTEL_* endpoints and credentials (exported by the entrypoint).
       OPSPILOT_ENV_FILE: /run/secrets/worker_env
       OPSPILOT_WORKER_CAPACITY: "2"
       OPSPILOT_POOL_MAX_SIZE: "4"
