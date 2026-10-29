@@ -27,6 +27,8 @@ with open(os.environ["FAKE_DOCKER_LOG"], "a") as log:
         "OPSPILOT_ALLOWED_ORIGINS", "OPSPILOT_WEB_HOST_PORT", "OPSPILOT_SECRETS_DIR",
         "OPSPILOT_RUNTIME_UID", "OPSPILOT_AUTH_REVISION", "COMPOSE_PROFILES")}}}}) + "\\n")
 if args[:2] == ["volume", "ls"]:
+    if os.environ.get("FAKE_DOCKER_VOLUME_LS_FAILS"):
+        sys.exit("Cannot connect to the Docker daemon")
     print(os.environ.get("FAKE_DOCKER_VOLUMES", ""))
 """
 
@@ -376,3 +378,44 @@ def test_a_first_install_without_a_volume_generates_every_secret(host):
     result = host(OPSPILOT_PROJECT="opspilot-t")
     assert result.returncode == 0, result.stderr
     assert all((host.secrets / name).stat().st_size > 0 for name in SECRET_FILES)
+
+
+def _files(directory: Path) -> dict[str, bytes]:
+    if not directory.exists():
+        return {}
+    return {p.name: p.read_bytes() for p in directory.iterdir() if p.is_file()}
+
+
+@pytest.mark.parametrize("command", ["install", "upgrade"])
+def test_a_failed_volume_lookup_stops_before_any_change(host, tmp_path, command):
+    assert host(OPSPILOT_PROJECT="opspilot-t").returncode == 0
+    (host.secrets / "web_pgpass").unlink()
+    state = tmp_path / "home" / ".local" / "state"
+    before = (_files(host.secrets), sorted(state.rglob("*")))
+    host.reset()
+
+    result = host(
+        command, OPSPILOT_PROJECT="opspilot-t", FAKE_DOCKER_VOLUME_LS_FAILS="1"
+    )
+
+    assert result.returncode != 0
+    assert "volume" in result.stderr
+    assert (_files(host.secrets), sorted(state.rglob("*"))) == before
+    assert not any(c["args"][:1] in (["compose"], ["build"]) for c in host.calls())
+
+
+def test_a_failed_volume_lookup_refuses_another_secrets_dir(host, tmp_path):
+    first, other = tmp_path / "first", tmp_path / "other"
+    assert (
+        host(OPSPILOT_SECRETS_DIR=str(first), OPSPILOT_PROJECT="opspilot-t").returncode
+        == 0
+    )
+    host.reset()
+    result = host(
+        OPSPILOT_SECRETS_DIR=str(other),
+        OPSPILOT_PROJECT="opspilot-t",
+        FAKE_DOCKER_VOLUME_LS_FAILS="1",
+    )
+    assert result.returncode != 0
+    assert _files(other) == {}
+    assert not any(c["args"][:1] in (["compose"], ["build"]) for c in host.calls())

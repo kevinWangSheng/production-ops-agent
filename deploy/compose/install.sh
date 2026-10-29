@@ -65,14 +65,21 @@ inside_repo() {
 # Which secrets directory each Compose project was installed with: one file
 # per project holding the directory's path (no secret). It lives outside the
 # secrets directory, since it is how that directory is found.
+#
+# Lookups whose failure matters set a variable and die themselves rather than
+# return a status: errexit is suspended inside a function called from
+# `if`/`||`/`&&`/`!`, so a failure there would read as "no".
 install_record() {
     printf '%s/opspilot/installs/%s' "${XDG_STATE_HOME:-$HOME/.local/state}" "$1"
 }
 
-recorded_secrets_dir() {
+# read_record <project>: sets RECORDED to its recorded secrets dir, or empty.
+read_record() {
     local record
     record="$(install_record "$1")"
-    if [ -f "$record" ]; then cat "$record"; fi
+    RECORDED=""
+    [ -e "$record" ] || return 0
+    RECORDED="$(cat "$record")" || die "cannot read the install record $record"
 }
 
 valid_project() {
@@ -82,33 +89,37 @@ valid_project() {
     esac
 }
 
-# Whether this project's database volume exists. Output is captured first
-# (no early-exiting pipe), so a failing docker stops the run.
-volume_exists() {
+# lookup_volume: sets VOLUME to present or absent for this project's database
+# volume; a failed lookup stops the run (it is never taken as "absent").
+lookup_volume() {
     local volumes
-    volumes="$(docker volume ls --quiet --filter "label=com.docker.compose.project=$OPSPILOT_PROJECT")"
+    volumes="$(docker volume ls --quiet --filter "label=com.docker.compose.project=$OPSPILOT_PROJECT")" ||
+        die "could not list Docker volumes to check for project $OPSPILOT_PROJECT's database; nothing changed"
     case $'\n'"$volumes"$'\n' in
-        *$'\n'"${OPSPILOT_PROJECT}_pgdata"$'\n'*) return 0 ;;
+        *$'\n'"${OPSPILOT_PROJECT}_pgdata"$'\n'*) VOLUME=present ;;
+        *) VOLUME=absent ;;
     esac
-    return 1
 }
 
 # A database volume belongs to the secrets it was initialised with; a second
 # set would lock every login out of it.
 check_install_binding() {
-    local recorded
-    recorded="$(recorded_secrets_dir "$OPSPILOT_PROJECT")"
-    [ -n "$recorded" ] && [ "$recorded" != "$SECRETS_DIR" ] || return 0
-    volume_exists || return 0
-    die "project $OPSPILOT_PROJECT's database was installed with secrets in $recorded; set OPSPILOT_SECRETS_DIR=$recorded (or remove its data first: uninstall --purge-data with that directory)"
+    read_record "$OPSPILOT_PROJECT"
+    [ -n "$RECORDED" ] && [ "$RECORDED" != "$SECRETS_DIR" ] || return 0
+    lookup_volume
+    [ "$VOLUME" = present ] || return 0
+    die "project $OPSPILOT_PROJECT's database was installed with secrets in $RECORDED; set OPSPILOT_SECRETS_DIR=$RECORDED (or remove its data first: uninstall --purge-data with that directory)"
 }
 
 resolve_settings() {
     [ "$(id -u)" != 0 ] || die "run as a dedicated non-root user, not root"
     local project_hint="${OPSPILOT_PROJECT:-${COMPOSE_PROJECT_NAME:-opspilot}}"
     valid_project "$project_hint"
-    SECRETS_DIR="${OPSPILOT_SECRETS_DIR:-$(recorded_secrets_dir "$project_hint")}"
-    SECRETS_DIR="${SECRETS_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/opspilot}"
+    SECRETS_DIR="${OPSPILOT_SECRETS_DIR:-}"
+    if [ -z "$SECRETS_DIR" ]; then
+        read_record "$project_hint"
+        SECRETS_DIR="${RECORDED:-${XDG_CONFIG_HOME:-$HOME/.config}/opspilot}"
+    fi
     case "$SECRETS_DIR" in /*) ;; *) SECRETS_DIR="$PWD/$SECRETS_DIR" ;; esac
     inside_repo "$SECRETS_DIR" && die "OPSPILOT_SECRETS_DIR must be outside the repository"
     mkdir -p -m 700 "$SECRETS_DIR"
@@ -175,8 +186,19 @@ write_once() {
 }
 
 pgpass_line() { printf '*:*:*:%s:%s\n' "$1" "$2"; }
-owner_pgpass() { pgpass_line opspilot_owner "$(cat "$SECRETS_DIR/postgres_password")"; }
-login_pgpass() { pgpass_line "$1" "$(random_hex)"; }
+# A substitution inside an argument would hide its failure; read it first.
+owner_pgpass() {
+    local password
+    password="$(cat "$SECRETS_DIR/postgres_password")" || die "cannot read postgres_password"
+    [ -n "$password" ] || die "postgres_password is empty"
+    pgpass_line opspilot_owner "$password"
+}
+login_pgpass() {
+    local password
+    password="$(random_hex)" || die "could not generate a password for $1"
+    [ ${#password} -eq 64 ] || die "could not generate a password for $1"
+    pgpass_line "$1" "$password"
+}
 # Hashes on the host (standard-library script), so no image is needed yet.
 credential_entry() {
     command -v python3 > /dev/null || die "python3 is required to hash the generated credentials"
@@ -196,7 +218,8 @@ readonly SECRET_FILES=(postgres_password owner_pgpass web_pgpass worker_pgpass
 # silently changes the operator's), so a missing or empty file is refused
 # before anything is built, written or started.
 require_secrets_for_live_volume() {
-    volume_exists || return 0
+    lookup_volume
+    [ "$VOLUME" = present ] || return 0
     local name missing=()
     for name in "${SECRET_FILES[@]}"; do
         [ -s "$SECRETS_DIR/$name" ] || missing+=("$name")
@@ -224,7 +247,10 @@ ensure_secrets() {
 
 # Identifies the credential set on every principal; a hash of hashes.
 export_auth_revision() {
-    export OPSPILOT_AUTH_REVISION="auth-$(cat "$SECRETS_DIR/web_ui_users" "$SECRETS_DIR/web_event_tokens" | sha256 | cut -c1-12)"
+    local digest
+    digest="$(cat "$SECRETS_DIR/web_ui_users" "$SECRETS_DIR/web_event_tokens" | sha256)" ||
+        die "cannot read web_ui_users / web_event_tokens"
+    export OPSPILOT_AUTH_REVISION="auth-${digest:0:12}"
 }
 
 sha256() {
