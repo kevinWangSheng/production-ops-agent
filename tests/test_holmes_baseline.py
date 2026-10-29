@@ -231,7 +231,7 @@ def test_egress_tunnels_only_the_allowlisted_target() -> None:
         assert target is None
 
 
-def test_request_check_requires_thinking_and_effort() -> None:
+def test_request_check_requires_model_thinking_effort_and_limit() -> None:
     from scripts.holmes_baseline.capture import request_check
 
     body = {
@@ -241,7 +241,87 @@ def test_request_check_requires_thinking_and_effort() -> None:
         "max_tokens": 65536,
     }
     assert request_check(body)["ok"] is True
-    nested = {"model": "m", "extra_body": {"thinking": {"type": "enabled"}}}
-    assert request_check({**nested, "reasoning_effort": "high"})["ok"] is True
-    assert request_check({"model": "m", "reasoning_effort": "high"})["ok"] is False
-    assert request_check({"model": "m", "thinking": {"type": "enabled"}})["ok"] is False
+    nested = {**body, "extra_body": {"thinking": {"type": "enabled"}}}
+    del nested["thinking"]
+    assert request_check(nested)["ok"] is True
+    for broken in (
+        {"model": "deepseek-chat"},
+        {"max_tokens": 16384},
+        {"max_tokens": None},
+        {"thinking": {"type": "disabled"}},
+        {"reasoning_effort": "low"},
+    ):
+        assert request_check({**body, **broken})["ok"] is False, broken
+    assert request_check({k: v for k, v in body.items() if k != "model"})["ok"] is False
+
+
+# --- live runner: the fault restore is reported as it happened
+
+
+def _live_run(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, restore: object
+) -> tuple[int, dict[str, object]]:
+    from scripts.holmes_baseline import run
+
+    monkeypatch.setattr(run, "EVIDENCE", tmp_path / "evidence")
+    monkeypatch.setattr(run, "RAW_ROOT", tmp_path / "raw")
+    monkeypatch.setattr(run, "model_key", lambda: "k")
+    monkeypatch.setattr(run, "frontend_span_rate", lambda: 1.0)
+    monkeypatch.setattr(
+        run,
+        "clock_skew",
+        lambda: {"host_vm": 0.0, "host_container": 0.0, "measure_seconds": 0.1},
+    )
+    monkeypatch.setattr(run, "balance", lambda key: {"total": "1"})
+    monkeypatch.setattr(run, "setup", lambda **kw: None)
+    monkeypatch.setattr(run, "teardown", lambda: None)
+    monkeypatch.setattr(run, "egress_log", lambda name: [])
+    monkeypatch.setattr(run, "proxy_log_lines", lambda since: LOG)
+    monkeypatch.setattr(run.time, "sleep", lambda s: None)
+    monkeypatch.setattr(run, "docker", lambda *a, **kw: '[{"Id": "sha256:x"}]')
+    monkeypatch.setattr(
+        run,
+        "run_holmes",
+        lambda *a, **kw: {
+            "output": {**completed(), "exit_code": 0, "timed_out": False},
+            "started": 1.0,
+            "finished": 2.0,
+            "raw_sha256": None,
+        },
+    )
+    calls: list[list[str]] = []
+
+    def lab_main(argv: list[str]) -> int:
+        calls.append(argv)
+        if argv[:2] == ["fault", "restore"]:
+            if isinstance(restore, BaseException):
+                raise restore
+            return int(restore)  # type: ignore[call-overload]
+        return 0
+
+    monkeypatch.setattr(run.kind_lab, "main", lab_main)
+    code = run.main(["live", "--run-id", "t1", "--settle", "0"])
+    assert [c[:2] for c in calls] == [["fault", "inject"], ["fault", "restore"]]
+    summary = json.loads((tmp_path / "evidence/summary.json").read_text())
+    return code, summary
+
+
+def test_live_run_records_a_successful_restore(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    code, summary = _live_run(monkeypatch, tmp_path, 0)
+    assert code == 0
+    fault = summary["fault"]
+    assert isinstance(fault, dict)
+    assert fault["restored"] is True and fault["restore_exit_code"] == 0
+
+
+@pytest.mark.parametrize("restore", [2, SystemExit("refused"), RuntimeError("boom")])
+def test_live_run_reports_a_failed_restore_and_exits_nonzero(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, restore: object
+) -> None:
+    code, summary = _live_run(monkeypatch, tmp_path, restore)
+    assert code != 0
+    fault = summary["fault"]
+    assert isinstance(fault, dict)
+    assert fault["restored"] is False and fault["restore_exit_code"] != 0

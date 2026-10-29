@@ -556,6 +556,26 @@ def tool_rows(output: dict[str, Any]) -> list[dict[str, Any]]:
     return rows
 
 
+def restore_fault(run_id: str) -> int:
+    """``kind_lab fault restore``'s exit code; a refusal (SystemExit) or a
+    crash counts as a failed restore, never as restored."""
+    try:
+        return int(kind_lab.main(["fault", "restore", "--experiment-id", run_id]))
+    except SystemExit as exc:
+        return exc.code if isinstance(exc.code, int) and exc.code else 1
+    except Exception:  # noqa: BLE001 - reported as a failed restore
+        return 1
+
+
+def fault_record(injected_at: float, restore_code: int) -> dict[str, Any]:
+    return {
+        "flag": kind_lab.FLAG,
+        "injected_at": utc(injected_at),
+        "restored": restore_code == 0,
+        "restore_exit_code": restore_code,
+    }
+
+
 def cmd_live(args: argparse.Namespace) -> int:
     key = model_key()
     swap = subprocess.run(
@@ -575,6 +595,7 @@ def cmd_live(args: argparse.Namespace) -> int:
     question = scenario["stimulus"]["question"]
     balance_before = balance(key)
     injected = False
+    restore_code: int | None = None
     try:
         code = kind_lab.main(["fault", "inject", "--experiment-id", run_id])
         if code:
@@ -604,8 +625,18 @@ def cmd_live(args: argparse.Namespace) -> int:
         proxy_lines = proxy_log_lines(result["started"])
     finally:
         if injected:
-            kind_lab.main(["fault", "restore", "--experiment-id", run_id])
+            restore_code = restore_fault(run_id)
+            if restore_code:
+                print(
+                    f"FAULT RESTORE FAILED ({restore_code}); restore {kind_lab.FLAG} "
+                    "by hand before any other lab use",
+                    file=sys.stderr,
+                )
+    assert restore_code is not None
     balance_after = balance(key)
+    # the vendor balance lags behind the calls; read it again later
+    time.sleep(args.balance_recheck)
+    balance_later = balance(key)
     output = result["output"]
     outcome = project_outcome(output, proxy_lines)
     proxy_counts = Counter(
@@ -617,11 +648,7 @@ def cmd_live(args: argparse.Namespace) -> int:
         "scenario_id": scenario["scenario_id"],
         "diagnosis_scored": False,
         "outcome": outcome,
-        "fault": {
-            "flag": kind_lab.FLAG,
-            "injected_at": utc(injected_at),
-            "restored": True,
-        },
+        "fault": fault_record(injected_at, restore_code),
         "started_at": utc(result["started"]),
         "finished_at": utc(result["finished"]),
         "wall_seconds": round(result["finished"] - result["started"], 1),
@@ -657,13 +684,21 @@ def cmd_live(args: argparse.Namespace) -> int:
             "config_sha256": sha256_file(config_path),
         },
         "raw_output_sha256": result["raw_sha256"],
-        "balance": {"before": balance_before, "after": balance_after},
+        "balance": {
+            "source": f"GET https://{hconfig.MODEL_HOST}/user/balance",
+            "before": balance_before,
+            "after": balance_after,
+            "after_delay_seconds": args.balance_recheck,
+            "after_delayed": balance_later,
+            # LiteLLM's own estimate; 0.0 when the model is not in its cost map
+            "litellm_total_cost": output.get("total_cost"),
+        },
     }
     EVIDENCE.mkdir(parents=True, exist_ok=True)
     (EVIDENCE / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
     (EVIDENCE / "proxy-log-holmes.txt").write_text("\n".join(proxy_lines) + "\n")
     print(json.dumps(outcome))
-    return 0
+    return 0 if restore_code == 0 else 1
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -677,6 +712,7 @@ def main(argv: list[str] | None = None) -> int:
     live = sub.add_parser("live")
     live.add_argument("--run-id", default=f"f14-holmes-{int(time.time())}")
     live.add_argument("--settle", type=float, default=FAULT_SETTLE_SECONDS)
+    live.add_argument("--balance-recheck", type=float, default=300)
     live.set_defaults(func=cmd_live)
     args = parser.parse_args(argv)
     RAW_ROOT.mkdir(parents=True, exist_ok=True)

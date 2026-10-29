@@ -15,10 +15,15 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
 REPLY = "capture endpoint: request recorded"
+# What OpsPilot sends (opspilot.investigation.loop.serialized_request); kept as
+# literals: this file runs alone inside the helper container.
+EXPECTED_MODEL = "deepseek-flash"
+EXPECTED_MAX_TOKENS = 65536
 
 
 def request_check(body: dict[str, Any]) -> dict[str, Any]:
-    """Which of OpsPilot's request settings the captured body carries.
+    """Whether the captured body carries OpsPilot's request settings (U6):
+    the same model, thinking enabled, effort high and the 65536 output limit.
 
     LiteLLM may forward ``thinking`` top-level or inside ``extra_body``
     (M0 saw it rejected top-level), so both places count.
@@ -26,17 +31,14 @@ def request_check(body: dict[str, Any]) -> dict[str, Any]:
     extra = body.get("extra_body") if isinstance(body.get("extra_body"), dict) else {}
     thinking = body.get("thinking", extra.get("thinking"))
     effort = body.get("reasoning_effort", extra.get("reasoning_effort"))
+    limit = body.get("max_tokens", body.get("max_completion_tokens"))
     checks = {
+        "model_" + EXPECTED_MODEL: body.get("model") == EXPECTED_MODEL,
         "thinking_enabled": thinking == {"type": "enabled"},
         "reasoning_effort_high": effort == "high",
-        "max_tokens_65536": body.get("max_tokens") == 65536
-        or body.get("max_completion_tokens") == 65536,
-        "model": body.get("model"),
+        f"max_tokens_{EXPECTED_MAX_TOKENS}": limit == EXPECTED_MAX_TOKENS,
     }
-    return {
-        **checks,
-        "ok": checks["thinking_enabled"] and checks["reasoning_effort_high"],
-    }
+    return {**checks, "model": body.get("model"), "ok": all(checks.values())}
 
 
 def _completion(model: str) -> dict[str, Any]:

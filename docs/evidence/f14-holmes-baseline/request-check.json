@@ -1,5 +1,5 @@
 {
-  "checked_at": "2026-10-28T18:36:44Z",
+  "checked_at": "2026-10-28T19:30:33Z",
   "image": "opspilot-f14/holmesgpt:a0009195",
   "model_env": {
     "THINKING": "{\"type\": \"enabled\"}",
@@ -39,6 +39,7 @@
       "check": {
         "max_tokens_65536": true,
         "model": "deepseek-flash",
+        "model_deepseek-flash": true,
         "ok": true,
         "reasoning_effort_high": true,
         "thinking_enabled": true

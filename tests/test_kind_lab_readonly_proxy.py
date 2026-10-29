@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+import http.client
 import json
+import os
 import shutil
 import stat
 import subprocess
+import time
+import urllib.parse
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -197,7 +202,11 @@ def test_holmes_form_post_is_limited_to_the_query_paths() -> None:
         in form
     )
     assert "proxy_pass http://prometheus_backend$uri$is_args$args;" in form
-    assert "client_max_body_size 64k;" in config
+    # the 64k limit lives only on the holmes form path (review C); other
+    # accounts keep nginx's default limit
+    assert "client_max_body_size 64k;" in form
+    assert "client_max_body_size" not in config.split("location @holmes_form", 1)[0]
+    assert "if ($opspilot_holmes_form_too_large) { return 413; }" in form
     for denied in ("/api/v1/metadata", "/api/v1/rules"):
         assert denied not in lab.READ_PATHS and denied not in config
 
@@ -221,15 +230,235 @@ def test_holmes_env_file_carries_only_its_own_account(tmp_path: Path) -> None:
     assert "holmes" not in lab.web_config_yaml(accounts(), hasher=lambda _: "h")
 
 
+def _proxy_command(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, auth: dict[str, str]
+) -> tuple[int, list[str], dict[str, str]]:
+    lab_dir = tmp_path / "lab"
+    monkeypatch.setattr(lab, "LAB_DIR", lab_dir)
+    monkeypatch.setattr(lab, "AUTH_FILE", lab_dir / "prometheus-auth.json")
+    lab._private_write(lab.AUTH_FILE, json.dumps(auth))
+    applied: list[str] = []
+
+    def secrets(a: dict[str, str]) -> int:
+        applied.append("prometheus-web-config")
+        return 0
+
+    def proxy(a: dict[str, str]) -> int:
+        applied.append("proxy")
+        return 0
+
+    monkeypatch.setattr(lab, "apply_prometheus_auth_secrets", secrets)
+    monkeypatch.setattr(lab, "apply_readonly_proxy", proxy)
+    code = lab.main(["proxy"])
+    return code, applied, json.loads(lab.AUTH_FILE.read_text())
+
+
 def test_proxy_command_rewrites_env_files_and_applies_only_the_proxy(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(lab, "LAB_DIR", tmp_path)
-    monkeypatch.setattr(lab, "prometheus_accounts", accounts)
-    applied: list[dict[str, str]] = []
-    monkeypatch.setattr(lab, "apply_readonly_proxy", lambda a: applied.append(a) or 0)
-    assert lab.main(["proxy"]) == 0
-    assert applied == [accounts()]
-    assert sorted(p.name for p in tmp_path.iterdir()) == sorted(
-        f"prometheus-{role}.env" for role in lab.ROLE_ENV_VARS
+    code, applied, _ = _proxy_command(tmp_path, monkeypatch, accounts())
+    assert code == 0
+    assert applied == ["proxy"]
+    assert sorted(p.name for p in (tmp_path / "lab").iterdir()) == sorted(
+        ["prometheus-auth.json"]
+        + [f"prometheus-{role}.env" for role in lab.ROLE_ENV_VARS]
     )
+
+
+def test_proxy_command_refreshes_prometheus_auth_when_proxy_account_is_new(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # PR #401 bot thread: an older auth file without ``proxy`` gains it here;
+    # Prometheus' web config must list it before the proxy uses it, else 401
+    old = {k: v for k, v in accounts().items() if k not in {"proxy", "holmes"}}
+    code, applied, auth = _proxy_command(tmp_path, monkeypatch, old)
+    assert code == 0
+    assert "proxy" in auth
+    assert applied == ["prometheus-web-config", "proxy"]
+
+
+# --- #396 review D: the rendered rules against a real nginx 1.28 container.
+# CI has no nginx/docker, so this runs only when OPSPILOT_PROXY_DOCKER_CONTEXT
+# names a docker context (lab: ``colima-m1-kind``, inside the kind-lab lock).
+
+PROXY_DOCKER = os.environ.get("OPSPILOT_PROXY_DOCKER_CONTEXT")
+ECHO_BACKEND = """
+import json
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+class H(BaseHTTPRequestHandler):
+    def log_message(self, *a):
+        pass
+    def _h(self):
+        n = int(self.headers.get("Content-Length") or 0)
+        body = self.rfile.read(n) if n else b""
+        out = json.dumps({"method": self.command, "body_bytes": len(body)}).encode()
+        self.send_response(200)
+        self.send_header("Content-Length", str(len(out)))
+        self.end_headers()
+        self.wfile.write(out)
+    do_GET = do_POST = do_HEAD = _h
+ThreadingHTTPServer(("0.0.0.0", 9090), H).serve_forever()
+"""
+FORM = "application/x-www-form-urlencoded"
+
+
+def _docker(*args: str) -> str:
+    env = {**os.environ, "DOCKER_CONTEXT": str(PROXY_DOCKER)}
+    return subprocess.run(
+        ["docker", *args], env=env, capture_output=True, text=True, check=True
+    ).stdout
+
+
+@pytest.fixture
+def live_proxy() -> Iterator[str]:
+    if not PROXY_DOCKER:
+        pytest.skip("set OPSPILOT_PROXY_DOCKER_CONTEXT to run against real nginx")
+    users = accounts()
+    # under the repository root: the colima VM mounts the home directory only
+    work = lab.ROOT / "tmp/proxy-nginx-test"
+    work.mkdir(parents=True, exist_ok=True)
+    config = lab.proxy_nginx_config(users).replace("prometheus:9090", "backend:9090")
+    (work / "nginx.conf").write_text(config)
+    (work / "htpasswd").write_text(lab.proxy_htpasswd(users))
+    (work / "backend.py").write_text(ECHO_BACKEND)
+    for path in work.iterdir():
+        path.chmod(0o644)
+    net, backend, nginx = (
+        "opspilot-proxy-test",
+        "opspilot-proxy-test-be",
+        "opspilot-proxy-test-ng",
+    )
+    for name in (nginx, backend):
+        subprocess.run(
+            ["docker", "rm", "-f", name],
+            env={**os.environ, "DOCKER_CONTEXT": str(PROXY_DOCKER)},
+            capture_output=True,
+        )
+    subprocess.run(
+        ["docker", "network", "create", net],
+        env={**os.environ, "DOCKER_CONTEXT": str(PROXY_DOCKER)},
+        capture_output=True,
+    )
+    try:
+        _docker(
+            "run", "-d", "--rm", "--name", backend, "--network", net,
+            "--network-alias", "backend", "-v", f"{work}/backend.py:/b.py:ro",
+            "python:3.11-alpine", "python", "-u", "/b.py",
+        )  # fmt: skip
+        _docker(
+            "run", "-d", "--rm", "--name", nginx, "--network", net,
+            "-p", "127.0.0.1::8080",
+            "-v", f"{work}/nginx.conf:/etc/nginx/nginx.conf:ro",
+            "-v", f"{work}/htpasswd:/etc/opspilot-proxy/htpasswd:ro",
+            "nginx:1.28.0-alpine", "nginx", "-g", "daemon off;",
+        )  # fmt: skip
+        port = _docker("port", nginx, "8080/tcp").splitlines()[0].rsplit(":", 1)[1]
+        base = f"http://127.0.0.1:{port}"
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline:
+            try:
+                _send(base, "GET", "/api/v1/query?query=up", "lab")
+                break
+            except OSError:
+                time.sleep(0.5)
+        yield base
+    finally:
+        for name in (nginx, backend):
+            subprocess.run(
+                ["docker", "rm", "-f", name],
+                env={**os.environ, "DOCKER_CONTEXT": str(PROXY_DOCKER)},
+                capture_output=True,
+            )
+        subprocess.run(
+            ["docker", "network", "rm", net],
+            env={**os.environ, "DOCKER_CONTEXT": str(PROXY_DOCKER)},
+            capture_output=True,
+        )
+
+
+def _send(
+    base: str,
+    method: str,
+    path: str,
+    account: str | None,
+    body: bytes | None = None,
+    *,
+    content_type: str = FORM,
+    chunked: bool = False,
+) -> tuple[int, dict[str, Any] | None]:
+    parsed = urllib.parse.urlsplit(base)
+    conn = http.client.HTTPConnection(parsed.hostname, parsed.port, timeout=15)
+    headers = {}
+    if account:
+        headers["Authorization"] = lab.basic_auth_header(accounts(), account)
+    if body is not None:
+        headers["Content-Type"] = content_type
+    try:
+        conn.request(method, path, body=body, headers=headers, encode_chunked=chunked)
+        response = conn.getresponse()
+        raw = response.read()
+    finally:
+        conn.close()
+    try:
+        return response.status, json.loads(raw)
+    except ValueError:
+        return response.status, None
+
+
+def _form(size: int) -> bytes:
+    body = b"query=up&start=0&end=1&step=1"
+    return body + b"&pad=" + b"x" * max(0, size - len(body) - 5)
+
+
+def test_real_nginx_holmes_form_rules(live_proxy: str) -> None:
+    results = {}
+    for path in ("/api/v1/query", "/api/v1/query_range"):
+        status, echo = _send(live_proxy, "POST", path, "holmes", _form(512))
+        assert status == 200 and echo is not None and echo["body_bytes"] == 512
+        assert echo["method"] == "POST"
+        results[("holmes", path, "64k")] = _send(
+            live_proxy, "POST", path, "holmes", _form(64 * 1024)
+        )[0]
+        results[("holmes", path, "64k+1")] = _send(
+            live_proxy, "POST", path, "holmes", _form(64 * 1024 + 1)
+        )[0]
+        results[("holmes", path, "70k chunked")] = _send(
+            live_proxy, "POST", path, "holmes", _form(70_000), chunked=True
+        )[0]
+        results[("holmes", path, "protobuf")] = _send(
+            live_proxy,
+            "POST",
+            path,
+            "holmes",
+            b"",
+            content_type="application/x-protobuf",
+        )[0]
+    assert results == {
+        ("holmes", p, kind): code
+        for p in ("/api/v1/query", "/api/v1/query_range")
+        for kind, code in (
+            ("64k", 200),
+            ("64k+1", 413),
+            ("70k chunked", 413),
+            ("protobuf", 403),
+        )
+    }
+    for path in ("/api/v1/series", "/api/v1/metadata", "/api/v1/rules"):
+        assert _send(live_proxy, "POST", path, "holmes", _form(512))[0] == 403
+
+
+@pytest.mark.parametrize("account", ("investigator", "observer", "lab"))
+def test_real_nginx_other_accounts_keep_get_head_and_default_body_limit(
+    live_proxy: str, account: str
+) -> None:
+    for path in ("/api/v1/query", "/api/v1/query_range"):
+        # form POSTs are denied whatever their size up to nginx's default 1m
+        for size in (512, 70_000, 1024 * 1024 - 1024):
+            assert _send(live_proxy, "POST", path, account, _form(size))[0] == 403
+        assert _send(live_proxy, "POST", path, account, _form(2_000_000))[0] == 413
+    # a GET body over 64k is still accepted and never forwarded
+    status, echo = _send(
+        live_proxy, "GET", "/api/v1/query?query=up", account, _form(70_000)
+    )
+    assert status == 200 and echo == {"method": "GET", "body_bytes": 0}
+    assert _send(live_proxy, "POST", "/api/v1/query", None, _form(512))[0] == 401

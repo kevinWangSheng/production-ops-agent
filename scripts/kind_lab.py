@@ -373,9 +373,11 @@ def proxy_nginx_config(accounts: dict[str, str]) -> str:
     #
     # #396 (decision Q6): upstream HolmesGPT sends query/query_range as POST
     # form bodies. Only the authenticated ``holmes`` account, only those two
-    # paths, only a form body (<= 64k) jumps from @read to @holmes_form, the
-    # one location that forwards a body. Every other request keeps the
-    # GET/HEAD-only, body-dropping @read rule. ``$remote_user`` is read after
+    # paths, only a form body (<= 64k, else 413) jumps from @read to
+    # @holmes_form, the one location that forwards a body. The 64k limit lives
+    # only there; other accounts keep nginx's default 1m limit as before.
+    # Every other request keeps the GET/HEAD-only, body-dropping @read rule.
+    # ``$remote_user`` is read after
     # auth_basic accepted the password, so a wrong password never gets here.
     # Only holmes requests are logged, without headers, args or bodies.
     locations = "\n".join(
@@ -393,6 +395,11 @@ http {
     default 0;
     "~^holmes:POST:/api/v1/query(_range)?:application/x-www-form-urlencoded(;.*)?$" 1;
   }
+  map $content_length $opspilot_holmes_form_too_large {
+    default 0;
+    "~^0*[1-9][0-9]{5,}$" 1;
+    "~^0*(6553[7-9]|655[4-9][0-9]|65[6-9][0-9][0-9]|6[6-9][0-9]{3}|[7-9][0-9]{4})$" 1;
+  }
   map $remote_user $opspilot_holmes_log {
     default 0;
     holmes 1;
@@ -403,7 +410,6 @@ http {
   server {
     listen 8080;
     root /var/empty;
-    client_max_body_size 64k;
     access_log /dev/stdout opspilot_holmes if=$opspilot_holmes_log;
     auth_basic "lab readonly";
     auth_basic_user_file /etc/opspilot-proxy/htpasswd;
@@ -425,6 +431,11 @@ http {
       proxy_pass http://prometheus_backend$uri$is_args$args;
     }
     location @holmes_form {
+      # a named location skips nginx's Content-Length check against
+      # client_max_body_size (only chunked bodies are checked here), so the
+      # 64k form limit is enforced on Content-Length explicitly
+      client_max_body_size 64k;
+      if ($opspilot_holmes_form_too_large) { return 413; }
       proxy_pass_request_body on;
       proxy_set_header Authorization "AUTHORIZATION";
       proxy_pass http://prometheus_backend$uri$is_args$args;
@@ -1063,7 +1074,17 @@ def cmd_env_file(args: argparse.Namespace) -> int:
 def cmd_proxy(args: argparse.Namespace) -> int:
     """Re-render the readonly proxy (accounts, per-role env files, Secret,
     rollout) on a running lab without the chart upgrades of ``up`` (#396)."""
-    accounts = prometheus_accounts()
+    try:
+        listed = set(json.loads(AUTH_FILE.read_text()))
+    except (OSError, ValueError):
+        listed = set()
+    accounts = prometheus_accounts(AUTH_FILE)
+    if "proxy" not in listed:
+        # the proxy password was just created: Prometheus' web config must
+        # list it too, or every proxied request gets 401
+        code = apply_prometheus_auth_secrets(accounts)
+        if code != 0:
+            return code
     for role in ROLE_ENV_VARS:
         role_env_file(role, accounts, LAB_DIR / f"prometheus-{role}.env")
     print(f"+ wrote {LAB_DIR}/prometheus-<role>.env for {sorted(ROLE_ENV_VARS)}")

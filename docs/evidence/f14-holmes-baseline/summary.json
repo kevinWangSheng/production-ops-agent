@@ -13,7 +13,9 @@
   "fault": {
     "flag": "paymentFailure",
     "injected_at": "2026-10-28T18:36:55Z",
-    "restored": true
+    "restored": true,
+    "restore_exit_code": null,
+    "restore_note": "this Run predates exit-code recording; restored=true rests on the restore command's output in the Run log: 'restore completed and verified on the lab ConfigMap (sha256 1ee5c0258e3e)'"
   },
   "started_at": "2026-10-28T18:41:57Z",
   "finished_at": "2026-10-28T18:44:50Z",
@@ -350,6 +352,7 @@
   },
   "raw_output_sha256": "6a1e6e04076e7832fea0f0aa4f43787d2451e85492cf15d34efd2573f0e17572",
   "balance": {
+    "source": "GET https://api.deepseek.com/user/balance",
     "before": {
       "is_available": true,
       "balance_infos": [
@@ -371,6 +374,15 @@
           "topped_up_balance": "89.75"
         }
       ]
-    }
+    },
+    "after_note": "read by the runner right after the fault restore; the vendor balance had not moved yet",
+    "after_delay_seconds": null,
+    "after_delayed": {
+      "currency": "CNY",
+      "total_balance": "89.65"
+    },
+    "after_delayed_note": "read once by hand (scripts.holmes_baseline.run.balance) a few minutes after the Run; exact time not recorded; spending by other sessions in between not excluded. The runner now takes this delayed reading itself (--balance-recheck).",
+    "litellm_total_cost": 0.0,
+    "litellm_total_cost_note": "LiteLLM's estimate; 0.0 because deepseek-flash is not in its cost map, not a vendor figure"
   }
 }
