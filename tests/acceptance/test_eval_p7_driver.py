@@ -19,6 +19,7 @@ from eval_p7_support import (
     put,
     sha,
     snapshot,
+    tuning_debug,
 )
 
 from opspilot.evaluation import judge
@@ -1234,7 +1235,8 @@ def test_debug_provider_values_must_match_mapping_keys(harness, first, second):
 @pytest.mark.parametrize(
     "damage,reason",
     [
-        ("prompt", "JUDGE_PROMPT_CHANGED"),
+        # P7 r3 D21: an older exported convention no longer blocks (tuning)
+        # debug; see test_eval_p7_r3.py. The raw hash bindings still refuse.
         ("items", "PACKET_STALE"),
         ("packet", "PACKET_STALE"),
     ],
@@ -1538,8 +1540,8 @@ def original_records_by_family(h):
     }
 
 
-def test_formal_validation_exposure_blocks_other_workspace_debug(harness):
-    """§8.2b: a formal validation family cannot become debug in another workspace."""
+def test_formal_validation_exposure_allows_other_workspace_tuning_debug(harness):
+    """§8.2b as amended by P7 r3 D21: formal validation families may be tuned."""
     h = harness.ready()
     originals = original_records_by_family(h)
     validation_families = {i.source_family for i in h.items if i.split == "validation"}
@@ -1559,11 +1561,38 @@ def test_formal_validation_exposure_blocks_other_workspace_debug(harness):
     assert {
         i.source_family for i in h.items if i.split == "debug"
     } == validation_families
+    h.calls.clear()
+    h.balance_calls.clear()
+    registry = (h.private / "exposure.jsonl").read_bytes()
+    # P7 r3 D21: was refused with VALIDATION_EXPOSED; reuse for tuning is allowed
+    # and is itself registered as debug use.
+    h.costs("canary-debug")
+    tuning_debug(h, "canary-debug")
+    assert len(h.calls) == 12 * 3
+    after = (h.private / "exposure.jsonl").read_bytes()
+    assert after.startswith(registry)
+    (row,) = [json.loads(line) for line in after[len(registry) :].splitlines()]
+    assert row["kind"] == "debug" and row["workspace"] == h.workspace
+    assert row["tuning"] is True
+    assert set(row["debug_families"]) == validation_families
+
+
+def test_formal_validation_exposure_blocks_other_workspace_plain_debug(harness):
+    """§8.2b: without --tuning, formal validation families stay out of debug."""
+    h = harness.ready()
+    validation_families = {i.source_family for i in h.items if i.split == "validation"}
+    h.formal()
+    h.workspace = "canary-other-debug"
+    h.init().seed(swap_source_splits=True).export().annotations()
+    assert {
+        i.source_family for i in h.items if i.split == "debug"
+    } == validation_families
     h.costs("canary-debug")
     h.calls.clear()
     h.balance_calls.clear()
     before = snapshot(h.root)
     registry = (h.private / "exposure.jsonl").read_bytes()
+    # P7 r3 D21: only the tuning path may reuse formal-exposed families.
     h.cli(
         "debug",
         "--session",
@@ -1572,6 +1601,38 @@ def test_formal_validation_exposure_blocks_other_workspace_debug(harness):
         h.env,
         code=3,
         reason="VALIDATION_EXPOSED",
+    )
+    assert snapshot(h.root) == before
+    assert (h.private / "exposure.jsonl").read_bytes() == registry
+    assert not h.calls and not h.balance_calls
+
+
+def test_old_convention_workspace_refuses_plain_debug(harness):
+    """§8.2a: without --tuning, an older exported convention refuses debug."""
+    h = harness.seed().export().annotations()
+    path = h.ws / "blind/packet.json"
+    packet = json.loads(path.read_bytes())
+    packet["convention"] = "CANARY-P7-OLD-CONVENTION"
+    packet["convention_sha256"] = sha(packet["convention"].encode())
+    put(path, packet)
+    for slot in (1, 2):
+        provenance = h.ws / f"annotations/annotations-{slot}.provenance.json"
+        value = json.loads(provenance.read_bytes())
+        value["packet_sha256"] = sha(path.read_bytes())
+        put(provenance, value)
+    assert packet["convention"] not in judge.PROMPT
+    h.costs("canary-debug")
+    before = snapshot(h.root)
+    registry = (h.private / "exposure.jsonl").read_bytes()
+    # P7 r3 D21: only the tuning path tolerates the older convention.
+    h.cli(
+        "debug",
+        "--session",
+        "canary-debug",
+        "--judge-env",
+        h.env,
+        code=3,
+        reason="JUDGE_PROMPT_CHANGED",
     )
     assert snapshot(h.root) == before
     assert (h.private / "exposure.jsonl").read_bytes() == registry
@@ -1663,6 +1724,7 @@ def test_debug_registers_first_and_allows_repeated_families(harness):
         "at",
     } <= row.keys()
     assert row["kind"] == "debug"
+    assert row.get("tuning") is not True
     assert row["session"] == session
     assert row["workspace"] == h.workspace
     assert set(row["debug_families"]) == families
@@ -1677,6 +1739,7 @@ def test_debug_registers_first_and_allows_repeated_families(harness):
     added = [json.loads(line) for line in second[len(first) :].splitlines()]
     assert len(added) == 1
     assert added[0]["kind"] == "debug"
+    assert added[0].get("tuning") is not True
     assert added[0]["session"] == "canary-debug-repeat"
     assert added[0]["workspace"] == h.workspace
     assert set(added[0]["debug_families"]) == families
