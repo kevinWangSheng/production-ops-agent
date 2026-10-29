@@ -39,6 +39,7 @@ from opspilot.evaluation.judge import (
     check_diagnoses,
     judge_config_hash,
     judge_once,
+    recheck_diagnoses,
     response_identity_matches,
     safe_input,
 )
@@ -345,7 +346,8 @@ def _metadata_identifiers(value: Any) -> None:
                     )
             elif child is None and (
                 isinstance(value, JudgeObservation)
-                and name in {"response_model", "error_code", "finish_reason"}
+                and name
+                in {"response_model", "error_code", "finish_reason", "transport_error"}
                 or name == "time_scope_ref"
             ):
                 continue  # Explicit optional, absent protocol values, never blank IDs.
@@ -359,6 +361,7 @@ def _metadata_identifiers(value: Any) -> None:
                 "status",
                 "phase",
                 "finish_reason",
+                "transport_error",
                 "final_state",
                 "decision",
                 "flag",
@@ -685,10 +688,9 @@ def load_label_pack(path: Path, *, expected_pack_hash: str) -> LabelPack:
 
 
 def _missing_diagnosis(label: BlindLabel, observation: JudgeObservation) -> bool:
-    expected = {(d.location, d.quote) for d in label.diagnoses if d.factual_causal}
-    actual = {
-        (d.location, d.quote) for d in observation.result.diagnoses if d.factual_causal
-    }
+    # P7-D17: matched by location only; the quote carries no matching signal.
+    expected = {d.location for d in label.diagnoses if d.factual_causal}
+    actual = {d.location for d in observation.result.diagnoses if d.factual_causal}
     return not expected <= actual
 
 
@@ -740,14 +742,23 @@ def _counts(
         if result.status == "ok":
             if result.verdict is None:
                 raise JudgeError("SCHEMA_INVALID")
-            recomputed = check_diagnoses(item.request, result.diagnoses, result.verdict)
+            derived, recomputed = recheck_diagnoses(item.request, result.diagnoses)
+            # P7-D18: result.verdict is the verdict recomputed from the diagnoses;
+            # the model's own verdict is only recorded (absent before adapter-7).
             if (
                 not observation.valid
                 or observation.error_code is not None
                 or not response_identity_matches(
                     config.provider, observation.response_model
                 )
+                or result.verdict is not derived
                 or observation.recomputed_verdict is not recomputed
+                or (observation.model_verdict is None)
+                is not (observation.verdict_matched is None)
+                or observation.model_verdict is not None
+                and observation.verdict_matched
+                is not (observation.model_verdict is result.verdict)
+                or observation.transport_error is not None
             ):
                 raise JudgeError("DERIVED_RESULT_MISMATCH")
             recheck_failed = recomputed is not result.verdict
@@ -762,11 +773,17 @@ def _counts(
                 or result.verdict is not None
                 or result.diagnoses
                 or observation.error_code not in OBSERVATION_ERROR_CODES
+                or observation.model_verdict is not None
+                or observation.verdict_matched is not None
+                or observation.transport_error is not None
+                and observation.error_code != "JUDGE_TRANSPORT_ERROR"
             ):
                 raise JudgeError("DERIVED_RESULT_MISMATCH")
             problems.add("JUDGE_OBSERVATION_FAILED")
-        # P7 measures the judge's own verdict, never a veto-corrected substitute.
-        # Errors, omissions and failed P6 rechecks receive no agreement credit.
+        # P7-D18: counted on the verdict derived from the judge's diagnoses, never
+        # on a veto-corrected substitute: a failed P6 recheck (derived True, full
+        # AND False) is still a false pass on a negative label. Errors, omissions
+        # and failed P6 rechecks receive no agreement credit.
         if item.split == "validation":
             effective = result.verdict if observation.valid else False
             compromised = (
