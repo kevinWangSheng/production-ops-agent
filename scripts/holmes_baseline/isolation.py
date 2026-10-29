@@ -234,10 +234,17 @@ def evaluate(observed: dict[str, Any]) -> dict[str, Any]:
 # --- the probe inside the container (stdlib only, prints one JSON line)
 
 PROBE_SCRIPT = r"""
-import json, os, socket, subprocess, sys
+import errno, json, os, socket, subprocess, sys
 
 t = json.loads(sys.argv[1])
 timeout = t["timeout"]
+
+
+def failure(exc):
+    code = getattr(exc, "errno", None)
+    if isinstance(exc, OSError) and not isinstance(exc, socket.gaierror):
+        code = errno.errorcode.get(code, code)
+    return {"error": type(exc).__name__, "errno": code}
 
 
 def tcp(target):
@@ -246,7 +253,7 @@ def tcp(target):
         with socket.create_connection((host, int(port)), timeout=timeout):
             return {"target": target, "ok": True}
     except Exception as exc:
-        return {"target": target, "ok": False, "error": type(exc).__name__}
+        return {"target": target, "ok": False, **failure(exc)}
 
 
 def connect(target):
@@ -258,7 +265,7 @@ def connect(target):
             line = s.recv(256).split(b"\r\n", 1)[0].decode("ascii", "replace")
             return {"target": target, "status": int(line.split()[1])}
     except Exception as exc:
-        return {"target": target, "status": None, "error": type(exc).__name__}
+        return {"target": target, "status": None, **failure(exc)}
 
 
 def exists(path):
@@ -380,18 +387,32 @@ def observed_from_raw(
 ) -> dict[str, Any]:
     """``evaluate``'s input from the probe's JSON line; a probe group that
     did not run leaves its reach key out (and its check fails)."""
-    tcp = raw.get("tcp") or {}
-    conn = raw.get("connect") or {}
+    tcp = raw.get("tcp") if isinstance(raw.get("tcp"), Mapping) else {}
+    conn = raw.get("connect") if isinstance(raw.get("connect"), Mapping) else {}
+    via = conn.get("model_via_proxy") or []
+    allowed = tcp.get("allowed") or []
+    controls = bool(allowed) and all(r.get("ok") is True for r in allowed)
+    controls = controls and any(r.get("status") == 200 for r in via)
     reach: dict[str, bool] = {}
+    basis: dict[str, Any] = {}
+    if any(r.get("status") == 200 for r in via):
+        reach["model_via_proxy"] = True
     for key in ("kube_api", "prometheus_backend", "internet", "model_direct"):
-        if key in tcp or key in conn:
-            reach[key] = any(r.get("ok") for r in tcp.get(key, [])) or any(
-                r.get("status") == 200 for r in conn.get(key, [])
-            )
-    if "model_via_proxy" in conn:
-        reach["model_via_proxy"] = any(
-            r.get("status") == 200 for r in conn["model_via_proxy"]
-        )
+        attempts = [*tcp.get(key, []), *conn.get(key, [])]
+        reached = [r for r in attempts if r.get("ok") is True or r.get("status") == 200]
+        unsure = [r for r in attempts if r not in reached and not _definitive(r)]
+        if reached:
+            reach[key] = True
+            basis[key] = {"reachable": reached}
+        elif not attempts:
+            basis[key] = "not probed"
+        elif unsure:
+            basis[key] = {"indeterminate": unsure}
+        elif not controls:
+            basis[key] = "positive controls failed"
+        else:
+            reach[key] = False
+            basis[key] = "every attempt failed definitively; controls passed"
     observed: dict[str, Any] = {
         "uid": raw.get("uid"),
         "paths_present": [
@@ -402,8 +423,27 @@ def observed_from_raw(
         "env_names": raw.get("env_names"),
         "reach": reach,
         "proxy_log_lines": list(proxy_lines),
+        "probe": {"controls_passed": controls, "reach_basis": basis},
     }
     return observed
+
+
+# Network-level outcomes that prove "no way there": no route (the --internal
+# network has none), host refused, name not resolvable, or the egress proxy
+# answered 403. A timeout is never definitive (a route may exist and only be
+# slow), nor is any other exception or a missing result: those leave the
+# reach key out, so its check fails.
+DEFINITIVE_ERRNOS = frozenset({"ENETUNREACH", "EHOSTUNREACH", "ECONNREFUSED"})
+
+
+def _definitive(attempt: Mapping[str, Any]) -> bool:
+    if "status" in attempt:
+        return attempt.get("status") == 403
+    if attempt.get("ok") is not False:
+        return False
+    return (
+        attempt.get("error") == "gaierror" or attempt.get("errno") in DEFINITIVE_ERRNOS
+    )
 
 
 def _home(value: Any) -> Any:
@@ -553,32 +593,36 @@ def cmd_probe(args: argparse.Namespace) -> int:
             run.docker(*image_check_args(run.IMAGE, unreadable)[1:]).strip()
         )
     observed = observed_from_raw(raw, [*window_lines, *recorded], image_paths)
-    controls = (raw.get("tcp") or {}).get("allowed", [])
-    observed["probe"] = {
-        "exit_code": proc.returncode,
-        "valid": bool(controls) and all(c.get("ok") for c in controls),
-        "positive_controls": controls,
-        "targets": {"tcp": raw.get("tcp"), "connect": raw.get("connect")},
-        "paths_checked": list(FORBIDDEN_PATHS),
-        "paths_unreadable_by_probe_user": unreadable,
-        "image_check_as_root_no_network": image_paths,
-        "proxy_log_sources": {
-            "probe_window": len(window_lines),
-            "recorded_run": len(recorded),
-            "recorded_run_file": RECORDED_PROXY_LOG.name,
-        },
-        "egress_proxy_log": [
-            {k: e.get(k) for k in ("target", "allowed", "reason")}
-            for e in egress
-            if e.get("mode") == "connect" and "client" in e
-        ],
-        "container": {
-            "root_write_denied": raw.get("root_write_denied"),
-            "proc_status": raw.get("proc_status"),
-            "mounts": raw.get("mounts"),
-            "docker_run_argv": shown,
-        },
-    }
+    observed["probe"].update(
+        {
+            "exit_code": proc.returncode,
+            "valid": observed["probe"]["controls_passed"] and proc.returncode == 0,
+            "positive_controls": {
+                "tcp": (raw.get("tcp") or {}).get("allowed"),
+                "model_via_proxy": (raw.get("connect") or {}).get("model_via_proxy"),
+            },
+            "targets": {"tcp": raw.get("tcp"), "connect": raw.get("connect")},
+            "paths_checked": list(FORBIDDEN_PATHS),
+            "paths_unreadable_by_probe_user": unreadable,
+            "image_check_as_root_no_network": image_paths,
+            "proxy_log_sources": {
+                "probe_window": len(window_lines),
+                "recorded_run": len(recorded),
+                "recorded_run_file": RECORDED_PROXY_LOG.name,
+            },
+            "egress_proxy_log": [
+                {k: e.get(k) for k in ("target", "allowed", "reason")}
+                for e in egress
+                if e.get("mode") == "connect" and "client" in e
+            ],
+            "container": {
+                "root_write_denied": raw.get("root_write_denied"),
+                "proc_status": raw.get("proc_status"),
+                "mounts": raw.get("mounts"),
+                "docker_run_argv": shown,
+            },
+        }
+    )
     observed = _home(observed)
     evidence = {
         "image_id": image_id,

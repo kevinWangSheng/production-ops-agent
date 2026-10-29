@@ -234,38 +234,149 @@ def test_probe_script_prints_names_not_values() -> None:
     compile(script, "<probe>", "exec")
 
 
-def test_observed_from_raw_derives_reach_and_paths() -> None:
-    raw = {
+UNREACH = {"ok": False, "error": "OSError", "errno": "ENETUNREACH"}
+REFUSED = {"ok": False, "error": "ConnectionRefusedError", "errno": "ECONNREFUSED"}
+NO_DNS = {"ok": False, "error": "gaierror", "errno": -3}
+TIMEOUT = {"ok": False, "error": "TimeoutError", "errno": None}
+BOOM = {"ok": False, "error": "RuntimeError", "errno": None}
+
+
+def raw_probe(**over: Any) -> dict[str, Any]:
+    """The live run's shape: every forbidden target failed definitively and
+    every positive control succeeded."""
+    raw: dict[str, Any] = {
         "uid": 65534,
         "env_names": ["PATH"],
-        "paths": {"/a": False, "/b": True},
+        "paths": {"/a": False},
         "tcp": {
-            "kube_api": [{"target": "n:6443", "ok": False, "error": "gaierror"}],
-            "prometheus_backend": [{"target": "p:9090", "ok": False}],
-            "internet": [{"target": "1.1.1.1:443", "ok": False}],
-            "model_direct": [
-                {"target": "api.deepseek.com:443", "ok": False},
-                {"target": "1.2.3.4:443", "ok": True},
+            "allowed": [
+                {"target": "f14-lab-relay:9090", "ok": True},
+                {"target": "f14-lab-relay:16686", "ok": True},
+                {"target": "f14-egress:3128", "ok": True},
             ],
+            "kube_api": [
+                {"target": "n:6443", **NO_DNS},
+                {"target": "r:6443", **REFUSED},
+            ],
+            "prometheus_backend": [{"target": "10.0.0.9:9090", **UNREACH}],
+            "internet": [{"target": "1.1.1.1:443", **UNREACH}],
+            "model_direct": [{"target": "api.deepseek.com:443", **NO_DNS}],
         },
         "connect": {
-            "model_via_proxy": [{"target": "api.deepseek.com:443", "status": 200}],
             "internet": [{"target": "example.com:443", "status": 403}],
+            "model_via_proxy": [{"target": "api.deepseek.com:443", "status": 200}],
         },
     }
-    observed = isolation.observed_from_raw(raw, ["x holmes GET /api/v1/query 200"])
-    assert observed["paths_present"] == ["/b"]
-    assert observed["reach"] == {
-        "kube_api": False,
-        "prometheus_backend": False,
-        "internet": False,
-        "model_direct": True,
-        "model_via_proxy": True,
-    }
-    raw["connect"]["internet"][0]["status"] = 200
-    assert isolation.observed_from_raw(raw, [])["reach"]["internet"] is True
-    raw["connect"]["model_via_proxy"][0]["status"] = 403
-    assert isolation.observed_from_raw(raw, [])["reach"]["model_via_proxy"] is False
+    raw.update(over)
+    return raw
+
+
+GOOD_REACH = {
+    "kube_api": False,
+    "prometheus_backend": False,
+    "internet": False,
+    "model_direct": False,
+    "model_via_proxy": True,
+}
+UNREACHABLE_CHECKS = (
+    "kube_api_unreachable",
+    "prometheus_backend_unreachable",
+    "internet_unreachable",
+    "model_only_via_proxy",
+)
+
+
+def evaluated(raw: dict[str, Any]) -> dict[str, Any]:
+    observed = isolation.observed_from_raw(raw, GOOD_LOG)
+    return {c["id"]: c["passed"] for c in evaluate(observed)["checks"]}
+
+
+def test_definitive_failures_with_good_controls_pass() -> None:
+    observed = isolation.observed_from_raw(raw_probe(), GOOD_LOG)
+    assert observed["paths_present"] == []
+    assert observed["reach"] == GOOD_REACH
+    assert evaluate(observed)["passed"] is True
+
+
+def test_timeouts_everywhere_with_good_controls_do_not_pass() -> None:
+    raw = raw_probe()
+    for key in ("kube_api", "prometheus_backend", "internet", "model_direct"):
+        raw["tcp"][key] = [{"target": "x:1", **TIMEOUT}]
+    raw["connect"]["internet"] = [{"target": "example.com:443", "status": None}]
+    observed = isolation.observed_from_raw(raw, GOOD_LOG)
+    for key in ("kube_api", "prometheus_backend", "internet", "model_direct"):
+        assert key not in observed["reach"]
+    checks = evaluated(raw)
+    assert not any(checks[c] for c in UNREACHABLE_CHECKS)
+    assert evaluate(observed)["passed"] is False
+
+
+@pytest.mark.parametrize(
+    "key,check_id",
+    [
+        ("kube_api", "kube_api_unreachable"),
+        ("prometheus_backend", "prometheus_backend_unreachable"),
+        ("internet", "internet_unreachable"),
+        ("model_direct", "model_only_via_proxy"),
+    ],
+)
+@pytest.mark.parametrize("failure", [TIMEOUT, BOOM, {"ok": False}])
+def test_one_indeterminate_attempt_fails_its_check(
+    key: str, check_id: str, failure: dict[str, Any]
+) -> None:
+    raw = raw_probe()
+    raw["tcp"][key] = [*raw["tcp"][key], {"target": "y:1", **failure}]
+    observed = isolation.observed_from_raw(raw, GOOD_LOG)
+    assert key not in observed["reach"]
+    assert "y:1" in json.dumps(observed["probe"]["reach_basis"][key])
+    assert evaluated(raw)[check_id] is False
+
+
+@pytest.mark.parametrize("status", [None, 200, 502, 407])
+def test_proxy_connect_must_be_refused_with_403(status: int | None) -> None:
+    raw = raw_probe()
+    raw["connect"]["internet"] = [{"target": "example.com:443", "status": status}]
+    observed = isolation.observed_from_raw(raw, GOOD_LOG)
+    assert observed["reach"].get("internet") is (True if status == 200 else None)
+    assert evaluated(raw)["internet_unreachable"] is False
+
+
+@pytest.mark.parametrize(
+    "broken",
+    [
+        lambda r: r["tcp"]["allowed"].__setitem__(0, {"target": "relay", **TIMEOUT}),
+        lambda r: r["tcp"].__setitem__("allowed", []),
+        lambda r: r["connect"]["model_via_proxy"][0].__setitem__("status", 403),
+        lambda r: r["connect"].pop("model_via_proxy"),
+    ],
+)
+def test_failed_controls_fail_every_unreachable_check(broken: Any) -> None:
+    raw = raw_probe()
+    broken(raw)
+    observed = isolation.observed_from_raw(raw, GOOD_LOG)
+    assert observed["probe"]["controls_passed"] is False
+    for key in ("kube_api", "prometheus_backend", "internet", "model_direct"):
+        assert key not in observed["reach"]
+    checks = evaluated(raw)
+    assert not any(checks[c] for c in UNREACHABLE_CHECKS)
+
+
+def test_reachable_target_is_recorded_reachable() -> None:
+    raw = raw_probe()
+    raw["tcp"]["model_direct"].append({"target": "1.2.3.4:443", "ok": True})
+    observed = isolation.observed_from_raw(raw, GOOD_LOG)
+    assert observed["reach"]["model_direct"] is True
+    assert evaluated(raw)["model_only_via_proxy"] is False
+
+
+@pytest.mark.parametrize("raw", [{}, {"uid": 65534}, raw_probe(tcp=None)])
+def test_missing_probe_output_passes_no_reach_check(raw: dict[str, Any]) -> None:
+    checks = evaluated(raw)
+    assert not any(checks[c] for c in UNREACHABLE_CHECKS)
+
+
+def test_probe_script_records_the_errno_name() -> None:
+    assert "errno.errorcode" in isolation.PROBE_SCRIPT
 
 
 def test_unreadable_path_is_present_unless_the_image_check_shows_it_absent() -> None:

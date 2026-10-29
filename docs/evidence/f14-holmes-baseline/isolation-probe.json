@@ -27,11 +27,11 @@
       "THINKING"
     ],
     "reach": {
+      "model_via_proxy": true,
       "kube_api": false,
       "prometheus_backend": false,
       "internet": false,
-      "model_direct": false,
-      "model_via_proxy": true
+      "model_direct": false
     },
     "proxy_log_lines": [
       "2026-10-28T18:42:06+00:00 holmes GET /api/v1/query 200 251 705 0.981",
@@ -64,22 +64,37 @@
       "2026-10-28T18:44:21+00:00 holmes POST /api/v1/query_range 200 688 1967 1.435"
     ],
     "probe": {
+      "controls_passed": true,
+      "reach_basis": {
+        "kube_api": "every attempt failed definitively; controls passed",
+        "prometheus_backend": "every attempt failed definitively; controls passed",
+        "internet": "every attempt failed definitively; controls passed",
+        "model_direct": "every attempt failed definitively; controls passed"
+      },
       "exit_code": 0,
       "valid": true,
-      "positive_controls": [
-        {
-          "ok": true,
-          "target": "f14-lab-relay:9090"
-        },
-        {
-          "ok": true,
-          "target": "f14-lab-relay:16686"
-        },
-        {
-          "ok": true,
-          "target": "f14-egress:3128"
-        }
-      ],
+      "positive_controls": {
+        "tcp": [
+          {
+            "ok": true,
+            "target": "f14-lab-relay:9090"
+          },
+          {
+            "ok": true,
+            "target": "f14-lab-relay:16686"
+          },
+          {
+            "ok": true,
+            "target": "f14-egress:3128"
+          }
+        ],
+        "model_via_proxy": [
+          {
+            "status": 200,
+            "target": "api.deepseek.com:443"
+          }
+        ]
+      },
       "targets": {
         "tcp": {
           "allowed": [
@@ -98,16 +113,19 @@
           ],
           "internet": [
             {
+              "errno": "ENETUNREACH",
               "error": "OSError",
               "ok": false,
               "target": "1.1.1.1:443"
             },
             {
+              "errno": "ENETUNREACH",
               "error": "OSError",
               "ok": false,
               "target": "8.8.8.8:53"
             },
             {
+              "errno": -3,
               "error": "gaierror",
               "ok": false,
               "target": "example.com:443"
@@ -115,31 +133,37 @@
           ],
           "kube_api": [
             {
+              "errno": -3,
               "error": "gaierror",
               "ok": false,
               "target": "opspilot-m1-control-plane:6443"
             },
             {
+              "errno": "ENETUNREACH",
               "error": "OSError",
               "ok": false,
               "target": "172.18.0.2:6443"
             },
             {
+              "errno": "ENETUNREACH",
               "error": "OSError",
               "ok": false,
               "target": "10.96.0.1:443"
             },
             {
+              "errno": "ECONNREFUSED",
               "error": "ConnectionRefusedError",
               "ok": false,
               "target": "172.20.0.1:59424"
             },
             {
+              "errno": "ECONNREFUSED",
               "error": "ConnectionRefusedError",
               "ok": false,
               "target": "f14-lab-relay:6443"
             },
             {
+              "errno": -3,
               "error": "gaierror",
               "ok": false,
               "target": "kubernetes.default.svc:443"
@@ -147,11 +171,13 @@
           ],
           "model_direct": [
             {
+              "errno": -3,
               "error": "gaierror",
               "ok": false,
               "target": "api.deepseek.com:443"
             },
             {
+              "errno": "ENETUNREACH",
               "error": "OSError",
               "ok": false,
               "target": "198.18.0.75:443"
@@ -159,21 +185,25 @@
           ],
           "prometheus_backend": [
             {
+              "errno": -3,
               "error": "gaierror",
               "ok": false,
               "target": "prometheus:9090"
             },
             {
+              "errno": -3,
               "error": "gaierror",
               "ok": false,
               "target": "prometheus.otel-demo.svc.cluster.local:9090"
             },
             {
+              "errno": "ENETUNREACH",
               "error": "OSError",
               "ok": false,
               "target": "10.96.239.241:9090"
             },
             {
+              "errno": "ENETUNREACH",
               "error": "OSError",
               "ok": false,
               "target": "10.244.0.9:9090"
@@ -327,9 +357,9 @@
           "--memory",
           "1g",
           "-v",
-          "~/dev/AI/production-ops-agent/tmp/f14-holmes/isolation-live/test_live_probe_passes_every_c0/config.yaml:/etc/holmes/config.yaml:ro",
+          "~/dev/AI/production-ops-agent/tmp/f14-holmes/isolation-live2/test_live_probe_passes_every_c0/config.yaml:/etc/holmes/config.yaml:ro",
           "-v",
-          "~/dev/AI/production-ops-agent/tmp/f14-holmes/isolation-live/test_live_probe_passes_every_c0/out:/out:rw",
+          "~/dev/AI/production-ops-agent/tmp/f14-holmes/isolation-live2/test_live_probe_passes_every_c0/out:/out:rw",
           "-e",
           "HTTPS_PROXY=http://f14-egress:3128",
           "-e",
@@ -411,5 +441,5 @@
     ],
     "passed": true
   },
-  "probed_at": "2026-10-29T02:37:51.694523+00:00"
+  "probed_at": "2026-10-29T03:08:47.018317+00:00"
 }
