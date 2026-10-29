@@ -95,8 +95,11 @@ valid_port() {
 }
 
 # A pulled product image is pinned by digest (B9); a tag can move under an
-# install. Only the local build is referenced by name.
+# install. Only the local build is referenced by name. Checked only where the
+# image is pulled and started (install, upgrade): uninstall and compose keep
+# working with whatever image an install recorded.
 valid_image() {
+    [ "$IMAGE_IN_USE" = 1 ] || return 0
     [ "$1" = "$LOCAL_IMAGE" ] && return 0
     [[ "$1" =~ ^[^@[:space:]]+@sha256:[0-9a-f]{64}$ ]] ||
         die "OPSPILOT_IMAGE '$1' must be pinned by digest (<name>@sha256:<64 hex>), or be $LOCAL_IMAGE; nothing changed"
@@ -131,7 +134,11 @@ check_install_binding() {
     die "project $OPSPILOT_PROJECT's database was installed with secrets in $RECORDED; set OPSPILOT_SECRETS_DIR=$RECORDED (or remove its data first: uninstall --purge-data with that directory)"
 }
 
+# resolve_settings [image]: "image" when this run pulls and starts the
+# product image.
 resolve_settings() {
+    IMAGE_IN_USE=0
+    [ "${1:-}" != image ] || IMAGE_IN_USE=1
     [ "$(id -u)" != 0 ] || die "run as a dedicated non-root user, not root"
     local project_hint="${OPSPILOT_PROJECT:-${COMPOSE_PROJECT_NAME:-opspilot}}"
     valid_project "$project_hint"
@@ -334,7 +341,7 @@ deploy() {
 }
 
 cmd_install() {
-    resolve_settings
+    resolve_settings image
     require_secrets_for_live_volume
     prepare_image
     ensure_secrets
@@ -343,7 +350,7 @@ cmd_install() {
 }
 
 cmd_upgrade() {
-    resolve_settings
+    resolve_settings image
     [ -s "$SECRETS_DIR/postgres_password" ] || die "no install found in $SECRETS_DIR; run install first"
     require_secrets_for_live_volume
     prepare_image

@@ -51,7 +51,7 @@ def run(tmp_path: Path):
     home = tmp_path / "home"
 
     def go(
-        image: str | None,
+        image: str | None, *args: str
     ) -> tuple[subprocess.CompletedProcess[str], list[list[str]]]:
         env = {
             "PATH": f"{bin_dir}:/usr/bin:/bin:/usr/sbin:/sbin",
@@ -61,7 +61,7 @@ def run(tmp_path: Path):
         if image is not None:
             env["OPSPILOT_IMAGE"] = image
         result = subprocess.run(
-            ["bash", str(INSTALL)],
+            ["bash", str(INSTALL), *args],
             env=env,
             capture_output=True,
             text=True,
@@ -76,6 +76,7 @@ def run(tmp_path: Path):
         return result, calls
 
     go.home = home  # type: ignore[attr-defined]
+    go.reset = lambda: log.unlink(missing_ok=True)  # type: ignore[attr-defined]
     return go
 
 
@@ -128,3 +129,64 @@ def test_digest_pinned_product_image_is_pulled_not_built(run, image: str) -> Non
     assert result.returncode == 0, result.stderr
     assert ["pull", image] in calls
     assert not [c for c in calls if c[:1] == ["build"]]
+
+
+UNPINNED = f"ghcr.io/kevinwangsheng/opspilot:{VERSION}"
+
+
+@pytest.fixture
+def recorded_unpinned(run) -> None:
+    """An install whose install.env holds an image without a digest (as an
+    install made before the refusal existed would)."""
+    result, _ = run(None)
+    assert result.returncode == 0, result.stderr
+    settings = run.home / ".config" / "opspilot" / "install.env"
+    text = settings.read_text()
+    assert "OPSPILOT_IMAGE=opspilot:local\n" in text
+    settings.write_text(
+        text.replace("OPSPILOT_IMAGE=opspilot:local", f"OPSPILOT_IMAGE={UNPINNED}")
+    )
+    run.reset()
+
+
+@pytest.mark.parametrize(
+    ("args", "expected"),
+    [
+        (("uninstall",), ["down", "--remove-orphans"]),
+        (("compose", "ps"), ["ps"]),
+    ],
+)
+def test_uninstall_and_compose_work_with_a_recorded_unpinned_image(
+    run, recorded_unpinned, args: tuple[str, ...], expected: list[str]
+) -> None:
+    result, calls = run(None, *args)
+    assert result.returncode == 0, result.stderr
+    (call,) = [c for c in calls if c[:1] == ["compose"]]
+    assert call[-len(expected) :] == expected
+
+
+def test_uninstall_works_with_an_unpinned_image_given_in_the_environment(
+    run, recorded_unpinned
+) -> None:
+    result, calls = run(UNPINNED, "uninstall")
+    assert result.returncode == 0, result.stderr
+    assert [c for c in calls if c[:1] == ["compose"]]
+
+
+@pytest.mark.parametrize("command", ["install", "upgrade"])
+def test_install_and_upgrade_refuse_a_recorded_unpinned_image_before_any_docker_call(
+    run, recorded_unpinned, command: str
+) -> None:
+    result, calls = run(None, command)
+    assert result.returncode == 1
+    assert "@sha256:" in result.stderr
+    assert calls == []
+
+
+def test_upgrade_refuses_an_unpinned_image_from_the_environment(
+    run, recorded_unpinned
+) -> None:
+    result, calls = run(UNPINNED, "upgrade")
+    assert result.returncode == 1
+    assert "@sha256:" in result.stderr
+    assert calls == []
