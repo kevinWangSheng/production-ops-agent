@@ -112,7 +112,14 @@ def test_every_environment_name_emitted_by_run_args_is_accepted(name: str):
     (
         (
             "repo checkout",
-            ("/repo", "/workspace", "/app", "opspilot", "production-ops-agent", "checkout"),
+            (
+                "/repo",
+                "/workspace",
+                "/app",
+                "opspilot",
+                "production-ops-agent",
+                "checkout",
+            ),
         ),
         ("env file", (".env",)),
         ("lab auth file", ("auth",)),
@@ -123,16 +130,12 @@ def test_each_forbidden_path_category_fails_only_path_check(category: str, token
     isolation = _isolation()
     paths = tuple(isolation.FORBIDDEN_PATHS)
     candidates = [
-        path
-        for path in paths
-        if any(token in path.lower() for token in tokens)
+        path for path in paths if any(token in path.lower() for token in tokens)
     ]
     assert candidates, f"FORBIDDEN_PATHS has no {category} representative"
     observed = _clean_observation(isolation=isolation)
     observed["paths_present"] = [candidates[0]]
-    _assert_only_check_failed(
-        isolation.evaluate(observed), "forbidden_paths_absent"
-    )
+    _assert_only_check_failed(isolation.evaluate(observed), "forbidden_paths_absent")
 
 
 def test_non_allowlisted_environment_name_fails_only_allowlist_check():
@@ -150,9 +153,7 @@ def test_environment_value_smuggled_into_names_is_not_echoed_in_details():
     observed["env_names"] = [f"SOME_TOKEN={secret_value}"]
     result = isolation.evaluate(observed)
     _assert_only_check_failed(result, "env_names_allowlisted")
-    assert secret_value not in " ".join(
-        check["detail"] for check in result["checks"]
-    )
+    assert secret_value not in " ".join(check["detail"] for check in result["checks"])
 
 
 @pytest.mark.parametrize(
@@ -177,9 +178,7 @@ def test_model_via_proxy_false_fails_only_model_check():
     isolation = _isolation()
     observed = _clean_observation(isolation=isolation)
     observed["reach"]["model_via_proxy"] = False
-    _assert_only_check_failed(
-        isolation.evaluate(observed), "model_only_via_proxy"
-    )
+    _assert_only_check_failed(isolation.evaluate(observed), "model_only_via_proxy")
 
 
 @pytest.mark.parametrize(
@@ -194,9 +193,7 @@ def test_forbidden_holmes_proxy_log_line_fails_only_log_check(line: str):
     isolation = _isolation()
     observed = _clean_observation(isolation=isolation)
     observed["proxy_log_lines"] = [line]
-    _assert_only_check_failed(
-        isolation.evaluate(observed), "proxy_log_allowed_paths"
-    )
+    _assert_only_check_failed(isolation.evaluate(observed), "proxy_log_allowed_paths")
 
 
 @pytest.mark.parametrize(
