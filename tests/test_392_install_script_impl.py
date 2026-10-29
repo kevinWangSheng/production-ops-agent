@@ -419,3 +419,23 @@ def test_a_failed_volume_lookup_refuses_another_secrets_dir(host, tmp_path):
     assert result.returncode != 0
     assert _files(other) == {}
     assert not any(c["args"][:1] in (["compose"], ["build"]) for c in host.calls())
+
+
+@pytest.mark.parametrize(
+    "port", ["0", "018080", "65536", "99999999", "80a", "-1", " 18180"]
+)
+def test_an_invalid_workbench_port_is_refused_before_any_change(host, tmp_path, port):
+    result = host(OPSPILOT_WEB_HOST_PORT=port)
+    assert result.returncode != 0
+    assert "OPSPILOT_WEB_HOST_PORT" in result.stderr
+    assert host.calls() == []
+    assert not host.secrets.exists()
+    assert not (tmp_path / "home" / ".local").exists()
+
+
+@pytest.mark.parametrize("port", ["1", "18180", "65535"])
+def test_a_canonical_workbench_port_is_accepted(host, port):
+    result = host(OPSPILOT_WEB_HOST_PORT=port)
+    assert result.returncode == 0, result.stderr
+    up = [c for c in host.calls() if c["args"][5:6] == ["up"]][-1]
+    assert up["env"]["OPSPILOT_WEB_HOST_PORT"] == port

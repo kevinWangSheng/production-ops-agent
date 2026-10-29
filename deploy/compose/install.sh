@@ -82,6 +82,17 @@ read_record() {
     RECORDED="$(cat "$record")" || die "cannot read the install record $record"
 }
 
+# Docker reads 0 as "any free port" and normalises 018080 to 18080, so only
+# the canonical form is accepted: the allowed origins are built from this
+# exact string.
+valid_port() {
+    case "$1" in
+        '' | 0* | *[!0-9]*) die "OPSPILOT_WEB_HOST_PORT must be a port number 1-65535 without leading zeros" ;;
+    esac
+    [ ${#1} -le 5 ] && [ "$1" -le 65535 ] ||
+        die "OPSPILOT_WEB_HOST_PORT must be a port number 1-65535 without leading zeros"
+}
+
 valid_project() {
     case "$1" in
         '' | [!a-z0-9]* | *[!a-z0-9_-]*)
@@ -115,6 +126,8 @@ resolve_settings() {
     [ "$(id -u)" != 0 ] || die "run as a dedicated non-root user, not root"
     local project_hint="${OPSPILOT_PROJECT:-${COMPOSE_PROJECT_NAME:-opspilot}}"
     valid_project "$project_hint"
+    # Checked before anything is created; again below for a remembered value.
+    [ -z "${OPSPILOT_WEB_HOST_PORT:-}" ] || valid_port "$OPSPILOT_WEB_HOST_PORT"
     SECRETS_DIR="${OPSPILOT_SECRETS_DIR:-}"
     if [ -z "$SECRETS_DIR" ]; then
         read_record "$project_hint"
@@ -139,9 +152,7 @@ resolve_settings() {
     valid_project "$OPSPILOT_PROJECT"
     check_install_binding
     export OPSPILOT_WEB_HOST_PORT="${OPSPILOT_WEB_HOST_PORT:-18080}"
-    case "$OPSPILOT_WEB_HOST_PORT" in
-        '' | *[!0-9]*) die "OPSPILOT_WEB_HOST_PORT must be a port number" ;;
-    esac
+    valid_port "$OPSPILOT_WEB_HOST_PORT"
     export OPSPILOT_IMAGE="${OPSPILOT_IMAGE:-$LOCAL_IMAGE}"
     export OPSPILOT_TOOL_PROFILE="${OPSPILOT_TOOL_PROFILE:-fixture}"
     export OPSPILOT_START_AGENT="${OPSPILOT_START_AGENT:-0}"
