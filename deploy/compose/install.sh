@@ -16,7 +16,10 @@
 # Settings (environment; the values used are kept in <secrets dir>/install.env
 # and reused by later runs unless given again):
 #   OPSPILOT_SECRETS_DIR      secrets and settings, outside the repository
-#                             (default ${XDG_CONFIG_HOME:-~/.config}/opspilot)
+#                             (default: the one this project was installed
+#                             with, else ${XDG_CONFIG_HOME:-~/.config}/opspilot);
+#                             a different one for a project whose database
+#                             volume exists is refused
 #   OPSPILOT_PROJECT          Compose project name (default $COMPOSE_PROJECT_NAME,
 #                             else opspilot)
 #   OPSPILOT_WEB_HOST_PORT    workbench port on 127.0.0.1 (default 18080)
@@ -59,9 +62,47 @@ inside_repo() {
     return 1
 }
 
+# Which secrets directory each Compose project was installed with: one file
+# per project holding the directory's path (no secret). It lives outside the
+# secrets directory, since it is how that directory is found.
+install_record() {
+    printf '%s/opspilot/installs/%s' "${XDG_STATE_HOME:-$HOME/.local/state}" "$1"
+}
+
+recorded_secrets_dir() {
+    local record
+    record="$(install_record "$1")"
+    if [ -f "$record" ]; then cat "$record"; fi
+}
+
+valid_project() {
+    case "$1" in
+        '' | [!a-z0-9]* | *[!a-z0-9_-]*)
+            die "project name '$1' must be lowercase letters, digits, '-' or '_'" ;;
+    esac
+}
+
+# A database volume belongs to the secrets it was initialised with; a second
+# set would lock every login out of it.
+check_install_binding() {
+    local recorded volumes
+    recorded="$(recorded_secrets_dir "$OPSPILOT_PROJECT")"
+    [ -n "$recorded" ] && [ "$recorded" != "$SECRETS_DIR" ] || return 0
+    # Captured first (no early-exiting pipe): a failing docker stops the run.
+    volumes="$(docker volume ls --quiet --filter "label=com.docker.compose.project=$OPSPILOT_PROJECT")"
+    case $'\n'"$volumes"$'\n' in
+        *$'\n'"${OPSPILOT_PROJECT}_pgdata"$'\n'*) ;;
+        *) return 0 ;;
+    esac
+    die "project $OPSPILOT_PROJECT's database was installed with secrets in $recorded; set OPSPILOT_SECRETS_DIR=$recorded (or remove its data first: uninstall --purge-data with that directory)"
+}
+
 resolve_settings() {
     [ "$(id -u)" != 0 ] || die "run as a dedicated non-root user, not root"
-    SECRETS_DIR="${OPSPILOT_SECRETS_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/opspilot}"
+    local project_hint="${OPSPILOT_PROJECT:-${COMPOSE_PROJECT_NAME:-opspilot}}"
+    valid_project "$project_hint"
+    SECRETS_DIR="${OPSPILOT_SECRETS_DIR:-$(recorded_secrets_dir "$project_hint")}"
+    SECRETS_DIR="${SECRETS_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/opspilot}"
     case "$SECRETS_DIR" in /*) ;; *) SECRETS_DIR="$PWD/$SECRETS_DIR" ;; esac
     inside_repo "$SECRETS_DIR" && die "OPSPILOT_SECRETS_DIR must be outside the repository"
     mkdir -p -m 700 "$SECRETS_DIR"
@@ -78,6 +119,8 @@ resolve_settings() {
     fi
     export OPSPILOT_SECRETS_DIR="$SECRETS_DIR"
     export OPSPILOT_PROJECT="${OPSPILOT_PROJECT:-${COMPOSE_PROJECT_NAME:-opspilot}}"
+    valid_project "$OPSPILOT_PROJECT"
+    check_install_binding
     export OPSPILOT_WEB_HOST_PORT="${OPSPILOT_WEB_HOST_PORT:-18080}"
     case "$OPSPILOT_WEB_HOST_PORT" in
         '' | *[!0-9]*) die "OPSPILOT_WEB_HOST_PORT must be a port number" ;;
@@ -96,6 +139,11 @@ save_settings() {
         printf '%s=%s\n' "$key" "${!key}" >> "$tmp"
     done
     mv "$tmp" "$SECRETS_DIR/install.env"
+    local record
+    record="$(install_record "$OPSPILOT_PROJECT")"
+    mkdir -p "$(dirname "$record")"
+    printf '%s\n' "$SECRETS_DIR" > "$record.tmp"
+    mv "$record.tmp" "$record"
 }
 
 compose() {

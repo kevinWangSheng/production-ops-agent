@@ -26,6 +26,8 @@ with open(os.environ["FAKE_DOCKER_LOG"], "a") as log:
     log.write(json.dumps({{"args": args, "env": {{k: os.environ.get(k) for k in (
         "OPSPILOT_ALLOWED_ORIGINS", "OPSPILOT_WEB_HOST_PORT", "OPSPILOT_SECRETS_DIR",
         "OPSPILOT_RUNTIME_UID", "OPSPILOT_AUTH_REVISION", "COMPOSE_PROFILES")}}}}) + "\\n")
+if args[:2] == ["volume", "ls"]:
+    print(os.environ.get("FAKE_DOCKER_VOLUMES", ""))
 """
 
 SECRET_FILES = (
@@ -263,3 +265,61 @@ def test_the_compose_project_name_is_honoured_when_no_project_is_given(host):
         for c in host.calls()
         if c["args"][:1] == ["compose"]
     )
+
+
+def _secrets_dirs(calls: list[dict]) -> set[str]:
+    return {
+        c["env"]["OPSPILOT_SECRETS_DIR"] for c in calls if c["args"][:1] == ["compose"]
+    }
+
+
+def test_a_custom_secrets_dir_is_found_again_without_being_given(host, tmp_path):
+    custom = tmp_path / "custom-secrets"
+    assert (
+        host(OPSPILOT_SECRETS_DIR=str(custom), OPSPILOT_PROJECT="opspilot-t").returncode
+        == 0
+    )
+    for args in (("upgrade",), ("compose", "ps"), ("uninstall",)):
+        host.reset()
+        result = host(*args, OPSPILOT_PROJECT="opspilot-t")
+        assert result.returncode == 0, result.stderr
+        assert _secrets_dirs(host.calls()) == {str(custom.resolve())}, args
+    assert not host.secrets.exists()
+    # The record names the directory only, outside the secrets and the repo.
+    (record,) = (tmp_path / "home" / ".local" / "state" / "opspilot").rglob(
+        "opspilot-t"
+    )
+    assert record.read_text().strip() == str(custom.resolve())
+
+
+def test_another_secrets_dir_for_an_existing_database_volume_is_refused(host, tmp_path):
+    first, other = tmp_path / "first", tmp_path / "other"
+    assert (
+        host(OPSPILOT_SECRETS_DIR=str(first), OPSPILOT_PROJECT="opspilot-t").returncode
+        == 0
+    )
+    host.reset()
+    for args in (("install",), ("upgrade",)):
+        result = host(
+            *args,
+            OPSPILOT_SECRETS_DIR=str(other),
+            OPSPILOT_PROJECT="opspilot-t",
+            FAKE_DOCKER_VOLUMES="opspilot-t_pgdata",
+        )
+        assert result.returncode != 0, args
+        assert str(first.resolve()) in result.stderr
+        assert not any(c["args"][:1] in (["compose"], ["build"]) for c in host.calls())
+        assert not other.exists() or not any(other.iterdir())
+
+
+def test_another_secrets_dir_is_accepted_once_the_volume_is_gone(host, tmp_path):
+    first, other = tmp_path / "first", tmp_path / "other"
+    assert (
+        host(OPSPILOT_SECRETS_DIR=str(first), OPSPILOT_PROJECT="opspilot-t").returncode
+        == 0
+    )
+    result = host(OPSPILOT_SECRETS_DIR=str(other), OPSPILOT_PROJECT="opspilot-t")
+    assert result.returncode == 0, result.stderr
+    host.reset()
+    assert host("compose", "ps", OPSPILOT_PROJECT="opspilot-t").returncode == 0
+    assert _secrets_dirs(host.calls()) == {str(other.resolve())}
