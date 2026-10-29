@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import gzip
 import json
 import sys
@@ -257,6 +258,44 @@ def test_capturing_a_wrong_content_type_body_never_changes_the_outcome(
     assert observation.error_code == "JUDGE_OUTPUT_INVALID"
     assert observation.attempts == 1 and len(sends) == 1
     assert observation.elapsed_seconds < 5
+    assert bytes(capture.body) == b"partial"
+
+
+class _StallingBody(httpx2.AsyncByteStream):
+    async def __aiter__(self):
+        yield b"partial"
+        await asyncio.sleep(60)
+
+    async def aclose(self):
+        await asyncio.sleep(60)
+
+
+def test_a_body_stalling_on_read_and_close_still_leaves_time_to_reject(monkeypatch):
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from test_eval_b3_impl import configs, make_input
+
+    # Read and close share one capture deadline, ending before the attempt's.
+    monkeypatch.setattr(eval_p7, "_CAPTURE_SECONDS", 4.0)
+    sends = []
+
+    def handler(request):
+        sends.append(request)
+        return httpx2.Response(
+            200, headers={"content-type": "application/json"}, stream=_StallingBody()
+        )
+
+    capture = eval_p7._CapturingTransport(
+        HTTPJudgeTransport(transport=httpx2.MockTransport(handler))
+    )
+    request, _, _ = make_input()
+    observation = judge_once(
+        request,
+        config=dataclasses.replace(configs()["zai"], timeout_seconds=5),
+        calibration=None,
+        transport=capture,
+    )
+    assert observation.error_code == "JUDGE_OUTPUT_INVALID"
+    assert observation.attempts == 1 and len(sends) == 1
     assert bytes(capture.body) == b"partial"
 
 

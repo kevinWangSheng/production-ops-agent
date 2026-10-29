@@ -1823,20 +1823,22 @@ class _WireTap(httpx2.AsyncBaseTransport):
             200 <= response.status_code < 300
             and media.strip().lower() != "text/event-stream"
         ):
-            # HTTPJudgeTransport rejects this body unread. Read what arrives within
-            # a short budget; any error or stall only shortens the capture.
-            budget = min(_CAPTURE_SECONDS, self.deadline - time.monotonic() - 1.0)
-            if budget > 0:
-                try:
-                    async with asyncio.timeout(budget):
-                        async for chunk in stream:  # type: ignore[union-attr]
-                            self.wire += chunk[: max(0, self.limit - len(self.wire))]
-                            if len(self.wire) >= self.limit:
-                                break
-                except Exception:
-                    pass
+            # HTTPJudgeTransport rejects this body unread. Read and close it within
+            # one short capture deadline; any error or stall only shortens it.
+            loop = asyncio.get_running_loop()
+            end = loop.time() + min(
+                _CAPTURE_SECONDS, self.deadline - time.monotonic() - 1.0
+            )
             try:
-                async with asyncio.timeout(max(0.0, budget)):
+                async with asyncio.timeout_at(end):
+                    async for chunk in stream:  # type: ignore[union-attr]
+                        self.wire += chunk[: max(0, self.limit - len(self.wire))]
+                        if len(self.wire) >= self.limit:
+                            break
+            except Exception:
+                pass
+            try:
+                async with asyncio.timeout_at(end):
                     await stream.aclose()  # type: ignore[union-attr]
             except Exception:
                 pass
