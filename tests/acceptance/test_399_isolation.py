@@ -249,7 +249,7 @@ def test_evidence_probe_reproduces_evaluate_result_when_present():
     os.environ.get("OPSPILOT_HOLMES_ISOLATION_LIVE") != "1",
     reason="set OPSPILOT_HOLMES_ISOLATION_LIVE=1 for the Docker/kind probe",
 )
-def test_live_probe_writes_the_pinned_isolation_evidence():
+def test_live_probe_writes_the_pinned_isolation_evidence(tmp_path: Path):
     _isolation()
     subprocess.run(
         [
@@ -258,7 +258,7 @@ def test_live_probe_writes_the_pinned_isolation_evidence():
             "scripts.holmes_baseline.isolation",
             "probe",
             "--out",
-            str(EVIDENCE / "isolation-probe-live-out"),
+            str(tmp_path),
         ],
         cwd=ROOT,
         check=True,
