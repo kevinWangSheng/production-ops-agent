@@ -70,41 +70,66 @@ REACH_KEYS = (
     "model_via_proxy",
 )
 
-_MAIN_CHECKOUT = str(Path.home() / "dev/AI/production-ops-agent")
-# In-container paths that must not exist: the repo checkouts, env files, the
-# lab auth file and kubeconfigs (incl. the in-cluster service-account mount),
-# and the docker socket.
-FORBIDDEN_PATHS: tuple[str, ...] = tuple(
-    dict.fromkeys(
-        [
-            str(ROOT),
-            _MAIN_CHECKOUT,
-            HOME,
-            "/repo",
-            "/workspace",
-            f"{ROOT}/.env",
-            f"{_MAIN_CHECKOUT}/.env",
-            "/.env",
-            "/app/.env",
-            "/tmp/.env",
-            "/out/.env",
-            "/etc/holmes/.env",
-            str(kind_lab.AUTH_FILE),
-            f"{_MAIN_CHECKOUT}/tmp/m1-kind-lab/prometheus-auth.json",
-            "/etc/opspilot-proxy",
-            str(kind_lab.KUBECONFIG),
-            f"{_MAIN_CHECKOUT}/tmp/m1-kind-lab/kubeconfig",
-            f"{HOME}/.kube",
-            "/root/.kube",
-            "/tmp/.kube",  # HOME is /tmp in the container
-            "/app/.kube",
-            "/etc/kubernetes",
-            "/var/run/secrets/kubernetes.io",
-            "/var/run/docker.sock",
-            "/run/docker.sock",
-        ]
-    )
+# Directories the image or the run itself provides; never listed as
+# forbidden, whatever the host home is (a host whose $HOME is /root or /tmp).
+CONTAINER_DIRS = frozenset(
+    {"/", "/tmp", "/root", "/app", "/out", "/etc", "/etc/holmes", "/home"}
 )
+# The mount table the run shape produces; any other mount (a host home, a
+# checkout, a socket) counts as a forbidden path.
+EXPECTED_MOUNTS = frozenset(
+    {
+        "/",
+        "/tmp",
+        "/etc/hostname",
+        "/etc/hosts",
+        "/etc/resolv.conf",
+        container.CONFIG_IN_CONTAINER,
+        container.OUTPUT_IN_CONTAINER,
+    }
+)
+RUNTIME_MOUNT_ROOTS = ("/dev", "/proc", "/sys")
+
+
+def forbidden_paths(home: Path, root: Path) -> tuple[str, ...]:
+    """In-container paths that must not exist: the repo checkouts, env files,
+    the lab auth file, kubeconfigs (incl. the in-cluster service-account
+    mount), the docker socket, and host-home sentinels (not the bare host
+    home, which may be a directory the image has)."""
+    main = home / "dev/AI/production-ops-agent"
+    paths = [
+        str(root),
+        str(main),
+        "/repo",
+        "/workspace",
+        f"{root}/.env",
+        f"{main}/.env",
+        "/.env",
+        "/app/.env",
+        "/tmp/.env",
+        "/out/.env",
+        "/etc/holmes/.env",
+        f"{root}/tmp/m1-kind-lab/prometheus-auth.json",
+        f"{main}/tmp/m1-kind-lab/prometheus-auth.json",
+        "/etc/opspilot-proxy",
+        f"{root}/tmp/m1-kind-lab/kubeconfig",
+        f"{main}/tmp/m1-kind-lab/kubeconfig",
+        *(
+            f"{home}/{name}"
+            for name in (".kube", ".ssh", ".config", ".docker", ".agent")
+        ),
+        "/root/.kube",
+        "/tmp/.kube",  # HOME is /tmp in the container
+        "/app/.kube",
+        "/etc/kubernetes",
+        "/var/run/secrets/kubernetes.io",
+        "/var/run/docker.sock",
+        "/run/docker.sock",
+    ]
+    return tuple(p for p in dict.fromkeys(paths) if p not in CONTAINER_DIRS)
+
+
+FORBIDDEN_PATHS: tuple[str, ...] = forbidden_paths(Path.home(), ROOT)
 # Names the pinned image (python:3.11-alpine base plus the Holmes Dockerfile;
 # ``docker image inspect`` of sha256:3f2995d1a448...) and docker itself set.
 IMAGE_ENV_NAMES: tuple[str, ...] = (
@@ -368,6 +393,19 @@ def image_check_args(image: str, paths: Sequence[str]) -> list[str]:
     ]
 
 
+def _unexpected_mounts(mounts: Any) -> list[str]:
+    """``mount:<path>`` for every mount the run shape does not produce; a
+    missing table fails closed."""
+    if not isinstance(mounts, list):
+        return ["mount:<table missing>"]
+    return [
+        f"mount:{m}"
+        for m in mounts
+        if m not in EXPECTED_MOUNTS
+        and not any(m == r or m.startswith(r + "/") for r in RUNTIME_MOUNT_ROOTS)
+    ]
+
+
 def _under_mount(path: str, mounts: Sequence[str]) -> bool:
     return any(m != "/" and (path == m or path.startswith(m + "/")) for m in mounts)
 
@@ -435,9 +473,12 @@ def observed_from_raw(
     observed: dict[str, Any] = {
         "uid": raw.get("uid"),
         "paths_present": [
-            p
-            for p, v in (raw.get("paths") or {}).items()
-            if _present(p, v, raw.get("mounts") or [], image_paths or {})
+            *(
+                p
+                for p, v in (raw.get("paths") or {}).items()
+                if _present(p, v, raw.get("mounts") or [], image_paths or {})
+            ),
+            *_unexpected_mounts(raw.get("mounts")),
         ],
         "env_names": raw.get("env_names"),
         "reach": reach,

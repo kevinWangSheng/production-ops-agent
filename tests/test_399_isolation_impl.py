@@ -6,12 +6,19 @@ from __future__ import annotations
 
 import copy
 import json
+from pathlib import Path
 from typing import Any
 
 import pytest
 
 from scripts.holmes_baseline import container, isolation
 from scripts.holmes_baseline.isolation import CHECK_IDS, FORBIDDEN_PATHS, evaluate
+
+STANDARD_MOUNTS = [
+    "/", "/dev", "/dev/mqueue", "/dev/pts", "/dev/shm", "/etc/holmes/config.yaml",
+    "/etc/hostname", "/etc/hosts", "/etc/resolv.conf", "/out", "/proc",
+    "/proc/acpi", "/proc/kcore", "/sys", "/sys/firmware", "/sys/fs/cgroup", "/tmp",
+]  # fmt: skip
 
 GOOD_LOG = [
     "2026-10-28T18:42:06+00:00 holmes GET /api/v1/query 200 251 705 0.981",
@@ -248,6 +255,7 @@ def raw_probe(**over: Any) -> dict[str, Any]:
         "uid": 65534,
         "env_names": ["PATH"],
         "paths": {"/a": False},
+        "mounts": STANDARD_MOUNTS,
         "tcp": {
             "allowed": [
                 {"target": "f14-lab-relay:9090", "ok": True},
@@ -527,3 +535,42 @@ def test_dns_pairing_needs_an_ip_literal_companion(
     observed = isolation.observed_from_raw(raw, GOOD_LOG)
     assert ("kube_api" in observed["reach"]) is definitive
     assert evaluated(raw)["kube_api_unreachable"] is definitive
+
+
+@pytest.mark.parametrize("home", ["/root", "/tmp", "/home/ci", "/Users/dev"])
+def test_forbidden_paths_never_list_a_directory_the_image_has(home: str) -> None:
+    paths = isolation.forbidden_paths(Path(home), Path(home) / "src/repo")
+    assert home not in paths
+    for owned in ("/", "/tmp", "/root", "/app", "/out", "/etc", "/etc/holmes"):
+        assert owned not in paths
+    # host-home sentinels instead of the bare home
+    for sentinel in (".kube", ".ssh", ".config", ".docker", ".agent"):
+        assert f"{home}/{sentinel}" in paths
+    assert f"{home}/src/repo" in paths and f"{home}/src/repo/.env" in paths
+
+
+def test_module_forbidden_paths_do_not_include_the_host_home() -> None:
+    assert str(Path.home()) not in isolation.FORBIDDEN_PATHS
+    assert isolation.FORBIDDEN_PATHS == isolation.forbidden_paths(
+        Path.home(), isolation.ROOT
+    )
+
+
+def test_standard_mounts_are_not_forbidden() -> None:
+    raw = raw_probe(mounts=STANDARD_MOUNTS)
+    assert isolation.observed_from_raw(raw, GOOD_LOG)["paths_present"] == []
+
+
+@pytest.mark.parametrize("extra", ["/host-home", "/home/ci", "/app/src", "/mnt/x"])
+def test_any_unexpected_mount_counts_as_a_forbidden_path(extra: str) -> None:
+    raw = raw_probe(mounts=[*STANDARD_MOUNTS, extra])
+    observed = isolation.observed_from_raw(raw, GOOD_LOG)
+    assert observed["paths_present"] == [f"mount:{extra}"]
+    assert evaluated(raw)["forbidden_paths_absent"] is False
+
+
+def test_missing_mount_table_fails_closed() -> None:
+    raw = raw_probe()
+    raw.pop("mounts", None)
+    observed = isolation.observed_from_raw(raw, GOOD_LOG)
+    assert observed["paths_present"] == ["mount:<table missing>"]

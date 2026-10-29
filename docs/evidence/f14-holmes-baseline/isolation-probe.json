@@ -236,7 +236,6 @@
       "paths_checked": [
         "~/dev/AI/poa-399-impl",
         "~/dev/AI/production-ops-agent",
-        "~",
         "/repo",
         "/workspace",
         "~/dev/AI/poa-399-impl/.env",
@@ -252,6 +251,10 @@
         "~/dev/AI/poa-399-impl/tmp/m1-kind-lab/kubeconfig",
         "~/dev/AI/production-ops-agent/tmp/m1-kind-lab/kubeconfig",
         "~/.kube",
+        "~/.ssh",
+        "~/.config",
+        "~/.docker",
+        "~/.agent",
         "/root/.kube",
         "/tmp/.kube",
         "/app/.kube",
@@ -357,9 +360,9 @@
           "--memory",
           "1g",
           "-v",
-          "~/dev/AI/production-ops-agent/tmp/f14-holmes/isolation-live2/test_live_probe_passes_every_c0/config.yaml:/etc/holmes/config.yaml:ro",
+          "~/dev/AI/production-ops-agent/tmp/f14-holmes/isolation-live3/test_live_probe_passes_every_c0/config.yaml:/etc/holmes/config.yaml:ro",
           "-v",
-          "~/dev/AI/production-ops-agent/tmp/f14-holmes/isolation-live2/test_live_probe_passes_every_c0/out:/out:rw",
+          "~/dev/AI/production-ops-agent/tmp/f14-holmes/isolation-live3/test_live_probe_passes_every_c0/out:/out:rw",
           "-e",
           "HTTPS_PROXY=http://f14-egress:3128",
           "-e",
@@ -441,5 +444,5 @@
     ],
     "passed": true
   },
-  "probed_at": "2026-10-29T03:08:47.018317+00:00"
+  "probed_at": "2026-10-29T03:45:54.878967+00:00"
 }
