@@ -19,6 +19,15 @@ def _read_status(method: str) -> int:
     return 405 if method == "HEAD" else 200
 
 
+def _proxy_status(role: str, method: str, path: str, body: str | None) -> int:
+    """The proxy's intended answer to an authenticated request (#396 rules)."""
+    if role == "holmes" and method == "POST" and body is not None:
+        if path not in probe.HOLMES_FORM_PATHS:
+            return 403
+        return 413 if body == "form-oversize" else 200
+    return _read_status(method) if (method, path) in probe.READ_REQUESTS else 403
+
+
 @pytest.mark.parametrize(
     "change,wrong_status", [(False, False), (True, False), (False, True)]
 )
@@ -43,6 +52,26 @@ def test_collector_detects_failures_without_printing_credentials(
             parsed = urllib.parse.urlsplit(self.path)
             query = urllib.parse.parse_qs(parsed.query).get("query", [""])[0]
             auth = self.headers.get("Authorization")
+            length = int(self.headers.get("Content-Length") or 0)
+            raw = self.rfile.read(length) if length else b""
+            form = self.headers.get("Content-Type") == (
+                "application/x-www-form-urlencoded"
+            )
+            role = next(
+                (
+                    r
+                    for r in accounts
+                    if auth == kind_lab.basic_auth_header(accounts, r)
+                ),
+                "anonymous",
+            )
+            form_kind = (
+                None
+                if not form
+                else "form-oversize"
+                if len(raw) > probe.FORM_LIMIT_BYTES
+                else "form"
+            )
             if query == "opspilot_f7_probe[30d]":
                 reads += 1
                 timestamp = 123 + (1 if change and reads > 1 else 0)
@@ -66,11 +95,7 @@ def test_collector_detects_failures_without_printing_credentials(
                 status = (
                     401
                     if not auth
-                    else (
-                        _read_status(self.command)
-                        if (self.command, parsed.path) in probe.READ_REQUESTS
-                        else 403
-                    )
+                    else _proxy_status(role, self.command, parsed.path, form_kind)
                 )
                 if wrong_status and self.command == "POST" and auth:
                     status = 200
@@ -99,12 +124,13 @@ def test_collector_detects_failures_without_printing_credentials(
             len(probe.READ_REQUESTS)
             + len(probe.DENIED_REQUESTS)
             + len(probe.VARIANT_REQUESTS)
-        )
+        ) + len(probe.HOLMES_ROWS)
         assert {r["account"] for r in report["requests"]} == {
             "investigator",
             "observer",
             "lab",
             "anonymous",
+            "holmes",
         }
         assert all(
             r["expected"] == 401
@@ -130,7 +156,9 @@ def test_missing_credentials_are_sanitized(
     )
 
 
-@pytest.mark.parametrize("account", ("investigator", "observer", "lab", "anonymous"))
+@pytest.mark.parametrize(
+    "account", ("investigator", "observer", "lab", "anonymous", "holmes")
+)
 @pytest.mark.parametrize("method,path", probe.DENIED_REQUESTS + probe.VARIANT_REQUESTS)
 @pytest.mark.parametrize("bad_status", (200, 204))
 def test_any_account_getting_2xx_on_a_forbidden_request_fails(
@@ -144,19 +172,17 @@ def test_any_account_getting_2xx_on_a_forbidden_request_fails(
     monkeypatch.setattr(probe, "latest_samples", lambda base, auth: (200, {}))
 
     def request(
-        base: str, verb: str, url_path: str, auth: str | None
+        base: str, verb: str, url_path: str, auth: str | None, body: str | None = None
     ) -> tuple[int, bytes]:
         requested_path = url_path.split("?", 1)[0]
         role = auth or "anonymous"
-        if (role, verb, requested_path) == (account, method, path):
+        if (role, verb, requested_path, body) == (account, method, path, None):
             return bad_status, b""
         if (verb, requested_path) in probe.VARIANT_REQUESTS:
             return 400, b""
         if role == "anonymous":
             return 401, b""
-        return (
-            _read_status(verb) if (verb, requested_path) in probe.READ_REQUESTS else 403
-        ), b""
+        return _proxy_status(role, verb, requested_path, body), b""
 
     monkeypatch.setattr(probe, "request", request)
     report = probe.probe()
@@ -192,20 +218,63 @@ def test_variant_status_is_recorded_and_only_a_4xx_is_a_denial(
     monkeypatch.setattr(probe, "latest_samples", lambda base, auth: (200, {}))
 
     def request(
-        base: str, method: str, path: str, auth: str | None
+        base: str, method: str, path: str, auth: str | None, body: str | None = None
     ) -> tuple[int, bytes]:
         bare_path = path.split("?", 1)[0]
         if (method, bare_path) in probe.VARIANT_REQUESTS:
             return status, b""
         if auth is None:
             return 401, b""
-        return (
-            _read_status(method) if (method, bare_path) in probe.READ_REQUESTS else 403
-        ), b""
+        return _proxy_status(auth, method, bare_path, body), b""
 
     monkeypatch.setattr(probe, "request", request)
     report = probe.probe()
     assert report["ok"] is expected_ok
     variants = [r for r in report["requests"] if r["expected"] == "4xx"]
-    assert len(variants) == 4 * 2 * 5
+    # four frozen accounts plus holmes, and holmes' form POST to /API/V1/QUERY
+    assert len(variants) == 5 * 2 * 5 + 1
     assert {r["status"] for r in variants} == {status}
+
+
+def test_holmes_rows_extend_the_frozen_matrix_without_changing_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(probe, "authorization", lambda role, directory: role)
+    monkeypatch.setattr(probe, "latest_samples", lambda base, auth: (200, {}))
+    sent: list[tuple[str, str, str, str | None]] = []
+
+    def request(
+        base: str, method: str, path: str, auth: str | None, body: str | None = None
+    ) -> tuple[int, bytes]:
+        sent.append((auth or "anonymous", method, path, body))
+        bare = path.split("?", 1)[0]
+        if (method, bare) in probe.VARIANT_REQUESTS:
+            return 400, b""
+        if auth is None:
+            return 401, b""
+        return _proxy_status(auth, method, bare, body), b""
+
+    monkeypatch.setattr(probe, "request", request)
+    report = probe.probe()
+    assert report["ok"] is True
+    frozen = [r for r in report["requests"] if r["account"] != "holmes"]
+    holmes = [r for r in report["requests"] if r["account"] == "holmes"]
+    # the frozen accounts never send a body and keep POST /api/v1/query at 403
+    assert all(body is None for role, *_, body in sent if role != "holmes")
+    assert {
+        r["expected"]
+        for r in frozen
+        if (r["method"], r["path"]) == ("POST", "/api/v1/query")
+        and r["account"] != "anonymous"
+    } == {403}
+    allowed = {
+        (r["method"], r["path"])
+        for r in holmes
+        if r.get("body") == "form" and r["expected"] == 200
+    }
+    assert allowed == {("POST", "/api/v1/query"), ("POST", "/api/v1/query_range")}
+    denied = {r["path"] for r in holmes if r["expected"] == 403}
+    assert {"/api/v1/metadata", "/api/v1/rules", "/api/v1/series"} <= denied
+    assert any(
+        r.get("body") == "form-oversize" and r["expected"] == 413 for r in holmes
+    )

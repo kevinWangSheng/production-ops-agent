@@ -291,7 +291,7 @@ def test_lab_auth_file_is_created_private_and_a_loose_one_is_refused(tmp_path):
     accounts = kind_lab.prometheus_accounts(path)
     assert set(accounts) == set(kind_lab.PROMETHEUS_ACCOUNTS)
     assert stat.S_IMODE(path.stat().st_mode) == 0o600
-    assert len(set(accounts.values())) == 5 and all(
+    assert len(set(accounts.values())) == 6 and all(
         len(v) >= 24 for v in accounts.values()
     )
     assert kind_lab.prometheus_accounts(path) == accounts

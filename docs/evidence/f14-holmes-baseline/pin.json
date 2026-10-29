@@ -1,0 +1,113 @@
+{
+  "upstream": {
+    "repository": "https://github.com/HolmesGPT/holmesgpt",
+    "commit": "a0009195468ebc55a7dff7d602b61feabe3cda1b",
+    "tree": "e94a57b361a00cb2e793cf30d60fe2f4588e26e9",
+    "dockerfile_sha256": "09a61f62083b4b579245d349796b680060c10ddb88c675b95589e3aedd676d03",
+    "dockerfile_modified": false
+  },
+  "image": "opspilot-f14/holmesgpt:a0009195",
+  "image_id": "sha256:3f2995d1a448b34a0dbd3c07aa9276e8c812e96e8fc4ebcc9653b01d9ab2a30e",
+  "image_created": "2026-10-28T11:31:57.264494139-07:00",
+  "image_architecture": "arm64",
+  "archive_sha256": "75a302a47db232e143802c9b4d4115665e60e4868a11c366a1a3e3fa9152118a",
+  "archive_bytes": 279761408,
+  "base_image_digests": {
+    "docker.io/library/python:3.11-alpine": "sha256:79440cc1dfa86a5f98d67efcd219726a8e9d8083cc0aafd27c7bef5976c38868"
+  },
+  "build": {
+    "command": "docker buildx build --load -t opspilot-f14/holmesgpt:a0009195 <checkout of a0009195> (colima m1-kind, buildx docker driver, no build args)",
+    "log_sha256": "5a3bbe75878095d440961ca1ca929f81a3a1dca5f3fdfb7d6f8f0a17e69bd203",
+    "published": false
+  },
+  "reproducible": false,
+  "non_reproducible_because": [
+    "base images referenced by tag, not digest (Dockerfile FROM lines)",
+    "apk packages from alpine edge repositories",
+    "poetry installed unpinned (pip install poetry)",
+    "apk upgrade in the final stage"
+  ],
+  "license": {
+    "spdx": "Apache-2.0",
+    "file_sha256": "4e8d756a1bc4796e15973df082cf72b91f5e61fec4ec68d6799104670c108d08"
+  },
+  "config": {
+    "sha256": "e4b98a8bf6b41dea70eb502c33aec08d5a55a39c900bdd863d74442331fddcf1",
+    "enabled_toolsets": [
+      "jaeger",
+      "prometheus/metrics"
+    ],
+    "disabled_toolsets": [
+      "MongoDBAtlas",
+      "aks/core",
+      "aks/node-health",
+      "argocd/core",
+      "bash",
+      "cilium/core",
+      "confluence",
+      "connectivity_check",
+      "coralogix",
+      "core_investigation",
+      "crossplane/core",
+      "database/sql",
+      "datadog/general",
+      "datadog/logs",
+      "datadog/metrics",
+      "datadog/traces",
+      "docker/core",
+      "elasticsearch/cluster",
+      "elasticsearch/data",
+      "grafana/dashboards",
+      "grafana/loki",
+      "grafana/tempo",
+      "helm/core",
+      "hubble/observability",
+      "inspektor-gadget/node",
+      "inspektor-gadget/tcpdump",
+      "internet",
+      "kafka/admin",
+      "kubernetes/core",
+      "kubernetes/kube-prometheus-stack",
+      "kubernetes/live-metrics",
+      "kubernetes/logs",
+      "kubevela/core",
+      "newrelic",
+      "notion",
+      "opensearch/query_assist",
+      "openshift/core",
+      "openshift/live-metrics",
+      "openshift/logs",
+      "openshift/security",
+      "prometheus/multi-tenant-metrics",
+      "rabbitmq/core",
+      "robusta",
+      "servicenow/tables",
+      "skills",
+      "slab",
+      "victorialogs"
+    ],
+    "prometheus_url": "http://f14-lab-relay:9090",
+    "jaeger_url": "http://f14-lab-relay:16686/jaeger/ui",
+    "kubernetes_credentials": false,
+    "trace_export": false
+  },
+  "model": {
+    "name": "deepseek/deepseek-flash",
+    "host": "api.deepseek.com",
+    "env": {
+      "THINKING": "{\"type\": \"enabled\"}",
+      "REASONING_EFFORT": "high",
+      "OVERRIDE_MAX_OUTPUT_TOKEN": "65536",
+      "OVERRIDE_MAX_CONTENT_SIZE": "1000000",
+      "LLM_REQUEST_TIMEOUT": "360",
+      "TEMPERATURE": "none",
+      "ENABLE_TELEMETRY": "false"
+    }
+  },
+  "budget": {
+    "max_steps": 100,
+    "run_wall_seconds": 7200,
+    "tool_timeout_seconds": 30,
+    "step_counting_note": "Holmes does not count compaction or retries as steps; OpsPilot counts every model request"
+  }
+}

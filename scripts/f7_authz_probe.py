@@ -43,6 +43,26 @@ VARIANT_REQUESTS = tuple(
 )
 PROBE_ACCOUNTS = ("investigator", "observer", "lab", "anonymous")
 MAX_BYTES = 2 * 1024 * 1024
+# #396 (decision Q6): the holmes account's extra rows. The frozen matrix above
+# is unchanged for every other account. holmes may POST a form body (<= 64k)
+# to query/query_range only; a non-form POST, a form POST anywhere else, an
+# oversized form and the metadata/rules paths HolmesGPT also calls are denied.
+HOLMES_FORM_PATHS = ("/api/v1/query", "/api/v1/query_range")
+HOLMES_ROWS: tuple[tuple[str, str, str | None, int | str], ...] = (
+    tuple((m, p, None, 405 if m == "HEAD" else 200) for m, p in READ_REQUESTS)
+    + tuple(("POST", p, "form", 200) for p in HOLMES_FORM_PATHS)
+    + (("POST", "/api/v1/query", "form-oversize", 413),)
+    + tuple(
+        ("POST", p, "form", 403)
+        for p in READ_ENDPOINTS + ("/api/v1/metadata", "/api/v1/rules")
+        if p not in HOLMES_FORM_PATHS
+    )
+    + (("GET", "/api/v1/metadata", None, 403), ("GET", "/api/v1/rules", None, 403))
+    + tuple((m, p, None, 403) for m, p in DENIED_REQUESTS)
+    + tuple((m, p, None, "4xx") for m, p in VARIANT_REQUESTS)
+    + (("POST", "/API/V1/QUERY", "form", "4xx"),)
+)
+FORM_LIMIT_BYTES = 64 * 1024
 
 
 def authorization(role: str, directory: Path) -> str:
@@ -62,15 +82,31 @@ def authorization(role: str, directory: Path) -> str:
     )
 
 
+def form_body(path: str, body: str) -> bytes:
+    """The holmes rows' form body: the row's query arguments, padded past the
+    proxy's 64k limit for ``form-oversize``."""
+    fields = {"query": "up"}
+    if path == "/api/v1/query_range":
+        fields.update(start="0", end="1", step="1")
+    if body == "form-oversize":
+        fields["pad"] = "x" * (FORM_LIMIT_BYTES + 1)
+    return urllib.parse.urlencode(fields).encode()
+
+
 def request(
-    base_url: str, method: str, path: str, auth: str | None
+    base_url: str, method: str, path: str, auth: str | None, *, body: str | None = None
 ) -> tuple[int, bytes]:
     headers = {} if auth is None else {"Authorization": auth}
-    if method == "POST":
+    data = None
+    if body is not None:
+        headers["Content-Type"] = "application/x-www-form-urlencoded"
+        data = form_body(path, body)
+    elif method == "POST":
         headers["Content-Type"] = "application/x-protobuf"
+        data = b""
     req = urllib.request.Request(
         base_url + path,
-        data=b"" if method == "POST" else None,
+        data=data,
         headers=headers,
         method=method,
     )
@@ -105,19 +141,22 @@ def latest_samples(base_url: str, auth: str) -> tuple[int, dict[str, float] | No
         return status, None
 
 
+def _query(path: str) -> str:
+    query = "?query=up" if path in ("/api/v1/query", "/api/v1/query_range") else ""
+    if path == "/api/v1/query_range":
+        query += "&start=0&end=1&step=1"
+    elif path == "/api/v1/series":
+        query = "?match%5B%5D=up"
+    return query
+
+
 def probe(base_url: str = BASE_URL, directory: Path = LAB_DIR) -> dict[str, Any]:
     auths = {role: authorization(role, directory) for role in ROLE_ENV_VARS}
     before_status, before = latest_samples(base_url, auths["lab"])
     results = []
     for role in PROBE_ACCOUNTS:
         for method, path in READ_REQUESTS + DENIED_REQUESTS + VARIANT_REQUESTS:
-            query = (
-                "?query=up" if path in ("/api/v1/query", "/api/v1/query_range") else ""
-            )
-            if path == "/api/v1/query_range":
-                query += "&start=0&end=1&step=1"
-            elif path == "/api/v1/series":
-                query = "?match%5B%5D=up"
+            query = _query(path)
             expected = (
                 "4xx"
                 if (method, path) in VARIANT_REQUESTS
@@ -143,6 +182,23 @@ def probe(base_url: str = BASE_URL, directory: Path = LAB_DIR) -> dict[str, Any]
                     "matches": matches,
                 }
             )
+    for method, path, body, expected in HOLMES_ROWS:
+        if body is None:
+            status, _ = request(base_url, method, path + _query(path), auths["holmes"])
+        else:
+            status, _ = request(base_url, method, path, auths["holmes"], body=body)
+        matches = 400 <= status < 500 if expected == "4xx" else status == expected
+        row: dict[str, Any] = {
+            "method": method,
+            "path": path,
+            "account": "holmes",
+            "status": status,
+            "expected": expected,
+            "matches": matches,
+        }
+        if body is not None:
+            row["body"] = body
+        results.append(row)
     after_status, after = latest_samples(base_url, auths["lab"])
     unchanged = before is not None and after is not None and before == after
     sample_check = {
