@@ -25,7 +25,8 @@
 #   OPSPILOT_WEB_HOST_PORT    workbench port on 127.0.0.1 (default 18080)
 #                             (allowed origins follow it: 127.0.0.1 and localhost)
 #   OPSPILOT_IMAGE            product image; opspilot:local (default) is built
-#                             from this checkout, anything else is pulled
+#                             from this checkout; anything else is pulled and
+#                             must be pinned by digest (<name>@sha256:<64 hex>)
 #   OPSPILOT_TOOL_PROFILE     fixture (default) or otel-demo
 #   OPSPILOT_START_AGENT      1 also starts worker and observer (fill
 #                             worker_env / observer_env first)
@@ -93,6 +94,14 @@ valid_port() {
         die "OPSPILOT_WEB_HOST_PORT must be a port number 1-65535 without leading zeros"
 }
 
+# A pulled product image is pinned by digest (B9); a tag can move under an
+# install. Only the local build is referenced by name.
+valid_image() {
+    [ "$1" = "$LOCAL_IMAGE" ] && return 0
+    [[ "$1" =~ ^[^@[:space:]]+@sha256:[0-9a-f]{64}$ ]] ||
+        die "OPSPILOT_IMAGE '$1' must be pinned by digest (<name>@sha256:<64 hex>), or be $LOCAL_IMAGE; nothing changed"
+}
+
 valid_project() {
     case "$1" in
         '' | [!a-z0-9]* | *[!a-z0-9_-]*)
@@ -128,6 +137,7 @@ resolve_settings() {
     valid_project "$project_hint"
     # Checked before anything is created; again below for a remembered value.
     [ -z "${OPSPILOT_WEB_HOST_PORT:-}" ] || valid_port "$OPSPILOT_WEB_HOST_PORT"
+    [ -z "${OPSPILOT_IMAGE:-}" ] || valid_image "$OPSPILOT_IMAGE"
     SECRETS_DIR="${OPSPILOT_SECRETS_DIR:-}"
     if [ -z "$SECRETS_DIR" ]; then
         read_record "$project_hint"
@@ -154,6 +164,7 @@ resolve_settings() {
     export OPSPILOT_WEB_HOST_PORT="${OPSPILOT_WEB_HOST_PORT:-18080}"
     valid_port "$OPSPILOT_WEB_HOST_PORT"
     export OPSPILOT_IMAGE="${OPSPILOT_IMAGE:-$LOCAL_IMAGE}"
+    valid_image "$OPSPILOT_IMAGE"
     export OPSPILOT_TOOL_PROFILE="${OPSPILOT_TOOL_PROFILE:-fixture}"
     export OPSPILOT_START_AGENT="${OPSPILOT_START_AGENT:-0}"
     export OPSPILOT_RUNTIME_UID="$(id -u)"
@@ -270,10 +281,28 @@ sha256() {
 
 # -- steps ---------------------------------------------------------------------
 
+# The [project] version of pyproject.toml, its single source (#394); read
+# without tomllib so an older host python3 is enough.
+product_version() {
+    local version
+    version="$(awk '/^\[/ { section = $0 } section == "[project]" && /^version *=/ {
+        gsub(/^version *= *"|" *$/, ""); print; exit }' "$REPO_ROOT/pyproject.toml")" ||
+        die "cannot read pyproject.toml"
+    [ -n "$version" ] || die "pyproject.toml has no [project] version"
+    printf '%s' "$version"
+}
+
 prepare_image() {
     if [ "$OPSPILOT_IMAGE" = "$LOCAL_IMAGE" ]; then
-        log "building $LOCAL_IMAGE from $REPO_ROOT"
-        docker build --tag "$LOCAL_IMAGE" --file "$REPO_ROOT/Dockerfile" "$REPO_ROOT"
+        local version revision
+        version="$(product_version)" || exit 1
+        # A checkout without git metadata (an unpacked archive) still builds.
+        revision="$(git -C "$REPO_ROOT" rev-parse HEAD 2> /dev/null)" || revision=unknown
+        log "building $LOCAL_IMAGE $version ($revision) from $REPO_ROOT"
+        docker build --tag "$LOCAL_IMAGE" \
+            --build-arg "OPSPILOT_VERSION=$version" \
+            --build-arg "OPSPILOT_REVISION=$revision" \
+            --file "$REPO_ROOT/Dockerfile" "$REPO_ROOT"
     else
         log "pulling $OPSPILOT_IMAGE"
         docker pull "$OPSPILOT_IMAGE"
