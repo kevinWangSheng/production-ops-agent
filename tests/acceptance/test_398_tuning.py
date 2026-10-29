@@ -308,12 +308,13 @@ def test_398_schedule_is_formal_shape_in_formal_order(harness):
     assert sent == expected
     assert Counter(p for p, _ in sent) == {p: 60 for p in PROVIDERS}
 
-    # Same per-call files as debug, under debug/<session>/.
+    # Same per-call files as debug, under debug/<session>/: a .json per call; a
+    # .raw only for a rejected answer with a response body (P7-D20), so none here.
     directory = h.ws / "debug" / "tune-order"
     for provider in PROVIDERS:
-        for suffix in ("json", "raw"):
-            names = sorted(p.name for p in directory.glob(f"{provider}-*.{suffix}"))
-            assert names == [f"{provider}-{n:03d}.{suffix}" for n in range(1, 61)]
+        names = sorted(p.name for p in directory.glob(f"{provider}-*.json"))
+        assert names == [f"{provider}-{n:03d}.json" for n in range(1, 61)]
+    assert not list(directory.glob("*.raw"))
 
     assert score["round"] == 1
     assert score["session"] == "tune-order"
