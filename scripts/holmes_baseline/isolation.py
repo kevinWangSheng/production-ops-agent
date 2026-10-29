@@ -32,7 +32,8 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from scripts import kind_lab
-from scripts.holmes_baseline import container
+from scripts.holmes_baseline import config as hconfig
+from scripts.holmes_baseline import container, run
 
 ROOT = Path(__file__).resolve().parents[2]
 EVIDENCE = ROOT / "docs/evidence/f14-holmes-baseline"
@@ -391,16 +392,31 @@ def observed_from_raw(
     conn = raw.get("connect") if isinstance(raw.get("connect"), Mapping) else {}
     via = conn.get("model_via_proxy") or []
     allowed = tcp.get("allowed") or []
-    controls = bool(allowed) and all(r.get("ok") is True for r in allowed)
-    controls = controls and any(r.get("status") == 200 for r in via)
+    # exactly the expected controls: each target once, no substitutes or extras
+    model_ok = [_target(r) for r in via] == [CONTROL_MODEL] and via[0].get(
+        "status"
+    ) == 200
+    tcp_ok = sorted(_target(r) for r in allowed) == sorted(CONTROL_TCP) and all(
+        r.get("ok") is True for r in allowed
+    )
+    controls = tcp_ok and model_ok
     reach: dict[str, bool] = {}
     basis: dict[str, Any] = {}
-    if any(r.get("status") == 200 for r in via):
+    if model_ok:
         reach["model_via_proxy"] = True
     for key in ("kube_api", "prometheus_backend", "internet", "model_direct"):
         attempts = [*tcp.get(key, []), *conn.get(key, [])]
         reached = [r for r in attempts if r.get("ok") is True or r.get("status") == 200]
-        unsure = [r for r in attempts if r not in reached and not _definitive(r)]
+        # a DNS failure counts only beside an IP-level definitive failure
+        ip_level = any(
+            r.get("ok") is False and r.get("errno") in DEFINITIVE_ERRNOS
+            for r in tcp.get(key, [])
+        )
+        unsure = [
+            r
+            for r in attempts
+            if r not in reached and not _definitive(r, dns_counts=ip_level)
+        ]
         if reached:
             reach[key] = True
             basis[key] = {"reachable": reached}
@@ -436,14 +452,25 @@ def observed_from_raw(
 DEFINITIVE_ERRNOS = frozenset({"ENETUNREACH", "EHOSTUNREACH", "ECONNREFUSED"})
 
 
-def _definitive(attempt: Mapping[str, Any]) -> bool:
+# The positive controls ``targets()`` probes; the gate needs exactly these.
+CONTROL_TCP = (f"{run.RELAY}:9090", f"{run.RELAY}:16686", f"{run.EGRESS}:3128")
+CONTROL_MODEL = f"{hconfig.MODEL_HOST}:443"
+
+
+def _target(attempt: Any) -> Any:
+    return attempt.get("target") if isinstance(attempt, Mapping) else None
+
+
+def _definitive(attempt: Mapping[str, Any], *, dns_counts: bool) -> bool:
+    """``dns_counts``: a gaierror (EAI_AGAIN included) is definitive only when
+    the same category also failed definitively at the IP level."""
     if "status" in attempt:
         return attempt.get("status") == 403
     if attempt.get("ok") is not False:
         return False
-    return (
-        attempt.get("error") == "gaierror" or attempt.get("errno") in DEFINITIVE_ERRNOS
-    )
+    if attempt.get("error") == "gaierror":
+        return dns_counts
+    return attempt.get("errno") in DEFINITIVE_ERRNOS
 
 
 def _home(value: Any) -> Any:
@@ -507,11 +534,7 @@ def targets() -> dict[str, Any]:
         "paths": list(FORBIDDEN_PATHS),
         "tcp": {
             # positive controls: the two allowed ways out must answer
-            "allowed": [
-                f"{run.RELAY}:9090",
-                f"{run.RELAY}:16686",
-                f"{run.EGRESS}:3128",
-            ],
+            "allowed": list(CONTROL_TCP),
             "kube_api": [
                 f"{node}:6443",
                 *([f"{node_ip}:6443"] if node_ip else []),
@@ -531,7 +554,7 @@ def targets() -> dict[str, Any]:
         },
         "connect": {
             "internet": ["example.com:443", "1.1.1.1:443", f"{hconfig.MODEL_HOST}:80"],
-            "model_via_proxy": [model],
+            "model_via_proxy": [CONTROL_MODEL],
         },
     }
 

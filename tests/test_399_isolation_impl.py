@@ -260,7 +260,10 @@ def raw_probe(**over: Any) -> dict[str, Any]:
             ],
             "prometheus_backend": [{"target": "10.0.0.9:9090", **UNREACH}],
             "internet": [{"target": "1.1.1.1:443", **UNREACH}],
-            "model_direct": [{"target": "api.deepseek.com:443", **NO_DNS}],
+            "model_direct": [
+                {"target": "api.deepseek.com:443", **NO_DNS},
+                {"target": "198.18.0.75:443", **UNREACH},
+            ],
         },
         "connect": {
             "internet": [{"target": "example.com:443", "status": 403}],
@@ -413,3 +416,91 @@ def test_image_check_runs_without_network_or_mounts() -> None:
     assert a[a.index("--cap-drop") + 1] == "ALL"
     assert "--read-only" in a
     assert json.loads(a[-1]) == ["/root/.kube"]
+
+
+GOOD_CONTROLS = [
+    {"target": "f14-lab-relay:9090", "ok": True},
+    {"target": "f14-lab-relay:16686", "ok": True},
+    {"target": "f14-egress:3128", "ok": True},
+]
+
+
+def test_expected_controls_are_the_probe_targets() -> None:
+    assert isolation.CONTROL_TCP == tuple(c["target"] for c in GOOD_CONTROLS)
+    assert isolation.CONTROL_MODEL == "api.deepseek.com:443"
+
+
+@pytest.mark.parametrize(
+    "controls",
+    [
+        GOOD_CONTROLS[:1],  # truncated
+        GOOD_CONTROLS[1:],
+        [{"target": "wrong:1", "ok": True}, *GOOD_CONTROLS[1:]],  # substituted
+        [*GOOD_CONTROLS, {"target": "f14-lab-relay:9090", **TIMEOUT}],  # dup fails
+        [*GOOD_CONTROLS, {"target": "f14-lab-relay:9090", "ok": True}],  # dup ok
+        [*GOOD_CONTROLS, {"target": "wrong:1", "ok": True}],  # extra
+        [{**c, "ok": "yes"} for c in GOOD_CONTROLS],
+    ],
+)
+def test_tcp_controls_must_be_exactly_the_expected_set(controls: list[Any]) -> None:
+    raw = raw_probe()
+    raw["tcp"]["allowed"] = controls
+    observed = isolation.observed_from_raw(raw, GOOD_LOG)
+    assert observed["probe"]["controls_passed"] is False
+    checks = evaluated(raw)
+    assert not any(checks[c] for c in UNREACHABLE_CHECKS)
+
+
+@pytest.mark.parametrize(
+    "via",
+    [
+        [{"target": "wrong:443", "status": 200}],
+        [{"target": "api.deepseek.com:80", "status": 200}],
+        [
+            {"target": "api.deepseek.com:443", "status": 200},
+            {"target": "api.deepseek.com:443", "status": 403},
+        ],
+        [
+            {"target": "api.deepseek.com:443", "status": 200},
+            {"target": "wrong:443", "status": 200},
+        ],
+        [],
+    ],
+)
+def test_model_control_must_be_exactly_connect_to_the_model_host(
+    via: list[Any],
+) -> None:
+    raw = raw_probe()
+    raw["connect"]["model_via_proxy"] = via
+    observed = isolation.observed_from_raw(raw, GOOD_LOG)
+    assert observed["probe"]["controls_passed"] is False
+    assert "model_via_proxy" not in observed["reach"]
+    checks = evaluated(raw)
+    assert not any(checks[c] for c in UNREACHABLE_CHECKS)
+
+
+@pytest.mark.parametrize(
+    "key,check_id",
+    [
+        ("kube_api", "kube_api_unreachable"),
+        ("prometheus_backend", "prometheus_backend_unreachable"),
+        ("internet", "internet_unreachable"),
+        ("model_direct", "model_only_via_proxy"),
+    ],
+)
+def test_dns_failure_alone_is_indeterminate(key: str, check_id: str) -> None:
+    raw = raw_probe()
+    raw["tcp"][key] = [{"target": "name.example:443", **NO_DNS}]
+    raw["connect"].pop("internet")
+    observed = isolation.observed_from_raw(raw, GOOD_LOG)
+    assert key not in observed["reach"]
+    assert evaluated(raw)[check_id] is False
+    # with an IP-level definitive failure in the same category it counts
+    raw["tcp"][key].append({"target": "10.0.0.1:443", **UNREACH})
+    assert isolation.observed_from_raw(raw, GOOD_LOG)["reach"][key] is False
+
+
+def test_proxy_403_is_not_an_ip_level_failure_for_dns() -> None:
+    raw = raw_probe()
+    raw["tcp"]["internet"] = [{"target": "example.com:443", **NO_DNS}]
+    assert "internet" not in isolation.observed_from_raw(raw, GOOD_LOG)["reach"]
