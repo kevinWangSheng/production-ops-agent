@@ -1,0 +1,51 @@
+{
+  "checked_at": "2026-10-28T19:30:33Z",
+  "image": "opspilot-f14/holmesgpt:a0009195",
+  "model_env": {
+    "THINKING": "{\"type\": \"enabled\"}",
+    "REASONING_EFFORT": "high",
+    "OVERRIDE_MAX_OUTPUT_TOKEN": "65536",
+    "OVERRIDE_MAX_CONTENT_SIZE": "1000000",
+    "LLM_REQUEST_TIMEOUT": "360",
+    "TEMPERATURE": "none",
+    "ENABLE_TELEMETRY": "false"
+  },
+  "requests_captured": 1,
+  "requests": [
+    {
+      "path": "/chat/completions",
+      "body": {
+        "max_tokens": 65536,
+        "model": "deepseek-flash",
+        "reasoning_effort": "high",
+        "stream": false,
+        "thinking": {
+          "type": "enabled"
+        },
+        "tool_choice": "auto"
+      },
+      "message_count": 2,
+      "tool_names": [
+        "list_prometheus_rules",
+        "get_metric_names",
+        "get_label_values",
+        "get_all_labels",
+        "get_series",
+        "get_metric_metadata",
+        "execute_prometheus_instant_query",
+        "execute_prometheus_range_query",
+        "jaeger_request"
+      ],
+      "check": {
+        "max_tokens_65536": true,
+        "model": "deepseek-flash",
+        "model_deepseek-flash": true,
+        "ok": true,
+        "reasoning_effort_high": true,
+        "thinking_enabled": true
+      }
+    }
+  ],
+  "holmes_exit_code": 0,
+  "ok": true
+}
