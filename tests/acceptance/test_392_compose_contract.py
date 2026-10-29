@@ -91,12 +91,14 @@ def test_required_services_include_one_shot_migration_and_role_initialization() 
         )
 
 
-def test_all_product_services_share_web_image_and_all_images_are_digest_pinned() -> (
+def test_all_product_services_share_web_image_and_third_party_images_are_digest_pinned() -> (
     None
 ):
+    # The product image digest pin moves to #394 (user decision 2026-10-28):
+    # Compose cannot carry the digest of an image first published by #394.
     services = _compose()["services"]
     web_image = services["web"].get("image")
-    assert isinstance(web_image, str) and DIGEST.search(web_image), web_image
+    assert isinstance(web_image, str) and web_image, web_image
 
     product_services = {"migrate", "init-roles", "web", "worker", "observer"}
     for name in product_services & set(services):
@@ -104,6 +106,8 @@ def test_all_product_services_share_web_image_and_all_images_are_digest_pinned()
         assert image == web_image, f"{name} must use the single product image"
 
     for name, service in services.items():
+        if name in product_services:
+            continue
         image = service.get("image")
         if image is not None:
             assert isinstance(image, str) and DIGEST.search(image), (name, image)
