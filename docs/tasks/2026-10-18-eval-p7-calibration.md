@@ -88,7 +88,7 @@
   - 旧的无 `round` 的 `debug --tuning` 行不计轮次；轮次只看本工作区。
   - 冻结绑定按字节：工作区 items、两份标注与裁决文件须与 label-pack 中对应文件逐字节相同（均为规范字节写入），否则 `HASH_MISMATCH`。
   - `tune` 额外要求 `--judge-env`（与 debug/formal 同，否则无法加载配置）。
-  - 验证（仅假 transport，未发任何真实调用、未查余额）：`tests/unit/test_eval_p7_398_impl.py` 14 passed；独立验收 `tests/acceptance/test_398_tuning.py` 30 passed、1 failed（该用例要求每次调用都有 .raw，与 P7-D20「仅被拒答案保存」不符，已退回测试作者）；P7 验收与 r3 单元 168 passed；其余 eval 单元 656 + 194 passed（5 项需 PG 跳过）；B3 单元与 judge 验收 717 passed；ruff、format、mypy 通过。
+  - 验证（仅假 transport，未发任何真实调用、未查余额）：`tests/unit/test_eval_p7_398_impl.py` 14 passed；独立验收 `tests/acceptance/test_398_tuning.py` 31 passed（含测试作者按 P7-D20 修正的 .raw 用例）；P7 验收与 r3 单元 168 passed；其余 eval 单元 656 + 194 passed（5 项需 PG 跳过）；B3 单元与 judge 验收 717 passed；ruff、format、mypy 通过。
   - 真实第 1 轮（180 次调用）未运行：用户门，待用户审过合并后的计分器由 lead 运行。
 
 ## 待决
