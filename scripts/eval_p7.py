@@ -2176,8 +2176,20 @@ def _frozen_pack(ws: Workspace) -> tuple[LabelPack, Mapping[str, BlindLabel], st
     """The frozen label pack, still equal to the workspace's current labels."""
     pack_hash = _sha(_read_ws(ws, ws.root / "label-pack/pack.json"))
     pack = load_label_pack(ws.root / "label-pack", expected_pack_hash=pack_hash)
-    current, labels, _ = _label_pack(ws)
-    if current != pack:
+    current, labels, adjudications_raw = _label_pack(ws)
+    # Byte-bound, not only decoded: the workspace files are written canonically,
+    # exactly as the frozen pack's files, so any edit is a mismatch.
+    annotations = [_annotation(ws, slot) for slot in (1, 2)]
+    current_raw = {
+        "items.json": _assembled(ws)[0],
+        "annotations-1.json": annotations[0][0] if annotations[0] else b"",
+        "annotations-2.json": annotations[1][0] if annotations[1] else b"",
+        "adjudications.json": adjudications_raw,
+    }
+    if current != pack or any(
+        raw != _read_ws(ws, ws.root / "label-pack" / name)
+        for name, raw in current_raw.items()
+    ):
         _fail("HASH_MISMATCH")
     return pack, labels, pack_hash
 
@@ -2255,9 +2267,8 @@ def _checked_triage(
     pack, labels, _ = _frozen_pack(ws)
     expected_rows: list[Mapping[str, Any]] = []
     scores: dict[str, Any] = {}
-    for provider in score["providers"]:
-        if provider not in PROVIDERS:
-            _fail("SCHEMA_INVALID")
+    # Rows were written in tune's provider order; the stored keys are sorted.
+    for provider in _ordered_providers(tuple(score["providers"])):
         result, triage = assess_tuning(
             pack, labels, _session_records(ws, session_id, provider)
         )

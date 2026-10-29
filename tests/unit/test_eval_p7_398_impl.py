@@ -409,3 +409,38 @@ def test_rerun_refused_for_judge_errors_or_a_changed_prompt(exposed):
         reason="TUNING_ROUND_MISMATCH",
         costs=False,
     )
+
+
+def test_triage_check_accepts_rows_from_several_providers(exposed):
+    h = exposed
+    item = next(i for i in h.pack.items if i.split == "debug")
+    failing(
+        h,
+        {
+            (p, item.request.report.raw): lambda *_: http(b"{}", status=502)
+            for p in ("zai", "openai", "deepseek")
+        },
+    )
+    tune(h, "tune-1", 1, code=1)
+    assert [r["provider"] for r in triage(h, "tune-1")["rows"]] == [
+        "zai",
+        "openai",
+        "deepseek",
+    ]
+    _categorise(h, "tune-1", "eval_env")
+    result = h.cli("triage-check", "--session", "tune-1")
+    assert {p: v["eval_env"] for p, v in result["triage"].items()} == {
+        "zai": 1,
+        "openai": 1,
+        "deepseek": 1,
+    }
+
+
+def test_tune_refuses_byte_edits_to_workspace_adjudications(exposed):
+    h = exposed
+    path = h.ws / "adjudication/adjudications.json"
+    path.write_bytes(path.read_bytes() + b"\n")
+    h.costs("tune-1")
+    before = snapshot(h.root)
+    tune(h, "tune-1", 1, code=3, reason="HASH_MISMATCH", costs=False)
+    assert snapshot(h.root) == before and not h.calls
