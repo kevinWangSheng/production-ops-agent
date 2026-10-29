@@ -135,14 +135,24 @@ def test_each_forbidden_path_category_fails_only_path_check(category: str, token
     )
 
 
-def test_non_allowlisted_environment_name_fails_without_echoing_its_value():
+def test_non_allowlisted_environment_name_fails_only_allowlist_check():
     isolation = _isolation()
-    sentinel = "DO_NOT_LEAK_ENV_VALUE_399"
     observed = _clean_observation(isolation=isolation)
-    observed["env_names"] = [sentinel]
+    observed["env_names"] = ["NOT_ALLOWLISTED_NAME_399"]
     result = isolation.evaluate(observed)
     _assert_only_check_failed(result, "env_names_allowlisted")
-    assert sentinel not in " ".join(check["detail"] for check in result["checks"])
+
+
+def test_environment_value_smuggled_into_names_is_not_echoed_in_details():
+    isolation = _isolation()
+    secret_value = "DO_NOT_LEAK_ENV_VALUE_399"
+    observed = _clean_observation(isolation=isolation)
+    observed["env_names"] = [f"SOME_TOKEN={secret_value}"]
+    result = isolation.evaluate(observed)
+    _assert_only_check_failed(result, "env_names_allowlisted")
+    assert secret_value not in " ".join(
+        check["detail"] for check in result["checks"]
+    )
 
 
 @pytest.mark.parametrize(
