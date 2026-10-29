@@ -40,9 +40,11 @@ def run_args(
     no_proxy: str = "",
     name: str | None = None,
     command: Sequence[str] = (),
+    entrypoint: str | None = None,
 ) -> list[str]:
     """``docker run`` argument list; ``command`` follows the image (the
-    image's entrypoint is ``python holmes_cli.py``)."""
+    image's entrypoint is ``python holmes_cli.py``). ``entrypoint`` replaces
+    only that, e.g. for the isolation probe (#399); the shape is unchanged."""
     env = {
         # every proxy-aware client (litellm/httpx, requests) leaves through the
         # egress proxy, except the lab relay named in NO_PROXY
@@ -82,4 +84,6 @@ def run_args(
         args += ["-e", f"{key}={value}"]
     for key in SECRET_ENV:
         args += ["-e", key]
+    if entrypoint:
+        args += ["--entrypoint", entrypoint]
     return [*args, image, *command]

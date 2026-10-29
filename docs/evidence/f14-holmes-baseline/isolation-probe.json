@@ -1,0 +1,514 @@
+{
+  "image_id": "sha256:3f2995d1a448b34a0dbd3c07aa9276e8c812e96e8fc4ebcc9653b01d9ab2a30e",
+  "observed": {
+    "uid": 65534,
+    "paths_present": [],
+    "env_names": [
+      "DEEPSEEK_API_KEY",
+      "ENABLE_TELEMETRY",
+      "GPG_KEY",
+      "HOLMES_PROMETHEUS_AUTHORIZATION",
+      "HOME",
+      "HOSTNAME",
+      "HTTPS_PROXY",
+      "HTTP_PROXY",
+      "LANG",
+      "LLM_REQUEST_TIMEOUT",
+      "NO_PROXY",
+      "OVERRIDE_MAX_CONTENT_SIZE",
+      "OVERRIDE_MAX_OUTPUT_TOKEN",
+      "PATH",
+      "PYTHONPATH",
+      "PYTHONUNBUFFERED",
+      "PYTHON_SHA256",
+      "PYTHON_VERSION",
+      "REASONING_EFFORT",
+      "TEMPERATURE",
+      "THINKING"
+    ],
+    "reach": {
+      "model_via_proxy": true,
+      "kube_api": false,
+      "prometheus_backend": false,
+      "internet": false,
+      "model_direct": false
+    },
+    "proxy_log_lines": [
+      "2026-10-28T18:42:06+00:00 holmes GET /api/v1/query 200 251 705 0.981",
+      "2026-10-28T18:42:07+00:00 holmes GET /api/v1/query 200 251 705 1.159",
+      "2026-10-28T18:42:10+00:00 holmes GET /api/v1/label/__name__/values 200 436 229 0.966",
+      "2026-10-28T18:42:14+00:00 holmes GET /api/v1/label/service_name/values 200 453 85 1.300",
+      "2026-10-28T18:42:14+00:00 holmes GET /api/v1/label/__name__/values 200 468 317 2.359",
+      "2026-10-28T18:42:19+00:00 holmes GET /api/v1/series 200 357 3039 1.498",
+      "2026-10-28T18:42:19+00:00 holmes GET /api/v1/labels 200 357 172 2.469",
+      "2026-10-28T18:42:25+00:00 holmes GET /api/v1/label/__name__/values 200 415 117 1.202",
+      "2026-10-28T18:42:25+00:00 holmes POST /api/v1/query 200 473 582 2.256",
+      "2026-10-28T18:42:31+00:00 holmes POST /api/v1/query 200 624 773 1.122",
+      "2026-10-28T18:42:31+00:00 holmes POST /api/v1/query 200 691 2315 2.312",
+      "2026-10-28T18:42:40+00:00 holmes POST /api/v1/query 200 445 152 2.197",
+      "2026-10-28T18:42:40+00:00 holmes POST /api/v1/query 200 929 582 1.249",
+      "2026-10-28T18:43:22+00:00 holmes GET /api/v1/label/__name__/values 200 442 159 2.292",
+      "2026-10-28T18:43:22+00:00 holmes POST /api/v1/query 200 1161 135 1.305",
+      "2026-10-28T18:43:29+00:00 holmes POST /api/v1/query 200 455 151 2.482",
+      "2026-10-28T18:43:29+00:00 holmes POST /api/v1/query 200 652 252 1.404",
+      "2026-10-28T18:43:34+00:00 holmes POST /api/v1/query 200 400 425 1.217",
+      "2026-10-28T18:43:46+00:00 holmes POST /api/v1/query_range 200 987 93 2.298",
+      "2026-10-28T18:43:46+00:00 holmes GET /api/v1/label/__name__/values 200 418 157 1.009",
+      "2026-10-28T18:43:51+00:00 holmes GET /api/v1/series 200 364 450 2.799",
+      "2026-10-28T18:43:51+00:00 holmes POST /api/v1/query_range 200 572 1259 1.502",
+      "2026-10-28T18:44:02+00:00 holmes GET /api/v1/series 200 406 374 2.387",
+      "2026-10-28T18:44:02+00:00 holmes POST /api/v1/query 200 438 239 1.396",
+      "2026-10-28T18:44:10+00:00 holmes POST /api/v1/query 200 443 263 1.297",
+      "2026-10-28T18:44:10+00:00 holmes POST /api/v1/query_range 200 540 1049 2.338",
+      "2026-10-28T18:44:21+00:00 holmes POST /api/v1/query 200 590 241 2.593",
+      "2026-10-28T18:44:21+00:00 holmes POST /api/v1/query_range 200 688 1967 1.435"
+    ],
+    "probe": {
+      "controls_passed": true,
+      "reach_basis": {
+        "kube_api": "every attempt failed definitively; controls passed",
+        "prometheus_backend": "every attempt failed definitively; controls passed",
+        "internet": "every attempt failed definitively; controls passed",
+        "model_direct": "every attempt failed definitively; controls passed"
+      },
+      "exit_code": 0,
+      "valid": true,
+      "positive_controls": {
+        "tcp": [
+          {
+            "ok": true,
+            "target": "f14-lab-relay:9090"
+          },
+          {
+            "ok": true,
+            "target": "f14-lab-relay:16686"
+          },
+          {
+            "ok": true,
+            "target": "f14-egress:3128"
+          }
+        ],
+        "model_via_proxy": [
+          {
+            "status": 200,
+            "target": "api.deepseek.com:443"
+          }
+        ]
+      },
+      "targets": {
+        "tcp": {
+          "allowed": [
+            {
+              "ok": true,
+              "target": "f14-lab-relay:9090"
+            },
+            {
+              "ok": true,
+              "target": "f14-lab-relay:16686"
+            },
+            {
+              "ok": true,
+              "target": "f14-egress:3128"
+            }
+          ],
+          "internet": [
+            {
+              "errno": "ENETUNREACH",
+              "error": "OSError",
+              "ok": false,
+              "target": "1.1.1.1:443"
+            },
+            {
+              "errno": "ENETUNREACH",
+              "error": "OSError",
+              "ok": false,
+              "target": "8.8.8.8:53"
+            },
+            {
+              "errno": -3,
+              "error": "gaierror",
+              "ok": false,
+              "target": "example.com:443"
+            }
+          ],
+          "kube_api": [
+            {
+              "errno": -3,
+              "error": "gaierror",
+              "ok": false,
+              "target": "opspilot-m1-control-plane:6443"
+            },
+            {
+              "errno": "ENETUNREACH",
+              "error": "OSError",
+              "ok": false,
+              "target": "172.18.0.2:6443"
+            },
+            {
+              "errno": "ENETUNREACH",
+              "error": "OSError",
+              "ok": false,
+              "target": "10.96.0.1:443"
+            },
+            {
+              "errno": "ECONNREFUSED",
+              "error": "ConnectionRefusedError",
+              "ok": false,
+              "target": "172.20.0.1:59424"
+            },
+            {
+              "errno": "ECONNREFUSED",
+              "error": "ConnectionRefusedError",
+              "ok": false,
+              "target": "f14-lab-relay:6443"
+            },
+            {
+              "errno": -3,
+              "error": "gaierror",
+              "ok": false,
+              "target": "kubernetes.default.svc:443"
+            }
+          ],
+          "model_direct": [
+            {
+              "errno": -3,
+              "error": "gaierror",
+              "ok": false,
+              "target": "api.deepseek.com:443"
+            },
+            {
+              "errno": "ENETUNREACH",
+              "error": "OSError",
+              "ok": false,
+              "target": "198.18.0.75:443"
+            }
+          ],
+          "prometheus_backend": [
+            {
+              "errno": -3,
+              "error": "gaierror",
+              "ok": false,
+              "target": "prometheus:9090"
+            },
+            {
+              "errno": -3,
+              "error": "gaierror",
+              "ok": false,
+              "target": "prometheus.otel-demo.svc.cluster.local:9090"
+            },
+            {
+              "errno": "ENETUNREACH",
+              "error": "OSError",
+              "ok": false,
+              "target": "10.96.239.241:9090"
+            },
+            {
+              "errno": "ENETUNREACH",
+              "error": "OSError",
+              "ok": false,
+              "target": "10.244.0.9:9090"
+            }
+          ]
+        },
+        "connect": {
+          "internet": [
+            {
+              "status": 403,
+              "target": "example.com:443"
+            },
+            {
+              "status": 403,
+              "target": "1.1.1.1:443"
+            },
+            {
+              "status": 403,
+              "target": "api.deepseek.com:80"
+            }
+          ],
+          "model_via_proxy": [
+            {
+              "status": 200,
+              "target": "api.deepseek.com:443"
+            }
+          ]
+        }
+      },
+      "paths_checked": [
+        "~/dev/AI/poa-399-impl",
+        "~/dev/AI/production-ops-agent",
+        "/repo",
+        "/workspace",
+        "~/dev/AI/poa-399-impl/.env",
+        "~/dev/AI/production-ops-agent/.env",
+        "/.env",
+        "/app/.env",
+        "/tmp/.env",
+        "/out/.env",
+        "/etc/holmes/.env",
+        "~/dev/AI/poa-399-impl/tmp/m1-kind-lab/prometheus-auth.json",
+        "~/dev/AI/production-ops-agent/tmp/m1-kind-lab/prometheus-auth.json",
+        "/etc/opspilot-proxy",
+        "~/dev/AI/poa-399-impl/tmp/m1-kind-lab/kubeconfig",
+        "~/dev/AI/production-ops-agent/tmp/m1-kind-lab/kubeconfig",
+        "~/.kube",
+        "~/.ssh",
+        "~/.config",
+        "~/.docker",
+        "~/.agent",
+        "/root/.kube",
+        "/tmp/.kube",
+        "/app/.kube",
+        "/etc/kubernetes",
+        "/var/run/secrets/kubernetes.io",
+        "/var/run/docker.sock",
+        "/run/docker.sock"
+      ],
+      "paths_unreadable_by_probe_user": [
+        "/root/.kube"
+      ],
+      "image_check_as_root_no_network": {
+        "/root/.kube": false
+      },
+      "proxy_log_sources": {
+        "probe_window": 0,
+        "recorded_run": 28,
+        "recorded_run_file": "proxy-log-holmes.txt"
+      },
+      "egress_proxy_log": [
+        {
+          "target": null,
+          "allowed": false,
+          "reason": "no header"
+        },
+        {
+          "target": null,
+          "allowed": false,
+          "reason": "target example.com:443"
+        },
+        {
+          "target": null,
+          "allowed": false,
+          "reason": "target 1.1.1.1:443"
+        },
+        {
+          "target": null,
+          "allowed": false,
+          "reason": "target api.deepseek.com:80"
+        },
+        {
+          "target": "api.deepseek.com:443",
+          "allowed": true,
+          "reason": "allowlisted"
+        }
+      ],
+      "container": {
+        "root_write_denied": true,
+        "proc_status": {
+          "CapBnd": "0000000000000000",
+          "CapEff": "0000000000000000",
+          "CapPrm": "0000000000000000",
+          "NoNewPrivs": "1"
+        },
+        "mounts": [
+          "/",
+          "/dev",
+          "/dev/mqueue",
+          "/dev/pts",
+          "/dev/shm",
+          "/etc/holmes/config.yaml",
+          "/etc/hostname",
+          "/etc/hosts",
+          "/etc/resolv.conf",
+          "/out",
+          "/proc",
+          "/proc/acpi",
+          "/proc/bus",
+          "/proc/fs",
+          "/proc/interrupts",
+          "/proc/irq",
+          "/proc/kcore",
+          "/proc/keys",
+          "/proc/latency_stats",
+          "/proc/scsi",
+          "/proc/sys",
+          "/proc/sysrq-trigger",
+          "/proc/timer_list",
+          "/sys",
+          "/sys/firmware",
+          "/sys/fs/cgroup",
+          "/tmp"
+        ],
+        "fstypes": {
+          "/": "overlay",
+          "/dev": "tmpfs",
+          "/dev/mqueue": "mqueue",
+          "/dev/pts": "devpts",
+          "/dev/shm": "tmpfs",
+          "/etc/holmes/config.yaml": "virtiofs",
+          "/etc/hostname": "ext4",
+          "/etc/hosts": "ext4",
+          "/etc/resolv.conf": "ext4",
+          "/out": "virtiofs",
+          "/proc": "proc",
+          "/proc/acpi": "tmpfs",
+          "/proc/bus": "proc",
+          "/proc/fs": "proc",
+          "/proc/interrupts": "tmpfs",
+          "/proc/irq": "proc",
+          "/proc/kcore": "tmpfs",
+          "/proc/keys": "tmpfs",
+          "/proc/latency_stats": "tmpfs",
+          "/proc/scsi": "tmpfs",
+          "/proc/sys": "proc",
+          "/proc/sysrq-trigger": "proc",
+          "/proc/timer_list": "tmpfs",
+          "/sys": "sysfs",
+          "/sys/firmware": "tmpfs",
+          "/sys/fs/cgroup": "cgroup2",
+          "/tmp": "tmpfs"
+        },
+        "mounts_declared": {
+          "binds": [
+            {
+              "type": "bind",
+              "source": "~/dev/AI/production-ops-agent/tmp/f14-holmes/isolation-live4/test_live_probe_passes_every_c0/config.yaml",
+              "destination": "/etc/holmes/config.yaml",
+              "rw": false
+            },
+            {
+              "type": "bind",
+              "source": "~/dev/AI/production-ops-agent/tmp/f14-holmes/isolation-live4/test_live_probe_passes_every_c0/out",
+              "destination": "/out",
+              "rw": true
+            }
+          ],
+          "tmpfs": {
+            "/tmp": "rw,nosuid,nodev,size=256m"
+          }
+        },
+        "mounts_inspected": {
+          "binds": [
+            {
+              "type": "bind",
+              "source": "~/dev/AI/production-ops-agent/tmp/f14-holmes/isolation-live4/test_live_probe_passes_every_c0/config.yaml",
+              "destination": "/etc/holmes/config.yaml",
+              "rw": false
+            },
+            {
+              "type": "bind",
+              "source": "~/dev/AI/production-ops-agent/tmp/f14-holmes/isolation-live4/test_live_probe_passes_every_c0/out",
+              "destination": "/out",
+              "rw": true
+            }
+          ],
+          "tmpfs": {
+            "/tmp": "rw,nosuid,nodev,size=256m"
+          }
+        },
+        "docker_run_argv": [
+          "docker",
+          "run",
+          "--name",
+          "f14-holmes",
+          "--network",
+          "f14-holmes-internal",
+          "--user",
+          "65534:65534",
+          "--read-only",
+          "--tmpfs",
+          "/tmp:rw,nosuid,nodev,size=256m",
+          "--cap-drop",
+          "ALL",
+          "--security-opt",
+          "no-new-privileges",
+          "--pids-limit",
+          "256",
+          "--memory",
+          "1g",
+          "-v",
+          "~/dev/AI/production-ops-agent/tmp/f14-holmes/isolation-live4/test_live_probe_passes_every_c0/config.yaml:/etc/holmes/config.yaml:ro",
+          "-v",
+          "~/dev/AI/production-ops-agent/tmp/f14-holmes/isolation-live4/test_live_probe_passes_every_c0/out:/out:rw",
+          "-e",
+          "HTTPS_PROXY=http://f14-egress:3128",
+          "-e",
+          "HTTP_PROXY=http://f14-egress:3128",
+          "-e",
+          "NO_PROXY=f14-lab-relay",
+          "-e",
+          "HOME=/tmp",
+          "-e",
+          "THINKING={\"type\": \"enabled\"}",
+          "-e",
+          "REASONING_EFFORT=high",
+          "-e",
+          "OVERRIDE_MAX_OUTPUT_TOKEN=65536",
+          "-e",
+          "OVERRIDE_MAX_CONTENT_SIZE=1000000",
+          "-e",
+          "LLM_REQUEST_TIMEOUT=360",
+          "-e",
+          "TEMPERATURE=none",
+          "-e",
+          "ENABLE_TELEMETRY=false",
+          "-e",
+          "DEEPSEEK_API_KEY",
+          "-e",
+          "HOLMES_PROMETHEUS_AUTHORIZATION",
+          "--entrypoint",
+          "python",
+          "opspilot-f14/holmesgpt:a0009195",
+          "-c",
+          "<PROBE_SCRIPT>",
+          "<targets>"
+        ]
+      }
+    }
+  },
+  "result": {
+    "checks": [
+      {
+        "id": "uid_non_root",
+        "passed": true,
+        "detail": "uid 65534"
+      },
+      {
+        "id": "forbidden_paths_absent",
+        "passed": true,
+        "detail": "none of the forbidden paths exist"
+      },
+      {
+        "id": "env_names_allowlisted",
+        "passed": true,
+        "detail": "21 names, all allowlisted"
+      },
+      {
+        "id": "kube_api_unreachable",
+        "passed": true,
+        "detail": "kube_api reachable: False"
+      },
+      {
+        "id": "prometheus_backend_unreachable",
+        "passed": true,
+        "detail": "prometheus_backend reachable: False"
+      },
+      {
+        "id": "internet_unreachable",
+        "passed": true,
+        "detail": "internet reachable: False"
+      },
+      {
+        "id": "model_only_via_proxy",
+        "passed": true,
+        "detail": "model direct reachable: False; via egress proxy: True"
+      },
+      {
+        "id": "proxy_log_allowed_paths",
+        "passed": true,
+        "detail": "28 holmes lines, all allowed"
+      }
+    ],
+    "passed": true
+  },
+  "probed_at": "2026-10-29T03:52:23.081610+00:00"
+}
