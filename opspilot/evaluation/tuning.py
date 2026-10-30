@@ -2,9 +2,11 @@
 
 A tuning round judges every debug item once and every validation item twice,
 in the order ``run_calibration`` uses, and is counted with the formal
-per-observation rule (``judged_observation``). Unlike formal, invalid answers,
-missed diagnoses and false passes count over every observation, debug items
-included, and every started attempt stays in the denominator.
+per-observation rule (``judged_observation``). Unlike formal, invalid answers
+and false passes count over every observation, debug items included, and every
+started attempt stays in the denominator. Missed diagnoses are counted as
+reference only (P7-D24); ``legacy=True`` reproduces the pre-D24 rule so rounds
+scored under it can still be verified.
 """
 
 from __future__ import annotations
@@ -83,6 +85,8 @@ def assess_tuning(
     pack: LabelPack,
     labels: Mapping[str, BlindLabel],
     records: Sequence[TuningRecord],
+    *,
+    legacy: bool = False,
 ) -> tuple[TuningScore, tuple[TriageRow, ...]]:
     """One provider's records in schedule order: its score and triage rows."""
     planned = schedule(pack)
@@ -114,7 +118,8 @@ def assess_tuning(
         missed += judged.missing
         false_passes += judged.false_pass
         if item.split == "validation":
-            agreement += judged.agrees and not judged.compromised
+            withheld = judged.compromised or legacy and judged.missing
+            agreement += judged.agrees and not withheld
         hint: Hint | None = None
         if not judged.valid:
             hint = _ERROR_HINTS.get(observation.error_code or "", "output_invalid")
@@ -122,10 +127,12 @@ def assess_tuning(
             hint = "output_invalid"
         elif judged.false_pass:
             hint = "false_pass"
-        elif judged.missing:
+        elif legacy and judged.missing:
             hint = "missed_diagnosis"
         elif not judged.agrees:
             hint = "disagreement"
+        elif judged.missing:
+            hint = "missed_diagnosis"
         if hint is not None:
             rows.append(TriageRow(item.item_id, observation.provider, repetition, hint))
     started = len(records)
@@ -137,7 +144,7 @@ def assess_tuning(
         started=started,
         passed=agreement >= PASS_AGREEMENT
         and invalid == 0
-        and missed == 0
+        and (missed == 0 or not legacy)
         and false_passes == 0
         and started == len(planned),
     )
@@ -160,6 +167,10 @@ def triage_rows(
 ) -> tuple[TriageRow, ...]:
     """Every started attempt that is not a clean agreement, uncategorised."""
     return assess_tuning(pack, labels, records)[1]
+
+
+# Reference-only triage hint under P7-D24: never blocks a rerun.
+REFERENCE_HINTS: frozenset[str] = frozenset({"missed_diagnosis"})
 
 
 def round_outcome(scores: Mapping[str, TuningScore]) -> Outcome:

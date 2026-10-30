@@ -103,6 +103,7 @@ from opspilot.evaluation.tuning import CATEGORIES as TUNING_CATEGORIES
 
 # score_tuning and triage_rows are re-exported for the driver's callers.
 from opspilot.evaluation.tuning import (  # noqa: F401
+    REFERENCE_HINTS,
     TuningScore,
     assess_tuning,
     round_outcome,
@@ -2264,22 +2265,15 @@ def _checked_triage(
             or type(row.get("label_concern", "")) is not str
         ):
             _fail("SCHEMA_INVALID")
-    pack, labels, _ = _frozen_pack(ws)
-    expected_rows: list[Mapping[str, Any]] = []
-    scores: dict[str, Any] = {}
-    # Rows were written in tune's provider order; the stored keys are sorted.
-    for provider in _ordered_providers(tuple(score["providers"])):
-        result, triage = assess_tuning(
-            pack, labels, _session_records(ws, session_id, provider)
-        )
-        scores[provider] = asdict(result)
-        expected_rows += [
-            {name: getattr(row, name) for name in _TRIAGE_FIELDS} for row in triage
-        ]
-    if (
-        scores != score["providers"]
-        or (value["round"], value["session"]) != (score.get("round"), session_id)
-        or [{k: row[k] for k in _TRIAGE_FIELDS} for row in rows] != expected_rows
+    stored = [{k: row[k] for k in _TRIAGE_FIELDS} for row in rows]
+    # P7-D24: rounds scored before the rule change verify under the old rule.
+    if (value["round"], value["session"]) != (
+        score.get("round"),
+        session_id,
+    ) or all(
+        _recomputed(ws, session_id, tuple(score["providers"]), legacy=legacy)
+        != (score["providers"], stored)
+        for legacy in (False, True)
     ):
         _fail("TRIAGE_MISMATCH")
     if any(row["category"] is None for row in rows):
@@ -2287,8 +2281,69 @@ def _checked_triage(
     return score, rows
 
 
+def _recomputed(
+    ws: Workspace, session_id: str, providers: tuple[str, ...], *, legacy: bool
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """A session's per-provider scores and machine triage fields, recomputed."""
+    pack, labels, _ = _frozen_pack(ws)
+    scores: dict[str, Any] = {}
+    rows: list[dict[str, Any]] = []
+    # Rows were written in tune's provider order; the stored keys are sorted.
+    for provider in _ordered_providers(providers):
+        result, triage = assess_tuning(
+            pack, labels, _session_records(ws, session_id, provider), legacy=legacy
+        )
+        scores[provider] = asdict(result)
+        rows += [
+            {name: getattr(row, name) for name in _TRIAGE_FIELDS} for row in triage
+        ]
+    return scores, rows
+
+
+_RESCORE_NAME = "rescore-d24.json"
+
+
+def _rescored(ws: Workspace, session_id: str) -> Mapping[str, Any]:
+    """P7-D26: the session under the current rule; categories from its triage."""
+    score, original = _checked_triage(ws, session_id)
+    categories = {
+        (row["provider"], row["item_id"], row["repetition"]): row["category"]
+        for row in original
+    }
+    scores, rows = _recomputed(ws, session_id, tuple(score["providers"]), legacy=False)
+    for row in rows:
+        key = (row["provider"], row["item_id"], row["repetition"])
+        if key not in categories:
+            _fail("TRIAGE_MISMATCH")
+        row["category"] = categories[key]
+    return {
+        "rule": "P7-D24",
+        "round": score["round"],
+        "session": session_id,
+        "providers": scores,
+        "rows": rows,
+    }
+
+
+@_public
+def rescore(ws: Workspace, session_id: str) -> Mapping[str, Any]:
+    """P7-D26: write-once rescore of a tuning session; originals untouched."""
+    _check_workspace(ws)
+    _check_id(session_id)
+    path = _tuning_dir(ws, session_id) / _RESCORE_NAME
+    if _exists(path):
+        _fail("OUTPUT_EXISTS")
+    value = _rescored(ws, session_id)
+    _write_new(ws, path, canonical_bytes(value))
+    return value
+
+
 def _round_check(
-    ws: Workspace, round_number: int, rerun_of: str | None, prompt_hash: str
+    ws: Workspace,
+    round_number: int,
+    rerun_of: str | None,
+    prompt_hash: str,
+    providers: tuple[str, ...] = PROVIDERS,
 ) -> None:
     """Q10/Q11: rounds 1..3 in order; one environment-only rerun per round."""
     rows = _tuning_rows(ws)
@@ -2314,8 +2369,28 @@ def _round_check(
         _fail("TUNING_RERUN_FORBIDDEN")
     if score.get("prompt_hash") != prompt_hash:
         _fail("JUDGE_PROMPT_CHANGED")
-    if not triage or any(row["category"] != "eval_env" for row in triage):
-        _fail("TUNING_RERUN_FORBIDDEN")
+    path = _tuning_dir(ws, rerun_of) / _RESCORE_NAME
+    if not _exists(path):
+        if not triage or any(row["category"] != "eval_env" for row in triage):
+            _fail("TUNING_RERUN_FORBIDDEN")
+        return
+    # P7-D26: per provider; only the providers being rerun are checked, and
+    # reference-only rows (missed diagnoses) never block.
+    rescored = _rescored(ws, rerun_of)
+    if _loads(_read_ws(ws, path)) != rescored:
+        _fail("TRIAGE_MISMATCH")
+    for provider in providers:
+        failures = [
+            row
+            for row in rescored["rows"]
+            if row["provider"] == provider and row["hint"] not in REFERENCE_HINTS
+        ]
+        if (
+            provider not in rescored["providers"]
+            or not failures
+            or any(row["category"] != "eval_env" for row in failures)
+        ):
+            _fail("TUNING_RERUN_FORBIDDEN")
 
 
 @_public
@@ -2348,7 +2423,7 @@ def tune(
     prompt_hash = _sha(judge.PROMPT.encode("utf-8"))
 
     def precheck() -> None:
-        _round_check(ws, round_number, rerun_of, prompt_hash)
+        _round_check(ws, round_number, rerun_of, prompt_hash, ordered)
 
     precheck()
     directory = _tuning_dir(ws, session_id)
@@ -2950,6 +3025,7 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--judge-env", required=True)
     p.add_argument("--rerun-of")
     command("triage-check").add_argument("--session", required=True)
+    command("rescore").add_argument("--session", required=True)
     command("summary")
     return parser
 
@@ -3228,6 +3304,14 @@ def _run(
         if tuned.outcome == "pending_user_decision":
             return 6, "pending_user_decision", "PENDING_USER_DECISION", extra
         return 1, "failed", "TUNING_FAILED", extra
+    if command == "rescore":
+        rescored = rescore(ws, args.session)
+        return (
+            0,
+            "ok",
+            "OK",
+            {"session": args.session, "providers": dict(rescored["providers"])},
+        )
     if command == "triage-check":
         triage_counts = triage_check(ws, args.session)
         return 0, "ok", "OK", {"session": args.session, "triage": dict(triage_counts)}

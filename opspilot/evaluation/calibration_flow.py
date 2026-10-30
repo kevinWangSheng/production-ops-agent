@@ -704,15 +704,16 @@ class JudgedObservation:
     # AND False) is still a false pass on a negative label. Invalid counts False.
     effective: bool
     recheck_failed: bool
-    # KEY_DIAGNOSIS_MISSING (P7-D17); valid answers only.
+    # KEY_DIAGNOSIS_MISSING (P7-D17); valid answers only. P7-D24: reported as
+    # reference, never a reason to fail or to withhold agreement credit.
     missing: bool
     agrees: bool
     false_pass: bool
 
     @property
     def compromised(self) -> bool:
-        # Errors, omissions and failed P6 rechecks receive no agreement credit.
-        return not self.valid or self.recheck_failed or self.missing
+        # Errors and failed P6 rechecks receive no agreement credit (P7-D24).
+        return not self.valid or self.recheck_failed
 
 
 def judged_observation(
@@ -792,6 +793,7 @@ def _counts(
     items = {i.item_id: i for i in pack.items}
     verdicts: list[tuple[str, bool]] = []
     problems: set[str] = set()
+    reference: set[str] = set()  # P7-D24: reported, never gating
     invalid_agreements = 0
     for entry in observations:
         item = items[entry.item_id]
@@ -823,7 +825,7 @@ def _counts(
         if judged.recheck_failed:
             problems.add("P6_RECHECK_FAILED")
         if judged.missing:
-            problems.add("KEY_DIAGNOSIS_MISSING")
+            reference.add("KEY_DIAGNOSIS_MISSING")
         if item.split == "validation":
             invalid_agreements += judged.compromised and judged.agrees
             verdicts.append((item.item_id, judged.effective))
@@ -844,7 +846,7 @@ def _counts(
         counted,
         agreement=agreement,
         passed=counted.passed and not problems,
-        reasons=tuple(dict.fromkeys((*counted.reasons, *sorted(problems)))),
+        reasons=tuple(dict.fromkeys((*counted.reasons, *sorted(problems | reference)))),
     )
 
 
