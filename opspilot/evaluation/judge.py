@@ -223,7 +223,7 @@ class JudgeConfig:
     response_model: str
     api_key: str = field(repr=False)
     prompt: str = PROMPT
-    adapter_version: str = "judge-adapters-7"
+    adapter_version: str = "judge-adapters-8"
     schema_version: str = "opspilot-judge-1"
     timeout_seconds: float = 900
     max_request_bytes: int = 8 * 1024 * 1024
@@ -242,7 +242,7 @@ def _check_config(config: JudgeConfig) -> None:
         )
         or any(c in config.api_key for c in "\r\n\x00")
         or config.prompt != PROMPT
-        or config.adapter_version != "judge-adapters-7"
+        or config.adapter_version != "judge-adapters-8"
         or config.schema_version != "opspilot-judge-1"
         or type(config.timeout_seconds) not in (float, int)
         or not 0 < config.timeout_seconds <= 900
@@ -892,11 +892,12 @@ class JudgeObservation:
     transport_error: str | None = field(default=None, metadata={"absent_ok": True})
 
 
-# judge-adapters-4 (2026-10-21 user decision): one retry, only after a transport
+# judge-adapters-4 (2026-10-21 user decision): retry only after a transport
 # failure in which no complete response arrived (connection failed or stream
 # ended before [DONE]). Timeout, HTTP status, oversize and every check of an
-# assembled document are final on the first attempt.
-MAX_ATTEMPTS = 2
+# assembled document are final on the first attempt. judge-adapters-8
+# (P7-D27): up to four attempts, was two.
+MAX_ATTEMPTS = 4
 
 
 def _observation_code(exc: JudgeError) -> str:
