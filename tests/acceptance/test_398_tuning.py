@@ -682,9 +682,9 @@ def test_398_rescored_rerun_is_provider_scoped_and_keeps_full_round_shape(harnes
         for _ in range(2 if item.split == "validation" else 1)
     ]
     assert [call["report_raw"] for call in h.calls] == expected
-    assert sorted(p.name for p in (h.ws / "debug/tune-scoped-rerun").glob("*.json")) == [
-        f"zai-{n:03d}.json" for n in range(1, 61)
-    ]
+    assert sorted(
+        p.name for p in (h.ws / "debug/tune-scoped-rerun").glob("*.json")
+    ) == [f"zai-{n:03d}.json" for n in range(1, 61)]
     assert score["rerun_of"] == source
     assert set(score["providers"]) <= {"zai"}
 
