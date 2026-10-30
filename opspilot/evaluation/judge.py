@@ -147,25 +147,32 @@ causal assertion, including implicit causes and assertions disguised as hypothes
 Return one diagnosis per assertion. Do not borrow another diagnosis's citations.
 For summary/gaps/next_steps a linked_claim must be semantically equivalent (the
 claim stating the same cause, not one listing counts); explain the link in reason.
+Use null only when no claim states that cause.
 Normal requires zero factual causal diagnoses. Fault requires
 at least one, and ALL factual causal diagnoses must match the expected service and
 full operation, be supported, and cite a signature-matching delivered evidence ID.
 Judge each field by its main assertion. Factual causal: an unhedged cause or
 propagation (X caused/is due to/propagates to Y), and any statement locating where
-this incident's failure or slowness is ("the failing dependency is X", "confined
-to X", "dominated by X"), even in a gap/next step, with an unknown deeper trigger
+this incident's failure or slowness is ("the failing dependency is X", "the failure
+is confined to X", "latency is dominated by X"), even in a gap/next step, with an unknown deeper trigger
 or under a hypothesis label, and a sentence that asserts the cause and only adds the
 method by which the causation was inferred. A claim's kind or a "hypothesis" label
 is not a hedge and never makes it non-causal; only hedging words in the sentence do ("settle it",
-"establish it", "is attributable to" are not hedges). factual_causal is about
+"establish it", "is attributable to" are not hedges; "not a proven root cause" and
+"not causally established" are). factual_causal is about
 wording; whether the evidence establishes it goes in supported.
-A propagation diagnosis records the ORIGIN service and operation. Not factual
+A propagation diagnosis records the ORIGIN service and operation that the report
+names or refers back to ("the failure" = the one just stated), never one taken only
+from the evidence. Not factual
 causal: hedged or pure hypotheses (likely, may, causation not established);
 statements saying the cause itself is inferred and unconfirmed; sentences that only
 report which services, series or span names carry error counts or statuses ("only X
-has error spans", "error spans are attributed to X", errors concentrated on X in
-another window): these are observations, skip them; rejected or negated
-hypotheses; "so" clauses not about this incident; open unknowns.
+has error spans", "error spans are attributed to X", "the observed error is confined
+to the X sub-call", errors seen on X in a different time window) or what dominates
+a baseline or other window: these are observations, skip them; rejected or negated
+hypotheses; "so" clauses not about this incident; statements about the investigation
+itself (why data, traces or coverage are missing or limited: "so only N traces could
+be retrieved", "missing due to ingest lag", "so X cannot be computed"); open unknowns.
 The user message ends with the report's fields keyed by exact location: copy
 location verbatim and quote verbatim from that block (each field line there is
 indented two spaces; the indent is not part of the text), and take
@@ -192,10 +199,13 @@ role or parenthetical; use null when the assertion names none.
 Citation convention: quote is ONE contiguous verbatim substring, with no "..." or any
 other elision, of the field at location, copied character for character, at most 200
 characters, that names the cause. Never drop parentheses, numbers or words; never add,
-close or reword anything; if the cause sentence is longer, quote one contiguous part of it. List causal assertions
+close or reword anything; if the cause sentence is longer, quote one contiguous part of it.
+Quote only words of that field; when splitting a list, quote each item as written
+without repeating shared words. List causal assertions
 only, including hypotheses with factual_causal false; skip non-causal observations.
-When one field states several causes, return one diagnosis per distinct service
-and operation. Order diagnoses by location: summary, claims[0..], gaps[0..],
+When one field states several causes, return exactly one diagnosis per distinct
+service and operation; repeated statements of the same cause in a field are one
+diagnosis. Order diagnoses by location: summary, claims[0..], gaps[0..],
 next_steps[0..]; within a field, by first mention."""
 
 
