@@ -48,6 +48,8 @@
 | P7-D21 | 进过 formal 的 validation 项可作为调参（debug）项重用，永不再作 validation；暴露登记照常阻止其进入任何 formal。取代 P7-D16「进过 formal 的 validation 族不得再用」中对调参用途的限制 | 用户 |
 | P7-D22 | 修订 P7-D19「声明为推断且带方法限定的不算」：只有声明原因本身是推断、未确认的陈述不算因果；断言了原因、只补充推断方法（如「Causation is inferred from span nesting and durations within one trace only」）的仍算因果。依据：两位标注者均标为因果，标签冻结；第 1 轮 FlashX/Luna 各 1 次因旧措辞漏诊 | 用户 2026-10-29 |
 | P7-D23 | 收窄 P7-D19「指出故障所在位置的陈述算因果」：只指本次事故的故障或变慢所在；只报告哪些服务、序列或 span 名带错误计数/状态的句子（「only X has error spans」、另一窗口内错误集中于 X）是观察，不算因果。依据：与最终标签一致；第 1 轮 FlashX 1 次、Luna 3 次因此多判 | 用户 2026-10-29 |
+| P7-D24 | #312 选项 1：judge 合格门槛改为 verdict 一致率；逐字段因果诊断（KEY_DIAGNOSIS_MISSING）降为参考与复核材料，不再决定合格。实施细节（阈值、无效与误通过口径、对已跑轮次的回溯）开工前另做合同预审 | 用户 2026-10-30 |
+| P7-D25 | FlashX 断连：正式校准前先跑一轮 FlashX 零断连的 debug；仍断连则改由 Luna 作主候选 | 用户 2026-10-30 |
 
 调参规则：在 36 项（原 12 debug + 已作废的 24 validation）上调 `judge.PROMPT`，最多 3 轮；达标线为整套零无效、零漏诊、零误通过且一致率不低于 46/48 等价；不达标停下交用户。达标后才新采 validation 来源族、两份新盲标与用户裁决。
 
