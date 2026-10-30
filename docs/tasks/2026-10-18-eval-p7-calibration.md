@@ -96,7 +96,8 @@
   - 首次运行 `p7-tune-r1`（12:20–13:02Z）环境无效：OpenAI key 过期（52 次 401）+ 8 次断连，FlashX 46/60 断连（ConnectError 成段出现），120 次只有 14 次拿到答案。用户 2026-10-29 授权作废重跑：登记行移入 `exposure-voided.jsonl`，记录移到 `voided-tuning/p7-tune-r1`，全部保留。
   - 重跑 `p7-tune-r1b`（13:55–15:17Z，提示词未改，计第 1 轮）不达标：FlashX 一致 25/48、无效 27（26 断连 + 1 输出）、漏诊 1、误通过 0；Luna 26/48、无效 23（9 断连 + 14 输出）、漏诊 4、误通过 2。分诊（全部已开始次数计入）：FlashX eval_env 26 / judge_error 3；Luna 9 / 21；real_failure 0；`triage-check` 通过。费用：zai/openai 无余额接口，记 unknown；按 token 与官方价估 FlashX ≈ $0.85、Luna ≈ $0.64。
   - 失败归因（全新上下文 Agent 按冻结标签重放原始输出，拒绝码与出错字段经重放核实，模式归类为推断）：quote 非连续逐字（省略号、丢括号、补字）Luna 12；引用其他 claim 的证据 ID 或抄错 FlashX 1、Luna 3；hypothesis 标签被当作对冲 Luna 3（含 2 次误通过）；断言原因并附推断方法被当作不算（P7-D22）各 1；只报告错误分布的句子被判因果（P7-D23）FlashX 1、Luna 3。疑似标签问题只记录、不改标签：同族改写件共享的 claims[8] 反复引发借用引用。
-  - 第 2 轮改动（`chore/398-judge-tune`，只改 `judge.PROMPT`）：quote 为单段逐字子串、禁止省略；cited_evidence_ids 只取该 claim 行的 ID；hypothesis 标签不算对冲；P7-D22、P7-D23 措辞。
+  - 第 2 轮改动（`chore/398-judge-tune`，只改 `judge.PROMPT`）：quote 为单段逐字子串、禁止省略；cited_evidence_ids 只取该 claim 行的 ID；hypothesis 标签不算对冲；P7-D22、P7-D23 措辞。独立审查 APPROVE（gpt-6-astra）；`test_d19_prompt_states_the_causal_rules_of_the_final_labels` 由未参与实现的测试作者（gpt-6.1-sol）按 D22/D23 改写，实现随后调整措辞位置（e2d80de6）；相关套件 918 passed。
+- 调参第 2 轮 `p7-tune-r2`（2026-10-29 18:56–20:03Z，PROMPT e2d80de6，FlashX + Luna）不达标：FlashX 一致 39/48、无效 5（4 断连 + 1 输出）、漏诊 2、误通过 2；Luna 42/48、无效 3（均为输出）、漏诊 1、误通过 1。分诊：FlashX eval_env 4 / judge_error 7；Luna 0 / 10；real_failure 0；`triage-check` 通过。费用：余额记 unknown，按 token 估 FlashX ≈ $1.3、Luna ≈ $0.72。剩第 3 轮。
 
 ## 待决
 
