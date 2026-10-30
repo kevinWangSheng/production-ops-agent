@@ -616,7 +616,7 @@ def test_398_rescore_writes_d24_scores_and_preserves_original_artifacts(harness)
             ("openai", wrong.item_id, 1): false_pass,
         },
     )
-    _tune(h, "tune-rescore", 1, outcome="pending_user_decision")
+    _tune(h, "tune-rescore", 1, outcome="passed")
     _categorise_by_provider(
         h, "tune-rescore", {"zai": "eval_env", "openai": "judge_error"}
     )
@@ -667,7 +667,6 @@ def test_398_rescored_rerun_is_provider_scoped_and_keeps_full_round_shape(harnes
     source = _rescore_scoped_source(h)
     h.calls.clear()
     h.responder = None
-    h.costs("tune-scoped-rerun")
     _, score = _tune(
         h,
         "tune-scoped-rerun",

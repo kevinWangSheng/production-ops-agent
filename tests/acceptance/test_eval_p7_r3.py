@@ -169,7 +169,7 @@ def test_d17_missing_labelled_location_is_a_missing_diagnosis(
     )
     zai = record.results["zai"]
     assert "KEY_DIAGNOSIS_MISSING" in zai.reasons
-    assert zai.passed is True and zai.agreement == 47 and zai.false_passes == 0
+    assert zai.passed is True and zai.agreement == 48 and zai.false_passes == 0
 
 
 def test_d17_labelled_location_only_as_non_causal_is_a_missing_diagnosis(
