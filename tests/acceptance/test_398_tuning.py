@@ -522,8 +522,8 @@ def test_398_missed_diagnosis_is_reported_but_does_not_fail_provider(harness, sp
     [
         ("http", http_error, (1,)),
         ("timeout", timeout, (1,)),
-        # judge_once retries one connection failure: both sends fail.
-        ("transport", lambda _l, _p: CanaryStreamCut("CANARY-P7-CUT"), (1, 2)),
+        # P7-D27: all four attempts fail, leaving a final transport error.
+        ("transport", lambda _l, _p: CanaryStreamCut("CANARY-P7-CUT"), (1, 2, 3, 4)),
     ],
 )
 def test_398_transport_failure_counts_as_started_and_invalid(
@@ -792,6 +792,8 @@ def test_398_triage_lists_every_non_clean_attempt_and_triage_check(harness):
             ("zai", disagree.item_id, 2): false_fail,  # repetition 2
             ("zai", debug_any[1].item_id, 1): lambda _l, _p: CanaryStreamCut("x"),
             ("zai", debug_any[1].item_id, 2): lambda _l, _p: CanaryStreamCut("x"),
+            ("zai", debug_any[1].item_id, 3): lambda _l, _p: CanaryStreamCut("x"),
+            ("zai", debug_any[1].item_id, 4): lambda _l, _p: CanaryStreamCut("x"),
             ("openai", missed.item_id, 1): missed_diagnosis,
             ("openai", passed_wrongly.item_id, 1): false_pass,
             ("deepseek", debug_any[2].item_id, 1): not_json,
@@ -854,6 +856,25 @@ def test_398_triage_lists_every_non_clean_attempt_and_triage_check(harness):
         if isinstance(v, int) and ("started" in k or "denominator" in k)
     ]
     assert 180 in started or started.count(60) >= len(PROVIDERS), result
+
+
+@pytest.mark.parametrize("attempts", [0, 1, 2, 3, 4, 5])
+def test_398_triage_check_validates_stored_judge_attempts(harness, attempts):
+    h = _ready(harness)
+    _tune(h, "tune-attempts", 1, outcome="passed")
+
+    path = h.ws / "debug" / "tune-attempts" / "zai-001.json"
+    value = json.loads(path.read_bytes())
+    value["observation"]["attempts"] = attempts
+    put(path, value)
+
+    before = snapshot(h.ws / "tuning" / "tune-attempts")
+    if attempts in {0, 5}:
+        h.cli("triage-check", "--session", "tune-attempts", code=3)
+        assert snapshot(h.ws / "tuning" / "tune-attempts") == before
+    else:
+        result = h.cli("triage-check", "--session", "tune-attempts")
+        assert result["exit_code"] == 0
 
 
 def _items(value):
