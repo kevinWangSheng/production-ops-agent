@@ -371,8 +371,8 @@ def test_call_failures_are_credential_free_and_retry_only_transport(
     observation, transport = invoke(response=response)
     assert observation.result.status == status and observation.error_code == code
     assert not observation.passed and not observation.valid
-    # judge-adapters-4: only a transport failure is retried, once.
-    expected = 2 if code == "JUDGE_TRANSPORT_ERROR" else 1
+    # P7-D27: only a transport failure is retried, up to four attempts.
+    expected = 4 if code == "JUDGE_TRANSPORT_ERROR" else 1
     assert len(transport.calls) == expected and SECRET not in repr(observation)
     assert observation.attempts == expected
 
@@ -899,7 +899,7 @@ def test_d16_never_fallback_to_sol_or_select_deepseek(
 
 
 def test_p7_46_boundary_and_sol_better_requires_decision(tmp_path, pack):
-    # One positive fault item is missed twice: 46/48, no false passes.
+    # Two real verdict disagreements produce the 46/48 eligibility boundary.
     item = next(
         i
         for i in pack.items
@@ -907,19 +907,23 @@ def test_p7_46_boundary_and_sol_better_requires_decision(tmp_path, pack):
         and i.request.spec.kind == "fault"
         and final_labels(pack)[i.item_id].verdict
     )
-    missed = BlindLabel(item.item_id, item.input_hash, (), False)
+    gold = final_labels(pack)[item.item_id]
+    disagreement = BlindLabel(
+        item.item_id,
+        item.input_hash,
+        tuple(replace(d, supported=False) for d in gold.diagnoses),
+        False,
+    )
     configs_ = configs()
-    replacements = {("zai", item.item_id): missed}
+    replacements = {("zai", item.item_id): disagreement}
     selection = run_calibration(
         pack,
         configs=configs_,
         transports=calibration_transports(pack, configs_, replacements=replacements),
         destination=tmp_path / "run",
     )
-    # Missing a gold key diagnosis blocks P7 even where final boolean count is46.
     assert selection.results["zai"].agreement == 46
-    assert not selection.results["zai"].passed
-    assert "KEY_DIAGNOSIS_MISSING" in selection.results["zai"].reasons
+    assert selection.results["zai"].passed
     assert selection.status == "pending_user_decision"
 
 
@@ -978,9 +982,9 @@ def test_46_agreement_eligible_but_sol_better_stops_at_selection(tmp_path, pack)
     assert selection.eligible == ("zai", "openai")
 
 
-def test_missing_causal_diagnosis_cannot_be_correct_negative(tmp_path, pack):
+def test_missing_causal_diagnosis_can_be_correct_negative(tmp_path, pack):
     # A normal negative report with two factual causes: returning one retains
-    # False, but loses a key diagnosis and must lose agreement credit.
+    # the correct False verdict; the missing diagnosis is reported only.
     item = next(
         i
         for i in pack.items
@@ -1031,9 +1035,9 @@ def test_missing_causal_diagnosis_cannot_be_correct_negative(tmp_path, pack):
         ),
         destination=tmp_path / "run",
     )
-    assert selection.results["zai"].agreement == 46
+    assert selection.results["zai"].agreement == 48
     assert selection.results["zai"].false_passes == 0
-    assert not selection.results["zai"].passed
+    assert selection.results["zai"].passed
     assert "KEY_DIAGNOSIS_MISSING" in selection.results["zai"].reasons
 
 

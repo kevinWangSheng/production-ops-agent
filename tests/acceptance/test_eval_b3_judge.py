@@ -1834,13 +1834,24 @@ ERROR_KINDS = {
 
 @pytest.mark.parametrize("kind", sorted(ERROR_KINDS))
 def test_failed_call_is_never_a_correct_false(world, pack, configs, tmp_path, kind):
-    """B3:51 / C P7: an error on a negative item fails the provider, not agrees."""
+    """Failed calls never count as correct negatives; missing diagnosis does."""
     item = _normal_negative(world).item.item_id
     ts = transports(world, zai={(item, 1): ERROR_KINDS[kind]})
     record = run_calibration(
         pack, configs=configs, transports=ts, destination=tmp_path / "cal"
     )
     result = record.results["zai"]
+    if kind == "missed_key_diagnosis":
+        assert result.passed is True
+        assert (result.comparisons, result.agreement, result.false_passes) == (
+            48,
+            48,
+            0,
+        )
+        assert "KEY_DIAGNOSIS_MISSING" in result.reasons
+        assert "zai" in record.eligible
+        assert record.status == "selected" and record.selected_provider == "zai"
+        return
     assert result.passed is False
     # B3:51: the spurious agreement of the failed call is deducted; not a false pass.
     assert (result.comparisons, result.agreement, result.false_passes) == (48, 47, 0)
