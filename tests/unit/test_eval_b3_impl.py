@@ -371,8 +371,8 @@ def test_call_failures_are_credential_free_and_retry_only_transport(
     observation, transport = invoke(response=response)
     assert observation.result.status == status and observation.error_code == code
     assert not observation.passed and not observation.valid
-    # judge-adapters-4: only a transport failure is retried, once.
-    expected = 2 if code == "JUDGE_TRANSPORT_ERROR" else 1
+    # P7-D27: only a transport failure is retried, up to four attempts.
+    expected = 4 if code == "JUDGE_TRANSPORT_ERROR" else 1
     assert len(transport.calls) == expected and SECRET not in repr(observation)
     assert observation.attempts == expected
 
@@ -435,7 +435,7 @@ def test_output_schema_and_p6_recompute(mutation):
 
 
 def test_model_verdict_is_recorded_and_recomputed_verdict_used():
-    # P7-D18 (judge-adapters-7): an AND failure the model calls True is a valid
+    # P7-D18 (judge-adapters-8): an AND failure the model calls True is a valid
     # answer whose verdict is the recomputed False; the model verdict is kept.
     request, diagnoses, verdict = make_input()
     assert verdict is True
@@ -899,7 +899,7 @@ def test_d16_never_fallback_to_sol_or_select_deepseek(
 
 
 def test_p7_46_boundary_and_sol_better_requires_decision(tmp_path, pack):
-    # One positive fault item is missed twice: 46/48, no false passes.
+    # Two real verdict disagreements produce the 46/48 eligibility boundary.
     item = next(
         i
         for i in pack.items
@@ -907,19 +907,23 @@ def test_p7_46_boundary_and_sol_better_requires_decision(tmp_path, pack):
         and i.request.spec.kind == "fault"
         and final_labels(pack)[i.item_id].verdict
     )
-    missed = BlindLabel(item.item_id, item.input_hash, (), False)
+    gold = final_labels(pack)[item.item_id]
+    disagreement = BlindLabel(
+        item.item_id,
+        item.input_hash,
+        tuple(replace(d, supported=False) for d in gold.diagnoses),
+        False,
+    )
     configs_ = configs()
-    replacements = {("zai", item.item_id): missed}
+    replacements = {("zai", item.item_id): disagreement}
     selection = run_calibration(
         pack,
         configs=configs_,
         transports=calibration_transports(pack, configs_, replacements=replacements),
         destination=tmp_path / "run",
     )
-    # Missing a gold key diagnosis blocks P7 even where final boolean count is46.
     assert selection.results["zai"].agreement == 46
-    assert not selection.results["zai"].passed
-    assert "KEY_DIAGNOSIS_MISSING" in selection.results["zai"].reasons
+    assert selection.results["zai"].passed
     assert selection.status == "pending_user_decision"
 
 
@@ -978,9 +982,9 @@ def test_46_agreement_eligible_but_sol_better_stops_at_selection(tmp_path, pack)
     assert selection.eligible == ("zai", "openai")
 
 
-def test_missing_causal_diagnosis_cannot_be_correct_negative(tmp_path, pack):
+def test_missing_causal_diagnosis_can_be_correct_negative(tmp_path, pack):
     # A normal negative report with two factual causes: returning one retains
-    # False, but loses a key diagnosis and must lose agreement credit.
+    # the correct False verdict; the missing diagnosis is reported only.
     item = next(
         i
         for i in pack.items
@@ -1031,9 +1035,9 @@ def test_missing_causal_diagnosis_cannot_be_correct_negative(tmp_path, pack):
         ),
         destination=tmp_path / "run",
     )
-    assert selection.results["zai"].agreement == 46
+    assert selection.results["zai"].agreement == 48
     assert selection.results["zai"].false_passes == 0
-    assert not selection.results["zai"].passed
+    assert selection.results["zai"].passed
     assert "KEY_DIAGNOSIS_MISSING" in selection.results["zai"].reasons
 
 
@@ -1236,8 +1240,8 @@ def test_review_p2_arbitrary_transport_code_cannot_leak_authentication():
     observation, transport = invoke(response=fail)
     assert observation.error_code == "JUDGE_TRANSPORT_ERROR"
     assert SECRET not in repr(observation)
-    # An unknown code is a transport error, so it gets the one retry.
-    assert observation.result.status == "error" and len(transport.calls) == 2
+    # An unknown code is a transport error, so it gets up to three retries.
+    assert observation.result.status == "error" and len(transport.calls) == 4
 
 
 def test_review_p2_wrong_openai_model_cannot_certify_d16(tmp_path, pack):
@@ -2462,7 +2466,7 @@ def test_free_text_service_does_not_abort_run_calibration(tmp_path, pack):
     assert "JUDGE_OBSERVATION_FAILED" in selection.results["zai"].reasons
 
 
-# ------------------------------- judge-adapters-7 / P7 r3 (D17, D18, D20)
+# ------------------------------- judge-adapters-8 / P7 r3 (D17, D18, D20, D27)
 
 
 def test_report_fields_block_is_plain_text_with_unescaped_quotes():
@@ -2491,7 +2495,7 @@ def test_zai_and_openai_send_the_same_strict_json_schema():
     assert zai["type"] == "json_schema" and zai["json_schema"]["strict"] is True
     assert bodies["zai"]["reasoning_effort"] == "high"
     assert "response_format" not in bodies["deepseek"]
-    assert configs()["zai"].adapter_version == "judge-adapters-7"
+    assert configs()["zai"].adapter_version == "judge-adapters-8"
 
 
 def test_transport_error_records_the_exception_class_name_only():
@@ -2504,7 +2508,7 @@ def test_transport_error_records_the_exception_class_name_only():
     )
     assert observation.error_code == "JUDGE_TRANSPORT_ERROR"
     assert observation.transport_error == "RemoteProtocolError"
-    assert observation.attempts == 2 and len(transport.calls) == 2
+    assert observation.attempts == 4 and len(transport.calls) == 4
     assert SECRET not in repr(observation)
     ok, _ = invoke(request, diagnoses, verdict)
     assert ok.transport_error is None
@@ -2521,7 +2525,7 @@ def test_wrapped_transport_error_records_the_underlying_class_name(link):
     observation, transport = invoke(request, diagnoses, verdict, response=error)
     assert observation.error_code == "JUDGE_TRANSPORT_ERROR"
     assert observation.transport_error == "ReadError"
-    assert len(transport.calls) == 2
+    assert len(transport.calls) == 4
     assert SECRET not in repr(observation)
 
 
@@ -2575,4 +2579,4 @@ def test_stream_cut_before_done_records_stream_truncated():
     )
     assert observation.error_code == "JUDGE_TRANSPORT_ERROR"
     assert observation.transport_error == "StreamTruncated"
-    assert len(transport.calls) == 2
+    assert len(transport.calls) == 4

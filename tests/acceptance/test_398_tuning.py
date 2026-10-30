@@ -111,14 +111,14 @@ def _cli_any(h: DriverHarness, command, *args, codes):
     return result
 
 
-def _tune_args(session, round_number, *, rerun_of=None, judge_env):
+def _tune_args(session, round_number, *, rerun_of=None, judge_env, providers=PROVIDERS):
     args = [
         "--session",
         session,
         "--round",
         str(round_number),
         "--providers",
-        ",".join(PROVIDERS),
+        ",".join(providers),
         "--judge-env",
         judge_env,
     ]
@@ -127,13 +127,27 @@ def _tune_args(session, round_number, *, rerun_of=None, judge_env):
     return args
 
 
-def _tune(h: DriverHarness, session, round_number, *, rerun_of=None, outcome):
+def _tune(
+    h: DriverHarness,
+    session,
+    round_number,
+    *,
+    rerun_of=None,
+    outcome,
+    providers=PROVIDERS,
+):
     """A completed tuning round; returns (stdout result, score.json)."""
     h.costs(session)
     result = _cli_any(
         h,
         "tune",
-        *_tune_args(session, round_number, rerun_of=rerun_of, judge_env=h.env),
+        *_tune_args(
+            session,
+            round_number,
+            rerun_of=rerun_of,
+            judge_env=h.env,
+            providers=providers,
+        ),
         codes=COMPLETED[outcome],
     )
     score = _score(h, session)
@@ -142,7 +156,13 @@ def _tune(h: DriverHarness, session, round_number, *, rerun_of=None, outcome):
 
 
 def _refused_tune(
-    h: DriverHarness, session, round_number, *, rerun_of=None, reason=None
+    h: DriverHarness,
+    session,
+    round_number,
+    *,
+    rerun_of=None,
+    reason=None,
+    providers=PROVIDERS,
 ):
     """§0.1 exit 3: no judge call, no balance read, nothing written."""
     h.costs(session)
@@ -151,7 +171,13 @@ def _refused_tune(
     before = snapshot(h.root)
     result = h.cli(
         "tune",
-        *_tune_args(session, round_number, rerun_of=rerun_of, judge_env=h.env),
+        *_tune_args(
+            session,
+            round_number,
+            rerun_of=rerun_of,
+            judge_env=h.env,
+            providers=providers,
+        ),
         code=3,
         reason=reason,
     )
@@ -167,6 +193,10 @@ def _score(h: DriverHarness, session):
     path = h.ws / "tuning" / session / "score.json"
     assert path.is_file(), path
     return json.loads(path.read_bytes())
+
+
+def _rescore(h: DriverHarness, session, *, code=0, reason=None):
+    return h.cli("rescore", "--session", session, code=code, reason=reason)
 
 
 def _provider(score, provider):
@@ -206,6 +236,31 @@ def _categorise(h: DriverHarness, session, category):
     for row in rows:
         row["category"] = category
     _write_triage(h, session, document, rows)
+
+
+def _categorise_by_provider(h: DriverHarness, session, categories):
+    document, rows = _triage(h, session)
+    for row in rows:
+        row["category"] = categories[row["provider"]]
+    _write_triage(h, session, document, rows)
+
+
+def _rescore_failure_rows(value):
+    """Find the contract's remaining-failure rows without fixing its envelope."""
+    found = []
+
+    def visit(node):
+        if isinstance(node, dict):
+            if {"item_id", "provider", "category"} <= node.keys():
+                found.append(node)
+            for child in node.values():
+                visit(child)
+        elif isinstance(node, list):
+            for child in node:
+                visit(child)
+
+    visit(value)
+    return found
 
 
 def _round_rows(h: DriverHarness):
@@ -429,18 +484,12 @@ def test_398_agreement_boundary_46_passes_45_fails(harness, mismatches):
 
 
 @pytest.mark.parametrize("split", ["debug", "validation"])
-@pytest.mark.parametrize("failure", ["invalid", "missed_diagnosis", "false_pass"])
+@pytest.mark.parametrize("failure", ["invalid", "false_pass"])
 def test_398_any_single_failure_anywhere_fails_the_provider(harness, failure, split):
-    """Zero invalid / missed / false pass over all 60, debug items included."""
+    """Zero invalid / false pass over all 60, debug items included."""
     h = _ready(harness)
     if failure == "invalid":
         item, fn, field = _pick(h, split=split), not_json, "invalid"
-    elif failure == "missed_diagnosis":
-        item, fn, field = (
-            _normal_negative(h, split),
-            missed_diagnosis,
-            "missed_diagnoses",
-        )
     else:
         item, fn, field = _normal_negative(h, split), false_pass, "false_passes"
     _inject(h, {("zai", item.item_id, 1): fn})
@@ -456,13 +505,25 @@ def test_398_any_single_failure_anywhere_fails_the_provider(harness, failure, sp
     assert zai["agreement"] == (48 if split == "debug" else 47)
 
 
+@pytest.mark.parametrize("split", ["debug", "validation"])
+def test_398_missed_diagnosis_is_reported_but_does_not_fail_provider(harness, split):
+    h = _ready(harness)
+    item = _normal_negative(h, split)
+    _inject(h, {("zai", item.item_id, 1): missed_diagnosis})
+
+    _, score = _tune(h, "tune-missed-diagnosis", 1, outcome="passed")
+    zai = _provider(score, "zai")
+    assert zai["missed_diagnoses"] == 1
+    assert zai["passed"] is True
+
+
 @pytest.mark.parametrize(
     "failure,fn,ordinals",
     [
         ("http", http_error, (1,)),
         ("timeout", timeout, (1,)),
-        # judge_once retries one connection failure: both sends fail.
-        ("transport", lambda _l, _p: CanaryStreamCut("CANARY-P7-CUT"), (1, 2)),
+        # P7-D27: all four attempts fail, leaving a final transport error.
+        ("transport", lambda _l, _p: CanaryStreamCut("CANARY-P7-CUT"), (1, 2, 3, 4)),
     ],
 )
 def test_398_transport_failure_counts_as_started_and_invalid(
@@ -544,6 +605,118 @@ def test_398_round_four_is_tuning_rounds_exhausted(harness):
 # ================================================================ rerun
 
 
+def test_398_rescore_writes_d24_scores_and_preserves_original_artifacts(harness):
+    h = _ready(harness)
+    missed = _normal_negative(h, "validation")
+    wrong = _normal_negative(h, "debug")
+    _inject(
+        h,
+        {
+            ("zai", missed.item_id, 1): missed_diagnosis,
+            ("openai", wrong.item_id, 1): false_pass,
+        },
+    )
+    _tune(h, "tune-rescore", 1, outcome="passed")
+    _categorise_by_provider(
+        h, "tune-rescore", {"zai": "eval_env", "openai": "judge_error"}
+    )
+
+    original_score = (h.ws / "tuning/tune-rescore/score.json").read_bytes()
+    original_triage = (h.ws / "tuning/tune-rescore/triage.json").read_bytes()
+    _rescore(h, "tune-rescore")
+
+    path = h.ws / "tuning/tune-rescore/rescore-d24.json"
+    assert path.is_file()
+    value = json.loads(path.read_bytes())
+    assert set(value["providers"]) >= {"zai", "openai"}
+    assert value["providers"]["zai"]["missed_diagnoses"] == 1
+    assert value["providers"]["zai"]["agreement"] == 48
+    assert value["providers"]["zai"]["passed"] is True
+    assert value["providers"]["openai"]["false_passes"] == 1
+    assert value["providers"]["openai"]["passed"] is False
+    rows = _rescore_failure_rows(value)
+    assert {(r["provider"], r["category"]) for r in rows} == {
+        ("zai", "eval_env"),
+        ("openai", "judge_error"),
+    }
+    assert (h.ws / "tuning/tune-rescore/score.json").read_bytes() == original_score
+    assert (h.ws / "tuning/tune-rescore/triage.json").read_bytes() == original_triage
+
+    before = snapshot(h.root)
+    h.cli("rescore", "--session", "tune-rescore", code=3)
+    assert snapshot(h.root) == before
+
+
+def _rescore_scoped_source(h, session="tune-scoped"):
+    item = _pick(h, split="debug")
+    _inject(
+        h,
+        {
+            ("zai", item.item_id, 1): http_error,
+            ("openai", item.item_id, 1): http_error,
+        },
+    )
+    _tune(h, session, 1, outcome="failed")
+    _categorise_by_provider(h, session, {"zai": "eval_env", "openai": "judge_error"})
+    _rescore(h, session)
+    return session
+
+
+def test_398_rescored_rerun_is_provider_scoped_and_keeps_full_round_shape(harness):
+    h = _ready(harness)
+    source = _rescore_scoped_source(h)
+    h.calls.clear()
+    h.responder = None
+    _, score = _tune(
+        h,
+        "tune-scoped-rerun",
+        1,
+        rerun_of=source,
+        outcome="passed",
+        providers=("zai",),
+    )
+    assert len(h.calls) == 60
+    expected = [
+        item.request.report.raw
+        for item in h.pack.items
+        for _ in range(2 if item.split == "validation" else 1)
+    ]
+    assert [call["report_raw"] for call in h.calls] == expected
+    assert sorted(
+        p.name for p in (h.ws / "debug/tune-scoped-rerun").glob("*.json")
+    ) == [f"zai-{n:03d}.json" for n in range(1, 61)]
+    assert score["rerun_of"] == source
+    assert set(score["providers"]) <= {"zai"}
+
+
+def test_398_rescored_rerun_refuses_listed_provider_with_judge_error(harness):
+    h = _ready(harness)
+    source = _rescore_scoped_source(h, "tune-scoped-refused")
+    _refused_tune(
+        h,
+        "tune-scoped-refused-rerun",
+        1,
+        rerun_of=source,
+        providers=("openai",),
+    )
+
+
+def test_398_rerun_without_rescore_uses_legacy_all_rows_rule(harness):
+    h = _ready(harness)
+    source = _failed_original(h, "tune-legacy-rerun")
+    document, rows = _triage(h, source)
+    rows[0]["category"] = "eval_env"
+    rows[1]["category"] = "judge_error"
+    _write_triage(h, source, document, rows)
+    _refused_tune(
+        h,
+        "tune-legacy-rerun-scoped",
+        1,
+        rerun_of=source,
+        providers=("zai",),
+    )
+
+
 def _failed_original(h, session="tune-s0"):
     _fail_round(h)
     _tune(h, session, 1, outcome="failed")
@@ -619,6 +792,8 @@ def test_398_triage_lists_every_non_clean_attempt_and_triage_check(harness):
             ("zai", disagree.item_id, 2): false_fail,  # repetition 2
             ("zai", debug_any[1].item_id, 1): lambda _l, _p: CanaryStreamCut("x"),
             ("zai", debug_any[1].item_id, 2): lambda _l, _p: CanaryStreamCut("x"),
+            ("zai", debug_any[1].item_id, 3): lambda _l, _p: CanaryStreamCut("x"),
+            ("zai", debug_any[1].item_id, 4): lambda _l, _p: CanaryStreamCut("x"),
             ("openai", missed.item_id, 1): missed_diagnosis,
             ("openai", passed_wrongly.item_id, 1): false_pass,
             ("deepseek", debug_any[2].item_id, 1): not_json,
@@ -681,6 +856,25 @@ def test_398_triage_lists_every_non_clean_attempt_and_triage_check(harness):
         if isinstance(v, int) and ("started" in k or "denominator" in k)
     ]
     assert 180 in started or started.count(60) >= len(PROVIDERS), result
+
+
+@pytest.mark.parametrize("attempts", [0, 1, 2, 3, 4, 5])
+def test_398_triage_check_validates_stored_judge_attempts(harness, attempts):
+    h = _ready(harness)
+    _tune(h, "tune-attempts", 1, outcome="passed")
+
+    path = h.ws / "debug" / "tune-attempts" / "zai-001.json"
+    value = json.loads(path.read_bytes())
+    value["observation"]["attempts"] = attempts
+    put(path, value)
+
+    before = snapshot(h.ws / "tuning" / "tune-attempts")
+    if attempts in {0, 5}:
+        h.cli("triage-check", "--session", "tune-attempts", code=3)
+        assert snapshot(h.ws / "tuning" / "tune-attempts") == before
+    else:
+        result = h.cli("triage-check", "--session", "tune-attempts")
+        assert result["exit_code"] == 0
 
 
 def _items(value):

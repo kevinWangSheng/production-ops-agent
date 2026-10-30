@@ -169,7 +169,7 @@ def test_d17_missing_labelled_location_is_a_missing_diagnosis(
     )
     zai = record.results["zai"]
     assert "KEY_DIAGNOSIS_MISSING" in zai.reasons
-    assert zai.passed is False and zai.agreement == 47 and zai.false_passes == 0
+    assert zai.passed is True and zai.agreement == 48 and zai.false_passes == 0
 
 
 def test_d17_labelled_location_only_as_non_causal_is_a_missing_diagnosis(
@@ -189,7 +189,7 @@ def test_d17_labelled_location_only_as_non_causal_is_a_missing_diagnosis(
     )
     zai = record.results["zai"]
     assert "KEY_DIAGNOSIS_MISSING" in zai.reasons
-    assert zai.passed is False and zai.false_passes == 0
+    assert zai.passed is True and zai.false_passes == 0
 
 
 def test_d17_quote_must_still_be_a_substring_of_its_field(configs):
@@ -331,12 +331,8 @@ def test_d18_positive_label_model_false_recomputed_true_agrees(
 def test_d19_prompt_states_the_causal_rules_of_the_final_labels():
     text = " ".join(judge.PROMPT.split())
     lower = text.lower()
-    # Locating statements are causal (contract examples, quoted in English).
-    for phrase in ("failing dependency is", "confined to", "dominated by"):
-        assert phrase in lower, phrase
-    # Inferred statements with a method caveat are not causal.  Locate the
-    # category bodies instead of accepting those concepts anywhere in the
-    # prompt, so a factual/causal rule cannot smuggle the item back in.
+    # Keep assertions inside the two causal-category bodies. This checks the
+    # rule, rather than merely finding a word in an example or output schema.
     categories = list(
         re.finditer(
             r"\b(?P<kind>(?:not|non)[-\s](?:factual\s+)?causal|"
@@ -346,18 +342,6 @@ def test_d19_prompt_states_the_causal_rules_of_the_final_labels():
         )
     )
     assert categories
-
-    def method_qualified_inference(clause):
-        return (
-            re.search(r"\binfer\w*\b", clause)
-            and re.search(r"\bmethod\w*\b", clause)
-            and re.search(
-                r"\b(?:caveat\w*|qualif\w*|limit\w*|condition\w*|"
-                r"disclaim\w*)\b",
-                clause,
-            )
-        )
-
     bodies = []
     for index, category in enumerate(categories):
         end = (
@@ -369,26 +353,79 @@ def test_d19_prompt_states_the_causal_rules_of_the_final_labels():
         body for kind, body in bodies if not kind.startswith(("not", "non"))
     ]
     assert not_causal
-    assert any(
-        method_qualified_inference(clause)
-        for body in not_causal
-        for clause in re.split(r"[.;!?]|\n+", body)
-    )
     assert factual_causal
-    assert not any(
-        method_qualified_inference(clause)
+
+    def clauses(body):
+        return re.split(r"[.;!?]|\n+", body)
+
+    # D23: locating THIS incident's failure or slowness is causal.
+    for phrase in ("failing dependency is", "confined to", "dominated by"):
+        assert any(
+            phrase in clause for body in factual_causal for clause in clauses(body)
+        ), phrase
+    assert any(
+        re.search(r"\b(?:this\s+)?incident\b", clause)
+        and re.search(r"\b(?:failure|slowness|slow(?:ness)?)\b", clause)
         for body in factual_causal
-        for clause in re.split(r"[.;!?]|\n+", body)
+        for clause in clauses(body)
+    )
+
+    # D22: a cause that is inferred and unconfirmed is not factual causal, but
+    # an asserted cause can remain factual when the inference method is stated.
+    assert any(
+        re.search(r"\b(?:cause|causation|causal)\b", clause)
+        and re.search(r"\binfer\w*\b", clause)
+        and re.search(r"\b(?:unconfirm\w*|uncertain|not\s+established)\b", clause)
+        for body in not_causal
+        for clause in clauses(body)
+    )
+    assert any(
+        re.search(r"\b(?:cause|causation|causal)\b", clause)
+        and re.search(r"\binfer\w*\b", clause)
+        and re.search(r"\b(?:method|span|duration|trace)\w*\b", clause)
+        for body in factual_causal
+        for clause in clauses(body)
+    )
+
+    # D23: telemetry-only error/status observations are not causal.
+    def telemetry_observation(clause):
+        return re.search(
+            r"\b(?:error|errors|status|statuses|span|spans|series)\b", clause
+        ) and re.search(
+            r"\b(?:only|concentrat\w*|carry|contain|count\w*|show|have)\b",
+            clause,
+        )
+
+    assert any(
+        telemetry_observation(clause) for body in not_causal for clause in clauses(body)
+    )
+    assert not any(
+        telemetry_observation(clause)
+        for body in factual_causal
+        for clause in clauses(body)
     )
     # Propagation records the origin service and operation.
     assert "propagat" in lower and "origin" in lower
     # Rejected / ruled-out hypotheses and off-incident "so" clauses are not.
     assert any(w in lower for w in ("rejected", "ruled out", "excluded"))
     assert re.search(r"[\"'“‘]so[\"'”’]|\bso[- ]clause", lower)
-    # The tuning-round-1 wording that made method caveats factual is gone.
-    # P7 r3 D19 (lead): the method-caveat phrase may stay in the not-causal list;
-    # what must go is the old rule that made such statements factual.
-    assert "or with a caveat on method" not in lower
+    # P7-D11 tuning wording: quote one contiguous substring without elision;
+    # citations come only from that one claim; a hypothesis label is not a hedge.
+    assert re.search(
+        r"\bquote\b.{0,180}\b(?:one|single)\s+contiguous\b.{0,120}"
+        r"\bverbatim\b.{0,120}\b(?:ellipsis|elision|three\s+dots)\b",
+        lower,
+    )
+    assert re.search(
+        r"\bcited_evidence_ids\b.{0,180}\b(?:only|solely)\b.{0,100}"
+        r"\b(?:one|single)\s+claim\b",
+        lower,
+    )
+    assert re.search(
+        r"\bhypothes\w*\b.{0,120}\b(?:label|kind)\b.{0,100}"
+        r"\b(?:not|does\s+not|is\s+not)\b.{0,50}\bhedg\w*\b",
+        lower,
+    )
 
 
 # ========================================================== D20: transport
@@ -406,7 +443,7 @@ def test_d20_transport_exception_class_name_is_recorded(configs):
     )
     assert observation.result.status == "error"
     assert observation.error_code == "JUDGE_TRANSPORT_ERROR"
-    assert len(transport.calls) == 2  # the existing one transport retry
+    assert len(transport.calls) == 4  # P7-D27: three transport retries
     name = getattr(observation, TRANSPORT_EXCEPTION_FIELD)
     assert name == "CanaryStreamCut" or name.endswith(".CanaryStreamCut")
     encoded = json.dumps(encode(observation))

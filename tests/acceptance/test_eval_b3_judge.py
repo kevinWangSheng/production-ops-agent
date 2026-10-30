@@ -222,9 +222,9 @@ def assert_failed(observation, transport, status):
     assert observation.passed is False
     assert observation.valid is False
     assert observation.error_code in OBSERVATION_CODES
-    # P9 (2026-10-21): one retry, only after a transport failure.
+    # P7-D27: retry only after a transport failure, up to four attempts.
     retries = observation.error_code == "JUDGE_TRANSPORT_ERROR"
-    assert len(transport.calls) <= (2 if retries else 1)
+    assert len(transport.calls) <= (4 if retries else 1)
 
 
 # ============================================================ 1. config file
@@ -1046,8 +1046,8 @@ def test_transport_errors_map_to_error_without_leaking(configs, verified, error)
         judge_input(), configs["zai"], respond=lambda _c: error, calibration=verified
     )
     assert_failed(observation, transport, "error")
-    assert len(transport.calls) == 2  # P9 (2026-10-21): one transport retry
-    assert observation.attempts == 2
+    assert len(transport.calls) == 4  # P7-D27: three transport retries
+    assert observation.attempts == 4
     shown = repr(observation)
     assert ZAI_CANARY not in shown and "provider said" not in shown
 
@@ -1653,7 +1653,7 @@ def test_calibration_calls_once_per_debug_twice_per_validation_serially(
 def test_calibration_accepts_an_observation_retried_after_transport_failure(
     world, pack, configs, selected, tmp_path
 ):
-    """P9 (2026-10-21): the one retry is recorded and passes strict verification."""
+    """P7-D27: a transport retry is recorded and passes strict verification."""
     item = next(a.item.item_id for a in world.authored if a.item.split == "debug")
     ts = transports(
         world, zai={(item, 1): lambda _l, _p: JudgeError("JUDGE_TRANSPORT_ERROR")}
@@ -1834,13 +1834,24 @@ ERROR_KINDS = {
 
 @pytest.mark.parametrize("kind", sorted(ERROR_KINDS))
 def test_failed_call_is_never_a_correct_false(world, pack, configs, tmp_path, kind):
-    """B3:51 / C P7: an error on a negative item fails the provider, not agrees."""
+    """Failed calls never count as correct negatives; missing diagnosis does."""
     item = _normal_negative(world).item.item_id
     ts = transports(world, zai={(item, 1): ERROR_KINDS[kind]})
     record = run_calibration(
         pack, configs=configs, transports=ts, destination=tmp_path / "cal"
     )
     result = record.results["zai"]
+    if kind == "missed_key_diagnosis":
+        assert result.passed is True
+        assert (result.comparisons, result.agreement, result.false_passes) == (
+            48,
+            48,
+            0,
+        )
+        assert "KEY_DIAGNOSIS_MISSING" in result.reasons
+        assert "zai" in record.eligible
+        assert record.status == "selected" and record.selected_provider == "zai"
+        return
     assert result.passed is False
     # B3:51: the spurious agreement of the failed call is deducted; not a false pass.
     assert (result.comparisons, result.agreement, result.false_passes) == (48, 47, 0)
@@ -2075,7 +2086,7 @@ def test_r3_transport_error_codes_are_whitelisted(configs, verified, factory, co
     )
     assert_failed(observation, transport, "error")
     assert observation.error_code == "JUDGE_TRANSPORT_ERROR"
-    assert len(transport.calls) == 2  # P9 (2026-10-21): one transport retry
+    assert len(transport.calls) == 4  # P7-D27: three transport retries
     assert ZAI_CANARY not in repr(observation)
     assert "TOTALLY_FINE" not in repr(observation)
 
