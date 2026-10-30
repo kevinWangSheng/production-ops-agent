@@ -110,6 +110,7 @@
 - 用户修复 z.ai 网络后重跑预检 `p7-d25-preflight-2`（2026-10-30 16:09–16:23Z，PROMPT 与 config hash 同上）仍不通过：11/12 有效（均 1 次尝试，verdict 与因果键 11/11），1 次最终 `JUDGE_TRANSPORT_ERROR`（RemoteProtocolError，流中途断开，两次尝试共 369 s）。ConnectError 成段断连未再出现；剩下的是 10-20 诊断记录过的流中途停流。按 D26(4) 再次停下交用户。
 - D24/D26 实施（b09d9272，`chore/398-judge-tune`）：测试作者（gpt-6.1-sol）改写旧漏诊门槛并补 rescore 与按供应商重跑用例（1e9cabe7），实现后发现 3 处测试错误由测试作者确认修正（c1b331dc）；P7 套件 71 passed；ruff、项目 mypy（strict，`opspilot/`）通过。独立审查（gpt-6-astra）首轮 1 项发现——「第 3 轮应禁止 Luna 重跑」——实现者按 D26(3) 原文答复为对实际数据的适用而非单独规则，审查者撤回，APPROVE。按新规则只读重算（`rescore`，各写 `rescore-d24.json`，原 score/triage 未动；用当前冻结包，verdict 标签未改，新规则下分数与包无关）：第 1 轮 FlashX 25/48、无效 27、误通过 0；Luna 27/48、23、2。第 2 轮 FlashX 41/48、5、2；Luna 43/48、3、1。第 3 轮 FlashX 36/48、无效 16（均断连）、误通过 0；Luna 39/48、7、0。均不合格；第 3 轮 FlashX 剩余失败全为 eval_env，具备按供应商重跑条件，Luna 不具备。
 - P7-D27 后预检 `p7-d25-preflight-3`（2026-10-30 17:54–18:02Z，PROMPT 52bd27dd，judge-adapters-8，FlashX 12 道 debug 各 1 次）通过：12/12 有效、均 1 次尝试（未触发重试）、0 次断连；verdict 12/12、因果键 11/12。按 D26(4) 可进行第 3 轮 FlashX 重跑。
+- 第 3 轮 FlashX 按供应商重跑 `p7-tune-r3b`（2026-10-30 18:43–19:16Z，`--rerun-of p7-tune-r3 --providers zai`，PROMPT 52bd27dd，judge-adapters-8，新规则）不达标：一致 46/48、无效 0、误通过 2、漏诊 4（参考）、已开始 60；60 次均 1 次尝试，0 次断连。唯一不合格原因是误通过：两次均落在同一道 validation 负例（两次重复），第 2 轮 FlashX 也在该项误通过。分诊：judge_error 6（误通过 2 + 漏诊 4），`triage-check` 通过。费用：余额记 unknown，按 token 估 ≈ $1.35（2.79M/0.26M）。第 3 轮重跑已用，3 轮调参用尽。同期全量测试 9974 passed、2472 skipped（PG 需显式开启）、2 xfailed；P7-D27 改动独立审查 APPROVE（gpt-6-astra，首轮 3 项发现已修复复验）。
 
 ## 待决
 
