@@ -435,7 +435,7 @@ def test_output_schema_and_p6_recompute(mutation):
 
 
 def test_model_verdict_is_recorded_and_recomputed_verdict_used():
-    # P7-D18 (judge-adapters-7): an AND failure the model calls True is a valid
+    # P7-D18 (judge-adapters-8): an AND failure the model calls True is a valid
     # answer whose verdict is the recomputed False; the model verdict is kept.
     request, diagnoses, verdict = make_input()
     assert verdict is True
@@ -1236,8 +1236,8 @@ def test_review_p2_arbitrary_transport_code_cannot_leak_authentication():
     observation, transport = invoke(response=fail)
     assert observation.error_code == "JUDGE_TRANSPORT_ERROR"
     assert SECRET not in repr(observation)
-    # An unknown code is a transport error, so it gets the one retry.
-    assert observation.result.status == "error" and len(transport.calls) == 2
+    # An unknown code is a transport error, so it gets up to three retries.
+    assert observation.result.status == "error" and len(transport.calls) == 4
 
 
 def test_review_p2_wrong_openai_model_cannot_certify_d16(tmp_path, pack):
@@ -2462,7 +2462,7 @@ def test_free_text_service_does_not_abort_run_calibration(tmp_path, pack):
     assert "JUDGE_OBSERVATION_FAILED" in selection.results["zai"].reasons
 
 
-# ------------------------------- judge-adapters-7 / P7 r3 (D17, D18, D20)
+# ------------------------------- judge-adapters-8 / P7 r3 (D17, D18, D20, D27)
 
 
 def test_report_fields_block_is_plain_text_with_unescaped_quotes():
@@ -2491,7 +2491,7 @@ def test_zai_and_openai_send_the_same_strict_json_schema():
     assert zai["type"] == "json_schema" and zai["json_schema"]["strict"] is True
     assert bodies["zai"]["reasoning_effort"] == "high"
     assert "response_format" not in bodies["deepseek"]
-    assert configs()["zai"].adapter_version == "judge-adapters-7"
+    assert configs()["zai"].adapter_version == "judge-adapters-8"
 
 
 def test_transport_error_records_the_exception_class_name_only():
@@ -2504,7 +2504,7 @@ def test_transport_error_records_the_exception_class_name_only():
     )
     assert observation.error_code == "JUDGE_TRANSPORT_ERROR"
     assert observation.transport_error == "RemoteProtocolError"
-    assert observation.attempts == 2 and len(transport.calls) == 2
+    assert observation.attempts == 4 and len(transport.calls) == 4
     assert SECRET not in repr(observation)
     ok, _ = invoke(request, diagnoses, verdict)
     assert ok.transport_error is None
@@ -2521,7 +2521,7 @@ def test_wrapped_transport_error_records_the_underlying_class_name(link):
     observation, transport = invoke(request, diagnoses, verdict, response=error)
     assert observation.error_code == "JUDGE_TRANSPORT_ERROR"
     assert observation.transport_error == "ReadError"
-    assert len(transport.calls) == 2
+    assert len(transport.calls) == 4
     assert SECRET not in repr(observation)
 
 
@@ -2575,4 +2575,4 @@ def test_stream_cut_before_done_records_stream_truncated():
     )
     assert observation.error_code == "JUDGE_TRANSPORT_ERROR"
     assert observation.transport_error == "StreamTruncated"
-    assert len(transport.calls) == 2
+    assert len(transport.calls) == 4

@@ -443,7 +443,7 @@ def test_d20_transport_exception_class_name_is_recorded(configs):
     )
     assert observation.result.status == "error"
     assert observation.error_code == "JUDGE_TRANSPORT_ERROR"
-    assert len(transport.calls) == 2  # the existing one transport retry
+    assert len(transport.calls) == 4  # P7-D27: three transport retries
     name = getattr(observation, TRANSPORT_EXCEPTION_FIELD)
     assert name == "CanaryStreamCut" or name.endswith(".CanaryStreamCut")
     encoded = json.dumps(encode(observation))

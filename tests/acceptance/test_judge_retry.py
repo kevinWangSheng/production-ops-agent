@@ -1,7 +1,7 @@
-"""judge-adapters-4: one retry after a stream transport failure, nothing else.
+"""judge-adapters-8: up to three retries after a stream transport failure, nothing else.
 
 Authority: docs/tasks/2026-10-20-judge-streaming.md R1-R5 (2026-10-21 user
-decision: retry once only when no complete response arrived, i.e. the
+decision: retry only when no complete response arrived, i.e. the
 connection failed or the stream ended before ``[DONE]``). Every response is
 served by an in-process ``httpx2.MockTransport``; nothing opens a socket.
 """
@@ -171,11 +171,28 @@ def test_transport_failure_then_success_is_ok_after_one_retry(configs, provider,
     assert dict(one.headers) == dict(two.headers)  # identical headers
 
 
-def test_two_transport_failures_stop_after_the_second_call(configs):
-    wire = Sequence(peer_closed(), drop_before_done(), good())
+def test_transport_failure_then_success_on_fourth_attempt_is_ok(configs):
+    wire = Sequence(
+        peer_closed(),
+        drop_before_done(),
+        raising(httpx2.ReadError("read")),
+        good(),
+    )
     observation = run(configs, wire)
-    assert_failed(observation, "error", "JUDGE_TRANSPORT_ERROR", attempts=2)
-    assert len(wire.requests) == 2
+    assert_ok(observation, attempts=4)
+    assert len(wire.requests) == 4
+
+
+def test_four_transport_failures_stop_after_the_fourth_call(configs):
+    wire = Sequence(
+        peer_closed(),
+        drop_before_done(),
+        raising(httpx2.ReadError("read")),
+        raising(httpx2.ConnectError("connect")),
+    )
+    observation = run(configs, wire)
+    assert_failed(observation, "error", "JUDGE_TRANSPORT_ERROR", attempts=4)
+    assert len(wire.requests) == 4
     assert observation.usage == dict.fromkeys(observation.usage)  # nothing assembled
     assert observation.finish_reason is None
 
@@ -362,9 +379,9 @@ def test_pre_send_failure_reports_one_attempt_and_no_call(configs):
 # ------------------------------------------------------- R4: adapter version
 
 
-def test_adapter_version_is_judge_adapters_7(configs):
+def test_adapter_version_is_judge_adapters_8(configs):
     for config in configs.values():
-        assert config.adapter_version == "judge-adapters-7"  # P7 r3 D20
+        assert config.adapter_version == "judge-adapters-8"  # P7 r3 D27
         check_config(config)
     for stale in (
         "judge-adapters-1",
@@ -373,6 +390,7 @@ def test_adapter_version_is_judge_adapters_7(configs):
         "judge-adapters-4",
         "judge-adapters-5",
         "judge-adapters-6",  # P7 r3 D20
+        "judge-adapters-7",  # P7 r3 D27
     ):
         with pytest.raises(JudgeError, match="CONFIG_INVALID"):
             check_config(replace(configs["zai"], adapter_version=stale))
@@ -381,9 +399,9 @@ def test_adapter_version_is_judge_adapters_7(configs):
 
 
 def test_wire_fixture_reuse_drop_twice_matches_streaming_contract(configs):
-    """The single-response Wire fixture now sees two identical requests."""
+    """The single-response Wire fixture now sees four identical requests."""
     wire = Wire(sse_body(answer_chunks(), done=False))
     observation = run(configs, wire)
-    assert_failed(observation, "error", "JUDGE_TRANSPORT_ERROR", attempts=2)
-    assert len(wire.requests) == 2
+    assert_failed(observation, "error", "JUDGE_TRANSPORT_ERROR", attempts=4)
+    assert len(wire.requests) == 4
     assert wire.requests[0].content == wire.requests[1].content
