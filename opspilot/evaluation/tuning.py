@@ -21,7 +21,7 @@ from opspilot.evaluation.calibration_flow import (
     LabelPack,
     judged_observation,
 )
-from opspilot.evaluation.judge import JudgeError, JudgeObservation
+from opspilot.evaluation.judge import MAX_ATTEMPTS, JudgeError, JudgeObservation
 
 PASS_AGREEMENT = 46
 Hint = Literal[
@@ -109,7 +109,12 @@ def assess_tuning(
             or getattr(record, "repetition", repetition) != repetition
         ):
             raise JudgeError("IDENTITY_MISMATCH")
-        if observation.result.calibrated or observation.passed:
+        if (
+            observation.result.calibrated
+            or observation.passed
+            or type(observation.attempts) is not int
+            or not 1 <= observation.attempts <= MAX_ATTEMPTS
+        ):
             raise JudgeError("DERIVED_RESULT_MISMATCH")
         judged = judged_observation(
             item, labels[item.item_id], observation.provider, observation

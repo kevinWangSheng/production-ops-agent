@@ -84,6 +84,7 @@ from opspilot.evaluation.codec import (
 )
 from opspilot.evaluation.gate import parsed_report, run_gate
 from opspilot.evaluation.judge import (
+    MAX_ATTEMPTS,
     HTTPJudgeTransport,
     JudgeConfig,
     JudgeError,
@@ -1791,8 +1792,10 @@ def _formal_raw_outputs(
             if type(observation) is not dict:
                 break
             attempts = observation.get("attempts", 1)
+            if type(attempts) is not int or not 1 <= attempts <= MAX_ATTEMPTS:
+                _fail("DERIVED_RESULT_MISMATCH")
             last: _Sent | None = None
-            for _ in range(attempts if type(attempts) is int else 1):
+            for _ in range(attempts):
                 if not queue or queue[0].input_hash != obj.get("input_hash"):
                     break
                 last = queue.pop(0)
