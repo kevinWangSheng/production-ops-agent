@@ -171,20 +171,52 @@ def test_serve_health_refuses_a_malformed_bind():
         )
 
 
-def test_serve_health_keeps_the_process_running_when_the_port_is_taken():
+def test_serve_health_refuses_to_start_when_the_port_is_taken(caplog):
+    """Lead ruling on #418 r1: a bind failure must not leave a process
+    without its health surface; only an empty bind turns it off."""
     first = start_health_server(
         "127.0.0.1:0", readiness=lambda: Readiness(True, None), metrics=str
     )
     assert first is not None
+    bind = f"127.0.0.1:{first.port}"
     try:
-        second = health.serve_health(
-            {"OPSPILOT_HEALTH_BIND": f"127.0.0.1:{first.port}"},
+        with caplog.at_level("ERROR", logger="opspilot.health"):
+            with pytest.raises(SystemExit) as raised:
+                health.serve_health(
+                    {"OPSPILOT_HEALTH_BIND": bind},
+                    readiness=lambda: Readiness(True, None),
+                    metrics=str,
+                )
+        assert raised.value.code not in (None, 0)
+        assert "OPSPILOT_HEALTH_BIND" in str(raised.value.code)
+        assert bind in str(raised.value.code)
+        assert any(
+            "OPSPILOT_HEALTH_BIND" in r.getMessage() and bind in r.getMessage()
+            for r in caplog.records
+        )
+    finally:
+        first.close()
+
+
+def test_serve_health_refuses_an_unbindable_address():
+    with pytest.raises(SystemExit) as raised:
+        health.serve_health(
+            {"OPSPILOT_HEALTH_BIND": "203.0.113.7:9464"},
             readiness=lambda: Readiness(True, None),
             metrics=str,
         )
-        assert second is None
-    finally:
-        first.close()
+    assert "203.0.113.7:9464" in str(raised.value.code)
+
+
+def test_serve_health_is_off_only_for_the_empty_value():
+    assert (
+        health.serve_health(
+            {"OPSPILOT_HEALTH_BIND": ""},
+            readiness=lambda: Readiness(True, None),
+            metrics=str,
+        )
+        is None
+    )
 
 
 # -- readiness rules ------------------------------------------------------------

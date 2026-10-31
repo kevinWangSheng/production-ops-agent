@@ -48,7 +48,9 @@ Configuration (environment only):
 * ``OPSPILOT_POSTMORTEM_POLL_SECONDS`` postmortem scan interval (default 30).
 * ``OPSPILOT_POSTMORTEM_BATCH``     candidates per scan (default 5).
 * ``OPSPILOT_HEALTH_BIND``         the health listener's ``host:port``
-  (``opspilot.health``; default ``127.0.0.1:9464``, empty turns it off).
+  (``opspilot.health``; default ``127.0.0.1:9464``, empty turns it off;
+  any other value that cannot be bound refuses to start, so bare
+  processes sharing a host need distinct values).
 
 A second thread runs the postmortem pass (M1-03 D17): its own scan,
 generation lease and model client, one generation at a time, never an

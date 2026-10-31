@@ -34,7 +34,7 @@
 
 - 容器默认 bind 由镜像 `ENV OPSPILOT_HEALTH_BIND=0.0.0.0:9464` 给出，代码默认 `127.0.0.1:9464`：容器外跑镜像也一致，`install.env` 不加键（R11）。
 - 镜像加 `ENV OPSPILOT_REVISION=${OPSPILOT_REVISION}` 供 `opspilot_build_info{revision}`；不合 `[0-9A-Za-z._-]{1,64}` 时记 `unknown`：标签值不受外部文本影响。
-- 端口被占（同机两个裸进程都用默认值）只记 warning、进程照常跑，bind 格式错则拒绝启动：不让辅助监听破坏现有本机开发方式。
+- bind 格式错或绑不上（含端口被占）都拒绝启动，非零退出，日志写明 `OPSPILOT_HEALTH_BIND` 与地址；只有显式空值才不起监听。同机跑两个裸进程时由操作者给各自不同的 bind 或空值（lead 裁决，#418 审查 r1：没有监听的进程会躲过外部检测）。
 - web healthcheck 同时要求 8080 可连和 `/readyz` 200，`timeout: 12s`：监听先于 uvicorn 启动，保留旧检查的保证；探测事务最长约池等待 5s + 语句 5s。
 - worker/Observer healthcheck `interval 5s / timeout 5s / retries 12`：`/readyz` 不查库，立即返回。
 - worker「成功轮询」= 定时轮询里 deadline 清扫与 backlog 两步都没被存储拒绝，记在 `WorkerLoop.last_poll_success`：清扫每个间隔都跑，槽位全忙时也不会误报陈旧。

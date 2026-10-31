@@ -3,7 +3,8 @@
 Each runtime starts one small HTTP listener of its own, separate from the
 workbench's 8080 app (F8-Q2): ``OPSPILOT_HEALTH_BIND`` is ``host:port``,
 ``127.0.0.1:9464`` by default for a bare process (the image sets
-``0.0.0.0:9464``), and an empty value turns it off. It answers GET
+``0.0.0.0:9464``), and an empty value turns it off; any other value that
+cannot be bound refuses to start the process. It answers GET
 ``/healthz``, ``/readyz`` and ``/metrics`` and 404 to anything else, without
 authentication, so every body is fixed keys, fixed codes and the version:
 never a report, evidence, provider text or a credential (F8-R1).
@@ -394,17 +395,23 @@ def serve_health(
     readiness: Callable[[], Readiness],
     metrics: Callable[[], str],
 ) -> HealthServer | None:
-    """The entry points' start: a malformed ``OPSPILOT_HEALTH_BIND`` refuses
-    to start; a port already taken (two bare processes on one host's default)
-    is logged and the process runs without its listener."""
+    """The entry points' start. A malformed ``OPSPILOT_HEALTH_BIND`` or one
+    that cannot be bound (a port already taken included) refuses to start:
+    a process without its health surface would hide from external detection.
+    Only the empty value runs without a listener, so two bare processes on
+    one host need distinct binds (or an empty one)."""
     bind = health_bind(env)
     try:
         server = start_health_server(bind, readiness=readiness, metrics=metrics)
     except ValueError as exc:
         raise SystemExit(str(exc)) from None
     except OSError as exc:
-        _log.warning("health listener not started bind=%s errno=%s", bind, exc.errno)
-        return None
+        message = (
+            f"{BIND_ENV}={bind} cannot be bound (errno={exc.errno}); set a free "
+            f"host:port, or an empty value to run without the health listener"
+        )
+        _log.error(message)
+        raise SystemExit(message) from None
     if server is not None:
         _log.info("health listener bind=%s port=%d", bind, server.port)
     return server

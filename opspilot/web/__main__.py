@@ -45,7 +45,9 @@ Configuration comes from the environment only, and only as hashes:
   a stopped anomaly pass loses nothing and the next one consumes them.
 * ``OPSPILOT_HEALTH_BIND``     the health listener's ``host:port``
   (``opspilot.health``, separate from the app on ``OPSPILOT_BIND``; default
-  ``127.0.0.1:9464``, empty turns it off).
+  ``127.0.0.1:9464``, empty turns it off;
+  any other value that cannot be bound refuses to start, so bare
+  processes sharing a host need distinct values).
 
 ``hash-password`` and ``token-digest`` print the value to put in the
 environment; the secret itself is read from stdin and never echoed. This
@@ -302,6 +304,8 @@ def _serve() -> int:
         review=PostmortemReview(knowledge=knowledge, events=events),
     )
     host, _, port = bind.rpartition(":")
+    # Before any thread: a bind that cannot be served refuses to start.
+    listener = _start_health(store)
     stop = threading.Event()
     healer = None
     if interval > 0:
@@ -312,7 +316,6 @@ def _serve() -> int:
             daemon=True,
         )
         healer.start()
-    listener = _start_health(store)
     try:
         uvicorn.run(app, host=host or "127.0.0.1", port=int(port), proxy_headers=False)
     finally:

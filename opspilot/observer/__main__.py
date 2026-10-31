@@ -21,7 +21,9 @@ Configuration (environment only):
 * ``OPSPILOT_OBSERVER_BATCH``             leases per poll (default 20).
 * ``OPSPILOT_OBSERVER_GRACE_SECONDS``     SIGTERM join bound (default 30).
 * ``OPSPILOT_HEALTH_BIND``                the health listener's ``host:port``
-  (``opspilot.health``; default ``127.0.0.1:9464``, empty turns it off).
+  (``opspilot.health``; default ``127.0.0.1:9464``, empty turns it off;
+  any other value that cannot be bound refuses to start, so bare
+  processes sharing a host need distinct values).
 
 Like the worker it refuses to start unless the schema is at the Alembic head
 (the role needs ``SELECT`` on ``alembic_version``, which 0003 grants).
