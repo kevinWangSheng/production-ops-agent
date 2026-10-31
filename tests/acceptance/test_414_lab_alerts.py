@@ -14,7 +14,6 @@ from typing import Any
 import pytest
 import yaml
 
-
 ROOT = Path(__file__).resolve().parents[2]
 VALUES = ROOT / "scripts/kind_lab/values.yaml"
 ALERTMANAGER_VALUES = ROOT / "scripts/kind_lab/alertmanager-values.yaml"
@@ -83,7 +82,9 @@ def _route_matches_self(route: dict[str, Any]) -> bool:
 
 
 def test_opspilot_scrape_job_has_exact_lab_targets_roles_and_interval() -> None:
-    jobs = [job for job in _scrape_jobs(_yaml(VALUES)) if job.get("job_name") == "opspilot"]
+    jobs = [
+        job for job in _scrape_jobs(_yaml(VALUES)) if job.get("job_name") == "opspilot"
+    ]
     assert len(jobs) == 1
     job = jobs[0]
     assert job["scrape_interval"] == "15s"
@@ -123,7 +124,9 @@ def test_self_alert_rules_are_exact_and_existing_lab_rule_remains() -> None:
         "summary": "checkout PlaceOrder error ratio above 50%",
         "description": "{{ $value | humanizePercentage }} of checkout PlaceOrder server spans ended in error over the last 5 minutes.",
     }
-    assert " ".join(existing["expr"].split()) == " ".join(EXPECTED_EXISTING_EXPR.split())
+    assert " ".join(existing["expr"].split()) == " ".join(
+        EXPECTED_EXISTING_EXPR.split()
+    )
 
 
 def test_self_alerts_route_to_empty_receiver_without_any_notifier_or_token() -> None:
@@ -141,7 +144,9 @@ def test_self_alerts_route_to_empty_receiver_without_any_notifier_or_token() -> 
     assert set(receivers) <= {"opspilot", "opspilot-self"}
     for key, value in receivers["opspilot-self"].items():
         assert key == "name"
-        assert not re.search(r"token|secret|password|credential|webhook|slack|email", str(value), re.I)
+        assert not re.search(
+            r"token|secret|password|credential|webhook|slack|email", str(value), re.I
+        )
 
 
 def test_drill_egress_override_changes_only_worker_extra_hosts() -> None:
@@ -166,7 +171,9 @@ def _assert_no_secret_looking_values(value: Any, path: str = "summary") -> None:
         for index, child in enumerate(value):
             _assert_no_secret_looking_values(child, f"{path}[{index}]")
     elif isinstance(value, str):
-        assert not re.search(r"(?:sk-|bearer\s+|gh[ps]_|AKIA[0-9A-Z]{12,})", value, re.I), path
+        assert not re.search(
+            r"(?:sk-|bearer\s+|gh[ps]_|AKIA[0-9A-Z]{12,})", value, re.I
+        ), path
 
 
 def test_drill_summary_records_both_contractual_drills_when_present() -> None:
@@ -179,7 +186,9 @@ def test_drill_summary_records_both_contractual_drills_when_present() -> None:
     drills = {drill["name"]: drill for drill in summary["drills"]}
     assert set(drills) == {"stop_worker", "model_egress"}
     for drill in drills.values():
-        assert {"name", "started_at", "ended_at", "alert", "run", "metrics"} <= set(drill)
+        assert {"name", "started_at", "ended_at", "alert", "run", "metrics"} <= set(
+            drill
+        )
         assert {"name", "firing_observed_at", "receiver"} <= set(drill["alert"])
         assert {"run_id", "final_state", "handoff_reason"} <= set(drill["run"])
         assert isinstance(drill["metrics"], dict)
@@ -194,4 +203,3 @@ def test_drill_summary_records_both_contractual_drills_when_present() -> None:
     egress = drills["model_egress"]
     assert egress["run"]["final_state"] == "waiting_human"
     assert egress["run"]["handoff_reason"] == "MODEL_UNAVAILABLE"
-
