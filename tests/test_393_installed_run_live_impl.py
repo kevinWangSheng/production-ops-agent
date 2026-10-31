@@ -53,7 +53,7 @@ PORT = os.environ.get("OPSPILOT_393_WEB_PORT", "18180")
 TERMINAL = {"completed", "cancelled", "failed", "blocked", "budget_exhausted"}
 LABELS = {"alertname": "OpsPilot393Synthetic", "opspilot_393": "live-test"}
 TARGET = {
-    "fixture-393-live": {
+    "checkout-prod": {
         "integration_id": "fixture",
         "cluster_uid": "fixture-cluster",
         "namespace": "otel-demo",

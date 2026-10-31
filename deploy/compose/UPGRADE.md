@@ -37,7 +37,10 @@ read-only Prometheus account goes in `<secrets dir>/observer_env`
 is written once as `{}`; an install from before it gets it on upgrade. With
 `{}` every Alertmanager alert is handed to a human without a Run; an entry with
 `"match": {"version": 1, "labels": {...}}` lets a matching alert open a Run on
-that target. The web reads it on start: run `install.sh compose restart web`
+that target. With `OPSPILOT_TOOL_PROFILE=fixture` the worker knows only the
+target `checkout-prod`: key the entry by that id, or the Run's tool calls are
+refused (`TARGET_NOT_REGISTERED`) and it is handed to a human. The web reads
+it on start: run `install.sh compose restart web`
 after editing it.
 
 Do not start an older image against a migrated database: the runtimes refuse

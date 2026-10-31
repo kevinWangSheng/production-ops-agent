@@ -72,3 +72,13 @@ def test_the_target_identities_reach_the_web_only_as_a_config_file():
         SERVICES["web"]["environment"]["OPSPILOT_TARGET_IDENTITIES"]
         == (config["target"])
     )
+
+
+def test_upgrade_notes_name_the_fixture_profiles_only_target():
+    # The fixture worker registers one target (opspilot.tools.fixture); an
+    # alert bound to any other identity runs but every tool call is refused
+    # TARGET_NOT_REGISTERED, as the first #393 real Run showed.
+    from opspilot.tools.fixture import FIXTURE_TARGET
+
+    text = (COMPOSE_DIR / "UPGRADE.md").read_text()
+    assert f"`{FIXTURE_TARGET}`" in text
