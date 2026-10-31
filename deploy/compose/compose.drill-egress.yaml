@@ -1,0 +1,12 @@
+# Lab drill override (#414, F8-R8): the worker resolves the model endpoint
+# (api.deepseek.com, fixed in opspilot/investigation/client.py) to its own
+# loopback, so every model call fails to connect while PostgreSQL stays
+# reachable. Only for the "model egress" drill; restore by recreating the
+# worker without this file. Never part of a default install.
+#
+#   install.sh compose -f deploy/compose/compose.lab.yaml \
+#     -f deploy/compose/compose.drill-egress.yaml up -d --no-deps worker
+
+services:
+  worker:
+    extra_hosts: ["api.deepseek.com:127.0.0.1"]

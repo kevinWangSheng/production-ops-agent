@@ -1091,6 +1091,137 @@ def cmd_proxy(args: argparse.Namespace) -> int:
     return apply_readonly_proxy(accounts)
 
 
+#: What ``rules-check`` validates (M1-04 R11, F8-R6): each chart-rendered
+#: file, the release that renders it, and the tool that checks it inside
+#: the lab pod running that version (promtool v3.5.0, amtool v0.28.1); the
+#: host has neither binary.
+PROMETHEUS_CM = "charts/prometheus/templates/cm.yaml"
+ALERTMANAGER_CM = "templates/configmap.yaml"
+SELF_ALERT_LABEL = 'opspilot_self="true"'
+SELF_RECEIVER = "opspilot-self"
+
+
+def rendered_configmap_data(manifest: str) -> dict[str, str] | None:
+    """The ``data`` of the one ConfigMap ``helm template --show-only`` printed,
+    as JSON from ``kubectl create --dry-run=client`` (no YAML parser here)."""
+    proc = subprocess.run(
+        kubectl("create", "--dry-run=client", "-o", "json", "-f", "-"),
+        input=manifest,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    if proc.returncode != 0:
+        print(proc.stderr, file=sys.stderr)
+        return None
+    try:
+        data = json.loads(proc.stdout).get("data")
+    except ValueError:
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _render(release: str, chart: str, version: str, values: str, show: str) -> str:
+    proc = capture(
+        helm(
+            "template",
+            release,
+            chart,
+            "--version",
+            version,
+            "--namespace",
+            NAMESPACE,
+            "--values",
+            str(CONFIG / values),
+            "--show-only",
+            show,
+        ),
+        env=lab_env(),
+    )
+    if proc.returncode != 0:
+        print(proc.stderr, file=sys.stderr)
+        return ""
+    return proc.stdout
+
+
+def _pod_check(target: list[str], script: str, content: str) -> tuple[int, str]:
+    """Run ``script`` in a lab pod with ``content`` as /tmp/check.yml (stdin);
+    prints and returns the exit code and output."""
+    wrapped = (
+        f"cat > /tmp/check.yml && {{ {script}; }}; rc=$?; rm -f /tmp/check.yml;"
+        " exit $rc"
+    )
+    proc = subprocess.run(
+        kubectl("-n", NAMESPACE, "exec", "-i", *target, "--", "sh", "-c", wrapped),
+        input=content,
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+    )
+    output = (proc.stdout + proc.stderr).rstrip()
+    print(f"+ {' '.join(target)}: {script}\n{output}")
+    return proc.returncode, output
+
+
+def cmd_rules_check(args: argparse.Namespace) -> int:
+    """promtool/amtool on the rule, scrape and route files the committed
+    values render to, before ``up`` applies them: ``promtool check rules``
+    and ``check config --syntax-only`` in the Prometheus pod, ``amtool
+    check-config`` in the Alertmanager pod, and the route a self-alert takes
+    (``opspilot_self="true"`` must reach ``opspilot-self`` only, F8-Q3)."""
+    prom = rendered_configmap_data(
+        _render(
+            RELEASE,
+            "open-telemetry/opentelemetry-demo",
+            DEMO_CHART_VERSION,
+            "values.yaml",
+            PROMETHEUS_CM,
+        )
+    )
+    am = rendered_configmap_data(
+        _render(
+            AM_RELEASE,
+            "prometheus-community/alertmanager",
+            AM_CHART_VERSION,
+            "alertmanager-values.yaml",
+            ALERTMANAGER_CM,
+        )
+    )
+    if not prom or not am:
+        print("rendering the chart ConfigMaps failed", file=sys.stderr)
+        return 1
+    server = ["deploy/prometheus", "-c", "prometheus-server"]
+    alertmanager = [f"{AM_RELEASE}-0"]
+    rules, _ = _pod_check(
+        server, "promtool check rules /tmp/check.yml", prom["alerting_rules.yml"]
+    )
+    config, _ = _pod_check(
+        server,
+        "promtool check config --syntax-only /tmp/check.yml",
+        prom["prometheus.yml"],
+    )
+    am_config, _ = _pod_check(
+        alertmanager, "amtool check-config /tmp/check.yml", am["alertmanager.yml"]
+    )
+    route, receivers = _pod_check(
+        alertmanager,
+        "amtool config routes test --config.file=/tmp/check.yml"
+        f" '{SELF_ALERT_LABEL}' alertname=OpsPilotAgentAbsent",
+        am["alertmanager.yml"],
+    )
+    results = {
+        "rules": rules,
+        "config": config,
+        "alertmanager": am_config,
+        "self_route": 0 if route == 0 and receivers.split() == [SELF_RECEIVER] else 1,
+    }
+    ok = not any(results.values())
+    print(json.dumps({"ok": ok, "exit": results}))
+    return 0 if ok else 1
+
+
 def cmd_stop(args: argparse.Namespace) -> int:
     """Stop the VM only: the kind cluster and both releases stay installed."""
     if colima_status() != "Running":
@@ -1255,6 +1386,10 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser(
         "proxy", help="re-render and roll only the readonly Prometheus proxy"
     ).set_defaults(func=cmd_proxy)
+    sub.add_parser(
+        "rules-check",
+        help="promtool/amtool on the rendered rules, scrape config and routes",
+    ).set_defaults(func=cmd_rules_check)
     sub.add_parser("stop", help="stop the VM; keep cluster and releases").set_defaults(
         func=cmd_stop
     )
