@@ -1,6 +1,6 @@
 # 评测 P7 judge 真实校准
 
-- 状态：新题正式校准 `p7-formal-3`（2026-10-31）为 `no_baseline`，三家均不合格，D16 无选择；待用户决定下一步（#295）
+- 状态：新题正式校准 `p7-formal-3`（2026-10-31）为 `no_baseline`，三家均不合格，D16 无选择；按 P7-D29 记录，M3 只用确定性断言，judge 重校准留 #295
 - 目标：按 [评测任务记录](2026-10-12-eval-suite.md) P7 与 D16，用 36 份基于真实 Run 的样本、两份独立盲标和用户裁决，对 GLM-5.3、GPT-6.1 Sol、`deepseek-flash` 做一次正式校准，得出 D16 选择；合格后才进入第一轮基线（另记）。
 - 依据：[PR-B3 接口](2026-10-14-eval-pr-b3-interface.md)（LabelPack、freeze、run_calibration、r8–r11）；[PR-A 接口](2026-10-13-eval-pr-a-interface.md)（JudgeInput、JudgedDiagnosis）；C3 第 388–398 行。
 - 范围外：改判分规则、匹配口径或 D16 选择认证（如需改动，单列合同变更）；调查 loop、报告生成与恢复路径；翻任何 `passes`。
@@ -53,6 +53,7 @@
 | P7-D26 | D24/D25 细则（合同预审后，gpt-6-astra 预审）：(1) 门槛仍为 24 道 validation ×2 的一致数 ≥ 46/48；一致只看重算后的 verdict（D18）。任一无效观察（含断连）、P6 复核失败、误通过仍使该家不合格；误通过须为 0。漏诊仍计算、落盘、报告，只作参考，不入 `passed`。formal（`_counts`）与调参计分同用此规则。(2) 第 1–3 轮按新规则只读重算，原 score/triage 不覆盖；三轮仍计为已用。(3) 重跑按供应商：某家按新规则的剩余失败全部分诊为 eval_env 时，该家可用一次原样重跑（同 PROMPT、同标签包），重跑该家完整 60 次调用，不只补丢失的调用；原记录不改。第 3 轮 Luna 不符合条件，不重跑。(4) D25 先行：FlashX 对 12 道 debug 项各判 1 次，沿用现有一次断连重试；「零断连」= 没有调用最终以连接失败结束；不消耗调参轮。通过才重跑 FlashX 第 3 轮；不通过即停下交用户，Luna 不自动改为主候选。(5) 不改 C3 文本，不翻任何 `passes`。仍断言旧漏诊门槛的 6 处测试由未参与实现的测试作者按本条改写 | 用户 2026-10-30 |
 | P7-D27 | 修订 judge-adapters-4/P7-D20 的传输重试：只对传输失败（连接失败或流在完整响应前结束，即 `JUDGE_TRANSPORT_ERROR`）最多尝试 4 次（原 2 次）；超时、HTTP 状态、超大、组装后文档的任何校验仍首次即终，无效答案仍不重试。单次尝试 900 s 上限不变，`attempts` 照记。adapter 升为 `judge-adapters-8`（config hash 随之改变）。依据：修网后预检 1/12 为流中途断开且重试也断 | 用户 2026-10-30 |
 | P7-D28 | 新一轮盲标后 4 个场景（cart、product-catalog、normal-1、normal-2）debug 两项均为负例，cart validation 为 0 正 4 负：(1) `freeze` 的 debug 1+1 改为与 validation 同样可由书面接受放行（接受记录加 `debug_distribution`，debug 符合时不得出现）；debug 标签不进一致率与误通过，只要求观察有效且复核通过。(2) 接受 cart validation 0+4。(3) 36 项差异中 32 项非实质（仅措辞 18、仅因果位置 14，D24 下只作参考）取 Claude 标注（A）；4 项 verdict 分歧由用户逐项裁决。(4) 改动走 chore PR，测试由未参与实现的作者编写 | 用户 2026-10-30 |
+| P7-D29 | `p7-formal-3` 按合同记为 `no_baseline`，不改门槛、不追加调参轮；M3 继续只用确定性断言，judge 重校准留在 #295。M3 由用户另开会话启动，本会话不开工 | 用户 2026-10-31 |
 
 调参规则：在 36 项（原 12 debug + 已作废的 24 validation）上调 `judge.PROMPT`，最多 3 轮；达标线为整套零无效、零漏诊、零误通过且一致率不低于 46/48 等价；不达标停下交用户。达标后才新采 validation 来源族、两份新盲标与用户裁决。
 
