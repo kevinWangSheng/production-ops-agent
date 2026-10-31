@@ -1,5 +1,7 @@
 # M0 上游与 OTel 固定源码映射草案
 
+> 2026-10-31 注：本文是旧 SHA `5e983c17` 下的 M0 草案。按上游 `a0009195` 的逐功能映射见 [F14 逐功能上游映射](f14-upstream-mapping.md)，权威表为 [mapping.json](../evidence/f14-upstream-mapping/mapping.json)。
+
 2026-09-08；仅公开源码核查。复用 [上游计划](../research/upstream-led-project-plan-2026-09-06.md) 和 [Holmes审计](../research/holmes-source-audit-2026-09-07.md)，重新抓取原文。版本固定表示本批输入可复核，不宣称最新、已运行或镜像可复现。实际来源 URL、原文件 SHA256、原样文件和许可证在 [sources.json](../evidence/m0-c/sources.json)。未读取任何 `.env`（包括上游模板）。
 
 ## HolmesGPT
