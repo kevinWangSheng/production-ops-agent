@@ -12,7 +12,8 @@ the workbench on the host with a bearer token (``webhook_token``).
 
 ``up`` checks host memory, starts the colima profile, creates the kind
 cluster and installs or upgrades the three Helm releases, then waits for the
-backends; ``health`` checks what the product profile and the Observer read
+backends (it takes chart-owned ConfigMap fields back, so ``up`` while a
+fault is injected restores flagd); ``health`` checks what the product profile and the Observer read
 (Prometheus span metrics, kube-state-metrics series, Jaeger lists
 ``checkout``, frontend answers); Prometheus requires basic auth since M1-02
 step 4 (one account per role, see ``prometheus_accounts``) and ``env-file``
