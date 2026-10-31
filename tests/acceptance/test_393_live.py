@@ -45,9 +45,7 @@ def test_fixture_profile_real_alert_reaches_terminal_workbench() -> None:
     secrets.mkdir(mode=0o700, parents=True, exist_ok=True)
     existing = sorted(path.name for path in secrets.iterdir())
     if existing:
-        pytest.fail(
-            f"refusing to run against a non-empty secrets directory: {secrets}"
-        )
+        pytest.fail(f"refusing to run against a non-empty secrets directory: {secrets}")
     identities = secrets / "target_identities.json"
     identities.write_text(
         json.dumps(
@@ -184,7 +182,7 @@ def test_fixture_profile_real_alert_reaches_terminal_workbench() -> None:
         time.sleep(5)
     assert 'id="run-state"' in page, "incident page never exposed a Run state"
     assert f"<code>{run_id}</code>" in page, "workbench showed a different Run"
-    assert not any(
-        f'id="run-state">{state}<' in page for state in ACTIVE_RUN_STATES
-    ), "Run did not reach a terminal state"
+    assert not any(f'id="run-state">{state}<' in page for state in ACTIVE_RUN_STATES), (
+        "Run did not reach a terminal state"
+    )
     assert 'id="report-status"' in page, "investigation report was not visible"
