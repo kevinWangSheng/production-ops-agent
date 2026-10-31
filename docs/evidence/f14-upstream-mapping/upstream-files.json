@@ -1,0 +1,199 @@
+{
+  "commit": "a0009195468ebc55a7dff7d602b61feabe3cda1b",
+  "files": {
+    ".claude/skills/create-eval/references/anti-hallucination.md": {
+      "blob": "462e17937a6221bd8178eae13462397ce3b21f2f",
+      "lines": 146
+    },
+    ".claude/skills/review-eval-run/SKILL.md": {
+      "blob": "162114a0bdb84c76640cd946f173b1fd5eab138d",
+      "lines": 50
+    },
+    ".github/workflows/build-docker-images.yaml": {
+      "blob": "be962767113308c091da40a68139b16600c9a531",
+      "lines": 119
+    },
+    ".github/workflows/eval-master.yaml": {
+      "blob": "3bed858a8be82284f8b5237ef74bd323f389409b",
+      "lines": 89
+    },
+    "Dockerfile": {
+      "blob": "f4a39b2207943f7704beb28d665fdc9381ddd007",
+      "lines": 170
+    },
+    "LICENSE": {
+      "blob": "dfe5ed9cfee3ce1342dc78e6a6ccd61580fec1d1",
+      "lines": 178
+    },
+    "docker-compose.yaml": {
+      "blob": "0329d8be27faa7c3f91d6c0a08b011cc31d660a2",
+      "lines": 30
+    },
+    "docs/development/evaluations/reporting.md": {
+      "blob": "58fe1515e1487eb28daa716f87b9f43e7bd59b99",
+      "lines": 108
+    },
+    "docs/development/evaluations/running-evals.md": {
+      "blob": "1c50843223a492c22145f2d6cde4c8641365d8ca",
+      "lines": 271
+    },
+    "helm/holmes/Chart.yaml": {
+      "blob": "cb3e8e1a1bfb03ce51161d9187011c67399d3325",
+      "lines": 10
+    },
+    "helm/holmes/templates/mcp-servers/kubernetes-remediation/rbac.yaml": {
+      "blob": "5013a3cca2f86e1d5f2c27bf703879ab45d0de13",
+      "lines": 66
+    },
+    "holmes/checks/check_system_prompt.jinja2": {
+      "blob": "32175276294f677ce9bd852ec8ec7a4a0bde118b",
+      "lines": 55
+    },
+    "holmes/checks/models.py": {
+      "blob": "76a10d1c7ab847e3c5d51e3735adf364605a4c6a",
+      "lines": 78
+    },
+    "holmes/common/env_vars.py": {
+      "blob": "833a031f8c6227b554dd9ebf1ace48183eb6ffd1",
+      "lines": 301
+    },
+    "holmes/config.py": {
+      "blob": "f2e6d9858a9d2c46d95fc1bd9b6539520c79fb44",
+      "lines": 1102
+    },
+    "holmes/core/conversations_worker/executor.py": {
+      "blob": "f0e19b46612ca46b64f97860114740650435212e",
+      "lines": 320
+    },
+    "holmes/core/conversations_worker/models.py": {
+      "blob": "ad64424096c04346395da170cb48f463c723cd23",
+      "lines": 187
+    },
+    "holmes/core/conversations_worker/processor.py": {
+      "blob": "ecb7fbc1ba0a19d00e6ee16b31204bda2a6c8c7f",
+      "lines": 722
+    },
+    "holmes/core/conversations_worker/runtime.py": {
+      "blob": "b1594209ec4920789c79a3a2a526a67300aa8e78",
+      "lines": 371
+    },
+    "holmes/core/conversations_worker/sizing.py": {
+      "blob": "041fa891a53253973977cf10071d87860f2e1c03",
+      "lines": 90
+    },
+    "holmes/core/llm.py": {
+      "blob": "3b3aadccfd76c0bc83646f1bacbff7fbd57e6280",
+      "lines": 1432
+    },
+    "holmes/core/llm_usage.py": {
+      "blob": "3909b00131c35c2bb6aa786f1db84b822e259172",
+      "lines": 146
+    },
+    "holmes/core/models.py": {
+      "blob": "32758582240fb58bedd875a3e0869b69a80098fd",
+      "lines": 368
+    },
+    "holmes/core/otel_tracing.py": {
+      "blob": "0cece77b80f348e0d408e1de49d3d41f6c0d5125",
+      "lines": 619
+    },
+    "holmes/core/tool_calling_llm.py": {
+      "blob": "b11cf0764e05fd363eb4fb4bdd75e14e96ff0b2a",
+      "lines": 1669
+    },
+    "holmes/core/tools.py": {
+      "blob": "880dc625a0586625377d050f099efc8e63190ad9",
+      "lines": 1325
+    },
+    "holmes/core/tools_utils/tool_context_window_limiter.py": {
+      "blob": "f32672578b271df7de0de89a7cb00703ecca84ae",
+      "lines": 144
+    },
+    "holmes/core/usage_recorder.py": {
+      "blob": "ffe3acabdeb45b7b5b1284205bc4a42ba8ea5491",
+      "lines": 588
+    },
+    "holmes/main.py": {
+      "blob": "4598e2a2a925e7a49ff2b4b164869a7cca86053e",
+      "lines": 1102
+    },
+    "holmes/plugins/prompts/_toolsets_instructions.jinja2": {
+      "blob": "2bdb1a7773e211517f25eee4e7cb8e6820dba9a6",
+      "lines": 36
+    },
+    "holmes/plugins/prompts/generic_ask.jinja2": {
+      "blob": "897e499784898516aa00e4b39c81195f57b5adf2",
+      "lines": 132
+    },
+    "holmes/plugins/skills/git_skill_repos.py": {
+      "blob": "b811c8cd645db07302933915e4528f662803a0eb",
+      "lines": 772
+    },
+    "holmes/plugins/skills/skill_loader.py": {
+      "blob": "500e4b7a879ebbfcf0463a6c9aa2166d0f1f1e90",
+      "lines": 574
+    },
+    "holmes/plugins/sources/prometheus/models.py": {
+      "blob": "5bddd154969ebeb8459a70b772fe0ace72e8f21f",
+      "lines": 105
+    },
+    "holmes/plugins/sources/prometheus/plugin.py": {
+      "blob": "e988de15533bafee8d8b4f0736d0f0a683e85f5e",
+      "lines": 154
+    },
+    "holmes/plugins/toolsets/bash/bash_toolset.py": {
+      "blob": "e251e10371ea03f79e0399fd7ec1b6ad0d75d8ce",
+      "lines": 467
+    },
+    "holmes/plugins/toolsets/connectivity_check.py": {
+      "blob": "fb3b8b1c47317b3989e6c3c25261d17978020d25",
+      "lines": 465
+    },
+    "holmes/plugins/toolsets/http/http_toolset.py": {
+      "blob": "74206d0243e7560b5f9d6ee8c186580e09ef4da1",
+      "lines": 971
+    },
+    "holmes/plugins/toolsets/prometheus/prometheus.py": {
+      "blob": "ebc0ff6c355e1ffdd3946a7a0f095d2212ce2866",
+      "lines": 2272
+    },
+    "holmes/utils/auth.py": {
+      "blob": "9bc83f2291e6e83ce4b2d008202567b855cffb33",
+      "lines": 18
+    },
+    "holmes/utils/header_rendering.py": {
+      "blob": "01475887336b7f84342a39f4226f0e8d993a20e6",
+      "lines": 96
+    },
+    "holmes_operator/handlers/triggeredhealthcheck.py": {
+      "blob": "4f85bbc55fdae5cf86d5e545415910cda36ddc76",
+      "lines": 306
+    },
+    "holmes_operator/trigger_executor.py": {
+      "blob": "24e32b2c36b57430cf2091bde7d12c38a37a30ee",
+      "lines": 473
+    },
+    "pyproject.toml": {
+      "blob": "035148d394732afbccfb48c948044adcc5be21e0",
+      "lines": 249
+    },
+    "server.py": {
+      "blob": "8ea8ef1b498487fdda61cca24fc0a8e83bcc0afe",
+      "lines": 1087
+    },
+    "tests/llm/fixtures/test_ask_holmes/285_command_injection_kubernetes_kind/test_case.yaml": {
+      "blob": "bd6dcc1f133557e71047e9c97278a879d8ef56e7",
+      "lines": 55
+    },
+    "tests/llm/utils/braintrust.py": {
+      "blob": "3bd2814a9480c1b911086ecafc4657df3eae78e2",
+      "lines": 260
+    },
+    "tests/llm/utils/classifiers.py": {
+      "blob": "05a3c8ffadb7a5d30655c54cd20d3c6210429ed9",
+      "lines": 255
+    }
+  },
+  "schema": "opspilot.f14.upstream-files.v1",
+  "tree": "e94a57b361a00cb2e793cf30d60fe2f4588e26e9"
+}

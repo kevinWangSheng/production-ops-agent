@@ -5,6 +5,8 @@ kind-lab window (``lockf ~/.agent/locks/kind-lab ...``).
   python -m scripts.holmes_baseline.run pin             # write pin.json
   python -m scripts.holmes_baseline.run check-request   # thinking/effort, offline
   python -m scripts.holmes_baseline.run live            # one live Run
+  python -m scripts.holmes_baseline.run upstream-files  # F14 step 2, offline
+  python -m scripts.holmes_baseline.run run1-errors     # F14 step 2, offline
 
 Docker is the colima ``m1-kind`` daemon. The Holmes container joins only an
 internal network shared with two helpers (``relay.py``): the lab relay
@@ -37,6 +39,7 @@ import yaml  # type: ignore[import-untyped]
 
 from scripts import kind_lab
 from scripts.holmes_baseline import config as hconfig
+from scripts.holmes_baseline import mapping as hmapping
 from scripts.holmes_baseline.container import run_args
 from scripts.holmes_baseline.project import project_outcome
 
@@ -69,6 +72,7 @@ KIND_NODE = f"{kind_lab.CLUSTER}-control-plane"
 PROMETHEUS_URL = f"http://{RELAY}:9090"
 JAEGER_URL = f"http://{RELAY}:16686/jaeger/ui"
 SCENARIO = ROOT / "evals/scenarios/eval-payment-failure-1/scenario.json"
+MAPPING_DIR = ROOT / "docs/evidence/f14-upstream-mapping"
 FAULT_SETTLE_SECONDS = 300
 WINDOW_SECONDS = 300
 MAX_CLOCK_SKEW_SECONDS = 2.0
@@ -701,6 +705,48 @@ def cmd_live(args: argparse.Namespace) -> int:
     return 0 if restore_code == 0 else 1
 
 
+def cmd_upstream_files(args: argparse.Namespace) -> int:
+    """Write (or with ``--check`` compare) upstream-files.json from the full
+    checkout, then validate mapping.json against it and the checkout."""
+    hmapping.check_checkout(UPSTREAM_DIR)
+    table = json.loads((MAPPING_DIR / "mapping.json").read_text())
+    manifest = hmapping.upstream_files(UPSTREAM_DIR, hmapping.cited_paths(table))
+    target = MAPPING_DIR / "upstream-files.json"
+    text = json.dumps(manifest, indent=2, sort_keys=True) + "\n"
+    if args.check:
+        if not target.exists() or target.read_text() != text:
+            print(f"{target} is stale")
+            return 1
+    else:
+        target.write_text(text)
+    features = json.loads((ROOT / "feature_list.json").read_text())
+    found = hmapping.problems(table, manifest, features, ROOT, UPSTREAM_DIR)
+    for problem in found:
+        print(problem)
+    print(
+        json.dumps(
+            {
+                "rows": len(table["rows"]),
+                "files": len(manifest["files"]),
+                "classes": dict(Counter(row["class"] for row in table["rows"])),
+                "problems": len(found),
+            }
+        )
+    )
+    return 1 if found else 0
+
+
+def cmd_run1_errors(_: argparse.Namespace) -> int:
+    summary = json.loads((EVIDENCE / "summary.json").read_text())
+    raw = RAW_ROOT / summary["run_id"] / "out" / "holmes.json"
+    frozen = hmapping.run1_tool_errors(raw, summary)
+    (EVIDENCE / "run1-tool-errors.json").write_text(
+        json.dumps(frozen, indent=2, ensure_ascii=False) + "\n"
+    )
+    print(json.dumps({"non_success": len(frozen["non_success"])}))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     sub = parser.add_subparsers(dest="command", required=True)
@@ -714,6 +760,10 @@ def main(argv: list[str] | None = None) -> int:
     live.add_argument("--settle", type=float, default=FAULT_SETTLE_SECONDS)
     live.add_argument("--balance-recheck", type=float, default=300)
     live.set_defaults(func=cmd_live)
+    files = sub.add_parser("upstream-files")
+    files.add_argument("--check", action="store_true")
+    files.set_defaults(func=cmd_upstream_files)
+    sub.add_parser("run1-errors").set_defaults(func=cmd_run1_errors)
     args = parser.parse_args(argv)
     RAW_ROOT.mkdir(parents=True, exist_ok=True)
     return int(args.func(args))

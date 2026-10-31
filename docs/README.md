@@ -42,6 +42,7 @@ Use explicit Markdown links from the repository entry point. If current sources 
 - [Outer product readiness audit](reviews/outer-product-readiness-2026-09-07.md): settled decisions versus remaining delivery, success and milestone definitions before detailed implementation planning.
 - [Investigation design basis](research/investigation-design-basis-2026-09-06.md): cross-project fixed-source mechanisms, our trade-offs and validation obligations. [OpenSRE source trace](research/opensre-investigation-source-2026-09-06.md) supplies the detailed current entry path.
 - [Initial evaluation coverage](testing/initial-investigation-coverage.md): test symptoms and counterexamples only; never runtime product categories.
+- [F14 upstream mapping](testing/f14-upstream-mapping.md): every active feature step mapped to HolmesGPT `a0009195` as reuse, configuration, confirmed defect or required extension; the authoritative table is `evidence/f14-upstream-mapping/mapping.json`.
 - [Version-plan adversarial review](reviews/version-plan-adversarial-review-2026-09-06.md): independent review and disposition of the withdrawn conversational version proposal; not a new implementation plan.
 - [Upstream-led plan](research/upstream-led-project-plan-2026-09-06.md): pinned source observations and concrete issue candidates; not runtime proof.
 - [Secondary comparisons](research/upstream-secondary-benchmarks-2026-09-06.md): OpenSRE/kagent/K8sGPT references.

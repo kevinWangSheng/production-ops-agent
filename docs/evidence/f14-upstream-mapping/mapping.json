@@ -1,0 +1,1909 @@
+{
+  "schema": "opspilot.f14.upstream-mapping.v1",
+  "upstream": {
+    "repository": "https://github.com/HolmesGPT/holmesgpt",
+    "commit": "a0009195468ebc55a7dff7d602b61feabe3cda1b",
+    "tree": "e94a57b361a00cb2e793cf30d60fe2f4588e26e9"
+  },
+  "opspilot_commit": "659bcd9c1d24b894c08784e7f1e9548ca35ff374",
+  "contract": "docs/tasks/2026-10-27-m3-f14-upstream-contract.md 第 2 步合同（r2）",
+  "rows": [
+    {
+      "feature": "F1",
+      "step": 1,
+      "mechanism": "场景与结果合同（IncidentScenario -> IncidentOutcome、评测器定义）",
+      "class": "required_extension",
+      "opspilot_state": "implemented",
+      "opspilot_choice": "own_impl",
+      "requirement_ref": [
+        "feature_list.json F1 steps[0]",
+        "C3 §11 Eval",
+        "PRODUCT-CONSTRAINTS.md Product workflow"
+      ],
+      "upstream_evidence": [
+        "tests/llm/utils/classifiers.py:L150-L173",
+        "holmes/core/models.py:L362-L368"
+      ],
+      "opspilot_evidence": [
+        "opspilot/evaluation/model.py::ScenarioSpec",
+        "opspilot/evaluation/model.py::Answer",
+        "opspilot/evaluation/gate.py::GATE_CHECKS"
+      ],
+      "runtime_evidence": [],
+      "note": "不够：上游用例只有问题与 expected_output，输出是自由文本 analysis，由 judge 判要素是否实质出现；没有可观察的结果合同（终态、证据、权限、人工交互）。",
+      "deviation_basis": "docs/research/upstream-design-audit-2026-10-22.md 五「用例与抗幻觉」：无差距（OpsPilot 更强）"
+    },
+    {
+      "feature": "F1",
+      "step": 2,
+      "mechanism": "场景答案与场景分文件、确定性 signature",
+      "class": "required_extension",
+      "opspilot_state": "implemented",
+      "opspilot_choice": "own_impl",
+      "requirement_ref": [
+        "feature_list.json F1 steps[1]",
+        "C3 §11 Eval"
+      ],
+      "upstream_evidence": [
+        ".claude/skills/create-eval/references/anti-hallucination.md:L9-L41"
+      ],
+      "opspilot_evidence": [
+        "opspilot/evaluation/model.py::SignatureRule",
+        "evals/scenarios/eval-payment-failure-1/answer.json"
+      ],
+      "runtime_evidence": [],
+      "note": "不够：上游靠唯一随机标识与中性命名防作弊（H5），答案仍写在同一 test_case.yaml；OpsPilot 场景与答案分文件，并用 trace signature 确定性核对注入是否生效。",
+      "deviation_basis": "docs/research/upstream-design-audit-2026-10-22.md 五「用例与抗幻觉」：无差距（OpsPilot 更强）"
+    },
+    {
+      "feature": "F1",
+      "step": 2,
+      "mechanism": "六类场景矩阵（嘈杂、缺遥测、重复事件、供应商失败、提示注入、错误目标）",
+      "class": "required_extension",
+      "opspilot_state": "partial",
+      "opspilot_choice": "own_impl",
+      "requirement_ref": [
+        "feature_list.json F1 steps[1]",
+        "C3 §11 Eval",
+        "docs/tasks/2026-10-27-m3-closure.md 场景集 v2"
+      ],
+      "upstream_evidence": [
+        "pyproject.toml:L176-L178",
+        "tests/llm/fixtures/test_ask_holmes/285_command_injection_kubernetes_kind/test_case.yaml:L1-L12"
+      ],
+      "opspilot_evidence": [
+        "evals/scenarios/eval-normal-1/scenario.json",
+        "opspilot/evaluation/model.py::InjectedFault"
+      ],
+      "runtime_evidence": [],
+      "note": "不够：上游按数据源与难度（easy/medium/hard）打标签，有命令注入等安全回归用例，但没有按失败形态组织的矩阵。当前 6 个场景只覆盖故障与正常两类，v2 六类在收口线实施。"
+    },
+    {
+      "feature": "F1",
+      "step": 2,
+      "mechanism": "照上游防作弊做法出 v2 题（唯一标识、不在问题里泄露指标名）",
+      "class": "reuse",
+      "opspilot_state": "planned",
+      "opspilot_choice": "ported",
+      "requirement_ref": [
+        "feature_list.json F1 steps[1]",
+        "docs/tasks/2026-10-27-m3-closure.md 场景集 v2"
+      ],
+      "upstream_evidence": [
+        ".claude/skills/create-eval/references/anti-hallucination.md:L9-L41"
+      ],
+      "opspilot_evidence": [
+        "docs/tasks/2026-10-27-m3-closure.md"
+      ],
+      "runtime_evidence": [],
+      "note": "建议：收口线出题时直接套用 H5 的四种模式。docs/research/eval-methodology-sources-2026-10-27.md H5。"
+    },
+    {
+      "feature": "F1",
+      "step": 3,
+      "mechanism": "每轮版本清单（代码、上游、模型、提示词、工具、权限、评测器等维度）",
+      "class": "required_extension",
+      "opspilot_state": "partial",
+      "opspilot_choice": "own_impl",
+      "requirement_ref": [
+        "feature_list.json F1 steps[2]",
+        "C3 §11 Eval"
+      ],
+      "upstream_evidence": [
+        "tests/llm/utils/braintrust.py:L92-L99"
+      ],
+      "opspilot_evidence": [
+        "opspilot/evaluation/rounds.py::REQUIRED_DIMENSIONS",
+        "opspilot/evaluation/rounds.py::manifest_hash"
+      ],
+      "runtime_evidence": [],
+      "note": "不够：上游 Braintrust 元数据只记 model、eval_id、test_id。OpsPilot 清单 28 维，缺 runbook、dataset 两维（收口线补）。"
+    },
+    {
+      "feature": "F1",
+      "step": 4,
+      "mechanism": "上游基线运行：固定提交、隔离容器、接同一只读代理",
+      "class": "configuration",
+      "opspilot_state": "partial",
+      "opspilot_choice": "upstream_config",
+      "requirement_ref": [
+        "feature_list.json F1 steps[3]",
+        "docs/tasks/2026-10-27-m3-f14-upstream-contract.md U1-U5"
+      ],
+      "upstream_evidence": [
+        "holmes/main.py:L371-L374",
+        "holmes/common/env_vars.py:L29-L31",
+        "holmes/plugins/toolsets/bash/bash_toolset.py:L410-L421"
+      ],
+      "opspilot_evidence": [
+        "scripts/holmes_baseline/config.py::holmes_config",
+        "scripts/holmes_baseline/container.py::run_args",
+        "scripts/holmes_baseline/run.py::cmd_live"
+      ],
+      "runtime_evidence": [
+        "docs/evidence/f14-holmes-baseline/pin.json",
+        "docs/evidence/f14-holmes-baseline/summary.json",
+        "docs/evidence/f14-holmes-baseline/isolation-probe.json"
+      ],
+      "note": "CLI 默认 enable_all_toolsets_possible 且默认启用 kubernetes/robusta/internet、bash enabled=True；基线配置逐个关闭，只开 prometheus/metrics 与 GET-only jaeger。同条件对比（F14 第 4 步）未做。"
+    },
+    {
+      "feature": "F1",
+      "step": 4,
+      "mechanism": "模型与预算对齐（thinking、effort、max_tokens 65536、单请求 360s、max_steps 100）",
+      "class": "configuration",
+      "opspilot_state": "partial",
+      "opspilot_choice": "upstream_config",
+      "requirement_ref": [
+        "feature_list.json F1 steps[3]",
+        "docs/tasks/2026-10-27-m3-f14-upstream-contract.md U6"
+      ],
+      "upstream_evidence": [
+        "holmes/core/llm.py:L740-L756",
+        "holmes/core/llm.py:L861-L875",
+        "holmes/config.py:L113-L113"
+      ],
+      "opspilot_evidence": [
+        "scripts/holmes_baseline/config.py::MODEL_ENV",
+        "opspilot/investigation/limits.py::RunLimits"
+      ],
+      "runtime_evidence": [
+        "docs/evidence/f14-holmes-baseline/request-check.json",
+        "docs/evidence/f14-holmes-baseline/summary.json"
+      ],
+      "note": "request-check.json 证实请求体顶层带 thinking、reasoning_effort=high、max_tokens=65536。口径差：Holmes 的 max_steps 不计压缩与重试，OpsPilot 的 100 次模型请求计入。"
+    },
+    {
+      "feature": "F1",
+      "step": 4,
+      "mechanism": "MAX_OUTPUT_TOKEN_RESERVATION 只定义不使用",
+      "class": "configuration",
+      "opspilot_state": "partial",
+      "opspilot_choice": "upstream_config",
+      "requirement_ref": [
+        "feature_list.json F1 steps[3]",
+        "docs/tasks/2026-10-27-m3-f14-upstream-contract.md U6"
+      ],
+      "upstream_evidence": [
+        "holmes/common/env_vars.py:L118-L120",
+        "holmes/core/llm.py:L861-L875"
+      ],
+      "opspilot_evidence": [
+        "scripts/holmes_baseline/config.py::MODEL_ENV"
+      ],
+      "runtime_evidence": [
+        "docs/evidence/f14-holmes-baseline/request-check.json"
+      ],
+      "note": "基线改用 OVERRIDE_MAX_OUTPUT_TOKEN（llm.py 只读这个变量），request-check.json 证实生效。全树 git grep MAX_OUTPUT_TOKEN_RESERVATION 只有 env_vars.py 定义处。现有 run1/request-check 都没有只设 MAX_OUTPUT_TOKEN_RESERVATION 的运行，所以按 Q2 只算候选，复现留给第 3 步。",
+      "candidate_defect": {
+        "step3_ref": "docs/evidence/f14-upstream-issues/max-output-token-reservation/",
+        "claim": "设置 MAX_OUTPUT_TOKEN_RESERVATION 不改变请求的 max_tokens"
+      },
+      "absence_checks": [
+        {
+          "kind": "grep",
+          "pattern": "MAX_OUTPUT_TOKEN_RESERVATION",
+          "pathspec": [
+            "holmes/core"
+          ],
+          "command": "git -C <checkout> grep -n -I -i -E 'MAX_OUTPUT_TOKEN_RESERVATION' -- holmes/core",
+          "hits": 0
+        }
+      ]
+    },
+    {
+      "feature": "F1",
+      "step": 4,
+      "mechanism": "重复运行（上游经验值 10 次；OpsPilot 计 pass^k，全部已开始尝试进分母）",
+      "class": "reuse",
+      "opspilot_state": "planned",
+      "opspilot_choice": "ported",
+      "requirement_ref": [
+        "feature_list.json F1 steps[3]",
+        "docs/tasks/2026-10-27-m3-closure.md 同条件基线"
+      ],
+      "upstream_evidence": [
+        "docs/development/evaluations/running-evals.md:L175-L175"
+      ],
+      "opspilot_evidence": [
+        "docs/tasks/2026-10-27-m3-closure.md"
+      ],
+      "runtime_evidence": [],
+      "note": "建议：重复次数沿用上游做法，k 在开发校准后冻结。docs/research/eval-methodology-sources-2026-10-27.md H2。"
+    },
+    {
+      "feature": "F1",
+      "step": 4,
+      "mechanism": "保留集（只在候选评测时打开一次）",
+      "class": "required_extension",
+      "opspilot_state": "planned",
+      "opspilot_choice": "own_impl",
+      "requirement_ref": [
+        "feature_list.json F1 steps[3]",
+        "C3 §11 Eval",
+        "docs/tasks/2026-10-27-m3-closure.md 保留集"
+      ],
+      "upstream_evidence": [
+        "docs/development/evaluations/running-evals.md:L11-L16"
+      ],
+      "opspilot_evidence": [
+        "docs/tasks/2026-10-27-m3-closure.md"
+      ],
+      "runtime_evidence": [],
+      "note": "没有：上游只分 easy/medium/hard 档，回归档要求一直通过，没有保留集。",
+      "absence_checks": [
+        {
+          "kind": "grep",
+          "pattern": "held-?out|hold-out|holdout",
+          "pathspec": [],
+          "command": "git -C <checkout> grep -n -I -i -E 'held-?out|hold-out|holdout'",
+          "hits": 0
+        }
+      ]
+    },
+    {
+      "feature": "F1",
+      "step": 5,
+      "mechanism": "确定性门拥有证据身份、权限边界、任务状态与恢复观察",
+      "class": "required_extension",
+      "opspilot_state": "implemented",
+      "opspilot_choice": "own_impl",
+      "requirement_ref": [
+        "feature_list.json F1 steps[4]",
+        "C3 §11 Eval"
+      ],
+      "upstream_evidence": [
+        "tests/llm/utils/classifiers.py:L150-L173"
+      ],
+      "opspilot_evidence": [
+        "opspilot/evaluation/gate.py::GATE_CHECKS",
+        "opspilot/evaluation/gate.py::fact_binding_reasons"
+      ],
+      "runtime_evidence": [],
+      "note": "不够：上游只有 judge 二值判分，没有确定性门。",
+      "deviation_basis": "docs/research/upstream-design-audit-2026-10-22.md 五「打分」：确定性 gate AND judge，AND gate 成立"
+    },
+    {
+      "feature": "F1",
+      "step": 5,
+      "mechanism": "judge 事前校准与人工复核",
+      "class": "required_extension",
+      "opspilot_state": "partial",
+      "opspilot_choice": "own_impl",
+      "requirement_ref": [
+        "feature_list.json F1 steps[4]",
+        "C3 §11 Eval"
+      ],
+      "upstream_evidence": [
+        ".claude/skills/review-eval-run/SKILL.md:L9-L40",
+        "docs/development/evaluations/reporting.md:L83-L85"
+      ],
+      "opspilot_evidence": [
+        "opspilot/evaluation/calibration_flow.py::BlindLabel",
+        "opspilot/evaluation/rounds.py::calibrate"
+      ],
+      "runtime_evidence": [],
+      "note": "没有：上游只有事后失败分诊与固定 CLASSIFIER_MODEL，未见事前校准（H3、H4）。judge 重校准仍在进行。",
+      "deviation_basis": "docs/research/upstream-design-audit-2026-10-22.md 五「judge 可靠性」：先校准再冻结（C3）成立",
+      "absence_checks": [
+        {
+          "kind": "grep",
+          "pattern": "calibrat",
+          "pathspec": [
+            "holmes",
+            "holmes_operator",
+            "server.py"
+          ],
+          "command": "git -C <checkout> grep -n -I -i -E 'calibrat' -- holmes holmes_operator server.py",
+          "hits": 0
+        }
+      ]
+    },
+    {
+      "feature": "F1",
+      "step": 5,
+      "mechanism": "事后失败三类分诊（eval/harness 缺陷、judge 误判、真实失败）",
+      "class": "reuse",
+      "opspilot_state": "planned",
+      "opspilot_choice": "ported",
+      "requirement_ref": [
+        "feature_list.json F1 steps[4]",
+        "docs/tasks/2026-10-27-m3-closure.md 同条件基线"
+      ],
+      "upstream_evidence": [
+        ".claude/skills/review-eval-run/SKILL.md:L9-L40"
+      ],
+      "opspilot_evidence": [
+        "docs/tasks/2026-10-27-m3-closure.md"
+      ],
+      "runtime_evidence": [],
+      "note": "建议：收口线按上游分诊口径做归因视图，不替代门槛。docs/research/eval-methodology-sources-2026-10-27.md H4。"
+    },
+    {
+      "feature": "F1",
+      "step": 5,
+      "mechanism": "场景答案对调查者不可见",
+      "class": "required_extension",
+      "opspilot_state": "implemented",
+      "opspilot_choice": "own_impl",
+      "requirement_ref": [
+        "feature_list.json F1 steps[4]",
+        "C3 §11 Eval"
+      ],
+      "upstream_evidence": [
+        "tests/llm/utils/classifiers.py:L150-L173"
+      ],
+      "opspilot_evidence": [
+        "opspilot/evaluation/model.py::Answer",
+        "opspilot/evaluation/runs.py::judge_request"
+      ],
+      "runtime_evidence": [],
+      "note": "不够：上游 expected_output 只交给 judge，但与问题同在一个 test_case.yaml，靠约定不读；OpsPilot 答案单独成文件，调查输入中没有答案。",
+      "deviation_basis": "docs/research/upstream-design-audit-2026-10-22.md 五「用例与抗幻觉」：无差距（OpsPilot 更强）"
+    },
+    {
+      "feature": "F2",
+      "step": 1,
+      "mechanism": "同一告警重复投递去重（fingerprint + startsAt）",
+      "class": "reuse",
+      "opspilot_state": "implemented",
+      "opspilot_choice": "own_impl",
+      "requirement_ref": [
+        "feature_list.json F2 steps[0]",
+        "C3 §6 事件接收、去重与持久调度"
+      ],
+      "upstream_evidence": [
+        "holmes/plugins/sources/prometheus/models.py:L18-L23",
+        "holmes/plugins/sources/prometheus/plugin.py:L21-L26"
+      ],
+      "opspilot_evidence": [
+        "opspilot/alertmanager.py::Alert.delivery_key",
+        "opspilot/persistence/alerts.py::_AlertOps"
+      ],
+      "runtime_evidence": [],
+      "note": "上游 issue id 与 OpsPilot 投递键用同一组身份（Alertmanager fingerprint 与 startsAt）。OpsPilot 自写并持久化。",
+      "deviation_basis": "R9：上游够用而自写；OpsPilot 需要在 PG 里幂等登记，上游 source 插件只在内存拉取"
+    },
+    {
+      "feature": "F2",
+      "step": 1,
+      "mechanism": "关联策略：相关信号与发布事件并入同一事故，并发事故分开",
+      "class": "required_extension",
+      "opspilot_state": "implemented",
+      "opspilot_choice": "own_impl",
+      "requirement_ref": [
+        "feature_list.json F2 steps[0]",
+        "C3 §6 事件接收、去重与持久调度"
+      ],
+      "upstream_evidence": [
+        "holmes/plugins/sources/prometheus/plugin.py:L21-L26"
+      ],
+      "opspilot_evidence": [
+        "opspilot/persistence/correlation.py::choose_correlation",
+        "opspilot/persistence/correlation.py::resolve_merged"
+      ],
+      "runtime_evidence": [],
+      "note": "没有：上游每条告警各自成为一个 issue 调查，产品代码里没有关联或合并逻辑。",
+      "absence_checks": [
+        {
+          "kind": "grep",
+          "pattern": "correlat",
+          "pathspec": [
+            "holmes/core",
+            "holmes/plugins/sources",
+            "holmes_operator",
+            "server.py"
+          ],
+          "command": "git -C <checkout> grep -n -I -i -E 'correlat' -- holmes/core holmes/plugins/sources holmes_operator server.py",
+          "hits": 0
+        }
+      ]
+    },
+    {
+      "feature": "F2",
+      "step": 2,
+      "mechanism": "worker 终止后同一事故恢复，保留证据、重复工作有界",
+      "class": "required_extension",
+      "opspilot_state": "implemented",
+      "opspilot_choice": "own_impl",
+      "requirement_ref": [
+        "feature_list.json F2 steps[1]",
+        "C3 §7 故障恢复与提交一致性"
+      ],
+      "upstream_evidence": [
+        "holmes/core/conversations_worker/runtime.py:L236-L260",
+        "holmes/core/conversations_worker/models.py:L9-L21"
+      ],
+      "opspilot_evidence": [
+        "opspilot/investigation/runner.py::InvestigationRunner.resume",
+        "opspilot/recovery.py::rebuild_plan",
+        "opspilot/persistence/steps.py::_StepOps.commit_tool"
+      ],
+      "runtime_evidence": [],
+      "note": "不够：上游会话 worker 退出时把在途会话标为 timeout（SIGKILL 时靠 pg_cron 清扫），不续跑；且依赖 Robusta SaaS 的 SupabaseDal。",
+      "deviation_basis": "docs/research/upstream-design-audit-2026-10-22.md 二「循环骨架」：每轮先提交 PG，理由成立（持久 Run）"
+    },
+    {
+      "feature": "F2",
+      "step": 3,
+      "mechanism": "查询超时上限",
+      "class": "configuration",
+      "opspilot_state": "implemented",
+      "opspilot_choice": "own_impl",
+      "requirement_ref": [
+        "feature_list.json F2 steps[2]",
+        "C3 §8 工具网关"
+      ],
+      "upstream_evidence": [
+        "holmes/plugins/toolsets/prometheus/prometheus.py:L55-L56",
+        "holmes/plugins/toolsets/prometheus/prometheus.py:L143-L152"
+      ],
+      "opspilot_evidence": [
+        "opspilot/tools/registry.py::MAX_REQUEST_TIMEOUT_SECONDS",
+        "opspilot/tools/http_deadline.py::DeadlineHandlers",
+        "scripts/holmes_baseline/config.py::holmes_config"
+      ],
+      "runtime_evidence": [
+        "docs/evidence/f14-holmes-baseline/summary.json"
+      ],
+      "note": "上游 Prometheus 查询超时可配（默认 20s、上限 180s）；基线配置两者都设 30s，与 OpsPilot 单工具 30s 一致，run1 在此配置下运行。",
+      "deviation_basis": "R9：OpsPilot 工具网关统一强制墙钟期限，不依赖各工具集自己的超时"
+    },
+    {
+      "feature": "F2",
+      "step": 3,
+      "mechanism": "卡住查询后保留部分证据、清理子工作、显式重试或交接状态",
+      "class": "required_extension",
+      "opspilot_state": "implemented",
+      "opspilot_choice": "own_impl",
+      "requirement_ref": [
+        "feature_list.json F2 steps[2]",
+        "C3 §7 故障恢复与提交一致性",
+        "PRODUCT-CONSTRAINTS.md Runtime and human control requirements"
+      ],
+      "upstream_evidence": [
+        "holmes/core/tool_calling_llm.py:L1231-L1238",
+        "holmes/plugins/toolsets/prometheus/prometheus.py:L1984-L2005"
+      ],
+      "opspilot_evidence": [
+        "opspilot/persistence/steps.py::_StepOps.commit_tool",
+        "opspilot/persistence/runs.py::_RunOps.hand_off",
+        "opspilot/tools/executor.py::TransportTimeout"
+      ],
+      "runtime_evidence": [],
+      "note": "不够：上游超时只变成一条 ERROR 工具结果留在内存对话里，没有持久部分证据或交接状态。"
+    },
+    {
+      "feature": "F2",
+      "step": 4,
+      "mechanism": "告警风暴的优先级与背压（积压停放）",
+      "class": "required_extension",
+      "opspilot_state": "implemented",
+      "opspilot_choice": "own_impl",
+      "requirement_ref": [
+        "feature_list.json F2 steps[3]",
+        "C3 §6 事件接收、去重与持久调度"
+      ],
+      "upstream_evidence": [
+        "holmes/core/conversations_worker/executor.py:L1-L9",
+        "holmes/core/conversations_worker/executor.py:L162-L170"
+      ],
+      "opspilot_evidence": [
+        "opspilot/alertmanager.py::priority_of",
+        "opspilot/investigation/progress.py::park_backlog"
+      ],
+      "runtime_evidence": [],
+      "note": "不够：上游按执行器名分槽（manual/auto），空闲槽满时剩余行留在 pending，没有优先级（会话 worker 里 priority 唯一一处命中是 processor.py:159 的元数据注释）。"
+    },
+    {
+      "feature": "F2",
+      "step": 4,
+      "mechanism": "并发上限与每事故预算",
+      "class": "required_extension",
+      "opspilot_state": "implemented",
+      "opspilot_choice": "own_impl",
+      "requirement_ref": [
+        "feature_list.json F2 steps[3]",
+        "C3 §13 运行预算与验收"
+      ],
+      "upstream_evidence": [
+        "holmes/core/conversations_worker/sizing.py:L34-L60",
+        "holmes/config.py:L113-L113"
+      ],
+      "opspilot_evidence": [
+        "opspilot/worker_main.py::worker_capacity",
+        "opspilot/persistence/budgets.py::_BudgetOps.reserve_budget",
+        "opspilot/investigation/limits.py::RunLimits"
+      ],
+      "runtime_evidence": [],
+      "note": "不够：上游有执行器并发数和每次调用 max_steps，没有跨 Run 的每事故预算。"
+    },
+    {
+      "feature": "F2",
+      "step": 5,
+      "mechanism": "取消或暂停后，迟到完成不能覆盖更新的人工决定",
+      "class": "required_extension",
+      "opspilot_state": "implemented",
+      "opspilot_choice": "own_impl",
+      "requirement_ref": [
+        "feature_list.json F2 steps[4]",
+        "C3 §4 人工控制与结果所有权"
+      ],
+      "upstream_evidence": [
+        "holmes/core/conversations_worker/processor.py:L66-L79",
+        "holmes/core/conversations_worker/models.py:L183-L184"
+      ],
+      "opspilot_evidence": [
+        "opspilot/domain/control.py::apply_control",
+        "opspilot/persistence/runs.py::_RunOps.lease_current"
+      ],
+      "runtime_evidence": [],
+      "note": "不够：上游有 request_sequence 栅栏（stop_conversation 使迟到写入失效），思路相同，但绑定 Robusta SaaS 会话表，没有暂停与人工接管代际。",
+      "deviation_basis": "docs/research/upstream-design-audit-2026-10-22.md 二「模型重试、流式、中断」：租约 fence 与暂停检查，理由成立"
+    },
+    {
+      "feature": "F3",
+      "step": 1,
+      "mechanism": "指标发现工具（get_metric_names、get_label_values）",
+      "class": "reuse",
+      "opspilot_state": "implemented",
+      "opspilot_choice": "ported",
+      "requirement_ref": [
+        "feature_list.json F3 steps[0]",
+        "C3 §8 工具网关",
+        "C3 §5 指令分层与版本"
+      ],
+      "upstream_evidence": [
+        "holmes/plugins/toolsets/prometheus/prometheus.py:L1025-L1030",
+        "holmes/plugins/toolsets/prometheus/prometheus.py:L1145-L1150"
+      ],
+      "opspilot_evidence": [
+        "opspilot/tools/otel_demo.py::METRIC_NAMES_TOOL",
+        "opspilot/tools/otel_demo.py::LABEL_VALUES_TOOL",
+        "opspilot/tools/otel_demo.py::_discovery_registrations"
+      ],
+      "runtime_evidence": [
+        "docs/evidence/f14-holmes-baseline/summary.json"
+      ],
+      "note": "#307 A 照搬工具名与 match 必填、limit 100。run1 中 Holmes 也调用了这两个工具。未移植 get_series、get_metric_metadata、list_prometheus_rules（代理对后两者回 403）。",
+      "deviation_basis": "docs/research/upstream-design-audit-2026-10-22.md 一「指标发现」：该照搬（#307 A），已移植"
+    },
+    {
+      "feature": "F3",
+      "step": 1,
+      "mechanism": "trace 查询（Jaeger）",
+      "class": "configuration",
+      "opspilot_state": "implemented",
+      "opspilot_choice": "own_impl",
+      "requirement_ref": [
+        "feature_list.json F3 steps[0]",
+        "C3 §8 工具网关"
+      ],
+      "upstream_evidence": [
+        "holmes/plugins/toolsets/http/http_toolset.py:L261-L270"
+      ],
+      "opspilot_evidence": [
+        "opspilot/tools/otel_demo.py::TRACES_TOOL",
+        "opspilot/tools/otel_demo.py::project_traces",
+        "scripts/holmes_baseline/config.py::_jaeger"
+      ],
+      "runtime_evidence": [
+        "docs/evidence/f14-holmes-baseline/summary.json",
+        "docs/evidence/f14-holmes-baseline/run1-tool-errors.json"
+      ],
+      "note": "上游没有 Jaeger 工具集（git ls-files 0 条），基线用内置 http 工具集按 host/path 白名单只放 GET。run1 的 6 次 jaeger_request 失败：2 次超 25000 token 上限、3 次模型给的 jq 过滤不匹配、1 次中继断连。",
+      "deviation_basis": "R9：OpsPilot 自写 trace 工具，输出带来源与窗口的结构化投影",
+      "absence_checks": [
+        {
+          "kind": "ls-files",
+          "pattern": "jaeger",
+          "command": "git -C <checkout> ls-files | grep -i -E 'jaeger'",
+          "hits": 0
+        }
+      ]
+    },
+    {
+      "feature": "F3",
+      "step": 1,
+      "mechanism": "每条观察带来源、查询、时间窗、新鲜度、目标与可解析的 evidence_id",
+      "class": "required_extension",
+      "opspilot_state": "implemented",
+      "opspilot_choice": "own_impl",
+      "requirement_ref": [
+        "feature_list.json F3 steps[0]",
+        "PRODUCT-CONSTRAINTS.md Evidence and context requirements",
+        "C3 §8 工具网关"
+      ],
+      "upstream_evidence": [
+        "holmes/core/models.py:L11-L17",
+        "holmes/core/tools.py:L64-L69"
+      ],
+      "opspilot_evidence": [
+        "opspilot/tools/outcomes.py::EvidenceRecord",
+        "opspilot/tools/outcomes.py::ToolOperation",
+        "opspilot/web/evidence.py::DurableEvidenceStore"
+      ],
+      "runtime_evidence": [],
+      "note": "不够：上游 ToolCallResult 只有 tool_call_id、名称、描述与结果，不持久化，没有时间窗与新鲜度字段。"
+    },
+    {
+      "feature": "F3",
+      "step": 1,
+      "mechanism": "超限结果保留为持久证据并按 evidence_id 回读",
+      "class": "reuse",
+      "opspilot_state": "implemented",
+      "opspilot_choice": "ported",
+      "requirement_ref": [
+        "feature_list.json F3 steps[0]",
+        "C3 §5 上下文"
+      ],
+      "upstream_evidence": [
+        "holmes/core/tools_utils/tool_context_window_limiter.py:L69-L139",
+        "holmes/core/tool_calling_llm.py:L1083-L1089"
+      ],
+      "opspilot_evidence": [
+        "opspilot/tools/evidence_read.py::EvidenceReadTransport",
+        "opspilot/tools/evidence_read.py::evidence_registration"
+      ],
+      "runtime_evidence": [
+        "docs/evidence/f14-holmes-baseline/run1-tool-errors.json"
+      ],
+      "note": "#308 移植「落盘给指针再回读」，改为持久证据加只读工具。上游只在 bash 可用时落盘；基线关了 bash，run1 两次超限结果被直接丢弃（run1-tool-errors.json index 12、13）。",
+      "deviation_basis": "docs/research/upstream-design-audit-2026-10-22.md 三「单结果超限」：反对截断成立，反对落盘加指针不成立"
+    },
+    {
+      "feature": "F3",
+      "step": 1,
+      "mechanism": "超限结果的基数摘要与 topk 建议",
+      "class": "reuse",
+      "opspilot_state": "implemented",
+      "opspilot_choice": "ported",
+      "requirement_ref": [
+        "feature_list.json F3 steps[0]",
+        "C3 §5 上下文"
+      ],
+      "upstream_evidence": [
+        "holmes/plugins/toolsets/prometheus/prometheus.py:L767-L851"
+      ],
+      "opspilot_evidence": [
+        "opspilot/tools/otel_demo.py::overflow_summary",
+        "opspilot/tools/otel_demo.py::topk_suggestion"
+      ],
+      "runtime_evidence": [],
+      "note": "#308 移植上游 create_data_summary_for_large_result 的序列数、标签基数与 topk 提示。",
+      "deviation_basis": "docs/research/upstream-design-audit-2026-10-22.md 一「结果过大」：无基数摘要，理由已不成立"
+    },
+    {
+      "feature": "F3",
+      "step": 1,
+      "mechanism": "同轮工具有限并行与压缩后重置重复调用检查",
+      "class": "reuse",
+      "opspilot_state": "implemented",
+      "opspilot_choice": "ported",
+      "requirement_ref": [
+        "feature_list.json F3 steps[0]",
+        "C3 §5 调查循环"
+      ],
+      "upstream_evidence": [
+        "holmes/core/tool_calling_llm.py:L1469-L1469",
+        "holmes/core/tool_calling_llm.py:L1278-L1289"
+      ],
+      "opspilot_evidence": [
+        "opspilot/investigation/loop.py::InvestigationLoop._run_tools_parallel",
+        "opspilot/investigation/loop.py::InvestigationLoop._compact",
+        "opspilot/worker_main.py::_tool_parallelism"
+      ],
+      "runtime_evidence": [],
+      "note": "#309 照搬：上游 16 线程，OpsPilot 默认 2、上限 16；压缩后清空 seen_tool_calls。",
+      "deviation_basis": "docs/research/upstream-design-audit-2026-10-22.md 二「工具并行」「重复调用防护」：该照搬，已移植"
+    },
+    {
+      "feature": "F3",
+      "step": 2,
+      "mechanism": "报告区分事实、假设、建议、反证与已排除假设（ReportV2 + 引用校验）",
+      "class": "required_extension",
+      "opspilot_state": "implemented",
+      "opspilot_choice": "own_impl",
+      "requirement_ref": [
+        "feature_list.json F3 steps[1]",
+        "PRODUCT-CONSTRAINTS.md Evidence and context requirements",
+        "C3 §5 调查循环"
+      ],
+      "upstream_evidence": [
+        "holmes/core/models.py:L362-L368",
+        "holmes/plugins/prompts/generic_ask.jinja2:L54-L54"
+      ],
+      "opspilot_evidence": [
+        "opspilot/investigation/reports.py::ReportV2",
+        "opspilot/investigation/reports.py::CLAIM_KINDS",
+        "opspilot/investigation/reports.py::unsupported_citations"
+      ],
+      "runtime_evidence": [],
+      "note": "不够：上游输出是自由文本 analysis，只靠提示词要求区分事实与假设，没有代码校验。",
+      "deviation_basis": "docs/research/upstream-design-audit-2026-10-22.md 五「报告形态」「证据纪律」：理由成立"
+    },
+    {
+      "feature": "F3",
+      "step": 3,
+      "mechanism": "缺失与失败的数据源对模型可见",
+      "class": "reuse",
+      "opspilot_state": "implemented",
+      "opspilot_choice": "ported",
+      "requirement_ref": [
+        "feature_list.json F3 steps[2]",
+        "PRODUCT-CONSTRAINTS.md Evidence and context requirements"
+      ],
+      "upstream_evidence": [
+        "holmes/plugins/prompts/_toolsets_instructions.jinja2:L25-L34"
+      ],
+      "opspilot_evidence": [
+        "opspilot/tools/otel_demo.py::NOT_INTEGRATED",
+        "opspilot/tools/otel_demo.py::_data_sources",
+        "opspilot/investigation/reports.py::DATA_SOURCES_INSTRUCTION"
+      ],
+      "runtime_evidence": [],
+      "note": "#311 U5 移植：上游列出 disabled/FAILED 工具集，OpsPilot 按 profile 固定列出未接入的集成。",
+      "deviation_basis": "docs/research/upstream-design-audit-2026-10-22.md 一「缺失数据源可见」：该照搬（部分），已移植"
+    },
+    {
+      "feature": "F3",
+      "step": 3,
+      "mechanism": "报告写明缺口，不把未完成的调查写成有支撑的结论",
+      "class": "required_extension",
+      "opspilot_state": "implemented",
+      "opspilot_choice": "own_impl",
+      "requirement_ref": [
+        "feature_list.json F3 steps[2]",
+        "PRODUCT-CONSTRAINTS.md Evidence and context requirements"
+      ],
+      "upstream_evidence": [
+        "holmes/plugins/prompts/generic_ask.jinja2:L54-L54",
+        "holmes/plugins/prompts/_toolsets_instructions.jinja2:L36-L36"
+      ],
+      "opspilot_evidence": [
+        "opspilot/investigation/coverage.py::run_coverage",
+        "opspilot/investigation/reports.py::run_coverage_message"
+      ],
+      "runtime_evidence": [],
+      "note": "不够：上游只在提示词里要求说明无法访问的系统与对不确定处加限定词，没有逐数据源的覆盖记录。"
+    },
+    {
+      "feature": "F3",
+      "step": 4,
+      "mechanism": "查询错误有界回传给模型",
+      "class": "reuse",
+      "opspilot_state": "implemented",
+      "opspilot_choice": "ported",
+      "requirement_ref": [
+        "feature_list.json F3 steps[3]",
+        "C3 §8 工具网关"
+      ],
+      "upstream_evidence": [
+        "holmes/plugins/toolsets/prometheus/prometheus.py:L1962-L1976"
+      ],
+      "opspilot_evidence": [
+        "opspilot/tools/otel_demo.py::_source_error_response",
+        "opspilot/tools/executor.py::MAX_SOURCE_ERROR_CHARS"
+      ],
+      "runtime_evidence": [],
+      "note": "#311 照搬 400/429 原文回传，OpsPilot 加长度上限。",
+      "deviation_basis": "docs/research/upstream-design-audit-2026-10-22.md 一「源错误回传」：理由已不成立，已改"
+    },
+    {
+      "feature": "F3",
+      "step": 4,
+      "mechanism": "区分输入错误、连接失败、超时",
+      "class": "required_extension",
+      "opspilot_state": "implemented",
+      "opspilot_choice": "own_impl",
+      "requirement_ref": [
+        "feature_list.json F3 steps[3]",
+        "C3 §8 工具网关"
+      ],
+      "upstream_evidence": [
+        "holmes/plugins/toolsets/prometheus/prometheus.py:L1984-L2005",
+        "holmes/core/tools.py:L377-L383"
+      ],
+      "opspilot_evidence": [
+        "opspilot/tools/outcomes.py::ERROR_REASONS",
+        "opspilot/tools/executor.py::TransportTimeout",
+        "opspilot/tools/executor.py::TransportUnavailable",
+        "opspilot/tools/registry.py::ParameterSpec"
+      ],
+      "runtime_evidence": [],
+      "note": "不够：上游超时与连接失败都走 RequestException，状态同为 ERROR，只在错误文本里区分；参数只做类型强转。"
+    },
+    {
+      "feature": "F3",
+      "step": 4,
+      "mechanism": "空结果被报成错误（NO_DATA 分支走不到）",
+      "class": "confirmed_defect",
+      "opspilot_state": "implemented",
+      "opspilot_choice": "own_impl",
+      "requirement_ref": [
+        "feature_list.json F3 steps[3]",
+        "C3 §8 工具网关"
+      ],
+      "upstream_evidence": [
+        "holmes/plugins/toolsets/prometheus/prometheus.py:L1887-L1896",
+        "holmes/plugins/toolsets/prometheus/prometheus.py:L1636-L1642",
+        "holmes/plugins/toolsets/prometheus/prometheus.py:L867-L887"
+      ],
+      "opspilot_evidence": [
+        "opspilot/tools/outcomes.py::ToolOutcome",
+        "opspilot/investigation/coverage.py::_NO_DATA"
+      ],
+      "runtime_evidence": [
+        "docs/evidence/f14-holmes-baseline/run1-tool-errors.json",
+        "docs/evidence/f14-holmes-baseline/summary.json"
+      ],
+      "note": "即时与区间查询在 status=success 且无数据时把状态改为 Failed 并写错误文本，create_structured_tool_result 因此返回 ERROR，NO_DATA 分支对这两个工具走不到。run1 index 36 的区间查询（错误率比值）返回 error「The prometheus query returned no result」。OpsPilot 自己的工具单列 no_data，不受影响；只影响第 4 步基线的可比性。"
+    },
+    {
+      "feature": "F3",
+      "step": 5,
+      "mechanism": "调查方法与影响面纪律（追上游依赖、找到根因后继续找、四分组）",
+      "class": "reuse",
+      "opspilot_state": "implemented",
+      "opspilot_choice": "ported",
+      "requirement_ref": [
+        "feature_list.json F3 steps[4]",
+        "C3 §5 指令分层与版本"
+      ],
+      "upstream_evidence": [
+        "holmes/plugins/prompts/generic_ask.jinja2:L46-L58",
+        "holmes/plugins/prompts/generic_ask.jinja2:L60-L69"
+      ],
+      "opspilot_evidence": [
+        "opspilot/instructions/discipline.py::INVESTIGATION_METHOD",
+        "opspilot/instructions/discipline.py::IMPACT_SCOPE",
+        "opspilot/investigation/loop.py::DISCIPLINE_VARIANT"
+      ],
+      "runtime_evidence": [],
+      "note": "#310 U1-a 改写自上游，去掉 K8s 专属句；产品 loop 使用含这两段的 replay-candidate 变体。",
+      "deviation_basis": "docs/research/upstream-design-audit-2026-10-22.md 四「调查方法指导」：该照搬，已移植"
+    },
+    {
+      "feature": "F3",
+      "step": 5,
+      "mechanism": "竞争原因在报告中可核（反证、已排除假设逐条引证据）",
+      "class": "required_extension",
+      "opspilot_state": "implemented",
+      "opspilot_choice": "own_impl",
+      "requirement_ref": [
+        "feature_list.json F3 steps[4]",
+        "PRODUCT-CONSTRAINTS.md Evidence and context requirements"
+      ],
+      "upstream_evidence": [
+        "holmes/plugins/prompts/generic_ask.jinja2:L50-L50"
+      ],
+      "opspilot_evidence": [
+        "opspilot/investigation/reports.py::ClaimV2",
+        "opspilot/evaluation/gate.py::fact_binding_reasons"
+      ],
+      "runtime_evidence": [],
+      "note": "不够：上游提示「列出多个可能原因」，结果仍是自由文本，无法按规则核对竞争原因是否被检验。"
+    },
+    {
+      "feature": "F3",
+      "step": 6,
+      "mechanism": "调查工具面只读（无 shell、无写工具）",
+      "class": "configuration",
+      "opspilot_state": "implemented",
+      "opspilot_choice": "own_impl",
+      "requirement_ref": [
+        "feature_list.json F3 steps[5]",
+        "PRODUCT-CONSTRAINTS.md Explicit exclusions",
+        "C3 §3 运行角色与权限"
+      ],
+      "upstream_evidence": [
+        "holmes/plugins/toolsets/bash/bash_toolset.py:L410-L421",
+        "holmes/common/env_vars.py:L29-L31"
+      ],
+      "opspilot_evidence": [
+        "opspilot/tools/registry.py::READ_ONLY_VERBS",
+        "opspilot/tools/registry.py::FORBIDDEN_VERBS",
+        "scripts/holmes_baseline/config.py::holmes_config"
+      ],
+      "runtime_evidence": [
+        "docs/evidence/f14-holmes-baseline/request-check.json",
+        "docs/evidence/f14-holmes-baseline/pin.json"
+      ],
+      "note": "上游默认开 bash 与 kubernetes 工具集，可逐个关闭；request-check.json 证实基线只暴露 8 个 Prometheus 工具与 jaeger_request。",
+      "deviation_basis": "R9：OpsPilot 注册表在构造期拒绝非只读动词，不依赖配置"
+    },
+    {
+      "feature": "F3",
+      "step": 6,
+      "mechanism": "目标环境不可变更由外部授权保证（只读代理、库角色）",
+      "class": "required_extension",
+      "opspilot_state": "implemented",
+      "opspilot_choice": "own_impl",
+      "requirement_ref": [
+        "feature_list.json F3 steps[5]",
+        "PRODUCT-CONSTRAINTS.md Explicit exclusions",
+        "C3 §3 运行角色与权限"
+      ],
+      "upstream_evidence": [
+        "holmes/plugins/toolsets/bash/bash_toolset.py:L410-L421",
+        "holmes/core/tools.py:L64-L69"
+      ],
+      "opspilot_evidence": [
+        "scripts/kind_lab.py::proxy_nginx_config",
+        "opspilot/deploy/roles.py::ensure_logins"
+      ],
+      "runtime_evidence": [
+        "docs/evidence/f14-holmes-baseline/authz-probe.json"
+      ],
+      "note": "不够：上游靠进程内 allow/deny 前缀与人工批准（APPROVAL_REQUIRED）。同一代理下 holmes 账号对 metadata/rules 与其他写路径得 403（authz-probe.json）。"
+    },
+    {
+      "feature": "F6",
+      "step": 1,
+      "mechanism": "健康画像（部署、流量、错误、延迟、Pod、依赖）与持续观察窗",
+      "class": "required_extension",
+      "opspilot_state": "implemented",
+      "opspilot_choice": "own_impl",
+      "requirement_ref": [
+        "feature_list.json F6 steps[0]",
+        "PRODUCT-CONSTRAINTS.md Recovery observations",
+        "C3 §10 健康规则"
+      ],
+      "upstream_evidence": [
+        "holmes/checks/models.py:L17-L22",
+        "holmes/checks/check_system_prompt.jinja2:L1-L12"
+      ],
+      "opspilot_evidence": [
+        "opspilot/observer/health_profile.py::HealthProfile",
+        "opspilot/domain/observation.py::extends_healthy_window"
+      ],
+      "runtime_evidence": [],
+      "note": "不够：上游健康检查是一次 LLM 判断的 pass/fail/error，没有信号清单与持续窗口。"
+    },
+    {
+      "feature": "F6",
+      "step": 2,
+      "mechanism": "撤掉流量时错误率下降不算恢复（流量门）",
+      "class": "required_extension",
+      "opspilot_state": "implemented",
+      "opspilot_choice": "own_impl",
+      "requirement_ref": [
+        "feature_list.json F6 steps[1]",
+        "PRODUCT-CONSTRAINTS.md Recovery observations"
+      ],
+      "upstream_evidence": [
+        "holmes/checks/check_system_prompt.jinja2:L14-L18"
+      ],
+      "opspilot_evidence": [
+        "opspilot/observer/health_profile.py::TrafficGate"
+      ],
+      "runtime_evidence": [],
+      "note": "不够：上游「未发现问题即 PASS」，错误率低于阈值即通过，没有最低流量条件。"
+    },
+    {
+      "feature": "F6",
+      "step": 3,
+      "mechanism": "缺遥测时给出未知或不确定结果并交接",
+      "class": "required_extension",
+      "opspilot_state": "implemented",
+      "opspilot_choice": "own_impl",
+      "requirement_ref": [
+        "feature_list.json F6 steps[2]",
+        "PRODUCT-CONSTRAINTS.md Recovery observations"
+      ],
+      "upstream_evidence": [
+        "holmes/checks/check_system_prompt.jinja2:L28-L31"
+      ],
+      "opspilot_evidence": [
+        "opspilot/observer/sampler.py::submit_without_readings",
+        "opspilot/observer/sampler.py::PROFILE_UNAVAILABLE",
+        "opspilot/observation/store.py::AUTO_OBSERVATION_HANDED_OFF"
+      ],
+      "runtime_evidence": [],
+      "note": "不够：上游把「缺数据无法评估」判为 FAIL，没有未知态。"
+    },
+    {
+      "feature": "F6",
+      "step": 4,
+      "mechanism": "持续劣化时事故保持或重开，不做部署、回滚或门禁变更",
+      "class": "required_extension",
+      "opspilot_state": "implemented",
+      "opspilot_choice": "own_impl",
+      "requirement_ref": [
+        "feature_list.json F6 steps[3]",
+        "PRODUCT-CONSTRAINTS.md Explicit exclusions",
+        "PRODUCT-CONSTRAINTS.md Recovery observations"
+      ],
+      "upstream_evidence": [
+        "helm/holmes/templates/mcp-servers/kubernetes-remediation/rbac.yaml:L24-L27"
+      ],
+      "opspilot_evidence": [
+        "opspilot/domain/control.py::ControlAction",
+        "opspilot/observation/revocation.py::end_session"
+      ],
+      "runtime_evidence": [],
+      "note": "不够：上游可选的 kubernetes-remediation MCP 授予 patch/update/delete 工作负载权限，方向与本产品相反；没有重开策略。"
+    },
+    {
+      "feature": "F6",
+      "step": 5,
+      "mechanism": "回放存储的观察，独立重建恢复结论依据",
+      "class": "required_extension",
+      "opspilot_state": "implemented",
+      "opspilot_choice": "own_impl",
+      "requirement_ref": [
+        "feature_list.json F6 steps[4]",
+        "PRODUCT-CONSTRAINTS.md Recovery observations",
+        "C3 §10 采样与提交"
+      ],
+      "upstream_evidence": [
+        "holmes/checks/models.py:L57-L78"
+      ],
+      "opspilot_evidence": [
+        "opspilot/observer/replay.py::replay_stored_session",
+        "opspilot/observer/replay.py::SessionReplay"
+      ],
+      "runtime_evidence": [],
+      "note": "不够：上游检查结果只存结论与 rationale 文本，没有逐信号读数可回放。"
+    },
+    {
+      "feature": "F7",
+      "step": 1,
+      "mechanism": "所有入口的目标变更与发布门禁变更由外部授权拒绝",
+      "class": "required_extension",
+      "opspilot_state": "implemented",
+      "opspilot_choice": "own_impl",
+      "requirement_ref": [
+        "feature_list.json F7 steps[0]",
+        "PRODUCT-CONSTRAINTS.md Explicit exclusions",
+        "C3 §3 运行角色与权限"
+      ],
+      "upstream_evidence": [
+        "helm/holmes/templates/mcp-servers/kubernetes-remediation/rbac.yaml:L24-L27",
+        "holmes/core/tools.py:L64-L69"
+      ],
+      "opspilot_evidence": [
+        "opspilot/deploy/roles.py::ensure_logins",
+        "scripts/f7_authz_probe.py",
+        "scripts/kind_lab.py::proxy_nginx_config"
+      ],
+      "runtime_evidence": [
+        "docs/evidence/f14-holmes-baseline/authz-probe.json"
+      ],
+      "note": "不够：上游权限面由部署者的 RBAC 与工具批准决定，且提供写权限的修复组件。"
+    },
+    {
+      "feature": "F7",
+      "step": 1,
+      "mechanism": "基线在同一只读代理下的权限对齐（holmes 账号只对 query/query_range 放行表单 POST）",
+      "class": "configuration",
+      "opspilot_state": "partial",
+      "opspilot_choice": "upstream_config",
+      "requirement_ref": [
+        "feature_list.json F7 steps[0]",
+        "docs/tasks/2026-10-27-m3-f14-upstream-contract.md U1-U2"
+      ],
+      "upstream_evidence": [
+        "holmes/plugins/toolsets/prometheus/prometheus.py:L1623-L1631",
+        "holmes/plugins/toolsets/prometheus/prometheus.py:L1877-L1885",
+        "holmes/plugins/toolsets/http/http_toolset.py:L261-L270"
+      ],
+      "opspilot_evidence": [
+        "scripts/kind_lab.py::proxy_nginx_config",
+        "scripts/holmes_baseline/config.py::holmes_config"
+      ],
+      "runtime_evidence": [
+        "docs/evidence/f14-holmes-baseline/authz-probe.json",
+        "docs/evidence/f14-holmes-baseline/isolation-probe.json",
+        "docs/evidence/f14-holmes-baseline/proxy-log-holmes.txt"
+      ],
+      "note": "上游即时与区间查询用 POST 表单；metadata、rules 保持 403，与 OpsPilot 权限一致。"
+    },
+    {
+      "feature": "F7",
+      "step": 2,
+      "mechanism": "日志、runbook 与告警里的恶意指令不扩大查询范围",
+      "class": "required_extension",
+      "opspilot_state": "implemented",
+      "opspilot_choice": "own_impl",
+      "requirement_ref": [
+        "feature_list.json F7 steps[1]",
+        "PRODUCT-CONSTRAINTS.md Evidence and context requirements",
+        "C3 §5 上下文"
+      ],
+      "upstream_evidence": [
+        "holmes/main.py:L181-L184"
+      ],
+      "opspilot_evidence": [
+        "opspilot/alertmanager.py::alert_context",
+        "opspilot/investigation/context.py::ALERT_CONTEXT_BOUNDARY",
+        "opspilot/investigation/context.py::KNOWLEDGE_BOUNDARY"
+      ],
+      "runtime_evidence": [],
+      "note": "不够：上游 investigate 把 issue.raw 原样拼进用户提示；OpsPilot 脱敏截断后放进带边界的独立消息。",
+      "deviation_basis": "docs/research/upstream-design-audit-2026-10-22.md 四「告警上下文」：理由成立（更严，不回退）",
+      "candidate_defect": {
+        "step3_ref": "docs/evidence/f14-upstream-issues/raw-alert-in-prompt/",
+        "claim": "告警正文中的指令会被当作用户指令执行"
+      }
+    },
+    {
+      "feature": "F7",
+      "step": 3,
+      "mechanism": "凭据不进配置文件（环境变量占位）",
+      "class": "configuration",
+      "opspilot_state": "implemented",
+      "opspilot_choice": "own_impl",
+      "requirement_ref": [
+        "feature_list.json F7 steps[2]",
+        "C3 §12 数据出口"
+      ],
+      "upstream_evidence": [
+        "holmes/utils/header_rendering.py:L83-L90",
+        "holmes/plugins/toolsets/prometheus/prometheus.py:L170-L178"
+      ],
+      "opspilot_evidence": [
+        "opspilot/worker_main.py::_credential",
+        "opspilot/deploy/credentials.py::main",
+        "scripts/holmes_baseline/config.py::holmes_config"
+      ],
+      "runtime_evidence": [
+        "docs/evidence/f14-holmes-baseline/pin.json",
+        "docs/evidence/f14-holmes-baseline/isolation-probe.json"
+      ],
+      "note": "基线代理口令写成 {{ env.HOLMES_PROMETHEUS_AUTHORIZATION }}，配置文件里没有秘密；隔离探测只列变量名。",
+      "deviation_basis": "R9：OpsPilot 从 0600 文件读凭据"
+    },
+    {
+      "feature": "F7",
+      "step": 3,
+      "mechanism": "模型输入、证据导出与 trace 中没有执行凭据",
+      "class": "required_extension",
+      "opspilot_state": "implemented",
+      "opspilot_choice": "own_impl",
+      "requirement_ref": [
+        "feature_list.json F7 steps[2]",
+        "C3 §12 数据出口",
+        "PRODUCT-CONSTRAINTS.md Data flow contract"
+      ],
+      "upstream_evidence": [
+        "holmes/core/tools.py:L308-L315",
+        "holmes/core/otel_tracing.py:L283-L292"
+      ],
+      "opspilot_evidence": [
+        "opspilot/redaction.py::redact_payload",
+        "opspilot/redaction.py::redact_credentials",
+        "opspilot/tracing.py::Tracer"
+      ],
+      "runtime_evidence": [],
+      "note": "不够：上游只遮蔽 request_context 的值，OTel 默认不写消息内容；没有对工具结果与证据导出的凭据脱敏。"
+    },
+    {
+      "feature": "F7",
+      "step": 4,
+      "mechanism": "全局与服务级调查暂停：新查询停止、在途按策略取消",
+      "class": "required_extension",
+      "opspilot_state": "implemented",
+      "opspilot_choice": "own_impl",
+      "requirement_ref": [
+        "feature_list.json F7 steps[3]",
+        "C3 §4 全局与目标级暂停"
+      ],
+      "upstream_evidence": [
+        "holmes/core/tool_calling_llm.py:L1231-L1233"
+      ],
+      "opspilot_evidence": [
+        "opspilot/domain/control.py::SuspensionState",
+        "opspilot/persistence/controls.py::_ControlOps.set_global_suspension",
+        "opspilot/tools/executor.py::ToolControlDenied"
+      ],
+      "runtime_evidence": [],
+      "note": "没有：上游只有单次调用的 cancel_event。",
+      "absence_checks": [
+        {
+          "kind": "grep",
+          "pattern": "suspend",
+          "pathspec": [
+            "holmes",
+            "holmes_operator",
+            "server.py"
+          ],
+          "command": "git -C <checkout> grep -n -I -i -E 'suspend' -- holmes holmes_operator server.py",
+          "hits": 0
+        }
+      ]
+    },
+    {
+      "feature": "F7",
+      "step": 5,
+      "mechanism": "从审计记录重建输入、查询、证据、状态变化、人工更正与复盘",
+      "class": "required_extension",
+      "opspilot_state": "implemented",
+      "opspilot_choice": "own_impl",
+      "requirement_ref": [
+        "feature_list.json F7 steps[4]",
+        "C3 §11 可观测性"
+      ],
+      "upstream_evidence": [
+        "holmes/plugins/toolsets/connectivity_check.py:L38-L42"
+      ],
+      "opspilot_evidence": [
+        "opspilot/acceptance_audit.py::audit_timeline",
+        "opspilot/acceptance_audit.py::AUDIT_CATEGORIES"
+      ],
+      "runtime_evidence": [],
+      "note": "不够：上游只在单个工具里打审计日志前缀，没有可查询的事故审计记录。"
+    },
+    {
+      "feature": "F7",
+      "step": 5,
+      "mechanism": "每目标查询次数与数据量上限",
+      "class": "configuration",
+      "opspilot_state": "implemented",
+      "opspilot_choice": "own_impl",
+      "requirement_ref": [
+        "feature_list.json F7 steps[4]",
+        "C3 §13 运行预算与验收"
+      ],
+      "upstream_evidence": [
+        "holmes/plugins/toolsets/prometheus/prometheus.py:L184-L189",
+        "holmes/plugins/toolsets/prometheus/prometheus.py:L196-L201"
+      ],
+      "opspilot_evidence": [
+        "opspilot/tools/executor.py::MAX_OPERATIONS_PER_RUN",
+        "opspilot/tools/executor.py::QueryScope",
+        "opspilot/tools/registry.py::MAX_RESULT_BYTES"
+      ],
+      "runtime_evidence": [
+        "docs/evidence/f14-holmes-baseline/run1-tool-errors.json"
+      ],
+      "note": "上游有按标签限定查询与按上下文百分比限结果大小的配置，单工具结果另有 25000 token 上限（run1 index 12、13 触发）；没有每目标查询次数上限。",
+      "deviation_basis": "R9：OpsPilot 在工具网关按 Run 计次与计字节"
+    },
+    {
+      "feature": "F8",
+      "step": 1,
+      "mechanism": "trace、指标、token 与成本按事故和版本关联",
+      "class": "required_extension",
+      "opspilot_state": "partial",
+      "opspilot_choice": "own_impl",
+      "requirement_ref": [
+        "feature_list.json F8 steps[0]",
+        "C3 §11 可观测性"
+      ],
+      "upstream_evidence": [
+        "holmes/core/otel_tracing.py:L141-L147",
+        "holmes/core/usage_recorder.py:L1-L10"
+      ],
+      "opspilot_evidence": [
+        "opspilot/tracing.py::Tracer",
+        "opspilot/persistence/budgets.py::_BudgetOps.run_usage",
+        "docs/tasks/2026-10-27-m3-f8-operability-contract.md"
+      ],
+      "runtime_evidence": [],
+      "note": "不够：上游 OTel 属性按 gen_ai 约定记模型与 token，用量写 Robusta SaaS 表，没有事故与版本维度。建议：F8 第 1 步对照表可沿用 gen_ai 属性名。"
+    },
+    {
+      "feature": "F8",
+      "step": 1,
+      "mechanism": "成本计量（LiteLLM 成本表）",
+      "class": "configuration",
+      "opspilot_state": "partial",
+      "opspilot_choice": "own_impl",
+      "requirement_ref": [
+        "feature_list.json F8 steps[0]",
+        "AGENTS.md 费用与真实调用"
+      ],
+      "upstream_evidence": [
+        "holmes/core/llm.py:L69-L80",
+        "holmes/core/llm_usage.py:L93-L93"
+      ],
+      "opspilot_evidence": [
+        "opspilot/persistence/budgets.py::_BudgetOps.run_usage"
+      ],
+      "runtime_evidence": [
+        "docs/evidence/f14-holmes-baseline/summary.json"
+      ],
+      "note": "run1 total_cost 为 0.0：deepseek-flash 不在 LiteLLM 成本表，出口代理还拦下了拉取成本表的请求；上游文档说明可在 modelList 上配价格。OpsPilot 以供应商余额差为准。"
+    },
+    {
+      "feature": "F8",
+      "step": 2,
+      "mechanism": "健康端点（/healthz、/readyz）",
+      "class": "reuse",
+      "opspilot_state": "planned",
+      "opspilot_choice": "ported",
+      "requirement_ref": [
+        "feature_list.json F8 steps[1]",
+        "C3 §11 可观测性",
+        "docs/tasks/2026-10-27-m3-f8-operability-contract.md F8-Q2"
+      ],
+      "upstream_evidence": [
+        "server.py:L982-L993",
+        "holmes/utils/auth.py:L3-L3"
+      ],
+      "opspilot_evidence": [
+        "docs/tasks/2026-10-27-m3-f8-operability-contract.md"
+      ],
+      "runtime_evidence": [],
+      "note": "建议：沿用上游端点名与免认证做法；上游 readyz 只查模型列表，OpsPilot 计划另报 schema 是否在 head 与队列深度（#413）。"
+    },
+    {
+      "feature": "F8",
+      "step": 2,
+      "mechanism": "外部探测：Agent 不在、模型连续失败时告警并交接",
+      "class": "required_extension",
+      "opspilot_state": "planned",
+      "opspilot_choice": "own_impl",
+      "requirement_ref": [
+        "feature_list.json F8 steps[1]",
+        "docs/tasks/2026-10-27-m3-f8-operability-contract.md F8-Q3"
+      ],
+      "upstream_evidence": [
+        "docker-compose.yaml:L25-L30"
+      ],
+      "opspilot_evidence": [
+        "docs/tasks/2026-10-27-m3-f8-operability-contract.md"
+      ],
+      "runtime_evidence": [],
+      "note": "不够：上游只有容器 healthcheck，没有自监控告警规则与交接。"
+    },
+    {
+      "feature": "F8",
+      "step": 3,
+      "mechanism": "版本化配置或 schema 升级与回滚（含在途事故）",
+      "class": "required_extension",
+      "opspilot_state": "partial",
+      "opspilot_choice": "own_impl",
+      "requirement_ref": [
+        "feature_list.json F8 steps[2]",
+        "C3 §11 部署与 schema 迁移"
+      ],
+      "upstream_evidence": [
+        "holmes/core/conversations_worker/models.py:L9-L14"
+      ],
+      "opspilot_evidence": [
+        "opspilot/migrations/env.py",
+        "opspilot/schema.py"
+      ],
+      "runtime_evidence": [],
+      "note": "没有：上游无数据库迁移（状态在 Robusta SaaS），只在状态枚举里为混合版本保留旧值。迁移已有，升级回滚演练待 F8 第 3 步。",
+      "absence_checks": [
+        {
+          "kind": "grep",
+          "pattern": "alembic",
+          "pathspec": [],
+          "command": "git -C <checkout> grep -n -I -i -E 'alembic'",
+          "hits": 0
+        }
+      ]
+    },
+    {
+      "feature": "F8",
+      "step": 4,
+      "mechanism": "72 小时 lab soak",
+      "class": "required_extension",
+      "opspilot_state": "planned",
+      "opspilot_choice": "own_impl",
+      "requirement_ref": [
+        "feature_list.json F8 steps[3]",
+        "C3 §13 运行预算与验收",
+        "docs/tasks/2026-10-27-m3-closure.md 72 小时 soak"
+      ],
+      "upstream_evidence": [
+        ".github/workflows/eval-master.yaml:L1-L8"
+      ],
+      "opspilot_evidence": [
+        "docs/tasks/2026-10-27-m3-closure.md"
+      ],
+      "runtime_evidence": [],
+      "note": "没有：上游只有按需触发的评测回归 workflow。",
+      "absence_checks": [
+        {
+          "kind": "grep",
+          "pattern": "soak",
+          "pathspec": [
+            "holmes",
+            "holmes_operator",
+            "server.py"
+          ],
+          "command": "git -C <checkout> grep -n -I -i -E 'soak' -- holmes holmes_operator server.py",
+          "hits": 0
+        }
+      ]
+    },
+    {
+      "feature": "F9",
+      "step": 1,
+      "mechanism": "从干净机器自动化安装并连接真实软件环境",
+      "class": "required_extension",
+      "opspilot_state": "partial",
+      "opspilot_choice": "own_impl",
+      "requirement_ref": [
+        "feature_list.json F9 steps[0]",
+        "C3 §2 技术栈与复用方式",
+        "C3 §12 实验环境"
+      ],
+      "upstream_evidence": [
+        "docker-compose.yaml:L1-L24",
+        "helm/holmes/Chart.yaml:L1-L10"
+      ],
+      "opspilot_evidence": [
+        "deploy/compose/install.sh",
+        "deploy/compose/compose.yaml",
+        "scripts/kind_lab.py::kind_create_cmd",
+        "docs/tasks/2026-10-27-m3-f9-delivery.md"
+      ],
+      "runtime_evidence": [],
+      "note": "不够：上游 Compose 只起 Holmes 服务，并挂载宿主 kubeconfig 与云凭据，与本产品不持有 K8s 凭据相反；Helm 方案已裁决不做（C3 §12）。干净主机取证待做。"
+    },
+    {
+      "feature": "F9",
+      "step": 2,
+      "mechanism": "完整生命周期：流量与故障 -> 触发、调查、交接、外部处理、恢复观察、归档",
+      "class": "required_extension",
+      "opspilot_state": "planned",
+      "opspilot_choice": "own_impl",
+      "requirement_ref": [
+        "feature_list.json F9 steps[1]",
+        "PRD.md",
+        "docs/tasks/2026-10-27-m3-f9-delivery.md"
+      ],
+      "upstream_evidence": [
+        "holmes_operator/handlers/triggeredhealthcheck.py:L1-L6"
+      ],
+      "opspilot_evidence": [
+        "docs/tasks/2026-10-27-m3-f9-delivery.md",
+        "opspilot/acceptance.py"
+      ],
+      "runtime_evidence": [],
+      "note": "不够：上游的触发检查与会话是分开的单次调查，没有事故生命周期。"
+    },
+    {
+      "feature": "F9",
+      "step": 3,
+      "mechanism": "工作流中杀 worker，事故不丢且恢复可见",
+      "class": "required_extension",
+      "opspilot_state": "planned",
+      "opspilot_choice": "own_impl",
+      "requirement_ref": [
+        "feature_list.json F9 steps[2]",
+        "C3 §7 故障恢复与提交一致性"
+      ],
+      "upstream_evidence": [
+        "holmes/core/conversations_worker/runtime.py:L236-L260"
+      ],
+      "opspilot_evidence": [
+        "opspilot/investigation/runner.py::InvestigationRunner.resume",
+        "docs/tasks/2026-10-27-m3-f9-delivery.md"
+      ],
+      "runtime_evidence": [],
+      "note": "不够：同 F2 第 2 步，上游把在途会话标 timeout。产品机制已在 F2 验收；安装栈上的演练待 F9。"
+    },
+    {
+      "feature": "F9",
+      "step": 4,
+      "mechanism": "构建、CI、发布按固定制品（digest）",
+      "class": "required_extension",
+      "opspilot_state": "partial",
+      "opspilot_choice": "own_impl",
+      "requirement_ref": [
+        "feature_list.json F9 steps[3]",
+        "C3 §11 部署与 schema 迁移"
+      ],
+      "upstream_evidence": [
+        "Dockerfile:L13-L14",
+        "Dockerfile:L71-L71",
+        "Dockerfile:L107-L107",
+        ".github/workflows/build-docker-images.yaml:L1-L5"
+      ],
+      "opspilot_evidence": [
+        ".github/workflows/release.yml",
+        ".github/workflows/ci.yml",
+        "Dockerfile"
+      ],
+      "runtime_evidence": [
+        "docs/evidence/f14-holmes-baseline/pin.json"
+      ],
+      "note": "不够：上游镜像在 release 时构建，基础镜像按 tag、apk upgrade、poetry 未固定，pin.json 记为不可复现。"
+    },
+    {
+      "feature": "F9",
+      "step": 4,
+      "mechanism": "staging 部署与 Agent 升级恢复演练",
+      "class": "required_extension",
+      "opspilot_state": "planned",
+      "opspilot_choice": "own_impl",
+      "requirement_ref": [
+        "feature_list.json F9 steps[3]",
+        "docs/tasks/2026-10-27-m3-closure.md"
+      ],
+      "upstream_evidence": [
+        "helm/holmes/Chart.yaml:L5-L10"
+      ],
+      "opspilot_evidence": [
+        "docs/tasks/2026-10-27-m3-closure.md"
+      ],
+      "runtime_evidence": [],
+      "note": "不够：上游 chart 版本由 release workflow 写入，没有升级中在途工作的兼容说明。"
+    },
+    {
+      "feature": "F9",
+      "step": 5,
+      "mechanism": "上游归属与许可证",
+      "class": "reuse",
+      "opspilot_state": "partial",
+      "opspilot_choice": "ported",
+      "requirement_ref": [
+        "feature_list.json F9 steps[4]",
+        "C3 §2 技术栈与复用方式"
+      ],
+      "upstream_evidence": [
+        "LICENSE:L1-L3"
+      ],
+      "opspilot_evidence": [
+        "opspilot/instructions/discipline.py::INVESTIGATION_METHOD",
+        "docs/evidence/f14-holmes-baseline/pin.json"
+      ],
+      "runtime_evidence": [
+        "docs/evidence/f14-holmes-baseline/pin.json"
+      ],
+      "note": "Apache-2.0；移植处在代码注释里写明上游出处。作品集文档的归属页待 F9 第 5 步。"
+    },
+    {
+      "feature": "F9",
+      "step": 5,
+      "mechanism": "文档区分合成流量、注入故障与真实生产观察",
+      "class": "required_extension",
+      "opspilot_state": "planned",
+      "opspilot_choice": "own_impl",
+      "requirement_ref": [
+        "feature_list.json F9 steps[4]",
+        "AGENTS.md 验证与汇报",
+        "C3 §13 运行预算与验收"
+      ],
+      "upstream_evidence": [
+        "docs/development/evaluations/running-evals.md:L11-L16"
+      ],
+      "opspilot_evidence": [
+        "docs/tasks/2026-10-27-m3-f9-delivery.md"
+      ],
+      "runtime_evidence": [],
+      "note": "不够：上游评测文档讲回归档，没有区分实验与生产证明。"
+    },
+    {
+      "feature": "F11",
+      "step": 1,
+      "mechanism": "由观察到的发布触发调查，保留精确的前后版本与服务身份",
+      "class": "required_extension",
+      "opspilot_state": "implemented",
+      "opspilot_choice": "own_impl",
+      "requirement_ref": [
+        "feature_list.json F11 steps[0]",
+        "C3 §4 事故与发布观察分开建模"
+      ],
+      "upstream_evidence": [
+        "holmes_operator/handlers/triggeredhealthcheck.py:L92-L118",
+        "holmes_operator/trigger_executor.py:L54-L97"
+      ],
+      "opspilot_evidence": [
+        "opspilot/release_intake.py::parse_release",
+        "opspilot/observation/releases.py::ReleaseRevision"
+      ],
+      "runtime_evidence": [],
+      "note": "不够：上游 operator 监听 Deployment 并只记前后镜像串，要 K8s watch 权限；OpsPilot 不持有 K8s 凭据，由发布事件带 revision。上游的 pod template 基线只存在进程内存，operator 重启后的第一次事件只当基线。",
+      "candidate_defect": {
+        "step3_ref": "docs/evidence/f14-upstream-issues/rollout-baseline-in-memory/",
+        "claim": "operator 重启期间的发布不会触发检查"
+      }
+    },
+    {
+      "feature": "F11",
+      "step": 2,
+      "mechanism": "发布前后与新旧实例对比（含健康发布与无关并发故障）",
+      "class": "required_extension",
+      "opspilot_state": "implemented",
+      "opspilot_choice": "own_impl",
+      "requirement_ref": [
+        "feature_list.json F11 steps[1]",
+        "C3 §10 健康规则"
+      ],
+      "upstream_evidence": [
+        "holmes_operator/trigger_executor.py:L119-L166"
+      ],
+      "opspilot_evidence": [
+        "opspilot/observation/release_comparison.py::build_release_comparison_plan",
+        "opspilot/observation/release_comparison.py::mapped_old_instances"
+      ],
+      "runtime_evidence": [],
+      "note": "不够：上游把前后镜像拼进一条自然语言检查交给 LLM，没有窗口与实例级对比。"
+    },
+    {
+      "feature": "F11",
+      "step": 3,
+      "mechanism": "延迟回归的定时跟进，不对健康发布无限复查",
+      "class": "required_extension",
+      "opspilot_state": "implemented",
+      "opspilot_choice": "own_impl",
+      "requirement_ref": [
+        "feature_list.json F11 steps[2]",
+        "C3 §10 采样与提交"
+      ],
+      "upstream_evidence": [
+        "holmes_operator/trigger_executor.py:L168-L190",
+        "holmes_operator/trigger_executor.py:L212-L240"
+      ],
+      "opspilot_evidence": [
+        "opspilot/observer/release_sampling.py::take_release_sample",
+        "opspilot/domain/scheduling.py::may_execute"
+      ],
+      "runtime_evidence": [],
+      "note": "不够：上游有 delaySeconds 延迟、cooldown 与按 Deployment 去抖，但只做一次延迟检查，依赖 CRD 与 operator。"
+    },
+    {
+      "feature": "F11",
+      "step": 4,
+      "mechanism": "输出区分 healthy、degraded、unknown，且不改 CI、门禁、发布或流量",
+      "class": "required_extension",
+      "opspilot_state": "implemented",
+      "opspilot_choice": "own_impl",
+      "requirement_ref": [
+        "feature_list.json F11 steps[3]",
+        "PRODUCT-CONSTRAINTS.md Explicit exclusions",
+        "C3 §10 健康规则"
+      ],
+      "upstream_evidence": [
+        "holmes/checks/models.py:L17-L22",
+        "holmes/checks/check_system_prompt.jinja2:L28-L31"
+      ],
+      "opspilot_evidence": [
+        "opspilot/observer/release_evaluation.py::evaluate_release_sample"
+      ],
+      "runtime_evidence": [],
+      "note": "不够：上游只有 pass/fail/error，缺数据判 FAIL。上游检查结果只发往目的地（Slack、PagerDuty），也不改门禁。"
+    },
+    {
+      "feature": "F12",
+      "step": 1,
+      "mechanism": "认证界面查看进度与证据",
+      "class": "required_extension",
+      "opspilot_state": "implemented",
+      "opspilot_choice": "own_impl",
+      "requirement_ref": [
+        "feature_list.json F12 steps[0]",
+        "C3 §9 页面、认证与人工操作"
+      ],
+      "upstream_evidence": [
+        "server.py:L588-L588",
+        "holmes/utils/auth.py:L3-L3"
+      ],
+      "opspilot_evidence": [
+        "opspilot/web/app.py::create_app",
+        "opspilot/web/auth.py::Authenticator",
+        "opspilot/web/service.py::Workbench.snapshot"
+      ],
+      "runtime_evidence": [],
+      "note": "不够：上游服务端只有 API Key 保护的 /api/chat，没有事故页面（AG-UI 前端在 experimental）。"
+    },
+    {
+      "feature": "F12",
+      "step": 1,
+      "mechanism": "追问与补充事实后得到更新的调查",
+      "class": "required_extension",
+      "opspilot_state": "implemented",
+      "opspilot_choice": "own_impl",
+      "requirement_ref": [
+        "feature_list.json F12 steps[0]",
+        "C3 §9 页面、认证与人工操作"
+      ],
+      "upstream_evidence": [
+        "holmes/core/models.py:L196-L197"
+      ],
+      "opspilot_evidence": [
+        "opspilot/persistence/controls.py::_ControlOps.append_input",
+        "opspilot/domain/control.py::ControlAction"
+      ],
+      "runtime_evidence": [],
+      "note": "不够：上游追问靠客户端回传 conversation_history，服务端不保存事故与补充事实。"
+    },
+    {
+      "feature": "F12",
+      "step": 2,
+      "mechanism": "纠正错误的事故关联或假设，保留更正与原历史",
+      "class": "required_extension",
+      "opspilot_state": "implemented",
+      "opspilot_choice": "own_impl",
+      "requirement_ref": [
+        "feature_list.json F12 steps[1]",
+        "C3 §4 人工控制与结果所有权"
+      ],
+      "upstream_evidence": [
+        "holmes/core/models.py:L196-L197"
+      ],
+      "opspilot_evidence": [
+        "opspilot/domain/control.py::ControlAction",
+        "opspilot/persistence/correlation.py::resolve_merged"
+      ],
+      "runtime_evidence": [],
+      "note": "不够：上游没有事故与关联，追问只能在客户端历史里续写，更正不留独立记录。"
+    },
+    {
+      "feature": "F12",
+      "step": 3,
+      "mechanism": "暂停、取消、接管、关闭、重开，带操作者与时间戳",
+      "class": "required_extension",
+      "opspilot_state": "implemented",
+      "opspilot_choice": "own_impl",
+      "requirement_ref": [
+        "feature_list.json F12 steps[2]",
+        "C3 §4 人工控制与结果所有权"
+      ],
+      "upstream_evidence": [
+        "holmes/core/conversations_worker/models.py:L9-L21"
+      ],
+      "opspilot_evidence": [
+        "opspilot/domain/control.py::apply_control",
+        "opspilot/persistence/controls.py::_ControlOps.control_times"
+      ],
+      "runtime_evidence": [],
+      "note": "不够：上游会话只有 stopped 等运行状态，没有接管、关闭与重开。",
+      "absence_checks": [
+        {
+          "kind": "grep",
+          "pattern": "take_?over|reopen",
+          "pathspec": [
+            "holmes",
+            "holmes_operator",
+            "server.py"
+          ],
+          "command": "git -C <checkout> grep -n -I -i -E 'take_?over|reopen' -- holmes holmes_operator server.py",
+          "hits": 0
+        }
+      ]
+    },
+    {
+      "feature": "F12",
+      "step": 4,
+      "mechanism": "接管后新证据尊重事故状态，不抹掉交接",
+      "class": "required_extension",
+      "opspilot_state": "implemented",
+      "opspilot_choice": "own_impl",
+      "requirement_ref": [
+        "feature_list.json F12 steps[3]",
+        "C3 §4 人工控制与结果所有权"
+      ],
+      "upstream_evidence": [
+        "holmes/core/conversations_worker/processor.py:L66-L79"
+      ],
+      "opspilot_evidence": [
+        "opspilot/domain/control.py::automatic_investigation_allowed",
+        "opspilot/web/service.py::Workbench.intake_alert"
+      ],
+      "runtime_evidence": [],
+      "note": "不够：上游没有人工所有权，新告警会开新调查。"
+    },
+    {
+      "feature": "F13",
+      "step": 1,
+      "mechanism": "复盘草稿（影响、时间线、有证据的发现、不确定性、人工动作、恢复观察）",
+      "class": "required_extension",
+      "opspilot_state": "implemented",
+      "opspilot_choice": "own_impl",
+      "requirement_ref": [
+        "feature_list.json F13 steps[0]",
+        "C3 §10 复盘与知识"
+      ],
+      "upstream_evidence": [
+        "holmes/core/models.py:L362-L368"
+      ],
+      "opspilot_evidence": [
+        "opspilot/knowledge/generation.py::MAX_CONCLUSIONS",
+        "opspilot/knowledge/worker.py::PostmortemWorker",
+        "opspilot/knowledge/contract.py::PostmortemDocument"
+      ],
+      "runtime_evidence": [],
+      "note": "没有：上游核心、检查、提示词与服务端代码里没有复盘生成；整个 holmes/ 下唯一命中是 datadog 工具集提示里的一行查询说明。",
+      "absence_checks": [
+        {
+          "kind": "grep",
+          "pattern": "post-?mortem",
+          "pathspec": [
+            "holmes/core",
+            "holmes/checks",
+            "holmes/plugins/prompts",
+            "holmes_operator",
+            "server.py"
+          ],
+          "command": "git -C <checkout> grep -n -I -i -E 'post-?mortem' -- holmes/core holmes/checks holmes/plugins/prompts holmes_operator server.py",
+          "hits": 0
+        }
+      ]
+    },
+    {
+      "feature": "F13",
+      "step": 2,
+      "mechanism": "草稿或有争议的结论不能悄悄成为可信 runbook 知识",
+      "class": "required_extension",
+      "opspilot_state": "implemented",
+      "opspilot_choice": "own_impl",
+      "requirement_ref": [
+        "feature_list.json F13 steps[1]",
+        "PRODUCT-CONSTRAINTS.md Evidence and context requirements",
+        "C3 §10 复盘与知识"
+      ],
+      "upstream_evidence": [
+        "holmes/plugins/skills/git_skill_repos.py:L1-L13",
+        "holmes/plugins/prompts/generic_ask.jinja2:L27-L31"
+      ],
+      "opspilot_evidence": [
+        "opspilot/domain/knowledge.py::publish_knowledge",
+        "opspilot/knowledge/store.py::REVIEW_ACTIONS"
+      ],
+      "runtime_evidence": [],
+      "note": "不够：上游 skills 从 git 定期拉取、推送即生效，且提示词要求 skill 内容优先于通用步骤。",
+      "deviation_basis": "docs/research/upstream-design-audit-2026-10-22.md 四「Runbook / 知识」：理由成立"
+    },
+    {
+      "feature": "F13",
+      "step": 3,
+      "mechanism": "批准或拒绝知识更新，记录来源、审核人、版本与可撤销",
+      "class": "required_extension",
+      "opspilot_state": "implemented",
+      "opspilot_choice": "own_impl",
+      "requirement_ref": [
+        "feature_list.json F13 steps[2]",
+        "C3 §10 复盘与知识"
+      ],
+      "upstream_evidence": [
+        "holmes/plugins/skills/git_skill_repos.py:L1-L13"
+      ],
+      "opspilot_evidence": [
+        "opspilot/knowledge/store.py::KnowledgeStore",
+        "opspilot/knowledge/store.py::REVIEW_ACTIONS"
+      ],
+      "runtime_evidence": [],
+      "note": "不够：版本与来源只靠 git 历史，Holmes 内没有审核记录与撤销动作。"
+    },
+    {
+      "feature": "F13",
+      "step": 4,
+      "mechanism": "后续事故遇到过期或矛盾知识时按策略处理",
+      "class": "required_extension",
+      "opspilot_state": "implemented",
+      "opspilot_choice": "own_impl",
+      "requirement_ref": [
+        "feature_list.json F13 steps[3]",
+        "C3 §10 复盘与知识"
+      ],
+      "upstream_evidence": [
+        "holmes/plugins/skills/skill_loader.py:L71-L80"
+      ],
+      "opspilot_evidence": [
+        "opspilot/knowledge/store.py::mark_stale_in",
+        "opspilot/knowledge/hints.py::knowledge_checks"
+      ],
+      "runtime_evidence": [],
+      "note": "不够：上游 skill 只按告警名筛选是否适用，没有新鲜度与矛盾证据处理。"
+    }
+  ]
+}
