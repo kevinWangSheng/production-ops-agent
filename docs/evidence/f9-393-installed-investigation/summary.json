@@ -1,0 +1,82 @@
+{
+  "image_id": "sha256:7b311f882c2be8a341ca449c6cc5826682eb950951ec184dad47adfd943efd33",
+  "version": "0.1.0",
+  "revision": "0aad093c05c8a6dad95988dfb28e906e73b35971",
+  "profile": "fixture",
+  "model_provider": "deepseek",
+  "services": {
+    "web": {
+      "started": true,
+      "verify_head": true
+    },
+    "worker": {
+      "started": true,
+      "verify_head": true
+    },
+    "observer": {
+      "started": true,
+      "verify_head": true
+    }
+  },
+  "upgrade_window": {
+    "start": "2026-10-31T12:53:50Z",
+    "runtimes_started": "2026-10-31T12:53:57Z"
+  },
+  "schema_head": "0023_retention_raw_cleanup",
+  "incident_id": "606d9341-22f8-5f99-ad10-f852a892be64",
+  "run_id": "796fd3a1-1b79-5a74-98a3-dc6ea9259dfd",
+  "alert_received_at": "2026-10-31T13:14:31Z",
+  "run_final_state": "completed",
+  "run_terminal_observed_at": "2026-10-31T13:15:10Z",
+  "attempt_status": "published",
+  "report": {
+    "assessment": "completed",
+    "conclusion": "partial",
+    "content_sha256": "22767fd071a9f47487596c15fdf5b305f7098e491d544f3e16565bd4d7e43b53",
+    "facts": 2,
+    "hypotheses": 1
+  },
+  "budget": "3 spent / 0 reserved / 1 unknown of 100",
+  "report_visible_in_workbench": true,
+  "observer_prometheus": "kind-proxy",
+  "trace": "none: product compose has no OPSPILOT_TRACE; product trace is #243 (outbox) scope",
+  "earlier_attempt": {
+    "incident_id": "9869b041-2dce-5bbe-8c17-33c7e3f733e7",
+    "run_id": "5732baeb-8f3f-5cec-b3ac-1900a36b850e",
+    "run_state": "waiting_human",
+    "handoff": "INCOMPLETE_INVESTIGATION",
+    "cause": "target identity keyed fixture-393; fixture worker registers only checkout-prod, tool calls refused TARGET_NOT_REGISTERED"
+  },
+  "recorded_at": "2026-10-31T13:35:00Z",
+  "recovery_observation": {
+    "session_purpose": "incident_recovery",
+    "authorized_by": "system",
+    "authorized_at": "2026-10-31T13:15:22Z",
+    "samples": [
+      {
+        "sequence": 1,
+        "outcome": "degraded",
+        "submitted_at": "2026-10-31T13:16:54Z"
+      },
+      {
+        "sequence": 2,
+        "outcome": "degraded",
+        "submitted_at": "2026-10-31T13:18:25Z"
+      }
+    ],
+    "state_when_stack_stopped": "authorized",
+    "ended": false
+  },
+  "fault_injection": {
+    "flag": "paymentFailure",
+    "injected_at": "2026-10-31T13:00:17Z",
+    "restored_at": "2026-10-31T13:15:19Z",
+    "verified": true
+  },
+  "raw_evidence_outside_repo": [
+    "~/.cache/opspilot-393-run/run-a.log",
+    "~/.cache/opspilot-393-run/run-b.log",
+    "~/.cache/opspilot-393-run/run-b2.log",
+    "~/.cache/opspilot-393-run/pages/"
+  ]
+}
