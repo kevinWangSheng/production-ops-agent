@@ -37,11 +37,12 @@
 - bind 格式错或绑不上（含端口被占）都拒绝启动，非零退出，日志写明 `OPSPILOT_HEALTH_BIND` 与地址；只有显式空值才不起监听。同机跑两个裸进程时由操作者给各自不同的 bind 或空值（lead 裁决，#418 审查 r1：没有监听的进程会躲过外部检测）。
 - web healthcheck 同时要求 8080 可连和 `/readyz` 200，`timeout: 12s`：监听先于 uvicorn 启动，保留旧检查的保证；探测事务最长约池等待 5s + 语句 5s。
 - worker/Observer healthcheck `interval 5s / timeout 5s / retries 12`：`/readyz` 不查库，立即返回。
-- worker「成功轮询」= 定时轮询里 deadline 清扫与 backlog 两步都没被存储拒绝，记在 `WorkerLoop.last_poll_success`：清扫每个间隔都跑，槽位全忙时也不会误报陈旧。
-- Observer 每轮结束后在轮询线程上按 `store.py:1866` 的到期条件跑一条 `count(*)`（只算事故观察会话，不含发布采样），成功即「成功轮询」并更新 `opspilot_observation_due`：监听线程不查库，也不占新连接。已知：一轮里有多个慢采样、总时长超过 15s 时 `/readyz` 会短暂 503 `POLL_STALE`。
+- worker「成功轮询」= 定时轮询里 deadline 清扫、backlog 与随后的可领取清单三步都没被存储拒绝（槽位全满时不列清单，不算拒绝），记在 `WorkerLoop.last_poll_success`：清扫每个间隔都跑，槽位全忙时也不会误报陈旧（PR #418 机器人 P1 后补上清单一步）。
+- Observer 一轮里会话清扫、发布清扫和领取都没被存储拒绝时，才在轮询线程上按 `store.py:1866` 的到期条件跑一条 `count(*)`（只算事故观察会话，不含发布采样，合同 R2 口径），它也成功才算「成功轮询」并更新 `opspilot_observation_due`；被拒的一轮什么都不记（PR #418 机器人 P1）：监听线程不查库，也不占新连接。已知：一轮里有多个慢采样、总时长超过 15s 时 `/readyz` 会短暂 503 `POLL_STALE`。
 - 计数器：非 `ModelError` 的异常原样抛出、不计数；码不合固定码形状记 `UNKNOWN`：标签集有界。
 - `/metrics` 超过 4 KiB 时按行截断；首次成功轮询前 `opspilot_last_poll_age_seconds` 为 `+Inf`；web 读库失败时 `opspilot_queue_depth` 不出现（不报 0）；worker/Observer 不出 `opspilot_schema_at_head`（只在启动时校验过）。
 - 探测抛异常回 500 `{"status": "error"}`，日志只记异常类型；不记每次请求的访问日志；`Server` 头不带 Python 版本。
+- 防洪（PR #418 机器人 P2，bind 仍按 F8-Q2 为容器网络 `0.0.0.0:9464`）：三进程的监听同时最多处理 8 个请求，多出的在接收线程上立即回 503 `{"status": "busy"}` 并关闭，不排队、不新开线程；web 的 `/readyz` 与 `/metrics` 共用一次探测事务并缓存 5s（低于 15s 抓取间隔）：无论请求多快，最多每 5s 占工作台池一条连接；代价是 `/readyz` 与指标最多滞后 5s。
 
 真实运行（2026-10-31，本机 colima `m1-kind`，项目 `opspilot-413`，`compose.yaml` + `compose.lab.yaml`，镜像 `opspilot:413` 由 `c3aedcd3` 构建）：密钥由本次自行生成在仓库外并已删除；worker 的模型 key 是占位串，库里没有 Run，没有发生模型调用；Observer 的 Prometheus URL 是不可解析的占位地址，没有到期采样，没有发出查询。`up --wait` 后三个容器都是 `(healthy)`，宿主端口 `127.0.0.1:18181->8080`、`127.0.0.1:19464/19465/19466->9464`。原始输出（每进程第一条带响应头，其余只列 body）：
 

@@ -29,11 +29,13 @@ import logging
 import math
 import os
 import re
+import socket
 import threading
+import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import Any, Protocol
+from typing import Any, Protocol, TypeVar
 
 from opspilot import __version__
 
@@ -49,6 +51,7 @@ __all__ = [
     "poll_readiness",
     "serve_health",
     "start_health_server",
+    "ttl_cache",
     "web_metrics",
     "web_readiness",
     "worker_metrics",
@@ -60,6 +63,13 @@ BIND_ENV = "OPSPILOT_HEALTH_BIND"
 DEFAULT_BIND = "127.0.0.1:9464"
 REVISION_ENV = "OPSPILOT_REVISION"
 MAX_RESPONSE_BYTES = 4096
+#: Requests handled at once; any beyond get 503 ``busy`` at once, never a
+#: queue or a new thread, so a flood from the container network cannot pile
+#: up threads (or, on the web, pool connections).
+MAX_CONCURRENT_REQUESTS = 8
+#: How long the web reuses one probe's result: at most one transaction per
+#: TTL whatever the request rate; below the lab scrape interval (15s).
+PROBE_TTL_SECONDS = 5.0
 
 SCHEMA_NOT_AT_HEAD = "SCHEMA_NOT_AT_HEAD"
 POOL_UNAVAILABLE = "POOL_UNAVAILABLE"
@@ -273,6 +283,88 @@ class ModelCallCounter:
 
 # -- listener ------------------------------------------------------------------------
 
+_T = TypeVar("_T")
+
+
+def ttl_cache(
+    probe: Callable[[], _T],
+    ttl_seconds: float,
+    *,
+    clock: Callable[[], float] = time.monotonic,
+) -> Callable[[], _T]:
+    """``probe`` at most once per ``ttl_seconds``: concurrent callers wait
+    for the one in flight and share its result. A probe that raises is not
+    cached."""
+    lock = threading.Lock()
+    cached: list[tuple[float, _T]] = []
+
+    def get() -> _T:
+        with lock:
+            if cached and clock() - cached[0][0] < ttl_seconds:
+                return cached[0][1]
+            value = probe()
+            cached[:] = [(clock(), value)]
+            return value
+
+    return get
+
+
+_BUSY = (
+    b"HTTP/1.0 503 Service Unavailable\r\n"
+    b"Content-Type: application/json\r\n"
+    b"Content-Length: 18\r\n"
+    b"Cache-Control: no-store\r\n"
+    b"Connection: close\r\n\r\n"
+    b'{"status": "busy"}'
+)
+
+
+class _BoundedServer(ThreadingHTTPServer):
+    """At most ``max_concurrent`` handler threads; a connection beyond that
+    is answered 503 on the accepting thread and closed."""
+
+    daemon_threads = True
+
+    def __init__(
+        self,
+        address: tuple[str, int],
+        handler: type[BaseHTTPRequestHandler],
+        max_concurrent: int,
+    ) -> None:
+        self._slots = threading.BoundedSemaphore(max_concurrent)
+        super().__init__(address, handler)
+
+    def process_request(self, request: Any, client_address: Any) -> None:
+        if not self._slots.acquire(blocking=False):
+            self._refuse(request)
+            return
+        try:
+            super().process_request(request, client_address)
+        except BaseException:
+            self._slots.release()
+            raise
+
+    def process_request_thread(self, request: Any, client_address: Any) -> None:
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            self._slots.release()
+
+    def _refuse(self, request: socket.socket) -> None:
+        try:
+            # Read what the client already sent (bounded wait), so closing
+            # does not reset the connection before it sees the answer.
+            request.settimeout(0.1)
+            try:
+                request.recv(4096)
+            except OSError:
+                pass
+            request.sendall(_BUSY)
+        except OSError:
+            pass
+        finally:
+            self.shutdown_request(request)
+
 
 class HealthServer:
     def __init__(self, server: ThreadingHTTPServer, thread: threading.Thread) -> None:
@@ -370,14 +462,15 @@ def start_health_server(
     *,
     readiness: Callable[[], Readiness],
     metrics: Callable[[], str],
+    max_concurrent: int = MAX_CONCURRENT_REQUESTS,
 ) -> HealthServer | None:
     """Serve on ``bind`` from a daemon thread; ``None``/empty is off. Raises
-    ``ValueError`` for a malformed bind and ``OSError`` when it cannot bind."""
+    ``ValueError`` for a malformed bind and ``OSError`` when it cannot bind.
+    At most ``max_concurrent`` requests are handled at once."""
     if not bind:
         return None
     host, port = _split_bind(bind)
-    server = ThreadingHTTPServer((host, port), _handler(readiness, metrics))
-    server.daemon_threads = True
+    server = _BoundedServer((host, port), _handler(readiness, metrics), max_concurrent)
     thread = threading.Thread(
         target=server.serve_forever, name="opspilot-health", daemon=True
     )

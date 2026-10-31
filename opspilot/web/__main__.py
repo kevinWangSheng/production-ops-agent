@@ -200,9 +200,7 @@ _QUEUE_DEPTH_SQL = (
 )
 
 
-def _probe(
-    store: DurableStore, head: str, *, queue: bool
-) -> tuple[bool, bool, dict[str, int] | None]:
+def _probe(store: DurableStore, head: str) -> tuple[bool, bool, dict[str, int] | None]:
     """``(pool_ok, schema_at_head, queue_depth)`` from one read-only
     transaction of the web's own pool; a refusal is ``pool_ok=False``."""
     try:
@@ -212,13 +210,11 @@ def _probe(
             except schema.SchemaVersionUnreadable:
                 # The failed statement aborted the transaction.
                 return True, False, None
-            depth = None
-            if queue:
-                row = conn.execute(_QUEUE_DEPTH_SQL).fetchone()
-                depth = {
-                    "queued": int(row["queued"]) if row else 0,
-                    "running_lapsed": int(row["running_lapsed"]) if row else 0,
-                }
+            row = conn.execute(_QUEUE_DEPTH_SQL).fetchone()
+            depth = {
+                "queued": int(row["queued"]) if row else 0,
+                "running_lapsed": int(row["running_lapsed"]) if row else 0,
+            }
             return True, at_head, depth
     except PersistenceError as exc:
         _log.warning("health probe refused code=%s", exc)
@@ -226,16 +222,19 @@ def _probe(
 
 
 def _start_health(store: DurableStore) -> health.HealthServer | None:
-    """The web's health listener (F8-R4): every probe is one transaction
-    from the app's own pool; nothing is mounted on the app's routes."""
+    """The web's health listener (F8-R4): ``/readyz`` and ``/metrics`` share
+    one probe transaction from the app's own pool, reused for
+    ``PROBE_TTL_SECONDS``, so a request flood costs the workbench at most one
+    connection per TTL; nothing is mounted on the app's routes."""
     head = schema.head_revision()
+    probe = health.ttl_cache(lambda: _probe(store, head), health.PROBE_TTL_SECONDS)
 
     def readiness() -> health.Readiness:
-        pool_ok, at_head, _ = _probe(store, head, queue=False)
+        pool_ok, at_head, _ = probe()
         return health.web_readiness(schema_at_head=at_head, pool_ok=pool_ok)
 
     def metrics() -> str:
-        _, at_head, depth = _probe(store, head, queue=True)
+        _, at_head, depth = probe()
         return health.web_metrics(schema_at_head=at_head, queue_depth=depth)
 
     return health.serve_health(os.environ, readiness=readiness, metrics=metrics)

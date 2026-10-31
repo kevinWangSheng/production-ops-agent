@@ -399,7 +399,14 @@ class _Sweeper:
 
 
 class _Queue:
+    def __init__(self, fail: bool = False) -> None:
+        self.fail = fail
+
     def claimable_incidents(self, *, limit: int = 20):
+        from opspilot.persistence import PersistenceError
+
+        if self.fail:
+            raise PersistenceError("STORAGE_UNAVAILABLE")
         return ()
 
 
@@ -408,12 +415,12 @@ class _Runner:
         raise AssertionError
 
 
-def _run_worker_loop(sweeper: _Sweeper):
+def _run_worker_loop(sweeper: _Sweeper, queue: _Queue | None = None):
     from opspilot.worker_main import WorkerLoop
 
     stop = threading.Event()
     loop = WorkerLoop(
-        queue=_Queue(),
+        queue=queue or _Queue(),
         runner=_Runner(),
         sweeper=sweeper,  # type: ignore[arg-type]
         events=None,
@@ -441,34 +448,193 @@ def test_worker_loop_does_not_record_a_refused_poll():
     assert _run_worker_loop(_Sweeper(fail=True)).last_poll_success is None
 
 
-def test_observer_loop_calls_its_poll_hook_after_each_pass():
+def test_worker_loop_does_not_record_a_poll_whose_listing_was_refused():
+    """PR #418 bot P1: a pass is successful only if nothing in it was refused."""
+    loop = _run_worker_loop(_Sweeper(), _Queue(fail=True))
+    assert loop.last_poll_success is None
+
+
+class _ObserverStore:
+    def __init__(self, refuse: str | None = None) -> None:
+        self.refuse = refuse
+
+    def _maybe(self, step: str) -> None:
+        from opspilot.persistence import PersistenceError
+
+        if self.refuse == step:
+            raise PersistenceError("STORAGE_UNAVAILABLE")
+
+    def sweep_expired_sessions(self, *, limit: int):
+        self._maybe("sweep")
+        return ()
+
+    def sweep_expired_releases(self, *, limit: int):
+        self._maybe("release_sweep")
+        return ()
+
+    def claim_due_samples(self, owner, *, limit, lease_seconds):
+        self._maybe("claim")
+        return []
+
+
+def _observer_hook_outcomes(store: _ObserverStore) -> list[bool]:
     from opspilot.observer.loop import ObserverLoop
 
-    class _Store:
-        def sweep_expired_sessions(self, *, limit: int):
-            return ()
-
-        def claim_due_samples(self, owner, *, limit, lease_seconds):
-            return []
-
     stop = threading.Event()
-    seen: list[int] = []
+    seen: list[bool] = []
 
-    def hook() -> None:
-        seen.append(1)
+    def hook(ok: bool) -> None:
+        seen.append(ok)
         if len(seen) >= 2:
             stop.set()
 
     loop = ObserverLoop(
-        store=_Store(),  # type: ignore[arg-type]
+        store=store,  # type: ignore[arg-type]
         source=object(),  # type: ignore[arg-type]
         stop=stop,
         owner=uuid4(),
         poll_seconds=0.01,
         on_poll=hook,
     )
-    loop.run()
+    thread = threading.Thread(target=loop.run, daemon=True)
+    thread.start()
+    thread.join(3)
+    stop.set()
+    thread.join(5)
+    return seen
+
+
+def test_observer_loop_calls_its_poll_hook_after_each_pass():
+    seen = _observer_hook_outcomes(_ObserverStore())
     assert len(seen) >= 2
+    assert all(seen)
+
+
+@pytest.mark.parametrize("step", ["sweep", "release_sweep", "claim"])
+def test_observer_hook_hears_a_refused_pass(step):
+    """PR #418 bot P1: a pass whose sweep or claim was refused is not a
+    successful poll."""
+    seen = _observer_hook_outcomes(_ObserverStore(refuse=step))
+    assert seen and not any(seen)
+
+
+class _CountingStore:
+    def __init__(self) -> None:
+        self.transactions = 0
+
+    def transaction(self, *, snapshot: bool = False):
+        import contextlib
+
+        store = self
+
+        @contextlib.contextmanager
+        def go():
+            store.transactions += 1
+
+            class _Conn:
+                def execute(self, sql):
+                    class _Cursor:
+                        def fetchone(self):
+                            return {"due": 3}
+
+                    return _Cursor()
+
+            yield _Conn()
+
+        return go()
+
+
+def test_poll_record_counts_and_records_only_a_successful_pass():
+    from opspilot.observer.__main__ import PollRecord
+
+    store = _CountingStore()
+    record = PollRecord()
+    record.after_poll(store, ok=False)  # type: ignore[arg-type]
+    assert (record.last_success, record.observation_due, store.transactions) == (
+        None,
+        None,
+        0,
+    )
+    record.after_poll(store, ok=True)  # type: ignore[arg-type]
+    assert record.last_success is not None
+    assert record.observation_due == 3
+
+
+# -- flood bounds (PR #418 bot P2) ------------------------------------------------
+
+
+def test_excess_concurrent_requests_get_503_busy_at_once():
+    entered = threading.Event()
+    release = threading.Event()
+
+    def slow() -> Readiness:
+        entered.set()
+        release.wait(5)
+        return Readiness(True, None)
+
+    server = start_health_server(
+        "127.0.0.1:0", readiness=slow, metrics=str, max_concurrent=1
+    )
+    assert server is not None
+    try:
+        first: list[int] = []
+        holder = threading.Thread(
+            target=lambda: first.append(_request(server.port, "/readyz")[0])
+        )
+        holder.start()
+        assert entered.wait(5)
+        started = time.monotonic()
+        status, _, body = _request(server.port, "/healthz")
+        assert time.monotonic() - started < 2
+        assert (status, json.loads(body)) == (503, {"status": "busy"})
+        release.set()
+        holder.join(5)
+        assert first == [200]
+        assert _request(server.port, "/healthz")[0] == 200
+    finally:
+        release.set()
+        server.close()
+
+
+def test_ttl_cache_runs_the_probe_at_most_once_per_ttl():
+    now = [100.0]
+    calls: list[int] = []
+
+    def probe() -> int:
+        calls.append(1)
+        return len(calls)
+
+    cached = health.ttl_cache(probe, 5.0, clock=lambda: now[0])
+    assert [cached() for _ in range(50)] == [1] * 50
+    now[0] += 4.9
+    assert cached() == 1
+    now[0] += 0.2
+    assert cached() == 2
+    assert len(calls) == 2
+
+
+def test_ttl_cache_shares_one_probe_between_concurrent_callers():
+    gate = threading.Event()
+    calls: list[int] = []
+
+    def probe() -> int:
+        calls.append(1)
+        gate.wait(5)
+        return 7
+
+    cached = health.ttl_cache(probe, 5.0)
+    results: list[int] = []
+    threads = [
+        threading.Thread(target=lambda: results.append(cached())) for _ in range(8)
+    ]
+    for thread in threads:
+        thread.start()
+    time.sleep(0.1)
+    gate.set()
+    for thread in threads:
+        thread.join(5)
+    assert results == [7] * 8
+    assert len(calls) == 1
 
 
 def test_observer_entry_still_does_not_load_the_investigation_side():

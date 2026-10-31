@@ -158,8 +158,9 @@ class WorkerLoop:
     runner_factory: Callable[[], Resumer] | None = None
     backlog: BacklogParker | None = None
     backlog_max: int = 8
-    #: ``time.monotonic()`` of the last timed poll whose sweep was not
-    #: refused, for ``/readyz`` (F8-R4); ``None`` until the first one.
+    #: ``time.monotonic()`` of the last timed poll whose sweep, backlog pass
+    #: and claim listing were all served, for ``/readyz`` (F8-R4); ``None``
+    #: until the first one.
     last_poll_success: float | None = field(default=None, init=False)
     _runners: list[Resumer] = field(init=False, repr=False)
     _idle: list[Resumer] = field(init=False, repr=False)
@@ -342,50 +343,55 @@ class WorkerLoop:
         self._join_in_flight()
         return [(i, sink[i]) for i in started if i in sink]
 
-    def _refill(self) -> None:
+    def _refill(self) -> bool:
         """Fill the free slots from the claim listing, best first. With
         several slots only those free before the listing take from it: one
         that frees while it is walked waits for a fresh listing (its wake is
         still set), so an incident listed ahead in the meantime takes it
         rather than a stale lower candidate (R-B1-2). One slot keeps walking
-        the listing in order, as before capacity existed."""
+        the listing in order, as before capacity existed. ``False`` only when
+        the storage refused the listing."""
         with self._cond:
             free = len(self._idle)
             excluded = set(self._in_flight) | self._recent
         if not free or self.stop.is_set():
-            return
+            return True
         budget = free if self.capacity > 1 else len(excluded) + free + 2
         try:
             candidates = self.queue.claimable_incidents(limit=free + len(excluded) + 2)
         except PersistenceError as exc:
             _log.warning("listing refused code=%s", exc)
-            return
+            return False
         for incident_id in candidates:
             if self.stop.is_set() or not budget:
-                return
+                return True
             if incident_id in excluded:
                 continue
             budget -= 1
             runner = self._checkout(wait=False)
             if runner is None:
-                return
+                return True
             if not self._launch(incident_id, runner, None):
-                return
+                return True
+        return True
 
     def run(self) -> int:
         """Poll until ``stop``; returns the number of timed passes made."""
         polls = 0
         next_poll = time.monotonic()
         while not self.stop.is_set():
+            # ``None`` between timed polls; else whether the sweep was served.
+            swept: bool | None = None
             if time.monotonic() >= next_poll:
-                if self._sweep():
-                    self.last_poll_success = time.monotonic()
+                swept = self._sweep()
                 with self._cond:
                     self._recent.clear()
                 polls += 1
                 next_poll = time.monotonic() + self.poll_seconds
             self._wake.clear()
-            self._refill()
+            listed = self._refill()
+            if swept and listed:
+                self.last_poll_success = time.monotonic()
             # Until the next timed poll, a freed slot, or ``stop``.
             while not self.stop.is_set():
                 remaining = next_poll - time.monotonic()

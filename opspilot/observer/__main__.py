@@ -169,13 +169,16 @@ _DUE_SQL = (
 @dataclass
 class PollRecord:
     """What the sampling thread last saw, read by the health listener,
-    which itself never queries (F8-R4): one count after every pass, and its
-    success is the pass's "successful poll"."""
+    which itself never queries (F8-R4): after a pass whose sweeps and claims
+    were all served, one count; the pass is a "successful poll" only when
+    that count is served too. A refused pass records nothing."""
 
     last_success: float | None = None
     observation_due: int | None = None
 
-    def after_poll(self, store: ObservationStore) -> None:
+    def after_poll(self, store: ObservationStore, *, ok: bool) -> None:
+        if not ok:
+            return
         try:
             with store.transaction(snapshot=True) as conn:
                 row = conn.execute(_DUE_SQL).fetchone()
@@ -190,7 +193,7 @@ def _start_health(
     loop: ObserverLoop, env: Mapping[str, str]
 ) -> health.HealthServer | None:
     record = PollRecord()
-    loop.on_poll = lambda: record.after_poll(loop.store)
+    loop.on_poll = lambda ok: record.after_poll(loop.store, ok=ok)
 
     def readiness() -> health.Readiness:
         return health.poll_readiness(
