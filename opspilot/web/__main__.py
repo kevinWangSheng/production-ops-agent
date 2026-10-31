@@ -52,8 +52,11 @@ Configuration comes from the environment only, and only as hashes:
 ``hash-password`` and ``token-digest`` print the value to put in the
 environment; the secret itself is read from stdin and never echoed. This
 process runs no investigator: Runs stay ``queued`` until a worker
-(``python -m opspilot.worker_main``) claims them. It is not a deployment artifact; on start it only verifies that
-the schema is at the Alembic head (``make migrate`` runs as the owner).
+(``python -m opspilot.worker_main``) claims them. It runs as a bare
+development process and as the ``web`` service of the Compose install
+(``deploy/compose``); on start it only verifies that the schema is at the
+Alembic head (migrations run beforehand as the owner: ``make migrate`` in
+development, the ``migrate`` one-shot in Compose).
 """
 
 from __future__ import annotations

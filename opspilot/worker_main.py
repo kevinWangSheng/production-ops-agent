@@ -56,8 +56,10 @@ A second thread runs the postmortem pass (M1-03 D17): its own scan,
 generation lease and model client, one generation at a time, never an
 investigation Run lease (``opspilot.knowledge.worker``).
 
-Like ``python -m opspilot.web serve`` it installs schema on start and is a
-development entry point, not a deployment artifact. Under the default
+Like ``python -m opspilot.web serve`` it only verifies on start that the
+schema is at the Alembic head, and runs both as a bare development process
+and as the ``worker`` service of the Compose install (``deploy/compose``,
+profile ``agent``). Under the default
 profile the demo runs the real model over a canned read-only tool, not a
 real telemetry source; ``otel-demo`` reads the pinned OTel Demo lab.
 """
