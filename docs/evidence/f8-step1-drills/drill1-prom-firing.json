@@ -1,0 +1,202 @@
+{"captured_at": "2026-10-31T16:26:48Z", "queries": [
+{
+ "http": 200,
+ "url_path": "/api/v1/query",
+ "params": {
+  "query": "up{job=\"opspilot\"}"
+ },
+ "body": {
+  "status": "success",
+  "data": {
+   "resultType": "vector",
+   "result": [
+    {
+     "metric": {
+      "__name__": "up",
+      "instance": "192.168.5.2:19464",
+      "job": "opspilot",
+      "role": "web"
+     },
+     "value": [
+      1793464010.455,
+      "1"
+     ]
+    },
+    {
+     "metric": {
+      "__name__": "up",
+      "instance": "192.168.5.2:19465",
+      "job": "opspilot",
+      "role": "worker"
+     },
+     "value": [
+      1793464010.455,
+      "0"
+     ]
+    },
+    {
+     "metric": {
+      "__name__": "up",
+      "instance": "192.168.5.2:19466",
+      "job": "opspilot",
+      "role": "observer"
+     },
+     "value": [
+      1793464010.455,
+      "1"
+     ]
+    }
+   ]
+  }
+ }
+}
+,
+{
+ "http": 200,
+ "url_path": "/api/v1/query",
+ "params": {
+  "query": "ALERTS{opspilot_self=\"true\"}"
+ },
+ "body": {
+  "status": "success",
+  "data": {
+   "resultType": "vector",
+   "result": [
+    {
+     "metric": {
+      "__name__": "ALERTS",
+      "alertname": "OpsPilotAgentAbsent",
+      "alertstate": "firing",
+      "instance": "192.168.5.2:19465",
+      "job": "opspilot",
+      "opspilot_self": "true",
+      "role": "worker",
+      "severity": "critical"
+     },
+     "value": [
+      1793464011.555,
+      "1"
+     ]
+    }
+   ]
+  }
+ }
+}
+,
+{
+ "http": 200,
+ "url_path": "/api/v1/query",
+ "params": {
+  "query": "opspilot_model_consecutive_failures"
+ },
+ "body": {
+  "status": "success",
+  "data": {
+   "resultType": "vector",
+   "result": []
+  }
+ }
+}
+,
+{
+ "http": 200,
+ "url_path": "/api/v1/query",
+ "params": {
+  "query": "opspilot_model_calls_total"
+ },
+ "body": {
+  "status": "success",
+  "data": {
+   "resultType": "vector",
+   "result": []
+  }
+ }
+}
+,
+{
+ "http": 200,
+ "url_path": "/api/v1/query",
+ "params": {
+  "query": "opspilot_last_model_call_category"
+ },
+ "body": {
+  "status": "success",
+  "data": {
+   "resultType": "vector",
+   "result": []
+  }
+ }
+}
+,
+{
+ "http": 200,
+ "url_path": "/api/v1/query",
+ "params": {
+  "query": "opspilot_queue_depth"
+ },
+ "body": {
+  "status": "success",
+  "data": {
+   "resultType": "vector",
+   "result": [
+    {
+     "metric": {
+      "__name__": "opspilot_queue_depth",
+      "instance": "192.168.5.2:19464",
+      "job": "opspilot",
+      "role": "web",
+      "state": "queued"
+     },
+     "value": [
+      1793464015.958,
+      "1"
+     ]
+    },
+    {
+     "metric": {
+      "__name__": "opspilot_queue_depth",
+      "instance": "192.168.5.2:19464",
+      "job": "opspilot",
+      "role": "web",
+      "state": "running_lapsed"
+     },
+     "value": [
+      1793464015.958,
+      "0"
+     ]
+    }
+   ]
+  }
+ }
+}
+,
+{
+ "http": 200,
+ "url_path": "/api/v1/query",
+ "params": {
+  "query": "opspilot_in_flight_attempts"
+ },
+ "body": {
+  "status": "success",
+  "data": {
+   "resultType": "vector",
+   "result": []
+  }
+ }
+}
+,
+{
+ "http": 200,
+ "url_path": "/api/v1/query",
+ "params": {
+  "query": "opspilot_last_poll_age_seconds{role=\"worker\"}"
+ },
+ "body": {
+  "status": "success",
+  "data": {
+   "resultType": "vector",
+   "result": []
+  }
+ }
+}
+]}

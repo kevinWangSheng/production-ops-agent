@@ -47,6 +47,11 @@ config:
             authorization:
               type: Bearer
               credentials_file: /etc/alertmanager/opspilot/token
+    # F8 step 1 (#414, F8-Q3): alerts about OpsPilot itself (rules labelled
+    # opspilot_self="true", values.yaml group opspilot-self). No integration:
+    # it never calls OpsPilot and holds no token; the evidence is the alert
+    # in Alertmanager's API and Prometheus' ALERTS series.
+    - name: opspilot-self
   route:
     receiver: opspilot
     group_by: [alertname, namespace, service]
@@ -55,3 +60,9 @@ config:
     # A repeated notification of a firing alert keeps fingerprint and
     # startsAt, which OpsPilot treats as a replay (decision B).
     repeat_interval: 1h
+    routes:
+      # Not to the workbench: a self-alert must not depend on the system it
+      # is about, and it opens no incident there.
+      - receiver: opspilot-self
+        matchers:
+          - opspilot_self="true"

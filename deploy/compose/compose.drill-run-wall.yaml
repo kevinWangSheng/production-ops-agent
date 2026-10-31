@@ -1,0 +1,13 @@
+# Lab drill override (#414, F8-Q4): a short Run wall for Runs the web accepts
+# while it runs with this file (OPSPILOT_RUN_SECONDS, never above the frozen
+# wall), so the "stop worker" drill reaches the deadline sweep in minutes.
+# Only for that drill; restore by recreating the web without this file.
+# Never part of a default install.
+#
+#   install.sh compose -f deploy/compose/compose.lab.yaml \
+#     -f deploy/compose/compose.drill-run-wall.yaml up -d --no-deps web
+
+services:
+  web:
+    environment:
+      OPSPILOT_RUN_SECONDS: "240"

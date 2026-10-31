@@ -166,6 +166,25 @@ prometheus:
         - container.name
         - host.name
 
+  # F8 step 1 (#414, contract F8-R5): the three OpsPilot health listeners
+  # (#413) as published by deploy/compose/compose.lab.yaml on the host
+  # loopback, reached from the pod at 192.168.5.2 (host.lima.internal under
+  # colima, the Alertmanager webhook's path, M1-04 E14). The subchart takes
+  # a string, appended to the chart's scrape_configs.
+  extraScrapeConfigs: |
+    - job_name: opspilot
+      scrape_interval: 15s
+      static_configs:
+        - targets: ["192.168.5.2:19464"]
+          labels:
+            role: web
+        - targets: ["192.168.5.2:19465"]
+          labels:
+            role: worker
+        - targets: ["192.168.5.2:19466"]
+          labels:
+            role: observer
+
   serverFiles:
     # M1-04 lab alert (#167): the PlaceOrder error ratio of the checkout
     # HealthProfile (opspilot/observer/profiles/otel-demo-checkout.json,
@@ -195,6 +214,30 @@ prometheus:
               annotations:
                 summary: "checkout PlaceOrder error ratio above 50%"
                 description: "{{ $value | humanizePercentage }} of checkout PlaceOrder server spans ended in error over the last 5 minutes."
+        # F8 step 1 (#414, F8-R6, F8-Q3): alerts about OpsPilot itself. The
+        # opspilot_self label routes them to the opspilot-self receiver
+        # (alertmanager-values.yaml), never to the workbench they are about.
+        # Threshold 2 is the loop's model retry limit.
+        - name: opspilot-self
+          rules:
+            - alert: OpsPilotAgentAbsent
+              expr: up{job="opspilot"} == 0 or absent(up{job="opspilot",role="worker"})
+              for: 2m
+              labels:
+                severity: critical
+                opspilot_self: "true"
+              annotations:
+                summary: "an OpsPilot health listener is down or the worker is not scraped"
+                description: "role {{ $labels.role }} ({{ $labels.instance }}) has not answered /metrics for 2 minutes."
+            - alert: OpsPilotModelCallsFailing
+              expr: opspilot_model_consecutive_failures >= 2
+              for: 1m
+              labels:
+                severity: critical
+                opspilot_self: "true"
+              annotations:
+                summary: "OpsPilot model calls are failing"
+                description: "{{ $value }} consecutive model calls failed on {{ $labels.instance }}."
 
 grafana:
   enabled: false

@@ -67,7 +67,8 @@ def test_workbench_env_holds_hash_under_dedicated_actor(tmp_path: Path) -> None:
 def test_alertmanager_values_read_token_from_mounted_secret() -> None:
     raw = (CONFIG / "alertmanager-values.yaml").read_text()
     values = yaml.safe_load(raw)
-    (receiver,) = values["config"]["receivers"]
+    # #414 adds the integration-less opspilot-self receiver (F8-Q3)
+    (receiver,) = [r for r in values["config"]["receivers"] if "webhook_configs" in r]
     (hook,) = receiver["webhook_configs"]
     auth = hook["http_config"]["authorization"]
     assert auth == {
@@ -98,7 +99,8 @@ def test_prometheus_sends_to_pinned_release_and_carries_the_rule() -> None:
     ]
     groups = prometheus["serverFiles"]["alerting_rules.yml"]["groups"]
     rules = [rule for group in groups for rule in group["rules"]]
-    (rule,) = rules
+    # #414 adds the opspilot-self group (tests/test_414_lab_alerts_impl.py)
+    (rule,) = [rule for rule in rules if "opspilot_self" not in rule["labels"]]
     assert rule["alert"] == "CheckoutPlaceOrderErrorRatioHigh"
     # the labels the workbench target registry will match (E6)
     assert '"namespace"' in rule["expr"] and '"service"' in rule["expr"]
