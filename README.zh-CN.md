@@ -8,7 +8,7 @@ OpsPilot 是持续运行的事故与发布后调查 Agent。它只读取遥测�
 
 ## 它做什么
 
-- **调查。** Alertmanager 告警或发布事件会开一个事故和一次调查 Run。模型通过按目标授权的只读工具收集证据，同时保留相互竞争的假设，发布的报告把事实、假设和缺口分开写。证据不够时直接说明，或者把事故交给人，不做猜测。
+- **调查。** Alertmanager 告警会开一个事故。告警匹配到已配置的目标时启动一次调查 Run，否则事故交给人。模型通过按目标授权的只读工具收集证据，同时保留相互竞争的假设，发布的报告把事实、假设和缺口分开写。证据不够时直接说明，或者把事故交给人，不做猜测。
 - **与人协作。** 操作者在工作台读报告、追问（每次追问开一个新 Run）、全局或按目标暂停调查、关闭或重开事故。人工控制始终优先于 Agent。
 - **独立观察恢复。** 人处理完事故后，独立的 Observer 进程用自己的只读 Prometheus 账号采样服务健康，记录服务是否恢复。它从不执行恢复动作。
 - **起草待审核的复盘。** worker 根据事故记录起草复盘；人在工作台批准后，它才作为知识进入后续调查。
@@ -40,12 +40,18 @@ cd production-ops-agent
 deploy/compose/install.sh install
 ```
 
-它从 checkout 构建镜像 `opspilot:local`，一次性生成全部口令和令牌，迁移数据库，创建四个运行时数据库 login，启动 web 工作台。密钥放在 `~/.config/opspilot`（仓库之外，权限 0600；用 `OPSPILOT_SECRETS_DIR` 可换目录）。重跑 `install` 是安全的，不会重新生成口令；不打印任何密钥。
+它从 checkout 构建镜像 `opspilot:local`，一次性生成全部口令和令牌，迁移数据库，创建四个运行时数据库 login，启动 web 工作台。密钥放在 `${XDG_CONFIG_HOME:-$HOME/.config}/opspilot`（仓库之外，权限 0600；用 `OPSPILOT_SECRETS_DIR` 可换目录）。下文用 `$SECRETS` 指这个目录：
+
+```sh
+SECRETS="${OPSPILOT_SECRETS_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/opspilot}"
+```
+
+重跑 `install` 是安全的，不会重新生成口令；不打印任何密钥。
 
 ### 2. 登录工作台
 
 ```sh
-cat ~/.config/opspilot/ui_password
+cat "$SECRETS/ui_password"
 ```
 
 打开 `http://127.0.0.1:18080`，用户名 `operator`，口令即上面的内容。从其他机器访问用 SSH 隧道，本地端口保持一致（允许的 origin 跟随 `OPSPILOT_WEB_HOST_PORT`）：
@@ -59,10 +65,10 @@ ssh -L 18080:127.0.0.1:18080 <user>@<control-host>
 worker 需要模型 key；Observer 需要自己的只读 Prometheus 账号。两个文件已经以只含注释的占位文件存在。用编辑器写入，不要用 `echo`，免得 key 留在 shell 历史里：
 
 ```sh
-${EDITOR:-vi} ~/.config/opspilot/worker_env
+${EDITOR:-vi} "$SECRETS/worker_env"
 # DEEPSEEK_API_KEY=<你的 DeepSeek API key>
 
-${EDITOR:-vi} ~/.config/opspilot/observer_env
+${EDITOR:-vi} "$SECRETS/observer_env"
 # OPSPILOT_OBSERVER_PROMETHEUS_USERNAME=<只读用户>
 # OPSPILOT_OBSERVER_PROMETHEUS_PASSWORD=<口令>
 # （或 OPSPILOT_OBSERVER_PROMETHEUS_TOKEN=<令牌>）
@@ -87,7 +93,7 @@ deploy/compose/install.sh compose logs worker
 
 ### 5. 把告警绑定到目标并发送
 
-`~/.config/opspilot/target_identities.json` 初始为 `{}`：这时每条告警都直接交给人，不开 Run。要让匹配的告警开 Run，按目标 id 加一项。默认工具档 `fixture` 下，worker 只认目标 `checkout-prod`，调查的是一份固定样本数据，不是你的真实系统；用其他键时 Run 的工具调用会被拒（`TARGET_NOT_REGISTERED`）。
+`$SECRETS/target_identities.json` 初始为 `{}`：这时每条告警都直接交给人，不开 Run。要让匹配的告警开 Run，按目标 id 加一项。默认工具档 `fixture` 下，worker 只认目标 `checkout-prod`，调查的是一份固定样本数据，不是你的真实系统；用其他键时 Run 的工具调用会被拒（`TARGET_NOT_REGISTERED`）。
 
 ```json
 {
@@ -108,7 +114,7 @@ deploy/compose/install.sh compose logs worker
 deploy/compose/install.sh compose up -d --force-recreate web
 ```
 
-告警发到 `POST http://127.0.0.1:18080/intake/alertmanager`，bearer 令牌在 `~/.config/opspilot/alertmanager_token`。同一主机上的 Alertmanager 可以这样配 receiver：
+告警发到 `POST http://127.0.0.1:18080/intake/alertmanager`，bearer 令牌在 `$SECRETS/alertmanager_token`。同一主机上的 Alertmanager 可以这样配 receiver：
 
 ```yaml
 receivers:
@@ -131,7 +137,7 @@ receivers:
 
 | 名称 | 默认值 | 作用 |
 |---|---|---|
-| `OPSPILOT_SECRETS_DIR` | 该项目安装时用的目录，否则 `${XDG_CONFIG_HOME:-~/.config}/opspilot` | 密钥与设置，须在仓库之外。项目的数据库卷已存在时换用其他目录会被拒绝。 |
+| `OPSPILOT_SECRETS_DIR` | 该项目安装时用的目录，否则 `${XDG_CONFIG_HOME:-$HOME/.config}/opspilot` | 密钥与设置，须在仓库之外。项目的数据库卷已存在时换用其他目录会被拒绝。 |
 | `OPSPILOT_PROJECT` | `$COMPOSE_PROJECT_NAME`，否则 `opspilot` | Compose 项目名（小写字母、数字、`-`、`_`），一个名称一套安装。 |
 | `OPSPILOT_WEB_HOST_PORT` | `18080` | 工作台在 `127.0.0.1` 上的端口，允许的 origin 跟随它。 |
 | `OPSPILOT_IMAGE` | `opspilot:local` | 产品镜像。默认值从 checkout 构建；其他值改为 pull，且必须按 digest 固定（`<name>@sha256:<64 位十六进制>`）。 |

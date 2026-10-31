@@ -8,7 +8,7 @@ Internal process documents are written in Chinese. Where this README and the Chi
 
 ## What it does
 
-- **Investigates.** An Alertmanager alert or a release event opens an incident and an investigation Run. The model gathers evidence through read-only, target-scoped tools, keeps competing hypotheses, and publishes a report that separates facts, hypotheses and gaps. When evidence is missing it says so, or hands the incident to a human, instead of guessing.
+- **Investigates.** An Alertmanager alert opens an incident. When the alert matches a configured target, an investigation Run starts; otherwise the incident is handed to a human. The model gathers evidence through read-only, target-scoped tools, keeps competing hypotheses, and publishes a report that separates facts, hypotheses and gaps. When evidence is missing it says so, or hands the incident to a human, instead of guessing.
 - **Works with a human.** In the workbench an operator reads the report, asks follow-up questions (each opens a new Run), pauses investigation globally or per target, and closes or reopens incidents. Human control always takes precedence over the agent.
 - **Observes recovery independently.** After a human has handled an incident, a separate Observer process with its own read-only Prometheus account samples service health and records whether the service recovered. It never performs a recovery action.
 - **Drafts reviewed postmortems.** The worker drafts a postmortem from the incident record; it becomes knowledge for later investigations only after a human approves it in the workbench.
@@ -40,12 +40,18 @@ cd production-ops-agent
 deploy/compose/install.sh install
 ```
 
-This builds the image `opspilot:local` from the checkout, generates every password and token once, migrates the database, creates the four runtime database logins and starts the web workbench. Secrets go to `~/.config/opspilot` (outside the repository, mode 0600; set `OPSPILOT_SECRETS_DIR` to choose another directory). Re-running `install` is safe: it never regenerates a password. No secret is printed.
+This builds the image `opspilot:local` from the checkout, generates every password and token once, migrates the database, creates the four runtime database logins and starts the web workbench. Secrets go to `${XDG_CONFIG_HOME:-$HOME/.config}/opspilot` (outside the repository, mode 0600; set `OPSPILOT_SECRETS_DIR` to choose another directory). The steps below refer to that directory as `$SECRETS`:
+
+```sh
+SECRETS="${OPSPILOT_SECRETS_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/opspilot}"
+```
+
+ Re-running `install` is safe: it never regenerates a password. No secret is printed.
 
 ### 2. Log in to the workbench
 
 ```sh
-cat ~/.config/opspilot/ui_password
+cat "$SECRETS/ui_password"
 ```
 
 Open `http://127.0.0.1:18080` and log in as user `operator` with that password. From another machine, use an SSH tunnel with the same local port (the allowed origins follow `OPSPILOT_WEB_HOST_PORT`):
@@ -59,10 +65,10 @@ ssh -L 18080:127.0.0.1:18080 <user>@<control-host>
 The worker needs the model key; the Observer needs its own read-only Prometheus account. Both files already exist as comment-only placeholders. Edit them with an editor rather than `echo`, so the key does not land in shell history:
 
 ```sh
-${EDITOR:-vi} ~/.config/opspilot/worker_env
+${EDITOR:-vi} "$SECRETS/worker_env"
 # DEEPSEEK_API_KEY=<your DeepSeek API key>
 
-${EDITOR:-vi} ~/.config/opspilot/observer_env
+${EDITOR:-vi} "$SECRETS/observer_env"
 # OPSPILOT_OBSERVER_PROMETHEUS_USERNAME=<read-only user>
 # OPSPILOT_OBSERVER_PROMETHEUS_PASSWORD=<password>
 # (or OPSPILOT_OBSERVER_PROMETHEUS_TOKEN=<token>)
@@ -87,7 +93,7 @@ deploy/compose/install.sh compose logs worker
 
 ### 5. Route alerts to a target and send them
 
-`~/.config/opspilot/target_identities.json` starts as `{}`: every alert is then handed to a human without a Run. To let matching alerts open a Run, add an entry keyed by the target id. With the default tool profile `fixture`, the worker knows only the target `checkout-prod` and investigates a fixed sample data set, not your live system; any other key makes the Run's tool calls fail with `TARGET_NOT_REGISTERED`.
+`$SECRETS/target_identities.json` starts as `{}`: every alert is then handed to a human without a Run. To let matching alerts open a Run, add an entry keyed by the target id. With the default tool profile `fixture`, the worker knows only the target `checkout-prod` and investigates a fixed sample data set, not your live system; any other key makes the Run's tool calls fail with `TARGET_NOT_REGISTERED`.
 
 ```json
 {
@@ -108,7 +114,7 @@ After editing, recreate the web container (a plain `restart` keeps the old file)
 deploy/compose/install.sh compose up -d --force-recreate web
 ```
 
-Alerts arrive at `POST http://127.0.0.1:18080/intake/alertmanager` with the bearer token in `~/.config/opspilot/alertmanager_token`. An Alertmanager on the same host can use a receiver like this:
+Alerts arrive at `POST http://127.0.0.1:18080/intake/alertmanager` with the bearer token in `$SECRETS/alertmanager_token`. An Alertmanager on the same host can use a receiver like this:
 
 ```yaml
 receivers:
@@ -131,7 +137,7 @@ Set these as environment variables on `install`, `upgrade`, `uninstall` or `comp
 
 | Name | Default | What it does |
 |---|---|---|
-| `OPSPILOT_SECRETS_DIR` | the directory this project was installed with, else `${XDG_CONFIG_HOME:-~/.config}/opspilot` | Secrets and settings, outside the repository. A different directory for a project whose database volume exists is refused. |
+| `OPSPILOT_SECRETS_DIR` | the directory this project was installed with, else `${XDG_CONFIG_HOME:-$HOME/.config}/opspilot` | Secrets and settings, outside the repository. A different directory for a project whose database volume exists is refused. |
 | `OPSPILOT_PROJECT` | `$COMPOSE_PROJECT_NAME`, else `opspilot` | Compose project name (lowercase letters, digits, `-`, `_`); one install per name. |
 | `OPSPILOT_WEB_HOST_PORT` | `18080` | Workbench port on `127.0.0.1`; the allowed origins follow it. |
 | `OPSPILOT_IMAGE` | `opspilot:local` | Product image. The default is built from the checkout; anything else is pulled and must be pinned by digest (`<name>@sha256:<64 hex>`). |
