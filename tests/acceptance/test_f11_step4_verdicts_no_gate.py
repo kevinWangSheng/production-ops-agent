@@ -498,6 +498,43 @@ def _module_path(name: str) -> Path | None:
     return None
 
 
+_HEALTH_CLIENT_ROOTS = _NETWORK_ROOTS - {"socket"}
+_HEALTH_CLIENT_CALLS = {
+    "connect",
+    "connect_ex",
+    "create_connection",
+    "urlopen",
+    "HTTPConnection",
+    "HTTPSConnection",
+    "PoolManager",
+    "ClientSession",
+    "request",
+}
+
+
+def _health_network_offenders(tree: ast.AST) -> list[str]:
+    offenders: list[str] = []
+    for imported in _imported(tree):
+        if any(
+            imported == root or imported.startswith(root + ".")
+            for root in _HEALTH_CLIENT_ROOTS
+        ):
+            offenders.append(f"import {imported}")
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            func = node.func
+            called = (
+                func.attr
+                if isinstance(func, ast.Attribute)
+                else func.id
+                if isinstance(func, ast.Name)
+                else None
+            )
+            if called in _HEALTH_CLIENT_CALLS:
+                offenders.append(f"call {called}()")
+    return offenders
+
+
 def test_item3_in_the_observer_process_only_the_prometheus_source_does_network_io() -> (
     None
 ):
@@ -510,7 +547,13 @@ def test_item3_in_the_observer_process_only_the_prometheus_source_does_network_i
         path = _module_path(name)
         if path is None:
             continue
-        imported = _imported(ast.parse(path.read_text()))
+        tree = ast.parse(path.read_text())
+        if name == "opspilot.health":
+            # F8-Q2: health is an inbound-only listener owned by each process;
+            # socket is permitted for binding, while client I/O remains banned.
+            assert _health_network_offenders(tree) == []
+            continue
+        imported = _imported(tree)
         if any(
             i == root or i.startswith(root + ".")
             for i in imported
