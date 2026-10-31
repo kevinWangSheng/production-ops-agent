@@ -163,6 +163,27 @@ has_model_key() {
     return 1
 }
 
+# observer_url_ok <url>: the URL the Observer accepts at start
+# (opspilot/observer/prometheus.py): http(s), no userinfo, a non-empty host
+# (bracketed IPv6 allowed), and a port, if one is given, numeric in 1-65535.
+observer_url_ok() {
+    local authority port re_url='^https?://([^/?#]*)'
+    local re_ipv6='^\[[^]]+\](:(.*))?$' re_host='^([^:]+)(:(.*))?$'
+    [[ "$1" =~ $re_url ]] || return 1
+    authority=${BASH_REMATCH[1]}
+    case "$authority" in "" | *@* | *[[:space:]]*) return 1 ;; esac
+    if [[ "$authority" =~ $re_ipv6 ]]; then
+        [ -n "${BASH_REMATCH[1]}" ] || return 0
+        port=${BASH_REMATCH[2]}
+    elif [[ "$authority" =~ $re_host ]]; then
+        [ -n "${BASH_REMATCH[2]}" ] || return 0
+        port=${BASH_REMATCH[3]}
+    else
+        return 1
+    fi
+    [[ "$port" =~ ^[0-9]{1,5}$ ]] && ((10#$port >= 1 && 10#$port <= 65535))
+}
+
 # With the agent profile requested, worker and Observer must be able to
 # start: checked before any Docker call, so a refusal leaves the install as
 # it was. Messages name the file or variable, never a value.
@@ -170,7 +191,7 @@ require_agent_config() {
     [ "$OPSPILOT_START_AGENT" = 1 ] || return 0
     has_model_key "$SECRETS_DIR/worker_env" ||
         die "OPSPILOT_START_AGENT=1 needs a non-empty DEEPSEEK_API_KEY=... line in $SECRETS_DIR/worker_env; nothing changed"
-    [[ "$OPSPILOT_OBSERVER_PROMETHEUS_URL" =~ ^https?://[^/[:space:]]+ ]] ||
+    observer_url_ok "$OPSPILOT_OBSERVER_PROMETHEUS_URL" ||
         die "OPSPILOT_START_AGENT=1 needs OPSPILOT_OBSERVER_PROMETHEUS_URL set to the Observer's read-only Prometheus http(s) URL; nothing changed"
 }
 

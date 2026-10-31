@@ -139,6 +139,51 @@ def test_a_missing_or_non_http_observer_url_is_refused(host, url):
         assert url not in result.stderr
 
 
+# The Observer refuses these at start (opspilot/observer/prometheus.py:
+# userinfo, an empty host, a port urlsplit cannot read); the installer must
+# refuse them first, before any Docker call, without echoing the URL (a
+# userinfo URL may carry a password).
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://reader:s3cretpw@prometheus:9090",
+        "https://reader@prometheus:9090",
+        "http://@prometheus:9090",
+        "http://:9090",
+        "https:///api/v1",
+        "http://prometheus:abc",
+        "http://prometheus:0",
+        "http://prometheus:65536",
+        "http://prometheus:90a0/",
+    ],
+)
+def test_an_observer_url_the_observer_would_reject_is_refused(host, url):
+    host.worker_env(f"DEEPSEEK_API_KEY={KEY}\n")
+    result = host(OPSPILOT_START_AGENT="1", OPSPILOT_OBSERVER_PROMETHEUS_URL=url)
+    assert result.returncode != 0
+    assert host.calls() == []
+    assert "OPSPILOT_OBSERVER_PROMETHEUS_URL" in result.stderr
+    assert url not in result.stderr and "s3cretpw" not in result.stderr
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://prometheus",
+        "http://opspilot-m1-control-plane:30090",
+        "https://prometheus.example:65535/prefix",
+        "http://[::1]:9090",
+    ],
+)
+def test_an_observer_url_the_observer_accepts_starts_the_agent(host, url):
+    host.worker_env(f"DEEPSEEK_API_KEY={KEY}\n")
+    result = host(OPSPILOT_START_AGENT="1", OPSPILOT_OBSERVER_PROMETHEUS_URL=url)
+    assert result.returncode == 0, result.stderr
+    start = _compose(host.calls())[-1]
+    assert {"web", "worker", "observer"} <= set(start["args"])
+    assert start["env"]["OPSPILOT_OBSERVER_PROMETHEUS_URL"] == url
+
+
 def test_refusals_never_print_the_model_key(host):
     host.worker_env(f"DEEPSEEK_API_KEY={KEY}\n")
     refused = host(OPSPILOT_START_AGENT="1", OPSPILOT_OBSERVER_PROMETHEUS_URL="ftp://x")
