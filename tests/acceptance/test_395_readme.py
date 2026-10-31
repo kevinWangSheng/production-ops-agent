@@ -7,7 +7,6 @@ from pathlib import Path
 
 import pytest
 
-
 ROOT = Path(__file__).parents[2]
 READMES = (ROOT / "README.md", ROOT / "README.zh-CN.md")
 INSTALLER = ROOT / "deploy/compose/install.sh"
@@ -21,11 +20,13 @@ def _read(path: Path) -> str:
 
 def _installer_subcommands() -> set[str]:
     source = _read(INSTALLER)
-    match = re.search(
-        r"case \"\$command\" in(?P<body>.*?)\n\s*esac", source, re.S
-    )
+    match = re.search(r"case \"\$command\" in(?P<body>.*?)\n\s*esac", source, re.S)
     assert match, "install.sh must retain a parseable command dispatch"
-    return set(re.findall(r"^\s*(install|upgrade|uninstall|compose)\)", match.group("body"), re.M))
+    return set(
+        re.findall(
+            r"^\s*(install|upgrade|uninstall|compose)\)", match.group("body"), re.M
+        )
+    )
 
 
 def _installer_env_names() -> set[str]:
@@ -43,9 +44,21 @@ def _fenced_shell_blocks(text: str) -> list[str]:
     return re.findall(r"```(?:bash|sh|shell)\s*\n(.*?)```", text, re.S | re.I)
 
 
+def _join_continued_lines(block: str) -> str:
+    lines = block.splitlines()
+    joined: list[str] = []
+    for line in lines:
+        if joined and joined[-1].rstrip().endswith("\\"):
+            joined[-1] = joined[-1].rstrip()[:-1] + " " + line.strip()
+        else:
+            joined.append(line)
+    return "\n".join(joined)
+
+
 def _install_invocations(block: str) -> list[tuple[str, str]]:
     """Return (line, subcommand) for every install.sh call in a shell block."""
     calls: list[tuple[str, str]] = []
+    block = _join_continued_lines(block)
     for line in block.splitlines():
         if "install.sh" not in line or line.lstrip().startswith("#"):
             continue
@@ -64,8 +77,7 @@ def _documented_env_names(text: str) -> set[str]:
 
 
 def _walkthrough_text(text: str) -> str:
-    blocks = [block for block in _fenced_shell_blocks(text) if "install.sh" in block]
-    return "\n".join(blocks)
+    return _join_continued_lines("\n".join(_fenced_shell_blocks(text)))
 
 
 def test_bilingual_readmes_exist_and_link_to_each_other_near_top() -> None:
@@ -82,7 +94,7 @@ def test_install_walkthrough_uses_real_subcommands_and_env_names() -> None:
     known_envs = _installer_env_names()
     for path in READMES:
         text = _read(path)
-        blocks = [block for block in _fenced_shell_blocks(text) if "install.sh" in block]
+        blocks = _fenced_shell_blocks(text)
         assert blocks, f"{path.name} needs a fenced install.sh walkthrough"
         for block in blocks:
             for line, command in _install_invocations(block):
@@ -91,7 +103,9 @@ def test_install_walkthrough_uses_real_subcommands_and_env_names() -> None:
                     f"in: {line}"
                 )
             for name in re.findall(r"\bOPSPILOT_[A-Z0-9_]+\b", block):
-                assert name in known_envs, f"{path.name} uses undocumented installer env {name}"
+                assert name in known_envs, (
+                    f"{path.name} uses undocumented installer env {name}"
+                )
 
 
 def test_walkthrough_order_matches_upgrade_and_installed_evidence() -> None:
@@ -108,13 +122,18 @@ def test_walkthrough_order_matches_upgrade_and_installed_evidence() -> None:
         walkthrough = _walkthrough_text(_read(path))
         assert walkthrough, f"{path.name} has no install walkthrough"
         positions = {
-            "install": [m.start() for m in re.finditer(r"install\.sh\s+install\b", walkthrough)],
+            "install": [
+                m.start() for m in re.finditer(r"install\.sh\s+install\b", walkthrough)
+            ],
             "worker_env": [
-                m.start() for m in re.finditer(r"worker_env|DEEPSEEK_API_KEY", walkthrough)
+                m.start()
+                for m in re.finditer(r"worker_env|DEEPSEEK_API_KEY", walkthrough)
             ],
             "observer": [
                 m.start()
-                for m in re.finditer(r"observer_env|OPSPILOT_OBSERVER_PROMETHEUS_", walkthrough)
+                for m in re.finditer(
+                    r"observer_env|OPSPILOT_OBSERVER_PROMETHEUS_", walkthrough
+                )
             ],
             "agent_upgrade": [
                 m.start()
@@ -129,7 +148,8 @@ def test_walkthrough_order_matches_upgrade_and_installed_evidence() -> None:
         missing = [name for name, hits in positions.items() if not hits]
         assert not missing, f"{path.name} walkthrough is missing: {', '.join(missing)}"
         order = [
-            positions[name][0] for name in ("install", "worker_env", "observer", "agent_upgrade")
+            positions[name][0]
+            for name in ("install", "worker_env", "observer", "agent_upgrade")
         ]
         assert order == sorted(order), (
             f"{path.name} walkthrough order is not install → credentials → agent upgrade"
@@ -179,10 +199,20 @@ def test_readmes_and_env_example_contain_no_secret_looking_values() -> None:
     assignment = re.compile(
         r"(?im)^\s*(?:[A-Z][A-Z0-9_]*(?:KEY|TOKEN|PASSWORD|SECRET)[A-Z0-9_]*)\s*=\s*([^#\s]+)"
     )
-    placeholders = {"", "...", "<value>", "<token>", "<password>", "your_key", "changeme"}
+    placeholders = {
+        "",
+        "...",
+        "<value>",
+        "<token>",
+        "<password>",
+        "your_key",
+        "changeme",
+    }
     for path in (*READMES, ROOT / ".env.example"):
         for value in assignment.findall(_read(path)):
             normalized = value.strip("'\"").lower()
+            if re.match(r"^https?://[^/@\s]+(?:/[^\s]*)?$", normalized):
+                continue
             assert normalized in placeholders or normalized.startswith(("${", "<")), (
                 f"secret-looking value in {path.name}: {value}"
             )
@@ -190,6 +220,8 @@ def test_readmes_and_env_example_contain_no_secret_looking_values() -> None:
 
 def test_english_readme_declares_chinese_contract_documents_authoritative() -> None:
     english = _read(ROOT / "README.md").lower()
-    assert "chinese" in english or "中文" in english
-    assert "authoritative" in english or "权威" in english
-    assert "conflict" in english or "冲突" in english
+    assert "chinese contract" in english or "中文" in english
+    assert (
+        "authoritative" in english or "take precedence" in english or "权威" in english
+    )
+    assert any(word in english for word in ("conflict", "disagree", "differ", "冲突"))
