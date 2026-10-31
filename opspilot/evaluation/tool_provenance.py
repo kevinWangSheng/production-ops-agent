@@ -254,6 +254,11 @@ def check_result(
         "target_id": None,
         "query": None,
     }
+    # A transport's own pre-send refusal (``sent=false``, #283/#327) was
+    # planned in full and handed to the transport, which answered without
+    # sending: it keeps the window it would have read and the transport-phase
+    # times, unlike a refusal the gateway decided before planning finished.
+    presend = not op.dispatched and op.finished_at is not None
     failure: tuple[str, str] | None = None
     if targets.revision != scope.registry_revision:
         failure = ("denied", "TARGET_REGISTRY_CHANGED")
@@ -272,7 +277,7 @@ def check_result(
         else:
             resolved["target_id"] = target.target_id
             value = request.window
-            if op.dispatched and value is None:
+            if (op.dispatched or presend) and value is None:
                 value = binding.default_window or binding.authorized_window
             window = Window.parse(value)
             if window is None:
@@ -323,14 +328,14 @@ def check_result(
         for view in (outcome.model_view, outcome.evidence.view):
             for name in set(view) & identities.keys():
                 same(view[name], identities[name])
+    expected_window = Window.parse(
+        request.window
+        if request.window is not None
+        else (binding.default_window or binding.authorized_window)
+    )
     if op.dispatched:
         if failure is not None:
             mismatch()
-        expected_window = Window.parse(
-            request.window
-            if request.window is not None
-            else (binding.default_window or binding.authorized_window)
-        )
         same(op.window, expected_window)
         allowed: set[tuple[str, str | None, str]] = {
             ("no_data", "NO_DATA", "confirmed"),
@@ -368,7 +373,12 @@ def check_result(
         ):
             mismatch()
     else:
-        same(op.window, None)
+        if presend and failure is None:
+            # Replay serves this refusal by status and reason; there is no
+            # source response whose identity could be compared.
+            same(op.window, expected_window)
+        else:
+            same(op.window, None)
         if outcome.source_contact != "none" or outcome.status not in (
             "denied",
             "error",
@@ -382,6 +392,12 @@ def check_result(
                 outcome.status == "error"
                 and outcome.reason
                 in {"INVALID_PARAMS", "SOURCE_ERROR", "SOURCE_UNAVAILABLE"}
+            )
+            or (
+                presend
+                and reads_evidence(reg)
+                and (outcome.status, outcome.reason)
+                == ("denied", "EVIDENCE_NOT_READABLE")
             )
         ):
             mismatch()
