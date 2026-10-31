@@ -91,7 +91,14 @@ def test_bilingual_readmes_exist_and_link_to_each_other_near_top() -> None:
 
 def test_install_walkthrough_uses_real_subcommands_and_env_names() -> None:
     known_commands = _installer_subcommands()
-    known_envs = _installer_env_names()
+    # Installer settings plus the keys the operator writes into the runtime
+    # env files (worker_env / observer_env), as read by the runtimes themselves.
+    runtime_sources = _read(ROOT / "opspilot/observer/__main__.py") + _read(
+        ROOT / "opspilot/worker_main.py"
+    )
+    known_envs = _installer_env_names() | set(
+        re.findall(r"OPSPILOT_[A-Z0-9_]+", runtime_sources)
+    )
     for path in READMES:
         text = _read(path)
         blocks = _fenced_shell_blocks(text)
@@ -154,7 +161,9 @@ def test_walkthrough_order_matches_upgrade_and_installed_evidence() -> None:
         assert order == sorted(order), (
             f"{path.name} walkthrough order is not install → credentials → agent upgrade"
         )
-        assert positions["workbench"][0] > positions["agent_upgrade"][0], (
+        # Login happens right after install, so the workbench is mentioned
+        # earlier too; what matters is that it is used after the agent upgrade.
+        assert positions["workbench"][-1] > positions["agent_upgrade"][0], (
             f"{path.name} must open the workbench after the agent upgrade"
         )
 
@@ -197,7 +206,7 @@ def test_b13_stale_wording_is_gone(path: Path, phrase: str) -> None:
 
 def test_readmes_and_env_example_contain_no_secret_looking_values() -> None:
     assignment = re.compile(
-        r"(?im)^\s*(?:[A-Z][A-Z0-9_]*(?:KEY|TOKEN|PASSWORD|SECRET)[A-Z0-9_]*)\s*=\s*([^#\s]+)"
+        r"(?im)^\s*(?:[A-Z][A-Z0-9_]*(?:KEY|TOKEN|PASSWORD|SECRET)[A-Z0-9_]*)[ \t]*=[ \t]*([^#\s]+)"
     )
     placeholders = {
         "",
