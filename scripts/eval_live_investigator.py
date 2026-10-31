@@ -16,8 +16,11 @@ rest of the attempt runs through ``proceed()``. No epoch is predicted.
 
 from __future__ import annotations
 
+import base64
 import json
 import os
+import stat
+import urllib.parse
 from collections.abc import Callable, Mapping
 from contextlib import ExitStack
 from dataclasses import asdict, dataclass, replace
@@ -46,11 +49,13 @@ from opspilot.investigation.limits import M1_FROZEN_LIMITS, RUN_WALL_SECONDS
 from opspilot.investigation.runner import InvestigationRunner, RunnerOutcome
 from opspilot.persistence import DurableStore
 from opspilot.tools import otel_demo
-from opspilot.tools.registry import canonical_hash
+from opspilot.tools.registry import ToolContractError, canonical_hash
 from opspilot.web import DurableEventLog, DurableEvidenceStore, DurableIncidentStore
 from opspilot.web.service import LEASE_SECONDS
 from opspilot.worker import Worker
+from scripts import kind_lab
 from scripts.eval_live_lab import (
+    SOURCE_QUERY,
     Interrupted,
     LabError,
     LiveClock,
@@ -77,12 +82,47 @@ class RoundSession:
     config: otel_demo.OtelDemoConfig
 
 
-def prepare_round(round_id: str) -> RoundSession:
+# The investigation side's Prometheus account (#284): the variables the
+# product worker reads, and the private file ``kind_lab.py up`` writes them to.
+INVESTIGATOR_VARS = kind_lab.ROLE_ENV_VARS["investigator"]
+INVESTIGATOR_ENV_FILE = "prometheus-investigator.env"
+
+
+def investigator_env(env: Mapping[str, str], path: Path) -> dict[str, str]:
+    """The investigator account: the environment's when either variable is
+    set there, else the private env file's (absent file: none). The file must
+    be a regular file only its owner can read; values are never printed."""
+    if any(env.get(name) for name in INVESTIGATOR_VARS):
+        return {name: env.get(name, "") for name in INVESTIGATOR_VARS}
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    except FileNotFoundError:
+        return {}
+    except OSError:
+        raise LabError("ENV_UNCONFIRMED") from None
+    with os.fdopen(fd) as stream:
+        info = os.fstat(stream.fileno())
+        if not stat.S_ISREG(info.st_mode) or info.st_mode & 0o077:
+            raise LabError("ENV_UNCONFIRMED")
+        lines = stream.read().splitlines()
+    found: dict[str, str] = {}
+    for line in lines:
+        name, sep, value = line.strip().partition("=")
+        if sep and name in INVESTIGATOR_VARS:
+            found[name] = value
+    return found
+
+
+def prepare_round(
+    round_id: str, *, investigator_env_file: Path | None = None
+) -> RoundSession:
     """Credentials and the round's project name, from local files only.
 
     No network: the LangSmith project is created by
     ``OtelDemoInvestigator.begin_round`` once the preflight passed, so a
     refused round makes no external call (interface r4). Never prints values.
+    The Runs' Prometheus account is ``investigator_env`` (#284); whether it
+    is there and accepted is the preflight's ``InvestigatorSource`` check.
     """
     from scripts.m1_live_flash_loop import load_langsmith_env, read_key
 
@@ -106,7 +146,51 @@ def prepare_round(round_id: str) -> RoundSession:
         raise LabError("ENV_UNCONFIRMED") from None
     if tracing.check_lab_target(env):
         raise LabError("ENV_UNCONFIRMED")
-    return RoundSession(key, None, otel_demo.OtelDemoConfig.from_env(env))
+    if investigator_env_file is None:
+        investigator_env_file = kind_lab.LAB_DIR / INVESTIGATOR_ENV_FILE
+    account = investigator_env(env, investigator_env_file)
+    try:
+        config = otel_demo.OtelDemoConfig.from_env({**env, **account})
+    except ToolContractError:
+        raise LabError("ENV_UNCONFIRMED") from None
+    return RoundSession(key, None, config)
+
+
+SOURCE_TIMEOUT_SECONDS = 10.0
+
+
+class InvestigatorSource:
+    """The preflight's view of the Runs' Prometheus credential (#284, V2-R9):
+    which kind is configured, and the HTTP status of one bounded read-only
+    query sent with it, through the same no-proxy, no-redirect opener."""
+
+    def __init__(self, config: otel_demo.OtelDemoConfig) -> None:
+        self._config = config
+
+    def credential(self) -> str:
+        if self._config.prometheus_basic_auth is not None:
+            return "basic"
+        return "bearer" if self._config.token else "absent"
+
+    def probe(self) -> int:
+        """The HTTP status (0: no answer); never the credential or the body."""
+        pair = self._config.prometheus_basic_auth
+        if pair is not None:
+            raw = f"{pair[0]}:{pair[1]}".encode()
+            authorization: str | None = "Basic " + base64.b64encode(raw).decode()
+        else:
+            authorization = (
+                f"Bearer {self._config.token}" if self._config.token else None
+            )
+        query = urllib.parse.urlencode({"query": SOURCE_QUERY})
+        checkpoint()
+        status, _ = kind_lab.get_json(
+            f"{self._config.prometheus_url}/api/v1/query?{query}",
+            timeout=SOURCE_TIMEOUT_SECONDS,
+            authorization=authorization,
+        )
+        checkpoint()
+        return status
 
 
 class _Delegate:

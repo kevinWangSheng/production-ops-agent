@@ -72,6 +72,7 @@ from opspilot.tools.executor import QueryScope
 from opspilot.tools.otel_demo import OtelDemoConfig
 from scripts.eval_live_lab import (
     _STOP,
+    SOURCE_QUERY,
     AttemptLedger,
     Committed,
     FaultIntent,
@@ -426,6 +427,10 @@ def preflight(config: RoundConfig, deps: LiveDeps) -> str | None:
     environment = deps.env.check()
     if environment is not None:
         return environment
+    source = deps.investigator_source
+    # No account for the Runs: refused before any lab call (#284).
+    if source is not None and source.credential() == "absent":
+        return "ENV_UNCONFIRMED"
     if round_evidence(deps, config.round_id).exists():
         return "ROUND_EXISTS"
     try:
@@ -439,6 +444,11 @@ def preflight(config: RoundConfig, deps: LiveDeps) -> str | None:
         failures = deps.identity.verify()
         if failures:
             return "LAB_IDENTITY_UNCONFIRMED"
+        if source is not None:
+            # One bounded read-only query with the Runs' own account, on
+            # the lab whose identity was just confirmed (V2-R9).
+            if source.probe() != 200:
+                return "ENV_UNCONFIRMED"
         if deps.ports.in_use(config.pg_port):
             return "PG_PORT_IN_USE"
         confirm_all_normal(
@@ -459,6 +469,20 @@ def preflight(config: RoundConfig, deps: LiveDeps) -> str | None:
         # opened: nothing was touched, so this is a refusal (exit 3).
         return "LAB_LEDGER_UNAVAILABLE"
     return None
+
+
+def _source_record(deps: LiveDeps) -> dict[str, Any] | None:
+    """What ``lifecycle.json`` records of the passed source check (#284): a
+    passed preflight means the probe was answered 200. No credential value."""
+    source = deps.investigator_source
+    if source is None:
+        return None
+    return {
+        "credential": source.credential(),
+        "query": SOURCE_QUERY,
+        "http_status": 200,
+        "result": "confirmed",
+    }
 
 
 def _retained(deps: LiveDeps, round_id: str) -> tuple[bool, bool]:
@@ -491,6 +515,7 @@ def _run_round(config: RoundConfig, deps: LiveDeps) -> RoundResult:
     refusal = preflight(config, deps)
     if refusal is not None:
         return _refuse(config, refusal)
+    source = _source_record(deps)
     if config.manifest is None:
         try:
             provenance = None if deps.provenance is None else deps.provenance.read()
@@ -645,6 +670,7 @@ def _run_round(config: RoundConfig, deps: LiveDeps) -> RoundResult:
                 retained,
                 balances,
                 evidence_dir,
+                source,
             )
         except OSError:
             # Like a journal/summary write failure (r11): exit 5 with the
@@ -702,6 +728,7 @@ def _write_lifecycle(
     retained: bool,
     balances: list[dict[str, Any]],
     evidence_dir: Path,
+    investigator_source: Mapping[str, Any] | None = None,
 ) -> None:
     document = {
         "schema": "opspilot-eval-live-lifecycle-1",
@@ -713,6 +740,7 @@ def _write_lifecycle(
         "retained_fault": retained,
         "recovered_at": None,
         "balances": balances,
+        "investigator_source": investigator_source,
         "slots": [
             {
                 "scenario_id": r.scenario_id,
@@ -1834,7 +1862,11 @@ def real_deps(flagd_url: str, round_id: str, *, probe: bool = False) -> LiveDeps
     ``probe`` (r8) builds the lab seams only: no credential file is read and
     the model, PG and balance seats refuse any use.
     """
-    from scripts.eval_live_investigator import OtelDemoInvestigator, prepare_round
+    from scripts.eval_live_investigator import (
+        InvestigatorSource,
+        OtelDemoInvestigator,
+        prepare_round,
+    )
     from scripts.eval_live_lab import (
         DeepSeekBalance,
         GitProvenance,
@@ -1890,6 +1922,7 @@ def real_deps(flagd_url: str, round_id: str, *, probe: bool = False) -> LiveDeps
         flagd_url=flagd_url,
         env=LabEnvChecker(),
         provenance=GitProvenance(ROOT),
+        investigator_source=InvestigatorSource(session.config),
     )
 
 
