@@ -125,6 +125,20 @@ receivers:
 
 `otel-demo` 工具档（`OPSPILOT_TOOL_PROFILE=otel-demo`，并在 `worker_env` 写入 `OPSPILOT_OTEL_*` 地址与凭据）读取固定版本的 OpenTelemetry Demo lab，而不是 fixture。
 
+### 安装器设置
+
+在 `install`、`upgrade`、`uninstall` 或 `compose` 时以环境变量给出。实际使用的值保存在 `<密钥目录>/install.env`，之后的运行沿用，除非重新给出（`OPSPILOT_SECRETS_DIR` 本身记在 `${XDG_STATE_HOME:-~/.local/state}/opspilot/installs/<项目名>`）。
+
+| 名称 | 默认值 | 作用 |
+|---|---|---|
+| `OPSPILOT_SECRETS_DIR` | 该项目安装时用的目录，否则 `${XDG_CONFIG_HOME:-~/.config}/opspilot` | 密钥与设置，须在仓库之外。项目的数据库卷已存在时换用其他目录会被拒绝。 |
+| `OPSPILOT_PROJECT` | `$COMPOSE_PROJECT_NAME`，否则 `opspilot` | Compose 项目名（小写字母、数字、`-`、`_`），一个名称一套安装。 |
+| `OPSPILOT_WEB_HOST_PORT` | `18080` | 工作台在 `127.0.0.1` 上的端口，允许的 origin 跟随它。 |
+| `OPSPILOT_IMAGE` | `opspilot:local` | 产品镜像。默认值从 checkout 构建；其他值改为 pull，且必须按 digest 固定（`<name>@sha256:<64 位十六进制>`）。 |
+| `OPSPILOT_TOOL_PROFILE` | `fixture` | worker 工具档：`fixture`（固定样本数据，目标 `checkout-prod`）或 `otel-demo`（固定版本的 OpenTelemetry Demo lab）。 |
+| `OPSPILOT_START_AGENT` | `0` | `1` 时同时启动 worker 与 Observer；`worker_env` 没有 `DEEPSEEK_API_KEY` 或 Prometheus URL 不是 http(s) 时，在任何 Docker 调用之前拒绝。 |
+| `OPSPILOT_OBSERVER_PROMETHEUS_URL` | 空 | Observer 的只读 Prometheus 地址；`OPSPILOT_START_AGENT=1` 时必填。 |
+
 ### 升级与卸载
 
 ```sh
