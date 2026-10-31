@@ -980,6 +980,12 @@ def cmd_up(args: argparse.Namespace) -> int:
             "--create-namespace",
             "--values",
             str(CONFIG / "values.yaml"),
+            # The fault hook's ``kubectl patch`` (and a 2026-10-10 hand patch
+            # of the rule file) own ConfigMap fields under server-side apply,
+            # so a changed value there conflicts (seen 2026-10-31 adding the
+            # #414 rules). These values are the lab's source of truth: take
+            # the fields back. ``up`` with a fault injected restores flagd.
+            "--force-conflicts",
             "--timeout",
             "15m",
         ),
