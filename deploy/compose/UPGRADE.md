@@ -40,8 +40,9 @@ is written once as `{}`; an install from before it gets it on upgrade. With
 that target. With `OPSPILOT_TOOL_PROFILE=fixture` the worker knows only the
 target `checkout-prod`: key the entry by that id, or the Run's tool calls are
 refused (`TARGET_NOT_REGISTERED`) and it is handed to a human. The web reads
-it on start: run `install.sh compose restart web`
-after editing it.
+it when its container is created: after editing it run
+`install.sh compose up -d --force-recreate web` (a plain `restart` keeps the
+old file mount, so an editor that replaces the file leaves web on the old map).
 
 Do not start an older image against a migrated database: the runtimes refuse
 it, and there are no down-migrations. Run one web replica only; worker and
