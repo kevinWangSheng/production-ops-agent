@@ -1,6 +1,6 @@
 # 评测 P7 judge 真实校准
 
-- 状态：重做中（#295）：合同 r3 已裁决，实施 judge-adapters-7；p7-formal-2 为 `no_baseline`（2026-10-21）
+- 状态：新题正式校准 `p7-formal-3`（2026-10-31）为 `no_baseline`，三家均不合格，D16 无选择；待用户决定下一步（#295）
 - 目标：按 [评测任务记录](2026-10-12-eval-suite.md) P7 与 D16，用 36 份基于真实 Run 的样本、两份独立盲标和用户裁决，对 GLM-5.3、GPT-6.1 Sol、`deepseek-flash` 做一次正式校准，得出 D16 选择；合格后才进入第一轮基线（另记）。
 - 依据：[PR-B3 接口](2026-10-14-eval-pr-b3-interface.md)（LabelPack、freeze、run_calibration、r8–r11）；[PR-A 接口](2026-10-13-eval-pr-a-interface.md)（JudgeInput、JudgedDiagnosis）；C3 第 388–398 行。
 - 范围外：改判分规则、匹配口径或 D16 选择认证（如需改动，单列合同变更）；调查 loop、报告生成与恢复路径；翻任何 `passes`。
@@ -112,6 +112,10 @@
 - D24/D26 实施（b09d9272，`chore/398-judge-tune`）：测试作者（gpt-6.1-sol）改写旧漏诊门槛并补 rescore 与按供应商重跑用例（1e9cabe7），实现后发现 3 处测试错误由测试作者确认修正（c1b331dc）；P7 套件 71 passed；ruff、项目 mypy（strict，`opspilot/`）通过。独立审查（gpt-6-astra）首轮 1 项发现——「第 3 轮应禁止 Luna 重跑」——实现者按 D26(3) 原文答复为对实际数据的适用而非单独规则，审查者撤回，APPROVE。按新规则只读重算（`rescore`，各写 `rescore-d24.json`，原 score/triage 未动；用当前冻结包，verdict 标签未改，新规则下分数与包无关）：第 1 轮 FlashX 25/48、无效 27、误通过 0；Luna 27/48、23、2。第 2 轮 FlashX 41/48、5、2；Luna 43/48、3、1。第 3 轮 FlashX 36/48、无效 16（均断连）、误通过 0；Luna 39/48、7、0。均不合格；第 3 轮 FlashX 剩余失败全为 eval_env，具备按供应商重跑条件，Luna 不具备。
 - P7-D27 后预检 `p7-d25-preflight-3`（2026-10-30 17:54–18:02Z，PROMPT 52bd27dd，judge-adapters-8，FlashX 12 道 debug 各 1 次）通过：12/12 有效、均 1 次尝试（未触发重试）、0 次断连；verdict 12/12、因果键 11/12。按 D26(4) 可进行第 3 轮 FlashX 重跑。
 - 第 3 轮 FlashX 按供应商重跑 `p7-tune-r3b`（2026-10-30 18:43–19:16Z，`--rerun-of p7-tune-r3 --providers zai`，PROMPT 52bd27dd，judge-adapters-8，新规则）不达标：一致 46/48、无效 0、误通过 2、漏诊 4（参考）、已开始 60；60 次均 1 次尝试，0 次断连。唯一不合格原因是误通过：两次均落在同一道 validation 负例（两次重复），第 2 轮 FlashX 也在该项误通过。分诊：judge_error 6（误通过 2 + 漏诊 4），`triage-check` 通过。费用：余额记 unknown，按 token 估 ≈ $1.35（2.79M/0.26M）。第 3 轮重跑已用，3 轮调参用尽。同期全量测试 9974 passed、2472 skipped（PG 需显式开启）、2 xfailed；P7-D27 改动独立审查 APPROVE（gpt-6-astra，首轮 3 项发现已修复复验）。
+- 新题来源（2026-10-30，main d1e9f9d0，私有目录 `docs/evidence/eval/eval-p7-src{e,f,g,h}-20261030/`，已忽略）：4 轮共 24 个 live 槽位，gate 通过 11（srce 7/12、srcf 2/6、srcg 1/4、srch 1/2），失败均为 `SIGNATURE_ABSENT`（报告未引用匹配签名的已交付证据；cart 2/9、product-catalog 2/6 最难采）。调查 Agent 费用按余额差约 ¥4.5（共享账户）。
+- 新工作区 `p7-cal-20261030`：12 份原件（6 场景各一 debug 族、一 validation 族）+ 独立作者 `p7-rewrite-author-2` 的 24 份改写；assembled `e7612e2e…`，盲标包 `f07b4ea7…`。盲标：槽 1 Claude（`claude-opus-5-5`，每项全新进程，无工具）sha `0075e5da…`，$25.26；槽 2 Codex（`gpt-6-astra`，只读沙箱）sha `ce5db27f…`，34 份仅做格式归一（多余 schema 键、judge 形状绑定 item_id），5 份无效答案在全新进程重标（1 份两次），首次答案保留；归一与重标写入证据说明。简报 `7bf3559c…`：36 项差异，0 项完全一致；仅措辞不同 14、verdict 同而因果位置不同 18、verdict 分歧 4。
+- 冻结（P7-D28）：4 项分歧由用户逐项裁决，36 项均取 A；分布 debug 仅两个 payment 场景 1/1，其余四场景 0/2；validation cart 0/4、其余 1/3（共 5 正 19 负）；接受记录含 `debug_distribution`。freeze 改动 #408（f75b998c，测试由 gpt-6.1-sol 按合同编写，gpt-6-astra 独立审查 APPROVE，机器人无发现）。label-pack `d873ce37…0288`。formal 前置 debug `p7-precheck-20261030`：三家各 2 道 debug 项全部有效。
+- 正式校准 `p7-formal-3`（2026-10-31 02:17–05:11Z，main f75b998c，PROMPT 第 3 轮，judge-adapters-8，每家 60 次）：`no_baseline`，三家均不合格。一致 / 无效 / validation 误通过：FlashX 44/48、0、2；Luna 35/48、7（`JUDGE_OUTPUT_INVALID`）、1；DeepSeek（对照）46/48、0、1。FlashX 4 次失分落在 3 道 validation 项：normal-1 一道正例两次判不通过（该项为 4 道裁决分歧之一），payment-failure-1 一道负例误通过一次（同为分歧项），cart 原件负例误通过一次（改写作者曾提示其可能被读作负例，两位标注者均判负）。DeepSeek 达到 46 但 cart 原件误通过一次；另在 product-catalog debug 负例判通过一次（debug 不计误通过）。FlashX 60 次中 59 次 1 次尝试、1 次传输重试后成功，0 次断连。费用：DeepSeek 余额差 ¥4.64（共享账户）；zai/openai 余额未记，token 为 FlashX 3.29M/0.33M、Luna 3.13M/0.19M，按第 3 轮单价估 FlashX ≈ $1.6、Luna ≈ $1。本次 validation 族已 formal 暴露，不能再作 validation（P7-D16/D21）。
 
 ## 待决
 
