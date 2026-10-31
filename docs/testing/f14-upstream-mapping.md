@@ -32,6 +32,7 @@ OpsPilot 现状：已实现 53 行，部分实现 13 行，计划中 11 行（F8
 ## 怎么核对
 
 - 每条上游引用写成 `路径:Lx-Ly`，引用到的 48 个文件连同 blob SHA 与行数列在 [upstream-files.json](../evidence/f14-upstream-mapping/upstream-files.json)。CI 不拉上游，只校验引用在清单内、行号不超行数。
+- 表里 `absence_checks` 命令中的 `<checkout>` 指本机主仓库 git 忽略的 `tmp/upstream/holmesgpt-a0009195`（HEAD `a0009195468ebc55a7dff7d602b61feabe3cda1b`，tree `e94a57b361a00cb2e793cf30d60fe2f4588e26e9`，`git ls-files` 1885 个文件，工作区干净）；子命令默认读这个位置，可用 `F14_HOLMES_UPSTREAM` 改。
 - 本机有完整 checkout 时，`.venv/bin/python -m scripts.holmes_baseline.run upstream-files --check` 会重新生成清单并比对，重跑每行记录的「上游没有」搜索（命令与命中数在 `absence_checks`），并检查 OpsPilot 一侧的路径与符号名。
 - OpsPilot 一侧写「路径::符号」，不写行号；代码改动后表只对所记 SHA 成立，第 4 步前由那一步的预审决定是否刷新。
 
