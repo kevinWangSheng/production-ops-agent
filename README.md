@@ -69,12 +69,22 @@ The worker needs the model key; the Observer needs its own read-only Prometheus 
 
 ```sh
 ${EDITOR:-vi} "$SECRETS/worker_env"
-# DEEPSEEK_API_KEY=<your DeepSeek API key>
-
 ${EDITOR:-vi} "$SECRETS/observer_env"
-# OPSPILOT_OBSERVER_PROMETHEUS_USERNAME=<read-only user>
-# OPSPILOT_OBSERVER_PROMETHEUS_PASSWORD=<password>
-# (or OPSPILOT_OBSERVER_PROMETHEUS_TOKEN=<token>)
+```
+
+Add these as active lines (no leading `#`); a file with only comments is refused by the next `upgrade`.
+
+`worker_env`:
+
+```text
+DEEPSEEK_API_KEY=<your DeepSeek API key>
+```
+
+`observer_env` (username and password, or one `OPSPILOT_OBSERVER_PROMETHEUS_TOKEN=<token>` line instead):
+
+```text
+OPSPILOT_OBSERVER_PROMETHEUS_USERNAME=<read-only user>
+OPSPILOT_OBSERVER_PROMETHEUS_PASSWORD=<password>
 ```
 
 ### 4. Start the worker and the Observer

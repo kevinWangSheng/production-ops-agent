@@ -69,12 +69,22 @@ worker 需要模型 key；Observer 需要自己的只读 Prometheus 账号。两
 
 ```sh
 ${EDITOR:-vi} "$SECRETS/worker_env"
-# DEEPSEEK_API_KEY=<你的 DeepSeek API key>
-
 ${EDITOR:-vi} "$SECRETS/observer_env"
-# OPSPILOT_OBSERVER_PROMETHEUS_USERNAME=<只读用户>
-# OPSPILOT_OBSERVER_PROMETHEUS_PASSWORD=<口令>
-# （或 OPSPILOT_OBSERVER_PROMETHEUS_TOKEN=<令牌>）
+```
+
+写成生效的行（行首不带 `#`）；只有注释的文件会被下一次 `upgrade` 拒绝。
+
+`worker_env`：
+
+```text
+DEEPSEEK_API_KEY=<你的 DeepSeek API key>
+```
+
+`observer_env`（用户名加口令，或改为一行 `OPSPILOT_OBSERVER_PROMETHEUS_TOKEN=<令牌>`）：
+
+```text
+OPSPILOT_OBSERVER_PROMETHEUS_USERNAME=<只读用户>
+OPSPILOT_OBSERVER_PROMETHEUS_PASSWORD=<口令>
 ```
 
 ### 4. 启动 worker 与 Observer
