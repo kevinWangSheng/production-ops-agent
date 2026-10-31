@@ -1,0 +1,78 @@
+{
+  "run_id": "f14-holmes-run1",
+  "raw_output_sha256": "6a1e6e04076e7832fea0f0aa4f43787d2451e85492cf15d34efd2573f0e17572",
+  "source": "holmes --json-output-file of the Run, tool_calls[].result",
+  "tool_calls": 47,
+  "non_success": [
+    {
+      "index": 12,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "error",
+      "error": "The tool call result is too large to return: 132048/25000 tokens.\n\nTry to repeat the query but proactively narrow down the result so that the tool answer fits within the allowed number of tokens.",
+      "description": "HTTP GET http://f14-lab-relay:16686/jaeger/ui/api/traces...",
+      "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=payment&start=1793212614000000&end=1793212914000000&limit=20&tags=%7B%22error%22%3A%22true%22%7D",
+      "query": null
+    },
+    {
+      "index": 13,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "error",
+      "error": "The tool call result is too large to return: 132048/25000 tokens.\n\nTry to repeat the query but proactively narrow down the result so that the tool answer fits within the allowed number of tokens.",
+      "description": "HTTP GET http://f14-lab-relay:16686/jaeger/ui/api/traces...",
+      "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=checkout&start=1793212614000000&end=1793212914000000&limit=20&tags=%7B%22error%22%3A%22true%22%7D",
+      "query": null
+    },
+    {
+      "index": 14,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "error",
+      "error": "Invalid jq expression: Cannot iterate over null (null)",
+      "description": "HTTP GET http://f14-lab-relay:16686/jaeger/ui/api/traces...",
+      "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=payment&start=1793212614000000&end=1793212914000000&limit=5&tags=%7B%22error%22%3A%22true%22%7D",
+      "query": null
+    },
+    {
+      "index": 17,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "error",
+      "error": "Invalid jq expression: Cannot iterate over null (null)",
+      "description": "HTTP GET http://f14-lab-relay:16686/jaeger/ui/api/traces...",
+      "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=payment&start=1793212614000000&end=1793212914000000&limit=1",
+      "query": null
+    },
+    {
+      "index": 19,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "error",
+      "error": "Invalid jq expression: Cannot iterate over null (null)",
+      "description": "HTTP GET http://f14-lab-relay:16686/jaeger/ui/api/servic...",
+      "url": "http://f14-lab-relay:16686/jaeger/ui/api/services/payment/operations",
+      "query": null
+    },
+    {
+      "index": 20,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "error",
+      "error": "Connection error: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))",
+      "description": "HTTP GET http://f14-lab-relay:16686/jaeger/ui/api/traces...",
+      "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=payment&start=1793200000000000&end=1793212914000000&limit=3",
+      "query": null
+    },
+    {
+      "index": 36,
+      "tool": "execute_prometheus_range_query",
+      "toolset": "prometheus/metrics",
+      "status": "error",
+      "error": "The prometheus query returned no result. Is the query correct?",
+      "description": "Prometheus: Query (Error ratio over time for checkout PlaceOrder and payment Charge)",
+      "url": null,
+      "query": "sum by (service_name, span_name) (rate(traces_span_metrics_calls_total{status_code=\"STATUS_CODE_ERROR\",service_name=~\"checkout|payment\",span_name=~\"oteldemo.CheckoutService/PlaceOrder|grpc.oteldemo.PaymentService/Charge|oteldemo.PaymentService/Charge\"}[1m])) / sum by (service_name, span_name) (rate(traces_span_metrics_calls_total{service_name=~\"checkout|payment\",span_name=~\"oteldemo.CheckoutService/PlaceOrder|grpc.oteldemo.PaymentService/Charge|oteldemo.PaymentService/Charge\"}[1m]))"
+    }
+  ]
+}
