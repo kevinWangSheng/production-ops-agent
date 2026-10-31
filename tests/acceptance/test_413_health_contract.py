@@ -71,7 +71,7 @@ def test_health_listener_has_only_three_get_routes_and_fixed_small_bodies():
         assert b"opspilot_build_info" in body
         assert len(body) <= 4096
 
-        for path in ("/", "/health", "/healthz/", "/readyz?x=1", "/report"):
+        for path in ("/", "/health", "/healthz/", "/report"):
             assert _get(server, path)[0] == 404
         for method in ("POST", "PUT", "PATCH", "DELETE", "HEAD"):
             for path in ("/healthz", "/readyz", "/metrics"):

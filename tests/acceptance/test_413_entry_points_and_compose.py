@@ -6,6 +6,8 @@ import ast
 import re
 from pathlib import Path
 
+import yaml
+
 from opspilot.web import create_app
 from tests.acceptance.test_f7_step1_entry_points import (
     EXPECTED_ROUTES,
@@ -19,6 +21,19 @@ REPO = Path(__file__).resolve().parents[2]
 COMPOSE = REPO / "deploy/compose/compose.yaml"
 LAB = REPO / "deploy/compose/compose.lab.yaml"
 INSTALL = REPO / "deploy/compose/install.sh"
+
+
+def _normalized_port(entry):
+    if isinstance(entry, dict):
+        return entry.get("host_ip"), int(entry["published"]), int(entry["target"])
+    parts = str(entry).split(":")
+    if len(parts) == 3:
+        host_ip, published, target = parts
+        return host_ip, int(published), int(target)
+    if len(parts) == 2:
+        published, target = parts
+        return None, int(published), int(target)
+    raise AssertionError(f"unsupported Compose port syntax: {entry!r}")
 
 
 def test_f7_classifies_health_as_a_process_entry_and_keeps_web_routes_unchanged():
@@ -56,11 +71,26 @@ def test_default_compose_publishes_only_web_and_all_runtime_healthchecks_are_loo
 
 def test_lab_override_publishes_only_loopback_health_ports_and_install_keys_are_unchanged():
     assert LAB.is_file()
-    text = LAB.read_text()
-    published = set(re.findall(r"published:\s*['\"]?(\d+)", text))
-    published.update(re.findall(r"127\.0\.0\.1:(1946[456])", text))
-    assert published == {"19464", "19465", "19466"}
-    assert all(re.search(rf"127\.0\.0\.1.*{port}|{port}.*127\.0\.0\.1", text) for port in ("19464", "19465", "19466"))
+    document = yaml.safe_load(LAB.read_text())
+    services = document.get("services", {})
+    expected = {
+        "web": (19464, 9464),
+        "worker": (19465, 9464),
+        "observer": (19466, 9464),
+    }
+
+    published_services = {
+        name for name, service in services.items() if service.get("ports")
+    }
+    assert published_services == set(expected)
+    for name, (host_port, target_port) in expected.items():
+        ports = services[name]["ports"]
+        assert len(ports) == 1
+        host_ip, published, target = _normalized_port(ports[0])
+        assert host_ip == "127.0.0.1"
+        assert published == host_port
+        assert target == target_port
+
     install = INSTALL.read_text()
     settings = re.search(r"readonly SETTINGS=\((.*?)\)", install, re.S)
     assert settings

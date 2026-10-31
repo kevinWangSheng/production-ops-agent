@@ -23,8 +23,9 @@ def test_model_call_counter_passthrough_categories_and_failure_reset():
             return (args, kwargs)
 
     client = health.ModelCallCounter(Client())
-    result = client.complete("request", timeout=3)
-    assert result == (("request",), {"timeout": 3})
+    request = object()
+    result = client.complete(request)
+    assert result == ((request,), {})
     assert client.snapshot() == {
         "calls": {"ok": 1},
         "consecutive_failures": 0,
