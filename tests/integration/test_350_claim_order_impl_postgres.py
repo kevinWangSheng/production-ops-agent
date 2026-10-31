@@ -129,11 +129,16 @@ def test_same_due_claims_recovery_first_even_when_release_wins_tiebreak(world):
     rec = world["recovery"](T)
     # The old order fell back to session_id; make sure that tiebreak favours
     # the release so only the recovery lead can explain the result.
-    # Bounded: each attempt wins with probability 1/2.
+    # Bounded: both ids are random, so redrawing both wins with probability
+    # 1/2 per attempt; redrawing only the recovery id would leave a release
+    # id near the top of the range winning almost never (#412).
     for _ in range(20):
         if rec > rel:
             break
-        set_due(rec, datetime.now(timezone.utc) + timedelta(hours=1))
+        later = datetime.now(timezone.utc) + timedelta(hours=1)
+        set_due(rel, later)
+        set_due(rec, later)
+        rel = world["release"](T)
         rec = world["recovery"](T)
     else:
         pytest.fail("no recovery session_id above the release in 20 attempts")
