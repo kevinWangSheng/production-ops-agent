@@ -47,6 +47,8 @@ Configuration (environment only):
   export of Run spans, lab targets only, fail-closed (``opspilot.tracing``).
 * ``OPSPILOT_POSTMORTEM_POLL_SECONDS`` postmortem scan interval (default 30).
 * ``OPSPILOT_POSTMORTEM_BATCH``     candidates per scan (default 5).
+* ``OPSPILOT_HEALTH_BIND``         the health listener's ``host:port``
+  (``opspilot.health``; default ``127.0.0.1:9464``, empty turns it off).
 
 A second thread runs the postmortem pass (M1-03 D17): its own scan,
 generation lease and model client, one generation at a time, never an
@@ -72,7 +74,7 @@ from pathlib import Path
 from typing import Any, Protocol
 from uuid import UUID
 
-from opspilot import tracing
+from opspilot import health, tracing
 from opspilot.investigation.client import DeepSeekClient
 from opspilot.investigation.loop import MAX_TOOL_PARALLELISM
 from opspilot.investigation.progress import (
@@ -154,6 +156,9 @@ class WorkerLoop:
     runner_factory: Callable[[], Resumer] | None = None
     backlog: BacklogParker | None = None
     backlog_max: int = 8
+    #: ``time.monotonic()`` of the last timed poll whose sweep was not
+    #: refused, for ``/readyz`` (F8-R4); ``None`` until the first one.
+    last_poll_success: float | None = field(default=None, init=False)
     _runners: list[Resumer] = field(init=False, repr=False)
     _idle: list[Resumer] = field(init=False, repr=False)
     _cond: threading.Condition = field(init=False, repr=False)
@@ -205,14 +210,17 @@ class WorkerLoop:
         )
         return outcome
 
-    def _sweep(self) -> None:
+    def _sweep(self) -> bool:
+        """``False`` when the storage refused the sweep or the backlog pass."""
+        ok = True
         try:
             for incident_id, run_id in sweep_expired(self.sweeper, self.events):
                 _log.info("swept incident=%s run=%s", incident_id, run_id)
         except PersistenceError as exc:
             _log.warning("sweep refused code=%s", exc)
+            ok = False
         if self.backlog is None:
-            return
+            return ok
         try:
             for incident_id, run_id in park_backlog(
                 self.backlog, self.events, self.backlog_max
@@ -220,6 +228,8 @@ class WorkerLoop:
                 _log.info("backlog parked incident=%s run=%s", incident_id, run_id)
         except PersistenceError as exc:
             _log.warning("backlog pass refused code=%s", exc)
+            ok = False
+        return ok
 
     # -- slots -----------------------------------------------------------
 
@@ -280,6 +290,10 @@ class WorkerLoop:
                 self._idle.append(runner)
                 self._cond.notify_all()
             self._wake.set()
+
+    def in_flight_attempts(self) -> int:
+        with self._cond:
+            return len(self._in_flight)
 
     def _join_in_flight(self) -> None:
         while True:
@@ -362,7 +376,8 @@ class WorkerLoop:
         next_poll = time.monotonic()
         while not self.stop.is_set():
             if time.monotonic() >= next_poll:
-                self._sweep()
+                if self._sweep():
+                    self.last_poll_success = time.monotonic()
                 with self._cond:
                     self._recent.clear()
                 polls += 1
@@ -441,8 +456,11 @@ def build_loop(
     *,
     stop: threading.Event,
     profile: ToolProfile | None = None,
+    model_stats: health.ModelCallStats | None = None,
 ) -> WorkerLoop:
-    """The product composition: durable events/evidence/ledger, one tool profile."""
+    """The product composition: durable events/evidence/ledger, one tool profile.
+    Every slot's model client is counted into ``model_stats`` (F8-R3)."""
+    stats = model_stats if model_stats is not None else health.ModelCallStats()
     # main() has refused a capacity the pool cannot serve (U-B1-3).
     capacity = _int_env(CAPACITY_ENV, 2)
     tool_parallelism = _tool_parallelism()
@@ -461,7 +479,7 @@ def build_loop(
         runner = InvestigationRunner(
             store=store,
             worker=Worker.create(store, versions),
-            model=DeepSeekClient(api_key, clock=clock),
+            model=health.ModelCallCounter(DeepSeekClient(api_key, clock=clock), stats),
             executor_factory=profile.executor_factory(store, evidence, clock),
             clock=clock,
             lease_seconds=LEASE_SECONDS,
@@ -510,9 +528,15 @@ def worker_capacity(pool: PoolConfig) -> int:
 
 
 def build_postmortem_worker(
-    dsn: str, api_key: str, *, stop: threading.Event, events: ProgressLog | None
+    dsn: str,
+    api_key: str,
+    *,
+    stop: threading.Event,
+    events: ProgressLog | None,
+    model_stats: health.ModelCallStats | None = None,
 ) -> PostmortemWorker:
-    """The postmortem pass (M1-03 step 2) with its own stores and client."""
+    """The postmortem pass (M1-03 step 2) with its own stores and client,
+    counted into ``model_stats`` like the slots' (F8-R3)."""
     knowledge = KnowledgeStore(dsn)
     knowledge.install()
     jobs = GenerationStore(dsn)
@@ -520,7 +544,7 @@ def build_postmortem_worker(
     return PostmortemWorker(
         knowledge=knowledge,
         jobs=jobs,
-        model=DeepSeekClient(api_key),
+        model=health.ModelCallCounter(DeepSeekClient(api_key), model_stats),
         events=events,
         stop=stop,
         batch=_int_env("OPSPILOT_POSTMORTEM_BATCH", 5),
@@ -542,10 +566,50 @@ def main(argv: Sequence[str] | None = None) -> int:
     stop = threading.Event()
     _configure_tracing()
     credential = _credential()
-    loop = build_loop(store, credential, stop=stop)
+    model_stats = health.ModelCallStats()
+    loop = build_loop(store, credential, stop=stop, model_stats=model_stats)
     postmortems = build_postmortem_worker(
-        dsn, credential, stop=stop, events=loop.events
+        dsn, credential, stop=stop, events=loop.events, model_stats=model_stats
     )
+    listener = health.serve_health(
+        os.environ,
+        readiness=lambda: _readiness(loop),
+        metrics=lambda: _metrics(loop, model_stats),
+    )
+    try:
+        return _run(loop, postmortems, store, stop, grace)
+    finally:
+        if listener is not None:
+            listener.close()
+
+
+def _readiness(loop: WorkerLoop) -> health.Readiness:
+    """From the polling thread's record only; never a query (F8-R4)."""
+    return health.poll_readiness(
+        last_success_monotonic=loop.last_poll_success,
+        poll_interval_seconds=loop.poll_seconds,
+        now_monotonic=time.monotonic(),
+        stopping=loop.stop.is_set(),
+    )
+
+
+def _metrics(loop: WorkerLoop, model_stats: health.ModelCallStats) -> str:
+    last = loop.last_poll_success
+    return health.worker_metrics(
+        last_poll_age=None if last is None else time.monotonic() - last,
+        in_flight=loop.in_flight_attempts(),
+        model=model_stats.snapshot(),
+    )
+
+
+def _run(
+    loop: WorkerLoop,
+    postmortems: PostmortemWorker,
+    store: DurableStore,
+    stop: threading.Event,
+    grace: float,
+) -> int:
+    """Signals, the two threads and the bounded shutdown (R-B1-5)."""
 
     def request_stop(signum: int, _frame: Any) -> None:
         _log.info("signal=%s: stop claiming, finishing the in-flight attempts", signum)

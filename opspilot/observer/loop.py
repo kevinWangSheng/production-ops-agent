@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import logging
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import cast
 from uuid import UUID, uuid4
@@ -73,6 +74,9 @@ class ObserverLoop:
     # Observer's default shutdown grace (OPSPILOT_OBSERVER_GRACE_SECONDS),
     # since an in-flight query can only end by its own timeout
     comparison_join_seconds: float = 30.0
+    # called on the sampling thread after every pass of ``run`` (the
+    # process's health record, F8-R4); its failure is logged, never fatal
+    on_poll: Callable[[], None] | None = None
 
     def poll_once(
         self, *, compare: bool = True
@@ -279,6 +283,11 @@ class ObserverLoop:
             while not self.stop.is_set():
                 self.poll_once(compare=False)
                 polls += 1
+                if self.on_poll is not None:
+                    try:
+                        self.on_poll()
+                    except Exception as exc:  # noqa: BLE001 - keep sampling
+                        _log.warning("poll hook failed error=%s", type(exc).__name__)
                 self.stop.wait(self.poll_seconds)
         finally:
             self.stop.set()

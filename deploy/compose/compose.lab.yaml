@@ -1,0 +1,29 @@
+# Lab/development override (#413, F8-Q2): publishes each runtime's health
+# listener (container port 9464: /healthz /readyz /metrics, no
+# authentication) on the host loopback for the lab Prometheus and for curl.
+# Never part of a default install: install.sh and compose.yaml do not use it.
+#
+#   docker compose -p <project> -f deploy/compose/compose.yaml \
+#     -f deploy/compose/compose.lab.yaml up ...
+
+services:
+  web:
+    ports:
+      - target: 9464
+        host_ip: 127.0.0.1
+        published: "19464"
+        protocol: tcp
+
+  worker:
+    ports:
+      - target: 9464
+        host_ip: 127.0.0.1
+        published: "19465"
+        protocol: tcp
+
+  observer:
+    ports:
+      - target: 9464
+        host_ip: 127.0.0.1
+        published: "19466"
+        protocol: tcp

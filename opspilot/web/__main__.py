@@ -43,6 +43,9 @@ Configuration comes from the environment only, and only as hashes:
   three off: no release is then observed (it stays pending until its
   deadline sweep ends it ``unknown``), and ending records are durable, so
   a stopped anomaly pass loses nothing and the next one consumes them.
+* ``OPSPILOT_HEALTH_BIND``     the health listener's ``host:port``
+  (``opspilot.health``, separate from the app on ``OPSPILOT_BIND``; default
+  ``127.0.0.1:9464``, empty turns it off).
 
 ``hash-password`` and ``token-digest`` print the value to put in the
 environment; the secret itself is read from stdin and never echoed. This
@@ -61,6 +64,7 @@ import sys
 import threading
 from pathlib import Path
 
+from opspilot import health, schema
 from opspilot.investigation.limits import RUN_WALL_SECONDS
 from opspilot.knowledge import KnowledgeStore
 from opspilot.observer.health_profile import (
@@ -69,7 +73,7 @@ from opspilot.observer.health_profile import (
     HealthProfileError,
     load_health_profile,
 )
-from opspilot.persistence import DurableStore
+from opspilot.persistence import DurableStore, PersistenceError
 from opspilot.schema import TARGET_IDENTITIES_ENV, TargetIdentityMissing
 from opspilot.tools.profiles import select_profile
 from opspilot.web.app import create_app
@@ -182,6 +186,59 @@ def _health_profile() -> HealthProfile:
         raise SystemExit(f"OPSPILOT_HEALTH_PROFILE: {exc}") from None
 
 
+#: ``DurableStore.claimable_incidents``' listing condition, counted per Run
+#: state: the ``opspilot_queue_depth`` gauge (F8-R2).
+_QUEUE_DEPTH_SQL = (
+    "SELECT count(*) FILTER (WHERE r.state='queued') AS queued, "
+    "count(*) FILTER (WHERE r.state='running') AS running_lapsed "
+    "FROM opspilot_incidents i JOIN opspilot_runs r ON r.run_id=i.current_run_id "
+    "WHERE i.state NOT IN ('paused','cancelled','completed') AND i.mode='automatic' AND i.conclusion IS NULL "
+    "AND r.state IN ('queued','running') AND r.deadline>clock_timestamp() "
+    "AND (r.state='queued' OR r.lease_until IS NULL OR r.lease_until<=clock_timestamp())"
+)
+
+
+def _probe(
+    store: DurableStore, head: str, *, queue: bool
+) -> tuple[bool, bool, dict[str, int] | None]:
+    """``(pool_ok, schema_at_head, queue_depth)`` from one read-only
+    transaction of the web's own pool; a refusal is ``pool_ok=False``."""
+    try:
+        with store.transaction(snapshot=True) as conn:
+            try:
+                at_head = schema.current_revision(conn) == head
+            except schema.SchemaVersionUnreadable:
+                # The failed statement aborted the transaction.
+                return True, False, None
+            depth = None
+            if queue:
+                row = conn.execute(_QUEUE_DEPTH_SQL).fetchone()
+                depth = {
+                    "queued": int(row["queued"]) if row else 0,
+                    "running_lapsed": int(row["running_lapsed"]) if row else 0,
+                }
+            return True, at_head, depth
+    except PersistenceError as exc:
+        _log.warning("health probe refused code=%s", exc)
+        return False, False, None
+
+
+def _start_health(store: DurableStore) -> health.HealthServer | None:
+    """The web's health listener (F8-R4): every probe is one transaction
+    from the app's own pool; nothing is mounted on the app's routes."""
+    head = schema.head_revision()
+
+    def readiness() -> health.Readiness:
+        pool_ok, at_head, _ = _probe(store, head, queue=False)
+        return health.web_readiness(schema_at_head=at_head, pool_ok=pool_ok)
+
+    def metrics() -> str:
+        _, at_head, depth = _probe(store, head, queue=True)
+        return health.web_metrics(schema_at_head=at_head, queue_depth=depth)
+
+    return health.serve_health(os.environ, readiness=readiness, metrics=metrics)
+
+
 def _serve() -> int:
     import uvicorn
 
@@ -255,10 +312,13 @@ def _serve() -> int:
             daemon=True,
         )
         healer.start()
+    listener = _start_health(store)
     try:
         uvicorn.run(app, host=host or "127.0.0.1", port=int(port), proxy_headers=False)
     finally:
         stop.set()
+        if listener is not None:
+            listener.close()
         if healer is not None:
             # One pass is bounded by the statement and lock timeouts of its
             # transactions; a pass still running after this is abandoned

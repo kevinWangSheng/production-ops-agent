@@ -20,6 +20,8 @@ Configuration (environment only):
 * ``OPSPILOT_OBSERVER_POLL_SECONDS``      idle poll interval (default 5).
 * ``OPSPILOT_OBSERVER_BATCH``             leases per poll (default 20).
 * ``OPSPILOT_OBSERVER_GRACE_SECONDS``     SIGTERM join bound (default 30).
+* ``OPSPILOT_HEALTH_BIND``                the health listener's ``host:port``
+  (``opspilot.health``; default ``127.0.0.1:9464``, empty turns it off).
 
 Like the worker it refuses to start unless the schema is at the Alembic head
 (the role needs ``SELECT`` on ``alembic_version``, which 0003 grants).
@@ -32,13 +34,17 @@ import os
 import signal
 import sys
 import threading
+import time
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from opspilot import health
 from opspilot.observation.store import OBSERVER_LEASE_SECONDS, ObservationStore
 from opspilot.observer.loop import ObserverLoop
 from opspilot.observer.prometheus import PrometheusReadOnlySource
+from opspilot.persistence.base import PersistenceError
 
 __all__ = ["build_loop", "main"]
 
@@ -144,6 +150,64 @@ def build_loop(
     return loop
 
 
+#: The claim's due condition (``ObservationStore._claim_incident_due_samples``),
+#: counted without taking a lease: the ``opspilot_observation_due`` gauge.
+_DUE_SQL = (
+    "SELECT count(*) AS due FROM opspilot_observation_sessions s "
+    "JOIN opspilot_incidents i ON i.incident_id=s.incident_id "
+    "WHERE s.state='authorized' AND s.authorized AND s.active_sample_job_id IS NOT NULL "
+    "AND s.active_sample_due_at<=clock_timestamp() "
+    "AND (s.active_sample_lease_until IS NULL OR s.active_sample_lease_until<=clock_timestamp()) "
+    "AND s.deadline_at>clock_timestamp() "
+    "AND NOT (SELECT global_suspended FROM opspilot_scope_controls WHERE scope_id=1) "
+    "AND NOT COALESCE((SELECT suspended FROM opspilot_target_suspensions t WHERE t.target_id=s.target_id),false)"
+)
+
+
+@dataclass
+class PollRecord:
+    """What the sampling thread last saw, read by the health listener,
+    which itself never queries (F8-R4): one count after every pass, and its
+    success is the pass's "successful poll"."""
+
+    last_success: float | None = None
+    observation_due: int | None = None
+
+    def after_poll(self, store: ObservationStore) -> None:
+        try:
+            with store.transaction(snapshot=True) as conn:
+                row = conn.execute(_DUE_SQL).fetchone()
+        except PersistenceError as exc:
+            _log.warning("due count refused code=%s", exc)
+            return
+        self.observation_due = int(row["due"]) if row is not None else 0
+        self.last_success = time.monotonic()
+
+
+def _start_health(
+    loop: ObserverLoop, env: Mapping[str, str]
+) -> health.HealthServer | None:
+    record = PollRecord()
+    loop.on_poll = lambda: record.after_poll(loop.store)
+
+    def readiness() -> health.Readiness:
+        return health.poll_readiness(
+            last_success_monotonic=record.last_success,
+            poll_interval_seconds=loop.poll_seconds,
+            now_monotonic=time.monotonic(),
+            stopping=loop.stop.is_set(),
+        )
+
+    def metrics() -> str:
+        last = record.last_success
+        return health.observer_metrics(
+            last_poll_age=None if last is None else time.monotonic() - last,
+            observation_due=record.observation_due,
+        )
+
+    return health.serve_health(env, readiness=readiness, metrics=metrics)
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s"
@@ -153,6 +217,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     stop = threading.Event()
     loop = build_loop(env, stop=stop)
     loop.store.install()
+    listener = _start_health(loop, env)
+    try:
+        return _run(loop, stop, grace)
+    finally:
+        if listener is not None:
+            listener.close()
+
+
+def _run(loop: ObserverLoop, stop: threading.Event, grace: float) -> int:
+    """Signals, the sampling thread and the bounded shutdown."""
 
     def request_stop(signum: int, _frame: Any) -> None:
         _log.info("signal=%s: stop claiming, finishing the in-flight sample", signum)
