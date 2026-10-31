@@ -10,21 +10,23 @@ UPGRADE = REPO / "deploy/compose/UPGRADE.md"
 def test_upgrade_document_states_stop_migrate_init_roles_start_order() -> None:
     assert UPGRADE.is_file(), f"missing {UPGRADE.relative_to(REPO)}"
     text = UPGRADE.read_text().lower()
-    blocks = re.split(r"\n\s*\n", text)
+    items = [
+        item.strip()
+        for item in re.split(r"\n\s*(?=(?:\d+\.\s+|[-*]\s+))|(?<=[.!?])\s+", text)
+        if item.strip()
+    ]
 
-    def phase_position(verb: str) -> int:
+    def runtime_item(verb: str, start: int = 0) -> int:
         pattern = rf"\b{verb}(?:s|ed|ing)?\b"
-        offset = 0
-        for block in blocks:
-            if re.search(pattern, block) and all(
-                runtime in block for runtime in ("web", "worker", "observer")
+        for index, item in enumerate(items[start:], start):
+            if re.search(pattern, item) and all(
+                runtime in item for runtime in ("web", "worker", "observer")
             ):
-                return offset
-            offset += len(block) + 2
+                return index
         raise AssertionError(f"document must state runtime {verb} phase")
 
-    stopped = phase_position("stop")
-    migrate = text.index("migrate")
-    init_roles = text.index("init-roles")
-    started = phase_position("start")
+    stopped = runtime_item("stop")
+    migrate = next(i for i, item in enumerate(items) if "migrate" in item)
+    init_roles = next(i for i, item in enumerate(items) if "init-roles" in item)
+    started = runtime_item("start", init_roles + 1)
     assert stopped < migrate < init_roles < started
