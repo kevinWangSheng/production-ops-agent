@@ -33,6 +33,13 @@ unless `<secrets dir>/worker_env` has a non-empty `DEEPSEEK_API_KEY=` line and
 read-only Prometheus account goes in `<secrets dir>/observer_env`
 (`OPSPILOT_OBSERVER_PROMETHEUS_USERNAME` / `_PASSWORD`, or `_TOKEN`).
 
+`<secrets dir>/target_identities.json` (the web's `OPSPILOT_TARGET_IDENTITIES`)
+is written once as `{}`; an install from before it gets it on upgrade. With
+`{}` every Alertmanager alert is handed to a human without a Run; an entry with
+`"match": {"version": 1, "labels": {...}}` lets a matching alert open a Run on
+that target. The web reads it on start: run `install.sh compose restart web`
+after editing it.
+
 Do not start an older image against a migrated database: the runtimes refuse
 it, and there are no down-migrations. Run one web replica only; worker and
 Observer also run one replica each in this install.
