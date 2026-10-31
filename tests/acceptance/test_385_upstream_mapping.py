@@ -10,9 +10,6 @@ import json
 import re
 from pathlib import Path
 
-import pytest
-
-
 ROOT = Path(__file__).resolve().parents[2]
 MAPPING = ROOT / "docs/evidence/f14-upstream-mapping/mapping.json"
 UPSTREAM_FILES = ROOT / "docs/evidence/f14-upstream-mapping/upstream-files.json"
@@ -20,7 +17,6 @@ DOC = ROOT / "docs/testing/f14-upstream-mapping.md"
 M0_DOC = ROOT / "docs/testing/m0-upstream-mapping.md"
 README = ROOT / "docs/README.md"
 FEATURES = ROOT / "feature_list.json"
-EVIDENCE_ROOT = ROOT / "docs/evidence"
 
 CLASSES = {"reuse", "configuration", "confirmed_defect", "required_extension"}
 STATES = {"implemented", "partial", "planned"}
@@ -30,7 +26,7 @@ REQUIRED_FIELDS = {
     "opspilot_choice", "requirement_ref", "upstream_evidence",
     "opspilot_evidence", "runtime_evidence", "note",
 }
-PATH_LINE = re.compile(r"(?P<path>[^\s:]+):L(?P<start>\d+)(?:-L?(?P<end>\d+))?$")
+PATH_LINE = re.compile(r"(?P<path>[^\s:]+):L(?P<start>\d+)-L(?P<end>\d+)$")
 SHA = re.compile(r"^[0-9a-fA-F]{40}$")
 
 
@@ -42,9 +38,14 @@ def _load(path: Path):
 def _rows_and_header():
     data = _load(MAPPING)
     assert isinstance(data, dict), "mapping.json must be a JSON object"
-    for key in ("schema", "upstream_commit", "upstream_tree", "opspilot_commit"):
-        assert data.get(key), f"mapping header missing {key}"
-    rows = data.get("rows", data.get("mapping"))
+    assert data.get("schema") == "opspilot.f14.upstream-mapping.v1"
+    assert isinstance(data.get("upstream"), dict)
+    for key in ("repository", "commit", "tree"):
+        assert data["upstream"].get(key), f"mapping header missing upstream.{key}"
+    assert SHA.fullmatch(str(data.get("upstream", {}).get("commit")))
+    assert SHA.fullmatch(str(data.get("upstream", {}).get("tree")))
+    assert SHA.fullmatch(str(data.get("opspilot_commit")))
+    rows = data.get("rows")
     assert isinstance(rows, list), "mapping.json must expose rows as a JSON array"
     return data, rows
 
@@ -62,15 +63,6 @@ def _text(value) -> str:
     if isinstance(value, str):
         return value
     return json.dumps(value, ensure_ascii=False)
-
-
-def _evidence_files(values):
-    for value in values if isinstance(values, list) else []:
-        text = _text(value)
-        for token in re.findall(r"(?:docs/evidence|evidence)/[^\s,\]})]+", text):
-            token = token.rstrip(".;`")
-            path = ROOT / token if token.startswith("docs/") else ROOT / "docs" / token
-            yield path
 
 
 def test_coverage_is_derived_from_feature_list_and_rows_are_known():
@@ -93,35 +85,45 @@ def test_rows_have_contract_fields_and_single_valid_class():
         assert isinstance(row["step"], int) and row["step"] >= 1
         for field in ("upstream_evidence", "opspilot_evidence", "runtime_evidence"):
             assert isinstance(row[field], list), f"row {index} {field} must be an array"
+        assert row["upstream_evidence"], f"row {index} upstream_evidence must not be empty"
+        assert row["opspilot_evidence"], f"row {index} opspilot_evidence must not be empty"
+        assert isinstance(row["requirement_ref"], list) and row["requirement_ref"]
 
 
 def test_evidence_rules_and_planned_handling():
     _, rows = _rows_and_header()
     for index, row in enumerate(rows):
-        upstream = _text(row["upstream_evidence"])
         opspilot = _text(row["opspilot_evidence"])
         runtime = _text(row["runtime_evidence"])
-        requirement = _text(row["requirement_ref"])
+        for citation in row["upstream_evidence"]:
+            assert PATH_LINE.fullmatch(citation), f"row {index} has malformed upstream citation"
+        for citation in row["opspilot_evidence"]:
+            path = citation.split("::", 1)[0]
+            assert (ROOT / path).is_file(), f"row {index} cites missing OpsPilot file"
+            if "::" in citation:
+                assert citation.split("::", 1)[1]
+        for citation in row["runtime_evidence"]:
+            assert citation.startswith("docs/evidence/")
+            assert (ROOT / citation).is_file(), f"row {index} cites missing runtime evidence"
         if row["class"] == "confirmed_defect":
-            assert row["runtime_evidence"], f"confirmed defect row {index} needs run evidence"
-            assert any(path.is_file() for path in _evidence_files(row["runtime_evidence"])), (
-                f"confirmed defect row {index} must cite an existing docs/evidence file"
-            )
+            assert any(path.startswith("docs/evidence/f14-holmes-baseline/") for path in row["runtime_evidence"])
+        if row["class"] == "configuration" and "源码证据，未运行" in row["note"]:
+            assert row["runtime_evidence"] == []
         if "candidate_defect" in row:
             candidate = row["candidate_defect"]
-            assert isinstance(candidate, dict) and candidate.get("step3_ref"), (
+            assert isinstance(candidate, dict) and candidate.get("step3_ref") and isinstance(candidate.get("claim"), str), (
                 f"candidate defect row {index} needs step3_ref"
             )
             assert row["class"] != "confirmed_defect"
         if row["class"] == "required_extension":
-            assert requirement.strip(), f"required extension row {index} needs requirement source"
+            assert all(isinstance(value, str) and value.strip() for value in row["requirement_ref"]), f"required extension row {index} needs requirement source"
             assert row["upstream_evidence"], f"required extension row {index} needs upstream evidence"
-            assert any(
-                token in upstream.lower() for token in ("command", "grep", "ls-files", "0 hit", "0 hit(s)", "absent", "不够", "没有")
-            ), f"required extension row {index} needs absence/insufficiency check record"
-        if any(token in upstream.lower() for token in ("upstream absent", "上游没有", "不存在")):
-            assert re.search(r"(?:command|cmd|命令)", upstream, re.I)
-            assert re.search(r"(?:hit|match|命中)\D*0", upstream, re.I)
+            checks = row.get("absence_checks", [])
+            assert checks or (row["upstream_evidence"] and row["note"].strip())
+            for check in checks:
+                assert isinstance(check, dict) and isinstance(check.get("command"), str)
+                assert check["command"].startswith("git -C <checkout>")
+                assert check.get("hits") == 0
         if row["opspilot_state"] == "planned":
             assert row["class"] in CLASSES
             assert "suggest" in (opspilot + runtime + _text(row.get("note", ""))).lower() or row["note"]
@@ -134,18 +136,20 @@ def test_upstream_citations_are_allowlisted_and_within_recorded_line_counts():
     assert isinstance(entries, (list, dict))
     items = entries.items() if isinstance(entries, dict) else ((e.get("path"), e) for e in entries)
     allow = {}
+    assert SHA.fullmatch(str(files.get("commit")))
+    assert SHA.fullmatch(str(files.get("tree")))
     for path, entry in items:
         assert path and isinstance(entry, dict)
-        assert SHA.fullmatch(str(entry.get("blob_sha", "")))
-        assert isinstance(entry.get("line_count"), int) and entry["line_count"] >= 0
-        allow[path] = entry["line_count"]
+        assert SHA.fullmatch(str(entry.get("blob", "")))
+        assert isinstance(entry.get("lines"), int) and entry["lines"] >= 0
+        allow[path] = entry["lines"]
     for row in rows:
         for citation in row["upstream_evidence"]:
             match = PATH_LINE.search(_text(citation))
             if not match:
                 continue
             assert match.group("path") in allow, f"upstream citation not in upstream-files.json: {citation}"
-            end = int(match.group("end") or match.group("start"))
+            end = int(match.group("end"))
             assert end <= allow[match.group("path")], f"citation exceeds recorded line count: {citation}"
 
 
