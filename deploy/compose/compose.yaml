@@ -11,7 +11,9 @@
 # token digests through <NAME>_FILE, and the worker's OPSPILOT_OTEL_* settings
 # from its worker_env file (both by deploy/docker-entrypoint.sh).
 # PostgreSQL publishes no host port; the workbench is published on the host
-# loopback only.
+# loopback only. Each runtime's health listener (/healthz /readyz /metrics on
+# container port 9464, opspilot.health) backs its healthcheck and is published
+# to the host only by the lab/development override compose.lab.yaml.
 
 x-product: &product
   image: ${OPSPILOT_IMAGE:-opspilot:local}
@@ -106,9 +108,12 @@ services:
         published: "${OPSPILOT_WEB_HOST_PORT:-18080}"
         protocol: tcp
     healthcheck:
-      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 8080), 2)"]
+      # The app still accepts on 8080 (the listener starts before uvicorn),
+      # and /readyz is 200: a 503 (schema not at head, pool unavailable)
+      # raises; its transaction is bounded by the pool and statement timeouts.
+      test: ["CMD", "python", "-c", "import socket, urllib.request; socket.create_connection(('127.0.0.1', 8080), 2).close(); urllib.request.urlopen('http://127.0.0.1:9464/readyz', timeout=10)"]
       interval: 2s
-      timeout: 3s
+      timeout: 12s
       retries: 30
     depends_on:
       init-roles:
@@ -140,6 +145,12 @@ services:
     secrets:
       - worker_pgpass
       - worker_env
+    healthcheck:
+      # 503 when the last successful poll is stale or a stop was received.
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9464/readyz', timeout=3)"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
     depends_on:
       init-roles:
         condition: service_completed_successfully
@@ -160,6 +171,12 @@ services:
     secrets:
       - observer_pgpass
       - observer_env
+    healthcheck:
+      # 503 when the last successful poll is stale or a stop was received.
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9464/readyz', timeout=3)"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
     depends_on:
       init-roles:
         condition: service_completed_successfully

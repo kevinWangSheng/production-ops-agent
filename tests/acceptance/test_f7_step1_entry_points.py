@@ -342,13 +342,16 @@ def test_s1b_the_review_route_takes_only_postmortem_review_actions(action: str):
 
 # -- S1e / U1-a: process entries and the product package -----------------------
 
-#: Process entries (A5): web, worker, observer, schema, replay.
+#: Process entries (A5): web, worker, observer, schema, replay, health.
 PROCESS_ENTRIES = (
     "opspilot.web.__main__",
     "opspilot.worker_main",
     "opspilot.observer.__main__",
     "opspilot.schema",
     "opspilot.observer.replay",
+    # F8 health listener: a classified read-only process surface; its
+    # three GET routes and no-auth boundary are checked by #413 acceptance.
+    "opspilot.health",
 )
 
 #: Client libraries for Kubernetes, GitHub and Argo (and close relatives).

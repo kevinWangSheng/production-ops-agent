@@ -34,15 +34,20 @@ WORKDIR /app
 COPY --from=build /app/.venv /app/.venv
 COPY opspilot /app/opspilot
 COPY deploy/docker-entrypoint.sh /usr/local/bin/opspilot-entrypoint
+# The runtimes' health listener (opspilot.health) answers on the container
+# network; Compose publishes it to the host only in compose.lab.yaml.
 ENV PATH=/app/.venv/bin:$PATH \
     PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    OPSPILOT_HEALTH_BIND=0.0.0.0:9464
 # Last, so a new revision does not rebuild the layers above.
 ARG OPSPILOT_VERSION
 ARG OPSPILOT_REVISION
 LABEL org.opencontainers.image.version="${OPSPILOT_VERSION}" \
       org.opencontainers.image.revision="${OPSPILOT_REVISION}" \
       org.opencontainers.image.source="https://github.com/kevinWangSheng/production-ops-agent"
+# opspilot_build_info{revision} on /metrics.
+ENV OPSPILOT_REVISION=${OPSPILOT_REVISION}
 USER 10001:10001
 ENTRYPOINT ["opspilot-entrypoint"]
 CMD ["python", "-m", "opspilot.web", "serve"]

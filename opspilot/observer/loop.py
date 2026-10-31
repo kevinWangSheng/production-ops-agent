@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import logging
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import cast
 from uuid import UUID, uuid4
@@ -73,6 +74,12 @@ class ObserverLoop:
     # Observer's default shutdown grace (OPSPILOT_OBSERVER_GRACE_SECONDS),
     # since an in-flight query can only end by its own timeout
     comparison_join_seconds: float = 30.0
+    # called on the sampling thread after every pass of ``run`` with whether
+    # the pass's sweeps and claims were all served (the process's health
+    # record, F8-R4); its failure is logged, never fatal
+    on_poll: Callable[[bool], None] | None = None
+    # set by ``poll_once`` when storage refused a sweep or a claim
+    last_pass_refused: bool = field(default=False, init=False)
 
     def poll_once(
         self, *, compare: bool = True
@@ -82,11 +89,13 @@ class ObserverLoop:
         compares on its own thread. Storage refusals and crashed samples are
         logged by code/type and skipped; the lease lapses and the next claim
         retries the same logical sequence."""
+        self.last_pass_refused = False
         try:
             for session_id in self.store.sweep_expired_sessions(limit=self.batch):
                 _log.info("swept session=%s", session_id)
         except PersistenceError as exc:
             _log.warning("sweep refused code=%s", exc)
+            self.last_pass_refused = True
         # Keep legacy incident-only store doubles usable; production stores
         # always expose this sweep after PR-2a.
         release_sweep = getattr(self.store, "sweep_expired_releases", None)
@@ -96,6 +105,7 @@ class ObserverLoop:
                     _log.info("swept observation_id=%s", observation_id)
             except PersistenceError as exc:
                 _log.warning("release sweep refused code=%s", exc)
+                self.last_pass_refused = True
         # One lease at a time (codex round 3, P1): a lease is issued with its
         # clock running, and a sample may legitimately use most of it (hung
         # source, lease budget). Leasing a batch up front would let the later
@@ -113,6 +123,7 @@ class ObserverLoop:
                 )
             except PersistenceError as exc:
                 _log.warning("claim refused code=%s", exc)
+                self.last_pass_refused = True
                 break
             if not leases:
                 break
@@ -279,6 +290,11 @@ class ObserverLoop:
             while not self.stop.is_set():
                 self.poll_once(compare=False)
                 polls += 1
+                if self.on_poll is not None:
+                    try:
+                        self.on_poll(not self.last_pass_refused)
+                    except Exception as exc:  # noqa: BLE001 - keep sampling
+                        _log.warning("poll hook failed error=%s", type(exc).__name__)
                 self.stop.wait(self.poll_seconds)
         finally:
             self.stop.set()

@@ -23,7 +23,10 @@ def test_one_product_image_serves_every_role():
 def test_postgres_is_pinned_by_digest_and_publishes_no_port():
     assert re.fullmatch(r"postgres@sha256:[0-9a-f]{64}", SERVICES["postgres"]["image"])
     assert "ports" not in SERVICES["postgres"]
+    # #413 F8-R7: the runtimes' health listeners (container port 9464) are
+    # published only by compose.lab.yaml, never by the default file.
     assert all("ports" not in SERVICES[name] for name in SERVICES if name != "web")
+    assert all(entry["target"] != 9464 for entry in SERVICES["web"]["ports"])
 
 
 def test_the_workbench_is_published_on_host_loopback_only():
