@@ -1,0 +1,17 @@
++ deploy/prometheus -c prometheus-server: promtool check rules /tmp/check.yml
+Checking /tmp/check.yml
+  SUCCESS: 3 rules found
++ deploy/prometheus -c prometheus-server: promtool check config --syntax-only /tmp/check.yml
+Checking /tmp/check.yml
+ SUCCESS: /tmp/check.yml is valid prometheus config file syntax
++ alertmanager-0: amtool check-config /tmp/check.yml
+Checking '/tmp/check.yml'  SUCCESS
+Found:
+ - global config
+ - route
+ - 0 inhibit rules
+ - 2 receivers
+ - 0 templates
++ alertmanager-0: amtool config routes test --config.file=/tmp/check.yml 'opspilot_self="true"' alertname=OpsPilotAgentAbsent
+opspilot-self
+{"ok": true, "exit": {"rules": 0, "config": 0, "alertmanager": 0, "self_route": 0}}

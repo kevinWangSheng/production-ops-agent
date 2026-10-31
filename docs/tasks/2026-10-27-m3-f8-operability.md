@@ -1,9 +1,9 @@
 # M3 运行可观测（F8 第 1–3 步）
 
-- 状态：进行中（第 1 实施步骤合同 r1 已裁决；PR-1 产品 #413 已实现，待独立验收测试合入与审查）
+- 状态：进行中（第 1 实施步骤合同 r1 已裁决；PR-1 #413 已合并（#418）；PR-2 #414 lab 与两次演练已实现，待独立验收测试与审查）
 - 更新日期：2026-10-31
 - 依据：[M3 开放决策](2026-10-27-m2-exit-m3-opening-decision.md) Q2 第 4 条、Q5、Q6；feature_list.json F8；C3 §11（可观测性、outbox、部署与 schema 迁移）；#243 #159
-- 工作区：#413 `/Users/shenghuikevin/dev/AI/poa-413-impl`，分支 `feature/F8-413-health-listeners`（基 main `659bcd9c`）
+- 工作区：#413 `/Users/shenghuikevin/dev/AI/poa-413-impl`，分支 `feature/F8-413-health-listeners`（基 main `659bcd9c`）；#414 `/Users/shenghuikevin/dev/AI/poa-414-impl`，分支 `feature/F8-414-lab-drills`（基 main `6845ffc7`）
 
 ## 目标与范围
 
@@ -104,6 +104,23 @@ opspilot_observation_due 0
 `start postgres` 后 13:39:24Z 三个 `/readyz` 都回到 200。`STOPPING` 没抓到现场：对 Observer 发 SIGTERM 后进程 5 ms 内退出（日志 `signal=15` 13:39:32.607 → `observer stopped` .612），监听随之关闭，curl 得到空响应；该分支由确定性测试覆盖。三个容器日志里没有占位 key 或 `password=`。之后 `down --volumes` 只删了 `opspilot-413` 项目，镜像 `opspilot:413` 与生成的密钥目录已删除。
 
 验证：`tests/test_413_health_impl.py`、`tests/test_413_compose_impl.py`（实现者测试，先红后绿）；定向回归 `tests/test_392_*`、`tests/test_394_image_version_impl.py`、`tests/acceptance/test_392_*`、`tests/acceptance/test_f7_step1_entry_points.py`、`tests/test_m1_observer.py`、`tests/test_f2_b1_impl.py`、`tests/test_f2_b2_impl.py`、`tests/test_m1_web_worker.py`、`tests/test_runtime_roles.py`、`tests/test_runtime_dsn_contract.py`、`tests/test_m1_otel_demo_contract.py`；`ruff check`、`ruff format --check`、`mypy`。未跑：全量 `make check` 与全量 pytest（本机 swap 紧张）；独立验收测试 `tests/acceptance/test_413_*` 由另一位作者编写，尚未合入本分支；独立审查未做。F8 `passes` 保持 false。
+
+## #414 实现（PR-2，对齐合同 r1）
+
+行为：lab Prometheus 加 job `opspilot`（三目标 `192.168.5.2:19464/19465/19466`、`role` 标签、15s），规则组 `opspilot-self` 两条（`OpsPilotAgentAbsent`、`OpsPilotModelCallsFailing`，表达式、`for`、标签照合同原文）；Alertmanager 加子路由 `opspilot_self="true"` → 无集成的接收器 `opspilot-self`。演练用两个 lab override：`compose.drill-egress.yaml`（worker `extra_hosts`，F8-R8 原文）与 `compose.drill-run-wall.yaml`（web `OPSPILOT_RUN_SECONDS=240`，F8-Q4）；`install.sh` 不引用。产品代码未改。
+
+可逆技术选择（Agent 自定，一行理由）：
+
+- `extraScrapeConfigs` 写成字符串：chart 0.37.8 子 chart 用 `tpl` 字符串追加（已核对模板），合同未确认项就此关闭。
+- 新增 `kind_lab.py rules-check`：用 `helm template` 渲染 values，交给 lab pod 内的 promtool v3.5.0 / amtool v0.28.1 校验，并测试自监控路由只到 `opspilot-self`。宿主没有这两个二进制，pod 内版本与运行版本一致。
+- `kind_lab.py up` 的 demo `helm upgrade` 加 `--force-conflicts`：2026-10-10 的手工 `kubectl patch` 拥有规则文件字段，改规则时 server-side apply 冲突；values 是 lab 的事实来源。副作用是 `up` 会收回故障钩子 patch 过的 flagd 字段。
+- 两份既有测试（`test_kind_lab_alertmanager.py`）原先假设只有一个接收器、一条规则，改为按名字选取。
+
+真实运行（2026-10-31 16:13–16:33Z，持 kind-lab 锁；栈 `opspilot-393`，镜像由 `install.sh upgrade` 从本 worktree 构建）：证据 [f8-step1-drills](../evidence/f8-step1-drills/README.md)。Prometheus pod 经 `192.168.5.2` 抓到三个监听（合同未确认项已实测）。演练一：停 worker 后 Run `queued`、`queue_depth` 0→1，`OpsPilotAgentAbsent` 约 3m46s 后 firing → `opspilot-self`；过 deadline 后打开事故页，清扫得到 `DEADLINE_EXCEEDED`。演练二：两次 `MODEL_UNAVAILABLE`，Run `waiting_human`，连续失败数 2，`OpsPilotModelCallsFailing` firing → `opspilot-self`；去掉 override 后人工 `resume`，两次模型调用 `ok`，Run 因演练目标不在 fixture 工具登记里以 `INCOMPLETE_INVESTIGATION` 交接。所有集成的 Alertmanager 通知计数均为 0。promtool/amtool 全部通过。
+
+费用：被拦截的调用在本机就被拒绝，没有供应商费用；人工 `resume` 产生 2 次真实调用。余额差待用户对账（K2）。
+
+未做：独立审查；全量 `make check`/pytest；F8 `passes` 保持 false。lab 留在本分支的配置上：停栈后 `OpsPilotAgentAbsent` 持续 firing 到 `opspilot-self`，不通知任何东西。
 
 ## 下一步与交接
 
