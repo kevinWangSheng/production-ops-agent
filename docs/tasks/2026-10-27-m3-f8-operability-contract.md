@@ -80,3 +80,70 @@ override 给 worker 加 `extra_hosts: ["api.deepseek.com:127.0.0.1"]` 后 `up -d
 ## 未确认（预审 :142-147）
 
 上游 HolmesGPT server 是否有 `/healthz`/`/metrics`；OTel Demo chart 内置 Prometheus 的默认 `scrape_interval`/`evaluation_interval`；（写入时补）chart 0.37.8 的 `extraScrapeConfigs` 键形（字符串或列表，实施时核对）；Prometheus pod 到 `192.168.5.2` 的可达性（推断可达，未实测）；da-server ↔ 目标机跨主机抓取（归 F9 接线预审）。
+
+## 结构化日志合同（r2）：F8-R10 的后续小 PR
+
+- 预审：全新上下文 Agent（Opus 5.5），只读，基线 origin/main `b8a5fa5a`，2026-10-31；全文在仓库外 `~/.agent/handoffs/opspilot-prereview-f8-logs-2026-10-31.md`（下称「预审」，行号指该文件）。上游 HolmesGPT 的日志格式未核对（本机无源码，**未确认**），按 stdlib logging + JSON 行通行做法设计。
+- 裁决（r2，用户 2026-10-31）：用户原话「没有问题,写入进去,但是不要实现」；grilling Q1「7 项按推荐落地」yes。F8L-Q1–Q3 按推荐 (a)（Agent 按用户常设指示自定）；F8L-R1–R9 照预审。记录见 `~/.agent/handoffs/opspilot-rulings-2026-10-31-f14s3-f8logs.md`。
+- **本轮不实施**：实施等 M3 方向 Q4 第 ① 步全部完成后再排。
+- 关键现状（预审 :11-34）：worker 与 Observer 用 `basicConfig` 文本格式；web 没有配置 root logger，`opspilot.*` 的 INFO 行今天被丢弃，WARNING 以上只打裸 `msg`；84 处日志调用全部把 kv 写在格式串里，无 `extra=`；已有 kv `version=`（`knowledge/worker.py:196-197`）、`revision=`（`observer/loop.py:251,261`）与候选固定字段同名；调查 loop、runner、tools、client 无日志调用；web 5 处 `.exception()` 记完整 traceback（`web/service.py:2523,2628`，`web/__main__.py:155,159,163`）。
+- 全量探针（预审 :78-84）：草稿（`opspilot/logs.py` + 三入口接线，不含 R4 kv 与 Q1 版本字段）`tests/acceptance` **探针 0 失败**（3014 passed、303 skipped，跳过均为 `M1_DURABLE_POSTGRES=1` 门控）；定向 205 passed；测试里无钉日志格式的断言，读进程日志的只有 `tests/test_393_installed_run_live_impl.py:175-176` 子串断言。
+- 共享脱敏实测（预审 :110-125，Q2 不选 (b) 的依据）：`redact_credentials` 把 Observer 关联键 `session=<id>`、`prompt_tokens`、`auth: ok` 改成 `[REDACTED_CREDENTIAL]`，而裸写的 `Incorrect API key sk-…` 与模型散文原样漏过。
+
+### 需用户裁决（r2 已裁决）
+
+| 编号 | 问题 | 选项与代价 | 推荐 | 影响面 | 裁决 |
+|---|---|---|---|---|---|
+| F8L-Q1 | 按「事故和版本」关联靠什么字段（R10「不新增内容字段」与 #386 字段表「每条日志带 incident/run/version」不一致） | (a) 固定字段加两个**进程常量** `version`（`opspilot.__version__`）、`revision`（与 `/metrics` `opspilot_build_info` 同一取值与校验，`health.py:146-147`）；事故/会话/Run 关联沿用现有 kv（`incident=` `session=` `observation_id=` `run=`），不按调用注入上下文、不改键名。代价：关联键名不统一（`observation=` 与 `observation_id=` 并存），查询要按 logger 选键；与已有 kv `version=`/`revision=` 同名，须按 R4 嵌套避免覆盖。(b) 严格照 R10，一个字段都不加；版本只能靠镜像标签或启动行推断。代价：F8 steps[0]「按 version 关联」在日志面上做不到，事后要再改格式。(c) 用 contextvars 在 attempt/sample 作用域给每行注入 `incident_id/run_id`。代价：要在 runner/sampler 线程里设上下文，碰调查与恢复路径（触发 ADR-0006 trace 要求），超出「不改行为」小 PR | (a) | 日志字段合同（下游查询依赖）；F8 steps[0] 投影 | (a)，Agent 按推荐自定（用户常设指示） |
+| F8L-Q2 | 「不记 provider 文本 / 凭据」靠哪一层保证 | (a) 源头纪律 + 确定性测试，formatter **不**调用共享脱敏：独立复核 84 处调用（结论随 PR 记录），加哨兵测试（模型客户端抛出/返回带哨兵凭据与哨兵 provider 文本，worker/Observer/web 入口跑一轮，断言所有捕获行都不含哨兵）；web 5 处 `.exception()` 保留 traceback（不改行为），列入复核清单。代价：保证依赖调用点自律，新增调用点要靠测试与审查守住。(b) formatter 对 `msg`/`exc` 调 `redact_credentials` 兜底。代价（探针实测）：把 Observer 的关联键 `session=<id>` 改成 `[REDACTED_CREDENTIAL]`（#366 同源），`prompt_tokens`/`auth: ok` 同样误伤；`Incorrect API key sk-…` 与模型散文**照样漏过**；每行多一次 #365 的潜在二次方开销。(c) 日志专用窄规则（只认 `Authorization`、`api_key=`、URL userinfo）。代价：第二套脱敏规则要单独维护和审查，仍挡不住散文 | (a)：兜底既误伤关联键又挡不住真正的 provider 文本，换不来保证；源头纪律今天已成立（worker 只记类型/码） | 安全边界；与 #366/#365 的耦合 | (a)，Agent 按推荐自定（用户常设指示） |
+| F8L-Q3 | 验收怎么判、`passes` | (a) 确定性测试（三入口每行一个 JSON 对象、固定键齐全、多行消息与 traceback 仍是一行、`uvicorn`/`psycopg.pool` 行同格式、Q2 哨兵断言、`OPSPILOT_LOG_FORMAT=text` 回退）+ 一次 Compose 真实运行抽检（`install.sh compose logs` 三服务，含一次真实模型调用的 Run 与一次停 PG 的失败行，人工核对无凭据/无 provider 文本，摘录入任务记录）；不附 LangSmith trace（不触碰 loop/报告校验/恢复路径，ADR-0006）；F8 `passes` 保持 false。代价：真实抽检是人工判读，不是确定性断言。(b) 只做确定性测试。代价：Compose 下 Docker 实际收到什么没有证据。(c) 另加 trace。代价：无对应改动面 | (a) | 验收证据形状；`passes` | (a)，Agent 按推荐自定（用户常设指示） |
+
+### 可逆默认（照预审）
+
+| 编号 | 问题 | 默认 | 理由 / 出处 | 影响面 | 裁决 |
+|---|---|---|---|---|---|
+| F8L-R1 | 实现位置与依赖 | 新模块 `opspilot/logs.py`（stdlib `logging` + `json`），三入口各调一次 `configure()`：替换 worker_main.py:565、observer/__main__.py:217 的 `basicConfig`，web 在 `_serve()` 起点调用 | 不加 structlog/python-json-logger 依赖（全局规则：不擅加依赖）；CLI 子命令（migrate/doctor/install）不在范围 | 依赖面 | 照预审 |
+| F8L-R2 | 开关与默认 | 见下方代码块（预审 :51） | 这就是本 PR 的目的；`text` 留给开发者；与其他 env 的拒绝启动做法一致（`health.py:506`）；`install.env` 不加键 | 部署 | 照预审 |
+| F8L-R3 | 固定字段与时间 | 见下方代码块（预审 :52） | 墙钟只用于日志显示，不参与任何判定；`msg` 保留全文，旧的子串查询（如 `tests/test_393_installed_run_live_impl.py:175-176`）不受影响 | 格式 | 照预审 |
+| F8L-R4 | kv 映射 | 见下方代码块（预审 :53） | 值来自参数而不是解析渲染后的文本（`code=%s` 的值可能含空格与引号，§4.2）；嵌套避开 `version=`/`revision=` 与固定字段同名（§0）；不改任何调用点 | 格式 | 照预审 |
+| F8L-R5 | 异常栈 | `exc_info` → `exc` 字段（`formatException` 全文），`stack_info` → `stack`；整条仍是一行（JSON 转义换行） | 不改行为：今日 traceback 也会输出；多行 traceback 在 Docker 里拆成多条是现有痛点 | 格式 | 照预审 |
+| F8L-R6 | 第三方库 | root 只挂一个 stderr handler、级别 INFO；web 调 `uvicorn.run(…, log_config=None)`，`uvicorn.error`/`uvicorn.access` 冒泡到 root，同格式；访问日志保留，从 stdout 改到 stderr；`psycopg.pool` 等同格式 | 一个进程一种格式；可见变化：web 今天被丢弃的 INFO 行会出现（§0），列在 PR 正文 | web 日志量 | 照预审 |
+| F8L-R7 | 单行与转义 | 见下方代码块（预审 :56） | 探针 §4.2：含 `\n` 与 `"` 的 msg 仍是一行合法 JSON | 格式 | 照预审 |
+| F8L-R8 | 不做的事 | 不改任何调用点的措辞与键名（含 `observation=`/`observation_id=` 不统一）；不加长度上限；不改 Compose logging driver/轮转 | R10「不改行为」；键名统一与轮转（72h soak 前需要）各开 issue | 范围 | 照预审 |
+| F8L-R9 | 测试隔离 | `configure()` 幂等（替换 root handler 而非追加）；pytest `caplog` 用自己的 handler，不受影响 | 探针：相关 205 条定向测试不受影响（§4.1） | 测试 | 照预审 |
+
+逐字节细节（原文摘自预审，行号为预审文件行号）：
+
+```text
+# 预审 :51（F8L-R2，默认）
+`OPSPILOT_LOG_FORMAT`：`json`（默认）或 `text`（旧格式串 `%(asctime)s %(name)s %(levelname)s %(message)s`）；其他值拒绝启动、非零退出
+```
+
+```text
+# 预审 :52（F8L-R3，默认）
+`ts`（`record.created` 转 UTC，RFC 3339 毫秒，`Z` 结尾）`level`（`levelname`）`logger`（`name`）`msg`（`getMessage()` 全文，与今日文本一致）+ Q1 定的进程常量
+```
+
+```text
+# 预审 :53（F8L-R4，默认）
+只从格式串里 `name=%…` 占位符按位置取对应 `record.args`，放进嵌套对象 `kv`（不铺到顶层）；值：`int/float/bool/None` 原样，其余 `str()`；非 `name=` 占位符不提取；格式串不匹配或参数数不一致时不出 `kv`，`msg` 照常
+```
+
+```text
+# 预审 :56（F8L-R7，默认）
+`json.dumps(…, ensure_ascii=False, default=str)`；换行、引号、控制字符由 JSON 转义，日志注入无法伪造新行
+```
+
+```text
+# 预审 :91-95（草稿 formatter 输出节选；草稿 `ts` 为 `+00:00` 结尾，R3 定为 `Z`，实现时调整，见预审 :100）
+{"ts": "2026-10-31T20:39:20.585+00:00", "level": "INFO", "logger": "opspilot.worker", "msg": "attempt incident=11111111-2222-3333-4444-555555555555 status=hand_off reason=('MODEL_UNAVAILABLE',)"}
+{"ts": "...", "level": "WARNING", "logger": "opspilot.schema", "msg": "takeover accepted a column-order-only difference:\n- a int\n+ b int"}
+```
+
+### 切分与范围（预审 :72-74）
+
+一个 PR：`opspilot/logs.py` + 三入口接线 + 实现者测试；独立验收测试由另一作者按本表与 F8L-Q3 编写（含哨兵断言）；之后 Compose 真实抽检写入任务记录。另开 issue：关联键名统一（`observation=`/`observation_id=`）、Compose 日志轮转（soak 前）。
+
+### 未确认（预审 :136-140）
+
+Docker 宿主 daemon 的 json-file 轮转配置；`web/service.py:1579,1659` 的 `str(exc)` 是否恒为带固定码的异常、web `.exception()` 的异常消息是否可能引用模型输出或证据原文（推断很低，交 F8L-Q2 复核）；上游 HolmesGPT 的日志格式。
