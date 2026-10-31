@@ -28,14 +28,20 @@
 #                             from this checkout; anything else is pulled and
 #                             must be pinned by digest (<name>@sha256:<64 hex>)
 #   OPSPILOT_TOOL_PROFILE     fixture (default) or otel-demo
-#   OPSPILOT_START_AGENT      1 also starts worker and observer (fill
-#                             worker_env / observer_env first)
+#   OPSPILOT_START_AGENT      1 also starts worker and observer; refused
+#                             before any Docker call unless <secrets dir>/
+#                             worker_env holds DEEPSEEK_API_KEY and the URL
+#                             below is http(s) (Observer credentials go in
+#                             <secrets dir>/observer_env)
+#   OPSPILOT_OBSERVER_PROMETHEUS_URL
+#                             the Observer's read-only Prometheus base URL
 #
 # Generated once and never regenerated (re-running keeps every password):
 # database passwords as pgpass files, the workbench password (ui_password, for
 # the operator; the web only gets its PBKDF2 hash) and the Alertmanager bearer
 # token (alertmanager_token; the web only gets its sha256). Secret values are
-# never printed.
+# never printed. target_identities.json (the web's OPSPILOT_TARGET_IDENTITIES)
+# starts as {} and is the operator's to edit.
 set -euo pipefail
 
 readonly COMPOSE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -46,7 +52,8 @@ readonly UI_USER="operator"
 readonly EVENT_ACTOR="alertmanager"
 readonly RUNTIMES=(web worker observer)
 readonly SETTINGS=(OPSPILOT_PROJECT OPSPILOT_WEB_HOST_PORT
-    OPSPILOT_IMAGE OPSPILOT_TOOL_PROFILE OPSPILOT_START_AGENT)
+    OPSPILOT_IMAGE OPSPILOT_TOOL_PROFILE OPSPILOT_START_AGENT
+    OPSPILOT_OBSERVER_PROMETHEUS_URL)
 
 log() { printf '[opspilot-install %s] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*"; }
 die() { printf 'install.sh: %s\n' "$*" >&2; exit 1; }
@@ -134,8 +141,62 @@ check_install_binding() {
     die "project $OPSPILOT_PROJECT's database was installed with secrets in $RECORDED; set OPSPILOT_SECRETS_DIR=$RECORDED (or remove its data first: uninstall --purge-data with that directory)"
 }
 
+# worker_env holds a non-empty DEEPSEEK_API_KEY, read as the worker reads it
+# (worker_main._read_env_file): the first line that, stripped, starts with
+# DEEPSEEK_API_KEY=; its value stripped and one pair of matching quotes
+# removed. The value is never printed.
+has_model_key() {
+    local line value
+    [ -r "$1" ] || return 1
+    while IFS= read -r line || [ -n "$line" ]; do
+        line="${line#"${line%%[![:space:]]*}"}"
+        case "$line" in DEEPSEEK_API_KEY=*) ;; *) continue ;; esac
+        value="${line#DEEPSEEK_API_KEY=}"
+        value="${value#"${value%%[![:space:]]*}"}"
+        value="${value%"${value##*[![:space:]]}"}"
+        case "$value" in
+            \"*\" | \'*\') value="${value#?}"; value="${value%?}" ;;
+        esac
+        [ -n "$value" ]
+        return
+    done < "$1"
+    return 1
+}
+
+# observer_url_ok <url>: the URL the Observer accepts at start
+# (opspilot/observer/prometheus.py): http(s), no userinfo, a non-empty host
+# (bracketed IPv6 allowed), and a port, if one is given, numeric in 1-65535.
+observer_url_ok() {
+    local authority port re_url='^https?://([^/?#]*)'
+    local re_ipv6='^\[[^]]+\](:(.*))?$' re_host='^([^:]+)(:(.*))?$'
+    [[ "$1" =~ $re_url ]] || return 1
+    authority=${BASH_REMATCH[1]}
+    case "$authority" in "" | *@* | *[[:space:]]*) return 1 ;; esac
+    if [[ "$authority" =~ $re_ipv6 ]]; then
+        [ -n "${BASH_REMATCH[1]}" ] || return 0
+        port=${BASH_REMATCH[2]}
+    elif [[ "$authority" =~ $re_host ]]; then
+        [ -n "${BASH_REMATCH[2]}" ] || return 0
+        port=${BASH_REMATCH[3]}
+    else
+        return 1
+    fi
+    [[ "$port" =~ ^[0-9]{1,5}$ ]] && ((10#$port >= 1 && 10#$port <= 65535))
+}
+
+# With the agent profile requested, worker and Observer must be able to
+# start: checked before any Docker call, so a refusal leaves the install as
+# it was. Messages name the file or variable, never a value.
+require_agent_config() {
+    [ "$OPSPILOT_START_AGENT" = 1 ] || return 0
+    has_model_key "$SECRETS_DIR/worker_env" ||
+        die "OPSPILOT_START_AGENT=1 needs a non-empty DEEPSEEK_API_KEY=... line in $SECRETS_DIR/worker_env; nothing changed"
+    observer_url_ok "$OPSPILOT_OBSERVER_PROMETHEUS_URL" ||
+        die "OPSPILOT_START_AGENT=1 needs OPSPILOT_OBSERVER_PROMETHEUS_URL set to the Observer's read-only Prometheus http(s) URL; nothing changed"
+}
+
 # resolve_settings [image]: "image" when this run pulls and starts the
-# product image.
+# product image (install, upgrade: these also run the agent preflight).
 resolve_settings() {
     IMAGE_IN_USE=0
     [ "${1:-}" != image ] || IMAGE_IN_USE=1
@@ -167,15 +228,18 @@ resolve_settings() {
     export OPSPILOT_SECRETS_DIR="$SECRETS_DIR"
     export OPSPILOT_PROJECT="${OPSPILOT_PROJECT:-${COMPOSE_PROJECT_NAME:-opspilot}}"
     valid_project "$OPSPILOT_PROJECT"
-    check_install_binding
     export OPSPILOT_WEB_HOST_PORT="${OPSPILOT_WEB_HOST_PORT:-18080}"
     valid_port "$OPSPILOT_WEB_HOST_PORT"
     export OPSPILOT_IMAGE="${OPSPILOT_IMAGE:-$LOCAL_IMAGE}"
     valid_image "$OPSPILOT_IMAGE"
     export OPSPILOT_TOOL_PROFILE="${OPSPILOT_TOOL_PROFILE:-fixture}"
     export OPSPILOT_START_AGENT="${OPSPILOT_START_AGENT:-0}"
+    export OPSPILOT_OBSERVER_PROMETHEUS_URL="${OPSPILOT_OBSERVER_PROMETHEUS_URL:-}"
     export OPSPILOT_RUNTIME_UID="$(id -u)"
     export OPSPILOT_RUNTIME_GID="$(id -g)"
+    [ "$IMAGE_IN_USE" = 0 ] || require_agent_config
+    # The first Docker call of any command.
+    check_install_binding
 }
 
 save_settings() {
@@ -271,6 +335,10 @@ ensure_secrets() {
     write_once web_event_tokens credential_entry event-token "$EVENT_ACTOR" alertmanager_token
     write_once worker_env placeholder_env worker_env "worker (DEEPSEEK_API_KEY; OPSPILOT_OTEL_* for otel-demo)"
     write_once observer_env placeholder_env observer_env "observer (Prometheus credentials)"
+    # Not a secret and not required for a live volume: an install from
+    # before #393 gets it on upgrade. {} hands every alert to a human; an
+    # entry with a `match` lets an alert open a Run on that target.
+    write_once target_identities.json printf '{}\n'
     export_auth_revision
 }
 

@@ -90,10 +90,16 @@ services:
       OPSPILOT_EVENT_TOKENS_FILE: /run/secrets/web_event_tokens
       OPSPILOT_AUTH_REVISION: "${OPSPILOT_AUTH_REVISION:-compose}"
       OPSPILOT_TOOL_PROFILE: "${OPSPILOT_TOOL_PROFILE:-fixture}"
+      # Binds an Alertmanager alert to a target by its labels; without a
+      # matching entry the alert is handed to a human and opens no Run.
+      OPSPILOT_TARGET_IDENTITIES: /run/config/target_identities.json
     secrets:
       - web_pgpass
       - web_ui_users
       - web_event_tokens
+    configs:
+      - source: web_target_identities
+        target: /run/config/target_identities.json
     ports:
       - target: 8080
         host_ip: 127.0.0.1
@@ -108,10 +114,14 @@ services:
       init-roles:
         condition: service_completed_successfully
     # One replica only: the web runs the automatic observation passes.
+    deploy:
+      replicas: 1
     restart: unless-stopped
 
-  # Exercised by #393 (real investigation through the stack); started only
-  # with COMPOSE_PROFILES=agent once worker_env / observer_env are filled in.
+  # Started by `OPSPILOT_START_AGENT=1 install.sh install|upgrade` (Compose
+  # profile agent), which first checks that worker_env holds the model key
+  # and OPSPILOT_OBSERVER_PROMETHEUS_URL is set. One replica each: both are
+  # lease-fenced and could run more, but this install does not need it.
   worker:
     <<: *product
     profiles: ["agent"]
@@ -121,6 +131,9 @@ services:
       # Model and LangSmith keys, and for OPSPILOT_TOOL_PROFILE=otel-demo the
       # OPSPILOT_OTEL_* endpoints and credentials (exported by the entrypoint).
       OPSPILOT_ENV_FILE: /run/secrets/worker_env
+      # Explicit, not defaults: the worker refuses a pool smaller than
+      # capacity + 2 (one connection per slot, plus the polling and postmortem
+      # threads).
       OPSPILOT_WORKER_CAPACITY: "2"
       OPSPILOT_POOL_MAX_SIZE: "4"
       OPSPILOT_TOOL_PROFILE: "${OPSPILOT_TOOL_PROFILE:-fixture}"
@@ -130,6 +143,8 @@ services:
     depends_on:
       init-roles:
         condition: service_completed_successfully
+    deploy:
+      replicas: 1
     restart: unless-stopped
 
   observer:
@@ -138,6 +153,8 @@ services:
     command: ["python", "-m", "opspilot.observer"]
     environment:
       OPSPILOT_OBSERVER_DSN: "host=postgres port=5432 dbname=opspilot user=opspilot_observer_app passfile=/run/secrets/observer_pgpass"
+      # Basic-auth username/password or a bearer token of the Observer's own
+      # read-only Prometheus account, in observer_env.
       OPSPILOT_OBSERVER_ENV_FILE: /run/secrets/observer_env
       OPSPILOT_OBSERVER_PROMETHEUS_URL: "${OPSPILOT_OBSERVER_PROMETHEUS_URL:-}"
     secrets:
@@ -146,6 +163,8 @@ services:
     depends_on:
       init-roles:
         condition: service_completed_successfully
+    deploy:
+      replicas: 1
     restart: unless-stopped
 
   # Manual raw-payload cleanup (#244): dry run by default.
@@ -183,3 +202,7 @@ secrets:
     file: ${OPSPILOT_SECRETS_DIR:?run deploy/compose/install.sh}/worker_env
   observer_env:
     file: ${OPSPILOT_SECRETS_DIR:?run deploy/compose/install.sh}/observer_env
+
+configs:
+  web_target_identities:
+    file: ${OPSPILOT_SECRETS_DIR:?run deploy/compose/install.sh}/target_identities.json
