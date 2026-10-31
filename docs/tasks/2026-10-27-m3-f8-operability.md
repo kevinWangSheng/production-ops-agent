@@ -42,7 +42,7 @@
 - 计数器：非 `ModelError` 的异常原样抛出、不计数；码不合固定码形状记 `UNKNOWN`：标签集有界。
 - `/metrics` 超过 4 KiB 时按行截断；首次成功轮询前 `opspilot_last_poll_age_seconds` 为 `+Inf`；web 读库失败时 `opspilot_queue_depth` 不出现（不报 0）；worker/Observer 不出 `opspilot_schema_at_head`（只在启动时校验过）。
 - 探测抛异常回 500 `{"status": "error"}`，日志只记异常类型；不记每次请求的访问日志；`Server` 头不带 Python 版本。
-- 防洪（PR #418 机器人 P2，bind 仍按 F8-Q2 为容器网络 `0.0.0.0:9464`）：三进程的监听同时最多处理 8 个请求，多出的在接收线程上立即回 503 `{"status": "busy"}` 并关闭，不排队、不新开线程；web 的 `/readyz` 与 `/metrics` 共用一次探测事务并缓存 5s（低于 15s 抓取间隔）：无论请求多快，最多每 5s 占工作台池一条连接；代价是 `/readyz` 与指标最多滞后 5s。
+- 防洪（PR #418 机器人 P2，bind 仍按 F8-Q2 为容器网络 `0.0.0.0:9464`）：三进程的监听同时最多处理 8 个请求，多出的在接收线程上立即回 503 `{"status": "busy"}` 并关闭，不排队、不新开线程；web 的 `/readyz` 与 `/metrics` 共用一次探测事务并缓存 5s（低于 15s 抓取间隔）：无论请求多快，最多每 5s 占工作台池一条连接；代价是 `/readyz` 与指标最多滞后 5s。库不可用时探测结果（503 `POOL_UNAVAILABLE`）同样缓存 5s，lead 裁定（审查 r3）：这样库宕机期间洪水也不会每个请求都去等池；恢复后最多晚 5s 回 200，与上面的滞后对称；探测抛出的异常不缓存。
 
 真实运行（2026-10-31，本机 colima `m1-kind`，项目 `opspilot-413`，`compose.yaml` + `compose.lab.yaml`，镜像 `opspilot:413` 由 `c3aedcd3` 构建）：密钥由本次自行生成在仓库外并已删除；worker 的模型 key 是占位串，库里没有 Run，没有发生模型调用；Observer 的 Prometheus URL 是不可解析的占位地址，没有到期采样，没有发出查询。`up --wait` 后三个容器都是 `(healthy)`，宿主端口 `127.0.0.1:18181->8080`、`127.0.0.1:19464/19465/19466->9464`。原始输出（每进程第一条带响应头，其余只列 body）：
 
