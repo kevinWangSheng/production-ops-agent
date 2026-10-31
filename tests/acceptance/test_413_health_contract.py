@@ -50,7 +50,7 @@ def test_health_listener_has_only_three_get_routes_and_fixed_small_bodies():
     server = health.start_health_server(
         "127.0.0.1:0",
         readiness=lambda: health.Readiness(True, None),
-        metrics=lambda: "opspilot_build_info{version=\"0.1.0\",revision=\"r\"} 1\n",
+        metrics=lambda: 'opspilot_build_info{version="0.1.0",revision="r"} 1\n',
     )
     assert server is not None
     try:
@@ -92,7 +92,10 @@ def test_health_status_bodies_do_not_echo_operational_or_secret_text():
         for path in ("/healthz", "/readyz"):
             status, body, _ = _get(server, path)
             assert status in (200, 503)
-            assert not any(word.encode() in body for word in ("report", "evidence", "provider", "credential", "sk-"))
+            assert not any(
+                word.encode() in body
+                for word in ("report", "evidence", "provider", "credential", "sk-")
+            )
         status, body, _ = _get(server, "/metrics")
         assert status == 200
         assert len(body) <= 4096
@@ -103,10 +106,42 @@ def test_health_status_bodies_do_not_echo_operational_or_secret_text():
 @pytest.mark.parametrize(
     ("kwargs", "expected"),
     [
-        ({"last_success_monotonic": None, "poll_interval_seconds": 10, "now_monotonic": 0, "stopping": False}, "POLL_STALE"),
-        ({"last_success_monotonic": 1, "poll_interval_seconds": 10, "now_monotonic": 31.001, "stopping": False}, "POLL_STALE"),
-        ({"last_success_monotonic": None, "poll_interval_seconds": 10, "now_monotonic": 0, "stopping": True}, "STOPPING"),
-        ({"last_success_monotonic": 1, "poll_interval_seconds": 10, "now_monotonic": 2, "stopping": True}, "STOPPING"),
+        (
+            {
+                "last_success_monotonic": None,
+                "poll_interval_seconds": 10,
+                "now_monotonic": 0,
+                "stopping": False,
+            },
+            "POLL_STALE",
+        ),
+        (
+            {
+                "last_success_monotonic": 1,
+                "poll_interval_seconds": 10,
+                "now_monotonic": 31.001,
+                "stopping": False,
+            },
+            "POLL_STALE",
+        ),
+        (
+            {
+                "last_success_monotonic": None,
+                "poll_interval_seconds": 10,
+                "now_monotonic": 0,
+                "stopping": True,
+            },
+            "STOPPING",
+        ),
+        (
+            {
+                "last_success_monotonic": 1,
+                "poll_interval_seconds": 10,
+                "now_monotonic": 2,
+                "stopping": True,
+            },
+            "STOPPING",
+        ),
     ],
 )
 def test_poll_readiness_reason_codes_and_stopping_precedence(kwargs, expected):
@@ -116,15 +151,27 @@ def test_poll_readiness_reason_codes_and_stopping_precedence(kwargs, expected):
 
 def test_poll_readiness_is_ready_after_recent_success_and_web_reasons_are_503():
     health = _health()
-    assert asdict(health.poll_readiness(last_success_monotonic=10, poll_interval_seconds=10, now_monotonic=40, stopping=False)) == {"ready": True, "reason": None}
+    assert asdict(
+        health.poll_readiness(
+            last_success_monotonic=10,
+            poll_interval_seconds=10,
+            now_monotonic=40,
+            stopping=False,
+        )
+    ) == {"ready": True, "reason": None}
     schema = health.web_readiness(schema_at_head=False, pool_ok=True)
     pool = health.web_readiness(schema_at_head=True, pool_ok=False)
     assert (schema.ready, schema.reason) == (False, "SCHEMA_NOT_AT_HEAD")
     assert (pool.ready, pool.reason) == (False, "POOL_UNAVAILABLE")
-    assert health.web_readiness(schema_at_head=False, pool_ok=False).reason == "POOL_UNAVAILABLE"
+    assert (
+        health.web_readiness(schema_at_head=False, pool_ok=False).reason
+        == "POOL_UNAVAILABLE"
+    )
 
 
-@pytest.mark.parametrize("reason", ["SCHEMA_NOT_AT_HEAD", "POOL_UNAVAILABLE", "POLL_STALE", "STOPPING"])
+@pytest.mark.parametrize(
+    "reason", ["SCHEMA_NOT_AT_HEAD", "POOL_UNAVAILABLE", "POLL_STALE", "STOPPING"]
+)
 def test_readyz_returns_503_with_fixed_reason(reason):
     health = _health()
     server = health.start_health_server(
@@ -185,15 +232,16 @@ opspilot_last_model_call_category{category="ok"} 1
     names = set(re.findall(r"^(opspilot_[a-z0-9_]+)(?:\{|\s)", text, re.MULTILINE))
     assert names == _METRIC_NAMES
     assert "run_id" not in text and "incident_id" not in text
-    assert "state=\"queued\"" in text and "state=\"running_lapsed\"" in text
-    assert "category=\"ok\"" in text
+    assert 'state="queued"' in text and 'state="running_lapsed"' in text
+    assert 'category="ok"' in text
     labels_by_name = {}
     for line in text.splitlines():
         match = re.match(r"^(opspilot_[a-z0-9_]+)(?:\{([^}]*)\})?\s", line)
         if not match:
             continue
         labels_by_name.setdefault(match.group(1), set()).update(
-            key for key in re.findall(r"([a-zA-Z_][a-zA-Z0-9_]*)=", match.group(2) or "")
+            key
+            for key in re.findall(r"([a-zA-Z_][a-zA-Z0-9_]*)=", match.group(2) or "")
         )
     assert labels_by_name["opspilot_build_info"] == {"version", "revision"}
     assert labels_by_name["opspilot_queue_depth"] == {"state"}
@@ -206,4 +254,3 @@ opspilot_last_model_call_category{category="ok"} 1
         "opspilot_last_model_call_category",
     }:
         assert labels_by_name.get(name, set()) == set()
-

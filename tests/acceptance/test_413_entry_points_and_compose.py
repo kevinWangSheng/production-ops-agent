@@ -101,4 +101,3 @@ def test_lab_override_publishes_only_loopback_health_ports_and_install_keys_are_
         "OPSPILOT_TOOL_PROFILE",
         "OPSPILOT_START_AGENT",
     }
-

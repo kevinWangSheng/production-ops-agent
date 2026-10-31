@@ -55,4 +55,3 @@ def test_model_call_counter_passthrough_categories_and_failure_reset():
     assert snapshot["calls"] == {"MODEL_UNAVAILABLE": 2, "ok": 1}
     assert snapshot["consecutive_failures"] == 0
     assert snapshot["last_category"] == "ok"
-
