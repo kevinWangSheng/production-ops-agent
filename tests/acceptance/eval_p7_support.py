@@ -478,15 +478,15 @@ class DriverHarness:
             **kwargs,
         )
 
-    def acceptance(self):
+    def acceptance(self, *, include_debug_distribution=False):
         distribution = {}
+        debug_distribution = {}
         by_id = {label.item_id: label for label in self.labels}
         for item in self.items:
-            if item.split != "validation":
+            if item.split not in {"validation", "debug"}:
                 continue
-            counts = distribution.setdefault(
-                item.scenario_id, {"positive": 0, "negative": 0}
-            )
+            target = debug_distribution if item.split == "debug" else distribution
+            counts = target.setdefault(item.scenario_id, {"positive": 0, "negative": 0})
             counts["positive" if by_id[item.item_id].verdict else "negative"] += 1
         brief_hash = sha((self.ws / "adjudication/brief.json").read_bytes())
         value = dict(
@@ -497,6 +497,8 @@ class DriverHarness:
             distribution=distribution,
             decision_record=CANARY_DECISION,
         )
+        if include_debug_distribution:
+            value["debug_distribution"] = debug_distribution
         path = self.ws / "adjudication/distribution-acceptance.json"
         put(path, value)
         return path, value

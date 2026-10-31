@@ -1147,11 +1147,10 @@ def test_snapshot_reads_canary_without_disabling_runtime_env_guard(harness):
 @pytest.mark.parametrize(
     "debug_distribution", ["all-positive", "all-negative", "compensating"]
 )
-@pytest.mark.parametrize("accept_deviation", [False, True])
-def test_freeze_debug_distribution_cannot_be_waived(
-    harness, debug_distribution, accept_deviation
+def test_freeze_debug_distribution_requires_matching_acceptance(
+    harness, debug_distribution
 ):
-    """§9.1 (02eb1e2): each scenario needs debug 1+1; acceptance never waives it."""
+    """§9.1/P7-D28: debug deviations are waivable only with bound counts."""
     from eval_p7_support import REPO
 
     from opspilot.evaluation import load_scenarios
@@ -1163,12 +1162,7 @@ def test_freeze_debug_distribution_cannot_be_waived(
     counts = {scenarios[0]: 2 if debug_distribution != "all-negative" else 0}
     if debug_distribution == "compensating":
         counts[scenarios[1]] = 0
-    # Without acceptance, validation is exactly 1+3, isolating the debug gate.
-    # With acceptance, validation is 0+4 and its deviation is legitimately
-    # accepted, so only the non-waivable debug gate can prevent freezing.
-    h.seed(
-        balanced=not accept_deviation, debug_positive_counts=counts
-    ).export().annotations()
+    h.seed(balanced=False, debug_positive_counts=counts).export().annotations()
     by_id = {label.item_id: label for label in h.labels}
     actual = {
         scenario: sum(
@@ -1181,20 +1175,116 @@ def test_freeze_debug_distribution_cannot_be_waived(
     assert actual == {scenario: counts.get(scenario, 1) for scenario in scenarios}
     if debug_distribution == "compensating":
         assert sum(actual.values()) == len(scenarios)
-    args = []
-    if accept_deviation:
-        _, acceptance = h.acceptance()
-        assert all(
-            value == {"positive": 0, "negative": 4}
-            for value in acceptance["distribution"].values()
-        )
-        args = ["--accept-distribution", acceptance["brief_sha256"]]
     assert not (h.ws / "label-pack").exists()
     before = snapshot(h.root)
-    h.cli("freeze", *args, code=3, reason="LABEL_DISTRIBUTION_MISMATCH")
+    result = h.cli("freeze", code=3, reason="LABEL_DISTRIBUTION_MISMATCH")
+    assert result["debug_distribution"] == {
+        scenario: {"positive": value, "negative": 2 - value}
+        for scenario, value in actual.items()
+    }
     assert snapshot(h.root) == before
     assert not (h.ws / "label-pack").exists()
     assert not h.calls and not h.balance_calls
+
+
+@pytest.mark.parametrize(
+    "debug_distribution", ["all-positive", "all-negative", "compensating"]
+)
+def test_freeze_debug_distribution_acceptance_includes_matching_counts(
+    harness, debug_distribution
+):
+    """§9.1/P7-D28: a bound debug distribution permits a debug deviation."""
+    from eval_p7_support import REPO
+
+    from opspilot.evaluation import load_scenarios
+
+    scenarios = [
+        spec.scenario_id for spec, _ in load_scenarios(REPO / "evals/scenarios")
+    ]
+    counts = {scenarios[0]: 2 if debug_distribution != "all-negative" else 0}
+    if debug_distribution == "compensating":
+        counts[scenarios[1]] = 0
+    h = (
+        harness.seed(balanced=False, debug_positive_counts=counts)
+        .export()
+        .annotations()
+    )
+    _, acceptance = h.acceptance(include_debug_distribution=True)
+    h.freeze("--accept-distribution", acceptance["brief_sha256"])
+    summary = h.cli("summary")
+    assert (
+        summary["distribution_acceptance"]["debug_distribution"]
+        == acceptance["debug_distribution"]
+    )
+
+
+@pytest.mark.parametrize("damage", ["missing", "wrong"])
+def test_freeze_debug_distribution_acceptance_must_match(harness, damage):
+    """§9.1/P7-D28: absent or incorrect debug counts refuse without writes."""
+    from eval_p7_support import REPO
+
+    from opspilot.evaluation import load_scenarios
+
+    scenario = load_scenarios(REPO / "evals/scenarios")[0][0].scenario_id
+    h = (
+        harness.seed(balanced=False, debug_positive_counts={scenario: 2})
+        .export()
+        .annotations()
+    )
+    path, acceptance = h.acceptance(include_debug_distribution=True)
+    if damage == "missing":
+        acceptance.pop("debug_distribution")
+    else:
+        acceptance["debug_distribution"][scenario]["positive"] = 1
+        acceptance["debug_distribution"][scenario]["negative"] = 1
+    put(path, acceptance)
+    before = snapshot(h.root)
+    h.cli(
+        "freeze",
+        "--accept-distribution",
+        acceptance["brief_sha256"],
+        code=3,
+        reason="ACCEPTANCE_MISMATCH",
+    )
+    assert snapshot(h.root) == before
+
+
+def test_freeze_debug_distribution_key_for_conforming_debug_is_rejected(harness):
+    """§9.1/P7-D28: conforming debug must omit debug_distribution."""
+    h = harness.seed(balanced=False).export().annotations()
+    path, acceptance = h.acceptance(include_debug_distribution=True)
+    acceptance["debug_distribution"] = {
+        scenario: {"positive": 1, "negative": 1}
+        for scenario in acceptance["debug_distribution"]
+    }
+    put(path, acceptance)
+    before = snapshot(h.root)
+    h.cli(
+        "freeze",
+        "--accept-distribution",
+        acceptance["brief_sha256"],
+        code=3,
+        reason="ACCEPTANCE_MISMATCH",
+    )
+    assert snapshot(h.root) == before
+
+
+def test_freeze_debug_deviation_with_conforming_validation_requires_acceptance(harness):
+    """§9.1/P7-D28: debug acceptance is required even when validation is 1+3."""
+    from eval_p7_support import REPO
+
+    from opspilot.evaluation import load_scenarios
+
+    scenario = load_scenarios(REPO / "evals/scenarios")[0][0].scenario_id
+    h = (
+        harness.seed(balanced=True, debug_positive_counts={scenario: 2})
+        .export()
+        .annotations()
+    )
+    _, acceptance = h.acceptance(include_debug_distribution=True)
+    h.cli("freeze", code=3, reason="LABEL_DISTRIBUTION_MISMATCH")
+    h.freeze("--accept-distribution", acceptance["brief_sha256"])
+    assert h.pack_hash
 
 
 @pytest.mark.parametrize(
