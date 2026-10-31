@@ -22,16 +22,26 @@ CLASSES = {"reuse", "configuration", "confirmed_defect", "required_extension"}
 STATES = {"implemented", "partial", "planned"}
 CHOICES = {"ported", "own_impl", "upstream_config"}
 REQUIRED_FIELDS = {
-    "feature", "step", "mechanism", "class", "opspilot_state",
-    "opspilot_choice", "requirement_ref", "upstream_evidence",
-    "opspilot_evidence", "runtime_evidence", "note",
+    "feature",
+    "step",
+    "mechanism",
+    "class",
+    "opspilot_state",
+    "opspilot_choice",
+    "requirement_ref",
+    "upstream_evidence",
+    "opspilot_evidence",
+    "runtime_evidence",
+    "note",
 }
 PATH_LINE = re.compile(r"(?P<path>[^\s:]+):L(?P<start>\d+)-L(?P<end>\d+)$")
 SHA = re.compile(r"^[0-9a-fA-F]{40}$")
 
 
 def _load(path: Path):
-    assert path.is_file(), f"required contract artifact is missing: {path.relative_to(ROOT)}"
+    assert path.is_file(), (
+        f"required contract artifact is missing: {path.relative_to(ROOT)}"
+    )
     return json.loads(path.read_text())
 
 
@@ -69,8 +79,12 @@ def test_coverage_is_derived_from_feature_list_and_rows_are_known():
     _, rows = _rows_and_header()
     expected = _features()
     seen = {(row.get("feature"), row.get("step")) for row in rows}
-    assert seen <= {(feature, step) for feature, steps in expected.items() for step in steps}
-    assert {(feature, step) for feature, steps in expected.items() for step in steps} <= seen
+    assert seen <= {
+        (feature, step) for feature, steps in expected.items() for step in steps
+    }
+    assert {
+        (feature, step) for feature, steps in expected.items() for step in steps
+    } <= seen
 
 
 def test_rows_have_contract_fields_and_single_valid_class():
@@ -85,8 +99,12 @@ def test_rows_have_contract_fields_and_single_valid_class():
         assert isinstance(row["step"], int) and row["step"] >= 1
         for field in ("upstream_evidence", "opspilot_evidence", "runtime_evidence"):
             assert isinstance(row[field], list), f"row {index} {field} must be an array"
-        assert row["upstream_evidence"], f"row {index} upstream_evidence must not be empty"
-        assert row["opspilot_evidence"], f"row {index} opspilot_evidence must not be empty"
+        assert row["upstream_evidence"], (
+            f"row {index} upstream_evidence must not be empty"
+        )
+        assert row["opspilot_evidence"], (
+            f"row {index} opspilot_evidence must not be empty"
+        )
         assert isinstance(row["requirement_ref"], list) and row["requirement_ref"]
 
 
@@ -96,7 +114,9 @@ def test_evidence_rules_and_planned_handling():
         opspilot = _text(row["opspilot_evidence"])
         runtime = _text(row["runtime_evidence"])
         for citation in row["upstream_evidence"]:
-            assert PATH_LINE.fullmatch(citation), f"row {index} has malformed upstream citation"
+            assert PATH_LINE.fullmatch(citation), (
+                f"row {index} has malformed upstream citation"
+            )
         for citation in row["opspilot_evidence"]:
             path = citation.split("::", 1)[0]
             assert (ROOT / path).is_file(), f"row {index} cites missing OpsPilot file"
@@ -104,20 +124,32 @@ def test_evidence_rules_and_planned_handling():
                 assert citation.split("::", 1)[1]
         for citation in row["runtime_evidence"]:
             assert citation.startswith("docs/evidence/")
-            assert (ROOT / citation).is_file(), f"row {index} cites missing runtime evidence"
+            assert (ROOT / citation).is_file(), (
+                f"row {index} cites missing runtime evidence"
+            )
         if row["class"] == "confirmed_defect":
-            assert any(path.startswith("docs/evidence/f14-holmes-baseline/") for path in row["runtime_evidence"])
+            assert any(
+                path.startswith("docs/evidence/f14-holmes-baseline/")
+                for path in row["runtime_evidence"]
+            )
         if row["class"] == "configuration" and "源码证据，未运行" in row["note"]:
             assert row["runtime_evidence"] == []
         if "candidate_defect" in row:
             candidate = row["candidate_defect"]
-            assert isinstance(candidate, dict) and candidate.get("step3_ref") and isinstance(candidate.get("claim"), str), (
-                f"candidate defect row {index} needs step3_ref"
-            )
+            assert (
+                isinstance(candidate, dict)
+                and candidate.get("step3_ref")
+                and isinstance(candidate.get("claim"), str)
+            ), f"candidate defect row {index} needs step3_ref"
             assert row["class"] != "confirmed_defect"
         if row["class"] == "required_extension":
-            assert all(isinstance(value, str) and value.strip() for value in row["requirement_ref"]), f"required extension row {index} needs requirement source"
-            assert row["upstream_evidence"], f"required extension row {index} needs upstream evidence"
+            assert all(
+                isinstance(value, str) and value.strip()
+                for value in row["requirement_ref"]
+            ), f"required extension row {index} needs requirement source"
+            assert row["upstream_evidence"], (
+                f"required extension row {index} needs upstream evidence"
+            )
             checks = row.get("absence_checks", [])
             assert checks or (row["upstream_evidence"] and row["note"].strip())
             for check in checks:
@@ -126,7 +158,10 @@ def test_evidence_rules_and_planned_handling():
                 assert check.get("hits") == 0
         if row["opspilot_state"] == "planned":
             assert row["class"] in CLASSES
-            assert "suggest" in (opspilot + runtime + _text(row.get("note", ""))).lower() or row["note"]
+            assert (
+                "suggest" in (opspilot + runtime + _text(row.get("note", ""))).lower()
+                or row["note"]
+            )
 
 
 def test_upstream_citations_are_allowlisted_and_within_recorded_line_counts():
@@ -134,7 +169,11 @@ def test_upstream_citations_are_allowlisted_and_within_recorded_line_counts():
     files = _load(UPSTREAM_FILES)
     entries = files.get("files", files) if isinstance(files, dict) else files
     assert isinstance(entries, (list, dict))
-    items = entries.items() if isinstance(entries, dict) else ((e.get("path"), e) for e in entries)
+    items = (
+        entries.items()
+        if isinstance(entries, dict)
+        else ((e.get("path"), e) for e in entries)
+    )
     allow = {}
     assert SHA.fullmatch(str(files.get("commit")))
     assert SHA.fullmatch(str(files.get("tree")))
@@ -148,14 +187,32 @@ def test_upstream_citations_are_allowlisted_and_within_recorded_line_counts():
             match = PATH_LINE.search(_text(citation))
             if not match:
                 continue
-            assert match.group("path") in allow, f"upstream citation not in upstream-files.json: {citation}"
+            assert match.group("path") in allow, (
+                f"upstream citation not in upstream-files.json: {citation}"
+            )
             end = int(match.group("end"))
-            assert end <= allow[match.group("path")], f"citation exceeds recorded line count: {citation}"
+            assert end <= allow[match.group("path")], (
+                f"citation exceeds recorded line count: {citation}"
+            )
 
 
 def test_human_readable_docs_and_legacy_pointer_exist():
     assert DOC.is_file()
     assert M0_DOC.is_file()
-    assert "f14-upstream-mapping" in M0_DOC.read_text().splitlines()[0]
+    lines = M0_DOC.read_text().splitlines()
+    assert lines and lines[0] == "# M0 上游与 OTel 固定源码映射草案"
+    pointer_lines = [
+        index for index, line in enumerate(lines) if "f14-upstream-mapping" in line
+    ]
+    assert len(pointer_lines) == 1
+    pointer_index = pointer_lines[0]
+    assert 0 < pointer_index < 3
+    first_body = next(
+        index
+        for index, line in enumerate(lines[1:], start=1)
+        if line.strip()
+        and "f14-upstream-mapping" not in line
+        and not line.lstrip().startswith("#")
+    )
+    assert pointer_index < first_body
     assert "f14-upstream-mapping.md" in README.read_text()
-
