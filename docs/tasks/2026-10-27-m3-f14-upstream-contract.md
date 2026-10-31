@@ -82,3 +82,70 @@
 - a0009195 下 LiteLLM 是否接受顶层 thinking 参数。
 - Holmes 实际是否遵循 `HTTPS_PROXY`/`NO_PROXY`。
 - `--json-output-file` 里到底有哪些字段（工具调用和 usage）。
+
+## 第 2 步合同（r2）：逐功能上游映射表（#385）
+
+- 预审：全新上下文 Agent（Opus 5.5），只读，基线 origin/main `62e3cde2`，2026-10-31；全文在仓库外 `~/.agent/handoffs/opspilot-prereview-385-f14-step2-2026-10-31.md`（下称「预审」，行号指该文件）。上游原文用本机完整 checkout（主仓库 ignored 的 `tmp/upstream/holmesgpt-a0009195`，HEAD `a0009195`、tree `e94a57b3`、`git ls-files` 1885 个文件）。
+- 裁决（r2，用户 2026-10-31）：F14S2-Q1–Q5 全部按推荐 (a)；可逆默认 F14S2-R1–R14 照预审。记录见 `~/.agent/handoffs/opspilot-rulings-2026-10-31.md` §2。
+- 写入时核对（main `cefa56c1`）：与基线之间只改了文档；`feature_list.json` 中非退役、非 F14 的 10 个功能合计 47 步（F1 5、F2 5、F3 6、F6 5、F7 5、F8 4、F9 5、F11 4、F12 4、F13 4）；SPEC:76 活动功能清单、`m0-upstream-mapping.md:11`、`docs/README.md:44`、上游 `holmes/common/env_vars.py:118` 均与预审一致。
+- 全量探针（预审 :81-88）：只加两个草稿文档文件，`tests/acceptance` 探针 0 失败（2959 passed、302 skipped）；证明的只是新文件不误伤现有测试。
+
+### 需用户裁决（r2 已裁决）
+
+| 编号 | 问题 | 裁决要点 | 影响面 |
+|---|---|---|---|
+| F14S2-Q1 | 「每个活动功能」的粒度 | (a) 功能 × 验收步骤：SPEC:76 的 10 个功能（F14 自身除外，F4/F5/F10 已退役），每步至少一行；多机制拆子行，每行只归一类；覆盖面从 `feature_list.json` 推导 | 表规模；完整性断言 |
+| F14S2-Q2 | 什么算「已确认缺陷」 | (a) 必须有 `a0009195` 运行证据（第 1 步已有的 Run/请求核对，或第 3 步复现）；只有源码观察的按 OpsPilot 当前依赖归类并加 `candidate_defect` 指向第 3 步，复现后改类、复现不出去掉标记 | 类别口径；第 2、3 步衔接 |
+| F14S2-Q3 | 开 issue / 报上游 | (a) 第 2 步不向 HolmesGPT 报任何东西；只为 OpsPilot 要动手的缺陷在本仓库开 issue；上游报告留到第 3 步复现后单独问用户 | 对外通知；issue 卫生 |
+| F14S2-Q4 | 未实现功能（F8、F9、F1 未完成步） | (a) 照样映射，标 `opspilot_state: planned`，结论只作 F8/F9 实施线的建议，不重开已裁决合同 | #384、#386 实施线 |
+| F14S2-Q5 | 完成判据与测试 | (a) `mapping.json` 唯一权威 + 一页人读说明；非实现者写离线形状测试；独立审查对照 checkout 抽查 ≥15 行且四类都抽到；CI 不拉上游；F14 `passes` 保持 false | 新验收测试；F14 第 2 步判据 |
+
+### 可逆默认（照预审，一行理由）
+
+| 编号 | 默认 | 理由 |
+|---|---|---|
+| F14S2-R1 | 新建权威表与人读说明（路径见下）；`m0-upstream-mapping.md` 正文不改，只在文件头加一行注记指向新表；`docs/README.md` 加链接 | M0 草案对应旧 SHA，留作历史 |
+| F14S2-R2 | 行字段与文件头见下方代码块 | 测试能逐字段断言 |
+| F14S2-R3 | 四类各自的证据规则见下方代码块 | 证据充分性 |
+| F14S2-R4 | 「上游没有」只在完整 checkout 上核查，命令与命中数记进行里；不用部分 clone 或单文件 API 抽查下「没有」的结论 | 1885 文件全树可查 |
+| F14S2-R5 | 只认 `a0009195` 工件（pin/summary/request-check/isolation-probe/authz-probe）；M0 `5e983c17` 只算线索；第 2 步不做新的真实 Run，需要运行才能下结论的标候选交第 3 步 | 费用与 lab 窗口留给第 3 步 |
+| F14S2-R6 | 10-22 审计的上游引用（同一 SHA）可搬，搬前逐条在 checkout 确认行号；OpsPilot 一侧按当前 main 重新核对（#307 A、#308、#309、#310、#311 已有实现）；09-07 审计只当线索；H1–H6 作 F1 各行上游证据；审计正文不改 | 审计 OpsPilot 侧对照的 `a4eea42` 已过时 |
+| F14S2-R7 | OpsPilot 一侧用「路径 + 符号名」，不用行号；测试只检查文件存在；文件头记 `opspilot_commit` | 代码会漂移 |
+| F14S2-R8 | 审计四类换算：「该照搬」且已移植 → 复用（`ported`）；「该照搬」未实现 → 按现状归类并链 issue；「理由仍成立」「无差距（OpsPilot 更强）」→ 必要扩展，`deviation_basis` 引审计原文；「理由已不成立」→ 按现状归类并注明；逐行人工判断 | 两套四类口径不同 |
+| F14S2-R9 | 上游够用而 OpsPilot 自写的行照实写：`opspilot_choice: own_impl` + `deviation_basis`，不触发返工（已有 issue 除外） | 讲真且不推倒合理机制 |
+| F14S2-R10 | 只从 OpsPilot 功能出发映射；上游有而 OpsPilot 没有的能力（K8s 工具、bash、MCP、skills 拉取）只写在相关行 `note`，不另列附录 | 步骤原文是 map every active feature |
+| F14S2-R11 | 入库被引用上游文件清单（blob SHA + 行数，取自 tree `e94a57b3` 的 `git ls-tree -r`），由 `scripts/holmes_baseline` 新增离线子命令生成并本地校验行号；CI 只校验引用在清单内且行号不超行数 | CI 不需要 checkout |
+| F14S2-R12 | 任务记录把 #93 的措辞改成「#93 的 Holmes 子项」（#93 标题是正式 judge 校准与未见保留集） | 文档准确 |
+| F14S2-R13 | 按 F14 功能 PR 处理，分支 `feature/F14-385-upstream-mapping`；按决策稿 Q10 / SPEC:30 的 M3 授权，CI 绿、CLEAN、独立审查已处置后由 Agent 合并并事后简报；`passes` 不翻；不碰 loop，不需 LangSmith trace | ADR-0006 |
+| F14S2-R14 | 提交前跑 `scripts/check_secrets.py --binary <gitleaks>`；blob SHA 与 commit SHA 同形，预计不误报（未实测） | 安全 |
+
+逐字节细节（原文摘自预审，行号为预审文件行号）：
+
+```text
+# 预审 :61（F14S2-R1）
+新建 `docs/evidence/f14-upstream-mapping/mapping.json`（权威）和 `docs/testing/f14-upstream-mapping.md`（人读说明：四类的计数、按功能的摘要、和审计的关系）。`m0-upstream-mapping.md` 正文不改，只在文件头加一行注记指向新表（做法同 `holmes-source-audit-2026-09-07.md:3`）；`docs/README.md` 加链接。理由：M0 草案对应旧 SHA，留作历史
+# 预审 :71（F14S2-R11）
+docs/evidence/f14-upstream-mapping/upstream-files.json
+# 预审 :77（切分）
+tests/acceptance/test_385_upstream_mapping.py
+```
+
+```text
+# 预审 :62（F14S2-R2）
+每行：`feature`、`step`（从 1 开始）、`mechanism`、`class`（`reuse`/`configuration`/`confirmed_defect`/`required_extension`）、`candidate_defect`（可选，带 `step3_ref`）、`opspilot_state`（`implemented`/`partial`/`planned`）、`opspilot_choice`（`ported`/`own_impl`/`upstream_config`）、`requirement_ref`（PRODUCT-CONSTRAINTS/C3/验收步骤原文出处）、`upstream_evidence[]`、`opspilot_evidence[]`、`runtime_evidence[]`、`deviation_basis`（可选，引审计原文的分类）、`note`。文件头：`schema`、上游 commit/tree、`opspilot_commit`。
+```
+
+```text
+# 预审 :63（F14S2-R3）
+**复用**：上游 `path:Lx-Ly`（a0009195）+ OpsPilot 移植处的路径。**配置**：上游的配置项出处 + 实际用的配置（`scripts/holmes_baseline/` 的配置）；只要该配置在 run1 里被用过，就附 run1 的 summary/request-check 作为运行证据，没用过的写「源码证据，未运行」。**已确认缺陷**：上游源码出处 + `a0009195` 运行证据（Q2）。**必要扩展**：需求出处 + 上游「没有」或「不够」的证据：「没有」附完整 checkout 上的核查命令与 0 命中，「不够」引上游最接近的机制，说明差在哪
+# 预审 :64（F14S2-R4）
+`git -C <checkout> grep -n -i <模式>` 或 `git ls-files \| grep`
+```
+
+### 切分与范围
+
+单 PR `feature/F14-385-upstream-mapping`（预审 :76-79）：未参与实现的作者先按本表写离线验收测试（覆盖面从 `feature_list.json` 读、类别枚举、各类证据规则、清单校验）；实现者写 `mapping.json`、`upstream-files.json`、生成/校验子命令、人读说明、`m0-upstream-mapping.md` 注记、`docs/README.md` 链接与任务记录第 2 步节。完成前全新上下文审查者对照 checkout 抽查 ≥15 行（四类都抽到）。不含：第 3 步复现与回写候选缺陷行、任何对上游的报告。
+
+### 未确认（预审 :98-104）
+
+#307/#308/#310/#311 各自剩余未做的部分（#307 B 的 K8s 工具未实现）；上游 `conversations_worker`、`holmes_operator` triggered/scheduled healthcheck、skills 分别对应 F2、F11/F6、F13 的哪些步骤及类别；F8/F9 在上游的对应物（Helm chart、`docker-compose.yaml`、`usage_recorder.py`、`otel_tracing.py`）是否够用；预计行数（约 50–70）；秘密扫描未实测；run1 用到的每个上游机制能为哪一行的「配置」类提供运行证据。
