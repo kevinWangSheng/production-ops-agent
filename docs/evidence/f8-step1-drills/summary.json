@@ -1,0 +1,99 @@
+{
+  "issue": 414,
+  "contract": "docs/tasks/2026-10-27-m3-f8-operability-contract.md r1 (F8-Q1, F8-Q3, F8-Q4, F8-R5, F8-R6, F8-R8, F8-R9)",
+  "category": "integration run (local colima m1-kind VM, kind lab Prometheus/Alertmanager, Compose project opspilot-393); not production, not soak",
+  "environment": {
+    "compose_project": "opspilot-393",
+    "compose_files": ["deploy/compose/compose.yaml", "deploy/compose/compose.lab.yaml"],
+    "image": "opspilot:local 0.1.0, built by install.sh upgrade from revision 696fb2b2 (product code = main 6845ffc7)",
+    "tool_profile": "fixture",
+    "prometheus": "quay.io/prometheus/prometheus:v3.5.0, evaluation_interval 1m",
+    "alertmanager": "v0.28.1 (chart 1.24.0)",
+    "scrape_targets": {"web": "192.168.5.2:19464", "worker": "192.168.5.2:19465", "observer": "192.168.5.2:19466"},
+    "scrape_reachable": true,
+    "trace": "none: the product Compose does not set OPSPILOT_TRACE"
+  },
+  "drills": [
+    {
+      "name": "stop_worker",
+      "started_at": "2026-10-31T16:22:38Z",
+      "ended_at": "2026-10-31T16:28:16Z",
+      "alert": {
+        "name": "OpsPilotAgentAbsent",
+        "pending_observed_at": "2026-10-31T16:24:15Z",
+        "starts_at": "2026-10-31T16:26:12.801Z",
+        "firing_observed_at": "2026-10-31T16:26:24Z",
+        "resolved_observed_at": "2026-10-31T16:28:16Z",
+        "labels": {"role": "worker", "severity": "critical", "opspilot_self": "true"},
+        "receiver": "opspilot-self"
+      },
+      "run": {
+        "incident_id": "df84a9af-925e-5c03-b55f-f601c20cc1bc",
+        "run_id": "e6c48c8f-8195-5dac-a805-107c2237956e",
+        "created_at": "2026-10-31T16:22:43Z",
+        "deadline": "2026-10-31T16:26:43Z",
+        "state_while_worker_down": "queued",
+        "sweep": "incident page load at 2026-10-31T16:27:08Z (F8-Q4); no worker involved",
+        "final_state": "waiting_human",
+        "handoff_reason": "DEADLINE_EXCEEDED"
+      },
+      "metrics": {
+        "up_worker_while_stopped": 0,
+        "queue_depth_queued_before": 0,
+        "queue_depth_queued_while_worker_down": 1,
+        "queue_depth_queued_after_sweep": 0,
+        "opspilot_run_seconds": 240
+      }
+    },
+    {
+      "name": "model_egress",
+      "started_at": "2026-10-31T16:28:36Z",
+      "ended_at": "2026-10-31T16:32:17Z",
+      "alert": {
+        "name": "OpsPilotModelCallsFailing",
+        "pending_observed_at": "2026-10-31T16:29:28Z",
+        "starts_at": "2026-10-31T16:30:12.801Z",
+        "firing_observed_at": "2026-10-31T16:30:17Z",
+        "resolved_observed_at": "2026-10-31T16:32:17Z",
+        "labels": {"role": "worker", "severity": "critical", "opspilot_self": "true"},
+        "receiver": "opspilot-self"
+      },
+      "run": {
+        "incident_id": "25825522-828c-5690-b17a-137a8d5954fa",
+        "run_id": "542db16a-3697-5a8f-b3c2-74337b1b3a4a",
+        "final_state": "waiting_human",
+        "handoff_reason": "MODEL_UNAVAILABLE",
+        "model_requests_used": 2,
+        "after_human_resume": {
+          "resumed_at": "2026-10-31T16:31:18Z",
+          "generation": 1,
+          "model_calls": "2 ok",
+          "final_state": "waiting_human",
+          "handoff_reason": "INCOMPLETE_INVESTIGATION",
+          "why": "the drill target checkout-drill2 is not the fixture tool registry's target (checkout-prod), so its one tool call was refused TARGET_NOT_REGISTERED"
+        }
+      },
+      "metrics": {
+        "opspilot_model_calls_total": {"MODEL_UNAVAILABLE": 2},
+        "opspilot_model_consecutive_failures": 2,
+        "opspilot_last_model_call_category": "MODEL_UNAVAILABLE",
+        "after_restore_and_resume": {"opspilot_model_calls_total": {"ok": 2}, "opspilot_model_consecutive_failures": 0},
+        "provider_cost_blocked_calls": "zero by construction: api.deepseek.com resolved to the worker's loopback, the connection was refused locally; balance not observed (K2)",
+        "provider_cost_resume": "2 real DeepSeek calls (budget_spent 2); balance not observed (K2), reconciled by the user"
+      }
+    }
+  ],
+  "notifications": {
+    "alertmanager_notifications_total_all_integrations": 0,
+    "alertmanager_alerts_received_firing": 5,
+    "since": "2026-10-31T16:16:24Z (Alertmanager pod start after the config upgrade)"
+  },
+  "promtool": {
+    "rules_ok": true,
+    "config_syntax_ok": true,
+    "amtool_config_ok": true,
+    "self_route": "opspilot-self",
+    "output": "rules-check.txt"
+  },
+  "recorded_at": "2026-10-31T16:40:00Z"
+}

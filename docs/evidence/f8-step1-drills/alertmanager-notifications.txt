@@ -1,0 +1,19 @@
+# Alertmanager /metrics at 2026-10-31T16:34:16Z (pod alertmanager-0 started 2026-10-31T16:16:24Z); counters since that start
+alertmanager_alerts_received_total{status="firing",version="v2"} 5
+alertmanager_alerts_received_total{status="resolved",version="v2"} 20
+alertmanager_notifications_total{integration="discord"} 0
+alertmanager_notifications_total{integration="email"} 0
+alertmanager_notifications_total{integration="jira"} 0
+alertmanager_notifications_total{integration="msteams"} 0
+alertmanager_notifications_total{integration="msteamsv2"} 0
+alertmanager_notifications_total{integration="opsgenie"} 0
+alertmanager_notifications_total{integration="pagerduty"} 0
+alertmanager_notifications_total{integration="pushover"} 0
+alertmanager_notifications_total{integration="rocketchat"} 0
+alertmanager_notifications_total{integration="slack"} 0
+alertmanager_notifications_total{integration="sns"} 0
+alertmanager_notifications_total{integration="telegram"} 0
+alertmanager_notifications_total{integration="victorops"} 0
+alertmanager_notifications_total{integration="webex"} 0
+alertmanager_notifications_total{integration="webhook"} 0
+alertmanager_notifications_total{integration="wechat"} 0
