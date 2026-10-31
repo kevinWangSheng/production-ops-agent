@@ -46,6 +46,8 @@ deploy/compose/install.sh install
 SECRETS="${OPSPILOT_SECRETS_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/opspilot}"
 ```
 
+如果安装时用了自定义的 `OPSPILOT_SECRETS_DIR`，在当前 shell 里重新 export 它，或把 `SECRETS` 设为 `install.sh install` 输出的目录（最后几行会写出 `ui_password` 和 Alertmanager 令牌所在位置）。
+
 重跑 `install` 是安全的，不会重新生成口令；不打印任何密钥。
 
 ### 2. 登录工作台

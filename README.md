@@ -46,7 +46,9 @@ This builds the image `opspilot:local` from the checkout, generates every passwo
 SECRETS="${OPSPILOT_SECRETS_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/opspilot}"
 ```
 
- Re-running `install` is safe: it never regenerates a password. No secret is printed.
+If you installed with a custom `OPSPILOT_SECRETS_DIR`, export it again in this shell, or set `SECRETS` to the directory `install.sh install` printed (its last lines say where `ui_password` and the Alertmanager token are).
+
+Re-running `install` is safe: it never regenerates a password. No secret is printed.
 
 ### 2. Log in to the workbench
 
