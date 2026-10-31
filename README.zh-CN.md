@@ -40,13 +40,14 @@ cd production-ops-agent
 deploy/compose/install.sh install
 ```
 
-它从 checkout 构建镜像 `opspilot:local`，一次性生成全部口令和令牌，迁移数据库，创建四个运行时数据库 login，启动 web 工作台。密钥放在 `${XDG_CONFIG_HOME:-$HOME/.config}/opspilot`（仓库之外，权限 0600；用 `OPSPILOT_SECRETS_DIR` 可换目录）。下文用 `$SECRETS` 指这个目录：
+它从 checkout 构建镜像 `opspilot:local`，一次性生成全部口令和令牌，迁移数据库，创建四个运行时数据库 login，启动 web 工作台。密钥放在 `${XDG_CONFIG_HOME:-$HOME/.config}/opspilot`（仓库之外，权限 0600；用 `OPSPILOT_SECRETS_DIR` 可换目录）。下文用 `$SECRETS` 指这个目录，用 `$PORT` 指工作台端口：
 
 ```sh
 SECRETS="${OPSPILOT_SECRETS_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/opspilot}"
+PORT="${OPSPILOT_WEB_HOST_PORT:-18080}"
 ```
 
-如果安装时用了自定义的 `OPSPILOT_SECRETS_DIR`，在当前 shell 里重新 export 它，或把 `SECRETS` 设为 `install.sh install` 输出的目录（最后几行会写出 `ui_password` 和 Alertmanager 令牌所在位置）。
+如果安装时用了自定义的 `OPSPILOT_SECRETS_DIR`，在当前 shell 里重新 export 它，或把 `SECRETS` 设为 `install.sh install` 输出的目录（最后几行会写出 `ui_password` 和 Alertmanager 令牌所在位置）。同样，如果安装时用了自定义的 `OPSPILOT_WEB_HOST_PORT`，重新 export 它，或从记住端口的 `$SECRETS/install.env` 读取（安装器也会输出工作台地址）。
 
 重跑 `install` 是安全的，不会重新生成口令；不打印任何密钥。
 
@@ -56,10 +57,10 @@ SECRETS="${OPSPILOT_SECRETS_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/opspilot}"
 cat "$SECRETS/ui_password"
 ```
 
-打开 `http://127.0.0.1:18080`，用户名 `operator`，口令即上面的内容。从其他机器访问用 SSH 隧道，本地端口保持一致（允许的 origin 跟随 `OPSPILOT_WEB_HOST_PORT`）：
+打开 `http://127.0.0.1:$PORT`，用户名 `operator`，口令即上面的内容。从其他机器访问用 SSH 隧道，本地端口保持一致（允许的 origin 跟随 `OPSPILOT_WEB_HOST_PORT`）：
 
 ```sh
-ssh -L 18080:127.0.0.1:18080 <user>@<control-host>
+ssh -L "$PORT:127.0.0.1:$PORT" <user>@<control-host>
 ```
 
 ### 3. 配置 worker 与 Observer
@@ -116,12 +117,13 @@ deploy/compose/install.sh compose logs worker
 deploy/compose/install.sh compose up -d --force-recreate web
 ```
 
-告警发到 `POST http://127.0.0.1:18080/intake/alertmanager`，bearer 令牌在 `$SECRETS/alertmanager_token`。同一主机上的 Alertmanager 可以这样配 receiver：
+告警发到 `POST http://127.0.0.1:$PORT/intake/alertmanager`，bearer 令牌在 `$SECRETS/alertmanager_token`。同一主机上的 Alertmanager 可以这样配 receiver：
 
 ```yaml
 receivers:
   - name: opspilot
     webhook_configs:
+      # 如果改过 OPSPILOT_WEB_HOST_PORT，把 18080 换成该端口
       - url: http://127.0.0.1:18080/intake/alertmanager
         http_config:
           authorization:

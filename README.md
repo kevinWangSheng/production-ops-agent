@@ -40,13 +40,14 @@ cd production-ops-agent
 deploy/compose/install.sh install
 ```
 
-This builds the image `opspilot:local` from the checkout, generates every password and token once, migrates the database, creates the four runtime database logins and starts the web workbench. Secrets go to `${XDG_CONFIG_HOME:-$HOME/.config}/opspilot` (outside the repository, mode 0600; set `OPSPILOT_SECRETS_DIR` to choose another directory). The steps below refer to that directory as `$SECRETS`:
+This builds the image `opspilot:local` from the checkout, generates every password and token once, migrates the database, creates the four runtime database logins and starts the web workbench. Secrets go to `${XDG_CONFIG_HOME:-$HOME/.config}/opspilot` (outside the repository, mode 0600; set `OPSPILOT_SECRETS_DIR` to choose another directory). The steps below refer to that directory as `$SECRETS` and to the workbench port as `$PORT`:
 
 ```sh
 SECRETS="${OPSPILOT_SECRETS_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/opspilot}"
+PORT="${OPSPILOT_WEB_HOST_PORT:-18080}"
 ```
 
-If you installed with a custom `OPSPILOT_SECRETS_DIR`, export it again in this shell, or set `SECRETS` to the directory `install.sh install` printed (its last lines say where `ui_password` and the Alertmanager token are).
+If you installed with a custom `OPSPILOT_SECRETS_DIR`, export it again in this shell, or set `SECRETS` to the directory `install.sh install` printed (its last lines say where `ui_password` and the Alertmanager token are). Likewise, if you installed with a custom `OPSPILOT_WEB_HOST_PORT`, export it again or read it from `$SECRETS/install.env`, which remembers the port (the installer also prints the workbench URL).
 
 Re-running `install` is safe: it never regenerates a password. No secret is printed.
 
@@ -56,10 +57,10 @@ Re-running `install` is safe: it never regenerates a password. No secret is prin
 cat "$SECRETS/ui_password"
 ```
 
-Open `http://127.0.0.1:18080` and log in as user `operator` with that password. From another machine, use an SSH tunnel with the same local port (the allowed origins follow `OPSPILOT_WEB_HOST_PORT`):
+Open `http://127.0.0.1:$PORT` and log in as user `operator` with that password. From another machine, use an SSH tunnel with the same local port (the allowed origins follow `OPSPILOT_WEB_HOST_PORT`):
 
 ```sh
-ssh -L 18080:127.0.0.1:18080 <user>@<control-host>
+ssh -L "$PORT:127.0.0.1:$PORT" <user>@<control-host>
 ```
 
 ### 3. Configure the worker and the Observer
@@ -116,12 +117,13 @@ After editing, recreate the web container (a plain `restart` keeps the old file)
 deploy/compose/install.sh compose up -d --force-recreate web
 ```
 
-Alerts arrive at `POST http://127.0.0.1:18080/intake/alertmanager` with the bearer token in `$SECRETS/alertmanager_token`. An Alertmanager on the same host can use a receiver like this:
+Alerts arrive at `POST http://127.0.0.1:$PORT/intake/alertmanager` with the bearer token in `$SECRETS/alertmanager_token`. An Alertmanager on the same host can use a receiver like this:
 
 ```yaml
 receivers:
   - name: opspilot
     webhook_configs:
+      # replace 18080 if you changed OPSPILOT_WEB_HOST_PORT
       - url: http://127.0.0.1:18080/intake/alertmanager
         http_config:
           authorization:
