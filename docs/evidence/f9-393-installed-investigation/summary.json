@@ -5,11 +5,23 @@
   "profile": "fixture",
   "model_provider": "deepseek",
   "services": {
-    "web": {"started": true, "verify_head": true},
-    "worker": {"started": true, "verify_head": true},
-    "observer": {"started": true, "verify_head": true}
+    "web": {
+      "started": true,
+      "verify_head": true
+    },
+    "worker": {
+      "started": true,
+      "verify_head": true
+    },
+    "observer": {
+      "started": true,
+      "verify_head": true
+    }
   },
-  "upgrade_window": {"start": "2026-10-31T12:53:50Z", "runtimes_started": "2026-10-31T12:53:57Z"},
+  "upgrade_window": {
+    "start": "2026-10-31T12:53:50Z",
+    "runtimes_started": "2026-10-31T12:53:57Z"
+  },
   "schema_head": "0023_retention_raw_cleanup",
   "incident_id": "606d9341-22f8-5f99-ad10-f852a892be64",
   "run_id": "796fd3a1-1b79-5a74-98a3-dc6ea9259dfd",
@@ -35,5 +47,36 @@
     "handoff": "INCOMPLETE_INVESTIGATION",
     "cause": "target identity keyed fixture-393; fixture worker registers only checkout-prod, tool calls refused TARGET_NOT_REGISTERED"
   },
-  "recorded_at": "2026-10-31T13:20:00Z"
+  "recorded_at": "2026-10-31T13:35:00Z",
+  "recovery_observation": {
+    "session_purpose": "incident_recovery",
+    "authorized_by": "system",
+    "authorized_at": "2026-10-31T13:15:22Z",
+    "samples": [
+      {
+        "sequence": 1,
+        "outcome": "degraded",
+        "submitted_at": "2026-10-31T13:16:54Z"
+      },
+      {
+        "sequence": 2,
+        "outcome": "degraded",
+        "submitted_at": "2026-10-31T13:18:25Z"
+      }
+    ],
+    "state_when_stack_stopped": "authorized",
+    "ended": false
+  },
+  "fault_injection": {
+    "flag": "paymentFailure",
+    "injected_at": "2026-10-31T13:00:17Z",
+    "restored_at": "2026-10-31T13:15:19Z",
+    "verified": true
+  },
+  "raw_evidence_outside_repo": [
+    "~/.cache/opspilot-393-run/run-a.log",
+    "~/.cache/opspilot-393-run/run-b.log",
+    "~/.cache/opspilot-393-run/run-b2.log",
+    "~/.cache/opspilot-393-run/pages/"
+  ]
 }
