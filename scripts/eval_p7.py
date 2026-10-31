@@ -2504,6 +2504,7 @@ def _check_acceptance(
     ws: Workspace,
     accept: str,
     distribution: Mapping[str, Mapping[str, int]],
+    debug: Mapping[str, Mapping[str, int]] | None,
     adjudications_raw: bytes,
 ) -> None:
     brief_raw = _read_ws(ws, ws.root / "adjudication/brief.json")
@@ -2517,10 +2518,13 @@ def _check_acceptance(
         value = json.loads(raw.decode("utf-8"))
     except (UnicodeError, ValueError):
         value = None
+    keys = {"brief_sha256", "adjudications_sha256", "distribution", "decision_record"}
+    if debug is not None:
+        keys.add("debug_distribution")
     if (
         type(value) is not dict
-        or set(value)
-        != {"brief_sha256", "adjudications_sha256", "distribution", "decision_record"}
+        or set(value) != keys
+        or (debug is not None and value["debug_distribution"] != debug)
         or value["brief_sha256"] != accept
         or value["adjudications_sha256"] != _sha(adjudications_raw)
         or value["distribution"] != distribution
@@ -2534,21 +2538,26 @@ def _check_acceptance(
 def freeze(ws: Workspace, *, accept_distribution: str | None = None) -> str:
     _check_workspace(ws)
     pack, labels, adjudications_raw = _label_pack(ws)
-    debug = _distribution(pack.items, labels, "debug")
-    if any(c != {"positive": 1, "negative": 1} for c in debug.values()):
-        _fail("LABEL_DISTRIBUTION_MISMATCH", debug_distribution=debug)
+    # P7-D28: a debug deviation from 1+1 needs the same written acceptance.
+    debug: dict[str, dict[str, int]] | None = _distribution(pack.items, labels, "debug")
+    if all(c == {"positive": 1, "negative": 1} for c in debug.values()):
+        debug = None
     validation = _distribution(pack.items, labels, "validation")
-    if all(c == {"positive": 1, "negative": 3} for c in validation.values()):
+    if debug is None and all(
+        c == {"positive": 1, "negative": 3} for c in validation.values()
+    ):
         if accept_distribution is not None:
             _fail("USAGE")
     elif accept_distribution is None:
+        extra = {} if debug is None else {"debug_distribution": debug}
         _fail(
             "LABEL_DISTRIBUTION_MISMATCH",
             distribution=validation,
             adjudications_sha256=_sha(adjudications_raw),
+            **extra,
         )
     else:
-        _check_acceptance(ws, accept_distribution, validation, adjudications_raw)
+        _check_acceptance(ws, accept_distribution, validation, debug, adjudications_raw)
     records = _records(ws)
     for item in pack.items:
         record = records.get(item.item_id)
@@ -2919,6 +2928,10 @@ def summary(ws: Workspace) -> Mapping[str, Any]:
                     k: value.get(k)
                     for k in ("brief_sha256", "adjudications_sha256", "distribution")
                 }
+                if "debug_distribution" in value:
+                    out["distribution_acceptance"]["debug_distribution"] = value[
+                        "debug_distribution"
+                    ]
     runs = {}
     calibration = ws.root / "calibration"
     if _exists(calibration):
