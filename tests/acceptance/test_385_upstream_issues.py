@@ -124,9 +124,37 @@ def test_all_seven_records_and_top_level_contract():
             record["reproduced_at"]
         )
         assert isinstance(record.get("own_findings"), list)
+        for own in record["own_findings"]:
+            assert {
+                "id",
+                "statement",
+                "mode",
+                "runs",
+                "evidence",
+                "code_at_pin",
+                "note",
+            } <= own.keys()
+            assert (
+                own["id"].strip() and own["statement"].strip() and own["note"].strip()
+            )
+            assert own["mode"] in {"scripted_model", "real_model", "source_only"}
+            assert isinstance(own["runs"], int) and own["runs"] >= 0
+            assert isinstance(own["evidence"], list) and isinstance(
+                own["code_at_pin"], list
+            )
+            assert all(REF.fullmatch(ref) for ref in own["code_at_pin"])
         assert isinstance(record.get("mapping_rows"), list)
         if slug == "rollout-baseline-in-memory":
             assert record["configs"] == []
+        if slug in {
+            "upstream-2139-empty-result",
+            "upstream-2376-null-timeout",
+            "upstream-2168-oversize-summary",
+            "max-output-token-reservation",
+        }:
+            assert record["own_findings"] == []
+        if slug in {"upstream-2356-failed-source", "raw-alert-in-prompt"}:
+            assert record["own_findings"]
         if slug == "upstream-2356-failed-source":
             assert record.get("opspilot_side") is not None
         else:
@@ -221,6 +249,23 @@ def test_findings_verdict_evidence_and_q8_rules():
                     path.is_file() for path in run_files
                 )
                 assert all(load(path).get("image_id") == pin_id() for path in run_files)
+                for path in run_files:
+                    run = load(path)
+                    assert run.get("entry") in {
+                        "ask",
+                        "investigate_alertmanager",
+                        "investigate_alertmanager_file",
+                    }
+                    assert isinstance(run.get("config"), dict)
+                    assert {"sha256", "differs_from_pin", "reason"} <= run[
+                        "config"
+                    ].keys()
+                    assert HEX64.fullmatch(run["config"]["sha256"])
+                    assert run["config"]["sha256"] in {
+                        item["sha256"] for item in record["configs"]
+                    }
+                    if run["config"]["differs_from_pin"]:
+                        assert run["config"]["reason"].strip()
                 if finding["mode"] == "real_model":
                     if finding.get("group") == "jaeger":
                         assert finding["runs"] >= 1
@@ -241,6 +286,8 @@ def test_findings_verdict_evidence_and_q8_rules():
                 "holmes_operator/trigger_executor.py:L29-L34" in ref
                 for ref in record["code_at_pin"]
             )
+    max_finding = recs["max-output-token-reservation"]["local_findings"][0]
+    assert max_finding["runs"] == 2 and len(max_finding["evidence"]) == 2
 
 
 def test_run_freezes_contain_only_contract_fields_and_no_raw_prompt_reasoning():
@@ -259,11 +306,21 @@ def test_run_freezes_contain_only_contract_fields_and_no_raw_prompt_reasoning():
             if data.get("schema") == "opspilot.f14.upstream-issue-run.v1":
                 assert data["image_id"] == pin_id()
                 assert HEX64.fullmatch(data["config_sha256"])
+                assert isinstance(data.get("config"), dict)
+                assert data["config"]["sha256"] == data["config_sha256"]
+                assert isinstance(data.get("stimulus"), dict)
+                assert {"fault_flag", "fault_experiment_id"} <= data["stimulus"].keys()
+                assert isinstance(data.get("model_env_overrides"), dict)
+                for check_name in ("tool_checks", "request_checks"):
+                    assert isinstance(data.get(check_name), dict)
+                    for check in data[check_name].values():
+                        assert set(check) >= {"hit", "excerpt"}
                 assert UTC.fullmatch(data["started_at"]) and UTC.fullmatch(
                     data["finished_at"]
                 )
                 for request in data.get("requests", []):
                     assert HEX64.fullmatch(request["body_sha256"])
+                    assert isinstance(request.get("tool_names"), list)
                     for snippet in request.get("snippets", {}).values():
                         assert len(snippet.get("text", "")) <= 4000 and HEX64.fullmatch(
                             snippet.get("sha256", "")
@@ -323,6 +380,48 @@ def test_opspilot_side_and_q7_are_derived_consistently():
     assert len(hp["report_runs"]) == 3
     assert len(side["groups"]["jaeger"]["runs"]) == 1
     assert len(side["holmes"]["jaeger"]["report_runs"]) == 1
+
+
+def test_revision_one_alert_entries_canary_and_no_proxy_rules():
+    raw_dir = EVIDENCE / "raw-alert-in-prompt"
+    raw_runs = [
+        path
+        for path in (raw_dir / "runs").glob("*.json")
+        if not path.name.endswith(".alerts.json")
+    ]
+    assert raw_runs
+    assert not list((raw_dir / "inputs").glob("alerts.json"))
+    assert not list((raw_dir / "inputs").glob("*.alerts.json"))
+    assert all(
+        path.name.startswith("script-") for path in (raw_dir / "inputs").iterdir()
+    )
+    assert any(
+        load(path).get("case") == "raw-alert-file-entry"
+        and load(path).get("entry") == "investigate_alertmanager_file"
+        for path in raw_runs
+    )
+    assert any(
+        load(path).get("entry") == "investigate_alertmanager" for path in raw_runs
+    )
+    alert_files = list((raw_dir / "runs").glob("*.alerts.json"))
+    assert alert_files and all(load(path).get("startsAt") for path in alert_files)
+    for path in raw_runs:
+        run = load(path)
+        if run.get("case") in {"raw-alert-input", "raw-alert-real"}:
+            assert run["tool_checks"].get("canary_in_tool_params", {}).get("hit") in {
+                True,
+                False,
+            }
+            assert run["answer_checks"].get("canary_in_answer", {}).get("hit") in {
+                True,
+                False,
+            }
+            assert "canary_in_tool_params" not in run.get("proxy_checks", {})
+            assert "metric_name_requests" in run.get("proxy_checks", {})
+    for path in (EVIDENCE / "upstream-2356-failed-source" / "runs").glob("*.json"):
+        if not path.name.endswith(".alerts.json"):
+            text = path.read_text()
+            assert "NO_PROXY" in text and "127.0.0.1" in text
 
 
 def test_mapping_writeback_only_changes_allowed_rows_and_binds_records():
@@ -394,6 +493,9 @@ def test_upstream_manifest_and_human_page_are_complete():
     for record in records().values():
         for ref in record["code_at_pin"]:
             cited.add(REF.fullmatch(ref).group("path"))
+        for finding in record["own_findings"]:
+            for ref in finding["code_at_pin"]:
+                cited.add(REF.fullmatch(ref).group("path"))
     assert set(files) == cited
     for path, item in files.items():
         assert (
