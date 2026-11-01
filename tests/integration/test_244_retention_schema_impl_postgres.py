@@ -41,6 +41,7 @@ pytestmark = pytest.mark.skipif(
 
 PG_DUMP = os.environ.get("OPSPILOT_PG_DUMP", "pg_dump")
 BEFORE = "0022_incident_association"
+RETENTION = "0023_retention_raw_cleanup"
 release_harness = pr4a.release_harness
 PAYLOAD_TABLES = {
     "opspilot_evidence": "raw",
@@ -184,25 +185,28 @@ def test_upgrade_backfills_absent_and_present_and_never_cleaned(scratch) -> None
         ).fetchone() == ("closed", None)
 
 
-def test_runtime_catalogs_are_the_same_at_0022_and_at_head(scratch) -> None:
+def test_runtime_catalogs_are_the_same_at_0022_and_at_0023(scratch) -> None:
     schema.command.upgrade(schema._config(scratch), BEFORE)
     roles = ("opspilot_web", "opspilot_worker", "opspilot_observer")
     with psycopg.connect(scratch) as conn:
         before = {role: catalog_grants(conn, role) for role in roles}
-    schema.command.upgrade(schema._config(scratch), "head")
+    # 0023's own effect; 0024 adds the trace outbox grants (#427)
+    schema.command.upgrade(schema._config(scratch), RETENTION)
     with psycopg.connect(scratch) as conn:
         assert {role: catalog_grants(conn, role) for role in roles} == before
 
 
 def test_downgrade_round_trips_and_refuses_while_a_row_is_cleaned(scratch) -> None:
-    schema.migrate(scratch, pg_dump=PG_DUMP)
+    # at 0023 itself: 0024's downgrade never refuses (#427 Q18), so from
+    # head it would run first and leave the database at 0023
+    schema.command.upgrade(schema._config(scratch), RETENTION)
     head = schema.schema_dump(scratch, pg_dump=PG_DUMP)
     seeded = _seed(scratch)
     schema.command.downgrade(schema._config(scratch), BEFORE)
     assert schema.schema_dump(scratch, pg_dump=PG_DUMP) == schema.fresh_dump(
         scratch, BEFORE, pg_dump=PG_DUMP
     )
-    schema.command.upgrade(schema._config(scratch), "head")
+    schema.command.upgrade(schema._config(scratch), RETENTION)
     assert schema.schema_dump(scratch, pg_dump=PG_DUMP) == head
     with login(scratch, RETENTION_ROLE) as dsn, psycopg.connect(dsn) as conn:
         conn.execute(
@@ -213,7 +217,7 @@ def test_downgrade_round_trips_and_refuses_while_a_row_is_cleaned(scratch) -> No
     with pytest.raises(RuntimeError, match="cleaned"):
         schema.command.downgrade(schema._config(scratch), BEFORE)
     with psycopg.connect(scratch) as conn:
-        assert schema.current_revision(conn) == schema.head_revision()
+        assert schema.current_revision(conn) == RETENTION
 
 
 def test_an_existing_retention_role_that_can_log_in_fails_the_upgrade(scratch) -> None:
