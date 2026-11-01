@@ -289,6 +289,24 @@ def test_dataset_dimension_for_v2_and_v1_roots() -> None:
     assert v1.kind == "none" and v1.reason
 
 
+@pytest.mark.parametrize("only", ["regression", "capability"])
+def test_dataset_dimension_refuses_single_group_root(tmp_path: Path, only: str) -> None:
+    root = tmp_path / "dev-v2"
+    shutil.copytree(V2 / only, root / only)
+    with pytest.raises(ScenarioError, match="DATASET_INCOMPLETE"):
+        dataset_dimension(root)
+
+
+def test_dataset_dimension_refuses_unloadable_v2_root(tmp_path: Path) -> None:
+    root = tmp_path / "dev-v2"
+    shutil.copytree(V2, root)
+    _edit(
+        root / "regression" / "dv2-f725cb", "answer.json", lambda d: d.pop("signature")
+    )
+    with pytest.raises(ScenarioError, match="MISSING_FIELDS"):
+        dataset_dimension(root)
+
+
 def test_legacy_summary_reads_missing_dimensions_as_unknown(tmp_path: Path) -> None:
     old = {
         name: {"kind": "hash", "value": "h", "reason": None}
