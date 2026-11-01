@@ -147,3 +147,97 @@ override 给 worker 加 `extra_hosts: ["api.deepseek.com:127.0.0.1"]` 后 `up -d
 ### 未确认（预审 :136-140）
 
 Docker 宿主 daemon 的 json-file 轮转配置；`web/service.py:1579,1659` 的 `str(exc)` 是否恒为带固定码的异常、web `.exception()` 的异常消息是否可能引用模型输出或证据原文（推断很低，交 F8L-Q2 复核）；上游 HolmesGPT 的日志格式。
+
+## #243 产品模式 trace outbox 合同（r3，F8 第 2 实施步骤）
+
+- 预审：全新上下文 Agent（Opus 5.5），只读，基线 origin/main `ea2d6e16`，2026-10-31；全文在仓库外 `~/.agent/handoffs/opspilot-prereview-243-outbox-2026-10-31.md`（下称「预审」，行号指该文件）。上游 HolmesGPT 没有 outbox（ADR-0006 背景，`9e21560`），本合同无上游可照搬，只照搬「默认空实现、一个开关打开导出」。
+- 裁决（r3，用户 2026-10-31 grilling，d1 会话 Q14–Q18）：OB-Q1–Q5 全部按推荐 (a)；OB-R1–R13 照预审（Agent 可逆默认）。记录见 `~/.agent/handoffs/opspilot-rulings-2026-10-31-m3-batch4.md`。
+- 关键现状（预审 :11-37）：`OPSPILOT_TRACE` 只有 `off|lab`，lab 每 Run 重做 fail-closed 证明，其中要求数据源是回环或 `*.svc`；产品 Compose 不设 `OPSPILOT_TRACE`，实际什么都不导出；outbox 只有领域 DTO `ExportOutboxEntry`（`opspilot/domain/records.py:18-27,54-74`），没有表、写入点和投递者；`opspilot_steps.response` 含 `assistant.reasoning_content`，outbox 载荷不能从它整段拷贝；worker 池 `capacity + 2`，Compose 4/2，无余量。
+
+### 需用户裁决（r3 已裁决）
+
+| 编号 | 问题 | 裁决要点 | 影响面 |
+|---|---|---|---|
+| OB-Q1 / Q14 | 产品模式可发到 LangSmith 的字段 | (a) 只发标识、版本、数字和固定码：incident/run/step/复盘 attempt ID；镜像 version/revision、`prompt_revision`/`tool_schema_revision`/`context_policy_revision`、模型名；span 类型与开始/结束时间；token 数（输入/输出/合计/推理）；`finish_reason`；Run 状态与交接原因码、工具状态类与原因码（固定码形状见下方代码块，其余记 `UNCLASSIFIED`）；登记表解析出的工具名；`source_contact` 三态；预算秒数。不发提示词与回复、工具视图与原始结果、查询语句、目标名/服务名/告警标签、报告与结论文本、`reasoning_content`、任何凭据 | 数据出口（PRODUCT-CONSTRAINTS Data flow、C3 §12） |
+| OB-Q2 / Q15 | 怎么打开、怎么保证只在合成 lab | (a) 新开关 `OPSPILOT_TRACE=outbox`，默认关；打开须 LangSmith endpoint 在白名单、`LANGSMITH_PROJECT` 以 `opspilot-lab-` 开头、key 存在，缺一不投递（fail-closed）并在 `/metrics` 报原因码；不再要求数据源回环（lab 身份由运维以项目名前缀声明）。ADR-0006 决定 2 追加一行 | 出口开关；ADR-0006 |
+| OB-Q3 / Q16 | 本地 outbox 行与 LangSmith 副本的保留 | (a) 本地行投递成功或丢弃 7 天后删除，worker 只对 outbox 表有 DELETE；LangSmith 产品项目只用基础 14 天保留、不开 180 天；C3 §11 保留与删除的「外部副本不主动删」偏离删除，改写为「产品项目 14 天自然过期」 | 保留合同；C3 §11；worker 权限 |
+| OB-Q4 / Q17 | F8 第 1 步「成本按事故和版本关联」口径 | (a) 发 token 数 + `ls_provider=deepseek` + `ls_model_name`；LangSmith 工作区配 DeepSeek 价格条目由平台估算美元成本，按 incident/version 元数据筛选；证据写明「估算，权威为余额差」，并对一轮估算总额与余额差对比一次 | F8 第 1 步判定口径 |
+| OB-Q5 / Q18 | 迁移与 downgrade | (a) 新迁移 0024，downgrade 不拒绝：先按 pending/delivered/dropped 统计行数并 `RAISE NOTICE`（只有计数），再删触发器与函数、撤授权、删表；有未导出行也照删，业务表一行不动。拆 PR-1（写入侧，带 0024，不出境）与 PR-2（投递出境） | 回滚路径；F8 第 3 步两个版本（F8S3-Q1） |
+
+固定码形状（预审 :45 OB-Q1 (a) 原文节选，字节照抄）：
+
+```text
+工具状态类与原因码（只收 `^[A-Z][A-Z0-9_]{1,63}$`，其余记 `UNCLASSIFIED`，沿 tracing.py:112）
+```
+
+### 可逆默认（照预审，一行理由）
+
+| 编号 | 默认 | 理由 |
+|---|---|---|
+| OB-R1 | 表 `opspilot_trace_outbox`：`entry_id bigint identity`、`idempotency_key text UNIQUE`、`incident_id`、`run_id`（复盘行为空）、`kind`（`run_state|model_step|tool_result|generation`）、`payload jsonb`（只有 OB-Q1 白名单键，CHECK `octet_length<=4096`）、`state pending|delivered|dropped`、`attempts`、`next_attempt_at`、`drop_reason`、`created_at clock_timestamp()`；索引 `(state,next_attempt_at)` | 复用领域 DTO 状态名；载荷上限防大行 |
+| OB-R2 | 模型步、工具结果、复盘生成 attempt 在 `commit_step`/`commit_tool`/复盘提交的同一事务由应用层插行，载荷由一个函数从类型化字段按白名单构造（不读 `response` 整段）；Run 状态变化用 `opspilot_runs` 上 `AFTER UPDATE OF state` 触发器插行（非 `SECURITY DEFINER`，web、worker 都要 outbox 列级 INSERT） | 覆盖散在三处、两个角色的状态写；白名单集中一处便于复核 |
+| OB-R3 | `idempotency_key` = `kind:subject_id:序号`（例 `model_step:<step_id>`、`run_state:<run_id>:<control_generation>:<state>`），`ON CONFLICT DO NOTHING`；OTLP trace_id = sha256(run_id) 前 16 字节，span_id = sha256(idempotency_key) 前 8 字节 | C3 §11「至少一次、幂等身份」；LangSmith 是否去重重复 span 未确认，PR-2 实测 |
+| OB-R4 | worker 进程内一个投递线程，只在 `OPSPILOT_TRACE=outbox` 且 OB-Q2 条件满足时投递；`SELECT … FOR UPDATE SKIP LOCKED LIMIT 100` 领取；池下限 `capacity + 3`，Compose `OPSPILOT_POOL_MAX_SIZE` 4→5 | key 只在 worker；不新增运行时 |
+| OB-R5 | 退避 5s→10min 指数，最多 8 次后 `dropped(MAX_ATTEMPTS)`；HTTP 4xx（除 408/429）`dropped(REJECTED)`；构造或序列化失败 `dropped(UNSERIALIZABLE)`；pending 上限 20 000，超出最旧的 `dropped(BACKLOG)`；每批 10s 超时 | C3 §11「积压有界丢弃并记录计数」 |
+| OB-R6 | 投递失败对 Run 完全无影响：Run 状态、交接、预算与不开导出时相同 | C3 §11；PRODUCT-CONSTRAINTS:36 |
+| OB-R7 | worker `/metrics` 加 `opspilot_trace_outbox_pending`、`opspilot_trace_outbox_dropped_total{reason}`、`opspilot_trace_outbox_last_delivery_age_seconds`、`opspilot_trace_export_enabled{reason}`；读数来自线程写的进程内快照，健康监听不查库 | 沿 F8-R4 |
+| OB-R8 | 未开导出时 outbox 也总是写；7 天清理在开关关闭时也运行，只删不发 | 一条代码路径；本地最多 7 天、零出境 |
+| OB-R9 | `OPSPILOT_TRACE` 三值互斥 `off|lab|outbox`；`lab` 保持现状（带内容、直发、不经 outbox），`lab` 下 outbox 照写不投递 | ADR-0006 决定 5 不动 |
+| OB-R10 | 不做 Observer 埋点（#159，`post-m3`）、不做 `payload_kind=eval`、不改 `loop.py` 与提示词/工具面 | 一个 PR 一个 C3 条款 |
+| OB-R11 | 迁移 0024：建表、触发器、列级授权；downgrade 按 OB-Q5；不回填已有 Run；同步 `RUNTIME_GRANTS` 与头版本钉值；部署顺序按 C3 §11（三运行时停机后迁移） | 与 0019/0023 先例一致 |
+| OB-R12 | `install.env` 加 `OPSPILOT_TRACE`（默认 `off`）；`LANGSMITH_PROJECT` 与可选 `LANGSMITH_ENDPOINT` 放 `worker_env`；entrypoint 白名单加这两项；`install.sh` 默认不打开 | 默认零出境 |
+| OB-R13 | 证据 `docs/evidence/243-trace-outbox/`：一次 Compose 有界真实 Run（`OPSPILOT_TRACE=outbox`）冻结 `summary.json` + trace 链接；按 `incident_id` 与 version 筛到同一 Run 的 token、工具错误码、状态；故障注入①投递目标不可达（`extra_hosts` 指 127.0.0.1）②投递中途重启 worker，照实记重复 span 条数；载荷全文抽查无提示词、凭据、`reasoning_content` | ADR-0006；AGENTS.md 真实 Run 证据 |
+
+授权（预审 :74）：web 只得 outbox 列级 INSERT（触发器用）；worker 得 SELECT、列级 INSERT、`UPDATE(attempts,next_attempt_at,state,drop_reason)`、DELETE；Observer、retention 无。
+
+写入时自定（lead，一行理由）：
+
+- r3-L1 清理线程归属：Q16 写「由投递线程删除」，R8 要求开关关闭也清理，而 PR-1 不投递。定为 worker 内一个 outbox 维护线程：PR-1 只做 7 天清理（不联网），PR-2 在同一线程加投递；池 `capacity + 3` 与 Compose 4→5 随 PR-1 落地。理由：删除者始终是 worker 的这一个线程，满足 Q16 与 R8，PR-2 不再改池。
+- r3-L2 钉值：`tests/acceptance/test_347_release_reframe_input.py` 头版本 `0023_retention_raw_cleanup`→`0024_*` 与 `RUNTIME_GRANTS` sha256 指纹（预审 :93），以及预审 :94 列出的非验收层头版本钉值与 Compose 池钉值，属每次加迁移的例行钉值更新，不算削弱验收（0022、0023 的 PR 同样改过）。
+
+### 切分（预审 :81-84，均目标 `main`，不做 stacked PR）
+
+1. PR-1 写入侧：0024 + 授权 + 白名单载荷构造函数 + StepStore/复盘写入点 + Run 状态触发器 + worker 清理线程（r3-L1）；不投递、不出境。证据：PG 集成测试 + 一次真实 Run 后的 outbox 行导出（本地）。
+2. PR-2 投递侧：`OPSPILOT_TRACE=outbox`、fail-closed 原因码、投递、指标、Compose/install 配置、两次故障注入、LangSmith 真实证据（R13）与 Q17 成本对比。
+
+### 未确认（预审 :103-108）
+
+LangSmith 对同一 OTLP span ID 重复投递是否去重；子 span 先到、根 span 晚到能否接受（退路：Run 停下时成批发）；Compose + otel-demo 下 `OPSPILOT_OTEL_PROMETHEUS_URL` 的实际取值；上游 `a0009195` 是否仍无 outbox。
+
+## 第 3 步合同（r3）：带在途事故的升级与回滚演练
+
+- 预审：全新上下文 Agent（Opus 5.5），只读，基线 origin/main `ea2d6e16`，2026-10-31；全文在仓库外 `~/.agent/handoffs/opspilot-prereview-f8-step3-2026-10-31.md`（下称「预审」）。全量探针（预审 :76-81）：草稿（`schema downgrade` 动作 + `stop_grace_period: 40s` + UPGRADE.md 一句）**探针 0 失败**（3014 passed、303 skipped）；`tests/test_392_compose_static_impl.py`、`tests/test_393_*` 未跑，实现时定向跑。
+- 裁决（r3，用户 2026-10-31 grilling，d1 会话 Q24–Q26）：F8S3-Q1–Q3 按推荐 (a)；F8S3-R1–R11 照预审。
+- 关键现状（预审 :11-34）：今天所有可安装提交 schema head 都是 0023、Run `versions` 相同，`install.sh upgrade` 是 `migrate: unchanged`、在途 Run 原样续跑，无可演练的变化；没有回滚入口（`opspilot.schema` 只有 `migrate|check`）；UPGRADE.md「there are no down-migrations」与 `docs/development.md:28` 冲突；Compose 未设 `stop_grace_period`（推断 10s 硬杀，未实测）。
+
+### 需用户裁决（r3 已裁决）
+
+| 编号 | 问题 | 裁决要点 | 影响面 |
+|---|---|---|---|
+| F8S3-Q1 / Q25 | 用哪两个版本 | (a) 新版 = #243 PR-1（带 0024）合并提交，旧版 = 它在 main 上的父提交；均本地由各自 checkout 的 `install.sh` 构建，同为 0.1.0，按 git revision 与镜像 ID 区分；排在 PR-1 合并后，要 trace 链接作证据则等 PR-2；F9 第 4 步（固定 digest 升级）不因本步算通过，收口时在租用主机另做 | 排期、证据可信度 |
+| F8S3-Q2 / Q26 | 回滚定义与 downgrade 被拒 | (a) 停全部运行时 → 新版镜像执行 `python -m opspilot.schema downgrade --to <旧 head>` → 旧 checkout `install.sh upgrade`（migrate unchanged、init-roles、启动、`verify_head`）；downgrade 因丢数据被拒时不还原备份，前滚修复（兼容恢复），写入 UPGRADE.md；C3 §11 补同义规则 | 运维文档；C3 §11；新增 owner CLI 动作 |
+| F8S3-Q3 / Q24 | 在途事故演练哪些形状 | (a) 必测 4 种，升级与回滚两段都判：①模型调用中被停 → 新 worker 租约到期后续跑到终态、`versions` 不变；②`queued` 被新 worker 领取；③授权观察会话继续采样，停机缺口在样本时间上可见、不补采；④`human_owned`/`waiting_human` 原样保留、不开 Run。加做⑤不兼容版本段：只改 `tool_schema_revision` 的演练构建（不合并）→ `blocked(INCOMPATIBLE_STATE)`、旧行保留 → 人 `new_run` 在新版跑完。约 3 个真实 Run | 验收判定；真实调用量 |
+
+### 可逆默认（照预审，一行理由）
+
+| 编号 | 默认 | 理由 |
+|---|---|---|
+| F8S3-R1 | 只加 `opspilot.schema downgrade --to <rev>`（owner DSN，与 migrate 同服务/凭据；`--to` 须为已知且低于当前的 revision），经 `install.sh compose run --rm --no-deps migrate python -m opspilot.schema downgrade --to <rev>` 调用；不加 `install.sh rollback` | 回滚要两个 checkout 配合，子命令省不掉；少一个面 |
+| F8S3-R2 | UPGRADE.md「Rolling back」按 stop → downgrade → 旧 checkout `upgrade` 写；命令打印当前与目标 revision | 与 C3 §11 全停迁移同一前提 |
+| F8S3-R3 | worker、observer 设 `stop_grace_period: 40s` | 让已有 30s 排空在安装路径生效（C3 §7） |
+| F8S3-R4 | 本机 colima Compose 栈 + kind lab，持 `lockf ~/.agent/locks/kind-lab`；开窗前查 swap、不并行跑全量测试 | 形状③要真实 Prometheus；与 #393/#414 接线一致 |
+| F8S3-R5 | 每次构建记录镜像 ID 与 OCI `revision`，另打本地 tag `opspilot:f8s3-<rev12>` 留存；各阶段导出一次 `opspilot_build_info` | 证明回滚真跑回旧 revision |
+| F8S3-R6 | 升级前、升级后、回滚后三次只读快照（`alembic_version`、各 `opspilot_*` 行数、在途事故/Run/会话状态与代际）写进 `summary.json` 逐表比对 | 确定性断言，不靠 judge |
+| F8S3-R7 | 阶段边界用 install.sh 日志 UTC；Run/会话/样本用 DB 时钟；停机窗 = 第一次 stop 到三个 `/readyz` 全 200；续跑延迟以租约 420s 为界，Observer 120s | 两个时钟只做区间对照 |
+| F8S3-R8 | 证据 `docs/evidence/f8-step3-upgrade-rollback/README.md` + 冻结 `summary.json` + 时间线、build_info、alembic 版本、行数快照、Run 事件、样本时间、`opspilot-self` 记录；有 PR-2 时附产品模式 trace 链接，否则写明无 trace 及原因 | AGENTS.md 验证与汇报 |
+| F8S3-R9 | 顺序：升级段 → 回滚段 → 不兼容段 | 每段只变一个因素 |
+| F8S3-R10 | 模型 key 由用户放入安装栈 `worker_env`（K2，#393 先例）；余额差由用户对账写入任务记录 | Agent 进程不接触 key |
+| F8S3-R11 | UPGRADE.md 改为「旧镜像不能直接起在已迁移的库上；回滚见 Rolling back」 | 与 `development.md:28` 一致 |
+
+写入时自定（lead，一行理由）：r3-L3 行数快照「只增不减」不含 `opspilot_trace_outbox`：0024 的 downgrade 按 Q18 会删表，该表单列 downgrade 输出的三类计数；其余业务表照 R6 逐表比对。
+
+与 #243 的衔接：OB-Q5 定 0024 的 downgrade 不拒绝，所以以 PR-1 为新版时回滚段的 downgrade 一定能跑通（预审 :71、#243 预审 :49）；跨越升级/回滚的在途 Run 在 LangSmith 上只有部分 span，证据照实写。
+
+### 未确认（预审 :88-93）
+
+本机 compose 版本 `docker compose stop` 默认超时实际值；Observer 停机后同一会话多次到期是只采一次还是逐次补；`OPSPILOT_TRACE=lab` 在安装栈下能否通过 `check_lab_target`（本步改用 PR-2 的 `outbox` 模式，不依赖此项）。

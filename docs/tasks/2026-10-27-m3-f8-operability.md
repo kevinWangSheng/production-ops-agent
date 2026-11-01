@@ -1,6 +1,6 @@
 # M3 运行可观测（F8 第 1–3 步）
 
-- 状态：进行中（第 1 实施步骤合同 r1 已裁决；PR-1 #413 已合并 `6845ffc7`（PR #418）；PR-2 #414 lab 抓取、两条自告警与两次演练已合并 `7cd29308`（PR #421）；结构化日志合同 r2 已裁决（2026-10-31），按用户指示本轮不实施；#243 outbox、第 3 步升级回滚演练待预审）
+- 状态：进行中（第 1 实施步骤合同 r1 已裁决；PR-1 #413 已合并 `6845ffc7`（PR #418）；PR-2 #414 lab 抓取、两条自告警与两次演练已合并 `7cd29308`（PR #421）；结构化日志合同 r2 已裁决（2026-10-31），按用户指示本轮不实施；#243 outbox 与第 3 步升级回滚合同 r3 已裁决（2026-10-31），实施 #427 → #428，演练 #429）
 - 更新日期：2026-10-31
 - 依据：[M3 开放决策](2026-10-27-m2-exit-m3-opening-decision.md) Q2 第 4 条、Q5、Q6；feature_list.json F8；C3 §11（可观测性、outbox、部署与 schema 迁移）；#243 #159
 - 工作区：#413、#414 的 worktree 均已在合并后删除；结构化日志未创建
@@ -35,6 +35,20 @@
 - 执行约束：实施等 M3 方向 Q4 第 ① 步全部完成后再排；之后需用户判断的事项在 Q4 ① 完成后一次汇总。
 
 切分：PR-1 产品（health 模块 + 三入口接线 + 模型调用计数包装器 + Compose healthcheck 与 lab override + 测试调整）→ PR-2 lab 抓取与规则 + 两次演练（PR-1 合并后）。之后各自预审：结构化日志、#243 outbox、升级回滚演练（第 3 步）。
+
+## 合同（r3，#243 outbox + 第 3 步升级回滚）
+
+用户 2026-10-31 grilling 裁决（d1 会话 Q14–Q18、Q24–Q26，`~/.agent/handoffs/opspilot-rulings-2026-10-31-m3-batch4.md`）：OB-Q1–Q5、F8S3-Q1–Q3 全部按推荐 (a)；OB-R1–R13、F8S3-R1–R11 照预审；lead 写入时自定 r3-L1–L3。完整表与字节级原文：[合同文件 r3 两节](2026-10-27-m3-f8-operability-contract.md#243-产品模式-trace-outbox-合同r3f8-第-2-实施步骤)。
+
+- Q14 出口白名单：产品模式只发标识、版本、数字和固定码；不发提示词/回复、工具视图与原始结果、查询、目标名/服务名/告警标签、报告正文、`reasoning_content`、凭据。
+- Q15 开关：`OPSPILOT_TRACE=outbox` 默认关；endpoint 在白名单、`LANGSMITH_PROJECT` 以 `opspilot-lab-` 开头、key 存在，缺一 fail-closed 并在 `/metrics` 报原因码；不再要求数据源回环。ADR-0006 决定 2 追加一行。
+- Q16 保留：本地行投递成功或丢弃 7 天后删除（worker 只对 outbox 表有 DELETE）；LangSmith 产品项目只用 14 天基础保留；C3 §11 偏离改写为「产品项目 14 天自然过期」。
+- Q17 成本：token 数 + `ls_provider=deepseek` + `ls_model_name`，平台估算，证据写「估算，权威为余额差」，对比一次。
+- Q18 迁移：0024，downgrade 删表照删（`RAISE NOTICE` 计数）；PR-1 写入侧（#427，不出境）→ PR-2 投递侧（#428）。
+- Q25 两个版本：PR-1 合并提交 vs 它的父提交，本地构建，同为 0.1.0；F9 第 4 步不因本步通过。
+- Q26 回滚：停全部 → 新版镜像 `opspilot.schema downgrade --to <旧 head>` → 旧 checkout `install.sh upgrade`；downgrade 被拒时前滚修复，写入 UPGRADE.md，C3 §11 补同义规则。
+- Q24 在途形状：①模型调用中被停 ②queued ③授权观察会话 ④human_owned/waiting_human，升级与回滚两段都判；加做不兼容段（只改 `tool_schema_revision`、不合并 → `blocked(INCOMPATIBLE_STATE)` → 人 `new_run`）；约 3 个真实 Run（#429）。
+- r3-L1 清理与投递同在 worker 一个 outbox 线程，PR-1 只清理、池 `capacity + 3` 随 PR-1；r3-L2 头版本与 `RUNTIME_GRANTS` 指纹等为例行钉值；r3-L3 行数快照不含被 downgrade 删除的 outbox 表。
 
 ## #413 实现（对齐合同 r1）
 
@@ -136,4 +150,5 @@ opspilot_observation_due 0
 
 - 第 1 实施步骤：PR-1 #413（PR #418）与 PR-2 #414（PR #421）均已合并。
 - 结构化日志：合同 r2 已裁决，本轮不实施；等 M3 方向 Q4 第 ① 步全部完成后再排。
-- #243 outbox、第 3 步升级回滚演练：各自预审。
+- #243 outbox：合同 r3 已裁决；#427（PR-1 写入侧）→ #428（PR-2 投递侧）。
+- 第 3 步升级回滚演练：合同 r3 已裁决；#429，等 #427 合并（trace 证据等 #428）。
