@@ -1,0 +1,16 @@
+{
+  "scenario_id": "dv2-0a0003",
+  "version": "2",
+  "entry": "question",
+  "incident": {
+    "feature_id": "F1",
+    "acceptance_step": "eval-suite development baseline (not an acceptance step)",
+    "kind": "eval",
+    "subject_id": "otel-demo-checkout"
+  },
+  "stimulus": {
+    "question": "Checkout is reported to show elevated errors in the OTel Demo. Using the authorized metrics range query and trace search for the last 5 minutes, determine whether checkout and its dependency calls (payment, product-catalog, cart, currency, shipping, email) show failures or elevated latency, cite trace ids, and return a json investigation report.",
+    "subject_id": "otel-demo-checkout",
+    "target_id": "m0-otel-20260909"
+  }
+}

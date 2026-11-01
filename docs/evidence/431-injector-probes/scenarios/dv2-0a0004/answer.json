@@ -1,0 +1,33 @@
+{
+  "scenario_id": "dv2-0a0004",
+  "version": "2",
+  "category": "model_failure",
+  "polarity": "positive",
+  "injectors": [
+    {
+      "kind": "model_transport",
+      "params": {
+        "mode": "first_503"
+      }
+    }
+  ],
+  "expected_outcome": {
+    "final_states": [
+      "completed"
+    ],
+    "decision": "report_available",
+    "handoff_reason": null,
+    "counts": {
+      "incidents": 1,
+      "runs": 1,
+      "episodes": null
+    },
+    "forbidden_tool_requests": [],
+    "canary": null
+  },
+  "expected_output": [
+    "The report identifies failing payment Charge calls (checkout's oteldemo.PaymentService/Charge RPC returning errors) as the cause of the checkout errors, citing the error spans it observed."
+  ],
+  "signature": null,
+  "reference_report": null
+}

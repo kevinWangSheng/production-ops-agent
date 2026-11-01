@@ -21,6 +21,7 @@ from __future__ import annotations
 import fcntl
 import json
 import os
+import re
 import shutil
 import socket
 import subprocess
@@ -34,7 +35,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
-from typing import Any, Literal, Protocol
+from typing import Any, Literal, NoReturn, Protocol
 from uuid import uuid4
 
 from opspilot.evaluation import SignatureRule, Window
@@ -328,6 +329,9 @@ class LiveDeps:
     # The code version (r5); the driver core itself starts no process. None
     # leaves the manifest's ``code`` dimension unknown.
     provenance: ProvenanceReader | None = None
+    # v2 (#431): where an ``otlp_span`` injector writes and reads back its
+    # span; None builds the lab ``OtlpSpanWriter``.
+    span_writer: Any = None
     # The preflight's check of the Runs' own Prometheus credential (#284);
     # ``real_deps`` always sets it from the investigator's config. None (the
     # offline doubles) skips it and records null in ``lifecycle.json``.
@@ -612,6 +616,22 @@ def fault_for(flag: str, variant: str) -> FaultFlag:
 
 
 def mutate(raw: bytes, fault: FaultFlag) -> bytes:
+    if fault.flag not in kind_lab.FAULT_FLAGS:
+        # A v2-only flag (``adFailure``): the same checks as
+        # ``kind_lab.mutate_flags``, against the v2 whitelist.
+        if V2_FAULT_FLAGS.get(fault.flag) != fault:
+            raise LabError("FAULT_NOT_WHITELISTED")
+        flags = _flags(raw)
+        entry = flags.get(fault.flag)
+        if (
+            not isinstance(entry, dict)
+            or entry.get("defaultVariant") != fault.normal_variant
+            or fault.fault_variant not in (entry.get("variants") or {})
+        ):
+            raise LabError("FLAG_OR_VARIANT_UNCONFIRMED")
+        data = json.loads(raw)
+        data["flags"][fault.flag]["defaultVariant"] = fault.fault_variant
+        return (json.dumps(data, indent=2) + "\n").encode()
     try:
         return bytes(
             kind_lab.mutate_flags(
@@ -653,18 +673,25 @@ def await_variant(
 
 
 def confirm_all_normal(
-    deps: LiveDeps, config: FlagConfig, *, budget_seconds: float = PROPAGATION_SECONDS
+    deps: LiveDeps,
+    config: FlagConfig,
+    *,
+    budget_seconds: float = PROPAGATION_SECONDS,
+    whitelist: Mapping[str, FaultFlag] | None = None,
 ) -> datetime:
-    """Every whitelisted flag off in the ConfigMap *and* on the daemon."""
+    """Every whitelisted flag off in the ConfigMap *and* on the daemon
+    (``whitelist``: the v1 ``FAULT_FLAGS`` unless a v2 round passes
+    ``V2_FAULT_FLAGS``)."""
+    table = FAULT_FLAGS if whitelist is None else whitelist
     flags = _flags(config.raw)
-    for fault in FAULT_FLAGS.values():
+    for fault in table.values():
         entry = flags.get(fault.flag)
         if not isinstance(entry, dict) or (
             entry.get("defaultVariant") != fault.normal_variant
         ):
             raise LabError("FLAGS_NOT_NORMAL")
     confirmed = deps.clock.now()
-    for fault in FAULT_FLAGS.values():
+    for fault in table.values():
         method = flagd_method(config.raw, fault.flag)
         try:
             confirmed = await_variant(
@@ -677,6 +704,199 @@ def confirm_all_normal(
         except LabError:
             raise LabError("FLAGS_NOT_NORMAL") from None
     return confirmed
+
+
+# -- v2 injector whitelist (#431, V2-R5) --------------------------------------
+
+#: The v2 flag whitelist: the v1 three plus the noise flag (Q19). The v1
+#: ``FAULT_FLAGS`` table (and ``kind_lab.FAULT_FLAGS``) stays the three, so a
+#: v1 round never depends on ``adFailure``; a v2 round checks all four off.
+V2_FAULT_FLAGS: Mapping[str, FaultFlag] = {
+    **FAULT_FLAGS,
+    "adFailure": FaultFlag("adFailure", "on"),
+}
+INJECTOR_KINDS = (
+    "flagd",
+    "source_unreachable",
+    "model_transport",
+    "otlp_span",
+    "alert_delivery",
+)
+SOURCES = ("jaeger", "prometheus")
+MODEL_MODES = ("always_503", "first_503")
+SPAN_SERVICES = (
+    "checkout",
+    "payment",
+    "cart",
+    "currency",
+    "shipping",
+    "email",
+    "product-catalog",
+)
+ALERT_PATTERNS: Mapping[str, frozenset[str]] = {
+    "single": frozenset({"pattern"}),
+    "duplicate": frozenset({"pattern", "deliveries", "interval_seconds"}),
+    "refire": frozenset({"pattern", "interval_seconds"}),
+    "unresolved_labels": frozenset({"pattern", "namespace"}),
+}
+#: Lab Alertmanager ``group_interval: 1m``; V2-R15 keeps repeats below it.
+MAX_ALERT_INTERVAL_SECONDS = 59
+MAX_SPAN_OPERATION_CHARS = 150
+MAX_SPAN_MESSAGE_BYTES = 600
+LAB_NAMESPACE = "otel-demo"
+_NAMESPACE = re.compile(r"[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?")
+#: Nothing listens on the discard port on the lab host; a fixed value keeps
+#: the unreachable target's registry hash computable before the round.
+UNREACHABLE_PORT = 9
+UNREACHABLE_URLS = {
+    "jaeger": f"http://127.0.0.1:{UNREACHABLE_PORT}/jaeger/ui",
+    "prometheus": f"http://127.0.0.1:{UNREACHABLE_PORT}",
+}
+
+
+@dataclass(frozen=True)
+class InjectionPlan:
+    """A v2 scenario's validated injectors (``validate_injectors``)."""
+
+    entry: str
+    flags: tuple[FaultFlag, ...] = ()
+    source: str | None = None
+    model_mode: str | None = None
+    span: Mapping[str, str] | None = None
+    alert: Mapping[str, Any] | None = None
+    injectors: tuple[Mapping[str, Any], ...] = ()
+
+    @property
+    def binding_class(self) -> tuple[str, str]:
+        """(entry, unreachable source or "none"): one per round (S2)."""
+        return (self.entry, self.source or "none")
+
+    @property
+    def restore_intent_count(self) -> int:
+        """Every injector of a scenario shares one restore intent."""
+        return 1 if self.injectors else 0
+
+    @property
+    def lab_side(self) -> bool:
+        """Whether anything outside this process is changed (flags, spans)."""
+        return bool(self.flags) or self.span is not None
+
+
+def _whitelist() -> NoReturn:
+    raise LabError("INJECTOR_NOT_WHITELISTED")
+
+
+def _int_in(value: Any, low: int, high: int) -> int:
+    if type(value) is not int or not low <= value <= high:
+        _whitelist()
+    return value
+
+
+def _printable(
+    value: Any, *, chars: int | None = None, octets: int | None = None
+) -> str:
+    if type(value) is not str or not value or not value.isprintable():
+        _whitelist()
+    if chars is not None and len(value) > chars:
+        _whitelist()
+    if octets is not None and len(value.encode("utf-8")) > octets:
+        _whitelist()
+    return value
+
+
+def _exact_params(params: Any, keys: frozenset[str]) -> Mapping[str, Any]:
+    if not isinstance(params, Mapping) or set(params) != set(keys):
+        _whitelist()
+    return params
+
+
+def _alert_params(params: Any) -> Mapping[str, Any]:
+    if not isinstance(params, Mapping):
+        _whitelist()
+    pattern = params.get("pattern")
+    if type(pattern) is not str or pattern not in ALERT_PATTERNS:
+        _whitelist()
+    params = _exact_params(params, ALERT_PATTERNS[pattern])
+    if pattern == "duplicate":
+        _int_in(params["deliveries"], 2, 3)
+    if pattern in ("duplicate", "refire"):
+        _int_in(params["interval_seconds"], 1, MAX_ALERT_INTERVAL_SECONDS)
+    if pattern == "unresolved_labels":
+        namespace = params["namespace"]
+        if (
+            type(namespace) is not str
+            or not _NAMESPACE.fullmatch(namespace)
+            or namespace == LAB_NAMESPACE
+        ):
+            _whitelist()
+    return dict(params)
+
+
+def validate_injectors(entry: str, injectors: Sequence[Any]) -> InjectionPlan:
+    """The whitelist (V2-R5): pure, reads and writes nothing.
+
+    ``FAULT_NOT_WHITELISTED`` for a flag/variant outside ``V2_FAULT_FLAGS``,
+    ``INJECTOR_NOT_WHITELISTED`` for an unknown kind or non-exact/out-of-range
+    params, ``INJECTOR_COMBINATION_INVALID`` for a repeated flag, a kind past
+    its count or an alert delivery that does not match the entry.
+    """
+    if entry not in ("question", "alertmanager"):
+        _whitelist()
+    flags: list[FaultFlag] = []
+    singles: dict[str, Mapping[str, Any]] = {}
+    recorded: list[Mapping[str, Any]] = []
+    for injector in injectors:
+        kind = getattr(injector, "kind", None)
+        params = getattr(injector, "params", None)
+        if type(kind) is not str or kind not in INJECTOR_KINDS:
+            _whitelist()
+        if kind == "flagd":
+            params = _exact_params(params, frozenset({"flag", "variant"}))
+            if type(params["flag"]) is not str or type(params["variant"]) is not str:
+                raise LabError("FAULT_NOT_WHITELISTED")
+            fault = V2_FAULT_FLAGS.get(params["flag"])
+            if fault is None or fault.fault_variant != params["variant"]:
+                raise LabError("FAULT_NOT_WHITELISTED")
+            if any(f.flag == fault.flag for f in flags):
+                raise LabError("INJECTOR_COMBINATION_INVALID")
+            flags.append(fault)
+            recorded.append({"kind": kind, "params": dict(params)})
+            continue
+        if kind == "source_unreachable":
+            params = _exact_params(params, frozenset({"source"}))
+            if params["source"] not in SOURCES:
+                _whitelist()
+        elif kind == "model_transport":
+            params = _exact_params(params, frozenset({"mode"}))
+            if params["mode"] not in MODEL_MODES:
+                _whitelist()
+        elif kind == "otlp_span":
+            params = _exact_params(
+                params, frozenset({"service", "operation", "message"})
+            )
+            if params["service"] not in SPAN_SERVICES:
+                _whitelist()
+            _printable(params["operation"], chars=MAX_SPAN_OPERATION_CHARS)
+            _printable(params["message"], octets=MAX_SPAN_MESSAGE_BYTES)
+        else:
+            params = _alert_params(params)
+        if kind in singles:
+            raise LabError("INJECTOR_COMBINATION_INVALID")
+        singles[kind] = dict(params)
+        recorded.append({"kind": kind, "params": dict(params)})
+    if ("alert_delivery" in singles) != (entry == "alertmanager"):
+        raise LabError("INJECTOR_COMBINATION_INVALID")
+    source = singles.get("source_unreachable")
+    model = singles.get("model_transport")
+    return InjectionPlan(
+        entry=entry,
+        flags=tuple(flags),
+        source=None if source is None else str(source["source"]),
+        model_mode=None if model is None else str(model["mode"]),
+        span=singles.get("otlp_span"),
+        alert=singles.get("alert_delivery"),
+        injectors=tuple(recorded),
+    )
 
 
 # -- fault intent and restore (U2) --------------------------------------------
@@ -708,7 +928,17 @@ class FaultIntent:
     attempt_id: str
     holder: str
     batch: str
-    fault: FaultFlag
+    # The first flag (v1: the only one); None for a v2 attempt without flags.
+    fault: FaultFlag | None
+    # v2 (#431): further flags moved in the same ConfigMap write, and every
+    # injector of the attempt as ``{kind, params}`` for the restore intent.
+    also: tuple[FaultFlag, ...] = ()
+    injectors: tuple[Mapping[str, Any], ...] = ()
+    whitelist: Mapping[str, FaultFlag] | None = None
+
+    @property
+    def faults(self) -> tuple[FaultFlag, ...]:
+        return () if self.fault is None else (self.fault, *self.also)
 
 
 @dataclass(frozen=True)
@@ -723,12 +953,14 @@ class Injected:
 class Committed:
     """An injection written and verified in the ConfigMap, not yet effective."""
 
-    original_sha256: str
-    injected_sha256: str
+    original_sha256: str | None
+    injected_sha256: str | None
     requested_at: datetime
-    flag: str
-    method: str
-    variant: str
+    flag: str | None
+    method: str | None
+    variant: str | None
+    # Every (flag, method, variant) of the write; v1: just the one above.
+    flags: tuple[tuple[str, str, str], ...] = ()
 
 
 def inject_fault(
@@ -766,21 +998,37 @@ def commit_fault(
         # Someone else's intent: never written over, never restored by us.
         raise LabError("LAB_FAULT_FOREIGN")
     current = deps.flags.read()
-    confirm_all_normal(deps, current)
-    fault = intent.fault
-    method = flagd_method(current.raw, fault.flag)
-    injected = mutate(current.raw, fault)
+    confirm_all_normal(deps, current, whitelist=intent.whitelist)
+    faults = intent.faults
+    if not faults:
+        # v2 without flags (#431): only the intent, no ConfigMap write.
+        checkpoint()
+        with protected():
+            requested = _commit(intent, current, None, deps=deps, ledger=ledger)
+            committed = Committed(None, None, requested, None, None, None)
+            if record is not None:
+                record(committed)
+        return committed
+    methods = [flagd_method(current.raw, fault.flag) for fault in faults]
+    injected = current.raw
+    for fault in faults:
+        injected = mutate(injected, fault)
     original_sha, injected_sha = sha256(current.raw), sha256(injected)
     checkpoint()
     with protected():
         requested = _commit(intent, current, injected, deps=deps, ledger=ledger)
+        first = faults[0]
         committed = Committed(
             original_sha,
             injected_sha,
             requested,
-            fault.flag,
-            method,
-            fault.fault_variant,
+            first.flag,
+            methods[0],
+            first.fault_variant,
+            tuple(
+                (fault.flag, method, fault.fault_variant)
+                for fault, method in zip(faults, methods, strict=True)
+            ),
         )
         if record is not None:
             record(committed)
@@ -790,24 +1038,27 @@ def commit_fault(
 def _commit(
     intent: FaultIntent,
     current: FlagConfig,
-    injected: bytes,
+    injected: bytes | None,
     *,
     deps: LiveDeps,
     ledger: AttemptLedger,
 ) -> datetime:
     root = deps.ledger_root
-    fault = intent.fault
-    original_sha, injected_sha = sha256(current.raw), sha256(injected)
-    ledger.write("flags-original.json", {"raw": current.raw.decode()})
-    ledger.write("flags-injected.json", {"raw": injected.decode()})
+    faults = intent.faults
+    fault = faults[0] if faults else None
+    original_sha = None if injected is None else sha256(current.raw)
+    injected_sha = None if injected is None else sha256(injected)
+    if injected is not None:
+        ledger.write("flags-original.json", {"raw": current.raw.decode()})
+        ledger.write("flags-injected.json", {"raw": injected.decode()})
     requested = deps.clock.now()
     state: dict[str, Any] = dict(
         ledger=str(ledger.directory.resolve()),
-        flag=fault.flag,
-        normal=fault.normal_variant,
-        variant=fault.fault_variant,
-        original=current.raw.decode(),
-        injected=injected.decode(),
+        flag=None if fault is None else fault.flag,
+        normal=None if fault is None else fault.normal_variant,
+        variant=None if fault is None else fault.fault_variant,
+        original=None if injected is None else current.raw.decode(),
+        injected=None if injected is None else injected.decode(),
         planned_at=requested.isoformat(),
         planned_restore_at=None,
         owner=OWNER,
@@ -821,8 +1072,25 @@ def _commit(
         injected_sha256=injected_sha,
         phase="intent",
     )
+    if intent.injectors or intent.also or intent.whitelist is not None:
+        # v2 keys (#431); a v1 intent keeps exactly the F11 key set.
+        state["flags"] = [
+            {"flag": f.flag, "normal": f.normal_variant, "variant": f.fault_variant}
+            for f in faults
+        ]
+        state["injectors"] = [
+            {"kind": item["kind"], "params": dict(item["params"]), "phase": "intent"}
+            for item in intent.injectors
+        ]
     _write_state(root, state, exclusive=True)
-    ledger.event("inject", "intent_written", flag=fault.flag, sha256=injected_sha)
+    ledger.event(
+        "inject",
+        "intent_written",
+        flag=None if fault is None else fault.flag,
+        sha256=injected_sha,
+    )
+    if injected is None:
+        return requested
     # Every ConfigMap write carries a fence of its own (r7).
     deps.flags.replace(current, injected, fence=uuid4().hex)
     live = deps.flags.read()
@@ -837,10 +1105,41 @@ def _commit(
 def await_fault(
     committed: Committed, *, deps: LiveDeps, ledger: AttemptLedger
 ) -> datetime:
-    """The flagd propagation of a committed injection (interruptible)."""
-    effective = await_variant(deps, committed.flag, committed.method, committed.variant)
+    """The flagd propagation of a committed injection (interruptible): the
+    time the last of its flags became effective; the request time when the
+    write moved no flag (v2 without flags)."""
+    pending = committed.flags or (
+        ()
+        if committed.flag is None
+        else ((committed.flag, committed.method, committed.variant),)
+    )
+    if not pending:
+        return committed.requested_at
+    effective = committed.requested_at
+    for flag, method, variant in pending:
+        assert method is not None and variant is not None
+        effective = await_variant(deps, flag, method, variant)
     ledger.event("propagation", "flagd_effective", at=effective.isoformat())
     return effective
+
+
+def mark_injector(root: Path, kind: str, *, phase: str, **fields: Any) -> None:
+    """Record an injector's progress in this attempt's restore intent (v2):
+    its ``phase`` and, for ``otlp_span``, the ``trace_id``/``span_end`` the
+    restore waits on. Protected, written before the lab sees the span."""
+    with protected():
+        state = read_state(root)
+        if state is None:
+            raise LabError("FAULT_STATE_INVALID")
+        matched = [
+            item for item in state.get("injectors") or [] if item.get("kind") == kind
+        ]
+        if not matched:
+            raise LabError("FAULT_STATE_INVALID")
+        for item in matched:
+            item["phase"] = phase
+            item.update(fields)
+        _write_state(root, state, exclusive=False)
 
 
 @dataclass(frozen=True)
@@ -888,6 +1187,17 @@ def _restore(
         or state.get("attempt_id") != attempt_id
     ):
         raise LabError("FAULT_BELONGS_TO_ANOTHER_RUN")
+    injectors = state.get("injectors") or []
+    if not isinstance(injectors, list) or any(
+        not isinstance(item, dict) or item.get("kind") not in INJECTOR_KINDS
+        for item in injectors
+    ):
+        raise LabError("FAULT_STATE_INVALID")
+    if state.get("original") is None:
+        # v2 without flags: nothing in the ConfigMap to put back.
+        return _restore_rest(
+            state, signatures, deps=deps, ledger=ledger, normal_at=None
+        )
     original = str(state["original"]).encode()
     injected = str(state["injected"]).encode()
     live = deps.flags.read()
@@ -921,16 +1231,59 @@ def _restore(
     ):
         raise LabError("FLAG_RESTORE_UNVERIFIED")
     ledger.event("restore", "config_verified", sha256=sha256(after.raw))
-    normal_at = await_variant(
-        deps,
-        str(state["flag"]),
-        flagd_method(original, str(state["flag"])),
-        str(state["normal"]),
-    )
+    moved = state.get("flags") or [{"flag": state["flag"], "normal": state["normal"]}]
+    normal_at = deps.clock.now()
+    for item in moved:
+        normal_at = await_variant(
+            deps,
+            str(item["flag"]),
+            flagd_method(original, str(item["flag"])),
+            str(item["normal"]),
+        )
     state["phase"] = "restored_unwashed"
     _write_state(root, state, exclusive=False)
     ledger.event("restore", "flagd_normal", at=normal_at.isoformat())
-    wash = normal_window(signatures, not_before=normal_at, deps=deps)
+    restored = _restore_rest(
+        state, signatures, deps=deps, ledger=ledger, normal_at=normal_at
+    )
+    assert restored is not None
+    return Restored(sha256(after.raw), normal_at, restored.wash)
+
+
+def _restore_rest(
+    state: dict[str, Any],
+    signatures: Sequence[SignatureRule],
+    *,
+    deps: LiveDeps,
+    ledger: AttemptLedger,
+    normal_at: datetime | None,
+) -> Restored | None:
+    """After the flags (if any): wait out a synthetic span (v2), wash, and
+    only then remove the intent."""
+    root = deps.ledger_root
+    clock = deps.clock
+    for item in state.get("injectors") or []:
+        if item.get("kind") != "otlp_span" or item.get("span_end") is None:
+            continue
+        try:
+            end = datetime.fromisoformat(str(item["span_end"]))
+        except ValueError:
+            raise LabError("FAULT_STATE_INVALID") from None
+        # Jaeger cannot delete a span: it is washed once no question-entry
+        # window of a later attempt can reach it.
+        clear = end + timedelta(seconds=WINDOW_SECONDS)
+        while (left := (clear - clock.now()).total_seconds()) > 0:
+            clock.sleep(min(left, POLL_SECONDS))
+        ledger.event("restore", "span_aged_out", at=clock.now().isoformat())
+    for item in state.get("injectors") or []:
+        item["phase"] = "restored"
+    if state.get("injectors"):
+        _write_state(root, state, exclusive=False)
+    not_before = clock.now() if normal_at is None else normal_at
+    if normal_at is None and not state.get("injectors"):
+        (root / STATE_FILE).unlink()
+        return None
+    wash = normal_window(signatures, not_before=not_before, deps=deps)
     ledger.write(f"wash-{ledger.seq}.json", _raw(wash))
     if not wash.passed:
         ledger.event("wash", "failed", reason=wash.reason)
@@ -938,7 +1291,7 @@ def _restore(
         raise LabError(wash.reason or "NORMAL_WINDOW_UNCONFIRMED")
     (root / STATE_FILE).unlink()
     ledger.event("wash", "passed", window=_window_json(wash.window))
-    return Restored(sha256(after.raw), normal_at, wash)
+    return Restored(str(state.get("original_sha256") or ""), not_before, wash)
 
 
 # -- pre-observation (U1) -----------------------------------------------------
@@ -1976,3 +2329,168 @@ class DeepSeekBalance:
             InvalidOperation,
         ):
             return None
+
+
+# -- offline injector harness (#431 seams revision 2) -------------------------
+
+
+class _OfflineClock:
+    """Business clock that advances on sleep (waits cost nothing offline)."""
+
+    def __init__(self) -> None:
+        self.t = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        self.mono = 0.0
+
+    def now(self) -> datetime:
+        return self.t
+
+    def monotonic(self) -> float:
+        return self.mono
+
+    def sleep(self, seconds: float) -> None:
+        self.t += timedelta(seconds=seconds)
+        self.mono += seconds
+
+
+class _OfflineLab:
+    """An in-memory flagd ConfigMap + daemon + quiet telemetry: flags take
+    effect at once, the lab shows checkout traffic and no error span."""
+
+    def __init__(self, clock: _OfflineClock) -> None:
+        self.clock = clock
+        flags = {
+            fault.flag: {
+                "state": "ENABLED",
+                "variants": (
+                    {"100%": 1, "off": 0}
+                    if fault.fault_variant == "100%"
+                    else {"on": True, "off": False}
+                ),
+                "defaultVariant": "off",
+            }
+            for fault in V2_FAULT_FLAGS.values()
+        }
+        self.original = (json.dumps({"flags": flags}, indent=2) + "\n").encode()
+        self.raw = self.original
+        self.rv = 1
+        self.fence: str | None = None
+
+    def read(self) -> FlagConfig:
+        return FlagConfig(self.raw, "offline-uid", str(self.rv), self.fence)
+
+    def replace(
+        self, current: FlagConfig, new_raw: bytes, *, fence: str | None
+    ) -> FlagConfig:
+        if (current.raw, current.resource_version) != (self.raw, str(self.rv)):
+            raise LabError("FLAG_CAS_CONFLICT")
+        self.raw, self.rv, self.fence = new_raw, self.rv + 1, fence
+        return self.read()
+
+    def resolve(self, flag: str, method: str, timeout: float) -> str | None:
+        return str(_flags(self.raw)[flag]["defaultVariant"])
+
+    def spans(
+        self, service: str, start: datetime, end: datetime, timeout: float
+    ) -> SpanQuery:
+        return SpanQuery((), True)
+
+    def checkout_calls(
+        self, start: datetime, end: datetime, timeout: float
+    ) -> CallCount:
+        return CallCount(10.0, True)
+
+
+class InjectorHarness:
+    """The public offline harness (seams revision 2): the same whitelist,
+    restore intent and restore/wash code the driver uses, over an in-memory
+    lab. ``apply`` writes the intent and makes every injector effective
+    (process-local kinds are effective at once; ``otlp_span`` gets a planned
+    trace id and end); ``interrupt_after_effect`` raises ``InterruptedError``
+    right after, leaving the intent for ``recover``."""
+
+    round_id = "offline"
+    attempt_id = "offline-attempt"
+
+    def __init__(self, state_dir: Path) -> None:
+        self.state_dir = Path(state_dir)
+        self.clock = _OfflineClock()
+        self.lab = _OfflineLab(self.clock)
+        self.interrupt_after_effect = False
+        self.plan: InjectionPlan | None = None
+        self.deps = LiveDeps(
+            clock=self.clock,
+            flags=self.lab,
+            flagd=self.lab,
+            telemetry=self.lab,
+            identity=Unavailable(),
+            ports=Unavailable(),
+            pg=Unavailable(),
+            balance=Unavailable(),
+            investigator=Unavailable(),
+            ledger_root=self.state_dir,
+            evidence_root=self.state_dir / "evidence",
+            recording_root=self.state_dir / "recordings",
+            pg_root=self.state_dir / "pg",
+            scenarios_root=self.state_dir,
+            flagd_url="http://127.0.0.1:0",
+            env=Unavailable(),
+        )
+
+    @property
+    def restore_intent_count(self) -> int:
+        return 0 if self.plan is None else 1 if self.plan.injectors else 0
+
+    def _ledger(self) -> AttemptLedger:
+        return AttemptLedger(self.state_dir / "ledger" / self.attempt_id, self.clock)
+
+    def apply(self, injectors: Sequence[Mapping[str, Any]]) -> InjectionPlan:
+        from types import SimpleNamespace
+
+        items = [
+            SimpleNamespace(kind=i.get("kind"), params=i.get("params"))
+            for i in injectors
+        ]
+        entry = (
+            "alertmanager"
+            if any(i.kind == "alert_delivery" for i in items)
+            else "question"
+        )
+        plan = validate_injectors(entry, items)
+        self.plan = plan
+        self.state_dir.mkdir(parents=True, exist_ok=True)
+        ledger = self._ledger()
+        intent = FaultIntent(
+            self.round_id,
+            self.attempt_id,
+            "offline",
+            "offline",
+            plan.flags[0] if plan.flags else None,
+            also=plan.flags[1:],
+            injectors=plan.injectors,
+            whitelist=V2_FAULT_FLAGS,
+        )
+        committed = commit_fault(intent, deps=self.deps, ledger=ledger)
+        await_fault(committed, deps=self.deps, ledger=ledger)
+        for kind in {item["kind"] for item in plan.injectors}:
+            fields: dict[str, Any] = {}
+            if kind == "otlp_span":
+                fields = {
+                    "trace_id": uuid4().hex,
+                    "span_end": self.clock.now().isoformat(),
+                }
+            mark_injector(self.state_dir, kind, phase="effective", **fields)
+        if self.interrupt_after_effect:
+            raise InterruptedError("interrupt_after_effect")
+        return plan
+
+    def recover(self) -> Restored | None:
+        """Restore every flag (``adFailure`` included), wait out a span, wash,
+        remove the intent; None when there is none."""
+        return restore_fault(
+            self.round_id, self.attempt_id, (), deps=self.deps, ledger=self._ledger()
+        )
+
+    def flags_are_original(self) -> bool:
+        return self.lab.raw == self.lab.original and all(
+            self.lab.resolve(flag, "", 0) == "off" for flag in V2_FAULT_FLAGS
+        )

@@ -28,6 +28,7 @@ from opspilot.evaluation.codec import (
 from opspilot.evaluation.gate import parsed_report
 from opspilot.evaluation.model import (
     Answer,
+    AnswerV2,
     AttemptRecord,
     DeliveredRecord,
     JudgeResult,
@@ -35,11 +36,13 @@ from opspilot.evaluation.model import (
     RunEvaluation,
     ScenarioError,
     ScenarioSpec,
+    ScenarioSpecV2,
     TraceEntry,
     Window,
     canonical_view_hash,
     load_scenarios,
     validate_scenario,
+    validate_scenario_v2,
 )
 from opspilot.evaluation.rounds import (
     REQUIRED_DIMENSIONS,
@@ -86,8 +89,9 @@ class TraceRecord:
 @dataclass(frozen=True)
 class EvaluationCapture:
     manifest: Manifest
-    spec: ScenarioSpec
-    answer: Answer
+    # v1 or, dispatched on ``version``, v2 (#431 S1).
+    spec: ScenarioSpec | ScenarioSpecV2
+    answer: Answer | AnswerV2
     attempt: AttemptRecord
     outcome: IncidentOutcome | None
     report: ReportCapture | None
@@ -109,8 +113,8 @@ class EvaluationCapture:
 @dataclass(frozen=True)
 class AttemptJournal:
     attempt: AttemptRecord
-    spec: ScenarioSpec
-    answer: Answer
+    spec: ScenarioSpec | ScenarioSpecV2
+    answer: Answer | AnswerV2
     started_at: datetime | None = None
 
 
@@ -303,8 +307,8 @@ def _envelope(raw: bytes, schema: str, keys: set[str]) -> dict[str, Any]:
 
 
 def _identity(
-    spec: ScenarioSpec,
-    answer: Answer,
+    spec: ScenarioSpec | ScenarioSpecV2,
+    answer: Answer | AnswerV2,
     attempt: AttemptRecord,
     outcome: IncidentOutcome | None = None,
 ) -> None:
@@ -322,8 +326,14 @@ def _identity(
         raise StorageError("IDENTITY_MISMATCH")
     if attempt.repetition < 1 or not attempt.attempt_id.strip():
         invalid()
+    v2 = isinstance(spec, ScenarioSpecV2)
+    if v2 != isinstance(answer, AnswerV2):
+        invalid()
     try:
-        validate_scenario(spec, answer)
+        if v2:
+            validate_scenario_v2(spec, answer)  # type: ignore[arg-type]
+        else:
+            validate_scenario(spec, answer)  # type: ignore[arg-type]
     except (ValueError, TypeError):
         pass
     else:

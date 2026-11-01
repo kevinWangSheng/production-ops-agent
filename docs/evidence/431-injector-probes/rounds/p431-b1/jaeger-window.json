@@ -1,0 +1,32 @@
+{
+  "dv2-0b0001": {
+    "ad": {
+      "complete": true,
+      "error_spans": 0,
+      "operations": {}
+    },
+    "checkout": {
+      "complete": true,
+      "error_spans": 0,
+      "operations": {}
+    },
+    "checkout_calls": {
+      "complete": true,
+      "value": 86.23383115665814
+    },
+    "frontend": {
+      "complete": true,
+      "error_spans": 0,
+      "operations": {}
+    },
+    "payment": {
+      "complete": true,
+      "error_spans": 0,
+      "operations": {}
+    },
+    "window": [
+      "2026-11-01T10:02:43.489863+00:00",
+      "2026-11-01T10:07:43.489863+00:00"
+    ]
+  }
+}

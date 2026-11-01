@@ -42,6 +42,7 @@ from opspilot.acceptance import IncidentOutcome
 from opspilot.evaluation import (
     REQUIRED_DIMENSIONS,
     Answer,
+    AnswerV2,
     ArtifactRef,
     AttemptJournal,
     AttemptRecord,
@@ -54,6 +55,7 @@ from opspilot.evaluation import (
     RoundCapture,
     ScenarioError,
     ScenarioSpec,
+    ScenarioSpecV2,
     SignatureRule,
     StorageError,
     TraceRecord,
@@ -62,6 +64,7 @@ from opspilot.evaluation import (
     evidence_from_recording,
     load_recording,
     load_scenarios,
+    load_scenarios_v2,
     manifest_hash,
     write_attempt,
     write_round,
@@ -70,12 +73,16 @@ from opspilot.evaluation import (
 from opspilot.observation.release_policy import sha256
 from opspilot.tools.executor import QueryScope
 from opspilot.tools.otel_demo import OtelDemoConfig
+from scripts.eval_live_inject import ModelTransportFault as ModelTransportFault
 from scripts.eval_live_lab import (
     _STOP,
     SOURCE_QUERY,
+    UNREACHABLE_PORT,
+    V2_FAULT_FLAGS,
     AttemptLedger,
     Committed,
     FaultIntent,
+    InjectionPlan,
     Interrupted,
     LabError,
     LiveDeps,
@@ -96,6 +103,7 @@ from scripts.eval_live_lab import (
     fault_guard,
     handle_signal,
     interrupt_scope,
+    mark_injector,
     normal_window,
     observation_json,
     protected,
@@ -103,8 +111,10 @@ from scripts.eval_live_lab import (
     request_stop,
     restore_fault,
     stop_requested,
+    validate_injectors,
     write_private,
 )
+from scripts.eval_live_lab import InjectorHarness as InjectorHarness
 
 ROOT = Path(__file__).resolve().parents[1]
 ROUND_PATTERN = r"[a-z0-9][a-z0-9.-]{0,62}"
@@ -118,9 +128,26 @@ Status = Literal["ran", "setup_failed", "aborted", "not_started"]
 
 @dataclass(frozen=True)
 class Slot:
-    spec: ScenarioSpec
-    answer: Answer
+    spec: ScenarioSpec | ScenarioSpecV2
+    answer: Answer | AnswerV2
     repetition: int
+    # v2 only (#431): the validated injectors; None for a v1 slot.
+    plan: InjectionPlan | None = None
+
+    @property
+    def scenario_id(self) -> str:
+        return self.spec.scenario_id
+
+    @property
+    def restore_intent_count(self) -> int:
+        """v2: one shared restore intent per attempt; v1: one per fault."""
+        if self.plan is not None:
+            return self.plan.restore_intent_count
+        return 1 if getattr(self.spec, "kind", None) == "fault" else 0
+
+
+def is_v2(slot: Slot) -> bool:
+    return slot.plan is not None
 
 
 @dataclass(frozen=True)
@@ -148,6 +175,10 @@ class InvestigationRequest:
     manifest: Manifest
     # The Run must be submitted by then (U1 freshness, Q8); later is stale.
     submit_not_after: datetime | None = None
+    # v2 (#431): the attempt's injectors (source/model/alert are applied by
+    # the investigator, in-process) and the first alert episode's startsAt.
+    plan: InjectionPlan | None = None
+    alert_starts_at: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -168,6 +199,9 @@ class InvestigationResult:
     delivered: Mapping[str, DeliveredRecord] = field(default_factory=dict)
     authorized: Mapping[str, Window] = field(default_factory=dict)
     delivery_records: Mapping[str, bytes] = field(default_factory=dict)
+    # v2 (#431 S5): ``runs/<attempt_id>/intake.json`` as the investigator saw
+    # the intake (deliveries and PG counts); None for v1.
+    intake: Mapping[str, Any] | None = None
 
 
 @dataclass
@@ -313,15 +347,24 @@ def build_manifest(
 
     commit = None if provenance is None else provenance.commit
     clean = provenance is not None and provenance.clean
+    # v2 (#431 S2): the round's one binding class decides the registry
+    # (an unreachable source changes the target) and the scope policy.
+    entry, source = round_binding(slots)
+    if source != "none":
+        from scripts.eval_live_inject import unreachable_config
+
+        config = unreachable_config(config or OtelDemoConfig(), source)
     registrations = otel_demo.otel_demo_registrations(config)
     versions = otel_demo.otel_demo_versions()
     specs = sorted({(s.spec.scenario_id, s.spec.version) for s in slots})
     scenario_files = [
-        scenarios_root / sid / name
+        scenario_dir(scenarios_root, sid) / name
         for sid, _version in specs
         for name in ("scenario.json",)
     ]
-    answer_files = [scenarios_root / sid / "answer.json" for sid, _version in specs]
+    answer_files = [
+        scenario_dir(scenarios_root, sid) / "answer.json" for sid, _version in specs
+    ]
     dims: dict[str, DimensionValue] = {
         "code": DimensionValue("version", commit, None)
         if commit and clean
@@ -339,7 +382,9 @@ def build_manifest(
         "registry": hashed(registry_hash(registrations.tools, registrations.targets)),
         # The per-Run scope policy without Run identity (Q1); a claimed
         # scope whose policy differs fails check_recording_binding.
-        "permissions": hashed(scope_policy_hash(template_scope(config))),
+        "permissions": hashed(
+            scope_policy_hash(template_scope(config, alert=entry == "alertmanager"))
+        ),
         "profile": DimensionValue("version", "otel-demo", None),
         "adapter": hashed(_file_hash(ROOT / "scripts/eval_live.py")),
         "evaluator": hashed(
@@ -361,13 +406,57 @@ def build_manifest(
         "seed": none("fixed scenario-major order, no randomness"),
         "command": hashed(canonical_hash(list(command))),
         "clock_policy": DimensionValue(
-            "version", "event-clock/frozen-end-real-monotonic", None
+            "version",
+            ALERT_CLOCK_POLICY
+            if entry == "alertmanager"
+            else "event-clock/frozen-end-real-monotonic",
+            None,
         ),
         "runbook": none("no approved knowledge revision is sent into the Run"),
         "dataset": dataset_dimension(scenarios_root),
     }
     assert set(dims) == set(REQUIRED_DIMENSIONS)
     return Manifest(round_id, dims)
+
+
+ALERT_CLOCK_POLICY = "alert-frame/received-at/event-clock"
+
+
+def is_v2_root(scenarios_root: Path) -> bool:
+    """A v2 dataset root: at least one group directory (``dataset_dimension``
+    refuses a root with only one of them)."""
+    from opspilot.evaluation.model import DATASET_GROUPS
+
+    return any((scenarios_root / g).is_dir() for g in DATASET_GROUPS)
+
+
+def scenario_dir(scenarios_root: Path, scenario_id: str) -> Path:
+    """A scenario's directory: ``<root>/<id>`` (v1) or ``<root>/<group>/<id>``."""
+    from opspilot.evaluation.model import DATASET_GROUPS
+
+    for group in DATASET_GROUPS:
+        candidate = scenarios_root / group / scenario_id
+        if candidate.is_dir():
+            return candidate
+    return scenarios_root / scenario_id
+
+
+def validate_round_bindings(slots: Sequence[Slot]) -> None:
+    """Seams revision 2: ``LabError`` with ``.code == "ROUND_BINDING_MIXED"``
+    when the slots span more than one binding class."""
+    round_binding(slots)
+
+
+def round_binding(slots: Sequence[Slot]) -> tuple[str, str]:
+    """The round's binding class (#431 S2): (entry, unreachable source or
+    "none"); v1 slots are ("question", "none"). Mixed: ``ROUND_BINDING_MIXED``."""
+    classes = {
+        ("question", "none") if slot.plan is None else slot.plan.binding_class
+        for slot in slots
+    }
+    if len(classes) > 1:
+        raise LabError("ROUND_BINDING_MIXED")
+    return next(iter(classes), ("question", "none"))
 
 
 def dataset_dimension(scenarios_root: Path) -> DimensionValue:
@@ -399,10 +488,14 @@ def dataset_dimension(scenarios_root: Path) -> DimensionValue:
     return DimensionValue("hash", f"dev-v2:{dataset_tree_hash(scenarios_root)}", None)
 
 
-def template_scope(config: OtelDemoConfig | None = None) -> QueryScope:
+def template_scope(
+    config: OtelDemoConfig | None = None, *, alert: bool = False
+) -> QueryScope:
     """A QueryScope as ``otel_demo_executor_factory`` issues one for a fresh
-    (non-alert) Run, with placeholder Run identity: only its policy part,
-    which ``scope_policy_hash`` keeps, is meaningful (public, interface r5)."""
+    (non-alert) Run -- or, with ``alert``, for an alert Run, whose policy
+    states a default query window (#431 S2) -- with placeholder Run identity:
+    only its policy part, which ``scope_policy_hash`` keeps, is meaningful
+    (public, interface r5)."""
     from datetime import timezone
 
     from opspilot.tools import otel_demo
@@ -425,7 +518,9 @@ def template_scope(config: OtelDemoConfig | None = None) -> QueryScope:
         target_ids=frozenset({otel_demo.TARGET_ID}),
         tool_names=frozenset(item.name for item in registrations.tools),
         window=ToolWindow(end - timedelta(seconds=otel_demo.OBSERVATION_SECONDS), end),
-        default_query_window=None,
+        default_query_window=ToolWindow(end - timedelta(hours=1), end)
+        if alert
+        else None,
         deadline=end,
     )
 
@@ -436,6 +531,12 @@ def template_scope(config: OtelDemoConfig | None = None) -> QueryScope:
 def fault_signatures(deps: LiveDeps) -> tuple[SignatureRule, ...]:
     """The distinct signatures of every fault scenario ("three classes")."""
     rules: dict[str, SignatureRule] = {}
+    if is_v2_root(deps.scenarios_root):
+        # v2 (#431): every non-null signature, whatever the category.
+        for _spec, answer2 in load_scenarios_v2(deps.scenarios_root):
+            if answer2.signature is not None:
+                rules[answer2.signature.rule_id] = answer2.signature
+        return tuple(rules[key] for key in sorted(rules))
     for spec, answer in load_scenarios(deps.scenarios_root):
         if spec.kind == "fault" and answer.signature is not None:
             rules[answer.signature.rule_id] = answer.signature
@@ -482,14 +583,18 @@ def preflight(config: RoundConfig, deps: LiveDeps) -> str | None:
                 return "ENV_UNCONFIRMED"
         if deps.ports.in_use(config.pg_port):
             return "PG_PORT_IN_USE"
+        v2 = any(is_v2(slot) for slot in config.slots)
         confirm_all_normal(
-            deps, deps.flags.read(), budget_seconds=PREFLIGHT_FLAG_SECONDS
+            deps,
+            deps.flags.read(),
+            budget_seconds=PREFLIGHT_FLAG_SECONDS,
+            whitelist=V2_FAULT_FLAGS if v2 else None,
         )
-        for slot in config.slots:
-            if slot.spec.kind == "fault":
-                injected = slot.answer.injected
-                assert injected is not None
-                fault_for(injected.flag, injected.variant)
+        check_slots(config.slots)
+        if any(s.plan is not None and s.plan.source for s in config.slots) and (
+            deps.ports.in_use(UNREACHABLE_PORT)
+        ):
+            return "SOURCE_PORT_IN_USE"
         # Everything append_run_start checks, before begin_round's external
         # call: after it, a batch log failure is no longer a refusal.
         check_run_start(deps.ledger_root, config.round_id)
@@ -500,6 +605,20 @@ def preflight(config: RoundConfig, deps: LiveDeps) -> str | None:
         # opened: nothing was touched, so this is a refusal (exit 3).
         return "LAB_LEDGER_UNAVAILABLE"
     return None
+
+
+def check_slots(slots: Sequence[Slot]) -> None:
+    """Every slot's injection is whitelisted (v1: its one flag; v2: the
+    whole injector list) and the round has one binding class."""
+    for slot in slots:
+        if isinstance(slot.spec, ScenarioSpecV2):
+            assert isinstance(slot.answer, AnswerV2)
+            validate_injectors(slot.spec.entry, slot.answer.injectors)
+        elif slot.spec.kind == "fault":
+            injected = slot.answer.injected  # type: ignore[union-attr]
+            assert injected is not None
+            fault_for(injected.flag, injected.variant)
+    round_binding(slots)
 
 
 def _source_record(deps: LiveDeps) -> dict[str, Any] | None:
@@ -952,6 +1071,9 @@ def _run_slot(
         summaries[attempt_id] = replace(
             summary_ref, path=f"runs/{attempt_id}/summary.json"
         )
+        intake = None if state.result is None else state.result.intake
+        if intake is not None and not _write_intake(run_dir, intake):
+            state.evidence_failed = True
         out.summary = {
             "path": f"runs/{attempt_id}/summary.json",
             "sha256": summary_ref.sha256,
@@ -1065,8 +1187,13 @@ def _guarded(
     state.pg = deps.pg.start(directory, config.pg_port)
     ledger.event("pg", "started", port=config.pg_port)
     submit_not_after: datetime | None
-    if spec.kind == "fault":
-        injected = answer.injected
+    alert_starts_at: datetime | None = None
+    if slot.plan is not None:
+        gate, submit_not_after, alert_starts_at = _setup_v2(
+            config, deps, slot, state, signatures
+        )
+    elif spec.kind == "fault":  # type: ignore[union-attr]
+        injected = answer.injected  # type: ignore[union-attr]
         assert injected is not None and answer.signature is not None
         state.stage = "inject"
         intent = FaultIntent(
@@ -1123,6 +1250,8 @@ def _guarded(
         pre_observation=gate,
         manifest=round_state["manifest"],
         submit_not_after=submit_not_after,
+        plan=slot.plan,
+        alert_starts_at=alert_starts_at,
     )
     ledger.event("investigate", "started")
     checkpoint()
@@ -1159,12 +1288,203 @@ def _guarded(
         )
     elif result.error is not None:
         state.status, state.reason = "aborted", result.error
+    elif handed_off_without_run(result):
+        # #431 S4: the intake handed the alert to a human without a Run, so
+        # there is no model call and nothing to record.
+        state.status = "ran"
     elif result.recording_ref is None or result.recording_error is not None:
         state.status = "aborted"
         state.reason = result.recording_error or "RECORDING_INCOMPLETE"
     else:
         state.status = "ran"
     ledger.event("investigate", "finished", status=state.status, reason=state.reason)
+
+
+def write_intake(path: Path, payload: Mapping[str, Any]) -> None:
+    """Seams revision 2: write ``intake.json`` (section 5 shape) at ``path``,
+    creating its parent directory."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(dict(payload), indent=2, sort_keys=True) + "\n")
+
+
+def validate_recorded_model_error(entry: Mapping[str, Any]) -> None:
+    """Seams revision 2 / section 0: a recorded model error is whole -- a
+    3-digit non-2xx ``status``, the complete ``response`` bytes, and the
+    parent error ``MODEL_UNAVAILABLE`` -- else ``StorageError`` (a missing
+    body is ``RECORDING_INCOMPLETE``, the rest ``SCHEMA_INVALID``)."""
+    import re as _re
+
+    status = entry.get("status")
+    if not isinstance(status, str) or not _re.fullmatch(r"[1-5][0-9]{2}", status):
+        raise StorageError("SCHEMA_INVALID")
+    if 200 <= int(status) < 300:
+        raise StorageError("SCHEMA_INVALID")
+    response = entry.get("response")
+    if response is None:
+        raise StorageError("RECORDING_INCOMPLETE")
+    if type(response) is not bytes:
+        raise StorageError("SCHEMA_INVALID")
+    if entry.get("error") != "MODEL_UNAVAILABLE":
+        raise StorageError("SCHEMA_INVALID")
+
+
+#: The namespace an ``unresolved_labels`` request uses when none is given.
+UNRESOLVED_NAMESPACE = "otel-demo-unregistered"
+
+
+def build_alertmanager_request(
+    *,
+    pattern: str | Mapping[str, Any],
+    fingerprint: str,
+    starts_at: datetime,
+    token: str,
+    namespace: str | None = None,
+) -> dict[str, Any]:
+    """Seams revision 2: the first firing delivery of ``pattern`` as
+    ``{"path", "headers", "body"}``; headers are exactly Authorization and
+    Content-Type, the body is the v4 webhook dict (it never holds the
+    token)."""
+    from scripts import eval_live_inject
+
+    params: dict[str, Any] = (
+        {"pattern": pattern} if isinstance(pattern, str) else dict(pattern)
+    )
+    if params["pattern"] == "unresolved_labels":
+        params.setdefault("namespace", namespace or UNRESOLVED_NAMESPACE)
+    body = eval_live_inject.alert_body(
+        params,
+        status="firing",
+        fingerprint=fingerprint,
+        starts_at=starts_at,
+        ends_at=None,
+    )
+    return {
+        "path": eval_live_inject.INTAKE_PATH,
+        "headers": {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+        },
+        "body": body,
+    }
+
+
+def _write_intake(run_dir: Path, intake: Mapping[str, Any]) -> bool:
+    """``runs/<attempt_id>/intake.json`` (#431 S5), public, created once."""
+    return write_public_exclusive(run_dir, ("intake.json",), intake)
+
+
+def handed_off_without_run(result: InvestigationResult) -> bool:
+    """#431 S4: the first delivery was ``handoff_created`` and no Run exists."""
+    intake = result.intake
+    if (
+        result.product_run_id is not None
+        or result.recording_ref is not None
+        or not isinstance(intake, Mapping)
+    ):
+        return False
+    deliveries = intake.get("deliveries") or []
+    counts = intake.get("counts") or {}
+    return (
+        bool(deliveries)
+        and deliveries[0].get("outcome") == "handoff_created"
+        and counts.get("runs") == 0
+    )
+
+
+def _setup_v2(
+    config: RoundConfig,
+    deps: LiveDeps,
+    slot: Slot,
+    state: _Attempt,
+    signatures: tuple[SignatureRule, ...],
+) -> tuple[PreObservation, datetime | None, datetime | None]:
+    """A v2 attempt's setup (#431): one restore intent for every injector,
+    the flags in one write, the pre-observation, then the synthetic span.
+    Returns the gate, the submission deadline and the first episode's
+    startsAt (alert entry)."""
+    plan = slot.plan
+    assert plan is not None
+    ledger, clock = state.ledger, deps.clock
+    answer = slot.answer
+    if not plan.injectors:
+        # A v2 scenario without injectors: the v1 normal path, all four flags.
+        state.stage = "flags_baseline"
+        confirmed = confirm_all_normal(
+            deps, deps.flags.read(), whitelist=V2_FAULT_FLAGS
+        )
+        state.stage = "pre_observation"
+        gate = normal_window(signatures, not_before=confirmed, deps=deps)
+        state.gate = gate
+        with protected():
+            ledger.write("pre-observation.json", _raw_observation(gate))
+        if not gate.passed or gate.window is None:
+            raise LabError(gate.reason or "NORMAL_WINDOW_UNCONFIRMED")
+        return gate, gate.window.end + FRESHNESS, None
+    state.stage = "inject"
+    intent = FaultIntent(
+        config.round_id,
+        state.record.attempt_id,
+        config.holder,
+        config.batch,
+        plan.flags[0] if plan.flags else None,
+        also=plan.flags[1:],
+        injectors=plan.injectors,
+        whitelist=V2_FAULT_FLAGS,
+    )
+    checkpoint()  # before the injection
+    state.injected = True
+
+    def committed(fault: Committed) -> None:
+        state.marks["requested_at"] = fault.requested_at.timestamp()
+
+    result = commit_fault(intent, deps=deps, ledger=ledger, record=committed)
+    effective_at = await_fault(result, deps=deps, ledger=ledger)
+    state.marks["effective_at"] = effective_at.timestamp()
+    if plan.flags:
+        mark_injector(deps.ledger_root, "flagd", phase="effective")
+    state.stage = "pre_observation"
+    if answer.signature is not None:
+        gate = fault_gate(answer.signature, confirmed_at=effective_at, deps=deps)
+    else:
+        gate = normal_window(signatures, not_before=effective_at, deps=deps)
+    state.gate = gate
+    with protected():
+        ledger.write("pre-observation.json", _raw_observation(gate))
+    if not gate.passed:
+        raise LabError(
+            gate.reason
+            or (
+                "FAULT_NOT_OBSERVED"
+                if answer.signature
+                else "NORMAL_WINDOW_UNCONFIRMED"
+            )
+        )
+    if answer.signature is not None:
+        newest = max(span.start for span in gate.matched)
+        submit_not_after: datetime | None = newest + FRESHNESS
+    else:
+        assert gate.window is not None
+        submit_not_after = gate.window.end + FRESHNESS
+    if plan.span is not None:
+        from scripts.eval_live_inject import OtlpSpanWriter, write_span
+
+        state.stage = "otlp_span"
+        writer = getattr(deps, "span_writer", None) or OtlpSpanWriter()
+
+        def planned(span: Any) -> None:
+            mark_injector(
+                deps.ledger_root,
+                "otlp_span",
+                phase="intent",
+                trace_id=span.trace_id,
+                span_end=span.end.isoformat(),
+            )
+
+        span = write_span(plan.span, writer=writer, clock=clock, on_planned=planned)
+        mark_injector(deps.ledger_root, "otlp_span", phase="effective")
+        ledger.event("otlp_span", "visible", trace_id=span.trace_id)
+    alert_starts_at = effective_at if plan.entry == "alertmanager" else None
+    return gate, submit_not_after, alert_starts_at
 
 
 def _closure(
@@ -1339,7 +1659,7 @@ def _write_summary(
             result.traces,
             dict(result.usage),
         )
-        if state.status == "ran":
+        if state.status == "ran" and result.recording_ref is not None:
             try:
                 live = _verified_evidence(config, deps, state, manifest)
             except (StorageError, OSError, KeyError, TypeError, ValueError) as exc:
@@ -1585,10 +1905,25 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--probe", action="store_true")
     parser.add_argument("--verify-replay", action="store_true")
     parser.add_argument("--attempt")
+    # #431: a v2 dataset root such as evals/datasets/dev-v2 (relative to the
+    # repository); default the v1 evals/scenarios.
+    parser.add_argument("--scenario-root")
     return parser
 
 
+def scenario_root_arg(value: str | None) -> Path:
+    """``--scenario-root``: a directory under the repository's ``evals/``."""
+    if value is None:
+        return ROOT / "evals/scenarios"
+    path = (ROOT / value).resolve()
+    if not path.is_dir() or not path.is_relative_to((ROOT / "evals").resolve()):
+        raise _Usage("--scenario-root must be a directory under evals/")
+    return path
+
+
 def plan_slots(scenarios_root: Path, wanted: Sequence[str], n: int) -> tuple[Slot, ...]:
+    if is_v2_root(scenarios_root):
+        return _plan_v2(scenarios_root, wanted, n)
     loaded = {
         spec.scenario_id: (spec, answer)
         for spec, answer in load_scenarios(scenarios_root)
@@ -1614,6 +1949,63 @@ def plan_slots(scenarios_root: Path, wanted: Sequence[str], n: int) -> tuple[Slo
         for repetition in range(1, n + 1):
             slots.append(Slot(spec, answer, repetition))
     return tuple(slots)
+
+
+def _wanted(ids: Sequence[str], wanted: Sequence[str]) -> list[str]:
+    if list(wanted) == ["all"]:
+        return sorted(ids)
+    if not wanted or "all" in wanted:
+        raise _Usage("--scenario all cannot be mixed with IDs")
+    chosen = sorted(set(wanted))
+    if len(chosen) != len(wanted) or any(i not in ids for i in chosen):
+        raise _Usage("unknown or repeated scenario")
+    return chosen
+
+
+def _plan_v2(scenarios_root: Path, wanted: Sequence[str], n: int) -> tuple[Slot, ...]:
+    """v2 slots (#431): ``load_scenarios_v2`` (``DATASET_INCOMPLETE`` for a
+    root with one group), each scenario's injectors validated, one binding
+    class per round; a refusal is a usage error carrying the code."""
+    from opspilot.evaluation.model import DATASET_GROUPS
+
+    if not all((scenarios_root / g).is_dir() for g in DATASET_GROUPS):
+        missing = sorted(g for g in DATASET_GROUPS if not (scenarios_root / g).is_dir())
+        raise ScenarioError(f"DATASET_INCOMPLETE:{','.join(missing)}")
+    loaded = {
+        spec.scenario_id: (spec, answer)
+        for spec, answer in load_scenarios_v2(scenarios_root)
+    }
+    slots = []
+    for scenario_id in _wanted(list(loaded), wanted):
+        spec, answer = loaded[scenario_id]
+        try:
+            plan = validate_injectors(spec.entry, answer.injectors)
+        except LabError as exc:
+            raise _Usage(exc.code) from None
+        for repetition in range(1, n + 1):
+            slots.append(Slot(spec, answer, repetition, plan))
+    try:
+        round_binding(slots)
+    except LabError as exc:
+        raise _Usage(exc.code) from None
+    return tuple(slots)
+
+
+def _dry_slot(slot: Slot) -> dict[str, Any]:
+    if slot.plan is not None:
+        return {
+            "scenario_id": slot.spec.scenario_id,
+            "repetition": slot.repetition,
+            "entry": slot.plan.entry,
+            "injectors": sorted({item["kind"] for item in slot.plan.injectors}),
+        }
+    injected = slot.answer.injected  # type: ignore[union-attr]
+    return {
+        "scenario_id": slot.spec.scenario_id,
+        "repetition": slot.repetition,
+        "kind": slot.spec.kind,  # type: ignore[union-attr]
+        "flag": None if injected is None else injected.flag,
+    }
 
 
 def _final(result: RoundResult) -> int:
@@ -1812,7 +2204,9 @@ def _main(argv: list[str], deps: LiveDeps | None) -> int:
             ):
                 raise _Usage("--pg-port is required")
             scenarios_root = (
-                deps.scenarios_root if deps is not None else ROOT / "evals/scenarios"
+                deps.scenarios_root
+                if deps is not None
+                else scenario_root_arg(args.scenario_root)
             )
             try:
                 slots = plan_slots(scenarios_root, args.scenario, args.n)
@@ -1826,17 +2220,7 @@ def _main(argv: list[str], deps: LiveDeps | None) -> int:
         document = {
             "round": args.round,
             "status": "dry_run",
-            "slots": [
-                {
-                    "scenario_id": s.spec.scenario_id,
-                    "repetition": s.repetition,
-                    "kind": s.spec.kind,
-                    "flag": None
-                    if s.answer.injected is None
-                    else s.answer.injected.flag,
-                }
-                for s in slots
-            ],
+            "slots": [_dry_slot(s) for s in slots],
             "evidence": f"docs/evidence/eval/{args.round}/",
             "ledger": f"tmp/lab-ledgers/{args.round}/",
         }
@@ -1851,8 +2235,18 @@ def _main(argv: list[str], deps: LiveDeps | None) -> int:
     if deps is None:
         try:
             # Recovery needs the lab seams only, never model credentials (r10).
+            extra: dict[str, Any] = {}
+            if args.scenario_root is not None:
+                root = scenario_root_arg(args.scenario_root)
+                extra = {
+                    "scenarios_root": root,
+                    "v2_probe": args.probe and is_v2_root(root),
+                }
             deps = real_deps(
-                args.flagd_url, args.round, probe=args.probe or args.recover
+                args.flagd_url,
+                args.round,
+                probe=args.probe or args.recover,
+                **extra,
             )
         except (LabError, OSError) as exc:
             code = exc.code if isinstance(exc, LabError) else "ENV_UNCONFIRMED"
@@ -1871,7 +2265,14 @@ def _main(argv: list[str], deps: LiveDeps | None) -> int:
         from scripts.eval_live_probe import run_probe
 
         probe = RoundConfig(
-            args.round, slots, args.holder, args.batch, 0, None, tuple(argv), 1
+            args.round,
+            slots,
+            args.holder,
+            args.batch,
+            args.pg_port or 0,
+            None,
+            tuple(argv),
+            1,
         )
         return _dispatch(args.round, live, lambda: run_probe(probe, live))
     config = RoundConfig(
@@ -1887,7 +2288,14 @@ def _main(argv: list[str], deps: LiveDeps | None) -> int:
     return _dispatch(args.round, live, lambda: run_round(config, live))
 
 
-def real_deps(flagd_url: str, round_id: str, *, probe: bool = False) -> LiveDeps:
+def real_deps(
+    flagd_url: str,
+    round_id: str,
+    *,
+    probe: bool = False,
+    scenarios_root: Path | None = None,
+    v2_probe: bool = False,
+) -> LiveDeps:
     """The only constructor of lab-touching adapters (never used offline).
 
     ``probe`` (r8) builds the lab seams only: no credential file is read and
@@ -1913,6 +2321,7 @@ def real_deps(flagd_url: str, round_id: str, *, probe: bool = False) -> LiveDeps
     from scripts.f11_u2_harness import resolve_ledger_root
 
     clock = SystemClock()
+    root = ROOT / "evals/scenarios" if scenarios_root is None else scenarios_root
     if probe:
         from scripts.eval_live_lab import ProbeEnvChecker, Unavailable
 
@@ -1923,14 +2332,15 @@ def real_deps(flagd_url: str, round_id: str, *, probe: bool = False) -> LiveDeps
             telemetry=LabTelemetry(clock),
             identity=KindLabIdentity(),
             ports=SocketPortProbe(),
-            pg=Unavailable(),
+            # A v2 probe starts the attempt PG for alert_delivery (#431 §7).
+            pg=LocalPgLauncher() if v2_probe else Unavailable(),
             balance=Unavailable(),
             investigator=Unavailable(),
             ledger_root=resolve_ledger_root(ROOT),
             evidence_root=ROOT / "docs/evidence/eval",
             recording_root=ROOT / "tmp/eval",
             pg_root=ROOT / "tmp/eval-live",
-            scenarios_root=ROOT / "evals/scenarios",
+            scenarios_root=root,
             flagd_url=flagd_url,
             env=ProbeEnvChecker(),
         )
@@ -1949,7 +2359,7 @@ def real_deps(flagd_url: str, round_id: str, *, probe: bool = False) -> LiveDeps
         evidence_root=ROOT / "docs/evidence/eval",
         recording_root=ROOT / "tmp/eval",
         pg_root=ROOT / "tmp/eval-live",
-        scenarios_root=ROOT / "evals/scenarios",
+        scenarios_root=root,
         flagd_url=flagd_url,
         env=LabEnvChecker(),
         provenance=GitProvenance(ROOT),
