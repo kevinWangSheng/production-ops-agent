@@ -174,7 +174,7 @@ Docker 宿主 daemon 的 json-file 轮转配置；`web/service.py:1579,1659` 的
 
 | 编号 | 默认 | 理由 |
 |---|---|---|
-| OB-R1 | 表 `opspilot_trace_outbox`：`entry_id bigint identity`、`idempotency_key text UNIQUE`、`incident_id`、`run_id`（复盘行为空）、`kind`（`run_state|model_step|tool_result|generation`）、`payload jsonb`（只有 OB-Q1 白名单键，CHECK `octet_length<=4096`）、`state pending|delivered|dropped`、`attempts`、`next_attempt_at`、`drop_reason`、`created_at clock_timestamp()`；索引 `(state,next_attempt_at)` | 复用领域 DTO 状态名；载荷上限防大行 |
+| OB-R1 | 表 `opspilot_trace_outbox`：`entry_id bigint identity`、`idempotency_key text UNIQUE`、`incident_id`、`run_id`（复盘行为空）、`kind`（`run_state|model_step|tool_result|generation`）、`payload jsonb`（只有 OB-Q1 白名单键，CHECK `octet_length(payload::text)<=4096`）、`state pending|delivered|dropped`、`attempts`、`next_attempt_at`、`drop_reason`、`created_at clock_timestamp()`；索引 `(state,next_attempt_at)` | 复用领域 DTO 状态名；载荷上限防大行 |
 | OB-R2 | 模型步、工具结果、复盘生成 attempt 在 `commit_step`/`commit_tool`/复盘提交的同一事务由应用层插行，载荷由一个函数从类型化字段按白名单构造（不读 `response` 整段）；Run 状态变化用 `opspilot_runs` 上 `AFTER UPDATE OF state` 触发器插行（非 `SECURITY DEFINER`，web、worker 都要 outbox 列级 INSERT） | 覆盖散在三处、两个角色的状态写；白名单集中一处便于复核 |
 | OB-R3 | `idempotency_key` = `kind:subject_id:序号`（例 `model_step:<step_id>`、`run_state:<run_id>:<control_generation>:<state>`），`ON CONFLICT DO NOTHING`；OTLP trace_id = sha256(run_id) 前 16 字节，span_id = sha256(idempotency_key) 前 8 字节 | C3 §11「至少一次、幂等身份」；LangSmith 是否去重重复 span 未确认，PR-2 实测 |
 | OB-R4 | worker 进程内一个投递线程，只在 `OPSPILOT_TRACE=outbox` 且 OB-Q2 条件满足时投递；`SELECT … FOR UPDATE SKIP LOCKED LIMIT 100` 领取；池下限 `capacity + 3`，Compose `OPSPILOT_POOL_MAX_SIZE` 4→5 | key 只在 worker；不新增运行时 |
@@ -193,6 +193,7 @@ Docker 宿主 daemon 的 json-file 轮转配置；`web/service.py:1579,1659` 的
 写入时自定（lead，一行理由）：
 
 - r3-L4 终态时间（#434 bot P2 采纳）：OB-R1 加列 `finalized_at timestamptz NULL`，state 变为 `delivered`/`dropped` 时同一 UPDATE 写入 `clock_timestamp()`（CHECK：终态必须有 `finalized_at`，pending 必须为空）；7 天清理对终态行按 `finalized_at`、对未开导出时的 pending 行按 `created_at` 计算。理由：Q16「投递成功或丢弃 7 天后」需要持久化的转移时间，仅有 `created_at` 时 worker 重启后无法正确计算；随 0024 一次建好，PR-2 不再加迁移。
+- r3-L5 未投递的 pending 过期（#434 bot P2 采纳）：「投递未在运行」= 开关关闭，或 `OPSPILOT_TRACE=outbox` 但 OB-Q2 前提缺失而 fail-closed；两种情况下 pending 行都按 `created_at` 满 7 天删除（`purge_expired(export_enabled=False)` 即「投递未在运行」）。投递在运行时 pending 行经重试转 `dropped` 再按 r3-L4 过期。理由：否则配置错误会让 pending 标识无限期留存，违反 Q16 的 7 天本地保留。
 - r3-L1 清理线程归属：Q16 写「由投递线程删除」，R8 要求开关关闭也清理，而 PR-1 不投递。定为 worker 内一个 outbox 维护线程：PR-1 只做 7 天清理（不联网），PR-2 在同一线程加投递；池 `capacity + 3` 与 Compose 4→5 随 PR-1 落地。理由：删除者始终是 worker 的这一个线程，满足 Q16 与 R8，PR-2 不再改池。
 - r3-L2 钉值：`tests/acceptance/test_347_release_reframe_input.py` 头版本 `0023_retention_raw_cleanup`→`0024_*` 与 `RUNTIME_GRANTS` sha256 指纹（预审 :93），以及预审 :94 列出的非验收层头版本钉值与 Compose 池钉值，属每次加迁移的例行钉值更新，不算削弱验收（0022、0023 的 PR 同样改过）。
 
