@@ -410,9 +410,10 @@ class OutboxStore(_StoreBase):
             if not rows:
                 return []
             ids = [row["entry_id"] for row in rows]
+            # attempts as counted by this claim (the UPDATE's RETURNING row)
             attempts = {
-                row["entry_id"]: int(row["attempts"])
-                for row in conn.execute(
+                updated["entry_id"]: int(updated["attempts"])
+                for updated in conn.execute(
                     "UPDATE opspilot_trace_outbox SET attempts = attempts + 1, "
                     "next_attempt_at = %s WHERE entry_id = ANY(%s) "
                     "RETURNING entry_id, attempts",
@@ -508,7 +509,10 @@ class OutboxMaintainer:
     also delivery every ``delivery_interval`` seconds, back to back while a
     full batch was claimed. Without it -- off, lab, or fail-closed -- pending
     rows are deleted 7 days after ``created_at`` (r3-L5). A storage refusal
-    is logged by code and retried at the next interval."""
+    is logged by code and retried at the next interval; any other error is
+    logged by type only and retried too, because a dead outbox thread stops
+    the whole worker (``worker_main._run``), which would reach the Runs
+    (OB-R6)."""
 
     def __init__(
         self,
@@ -538,6 +542,9 @@ class OutboxMaintainer:
         except PersistenceError as exc:
             _log.warning("outbox cleanup refused: %s", exc)
             return None
+        except Exception as exc:  # noqa: BLE001 - never end the thread (OB-R6)
+            _log.error("outbox cleanup failed error=%s", type(exc).__name__)
+            return None
         if deleted:
             _log.info("outbox cleanup deleted=%d", deleted)
         return deleted
@@ -550,6 +557,8 @@ class OutboxMaintainer:
             self.stats.set_pending(self.store.count_pending())
         except PersistenceError as exc:
             _log.warning("outbox count refused: %s", exc)
+        except Exception as exc:  # noqa: BLE001 - never end the thread (OB-R6)
+            _log.error("outbox count failed error=%s", type(exc).__name__)
 
     def deliver_once(self) -> bool:
         """One delivery cycle; ``True`` when a full batch was claimed (more

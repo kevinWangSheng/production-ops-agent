@@ -437,3 +437,37 @@ def test_a_non_oserror_from_the_transport_is_retried():
     delivery._send([_row(payload={"input_tokens": 1})], result)
     assert result.status is None and result.retried == 1
     assert list(Store.retried.values()) == [timedelta(seconds=5)]
+
+
+def test_an_unexpected_cleanup_or_count_error_never_ends_the_outbox_thread(caplog):
+    from opspilot.persistence.outbox import OutboxMaintainer
+
+    class Broken:
+        calls = 0
+
+        def purge(self, **_):
+            Broken.calls += 1
+            raise RuntimeError("purge " + SENTINEL_KEY)
+
+        def count_pending(self):
+            raise KeyError(SENTINEL_KEY)
+
+    stop = threading.Event()
+    stats = health.OutboxStats(("TRACE_MODE_OFF",))
+    maintainer = OutboxMaintainer(Broken(), stop=stop, interval=0.01, stats=stats)  # type: ignore[arg-type]
+    assert maintainer.run_once() is None
+    maintainer.refresh_pending()
+    thread = threading.Thread(target=maintainer.run, daemon=True)
+    thread.start()
+    try:
+        deadline = __import__("time").monotonic() + 5
+        while Broken.calls < 5 and __import__("time").monotonic() < deadline:
+            stop.wait(0.01)
+        assert thread.is_alive()
+        assert Broken.calls >= 5
+    finally:
+        stop.set()
+        thread.join(5)
+    assert not thread.is_alive()
+    assert SENTINEL_KEY not in caplog.text
+    assert "error=RuntimeError" in caplog.text

@@ -19,6 +19,12 @@ Inputs:
   with the same functions the worker uses.
 * ``--incident-id``, ``--run-id``, optional ``--image-revision``.
 
+Exit status 0 only when every check passes; otherwise 1, with the failed
+check codes in ``failures`` (``ROOT_MISSING``, ``SPANS_MISSING``,
+``SPANS_DUPLICATED`` unless ``--allow-duplicates``,
+``INCIDENT_FILTER_EMPTY``, ``VERSION_FILTER_EMPTY``, ``FORBIDDEN_CONTENT``,
+``CONTENT_PRESENT``, ``METADATA_OUTSIDE_ALLOWLIST``) and on stderr.
+
 What it reports (JSON on stdout, or ``--out``):
 
 * filter checks: runs found in the project by ``incident_id`` metadata, and
@@ -323,6 +329,37 @@ def check(
     }
 
 
+#: Exit status when any check fails (``failures`` lists which).
+EXIT_FAILED = 1
+
+
+def failures(report: Mapping[str, Any], *, allow_duplicates: bool = False) -> list[str]:
+    """Fixed codes for every check the report fails; empty means pass.
+
+    ``allow_duplicates`` is for the worker-restart readback (OB-R13 fault 2),
+    where a duplicated span is the observation being recorded, not a defect.
+    """
+    found: list[str] = []
+    if not report["root"]["found"]:
+        found.append("ROOT_MISSING")
+    if report["identity"]["missing"]:
+        found.append("SPANS_MISSING")
+    if report["identity"]["duplicated"] and not allow_duplicates:
+        found.append("SPANS_DUPLICATED")
+    if not report["filters"]["by_incident_id"]:
+        found.append("INCIDENT_FILTER_EMPTY")
+    if report["filters"]["by_incident_id_and_image_revision"] == 0:
+        found.append("VERSION_FILTER_EMPTY")
+    scan = report["content_scan"]
+    if any(scan.get(marker, 0) for marker in (*FORBIDDEN_MARKERS, "api_key_literal")):
+        found.append("FORBIDDEN_CONTENT")
+    if scan.get("runs_with_inputs", 0) or scan.get("runs_with_outputs", 0):
+        found.append("CONTENT_PRESENT")
+    if scan.get("metadata_keys_outside_allowlist", 0):
+        found.append("METADATA_OUTSIDE_ALLOWLIST")
+    return found
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--env-file", type=Path, required=True)
@@ -331,6 +368,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--run-id", type=UUID, required=True)
     parser.add_argument("--image-revision")
     parser.add_argument("--out", type=Path)
+    parser.add_argument(
+        "--allow-duplicates",
+        action="store_true",
+        help="record duplicated spans without failing (worker-restart readback)",
+    )
     args = parser.parse_args(argv)
     env = load_env(args.env_file.expanduser())
     if not env.get("LANGSMITH_PROJECT", "").startswith("opspilot-lab-"):
@@ -348,12 +390,19 @@ def main(argv: Sequence[str] | None = None) -> int:
         image_revision=args.image_revision,
         secret=env.get("LANGSMITH_API_KEY", ""),
     )
+    report["failures"] = failures(report, allow_duplicates=args.allow_duplicates)
     text = json.dumps(report, indent=2, sort_keys=True, default=str)
     if env.get("LANGSMITH_API_KEY") and env["LANGSMITH_API_KEY"] in text:
         raise SystemExit("refusing to print: the report contains the key")
     if args.out:
         args.out.write_text(text + "\n")
     print(text)
+    if report["failures"]:
+        print(
+            "outbox trace check failed: " + ",".join(report["failures"]),
+            file=sys.stderr,
+        )
+        return EXIT_FAILED
     return 0
 
 

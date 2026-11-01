@@ -379,3 +379,38 @@ def test_purge_keeps_old_pending_rows_only_while_delivery_runs(
     closed.refresh_pending()
     assert stats.snapshot()["pending"] == 0
     assert fake.bodies == []
+
+
+def test_the_running_outbox_thread_delivers_through_the_real_store(
+    scratch_dsn, worker_dsn, endpoint
+):
+    """End to end in the worker's own path: the maintainer thread, the real
+    store as the worker role, the stdlib transport and a loopback endpoint."""
+    fake = endpoint(200)
+    run_id = uuid4()
+    entry = _insert(scratch_dsn, run_id=run_id, key=f"model_step:{run_id}:1")
+    stats = health.OutboxStats(("ENABLED",))
+    store = OutboxStore(worker_dsn)
+    delivery = OutboxDelivery(
+        store, ExportConfig(fake.url, KEY, "opspilot-lab-428"), stats=stats
+    )
+    stop = threading.Event()
+    maintainer = OutboxMaintainer(
+        store, stop=stop, delivery=delivery, stats=stats, delivery_interval=0.05
+    )
+    thread = threading.Thread(target=maintainer.run, daemon=True)
+    thread.start()
+    try:
+        for _ in range(200):
+            if _state(scratch_dsn, entry)[0] == "delivered":
+                break
+            stop.wait(0.05)
+    finally:
+        stop.set()
+        thread.join(10)
+    state, _, attempts, _, _ = _state(scratch_dsn, entry)
+    assert (state, attempts) == ("delivered", 1)
+    assert [int.from_bytes(s.span_id, "big") for s in fake.spans()] == [
+        span_id_for(f"model_step:{run_id}:1")
+    ]
+    assert stats.snapshot()["pending"] == 0
