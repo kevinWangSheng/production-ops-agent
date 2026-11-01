@@ -188,7 +188,7 @@ def test_2xx_marks_rows_delivered_and_posts_otlp(
             conn.execute(
                 "SELECT state FROM opspilot_trace_outbox WHERE idempotency_key=%s",
                 (key,),
-            ).fetchone()[0]
+            ).fetchone()["state"]
             == "delivered"
         )
 

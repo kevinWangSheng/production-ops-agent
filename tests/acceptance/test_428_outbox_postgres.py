@@ -273,7 +273,15 @@ def test_unreachable_outbox_endpoint_preserves_scripted_run_observables(
     assert outbox["reason"] == off["reason"] == "MODEL_UNAVAILABLE"
     assert outbox["conclusion"] == off["conclusion"]
     assert outbox["handoffs"] == off["handoffs"]
-    assert outbox["budget_spent"] == off["budget_spent"]
+    # Counted budget fields must match exactly; the *_seconds_used fields are
+    # wall-clock measurements that differ between any two Runs, so they only
+    # need to agree within measurement noise.
+    timed = ("model_seconds_used", "tool_seconds_used")
+    assert {k: v for k, v in outbox["budget_spent"].items() if k not in timed} == {
+        k: v for k, v in off["budget_spent"].items() if k not in timed
+    }
+    for key in timed:
+        assert abs(outbox["budget_spent"][key] - off["budget_spent"][key]) < 1.0
     assert outbox["outbox"]
     assert all(state in {"pending", "dropped"} for state, _ in outbox["outbox"])
     assert all(state != "delivered" for state, _ in outbox["outbox"])
