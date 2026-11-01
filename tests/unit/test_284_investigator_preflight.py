@@ -151,6 +151,31 @@ def test_missing_env_file_leaves_run_without_account(monkeypatch, tmp_path):
     assert session.config.prometheus_basic_auth is None
 
 
+@pytest.mark.parametrize(
+    "env",
+    [
+        {USER_VAR: ""},
+        {USER_VAR: "", PASSWORD_VAR: ""},
+        {PASSWORD_VAR: ""},
+    ],
+)
+def test_empty_environment_variable_never_falls_back_to_env_file(
+    monkeypatch, tmp_path, env
+):
+    with pytest.raises(LabError) as error:
+        _prepare(monkeypatch, tmp_path, env_file(tmp_path), **env)
+    assert error.value.code == "ENV_UNCONFIRMED"
+
+
+def test_env_file_owned_by_another_user_is_refused(monkeypatch, tmp_path):
+    path = env_file(tmp_path)
+    owner = path.stat().st_uid
+    monkeypatch.setattr(investigator.os, "getuid", lambda: owner + 1)
+    with pytest.raises(LabError) as error:
+        _prepare(monkeypatch, tmp_path, path)
+    assert error.value.code == "ENV_UNCONFIRMED"
+
+
 # -- the probe against an authenticated fake Prometheus ---------------------------
 
 

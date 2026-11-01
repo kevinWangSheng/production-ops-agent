@@ -90,10 +90,14 @@ INVESTIGATOR_ENV_FILE = "prometheus-investigator.env"
 
 def investigator_env(env: Mapping[str, str], path: Path) -> dict[str, str]:
     """The investigator account: the environment's when either variable is
-    set there, else the private env file's (absent file: none). The file must
-    be a regular file only its owner can read; values are never printed."""
-    if any(env.get(name) for name in INVESTIGATOR_VARS):
-        return {name: env.get(name, "") for name in INVESTIGATOR_VARS}
+    present there (an empty one is refused, never filled from the file), else
+    the private env file's (absent file: none). The file must be a regular
+    file of this user that only it can read; values are never printed."""
+    present = [name for name in INVESTIGATOR_VARS if name in env]
+    if present:
+        if any(not env[name] for name in present):
+            raise LabError("ENV_UNCONFIRMED")
+        return {name: env[name] for name in present}
     try:
         fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
     except FileNotFoundError:
@@ -102,7 +106,11 @@ def investigator_env(env: Mapping[str, str], path: Path) -> dict[str, str]:
         raise LabError("ENV_UNCONFIRMED") from None
     with os.fdopen(fd) as stream:
         info = os.fstat(stream.fileno())
-        if not stat.S_ISREG(info.st_mode) or info.st_mode & 0o077:
+        if (
+            not stat.S_ISREG(info.st_mode)
+            or info.st_mode & 0o077
+            or info.st_uid != os.getuid()
+        ):
             raise LabError("ENV_UNCONFIRMED")
         lines = stream.read().splitlines()
     found: dict[str, str] = {}
