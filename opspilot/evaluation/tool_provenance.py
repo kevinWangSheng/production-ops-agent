@@ -254,11 +254,13 @@ def check_result(
         "target_id": None,
         "query": None,
     }
-    # A transport's own pre-send refusal (``sent=false``, #283/#327) was
-    # planned in full and handed to the transport, which answered without
-    # sending: it keeps the window it would have read and the transport-phase
-    # times, unlike a refusal the gateway decided before planning finished.
+    # A transport's own pre-send refusal (``sent=false``, #283/#327): handed
+    # to the transport, which answered without sending.
     presend = not op.dispatched and op.finished_at is not None
+    # The executor sets the operation's window once the window checks pass,
+    # before parameter acceptance, so every later refusal keeps it and every
+    # earlier one has none (#327); ``planned`` mirrors that point.
+    planned: Window | None = None
     failure: tuple[str, str] | None = None
     if targets.revision != scope.registry_revision:
         failure = ("denied", "TARGET_REGISTRY_CHANGED")
@@ -287,6 +289,7 @@ def check_result(
             elif window.seconds > reg.max_window_seconds:
                 failure = ("denied", "WINDOW_TOO_LARGE")
             else:
+                planned = window
                 params, problem = _accept_params(reg, request.params)
                 if params is None:
                     failure = (_status_for(problem), problem)
@@ -328,14 +331,14 @@ def check_result(
         for view in (outcome.model_view, outcome.evidence.view):
             for name in set(view) & identities.keys():
                 same(view[name], identities[name])
-    expected_window = Window.parse(
-        request.window
-        if request.window is not None
-        else (binding.default_window or binding.authorized_window)
-    )
     if op.dispatched:
         if failure is not None:
             mismatch()
+        expected_window = Window.parse(
+            request.window
+            if request.window is not None
+            else (binding.default_window or binding.authorized_window)
+        )
         same(op.window, expected_window)
         allowed: set[tuple[str, str | None, str]] = {
             ("no_data", "NO_DATA", "confirmed"),
@@ -374,14 +377,8 @@ def check_result(
             mismatch()
     else:
         # Replay serves these refusals by status and reason; there is no
-        # source response whose identity could be compared. A refusal after
-        # authorization (control, budget or deadline before the transport
-        # was called) keeps the planned window too; one decided while
-        # planning has none.
-        if failure is None and (presend or op.window is not None):
-            same(op.window, expected_window)
-        else:
-            same(op.window, None)
+        # source response whose identity could be compared.
+        same(op.window, planned)
         if outcome.source_contact != "none" or outcome.status not in (
             "denied",
             "error",
@@ -483,8 +480,18 @@ def check_result(
         if (
             op.timeout_seconds > reg.request_timeout_seconds
             or op.authorized_at is None
-            or op.timeout_seconds
-            > max(0.0, (scope.deadline - op.authorized_at).total_seconds())
+            or (
+                # The re-check just before the transport overwrites
+                # ``authorized_at`` and may find the deadline passed; the
+                # timeout it then keeps was bounded at the earlier check.
+                op.timeout_seconds
+                > max(0.0, (scope.deadline - op.authorized_at).total_seconds())
+                and not (
+                    not op.dispatched
+                    and outcome.reason == "DEADLINE_EXCEEDED"
+                    and op.authorized_at >= scope.deadline
+                )
+            )
         ):
             mismatch()
     if op.dispatched or (not op.dispatched and op.finished_at is not None):
