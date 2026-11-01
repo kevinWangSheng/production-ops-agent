@@ -2178,7 +2178,14 @@ def _main(argv: list[str], deps: LiveDeps | None) -> int:
         from scripts.eval_live_probe import run_probe
 
         probe = RoundConfig(
-            args.round, slots, args.holder, args.batch, 0, None, tuple(argv), 1
+            args.round,
+            slots,
+            args.holder,
+            args.batch,
+            args.pg_port or 0,
+            None,
+            tuple(argv),
+            1,
         )
         return _dispatch(args.round, live, lambda: run_probe(probe, live))
     config = RoundConfig(

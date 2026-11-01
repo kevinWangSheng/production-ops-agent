@@ -134,17 +134,23 @@ def model_transport_factory(
         from opspilot.investigation.client import DeepSeekClient
 
         client = DeepSeekClient(key, clock=clock)
-        # The client keeps its recording HTTPS handler (abort on timeout);
-        # only the opener it calls is fronted.
-        fault = ModelTransportFault(
-            mode, inner if inner is not None else client._opener
-        )
-        client._opener = fault  # noqa: SLF001 - harness-side seam (#431)
+        fault = front_client(client, mode, inner=inner)
         if seen is not None:
             seen.append(fault)
         return client
 
     return build
+
+
+def front_client(
+    client: Any, mode: ModelMode, *, inner: Opener | None = None
+) -> ModelTransportFault:
+    """Put a ``ModelTransportFault`` in front of ``client``'s opener (or of
+    ``inner``). The client keeps its recording HTTPS handler (abort on
+    timeout); only the opener it calls is replaced."""
+    fault = ModelTransportFault(mode, inner if inner is not None else client._opener)
+    client._opener = fault  # noqa: SLF001 - harness-side seam (#431)
+    return fault
 
 
 # -- otlp_span -----------------------------------------------------------------
@@ -622,3 +628,70 @@ def intake_record(
             "episodes": counts.get("episodes"),
         },
     }
+
+
+def alert_entry(
+    params: Mapping[str, Any],
+    *,
+    web: Any,
+    face: Any,
+    versions: Mapping[str, str],
+    clock: LiveClock,
+    round_id: str,
+    first_starts_at: datetime,
+    token: str | None = None,
+    transport_seen: list[AsgiTransport] | None = None,
+) -> AlertRun:
+    """Deliver ``params`` to the attempt's own product web app (seams §5):
+    a workbench over ``web`` (the attempt PG's web role) with the one lab
+    target, authenticated by the lab Alertmanager token as ``alertmanager``."""
+    from opspilot.investigation.limits import M1_FROZEN_LIMITS, RUN_WALL_SECONDS
+    from opspilot.tools import otel_demo
+    from opspilot.web import (
+        AuthConfig,
+        Authenticator,
+        DurableClock,
+        DurableEventLog,
+        DurableEvidenceStore,
+        DurableIncidentStore,
+        DurableWebLedger,
+        Workbench,
+        create_app,
+    )
+    from opspilot.web.store import MappingTargetRegistry
+    from scripts import kind_lab
+
+    token = kind_lab.webhook_token() if token is None else token
+    seats = (DurableEventLog(web), DurableEvidenceStore(web), DurableWebLedger(web))
+    for seat in seats:
+        checkpoint()
+        seat.install()
+    events, evidence, ledger = seats
+    workbench = Workbench(
+        incidents=DurableIncidentStore(web),
+        events=events,
+        evidence=evidence,
+        ledger=ledger,
+        run_versions=dict(versions),
+        budget_limit=M1_FROZEN_LIMITS.model_requests,
+        run_seconds=RUN_WALL_SECONDS,
+        tool_face=face,
+        targets=MappingTargetRegistry({otel_demo.TARGET_ID: dict(ALERT_TARGET)}),
+    )
+    auth = AuthConfig(
+        ui_users={},
+        event_tokens={token_digest(token): ALERT_ACTOR},
+        auth_revision=f"eval-live-{round_id}",
+    )
+    transport = AsgiTransport(
+        create_app(workbench, Authenticator(auth), DurableClock(web))
+    )
+    if transport_seen is not None:
+        transport_seen.append(transport)
+    return deliver_alerts(
+        params,
+        transport=transport,
+        token=token,
+        clock=clock,
+        first_starts_at=first_starts_at,
+    )
