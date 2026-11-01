@@ -35,14 +35,22 @@ PAYLOAD_SENTINELS = (
 def scratch_dsn():
     name = f"opspilot_427_{uuid4().hex[:12]}"
     with psycopg.connect(DSN, autocommit=True) as conn:
-        conn.execute(sql.SQL("CREATE DATABASE {} TEMPLATE template0").format(sql.Identifier(name)))
+        conn.execute(
+            sql.SQL("CREATE DATABASE {} TEMPLATE template0").format(
+                sql.Identifier(name)
+            )
+        )
     dsn = make_conninfo(DSN, dbname=name)
     try:
         schema.migrate(dsn)
         yield dsn
     finally:
         with psycopg.connect(DSN, autocommit=True) as conn:
-            conn.execute(sql.SQL("DROP DATABASE IF EXISTS {} WITH (FORCE)").format(sql.Identifier(name)))
+            conn.execute(
+                sql.SQL("DROP DATABASE IF EXISTS {} WITH (FORCE)").format(
+                    sql.Identifier(name)
+                )
+            )
 
 
 def _rows(dsn: str, *, run_id=None):
@@ -175,45 +183,101 @@ def test_role_grants_are_narrow_and_other_tables_match_declaration(scratch_dsn):
 
 
 def test_purge_expired_deletes_terminal_and_disabled_export_pending_only(scratch_dsn):
+    """Contract r3-L4: terminal rows age from finalized_at, pending rows from created_at."""
     from opspilot.persistence.outbox import purge_expired
 
     now = datetime.now(timezone.utc)
+    long_ago = now - timedelta(days=30)
+    insert = (
+        f"INSERT INTO {OUTBOX}(idempotency_key,kind,payload,state,created_at,finalized_at) "
+        "VALUES (%s,'run_state','{}',%s,%s,%s)"
+    )
     with psycopg.connect(scratch_dsn) as conn:
-        for state in ("pending", "delivered", "dropped"):
+        conn.execute(
+            insert, ("427-old-pending", "pending", now - timedelta(days=7), None)
+        )
+        conn.execute(
+            insert,
+            ("427-young-pending", "pending", now - timedelta(days=6, seconds=1), None),
+        )
+        for state in ("delivered", "dropped"):
+            # created long ago in both cases: only finalized_at decides.
             conn.execute(
-                f"INSERT INTO {OUTBOX}(idempotency_key,kind,payload,state,created_at) VALUES (%s,'run_state','{{}}',%s,%s)",
-                (f"427-old-{state}", state, now - timedelta(days=7)),
+                insert, (f"427-old-{state}", state, long_ago, now - timedelta(days=7))
             )
             conn.execute(
-                f"INSERT INTO {OUTBOX}(idempotency_key,kind,payload,state,created_at) VALUES (%s,'run_state','{{}}',%s,%s)",
-                (f"427-young-{state}", state, now - timedelta(days=6, seconds=1)),
+                insert,
+                (
+                    f"427-young-{state}",
+                    state,
+                    long_ago,
+                    now - timedelta(days=6, seconds=1),
+                ),
             )
     with psycopg.connect(scratch_dsn) as conn:
         assert purge_expired(conn, now=now, export_enabled=False) == 3
     with psycopg.connect(scratch_dsn) as conn:
         states = dict(conn.execute(f"SELECT idempotency_key,state FROM {OUTBOX}"))
-    assert all(f"427-old-{state}" not in states for state in ("pending", "delivered", "dropped"))
-    assert all(f"427-young-{state}" in states for state in ("pending", "delivered", "dropped"))
+    assert all(
+        f"427-old-{state}" not in states
+        for state in ("pending", "delivered", "dropped")
+    )
+    assert all(
+        f"427-young-{state}" in states for state in ("pending", "delivered", "dropped")
+    )
 
 
-def test_migration_upgrade_downgrade_upgrade_keeps_business_rows_and_notices_counts(scratch_dsn):
+def test_terminal_state_requires_finalized_at(scratch_dsn):
+    """Contract r3-L4: a terminal row without finalized_at, or a pending row with one, is refused."""
+    with psycopg.connect(scratch_dsn) as conn:
+        with pytest.raises(psycopg.errors.CheckViolation):
+            conn.execute(
+                f"INSERT INTO {OUTBOX}(idempotency_key,kind,payload,state) "
+                "VALUES ('427-terminal-no-final','run_state','{}','delivered')"
+            )
+    with psycopg.connect(scratch_dsn) as conn:
+        with pytest.raises(psycopg.errors.CheckViolation):
+            conn.execute(
+                f"INSERT INTO {OUTBOX}(idempotency_key,kind,payload,state,finalized_at) "
+                "VALUES ('427-pending-final','run_state','{}','pending',clock_timestamp())"
+            )
+
+
+def test_migration_upgrade_downgrade_upgrade_keeps_business_rows_and_notices_counts(
+    scratch_dsn,
+):
     with psycopg.connect(scratch_dsn) as conn:
         before = conn.execute("SELECT count(*) FROM opspilot_runs").fetchone()[0]
         for state in ("pending", "delivered", "dropped"):
             conn.execute(
-                f"INSERT INTO {OUTBOX}(idempotency_key,kind,payload,state) VALUES (%s,'run_state','{{}}',%s)",
-                (f"427-roundtrip-{state}", state),
+                f"INSERT INTO {OUTBOX}(idempotency_key,kind,payload,state,finalized_at) "
+                "VALUES (%s,'run_state','{}',%s,CASE WHEN %s='pending' THEN NULL ELSE clock_timestamp() END)",
+                (f"427-roundtrip-{state}", state, state),
             )
     with psycopg.connect(scratch_dsn) as conn:
         config = Config(attributes={"connection": conn})
-        config.set_main_option("script_location", str(schema.__file__.replace("schema.py", "migrations")))
+        config.set_main_option(
+            "script_location", str(schema.__file__.replace("schema.py", "migrations"))
+        )
         notices: list[str] = []
-        conn.add_notice_handler(lambda diagnostic: notices.append(diagnostic.message_primary or ""))
+        conn.add_notice_handler(
+            lambda diagnostic: notices.append(diagnostic.message_primary or "")
+        )
         command.downgrade(config, "0023_retention_raw_cleanup")
-        assert any("pending" in notice and "delivered" in notice and "dropped" in notice for notice in notices)
+        assert any(
+            "pending" in notice and "delivered" in notice and "dropped" in notice
+            for notice in notices
+        )
     upgrade_config = Config(attributes={"dsn": scratch_dsn})
-    upgrade_config.set_main_option("script_location", str(schema.__file__.replace("schema.py", "migrations")))
+    upgrade_config.set_main_option(
+        "script_location", str(schema.__file__.replace("schema.py", "migrations"))
+    )
     command.upgrade(upgrade_config, "head")
     with psycopg.connect(scratch_dsn) as conn:
-        assert conn.execute("SELECT count(*) FROM opspilot_runs").fetchone()[0] == before
-        assert conn.execute("SELECT count(*) FROM information_schema.tables WHERE table_name=%s", (OUTBOX,)).fetchone() == (1,)
+        assert (
+            conn.execute("SELECT count(*) FROM opspilot_runs").fetchone()[0] == before
+        )
+        assert conn.execute(
+            "SELECT count(*) FROM information_schema.tables WHERE table_name=%s",
+            (OUTBOX,),
+        ).fetchone() == (1,)
