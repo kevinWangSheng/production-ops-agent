@@ -79,7 +79,7 @@ def _business_counts(dsn: str) -> dict[str, int]:
     with psycopg.connect(dsn) as conn:
         names = conn.execute(
             "SELECT table_name FROM information_schema.tables "
-            "WHERE table_schema='public' AND table_name LIKE 'opspilot_%' "
+            "WHERE table_schema='public' AND table_name LIKE 'opspilot\\_%%' "
             "AND table_name <> %s ORDER BY table_name",
             (OUTBOX,),
         ).fetchall()
@@ -128,7 +128,7 @@ def test_success_uses_owner_dsn_reports_target_and_drops_only_outbox(
             conn.execute(
                 f"INSERT INTO {OUTBOX}(idempotency_key,incident_id,kind,payload,state,"
                 "finalized_at) "
-                "VALUES (%s,%s,'run_state','{}',%s,"
+                "VALUES (%s,%s,'generation','{}',%s,"
                 "CASE WHEN %s='pending' THEN NULL ELSE clock_timestamp() END)",
                 (f"429-{state}-{uuid4()}", uuid4(), state, state),
             )
