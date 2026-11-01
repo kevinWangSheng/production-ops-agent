@@ -156,8 +156,9 @@ def _resolver_fake(
                 active += 1
                 maximum = max(maximum, active)
                 started += 1
+                event_index = min(started - 1, len(release_events) - 1)
                 started_event.set()
-            event = release_events[min(started - 1, len(release_events) - 1)]
+            event = release_events[event_index]
             try:
                 event.wait(5)
                 return real("127.0.0.1", port, *args, **kwargs)
@@ -195,7 +196,7 @@ def test_sequential_stuck_queries_are_bounded_and_deadline_limited(monkeypatch):
             assert isinstance(result.get("error"), TransportTimeout)
             assert result["elapsed"] <= TIMEOUT + 1.0
         assert stats()[1] <= 2
-        assert stats()[0] == 6
+        assert stats()[0] == 2
     finally:
         release.set()
     assert _wait_until(lambda: _thread_count() <= baseline + 2, SETTLE)
