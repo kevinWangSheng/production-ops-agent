@@ -363,9 +363,25 @@ def build_manifest(
         "clock_policy": DimensionValue(
             "version", "event-clock/frozen-end-real-monotonic", None
         ),
+        "runbook": none("no approved knowledge revision is sent into the Run"),
+        "dataset": dataset_dimension(scenarios_root),
     }
     assert set(dims) == set(REQUIRED_DIMENSIONS)
     return Manifest(round_id, dims)
+
+
+def dataset_dimension(scenarios_root: Path) -> DimensionValue:
+    """V2-R7 ``dataset``: ``dev-v2:<tree hash>`` for a v2 dataset root (one
+    holding ``regression/``), ``none`` for the v1 ``evals/scenarios`` set."""
+    from opspilot.evaluation.model import DATASET_GROUPS, dataset_tree_hash
+
+    if any((scenarios_root / group).is_dir() for group in DATASET_GROUPS):
+        return DimensionValue(
+            "hash", f"dev-v2:{dataset_tree_hash(scenarios_root)}", None
+        )
+    return DimensionValue(
+        "none", None, "v1 scenario set (evals/scenarios), not a versioned dataset"
+    )
 
 
 def template_scope(config: OtelDemoConfig | None = None) -> QueryScope:

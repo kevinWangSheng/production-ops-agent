@@ -1,7 +1,7 @@
 {
   "attempt": {
     "attempt_id": "canary-fault-v1-structural",
-    "manifest_hash": "d389356d2c0d41f311a915b98a7083393652871259d76427382c7df800da21a6",
+    "manifest_hash": "0cc37aa8dbe3a436716b6fd552900e16497329a8accd1494af3cfa37bd395b4b",
     "mode": "structural",
     "product_run_id": null,
     "repetition": 1,
@@ -47,6 +47,11 @@
         "value": "canary-v1"
       },
       "command": {
+        "kind": "version",
+        "reason": null,
+        "value": "canary-v1"
+      },
+      "dataset": {
         "kind": "version",
         "reason": null,
         "value": "canary-v1"
@@ -125,6 +130,11 @@
         "kind": "hash",
         "reason": null,
         "value": "bc0fa06e428234ee4b07c5b81cfae9b6a3583e4710abcd151be01a675e9c70c9"
+      },
+      "runbook": {
+        "kind": "version",
+        "reason": null,
+        "value": "canary-v1"
       },
       "scenarios": {
         "kind": "version",
