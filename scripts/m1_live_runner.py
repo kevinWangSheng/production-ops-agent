@@ -46,9 +46,10 @@ for the incident. ``--f3-answer evals/f3/missing-source/answer.json`` also
 computes that scenario's deterministic U6-a verdict.
 ``--question TEXT`` replaces the otel-demo question, and
 ``--first-request-out PATH`` writes the exact bytes of the Run's first model
-request (``loop.serialized_request``) to an ignored path: F14 step 3 (#385,
-S7/L5) freezes its sha256 and ``data_sources`` projection from it. Both are
-opt-in; without them nothing changes.
+request (``loop.serialized_request``) to an ignored path, and the Run's
+model-visible versions next to it (``<path>.versions.json``): F14 step 3
+(#385, S7/L5) freezes its sha256, ``data_sources`` projection and versions
+from them. Both are opt-in; without them nothing changes.
 ``--sweep --timeout-follow-up`` then applies one follow_up to the timed-out
 Run: control() records the note and starts a fresh Run (user decision
 2026-09-25, ``renew_*``) whose input is the C3 continuation of the timed-out
@@ -305,9 +306,10 @@ def _outcome(outcome):
 class FirstRequestTap:
     """Pass-through model client that keeps the first request's bytes (#385)."""
 
-    def __init__(self, inner: RecordingClient, path: Path):
+    def __init__(self, inner: RecordingClient, path: Path, versions: Mapping[str, Any]):
         self.inner = inner
         self.path = path
+        self.versions = dict(versions)
         self.written = False
 
     @property
@@ -318,6 +320,8 @@ class FirstRequestTap:
         if not self.written:
             self.path.parent.mkdir(parents=True, exist_ok=True)
             self.path.write_bytes(serialized_request(call))
+            sidecar = self.path.with_name(self.path.name + ".versions.json")
+            sidecar.write_text(json.dumps(self.versions, sort_keys=True) + "\n")
             self.written = True
         return self.inner.complete(call)
 
@@ -427,7 +431,7 @@ def main() -> int:
     )
     recorder = RecordingClient(DeepSeekClient(key, clock=clock))
     if args.first_request_out is not None:
-        recorder = FirstRequestTap(recorder, args.first_request_out)  # type: ignore[assignment]
+        recorder = FirstRequestTap(recorder, args.first_request_out, versions)  # type: ignore[assignment]
     del key
     runner = InvestigationRunner(
         store=store,

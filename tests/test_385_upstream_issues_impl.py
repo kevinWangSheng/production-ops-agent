@@ -682,3 +682,60 @@ def test_alertmanager_helper_mounts_the_alert_dir_read_only(tmp_path: Path) -> N
     assert f"{tmp_path}:/alerts:ro" in args
     assert args[-3:] == ["/harness/alertmanager_stub.py", "9093", "/alerts/alerts.json"]
     assert "--read-only" in args and hrun.NETWORK in args
+
+
+def test_first_request_tap_on_a_real_otel_demo_first_call(tmp_path: Path) -> None:
+    """L5: the product's own first model call for an otel-demo Run carries the
+    static data_sources projection, and the opt-in tap in m1_live_runner
+    writes exactly those bytes plus the versions; no network, no model."""
+    from datetime import datetime, timedelta, timezone
+
+    from opspilot.investigation.context import (
+        evidence_context_projection,
+        initial_messages,
+    )
+    from opspilot.investigation.loop import ModelCall, serialized_request
+    from opspilot.tools import otel_demo
+    from opspilot.tools.profiles import PROFILE_ENV, select_profile
+    from scripts import m1_live_runner
+
+    env = {PROFILE_ENV: "otel-demo", "OPSPILOT_OTEL_PROMETHEUS_URL": repro.UNREACHABLE}
+    profile = select_profile(env)
+    run_id = "00000000-0000-4000-8000-000000000385"
+    input = profile.face(m1_live_runner.SystemClock()).input_for(
+        run_id=run_id,
+        question=repro.QUESTION,
+        target_id=otel_demo.TARGET_ID,
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=12),
+        model_requests=100,
+    )
+    context = evidence_context_projection(input.evidence_context, run_id=run_id)
+    messages, _ = initial_messages(input, evidence_context=context)
+    call = ModelCall(
+        messages=tuple(messages),
+        tools=None,
+        json_mode=False,
+        max_tokens=65536,
+        timeout_seconds=1,
+    )
+
+    class Inner:
+        attempts: list[dict[str, Any]] = []
+
+        def complete(self, c: Any) -> str:
+            return "reply"
+
+    path = tmp_path / "first.json"
+    tap = m1_live_runner.FirstRequestTap(Inner(), path, profile.versions())  # type: ignore[arg-type]
+    assert tap.complete(call) == "reply"
+    tap.complete(
+        ModelCall(
+            messages=(), tools=None, json_mode=False, max_tokens=1, timeout_seconds=1
+        )
+    )
+    assert path.read_bytes() == serialized_request(call)
+    versions = json.loads((tmp_path / "first.json.versions.json").read_text())
+    assert versions == profile.versions() and versions["tool_schema_revision"]
+    fields = issues.first_request_fields(path.read_bytes(), "prometheus")
+    assert fields["data_sources"]["available"] == otel_demo._data_sources()["available"]
+    assert fields["first_request_mentions_unreachable"] is False

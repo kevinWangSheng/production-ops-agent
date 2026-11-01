@@ -817,7 +817,11 @@ def cmd_writeback(args: argparse.Namespace) -> int:
     path = MAPPING_DIR / "mapping.json"
     table = json.loads(path.read_text())
     records = issues.load_records(ROOT)
-    updated = issues.writeback(table, records)
+    try:
+        updated = issues.writeback(table, records)
+    except SystemExit as exc:
+        print(exc)
+        return 1
     text = json.dumps(updated, indent=2, ensure_ascii=False) + "\n"
     if args.check:
         stale = text != path.read_text()
@@ -842,8 +846,13 @@ def cmd_opspilot_freeze(args: argparse.Namespace) -> int:
     rel = f"opspilot/{summary['run_id']}/summary.json"
     (directory / rel).parent.mkdir(parents=True, exist_ok=True)
     (directory / rel).write_bytes(args.summary.read_bytes())
+    sidecar = args.first_request.with_name(args.first_request.name + ".versions.json")
     entry = issues.opspilot_run(
-        directory / rel, rel, args.first_request.read_bytes(), args.group
+        directory / rel,
+        rel,
+        args.first_request.read_bytes(),
+        args.group,
+        json.loads(sidecar.read_text()) if sidecar.exists() else None,
     )
     # working file for assembling record.json; stays out of the evidence dir
     out = RAW_ROOT / "f14s3-opspilot-runs.json"

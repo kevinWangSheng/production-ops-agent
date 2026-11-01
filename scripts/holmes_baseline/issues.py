@@ -335,7 +335,11 @@ def report_text(report: Mapping[str, Any]) -> str:
 
 
 def opspilot_run(
-    summary_path: Path, summary_rel: str, first_request: bytes, source: str
+    summary_path: Path,
+    summary_rel: str,
+    first_request: bytes,
+    source: str,
+    versions: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """One R of ``opspilot_side.groups.<source>.runs`` (seams 2.5)."""
     raw = summary_path.read_bytes()
@@ -347,7 +351,9 @@ def opspilot_run(
         "sources"
     ) or []
     entry = next((s for s in coverage if s.get("name") == source), None)
-    versions = summary.get("versions") or {}
+    # the lab summary has no versions block; m1_live_runner's first-request
+    # tap writes them beside the request (``<path>.versions.json``)
+    versions = versions or summary.get("versions") or {}
     return {
         "run_id": summary["run_id"],
         "summary": summary_rel,
