@@ -16,6 +16,8 @@ from uuid import UUID, uuid4
 
 import pytest
 
+pytest_plugins = ("tests.acceptance.test_428_outbox_postgres",)
+
 
 def _tracing():
     from opspilot import tracing
@@ -41,17 +43,21 @@ def _valid_env(**overrides):
 
 
 @pytest.mark.parametrize(
-    ("missing", "reason"),
+    ("missing", "value", "reason"),
     [
-        ("LANGSMITH_ENDPOINT", "LANGSMITH_ENDPOINT_NOT_ALLOWED"),
-        ("LANGSMITH_PROJECT", "PROJECT_NOT_LAB"),
-        ("LANGSMITH_API_KEY", "LANGSMITH_KEY_MISSING"),
+        (
+            "LANGSMITH_ENDPOINT",
+            "https://smith.example.com",
+            "LANGSMITH_ENDPOINT_NOT_ALLOWED",
+        ),
+        ("LANGSMITH_PROJECT", "", "PROJECT_NOT_LAB"),
+        ("LANGSMITH_API_KEY", "", "LANGSMITH_KEY_MISSING"),
     ],
 )
-def test_outbox_is_fail_closed_for_each_missing_prerequisite(missing, reason):
+def test_outbox_is_fail_closed_for_each_missing_prerequisite(missing, value, reason):
     tracing = _tracing()
     env = _valid_env()
-    env[missing] = ""
+    env[missing] = value
     assert tracing.trace_mode(env) == "outbox"
     assert reason in tracing.outbox_export_failures(env)
     assert reason in tracing.export_status(env)
@@ -136,19 +142,32 @@ def test_fail_closed_maintainer_does_not_post_and_purges_old_pending_rows(
     assert store.purge_calls and store.purge_calls[-1]["export_enabled"] is False
 
 
+@pytest.fixture
+def delivery_scratch_dsn(scratch_dsn):
+    """Reuse the #428 PG fixture for delivery-cycle tests."""
+    return scratch_dsn
+
+
 @pytest.mark.parametrize("status", [204, 200])
-def test_2xx_marks_rows_delivered_and_posts_otlp(counting_endpoint, status):
+def test_2xx_marks_rows_delivered_and_posts_otlp(
+    counting_endpoint, delivery_scratch_dsn, status
+):
     delivery = _delivery()
+    from opspilot.persistence.outbox import OutboxStore
+    from tests.acceptance.test_428_outbox_postgres import _insert_pending
+
     server, handler = counting_endpoint
     handler.status = status
     clock = [datetime(2026, 11, 1, tzinfo=UTC)]
     transport_calls = []
+    key = f"428-2xx-{status}"
+    _insert_pending(delivery_scratch_dsn, key, next_attempt_at=clock[0])
 
     def transport(url, body, headers, timeout):
         transport_calls.append((url, body, headers, timeout))
         return status
 
-    store = SimpleNamespace()
+    store = OutboxStore(delivery_scratch_dsn)
     exporter = delivery.OutboxDelivery(
         store,
         delivery.ExportConfig(
@@ -164,32 +183,46 @@ def test_2xx_marks_rows_delivered_and_posts_otlp(counting_endpoint, status):
     assert transport_calls
     assert transport_calls[0][2]["x-api-key"] == "key-428"
     assert transport_calls[0][2]["Langsmith-Project"] == "opspilot-lab-428"
+    with store.transaction(snapshot=True) as conn:
+        assert (
+            conn.execute(
+                "SELECT state FROM opspilot_trace_outbox WHERE idempotency_key=%s",
+                (key,),
+            ).fetchone()[0]
+            == "delivered"
+        )
 
 
 @pytest.mark.parametrize("status", [400, 408, 429, 500, 503])
-def test_http_status_classes_have_contract_result(status):
+def test_http_status_classes_have_contract_result(delivery_scratch_dsn, status):
     delivery = _delivery()
+    from opspilot.persistence.outbox import OutboxStore
+    from tests.acceptance.test_428_outbox_postgres import _insert_pending
+
     calls = []
+    now = datetime(2026, 11, 1, tzinfo=UTC)
+    key = f"428-status-pure-{status}"
+    _insert_pending(delivery_scratch_dsn, key, next_attempt_at=now)
 
     def transport(_url, _body, _headers, _timeout):
         calls.append(1)
         return status
 
     exporter = delivery.OutboxDelivery(
-        SimpleNamespace(),
+        OutboxStore(delivery_scratch_dsn),
         delivery.ExportConfig(
             "http://127.0.0.1/otel/v1/traces", "k", "opspilot-lab-428"
         ),
         transport=transport,
-        clock=lambda: datetime(2026, 11, 1, tzinfo=UTC),
+        clock=lambda: now,
     )
     result = exporter.deliver_once()
     assert result.status == status
     assert calls == [1]
     if status == 400:
-        assert result.dropped.get("REJECTED", 0) >= 0
+        assert result.dropped == {"REJECTED": 1}
     else:
-        assert result.retried + sum(result.dropped.values()) >= 0
+        assert result.retried == 1
 
 
 def test_backoff_constants_and_eighth_failure_drop():

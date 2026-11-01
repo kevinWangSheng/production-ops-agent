@@ -43,8 +43,10 @@ def scratch_dsn():
             )
 
 
-def _insert_pending(dsn: str, key: str):
+def _insert_pending(dsn: str, key: str, *, next_attempt_at=None):
     run_id = uuid4()
+    if next_attempt_at is None:
+        next_attempt_at = datetime.now(UTC)
     with psycopg.connect(dsn) as conn:
         conn.execute(
             """
@@ -52,7 +54,7 @@ def _insert_pending(dsn: str, key: str):
                 (idempotency_key, incident_id, run_id, kind, payload, state, next_attempt_at)
             VALUES (%s, %s, %s, 'model_step', %s::jsonb, 'pending', %s)
             """,
-            (key, uuid4(), run_id, '{"span_kind":"model_step"}', datetime.now(UTC)),
+            (key, uuid4(), run_id, '{"span_kind":"model_step"}', next_attempt_at),
         )
     return run_id
 
@@ -114,8 +116,8 @@ def test_rejection_and_transient_failures_have_terminal_contract(scratch_dsn, st
     from opspilot.persistence.outbox import OutboxStore
 
     key = f"428-status-{status}"
-    _insert_pending(scratch_dsn, key)
     now = [datetime(2026, 11, 1, tzinfo=UTC)]
+    _insert_pending(scratch_dsn, key, next_attempt_at=now[0])
     calls = []
 
     def transport(_url, _body, _headers, _timeout):
@@ -153,12 +155,13 @@ def test_backlog_drops_oldest_as_backlog_before_claiming(scratch_dsn):
     from opspilot.persistence.outbox import OutboxStore
 
     with psycopg.connect(scratch_dsn) as conn:
-        conn.executemany(
-            "INSERT INTO opspilot_trace_outbox "
-            "(idempotency_key, incident_id, kind, payload, state, created_at) "
-            "VALUES (%s,%s,'generation','{}','pending',clock_timestamp())",
-            [(f"428-backlog-{i:05d}", uuid4()) for i in range(20_001)],
-        )
+        with conn.cursor() as cur:
+            cur.executemany(
+                "INSERT INTO opspilot_trace_outbox "
+                "(idempotency_key, incident_id, kind, payload, state, created_at) "
+                "VALUES (%s,%s,'generation','{}','pending',clock_timestamp())",
+                [(f"428-backlog-{i:05d}", uuid4()) for i in range(20_001)],
+            )
     exporter = outbox_delivery.OutboxDelivery(
         OutboxStore(scratch_dsn),
         outbox_delivery.ExportConfig(
@@ -177,8 +180,8 @@ def test_connection_timeout_retries_then_drops_after_eighth_attempt(scratch_dsn)
     from opspilot.persistence.outbox import OutboxStore
 
     key = "428-timeout"
-    _insert_pending(scratch_dsn, key)
     now = [datetime(2026, 11, 1, tzinfo=UTC)]
+    _insert_pending(scratch_dsn, key, next_attempt_at=now[0])
     calls = []
 
     def timeout(_url, _body, _headers, _timeout):
@@ -229,11 +232,11 @@ def test_unreachable_outbox_endpoint_preserves_scripted_run_observables(
         harness = scripted.Harness(budget_limit=4, model_requests=4)
         events = DurableEventLog(harness.store)
         events.install()
-        result = harness.runner(
+        runner = harness.runner(
             [ModelError("MODEL_UNAVAILABLE"), ModelError("MODEL_UNAVAILABLE")]
         )
-        result.events = events
-        result.resume(harness.incident)
+        runner.events = events
+        outcome = runner.resume(harness.incident)
         if mode == "outbox":
             config = outbox_delivery.ExportConfig.from_env(dict(os.environ))
             assert config is not None
@@ -257,7 +260,7 @@ def test_unreachable_outbox_endpoint_preserves_scripted_run_observables(
             ).fetchall()
         return {
             "status": rows["run"]["state"],
-            "reason": result.reason,
+            "reason": outcome.reason,
             "conclusion": rows["steps"][-1]["response"].get("conclusion"),
             "handoffs": handoffs,
             "budget_spent": usage,
