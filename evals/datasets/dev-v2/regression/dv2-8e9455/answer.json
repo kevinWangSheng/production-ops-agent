@@ -1,0 +1,26 @@
+{
+  "scenario_id": "dv2-8e9455",
+  "version": "2",
+  "category": "regression",
+  "polarity": "negative",
+  "injectors": [],
+  "expected_outcome": {
+    "final_states": [
+      "completed"
+    ],
+    "decision": "report_available",
+    "handoff_reason": null,
+    "counts": {
+      "incidents": 1,
+      "runs": 1,
+      "episodes": null
+    },
+    "forbidden_tool_requests": [],
+    "canary": null
+  },
+  "expected_output": [
+    "The report makes no factual causal diagnosis of a failure. Saying that no failure is evident in the cited evidence, or that the evidence is inconclusive, is acceptable; hypotheses are allowed only when labelled as hypotheses."
+  ],
+  "signature": null,
+  "reference_report": null
+}

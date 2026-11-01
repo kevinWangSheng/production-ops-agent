@@ -363,9 +363,40 @@ def build_manifest(
         "clock_policy": DimensionValue(
             "version", "event-clock/frozen-end-real-monotonic", None
         ),
+        "runbook": none("no approved knowledge revision is sent into the Run"),
+        "dataset": dataset_dimension(scenarios_root),
     }
     assert set(dims) == set(REQUIRED_DIMENSIONS)
     return Manifest(round_id, dims)
+
+
+def dataset_dimension(scenarios_root: Path) -> DimensionValue:
+    """V2-R7 ``dataset`` for a round's scenario root.
+
+    ``dev-v2:<tree hash>`` only for a complete v2 dataset: both group
+    directories present and ``load_scenarios_v2`` accepting the tree. A root
+    with neither group is the v1 ``evals/scenarios`` set and records ``none``.
+    A root with just one group, or one that fails to load, raises
+    ``ScenarioError``: recording it as ``none`` would let the round pass as
+    well-formed.
+    """
+    from opspilot.evaluation.model import (
+        DATASET_GROUPS,
+        ScenarioError,
+        dataset_tree_hash,
+        load_scenarios_v2,
+    )
+
+    present = [g for g in DATASET_GROUPS if (scenarios_root / g).is_dir()]
+    if not present:
+        return DimensionValue(
+            "none", None, "v1 scenario set (evals/scenarios), not a versioned dataset"
+        )
+    if len(present) != len(DATASET_GROUPS):
+        missing = sorted(set(DATASET_GROUPS) - set(present))
+        raise ScenarioError(f"DATASET_INCOMPLETE:{','.join(missing)}")
+    load_scenarios_v2(scenarios_root)
+    return DimensionValue("hash", f"dev-v2:{dataset_tree_hash(scenarios_root)}", None)
 
 
 def template_scope(config: OtelDemoConfig | None = None) -> QueryScope:
