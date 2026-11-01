@@ -8,9 +8,12 @@ public seams are intentional red tests while #431 is implemented.
 from __future__ import annotations
 
 import json
+import shutil
+from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 from urllib.error import HTTPError
+from urllib.request import Request
 
 import pytest
 
@@ -20,6 +23,7 @@ from opspilot.evaluation import (
     EvaluationCapture,
     load_attempt,
     load_scenarios_v2,
+    manifest_hash,
     write_attempt,
     write_summary,
 )
@@ -63,8 +67,9 @@ VALID = [
 
 @pytest.mark.parametrize(("kind", "params"), VALID)
 def test_allowlist_accepts_every_seams_injector(kind, params):
+    entry = "alertmanager" if kind == "alert_delivery" else "question"
     plan = _api("validate_injectors")(
-        "question", [SimpleNamespace(kind=kind, params=params)]
+        entry, [SimpleNamespace(kind=kind, params=params)]
     )
     assert plan
 
@@ -191,20 +196,21 @@ def test_model_transport_fault_has_bounded_forwarding(mode):
 
     inner = Inner()
     fault = fault_type(mode, inner)
+    request = Request("https://example.test/model")
     if mode == "always_503":
         for _ in range(3):
             with pytest.raises(HTTPError) as exc:
-                fault.open(object(), timeout=1)
+                fault.open(request, timeout=1)
             assert exc.value.code == 503
         assert inner.calls == 0
         assert fault.intercepted == 3
         assert fault.forwarded == 0
     else:
         with pytest.raises(HTTPError) as exc:
-            fault.open(object(), timeout=1)
+            fault.open(request, timeout=1)
         assert exc.value.code == 503
-        fault.open(object(), timeout=1)
-        fault.open(object(), timeout=1)
+        fault.open(request, timeout=1)
+        fault.open(request, timeout=1)
         assert (inner.calls, fault.intercepted, fault.forwarded) == (2, 1, 2)
 
 
@@ -212,8 +218,9 @@ def test_recorded_503_body_is_complete_for_recording_validation():
     fault = _api("ModelTransportFault")(
         "always_503", SimpleNamespace(open=lambda *a, **k: None)
     )
+    request = Request("https://example.test/model")
     with pytest.raises(HTTPError) as exc:
-        fault.open(object(), timeout=1)
+        fault.open(request, timeout=1)
     body = exc.value.read()
     assert json.loads(body) == {"error": {"message": "Service Unavailable"}}
     assert exc.value.headers["Content-Length"] == str(len(body))
@@ -230,7 +237,7 @@ def test_alert_entry_request_shapes_and_counts_are_public_contract():
     request = builder(
         pattern="duplicate",
         fingerprint="a" * 16,
-        starts_at="2026-11-01T00:00:00Z",
+        starts_at=datetime(2026, 11, 1, tzinfo=UTC),
         token=token,
     )
     assert request["path"] == "/intake/alertmanager"
@@ -238,7 +245,7 @@ def test_alert_entry_request_shapes_and_counts_are_public_contract():
     assert request["body"]["version"] == "4"
     assert len(request["body"]["alerts"]) == 1
     assert request["body"]["alerts"][0]["fingerprint"] == "a" * 16
-    assert request["body"]["alerts"][0]["startsAt"].endswith("Z")
+    assert request["body"]["alerts"][0]["startsAt"] == "2026-11-01T00:00:00Z"
     assert request["body"]["alerts"][0]["labels"]["namespace"] == "otel-demo"
     assert token not in json.dumps(request["body"])
     assert set(request["headers"]) == {"Authorization", "Content-Type"}
@@ -292,8 +299,20 @@ def test_v1_slot_planning_remains_byte_compatible():
     assert after == before
 
 
-def test_mixed_binding_classes_are_rejected():
-    slots = _api("plan_slots")(V2_ROOT, ["all"], 1)
+def test_mixed_binding_classes_are_rejected(tmp_path):
+    single_class_slots = _api("plan_slots")(V2_ROOT, ["all"], 1)
+    _api("validate_round_bindings")(single_class_slots)
+
+    mixed_root = tmp_path / "dev-v2-mixed"
+    shutil.copytree(V2_ROOT, mixed_root)
+    scenario_dir = sorted((mixed_root / "regression").iterdir())[1]
+    answer_path = scenario_dir / "answer.json"
+    answer = json.loads(answer_path.read_text())
+    answer["injectors"] = [
+        {"kind": "source_unreachable", "params": {"source": "jaeger"}}
+    ]
+    answer_path.write_text(json.dumps(answer))
+    slots = _api("plan_slots")(mixed_root, ["all"], 1)
     with pytest.raises(Exception) as exc:
         _api("validate_round_bindings")(slots)
     assert getattr(exc.value, "code", str(exc.value)) == "ROUND_BINDING_MIXED"
@@ -330,7 +349,7 @@ def test_v2_storage_summary_writer_accepts_the_same_slot_capture(tmp_path):
     attempt = AttemptRecord(
         attempt_id="attempt-v2-summary",
         round_id=manifest.round_id,
-        manifest_hash="a" * 64,
+        manifest_hash=manifest_hash(manifest),
         scenario_id=spec.scenario_id,
         scenario_version=spec.version,
         mode="live",
