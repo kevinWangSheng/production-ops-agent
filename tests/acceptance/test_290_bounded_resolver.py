@@ -192,9 +192,7 @@ def test_sequential_stuck_queries_are_bounded_and_deadline_limited(monkeypatch):
     try:
         for _ in range(6):
             thread, result = _guarded(
-                lambda: _transport().fetch(
-                    _request(f"http://{BLOCKED_HOST}:4318")
-                )
+                lambda: _transport().fetch(_request(f"http://{BLOCKED_HOST}:4318"))
             )
             calls.append((thread, result))
             assert not thread.is_alive()
@@ -267,7 +265,9 @@ def test_waiting_query_takes_freed_slot_and_succeeds(monkeypatch, local_server):
         thread.join(3)
 
 
-def test_released_resolver_recovers_for_later_hostname_queries(monkeypatch, local_server):
+def test_released_resolver_recovers_for_later_hostname_queries(
+    monkeypatch, local_server
+):
     release = threading.Event()
     started_event, stats = _resolver_fake(
         monkeypatch, release_events=[release], success_port=local_server.server_port
@@ -288,15 +288,15 @@ def test_released_resolver_recovers_for_later_hostname_queries(monkeypatch, loca
     assert _wait_until(lambda: _thread_count() <= baseline + 1, SETTLE)
 
 
-def test_ip_literals_bypass_stuck_resolver_and_localhost_does_not(monkeypatch, local_server):
+def test_ip_literals_bypass_stuck_resolver_and_localhost_does_not(
+    monkeypatch, local_server
+):
     release = threading.Event()
     started_event, stats = _resolver_fake(
         monkeypatch, release_events=[release], block_hosts={BLOCKED_HOST, "localhost"}
     )
     blocked = [
-        _guarded(
-            lambda: _transport().fetch(_request(f"http://{BLOCKED_HOST}:4318"))
-        )
+        _guarded(lambda: _transport().fetch(_request(f"http://{BLOCKED_HOST}:4318")))
         for _ in range(2)
     ]
     assert started_event.wait(1.0)
