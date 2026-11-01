@@ -328,15 +328,17 @@ def covers_episode(
     window: Mapping[str, str] | None, first_box_end: datetime, episode_at: datetime
 ) -> bool:
     """A query reaches the attached episode when its window runs past the
-    first Run's box end and up to (or beyond) the episode's receipt."""
+    first Run's box end (so the first Run would refuse it) and into the
+    episode, which begins at the alert's ``startsAt`` (``episode_at``). The
+    receipt instant is not the bar: the successor's box ends seconds after
+    it, so a query can rarely end later than the receipt (#358 window,
+    revised after the run; the first version demanded end >= receipt)."""
     if not isinstance(window, Mapping):
         return False
     parsed = Window.parse(window)
     if parsed is None:
         return False
-    return parsed.end > first_box_end and parsed.end >= episode_at.replace(
-        microsecond=0
-    )
+    return parsed.end > first_box_end and parsed.end > episode_at
 
 
 def episode_queries(
@@ -650,7 +652,7 @@ def summarize(
     if episode is None:
         raise SystemExit("no attached episode after the first Run's box")
     successor_records = gateway_records(successor_steps)
-    queries = episode_queries(successor_records, first_end, episode["received_at"])
+    queries = episode_queries(successor_records, first_end, episode["starts_at"])
     received = episode["received_at"].astimezone(timezone.utc).replace(microsecond=0)
     if queries["queries"]:
         probe = Window.parse(queries["queries"][0]["window"])
