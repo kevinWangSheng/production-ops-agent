@@ -192,7 +192,7 @@ def test_upstream_refs_claims_and_mapping_rows_are_bound():
                     [
                         "git",
                         "show",
-                        "origin/main:docs/evidence/f14-upstream-mapping/mapping.json",
+                        "0089197e:docs/evidence/f14-upstream-mapping/mapping.json",
                     ],
                     text=True,
                 )
@@ -200,7 +200,8 @@ def test_upstream_refs_claims_and_mapping_rows_are_bound():
             candidate = next(
                 row["candidate_defect"]
                 for row in origin["rows"]
-                if Path(row["candidate_defect"]["step3_ref"].rstrip("/")).name == slug
+                if "candidate_defect" in row
+                and Path(row["candidate_defect"]["step3_ref"].rstrip("/")).name == slug
             )
             assert claims[0]["quote"] == candidate["claim"]
         triples = {_row_key(row) for row in mapping_rows()}
@@ -297,6 +298,12 @@ def test_run_freezes_contain_only_contract_fields_and_no_raw_prompt_reasoning():
             data = load(path)
             if path.name == "record.json":
                 continue
+            if path.name.endswith(".alerts.json"):
+                assert isinstance(data, list)
+                assert all(
+                    isinstance(alert, dict) and alert.get("startsAt") for alert in data
+                )
+                continue
             if "runs" not in path.parts and "opspilot" not in path.parts:
                 continue
             assert data.get("schema") in {
@@ -366,15 +373,18 @@ def test_opspilot_side_and_q7_are_derived_consistently():
     assert q7["decided_by"] == "agent_S8"
     assert q7["n1_triggered"] == (q7["input_gap"] and q7["report_gap"])
     hp = side["holmes"]["prometheus"]
+    run_root = EVIDENCE / "upstream-2356-failed-source"
     assert hp["k_input"] == sum(
         1
-        for _ in hp["input_runs"]
-        if (EVIDENCE / "upstream-2356-failed-source" / _).is_file()
+        for run_path in hp["input_runs"]
+        if load(run_root / run_path)["request_checks"]["failed_segment_names_source"][
+            "hit"
+        ]
     )
     assert hp["k_report"] == sum(
         1
-        for _ in hp["report_runs"]
-        if (EVIDENCE / "upstream-2356-failed-source" / _).is_file()
+        for run_path in hp["report_runs"]
+        if load(run_root / run_path)["answer_checks"]["names_missing_source"]["hit"]
     )
     assert len(side["groups"]["prometheus"]["runs"]) == 3
     assert len(hp["report_runs"]) == 3
@@ -404,7 +414,11 @@ def test_revision_one_alert_entries_canary_and_no_proxy_rules():
         load(path).get("entry") == "investigate_alertmanager" for path in raw_runs
     )
     alert_files = list((raw_dir / "runs").glob("*.alerts.json"))
-    assert alert_files and all(load(path).get("startsAt") for path in alert_files)
+    assert alert_files and all(
+        isinstance(load(path), list)
+        and all(alert.get("startsAt") for alert in load(path))
+        for path in alert_files
+    )
     for path in raw_runs:
         run = load(path)
         if run.get("case") in {"raw-alert-input", "raw-alert-real"}:
@@ -427,7 +441,7 @@ def test_revision_one_alert_entries_canary_and_no_proxy_rules():
 def test_mapping_writeback_only_changes_allowed_rows_and_binds_records():
     current = load(MAPPING)
     origin_text = subprocess.check_output(
-        ["git", "show", "origin/main:docs/evidence/f14-upstream-mapping/mapping.json"],
+        ["git", "show", "0089197e:docs/evidence/f14-upstream-mapping/mapping.json"],
         text=True,
     )
     origin = json.loads(origin_text)
@@ -535,7 +549,7 @@ def test_baseline_files_are_byte_identical_to_origin_and_f14_stays_unpassed():
     for name in baseline_files:
         path = ROOT / "docs/evidence/f14-holmes-baseline" / name
         expected = subprocess.check_output(
-            ["git", "show", f"origin/main:docs/evidence/f14-holmes-baseline/{name}"]
+            ["git", "show", f"0089197e:docs/evidence/f14-holmes-baseline/{name}"]
         )
         assert path.read_bytes() == expected
     features = load(ROOT / "feature_list.json")
@@ -550,7 +564,7 @@ def test_capture_default_request_check_function_remains_unchanged():
     current = ast.parse(path.read_text())
     origin = ast.parse(
         subprocess.check_output(
-            ["git", "show", "origin/main:scripts/holmes_baseline/capture.py"], text=True
+            ["git", "show", "0089197e:scripts/holmes_baseline/capture.py"], text=True
         )
     )
 
