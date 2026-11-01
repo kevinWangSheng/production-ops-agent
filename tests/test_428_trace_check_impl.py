@@ -13,6 +13,7 @@ from opspilot.outbox_delivery import root_span_id_for, span_id_for
 from scripts import outbox_trace_check as check
 
 KEY = "lsv2_" + "pt_" + "abad1dea" * 4  # built at run time (gitleaks)
+TRACE = "0f0f0f0f-1111-2222-3333-444444444444"
 
 
 def _run(run_id, name, run_type, meta, **fields):
@@ -50,6 +51,9 @@ def world(tmp_path, monkeypatch):
         {"incident_id": incident, "run_state": "completed"},
         total_cost=0.001,
         total_tokens=12,
+        # LangSmith's trace id differs from the derived root run id here, so a
+        # listing keyed by the wrong id finds nothing (bot P2 on #441)
+        trace_id=TRACE,
     )
     children = [
         _run(
@@ -74,12 +78,20 @@ def world(tmp_path, monkeypatch):
         ),
     ]
     state = SimpleNamespace(
-        root=root, children=children, root_missing=False, link_fails=False
+        root=root,
+        children=children,
+        root_missing=False,
+        link_fails=False,
+        trace_queries=[],
     )
 
     class Client:
-        def list_runs(self, **_):
-            return [state.root, *state.children]
+        def list_runs(self, trace_id=None, **_):
+            runs = [state.root, *state.children]
+            if trace_id is not None:
+                state.trace_queries.append(str(trace_id))
+                return runs if str(trace_id) == TRACE else []
+            return runs
 
         def read_run(self, _id):
             if state.root_missing:
@@ -124,6 +136,10 @@ def _main(world, capsys, *extra):
 def test_a_complete_clean_trace_passes(world, capsys):
     code, report = _main(world, capsys)
     assert code == 0 and report["failures"] == []
+    # the trace is listed by the root run's own trace_id, not its run id
+    assert world.trace_queries == [TRACE]
+    assert report["expected"]["trace_key"] == TRACE
+    assert report["expected"]["root_run_id"] != TRACE
     assert report["identity"] == {
         **report["identity"],
         "found": 2,

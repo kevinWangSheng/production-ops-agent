@@ -285,11 +285,24 @@ def check(
         root_error = type(exc).__name__
     else:
         root_error = None
-    trace = (
-        [_dump(run) for run in client.list_runs(trace_id=root_id, limit=_LIST_LIMIT)]
+    # The LangSmith trace id is the root run's own ``trace_id`` field (API
+    # reference: "trace_id is the root trace UUID; for a root run it matches
+    # id"). Without a root, try the UUID of the 16-byte OTLP trace id; if that
+    # finds nothing, fall back to the incident filter.
+    trace_key = (
+        str(root.get("trace_id") or root_id)
         if root is not None
-        else by_incident
+        else str(UUID(expected["otel_trace_ids"][0]))
+        if len(expected["otel_trace_ids"]) == 1
+        else None
     )
+    trace = (
+        [_dump(run) for run in client.list_runs(trace_id=trace_key, limit=_LIST_LIMIT)]
+        if trace_key is not None
+        else []
+    )
+    if not trace and root is None:
+        trace = by_incident
     link = None
     if root is not None:
         try:
@@ -305,6 +318,7 @@ def check(
         "run_id": str(run_id),
         "expected": {
             "root_run_id": root_id,
+            "trace_key": trace_key,
             "otel_trace_ids": expected["otel_trace_ids"],
             "outbox_rows": len(rows),
         },
