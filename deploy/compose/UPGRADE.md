@@ -44,6 +44,49 @@ it when its container is created: after editing it run
 `install.sh compose up -d --force-recreate web` (a plain `restart` keeps the
 old file mount, so an editor that replaces the file leaves web on the old map).
 
-Do not start an older image against a migrated database: the runtimes refuse
-it, and there are no down-migrations. Run one web replica only; worker and
-Observer also run one replica each in this install.
+An older image does not start on a database a newer release has migrated:
+each runtime refuses it on start. To go back to the previous release, see
+[Rolling back](#rolling-back). Run one web replica only; worker and Observer
+also run one replica each in this install.
+
+`docker compose stop` gives the worker and the Observer 40 s
+(`stop_grace_period`) after SIGTERM; both stop claiming new work at once. A
+Run whose model or tool call is still running after that is resumed by the
+next worker from its last committed step once its lease expires (up to
+7 minutes). A Run started by a release whose prompt, context policy or tool
+schema differs is not continued: it is blocked as `INCOMPATIBLE_STATE`, its
+records stay, and a human starts a new Run from the workbench.
+
+## Rolling back
+
+Rolling back runs the new release's schema downgrade while every runtime is
+stopped, then installs the old release over the same database and secrets
+directory. The old image cannot do the downgrade itself: it does not have
+the newer migrations.
+
+1. Stop every runtime, from the new release's checkout (`postgres` keeps
+   running): `deploy/compose/install.sh compose stop web worker observer`.
+2. Downgrade the schema with the new release's image, the one installed
+   now, to the old release's head revision (the revision its last
+   `install.sh upgrade` reported as `schema upgraded:` or `schema unchanged:`,
+   or the newest file in its `opspilot/migrations/versions/`):
+   `deploy/compose/install.sh compose run --rm --no-deps migrate python -m opspilot.schema downgrade --to <old head>`.
+   It prints `schema current:` and `schema target:` before it changes
+   anything, and `schema downgraded: <old head>` when done.
+3. Upgrade from the old release's checkout (or with `OPSPILOT_IMAGE` set to
+   its digest): `deploy/compose/install.sh upgrade`. Its `migrate` reports
+   `unchanged`, `init-roles` runs, and each runtime verifies the schema head
+   on start.
+
+A downgrade is refused, and changes nothing, when it would delete records
+that only the newer schema can hold (a migration's downgrade checks this
+inside its own transaction; the message names what is in the way). A
+multi-revision downgrade stops at the last revision that succeeded and
+prints `schema now at <revision>`. Do not restore a backup in that case:
+it would erase records written since the upgrade, including human
+decisions. Stay on the new release, re-run its `install.sh upgrade` to
+bring the schema back to its head, and fix forward.
+
+The `0024_trace_outbox` downgrade drops the trace outbox table, also with
+rows not yet exported, and prints only how many rows were pending,
+delivered and dropped.

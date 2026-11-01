@@ -5,6 +5,9 @@ tables (``make migrate`` / ``python -m opspilot.schema migrate``). The
 runtime ``install()`` methods call :func:`verify_head` and refuse to start
 when the database is not at the newest revision, so the restricted roles of
 M1-02 never need DDL rights (ADR-0007; task record 2026-10-05).
+``downgrade --to <rev>`` is the rollback half (#429, C3 §11): the newer
+release's image takes the database back to the older release's head while
+every runtime is stopped (deploy/compose/UPGRADE.md, "Rolling back").
 
 Taking over a database built by the old inline ``install()`` DDL is only
 allowed when ``pg_dump --schema-only`` of its ``opspilot_*`` objects is
@@ -23,7 +26,7 @@ import os
 import subprocess
 import sys
 import tempfile
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -38,6 +41,7 @@ from psycopg import errors, sql
 from psycopg.conninfo import conninfo_to_dict, make_conninfo
 from psycopg.rows import tuple_row
 from sqlalchemy.engine import URL
+from sqlalchemy.exc import DBAPIError
 
 _log = logging.getLogger(__name__)
 
@@ -277,6 +281,28 @@ def target_match(value: object) -> dict[str, Any]:
     return {"version": TARGET_MATCH_VERSION, "labels": dict(labels)}
 
 
+class DowngradeRefused(RuntimeError):
+    """``downgrade --to`` was refused; see the message for what was changed.
+
+    Raised before any DDL for an unknown revision, an unversioned database,
+    a database revision this build does not know, or a target that is not
+    lower than the current revision. ``at`` is set only when a migration's
+    own downgrade refused (it would lose records only the newer schema can
+    hold): that revision's transaction rolled back and the database is at
+    ``at``, the last revision that succeeded.
+    """
+
+    def __init__(self, message: str, *, at: str | None = None) -> None:
+        self.at = at
+        super().__init__(message)
+
+
+@dataclass(frozen=True)
+class DowngradeResult:
+    previous: str
+    revision: str
+
+
 @dataclass(frozen=True)
 class MigrateResult:
     # ``stamped``: a legacy database was stamped at BASELINE_REVISION and then
@@ -353,6 +379,81 @@ def upgrade_to(dsn: str, revision: str) -> None:
 
 def stamp(dsn: str, revision: str) -> None:
     command.stamp(_config(dsn), revision)
+
+
+def _known_revisions() -> dict[str, str | None]:
+    """Every revision id of this build mapped to its (single) down revision."""
+    chain: dict[str, str | None] = {}
+    for script in ScriptDirectory.from_config(_config("")).walk_revisions():
+        down = script.down_revision
+        if isinstance(down, (tuple, list)):  # never: the chain is linear
+            raise RuntimeError(f"revision {script.revision} has several parents")
+        chain[script.revision] = down
+    return chain
+
+
+def downgrade_plan(current: str | None, target: str) -> None:
+    """Refuse (:class:`DowngradeRefused`) unless ``target`` is strictly below ``current``.
+
+    Only exact revision ids of this build count as known: Alembic would also
+    accept prefixes and symbols (``base``, ``-1``) and resolve them for
+    itself, which an operator rolling back must not depend on.
+    """
+    chain = _known_revisions()
+    if target not in chain:
+        raise DowngradeRefused(
+            f"unknown revision {target}: not a migration in this build"
+        )
+    if current is None:
+        raise DowngradeRefused(
+            f"schema has no {VERSION_TABLE} table: nothing to downgrade"
+        )
+    if current not in chain:
+        raise DowngradeRefused(
+            f"database is at {current}, which this build does not know: "
+            "downgrade with the image of the release that migrated it"
+        )
+    ancestor = chain[current]
+    while ancestor is not None and ancestor != target:
+        ancestor = chain[ancestor]
+    if ancestor is None:
+        raise DowngradeRefused(
+            f"revision {target} is not lower than the current {current}: "
+            "downgrade only goes to an older revision"
+        )
+
+
+def downgrade_to(
+    dsn: str, target: str, *, on_plan: Callable[[str, str], None] | None = None
+) -> DowngradeResult:
+    """Downgrade ``dsn`` from its current revision to the older ``target``.
+
+    Run only while every runtime is stopped (C3 §11). One transaction per
+    revision: a migration that refuses (would lose newer records) rolls
+    back alone and :class:`DowngradeRefused` reports where the database
+    stopped. ``on_plan(current, target)`` is called once the plan is valid,
+    before any DDL.
+    """
+    with psycopg.connect(dsn) as conn:
+        current = current_revision(conn)
+    downgrade_plan(current, target)
+    assert current is not None  # downgrade_plan refuses an unversioned database
+    if on_plan is not None:
+        on_plan(current, target)
+    try:
+        command.downgrade(_config(dsn), target)
+    except (RuntimeError, DBAPIError, psycopg.Error) as exc:
+        with psycopg.connect(dsn) as conn:
+            at = current_revision(conn)
+        detail = getattr(exc, "orig", None) or exc
+        raise DowngradeRefused(f"downgrade refused: {detail}", at=at) from exc
+    with psycopg.connect(dsn) as conn:
+        reached = current_revision(conn)
+    if reached != target:
+        raise DowngradeRefused(
+            f"downgrade ended at {reached}, not {target}", at=reached
+        )
+    return DowngradeResult(current, target)
 
 
 @contextmanager
@@ -543,12 +644,58 @@ def migrate(
     return MigrateResult("stamped", upgrade_head(dsn), accepted_diff=diff)
 
 
+@contextmanager
+def _migration_log_to_stderr() -> Iterator[None]:
+    """Show what a migration's downgrade reports (0024: the three outbox counts)."""
+    handler = logging.StreamHandler(sys.stderr)
+    handler.setFormatter(logging.Formatter("%(message)s"))
+    migrations_log = logging.getLogger("opspilot.migrations")
+    previous_level = migrations_log.level
+    migrations_log.addHandler(handler)
+    if migrations_log.getEffectiveLevel() > logging.WARNING:
+        migrations_log.setLevel(logging.WARNING)
+    try:
+        yield
+    finally:
+        migrations_log.removeHandler(handler)
+        migrations_log.setLevel(previous_level)
+
+
+def _downgrade(dsn: str, target: str) -> int:
+    with psycopg.connect(dsn) as conn:
+        current = current_revision(conn)
+    chain = _known_revisions()
+    if current in chain and target in chain:
+        # Printed for a refused "not lower" target too, so the operator sees
+        # where the database is.
+        print(f"schema current: {current}", flush=True)
+    with _migration_log_to_stderr():
+        try:
+            result = downgrade_to(
+                dsn,
+                target,
+                on_plan=lambda _current, to: print(f"schema target: {to}", flush=True),
+            )
+        except DowngradeRefused as exc:
+            print(exc, file=sys.stderr)
+            if exc.at is not None:
+                print(f"schema now at {exc.at}", file=sys.stderr)
+            return 1
+    print(f"schema downgraded: {result.revision}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="python -m opspilot.schema",
-        description="Run or verify OpsPilot schema migrations (owner connection, OPSPILOT_DSN).",
+        description="Run, verify or roll back OpsPilot schema migrations (owner connection, OPSPILOT_DSN).",
     )
-    parser.add_argument("action", choices=("migrate", "check"))
+    parser.add_argument("action", choices=("migrate", "check", "downgrade"))
+    parser.add_argument(
+        "--to",
+        metavar="REVISION",
+        help="downgrade only: the exact older revision id to go back to (all runtimes stopped)",
+    )
     parser.add_argument(
         "--pg-dump",
         default=os.environ.get("OPSPILOT_PG_DUMP", "pg_dump"),
@@ -561,6 +708,12 @@ def main(argv: list[str] | None = None) -> int:
         "order of columns inside tables; the accepted diff is printed for the record",
     )
     args = parser.parse_args(argv)
+    if args.action == "downgrade" and not args.to:
+        print("downgrade needs --to <revision>", file=sys.stderr)
+        return 2
+    if args.action != "downgrade" and args.to is not None:
+        print("--to is only valid with downgrade", file=sys.stderr)
+        return 2
     dsn = os.environ.get("OPSPILOT_DSN")
     if not dsn:
         print("OPSPILOT_DSN is required", file=sys.stderr)
@@ -574,6 +727,8 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         print(f"schema at head {head_revision()}")
         return 0
+    if args.action == "downgrade":
+        return _downgrade(dsn, args.to)
     try:
         result = migrate(
             dsn, pg_dump=args.pg_dump, accept_column_order=args.accept_column_order

@@ -156,6 +156,10 @@ services:
         condition: service_completed_successfully
     deploy:
       replicas: 1
+    # Longer than the worker's 30 s stop grace (OPSPILOT_WORKER_GRACE_SECONDS):
+    # `compose stop` would otherwise kill it after Compose's default timeout,
+    # before an attempt in progress can finish (C3 §7 drain).
+    stop_grace_period: 40s
     restart: unless-stopped
 
   observer:
@@ -182,6 +186,8 @@ services:
         condition: service_completed_successfully
     deploy:
       replicas: 1
+    # Longer than the Observer's 30 s stop grace, as for the worker.
+    stop_grace_period: 40s
     restart: unless-stopped
 
   # Manual raw-payload cleanup (#244): dry run by default.

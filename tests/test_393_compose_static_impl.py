@@ -53,7 +53,9 @@ def test_the_observer_url_comes_from_the_install_settings():
 
 def test_upgrade_notes_give_the_stop_migrate_start_order():
     text = (COMPOSE_DIR / "UPGRADE.md").read_text()
-    steps = re.findall(r"^\d\. (\S+)", text, re.MULTILINE)
+    # The upgrade steps only; "Rolling back" (#429) has its own list.
+    upgrade = text.split("## Rolling back")[0]
+    steps = re.findall(r"^\d\. (\S+)", upgrade, re.MULTILINE)
     assert steps == ["stop", "start", "`migrate`", "`init-roles`", "start"]
     assert "install.sh upgrade" in text
     assert "OPSPILOT_START_AGENT=1" in text
