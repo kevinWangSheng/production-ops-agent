@@ -21,6 +21,7 @@ from opspilot.evaluation import (
     load_scenarios,
     load_scenarios_v2,
     manifest_unknowns,
+    read_legacy_summary,
     validate_manifest,
 )
 from scripts.eval_live import dataset_dimension
@@ -70,7 +71,9 @@ def test_regression_copies_v1_stimulus_and_answer(sid: str) -> None:
     old_spec, old_answer = _read(v1 / "scenario.json"), _read(v1 / "answer.json")
     new_spec, new_answer = _read(v2 / "scenario.json"), _read(v2 / "answer.json")
     assert new_spec["stimulus"] == old_spec["stimulus"]
-    assert new_spec["incident"] == old_spec["incident"]
+    # incident keeps the v1 shape; its kind is neutral because v1's
+    # fault/normal is the polarity, which lives only in the answer.
+    assert new_spec["incident"] == {**old_spec["incident"], "kind": "eval"}
     assert new_answer["expected_output"] == old_answer["expected_output"]
     assert new_answer["signature"] == old_answer["signature"]
     fault = old_spec["kind"] == "fault"
@@ -103,6 +106,8 @@ def test_scenario_files_carry_no_answer_side_words() -> None:
         "model_failure",
         "positive",
         "negative",
+        "fault",
+        "normal",
         "category",
         "polarity",
         "injectors",
@@ -214,6 +219,13 @@ def test_v2_loader_refuses_bad_id(tmp_path: Path) -> None:
         load_scenario_v2(directory)
 
 
+def test_v2_loader_refuses_v1_kind_word_in_incident(tmp_path: Path) -> None:
+    directory = _copy(tmp_path)
+    _edit(directory, "scenario.json", lambda d: d["incident"].update(kind="fault"))
+    with pytest.raises(ScenarioError, match="STIMULUS_LEAK:fault"):
+        load_scenario_v2(directory)
+
+
 def test_v2_loader_refuses_flag_name_in_stimulus(tmp_path: Path) -> None:
     directory = _copy(tmp_path)
     _edit(
@@ -275,3 +287,27 @@ def test_dataset_dimension_for_v2_and_v1_roots() -> None:
     assert v2 == DimensionValue("hash", f"dev-v2:{dataset_tree_hash(V2)}", None)
     v1 = dataset_dimension(V1)
     assert v1.kind == "none" and v1.reason
+
+
+def test_legacy_summary_reads_missing_dimensions_as_unknown(tmp_path: Path) -> None:
+    old = {
+        name: {"kind": "hash", "value": "h", "reason": None}
+        for name in REQUIRED_DIMENSIONS
+        if name not in ("runbook", "dataset")
+    }
+    old["seed"] = {"kind": "none", "value": None, "reason": None}  # malformed
+    path = tmp_path / "old.json"
+    path.write_text(
+        json.dumps({"capture": {"manifest": {"dimensions": old}}}), encoding="utf-8"
+    )
+    legacy = read_legacy_summary(path)
+    assert set(legacy.dimensions) == set(REQUIRED_DIMENSIONS)
+    assert legacy.dimensions["runbook"].kind == "unknown"
+    assert legacy.dimensions["dataset"].kind == "unknown"
+    assert legacy.dimensions["seed"].kind == "unknown"
+    assert legacy.dimensions["code"] == DimensionValue("hash", "h", None)
+    bare = tmp_path / "bare.json"
+    bare.write_text(json.dumps({"overall": True}), encoding="utf-8")
+    assert {v.kind for v in read_legacy_summary(bare).dimensions.values()} == {
+        "unknown"
+    }
