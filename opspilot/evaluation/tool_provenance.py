@@ -386,18 +386,38 @@ def check_result(
             mismatch()
         if failure is not None:
             same((outcome.status, outcome.reason), failure)
+        elif presend:
+            # What a ``sent=false`` response can become (#425 review r1). The
+            # shipped transports refuse only with codes their registrations
+            # map to INVALID_PARAMS (``otel_demo.py`` ``_refused``, :1796-1812,
+            # mapped at :791-797, :884-890 and ``_DISCOVERY_ERROR_CLASSES``
+            # :930-938) or, for
+            # ``read_evidence``, to EVIDENCE_NOT_READABLE / INVALID_PARAMS
+            # (``evidence_read.py`` ``_refused``, :240-244, mapped at
+            # :183-188); EVIDENCE_CORRUPT is a sent response. The executor's
+            # post-fetch precedence (``executor.py`` ``refuse_after_fetch``)
+            # then lets a human decision taken meanwhile, or a refused
+            # settlement charge, replace that reason; it never consults the
+            # deadline there.
+            if not (
+                (outcome.status, outcome.reason) == ("error", "INVALID_PARAMS")
+                or (
+                    reads_evidence(reg)
+                    and (outcome.status, outcome.reason)
+                    == ("denied", "EVIDENCE_NOT_READABLE")
+                )
+                or (
+                    outcome.status == "denied"
+                    and outcome.reason in _CONTROL - {"DEADLINE_EXCEEDED"}
+                )
+            ):
+                mismatch()
         elif not (
             (outcome.status == "denied" and outcome.reason in _CONTROL)
             or (
                 outcome.status == "error"
                 and outcome.reason
                 in {"INVALID_PARAMS", "SOURCE_ERROR", "SOURCE_UNAVAILABLE"}
-            )
-            or (
-                presend
-                and reads_evidence(reg)
-                and (outcome.status, outcome.reason)
-                == ("denied", "EVIDENCE_NOT_READABLE")
             )
         ):
             mismatch()

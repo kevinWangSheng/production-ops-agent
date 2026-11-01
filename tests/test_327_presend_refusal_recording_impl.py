@@ -400,9 +400,126 @@ PATHS: dict[str, tuple[Setup, str, str, bool, bool]] = {
     ),
 }
 
+
+# A transport refusal (sent=false) still goes through the executor's
+# post-fetch precedence: a human decision taken while the call was out, or a
+# settlement charge the ledger refuses, outranks the transport's own reason.
+
+
+def _during_fetch(executor, effect: Callable[[], None]) -> None:
+    original = executor._transport.fetch
+
+    def fetch(request):
+        response = original(request)
+        effect()
+        return response
+
+    executor._transport.fetch = fetch
+
+
+def _on_settlement(executor, error: Exception) -> None:
+    original, charges = executor._ledger.charge, []
+
+    def charge(*args, **kwargs):
+        charges.append(args)
+        if len(charges) == 2:  # the first charge reserves, the second settles
+            raise error
+        return original(*args, **kwargs)
+
+    executor._ledger.charge = charge
+
+
+def _presend_suspended(executor, store, parent):
+    def suspend() -> None:
+        store.control = {**store.control, "global_suspended": True}
+
+    _during_fetch(executor, suspend)
+    return executor, _metrics(_OUTSIDE)
+
+
+def _presend_generation_changed(executor, store, parent):
+    def bump() -> None:
+        store.control = {
+            **store.control,
+            "incident_generation": store.control["incident_generation"] + 1,
+        }
+
+    _during_fetch(executor, bump)
+    return executor, _metrics(_OUTSIDE)
+
+
+def _presend_control_unavailable(executor, store, parent):
+    def down() -> None:
+        store.control = RuntimeError("control store down")
+
+    _during_fetch(executor, down)
+    return executor, _metrics(_OUTSIDE)
+
+
+def _presend_operation_budget(executor, store, parent):
+    _on_settlement(executor, ToolBudgetExhausted())
+    return executor, _metrics(_OUTSIDE)
+
+
+def _presend_time_budget(executor, store, parent):
+    _on_settlement(executor, ToolTimeBudgetExhausted())
+    return executor, _metrics(_OUTSIDE)
+
+
+def _presend_settlement_denied(executor, store, parent):
+    _on_settlement(executor, ToolControlDenied())
+    return executor, _call(
+        EVIDENCE_TOOL, {"evidence_id": "nope:1", "limit": 1}, index=1
+    )
+
+
+PATHS.update(
+    {
+        "presend-SUSPENDED": (_presend_suspended, "denied", "SUSPENDED", True, True),
+        "presend-CONTROL_GENERATION_CHANGED": (
+            _presend_generation_changed,
+            "denied",
+            "CONTROL_GENERATION_CHANGED",
+            True,
+            True,
+        ),
+        "presend-CONTROL_UNAVAILABLE": (
+            _presend_control_unavailable,
+            "denied",
+            "CONTROL_UNAVAILABLE",
+            True,
+            True,
+        ),
+        "presend-OPERATION_BUDGET_EXHAUSTED": (
+            _presend_operation_budget,
+            "denied",
+            "OPERATION_BUDGET_EXHAUSTED",
+            True,
+            True,
+        ),
+        "presend-TIME_BUDGET_EXHAUSTED": (
+            _presend_time_budget,
+            "denied",
+            "TIME_BUDGET_EXHAUSTED",
+            True,
+            True,
+        ),
+        "presend-settlement-denied": (
+            _presend_settlement_denied,
+            "denied",
+            "CONTROL_UNAVAILABLE",
+            True,
+            True,
+        ),
+    }
+)
+
 WINDOWED = sorted(name for name, path in PATHS.items() if path[3])
 PLAN_STAGE = sorted(name for name, path in PATHS.items() if not path[3])
 TRANSPORT = sorted(name for name, path in PATHS.items() if path[4])
+# The transport's own reason; a post-fetch control or ledger denial without
+# its phase times is the (valid) shape of the same denial before dispatch.
+TRANSPORT_REASON = sorted(name for name in TRANSPORT if not name.startswith("presend-"))
 
 
 def _refusal(monkeypatch, name):
@@ -484,7 +601,7 @@ def test_a_refusal_before_the_window_is_set_carries_none(monkeypatch, name):
         _check(executor, ctx, call, _with_op(outcome, window=WINDOW))
 
 
-@pytest.mark.parametrize("name", TRANSPORT)
+@pytest.mark.parametrize("name", TRANSPORT_REASON)
 @pytest.mark.parametrize(
     "tamper",
     [
@@ -520,3 +637,30 @@ def test_evidence_not_readable_is_only_an_evidence_read_refusal(monkeypatch):
     )
     with pytest.raises(StorageError, match="IDENTITY_MISMATCH"):
         _check(executor, ctx, call, forged)
+
+
+# Review r1 (#425): a pre-send refusal names only what the shipped transports
+# emit with sent=false, or a post-fetch human/ledger decision.
+@pytest.mark.parametrize("name", ["QUERY_OUT_OF_WINDOW", "EVIDENCE_NOT_READABLE"])
+@pytest.mark.parametrize(
+    "forged",
+    [
+        ("error", "SOURCE_ERROR"),
+        ("error", "SOURCE_UNAVAILABLE"),
+        ("error", "MALFORMED_RESULT"),
+        ("denied", "DEADLINE_EXCEEDED"),
+        ("denied", "WINDOW_OUT_OF_SCOPE"),
+        ("denied", "PARAM_NOT_ALLOWED"),
+    ],
+)
+def test_a_presend_refusal_with_a_reason_no_transport_sends_is_rejected(
+    monkeypatch, name, forged
+):
+    executor, ctx, call, outcome = _refusal(monkeypatch, name)
+    status, reason = forged
+    view = dict(outcome.model_view, status=status, reason=reason)
+    forged_outcome = dataclasses.replace(
+        outcome, status=status, reason=reason, model_view=view
+    )
+    with pytest.raises(StorageError, match="IDENTITY_MISMATCH"):
+        _check(executor, ctx, call, forged_outcome)
