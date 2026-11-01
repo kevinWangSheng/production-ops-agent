@@ -7,12 +7,64 @@ so a reader holding the buffered file's lock can first leave recv().
 
 from __future__ import annotations
 
+import ipaddress
 import socket
 import threading
 import time
 import urllib.request
+from concurrent.futures import Future
 from http.client import HTTPConnection, HTTPSConnection
 from typing import Any
+
+# #290 (Q9, 2026-11-01): getaddrinfo cannot be interrupted, so a stuck
+# resolver used to strand one daemon thread per query. Hostname lookups now
+# take one of a fixed number of slots shared by every query transport
+# (Prometheus and Jaeger alike). A slot is held until getaddrinfo really
+# returns, so resolver threads never exceed RESOLVER_SLOTS; a caller waits
+# for a slot only within its own remaining deadline, then times out.
+RESOLVER_SLOTS = 2
+_resolver_slots = threading.BoundedSemaphore(RESOLVER_SLOTS)
+
+_AddrInfo = list[tuple[Any, Any, int, str, Any]]
+
+
+def _is_ip_literal(host: str) -> bool:
+    try:
+        ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return True
+
+
+def resolve(host: str, port: int, deadline: float) -> _AddrInfo:
+    """``getaddrinfo`` for a TCP peer, bounded by ``deadline`` (monotonic).
+
+    IP literals need no lookup and bypass the slots; any hostname, including
+    ``localhost``, takes a slot. Raises ``TimeoutError`` when the deadline
+    passes first, whether waiting for a slot or for the lookup.
+    """
+    if _is_ip_literal(host):
+        return socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+    remaining = deadline - time.monotonic()
+    if remaining <= 0 or not _resolver_slots.acquire(timeout=remaining):
+        raise TimeoutError
+    result: Future[_AddrInfo] = Future()
+
+    def lookup() -> None:
+        try:
+            result.set_result(socket.getaddrinfo(host, port, type=socket.SOCK_STREAM))
+        except BaseException as error:
+            result.set_exception(error)
+        finally:
+            _resolver_slots.release()
+
+    try:
+        threading.Thread(target=lookup, daemon=True, name="otel-resolve").start()
+    except BaseException:
+        _resolver_slots.release()
+        raise
+    # concurrent.futures.TimeoutError is the builtin TimeoutError (3.11+).
+    return result.result(timeout=max(0.0, deadline - time.monotonic()))
 
 
 class RequestSockets:
@@ -54,14 +106,12 @@ class RequestSockets:
     ) -> socket.socket:
         # Register before connect(), including proxy TCP connections. Each
         # address attempt consumes the same deadline rather than a new budget.
-        # DNS cannot be interrupted by socket shutdown; the daemon thread exits
-        # when the resolver returns or times out, without blocking process exit.
-        # This is an R1 limitation: strict isolation needs a subprocess (C3 §8),
-        # outside PR-A's scope.
+        # DNS cannot be interrupted by socket shutdown; lookups go through the
+        # bounded shared resolver above (#290) so a stuck resolver costs at
+        # most RESOLVER_SLOTS threads, not one per query.
         last: OSError | None = None
-        for family, kind, proto, _, peer in socket.getaddrinfo(
-            *address, type=socket.SOCK_STREAM
-        ):
+        host, port = address
+        for family, kind, proto, _, peer in resolve(host, port, self.deadline):
             sock = socket.socket(family, kind, proto)
             self.keep(sock)
             try:
