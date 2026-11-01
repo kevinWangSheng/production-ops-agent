@@ -60,6 +60,8 @@ DIMENSIONS = (
     "seed",
     "command",
     "clock_policy",
+    "runbook",
+    "dataset",
 )
 SCENARIO_IDS = (
     "eval-cart-failure",

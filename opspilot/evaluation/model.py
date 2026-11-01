@@ -415,3 +415,405 @@ def investigator_input(spec: ScenarioSpec) -> Mapping[str, str]:
         "subject_id": spec.stimulus.subject_id,
         "target_id": spec.stimulus.target_id,
     }
+
+
+# -- scenario schema v2 (opspilot-eval-scenario-2, #430) ----------------------
+#
+# Appended after the v1 loader, which stays byte-identical. Same discipline as
+# v1: stimulus and answer in separate files, exact keys on every object, and
+# everything that names the category, polarity or injected fault lives only in
+# ``answer.json`` (V2-R3).
+
+SCENARIO_SCHEMA_V2 = "opspilot-eval-scenario-2"
+ScenarioEntry = Literal["question", "alertmanager"]
+ScenarioCategory = Literal[
+    "regression",
+    "noise",
+    "missing_telemetry",
+    "duplicate_event",
+    "model_failure",
+    "prompt_injection",
+    "wrong_target",
+]
+ScenarioPolarity = Literal["positive", "negative"]
+InjectorKind = Literal[
+    "flagd", "source_unreachable", "model_transport", "otlp_span", "alert_delivery"
+]
+SCENARIO_ENTRIES: tuple[str, ...] = ("question", "alertmanager")
+SCENARIO_CATEGORIES: tuple[str, ...] = (
+    "regression",
+    "noise",
+    "missing_telemetry",
+    "duplicate_event",
+    "model_failure",
+    "prompt_injection",
+    "wrong_target",
+)
+SCENARIO_POLARITIES: tuple[str, ...] = ("positive", "negative")
+INJECTOR_KINDS: tuple[str, ...] = (
+    "flagd",
+    "source_unreachable",
+    "model_transport",
+    "otlp_span",
+    "alert_delivery",
+)
+DATASET_GROUPS: tuple[str, ...] = ("regression", "capability")
+
+
+@dataclass(frozen=True)
+class ScenarioSpecV2:
+    scenario_id: str
+    version: str
+    entry: ScenarioEntry
+    incident: IncidentScenario
+    stimulus: Stimulus
+
+
+@dataclass(frozen=True)
+class Injector:
+    kind: InjectorKind
+    params: Mapping[str, Any]
+
+
+@dataclass(frozen=True)
+class ExpectedCounts:
+    incidents: int | None
+    runs: int | None
+    episodes: int | None
+
+
+@dataclass(frozen=True)
+class ExpectedOutcome:
+    final_states: tuple[str, ...]
+    decision: str | None
+    handoff_reason: str | None
+    counts: ExpectedCounts
+    forbidden_tool_requests: tuple[str, ...]
+    canary: str | None
+
+
+@dataclass(frozen=True)
+class AnswerV2:
+    scenario_id: str
+    version: str
+    category: ScenarioCategory
+    polarity: ScenarioPolarity
+    injectors: tuple[Injector, ...]
+    expected_outcome: ExpectedOutcome
+    expected_output: tuple[str, ...]
+    signature: SignatureRule | None
+    reference_report: str | None
+
+
+_V2_VERSION = "2"
+_V2_SCENARIO_KEYS = frozenset(
+    {"scenario_id", "version", "entry", "incident", "stimulus"}
+)
+_V2_ANSWER_KEYS = frozenset(
+    {
+        "scenario_id",
+        "version",
+        "category",
+        "polarity",
+        "injectors",
+        "expected_outcome",
+        "expected_output",
+        "signature",
+        "reference_report",
+    }
+)
+_V2_INJECTOR_KEYS = frozenset({"kind", "params"})
+_V2_FLAGD_PARAM_KEYS = frozenset({"flag", "variant"})
+_V2_OUTCOME_KEYS = frozenset(
+    {
+        "final_states",
+        "decision",
+        "handoff_reason",
+        "counts",
+        "forbidden_tool_requests",
+        "canary",
+    }
+)
+_V2_COUNT_KEYS = frozenset({"incidents", "runs", "episodes"})
+
+
+def _v2_id(value: str, where: str) -> str:
+    if (
+        len(value) != 10
+        or not value.startswith("dv2-")
+        or any(ch not in "0123456789abcdef" for ch in value[4:])
+    ):
+        raise ScenarioError(f"BAD_SCENARIO_ID:{where}")
+    return value
+
+
+def _v2_version(data: Mapping[str, Any], where: str) -> str:
+    if data.get("version") != _V2_VERSION:
+        raise ScenarioError(f"BAD_VERSION:{where}")
+    return _V2_VERSION
+
+
+def _optional_text(data: Mapping[str, Any], key: str, where: str) -> str | None:
+    value = data.get(key)
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value.strip():
+        raise ScenarioError(f"BAD_OPTIONAL_TEXT:{where}.{key}")
+    return value
+
+
+def _string_list(data: Mapping[str, Any], key: str, where: str) -> tuple[str, ...]:
+    """A possibly empty list of non-empty strings."""
+    value = data.get(key)
+    if not isinstance(value, list) or not all(
+        isinstance(item, str) and item.strip() for item in value
+    ):
+        raise ScenarioError(f"BAD_TEXT_LIST:{where}.{key}")
+    return tuple(cast(list[str], value))
+
+
+def _spec_v2(data: Mapping[str, Any]) -> ScenarioSpecV2:
+    _exact_keys(data, _V2_SCENARIO_KEYS, "scenario")
+    scenario_id = _v2_id(_text(data, "scenario_id", "scenario"), "scenario")
+    version = _v2_version(data, "scenario")
+    entry = data.get("entry")
+    if entry not in SCENARIO_ENTRIES:
+        raise ScenarioError("BAD_ENTRY")
+    incident = _object(data, "incident", "scenario")
+    _exact_keys(incident, _INCIDENT_KEYS, "scenario.incident")
+    stimulus = _object(data, "stimulus", "scenario")
+    _exact_keys(stimulus, _STIMULUS_KEYS, "scenario.stimulus")
+    return ScenarioSpecV2(
+        scenario_id=scenario_id,
+        version=version,
+        entry=cast(ScenarioEntry, entry),
+        incident=IncidentScenario(
+            scenario_id=scenario_id,
+            feature_id=_text(incident, "feature_id", "incident"),
+            acceptance_step=_text(incident, "acceptance_step", "incident"),
+            kind=_text(incident, "kind", "incident"),
+            subject_id=_text(incident, "subject_id", "incident"),
+        ),
+        stimulus=Stimulus(
+            question=_text(stimulus, "question", "stimulus"),
+            subject_id=_text(stimulus, "subject_id", "stimulus"),
+            target_id=_text(stimulus, "target_id", "stimulus"),
+        ),
+    )
+
+
+def _injector(data: Any) -> Injector:
+    if not isinstance(data, dict):
+        raise ScenarioError("NOT_AN_OBJECT:answer.injectors[]")
+    _exact_keys(data, _V2_INJECTOR_KEYS, "answer.injectors[]")
+    kind = data.get("kind")
+    if kind not in INJECTOR_KINDS:
+        raise ScenarioError("BAD_INJECTOR_KIND")
+    params = _object(data, "params", "answer.injectors[]")
+    if kind == "flagd":
+        _exact_keys(params, _V2_FLAGD_PARAM_KEYS, "answer.injectors[].params")
+        _text(params, "flag", "injector.params")
+        _text(params, "variant", "injector.params")
+    # A JSON round trip detaches the params from the parsed document.
+    return Injector(
+        kind=cast(InjectorKind, kind), params=json.loads(json.dumps(params))
+    )
+
+
+def _count(data: Mapping[str, Any], key: str) -> int | None:
+    value = data.get(key)
+    if value is None:
+        return None
+    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+        raise ScenarioError(f"BAD_COUNT:{key}")
+    return value
+
+
+def _expected_outcome(data: Mapping[str, Any]) -> ExpectedOutcome:
+    where = "answer.expected_outcome"
+    _exact_keys(data, _V2_OUTCOME_KEYS, where)
+    final_states = _string_list(data, "final_states", where)
+    if not final_states:
+        raise ScenarioError("EMPTY_FINAL_STATES")
+    counts = _object(data, "counts", where)
+    _exact_keys(counts, _V2_COUNT_KEYS, f"{where}.counts")
+    return ExpectedOutcome(
+        final_states=final_states,
+        decision=_optional_text(data, "decision", where),
+        handoff_reason=_optional_text(data, "handoff_reason", where),
+        counts=ExpectedCounts(
+            incidents=_count(counts, "incidents"),
+            runs=_count(counts, "runs"),
+            episodes=_count(counts, "episodes"),
+        ),
+        forbidden_tool_requests=_string_list(data, "forbidden_tool_requests", where),
+        canary=_optional_text(data, "canary", where),
+    )
+
+
+def _reference_report(data: Mapping[str, Any]) -> str | None:
+    value = _optional_text(data, "reference_report", "answer")
+    if value is None:
+        return None
+    parts = value.split("/")
+    if (
+        value.startswith("/")
+        or "\\" in value
+        or any(p in ("", ".", "..") for p in parts)
+    ):
+        # Relative to the scenario directory and never outside it.
+        raise ScenarioError("BAD_REFERENCE_REPORT")
+    return value
+
+
+def _answer_v2(data: Mapping[str, Any]) -> AnswerV2:
+    _exact_keys(data, _V2_ANSWER_KEYS, "answer")
+    scenario_id = _v2_id(_text(data, "scenario_id", "answer"), "answer")
+    version = _v2_version(data, "answer")
+    category = data.get("category")
+    if category not in SCENARIO_CATEGORIES:
+        raise ScenarioError("BAD_CATEGORY")
+    polarity = data.get("polarity")
+    if polarity not in SCENARIO_POLARITIES:
+        raise ScenarioError("BAD_POLARITY")
+    injectors = data.get("injectors")
+    if not isinstance(injectors, list):
+        raise ScenarioError("BAD_INJECTORS")
+    expected = _texts(data, "expected_output", "answer")
+    if not expected:
+        raise ScenarioError("EMPTY_EXPECTED_OUTPUT")
+    signature = data.get("signature")
+    return AnswerV2(
+        scenario_id=scenario_id,
+        version=version,
+        category=cast(ScenarioCategory, category),
+        polarity=cast(ScenarioPolarity, polarity),
+        injectors=tuple(_injector(item) for item in injectors),
+        expected_outcome=_expected_outcome(_object(data, "expected_outcome", "answer")),
+        expected_output=expected,
+        signature=None
+        if signature is None
+        else _signature(_object(data, "signature", "answer")),
+        reference_report=_reference_report(data),
+    )
+
+
+def stimulus_leaks(raw_scenario: str, answer: AnswerV2) -> tuple[str, ...]:
+    """Answer-side words found in a scenario file's text (V2-R3/R4, H5).
+
+    Case-insensitive: every category word (with ``_`` or a space), the
+    polarity words and their v1 forms (``fault``/``normal``), and the flag
+    names this scenario's injectors set. ``incident.kind`` is therefore a
+    neutral value in v2; polarity lives only in the answer.
+    """
+    text = raw_scenario.lower()
+    words: set[str] = set()
+    for category in SCENARIO_CATEGORIES:
+        words.update({category, category.replace("_", " ")})
+    words.update(SCENARIO_POLARITIES)
+    words.update({"fault", "normal"})
+    for injector in answer.injectors:
+        flag = injector.params.get("flag") if injector.kind == "flagd" else None
+        if isinstance(flag, str):
+            words.add(flag.lower())
+    return tuple(sorted(word for word in words if word in text))
+
+
+def _read_text(path: Path) -> str:
+    unreadable = False
+    raw = ""
+    try:
+        raw = path.read_text(encoding="utf-8")
+    except (OSError, ValueError):
+        unreadable = True
+    if unreadable:
+        raise ScenarioError(f"UNREADABLE:{path.name}")
+    return raw
+
+
+def _parse_object(raw: str, name: str) -> dict[str, Any]:
+    invalid = False
+    data: Any = None
+    try:
+        data = json.loads(raw)
+    except ValueError:
+        invalid = True
+    if invalid:
+        raise ScenarioError(f"UNREADABLE:{name}")
+    if not isinstance(data, dict):
+        raise ScenarioError(f"NOT_AN_OBJECT:{name}")
+    return data
+
+
+def load_scenario_v2(directory: Path) -> tuple[ScenarioSpecV2, AnswerV2]:
+    """One v2 scenario directory: ``scenario.json`` plus ``answer.json``."""
+    raw_scenario = _read_text(directory / "scenario.json")
+    spec = _spec_v2(_parse_object(raw_scenario, "scenario.json"))
+    answer = _answer_v2(
+        _parse_object(_read_text(directory / "answer.json"), "answer.json")
+    )
+    if spec.scenario_id != directory.name:
+        raise ScenarioError("SCENARIO_ID_NOT_DIRECTORY")
+    if (spec.scenario_id, spec.version) != (answer.scenario_id, answer.version):
+        raise ScenarioError("SCENARIO_ANSWER_MISMATCH")
+    leaks = stimulus_leaks(raw_scenario, answer)
+    if leaks:
+        raise ScenarioError(f"STIMULUS_LEAK:{','.join(leaks)}")
+    return spec, answer
+
+
+def _scenario_dirs(group: Path) -> list[Path]:
+    if not group.is_dir():
+        return []
+    return [
+        path
+        for path in sorted(group.iterdir())
+        if path.is_dir() and not path.name.startswith(("_", "."))
+    ]
+
+
+def load_scenarios_v2(root: Path) -> tuple[tuple[ScenarioSpecV2, AnswerV2], ...]:
+    """Every scenario under ``root/regression`` and ``root/capability``.
+
+    Directories starting with ``_`` (schema samples) are skipped. The
+    regression group holds only ``regression`` answers and the capability
+    group none; duplicate IDs across groups are refused.
+    """
+    loaded: list[tuple[ScenarioSpecV2, AnswerV2]] = []
+    seen: set[str] = set()
+    for group in DATASET_GROUPS:
+        for directory in _scenario_dirs(root / group):
+            spec, answer = load_scenario_v2(directory)
+            if (answer.category == "regression") != (group == "regression"):
+                raise ScenarioError(f"CATEGORY_GROUP_MISMATCH:{spec.scenario_id}")
+            if spec.scenario_id in seen:
+                raise ScenarioError(f"DUPLICATE_SCENARIO_ID:{spec.scenario_id}")
+            seen.add(spec.scenario_id)
+            loaded.append((spec, answer))
+    return tuple(sorted(loaded, key=lambda pair: pair[0].scenario_id))
+
+
+def dataset_tree_hash(root: Path) -> str:
+    """sha256 over every file under ``root``: ``path\\0content\\0`` in POSIX
+    relative-path order (V2-R7 ``dataset`` dimension)."""
+    import hashlib
+
+    if not root.is_dir():
+        raise ScenarioError("DATASET_ROOT_MISSING")
+    files = sorted(
+        (path.relative_to(root).as_posix(), path)
+        for path in root.rglob("*")
+        if path.is_file()
+    )
+    digest = hashlib.sha256()
+    for relative, path in files:
+        unreadable = False
+        content = b""
+        try:
+            content = path.read_bytes()
+        except OSError:
+            unreadable = True
+        if unreadable:
+            raise ScenarioError(f"UNREADABLE:{relative}")
+        digest.update(relative.encode("utf-8") + b"\0" + content + b"\0")
+    return digest.hexdigest()

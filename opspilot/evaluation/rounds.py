@@ -39,6 +39,10 @@ REQUIRED_DIMENSIONS: tuple[str, ...] = (
     "seed",
     "command",
     "clock_policy",
+    # V2-R7 (#430): the approved knowledge revision sent into the Run, and the
+    # dataset tree. A summary written before these existed reads them as unknown.
+    "runbook",
+    "dataset",
 )
 
 
