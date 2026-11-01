@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import threading
 from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -17,6 +18,12 @@ from uuid import UUID, uuid4
 import pytest
 
 pytest_plugins = ("tests.acceptance.test_428_outbox_postgres",)
+
+# The delivery-cycle tests below use the PG scratch fixture; gate them like the
+# rest of the PG suite so the offline CI job skips them.
+requires_pg = pytest.mark.skipif(
+    os.environ.get("M1_DURABLE_POSTGRES") != "1", reason="explicit PG opt-in required"
+)
 
 
 def _tracing():
@@ -148,6 +155,7 @@ def delivery_scratch_dsn(scratch_dsn):
     return scratch_dsn
 
 
+@requires_pg
 @pytest.mark.parametrize("status", [204, 200])
 def test_2xx_marks_rows_delivered_and_posts_otlp(
     counting_endpoint, delivery_scratch_dsn, status
@@ -193,6 +201,7 @@ def test_2xx_marks_rows_delivered_and_posts_otlp(
         )
 
 
+@requires_pg
 @pytest.mark.parametrize("status", [400, 408, 429, 500, 503])
 def test_http_status_classes_have_contract_result(delivery_scratch_dsn, status):
     delivery = _delivery()
