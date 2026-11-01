@@ -154,7 +154,7 @@ tests/acceptance/test_385_upstream_mapping.py
 
 - 预审：全新上下文 Agent（Opus 5.5），只读，基线 origin/main `b8a5fa5a`，2026-10-31；全文在仓库外 `~/.agent/handoffs/opspilot-prereview-385-f14-step3-2026-10-31.md`（下称「预审」，行号指该文件）。上游原文用本机完整 checkout（主仓库 ignored 的 `tmp/upstream/holmesgpt-a0009195`）；上游 GitHub 仓库已改名 `HolmesGPT/holmesgpt`，2026-10-31 master `257ecf3f374a`，预审涉及的文件在 pin 之后未改动（预审 :6）。
 - 裁决（r3，用户 2026-10-31）：用户原话「没有问题,写入进去,但是不要实现」；grilling 两问 Q1「7 项按推荐落地」yes、Q2「只提名 N1，看出差距才做」yes。F14S3-Q1–Q4 按推荐 (a)（Agent 按用户常设指示自定），F14S3-Q5 为用户裁决，F14S3-R1–R14 照预审。记录见 `~/.agent/handoffs/opspilot-rulings-2026-10-31-f14s3-f8logs.md`。
-- **本轮不实施**：F14 第 3 步的实施等 M3 方向 Q4 第 ① 步全部完成后再排；之后需用户判断的事项在 Q4 ① 完成后一次汇总。
+- ~~本轮不实施~~：已被 2026-11-01 M3 优化项裁决 Q1 取代，转为下一阶段执行；kind 窗口排在 #428 真实证据之后、#432 之前（Q3）。补充裁决见本节末「M3 优化项补充（r3.1）」；R11 的 Run 上限按 Q8 修订。
 - 全量探针（预审 :92-102）：草稿把 `MAX_OUTPUT_TOKEN_RESERVATION` 行改成 `confirmed_defect` 且 `runtime_evidence` 只引新记录 → `tests/acceptance` 1 failed / 3013 passed / 303 skipped，失败 `tests/acceptance/test_385_upstream_mapping.py::test_evidence_rules_and_planned_handling`；定向 3 failed / 11 passed（另两个为 `tests/test_415_mapping_impl.py::test_committed_table_is_consistent_offline`、`::test_file_list_regenerates_from_checkout`）。`runtime_evidence` 另加引 `docs/evidence/f14-holmes-baseline/pin.json` 后 14 passed，即 R4 的依据。
 
 ### 需用户裁决（r3 已裁决）
@@ -217,6 +217,29 @@ tests/acceptance/test_385_upstream_mapping.py
 # 预审 :74（F14S3-R8）
 #2139：脚本化端点发出一条**本来正确、只是窗口内恰好没数据**的查询（例如正常窗口内 `ad` 服务的错误 span 计数），看 Holmes 的状态是不是 error；run1 index 36 只作旁证。#2376：脚本化端点发出带 `"timeout": null` 的即时查询和区间查询，看异常和发给模型的错误文本。#2168：脚本化端点发出一条不做聚合、高基数的区间查询，看返回的是摘要还是数据、有没有落盘路径（bash 关闭）。#2356：配置里让 Jaeger 或 Prometheus 的地址不可达，脚本化端点抓系统提示看有没有 FAILED 段；再用真实模型跑 1 次，看结论里有没有提缺失的源，CLI 的 stdout 有没有给操作员看的提示。`MAX_OUTPUT_TOKEN_RESERVATION`：只设这个变量（去掉 `OVERRIDE_MAX_OUTPUT_TOKEN`），抓 `max_tokens`
 ```
+
+### M3 优化项补充（r3.1，用户 2026-11-01）
+
+- 来源：`~/.agent/handoffs/opspilot-rulings-2026-11-01-m3-optimization.md`（grilling Q1–Q16，用户逐轮答「yes」，Q16 补充合并条件）。预审：只读子 Agent，基线 main `0089197e`。
+
+| 编号 | 裁决 |
+|---|---|
+| Q6 N1 成对数据源 | Prometheus 与 Jaeger 两组都跑；只有 Prometheus 组决定 N1；Jaeger 组照实记「本配置下上游也不告知」，不改 Holmes 基线配置；「有缓存时启动不告知」作为 #2356 发现记录 |
+| Q7 差距判据 | 输入有差距（Holmes 首次模型请求含 FAILED 段、OpsPilot 无）**且**最终报告有差距（Holmes 报告点名缺失源、OpsPilot 未点名）才做 N1；否则 N1 作废、不改产品 |
+| Q8 跑次 | 按 F14S3-Q2：模型行为类说法各跑 3 次、至少 1 次复现；Prometheus 成对两侧各 3 次；**R11 真实 Run 上限改为约 12 次**（DeepSeek Flash），墙钟上限不变 |
+
+可逆默认（Agent 定）：S4 刺激复用场景集 v2「缺测」反例（paymentFailure + `source_unreachable`）；S5 Holmes 侧把 Prometheus URL 改为 `127.0.0.1:9`，记录配置 sha 及与 pin 不同的原因；S6 只测冷启动；S7 OpsPilot 侧冻结 `data_sources` 投影、首个模型请求 sha256、报告 gaps/coverage、`summary.json`；S8 差距判定由 Agent 按 Q7 做，结果进简报。
+
+#### N1 附条件裁决（仅当 Q7 判据成立）
+
+| 编号 | 裁决 |
+|---|---|
+| Q12 探测位置 | worker 领取 Run 时探测，结果作为该 Run 的附加记录；凭据不迁移 |
+| Q13 模型可见面 | 只加固定枚举「数据源 X 开始时不可达（原因类）」+ 一句固定指引，不放错误原文；失败源的工具保留；只在有失败时出现，健康 Run 的模型可见内容逐字节不变 |
+| Q14 F3 验收 | 非实现者把 F3 第 5 步等价证明扩成多跳 + 健康路径逐字节相同证明；F3 第 3 步缺源场景在新版本用本机替身重跑 1 次真实 Run；`passes` 保持 true、验收步骤不改；任一不过照实把 `passes` 翻回 false 并告知用户 |
+| Q15 顺序与预算 | #432 开发轮不等 N1、在当时 main 上跑；N1 合并后只在 N1 版本重跑「缺测」4 槽，两个 revision 都记，F1 第 2 步按最终版本计；N1 真实 Run 上限约 6 次 |
+| Q16 显示与合并 | 工作台「未接入」列表旁显示「开始时不可达」。Q12 新增数据流属用户门，用户 2026-11-01 授权 Agent 合并，五个条件全部满足才合并：CI 绿、`CLEAN`、独立审查完成且发现已处置、Q14 证据通过、无未处理 thread；任一不满足或出现本表未覆盖的情况，停下问用户；合并后简报 |
+| A 项（可逆） | 续接 Run 重新探测、不继承；每源至多 1 次有界只读请求（约 2s）并入审计；eval 录制含探测结果以便回放；N1 实施前仍按 F14S3-Q5 做一次实现预审，只补本表未覆盖的点 |
 
 ### 未确认（预审 :82-90）
 

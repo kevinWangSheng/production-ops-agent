@@ -85,7 +85,7 @@ override 给 worker 加 `extra_hosts: ["api.deepseek.com:127.0.0.1"]` 后 `up -d
 
 - 预审：全新上下文 Agent（Opus 5.5），只读，基线 origin/main `b8a5fa5a`，2026-10-31；全文在仓库外 `~/.agent/handoffs/opspilot-prereview-f8-logs-2026-10-31.md`（下称「预审」，行号指该文件）。上游 HolmesGPT 的日志格式未核对（本机无源码，**未确认**），按 stdlib logging + JSON 行通行做法设计。
 - 裁决（r2，用户 2026-10-31）：用户原话「没有问题,写入进去,但是不要实现」；grilling Q1「7 项按推荐落地」yes。F8L-Q1–Q3 按推荐 (a)（Agent 按用户常设指示自定）；F8L-R1–R9 照预审。记录见 `~/.agent/handoffs/opspilot-rulings-2026-10-31-f14s3-f8logs.md`。
-- **本轮不实施**：实施等 M3 方向 Q4 第 ① 步全部完成后再排。
+- ~~本轮不实施~~：已被 2026-11-01 M3 优化项裁决 Q1 取代，转为下一阶段执行；排在 #428 合并后的首条空闲代码线（Q4）。补充裁决见本节末「M3 优化项补充（r2.1）」。
 - 关键现状（预审 :11-34）：worker 与 Observer 用 `basicConfig` 文本格式；web 没有配置 root logger，`opspilot.*` 的 INFO 行今天被丢弃，WARNING 以上只打裸 `msg`；84 处日志调用全部把 kv 写在格式串里，无 `extra=`；已有 kv `version=`（`knowledge/worker.py:196-197`）、`revision=`（`observer/loop.py:251,261`）与候选固定字段同名；调查 loop、runner、tools、client 无日志调用；web 5 处 `.exception()` 记完整 traceback（`web/service.py:2523,2628`，`web/__main__.py:155,159,163`）。
 - 全量探针（预审 :78-84）：草稿（`opspilot/logs.py` + 三入口接线，不含 R4 kv 与 Q1 版本字段）`tests/acceptance` **探针 0 失败**（3014 passed、303 skipped，跳过均为 `M1_DURABLE_POSTGRES=1` 门控）；定向 205 passed；测试里无钉日志格式的断言，读进程日志的只有 `tests/test_393_installed_run_live_impl.py:175-176` 子串断言。
 - 共享脱敏实测（预审 :110-125，Q2 不选 (b) 的依据）：`redact_credentials` 把 Observer 关联键 `session=<id>`、`prompt_tokens`、`auth: ok` 改成 `[REDACTED_CREDENTIAL]`，而裸写的 `Incorrect API key sk-…` 与模型散文原样漏过。
@@ -147,6 +147,28 @@ override 给 worker 加 `extra_hosts: ["api.deepseek.com:127.0.0.1"]` 后 `up -d
 ### 未确认（预审 :136-140）
 
 Docker 宿主 daemon 的 json-file 轮转配置；`web/service.py:1579,1659` 的 `str(exc)` 是否恒为带固定码的异常、web `.exception()` 的异常消息是否可能引用模型输出或证据原文（推断很低，交 F8L-Q2 复核）；上游 HolmesGPT 的日志格式。
+
+### M3 优化项补充（r2.1，用户 2026-11-01）
+
+- 来源：`~/.agent/handoffs/opspilot-rulings-2026-11-01-m3-optimization.md`（grilling Q1–Q16，用户逐轮答「yes」）。预审：只读子 Agent，基线 main `0089197e`。
+
+| 编号 | 裁决 |
+|---|---|
+| Q1 范围 | 取代 10-31「本轮不实施」，结构化日志列入下一阶段 |
+| Q4 代码线 | 排在 #428 合并后的首条空闲代码线；全机同时最多两条代码线 |
+| Q5 范围（O1） | `configure()` 接管 `sys.excepthook` 与 `threading.excepthook`，未捕获异常的 traceback 输出单行 ERROR JSON、内容完整；主动拒绝启动的 `SystemExit` 提示与镜像入口脚本保持文本；这两处 traceback 纳入凭据复核清单与哨兵测试 |
+
+可逆默认（Agent 定，照裁决文件）：
+
+| 编号 | 默认 |
+|---|---|
+| O2 | kv 识别用 printf 分词；字典参数（`%(name)s` 形式）不出 `kv` |
+| O3 | 版本字段在 `configure()` 时读一次，复用 `health._revision()` 校验，非法记 `unknown`；键序 `ts level logger msg version revision [kv] [exc] [stack]` |
+| O4 | 只替换 `configure()` 自己装的 handler（保留他方 handler） |
+| O5 | web logger 名保持 `__main__` 不改，PR 正文写明 |
+| O6 | 实现 PR HEAD 上复核全部日志调用点；哨兵测试按进程（worker/Observer/web）分 |
+| O7 | Compose 不透传 `OPSPILOT_LOG_FORMAT`（安装栈恒为 json） |
+| O8 | Compose 抽检停 PG 用 `install.sh compose stop postgres` 约 60s；抽检栈沿用 `opspilot-393`（需 kind lab Prometheus），并入 F14 第 3 步的 kind 窗口（Q3） |
 
 ## #243 产品模式 trace outbox 合同（r3，F8 第 2 实施步骤）
 
