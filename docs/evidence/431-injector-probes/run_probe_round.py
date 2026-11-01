@@ -4,6 +4,7 @@ Usage: run_probe_round.py ROUND ROOT PG_PORT SCENARIO [SCENARIO...]
        [--otlp-url URL]
 Prints probe.json path and, for every scenario with a flag, Jaeger error
 span counts for ad/checkout/payment in the effective window."""
+
 import json
 import sys
 from dataclasses import replace
@@ -29,11 +30,24 @@ deps = eval_live.real_deps(
 if otlp:
     deps = replace(deps, span_writer=OtlpSpanWriter(url=otlp))
 slots = eval_live.plan_slots(root, ids, 1)
-config = eval_live.RoundConfig(round_id, slots, "impl-431", "b431", int(pg_port), None, ("probe",), 1)
+config = eval_live.RoundConfig(
+    round_id, slots, "impl-431", "b431", int(pg_port), None, ("probe",), 1
+)
 started = SystemClock().now()
 result = run_probe(config, deps)
-print(json.dumps({"round": round_id, "exit": result.exit_code, "reason": result.reason,
-                  "slots": [(s.scenario_id, s.status, s.reason, s.closure_reason) for s in result.slots]}))
+print(
+    json.dumps(
+        {
+            "round": round_id,
+            "exit": result.exit_code,
+            "reason": result.reason,
+            "slots": [
+                (s.scenario_id, s.status, s.reason, s.closure_reason)
+                for s in result.slots
+            ],
+        }
+    )
+)
 probe = eval_live.round_evidence(deps, round_id) / "probe.json"
 print("probe.json", probe)
 doc = json.loads(probe.read_text())
@@ -52,7 +66,11 @@ for entry in doc["scenarios"]:
         ops = {}
         for sp in q.spans:
             ops[sp.operation] = ops.get(sp.operation, 0) + 1
-        row[svc] = {"error_spans": len(q.spans), "complete": q.complete, "operations": ops}
+        row[svc] = {
+            "error_spans": len(q.spans),
+            "complete": q.complete,
+            "operations": ops,
+        }
     calls = tel.checkout_calls(start, end, 30.0)
     row["checkout_calls"] = {"value": calls.value, "complete": calls.complete}
     row["window"] = [start.isoformat(), end.isoformat()]
