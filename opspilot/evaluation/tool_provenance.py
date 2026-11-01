@@ -26,6 +26,7 @@ from opspilot.evaluation.rounds import (
     manifest_hash,
     validate_manifest,
 )
+from opspilot.tools.evidence_read import EvidenceReadTransport
 from opspilot.tools.executor import (
     _GENERIC_VIEW_KEYS,
     _SPILLED_PROVENANCE_KEYS,
@@ -48,6 +49,7 @@ from opspilot.tools.otel_demo import (
     MAX_SUMMARY_LABELS,
     METRICS_TOOL,
     TOOL_NAMES,
+    OtelDemoTransport,
     _query_window,
     topk_suggestion,
 )
@@ -221,6 +223,93 @@ _CONTROL = {
 }
 
 
+class _WouldSend(BaseException):
+    """Raised where the shipped transport would leave the process."""
+
+
+class _Offline:
+    """An opener / evidence store that refuses to be used."""
+
+    def open(self, *args: object, **kwargs: object) -> NoReturn:
+        raise _WouldSend
+
+    def get(self, evidence_id: str) -> NoReturn:
+        raise _WouldSend
+
+
+# The transport's verdict on an evidence read whose parameters are well
+# formed: it then asks the evidence store, which a recording does not carry,
+# so EVIDENCE_NOT_READABLE (``evidence_read.py`` :284-312) can be neither
+# proved nor ruled out offline. It is accepted (lead ruling, #425); residual
+# risk, ``read_evidence`` only: another pre-dispatch refusal relabeled as this
+# one, or as a post-fetch denial after it, passes. ``recording._KeptRecords``
+# rejects it where the recording shows the record readable.
+_STORE_DEPENDENT = "EVIDENCE_NOT_READABLE?"
+
+# A pre-send ``elapsed_seconds`` is monotonic time measured between
+# ``authorized_at`` and ``finished_at`` (``executor.py`` :1043-1080); this much
+# wall/monotonic disagreement is tolerated.
+_CLOCK_SLACK_SECONDS = 1.0
+
+
+def _transport_refusal(
+    reg: ToolRegistration,
+    target: RegisteredTarget,
+    scope: QueryScope,
+    op: Any,
+    window: Window,
+    params: Mapping[str, object],
+) -> str | None:
+    """The code the shipped transport refuses this exact request with before
+    sending (#425 bot P1), ``None`` when it would send it, or
+    ``_STORE_DEPENDENT``. Runs the transport itself, offline: anything that
+    would reach the network or the evidence store stops at ``_Offline``.
+    """
+    default = scope.default_query_window
+    request = TransportRequest(
+        operation_id=op.operation_id,
+        source=reg.source,
+        verb=reg.verb,
+        endpoint=target.endpoint,
+        selector=target.selector,
+        params=dict(params),
+        window=window,
+        timeout_seconds=op.timeout_seconds or reg.request_timeout_seconds,
+        max_result_bytes=reg.max_result_bytes,
+        credential_ref=target.credential_ref,
+        tool=reg.name,
+        target_id=target.target_id,
+        default_window=default
+        if default is not None and window.contains(default)
+        else None,
+    )
+    offline = _Offline()
+    transport: Any
+    if reads_evidence(reg):
+        transport = EvidenceReadTransport(
+            store=cast(Any, offline),
+            run_id=scope.run_id,
+            target_ids=scope.target_ids,
+            result_paths={},
+        )
+    elif reg.source == OTEL_SOURCE and reg.name in TOOL_NAMES:
+        transport = OtelDemoTransport(
+            credentials={target.credential_ref: None}, opener=cast(Any, offline)
+        )
+    else:
+        return None  # No other shipped transport answers sent=false.
+    try:
+        response = transport.fetch(request)
+    except _WouldSend:
+        return _STORE_DEPENDENT if reads_evidence(reg) else None
+    except Exception:
+        return None
+    if getattr(response, "sent", True) is not False:
+        return None
+    status = getattr(response, "source_status", None)
+    return status if isinstance(status, str) else None
+
+
 def check_result(
     context: RecordingContext,
     request: ToolRequest,
@@ -254,6 +343,14 @@ def check_result(
         "target_id": None,
         "query": None,
     }
+    # A transport's own pre-send refusal (``sent=false``, #283/#327): handed
+    # to the transport, which answered without sending.
+    presend = not op.dispatched and op.finished_at is not None
+    # The executor sets the operation's window once the window checks pass,
+    # before parameter acceptance, so every later refusal keeps it and every
+    # earlier one has none (#327); ``planned`` mirrors that point.
+    planned: Window | None = None
+    accepted: Mapping[str, object] | None = None
     failure: tuple[str, str] | None = None
     if targets.revision != scope.registry_revision:
         failure = ("denied", "TARGET_REGISTRY_CHANGED")
@@ -272,7 +369,7 @@ def check_result(
         else:
             resolved["target_id"] = target.target_id
             value = request.window
-            if op.dispatched and value is None:
+            if (op.dispatched or op.window is not None) and value is None:
                 value = binding.default_window or binding.authorized_window
             window = Window.parse(value)
             if window is None:
@@ -282,7 +379,9 @@ def check_result(
             elif window.seconds > reg.max_window_seconds:
                 failure = ("denied", "WINDOW_TOO_LARGE")
             else:
+                planned = window
                 params, problem = _accept_params(reg, request.params)
+                accepted = params
                 if params is None:
                     failure = (_status_for(problem), problem)
                 else:
@@ -368,14 +467,61 @@ def check_result(
         ):
             mismatch()
     else:
-        same(op.window, None)
+        # Replay serves these refusals by status and reason; there is no
+        # source response whose identity could be compared.
+        same(op.window, planned)
         if outcome.source_contact != "none" or outcome.status not in (
-            "denied",
-            "error",
+            ("denied", "error", "timeout") if presend else ("denied", "error")
         ):
             mismatch()
         if failure is not None:
             same((outcome.status, outcome.reason), failure)
+        elif presend:
+            # What a ``sent=false`` response can become (#425 reviews r1, r2
+            # and bot P1s). Only a request past the window checks reaches the
+            # transport, and only one the transport itself refuses gets a
+            # sent=false reply: recompute that refusal from the frozen request
+            # (``_transport_refusal``) instead of trusting ``finished_at``.
+            # Its code maps through the registration (``otel_demo.py``
+            # ``_refused`` :1796-1812, classes :791-797, :884-890, :930-938;
+            # ``evidence_read.py`` ``_refused`` :240-244, classes :183-188).
+            # The executor's post-fetch precedence (``executor.py``
+            # ``refuse_after_fetch``) may then replace it with a human decision
+            # taken meanwhile or a refused settlement charge, never with the
+            # deadline; and a reply after the call's own timeout is
+            # GATEWAY_TIMEOUT exactly when elapsed > timeout (:1187-1189).
+            if planned is None or accepted is None:
+                mismatch()
+            code = _transport_refusal(reg, target, scope, op, planned, accepted)
+            if code is None:
+                mismatch()
+            if code == _STORE_DEPENDENT:
+                own = ("denied", "EVIDENCE_NOT_READABLE")
+            else:
+                reason = reg.classify(code)
+                own = ("denied" if reason in DENIED_REASONS else "error", reason)
+            if (
+                op.authorized_at is None
+                or op.finished_at is None
+                or op.elapsed_seconds is None
+                or op.elapsed_seconds
+                > (op.finished_at - op.authorized_at).total_seconds()
+                + _CLOCK_SLACK_SECONDS
+            ):
+                mismatch()
+            if not (
+                (outcome.status, outcome.reason) == own
+                or (
+                    (outcome.status, outcome.reason) == ("timeout", "GATEWAY_TIMEOUT")
+                    and op.timeout_seconds is not None
+                    and op.elapsed_seconds > op.timeout_seconds
+                )
+                or (
+                    outcome.status == "denied"
+                    and outcome.reason in _CONTROL - {"DEADLINE_EXCEEDED"}
+                )
+            ):
+                mismatch()
         elif not (
             (outcome.status == "denied" and outcome.reason in _CONTROL)
             or (
@@ -464,8 +610,18 @@ def check_result(
         if (
             op.timeout_seconds > reg.request_timeout_seconds
             or op.authorized_at is None
-            or op.timeout_seconds
-            > max(0.0, (scope.deadline - op.authorized_at).total_seconds())
+            or (
+                # The re-check just before the transport overwrites
+                # ``authorized_at`` and may find the deadline passed; the
+                # timeout it then keeps was bounded at the earlier check.
+                op.timeout_seconds
+                > max(0.0, (scope.deadline - op.authorized_at).total_seconds())
+                and not (
+                    not op.dispatched
+                    and outcome.reason == "DEADLINE_EXCEEDED"
+                    and op.authorized_at >= scope.deadline
+                )
+            )
         ):
             mismatch()
     if op.dispatched or (not op.dispatched and op.finished_at is not None):
