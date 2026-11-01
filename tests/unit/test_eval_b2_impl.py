@@ -1653,23 +1653,8 @@ def test_real_unqueried_error_or_denial_records_and_replays_without_live_query(
         model.complete(call([*initial.messages, assistant, message]))
         return replace(outcome(), evidence_ids=())
 
-    if kind == "invalid_params":
-        # The new ruling requires null window on unexecuted results. The
-        # product keeps its parsed window on this late parameter refusal.
-        with pytest.raises(RecordingError, match="IDENTITY_MISMATCH"):
-            source(
-                tmp_path,
-                ctx=ctx,
-                driver=lambda hooks: exercise(
-                    hooks.model(ScriptedModel(responses)),
-                    hooks.tools(Counted()),
-                    hooks.delivery,
-                    "source-step",
-                ),
-            )
-        assert not transport.called
-        return
-
+    # A late parameter refusal keeps the window the executor already parsed
+    # (#327); it records and replays like the others.
     recording = source(
         tmp_path,
         ctx=ctx,
@@ -2823,10 +2808,10 @@ def test_pre_dispatch_deadline_distinguishes_reserve_from_charge(
 
     def refuse(req):
         original = _size_result(req, "view")
+        # Refused after the window was set (#327): the planned window stays.
         op = replace(
             original.operation,
             dispatched=False,
-            window=None,
             finished_at=None,
             elapsed_seconds=None,
             authorized_at=NOW if reserve_completed else NOW + timedelta(seconds=365),
@@ -2844,7 +2829,7 @@ def test_pre_dispatch_deadline_distinguishes_reserve_from_charge(
             status="denied",
             reason="DEADLINE_EXCEEDED",
             source_contact="none",
-            window=None,
+            window=op.window.as_json(),
         )
         return replace(
             original,

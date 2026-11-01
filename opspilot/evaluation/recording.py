@@ -63,7 +63,7 @@ from opspilot.investigation.loop import (
     tool_request_for,
 )
 from opspilot.investigation.messages import PairingError, validate_tool_calls
-from opspilot.tools.executor import ToolRequest
+from opspilot.tools.executor import EVIDENCE_SOURCE, ToolRequest
 from opspilot.tools.outcomes import ToolOutcome, Window
 from opspilot.tools.registry import ToolContractError
 
@@ -1002,6 +1002,7 @@ def validate_recording(recording: Recording) -> None:
     tool_calls: dict[int, str] = {}
     tool_fingerprints: dict[int, str] = {}
     evidence_events: dict[str, int] = {}
+    kept = _KeptRecords()
     operation_ids: set[str] = set()
     saw_model = False
     for seq, event in enumerate(recording.events):
@@ -1173,6 +1174,8 @@ def validate_recording(recording: Recording) -> None:
                     raise StorageError("IDENTITY_MISMATCH") from None
                 raise
             _tool_integrity(context, request, binding, outcome, event.clock)
+            kept.check(request, outcome)
+            kept.note(outcome)
             raw = b"" if outcome.evidence is None else outcome.evidence.raw
             view_raw = canonical_bytes(outcome.model_view)
             if len(raw) > MAX_RAW_BYTES or len(view_raw) > MAX_VIEW_BYTES:
@@ -1354,6 +1357,50 @@ def _matches_request(
     return canonical_bytes(
         (expected.tool_name, expected.target_ref, expected.params)
     ) == canonical_bytes((request.tool_name, request.target_ref, request.params))
+
+
+class _KeptRecords:
+    """This recording's own records ``read_evidence`` can read (#425).
+
+    Whether the evidence store refuses a well-formed ``evidence_id`` with
+    EVIDENCE_NOT_READABLE cannot be recomputed offline
+    (``tool_provenance._STORE_DEPENDENT``), so such a refusal is otherwise
+    accepted; residual risk, ``read_evidence`` only: a different pre-dispatch
+    refusal relabeled as that one passes. The one case the recording itself
+    contradicts: the id names a kept over-limit record (the transport's
+    ``_kept_over_limit``, ``evidence_read.py`` :198-206) this Run committed
+    earlier for the same target, which the transport serves.
+    """
+
+    def __init__(self) -> None:
+        self._targets: dict[str, tuple[str, str | None]] = {}
+
+    def note(self, outcome: ToolOutcome) -> None:
+        evidence = outcome.evidence
+        if (
+            evidence is not None
+            and not evidence.adopted
+            and evidence.status == "error"
+            and outcome.reason == "RESULT_TOO_LARGE"
+            and outcome.operation.source != EVIDENCE_SOURCE
+        ):
+            operation = outcome.operation
+            self._targets[evidence.evidence_id] = (
+                operation.run_id,
+                operation.target_id,
+            )
+
+    def check(self, request: ToolRequest, outcome: ToolOutcome) -> None:
+        operation = outcome.operation
+        if outcome.reason != "EVIDENCE_NOT_READABLE" or operation.dispatched:
+            return
+        params = request.params
+        requested = params.get("evidence_id") if isinstance(params, Mapping) else None
+        if isinstance(requested, str) and self._targets.get(requested) == (
+            operation.run_id,
+            operation.target_id,
+        ):
+            raise StorageError("IDENTITY_MISMATCH")
 
 
 def _tool_integrity(

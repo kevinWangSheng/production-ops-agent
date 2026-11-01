@@ -438,8 +438,8 @@ def _check(executor, ctx, request, outcome):
 
 def test_eval_provenance_accepts_kept_refusals_and_slices(monkeypatch):
     # Refusals a transport decides before sending (``sent: false``, here
-    # EVIDENCE_NOT_READABLE) are outside the recording format for every
-    # profile tool already; not exercised.
+    # EVIDENCE_NOT_READABLE) are covered by
+    # ``tests/test_327_presend_refusal_recording_impl.py``.
     from opspilot.evaluation.codec import StorageError
 
     executor, _, _, _, outcome = _over_limit(monkeypatch)
