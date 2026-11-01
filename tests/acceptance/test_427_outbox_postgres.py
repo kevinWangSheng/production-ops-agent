@@ -94,12 +94,14 @@ def test_run_steps_tools_and_state_changes_are_one_idempotent_row_each(scratch_d
         lease,
         "round-427",
         {
-            "assistant": {
-                "reasoning_content": "SENTINEL_REASONING_427",
-                "prompt": "SENTINEL_PROMPT_427",
-            },
+            "tool_calls": [
+                {
+                    "name": "query",
+                    "arguments": {"query": "SENTINEL_PROMPT_427"},
+                }
+            ],
+            "reasoning_content": "SENTINEL_REASONING_427",
             "credential": "SENTINEL_CREDENTIAL_427",
-            "tool_calls": [{"id": "tool-427"}],
         },
     )
     store.commit_tool(
@@ -142,15 +144,22 @@ def test_control_and_deadline_sweep_state_changes_emit_run_state_rows(scratch_ds
         incident2,
         run2,
         f"427-sweep-{run2}",
-        deadline=datetime.now(timezone.utc) - timedelta(seconds=1),
+        deadline=datetime.now(timezone.utc) + timedelta(minutes=5),
         budget_limit=3,
         versions=versions,
         input=_input(run2),
     )
+    store.claim(incident2, run2, uuid4(), versions, lease_seconds=300)
+    with psycopg.connect(scratch_dsn) as conn:
+        conn.execute(
+            "UPDATE opspilot_runs SET deadline=clock_timestamp()-interval '1 second' "
+            "WHERE run_id=%s",
+            (run2,),
+        )
     store.sweep_expired_runs(incident_id=incident2)
     rows = _rows(scratch_dsn)
     state_rows = [row for row in rows if row[0] == "run_state"]
-    assert len(state_rows) >= 3
+    assert len(state_rows) == 3
     assert len({row[1] for row in state_rows}) == len(state_rows)
     _assert_payloads_clean(rows)
 
@@ -189,26 +198,48 @@ def test_purge_expired_deletes_terminal_and_disabled_export_pending_only(scratch
     now = datetime.now(timezone.utc)
     long_ago = now - timedelta(days=30)
     insert = (
-        f"INSERT INTO {OUTBOX}(idempotency_key,kind,payload,state,created_at,finalized_at) "
-        "VALUES (%s,'run_state','{}',%s,%s,%s)"
+        f"INSERT INTO {OUTBOX}(idempotency_key,incident_id,kind,payload,state,created_at,finalized_at) "
+        "VALUES (%s,%s,'run_state','{}',%s,%s,%s)"
     )
+    incident_id = uuid4()
     with psycopg.connect(scratch_dsn) as conn:
         conn.execute(
-            insert, ("427-old-pending", "pending", now - timedelta(days=7), None)
+            insert,
+            (
+                "427-old-pending",
+                incident_id,
+                "pending",
+                now - timedelta(days=7),
+                None,
+            ),
         )
         conn.execute(
             insert,
-            ("427-young-pending", "pending", now - timedelta(days=6, seconds=1), None),
+            (
+                "427-young-pending",
+                incident_id,
+                "pending",
+                now - timedelta(days=6, seconds=1),
+                None,
+            ),
         )
         for state in ("delivered", "dropped"):
             # created long ago in both cases: only finalized_at decides.
             conn.execute(
-                insert, (f"427-old-{state}", state, long_ago, now - timedelta(days=7))
+                insert,
+                (
+                    f"427-old-{state}",
+                    incident_id,
+                    state,
+                    long_ago,
+                    now - timedelta(days=7),
+                ),
             )
             conn.execute(
                 insert,
                 (
                     f"427-young-{state}",
+                    incident_id,
                     state,
                     long_ago,
                     now - timedelta(days=6, seconds=1),
@@ -232,27 +263,30 @@ def test_terminal_state_requires_finalized_at(scratch_dsn):
     with psycopg.connect(scratch_dsn) as conn:
         with pytest.raises(psycopg.errors.CheckViolation):
             conn.execute(
-                f"INSERT INTO {OUTBOX}(idempotency_key,kind,payload,state) "
-                "VALUES ('427-terminal-no-final','run_state','{}','delivered')"
+                f"INSERT INTO {OUTBOX}(idempotency_key,incident_id,kind,payload,state) "
+                "VALUES ('427-terminal-no-final',%s,'run_state','{}','delivered')",
+                (uuid4(),),
             )
     with psycopg.connect(scratch_dsn) as conn:
         with pytest.raises(psycopg.errors.CheckViolation):
             conn.execute(
-                f"INSERT INTO {OUTBOX}(idempotency_key,kind,payload,state,finalized_at) "
-                "VALUES ('427-pending-final','run_state','{}','pending',clock_timestamp())"
+                f"INSERT INTO {OUTBOX}(idempotency_key,incident_id,kind,payload,state,finalized_at) "
+                "VALUES ('427-pending-final',%s,'run_state','{}','pending',clock_timestamp())",
+                (uuid4(),),
             )
 
 
 def test_migration_upgrade_downgrade_upgrade_keeps_business_rows_and_notices_counts(
     scratch_dsn,
 ):
+    incident_id = uuid4()
     with psycopg.connect(scratch_dsn) as conn:
         before = conn.execute("SELECT count(*) FROM opspilot_runs").fetchone()[0]
         for state in ("pending", "delivered", "dropped"):
             conn.execute(
-                f"INSERT INTO {OUTBOX}(idempotency_key,kind,payload,state,finalized_at) "
-                "VALUES (%s,'run_state','{}',%s,CASE WHEN %s='pending' THEN NULL ELSE clock_timestamp() END)",
-                (f"427-roundtrip-{state}", state, state),
+                f"INSERT INTO {OUTBOX}(idempotency_key,incident_id,kind,payload,state,finalized_at) "
+                "VALUES (%s,%s,'run_state','{}',%s,CASE WHEN %s='pending' THEN NULL ELSE clock_timestamp() END)",
+                (f"427-roundtrip-{state}", incident_id, state, state),
             )
     with psycopg.connect(scratch_dsn) as conn:
         config = Config(attributes={"connection": conn})
