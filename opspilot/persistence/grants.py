@@ -205,6 +205,11 @@ RUNTIME_GRANTS: Mapping[str, Mapping[str, frozenset[str]]] = {
             "UPDATE(cluster_uid,integration_id,namespace,workload)",
         ),
         "opspilot_tool_charges": NONE,
+        # #427 (0024): only for the Run state trigger, which runs as the
+        # updating role (not SECURITY DEFINER); no SELECT, no UPDATE
+        "opspilot_trace_outbox": _g(
+            "INSERT(idempotency_key,incident_id,kind,payload,run_id)"
+        ),
         "opspilot_web_ledger": _g("SELECT", "INSERT(key,namespace,value)", "DELETE"),
         "opspilot_release_query_results": S,
         # F11 PR-4a: the Observer writes before/after comparisons; the web reads
@@ -336,6 +341,15 @@ RUNTIME_GRANTS: Mapping[str, Mapping[str, frozenset[str]]] = {
             "SELECT",
             "INSERT(dispatch_id,epoch,operation_id,reserved,run_id,seconds)",
             "UPDATE(seconds)",
+        ),
+        # #427 (0024): step/tool/generation rows and the Run state trigger
+        # insert; the outbox thread updates delivery state and deletes rows
+        # 7 days after they are final (Q16) -- its only DELETE
+        "opspilot_trace_outbox": _g(
+            "SELECT",
+            "INSERT(idempotency_key,incident_id,kind,payload,run_id)",
+            "UPDATE(attempts,drop_reason,next_attempt_at,state)",
+            "DELETE",
         ),
         "opspilot_web_ledger": NONE,
         "opspilot_release_query_results": NONE,

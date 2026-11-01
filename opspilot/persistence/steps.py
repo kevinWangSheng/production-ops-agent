@@ -8,6 +8,7 @@ from uuid import UUID, uuid4
 
 from psycopg.types.json import Jsonb
 
+from opspilot.persistence import outbox
 from opspilot.persistence.base import Connection, Lease, PersistenceError, _StoreBase
 
 # 迟到历史占用 (run_id, logical_key) 唯一键。业务步骤不得使用此外缀，否则会
@@ -52,6 +53,35 @@ def _tool_calls(container: dict[str, Any]) -> Any:
     if calls is None:
         return []
     return calls if isinstance(calls, list) else None
+
+
+def _usage_fields(response: Mapping[str, Any]) -> dict[str, Any]:
+    """The token counts of a loop-shaped step response (``usage`` as the
+    provider reported it), named as the outbox payload names them. Read key
+    by key; ``build_payload`` drops anything that is not a number."""
+    usage = response.get("usage")
+    if not isinstance(usage, Mapping):
+        return {}
+    details = usage.get("completion_tokens_details")
+    return {
+        "input_tokens": usage.get("prompt_tokens"),
+        "output_tokens": usage.get("completion_tokens"),
+        "total_tokens": usage.get("total_tokens"),
+        "reasoning_tokens": details.get("reasoning_tokens")
+        if isinstance(details, Mapping)
+        else None,
+    }
+
+
+def _tool_call_id(response: Any, ordinal: int) -> str:
+    """The provider's id of tool call ``ordinal`` (the outbox key's last
+    part), or ``#<ordinal>`` when the plan carries none."""
+    calls = _tool_plan(response)
+    if isinstance(calls, list) and 0 <= ordinal < len(calls):
+        call = calls[ordinal]
+        if isinstance(call, Mapping) and isinstance(call.get("id"), str) and call["id"]:
+            return str(call["id"])
+    return f"#{ordinal}"
 
 
 def _completed_tool_ordinals(tool_results: Any, call_count: int) -> set[int]:
@@ -132,7 +162,7 @@ class _StepOps(_StoreBase):
                 (lease.incident_id,),
             )
             row = conn.execute(
-                "SELECT r.owner,r.epoch,r.lease_until,r.deadline,i.control_generation AS incident_generation,sc.global_suspended,sc.global_generation,COALESCE(ts.suspended,false) AS target_suspended,COALESCE(ts.generation,0) AS target_generation FROM opspilot_runs r JOIN opspilot_incidents i ON i.incident_id=r.incident_id JOIN opspilot_scope_controls sc ON sc.scope_id=1 LEFT JOIN opspilot_target_suspensions ts ON ts.target_id=i.target_id WHERE r.run_id=%s FOR UPDATE OF i,r",
+                "SELECT r.owner,r.epoch,r.lease_until,r.deadline,r.versions,i.control_generation AS incident_generation,sc.global_suspended,sc.global_generation,COALESCE(ts.suspended,false) AS target_suspended,COALESCE(ts.generation,0) AS target_generation FROM opspilot_runs r JOIN opspilot_incidents i ON i.incident_id=r.incident_id JOIN opspilot_scope_controls sc ON sc.scope_id=1 LEFT JOIN opspilot_target_suspensions ts ON ts.target_id=i.target_id WHERE r.run_id=%s FOR UPDATE OF i,r",
                 (lease.run_id,),
             ).fetchone()
             if not row or self._lease_revoked(row, lease, self._db_now(conn)):
@@ -158,16 +188,37 @@ class _StepOps(_StoreBase):
                     (lease.run_id,),
                 )
             )["next_sequence"]
-            conn.execute(
-                "INSERT INTO opspilot_steps(step_id,run_id,sequence,logical_key,status,response,control_generation) VALUES(%s,%s,%s,%s,'response_committed',%s,%s)",
-                (
-                    step_id,
-                    lease.run_id,
-                    sequence,
-                    logical_key,
-                    Jsonb(response),
-                    lease.control_generation,
-                ),
+            observed_at = self._require_row(
+                conn.execute(
+                    "INSERT INTO opspilot_steps(step_id,run_id,sequence,logical_key,status,response,control_generation) VALUES(%s,%s,%s,%s,'response_committed',%s,%s) RETURNING observed_at",
+                    (
+                        step_id,
+                        lease.run_id,
+                        sequence,
+                        logical_key,
+                        Jsonb(response),
+                        lease.control_generation,
+                    ),
+                )
+            )["observed_at"]
+            # #427: one outbox row per committed step, same transaction;
+            # named fields only, never the response itself (reasoning_content)
+            outbox.insert_entry(
+                conn,
+                kind="model_step",
+                idempotency_key=f"model_step:{lease.run_id}:{sequence}",
+                incident_id=lease.incident_id,
+                run_id=lease.run_id,
+                versions=row["versions"],
+                fields={
+                    "incident_id": lease.incident_id,
+                    "run_id": lease.run_id,
+                    "step_id": step_id,
+                    "model": response.get("response_model"),
+                    "finish_reason": response.get("finish_reason"),
+                    "ended_at": observed_at,
+                    **_usage_fields(response),
+                },
             )
             frozen = conn.execute(
                 "UPDATE opspilot_input_rounds SET committed=true WHERE run_id=%s AND logical_key=%s AND control_generation=%s RETURNING input_watermark",
@@ -194,7 +245,7 @@ class _StepOps(_StoreBase):
                 (lease.incident_id,),
             )
             row = conn.execute(
-                "SELECT r.owner,r.epoch,r.lease_until,r.deadline,i.control_generation AS incident_generation,s.control_generation AS step_generation,s.status AS step_status,s.response,s.tool_results,sc.global_suspended,sc.global_generation,COALESCE(ts.suspended,false) AS target_suspended,COALESCE(ts.generation,0) AS target_generation FROM opspilot_runs r JOIN opspilot_incidents i ON i.incident_id=r.incident_id JOIN opspilot_steps s ON s.run_id=r.run_id JOIN opspilot_scope_controls sc ON sc.scope_id=1 LEFT JOIN opspilot_target_suspensions ts ON ts.target_id=i.target_id WHERE r.run_id=%s AND s.step_id=%s FOR UPDATE OF i,r,s",
+                "SELECT r.owner,r.epoch,r.lease_until,r.deadline,r.versions,i.control_generation AS incident_generation,s.control_generation AS step_generation,s.status AS step_status,s.sequence AS step_sequence,s.response,s.tool_results,sc.global_suspended,sc.global_generation,COALESCE(ts.suspended,false) AS target_suspended,COALESCE(ts.generation,0) AS target_generation FROM opspilot_runs r JOIN opspilot_incidents i ON i.incident_id=r.incident_id JOIN opspilot_steps s ON s.run_id=r.run_id JOIN opspilot_scope_controls sc ON sc.scope_id=1 LEFT JOIN opspilot_target_suspensions ts ON ts.target_id=i.target_id WHERE r.run_id=%s AND s.step_id=%s FOR UPDATE OF i,r,s",
                 (lease.run_id, step_id),
             ).fetchone()
             if not row:
@@ -238,6 +289,30 @@ class _StepOps(_StoreBase):
             conn.execute(
                 "UPDATE opspilot_steps SET tool_results=%s,status='tool_result_committed' WHERE step_id=%s",
                 (Jsonb(results), step_id),
+            )
+            # #427: one outbox row per committed tool result, same
+            # transaction; the status class, reason code, registry tool name
+            # and source contact only, never the view or the raw result
+            outbox.insert_entry(
+                conn,
+                kind="tool_result",
+                idempotency_key=(
+                    f"tool_result:{lease.run_id}:{row['step_sequence']}:"
+                    f"{_tool_call_id(row['response'], ordinal)}"
+                ),
+                incident_id=lease.incident_id,
+                run_id=lease.run_id,
+                versions=row["versions"],
+                fields={
+                    "incident_id": lease.incident_id,
+                    "run_id": lease.run_id,
+                    "step_id": step_id,
+                    "tool_name": result.get("tool"),
+                    "tool_status_class": result.get("status"),
+                    "tool_reason": result.get("reason"),
+                    "source_contact": result.get("source_contact"),
+                    "ended_at": self._db_now(conn),
+                },
             )
 
     def begin_round(self, lease: Lease, logical_key: str) -> dict[str, Any]:

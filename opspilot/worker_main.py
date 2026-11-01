@@ -36,7 +36,8 @@ Configuration (environment only):
 * ``OPSPILOT_WORKER_GRACE_SECONDS`` SIGTERM join bound (default 30).
 * ``OPSPILOT_WORKER_BATCH``         incidents per ``poll_once`` (default 20).
 * ``OPSPILOT_WORKER_CAPACITY``      concurrent attempts, one slot thread
-  each (default 2); refused unless ``OPSPILOT_POOL_MAX_SIZE`` >= capacity + 2.
+  each (default 2); refused unless ``OPSPILOT_POOL_MAX_SIZE`` >= capacity + 3
+  (unset: capacity + 3).
 * ``OPSPILOT_BACKLOG_MAX``          queued Runs kept before the backlog pass
   parks the excess for a human (default 8, >= 1).
 * ``OPSPILOT_TOOL_PROFILE``         ``fixture`` (default) or ``otel-demo``;
@@ -54,7 +55,9 @@ Configuration (environment only):
 
 A second thread runs the postmortem pass (M1-03 D17): its own scan,
 generation lease and model client, one generation at a time, never an
-investigation Run lease (``opspilot.knowledge.worker``).
+investigation Run lease (``opspilot.knowledge.worker``). A third, the
+outbox thread (#427, r3-L1), deletes trace outbox rows 7 days old
+(``opspilot.persistence.outbox``); it sends nothing.
 
 Like ``python -m opspilot.web serve`` it only verifies on start that the
 schema is at the Alembic head, and runs both as a bare development process
@@ -93,6 +96,8 @@ from opspilot.knowledge import KnowledgeStore
 from opspilot.knowledge.jobs import GenerationStore
 from opspilot.knowledge.worker import PostmortemWorker
 from opspilot.persistence import DurableStore, PersistenceError, PoolConfig
+from opspilot.persistence.outbox import THREAD_NAME as OUTBOX_THREAD
+from opspilot.persistence.outbox import OutboxMaintainer, OutboxStore
 from opspilot.tools.profiles import ToolProfile, select_profile
 from opspilot.web.events import DurableEventLog
 from opspilot.web.evidence import DurableEvidenceStore
@@ -522,17 +527,19 @@ def build_loop(
 
 
 CAPACITY_ENV = "OPSPILOT_WORKER_CAPACITY"
+POOL_MAX_ENV = "OPSPILOT_POOL_MAX_SIZE"
 
 
 def worker_capacity(pool: PoolConfig) -> int:
     """``OPSPILOT_WORKER_CAPACITY`` (default 2, >= 1), refused with
     ``SystemExit`` unless the process pool holds one connection per slot
-    plus the polling and postmortem threads (B1 contract U-B1-3)."""
+    plus the polling, postmortem and outbox threads (B1 contract U-B1-3,
+    #427 OB-R4)."""
     capacity = _int_env(CAPACITY_ENV, 2)
-    if pool.max_size < capacity + 2:
+    if pool.max_size < capacity + 3:
         raise SystemExit(
             f"OPSPILOT_POOL_MAX_SIZE={pool.max_size} must be at least "
-            f"OPSPILOT_WORKER_CAPACITY+2={capacity + 2}"
+            f"OPSPILOT_WORKER_CAPACITY+3={capacity + 3}"
         )
     return capacity
 
@@ -569,7 +576,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     if not dsn:
         raise SystemExit("OPSPILOT_WORKER_DSN is required")
     grace = _float_env("OPSPILOT_WORKER_GRACE_SECONDS", 30.0)
-    # Refuse a capacity the pool cannot serve before touching the database.
+    # An unset pool size takes the worker's floor (capacity + 3; the shared
+    # PoolConfig default of 4 serves the web and the Observer); an explicit
+    # one below it is refused before touching the database.
+    if not os.environ.get(POOL_MAX_ENV):
+        os.environ[POOL_MAX_ENV] = str(_int_env(CAPACITY_ENV, 2) + 3)
     worker_capacity(PoolConfig.from_env())
     store = DurableStore(dsn)
     store.install()
@@ -581,13 +592,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     postmortems = build_postmortem_worker(
         dsn, credential, stop=stop, events=loop.events, model_stats=model_stats
     )
+    outbox = OutboxMaintainer(OutboxStore(dsn), stop=stop)
     listener = health.serve_health(
         os.environ,
         readiness=lambda: _readiness(loop),
         metrics=lambda: _metrics(loop, model_stats),
     )
     try:
-        return _run(loop, postmortems, store, stop, grace)
+        return _run(loop, postmortems, store, stop, grace, outbox=outbox)
     finally:
         if listener is not None:
             listener.close()
@@ -618,8 +630,10 @@ def _run(
     store: DurableStore,
     stop: threading.Event,
     grace: float,
+    *,
+    outbox: OutboxMaintainer | None = None,
 ) -> int:
-    """Signals, the two threads and the bounded shutdown (R-B1-5)."""
+    """Signals, the threads and the bounded shutdown (R-B1-5)."""
 
     def request_stop(signum: int, _frame: Any) -> None:
         _log.info("signal=%s: stop claiming, finishing the in-flight attempts", signum)
@@ -636,15 +650,22 @@ def _run(
         daemon=True,
     )
     postmortem_thread.start()
+    threads = [thread, postmortem_thread]
+    if outbox is not None:
+        outbox_thread = threading.Thread(
+            target=outbox.run, name=OUTBOX_THREAD, daemon=True
+        )
+        outbox_thread.start()
+        threads.append(outbox_thread)
     _log.info("worker started")
     # Wait in short slices so the signal handlers get to run on this thread.
     # A loop thread that died (anything but the refusals ``poll_once``
     # handles) must not leave a live process that never polls.
     while not stop.wait(0.5):
-        if not thread.is_alive() or not postmortem_thread.is_alive():
+        if not all(t.is_alive() for t in threads):
             _log.error("worker loop died; exiting")
             return 1
-    if not join_within((thread, postmortem_thread), grace):
+    if not join_within(threads, grace):
         _log.warning(
             "attempt still in flight after grace=%ss: exiting; its lease lapses "
             "within %ss and the next claim resumes from the committed rows",
@@ -656,6 +677,8 @@ def _run(
     store.close()
     postmortems.knowledge.close()
     postmortems.jobs.close()
+    if outbox is not None:
+        outbox.store.close()
     tracing.shutdown()
     _log.info("worker stopped")
     return 0
