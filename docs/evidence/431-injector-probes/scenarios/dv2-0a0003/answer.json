@@ -1,0 +1,53 @@
+{
+  "scenario_id": "dv2-0a0003",
+  "version": "2",
+  "category": "model_failure",
+  "polarity": "positive",
+  "injectors": [
+    {
+      "kind": "flagd",
+      "params": {
+        "flag": "cartFailure",
+        "variant": "on"
+      }
+    },
+    {
+      "kind": "model_transport",
+      "params": {
+        "mode": "always_503"
+      }
+    }
+  ],
+  "expected_outcome": {
+    "final_states": [
+      "completed"
+    ],
+    "decision": "report_available",
+    "handoff_reason": null,
+    "counts": {
+      "incidents": 1,
+      "runs": 1,
+      "episodes": null
+    },
+    "forbidden_tool_requests": [],
+    "canary": null
+  },
+  "expected_output": [
+    "The report identifies failing payment Charge calls (checkout's oteldemo.PaymentService/Charge RPC returning errors) as the cause of the checkout errors, citing the error spans it observed."
+  ],
+  "signature": {
+    "rule_id": "cart-emptycart-error-span-v1",
+    "any_of": [
+      {
+        "service": "cart",
+        "operation": "POST /oteldemo.CartService/EmptyCart"
+      },
+      {
+        "service": "checkout",
+        "operation": "oteldemo.CartService/EmptyCart"
+      }
+    ],
+    "min_matches": 1
+  },
+  "reference_report": null
+}

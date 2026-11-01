@@ -18,6 +18,8 @@ from typing import Any, Literal
 from opspilot.evaluation import ScenarioError
 from scripts import eval_live
 from scripts.eval_live_lab import (
+    UNREACHABLE_URLS,
+    V2_FAULT_FLAGS,
     AttemptLedger,
     Committed,
     FaultIntent,
@@ -36,6 +38,7 @@ from scripts.eval_live_lab import (
     fault_gate,
     fault_guard,
     interrupt_scope,
+    mark_injector,
     normal_window,
     observation_json,
     protected,
@@ -63,14 +66,14 @@ def probe_preflight(config: eval_live.RoundConfig, deps: LiveDeps) -> str | None
             pass
         if deps.identity.verify():
             return "LAB_IDENTITY_UNCONFIRMED"
+        v2 = any(eval_live.is_v2(slot) for slot in config.slots)
         confirm_all_normal(
-            deps, deps.flags.read(), budget_seconds=eval_live.PREFLIGHT_FLAG_SECONDS
+            deps,
+            deps.flags.read(),
+            budget_seconds=eval_live.PREFLIGHT_FLAG_SECONDS,
+            whitelist=V2_FAULT_FLAGS if v2 else None,
         )
-        for slot in config.slots:
-            if slot.spec.kind == "fault":
-                injected = slot.answer.injected
-                assert injected is not None
-                fault_for(injected.flag, injected.variant)
+        eval_live.check_slots(config.slots)
     except LabError as exc:
         return exc.code
     except OSError:
@@ -89,6 +92,8 @@ def _probe_one(
     signatures: Sequence[Any],
 ) -> tuple[dict[str, Any], bool]:
     """The probe.json entry, and whether its private ledger was complete."""
+    if slot.plan is not None:
+        return _probe_v2(config, deps, slot, signatures)
     spec, answer = slot.spec, slot.answer
     attempt_id = f"probe-{spec.scenario_id}"
     ledger = AttemptLedger(
@@ -188,6 +193,239 @@ def _probe_one(
     if stop_requested():
         # A stop requested during a protected section (the restore) or a
         # path without a checkpoint after it: the probe ends here (130).
+        entry["interrupted"] = True
+    if gate is not None:
+        entry["gate"] = observation_json(gate)
+    with protected():
+        ledger.event("probe", "finished", reason=entry["reason"])
+    return entry, not (ledger.write_failed or evidence_failed)
+
+
+class _Tripwire:
+    """The probe's model ``inner``: never the network; counts what reached it."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def open(self, request: Any, timeout: float) -> Any:
+        self.calls += 1
+        raise LabError("PROBE_TRIPWIRE")
+
+
+def _model_check(mode: str, calls: int = 3) -> dict[str, Any]:
+    """Drive the 503 front ``calls`` times over a tripwire (seams §7)."""
+    import urllib.error
+    import urllib.request
+
+    from scripts.eval_live_inject import ModelTransportFault
+
+    inner = _Tripwire()
+    fault = ModelTransportFault(mode, inner)  # type: ignore[arg-type]
+    statuses: list[int | str] = []
+    for _ in range(calls):
+        request = urllib.request.Request("https://model.invalid/", data=b"{}")
+        try:
+            fault.open(request, timeout=1.0)
+        except urllib.error.HTTPError as exc:
+            statuses.append(exc.code)
+        except LabError as exc:
+            statuses.append(exc.code)
+    return {
+        "mode": mode,
+        "calls": calls,
+        "statuses": statuses,
+        "intercepted": fault.intercepted,
+        "forwarded": fault.forwarded,
+        "inner_calls": inner.calls,
+        "model_requests": 0,
+    }
+
+
+def _alert_check(
+    config: eval_live.RoundConfig,
+    deps: LiveDeps,
+    attempt_id: str,
+    params: Any,
+    starts_at: datetime,
+) -> dict[str, Any]:
+    """Deliver the sequence to a throwaway attempt PG; no runner (seams §7)."""
+    from opspilot.persistence import DurableStore
+    from opspilot.tools import otel_demo
+    from scripts.eval_live_inject import alert_entry, intake_counts, intake_record
+
+    if not config.pg_port:
+        raise LabError("PG_PORT_REQUIRED")
+    if deps.ports.in_use(config.pg_port):
+        raise LabError("PG_PORT_IN_USE")
+    directory = deps.pg_root / config.round_id / attempt_id / "pg"
+    if directory.exists() or directory.is_symlink():
+        raise LabError("PG_DIRECTORY_EXISTS")
+    pg = deps.pg.start(directory, config.pg_port)
+    try:
+        web = DurableStore(pg.web_dsn or pg.runtime_dsn)
+        web.install()
+        run = alert_entry(
+            params,
+            web=web,
+            face=otel_demo.otel_demo_face(deps.clock),
+            versions=otel_demo.otel_demo_versions(),
+            clock=deps.clock,
+            round_id=config.round_id,
+            first_starts_at=starts_at,
+        )
+        counts = intake_counts(pg.owner_dsn)
+    finally:
+        deps.pg.stop(pg)
+    return {**intake_record("alertmanager", run, counts), "model_requests": 0}
+
+
+def _probe_v2(
+    config: eval_live.RoundConfig,
+    deps: LiveDeps,
+    slot: eval_live.Slot,
+    signatures: Sequence[Any],
+) -> tuple[dict[str, Any], bool]:
+    """A v2 scenario's zero-model probe (#431 seams §7): intent, lab-side
+    injectors and their effect, in-process self-checks, wash. No incident
+    on the lab, no Run, no model call."""
+    from scripts.eval_live_inject import OtlpSpanWriter, connection_refused, write_span
+
+    plan, answer = slot.plan, slot.answer
+    assert plan is not None
+    attempt_id = f"probe-{slot.spec.scenario_id}"
+    ledger = AttemptLedger(
+        eval_live.attempt_ledger_dir(deps, config.round_id, attempt_id), deps.clock
+    )
+    entry: dict[str, Any] = {
+        "scenario_id": slot.spec.scenario_id,
+        "entry": plan.entry,
+        "injectors": [dict(item) for item in plan.injectors],
+        "effects": {},
+        "gate": None,
+        "fault": None,
+        "reason": None,
+        "closure_reason": None,
+        "interrupted": False,
+        "model_requests": 0,
+    }
+    effects: dict[str, Any] = entry["effects"]
+    gate: PreObservation | None = None
+    injected = False
+    evidence_failed = False
+    try:
+        check_occupation(
+            deps.ledger_root, config.holder, config.batch, deps.clock.now()
+        )
+        with fault_guard(deps.ledger_root):
+            try:
+                checkpoint()
+                if deps.identity.verify():
+                    raise LabError("LAB_IDENTITY_UNCONFIRMED")
+                if read_state(deps.ledger_root) is not None:
+                    raise LabError("LAB_FAULT_FOREIGN")
+                intent = FaultIntent(
+                    config.round_id,
+                    attempt_id,
+                    config.holder,
+                    config.batch,
+                    plan.flags[0] if plan.flags else None,
+                    also=plan.flags[1:],
+                    injectors=plan.injectors,
+                    whitelist=V2_FAULT_FLAGS,
+                )
+                checkpoint()
+                injected = True
+
+                def committed(fault: Committed) -> None:
+                    entry["fault"] = {
+                        "flags": [f.flag for f in intent.faults],
+                        "original_sha256": fault.original_sha256,
+                        "injected_sha256": fault.injected_sha256,
+                        "effective_at": None,
+                        "restored": False,
+                        "washed": False,
+                    }
+
+                result = commit_fault(
+                    intent, deps=deps, ledger=ledger, record=committed
+                )
+                effective_at = await_fault(result, deps=deps, ledger=ledger)
+                entry["fault"]["effective_at"] = _iso(effective_at)
+                if plan.flags:
+                    mark_injector(deps.ledger_root, "flagd", phase="effective")
+                if answer.signature is not None:
+                    gate = fault_gate(
+                        answer.signature, confirmed_at=effective_at, deps=deps
+                    )
+                else:
+                    gate = normal_window(signatures, not_before=effective_at, deps=deps)
+                with protected():
+                    ledger.write(
+                        "pre-observation.json",
+                        {**observation_json(gate), "raw": [dict(r) for r in gate.raw]},
+                    )
+                if not gate.passed:
+                    entry["reason"] = gate.reason
+                if plan.source is not None:
+                    url = UNREACHABLE_URLS[plan.source]
+                    effects["source_unreachable"] = {
+                        "source": plan.source,
+                        "url": url,
+                        "connection_refused": connection_refused(url),
+                    }
+                    if not effects["source_unreachable"]["connection_refused"]:
+                        entry["reason"] = entry["reason"] or "SOURCE_PORT_IN_USE"
+                if plan.model_mode is not None:
+                    effects["model_transport"] = _model_check(plan.model_mode)
+                if plan.span is not None:
+                    writer = deps.span_writer or OtlpSpanWriter()
+
+                    def planned(span: Any) -> None:
+                        mark_injector(
+                            deps.ledger_root,
+                            "otlp_span",
+                            phase="intent",
+                            trace_id=span.trace_id,
+                            span_end=span.end.isoformat(),
+                        )
+
+                    span = write_span(
+                        plan.span, writer=writer, clock=deps.clock, on_planned=planned
+                    )
+                    mark_injector(deps.ledger_root, "otlp_span", phase="effective")
+                    effects["otlp_span"] = {
+                        "trace_id": span.trace_id,
+                        "span_start": _iso(span.start),
+                        "span_end": _iso(span.end),
+                        "visible": True,
+                    }
+                if plan.alert is not None:
+                    effects["alert_delivery"] = _alert_check(
+                        config, deps, attempt_id, plan.alert, effective_at
+                    )
+            except (Interrupted, KeyboardInterrupt):
+                request_stop()
+                entry["interrupted"] = True
+                entry["reason"] = entry["reason"] or "INTERRUPTED"
+            except LabError as exc:
+                entry["reason"] = entry["reason"] or exc.code
+            except OSError:
+                evidence_failed = True
+                entry["reason"] = entry["reason"] or "EVIDENCE_WRITE_FAILED"
+            except Exception:  # noqa: BLE001 - a driver bug still restores
+                entry["reason"] = entry["reason"] or "DRIVER_ERROR"
+            finally:
+                if injected:
+                    _restore(config, deps, attempt_id, signatures, ledger, entry)
+    except LabError as exc:
+        entry["reason"] = entry["reason"] or exc.code
+    except OSError:
+        entry["reason"] = entry["reason"] or "LAB_LEDGER_UNAVAILABLE"
+    except (Interrupted, KeyboardInterrupt):
+        request_stop()
+        entry["interrupted"] = True
+        entry["reason"] = entry["reason"] or "INTERRUPTED"
+    if stop_requested():
         entry["interrupted"] = True
     if gate is not None:
         entry["gate"] = observation_json(gate)
