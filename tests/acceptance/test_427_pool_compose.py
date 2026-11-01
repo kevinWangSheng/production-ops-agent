@@ -15,7 +15,9 @@ def test_worker_refuses_pool_smaller_than_capacity_plus_three(monkeypatch):
 
     monkeypatch.setenv("OPSPILOT_WORKER_CAPACITY", "2")
     monkeypatch.setenv("OPSPILOT_POOL_MAX_SIZE", "4")
-    with pytest.raises((ValueError, RuntimeError, SystemExit), match="capacity|POOL_MAX_SIZE"):
+    with pytest.raises(
+        (ValueError, RuntimeError, SystemExit), match="capacity|POOL_MAX_SIZE"
+    ):
         worker_main.validate_pool_capacity()
 
 

@@ -45,9 +45,7 @@ def _outbox_module():
 
 def test_payload_is_a_strict_whitelist_and_does_not_copy_sensitive_content():
     outbox = _outbox_module()
-    fields = {
-        key: f"value-{key}" for key in EXPECTED_KEYS
-    }
+    fields = {key: f"value-{key}" for key in EXPECTED_KEYS}
     fields.update(
         {
             "prompt": "SENTINEL_PROMPT_427",
@@ -108,9 +106,10 @@ def test_source_contact_accepts_the_three_contract_values(value: str):
 
 def test_source_contact_other_values_are_unclassified():
     outbox = _outbox_module()
-    assert outbox.build_payload({"source_contact": "SENTINEL_CONTACT"})[
-        "source_contact"
-    ] == "UNCLASSIFIED"
+    assert (
+        outbox.build_payload({"source_contact": "SENTINEL_CONTACT"})["source_contact"]
+        == "UNCLASSIFIED"
+    )
 
 
 def test_token_and_budget_numbers_are_preserved_exactly_including_suffix_tokens():
