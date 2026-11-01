@@ -284,6 +284,18 @@ class EnvChecker(Protocol):
     def check(self) -> str | None: ...
 
 
+# The preflight's one bounded read-only Prometheus query (#284, V2-R9).
+SOURCE_QUERY = "vector(1)"
+
+
+class InvestigatorSourceCheck(Protocol):
+    """The Runs' Prometheus credential (#284): "basic"/"bearer"/"absent", and
+    the HTTP status of one bounded read-only query sent with it."""
+
+    def credential(self) -> str: ...
+    def probe(self) -> int: ...
+
+
 @dataclass(frozen=True)
 class Provenance:
     commit: str | None
@@ -316,6 +328,10 @@ class LiveDeps:
     # The code version (r5); the driver core itself starts no process. None
     # leaves the manifest's ``code`` dimension unknown.
     provenance: ProvenanceReader | None = None
+    # The preflight's check of the Runs' own Prometheus credential (#284);
+    # ``real_deps`` always sets it from the investigator's config. None (the
+    # offline doubles) skips it and records null in ``lifecycle.json``.
+    investigator_source: InvestigatorSourceCheck | None = None
 
 
 # -- private ledger -----------------------------------------------------------
