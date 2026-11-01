@@ -142,8 +142,10 @@ def _family(
     return lines
 
 
-def _revision() -> str:
-    raw = os.environ.get(REVISION_ENV, "")
+def _revision(env: Mapping[str, str] | None = None) -> str:
+    """``OPSPILOT_REVISION`` when well formed, else ``unknown`` (shared with
+    the structured log lines, ``opspilot.logs``)."""
+    raw = (os.environ if env is None else env).get(REVISION_ENV, "")
     return raw if _REVISION.fullmatch(raw) else "unknown"
 
 

@@ -146,9 +146,47 @@ opspilot_observation_due 0
 
 未做：独立审查；全量 `make check`/pytest；F8 `passes` 保持 false。lab 留在本分支的配置上：停栈后 `OpsPilotAgentAbsent` 持续 firing 到 `opspilot-self`，不通知任何东西。
 
+## 结构化日志实现（对齐合同 r2 + r2.1）
+
+worktree `/Users/shenghuikevin/dev/AI/poa-386-logs`，分支 `feature/F8-386-structured-logs`（起点 origin/main `2e9db380`）。测试接缝说明（给验收测试作者）在仓库外 `~/.agent/handoffs/m3-opt-2026-11-01/seams-386.md`。
+
+做了什么：新模块 `opspilot/logs.py`，`configure()` 给 root 装一个 stderr handler（INFO），按 `OPSPILOT_LOG_FORMAT` 出 JSON 行或旧文本格式，并接管 `sys.excepthook`/`threading.excepthook`；worker、Observer 用它替换 `basicConfig`，web 在 `_serve()` 开头调用并以 `log_config=None` 启动 uvicorn。`health._revision()` 加一个可选 `env` 参数供日志复用同一校验。没有改任何日志调用点的措辞与键名（R8）。
+
+可逆选择（Agent 自定，一行理由）：
+
+- `OPSPILOT_LOG_FORMAT` 为空串按未设置（json）处理：env 文件里 `KEY=` 通常表示未设置；拒绝启动提示不回显非法取值。
+- 拒绝启动文本 `OPSPILOT_LOG_FORMAT must be json or text`，`SystemExit` 退出码 1，与其他 env 拒绝一致。
+- handler 不传流时每次输出取当时的 `sys.stderr`（同 `logging.lastResort`）：进程内多次调用 `main()` 的旧测试不会留下指向已关闭流的 handler。
+- 未捕获异常记到 logger `opspilot.uncaught`，消息 `uncaught exception thread=<线程名>`（线程名进 `kv`）；线程里的 `SystemExit` 照 stdlib 默认忽略；记日志本身失败时退回 stdlib 默认钩子，traceback 不丢。
+- 格式串与参数不匹配（`getMessage()` 抛错）时 `msg` 取原始格式串、不出 `kv`，保持一行 JSON；stdlib 会打印多行 `--- Logging error ---`。
+- 同一格式串同名 kv 出现多次时后者覆盖；`%r` 的 kv 值同样取 `str()`；非有限浮点取字符串（JSON 不允许 NaN）。
+- `tests/conftest.py` 加 autouse fixture，每个测试后撤掉 `configure()` 装的 handler、恢复 root 级别与两个钩子：`test_runtime_roles`、`test_f2_b1_impl`、`test_427_outbox_impl` 在进程内调用 `main()`，不撤销会把 INFO 级别与钩子漏给后续测试（含 pytest 自己的会话级 `threading.excepthook`）。
+
+调用点复核（O6，PR HEAD 上 AST 扫描 `opspilot/` 88 处日志调用（不含 `logs.py` 自身），按进程；结论一行一条）：
+
+- worker 槽：`attempt crashed`（`worker_main.py:215`）只记类型；`attempt refused`/`sweep refused`/`listing refused`/`backlog pass refused` 的 `code=%s` 是 `PersistenceError`，所有构造点只放固定码（`persistence/base.py:318` 等 9 处已逐一核对）。
+- worker：`attempt … reason=%s` 的 `RunnerOutcome.reason` 是 `str | None` 固定码；`worker slot … versions=%s` 是版本修订字典；`signal`/`grace` 是数字。无凭据或模型文本。
+- 复盘（`knowledge/worker.py`）：`generation crashed` 只记类型；`postmortem … code=%s version=%s` 是固定码与整数版本；`input over limit` 只记 limit；`event not appended` 只记类型。
+- 模型客户端（`investigation/client.py`）：本身无日志；4xx/5xx 只抛 `ModelError(<码>)`，哨兵测试证实 401 响应体里的 provider 文本与 key 不进异常；`opener.open` 抛出的非 `URLError/OSError/HTTPException` 异常会原样冒出，被槽/复盘边界截住只记类型。
+- tracing：`trace export disabled … %s` 只拼 `check_lab_target` 的固定码；`trace export raised` 只记类型；`OPSPILOT_TRACE=%r is not a mode` 回显运维填写的模式值（不是凭据，照旧）。
+- Observer：`observer owner=… prometheus=%s` 只含 scheme/host/port（带 userinfo 的 URL 拒绝启动）；`sample/comparison crashed`、`poll hook failed`、`reading construction failed`、`replay failed`（`observer/replay.py:1160`）只记类型；`profile unavailable … error=%s` 是 `PersistenceError` 码；其余是 ID、计数与状态码。
+- 共用：`health probe failed` 只记类型；`health.py:508` 记绑定地址与 errno；`outbox cleanup refused: %s` 是 `PersistenceError` 码。
+- web `service.py:566,1656`：`PersistenceError` 码。`service.py:1576` 在 `ValidationError`（pydantic，没有 `.code`）时取 `str(exc)`，会带被校验对象的输入值；校验的是库里的发布记录，不是凭据或模型输出（推断，见未确认）。
+- web 5 处 `.exception()`（`web/__main__.py:155,159,163`、`service.py:2523,2628`）：保留完整 traceback（R8），现在是一行 JSON 的 `exc`。web 进程不 import 模型客户端；异常来自存储（psycopg 消息带 host/port，不含密码，带密码 DSN 哨兵已实测）、回放计算与图表渲染（输入是入库时已脱敏的证据）。
+- `schema.py:642` 多行列差异与迁移 `0024` 的 PG notice 只在 schema/migrate 路径出现，内容是列定义；现在是一行 JSON。
+- 未捕获异常钩子（Q5）：worker/复盘/Observer 的模型与 Prometheus 异常在各自 `except Exception` 边界被截住，到不了钩子；能到钩子的是启动期存储失败（实测为 `PersistenceError: TIMEOUT` 链 psycopg `PoolTimeout`，不含 DSN 密码）与循环线程里的存储异常。
+
+实现者测试 `tests/test_386_logs_impl.py`（58 条）：行形状与键序、revision 校验、单行转义、`exc`/`stack`、不脱敏、kv 规则与反例、text 回退、非法取值拒绝且不改状态、幂等与保留他方 handler、两个钩子、主动 `SystemExit` 保持文本、三入口子进程（不可达 DSN：`psycopg.pool` 与 `opspilot.uncaught` 行均为 JSON，带密码 DSN 哨兵不出现；非法格式；text；缺 DSN）、uvicorn 行同格式且只在 stderr、`_serve()` 传 `log_config=None`、按进程的哨兵（worker 槽、模型客户端 401、复盘、Observer 采样、web 自愈 `.exception()`）。
+
+定向验证（2026-11-01，worktree 本地，未起 PG）：`ruff check .`、`ruff format --check .`、`mypy`（`opspilot/` 151 文件）通过；`tests/test_386_logs_impl.py` 加 11 个相关文件同一进程跑 370 passed（56.5s）。加 conftest fixture 之前，这组合跑会卡在 `test_m1_web_worker.py::test_stop_ends_the_batch_before_the_next_claim_and_the_loop_returns`：泄漏的 INFO 级别让槽线程变慢，暴露了该测试原有的竞态（单槽时它依赖第一个 attempt 线程在轮询走到 b 之前结束），在 `2e9db380` 上单独跑这两个文件能过。未跑全量 pytest/`make check`、`tests/acceptance`（kind 窗口约束）。
+
+未确认：`service.py:1576` 的 pydantic 校验消息里可能出现的输入值类型；uvicorn 记录 ASGI 应用异常时的 traceback 内容（web 请求处理异常，未逐路径核对）；`socketserver` 在健康监听连接级错误时直接向 stderr 打多行 traceback，不经 logging（非 JSON，内容为 socket 错误）；Docker 宿主 json-file 轮转；上游 HolmesGPT 日志格式。
+
+Compose 抽检（F8L-Q3/O8，等 lead 放行，需 kind lab Prometheus 与模型 key 安排）：`opspilot-393` 栈用本分支镜像 `install.sh upgrade`；跑一次真实模型调用的 Run；`install.sh compose stop postgres` 约 60s 后 `start`；`install.sh compose logs` 取三服务日志，逐行 `json.loads` 校验、确认 `revision` 为镜像修订，人工核对无凭据、无 provider 文本，摘录入本记录；费用按余额差对账。
+
 ## 下一步与交接
 
 - 第 1 实施步骤：PR-1 #413（PR #418）与 PR-2 #414（PR #421）均已合并。
-- 结构化日志：合同 r2 已裁决，本轮不实施；等 M3 方向 Q4 第 ① 步全部完成后再排。
+- 结构化日志：合同 r2 + r2.1 已裁决；实现在 `feature/F8-386-structured-logs`（见「结构化日志实现」），待独立验收测试、审查与 Compose 抽检。
 - #243 outbox：合同 r3 已裁决；#427（PR-1 写入侧）→ #428（PR-2 投递侧）。
 - 第 3 步升级回滚演练：合同 r3 已裁决；#429，等 #427 合并（trace 证据等 #428）。
