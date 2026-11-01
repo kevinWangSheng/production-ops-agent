@@ -30,6 +30,24 @@ MAPPING = ROOT / "docs/evidence/f14-upstream-mapping/mapping.json"
 PIN = json.loads((ROOT / issues.PIN_PATH).read_text())
 
 
+def _table_before_writeback() -> dict[str, Any]:
+    """The step 2 table as main had it before step 3 wrote back (0089197e)."""
+    import subprocess
+
+    return json.loads(
+        subprocess.check_output(
+            [
+                "git",
+                "-C",
+                str(ROOT),
+                "show",
+                "0089197e:docs/evidence/f14-upstream-mapping/mapping.json",
+            ],
+            text=True,
+        )
+    )
+
+
 # --- scripted endpoint
 
 
@@ -400,6 +418,24 @@ def test_first_request_fields_find_the_projection() -> None:
     assert fields["data_sources"] == sources
     assert fields["first_request_sha256"] == issues.sha256_bytes(raw)
     assert fields["first_request_mentions_unreachable"] is False
+    generic = _first_request(
+        {**sources, "instruction": "When a metrics source is unavailable, say so."}
+    )
+    assert (
+        issues.first_request_fields(generic, "prometheus")[
+            "first_request_mentions_unreachable"
+        ]
+        is False
+    )
+    failed = _first_request(
+        {**sources, "unreachable_at_start": {"prometheus": "refused"}}
+    )
+    assert (
+        issues.first_request_fields(failed, "prometheus")[
+            "first_request_mentions_unreachable"
+        ]
+        is True
+    )
     with pytest.raises(SystemExit):
         issues.first_request_fields(json.dumps({"messages": []}).encode(), "prometheus")
 
@@ -538,7 +574,7 @@ def test_record_rules(tmp_path: Path) -> None:
 def _candidate_records(
     verdicts: dict[str, str], root: Path
 ) -> dict[str, dict[str, Any]]:
-    table = json.loads(MAPPING.read_text())
+    table = _table_before_writeback()
     records = {}
     for row in table["rows"]:
         candidate = row.get("candidate_defect")
@@ -576,7 +612,7 @@ def _candidate_records(
 
 
 def test_writeback_follows_verdicts_and_keeps_step2_rules(tmp_path: Path) -> None:
-    table = json.loads(MAPPING.read_text())
+    table = _table_before_writeback()
     verdicts = {
         "max-output-token-reservation": "reproduced",
         "raw-alert-in-prompt": "not_reproduced",
@@ -651,7 +687,7 @@ def test_writeback_follows_verdicts_and_keeps_step2_rules(tmp_path: Path) -> Non
 
 
 def test_writeback_refuses_without_a_record() -> None:
-    table = json.loads(MAPPING.read_text())
+    table = _table_before_writeback()
     with pytest.raises(SystemExit):
         issues.writeback(copy.deepcopy(table), {})
 

@@ -152,6 +152,17 @@ def alert_snippet(user_prompt: str) -> str | None:
     return user_prompt[at : at + SNIPPET_CHARS]
 
 
+TRUNCATION_MARK = "NEVER answer based on truncated"
+
+
+def truncation_snippet(system_prompt: str) -> str | None:
+    """The Prometheus instruction line about truncated data (#2168)."""
+    for line in system_prompt.splitlines():
+        if TRUNCATION_MARK in line:
+            return line[:SNIPPET_CHARS]
+    return None
+
+
 def request_summary(index: int, body: Mapping[str, Any]) -> dict[str, Any]:
     messages = [m for m in body.get("messages") or [] if isinstance(m, dict)]
     system = "\n".join(
@@ -162,6 +173,7 @@ def request_summary(index: int, body: Mapping[str, Any]) -> dict[str, Any]:
     for name, text in (
         ("disabled_failed_toolsets", failed_toolsets_snippet(system)),
         ("alert", alert_snippet(users[0]) if users else None),
+        ("truncation_instruction", truncation_snippet(system)),
     ):
         if text is not None:
             snippets[name] = {"sha256": sha256_bytes(text.encode()), "text": text}
@@ -182,10 +194,17 @@ def request_summary(index: int, body: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def holmes_result(output: Any) -> dict[str, Any]:
-    """``holmes ask`` writes one result object; ``investigate`` a list."""
+    """The ask-shaped result (``result`` text, ``tool_calls``). ``holmes ask``
+    writes it directly; ``holmes investigate`` writes a list of
+    ``{"issue": ..., "result": {<ask-shaped>}}``."""
     if isinstance(output, list):
-        return output[0] if output and isinstance(output[0], dict) else {}
-    return output if isinstance(output, dict) else {}
+        output = output[0] if output and isinstance(output[0], dict) else {}
+    if not isinstance(output, dict):
+        return {}
+    inner = output.get("result")
+    if isinstance(inner, dict) and ("tool_calls" in inner or "result" in inner):
+        return inner
+    return output
 
 
 def tool_results(result: Mapping[str, Any]) -> list[dict[str, Any]]:
@@ -320,9 +339,20 @@ def first_request_fields(raw: bytes, source: str) -> dict[str, Any]:
     walk(body)
     if not found:
         raise SystemExit("first request carries no data_sources projection")
-    text = raw.decode()
-    mentions = names_missing_source(text, source)["hit"] or any(
-        word in text.lower() for word in ("unreachable at start", "开始时不可达")
+    # Only the data_sources projection can carry a start-time failure (the
+    # static U5 keys say what is integrated, not whether it is healthy); the
+    # sentence rule over the whole request would hit generic tool
+    # descriptions ("a query window outside it is refused ..."). N1's fixed
+    # wording (Q13) is matched as text as well.
+    projection = found[0]
+    extra = {
+        k: v
+        for k, v in projection.items()
+        if k not in ("available", "not_integrated", "instruction")
+    }
+    text = raw.decode().lower()
+    mentions = source in json.dumps(extra).lower() or any(
+        word in text for word in ("unreachable at start", "开始时不可达")
     )
     return {
         "first_request_sha256": sha256_bytes(raw),

@@ -46,6 +46,10 @@
         "disabled_failed_toolsets": {
           "sha256": "623303734f15cc8afd5779de7be808d90e8a7addc099cc601bc9710cf3f2e169",
           "text": "# Disabled & failed Toolsets\nThese toolsets are DISABLED (unconfigured) unless marked FAILED (misconfigured). Setup docs per toolset: `https://holmesgpt.dev/data-sources/builtin-toolsets/<name before any slash>/` unless a different URL is given."
+        },
+        "truncation_instruction": {
+          "sha256": "e6e2fb8ae07d18c080988be8b834f70c03ec6023ec1013d0d88ad63b6b8d62a5",
+          "text": "* If a query returns too much data (e.g. truncation error), you MUST retry with a more specific query, fewer data points, or topk/bottomk. NEVER answer based on truncated Prometheus data — you might be missing the information that changes the answer. Prefer saying you can't answer (and showing the user a graph via the promql embed so they can interpret it themselves) over answering from incomplete data."
         }
       }
     },
@@ -70,6 +74,10 @@
         "disabled_failed_toolsets": {
           "sha256": "623303734f15cc8afd5779de7be808d90e8a7addc099cc601bc9710cf3f2e169",
           "text": "# Disabled & failed Toolsets\nThese toolsets are DISABLED (unconfigured) unless marked FAILED (misconfigured). Setup docs per toolset: `https://holmesgpt.dev/data-sources/builtin-toolsets/<name before any slash>/` unless a different URL is given."
+        },
+        "truncation_instruction": {
+          "sha256": "e6e2fb8ae07d18c080988be8b834f70c03ec6023ec1013d0d88ad63b6b8d62a5",
+          "text": "* If a query returns too much data (e.g. truncation error), you MUST retry with a more specific query, fewer data points, or topk/bottomk. NEVER answer based on truncated Prometheus data — you might be missing the information that changes the answer. Prefer saying you can't answer (and showing the user a graph via the promql embed so they can interpret it themselves) over answering from incomplete data."
         }
       }
     }
@@ -104,7 +112,12 @@
   ],
   "answer_sha256": "e64af83fe6a06b10118e9956de73964b9cdf3a2cb6eb7b18bc6ee698631e86e0",
   "answer_checks": {},
-  "stdout_checks": {},
+  "stdout_checks": {
+    "operator_sees_failed_to_connect": {
+      "hit": true,
+      "excerpt": "Failed to connect to Prometheus"
+    }
+  },
   "proxy_checks": {},
   "tool_checks": {
     "null_timeout_error": {
@@ -117,5 +130,9 @@
     }
   },
   "request_checks": {},
-  "balance_window": null
+  "balance_window": null,
+  "refrozen": {
+    "reason": "add the operator-facing stdout check (Holmes prints its INFO 'Failed to connect to Prometheus' log line)",
+    "previous_sha256": "a95364695636e87202994626fdda4e556f114ab8624d793e09eee06d541652fe"
+  }
 }

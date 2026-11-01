@@ -912,6 +912,11 @@ def main(argv: list[str] | None = None) -> int:
         help="skip reading the lab proxy log (offline smoke without kind)",
     )
     rep.set_defaults(func=repro.cmd_repro)
+    refreeze = sub.add_parser("refreeze")
+    refreeze.add_argument("case", choices=sorted(repro.CASES))
+    refreeze.add_argument("run_id")
+    refreeze.add_argument("--reason", required=True)
+    refreeze.set_defaults(func=repro.cmd_refreeze)
     freeze = sub.add_parser("opspilot-freeze")
     freeze.add_argument("--group", choices=("prometheus", "jaeger"), required=True)
     freeze.add_argument("--summary", type=Path, required=True)

@@ -375,6 +375,10 @@ def checks(
                 r.get("status") == "error" and "connect" in str(r.get("error")).lower()
             )
         )
+        # what the operator reads: the CLI prints Holmes' INFO log lines
+        out["stdout_checks"]["operator_sees_failed_to_connect"] = issues.sentence_hit(
+            stdout, any_of=("Failed to connect to Prometheus",)
+        )
     elif case.name == "2168-oversize":
         out["tool_checks"]["summary_instead_of_data"] = tool_hit(
             lambda r: "data_summary" in str(r.get("data"))
@@ -609,3 +613,70 @@ def _pin_sha() -> str:
     from scripts.holmes_baseline import run as hrun
 
     return json.loads((hrun.EVIDENCE / "pin.json").read_text())["config"]["sha256"]
+
+
+def cmd_refreeze(args: argparse.Namespace) -> int:
+    """Rebuild ``runs/<run_id>.json`` from the raw directory after a freezing
+    fix, keeping what only the live Run knew (times, image, config, stimulus,
+    container env, balance). Real Runs re-read their committed holmes proxy
+    log; a scripted Run's proxy lines were not kept, so its proxy count is
+    recomputed over none and the file says so."""
+    from scripts.holmes_baseline import run as hrun
+
+    case = CASES[args.case]
+    evidence = hrun.ROOT / issues.EVIDENCE_PREFIX / case.slug / "runs"
+    old = json.loads((evidence / f"{args.run_id}.json").read_text())
+    directory = hrun.RAW_ROOT / args.run_id
+    raw = directory / "out" / "holmes.json"
+    output = json.loads(raw.read_text()) if raw.exists() else {}
+    capture_log = directory / "capture.jsonl"
+    captured = scripted_lines(capture_log.read_text()) if capture_log.exists() else []
+    stdout = (directory / "holmes.stdout.txt").read_text() + (
+        directory / "holmes.stderr.txt"
+    ).read_text()
+    proxy_file = evidence / f"{args.run_id}.proxy-log-holmes.txt"
+    proxy_lines = proxy_file.read_text().splitlines() if proxy_file.exists() else []
+    found = checks(case, issues.holmes_result(output), captured, stdout, proxy_lines)
+    if (
+        case.mode == "scripted_model"
+        and "metric_name_requests" in found["proxy_checks"]
+    ):
+        found["proxy_checks"]["metric_name_requests"]["excerpt"] = (
+            "re-frozen: proxy lines of this scripted Run were not kept"
+        )
+    frozen = issues.freeze_run(
+        run_id=args.run_id,
+        slug=case.slug,
+        case=case.name,
+        mode=case.mode,
+        entry=case.entry,
+        image_id=old["image_id"],
+        config_sha256=old["config_sha256"],
+        started_at=old["started_at"],
+        finished_at=old["finished_at"],
+        exit_code=old["exit_code"],
+        timed_out=old["timed_out"],
+        output=output,
+        captured=captured,
+        answer_checks=found["answer_checks"],
+        stdout_checks=found["stdout_checks"],
+        proxy_checks=found["proxy_checks"],
+        tool_checks=found["tool_checks"],
+        request_checks=found["request_checks"],
+        model_env_overrides=old.get("model_env_overrides"),
+        balance_window=old.get("balance_window"),
+        stimulus=old.get("stimulus"),
+        config=old.get("config"),
+        container_env=old.get("container_env"),
+    )
+    frozen["refrozen"] = {
+        "reason": args.reason,
+        "previous_sha256": issues.sha256_bytes(
+            (evidence / f"{args.run_id}.json").read_bytes()
+        ),
+    }
+    (evidence / f"{args.run_id}.json").write_text(
+        json.dumps(frozen, indent=2, ensure_ascii=False) + "\n"
+    )
+    print(json.dumps({"run_id": args.run_id, **{k: v for k, v in found.items() if v}}))
+    return 0

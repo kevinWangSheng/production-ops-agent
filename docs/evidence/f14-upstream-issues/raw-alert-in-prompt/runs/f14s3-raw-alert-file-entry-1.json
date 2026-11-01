@@ -37,5 +37,9 @@
   "proxy_checks": {},
   "tool_checks": {},
   "request_checks": {},
-  "balance_window": null
+  "balance_window": null,
+  "refrozen": {
+    "reason": "investigate output is [{issue, result:{ask-shaped}}]; the first freeze read the outer object and saw no tool calls or answer",
+    "previous_sha256": "535ab825852fa3e792202af6010390117b014a5db9f7bdfec50c08a6048cd510"
+  }
 }
