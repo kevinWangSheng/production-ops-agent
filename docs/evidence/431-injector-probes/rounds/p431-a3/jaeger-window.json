@@ -1,0 +1,64 @@
+{
+  "dv2-0a0003": {
+    "ad": {
+      "complete": true,
+      "error_spans": 0,
+      "operations": {}
+    },
+    "checkout": {
+      "complete": true,
+      "error_spans": 2,
+      "operations": {
+        "oteldemo.CartService/EmptyCart": 2
+      }
+    },
+    "checkout_calls": {
+      "complete": true,
+      "value": 57.75963333333333
+    },
+    "frontend": {
+      "complete": true,
+      "error_spans": 0,
+      "operations": {}
+    },
+    "payment": {
+      "complete": true,
+      "error_spans": 0,
+      "operations": {}
+    },
+    "window": [
+      "2026-11-01T09:34:31.135156+00:00",
+      "2026-11-01T09:39:31.135156+00:00"
+    ]
+  },
+  "dv2-0a0004": {
+    "ad": {
+      "complete": true,
+      "error_spans": 0,
+      "operations": {}
+    },
+    "checkout": {
+      "complete": true,
+      "error_spans": 0,
+      "operations": {}
+    },
+    "checkout_calls": {
+      "complete": true,
+      "value": 57.5002395843316
+    },
+    "frontend": {
+      "complete": true,
+      "error_spans": 0,
+      "operations": {}
+    },
+    "payment": {
+      "complete": true,
+      "error_spans": 0,
+      "operations": {}
+    },
+    "window": [
+      "2026-11-01T09:42:06.142509+00:00",
+      "2026-11-01T09:47:06.142509+00:00"
+    ]
+  }
+}

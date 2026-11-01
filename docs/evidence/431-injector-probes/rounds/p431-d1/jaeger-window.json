@@ -1,0 +1,102 @@
+{
+  "dv2-0d0001": {
+    "ad": {
+      "complete": true,
+      "error_spans": 0,
+      "operations": {}
+    },
+    "checkout": {
+      "complete": true,
+      "error_spans": 10,
+      "operations": {
+        "oteldemo.CheckoutService/PlaceOrder": 5,
+        "oteldemo.PaymentService/Charge": 5
+      }
+    },
+    "checkout_calls": {
+      "complete": true,
+      "value": 29.999750002083317
+    },
+    "frontend": {
+      "complete": true,
+      "error_spans": 20,
+      "operations": {
+        "POST": 5,
+        "POST /api/checkout": 5,
+        "executing api route (pages) /api/checkout": 5,
+        "grpc.oteldemo.CheckoutService/PlaceOrder": 5
+      }
+    },
+    "payment": {
+      "complete": true,
+      "error_spans": 5,
+      "operations": {
+        "grpc.oteldemo.PaymentService/Charge": 5
+      }
+    },
+    "window": [
+      "2026-11-01T10:24:20.185305+00:00",
+      "2026-11-01T10:29:20.185305+00:00"
+    ]
+  },
+  "dv2-0d0002": {
+    "ad": {
+      "complete": true,
+      "error_spans": 0,
+      "operations": {}
+    },
+    "checkout": {
+      "complete": true,
+      "error_spans": 0,
+      "operations": {}
+    },
+    "checkout_calls": {
+      "complete": true,
+      "value": 106.25354178472617
+    },
+    "frontend": {
+      "complete": true,
+      "error_spans": 0,
+      "operations": {}
+    },
+    "payment": {
+      "complete": true,
+      "error_spans": 0,
+      "operations": {}
+    },
+    "window": [
+      "2026-11-01T10:31:54.818525+00:00",
+      "2026-11-01T10:36:54.818525+00:00"
+    ]
+  },
+  "dv2-0d0003": {
+    "ad": {
+      "complete": true,
+      "error_spans": 0,
+      "operations": {}
+    },
+    "checkout": {
+      "complete": true,
+      "error_spans": 0,
+      "operations": {}
+    },
+    "checkout_calls": {
+      "complete": true,
+      "value": 18.750078125325523
+    },
+    "frontend": {
+      "complete": true,
+      "error_spans": 0,
+      "operations": {}
+    },
+    "payment": {
+      "complete": true,
+      "error_spans": 0,
+      "operations": {}
+    },
+    "window": [
+      "2026-11-01T10:42:20.146821+00:00",
+      "2026-11-01T10:47:20.146821+00:00"
+    ]
+  }
+}

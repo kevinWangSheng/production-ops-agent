@@ -1,0 +1,263 @@
+{
+  "exit_code": 0,
+  "reason": null,
+  "retained_fault": false,
+  "round": "p431-d1",
+  "round_status": "finished",
+  "scenarios": [
+    {
+      "closure_reason": null,
+      "effects": {
+        "alert_delivery": {
+          "counts": {
+            "episodes": 1,
+            "incidents": 1,
+            "runs": 1
+          },
+          "deliveries": [
+            {
+              "http_status": 200,
+              "incident_id": "5be2a24d-a771-5715-87a7-e302544b50f8",
+              "outcome": "created",
+              "reason": null,
+              "run_id": "a16b1e15-aec3-5916-8c3f-f9213c2f65f4",
+              "seq": 1,
+              "starts_at": "2026-11-01T10:24:20Z",
+              "status": "firing"
+            },
+            {
+              "http_status": 200,
+              "incident_id": "5be2a24d-a771-5715-87a7-e302544b50f8",
+              "outcome": "replayed",
+              "reason": null,
+              "run_id": "a16b1e15-aec3-5916-8c3f-f9213c2f65f4",
+              "seq": 2,
+              "starts_at": "2026-11-01T10:24:20Z",
+              "status": "firing"
+            },
+            {
+              "http_status": 200,
+              "incident_id": "5be2a24d-a771-5715-87a7-e302544b50f8",
+              "outcome": "replayed",
+              "reason": null,
+              "run_id": "a16b1e15-aec3-5916-8c3f-f9213c2f65f4",
+              "seq": 3,
+              "starts_at": "2026-11-01T10:24:20Z",
+              "status": "firing"
+            }
+          ],
+          "entry": "alertmanager",
+          "model_requests": 0
+        }
+      },
+      "entry": "alertmanager",
+      "fault": {
+        "effective_at": "2026-11-01T10:24:20.185305+00:00",
+        "flags": [
+          "paymentFailure"
+        ],
+        "injected_sha256": "e47d27c2fa01c72d8bc71d40d0f4223b1049fd84582e5789cbd9a5ccbdcc915d",
+        "original_sha256": "1ee5c0258e3e13609ecec75979cee286ab00f442d288112e39e3db8433d176c6",
+        "restored": true,
+        "washed": true
+      },
+      "gate": {
+        "checkout_calls": 35.59940667655539,
+        "flag_confirmed_at": "2026-11-01T10:24:20.185305+00:00",
+        "kind": "fault",
+        "matched_span_ids": [
+          "2e945856f9752252",
+          "d0c0900568188eb8",
+          "bd7666f90f77ef9f",
+          "8ed15951c2c1da2e",
+          "e075502bd151c783",
+          "9f64c711bb7d4dec",
+          "9432565d5a006c9a",
+          "83f5530c843948bf",
+          "41e9a1469a74f7ee",
+          "b5d5bfa2a7158693"
+        ],
+        "passed": true,
+        "probes": 45,
+        "reason": null,
+        "trace_ids": [
+          "0786c266b038db8a91727e7b8aca8eea",
+          "609ae3df2819fd1f3457865bdf673c32",
+          "74691ecf1e26a65eb5b9674d77dd14f3",
+          "c6a95ddf7c8b206730abf4d53e6e7d46",
+          "ebfeab1229161e87234af5358ba21d04"
+        ],
+        "window": {
+          "end": "2026-11-01T10:25:49.584960+00:00",
+          "start": "2026-11-01T10:24:20.185305+00:00"
+        }
+      },
+      "injectors": [
+        {
+          "kind": "flagd",
+          "params": {
+            "flag": "paymentFailure",
+            "variant": "100%"
+          }
+        },
+        {
+          "kind": "alert_delivery",
+          "params": {
+            "deliveries": 3,
+            "interval_seconds": 10,
+            "pattern": "duplicate"
+          }
+        }
+      ],
+      "interrupted": false,
+      "model_requests": 0,
+      "reason": null,
+      "scenario_id": "dv2-0d0001"
+    },
+    {
+      "closure_reason": null,
+      "effects": {
+        "alert_delivery": {
+          "counts": {
+            "episodes": 2,
+            "incidents": 1,
+            "runs": 1
+          },
+          "deliveries": [
+            {
+              "http_status": 200,
+              "incident_id": "765c5b7d-e250-57da-a269-50d23283dc21",
+              "outcome": "created",
+              "reason": null,
+              "run_id": "1d73a5ec-5472-5e16-b05d-e5cf05e4dffe",
+              "seq": 1,
+              "starts_at": "2026-11-01T10:31:54Z",
+              "status": "firing"
+            },
+            {
+              "http_status": 200,
+              "incident_id": "765c5b7d-e250-57da-a269-50d23283dc21",
+              "outcome": "resolved_attached",
+              "reason": null,
+              "run_id": "1d73a5ec-5472-5e16-b05d-e5cf05e4dffe",
+              "seq": 2,
+              "starts_at": "2026-11-01T10:31:54Z",
+              "status": "resolved"
+            },
+            {
+              "http_status": 200,
+              "incident_id": "765c5b7d-e250-57da-a269-50d23283dc21",
+              "outcome": "attached",
+              "reason": null,
+              "run_id": null,
+              "seq": 3,
+              "starts_at": "2026-11-01T10:37:17Z",
+              "status": "firing"
+            }
+          ],
+          "entry": "alertmanager",
+          "model_requests": 0
+        }
+      },
+      "entry": "alertmanager",
+      "fault": {
+        "effective_at": "2026-11-01T10:31:54.818525+00:00",
+        "flags": [],
+        "injected_sha256": null,
+        "original_sha256": null,
+        "restored": true,
+        "washed": true
+      },
+      "gate": {
+        "checkout_calls": 106.25354178472617,
+        "flag_confirmed_at": "2026-11-01T10:31:54.818525+00:00",
+        "kind": "normal",
+        "matched_span_ids": [],
+        "passed": true,
+        "probes": 5,
+        "reason": null,
+        "trace_ids": [],
+        "window": {
+          "end": "2026-11-01T10:36:54.818525+00:00",
+          "start": "2026-11-01T10:31:54.818525+00:00"
+        }
+      },
+      "injectors": [
+        {
+          "kind": "alert_delivery",
+          "params": {
+            "interval_seconds": 10,
+            "pattern": "refire"
+          }
+        }
+      ],
+      "interrupted": false,
+      "model_requests": 0,
+      "reason": null,
+      "scenario_id": "dv2-0d0002"
+    },
+    {
+      "closure_reason": null,
+      "effects": {
+        "alert_delivery": {
+          "counts": {
+            "episodes": 1,
+            "incidents": 1,
+            "runs": 0
+          },
+          "deliveries": [
+            {
+              "http_status": 200,
+              "incident_id": "7aa52338-cafb-5fea-8800-97d05a1e07df",
+              "outcome": "handoff_created",
+              "reason": "TARGET_UNRESOLVED",
+              "run_id": null,
+              "seq": 1,
+              "starts_at": "2026-11-01T10:42:20Z",
+              "status": "firing"
+            }
+          ],
+          "entry": "alertmanager",
+          "model_requests": 0
+        }
+      },
+      "entry": "alertmanager",
+      "fault": {
+        "effective_at": "2026-11-01T10:42:20.146821+00:00",
+        "flags": [],
+        "injected_sha256": null,
+        "original_sha256": null,
+        "restored": true,
+        "washed": true
+      },
+      "gate": {
+        "checkout_calls": 18.750078125325523,
+        "flag_confirmed_at": "2026-11-01T10:42:20.146821+00:00",
+        "kind": "normal",
+        "matched_span_ids": [],
+        "passed": true,
+        "probes": 5,
+        "reason": null,
+        "trace_ids": [],
+        "window": {
+          "end": "2026-11-01T10:47:20.146821+00:00",
+          "start": "2026-11-01T10:42:20.146821+00:00"
+        }
+      },
+      "injectors": [
+        {
+          "kind": "alert_delivery",
+          "params": {
+            "namespace": "otel-demo-x",
+            "pattern": "unresolved_labels"
+          }
+        }
+      ],
+      "interrupted": false,
+      "model_requests": 0,
+      "reason": null,
+      "scenario_id": "dv2-0d0003"
+    }
+  ],
+  "schema": "opspilot-eval-live-probe-1"
+}

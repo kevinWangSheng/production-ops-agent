@@ -1,0 +1,43 @@
+{
+  "dv2-0a0002": {
+    "ad": {
+      "complete": true,
+      "error_spans": 0,
+      "operations": {}
+    },
+    "checkout": {
+      "complete": true,
+      "error_spans": 9,
+      "operations": {
+        "oteldemo.CheckoutService/PlaceOrder": 4,
+        "oteldemo.CheckoutService/prepareOrderItems": 1,
+        "oteldemo.PaymentService/Charge": 4
+      }
+    },
+    "checkout_calls": {
+      "complete": true,
+      "value": 71.69347376813526
+    },
+    "frontend": {
+      "complete": true,
+      "error_spans": 16,
+      "operations": {
+        "POST": 4,
+        "POST /api/checkout": 4,
+        "executing api route (pages) /api/checkout": 4,
+        "grpc.oteldemo.CheckoutService/PlaceOrder": 4
+      }
+    },
+    "payment": {
+      "complete": true,
+      "error_spans": 4,
+      "operations": {
+        "grpc.oteldemo.PaymentService/Charge": 4
+      }
+    },
+    "window": [
+      "2026-11-01T09:26:03.297270+00:00",
+      "2026-11-01T09:31:03.297270+00:00"
+    ]
+  }
+}

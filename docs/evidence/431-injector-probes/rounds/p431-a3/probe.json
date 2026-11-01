@@ -1,0 +1,130 @@
+{
+  "exit_code": 0,
+  "reason": null,
+  "retained_fault": false,
+  "round": "p431-a3",
+  "round_status": "finished",
+  "scenarios": [
+    {
+      "closure_reason": null,
+      "effects": {
+        "model_transport": {
+          "calls": 3,
+          "forwarded": 0,
+          "inner_calls": 0,
+          "intercepted": 3,
+          "mode": "always_503",
+          "model_requests": 0,
+          "statuses": [
+            503,
+            503,
+            503
+          ]
+        }
+      },
+      "entry": "question",
+      "fault": {
+        "effective_at": "2026-11-01T09:34:31.135156+00:00",
+        "flags": [
+          "cartFailure"
+        ],
+        "injected_sha256": "b1e5928b52fcb734f4b329a2eac1efe154b3a28c66b1156cb4ba27b0be71069b",
+        "original_sha256": "1ee5c0258e3e13609ecec75979cee286ab00f442d288112e39e3db8433d176c6",
+        "restored": true,
+        "washed": true
+      },
+      "gate": {
+        "checkout_calls": 13.6,
+        "flag_confirmed_at": "2026-11-01T09:34:31.135156+00:00",
+        "kind": "fault",
+        "matched_span_ids": [
+          "cfc691efc48e9fd1",
+          "675690fe1bd779ba"
+        ],
+        "passed": true,
+        "probes": 66,
+        "reason": null,
+        "trace_ids": [
+          "d501f755186457160fbf1f3a1ae4962a"
+        ],
+        "window": {
+          "end": "2026-11-01T09:36:47.350134+00:00",
+          "start": "2026-11-01T09:34:31.135156+00:00"
+        }
+      },
+      "injectors": [
+        {
+          "kind": "flagd",
+          "params": {
+            "flag": "cartFailure",
+            "variant": "on"
+          }
+        },
+        {
+          "kind": "model_transport",
+          "params": {
+            "mode": "always_503"
+          }
+        }
+      ],
+      "interrupted": false,
+      "model_requests": 0,
+      "reason": null,
+      "scenario_id": "dv2-0a0003"
+    },
+    {
+      "closure_reason": null,
+      "effects": {
+        "model_transport": {
+          "calls": 3,
+          "forwarded": 2,
+          "inner_calls": 2,
+          "intercepted": 1,
+          "mode": "first_503",
+          "model_requests": 0,
+          "statuses": [
+            503,
+            "PROBE_TRIPWIRE",
+            "PROBE_TRIPWIRE"
+          ]
+        }
+      },
+      "entry": "question",
+      "fault": {
+        "effective_at": "2026-11-01T09:42:06.142509+00:00",
+        "flags": [],
+        "injected_sha256": null,
+        "original_sha256": null,
+        "restored": true,
+        "washed": true
+      },
+      "gate": {
+        "checkout_calls": 57.5002395843316,
+        "flag_confirmed_at": "2026-11-01T09:42:06.142509+00:00",
+        "kind": "normal",
+        "matched_span_ids": [],
+        "passed": true,
+        "probes": 5,
+        "reason": null,
+        "trace_ids": [],
+        "window": {
+          "end": "2026-11-01T09:47:06.142509+00:00",
+          "start": "2026-11-01T09:42:06.142509+00:00"
+        }
+      },
+      "injectors": [
+        {
+          "kind": "model_transport",
+          "params": {
+            "mode": "first_503"
+          }
+        }
+      ],
+      "interrupted": false,
+      "model_requests": 0,
+      "reason": null,
+      "scenario_id": "dv2-0a0004"
+    }
+  ],
+  "schema": "opspilot-eval-live-probe-1"
+}
