@@ -25,7 +25,8 @@ from opspilot.evaluation.gate import (
 )
 from opspilot.evaluation.model import (
     FAILURE_PRIORITY,
-    Answer,
+    AnyAnswer,
+    AnyScenarioSpec,
     AttemptRecord,
     DeliveredRecord,
     FailureClass,
@@ -33,9 +34,10 @@ from opspilot.evaluation.model import (
     JudgeResult,
     ReportCapture,
     RunEvaluation,
-    ScenarioSpec,
     TraceEntry,
     Window,
+    injected_fault,
+    is_fault_scenario,
 )
 from opspilot.investigation.reports import ReportV2
 
@@ -103,15 +105,15 @@ def _names(value: str | None, canonical: str, aliases: tuple[str, ...]) -> bool:
 
 
 def _diagnosis_pass(
-    spec: ScenarioSpec,
-    answer: Answer,
+    spec: AnyScenarioSpec,
+    answer: AnyAnswer,
     diagnoses: Sequence[JudgedDiagnosis],
     matches: Mapping[str, tuple[str, ...]],
 ) -> bool:
     causal = [d for d in diagnoses if d.factual_causal]
-    if spec.kind == "normal":
+    if not is_fault_scenario(spec, answer):
         return not causal
-    injected = answer.injected
+    injected = injected_fault(answer)
     if injected is None or not causal:
         return False
     return all(
@@ -186,8 +188,8 @@ def _evidence_complete(traces: Sequence[TraceEntry], attempt: AttemptRecord) -> 
 
 
 def evaluate(
-    spec: ScenarioSpec,
-    answer: Answer,
+    spec: AnyScenarioSpec,
+    answer: AnyAnswer,
     attempt: AttemptRecord,
     outcome: IncidentOutcome | None,
     report: ReportCapture | None,
@@ -301,8 +303,8 @@ def evaluate(
 
 
 def judge_request(
-    spec: ScenarioSpec,
-    answer: Answer,
+    spec: AnyScenarioSpec,
+    answer: AnyAnswer,
     report: ReportCapture,
     delivered: Mapping[str, DeliveredRecord],
     authorized: Mapping[str, Window],
@@ -328,7 +330,7 @@ def judge_request(
         for eid in cited
         if in_scope(eid, delivered.get(eid), scope)
     ]
-    injected = answer.injected
+    injected = injected_fault(answer)
     return {
         "question": spec.stimulus.question,
         "subject_id": spec.stimulus.subject_id,
@@ -339,7 +341,7 @@ def judge_request(
         "report_raw": report.raw,
         "cited_evidence": evidence,
         "expected_output": list(answer.expected_output),
-        "scenario_kind": spec.kind,
+        "scenario_kind": "fault" if is_fault_scenario(spec, answer) else "normal",
         "injected": None
         if injected is None
         else {

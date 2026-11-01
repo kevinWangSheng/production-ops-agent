@@ -27,7 +27,7 @@ from dataclasses import asdict, dataclass, replace
 from datetime import timedelta
 from pathlib import Path
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from opspilot import tracing
 from opspilot.acceptance import IncidentOutcome, outcome_from_durable
@@ -54,6 +54,14 @@ from opspilot.web import DurableEventLog, DurableEvidenceStore, DurableIncidentS
 from opspilot.web.service import LEASE_SECONDS
 from opspilot.worker import Worker
 from scripts import kind_lab
+from scripts.eval_live_inject import (
+    AlertRun,
+    alert_entry,
+    front_client,
+    intake_counts,
+    intake_record,
+    unreachable_config,
+)
 from scripts.eval_live_lab import (
     SOURCE_QUERY,
     Interrupted,
@@ -380,37 +388,62 @@ class OtelDemoInvestigator:
             checkpoint()
             seat.install()
         checkpoint()
-        incident, run_id = uuid4(), uuid4()
+        plan = getattr(request, "plan", None)
+        # v2 (#431): an unreachable source lives only in this attempt's
+        # config; the round manifest was built from the same one (S2).
+        config = unreachable_config(
+            self.session.config, None if plan is None else plan.source
+        )
         submitted = clock.now()
         deadline = submitted + RUN_WALL
         face = otel_demo.otel_demo_face(clock)
-        run_input = face.input_for(
-            run_id=str(run_id),
-            question=spec.stimulus.question,
-            target_id=spec.stimulus.target_id,
-            deadline=deadline,
-            model_requests=M1_FROZEN_LIMITS.model_requests,
-        )
         versions = otel_demo.otel_demo_versions()
-        checkpoint()
-        web.accept(
-            incident,
-            run_id,
-            f"eval-live-{request.round_id}-{attempt.attempt_id}",
-            deadline=deadline,
-            budget_limit=M1_FROZEN_LIMITS.model_requests,
-            versions=versions,
-            input=run_input.as_json(),
-        )
-        checkpoint()  # accepted, not started: no model call yet
+        intake: dict[str, Any] | None = None
+        if plan is not None and plan.entry == "alertmanager":
+            alerts = self._deliver(request, web, face, versions, clock)
+            first = alerts.first
+            incident = UUID(str(first.incident_id))
+            if first.run_id is None:
+                # TARGET_UNRESOLVED (S4): no Run, no model, no tool call.
+                counts = intake_counts(request.pg.owner_dsn)
+                return self._handed_off(
+                    request, spec, store, log, incident, alerts, counts, submitted
+                )
+            run_id = UUID(str(first.run_id))
+            checkpoint()  # accepted, not started: no model call yet
+        else:
+            alerts = None
+            incident, run_id = uuid4(), uuid4()
+            run_input = face.input_for(
+                run_id=str(run_id),
+                question=spec.stimulus.question,
+                target_id=spec.stimulus.target_id,
+                deadline=deadline,
+                model_requests=M1_FROZEN_LIMITS.model_requests,
+            )
+            checkpoint()
+            web.accept(
+                incident,
+                run_id,
+                f"eval-live-{request.round_id}-{attempt.attempt_id}",
+                deadline=deadline,
+                budget_limit=M1_FROZEN_LIMITS.model_requests,
+                versions=versions,
+                input=run_input.as_json(),
+            )
+            checkpoint()  # accepted, not started: no model call yet
         client = self.client_factory(self.session.key, clock)
+        transport_fault = None
+        if plan is not None and plan.model_mode is not None:
+            # A 503 in front of the provider (#431 §4); process-local.
+            transport_fault = front_client(client, plan.model_mode)
         model = _Delegate(client)
         delivery = _Delegate(None)
         facade = _Delegate(None)
         build = otel_demo.otel_demo_executor_factory(
-            store, evidence=evidence, clock=clock, config=self.session.config
+            store, evidence=evidence, clock=clock, config=config
         )
-        registrations = otel_demo.otel_demo_registrations(self.session.config)
+        registrations = otel_demo.otel_demo_registrations(config)
         seen: dict[str, Any] = {}
 
         def factory(lease: Any, input: Any) -> Any:
@@ -535,6 +568,17 @@ class OtelDemoInvestigator:
         usage = store.run_usage(run_id)
         runner_outcome = seen.get("runner")
         loop = None if runner_outcome is None else runner_outcome.loop
+        if plan is not None:
+            counts = intake_counts(request.pg.owner_dsn)
+            if plan.entry != "alertmanager":
+                counts["episodes"] = None  # type: ignore[assignment]
+            intake = intake_record(plan.entry, alerts, counts)
+            if transport_fault is not None:
+                intake["model_transport"] = {
+                    "mode": plan.model_mode,
+                    "intercepted": transport_fault.intercepted,
+                    "forwarded": transport_fault.forwarded,
+                }
         return InvestigationResult(
             product_run_id=str(run_id),
             outcome=outcome,
@@ -559,6 +603,54 @@ class OtelDemoInvestigator:
                 "steps_committed": None if loop is None else loop.steps_committed,
             },
             error=error,
+            intake=intake,
+        )
+
+    def _deliver(
+        self, request: Any, web: DurableStore, face: Any, versions: Any, clock: Any
+    ) -> AlertRun:
+        """The alert entry (#431 §5): every delivery before the Run (S3)."""
+        return alert_entry(
+            request.plan.alert,
+            web=web,
+            face=face,
+            versions=versions,
+            clock=clock,
+            round_id=request.round_id,
+            first_starts_at=request.alert_starts_at or clock.now(),
+        )
+
+    def _handed_off(
+        self,
+        request: Any,
+        spec: Any,
+        store: DurableStore,
+        log: Any,
+        incident: UUID,
+        alerts: AlertRun,
+        counts: dict[str, int],
+        submitted: Any,
+    ) -> Any:
+        from scripts.eval_live import InvestigationResult
+
+        try:
+            outcome: IncidentOutcome | None = _outcome(spec, store, log, incident)
+        except ValueError:
+            outcome = None
+        ended = self.clock.now()
+        return InvestigationResult(
+            product_run_id=None,
+            outcome=outcome,
+            report=None,
+            recording_ref=None,
+            recording_error=None,
+            traces=(),
+            submitted_at=submitted,
+            started_at=None,
+            ended_at=ended,
+            usage={"epoch": None, "model_requests_used": 0},
+            error=None,
+            intake=intake_record("alertmanager", alerts, counts),
         )
 
 

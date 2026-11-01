@@ -1,0 +1,595 @@
+{
+ "issue": 429,
+ "date": "2026-11-01",
+ "category": "integration run (local colima m1-kind, Compose project opspilot-393, fixture tool profile, real DeepSeek model, kind lab Prometheus for the Observer and self-monitoring); not production, not soak",
+ "versions": {
+  "old": {
+   "revision": "e0c11f1ef9385b3829441ac6ed9644836e8f3adb",
+   "image": "sha256:d2e180d2cc770633811d936a8e67779deb3218c9ece72d6dddef5062c65354e9",
+   "tag": "opspilot:f8s3-e0c11f1ef938",
+   "schema_head": "0023_retention_raw_cleanup"
+  },
+  "new": {
+   "revision": "a285cfc5ff09da76062d9935ace626895cece907",
+   "image": "sha256:7a7b9933858a54989f4c005070ba0a5274238c55c3d8c459ee0d0808fe21ae42",
+   "tag": "opspilot:f8s3-a285cfc5ff09",
+   "schema_head": "0024_trace_outbox",
+   "based_on": "04eec52d (#436, contract Q25 NEW) + this branch (lead r4)",
+   "diff_from_04eec52d": [
+    "deploy/compose/UPGRADE.md",
+    "deploy/compose/compose.yaml",
+    "docs/development.md",
+    "opspilot/schema.py",
+    "tests/acceptance/ISSUE_429_AMBIGUITIES.md",
+    "tests/acceptance/test_429_compose_and_upgrade.py",
+    "tests/acceptance/test_429_schema_downgrade.py",
+    "tests/test_393_compose_static_impl.py",
+    "tests/test_429_schema_downgrade_impl.py",
+    "tests/test_429_schema_downgrade_postgres_impl.py"
+   ]
+  },
+  "incompat": {
+   "revision_label": "a285cfc5 (uncommitted tree, OCI label equals NEW)",
+   "image": "sha256:7a20ada33d14ff1b23df6dc7e40b7df1f7388f71f04af2a909f8acfccd60d03e",
+   "tag": "opspilot:f8s3-incompat",
+   "change": "opspilot/tools/fixture.py TOOL_SCHEMA_REVISION fixture-5 -> fixture-5-f8s3-incompat",
+   "schema_head": "0024_trace_outbox"
+  },
+  "versions_tuple_old_and_new": {
+   "prompt_revision": "prompt-replay-candidate-bef70649a3a8",
+   "context_policy_revision": "ctx-ctx-policy-v1-a30e65ea52f4",
+   "tool_schema_revision": "fixture-5"
+  }
+ },
+ "build_info_per_phase": [
+  {
+   "label": "A-old",
+   "at": "2026-11-01T15:34:25.493Z",
+   "revision": "e0c11f1ef9385b3829441ac6ed9644836e8f3adb",
+   "container_image": "sha256:d2e180d2cc770633811d936a8e67779deb3218c9ece72d6dddef5062c65354e9",
+   "all_three_same_image": true
+  },
+  {
+   "label": "U-new",
+   "at": "2026-11-01T17:01:54.039Z",
+   "revision": "a285cfc5ff09da76062d9935ace626895cece907",
+   "container_image": "sha256:7a7b9933858a54989f4c005070ba0a5274238c55c3d8c459ee0d0808fe21ae42",
+   "all_three_same_image": true
+  },
+  {
+   "label": "R-old",
+   "at": "2026-11-01T17:14:42.150Z",
+   "revision": "e0c11f1ef9385b3829441ac6ed9644836e8f3adb",
+   "container_image": "sha256:d2e180d2cc770633811d936a8e67779deb3218c9ece72d6dddef5062c65354e9",
+   "all_three_same_image": true
+  },
+  {
+   "label": "I0-new",
+   "at": "2026-11-01T17:17:29.206Z",
+   "revision": "a285cfc5ff09da76062d9935ace626895cece907",
+   "container_image": "sha256:7a7b9933858a54989f4c005070ba0a5274238c55c3d8c459ee0d0808fe21ae42",
+   "all_three_same_image": true
+  },
+  {
+   "label": "I1-incompat",
+   "at": "2026-11-01T17:17:55.969Z",
+   "revision": "a285cfc5ff09da76062d9935ace626895cece907",
+   "container_image": "sha256:7a20ada33d14ff1b23df6dc7e40b7df1f7388f71f04af2a909f8acfccd60d03e",
+   "all_three_same_image": true
+  },
+  {
+   "label": "E-new",
+   "at": "2026-11-01T17:25:51.762Z",
+   "revision": "a285cfc5ff09da76062d9935ace626895cece907",
+   "container_image": "sha256:7a7b9933858a54989f4c005070ba0a5274238c55c3d8c459ee0d0808fe21ae42",
+   "all_three_same_image": true
+  }
+ ],
+ "pre_drill": {
+  "found": "opspilot-393 DB at 0024_trace_outbox (left by the #427 drill on 04eec52d); OLD migrate refused: Can't locate revision '0024_trace_outbox'",
+  "fix": "NEW image downgrade --to 0023_retention_raw_cleanup at 15:34:09Z",
+  "downgrade_output": [
+   "schema current: 0024_trace_outbox",
+   "schema target: 0023_retention_raw_cleanup",
+   "opspilot_trace_outbox dropped by downgrade: pending=8, delivered=0, dropped=0",
+   "schema downgraded: 0023_retention_raw_cleanup"
+  ]
+ },
+ "unconfirmed_measured": {
+  "compose_stop_default_timeout": "10 s then SIGKILL (Compose 5.1.0, SIGTERM-ignoring probe container: 10.19 s, exit 137)",
+  "observer_missed_due_samples": "one sample after restart, no backfill: last sample submitted 17:08:32Z, next due 17:09:32Z, Observer down 17:09:30-17:14:05Z (about 4 missed 60 s intervals), then one sample submitted 17:14:37Z and the usual cadence (17:16:07Z); next due = submit time + interval (observation/store.py:2079)"
+ },
+ "segments": {
+  "upgrade": {
+   "from": "old",
+   "to": "new",
+   "first_stop_utc": "2026-11-01T17:01:36.7Z (compose kill worker)",
+   "install_upgrade_utc": [
+    "17:01:43Z",
+    "17:01:53Z"
+   ],
+   "all_readyz_200_utc": "2026-11-01T17:01:53.9Z",
+   "downtime_seconds": 17,
+   "migrate": "schema upgraded: 0024_trace_outbox",
+   "shape1": {
+    "run_id": "6119c0e5-7d4b-5ff6-a3e2-e3c9164dffec",
+    "killed_after": "round-1 tool_committed 17:01:37.10 (DB); round-2 model call in flight",
+    "lease_until": "17:08:37.11",
+    "reclaimed_at": "17:08:39.12 epoch 2",
+    "resumed_from": "ctx0:round-2 (round-1 row kept)",
+    "terminal": "waiting_human (execution completed, INCOMPLETE_INVESTIGATION: fixture target not registered)",
+    "versions_unchanged": true,
+    "pass": true
+   },
+   "shape2": {
+    "run_id": "22f11471-e147-5112-bd17-d0b5ba8a22bc",
+    "queued_at": "17:01:37.80",
+    "claimed_at": "17:01:50.04 by NEW worker",
+    "terminal": "waiting_human",
+    "pass": true
+   },
+   "shape3": {
+    "session_id": "b8414d23-f507-5fc2-904d-13157ddcc298",
+    "samples_around": [
+     "17:01:04",
+     "17:02:33",
+     "17:04:04"
+    ],
+    "observer_down_seconds": 9,
+    "gap_visible": "no: downtime shorter than the 60 s interval",
+    "pass": true
+   },
+   "shape4": {
+    "incidents": [
+     "df84a9af-925e-5c03-b55f-f601c20cc1bc",
+     "9869b041-2dce-5bbe-8c17-33c7e3f733e7",
+     "25825522-828c-5690-b17a-137a8d5954fa",
+     "d67c3cd0-f00f-5a29-a0ef-0a5414e30481"
+    ],
+    "unchanged_S0_to_S1": true,
+    "pass": true
+   },
+   "graceful_stop": "web and observer stopped in about 1 s (idle); worker already killed"
+  },
+  "rollback": {
+   "from": "new",
+   "to": "old",
+   "first_stop_utc": "2026-11-01T17:09:22.3Z (compose kill worker)",
+   "steps": {
+    "stop": "17:09:29.9-17:09:30.8Z",
+    "downgrade": "17:09:30.9-17:09:32.1Z",
+    "operator_hold": "17:09:32-17:14:01Z (deliberate, to measure the Observer gap and the self alert)",
+    "upgrade_old": "17:14:01-17:14:41.9Z"
+   },
+   "all_readyz_200_utc": "2026-11-01T17:14:41.99Z",
+   "downtime_seconds": 320,
+   "downgrade_output": [
+    "schema current: 0024_trace_outbox",
+    "schema target: 0023_retention_raw_cleanup",
+    "opspilot_trace_outbox dropped by downgrade: pending=16, delivered=0, dropped=0",
+    "schema downgraded: 0023_retention_raw_cleanup"
+   ],
+   "old_upgrade": "schema unchanged: 0023_retention_raw_cleanup; init-roles four logins at 0023; verify_head passed (all three ready)",
+   "self_alert": "Prometheus ALERTS OpsPilotAgentAbsent{role=web|worker|observer,opspilot_self=true}: pending at 17:11:29Z, firing at 17:12:14Z (alerts-poll.log); Alertmanager export not taken",
+   "shape1": {
+    "run_id": "1d06ab45-9825-5ce1-9c84-aa02dec61afb",
+    "killed_after": "round-1 tool_committed 17:09:22.74 (DB)",
+    "lease_until": "17:16:22.75",
+    "reclaimed_at": "17:16:23.56 epoch 2 by OLD worker",
+    "resumed_from": "ctx0:round-2",
+    "terminal": "waiting_human (execution completed)",
+    "versions_unchanged": true,
+    "pass": true
+   },
+   "shape2": {
+    "run_id": "0f29fe00-abe8-54f8-9524-ba339bfcc37c",
+    "queued_at": "17:09:23.34",
+    "claimed_at": "17:14:07.34 by OLD worker",
+    "terminal": "waiting_human",
+    "pass": true
+   },
+   "shape3": {
+    "session_id": "b8414d23-f507-5fc2-904d-13157ddcc298",
+    "last_before": "17:08:32.61",
+    "due": "17:09:32",
+    "first_after": "17:14:37.44",
+    "next": "17:16:07.45",
+    "gap_visible": true,
+    "backfilled": false,
+    "pass": true
+   },
+   "shape4": {
+    "unchanged_S0_to_S2": true,
+    "pass": true
+   }
+  },
+  "incompatible": {
+   "prep": "OLD->NEW upgrade with nothing in flight at 17:17:09-17:17:29Z (schema upgraded: 0024)",
+   "first_stop_utc": "2026-11-01T17:17:38.6Z (compose kill worker)",
+   "all_readyz_200_utc": "2026-11-01T17:17:55.8Z",
+   "run_id": "ecde07b8-df20-5318-a17e-20aa744f280e",
+   "killed_after": "round-1 tool_committed",
+   "lease_until": "17:24:38.99",
+   "claim_refused_at": "17:24:40.51",
+   "event": {
+    "kind": "run_claim_refused",
+    "code": "INCOMPATIBLE_STATE"
+   },
+   "state_after": "blocked",
+   "old_rows_kept": "versions fixture-5 and step ctx0:round-1 kept",
+   "human": [
+    "cancel gen 0->1 17:24:48.49",
+    "new_run gen 1->2 17:24:48.61"
+   ],
+   "new_run_id": "e7ca88c8-8bc2-576b-abec-36dca4212512",
+   "new_run_versions_tool_schema_revision": "fixture-5-f8s3-incompat",
+   "new_run_terminal": "waiting_human (execution completed)",
+   "old_run_final": "cancelled",
+   "pass": true
+  },
+  "end": "stack upgraded back to NEW (17:25:11-17:25:51Z), then all runtimes and postgres stopped; database volume kept; target_identities.json restored (sha256 1714ab7b...)"
+ },
+ "snapshots": {
+  "S0-pre-upgrade": {
+   "host_utc": "2026-11-01T17:01:28.162Z",
+   "db_now": "2026-11-01 17:01:28.663357+00",
+   "alembic_version": "0023_retention_raw_cleanup"
+  },
+  "S1-post-upgrade": {
+   "host_utc": "2026-11-01T17:09:04.862Z",
+   "db_now": "2026-11-01 17:09:05.442563+00",
+   "alembic_version": "0024_trace_outbox"
+  },
+  "S2-post-rollback": {
+   "host_utc": "2026-11-01T17:16:50.355Z",
+   "db_now": "2026-11-01 17:16:50.937454+00",
+   "alembic_version": "0023_retention_raw_cleanup"
+  },
+  "S3-end": {
+   "host_utc": "2026-11-01T17:25:54.357Z",
+   "db_now": "2026-11-01 17:25:54.928724+00",
+   "alembic_version": "0024_trace_outbox"
+  }
+ },
+ "row_counts": {
+  "opspilot_alert_deliveries": {
+   "S0": 7,
+   "S1": 9,
+   "S2": 11,
+   "S3": 12
+  },
+  "opspilot_alert_identities": {
+   "S0": 7,
+   "S1": 9,
+   "S2": 11,
+   "S3": 12
+  },
+  "opspilot_budget_reservations": {
+   "S0": 20,
+   "S1": 27,
+   "S2": 34,
+   "S3": 39
+  },
+  "opspilot_controls": {
+   "S0": 5,
+   "S1": 5,
+   "S2": 5,
+   "S3": 7
+  },
+  "opspilot_evidence": {
+   "S0": 4,
+   "S1": 4,
+   "S2": 4,
+   "S3": 4
+  },
+  "opspilot_f13_audit": {
+   "S0": 2,
+   "S1": 2,
+   "S2": 2,
+   "S3": 2
+  },
+  "opspilot_f13_requests": {
+   "S0": 1,
+   "S1": 1,
+   "S2": 1,
+   "S3": 1
+  },
+  "opspilot_health_profiles": {
+   "S0": 1,
+   "S1": 1,
+   "S2": 1,
+   "S3": 1
+  },
+  "opspilot_incidents": {
+   "S0": 7,
+   "S1": 9,
+   "S2": 11,
+   "S3": 12
+  },
+  "opspilot_input_rounds": {
+   "S0": 16,
+   "S1": 22,
+   "S2": 28,
+   "S3": 33
+  },
+  "opspilot_inputs": {
+   "S0": 0,
+   "S1": 0,
+   "S2": 0,
+   "S3": 0
+  },
+  "opspilot_knowledge_entries": {
+   "S0": 0,
+   "S1": 0,
+   "S2": 0,
+   "S3": 0
+  },
+  "opspilot_knowledge_revisions": {
+   "S0": 0,
+   "S1": 0,
+   "S2": 0,
+   "S3": 0
+  },
+  "opspilot_knowledge_revocations": {
+   "S0": 0,
+   "S1": 0,
+   "S2": 0,
+   "S3": 0
+  },
+  "opspilot_observation_endings": {
+   "S0": 2,
+   "S1": 2,
+   "S2": 2,
+   "S3": 3
+  },
+  "opspilot_observation_samples": {
+   "S0": 20,
+   "S1": 25,
+   "S2": 27,
+   "S3": 32
+  },
+  "opspilot_observation_sessions": {
+   "S0": 3,
+   "S1": 3,
+   "S2": 3,
+   "S3": 3
+  },
+  "opspilot_observation_signal_readings": {
+   "S0": 160,
+   "S1": 200,
+   "S2": 216,
+   "S3": 256
+  },
+  "opspilot_postmortem_conclusions": {
+   "S0": 13,
+   "S1": 13,
+   "S2": 13,
+   "S3": 13
+  },
+  "opspilot_postmortem_disputes": {
+   "S0": 0,
+   "S1": 0,
+   "S2": 0,
+   "S3": 0
+  },
+  "opspilot_postmortem_generation_attempts": {
+   "S0": 2,
+   "S1": 2,
+   "S2": 2,
+   "S3": 2
+  },
+  "opspilot_postmortem_generation_jobs": {
+   "S0": 1,
+   "S1": 1,
+   "S2": 1,
+   "S3": 1
+  },
+  "opspilot_postmortem_proposals": {
+   "S0": 3,
+   "S1": 3,
+   "S2": 3,
+   "S3": 3
+  },
+  "opspilot_postmortem_versions": {
+   "S0": 1,
+   "S1": 1,
+   "S2": 1,
+   "S3": 1
+  },
+  "opspilot_postmortems": {
+   "S0": 1,
+   "S1": 1,
+   "S2": 1,
+   "S3": 1
+  },
+  "opspilot_release_audit": {
+   "S0": 0,
+   "S1": 0,
+   "S2": 0,
+   "S3": 0
+  },
+  "opspilot_release_comparison_attempts": {
+   "S0": 0,
+   "S1": 0,
+   "S2": 0,
+   "S3": 0
+  },
+  "opspilot_release_comparison_queries": {
+   "S0": 0,
+   "S1": 0,
+   "S2": 0,
+   "S3": 0
+  },
+  "opspilot_release_comparisons": {
+   "S0": 0,
+   "S1": 0,
+   "S2": 0,
+   "S3": 0
+  },
+  "opspilot_release_events": {
+   "S0": 0,
+   "S1": 0,
+   "S2": 0,
+   "S3": 0
+  },
+  "opspilot_release_incident_links": {
+   "S0": 0,
+   "S1": 0,
+   "S2": 0,
+   "S3": 0
+  },
+  "opspilot_release_observations": {
+   "S0": 0,
+   "S1": 0,
+   "S2": 0,
+   "S3": 0
+  },
+  "opspilot_release_query_results": {
+   "S0": 0,
+   "S1": 0,
+   "S2": 0,
+   "S3": 0
+  },
+  "opspilot_runs": {
+   "S0": 7,
+   "S1": 9,
+   "S2": 11,
+   "S3": 13
+  },
+  "opspilot_scope_controls": {
+   "S0": 1,
+   "S1": 1,
+   "S2": 1,
+   "S3": 1
+  },
+  "opspilot_self_heal_authorizations": {
+   "S0": 1,
+   "S1": 1,
+   "S2": 1,
+   "S3": 1
+  },
+  "opspilot_steps": {
+   "S0": 23,
+   "S1": 31,
+   "S2": 39,
+   "S3": 44
+  },
+  "opspilot_subject_events": {
+   "S0": 53,
+   "S1": 70,
+   "S2": 87,
+   "S3": 101
+  },
+  "opspilot_suspension_audit": {
+   "S0": 0,
+   "S1": 0,
+   "S2": 0,
+   "S3": 0
+  },
+  "opspilot_target_suspensions": {
+   "S0": 4,
+   "S1": 6,
+   "S2": 8,
+   "S3": 9
+  },
+  "opspilot_targets": {
+   "S0": 4,
+   "S1": 6,
+   "S2": 8,
+   "S3": 9
+  },
+  "opspilot_tool_charges": {
+   "S0": 4,
+   "S1": 4,
+   "S2": 4,
+   "S3": 4
+  },
+  "opspilot_trace_outbox": {
+   "S0": null,
+   "S1": 13,
+   "S2": null,
+   "S3": 13
+  },
+  "opspilot_web_ledger": {
+   "S0": 23,
+   "S1": 27,
+   "S2": 31,
+   "S3": 37
+  }
+ },
+ "business_tables_non_decreasing": {
+  "S0->S1": true,
+  "S1->S2": true,
+  "S2->S3": true
+ },
+ "outbox_downgrade_counts": [
+  {
+   "when": "pre-drill 15:34:09Z",
+   "pending": 8,
+   "delivered": 0,
+   "dropped": 0
+  },
+  {
+   "when": "rollback 17:09:32Z",
+   "pending": 16,
+   "delivered": 0,
+   "dropped": 0
+  }
+ ],
+ "trace": "none: #428 (outbox PR-2, LangSmith export) not merged; compose sets no OPSPILOT_TRACE",
+ "cost": {
+  "real_runs": 8,
+  "model_rounds_committed": 22,
+  "runs": [
+   "b2966b23-ec47-5529-b49d-6ea62ead7a3e",
+   "230edc28-2eb5-53f3-bf53-52eed713ed98",
+   "6119c0e5-7d4b-5ff6-a3e2-e3c9164dffec",
+   "22f11471-e147-5112-bd17-d0b5ba8a22bc",
+   "1d06ab45-9825-5ce1-9c84-aa02dec61afb",
+   "0f29fe00-abe8-54f8-9524-ba339bfcc37c",
+   "ecde07b8-df20-5318-a17e-20aa744f280e",
+   "e7ca88c8-8bc2-576b-abec-36dca4212512"
+  ],
+  "balance": "not observed by the Agent (K2); lead reconciles the DeepSeek balance in the brief",
+  "setup_only_runs": [
+   "b2966b23-ec47-5529-b49d-6ea62ead7a3e",
+   "230edc28-2eb5-53f3-bf53-52eed713ed98"
+  ]
+ },
+ "lead_revisions": {
+  "r4": "NEW = a285cfc5 (04eec52d + downgrade CLI, grace, docs): 04eec52d has no downgrade action",
+  "r5": "shape 1 produced by install.sh compose kill worker (SIGKILL) mid-call: R3 premise (model calls > 30 s) did not hold; model calls measured 1-12 s here, 5-8 s in #414 drill2"
+ },
+ "swap_free_mb": {
+  "start": 1344,
+  "min": 415,
+  "end": 503
+ },
+ "sample_cadence": {
+  "configured_interval_seconds": 60,
+  "measured_submit_to_submit_seconds": {
+   "before_gap": [
+    89.5,
+    91.0,
+    89.3,
+    89.0,
+    89.7
+   ],
+   "after_gap": [
+    90.0,
+    88.6,
+    89.7,
+    90.2,
+    91.9
+   ]
+  },
+  "sample_duration_seconds": "about 29-31 (window_end/claim to submitted_at)",
+  "explanation": "cadence = 60 s interval counted from the previous submit + about 30 s per sample; unchanged across the outage",
+  "incompat_segment_gap": {
+   "due": "17:17:07Z",
+   "next_claim": "17:19:11Z",
+   "inference": "a sample was claimed and not submitted when the Observer was recreated; the next claim waited for the 120 s sample lease (not checked line by line)",
+   "backfilled": false
+  }
+ }
+}

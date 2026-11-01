@@ -1,0 +1,38 @@
+{
+  "effect": {
+    "jaeger": {
+      "connection_refused": true,
+      "source": "jaeger",
+      "url": "http://127.0.0.1:9/jaeger/ui"
+    },
+    "prometheus": {
+      "connection_refused": true,
+      "source": "prometheus",
+      "url": "http://127.0.0.1:9"
+    },
+    "prometheus_round": "p431-c1"
+  },
+  "ended_at": "2026-11-01T10:12:46.328311+00:00",
+  "model_requests": 0,
+  "probe": "source_unreachable",
+  "reason": null,
+  "result": "pass",
+  "round": "p431-b1",
+  "scenario_id": "dv2-0b0001",
+  "scenario_params": [
+    {
+      "kind": "source_unreachable",
+      "params": {
+        "source": "jaeger"
+      }
+    }
+  ],
+  "started_at": "2026-11-01T10:02:43.490398+00:00",
+  "washed": {
+    "at": "2026-11-01T10:12:46.327321+00:00",
+    "window": {
+      "end": "2026-11-01T10:12:44.918135+00:00",
+      "start": "2026-11-01T10:07:44.918135+00:00"
+    }
+  }
+}
