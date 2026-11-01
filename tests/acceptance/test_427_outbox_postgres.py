@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
@@ -278,6 +279,7 @@ def test_terminal_state_requires_finalized_at(scratch_dsn):
 
 def test_migration_upgrade_downgrade_upgrade_keeps_business_rows_and_notices_counts(
     scratch_dsn,
+    caplog,
 ):
     incident_id = uuid4()
     with psycopg.connect(scratch_dsn) as conn:
@@ -288,20 +290,15 @@ def test_migration_upgrade_downgrade_upgrade_keeps_business_rows_and_notices_cou
                 "VALUES (%s,%s,'generation','{}',%s,CASE WHEN %s='pending' THEN NULL ELSE clock_timestamp() END)",
                 (f"427-roundtrip-{state}", incident_id, state, state),
             )
-    with psycopg.connect(scratch_dsn) as conn:
-        config = Config(attributes={"connection": conn})
-        config.set_main_option(
-            "script_location", str(schema.__file__.replace("schema.py", "migrations"))
-        )
-        notices: list[str] = []
-        conn.add_notice_handler(
-            lambda diagnostic: notices.append(diagnostic.message_primary or "")
-        )
-        command.downgrade(config, "0023_retention_raw_cleanup")
-        assert any(
-            "pending" in notice and "delivered" in notice and "dropped" in notice
-            for notice in notices
-        )
+    # The downgrade must report the three counts in operator-visible output.
+    with caplog.at_level(logging.INFO):
+        command.downgrade(schema._config(scratch_dsn), "0023_retention_raw_cleanup")
+    assert any(
+        "pending" in record.getMessage()
+        and "delivered" in record.getMessage()
+        and "dropped" in record.getMessage()
+        for record in caplog.records
+    )
     upgrade_config = Config(attributes={"dsn": scratch_dsn})
     upgrade_config.set_main_option(
         "script_location", str(schema.__file__.replace("schema.py", "migrations"))
