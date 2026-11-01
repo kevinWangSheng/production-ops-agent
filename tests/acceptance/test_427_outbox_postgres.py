@@ -199,7 +199,7 @@ def test_purge_expired_deletes_terminal_and_disabled_export_pending_only(scratch
     long_ago = now - timedelta(days=30)
     insert = (
         f"INSERT INTO {OUTBOX}(idempotency_key,incident_id,kind,payload,state,created_at,finalized_at) "
-        "VALUES (%s,%s,'run_state','{}',%s,%s,%s)"
+        "VALUES (%s,%s,'generation','{}',%s,%s,%s)"
     )
     incident_id = uuid4()
     with psycopg.connect(scratch_dsn) as conn:
@@ -264,14 +264,14 @@ def test_terminal_state_requires_finalized_at(scratch_dsn):
         with pytest.raises(psycopg.errors.CheckViolation):
             conn.execute(
                 f"INSERT INTO {OUTBOX}(idempotency_key,incident_id,kind,payload,state) "
-                "VALUES ('427-terminal-no-final',%s,'run_state','{}','delivered')",
+                "VALUES ('427-terminal-no-final',%s,'generation','{}','delivered')",
                 (uuid4(),),
             )
     with psycopg.connect(scratch_dsn) as conn:
         with pytest.raises(psycopg.errors.CheckViolation):
             conn.execute(
                 f"INSERT INTO {OUTBOX}(idempotency_key,incident_id,kind,payload,state,finalized_at) "
-                "VALUES ('427-pending-final',%s,'run_state','{}','pending',clock_timestamp())",
+                "VALUES ('427-pending-final',%s,'generation','{}','pending',clock_timestamp())",
                 (uuid4(),),
             )
 
@@ -285,7 +285,7 @@ def test_migration_upgrade_downgrade_upgrade_keeps_business_rows_and_notices_cou
         for state in ("pending", "delivered", "dropped"):
             conn.execute(
                 f"INSERT INTO {OUTBOX}(idempotency_key,incident_id,kind,payload,state,finalized_at) "
-                "VALUES (%s,%s,'run_state','{}',%s,CASE WHEN %s='pending' THEN NULL ELSE clock_timestamp() END)",
+                "VALUES (%s,%s,'generation','{}',%s,CASE WHEN %s='pending' THEN NULL ELSE clock_timestamp() END)",
                 (f"427-roundtrip-{state}", incident_id, state, state),
             )
     with psycopg.connect(scratch_dsn) as conn:
