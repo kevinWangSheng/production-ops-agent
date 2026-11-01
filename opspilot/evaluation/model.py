@@ -762,6 +762,27 @@ def load_scenario_v2(directory: Path) -> tuple[ScenarioSpecV2, AnswerV2]:
     return spec, answer
 
 
+def validate_scenario_v2(spec: ScenarioSpecV2, answer: AnswerV2) -> None:
+    """Validate v2 DTOs through the same parsers as the v2 files (#431 S1)."""
+    if not isinstance(spec, ScenarioSpecV2) or not isinstance(answer, AnswerV2):
+        raise ScenarioError("SCENARIO_DTO_MISMATCH")
+    scenario_data = json.loads(json.dumps(asdict(spec)))
+    scenario_data["incident"].pop("scenario_id")
+    answer_data = json.loads(json.dumps(asdict(answer)))
+    if (_spec_v2(scenario_data), _answer_v2(answer_data)) != (spec, answer):
+        raise ScenarioError("SCENARIO_DTO_MISMATCH")
+    if (spec.scenario_id, spec.version) != (answer.scenario_id, answer.version):
+        raise ScenarioError("SCENARIO_ANSWER_MISMATCH")
+
+
+def is_fault_scenario(spec: ScenarioSpec | ScenarioSpecV2, answer: Any) -> bool:
+    """Whether the deterministic gate requires the evidence signature: v1 by
+    ``kind``, v2 by the answer carrying a signature (#431 S1)."""
+    if isinstance(spec, ScenarioSpecV2):
+        return answer.signature is not None
+    return spec.kind == "fault"
+
+
 def _scenario_dirs(group: Path) -> list[Path]:
     if not group.is_dir():
         return []

@@ -17,6 +17,7 @@ from opspilot.evaluation.model import (
     SignatureRule,
     Window,
     canonical_view_hash,
+    is_fault_scenario,
 )
 from opspilot.investigation.reports import ReportV2, parse_report
 
@@ -278,7 +279,7 @@ def run_gate(
         citation_reasons = _citation_reasons(parsed, delivered, authorized, scope)
         checks["citations"] = not citation_reasons
         reasons.extend(citation_reasons)
-        if spec.kind == "fault":
+        if is_fault_scenario(spec, answer):
             checks["signature"] = bool(
                 report_signature_matches(answer, parsed, delivered, authorized, scope)
             )

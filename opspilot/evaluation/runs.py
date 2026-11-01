@@ -36,6 +36,7 @@ from opspilot.evaluation.model import (
     ScenarioSpec,
     TraceEntry,
     Window,
+    is_fault_scenario,
 )
 from opspilot.investigation.reports import ReportV2
 
@@ -109,9 +110,9 @@ def _diagnosis_pass(
     matches: Mapping[str, tuple[str, ...]],
 ) -> bool:
     causal = [d for d in diagnoses if d.factual_causal]
-    if spec.kind == "normal":
+    if not is_fault_scenario(spec, answer):
         return not causal
-    injected = answer.injected
+    injected = getattr(answer, "injected", None)
     if injected is None or not causal:
         return False
     return all(
@@ -328,7 +329,7 @@ def judge_request(
         for eid in cited
         if in_scope(eid, delivered.get(eid), scope)
     ]
-    injected = answer.injected
+    injected = getattr(answer, "injected", None)
     return {
         "question": spec.stimulus.question,
         "subject_id": spec.stimulus.subject_id,
@@ -339,7 +340,7 @@ def judge_request(
         "report_raw": report.raw,
         "cited_evidence": evidence,
         "expected_output": list(answer.expected_output),
-        "scenario_kind": spec.kind,
+        "scenario_kind": "fault" if is_fault_scenario(spec, answer) else "normal",
         "injected": None
         if injected is None
         else {
