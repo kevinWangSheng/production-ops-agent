@@ -188,10 +188,11 @@ Docker 宿主 daemon 的 json-file 轮转配置；`web/service.py:1579,1659` 的
 | OB-R12 | `install.env` 加 `OPSPILOT_TRACE`（默认 `off`）；`LANGSMITH_PROJECT` 与可选 `LANGSMITH_ENDPOINT` 放 `worker_env`；entrypoint 白名单加这两项；`install.sh` 默认不打开 | 默认零出境 |
 | OB-R13 | 证据 `docs/evidence/243-trace-outbox/`：一次 Compose 有界真实 Run（`OPSPILOT_TRACE=outbox`）冻结 `summary.json` + trace 链接；按 `incident_id` 与 version 筛到同一 Run 的 token、工具错误码、状态；故障注入①投递目标不可达（`extra_hosts` 指 127.0.0.1）②投递中途重启 worker，照实记重复 span 条数；载荷全文抽查无提示词、凭据、`reasoning_content` | ADR-0006；AGENTS.md 真实 Run 证据 |
 
-授权（预审 :74）：web 只得 outbox 列级 INSERT（触发器用）；worker 得 SELECT、列级 INSERT、`UPDATE(attempts,next_attempt_at,state,drop_reason)`、DELETE；Observer、retention 无。
+授权（预审 :74）：web 只得 outbox 列级 INSERT（触发器用）；worker 得 SELECT、列级 INSERT、`UPDATE(attempts,next_attempt_at,state,drop_reason,finalized_at)`、DELETE；Observer、retention 无。
 
 写入时自定（lead，一行理由）：
 
+- r3-L4 终态时间（#434 bot P2 采纳）：OB-R1 加列 `finalized_at timestamptz NULL`，state 变为 `delivered`/`dropped` 时同一 UPDATE 写入 `clock_timestamp()`（CHECK：终态必须有 `finalized_at`，pending 必须为空）；7 天清理对终态行按 `finalized_at`、对未开导出时的 pending 行按 `created_at` 计算。理由：Q16「投递成功或丢弃 7 天后」需要持久化的转移时间，仅有 `created_at` 时 worker 重启后无法正确计算；随 0024 一次建好，PR-2 不再加迁移。
 - r3-L1 清理线程归属：Q16 写「由投递线程删除」，R8 要求开关关闭也清理，而 PR-1 不投递。定为 worker 内一个 outbox 维护线程：PR-1 只做 7 天清理（不联网），PR-2 在同一线程加投递；池 `capacity + 3` 与 Compose 4→5 随 PR-1 落地。理由：删除者始终是 worker 的这一个线程，满足 Q16 与 R8，PR-2 不再改池。
 - r3-L2 钉值：`tests/acceptance/test_347_release_reframe_input.py` 头版本 `0023_retention_raw_cleanup`→`0024_*` 与 `RUNTIME_GRANTS` sha256 指纹（预审 :93），以及预审 :94 列出的非验收层头版本钉值与 Compose 池钉值，属每次加迁移的例行钉值更新，不算削弱验收（0022、0023 的 PR 同样改过）。
 
