@@ -35,6 +35,14 @@
 #                             <secrets dir>/observer_env)
 #   OPSPILOT_OBSERVER_PROMETHEUS_URL
 #                             the Observer's read-only Prometheus base URL
+#   OPSPILOT_TRACE            off (default), lab or outbox. outbox lets the
+#                             worker deliver the trace outbox (ids, versions,
+#                             counts and fixed codes only) to LangSmith, and
+#                             only when <secrets dir>/worker_env holds
+#                             LANGSMITH_API_KEY and LANGSMITH_PROJECT=
+#                             opspilot-lab-* (optional LANGSMITH_ENDPOINT, a
+#                             LangSmith SaaS https URL); otherwise nothing is
+#                             sent and /metrics reports why
 #
 # Generated once and never regenerated (re-running keeps every password):
 # database passwords as pgpass files, the workbench password (ui_password, for
@@ -53,7 +61,7 @@ readonly EVENT_ACTOR="alertmanager"
 readonly RUNTIMES=(web worker observer)
 readonly SETTINGS=(OPSPILOT_PROJECT OPSPILOT_WEB_HOST_PORT
     OPSPILOT_IMAGE OPSPILOT_TOOL_PROFILE OPSPILOT_START_AGENT
-    OPSPILOT_OBSERVER_PROMETHEUS_URL)
+    OPSPILOT_OBSERVER_PROMETHEUS_URL OPSPILOT_TRACE)
 
 log() { printf '[opspilot-install %s] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*"; }
 die() { printf 'install.sh: %s\n' "$*" >&2; exit 1; }
@@ -110,6 +118,15 @@ valid_image() {
     [ "$1" = "$LOCAL_IMAGE" ] && return 0
     [[ "$1" =~ ^[^@[:space:]]+@sha256:[0-9a-f]{64}$ ]] ||
         die "OPSPILOT_IMAGE '$1' must be pinned by digest (<name>@sha256:<64 hex>), or be $LOCAL_IMAGE; nothing changed"
+}
+
+# The worker's three trace modes, off|lab|outbox (opspilot.tracing.trace_mode); any other
+# value is refused rather than read as off.
+valid_trace() {
+    case "$1" in
+        off | lab | outbox) ;;
+        *) die "OPSPILOT_TRACE must be off, lab or outbox; nothing changed" ;;
+    esac
 }
 
 valid_project() {
@@ -206,6 +223,7 @@ resolve_settings() {
     # Checked before anything is created; again below for a remembered value.
     [ -z "${OPSPILOT_WEB_HOST_PORT:-}" ] || valid_port "$OPSPILOT_WEB_HOST_PORT"
     [ -z "${OPSPILOT_IMAGE:-}" ] || valid_image "$OPSPILOT_IMAGE"
+    [ -z "${OPSPILOT_TRACE:-}" ] || valid_trace "$OPSPILOT_TRACE"
     SECRETS_DIR="${OPSPILOT_SECRETS_DIR:-}"
     if [ -z "$SECRETS_DIR" ]; then
         read_record "$project_hint"
@@ -235,6 +253,8 @@ resolve_settings() {
     export OPSPILOT_TOOL_PROFILE="${OPSPILOT_TOOL_PROFILE:-fixture}"
     export OPSPILOT_START_AGENT="${OPSPILOT_START_AGENT:-0}"
     export OPSPILOT_OBSERVER_PROMETHEUS_URL="${OPSPILOT_OBSERVER_PROMETHEUS_URL:-}"
+    export OPSPILOT_TRACE="${OPSPILOT_TRACE:-off}"
+    valid_trace "$OPSPILOT_TRACE"
     export OPSPILOT_RUNTIME_UID="$(id -u)"
     export OPSPILOT_RUNTIME_GID="$(id -g)"
     [ "$IMAGE_IN_USE" = 0 ] || require_agent_config
@@ -333,7 +353,7 @@ ensure_secrets() {
     write_once alertmanager_token random_hex
     write_once web_ui_users credential_entry ui-user "$UI_USER" ui_password
     write_once web_event_tokens credential_entry event-token "$EVENT_ACTOR" alertmanager_token
-    write_once worker_env placeholder_env worker_env "worker (DEEPSEEK_API_KEY; OPSPILOT_OTEL_* for otel-demo)"
+    write_once worker_env placeholder_env worker_env "worker (DEEPSEEK_API_KEY; OPSPILOT_OTEL_* for otel-demo; LANGSMITH_* for OPSPILOT_TRACE)"
     write_once observer_env placeholder_env observer_env "observer (Prometheus credentials)"
     # Not a secret and not required for a live volume: an install from
     # before #393 gets it on upgrade. {} hands every alert to a human; an

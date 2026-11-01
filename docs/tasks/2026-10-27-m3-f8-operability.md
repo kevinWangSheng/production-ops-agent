@@ -146,9 +146,24 @@ opspilot_observation_due 0
 
 未做：独立审查；全量 `make check`/pytest；F8 `passes` 保持 false。lab 留在本分支的配置上：停栈后 `OpsPilotAgentAbsent` 持续 firing 到 `opspilot-self`，不通知任何东西。
 
+## #428 实现（#243 PR-2 投递侧，对齐合同 r3）
+
+行为：`OPSPILOT_TRACE` 三值 `off|lab|outbox`（其他值按 off）。`outbox` 下三条前提（endpoint 在 SaaS 白名单、项目 `opspilot-lab-*`、key 在）全满足时，worker 的 `opspilot-outbox` 线程每 2s 领取一批（`FOR UPDATE SKIP LOCKED LIMIT 100`）经 OTLP/HTTP protobuf 发到 LangSmith；缺任一条不构造投递者、零出站，`opspilot_trace_export_enabled{reason}` 报码，pending 行按 `created_at` 满 7 天删除（r3-L5）。lab 直发不变、outbox 行不投递。接缝：`~/.agent/handoffs/m3-batch4-2026-10-31/seams-428.md`。
+
+可逆技术选择（Agent 自定，一行理由）：
+
+- 自己编码 OTLP（SDK `ReadableSpan` + `encode_spans`）并用 stdlib `urllib` POST，不用 `OTLPSpanExporter`：后者内部带最长约 64s 的重试且不返回状态码，分不出 4xx/5xx，也越过 10s 批超时。`opentelemetry-exporter-otlp-proto-common` 是已声明的 `-proto-http` 的同版本依赖，未加依赖。
+- 领取即租约：领取事务里 `attempts+1`、`next_attempt_at = now+30s`，提交后再发请求；失败再改成退避时间。理由：不在 HTTP 期间持有行锁，第二个 worker 看不到在途行，进程中途被杀则 30s 后重投（至少一次）。
+- 每个 Run 一个根 span `opspilot.run`（span_id = sha256(`run:<run_id>`) 前 8 字节），随每个停下状态（非 `queued`/`running`）的 run_state 行重发，起点取该 Run 在表中最早行的 `created_at`；Run 的其他 span 都挂在它下面。generation 行自成一条 trace。根 span 晚到、重复是否去重属未确认项，真实证据实测。
+- 整批一次 POST：4xx（除 408/429）整批 `REJECTED`；单行构造失败只丢该行（`UNSERIALIZABLE`）。积压裁剪只在投递运行时做（fail-closed 时裁剪会把行转成终态、反而延长本地保留）。
+- 投递侧再校验载荷：只读 `PAYLOAD_KEYS`，字符串须形如 `^[A-Za-z0-9._:+-]{1,64}$`、数字须为数字，否则该行 `UNSERIALIZABLE`。
+- `tests/acceptance/test_413_entry_points_and_compose.py` 的 install.env 键集合加 `OPSPILOT_TRACE`：OB-R12 明文要求新增此键，属合同变更带来的钉值更新（同该测试里 #393 那一行），不是削弱验收。
+
+验证：`tests/test_428_outbox_delivery_impl.py`（42 项，无库）、`tests/integration/test_428_outbox_delivery_postgres.py`（12 项，worker 角色 + 回环假端点，临时 PG 17 端口 55448）；PR-1 PG 测试与 `test_runtime_roles_postgres.py` 回归通过。真实证据（OB-R13）待 kind-lab 窗口。
+
 ## 下一步与交接
 
 - 第 1 实施步骤：PR-1 #413（PR #418）与 PR-2 #414（PR #421）均已合并。
 - 结构化日志：合同 r2 已裁决，本轮不实施；等 M3 方向 Q4 第 ① 步全部完成后再排。
-- #243 outbox：合同 r3 已裁决；#427（PR-1 写入侧）→ #428（PR-2 投递侧）。
+- #243 outbox：合同 r3 已裁决；#427（PR-1 写入侧）已合并 `04eec52d`；#428（PR-2 投递侧）实现在 `feature/F8-428-outbox-delivery`（worktree `~/dev/AI/poa-428-impl`），真实证据未跑。
 - 第 3 步升级回滚演练：合同 r3 已裁决；#429，等 #427 合并（trace 证据等 #428）。

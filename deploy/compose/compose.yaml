@@ -133,8 +133,9 @@ services:
     command: ["python", "-m", "opspilot.worker_main"]
     environment:
       OPSPILOT_WORKER_DSN: "host=postgres port=5432 dbname=opspilot user=opspilot_worker_app passfile=/run/secrets/worker_pgpass"
-      # Model and LangSmith keys, and for OPSPILOT_TOOL_PROFILE=otel-demo the
-      # OPSPILOT_OTEL_* endpoints and credentials (exported by the entrypoint).
+      # Model and LangSmith keys, LANGSMITH_PROJECT / LANGSMITH_ENDPOINT, and
+      # for OPSPILOT_TOOL_PROFILE=otel-demo the OPSPILOT_OTEL_* endpoints and
+      # credentials (all but the keys exported by the entrypoint).
       OPSPILOT_ENV_FILE: /run/secrets/worker_env
       # Explicit, not defaults: the worker refuses a pool smaller than
       # capacity + 3 (one connection per slot, plus the polling, postmortem
@@ -142,6 +143,10 @@ services:
       OPSPILOT_WORKER_CAPACITY: "2"
       OPSPILOT_POOL_MAX_SIZE: "5"
       OPSPILOT_TOOL_PROFILE: "${OPSPILOT_TOOL_PROFILE:-fixture}"
+      # off (default) | lab | outbox (#428): outbox delivers the trace outbox
+      # to LangSmith only with LANGSMITH_API_KEY and LANGSMITH_PROJECT=
+      # opspilot-lab-* (and an optional SaaS LANGSMITH_ENDPOINT) in worker_env.
+      OPSPILOT_TRACE: "${OPSPILOT_TRACE:-off}"
     secrets:
       - worker_pgpass
       - worker_env
