@@ -105,7 +105,13 @@ from opspilot.web.service import LEASE_SECONDS
 from opspilot.web.store import DurableClock
 from opspilot.worker import Worker
 
-__all__ = ["WorkerLoop", "join_within", "main", "worker_capacity"]
+__all__ = [
+    "WorkerLoop",
+    "join_within",
+    "main",
+    "validate_pool_capacity",
+    "worker_capacity",
+]
 
 _log = logging.getLogger("opspilot.worker")
 
@@ -544,6 +550,16 @@ def worker_capacity(pool: PoolConfig) -> int:
     return capacity
 
 
+def validate_pool_capacity() -> int:
+    """The pool check ``main()`` runs before touching the database, from the
+    environment as it stands: ``OPSPILOT_POOL_MAX_SIZE`` (PoolConfig
+    default when unset) against ``OPSPILOT_WORKER_CAPACITY`` + 3; returns
+    the capacity, ``SystemExit`` below the floor. Filling an unset pool size
+    with the floor is ``main()``'s step, not this one's, so an explicit
+    value below it is always refused."""
+    return worker_capacity(PoolConfig.from_env())
+
+
 def build_postmortem_worker(
     dsn: str,
     api_key: str,
@@ -581,7 +597,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     # one below it is refused before touching the database.
     if not os.environ.get(POOL_MAX_ENV):
         os.environ[POOL_MAX_ENV] = str(_int_env(CAPACITY_ENV, 2) + 3)
-    worker_capacity(PoolConfig.from_env())
+    validate_pool_capacity()
     store = DurableStore(dsn)
     store.install()
     stop = threading.Event()

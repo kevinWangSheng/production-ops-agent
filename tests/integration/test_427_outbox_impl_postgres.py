@@ -283,7 +283,7 @@ INSERT = (
 def test_grants_refuse_what_the_contract_refuses(web_dsn, worker_dsn):
     for statement in (
         "SELECT 1 FROM opspilot_trace_outbox",
-        "UPDATE opspilot_trace_outbox SET state='dropped'",
+        "UPDATE opspilot_trace_outbox SET state='dropped',finalized_at=now()",
         "DELETE FROM opspilot_trace_outbox",
     ):
         _refused(web_dsn, statement)
@@ -303,7 +303,8 @@ def test_grants_refuse_what_the_contract_refuses(web_dsn, worker_dsn):
         conn.execute(INSERT, (f"model_step:{run}:0", uuid4(), run))
         conn.execute(
             "UPDATE opspilot_trace_outbox SET attempts=1,state='dropped',"
-            "drop_reason='REJECTED',next_attempt_at=NULL WHERE run_id=%s",
+            "drop_reason='REJECTED',next_attempt_at=NULL,"
+            "finalized_at=clock_timestamp() WHERE run_id=%s",
             (run,),
         )
         assert (
@@ -314,20 +315,29 @@ def test_grants_refuse_what_the_contract_refuses(web_dsn, worker_dsn):
         )
 
 
-def test_purge_deletes_rows_seven_days_old_and_keeps_younger_ones():
+def test_purge_counts_final_rows_from_finalized_at_and_pending_from_created_at():
     incident = uuid4()
+    # (state, created days ago, finalized days ago)
+    cases = [
+        ("pending", 8, None),
+        ("pending", 6, None),
+        ("delivered", 8, 8),
+        ("delivered", 30, 6),  # old row, finalized recently: kept (r3-L4)
+        ("dropped", 9, 8),
+        ("dropped", 6, 6),
+    ]
     runs = {}
     with psycopg.connect(DSN) as conn:
-        for state in ("pending", "delivered", "dropped"):
-            for age in (8, 6):
-                run = uuid4()
-                runs[(state, age)] = run
-                conn.execute(
-                    "INSERT INTO opspilot_trace_outbox(idempotency_key,incident_id,run_id,"
-                    "kind,payload,state,created_at) VALUES(%s,%s,%s,'model_step','{}',%s,"
-                    "clock_timestamp() - make_interval(days=>%s))",
-                    (f"model_step:{run}:0", incident, run, state, age),
-                )
+        for state, created, finalized in cases:
+            run = uuid4()
+            runs[(state, created)] = run
+            conn.execute(
+                "INSERT INTO opspilot_trace_outbox(idempotency_key,incident_id,run_id,"
+                "kind,payload,state,created_at,finalized_at) VALUES(%s,%s,%s,"
+                "'model_step','{}',%s,clock_timestamp() - make_interval(days=>%s),"
+                "clock_timestamp() - make_interval(days=>%s))",
+                (f"model_step:{run}:0", incident, run, state, created, finalized),
+            )
         now = conn.execute("SELECT clock_timestamp()").fetchone()[0]
 
         def alive() -> set[tuple[str, int]]:
@@ -340,17 +350,32 @@ def test_purge_deletes_rows_seven_days_old_and_keeps_younger_ones():
             }
             return {k for k, run in runs.items() if run in present}
 
-        # export on (PR-2): only final rows go; inside a savepoint we undo
+        old_final = {("delivered", 8), ("dropped", 9)}
+        # export on (PR-2): pending rows stay; undone by the savepoint
         with conn.transaction(force_rollback=True):
             outbox.purge_expired(conn, now=now, export_enabled=True)
-            assert alive() == set(runs) - {("delivered", 8), ("dropped", 8)}
-        outbox.purge_expired(conn, now=now)
-        assert alive() == {(s, 6) for s in ("pending", "delivered", "dropped")}
-        # exactly at the boundary is deleted
-        outbox.purge_expired(
-            conn, now=now + timedelta(days=1), retention=timedelta(days=7)
-        )
+            assert alive() == set(runs) - old_final
+        assert outbox.purge_expired(conn, now=now) == 3
+        assert alive() == {("pending", 6), ("delivered", 30), ("dropped", 6)}
+        # one day on, the 6-day rows reach exactly 7 days: deleted
+        outbox.purge_expired(conn, now=now + timedelta(days=1))
         assert alive() == set()
+
+
+def test_final_and_pending_rows_must_agree_with_finalized_at():
+    run = uuid4()
+    with psycopg.connect(DSN) as conn:
+        for state, finalized in (
+            ("delivered", "NULL"),
+            ("pending", "clock_timestamp()"),
+        ):
+            with pytest.raises(errors.CheckViolation), conn.transaction():
+                conn.execute(
+                    "INSERT INTO opspilot_trace_outbox(idempotency_key,incident_id,run_id,"
+                    "kind,payload,state,finalized_at) VALUES(%s,%s,%s,'model_step','{}',"
+                    f"%s,{finalized})",
+                    (f"model_step:{run}:{state}", uuid4(), run, state),
+                )
 
 
 def test_the_store_purges_on_the_database_clock(worker_dsn):
@@ -401,7 +426,8 @@ def test_downgrade_reports_three_counts_drops_the_outbox_and_keeps_business_rows
             for i, state in enumerate(("delivered", "dropped", "dropped")):
                 conn.execute(
                     "INSERT INTO opspilot_trace_outbox(idempotency_key,incident_id,run_id,"
-                    "kind,payload,state) VALUES(%s,%s,%s,'model_step','{}',%s)",
+                    "kind,payload,state,finalized_at) "
+                    "VALUES(%s,%s,%s,'model_step','{}',%s,clock_timestamp())",
                     (f"model_step:{run}:{i}", incident, run, state),
                 )
             before = {

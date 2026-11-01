@@ -348,7 +348,7 @@ RUNTIME_GRANTS: Mapping[str, Mapping[str, frozenset[str]]] = {
         "opspilot_trace_outbox": _g(
             "SELECT",
             "INSERT(idempotency_key,incident_id,kind,payload,run_id)",
-            "UPDATE(attempts,drop_reason,next_attempt_at,state)",
+            "UPDATE(attempts,drop_reason,finalized_at,next_attempt_at,state)",
             "DELETE",
         ),
         "opspilot_web_ledger": NONE,

@@ -72,7 +72,6 @@ def test_a_non_number_token_count_is_dropped(bad):
         ("run_state", "waiting_human", "banana"),
         ("source_contact", "confirmed", "maybe"),
         ("span_kind", "tool_result", "llm"),
-        ("tool_name", "metrics_range_query", "metrics.range_query; drop table"),
         ("model", "deepseek-v4-flash", "model " + SENTINEL_PROMPT),
         ("prompt_revision", "prompt-replay-candidate-bef70649a3a8", "x" * 65),
     ],
@@ -82,6 +81,13 @@ def test_codes_names_and_vocabularies_keep_their_shape_or_become_unclassified(
 ):
     assert build_payload({key: good}) == {key: good}
     assert build_payload({key: bad}) == {key: "UNCLASSIFIED"}
+
+
+def test_a_non_registry_tool_name_is_left_out():
+    assert build_payload({"tool_name": "metrics_range_query"}) == {
+        "tool_name": "metrics_range_query"
+    }
+    assert build_payload({"tool_name": "metrics.range_query; drop table"}) == {}
 
 
 def test_ids_and_times_are_typed():
@@ -109,6 +115,7 @@ def test_every_payload_fits_the_4096_byte_check():
         {key: uuid4() for key in ("incident_id", "run_id", "step_id", "attempt_id")}
     )
     widest.update(started_at=datetime.now(UTC), ended_at=datetime.now(UTC))
+    widest["tool_name"] = "a" * 64
     payload = build_payload(widest)
     assert set(payload) == PAYLOAD_KEYS - {
         key
@@ -139,6 +146,20 @@ def test_a_pool_below_capacity_plus_three_is_refused(monkeypatch, capacity, pool
     monkeypatch.setenv("OPSPILOT_WORKER_CAPACITY", capacity)
     with pytest.raises(SystemExit, match=r"OPSPILOT_WORKER_CAPACITY\+3"):
         worker_main.worker_capacity(PoolConfig(max_size=pool))
+
+
+@pytest.mark.parametrize(
+    ("capacity", "pool", "ok"),
+    [("2", "4", False), ("2", "5", True), ("4", "7", True), ("4", "6", False)],
+)
+def test_validate_pool_capacity_reads_the_environment(monkeypatch, capacity, pool, ok):
+    monkeypatch.setenv("OPSPILOT_WORKER_CAPACITY", capacity)
+    monkeypatch.setenv("OPSPILOT_POOL_MAX_SIZE", pool)
+    if ok:
+        assert worker_main.validate_pool_capacity() == int(capacity)
+    else:
+        with pytest.raises(SystemExit, match="POOL_MAX_SIZE"):
+            worker_main.validate_pool_capacity()
 
 
 def test_main_refuses_an_explicit_pool_of_capacity_plus_two_before_the_database(

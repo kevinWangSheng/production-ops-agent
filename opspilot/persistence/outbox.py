@@ -197,7 +197,12 @@ def build_payload(fields: Mapping[str, Any]) -> dict[str, Any]:
         elif key == "finish_reason":
             kept = _shaped(value, _FINISH)
         elif key == "tool_name":
-            kept = _shaped(value, _TOOL_NAME)
+            # a non-registry name is left out, not classified (seam r2)
+            kept = (
+                value
+                if isinstance(value, str) and _TOOL_NAME.fullmatch(value)
+                else None
+            )
         elif key == "run_state":
             kept = _closed(value, _RUN_STATES)
         elif key == "tool_status_class":
@@ -267,17 +272,16 @@ def purge_expired(
     retention: timedelta = RETENTION,
     export_enabled: bool = False,
 ) -> int:
-    """Delete rows that are final (``delivered``/``dropped``) and at least
-    ``retention`` old; while export is off, ``pending`` rows of that age
-    too (OB-R8). Returns the number deleted. Database only, no network."""
-    states = (
-        ("delivered", "dropped")
-        if export_enabled
-        else ("pending", "delivered", "dropped")
-    )
+    """Delete final rows (``delivered``/``dropped``) whose ``finalized_at``
+    is at least ``retention`` old (r3-L4) and, while export is off, ``pending``
+    rows whose ``created_at`` is (OB-R8). Returns the number deleted.
+    Database only, no network."""
+    cutoff = now - retention
     cursor = conn.execute(
-        "DELETE FROM opspilot_trace_outbox WHERE state = ANY(%s) AND created_at <= %s",
-        (list(states), now - retention),
+        "DELETE FROM opspilot_trace_outbox WHERE "
+        "(state IN ('delivered','dropped') AND finalized_at <= %s) "
+        "OR (%s AND state = 'pending' AND created_at <= %s)",
+        (cutoff, not export_enabled, cutoff),
     )
     return int(cursor.rowcount or 0)
 

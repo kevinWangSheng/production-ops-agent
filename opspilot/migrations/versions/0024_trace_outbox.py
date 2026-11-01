@@ -26,11 +26,16 @@ host; delivery is PR-2.
   conflict target ``(idempotency_key)`` needs SELECT on that column
   (measured: 42501 for the web); the only other unique key is the identity
   ``entry_id``, so the two forms are equivalent here. The updater holds the
-  Run's row lock, so two changes of one Run never race.
+  Run's row lock, so two changes of one Run never race. Known trade-off
+  (lead, seams-427 r1): once the 7-day cleanup has deleted a Run's first
+  state rows, the probe reuses n = 1, 2, ... for that Run's next change, so
+  a key can recur for a different row. It needs one Run to span 7 days;
+  PR-2 must keep it in mind if a span id is derived from the key.
   A Run's initial state at INSERT writes no row; Runs from before this
   revision are not backfilled.
 * Grants: web INSERT of the five writer columns; worker SELECT, the same
-  INSERT, ``UPDATE(attempts,drop_reason,next_attempt_at,state)`` and DELETE
+  INSERT, ``UPDATE(attempts,drop_reason,finalized_at,next_attempt_at,state)``
+  and DELETE
   (the 7-day cleanup, Q16); Observer and retention nothing.
 
 ``downgrade()`` never refuses (Q18): it reports the pending / delivered /
@@ -62,7 +67,10 @@ GRANTS: tuple[tuple[str, str], ...] = (
     ("opspilot_web", f"INSERT ({WRITER_COLUMNS})"),
     ("opspilot_worker", "SELECT"),
     ("opspilot_worker", f"INSERT ({WRITER_COLUMNS})"),
-    ("opspilot_worker", "UPDATE (attempts,drop_reason,next_attempt_at,state)"),
+    (
+        "opspilot_worker",
+        "UPDATE (attempts,drop_reason,finalized_at,next_attempt_at,state)",
+    ),
     ("opspilot_worker", "DELETE"),
 )
 
@@ -82,6 +90,10 @@ CREATE TABLE {TABLE} (
   next_attempt_at timestamptz,
   drop_reason text CHECK (drop_reason IS NULL OR drop_reason ~ '^[A-Z][A-Z0-9_]{{1,63}}$'),
   created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+  -- r3-L4: set with clock_timestamp() by the UPDATE that makes the row final;
+  -- the 7-day retention of a final row counts from it
+  finalized_at timestamptz,
+  CHECK ((state = 'pending') = (finalized_at IS NULL)),
   CHECK ((kind = 'generation') = (run_id IS NULL))
 );
 CREATE INDEX {TABLE}_state_next_attempt_idx ON {TABLE} (state, next_attempt_at);
@@ -111,6 +123,8 @@ DECLARE
   n integer := 0;
   landed integer;
 BEGIN
+  -- probe the first free ordinal; after a cleanup an old one is reused
+  -- (known trade-off, see the module docstring)
   LOOP
     n := n + 1;
     INSERT INTO public.{TABLE} (idempotency_key, incident_id, run_id, kind, payload)
