@@ -211,5 +211,4 @@ def test_ac10_versions_revisions_alembic_head_and_all_runtime_grants_are_frozen(
     frozen = hashlib.sha256(
         json.dumps(grants, sort_keys=True, separators=(",", ":")).encode()
     ).hexdigest()
-    # TODO(#427-lead): replace with the measured post-0024 fingerprint.
-    assert frozen == "TODO(#427-lead): fill RUNTIME_GRANTS sha256"
+    assert frozen == "ef10b10682915469375c7929f6d30b15812b4e6fbac286384c5c1fb57240bcc4"

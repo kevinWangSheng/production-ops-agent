@@ -30,7 +30,8 @@ pytestmark = pytest.mark.skipif(
 )
 
 BEFORE_RETENTION = "0022_incident_association"
-RETENTION_HEAD = "0023_retention_raw_cleanup"
+# Alembic head after upgrade_head (0023 retention; head moved to 0024 with #427).
+RETENTION_HEAD = "0024_trace_outbox"
 
 
 @pytest.fixture
