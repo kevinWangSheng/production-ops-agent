@@ -71,7 +71,7 @@ def test_worker_capacity_and_pool_are_explicit_with_two_connection_reserve() -> 
     capacity = int(env["OPSPILOT_WORKER_CAPACITY"] or "0")
     pool = int(env["OPSPILOT_POOL_MAX_SIZE"] or "0")
     assert capacity >= 1
-    assert pool >= capacity + 2
+    assert pool >= capacity + 3
 
 
 @pytest.mark.parametrize("service_name", ["web", "worker", "observer"])

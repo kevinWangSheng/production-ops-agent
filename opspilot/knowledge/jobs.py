@@ -40,6 +40,7 @@ from opspilot.knowledge.contract import (
     RETRYABLE_ATTEMPT_ERRORS,
 )
 from opspilot.knowledge.store import KnowledgeStore, Watermark, canonical_json
+from opspilot.persistence import outbox
 from opspilot.persistence.base import Connection, PersistenceError, _StoreBase
 
 # D17: one generation per worker at a time; the lease covers two model
@@ -254,12 +255,15 @@ class GenerationStore(_StoreBase):
                 "WHERE incident_id=%s AND status='running'",
                 (incident_id,),
             ).fetchall():
-                conn.execute(
-                    "UPDATE opspilot_postmortem_generation_attempts SET status='abandoned', "
-                    "error_code='LEASE_LOST', finished_at=clock_timestamp() "
-                    "WHERE attempt_id=%s",
-                    (stale["attempt_id"],),
+                abandoned = self._require_row(
+                    conn.execute(
+                        "UPDATE opspilot_postmortem_generation_attempts SET status='abandoned', "
+                        "error_code='LEASE_LOST', finished_at=clock_timestamp() "
+                        "WHERE attempt_id=%s RETURNING " + _OUTBOX_COLUMNS,
+                        (stale["attempt_id"],),
+                    )
                 )
+                _outbox_attempt(conn, abandoned)
                 self._count_failure(
                     conn,
                     job,
@@ -402,7 +406,7 @@ class GenerationStore(_StoreBase):
                 "error_code=%s, version=%s, response_model=%s, input_sha256=%s, "
                 "input_bytes=%s, prompt_tokens=%s, completion_tokens=%s, model_calls=%s, "
                 "finished_at=clock_timestamp() WHERE attempt_id=%s AND status='running' "
-                "RETURNING watermark, revises_version",
+                "RETURNING watermark, revises_version, " + _OUTBOX_COLUMNS,
                 (
                     status,
                     error_code,
@@ -421,6 +425,7 @@ class GenerationStore(_StoreBase):
             )
             if closed is None or not ours:
                 raise PersistenceError("LEASE_LOST")
+            _outbox_attempt(conn, closed)
             key = (
                 watermark_key(watermark, closed["revises_version"])
                 if watermark is not None
@@ -644,6 +649,39 @@ class GenerationStore(_StoreBase):
                 if reason is not None:
                     found.append({**row, "reason": reason})
         return found
+
+
+# What the outbox row of a closed attempt reads (#427).
+_OUTBOX_COLUMNS = (
+    "attempt_id, incident_id, model, response_model, prompt_version, "
+    "prompt_tokens, completion_tokens, started_at, finished_at"
+)
+
+
+def _outbox_attempt(conn: Connection, attempt: dict[str, Any]) -> None:
+    """One outbox row per closed generation attempt (#427, OB-R2), in the
+    transaction that closes it: ids, model, prompt version, token counts and
+    times. ``prompt_version`` is the generation prompt's revision."""
+    prompt = int(attempt["prompt_tokens"])
+    completion = int(attempt["completion_tokens"])
+    outbox.insert_entry(
+        conn,
+        kind="generation",
+        idempotency_key=f"generation:{attempt['attempt_id']}",
+        incident_id=attempt["incident_id"],
+        run_id=None,
+        fields={
+            "incident_id": attempt["incident_id"],
+            "attempt_id": attempt["attempt_id"],
+            "model": attempt["response_model"] or attempt["model"],
+            "prompt_revision": attempt["prompt_version"],
+            "input_tokens": prompt,
+            "output_tokens": completion,
+            "total_tokens": prompt + completion,
+            "started_at": attempt["started_at"],
+            "ended_at": attempt["finished_at"],
+        },
+    )
 
 
 def current_watermark(conn: Connection, incident_id: UUID) -> Watermark:
