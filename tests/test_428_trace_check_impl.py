@@ -73,7 +73,9 @@ def world(tmp_path, monkeypatch):
             {"incident_id": incident, "run_state": "completed"},
         ),
     ]
-    state = SimpleNamespace(root=root, children=children, root_missing=False)
+    state = SimpleNamespace(
+        root=root, children=children, root_missing=False, link_fails=False
+    )
 
     class Client:
         def list_runs(self, **_):
@@ -85,6 +87,8 @@ def world(tmp_path, monkeypatch):
             return state.root
 
         def get_run_url(self, **_):
+            if state.link_fails:
+                raise RuntimeError("no url")
             return "https://smith.langchain.com/o/x/projects/p/r/y"
 
     monkeypatch.setattr(check, "langsmith_client", lambda env: Client())
@@ -168,3 +172,10 @@ def test_content_outside_the_allowlist_fails(world, capsys, change, code):
     assert report["content_scan"].get("api_key_literal", 0) == (
         1 if KEY in json.dumps(change) else 0
     )
+
+
+def test_a_root_without_a_trace_link_fails(world, capsys):
+    world.link_fails = True
+    code, report = _main(world, capsys)
+    assert code == 1 and report["failures"] == ["ROOT_LINK_MISSING"]
+    assert report["root"]["found"] and report["root"]["link"] is None

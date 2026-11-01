@@ -20,7 +20,8 @@ Inputs:
 * ``--incident-id``, ``--run-id``, optional ``--image-revision``.
 
 Exit status 0 only when every check passes; otherwise 1, with the failed
-check codes in ``failures`` (``ROOT_MISSING``, ``SPANS_MISSING``,
+check codes in ``failures`` (``ROOT_MISSING``, ``ROOT_LINK_MISSING``,
+``SPANS_MISSING``,
 ``SPANS_DUPLICATED`` unless ``--allow-duplicates``,
 ``INCIDENT_FILTER_EMPTY``, ``VERSION_FILTER_EMPTY``, ``FORBIDDEN_CONTENT``,
 ``CONTENT_PRESENT``, ``METADATA_OUTSIDE_ALLOWLIST``) and on stderr.
@@ -342,6 +343,8 @@ def failures(report: Mapping[str, Any], *, allow_duplicates: bool = False) -> li
     found: list[str] = []
     if not report["root"]["found"]:
         found.append("ROOT_MISSING")
+    elif not report["root"]["link"]:
+        found.append("ROOT_LINK_MISSING")
     if report["identity"]["missing"]:
         found.append("SPANS_MISSING")
     if report["identity"]["duplicated"] and not allow_duplicates:
