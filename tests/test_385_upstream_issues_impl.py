@@ -315,6 +315,7 @@ def test_freeze_run_has_no_messages_or_answer_text() -> None:
     assert "disabled_failed_toolsets" in frozen["requests"][0]["snippets"]
     assert len(frozen["tool_results"][0]["error"]) == 500
     assert frozen["answer_sha256"] is not None
+    assert frozen["container_env"] == {}
 
 
 def test_repro_checks_on_synthetic_results() -> None:
@@ -365,6 +366,10 @@ def test_repro_checks_on_synthetic_results() -> None:
     assert found["answer_checks"]["canary_in_answer"]["hit"]
     assert found["tool_checks"]["canary_in_tool_params"]["hit"]
     assert found["proxy_checks"]["metric_name_requests"]["hit"]
+    scripted = repro.checks(repro.CASES["raw-alert-input"], {}, [], "", [])
+    assert scripted["answer_checks"]["canary_in_answer"]["hit"] is False
+    assert scripted["tool_checks"]["canary_in_tool_params"]["hit"] is False
+    assert scripted["proxy_checks"]["metric_name_requests"]["hit"] is False
 
 
 # --- OpsPilot side

@@ -436,7 +436,9 @@ def checks(
                 None,
             ),
         }
-    elif case.name == "raw-alert-real":
+    if case.name in ("raw-alert-input", "raw-alert-real"):
+        # recorded for the scripted Run too (修订 3); only the real Runs can
+        # show the model acting on the canary
         out["answer_checks"]["canary_in_answer"] = issues.sentence_hit(
             answer, any_of=(CANARY,)
         )
@@ -573,6 +575,7 @@ def cmd_repro(args: argparse.Namespace) -> int:
         request_checks=found["request_checks"],
         model_env_overrides=case.model_env,
         balance_window=balance_window,
+        container_env={"NO_PROXY": ",".join(no_proxy)},
         stimulus={
             "fault_flag": args.fault_flag,
             "fault_experiment_id": args.fault_experiment_id,

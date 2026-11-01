@@ -256,6 +256,7 @@ def freeze_run(
     balance_window: Mapping[str, Any] | None = None,
     stimulus: Mapping[str, Any] | None = None,
     config: Mapping[str, Any] | None = None,
+    container_env: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
     """``runs/<run_id>.json``: hashes, snippets, tool statuses and checks;
     no messages, no reasoning, no full answer."""
@@ -272,6 +273,8 @@ def freeze_run(
         "config_sha256": config_sha256,
         "config": dict(config or {}),
         "stimulus": dict(stimulus or {}),
+        # non-secret container environment worth recording (修订 3: NO_PROXY)
+        "container_env": dict(container_env or {}),
         "model_env_overrides": dict(model_env_overrides or {}),
         "started_at": started_at,
         "finished_at": finished_at,
