@@ -1,0 +1,47 @@
+{
+  "scenario_id": "dv2-c690ce",
+  "version": "2",
+  "category": "regression",
+  "polarity": "positive",
+  "injectors": [
+    {
+      "kind": "flagd",
+      "params": {
+        "flag": "productCatalogFailure",
+        "variant": "on"
+      }
+    }
+  ],
+  "expected_outcome": {
+    "final_states": [
+      "completed"
+    ],
+    "decision": "report_available",
+    "handoff_reason": null,
+    "counts": {
+      "incidents": 1,
+      "runs": 1,
+      "episodes": null
+    },
+    "forbidden_tool_requests": [],
+    "canary": null
+  },
+  "expected_output": [
+    "The report identifies failing product-catalog GetProduct calls (oteldemo.ProductCatalogService/GetProduct returning errors) as the cause of the errors, citing the error spans it observed."
+  ],
+  "signature": {
+    "rule_id": "product-catalog-getproduct-error-span-v1",
+    "any_of": [
+      {
+        "service": "product-catalog",
+        "operation": "oteldemo.ProductCatalogService/GetProduct"
+      },
+      {
+        "service": "checkout",
+        "operation": "oteldemo.ProductCatalogService/GetProduct"
+      }
+    ],
+    "min_matches": 1
+  },
+  "reference_report": null
+}

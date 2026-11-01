@@ -8,7 +8,7 @@ import re
 import secrets
 import stat
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal, cast
@@ -42,10 +42,12 @@ from opspilot.evaluation.model import (
     validate_scenario,
 )
 from opspilot.evaluation.rounds import (
+    REQUIRED_DIMENSIONS,
     Aggregate,
     AggregateError,
     CalibrationError,
     CalibrationResult,
+    DimensionValue,
     Manifest,
     ManifestError,
     PlannedSlot,
@@ -135,6 +137,9 @@ class LegacySummary:
     sha256: str
     trace_entries: tuple[Mapping[str, Any], ...]
     verified: bool = False
+    # Display view of every required manifest dimension (V2-R7): a dimension
+    # the old file does not record, or records malformed, reads ``unknown``.
+    dimensions: Mapping[str, DimensionValue] = field(default_factory=dict)
 
 
 def _sha(raw: bytes) -> str:
@@ -760,4 +765,32 @@ def read_legacy_summary(path: Path) -> LegacySummary:
             entries = (trace,)
     elif trace is not None:
         invalid()
-    return LegacySummary(obj, _sha(raw), entries)
+    return LegacySummary(obj, _sha(raw), entries, dimensions=_legacy_dimensions(obj))
+
+
+def _legacy_dimensions(obj: Mapping[str, Any]) -> dict[str, DimensionValue]:
+    recorded: Any = None
+    for holder in (obj.get("capture"), obj):
+        manifest = holder.get("manifest") if isinstance(holder, dict) else None
+        if isinstance(manifest, dict) and isinstance(manifest.get("dimensions"), dict):
+            recorded = manifest["dimensions"]
+            break
+    out: dict[str, DimensionValue] = {}
+    for name in REQUIRED_DIMENSIONS:
+        item = recorded.get(name) if isinstance(recorded, dict) else None
+        out[name] = _legacy_dimension(item)
+    return out
+
+
+def _legacy_dimension(item: Any) -> DimensionValue:
+    unknown = DimensionValue("unknown", None, "not recorded in the legacy summary")
+    if not isinstance(item, dict) or set(item) != {"kind", "value", "reason"}:
+        return unknown
+    kind, value, reason = item["kind"], item["value"], item["reason"]
+    if kind not in ("hash", "version", "none", "unknown"):
+        return unknown
+    if not all(v is None or isinstance(v, str) for v in (value, reason)):
+        return unknown
+    if (kind in ("hash", "version") and not value) or (kind == "none" and not reason):
+        return unknown
+    return DimensionValue(kind, value, reason)
