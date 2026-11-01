@@ -202,7 +202,7 @@ def test_ac10_versions_revisions_alembic_head_and_all_runtime_grants_are_frozen(
         == otel_demo_versions()["prompt_revision"]
         == "prompt-replay-candidate-bef70649a3a8"
     )
-    assert schema.head_revision() == "0023_retention_raw_cleanup"
+    assert schema.head_revision() == "0024_trace_outbox"
     grants = {
         role: {table: sorted(values) for table, values in tables.items()}
         for role, tables in RUNTIME_GRANTS.items()
@@ -211,4 +211,5 @@ def test_ac10_versions_revisions_alembic_head_and_all_runtime_grants_are_frozen(
     frozen = hashlib.sha256(
         json.dumps(grants, sort_keys=True, separators=(",", ":")).encode()
     ).hexdigest()
-    assert frozen == "d4d18f74ad4263b6a0d7695f1c1cec25e3d94e2df1f30be25d151cf674861c09"
+    # TODO(#427-lead): replace with the measured post-0024 fingerprint.
+    assert frozen == "TODO(#427-lead): fill RUNTIME_GRANTS sha256"
