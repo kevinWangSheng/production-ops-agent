@@ -1,9 +1,9 @@
 # M3 运行可观测（F8 第 1–3 步）
 
-- 状态：进行中（第 1 实施步骤合同 r1 已裁决；PR-1 #413 已合并（#418）；PR-2 #414 lab 与两次演练已实现，待独立验收测试与审查）
+- 状态：进行中（第 1 实施步骤合同 r1 已裁决；PR-1 #413 已合并 `6845ffc7`（PR #418）；PR-2 #414 lab 抓取、两条自告警与两次演练已合并 `7cd29308`（PR #421）；结构化日志合同 r2 已裁决（2026-10-31），按用户指示本轮不实施；#243 outbox、第 3 步升级回滚演练待预审）
 - 更新日期：2026-10-31
 - 依据：[M3 开放决策](2026-10-27-m2-exit-m3-opening-decision.md) Q2 第 4 条、Q5、Q6；feature_list.json F8；C3 §11（可观测性、outbox、部署与 schema 迁移）；#243 #159
-- 工作区：#413 `/Users/shenghuikevin/dev/AI/poa-413-impl`，分支 `feature/F8-413-health-listeners`（基 main `659bcd9c`）；#414 `/Users/shenghuikevin/dev/AI/poa-414-impl`，分支 `feature/F8-414-lab-drills`（基 main `6845ffc7`）
+- 工作区：#413、#414 的 worktree 均已在合并后删除；结构化日志未创建
 
 ## 目标与范围
 
@@ -23,6 +23,16 @@
 - F8-Q3：自监控告警走 Alertmanager 子路由到不调用 OpsPilot 的 `opspilot-self` 接收器；交接证据 = firing 记录 + 工作台 Run 交接状态；不新增外发通知。
 - F8-Q4：停 worker 不改产品；Run 停在 `queued`、`queue_depth` 上升，缩短墙钟后经页面清扫或 worker 回归得到 `DEADLINE_EXCEEDED`；自动清扫不做。
 - F8-R1–R11：见合同文件。
+
+## 合同（r2，结构化日志）
+
+用户 2026-10-31 裁决（原话「没有问题,写入进去,但是不要实现」）：F8L-Q1–Q3 按推荐 (a)（Agent 按用户常设指示自定），可逆默认 F8L-R1–R9 照预审。完整决定表与日志行形状原文：[结构化日志合同（r2）](2026-10-27-m3-f8-operability-contract.md#结构化日志合同r2f8-r10-的后续小-pr)。出处 `~/.agent/handoffs/opspilot-rulings-2026-10-31-f14s3-f8logs.md`。
+
+- F8L-Q1 关联字段：固定字段只加进程常量 `version`、`revision`（与 `/metrics` `opspilot_build_info` 同源）；事故/会话/Run 沿用现有 kv（`incident=` `session=` `observation_id=` `run=`），不注入上下文、不改键名。
+- F8L-Q2 不记 provider 文本/凭据：源头纪律 + 哨兵确定性测试；formatter 不调 `redact_credentials`；web 5 处 `.exception()` 保留 traceback 并列入复核清单。
+- F8L-Q3 验收：确定性测试 + 一次 Compose 真实抽检（含一次真实模型调用、一次停 PG）；不附 LangSmith trace；F8 `passes` 保持 false；PR 正文写明 web 的 INFO 行开始出现。
+- F8L-R1–R9：照预审（新模块 `opspilot/logs.py`、`OPSPILOT_LOG_FORMAT=json|text`、kv 嵌套在 `kv`、`exc`/`stack` 单行、uvicorn `log_config=None` 等，原文见合同文件）。
+- 执行约束：实施等 M3 方向 Q4 第 ① 步全部完成后再排；之后需用户判断的事项在 Q4 ① 完成后一次汇总。
 
 切分：PR-1 产品（health 模块 + 三入口接线 + 模型调用计数包装器 + Compose healthcheck 与 lab override + 测试调整）→ PR-2 lab 抓取与规则 + 两次演练（PR-1 合并后）。之后各自预审：结构化日志、#243 outbox、升级回滚演练（第 3 步）。
 
@@ -124,5 +134,6 @@ opspilot_observation_due 0
 
 ## 下一步与交接
 
-- 第 1 实施步骤：PR-1 产品 #413 → PR-2 lab 与演练 #414（被 #413 阻塞）。
-- 结构化日志、#243 outbox、第 3 步升级回滚演练：PR-2 落地后各自预审。
+- 第 1 实施步骤：PR-1 #413（PR #418）与 PR-2 #414（PR #421）均已合并。
+- 结构化日志：合同 r2 已裁决，本轮不实施；等 M3 方向 Q4 第 ① 步全部完成后再排。
+- #243 outbox、第 3 步升级回滚演练：各自预审。
