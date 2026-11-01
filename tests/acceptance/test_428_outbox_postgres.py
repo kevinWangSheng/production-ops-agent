@@ -282,7 +282,14 @@ def test_unreachable_outbox_endpoint_preserves_scripted_run_observables(
     for key in timed:
         if isinstance(off["conclusion"], dict) and key in off["conclusion"]:
             assert abs(outbox["conclusion"][key] - off["conclusion"][key]) < 1.0
-    assert outbox["handoffs"] == off["handoffs"]
+    # Two separate Runs: every handoff field must match except the Run's own id.
+    assert [
+        (kind, {k: v for k, v in payload.items() if k != "run_id"})
+        for kind, payload in outbox["handoffs"]
+    ] == [
+        (kind, {k: v for k, v in payload.items() if k != "run_id"})
+        for kind, payload in off["handoffs"]
+    ]
     # Counted budget fields must match exactly; the *_seconds_used fields are
     # wall-clock measurements that differ between any two Runs, so they only
     # need to agree within measurement noise.
