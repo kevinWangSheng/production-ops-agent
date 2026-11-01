@@ -181,7 +181,7 @@ tests/acceptance/test_385_upstream_mapping.py
 | F14S3-R8 | 各选题的具体复现 | — | 见下方代码块（预审 :74） | 复现脚本 | 照预审（可逆默认） |
 | F14S3-R9 | 时间与版本 | — | 见预审第 1 节第 1 条（:41：每份记录写 `reproduced_at`（UTC）与上游状态 `checked_at`，lab 数据沿用第 1 步三方时钟偏差 ≤2s）；`upstream_ref.checked_at` 在 PR 提交前刷新一次，发现变化就改记录 | 时效 | 照预审（可逆默认） |
 | F14S3-R10 | kind 窗口与水位 | — | 一个 `lockf -t 900 ~/.agent/locks/kind-lab` 独占窗口，串行跑；开窗前 `vm.swapusage` free ≥ 400M 且 `df -h` 可用 ≥ 5G；frontend 的 span 速率 > 0（kind lab 重启有先例）；窗口内不跑全量 pytest | lab | 照预审（可逆默认） |
-| F14S3-R11 | 费用与上限 | — | 真实模型最多 **5 次 Run**：#2356 1 次、候选 2 3 次、Q5 N1 的 OpsPilot 侧 1 次；按 SPEC:30 可以因为环境或随机性重跑 1 次。脚本化端点的 Run 不计费。每次 Run 沿用 `MAX_STEPS 100`；真实 Run 墙钟 1800s（run1 用了 173s），脚本化 Run 600s。费用按余额差记录（DeepSeek balance，延迟读一次） | 费用 | 照预审（可逆默认） |
+| F14S3-R11 | 费用与上限 | — | 真实模型最多 **5 次 Run**：#2356 1 次、候选 2 3 次、Q5 N1 的 OpsPilot 侧 1 次；按 SPEC:30 可以因为环境或随机性重跑 1 次。脚本化端点的 Run 不计费。每次 Run 沿用 `MAX_STEPS 100`；真实 Run 墙钟 1800s（run1 用了 173s），脚本化 Run 600s。费用按余额差记录（DeepSeek balance，延迟读一次） | 费用 | 照预审（可逆默认）；**Run 上限已被 2026-11-01 Q8 取代：真实 Run 约 12 次**，墙钟上限不变，见本节末「M3 优化项补充（r3.1）」 |
 | F14S3-R12 | 向上游报告 | — | 按 r2 Q3，本步不向 HolmesGPT 报任何东西，也不在上游 issue 下评论。复现完成后，lead 把可以报的条目列给用户（比如 #2356 我们的实测和报告者说法相反、#2376 在 pin 和 master 上仍然存在），单独裁决 | 对外 | 照预审（可逆默认） |
 | F14S3-R13 | PR 与流程 | — | 单 PR `feature/F14-385-upstream-issues`，目标 main；不碰 OpsPilot 调查 loop（Q5 N1 另起一个 PR，有自己的预审），所以本 PR 不需要 LangSmith trace；按 SPEC:30 的 M3 授权，CI 绿、CLEAN、独立审查已处置后由 Agent 合并并事后简报；`passes` 不翻 | 流程 | 照预审（可逆默认） |
 | F14S3-R14 | 入库前的秘密扫描 | — | 跑 `scripts/check_secrets.py`；金丝雀串用低熵的可读词，避免 gitleaks 误报（`evidence-idempotency-key` 有误报先例） | 安全 | 照预审（可逆默认） |
