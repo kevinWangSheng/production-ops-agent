@@ -380,8 +380,7 @@ def check_result(
         # source response whose identity could be compared.
         same(op.window, planned)
         if outcome.source_contact != "none" or outcome.status not in (
-            "denied",
-            "error",
+            ("denied", "error", "timeout") if presend else ("denied", "error")
         ):
             mismatch()
         if failure is not None:
@@ -398,9 +397,18 @@ def check_result(
             # post-fetch precedence (``executor.py`` ``refuse_after_fetch``)
             # then lets a human decision taken meanwhile, or a refused
             # settlement charge, replace that reason; it never consults the
-            # deadline there.
+            # deadline there. A refusal that arrived after the call's own
+            # timeout is GATEWAY_TIMEOUT (``executor.py`` :1187-1189, on the
+            # elapsed time measured at :1076-1080), exactly when elapsed >
+            # timeout.
             if not (
                 (outcome.status, outcome.reason) == ("error", "INVALID_PARAMS")
+                or (
+                    (outcome.status, outcome.reason) == ("timeout", "GATEWAY_TIMEOUT")
+                    and op.elapsed_seconds is not None
+                    and op.timeout_seconds is not None
+                    and op.elapsed_seconds > op.timeout_seconds
+                )
                 or (
                     reads_evidence(reg)
                     and (outcome.status, outcome.reason)

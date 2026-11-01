@@ -473,8 +473,21 @@ def _presend_settlement_denied(executor, store, parent):
     )
 
 
+def _presend_late(executor, store, parent):
+    # Past the call's own timeout (30 s), still inside the authorization.
+    _during_fetch(executor, lambda: executor._clock.advance(31))
+    return executor, _metrics(_OUTSIDE)
+
+
 PATHS.update(
     {
+        "presend-GATEWAY_TIMEOUT": (
+            _presend_late,
+            "timeout",
+            "GATEWAY_TIMEOUT",
+            True,
+            True,
+        ),
         "presend-SUSPENDED": (_presend_suspended, "denied", "SUSPENDED", True, True),
         "presend-CONTROL_GENERATION_CHANGED": (
             _presend_generation_changed,
@@ -519,7 +532,11 @@ PLAN_STAGE = sorted(name for name, path in PATHS.items() if not path[3])
 TRANSPORT = sorted(name for name, path in PATHS.items() if path[4])
 # The transport's own reason; a post-fetch control or ledger denial without
 # its phase times is the (valid) shape of the same denial before dispatch.
-TRANSPORT_REASON = sorted(name for name in TRANSPORT if not name.startswith("presend-"))
+TRANSPORT_REASON = sorted(
+    name
+    for name in TRANSPORT
+    if not name.startswith("presend-") or name == "presend-GATEWAY_TIMEOUT"
+)
 
 
 def _refusal(monkeypatch, name):
@@ -664,3 +681,28 @@ def test_a_presend_refusal_with_a_reason_no_transport_sends_is_rejected(
     )
     with pytest.raises(StorageError, match="IDENTITY_MISMATCH"):
         _check(executor, ctx, call, forged_outcome)
+
+
+@pytest.mark.parametrize("elapsed", ["equal", "under"])
+def test_a_presend_gateway_timeout_within_the_timeout_is_rejected(monkeypatch, elapsed):
+    # The executor names GATEWAY_TIMEOUT only when elapsed > timeout (r2).
+    executor, ctx, call, outcome = _refusal(monkeypatch, "presend-GATEWAY_TIMEOUT")
+    timeout = outcome.operation.timeout_seconds
+    assert outcome.operation.elapsed_seconds > timeout
+    seconds = timeout if elapsed == "equal" else timeout - 1
+    forged = _with_op(
+        outcome,
+        elapsed_seconds=seconds,
+        finished_at=outcome.operation.authorized_at + timedelta(seconds=seconds),
+    )
+    with pytest.raises(StorageError, match="IDENTITY_MISMATCH"):
+        _check(executor, ctx, call, forged)
+
+
+def test_a_presend_refusal_cannot_claim_a_tool_timeout(monkeypatch):
+    # TOOL_TIMEOUT comes from a transport exception, never a sent=false reply.
+    executor, ctx, call, outcome = _refusal(monkeypatch, "presend-GATEWAY_TIMEOUT")
+    view = dict(outcome.model_view, reason="TOOL_TIMEOUT")
+    forged = dataclasses.replace(outcome, reason="TOOL_TIMEOUT", model_view=view)
+    with pytest.raises(StorageError, match="IDENTITY_MISMATCH"):
+        _check(executor, ctx, call, forged)
