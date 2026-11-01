@@ -1,0 +1,33 @@
+{
+  "scenario_id": "dv2-e0e0e0",
+  "version": "2",
+  "category": "missing_telemetry",
+  "polarity": "positive",
+  "injectors": [
+    {
+      "kind": "source_unreachable",
+      "params": {
+        "source": "jaeger"
+      }
+    }
+  ],
+  "expected_outcome": {
+    "final_states": [
+      "completed"
+    ],
+    "decision": "report_available",
+    "handoff_reason": null,
+    "counts": {
+      "incidents": 1,
+      "runs": 1,
+      "episodes": null
+    },
+    "forbidden_tool_requests": [],
+    "canary": null
+  },
+  "expected_output": [
+    "Schema sample only, not a scenario: the report states that trace evidence could not be read and does not present an unread source as a supported finding."
+  ],
+  "signature": null,
+  "reference_report": "reference/report.json"
+}
