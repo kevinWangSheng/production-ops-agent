@@ -608,8 +608,8 @@ def test_a_crashed_attempt_frees_its_slot_without_stopping_the_other_or_the_work
 # -- item 7: pool constraint and the default-configuration storm -------------
 
 
-@pytest.mark.parametrize(("capacity", "pool"), [("3", "4"), ("2", "3"), ("1", "2")])
-def test_a_pool_smaller_than_capacity_plus_two_refuses_to_start(
+@pytest.mark.parametrize(("capacity", "pool"), [("3", "5"), ("2", "4"), ("1", "3")])
+def test_a_pool_smaller_than_capacity_plus_three_refuses_to_start(
     web_dsn, owner, stub, workers, capacity, pool
 ):
     tag = new_tag()
@@ -636,8 +636,8 @@ def test_an_invalid_capacity_refuses_to_start(web_dsn, owner, stub, workers, cap
     assert events_of(owner, [incident], "run_claimed") == []
 
 
-@pytest.mark.parametrize(("capacity", "pool"), [("2", "4"), ("1", "3"), ("3", "5")])
-def test_a_pool_of_exactly_capacity_plus_two_starts(
+@pytest.mark.parametrize(("capacity", "pool"), [("2", "5"), ("1", "4"), ("3", "6")])
+def test_a_pool_of_exactly_capacity_plus_three_starts(
     web_dsn, owner, stub, workers, capacity, pool
 ):
     tag = new_tag()

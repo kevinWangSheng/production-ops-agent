@@ -14,7 +14,7 @@ Public surface only: ``Workbench.release_anomaly_pass``, ``/intake/alertmanager`
 
 Assumptions (also marked ``ASSUMPTION`` where used):
 
-* S5 the alembic head stays ``0023_retention_raw_cleanup`` (head of ``main``
+* S5 the alembic head stays ``0024_trace_outbox`` (head of ``main``
   at 1904345, no migration in #343); a rebase onto a newer migration updates
   this constant, not the assertion.
 * S6 the declared grants of the five tables the attach path touches are
@@ -95,7 +95,7 @@ pytestmark = pytest.mark.skipif(
 )
 
 ROUNDS = 3
-HEAD = "0023_retention_raw_cleanup"  # ASSUMPTION S5
+HEAD = "0024_trace_outbox"  # ASSUMPTION S5
 
 
 def _send_one(app: Any, alert: dict[str, Any], starts_at: str) -> dict[str, Any]:

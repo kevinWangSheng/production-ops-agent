@@ -137,10 +137,10 @@ services:
       # OPSPILOT_OTEL_* endpoints and credentials (exported by the entrypoint).
       OPSPILOT_ENV_FILE: /run/secrets/worker_env
       # Explicit, not defaults: the worker refuses a pool smaller than
-      # capacity + 2 (one connection per slot, plus the polling and postmortem
-      # threads).
+      # capacity + 3 (one connection per slot, plus the polling, postmortem
+      # and outbox threads).
       OPSPILOT_WORKER_CAPACITY: "2"
-      OPSPILOT_POOL_MAX_SIZE: "4"
+      OPSPILOT_POOL_MAX_SIZE: "5"
       OPSPILOT_TOOL_PROFILE: "${OPSPILOT_TOOL_PROFILE:-fixture}"
     secrets:
       - worker_pgpass

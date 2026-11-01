@@ -1,0 +1,191 @@
+{
+  "run_id": "cabbecc4-b54c-5e09-9bd6-5063a3b90293",
+  "incident_id": "d67c3cd0-f00f-5a29-a0ef-0a5414e30481",
+  "final_state": "waiting_human",
+  "handoff_reasons": [
+    "INCOMPLETE_INVESTIGATION"
+  ],
+  "budget": {
+    "spent": 2,
+    "unknown": 0,
+    "limit": 100,
+    "tool_operations_used": 1
+  },
+  "schema_head": "0024_trace_outbox",
+  "image": {
+    "tag": "opspilot:local",
+    "version": "0.1.0",
+    "revision": "21314e57af66ae1a6064f6db61b609c1dc392b63"
+  },
+  "worker_pool": {
+    "OPSPILOT_WORKER_CAPACITY": 2,
+    "OPSPILOT_POOL_MAX_SIZE": 5
+  },
+  "rows": [
+    {
+      "entry_id": 2,
+      "kind": "run_state",
+      "state": "pending",
+      "payload_keys": [
+        "context_policy_revision",
+        "ended_at",
+        "incident_id",
+        "prompt_revision",
+        "run_id",
+        "run_state",
+        "span_kind",
+        "tool_schema_revision"
+      ]
+    },
+    {
+      "entry_id": 3,
+      "kind": "model_step",
+      "state": "pending",
+      "payload_keys": [
+        "context_policy_revision",
+        "ended_at",
+        "finish_reason",
+        "image_revision",
+        "image_version",
+        "incident_id",
+        "input_tokens",
+        "model",
+        "output_tokens",
+        "prompt_revision",
+        "reasoning_tokens",
+        "run_id",
+        "span_kind",
+        "step_id",
+        "tool_schema_revision",
+        "total_tokens"
+      ]
+    },
+    {
+      "entry_id": 4,
+      "kind": "tool_result",
+      "state": "pending",
+      "payload_keys": [
+        "context_policy_revision",
+        "ended_at",
+        "image_revision",
+        "image_version",
+        "incident_id",
+        "prompt_revision",
+        "run_id",
+        "span_kind",
+        "step_id",
+        "tool_name",
+        "tool_schema_revision",
+        "tool_status_class"
+      ]
+    },
+    {
+      "entry_id": 5,
+      "kind": "model_step",
+      "state": "pending",
+      "payload_keys": [
+        "context_policy_revision",
+        "ended_at",
+        "finish_reason",
+        "image_revision",
+        "image_version",
+        "incident_id",
+        "input_tokens",
+        "model",
+        "output_tokens",
+        "prompt_revision",
+        "reasoning_tokens",
+        "run_id",
+        "span_kind",
+        "step_id",
+        "tool_schema_revision",
+        "total_tokens"
+      ]
+    },
+    {
+      "entry_id": 6,
+      "kind": "model_step",
+      "state": "pending",
+      "payload_keys": [
+        "context_policy_revision",
+        "ended_at",
+        "image_revision",
+        "image_version",
+        "incident_id",
+        "prompt_revision",
+        "run_id",
+        "span_kind",
+        "step_id",
+        "tool_schema_revision"
+      ]
+    },
+    {
+      "entry_id": 8,
+      "kind": "run_state",
+      "state": "pending",
+      "payload_keys": [
+        "context_policy_revision",
+        "ended_at",
+        "incident_id",
+        "prompt_revision",
+        "run_id",
+        "run_state",
+        "span_kind",
+        "tool_schema_revision"
+      ]
+    }
+  ],
+  "other_rows": [
+    {
+      "entry_id": 1,
+      "kind": "generation",
+      "state": "pending",
+      "payload_keys": [
+        "attempt_id",
+        "ended_at",
+        "image_revision",
+        "image_version",
+        "incident_id",
+        "input_tokens",
+        "model",
+        "output_tokens",
+        "prompt_revision",
+        "span_kind",
+        "started_at",
+        "total_tokens"
+      ],
+      "incident_id": "606d9341-22f8-5f99-ad10-f852a892be64"
+    },
+    {
+      "entry_id": 9,
+      "kind": "generation",
+      "state": "pending",
+      "payload_keys": [
+        "attempt_id",
+        "ended_at",
+        "image_revision",
+        "image_version",
+        "incident_id",
+        "input_tokens",
+        "model",
+        "output_tokens",
+        "prompt_revision",
+        "span_kind",
+        "started_at",
+        "total_tokens"
+      ],
+      "incident_id": "606d9341-22f8-5f99-ad10-f852a892be64"
+    }
+  ],
+  "outbox_rows_total": 8,
+  "content_fields_found": [],
+  "checks": {
+    "payload_keys_outside_allowlist": [],
+    "string_values_outside_identifier_shape": [],
+    "content_needles_checked": 29,
+    "content_needles_found": [
+      "metrics_range_query (tool_name: the registry tool name, also the function name in the assistant's tool call; allowlisted)"
+    ]
+  },
+  "recorded_at": "2026-11-01T08:25:30Z"
+}
