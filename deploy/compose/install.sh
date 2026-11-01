@@ -41,7 +41,8 @@
 #                             only when <secrets dir>/worker_env holds
 #                             LANGSMITH_API_KEY and LANGSMITH_PROJECT=
 #                             opspilot-lab-* (optional LANGSMITH_ENDPOINT, a
-#                             LangSmith SaaS https URL); otherwise nothing is
+#                             LangSmith SaaS https URL, and optional
+#                             LANGSMITH_WORKSPACE_ID); otherwise nothing is
 #                             sent and /metrics reports why
 #
 # Generated once and never regenerated (re-running keeps every password):

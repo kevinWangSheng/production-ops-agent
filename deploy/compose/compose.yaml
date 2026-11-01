@@ -133,7 +133,8 @@ services:
     command: ["python", "-m", "opspilot.worker_main"]
     environment:
       OPSPILOT_WORKER_DSN: "host=postgres port=5432 dbname=opspilot user=opspilot_worker_app passfile=/run/secrets/worker_pgpass"
-      # Model and LangSmith keys, LANGSMITH_PROJECT / LANGSMITH_ENDPOINT, and
+      # Model and LangSmith keys, LANGSMITH_PROJECT / LANGSMITH_ENDPOINT /
+      # LANGSMITH_WORKSPACE_ID, and
       # for OPSPILOT_TOOL_PROFILE=otel-demo the OPSPILOT_OTEL_* endpoints and
       # credentials (all but the keys exported by the entrypoint).
       OPSPILOT_ENV_FILE: /run/secrets/worker_env

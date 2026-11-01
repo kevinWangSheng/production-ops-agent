@@ -34,8 +34,9 @@ trim() {
 # The worker's private env file (OPSPILOT_ENV_FILE, the worker_env secret)
 # also holds the investigation-side OTel settings, which the tool profile
 # reads only from the environment (opspilot/tools/otel_demo.py), and the
-# LangSmith project and endpoint the trace export reads (opspilot/tracing.py,
-# #428); export those and nothing else (worker_main reads the model and
+# LangSmith project, endpoint and workspace id the trace export reads
+# (opspilot/tracing.py, opspilot/outbox_delivery.py; #428); export those and
+# nothing else (worker_main reads the model and
 # LangSmith keys from the file itself). Same reading as worker_main._read_env_file: per KEY, the first
 # KEY=value line wins; line and value are stripped and one pair of matching
 # quotes removed.
@@ -54,7 +55,7 @@ if [ -n "$env_file" ]; then
             OPSPILOT_OTEL_PROMETHEUS_URL | OPSPILOT_OTEL_JAEGER_URL | \
                 OPSPILOT_OTEL_TOKEN | OPSPILOT_OTEL_PROMETHEUS_USERNAME | \
                 OPSPILOT_OTEL_PROMETHEUS_PASSWORD | LANGSMITH_PROJECT | \
-                LANGSMITH_ENDPOINT) ;;
+                LANGSMITH_ENDPOINT | LANGSMITH_WORKSPACE_ID) ;;
             *) continue ;;
         esac
         case "$imported" in *" $name "*) continue ;; esac

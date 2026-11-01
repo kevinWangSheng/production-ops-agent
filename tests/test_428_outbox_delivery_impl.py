@@ -329,6 +329,7 @@ def test_the_entrypoint_exports_the_langsmith_project_and_endpoint_not_the_key(
         f"LANGSMITH_API_KEY={SENTINEL_KEY}\n"
         "LANGSMITH_PROJECT='opspilot-lab-428'\n"
         "LANGSMITH_ENDPOINT=https://api.smith.langchain.com\n"
+        "LANGSMITH_WORKSPACE_ID=00000000-0000-0000-0000-000000000428\n"
     )
     result = subprocess.run(
         ["sh", str(ENTRYPOINT), "env"],
@@ -341,6 +342,12 @@ def test_the_entrypoint_exports_the_langsmith_project_and_endpoint_not_the_key(
     env = dict(line.split("=", 1) for line in result.stdout.splitlines() if "=" in line)
     assert env["LANGSMITH_PROJECT"] == "opspilot-lab-428"
     assert env["LANGSMITH_ENDPOINT"] == "https://api.smith.langchain.com"
+    assert env["LANGSMITH_WORKSPACE_ID"] == "00000000-0000-0000-0000-000000000428"
+    config = ExportConfig.from_env(
+        {**env, "OPSPILOT_TRACE": "outbox", "LANGSMITH_API_KEY": SENTINEL_KEY}
+    )
+    assert config is not None
+    assert config.headers()["x-tenant-id"] == "00000000-0000-0000-0000-000000000428"
     assert "LANGSMITH_API_KEY" not in env
     assert SENTINEL_KEY not in result.stdout + result.stderr
 
