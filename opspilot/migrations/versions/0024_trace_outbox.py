@@ -84,7 +84,8 @@ CREATE TABLE {TABLE} (
   incident_id uuid NOT NULL,
   run_id uuid,
   kind text NOT NULL CHECK (kind IN ('run_state', 'model_step', 'tool_result', 'generation')),
-  payload jsonb NOT NULL CHECK (jsonb_typeof(payload) = 'object' AND octet_length(payload::text) <= 4096),
+  payload jsonb NOT NULL CHECK (octet_length(payload::text) <= 4096)
+    CHECK (jsonb_typeof(payload) = 'object'),
   state text NOT NULL DEFAULT 'pending' CHECK (state IN ('pending', 'delivered', 'dropped')),
   attempts integer NOT NULL DEFAULT 0 CHECK (attempts >= 0),
   next_attempt_at timestamptz,
