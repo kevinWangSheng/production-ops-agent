@@ -97,7 +97,7 @@
  },
  "unconfirmed_measured": {
   "compose_stop_default_timeout": "10 s then SIGKILL (Compose 5.1.0, SIGTERM-ignoring probe container: 10.19 s, exit 137)",
-  "observer_missed_due_samples": "one sample after restart, no catch-up: last sample 17:08:32Z, next due 17:09:32Z, Observer down 17:09:30-17:14:05Z (about 4 missed intervals of 60 s), then one sample at 17:14:37Z and the normal cadence (17:16:07Z); next due = sample time + interval (observation/store.py:2079)"
+  "observer_missed_due_samples": "one sample after restart, no backfill: last sample submitted 17:08:32Z, next due 17:09:32Z, Observer down 17:09:30-17:14:05Z (about 4 missed 60 s intervals), then one sample submitted 17:14:37Z and the usual cadence (17:16:07Z); next due = submit time + interval (observation/store.py:2079)"
  },
  "segments": {
   "upgrade": {
@@ -227,7 +227,7 @@
    "old_run_final": "cancelled",
    "pass": true
   },
-  "end": "stack upgraded back to NEW (17:25:11-17:25:51Z), then all runtimes and postgres stopped; volume and secrets kept; target_identities.json restored (sha256 1714ab7b...)"
+  "end": "stack upgraded back to NEW (17:25:11-17:25:51Z), then all runtimes and postgres stopped; database volume kept; target_identities.json restored (sha256 1714ab7b...)"
  },
  "snapshots": {
   "S0-pre-upgrade": {
@@ -550,7 +550,11 @@
    "ecde07b8-df20-5318-a17e-20aa744f280e",
    "e7ca88c8-8bc2-576b-abec-36dca4212512"
   ],
-  "balance": "not observed by the Agent (K2); user reconciles"
+  "balance": "not observed by the Agent (K2); lead reconciles the DeepSeek balance in the brief",
+  "setup_only_runs": [
+   "b2966b23-ec47-5529-b49d-6ea62ead7a3e",
+   "230edc28-2eb5-53f3-bf53-52eed713ed98"
+  ]
  },
  "lead_revisions": {
   "r4": "NEW = a285cfc5 (04eec52d + downgrade CLI, grace, docs): 04eec52d has no downgrade action",
@@ -560,5 +564,32 @@
   "start": 1344,
   "min": 415,
   "end": 503
+ },
+ "sample_cadence": {
+  "configured_interval_seconds": 60,
+  "measured_submit_to_submit_seconds": {
+   "before_gap": [
+    89.5,
+    91.0,
+    89.3,
+    89.0,
+    89.7
+   ],
+   "after_gap": [
+    90.0,
+    88.6,
+    89.7,
+    90.2,
+    91.9
+   ]
+  },
+  "sample_duration_seconds": "about 29-31 (window_end/claim to submitted_at)",
+  "explanation": "cadence = 60 s interval counted from the previous submit + about 30 s per sample; unchanged across the outage",
+  "incompat_segment_gap": {
+   "due": "17:17:07Z",
+   "next_claim": "17:19:11Z",
+   "inference": "a sample was claimed and not submitted when the Observer was recreated; the next claim waited for the 120 s sample lease (not checked line by line)",
+   "backfilled": false
+  }
  }
 }
