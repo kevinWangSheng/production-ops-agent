@@ -11,7 +11,7 @@ environment and they never appear on argv.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 
 from scripts.holmes_baseline.config import MODEL_ENV
 
@@ -27,6 +27,9 @@ ENV_ALLOWLIST = (
     "HOME",
     *MODEL_ENV,
     *SECRET_ENV,
+    # #385 F14 step 3: the max-output-token-reservation case sets only this
+    # (``model_env`` below) instead of OVERRIDE_MAX_OUTPUT_TOKEN
+    "MAX_OUTPUT_TOKEN_RESERVATION",
 )
 
 
@@ -41,10 +44,13 @@ def run_args(
     name: str | None = None,
     command: Sequence[str] = (),
     entrypoint: str | None = None,
+    model_env: Mapping[str, str] | None = None,
 ) -> list[str]:
     """``docker run`` argument list; ``command`` follows the image (the
     image's entrypoint is ``python holmes_cli.py``). ``entrypoint`` replaces
-    only that, e.g. for the isolation probe (#399); the shape is unchanged."""
+    only that, e.g. for the isolation probe (#399); the shape is unchanged.
+    ``model_env`` replaces ``MODEL_ENV`` for one step 3 case (#385); every
+    name must still be allowlisted."""
     env = {
         # every proxy-aware client (litellm/httpx, requests) leaves through the
         # egress proxy, except the lab relay named in NO_PROXY
@@ -53,7 +59,7 @@ def run_args(
         "NO_PROXY": no_proxy,
         # read-only root: Holmes' caches and tool-result spill live in /tmp
         "HOME": "/tmp",
-        **MODEL_ENV,
+        **(MODEL_ENV if model_env is None else model_env),
     }
     args = ["docker", "run", "--rm"]
     if name:

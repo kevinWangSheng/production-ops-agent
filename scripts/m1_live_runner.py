@@ -44,6 +44,11 @@ coverage and ``collection_truncated`` for the Run, and which of
 ``#coverage-gaps`` / ``#collection-truncated`` the workbench page rendered
 for the incident. ``--f3-answer evals/f3/missing-source/answer.json`` also
 computes that scenario's deterministic U6-a verdict.
+``--question TEXT`` replaces the otel-demo question, and
+``--first-request-out PATH`` writes the exact bytes of the Run's first model
+request (``loop.serialized_request``) to an ignored path: F14 step 3 (#385,
+S7/L5) freezes its sha256 and ``data_sources`` projection from it. Both are
+opt-in; without them nothing changes.
 ``--sweep --timeout-follow-up`` then applies one follow_up to the timed-out
 Run: control() records the note and starts a fresh Run (user decision
 2026-09-25, ``renew_*``) whose input is the C3 continuation of the timed-out
@@ -84,6 +89,7 @@ from opspilot.investigation.loop import (
     DISCIPLINE_VARIANT,
     MAX_TOOL_PARALLELISM,
     prompt_revision_versions,
+    serialized_request,
 )
 from opspilot.investigation.reports import parse_report as parse_report_v2
 from opspilot.investigation.runner import InvestigationRunner
@@ -296,6 +302,26 @@ def _outcome(outcome):
     }
 
 
+class FirstRequestTap:
+    """Pass-through model client that keeps the first request's bytes (#385)."""
+
+    def __init__(self, inner: RecordingClient, path: Path):
+        self.inner = inner
+        self.path = path
+        self.written = False
+
+    @property
+    def attempts(self) -> list[dict]:
+        return self.inner.attempts
+
+    def complete(self, call):
+        if not self.written:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            self.path.write_bytes(serialized_request(call))
+            self.written = True
+        return self.inner.complete(call)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--model-requests", type=int, default=2)
@@ -318,6 +344,8 @@ def main() -> int:
     )
     parser.add_argument("--f3-coverage", action="store_true")
     parser.add_argument("--f3-answer", type=Path, default=None)
+    parser.add_argument("--question", default=None)
+    parser.add_argument("--first-request-out", type=Path, default=None)
     args = parser.parse_args()
     if args.f3_answer is not None and not args.f3_coverage:
         raise SystemExit("--f3-answer requires --f3-coverage")
@@ -373,7 +401,8 @@ def main() -> int:
     if args.tool_profile == "otel-demo":
         profile = select_profile({**os.environ, PROFILE_ENV: "otel-demo"})
         versions = profile.versions()
-        face, target_id, question = profile.face(clock), OTEL_TARGET_ID, OTEL_QUESTION
+        face, target_id = profile.face(clock), OTEL_TARGET_ID
+        question = args.question or OTEL_QUESTION
         factory = profile.executor_factory(store, evidence, clock)
     else:
         versions = dict(VERSIONS)
@@ -397,6 +426,8 @@ def main() -> int:
         input=input.as_json(),
     )
     recorder = RecordingClient(DeepSeekClient(key, clock=clock))
+    if args.first_request_out is not None:
+        recorder = FirstRequestTap(recorder, args.first_request_out)  # type: ignore[assignment]
     del key
     runner = InvestigationRunner(
         store=store,
