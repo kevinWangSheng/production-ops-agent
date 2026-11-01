@@ -240,7 +240,10 @@ class _Offline:
 # The transport's verdict on an evidence read whose parameters are well
 # formed: it then asks the evidence store, which a recording does not carry,
 # so EVIDENCE_NOT_READABLE (``evidence_read.py`` :284-312) can be neither
-# proved nor ruled out offline.
+# proved nor ruled out offline. It is accepted (lead ruling, #425); residual
+# risk, ``read_evidence`` only: another pre-dispatch refusal relabeled as this
+# one, or as a post-fetch denial after it, passes. ``recording._KeptRecords``
+# rejects it where the recording shows the record readable.
 _STORE_DEPENDENT = "EVIDENCE_NOT_READABLE?"
 
 # A pre-send ``elapsed_seconds`` is monotonic time measured between

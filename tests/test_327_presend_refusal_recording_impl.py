@@ -30,13 +30,17 @@ from opspilot.tools.executor import (
 )
 from opspilot.tools.otel_demo import METRICS_TOOL, TRACES_TOOL
 from opspilot.tools.outcomes import ToolOutcome, Window
-from opspilot.tools.registry import TargetRegistry
+from opspilot.tools.registry import TargetRegistry, canonical
+from opspilot.web.evidence import MemoryEvidenceStore
 from tests.test_308_pr2_read_evidence_impl import (
+    ROWS,
     _check,
     _eval_context,
+    _factory,
+    _matrix,
     _over_limit,
 )
-from tests.test_m1_otel_demo_contract import GOOD_EXPR, NOW, WINDOW, _call
+from tests.test_m1_otel_demo_contract import GOOD_EXPR, NOW, WINDOW, FakeOpener, _call
 
 EVENT_CLOCK = NOW + timedelta(minutes=30)
 
@@ -818,3 +822,77 @@ def test_a_presend_elapsed_longer_than_its_recorded_interval_is_rejected(
     forged = _with_op(outcome, elapsed_seconds=wall + 5)
     with pytest.raises(StorageError, match="IDENTITY_MISMATCH"):
         _check(executor, ctx, call, forged)
+
+
+# -- lead ruling: a store-dependent EVIDENCE_NOT_READABLE is accepted unless
+# the recording itself shows the record readable ---------------------------
+
+
+def _not_readable_for(monkeypatch, evidence_id_of):
+    executor, _, _, _, parent = _over_limit(monkeypatch)
+    ctx = _eval_context(executor)
+    genuine = executor.execute(
+        _call(EVIDENCE_TOOL, {"evidence_id": "nope:1", "limit": 1}, index=1)
+    )
+    assert (genuine.reason, genuine.operation.sent) == ("EVIDENCE_NOT_READABLE", False)
+    call = _call(
+        EVIDENCE_TOOL, {"evidence_id": evidence_id_of(parent), "limit": 1}, index=1
+    )
+    # The forger points the request (and the operation's query) elsewhere.
+    forged = _with_op(genuine, query=canonical(dict(call.params)))
+    return executor, ctx, parent, call, forged
+
+
+def test_not_readable_for_this_runs_own_kept_record_is_rejected(monkeypatch):
+    from opspilot.evaluation.recording import _KeptRecords
+
+    executor, ctx, parent, call, genuine = _not_readable_for(
+        monkeypatch, lambda parent: parent.model_view["evidence_id"]
+    )
+    # Offline the store is unknown, so the outcome alone still validates ...
+    _check(executor, ctx, call, genuine)
+    kept = _KeptRecords()
+    kept.note(parent)
+    # ... but the recording already holds that readable record.
+    with pytest.raises(StorageError, match="IDENTITY_MISMATCH"):
+        kept.check(call, genuine)
+
+
+@pytest.mark.parametrize("other", ["another-record", "another-target"])
+def test_not_readable_for_a_record_the_recording_does_not_show_is_kept(
+    monkeypatch, other
+):
+    from opspilot.evaluation.recording import _KeptRecords
+
+    executor, ctx, parent, call, genuine = _not_readable_for(
+        monkeypatch,
+        lambda parent: (
+            "foreign:1"
+            if other == "another-record"
+            else parent.model_view["evidence_id"]
+        ),
+    )
+    kept = _KeptRecords()
+    kept.note(
+        parent
+        if other == "another-record"
+        else _with_op(parent, target_id="another-target")
+    )
+    kept.check(call, genuine)
+
+
+def test_an_adopted_record_is_not_a_readable_parent(monkeypatch):
+    from opspilot.evaluation.recording import _KeptRecords
+
+    opener = FakeOpener(by_query={GOOD_EXPR: _matrix(ROWS[:2])})
+    executor, _ = _factory(monkeypatch, opener, MemoryEvidenceStore())
+    ok = executor.execute(_call(METRICS_TOOL, {"expr": GOOD_EXPR}, index=2))
+    assert ok.status == "ok" and ok.evidence.adopted
+    kept = _KeptRecords()
+    kept.note(ok)  # adopted evidence: read_evidence refuses it genuinely
+    call = _call(
+        EVIDENCE_TOOL, {"evidence_id": ok.model_view.get("evidence_id"), "limit": 1}
+    )
+    refused = executor.execute(call)
+    assert refused.reason == "EVIDENCE_NOT_READABLE"
+    kept.check(call, refused)
