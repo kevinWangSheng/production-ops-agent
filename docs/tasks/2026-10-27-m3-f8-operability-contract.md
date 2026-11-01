@@ -69,7 +69,7 @@ override 给 worker 加 `extra_hosts: ["api.deepseek.com:127.0.0.1"]` 后 `up -d
 
 ## 字段对照表（F8 第 1 步，预审 :71-86 定稿）
 
-本步只暴露进程级三项（服务健康、队列深度、provider 状态）+ 版本。工具错误、token、成本、trace 已按 `run_id` 落 PG，缺的是导出，归 #243（F8 第 2 实施步骤，自做预审）；卡住的 Run 本步只出 `queue_depth{state="running_lapsed"}`；结构化日志归 R10 的后续小 PR。事故 ID 不作标签（无界基数，也是 Q5 禁止的业务内容）。
+本步只暴露进程级三项（服务健康、队列深度、provider 状态）+ 版本。工具错误、token、成本、trace 已按 `run_id` 落 PG，缺的是导出，归 #243（F8 第 2 实施步骤；合同 r3 已裁，见下文，实施 #427/#428）；卡住的 Run 本步只出 `queue_depth{state="running_lapsed"}`；结构化日志归 R10 的后续小 PR。事故 ID 不作标签（无界基数，也是 Q5 禁止的业务内容）。
 
 ## 实施切分（均目标 `main`，不做 stacked PR）
 
