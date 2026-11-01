@@ -276,3 +276,33 @@ def test_an_overlong_key_is_hashed_before_it_reaches_the_check():
     assert key.startswith("tool_result:sha256-")
     assert "total_tokens" not in payload.obj
     json.dumps(payload.obj, allow_nan=False)
+
+
+@pytest.mark.parametrize(
+    "response",
+    [
+        "oops",
+        7,
+        None,
+        [{"usage": {}}],
+        {"usage": "x"},
+        {"usage": {"completion_tokens_details": 3}},
+    ],
+)
+def test_step_field_extraction_never_raises_on_a_malformed_response(response):
+    from opspilot.persistence.steps import _field, _tool_call_id, _usage_fields
+
+    fields = {
+        "model": _field(response, "response_model"),
+        "finish_reason": _field(response, "finish_reason"),
+        **_usage_fields(response),
+    }
+    assert build_payload(fields) == {}
+    assert _tool_call_id(response, 0) == "#0"
+
+
+@pytest.mark.parametrize("odd", [["a"], {"a": 1}, {1, 2}, object(), b"bytes"])
+def test_build_payload_never_raises_on_odd_value_types(odd):
+    payload = build_payload({key: odd for key in PAYLOAD_KEYS})
+    assert set(payload) <= PAYLOAD_KEYS
+    assert all(value == "UNCLASSIFIED" for value in payload.values())

@@ -538,3 +538,59 @@ def test_downgrade_reports_three_counts_drops_the_outbox_and_keeps_business_rows
                 (name,),
             )
             admin.execute(sql.SQL("DROP DATABASE {}").format(sql.Identifier(name)))
+
+
+def test_a_malformed_step_or_tool_view_still_commits_with_a_valid_outbox_row():
+    """OB-R6 (CI #436): the outbox reads any shape without raising; the
+    malformed step is committed and ``rebuild`` refuses it, as before."""
+    from datetime import UTC, datetime
+
+    from opspilot.persistence import PersistenceError
+
+    store = DurableStore(DSN)
+    for broken in ("oops", [{"tool_calls": []}], 7, {"assistant": "oops"}):
+        incident, run = uuid4(), uuid4()
+        store.accept(
+            incident,
+            run,
+            f"427-malformed-{incident}",
+            deadline=datetime.now(UTC) + timedelta(minutes=2),
+            budget_limit=10,
+            versions={"state": "v1"},
+        )
+        lease = store.claim(incident, run, uuid4(), {"state": "v1"})
+        store.commit_step(lease, "round-1", broken)
+        with pytest.raises(PersistenceError, match="INCONSISTENT_STATE"):
+            store.rebuild(incident)
+        (row,) = [r for r in _rows(run) if r["kind"] == "model_step"]
+        assert row["idempotency_key"] == f"model_step:{run}:0"
+        assert set(row["payload"]) <= outbox.PAYLOAD_KEYS
+        assert not {"model", "finish_reason", "input_tokens"} & set(row["payload"])
+
+    # a tool view whose fields have the wrong types still commits
+    incident, run = uuid4(), uuid4()
+    store.accept(
+        incident,
+        run,
+        f"427-odd-view-{incident}",
+        deadline=datetime.now(UTC) + timedelta(minutes=2),
+        budget_limit=10,
+        versions={"state": "v1"},
+    )
+    lease = store.claim(incident, run, uuid4(), {"state": "v1"})
+    step = store.commit_step(
+        lease,
+        "round-1",
+        {"assistant": {"tool_calls": [{"id": ["x"], "type": "function"}]}},
+    )
+    store.commit_tool(
+        lease,
+        step,
+        0,
+        {"tool": ["x"], "status": {"a": 1}, "reason": 3, "source_contact": None},
+    )
+    (tool,) = [r for r in _rows(run) if r["kind"] == "tool_result"]
+    assert tool["idempotency_key"] == f"tool_result:{run}:0:#0"
+    assert tool["payload"]["tool_status_class"] == "UNCLASSIFIED"
+    assert tool["payload"]["tool_reason"] == "UNCLASSIFIED"
+    assert "tool_name" not in tool["payload"]

@@ -55,11 +55,19 @@ def _tool_calls(container: dict[str, Any]) -> Any:
     return calls if isinstance(calls, list) else None
 
 
-def _usage_fields(response: Mapping[str, Any]) -> dict[str, Any]:
+def _field(container: Any, key: str) -> Any:
+    """``container[key]`` when ``container`` is a mapping, else ``None``. The
+    outbox reads business rows of any shape and never raises on one: a
+    malformed step is committed and refused later by ``rebuild``, exactly as
+    without the outbox (OB-R6)."""
+    return container.get(key) if isinstance(container, Mapping) else None
+
+
+def _usage_fields(response: Any) -> dict[str, Any]:
     """The token counts of a loop-shaped step response (``usage`` as the
     provider reported it), named as the outbox payload names them. Read key
     by key; ``build_payload`` drops anything that is not a number."""
-    usage = response.get("usage")
+    usage = _field(response, "usage")
     if not isinstance(usage, Mapping):
         return {}
     details = usage.get("completion_tokens_details")
@@ -216,8 +224,8 @@ class _StepOps(_StoreBase):
                     "incident_id": lease.incident_id,
                     "run_id": lease.run_id,
                     "step_id": step_id,
-                    "model": response.get("response_model"),
-                    "finish_reason": response.get("finish_reason"),
+                    "model": _field(response, "response_model"),
+                    "finish_reason": _field(response, "finish_reason"),
                     "ended_at": observed_at,
                     **_usage_fields(response),
                 },
@@ -309,10 +317,10 @@ class _StepOps(_StoreBase):
                     "incident_id": lease.incident_id,
                     "run_id": lease.run_id,
                     "step_id": step_id,
-                    "tool_name": result.get("tool"),
-                    "tool_status_class": result.get("status"),
-                    "tool_reason": result.get("reason"),
-                    "source_contact": result.get("source_contact"),
+                    "tool_name": _field(result, "tool"),
+                    "tool_status_class": _field(result, "status"),
+                    "tool_reason": _field(result, "reason"),
+                    "source_contact": _field(result, "source_contact"),
                     "ended_at": self._db_now(conn),
                 },
             )
