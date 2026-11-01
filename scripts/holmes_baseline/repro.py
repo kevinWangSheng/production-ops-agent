@@ -49,7 +49,7 @@ QUESTION = json.loads(
     ).read_text()
 )["stimulus"]["question"]
 EMPTY_BUT_CORRECT = (
-    'sum(increase(traces_span_metrics_calls_total{service_name="ad",'
+    'sum(increase(traces_span_metrics_calls_total{service_name="payment",'
     'status_code="STATUS_CODE_ERROR"}[5m])) > 0'
 )
 HIGH_CARDINALITY = "traces_span_metrics_calls_total"
@@ -105,14 +105,14 @@ CASES: dict[str, Case] = {
                             "execute_prometheus_instant_query",
                             {
                                 "query": EMPTY_BUT_CORRECT,
-                                "description": "ad error spans in the last 5m, if any",
+                                "description": "payment error spans in the last 5m, if any",
                             },
                         ),
                         _q(
                             "execute_prometheus_range_query",
                             {
                                 "query": EMPTY_BUT_CORRECT,
-                                "description": "ad error spans over the window, if any",
+                                "description": "payment error spans over the window, if any",
                                 "start": "-300",
                                 "output_type": "Plain",
                             },

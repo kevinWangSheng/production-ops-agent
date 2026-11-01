@@ -1,0 +1,41 @@
+{
+  "schema": "opspilot.f14.upstream-issue-run.v1",
+  "run_id": "f14s3-raw-alert-file-entry-1",
+  "slug": "raw-alert-in-prompt",
+  "case": "raw-alert-file-entry",
+  "mode": "scripted_model",
+  "entry": "investigate_alertmanager_file",
+  "image_id": "sha256:3f2995d1a448b34a0dbd3c07aa9276e8c812e96e8fc4ebcc9653b01d9ab2a30e",
+  "config_sha256": "4f84aa533d2538a9b9612984af73904787c93a28fec184a7a6d9acc0cc6f0974",
+  "config": {
+    "sha256": "4f84aa533d2538a9b9612984af73904787c93a28fec184a7a6d9acc0cc6f0974",
+    "differs_from_pin": true,
+    "reason": "api_base points at the scripted endpoint (R7)"
+  },
+  "stimulus": {
+    "fault_flag": null,
+    "fault_experiment_id": null
+  },
+  "container_env": {
+    "NO_PROXY": "f14-lab-relay,f14-capture,f14-alertmanager"
+  },
+  "model_env_overrides": {},
+  "started_at": "2026-11-01T21:48:41Z",
+  "finished_at": "2026-11-01T21:48:55Z",
+  "exit_code": 0,
+  "timed_out": false,
+  "requests": [],
+  "tool_results": [],
+  "answer_sha256": null,
+  "answer_checks": {},
+  "stdout_checks": {
+    "file_entry_fails_before_model": {
+      "hit": true,
+      "excerpt": "pydantic_core._pydantic_core.ValidationError: 1 validation error for Issue"
+    }
+  },
+  "proxy_checks": {},
+  "tool_checks": {},
+  "request_checks": {},
+  "balance_window": null
+}

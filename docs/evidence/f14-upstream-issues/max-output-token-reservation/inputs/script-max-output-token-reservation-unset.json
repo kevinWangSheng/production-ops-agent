@@ -1,0 +1,9 @@
+{
+  "schema": "opspilot.f14.capture-script.v1",
+  "case": "max-output-token-reservation-unset",
+  "turns": [
+    {
+      "final": "scripted endpoint: investigation finished"
+    }
+  ]
+}
