@@ -312,8 +312,10 @@ def test_mixed_binding_classes_are_rejected(tmp_path):
         {"kind": "source_unreachable", "params": {"source": "jaeger"}}
     ]
     answer_path.write_text(json.dumps(answer))
-    slots = _api("plan_slots")(mixed_root, ["all"], 1)
+    # Seams S2: a mixed round is a usage error; planning may already refuse it,
+    # otherwise the explicit binding check must.
     with pytest.raises(Exception) as exc:
+        slots = _api("plan_slots")(mixed_root, ["all"], 1)
         _api("validate_round_bindings")(slots)
     assert getattr(exc.value, "code", str(exc.value)) == "ROUND_BINDING_MIXED"
 
