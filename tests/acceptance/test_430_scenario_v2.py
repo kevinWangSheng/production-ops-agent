@@ -53,8 +53,9 @@ V1_FLAG_NAMES = {
     injected["flag"]
     for scenario_id in V1_IDS
     for injected in [
-        json.loads((V1_ROOT / scenario_id / "answer.json").read_text(encoding="utf-8"))
-        .get("injected")
+        json.loads(
+            (V1_ROOT / scenario_id / "answer.json").read_text(encoding="utf-8")
+        ).get("injected")
     ]
     if injected is not None
 }
@@ -121,12 +122,19 @@ def _v1_by_v2_answer(answer: dict[str, Any]) -> Path:
         matches = [
             scenario_id
             for scenario_id in V1_IDS
-            if _json(V1_ROOT / scenario_id / "answer.json")
-            .get("injected", {})
-            .get("flag")
+            if (_json(V1_ROOT / scenario_id / "answer.json").get("injected") or {}).get(
+                "flag"
+            )
             == flags[0]
         ]
-        assert len(matches) == 1
+        assert matches
+        # payment-1/payment-2 share a flag; like the two normals, the comparison
+        # requires every candidate to carry the same stimulus.
+        stimuli = {
+            json.dumps(_json(V1_ROOT / m / "scenario.json")["stimulus"], sort_keys=True)
+            for m in matches
+        }
+        assert len(stimuli) == 1
         return V1_ROOT / matches[0]
     normals = [scenario_id for scenario_id in V1_IDS if "normal" in scenario_id]
     return V1_ROOT / normals[0]
@@ -137,7 +145,11 @@ def _load_v2(root: Path):
 
 
 def _regression_source() -> Path:
-    return next(path for path in sorted(REGRESSION_ROOT.iterdir()) if not path.name.startswith("_"))
+    return next(
+        path
+        for path in sorted(REGRESSION_ROOT.iterdir())
+        if not path.name.startswith("_")
+    )
 
 
 def test_v2_regression_loader_reads_six_sorted_scenarios_and_skips_examples():
@@ -149,7 +161,9 @@ def test_v2_regression_loader_reads_six_sorted_scenarios_and_skips_examples():
     assert all(spec.scenario_id.startswith("dv2-") for spec, _answer in loaded)
     assert all(
         len(spec.scenario_id.removeprefix("dv2-")) == 6
-        and all(char in "0123456789abcdef" for char in spec.scenario_id.removeprefix("dv2-"))
+        and all(
+            char in "0123456789abcdef" for char in spec.scenario_id.removeprefix("dv2-")
+        )
         for spec, _answer in loaded
     )
     for spec, answer in loaded:
@@ -163,9 +177,7 @@ def test_v2_regression_loader_reads_six_sorted_scenarios_and_skips_examples():
         assert len(matching_dirs) == 1
 
     example_root = V2_ROOT / "capability" / "_example"
-    assert not any(
-        spec.scenario_id == "_example" for spec, _answer in loaded
-    )
+    assert not any(spec.scenario_id == "_example" for spec, _answer in loaded)
     assert example_root.name.startswith("_")
 
 
@@ -173,10 +185,13 @@ def test_v2_regression_stimulus_is_byte_for_byte_the_v1_stimulus():
     for spec, answer in _load_v2(V2_ROOT):
         if not (REGRESSION_ROOT / spec.scenario_id).is_dir():
             continue
-        v1_dir = _v1_by_v2_answer(_json(REGRESSION_ROOT / spec.scenario_id / "answer.json"))
-        assert _json(REGRESSION_ROOT / spec.scenario_id / "scenario.json")["stimulus"] == _json(
-            v1_dir / "scenario.json"
-        )["stimulus"]
+        v1_dir = _v1_by_v2_answer(
+            _json(REGRESSION_ROOT / spec.scenario_id / "answer.json")
+        )
+        assert (
+            _json(REGRESSION_ROOT / spec.scenario_id / "scenario.json")["stimulus"]
+            == _json(v1_dir / "scenario.json")["stimulus"]
+        )
         # Compare the stimulus object serialization-independent fields above;
         # the contract's "byte-for-byte" claim is about the stimulus payload.
         assert json.dumps(
@@ -195,7 +210,9 @@ def test_v2_scenario_files_contain_no_answer_side_or_leaking_terms():
         payload = _json(path)
         assert not (set(_walk_keys(payload)) & ANSWER_SIDE_KEYS)
         text = path.read_text(encoding="utf-8").lower()
-        forbidden = V2_CATEGORIES | {"fault", "normal"} | V1_FLAG_NAMES | KNOWN_METRIC_NAMES
+        forbidden = (
+            V2_CATEGORIES | {"fault", "normal"} | V1_FLAG_NAMES | KNOWN_METRIC_NAMES
+        )
         assert not [term for term in forbidden if term.lower() in text], path
 
 
