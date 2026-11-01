@@ -5,7 +5,7 @@
   "incident": {
     "feature_id": "F1",
     "acceptance_step": "eval-suite development baseline (not an acceptance step)",
-    "kind": "normal",
+    "kind": "eval",
     "subject_id": "otel-demo-checkout"
   },
   "stimulus": {

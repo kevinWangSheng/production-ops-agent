@@ -2,7 +2,7 @@
 
 评测开发集 v2（#430，收口合同 r1 V2-R1–R4、R7）。加载器是 `opspilot/evaluation/model.py` 的 `load_scenarios_v2`；`evals/scenarios/` 下的 v1 场景和 v1 解析器保持不变。
 
-- `regression/`：v1 的 6 个场景复制成 `version: "2"`，刺激逐字相同，问题入口。
+- `regression/`：v1 的 6 个场景复制成 `version: "2"`，刺激逐字相同，问题入口；`incident.kind` 统一为中性值 `eval`（v1 的 `fault`/`normal` 即极性，只写在答案侧 `polarity`）。
 - `capability/`：能力组（12 题在 #432）。`_example/` 是 schema 样例，以 `_` 开头的目录加载器跳过。
 
 每个场景目录名就是 `scenario_id`（`dv2-` + 6 位小写 hex）：

@@ -702,13 +702,16 @@ def stimulus_leaks(raw_scenario: str, answer: AnswerV2) -> tuple[str, ...]:
     """Answer-side words found in a scenario file's text (V2-R3/R4, H5).
 
     Case-insensitive: every category word (with ``_`` or a space), the
-    polarity words, and the flag names this scenario's injectors set.
+    polarity words and their v1 forms (``fault``/``normal``), and the flag
+    names this scenario's injectors set. ``incident.kind`` is therefore a
+    neutral value in v2; polarity lives only in the answer.
     """
     text = raw_scenario.lower()
     words: set[str] = set()
     for category in SCENARIO_CATEGORIES:
         words.update({category, category.replace("_", " ")})
     words.update(SCENARIO_POLARITIES)
+    words.update({"fault", "normal"})
     for injector in answer.injectors:
         flag = injector.params.get("flag") if injector.kind == "flagd" else None
         if isinstance(flag, str):
