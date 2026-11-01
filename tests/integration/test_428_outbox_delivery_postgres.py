@@ -414,3 +414,88 @@ def test_the_running_outbox_thread_delivers_through_the_real_store(
         span_id_for(f"model_step:{run_id}:1")
     ]
     assert stats.snapshot()["pending"] == 0
+
+
+def test_backlog_trim_skips_a_row_another_worker_is_sending(
+    scratch_dsn, worker_dsn, endpoint
+):
+    """bot P1 on #441: a row inside its claim lease is in flight; the trim
+    takes the next-oldest instead, so the sender can still finalize it."""
+    with psycopg.connect(scratch_dsn) as conn:
+        conn.execute(
+            f"INSERT INTO {OUTBOX}(idempotency_key,incident_id,run_id,kind,payload,created_at) "
+            "SELECT 'model_step:' || g, gen_random_uuid(), gen_random_uuid(), 'model_step', '{}', "
+            "timestamptz '2026-11-01 00:00+00' + g * interval '1 second' "
+            "FROM generate_series(1, %s) g",
+            (BACKLOG_LIMIT + 1,),
+        )
+    other = OutboxStore(worker_dsn)
+    (in_flight,) = other.claim(limit=1, lease=timedelta(seconds=30), now=T0).rows
+    assert in_flight.idempotency_key == "model_step:1"  # the oldest
+    assert (
+        OutboxStore(worker_dsn).trim_backlog(
+            limit=BACKLOG_LIMIT, now=T0 + timedelta(seconds=1)
+        )
+        == 1
+    )
+    assert _state(scratch_dsn, in_flight.entry_id)[0] == "pending"
+    with psycopg.connect(scratch_dsn) as conn:
+        dropped = conn.execute(
+            f"SELECT idempotency_key FROM {OUTBOX} WHERE drop_reason='BACKLOG'"
+        ).fetchall()
+    assert dropped == [("model_step:2",)]
+    assert (
+        other.mark_delivered([in_flight.entry_id], now=T0 + timedelta(seconds=2)) == 1
+    )
+
+
+def test_a_backed_off_row_is_still_trimmed_once_its_retry_is_beyond_the_lease(
+    scratch_dsn, worker_dsn
+):
+    with psycopg.connect(scratch_dsn) as conn:
+        conn.execute(
+            f"INSERT INTO {OUTBOX}(idempotency_key,incident_id,run_id,kind,payload,created_at,attempts,next_attempt_at) "
+            "SELECT 'model_step:' || g, gen_random_uuid(), gen_random_uuid(), 'model_step', '{}', "
+            "timestamptz '2026-11-01 00:00+00' + g * interval '1 second', "
+            "CASE WHEN g = 1 THEN 5 ELSE 0 END, "
+            "CASE WHEN g = 1 THEN %s ELSE NULL END "
+            "FROM generate_series(1, %s) g",
+            (T0 + timedelta(seconds=160), BACKLOG_LIMIT + 1),
+        )
+    assert OutboxStore(worker_dsn).trim_backlog(limit=BACKLOG_LIMIT, now=T0) == 1
+    with psycopg.connect(scratch_dsn) as conn:
+        assert conn.execute(
+            f"SELECT idempotency_key FROM {OUTBOX} WHERE drop_reason='BACKLOG'"
+        ).fetchall() == [("model_step:1",)]
+
+
+def test_a_row_claimed_for_its_eighth_attempt_is_never_sent_a_ninth_time(
+    scratch_dsn, worker_dsn
+):
+    """bot P2 on #441: the worker died after the claim that counted attempt 8;
+    after the lease the row is dropped(MAX_ATTEMPTS) in the claim, not sent."""
+    entry = _insert(scratch_dsn)
+    with psycopg.connect(scratch_dsn) as conn:
+        conn.execute(
+            f"UPDATE {OUTBOX} SET attempts = %s WHERE entry_id = %s",
+            (MAX_ATTEMPTS - 1, entry),
+        )
+    store = OutboxStore(worker_dsn)
+    (claimed,) = store.claim(limit=10, lease=timedelta(seconds=30), now=T0).rows
+    assert claimed.attempts == MAX_ATTEMPTS  # the worker "dies" here
+    calls = []
+    clock = Clock()
+    clock.now = T0 + timedelta(seconds=31)
+    stats = health.OutboxStats(("ENABLED",))
+    delivery = OutboxDelivery(
+        store,
+        ExportConfig("http://127.0.0.1:9/otel/v1/traces", KEY, "opspilot-lab-428"),
+        clock=clock,
+        stats=stats,
+        transport=lambda *a: calls.append(1) or 200,
+    )
+    result = delivery.deliver_once()
+    assert calls == []
+    assert (result.claimed, result.dropped) == (0, {"MAX_ATTEMPTS": 1})
+    assert _state(scratch_dsn, entry)[:3] == ("dropped", "MAX_ATTEMPTS", MAX_ATTEMPTS)
+    assert stats.snapshot()["dropped"]["MAX_ATTEMPTS"] == 1

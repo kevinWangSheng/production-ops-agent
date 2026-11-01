@@ -49,6 +49,7 @@ __all__ = [
     "PURGE_INTERVAL_SECONDS",
     "RETENTION",
     "THREAD_NAME",
+    "ClaimResult",
     "ClaimedRow",
     "OutboxMaintainer",
     "OutboxStore",
@@ -96,6 +97,9 @@ KINDS: frozenset[str] = frozenset(
     {"run_state", "model_step", "tool_result", "generation"}
 )
 RETENTION = timedelta(days=7)
+#: How long a claimed row belongs to its claimer: ``claim`` pushes
+#: ``next_attempt_at`` this far ahead (``opspilot.outbox_delivery``).
+CLAIM_LEASE = timedelta(seconds=30)
 THREAD_NAME = "opspilot-outbox"
 PURGE_INTERVAL_SECONDS = 600.0
 
@@ -352,6 +356,15 @@ class ClaimedRow:
     run_started_at: datetime | None
 
 
+@dataclass(frozen=True)
+class ClaimResult:
+    """One claim: the rows to send, and how many due rows the claim instead
+    dropped with ``MAX_ATTEMPTS`` (their attempts were already used up)."""
+
+    rows: list[ClaimedRow]
+    exhausted: int = 0
+
+
 class OutboxStore(_StoreBase):
     """The worker's outbox maintenance and delivery transactions. Every
     ``now`` defaults to the database clock (the clock ``created_at`` is
@@ -369,9 +382,21 @@ class OutboxStore(_StoreBase):
             )
             return int(row["n"])
 
-    def trim_backlog(self, *, limit: int, now: datetime | None = None) -> int:
+    def trim_backlog(
+        self, *, limit: int, now: datetime | None = None, lease: timedelta = CLAIM_LEASE
+    ) -> int:
         """Mark the oldest pending rows beyond ``limit`` ``dropped(BACKLOG)``
-        (OB-R5); returns how many. A row another worker holds is skipped."""
+        (OB-R5); returns how many.
+
+        A row a worker is sending is skipped: one locked by a claim in
+        progress (``SKIP LOCKED``), and one inside its claim lease, i.e.
+        ``next_attempt_at`` in ``(now, now + lease]`` -- the claim sets it to
+        claim time + lease and the sender replaces it when it settles. A
+        backed-off row whose next retry falls in that window (the 5, 10 and
+        20 s backoffs) is indistinguishable and is skipped too; it is due
+        within ``lease`` and trimmable from then on, so the cap holds again
+        within one lease. Rows due now, never tried, or backed off further
+        than the lease are trimmed as before."""
         with self.transaction() as conn:
             row = self._require_row(
                 conn.execute(
@@ -381,34 +406,61 @@ class OutboxStore(_StoreBase):
             excess = int(row["n"]) - limit
             if excess <= 0:
                 return 0
+            at = self._now(conn, now)
             cursor = conn.execute(
                 "UPDATE opspilot_trace_outbox t SET state = 'dropped', "
                 "drop_reason = 'BACKLOG', finalized_at = %s "
                 "FROM (SELECT entry_id FROM opspilot_trace_outbox WHERE state = 'pending' "
+                "AND (next_attempt_at IS NULL OR next_attempt_at <= %s "
+                "OR next_attempt_at > %s) "
                 "ORDER BY created_at, entry_id LIMIT %s FOR UPDATE SKIP LOCKED) old "
                 "WHERE t.entry_id = old.entry_id",
-                (self._now(conn, now), excess),
+                (at, at, at + lease, excess),
             )
             return int(cursor.rowcount or 0)
 
     def claim(
-        self, *, limit: int, lease: timedelta, now: datetime | None = None
-    ) -> list[ClaimedRow]:
+        self,
+        *,
+        limit: int,
+        lease: timedelta,
+        now: datetime | None = None,
+        max_attempts: int | None = None,
+    ) -> ClaimResult:
         """Claim up to ``limit`` due pending rows (``FOR UPDATE SKIP LOCKED``,
         OB-R4): in the same transaction count the attempt and push
         ``next_attempt_at`` ``lease`` ahead, so no other worker claims them
-        while this one is sending, and a crash retries them after the lease."""
+        while this one is sending, and a crash retries them after the lease.
+        With ``max_attempts``, a due row whose attempts are already used up
+        (its last claim's worker died before settling) is dropped
+        ``MAX_ATTEMPTS`` here and not returned (``ClaimResult.exhausted``)."""
         with self.transaction() as conn:
             at = self._now(conn, now)
             rows = conn.execute(
                 "SELECT entry_id, idempotency_key, incident_id, run_id, kind, payload, "
-                "created_at FROM opspilot_trace_outbox WHERE state = 'pending' "
+                "attempts AS used, created_at FROM opspilot_trace_outbox WHERE state = 'pending' "
                 "AND (next_attempt_at IS NULL OR next_attempt_at <= %s) "
                 "ORDER BY entry_id LIMIT %s FOR UPDATE SKIP LOCKED",
                 (at, limit),
             ).fetchall()
+            exhausted = 0
+            if max_attempts is not None:
+                # a claim already counted the last attempt and its worker
+                # never settled it (crash): drop, never send again (OB-R5)
+                spent = [r["entry_id"] for r in rows if int(r["used"]) >= max_attempts]
+                if spent:
+                    exhausted = int(
+                        conn.execute(
+                            "UPDATE opspilot_trace_outbox SET state = 'dropped', "
+                            "drop_reason = 'MAX_ATTEMPTS', finalized_at = %s "
+                            "WHERE entry_id = ANY(%s)",
+                            (at, spent),
+                        ).rowcount
+                        or 0
+                    )
+                    rows = [r for r in rows if int(r["used"]) < max_attempts]
             if not rows:
-                return []
+                return ClaimResult([], exhausted)
             ids = [row["entry_id"] for row in rows]
             # attempts as counted by this claim (the UPDATE's RETURNING row)
             attempts = {
@@ -431,20 +483,25 @@ class OutboxStore(_StoreBase):
                         (run_ids,),
                     ).fetchall()
                 }
-            return [
-                ClaimedRow(
-                    entry_id=row["entry_id"],
-                    idempotency_key=row["idempotency_key"],
-                    incident_id=row["incident_id"],
-                    run_id=row["run_id"],
-                    kind=row["kind"],
-                    payload=row["payload"],
-                    attempts=attempts[row["entry_id"]],
-                    created_at=row["created_at"],
-                    run_started_at=starts.get(row["run_id"]) if row["run_id"] else None,
-                )
-                for row in rows
-            ]
+            return ClaimResult(
+                [
+                    ClaimedRow(
+                        entry_id=row["entry_id"],
+                        idempotency_key=row["idempotency_key"],
+                        incident_id=row["incident_id"],
+                        run_id=row["run_id"],
+                        kind=row["kind"],
+                        payload=row["payload"],
+                        attempts=attempts[row["entry_id"]],
+                        created_at=row["created_at"],
+                        run_started_at=starts.get(row["run_id"])
+                        if row["run_id"]
+                        else None,
+                    )
+                    for row in rows
+                ],
+                exhausted,
+            )
 
     def mark_delivered(
         self, entry_ids: Sequence[int], *, now: datetime | None = None

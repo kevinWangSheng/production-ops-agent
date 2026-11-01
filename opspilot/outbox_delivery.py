@@ -36,6 +36,7 @@ from uuid import UUID
 
 from opspilot import tracing
 from opspilot.persistence.outbox import (
+    CLAIM_LEASE,
     PAYLOAD_KEYS,
     ClaimedRow,
     OutboxMaintainer,  # the thread that runs this module (re-exported, seams-428)
@@ -73,7 +74,7 @@ BATCH_SIZE = 100
 BACKLOG_LIMIT = 20_000
 MAX_ATTEMPTS = 8
 BATCH_TIMEOUT_SECONDS = 10.0
-CLAIM_LEASE_SECONDS = 30.0
+CLAIM_LEASE_SECONDS = CLAIM_LEASE.total_seconds()  # 30.0
 DELIVERY_INTERVAL_SECONDS = 2.0
 DROP_REASONS: frozenset[str] = frozenset(
     {"MAX_ATTEMPTS", "REJECTED", "UNSERIALIZABLE", "BACKLOG"}
@@ -282,17 +283,27 @@ class OutboxDelivery:
 
     def deliver_once(self) -> DeliveryResult:
         result = DeliveryResult()
-        trimmed = self.store.trim_backlog(limit=BACKLOG_LIMIT, now=self._now())
+        trimmed = self.store.trim_backlog(
+            limit=BACKLOG_LIMIT,
+            now=self._now(),
+            lease=timedelta(seconds=CLAIM_LEASE_SECONDS),
+        )
         if trimmed:
             result.dropped["BACKLOG"] = trimmed
             if self.stats is not None:
                 self.stats.record_dropped("BACKLOG", trimmed)
             _log.warning("trace outbox backlog dropped=%d", trimmed)
-        rows = self.store.claim(
+        claim = self.store.claim(
             limit=BATCH_SIZE,
             lease=timedelta(seconds=CLAIM_LEASE_SECONDS),
             now=self._now(),
+            max_attempts=MAX_ATTEMPTS,
         )
+        if claim.exhausted:
+            result.dropped["MAX_ATTEMPTS"] = claim.exhausted
+            if self.stats is not None:
+                self.stats.record_dropped("MAX_ATTEMPTS", claim.exhausted)
+        rows = claim.rows
         result.claimed = len(rows)
         if rows:
             self._send(rows, result)
