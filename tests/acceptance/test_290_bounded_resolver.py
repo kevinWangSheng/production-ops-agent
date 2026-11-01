@@ -79,6 +79,12 @@ def _transport() -> OtelDemoTransport:
 
 
 def _guarded(call, timeout: float = 3.0):
+    thread, result = _start_guarded(call)
+    thread.join(timeout)
+    return thread, result
+
+
+def _start_guarded(call):
     result: dict[str, object] = {}
     started = time.monotonic()
 
@@ -92,7 +98,6 @@ def _guarded(call, timeout: float = 3.0):
 
     thread = threading.Thread(target=run, daemon=True, name="issue-290-guard")
     thread.start()
-    thread.join(timeout)
     return thread, result
 
 
@@ -212,7 +217,7 @@ def test_concurrent_stuck_queries_share_two_resolver_slots(monkeypatch):
     try:
         for tool in (METRICS_TOOL, TRACES_TOOL, METRICS_TOOL, TRACES_TOOL):
             calls.append(
-                _guarded(
+                _start_guarded(
                     lambda tool=tool: _transport().fetch(
                         _request(f"http://{BLOCKED_HOST}:4318", tool=tool)
                     )
@@ -240,12 +245,14 @@ def test_waiting_query_takes_freed_slot_and_succeeds(monkeypatch, local_server):
     )
     endpoint = f"http://{SUCCESS_HOST}:{local_server.server_port}"
     first_two = [
-        _guarded(lambda: _transport().fetch(_request(f"http://{BLOCKED_HOST}:4318")))
+        _start_guarded(
+            lambda: _transport().fetch(_request(f"http://{BLOCKED_HOST}:4318"))
+        )
         for _ in range(2)
     ]
     assert started_event.wait(1.0)
     assert _wait_until(lambda: stats()[0] == 2)
-    waiting_thread, waiting_result = _guarded(
+    waiting_thread, waiting_result = _start_guarded(
         lambda: _transport().fetch(_request(endpoint, timeout=2.0))
     )
     time.sleep(0.2)
