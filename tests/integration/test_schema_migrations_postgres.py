@@ -32,13 +32,14 @@ LEGACY_DDL = (
     pathlib.Path(__file__).parent / "legacy_schema_2026-10-05.sql"
 ).read_text()
 PG_DUMP = os.environ.get("OPSPILOT_PG_DUMP", "pg_dump")
-HEAD = "0023_retention_raw_cleanup"
+HEAD = "0024_trace_outbox"
 # opspilot_* tables at head: 15 in the baseline + 5 of 0003 (profiles,
 # sessions, samples, readings, endings) + 10 of 0008 (postmortems, versions,
 # conclusions, disputes, proposals, knowledge entries/revisions/revocations,
 # requests, audit) + 2 of 0009 (generation jobs, attempts) + 2 of 0010 (alert
-# identities, deliveries) + 1 of 0013 (self-heal authorizations).
-TABLES_AT_HEAD = 43
+# identities, deliveries) + 1 of 0013 (self-heal authorizations) + the later
+# release tables + 1 of 0024 (trace outbox).
+TABLES_AT_HEAD = 44
 
 
 @pytest.fixture
