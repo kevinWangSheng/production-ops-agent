@@ -26,6 +26,7 @@ from opspilot.evaluation.rounds import (
     manifest_hash,
     validate_manifest,
 )
+from opspilot.tools.evidence_read import EvidenceReadTransport
 from opspilot.tools.executor import (
     _GENERIC_VIEW_KEYS,
     _SPILLED_PROVENANCE_KEYS,
@@ -48,6 +49,7 @@ from opspilot.tools.otel_demo import (
     MAX_SUMMARY_LABELS,
     METRICS_TOOL,
     TOOL_NAMES,
+    OtelDemoTransport,
     _query_window,
     topk_suggestion,
 )
@@ -221,6 +223,90 @@ _CONTROL = {
 }
 
 
+class _WouldSend(BaseException):
+    """Raised where the shipped transport would leave the process."""
+
+
+class _Offline:
+    """An opener / evidence store that refuses to be used."""
+
+    def open(self, *args: object, **kwargs: object) -> NoReturn:
+        raise _WouldSend
+
+    def get(self, evidence_id: str) -> NoReturn:
+        raise _WouldSend
+
+
+# The transport's verdict on an evidence read whose parameters are well
+# formed: it then asks the evidence store, which a recording does not carry,
+# so EVIDENCE_NOT_READABLE (``evidence_read.py`` :284-312) can be neither
+# proved nor ruled out offline.
+_STORE_DEPENDENT = "EVIDENCE_NOT_READABLE?"
+
+# A pre-send ``elapsed_seconds`` is monotonic time measured between
+# ``authorized_at`` and ``finished_at`` (``executor.py`` :1043-1080); this much
+# wall/monotonic disagreement is tolerated.
+_CLOCK_SLACK_SECONDS = 1.0
+
+
+def _transport_refusal(
+    reg: ToolRegistration,
+    target: RegisteredTarget,
+    scope: QueryScope,
+    op: Any,
+    window: Window,
+    params: Mapping[str, object],
+) -> str | None:
+    """The code the shipped transport refuses this exact request with before
+    sending (#425 bot P1), ``None`` when it would send it, or
+    ``_STORE_DEPENDENT``. Runs the transport itself, offline: anything that
+    would reach the network or the evidence store stops at ``_Offline``.
+    """
+    default = scope.default_query_window
+    request = TransportRequest(
+        operation_id=op.operation_id,
+        source=reg.source,
+        verb=reg.verb,
+        endpoint=target.endpoint,
+        selector=target.selector,
+        params=dict(params),
+        window=window,
+        timeout_seconds=op.timeout_seconds or reg.request_timeout_seconds,
+        max_result_bytes=reg.max_result_bytes,
+        credential_ref=target.credential_ref,
+        tool=reg.name,
+        target_id=target.target_id,
+        default_window=default
+        if default is not None and window.contains(default)
+        else None,
+    )
+    offline = _Offline()
+    transport: Any
+    if reads_evidence(reg):
+        transport = EvidenceReadTransport(
+            store=cast(Any, offline),
+            run_id=scope.run_id,
+            target_ids=scope.target_ids,
+            result_paths={},
+        )
+    elif reg.source == OTEL_SOURCE and reg.name in TOOL_NAMES:
+        transport = OtelDemoTransport(
+            credentials={target.credential_ref: None}, opener=cast(Any, offline)
+        )
+    else:
+        return None  # No other shipped transport answers sent=false.
+    try:
+        response = transport.fetch(request)
+    except _WouldSend:
+        return _STORE_DEPENDENT if reads_evidence(reg) else None
+    except Exception:
+        return None
+    if getattr(response, "sent", True) is not False:
+        return None
+    status = getattr(response, "source_status", None)
+    return status if isinstance(status, str) else None
+
+
 def check_result(
     context: RecordingContext,
     request: ToolRequest,
@@ -261,6 +347,7 @@ def check_result(
     # before parameter acceptance, so every later refusal keeps it and every
     # earlier one has none (#327); ``planned`` mirrors that point.
     planned: Window | None = None
+    accepted: Mapping[str, object] | None = None
     failure: tuple[str, str] | None = None
     if targets.revision != scope.registry_revision:
         failure = ("denied", "TARGET_REGISTRY_CHANGED")
@@ -291,6 +378,7 @@ def check_result(
             else:
                 planned = window
                 params, problem = _accept_params(reg, request.params)
+                accepted = params
                 if params is None:
                     failure = (_status_for(problem), problem)
                 else:
@@ -386,33 +474,44 @@ def check_result(
         if failure is not None:
             same((outcome.status, outcome.reason), failure)
         elif presend:
-            # What a ``sent=false`` response can become (#425 review r1). The
-            # shipped transports refuse only with codes their registrations
-            # map to INVALID_PARAMS (``otel_demo.py`` ``_refused``, :1796-1812,
-            # mapped at :791-797, :884-890 and ``_DISCOVERY_ERROR_CLASSES``
-            # :930-938) or, for
-            # ``read_evidence``, to EVIDENCE_NOT_READABLE / INVALID_PARAMS
-            # (``evidence_read.py`` ``_refused``, :240-244, mapped at
-            # :183-188); EVIDENCE_CORRUPT is a sent response. The executor's
-            # post-fetch precedence (``executor.py`` ``refuse_after_fetch``)
-            # then lets a human decision taken meanwhile, or a refused
-            # settlement charge, replace that reason; it never consults the
-            # deadline there. A refusal that arrived after the call's own
-            # timeout is GATEWAY_TIMEOUT (``executor.py`` :1187-1189, on the
-            # elapsed time measured at :1076-1080), exactly when elapsed >
-            # timeout.
+            # What a ``sent=false`` response can become (#425 reviews r1, r2
+            # and bot P1s). Only a request past the window checks reaches the
+            # transport, and only one the transport itself refuses gets a
+            # sent=false reply: recompute that refusal from the frozen request
+            # (``_transport_refusal``) instead of trusting ``finished_at``.
+            # Its code maps through the registration (``otel_demo.py``
+            # ``_refused`` :1796-1812, classes :791-797, :884-890, :930-938;
+            # ``evidence_read.py`` ``_refused`` :240-244, classes :183-188).
+            # The executor's post-fetch precedence (``executor.py``
+            # ``refuse_after_fetch``) may then replace it with a human decision
+            # taken meanwhile or a refused settlement charge, never with the
+            # deadline; and a reply after the call's own timeout is
+            # GATEWAY_TIMEOUT exactly when elapsed > timeout (:1187-1189).
+            if planned is None or accepted is None:
+                mismatch()
+            code = _transport_refusal(reg, target, scope, op, planned, accepted)
+            if code is None:
+                mismatch()
+            if code == _STORE_DEPENDENT:
+                own = ("denied", "EVIDENCE_NOT_READABLE")
+            else:
+                reason = reg.classify(code)
+                own = ("denied" if reason in DENIED_REASONS else "error", reason)
+            if (
+                op.authorized_at is None
+                or op.finished_at is None
+                or op.elapsed_seconds is None
+                or op.elapsed_seconds
+                > (op.finished_at - op.authorized_at).total_seconds()
+                + _CLOCK_SLACK_SECONDS
+            ):
+                mismatch()
             if not (
-                (outcome.status, outcome.reason) == ("error", "INVALID_PARAMS")
+                (outcome.status, outcome.reason) == own
                 or (
                     (outcome.status, outcome.reason) == ("timeout", "GATEWAY_TIMEOUT")
-                    and op.elapsed_seconds is not None
                     and op.timeout_seconds is not None
                     and op.elapsed_seconds > op.timeout_seconds
-                )
-                or (
-                    reads_evidence(reg)
-                    and (outcome.status, outcome.reason)
-                    == ("denied", "EVIDENCE_NOT_READABLE")
                 )
                 or (
                     outcome.status == "denied"

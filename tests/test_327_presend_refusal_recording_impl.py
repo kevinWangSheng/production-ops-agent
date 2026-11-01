@@ -706,3 +706,115 @@ def test_a_presend_refusal_cannot_claim_a_tool_timeout(monkeypatch):
     forged = dataclasses.replace(outcome, reason="TOOL_TIMEOUT", model_view=view)
     with pytest.raises(StorageError, match="IDENTITY_MISMATCH"):
         _check(executor, ctx, call, forged)
+
+
+# -- bot review P1s on 5bc33cad: forged relabelings -------------------------
+
+
+def _relabel(outcome: ToolOutcome, status: str, reason: str, **op) -> ToolOutcome:
+    view = dict(outcome.model_view, status=status, reason=reason)
+    if "window" in op:
+        view["window"] = op["window"].as_json() if op["window"] else None
+    return dataclasses.replace(
+        outcome,
+        status=status,
+        reason=reason,
+        model_view=view,
+        operation=dataclasses.replace(outcome.operation, **op),
+    )
+
+
+def _phase_times(outcome: ToolOutcome, *, elapsed: float = 0.0) -> dict:
+    op = outcome.operation
+    at = op.authorized_at or op.started_at
+    return {
+        "authorized_at": at,
+        "finished_at": at + timedelta(seconds=elapsed),
+        "elapsed_seconds": elapsed,
+        "timeout_seconds": op.timeout_seconds or 10.0,
+        "credential_ref": "otel-demo-ro",
+    }
+
+
+def _evidence_pre_window(executor, store, parent):
+    wide = Window(WINDOW.start - timedelta(hours=1), WINDOW.end)
+    params = {"evidence_id": "nope:1", "limit": 1}
+    return executor, _call(EVIDENCE_TOOL, params, index=1, window=wide)
+
+
+def test_a_pre_window_evidence_refusal_cannot_become_not_readable(monkeypatch):
+    # P1 thread ...WRWU: planned is None, so no transport was reached.
+    executor, _, opener, store, parent = _over_limit(monkeypatch)
+    executor, call = _evidence_pre_window(executor, store, parent)
+    ctx = _eval_context(executor)
+    outcome = executor.execute(call)
+    assert (outcome.reason, outcome.operation.window) == ("WINDOW_OUT_OF_SCOPE", None)
+    forged = _relabel(
+        outcome, "denied", "EVIDENCE_NOT_READABLE", **_phase_times(outcome)
+    )
+    with pytest.raises(StorageError, match="IDENTITY_MISMATCH"):
+        _check(executor, ctx, call, forged)
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "reserve-SUSPENDED",
+        "reserve-CONTROL_UNAVAILABLE",
+        "charge-OPERATION_BUDGET_EXHAUSTED",
+        "charge-failed",
+        "recheck-SUSPENDED",
+    ],
+)
+@pytest.mark.parametrize(
+    "label",
+    [("error", "INVALID_PARAMS"), None],
+    ids=["as-transport-reason", "same-reason-with-phase-times"],
+)
+def test_an_after_authorization_refusal_cannot_pose_as_a_transport_refusal(
+    monkeypatch, name, label
+):
+    # P1 thread ...WTqs: the frozen request is one the transport would send,
+    # so no sent=false response (and no post-fetch denial of one) existed.
+    executor, ctx, call, outcome = _refusal(monkeypatch, name)
+    status, reason = label or (outcome.status, outcome.reason)
+    forged = _relabel(outcome, status, reason, **_phase_times(outcome))
+    with pytest.raises(StorageError, match="IDENTITY_MISMATCH"):
+        _check(executor, ctx, call, forged)
+
+
+def test_a_transport_refusal_keeps_the_reason_its_request_gets(monkeypatch):
+    # A refusal the transport makes for this request is INVALID_PARAMS; it
+    # cannot be named EVIDENCE_NOT_READABLE or another transport reason.
+    executor, ctx, call, outcome = _refusal(monkeypatch, "INVALID_STEP")
+    for status, reason in (
+        ("error", "SOURCE_ERROR"),
+        ("denied", "EVIDENCE_NOT_READABLE"),
+    ):
+        with pytest.raises(StorageError, match="IDENTITY_MISMATCH"):
+            _check(executor, ctx, call, _relabel(outcome, status, reason))
+
+
+@pytest.mark.parametrize("name", ["QUERY_OUT_OF_WINDOW", "EVIDENCE_NOT_READABLE"])
+def test_a_presend_refusal_cannot_be_relabeled_a_gateway_timeout(monkeypatch, name):
+    # P1 thread ...Wk5j: elapsed must fit the recorded authorized->finished
+    # interval the executor measured it in.
+    executor, ctx, call, outcome = _refusal(monkeypatch, name)
+    timeout = outcome.operation.timeout_seconds
+    forged = _relabel(
+        outcome, "timeout", "GATEWAY_TIMEOUT", elapsed_seconds=timeout + 1
+    )
+    with pytest.raises(StorageError, match="IDENTITY_MISMATCH"):
+        _check(executor, ctx, call, forged)
+
+
+@pytest.mark.parametrize("name", ["QUERY_OUT_OF_WINDOW", "presend-GATEWAY_TIMEOUT"])
+def test_a_presend_elapsed_longer_than_its_recorded_interval_is_rejected(
+    monkeypatch, name
+):
+    executor, ctx, call, outcome = _refusal(monkeypatch, name)
+    op = outcome.operation
+    wall = (op.finished_at - op.authorized_at).total_seconds()
+    forged = _with_op(outcome, elapsed_seconds=wall + 5)
+    with pytest.raises(StorageError, match="IDENTITY_MISMATCH"):
+        _check(executor, ctx, call, forged)
