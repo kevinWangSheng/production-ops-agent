@@ -775,12 +775,26 @@ def validate_scenario_v2(spec: ScenarioSpecV2, answer: AnswerV2) -> None:
         raise ScenarioError("SCENARIO_ANSWER_MISMATCH")
 
 
-def is_fault_scenario(spec: ScenarioSpec | ScenarioSpecV2, answer: Any) -> bool:
+#: Either schema's scenario and answer DTOs: the offline evaluator takes both
+#: (#431 S1); everything it reads exists on both, except v1 ``kind`` and
+#: ``injected`` (see ``is_fault_scenario`` / ``injected_fault``).
+AnyScenarioSpec = ScenarioSpec | ScenarioSpecV2
+AnyAnswer = Answer | AnswerV2
+
+
+def is_fault_scenario(spec: AnyScenarioSpec, answer: AnyAnswer) -> bool:
     """Whether the deterministic gate requires the evidence signature: v1 by
     ``kind``, v2 by the answer carrying a signature (#431 S1)."""
     if isinstance(spec, ScenarioSpecV2):
         return answer.signature is not None
     return spec.kind == "fault"
+
+
+def injected_fault(answer: AnyAnswer) -> InjectedFault | None:
+    """The v1 injected fault (service/operation names the judge diagnosis is
+    checked against); a v2 answer names its faults as injectors only, so it
+    has none and a factual causal diagnosis cannot be recomputed as passing."""
+    return answer.injected if isinstance(answer, Answer) else None
 
 
 def _scenario_dirs(group: Path) -> list[Path]:

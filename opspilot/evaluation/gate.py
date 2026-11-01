@@ -9,11 +9,11 @@ from typing import Any
 
 from opspilot.acceptance import IncidentOutcome
 from opspilot.evaluation.model import (
-    Answer,
+    AnyAnswer,
+    AnyScenarioSpec,
     DeliveredRecord,
     GateResult,
     ReportCapture,
-    ScenarioSpec,
     SignatureRule,
     Window,
     canonical_view_hash,
@@ -110,7 +110,7 @@ class RunScope:
     target_id: str
 
 
-def run_scope(spec: ScenarioSpec, outcome: IncidentOutcome | None) -> RunScope:
+def run_scope(spec: AnyScenarioSpec, outcome: IncidentOutcome | None) -> RunScope:
     return RunScope(
         evidence_ids=frozenset(outcome.evidence_ids)
         if outcome is not None
@@ -209,7 +209,7 @@ def _citation_reasons(
 
 
 def report_signature_matches(
-    answer: Answer,
+    answer: AnyAnswer,
     report: ReportV2 | None,
     delivered: Mapping[str, DeliveredRecord],
     authorized: Mapping[str, Window],
@@ -240,8 +240,8 @@ def report_signature_matches(
 
 
 def run_gate(
-    spec: ScenarioSpec,
-    answer: Answer,
+    spec: AnyScenarioSpec,
+    answer: AnyAnswer,
     outcome: IncidentOutcome | None,
     report: ReportCapture | None,
     delivered: Mapping[str, DeliveredRecord],
