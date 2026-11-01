@@ -277,7 +277,7 @@ def check_result(
         else:
             resolved["target_id"] = target.target_id
             value = request.window
-            if (op.dispatched or presend) and value is None:
+            if (op.dispatched or op.window is not None) and value is None:
                 value = binding.default_window or binding.authorized_window
             window = Window.parse(value)
             if window is None:
@@ -373,9 +373,12 @@ def check_result(
         ):
             mismatch()
     else:
-        if presend and failure is None:
-            # Replay serves this refusal by status and reason; there is no
-            # source response whose identity could be compared.
+        # Replay serves these refusals by status and reason; there is no
+        # source response whose identity could be compared. A refusal after
+        # authorization (control, budget or deadline before the transport
+        # was called) keeps the planned window too; one decided while
+        # planning has none.
+        if failure is None and (presend or op.window is not None):
             same(op.window, expected_window)
         else:
             same(op.window, None)

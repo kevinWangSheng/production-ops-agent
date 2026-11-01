@@ -176,3 +176,89 @@ def test_a_plan_stage_refusal_still_carries_no_window(monkeypatch):
     _check(executor, ctx, call, outcome)
     with pytest.raises(StorageError, match="IDENTITY_MISMATCH"):
         _check(executor, ctx, call, _with_op(outcome, window=WINDOW))
+
+
+# -- refusals after authorization, before the transport (lead ruling) --------
+#
+# ``_authorize`` sets the window before ``_reserve`` / the pre-dispatch
+# re-check can still refuse on control, budget or deadline grounds; those
+# outcomes keep it (and have no ``finished_at``).
+
+
+def _suspend(executor, store):
+    store.control = {**store.control, "global_suspended": True}
+
+
+def _exhaust(executor, store):
+    from opspilot.tools.executor import ToolBudgetExhausted
+
+    def charge(*args, **kwargs):
+        raise ToolBudgetExhausted()
+
+    executor._ledger.charge = charge
+
+
+def _expire(executor, store):
+    executor._clock.advance((store.deadline - NOW).total_seconds())
+
+
+AFTER_AUTHORIZE = {
+    "SUSPENDED": _suspend,
+    "OPERATION_BUDGET_EXHAUSTED": _exhaust,
+    "DEADLINE_EXCEEDED": _expire,
+}
+
+
+def _after_authorize(monkeypatch, case):
+    executor, _, opener, store, _ = _over_limit(monkeypatch)
+    ctx = _eval_context(executor)
+    AFTER_AUTHORIZE[case](executor, store)
+    call = _call(METRICS_TOOL, {"expr": GOOD_EXPR}, index=1)
+    calls = len(opener.requests)
+    outcome = executor.execute(call)
+    assert (outcome.status, outcome.reason) == ("denied", case)
+    assert outcome.source_contact == "none" and outcome.operation.sent is False
+    assert outcome.operation.finished_at is None
+    assert outcome.operation.window == Window.parse(call.window)
+    assert len(opener.requests) == calls
+    return executor, ctx, call, outcome
+
+
+@pytest.mark.parametrize("case", sorted(AFTER_AUTHORIZE))
+def test_a_refusal_after_authorization_is_recordable(monkeypatch, case):
+    executor, ctx, call, outcome = _after_authorize(monkeypatch, case)
+    _check(executor, ctx, call, outcome)
+    frozen = unwire(ToolOutcome, wire(outcome))
+    _tool_integrity(ctx, call, _binding(ctx, call), frozen, NOW + timedelta(minutes=30))
+
+
+@pytest.mark.parametrize("case", sorted(AFTER_AUTHORIZE))
+def test_replay_of_a_refusal_after_authorization_keeps_its_status_and_reason(
+    monkeypatch, case
+):
+    _, ctx, call, outcome = _after_authorize(monkeypatch, case)
+    frozen = unwire(ToolOutcome, wire(outcome))
+    replayed = dataclasses.replace(
+        ctx,
+        initial_state={
+            "replay_source": {
+                "run_id": outcome.operation.run_id,
+                "recording_hash": "0" * 64,
+                "id_map": {"step-2-t1": outcome.operation.operation_id},
+            }
+        },
+    )
+    request = dataclasses.replace(call, step_id="step-2")
+    _tool_integrity(
+        replayed, request, _binding(ctx, call), frozen, NOW + timedelta(minutes=30)
+    )
+    assert (frozen.status, frozen.reason) == (outcome.status, outcome.reason)
+
+
+@pytest.mark.parametrize("case", sorted(AFTER_AUTHORIZE))
+def test_a_refusal_after_authorization_with_another_window_is_rejected(
+    monkeypatch, case
+):
+    executor, ctx, call, outcome = _after_authorize(monkeypatch, case)
+    with pytest.raises(StorageError, match="IDENTITY_MISMATCH"):
+        _check(executor, ctx, call, _with_op(outcome, window=_narrower()))
