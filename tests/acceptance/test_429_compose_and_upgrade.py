@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import copy
 import re
-import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -21,32 +19,21 @@ def _yaml(path: Path) -> dict[str, Any]:
     return document
 
 
-def _origin_main_compose() -> dict[str, Any]:
-    completed = subprocess.run(
-        ["git", "show", "origin/main:deploy/compose/compose.yaml"],
-        cwd=ROOT,
-        text=True,
-        capture_output=True,
-        check=True,
-    )
-    document = yaml.safe_load(completed.stdout)
-    assert isinstance(document, dict)
-    return document
-
-
 def test_worker_and_observer_have_forty_second_grace_period() -> None:
     services = _yaml(COMPOSE)["services"]
     assert services["worker"]["stop_grace_period"] == "40s"
     assert services["observer"]["stop_grace_period"] == "40s"
 
 
-def test_default_compose_is_unchanged_except_the_two_grace_period_keys() -> None:
-    actual = copy.deepcopy(_yaml(COMPOSE))
-    expected = _origin_main_compose()
-    for document in (actual, expected):
-        for service in ("worker", "observer"):
-            document["services"][service].pop("stop_grace_period", None)
-    assert actual == expected
+def test_only_worker_and_observer_set_a_stop_grace_period() -> None:
+    # #429's scope in Compose is exactly the two grace-period keys. The
+    # original check diffed against origin/main, which only held while #429
+    # was unmerged; once merged it pinned compose.yaml for every later PR.
+    services = _yaml(COMPOSE)["services"]
+    with_grace = {
+        name for name, spec in services.items() if "stop_grace_period" in spec
+    }
+    assert with_grace == {"worker", "observer"}
 
 
 def test_upgrade_document_describes_rolling_back_in_required_order() -> None:
