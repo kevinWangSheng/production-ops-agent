@@ -19,7 +19,9 @@ cannot fail the business transaction it rides in (OB-R6).
 
 from __future__ import annotations
 
+import hashlib
 import logging
+import math
 import os
 import re
 import threading
@@ -44,6 +46,7 @@ __all__ = [
     "build_payload",
     "image_fields",
     "insert_entry",
+    "key_part",
     "purge_expired",
 ]
 
@@ -160,10 +163,41 @@ def _time(value: object) -> str | None:
     return None
 
 
+# Largest count kept: keeps every number to a few JSON digits, so a huge
+# provider integer cannot push the payload past the 4096-byte CHECK.
+_MAX_NUMBER = 2**53
+
+
 def _number(value: object) -> int | float | None:
+    """A finite number of bounded size, else ``None`` (left out). NaN and
+    infinities would serialize to tokens PostgreSQL jsonb rejects and roll
+    back the business transaction (OB-R6); a count that is not finite
+    carries nothing worth a fixed code, so it is omitted like a wrong type."""
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return None
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
+    if abs(value) > _MAX_NUMBER:
+        return None
     return value
+
+
+_KEY_PART = re.compile(r"^[A-Za-z0-9_.#-]{1,64}$")
+_MAX_KEY_BYTES = 256  # the 0024 CHECK on idempotency_key
+
+
+def key_part(value: str) -> str:
+    """A provider-supplied key component (a tool call id) as the key holds
+    it: unchanged when short and plain, else ``sha256-`` and 32 hex digits
+    of its hash. Deterministic, so a repeat of the same subject still
+    collides; never longer than 64 characters, so no provider id can fail
+    the key CHECK and with it the business transaction (OB-R6)."""
+    if _KEY_PART.fullmatch(value):
+        return value
+    return (
+        "sha256-"
+        + hashlib.sha256(value.encode("utf-8", "surrogatepass")).hexdigest()[:32]
+    )
 
 
 def build_payload(fields: Mapping[str, Any]) -> dict[str, Any]:
@@ -255,6 +289,12 @@ def insert_entry(
     revisions of ``versions`` (a Run's ``versions``)."""
     if kind not in KINDS:
         raise ValueError(f"unknown outbox kind {kind!r}")
+    if len(idempotency_key.encode("utf-8", "surrogatepass")) > _MAX_KEY_BYTES:
+        # every caller builds keys from UUIDs, integers and ``key_part``;
+        # this only keeps a future caller from failing the business commit
+        idempotency_key = (
+            f"{kind}:{key_part(idempotency_key)}"  # ":" never passes plain
+        )
     payload = build_payload(
         {**image_fields(), **_revisions(versions), "span_kind": kind, **fields}
     )

@@ -39,7 +39,7 @@ from tests.integration.test_runtime_roles_postgres import (
     _submit,
     _workbench,
 )
-from tests.m1_investigation_support import report_from_transcript, tool_call
+from tests.m1_investigation_support import reply, report_from_transcript, tool_call
 from tests.runtime_roles_support import login
 
 pytestmark = pytest.mark.skipif(
@@ -181,6 +181,64 @@ def test_one_run_writes_one_row_per_step_tool_result_and_state_change(
     _expire(DurableStore(DSN), swept_run)
     assert web_store.sweep_expired_runs(incident_id=swept)
     assert _state_changes(swept_run) == 1
+
+
+def test_an_overlong_tool_call_id_still_commits_the_tool_result(web_dsn, worker_dsn):
+    """OB-R6 (#436 review r1): the provider id is unbounded; the key is not."""
+    app, _, web_store, _ = _workbench(web_dsn)
+    worker_store = DurableStore(worker_dsn)
+    worker_store.install()
+    long_id = "call-" + "x" * 2000
+    subject = _submit(app)
+    run_id = UUID(str(web_store.rebuild(subject)["run"]["run_id"]))
+    loop, _ = _worker(
+        worker_store,
+        DurableEventLog(worker_store),
+        DurableEvidenceStore(worker_store),
+        [
+            reply(
+                tool_calls=[tool_call(call_id=long_id, name=FIXTURE_TOOL)],
+                finish="tool_calls",
+            ),
+            report_from_transcript,
+        ],
+        subject=subject,
+    )
+    ((_, result),) = loop.poll_once()
+    assert result.status == "published", result
+    with psycopg.connect(DSN) as conn:
+        committed = conn.execute(
+            "SELECT count(*) FROM opspilot_steps s, jsonb_array_elements(s.tool_results) "
+            "WHERE s.run_id=%s",
+            (run_id,),
+        ).fetchone()[0]
+    assert committed == 1
+    (tool,) = [r for r in _rows(run_id) if r["kind"] == "tool_result"]
+    assert len(tool["idempotency_key"]) <= 256
+    assert tool["idempotency_key"].endswith(outbox.key_part(long_id))
+    assert long_id not in tool["idempotency_key"]
+
+
+def test_non_finite_numbers_never_reach_jsonb_and_the_transaction_commits():
+    incident, run = uuid4(), uuid4()
+    with psycopg.connect(DSN) as conn:
+        outbox.insert_entry(
+            conn,
+            kind="model_step",
+            idempotency_key=f"model_step:{run}:0",
+            incident_id=incident,
+            run_id=run,
+            fields={
+                "input_tokens": float("nan"),
+                "output_tokens": float("inf"),
+                "total_tokens": 10**400,
+                "reasoning_tokens": 4,
+            },
+        )
+    (row,) = _rows(run)
+    assert {k: v for k, v in row["payload"].items() if k.endswith("_tokens")} == {
+        "reasoning_tokens": 4
+    }
 
 
 def test_a_no_op_state_update_writes_nothing_and_the_probe_skips_taken_keys(

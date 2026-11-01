@@ -74,13 +74,15 @@ def _usage_fields(response: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def _tool_call_id(response: Any, ordinal: int) -> str:
-    """The provider's id of tool call ``ordinal`` (the outbox key's last
-    part), or ``#<ordinal>`` when the plan carries none."""
+    """The provider's id of tool call ``ordinal`` as the outbox key's last
+    part (``outbox.key_part``: hashed when long or unusual, so its length
+    never reaches the key CHECK), or ``#<ordinal>`` when the plan carries
+    none."""
     calls = _tool_plan(response)
     if isinstance(calls, list) and 0 <= ordinal < len(calls):
         call = calls[ordinal]
         if isinstance(call, Mapping) and isinstance(call.get("id"), str) and call["id"]:
-            return str(call["id"])
+            return outbox.key_part(str(call["id"]))
     return f"#{ordinal}"
 
 

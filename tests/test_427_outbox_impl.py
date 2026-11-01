@@ -229,3 +229,50 @@ def test_the_maintainer_stops_on_the_event():
     thread.join(2)
     assert not thread.is_alive()
     assert outbox.THREAD_NAME == "opspilot-outbox"
+
+
+@pytest.mark.parametrize(
+    "bad", [float("nan"), float("inf"), float("-inf"), 2**53 + 1, -(10**400)]
+)
+def test_a_non_finite_or_huge_number_is_left_out(bad):
+    # NaN/Infinity would be rejected by jsonb and roll back the commit (OB-R6)
+    assert build_payload({"total_tokens": bad, "budget_seconds": bad}) == {}
+    assert build_payload({"total_tokens": 2**53, "budget_seconds": 0.5}) == {
+        "total_tokens": 2**53,
+        "budget_seconds": 0.5,
+    }
+
+
+def test_a_provider_key_part_is_kept_when_plain_and_hashed_when_long_or_odd():
+    assert outbox.key_part("call_00_abc-1.x") == "call_00_abc-1.x"
+    for odd in ("c" * 65, "x" * 10_000, "call:1", "id with space", "\udcff"):
+        part = outbox.key_part(odd)
+        assert part.startswith("sha256-") and len(part) == 39
+        assert outbox.key_part(odd) == part  # deterministic: repeats collide
+    assert outbox.key_part("a" * 65) != outbox.key_part("a" * 66)
+
+
+class _Conn:
+    def __init__(self):
+        self.params = []
+
+    def execute(self, _sql, params):
+        self.params.append(params)
+
+
+def test_an_overlong_key_is_hashed_before_it_reaches_the_check():
+    conn = _Conn()
+    run = uuid4()
+    outbox.insert_entry(
+        conn,
+        kind="tool_result",
+        idempotency_key="tool_result:" + "x" * 500,
+        incident_id=uuid4(),
+        run_id=run,
+        fields={"total_tokens": float("nan")},
+    )
+    ((key, _, _, kind, payload),) = conn.params
+    assert kind == "tool_result" and len(key.encode()) <= 256
+    assert key.startswith("tool_result:sha256-")
+    assert "total_tokens" not in payload.obj
+    json.dumps(payload.obj, allow_nan=False)
