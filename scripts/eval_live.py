@@ -73,6 +73,7 @@ from opspilot.evaluation import (
 from opspilot.observation.release_policy import sha256
 from opspilot.tools.executor import QueryScope
 from opspilot.tools.otel_demo import OtelDemoConfig
+from scripts.eval_live_inject import ModelTransportFault as ModelTransportFault
 from scripts.eval_live_lab import (
     _STOP,
     SOURCE_QUERY,
@@ -113,6 +114,7 @@ from scripts.eval_live_lab import (
     validate_injectors,
     write_private,
 )
+from scripts.eval_live_lab import InjectorHarness as InjectorHarness
 
 ROOT = Path(__file__).resolve().parents[1]
 ROUND_PATTERN = r"[a-z0-9][a-z0-9.-]{0,62}"
@@ -131,6 +133,17 @@ class Slot:
     repetition: int
     # v2 only (#431): the validated injectors; None for a v1 slot.
     plan: InjectionPlan | None = None
+
+    @property
+    def scenario_id(self) -> str:
+        return self.spec.scenario_id
+
+    @property
+    def restore_intent_count(self) -> int:
+        """v2: one shared restore intent per attempt; v1: one per fault."""
+        if self.plan is not None:
+            return self.plan.restore_intent_count
+        return 1 if getattr(self.spec, "kind", None) == "fault" else 0
 
 
 def is_v2(slot: Slot) -> bool:
@@ -426,6 +439,12 @@ def scenario_dir(scenarios_root: Path, scenario_id: str) -> Path:
         if candidate.is_dir():
             return candidate
     return scenarios_root / scenario_id
+
+
+def validate_round_bindings(slots: Sequence[Slot]) -> None:
+    """Seams revision 2: ``LabError`` with ``.code == "ROUND_BINDING_MIXED"``
+    when the slots span more than one binding class."""
+    round_binding(slots)
 
 
 def round_binding(slots: Sequence[Slot]) -> tuple[str, str]:
@@ -1279,6 +1298,74 @@ def _guarded(
     else:
         state.status = "ran"
     ledger.event("investigate", "finished", status=state.status, reason=state.reason)
+
+
+def write_intake(path: Path, payload: Mapping[str, Any]) -> None:
+    """Seams revision 2: write ``intake.json`` (section 5 shape) at ``path``,
+    creating its parent directory."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(dict(payload), indent=2, sort_keys=True) + "\n")
+
+
+def validate_recorded_model_error(entry: Mapping[str, Any]) -> None:
+    """Seams revision 2 / section 0: a recorded model error is whole -- a
+    3-digit non-2xx ``status``, the complete ``response`` bytes, and the
+    parent error ``MODEL_UNAVAILABLE`` -- else ``StorageError`` (a missing
+    body is ``RECORDING_INCOMPLETE``, the rest ``SCHEMA_INVALID``)."""
+    import re as _re
+
+    status = entry.get("status")
+    if not isinstance(status, str) or not _re.fullmatch(r"[1-5][0-9]{2}", status):
+        raise StorageError("SCHEMA_INVALID")
+    if 200 <= int(status) < 300:
+        raise StorageError("SCHEMA_INVALID")
+    response = entry.get("response")
+    if response is None:
+        raise StorageError("RECORDING_INCOMPLETE")
+    if type(response) is not bytes:
+        raise StorageError("SCHEMA_INVALID")
+    if entry.get("error") != "MODEL_UNAVAILABLE":
+        raise StorageError("SCHEMA_INVALID")
+
+
+#: The namespace an ``unresolved_labels`` request uses when none is given.
+UNRESOLVED_NAMESPACE = "otel-demo-unregistered"
+
+
+def build_alertmanager_request(
+    *,
+    pattern: str | Mapping[str, Any],
+    fingerprint: str,
+    starts_at: datetime,
+    token: str,
+    namespace: str | None = None,
+) -> dict[str, Any]:
+    """Seams revision 2: the first firing delivery of ``pattern`` as
+    ``{"path", "headers", "body"}``; headers are exactly Authorization and
+    Content-Type, the body is the v4 webhook dict (it never holds the
+    token)."""
+    from scripts import eval_live_inject
+
+    params: dict[str, Any] = (
+        {"pattern": pattern} if isinstance(pattern, str) else dict(pattern)
+    )
+    if params["pattern"] == "unresolved_labels":
+        params.setdefault("namespace", namespace or UNRESOLVED_NAMESPACE)
+    body = eval_live_inject.alert_body(
+        params,
+        status="firing",
+        fingerprint=fingerprint,
+        starts_at=starts_at,
+        ends_at=None,
+    )
+    return {
+        "path": eval_live_inject.INTAKE_PATH,
+        "headers": {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+        },
+        "body": body,
+    }
 
 
 def _write_intake(run_dir: Path, intake: Mapping[str, Any]) -> bool:

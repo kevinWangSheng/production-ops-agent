@@ -772,6 +772,11 @@ class InjectionPlan:
         return (self.entry, self.source or "none")
 
     @property
+    def restore_intent_count(self) -> int:
+        """Every injector of a scenario shares one restore intent."""
+        return 1 if self.injectors else 0
+
+    @property
     def lab_side(self) -> bool:
         """Whether anything outside this process is changed (flags, spans)."""
         return bool(self.flags) or self.span is not None
@@ -2324,3 +2329,168 @@ class DeepSeekBalance:
             InvalidOperation,
         ):
             return None
+
+
+# -- offline injector harness (#431 seams revision 2) -------------------------
+
+
+class _OfflineClock:
+    """Business clock that advances on sleep (waits cost nothing offline)."""
+
+    def __init__(self) -> None:
+        self.t = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        self.mono = 0.0
+
+    def now(self) -> datetime:
+        return self.t
+
+    def monotonic(self) -> float:
+        return self.mono
+
+    def sleep(self, seconds: float) -> None:
+        self.t += timedelta(seconds=seconds)
+        self.mono += seconds
+
+
+class _OfflineLab:
+    """An in-memory flagd ConfigMap + daemon + quiet telemetry: flags take
+    effect at once, the lab shows checkout traffic and no error span."""
+
+    def __init__(self, clock: _OfflineClock) -> None:
+        self.clock = clock
+        flags = {
+            fault.flag: {
+                "state": "ENABLED",
+                "variants": (
+                    {"100%": 1, "off": 0}
+                    if fault.fault_variant == "100%"
+                    else {"on": True, "off": False}
+                ),
+                "defaultVariant": "off",
+            }
+            for fault in V2_FAULT_FLAGS.values()
+        }
+        self.original = (json.dumps({"flags": flags}, indent=2) + "\n").encode()
+        self.raw = self.original
+        self.rv = 1
+        self.fence: str | None = None
+
+    def read(self) -> FlagConfig:
+        return FlagConfig(self.raw, "offline-uid", str(self.rv), self.fence)
+
+    def replace(
+        self, current: FlagConfig, new_raw: bytes, *, fence: str | None
+    ) -> FlagConfig:
+        if (current.raw, current.resource_version) != (self.raw, str(self.rv)):
+            raise LabError("FLAG_CAS_CONFLICT")
+        self.raw, self.rv, self.fence = new_raw, self.rv + 1, fence
+        return self.read()
+
+    def resolve(self, flag: str, method: str, timeout: float) -> str | None:
+        return str(_flags(self.raw)[flag]["defaultVariant"])
+
+    def spans(
+        self, service: str, start: datetime, end: datetime, timeout: float
+    ) -> SpanQuery:
+        return SpanQuery((), True)
+
+    def checkout_calls(
+        self, start: datetime, end: datetime, timeout: float
+    ) -> CallCount:
+        return CallCount(10.0, True)
+
+
+class InjectorHarness:
+    """The public offline harness (seams revision 2): the same whitelist,
+    restore intent and restore/wash code the driver uses, over an in-memory
+    lab. ``apply`` writes the intent and makes every injector effective
+    (process-local kinds are effective at once; ``otlp_span`` gets a planned
+    trace id and end); ``interrupt_after_effect`` raises ``InterruptedError``
+    right after, leaving the intent for ``recover``."""
+
+    round_id = "offline"
+    attempt_id = "offline-attempt"
+
+    def __init__(self, state_dir: Path) -> None:
+        self.state_dir = Path(state_dir)
+        self.clock = _OfflineClock()
+        self.lab = _OfflineLab(self.clock)
+        self.interrupt_after_effect = False
+        self.plan: InjectionPlan | None = None
+        self.deps = LiveDeps(
+            clock=self.clock,
+            flags=self.lab,
+            flagd=self.lab,
+            telemetry=self.lab,
+            identity=Unavailable(),
+            ports=Unavailable(),
+            pg=Unavailable(),
+            balance=Unavailable(),
+            investigator=Unavailable(),
+            ledger_root=self.state_dir,
+            evidence_root=self.state_dir / "evidence",
+            recording_root=self.state_dir / "recordings",
+            pg_root=self.state_dir / "pg",
+            scenarios_root=self.state_dir,
+            flagd_url="http://127.0.0.1:0",
+            env=Unavailable(),
+        )
+
+    @property
+    def restore_intent_count(self) -> int:
+        return 0 if self.plan is None else 1 if self.plan.injectors else 0
+
+    def _ledger(self) -> AttemptLedger:
+        return AttemptLedger(self.state_dir / "ledger" / self.attempt_id, self.clock)
+
+    def apply(self, injectors: Sequence[Mapping[str, Any]]) -> InjectionPlan:
+        from types import SimpleNamespace
+
+        items = [
+            SimpleNamespace(kind=i.get("kind"), params=i.get("params"))
+            for i in injectors
+        ]
+        entry = (
+            "alertmanager"
+            if any(i.kind == "alert_delivery" for i in items)
+            else "question"
+        )
+        plan = validate_injectors(entry, items)
+        self.plan = plan
+        self.state_dir.mkdir(parents=True, exist_ok=True)
+        ledger = self._ledger()
+        intent = FaultIntent(
+            self.round_id,
+            self.attempt_id,
+            "offline",
+            "offline",
+            plan.flags[0] if plan.flags else None,
+            also=plan.flags[1:],
+            injectors=plan.injectors,
+            whitelist=V2_FAULT_FLAGS,
+        )
+        committed = commit_fault(intent, deps=self.deps, ledger=ledger)
+        await_fault(committed, deps=self.deps, ledger=ledger)
+        for kind in {item["kind"] for item in plan.injectors}:
+            fields: dict[str, Any] = {}
+            if kind == "otlp_span":
+                fields = {
+                    "trace_id": uuid4().hex,
+                    "span_end": self.clock.now().isoformat(),
+                }
+            mark_injector(self.state_dir, kind, phase="effective", **fields)
+        if self.interrupt_after_effect:
+            raise InterruptedError("interrupt_after_effect")
+        return plan
+
+    def recover(self) -> Restored | None:
+        """Restore every flag (``adFailure`` included), wait out a span, wash,
+        remove the intent; None when there is none."""
+        return restore_fault(
+            self.round_id, self.attempt_id, (), deps=self.deps, ledger=self._ledger()
+        )
+
+    def flags_are_original(self) -> bool:
+        return self.lab.raw == self.lab.original and all(
+            self.lab.resolve(flag, "", 0) == "off" for flag in V2_FAULT_FLAGS
+        )
