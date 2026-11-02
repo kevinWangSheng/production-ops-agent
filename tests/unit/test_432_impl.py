@@ -386,7 +386,11 @@ def test_relocate_moves_evidence_pg_and_attempt_ledgers_not_recordings(lab, tmp_
 
 def _reference(tmp_path: Path, sid: str, report: dict[str, Any]) -> Path:
     directory = tmp_path / sid
-    shutil.copytree(DEV_V2 / "capability" / sid, directory)
+    shutil.copytree(
+        DEV_V2 / "capability" / sid,
+        directory,
+        ignore=shutil.ignore_patterns("reference"),
+    )
     end = datetime(2026, 11, 2, 12, tzinfo=UTC)
     view = {
         "evidence_id": "ev-1",
@@ -492,7 +496,11 @@ def test_reference_report_failures_name_their_reason(tmp_path):
 
 def test_no_report_reference_is_the_probe_projection(tmp_path):
     directory = tmp_path / MF_POS
-    shutil.copytree(DEV_V2 / "capability" / MF_POS, directory)
+    shutil.copytree(
+        DEV_V2 / "capability" / MF_POS,
+        directory,
+        ignore=shutil.ignore_patterns("reference"),
+    )
     projection = _projection(
         outcome={
             "final_state": "failed",
