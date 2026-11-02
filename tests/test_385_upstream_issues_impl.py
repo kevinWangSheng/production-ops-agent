@@ -780,3 +780,34 @@ def test_first_request_tap_on_a_real_otel_demo_first_call(tmp_path: Path) -> Non
     fields = issues.first_request_fields(path.read_bytes(), "prometheus")
     assert fields["data_sources"]["available"] == otel_demo._data_sources()["available"]
     assert fields["first_request_mentions_unreachable"] is False
+
+
+def test_input_gap_reads_only_the_data_sources_projection() -> None:
+    """review-448: text outside the projection (a message, a tool description)
+    must not count as telling the model a source was unreachable at start."""
+    outside = json.dumps(
+        {
+            "messages": [{"role": "user", "content": "unreachable at start"}],
+            "data_sources": {"available": {"prometheus": ["x"]}},
+        }
+    ).encode()
+    assert (
+        issues.first_request_fields(outside, "prometheus")[
+            "first_request_mentions_unreachable"
+        ]
+        is False
+    )
+    inside = json.dumps(
+        {
+            "data_sources": {
+                "available": {"prometheus": ["x"]},
+                "instruction": "prometheus 开始时不可达",
+            }
+        }
+    ).encode()
+    assert (
+        issues.first_request_fields(inside, "prometheus")[
+            "first_request_mentions_unreachable"
+        ]
+        is True
+    )

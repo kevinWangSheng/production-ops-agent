@@ -343,16 +343,17 @@ def first_request_fields(raw: bytes, source: str) -> dict[str, Any]:
     # static U5 keys say what is integrated, not whether it is healthy); the
     # sentence rule over the whole request would hit generic tool
     # descriptions ("a query window outside it is refused ..."). N1's fixed
-    # wording (Q13) is matched as text as well.
+    # wording (Q13) is matched too, but only inside the projection: text
+    # elsewhere in the request never counts (review-448).
     projection = found[0]
     extra = {
         k: v
         for k, v in projection.items()
         if k not in ("available", "not_integrated", "instruction")
     }
-    text = raw.decode().lower()
+    inside = json.dumps(projection, ensure_ascii=False).lower()
     mentions = source in json.dumps(extra).lower() or any(
-        word in text for word in ("unreachable at start", "开始时不可达")
+        word in inside for word in ("unreachable at start", "开始时不可达")
     )
     return {
         "first_request_sha256": sha256_bytes(raw),
