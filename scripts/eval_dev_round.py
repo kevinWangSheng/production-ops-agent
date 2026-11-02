@@ -23,6 +23,7 @@ import argparse
 import json
 import sys
 from collections.abc import Mapping, Sequence
+from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
@@ -35,6 +36,7 @@ from opspilot.evaluation.model import (
     dataset_tree_hash,
     load_scenarios_v2,
 )
+from scripts.eval_live_lab import span_error
 
 SCHEMA = "opspilot-eval-dev-round-1"
 SLOTS_PER_SCENARIO = 2
@@ -134,7 +136,184 @@ def _attempt(
         ),
         "cost": capture.get("cost") or {},
         "dimensions": _dimensions(summary),
+        "fault": _interval(slot),
+        "views": _views(capture.get("delivered")),
     }
+
+
+# -- A11/A12: attempt isolation in a shared lab ----------------------------------
+
+#: Span-row views a prior fault can leak through (A13: a read_evidence slice
+#: of a trace search carries the same rows).
+_SPAN_TOOLS = ("traces_search",)
+
+
+def _moment(value: Any) -> datetime | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        moment = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return moment if moment.tzinfo is not None else None
+
+
+def _interval(slot: Mapping[str, Any]) -> dict[str, Any] | None:
+    """[flag effective, normal confirmed] of an attempt that injected a flag
+    (lifecycle ``fault``); the attempt's own start/end bound the rest."""
+    fault = slot.get("fault") if isinstance(slot.get("fault"), Mapping) else None
+    timings = slot.get("timings") if isinstance(slot.get("timings"), Mapping) else {}
+    return {
+        "started_at": timings.get("started_at"),
+        "ended_at": timings.get("ended_at"),
+        "effective_at": None if fault is None else fault.get("effective_at"),
+        "restored_at": None if fault is None else fault.get("normal_confirmed_at"),
+    }
+
+
+def _views(delivered: Any) -> list[dict[str, Any]]:
+    """What the isolation check needs of each delivered record: the tool,
+    its window, the span rows of trace views and the view text."""
+    out: list[dict[str, Any]] = []
+    if not isinstance(delivered, Mapping):
+        return out
+    for record in delivered.values():
+        if not isinstance(record, Mapping) or record.get("delivered") is not True:
+            continue
+        view = record.get("view") if isinstance(record.get("view"), Mapping) else {}
+        tool = view.get("tool")
+        span_view = tool in _SPAN_TOOLS or (
+            tool == "read_evidence" and view.get("parent_tool") in _SPAN_TOOLS
+        )
+        rows = view.get("content") if span_view else None
+        out.append(
+            {
+                "evidence_id": record.get("evidence_id"),
+                "tool": tool,
+                "span_view": span_view,
+                "window": record.get("window"),
+                "rows": [
+                    {
+                        "service": row.get("service"),
+                        "operation": row.get("operation"),
+                        "start_us": row.get("start_us"),
+                        "error": span_error(row.get("status_tags") or {}),
+                    }
+                    for row in (rows if isinstance(rows, list) else [])
+                    if isinstance(row, Mapping)
+                ],
+                "text": json.dumps(view, sort_keys=True, ensure_ascii=False),
+            }
+        )
+    return out
+
+
+def isolation(
+    attempts: Sequence[Mapping[str, Any]],
+    loaded: Mapping[str, tuple[ScenarioSpecV2, AnswerV2]],
+) -> dict[str, dict[str, Any]]:
+    """Per attempt id: its predecessor fault and the contamination flags
+    (seams-432 §12 A11/A12). Pure; reads only what ``_attempt`` kept.
+
+    * ``predecessor``: the latest earlier attempt (any round) that injected a
+      flag or a synthetic span, with its scenario, end of fault and the gap
+      in minutes to this attempt's start.
+    * ``contamination``: ``PRIOR_FAULT_SPAN:<scenario>`` when a delivered
+      span row matches an earlier attempt's signature, is an error, and
+      starts inside that attempt's fault interval; ``PRIOR_INJECTION_TEXT:
+      <scenario>`` when a delivered view contains an earlier attempt's
+      injected span message.
+    * ``metrics_overlap`` (informational, never a failure): earlier faults
+      whose interval a delivered metrics view's window overlaps; the tools
+      allow metrics windows up to the 24 h frame, so no wash removes them.
+
+    Only attempts that changed the lab (a flagd injector or a synthetic
+    span) count as earlier faults; an alert-only or model-transport-only
+    attempt does not.
+    """
+
+    def start(item: Mapping[str, Any]) -> datetime:
+        moment = _moment((item.get("fault") or {}).get("started_at"))
+        return moment or datetime.max.replace(tzinfo=UTC)
+
+    ordered = sorted(attempts, key=start)
+    faults: list[dict[str, Any]] = []
+    out: dict[str, dict[str, Any]] = {}
+    for item in ordered:
+        sid = str(item["scenario_id"])
+        answer = loaded[sid][1]
+        own = item.get("fault") or {}
+        began = _moment(own.get("started_at"))
+        prior = [f for f in faults if began is None or f["end"] <= began]
+        predecessor = None
+        if prior:
+            last = max(prior, key=lambda f: f["end"])
+            predecessor = {
+                "scenario_id": last["scenario_id"],
+                "attempt_id": last["attempt_id"],
+                "fault_end": last["end"].isoformat(),
+                "gap_minutes": None
+                if began is None
+                else round((began - last["end"]).total_seconds() / 60, 1),
+                "injection": last["message"] is not None,
+            }
+        flags: set[str] = set()
+        overlaps: set[str] = set()
+        for view in item.get("views") or []:
+            for fault in prior:
+                if fault["message"] is not None and fault["message"] in view["text"]:
+                    flags.add(f"PRIOR_INJECTION_TEXT:{fault['scenario_id']}")
+                if view["span_view"]:
+                    for row in view["rows"]:
+                        if not row["error"] or not isinstance(row["start_us"], int):
+                            continue
+                        at = datetime.fromtimestamp(row["start_us"] / 1e6, tz=UTC)
+                        if (row["service"], row["operation"]) in fault[
+                            "wanted"
+                        ] and fault["begin"] <= at <= fault["end"]:
+                            flags.add(f"PRIOR_FAULT_SPAN:{fault['scenario_id']}")
+                elif view["tool"] == "metrics_range_query":
+                    window = view.get("window") or {}
+                    lo, hi = _moment(window.get("start")), _moment(window.get("end"))
+                    if lo and hi and lo <= fault["end"] and fault["begin"] <= hi:
+                        overlaps.add(fault["scenario_id"])
+        out[str(item["attempt_id"])] = {
+            "predecessor": predecessor,
+            "contamination": sorted(flags),
+            "metrics_overlap": sorted(overlaps),
+        }
+        begin = _moment(own.get("effective_at"))
+        end = _moment(own.get("restored_at")) or _moment(own.get("ended_at"))
+        message = next(
+            (
+                str(i.params.get("message"))
+                for i in answer.injectors
+                if i.kind == "otlp_span"
+            ),
+            None,
+        )
+        lab_fault = message is not None or any(
+            i.kind == "flagd" for i in answer.injectors
+        )
+        if begin is None and message is not None:
+            begin = began
+        if lab_fault and begin is not None and end is not None:
+            wanted = (
+                set()
+                if answer.signature is None
+                else {(m.service, m.operation) for m in answer.signature.any_of}
+            )
+            faults.append(
+                {
+                    "scenario_id": sid,
+                    "attempt_id": item["attempt_id"],
+                    "begin": begin,
+                    "end": end,
+                    "wanted": wanted,
+                    "message": message,
+                }
+            )
+    return out
 
 
 def aggregate(
@@ -188,7 +367,14 @@ def aggregate(
                 spec.stimulus.target_id,
             )
             dims_seen.append(item.pop("dimensions"))
-            attempts[sid].append({"round": round_id, "attempt_id": attempt_id, **item})
+            attempts[sid].append(
+                {
+                    "round": round_id,
+                    "attempt_id": attempt_id,
+                    "scenario_id": sid,
+                    **item,
+                }
+            )
     for sid, items in attempts.items():
         if len(items) > n:
             raise DevRoundError(f"REDRAW_DETECTED:{sid}")
@@ -199,6 +385,7 @@ def aggregate(
                 raise DevRoundError(f"MANIFEST_DRIFT:{name}")
     if reference and (reference.get("dataset") or {}).get("value") != dataset:
         raise DevRoundError("MANIFEST_DRIFT:dataset")
+    isolated = isolation([a for items in attempts.values() for a in items], loaded)
     out_slots: list[dict[str, Any]] = []
     for sid in sorted(loaded):
         spec, answer = loaded[sid]
@@ -227,6 +414,7 @@ def aggregate(
                         "expectations": item["expectations"],
                         "gate": item["gate"],
                         "trace_url": item["trace_url"],
+                        **isolated[str(item["attempt_id"])],
                     }
                 )
             else:
@@ -244,6 +432,9 @@ def aggregate(
                         },
                         "gate": {"passed": None, "reasons": None},
                         "trace_url": None,
+                        "predecessor": None,
+                        "contamination": [],
+                        "metrics_overlap": [],
                     }
                 )
     totals: dict[str, dict[str, int]] = {}

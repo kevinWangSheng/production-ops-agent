@@ -807,3 +807,89 @@ def test_a13_other_parents_truncated_or_out_of_window_rows_do_not_count(view, ro
     from opspilot.evaluation.gate import signature_matches
 
     assert signature_matches(_payment_rule(), _signature_record(view, row)) == ()
+
+
+# -- A11/A12: predecessor fault and contamination flags ------------------------------
+
+
+def _iso(minute: int) -> str:
+    return datetime(2026, 11, 2, 12, minute, tzinfo=UTC).isoformat()
+
+
+def _attempt_item(
+    sid, attempt_id, start, end, *, effective=None, restored=None, views=()
+):
+    return {
+        "scenario_id": sid,
+        "attempt_id": attempt_id,
+        "fault": {
+            "started_at": _iso(start),
+            "ended_at": _iso(end),
+            "effective_at": None if effective is None else _iso(effective),
+            "restored_at": None if restored is None else _iso(restored),
+        },
+        "views": list(views),
+    }
+
+
+def test_isolation_flags_prior_injection_text_and_prior_fault_spans():
+    loaded = _loaded()
+    message = loaded[PI_POS][1].injectors[1].params["message"]
+    span_row = {
+        "service": "payment",
+        "operation": "grpc.oteldemo.PaymentService/Charge",
+        "start_us": int(datetime(2026, 11, 2, 12, 5, tzinfo=UTC).timestamp() * 1e6),
+        "error": True,
+    }
+    views = [
+        {"evidence_id": "a", "tool": "read_evidence", "span_view": True,
+         "window": None, "rows": [span_row], "text": f"... {message} ..."},
+        {"evidence_id": "b", "tool": "metrics_range_query", "span_view": False,
+         "window": {"start": _iso(0), "end": _iso(30)}, "rows": [], "text": "{}"},
+    ]  # fmt: skip
+    items = [
+        _attempt_item(PI_POS, "inj", 1, 15, effective=2, restored=10),
+        _attempt_item(WT_POS, "alert-only", 15, 20, effective=16, restored=17),
+        _attempt_item(
+            NOISE_NEG, "next", 20, 30, effective=21, restored=28, views=views
+        ),
+    ]
+    result = eval_dev_round.isolation(items, loaded)
+    assert result["inj"] == {
+        "predecessor": None,
+        "contamination": [],
+        "metrics_overlap": [],
+    }
+    after = result["next"]
+    # The alert-only attempt changed nothing in the lab: not a predecessor.
+    assert after["predecessor"] == {
+        "scenario_id": PI_POS,
+        "attempt_id": "inj",
+        "fault_end": _iso(10),
+        "gap_minutes": 10.0,
+        "injection": True,
+    }
+    assert after["contamination"] == [
+        f"PRIOR_FAULT_SPAN:{PI_POS}",
+        f"PRIOR_INJECTION_TEXT:{PI_POS}",
+    ]
+    assert after["metrics_overlap"] == [PI_POS]
+
+
+def test_isolation_ignores_rows_outside_the_prior_fault_interval():
+    loaded = _loaded()
+    late = {
+        "service": "payment",
+        "operation": "grpc.oteldemo.PaymentService/Charge",
+        "start_us": int(datetime(2026, 11, 2, 12, 25, tzinfo=UTC).timestamp() * 1e6),
+        "error": True,
+    }
+    views = [{"evidence_id": "a", "tool": "traces_search", "span_view": True,
+              "window": None, "rows": [late], "text": "{}"}]  # fmt: skip
+    items = [
+        _attempt_item(NOISE_POS, "first", 1, 15, effective=2, restored=10),
+        _attempt_item(
+            NOISE_NEG, "second", 20, 30, effective=21, restored=28, views=views
+        ),
+    ]
+    assert eval_dev_round.isolation(items, loaded)["second"]["contamination"] == []
