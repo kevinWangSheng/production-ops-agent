@@ -182,11 +182,28 @@ worktree `/Users/shenghuikevin/dev/AI/poa-386-logs`，分支 `feature/F8-386-str
 
 未确认：`service.py:1576` 的 pydantic 校验消息里可能出现的输入值类型；uvicorn 记录 ASGI 应用异常时的 traceback 内容（web 请求处理异常，未逐路径核对）；`socketserver` 在健康监听连接级错误时直接向 stderr 打多行 traceback，不经 logging（非 JSON，内容为 socket 错误）；Docker 宿主 json-file 轮转；上游 HolmesGPT 日志格式。
 
-Compose 抽检（F8L-Q3/O8，等 lead 放行，需 kind lab Prometheus 与模型 key 安排）：`opspilot-393` 栈用本分支镜像 `install.sh upgrade`；跑一次真实模型调用的 Run；`install.sh compose stop postgres` 约 60s 后 `start`；`install.sh compose logs` 取三服务日志，逐行 `json.loads` 校验、确认 `revision` 为镜像修订，人工核对无凭据、无 provider 文本，摘录入本记录；费用按余额差对账。
+Compose 抽检（F8L-Q3/O8，2026-11-02 00:00–00:03Z，持 `~/.agent/locks/kind-lab`；集成运行，不是生产证明）：
+
+- 栈 `opspilot-393`（colima `m1-kind`，`compose.yaml`，`fixture` 工具档），`install.sh upgrade` 从本分支 HEAD `b713ea25` 构建 `opspilot:local`；沿用已安装栈的 `worker_env`（未打开）。原始记录在仓库外 `~/.cache/opspilot-386-logs/`。
+- 00:00:23Z 第一条合成告警用未登记标签，intake 答 `handoff_created`、`TARGET_UNRESOLVED`，不建 Run；00:00:30Z 第二条用 `target_identities.json` 里 `checkout-prod` 的标签，建事故 `def8ea51…`、Run `7f3b8f97…`。
+- 真实模型调用 00:00:30–00:00:54Z：worker `/metrics` `opspilot_model_calls_total{category="ok"} 3`，无 401；Run 以 `INCOMPLETE_INVESTIGATION` 交接（fixture 档，同 #393/#414）。
+- 00:00:59Z `install.sh compose stop postgres`，00:01:59Z `start`；refusal 行到 00:02:10Z 为止，之后无新错误。
+- `install.sh compose logs` 三服务（web 37 行、worker 53 行、observer 42 行），加停栈后 `docker logs` 全量（web 41、worker 78、observer 63）：**每行都能 `json.loads`，前 6 个键依次为 `ts level logger msg version revision`，`revision` 均为 `b713ea256e26…`，没有非 JSON 行**；出现的 logger 有 `opspilot.worker/postmortem/observer/health`、`__main__`（web）、`psycopg.pool`、`uvicorn.error`、`uvicorn.access`（R6 生效，web 的 `opspilot.health` INFO 行开始出现）。
+- 人工核对：`sk-`、`bearer`、`api_key`、`authorization`、`password`、`deepseek`、`token=`、`postgresql://` 在全部日志中 0 命中；消息只有 ID、固定码、状态与 psycopg 的 host/port；无模型输出文本。web 3 处 `.exception()` 在停 PG 时触发，`exc` 是一行 JSON（31–34 行 traceback），末行 `PersistenceError: TIMEOUT`，链上是 `psycopg_pool.PoolTimeout`，不含 DSN。
+- 停栈：`install.sh compose stop` 只停了 web、postgres、一次性容器，worker/observer 属 `agent` profile 未停，补 `install.sh compose --profile agent stop worker observer`；6 个容器均 Exited，卷 `opspilot-393_pgdata` 与密钥目录保留。库里留下两个开放事故 `4dc7065b…`（handoff，未登记目标）与 `def8ea51…`（`waiting_human`），未人工关闭。
+- 告警令牌照 #393/#414 先例只在触发脚本内存里读用，未打印；`worker_env`、模型 key 未读取（K2）。费用：3 次真实调用，余额差待对账。
+
+摘录（原样，UUID 未改）：
+
+```text
+{"ts": "2026-11-02T00:00:54.038Z", "level": "INFO", "logger": "opspilot.worker", "msg": "attempt incident=def8ea51-800d-52e7-af1e-4db48325a300 status=handed_off reason=INCOMPLETE_INVESTIGATION", "version": "0.1.0", "revision": "b713ea256e266d5303bef6eda24f508641d59a69", "kv": {"incident": "def8ea51-800d-52e7-af1e-4db48325a300", "status": "handed_off", "reason": "INCOMPLETE_INVESTIGATION"}}
+{"ts": "2026-11-02T00:00:30.559Z", "level": "INFO", "logger": "uvicorn.access", "msg": "172.20.0.1:55120 - \"POST /intake/alertmanager HTTP/1.1\" 200", "version": "0.1.0", "revision": "b713ea256e266d5303bef6eda24f508641d59a69"}
+{"ts": "2026-11-02T00:01:05.766Z", "level": "WARNING", "logger": "opspilot.worker", "msg": "sweep refused code=TIMEOUT", "version": "0.1.0", "revision": "b713ea256e266d5303bef6eda24f508641d59a69", "kv": {"code": "TIMEOUT"}}
+```
 
 ## 下一步与交接
 
 - 第 1 实施步骤：PR-1 #413（PR #418）与 PR-2 #414（PR #421）均已合并。
-- 结构化日志：合同 r2 + r2.1 已裁决；实现在 `feature/F8-386-structured-logs`（见「结构化日志实现」），待独立验收测试、审查与 Compose 抽检。
+- 结构化日志：合同 r2 + r2.1 已裁决；实现在 `feature/F8-386-structured-logs`（见「结构化日志实现」），Compose 抽检已做（2026-11-02，全部行为 JSON、无凭据与 provider 文本）；待独立验收测试与审查。
 - #243 outbox：合同 r3 已裁决；#427（PR-1 写入侧）→ #428（PR-2 投递侧）。
 - 第 3 步升级回滚演练：合同 r3 已裁决；#429，等 #427 合并（trace 证据等 #428）。
