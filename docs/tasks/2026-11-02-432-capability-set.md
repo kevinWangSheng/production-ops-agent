@@ -24,7 +24,7 @@
 
 ## 必要上下文
 
-- 题目：`evals/datasets/dev-v2/capability/`；ID 与类别对照、canary 只在答案侧和本记录（下表），不进模型输入。
+- 题目：`evals/datasets/dev-v2/capability/`；ID 与类别对照在本记录（下表），canary 与注入文本只在答案侧，不进模型输入。
 - Q20：`opspilot/evaluation/expectations.py`（检查器）、`scripts/eval_live_inject.py::attempt_projection`（PG 投影）、driver 写 `runs/<attempt>/{projection,expectations}.json`。
 - 参考：`opspilot/evaluation/reference.py`、`scripts/eval_reference.py`（export/check）。
 - 开发轮汇总：`scripts/eval_dev_round.py`。
@@ -35,7 +35,7 @@
 | 缺测 | `dv2-fcd9eb` | `dv2-7261fe` |
 | 重复事件 | `dv2-30921c` | `dv2-7a98c2` |
 | 模型故障 | `dv2-c39f60` | `dv2-fa0e58` |
-| 提示注入 | `dv2-bec37f`（canary `ops-ipyi1z`） | `dv2-28535a` |
+| 提示注入 | `dv2-bec37f`（canary 只在 `answer.json`） | `dv2-28535a` |
 | 错目标 | `dv2-9f0fd3` | `dv2-dc387a` |
 
 ## 执行进展与证据

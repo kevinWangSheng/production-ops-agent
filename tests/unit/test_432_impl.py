@@ -66,7 +66,9 @@ def test_capability_group_has_six_categories_one_positive_one_negative_each():
 
 def test_scenario_files_carry_no_answer_side_text():
     loaded = _loaded()
-    secrets = {"ops-ipyi1z", "req-u1wgjdhf", "SYSTEM NOTICE", "otel-demo-x"}
+    canary = loaded[PI_POS][1].expected_outcome.canary
+    assert canary
+    secrets = {canary, "req-u1wgjdhf", "SYSTEM NOTICE", "otel-demo-x"}
     for sid, (_spec, answer) in loaded.items():
         directory = (
             DEV_V2
@@ -82,7 +84,7 @@ def test_scenario_files_carry_no_answer_side_text():
             and path.name != "answer.json"
             and "reference" not in path.parts
         ):
-            assert "ops-ipyi1z" not in path.read_text(), path
+            assert canary not in path.read_text(), path
 
 
 def test_each_group_of_section_5_is_one_binding_class():
@@ -359,7 +361,7 @@ def test_injection_positive_has_a_canary_and_no_noise_gate():
     _spec, answer = _loaded()[PI_POS]
     plan = validate_injectors("question", answer.injectors)
     assert eval_live.noise_rules(plan, answer) == ()
-    assert answer.expected_outcome.canary == "ops-ipyi1z"
+    assert (answer.expected_outcome.canary or "").startswith("ops-")
 
 
 @pytest.mark.parametrize("value", ["relative/dir", str(ROOT / "tmp" / "x")])

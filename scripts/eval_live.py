@@ -2360,6 +2360,7 @@ def _main(argv: list[str], deps: LiveDeps | None) -> int:
                 args.flagd_url,
                 args.round,
                 probe=args.probe or args.recover,
+                output_root=output_root,
                 **extra,
             )
         except (LabError, OSError) as exc:
@@ -2368,6 +2369,7 @@ def _main(argv: list[str], deps: LiveDeps | None) -> int:
             # (e.g. while the deps were built) is 130, not 3.
             with protected():
                 return _final(_refused(args.round, code))
+    # Idempotent: real_deps already relocated; injected deps (tests) too.
     live = relocate(deps, output_root)
     if args.recover:
         return _dispatch(
@@ -2409,6 +2411,7 @@ def real_deps(
     probe: bool = False,
     scenarios_root: Path | None = None,
     v2_probe: bool = False,
+    output_root: Path | None = None,
 ) -> LiveDeps:
     """The only constructor of lab-touching adapters (never used offline).
 
@@ -2439,45 +2442,51 @@ def real_deps(
     if probe:
         from scripts.eval_live_lab import ProbeEnvChecker, Unavailable
 
-        return LiveDeps(
+        return relocate(
+            LiveDeps(
+                clock=clock,
+                flags=KubectlFlagStore(),
+                flagd=HttpFlagResolver(flagd_url),
+                telemetry=LabTelemetry(clock),
+                identity=KindLabIdentity(),
+                ports=SocketPortProbe(),
+                # A v2 probe starts the attempt PG for alert_delivery (#431 §7).
+                pg=LocalPgLauncher() if v2_probe else Unavailable(),
+                balance=Unavailable(),
+                investigator=Unavailable(),
+                ledger_root=resolve_ledger_root(ROOT),
+                evidence_root=ROOT / "docs/evidence/eval",
+                recording_root=ROOT / "tmp/eval",
+                pg_root=ROOT / "tmp/eval-live",
+                scenarios_root=root,
+                flagd_url=flagd_url,
+                env=ProbeEnvChecker(),
+            ),
+            output_root,
+        )
+    session = prepare_round(round_id)
+    return relocate(
+        LiveDeps(
             clock=clock,
             flags=KubectlFlagStore(),
             flagd=HttpFlagResolver(flagd_url),
             telemetry=LabTelemetry(clock),
             identity=KindLabIdentity(),
             ports=SocketPortProbe(),
-            # A v2 probe starts the attempt PG for alert_delivery (#431 §7).
-            pg=LocalPgLauncher() if v2_probe else Unavailable(),
-            balance=Unavailable(),
-            investigator=Unavailable(),
+            pg=LocalPgLauncher(),
+            balance=DeepSeekBalance(session.key),
+            investigator=OtelDemoInvestigator(session, clock),
             ledger_root=resolve_ledger_root(ROOT),
             evidence_root=ROOT / "docs/evidence/eval",
             recording_root=ROOT / "tmp/eval",
             pg_root=ROOT / "tmp/eval-live",
             scenarios_root=root,
             flagd_url=flagd_url,
-            env=ProbeEnvChecker(),
-        )
-    session = prepare_round(round_id)
-    return LiveDeps(
-        clock=clock,
-        flags=KubectlFlagStore(),
-        flagd=HttpFlagResolver(flagd_url),
-        telemetry=LabTelemetry(clock),
-        identity=KindLabIdentity(),
-        ports=SocketPortProbe(),
-        pg=LocalPgLauncher(),
-        balance=DeepSeekBalance(session.key),
-        investigator=OtelDemoInvestigator(session, clock),
-        ledger_root=resolve_ledger_root(ROOT),
-        evidence_root=ROOT / "docs/evidence/eval",
-        recording_root=ROOT / "tmp/eval",
-        pg_root=ROOT / "tmp/eval-live",
-        scenarios_root=root,
-        flagd_url=flagd_url,
-        env=LabEnvChecker(),
-        provenance=GitProvenance(ROOT),
-        investigator_source=InvestigatorSource(session.config),
+            env=LabEnvChecker(),
+            provenance=GitProvenance(ROOT),
+            investigator_source=InvestigatorSource(session.config),
+        ),
+        output_root,
     )
 
 
