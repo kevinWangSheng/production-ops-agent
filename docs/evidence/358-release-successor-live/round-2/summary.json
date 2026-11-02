@@ -1,0 +1,950 @@
+{
+ "box": {
+  "checks": {
+   "first_anchor_is_released_at": true,
+   "first_box_end_is_consumption": true,
+   "release_observation_fact_unchanged": true,
+   "successor_anchor_is_released_at": true,
+   "successor_box_end_is_creation": true,
+   "successor_box_is_24h": true,
+   "successor_default_window": true
+  },
+  "first_box": {
+   "end": "2026-11-02T04:49:13+00:00",
+   "start": "2026-11-01T04:49:13+00:00"
+  },
+  "ok": true,
+  "run_seconds": 7200.0,
+  "successor_anchor": "2026-11-02T04:39:35+00:00",
+  "successor_box": {
+   "end": "2026-11-02T04:50:06+00:00",
+   "start": "2026-11-01T04:50:06+00:00"
+  },
+  "successor_created_at": "2026-11-01T20:50:06.158176-08:00",
+  "successor_default_query_window": {
+   "end": "2026-11-02T04:50:06+00:00",
+   "start": "2026-11-02T03:39:35+00:00"
+  }
+ },
+ "code_revision": "0fc0f8d8",
+ "consumed_at": "2026-11-01 20:49:13.173942-08:00",
+ "controls": [
+  {
+   "action": "cancel",
+   "actor": "r358lab",
+   "created_at": "2026-11-01 20:50:06.078052-08:00",
+   "expected_generation": 0,
+   "resulting_generation": 1
+  },
+  {
+   "action": "new_run",
+   "actor": "r358lab",
+   "created_at": "2026-11-01 20:50:06.198952-08:00",
+   "expected_generation": 1,
+   "resulting_generation": 2
+  },
+  {
+   "action": "auto_authorize_observation",
+   "actor": "system",
+   "created_at": "2026-11-01 20:55:13.399654-08:00",
+   "expected_generation": 2,
+   "resulting_generation": 2
+  }
+ ],
+ "deliveries": [
+  {
+   "delivery_id": 1,
+   "outcome": "attached",
+   "received_at": "2026-11-01 20:50:05.043204-08:00",
+   "status": "firing"
+  }
+ ],
+ "episode": {
+  "after_first_box_end": true,
+  "delivery_id": 1,
+  "outcome": "attached",
+  "received_at": "2026-11-01 20:50:05.043204-08:00",
+  "starts_at": "2026-11-01 20:49:54-08:00",
+  "status": "firing"
+ },
+ "first_run": {
+  "budget_spent": 6,
+  "run_id": "ace08c55-9e68-57a0-80cf-a61bc6e0903e",
+  "state": "cancelled",
+  "tool_operations_used": 14
+ },
+ "gateway_records": {
+  "first_run": [
+   {
+    "reason": null,
+    "sequence": 0,
+    "status": "ok",
+    "tool": "get_label_values",
+    "window": {
+     "end": "2026-11-02T04:49:13+00:00",
+     "start": "2026-11-02T03:39:35+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 0,
+    "status": "ok",
+    "tool": "get_metric_names",
+    "window": {
+     "end": "2026-11-02T04:49:13+00:00",
+     "start": "2026-11-02T03:39:35+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 0,
+    "status": "ok",
+    "tool": "get_label_values",
+    "window": {
+     "end": "2026-11-02T04:49:13+00:00",
+     "start": "2026-11-02T03:39:35+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 1,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-02T04:39:35+00:00",
+     "start": "2026-11-02T04:34:35+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 1,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-02T04:47:03+00:00",
+     "start": "2026-11-02T04:42:03+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 1,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-02T04:47:03+00:00",
+     "start": "2026-11-02T04:42:03+00:00"
+    }
+   },
+   {
+    "reason": "RESULT_TOO_LARGE",
+    "sequence": 2,
+    "status": "error",
+    "tool": "traces_search",
+    "window": {
+     "end": "2026-11-02T04:47:03+00:00",
+     "start": "2026-11-02T04:42:03+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 2,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-02T04:47:03+00:00",
+     "start": "2026-11-02T04:42:03+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 2,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-02T04:47:03+00:00",
+     "start": "2026-11-02T03:40:00+00:00"
+    }
+   },
+   {
+    "reason": "RESULT_TOO_LARGE",
+    "sequence": 3,
+    "status": "error",
+    "tool": "traces_search",
+    "window": {
+     "end": "2026-11-02T04:47:03+00:00",
+     "start": "2026-11-02T04:44:00+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 3,
+    "status": "no_data",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-02T04:49:13+00:00",
+     "start": "2026-11-02T04:36:00+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 4,
+    "status": "ok",
+    "tool": "read_evidence",
+    "window": {
+     "end": "2026-11-02T04:47:03+00:00",
+     "start": "2026-11-02T04:44:00+00:00"
+    }
+   }
+  ],
+  "successor": [
+   {
+    "reason": null,
+    "sequence": 0,
+    "status": "ok",
+    "tool": "get_label_values",
+    "window": {
+     "end": "2026-11-02T04:47:03+00:00",
+     "start": "2026-11-02T04:42:03+00:00"
+    }
+   },
+   {
+    "reason": "RESULT_TOO_LARGE",
+    "sequence": 0,
+    "status": "error",
+    "tool": "traces_search",
+    "window": {
+     "end": "2026-11-02T04:47:03+00:00",
+     "start": "2026-11-02T04:42:03+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 1,
+    "status": "ok",
+    "tool": "read_evidence",
+    "window": {
+     "end": "2026-11-02T04:47:03+00:00",
+     "start": "2026-11-02T04:42:03+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 1,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-02T04:47:21+00:00",
+     "start": "2026-11-02T04:42:03+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 2,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-02T04:47:21+00:00",
+     "start": "2026-11-02T04:42:03+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 2,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-02T04:47:21+00:00",
+     "start": "2026-11-02T04:42:03+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 3,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-02T04:39:35+00:00",
+     "start": "2026-11-02T04:34:35+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 3,
+    "status": "ok",
+    "tool": "traces_search",
+    "window": {
+     "end": "2026-11-02T04:47:00+00:00",
+     "start": "2026-11-02T04:45:00+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 4,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-02T04:50:00+00:00",
+     "start": "2026-11-02T03:39:35+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 4,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-02T04:50:00+00:00",
+     "start": "2026-11-02T03:39:35+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 5,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-02T04:47:21+00:00",
+     "start": "2026-11-02T04:42:03+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 5,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-02T04:39:35+00:00",
+     "start": "2026-11-02T04:34:35+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 5,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-02T04:50:00+00:00",
+     "start": "2026-11-02T04:30:00+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 5,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-02T04:50:00+00:00",
+     "start": "2026-11-02T03:39:35+00:00"
+    }
+   },
+   {
+    "reason": "INVALID_PARAMS",
+    "sequence": 6,
+    "status": "error",
+    "tool": "traces_search",
+    "window": {
+     "end": "2026-11-02T04:50:06+00:00",
+     "start": "2026-11-01T04:50:06+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 6,
+    "status": "no_data",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-02T04:50:00+00:00",
+     "start": "2026-11-02T04:30:00+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 7,
+    "status": "ok",
+    "tool": "get_metric_names",
+    "window": {
+     "end": "2026-11-02T04:47:21+00:00",
+     "start": "2026-11-02T04:42:03+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 7,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-02T04:47:21+00:00",
+     "start": "2026-11-02T04:42:03+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 8,
+    "status": "ok",
+    "tool": "get_label_values",
+    "window": {
+     "end": "2026-11-02T04:47:21+00:00",
+     "start": "2026-11-02T04:42:03+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 8,
+    "status": "ok",
+    "tool": "get_label_values",
+    "window": {
+     "end": "2026-11-02T04:47:21+00:00",
+     "start": "2026-11-02T04:42:03+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 9,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-02T04:39:35+00:00",
+     "start": "2026-11-02T04:34:35+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 9,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-02T04:47:21+00:00",
+     "start": "2026-11-02T04:42:03+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 10,
+    "status": "no_data",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-02T04:50:06+00:00",
+     "start": "2026-11-02T04:34:35+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 10,
+    "status": "no_data",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-02T04:39:35+00:00",
+     "start": "2026-11-02T04:34:35+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 10,
+    "status": "no_data",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-02T04:47:21+00:00",
+     "start": "2026-11-02T04:42:03+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 11,
+    "status": "ok",
+    "tool": "get_label_values",
+    "window": {
+     "end": "2026-11-02T04:50:06+00:00",
+     "start": "2026-11-02T04:34:35+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 11,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-02T04:50:06+00:00",
+     "start": "2026-11-02T04:34:35+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 12,
+    "status": "ok",
+    "tool": "get_metric_names",
+    "window": {
+     "end": "2026-11-02T04:50:06+00:00",
+     "start": "2026-11-02T04:34:35+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 12,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-02T04:50:06+00:00",
+     "start": "2026-11-02T04:44:35+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 13,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-02T04:50:06+00:00",
+     "start": "2026-11-02T04:34:35+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 14,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-02T04:50:06+00:00",
+     "start": "2026-11-02T04:34:35+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 14,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-02T04:50:06+00:00",
+     "start": "2026-11-02T04:37:35+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 15,
+    "status": "ok",
+    "tool": "get_metric_names",
+    "window": {
+     "end": "2026-11-02T04:50:06+00:00",
+     "start": "2026-11-02T04:42:03+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 15,
+    "status": "ok",
+    "tool": "get_label_values",
+    "window": {
+     "end": "2026-11-02T04:50:06+00:00",
+     "start": "2026-11-02T04:34:35+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 16,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-02T04:39:35+00:00",
+     "start": "2026-11-02T04:34:35+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 16,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-02T04:47:21+00:00",
+     "start": "2026-11-02T04:42:03+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 17,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-02T04:50:06+00:00",
+     "start": "2026-11-02T03:39:35+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 18,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-02T04:50:06+00:00",
+     "start": "2026-11-02T03:39:35+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 19,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-02T04:50:06+00:00",
+     "start": "2026-11-02T03:39:35+00:00"
+    }
+   }
+  ]
+ },
+ "incident_id": "99899a8e-ffb1-5f48-add2-4d10bae58ef4",
+ "observation_id": "1e8f631a-4008-44b6-8575-a2d84658ae24",
+ "offline_gateway_judgment": {
+  "first_run": {
+   "frame": {
+    "end": "2026-11-02T04:49:13+00:00",
+    "start": "2026-11-01T04:49:13+00:00"
+   },
+   "model": false,
+   "network": false,
+   "reason": "WINDOW_OUT_OF_SCOPE",
+   "requests_built": 0,
+   "status": "denied",
+   "window": {
+    "end": "2026-11-02T04:50:00+00:00",
+    "start": "2026-11-02T03:39:35+00:00"
+   }
+  },
+  "first_run_refused": true,
+  "probe_window_source": "successor's first metrics query covering the episode",
+  "successor": {
+   "frame": {
+    "end": "2026-11-02T04:50:06+00:00",
+    "start": "2026-11-01T04:50:06+00:00"
+   },
+   "model": false,
+   "network": false,
+   "reason": "NO_DATA",
+   "requests_built": 1,
+   "status": "no_data",
+   "window": {
+    "end": "2026-11-02T04:50:00+00:00",
+    "start": "2026-11-02T03:39:35+00:00"
+   }
+  },
+  "successor_admitted": true
+ },
+ "raw_ledger": {
+  "files": {
+   "drive.jsonl": "3ca2e95d43633fa562331e161b8dc63f40ef8929b8d8ff29eb16ca13b8a73b9d"
+  },
+  "location": "tmp/lab-ledgers/358-live-r2/ (not committed)"
+ },
+ "released_at": "2026-11-01 20:39:35.359721-08:00",
+ "schema": "opspilot-358-release-successor-1",
+ "successor": {
+  "budget_spent": 21,
+  "run_id": "a1c283b9-9cc0-50e8-a58e-446146153290",
+  "state": "completed",
+  "tool_operations_used": 39
+ },
+ "successor_episode_queries": {
+  "observed": "observed",
+  "ok": [
+   {
+    "reason": null,
+    "sequence": 4,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-02T04:50:00+00:00",
+     "start": "2026-11-02T03:39:35+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 4,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-02T04:50:00+00:00",
+     "start": "2026-11-02T03:39:35+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 5,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-02T04:50:00+00:00",
+     "start": "2026-11-02T04:30:00+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 5,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-02T04:50:00+00:00",
+     "start": "2026-11-02T03:39:35+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 11,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-02T04:50:06+00:00",
+     "start": "2026-11-02T04:34:35+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 12,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-02T04:50:06+00:00",
+     "start": "2026-11-02T04:44:35+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 13,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-02T04:50:06+00:00",
+     "start": "2026-11-02T04:34:35+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 14,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-02T04:50:06+00:00",
+     "start": "2026-11-02T04:34:35+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 14,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-02T04:50:06+00:00",
+     "start": "2026-11-02T04:37:35+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 17,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-02T04:50:06+00:00",
+     "start": "2026-11-02T03:39:35+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 18,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-02T04:50:06+00:00",
+     "start": "2026-11-02T03:39:35+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 19,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-02T04:50:06+00:00",
+     "start": "2026-11-02T03:39:35+00:00"
+    }
+   }
+  ],
+  "queries": [
+   {
+    "reason": null,
+    "sequence": 4,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-02T04:50:00+00:00",
+     "start": "2026-11-02T03:39:35+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 4,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-02T04:50:00+00:00",
+     "start": "2026-11-02T03:39:35+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 5,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-02T04:50:00+00:00",
+     "start": "2026-11-02T04:30:00+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 5,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-02T04:50:00+00:00",
+     "start": "2026-11-02T03:39:35+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 6,
+    "status": "no_data",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-02T04:50:00+00:00",
+     "start": "2026-11-02T04:30:00+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 10,
+    "status": "no_data",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-02T04:50:06+00:00",
+     "start": "2026-11-02T04:34:35+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 11,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-02T04:50:06+00:00",
+     "start": "2026-11-02T04:34:35+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 12,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-02T04:50:06+00:00",
+     "start": "2026-11-02T04:44:35+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 13,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-02T04:50:06+00:00",
+     "start": "2026-11-02T04:34:35+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 14,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-02T04:50:06+00:00",
+     "start": "2026-11-02T04:34:35+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 14,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-02T04:50:06+00:00",
+     "start": "2026-11-02T04:37:35+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 17,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-02T04:50:06+00:00",
+     "start": "2026-11-02T03:39:35+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 18,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-02T04:50:06+00:00",
+     "start": "2026-11-02T03:39:35+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 19,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-02T04:50:06+00:00",
+     "start": "2026-11-02T03:39:35+00:00"
+    }
+   }
+  ]
+ },
+ "trace": {
+  "project": "opspilot-lab-358",
+  "project_id": "da173c3c-d762-4647-be2a-807d57884622",
+  "read_back": "found",
+  "runs": {
+   "first_run": {
+    "roots": [
+     {
+      "child_spans": {
+       "llm": 6,
+       "tool": 14
+      },
+      "langsmith_run_id": "00000000-0000-0000-f50b-ce1f9324f50b",
+      "status": "success",
+      "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/da173c3c-d762-4647-be2a-807d57884622/r/00000000-0000-0000-f50b-ce1f9324f50b?poll=true"
+     }
+    ],
+    "run_id": "ace08c55-9e68-57a0-80cf-a61bc6e0903e"
+   },
+   "successor": {
+    "roots": [
+     {
+      "child_spans": {
+       "llm": 21,
+       "tool": 39
+      },
+      "langsmith_run_id": "00000000-0000-0000-f48a-899c59041f31",
+      "status": "success",
+      "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/da173c3c-d762-4647-be2a-807d57884622/r/00000000-0000-0000-f48a-899c59041f31?poll=true"
+     }
+    ],
+    "run_id": "a1c283b9-9cc0-50e8-a58e-446146153290"
+   }
+  }
+ },
+ "versions": {
+  "context_policy_revision": "ctx-ctx-policy-v1-a30e65ea52f4",
+  "prompt_revision": "prompt-replay-candidate-bef70649a3a8",
+  "tool_schema_revision": "otel-demo-a3a95a0f888e"
+ }
+}
