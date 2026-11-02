@@ -382,6 +382,36 @@ def _repo_files() -> list[Path]:
     return [ROOT / item.decode() for item in listed if item]
 
 
+# Seams-432 A9: committed dev-round run evidence legitimately contains the
+# injected span text (it is delivered evidence); a model echo is judged by
+# the Q20 ``canary_absent`` check instead. Exactly these two trees, no more.
+RUN_EVIDENCE_EXEMPT = (
+    Path("docs/evidence/eval"),
+    Path("docs/evidence/432-dev-round"),
+)
+
+
+def _canary_offenders(
+    root: Path, files: list[Path], scenario_dir: Path, needle: bytes
+) -> list[str]:
+    """Files under ``root`` holding ``needle``, outside the scenario's own
+    ``answer.json`` and ``reference/`` and the A9 run-evidence trees."""
+    offenders = []
+    for path in files:
+        if not path.is_file():
+            continue
+        if path == scenario_dir / "answer.json":
+            continue
+        if path.is_relative_to(scenario_dir / "reference"):
+            continue
+        relative = path.relative_to(root)
+        if any(relative.is_relative_to(exempt) for exempt in RUN_EVIDENCE_EXEMPT):
+            continue
+        if needle in path.read_bytes():
+            offenders.append(relative.as_posix())
+    return offenders
+
+
 def test_canary_appears_only_in_its_answer_and_reference_files():
     canaries = {
         spec.scenario_id: answer.expected_outcome.canary
@@ -389,20 +419,40 @@ def test_canary_appears_only_in_its_answer_and_reference_files():
         if answer.expected_outcome.canary
     }
     assert canaries, "the prompt-injection positive must carry a canary"
+    files = _repo_files()
     for scenario_id, canary in canaries.items():
-        allowed_dir = CAPABILITY / scenario_id
-        needle = canary.encode()
-        offenders = []
-        for path in _repo_files():
-            if not path.is_file():
-                continue
-            if path == allowed_dir / "answer.json":
-                continue
-            if path.is_relative_to(allowed_dir / "reference"):
-                continue
-            if needle in path.read_bytes():
-                offenders.append(str(path.relative_to(ROOT)))
+        offenders = _canary_offenders(
+            ROOT, files, CAPABILITY / scenario_id, canary.encode()
+        )
         assert not offenders, (scenario_id, offenders)
+
+
+def test_canary_exemption_covers_only_the_two_run_evidence_trees(tmp_path):
+    needle = b"ops-zz9qq1"
+    scenario_dir = tmp_path / "evals/datasets/dev-v2/capability/dv2-abcdef"
+    allowed = [
+        scenario_dir / "answer.json",
+        scenario_dir / "reference" / "evidence.json",
+        tmp_path / "docs/evidence/eval/dv2-111111/runs/a1/summary.json",
+        tmp_path / "docs/evidence/432-dev-round/summary.json",
+    ]
+    flagged = [
+        tmp_path / "docs/tasks/2026-11-02-432.md",
+        tmp_path / "docs/evidence/431-injector-probes/span.json",
+        tmp_path / "docs/evidence/eval-other/summary.json",
+        tmp_path / "docs/evidence/432-dev-round-extra/summary.json",
+        tmp_path / "docs/evidence/summary.json",
+        tmp_path / "evals/datasets/dev-v2/capability/dv2-abcdef/scenario.json",
+        tmp_path / "evals/datasets/dev-v2/capability/dv2-fedcba/answer.json",
+        tmp_path / "tests/unit/test_432_impl.py",
+    ]
+    for path in allowed + flagged:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"prefix " + needle + b" suffix")
+    offenders = _canary_offenders(tmp_path, allowed + flagged, scenario_dir, needle)
+    assert sorted(offenders) == sorted(
+        p.relative_to(tmp_path).as_posix() for p in flagged
+    )
 
 
 # -- _plan_v2 binding (seams §5) ---------------------------------------------
