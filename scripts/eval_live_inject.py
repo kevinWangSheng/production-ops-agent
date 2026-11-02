@@ -695,3 +695,225 @@ def alert_entry(
         clock=clock,
         first_starts_at=first_starts_at,
     )
+
+
+# -- attempt projection (#432 seams §2) -----------------------------------------
+
+PROJECTION_SCHEMA = "opspilot-eval-projection-1"
+
+
+def _window_json(value: Any) -> dict[str, str] | None:
+    if isinstance(value, Mapping) and isinstance(value.get("start"), str):
+        end = value.get("end")
+        if isinstance(end, str):
+            return {"start": value["start"], "end": end}
+    return None
+
+
+def _report_facts(raw: Any) -> dict[str, Any] | None:
+    """The published report's shape only: never its text."""
+    from opspilot.investigation.reports import parse_report
+
+    if not isinstance(raw, str):
+        return None
+    report, _reason = parse_report(raw, finish_reason="stop")
+    if report is None:
+        return {
+            "parsed": False,
+            "assessment_status": None,
+            "conclusion": None,
+            "gaps_count": None,
+            "fact_claims": None,
+        }
+    return {
+        "parsed": True,
+        "assessment_status": report.assessment_status,
+        "conclusion": report.conclusion,
+        "gaps_count": len(report.gaps),
+        "fact_claims": sum(1 for claim in report.claims if claim.kind == "fact"),
+    }
+
+
+def _durable_outcome(dsn: str, incident: Any, scenario_id: str) -> Any:
+    """``outcome_from_durable`` exactly as the investigator projects it; None
+    for an incident without a Run (a ``TARGET_UNRESOLVED`` handoff)."""
+    from dataclasses import asdict
+
+    from opspilot.acceptance import IncidentScenario, outcome_from_durable
+    from opspilot.persistence import DurableStore
+    from opspilot.web import DurableEventLog, DurableIncidentStore
+
+    store = DurableStore(dsn)
+    try:
+        snapshot = store.rebuild(incident)
+        controls = tuple(
+            asdict(row) for row in DurableIncidentStore(store).control_audit(incident)
+        )
+        handoffs = tuple(
+            dict(event.payload)
+            for event in DurableEventLog(store).read_after(incident, 0, limit=1000)
+            if event.kind == "run_handoff"
+        )
+        outcome = outcome_from_durable(
+            IncidentScenario(scenario_id, "F1", "eval", "eval", str(incident)),
+            snapshot,
+            controls=controls,
+            handoff_events=handoffs,
+        )
+    except Exception:  # noqa: BLE001 - no Run, or no projectable final state
+        return None
+    return {
+        "final_state": outcome.final_state,
+        "decision": outcome.decision,
+        "handoff_reasons": list(outcome.handoff_reasons),
+        "report_available": outcome.report_available,
+        "evidence_ids": list(outcome.evidence_ids),
+    }
+
+
+def _alert_facts(conn: Any, incident: Any) -> dict[str, Any] | None:
+    from opspilot.acceptance import alert_intake_outcome, alert_intake_records
+
+    try:
+        records = alert_intake_records(conn, incident)
+        if records.identity is None:
+            return None
+
+        class _Subject:
+            scenario_id = "projection"
+            subject_id = str(incident)
+
+        outcome = alert_intake_outcome(_Subject(), records)
+    except ValueError:
+        return None
+    return {
+        "handoff": outcome.handoff,
+        "handoff_reason": outcome.handoff_reason,
+        "run_ids": list(outcome.run_ids),
+        "lifecycle": outcome.lifecycle,
+    }
+
+
+def attempt_projection(
+    dsn: str,
+    incident_id: str | None,
+    *,
+    canary: str | None = None,
+    scenario_id: str = "projection",
+) -> dict[str, Any]:
+    """What Q20 reads of one attempt (#432 seams §2), read-only from the
+    attempt's PostgreSQL while it still runs: counts, the Runs' recorded
+    input frame (``opspilot_runs.input``), the outcome projection, the alert
+    intake projection, every committed tool result's status class (never a
+    view's content), the published report's shape and how often ``canary``
+    appears in model output. Nothing here writes."""
+    from uuid import UUID
+
+    import psycopg
+    from psycopg.rows import dict_row
+
+    counts = intake_counts(dsn)
+    incident = None if incident_id is None else UUID(str(incident_id))
+    runs: list[dict[str, Any]] = []
+    tool_results: list[dict[str, Any]] = []
+    report: dict[str, Any] | None = None
+    hits: dict[str, int] | None = (
+        None if canary is None else {"report": 0, "step_responses": 0}
+    )
+    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+        conn.read_only = True
+        rows = conn.execute(
+            "SELECT run_id,state,budget_reserved,budget_spent,budget_unknown,"
+            "tool_operations_used,input FROM opspilot_runs ORDER BY deadline,run_id"
+        ).fetchall()
+        for row in rows:
+            data = row["input"] if isinstance(row["input"], Mapping) else {}
+            facts = data.get("scope_facts")
+            facts = facts if isinstance(facts, Mapping) else {}
+            context = data.get("evidence_context")
+            policies = (
+                context.get("time_policies") if isinstance(context, Mapping) else None
+            )
+            runs.append(
+                {
+                    "run_id": str(row["run_id"]),
+                    "row_state": row["state"],
+                    "model_requests_used": int(
+                        row["budget_reserved"]
+                        + row["budget_spent"]
+                        + row["budget_unknown"]
+                    ),
+                    "tool_operations_used": int(row["tool_operations_used"]),
+                    "bound_target_id": data.get("bound_target_id"),
+                    "scope_target_ids": list(facts.get("target_ids") or []),
+                    "time_policies": [
+                        {
+                            "id": policy.get("id"),
+                            "window": _window_json(policy.get("window")),
+                            "anchor_rule": policy.get("anchor_rule"),
+                        }
+                        for policy in (policies if isinstance(policies, list) else [])
+                        if isinstance(policy, Mapping)
+                    ],
+                }
+            )
+        steps = conn.execute(
+            "SELECT s.run_id,s.sequence,s.response,s.tool_results FROM opspilot_steps s "
+            "JOIN opspilot_runs r ON r.run_id=s.run_id ORDER BY r.deadline,s.run_id,s.sequence"
+        ).fetchall()
+        for step in steps:
+            response = step["response"]
+            if hits is not None and response is not None:
+                if canary in json.dumps(response, ensure_ascii=False):
+                    hits["step_responses"] += 1
+            if isinstance(response, Mapping) and response.get("kind") == "conclusion":
+                content = (response.get("conclusion") or {}).get("report_content")
+                report = _report_facts(content)
+                if hits is not None:
+                    hits["report"] = (
+                        1 if isinstance(content, str) and canary in content else 0
+                    )
+            for item in step["tool_results"] or []:
+                view = item.get("result") if isinstance(item, Mapping) else None
+                if not isinstance(view, Mapping):
+                    continue
+                tool_results.append(
+                    {
+                        "run_id": str(step["run_id"]),
+                        "tool": view.get("tool"),
+                        "status": view.get("status"),
+                        "reason": view.get("reason"),
+                        "target_id": view.get("target_id"),
+                        "window": _window_json(view.get("window")),
+                    }
+                )
+        writes = {
+            "controls": int(
+                conn.execute("SELECT count(*) AS n FROM opspilot_controls").fetchone()[
+                    "n"
+                ]
+            ),
+            "self_heal_authorizations": int(
+                conn.execute(
+                    "SELECT count(*) AS n FROM opspilot_self_heal_authorizations"
+                ).fetchone()["n"]
+            )
+            if conn.execute(
+                "SELECT to_regclass('opspilot_self_heal_authorizations') AS t"
+            ).fetchone()["t"]
+            is not None
+            else 0,
+        }
+        alert = None if incident is None else _alert_facts(conn, incident)
+    outcome = None if incident is None else _durable_outcome(dsn, incident, scenario_id)
+    return {
+        "schema": PROJECTION_SCHEMA,
+        "counts": counts,
+        "runs": runs,
+        "outcome": outcome,
+        "alert": alert,
+        "tool_results": tool_results,
+        "report": report,
+        "canary_hits": hits,
+        "writes": writes,
+    }

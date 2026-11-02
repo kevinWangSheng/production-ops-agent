@@ -468,7 +468,15 @@ def _scenario(root: Path, sid: str, entry: str, injectors, signature, category="
 
 
 @pytest.fixture
-def v2(tmp_path):
+def v2(tmp_path, monkeypatch):
+    # #432 seams §6: a noise flag beside a signature fault must show its own
+    # errors before the Run; the offline lab emits ad GetAds errors for it.
+    matchers = pr_c._matchers
+    monkeypatch.setattr(
+        pr_c,
+        "_matchers",
+        lambda: {**matchers(), "adFailure": [("ad", "oteldemo.AdService/GetAds")]},
+    )
     root = tmp_path / "dev-v2"
     shutil.copytree(DEV_V2 / "regression", root / "regression")
     (root / "capability").mkdir()

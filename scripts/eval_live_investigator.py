@@ -47,7 +47,7 @@ from opspilot.evaluation.storage import ArtifactRef
 from opspilot.investigation.client import DeepSeekClient
 from opspilot.investigation.limits import M1_FROZEN_LIMITS, RUN_WALL_SECONDS
 from opspilot.investigation.runner import InvestigationRunner, RunnerOutcome
-from opspilot.persistence import DurableStore
+from opspilot.persistence import DurableStore, PersistenceError
 from opspilot.tools import otel_demo
 from opspilot.tools.registry import ToolContractError, canonical_hash
 from opspilot.web import DurableEventLog, DurableEvidenceStore, DurableIncidentStore
@@ -57,6 +57,7 @@ from scripts import kind_lab
 from scripts.eval_live_inject import (
     AlertRun,
     alert_entry,
+    attempt_projection,
     front_client,
     intake_counts,
     intake_record,
@@ -560,6 +561,7 @@ class OtelDemoInvestigator:
                 ).encode(),
             )
         report = _report(store, incident)
+        projection: Mapping[str, Any] | None = None
         ref = seen.get("recording_ref")
         finish = _finish_reason(request.recording_dir, ref) if ref is not None else None
         tracer = tracing.tracer()
@@ -573,6 +575,7 @@ class OtelDemoInvestigator:
             if plan.entry != "alertmanager":
                 counts["episodes"] = None  # type: ignore[assignment]
             intake = intake_record(plan.entry, alerts, counts)
+            projection = _projection(request, spec, incident)
             if transport_fault is not None:
                 intake["model_transport"] = {
                     "mode": plan.model_mode,
@@ -604,6 +607,7 @@ class OtelDemoInvestigator:
             },
             error=error,
             intake=intake,
+            projection=projection,
         )
 
     def _deliver(
@@ -635,7 +639,10 @@ class OtelDemoInvestigator:
 
         try:
             outcome: IncidentOutcome | None = _outcome(spec, store, log, incident)
-        except ValueError:
+        except (ValueError, PersistenceError):
+            # An incident without a Run has no Run snapshot to project: the
+            # store refuses the rebuild (INCONSISTENT_STATE), found by #432's
+            # PG test; the handoff is read from the intake projection instead.
             outcome = None
         ended = self.clock.now()
         return InvestigationResult(
@@ -651,7 +658,24 @@ class OtelDemoInvestigator:
             usage={"epoch": None, "model_requests_used": 0},
             error=None,
             intake=intake_record("alertmanager", alerts, counts),
+            projection=_projection(request, spec, incident),
         )
+
+
+def _projection(request: Any, spec: Any, incident: Any) -> Mapping[str, Any] | None:
+    """#432 seams §2: the attempt PG's read-only Q20 projection, taken while
+    the PG still runs; a failed read is recorded as None (Q20 then fails),
+    never raised into the attempt."""
+    checkpoint()
+    try:
+        return attempt_projection(
+            request.pg.owner_dsn,
+            str(incident),
+            canary=getattr(request, "canary", None),
+            scenario_id=spec.scenario_id,
+        )
+    except Exception:  # noqa: BLE001 - Q20 reads a missing projection as failed
+        return None
 
 
 def _outcome(
