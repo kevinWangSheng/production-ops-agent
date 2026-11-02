@@ -1,0 +1,58 @@
+[
+ {
+  "kind": "run_state",
+  "idempotency_key": "run_state:7c451da1-815b-520f-af37-d6e6bc0298e9:1",
+  "run_id": "7c451da1-815b-520f-af37-d6e6bc0298e9",
+  "state": "delivered",
+  "attempts": 1
+ },
+ {
+  "kind": "model_step",
+  "idempotency_key": "model_step:7c451da1-815b-520f-af37-d6e6bc0298e9:0",
+  "run_id": "7c451da1-815b-520f-af37-d6e6bc0298e9",
+  "state": "delivered",
+  "attempts": 1
+ },
+ {
+  "kind": "tool_result",
+  "idempotency_key": "tool_result:7c451da1-815b-520f-af37-d6e6bc0298e9:0:call_00_lpHayNUGaSu3jk4fIj6S5600",
+  "run_id": "7c451da1-815b-520f-af37-d6e6bc0298e9",
+  "state": "delivered",
+  "attempts": 1
+ },
+ {
+  "kind": "model_step",
+  "idempotency_key": "model_step:7c451da1-815b-520f-af37-d6e6bc0298e9:1",
+  "run_id": "7c451da1-815b-520f-af37-d6e6bc0298e9",
+  "state": "delivered",
+  "attempts": 1
+ },
+ {
+  "kind": "tool_result",
+  "idempotency_key": "tool_result:7c451da1-815b-520f-af37-d6e6bc0298e9:1:call_00_uy257BFFpoNaN5BXieoO4559",
+  "run_id": "7c451da1-815b-520f-af37-d6e6bc0298e9",
+  "state": "delivered",
+  "attempts": 1
+ },
+ {
+  "kind": "model_step",
+  "idempotency_key": "model_step:7c451da1-815b-520f-af37-d6e6bc0298e9:2",
+  "run_id": "7c451da1-815b-520f-af37-d6e6bc0298e9",
+  "state": "delivered",
+  "attempts": 1
+ },
+ {
+  "kind": "model_step",
+  "idempotency_key": "model_step:7c451da1-815b-520f-af37-d6e6bc0298e9:3",
+  "run_id": "7c451da1-815b-520f-af37-d6e6bc0298e9",
+  "state": "delivered",
+  "attempts": 1
+ },
+ {
+  "kind": "run_state",
+  "idempotency_key": "run_state:7c451da1-815b-520f-af37-d6e6bc0298e9:2",
+  "run_id": "7c451da1-815b-520f-af37-d6e6bc0298e9",
+  "state": "delivered",
+  "attempts": 1
+ }
+]

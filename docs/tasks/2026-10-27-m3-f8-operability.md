@@ -160,11 +160,11 @@ opspilot_observation_due 0
 - 投递侧再校验载荷：只读 `PAYLOAD_KEYS`，字符串须形如 `^[A-Za-z0-9._:+-]{1,64}$`、数字须为数字，否则该行 `UNSERIALIZABLE`。
 - `tests/acceptance/test_413_entry_points_and_compose.py` 的 install.env 键集合加 `OPSPILOT_TRACE`：OB-R12 明文要求新增此键，属合同变更带来的钉值更新（同该测试里 #393 那一行），不是削弱验收。
 
-验证：`tests/test_428_outbox_delivery_impl.py`（42 项，无库）、`tests/integration/test_428_outbox_delivery_postgres.py`（12 项，worker 角色 + 回环假端点，临时 PG 17 端口 55448）；PR-1 PG 测试与 `test_runtime_roles_postgres.py` 回归通过。真实证据（OB-R13）待 kind-lab 窗口。
+验证：`tests/test_428_outbox_delivery_impl.py`（42 项，无库）、`tests/integration/test_428_outbox_delivery_postgres.py`（12 项，worker 角色 + 回环假端点，临时 PG 17 端口 55448）；PR-1 PG 测试与 `test_runtime_roles_postgres.py` 回归通过。真实证据（OB-R13，2026-11-02）：[243-trace-outbox](../evidence/243-trace-outbox/README.md)，4 个真实 Run、12 次模型请求、LangSmith 估算 $0.0086（余额差待用户对账）；故障①通过，故障②命中但「是否去重」只能部分回答；演练目标无成功工具调用。
 
 ## 下一步与交接
 
 - 第 1 实施步骤：PR-1 #413（PR #418）与 PR-2 #414（PR #421）均已合并。
 - 结构化日志：合同 r2 + r2.1 已裁决，2026-11-01 Q1 转为执行；排在 #428 合并后的首条空闲代码线（Q4），Compose 抽检并入 F14 第 3 步 kind 窗口（Q3）。
-- #243 outbox：合同 r3 已裁决；#427（PR-1 写入侧）已合并 `04eec52d`；#428（PR-2 投递侧）实现在 `feature/F8-428-outbox-delivery`（worktree `~/dev/AI/poa-428-impl`），真实证据未跑。
+- #243 outbox：合同 r3 已裁决；#427（PR-1 写入侧）已合并 `04eec52d`；#428（PR-2 投递侧）实现在 `feature/F8-428-outbox-delivery`（worktree `~/dev/AI/poa-428-impl`），真实证据见 [243-trace-outbox](../evidence/243-trace-outbox/README.md)。
 - 第 3 步升级回滚演练：合同 r3 已裁决；#429，等 #427 合并（trace 证据等 #428）。
