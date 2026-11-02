@@ -44,6 +44,7 @@ from opspilot.alertmanager import (
     record_of,
     resolve_target,
 )
+from opspilot.domain.base import sanitized_errors
 from opspilot.intake import (
     IntakeEnvelope,
     IntakeRequest,
@@ -254,13 +255,11 @@ def _failure_code(exc: Exception) -> str:
                 str(part)
                 if isinstance(part, int) or _LOC_NAME.fullmatch(str(part))
                 else "<key>"
-                for part in error["loc"]
+                for part in cast("tuple[object, ...]", error["loc"])
             )
             + ":"
-            + error["type"]
-            for error in exc.errors(
-                include_url=False, include_context=False, include_input=False
-            )
+            + str(error["type"])
+            for error in sanitized_errors(exc)
         ]
         return f"ValidationError errors={exc.error_count()} " + ",".join(parts)
     return type(exc).__name__
