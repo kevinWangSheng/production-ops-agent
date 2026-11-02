@@ -1,0 +1,90 @@
+{
+  "schema": "opspilot.f14.upstream-issue-record.v1",
+  "slug": "upstream-2168-oversize-summary",
+  "kind": "upstream_issue",
+  "upstream_ref": {
+    "repo": "HolmesGPT/holmesgpt",
+    "number": 2168,
+    "kind": "pr",
+    "url": "https://github.com/HolmesGPT/holmesgpt/pull/2168",
+    "state": "open",
+    "checked_at": "2026-11-01T23:29:27Z"
+  },
+  "background_refs": [],
+  "reporter_claims": [
+    {
+      "id": "C1",
+      "quote": "returned only a cardinality summary plus a `topk(5, ...)` suggestion — the actual data was dropped",
+      "source": "https://github.com/HolmesGPT/holmesgpt/pull/2168"
+    },
+    {
+      "id": "C2",
+      "quote": "leaving refusal as the designed outcome",
+      "source": "https://github.com/HolmesGPT/holmesgpt/pull/2168"
+    }
+  ],
+  "code_at_pin": [
+    "holmes/plugins/toolsets/prometheus/prometheus.py:L767-L852",
+    "holmes/plugins/toolsets/prometheus/prometheus.py:L1937-L1955",
+    "holmes/plugins/toolsets/prometheus/prometheus.py:L1677-L1697",
+    "holmes/plugins/toolsets/prometheus/prometheus_instructions.jinja2:L35-L35"
+  ],
+  "code_at_master": {
+    "sha": "0f8bd4c6285e2ec7b1337fb8116ebb0c0fc9b978",
+    "checked_at": "2026-11-01T23:29:27Z",
+    "changed_files_relevant": []
+  },
+  "related_fixes": [
+    {
+      "number": 2167,
+      "state": "open",
+      "merged": false,
+      "in_pin": null
+    }
+  ],
+  "local_findings": [
+    {
+      "claim_id": "C1",
+      "group": null,
+      "verdict": "reproduced",
+      "mode": "scripted_model",
+      "runs": 1,
+      "k": 1,
+      "evidence": [
+        "runs/f14s3-2168-oversize-1.json"
+      ],
+      "note": "脚本化端点发出不聚合的区间查询 traces_span_metrics_calls_total（1 小时，step 15）：79 条序列、1184 个点、约 26034 token，超过单工具上限 25000。工具结果是 status success、data:null，只有 data_summary（序列数、标签基数、topk(5, ...) 建议）。没有 too large 错误，也没有落盘路径（基线关了 bash，tool_checks.spill_path_given 为 false）。"
+    },
+    {
+      "claim_id": "C2",
+      "group": null,
+      "verdict": "reproduced",
+      "mode": "scripted_model",
+      "runs": 1,
+      "k": 1,
+      "evidence": [
+        "runs/f14s3-2168-oversize-1.json"
+      ],
+      "note": "同一 Run 抓到的系统提示里有 pin 版的指令：「NEVER answer based on truncated Prometheus data ... Prefer saying you can't answer ...」（requests[0].snippets.truncation_instruction，prometheus_instructions.jinja2:L35）。措辞与 PR 正文引用的「NEVER EVER EVER」不同，但引导拒答这一点相同。模型实际会不会拒答未运行。"
+    }
+  ],
+  "image_id": "sha256:3f2995d1a448b34a0dbd3c07aa9276e8c812e96e8fc4ebcc9653b01d9ab2a30e",
+  "configs": [
+    {
+      "name": "2168-oversize",
+      "sha256": "4f84aa533d2538a9b9612984af73904787c93a28fec184a7a6d9acc0cc6f0974",
+      "differs_from_pin": true,
+      "reason": "api_base points at the scripted endpoint (R7)"
+    }
+  ],
+  "reproduced_at": "2026-11-01T21:46:12Z",
+  "own_findings": [],
+  "opspilot_side": null,
+  "mapping_rows": [
+    {
+      "feature": "F3",
+      "step": 1,
+      "mechanism": "超限结果的基数摘要与 topk 建议"
+    }
+  ]
+}

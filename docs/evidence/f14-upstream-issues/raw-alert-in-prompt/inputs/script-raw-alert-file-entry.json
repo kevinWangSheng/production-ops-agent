@@ -1,0 +1,9 @@
+{
+  "schema": "opspilot.f14.capture-script.v1",
+  "case": "raw-alert-file-entry",
+  "turns": [
+    {
+      "final": "scripted endpoint: investigation finished"
+    }
+  ]
+}

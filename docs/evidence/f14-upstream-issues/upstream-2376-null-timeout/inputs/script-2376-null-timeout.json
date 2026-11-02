@@ -1,0 +1,31 @@
+{
+  "schema": "opspilot.f14.capture-script.v1",
+  "case": "2376-null-timeout",
+  "turns": [
+    {
+      "tool_calls": [
+        {
+          "name": "execute_prometheus_instant_query",
+          "arguments": {
+            "query": "up",
+            "description": "targets up",
+            "timeout": null
+          }
+        },
+        {
+          "name": "execute_prometheus_range_query",
+          "arguments": {
+            "query": "sum(rate(traces_span_metrics_calls_total[5m]))",
+            "description": "span rate over the window",
+            "start": "-300",
+            "output_type": "Plain",
+            "timeout": null
+          }
+        }
+      ]
+    },
+    {
+      "final": "scripted endpoint: investigation finished"
+    }
+  ]
+}

@@ -1,0 +1,95 @@
+{
+  "schema": "opspilot.f14.upstream-issue-record.v1",
+  "slug": "upstream-2376-null-timeout",
+  "kind": "upstream_issue",
+  "upstream_ref": {
+    "repo": "HolmesGPT/holmesgpt",
+    "number": 2376,
+    "kind": "issue",
+    "url": "https://github.com/HolmesGPT/holmesgpt/issues/2376",
+    "state": "open",
+    "checked_at": "2026-11-01T23:29:27Z"
+  },
+  "background_refs": [],
+  "reporter_claims": [
+    {
+      "id": "C1",
+      "quote": "TypeError: '>' not supported between instances of 'NoneType' and 'int'",
+      "source": "https://github.com/HolmesGPT/holmesgpt/issues/2376"
+    },
+    {
+      "id": "C2",
+      "quote": "The error surfaces to the operator as `Failed to connect to Prometheus`",
+      "source": "https://github.com/HolmesGPT/holmesgpt/issues/2376"
+    }
+  ],
+  "code_at_pin": [
+    "holmes/plugins/toolsets/prometheus/prometheus.py:L1612-L1621",
+    "holmes/plugins/toolsets/prometheus/prometheus.py:L1866-L1875",
+    "holmes/plugins/toolsets/prometheus/prometheus.py:L1740-L1748"
+  ],
+  "code_at_master": {
+    "sha": "0f8bd4c6285e2ec7b1337fb8116ebb0c0fc9b978",
+    "checked_at": "2026-11-01T23:29:27Z",
+    "changed_files_relevant": []
+  },
+  "related_fixes": [
+    {
+      "number": 2549,
+      "state": "closed",
+      "merged": false,
+      "in_pin": null
+    },
+    {
+      "number": 2401,
+      "state": "open",
+      "merged": false,
+      "in_pin": null
+    }
+  ],
+  "local_findings": [
+    {
+      "claim_id": "C1",
+      "group": null,
+      "verdict": "reproduced",
+      "mode": "scripted_model",
+      "runs": 1,
+      "k": 1,
+      "evidence": [
+        "runs/f14s3-2376-null-timeout-1.json"
+      ],
+      "note": "脚本化端点在同一 Run 里发出带 \"timeout\": null 的即时查询和区间查询。两次都返回 status error：「Unexpected error executing query: '>' not supported between instances of 'NoneType' and 'int'」（tool_checks.null_timeout_error）。冒烟证实 LiteLLM 原样转发了 null。"
+    },
+    {
+      "claim_id": "C2",
+      "group": null,
+      "verdict": "reproduced",
+      "mode": "scripted_model",
+      "runs": 1,
+      "k": 1,
+      "evidence": [
+        "runs/f14s3-2376-null-timeout-1.json"
+      ],
+      "note": "操作员看到的是 CLI 输出：两次异常都打印了 Holmes 的 INFO 日志行「Failed to connect to Prometheus」（stdout_checks.operator_sees_failed_to_connect，对应 prometheus.py:L1743）。交给模型的工具错误文本则是「Unexpected error executing query: ...」，不是连接失败（tool_checks.reported_as_connection_failure 为 false）。说法对操作员一侧成立。"
+    }
+  ],
+  "image_id": "sha256:3f2995d1a448b34a0dbd3c07aa9276e8c812e96e8fc4ebcc9653b01d9ab2a30e",
+  "configs": [
+    {
+      "name": "2376-null-timeout",
+      "sha256": "4f84aa533d2538a9b9612984af73904787c93a28fec184a7a6d9acc0cc6f0974",
+      "differs_from_pin": true,
+      "reason": "api_base points at the scripted endpoint (R7)"
+    }
+  ],
+  "reproduced_at": "2026-11-01T21:45:48Z",
+  "own_findings": [],
+  "opspilot_side": null,
+  "mapping_rows": [
+    {
+      "feature": "F3",
+      "step": 4,
+      "mechanism": "区分输入错误、连接失败、超时"
+    }
+  ]
+}

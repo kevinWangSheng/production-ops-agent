@@ -1,0 +1,73 @@
+{
+  "schema": "opspilot.f14.upstream-issue-run.v1",
+  "run_id": "f14s3-max-output-token-reservation-unset-1",
+  "slug": "max-output-token-reservation",
+  "case": "max-output-token-reservation-unset",
+  "mode": "scripted_model",
+  "entry": "ask",
+  "image_id": "sha256:3f2995d1a448b34a0dbd3c07aa9276e8c812e96e8fc4ebcc9653b01d9ab2a30e",
+  "config_sha256": "4f84aa533d2538a9b9612984af73904787c93a28fec184a7a6d9acc0cc6f0974",
+  "config": {
+    "sha256": "4f84aa533d2538a9b9612984af73904787c93a28fec184a7a6d9acc0cc6f0974",
+    "differs_from_pin": true,
+    "reason": "api_base points at the scripted endpoint (R7)"
+  },
+  "stimulus": {
+    "fault_flag": null,
+    "fault_experiment_id": null
+  },
+  "container_env": {
+    "NO_PROXY": "f14-lab-relay,f14-capture,f14-alertmanager"
+  },
+  "model_env_overrides": {
+    "THINKING": "{\"type\": \"enabled\"}",
+    "REASONING_EFFORT": "high",
+    "OVERRIDE_MAX_CONTENT_SIZE": "1000000",
+    "LLM_REQUEST_TIMEOUT": "360",
+    "TEMPERATURE": "none",
+    "ENABLE_TELEMETRY": "false"
+  },
+  "started_at": "2026-11-01T21:48:02Z",
+  "finished_at": "2026-11-01T21:48:18Z",
+  "exit_code": 0,
+  "timed_out": false,
+  "requests": [
+    {
+      "index": 0,
+      "body_sha256": "005182aeb82567dc6ca98e7ea5139c23e2fb7cfe289bccb6524f90abf3e9af7d",
+      "message_count": 2,
+      "tool_names": [
+        "list_prometheus_rules",
+        "get_metric_names",
+        "get_label_values",
+        "get_all_labels",
+        "get_series",
+        "get_metric_metadata",
+        "execute_prometheus_instant_query",
+        "execute_prometheus_range_query",
+        "jaeger_request"
+      ],
+      "tool_names_sha256": "7216a5305394feaf5ffbfbd67603250faa3489fb92c6a7e2919f43629ccb13bc",
+      "max_tokens": 120000,
+      "snippets": {
+        "disabled_failed_toolsets": {
+          "sha256": "623303734f15cc8afd5779de7be808d90e8a7addc099cc601bc9710cf3f2e169",
+          "text": "# Disabled & failed Toolsets\nThese toolsets are DISABLED (unconfigured) unless marked FAILED (misconfigured). Setup docs per toolset: `https://holmesgpt.dev/data-sources/builtin-toolsets/<name before any slash>/` unless a different URL is given."
+        }
+      }
+    }
+  ],
+  "tool_results": [],
+  "answer_sha256": "e64af83fe6a06b10118e9956de73964b9cdf3a2cb6eb7b18bc6ee698631e86e0",
+  "answer_checks": {},
+  "stdout_checks": {},
+  "proxy_checks": {},
+  "tool_checks": {},
+  "request_checks": {
+    "max_tokens_equals_reservation": {
+      "hit": false,
+      "excerpt": "max_tokens=[120000]"
+    }
+  },
+  "balance_window": null
+}
