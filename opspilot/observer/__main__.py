@@ -42,7 +42,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from opspilot import health
+from opspilot import health, logs
 from opspilot.observation.store import OBSERVER_LEASE_SECONDS, ObservationStore
 from opspilot.observer.loop import ObserverLoop
 from opspilot.observer.prometheus import PrometheusReadOnlySource
@@ -214,9 +214,7 @@ def _start_health(
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s"
-    )
+    logs.configure()
     env = os.environ
     grace = _float_env(env, "OPSPILOT_OBSERVER_GRACE_SECONDS", 30.0)
     stop = threading.Event()

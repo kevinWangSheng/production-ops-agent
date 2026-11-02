@@ -1,0 +1,63 @@
+{
+  "schema": "opspilot.f14.upstream-issue-run.v1",
+  "run_id": "f14s3-2356-prometheus-input-1",
+  "slug": "upstream-2356-failed-source",
+  "case": "2356-prometheus-input",
+  "mode": "scripted_model",
+  "entry": "ask",
+  "image_id": "sha256:3f2995d1a448b34a0dbd3c07aa9276e8c812e96e8fc4ebcc9653b01d9ab2a30e",
+  "config_sha256": "fa46be46c5721e1b812bb140f4403ffd009d509d0c3197197dfd8a1423fa1562",
+  "config": {
+    "sha256": "fa46be46c5721e1b812bb140f4403ffd009d509d0c3197197dfd8a1423fa1562",
+    "differs_from_pin": true,
+    "reason": "api_base points at the scripted endpoint (R7); S5: Prometheus URL set to 127.0.0.1:9 (refused inside the container) so the prometheus/metrics prerequisite check fails at start"
+  },
+  "stimulus": {
+    "fault_flag": null,
+    "fault_experiment_id": null
+  },
+  "container_env": {
+    "NO_PROXY": "f14-lab-relay,f14-capture,f14-alertmanager,127.0.0.1"
+  },
+  "model_env_overrides": {},
+  "started_at": "2026-11-01T21:47:06Z",
+  "finished_at": "2026-11-01T21:47:18Z",
+  "exit_code": 0,
+  "timed_out": false,
+  "requests": [
+    {
+      "index": 0,
+      "body_sha256": "792fd219f4aac4da846972be28c721b58af10fcfd5e38e4fb95b31346243ac66",
+      "message_count": 2,
+      "tool_names": [
+        "jaeger_request"
+      ],
+      "tool_names_sha256": "f7207b82092e5e20c2d2f258d8777b78b2cd7b469add3ab204491d84e0ef372c",
+      "max_tokens": 65536,
+      "snippets": {
+        "disabled_failed_toolsets": {
+          "sha256": "363d29d630cf38514bd380d3368c538e95a4e8b24217ab7dec58baaae201a286",
+          "text": "# Disabled & failed Toolsets\nThese toolsets are DISABLED (unconfigured) unless marked FAILED (misconfigured). Setup docs per toolset: `https://holmesgpt.dev/data-sources/builtin-toolsets/<name before any slash>/` unless a different URL is given.\n* prometheus/metrics (FAILED, error: [default] Failed to initialize using url=http://127.0.0.1:9/api/v1/query?query=up. Unexpected error: HTTPConnectionPool(host='127.0.0.1', port=9): Max retries exceeded with url: /api/v1/query?query=up (Caused by NewConnectionError(\"HTTPConnection(host='127.0.0.1', port=9): Failed to establish a new connection: [Errno 111] Connection refused\"))): Prometheus integration to fetch metadata and execute PromQL queries"
+        }
+      }
+    }
+  ],
+  "tool_results": [],
+  "answer_sha256": "e64af83fe6a06b10118e9956de73964b9cdf3a2cb6eb7b18bc6ee698631e86e0",
+  "answer_checks": {},
+  "stdout_checks": {
+    "operator_hint": {
+      "hit": false,
+      "excerpt": null
+    }
+  },
+  "proxy_checks": {},
+  "tool_checks": {},
+  "request_checks": {
+    "failed_segment_names_source": {
+      "hit": true,
+      "excerpt": "* prometheus/metrics (FAILED, error: [default] Failed to initialize using url=http://127.0.0.1:9/api/v1/query?query=up. Unexpected error: HTTPConnectionPool(host='127.0.0.1', port=9): Max retries exceeded with url: /api/v1/query?query=up (C"
+    }
+  },
+  "balance_window": null
+}

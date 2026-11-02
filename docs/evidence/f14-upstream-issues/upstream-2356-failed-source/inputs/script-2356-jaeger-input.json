@@ -1,0 +1,9 @@
+{
+  "schema": "opspilot.f14.capture-script.v1",
+  "case": "2356-jaeger-input",
+  "turns": [
+    {
+      "final": "scripted endpoint: investigation finished"
+    }
+  ]
+}

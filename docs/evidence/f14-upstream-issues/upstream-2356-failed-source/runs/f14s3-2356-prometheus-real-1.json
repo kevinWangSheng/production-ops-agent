@@ -1,0 +1,1255 @@
+{
+  "schema": "opspilot.f14.upstream-issue-run.v1",
+  "run_id": "f14s3-2356-prometheus-real-1",
+  "slug": "upstream-2356-failed-source",
+  "case": "2356-prometheus-real",
+  "mode": "real_model",
+  "entry": "ask",
+  "image_id": "sha256:3f2995d1a448b34a0dbd3c07aa9276e8c812e96e8fc4ebcc9653b01d9ab2a30e",
+  "config_sha256": "18fa5a687e087d4a2641b2d07b806d6588f2e57ace4a13a660c9d0aeb3a942c9",
+  "config": {
+    "sha256": "18fa5a687e087d4a2641b2d07b806d6588f2e57ace4a13a660c9d0aeb3a942c9",
+    "differs_from_pin": true,
+    "reason": "S5: Prometheus URL set to 127.0.0.1:9 (refused inside the container) so the prometheus/metrics prerequisite check fails at start"
+  },
+  "stimulus": {
+    "fault_flag": "paymentFailure",
+    "fault_experiment_id": "f14s3-batch"
+  },
+  "container_env": {
+    "NO_PROXY": "f14-lab-relay,f14-capture,f14-alertmanager,127.0.0.1"
+  },
+  "model_env_overrides": {},
+  "started_at": "2026-11-01T22:59:28Z",
+  "finished_at": "2026-11-01T23:03:07Z",
+  "exit_code": 0,
+  "timed_out": false,
+  "requests": [],
+  "tool_results": [
+    {
+      "index": 0,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/services",
+        "max_depth": 3,
+        "jq": ".",
+        "method": "GET",
+        "body": null,
+        "headers": null
+      }
+    },
+    {
+      "index": 1,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=checkout&start=1793573666000000&end=1793573966000000&limit=100",
+        "max_depth": 3,
+        "jq": ".data | length",
+        "method": "GET",
+        "body": null,
+        "headers": null
+      }
+    },
+    {
+      "index": 2,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": ".data | length",
+        "max_depth": 3,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=checkout&start=1793572800000000&end=1793573976000000&limit=100"
+      }
+    },
+    {
+      "index": 3,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": ".data | length",
+        "max_depth": 3,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=frontend&start=1793573666000000&end=1793573966000000&limit=100"
+      }
+    },
+    {
+      "index": 4,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": ".",
+        "max_depth": 2,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=checkout&start=1793487576000000&end=1793573976000000&limit=20"
+      }
+    },
+    {
+      "index": 5,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "error",
+      "error": "Connection error: ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))",
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": ".",
+        "max_depth": 2,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=frontend&start=1793487576000000&end=1793573976000000&limit=5"
+      }
+    },
+    {
+      "index": 6,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "error",
+      "error": "Invalid jq expression: Cannot iterate over null (null)",
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": "[.data[] | {id: .traceID, start: .spans[0].startTime}]",
+        "max_depth": 3,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=payment&start=1793487576000000&end=1793573976000000&limit=3"
+      }
+    },
+    {
+      "index": 7,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "error",
+      "error": "Invalid jq expression: Cannot iterate over null (null)",
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": "[.data[] | {id: .traceID, spans: (.spans|length), start: .spans[0].startTime}]",
+        "max_depth": 3,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=frontend&start=1793487576000000&end=1793573976000000&limit=3"
+      }
+    },
+    {
+      "index": 8,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": "[.data[]? | {id: .traceID, start: .spans[0].startTime}] , .total, .errors",
+        "max_depth": 3,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=frontend&start=1780000000000000&end=1793573976000000&limit=2"
+      }
+    },
+    {
+      "index": 9,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": "[.data[]? | {id: .traceID, start: .spans[0].startTime}] , .total, .errors",
+        "max_depth": 3,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=checkout&start=1780000000000000&end=1793573976000000&limit=2"
+      }
+    },
+    {
+      "index": 10,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": "[.data[]? | {id: .traceID, start: .spans[0].startTime}] , .total",
+        "max_depth": 3,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=checkout&start=1700000000000000&end=1760000000000000&limit=2"
+      }
+    },
+    {
+      "index": 11,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": "[.data[]? | {id: .traceID, start: .spans[0].startTime}] , .total",
+        "max_depth": 3,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=checkout&start=1760000000000000&end=1780000000000000&limit=2"
+      }
+    },
+    {
+      "index": 12,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": ".total, (.data|length)",
+        "max_depth": 3,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=checkout&limit=20&lookback=1h"
+      }
+    },
+    {
+      "index": 13,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": ".",
+        "max_depth": 4,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/services/checkout/operations"
+      }
+    },
+    {
+      "index": 14,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": ".total, (.data|length), (.errors)",
+        "max_depth": 3,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=frontend&start=1&end=1793573976000000&limit=1"
+      }
+    },
+    {
+      "index": 15,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": ".total, (.data|length), (.errors)",
+        "max_depth": 3,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=load-generator&start=1793491200000000&end=1793573976000000&limit=1"
+      }
+    },
+    {
+      "index": 16,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": ".total, (.data|length)",
+        "max_depth": 3,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=checkout&start=1793573666&end=1793573966&limit=20"
+      }
+    },
+    {
+      "index": 17,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": ".total, (.data|length)",
+        "max_depth": 3,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=checkout&start=1793573666000000000&end=1793573966000000000&limit=20"
+      }
+    },
+    {
+      "index": 18,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": ".",
+        "max_depth": 3,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=checkout&start=1793573666000000&end=1793573966000000&limit=20&tags=%7B%22error%22%3A%22true%22%7D"
+      }
+    },
+    {
+      "index": 19,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": ".total, (.data|length)",
+        "max_depth": 3,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=checkout&start=1793573666000000&end=1793573966000000&limit=20&operation=POST%20%2Fcheckout"
+      }
+    },
+    {
+      "index": 20,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": ".",
+        "max_depth": 4,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/dependencies?start=1793573666000000&end=1793573966000000"
+      }
+    },
+    {
+      "index": 21,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": ".total, (.data|length)",
+        "max_depth": 3,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=checkout&startTime=1793573666000000&endTime=1793573966000000&limit=20"
+      }
+    },
+    {
+      "index": 22,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": ".",
+        "max_depth": 2,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=checkout&start=1793000000&end=1794000000&limit=20&tags=%7B%7D"
+      }
+    },
+    {
+      "index": 23,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": ".",
+        "max_depth": 2,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=frontend&start=1793573666000000&end=1793573966000000&limit=20&tags=%7B%7D"
+      }
+    },
+    {
+      "index": 24,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": "keys",
+        "max_depth": 2,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=checkout&start=1793573666000000&end=1793573966000000&limit=20&tags=%7B%7D"
+      }
+    },
+    {
+      "index": 25,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": ".data | type",
+        "max_depth": 3,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=checkout&start=1793573666000000&end=1793573966000000&limit=20&tags=%7B%7D"
+      }
+    },
+    {
+      "index": 26,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": ".body.total, (.body.data|length), [.body.data[] | {id: .traceID, n: (.spans|length), dur_ms: (([.spans[].duration]|max)/1000), errs: ([.spans[].tags[]? | select(.key==\"error\" and .value==true)]|length), start: (([.spans[].startTime]|min)|tostring)}]",
+        "max_depth": 4,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=checkout&start=1793573666000000&end=1793573966000000&limit=100"
+      }
+    },
+    {
+      "index": 27,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": ".body.total, (.body.data|length)",
+        "max_depth": 4,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=frontend&start=1793573666000000&end=1793573966000000&limit=100"
+      }
+    },
+    {
+      "index": 28,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": ".body.total, (.body.data|length)",
+        "max_depth": 4,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=load-generator&start=1793573666000000&end=1793573966000000&limit=100"
+      }
+    },
+    {
+      "index": 29,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": ".body.total, (.body.data|length), (.body.data | type)",
+        "max_depth": 4,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=checkout&start=1793487576000000&end=1793573976000000&limit=100"
+      }
+    },
+    {
+      "index": 30,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": ".body.total, (.body.data|length)",
+        "max_depth": 4,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=frontend&start=1&end=1793573966000000&limit=100"
+      }
+    },
+    {
+      "index": 31,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": ".body.total, (.body.data|length), (.body.errors)",
+        "max_depth": 4,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=checkout&start=1793573666000000&end=1793573966000000&limit=100&lookback=custom"
+      }
+    },
+    {
+      "index": 32,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": ".body.total, (.body.data|length)",
+        "max_depth": 4,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=checkout"
+      }
+    },
+    {
+      "index": 33,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": ".body.total, (.body.data|length)",
+        "max_depth": 4,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=checkout&start=1793573666000&end=1793573966000&limit=100"
+      }
+    },
+    {
+      "index": 34,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "error",
+      "error": "HTTP 400: {'data': None, 'total': 0, 'limit': 0, 'offset': 0, 'errors': [{'code': 400, 'msg': \"parameter 'service' is required\"}]}",
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": ".body.total, (.body.data|length)",
+        "max_depth": 4,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?query=%7B%22service%22%3A%22checkout%22%7D&start=1793573666000000&end=1793573966000000&limit=100"
+      }
+    },
+    {
+      "index": 35,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": ".body.total, (.body.data|length)",
+        "max_depth": 4,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=frontend&start=1&end=1793573966&limit=100"
+      }
+    },
+    {
+      "index": 36,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": ".body",
+        "max_depth": 3,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/dependencies?start=1&end=2"
+      }
+    },
+    {
+      "index": 37,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": ".body",
+        "max_depth": 3,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=checkout&start=0&end=9999999999999999&limit=100"
+      }
+    },
+    {
+      "index": 38,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": ".body",
+        "max_depth": 3,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=checkout&start=1793573666000000000&end=1793573966000000000&limit=100"
+      }
+    },
+    {
+      "index": 39,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": ".body.total, (.body.data|length)",
+        "max_depth": 4,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=frontend&start=0&end=9999999999999999&limit=100"
+      }
+    },
+    {
+      "index": 40,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": ".body.total, (.body.data|length)",
+        "max_depth": 4,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=payment&start=0&end=9999999999999999&limit=100"
+      }
+    },
+    {
+      "index": 41,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": ".body.total, (.body.data|length)",
+        "max_depth": 4,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=cart&start=0&end=9999999999999999&limit=100"
+      }
+    },
+    {
+      "index": 42,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": ".body.total, (.body.data|length)",
+        "max_depth": 4,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=load-generator&start=0&end=9999999999999999&limit=100"
+      }
+    },
+    {
+      "index": 43,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "error",
+      "error": "HTTP 404: {'data': None, 'total': 0, 'limit': 0, 'offset': 0, 'errors': [{'code': 404, 'msg': 'trace not found'}]}",
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": ".",
+        "max_depth": 3,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces/abc123"
+      }
+    },
+    {
+      "index": 44,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "error",
+      "error": "HTTP 400: {'data': None, 'total': 0, 'limit': 0, 'offset': 0, 'errors': [{'code': 400, 'msg': 'unable to parse param \\'start\\': strconv.ParseInt: parsing \"2026-11-01T22:54:26Z\": invalid syntax'}]}",
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": ".body",
+        "max_depth": 3,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=checkout&start=2026-11-01T22:54:26Z&end=2026-11-01T22:59:26Z&limit=20"
+      }
+    },
+    {
+      "index": 45,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": ".body.total, (.body.data|length)",
+        "max_depth": 4,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=frontend&start=1793404800000000&end=1793491200000000&limit=20"
+      }
+    },
+    {
+      "index": 46,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": ".body.total, (.body.data|length)",
+        "max_depth": 4,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=checkout&operation=&tags=%7B%7D&start=1793570400000000&end=1793573966000000&limit=20&lookback=custom"
+      }
+    },
+    {
+      "index": 47,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": ".body.total, (.body.data|length)",
+        "max_depth": 4,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=frontend&start=1790812800000000&end=1790899200000000&limit=20"
+      }
+    },
+    {
+      "index": 48,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": ".body.total, (.body.data|length)",
+        "max_depth": 4,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=checkout&start=1793404800000000&end=1793491200000000&limit=20"
+      }
+    },
+    {
+      "index": 49,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": ".body.total, (.body.data|length)",
+        "max_depth": 4,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=checkout&start=1793573640000000&end=1793573940000000&limit=50"
+      }
+    },
+    {
+      "index": 50,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": ".body.total, (.body.data|length)",
+        "max_depth": 4,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=checkout&start=1793572200000000&end=1793574000000000&limit=50"
+      }
+    },
+    {
+      "index": 51,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": ".body.total, (.body.data|length)",
+        "max_depth": 4,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=checkout&start=1793573940000000&end=1793574000000000&limit=50"
+      }
+    },
+    {
+      "index": 52,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": ".body.total, (.body.data|length)",
+        "max_depth": 4,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=checkout&start=1793573700000000&end=1793574000000000&limit=50"
+      }
+    },
+    {
+      "index": 53,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": ".body",
+        "max_depth": 3,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=checkout&start=1793573666000000&end=1793573966000000&limit=100&tags=%7B%22otel.status_code%22%3A%22ERROR%22%7D"
+      }
+    },
+    {
+      "index": 54,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "error",
+      "error": "HTTP 400: {'error': {'httpCode': 400, 'message': 'query.start_time_min and query.start_time_max are required'}}",
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": ".",
+        "max_depth": 2,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/v3/traces?service=checkout&start=1793573666000000&end=1793573966000000&limit=100"
+      }
+    },
+    {
+      "index": 55,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": ".body",
+        "max_depth": 2,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/v3/traces?query.service_name=checkout&query.start_time_min=2026-11-01T22:54:26Z&query.start_time_max=2026-11-01T22:59:26Z&query.num_traces=100"
+      }
+    },
+    {
+      "index": 56,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": ".",
+        "max_depth": 3,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/v3/services"
+      }
+    },
+    {
+      "index": 57,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "error",
+      "error": "HTTP 400: {'error': {'httpCode': 400, 'message': 'malformed parameter query.start_time_min: parsing time \"1793573666000000\" as \"2006-01-02T15:04:05.999999999Z07:00\": cannot parse \"573666000000\" as \"-\"'}}",
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": ".body",
+        "max_depth": 2,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/v3/traces?query.service_name=checkout&query.start_time_min=1793573666000000&query.start_time_max=1793573966000000&query.num_traces=100"
+      }
+    },
+    {
+      "index": 58,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": ".body",
+        "max_depth": 2,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/v3/traces?query.service_name=checkout&query.start_time_min=2020-01-01T00:00:00Z&query.start_time_max=2027-01-01T00:00:00Z&query.num_traces=5"
+      }
+    },
+    {
+      "index": 59,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": "{nolens: (.body.result.resourceSpans|length), svcs: [.body.result.resourceSpans[].resource.attributes[]? | select(.key==\"service.name\") | .value.stringValue], times: [.body.result.resourceSpans[].scopeSpans[].spans[] | .startTimeUnixNano] | {min: min, max: max, n: length}}",
+        "max_depth": 5,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/v3/traces?query.service_name=checkout&query.start_time_min=2020-01-01T00:00:00Z&query.start_time_max=2027-01-01T00:00:00Z&query.num_traces=5"
+      }
+    },
+    {
+      "index": 60,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": "{traces: ([.body.result.resourceSpans[].scopeSpans[].spans[].traceId] | unique | length), times: ([.body.result.resourceSpans[].scopeSpans[].spans[] | .startTimeUnixNano] | {min: min, max: max, n: length})}",
+        "max_depth": 5,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/v3/traces?query.service_name=checkout&query.start_time_min=2026-11-01T22:00:00Z&query.start_time_max=2026-11-01T23:10:00Z&query.num_traces=200"
+      }
+    },
+    {
+      "index": 61,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": "{traces: ([.body.result.resourceSpans[].scopeSpans[].spans[].traceId] | unique | length), times: ([.body.result.resourceSpans[].scopeSpans[].spans[] | .startTimeUnixNano] | {min: min, max: max, n: length})}",
+        "max_depth": 5,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/v3/traces?query.service_name=frontend&query.start_time_min=2026-11-01T22:00:00Z&query.start_time_max=2026-11-01T23:10:00Z&query.num_traces=200"
+      }
+    },
+    {
+      "index": 62,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": "[.body.result.resourceSpans[] | {svc: ([.resource.attributes[]|select(.key==\"service.name\")|.value.stringValue][0]), spans: [.scopeSpans[].spans[] | {t: .traceId, s: .spanId, p: .parentSpanId, n: .name, st: .startTimeUnixNano, d_ms: (((.endTimeUnixNano|tonumber)-(.startTimeUnixNano|tonumber))/1000000), code: (.status.code // null), msg: (.status.message // null), attrs: ([.attributes[]? | {(.key): (.value.stringValue // (.value.intValue|tostring) // .value.boolValue)}])}]}]",
+        "max_depth": 6,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/v3/traces?query.service_name=checkout&query.start_time_min=2026-11-01T22:00:00Z&query.start_time_max=2026-11-01T23:10:00Z&query.num_traces=200"
+      }
+    },
+    {
+      "index": 63,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": "{svc:\"payment\", traces: ([.body.result.resourceSpans[].scopeSpans[].spans[].traceId]|unique|length), spans: ([.body.result.resourceSpans[].scopeSpans[].spans[]]|length), err_spans: ([.body.result.resourceSpans[].scopeSpans[].spans[] | select(.status.code==\"STATUS_CODE_ERROR\")]|length), max_ms: ([.body.result.resourceSpans[].scopeSpans[].spans[] | ((.endTimeUnixNano|tonumber)-(.startTimeUnixNano|tonumber))/1000000] | max), names: ([.body.result.resourceSpans[].scopeSpans[].spans[].name]|unique)}",
+        "max_depth": 5,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/v3/traces?query.service_name=payment&query.start_time_min=2026-11-01T22:54:00Z&query.start_time_max=2026-11-01T23:05:00Z&query.num_traces=200"
+      }
+    },
+    {
+      "index": 64,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": "{svc:\"currency\", traces: ([.body.result.resourceSpans[].scopeSpans[].spans[].traceId]|unique|length), spans: ([.body.result.resourceSpans[].scopeSpans[].spans[]]|length), err_spans: ([.body.result.resourceSpans[].scopeSpans[].spans[] | select(.status.code==\"STATUS_CODE_ERROR\")]|length), max_ms: ([.body.result.resourceSpans[].scopeSpans[].spans[] | ((.endTimeUnixNano|tonumber)-(.startTimeUnixNano|tonumber))/1000000] | max), names: ([.body.result.resourceSpans[].scopeSpans[].spans[].name]|unique)}",
+        "max_depth": 5,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/v3/traces?query.service_name=currency&query.start_time_min=2026-11-01T22:54:00Z&query.start_time_max=2026-11-01T23:05:00Z&query.num_traces=200"
+      }
+    },
+    {
+      "index": 65,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": "{svc:\"cart\", traces: ([.body.result.resourceSpans[].scopeSpans[].spans[].traceId]|unique|length), spans: ([.body.result.resourceSpans[].scopeSpans[].spans[]]|length), err_spans: ([.body.result.resourceSpans[].scopeSpans[].spans[] | select(.status.code==\"STATUS_CODE_ERROR\")]|length), max_ms: ([.body.result.resourceSpans[].scopeSpans[].spans[] | ((.endTimeUnixNano|tonumber)-(.startTimeUnixNano|tonumber))/1000000] | max), names: ([.body.result.resourceSpans[].scopeSpans[].spans[].name]|unique)}",
+        "max_depth": 5,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/v3/traces?query.service_name=cart&query.start_time_min=2026-11-01T22:54:00Z&query.start_time_max=2026-11-01T23:05:00Z&query.num_traces=200"
+      }
+    },
+    {
+      "index": 66,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": "{svc:\"product-catalog\", traces: ([.body.result.resourceSpans[].scopeSpans[].spans[].traceId]|unique|length), spans: ([.body.result.resourceSpans[].scopeSpans[].spans[]]|length), err_spans: ([.body.result.resourceSpans[].scopeSpans[].spans[] | select(.status.code==\"STATUS_CODE_ERROR\")]|length), max_ms: ([.body.result.resourceSpans[].scopeSpans[].spans[] | ((.endTimeUnixNano|tonumber)-(.startTimeUnixNano|tonumber))/1000000] | max), names: ([.body.result.resourceSpans[].scopeSpans[].spans[].name]|unique)}",
+        "max_depth": 5,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/v3/traces?query.service_name=product-catalog&query.start_time_min=2026-11-01T22:54:00Z&query.start_time_max=2026-11-01T23:05:00Z&query.num_traces=200"
+      }
+    },
+    {
+      "index": 67,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": ".body",
+        "max_depth": 3,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/v3/traces?query.service_name=email&query.start_time_min=2026-11-01T22:54:00Z&query.start_time_max=2026-11-01T23:05:00Z&query.num_traces=200"
+      }
+    },
+    {
+      "index": 68,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": ".body.data[0].traceID, (.body.data[0].spans | length)",
+        "max_depth": 4,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces/8d266500d04d82fe572299f6dc005644"
+      }
+    },
+    {
+      "index": 69,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": "{svc:\"shipping\", traces: ([.body.result.resourceSpans[].scopeSpans[].spans[].traceId]|unique|length), spans: ([.body.result.resourceSpans[].scopeSpans[].spans[]]|length), max_ms: ([.body.result.resourceSpans[].scopeSpans[].spans[] | ((.endTimeUnixNano|tonumber)-(.startTimeUnixNano|tonumber))/1000000] | max), ship_spans: [.body.result.resourceSpans[] | select([.resource.attributes[]|select(.key==\"service.name\")|.value.stringValue]|index(\"shipping\")) | .scopeSpans[].spans[] | {t: .traceId, n: .name, code: .status.code, grpc: ([.attributes[]?|select(.key==\"rpc.grpc.status_code\")|.value.stringValue // (.value.intValue|tostring)][0])}]}",
+        "max_depth": 6,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/v3/traces?query.service_name=shipping&query.start_time_min=2026-11-01T22:54:00Z&query.start_time_max=2026-11-01T23:05:00Z&query.num_traces=200"
+      }
+    },
+    {
+      "index": 70,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "error",
+      "error": "Invalid jq expression: string (\"[\\\"0/95Z5P...) is not valid base64 data",
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": "[.body.result.resourceSpans[].scopeSpans[].spans[]] | group_by(.traceId) | map({trace: ([.[0].traceId] | @base64d | \"\"), id_b64: .[0].traceId, spans: length, err_spans: ([.[]|select(.status.code==\"STATUS_CODE_ERROR\")]|length), root_op: ([.[]|select(.parentSpanId==\"\" or .parentSpanId==null)|.name][0]), max_ms: ([.[] | (((.endTimeUnixNano|tonumber)-(.startTimeUnixNano|tonumber))/1000000)]|max), http_codes: ([.[]|select(.attributes!=null)|.attributes[]?|select(.key==\"http.status_code\" or .key==\"http.response.status_code\")|(.value.stringValue // (.value.intValue|tostring))]|unique)})",
+        "max_depth": 6,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/v3/traces?query.service_name=frontend&query.start_time_min=2026-11-01T22:54:00Z&query.start_time_max=2026-11-01T23:05:00Z&query.num_traces=200"
+      }
+    },
+    {
+      "index": 71,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "error",
+      "error": "HTTP 404: {'data': None, 'total': 0, 'limit': 0, 'offset': 0, 'errors': [{'code': 404, 'msg': 'trace not found'}]}",
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": ".status_code, .body.errors",
+        "max_depth": 4,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      }
+    },
+    {
+      "index": 72,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": ".body.data[0].traceID, (.body.data[0].spans|length), .body.errors",
+        "max_depth": 4,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces/09ab5a1d25fe096b0015e4cafc085a30"
+      }
+    },
+    {
+      "index": 73,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": "[.body.result.resourceSpans[].scopeSpans[].spans[]] | group_by(.traceId) | map({id_b64: .[0].traceId, spans: length, err_spans: ([.[]|select(.status.code==\"STATUS_CODE_ERROR\")]|length), root_op: ([.[]|select(.parentSpanId==\"\" or .parentSpanId==null)|.name][0]), max_ms: ([.[] | (((.endTimeUnixNano|tonumber)-(.startTimeUnixNano|tonumber))/1000000)]|max), urls: ([.[]|select(.attributes!=null)|.attributes[]?|select(.key==\"http.target\" or .key==\"http.url\")|.value.stringValue]|unique)})",
+        "max_depth": 6,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/v3/traces?query.service_name=frontend&query.start_time_min=2026-11-01T22:54:00Z&query.start_time_max=2026-11-01T23:05:00Z&query.num_traces=200"
+      }
+    },
+    {
+      "index": 74,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": "{svc:\"flagd\", traces: ([.body.result.resourceSpans[].scopeSpans[].spans[].traceId]|unique|length), spans: [.body.result.resourceSpans[] | select([.resource.attributes[]|select(.key==\"service.name\")|.value.stringValue]|index(\"flagd\")) | .scopeSpans[].spans[] | {n: .name, code: .status.code, ms: (((.endTimeUnixNano|tonumber)-(.startTimeUnixNano|tonumber))/1000000)}]}",
+        "max_depth": 6,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/v3/traces?query.service_name=flagd&query.start_time_min=2026-11-01T22:54:00Z&query.start_time_max=2026-11-01T23:05:00Z&query.num_traces=200"
+      }
+    },
+    {
+      "index": 75,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": "{checkout_traces: ([.body.result.resourceSpans[].scopeSpans[].spans[].traceId]|unique), err: ([.body.result.resourceSpans[].scopeSpans[].spans[]|select(.status.code==\"STATUS_CODE_ERROR\")|.name] | group_by(.) | map({name: .[0], n: length}))}",
+        "max_depth": 5,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/v3/traces?query.service_name=checkout&query.start_time_min=2026-11-01T20:00:00Z&query.start_time_max=2026-11-01T23:10:00Z&query.num_traces=500"
+      }
+    },
+    {
+      "index": 76,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": "{svc:\"load-generator\", traces: ([.body.result.resourceSpans[].scopeSpans[].spans[].traceId]|unique|length), checkout_posts: [.body.result.resourceSpans[] | select([.resource.attributes[]|select(.key==\"service.name\")|.value.stringValue]|index(\"load-generator\")) | .scopeSpans[].spans[] | select(.name==\"POST\") | {t: .traceId, url: ([.attributes[]?|select(.key==\"http.url\")|.value.stringValue][0]), code: ([.attributes[]?|select(.key==\"http.status_code\")|.value.stringValue // (.value.intValue|tostring)][0]), st: .status.code, ms: (((.endTimeUnixNano|tonumber)-(.startTimeUnixNano|tonumber))/1000000)}]}",
+        "max_depth": 6,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/v3/traces?query.service_name=load-generator&query.start_time_min=2026-11-01T22:54:00Z&query.start_time_max=2026-11-01T23:05:00Z&query.num_traces=200"
+      }
+    },
+    {
+      "index": 77,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "error",
+      "error": "Invalid jq expression: Cannot iterate over null (null)",
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": "{traces: ([.body.result.resourceSpans[].scopeSpans[].spans[].traceId]|unique|length), err_traces: ([.body.result.resourceSpans[].scopeSpans[].spans[]|select(.status.code==\"STATUS_CODE_ERROR\")|.traceId]|unique|length), times: ([.body.result.resourceSpans[].scopeSpans[].spans[].startTimeUnixNano]|{min:min,max:max})}",
+        "max_depth": 5,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/v3/traces?query.service_name=frontend&query.start_time_min=2026-11-01T00:00:00Z&query.start_time_max=2026-11-01T22:54:00Z&query.num_traces=500"
+      }
+    },
+    {
+      "index": 78,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "error",
+      "error": "Invalid jq expression: Cannot iterate over null (null)",
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": "{traces: ([.body.result.resourceSpans[].scopeSpans[].spans[].traceId]|unique|length), times: ([.body.result.resourceSpans[].scopeSpans[].spans[].startTimeUnixNano]|{min:min,max:max})}",
+        "max_depth": 5,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/v3/traces?query.service_name=checkout&query.start_time_min=2026-11-01T00:00:00Z&query.start_time_max=2026-11-01T22:54:00Z&query.num_traces=500"
+      }
+    }
+  ],
+  "answer_sha256": "be70909c04f8e9a1307bcb5e5beb928f27eaa49b74f2801dea31dd51c9b8cf90",
+  "answer_checks": {
+    "names_missing_source": {
+      "hit": true,
+      "excerpt": "\"prometheus/metrics toolset is FAILED (connection refused to 127.0.0.1:9) — no metrics range query (error rate / latency histograms) could be executed;"
+    }
+  },
+  "stdout_checks": {
+    "operator_hint": {
+      "hit": true,
+      "excerpt": "\"prometheus/metrics toolset is FAILED (connection refused to 127.0.0.1:9)"
+    }
+  },
+  "proxy_checks": {},
+  "tool_checks": {},
+  "request_checks": {},
+  "balance_window": {
+    "before": {
+      "is_available": true,
+      "balance_infos": [
+        {
+          "currency": "CNY",
+          "total_balance": "173.95",
+          "granted_balance": "0.00",
+          "topped_up_balance": "173.95"
+        }
+      ]
+    },
+    "after_delayed": {
+      "is_available": true,
+      "balance_infos": [
+        {
+          "currency": "CNY",
+          "total_balance": "173.87",
+          "granted_balance": "0.00",
+          "topped_up_balance": "173.87"
+        }
+      ]
+    }
+  }
+}

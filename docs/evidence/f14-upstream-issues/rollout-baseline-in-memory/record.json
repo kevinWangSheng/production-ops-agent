@@ -1,0 +1,48 @@
+{
+  "schema": "opspilot.f14.upstream-issue-record.v1",
+  "slug": "rollout-baseline-in-memory",
+  "kind": "step2_candidate",
+  "upstream_ref": null,
+  "background_refs": [],
+  "reporter_claims": [
+    {
+      "id": "C1",
+      "quote": "operator 重启期间的发布不会触发检查",
+      "source": "mapping.json F11#1 由观察到的发布触发调查，保留精确的前后版本与服务身份"
+    }
+  ],
+  "code_at_pin": [
+    "holmes_operator/trigger_executor.py:L29-L34",
+    "holmes_operator/handlers/triggeredhealthcheck.py:L101-L104"
+  ],
+  "code_at_master": {
+    "sha": "0f8bd4c6285e2ec7b1337fb8116ebb0c0fc9b978",
+    "checked_at": "2026-11-01T23:29:27Z",
+    "changed_files_relevant": []
+  },
+  "related_fixes": [],
+  "local_findings": [
+    {
+      "claim_id": "C1",
+      "group": null,
+      "verdict": "not_attempted",
+      "mode": "source_only",
+      "runs": 0,
+      "k": null,
+      "evidence": [],
+      "note": "不运行：要复现就得在 kind 里给 operator watch Deployment 的 K8s 权限，r1 不允许（Holmes 不给 K8s）。上游源码注释自己写着「Lost on operator restart by design: the first event for a Deployment after (re)start only establishes a baseline」（trigger_executor.py:L29-L34）。这是公开承认的设计取舍，不是缺陷（F14S3-Q3）。"
+    }
+  ],
+  "image_id": "sha256:3f2995d1a448b34a0dbd3c07aa9276e8c812e96e8fc4ebcc9653b01d9ab2a30e",
+  "configs": [],
+  "reproduced_at": null,
+  "own_findings": [],
+  "opspilot_side": null,
+  "mapping_rows": [
+    {
+      "feature": "F11",
+      "step": 1,
+      "mechanism": "由观察到的发布触发调查，保留精确的前后版本与服务身份"
+    }
+  ]
+}

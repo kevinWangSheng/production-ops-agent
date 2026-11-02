@@ -1,0 +1,502 @@
+{
+  "schema": "opspilot.f14.upstream-issue-run.v1",
+  "run_id": "f14s3-2356-jaeger-real-1",
+  "slug": "upstream-2356-failed-source",
+  "case": "2356-jaeger-real",
+  "mode": "real_model",
+  "entry": "ask",
+  "image_id": "sha256:3f2995d1a448b34a0dbd3c07aa9276e8c812e96e8fc4ebcc9653b01d9ab2a30e",
+  "config_sha256": "c60a2b434e65df59b76fde56961cb79a30a99add55994b80810918c1c363b91c",
+  "config": {
+    "sha256": "c60a2b434e65df59b76fde56961cb79a30a99add55994b80810918c1c363b91c",
+    "differs_from_pin": true,
+    "reason": "Q6: Jaeger URL set to 127.0.0.1:9 (refused inside the container); the baseline Jaeger toolset is unchanged otherwise"
+  },
+  "stimulus": {
+    "fault_flag": "paymentFailure",
+    "fault_experiment_id": "f14s3-batch"
+  },
+  "container_env": {
+    "NO_PROXY": "f14-lab-relay,f14-capture,f14-alertmanager,127.0.0.1"
+  },
+  "model_env_overrides": {},
+  "started_at": "2026-11-01T23:06:58Z",
+  "finished_at": "2026-11-01T23:09:30Z",
+  "exit_code": 0,
+  "timed_out": false,
+  "requests": [],
+  "tool_results": [
+    {
+      "index": 0,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "error",
+      "error": "Connection error: HTTPConnectionPool(host='127.0.0.1', port=9): Max retries exceeded with url: /jaeger/ui/api/services (Caused by NewConnectionError(\"HTTPConnection(host='127.0.0.1', port=9): Failed to establish a new connection: [Errno 111] Connection refused\"))",
+      "params": {
+        "url": "http://127.0.0.1:9/jaeger/ui/api/services",
+        "max_depth": 3,
+        "jq": null,
+        "method": "GET",
+        "body": null,
+        "headers": null
+      }
+    },
+    {
+      "index": 1,
+      "tool": "get_metric_names",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "error": null,
+      "params": {
+        "match": "{__name__=~\".*checkout.*|.*http.*|.*rpc.*|.*span.*|.*traces.*\"}",
+        "start": "2026-11-01T22:56:55Z",
+        "end": "2026-11-01T23:06:55Z"
+      }
+    },
+    {
+      "index": 2,
+      "tool": "get_all_labels",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "error": null,
+      "params": {
+        "match": "{__name__=~\"traces_span_metrics_calls_total\"}",
+        "start": "2026-11-01T22:56:55Z",
+        "end": "2026-11-01T23:06:55Z"
+      }
+    },
+    {
+      "index": 3,
+      "tool": "get_series",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "error": null,
+      "params": {
+        "match": "{__name__=~\"traces_span_metrics_calls_total\"}",
+        "start": "2026-11-01T22:56:55Z",
+        "end": "2026-11-01T23:06:55Z"
+      }
+    },
+    {
+      "index": 4,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "error",
+      "error": "Connection error: HTTPConnectionPool(host='127.0.0.1', port=9): Max retries exceeded with url: /jaeger/ui/api/traces?service=checkout&start=1793574000&end=1793574427&limit=20 (Caused by NewConnectionError(\"HTTPConnection(host='127.0.0.1', port=9): Failed to establish a new connection: [Errno 111] Connection refused\"))",
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": null,
+        "max_depth": 3,
+        "method": "GET",
+        "url": "http://127.0.0.1:9/jaeger/ui/api/traces?service=checkout&start=1793574000&end=1793574427&limit=20"
+      }
+    },
+    {
+      "index": 5,
+      "tool": "execute_prometheus_instant_query",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "error": null,
+      "params": {
+        "query": "sum by (service_name, span_name, span_kind, status_code) (increase(traces_span_metrics_calls_total{service_name=~\"checkout|payment|product-catalog|cart|currency|shipping|email\", status_code=\"STATUS_CODE_ERROR\"}[5m]))",
+        "description": "Error span counts per service/span in last 5m",
+        "timeout": 30
+      }
+    },
+    {
+      "index": 6,
+      "tool": "execute_prometheus_instant_query",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "error": null,
+      "params": {
+        "query": "histogram_quantile(0.95, sum by (le, service_name, span_kind) (rate(traces_span_metrics_duration_milliseconds_bucket{service_name=~\"checkout|payment|product-catalog|cart|currency|shipping|email\"}[5m])))",
+        "description": "p95 span duration per service",
+        "timeout": 30
+      }
+    },
+    {
+      "index": 7,
+      "tool": "execute_prometheus_instant_query",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "error": null,
+      "params": {
+        "query": "sum by (service_name, span_name, span_kind, status_code) (increase(traces_span_metrics_calls_total{service_name=~\"checkout|payment|product-catalog|cart|currency|shipping|email\", span_kind=\"SPAN_KIND_SERVER\"}[5m]))",
+        "description": "Total server span counts per service last 5m",
+        "timeout": 30
+      }
+    },
+    {
+      "index": 8,
+      "tool": "get_metric_names",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "error": null,
+      "params": {
+        "end": "2026-11-01T23:06:55Z",
+        "match": "{__name__=~\".*trace.*|.*tempo.*|.*span.*|.*flagd.*\"}",
+        "start": "2026-11-01T22:56:55Z"
+      }
+    },
+    {
+      "index": 9,
+      "tool": "get_series",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "error": null,
+      "params": {
+        "end": "2026-11-01T23:06:55Z",
+        "match": "{__name__=~\"grpc_client_handled_total|grpc_server_handled_total\"}",
+        "start": "2026-11-01T22:56:55Z"
+      }
+    },
+    {
+      "index": 10,
+      "tool": "execute_prometheus_instant_query",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "error": null,
+      "params": {
+        "description": "Checkout dependency client call counts by status",
+        "query": "sum by (span_name, status_code) (increase(traces_span_metrics_calls_total{service_name=\"checkout\", span_kind=\"SPAN_KIND_CLIENT\"}[5m]))",
+        "timeout": 30
+      }
+    },
+    {
+      "index": 11,
+      "tool": "execute_prometheus_instant_query",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "error": null,
+      "params": {
+        "description": "Error spans for frontend / frontend-proxy / load-generator / ad in 5m",
+        "query": "sum by (service_name, span_name, span_kind, status_code) (increase(traces_span_metrics_calls_total{status_code=\"STATUS_CODE_ERROR\"}[5m]))",
+        "timeout": 30
+      }
+    },
+    {
+      "index": 12,
+      "tool": "execute_prometheus_range_query",
+      "toolset": "prometheus/metrics",
+      "status": "error",
+      "error": "The prometheus query returned no result. Is the query correct?",
+      "params": {
+        "description": "Checkout PlaceOrder server span error ratio over window",
+        "end": "2026-11-01T23:07:00Z",
+        "max_points": 300,
+        "output_type": "Percentage",
+        "query": "sum(rate(traces_span_metrics_calls_total{service_name=\"checkout\", span_name=\"oteldemo.CheckoutService/PlaceOrder\", span_kind=\"SPAN_KIND_SERVER\", status_code=\"STATUS_CODE_ERROR\"}[1m])) / sum(rate(traces_span_metrics_calls_total{service_name=\"checkout\", span_name=\"oteldemo.CheckoutService/PlaceOrder\", span_kind=\"SPAN_KIND_SERVER\"}[1m]))",
+        "start": "2026-11-01T22:21:55Z",
+        "step": 30,
+        "timeout": 30
+      }
+    },
+    {
+      "index": 13,
+      "tool": "execute_prometheus_range_query",
+      "toolset": "prometheus/metrics",
+      "status": "error",
+      "error": "The prometheus query returned no result. Is the query correct?",
+      "params": {
+        "description": "p95 latency: checkout server, checkout→payment client, payment server",
+        "end": "2026-11-01T23:07:00Z",
+        "max_points": 300,
+        "output_type": "Plain",
+        "query": "histogram_quantile(0.95, sum by (le, service_name, span_kind) (rate(traces_span_metrics_duration_milliseconds_bucket{service_name=~\"checkout|payment\"}[1m])))",
+        "start": "2026-11-01T22:21:55Z",
+        "step": 30,
+        "timeout": 30
+      }
+    },
+    {
+      "index": 14,
+      "tool": "get_series",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "error": null,
+      "params": {
+        "end": "2026-11-01T23:06:55Z",
+        "match": "{__name__=~\"feature_flag_flagd_impression_total|feature_flag_flagd_result_reason_total\"}",
+        "start": "2026-11-01T22:56:55Z"
+      }
+    },
+    {
+      "index": 15,
+      "tool": "execute_prometheus_instant_query",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "error": null,
+      "params": {
+        "description": "paymentFailure flag impressions by variant in window",
+        "query": "sum by (feature_flag_key, feature_flag_result_variant) (increase(feature_flag_flagd_impression_total{feature_flag_key=~\"paymentFailure|paymentUnreachable|cartFailure\"}[10m]))",
+        "timeout": 30
+      }
+    },
+    {
+      "index": 16,
+      "tool": "execute_prometheus_instant_query",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "error": null,
+      "params": {
+        "description": "Latency avg/p95 comparison checkout server vs payment server previous 30m vs window",
+        "query": "sum by (service_name, span_kind) (rate(traces_span_metrics_duration_milliseconds_sum{service_name=~\"checkout|payment\"}[5m])) / sum by (service_name, span_kind) (rate(traces_span_metrics_duration_milliseconds_count{service_name=~\"checkout|payment\"}[5m]))",
+        "timeout": 30
+      }
+    },
+    {
+      "index": 17,
+      "tool": "execute_prometheus_range_query",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "error": null,
+      "params": {
+        "description": "Raw checkout PlaceOrder error span counter",
+        "end": "2026-11-01T23:07:00Z",
+        "max_points": 300,
+        "output_type": "Plain",
+        "query": "traces_span_metrics_calls_total{service_name=\"checkout\", span_name=\"oteldemo.CheckoutService/PlaceOrder\", status_code=\"STATUS_CODE_ERROR\"}",
+        "start": "2026-11-01T22:21:55Z",
+        "step": 30,
+        "timeout": 30
+      }
+    },
+    {
+      "index": 18,
+      "tool": "execute_prometheus_range_query",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "error": null,
+      "params": {
+        "description": "p95 latency checkout PlaceOrder server span",
+        "end": "2026-11-01T23:07:00Z",
+        "max_points": 300,
+        "output_type": "Plain",
+        "query": "histogram_quantile(0.95, sum by (le) (rate(traces_span_metrics_duration_milliseconds_bucket{service_name=\"checkout\", span_name=\"oteldemo.CheckoutService/PlaceOrder\", span_kind=\"SPAN_KIND_SERVER\"}[2m])))",
+        "start": "2026-11-01T22:21:55Z",
+        "step": 30,
+        "timeout": 30
+      }
+    },
+    {
+      "index": 19,
+      "tool": "execute_prometheus_instant_query",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "error": null,
+      "params": {
+        "description": "PlaceOrder total vs error calls, 5m",
+        "query": "sum(increase(traces_span_metrics_calls_total{service_name=\"checkout\", span_name=\"oteldemo.CheckoutService/PlaceOrder\", span_kind=\"SPAN_KIND_SERVER\"}[5m])) by (status_code) or sum(increase(traces_span_metrics_calls_total{service_name=\"payment\", span_name=\"grpc.oteldemo.PaymentService/Charge\"}[5m])) by (status_code, span_kind)",
+        "timeout": 30
+      }
+    },
+    {
+      "index": 20,
+      "tool": "execute_prometheus_range_query",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "error": null,
+      "params": {
+        "description": "p95 latency checkout to payment Charge client span",
+        "end": "2026-11-01T23:07:00Z",
+        "max_points": 300,
+        "output_type": "Plain",
+        "query": "histogram_quantile(0.95, sum by (le) (rate(traces_span_metrics_duration_milliseconds_bucket{service_name=\"checkout\", span_name=\"oteldemo.PaymentService/Charge\", span_kind=\"SPAN_KIND_CLIENT\"}[2m])))",
+        "start": "2026-11-01T22:21:55Z",
+        "step": 30,
+        "timeout": 30
+      }
+    },
+    {
+      "index": 21,
+      "tool": "execute_prometheus_range_query",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "error": null,
+      "params": {
+        "description": "paymentFailure flag impressions by variant over time",
+        "end": "2026-11-01T23:07:00Z",
+        "max_points": 300,
+        "output_type": "Plain",
+        "query": "feature_flag_flagd_impression_total{feature_flag_key=\"paymentFailure\"}",
+        "start": "2026-11-01T22:21:55Z",
+        "step": 30,
+        "timeout": 30
+      }
+    },
+    {
+      "index": 22,
+      "tool": "execute_prometheus_instant_query",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "error": null,
+      "params": {
+        "description": "Jaeger collector traces received per service (last 5m)",
+        "query": "sum by (service) (increase(jaeger_collector_traces_received_total[5m]))",
+        "timeout": 30
+      }
+    },
+    {
+      "index": 23,
+      "tool": "execute_prometheus_instant_query",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "error": null,
+      "params": {
+        "description": "Pod restarts in otel-demo namespace",
+        "query": "sum by (pod, container) (kube_pod_container_status_restarts_total{namespace=\"otel-demo\", pod=~\"payment.*|checkout.*\"})",
+        "timeout": 30
+      }
+    },
+    {
+      "index": 24,
+      "tool": "execute_prometheus_instant_query",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "error": null,
+      "params": {
+        "description": "payment + checkout pod CPU and memory working set",
+        "query": "sum by (pod) (container_memory_working_set_bytes{namespace=\"otel-demo\", pod=~\"payment.*|checkout.*\", container!=\"\"}) or sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"otel-demo\", pod=~\"payment.*|checkout.*\", container!=\"\"}[5m]))",
+        "timeout": 30
+      }
+    },
+    {
+      "index": 25,
+      "tool": "execute_prometheus_instant_query",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "error": null,
+      "params": {
+        "description": "Payment internal charge span status counts",
+        "query": "sum by (span_name, span_kind, status_code) (increase(traces_span_metrics_calls_total{service_name=\"payment\"}[5m]))",
+        "timeout": 30
+      }
+    },
+    {
+      "index": 26,
+      "tool": "execute_prometheus_instant_query",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "error": null,
+      "params": {
+        "description": "Restarts in last 30m for otel-demo payment/checkout",
+        "query": "sum by (pod) (increase(kube_pod_container_status_restarts_total{namespace=\"otel-demo\", pod=~\"payment.*|checkout.*\"}[30m]))",
+        "timeout": 30
+      }
+    },
+    {
+      "index": 27,
+      "tool": "execute_prometheus_instant_query",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "error": null,
+      "params": {
+        "description": "Historical checkout PlaceOrder error rate - 1h error vs total",
+        "query": "sum(increase(traces_span_metrics_calls_total{service_name=\"checkout\", span_name=\"oteldemo.CheckoutService/PlaceOrder\", span_kind=\"SPAN_KIND_SERVER\", status_code=\"STATUS_CODE_ERROR\"}[1h])) or sum(increase(traces_span_metrics_calls_total{service_name=\"checkout\", span_name=\"oteldemo.CheckoutService/PlaceOrder\", span_kind=\"SPAN_KIND_SERVER\"}[1h]))",
+        "timeout": 30
+      }
+    },
+    {
+      "index": 28,
+      "tool": "execute_prometheus_instant_query",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "error": null,
+      "params": {
+        "description": "payment and checkout container CPU cores",
+        "query": "sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"otel-demo\", pod=~\"payment.*|checkout.*\", container!=\"\"}[5m]))",
+        "timeout": 30
+      }
+    },
+    {
+      "index": 29,
+      "tool": "execute_prometheus_instant_query",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "error": null,
+      "params": {
+        "description": "frontend POST /api/checkout spans by status, 5m",
+        "query": "sum by (service_name, span_name, status_code) (increase(traces_span_metrics_calls_total{service_name=~\"frontend|frontend-proxy\", span_name=~\"POST /api/checkout|POST|ingress|GET /\"}[5m]))",
+        "timeout": 30
+      }
+    },
+    {
+      "index": 30,
+      "tool": "execute_prometheus_instant_query",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "error": null,
+      "params": {
+        "description": "Per-span p95 latency for checkout client dependency calls",
+        "query": "histogram_quantile(0.95, sum by (le, span_name) (rate(traces_span_metrics_duration_milliseconds_bucket{service_name=\"checkout\", span_kind=\"SPAN_KIND_CLIENT\"}[5m])))",
+        "timeout": 30
+      }
+    },
+    {
+      "index": 31,
+      "tool": "execute_prometheus_instant_query",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "error": null,
+      "params": {
+        "description": "PlaceOrder total calls 1h (all statuses)",
+        "query": "sum by (status_code) (increase(traces_span_metrics_calls_total{service_name=\"checkout\", span_name=\"oteldemo.CheckoutService/PlaceOrder\", span_kind=\"SPAN_KIND_SERVER\"}[1h]))",
+        "timeout": 30
+      }
+    },
+    {
+      "index": 32,
+      "tool": "execute_prometheus_instant_query",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "error": null,
+      "params": {
+        "description": "frontend POST /api/checkout success vs error 5m",
+        "query": "sum by (status_code) (increase(traces_span_metrics_calls_total{service_name=\"frontend\", span_name=\"POST /api/checkout\"}[5m]))",
+        "timeout": 30
+      }
+    }
+  ],
+  "answer_sha256": "329618a2f67316c380cd7bf6add22e15fdfae0670d1f47bf743a8bc3e4101487",
+  "answer_checks": {
+    "names_missing_source": {
+      "hit": true,
+      "excerpt": "**Trace IDs could not be retrieved:** the Jaeger query API at the only whitelisted endpoint (`http://127.0.0.1:9/jaeger/ui/api/...`) refused every connection:"
+    }
+  },
+  "stdout_checks": {
+    "operator_hint": {
+      "hit": true,
+      "excerpt": "Jaeger is not reachable at 127.0.0.1:9 (connection refused)."
+    }
+  },
+  "proxy_checks": {},
+  "tool_checks": {},
+  "request_checks": {},
+  "balance_window": {
+    "before": {
+      "is_available": true,
+      "balance_infos": [
+        {
+          "currency": "CNY",
+          "total_balance": "173.47",
+          "granted_balance": "0.00",
+          "topped_up_balance": "173.47"
+        }
+      ]
+    },
+    "after_delayed": {
+      "is_available": true,
+      "balance_infos": [
+        {
+          "currency": "CNY",
+          "total_balance": "173.00",
+          "granted_balance": "0.00",
+          "topped_up_balance": "173.00"
+        }
+      ]
+    }
+  }
+}

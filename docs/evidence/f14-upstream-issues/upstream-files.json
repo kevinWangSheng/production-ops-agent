@@ -1,0 +1,55 @@
+{
+  "commit": "a0009195468ebc55a7dff7d602b61feabe3cda1b",
+  "files": {
+    "holmes/common/env_vars.py": {
+      "blob": "833a031f8c6227b554dd9ebf1ace48183eb6ffd1",
+      "lines": 301
+    },
+    "holmes/core/llm.py": {
+      "blob": "3b3aadccfd76c0bc83646f1bacbff7fbd57e6280",
+      "lines": 1432
+    },
+    "holmes/core/tools_utils/tool_executor.py": {
+      "blob": "b1f3d064642bf1286f3f1ea35e800d825fbb0c89",
+      "lines": 193
+    },
+    "holmes/core/toolset_manager.py": {
+      "blob": "43999751c2cfee0d7bd66e5b7307152b1d4548e8",
+      "lines": 871
+    },
+    "holmes/main.py": {
+      "blob": "4598e2a2a925e7a49ff2b4b164869a7cca86053e",
+      "lines": 1102
+    },
+    "holmes/plugins/prompts/_toolsets_instructions.jinja2": {
+      "blob": "2bdb1a7773e211517f25eee4e7cb8e6820dba9a6",
+      "lines": 36
+    },
+    "holmes/plugins/prompts/generic_ask.jinja2": {
+      "blob": "897e499784898516aa00e4b39c81195f57b5adf2",
+      "lines": 132
+    },
+    "holmes/plugins/sources/prometheus/plugin.py": {
+      "blob": "e988de15533bafee8d8b4f0736d0f0a683e85f5e",
+      "lines": 154
+    },
+    "holmes/plugins/toolsets/prometheus/prometheus.py": {
+      "blob": "ebc0ff6c355e1ffdd3946a7a0f095d2212ce2866",
+      "lines": 2272
+    },
+    "holmes/plugins/toolsets/prometheus/prometheus_instructions.jinja2": {
+      "blob": "3385ea8a054c0214ca71df6f5660dcd2d7c01266",
+      "lines": 43
+    },
+    "holmes_operator/handlers/triggeredhealthcheck.py": {
+      "blob": "4f85bbc55fdae5cf86d5e545415910cda36ddc76",
+      "lines": 306
+    },
+    "holmes_operator/trigger_executor.py": {
+      "blob": "24e32b2c36b57430cf2091bde7d12c38a37a30ee",
+      "lines": 473
+    }
+  },
+  "schema": "opspilot.f14.upstream-files.v1",
+  "tree": "e94a57b361a00cb2e793cf30d60fe2f4588e26e9"
+}

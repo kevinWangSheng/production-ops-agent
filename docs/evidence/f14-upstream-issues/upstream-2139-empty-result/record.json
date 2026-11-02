@@ -1,0 +1,80 @@
+{
+  "schema": "opspilot.f14.upstream-issue-record.v1",
+  "slug": "upstream-2139-empty-result",
+  "kind": "upstream_issue",
+  "upstream_ref": {
+    "repo": "HolmesGPT/holmesgpt",
+    "number": 2139,
+    "kind": "pr",
+    "url": "https://github.com/HolmesGPT/holmesgpt/pull/2139",
+    "state": "open",
+    "checked_at": "2026-11-01T23:29:27Z"
+  },
+  "background_refs": [],
+  "reporter_claims": [
+    {
+      "id": "C1",
+      "quote": "an empty result set is rewritten to a `Failed`/ERROR status",
+      "source": "https://github.com/HolmesGPT/holmesgpt/pull/2139"
+    },
+    {
+      "id": "C2",
+      "quote": "This can push the LLM to \"fix\" a query that was actually correct over a quiet window.",
+      "source": "https://github.com/HolmesGPT/holmesgpt/pull/2139"
+    }
+  ],
+  "code_at_pin": [
+    "holmes/plugins/toolsets/prometheus/prometheus.py:L1636-L1642",
+    "holmes/plugins/toolsets/prometheus/prometheus.py:L1887-L1896",
+    "holmes/plugins/toolsets/prometheus/prometheus.py:L867-L887"
+  ],
+  "code_at_master": {
+    "sha": "0f8bd4c6285e2ec7b1337fb8116ebb0c0fc9b978",
+    "checked_at": "2026-11-01T23:29:27Z",
+    "changed_files_relevant": []
+  },
+  "related_fixes": [],
+  "local_findings": [
+    {
+      "claim_id": "C1",
+      "group": null,
+      "verdict": "reproduced",
+      "mode": "scripted_model",
+      "runs": 1,
+      "k": 1,
+      "evidence": [
+        "runs/f14s3-2139-empty-result-2.json"
+      ],
+      "note": "脚本化端点发出 payment 错误 span 的 increase(...)>0 即时与区间查询；全部 flag 为 off 时 payment 错误为 0，查询本身正确，只是窗口内没有数据。两次工具结果都是 status error，错误文本「The prometheus query returned no result. Is the query correct?」（tool_checks.empty_result_as_error）。runs/f14s3-2139-empty-result-1.json 是第一次尝试：用的是预审举例的 ad 服务，但 ad 在正常窗口里本来就有错误 span（5 分钟约 3.1 个），查询不为空，所以不算本条证据，照实保留。inputs/script-2139-empty-result.json 是第二次的脚本。"
+    },
+    {
+      "claim_id": "C2",
+      "group": null,
+      "verdict": "not_attempted",
+      "mode": "source_only",
+      "runs": 0,
+      "k": null,
+      "evidence": [],
+      "note": "模型会不会去「修」一条正确的查询属于模型行为。R8 与 Q8 的真实 Run 预算没有给它，未运行。run1 的 index 36（docs/evidence/f14-holmes-baseline/run1-tool-errors.json）只作旁证；那条查询本身是否正确，预审未确认。"
+    }
+  ],
+  "image_id": "sha256:3f2995d1a448b34a0dbd3c07aa9276e8c812e96e8fc4ebcc9653b01d9ab2a30e",
+  "configs": [
+    {
+      "name": "2139-empty-result",
+      "sha256": "4f84aa533d2538a9b9612984af73904787c93a28fec184a7a6d9acc0cc6f0974",
+      "differs_from_pin": true,
+      "reason": "api_base points at the scripted endpoint (R7)"
+    }
+  ],
+  "reproduced_at": "2026-11-01T21:46:56Z",
+  "own_findings": [],
+  "opspilot_side": null,
+  "mapping_rows": [
+    {
+      "feature": "F3",
+      "step": 4,
+      "mechanism": "空结果被报成错误（NO_DATA 分支走不到）"
+    }
+  ]
+}
