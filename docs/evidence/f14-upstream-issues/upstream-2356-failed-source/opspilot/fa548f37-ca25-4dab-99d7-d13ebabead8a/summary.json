@@ -1,0 +1,635 @@
+{
+  "schema": "opspilot-lab-summary-1",
+  "experiment": "m1-01-handoff-runner",
+  "run_id": "fa548f37-ca25-4dab-99d7-d13ebabead8a",
+  "frozen_at": "2026-11-02T05:22:29.520401+00:00",
+  "incident_id": "9da4a265-4620-4e71-8cf3-f586babc4c14",
+  "driver": "opspilot.investigation.runner.InvestigationRunner",
+  "model": "deepseek-flash",
+  "started": "2026-11-02T05:18:41.292399+00:00",
+  "ended": "2026-11-02T05:22:18.358750+00:00",
+  "tool_parallelism": 1,
+  "context_tokens": 1000000,
+  "tool_profile": "otel-demo",
+  "verdicts": {
+    "status": "published",
+    "reason": null,
+    "last_status": "published",
+    "last_reason": null,
+    "run_state": "completed",
+    "conclusion_published": true,
+    "attempts": [
+      {
+        "label": "first",
+        "status": "published",
+        "reason": null,
+        "handoff_reasons": []
+      }
+    ],
+    "control": null,
+    "event_kinds": [
+      "run_claimed",
+      "step_committed",
+      "tool_committed",
+      "tool_committed",
+      "step_committed",
+      "tool_committed",
+      "tool_committed",
+      "step_committed",
+      "tool_committed",
+      "tool_committed",
+      "tool_committed",
+      "step_committed",
+      "tool_committed",
+      "tool_committed",
+      "tool_committed",
+      "step_committed",
+      "tool_committed",
+      "tool_committed",
+      "tool_committed",
+      "step_committed",
+      "tool_committed",
+      "tool_committed",
+      "tool_committed",
+      "step_committed",
+      "tool_committed",
+      "tool_committed",
+      "tool_committed",
+      "step_committed",
+      "tool_committed",
+      "tool_committed",
+      "step_committed",
+      "tool_committed",
+      "tool_committed",
+      "tool_committed",
+      "step_committed",
+      "tool_committed",
+      "tool_committed",
+      "tool_committed",
+      "step_committed",
+      "tool_committed",
+      "step_committed",
+      "step_committed",
+      "run_completed"
+    ]
+  },
+  "counts": {
+    "model_requests_bound": 100,
+    "http_count": 13,
+    "prompt_tokens": 418211,
+    "completion_tokens": 38393,
+    "run_usage": {
+      "budget_limit": 100,
+      "model_requests_used": 13,
+      "model_seconds_used": 186.81119245802984,
+      "tool_operations_used": 28,
+      "tool_seconds_used": 29.4377823327668
+    },
+    "current_run_id": "fa548f37-ca25-4dab-99d7-d13ebabead8a",
+    "current_run_usage": {
+      "budget_limit": 100,
+      "model_requests_used": 13,
+      "model_seconds_used": 186.81119245802984,
+      "tool_operations_used": 28,
+      "tool_seconds_used": 29.4377823327668
+    },
+    "evidence_ids": [
+      "73d7c8f1-4d7a-46bd-be26-81aebbf041a8-t1:4075f501-c232-46e1-a076-df2fea1ec83d",
+      "1d0148eb-d035-4435-983f-6e937fb98825-t1:a873390f-125c-49bc-a608-25d7f4c43858",
+      "54ef6f05-f786-440e-bdc1-1dfbdda8fdb9-t1:422499dd-c5b8-4810-9bbb-99be0179ac87",
+      "54ef6f05-f786-440e-bdc1-1dfbdda8fdb9-t2:cf54f499-c85f-45b1-8353-c58e02ed6a32",
+      "f1a20074-5928-48cd-88ab-b70293025c57-t0:fc9cb4b2-5264-463e-8150-50c52891d2c6",
+      "f1a20074-5928-48cd-88ab-b70293025c57-t1:e898bbf7-1cfc-49db-a373-4f2aff4fea4c",
+      "f1a20074-5928-48cd-88ab-b70293025c57-t2:24f4cbe9-360d-430d-aeb2-62d61fe22bf7",
+      "d92d31fc-8308-4c04-b405-e264b1548a60-t0:d47fd7d3-f166-46ce-960c-2d672c128467",
+      "d92d31fc-8308-4c04-b405-e264b1548a60-t1:b292ee00-5c7d-4d80-8f34-3ae21dd0358b",
+      "d92d31fc-8308-4c04-b405-e264b1548a60-t2:9a47d54c-e870-4520-a0d3-3a7635d7d9af",
+      "852e3420-6a75-4ed4-8401-e8c0096cdb18-t0:ab83081e-5199-4a80-ac0e-e7b93ad744fe",
+      "852e3420-6a75-4ed4-8401-e8c0096cdb18-t1:e3e2fa9a-b1d8-4619-8441-91d26961fba4",
+      "852e3420-6a75-4ed4-8401-e8c0096cdb18-t2:b14d37ec-0251-4229-82cf-8f028bb23bae",
+      "ede8ef87-361c-4ca6-91af-7fa75b5222e0-t0:e3ab8834-c48d-48eb-bb40-a104961429f2",
+      "ede8ef87-361c-4ca6-91af-7fa75b5222e0-t1:c83cacbe-4bce-4522-8402-cadff9a88eca",
+      "ede8ef87-361c-4ca6-91af-7fa75b5222e0-t2:0a967601-14e3-4095-9f90-467e29a37bfa",
+      "0c62af71-0de5-4a8e-afa5-bf7b01087ed3-t0:8b7ccc88-c35c-48cf-8900-ec9ec4ced8aa",
+      "0c62af71-0de5-4a8e-afa5-bf7b01087ed3-t1:aed410fc-0fe6-4390-bd84-eb63cec27cc8",
+      "b9dbc45d-1d37-4552-872b-f266720eb75f-t0:f395938f-b844-44a2-adb7-884665d3d509",
+      "b9dbc45d-1d37-4552-872b-f266720eb75f-t1:4985ea87-6003-4df1-8443-bba40ed011d7",
+      "b9dbc45d-1d37-4552-872b-f266720eb75f-t2:0cf363ba-b5dd-418d-a8a3-e0eb7fab3eca",
+      "ce12a9f9-db03-4291-a1c4-2d65d26083d5-t1:c996d319-66e4-46c3-9935-9ef389ddf8db",
+      "ce12a9f9-db03-4291-a1c4-2d65d26083d5-t2:a21d46ed-16c4-46ad-a175-ff00b397a23f",
+      "6a108c9e-dbf1-4932-91f7-b68ca12392ae-t0:3595fe9b-8255-4c62-9f16-3d16d2d6a987"
+    ]
+  },
+  "cost": {
+    "known_cost_cny_upper": 1.252206
+  },
+  "report": {
+    "schema_version": "m0-report-v2",
+    "assessment_status": "completed",
+    "conclusion": "partial",
+    "summary": "In the last 5 minutes of the authorized window (2026-11-02T05:13:41Z-05:18:41Z) checkout is failing: every oteldemo.CheckoutService/PlaceOrder span recorded carried STATUS_CODE_ERROR (3.7500156250651044 error spans, 0 non-error), against a PlaceOrder error ratio of 0.14432549562789493 over the preceding 6 hours. The failure localizes to the payment dependency: checkout's client span oteldemo.PaymentService/Charge and payment's server span grpc.oteldemo.PaymentService/Charge both show 3.7500156250651044 error spans and no non-error spans, payment's Charge error ratio measures exactly 1 for the window, and checkout's Charge calls return numeric gRPC status code 2. Latency is not elevated anywhere in the path - mean span durations in the final bucket are at or below their own earlier-hour values (PlaceOrder 20.13ms vs 22.78-63.87ms; checkout->Charge 3.29ms vs 6.33-13.80ms; payment's own Charge server span 1.57ms) - so this is a fast-failing charge, not saturation. cart, product-catalog, currency and shipping show no ERROR-status span series and flat latency; email received zero spans so its health is undetermined. The deepest cause inside payment, and the error text behind gRPC code 2, could not be established: traces_search failed with SOURCE_UNAVAILABLE on every attempt, so no trace ids, parent-child span links or error messages are available, and kubernetes_state, pod_logs and change_history are not integrated.",
+    "claims": [
+      {
+        "kind": "fact",
+        "text": "In the 5 minutes ending 2026-11-02T05:18:41Z, checkout's span oteldemo.CheckoutService/PlaceOrder recorded 3.7500156250651044 spans with status_code STATUS_CODE_ERROR and 0 spans with STATUS_CODE_UNSET, i.e. every returned PlaceOrder span in the window carried ERROR.",
+        "evidence_ids": [
+          "6a108c9e-dbf1-4932-91f7-b68ca12392ae-t0:3595fe9b-8255-4c62-9f16-3d16d2d6a987",
+          "73d7c8f1-4d7a-46bd-be26-81aebbf041a8-t1:4075f501-c232-46e1-a076-df2fea1ec83d"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "fact",
+        "text": "In the same 5-minute window, checkout's client span oteldemo.PaymentService/Charge had 3.7500156250651044 STATUS_CODE_ERROR spans and 0 STATUS_CODE_UNSET spans, and the payment service's server span grpc.oteldemo.PaymentService/Charge had the same 3.7500156250651044 error spans and 0 non-error spans - the only ERROR-status span series returned for any span in the checkout path in that window.",
+        "evidence_ids": [
+          "73d7c8f1-4d7a-46bd-be26-81aebbf041a8-t1:4075f501-c232-46e1-a076-df2fea1ec83d",
+          "852e3420-6a75-4ed4-8401-e8c0096cdb18-t0:ab83081e-5199-4a80-ac0e-e7b93ad744fe"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "fact",
+        "text": "The measured error ratio for payment's grpc.oteldemo.PaymentService/Charge over 2026-11-02T05:13:41Z-05:18:41Z is exactly 1, i.e. all Charge spans in the window were error status.",
+        "evidence_ids": [
+          "ce12a9f9-db03-4291-a1c4-2d65d26083d5-t2:a21d46ed-16c4-46ad-a175-ff00b397a23f"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "fact",
+        "text": "Checkout's outbound Charge calls carry rpc_grpc_status_code label values \"0\" and \"2\"; in the last 5m bucket status code 2 counts 2.5 and status code 0 counts 0, and the preceding 5m bucket at 05:13:41Z shows 5.0 for code 2, so the failing checkouts return numeric gRPC code 2 rather than an OK code.",
+        "evidence_ids": [
+          "852e3420-6a75-4ed4-8401-e8c0096cdb18-t2:b14d37ec-0251-4229-82cf-8f028bb23bae",
+          "ede8ef87-361c-4ca6-91af-7fa75b5222e0-t0:e3ab8834-c48d-48eb-bb40-a104961429f2"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "fact",
+        "text": "The checkout/payment error activity is intermittent and all-or-nothing per bucket: PlaceOrder error spans were 5.613947855265863 (04:48:41Z), 8.749963541818577 (04:53:41Z), 6.24997395844184 (04:58:41Z), 0 (05:03:41Z), 0 (05:08:41Z), 4.999979166753472 (05:13:41Z) and 3.7500156250651044 (05:18:41Z), with payment's grpc Charge errors tracking the same buckets.",
+        "evidence_ids": [
+          "1d0148eb-d035-4435-983f-6e937fb98825-t1:a873390f-125c-49bc-a608-25d7f4c43858",
+          "54ef6f05-f786-440e-bdc1-1dfbdda8fdb9-t1:422499dd-c5b8-4810-9bbb-99be0179ac87"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "fact",
+        "text": "Baseline: over the 6 hours ending 2026-11-02T05:13:41Z the PlaceOrder error ratio was 0.14432549562789493, and the 24-hour 30-minute ERROR-span view contains long all-zero stretches with episodic bursts (PlaceOrder error counts 36.59, 23.58, 10.34 in the windows ending 23:18:41Z, 23:48:41Z and 00:18:41Z, then 5.61 at 04:48:41Z and 23.79 at 05:18:41Z), so the current failures recur a prior pattern but are elevated versus the immediately preceding quiet buckets.",
+        "evidence_ids": [
+          "ce12a9f9-db03-4291-a1c4-2d65d26083d5-t1:c996d319-66e4-46c3-9935-9ef389ddf8db",
+          "ede8ef87-361c-4ca6-91af-7fa75b5222e0-t2:0a967601-14e3-4095-9f90-467e29a37bfa"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "fact",
+        "text": "No latency elevation is visible in the checkout path in the last bucket: mean span durations are oteldemo.CheckoutService/PlaceOrder 20.127874333333313 ms (earlier hour buckets 22.775891142857127-63.87369328571522 ms), checkout oteldemo.PaymentService/Charge 3.2932576666666478 ms (6.3292094999999975-13.799455000000002 ms), checkout oteldemo.ProductCatalogService/GetProduct 1.266943400000001 ms, checkout oteldemo.ShippingService/GetQuote 4.9793750000000045 ms, cart POST /oteldemo.CartService/GetCart 1.0630687500000136 ms, currency Currency/Convert 0.6554775999999947 ms, shipping oteldemo.ShippingService/GetQuote 3.937147999999979 ms and product-catalog oteldemo.ProductCatalogService/GetProduct 0.2287761772151809 ms.",
+        "evidence_ids": [
+          "0c62af71-0de5-4a8e-afa5-bf7b01087ed3-t0:8b7ccc88-c35c-48cf-8900-ec9ec4ced8aa",
+          "d92d31fc-8308-4c04-b405-e264b1548a60-t2:9a47d54c-e870-4520-a0d3-3a7635d7d9af"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "fact",
+        "text": "Payment's own internal latency is low and falling in the failure bucket: span charge mean 0.4147416666666762 ms and grpc.oteldemo.PaymentService/Charge mean 1.5708786666666583 ms at 05:18:41Z, versus 2.17771859999998-8.05113599999999 ms for the gRPC Charge span earlier in the hour, consistent with fast-failing charges rather than slow or saturated payment processing.",
+        "evidence_ids": [
+          "ede8ef87-361c-4ca6-91af-7fa75b5222e0-t1:c83cacbe-4bce-4522-8402-cadff9a88eca"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "fact",
+        "text": "The other checkout dependencies show no error-status span series and continued serving in the last 5 minutes: product-catalog oteldemo.ProductCatalogService/GetProduct 98.75041146004774 spans, product-catalog ListProducts 8.750036458485244, cart POST /oteldemo.CartService/GetCart 40.000166667361114, cart HGET 71.25029687623699, cart EXPIRE 25.000104167100694, cart HMSET 25.000104167100694, currency Currency/Convert 6.250026041775174 (STATUS_CODE_OK in the 5m status view) and shipping oteldemo.ShippingService/GetQuote 3.7500156250651044 - all carrying only STATUS_CODE_UNSET/OK, never ERROR - while email send_email and POST /send_order_confirmation returned 0 spans.",
+        "evidence_ids": [
+          "0c62af71-0de5-4a8e-afa5-bf7b01087ed3-t1:aed410fc-0fe6-4390-bd84-eb63cec27cc8",
+          "73d7c8f1-4d7a-46bd-be26-81aebbf041a8-t1:4075f501-c232-46e1-a076-df2fea1ec83d"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "fact",
+        "text": "Callers upstream of checkout show their own ERROR spans in the same 5-minute window: frontend grpc.oteldemo.CheckoutService/PlaceOrder 3.7500156250651044, frontend executing api route (pages) /api/checkout 3.7500156250651044, frontend POST 3.7500156250651044, frontend-proxy ingress 2.5000104167100696, frontend-proxy router frontend egress 2.5000104167100696 and load-generator POST 3.7500156250651044.",
+        "evidence_ids": [
+          "852e3420-6a75-4ed4-8401-e8c0096cdb18-t0:ab83081e-5199-4a80-ac0e-e7b93ad744fe"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "fact",
+        "text": "Payment's business counter app_payment_transactions_total for pod payment-6f7bc865d6-bfxbv increased 0 for both label values app_payment_currency=\"CAD\" and app_payment_currency=\"USD\" in the 05:13:41Z and 05:18:41Z buckets while Charge spans were still being recorded, whereas the 05:08:41Z bucket showed USD 4.9997291813360105 and CAD 1.2499322953340026.",
+        "evidence_ids": [
+          "b9dbc45d-1d37-4552-872b-f266720eb75f-t1:4985ea87-6003-4df1-8443-bba40ed011d7"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "fact",
+        "text": "Payment evaluates flagd inside the charge path: span grpc.flagd.evaluation.v1.Service/ResolveFloat on service payment shows increase values 1.25 at 04:48:41Z, 0 at 04:53:41Z and 04:58:41Z, 1.25 at 05:03:41Z, 1.249994791688368 at 05:13:41Z and 0 at 05:18:41Z, all STATUS_CODE_UNSET with no error status, so its timing does not track the error buckets one-for-one.",
+        "evidence_ids": [
+          "b9dbc45d-1d37-4552-872b-f266720eb75f-t0:f395938f-b844-44a2-adb7-884665d3d509",
+          "54ef6f05-f786-440e-bdc1-1dfbdda8fdb9-t1:422499dd-c5b8-4810-9bbb-99be0179ac87"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "hypothesis",
+        "text": "Checkout's elevated PlaceOrder errors are the direct consequence of the payment service failing its Charge RPC: the caller-side span oteldemo.PaymentService/Charge and the server-side span grpc.oteldemo.PaymentService/Charge carry identical error counts that match checkout's PlaceOrder errors, checkout's Charge calls return gRPC code 2, and payment's own processing latency is low, indicating the error is produced by payment and returned to checkout rather than introduced by checkout or by a slow dependency.",
+        "evidence_ids": [
+          "73d7c8f1-4d7a-46bd-be26-81aebbf041a8-t1:4075f501-c232-46e1-a076-df2fea1ec83d",
+          "ce12a9f9-db03-4291-a1c4-2d65d26083d5-t2:a21d46ed-16c4-46ad-a175-ff00b397a23f",
+          "ede8ef87-361c-4ca6-91af-7fa75b5222e0-t0:e3ab8834-c48d-48eb-bb40-a104961429f2",
+          "ede8ef87-361c-4ca6-91af-7fa75b5222e0-t1:c83cacbe-4bce-4522-8402-cadff9a88eca"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "hypothesis",
+        "text": "The payment failure behaves as an intermittent on/off condition rather than gradual degradation: within a bucket essentially all Charge spans error (error ratio 1 in the last 5m) while adjacent buckets have zero error spans and the 6-hour aggregate ratio is only 0.14432549562789493, a pattern more consistent with a toggled fault-injection or configuration condition than with load-driven degradation.",
+        "evidence_ids": [
+          "ce12a9f9-db03-4291-a1c4-2d65d26083d5-t2:a21d46ed-16c4-46ad-a175-ff00b397a23f",
+          "1d0148eb-d035-4435-983f-6e937fb98825-t1:a873390f-125c-49bc-a608-25d7f4c43858",
+          "ce12a9f9-db03-4291-a1c4-2d65d26083d5-t1:c996d319-66e4-46c3-9935-9ef389ddf8db"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "hypothesis",
+        "text": "A flagd-evaluated feature flag inside payment may drive the failures, since payment does evaluate grpc.flagd.evaluation.v1.Service/ResolveFloat in its charge path, but this remains unproven: ResolveFloat increases appear in a bucket with zero Charge errors (05:03:41Z) and are absent in the bucket where all Charge spans failed (05:18:41Z), and no flag name or value is exposed by the available metrics.",
+        "evidence_ids": [
+          "b9dbc45d-1d37-4552-872b-f266720eb75f-t0:f395938f-b844-44a2-adb7-884665d3d509"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "rejected_hypothesis",
+        "text": "Elevated latency or saturation in checkout or its dependencies is rejected as the cause: every measured mean span duration in the last bucket is at or below its own prior-hour range (PlaceOrder 20.13ms vs 22.78-63.87ms, checkout->Charge 3.29ms vs 6.33-13.80ms, payment grpc Charge 1.57ms vs 2.18-8.05ms, cart/currency/shipping/product-catalog all under 5ms), so no latency trend accompanies the errors.",
+        "evidence_ids": [
+          "0c62af71-0de5-4a8e-afa5-bf7b01087ed3-t0:8b7ccc88-c35c-48cf-8900-ec9ec4ced8aa",
+          "d92d31fc-8308-4c04-b405-e264b1548a60-t2:9a47d54c-e870-4520-a0d3-3a7635d7d9af",
+          "ede8ef87-361c-4ca6-91af-7fa75b5222e0-t1:c83cacbe-4bce-4522-8402-cadff9a88eca"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "rejected_hypothesis",
+        "text": "cart, product-catalog, currency or shipping being the origin of the failure is rejected: none of these services returned an ERROR-status span series in the hour view or in the last-5m all-service error view, their span statuses are STATUS_CODE_UNSET (currency Currency/Convert is STATUS_CODE_OK), and their call volumes and latencies remained normal while checkout's PlaceOrder errors occurred.",
+        "evidence_ids": [
+          "0c62af71-0de5-4a8e-afa5-bf7b01087ed3-t1:aed410fc-0fe6-4390-bd84-eb63cec27cc8",
+          "852e3420-6a75-4ed4-8401-e8c0096cdb18-t0:ab83081e-5199-4a80-ac0e-e7b93ad744fe",
+          "0c62af71-0de5-4a8e-afa5-bf7b01087ed3-t0:8b7ccc88-c35c-48cf-8900-ec9ec4ced8aa"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "counter_evidence",
+        "text": "Checkout/payment error bursts of comparable or larger size occurred earlier in the same authorized window (30-minute ERROR-span counts of 36.59, 23.58 and 10.34 for oteldemo.CheckoutService/PlaceOrder around 23:18:41Z, 23:48:41Z and 00:18:41Z, and 5.61 at 04:48:41Z), so the current burst is not unprecedented and the 6-hour aggregate error ratio of 0.14432549562789493 qualifies a reading of the last 5 minutes as a unique escalation.",
+        "evidence_ids": [
+          "ede8ef87-361c-4ca6-91af-7fa75b5222e0-t2:0a967601-14e3-4095-9f90-467e29a37bfa",
+          "ce12a9f9-db03-4291-a1c4-2d65d26083d5-t1:c996d319-66e4-46c3-9935-9ef389ddf8db"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      }
+    ],
+    "gaps": [
+      "traces_search returned status=error with reason SOURCE_UNAVAILABLE on all four attempts in the last-5-minute window (service checkout twice, payment, frontend), so no trace ids, no parent references confirming the checkout->payment call edge, and no span error detail or error message could be retrieved; the caller/server relationship is inferred from matching RPC operation names and identical error counts, not from a parent reference.",
+      "One view did not return data: 54ef6f05-f786-440e-bdc1-1dfbdda8fdb9-t2:cf54f499-c85f-45b1-8353-c58e02ed6a32 (status no_data) for the query on rpc_server_duration_milliseconds_count{service_name=\"payment\"} grouped by rpc_method and rpc_grpc_status_code; payment server latency therefore could only be assessed through traces_span_metrics_duration_milliseconds, not this RPC-duration metric, and its absence is not evidence of zero errors.",
+      "The error text behind gRPC code 2 returned by payment (decline reason, injected fault, card validation) is unknown; traces and pod logs are the only sources that would carry it.",
+      "kubernetes_state is not integrated, so payment pod restarts or redeployments during 04:43:41Z-05:18:41Z cannot be confirmed or excluded; change_history is also not integrated, so no flag, configuration or deployment change can be correlated with the burst onset.",
+      "The exact flagd flag names and values evaluated by payment are not exposed by the available metrics; only the presence of grpc.flagd.evaluation.v1.Service/ResolveFloat spans is observable.",
+      "email received zero spans in the last 5 minutes, so its health during the window is undetermined; in earlier buckets it was serving without error status (send_email 6.25 spans, STATUS_CODE_UNSET, at 05:08:41Z).",
+      "traces_span_metrics_calls_total counts spans, not requests; the error ratios quoted here are span-status ratios over sampled metric series, not measured request failure rates, and histogram buckets were not summed to derive call counts."
+    ],
+    "next_steps": [
+      "Restore or re-authorize the Jaeger trace source and re-run a checkout/payment trace search for 2026-11-02T05:13:41Z-05:18:41Z to obtain trace ids, the checkout->payment parent-child edge and the payment error message.",
+      "Have a human inspect logs for pod payment-6f7bc865d6-bfxbv around 04:43:41Z-05:18:41Z to recover the charge error text and the flag evaluation result.",
+      "Check change history and flagd configuration for payment, including flag state near 04:43:41Z, to test the fault-injection hypothesis and confirm whether the intermittent burst pattern is expected demo behavior.",
+      "Confirm whether app_payment_transactions_total is incremented only on successful charges, which would make its zero increase in the last two buckets direct evidence of zero completed transactions."
+    ]
+  },
+  "compactions": {
+    "accepted": 0,
+    "attempted": 0
+  },
+  "compaction_rows": {
+    "rows": [],
+    "step_keys": [
+      "ctx0:round-1",
+      "ctx0:round-2",
+      "ctx0:round-3",
+      "ctx0:round-4",
+      "ctx0:round-5",
+      "ctx0:round-6",
+      "ctx0:round-7",
+      "ctx0:round-8",
+      "ctx0:round-9",
+      "ctx0:round-10",
+      "ctx0:round-11",
+      "ctx0:round-12",
+      "ctx0:round-13",
+      "conclusion:g0:ctx0:round-13"
+    ],
+    "rounds_after_last_accepted": 0
+  },
+  "offline_rebuild": {
+    "segment": "ctx0",
+    "compactions": 0,
+    "error": null
+  },
+  "offline_rebuild_detail": {
+    "compaction_attempts": 0,
+    "live_steps": 13,
+    "next_round": 14,
+    "evidence_ids": [
+      "73d7c8f1-4d7a-46bd-be26-81aebbf041a8-t1:4075f501-c232-46e1-a076-df2fea1ec83d",
+      "1d0148eb-d035-4435-983f-6e937fb98825-t1:a873390f-125c-49bc-a608-25d7f4c43858",
+      "54ef6f05-f786-440e-bdc1-1dfbdda8fdb9-t1:422499dd-c5b8-4810-9bbb-99be0179ac87",
+      "54ef6f05-f786-440e-bdc1-1dfbdda8fdb9-t2:cf54f499-c85f-45b1-8353-c58e02ed6a32",
+      "f1a20074-5928-48cd-88ab-b70293025c57-t0:fc9cb4b2-5264-463e-8150-50c52891d2c6",
+      "f1a20074-5928-48cd-88ab-b70293025c57-t1:e898bbf7-1cfc-49db-a373-4f2aff4fea4c",
+      "f1a20074-5928-48cd-88ab-b70293025c57-t2:24f4cbe9-360d-430d-aeb2-62d61fe22bf7",
+      "d92d31fc-8308-4c04-b405-e264b1548a60-t0:d47fd7d3-f166-46ce-960c-2d672c128467",
+      "d92d31fc-8308-4c04-b405-e264b1548a60-t1:b292ee00-5c7d-4d80-8f34-3ae21dd0358b",
+      "d92d31fc-8308-4c04-b405-e264b1548a60-t2:9a47d54c-e870-4520-a0d3-3a7635d7d9af",
+      "852e3420-6a75-4ed4-8401-e8c0096cdb18-t0:ab83081e-5199-4a80-ac0e-e7b93ad744fe",
+      "852e3420-6a75-4ed4-8401-e8c0096cdb18-t1:e3e2fa9a-b1d8-4619-8441-91d26961fba4",
+      "852e3420-6a75-4ed4-8401-e8c0096cdb18-t2:b14d37ec-0251-4229-82cf-8f028bb23bae",
+      "ede8ef87-361c-4ca6-91af-7fa75b5222e0-t0:e3ab8834-c48d-48eb-bb40-a104961429f2",
+      "ede8ef87-361c-4ca6-91af-7fa75b5222e0-t1:c83cacbe-4bce-4522-8402-cadff9a88eca",
+      "ede8ef87-361c-4ca6-91af-7fa75b5222e0-t2:0a967601-14e3-4095-9f90-467e29a37bfa",
+      "0c62af71-0de5-4a8e-afa5-bf7b01087ed3-t0:8b7ccc88-c35c-48cf-8900-ec9ec4ced8aa",
+      "0c62af71-0de5-4a8e-afa5-bf7b01087ed3-t1:aed410fc-0fe6-4390-bd84-eb63cec27cc8",
+      "b9dbc45d-1d37-4552-872b-f266720eb75f-t0:f395938f-b844-44a2-adb7-884665d3d509",
+      "b9dbc45d-1d37-4552-872b-f266720eb75f-t1:4985ea87-6003-4df1-8443-bba40ed011d7",
+      "b9dbc45d-1d37-4552-872b-f266720eb75f-t2:0cf363ba-b5dd-418d-a8a3-e0eb7fab3eca",
+      "ce12a9f9-db03-4291-a1c4-2d65d26083d5-t1:c996d319-66e4-46c3-9935-9ef389ddf8db",
+      "ce12a9f9-db03-4291-a1c4-2d65d26083d5-t2:a21d46ed-16c4-46ad-a175-ff00b397a23f",
+      "6a108c9e-dbf1-4932-91f7-b68ca12392ae-t0:3595fe9b-8255-4c62-9f16-3d16d2d6a987"
+    ]
+  },
+  "citations": {
+    "cited": [
+      {
+        "evidence_id": "6a108c9e-dbf1-4932-91f7-b68ca12392ae-t0:3595fe9b-8255-4c62-9f16-3d16d2d6a987",
+        "segment": "ctx0",
+        "folded_by_accepted_compaction": false,
+        "delivered_after_rebuild": true
+      },
+      {
+        "evidence_id": "73d7c8f1-4d7a-46bd-be26-81aebbf041a8-t1:4075f501-c232-46e1-a076-df2fea1ec83d",
+        "segment": "ctx0",
+        "folded_by_accepted_compaction": false,
+        "delivered_after_rebuild": true
+      },
+      {
+        "evidence_id": "852e3420-6a75-4ed4-8401-e8c0096cdb18-t0:ab83081e-5199-4a80-ac0e-e7b93ad744fe",
+        "segment": "ctx0",
+        "folded_by_accepted_compaction": false,
+        "delivered_after_rebuild": true
+      },
+      {
+        "evidence_id": "ce12a9f9-db03-4291-a1c4-2d65d26083d5-t2:a21d46ed-16c4-46ad-a175-ff00b397a23f",
+        "segment": "ctx0",
+        "folded_by_accepted_compaction": false,
+        "delivered_after_rebuild": true
+      },
+      {
+        "evidence_id": "852e3420-6a75-4ed4-8401-e8c0096cdb18-t2:b14d37ec-0251-4229-82cf-8f028bb23bae",
+        "segment": "ctx0",
+        "folded_by_accepted_compaction": false,
+        "delivered_after_rebuild": true
+      },
+      {
+        "evidence_id": "ede8ef87-361c-4ca6-91af-7fa75b5222e0-t0:e3ab8834-c48d-48eb-bb40-a104961429f2",
+        "segment": "ctx0",
+        "folded_by_accepted_compaction": false,
+        "delivered_after_rebuild": true
+      },
+      {
+        "evidence_id": "1d0148eb-d035-4435-983f-6e937fb98825-t1:a873390f-125c-49bc-a608-25d7f4c43858",
+        "segment": "ctx0",
+        "folded_by_accepted_compaction": false,
+        "delivered_after_rebuild": true
+      },
+      {
+        "evidence_id": "54ef6f05-f786-440e-bdc1-1dfbdda8fdb9-t1:422499dd-c5b8-4810-9bbb-99be0179ac87",
+        "segment": "ctx0",
+        "folded_by_accepted_compaction": false,
+        "delivered_after_rebuild": true
+      },
+      {
+        "evidence_id": "ce12a9f9-db03-4291-a1c4-2d65d26083d5-t1:c996d319-66e4-46c3-9935-9ef389ddf8db",
+        "segment": "ctx0",
+        "folded_by_accepted_compaction": false,
+        "delivered_after_rebuild": true
+      },
+      {
+        "evidence_id": "ede8ef87-361c-4ca6-91af-7fa75b5222e0-t2:0a967601-14e3-4095-9f90-467e29a37bfa",
+        "segment": "ctx0",
+        "folded_by_accepted_compaction": false,
+        "delivered_after_rebuild": true
+      },
+      {
+        "evidence_id": "0c62af71-0de5-4a8e-afa5-bf7b01087ed3-t0:8b7ccc88-c35c-48cf-8900-ec9ec4ced8aa",
+        "segment": "ctx0",
+        "folded_by_accepted_compaction": false,
+        "delivered_after_rebuild": true
+      },
+      {
+        "evidence_id": "d92d31fc-8308-4c04-b405-e264b1548a60-t2:9a47d54c-e870-4520-a0d3-3a7635d7d9af",
+        "segment": "ctx0",
+        "folded_by_accepted_compaction": false,
+        "delivered_after_rebuild": true
+      },
+      {
+        "evidence_id": "ede8ef87-361c-4ca6-91af-7fa75b5222e0-t1:c83cacbe-4bce-4522-8402-cadff9a88eca",
+        "segment": "ctx0",
+        "folded_by_accepted_compaction": false,
+        "delivered_after_rebuild": true
+      },
+      {
+        "evidence_id": "0c62af71-0de5-4a8e-afa5-bf7b01087ed3-t1:aed410fc-0fe6-4390-bd84-eb63cec27cc8",
+        "segment": "ctx0",
+        "folded_by_accepted_compaction": false,
+        "delivered_after_rebuild": true
+      },
+      {
+        "evidence_id": "b9dbc45d-1d37-4552-872b-f266720eb75f-t1:4985ea87-6003-4df1-8443-bba40ed011d7",
+        "segment": "ctx0",
+        "folded_by_accepted_compaction": false,
+        "delivered_after_rebuild": true
+      },
+      {
+        "evidence_id": "b9dbc45d-1d37-4552-872b-f266720eb75f-t0:f395938f-b844-44a2-adb7-884665d3d509",
+        "segment": "ctx0",
+        "folded_by_accepted_compaction": false,
+        "delivered_after_rebuild": true
+      }
+    ],
+    "cited_from_folded_rounds": 0,
+    "cited_not_delivered": []
+  },
+  "report_content_sha256": "cdd6ec1dea7a70f97840a3c2048d5994f98a7d55bb0c4709d4ea6725a3cf27ca",
+  "trace": {
+    "mode": "lab",
+    "otel_trace_id": "b6291df9d9ed1ce9d6b3114bfdbef84f",
+    "dropped_spans": 0,
+    "project": "opspilot-lab-f14s3",
+    "project_id": "0a22aa14-9b98-4e57-a65f-9927d872dce1",
+    "trace_tier": "longlived",
+    "langsmith_run_id": "00000000-0000-0000-83c5-10d59c2a7a91",
+    "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/0a22aa14-9b98-4e57-a65f-9927d872dce1/r/00000000-0000-0000-83c5-10d59c2a7a91?poll=true",
+    "read_back": "found"
+  },
+  "f3_coverage": {
+    "run_id": "fa548f37-ca25-4dab-99d7-d13ebabead8a",
+    "coverage": {
+      "run_id": "fa548f37-ca25-4dab-99d7-d13ebabead8a",
+      "sources_recorded": true,
+      "duplicates_skipped": 0,
+      "sources": [
+        {
+          "name": "jaeger",
+          "ok": 0,
+          "no_data": 0,
+          "non_ok": 4,
+          "reasons": {
+            "SOURCE_UNAVAILABLE": 4
+          },
+          "state": "failed",
+          "gap": true
+        },
+        {
+          "name": "prometheus",
+          "ok": 23,
+          "no_data": 1,
+          "non_ok": 0,
+          "reasons": {},
+          "state": "all_ok",
+          "gap": false
+        },
+        {
+          "name": "kubernetes_state",
+          "ok": 0,
+          "no_data": 0,
+          "non_ok": 0,
+          "reasons": {},
+          "state": "not_integrated",
+          "gap": true
+        },
+        {
+          "name": "pod_logs",
+          "ok": 0,
+          "no_data": 0,
+          "non_ok": 0,
+          "reasons": {},
+          "state": "not_integrated",
+          "gap": true
+        },
+        {
+          "name": "change_history",
+          "ok": 0,
+          "no_data": 0,
+          "non_ok": 0,
+          "reasons": {},
+          "state": "not_integrated",
+          "gap": true
+        }
+      ]
+    },
+    "report_collection_truncated": [
+      false
+    ],
+    "page": {
+      "http_status": 200,
+      "coverage_gaps": true,
+      "coverage_rows": [
+        {
+          "source": "jaeger",
+          "state": "failed"
+        },
+        {
+          "source": "prometheus",
+          "state": "all_ok"
+        },
+        {
+          "source": "kubernetes_state",
+          "state": "not_integrated"
+        },
+        {
+          "source": "pod_logs",
+          "state": "not_integrated"
+        },
+        {
+          "source": "change_history",
+          "state": "not_integrated"
+        }
+      ],
+      "collection_truncated": false,
+      "collection_truncated_text": null,
+      "not_integrated": true
+    },
+    "u6": null
+  },
+  "raw_ledger": {
+    "sha256": "40e93d3eac4986d81c26ece33fae59d674033704abba730bf585e8f3d34bb429",
+    "bytes": 34107,
+    "path": "tmp/f14tr/ledgers/m1-01-handoff-runner/fa548f37-ca25-4dab-99d7-d13ebabead8a/ledger.json",
+    "in_repository": false
+  }
+}
