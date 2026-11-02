@@ -195,3 +195,18 @@ def test_a_root_without_a_trace_link_fails(world, capsys):
     code, report = _main(world, capsys)
     assert code == 1 and report["failures"] == ["ROOT_LINK_MISSING"]
     assert report["root"]["found"] and report["root"]["link"] is None
+
+
+def test_the_metadata_filter_uses_the_documented_key_value_form():
+    # LangSmith trace-query-syntax "Filter by metadata key or value";
+    # same form as scripts/lab_evidence.py find_root_run
+    assert check._metadata_filter({"incident_id": "abc"}) == (
+        'and(eq(metadata_key, "incident_id"), eq(metadata_value, "abc"))'
+    )
+    assert check._metadata_filter({"incident_id": "abc", "image_revision": "f00"}) == (
+        'and(and(eq(metadata_key, "incident_id"), eq(metadata_value, "abc")), '
+        'and(eq(metadata_key, "image_revision"), eq(metadata_value, "f00")))'
+    )
+    assert check._metadata_filter({"incident_id": 'a"b'}) == (
+        'and(eq(metadata_key, "incident_id"), eq(metadata_value, "a\\"b"))'
+    )

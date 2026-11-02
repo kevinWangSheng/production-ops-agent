@@ -240,7 +240,15 @@ def identity_check(
 
 
 def _metadata_filter(fields: Mapping[str, str]) -> str:
-    clauses = [f"has(metadata, '{json.dumps({k: v})}')" for k, v in fields.items()]
+    """LangSmith filter for runs whose metadata has every ``key == value``,
+    in the documented form (trace-query-syntax, "Filter by metadata key or
+    value"; same as ``scripts.lab_evidence.find_root_run``). Keys and values
+    are JSON string literals, so a quote in a value is escaped."""
+    clauses = [
+        f"and(eq(metadata_key, {json.dumps(str(k))}), "
+        f"eq(metadata_value, {json.dumps(str(v))}))"
+        for k, v in fields.items()
+    ]
     return clauses[0] if len(clauses) == 1 else f"and({', '.join(clauses)})"
 
 
