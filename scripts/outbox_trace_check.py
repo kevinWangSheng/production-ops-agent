@@ -92,6 +92,11 @@ _LIST_LIMIT = 100
 # keys and OTel/SDK bookkeeping are counted separately below, by prefix).
 ALLOWED_METADATA = frozenset(PAYLOAD_KEYS) | {"ls_provider", "ls_model_name"}
 _PLATFORM_PREFIXES = ("ls_", "LANGSMITH_", "revision_id", "otel.", "__")
+# Added by LangSmith's OTLP ingestion to every run (first real read, #428
+# run 2026-11-02; scripts/lab_evidence.find_root_run filters on the first).
+_PLATFORM_KEYS = frozenset({"OTEL_TRACE_ID", "OTEL_SPAN_ID"})
+# Outputs LangSmith derives from ``gen_ai.usage.*`` on an llm run: counts only.
+_DERIVED_OUTPUT_KEYS = frozenset({"usage_metadata"})
 
 
 def load_env(path: Path) -> dict[str, str]:
@@ -157,11 +162,17 @@ def content_scan(runs: Iterable[Mapping[str, Any]], secret: str) -> dict[str, in
         if secret:
             hits["api_key_literal"] += blob.count(secret)
         hits["runs_with_inputs"] += 1 if run.get("inputs") else 0
-        hits["runs_with_outputs"] += 1 if run.get("outputs") else 0
+        outputs = run.get("outputs") or {}
+        content = (
+            set(outputs) - _DERIVED_OUTPUT_KEYS if isinstance(outputs, Mapping) else {1}
+        )
+        hits["runs_with_outputs"] += 1 if content else 0
         extra_keys = {
             key
             for key in _metadata(run)
-            if key not in ALLOWED_METADATA and not key.startswith(_PLATFORM_PREFIXES)
+            if key not in ALLOWED_METADATA
+            and key not in _PLATFORM_KEYS
+            and not key.startswith(_PLATFORM_PREFIXES)
         }
         hits["metadata_keys_outside_allowlist"] += len(extra_keys)
     return dict(hits)

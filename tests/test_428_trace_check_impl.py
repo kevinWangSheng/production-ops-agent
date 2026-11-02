@@ -210,3 +210,37 @@ def test_the_metadata_filter_uses_the_documented_key_value_form():
     assert check._metadata_filter({"incident_id": 'a"b'}) == (
         'and(eq(metadata_key, "incident_id"), eq(metadata_value, "a\\"b"))'
     )
+
+
+def test_what_langsmith_itself_adds_is_not_content(world, capsys):
+    """First real read (#428 run 2026-11-02): LangSmith adds OTEL_TRACE_ID /
+    OTEL_SPAN_ID metadata to every run and ``usage_metadata`` outputs to llm
+    runs built from the token attributes; neither is exported content."""
+    base = world.children[0].model_dump()
+    meta = {
+        **base["extra"]["metadata"],
+        "OTEL_TRACE_ID": "ab" * 16,
+        "OTEL_SPAN_ID": "cd" * 8,
+    }
+    outputs = {
+        "usage_metadata": {
+            "input_tokens": 10,
+            "output_tokens": 2,
+            "output_token_details": {"reasoning": 1},
+        }
+    }
+    world.children[0] = SimpleNamespace(
+        model_dump=lambda mode=None: {
+            **base,
+            "extra": {"metadata": meta},
+            "outputs": outputs,
+        }
+    )
+    code, report = _main(world, capsys)
+    assert code == 0 and report["failures"] == []
+    # anything beside usage_metadata in outputs is still content
+    world.children[0] = SimpleNamespace(
+        model_dump=lambda mode=None: {**base, "outputs": {**outputs, "text": "x"}}
+    )
+    code, report = _main(world, capsys)
+    assert code == 1 and "CONTENT_PRESENT" in report["failures"]
