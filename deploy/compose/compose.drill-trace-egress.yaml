@@ -1,0 +1,13 @@
+# Lab drill override (#428, OB-R13 fault 1): the worker resolves the LangSmith
+# OTLP host (api.smith.langchain.com, the default LANGSMITH_ENDPOINT) to its
+# own loopback, so every trace outbox delivery fails to connect while the
+# model endpoint and PostgreSQL stay reachable. Runs must be unaffected; the
+# outbox rows stay pending and are re-delivered after the worker is recreated
+# without this file. Never part of a default install.
+#
+#   install.sh compose -f deploy/compose/compose.lab.yaml \
+#     -f deploy/compose/compose.drill-trace-egress.yaml up -d --no-deps worker
+
+services:
+  worker:
+    extra_hosts: ["api.smith.langchain.com:127.0.0.1"]

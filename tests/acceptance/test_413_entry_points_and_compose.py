@@ -102,4 +102,6 @@ def test_lab_override_publishes_only_loopback_health_ports_and_install_keys_are_
         "OPSPILOT_START_AGENT",
         # added by #393 (merged before #413); #413 adds no install.env key (F8-R11)
         "OPSPILOT_OBSERVER_PROMETHEUS_URL",
+        # added by #428 (contract r3 OB-R12: install.env gains OPSPILOT_TRACE)
+        "OPSPILOT_TRACE",
     }

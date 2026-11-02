@@ -158,6 +158,7 @@ receivers:
 | `OPSPILOT_TOOL_PROFILE` | `fixture` | worker 工具档：`fixture`（固定样本数据，目标 `checkout-prod`）或 `otel-demo`（固定版本的 OpenTelemetry Demo lab）。 |
 | `OPSPILOT_START_AGENT` | `0` | `1` 时同时启动 worker 与 Observer；`worker_env` 没有 `DEEPSEEK_API_KEY` 或 Prometheus URL 不是 http(s) 时，在任何 Docker 调用之前拒绝。 |
 | `OPSPILOT_OBSERVER_PROMETHEUS_URL` | 空 | Observer 的只读 Prometheus 地址；`OPSPILOT_START_AGENT=1` 时必填。 |
+| `OPSPILOT_TRACE` | `off` | worker 的 trace 导出：`off`、`lab`（只用于合成 lab）或 `outbox`（把 trace outbox 里的标识、版本、token 数和固定码发到 LangSmith；仅当 `worker_env` 有 `LANGSMITH_API_KEY` 且 `LANGSMITH_PROJECT=opspilot-lab-*`，可选 SaaS `LANGSMITH_ENDPOINT` 与 `LANGSMITH_WORKSPACE_ID`；否则不发送，worker 的 `/metrics` 报原因）。 |
 
 ### 升级与卸载
 

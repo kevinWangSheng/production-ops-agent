@@ -1,0 +1,342 @@
+{
+  "issue": "#428 (#243 PR-2) OB-R13 real evidence",
+  "recorded_at": "2026-11-02T07:30Z",
+  "category": "integration run (local colima m1-kind VM, Compose project opspilot-393, fixture tool profile, real DeepSeek, real LangSmith SaaS); not production proof, not soak",
+  "build": {
+    "head": "9077506ab69142bdccea3269f521d05fa9df4e58",
+    "image": "opspilot:local",
+    "image_id": "sha256:3295a9022951eb6f3e3d9897fe1d836f6a34e7c6158b85910121955909ba8e59",
+    "replaced": "opspilot:local from #386 branch b713ea25 (4f)"
+  },
+  "export_status_at_start": {
+    "opspilot_trace_export_enabled": {
+      "ENABLED": 1
+    }
+  },
+  "langsmith_project": "opspilot-lab-428",
+  "window": {
+    "lock_holder": "lead (pid 88162) from 2026-11-02T07:04:52Z",
+    "swap_free_mb": {
+      "start": 635,
+      "min": 390
+    }
+  },
+  "backfill_at_start": {
+    "rows": 22,
+    "runs": 3,
+    "note": "rows written by earlier Runs since #427 (PR-1, never delivered) were delivered at 07:07:32Z, 4s after the worker started in outbox mode"
+  },
+  "runs": {
+    "A": {
+      "role": "baseline",
+      "incident_id": "79255a70-951d-58e4-9dca-6ec21857aecb",
+      "run_id": "f18affc0-c7a2-598c-b5e3-cc76a6898db0",
+      "target": "checkout-428a",
+      "alert_at": "2026-11-02T07:09:24Z",
+      "final_state": "waiting_human",
+      "handoff_reasons": [
+        "INCOMPLETE_INVESTIGATION"
+      ],
+      "tool_reasons": {
+        "TARGET_NOT_REGISTERED": 2
+      },
+      "successful_tool_calls": 0,
+      "budget_spent": 3,
+      "budget_limit": 100,
+      "tool_operations_used": 0,
+      "outbox_rows": 8,
+      "outbox_delivered": 8,
+      "max_attempts_seen": 1,
+      "readback": {
+        "exit": 0,
+        "failures": [],
+        "found": 8,
+        "missing": 0,
+        "duplicated": 0,
+        "filters": {
+          "by_incident_id": 9,
+          "by_incident_id_and_image_revision": 6
+        },
+        "trace_link": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/1a1a92bb-976f-4dd7-8a68-283c492b3b61/r/00000000-0000-0000-cd90-119757d3b947?poll=true",
+        "root_run_id": "00000000-0000-0000-cd90-119757d3b947",
+        "cost_estimate_usd": "0.00227685",
+        "llm_tokens": {
+          "completion_tokens": 2032,
+          "prompt_tokens": 7051,
+          "total_tokens": 9083
+        },
+        "run_types": {
+          "chain": 3,
+          "llm": 4,
+          "tool": 2
+        },
+        "content_scan": {
+          "api_key_literal": 0,
+          "authorization": 0,
+          "bearer ": 0,
+          "gen_ai.completion": 0,
+          "gen_ai.prompt": 0,
+          "metadata_keys_outside_allowlist": 0,
+          "promql": 0,
+          "reasoning_content": 0,
+          "runs_with_inputs": 0,
+          "runs_with_outputs": 0,
+          "x-api-key": 0
+        }
+      }
+    },
+    "B": {
+      "role": "fault 1: LangSmith unreachable (worker extra_hosts api.smith.langchain.com:127.0.0.1)",
+      "incident_id": "8316a047-dc41-502a-99ce-9bad52dbf05f",
+      "run_id": "38012555-a35a-50f8-95d0-49b3084612f7",
+      "target": "checkout-428b",
+      "alert_at": "2026-11-02T07:12:01Z",
+      "blocked": {
+        "from": "2026-11-02T07:11:54Z",
+        "to": "2026-11-02T07:12:51Z"
+      },
+      "final_state": "waiting_human",
+      "handoff_reasons": [
+        "INCOMPLETE_INVESTIGATION"
+      ],
+      "tool_reasons": {
+        "TARGET_NOT_REGISTERED": 2
+      },
+      "successful_tool_calls": 0,
+      "budget_spent": 3,
+      "budget_limit": 100,
+      "tool_operations_used": 0,
+      "outbox_rows": 8,
+      "outbox_delivered": 8,
+      "max_attempts_seen": 5,
+      "readback": {
+        "exit": 0,
+        "failures": [],
+        "found": 8,
+        "missing": 0,
+        "duplicated": 0,
+        "filters": {
+          "by_incident_id": 9,
+          "by_incident_id_and_image_revision": 6
+        },
+        "trace_link": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/1a1a92bb-976f-4dd7-8a68-283c492b3b61/r/00000000-0000-0000-c45a-2e776d31878c?poll=true",
+        "root_run_id": "00000000-0000-0000-c45a-2e776d31878c",
+        "cost_estimate_usd": "0.0020328",
+        "llm_tokens": {
+          "completion_tokens": 1646,
+          "prompt_tokens": 6968,
+          "total_tokens": 8614
+        },
+        "run_types": {
+          "chain": 3,
+          "llm": 4,
+          "tool": 2
+        },
+        "content_scan": {
+          "api_key_literal": 0,
+          "authorization": 0,
+          "bearer ": 0,
+          "gen_ai.completion": 0,
+          "gen_ai.prompt": 0,
+          "metadata_keys_outside_allowlist": 0,
+          "promql": 0,
+          "reasoning_content": 0,
+          "runs_with_inputs": 0,
+          "runs_with_outputs": 0,
+          "x-api-key": 0
+        }
+      }
+    },
+    "C1": {
+      "role": "fault 2 try 1 (kill not sent: helper misread the wait loop's exit status)",
+      "incident_id": "e8086303-8ea5-5180-af48-c0f7d06a68ef",
+      "run_id": "7c451da1-815b-520f-af37-d6e6bc0298e9",
+      "target": "checkout-428c",
+      "alert_at": "2026-11-02T07:14:19Z",
+      "final_state": "waiting_human",
+      "handoff_reasons": [
+        "INCOMPLETE_INVESTIGATION"
+      ],
+      "tool_reasons": {
+        "TARGET_NOT_REGISTERED": 2
+      },
+      "successful_tool_calls": 0,
+      "budget_spent": 3,
+      "budget_limit": 100,
+      "tool_operations_used": 0,
+      "outbox_rows": 8,
+      "outbox_delivered": 8,
+      "max_attempts_seen": 1,
+      "readback": {
+        "exit": 0,
+        "failures": [],
+        "found": 8,
+        "missing": 0,
+        "duplicated": 0,
+        "filters": {
+          "by_incident_id": 9,
+          "by_incident_id_and_image_revision": 6
+        },
+        "trace_link": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/1a1a92bb-976f-4dd7-8a68-283c492b3b61/r/00000000-0000-0000-369b-fa42db94c147?poll=true",
+        "root_run_id": "00000000-0000-0000-369b-fa42db94c147",
+        "cost_estimate_usd": "0.00210495",
+        "llm_tokens": {
+          "completion_tokens": 1765,
+          "prompt_tokens": 6973,
+          "total_tokens": 8738
+        },
+        "run_types": {
+          "chain": 3,
+          "llm": 4,
+          "tool": 2
+        },
+        "content_scan": {
+          "api_key_literal": 0,
+          "authorization": 0,
+          "bearer ": 0,
+          "gen_ai.completion": 0,
+          "gen_ai.prompt": 0,
+          "metadata_keys_outside_allowlist": 0,
+          "promql": 0,
+          "reasoning_content": 0,
+          "runs_with_inputs": 0,
+          "runs_with_outputs": 0,
+          "x-api-key": 0
+        }
+      }
+    },
+    "C": {
+      "role": "fault 2 try 3: worker SIGKILLed while run_state:1 was claimed and in flight",
+      "incident_id": "6e54ab61-8436-5f3f-ab66-186630469440",
+      "run_id": "7da57ca3-93e3-54f1-a6ad-b6f0c6e32ce1",
+      "target": "checkout-428e",
+      "alert_at": "2026-11-02T07:17:39Z",
+      "killed_at_host_utc": "2026-11-02T07:17:39Z",
+      "worker_restarted_at": "2026-11-02T07:17:55Z",
+      "final_state": "waiting_human",
+      "handoff_reasons": [
+        "INCOMPLETE_INVESTIGATION"
+      ],
+      "tool_reasons": {
+        "TARGET_NOT_REGISTERED": 2
+      },
+      "successful_tool_calls": 0,
+      "budget_spent": 3,
+      "budget_limit": 100,
+      "tool_operations_used": 0,
+      "outbox_rows": 8,
+      "outbox_delivered": 8,
+      "max_attempts_seen": 2,
+      "readback": {
+        "exit": 0,
+        "failures": [],
+        "found": 8,
+        "missing": 0,
+        "duplicated": 0,
+        "filters": {
+          "by_incident_id": 9,
+          "by_incident_id_and_image_revision": 6
+        },
+        "trace_link": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/1a1a92bb-976f-4dd7-8a68-283c492b3b61/r/00000000-0000-0000-448a-968c4a203ce5?poll=true",
+        "root_run_id": "00000000-0000-0000-448a-968c4a203ce5",
+        "cost_estimate_usd": "0.0022095",
+        "llm_tokens": {
+          "completion_tokens": 1887,
+          "prompt_tokens": 7182,
+          "total_tokens": 9069
+        },
+        "run_types": {
+          "chain": 3,
+          "llm": 4,
+          "tool": 2
+        },
+        "content_scan": {
+          "api_key_literal": 0,
+          "authorization": 0,
+          "bearer ": 0,
+          "gen_ai.completion": 0,
+          "gen_ai.prompt": 0,
+          "metadata_keys_outside_allowlist": 0,
+          "promql": 0,
+          "reasoning_content": 0,
+          "runs_with_inputs": 0,
+          "runs_with_outputs": 0,
+          "x-api-key": 0
+        }
+      }
+    }
+  },
+  "no_run_alert": {
+    "incident_id": "ff2d3a9b-81ae-5458-9642-e7a44a111ad8",
+    "reason": "TARGET_UNRESOLVED (fault 2 try 2 used target key d before it was added); handoff incident, no Run, no model call"
+  },
+  "open_incidents_at_window_open": [
+    {
+      "incident_id": "606d9341",
+      "target": "checkout-prod",
+      "lifecycle": "open",
+      "run_state": "completed",
+      "created_at": "2026-10-31T13:14:32Z"
+    },
+    {
+      "incident_id": "d67c3cd0",
+      "target": "checkout-prod",
+      "lifecycle": "open",
+      "run_state": "waiting_human",
+      "created_at": "2026-11-01T08:22:51Z"
+    }
+  ],
+  "fault_1": {
+    "result": "pass",
+    "run_unaffected": "same final state, handoff reasons, budget 3/100 and tool use as Run A",
+    "while_blocked": {
+      "pending_metric_max": 8,
+      "attempts_reached": 4,
+      "last_delivery_age": "+Inf",
+      "dropped": 0,
+      "worker_log": "trace outbox delivery failed rows=N error=URLError (type only)"
+    },
+    "after_restore": {
+      "all_rows_delivered_by": "2026-11-02T07:13:27Z",
+      "attempts": "4-5",
+      "dropped": 0
+    }
+  },
+  "fault_2": {
+    "result": "kill landed mid-delivery on try 3",
+    "re_sent_rows": 1,
+    "re_sent_key": "run_state:7da57ca3-93e3-54f1-a6ad-b6f0c6e32ce1:1",
+    "langsmith_runs_for_that_span": 1,
+    "first_post_reached_langsmith": "not observable (LangSmith read_run returns no receive time)",
+    "run": "the killed Run's lease ran out (07:24:39Z), the new worker resumed it, it stopped waiting_human at 07:24:55Z"
+  },
+  "unconfirmed_items": {
+    "duplicate_span_deduplication": "partly: after a re-send of the same span id LangSmith shows exactly one run; whether the first POST had arrived before the kill cannot be seen, so this is consistent with dedup or with the first POST never arriving",
+    "late_root_span": "acceptable: children delivered 07:09:28-32Z, root opspilot.run delivered with the stop row 07:09:43Z; LangSmith shows the root with all 8 children attached (Run A)"
+  },
+  "trace_id_mapping": "LangSmith trace_id == root run id == UUID(int=root span id); run id == UUID(int=OTLP span id) (all 32 derived ids found)",
+  "payload_spot_check": {
+    "rows_checked": 24,
+    "keys_outside_allowlist": 0,
+    "note": "only hits for 'reasoning'/'query' are the allowlisted key reasoning_tokens and the tool name metrics_range_query; sample payloads-A.json"
+  },
+  "langsmith_added": "OTEL_TRACE_ID / OTEL_SPAN_ID metadata and usage_metadata outputs on llm runs (derived from token counts); the read-back classifier was corrected to treat them as platform data (scripts/outbox_trace_check.py, test added)",
+  "cost": {
+    "model_requests": 12,
+    "real_runs": 4,
+    "langsmith_estimate_usd": 0.0086241,
+    "note": "estimate from the LangSmith workspace price entry; the authority is the DeepSeek balance difference (Q17), to be supplied by the user"
+  },
+  "teardown": {
+    "target_identities_sha256": "1714ab7b30abb5e6992333fe8cf30920d52f3445577be67c050ff4f5df7027d9",
+    "runtimes": "web, worker, observer stopped; postgres, volume and secrets kept",
+    "worker_extra_hosts_after": [],
+    "install_env_note": "install.sh upgrade persisted OPSPILOT_TRACE=outbox in the install's install.env"
+  },
+  "not_observed": [
+    "successful tool call (drill targets are not in the fixture registry)",
+    "whether the killed first POST reached LangSmith",
+    "LangSmith 14-day retention setting (platform side, not readable here)",
+    "kind lab Prometheus health (401 behind its auth proxy for the health script; fixture profile does not use it)"
+  ]
+}
