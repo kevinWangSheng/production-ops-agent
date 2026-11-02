@@ -1,0 +1,428 @@
+{
+  "schema": "opspilot-lab-summary-1",
+  "experiment": "m1-01-handoff-runner",
+  "run_id": "f35b9f86-4ea4-4a84-bb71-05a1555c42f7",
+  "frozen_at": "2026-11-02T05:15:13.590292+00:00",
+  "incident_id": "b1530651-562a-4503-91a8-06bd619d6385",
+  "driver": "opspilot.investigation.runner.InvestigationRunner",
+  "model": "deepseek-flash",
+  "started": "2026-11-02T05:13:58.761886+00:00",
+  "ended": "2026-11-02T05:15:09.173983+00:00",
+  "tool_parallelism": 1,
+  "context_tokens": 1000000,
+  "tool_profile": "otel-demo",
+  "verdicts": {
+    "status": "handed_off",
+    "reason": "INCOMPLETE_INVESTIGATION",
+    "last_status": "handed_off",
+    "last_reason": "INCOMPLETE_INVESTIGATION",
+    "run_state": "waiting_human",
+    "conclusion_published": false,
+    "attempts": [
+      {
+        "label": "first",
+        "status": "handed_off",
+        "reason": "INCOMPLETE_INVESTIGATION",
+        "handoff_reasons": [
+          "INCOMPLETE_INVESTIGATION"
+        ]
+      }
+    ],
+    "control": null,
+    "event_kinds": [
+      "run_claimed",
+      "step_committed",
+      "tool_committed",
+      "tool_committed",
+      "step_committed",
+      "tool_committed",
+      "tool_committed",
+      "step_committed",
+      "tool_committed",
+      "tool_committed",
+      "step_committed",
+      "tool_committed",
+      "tool_committed",
+      "step_committed",
+      "tool_committed",
+      "step_committed",
+      "tool_committed",
+      "tool_committed",
+      "step_committed",
+      "tool_committed",
+      "step_committed",
+      "step_committed",
+      "run_handoff"
+    ]
+  },
+  "counts": {
+    "model_requests_bound": 100,
+    "http_count": 9,
+    "prompt_tokens": 276262,
+    "completion_tokens": 13681,
+    "run_usage": {
+      "budget_limit": 100,
+      "model_requests_used": 9,
+      "model_seconds_used": 69.57324062520638,
+      "tool_operations_used": 12,
+      "tool_seconds_used": 0.21804537577554584
+    },
+    "current_run_id": "f35b9f86-4ea4-4a84-bb71-05a1555c42f7",
+    "current_run_usage": {
+      "budget_limit": 100,
+      "model_requests_used": 9,
+      "model_seconds_used": 69.57324062520638,
+      "tool_operations_used": 12,
+      "tool_seconds_used": 0.21804537577554584
+    },
+    "evidence_ids": [
+      "d7b5e0f1-5a66-4276-af32-5ec46de51f2c-t0:c6a2fe35-0a9a-4a73-9430-fcd5637a2433",
+      "ded83bd8-5a4a-418c-ac28-e8cdda78e23c-t1:558c137b-855e-4b78-8fb8-bb76fca0291c",
+      "5c174d67-c9b9-44a2-ad16-2400d19da3ab-t0:36c2790c-6a59-4f6c-b0ac-e14116a9f50c",
+      "921b97f9-22be-45d2-a159-9f945fa92c4c-t0:a3293bbb-3d8d-4254-a8ad-5b8697def4c3",
+      "921b97f9-22be-45d2-a159-9f945fa92c4c-t1:7fa4a936-4b87-4a55-aadd-99add54fb248"
+    ]
+  },
+  "cost": {
+    "known_cost_cny_upper": 0.72486
+  },
+  "report": {
+    "schema_version": "m0-report-v2",
+    "assessment_status": "incomplete",
+    "conclusion": "inconclusive",
+    "summary": "Checkout is failing in the last 5 minutes and the failure is visible at checkout itself: checkout spans oteldemo.CheckoutService/PlaceOrder carry error=true, otel.status_code=ERROR and rpc.grpc.status_code=13 with otel.status_description 'failed to charge card: could not charge the card: rpc error: code = Unknown desc = Payment request failed. Invalid token. app.loyalty.level=gold' (traces 141e26a4f12b8416fe5c23fffc8eba52, b4fd4fc3d6cc353deac5b383f40a6a7c, 859b1e48f2b51591aebf8881b1a4b380, bac230cc4154ef6926cbd5c7e4e2e19a, c0ec1203dba3bf41131212ddb38696c9). The failing dependency call is checkout's client span oteldemo.PaymentService/Charge (rpc.grpc.status_code=2, same message), and payment's own server span grpc.oteldemo.PaymentService/Charge is the deepest error observed: error=true with grpc.error_message 'Payment request failed. Invalid token. app.loyalty.level=gold' and exception.stacktrace pointing at module.exports.charge (/usr/src/app/charge.js:37:13). Payment's only visible outbound span in those traces, grpc.flagd.evaluation.v1.Service/ResolveFloat, returned rpc.grpc.status_code=0, so the evidence points at payment's own charge path rather than a dependency of payment. Checkout's other dependency calls in the same traces succeeded: oteldemo.CartService/GetCart (rpc.grpc.status_code=0, cart server spans and HGET/HMSET/EXPIRE without error tags), oteldemo.CurrencyService/Convert (otel.status_code=OK, rpc.grpc.status_code=0), oteldemo.ProductCatalogService/GetProduct (rpc.grpc.status_code=0) and oteldemo.ShippingService/GetQuote (rpc.grpc.status_code=0, shipping HTTP 200). Email could not be assessed: the email trace search returned no_data (0 traces, 0 spans) and no email span appeared in any sampled checkout trace. Elevated latency could not be assessed: every metrics tool call returned status error/SOURCE_UNAVAILABLE, so no error-rate, latency-histogram or baseline series exist in this Run; in-trace durations are reported without any trend claim.",
+    "claims": [
+      {
+        "kind": "fact",
+        "text": "In trace 141e26a4f12b8416fe5c23fffc8eba52 the checkout span oteldemo.CheckoutService/PlaceOrder (span 47e55dea736388a0, duration 35500 us) has status_tags error=true, otel.status_code=ERROR, rpc.grpc.status_code=13 and otel.status_description 'failed to charge card: could not charge the card: rpc error: code = Unknown desc = Payment request failed. Invalid token. app.loyalty.level=gold'; the same signature appears on checkout PlaceOrder spans in traces b4fd4fc3d6cc353deac5b383f40a6a7c (25100 us), 859b1e48f2b51591aebf8881b1a4b380 (21469 us), bac230cc4154ef6926cbd5c7e4e2e19a (20559 us) and c0ec1203dba3bf41131212ddb38696c9 (20251 us).",
+        "evidence_ids": [
+          "d7b5e0f1-5a66-4276-af32-5ec46de51f2c-t0:c6a2fe35-0a9a-4a73-9430-fcd5637a2433",
+          "921b97f9-22be-45d2-a159-9f945fa92c4c-t1:7fa4a936-4b87-4a55-aadd-99add54fb248"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "fact",
+        "text": "Checkout's outbound charge call is the failing dependency edge: service 'checkout' client spans named oteldemo.PaymentService/Charge (e.g. spans 6f2f24be94fa6393, 70fa896dbe5da125, ef9b83b5286f53d0, e2b13b56442d098b, 0ee30519a3b23bce) report error=true, otel.status_code=ERROR, rpc.grpc.status_code=2 and otel.status_description 'Payment request failed. Invalid token. app.loyalty.level=gold', while checkout's client spans to oteldemo.CartService/GetCart, oteldemo.CurrencyService/Convert, oteldemo.ProductCatalogService/GetProduct and oteldemo.ShippingService/GetQuote in the same traces report rpc.grpc.status_code=0.",
+        "evidence_ids": [
+          "d7b5e0f1-5a66-4276-af32-5ec46de51f2c-t0:c6a2fe35-0a9a-4a73-9430-fcd5637a2433",
+          "921b97f9-22be-45d2-a159-9f945fa92c4c-t1:7fa4a936-4b87-4a55-aadd-99add54fb248"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "fact",
+        "text": "The payment service's own server span grpc.oteldemo.PaymentService/Charge carries the error: spans a91475edc175bfd4, b86104e372a4dd40, feb2fbefc63948ec, ddaa2f16f1b970c4 and 298db30e157d2544 in traces 141e26a4f12b8416fe5c23fffc8eba52, b4fd4fc3d6cc353deac5b383f40a6a7c, c0ec1203dba3bf41131212ddb38696c9, bac230cc4154ef6926cbd5c7e4e2e19a and 859b1e48f2b51591aebf8881b1a4b380 each have status error=true, otel.status_code=ERROR, grpc.error_message 'Payment request failed. Invalid token. app.loyalty.level=gold' and exception.stacktrace 'Error: Payment request failed. Invalid token. app.loyalty.level=gold at module.exports.charge (/usr/src/app/charge.js:37:13) at async Object.chargeServiceHandler [as charge] (/usr/src/app/index.js:21:22)'.",
+        "evidence_ids": [
+          "5c174d67-c9b9-44a2-ad16-2400d19da3ab-t0:36c2790c-6a59-4f6c-b0ac-e14116a9f50c"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "fact",
+        "text": "Impact is also visible on the request path above checkout in the same traces: frontend span 'executing api route (pages) /api/checkout' has error=true, http.status_code=500 and exception.message '13 INTERNAL: failed to charge card: could not charge the card: rpc error: code = Unknown desc = Payment request failed. Invalid token. app.loyalty.level=gold'; frontend 'POST /api/checkout' and its parent 'POST' report http.status_code=500, as do frontend-proxy 'ingress' and 'router frontend egress' (http.status_code=500, otel.status_code=ERROR) and the load-generator 'POST' span (http.status_code=500).",
+        "evidence_ids": [
+          "d7b5e0f1-5a66-4276-af32-5ec46de51f2c-t0:c6a2fe35-0a9a-4a73-9430-fcd5637a2433",
+          "5c174d67-c9b9-44a2-ad16-2400d19da3ab-t0:36c2790c-6a59-4f6c-b0ac-e14116a9f50c"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "counter_evidence",
+        "text": "Cart was checked and shows no failures in the sampled traces: cart server spans POST /oteldemo.CartService/GetCart (3 rows, 309–803 us) and POST /oteldemo.CartService/AddItem, plus Redis spans HGET (3 rows, 216–563 us), HMSET and EXPIRE, all have error_by_visible_tags=false with no error detail; the checkout-side client spans oteldemo.CartService/GetCart report rpc.grpc.status_code=0.",
+        "evidence_ids": [
+          "921b97f9-22be-45d2-a159-9f945fa92c4c-t0:a3293bbb-3d8d-4254-a8ad-5b8697def4c3",
+          "921b97f9-22be-45d2-a159-9f945fa92c4c-t1:7fa4a936-4b87-4a55-aadd-99add54fb248"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "counter_evidence",
+        "text": "Currency was checked and shows no failures: 9 currency service spans named Currency/Convert carry otel.status_code=OK and rpc.grpc.status_code=0 with durations 279–1539 us, and the corresponding checkout client spans oteldemo.CurrencyService/Convert show rpc.grpc.status_code=0 (9 rows, 811–3879 us).",
+        "evidence_ids": [
+          "921b97f9-22be-45d2-a159-9f945fa92c4c-t1:7fa4a936-4b87-4a55-aadd-99add54fb248",
+          "921b97f9-22be-45d2-a159-9f945fa92c4c-t0:a3293bbb-3d8d-4254-a8ad-5b8697def4c3"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "counter_evidence",
+        "text": "Product-catalog was checked and shows no failures: 6 product-catalog service spans named oteldemo.ProductCatalogService/GetProduct carry rpc.grpc.status_code=0 with durations 33–117 us, and the 6 corresponding checkout client spans also report rpc.grpc.status_code=0 (244–857 us).",
+        "evidence_ids": [
+          "921b97f9-22be-45d2-a159-9f945fa92c4c-t1:7fa4a936-4b87-4a55-aadd-99add54fb248"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "counter_evidence",
+        "text": "Shipping was checked and shows no failures: shipping service spans oteldemo.ShippingService/GetQuote carry rpc.grpc.status_code=0 (3356–6030 us) and its child 'POST' spans report http.status_code 200 (3 rows, 3356–5724 us), with the related quote service spans POST /getquote and calculate-quote showing no error tags.",
+        "evidence_ids": [
+          "921b97f9-22be-45d2-a159-9f945fa92c4c-t1:7fa4a936-4b87-4a55-aadd-99add54fb248",
+          "921b97f9-22be-45d2-a159-9f945fa92c4c-t0:a3293bbb-3d8d-4254-a8ad-5b8697def4c3"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "fact",
+        "text": "Observed durations in the sampled traces are small and are reported without any trend claim: checkout oteldemo.CheckoutService/PlaceOrder 20251–35500 us, payment grpc.oteldemo.PaymentService/Charge 2042–12987 us, payment internal 'charge' spans 452–10408 us, and checkout client calls to cart/currency/product-catalog/shipping all at or below 8834 us; no baseline, percentile or historical comparison for these operations was available in this Run.",
+        "evidence_ids": [
+          "d7b5e0f1-5a66-4276-af32-5ec46de51f2c-t0:c6a2fe35-0a9a-4a73-9430-fcd5637a2433",
+          "5c174d67-c9b9-44a2-ad16-2400d19da3ab-t0:36c2790c-6a59-4f6c-b0ac-e14116a9f50c",
+          "921b97f9-22be-45d2-a159-9f945fa92c4c-t1:7fa4a936-4b87-4a55-aadd-99add54fb248"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "hypothesis",
+        "text": "The deepest supported cause is a rejection inside the payment service's own charge handler (charge.js:37), which returns gRPC code Unknown/2 with 'Payment request failed. Invalid token.'; checkout wraps that as gRPC 13 (INTERNAL) and fails PlaceOrder, which frontend surfaces as HTTP 500. Support: payment's error span is a server span whose stack points at charge(), and the only outbound span visible beneath it in trace 141e26a4f12b8416fe5c23fffc8eba52 is grpc.flagd.evaluation.v1.Service/ResolveFloat with rpc.grpc.status_code=0.",
+        "evidence_ids": [
+          "5c174d67-c9b9-44a2-ad16-2400d19da3ab-t0:36c2790c-6a59-4f6c-b0ac-e14116a9f50c",
+          "d7b5e0f1-5a66-4276-af32-5ec46de51f2c-t0:c6a2fe35-0a9a-4a73-9430-fcd5637a2433"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "rejected_hypothesis",
+        "text": "Cart, currency, product-catalog or shipping being the failing dependency was considered and rejected: their own server spans and checkout's client spans to them all returned rpc.grpc.status_code=0 / otel.status_code=OK / HTTP 200 in the traces where checkout failed on payment, so none of them shows failure evidence tied to this incident.",
+        "evidence_ids": [
+          "921b97f9-22be-45d2-a159-9f945fa92c4c-t0:a3293bbb-3d8d-4254-a8ad-5b8697def4c3",
+          "921b97f9-22be-45d2-a159-9f945fa92c4c-t1:7fa4a936-4b87-4a55-aadd-99add54fb248"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      },
+      {
+        "kind": "rejected_hypothesis",
+        "text": "A shared latency slowdown as the trigger was considered but is not supported: no latency series or baseline could be read (all metrics calls returned SOURCE_UNAVAILABLE), the sampled failing requests completed in roughly 20–36 ms at frontend/checkout, and the failing call is an explicit error return from payment rather than a timeout or deadline-exceeded status.",
+        "evidence_ids": [
+          "5c174d67-c9b9-44a2-ad16-2400d19da3ab-t0:36c2790c-6a59-4f6c-b0ac-e14116a9f50c"
+        ],
+        "target_refs": [
+          "m0-otel-20260909"
+        ],
+        "time_scope_ref": "policy-window-1"
+      }
+    ],
+    "gaps": [
+      "Prometheus was unavailable for the whole Run: get_label_values, get_metric_names and three metrics_range_query calls (including a minimal up{job=~\".+\"}) all returned status=error, reason=SOURCE_UNAVAILABLE for target m0-otel-20260909. No traces_span_metrics_calls_total error rate, no rpc_client_duration_milliseconds or rpc_server_duration_milliseconds latency distribution, and no baseline exist here; error-rate and latency-trend questions are unanswered, not answered with zero.",
+      "Email could not be assessed: traces_search for service 'email' over the 5-minute window returned the view ded83bd8-5a4a-418c-ac28-e8cdda78e23c-t1:558c137b-855e-4b78-8fb8-bb76fca0291c with status no_data (0 traces, 0 spans), and no email span appeared in any sampled checkout trace, so whether email was called or failing during the window is unknown. No ShippingService/ShipOrder span was observed either, since PlaceOrder aborted at the charge step.",
+      "Trace coverage is a biased, incomplete sample: view 5c174d67-c9b9-44a2-ad16-2400d19da3ab-t0:36c2790c-6a59-4f6c-b0ac-e14116a9f50c is flagged incomplete (163 payment spans, 30-row slice read) and truncated; view d7b5e0f1-5a66-4276-af32-5ec46de51f2c-t0:c6a2fe35-0a9a-4a73-9430-fcd5637a2433 is flagged truncated (163 checkout spans, 45-row slice read); views 921b97f9-22be-45d2-a159-9f945fa92c4c-t0:a3293bbb-3d8d-4254-a8ad-5b8697def4c3 (cart, 54 spans, 3 traces) and 921b97f9-22be-45d2-a159-9f945fa92c4c-t1:7fa4a936-4b87-4a55-aadd-99add54fb248 (shipping, 93 spans, 3 traces) are flagged incomplete with reason 'backend returned as many traces as requested; more may exist'. Counts of failing PlaceOrder spans in a slice are not a call-weighted failure rate.",
+      "The trigger behind payment's 'Invalid token' rejection is unknown: the message mentions 'app.loyalty.level=gold' and payment made a grpc.flagd.evaluation.v1.Service/ResolveFloat call that returned status 0, but no feature-flag definition, configuration or change history was queryable (change_history, pod_logs and kubernetes_state are not integrated in this Run), so fault-injection or configuration causation is unconfirmed."
+    ],
+    "next_steps": [
+      "Ask a human to restore Prometheus access for target m0-otel-20260909 and then measure error ratios for traces_span_metrics_calls_total on checkout oteldemo.CheckoutService/PlaceOrder and payment grpc.oteldemo.PaymentService/Charge, plus rpc_server_duration_milliseconds percentiles against a pre-incident baseline, before any latency-trend statement.",
+      "Have the payment service owners inspect the card-token validation path at /usr/src/app/charge.js:37 and the token/card data supplied by the load generator, to confirm why 'Invalid token' is returned for these orders.",
+      "Check the OTel Demo flagd feature-flag configuration and recent change history for the payment charge path, since change_history, pod_logs and kubernetes_state integrations were not available in this Run.",
+      "Confirm whether the email step was ever reached in this window, e.g. by querying email traces over a wider window or with a working metrics source, since the email search returned no_data."
+    ]
+  },
+  "compactions": {
+    "accepted": 0,
+    "attempted": 0
+  },
+  "compaction_rows": {
+    "rows": [],
+    "step_keys": [
+      "ctx0:round-1",
+      "ctx0:round-2",
+      "ctx0:round-3",
+      "ctx0:round-4",
+      "ctx0:round-5",
+      "ctx0:round-6",
+      "ctx0:round-7",
+      "ctx0:round-8",
+      "ctx0:round-9",
+      "conclusion:g0:ctx0:round-9"
+    ],
+    "rounds_after_last_accepted": 0
+  },
+  "offline_rebuild": {
+    "segment": "ctx0",
+    "compactions": 0,
+    "error": null
+  },
+  "offline_rebuild_detail": {
+    "compaction_attempts": 0,
+    "live_steps": 9,
+    "next_round": 10,
+    "evidence_ids": [
+      "d7b5e0f1-5a66-4276-af32-5ec46de51f2c-t0:c6a2fe35-0a9a-4a73-9430-fcd5637a2433",
+      "ded83bd8-5a4a-418c-ac28-e8cdda78e23c-t1:558c137b-855e-4b78-8fb8-bb76fca0291c",
+      "5c174d67-c9b9-44a2-ad16-2400d19da3ab-t0:36c2790c-6a59-4f6c-b0ac-e14116a9f50c",
+      "921b97f9-22be-45d2-a159-9f945fa92c4c-t0:a3293bbb-3d8d-4254-a8ad-5b8697def4c3",
+      "921b97f9-22be-45d2-a159-9f945fa92c4c-t1:7fa4a936-4b87-4a55-aadd-99add54fb248"
+    ]
+  },
+  "citations": {
+    "cited": [
+      {
+        "evidence_id": "d7b5e0f1-5a66-4276-af32-5ec46de51f2c-t0:c6a2fe35-0a9a-4a73-9430-fcd5637a2433",
+        "segment": "ctx0",
+        "folded_by_accepted_compaction": false,
+        "delivered_after_rebuild": true
+      },
+      {
+        "evidence_id": "921b97f9-22be-45d2-a159-9f945fa92c4c-t1:7fa4a936-4b87-4a55-aadd-99add54fb248",
+        "segment": "ctx0",
+        "folded_by_accepted_compaction": false,
+        "delivered_after_rebuild": true
+      },
+      {
+        "evidence_id": "5c174d67-c9b9-44a2-ad16-2400d19da3ab-t0:36c2790c-6a59-4f6c-b0ac-e14116a9f50c",
+        "segment": "ctx0",
+        "folded_by_accepted_compaction": false,
+        "delivered_after_rebuild": true
+      },
+      {
+        "evidence_id": "921b97f9-22be-45d2-a159-9f945fa92c4c-t0:a3293bbb-3d8d-4254-a8ad-5b8697def4c3",
+        "segment": "ctx0",
+        "folded_by_accepted_compaction": false,
+        "delivered_after_rebuild": true
+      }
+    ],
+    "cited_from_folded_rounds": 0,
+    "cited_not_delivered": []
+  },
+  "report_content_sha256": "465c99577c3c332c02b1c62fef18788f6e5fab9ef701318ee387c8365b6b8779",
+  "trace": {
+    "mode": "lab",
+    "otel_trace_id": "6f2d37eceade3249cda64241a2c8ef62",
+    "dropped_spans": 0,
+    "project": "opspilot-lab-f14s3",
+    "project_id": "0a22aa14-9b98-4e57-a65f-9927d872dce1",
+    "trace_tier": "longlived",
+    "langsmith_run_id": "00000000-0000-0000-1f7e-39502b1ef865",
+    "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/0a22aa14-9b98-4e57-a65f-9927d872dce1/r/00000000-0000-0000-1f7e-39502b1ef865?poll=true",
+    "read_back": "found"
+  },
+  "f3_coverage": {
+    "run_id": "f35b9f86-4ea4-4a84-bb71-05a1555c42f7",
+    "coverage": {
+      "run_id": "f35b9f86-4ea4-4a84-bb71-05a1555c42f7",
+      "sources_recorded": true,
+      "duplicates_skipped": 0,
+      "sources": [
+        {
+          "name": "jaeger",
+          "ok": 4,
+          "no_data": 1,
+          "non_ok": 2,
+          "reasons": {
+            "RESULT_TOO_LARGE": 2
+          },
+          "state": "partial_failure",
+          "gap": true
+        },
+        {
+          "name": "prometheus",
+          "ok": 0,
+          "no_data": 0,
+          "non_ok": 5,
+          "reasons": {
+            "SOURCE_UNAVAILABLE": 5
+          },
+          "state": "failed",
+          "gap": true
+        },
+        {
+          "name": "kubernetes_state",
+          "ok": 0,
+          "no_data": 0,
+          "non_ok": 0,
+          "reasons": {},
+          "state": "not_integrated",
+          "gap": true
+        },
+        {
+          "name": "pod_logs",
+          "ok": 0,
+          "no_data": 0,
+          "non_ok": 0,
+          "reasons": {},
+          "state": "not_integrated",
+          "gap": true
+        },
+        {
+          "name": "change_history",
+          "ok": 0,
+          "no_data": 0,
+          "non_ok": 0,
+          "reasons": {},
+          "state": "not_integrated",
+          "gap": true
+        }
+      ]
+    },
+    "report_collection_truncated": [
+      false
+    ],
+    "page": {
+      "http_status": 200,
+      "coverage_gaps": true,
+      "coverage_rows": [
+        {
+          "source": "jaeger",
+          "state": "partial_failure"
+        },
+        {
+          "source": "prometheus",
+          "state": "failed"
+        },
+        {
+          "source": "kubernetes_state",
+          "state": "not_integrated"
+        },
+        {
+          "source": "pod_logs",
+          "state": "not_integrated"
+        },
+        {
+          "source": "change_history",
+          "state": "not_integrated"
+        }
+      ],
+      "collection_truncated": false,
+      "collection_truncated_text": null,
+      "not_integrated": true
+    },
+    "u6": null
+  },
+  "raw_ledger": {
+    "sha256": "bbd240ce68610e6d7670dd6248c7ac886b7ef1b4d2bdb561110f4902a0fd6fae",
+    "bytes": 19059,
+    "path": "tmp/f14tr/ledgers/m1-01-handoff-runner/f35b9f86-4ea4-4a84-bb71-05a1555c42f7/ledger.json",
+    "in_repository": false
+  }
+}

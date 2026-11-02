@@ -1,0 +1,346 @@
+{
+  "label": "trace rerun 2026-11-02 (OPSPILOT_TRACE=lab)",
+  "original_q7": {
+    "input_gap": true,
+    "report_gap": false,
+    "n1_triggered": false,
+    "decided_by": "agent_S8"
+  },
+  "groups": {
+    "prometheus": {
+      "n": 3,
+      "runs": [
+        {
+          "run_id": "f35b9f86-4ea4-4a84-bb71-05a1555c42f7",
+          "summary": "opspilot/f35b9f86-4ea4-4a84-bb71-05a1555c42f7/summary.json",
+          "summary_sha256": "e3389ecc605f22710d9ef9f097b36d1cb27d79bcd8825f22daa4a0a31b31a1a8",
+          "versions": {
+            "tool_schema_revision": "otel-demo-a3a95a0f888e",
+            "prompt_revision": "prompt-replay-candidate-bef70649a3a8",
+            "context_policy_revision": "ctx-ctx-policy-v1-a30e65ea52f4"
+          },
+          "first_request_sha256": "a49a6505439a020e7b51778c6df9fd250bf763a77f883d3ce6d70b83348fa490",
+          "data_sources": {
+            "available": {
+              "jaeger": [
+                "traces_search"
+              ],
+              "prometheus": [
+                "get_label_values",
+                "get_metric_names",
+                "metrics_range_query"
+              ]
+            },
+            "instruction": "Only the sources under available can be queried in this Run. When the data a question needs belongs to an integration under not_integrated, state in gaps which integration is missing; its absence is not evidence and says nothing about health.",
+            "not_integrated": [
+              "kubernetes_state",
+              "pod_logs",
+              "change_history"
+            ]
+          },
+          "first_request_mentions_unreachable": false,
+          "report_gaps": [
+            "Prometheus was unavailable for the whole Run: get_label_values, get_metric_names and three metrics_range_query calls (including a minimal up{job=~\".+\"}) all returned status=error, reason=SOURCE_UNAVAILABLE for target m0-otel-20260909. No traces_span_metrics_calls_total error rate, no rpc_client_duration_milliseconds or rpc_server_duration_milliseconds latency distribution, and no baseline exist here; error-rate and latency-trend questions are unanswered, not answered with zero.",
+            "Email could not be assessed: traces_search for service 'email' over the 5-minute window returned the view ded83bd8-5a4a-418c-ac28-e8cdda78e23c-t1:558c137b-855e-4b78-8fb8-bb76fca0291c with status no_data (0 traces, 0 spans), and no email span appeared in any sampled checkout trace, so whether email was called or failing during the window is unknown. No ShippingService/ShipOrder span was observed either, since PlaceOrder aborted at the charge step.",
+            "Trace coverage is a biased, incomplete sample: view 5c174d67-c9b9-44a2-ad16-2400d19da3ab-t0:36c2790c-6a59-4f6c-b0ac-e14116a9f50c is flagged incomplete (163 payment spans, 30-row slice read) and truncated; view d7b5e0f1-5a66-4276-af32-5ec46de51f2c-t0:c6a2fe35-0a9a-4a73-9430-fcd5637a2433 is flagged truncated (163 checkout spans, 45-row slice read); views 921b97f9-22be-45d2-a159-9f945fa92c4c-t0:a3293bbb-3d8d-4254-a8ad-5b8697def4c3 (cart, 54 spans, 3 traces) and 921b97f9-22be-45d2-a159-9f945fa92c4c-t1:7fa4a936-4b87-4a55-aadd-99add54fb248 (shipping, 93 spans, 3 traces) are flagged incomplete with reason 'backend returned as many traces as requested; more may exist'. Counts of failing PlaceOrder spans in a slice are not a call-weighted failure rate.",
+            "The trigger behind payment's 'Invalid token' rejection is unknown: the message mentions 'app.loyalty.level=gold' and payment made a grpc.flagd.evaluation.v1.Service/ResolveFloat call that returned status 0, but no feature-flag definition, configuration or change history was queryable (change_history, pod_logs and kubernetes_state are not integrated in this Run), so fault-injection or configuration causation is unconfirmed."
+          ],
+          "report_coverage": {
+            "name": "prometheus",
+            "ok": 0,
+            "no_data": 0,
+            "non_ok": 5,
+            "reasons": {
+              "SOURCE_UNAVAILABLE": 5
+            },
+            "state": "failed",
+            "gap": true
+          },
+          "report_names_missing_source": true,
+          "trace": {
+            "project": "opspilot-lab-f14s3",
+            "read_back": "found",
+            "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/0a22aa14-9b98-4e57-a65f-9927d872dce1/r/00000000-0000-0000-1f7e-39502b1ef865?poll=true",
+            "langsmith_run_id": "00000000-0000-0000-1f7e-39502b1ef865",
+            "child_spans": {
+              "read_back": "found",
+              "root_status": "success",
+              "kinds": {
+                "llm": 9,
+                "tool": 12
+              }
+            }
+          },
+          "model_requests": 9,
+          "run_outcome": {
+            "status": "handed_off",
+            "reason": "INCOMPLETE_INVESTIGATION",
+            "run_state": "waiting_human"
+          }
+        },
+        {
+          "run_id": "23c472c4-d549-4e32-bf5f-137656d27c6f",
+          "summary": "opspilot/23c472c4-d549-4e32-bf5f-137656d27c6f/summary.json",
+          "summary_sha256": "32792c2645f199488e1985b1eea677daefd4d9532d34406368c276ee58b19fca",
+          "versions": {
+            "tool_schema_revision": "otel-demo-a3a95a0f888e",
+            "prompt_revision": "prompt-replay-candidate-bef70649a3a8",
+            "context_policy_revision": "ctx-ctx-policy-v1-a30e65ea52f4"
+          },
+          "first_request_sha256": "ce0714b050c3d5b288b07ee859f7eb32351ec0750102875a331bb41959fe004b",
+          "data_sources": {
+            "available": {
+              "jaeger": [
+                "traces_search"
+              ],
+              "prometheus": [
+                "get_label_values",
+                "get_metric_names",
+                "metrics_range_query"
+              ]
+            },
+            "instruction": "Only the sources under available can be queried in this Run. When the data a question needs belongs to an integration under not_integrated, state in gaps which integration is missing; its absence is not evidence and says nothing about health.",
+            "not_integrated": [
+              "kubernetes_state",
+              "pod_logs",
+              "change_history"
+            ]
+          },
+          "first_request_mentions_unreachable": false,
+          "report_gaps": [
+            "Prometheus was unreachable for this Run: metrics_range_query (2 attempts), get_metric_names and get_label_values each returned status error with reason SOURCE_UNAVAILABLE, so no traces_span_metrics_calls_total error rate, no rpc_*_duration_milliseconds latency series and no http_server_request_duration_seconds_count were obtained for checkout, payment or any dependency.",
+            "No comparable baseline latency could be established, so 'elevated latency' cannot be assessed for checkout, payment, cart, product-catalog, currency or shipping; only absolute span durations from a partial sample are available.",
+            "Traces for service email returned status no_data (0 traces, 0 spans) for 2026-11-02T05:10:17Z–05:15:17Z, so it is unknown whether email failed, was never called, or simply had no traffic; no email span appears in the sampled checkout traces, which failed at the payment step.",
+            "Trace sampling is incomplete: the checkout trace view held 163 spans across 5 trace ids (two slices read, 90 and 73 rows), and the payment/currency/cart/shipping/product-catalog searches returned only 1–3 traces each; span counts are not unique request counts and omitted spans remain unknown.",
+            "kube-state-metrics, pod logs and change history are listed as not integrated, so a configuration/image change, restart or pod-level fault in payment or checkout cannot be confirmed or excluded from this Run."
+          ],
+          "report_coverage": {
+            "name": "prometheus",
+            "ok": 0,
+            "no_data": 0,
+            "non_ok": 5,
+            "reasons": {
+              "SOURCE_UNAVAILABLE": 5
+            },
+            "state": "failed",
+            "gap": true
+          },
+          "report_names_missing_source": true,
+          "trace": {
+            "project": "opspilot-lab-f14s3",
+            "read_back": "found",
+            "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/0a22aa14-9b98-4e57-a65f-9927d872dce1/r/00000000-0000-0000-7c4f-165aae44ea80?poll=true",
+            "langsmith_run_id": "00000000-0000-0000-7c4f-165aae44ea80",
+            "child_spans": {
+              "read_back": "found",
+              "root_status": "success",
+              "kinds": {
+                "llm": 10,
+                "tool": 16
+              }
+            }
+          },
+          "model_requests": 10,
+          "run_outcome": {
+            "status": "published",
+            "reason": null,
+            "run_state": "completed"
+          }
+        },
+        {
+          "run_id": "89459277-87ca-4f93-9e40-e0916dfa6398",
+          "summary": "opspilot/89459277-87ca-4f93-9e40-e0916dfa6398/summary.json",
+          "summary_sha256": "a78e4e0eea201ce6c1b01286c42d5a04faa7215d334d5454900854db89b14798",
+          "versions": {
+            "tool_schema_revision": "otel-demo-a3a95a0f888e",
+            "prompt_revision": "prompt-replay-candidate-bef70649a3a8",
+            "context_policy_revision": "ctx-ctx-policy-v1-a30e65ea52f4"
+          },
+          "first_request_sha256": "ce28ce552e52c54c74e9527ac57f070f46c07b8df94149470c4d938c6b7c6b6b",
+          "data_sources": {
+            "available": {
+              "jaeger": [
+                "traces_search"
+              ],
+              "prometheus": [
+                "get_label_values",
+                "get_metric_names",
+                "metrics_range_query"
+              ]
+            },
+            "instruction": "Only the sources under available can be queried in this Run. When the data a question needs belongs to an integration under not_integrated, state in gaps which integration is missing; its absence is not evidence and says nothing about health.",
+            "not_integrated": [
+              "kubernetes_state",
+              "pod_logs",
+              "change_history"
+            ]
+          },
+          "first_request_mentions_unreachable": false,
+          "report_gaps": [
+            "Prometheus was unavailable for the entire run: metrics_range_query and get_metric_names returned status=error, reason=SOURCE_UNAVAILABLE for both the 5-minute and 24-hour windows. Traces-span error counts, per-operation error rates, rpc_server_duration_milliseconds_bucket latency percentiles and any explicit ERROR series for checkout and payment are therefore unknown, not zero, and no latency trend can be stated without a comparable baseline.",
+            "No earlier baseline could be established from traces: the checkout search for 2026-11-02T04:10:00-04:11:00 returned status=no_data (evidence e68f3895-5b8b-4012-8d7a-0533df334b3a-t0:87850d2c-4a32-4d10-9391-fcf8f1dca512) and the search for 05:05:00-05:06:00 returned status=no_data (evidence b6b403e3-354f-4932-82bf-61b3fbf1da72-t0:a790f919-bf48-4bb8-a22c-17dcc27671ac). The trace store appears to hold only roughly the last 5 minutes (earliest sample start seen 2026-11-02T05:11:58.428450Z), so the 'elevated' error level cannot be quantified against a pre-incident period.",
+            "email returned no traces at all for the window (traces_search status=no_data, evidence 50da9e79-9501-4b92-93fa-ce7a2b71f696-t1:7121dbf2-7161-4d87-bab6-2da9516e7efa). Whether email fails, is healthy, or was simply never invoked because every observed order aborted at payment before the confirmation-email step is unknown.",
+            "Sampling limits: the 5-minute checkout view was marked truncated (only 40 of 186 rows were read) and an overall checkout/payment view was marked incomplete; the views are explicitly biased (requested service first, then error spans, then longest). The number of successful versus failed checkout requests in the window is unknown, so 'all checkouts fail' cannot be claimed; only that every observed PlaceOrder span (6 in the 5-minute sample, 2 in the 90-second view) was an error.",
+            "What produces the rejected token in payment (request card data or loyalty attribute versus payment service configuration or secret) is not visible in the spans. pod_logs, change_history and kubernetes_state are not integrated in this Run, so pod logs, recent configuration changes and pod or deployment state could not be checked."
+          ],
+          "report_coverage": {
+            "name": "prometheus",
+            "ok": 0,
+            "no_data": 0,
+            "non_ok": 5,
+            "reasons": {
+              "SOURCE_UNAVAILABLE": 5
+            },
+            "state": "failed",
+            "gap": true
+          },
+          "report_names_missing_source": true,
+          "trace": {
+            "project": "opspilot-lab-f14s3",
+            "read_back": "found",
+            "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/0a22aa14-9b98-4e57-a65f-9927d872dce1/r/00000000-0000-0000-7817-f4a95d6c0278?poll=true",
+            "langsmith_run_id": "00000000-0000-0000-7817-f4a95d6c0278",
+            "child_spans": {
+              "read_back": "found",
+              "root_status": "success",
+              "kinds": {
+                "llm": 11,
+                "tool": 16
+              }
+            }
+          },
+          "model_requests": 11,
+          "run_outcome": {
+            "status": "handed_off",
+            "reason": "REPORT_INVALID",
+            "run_state": "waiting_human"
+          }
+        }
+      ]
+    },
+    "jaeger": {
+      "n": 1,
+      "runs": [
+        {
+          "run_id": "fa548f37-ca25-4dab-99d7-d13ebabead8a",
+          "summary": "opspilot/fa548f37-ca25-4dab-99d7-d13ebabead8a/summary.json",
+          "summary_sha256": "dbb50c130c4f557816783fed6d260715107d58dbd01bbf832a9cbc7f78b45b0f",
+          "versions": {
+            "tool_schema_revision": "otel-demo-a3a95a0f888e",
+            "prompt_revision": "prompt-replay-candidate-bef70649a3a8",
+            "context_policy_revision": "ctx-ctx-policy-v1-a30e65ea52f4"
+          },
+          "first_request_sha256": "fc661c5231c0f1cacf99dcbec3fdfc912e20513d1f9914ca1a74f0b3e300b2e6",
+          "data_sources": {
+            "available": {
+              "jaeger": [
+                "traces_search"
+              ],
+              "prometheus": [
+                "get_label_values",
+                "get_metric_names",
+                "metrics_range_query"
+              ]
+            },
+            "instruction": "Only the sources under available can be queried in this Run. When the data a question needs belongs to an integration under not_integrated, state in gaps which integration is missing; its absence is not evidence and says nothing about health.",
+            "not_integrated": [
+              "kubernetes_state",
+              "pod_logs",
+              "change_history"
+            ]
+          },
+          "first_request_mentions_unreachable": false,
+          "report_gaps": [
+            "traces_search returned status=error with reason SOURCE_UNAVAILABLE on all four attempts in the last-5-minute window (service checkout twice, payment, frontend), so no trace ids, no parent references confirming the checkout->payment call edge, and no span error detail or error message could be retrieved; the caller/server relationship is inferred from matching RPC operation names and identical error counts, not from a parent reference.",
+            "One view did not return data: 54ef6f05-f786-440e-bdc1-1dfbdda8fdb9-t2:cf54f499-c85f-45b1-8353-c58e02ed6a32 (status no_data) for the query on rpc_server_duration_milliseconds_count{service_name=\"payment\"} grouped by rpc_method and rpc_grpc_status_code; payment server latency therefore could only be assessed through traces_span_metrics_duration_milliseconds, not this RPC-duration metric, and its absence is not evidence of zero errors.",
+            "The error text behind gRPC code 2 returned by payment (decline reason, injected fault, card validation) is unknown; traces and pod logs are the only sources that would carry it.",
+            "kubernetes_state is not integrated, so payment pod restarts or redeployments during 04:43:41Z-05:18:41Z cannot be confirmed or excluded; change_history is also not integrated, so no flag, configuration or deployment change can be correlated with the burst onset.",
+            "The exact flagd flag names and values evaluated by payment are not exposed by the available metrics; only the presence of grpc.flagd.evaluation.v1.Service/ResolveFloat spans is observable.",
+            "email received zero spans in the last 5 minutes, so its health during the window is undetermined; in earlier buckets it was serving without error status (send_email 6.25 spans, STATUS_CODE_UNSET, at 05:08:41Z).",
+            "traces_span_metrics_calls_total counts spans, not requests; the error ratios quoted here are span-status ratios over sampled metric series, not measured request failure rates, and histogram buckets were not summed to derive call counts."
+          ],
+          "report_coverage": {
+            "name": "jaeger",
+            "ok": 0,
+            "no_data": 0,
+            "non_ok": 4,
+            "reasons": {
+              "SOURCE_UNAVAILABLE": 4
+            },
+            "state": "failed",
+            "gap": true
+          },
+          "report_names_missing_source": true,
+          "trace": {
+            "project": "opspilot-lab-f14s3",
+            "read_back": "found",
+            "url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/0a22aa14-9b98-4e57-a65f-9927d872dce1/r/00000000-0000-0000-83c5-10d59c2a7a91?poll=true",
+            "langsmith_run_id": "00000000-0000-0000-83c5-10d59c2a7a91",
+            "child_spans": {
+              "read_back": "found",
+              "root_status": "success",
+              "kinds": {
+                "llm": 13,
+                "tool": 28
+              }
+            }
+          },
+          "model_requests": 13,
+          "run_outcome": {
+            "status": "published",
+            "reason": null,
+            "run_state": "completed"
+          }
+        }
+      ]
+    }
+  },
+  "q7_recomputed": {
+    "input_gap": true,
+    "report_gap": false,
+    "n1_triggered": false,
+    "decided_by": "agent_S8"
+  },
+  "q7_matches_original": {
+    "input_gap": true,
+    "report_gap": true,
+    "n1_triggered": true
+  },
+  "window": {
+    "fault": {
+      "flag": "paymentFailure",
+      "injected_at": "2026-11-02T05:08:17Z",
+      "restored_at": "2026-11-02T05:22:30Z",
+      "flags_after": "all off"
+    },
+    "runs_window": [
+      "2026-11-02T05:13:52Z",
+      "2026-11-02T05:22:29Z"
+    ],
+    "swap_free_mib": {
+      "before": 315,
+      "settle_min": 315,
+      "before_runs": [
+        339,
+        339,
+        339,
+        339
+      ],
+      "after": 347
+    },
+    "balance_cny": {
+      "source": "GET https://api.deepseek.com/user/balance via scripts.holmes_baseline.run.model_key()",
+      "before": {
+        "at": "2026-11-02T05:08:09Z",
+        "total": "136.24"
+      },
+      "after": {
+        "at": "2026-11-02T05:23:59Z",
+        "total": "135.09"
+      },
+      "difference": "1.15",
+      "note": "upper bound: same account, balance may lag"
+    },
+    "holmes_rerun": false
+  }
+}

@@ -68,6 +68,22 @@ Q7 判定（S8，Agent 按规则做）：
 
 所以 `n1_triggered` = false，N1 作废，不改产品（F14S3-Q5）。L3 句级规则与人工复读一致，没有分歧。OpsPilot 模型可见面：`tool_schema_revision` `otel-demo-a3a95a0f888e`、`prompt_revision` `prompt-replay-candidate-bef70649a3a8`、`context_policy_revision` `ctx-ctx-policy-v1-a30e65ea52f4`。
 
+### OpsPilot 侧 trace 重跑（2026-11-02）
+
+原来 4 次 OpsPilot Run 没有开 trace。用户批准超出 Q8 上限 4 次，把它们按同一刺激、同一 URL 重跑了一遍，worker 侧开 `OPSPILOT_TRACE=lab`，项目 `opspilot-lab-f14s3`。Holmes 没有重跑。新的冻结摘要与旧的并列放在 `upstream-2356-failed-source/opspilot/` 下；重跑的派生字段、trace 回读和 Q7 重算在 [opspilot-trace-rerun.json](../evidence/f14-upstream-issues/upstream-2356-failed-source/opspilot-trace-rerun.json)，由 `scripts/holmes_baseline/opspilot_trace_rerun.py` 生成。`record.json`（原 Q7 判定）不改。
+
+| Run | 组 | 结局 | 首次请求告知 | 报告点名 | trace（子 span） |
+|---|---|---|---|---|---|
+| `f35b9f86` | Prometheus | handed_off（INCOMPLETE_INVESTIGATION） | 否 | 是 | [根 run](https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/0a22aa14-9b98-4e57-a65f-9927d872dce1/r/00000000-0000-0000-1f7e-39502b1ef865?poll=true)（9 llm / 12 tool） |
+| `23c472c4` | Prometheus | published | 否 | 是 | [根 run](https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/0a22aa14-9b98-4e57-a65f-9927d872dce1/r/00000000-0000-0000-7c4f-165aae44ea80?poll=true)（10 llm / 16 tool） |
+| `89459277` | Prometheus | handed_off（REPORT_INVALID） | 否 | 是 | [根 run](https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/0a22aa14-9b98-4e57-a65f-9927d872dce1/r/00000000-0000-0000-7817-f4a95d6c0278?poll=true)（11 llm / 16 tool） |
+| `fa548f37` | Jaeger | published | 否 | 是 | [根 run](https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/0a22aa14-9b98-4e57-a65f-9927d872dce1/r/00000000-0000-0000-83c5-10d59c2a7a91?poll=true)（13 llm / 28 tool） |
+
+- Q7 重算（Holmes 一侧沿用原记录）：`input_gap` = true，`report_gap` = false，`n1_triggered` = false，与原判定相同。
+- 与原来的不同之处，照实写：Prometheus 组 3 次里有 2 次没有发布结论，而是交给人工。一次是 INCOMPLETE_INVESTIGATION，一次是 REPORT_INVALID（报告没过校验）；原来的 3 次都发布了。「报告点名」取的是这两次 Run 最后记录的报告：评估状态 incomplete，gaps 第一条都写明 Prometheus 不可用。另外，3 次的事故页覆盖缺口节都显示 prometheus `failed`。N1 的判据没有变化。
+- trace：4 次的 `trace.read_back` 都是 `found`，llm 子 span 数等于各自摘要的模型请求数。
+
+
 ## mapping.json 回写
 
 - F1 第 4 步 `MAX_OUTPUT_TOKEN_RESERVATION`：`configuration` 改为 `confirmed_defect`，`runtime_evidence` 加引记录与 `pin.json`（R4）。
@@ -90,6 +106,7 @@ Q7 判定（S8，Agent 按规则做）：
   - 单次墙钟：Holmes 1.5–3 min，OpsPilot 1–3.5 min。
 - 宿主 swap 空闲量：717–1384 MiB（停止线 300 MiB）。窗口内没有跑全量测试，也没有起 Codex。
 - 费用按 DeepSeek 余额差计，由 lead 读数：开窗 174.26 CNY（22:53:20Z），收窗读数延迟取，记入任务记录。
+- OpsPilot trace 重跑（2026-11-02，同一 kind lab，持 `lockf ~/.agent/locks/kind-lab`）：paymentFailure 05:08:17Z 注入、05:22:30Z 恢复，flag 复查全部 off。4 次真实 Run 在 05:13:52–05:22:29Z 之间，共 43 次模型请求。余额经 `scripts.holmes_baseline.run.model_key()` 读取：136.24 CNY（05:08:09Z）→ 135.09 CNY（05:23:59Z），差 **1.15 CNY**。同一账号，余额可能延迟入账，这个数是上界。swap 空闲量：开窗 315 MiB，每次 Run 前 339 MiB，收尾 347 MiB（这次的停止线是 150 MiB）。
 
 ## 可向上游报告的条目
 
