@@ -1,0 +1,805 @@
+{
+  "schema": "opspilot.f14.upstream-issue-run.v1",
+  "run_id": "f14s3-2356-prometheus-real-3",
+  "slug": "upstream-2356-failed-source",
+  "case": "2356-prometheus-real",
+  "mode": "real_model",
+  "entry": "ask",
+  "image_id": "sha256:3f2995d1a448b34a0dbd3c07aa9276e8c812e96e8fc4ebcc9653b01d9ab2a30e",
+  "config_sha256": "18fa5a687e087d4a2641b2d07b806d6588f2e57ace4a13a660c9d0aeb3a942c9",
+  "config": {
+    "sha256": "18fa5a687e087d4a2641b2d07b806d6588f2e57ace4a13a660c9d0aeb3a942c9",
+    "differs_from_pin": true,
+    "reason": "S5: Prometheus URL set to 127.0.0.1:9 (refused inside the container) so the prometheus/metrics prerequisite check fails at start"
+  },
+  "stimulus": {
+    "fault_flag": "paymentFailure",
+    "fault_experiment_id": "f14s3-batch"
+  },
+  "container_env": {
+    "NO_PROXY": "f14-lab-relay,f14-capture,f14-alertmanager,127.0.0.1"
+  },
+  "model_env_overrides": {},
+  "started_at": "2026-11-01T23:04:58Z",
+  "finished_at": "2026-11-01T23:06:35Z",
+  "exit_code": 0,
+  "timed_out": false,
+  "requests": [],
+  "tool_results": [
+    {
+      "index": 0,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/services",
+        "max_depth": 3,
+        "jq": null,
+        "method": "GET",
+        "body": null,
+        "headers": null
+      }
+    },
+    {
+      "index": 1,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=checkout&start=1793574000000000&end=1793574300000000&limit=50",
+        "max_depth": 4,
+        "jq": null,
+        "method": "GET",
+        "body": null,
+        "headers": null
+      }
+    },
+    {
+      "index": 2,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "error",
+      "error": "Invalid jq expression: Cannot iterate over null (null)",
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": "[.data[0].spans[] | {svc: .processID, op: .operationName, dur: .duration, err: ([.tags[]? | select(.key==\"error\") | .value] | first), st: ([.tags[]? | select(.key==\"otel.status_code\" or .key==\"status.code\" or .key==\"http.status_code\" or .key==\"rpc.grpc.status_code\") | {(.key): .value}])}]",
+        "max_depth": 6,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces/09ab5a1d25fe096b0015e4cafc085a30"
+      }
+    },
+    {
+      "index": 3,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "error",
+      "error": "Invalid jq expression: Cannot iterate over null (null)",
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": "[.data[0].spans[] | {svc: .processID, op: .operationName, dur: .duration, err: ([.tags[]? | select(.key==\"error\") | .value] | first), st: ([.tags[]? | select(.key==\"otel.status_code\" or .key==\"status.code\" or .key==\"http.status_code\" or .key==\"rpc.grpc.status_code\") | {(.key): .value}])}]",
+        "max_depth": 6,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces/69d9a8ed37c3d11ab4baabd74209012c"
+      }
+    },
+    {
+      "index": 4,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "error",
+      "error": "Invalid jq expression: Cannot iterate over null (null)",
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": "[.data[0].spans[] | {svc: .processID, op: .operationName, dur: .duration, err: ([.tags[]? | select(.key==\"error\") | .value] | first), st: ([.tags[]? | select(.key==\"otel.status_code\" or .key==\"status.code\" or .key==\"http.status_code\" or .key==\"rpc.grpc.status_code\") | {(.key): .value}])}]",
+        "max_depth": 6,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces/d3fd5ee19d5ba5147aee01fc549a5d54"
+      }
+    },
+    {
+      "index": 5,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "error",
+      "error": "Invalid jq expression: Cannot iterate over null (null)",
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": "[.data[0].spans[] | {svc: .processID, op: .operationName, dur: .duration, err: ([.tags[]? | select(.key==\"error\") | .value] | first), st: ([.tags[]? | select(.key==\"otel.status_code\" or .key==\"status.code\" or .key==\"http.status_code\" or .key==\"rpc.grpc.status_code\") | {(.key): .value}])}]",
+        "max_depth": 6,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces/922a01e6afa4a86d3403015a46b7a021"
+      }
+    },
+    {
+      "index": 6,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "error",
+      "error": "Invalid jq expression: Cannot iterate over null (null)",
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": "[.data[0].spans[] | {svc: .processID, op: .operationName, dur: .duration, err: ([.tags[]? | select(.key==\"error\") | .value] | first), st: ([.tags[]? | select(.key==\"otel.status_code\" or .key==\"status.code\" or .key==\"http.status_code\" or .key==\"rpc.grpc.status_code\") | {(.key): .value}])}]",
+        "max_depth": 6,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces/8d266500d04d82fe572299f6dc005644"
+      }
+    },
+    {
+      "index": 7,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "error",
+      "error": "Invalid jq expression: Cannot iterate over null (null)",
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": "[.data[0].spans[] | {svc: .processID, op: .operationName, dur: .duration, start: .startTime, err: ([.tags[]? | select(.key==\"error\") | .value] | first), st: ([.tags[]? | select(.key==\"otel.status_code\" or .key==\"status.code\" or .key==\"http.status_code\" or .key==\"rpc.grpc.status_code\") | {(.key): .value}] )}]",
+        "max_depth": 6,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces/e3e601f3942ac1f64fb7e7f57ba9013a"
+      }
+    },
+    {
+      "index": 8,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "error",
+      "error": "Invalid jq expression: Cannot iterate over null (null)",
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": "[.data[0].spans[] | {svc: .processID, op: .operationName, dur: .duration, err: ([.tags[]? | select(.key==\"error\") | .value] | first), st: ([.tags[]? | select(.key==\"otel.status_code\" or .key==\"status.code\" or .key==\"http.status_code\" or .key==\"rpc.grpc.status_code\") | {(.key): .value}])}]",
+        "max_depth": 6,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces/7372c3e03f27351d4ecd08a8c78f46f9"
+      }
+    },
+    {
+      "index": 9,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": "keys",
+        "max_depth": 2,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces/e3e601f3942ac1f64fb7e7f57ba9013a"
+      }
+    },
+    {
+      "index": 10,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": ".body.data[0] | {traceID, spanCount: (.spans|length), procKeys: (.processes|keys)}",
+        "max_depth": 4,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces/e3e601f3942ac1f64fb7e7f57ba9013a"
+      }
+    },
+    {
+      "index": 11,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": ".body.data[0] as $t | $t.spans | map(. as $s | {svc: $t.processes[$s.processID].serviceName, op: $s.operationName, dur_ms: (($s.duration/1000)|round), err: ([$s.tags[]? | select(.key==\"error\") | .value] | first // false), code: ([$s.tags[]? | select(.key==\"otel.status_code\" or .key==\"rpc.grpc.status_code\" or .key==\"http.status_code\" or .key==\"status.code\") | .value] | first // \"?\"), msg: ([$s.tags[]? | select(.key==\"otel.status_description\" or .key==\"error.message\") | .value] | first // \"\")}) | sort_by(.dur_ms) | reverse | .[0:12]",
+        "max_depth": 6,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces/09ab5a1d25fe096b0015e4cafc085a30"
+      }
+    },
+    {
+      "index": 12,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": ".body.data[0] as $t | $t.spans | map(. as $s | {svc: $t.processes[$s.processID].serviceName, op: $s.operationName, dur_ms: (($s.duration/1000)|round), err: ([$s.tags[]? | select(.key==\"error\") | .value] | first // false), code: ([$s.tags[]? | select(.key==\"otel.status_code\" or .key==\"rpc.grpc.status_code\" or .key==\"http.status_code\" or .key==\"status.code\") | .value] | first // \"?\"), msg: ([$s.tags[]? | select(.key==\"otel.status_description\" or .key==\"error.message\") | .value] | first // \"\")}) | sort_by(.dur_ms) | reverse | .[0:12]",
+        "max_depth": 6,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces/e3e601f3942ac1f64fb7e7f57ba9013a"
+      }
+    },
+    {
+      "index": 13,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": ".body.data[0] as $t | $t.spans | map(. as $s | {svc: $t.processes[$s.processID].serviceName, op: $s.operationName, dur_ms: (($s.duration/1000)|round), err: ([$s.tags[]? | select(.key==\"error\") | .value] | first // false), code: ([$s.tags[]? | select(.key==\"otel.status_code\" or .key==\"rpc.grpc.status_code\" or .key==\"http.status_code\" or .key==\"status.code\") | .value] | first // \"?\"), msg: ([$s.tags[]? | select(.key==\"otel.status_description\" or .key==\"error.message\") | .value] | first // \"\")}) | sort_by(.dur_ms) | reverse | .[0:12]",
+        "max_depth": 6,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces/69d9a8ed37c3d11ab4baabd74209012c"
+      }
+    },
+    {
+      "index": 14,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": ".body.data[0] as $t | $t.spans | map(. as $s | {svc: $t.processes[$s.processID].serviceName, op: $s.operationName, dur_ms: (($s.duration/1000)|round), err: ([$s.tags[]? | select(.key==\"error\") | .value] | first // false), code: ([$s.tags[]? | select(.key==\"otel.status_code\" or .key==\"rpc.grpc.status_code\" or .key==\"http.status_code\" or .key==\"status.code\") | .value] | first // \"?\"), msg: ([$s.tags[]? | select(.key==\"otel.status_description\" or .key==\"error.message\") | .value] | first // \"\")}) | sort_by(.dur_ms) | reverse | .[0:12]",
+        "max_depth": 6,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces/7372c3e03f27351d4ecd08a8c78f46f9"
+      }
+    },
+    {
+      "index": 15,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": ".body.data[0] as $t | $t.spans | map(. as $s | {svc: $t.processes[$s.processID].serviceName, op: $s.operationName, dur_ms: (($s.duration/1000)|round), err: ([$s.tags[]? | select(.key==\"error\") | .value] | first // false), code: ([$s.tags[]? | select(.key==\"otel.status_code\" or .key==\"rpc.grpc.status_code\" or .key==\"http.status_code\" or .key==\"status.code\") | .value] | first // \"?\"), msg: ([$s.tags[]? | select(.key==\"otel.status_description\" or .key==\"error.message\") | .value] | first // \"\")}) | sort_by(.dur_ms) | reverse | .[0:12]",
+        "max_depth": 6,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces/d3fd5ee19d5ba5147aee01fc549a5d54"
+      }
+    },
+    {
+      "index": 16,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": ".body.data[0] as $t | $t.spans | map(. as $s | {svc: $t.processes[$s.processID].serviceName, op: $s.operationName, dur_ms: (($s.duration/1000)|round), err: ([$s.tags[]? | select(.key==\"error\") | .value] | first // false), code: ([$s.tags[]? | select(.key==\"otel.status_code\" or .key==\"rpc.grpc.status_code\" or .key==\"http.status_code\" or .key==\"status.code\") | .value] | first // \"?\"), msg: ([$s.tags[]? | select(.key==\"otel.status_description\" or .key==\"error.message\") | .value] | first // \"\")}) | sort_by(.dur_ms) | reverse | .[0:12]",
+        "max_depth": 6,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces/922a01e6afa4a86d3403015a46b7a021"
+      }
+    },
+    {
+      "index": 17,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": ".body.data[0] as $t | $t.spans | map(. as $s | {svc: $t.processes[$s.processID].serviceName, op: $s.operationName, dur_ms: (($s.duration/1000)|round), err: ([$s.tags[]? | select(.key==\"error\") | .value] | first // false), code: ([$s.tags[]? | select(.key==\"otel.status_code\" or .key==\"rpc.grpc.status_code\" or .key==\"http.status_code\" or .key==\"status.code\") | .value] | first // \"?\"), msg: ([$s.tags[]? | select(.key==\"otel.status_description\" or .key==\"error.message\") | .value] | first // \"\")}) | sort_by(.dur_ms) | reverse | .[0:12]",
+        "max_depth": 6,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces/8d266500d04d82fe572299f6dc005644"
+      }
+    },
+    {
+      "index": 18,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": ".body.data[0] as $t | [$t.spans[] | . as $s | {svc: $t.processes[$s.processID].serviceName, op: $s.operationName, dur_ms: (($s.duration/1000)*10|round/10), err: (([$s.tags[]? | select(.key==\"error\") | .value]|first)//false)}] | sort_by(.dur_ms) | reverse",
+        "max_depth": 6,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces/e3e601f3942ac1f64fb7e7f57ba9013a"
+      }
+    },
+    {
+      "index": 19,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": ".body.data[0] as $t | [$t.spans[] | select(.operationName|test(\"PaymentService\")) | {svc: $t.processes[.processID].serviceName, tags: [.tags[] | {(.key): .value}]}]",
+        "max_depth": 8,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces/d3fd5ee19d5ba5147aee01fc549a5d54"
+      }
+    },
+    {
+      "index": 20,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": "[.body.data[] | .traceID] | {count: length, ids: .}",
+        "max_depth": 4,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=payment&start=1793573996000000&end=1793574296000000&limit=200"
+      }
+    },
+    {
+      "index": 21,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": "[.body.data[] | .traceID] | {count: length, ids: .}",
+        "max_depth": 4,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=checkout&start=1793573996000000&end=1793574296000000&limit=200&tags=%7B%22error%22%3A%22true%22%7D"
+      }
+    },
+    {
+      "index": 22,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": ".body.data[0] as $t | {paymentProc: [$t.processes | to_entries[] | select(.value.serviceName==\"payment\") | .value], spans: [$t.spans[] | select(.operationName==\"charge\") | {op: .operationName, dur: .duration, tags: [.tags[] | {(.key): .value}], logs: .logs}]}",
+        "max_depth": 8,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces/d3fd5ee19d5ba5147aee01fc549a5d54"
+      }
+    },
+    {
+      "index": 23,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": "[.body.data[] | .traceID] | {count: length, ids: .}",
+        "max_depth": 4,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=flagd&start=1793573996000000&end=1793574296000000&limit=20"
+      }
+    },
+    {
+      "index": 24,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": "[.body.data[] | .traceID] | {count: length, ids: .}",
+        "max_depth": 4,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=frontend&start=1793573996000000&end=1793574296000000&limit=200&tags=%7B%22error%22%3A%22true%22%7D"
+      }
+    },
+    {
+      "index": 25,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": "[.body.data[] | .traceID] | {count: length, ids: .}",
+        "max_depth": 4,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=frontend&start=1793573996000000&end=1793574296000000&limit=200"
+      }
+    },
+    {
+      "index": 26,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": "[.body.data[] | .traceID] | {count: length}",
+        "max_depth": 4,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=email&start=1793573996000000&end=1793574296000000&limit=50"
+      }
+    },
+    {
+      "index": 27,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": "[.body.data[] | .traceID] | {count: length}",
+        "max_depth": 4,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=cart&start=1793573996000000&end=1793574296000000&limit=200&tags=%7B%22error%22%3A%22true%22%7D"
+      }
+    },
+    {
+      "index": 28,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": ".body.data[0] as $t | [$t.spans[] | . as $s | {svc: $t.processes[$s.processID].serviceName, op: $s.operationName, dur_us: $s.duration, tags: [$s.tags[] | {(.key): .value}]}]",
+        "max_depth": 8,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces/b4c0d142344fcc9d7fa1537e8248b2b2"
+      }
+    },
+    {
+      "index": 29,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": "[.body.data[] | .traceID] | {count: length}",
+        "max_depth": 4,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=payment&start=1793573996000000&end=1793574296000000&limit=200&tags=%7B%22error%22%3A%22true%22%7D"
+      }
+    },
+    {
+      "index": 30,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": "[.body.data[] | .traceID] | {count: length}",
+        "max_depth": 4,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=checkout&start=1793573400000000&end=1793574000000000&limit=200&tags=%7B%22error%22%3A%22true%22%7D"
+      }
+    },
+    {
+      "index": 31,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": "[.body.data[] | .traceID] | {count: length}",
+        "max_depth": 4,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=checkout&start=1793570400000000&end=1793573400000000&limit=200&tags=%7B%22error%22%3A%22true%22%7D"
+      }
+    },
+    {
+      "index": 32,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": "{\"product-catalog\": ([.body.data[]] | length)}",
+        "max_depth": 4,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=product-catalog&start=1793573996000000&end=1793574296000000&limit=200&tags=%7B%22error%22%3A%22true%22%7D"
+      }
+    },
+    {
+      "index": 33,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": "[.body.data[] | .traceID] | {count: length}",
+        "max_depth": 4,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=shipping&start=1793573996000000&end=1793574296000000&limit=200&tags=%7B%22error%22%3A%22true%22%7D"
+      }
+    },
+    {
+      "index": 34,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": "[.body.data[] | .traceID] | {count: length}",
+        "max_depth": 4,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=currency&start=1793573996000000&end=1793574296000000&limit=200&tags=%7B%22error%22%3A%22true%22%7D"
+      }
+    },
+    {
+      "index": 35,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": "[.body.data[] | .traceID] | {count: length}",
+        "max_depth": 4,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=checkout&start=1793570400000000&end=1793573400000000&limit=200"
+      }
+    },
+    {
+      "index": 36,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": "[.body.data[] | .traceID] | {count: length}",
+        "max_depth": 4,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=quote&start=1793573996000000&end=1793574296000000&limit=200&tags=%7B%22error%22%3A%22true%22%7D"
+      }
+    },
+    {
+      "index": 37,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": "[.body.data[] | .traceID] | {count: length}",
+        "max_depth": 4,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=checkout&start=1793573996000000&end=1793574296000000&limit=200"
+      }
+    },
+    {
+      "index": 38,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": "[.body.data[] | .traceID] | {count: length}",
+        "max_depth": 4,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=ad&start=1793573996000000&end=1793574296000000&limit=200&tags=%7B%22error%22%3A%22true%22%7D"
+      }
+    },
+    {
+      "index": 39,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": "[.body.data[] | .traceID] | {count: length}",
+        "max_depth": 4,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=checkout&start=1793573596000000&end=1793573996000000&limit=200"
+      }
+    },
+    {
+      "index": 40,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": "[.body.data[] | .traceID] | {count: length}",
+        "max_depth": 4,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=recommendation&start=1793573996000000&end=1793574296000000&limit=200&tags=%7B%22error%22%3A%22true%22%7D"
+      }
+    },
+    {
+      "index": 41,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": "[.body.data[] | .traceID] | {count: length}",
+        "max_depth": 4,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=load-generator&start=1793573996000000&end=1793574296000000&limit=200&tags=%7B%22error%22%3A%22true%22%7D"
+      }
+    },
+    {
+      "index": 42,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": "[.body.data[] | . as $t | {trace: $t.traceID, start: ([$t.spans[] | .startTime] | min), startTS: (([$t.spans[] | .startTime] | min)/1000000 | todate), placeOrder_ms: ([$t.spans[] | select(.operationName==\"oteldemo.CheckoutService/PlaceOrder\") | .duration/1000] | min)}]",
+        "max_depth": 5,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=checkout&start=1793573996000000&end=1793574296000000&limit=200"
+      }
+    },
+    {
+      "index": 43,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": "[.body.data[] | .traceID] | {count: length}",
+        "max_depth": 4,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=frontend&start=1793572200000000&end=1793573996000000&limit=20"
+      }
+    },
+    {
+      "index": 44,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": "[.body.data[] | .traceID] | {count: length, ids: .}",
+        "max_depth": 4,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=flagd&start=1793573996000000&end=1793574296000000&limit=50&tags=%7B%22url.path%22%3A%22%2Fofrep%2Fv1%2Fevaluate%2Fflags%2FpaymentFailure%22%7D"
+      }
+    },
+    {
+      "index": 45,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": "[.body.data[] | .traceID] | {count: length}",
+        "max_depth": 4,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=cart&start=1793573996000000&end=1793574296000000&limit=200"
+      }
+    },
+    {
+      "index": 46,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": "[.body.data[] | .traceID] | {count: length}",
+        "max_depth": 4,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=product-catalog&start=1793573996000000&end=1793574296000000&limit=200"
+      }
+    },
+    {
+      "index": 47,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": "[.body.data[] | . as $t | {trace: $t.traceID, cart: ([$t.spans[] | select($t.processes[.processID].serviceName==\"cart\") | .duration/1000] | max), catalog: ([$t.spans[] | select($t.processes[.processID].serviceName==\"product-catalog\") | .duration/1000] | max), currency: ([$t.spans[] | select($t.processes[.processID].serviceName==\"currency\") | .duration/1000] | max), shipping: ([$t.spans[] | select($t.processes[.processID].serviceName==\"shipping\") | .duration/1000] | max), quote: ([$t.spans[] | select($t.processes[.processID].serviceName==\"quote\") | .duration/1000] | max), email_spans: ([$t.spans[] | select($t.processes[.processID].serviceName==\"email\")] | length)}]",
+        "max_depth": 6,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=checkout&start=1793573996000000&end=1793574296000000&limit=200"
+      }
+    },
+    {
+      "index": 48,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": "[.body.data[] | . as $t | {trace: $t.traceID, payment: [$t.spans[] | select($t.processes[.processID].serviceName==\"payment\") | {op: .operationName, dur_ms: ((.duration/1000)*10|round/10), attrs: ([.tags[] | select(.key|test(\"error|amount|loyalty|status\")) | {(.key): .value}])}]}]",
+        "max_depth": 8,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=payment&start=1793573996000000&end=1793574296000000&limit=200"
+      }
+    }
+  ],
+  "answer_sha256": "a4359991b25aff009e4b1ab3447ab5700e47c9eb3d17f498fd44f5eefbdce4cb",
+  "answer_checks": {
+    "names_missing_source": {
+      "hit": true,
+      "excerpt": "\"metrics_range_query\": \"UNAVAILABLE - prometheus/metrics toolset failed to init (127.0.0.1:9 connection refused)\""
+    }
+  },
+  "stdout_checks": {
+    "operator_hint": {
+      "hit": true,
+      "excerpt": "I must report that metrics range query was unavailable and that I"
+    }
+  },
+  "proxy_checks": {},
+  "tool_checks": {},
+  "request_checks": {},
+  "balance_window": {
+    "before": {
+      "is_available": true,
+      "balance_infos": [
+        {
+          "currency": "CNY",
+          "total_balance": "173.69",
+          "granted_balance": "0.00",
+          "topped_up_balance": "173.69"
+        }
+      ]
+    },
+    "after_delayed": {
+      "is_available": true,
+      "balance_infos": [
+        {
+          "currency": "CNY",
+          "total_balance": "173.47",
+          "granted_balance": "0.00",
+          "topped_up_balance": "173.47"
+        }
+      ]
+    }
+  }
+}

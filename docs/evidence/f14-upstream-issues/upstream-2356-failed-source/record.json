@@ -1,0 +1,447 @@
+{
+  "schema": "opspilot.f14.upstream-issue-record.v1",
+  "slug": "upstream-2356-failed-source",
+  "kind": "upstream_issue",
+  "upstream_ref": {
+    "repo": "HolmesGPT/holmesgpt",
+    "number": 2356,
+    "kind": "issue",
+    "url": "https://github.com/HolmesGPT/holmesgpt/issues/2356",
+    "state": "open",
+    "checked_at": "2026-11-01T23:29:27Z"
+  },
+  "background_refs": [],
+  "reporter_claims": [
+    {
+      "id": "C1",
+      "quote": "So the model is handed the tools that loaded and told nothing about the ones that didn't.",
+      "source": "https://github.com/HolmesGPT/holmesgpt/issues/2356"
+    },
+    {
+      "id": "C2",
+      "quote": "Nothing in that conclusion, and nothing printed beside it, says which data sources were unavailable.",
+      "source": "https://github.com/HolmesGPT/holmesgpt/issues/2356"
+    },
+    {
+      "id": "C3",
+      "quote": "the operator isn't told either unless they separately run `holmes toolset list`",
+      "source": "https://github.com/HolmesGPT/holmesgpt/issues/2356"
+    }
+  ],
+  "code_at_pin": [
+    "holmes/core/tools_utils/tool_executor.py:L60-L67",
+    "holmes/plugins/prompts/_toolsets_instructions.jinja2:L25-L34",
+    "holmes/plugins/prompts/generic_ask.jinja2:L82-L82",
+    "holmes/plugins/toolsets/prometheus/prometheus.py:L2164-L2237",
+    "holmes/main.py:L173-L180"
+  ],
+  "code_at_master": {
+    "sha": "0f8bd4c6285e2ec7b1337fb8116ebb0c0fc9b978",
+    "checked_at": "2026-11-01T23:29:27Z",
+    "changed_files_relevant": []
+  },
+  "related_fixes": [],
+  "local_findings": [
+    {
+      "claim_id": "C1",
+      "group": "prometheus",
+      "verdict": "contradicted",
+      "mode": "scripted_model",
+      "runs": 1,
+      "k": 0,
+      "evidence": [
+        "runs/f14s3-2356-prometheus-input-1.json"
+      ],
+      "note": "Prometheus URL 改为 127.0.0.1:9（S5，冷启动 S6），前置检查失败。首个模型请求的系统提示「# Disabled & failed Toolsets」段里有「prometheus/metrics (FAILED, error: ... HTTPConnectionPool(host='127.0.0.1', port=9) ...)」（request_checks.failed_segment_names_source；tool_executor.py 保留全部工具集，_toolsets_instructions.jinja2:L25-L34 渲染这一段）。模型被告知了，与说法相反。"
+    },
+    {
+      "claim_id": "C1",
+      "group": "jaeger",
+      "verdict": "reproduced",
+      "mode": "scripted_model",
+      "runs": 1,
+      "k": 1,
+      "evidence": [
+        "runs/f14s3-2356-jaeger-input-1.json"
+      ],
+      "note": "Jaeger URL 改为 127.0.0.1:9。基线的 jaeger 是没有前置检查的 http 工具集，不会进入 FAILED。系统提示里没有它的 FAILED 行，jaeger_request 仍在工具列表里，所以模型开始时不知道 Jaeger 不可达（Q6：本配置下上游也不告知）。说法的前提「前置检查失败」在这里没有发生，但「模型不知道」成立，照实记为 reproduced。本组只记录、不决定 N1。"
+    },
+    {
+      "claim_id": "C2",
+      "group": "prometheus",
+      "verdict": "contradicted",
+      "mode": "real_model",
+      "runs": 3,
+      "k": 0,
+      "evidence": [
+        "runs/f14s3-2356-prometheus-real-1.json",
+        "runs/f14s3-2356-prometheus-real-2.json",
+        "runs/f14s3-2356-prometheus-real-3.json"
+      ],
+      "note": "三次真实 Run（paymentFailure 开启，D1）的结论都点名 Prometheus 不可用，例如「prometheus/metrics toolset is FAILED (connection refused to 127.0.0.1:9)」（answer_checks.names_missing_source，L3 句级规则）。人工复读与规则一致。k 记说法成立的次数，即 0/3。"
+    },
+    {
+      "claim_id": "C2",
+      "group": "jaeger",
+      "verdict": "contradicted",
+      "mode": "real_model",
+      "runs": 1,
+      "k": 0,
+      "evidence": [
+        "runs/f14s3-2356-jaeger-real-1.json"
+      ],
+      "note": "一次真实 Run 的结论写明「the Jaeger query API ... refused every connection」：模型在调用失败后自己发现并报告了。只跑了 1 次，低于 F14S3-Q2 的 3 次门槛，因为 Q8 的 12 次上限优先（L2）。本组只记录、不决定 N1（Q6）。人工复读与规则一致。"
+    },
+    {
+      "claim_id": "C3",
+      "group": "prometheus",
+      "verdict": "reproduced",
+      "mode": "scripted_model",
+      "runs": 1,
+      "k": 1,
+      "evidence": [
+        "runs/f14s3-2356-prometheus-input-1.json"
+      ],
+      "note": "holmes ask 的 CLI stdout/stderr 没有打印任何工具集状态或缺失源提示（stdout_checks.operator_hint 为 false；脚本化 Run 的结束语不涉及数据源）。真实 Run 的 stdout 命中 operator_hint，是因为回答被回显，那属于 C2 的「结论」一侧，不算 CLI 旁边的提示。--json-output-file 里也没有工具集状态字段。"
+    },
+    {
+      "claim_id": "C3",
+      "group": "jaeger",
+      "verdict": "reproduced",
+      "mode": "scripted_model",
+      "runs": 1,
+      "k": 1,
+      "evidence": [
+        "runs/f14s3-2356-jaeger-input-1.json"
+      ],
+      "note": "同上：CLI 不给操作员任何缺失源提示（stdout_checks.operator_hint 为 false）。"
+    }
+  ],
+  "image_id": "sha256:3f2995d1a448b34a0dbd3c07aa9276e8c812e96e8fc4ebcc9653b01d9ab2a30e",
+  "configs": [
+    {
+      "name": "2356-prometheus-input",
+      "sha256": "fa46be46c5721e1b812bb140f4403ffd009d509d0c3197197dfd8a1423fa1562",
+      "differs_from_pin": true,
+      "reason": "api_base points at the scripted endpoint (R7); S5: Prometheus URL set to 127.0.0.1:9 (refused inside the container) so the prometheus/metrics prerequisite check fails at start"
+    },
+    {
+      "name": "2356-jaeger-input",
+      "sha256": "b0bf4ee2db2a5561ec08c6fef96bfa4b327a75a89b7849a15c6dd85819f4a6b8",
+      "differs_from_pin": true,
+      "reason": "api_base points at the scripted endpoint (R7); Q6: Jaeger URL set to 127.0.0.1:9 (refused inside the container); the baseline Jaeger toolset is unchanged otherwise"
+    },
+    {
+      "name": "2356-prometheus-real",
+      "sha256": "18fa5a687e087d4a2641b2d07b806d6588f2e57ace4a13a660c9d0aeb3a942c9",
+      "differs_from_pin": true,
+      "reason": "S5: Prometheus URL set to 127.0.0.1:9 (refused inside the container) so the prometheus/metrics prerequisite check fails at start"
+    },
+    {
+      "name": "2356-jaeger-real",
+      "sha256": "c60a2b434e65df59b76fde56961cb79a30a99add55994b80810918c1c363b91c",
+      "differs_from_pin": true,
+      "reason": "Q6: Jaeger URL set to 127.0.0.1:9 (refused inside the container); the baseline Jaeger toolset is unchanged otherwise"
+    }
+  ],
+  "reproduced_at": "2026-11-01T23:09:30Z",
+  "own_findings": [
+    {
+      "id": "O1",
+      "statement": "工具集状态可从缓存文件加载；有缓存时启动是否告知不可达，本步没有验证",
+      "mode": "source_only",
+      "runs": 0,
+      "evidence": [],
+      "code_at_pin": [
+        "holmes/core/toolset_manager.py:L505-L560"
+      ],
+      "note": "Q6 要求把「有缓存时启动不告知」作为 #2356 的发现记下。源码：load_toolset_with_status 在缓存存在且配置未变时读取缓存的 status/error（toolset_manager.py:L513-L552），只对缓存里 ENABLED 的工具集重跑前置检查。S6 只测冷启动（每次都是全新 tmpfs /tmp，没有缓存），所以缓存路径下是否告知未运行、未确认。"
+    }
+  ],
+  "opspilot_side": {
+    "stimulus": {
+      "base_scenario": "dv2-2b214b",
+      "injectors_by_group": {
+        "prometheus": [
+          {
+            "kind": "flagd",
+            "params": {
+              "flag": "paymentFailure",
+              "variant": "100%"
+            }
+          },
+          {
+            "kind": "source_unreachable",
+            "params": {
+              "source": "prometheus"
+            }
+          }
+        ],
+        "jaeger": [
+          {
+            "kind": "flagd",
+            "params": {
+              "flag": "paymentFailure",
+              "variant": "100%"
+            }
+          },
+          {
+            "kind": "source_unreachable",
+            "params": {
+              "source": "jaeger"
+            }
+          }
+        ]
+      }
+    },
+    "groups": {
+      "prometheus": {
+        "n": 3,
+        "runs": [
+          {
+            "run_id": "4c7f2856-3aed-49df-8fd3-ff14b4aa8b5d",
+            "summary": "opspilot/4c7f2856-3aed-49df-8fd3-ff14b4aa8b5d/summary.json",
+            "summary_sha256": "e52324f6f5fe1bc9c2df239537dabf057db9536896b2faf6720637b18ffce027",
+            "versions": {
+              "tool_schema_revision": "otel-demo-a3a95a0f888e",
+              "prompt_revision": "prompt-replay-candidate-bef70649a3a8",
+              "context_policy_revision": "ctx-ctx-policy-v1-a30e65ea52f4"
+            },
+            "first_request_sha256": "e8b8c52b1a87b0d82d799fbcf8cb6005bf3a4863e0c26ddb228695d4181314fc",
+            "data_sources": {
+              "available": {
+                "jaeger": [
+                  "traces_search"
+                ],
+                "prometheus": [
+                  "get_label_values",
+                  "get_metric_names",
+                  "metrics_range_query"
+                ]
+              },
+              "instruction": "Only the sources under available can be queried in this Run. When the data a question needs belongs to an integration under not_integrated, state in gaps which integration is missing; its absence is not evidence and says nothing about health.",
+              "not_integrated": [
+                "kubernetes_state",
+                "pod_logs",
+                "change_history"
+              ]
+            },
+            "first_request_mentions_unreachable": false,
+            "report_gaps": [
+              "Prometheus metrics were unavailable for the whole window: 5 metrics_range_query calls (traces_span_metrics_calls_total increase by service and status_code, and rpc_server_duration_milliseconds_count by rpc_grpc_status_code for payment) and 1 get_metric_names call all returned status=error with reason SOURCE_UNAVAILABLE, so checkout's and payment's error rates, the ERROR status series and latency percentiles/baselines are unknown, not zero, and no latency trend can be inferred.",
+              "The checkout trace view is a sample: 201 spans across the requested traces, delivered in four read slices, all five of which are marked truncated true, and the query itself returned only the requested service's spans; the denominator of PlaceOrder calls and therefore the error fraction for checkout, payment or any dependency cannot be computed.",
+              "traces_search for service email returned status=no_data (view ce614a92-22dd-48b7-99b1-f67bbab3fd40-t0:98dd08b7-083f-4f16-a691-c9743dbc3712, 0 traces returned) and no email spans appear in the checkout trace sample, so email's health and whether checkout called email at all are unknown rather than healthy.",
+              "Span-level parent references establish only the edges listed above; omitted spans and traces remain unknown, so no complete call graph for the window can be claimed from this sampled view.",
+              "Why payment reports 'Invalid token' (bad or expired card token versus a payment code or configuration defect) is unknown; pod_logs, change_history and kubernetes_state integrations are not available in this Run, so payment pod restarts, deployment or image changes and log detail could not be checked.",
+              "Whether payment operations other than oteldemo.PaymentService/Charge fail is unknown; the evidence covers only Charge spans appearing in checkout traces."
+            ],
+            "report_coverage": {
+              "name": "prometheus",
+              "ok": 0,
+              "no_data": 0,
+              "non_ok": 6,
+              "reasons": {
+                "SOURCE_UNAVAILABLE": 6
+              },
+              "state": "failed",
+              "gap": true
+            },
+            "report_names_missing_source": true
+          },
+          {
+            "run_id": "a52f0b42-6ea6-47f0-8d06-5e4097cf6f33",
+            "summary": "opspilot/a52f0b42-6ea6-47f0-8d06-5e4097cf6f33/summary.json",
+            "summary_sha256": "dd3cba630e495b4991f9f14e32aaa90744246ed529118f962d71f2703e46a278",
+            "versions": {
+              "tool_schema_revision": "otel-demo-a3a95a0f888e",
+              "prompt_revision": "prompt-replay-candidate-bef70649a3a8",
+              "context_policy_revision": "ctx-ctx-policy-v1-a30e65ea52f4"
+            },
+            "first_request_sha256": "4c70476093aa38cc38aeb03412afbf4b4ca34da5dcfb24bc6c8088724cb606ab",
+            "data_sources": {
+              "available": {
+                "jaeger": [
+                  "traces_search"
+                ],
+                "prometheus": [
+                  "get_label_values",
+                  "get_metric_names",
+                  "metrics_range_query"
+                ]
+              },
+              "instruction": "Only the sources under available can be queried in this Run. When the data a question needs belongs to an integration under not_integrated, state in gaps which integration is missing; its absence is not evidence and says nothing about health.",
+              "not_integrated": [
+                "kubernetes_state",
+                "pod_logs",
+                "change_history"
+              ]
+            },
+            "first_request_mentions_unreachable": false,
+            "report_gaps": [
+              "Prometheus metrics were unavailable for the whole Run: metrics_range_query (attempted with sum by (service_name, status_code) (increase(traces_span_metrics_calls_total[5m])) and sum(rate(traces_span_metrics_calls_total{service_name=\"checkout\"}[5m])), operations 2c058783-1690-4206-a3d3-97ea3df9d30f-t0 and ad2ea032-146b-4b6c-aaa8-9621fa79cd18-t1), get_metric_names (operation 599ac05f-1ec5-4431-b1d9-7f79d314be38-t0) and get_label_values for service_name (operation d9a365d0-abb6-4ac7-bfe5-4859fb6b79e9-t1) all returned status=error reason=SOURCE_UNAVAILABLE. No checkout or payment error-rate, latency, rpc_client_duration or rpc_server_duration series were therefore observed; missing series are unknown, not zero.",
+              "No latency baseline exists in this Run, so no statement about elevated versus normal latency can be made for checkout or any dependency; only absolute durations from a small biased trace sample were observed.",
+              "The email service returned no traces for the window (traces_search status=no_data, 0 traces / 0 spans), so email was not observed at all in this window; that is missing information, not evidence that email is healthy. Orders in the sample failed at payment charge before any email step would run, but that ordering is inferred from the trace structure and was not verified against email's own signals.",
+              "sampled trace coverage only: the checkout trace capture supplied 166 spans covering 6 distinct traces, and each read slice covers only its own rows; traces of other services returned small samples (cart 3, currency 2, shipping 2 traces). No complete call graph or failure rate follows from these samples.",
+              "pod_logs, change_history and kubernetes_state are not integrated in this Run, so the payment charge-code failure cannot be traced to a log line, a deployment/config change, or pod-level restarts; kube_deployment_status_replicas_available / kube_pod_owner style checks could not be used because the integration is unavailable."
+            ],
+            "report_coverage": {
+              "name": "prometheus",
+              "ok": 0,
+              "no_data": 0,
+              "non_ok": 4,
+              "reasons": {
+                "SOURCE_UNAVAILABLE": 4
+              },
+              "state": "failed",
+              "gap": true
+            },
+            "report_names_missing_source": true
+          },
+          {
+            "run_id": "f0d4874a-b901-4b60-9f73-ce65ab1463d8",
+            "summary": "opspilot/f0d4874a-b901-4b60-9f73-ce65ab1463d8/summary.json",
+            "summary_sha256": "2e83d80adcf096070cc7817e720b15c01c848dc681a10967034134b8ad32575c",
+            "versions": {
+              "tool_schema_revision": "otel-demo-a3a95a0f888e",
+              "prompt_revision": "prompt-replay-candidate-bef70649a3a8",
+              "context_policy_revision": "ctx-ctx-policy-v1-a30e65ea52f4"
+            },
+            "first_request_sha256": "605bdb8258e4998109e6e76ff0ca69977656388dab9dc46428125ffed03168cc",
+            "data_sources": {
+              "available": {
+                "jaeger": [
+                  "traces_search"
+                ],
+                "prometheus": [
+                  "get_label_values",
+                  "get_metric_names",
+                  "metrics_range_query"
+                ]
+              },
+              "instruction": "Only the sources under available can be queried in this Run. When the data a question needs belongs to an integration under not_integrated, state in gaps which integration is missing; its absence is not evidence and says nothing about health.",
+              "not_integrated": [
+                "kubernetes_state",
+                "pod_logs",
+                "change_history"
+              ]
+            },
+            "first_request_mentions_unreachable": false,
+            "report_gaps": [
+              "Prometheus was unavailable for the entire run: all metrics_range_query calls (including a trivial 'up{job=~\".+\"}'), both get_label_values calls and get_metric_names returned status=error with reason SOURCE_UNAVAILABLE, so no traces_span_metrics_calls_total error ratios, no rpc_client_duration_milliseconds histograms and no per-service request counts exist for this report. Error magnitude and any metric-level latency reading remain unknown, not zero.",
+              "email returned status=no_data for both the 5-minute window and the 90-second window ending 2026-11-01T23:22:56Z, so email's health is unchecked/unknown rather than healthy.",
+              "The trace results are biased samples: the 5-minute checkout search returned 193 spans across an unknown number of traces and only the first 40 rows were read, so unique request counts and the true failure ratio cannot be derived from them.",
+              "The cause of the invalid payment token is not visible: kubernetes_state, pod_logs and change_history are listed as not integrated, so payment deployment/image state, pod restarts, logs and any configuration or token change during the window could not be inspected.",
+              "No metric or trace evidence was gathered for services outside the requested set beyond those incidentally shown (quote, recommendation, frontend, frontend-proxy, load-generator), so their status is not characterized beyond the spans cited."
+            ],
+            "report_coverage": {
+              "name": "prometheus",
+              "ok": 0,
+              "no_data": 0,
+              "non_ok": 7,
+              "reasons": {
+                "SOURCE_UNAVAILABLE": 7
+              },
+              "state": "failed",
+              "gap": true
+            },
+            "report_names_missing_source": true
+          }
+        ]
+      },
+      "jaeger": {
+        "n": 1,
+        "runs": [
+          {
+            "run_id": "769d37f8-e5b3-480f-a636-0d77a4de91ca",
+            "summary": "opspilot/769d37f8-e5b3-480f-a636-0d77a4de91ca/summary.json",
+            "summary_sha256": "58abdde1cbfe54fac97d2f830313cab76e70a4f0ecbf298c327cd9e1d4e3dff6",
+            "versions": {
+              "tool_schema_revision": "otel-demo-a3a95a0f888e",
+              "prompt_revision": "prompt-replay-candidate-bef70649a3a8",
+              "context_policy_revision": "ctx-ctx-policy-v1-a30e65ea52f4"
+            },
+            "first_request_sha256": "ffe7e2ecc7478206b4658403ad65c51aa9b50f6f7976f9c5ff3766ab667d9c98",
+            "data_sources": {
+              "available": {
+                "jaeger": [
+                  "traces_search"
+                ],
+                "prometheus": [
+                  "get_label_values",
+                  "get_metric_names",
+                  "metrics_range_query"
+                ]
+              },
+              "instruction": "Only the sources under available can be queried in this Run. When the data a question needs belongs to an integration under not_integrated, state in gaps which integration is missing; its absence is not evidence and says nothing about health.",
+              "not_integrated": [
+                "kubernetes_state",
+                "pod_logs",
+                "change_history"
+              ]
+            },
+            "first_request_mentions_unreachable": false,
+            "report_gaps": [
+              "No trace IDs were obtained and none can be cited: every traces_search call in this Run returned status=error with reason=SOURCE_UNAVAILABLE against target m0-otel-20260909, so no trace_id, span_id, parent reference or span error detail was delivered; the checkout-to-payment edge is inferred only from matching operation names and identical 7.5-span error volumes.",
+              "The query for rpc_server_duration_milliseconds_count under service_name=payment returned status=no_data (evidence_id 32ac64d7-fdfb-4114-ac99-b97549fdd333-t0:d2ef6c35-da1e-40c6-80b2-350fb308aafd), so payment's server-side RPC latency is only known from traces_span_metrics averages, not from an rpc_server series.",
+              "get_label_values for label 'status' on app_payment_transactions_total returned status=no_data (evidence_id 3ca00dd1-1be6-40b6-a888-9c1cbd8cf1e1-t0:ed4eca05-4761-4bcb-b712-955514bb863b), leaving the transaction counter's label coverage unknown, including whether success and failure are separable.",
+              "Error queries for ad/flagd/recommendation in the window ending 20:24:25 returned status=no_data (evidence_id f11ee3b2-b9f7-4a20-bfb8-855e5de4b48f-t2:0c9210bb-e9c8-460a-b93e-a9d0da5bb75a) and for product-catalog|cart|currency|shipping|email over 3600s returned status=no_data (evidence_id d1592f52-5dd2-4a0f-9f53-f1859941de85-t2:a92533b1-ba3a-4a1b-ad45-9d449480452b), so those long-range error baselines remain unknown rather than zero.",
+              "Payment's flagd resolution content (flag name, value, percentage) and any error text from payment's Charge are not observable, so the flag-injection hypothesis stays a correlation, not a confirmed cause.",
+              "Payment's http_client series carry no http_status_code label, so whether its outbound HTTP calls failed is unknown.",
+              "kube-state-metrics, pod logs and change history are listed as not_integrated in this Run, so deployment or configuration changes at ~22:54–22:59 cannot be confirmed as the trigger.",
+              "email produced zero spans in the 5-minute window, so email is neither cleared nor shown failing; its state during the incident is unknown."
+            ],
+            "report_coverage": {
+              "name": "jaeger",
+              "ok": 0,
+              "no_data": 0,
+              "non_ok": 6,
+              "reasons": {
+                "SOURCE_UNAVAILABLE": 6
+              },
+              "state": "failed",
+              "gap": true
+            },
+            "report_names_missing_source": true
+          }
+        ]
+      }
+    },
+    "holmes": {
+      "prometheus": {
+        "input_runs": [
+          "runs/f14s3-2356-prometheus-input-1.json"
+        ],
+        "report_runs": [
+          "runs/f14s3-2356-prometheus-real-1.json",
+          "runs/f14s3-2356-prometheus-real-2.json",
+          "runs/f14s3-2356-prometheus-real-3.json"
+        ],
+        "k_input": 1,
+        "k_report": 3
+      },
+      "jaeger": {
+        "input_runs": [
+          "runs/f14s3-2356-jaeger-input-1.json"
+        ],
+        "report_runs": [
+          "runs/f14s3-2356-jaeger-real-1.json"
+        ],
+        "k_input": 0,
+        "k_report": 1
+      }
+    },
+    "q7": {
+      "input_gap": true,
+      "report_gap": false,
+      "n1_triggered": false,
+      "decided_by": "agent_S8"
+    }
+  },
+  "mapping_rows": [
+    {
+      "feature": "F3",
+      "step": 3,
+      "mechanism": "缺失与失败的数据源对模型可见"
+    }
+  ]
+}

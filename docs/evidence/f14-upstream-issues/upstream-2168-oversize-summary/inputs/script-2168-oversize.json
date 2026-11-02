@@ -1,0 +1,23 @@
+{
+  "schema": "opspilot.f14.capture-script.v1",
+  "case": "2168-oversize",
+  "turns": [
+    {
+      "tool_calls": [
+        {
+          "name": "execute_prometheus_range_query",
+          "arguments": {
+            "query": "traces_span_metrics_calls_total",
+            "description": "every span-metrics call series, raw",
+            "start": "-3600",
+            "step": 15,
+            "output_type": "Plain"
+          }
+        }
+      ]
+    },
+    {
+      "final": "scripted endpoint: investigation finished"
+    }
+  ]
+}

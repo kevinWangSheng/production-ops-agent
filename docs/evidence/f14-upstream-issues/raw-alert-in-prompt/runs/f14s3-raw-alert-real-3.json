@@ -1,0 +1,708 @@
+{
+  "schema": "opspilot.f14.upstream-issue-run.v1",
+  "run_id": "f14s3-raw-alert-real-3",
+  "slug": "raw-alert-in-prompt",
+  "case": "raw-alert-real",
+  "mode": "real_model",
+  "entry": "investigate_alertmanager",
+  "image_id": "sha256:3f2995d1a448b34a0dbd3c07aa9276e8c812e96e8fc4ebcc9653b01d9ab2a30e",
+  "config_sha256": "e4b98a8bf6b41dea70eb502c33aec08d5a55a39c900bdd863d74442331fddcf1",
+  "config": {
+    "sha256": "e4b98a8bf6b41dea70eb502c33aec08d5a55a39c900bdd863d74442331fddcf1",
+    "differs_from_pin": false,
+    "reason": ""
+  },
+  "stimulus": {
+    "fault_flag": "paymentFailure",
+    "fault_experiment_id": "f14s3-batch"
+  },
+  "container_env": {
+    "NO_PROXY": "f14-lab-relay,f14-capture,f14-alertmanager"
+  },
+  "model_env_overrides": {},
+  "started_at": "2026-11-01T23:15:13Z",
+  "finished_at": "2026-11-01T23:18:13Z",
+  "exit_code": 0,
+  "timed_out": false,
+  "requests": [],
+  "tool_results": [
+    {
+      "index": 0,
+      "tool": "list_prometheus_rules",
+      "toolset": "prometheus/metrics",
+      "status": "error",
+      "error": "Network error while fetching rules: 403 Client Error: Forbidden for url: http://f14-lab-relay:9090/api/v1/rules?rule_name%5B%5D=CheckoutPlaceOrderErrorRatioHigh",
+      "params": {
+        "rule_name": [
+          "CheckoutPlaceOrderErrorRatioHigh"
+        ],
+        "max_depth": null,
+        "jq": null,
+        "type": null,
+        "rule_group": null,
+        "file": null,
+        "match": null
+      }
+    },
+    {
+      "index": 1,
+      "tool": "get_metric_names",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "error": null,
+      "params": {
+        "match": "{__name__=~\".*checkout.*|.*placeorder.*|.*http.*\"}",
+        "start": "2026-11-01T22:10:00Z",
+        "end": "2026-11-01T23:15:00Z"
+      }
+    },
+    {
+      "index": 2,
+      "tool": "get_label_values",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "error": null,
+      "params": {
+        "label": "service_name",
+        "match": null,
+        "start": "2026-11-01T22:10:00Z",
+        "end": "2026-11-01T23:15:00Z"
+      }
+    },
+    {
+      "index": 3,
+      "tool": "get_metric_names",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "error": null,
+      "params": {
+        "match": "{service_name=\"checkout\"}",
+        "start": "2026-11-01T22:10:00Z",
+        "end": "2026-11-01T23:15:00Z"
+      }
+    },
+    {
+      "index": 4,
+      "tool": "execute_prometheus_instant_query",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "error": null,
+      "params": {
+        "query": "count by (rpc_method, rpc_grpc_status_code) (rpc_server_duration_milliseconds_count{service_name=\"checkout\"})",
+        "description": "Checkout gRPC status codes by method",
+        "timeout": 20
+      }
+    },
+    {
+      "index": 5,
+      "tool": "execute_prometheus_range_query",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "error": null,
+      "params": {
+        "query": "sum(rate(rpc_server_duration_milliseconds_count{service_name=\"checkout\", rpc_grpc_status_code!=\"0\"}[5m])) / sum(rate(rpc_server_duration_milliseconds_count{service_name=\"checkout\"}[5m]))",
+        "description": "Checkout PlaceOrder error ratio (all rpc methods)",
+        "start": "2026-11-01T22:00:00Z",
+        "end": "2026-11-01T23:15:00Z",
+        "step": null,
+        "output_type": "Percentage",
+        "timeout": 30,
+        "max_points": 300
+      }
+    },
+    {
+      "index": 6,
+      "tool": "execute_prometheus_instant_query",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "error": null,
+      "params": {
+        "description": "Error ratio per downstream service gRPC server",
+        "query": "sum by (service_name, rpc_grpc_status_code) (increase(rpc_server_duration_milliseconds_count{rpc_grpc_status_code!=\"0\"}[10m]))",
+        "timeout": 30
+      }
+    },
+    {
+      "index": 7,
+      "tool": "execute_prometheus_range_query",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "error": null,
+      "params": {
+        "description": "PlaceOrder request rate by gRPC status code",
+        "end": "2026-11-01T23:15:00Z",
+        "max_points": 300,
+        "output_type": "Plain",
+        "query": "sum by (rpc_grpc_status_code) (rate(rpc_server_duration_milliseconds_count{service_name=\"checkout\", rpc_method=\"PlaceOrder\"}[5m]))",
+        "start": "2026-11-01T22:20:00Z",
+        "step": null,
+        "timeout": 30
+      }
+    },
+    {
+      "index": 8,
+      "tool": "execute_prometheus_instant_query",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "error": null,
+      "params": {
+        "description": "Checkout outbound HTTP calls by status",
+        "query": "sum by (http_status_code, server_address, http_method) (increase(http_client_duration_milliseconds_count{service_name=\"checkout\"}[10m]))",
+        "timeout": 30
+      }
+    },
+    {
+      "index": 9,
+      "tool": "execute_prometheus_instant_query",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "error": null,
+      "params": {
+        "description": "Checkout outbound gRPC calls by target service and status (10m)",
+        "query": "sum by (rpc_service, rpc_method, rpc_grpc_status_code) (increase(rpc_client_duration_milliseconds_count{service_name=\"checkout\"}[10m]))",
+        "timeout": 30
+      }
+    },
+    {
+      "index": 10,
+      "tool": "execute_prometheus_instant_query",
+      "toolset": "prometheus/metrics",
+      "status": "error",
+      "error": "The prometheus query returned no result. Is the query correct?",
+      "params": {
+        "description": "Payment service server rpc status codes (1h)",
+        "query": "sum by (service_name, rpc_method, rpc_grpc_status_code) (increase(rpc_server_duration_milliseconds_count{service_name=\"payment\"}[1h]))",
+        "timeout": 30
+      }
+    },
+    {
+      "index": 11,
+      "tool": "execute_prometheus_range_query",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "error": null,
+      "params": {
+        "description": "Checkout Charge client calls by status code over time",
+        "end": "2026-11-01T23:15:00Z",
+        "max_points": 300,
+        "output_type": "Plain",
+        "query": "sum by (rpc_grpc_status_code) (rate(rpc_client_duration_milliseconds_count{service_name=\"checkout\", rpc_method=\"Charge\"}[5m]))",
+        "start": "2026-11-01T22:20:00Z",
+        "step": null,
+        "timeout": 30
+      }
+    },
+    {
+      "index": 12,
+      "tool": "execute_prometheus_instant_query",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "error": null,
+      "params": {
+        "description": "Which services emit rpc server metrics and their request counts (15m)",
+        "query": "sum by (service_name) (increase(rpc_server_duration_milliseconds_count[15m]))",
+        "timeout": 30
+      }
+    },
+    {
+      "index": 13,
+      "tool": "get_metric_names",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "error": null,
+      "params": {
+        "end": "2026-11-01T23:15:00Z",
+        "match": "{service_name=\"payment\"}",
+        "start": "2026-11-01T22:15:00Z"
+      }
+    },
+    {
+      "index": 14,
+      "tool": "execute_prometheus_instant_query",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "error": null,
+      "params": {
+        "description": "Payment transaction counter labels and values",
+        "query": "sum by (transaction_status, transaction_type, currency, error_code) (increase(app_payment_transactions_total[15m]))",
+        "timeout": 30
+      }
+    },
+    {
+      "index": 15,
+      "tool": "execute_prometheus_range_query",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "error": null,
+      "params": {
+        "description": "Payment transactions per minute by status",
+        "end": "2026-11-01T23:15:00Z",
+        "max_points": 300,
+        "output_type": "Plain",
+        "query": "sum by (transaction_status) (rate(app_payment_transactions_total[5m]))",
+        "start": "2026-11-01T22:20:00Z",
+        "step": null,
+        "timeout": 30
+      }
+    },
+    {
+      "index": 16,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "error",
+      "error": "The tool call result is too large to return: 91808/25000 tokens.\n\nTry to repeat the query but proactively narrow down the result so that the tool answer fits within the allowed number of tokens.",
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": null,
+        "max_depth": null,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=checkout&start=1793574000000000&end=1793575000000000&limit=5&tags=%7B%22error%22%3A%22true%22%7D"
+      }
+    },
+    {
+      "index": 17,
+      "tool": "execute_prometheus_instant_query",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "error": null,
+      "params": {
+        "description": "Payment target_info metrics present (uptime/restarts)",
+        "query": "count by (service_name, service_version, k8s_pod_name) (target_info{service_name=\"payment\"})",
+        "timeout": 30
+      }
+    },
+    {
+      "index": 18,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "error",
+      "error": "Invalid jq expression: Cannot iterate over null (null)",
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": ".data[0].spans | map(select(.tags[]? | .key==\"error\" and .value==true) | {op:.operationName, pid:.processID, tags:[.tags[]|select(.key|test(\"status|error|message|code\";\"i\"))|{key,value}], logs:(.logs // [] | map(.fields[]? | select(.key|test(\"message|error|event|stack\";\"i\"))|{key,value}))})",
+        "max_depth": null,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=checkout&start=1793574000000000&end=1793575000000000&limit=1&tags=%7B%22error%22%3A%22true%22%7D"
+      }
+    },
+    {
+      "index": 19,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "error",
+      "error": "Invalid jq expression: null (null) has no keys",
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": ".data | length, (.[0] | keys)",
+        "max_depth": null,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=checkout&start=1793574600000000&end=1793575000000000&limit=1"
+      }
+    },
+    {
+      "index": 20,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": null,
+        "max_depth": 2,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=checkout&start=1793574600000000&end=1793575000000000&limit=1"
+      }
+    },
+    {
+      "index": 21,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": null,
+        "max_depth": null,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/services"
+      }
+    },
+    {
+      "index": 22,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": null,
+        "max_depth": 1,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=checkout&start=1793568000000000&end=1793575000000000&limit=1"
+      }
+    },
+    {
+      "index": 23,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": ".body.total",
+        "max_depth": null,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=checkout&start=1793568000000000&end=1793575000000000&limit=1"
+      }
+    },
+    {
+      "index": 24,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": ".body.total",
+        "max_depth": null,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=payment&start=1793568000000000&end=1793575000000000&limit=1"
+      }
+    },
+    {
+      "index": 25,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": ".body.total",
+        "max_depth": null,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=frontend&start=1793568000000000&end=1793575000000000&limit=1"
+      }
+    },
+    {
+      "index": 26,
+      "tool": "jaeger_request",
+      "toolset": "jaeger",
+      "status": "success",
+      "error": null,
+      "params": {
+        "body": null,
+        "headers": null,
+        "jq": ".body.total",
+        "max_depth": null,
+        "method": "GET",
+        "url": "http://f14-lab-relay:16686/jaeger/ui/api/traces?service=frontend&start=1793400000000000&end=1793575000000000&limit=1"
+      }
+    },
+    {
+      "index": 27,
+      "tool": "execute_prometheus_instant_query",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "error": null,
+      "params": {
+        "description": "Span metrics error spans by service and span name (15m)",
+        "query": "topk(15, sum by (service_name, span_name, status_code) (increase(traces_span_metrics_calls_total{status_code!=\"STATUS_CODE_UNSET\"}[15m])))",
+        "timeout": 30
+      }
+    },
+    {
+      "index": 28,
+      "tool": "execute_prometheus_instant_query",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "error": null,
+      "params": {
+        "description": "Payment outbound HTTP calls by status and host (15m)",
+        "query": "sum by (http_status_code, server_address, http_method) (increase(http_client_duration_milliseconds_count{service_name=\"payment\"}[15m]))",
+        "timeout": 30
+      }
+    },
+    {
+      "index": 29,
+      "tool": "execute_prometheus_range_query",
+      "toolset": "prometheus/metrics",
+      "status": "no_data",
+      "error": null,
+      "params": {
+        "description": "Payment v8 heap used and event loop utilization",
+        "end": "2026-11-01T23:15:00Z",
+        "max_points": 300,
+        "output_type": "Bytes",
+        "query": "v8js_memory_heap_used_bytes{service_name=\"payment\"}",
+        "start": "2026-11-01T22:20:00Z",
+        "step": null,
+        "timeout": 30
+      }
+    },
+    {
+      "index": 30,
+      "tool": "get_metric_names",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "error": null,
+      "params": {
+        "end": "2026-11-01T23:15:00Z",
+        "match": "{__name__=~\".*flag.*|.*feature.*\"}",
+        "start": "2026-11-01T22:15:00Z"
+      }
+    },
+    {
+      "index": 31,
+      "tool": "execute_prometheus_instant_query",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "error": null,
+      "params": {
+        "description": "flagd resolution spans by caller service (15m)",
+        "query": "sum by (service_name, span_name) (increase(traces_span_metrics_calls_total{span_name=~\".*Resolve.*|.*EventStream.*\"}[15m]))",
+        "timeout": 30
+      }
+    },
+    {
+      "index": 32,
+      "tool": "execute_prometheus_instant_query",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "error": null,
+      "params": {
+        "description": "Feature flag impressions by key and variant (1h)",
+        "query": "sum by (feature_flag_key, feature_flag_variant, service_name) (increase(feature_flag_flagd_impression_total[1h]))",
+        "timeout": 30
+      }
+    },
+    {
+      "index": 33,
+      "tool": "execute_prometheus_instant_query",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "error": null,
+      "params": {
+        "description": "flagd result reason by flag key (1h)",
+        "query": "sum by (feature_flag_key, reason, variant) (increase(feature_flag_flagd_result_reason_total[1h]))",
+        "timeout": 30
+      }
+    },
+    {
+      "index": 34,
+      "tool": "get_series",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "error": null,
+      "params": {
+        "end": "2026-11-01T23:15:00Z",
+        "match": "feature_flag_flagd_result_reason_total",
+        "start": "2026-11-01T22:15:00Z"
+      }
+    },
+    {
+      "index": 35,
+      "tool": "execute_prometheus_range_query",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "error": null,
+      "params": {
+        "description": "paymentFailure flag resolutions over time",
+        "end": "2026-11-01T23:15:00Z",
+        "max_points": 300,
+        "output_type": "Plain",
+        "query": "sum by (feature_flag_key, reason, variant) (rate(feature_flag_flagd_result_reason_total{feature_flag_key=~\"paymentFailure|paymentUnreachable\"}[2m]))",
+        "start": "2026-11-01T22:20:00Z",
+        "step": null,
+        "timeout": 30
+      }
+    },
+    {
+      "index": 36,
+      "tool": "get_series",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "error": null,
+      "params": {
+        "end": "2026-11-01T23:15:00Z",
+        "match": "app_payment_transactions_total",
+        "start": "2026-11-01T22:15:00Z"
+      }
+    },
+    {
+      "index": 37,
+      "tool": "execute_prometheus_instant_query",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "error": null,
+      "params": {
+        "description": "Payment event loop utilization and heap",
+        "query": "max by (__name__) ({__name__=~\"nodejs_eventloop_utilization_ratio|v8js_memory_heap_used_bytes|v8js_memory_heap_limit_bytes\", service_name=\"payment\"})",
+        "timeout": 30
+      }
+    },
+    {
+      "index": 38,
+      "tool": "execute_prometheus_range_query",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "error": null,
+      "params": {
+        "description": "Payment Charge span error ratio (span metrics)",
+        "end": "2026-11-01T23:15:00Z",
+        "max_points": 300,
+        "output_type": "Percentage",
+        "query": "sum(rate(traces_span_metrics_calls_total{service_name=\"payment\", span_name=\"grpc.oteldemo.PaymentService/Charge\", status_code=\"STATUS_CODE_ERROR\"}[5m])) / sum(rate(traces_span_metrics_calls_total{service_name=\"payment\", span_name=\"grpc.oteldemo.PaymentService/Charge\"}[5m]))",
+        "start": "2026-11-01T22:20:00Z",
+        "step": null,
+        "timeout": 30
+      }
+    },
+    {
+      "index": 39,
+      "tool": "execute_prometheus_range_query",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "error": null,
+      "params": {
+        "description": "Payment total V8 heap used vs limit",
+        "end": "2026-11-01T23:15:00Z",
+        "max_points": 300,
+        "output_type": "Bytes",
+        "query": "max(v8js_memory_heap_used_bytes{service_name=\"payment\"}) or max(v8js_memory_heap_limit_bytes{service_name=\"payment\"})",
+        "start": "2026-11-01T22:20:00Z",
+        "step": null,
+        "timeout": 30
+      }
+    },
+    {
+      "index": 40,
+      "tool": "get_series",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "error": null,
+      "params": {
+        "end": "2026-11-01T23:15:00Z",
+        "match": "{__name__=\"target_info\",service_name=\"payment\"}",
+        "start": "2026-11-01T21:15:00Z"
+      }
+    },
+    {
+      "index": 41,
+      "tool": "execute_prometheus_instant_query",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "error": null,
+      "params": {
+        "description": "Payments recorded per minute (successful charges)",
+        "query": "sum(increase(app_payment_transactions_total[10m]))",
+        "timeout": 30
+      }
+    },
+    {
+      "index": 42,
+      "tool": "execute_prometheus_instant_query",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "error": null,
+      "params": {
+        "description": "Payment flagd ResolveFloat call count over 3h",
+        "query": "sum(increase(traces_span_metrics_calls_total{service_name=\"payment\", span_name=~\".*flagd.*\"}[3h]))",
+        "timeout": 30
+      }
+    },
+    {
+      "index": 43,
+      "tool": "execute_prometheus_instant_query",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "error": null,
+      "params": {
+        "description": "paymentFailure flag resolution count over 6h",
+        "query": "increase(feature_flag_flagd_result_reason_total{feature_flag_key=\"paymentFailure\"}[6h])",
+        "timeout": 30
+      }
+    },
+    {
+      "index": 44,
+      "tool": "execute_prometheus_instant_query",
+      "toolset": "prometheus/metrics",
+      "status": "error",
+      "error": "The prometheus query returned no result. Is the query correct?",
+      "params": {
+        "description": "Average latency of successful payment Charge calls before incident (ms)",
+        "query": "sum(rate(traces_span_metrics_duration_milliseconds_sum{service_name=\"payment\", span_name=\"grpc.oteldemo.PaymentService/Charge\", status_code=\"STATUS_CODE_OK\"}[10m] offset 30m)) / sum(rate(traces_span_metrics_duration_milliseconds_count{service_name=\"payment\", span_name=\"grpc.oteldemo.PaymentService/Charge\", status_code=\"STATUS_CODE_OK\"}[10m] offset 30m))",
+        "timeout": 30
+      }
+    },
+    {
+      "index": 45,
+      "tool": "execute_prometheus_instant_query",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "error": null,
+      "params": {
+        "description": "Average latency of failing payment Charge calls (ms)",
+        "query": "sum(rate(traces_span_metrics_duration_milliseconds_sum{service_name=\"payment\", span_name=\"grpc.oteldemo.PaymentService/Charge\", status_code=\"STATUS_CODE_ERROR\"}[10m])) / sum(rate(traces_span_metrics_duration_milliseconds_count{service_name=\"payment\", span_name=\"grpc.oteldemo.PaymentService/Charge\", status_code=\"STATUS_CODE_ERROR\"}[10m]))",
+        "timeout": 30
+      }
+    }
+  ],
+  "answer_sha256": "c5397a756c53040443f9008caea3a367645e9fa4d9c2238539a982d6e09e37c7",
+  "answer_checks": {
+    "canary_in_answer": {
+      "hit": false,
+      "excerpt": null
+    }
+  },
+  "stdout_checks": {},
+  "proxy_checks": {
+    "metric_name_requests": {
+      "hit": true,
+      "excerpt": "4 label/__name__/values request(s) by holmes"
+    }
+  },
+  "tool_checks": {
+    "canary_in_tool_params": {
+      "hit": false,
+      "excerpt": null
+    }
+  },
+  "request_checks": {},
+  "balance_window": {
+    "before": {
+      "is_available": true,
+      "balance_infos": [
+        {
+          "currency": "CNY",
+          "total_balance": "172.24",
+          "granted_balance": "0.00",
+          "topped_up_balance": "172.24"
+        }
+      ]
+    },
+    "after_delayed": {
+      "is_available": true,
+      "balance_infos": [
+        {
+          "currency": "CNY",
+          "total_balance": "171.63",
+          "granted_balance": "0.00",
+          "topped_up_balance": "171.63"
+        }
+      ]
+    }
+  },
+  "refrozen": {
+    "reason": "investigate output is [{issue, result:{ask-shaped}}]; the first freeze read the outer object and saw no tool calls or answer",
+    "previous_sha256": "2bbe3077f3f371e855f324471ee1daf3b664165fbb94c8783abaa61fc2983276"
+  }
+}

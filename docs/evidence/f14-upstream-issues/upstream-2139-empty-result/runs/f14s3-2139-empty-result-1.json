@@ -1,0 +1,115 @@
+{
+  "schema": "opspilot.f14.upstream-issue-run.v1",
+  "run_id": "f14s3-2139-empty-result-1",
+  "slug": "upstream-2139-empty-result",
+  "case": "2139-empty-result",
+  "mode": "scripted_model",
+  "entry": "ask",
+  "image_id": "sha256:3f2995d1a448b34a0dbd3c07aa9276e8c812e96e8fc4ebcc9653b01d9ab2a30e",
+  "config_sha256": "4f84aa533d2538a9b9612984af73904787c93a28fec184a7a6d9acc0cc6f0974",
+  "config": {
+    "sha256": "4f84aa533d2538a9b9612984af73904787c93a28fec184a7a6d9acc0cc6f0974",
+    "differs_from_pin": true,
+    "reason": "api_base points at the scripted endpoint (R7)"
+  },
+  "stimulus": {
+    "fault_flag": null,
+    "fault_experiment_id": null
+  },
+  "container_env": {
+    "NO_PROXY": "f14-lab-relay,f14-capture,f14-alertmanager"
+  },
+  "model_env_overrides": {},
+  "started_at": "2026-11-01T21:45:11Z",
+  "finished_at": "2026-11-01T21:45:30Z",
+  "exit_code": 0,
+  "timed_out": false,
+  "requests": [
+    {
+      "index": 0,
+      "body_sha256": "50e435f7ec814148d0a343e1c162c6d5c8d3b462fb8228ca4c094f7f8bf0bb19",
+      "message_count": 2,
+      "tool_names": [
+        "list_prometheus_rules",
+        "get_metric_names",
+        "get_label_values",
+        "get_all_labels",
+        "get_series",
+        "get_metric_metadata",
+        "execute_prometheus_instant_query",
+        "execute_prometheus_range_query",
+        "jaeger_request"
+      ],
+      "tool_names_sha256": "7216a5305394feaf5ffbfbd67603250faa3489fb92c6a7e2919f43629ccb13bc",
+      "max_tokens": 65536,
+      "snippets": {
+        "disabled_failed_toolsets": {
+          "sha256": "623303734f15cc8afd5779de7be808d90e8a7addc099cc601bc9710cf3f2e169",
+          "text": "# Disabled & failed Toolsets\nThese toolsets are DISABLED (unconfigured) unless marked FAILED (misconfigured). Setup docs per toolset: `https://holmesgpt.dev/data-sources/builtin-toolsets/<name before any slash>/` unless a different URL is given."
+        }
+      }
+    },
+    {
+      "index": 1,
+      "body_sha256": "af306740bae8042853e371427af38f71d989b6f9a447ab88bc56e87dc0fc8b37",
+      "message_count": 5,
+      "tool_names": [
+        "list_prometheus_rules",
+        "get_metric_names",
+        "get_label_values",
+        "get_all_labels",
+        "get_series",
+        "get_metric_metadata",
+        "execute_prometheus_instant_query",
+        "execute_prometheus_range_query",
+        "jaeger_request"
+      ],
+      "tool_names_sha256": "7216a5305394feaf5ffbfbd67603250faa3489fb92c6a7e2919f43629ccb13bc",
+      "max_tokens": 65536,
+      "snippets": {
+        "disabled_failed_toolsets": {
+          "sha256": "623303734f15cc8afd5779de7be808d90e8a7addc099cc601bc9710cf3f2e169",
+          "text": "# Disabled & failed Toolsets\nThese toolsets are DISABLED (unconfigured) unless marked FAILED (misconfigured). Setup docs per toolset: `https://holmesgpt.dev/data-sources/builtin-toolsets/<name before any slash>/` unless a different URL is given."
+        }
+      }
+    }
+  ],
+  "tool_results": [
+    {
+      "index": 0,
+      "tool": "execute_prometheus_instant_query",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "error": null,
+      "params": {
+        "description": "ad error spans in the last 5m, if any",
+        "query": "sum(increase(traces_span_metrics_calls_total{service_name=\"ad\",status_code=\"STATUS_CODE_ERROR\"}[5m])) > 0"
+      }
+    },
+    {
+      "index": 1,
+      "tool": "execute_prometheus_range_query",
+      "toolset": "prometheus/metrics",
+      "status": "success",
+      "error": null,
+      "params": {
+        "description": "ad error spans over the window, if any",
+        "output_type": "Plain",
+        "query": "sum(increase(traces_span_metrics_calls_total{service_name=\"ad\",status_code=\"STATUS_CODE_ERROR\"}[5m])) > 0",
+        "start": "-300"
+      }
+    }
+  ],
+  "answer_sha256": "e64af83fe6a06b10118e9956de73964b9cdf3a2cb6eb7b18bc6ee698631e86e0",
+  "answer_checks": {},
+  "stdout_checks": {},
+  "proxy_checks": {},
+  "tool_checks": {
+    "empty_result_as_error": {
+      "hit": false,
+      "excerpt": null
+    }
+  },
+  "request_checks": {},
+  "balance_window": null
+}
