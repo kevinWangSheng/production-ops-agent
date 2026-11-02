@@ -623,3 +623,41 @@ def test_dev_round_summary_rejects_edited_expectations(tmp_path):
     path.write_text(json.dumps(doc))
     with pytest.raises(eval_dev_round.DevRoundError, match="EXPECTATIONS_MISMATCH"):
         eval_dev_round.aggregate([r1], DEV_V2)
+
+
+# -- inherited #431 defect: wrong-target handoff ----------------------------------
+
+
+def test_handed_off_survives_the_store_refusing_a_runless_rebuild(monkeypatch):
+    """Regression (#431 defect found by #432's PG test): for an incident with
+    no Run the store raises ``PersistenceError("INCONSISTENT_STATE")``, not
+    ``ValueError``; ``_handed_off`` must still return the handoff result, or
+    the driver records a correct wrong-target attempt as INVESTIGATOR_FAILED."""
+    from types import SimpleNamespace
+    from uuid import uuid4
+
+    from opspilot.persistence import PersistenceError
+    from scripts import eval_live_investigator as inv
+    from scripts.eval_live_inject import AlertRun
+    from scripts.eval_live_lab import SystemClock
+
+    def refuse(*args: Any) -> Any:
+        raise PersistenceError("INCONSISTENT_STATE")
+
+    monkeypatch.setattr(inv, "_outcome", refuse)
+    monkeypatch.setattr(inv, "_projection", lambda *a: None)
+    investigator = SimpleNamespace(clock=SystemClock())
+    result = inv.OtelDemoInvestigator._handed_off(
+        investigator,  # type: ignore[arg-type]
+        None,
+        None,
+        None,  # type: ignore[arg-type]
+        None,
+        uuid4(),
+        AlertRun("f" * 16),
+        {"incidents": 1, "runs": 0, "episodes": 1},
+        None,
+    )
+    assert result.error is None and result.outcome is None
+    assert result.product_run_id is None
+    assert result.intake["counts"] == {"incidents": 1, "runs": 0, "episodes": 1}
