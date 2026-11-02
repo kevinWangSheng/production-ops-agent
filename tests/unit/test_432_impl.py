@@ -663,3 +663,77 @@ def test_handed_off_survives_the_store_refusing_a_runless_rebuild(monkeypatch):
     assert result.error is None and result.outcome is None
     assert result.product_run_id is None
     assert result.intake["counts"] == {"incidents": 1, "runs": 0, "episodes": 1}
+
+
+# -- A10: signature re-confirmation after a long noise wait -------------------------
+
+
+def _timed_lab(
+    lab_env, monkeypatch, *, ad_after_s: float, payment_until_s: float | None
+):
+    """ad errors only from ``ad_after_s`` after the first flag write, payment
+    errors only until ``payment_until_s`` (None: always)."""
+    from tests.unit.test_eval_c_driver_impl import ObservedSpan, SpanQuery  # noqa: F401
+
+    matchers = pr_c._matchers
+    monkeypatch.setattr(
+        pr_c,
+        "_matchers",
+        lambda: {**matchers(), "adFailure": [("ad", "oteldemo.AdService/GetAds")]},
+    )
+    lab = lab_env["lab"]
+    start = lab_env["clock"].now()
+    original = lab.spans
+
+    def spans(service, begin, end, timeout):
+        query = original(service, begin, end, timeout)
+        kept = []
+        for row in query.spans:
+            age = (row.start - start).total_seconds()
+            if row.span_id.startswith("adFailure-") and age < ad_after_s:
+                continue
+            if (
+                row.span_id.startswith("paymentFailure-")
+                and payment_until_s is not None
+                and age > payment_until_s
+            ):
+                continue
+            kept.append(row)
+        return replace(query, spans=tuple(kept))
+
+    monkeypatch.setattr(lab, "spans", spans)
+
+
+def test_a_long_noise_wait_reconfirms_the_signature_and_submits_fresh(lab, monkeypatch):
+    # Ad errors first appear 8 minutes in: the first payment match is stale
+    # by then (probe ac449f38); the re-confirmation finds a fresh one.
+    _timed_lab(lab, monkeypatch, ad_after_s=480, payment_until_s=None)
+    seen: dict[str, Any] = {}
+    lab["investigator"].action = lambda request: seen.setdefault(
+        "submitted", lab["clock"].now()
+    )
+    result = _round(lab, [NOISE_POS])
+    (slot,) = result.slots
+    # Not stale: the offline investigator records nothing, so the attempt is
+    # aborted for the recording, never setup_failed/PRE_OBSERVATION_STALE.
+    assert slot.reason != "PRE_OBSERVATION_STALE"
+    assert slot.status != "setup_failed", (slot.status, slot.reason)
+    (request,) = lab["investigator"].requests
+    assert request.submit_not_after is not None
+    assert seen["submitted"] <= request.submit_not_after
+    ledger = lab["deps"].ledger_root / "r1" / slot.attempt_id
+    assert (ledger / "pre-observation-reconfirm.json").exists()
+
+
+def test_a_signature_gone_after_the_noise_wait_is_a_distinct_setup_failure(
+    lab, monkeypatch
+):
+    _timed_lab(lab, monkeypatch, ad_after_s=480, payment_until_s=180)
+    result = _round(lab, [NOISE_POS])
+    (slot,) = result.slots
+    assert (slot.status, slot.reason) == (
+        "setup_failed",
+        eval_live.SIGNATURE_NOT_RECONFIRMED,
+    )
+    assert lab["investigator"].requests == []
+    assert lab["lab"].raw == ORIGINAL_V2

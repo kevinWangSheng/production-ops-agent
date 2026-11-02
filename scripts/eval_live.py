@@ -1513,6 +1513,7 @@ def _setup_v2(
         assert gate.window is not None
         submit_not_after = gate.window.end + FRESHNESS
     noise = noise_rules(plan, answer)
+    noise_deadline: datetime | None = None
     for flag, rule in noise:
         # #432 seams §6: the noise flag's own errors must be in the window
         # the Run will read; its newest error also bounds the submission.
@@ -1523,8 +1524,22 @@ def _setup_v2(
         if not seen.passed:
             raise LabError(NOISE_NOT_OBSERVED)
         newest_noise = max(span.start for span in seen.matched) + FRESHNESS
-        if submit_not_after is None or newest_noise < submit_not_after:
-            submit_not_after = newest_noise
+        if noise_deadline is None or newest_noise < noise_deadline:
+            noise_deadline = newest_noise
+    if noise_deadline is not None:
+        # #432 seams §12 A10: a long noise wait can outlast the signature's
+        # freshness (probe ac449f38 went stale); re-confirm the signature in
+        # the last RECONFIRM_SECONDS, then submit by the earlier deadline.
+        assert answer.signature is not None
+        state.stage = "signature_reconfirm"
+        since = max(effective_at, clock.now() - timedelta(seconds=RECONFIRM_SECONDS))
+        again = fault_gate(answer.signature, confirmed_at=since, deps=deps)
+        with protected():
+            ledger.write("pre-observation-reconfirm.json", _raw_observation(again))
+        if not again.passed:
+            raise LabError(SIGNATURE_NOT_RECONFIRMED)
+        signature_deadline = max(span.start for span in again.matched) + FRESHNESS
+        submit_not_after = min(signature_deadline, noise_deadline)
     if plan.span is not None:
         from scripts.eval_live_inject import OtlpSpanWriter, write_span
 
@@ -1545,6 +1560,12 @@ def _setup_v2(
         ledger.event("otlp_span", "visible", trace_id=span.trace_id)
     alert_starts_at = effective_at if plan.entry == "alertmanager" else None
     return gate, submit_not_after, alert_starts_at
+
+
+#: #432 seams §12 A10: how far back the post-noise signature re-confirmation
+#: looks (inside FRESHNESS, so a match leaves time to submit).
+RECONFIRM_SECONDS = 240
+SIGNATURE_NOT_RECONFIRMED = "SIGNATURE_NOT_RECONFIRMED"
 
 
 def noise_rules(
