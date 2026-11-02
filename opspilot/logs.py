@@ -32,6 +32,7 @@ import os
 import re
 import sys
 import threading
+import time
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from types import TracebackType
@@ -116,6 +117,13 @@ class JsonFormatter(logging.Formatter):
         self._revision = revision
 
     def format(self, record: logging.LogRecord) -> str:
+        """Total: whatever the record holds, exactly one line comes out."""
+        try:
+            return _dumps(self._line(record))
+        except Exception as exc:  # noqa: BLE001 - a dropped record is worse
+            return _dumps(self._fallback(record, exc))
+
+    def _line(self, record: logging.LogRecord) -> dict[str, Any]:
         kv: dict[str, Any] | None
         try:
             message = record.getMessage()
@@ -140,7 +148,47 @@ class JsonFormatter(logging.Formatter):
             line["exc"] = record.exc_text
         if record.stack_info:
             line["stack"] = self.formatStack(record.stack_info)
-        return json.dumps(line, ensure_ascii=False, default=str)
+        return line
+
+    def _fallback(self, record: logging.LogRecord, exc: Exception) -> dict[str, Any]:
+        """The fixed keys only, from parts that cannot fail, plus which
+        exception stopped the full line (``format_error``)."""
+        try:
+            ts = _timestamp(record.created)
+        except Exception:  # noqa: BLE001 - a bad ``created``: the time now
+            ts = _timestamp(time.time())
+        return {
+            "ts": ts,
+            "level": _safe_text(getattr(record, "levelname", None)),
+            "logger": _safe_text(getattr(record, "name", None)),
+            "msg": _safe_repr(getattr(record, "msg", None)),
+            "version": self._version,
+            "revision": self._revision,
+            "format_error": type(exc).__name__,
+        }
+
+
+def _safe_text(value: object) -> str:
+    return value if isinstance(value, str) else _safe_repr(value)
+
+
+def _safe_repr(value: object) -> str:
+    try:
+        return repr(value)
+    except Exception:  # noqa: BLE001
+        return f"<unrepresentable {type(value).__name__}>"
+
+
+def _dumps(line: dict[str, Any]) -> str:
+    """Readable UTF-8 when possible; a string holding a lone surrogate
+    (which no UTF-8 stream can write) is escaped as ``\\udcXX`` instead,
+    still valid JSON and still one line."""
+    text = json.dumps(line, ensure_ascii=False, default=str)
+    try:
+        text.encode("utf-8")
+    except UnicodeEncodeError:
+        return json.dumps(line, ensure_ascii=True, default=str)
+    return text
 
 
 class _Handler(logging.StreamHandler[TextIO]):

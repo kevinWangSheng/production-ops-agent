@@ -18,6 +18,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import re
 from collections.abc import Iterable, Mapping
 from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timedelta, timezone
@@ -230,6 +231,39 @@ CHART_CATEGORIES = (
     "recommendations",
 )
 _TEXT_ACTIONS = frozenset({"follow_up", "correct"})
+
+
+_LOC_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,63}")
+
+
+def _failure_code(exc: Exception) -> str:
+    """What a log line may say about a failure (F8L-Q2 source discipline):
+    a fixed code when the exception carries one, else only its type name; a
+    pydantic error adds its count and each error's location and type, never
+    the input, message or context (its ``str()`` quotes the input value).
+    A location part that is not a plain field name (a dict key taken from
+    the input) is shown as ``<key>``."""
+    code = getattr(exc, "code", None)
+    if isinstance(code, str) and code:
+        return code
+    if isinstance(exc, PersistenceError):
+        return str(exc)  # constructed with a fixed code only
+    if isinstance(exc, ValidationError):
+        parts = [
+            ".".join(
+                str(part)
+                if isinstance(part, int) or _LOC_NAME.fullmatch(str(part))
+                else "<key>"
+                for part in error["loc"]
+            )
+            + ":"
+            + error["type"]
+            for error in exc.errors(
+                include_url=False, include_context=False, include_input=False
+            )
+        ]
+        return f"ValidationError errors={exc.error_count()} " + ",".join(parts)
+    return type(exc).__name__
 
 
 def available_actions(snapshot: Mapping[str, Any]) -> list[str]:
@@ -1576,7 +1610,7 @@ class Workbench:
                 _log.warning(
                     "release anomaly consumption failed observation=%s code=%s",
                     ending.observation_id,
-                    getattr(exc, "code", None) or str(exc),
+                    _failure_code(exc),
                 )
                 continue
             if receipt is None:

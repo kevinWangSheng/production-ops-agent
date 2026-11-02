@@ -160,6 +160,7 @@ worktree `/Users/shenghuikevin/dev/AI/poa-386-logs`，分支 `feature/F8-386-str
 - handler 不传流时每次输出取当时的 `sys.stderr`（同 `logging.lastResort`）：进程内多次调用 `main()` 的旧测试不会留下指向已关闭流的 handler。
 - 未捕获异常记到 logger `opspilot.uncaught`，消息 `uncaught exception thread=<线程名>`（线程名进 `kv`）；线程里的 `SystemExit` 照 stdlib 默认忽略；记日志本身失败时退回 stdlib 默认钩子，traceback 不丢。
 - 格式串与参数不匹配（`getMessage()` 抛错）时 `msg` 取原始格式串、不出 `kv`，保持一行 JSON；stdlib 会打印多行 `--- Logging error ---`。
+- formatter 是全函数（review-450 发现 1）：组装一行时任何异常都退回只含固定键的一行 JSON，`msg` 为 `repr(record.msg)`（repr 也失败时写 `<unrepresentable 类型>`），加 `format_error` 字段记异常类型；`created` 非法时 `ts` 取当前时间；含孤立代理字符的行改用 `ensure_ascii` 转义写出。此前参数 `__str__` 抛错、`created` 为 inf/NaN、UTF-8 流写孤立代理字符都会落到 `Handler.handleError`、整条丢失。
 - 同一格式串同名 kv 出现多次时后者覆盖；`%r` 的 kv 值同样取 `str()`；非有限浮点取字符串（JSON 不允许 NaN）。
 - `tests/conftest.py` 加 autouse fixture，每个测试后撤掉 `configure()` 装的 handler、恢复 root 级别与两个钩子：`test_runtime_roles`、`test_f2_b1_impl`、`test_427_outbox_impl` 在进程内调用 `main()`，不撤销会把 INFO 级别与钩子漏给后续测试（含 pytest 自己的会话级 `threading.excepthook`）。
 
@@ -172,7 +173,7 @@ worktree `/Users/shenghuikevin/dev/AI/poa-386-logs`，分支 `feature/F8-386-str
 - tracing：`trace export disabled … %s` 只拼 `check_lab_target` 的固定码；`trace export raised` 只记类型；`OPSPILOT_TRACE=%r is not a mode` 回显运维填写的模式值（不是凭据，照旧）。
 - Observer：`observer owner=… prometheus=%s` 只含 scheme/host/port（带 userinfo 的 URL 拒绝启动）；`sample/comparison crashed`、`poll hook failed`、`reading construction failed`、`replay failed`（`observer/replay.py:1160`）只记类型；`profile unavailable … error=%s` 是 `PersistenceError` 码；其余是 ID、计数与状态码。
 - 共用：`health probe failed` 只记类型；`health.py:508` 记绑定地址与 errno；`outbox cleanup refused: %s` 是 `PersistenceError` 码。
-- web `service.py:566,1656`：`PersistenceError` 码。`service.py:1576` 在 `ValidationError`（pydantic，没有 `.code`）时取 `str(exc)`，会带被校验对象的输入值；校验的是库里的发布记录，不是凭据或模型输出（推断，见未确认）。
+- web `service.py:566,1656`：`PersistenceError` 码。`service.py:1576`（review-450 发现 2，F8L-Q2 源头修正）：原先对没有 `.code` 的 pydantic `ValidationError` 记 `str(exc)`，会把输入值（可含 provider 文本或凭据）带进日志；改为经 `_failure_code()` 只记固定码，否则只记异常类型名，`ValidationError` 只加错误个数与每条的 loc+type（不记 input/msg/ctx，非字段名的 loc 段记 `<key>`）；消息措辞与键名不变，只改记录的值。
 - web 5 处 `.exception()`（`web/__main__.py:155,159,163`、`service.py:2523,2628`）：保留完整 traceback（R8），现在是一行 JSON 的 `exc`。web 进程不 import 模型客户端；异常来自存储（psycopg 消息带 host/port，不含密码，带密码 DSN 哨兵已实测）、回放计算与图表渲染（输入是入库时已脱敏的证据）。
 - `schema.py:642` 多行列差异与迁移 `0024` 的 PG notice 只在 schema/migrate 路径出现，内容是列定义；现在是一行 JSON。
 - 未捕获异常钩子（Q5）：worker/复盘/Observer 的模型与 Prometheus 异常在各自 `except Exception` 边界被截住，到不了钩子；能到钩子的是启动期存储失败（实测为 `PersistenceError: TIMEOUT` 链 psycopg `PoolTimeout`，不含 DSN 密码）与循环线程里的存储异常。

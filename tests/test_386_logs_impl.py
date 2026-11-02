@@ -621,3 +621,133 @@ def test_web_self_heal_exception_keeps_its_traceback_on_one_line(buf):
     (line,) = lines(buf)
     assert line["msg"] == "automatic observation pass failed"
     assert line["exc"].endswith("RuntimeError: database down\nline two")
+
+
+# -- review-450: the formatter is total; ValidationError carries no input ----
+
+
+def _format(record: logging.LogRecord) -> str:
+    return logs.JsonFormatter(version="v", revision="r").format(record)
+
+
+def _record(msg="m", args=(), **attrs) -> logging.LogRecord:
+    record = logging.LogRecord(
+        "opspilot.t", logging.WARNING, __file__, 1, msg, args, None
+    )
+    for name, value in attrs.items():
+        setattr(record, name, value)
+    return record
+
+
+class _BadStr:
+    def __str__(self):
+        raise RuntimeError("no str")
+
+    __repr__ = __str__
+
+
+@pytest.mark.parametrize(
+    ("record", "error"),
+    [
+        (_record("a=%s", (_BadStr(),)), "RuntimeError"),
+        (_record(created=1e309), "OverflowError"),
+        (_record(created=float("nan")), "ValueError"),
+        (_record(_BadStr()), "RuntimeError"),
+    ],
+    ids=["arg-str-raises", "created-inf", "created-nan", "msg-unrepresentable"],
+)
+def test_a_record_that_cannot_be_built_still_yields_one_line(record, error):
+    raw = _format(record)
+    assert "\n" not in raw
+    line = json.loads(raw)
+    assert list(line) == KEYS + ["format_error"]
+    assert line["format_error"] == error
+    assert TS.match(line["ts"])
+    assert line["level"] == "WARNING" and line["logger"] == "opspilot.t"
+    assert isinstance(line["msg"], str)
+
+
+def test_the_fallback_msg_is_a_repr_of_the_format_string():
+    line = json.loads(_format(_record("a=%s", (_BadStr(),))))
+    assert line["msg"] == "'a=%s'"
+
+
+def test_a_lone_surrogate_still_reaches_a_utf8_stream(restore_logging):
+    stream = io.TextIOWrapper(io.BytesIO(), encoding="utf-8")
+    logs.configure({}, stream=stream)
+    logging.getLogger("t").warning("bad=%s", "x\udcff")
+    stream.flush()
+    raw = stream.buffer.getvalue().decode("utf-8")
+    line = json.loads(raw)
+    assert line["msg"] == "bad=x\udcff"
+    assert line["kv"] == {"bad": "x\udcff"}
+    assert "format_error" not in line
+
+
+def test_non_ascii_text_is_kept_readable(buf):
+    logging.getLogger("t").warning("说明 é")
+    assert "说明 é" in buf.getvalue()
+
+
+def test_release_anomaly_validation_error_logs_no_input(buf):
+    """F8L-Q2 source fix (review-450): a pydantic error's str() quotes the
+    input; only its count and each error's location and type are logged."""
+    from pydantic import BaseModel
+
+    from opspilot.web.service import Workbench
+
+    class Shape(BaseModel):
+        count: int
+        labels: dict[str, int]
+
+    try:
+        Shape.model_validate(
+            {"count": f"{PROVIDER} {SECRET}", "labels": {f"key {SECRET}": "x"}}
+        )
+    except Exception as exc:  # noqa: BLE001
+        error = exc
+    observation = uuid4()
+
+    class Store:
+        def pending_anomaly_endings(self, limit):
+            return [SimpleNamespace(observation_id=observation)]
+
+        def consume_anomaly(self, ending, opening):
+            raise error
+
+    workbench = object.__new__(Workbench)
+    workbench.releases = Store()
+    assert workbench.release_anomaly_pass() == []
+    (line,) = _assert_clean(buf)
+    assert line["msg"] == (
+        f"release anomaly consumption failed observation={observation} "
+        "code=ValidationError errors=2 count:int_parsing,labels.<key>:int_parsing"
+    )
+    assert line["kv"]["code"].startswith("ValidationError errors=2")
+
+
+@pytest.mark.parametrize(
+    ("exc", "code"),
+    [
+        ("persistence", "TIMEOUT"),
+        ("context", "INPUT_MISSING"),
+    ],
+)
+def test_release_anomaly_fixed_codes_are_unchanged(buf, exc, code):
+    from opspilot.investigation.context import ContextError
+    from opspilot.persistence import PersistenceError
+    from opspilot.web.service import Workbench
+
+    error = PersistenceError(code) if exc == "persistence" else ContextError(code)
+
+    class Store:
+        def pending_anomaly_endings(self, limit):
+            return [SimpleNamespace(observation_id="o1")]
+
+        def consume_anomaly(self, ending, opening):
+            raise error
+
+    workbench = object.__new__(Workbench)
+    workbench.releases = Store()
+    workbench.release_anomaly_pass()
+    assert one(buf)["kv"] == {"observation": "o1", "code": code}
