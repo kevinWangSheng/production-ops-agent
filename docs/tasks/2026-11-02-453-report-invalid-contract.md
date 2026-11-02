@@ -1,6 +1,6 @@
 # #453 报告校验退回提示
 
-- 状态：实现完成，待 PR、独立审查与一次有界真实 Run
+- 状态：PR #454；独立审查 APPROVE；真实 Run 完成；待机器人分诊与用户 Q6 裁决
 - 更新日期：2026-11-02
 - 工作区：`fix/453-report-invalid-feedback` / `/Users/shenghuikevin/dev/AI/production-ops-agent-453`
 - 交接：`~/.agent/handoffs/opspilot-453-report-invalid-handoff-2026-11-02.md`
@@ -32,7 +32,8 @@ Run `89459277` 第 10 轮把报告包在 ```json 围栏里，`parse_report` 以 
 - 独立审查 r1（全新上下文 Fable 5.1，Codex 满载）：CHANGES_REQUIRED 1 项（正则回溯），已修；其余可选项中窗口描述已更正。
 - 定向测试 244 passed（loop、discipline、pairing、alignment C、citations、#310、#304、loop limits）；ruff、format、mypy 通过。
 - `make check` 通过：10750 passed、2511 skipped（PG 需显式开启）、2 xfailed，用时 38m48s。
-- 真实 Run：待 #432 第一个 kind 窗口。
+- 有界真实 Run（ADR-0006）：`9d4f368e`，2026-11-02 #432 首个 kind 窗口，健康 lab、不注入故障，问题同 dv2-2b214b；首轮即发布报告（completed），未触发重试路径——本 Run 证明改动后的 loop 端到端正常，退回提示行为由 89459277 离线重放与单测证明。trace（LangSmith `opspilot-lab-f453`，已回读）：https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/562b41d4-4320-4896-be8b-506d51a4fbda/r/00000000-0000-0000-8300-98cfd025d78e?poll=true；冻结摘要 `docs/evidence/453-report-retry-feedback/live-run/9d4f368e-1c3c-4f05-9485-572b3bd2f2a5/summary.json`；费用上限 ¥1.04（summary `known_cost_cny_upper`）。
+- 独立审查 r2：APPROVE（9c037744；1 MB 退化输入最坏 0.5 ms；parse_report 与 main 一致）。
 
 ## 待决
 
