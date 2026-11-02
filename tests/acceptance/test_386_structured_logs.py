@@ -460,6 +460,7 @@ def test_web_background_exception_sites_do_not_log_provider_or_credential_sentin
     _logs().configure(stream=stream)
     from pydantic import BaseModel, ValidationError
 
+    from opspilot.persistence.base import PersistenceError
     from opspilot.web import __main__ as web_main
 
     class SentinelInput(BaseModel):
@@ -476,6 +477,9 @@ def test_web_background_exception_sites_do_not_log_provider_or_credential_sentin
         def __init__(self):
             self.calls = []
             self.done = threading.Event()
+            self.store = SimpleNamespace(
+                run=lambda payload: (_ for _ in ()).throw(PersistenceError("TIMEOUT"))
+            )
 
         def _pass(self, name):
             self.calls.append(name)
@@ -488,7 +492,7 @@ def test_web_background_exception_sites_do_not_log_provider_or_credential_sentin
                 or (site == "automatic" and name == "self_heal_pass")
                 or (site == "authorize" and name == "release_authorize_pass")
             ):
-                raise RuntimeError(f"{CREDENTIAL} {PROVIDER}")
+                self.store.run({"provider_text": PROVIDER, "credential": CREDENTIAL})
             return []
 
         def self_heal_pass(self):
@@ -511,6 +515,7 @@ def test_web_background_exception_sites_do_not_log_provider_or_credential_sentin
     thread.join(2)
     output = stream.getvalue()
     assert len(workbench.calls) >= 3
+    assert "TIMEOUT" in output
     assert CREDENTIAL not in output and PROVIDER not in output
 
 
@@ -520,6 +525,7 @@ def test_web_service_exception_sites_have_explicit_sentinel_coverage_contract():
     from pydantic import BaseModel, ValidationError
 
     import opspilot.web.service as service
+    from opspilot.persistence.base import PersistenceError
 
     class SentinelInput(BaseModel):
         value: int
@@ -533,22 +539,29 @@ def test_web_service_exception_sites_have_explicit_sentinel_coverage_contract():
 
     workbench = object.__new__(service.Workbench)
     workbench.incidents = SimpleNamespace(
-        observation_history=lambda session_id: {"session_id": str(session_id)}
+        observation_history=lambda session_id: {
+            "session_id": str(session_id),
+            "provider_text": PROVIDER,
+            "credential": CREDENTIAL,
+        }
     )
     original_replay = service.replay_history
     original_chart = service.evidence_chart
     service.replay_history = lambda *a, **k: (_ for _ in ()).throw(
-        RuntimeError(f"{CREDENTIAL} {PROVIDER}")
+        PersistenceError("TIMEOUT")
+    )
+    chart_record = SimpleNamespace(
+        evidence_id="ev-386", provider_text=PROVIDER, credential=CREDENTIAL
     )
     service.evidence_chart = lambda *a, **k: (_ for _ in ()).throw(
-        RuntimeError(f"{CREDENTIAL} {PROVIDER}")
+        PersistenceError("TIMEOUT")
     )
     try:
         try:
             workbench._recovery_view(uuid4())
         except Exception:
             pass
-        workbench.evidence_for = lambda *a, **k: SimpleNamespace(evidence_id="ev-386")
+        workbench.evidence_for = lambda *a, **k: chart_record
         report = {
             "parsed": True,
             **{
@@ -576,4 +589,6 @@ def test_web_service_exception_sites_have_explicit_sentinel_coverage_contract():
         service.replay_history = original_replay
         service.evidence_chart = original_chart
     output = stream.getvalue()
+    assert output.count('"exc"') >= 2
+    assert output.count("TIMEOUT") >= 2
     assert CREDENTIAL not in output and PROVIDER not in output
