@@ -893,3 +893,94 @@ def test_isolation_ignores_rows_outside_the_prior_fault_interval():
         ),
     ]
     assert eval_dev_round.isolation(items, loaded)["second"]["contamination"] == []
+
+
+# -- A14: alert entry holds the first delivery for enough fault ----------------------
+
+WT_NEG = "dv2-dc387a"
+
+
+def _one_payment_trace(lab_env, monkeypatch):
+    """Thin traffic: only the first payment error tick ever shows up."""
+    lab = lab_env["lab"]
+    original = lab.spans
+    seen: dict[str, str] = {}
+
+    def spans(service, begin, end, timeout):
+        query = original(service, begin, end, timeout)
+        kept = []
+        for row in query.spans:
+            if row.span_id.startswith("paymentFailure-"):
+                first = seen.setdefault("trace", row.trace_id)
+                if row.trace_id != first:
+                    continue
+            kept.append(row)
+        return replace(query, spans=tuple(kept))
+
+    monkeypatch.setattr(lab, "spans", spans)
+
+
+def _submitted(lab_env):
+    # The offline investigator advances its clock 60 s before the action.
+    seen: dict[str, Any] = {}
+    lab_env["investigator"].action = lambda request: seen.setdefault(
+        "at", lab_env["clock"].now() - timedelta(seconds=60)
+    )
+    return seen
+
+
+def _hold(lab_env, slot):
+    ledger = lab_env["deps"].ledger_root / "r1" / slot.attempt_id
+    return json.loads((ledger / "pre-observation-alert-hold.json").read_text())
+
+
+def test_a14_regular_traffic_delivers_once_three_traces_matched(lab):
+    seen = _submitted(lab)
+    (slot,) = _round(lab, [WT_NEG]).slots
+    (request,) = lab["investigator"].requests
+    hold = _hold(lab, slot)
+    assert len(set(hold["trace_ids"])) >= eval_live.ALERT_HOLD_TRACES
+    assert seen["at"] <= request.submit_not_after
+
+
+def test_a14_thin_traffic_waits_then_submits(lab, monkeypatch):
+    _one_payment_trace(lab, monkeypatch)
+    seen = _submitted(lab)
+    (slot,) = _round(lab, [WT_NEG]).slots
+    (request,) = lab["investigator"].requests
+    hold = _hold(lab, slot)
+    assert len(set(hold["trace_ids"])) == 1
+    first = min(datetime.fromisoformat(s["start"]) for s in _matched_rows(lab, slot))
+    assert seen["at"] >= first + timedelta(seconds=eval_live.ALERT_HOLD_SECONDS)
+    assert seen["at"] <= request.submit_not_after
+    assert slot.reason != "PRE_OBSERVATION_STALE"
+
+
+def test_a14_the_freshness_deadline_still_wins(lab, monkeypatch):
+    _one_payment_trace(lab, monkeypatch)
+    monkeypatch.setattr(eval_live, "ALERT_HOLD_SECONDS", 10_000.0)
+    seen = _submitted(lab)
+    (slot,) = _round(lab, [WT_NEG]).slots
+    (request,) = lab["investigator"].requests
+    first = min(datetime.fromisoformat(s["start"]) for s in _matched_rows(lab, slot))
+    deadline = first + eval_live.FRESHNESS
+    assert seen["at"] <= deadline
+    assert seen["at"] >= deadline - timedelta(
+        seconds=eval_live.ALERT_HOLD_MARGIN_SECONDS
+        + eval_live.ALERT_HOLD_POLL_SECONDS
+        + 60
+    )
+    assert request.submit_not_after == deadline
+    assert slot.reason != "PRE_OBSERVATION_STALE"
+
+
+def _matched_rows(lab_env, slot):
+    ledger = lab_env["deps"].ledger_root / "r1" / slot.attempt_id
+    hold = json.loads((ledger / "pre-observation-alert-hold.json").read_text())
+    ids = set(hold["matched_span_ids"])
+    return [
+        row
+        for entry in hold["raw"]
+        for row in entry.get("spans", [])
+        if row["span_id"] in ids
+    ]

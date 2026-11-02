@@ -1512,6 +1512,23 @@ def _setup_v2(
     else:
         assert gate.window is not None
         submit_not_after = gate.window.end + FRESHNESS
+    if plan.entry == "alertmanager" and answer.signature is not None:
+        # #432 seams §12 A14: an alert Run's frame ends at the delivery, so
+        # wait for enough fault in it (probe d17df3ec went out 25 s after
+        # one matched trace and its Run never read the fault).
+        assert submit_not_after is not None
+        state.stage = "alert_hold"
+        gate = alert_hold(
+            answer.signature,
+            gate,
+            effective_at=effective_at,
+            submit_not_after=submit_not_after,
+            deps=deps,
+        )
+        state.gate = gate
+        with protected():
+            ledger.write("pre-observation-alert-hold.json", _raw_observation(gate))
+        submit_not_after = max(span.start for span in gate.matched) + FRESHNESS
     noise = noise_rules(plan, answer)
     noise_deadline: datetime | None = None
     for flag, rule in noise:
@@ -1560,6 +1577,56 @@ def _setup_v2(
         ledger.event("otlp_span", "visible", trace_id=span.trace_id)
     alert_starts_at = effective_at if plan.entry == "alertmanager" else None
     return gate, submit_not_after, alert_starts_at
+
+
+#: #432 seams §12 A14: an alert-entry attempt delivers once the signature
+#: gate has this many distinct matched traces, or this long after the first
+#: match, whichever comes first; never later than the freshness deadline
+#: minus the margin.
+ALERT_HOLD_TRACES = 3
+ALERT_HOLD_SECONDS = 60.0
+ALERT_HOLD_MARGIN_SECONDS = 30.0
+ALERT_HOLD_POLL_SECONDS = 5.0
+
+
+def alert_hold(
+    signature: SignatureRule,
+    gate: PreObservation,
+    *,
+    effective_at: datetime,
+    submit_not_after: datetime,
+    deps: LiveDeps,
+) -> PreObservation:
+    """Hold an alert-entry attempt's first delivery (A14): return the latest
+    passed signature observation once it has ``ALERT_HOLD_TRACES`` distinct
+    traces, or ``ALERT_HOLD_SECONDS`` have passed since the first matched
+    span, or the freshness deadline is ``ALERT_HOLD_MARGIN_SECONDS`` away --
+    whichever comes first. A later observation that does not pass keeps the
+    earlier one; the deadline always wins."""
+    clock = deps.clock
+    first = min(span.start for span in gate.matched)
+    latest = gate
+    while True:
+        checkpoint()
+        now = clock.now()
+        traces = {span.trace_id for span in latest.matched}
+        if len(traces) >= ALERT_HOLD_TRACES:
+            return latest
+        if now >= first + timedelta(seconds=ALERT_HOLD_SECONDS):
+            return latest
+        left = (submit_not_after - now).total_seconds() - ALERT_HOLD_MARGIN_SECONDS
+        if left <= 0:
+            return latest
+        clock.sleep(min(ALERT_HOLD_POLL_SECONDS, left))
+        left = (submit_not_after - clock.now()).total_seconds()
+        left -= ALERT_HOLD_MARGIN_SECONDS
+        if left <= 0:
+            return latest
+        again = fault_gate(
+            signature, confirmed_at=effective_at, deps=deps, budget_seconds=left
+        )
+        if again.passed and len(again.matched) >= len(latest.matched):
+            latest = again
 
 
 #: #432 seams §12 A10: how far back the post-noise signature re-confirmation
