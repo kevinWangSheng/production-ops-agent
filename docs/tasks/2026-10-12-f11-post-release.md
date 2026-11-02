@@ -201,7 +201,7 @@ r1 只定方向。其余实现者需要猜的语义点，按 AGENTS.md「合同�
 - 依据：#347 合并门 V3-A（kind 补跑）；2026-11-01 M3 优化项裁决 Q11（主证据为框/锚点确定性断言，网关记录佐证，模型未查附加区间记「未观察到」不算失败，「首个 Run 会被拒」用离线网关判定证明）与 #358 可逆默认。脚本 `scripts/r358_live.py`，证据 `docs/evidence/358-release-successor-live/`。
 - 结果（一轮，2 次真实 Run：首个 Run 中途 cancel + 后继）：框/锚点 7 项全过（后继框终点 = 创建时刻，锚点 = `released_at`，首个 Run 框终点 = consumed_at，release_observation 事实不变）；告警 episode 在首个框终点之后到达并 attached；后继 Run 对附加区间的指标查询为「观察到」（越过首个框终点进入 episode 的查询 20 次，ok 18、no_data 2）；离线网关判定：同一窗口在首个 Run 输入上 `denied/WINDOW_OUT_OF_SCOPE`、0 次请求，在后继输入上放行。
 - 偏差（照实写）：LangSmith trace 未导出（worker 开 trace 需从 env 文件读 LangSmith key，按 K2 规则未用），issue 的 trace 链接验收项未满足，按 Q11 由确定性断言作主证据；web/worker 用 owner DSN 在一次性 PG 新库 `r358` 上跑（计划原设运行角色）；「覆盖 episode」判据在跑后由「查询终点 ≥ 告警接收时刻」改为「查询终点越过首个框终点且越过告警 startsAt」（后继框终点 23:50:06Z 与接收 23:50:04Z 只差 2s，模型查询以整分对齐），改动与理由见证据 README，交独立审查复核。
-- 费用：约 2 次真实 Run（18 个模型请求），与 F14 第 3 步分开计；余额差见证据 README。
+- 费用：约 2 次真实 Run（18 个模型请求），与 F14 第 3 步分开计。DeepSeek 余额 168.88 CNY（23:38:46Z，F14 收窗读数）→ 165.70 CNY（2026-11-02 00:05:37Z），差 3.18 CNY；该差额同时含 F8 结构化日志 Compose 抽检的 3 次模型调用（00:00:30–00:00:54Z，同一账号），无法再拆分。
 
 ## 下一步与交接
 
