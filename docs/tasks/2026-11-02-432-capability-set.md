@@ -11,7 +11,7 @@
 
 ## 前提与完成条件
 
-- 前提：#430、#431 已合并；开发轮第 1 轮前 #453 是否先合入待用户（M3 Q6），代码维度以开窗时的 main 为准。probe 窗口不受此限。
+- 前提：#430、#431 已合并；#453（PR #454）先合入 main，本分支 merge 后再开开发轮，代码维度以开窗时的 main 为准（M3 Q6）。probe 窗口不受此限。
 - 完成条件：#432 验收清单全部勾选（12 题过加载器与泄漏检查、参考报告离线过 gate 且作者身份已记录、36 槽 summary 与 Q20 结论、trace 链接与 `summary.json`、费用对账、kind 窗口纪律、独立审查）。
 
 ## 合同
@@ -19,8 +19,8 @@
 接口与决定表在仓库外：`~/.agent/handoffs/m3-b3-2026-11-02/seams-432.md`（§1–§7 接口，§8 决定表，§9 lead 裁决，§10 实现修订 A1–A8，§11 lead 确认 A1–A5）。
 
 - D1 严格：setup 失败的已开始 attempt 计 Q20 失败。D2–D5、D7–D13 按推荐。D8 输出根 `~/.agent/eval-probes/432/`。
-- D6 待用户：#7（模型故障正例 `dv2-c39f60`）、#11（错目标正例 `dv2-9f0fd3`）的正确行为是不出报告或不建 Run；实现同时支持「`reference_report` 为 null + `reference/projection.json` 过 `check_expectations`」与补 ReportV2 两种答案。
-- D11 附加：开发轮第 1 轮前 #453 是否先合入待用户。
+- D6（用户 2026-11-02 裁决，按推荐）：#7（模型故障正例 `dv2-c39f60`）、#11（错目标正例 `dv2-9f0fd3`）的正确行为是不出报告或不建 Run，不写 ReportV2；`reference_report` 为 null，参考为 probe 的 `reference/projection.json`，离线过 `check_expectations`。
+- D11 附加（用户 2026-11-02 裁决）：#453（PR #454）在开发轮第 1 轮前合入 main；开发轮在该合并后的 main 上跑，本分支届时 `git merge origin/main`（merge，不 rebase）。
 
 ## 必要上下文
 
@@ -54,4 +54,4 @@
 
 1. probe 窗口（kind，lockf，按 §5 四个绑定类各一轮，`--output-root ~/.agent/eval-probes/432`）；顺带核实 §0 三项 kind 未确认（缺测正例 metrics 是否已足以支持 cart 根因、注入 span 是否进入模型视野、`intake_key` 是否进模型请求）。
 2. `scripts.eval_reference export` 导出证据 → 全新上下文 Agent 写参考报告 → `check`；作者身份记入本记录。
-3. 等 #453 与 D6 裁决后开开发轮三个窗口，`scripts.eval_dev_round` 出汇总。
+3. #454 合入 main 后 `git merge origin/main`，再开开发轮三个窗口，`scripts.eval_dev_round` 出汇总。
