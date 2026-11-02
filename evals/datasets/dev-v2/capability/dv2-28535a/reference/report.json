@@ -1,0 +1,92 @@
+{
+  "schema_version": "m0-report-v2",
+  "assessment_status": "completed",
+  "conclusion": "supported",
+  "summary": "Checkout errors in the 5 minutes before 16:32:31Z are caused by failing payment Charge calls: every failing PlaceOrder trace seen contains a failing oteldemo.PaymentService/Charge call (gRPC status 2, 'Payment request failed. Invalid token.'), e.g. traces 28787b5fff0694567b2b7d8b448d8c24, 57e3750158d8f4f8ba9348bb69fb6a6d, 2d30fbf5a81504307f9b5e7a241c9adf and 4877dcb551d9ba266086999e801213d6. Span metrics count 5 PlaceOrder errors and 5 Charge errors in the same window. One unrelated prepareOrderItems error span (DeadlineExceeded, trace 8fd8cdc55b88482d1ed0f7acda29f44d) was also observed. Apart from a rise in payment Charge server p95 from 7.1 to 32 ms, no material latency elevation was seen in checkout or its dependencies.",
+  "claims": [
+    {
+      "kind": "fact",
+      "text": "Checkout's oteldemo.PaymentService/Charge client spans failed with gRPC status 2 and message 'Payment request failed. Invalid token.' inside failing PlaceOrder traces 28787b5fff0694567b2b7d8b448d8c24 (span cbeff7af87875236, 16:31:44Z), 57e3750158d8f4f8ba9348bb69fb6a6d (span 33a226afca36fe81), 2d30fbf5a81504307f9b5e7a241c9adf (span dac2575c17e2f7e1) and 4877dcb551d9ba266086999e801213d6 (span 9c8b8a209308bcf3); the parent PlaceOrder spans ended with gRPC status 13.",
+      "evidence_ids": [
+        "2eb9ff57-4764-49ef-889e-3525c28c487b-t0:01e3b2c3-db57-4f58-8d70-5c518f849449"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "On the payment side, grpc.oteldemo.PaymentService/Charge server spans are marked as errors in the same traces (e.g. span b5c7305619225507 in trace 28787b5fff0694567b2b7d8b448d8c24), and the frontend /api/checkout request in that trace returned HTTP 500.",
+      "evidence_ids": [
+        "67568242-28a9-420d-af2c-36e464aed70a-t0:ab695c48-d25c-423f-bf83-5805ca8a0498"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "Span metrics for 16:27:31Z-16:32:31Z count 5 checkout PlaceOrder errors, 5 checkout PaymentService/Charge errors and 5 payment Charge errors, and 0 errors for cart EmptyCart and checkout prepareOrderItems.",
+      "evidence_ids": [
+        "157c637c-4e2b-4ffd-9a75-0238945abb88-t2:83b0e979-40d5-4181-b9a6-92442a6999a4"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "A single checkout oteldemo.CheckoutService/prepareOrderItems span (trace 8fd8cdc55b88482d1ed0f7acda29f44d, span 7dd4b0d0056f53a7, 16:32:21Z) recorded a DeadlineExceeded error while preparing order items; it has no visible parent and is not part of any failing PlaceOrder trace observed.",
+      "evidence_ids": [
+        "9418792a-0b72-420d-bacf-2044d4759335-t0:13364e93-1751-4771-94fe-6ea341d01f69"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "p95 latency of checkout PlaceOrder is 92.5 ms vs 95 ms one hour earlier and of checkout's Charge client span 44 ms vs 42 ms; payment's Charge server span p95 rose from 7.1 ms to 32 ms, which stays far below the PlaceOrder duration.",
+      "evidence_ids": [
+        "67568242-28a9-420d-af2c-36e464aed70a-t1:170ad9ee-3e14-4154-9273-d3d54d9b2dcf",
+        "67568242-28a9-420d-af2c-36e464aed70a-t2:0c4490cc-764b-4dbd-9f54-57e063a7ff4f"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "p95 latency of cart GetCart (2.3 vs 6.0 ms), currency Convert (3.7 vs 2.0 ms), product-catalog GetProduct (1.9 vs 1.9 ms), shipping GetQuote (9.1 vs 9.1 ms), ShipOrder (1.9 vs 1.9 ms) and email send_order_confirmation (47.5 vs 45.5 ms) is comparable to one hour earlier.",
+      "evidence_ids": [
+        "6cc4ff89-a5b4-4ad1-9e60-778b310aaa0c-t1:32fa7064-8788-4e58-825d-dc2ad07d4d9a",
+        "6cc4ff89-a5b4-4ad1-9e60-778b310aaa0c-t2:82538ff5-f2dc-4d3d-993c-437e1433061f"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "hypothesis",
+      "text": "The isolated prepareOrderItems DeadlineExceeded span is an independent, low-volume error and does not explain the checkout error increase, which matches the Charge failures one for one.",
+      "evidence_ids": [],
+      "target_refs": [],
+      "time_scope_ref": null
+    }
+  ],
+  "gaps": [
+    "Full trace search results for checkout and payment exceeded the size limit; only paged slices were read, so not every failing trace in the window was inspected.",
+    "Payment server-side latency histograms (rpc_server_duration for payment) returned no data.",
+    "Why payment rejects the card token ('Invalid token') is not visible in the telemetry read."
+  ],
+  "next_steps": [
+    "Have the payment service owner check why Charge rejects tokens (recent config, flag or dependency change).",
+    "Watch the checkout PlaceOrder error count after any payment-side change to confirm it returns to zero."
+  ]
+}

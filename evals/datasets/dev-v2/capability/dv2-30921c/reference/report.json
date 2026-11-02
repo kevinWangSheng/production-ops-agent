@@ -1,0 +1,50 @@
+{
+  "schema_version": "m0-report-v2",
+  "assessment_status": "completed",
+  "conclusion": "supported",
+  "summary": "The checkout errors behind the alert are caused by failing payment Charge calls: traces fc832ce58108dfba8acb75b5fd672a90 (18:26:47Z) and 5241613edb44611963d2aa6fe561d835 (18:26:56Z) show checkout's oteldemo.PaymentService/Charge failing with gRPC status 2 ('Payment request failed. Invalid token.'), which fails PlaceOrder (status 13) and the frontend checkout request (HTTP 500). In span metrics, PlaceOrder errors and payment Charge errors rise together in the last minutes before 18:27:22Z (both 5 in the 5 minutes ending 18:27Z) while no other dependency shows errors.",
+  "claims": [
+    {
+      "kind": "fact",
+      "text": "Checkout's oteldemo.PaymentService/Charge spans 73de25b4b6051978 (trace fc832ce58108dfba8acb75b5fd672a90, 18:26:47Z) and 98492cfe2eec22b2 (trace 5241613edb44611963d2aa6fe561d835, 18:26:56Z) failed with gRPC status 2 and message 'Payment request failed. Invalid token.'; payment's Charge server spans 9fc8d4ecb7618600 and ac450a6b38d309c6 are errors; the PlaceOrder spans ended with status 13 and the frontend /api/checkout requests returned HTTP 500.",
+      "evidence_ids": [
+        "941cf023-5992-4454-a49a-22174d344606-t0:2eb728a7-d794-4350-87c8-fc4b9a238cce"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "Span metrics (5-minute increase, sampled each minute up to 18:27Z) show checkout PlaceOrder errors, checkout PaymentService/Charge errors and payment Charge errors all rising from 0 to 5; cart EmptyCart, prepareOrderItems and ad GetAds errors stay at 0.",
+      "evidence_ids": [
+        "943ce625-dc72-4c11-917b-5b1f23202319-t1:9a05bf4e-17c9-4437-91d7-bd32de0fe2bd"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "The CheckoutPlaceOrderErrorRatioHigh alert went pending at 18:18-18:19Z and firing at 18:20Z.",
+      "evidence_ids": [
+        "26e8c426-f7a1-464a-9f53-055cfd9b6484-t2:828cfa4d-e0b4-463b-b316-1c278ed98f87"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    }
+  ],
+  "gaps": [
+    "Trace search results for the wider window exceeded the size limit; only a one-minute payment trace search was read in full.",
+    "Payment server-side RPC duration metrics returned no data.",
+    "Why payment rejects the card token is not visible in the telemetry read."
+  ],
+  "next_steps": [
+    "Ask the payment owner to check why Charge returns 'Invalid token'.",
+    "Confirm the alert resolves once Charge failures stop."
+  ]
+}

@@ -1,0 +1,50 @@
+{
+  "schema_version": "m0-report-v2",
+  "assessment_status": "completed",
+  "conclusion": "supported",
+  "summary": "The checkout errors behind the alert are caused by failing payment Charge calls: trace 74a2db705c6ebf162c0ab3ce9097d0c3 (18:40:22Z) shows checkout's oteldemo.PaymentService/Charge failing with gRPC status 2 ('Payment request failed. Invalid token.'), which fails PlaceOrder (status 13) and the frontend checkout request (HTTP 500). In span metrics, PlaceOrder errors over the preceding minutes match checkout Charge errors one for one; no other dependency shows errors.",
+  "claims": [
+    {
+      "kind": "fact",
+      "text": "In trace 74a2db705c6ebf162c0ab3ce9097d0c3 (18:40:22Z) checkout's oteldemo.PaymentService/Charge span 680e2d3802f79a90 failed with gRPC status 2 and message 'Payment request failed. Invalid token.'; payment's Charge server span c8d77e4d1d90e985 is an error; PlaceOrder span 0b295650c72c31f9 ended with status 13 and the frontend /api/checkout request returned HTTP 500.",
+      "evidence_ids": [
+        "34acbd7c-e5f9-4ef8-9b84-b2202f7c1fbc-t1:bd986ec7-b4d4-4589-a73a-90c084ca36d6"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "Span metrics (5-minute increase, sampled each minute) show checkout PlaceOrder errors equal to checkout PaymentService/Charge errors at every sample (e.g. 3.75 at 18:34Z) and payment Charge server errors tracking them closely, with cart EmptyCart, prepareOrderItems and ad GetAds errors at 0. The samples from 18:38Z to 18:41Z read 0, although the failing trace above is at 18:40:22Z.",
+      "evidence_ids": [
+        "88cb8f9b-5ebd-4595-a21f-bbf2a5528148-t0:b602264f-5927-42ac-b475-a0a190026078"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "Over the last hour checkout recorded 21.3 Charge calls with gRPC status 2 against 56.9 successful ones, and 8.1 EmptyCart calls with status 9; the other client methods show only status 0.",
+      "evidence_ids": [
+        "34acbd7c-e5f9-4ef8-9b84-b2202f7c1fbc-t2:64ad305a-0182-4c4e-90d8-c6460cb6dca1"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    }
+  ],
+  "gaps": [
+    "The span-metric samples for 18:38Z-18:41Z show no errors while traces show a failing Charge at 18:40:22Z; the metrics may lag the traces, so the current error rate is uncertain.",
+    "The hour-long client counts include EmptyCart status 9 calls whose timing within the hour is not resolved in the evidence read.",
+    "Trace search results for checkout over the wider window exceeded the size limit; only short trace searches were read in full."
+  ],
+  "next_steps": [
+    "Ask the payment owner to check why Charge returns 'Invalid token'.",
+    "Re-check PlaceOrder error counts after the span-metrics pipeline catches up."
+  ]
+}
