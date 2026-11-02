@@ -46,7 +46,9 @@
   - **#431 遗留缺陷（顺带修复）**：错目标正例在真实 investigator 里 `_outcome` 抛 `PersistenceError("INCONSISTENT_STATE")`，原代码只捕获 `ValueError`，正确的交接会被记成 `aborted/INVESTIGATOR_FAILED`；`_handed_off` 现两者都捕获。回归测试 `tests/unit/test_432_impl.py::test_handed_off_survives_the_store_refusing_a_runless_rebuild`（去掉修复时失败、恢复后通过），PG 测试 `test_unresolved_target_projection_has_no_run` 同样覆盖。
   - 验证：`tests/unit/test_432_impl.py` 23 passed；定向 eval 套件 492 passed；eval 合同、结构、B2 回放 1317 passed；PG opt-in 10 passed；ruff check / format --check 全仓干净；mypy 154 文件通过。未跑 `make check`。
   - 已知失败：3 个 #430/#431 独立验收测试钉了 6 题数据集与单绑定类的 `["all"]`，由 test-432 按合同变更修改，合并测试分支时并入。
-- 未执行：probe 窗口、参考报告、开发轮、独立审查、费用对账。
+- 第 3 步 probe 窗口（2026-11-02，lead 持 `kind-lab` 锁；占用 holder `impl-432` / batch `b432`；输出根 `~/.agent/eval-probes/432`；代码 `ae123e18`）：
+  - **作废的 probe 轮 `dv2-ad8306`**（12:24Z–13:19Z，问题入口 6 题）：`M0_ENV_FILE` 指向主仓 `.env` 里的旧 DeepSeek key，所有到达 DeepSeek 的请求都是 HTTP 401（`MODEL_REJECTED`），6 个 attempt 都没有取到证据；余额读同样失败，费用记 unknown，实际约 0。轮次本身正常结束（exit 0、无遗留意图、四个 flag 均回到 `off`）；噪声正例的 ad 前置观察门通过，注入 span 写入成功。`dv2-c39f60`（模型故障正例）两次 503 都在进程内拦截、从未发往 DeepSeek，D6 投影有效，保留为该题参考来源；其余 5 题经 lead 批准换新轮名重跑。证据原样保留在输出根下，不入库。
+- 未执行：其余 probe 轮、参考报告、开发轮、独立审查、费用对账。
 
 ## 下一步与交接
 
