@@ -1,7 +1,7 @@
 # M3 运行可观测（F8 第 1–3 步）
 
-- 状态：进行中（第 1 实施步骤合同 r1 已裁决；PR-1 #413 已合并 `6845ffc7`（PR #418）；PR-2 #414 lab 抓取、两条自告警与两次演练已合并 `7cd29308`（PR #421）；结构化日志合同 r2 已裁决（2026-10-31），按用户指示本轮不实施；#243 outbox 与第 3 步升级回滚合同 r3 已裁决（2026-10-31），实施 #427 → #428，演练 #429）
-- 更新日期：2026-10-31
+- 状态：进行中（第 1 实施步骤合同 r1 已裁决；PR-1 #413 已合并 `6845ffc7`（PR #418）；PR-2 #414 lab 抓取、两条自告警与两次演练已合并 `7cd29308`（PR #421）；结构化日志合同 r2 已裁决（2026-10-31），2026-11-01 补 r2.1 并转为执行（#428 合并后首条空闲线）；#243 outbox 与第 3 步升级回滚合同 r3 已裁决（2026-10-31），实施 #427 → #428，演练 #429）
+- 更新日期：2026-11-01
 - 依据：[M3 开放决策](2026-10-27-m2-exit-m3-opening-decision.md) Q2 第 4 条、Q5、Q6；feature_list.json F8；C3 §11（可观测性、outbox、部署与 schema 迁移）；#243 #159
 - 工作区：#413、#414 的 worktree 均已在合并后删除；结构化日志未创建
 
@@ -32,7 +32,8 @@
 - F8L-Q2 不记 provider 文本/凭据：源头纪律 + 哨兵确定性测试；formatter 不调 `redact_credentials`；web 5 处 `.exception()` 保留 traceback 并列入复核清单。
 - F8L-Q3 验收：确定性测试 + 一次 Compose 真实抽检（含一次真实模型调用、一次停 PG）；不附 LangSmith trace；F8 `passes` 保持 false；PR 正文写明 web 的 INFO 行开始出现。
 - F8L-R1–R9：照预审（新模块 `opspilot/logs.py`、`OPSPILOT_LOG_FORMAT=json|text`、kv 嵌套在 `kv`、`exc`/`stack` 单行、uvicorn `log_config=None` 等，原文见合同文件）。
-- 执行约束：实施等 M3 方向 Q4 第 ① 步全部完成后再排；之后需用户判断的事项在 Q4 ① 完成后一次汇总。
+- ~~执行约束：实施等 M3 方向 Q4 第 ① 步全部完成后再排~~（被 2026-11-01 Q1 取代）。
+- r2.1（用户 2026-11-01，`~/.agent/handoffs/opspilot-rulings-2026-11-01-m3-optimization.md`）：Q5 `configure()` 接管 `sys.excepthook`/`threading.excepthook`，崩溃 traceback 输出单行完整 ERROR JSON；拒绝启动的 `SystemExit` 提示与镜像入口脚本保持文本；两处 traceback 纳入凭据复核与哨兵测试。可逆默认 O2–O8 见合同「M3 优化项补充（r2.1）」；Compose 抽检并入 F14 第 3 步 kind 窗口。
 
 切分：PR-1 产品（health 模块 + 三入口接线 + 模型调用计数包装器 + Compose healthcheck 与 lab override + 测试调整）→ PR-2 lab 抓取与规则 + 两次演练（PR-1 合并后）。之后各自预审：结构化日志、#243 outbox、升级回滚演练（第 3 步）。
 
@@ -164,6 +165,6 @@ opspilot_observation_due 0
 ## 下一步与交接
 
 - 第 1 实施步骤：PR-1 #413（PR #418）与 PR-2 #414（PR #421）均已合并。
-- 结构化日志：合同 r2 已裁决，本轮不实施；等 M3 方向 Q4 第 ① 步全部完成后再排。
+- 结构化日志：合同 r2 + r2.1 已裁决，2026-11-01 Q1 转为执行；排在 #428 合并后的首条空闲代码线（Q4），Compose 抽检并入 F14 第 3 步 kind 窗口（Q3）。
 - #243 outbox：合同 r3 已裁决；#427（PR-1 写入侧）已合并 `04eec52d`；#428（PR-2 投递侧）实现在 `feature/F8-428-outbox-delivery`（worktree `~/dev/AI/poa-428-impl`），真实证据未跑。
 - 第 3 步升级回滚演练：合同 r3 已裁决；#429，等 #427 合并（trace 证据等 #428）。
