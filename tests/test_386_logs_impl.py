@@ -751,3 +751,32 @@ def test_release_anomaly_fixed_codes_are_unchanged(buf, exc, code):
     workbench.releases = Store()
     workbench.release_anomaly_pass()
     assert one(buf)["kv"] == {"observation": "o1", "code": code}
+
+
+def test_health_server_request_errors_log_one_json_line_not_raw_stderr(capsys):
+    """Bot P2 on #450: socketserver.handle_error printed a raw multi-line
+    traceback to stderr; it now goes through logging as one record carrying
+    only the exception type."""
+    import io
+    import json as _json
+    import sys as _sys
+
+    from opspilot import health, logs
+
+    stream = io.StringIO()
+    logs.configure({}, stream=stream)
+    server = health._BoundedServer(("127.0.0.1", 0), health.BaseHTTPRequestHandler, 1)
+    try:
+        try:
+            raise ConnectionResetError("peer reset canary-credential-canary-credential")
+        except ConnectionResetError:
+            server.handle_error(object(), ("127.0.0.1", 1))
+    finally:
+        server.server_close()
+    assert capsys.readouterr().err == ""
+    lines = [_json.loads(line) for line in stream.getvalue().splitlines()]
+    assert len(lines) == 1
+    assert lines[0]["logger"] == "opspilot.health"
+    assert lines[0]["kv"]["error"] == "ConnectionResetError"
+    assert "canary-credential" not in stream.getvalue()
+    assert _sys.exc_info()[0] is None

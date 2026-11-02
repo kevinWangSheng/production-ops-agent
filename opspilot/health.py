@@ -30,6 +30,7 @@ import math
 import os
 import re
 import socket
+import sys
 import threading
 import time
 from collections.abc import Callable, Mapping
@@ -335,6 +336,12 @@ class _BoundedServer(ThreadingHTTPServer):
     ) -> None:
         self._slots = threading.BoundedSemaphore(max_concurrent)
         super().__init__(address, handler)
+
+    def handle_error(self, request: Any, client_address: Any) -> None:
+        # socketserver prints a raw multi-line traceback to stderr here; route
+        # it through logging (one structured line, exception type only: these
+        # are probe/socket failures, never request content) instead (#386).
+        _log.warning("health request failed error=%s", type(sys.exc_info()[1]).__name__)
 
     def process_request(self, request: Any, client_address: Any) -> None:
         if not self._slots.acquire(blocking=False):
