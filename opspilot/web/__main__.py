@@ -69,7 +69,7 @@ import sys
 import threading
 from pathlib import Path
 
-from opspilot import health, schema
+from opspilot import health, logs, schema
 from opspilot.investigation.limits import RUN_WALL_SECONDS
 from opspilot.knowledge import KnowledgeStore
 from opspilot.observer.health_profile import (
@@ -246,6 +246,7 @@ def _start_health(store: DurableStore) -> health.HealthServer | None:
 def _serve() -> int:
     import uvicorn
 
+    logs.configure()
     dsn = os.environ.get("OPSPILOT_WEB_DSN")
     if not dsn:
         raise SystemExit("OPSPILOT_WEB_DSN is required")
@@ -319,7 +320,15 @@ def _serve() -> int:
         )
         healer.start()
     try:
-        uvicorn.run(app, host=host or "127.0.0.1", port=int(port), proxy_headers=False)
+        # log_config=None: uvicorn's loggers propagate to the root handler
+        # ``logs.configure()`` installed, one format per process (F8L-R6).
+        uvicorn.run(
+            app,
+            host=host or "127.0.0.1",
+            port=int(port),
+            proxy_headers=False,
+            log_config=None,
+        )
     finally:
         stop.set()
         if listener is not None:

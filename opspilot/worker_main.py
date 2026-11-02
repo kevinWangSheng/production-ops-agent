@@ -81,7 +81,7 @@ from pathlib import Path
 from typing import Any, Protocol
 from uuid import UUID
 
-from opspilot import health, tracing
+from opspilot import health, logs, tracing
 from opspilot.investigation.client import DeepSeekClient
 from opspilot.investigation.loop import MAX_TOOL_PARALLELISM
 from opspilot.investigation.progress import (
@@ -585,9 +585,7 @@ def build_postmortem_worker(
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s"
-    )
+    logs.configure()
     dsn = os.environ.get("OPSPILOT_WORKER_DSN")
     if not dsn:
         raise SystemExit("OPSPILOT_WORKER_DSN is required")
