@@ -391,6 +391,30 @@ def _capped_items(items: Sequence[str], *, what: str) -> str:
     return detail
 
 
+def _markdown_json_fence_body(content: str) -> str | None:
+    """The body of a reply that is one Markdown code fence, else ``None``.
+
+    Diagnostic only (#453): the caller uses it to name the schema failure
+    hidden behind a fence, never to accept a reply. Linear time on any
+    input -- plain string slicing, no backtracking regex over model output.
+    A first line that is a bare language tag (``json``, ``JSON``, ``js``...)
+    is dropped; ``json`` glued directly to the opening fence is dropped too.
+    """
+    text = content.strip()
+    if len(text) < 6 or not (text.startswith("```") and text.endswith("```")):
+        return None
+    inner = text[3:-3]
+    first, newline, rest = inner.partition("\n")
+    if newline and _FENCE_LANGUAGE.fullmatch(first.strip()):
+        inner = rest
+    elif inner[:4].lower() == "json":
+        inner = inner[4:]
+    return inner.strip()
+
+
+_FENCE_LANGUAGE = re.compile(r"[A-Za-z0-9_+-]{0,32}")
+
+
 def _json_parse_position_detail(content: str) -> str:
     """A content-free position description for a JSON decode failure (C2's
     third example: "JSON 解析失败的位置描述"), independently re-attempting the
@@ -398,10 +422,21 @@ def _json_parse_position_detail(content: str) -> str:
     their own diagnostic text, never to change which replies are accepted;
     ``parse_report`` alone still decides that.
     """
+    parse_error = ""
     try:
         payload = json.loads(content, object_pairs_hook=_unique_object)
     except (ValueError, RecursionError) as exc:
-        return f" JSON parse error: {exc}."
+        parse_error = f" JSON parse error: {exc}."
+        inner = _markdown_json_fence_body(content)
+        if inner is None:
+            return parse_error
+        try:
+            payload = json.loads(inner, object_pairs_hook=_unique_object)
+        except (ValueError, RecursionError) as inner_exc:
+            return (
+                parse_error
+                + f" After removing the Markdown json fence, JSON parse error: {inner_exc}."
+            )
     try:
         ReportV2.model_validate(payload)
     except ValidationError as exc:
@@ -423,10 +458,13 @@ def _json_parse_position_detail(content: str) -> str:
             else:
                 path = ".".join(str(part) for part in loc) or "report"
                 items.append(f"{path}: schema_error ({error.get('msg', '')})")
-        return _capped_items(items, what="claim(s)/field(s) failed schema validation")
+        schema_detail = _capped_items(
+            items, what="claim(s)/field(s) failed schema validation"
+        )
+        return parse_error + schema_detail
     except ValueError:
         pass
-    return ""
+    return parse_error
 
 
 def _citation_failure_detail(
