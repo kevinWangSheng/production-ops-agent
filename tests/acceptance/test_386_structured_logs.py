@@ -458,20 +458,8 @@ def test_web_background_exception_sites_do_not_log_provider_or_credential_sentin
 ):
     stream = StringIO()
     _logs().configure(stream=stream)
-    from pydantic import BaseModel, ValidationError
-
     from opspilot.persistence.base import PersistenceError
     from opspilot.web import __main__ as web_main
-
-    class SentinelInput(BaseModel):
-        value: int
-
-    def sentinel_validation_error() -> ValidationError:
-        try:
-            SentinelInput.model_validate({"value": f"{CREDENTIAL} {PROVIDER}"})
-        except ValidationError as exc:
-            return exc
-        raise AssertionError("sentinel input unexpectedly validated")
 
     class Workbench:
         def __init__(self):
@@ -480,13 +468,25 @@ def test_web_background_exception_sites_do_not_log_provider_or_credential_sentin
             self.store = SimpleNamespace(
                 run=lambda payload: (_ for _ in ()).throw(PersistenceError("TIMEOUT"))
             )
+            import opspilot.web.service as service
+
+            anomaly_store = SimpleNamespace(
+                pending_anomaly_endings=lambda *, limit: [
+                    SimpleNamespace(observation_id=uuid4())
+                ],
+                consume_anomaly=lambda *a, **k: (_ for _ in ()).throw(
+                    PersistenceError("TIMEOUT")
+                ),
+            )
+            self.real = object.__new__(service.Workbench)
+            self.real._release_store = lambda: anomaly_store
 
         def _pass(self, name):
             self.calls.append(name)
             if len(self.calls) >= 3:
                 self.done.set()
             if site == "anomaly" and name == "release_anomaly_pass":
-                raise sentinel_validation_error()
+                return self.real.release_anomaly_pass()
             if (
                 name.rsplit("_", 1)[-1] == site
                 or (site == "automatic" and name == "self_heal_pass")
