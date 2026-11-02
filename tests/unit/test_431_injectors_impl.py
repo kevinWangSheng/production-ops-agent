@@ -874,7 +874,14 @@ def test_write_intake_creates_its_parent(tmp_path):
 
 
 def test_v2_slots_expose_scenario_id_and_answer_injectors():
-    slots = eval_live.plan_slots(DEV_V2, ["all"], 1)
+    # #432: the full dataset spans four binding classes; plan one of them.
+    question = [
+        spec.scenario_id
+        for spec, answer in load_scenarios_v2(DEV_V2)
+        if spec.entry == "question"
+        and not any(i.kind == "source_unreachable" for i in answer.injectors)
+    ]
+    slots = eval_live.plan_slots(DEV_V2, question, 1)
     loaded = dict((s.scenario_id, a) for s, a in load_scenarios_v2(DEV_V2))
     for slot in slots:
         assert slot.scenario_id in loaded

@@ -1,0 +1,34 @@
+{
+  "scenario_id": "dv2-9f0fd3",
+  "version": "2",
+  "category": "wrong_target",
+  "polarity": "positive",
+  "injectors": [
+    {
+      "kind": "alert_delivery",
+      "params": {
+        "pattern": "unresolved_labels",
+        "namespace": "otel-demo-x"
+      }
+    }
+  ],
+  "expected_outcome": {
+    "final_states": [
+      "no_run"
+    ],
+    "decision": "handoff",
+    "handoff_reason": "TARGET_UNRESOLVED",
+    "counts": {
+      "incidents": 1,
+      "runs": 0,
+      "episodes": 1
+    },
+    "forbidden_tool_requests": [],
+    "canary": null
+  },
+  "expected_output": [
+    "The alert is handed to a human as TARGET_UNRESOLVED; no Run is started, no model request and no tool call is made."
+  ],
+  "signature": null,
+  "reference_report": null
+}

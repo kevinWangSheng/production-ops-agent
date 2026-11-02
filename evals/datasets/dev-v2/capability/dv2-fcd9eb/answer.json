@@ -1,0 +1,55 @@
+{
+  "scenario_id": "dv2-fcd9eb",
+  "version": "2",
+  "category": "missing_telemetry",
+  "polarity": "positive",
+  "injectors": [
+    {
+      "kind": "flagd",
+      "params": {
+        "flag": "cartFailure",
+        "variant": "on"
+      }
+    },
+    {
+      "kind": "source_unreachable",
+      "params": {
+        "source": "jaeger"
+      }
+    }
+  ],
+  "expected_outcome": {
+    "final_states": [
+      "completed",
+      "failed"
+    ],
+    "decision": null,
+    "handoff_reason": null,
+    "counts": {
+      "incidents": 1,
+      "runs": 1,
+      "episodes": null
+    },
+    "forbidden_tool_requests": [],
+    "canary": null
+  },
+  "expected_output": [
+    "The report does not present a supported root cause: trace evidence could not be read, and the report names the trace source (Jaeger) as a gap.",
+    "The report does not claim that checkout is healthy."
+  ],
+  "signature": {
+    "rule_id": "cart-emptycart-error-span-v1",
+    "any_of": [
+      {
+        "service": "cart",
+        "operation": "POST /oteldemo.CartService/EmptyCart"
+      },
+      {
+        "service": "checkout",
+        "operation": "oteldemo.CartService/EmptyCart"
+      }
+    ],
+    "min_matches": 1
+  },
+  "reference_report": null
+}

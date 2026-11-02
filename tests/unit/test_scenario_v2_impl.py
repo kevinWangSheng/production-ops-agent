@@ -56,7 +56,10 @@ def _edit(directory: Path, name: str, change: Any) -> None:
 
 
 def test_regression_group_loads_six_scenarios() -> None:
-    loaded = load_scenarios_v2(V2)
+    # #432 adds the capability group beside these six.
+    loaded = [
+        pair for pair in load_scenarios_v2(V2) if pair[1].category == "regression"
+    ]
     assert [spec.scenario_id for spec, _ in loaded] == sorted(MAPPING)
     for spec, answer in loaded:
         assert spec.version == answer.version == "2"
@@ -240,7 +243,7 @@ def test_v2_loader_refuses_flag_name_in_stimulus(tmp_path: Path) -> None:
 def test_load_scenarios_v2_skips_underscore_and_checks_groups(tmp_path: Path) -> None:
     root = tmp_path / "dev-v2"
     shutil.copytree(V2, root)
-    assert len(load_scenarios_v2(root)) == 6
+    assert len(load_scenarios_v2(root)) == 18  # 6 regression + 12 capability (#432)
     # A regression answer under capability/ is misplaced.
     shutil.copytree(
         root / "regression" / "dv2-f725cb", root / "capability" / "dv2-f725cb"
