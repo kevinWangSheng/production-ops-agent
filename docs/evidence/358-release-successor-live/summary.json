@@ -1,0 +1,1020 @@
+{
+ "box": {
+  "checks": {
+   "first_anchor_is_released_at": true,
+   "first_box_end_is_consumption": true,
+   "release_observation_fact_unchanged": true,
+   "successor_anchor_is_released_at": true,
+   "successor_box_end_is_creation": true,
+   "successor_box_is_24h": true,
+   "successor_default_window": true
+  },
+  "first_box": {
+   "end": "2026-11-01T23:49:29+00:00",
+   "start": "2026-10-31T23:49:29+00:00"
+  },
+  "ok": true,
+  "run_seconds": 7200.0,
+  "successor_anchor": "2026-11-01T23:38:22+00:00",
+  "successor_box": {
+   "end": "2026-11-01T23:50:06+00:00",
+   "start": "2026-10-31T23:50:06+00:00"
+  },
+  "successor_created_at": "2026-11-01T15:50:06.045841-08:00",
+  "successor_default_query_window": {
+   "end": "2026-11-01T23:50:06+00:00",
+   "start": "2026-11-01T22:38:22+00:00"
+  }
+ },
+ "code_revision": "55d8dbb6",
+ "consumed_at": "2026-11-01 15:49:29.883291-08:00",
+ "controls": [
+  {
+   "action": "cancel",
+   "actor": "r358lab",
+   "created_at": "2026-11-01 15:50:06.008575-08:00",
+   "expected_generation": 0,
+   "resulting_generation": 1
+  },
+  {
+   "action": "new_run",
+   "actor": "r358lab",
+   "created_at": "2026-11-01 15:50:06.071269-08:00",
+   "expected_generation": 1,
+   "resulting_generation": 2
+  },
+  {
+   "action": "auto_authorize_observation",
+   "actor": "system",
+   "created_at": "2026-11-01 15:56:00.133084-08:00",
+   "expected_generation": 2,
+   "resulting_generation": 2
+  }
+ ],
+ "deliveries": [
+  {
+   "delivery_id": 1,
+   "outcome": "attached",
+   "received_at": "2026-11-01 15:50:04.400529-08:00",
+   "status": "firing"
+  }
+ ],
+ "episode": {
+  "after_first_box_end": true,
+  "delivery_id": 1,
+  "outcome": "attached",
+  "received_at": "2026-11-01 15:50:04.400529-08:00",
+  "starts_at": "2026-11-01 15:48:54-08:00",
+  "status": "firing"
+ },
+ "first_run": {
+  "budget_spent": 3,
+  "run_id": "91d073b8-899a-566b-af63-e523b1a87155",
+  "state": "cancelled",
+  "tool_operations_used": 11
+ },
+ "gateway_records": {
+  "first_run": [
+   {
+    "reason": null,
+    "sequence": 0,
+    "status": "ok",
+    "tool": "get_metric_names",
+    "window": {
+     "end": "2026-11-01T23:49:29+00:00",
+     "start": "2026-11-01T22:38:22+00:00"
+    }
+   },
+   {
+    "reason": "RESULT_TOO_LARGE",
+    "sequence": 0,
+    "status": "error",
+    "tool": "traces_search",
+    "window": {
+     "end": "2026-11-01T23:38:22+00:00",
+     "start": "2026-11-01T23:33:22+00:00"
+    }
+   },
+   {
+    "reason": "RESULT_TOO_LARGE",
+    "sequence": 0,
+    "status": "error",
+    "tool": "traces_search",
+    "window": {
+     "end": "2026-11-01T23:46:27+00:00",
+     "start": "2026-11-01T23:41:27+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 1,
+    "status": "ok",
+    "tool": "read_evidence",
+    "window": {
+     "end": "2026-11-01T23:38:22+00:00",
+     "start": "2026-11-01T23:33:22+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 1,
+    "status": "ok",
+    "tool": "read_evidence",
+    "window": {
+     "end": "2026-11-01T23:46:27+00:00",
+     "start": "2026-11-01T23:41:27+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 1,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-01T23:38:22+00:00",
+     "start": "2026-11-01T23:33:22+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 1,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-01T23:46:27+00:00",
+     "start": "2026-11-01T23:41:27+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 2,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-01T23:48:00+00:00",
+     "start": "2026-11-01T23:30:00+00:00"
+    }
+   },
+   {
+    "reason": "RESULT_TOO_LARGE",
+    "sequence": 2,
+    "status": "error",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-01T23:48:00+00:00",
+     "start": "2026-11-01T23:30:00+00:00"
+    }
+   },
+   {
+    "reason": "RESULT_TOO_LARGE",
+    "sequence": 2,
+    "status": "error",
+    "tool": "traces_search",
+    "window": {
+     "end": "2026-11-01T23:46:27+00:00",
+     "start": "2026-11-01T23:41:27+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 2,
+    "status": "no_data",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-01T23:49:29+00:00",
+     "start": "2026-11-01T23:08:22+00:00"
+    }
+   }
+  ],
+  "successor": [
+   {
+    "reason": "RESULT_TOO_LARGE",
+    "sequence": 0,
+    "status": "error",
+    "tool": "traces_search",
+    "window": {
+     "end": "2026-11-01T23:46:30+00:00",
+     "start": "2026-11-01T23:41:27+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 0,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-01T23:46:27+00:00",
+     "start": "2026-11-01T23:41:27+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 1,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-01T23:46:27+00:00",
+     "start": "2026-11-01T23:41:27+00:00"
+    }
+   },
+   {
+    "reason": "RESULT_TOO_LARGE",
+    "sequence": 1,
+    "status": "error",
+    "tool": "traces_search",
+    "window": {
+     "end": "2026-11-01T23:46:30+00:00",
+     "start": "2026-11-01T23:41:27+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 2,
+    "status": "ok",
+    "tool": "traces_search",
+    "window": {
+     "end": "2026-11-01T23:46:00+00:00",
+     "start": "2026-11-01T23:44:30+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 2,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-01T23:46:27+00:00",
+     "start": "2026-11-01T23:41:27+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 2,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-01T23:38:22+00:00",
+     "start": "2026-11-01T23:33:22+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 3,
+    "status": "ok",
+    "tool": "get_metric_names",
+    "window": {
+     "end": "2026-11-01T23:50:00+00:00",
+     "start": "2026-11-01T23:33:22+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 3,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-01T23:46:27+00:00",
+     "start": "2026-11-01T23:41:27+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 3,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-01T23:38:22+00:00",
+     "start": "2026-11-01T23:33:22+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 4,
+    "status": "ok",
+    "tool": "get_metric_names",
+    "window": {
+     "end": "2026-11-01T23:50:00+00:00",
+     "start": "2026-11-01T23:33:22+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 4,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-01T23:50:00+00:00",
+     "start": "2026-11-01T23:40:00+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 4,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-01T23:46:27+00:00",
+     "start": "2026-11-01T23:45:27+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 5,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-01T23:50:00+00:00",
+     "start": "2026-11-01T23:33:20+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 5,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-01T23:50:00+00:00",
+     "start": "2026-11-01T23:33:20+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 5,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-01T23:50:00+00:00",
+     "start": "2026-11-01T23:33:20+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 6,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-01T23:50:00+00:00",
+     "start": "2026-11-01T23:40:00+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 6,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-01T23:38:20+00:00",
+     "start": "2026-11-01T23:28:20+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 6,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-01T23:38:20+00:00",
+     "start": "2026-11-01T23:21:30+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 6,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-01T23:50:00+00:00",
+     "start": "2026-11-01T23:40:10+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 7,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-01T23:50:00+00:00",
+     "start": "2026-11-01T22:38:30+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 7,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-01T23:50:00+00:00",
+     "start": "2026-11-01T22:38:30+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 7,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-01T23:50:00+00:00",
+     "start": "2026-11-01T22:38:30+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 8,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-01T23:50:00+00:00",
+     "start": "2026-11-01T23:40:10+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 8,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-01T23:38:20+00:00",
+     "start": "2026-11-01T23:21:40+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 8,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-01T23:50:00+00:00",
+     "start": "2026-11-01T22:38:30+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 9,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-01T23:50:00+00:00",
+     "start": "2026-11-01T23:40:10+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 9,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-01T23:38:20+00:00",
+     "start": "2026-11-01T23:21:40+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 9,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-01T23:50:00+00:00",
+     "start": "2026-11-01T23:34:00+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 10,
+    "status": "no_data",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-01T23:50:00+00:00",
+     "start": "2026-11-01T23:40:10+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 10,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-01T23:50:00+00:00",
+     "start": "2026-11-01T23:40:10+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 10,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-01T23:38:20+00:00",
+     "start": "2026-11-01T23:21:40+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 10,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-01T23:50:00+00:00",
+     "start": "2026-11-01T22:38:30+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 11,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-01T23:38:20+00:00",
+     "start": "2026-11-01T23:33:20+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 11,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-01T23:50:00+00:00",
+     "start": "2026-11-01T23:45:00+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 11,
+    "status": "no_data",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-01T23:50:00+00:00",
+     "start": "2026-11-01T23:45:00+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 12,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-01T23:50:00+00:00",
+     "start": "2026-11-01T22:40:00+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 13,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-01T23:50:00+00:00",
+     "start": "2026-11-01T22:40:00+00:00"
+    }
+   }
+  ]
+ },
+ "incident_id": "3effeccc-173a-578c-8100-097b04dcb78a",
+ "observation_id": "4b828252-1cb0-4b89-8ac0-5f11536bfd16",
+ "offline_gateway_judgment": {
+  "first_run": {
+   "frame": {
+    "end": "2026-11-01T23:49:29+00:00",
+    "start": "2026-10-31T23:49:29+00:00"
+   },
+   "model": false,
+   "network": false,
+   "reason": "WINDOW_OUT_OF_SCOPE",
+   "requests_built": 0,
+   "status": "denied",
+   "window": {
+    "end": "2026-11-01T23:50:00+00:00",
+    "start": "2026-11-01T23:40:00+00:00"
+   }
+  },
+  "first_run_refused": true,
+  "probe_window_source": "successor's first metrics query covering the episode",
+  "successor": {
+   "frame": {
+    "end": "2026-11-01T23:50:06+00:00",
+    "start": "2026-10-31T23:50:06+00:00"
+   },
+   "model": false,
+   "network": false,
+   "reason": "NO_DATA",
+   "requests_built": 1,
+   "status": "no_data",
+   "window": {
+    "end": "2026-11-01T23:50:00+00:00",
+    "start": "2026-11-01T23:40:00+00:00"
+   }
+  },
+  "successor_admitted": true
+ },
+ "raw_ledger": {
+  "files": {
+   "drive.jsonl": "3db22ce813cb5a7fa009db6a54ed56d765ac43a0dd0629b92c5a5d89a5b5caf8"
+  },
+  "location": "tmp/lab-ledgers/358-live/ (not committed)"
+ },
+ "released_at": "2026-11-01 15:38:22.717459-08:00",
+ "schema": "opspilot-358-release-successor-1",
+ "successor": {
+  "budget_spent": 15,
+  "run_id": "bab51630-c8c6-54f1-b3b3-b6c99d3adece",
+  "state": "completed",
+  "tool_operations_used": 38
+ },
+ "successor_episode_queries": {
+  "observed": "observed",
+  "ok": [
+   {
+    "reason": null,
+    "sequence": 4,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-01T23:50:00+00:00",
+     "start": "2026-11-01T23:40:00+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 5,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-01T23:50:00+00:00",
+     "start": "2026-11-01T23:33:20+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 5,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-01T23:50:00+00:00",
+     "start": "2026-11-01T23:33:20+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 5,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-01T23:50:00+00:00",
+     "start": "2026-11-01T23:33:20+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 6,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-01T23:50:00+00:00",
+     "start": "2026-11-01T23:40:00+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 6,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-01T23:50:00+00:00",
+     "start": "2026-11-01T23:40:10+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 7,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-01T23:50:00+00:00",
+     "start": "2026-11-01T22:38:30+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 7,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-01T23:50:00+00:00",
+     "start": "2026-11-01T22:38:30+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 7,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-01T23:50:00+00:00",
+     "start": "2026-11-01T22:38:30+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 8,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-01T23:50:00+00:00",
+     "start": "2026-11-01T23:40:10+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 8,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-01T23:50:00+00:00",
+     "start": "2026-11-01T22:38:30+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 9,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-01T23:50:00+00:00",
+     "start": "2026-11-01T23:40:10+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 9,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-01T23:50:00+00:00",
+     "start": "2026-11-01T23:34:00+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 10,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-01T23:50:00+00:00",
+     "start": "2026-11-01T23:40:10+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 10,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-01T23:50:00+00:00",
+     "start": "2026-11-01T22:38:30+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 11,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-01T23:50:00+00:00",
+     "start": "2026-11-01T23:45:00+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 12,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-01T23:50:00+00:00",
+     "start": "2026-11-01T22:40:00+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 13,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-01T23:50:00+00:00",
+     "start": "2026-11-01T22:40:00+00:00"
+    }
+   }
+  ],
+  "queries": [
+   {
+    "reason": null,
+    "sequence": 4,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-01T23:50:00+00:00",
+     "start": "2026-11-01T23:40:00+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 5,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-01T23:50:00+00:00",
+     "start": "2026-11-01T23:33:20+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 5,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-01T23:50:00+00:00",
+     "start": "2026-11-01T23:33:20+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 5,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-01T23:50:00+00:00",
+     "start": "2026-11-01T23:33:20+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 6,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-01T23:50:00+00:00",
+     "start": "2026-11-01T23:40:00+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 6,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-01T23:50:00+00:00",
+     "start": "2026-11-01T23:40:10+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 7,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-01T23:50:00+00:00",
+     "start": "2026-11-01T22:38:30+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 7,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-01T23:50:00+00:00",
+     "start": "2026-11-01T22:38:30+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 7,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-01T23:50:00+00:00",
+     "start": "2026-11-01T22:38:30+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 8,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-01T23:50:00+00:00",
+     "start": "2026-11-01T23:40:10+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 8,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-01T23:50:00+00:00",
+     "start": "2026-11-01T22:38:30+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 9,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-01T23:50:00+00:00",
+     "start": "2026-11-01T23:40:10+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 9,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-01T23:50:00+00:00",
+     "start": "2026-11-01T23:34:00+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 10,
+    "status": "no_data",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-01T23:50:00+00:00",
+     "start": "2026-11-01T23:40:10+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 10,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-01T23:50:00+00:00",
+     "start": "2026-11-01T23:40:10+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 10,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-01T23:50:00+00:00",
+     "start": "2026-11-01T22:38:30+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 11,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-01T23:50:00+00:00",
+     "start": "2026-11-01T23:45:00+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 11,
+    "status": "no_data",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-01T23:50:00+00:00",
+     "start": "2026-11-01T23:45:00+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 12,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-01T23:50:00+00:00",
+     "start": "2026-11-01T22:40:00+00:00"
+    }
+   },
+   {
+    "reason": null,
+    "sequence": 13,
+    "status": "ok",
+    "tool": "metrics_range_query",
+    "window": {
+     "end": "2026-11-01T23:50:00+00:00",
+     "start": "2026-11-01T22:40:00+00:00"
+    }
+   }
+  ]
+ },
+ "trace": {
+  "project": null,
+  "read_back": "not_exported",
+  "roots": []
+ },
+ "versions": {
+  "context_policy_revision": "ctx-ctx-policy-v1-a30e65ea52f4",
+  "prompt_revision": "prompt-replay-candidate-bef70649a3a8",
+  "tool_schema_revision": "otel-demo-a3a95a0f888e"
+ }
+}
