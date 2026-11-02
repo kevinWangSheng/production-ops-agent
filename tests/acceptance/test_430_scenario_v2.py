@@ -154,7 +154,23 @@ def _regression_source() -> Path:
 
 def test_v2_regression_loader_reads_six_sorted_scenarios_and_skips_examples():
     loaded = _load_v2(V2_ROOT)
-    assert len(loaded) == 6
+    # #432 added the capability group; the regression group stays the six
+    # v1 copies, and the loader returns every non-sample directory, sorted.
+    regression = [
+        spec.scenario_id for spec, answer in loaded if answer.category == "regression"
+    ]
+    assert len(regression) == 6
+    assert regression == sorted(regression)
+    assert sorted(regression) == sorted(
+        p.name for p in REGRESSION_ROOT.iterdir() if p.is_dir()
+    )
+    on_disk = [
+        path.name
+        for group in ("regression", "capability")
+        for path in (V2_ROOT / group).iterdir()
+        if path.is_dir() and not path.name.startswith("_")
+    ]
+    assert len(loaded) == len(on_disk)
     assert [spec.scenario_id for spec, _answer in loaded] == sorted(
         spec.scenario_id for spec, _answer in loaded
     )

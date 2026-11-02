@@ -274,10 +274,20 @@ def test_alert_entry_intake_counts_and_wrong_target_outcome(pattern, counts, tmp
         assert doc["deliveries"][0]["reason"] == "TARGET_UNRESOLVED"
 
 
+def _regression_ids() -> list[str]:
+    """One binding class (seams-432 §5 Q): the six regression scenarios."""
+    return sorted(
+        p.name
+        for p in (V2_ROOT / "regression").iterdir()
+        if p.is_dir() and not p.name.startswith("_")
+    )
+
+
 def test_v2_slot_planning_uses_v2_loader_and_answer_injectors():
-    slots = eval_live.plan_slots(V2_ROOT, ["all"], 1)
+    # #432: the full dev-v2 set spans four binding classes, so plan one group.
+    slots = eval_live.plan_slots(V2_ROOT, _regression_ids(), 1)
     loaded = {spec.scenario_id: answer for spec, answer in load_scenarios_v2(V2_ROOT)}
-    assert slots
+    assert len(slots) == len(_regression_ids()) == 6
     assert all(slot.scenario_id in loaded for slot in slots)
     assert all(
         slot.answer.injectors == loaded[slot.scenario_id].injectors for slot in slots
@@ -300,11 +310,16 @@ def test_v1_slot_planning_remains_byte_compatible():
 
 
 def test_mixed_binding_classes_are_rejected(tmp_path):
-    single_class_slots = _api("plan_slots")(V2_ROOT, ["all"], 1)
+    single_class_slots = _api("plan_slots")(V2_ROOT, _regression_ids(), 1)
     _api("validate_round_bindings")(single_class_slots)
 
+    # A regression-only copy with one scenario moved to another class: the
+    # rejection does not depend on #432's capability data (the full 18-set
+    # refusal is asserted in test_432_dataset.py).
     mixed_root = tmp_path / "dev-v2-mixed"
     shutil.copytree(V2_ROOT, mixed_root)
+    shutil.rmtree(mixed_root / "capability")
+    (mixed_root / "capability").mkdir()
     scenario_dir = sorted((mixed_root / "regression").iterdir())[1]
     answer_path = scenario_dir / "answer.json"
     answer = json.loads(answer_path.read_text())
