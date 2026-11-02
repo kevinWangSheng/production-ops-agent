@@ -10,6 +10,11 @@ Modes (``OPSPILOT_TRACE``):
 * ``off`` (default, and anything unrecognised): ``NullTracer``. No provider,
   no exporter, no network, no queue; every span call is a method on a shared
   no-op object.
+* ``outbox`` (#243 PR-2): this module installs ``NullTracer``; the product
+  export runs from the trace outbox in ``opspilot.outbox_delivery`` instead,
+  which sends only the Q14 allowlist, and only when
+  ``outbox_export_failures`` is empty (fail-closed, reason codes on
+  ``/metrics``).
 * ``lab``: spans carry model inputs/outputs and tool views, and are exported
   only when the process can prove it is running against the synthetic lab.
   The proof is **fail-closed**: ``check_lab_target`` runs at ``configure()``
@@ -61,7 +66,11 @@ __all__ = [
     "TRACE_ENV",
     "NullTracer",
     "Tracer",
+    "EXPORT_STATUS_CODES",
     "check_lab_target",
+    "export_status",
+    "outbox_export_failures",
+    "trace_mode",
     "configure",
     "reset",
     "shutdown",
@@ -72,7 +81,7 @@ _log = logging.getLogger("opspilot.tracing")
 _T = TypeVar("_T")
 
 TRACE_ENV = "OPSPILOT_TRACE"
-TraceMode = Literal["off", "lab"]
+TraceMode = Literal["off", "lab", "outbox"]
 LAB_PROJECT_PREFIX = "opspilot-lab-"
 LAB_TOOL_PROFILES = frozenset({"fixture", "otel-demo"})
 # LangSmith SaaS regions (docs: trace-with-opentelemetry). A self-hosted or
@@ -196,6 +205,60 @@ def check_lab_target(env: Mapping[str, str]) -> tuple[str, ...]:
     ):
         failures.append("LANGSMITH_ENDPOINT_NOT_ALLOWED")
     return tuple(failures)
+
+
+def trace_mode(env: Mapping[str, str]) -> TraceMode:
+    """``OPSPILOT_TRACE`` as one of the three modes; unset, empty and any
+    unrecognised value are ``off`` (fail-closed). Read once at startup."""
+    raw = env.get(TRACE_ENV) or "off"
+    if raw == "lab":
+        return "lab"
+    if raw == "outbox":
+        return "outbox"
+    if raw != "off":
+        _log.error("%s=%r is not a mode; tracing stays off", TRACE_ENV, raw)
+    return "off"
+
+
+#: Every code ``export_status`` can report (``opspilot_trace_export_enabled``).
+EXPORT_STATUS_CODES: frozenset[str] = frozenset(
+    {
+        "ENABLED",
+        "TRACE_MODE_OFF",
+        "TRACE_MODE_LAB",
+        "LANGSMITH_ENDPOINT_NOT_ALLOWED",
+        "PROJECT_NOT_LAB",
+        "LANGSMITH_KEY_MISSING",
+    }
+)
+
+
+def outbox_export_failures(env: Mapping[str, str]) -> tuple[str, ...]:
+    """The three Q15 preconditions of outbox delivery that ``env`` fails;
+    empty means delivery may run. Unlike ``check_lab_target`` there is no
+    data-source check: the lab identity is declared by the project prefix."""
+    failures: list[str] = []
+    if not _is_langsmith_endpoint(
+        env.get("LANGSMITH_ENDPOINT") or _DEFAULT_LANGSMITH_ENDPOINT
+    ):
+        failures.append("LANGSMITH_ENDPOINT_NOT_ALLOWED")
+    if not (env.get("LANGSMITH_PROJECT") or "").startswith(LAB_PROJECT_PREFIX):
+        failures.append("PROJECT_NOT_LAB")
+    if not env.get("LANGSMITH_API_KEY"):
+        failures.append("LANGSMITH_KEY_MISSING")
+    return tuple(failures)
+
+
+def export_status(env: Mapping[str, str]) -> tuple[str, ...]:
+    """Why the outbox is or is not delivered: ``("ENABLED",)``, the mode
+    (``TRACE_MODE_OFF`` / ``TRACE_MODE_LAB``: lab exports directly, its
+    outbox rows are never sent), or the failed preconditions."""
+    mode = trace_mode(env)
+    if mode == "off":
+        return ("TRACE_MODE_OFF",)
+    if mode == "lab":
+        return ("TRACE_MODE_LAB",)
+    return outbox_export_failures(env) or ("ENABLED",)
 
 
 def _is_langsmith_endpoint(url: str) -> bool:
@@ -980,18 +1043,17 @@ def configure(
 ) -> NullTracer | Tracer:
     """Install the process tracer from ``env``; returns it.
 
-    ``off`` installs ``NullTracer`` without importing the SDK. ``lab`` runs
+    ``off`` and ``outbox`` install ``NullTracer`` without importing the SDK. ``lab`` runs
     the startup lab check first: a failure installs ``NullTracer`` and logs
     the codes (fail-closed). ``exporter`` replaces the LangSmith exporter
     (tests: in-memory, or a deliberately unreachable endpoint).
     """
     global _tracer
-    mode = env.get(TRACE_ENV) or "off"
+    mode = trace_mode(env)
     with _lock:
         _tracer.shutdown()
         if mode != "lab":
-            if mode != "off":
-                _log.error("%s=%r is not a mode; tracing stays off", TRACE_ENV, mode)
+            # ``outbox`` exports from the outbox thread, never from here
             _tracer = NullTracer()
             return _tracer
         failures = check_lab_target(env)

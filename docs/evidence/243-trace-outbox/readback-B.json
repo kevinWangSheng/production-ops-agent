@@ -1,0 +1,124 @@
+{
+  "content_scan": {
+    "api_key_literal": 0,
+    "authorization": 0,
+    "bearer ": 0,
+    "gen_ai.completion": 0,
+    "gen_ai.prompt": 0,
+    "metadata_keys_outside_allowlist": 0,
+    "promql": 0,
+    "reasoning_content": 0,
+    "runs_with_inputs": 0,
+    "runs_with_outputs": 0,
+    "x-api-key": 0
+  },
+  "cost_note": "LangSmith estimate; the authority is the supplier balance difference (Q17)",
+  "expected": {
+    "otel_trace_ids": [
+      "43a2cc54b2aeabcec2ee43bded85a848"
+    ],
+    "outbox_rows": 8,
+    "root_run_id": "00000000-0000-0000-c45a-2e776d31878c",
+    "trace_key": "00000000-0000-0000-c45a-2e776d31878c"
+  },
+  "failures": [],
+  "filters": {
+    "by_incident_id": 9,
+    "by_incident_id_and_image_revision": 6
+  },
+  "identity": {
+    "duplicated": 0,
+    "found": 8,
+    "missing": 0,
+    "rows": {
+      "model_step:38012555-a35a-50f8-95d0-49b3084612f7:0": {
+        "derived_run_id": "00000000-0000-0000-ae55-5578226cf745",
+        "found": true,
+        "same_identity_count": 1
+      },
+      "model_step:38012555-a35a-50f8-95d0-49b3084612f7:1": {
+        "derived_run_id": "00000000-0000-0000-b724-bb12c22888a3",
+        "found": true,
+        "same_identity_count": 1
+      },
+      "model_step:38012555-a35a-50f8-95d0-49b3084612f7:2": {
+        "derived_run_id": "00000000-0000-0000-c8b5-d4ca7ef0c9d0",
+        "found": true,
+        "same_identity_count": 1
+      },
+      "model_step:38012555-a35a-50f8-95d0-49b3084612f7:3": {
+        "derived_run_id": "00000000-0000-0000-0f1a-04c4b8076a21",
+        "found": true,
+        "same_identity_count": 1
+      },
+      "run_state:38012555-a35a-50f8-95d0-49b3084612f7:1": {
+        "derived_run_id": "00000000-0000-0000-08bc-f4b3fa175254",
+        "found": true,
+        "same_identity_count": 1
+      },
+      "run_state:38012555-a35a-50f8-95d0-49b3084612f7:2": {
+        "derived_run_id": "00000000-0000-0000-eed2-a2a403a4cbb3",
+        "found": true,
+        "same_identity_count": 1
+      },
+      "tool_result:38012555-a35a-50f8-95d0-49b3084612f7:0:call_00_MG40g5MZVDdKptGUqox66203": {
+        "derived_run_id": "00000000-0000-0000-2853-6a8bf0510b97",
+        "found": true,
+        "same_identity_count": 1
+      },
+      "tool_result:38012555-a35a-50f8-95d0-49b3084612f7:1:call_00_uTVTLTkaV8arFvTZ86sO6708": {
+        "derived_run_id": "00000000-0000-0000-c466-d33fee17d26f",
+        "found": true,
+        "same_identity_count": 1
+      }
+    }
+  },
+  "incident_id": "8316a047-dc41-502a-99ce-9bad52dbf05f",
+  "project": "opspilot-lab-428",
+  "root": {
+    "error": null,
+    "found": true,
+    "link": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/1a1a92bb-976f-4dd7-8a68-283c492b3b61/r/00000000-0000-0000-c45a-2e776d31878c?poll=true",
+    "name": "opspilot.run",
+    "status": "success",
+    "total_cost_estimate": "0.0020328",
+    "total_tokens": 8614
+  },
+  "run_id": "38012555-a35a-50f8-95d0-49b3084612f7",
+  "trace": {
+    "llm_tokens": {
+      "completion_tokens": 1646,
+      "prompt_tokens": 6968,
+      "total_tokens": 8614
+    },
+    "ls_model_name": {
+      "deepseek-flash": 3
+    },
+    "ls_provider": {
+      "deepseek": 4
+    },
+    "names": {
+      "opspilot.model_step": 4,
+      "opspilot.run": 1,
+      "opspilot.run_state.running": 1,
+      "opspilot.run_state.waiting_human": 1,
+      "opspilot.tool.metrics_range_query": 2
+    },
+    "run_state": {
+      "running": 1,
+      "waiting_human": 2
+    },
+    "run_types": {
+      "chain": 3,
+      "llm": 4,
+      "tool": 2
+    },
+    "runs": 9,
+    "tool_reason": {
+      "TARGET_NOT_REGISTERED": 2
+    },
+    "tool_status_class": {
+      "denied": 2
+    }
+  }
+}

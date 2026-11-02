@@ -1,0 +1,58 @@
+[
+ {
+  "kind": "run_state",
+  "idempotency_key": "run_state:f18affc0-c7a2-598c-b5e3-cc76a6898db0:1",
+  "run_id": "f18affc0-c7a2-598c-b5e3-cc76a6898db0",
+  "state": "delivered",
+  "attempts": 1
+ },
+ {
+  "kind": "model_step",
+  "idempotency_key": "model_step:f18affc0-c7a2-598c-b5e3-cc76a6898db0:0",
+  "run_id": "f18affc0-c7a2-598c-b5e3-cc76a6898db0",
+  "state": "delivered",
+  "attempts": 1
+ },
+ {
+  "kind": "tool_result",
+  "idempotency_key": "tool_result:f18affc0-c7a2-598c-b5e3-cc76a6898db0:0:call_00_oheoOZ09yYeZBsY4a8si3399",
+  "run_id": "f18affc0-c7a2-598c-b5e3-cc76a6898db0",
+  "state": "delivered",
+  "attempts": 1
+ },
+ {
+  "kind": "model_step",
+  "idempotency_key": "model_step:f18affc0-c7a2-598c-b5e3-cc76a6898db0:1",
+  "run_id": "f18affc0-c7a2-598c-b5e3-cc76a6898db0",
+  "state": "delivered",
+  "attempts": 1
+ },
+ {
+  "kind": "tool_result",
+  "idempotency_key": "tool_result:f18affc0-c7a2-598c-b5e3-cc76a6898db0:1:call_00_d0O6pHjLwRKgzjNMJ30h0509",
+  "run_id": "f18affc0-c7a2-598c-b5e3-cc76a6898db0",
+  "state": "delivered",
+  "attempts": 1
+ },
+ {
+  "kind": "model_step",
+  "idempotency_key": "model_step:f18affc0-c7a2-598c-b5e3-cc76a6898db0:2",
+  "run_id": "f18affc0-c7a2-598c-b5e3-cc76a6898db0",
+  "state": "delivered",
+  "attempts": 1
+ },
+ {
+  "kind": "model_step",
+  "idempotency_key": "model_step:f18affc0-c7a2-598c-b5e3-cc76a6898db0:3",
+  "run_id": "f18affc0-c7a2-598c-b5e3-cc76a6898db0",
+  "state": "delivered",
+  "attempts": 1
+ },
+ {
+  "kind": "run_state",
+  "idempotency_key": "run_state:f18affc0-c7a2-598c-b5e3-cc76a6898db0:2",
+  "run_id": "f18affc0-c7a2-598c-b5e3-cc76a6898db0",
+  "state": "delivered",
+  "attempts": 1
+ }
+]
