@@ -398,10 +398,25 @@ def _json_parse_position_detail(content: str) -> str:
     their own diagnostic text, never to change which replies are accepted;
     ``parse_report`` alone still decides that.
     """
+    parse_error = ""
     try:
         payload = json.loads(content, object_pairs_hook=_unique_object)
     except (ValueError, RecursionError) as exc:
-        return f" JSON parse error: {exc}."
+        parse_error = f" JSON parse error: {exc}."
+        fenced = re.fullmatch(
+            r"\s*```(?:json)?\s*(.*?)\s*```\s*",
+            content,
+            re.IGNORECASE | re.DOTALL,
+        )
+        if fenced is None:
+            return parse_error
+        try:
+            payload = json.loads(fenced.group(1), object_pairs_hook=_unique_object)
+        except (ValueError, RecursionError) as inner_exc:
+            return (
+                parse_error
+                + f" After removing the Markdown json fence, JSON parse error: {inner_exc}."
+            )
     try:
         ReportV2.model_validate(payload)
     except ValidationError as exc:
@@ -423,10 +438,13 @@ def _json_parse_position_detail(content: str) -> str:
             else:
                 path = ".".join(str(part) for part in loc) or "report"
                 items.append(f"{path}: schema_error ({error.get('msg', '')})")
-        return _capped_items(items, what="claim(s)/field(s) failed schema validation")
+        schema_detail = _capped_items(
+            items, what="claim(s)/field(s) failed schema validation"
+        )
+        return parse_error + schema_detail
     except ValueError:
         pass
-    return ""
+    return parse_error
 
 
 def _citation_failure_detail(
