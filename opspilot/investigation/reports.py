@@ -391,6 +391,30 @@ def _capped_items(items: Sequence[str], *, what: str) -> str:
     return detail
 
 
+def _markdown_json_fence_body(content: str) -> str | None:
+    """The body of a reply that is one Markdown code fence, else ``None``.
+
+    Diagnostic only (#453): the caller uses it to name the schema failure
+    hidden behind a fence, never to accept a reply. Linear time on any
+    input -- plain string slicing, no backtracking regex over model output.
+    A first line that is a bare language tag (``json``, ``JSON``, ``js``...)
+    is dropped; ``json`` glued directly to the opening fence is dropped too.
+    """
+    text = content.strip()
+    if len(text) < 6 or not (text.startswith("```") and text.endswith("```")):
+        return None
+    inner = text[3:-3]
+    first, newline, rest = inner.partition("\n")
+    if newline and _FENCE_LANGUAGE.fullmatch(first.strip()):
+        inner = rest
+    elif inner[:4].lower() == "json":
+        inner = inner[4:]
+    return inner.strip()
+
+
+_FENCE_LANGUAGE = re.compile(r"[A-Za-z0-9_+-]{0,32}")
+
+
 def _json_parse_position_detail(content: str) -> str:
     """A content-free position description for a JSON decode failure (C2's
     third example: "JSON 解析失败的位置描述"), independently re-attempting the
@@ -403,15 +427,11 @@ def _json_parse_position_detail(content: str) -> str:
         payload = json.loads(content, object_pairs_hook=_unique_object)
     except (ValueError, RecursionError) as exc:
         parse_error = f" JSON parse error: {exc}."
-        fenced = re.fullmatch(
-            r"\s*```(?:json)?\s*(.*?)\s*```\s*",
-            content,
-            re.IGNORECASE | re.DOTALL,
-        )
-        if fenced is None:
+        inner = _markdown_json_fence_body(content)
+        if inner is None:
             return parse_error
         try:
-            payload = json.loads(fenced.group(1), object_pairs_hook=_unique_object)
+            payload = json.loads(inner, object_pairs_hook=_unique_object)
         except (ValueError, RecursionError) as inner_exc:
             return (
                 parse_error

@@ -11,6 +11,9 @@ a fenced reply is still ``REPORT_INVALID``; only the feedback text grows.
 from __future__ import annotations
 
 import json
+import time
+
+import pytest
 
 from opspilot.investigation.reports import parse_report, report_retry_feedback
 from tests.m1_investigation_support import report_json
@@ -71,3 +74,37 @@ def test_unfenced_garbage_keeps_the_single_parse_error():
     assert "JSON parse error" in feedback
     assert "Markdown json fence" not in feedback
     assert "schema_error" not in feedback
+
+
+@pytest.mark.parametrize(
+    "fence",
+    [
+        "```JSON\n{body}\n```",
+        "```\n{body}\n```",
+        "```javascript\n{body}\n```",
+        "```json{body}```",
+        "  \n```json\n{body}\n```\n  ",
+    ],
+)
+def test_fence_variants_still_name_the_schema_layer(fence):
+    content = fence.replace("{body}", _incomplete_partial())
+    assert parse_report(content, finish_reason="stop") == (None, "REPORT_INVALID")
+    feedback = _feedback(content)
+    assert "INCOMPLETE_REPORT_CONTRACT" in feedback
+    assert "After removing the Markdown json fence" not in feedback
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        "```json" + " " * 20_000,
+        "```" + " \n" * 10_000 + "x",
+        "```" + " " * 20_000 + "``",
+        "```json\n{}\n```" + " " * 20_000,
+    ],
+)
+def test_degenerate_fence_whitespace_stays_linear(content):
+    # review-453: the first version's regex was cubic here (28 s at 5k spaces).
+    started = time.perf_counter()
+    _feedback(content)
+    assert time.perf_counter() - started < 0.5
