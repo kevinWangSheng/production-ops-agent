@@ -66,6 +66,8 @@ def test_load_script_rejects_malformed_scripts(tmp_path: Path) -> None:
         [{"final": "x", "tool_calls": []}],
         [{"tool_calls": [{"name": "t", "arguments": "{}"}]}, {"final": "x"}],
         [{"final": 3}],
+        # a tool-call turn carrying "final": null must not pass as the last turn
+        [{"tool_calls": [{"name": "t", "arguments": {}}], "final": None}],
     ):
         with pytest.raises(SystemExit):
             capture.load_script(str(_script(tmp_path, bad)))

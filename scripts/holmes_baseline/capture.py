@@ -97,7 +97,7 @@ def load_script(path: str) -> list[dict[str, Any]]:
             raise SystemExit(f"{path}: bad tool_calls")
         if final is not None and not isinstance(final, str):
             raise SystemExit(f"{path}: final must be a string")
-    if "final" not in turns[-1]:
+    if not isinstance(turns[-1].get("final"), str):
         raise SystemExit(f"{path}: the last turn must be a final reply")
     return turns
 
