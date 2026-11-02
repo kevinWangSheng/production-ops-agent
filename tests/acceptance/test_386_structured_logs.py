@@ -458,46 +458,122 @@ def test_web_background_exception_sites_do_not_log_provider_or_credential_sentin
 ):
     stream = StringIO()
     _logs().configure(stream=stream)
+    from pydantic import BaseModel, ValidationError
+
     from opspilot.web import __main__ as web_main
 
+    class SentinelInput(BaseModel):
+        value: int
+
+    def sentinel_validation_error() -> ValidationError:
+        try:
+            SentinelInput.model_validate({"value": f"{CREDENTIAL} {PROVIDER}"})
+        except ValidationError as exc:
+            return exc
+        raise AssertionError("sentinel input unexpectedly validated")
+
     class Workbench:
-        def __getattr__(self, name):
-            return lambda: (_ for _ in ()).throw(
-                RuntimeError("web background site failure")
-            )
+        def __init__(self):
+            self.calls = []
+            self.done = threading.Event()
+
+        def _pass(self, name):
+            self.calls.append(name)
+            if len(self.calls) >= 3:
+                self.done.set()
+            if site == "anomaly" and name == "release_anomaly_pass":
+                raise sentinel_validation_error()
+            if (
+                name.rsplit("_", 1)[-1] == site
+                or (site == "automatic" and name == "self_heal_pass")
+                or (site == "authorize" and name == "release_authorize_pass")
+            ):
+                raise RuntimeError(f"{CREDENTIAL} {PROVIDER}")
+            return []
+
+        def self_heal_pass(self):
+            return self._pass("self_heal_pass")
+
+        def release_authorize_pass(self):
+            return self._pass("release_authorize_pass")
+
+        def release_anomaly_pass(self):
+            return self._pass("release_anomaly_pass")
 
     stop = threading.Event()
+    workbench = Workbench()
     thread = threading.Thread(
-        target=web_main.self_heal_loop, args=(Workbench(), 0, stop), daemon=True
+        target=web_main.self_heal_loop, args=(workbench, 0, stop), daemon=True
     )
     thread.start()
-    time.sleep(0.05)
+    assert workbench.done.wait(5)
     stop.set()
     thread.join(2)
     output = stream.getvalue()
-    assert "web background site failure" in output
+    assert len(workbench.calls) >= 3
     assert CREDENTIAL not in output and PROVIDER not in output
 
 
 def test_web_service_exception_sites_have_explicit_sentinel_coverage_contract():
     stream = StringIO()
     _logs().configure(stream=stream)
-    from opspilot.web.service import Workbench
+    from pydantic import BaseModel, ValidationError
 
-    workbench = object.__new__(Workbench)
-    workbench.replay_history = lambda *a, **k: (_ for _ in ()).throw(
-        RuntimeError("replay site failure")
-    )
-    workbench.evidence_chart = lambda *a, **k: (_ for _ in ()).throw(
-        RuntimeError("chart site failure")
-    )
-    for method, args in (
-        ("_recovery_view", ("session-386",)),
-        ("evidence_chart", ("record", ())),
-    ):
+    import opspilot.web.service as service
+
+    class SentinelInput(BaseModel):
+        value: int
+
+    def sentinel_validation_error() -> ValidationError:
         try:
-            getattr(workbench, method)(*args)
+            SentinelInput.model_validate({"value": f"{CREDENTIAL} {PROVIDER}"})
+        except ValidationError as exc:
+            return exc
+        raise AssertionError("sentinel input unexpectedly validated")
+
+    workbench = object.__new__(service.Workbench)
+    workbench.incidents = SimpleNamespace(
+        observation_history=lambda session_id: {"session_id": str(session_id)}
+    )
+    original_replay = service.replay_history
+    original_chart = service.evidence_chart
+    service.replay_history = lambda *a, **k: (_ for _ in ()).throw(
+        RuntimeError(f"{CREDENTIAL} {PROVIDER}")
+    )
+    service.evidence_chart = lambda *a, **k: (_ for _ in ()).throw(
+        RuntimeError(f"{CREDENTIAL} {PROVIDER}")
+    )
+    try:
+        try:
+            workbench._recovery_view(uuid4())
         except Exception:
             pass
+        workbench.evidence_for = lambda *a, **k: SimpleNamespace(evidence_id="ev-386")
+        report = {
+            "parsed": True,
+            **{
+                category: [{"evidence_ids": ["ev-386"]}]
+                for category in service.CHART_CATEGORIES
+            },
+        }
+        try:
+            workbench._charts(uuid4(), report)
+        except Exception:
+            pass
+        workbench._release_store = lambda: SimpleNamespace(
+            pending_anomaly_endings=lambda *, limit: [
+                SimpleNamespace(observation_id=uuid4())
+            ],
+            consume_anomaly=lambda *a, **k: (_ for _ in ()).throw(
+                sentinel_validation_error()
+            ),
+        )
+        try:
+            workbench.release_anomaly_pass()
+        except Exception:
+            pass
+    finally:
+        service.replay_history = original_replay
+        service.evidence_chart = original_chart
     output = stream.getvalue()
     assert CREDENTIAL not in output and PROVIDER not in output
