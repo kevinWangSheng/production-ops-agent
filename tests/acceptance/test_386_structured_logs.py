@@ -144,6 +144,7 @@ def test_configure_shape_key_order_multiline_message_and_traceback():
             ("ok", ("MODEL_UNAVAILABLE",)),
             {"status": "ok", "reason": "('MODEL_UNAVAILABLE',)"},
         ),
+        ("status=%s", ("ok",), {"status": "ok"}),
         ("signal=%s: stop", (15,), {"signal": 15}),
     ],
 )
@@ -170,14 +171,13 @@ def test_version_and_revision_callsite_kv_do_not_override_top_level_fields():
 @pytest.mark.parametrize(
     ("msg", "args", "expected_msg"),
     [
-        ("status=%s", {"status": "ok"}, "status=ok"),
         ("status=%s", ("ok", "extra"), "status=%s"),
         (
             "replay failed for session %s",
             ("session-1",),
             "replay failed for session session-1",
         ),
-        ("field=%(field)s", {"field": "value"}, "field=value"),
+        ("field=%(field)s", ({"field": "value"},), "field=value"),
     ],
 )
 def test_kv_mismatch_dict_args_and_non_name_placeholders_produce_no_kv(
