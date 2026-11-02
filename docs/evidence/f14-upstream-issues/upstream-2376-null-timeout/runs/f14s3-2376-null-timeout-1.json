@@ -1,0 +1,138 @@
+{
+  "schema": "opspilot.f14.upstream-issue-run.v1",
+  "run_id": "f14s3-2376-null-timeout-1",
+  "slug": "upstream-2376-null-timeout",
+  "case": "2376-null-timeout",
+  "mode": "scripted_model",
+  "entry": "ask",
+  "image_id": "sha256:3f2995d1a448b34a0dbd3c07aa9276e8c812e96e8fc4ebcc9653b01d9ab2a30e",
+  "config_sha256": "4f84aa533d2538a9b9612984af73904787c93a28fec184a7a6d9acc0cc6f0974",
+  "config": {
+    "sha256": "4f84aa533d2538a9b9612984af73904787c93a28fec184a7a6d9acc0cc6f0974",
+    "differs_from_pin": true,
+    "reason": "api_base points at the scripted endpoint (R7)"
+  },
+  "stimulus": {
+    "fault_flag": null,
+    "fault_experiment_id": null
+  },
+  "container_env": {
+    "NO_PROXY": "f14-lab-relay,f14-capture,f14-alertmanager"
+  },
+  "model_env_overrides": {},
+  "started_at": "2026-11-01T21:45:34Z",
+  "finished_at": "2026-11-01T21:45:48Z",
+  "exit_code": 0,
+  "timed_out": false,
+  "requests": [
+    {
+      "index": 0,
+      "body_sha256": "cb7d8f1d9688af9722c0ca2ddd9c0ebc6ff5a539c0ef1a2c050dd37332a7afb9",
+      "message_count": 2,
+      "tool_names": [
+        "list_prometheus_rules",
+        "get_metric_names",
+        "get_label_values",
+        "get_all_labels",
+        "get_series",
+        "get_metric_metadata",
+        "execute_prometheus_instant_query",
+        "execute_prometheus_range_query",
+        "jaeger_request"
+      ],
+      "tool_names_sha256": "7216a5305394feaf5ffbfbd67603250faa3489fb92c6a7e2919f43629ccb13bc",
+      "max_tokens": 65536,
+      "snippets": {
+        "disabled_failed_toolsets": {
+          "sha256": "623303734f15cc8afd5779de7be808d90e8a7addc099cc601bc9710cf3f2e169",
+          "text": "# Disabled & failed Toolsets\nThese toolsets are DISABLED (unconfigured) unless marked FAILED (misconfigured). Setup docs per toolset: `https://holmesgpt.dev/data-sources/builtin-toolsets/<name before any slash>/` unless a different URL is given."
+        },
+        "truncation_instruction": {
+          "sha256": "e6e2fb8ae07d18c080988be8b834f70c03ec6023ec1013d0d88ad63b6b8d62a5",
+          "text": "* If a query returns too much data (e.g. truncation error), you MUST retry with a more specific query, fewer data points, or topk/bottomk. NEVER answer based on truncated Prometheus data — you might be missing the information that changes the answer. Prefer saying you can't answer (and showing the user a graph via the promql embed so they can interpret it themselves) over answering from incomplete data."
+        }
+      }
+    },
+    {
+      "index": 1,
+      "body_sha256": "2299e34d7d34cf4f76e0377b512f1aea55b5de0c87c733df14696773dc9404c0",
+      "message_count": 5,
+      "tool_names": [
+        "list_prometheus_rules",
+        "get_metric_names",
+        "get_label_values",
+        "get_all_labels",
+        "get_series",
+        "get_metric_metadata",
+        "execute_prometheus_instant_query",
+        "execute_prometheus_range_query",
+        "jaeger_request"
+      ],
+      "tool_names_sha256": "7216a5305394feaf5ffbfbd67603250faa3489fb92c6a7e2919f43629ccb13bc",
+      "max_tokens": 65536,
+      "snippets": {
+        "disabled_failed_toolsets": {
+          "sha256": "623303734f15cc8afd5779de7be808d90e8a7addc099cc601bc9710cf3f2e169",
+          "text": "# Disabled & failed Toolsets\nThese toolsets are DISABLED (unconfigured) unless marked FAILED (misconfigured). Setup docs per toolset: `https://holmesgpt.dev/data-sources/builtin-toolsets/<name before any slash>/` unless a different URL is given."
+        },
+        "truncation_instruction": {
+          "sha256": "e6e2fb8ae07d18c080988be8b834f70c03ec6023ec1013d0d88ad63b6b8d62a5",
+          "text": "* If a query returns too much data (e.g. truncation error), you MUST retry with a more specific query, fewer data points, or topk/bottomk. NEVER answer based on truncated Prometheus data — you might be missing the information that changes the answer. Prefer saying you can't answer (and showing the user a graph via the promql embed so they can interpret it themselves) over answering from incomplete data."
+        }
+      }
+    }
+  ],
+  "tool_results": [
+    {
+      "index": 0,
+      "tool": "execute_prometheus_range_query",
+      "toolset": "prometheus/metrics",
+      "status": "error",
+      "error": "Unexpected error executing query: '>' not supported between instances of 'NoneType' and 'int'",
+      "params": {
+        "description": "span rate over the window",
+        "output_type": "Plain",
+        "query": "sum(rate(traces_span_metrics_calls_total[5m]))",
+        "start": "-300",
+        "timeout": null
+      }
+    },
+    {
+      "index": 1,
+      "tool": "execute_prometheus_instant_query",
+      "toolset": "prometheus/metrics",
+      "status": "error",
+      "error": "Unexpected error executing query: '>' not supported between instances of 'NoneType' and 'int'",
+      "params": {
+        "description": "targets up",
+        "query": "up",
+        "timeout": null
+      }
+    }
+  ],
+  "answer_sha256": "e64af83fe6a06b10118e9956de73964b9cdf3a2cb6eb7b18bc6ee698631e86e0",
+  "answer_checks": {},
+  "stdout_checks": {
+    "operator_sees_failed_to_connect": {
+      "hit": true,
+      "excerpt": "Failed to connect to Prometheus"
+    }
+  },
+  "proxy_checks": {},
+  "tool_checks": {
+    "null_timeout_error": {
+      "hit": true,
+      "excerpt": "Unexpected error executing query: '>' not supported between instances of 'NoneType' and 'int'"
+    },
+    "reported_as_connection_failure": {
+      "hit": false,
+      "excerpt": null
+    }
+  },
+  "request_checks": {},
+  "balance_window": null,
+  "refrozen": {
+    "reason": "add the operator-facing stdout check (Holmes prints its INFO 'Failed to connect to Prometheus' log line)",
+    "previous_sha256": "a95364695636e87202994626fdda4e556f114ab8624d793e09eee06d541652fe"
+  }
+}

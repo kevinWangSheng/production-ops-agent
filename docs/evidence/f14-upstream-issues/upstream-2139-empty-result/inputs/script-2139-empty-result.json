@@ -1,0 +1,29 @@
+{
+  "schema": "opspilot.f14.capture-script.v1",
+  "case": "2139-empty-result",
+  "turns": [
+    {
+      "tool_calls": [
+        {
+          "name": "execute_prometheus_instant_query",
+          "arguments": {
+            "query": "sum(increase(traces_span_metrics_calls_total{service_name=\"payment\",status_code=\"STATUS_CODE_ERROR\"}[5m])) > 0",
+            "description": "payment error spans in the last 5m, if any"
+          }
+        },
+        {
+          "name": "execute_prometheus_range_query",
+          "arguments": {
+            "query": "sum(increase(traces_span_metrics_calls_total{service_name=\"payment\",status_code=\"STATUS_CODE_ERROR\"}[5m])) > 0",
+            "description": "payment error spans over the window, if any",
+            "start": "-300",
+            "output_type": "Plain"
+          }
+        }
+      ]
+    },
+    {
+      "final": "scripted endpoint: investigation finished"
+    }
+  ]
+}

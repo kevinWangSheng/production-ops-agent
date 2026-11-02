@@ -1,0 +1,61 @@
+{
+  "schema": "opspilot.f14.upstream-issue-record.v1",
+  "slug": "max-output-token-reservation",
+  "kind": "step2_candidate",
+  "upstream_ref": null,
+  "background_refs": [],
+  "reporter_claims": [
+    {
+      "id": "C1",
+      "quote": "设置 MAX_OUTPUT_TOKEN_RESERVATION 不改变请求的 max_tokens",
+      "source": "mapping.json F1#4 MAX_OUTPUT_TOKEN_RESERVATION 只定义不使用"
+    }
+  ],
+  "code_at_pin": [
+    "holmes/common/env_vars.py:L118-L120",
+    "holmes/core/llm.py:L861-L875"
+  ],
+  "code_at_master": {
+    "sha": "0f8bd4c6285e2ec7b1337fb8116ebb0c0fc9b978",
+    "checked_at": "2026-11-01T23:29:27Z",
+    "changed_files_relevant": [
+      "holmes/common/env_vars.py",
+      "holmes/core/llm.py"
+    ]
+  },
+  "related_fixes": [],
+  "local_findings": [
+    {
+      "claim_id": "C1",
+      "group": null,
+      "verdict": "reproduced",
+      "mode": "scripted_model",
+      "runs": 2,
+      "k": 2,
+      "evidence": [
+        "runs/f14s3-max-output-token-reservation-set-1.json",
+        "runs/f14s3-max-output-token-reservation-unset-1.json"
+      ],
+      "note": "两次脚本化 Run 合起来是一次对比：容器环境只设 MAX_OUTPUT_TOKEN_RESERVATION=20000（set），以及两个变量都不设（unset），都去掉 OVERRIDE_MAX_OUTPUT_TOKEN（model_env_overrides）。抓到的请求 max_tokens 两次都是 120000，即 1M 上下文的 12%（llm.py:L861-L875）。设置这个变量不改变 max_tokens。"
+    }
+  ],
+  "image_id": "sha256:3f2995d1a448b34a0dbd3c07aa9276e8c812e96e8fc4ebcc9653b01d9ab2a30e",
+  "configs": [
+    {
+      "name": "max-output-token-reservation-set",
+      "sha256": "4f84aa533d2538a9b9612984af73904787c93a28fec184a7a6d9acc0cc6f0974",
+      "differs_from_pin": true,
+      "reason": "api_base points at the scripted endpoint (R7)"
+    }
+  ],
+  "reproduced_at": "2026-11-01T21:48:18Z",
+  "own_findings": [],
+  "opspilot_side": null,
+  "mapping_rows": [
+    {
+      "feature": "F1",
+      "step": 4,
+      "mechanism": "MAX_OUTPUT_TOKEN_RESERVATION 只定义不使用"
+    }
+  ]
+}

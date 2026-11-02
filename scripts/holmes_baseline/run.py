@@ -7,6 +7,10 @@ kind-lab window (``lockf ~/.agent/locks/kind-lab ...``).
   python -m scripts.holmes_baseline.run live            # one live Run
   python -m scripts.holmes_baseline.run upstream-files  # F14 step 2, offline
   python -m scripts.holmes_baseline.run run1-errors     # F14 step 2, offline
+  python -m scripts.holmes_baseline.run repro <case>    # F14 step 3, one case
+  python -m scripts.holmes_baseline.run opspilot-freeze # F14 step 3, offline
+  python -m scripts.holmes_baseline.run records [--check]    # step 3, offline
+  python -m scripts.holmes_baseline.run writeback [--check]  # step 3, offline
 
 Docker is the colima ``m1-kind`` daemon. The Holmes container joins only an
 internal network shared with two helpers (``relay.py``): the lab relay
@@ -68,6 +72,7 @@ RELAY = "f14-lab-relay"
 EGRESS = "f14-egress"
 CAPTURE = "f14-capture"
 HOLMES = "f14-holmes"
+ALERTMANAGER = "f14-alertmanager"
 KIND_NODE = f"{kind_lab.CLUSTER}-control-plane"
 PROMETHEUS_URL = f"http://{RELAY}:9090"
 JAEGER_URL = f"http://{RELAY}:16686/jaeger/ui"
@@ -84,7 +89,10 @@ def docker_env() -> dict[str, str]:
         for k, v in os.environ.items()
         if k.upper() not in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY")
     }
-    return {**env, "DOCKER_CONTEXT": kind_lab.CONTEXT}
+    # F14_DOCKER_CONTEXT: offline smoke in another, already running daemon
+    # (#385); the default is the kind lab's daemon.
+    context = os.environ.get("F14_DOCKER_CONTEXT") or kind_lab.CONTEXT
+    return {**env, "DOCKER_CONTEXT": context}
 
 
 def docker(*args: str, timeout: float = 120, check: bool = True, **kw: Any) -> str:
@@ -145,12 +153,41 @@ def helper_args(name: str, network: str, *command: str) -> list[str]:
 
 
 def teardown() -> None:
-    for name in (HOLMES, CAPTURE, EGRESS, RELAY):
+    for name in (HOLMES, CAPTURE, ALERTMANAGER, EGRESS, RELAY):
         docker("rm", "-f", name, check=False)
     docker("network", "rm", NETWORK, check=False)
 
 
-def setup(*, capture: bool = False) -> None:
+def capture_args(script: Path | None) -> list[str]:
+    """The capture helper; with ``script`` its directory is mounted read-only
+    and the endpoint runs scripted (#385, R7)."""
+    args = helper_args(CAPTURE, NETWORK, "/harness/capture.py", "8000")
+    if script is None:
+        return args
+    at = args.index(HELPER_IMAGE)
+    mount = ["-v", f"{script.parent}:/script:ro"]
+    return [*args[:at], *mount, *args[at:], "--script", f"/script/{script.name}"]
+
+
+def alertmanager_args(alerts: Path) -> list[str]:
+    """The read-only Alertmanager API stand-in serving ``alerts`` (#385)."""
+    args = helper_args(
+        ALERTMANAGER,
+        NETWORK,
+        "/harness/alertmanager_stub.py",
+        "9093",
+        f"/alerts/{alerts.name}",
+    )
+    at = args.index(HELPER_IMAGE)
+    return [*args[:at], "-v", f"{alerts.parent}:/alerts:ro", *args[at:]]
+
+
+def setup(
+    *,
+    capture: bool = False,
+    script: Path | None = None,
+    alerts: Path | None = None,
+) -> None:
     teardown()
     docker("network", "create", "--internal", NETWORK)
     docker(
@@ -178,7 +215,9 @@ def setup(*, capture: bool = False) -> None:
     )
     docker("network", "connect", NETWORK, EGRESS)
     if capture:
-        docker(*helper_args(CAPTURE, NETWORK, "/harness/capture.py", "8000"))
+        docker(*capture_args(script))
+    if alerts is not None:
+        docker(*alertmanager_args(alerts))
     time.sleep(2)
 
 
@@ -243,6 +282,8 @@ def run_holmes(
     *,
     no_proxy: str,
     wall_seconds: float,
+    command: list[str] | None = None,
+    model_env: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     out = output_dir(directory)
     args = run_args(
@@ -253,7 +294,8 @@ def run_holmes(
         output_dir=str(out),
         no_proxy=no_proxy,
         name=HOLMES,
-        command=holmes_command(prompt),
+        command=holmes_command(prompt) if command is None else command,
+        model_env=model_env,
     )
     (directory / "docker-run.argv.txt").write_text(
         shlex.join(args[:-1]) + " <prompt>\n"
@@ -283,7 +325,10 @@ def run_holmes(
     (directory / "holmes.stdout.txt").write_text(stdout)
     (directory / "holmes.stderr.txt").write_text(stderr)
     raw = out / "holmes.json"
-    output: dict[str, Any] = json.loads(raw.read_text()) if raw.exists() else {}
+    output: Any = json.loads(raw.read_text()) if raw.exists() else {}
+    if not isinstance(output, dict):
+        # ``holmes investigate`` writes a list of results (#385)
+        output = {"results": output}
     output.update(exit_code=exit_code, timed_out=timed_out)
     if exit_code:
         output["error"] = (stderr or stdout)[-2000:]
@@ -747,6 +792,93 @@ def cmd_run1_errors(_: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_records(args: argparse.Namespace) -> int:
+    """Write (or with ``--check`` compare) the step 3 upstream file list, then
+    validate every record.json (seams section 2)."""
+    from scripts.holmes_baseline import issues
+
+    records = issues.load_records(ROOT)
+    target = ROOT / issues.EVIDENCE_PREFIX / "upstream-files.json"
+    if not args.check:
+        hmapping.check_checkout(UPSTREAM_DIR)
+        manifest = hmapping.upstream_files(UPSTREAM_DIR, issues.cited_paths(records))
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
+    found = issues.all_problems(ROOT)
+    for problem in found:
+        print(problem)
+    print(json.dumps({"records": len(records), "problems": len(found)}))
+    return 1 if found else 0
+
+
+def cmd_writeback(args: argparse.Namespace) -> int:
+    from scripts.holmes_baseline import issues
+
+    path = MAPPING_DIR / "mapping.json"
+    table = json.loads(path.read_text())
+    records = issues.load_records(ROOT)
+    try:
+        updated = issues.writeback(table, records)
+    except SystemExit as exc:
+        print(exc)
+        return 1
+    text = json.dumps(updated, indent=2, ensure_ascii=False) + "\n"
+    if args.check:
+        stale = text != path.read_text()
+        found = issues.writeback_problems(table, records)
+        for problem in found:
+            print(problem)
+        print(json.dumps({"stale": stale, "problems": len(found)}))
+        return 1 if stale or found else 0
+    path.write_text(text)
+    counts = Counter(row["class"] for row in updated["rows"])
+    print(json.dumps({"classes": dict(counts)}))
+    return 0
+
+
+def cmd_opspilot_freeze(args: argparse.Namespace) -> int:
+    """Copy one OpsPilot Run's frozen summary into the paired record's
+    directory and add its S7 fields to ``opspilot_side`` (L5)."""
+    from scripts.holmes_baseline import issues
+
+    directory = ROOT / issues.EVIDENCE_PREFIX / issues.PAIRED
+    summary = json.loads(args.summary.read_text())
+    rel = f"opspilot/{summary['run_id']}/summary.json"
+    (directory / rel).parent.mkdir(parents=True, exist_ok=True)
+    (directory / rel).write_bytes(args.summary.read_bytes())
+    sidecar = args.first_request.with_name(args.first_request.name + ".versions.json")
+    entry = issues.opspilot_run(
+        directory / rel,
+        rel,
+        args.first_request.read_bytes(),
+        args.group,
+        json.loads(sidecar.read_text()) if sidecar.exists() else None,
+    )
+    # working file for assembling record.json; stays out of the evidence dir
+    out = RAW_ROOT / "f14s3-opspilot-runs.json"
+    rows = (
+        json.loads(out.read_text())
+        if out.exists()
+        else {"prometheus": [], "jaeger": []}
+    )
+    rows[args.group] = [r for r in rows[args.group] if r["run_id"] != entry["run_id"]]
+    rows[args.group].append(entry)
+    out.write_text(json.dumps(rows, indent=2, ensure_ascii=False) + "\n")
+    print(
+        json.dumps(
+            {
+                k: entry[k]
+                for k in (
+                    "run_id",
+                    "first_request_mentions_unreachable",
+                    "report_names_missing_source",
+                )
+            }
+        )
+    )
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     sub = parser.add_subparsers(dest="command", required=True)
@@ -764,6 +896,38 @@ def main(argv: list[str] | None = None) -> int:
     files.add_argument("--check", action="store_true")
     files.set_defaults(func=cmd_upstream_files)
     sub.add_parser("run1-errors").set_defaults(func=cmd_run1_errors)
+    from scripts.holmes_baseline import repro
+
+    rep = sub.add_parser("repro")
+    rep.add_argument("case", choices=sorted(repro.CASES))
+    rep.add_argument("--run-id", default=None)
+    rep.add_argument("--wall-seconds", type=float, default=None)
+    rep.add_argument("--balance-recheck", type=float, default=120)
+    rep.add_argument("--fault-flag", default=None)
+    rep.add_argument("--fault-experiment-id", default=None)
+    rep.add_argument(
+        "--no-proxy-log",
+        dest="proxy_log",
+        action="store_false",
+        help="skip reading the lab proxy log (offline smoke without kind)",
+    )
+    rep.set_defaults(func=repro.cmd_repro)
+    refreeze = sub.add_parser("refreeze")
+    refreeze.add_argument("case", choices=sorted(repro.CASES))
+    refreeze.add_argument("run_id")
+    refreeze.add_argument("--reason", required=True)
+    refreeze.set_defaults(func=repro.cmd_refreeze)
+    freeze = sub.add_parser("opspilot-freeze")
+    freeze.add_argument("--group", choices=("prometheus", "jaeger"), required=True)
+    freeze.add_argument("--summary", type=Path, required=True)
+    freeze.add_argument("--first-request", type=Path, required=True)
+    freeze.set_defaults(func=cmd_opspilot_freeze)
+    records = sub.add_parser("records")
+    records.add_argument("--check", action="store_true")
+    records.set_defaults(func=cmd_records)
+    back = sub.add_parser("writeback")
+    back.add_argument("--check", action="store_true")
+    back.set_defaults(func=cmd_writeback)
     args = parser.parse_args(argv)
     RAW_ROOT.mkdir(parents=True, exist_ok=True)
     return int(args.func(args))
