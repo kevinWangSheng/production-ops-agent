@@ -57,7 +57,12 @@ A second thread runs the postmortem pass (M1-03 D17): its own scan,
 generation lease and model client, one generation at a time, never an
 investigation Run lease (``opspilot.knowledge.worker``). A third, the
 outbox thread (#427, r3-L1), deletes trace outbox rows 7 days old
-(``opspilot.persistence.outbox``); it sends nothing.
+(``opspilot.persistence.outbox``) and, only with ``OPSPILOT_TRACE=outbox``
+and its three preconditions (LangSmith endpoint allowlisted, project
+``opspilot-lab-*``, key present; read once at startup), delivers them to
+LangSmith (``opspilot.outbox_delivery``, #428). Any precondition missing
+delivers nothing; the reason codes are on ``/metrics``
+(``opspilot_trace_export_enabled``).
 
 Like ``python -m opspilot.web serve`` it only verifies on start that the
 schema is at the Alembic head, and runs both as a bare development process
@@ -75,7 +80,7 @@ import signal
 import sys
 import threading
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
@@ -95,6 +100,7 @@ from opspilot.investigation.runner import InvestigationRunner, RunnerOutcome
 from opspilot.knowledge import KnowledgeStore
 from opspilot.knowledge.jobs import GenerationStore
 from opspilot.knowledge.worker import PostmortemWorker
+from opspilot.outbox_delivery import ExportConfig, OutboxDelivery
 from opspilot.persistence import DurableStore, PersistenceError, PoolConfig
 from opspilot.persistence.outbox import THREAD_NAME as OUTBOX_THREAD
 from opspilot.persistence.outbox import OutboxMaintainer, OutboxStore
@@ -608,11 +614,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     postmortems = build_postmortem_worker(
         dsn, credential, stop=stop, events=loop.events, model_stats=model_stats
     )
-    outbox = OutboxMaintainer(OutboxStore(dsn), stop=stop)
+    outbox, outbox_stats = build_outbox(dsn, os.environ, stop=stop)
     listener = health.serve_health(
         os.environ,
         readiness=lambda: _readiness(loop),
-        metrics=lambda: _metrics(loop, model_stats),
+        metrics=lambda: _metrics(loop, model_stats, outbox_stats),
     )
     try:
         return _run(loop, postmortems, store, stop, grace, outbox=outbox)
@@ -631,13 +637,37 @@ def _readiness(loop: WorkerLoop) -> health.Readiness:
     )
 
 
-def _metrics(loop: WorkerLoop, model_stats: health.ModelCallStats) -> str:
+def _metrics(
+    loop: WorkerLoop,
+    model_stats: health.ModelCallStats,
+    outbox_stats: health.OutboxStats | None = None,
+) -> str:
     last = loop.last_poll_success
     return health.worker_metrics(
         last_poll_age=None if last is None else time.monotonic() - last,
         in_flight=loop.in_flight_attempts(),
         model=model_stats.snapshot(),
+        outbox=None if outbox_stats is None else outbox_stats.snapshot(),
     )
+
+
+def build_outbox(
+    dsn: str, env: Mapping[str, str], *, stop: threading.Event
+) -> tuple[OutboxMaintainer, health.OutboxStats]:
+    """The outbox thread and its ``/metrics`` snapshot. Delivery is built
+    only when ``tracing.export_status`` is ``ENABLED`` (fail-closed, #428);
+    otherwise the thread only runs the 7-day cleanup (r3-L5)."""
+    status = tracing.export_status(env)
+    stats = health.OutboxStats(status)
+    store = OutboxStore(dsn)
+    delivery = None
+    config = ExportConfig.from_env(env)
+    if config is not None:
+        delivery = OutboxDelivery(store, config, stats=stats)
+        _log.info("trace outbox delivery enabled")
+    else:
+        _log.info("trace outbox delivery off: %s", ",".join(status))
+    return OutboxMaintainer(store, stop=stop, delivery=delivery, stats=stats), stats
 
 
 def _run(

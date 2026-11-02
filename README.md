@@ -158,6 +158,7 @@ Set these as environment variables on `install`, `upgrade`, `uninstall` or `comp
 | `OPSPILOT_TOOL_PROFILE` | `fixture` | Worker tools: `fixture` (fixed sample data, target `checkout-prod`) or `otel-demo` (the pinned OpenTelemetry Demo lab). |
 | `OPSPILOT_START_AGENT` | `0` | `1` also starts the worker and the Observer; refused before any Docker call unless `worker_env` has `DEEPSEEK_API_KEY` and the Prometheus URL is http(s). |
 | `OPSPILOT_OBSERVER_PROMETHEUS_URL` | empty | The Observer's read-only Prometheus base URL; required when `OPSPILOT_START_AGENT=1`. |
+| `OPSPILOT_TRACE` | `off` | Worker trace export: `off`, `lab` (synthetic lab only), or `outbox` (sends ids, versions, token counts and fixed codes from the trace outbox to LangSmith; only when `worker_env` has `LANGSMITH_API_KEY` and `LANGSMITH_PROJECT=opspilot-lab-*`, optional SaaS `LANGSMITH_ENDPOINT` and `LANGSMITH_WORKSPACE_ID`; otherwise nothing is sent and the worker's `/metrics` says why). |
 
 ### Upgrade, uninstall
 

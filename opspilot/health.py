@@ -45,6 +45,8 @@ __all__ = [
     "HealthServer",
     "ModelCallCounter",
     "ModelCallStats",
+    "OUTBOX_DROP_REASONS",
+    "OutboxStats",
     "Readiness",
     "health_bind",
     "observer_metrics",
@@ -184,9 +186,14 @@ def web_metrics(*, schema_at_head: bool, queue_depth: Mapping[str, int] | None) 
 
 
 def worker_metrics(
-    *, last_poll_age: float | None, in_flight: int, model: Mapping[str, Any]
+    *,
+    last_poll_age: float | None,
+    in_flight: int,
+    model: Mapping[str, Any],
+    outbox: Mapping[str, Any] | None = None,
 ) -> str:
-    """``model`` is a :meth:`ModelCallStats.snapshot`."""
+    """``model`` is a :meth:`ModelCallStats.snapshot`, ``outbox`` an
+    :meth:`OutboxStats.snapshot` (#428, OB-R7; absent = no outbox series)."""
     lines = _build_info() + _poll_age(last_poll_age)
     lines += _family("opspilot_in_flight_attempts", "gauge", [({}, in_flight)])
     calls: Mapping[str, int] = model["calls"]
@@ -206,7 +213,42 @@ def worker_metrics(
         "gauge",
         [] if last is None else [({"category": last}, 1)],
     )
+    if outbox is not None:
+        lines += _outbox_lines(outbox)
     return _text(lines)
+
+
+def _outbox_lines(outbox: Mapping[str, Any]) -> list[str]:
+    pending = outbox["pending"]
+    lines = _family(
+        "opspilot_trace_outbox_pending",
+        "gauge",
+        [] if pending is None else [({}, pending)],
+    )
+    dropped: Mapping[str, int] = outbox["dropped"]
+    lines += _family(
+        "opspilot_trace_outbox_dropped_total",
+        "counter",
+        [
+            ({"reason": reason}, dropped.get(reason, 0))
+            for reason in sorted(OUTBOX_DROP_REASONS)
+        ],
+    )
+    age = outbox["last_delivery_age"]
+    lines += _family(
+        "opspilot_trace_outbox_last_delivery_age_seconds",
+        "gauge",
+        [({}, math.inf if age is None else age)],
+    )
+    lines += _family(
+        "opspilot_trace_export_enabled",
+        "gauge",
+        [
+            ({"reason": code}, 1 if code == "ENABLED" else 0)
+            for code in outbox["export_status"]
+        ],
+    )
+    return lines
 
 
 def observer_metrics(
@@ -220,6 +262,57 @@ def observer_metrics(
 
 
 # -- model calls -------------------------------------------------------------------
+
+
+#: ``opspilot_trace_outbox_dropped_total`` reasons (OB-R5), always exported.
+OUTBOX_DROP_REASONS = frozenset(
+    {"BACKLOG", "MAX_ATTEMPTS", "REJECTED", "UNSERIALIZABLE"}
+)
+
+
+class OutboxStats:
+    """The worker outbox thread's readings for ``/metrics`` (OB-R7): the
+    thread writes, the health listener reads; never a query. ``export_status``
+    is fixed at startup (``tracing.export_status``)."""
+
+    def __init__(
+        self,
+        export_status: tuple[str, ...] = ("TRACE_MODE_OFF",),
+        *,
+        monotonic: Callable[[], float] = time.monotonic,
+    ) -> None:
+        self._lock = threading.Lock()
+        self._monotonic = monotonic
+        self._export_status = tuple(export_status)
+        self._pending: int | None = None
+        self._dropped: dict[str, int] = dict.fromkeys(OUTBOX_DROP_REASONS, 0)
+        self._last_delivery: float | None = None
+
+    def set_pending(self, count: int) -> None:
+        with self._lock:
+            self._pending = count
+
+    def record_dropped(self, reason: str, count: int = 1) -> None:
+        if count <= 0:
+            return
+        with self._lock:
+            self._dropped[reason] = self._dropped.get(reason, 0) + count
+
+    def record_delivery(self) -> None:
+        with self._lock:
+            self._last_delivery = self._monotonic()
+
+    def snapshot(self) -> dict[str, Any]:
+        with self._lock:
+            last = self._last_delivery
+            return {
+                "pending": self._pending,
+                "dropped": dict(self._dropped),
+                "last_delivery_age": (
+                    None if last is None else max(0.0, self._monotonic() - last)
+                ),
+                "export_status": self._export_status,
+            }
 
 
 class ModelCallStats:
