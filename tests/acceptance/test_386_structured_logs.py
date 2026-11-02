@@ -11,6 +11,7 @@ import subprocess
 import sys
 import threading
 import time
+from datetime import datetime, timezone
 from io import StringIO
 from pathlib import Path
 from types import SimpleNamespace
@@ -54,10 +55,10 @@ def _clean_env(**overrides: str) -> dict[str, str]:
 
 
 def _run_entry(role: str, **overrides: str) -> subprocess.CompletedProcess[str]:
-    module = {
-        "worker": "opspilot.worker_main",
-        "observer": "opspilot.observer",
-        "web": "opspilot.web",
+    module_args = {
+        "worker": ["-m", "opspilot.worker_main"],
+        "observer": ["-m", "opspilot.observer"],
+        "web": ["-m", "opspilot.web", "serve"],
     }[role]
     env = _clean_env(
         OPSPILOT_HEALTH_BIND="",
@@ -82,7 +83,7 @@ def _run_entry(role: str, **overrides: str) -> subprocess.CompletedProcess[str]:
             "host=127.0.0.1 port=1 dbname=none user=x connect_timeout=1",
         )
     return subprocess.run(
-        [sys.executable, "-m", module],
+        [sys.executable, *module_args],
         cwd=ROOT,
         env=env,
         capture_output=True,
@@ -167,24 +168,29 @@ def test_version_and_revision_callsite_kv_do_not_override_top_level_fields():
 
 
 @pytest.mark.parametrize(
-    ("msg", "args"),
+    ("msg", "args", "expected_msg"),
     [
-        ("status=%s", {"status": "ok"}),
-        ("status=%s", ("ok", "extra")),
-        ("replay failed for session %s", ("session-1",)),
-        ("field=%(field)s", {"field": "value"}),
+        ("status=%s", {"status": "ok"}, "status=ok"),
+        ("status=%s", ("ok", "extra"), "status=%s"),
+        (
+            "replay failed for session %s",
+            ("session-1",),
+            "replay failed for session session-1",
+        ),
+        ("field=%(field)s", {"field": "value"}, "field=value"),
     ],
 )
-def test_kv_mismatch_dict_args_and_non_name_placeholders_produce_no_kv(msg, args):
-    stream = StringIO()
-    _logs().configure(stream=stream)
-    if isinstance(args, tuple):
-        logging.getLogger("opspilot.kv").info(msg, *args)
-    else:
-        logging.getLogger("opspilot.kv").info(msg, args)
-    record = _records(stream.getvalue())[0]
+def test_kv_mismatch_dict_args_and_non_name_placeholders_produce_no_kv(
+    msg, args, expected_msg
+):
+    logs = _logs()
+    record_obj = logging.LogRecord(
+        "opspilot.kv", logging.INFO, __file__, 0, msg, args, None
+    )
+    line = logs.JsonFormatter(version="0.1.0", revision="unknown").format(record_obj)
+    record = json.loads(line)
     assert "kv" not in record
-    assert record["msg"] == msg % args
+    assert record["msg"] == expected_msg
 
 
 @pytest.mark.parametrize("revision", ["", "bad value", "a" * 65, "bad/slash", "ümlaut"])
@@ -227,10 +233,11 @@ def test_configure_is_idempotent_and_replaces_only_its_own_handler():
     root = logging.getLogger()
     root.addHandler(other)
     try:
+        before = list(root.handlers)
         _logs().configure(stream=stream)
-        first = [h for h in root.handlers if h is not other]
+        first = [h for h in root.handlers if h not in before]
         _logs().configure(stream=stream)
-        ours = [h for h in root.handlers if h is not other]
+        ours = [h for h in root.handlers if h not in before]
         assert len(first) == len(ours) == 1
         assert other in root.handlers
         logging.getLogger("opspilot.idempotent").info("one line")
@@ -416,16 +423,33 @@ def test_postmortem_and_observer_sentinels_are_stopped_at_public_boundaries():
     except Exception:
         pass
     from opspilot.observer.loop import ObserverLoop
+    from tests.test_m1_observer import PROFILE
+    from tests.test_m1_observer import lease as observer_lease
+
+    lease = observer_lease()
+
+    class ObserverStore:
+        def sweep_expired_sessions(self, *, limit):
+            return []
+
+        def claim_due_samples(self, owner, *, limit, lease_seconds):
+            return [lease]
+
+        def health_profile(self, revision):
+            return PROFILE.model_dump(mode="json")
+
+        def current_time(self):
+            return datetime.now(timezone.utc)
 
     source = SimpleNamespace(
         instant=lambda *a, **k: (_ for _ in ()).throw(
             RuntimeError(f"{CREDENTIAL} {PROVIDER}")
         )
     )
-    ObserverLoop(
-        store=SimpleNamespace(claim_due_samples=lambda *a, **k: []), source=source
-    ).poll_once(compare=False)
-    assert CREDENTIAL not in stream.getvalue() and PROVIDER not in stream.getvalue()
+    ObserverLoop(store=ObserverStore(), source=source).poll_once(compare=False)
+    output = stream.getvalue()
+    assert "sample crashed" in output
+    assert CREDENTIAL not in output and PROVIDER not in output
 
 
 @pytest.mark.parametrize("site", ["automatic", "authorize", "anomaly"])
