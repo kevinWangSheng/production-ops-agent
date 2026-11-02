@@ -330,3 +330,53 @@ def test_silence_body_targets_only_the_checkout_rule() -> None:
 def test_plan_makes_no_external_call(capsys: pytest.CaptureFixture[str]) -> None:
     assert live.main(["plan"]) == 0
     assert "silence-create" in capsys.readouterr().out
+
+
+def test_trace_links_cover_both_runs_with_child_spans() -> None:
+    from types import SimpleNamespace as NS
+
+    class Client:
+        _host_url = "https://smith.example"
+
+        def _get_optional_tenant_id(self) -> str:
+            return "tenant"
+
+        def read_project(self, project_name: str) -> Any:
+            return NS(id="proj-1")
+
+        def list_runs(self, project_name: str, **kw: Any) -> list[Any]:
+            if kw.get("is_root"):
+                rid = kw["filter"].rsplit('"', 2)[-2]
+                return [NS(id=f"root-{rid}", trace_id=f"t-{rid}", status="success")]
+            tid = kw["trace_id"]
+            rid = tid[2:]
+            return [
+                NS(id=f"root-{rid}", run_type="chain"),
+                NS(id="c1", run_type="llm"),
+                NS(id="c2", run_type="tool"),
+                NS(id="c3", run_type="tool"),
+            ]
+
+    out = live.trace_links(
+        "opspilot-lab-358", {"first_run": "a", "successor": "b"}, Client
+    )
+    assert out["read_back"] == "found"
+    assert out["runs"]["successor"]["roots"][0]["child_spans"] == {"llm": 1, "tool": 2}
+    assert out["runs"]["first_run"]["roots"][0]["url"].startswith(
+        "https://smith.example/o/tenant/"
+    )
+    assert live.trace_links(None, {"x": "y"})["read_back"] == "not_exported"
+
+
+def test_trace_links_report_a_missing_run() -> None:
+    from types import SimpleNamespace as NS
+
+    class Client:
+        def read_project(self, project_name: str) -> Any:
+            return NS(id="p")
+
+        def list_runs(self, project_name: str, **kw: Any) -> list[Any]:
+            return []
+
+    out = live.trace_links("opspilot-lab-358", {"first_run": "a"}, Client)
+    assert out["read_back"] == "root_run_not_found"

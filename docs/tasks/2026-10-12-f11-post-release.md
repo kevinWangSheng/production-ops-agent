@@ -202,6 +202,7 @@ r1 只定方向。其余实现者需要猜的语义点，按 AGENTS.md「合同�
 - 结果（一轮，2 次真实 Run：首个 Run 中途 cancel + 后继）：框/锚点 7 项全过（后继框终点 = 创建时刻，锚点 = `released_at`，首个 Run 框终点 = consumed_at，release_observation 事实不变）；告警 episode 在首个框终点之后到达并 attached；后继 Run 对附加区间的指标查询为「观察到」（越过首个框终点进入 episode 的查询 20 次，ok 18、no_data 2）；离线网关判定：同一窗口在首个 Run 输入上 `denied/WINDOW_OUT_OF_SCOPE`、0 次请求，在后继输入上放行。
 - 偏差（照实写）：LangSmith trace 未导出（worker 开 trace 需从 env 文件读 LangSmith key，按 K2 规则未用），issue 的 trace 链接验收项未满足，按 Q11 由确定性断言作主证据；web/worker 用 owner DSN 在一次性 PG 新库 `r358` 上跑（计划原设运行角色）；「覆盖 episode」判据在跑后由「查询终点 ≥ 告警接收时刻」改为「查询终点越过首个框终点且越过告警 startsAt」（后继框终点 23:50:06Z 与接收 23:50:04Z 只差 2s，模型查询以整分对齐），改动与理由见证据 README，交独立审查复核。
 - 费用：约 2 次真实 Run（18 个模型请求），与 F14 第 3 步分开计。DeepSeek 余额 168.88 CNY（23:38:46Z，F14 收窗读数）→ 165.70 CNY（2026-11-02 00:05:37Z），差 3.18 CNY；该差额同时含 F8 结构化日志 Compose 抽检的 3 次模型调用（00:00:30–00:00:54Z，同一账号），无法再拆分。
+- 第 2 轮（2026-11-02，开 LangSmith trace，项目 `opspilot-lab-358`）：用户把 LangSmith key 加进专用 key 文件后重跑 1 轮（首个 Run `ace08c55` 中途 cancel，加后继 `a1c283b9`）。框/锚点 7 项仍全过，与第 1 轮相同；后继对附加区间的查询为「观察到」（越过首个框终点 14 次，ok 12）；离线网关判定同第 1 轮。`trace.read_back = found`，两个 Run 的根 run 与子 span 数（6 llm/14 tool；21 llm/39 tool）和库里的计数一致，链接在证据 README，issue 的 trace 验收项由此满足。27 个模型请求，余额 137.13 → 136.28 CNY（04:38:52Z → 05:01:11Z，差 0.85 CNY）。收尾时 swap 空闲量 291 MiB，低于约 300 MiB 线，已报 lead。fault 因一次 SIGINT 发错进程多开了约 5 分钟（两个 Run 都已结束），已恢复。摘要 `docs/evidence/358-release-successor-live/round-2/summary.json`。
 
 ## 下一步与交接
 

@@ -593,42 +593,79 @@ def _jsonable(value: Any) -> Any:
     return json.loads(json.dumps(value, default=str))
 
 
-def trace_links(project: str | None, run_id: str) -> dict[str, Any]:
-    """LangSmith root runs of the successor (metadata ``run_id``), read back
-    best effort; ``None`` project means tracing was not on."""
+def _client() -> Any:
+    """LangSmith client; the key is read in-process from ``OPSPILOT_ENV_FILE``
+    (never printed), as the worker does."""
+    from scripts.lab_evidence import langsmith_client
+    from scripts.m1_live_flash_loop import load_langsmith_env
+
+    env_file = os.environ.get("OPSPILOT_ENV_FILE")
+    if env_file:
+        load_langsmith_env(Path(env_file))
+    return langsmith_client()
+
+
+def trace_links(
+    project: str | None,
+    runs: Mapping[str, str],
+    client_factory: Callable[[], Any] = _client,
+) -> dict[str, Any]:
+    """Per Run (label -> run id): the LangSmith root runs whose metadata
+    ``run_id`` is that Run, each with its child-span count and link; read
+    back best effort. ``None`` project means tracing was not on."""
     if not project:
-        return {"project": None, "read_back": "not_exported", "roots": []}
-    from scripts.lab_evidence import langsmith_client, run_url
+        return {"project": None, "read_back": "not_exported", "runs": {}}
+    from scripts.lab_evidence import run_url
 
     try:
-        client = langsmith_client()
-        roots = list(
-            client.list_runs(
-                project_name=project,
-                is_root=True,
-                filter=f'and(eq(metadata_key, "run_id"), eq(metadata_value, "{run_id}"))',
-                limit=10,
-            )
-        )
+        client = client_factory()
         session = client.read_project(project_name=project)
+        out: dict[str, Any] = {}
+        for label, run_id in runs.items():
+            roots = list(
+                client.list_runs(
+                    project_name=project,
+                    is_root=True,
+                    filter=f'and(eq(metadata_key, "run_id"), eq(metadata_value, "{run_id}"))',
+                    limit=20,
+                )
+            )
+            entries = []
+            for root in roots:
+                children = list(
+                    client.list_runs(project_name=project, trace_id=root.trace_id)
+                )
+                kinds: dict[str, int] = {}
+                for child in children:
+                    if str(child.id) == str(root.id):
+                        continue
+                    kind = str(getattr(child, "run_type", "unknown"))
+                    kinds[kind] = kinds.get(kind, 0) + 1
+                entries.append(
+                    {
+                        "langsmith_run_id": str(root.id),
+                        "status": getattr(root, "status", None),
+                        "child_spans": kinds,
+                        "url": run_url(
+                            client,
+                            project_id=str(session.id),
+                            langsmith_run_id=str(root.id),
+                        ),
+                    }
+                )
+            out[label] = {"run_id": run_id, "roots": entries}
+        found = all(v["roots"] for v in out.values())
         return {
             "project": project,
-            "read_back": "found" if roots else "root_run_not_found",
-            "roots": [
-                {
-                    "langsmith_run_id": str(r.id),
-                    "url": run_url(
-                        client, project_id=str(session.id), langsmith_run_id=str(r.id)
-                    ),
-                }
-                for r in roots
-            ],
+            "project_id": str(session.id),
+            "read_back": "found" if found else "root_run_not_found",
+            "runs": out,
         }
     except Exception as exc:  # noqa: BLE001 - recorded, the summary still freezes
         return {
             "project": project,
             "read_back": f"error:{type(exc).__name__}",
-            "roots": [],
+            "runs": {},
         }
 
 
@@ -726,7 +763,13 @@ def collect(args: argparse.Namespace) -> int:
     summary.update(
         schema="opspilot-358-release-successor-1",
         code_revision=args.code_revision,
-        trace=trace_links(args.trace_project, summary["successor"]["run_id"]),
+        trace=trace_links(
+            args.trace_project,
+            {
+                "first_run": summary["first_run"]["run_id"],
+                "successor": summary["successor"]["run_id"],
+            },
+        ),
         raw_ledger={
             "location": f"tmp/lab-ledgers/{args.batch}/ (not committed)",
             "files": {
