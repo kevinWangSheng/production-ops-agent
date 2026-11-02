@@ -2371,17 +2371,19 @@ def _main(argv: list[str], deps: LiveDeps | None) -> int:
         try:
             # Recovery needs the lab seams only, never model credentials (r10).
             extra: dict[str, Any] = {}
+            if output_root is not None:
+                # Only when given: the r10 call shape stays unchanged.
+                extra["output_root"] = output_root
             if args.scenario_root is not None:
                 root = scenario_root_arg(args.scenario_root)
-                extra = {
-                    "scenarios_root": root,
-                    "v2_probe": args.probe and is_v2_root(root),
-                }
+                extra.update(
+                    scenarios_root=root,
+                    v2_probe=args.probe and is_v2_root(root),
+                )
             deps = real_deps(
                 args.flagd_url,
                 args.round,
                 probe=args.probe or args.recover,
-                output_root=output_root,
                 **extra,
             )
         except (LabError, OSError) as exc:

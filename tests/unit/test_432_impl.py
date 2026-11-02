@@ -745,3 +745,65 @@ def test_a_signature_gone_after_the_noise_wait_is_a_distinct_setup_failure(
     )
     assert lab["investigator"].requests == []
     assert lab["lab"].raw == ORIGINAL_V2
+
+
+# -- A13: signature rows delivered through read_evidence -----------------------------
+
+
+def _signature_record(view_overrides: dict[str, Any], row_overrides: dict[str, Any]):
+    from opspilot.evaluation.model import DeliveredRecord, Window
+
+    end = datetime(2026, 11, 2, 12, tzinfo=UTC)
+    row = {
+        "service": "payment",
+        "operation": "grpc.oteldemo.PaymentService/Charge",
+        "operation_truncated": False,
+        "status_tags": {"otel.status_code": "ERROR"},
+        "start_us": int((end - timedelta(minutes=2)).timestamp() * 1_000_000),
+        "span_id": "s1",
+        **row_overrides,
+    }
+    view = {"tool": "read_evidence", "parent_tool": "traces_search", "content": [row]}
+    view.update(view_overrides)
+    return DeliveredRecord(
+        evidence_id="e",
+        target_id=TARGET,
+        status="ok",
+        citable_as_fact=True,
+        time_scope_refs=frozenset({"policy-window-1"}),
+        window=Window(end - timedelta(minutes=5), end),
+        view=view,
+        view_sha256=canonical_view_hash(view),
+        delivered=True,
+    )
+
+
+def _payment_rule():
+    return _loaded()[NOISE_POS][1].signature
+
+
+def test_a13_read_evidence_of_a_trace_search_counts_toward_the_signature():
+    from opspilot.evaluation.gate import signature_matches
+
+    assert signature_matches(_payment_rule(), _signature_record({}, {})) == ("s1",)
+    plain = _signature_record({"tool": "traces_search", "parent_tool": None}, {})
+    assert signature_matches(_payment_rule(), plain) == ("s1",)
+
+
+@pytest.mark.parametrize(
+    ("view", "row"),
+    [
+        ({"parent_tool": "metrics_range_query"}, {}),
+        ({"parent_tool": None}, {}),
+        ({}, {"operation_truncated": True}),
+        (
+            {},
+            {"start_us": int(datetime(2026, 11, 2, 11, tzinfo=UTC).timestamp() * 1e6)},
+        ),
+        ({}, {"status_tags": {}}),
+    ],
+)
+def test_a13_other_parents_truncated_or_out_of_window_rows_do_not_count(view, row):
+    from opspilot.evaluation.gate import signature_matches
+
+    assert signature_matches(_payment_rule(), _signature_record(view, row)) == ()
