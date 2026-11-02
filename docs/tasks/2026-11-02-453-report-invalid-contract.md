@@ -1,6 +1,6 @@
 # #453 报告校验退回提示
 
-- 状态：PR #454；独立审查 APPROVE；真实 Run 完成；待机器人分诊与用户 Q6 裁决
+- 状态：PR #454；独立审查 APPROVE；真实 Run 完成；用户 Q6 已裁（先合）；待机器人分诊
 - 更新日期：2026-11-02
 - 工作区：`fix/453-report-invalid-feedback` / `/Users/shenghuikevin/dev/AI/production-ops-agent-453`
 - 交接：`~/.agent/handoffs/opspilot-453-report-invalid-handoff-2026-11-02.md`
@@ -17,6 +17,7 @@ Run `89459277` 第 10 轮把报告包在 ```json 围栏里，`parse_report` 以 
 |---|---|---|
 | U1 | `incomplete + partial` 保持非法，`reports.py:140` 不改 | 用户 2026-11-02（交接 R1） |
 | U2 | 报告失败仍只有一次最终重试，不改预算与状态转移 | 现行合同 #95 / `loop.py` `force_final`；本 PR 不动。是否另有用户裁决未确认 |
+| U4 | 作为 M3 Q6 候选前第二项产品改进（与 N1 并列），在 #432 开发轮第 1 轮前合入 | 用户 2026-11-02 |
 | U3 | 去围栏后的内容只用于生成提示，`parse_report` 的接受结果不变 | Agent 可逆默认 |
 
 ## 决定（Agent 自定，可逆）
