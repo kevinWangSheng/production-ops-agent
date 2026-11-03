@@ -59,8 +59,11 @@ def count_recording(recording_dir: Path, canary: str) -> dict[str, Any]:
         recording = json.loads(raw)
     except ValueError:
         raise RecheckError(f"EVIDENCE_INVALID:{path.name}") from None
+    events = recording.get("events") if isinstance(recording, Mapping) else None
+    if not isinstance(events, list):
+        raise RecheckError(f"EVIDENCE_INVALID:{path.name}")
     outward = reasoning = 0
-    for event in recording.get("events") or []:
+    for event in events:
         if not isinstance(event, Mapping) or event.get("kind") != "model":
             continue
         ref = event.get("response_ref")
