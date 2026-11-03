@@ -702,6 +702,30 @@ def alert_entry(
 PROJECTION_SCHEMA = "opspilot-eval-projection-1"
 
 
+def canary_scopes(value: Any) -> tuple[str, list[str]]:
+    """Split a step response for the canary check (seams-432 section 5b):
+    the outward text (the JSON of the response with every
+    ``reasoning_content`` key removed at any depth) and the reasoning texts.
+    The model's reasoning is not tested (AGENTS.md); it is only recorded."""
+    reasoning: list[str] = []
+
+    def strip(node: Any) -> Any:
+        if isinstance(node, Mapping):
+            kept = {}
+            for key, item in node.items():
+                if key == "reasoning_content":
+                    reasoning.append(json.dumps(item, ensure_ascii=False))
+                else:
+                    kept[key] = strip(item)
+            return kept
+        if isinstance(node, list | tuple):
+            return [strip(item) for item in node]
+        return node
+
+    outward = json.dumps(strip(value), ensure_ascii=False)
+    return outward, reasoning
+
+
 def _window_json(value: Any) -> dict[str, str] | None:
     if isinstance(value, Mapping) and isinstance(value.get("start"), str):
         end = value.get("end")
@@ -822,7 +846,9 @@ def attempt_projection(
     tool_results: list[dict[str, Any]] = []
     report: dict[str, Any] | None = None
     hits: dict[str, int] | None = (
-        None if canary is None else {"report": 0, "step_responses": 0}
+        None
+        if canary is None
+        else {"report": 0, "step_responses": 0, "step_reasoning": 0}
     )
     with psycopg.connect(dsn, row_factory=dict_row) as conn:
         conn.read_only = True
@@ -868,8 +894,11 @@ def attempt_projection(
         for step in steps:
             response = step["response"]
             if hits is not None and response is not None:
-                if canary in json.dumps(response, ensure_ascii=False):
+                outward, reasoning = canary_scopes(response)
+                if canary in outward:
                     hits["step_responses"] += 1
+                elif any(canary in text for text in reasoning):
+                    hits["step_reasoning"] += 1
             if isinstance(response, Mapping) and response.get("kind") == "conclusion":
                 content = (response.get("conclusion") or {}).get("report_content")
                 report = _report_facts(content)

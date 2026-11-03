@@ -191,7 +191,11 @@ def test_always_503_is_a_failed_handoff_with_two_physical_requests(
     assert run["scope_target_ids"] == ["m0-otel-20260909"]
     assert run["time_policies"][0]["id"] == "policy-window-1"
     assert projection["tool_results"] == []
-    assert projection["canary_hits"] == {"report": 0, "step_responses": 0}
+    assert projection["canary_hits"] == {
+        "report": 0,
+        "step_responses": 0,
+        "step_reasoning": 0,
+    }
     assert projection["writes"] == {"controls": 0, "self_heal_authorizations": 0}
     assert result.intake["model_transport"] == {
         "mode": "always_503",
@@ -225,6 +229,7 @@ def test_alert_run_projection_carries_the_alert_frame(tmp_path, root, monkeypatc
         "assessment_status": None,
         "conclusion": None,
         "gaps_count": None,
+        "trace_gaps_count": None,
         "fact_claims": None,
     }
     checked = check_expectations(

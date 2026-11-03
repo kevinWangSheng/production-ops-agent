@@ -15,6 +15,12 @@ and ``intake.json`` and must equal the stored ``expectations.json``
 (``EXPECTATIONS_MISMATCH``). All rounds must share the code, dataset,
 evaluator, runbook and upstream dimensions (``MANIFEST_DRIFT``). Regression
 and capability groups are reported separately; the gate is a ratio only.
+
+Registered reruns (seams-432 section 5a, ``--reruns``): an attempt that
+failed in harness setup before any product Run existed may be voided by
+exactly one later attempt of the same scenario. The voided attempt leaves
+the slots and Q20 but stays in ``voided_attempts``, the cost and the
+isolation check; the rerun counts as-is and is never voided in turn.
 """
 
 from __future__ import annotations
@@ -39,6 +45,10 @@ from opspilot.evaluation.model import (
 from scripts.eval_live_lab import span_error
 
 SCHEMA = "opspilot-eval-dev-round-1"
+RERUNS_SCHEMA = "opspilot-eval-dev-reruns-1"
+VOIDED_NOTE = "environment not ready, rerun per rule"
+CANARY_RECHECK = "canary-recheck.json"
+CANARY_RECHECK_SCHEMA = "opspilot-eval-canary-recheck-1"
 SLOTS_PER_SCENARIO = 2
 #: Dimensions that must not move between the rounds of one development round.
 FROZEN_DIMENSIONS = ("code", "dataset", "evaluator", "runbook", "upstream")
@@ -95,6 +105,28 @@ def _binding(
     return list(next(iter(classes)))
 
 
+def _same_expectations(
+    stored: Mapping[str, Any], checked: Mapping[str, Any], *, canary_rechecked: bool
+) -> bool:
+    """Stored and re-checked Q20 agree; after an outward-only canary recheck
+    (section 5b) they may differ only in ``canary_absent`` and what follows
+    from it (``CANARY_PRESENT`` and ``passed``)."""
+    if all(stored.get(k) == checked[k] for k in ("passed", "checks", "reasons")):
+        return True
+    if not canary_rechecked:
+        return False
+    old, new = stored.get("checks"), checked["checks"]
+    if not isinstance(old, Mapping) or set(old) != set(new):
+        return False
+    if any(old[k] != new[k] for k in new if k != "canary_absent"):
+        return False
+    old_reasons = [r for r in stored.get("reasons") or [] if r != "CANARY_PRESENT"]
+    new_reasons = [r for r in checked["reasons"] if r != "CANARY_PRESENT"]
+    if old_reasons != new_reasons:
+        return False
+    return checked["passed"] == (not new_reasons and new["canary_absent"] is not False)
+
+
 def _attempt(
     run_dir: Path,
     slot: Mapping[str, Any],
@@ -110,6 +142,25 @@ def _attempt(
     projection = _json(run_dir / "projection.json")
     intake = _json(run_dir / "intake.json")
     stored = _json(run_dir / "expectations.json")
+    recheck = _json(run_dir / CANARY_RECHECK)
+    if recheck is not None:
+        if (
+            not isinstance(recheck, Mapping)
+            or recheck.get("schema") != CANARY_RECHECK_SCHEMA
+            or recheck.get("rule") != "outward-only"
+            or not isinstance(projection, Mapping)
+            or not all(
+                isinstance(recheck.get(key), int) and not isinstance(recheck[key], bool)
+                for key in ("report", "step_responses", "step_reasoning")
+            )
+        ):
+            raise DevRoundError(f"EVIDENCE_INVALID:{CANARY_RECHECK}")
+        projection = dict(projection) | {
+            "canary_hits": {
+                key: recheck[key]
+                for key in ("report", "step_responses", "step_reasoning")
+            }
+        }
     checked = check_expectations(
         answer,
         attempt_status=status,
@@ -118,17 +169,22 @@ def _attempt(
         intake=intake,
         target_id=target_id,
     ).as_json()
-    if not isinstance(stored, Mapping) or any(
-        stored.get(key) != checked[key] for key in ("passed", "checks", "reasons")
+    if not isinstance(stored, Mapping) or not _same_expectations(
+        stored, checked, canary_rechecked=recheck is not None
     ):
         raise DevRoundError(f"EXPECTATIONS_MISMATCH:{run_dir.name}")
     gate = (summary.get("evaluation") or {}).get("gate") or {}
     traces = (summary.get("trace") or {}).get("entries") or []
     return {
         "started_at": capture.get("started_at"),
+        "product_run_id": attempt.get("product_run_id"),
         "status": status,
         "reason": slot.get("reason"),
         "expectations": checked,
+        "canary_rechecked": recheck is not None,
+        "expectations_stored": None
+        if recheck is None
+        else {key: stored.get(key) for key in ("passed", "checks", "reasons")},
         "gate": {"passed": gate.get("passed"), "reasons": gate.get("reasons")},
         "trace_url": next(
             (t.get("url") for t in traces if isinstance(t, Mapping) and t.get("url")),
@@ -316,11 +372,68 @@ def isolation(
     return out
 
 
+def _registered_reruns(
+    reruns: Any, started: Mapping[str, Mapping[str, Any]]
+) -> dict[str, dict[str, Any]]:
+    """Validate the rerun registry (seams-432 section 5a) against the started
+    attempts; returns voided attempt id -> its registry entry."""
+    entries = reruns.get("reruns") if isinstance(reruns, Mapping) else None
+    if (
+        not isinstance(reruns, Mapping)
+        or reruns.get("schema") != RERUNS_SCHEMA
+        or not isinstance(entries, list)
+    ):
+        raise DevRoundError("RERUNS_INVALID")
+    pairs: list[tuple[str, str, str | None]] = []
+    for entry in entries:
+        voided = entry.get("voided_attempt_id") if isinstance(entry, Mapping) else None
+        rerun = entry.get("rerun_attempt_id") if isinstance(entry, Mapping) else None
+        note = entry.get("note") if isinstance(entry, Mapping) else None
+        if (
+            not isinstance(voided, str)
+            or not voided
+            or not isinstance(rerun, str)
+            or not rerun
+        ):
+            raise DevRoundError("RERUNS_INVALID")
+        if note is not None and not isinstance(note, str):
+            raise DevRoundError("RERUNS_INVALID")
+        pairs.append((voided, rerun, note))
+    voided_ids = [v for v, _, _ in pairs]
+    rerun_ids = [r for _, r, _ in pairs]
+    for ids in (voided_ids, rerun_ids):
+        seen: set[str] = set()
+        for attempt_id in ids:
+            if attempt_id in seen:
+                raise DevRoundError(f"RERUN_CHAINED:{attempt_id}")
+            seen.add(attempt_id)
+    for attempt_id in rerun_ids:
+        if attempt_id in voided_ids:
+            raise DevRoundError(f"RERUN_CHAINED:{attempt_id}")
+    out: dict[str, dict[str, Any]] = {}
+    for voided, rerun, note in pairs:
+        for attempt_id in (voided, rerun):
+            if attempt_id not in started:
+                raise DevRoundError(f"RERUN_UNKNOWN:{attempt_id}")
+        old, new = started[voided], started[rerun]
+        if old["status"] != "setup_failed" or old.get("product_run_id") is not None:
+            raise DevRoundError(f"RERUN_NOT_ELIGIBLE:{voided}")
+        if old["scenario_id"] != new["scenario_id"]:
+            raise DevRoundError(f"RERUN_SCENARIO_MISMATCH:{rerun}")
+        ended = _moment((old.get("fault") or {}).get("ended_at"))
+        began = _moment((new.get("fault") or {}).get("started_at"))
+        if ended is None or began is None or began <= ended:
+            raise DevRoundError(f"RERUN_ORDER:{rerun}")
+        out[voided] = {"rerun_attempt_id": rerun, "note": note}
+    return out
+
+
 def aggregate(
     round_dirs: Sequence[Path],
     dataset_root: Path,
     *,
     n: int = SLOTS_PER_SCENARIO,
+    reruns: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """The development round summary (seams-432 section 5)."""
     loaded = {
@@ -375,8 +488,11 @@ def aggregate(
                     **item,
                 }
             )
+    started = {str(a["attempt_id"]): a for items in attempts.values() for a in items}
+    voided = {} if reruns is None else _registered_reruns(reruns, started)
+    rerun_of = {str(v["rerun_attempt_id"]): k for k, v in voided.items()}
     for sid, items in attempts.items():
-        if len(items) > n:
+        if sum(1 for a in items if str(a["attempt_id"]) not in voided) > n:
             raise DevRoundError(f"REDRAW_DETECTED:{sid}")
     reference = dims_seen[0] if dims_seen else {}
     for dims in dims_seen:
@@ -389,7 +505,10 @@ def aggregate(
     out_slots: list[dict[str, Any]] = []
     for sid in sorted(loaded):
         spec, answer = loaded[sid]
-        items = sorted(attempts[sid], key=lambda a: str(a.get("started_at")))
+        items = sorted(
+            (a for a in attempts[sid] if str(a["attempt_id"]) not in voided),
+            key=lambda a: str(a.get("started_at")),
+        )
         for index in range(n):
             base = {
                 "scenario_id": sid,
@@ -412,8 +531,11 @@ def aggregate(
                         "status": item["status"],
                         "reason": item["reason"],
                         "expectations": item["expectations"],
+                        "canary_rechecked": item["canary_rechecked"],
+                        "expectations_stored": item["expectations_stored"],
                         "gate": item["gate"],
                         "trace_url": item["trace_url"],
+                        "rerun_of": rerun_of.get(str(item["attempt_id"])),
                         **isolated[str(item["attempt_id"])],
                     }
                 )
@@ -430,8 +552,11 @@ def aggregate(
                             "checks": {},
                             "reasons": ["NOT_STARTED"],
                         },
+                        "canary_rechecked": False,
+                        "expectations_stored": None,
                         "gate": {"passed": None, "reasons": None},
                         "trace_url": None,
+                        "rerun_of": None,
                         "predecessor": None,
                         "contamination": [],
                         "metrics_overlap": [],
@@ -479,6 +604,18 @@ def aggregate(
             else sorted(REQUIRED_DIMENSIONS)
         },
         "slots": out_slots,
+        "voided_attempts": [
+            {
+                "round": started[attempt_id]["round"],
+                "attempt_id": started[attempt_id]["attempt_id"],
+                "scenario_id": started[attempt_id]["scenario_id"],
+                "status": started[attempt_id]["status"],
+                "reason": started[attempt_id]["reason"],
+                "rerun_attempt_id": entry["rerun_attempt_id"],
+                "note": VOIDED_NOTE,
+            }
+            for attempt_id, entry in sorted(voided.items())
+        ],
         "totals": totals,
         "f1_step2": {
             "achieved": not failed and bool(out_slots),
@@ -498,10 +635,22 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--round", action="append", required=True)
     parser.add_argument("--n", type=int, default=SLOTS_PER_SCENARIO)
     parser.add_argument("--out", required=True)
+    parser.add_argument("--reruns")
     args = parser.parse_args(argv)
     try:
+        reruns = None
+        if args.reruns is not None:
+            try:
+                reruns = _json(Path(args.reruns))
+            except DevRoundError:
+                reruns = None
+            if reruns is None:
+                raise DevRoundError("RERUNS_INVALID")
         document = aggregate(
-            [Path(p) for p in args.round], Path(args.dataset), n=args.n
+            [Path(p) for p in args.round],
+            Path(args.dataset),
+            n=args.n,
+            reruns=reruns,
         )
     except DevRoundError as exc:
         print(json.dumps({"exit_code": 1, "reason": exc.code}))
