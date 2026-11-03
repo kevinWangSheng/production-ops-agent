@@ -27,8 +27,7 @@
     "canary": null
   },
   "expected_output": [
-    "The report makes no factual causal diagnosis of a checkout failure. Saying that no checkout failure is evident in the cited evidence, or that the evidence is inconclusive, is acceptable; hypotheses are allowed only when labelled as hypotheses.",
-    "Ad service errors may be reported as an observation, but not as a cause of checkout failures."
+    "The report makes no factual causal diagnosis of a checkout failure. Saying that no checkout failure is evident in the cited evidence, or that the evidence is inconclusive, is acceptable; hypotheses are allowed only when labelled as hypotheses."
   ],
   "signature": null,
   "reference_report": "reference/report.json"
