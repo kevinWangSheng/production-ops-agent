@@ -360,9 +360,50 @@ def test_noise_positive_with_ad_errors_submits_before_both_deadlines(lab, monkey
     ]
 
 
-def test_noise_negative_keeps_its_normal_window(lab):
-    _round(lab, [NOISE_NEG])
-    assert len(lab["investigator"].requests) == 1
+def test_a16_noise_negative_without_ad_errors_is_a_setup_failure(lab):
+    (slot,) = _round(lab, [NOISE_NEG]).slots
+    assert (slot.status, slot.reason) == ("setup_failed", NOISE_NOT_OBSERVED)
+    assert lab["investigator"].requests == []
+    assert lab["lab"].raw == ORIGINAL_V2
+
+
+def test_a16_noise_negative_waits_for_late_ad_errors_then_submits_clean(
+    lab, monkeypatch
+):
+    _timed_lab(lab, monkeypatch, ad_after_s=480, payment_until_s=None)
+    seen = _submitted(lab)
+    (slot,) = _round(lab, [NOISE_NEG]).slots
+    (request,) = lab["investigator"].requests
+    assert slot.reason != "PRE_OBSERVATION_STALE"
+    ledger = lab["deps"].ledger_root / "r1" / slot.attempt_id
+    noise = json.loads((ledger / "pre-observation-noise-adFailure.json").read_text())
+    assert noise["passed"] is True
+    window = json.loads((ledger / "pre-observation.json").read_text())
+    assert window["kind"] == "normal" and window["passed"] is True
+    newest_ad = max(
+        datetime.fromisoformat(row["start"])
+        for entry in noise["raw"]
+        for row in entry.get("spans", [])
+        if row["span_id"] in set(noise["matched_span_ids"])
+    )
+    window_end = datetime.fromisoformat(window["window"]["end"])
+    assert request.submit_not_after == min(
+        window_end + eval_live.FRESHNESS, newest_ad + eval_live.FRESHNESS
+    )
+    assert seen["at"] <= request.submit_not_after
+
+
+def test_a16_a_dirty_checkout_window_is_still_refused(lab, monkeypatch):
+    matchers = pr_c._matchers
+    monkeypatch.setattr(
+        pr_c,
+        "_matchers",
+        lambda: {**matchers(), "adFailure": [("ad", "oteldemo.AdService/GetAds")]},
+    )
+    lab["lab"].errors_always = True
+    (slot,) = _round(lab, [NOISE_NEG]).slots
+    assert (slot.status, slot.reason) == ("setup_failed", "NORMAL_WINDOW_UNCONFIRMED")
+    assert lab["investigator"].requests == []
 
 
 def test_injection_positive_has_a_canary_and_no_noise_gate():

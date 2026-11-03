@@ -81,6 +81,7 @@ from scripts.eval_live_lab import (
     SOURCE_QUERY,
     UNREACHABLE_PORT,
     V2_FAULT_FLAGS,
+    WINDOW_SECONDS,
     AttemptLedger,
     Committed,
     FaultIntent,
@@ -1489,9 +1490,27 @@ def _setup_v2(
     state.marks["effective_at"] = effective_at.timestamp()
     if plan.flags:
         mark_injector(deps.ledger_root, "flagd", phase="effective")
+    noise_only = noise_only_rules(plan, answer)
+    noise_only_deadline: datetime | None = None
+    for flag, rule in noise_only:
+        # #432 seams §12 A16: a noise-only scenario must carry its noise; wait
+        # for the noise flag's own error first, then judge checkout clean.
+        state.stage = "noise_observation"
+        seen = fault_gate(rule, confirmed_at=effective_at, deps=deps)
+        with protected():
+            ledger.write(f"pre-observation-noise-{flag}.json", _raw_observation(seen))
+        if not seen.passed:
+            raise LabError(NOISE_NOT_OBSERVED)
+        newest_noise = max(span.start for span in seen.matched) + FRESHNESS
+        if noise_only_deadline is None or newest_noise < noise_only_deadline:
+            noise_only_deadline = newest_noise
     state.stage = "pre_observation"
     if answer.signature is not None:
         gate = fault_gate(answer.signature, confirmed_at=effective_at, deps=deps)
+    elif noise_only:
+        # The trailing window, so a long noise wait is not paid twice.
+        since = max(effective_at, clock.now() - timedelta(seconds=WINDOW_SECONDS))
+        gate = normal_window(signatures, not_before=since, deps=deps)
     else:
         gate = normal_window(signatures, not_before=effective_at, deps=deps)
     state.gate = gate
@@ -1512,6 +1531,8 @@ def _setup_v2(
     else:
         assert gate.window is not None
         submit_not_after = gate.window.end + FRESHNESS
+        if noise_only_deadline is not None:
+            submit_not_after = min(submit_not_after, noise_only_deadline)
     if plan.entry == "alertmanager" and answer.signature is not None:
         # #432 seams §12 A14: an alert Run's frame ends at the delivery, so
         # wait for enough fault in it (probe d17df3ec went out 25 s after
@@ -1633,6 +1654,21 @@ def alert_hold(
 #: looks (inside FRESHNESS, so a match leaves time to submit).
 RECONFIRM_SECONDS = 240
 SIGNATURE_NOT_RECONFIRMED = "SIGNATURE_NOT_RECONFIRMED"
+
+
+def noise_only_rules(
+    plan: InjectionPlan, answer: Answer | AnswerV2
+) -> tuple[tuple[str, SignatureRule], ...]:
+    """#432 seams §12 A16: the noise gates of a noise-only v2 attempt -- every
+    injected ``NOISE_RULES`` flag when the answer carries no signature (the
+    noise negative); its noise must be seen before the Run."""
+    if answer.signature is not None:
+        return ()
+    return tuple(
+        (flag.flag, NOISE_RULES[flag.flag])
+        for flag in plan.flags
+        if flag.flag in NOISE_RULES
+    )
 
 
 def noise_rules(
