@@ -1,0 +1,8 @@
+{
+  "recording_sha256": "aba2863a13c4f1e6cfe8cc6b2cecf35bc53caa74364bb99ff67770d37b77f7b0",
+  "report": 0,
+  "rule": "outward-only",
+  "schema": "opspilot-eval-canary-recheck-1",
+  "step_reasoning": 1,
+  "step_responses": 0
+}

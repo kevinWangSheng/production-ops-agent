@@ -1,0 +1,157 @@
+{
+  "balances": [
+    {
+      "attempt_id": "e07723c4-2989-4589-b05d-85a007a8e58f",
+      "balance_after_cny": "58.46",
+      "balance_before_cny": "58.64",
+      "delta_cny": "0.18",
+      "shared_key_possible": true,
+      "status": "measured"
+    },
+    {
+      "attempt_id": "7dbe8a6f-4620-46eb-beee-6ef6eba31662",
+      "balance_after_cny": "58.31",
+      "balance_before_cny": "58.46",
+      "delta_cny": "0.15",
+      "shared_key_possible": true,
+      "status": "measured"
+    }
+  ],
+  "command": [
+    "--mode",
+    "live",
+    "--round",
+    "dr432r2-w2b",
+    "--scenario-root",
+    "evals/datasets/dev-v2",
+    "--scenario",
+    "dv2-f725cb",
+    "--n",
+    "2",
+    "--parallel",
+    "1",
+    "--holder",
+    "lead-432",
+    "--batch",
+    "b432dev",
+    "--flagd-url",
+    "http://127.0.0.1:28013",
+    "--pg-port",
+    "55998"
+  ],
+  "investigator_source": {
+    "credential": "basic",
+    "http_status": 200,
+    "query": "vector(1)",
+    "result": "confirmed"
+  },
+  "manifest_hash": "42bd01b42b901884dfcad6dfbdf65fec3f50aa203b7f6f11add77de00d2e7985",
+  "reason": null,
+  "recovered_at": null,
+  "retained_fault": false,
+  "round": "dr432r2-w2b",
+  "round_status": "finished",
+  "schema": "opspilot-eval-live-lifecycle-1",
+  "slots": [
+    {
+      "attempt_id": "e07723c4-2989-4589-b05d-85a007a8e58f",
+      "closure_reason": null,
+      "fault": {
+        "effective_at": "2026-11-03T14:38:54.401535+00:00",
+        "injected_sha256": "b1e5928b52fcb734f4b329a2eac1efe154b3a28c66b1156cb4ba27b0be71069b",
+        "normal_confirmed_at": "2026-11-03T14:43:50.854256+00:00",
+        "original_sha256": "1ee5c0258e3e13609ecec75979cee286ab00f442d288112e39e3db8433d176c6",
+        "restored_sha256": "1ee5c0258e3e13609ecec75979cee286ab00f442d288112e39e3db8433d176c6",
+        "washed_at": "2026-11-03T14:48:50.854256+00:00"
+      },
+      "pre_observation": {
+        "checkout_calls": 28.816666666666666,
+        "flag_confirmed_at": "2026-11-03T14:38:54.401535+00:00",
+        "kind": "fault",
+        "matched_span_ids": [
+          "eb32d36cd873718e",
+          "074b17d8150a6059"
+        ],
+        "passed": true,
+        "probes": 48,
+        "reason": null,
+        "trace_ids": [
+          "bc3105e97a195d35b86f2425e3ea146f"
+        ],
+        "window": {
+          "end": "2026-11-03T14:40:25.775381+00:00",
+          "start": "2026-11-03T14:38:54.401535+00:00"
+        }
+      },
+      "product_run_id": "fc2ece64-8b1f-40e0-bfca-620f06689130",
+      "reason": null,
+      "repetition": 1,
+      "scenario_id": "dv2-f725cb",
+      "scenario_version": "2",
+      "stage": "investigate",
+      "status": "ran",
+      "summary": {
+        "path": "runs/e07723c4-2989-4589-b05d-85a007a8e58f/summary.json",
+        "sha256": "8eef15b7c1e2c30413ba0e9a9fcebff8aa8f44760b1c4f0b385fba2e3560f928"
+      },
+      "timings": {
+        "closure_s": 331.635,
+        "ended_at": "2026-11-03T14:48:52.379712+00:00",
+        "investigation_s": 173.595,
+        "setup_s": 155.468,
+        "started_at": "2026-11-03T14:37:51.413855+00:00"
+      }
+    },
+    {
+      "attempt_id": "7dbe8a6f-4620-46eb-beee-6ef6eba31662",
+      "closure_reason": null,
+      "fault": {
+        "effective_at": "2026-11-03T14:49:45.871214+00:00",
+        "injected_sha256": "b1e5928b52fcb734f4b329a2eac1efe154b3a28c66b1156cb4ba27b0be71069b",
+        "normal_confirmed_at": "2026-11-03T14:55:04.820606+00:00",
+        "original_sha256": "1ee5c0258e3e13609ecec75979cee286ab00f442d288112e39e3db8433d176c6",
+        "restored_sha256": "1ee5c0258e3e13609ecec75979cee286ab00f442d288112e39e3db8433d176c6",
+        "washed_at": "2026-11-03T15:00:04.820606+00:00"
+      },
+      "pre_observation": {
+        "checkout_calls": 50.63417723628727,
+        "flag_confirmed_at": "2026-11-03T14:49:45.871214+00:00",
+        "kind": "fault",
+        "matched_span_ids": [
+          "c212e4305ebfefe7",
+          "57928a7fdd079e7d",
+          "baa469d1fcee7846"
+        ],
+        "passed": true,
+        "probes": 51,
+        "reason": null,
+        "trace_ids": [
+          "bc00a4847645eac807d7cf72c44a54ac",
+          "e9025ad0ccfb76c9d708a1de2f13a696"
+        ],
+        "window": {
+          "end": "2026-11-03T14:51:23.923512+00:00",
+          "start": "2026-11-03T14:49:45.871214+00:00"
+        }
+      },
+      "product_run_id": "d9a8503b-2886-4f59-8bc3-2811ede5a764",
+      "reason": null,
+      "repetition": 2,
+      "scenario_id": "dv2-f725cb",
+      "scenario_version": "2",
+      "stage": "investigate",
+      "status": "ran",
+      "summary": {
+        "path": "runs/7dbe8a6f-4620-46eb-beee-6ef6eba31662/summary.json",
+        "sha256": "0fded0ba9eab1556b4f7a99c62bff99c46a9ff03ab6558889f11edf540792183"
+      },
+      "timings": {
+        "closure_s": 366.897,
+        "ended_at": "2026-11-03T15:00:06.650855+00:00",
+        "investigation_s": 154.506,
+        "setup_s": 152.305,
+        "started_at": "2026-11-03T14:48:52.713683+00:00"
+      }
+    }
+  ]
+}

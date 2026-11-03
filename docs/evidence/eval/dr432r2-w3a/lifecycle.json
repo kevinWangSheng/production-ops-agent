@@ -1,0 +1,145 @@
+{
+  "balances": [
+    {
+      "attempt_id": "5ff1575e-b029-43f3-9990-eeeae449ddde",
+      "balance_after_cny": "246.71",
+      "balance_before_cny": "247.55",
+      "delta_cny": "0.84",
+      "shared_key_possible": true,
+      "status": "measured"
+    },
+    {
+      "attempt_id": "3bda4c3a-169f-417c-b9e7-60d0ded6d764",
+      "balance_after_cny": "245.95",
+      "balance_before_cny": "246.71",
+      "delta_cny": "0.76",
+      "shared_key_possible": true,
+      "status": "measured"
+    }
+  ],
+  "command": [
+    "--mode",
+    "live",
+    "--round",
+    "dr432r2-w3a",
+    "--scenario-root",
+    "evals/datasets/dev-v2",
+    "--scenario",
+    "dv2-9f0fd3",
+    "--n",
+    "2",
+    "--parallel",
+    "1",
+    "--holder",
+    "lead-432",
+    "--batch",
+    "b432dev",
+    "--flagd-url",
+    "http://127.0.0.1:28013",
+    "--pg-port",
+    "55998"
+  ],
+  "investigator_source": {
+    "credential": "basic",
+    "http_status": 200,
+    "query": "vector(1)",
+    "result": "confirmed"
+  },
+  "manifest_hash": "e4777ec643da8d40e88ff5b2ac661d5b8a1d0e25b561d262e98dccbf1c720ea8",
+  "reason": null,
+  "recovered_at": null,
+  "retained_fault": false,
+  "round": "dr432r2-w3a",
+  "round_status": "finished",
+  "schema": "opspilot-eval-live-lifecycle-1",
+  "slots": [
+    {
+      "attempt_id": "5ff1575e-b029-43f3-9990-eeeae449ddde",
+      "closure_reason": null,
+      "fault": {
+        "effective_at": "2026-11-03T17:49:28.274973+00:00",
+        "injected_sha256": null,
+        "normal_confirmed_at": "2026-11-03T17:54:29.768684+00:00",
+        "original_sha256": null,
+        "restored_sha256": null,
+        "washed_at": "2026-11-03T17:59:29.768684+00:00"
+      },
+      "pre_observation": {
+        "checkout_calls": 130.00054166892363,
+        "flag_confirmed_at": "2026-11-03T17:49:28.274973+00:00",
+        "kind": "normal",
+        "matched_span_ids": [],
+        "passed": true,
+        "probes": 5,
+        "reason": null,
+        "trace_ids": [],
+        "window": {
+          "end": "2026-11-03T17:54:28.274973+00:00",
+          "start": "2026-11-03T17:49:28.274973+00:00"
+        }
+      },
+      "product_run_id": null,
+      "reason": null,
+      "repetition": 1,
+      "scenario_id": "dv2-9f0fd3",
+      "scenario_version": "2",
+      "stage": "investigate",
+      "status": "ran",
+      "summary": {
+        "path": "runs/5ff1575e-b029-43f3-9990-eeeae449ddde/summary.json",
+        "sha256": "dd801cd834bdee5a089cd74cbb89cb1a2a820c63c7f9b33d1e32aae41ba3972f"
+      },
+      "timings": {
+        "closure_s": 301.39,
+        "ended_at": "2026-11-03T17:59:31.399599+00:00",
+        "investigation_s": 0.13,
+        "setup_s": 303.978,
+        "started_at": "2026-11-03T17:49:25.649899+00:00"
+      }
+    },
+    {
+      "attempt_id": "3bda4c3a-169f-417c-b9e7-60d0ded6d764",
+      "closure_reason": null,
+      "fault": {
+        "effective_at": "2026-11-03T17:59:33.679689+00:00",
+        "injected_sha256": null,
+        "normal_confirmed_at": "2026-11-03T18:04:35.149096+00:00",
+        "original_sha256": null,
+        "restored_sha256": null,
+        "washed_at": "2026-11-03T18:09:35.149096+00:00"
+      },
+      "pre_observation": {
+        "checkout_calls": 72.5,
+        "flag_confirmed_at": "2026-11-03T17:59:33.679689+00:00",
+        "kind": "normal",
+        "matched_span_ids": [],
+        "passed": true,
+        "probes": 5,
+        "reason": null,
+        "trace_ids": [],
+        "window": {
+          "end": "2026-11-03T18:04:33.679689+00:00",
+          "start": "2026-11-03T17:59:33.679689+00:00"
+        }
+      },
+      "product_run_id": null,
+      "reason": null,
+      "repetition": 2,
+      "scenario_id": "dv2-9f0fd3",
+      "scenario_version": "2",
+      "stage": "investigate",
+      "status": "ran",
+      "summary": {
+        "path": "runs/3bda4c3a-169f-417c-b9e7-60d0ded6d764/summary.json",
+        "sha256": "7ed38deaa4be76d8481bb7831f63130e9c462a206668c09afbedab3b1b56fcf6"
+      },
+      "timings": {
+        "closure_s": 301.6,
+        "ended_at": "2026-11-03T18:09:37.025345+00:00",
+        "investigation_s": 0.23,
+        "setup_s": 303.51,
+        "started_at": "2026-11-03T17:59:31.410903+00:00"
+      }
+    }
+  ]
+}

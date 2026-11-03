@@ -1,0 +1,334 @@
+{
+  "alert": {
+    "handoff": false,
+    "handoff_reason": null,
+    "lifecycle": "open",
+    "run_ids": [
+      "f6a37b3d-51a8-5b2b-b695-3d5d743a8e18"
+    ]
+  },
+  "canary_hits": null,
+  "counts": {
+    "episodes": 2,
+    "incidents": 1,
+    "runs": 1
+  },
+  "outcome": {
+    "decision": "report_available",
+    "evidence_ids": [
+      "add80788-b6da-4385-9184-d427e06c2c05-t1:71d0b810-75d3-4638-a46e-6bc5355dda51",
+      "d7d87c10-ed81-4a56-9f85-2ba64b88cd0c-t0:8f06afc7-819b-420d-997f-d002f2ec099c",
+      "d7d87c10-ed81-4a56-9f85-2ba64b88cd0c-t1:6a165a42-c7c6-4311-81db-8957ba094bbc",
+      "230abdc4-27d3-415b-a15c-534e5054be09-t1:67e30632-f7e2-4a40-8ea9-99f6e409feb9",
+      "bb7babd9-713d-48ee-9fff-c0e00fb2ad98-t0:f1416771-75b8-4636-9179-f52f16800263",
+      "bb7babd9-713d-48ee-9fff-c0e00fb2ad98-t1:1789874c-ce0f-433a-9874-fe01320e964f",
+      "689cc9e7-a84c-4614-a303-edf5a0b4e57f-t0:e5c53a1e-0ad0-4cf4-9548-1bbf45b61f22",
+      "689cc9e7-a84c-4614-a303-edf5a0b4e57f-t1:a9ff0c16-56ce-4631-84c5-0e8158828222",
+      "4450cfe4-81cb-4b37-a54b-1b15266d6ef4-t0:f1b0a84b-58c6-4b36-acc5-91872b6f3eb2",
+      "4450cfe4-81cb-4b37-a54b-1b15266d6ef4-t1:b29f7c65-ac23-4b0b-8b41-18a0a5a23b19",
+      "c4976bca-fafa-4783-99c2-349d772391a5-t0:e5b25c5c-3ed9-48cd-9ba0-95d6e02bcc7e",
+      "c4976bca-fafa-4783-99c2-349d772391a5-t1:9e92e7ff-7931-40b8-a46a-f539e909407e",
+      "7b772bc2-f7f3-4a33-84db-ee5d1641ad8b-t0:b0111223-ca7b-440a-9b31-2afe235fd45b",
+      "7b772bc2-f7f3-4a33-84db-ee5d1641ad8b-t1:44c4e901-a221-4806-8bbb-6020e042e712",
+      "82ae45a5-736c-4244-a8ac-6a8f7591f7cc-t0:b9fcf1db-0111-41ea-bb25-fb9a30ba4179",
+      "82ae45a5-736c-4244-a8ac-6a8f7591f7cc-t1:219f12c5-12d4-4623-9671-d26340f7bcc0",
+      "24bb6779-cd84-43e3-8066-3e297f7a367d-t0:70ddd95b-0a96-4953-80b9-a34d6c7a6203",
+      "24bb6779-cd84-43e3-8066-3e297f7a367d-t1:0a0a2cb3-66ff-461e-b691-a92ce819f77b",
+      "2c615ad7-fde8-4289-a806-ec1b6b160188-t0:cd8ab119-a587-4c36-8f8d-bc7054935d65",
+      "e4183cef-a888-4f5b-a389-cd44bd3cefcd-t0:12bd2bdf-6f75-4b3f-aaf2-869c3c5d07a3"
+    ],
+    "final_state": "completed",
+    "handoff_reasons": [],
+    "report_available": true
+  },
+  "report": {
+    "assessment_status": "completed",
+    "conclusion": "partial",
+    "fact_claims": 13,
+    "gaps_count": 6,
+    "parsed": true,
+    "trace_gaps_count": 3
+  },
+  "runs": [
+    {
+      "bound_target_id": "m0-otel-20260909",
+      "model_requests_used": 14,
+      "row_state": "completed",
+      "run_id": "f6a37b3d-51a8-5b2b-b695-3d5d743a8e18",
+      "scope_target_ids": [
+        "m0-otel-20260909"
+      ],
+      "time_policies": [
+        {
+          "anchor_rule": "alert_starts_at",
+          "id": "policy-window-1",
+          "window": {
+            "end": "2026-11-03T19:01:23+00:00",
+            "start": "2026-11-02T19:01:23+00:00"
+          }
+        }
+      ],
+      "tool_operations_used": 23
+    }
+  ],
+  "schema": "opspilot-eval-projection-1",
+  "tool_results": [
+    {
+      "reason": "RESULT_TOO_LARGE",
+      "run_id": "f6a37b3d-51a8-5b2b-b695-3d5d743a8e18",
+      "status": "error",
+      "target_id": "m0-otel-20260909",
+      "tool": "traces_search",
+      "window": {
+        "end": "2026-11-03T19:01:23+00:00",
+        "start": "2026-11-03T18:00:02+00:00"
+      }
+    },
+    {
+      "reason": null,
+      "run_id": "f6a37b3d-51a8-5b2b-b695-3d5d743a8e18",
+      "status": "ok",
+      "target_id": "m0-otel-20260909",
+      "tool": "metrics_range_query",
+      "window": {
+        "end": "2026-11-03T19:01:23+00:00",
+        "start": "2026-11-03T18:00:02+00:00"
+      }
+    },
+    {
+      "reason": null,
+      "run_id": "f6a37b3d-51a8-5b2b-b695-3d5d743a8e18",
+      "status": "ok",
+      "target_id": "m0-otel-20260909",
+      "tool": "metrics_range_query",
+      "window": {
+        "end": "2026-11-03T19:01:23+00:00",
+        "start": "2026-11-03T18:00:02+00:00"
+      }
+    },
+    {
+      "reason": null,
+      "run_id": "f6a37b3d-51a8-5b2b-b695-3d5d743a8e18",
+      "status": "ok",
+      "target_id": "m0-otel-20260909",
+      "tool": "metrics_range_query",
+      "window": {
+        "end": "2026-11-03T19:01:23+00:00",
+        "start": "2026-11-03T18:00:02+00:00"
+      }
+    },
+    {
+      "reason": "RESULT_TOO_LARGE",
+      "run_id": "f6a37b3d-51a8-5b2b-b695-3d5d743a8e18",
+      "status": "error",
+      "target_id": "m0-otel-20260909",
+      "tool": "traces_search",
+      "window": {
+        "end": "2026-11-03T19:01:23+00:00",
+        "start": "2026-11-03T18:56:00+00:00"
+      }
+    },
+    {
+      "reason": null,
+      "run_id": "f6a37b3d-51a8-5b2b-b695-3d5d743a8e18",
+      "status": "no_data",
+      "target_id": "m0-otel-20260909",
+      "tool": "metrics_range_query",
+      "window": {
+        "end": "2026-11-03T19:01:23+00:00",
+        "start": "2026-11-03T18:00:02+00:00"
+      }
+    },
+    {
+      "reason": null,
+      "run_id": "f6a37b3d-51a8-5b2b-b695-3d5d743a8e18",
+      "status": "ok",
+      "target_id": "m0-otel-20260909",
+      "tool": "read_evidence",
+      "window": {
+        "end": "2026-11-03T19:01:23+00:00",
+        "start": "2026-11-03T18:56:00+00:00"
+      }
+    },
+    {
+      "reason": null,
+      "run_id": "f6a37b3d-51a8-5b2b-b695-3d5d743a8e18",
+      "status": "ok",
+      "target_id": "m0-otel-20260909",
+      "tool": "get_label_values",
+      "window": {
+        "end": "2026-11-03T19:01:23+00:00",
+        "start": "2026-11-03T18:00:02+00:00"
+      }
+    },
+    {
+      "reason": null,
+      "run_id": "f6a37b3d-51a8-5b2b-b695-3d5d743a8e18",
+      "status": "ok",
+      "target_id": "m0-otel-20260909",
+      "tool": "metrics_range_query",
+      "window": {
+        "end": "2026-11-03T19:01:23+00:00",
+        "start": "2026-11-03T18:00:02+00:00"
+      }
+    },
+    {
+      "reason": null,
+      "run_id": "f6a37b3d-51a8-5b2b-b695-3d5d743a8e18",
+      "status": "ok",
+      "target_id": "m0-otel-20260909",
+      "tool": "metrics_range_query",
+      "window": {
+        "end": "2026-11-03T19:01:23+00:00",
+        "start": "2026-11-03T18:00:02+00:00"
+      }
+    },
+    {
+      "reason": null,
+      "run_id": "f6a37b3d-51a8-5b2b-b695-3d5d743a8e18",
+      "status": "ok",
+      "target_id": "m0-otel-20260909",
+      "tool": "read_evidence",
+      "window": {
+        "end": "2026-11-03T19:01:23+00:00",
+        "start": "2026-11-03T18:00:02+00:00"
+      }
+    },
+    {
+      "reason": null,
+      "run_id": "f6a37b3d-51a8-5b2b-b695-3d5d743a8e18",
+      "status": "ok",
+      "target_id": "m0-otel-20260909",
+      "tool": "metrics_range_query",
+      "window": {
+        "end": "2026-11-03T19:01:23+00:00",
+        "start": "2026-11-03T18:00:02+00:00"
+      }
+    },
+    {
+      "reason": null,
+      "run_id": "f6a37b3d-51a8-5b2b-b695-3d5d743a8e18",
+      "status": "ok",
+      "target_id": "m0-otel-20260909",
+      "tool": "metrics_range_query",
+      "window": {
+        "end": "2026-11-03T19:01:23+00:00",
+        "start": "2026-11-02T19:01:23+00:00"
+      }
+    },
+    {
+      "reason": null,
+      "run_id": "f6a37b3d-51a8-5b2b-b695-3d5d743a8e18",
+      "status": "ok",
+      "target_id": "m0-otel-20260909",
+      "tool": "metrics_range_query",
+      "window": {
+        "end": "2026-11-03T19:01:23+00:00",
+        "start": "2026-11-03T18:00:02+00:00"
+      }
+    },
+    {
+      "reason": null,
+      "run_id": "f6a37b3d-51a8-5b2b-b695-3d5d743a8e18",
+      "status": "ok",
+      "target_id": "m0-otel-20260909",
+      "tool": "metrics_range_query",
+      "window": {
+        "end": "2026-11-03T19:01:23+00:00",
+        "start": "2026-11-03T18:00:02+00:00"
+      }
+    },
+    {
+      "reason": null,
+      "run_id": "f6a37b3d-51a8-5b2b-b695-3d5d743a8e18",
+      "status": "ok",
+      "target_id": "m0-otel-20260909",
+      "tool": "metrics_range_query",
+      "window": {
+        "end": "2026-11-03T19:01:23+00:00",
+        "start": "2026-11-03T18:00:02+00:00"
+      }
+    },
+    {
+      "reason": null,
+      "run_id": "f6a37b3d-51a8-5b2b-b695-3d5d743a8e18",
+      "status": "ok",
+      "target_id": "m0-otel-20260909",
+      "tool": "metrics_range_query",
+      "window": {
+        "end": "2026-11-03T19:01:23+00:00",
+        "start": "2026-11-03T18:56:00+00:00"
+      }
+    },
+    {
+      "reason": null,
+      "run_id": "f6a37b3d-51a8-5b2b-b695-3d5d743a8e18",
+      "status": "ok",
+      "target_id": "m0-otel-20260909",
+      "tool": "get_label_values",
+      "window": {
+        "end": "2026-11-03T19:01:23+00:00",
+        "start": "2026-11-03T18:00:02+00:00"
+      }
+    },
+    {
+      "reason": null,
+      "run_id": "f6a37b3d-51a8-5b2b-b695-3d5d743a8e18",
+      "status": "ok",
+      "target_id": "m0-otel-20260909",
+      "tool": "read_evidence",
+      "window": {
+        "end": "2026-11-03T19:01:23+00:00",
+        "start": "2026-11-03T18:00:02+00:00"
+      }
+    },
+    {
+      "reason": null,
+      "run_id": "f6a37b3d-51a8-5b2b-b695-3d5d743a8e18",
+      "status": "no_data",
+      "target_id": "m0-otel-20260909",
+      "tool": "get_metric_names",
+      "window": {
+        "end": "2026-11-03T19:01:23+00:00",
+        "start": "2026-11-03T18:00:02+00:00"
+      }
+    },
+    {
+      "reason": "INVALID_PARAMS",
+      "run_id": "f6a37b3d-51a8-5b2b-b695-3d5d743a8e18",
+      "status": "error",
+      "target_id": "m0-otel-20260909",
+      "tool": "traces_search",
+      "window": {
+        "end": "2026-11-03T19:01:23+00:00",
+        "start": "2026-11-02T19:01:23+00:00"
+      }
+    },
+    {
+      "reason": null,
+      "run_id": "f6a37b3d-51a8-5b2b-b695-3d5d743a8e18",
+      "status": "ok",
+      "target_id": "m0-otel-20260909",
+      "tool": "metrics_range_query",
+      "window": {
+        "end": "2026-11-03T19:01:23+00:00",
+        "start": "2026-11-03T18:00:02+00:00"
+      }
+    },
+    {
+      "reason": null,
+      "run_id": "f6a37b3d-51a8-5b2b-b695-3d5d743a8e18",
+      "status": "ok",
+      "target_id": "m0-otel-20260909",
+      "tool": "metrics_range_query",
+      "window": {
+        "end": "2026-11-03T19:01:23+00:00",
+        "start": "2026-11-03T18:00:02+00:00"
+      }
+    }
+  ],
+  "writes": {
+    "controls": 0,
+    "self_heal_authorizations": 0
+  }
+}

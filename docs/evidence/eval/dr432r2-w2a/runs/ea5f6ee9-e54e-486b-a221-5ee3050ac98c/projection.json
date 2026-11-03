@@ -1,0 +1,47 @@
+{
+  "alert": null,
+  "canary_hits": null,
+  "counts": {
+    "episodes": 0,
+    "incidents": 1,
+    "runs": 1
+  },
+  "outcome": {
+    "decision": "handoff",
+    "evidence_ids": [],
+    "final_state": "failed",
+    "handoff_reasons": [
+      "MODEL_UNAVAILABLE"
+    ],
+    "report_available": false
+  },
+  "report": null,
+  "runs": [
+    {
+      "bound_target_id": "m0-otel-20260909",
+      "model_requests_used": 2,
+      "row_state": "waiting_human",
+      "run_id": "6234d757-03bf-4488-bcca-7a408621b097",
+      "scope_target_ids": [
+        "m0-otel-20260909"
+      ],
+      "time_policies": [
+        {
+          "anchor_rule": null,
+          "id": "policy-window-1",
+          "window": {
+            "end": "2026-11-03T14:23:27+00:00",
+            "start": "2026-11-02T14:23:27+00:00"
+          }
+        }
+      ],
+      "tool_operations_used": 0
+    }
+  ],
+  "schema": "opspilot-eval-projection-1",
+  "tool_results": [],
+  "writes": {
+    "controls": 0,
+    "self_heal_authorizations": 0
+  }
+}

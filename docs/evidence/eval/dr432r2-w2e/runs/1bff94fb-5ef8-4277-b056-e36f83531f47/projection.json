@@ -1,0 +1,280 @@
+{
+  "alert": null,
+  "canary_hits": null,
+  "counts": {
+    "episodes": 0,
+    "incidents": 1,
+    "runs": 1
+  },
+  "outcome": {
+    "decision": "report_available",
+    "evidence_ids": [
+      "d354cb04-1cbf-4105-88bb-1c59e7144e82-t0:58ac5171-60b8-4d8e-a0ea-d2062dcd6240",
+      "81b77a80-e532-40f7-a823-5df7ac95b404-t0:5cf5efd0-2484-4d8f-bcc4-be009e93b224",
+      "81b77a80-e532-40f7-a823-5df7ac95b404-t1:564949bf-f9a1-4a2a-b434-64c55d0bab99",
+      "7f289582-130e-4d9b-b2e6-98500434084e-t1:2a1e1e23-1194-4c0d-924c-d805da0e52fc",
+      "7f289582-130e-4d9b-b2e6-98500434084e-t2:8d4aedca-6867-46dc-ba5a-0ece1576f5f6",
+      "b5c519c1-2152-431e-a73f-15945a2d72ab-t0:2fa88173-c45a-4896-8821-fd1f560970f4",
+      "b5c519c1-2152-431e-a73f-15945a2d72ab-t1:1f362d2d-52f6-4c3c-bbf5-45edb24a9fde",
+      "b5c519c1-2152-431e-a73f-15945a2d72ab-t2:fab43d41-b864-4ba2-af7f-f17699ce6f0f",
+      "5d2d2221-3625-4dac-a4ff-521a4cb2191b-t0:fbbf892b-2657-42ac-b9f7-c53955dba20b",
+      "5d2d2221-3625-4dac-a4ff-521a4cb2191b-t1:2e044dcc-2e33-4236-93e7-4b8617ecd8ab",
+      "5d2d2221-3625-4dac-a4ff-521a4cb2191b-t2:58c76861-da60-4168-9542-ccb345155c23",
+      "550a657f-14dc-4670-bb9d-ac4de1df6e72-t0:62b14239-fdc8-4288-b653-9b4c1e05b165",
+      "550a657f-14dc-4670-bb9d-ac4de1df6e72-t1:851ea6ab-4f70-4ca0-8b85-39ab1aaabe6a",
+      "550a657f-14dc-4670-bb9d-ac4de1df6e72-t2:d9d8be34-a1d0-4a36-80b9-09557dfba096",
+      "550a657f-14dc-4670-bb9d-ac4de1df6e72-t3:60ffa331-aeb6-44d7-8341-a5afd8f9e1ba",
+      "a02b84dc-0bde-456a-ab24-759cec1fd9cb-t0:3599633d-92f8-4944-9e4c-ffe57f6711c4",
+      "a02b84dc-0bde-456a-ab24-759cec1fd9cb-t1:e3cc84a0-8c6a-4d18-a3fe-dbf63b466dba"
+    ],
+    "final_state": "completed",
+    "handoff_reasons": [],
+    "report_available": true
+  },
+  "report": {
+    "assessment_status": "completed",
+    "conclusion": "supported",
+    "fact_claims": 14,
+    "gaps_count": 7,
+    "parsed": true,
+    "trace_gaps_count": 3
+  },
+  "runs": [
+    {
+      "bound_target_id": "m0-otel-20260909",
+      "model_requests_used": 9,
+      "row_state": "completed",
+      "run_id": "2367b3a0-8099-4d8d-917e-96c02b675105",
+      "scope_target_ids": [
+        "m0-otel-20260909"
+      ],
+      "time_policies": [
+        {
+          "anchor_rule": null,
+          "id": "policy-window-1",
+          "window": {
+            "end": "2026-11-03T16:04:28+00:00",
+            "start": "2026-11-02T16:04:28+00:00"
+          }
+        }
+      ],
+      "tool_operations_used": 19
+    }
+  ],
+  "schema": "opspilot-eval-projection-1",
+  "tool_results": [
+    {
+      "reason": null,
+      "run_id": "2367b3a0-8099-4d8d-917e-96c02b675105",
+      "status": "ok",
+      "target_id": "m0-otel-20260909",
+      "tool": "metrics_range_query",
+      "window": {
+        "end": "2026-11-03T16:04:28+00:00",
+        "start": "2026-11-03T15:59:28+00:00"
+      }
+    },
+    {
+      "reason": "RESULT_TOO_LARGE",
+      "run_id": "2367b3a0-8099-4d8d-917e-96c02b675105",
+      "status": "error",
+      "target_id": "m0-otel-20260909",
+      "tool": "traces_search",
+      "window": {
+        "end": "2026-11-03T16:04:28+00:00",
+        "start": "2026-11-03T15:59:28+00:00"
+      }
+    },
+    {
+      "reason": null,
+      "run_id": "2367b3a0-8099-4d8d-917e-96c02b675105",
+      "status": "ok",
+      "target_id": "m0-otel-20260909",
+      "tool": "read_evidence",
+      "window": {
+        "end": "2026-11-03T16:04:28+00:00",
+        "start": "2026-11-03T15:59:28+00:00"
+      }
+    },
+    {
+      "reason": null,
+      "run_id": "2367b3a0-8099-4d8d-917e-96c02b675105",
+      "status": "ok",
+      "target_id": "m0-otel-20260909",
+      "tool": "metrics_range_query",
+      "window": {
+        "end": "2026-11-03T16:04:28+00:00",
+        "start": "2026-11-03T15:59:28+00:00"
+      }
+    },
+    {
+      "reason": "RESULT_TOO_LARGE",
+      "run_id": "2367b3a0-8099-4d8d-917e-96c02b675105",
+      "status": "error",
+      "target_id": "m0-otel-20260909",
+      "tool": "traces_search",
+      "window": {
+        "end": "2026-11-03T16:04:28+00:00",
+        "start": "2026-11-03T15:59:28+00:00"
+      }
+    },
+    {
+      "reason": null,
+      "run_id": "2367b3a0-8099-4d8d-917e-96c02b675105",
+      "status": "ok",
+      "target_id": "m0-otel-20260909",
+      "tool": "metrics_range_query",
+      "window": {
+        "end": "2026-11-03T16:04:28+00:00",
+        "start": "2026-11-03T15:59:28+00:00"
+      }
+    },
+    {
+      "reason": null,
+      "run_id": "2367b3a0-8099-4d8d-917e-96c02b675105",
+      "status": "ok",
+      "target_id": "m0-otel-20260909",
+      "tool": "metrics_range_query",
+      "window": {
+        "end": "2026-11-03T16:04:28+00:00",
+        "start": "2026-11-03T15:59:28+00:00"
+      }
+    },
+    {
+      "reason": null,
+      "run_id": "2367b3a0-8099-4d8d-917e-96c02b675105",
+      "status": "ok",
+      "target_id": "m0-otel-20260909",
+      "tool": "read_evidence",
+      "window": {
+        "end": "2026-11-03T16:04:28+00:00",
+        "start": "2026-11-03T15:59:28+00:00"
+      }
+    },
+    {
+      "reason": null,
+      "run_id": "2367b3a0-8099-4d8d-917e-96c02b675105",
+      "status": "ok",
+      "target_id": "m0-otel-20260909",
+      "tool": "metrics_range_query",
+      "window": {
+        "end": "2026-11-03T16:04:28+00:00",
+        "start": "2026-11-03T15:59:28+00:00"
+      }
+    },
+    {
+      "reason": null,
+      "run_id": "2367b3a0-8099-4d8d-917e-96c02b675105",
+      "status": "ok",
+      "target_id": "m0-otel-20260909",
+      "tool": "metrics_range_query",
+      "window": {
+        "end": "2026-11-03T15:29:28+00:00",
+        "start": "2026-11-03T15:24:28+00:00"
+      }
+    },
+    {
+      "reason": null,
+      "run_id": "2367b3a0-8099-4d8d-917e-96c02b675105",
+      "status": "ok",
+      "target_id": "m0-otel-20260909",
+      "tool": "read_evidence",
+      "window": {
+        "end": "2026-11-03T16:04:28+00:00",
+        "start": "2026-11-03T15:59:28+00:00"
+      }
+    },
+    {
+      "reason": null,
+      "run_id": "2367b3a0-8099-4d8d-917e-96c02b675105",
+      "status": "ok",
+      "target_id": "m0-otel-20260909",
+      "tool": "metrics_range_query",
+      "window": {
+        "end": "2026-11-03T15:04:28+00:00",
+        "start": "2026-11-03T14:59:28+00:00"
+      }
+    },
+    {
+      "reason": null,
+      "run_id": "2367b3a0-8099-4d8d-917e-96c02b675105",
+      "status": "ok",
+      "target_id": "m0-otel-20260909",
+      "tool": "metrics_range_query",
+      "window": {
+        "end": "2026-11-03T16:04:28+00:00",
+        "start": "2026-11-03T15:59:28+00:00"
+      }
+    },
+    {
+      "reason": null,
+      "run_id": "2367b3a0-8099-4d8d-917e-96c02b675105",
+      "status": "ok",
+      "target_id": "m0-otel-20260909",
+      "tool": "traces_search",
+      "window": {
+        "end": "2026-11-03T16:04:28+00:00",
+        "start": "2026-11-03T16:03:20+00:00"
+      }
+    },
+    {
+      "reason": null,
+      "run_id": "2367b3a0-8099-4d8d-917e-96c02b675105",
+      "status": "ok",
+      "target_id": "m0-otel-20260909",
+      "tool": "metrics_range_query",
+      "window": {
+        "end": "2026-11-03T16:04:28+00:00",
+        "start": "2026-11-03T15:59:28+00:00"
+      }
+    },
+    {
+      "reason": null,
+      "run_id": "2367b3a0-8099-4d8d-917e-96c02b675105",
+      "status": "ok",
+      "target_id": "m0-otel-20260909",
+      "tool": "metrics_range_query",
+      "window": {
+        "end": "2026-11-03T15:29:28+00:00",
+        "start": "2026-11-03T15:24:28+00:00"
+      }
+    },
+    {
+      "reason": null,
+      "run_id": "2367b3a0-8099-4d8d-917e-96c02b675105",
+      "status": "ok",
+      "target_id": "m0-otel-20260909",
+      "tool": "metrics_range_query",
+      "window": {
+        "end": "2026-11-03T16:04:28+00:00",
+        "start": "2026-11-03T15:59:28+00:00"
+      }
+    },
+    {
+      "reason": null,
+      "run_id": "2367b3a0-8099-4d8d-917e-96c02b675105",
+      "status": "ok",
+      "target_id": "m0-otel-20260909",
+      "tool": "metrics_range_query",
+      "window": {
+        "end": "2026-11-03T15:49:28+00:00",
+        "start": "2026-11-03T15:44:28+00:00"
+      }
+    },
+    {
+      "reason": null,
+      "run_id": "2367b3a0-8099-4d8d-917e-96c02b675105",
+      "status": "ok",
+      "target_id": "m0-otel-20260909",
+      "tool": "metrics_range_query",
+      "window": {
+        "end": "2026-11-03T16:04:28+00:00",
+        "start": "2026-11-03T15:59:28+00:00"
+      }
+    }
+  ],
+  "writes": {
+    "controls": 0,
+    "self_heal_authorizations": 0
+  }
+}
