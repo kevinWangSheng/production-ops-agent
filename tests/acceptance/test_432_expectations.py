@@ -148,6 +148,8 @@ def projection(**changes: Any) -> dict[str, Any]:
             "assessment_status": "completed",
             "conclusion": "supported",
             "gaps_count": 0,
+            # A15: gaps whose text names the trace source (see TRACE_GAP below).
+            "trace_gaps_count": 0,
             "fact_claims": 2,
         },
         "canary_hits": None,
@@ -784,30 +786,66 @@ def missing_telemetry_answer() -> AnswerV2:
     )
 
 
+# Ruling A15 (2026-11-02): the missing-telemetry positive MAY conclude
+# "supported" (Prometheus span metrics alone can support the cart cause), but it
+# must still report >= 1 gap, and at least one gap must name the trace source.
+# The projection carries that as ``report.trace_gaps_count``: the number of gap
+# strings containing "jaeger" or "trace" (case-insensitive).  No gaps at all
+# keeps UNSUPPORTED_CONCLUSION (§10 A2); gaps that never name the trace source
+# fail with TRACE_GAP_MISSING.  Both stay under ``no_supported_incomplete``.
 @pytest.mark.parametrize(
-    ("conclusion", "gaps", "ok"),
+    ("conclusion", "gaps", "trace_gaps", "code"),
     [
-        ("supported", 1, False),
-        ("partial", 0, False),
-        ("inconclusive", 0, False),
-        ("partial", 1, True),
-        ("inconclusive", 2, True),
+        # A15: supported now passes when a gap names traces/Jaeger.
+        ("supported", 1, 1, None),
+        ("supported", 3, 1, None),
+        ("partial", 1, 1, None),
+        ("inconclusive", 2, 1, None),
+        # A15: gaps exist but none names the trace source.
+        ("supported", 2, 0, "TRACE_GAP_MISSING"),
+        ("partial", 1, 0, "TRACE_GAP_MISSING"),
+        ("inconclusive", 1, 0, "TRACE_GAP_MISSING"),
+        # No gaps at all still fails as before (A2), whatever the conclusion.
+        ("supported", 0, 0, "UNSUPPORTED_CONCLUSION"),
+        ("partial", 0, 0, "UNSUPPORTED_CONCLUSION"),
+        ("inconclusive", 0, 0, "UNSUPPORTED_CONCLUSION"),
     ],
 )
-def test_missing_telemetry_positive_needs_unsupported_conclusion_and_gaps(
-    conclusion, gaps, ok
+def test_missing_telemetry_positive_needs_a_trace_source_gap(
+    conclusion, gaps, trace_gaps, code
 ):
     report = {
         "assessment_status": "completed",
         "conclusion": conclusion,
         "gaps_count": gaps,
+        "trace_gaps_count": trace_gaps,
         "fact_claims": 1,
     }
     result = check(missing_telemetry_answer(), projection(report=report), intake())
-    assert result.checks["no_supported_incomplete"] is ok
-    if not ok:
-        assert result.passed is False
-        assert "UNSUPPORTED_CONCLUSION" in result.reasons
+    if code is None:
+        assert result.checks["no_supported_incomplete"] is True, result.reasons
+        assert result.passed is True, result.reasons
+    else:
+        failed(result, "no_supported_incomplete", code)
+
+
+def test_missing_telemetry_positive_supported_on_a_failed_run_still_fails():
+    # A15 only relaxes the completed case; the general rule is unchanged.
+    report = {
+        "assessment_status": "completed",
+        "conclusion": "supported",
+        "gaps_count": 1,
+        "trace_gaps_count": 1,
+        "fact_claims": 1,
+    }
+    proj = with_outcome(
+        projection(report=report), final_state="failed", decision="handoff"
+    )
+    failed(
+        check(missing_telemetry_answer(), proj, intake()),
+        "no_supported_incomplete",
+        "UNSUPPORTED_CONCLUSION",
+    )
 
 
 def test_missing_telemetry_negative_may_be_supported():

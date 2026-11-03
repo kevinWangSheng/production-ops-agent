@@ -280,40 +280,74 @@ def test_cli_fails_if_any_directory_fails(tmp_path):
     assert _cli(good, bad) == 1
 
 
-# -- missing-telemetry positive (D3/D4) ---------------------------------------------
+# -- missing-telemetry positive (D3/D4, ruling A15) ---------------------------------
+#
+# Ruling A15 (2026-11-02): the positive MAY conclude "supported" (span metrics
+# alone can support the cart cause) but must still list gaps, and at least one
+# gap string must name the trace source: it contains "jaeger" or "trace",
+# case-insensitive.  No gaps keeps UNSUPPORTED_CONCLUSION (§10 A2); gaps that
+# never name the trace source fail with TRACE_GAP_MISSING.
+
+JAEGER_GAP = "Trace search (jaeger) was unreachable; no span evidence."
 
 
-@pytest.mark.parametrize("conclusion", ["partial", "inconclusive"])
-def test_missing_telemetry_positive_passes_without_signature_when_unsupported_with_gaps(
+@pytest.mark.parametrize("conclusion", ["partial", "inconclusive", "supported"])
+def test_missing_telemetry_positive_passes_without_signature_with_a_trace_gap(
     tmp_path, conclusion
 ):
+    # A15: "supported" joins partial/inconclusive once a gap names the trace source.
+    report = _report(["ev-metric-1"], conclusion=conclusion, gaps=[JAEGER_GAP])
+    result = check_reference(missing_telemetry_case(tmp_path, report))
+    assert result.passed is True, result.reasons
+
+
+@pytest.mark.parametrize(
+    "gap",
+    [
+        "JAEGER could not be reached.",
+        "No traces were available for the window.",
+        "Span-level Trace evidence is missing.",
+    ],
+)
+def test_missing_telemetry_positive_trace_gap_match_is_case_insensitive(
+    tmp_path, gap
+):
+    # A15: matching is a case-insensitive substring "jaeger" or "trace".
     report = _report(
         ["ev-metric-1"],
-        conclusion=conclusion,
-        gaps=["Trace search (jaeger) was unreachable; no span evidence."],
+        conclusion="supported",
+        gaps=["Broader impact remains unmeasured.", gap],
     )
     result = check_reference(missing_telemetry_case(tmp_path, report))
     assert result.passed is True, result.reasons
 
 
-def test_missing_telemetry_positive_marked_supported_fails(tmp_path):
+@pytest.mark.parametrize("conclusion", ["supported", "partial"])
+def test_missing_telemetry_positive_gaps_without_trace_source_fail(
+    tmp_path, conclusion
+):
+    # A15: gaps exist but none names traces/Jaeger.
     report = _report(
         ["ev-metric-1"],
-        conclusion="supported",
-        gaps=["Trace search (jaeger) was unreachable."],
+        conclusion=conclusion,
+        gaps=["Broader impact remains unmeasured.", "No baseline was compared."],
     )
     directory = missing_telemetry_case(tmp_path, report)
     result = check_reference(directory)
     assert result.passed is False
-    assert "UNSUPPORTED_CONCLUSION" in result.reasons
+    assert "TRACE_GAP_MISSING" in result.reasons
     assert _cli(directory) == 1
 
 
-def test_missing_telemetry_positive_without_gaps_fails(tmp_path):
-    report = _report(["ev-metric-1"], conclusion="partial", gaps=[])
-    result = check_reference(missing_telemetry_case(tmp_path, report))
+@pytest.mark.parametrize("conclusion", ["supported", "partial"])
+def test_missing_telemetry_positive_without_gaps_fails(tmp_path, conclusion):
+    # A15 keeps the nonempty-gaps requirement; "supported" case added.
+    report = _report(["ev-metric-1"], conclusion=conclusion, gaps=[])
+    directory = missing_telemetry_case(tmp_path, report)
+    result = check_reference(directory)
     assert result.passed is False
     assert "UNSUPPORTED_CONCLUSION" in result.reasons  # §10 A2
+    assert _cli(directory) == 1
 
 
 @pytest.mark.parametrize(
