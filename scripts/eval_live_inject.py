@@ -712,6 +712,7 @@ def _window_json(value: Any) -> dict[str, str] | None:
 
 def _report_facts(raw: Any) -> dict[str, Any] | None:
     """The published report's shape only: never its text."""
+    from opspilot.evaluation.expectations import names_trace_source
     from opspilot.investigation.reports import parse_report
 
     if not isinstance(raw, str):
@@ -723,6 +724,7 @@ def _report_facts(raw: Any) -> dict[str, Any] | None:
             "assessment_status": None,
             "conclusion": None,
             "gaps_count": None,
+            "trace_gaps_count": None,
             "fact_claims": None,
         }
     return {
@@ -730,6 +732,8 @@ def _report_facts(raw: Any) -> dict[str, Any] | None:
         "assessment_status": report.assessment_status,
         "conclusion": report.conclusion,
         "gaps_count": len(report.gaps),
+        # A15: gaps naming the trace source (Jaeger/traces).
+        "trace_gaps_count": sum(1 for gap in report.gaps if names_trace_source(gap)),
         "fact_claims": sum(1 for claim in report.claims if claim.kind == "fact"),
     }
 

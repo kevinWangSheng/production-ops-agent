@@ -27,6 +27,8 @@ from opspilot.evaluation.expectations import (
     ExpectationResult,
     category_rules,
     check_expectations,
+    names_trace_source,
+    trace_gap_reason,
 )
 from opspilot.evaluation.gate import parsed_report, run_gate
 from opspilot.evaluation.model import (
@@ -42,7 +44,6 @@ REFERENCE_DIR = "reference"
 EVIDENCE_FILE = "reference/evidence.json"
 REPORT_FILE = "reference/report.json"
 PROJECTION_FILE = "reference/projection.json"
-UNSUPPORTED_CONCLUSION = "UNSUPPORTED_CONCLUSION"
 
 _EVIDENCE_KEYS = frozenset(
     {
@@ -243,12 +244,21 @@ def check_reference(scenario_dir: Path) -> GateResult:
         delivered,
         authorized,
     )
-    if "no_supported_conclusion" not in rules:
+    if "trace_gap_required" not in rules:
         return gate
+    # A15 (user ruling 2026-11-02): any conclusion; the gaps must name the
+    # unread trace source (no gaps: UNSUPPORTED_CONCLUSION).
     report = parsed_report(capture)
-    ok = report is not None and report.conclusion != "supported" and bool(report.gaps)
+    code = (
+        None
+        if report is None
+        else trace_gap_reason(
+            len(report.gaps), sum(1 for gap in report.gaps if names_trace_source(gap))
+        )
+    )
+    ok = report is not None and code is None
     checks = {**gate.checks, "category": ok}
-    reasons = gate.reasons if ok else (*gate.reasons, UNSUPPORTED_CONCLUSION)
+    reasons = gate.reasons if ok or code is None else (*gate.reasons, code)
     return GateResult(passed=gate.passed and ok, checks=checks, reasons=reasons)
 
 

@@ -45,10 +45,32 @@ FRAME_SECONDS = 24 * 3600
 #: ``final_states`` token for "no Run was created" (decision D5).
 NO_RUN = "no_run"
 
+TRACE_GAP_MISSING = "TRACE_GAP_MISSING"
+UNSUPPORTED_CONCLUSION = "UNSUPPORTED_CONCLUSION"
+
+
+def names_trace_source(gap: str) -> bool:
+    """A15: a gap names the trace source when it says "jaeger" or "trace"
+    (any case)."""
+    lowered = gap.lower()
+    return "jaeger" in lowered or "trace" in lowered
+
+
+def trace_gap_reason(gaps_count: Any, trace_gaps_count: Any) -> str | None:
+    """A15 for the missing-telemetry positive: None when some gap names the
+    trace source; ``UNSUPPORTED_CONCLUSION`` without gaps, else
+    ``TRACE_GAP_MISSING``."""
+    if not isinstance(gaps_count, int) or gaps_count < 1:
+        return UNSUPPORTED_CONCLUSION
+    if not isinstance(trace_gaps_count, int) or trace_gaps_count < 1:
+        return TRACE_GAP_MISSING
+    return None
+
+
 #: Category rules beyond ``expected_outcome`` (decisions D3, D4, D6).
 CATEGORY_RULES: Mapping[tuple[str, str], frozenset[str]] = {
     ("missing_telemetry", "positive"): frozenset(
-        {"no_supported_conclusion", "signature_exempt"}
+        {"trace_gap_required", "signature_exempt"}
     ),
     ("model_failure", "positive"): frozenset({"no_report"}),
 }
@@ -276,14 +298,18 @@ def check_expectations(
     incomplete = (
         report is not None and report.get("assessment_status") == "incomplete"
     ) or (outcome is not None and outcome.get("final_state") != "completed")
-    if "no_supported_conclusion" in rules:
-        checks["no_supported_incomplete"] = bool(projection) and (
-            report is None or (not supported and (report.get("gaps_count") or 0) >= 1)
+    checks["no_supported_incomplete"] = bool(projection) and not (
+        supported and incomplete
+    )
+    if "trace_gap_required" in rules and report is not None:
+        # A15 (user ruling 2026-11-02): any conclusion, but the gaps must
+        # name the unread trace source; no gaps keeps UNSUPPORTED_CONCLUSION.
+        gap_code = trace_gap_reason(
+            report.get("gaps_count"), report.get("trace_gaps_count")
         )
-    else:
-        checks["no_supported_incomplete"] = bool(projection) and not (
-            supported and incomplete
-        )
+        if gap_code is not None:
+            checks["no_supported_incomplete"] = False
+            reasons.append(gap_code)
 
     if "no_report" in rules:
         from opspilot.investigation.limits import M1_FROZEN_LIMITS
@@ -304,7 +330,9 @@ def check_expectations(
             reasons.append("MODEL_REQUESTS_EXCEEDED")
 
     for name, code in _REASON.items():
-        if checks[name] is False:
+        if checks[name] is False and not (
+            name == "no_supported_incomplete" and not (supported and incomplete)
+        ):
             reasons.append(code)
     passed = all(value is not False for value in checks.values()) and not reasons
     return ExpectationResult(passed, checks, tuple(dict.fromkeys(reasons)))
