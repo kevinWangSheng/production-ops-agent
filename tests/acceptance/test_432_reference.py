@@ -309,9 +309,7 @@ def test_missing_telemetry_positive_passes_without_signature_with_a_trace_gap(
         "Span-level Trace evidence is missing.",
     ],
 )
-def test_missing_telemetry_positive_trace_gap_match_is_case_insensitive(
-    tmp_path, gap
-):
+def test_missing_telemetry_positive_trace_gap_match_is_case_insensitive(tmp_path, gap):
     # A15: matching is a case-insensitive substring "jaeger" or "trace".
     report = _report(
         ["ev-metric-1"],
