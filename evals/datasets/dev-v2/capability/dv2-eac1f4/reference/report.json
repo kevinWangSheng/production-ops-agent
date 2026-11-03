@@ -1,0 +1,93 @@
+{
+  "schema_version": "m0-report-v2",
+  "assessment_status": "completed",
+  "conclusion": "supported",
+  "summary": "No checkout failure is evident in the 5 minutes before 20:57:09Z. Span metrics count 0 errors for checkout PlaceOrder and for checkout's calls to payment, cart, product-catalog, currency, shipping and email, and checkout's PlaceOrder server calls all returned gRPC status 0. Sampled checkout and payment spans in the window, including the Charge calls, carry no error status. Latency is in its normal range. Checkout errors seen several hours earlier (17:00Z-19:10Z) had stopped by 19:10Z and do not describe the current state. No ad service errors are visible in this window either.",
+  "claims": [
+    {
+      "kind": "fact",
+      "text": "Span metrics for 20:52:09Z-20:57:09Z count 0 errors for checkout PlaceOrder, prepareOrderItems, PaymentService/Charge and CartService/EmptyCart, for payment Charge and for cart EmptyCart.",
+      "evidence_ids": [
+        "ddf3ad64-7364-4bf9-ae63-4a53612b97e1-t0:191ee264-6efa-43fc-b844-c0c6ebbe8796"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "Across all services in 20:52:09Z-20:57:09Z, the only non-zero error series are flagd EventStream spans (1.25 for the flagd and recommendation services); frontend checkout routes and ad GetAds show 0 errors.",
+      "evidence_ids": [
+        "1b56f354-22de-4307-9f16-762fa8e73432-t1:afca8491-631e-4a63-acb4-f8cd8434c25c"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "Checkout's PlaceOrder server calls in the last 5 minutes returned gRPC status 0 (about 5 calls) and status 13 zero times; ad GetAds server calls returned status 0 (15 calls) and status 14 zero times.",
+      "evidence_ids": [
+        "2019053a-c015-46d7-aa7d-66a2e958e3cf-t0:b893fe49-50b5-452d-925e-d96a86e292c9"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "A 40-span sample of checkout traces in the window (PlaceOrder, Charge, EmptyCart, GetQuote, Convert) and a 60-span sample of payment traces (Charge, frontend /api/checkout) contain no span with an error status.",
+      "evidence_ids": [
+        "08b95397-8aaf-41d8-8142-2f85ad1c1c12-t0:60865db4-bcbc-4296-ba91-ae726b012813",
+        "19c8cb7f-c2ef-43ae-9df8-8e5386cf36d2-t0:ba72d220-f9df-4030-ae1d-f6a262078125"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "p95 of checkout PlaceOrder is 73 ms in the current window and 48-231 ms in the 10-minute samples of the past two hours; checkout client p95 for Charge, EmptyCart and GetQuote is 22 ms and for GetCart, GetProduct, Convert and ShipOrder 4.75 ms.",
+      "evidence_ids": [
+        "19c8cb7f-c2ef-43ae-9df8-8e5386cf36d2-t1:ca338f2c-cebb-4d50-a4be-658729bf684b",
+        "e1836dc4-ea98-4fbc-b298-fbfa8f71f2c2-t0:6851925e-6298-4276-9e97-fdd25fac9297",
+        "08b95397-8aaf-41d8-8142-2f85ad1c1c12-t2:b6422105-e13d-4a1e-b089-e1c279e3bbcc"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "Earlier checkout PlaceOrder errors, matched one for one by checkout PaymentService/Charge errors, appear in 5-minute samples between 18:20Z and 19:10Z; 30-minute samples of checkout errors read 0 from 19:02Z through 20:32Z.",
+      "evidence_ids": [
+        "19c8cb7f-c2ef-43ae-9df8-8e5386cf36d2-t2:2ede2c2e-89f8-4b49-8846-e525b178d880",
+        "08b95397-8aaf-41d8-8142-2f85ad1c1c12-t1:49512aa1-fd72-43e0-ab81-3664b89c9984"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "hypothesis",
+      "text": "The earlier Charge-related errors are a past, ended episode outside the investigated window; they are not evidence of a current checkout failure.",
+      "evidence_ids": [],
+      "target_refs": [],
+      "time_scope_ref": null
+    }
+  ],
+  "gaps": [
+    "Full trace searches for checkout and payment in the window exceeded the size limit; only the first 40 and 60 spans of each were read, so rare errors in the remaining spans cannot be ruled out.",
+    "The reported elevated errors could not be reproduced in the window; what the report refers to (time or scope) is not visible in the telemetry read."
+  ],
+  "next_steps": [
+    "Confirm with the reporter when the elevated checkout errors were observed; if it was before about 19:10Z, the errors had stopped by then.",
+    "Keep watching checkout PlaceOrder errors; reopen if the count rises above 0."
+  ]
+}
