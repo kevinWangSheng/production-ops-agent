@@ -49,5 +49,5 @@
     ],
     "min_matches": 1
   },
-  "reference_report": null
+  "reference_report": "reference/report.json"
 }
