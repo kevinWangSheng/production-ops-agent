@@ -155,6 +155,16 @@ def _attempt(
             )
         ):
             raise DevRoundError(f"EVIDENCE_INVALID:{CANARY_RECHECK}")
+        # Section 5b: the report count is the projection's own; the recheck
+        # only splits the projected step hits into outward and reasoning-only.
+        original = projection.get("canary_hits")
+        if (
+            not isinstance(original, Mapping)
+            or recheck["report"] != original.get("report")
+            or recheck["step_responses"] + recheck["step_reasoning"]
+            != original.get("step_responses")
+        ):
+            raise DevRoundError(f"EVIDENCE_INVALID:{CANARY_RECHECK}")
         projection = dict(projection) | {
             "canary_hits": {
                 key: recheck[key]

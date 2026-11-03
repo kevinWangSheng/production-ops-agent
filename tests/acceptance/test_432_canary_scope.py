@@ -133,9 +133,9 @@ def test_recheck_writes_outward_counts_refuses_overwrite_and_skips_ineligible(tm
     assert recheck([round_dir], dataset, recordings) == []
 
 
-def test_aggregate_recheck_changes_only_canary_result_and_preserves_stored_expectations(
-    tmp_path,
-):
+def _aggregate_round_with_recheck(
+    tmp_path: Path, *, report: int, step_responses: int, step_reasoning: int
+) -> tuple[Path, Path]:
     round_dir = tmp_path / "round"
     shutil.copytree(Path("docs/evidence/eval/dr432r2-w2f"), round_dir)
     lifecycle = json.loads((round_dir / "lifecycle.json").read_text())
@@ -157,15 +157,25 @@ def test_aggregate_recheck_changes_only_canary_result_and_preserves_stored_expec
                 "schema": "opspilot-eval-canary-recheck-1",
                 "rule": "outward-only",
                 "recording_sha256": "0" * 64,
-                "report": 0,
-                "step_responses": 0,
-                "step_reasoning": 1,
+                "report": report,
+                "step_responses": step_responses,
+                "step_reasoning": step_reasoning,
             }
         )
+    )
+    return round_dir, run_dir
+
+
+def test_aggregate_recheck_changes_only_canary_result_and_preserves_stored_expectations(
+    tmp_path,
+):
+    round_dir, run_dir = _aggregate_round_with_recheck(
+        tmp_path, report=0, step_responses=0, step_reasoning=1
     )
 
     summary = aggregate([round_dir], DEV_V2)
     row = next(s for s in summary["slots"] if s["scenario_id"] == "dv2-bec37f")
+    stored = json.loads((run_dir / "expectations.json").read_text())
     assert row["canary_rechecked"] is True
     assert row["expectations"]["checks"]["canary_absent"] is True
     assert row["expectations_stored"] == {
@@ -179,6 +189,30 @@ def test_aggregate_recheck_changes_only_canary_result_and_preserves_stored_expec
     with pytest.raises(Exception) as exc:
         aggregate([round_dir], DEV_V2)
     assert "EXPECTATIONS_MISMATCH" in str(exc.value)
+
+
+def test_aggregate_recheck_rejects_report_mismatch(tmp_path):
+    round_dir, _ = _aggregate_round_with_recheck(
+        tmp_path, report=0, step_responses=0, step_reasoning=1
+    )
+    run_dir = next((round_dir / "runs").iterdir())
+    projection = json.loads((run_dir / "projection.json").read_text())
+    projection["canary_hits"]["report"] = 1
+    (run_dir / "projection.json").write_text(json.dumps(projection))
+
+    with pytest.raises(Exception) as exc:
+        aggregate([round_dir], DEV_V2)
+    assert "EVIDENCE_INVALID:canary-recheck.json" in str(exc.value)
+
+
+def test_aggregate_recheck_rejects_step_count_mismatch(tmp_path):
+    round_dir, _ = _aggregate_round_with_recheck(
+        tmp_path, report=0, step_responses=0, step_reasoning=0
+    )
+
+    with pytest.raises(Exception) as exc:
+        aggregate([round_dir], DEV_V2)
+    assert "EVIDENCE_INVALID:canary-recheck.json" in str(exc.value)
 
 
 def test_aggregate_malformed_or_absent_recheck_follows_contract(lab):
