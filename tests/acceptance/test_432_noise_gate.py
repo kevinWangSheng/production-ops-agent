@@ -65,6 +65,7 @@ class Telemetry:
         self.lab = lab
         self.mode = mode
         self.early_at: datetime | None = None
+        self.last_ad: datetime | None = None  # newest ad error span returned
 
     def _effective_since(self, flag: str) -> datetime | None:
         for when, variant in self.lab.history.get(flag, []):
@@ -103,6 +104,8 @@ class Telemetry:
             at = end
         if self.lab.effective("adFailure", at) == "off":
             return []
+        if self.last_ad is None or at > self.last_ad:
+            self.last_ad = at
         return [
             ObservedSpan(
                 "ad-trace",
@@ -229,10 +232,90 @@ def test_submit_deadline_keeps_the_signature_gate_when_ad_is_newer(tmp_path):
     assert request.submit_not_after == _payment_deadline(request)
 
 
-def test_noise_negative_does_not_wait_for_ad_errors(tmp_path):
-    # Trigger: adFailure *and* a non-null signature; the negative has none.
+# -- noise negative (lead ruling A16, 2026-11-02) ----------------------------------
+#
+# A16: the noise negative (adFailure only, signature null) must observe its noise
+# before submit.  After the flag is effective it waits (600 s budget) for >= 1
+# ad GetAds error span, else setup_failed / NOISE_NOT_OBSERVED (a Q20 failure
+# under D1); then the trailing 300 s normal window must be clean on the fault
+# signatures (ad errors do not make it unclean); and
+# submit_not_after = min(window end + 300 s, newest ad error + 300 s).
+# This replaces test_noise_negative_does_not_wait_for_ad_errors.
+
+
+def test_noise_negative_without_ad_errors_is_noise_not_observed(tmp_path):
+    # A16: no ad error span -> setup failed, never investigated, lab restored.
     env = make(tmp_path, "none")
+    deps = env["deps"]
+    result = run(env, NOISE_NEGATIVE)
+    (slot,) = result.slots
+    assert slot.status == "setup_failed"
+    assert slot.reason == "NOISE_NOT_OBSERVED"
+    assert env["seen"] == []
+    assert eval_live_lab.read_state(deps.ledger_root) is None
+    assert env["lab"].raw == ORIGINAL_V2
+    assert env["lab"].effective("adFailure", env["clock"].now()) == "off"
+    run_dir = deps.evidence_root / "r1" / "runs" / slot.attempt_id
+    summary = json.loads((run_dir / "summary.json").read_text())
+    assert summary["capture"]["attempt"]["status"] == "setup_failed"
+
+
+@pytest.mark.parametrize("mode", ["early", "late"])
+def test_noise_negative_with_ad_errors_submits_with_the_earlier_deadline(
+    tmp_path, mode
+):
+    # A16: ad error seen -> clean trailing 300 s normal window -> submit with
+    # submit_not_after = min(window end + 300 s, newest ad error + 300 s).
+    env = make(tmp_path, mode)
     result = run(env, NOISE_NEGATIVE)
     (slot,) = result.slots
     assert slot.reason != "NOISE_NOT_OBSERVED"
-    assert len(env["seen"]) == 1
+    (request,) = env["seen"]
+    newest_ad = env["telemetry"].last_ad
+    assert newest_ad is not None
+    gate = request.pre_observation
+    assert gate.passed
+    assert gate.window.end - gate.window.start == FRESHNESS
+    assert gate.window.start >= gate.flag_confirmed_at
+    assert request.submit_not_after == min(
+        gate.window.end + FRESHNESS, newest_ad + FRESHNESS
+    )
+    assert eval_live_lab.read_state(env["deps"].ledger_root) is None
+    assert env["lab"].raw == ORIGINAL_V2
+
+
+def test_noise_negative_with_a_dirty_signature_window_is_still_refused(tmp_path):
+    # A16 keeps the normal-window rule: ad errors are observed, but fault
+    # signature errors in the trailing window still refuse the attempt.
+    env = make(tmp_path, "late")
+    lab = env["lab"]
+    real = lab.spans
+
+    def dirty_while_ad_is_on(service, start, end, timeout):
+        # A payment-signature error span while adFailure is on; clean after
+        # restore, so the post-restore wash can still confirm.
+        query = real(service, start, end, timeout)
+        if lab.effective("adFailure", end) == "off":
+            return query
+        extra = tuple(
+            ObservedSpan(
+                "dirty-trace",
+                f"dirty-{end.timestamp():.0f}",
+                m["service"],
+                m["operation"],
+                end,
+                {"otel.status_code": "ERROR"},
+            )
+            for m in SIGNATURE["any_of"]
+            if m["service"] == service
+        )
+        return SpanQuery((*query.spans, *extra), query.complete)
+
+    lab.spans = dirty_while_ad_is_on  # type: ignore[method-assign]
+    result = run(env, NOISE_NEGATIVE)
+    (slot,) = result.slots
+    assert (slot.status, slot.reason) == ("setup_failed", "NORMAL_WINDOW_UNCONFIRMED")
+    assert env["seen"] == []
+    assert env["telemetry"].last_ad is not None  # the noise itself was seen
+    assert eval_live_lab.read_state(env["deps"].ledger_root) is None
+    assert env["lab"].raw == ORIGINAL_V2
