@@ -192,10 +192,9 @@ def test_aggregate_recheck_changes_only_canary_result_and_preserves_stored_expec
 
 
 def test_aggregate_recheck_rejects_report_mismatch(tmp_path):
-    round_dir, _ = _aggregate_round_with_recheck(
+    round_dir, run_dir = _aggregate_round_with_recheck(
         tmp_path, report=0, step_responses=0, step_reasoning=1
     )
-    run_dir = next((round_dir / "runs").iterdir())
     projection = json.loads((run_dir / "projection.json").read_text())
     projection["canary_hits"]["report"] = 1
     (run_dir / "projection.json").write_text(json.dumps(projection))
@@ -220,7 +219,9 @@ def test_aggregate_malformed_or_absent_recheck_follows_contract(lab):
     baseline = aggregate([round_dir], lab["root"])
     row = next(s for s in baseline["slots"] if s["scenario_id"] == NOISE_NEGATIVE)
     assert row["canary_rechecked"] is False
-    run_dir = next((round_dir / "runs").iterdir())
+    lifecycle = json.loads((round_dir / "lifecycle.json").read_text())
+    attempt_id = lifecycle["slots"][0]["attempt_id"]
+    run_dir = round_dir / "runs" / attempt_id
     (run_dir / "canary-recheck.json").write_text("{}")
     with pytest.raises(Exception) as exc:
         aggregate([round_dir], lab["root"])
