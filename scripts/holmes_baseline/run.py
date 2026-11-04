@@ -68,12 +68,17 @@ UPSTREAM_DIR = Path(
 )
 IMAGE = "opspilot-f14/holmesgpt:a0009195"
 HELPER_IMAGE = "python:3.11-alpine"
-NETWORK = "f14-holmes-internal"
-RELAY = "f14-lab-relay"
-EGRESS = "f14-egress"
-CAPTURE = "f14-capture"
-HOLMES = "f14-holmes"
-ALERTMANAGER = "f14-alertmanager"
+# Per lab instance (S7, parallel labs on one host): instance 0 keeps the F14
+# names; instance n appends ``kind_lab.SUFFIX`` ("-i<n>") so containers and
+# networks of two labs never collide. Absent SUFFIX (no instance support in
+# kind_lab yet) means instance 0.
+SUFFIX = getattr(kind_lab, "SUFFIX", "")
+NETWORK = f"f14-holmes-internal{SUFFIX}"
+RELAY = f"f14-lab-relay{SUFFIX}"
+EGRESS = f"f14-egress{SUFFIX}"
+CAPTURE = f"f14-capture{SUFFIX}"
+HOLMES = f"f14-holmes{SUFFIX}"
+ALERTMANAGER = f"f14-alertmanager{SUFFIX}"
 KIND_NODE = f"{kind_lab.CLUSTER}-control-plane"
 PROMETHEUS_URL = f"http://{RELAY}:9090"
 JAEGER_URL = f"http://{RELAY}:16686/jaeger/ui"

@@ -9,6 +9,7 @@ import asyncio
 import hashlib
 import json
 import os
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -542,3 +543,181 @@ def test_f14_raw_outputs_project_and_summarize(
     doc = ds.summarize(DATASET, tmp_path, n=3)
     [slot] = [s for s in doc["slots"] if s["attempt_id"] == "real"]
     assert slot["raw"] == "real/out/holmes.json"
+
+
+# --- review round 1: paired adapter, provider error, lab instances
+
+
+def test_names_follow_the_lab_instance_suffix(monkeypatch: pytest.MonkeyPatch) -> None:
+    import importlib
+
+    from scripts import kind_lab
+
+    assert ds.RELAY == hrun.RELAY and ds.PROMETHEUS_URL == hrun.PROMETHEUS_URL
+    monkeypatch.setattr(kind_lab, "SUFFIX", "-i2", raising=False)
+    try:
+        run2 = importlib.reload(hrun)
+        ds2 = importlib.reload(ds)
+        assert run2.NETWORK == "f14-holmes-internal-i2"
+        assert {run2.RELAY, run2.EGRESS, run2.HOLMES, run2.CAPTURE} == {
+            "f14-lab-relay-i2",
+            "f14-egress-i2",
+            "f14-holmes-i2",
+            "f14-capture-i2",
+        }
+        assert (
+            ds2.PROMETHEUS_URL == run2.PROMETHEUS_URL == "http://f14-lab-relay-i2:9090"
+        )
+        spec, answer = loaded()["dv2-2b214b"]
+        plan = ds2.holmes_plan(spec, answer, submitted_at=SUBMITTED)
+        assert plan["no_proxy"] == "f14-lab-relay-i2"
+        # the frozen dimension does not move with the instance
+        assert plan["upstream"]["value"].endswith(
+            f"config={ds2.canonical_sha256(hconfig.holmes_config('http://f14-lab-relay:9090', 'http://f14-lab-relay:16686/jaeger/ui'))}"
+        )
+    finally:
+        monkeypatch.undo()
+        importlib.reload(hrun)
+        importlib.reload(ds)
+
+
+MODEL = {"mode": "connect", "client": "c", "target": "api.deepseek.com:443"}
+TAIL_503 = "Traceback ...\nInternalServerError: litellm.InternalServerError:\nDeepseekException - 503 Service Unavailable"
+
+
+@pytest.mark.parametrize(
+    "state,error,egress,want",
+    [
+        ("failed", TAIL_503, [{**MODEL, "allowed": True}], True),
+        ("failed", TAIL_503, [{**MODEL, "allowed": False, "injected": True}], False),
+        (
+            "failed",
+            TAIL_503,
+            [{**MODEL, "allowed": False, "injected": True}, {**MODEL, "allowed": True}],
+            True,
+        ),
+        (
+            "failed",
+            "x\nConnection error: 127.0.0.1:9\nKeyError: 'result'\n...\n.",
+            [],
+            False,
+        ),
+        ("completed", TAIL_503, [{**MODEL, "allowed": True}], False),
+        ("budget_exhausted", TAIL_503, [], False),
+        ("failed", None, [], False),
+    ],
+)
+def test_provider_error(state: str, error: Any, egress: Any, want: bool) -> None:
+    assert ds.provider_error(state, {"error": error}, egress) is want
+
+
+def test_slot_carries_read_only_and_provider_error(tmp_path: Path) -> None:
+    write_attempt(tmp_path, "dv2-2b214b", "a1", 1.0)
+    doc = ds.summarize(DATASET, tmp_path, n=3)
+    ran = [s for s in doc["slots"] if s["status"] == "ran"]
+    assert ran and all(
+        s["read_only"] is True and s["provider_error"] is False for s in ran
+    )
+    assert all(
+        "read_only" not in s for s in doc["slots"] if s["status"] == "not_applicable"
+    )
+
+
+def test_run_attempt_submit_late_is_setup_failed(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    lab = FakeLab(monkeypatch, fake_output())
+    spec, answer = loaded()["dv2-2b214b"]
+    got = ds.run_attempt(
+        spec,
+        answer,
+        attempt_id="late",
+        slot=1,
+        raw_root=tmp_path,
+        submit_not_after=ds.time.time() - 1,
+    )
+    assert got["status"] == "setup_failed" and got["reason"] == "SUBMIT_LATE"
+    assert lab.torn_down == 1 and lab.run_kwargs == {}
+
+
+@dataclass(frozen=True)
+class Request:
+    attempt_id: str
+    round_id: str
+    spec: Any
+    answer: Any
+    plan: Any
+    output_dir: Path
+    position: int
+    submit_not_after: datetime | None
+
+
+def test_paired_runner_adapts_run_attempt(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from scripts.holmes_baseline import dataset_runner as dr
+
+    seen: dict[str, Any] = {}
+
+    def fake_run_attempt(spec: Any, answer: Any, **kw: Any) -> dict[str, Any]:
+        seen.update(kw)
+        return {
+            "status": "ran",
+            "reason": None,
+            "attempt_dir": str(kw["raw_root"] / kw["attempt_id"]),
+            "started_at": "2026-11-10T18:30:01Z",
+            "ended_at": "2026-11-10T18:33:01Z",
+            "holmes_json_sha256": "ab" * 32,
+            "provider_error": True,
+        }
+
+    spec, answer = loaded()["dv2-2b214b"]
+    not_after = datetime(2026, 11, 10, 18, 31, tzinfo=UTC)
+    request = Request("ops-1", "r1", spec, answer, None, tmp_path, 2, not_after)
+    runner = dr.PairedHolmes(fake_run_attempt, result_type=dr.HolmesBaselineResult)
+    got = runner.run(request)
+    hid = dr.holmes_attempt_id("r1", "ops-1")
+    assert seen["attempt_id"] == hid != "ops-1" and hid == dr.holmes_attempt_id(
+        "r1", "ops-1"
+    )
+    assert hid != dr.holmes_attempt_id("r2", "ops-1")
+    assert seen["raw_root"] == tmp_path
+    assert seen["submit_not_after"] == not_after.timestamp()
+    assert "deadline" not in seen
+    assert got.status == "ran" and got.product_run_created and got.provider_error
+    assert got.output_path == str(tmp_path / hid)
+    assert got.started_at == datetime(2026, 11, 10, 18, 30, 1, tzinfo=UTC)
+    assert got.output_sha256 == "ab" * 32
+
+    def boom(*a: Any, **k: Any) -> Any:
+        raise RuntimeError("docker gone")
+
+    failed = dr.PairedHolmes(boom, result_type=dr.HolmesBaselineResult).run(request)
+    assert failed.status == "aborted" and failed.reason == "BASELINE_ERROR:RuntimeError"
+
+    def setup_failed(*a: Any, **k: Any) -> Any:
+        return {"status": "setup_failed", "reason": "SUBMIT_LATE"}
+
+    late = dr.PairedHolmes(setup_failed, result_type=dr.HolmesBaselineResult).run(
+        request
+    )
+    assert late.status == "setup_failed" and not late.product_run_created
+
+
+def test_paired_runner_fills_only_known_result_fields(tmp_path: Path) -> None:
+    from dataclasses import dataclass
+
+    from scripts.holmes_baseline import dataset_runner as dr
+
+    @dataclass(frozen=True)
+    class Narrow:  # #474's BaselineResult has no output_path
+        status: str
+        reason: str | None = None
+        provider_error: bool = False
+
+    spec, answer = loaded()["dv2-2b214b"]
+    request = Request("ops-1", "r1", spec, answer, None, tmp_path, 1, None)
+    got = dr.PairedHolmes(
+        lambda *a, **k: {"status": "ran", "provider_error": False}, result_type=Narrow
+    ).run(request)
+    assert got == Narrow(status="ran", reason=None, provider_error=False)

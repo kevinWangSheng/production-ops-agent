@@ -63,6 +63,7 @@ from opspilot.evaluation.model import (
     dataset_tree_hash,
     load_scenarios_v2,
 )
+from scripts import kind_lab
 from scripts.eval_dev_round import upstream_applicability
 from scripts.eval_live_lab import (
     UNREACHABLE_URLS,
@@ -81,13 +82,17 @@ NOT_APPLICABLE = "no_upstream_entry"
 SUMMARY_FILE = "summary.json"
 RAW_FILE = "out/holmes.json"
 SLOTS_PER_SCENARIO = 3  # U2: three runs per scenario
-#: The lab URLs the Holmes container reaches through the lab relay
-#: (``run.PROMETHEUS_URL``/``run.JAEGER_URL``; literal here so the plan stays
-#: importable without the docker helpers).
-PROMETHEUS_URL = "http://f14-lab-relay:9090"
-JAEGER_URL = "http://f14-lab-relay:16686/jaeger/ui"
-RELAY = "f14-lab-relay"
-CAPTURE = "f14-capture"
+#: The lab URLs the Holmes container reaches through this lab instance's
+#: relay (same names as ``run.RELAY``/``run.PROMETHEUS_URL``/...).
+SUFFIX = getattr(kind_lab, "SUFFIX", "")
+RELAY = f"f14-lab-relay{SUFFIX}"
+CAPTURE = f"f14-capture{SUFFIX}"
+PROMETHEUS_URL = f"http://{RELAY}:9090"
+JAEGER_URL = f"http://{RELAY}:16686/jaeger/ui"
+#: Instance 0's URLs: the ``upstream`` dimension hashes these, so rounds
+#: spread over parallel labs share one dimension.
+CANONICAL_PROMETHEUS_URL = "http://f14-lab-relay:9090"
+CANONICAL_JAEGER_URL = "http://f14-lab-relay:16686/jaeger/ui"
 LOOPBACK = "127.0.0.1"
 INJECT_503 = {"always_503": "always", "first_503": "first"}
 #: Lab-side injectors the caller applies before ``run_attempt``.
@@ -183,7 +188,7 @@ def canonical_sha256(value: Any) -> str:
 
 
 def base_config() -> dict[str, Any]:
-    return hconfig.holmes_config(PROMETHEUS_URL, JAEGER_URL)
+    return hconfig.holmes_config(CANONICAL_PROMETHEUS_URL, CANONICAL_JAEGER_URL)
 
 
 def upstream_dimension() -> dict[str, Any]:
@@ -527,6 +532,9 @@ def summarize(
                     "started_at": data["started_at"],
                     "final_state": data["final_state"],
                     "checks": data["checks"],
+                    # S7a reads this per started slot (Q11, Holmes side)
+                    "read_only": bool(data["checks"]["read_only"]),
+                    "provider_error": bool(data.get("provider_error")),
                     "final_state_expected": data["final_state_expected"],
                     "raw": None if raw is None else f"{directory.name}/{RAW_FILE}",
                     "report_available": data["report_sha256"] is not None,
@@ -571,6 +579,9 @@ def summarize(
             "an unreachable Prometheus fails Holmes' toolset check at startup, "
             "so its 8 tools are not offered at all (upstream behaviour); an "
             "unreachable Jaeger keeps jaeger_request, whose calls fail",
+            "unconfirmed: whether Holmes/LiteLLM would retry a real HTTP 503 "
+            "from the API; the CONNECT 503 was not retried (first_503 not "
+            "run live)",
         ],
     }
 
@@ -604,6 +615,52 @@ def judge_inputs(
 
 # --- live attempt (docker, lab relay, model API)
 
+#: Model provider failures in Holmes' error text (LiteLLM exception names,
+#: HTTP 5xx, transport breaks); a tool's own error never ends ``holmes ask``.
+PROVIDER_ERROR_MARKERS = (
+    "InternalServerError",
+    "ServiceUnavailableError",
+    "APIConnectionError",
+    "Timeout",
+    "Service Unavailable",
+    "Bad Gateway",
+    "Gateway Timeout",
+    "Connection error",
+    "RemoteProtocolError",
+)
+
+
+def provider_error(
+    final_state: str,
+    output: Mapping[str, Any],
+    egress: Sequence[Mapping[str, Any]],
+) -> bool:
+    """The Run ended on a model provider 5xx or transport failure that was
+    not injected (PROVIDER_5XX_STORM, R2): Holmes failed, its error names a
+    provider failure, and the last model CONNECT through the egress proxy was
+    not the injected 503 (an injected 503 Holmes does not retry is the
+    scenario, not the provider). Completed or budget-exhausted Runs never
+    count."""
+    if final_state != "failed":
+        return False
+    error = output.get("error")
+    if not isinstance(error, str):
+        return False
+    # only the fatal exception at the end of the log, not earlier tool noise
+    # (a refused Jaeger call also says "Connection error")
+    tail = "\n".join([line for line in error.splitlines() if line.strip()][-3:])
+    if not any(marker in tail for marker in PROVIDER_ERROR_MARKERS):
+        return False
+    connects = [
+        e
+        for e in egress
+        if e.get("mode") == "connect"
+        and "client" in e
+        and e.get("target") == f"{hconfig.MODEL_HOST}:443"
+    ]
+    return not (connects and connects[-1].get("injected"))
+
+
 ProxyLog = Callable[[float], list[str]]
 
 
@@ -620,6 +677,7 @@ def run_attempt(
     kind_node: str | None = None,
     proxy_log: ProxyLog | None = None,
     lab_checks: bool = True,
+    submit_not_after: float | None = None,
 ) -> dict[str, Any]:
     """One Holmes attempt for the paired schedule (S7c), in process.
 
@@ -628,7 +686,9 @@ def run_attempt(
     ``kind_node`` names the kind control-plane container (default: the
     ``kind_lab`` cluster); ``proxy_log(since)`` returns the lab proxy's log
     lines for the ``holmes`` account (default ``run.proxy_log_lines``, the
-    ``kind_lab`` kubeconfig). Returns ``status`` ``ran`` | ``setup_failed`` |
+    ``kind_lab`` kubeconfig). ``submit_not_after`` (epoch seconds) is checked
+    once setup is done, right before Holmes starts: later is
+    ``setup_failed``/``SUBMIT_LATE``; it never caps the Run. Returns ``status`` ``ran`` | ``setup_failed`` |
     ``aborted`` with ``reason``, times, the attempt directory and the raw
     output path/sha256; ``setup_failed`` means no Holmes container started.
     """
@@ -650,6 +710,7 @@ def run_attempt(
             "holmes_json": None,
             "holmes_json_sha256": None,
             "summary": None,
+            "provider_error": False,
             **extra,
         }
 
@@ -689,6 +750,9 @@ def run_attempt(
     except (SystemExit, Exception) as exc:  # noqa: BLE001 - reported as setup
         hrun.teardown()
         return result("setup_failed", f"SETUP:{type(exc).__name__}")
+    if submit_not_after is not None and time.time() > submit_not_after:
+        hrun.teardown()
+        return result("setup_failed", "SUBMIT_LATE", pre_run=pre_run)
     plan = holmes_plan(spec, answer, submitted_at=datetime.now(UTC))
     content = dict(plan["config"])
     no_proxy = injection.no_proxy([hrun.RELAY])
@@ -746,6 +810,7 @@ def run_attempt(
             "after": hrun.balance(key),
         },
     )
+    summary["provider_error"] = provider_error(row["final_state"], output, egress)
     summary_path = directory / SUMMARY_FILE
     summary_path.write_text(json.dumps(summary, indent=2) + "\n")
     killed_by_deadline = capped and bool(output.get("timed_out"))
@@ -759,6 +824,7 @@ def run_attempt(
         summary=str(summary_path),
         final_state=row["final_state"],
         checks=row["checks"],
+        provider_error=summary["provider_error"],
     )
 
 
