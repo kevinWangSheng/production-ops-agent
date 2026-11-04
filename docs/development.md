@@ -173,7 +173,7 @@ Linux 主机（F1 收尾 S4，Ubuntu 24.04 x86_64）：`sudo scripts/kind_lab/in
 - docker 走默认 socket，不设 `DOCKER_CONTEXT`；`OPSPILOT_LAB_DOCKER_CONTEXT` 可指定上下文。macOS 仍是 `colima-m1-kind`。
 - 不调 colima：`up` 以「kind 集群已存在」代替「VM 在运行」跳过内存检查，并 `docker start` 节点容器；`stop` 只 `docker stop opspilot-m1-control-plane`，集群与 release 保留。
 - 内存检查读 `/proc/meminfo` 的 `MemAvailable`（门槛同为 3 GiB）。
-- Alertmanager webhook 和 OpsPilot 健康端点的抓取目标不再是 colima 的 `192.168.5.2`，而是 `kind` 网桥的 IPv4 网关（通常 `172.18.0.1`）或 `OPSPILOT_LAB_HOST_ADDRESS`；`up`/`rules-check` 把替换后的 values 写到 `tmp/m1-kind-lab/rendered/` 再交给 helm，macOS 仍直接用仓库里的文件。注意：Linux 上 pod 访问的是这个网关地址，工作台和健康端点要监听在它上面（不能只绑 127.0.0.1），主机防火墙也要放行 kind 网段到这些端口；这两步不在安装脚本里。
+- Alertmanager webhook 和 OpsPilot 健康端点的抓取目标：Linux 上不再用 colima 的 `192.168.5.2`，改为控制侧容器在 `kind` 网络上的别名，即 `opspilot-web:8080` 的 webhook 和 `opspilot-{web,worker,observer}:9464` 的抓取目标（容器端口，与 #393 的接法相同）。控制侧装好后跑 `python3 scripts/kind_lab.py connect-control --project <Compose 项目名>`，把三个运行时容器以这些别名接进 `kind` 网络；可以重复运行，缺服务时退出码为 1。Compose 每次重建容器都会断开这个连接，所以 `install.sh upgrade` 后要再跑一次。这样控制侧仍然只发布在 127.0.0.1 上，也不用改防火墙。接不进 kind 网络时可以用 `OPSPILOT_LAB_HOST_ADDRESS=<地址>` 退回主机地址加主机端口：这时服务要监听在该地址上，防火墙也要放行 kind 网段。替换后的 values 写到 `tmp/m1-kind-lab/rendered/`，`up` 和 `rules-check` 都读这里；macOS 仍直接用仓库里的文件。
 - Holmes runner 的时钟检查在 Linux 上直接读主机时钟（没有 VM），swap 记录读 `/proc/meminfo`。
 - 窗口锁：macOS 用 `lockf ~/.agent/locks/kind-lab <命令>`，Linux 用同样写法的 `flock ~/.agent/locks/kind-lab <命令>`（util-linux 自带）。
 
