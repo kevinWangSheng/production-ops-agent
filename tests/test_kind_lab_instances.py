@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+import sys
 from collections.abc import Iterator
 from pathlib import Path
 from types import ModuleType
@@ -19,7 +20,10 @@ def instance(monkeypatch: pytest.MonkeyPatch) -> Iterator[object]:
     """Reload ``kind_lab`` under a given instance; restore it afterwards so
     other tests keep instance 0."""
 
-    def load(value: str | None, runtime: str = "docker") -> ModuleType:
+    def load(
+        value: str | None, runtime: str = "docker", platform: str = "linux"
+    ) -> ModuleType:
+        monkeypatch.setattr(sys, "platform", platform)
         if value is None:
             monkeypatch.delenv(kind_lab.INSTANCE_ENV, raising=False)
         else:
@@ -95,6 +99,64 @@ def test_colima_holds_one_lab_only(instance):
     lab = instance("1", runtime="colima")
     with pytest.raises(SystemExit):
         lab.kind_config_file()
+
+
+@pytest.mark.parametrize("command", ["up", "stop", "health", "fault"])
+@pytest.mark.parametrize(
+    ("runtime", "platform"),
+    [("colima", "darwin"), ("docker", "darwin"), ("colima", "linux")],
+)
+def test_lifecycle_commands_refuse_before_touching_anything(
+    instance, monkeypatch, command, runtime, platform
+):
+    lab = instance("1", runtime=runtime, platform=platform)
+    calls: list[object] = []
+
+    def record(*args: object, **kwargs: object) -> object:
+        calls.append(args)
+        raise AssertionError("touched the lab")
+
+    for name in ("run", "capture"):
+        monkeypatch.setattr(lab, name, record)
+    argv = [command] + (["inject"] if command == "fault" else [])
+    with pytest.raises(SystemExit) as exc:
+        lab.main(argv)
+    assert "docker runtime on a Linux host" in str(exc.value)
+    assert calls == []
+
+
+def test_instance_zero_keeps_colima_on_macos(instance):
+    lab = instance(None, runtime="colima", platform="darwin")
+    lab.check_instance()  # unchanged: no refusal
+
+
+@pytest.mark.parametrize(
+    ("variable", "url"),
+    [
+        ("OPSPILOT_OTEL_PROMETHEUS_URL", "http://127.0.0.1:19090"),
+        ("OPSPILOT_OTEL_JAEGER_URL", "http://127.0.0.1:16686/jaeger/ui"),
+    ],
+)
+def test_instance_refuses_another_instances_telemetry_url(
+    instance, monkeypatch, variable, url
+):
+    lab = instance("1")
+    monkeypatch.setenv(variable, url)
+    with pytest.raises(SystemExit, match="must use this instance's port"):
+        lab.check_instance()
+    monkeypatch.setenv(
+        variable, url.replace("19090", "19190").replace("16686", "16786")
+    )
+    lab.check_instance()
+
+
+def test_live_driver_refuses_an_unsupported_instance(instance):
+    from scripts import eval_live
+    from scripts.eval_live_lab import LabError
+
+    instance("1", runtime="colima", platform="darwin")
+    with pytest.raises(LabError, match="LAB_INSTANCE_UNSUPPORTED"):
+        eval_live.real_deps("http://127.0.0.1:18180/flagservice/", "r1")
 
 
 def test_injector_urls_follow_the_instance(instance):

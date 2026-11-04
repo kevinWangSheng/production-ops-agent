@@ -513,6 +513,31 @@ KIND_CONFIG_NAME = "opspilot-m1"
 KIND_CONFIG_PORTS = {30080: 18080, 30090: 19090, 30686: 16686}
 
 
+def check_instance() -> None:
+    """Refuse an instance > 0 anywhere but the docker runtime on Linux: on
+    macOS every lifecycle command would act on the one shared colima VM
+    (``stop`` would stop instance 0's lab). Also refuse a telemetry URL
+    override that points at another instance's host port, which would
+    silently read instance 0's (or another lab's) Prometheus or Jaeger."""
+    if INSTANCE == 0:
+        return
+    if sys.platform == "darwin" or lab_runtime() != "docker":
+        raise SystemExit(
+            f"{INSTANCE_ENV}>0 needs the docker runtime on a Linux host; "
+            "refusing before touching the lab"
+        )
+    for variable, port in (
+        ("OPSPILOT_OTEL_PROMETHEUS_URL", PROMETHEUS_PORT),
+        ("OPSPILOT_OTEL_JAEGER_URL", JAEGER_PORT),
+    ):
+        configured = os.environ.get(variable)
+        if configured and urllib.parse.urlsplit(configured).port != port:
+            raise SystemExit(
+                f"{variable} must use this instance's port {port} "
+                f"({INSTANCE_ENV}={INSTANCE}); refusing"
+            )
+
+
 def kind_config_file() -> Path:
     """The committed kind config for instance 0; otherwise a copy under
     LAB_DIR with this instance's cluster name and host ports (refused under
@@ -520,8 +545,7 @@ def kind_config_file() -> Path:
     source = CONFIG / "kind-config.yaml"
     if INSTANCE == 0:
         return source
-    if lab_runtime() != "docker":
-        raise SystemExit(f"{INSTANCE_ENV}>0 needs the docker runtime (Linux host)")
+    check_instance()
     text = source.read_text()
     name = f"name: {KIND_CONFIG_NAME}\n"
     if text.count(name) != 1:
@@ -1754,6 +1778,8 @@ def main(argv: list[str] | None = None) -> int:
     fault.add_argument("--flag", choices=sorted(FAULT_FLAGS), default=FLAG)
     fault.set_defaults(func=cmd_fault)
     args = parser.parse_args(argv)
+    # before any command touches colima, docker or kind (#479 review)
+    check_instance()
     return int(args.func(args))
 
 
