@@ -1,5 +1,6 @@
 """Engineer CLI for the F14 step 1 baseline (#396). Run inside the exclusive
-kind-lab window (``lockf ~/.agent/locks/kind-lab ...``).
+kind-lab window (``lockf ~/.agent/locks/kind-lab ...``; Linux:
+``flock ~/.agent/locks/kind-lab ...``).
 
   python -m scripts.holmes_baseline.run toolsets        # builtin names in the image
   python -m scripts.holmes_baseline.run pin             # write pin.json
@@ -12,7 +13,8 @@ kind-lab window (``lockf ~/.agent/locks/kind-lab ...``).
   python -m scripts.holmes_baseline.run records [--check]    # step 3, offline
   python -m scripts.holmes_baseline.run writeback [--check]  # step 3, offline
 
-Docker is the colima ``m1-kind`` daemon. The Holmes container joins only an
+Docker is the kind lab's daemon (colima ``m1-kind`` on macOS, the host's
+default socket on Linux, ``kind_lab.docker_context``). The Holmes container joins only an
 internal network shared with two helpers (``relay.py``): the lab relay
 (-> kind NodePorts 30090 proxy, 30686 Jaeger) and the egress proxy (CONNECT
 to the model API only). Raw Holmes output stays under the git-ignored
@@ -91,8 +93,8 @@ def docker_env() -> dict[str, str]:
     }
     # F14_DOCKER_CONTEXT: offline smoke in another, already running daemon
     # (#385); the default is the kind lab's daemon.
-    context = os.environ.get("F14_DOCKER_CONTEXT") or kind_lab.CONTEXT
-    return {**env, "DOCKER_CONTEXT": context}
+    context = os.environ.get("F14_DOCKER_CONTEXT") or kind_lab.docker_context()
+    return env if context is None else {**env, "DOCKER_CONTEXT": context}
 
 
 def docker(*args: str, timeout: float = 120, check: bool = True, **kw: Any) -> str:
@@ -525,15 +527,20 @@ def frontend_span_rate() -> float:
 
 def clock_skew() -> dict[str, float]:
     host = time.time()
-    vm = float(
-        subprocess.run(
-            ["colima", "ssh", "-p", kind_lab.PROFILE, "--", "date", "+%s.%N"],
-            capture_output=True,
-            text=True,
-            timeout=60,
-            check=True,
-        ).stdout
-    )
+    if kind_lab.lab_runtime() == "colima":
+        vm = float(
+            subprocess.run(
+                ["colima", "ssh", "-p", kind_lab.PROFILE, "--", "date", "+%s.%N"],
+                capture_output=True,
+                text=True,
+                timeout=60,
+                check=True,
+            ).stdout
+        )
+    else:
+        # Linux: no VM; the kind node and its containers run on the host
+        # kernel's clock, so the "VM" reading is the host clock itself.
+        vm = time.time()
     container = float(
         docker(
             "run",
@@ -627,9 +634,7 @@ def fault_record(injected_at: float, restore_code: int) -> dict[str, Any]:
 
 def cmd_live(args: argparse.Namespace) -> int:
     key = model_key()
-    swap = subprocess.run(
-        ["sysctl", "-n", "vm.swapusage"], capture_output=True, text=True
-    ).stdout.strip()
+    swap = kind_lab.host_swap_summary()
     rate = frontend_span_rate()
     skew = clock_skew()
     print(json.dumps({"swap": swap, "frontend_span_rate": rate, "clock_skew": skew}))
