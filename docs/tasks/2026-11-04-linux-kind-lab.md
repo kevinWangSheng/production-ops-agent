@@ -23,7 +23,7 @@
 
 ## 验证
 
-- 测试先写：`tests/test_kind_lab_linux.py` 第一版共 25 项，实现前 22 项失败。改成 kind 网络接法后共 26 项（参数化后 26 个用例），新测试放到上一版实现上跑，7 项失败。`tests/test_385_upstream_issues_impl.py` 的默认上下文测试固定用 colima 运行方式；原来它在 Linux CI 上也靠常量通过。`tests/test_414_lab_alerts_impl.py` 的 rules-check 辅助函数也固定主机地址为 colima 地址：CI 首轮在 Linux 上跑这 3 项时，因为没有 kind 网络而失败；只改了前置条件，断言没动。
+- 测试先写：`tests/test_kind_lab_linux.py` 第一版共 25 项，实现前 22 项失败。改成 kind 网络接法后共 26 项，新测试放到上一版实现上跑，7 项失败。`tests/test_385_upstream_issues_impl.py` 的默认上下文测试固定用 colima 运行方式；原来它在 Linux CI 上也靠常量通过。`tests/test_414_lab_alerts_impl.py` 的 rules-check 辅助函数也固定主机地址为 colima 地址：CI 首轮在 Linux 上跑这 3 项时，因为没有 kind 网络而失败；只改了前置条件，断言没动。
 - 定向测试：kind lab、holmes、#385、#399、#414、F7 授权探针相关测试共 488 项通过、5 项跳过（需要 nginx 或 docker）；修了 CI 首轮失败后，再用 `-k "kind or lab or holmes or 385 or 399 or 414 or f7"` 分别以 docker 和 colima 两种运行方式各跑一遍，都是 1400 项通过、88 项跳过。`ruff check`、`ruff format --check` 通过。`mypy` 按项目配置（`opspilot/`）通过；对 `scripts/kind_lab.py` 加跑 strict 也通过，测试文件只报出 yaml 缺类型存根，其他既有测试也是这样。本机 swap 紧张，没跑全量。
 - 主机 `opspilot-f9-1`（Vultr，Ubuntu 24.04.5 x86_64，8C/15G），2026-11-04 14:22–14:39 UTC：
   - 从零开始 `git clone` 本分支，再跑 `scripts/kind_lab/install_linux.sh`（root），全程 3 分 27 秒，退出码 0。`up` 的最终 health 为 ok；运行方式 `docker`。这一轮用的还是旧版网关地址，下面第三条记的 webhook 和抓取目标已被 kind 网络接法取代。
