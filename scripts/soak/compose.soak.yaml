@@ -1,0 +1,122 @@
+# 72h soak overlay for the control side on da-server (S-R1, S-R14). Lab only:
+# never part of a default install, and deploy/compose/compose.yaml is not
+# changed. Use it after compose.lab.yaml:
+#
+#   deploy/compose/install.sh compose -f deploy/compose/compose.lab.yaml \
+#     -f scripts/soak/compose.soak.yaml up -d
+#
+# soak-tunnel: one autossh connection to the rental host. Local forwards make
+# the lab Prometheus proxy and Jaeger reachable in this project's network as
+# lab-prometheus:19090 and lab-jaeger:16686 (the Observer's and the worker's
+# OPSPILOT_*_PROMETHEUS_URL / JAEGER_URL point there) and on the da-server
+# loopback for the soak runner. Remote forwards listen on the rental's kind
+# gateway (SOAK_KIND_GATEWAY, 172.18.0.1 by default) and lead back to the
+# workbench webhook and the three health listeners, so the lab Alertmanager
+# and Prometheus reach them (OPSPILOT_LAB_HOST_PORTS on the rental). Both
+# keys and the pinned known_hosts line are files under the soak secrets
+# directory (SOAK_SECRETS_DIR), never in this file.
+#
+# Every service also gets json-file log rotation (100 MB x 10): da-server has
+# no daemon.json (E11); the product default is a separate issue.
+
+x-soak-logging: &soak-logging
+  driver: json-file
+  options:
+    max-size: "100m"
+    max-file: "10"
+
+services:
+  postgres:
+    logging: *soak-logging
+  migrate:
+    logging: *soak-logging
+  init-roles:
+    logging: *soak-logging
+  web:
+    logging: *soak-logging
+  worker:
+    logging: *soak-logging
+  observer:
+    logging: *soak-logging
+  retention:
+    logging: *soak-logging
+
+  soak-tunnel:
+    # Relative paths resolve from the project directory (deploy/compose).
+    build:
+      context: ../../scripts/soak/tunnel
+      args:
+        SOAK_UID: ${OPSPILOT_RUNTIME_UID:?run deploy/compose/install.sh}
+        SOAK_GID: ${OPSPILOT_RUNTIME_GID:?run deploy/compose/install.sh}
+    image: opspilot-soak-tunnel:local
+    pull_policy: build
+    # The operator's uid, so the 0600 key files are readable; the image has
+    # a passwd entry for it (ssh refuses an unknown uid).
+    user: "${OPSPILOT_RUNTIME_UID}:${OPSPILOT_RUNTIME_GID}"
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      AUTOSSH_GATETIME: "0"
+      AUTOSSH_POLL: "30"
+      AUTOSSH_LOGFILE: /var/log/soak/autossh.log
+      AUTOSSH_LOGLEVEL: "6"
+    command:
+      - -M
+      - "0"
+      - -N
+      - -o
+      - ServerAliveInterval=15
+      - -o
+      - ServerAliveCountMax=3
+      - -o
+      - ExitOnForwardFailure=yes
+      - -o
+      - StrictHostKeyChecking=yes
+      - -o
+      - UserKnownHostsFile=/run/secrets/soak_known_hosts
+      - -o
+      - IdentitiesOnly=yes
+      - -i
+      - /run/secrets/soak_tunnel_key
+      - -L
+      - 0.0.0.0:19090:127.0.0.1:19090
+      - -L
+      - 0.0.0.0:16686:127.0.0.1:16686
+      - -R
+      - ${SOAK_KIND_GATEWAY:-172.18.0.1}:28080:web:8080
+      - -R
+      - ${SOAK_KIND_GATEWAY:-172.18.0.1}:29464:web:9464
+      - -R
+      - ${SOAK_KIND_GATEWAY:-172.18.0.1}:29465:worker:9464
+      - -R
+      - ${SOAK_KIND_GATEWAY:-172.18.0.1}:29466:observer:9464
+      - soaktunnel@${SOAK_RENTAL_HOST:?set SOAK_RENTAL_HOST to the rental host address}
+    secrets:
+      - soak_tunnel_key
+      - soak_known_hosts
+    volumes:
+      - ${SOAK_LOG_DIR:?set SOAK_LOG_DIR to the soak data directory}:/var/log/soak
+    networks:
+      default:
+        aliases:
+          - lab-prometheus
+          - lab-jaeger
+    # The da-server runner and curl read the lab Prometheus here; loopback only.
+    ports:
+      - target: 19090
+        host_ip: 127.0.0.1
+        published: "19090"
+        protocol: tcp
+    logging: *soak-logging
+    restart: unless-stopped
+
+secrets:
+  soak_tunnel_key:
+    file: ${SOAK_SECRETS_DIR:?set SOAK_SECRETS_DIR}/soak_tunnel_key
+  soak_known_hosts:
+    file: ${SOAK_SECRETS_DIR:?set SOAK_SECRETS_DIR}/soak_known_hosts

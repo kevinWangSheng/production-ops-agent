@@ -273,9 +273,18 @@ def test_host_ports_partial_and_colima_address(monkeypatch: pytest.MonkeyPatch) 
 
 @pytest.mark.parametrize(
     "ports",
-    ["webhook=0", "webhook=65536", "webhook=8o80", "frontend=1", "webhook", "web=1,web=2"],
+    [
+        "webhook=0",
+        "webhook=65536",
+        "webhook=8o80",
+        "frontend=1",
+        "webhook",
+        "web=1,web=2",
+    ],
 )
-def test_host_ports_rejects_garbage(monkeypatch: pytest.MonkeyPatch, ports: str) -> None:
+def test_host_ports_rejects_garbage(
+    monkeypatch: pytest.MonkeyPatch, ports: str
+) -> None:
     monkeypatch.setenv("OPSPILOT_LAB_HOST_ADDRESS", "172.18.0.1")
     monkeypatch.setenv("OPSPILOT_LAB_HOST_PORTS", ports)
     with pytest.raises(SystemExit):
