@@ -391,7 +391,9 @@ def control_containers(project: str) -> dict[str, list[str]]:
 
 def cmd_connect_control(args: argparse.Namespace) -> int:
     """Join the running web/worker/observer containers of a Compose project
-    to the ``kind`` network under ``CONTROL_ALIASES`` (idempotent). Compose
+    to the ``kind`` network under ``CONTROL_ALIASES`` (idempotent; a
+    container already on the network without its alias is reconnected with
+    it). Compose
     recreating a container drops the connection: run again after
     ``install.sh upgrade``."""
     env = docker_env()
@@ -416,16 +418,30 @@ def cmd_connect_control(args: argparse.Namespace) -> int:
             networks = json.loads(inspect.stdout or "{}")
         except ValueError:
             networks = {}
-        if "kind" in networks:
-            report[service] = "already connected"
-            continue
+        alias = CONTROL_ALIASES[service]
+        attached = networks.get("kind") if isinstance(networks, dict) else None
+        if isinstance(attached, dict):
+            names = (attached.get("Aliases") or []) + (attached.get("DNSNames") or [])
+            if alias in names:
+                report[service] = "already connected"
+                continue
+            # joined without the alias (e.g. the #393 manual wiring): the
+            # rendered values would not resolve, so reconnect with it
+            proc = run(
+                ["docker", "network", "disconnect", "kind", container],
+                env=env,
+                timeout=60,
+            )
+            if proc.returncode != 0:
+                report[service] = "failed"
+                continue
         proc = run(
             [
                 "docker",
                 "network",
                 "connect",
                 "--alias",
-                CONTROL_ALIASES[service],
+                alias,
                 "kind",
                 container,
             ],

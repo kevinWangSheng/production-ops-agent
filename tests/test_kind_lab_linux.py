@@ -283,7 +283,7 @@ def test_connect_control_joins_each_service_under_its_alias(
     seen = _docker_fake(
         monkeypatch,
         {"web": ["w1"], "worker": ["k1"], "observer": ["o1"]},
-        {"o1": '{"opspilot_default": {}, "kind": {}}'},
+        {"o1": '{"opspilot_default": {}, "kind": {"Aliases": ["opspilot-observer"]}}'},
     )
     args = argparse.Namespace(project="opspilot")
     assert kind_lab.cmd_connect_control(args) == 0
@@ -294,6 +294,29 @@ def test_connect_control_joins_each_service_under_its_alias(
     ]
     ps = [cmd for cmd in seen if cmd[:2] == ["docker", "ps"]]
     assert all("label=com.docker.compose.project=opspilot" in cmd for cmd in ps)
+
+
+def test_connect_control_repairs_a_connection_without_the_alias(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # codex review P1: a container joined earlier without the alias (the
+    # #393 manual wiring) must not count as connected
+    _platform(monkeypatch, "linux")
+    seen = _docker_fake(
+        monkeypatch,
+        {"web": ["w1"], "worker": ["k1"], "observer": ["o1"]},
+        {
+            "w1": '{"kind": {"Aliases": null, "DNSNames": ["s4-web-1", "w1"]}}',
+            "k1": '{"kind": {"Aliases": [], "DNSNames": ["opspilot-worker"]}}',
+            "o1": '{"kind": {"Aliases": ["opspilot-observer"]}}',
+        },
+    )
+    assert kind_lab.cmd_connect_control(argparse.Namespace(project="p")) == 0
+    network = [cmd for cmd in seen if cmd[:2] == ["docker", "network"]]
+    assert network == [
+        ["docker", "network", "disconnect", "kind", "w1"],
+        ["docker", "network", "connect", "--alias", "opspilot-web", "kind", "w1"],
+    ]
 
 
 def test_connect_control_reports_a_missing_service(
