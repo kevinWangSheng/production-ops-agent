@@ -766,7 +766,13 @@ class MetricNoiseRule:
 
 
 #: Prereview §1 A / R3: the noise-only flags without error spans, looked up by
-#: flag name. Thresholds follow the visibility probe's criteria.
+#: flag name. Expressions and thresholds from the visibility probe
+#: (``~/.agent/handoffs/fault-visibility-2026-11-04.md``): ad GC time went
+#: 0 -> 18.9 s per 10 min (~0.03 s/s, so the ratio is moot and the floor
+#: decides); frontend ``GET /`` went 0.022/s -> 5.0-7.1/s (226-320x), the
+#: stronger of the two flood signals (frontend-proxy rose only 12-17x). Metric
+#: reads only: the flood leaves the lab Jaeger near its memory limit, so this
+#: gate makes no trace query.
 METRIC_NOISE_RULES: Mapping[str, MetricNoiseRule] = {
     "adManualGc": MetricNoiseRule(
         rule_id="ad-manual-gc-metric-v1",
@@ -780,13 +786,13 @@ METRIC_NOISE_RULES: Mapping[str, MetricNoiseRule] = {
         ),
     ),
     "loadGeneratorFloodHomepage": MetricNoiseRule(
-        rule_id="frontend-proxy-flood-metric-v1",
+        rule_id="frontend-homepage-flood-metric-v1",
         signals=(
             MetricSignal(
-                "frontend-proxy-server-span-rate",
+                "frontend-get-root-span-rate",
                 "sum(rate(traces_span_metrics_calls_total"
-                '{{service_name="frontend-proxy",span_kind="SPAN_KIND_SERVER"}}'
-                "[{window}]))",
+                '{{k8s_namespace_name="otel-demo",service_name="frontend",'
+                'span_kind="SPAN_KIND_SERVER",span_name="GET /"}}[{window}]))',
                 ratio=10.0,
                 floor=1.0,
             ),

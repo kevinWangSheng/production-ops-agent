@@ -19,7 +19,8 @@ v2 评测 harness 接受保留集要用的 3 个 flagd 开关，并在不产生�
 
 - 指标门比较：`[生效时刻, 现在]` 与生效前等长窗口上同一 PromQL，观测值 ≥ 倍数 × 基线且 ≥ 下限。理由：与探针的「F 对 B」判定一致，用 rate 消除窗口长度差。
 - 最短观测窗 90 s：rate 至少需要几次抓取。
-- 每个开关先放一个信号（adManualGc：`jvm_gc_duration_seconds_sum` 速率 ≥5×；洪泛：frontend-proxy 服务端 span 速率 ≥10×），阈值来自预审 §1 A 的探针标准；探针结果出来后按实测调整。
+- 每个开关一个信号，表达式取自可见性探针（`~/.agent/handoffs/fault-visibility-2026-11-04.md`，三个开关都可见，走 U2 分支①）：adManualGc 用 ad 的 GC 时长速率，下限 0.01 s/s（实测基线 0、故障约 0.03 s/s，倍数不起作用）；洪泛用 frontend `GET /` 服务端 span 速率 ≥10× 且 ≥1/s（实测 226–320×），不用 frontend-proxy（只升 12–17×，离 10× 太近）。
+- 指标门只读 Prometheus，不发 trace 查询：探针发现洪泛后 Jaeger 接近 400Mi 上限，大 limit 查询会 OOM。
 - 指标门通过后的提交期限 = 读到的窗口末端 + FRESHNESS（300 s）。理由：没有 span 可取最新时刻，开关开着时信号持续，与 normal_window 的期限同法。
 - 遥测缺 `metric` 读取时门不通过（`METRIC_PROBE_UNAVAILABLE`，尝试记 `NOISE_NOT_OBSERVED`），不静默跳过。
 - `tests/unit/test_431_injectors_impl.py` 的 ORIGINAL_V2 是同源夹具，一并补齐；它的白名单钉值测试按新白名单更新。
@@ -32,5 +33,4 @@ v2 评测 harness 接受保留集要用的 3 个 flagd 开关，并在不产生�
 
 ## 下一步与交接
 
-- 等可见性探针结果，删掉不可见的开关并按实测调整阈值。
 - 独立测试作者的验收测试推送后 cherry-pick 进来跑。
