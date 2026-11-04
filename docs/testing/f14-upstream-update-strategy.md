@@ -49,16 +49,16 @@ F2 持久事故、F6 恢复观察、F11 发布观察、F12 工作台、F13 复�
 | L1 映射复核 | L0 命中任一触发条件 | 在新提交的独立 checkout 上，只复读引用了被改文件的映射行，重跑这些行的 `absence_checks` 命令（命令原文在表里，`<checkout>` 换成新 checkout），判断类别是否会变；已确认缺陷涉及的文件被改时，用 `run.py repro` 的脚本化模型端点用例（零费用）在新提交上重跑对应说法。结论写进复核 issue，不改 `mapping.json` | 零或极少模型费用 |
 | L2 移动 pin | L1 认为类别会变且值得更新，或要对外发布新的对比数字 | 按第 1 步重新钉住：构建镜像、新 `pin.json`、隔离取证 8 项、请求核对；改 `mapping.py` 的 `COMMIT`/`TREE` 与 `run.py` 的 `IMAGE`；重生成两份 `upstream-files.json`，按 L1 结论更新 `mapping.json`；跑下面的同条件对比子集 | 真实 Run 费用，按余额差对账 |
 
-L0 命令。GitHub compare API 最多返回 300 个改动文件，命令在达到 300 时报错退出、不出交集；这时改用上游的完整 clone（主仓库 `tmp/upstream/holmesgpt-a0009195` 是浅克隆，不能用）：
+L0 命令。改名的文件新旧路径都算命中。GitHub compare API 最多返回 300 个改动文件，命令在达到 300 时报错退出、不出交集，这时改用上游的完整 clone（主仓库 `tmp/upstream/holmesgpt-a0009195` 是浅克隆，不能用）：
 
 ```sh
 jq -r '.files|keys[]' docs/evidence/f14-upstream-mapping/upstream-files.json \
   docs/evidence/f14-upstream-issues/upstream-files.json | sort -u > cited.txt
 gh api repos/HolmesGPT/holmesgpt/compare/a0009195468ebc55a7dff7d602b61feabe3cda1b...master \
-  --jq 'if (.files|length) >= 300 then error("compare truncated at 300 files; use a full clone") else .files[].filename end' \
-  > changed.txt && sort -o changed.txt changed.txt && comm -12 cited.txt changed.txt
+  --jq 'if (.files|length) >= 300 then error("compare truncated at 300 files; use a full clone") else .files[] | .filename, (.previous_filename // empty) end' \
+  > changed.txt && sort -u -o changed.txt changed.txt && comm -12 cited.txt changed.txt
 # 达到 300 时：在完整 clone 里
-# git fetch origin master && git diff --name-only a0009195 FETCH_HEAD | sort > changed.txt && comm -12 cited.txt changed.txt
+# git fetch origin master && git diff --name-only --no-renames a0009195 FETCH_HEAD | sort > changed.txt && comm -12 cited.txt changed.txt
 ```
 
 首次 L0（2026-11-04，写本页时跑）：上游 master `586045ca`（2026-11-04T14:01Z），领先 pin 32 个提交，改动 206 个文件；51 个引用文件中有 16 个被改，包括 `holmes/plugins/toolsets/prometheus/prometheus.py`（F3 第 4 步已确认缺陷与 #2139 所在）、`holmes/common/env_vars.py`（`MAX_OUTPUT_TOKEN_RESERVATION`）、`holmes/core/tool_calling_llm.py`、`holmes/core/llm.py`、`Dockerfile`、`pyproject.toml` 与 `tests/llm/utils/classifiers.py`。这命中触发条件 1，按本策略该做 L1；L1 还没做，pin 不动，F1 第 4 步照旧用 `a0009195`。
