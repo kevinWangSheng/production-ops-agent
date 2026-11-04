@@ -404,19 +404,52 @@ def attempt_summary(
 # --- summarize (pure apart from reading the attempt directories)
 
 
+#: Where attempt directories live under ``--attempts``: directly
+#: (``<root>/<attempt_id>``, the CLI default) or in #474's per-round
+#: directories under the recordings root (``<root>/holmes-<round>/<id>``).
+ATTEMPT_GLOBS = (f"*/{SUMMARY_FILE}", f"holmes-*/*/{SUMMARY_FILE}")
+
+
 def _load_attempts(attempts_root: Path) -> list[tuple[Path, dict[str, Any]]]:
     found = []
     if not attempts_root.is_dir():
         raise DatasetError("ATTEMPTS_ROOT_MISSING")
-    for path in sorted(attempts_root.glob(f"*/{SUMMARY_FILE}")):
+    paths = sorted(
+        {p for pattern in ATTEMPT_GLOBS for p in attempts_root.glob(pattern)}
+    )
+    seen: set[str] = set()
+    for path in paths:
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             raise DatasetError(f"EVIDENCE_INVALID:{path.parent.name}") from None
         if not isinstance(data, dict) or data.get("schema") != ATTEMPT_SCHEMA:
             continue  # other raw directories (F14 runs, checks) share the root
+        if path.parent.name in seen:
+            raise DatasetError(f"DUPLICATE_ATTEMPT:{path.parent.name}")
+        seen.add(path.parent.name)
         found.append((path.parent, data))
     return found
+
+
+def holmes_voided(document: Any) -> dict[str, dict[str, Any]]:
+    """The Holmes entries of #474 ``eval_pair_schedule check``'s
+    ``voided_attempts`` (the whole check result, or just that list): voided
+    attempt id -> entry. OpsPilot entries are ignored; an entry without a
+    voided attempt id (the slot never started) voids nothing."""
+    entries = (
+        document.get("voided_attempts") if isinstance(document, Mapping) else document
+    )
+    if not isinstance(entries, list):
+        raise DatasetError("VOIDED_INVALID")
+    out: dict[str, dict[str, Any]] = {}
+    for entry in entries:
+        if not isinstance(entry, Mapping) or "system" not in entry:
+            raise DatasetError("VOIDED_INVALID")
+        if entry["system"] != SYSTEM or not entry.get("voided_attempt_id"):
+            continue
+        out[str(entry["voided_attempt_id"])] = dict(entry)
+    return out
 
 
 def _group(answer: AnswerV2) -> str:
@@ -442,13 +475,19 @@ def summarize(
     *,
     n: int = SLOTS_PER_SCENARIO,
     rounds: Sequence[str] | None = None,
+    voided: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """The Holmes rows in the dev-round slot shape (``eval_dev_round``):
     every scenario gets ``n`` slots; alert-entry scenarios are
     ``not_applicable`` and outside every denominator; every started attempt
     counts, more than ``n`` is ``REDRAW_DETECTED``; a slot that never started
     counts as not started (in the denominator). Slots are numbered by start
-    time. ``rounds`` limits the attempts read to those rounds."""
+    time. ``rounds`` limits the attempts read to those rounds. ``voided``
+    (``holmes_voided``) attempts are dropped before slotting, so a voided
+    window's rerun takes its slot and a slot that never ran still counts;
+    each voided id must be a read attempt of the same scenario as its rerun.
+    No attempt at all is ``NO_ATTEMPTS``, never an empty round."""
+    voided = dict(voided or {})
     loaded = {s.scenario_id: (s, a) for s, a in load_scenarios_v2(dataset_root)}
     plans = {sid: injection_plan(s, a) for sid, (s, a) in loaded.items()}
     by_scenario: dict[str, list[tuple[Path, dict[str, Any]]]] = {
@@ -456,9 +495,12 @@ def summarize(
     }
     upstream_seen: set[str] = set()
     images_seen: set[str] = set()
+    read: dict[str, str] = {}
+    dropped: list[dict[str, Any]] = []
     for directory, data in _load_attempts(attempts_root):
         if rounds is not None and data.get("round") not in rounds:
             continue
+        read[str(data.get("attempt_id"))] = str(data.get("scenario_id"))
         sid = str(data.get("scenario_id"))
         if sid not in loaded:
             raise DatasetError(f"UNKNOWN_SCENARIO:{sid}")
@@ -470,7 +512,29 @@ def summarize(
             raise DatasetError(f"EVIDENCE_INVALID:{directory.name}")
         upstream_seen.add(json.dumps(data["versions"]["upstream"], sort_keys=True))
         images_seen.add(str(data["versions"]["image_id"]))
+        if directory.name in voided:
+            entry = voided[directory.name]
+            dropped.append(
+                {
+                    "attempt_id": directory.name,
+                    "scenario_id": sid,
+                    "rule": entry.get("rule"),
+                    "rerun_attempt_id": entry.get("rerun_attempt_id"),
+                    "note": entry.get("note"),
+                }
+            )
+            continue
         by_scenario[sid].append((directory, data))
+    if not read:
+        raise DatasetError("NO_ATTEMPTS")
+    for attempt_id, entry in voided.items():
+        if attempt_id not in read:
+            if rounds is not None:
+                continue  # an attempt of a round not read here
+            raise DatasetError(f"VOIDED_UNKNOWN:{attempt_id}")
+        rerun = entry.get("rerun_attempt_id")
+        if rerun is not None and read.get(str(rerun)) != read[attempt_id]:
+            raise DatasetError(f"VOIDED_RERUN_MISMATCH:{attempt_id}")
     if len(upstream_seen) > 1:
         raise DatasetError("MANIFEST_DRIFT:upstream")
     if len(images_seen) > 1:
@@ -536,7 +600,9 @@ def summarize(
                     "read_only": bool(data["checks"]["read_only"]),
                     "provider_error": bool(data.get("provider_error")),
                     "final_state_expected": data["final_state_expected"],
-                    "raw": None if raw is None else f"{directory.name}/{RAW_FILE}",
+                    "raw": None
+                    if raw is None
+                    else (directory.relative_to(attempts_root) / RAW_FILE).as_posix(),
                     "report_available": data["report_sha256"] is not None,
                     "tool_calls": data["outcome"]["tool_calls"],
                     "tool_errors": data["tool_errors"],
@@ -568,6 +634,7 @@ def summarize(
         "n": n,
         "budget": budget(),
         "slots": slots,
+        "voided_attempts": sorted(dropped, key=lambda d: d["attempt_id"]),
         "totals": totals,
         "disclosure": [
             "Holmes gets raw Jaeger JSON (25k-token tool result cap) through a "
@@ -862,8 +929,18 @@ def cmd_run(args: argparse.Namespace) -> int:
 def cmd_summarize(args: argparse.Namespace) -> int:
     attempts = Path(args.attempts)
     try:
+        voided = None
+        if args.voided:
+            try:
+                voided = holmes_voided(json.loads(Path(args.voided).read_text("utf-8")))
+            except (OSError, ValueError):
+                raise DatasetError("VOIDED_INVALID") from None
         document = summarize(
-            Path(args.dataset), attempts, n=args.n, rounds=args.round or None
+            Path(args.dataset),
+            attempts,
+            n=args.n,
+            rounds=args.round or None,
+            voided=voided,
         )
     except DatasetError as exc:
         print(json.dumps({"exit_code": 1, "reason": exc.code}))
@@ -913,6 +990,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     summ.add_argument("--round", action="append")
     summ.add_argument("--out", required=True)
     summ.add_argument("--judge-inputs", default=None)
+    summ.add_argument(
+        "--voided",
+        default=None,
+        help="#474 eval_pair_schedule check output (its voided_attempts)",
+    )
     summ.set_defaults(func=cmd_summarize)
     args = parser.parse_args(argv)
     return int(args.func(args))

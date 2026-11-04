@@ -796,3 +796,151 @@ def test_run_attempt_passes_the_auth_file_override(
         proxy_log=lambda since: [],
     )
     assert lab.auth_files == [auth, None]
+
+
+# --- review round 2: voided windows, #474 layout, empty roots (X3)
+
+
+def check_result(*entries: dict[str, Any]) -> dict[str, Any]:
+    """The shape of #474 ``eval_pair_schedule check``'s output."""
+    return {
+        "rules_id": "r",
+        "violations": [],
+        "voided": [],
+        "voided_attempts": list(entries),
+    }
+
+
+def void(
+    sid: str, old: str | None, new: str | None, system: str = "holmes"
+) -> dict[str, Any]:
+    return {
+        "system": system,
+        "scenario_id": sid,
+        "window_id": "w",
+        "rule": "PROVIDER_5XX_STORM",
+        "note": "provider 5xx storm, rerun per rule",
+        "voided_attempt_id": old,
+        "rerun_window_id": "w-rerun",
+        "rerun_attempt_id": new,
+    }
+
+
+def test_voided_window_with_rerun_keeps_n_slots(tmp_path: Path) -> None:
+    sid = "dv2-2b214b"
+    for i, aid in enumerate(("h1", "h2", "h3", "h2r")):
+        write_attempt(tmp_path, sid, aid, float(i))
+    # four attempts without the void list: a redraw
+    with pytest.raises(ds.DatasetError) as exc:
+        ds.summarize(DATASET, tmp_path, n=3)
+    assert exc.value.code == f"REDRAW_DETECTED:{sid}"
+    voided = ds.holmes_voided(
+        check_result(void(sid, "h2", "h2r"), void(sid, "o2", "o2r", "opspilot"))
+    )
+    doc = ds.summarize(DATASET, tmp_path, n=3, voided=voided)
+    mine = [s for s in doc["slots"] if s["scenario_id"] == sid]
+    assert [s["attempt_id"] for s in mine] == ["h1", "h3", "h2r"]
+    assert doc["voided_attempts"] == [
+        {
+            "attempt_id": "h2",
+            "scenario_id": sid,
+            "rule": "PROVIDER_5XX_STORM",
+            "rerun_attempt_id": "h2r",
+            "note": "provider 5xx storm, rerun per rule",
+        }
+    ]
+    inputs = ds.judge_inputs(doc, tmp_path, tmp_path / "in.json")
+    assert "h2" not in {e["attempt_id"] for e in inputs["attempts"]}
+
+
+def test_voided_plus_missing_keeps_the_missing_slot_in_the_denominator(
+    tmp_path: Path,
+) -> None:
+    sid = "dv2-2b214b"
+    write_attempt(tmp_path, sid, "h1", 1.0)
+    write_attempt(tmp_path, sid, "h2", 2.0)  # voided, its rerun never started
+    write_attempt(tmp_path, sid, "h3", 3.0)
+    voided = ds.holmes_voided(check_result(void(sid, "h2", None)))
+    doc = ds.summarize(DATASET, tmp_path, n=3, voided=voided)
+    mine = [s for s in doc["slots"] if s["scenario_id"] == sid]
+    assert [s["attempt_id"] for s in mine] == ["h1", "h3", None]
+    assert mine[2]["status"] == "not_started" and mine[2]["in_denominator"] is True
+    assert doc["totals"]["regression"]["slots"] == 18
+    assert doc["totals"]["regression"]["started"] == 2
+
+
+def test_reads_the_474_recordings_layout(tmp_path: Path) -> None:
+    write_attempt(tmp_path / "holmes-r1", "dv2-2b214b", "holmes-aaa", 1.0)
+    write_attempt(tmp_path / "holmes-r2", "dv2-455c6d", "holmes-bbb", 2.0)
+    (tmp_path / "opspilot-run").mkdir()  # OpsPilot recordings share the root
+    doc = ds.summarize(DATASET, tmp_path, n=3)
+    ran = {s["attempt_id"]: s for s in doc["slots"] if s["status"] == "ran"}
+    assert set(ran) == {"holmes-aaa", "holmes-bbb"}
+    assert ran["holmes-aaa"]["raw"] == "holmes-r1/holmes-aaa/out/holmes.json"
+    out = tmp_path / "judge" / "in.json"
+    [entry] = [
+        e
+        for e in ds.judge_inputs(doc, tmp_path, out)["attempts"]
+        if e["attempt_id"] == "holmes-aaa"
+    ]
+    assert (out.parent / entry["holmes_json"]).resolve() == (
+        tmp_path / "holmes-r1/holmes-aaa/out/holmes.json"
+    ).resolve()
+
+
+def test_no_attempts_is_an_error(tmp_path: Path) -> None:
+    (tmp_path / "holmes-r1" / "x").mkdir(parents=True)
+    with pytest.raises(ds.DatasetError) as exc:
+        ds.summarize(DATASET, tmp_path, n=3)
+    assert exc.value.code == "NO_ATTEMPTS"
+
+
+@pytest.mark.parametrize(
+    "entries,code",
+    [
+        ([void("dv2-2b214b", "ghost", None)], "VOIDED_UNKNOWN:ghost"),
+        ([void("dv2-2b214b", "h1", "other")], "VOIDED_RERUN_MISMATCH:h1"),
+    ],
+)
+def test_voided_refusals(
+    tmp_path: Path, entries: list[dict[str, Any]], code: str
+) -> None:
+    write_attempt(tmp_path, "dv2-2b214b", "h1", 1.0)
+    write_attempt(tmp_path, "dv2-455c6d", "other", 2.0)
+    with pytest.raises(ds.DatasetError) as exc:
+        ds.summarize(
+            DATASET, tmp_path, n=3, voided=ds.holmes_voided(check_result(*entries))
+        )
+    assert exc.value.code == code
+
+
+def test_duplicate_attempt_ids_across_round_dirs(tmp_path: Path) -> None:
+    write_attempt(tmp_path / "holmes-r1", "dv2-2b214b", "same", 1.0)
+    write_attempt(tmp_path / "holmes-r2", "dv2-2b214b", "same", 2.0)
+    with pytest.raises(ds.DatasetError) as exc:
+        ds.summarize(DATASET, tmp_path, n=3)
+    assert exc.value.code == "DUPLICATE_ATTEMPT:same"
+
+
+def test_cli_voided_file(tmp_path: Path) -> None:
+    attempts = tmp_path / "rec"
+    for i, aid in enumerate(("h1", "h2", "h3", "h2r")):
+        write_attempt(attempts / "holmes-r1", "dv2-2b214b", aid, float(i))
+    check = tmp_path / "check.json"
+    check.write_text(json.dumps(check_result(void("dv2-2b214b", "h2", "h2r"))))
+    out = tmp_path / "out.json"
+    argv = [
+        "summarize",
+        "--dataset",
+        str(DATASET),
+        "--attempts",
+        str(attempts),
+        "--out",
+        str(out),
+        "--voided",
+        str(check),
+    ]
+    assert ds.main(argv) == 0
+    assert [
+        v["attempt_id"] for v in json.loads(out.read_text())["voided_attempts"]
+    ] == ["h2"]
