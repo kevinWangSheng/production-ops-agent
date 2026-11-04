@@ -403,7 +403,11 @@ def _markdown_json_fence_body(content: str) -> str | None:
     text = content.strip()
     if len(text) < 6 or not (text.startswith("```") and text.endswith("```")):
         return None
-    inner = text[3:-3]
+    return _strip_fence_language(text[3:-3])
+
+
+def _strip_fence_language(inner: str) -> str:
+    """Drop a fence body's language tag line (or a glued ``json``), then trim."""
     first, newline, rest = inner.partition("\n")
     if newline and _FENCE_LANGUAGE.fullmatch(first.strip()):
         inner = rest
@@ -412,33 +416,63 @@ def _markdown_json_fence_body(content: str) -> str | None:
     return inner.strip()
 
 
+def _embedded_json_fence_body(content: str) -> str | None:
+    """#456: the body of the first fenced block in a reply that is not one
+    fence as a whole (prose before or after it), else ``None``.
+
+    Diagnostic only, like ``_markdown_json_fence_body``: the first ``` up to
+    the next ```, found by two ``str.find`` calls -- linear on any input, no
+    regex over model output. An unclosed fence yields ``None``.
+    """
+    start = content.find("```")
+    if start < 0:
+        return None
+    end = content.find("```", start + 3)
+    if end < 0:
+        return None
+    return _strip_fence_language(content[start + 3 : end])
+
+
 _FENCE_LANGUAGE = re.compile(r"[A-Za-z0-9_+-]{0,32}")
 
 
-def _json_parse_position_detail(content: str) -> str:
+def _json_parse_position_detail(
+    content: str,
+    *,
+    views: Sequence[DeliveredView] = (),
+    citation_kwargs: Mapping[str, Any] | None = None,
+) -> str:
     """A content-free position description for a JSON decode failure (C2's
     third example: "JSON 解析失败的位置描述"), independently re-attempting the
     same two parse steps ``parse_report`` already took -- purely to capture
     their own diagnostic text, never to change which replies are accepted;
     ``parse_report`` alone still decides that.
+
+    #456: when the reply is not one fence as a whole, the first fenced block
+    inside it is tried instead; when the fenced body passes the schema, its
+    citation failures are appended too (``citation_kwargs`` are the same
+    inputs the real citation gate gets). A fenced body with no failures adds
+    no bytes, so that feedback stays identical to the bare parse error.
     """
     parse_error = ""
+    label = ""
     try:
         payload = json.loads(content, object_pairs_hook=_unique_object)
     except (ValueError, RecursionError) as exc:
         parse_error = f" JSON parse error: {exc}."
         inner = _markdown_json_fence_body(content)
+        label = "After removing the Markdown json fence"
+        if inner is None:
+            inner = _embedded_json_fence_body(content)
+            label = "In the Markdown json fence found inside the reply"
         if inner is None:
             return parse_error
         try:
             payload = json.loads(inner, object_pairs_hook=_unique_object)
         except (ValueError, RecursionError) as inner_exc:
-            return (
-                parse_error
-                + f" After removing the Markdown json fence, JSON parse error: {inner_exc}."
-            )
+            return parse_error + f" {label}, JSON parse error: {inner_exc}."
     try:
-        ReportV2.model_validate(payload)
+        located = ReportV2.model_validate(payload)
     except ValidationError as exc:
         items: list[str] = []
         # Never ``exc.errors()``/``.json()`` directly: both carry the
@@ -463,7 +497,13 @@ def _json_parse_position_detail(content: str) -> str:
         )
         return parse_error + schema_detail
     except ValueError:
-        pass
+        return parse_error
+    if parse_error and citation_kwargs is not None:
+        citation_detail = _citation_failure_detail(
+            located, views=views, **citation_kwargs
+        )
+        if citation_detail:
+            return parse_error + f" {label}, citation check:" + citation_detail
     return parse_error
 
 
@@ -548,7 +588,15 @@ def report_retry_feedback(
             target_catalog=target_catalog,
         )
     elif reason == "REPORT_INVALID" and isinstance(content, str) and content.strip():
-        detail = _json_parse_position_detail(content)
+        detail = _json_parse_position_detail(
+            content,
+            views=views,
+            citation_kwargs={
+                "authorized_targets": authorized_targets,
+                "time_policy_ids": time_policy_ids,
+                "target_catalog": target_catalog,
+            },
+        )
     else:
         detail = ""
     return REPORT_RETRY_TEMPLATE.format(reason=reason, detail=detail)
