@@ -11,7 +11,8 @@ The contract entry points come from :mod:`opspilot.evaluation.binary_judge`:
         --dataset evals/datasets/dev-v2 --k 2 --out tmp/judge/<name> \\
         [--opspilot-round docs/evidence/432-dev-round/summary.json \\
          --evidence-root docs/evidence/eval [--recording-root <dir>]] \\
-        [--holmes-round <holmes round summary.json> --holmes-attempts <dir>]
+        [--holmes-round <holmes round summary.json> --holmes-attempts <dir>] \\
+        [--schedule-log <paired log.json> --schedule-check <check output.json>]
 
     # 2. Once the user has filled <out>/rulings.json
     .venv/bin/python -m scripts.eval_compare_scoring summarize \\
@@ -28,10 +29,17 @@ and each attempt's public evidence. Their checks are the round's re-checked
 Q20 expectations (``q20.*``). Where the judge applies, the deterministic
 gate is recomputed and added as ``gate.*``. HolmesGPT attempts come from
 the ``scripts.holmes_baseline.dataset`` round summary (schema
-``opspilot-holmes-dataset-round-1``). Only slots in the denominator are
-scored. Their checks are ``final_state`` (the terminal state is in the
-answer's allowed set), ``read_only`` (``None`` when the slot does not
-report it) and, where the judge applies, ``report``.
+``opspilot-holmes-dataset-round-1``, #470). Only slots in the denominator
+are scored. Each slot's ``raw`` names its ``holmes.json`` under
+``--holmes-attempts``; only that file's ``result`` reaches a judge. Their
+checks are ``final_state`` (the terminal state is in the answer's allowed
+set), the slot's own ``read_only``, and, where the judge applies,
+``report``. Never-started slots on either side are counted, as failures,
+under synthetic ids.
+
+With ``--schedule-log`` and ``--schedule-check`` (#474 ``eval_pair_schedule``
+log and its ``check`` output), registered voided attempts are left out of
+judging, rulings and every denominator, and listed as ``voided_attempts``.
 """
 
 from __future__ import annotations
@@ -41,7 +49,7 @@ import hashlib
 import json
 import os
 import sys
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -82,6 +90,7 @@ __all__ = [
 ITEMS_SCHEMA = "opspilot-compare-scoring-items-1"
 SUMMARY_SCHEMA = "opspilot-compare-scoring-summary-1"
 HOLMES_ROUND_SCHEMA = "opspilot-holmes-dataset-round-1"
+PAIRED_LOG_SCHEMA = "opspilot-eval-paired-log-1"
 
 Dataset = Mapping[str, tuple[ScenarioSpecV2, AnswerV2]]
 
@@ -141,10 +150,24 @@ def opspilot_attempts(
 
     out: list[dict[str, Any]] = []
     for slot in round_summary["slots"]:
-        sid, attempt_id = slot["scenario_id"], slot["attempt_id"]
+        sid = slot["scenario_id"]
         if sid not in dataset:
             raise BinaryJudgeError(f"SCENARIO_UNKNOWN:{sid}")
         spec, answer = dataset[sid]
+        if slot.get("status") == "not_started" or slot.get("attempt_id") is None:
+            # eval_dev_round's never-started slot (attempt_id None, empty
+            # checks): counted, failed, under a synthetic id.
+            item = _base(
+                "opspilot",
+                answer,
+                f"opspilot-not-started-{sid}-{slot['slot']}",
+                slot["slot"],
+            )
+            item["checks"] = {"attempt_ran": False}
+            item["root_cause_citation"] = None if answer.signature is None else False
+            out.append(item)
+            continue
+        attempt_id = slot["attempt_id"]
         item = _base("opspilot", answer, attempt_id, slot["slot"])
         expectations = slot.get("expectations") or {}
         item["checks"] = {
@@ -191,9 +214,43 @@ def opspilot_attempts(
     return out
 
 
+def _holmes_text(attempts_root: Path, rel: str, attempt_id: str) -> str | None:
+    """The ``result`` of the attempt's raw ``holmes.json``, after checking
+    that the file stays under the attempts root and matches the hash its own
+    attempt summary recorded. Nothing else of the raw output is used."""
+    root = attempts_root.resolve()
+    path = (attempts_root / rel).resolve()
+    if not path.is_relative_to(root) or len(path.relative_to(root).parts) < 2:
+        raise BinaryJudgeError(f"HOLMES_RAW_OUTSIDE_ROOT:{attempt_id}")
+    directory = root / path.relative_to(root).parts[0]
+    attempt = _read_json(directory / "summary.json")
+    expected = (
+        (attempt.get("raw") or {}).get("sha256")
+        if isinstance(attempt, Mapping)
+        else None
+    )
+    if (
+        not path.is_file()
+        or attempt.get("attempt_id") != attempt_id
+        or hashlib.sha256(path.read_bytes()).hexdigest() != expected
+    ):
+        raise BinaryJudgeError(f"HOLMES_RAW_MISMATCH:{attempt_id}")
+    output = _read_json(path)
+    if not isinstance(output, Mapping):
+        raise BinaryJudgeError(f"HOLMES_RAW_INVALID:{attempt_id}")
+    return project_holmes_output(output)
+
+
 def holmes_attempts(
     dataset: Dataset, round_summary: Mapping[str, Any], attempts_root: Path
 ) -> list[dict[str, Any]]:
+    """Slots of ``scripts.holmes_baseline.dataset summarize`` (#470).
+
+    Checks: ``read_only`` from the slot's own Q11 check (``None`` = not
+    applicable, e.g. never started); ``final_state`` recomputed as the slot's
+    terminal state in the answer's allowed set; where the judge applies,
+    ``report``: the final answer (``result``) is non-blank.
+    """
     if round_summary.get("schema") != HOLMES_ROUND_SCHEMA:
         raise BinaryJudgeError("HOLMES_ROUND_SCHEMA_INVALID")
     out: list[dict[str, Any]] = []
@@ -204,29 +261,48 @@ def holmes_attempts(
         if sid not in dataset:
             raise BinaryJudgeError(f"SCENARIO_UNKNOWN:{sid}")
         _spec, answer = dataset[sid]
+        ran = slot.get("status") == "ran" and slot.get("attempt_id") is not None
         attempt_id = (
-            slot.get("attempt_id") or f"holmes-not-started-{sid}-{slot['slot']}"
+            slot["attempt_id"] if ran else f"holmes-not-started-{sid}-{slot['slot']}"
         )
         item = _base("holmes", answer, attempt_id, slot["slot"])
-        report = slot.get("report") or {}
-        read_only = slot.get("read_only")
+        read_only = (slot.get("checks") or {}).get("read_only")
         item["checks"] = {
-            "final_state": slot.get("status") == "ran"
-            and slot.get("final_state_expected") is True,
+            "final_state": ran
+            and slot.get("final_state") in answer.expected_outcome.final_states,
             "read_only": read_only if isinstance(read_only, bool) else None,
         }
+        if ran and slot.get("raw"):
+            item["report_text"] = _holmes_text(attempts_root, slot["raw"], attempt_id)
         if item["judge_applicable"]:
-            item["checks"]["report"] = bool(report.get("available"))
-        if report.get("available"):
-            path = attempts_root / str(report["path"])
-            raw = path.read_bytes() if path.is_file() else None
-            if raw is None or hashlib.sha256(raw).hexdigest() != report.get("sha256"):
-                raise BinaryJudgeError(f"HOLMES_REPORT_MISMATCH:{attempt_id}")
-            item["report_text"] = project_holmes_output({"result": raw.decode("utf-8")})
-            if item["report_text"] is None and item["judge_applicable"]:
-                item["checks"]["report"] = False
+            item["checks"]["report"] = item["report_text"] is not None
         out.append(item)
     return out
+
+
+def voided_attempts(log: Mapping[str, Any], check: Mapping[str, Any]) -> list[str]:
+    """Attempt ids of registered voids (#474 ``eval_pair_schedule check``).
+
+    ``check["voided"]`` names each voided window and the systems its rerun
+    replaced; the attempt ids come from that window's record in the log.
+    """
+    if log.get("schema") != PAIRED_LOG_SCHEMA:
+        raise BinaryJudgeError("SCHEDULE_LOG_SCHEMA_INVALID")
+    records = {
+        str(r.get("window_id")): r
+        for r in log.get("windows") or []
+        if isinstance(r, Mapping)
+    }
+    ids: list[str] = []
+    for entry in check.get("voided") or []:
+        record = records.get(str(entry.get("window_id")))
+        if record is None:
+            raise BinaryJudgeError(f"VOIDED_WINDOW_UNKNOWN:{entry.get('window_id')}")
+        systems = set(entry.get("systems") or ())
+        for slot in record.get("slots") or []:
+            if slot.get("system") in systems and slot.get("attempt_id"):
+                ids.append(str(slot["attempt_id"]))
+    return sorted(set(ids))
 
 
 def judge_attempts(
@@ -234,11 +310,14 @@ def judge_attempts(
     dataset: Dataset,
     client: CompletionClient,
     environ: Mapping[str, str],
+    *,
+    voided: Collection[str] = (),
 ) -> None:
-    """Fill ``verdicts``. Vetoed or deterministic-only attempts are never sent."""
+    """Fill ``verdicts``. Vetoed, deterministic-only or voided attempts are
+    never sent."""
     configs = provider_configs(environ)
     for item in attempts:
-        if not item["judge_applicable"] or vetoed(item):
+        if not item["judge_applicable"] or vetoed(item) or item["attempt_id"] in voided:
             continue
         if item["report_text"] is None:
             raise BinaryJudgeError(f"NO_REPORT_TEXT:{item['attempt_id']}")
@@ -298,21 +377,31 @@ def run_judge(
     ids = [a["attempt_id"] for a in attempts]
     if len(set(ids)) != len(ids):
         raise BinaryJudgeError("ATTEMPT_DUPLICATE")
-    judge_attempts(attempts, dataset, client, environ)
+    voided: list[str] = []
+    if args.schedule_log or args.schedule_check:
+        if not (args.schedule_log and args.schedule_check):
+            raise BinaryJudgeError("SCHEDULE_LOG_AND_CHECK_REQUIRED")
+        voided = voided_attempts(
+            _read_json(Path(args.schedule_log)), _read_json(Path(args.schedule_check))
+        )
+    judge_attempts(attempts, dataset, client, environ, voided=set(voided))
+    live = [a for a in attempts if a["attempt_id"] not in voided]
     out = Path(args.out)
     doc = {
         "schema": ITEMS_SCHEMA,
         "k": args.k,
         "judge_config": judge_config_record(),
+        "voided": voided,
         "attempts": attempts,
     }
     _write_new(out / "items.json", _dump(doc))
-    _write_new(out / "disputes.md", disputes_markdown(attempts).encode())
+    _write_new(out / "disputes.md", disputes_markdown(live).encode())
     if not (out / "rulings.json").exists():
-        _write_new(out / "rulings.json", _dump(rulings_template(attempts)))
+        _write_new(out / "rulings.json", _dump(rulings_template(live)))
     return {
-        "attempts": len(attempts),
-        "disputes": sum(1 for a in attempts if disputed(a)),
+        "attempts": len(live),
+        "voided": len([a for a in attempts if a["attempt_id"] in voided]),
+        "disputes": sum(1 for a in live if disputed(a)),
         "out": str(out),
     }
 
@@ -322,10 +411,12 @@ def run_summarize(args: argparse.Namespace) -> dict[str, Any]:
     if not isinstance(doc, Mapping) or doc.get("schema") != ITEMS_SCHEMA:
         raise BinaryJudgeError("ITEMS_SCHEMA_INVALID")
     attempts = doc["attempts"]
+    voided = set(doc.get("voided") or ())
+    live = [a for a in attempts if a["attempt_id"] not in voided]
     rulings = load_rulings(
-        _read_json(Path(args.rulings)) if args.rulings else None, attempts
+        _read_json(Path(args.rulings)) if args.rulings else None, live
     )
-    scored = summarize(attempts, rulings, k=int(doc["k"]))
+    scored = summarize(attempts, rulings, k=int(doc["k"]), voided=voided)
     summary = {
         "schema": SUMMARY_SCHEMA,
         "method": "uncalibrated two-vendor binary judge + user ruling on "
@@ -351,6 +442,8 @@ def parser() -> argparse.ArgumentParser:
     j.add_argument("--recording-root")
     j.add_argument("--holmes-round")
     j.add_argument("--holmes-attempts")
+    j.add_argument("--schedule-log")
+    j.add_argument("--schedule-check")
     s = sub.add_parser("summarize")
     s.add_argument("--items", required=True)
     s.add_argument("--rulings")

@@ -29,7 +29,7 @@ import hashlib
 import json
 import math
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Any, Literal, Protocol
@@ -552,14 +552,42 @@ def _system_row(
     }
 
 
+def _citation_column(own: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    column = [
+        a["root_cause_citation"]
+        for a in own
+        if a.get("root_cause_citation") is not None
+    ]
+    cited = sum(1 for c in column if c)
+    return {
+        "n": len(column),
+        "cited": cited,
+        "rate": cited / len(column) if column else None,
+        "in_comparison_denominator": False,
+    }
+
+
 def summarize(
     attempts: Sequence[Mapping[str, Any]],
     rulings: Mapping[str, bool],
     *,
     k: int,
+    voided: Collection[str] = (),
 ) -> dict[str, Any]:
+    """Scores per system, plus the cross-system comparison.
+
+    ``systems`` are each system's own score over all of its attempts. The
+    comparison (``comparison``) covers only the scenarios both systems have
+    attempts on (HolmesGPT's question-entry denominator) and that the judge
+    applies to; deterministic-only rows are reported per system under
+    ``deterministic_only`` and never enter it (lead ruling, S7a review 1).
+    ``voided`` attempt ids (registered voids, #474 ``check``) are dropped
+    before anything is counted and listed under ``voided_attempts``.
+    """
     if k < 1:
         raise BinaryJudgeError("K_INVALID")
+    dropped = sorted(a["attempt_id"] for a in attempts if a["attempt_id"] in voided)
+    attempts = [a for a in attempts if a["attempt_id"] not in voided]
     ids = [a["attempt_id"] for a in attempts]
     if len(set(ids)) != len(ids):
         raise BinaryJudgeError("ATTEMPT_DUPLICATE")
@@ -573,25 +601,34 @@ def summarize(
         and all(a["verdicts"].get(n) is not None for n in JUDGE_NAMES)
     ]
     agreed = sum(1 for a in judged if not disputed(a))
+    order = list(dict.fromkeys(a["system"] for a in attempts))
+    by_system = {s: [a for a in attempts if a["system"] == s] for s in order}
     systems: dict[str, Any] = {}
-    for system in dict.fromkeys(a["system"] for a in attempts):
-        own = [a for a in attempts if a["system"] == system]
+    for system, own in by_system.items():
         row = _system_row(own, results, k)
         if system == "opspilot":
             # Section 1 D: OpsPilot only, outside the comparison denominator.
-            column = [
-                a["root_cause_citation"]
-                for a in own
-                if a.get("root_cause_citation") is not None
-            ]
-            cited = sum(1 for c in column if c)
-            row["root_cause_citation"] = {
-                "n": len(column),
-                "cited": cited,
-                "rate": cited / len(column) if column else None,
-                "in_comparison_denominator": False,
-            }
+            row["root_cause_citation"] = _citation_column(own)
         systems[system] = row
+    scenario_sets = [
+        {a["scenario_id"] for a in own if a["judge_applicable"]}
+        for own in by_system.values()
+    ]
+    common = sorted(set.intersection(*scenario_sets)) if len(order) > 1 else []
+    comparison = {
+        "scenarios": common,
+        "systems": {
+            s: _system_row([a for a in own if a["scenario_id"] in common], results, k)
+            for s, own in by_system.items()
+        }
+        if common
+        else {},
+    }
+    deterministic = {
+        s: _system_row([a for a in own if not a["judge_applicable"]], results, k)
+        for s, own in by_system.items()
+        if any(not a["judge_applicable"] for a in own)
+    }
     return {
         "final": not needs,
         "needs_ruling": needs,
@@ -602,19 +639,26 @@ def summarize(
         },
         "attempts": {aid: {"pass": results[aid]} for aid in ids},
         "systems": systems,
+        "comparison": comparison,
+        "deterministic_only": deterministic,
+        "voided_attempts": dropped,
     }
 
 
 # --------------------------------------------------------------------------
 # The user's one-time ruling list
 
-_SYSTEM_NAMES = {"opspilot": "OpsPilot", "holmes": "HolmesGPT"}
 _JUDGE_LABELS = {"glm": "z.ai GLM", "openai": "OpenAI"}
 
 
 def disputes_markdown(attempts: Sequence[Mapping[str, Any]]) -> str:
     """Plain language, one entry per disputed attempt, for one user pass."""
-    rows = [a for a in attempts if disputed(a)]
+    # System names are hidden and rows sorted by category, so the user rules
+    # on the report text alone.
+    rows = sorted(
+        (a for a in attempts if disputed(a)),
+        key=lambda a: (str(a.get("category")), a["scenario_id"], a["attempt_id"]),
+    )
     lines = [
         "# 两家 judge 分歧，请逐题裁决",
         "",
@@ -627,8 +671,7 @@ def disputes_markdown(attempts: Sequence[Mapping[str, Any]]) -> str:
     for n, a in enumerate(rows, 1):
         lines += [
             "",
-            f"## {n}. {_SYSTEM_NAMES.get(a['system'], a['system'])}，"
-            f"题目 {a['scenario_id']}，第 {a.get('slot', '?')} 次",
+            f"## {n}. 类别 {a.get('category')}，题目 {a['scenario_id']}",
             "",
             f"编号：`{a['attempt_id']}`",
             "",

@@ -8,7 +8,6 @@ round in the ``scripts.holmes_baseline.dataset`` summary shape.
 from __future__ import annotations
 
 import dataclasses
-import hashlib
 import json
 from collections.abc import Callable
 from pathlib import Path
@@ -200,74 +199,55 @@ def test_disputes_and_rulings() -> None:
     }
 
 
-def test_redraw_detected() -> None:
-    items = [_item(f"a{i}", (True, True)) for i in range(3)]
+def test_redraw_detected_unless_voided() -> None:
+    items = [_item(f"a{i}", (True, True), slot=i) for i in range(3)]
     with pytest.raises(bj.BinaryJudgeError):
         bj.summarize(items, {}, k=2)
+    out = bj.summarize(items, {}, k=2, voided={"a0"})
+    assert out["voided_attempts"] == ["a0"]
+    assert out["systems"]["opspilot"]["n_attempts"] == 2
+    assert "a0" not in out["attempts"]
+
+
+def test_comparison_covers_common_judged_scenarios_only() -> None:
+    def item(system: str, sid: str, aid: str, applicable: bool, ok: bool) -> Any:
+        return _item(
+            aid,
+            (ok, ok),
+            system=system,
+            scenario_id=sid,
+            judge_applicable=applicable,
+        )
+
+    items = [
+        item("opspilot", "dv2-q1", "o1", True, True),
+        item("opspilot", "dv2-q1", "o2", True, True),
+        item("opspilot", "dv2-alert", "o3", True, False),  # no Holmes entry
+        item("opspilot", "dv2-det", "o4", False, True),  # deterministic only
+        item("holmes", "dv2-q1", "h1", True, False),
+        item("holmes", "dv2-q1", "h2", True, True),
+        item("holmes", "dv2-det", "h3", False, True),
+    ]
+    out = bj.summarize(items, {}, k=2)
+    comparison = out["comparison"]
+    assert comparison["scenarios"] == ["dv2-q1"]
+    ops, holmes = comparison["systems"]["opspilot"], comparison["systems"]["holmes"]
+    assert (ops["n_attempts"], ops["passed"], ops["pass_k"]) == (2, 2, 1.0)
+    assert (holmes["n_attempts"], holmes["passed"], holmes["pass_k"]) == (2, 1, 0.0)
+    # Own scores keep every attempt; deterministic-only rows stand apart.
+    assert out["systems"]["opspilot"]["n_attempts"] == 4
+    assert out["deterministic_only"]["opspilot"]["n_attempts"] == 1
+    assert out["deterministic_only"]["holmes"]["n_attempts"] == 1
 
 
 # --------------------------------------------------------------------------
-# End to end on the #432 evidence
+# End to end: #432 evidence and a real #470 summarize round
+
+HOLMES_FIXTURE = ROOT / "tests/fixtures/s7a-holmes-round"
 
 
-def _holmes_round(tmp: Path) -> tuple[Path, Path]:
-    attempts = tmp / "holmes"
-    (attempts / "h1").mkdir(parents=True)
-    report = "payment Charge RPC errors cause checkout failures; trace 1a2b"
-    (attempts / "h1" / "report.md").write_text(report)
-    slot = {
-        "system": "holmesgpt",
-        "scenario_id": "dv2-2b214b",
-        "in_denominator": True,
-        "final_state_expected": True,
-    }
-    doc = {
-        "schema": cli.HOLMES_ROUND_SCHEMA,
-        "slots": [
-            slot
-            | {
-                "slot": 1,
-                "status": "ran",
-                "attempt_id": "h1",
-                "read_only": True,
-                "report": {
-                    "available": True,
-                    "path": "h1/report.md",
-                    "sha256": hashlib.sha256(report.encode()).hexdigest(),
-                },
-            },
-            slot
-            | {
-                "slot": 2,
-                "status": "not_started",
-                "attempt_id": None,
-                "final_state_expected": False,
-                "report": {"available": False, "path": None, "sha256": None},
-            },
-            {
-                "scenario_id": "dv2-30921c",
-                "slot": 1,
-                "in_denominator": False,
-                "status": "not_applicable",
-                "attempt_id": None,
-            },
-        ],
-    }
-    path = tmp / "holmes-round.json"
-    path.write_text(json.dumps(doc))
-    return path, attempts
-
-
-def test_cli_end_to_end_on_432_evidence(tmp_path: Path) -> None:
-    holmes_round, holmes_dir = _holmes_round(tmp_path)
-
-    def decide(name: str, prompt: str) -> Any:
-        if "Conclusion: partial" in prompt:
-            return "A" if name == "glm" else "B"
-        return "A"
-
-    out = tmp_path / "judge"
-    args = cli.parser().parse_args(
+def _judge_args(out: Path, *extra: str) -> Any:
+    return cli.parser().parse_args(
         [
             "judge",
             "--dataset",
@@ -277,21 +257,108 @@ def test_cli_end_to_end_on_432_evidence(tmp_path: Path) -> None:
             "--evidence-root",
             str(EVIDENCE),
             "--holmes-round",
-            str(holmes_round),
+            str(HOLMES_FIXTURE / "round.json"),
             "--holmes-attempts",
-            str(holmes_dir),
+            str(HOLMES_FIXTURE / "attempts"),
             "--k",
             "2",
             "--out",
             str(out),
+            *extra,
         ]
     )
-    client = FakeClient(decide)
-    result = cli.run_judge(args, client=client, environ=ENV)
+
+
+def _decide(name: str, prompt: str) -> Any:
+    if "Conclusion: partial" in prompt:
+        return "A" if name == "glm" else "B"
+    return "A"
+
+
+def test_holmes_side_from_real_470_round() -> None:
+    dataset = {
+        sid: load_scenario_v2(DATASET / group / sid)
+        for group, sid in (
+            ("regression", "dv2-2b214b"),
+            ("regression", "dv2-8e9455"),
+            ("capability", "dv2-c39f60"),
+            ("capability", "dv2-30921c"),
+        )
+    }
+    doc = json.loads((HOLMES_FIXTURE / "round.json").read_text())
+    rows = {
+        a["attempt_id"]: a
+        for a in cli.holmes_attempts(dataset, doc, HOLMES_FIXTURE / "attempts")
+    }
+    # The alert-entry scenario dv2-30921c is outside the denominator.
+    assert set(rows) == {
+        "h-pay-1",
+        "h-pay-2",
+        "h-norm-1",
+        "holmes-not-started-dv2-8e9455-2",
+        "h-mf-1",
+        "holmes-not-started-dv2-c39f60-2",
+    }
+    raw = json.loads((HOLMES_FIXTURE / "attempts/h-pay-1/out/holmes.json").read_text())
+    # Only the final answer reaches a judge, never the raw output.
+    assert rows["h-pay-1"]["report_text"] == raw["result"]
+    assert rows["h-pay-1"]["checks"] == {
+        "final_state": True,
+        "read_only": True,
+        "report": True,
+    }
+    assert not bj.vetoed(rows["h-pay-1"])
+    assert rows["h-pay-2"]["checks"]["report"] is False  # blank result
+    assert rows["h-norm-1"]["checks"]["read_only"] is False  # a write request
+    # model_failure positive: failing is the expected terminal state.
+    assert rows["h-mf-1"]["checks"]["final_state"] is True
+    assert not rows["h-mf-1"]["judge_applicable"]
+    assert rows["holmes-not-started-dv2-8e9455-2"]["checks"]["final_state"] is False
+
+
+def test_holmes_raw_hash_and_root_checked(tmp_path: Path) -> None:
+    import shutil
+
+    root = tmp_path / "attempts"
+    shutil.copytree(HOLMES_FIXTURE / "attempts", root)
+    dataset = {"dv2-2b214b": load_scenario_v2(DATASET / "regression/dv2-2b214b")}
+    doc = json.loads((HOLMES_FIXTURE / "round.json").read_text())
+    doc["slots"] = [s for s in doc["slots"] if s["scenario_id"] == "dv2-2b214b"]
+    (root / "h-pay-1/out/holmes.json").write_text('{"result": "tampered"}')
+    with pytest.raises(bj.BinaryJudgeError) as err:
+        cli.holmes_attempts(dataset, doc, root)
+    assert err.value.code == "HOLMES_RAW_MISMATCH:h-pay-1"
+    doc["slots"][0]["raw"] = "../../etc/holmes.json"
+    with pytest.raises(bj.BinaryJudgeError) as err:
+        cli.holmes_attempts(dataset, doc, root)
+    assert err.value.code == "HOLMES_RAW_OUTSIDE_ROOT:h-pay-1"
+
+
+def test_opspilot_not_started_slot_counts_as_failure() -> None:
+    dataset = {"dv2-2b214b": load_scenario_v2(DATASET / "regression/dv2-2b214b")}
+    # eval_dev_round's never-started slot shape.
+    slot = {
+        "scenario_id": "dv2-2b214b",
+        "slot": 2,
+        "round": None,
+        "attempt_id": None,
+        "status": "not_started",
+        "expectations": {"passed": False, "checks": {}, "reasons": ["NOT_STARTED"]},
+    }
+    (item,) = cli.opspilot_attempts(dataset, {"slots": [slot]}, EVIDENCE)
+    assert item["attempt_id"] == "opspilot-not-started-dv2-2b214b-2"
+    assert bj.vetoed(item) and item["root_cause_citation"] is False
+    assert bj.attempt_pass(item, {}) is False
+
+
+def test_cli_end_to_end(tmp_path: Path) -> None:
+    out = tmp_path / "judge"
+    client = FakeClient(_decide)
+    result = cli.run_judge(_judge_args(out), client=client, environ=ENV)
     doc = json.loads((out / "items.json").read_text())
     ops = [a for a in doc["attempts"] if a["system"] == "opspilot"]
     holmes = [a for a in doc["attempts"] if a["system"] == "holmes"]
-    assert len(ops) == 36 and len(holmes) == 2 and result["attempts"] == 38
+    assert (len(ops), len(holmes), result["attempts"]) == (36, 6, 42)
     # Deterministic-only rows (4 scenarios x 2) never reach a judge; the
     # #432 gate failures are exactly those rows, so nothing else is vetoed.
     only = [a for a in ops if not a["judge_applicable"]]
@@ -305,8 +372,15 @@ def test_cli_end_to_end_on_432_evidence(tmp_path: Path) -> None:
     judged = [a for a in ops if a["judge_applicable"]]
     assert all("gate.signature" in a["checks"] for a in judged)
     assert not any(k.startswith("gate.") for a in only for k in a["checks"])
-    assert len(client.bodies) == 2 * (len(judged) + 1)
+    # Holmes: only h-pay-1 passes Q11 and is judge-applicable.
+    sent = [body for _name, body in client.bodies]
+    assert len(sent) == 2 * (len(judged) + 1)
+    holmes_prompts = [b for b in sent if "trace 1a2b" in b["messages"][0]["content"]]
+    assert len(holmes_prompts) == 2
+    assert all("tool_calls" not in b["messages"][0]["content"] for b in holmes_prompts)
     assert "not-a-key" not in (out / "items.json").read_text()
+    md = (out / "disputes.md").read_text()
+    assert "OpsPilot" not in md and "HolmesGPT" not in md
     rulings = json.loads((out / "rulings.json").read_text())
     assert set(rulings["rulings"]) == {
         a["attempt_id"] for a in doc["attempts"] if bj.disputed(a)
@@ -331,22 +405,63 @@ def test_cli_end_to_end_on_432_evidence(tmp_path: Path) -> None:
     assert summary["final"] is True
     assert summary["systems"]["opspilot"]["n_attempts"] == 36
     row = summary["systems"]["holmes"]
-    assert (row["n_attempts"], row["passed"], row["pass_k"]) == (2, 1, 0.0)
+    assert (row["n_attempts"], row["passed"]) == (6, 2)  # h-pay-1, h-mf-1
+    assert summary["comparison"]["scenarios"] == ["dv2-2b214b", "dv2-8e9455"]
+    assert summary["comparison"]["systems"]["holmes"]["n_attempts"] == 4
+    assert summary["comparison"]["systems"]["opspilot"]["n_attempts"] == 4
+    assert summary["deterministic_only"]["holmes"]["n_attempts"] == 2
     assert "report_text" not in summary_path.read_text()
     with pytest.raises(FileExistsError):
-        cli.run_judge(args, client=client, environ=ENV)
+        cli.run_judge(_judge_args(out), client=client, environ=ENV)
 
 
-def test_holmes_report_hash_mismatch_refused(tmp_path: Path) -> None:
-    holmes_round, holmes_dir = _holmes_round(tmp_path)
-    (holmes_dir / "h1" / "report.md").write_text("tampered")
-    dataset = {
-        "dv2-2b214b": load_scenario_v2(DATASET / "regression/dv2-2b214b"),
-        "dv2-30921c": load_scenario_v2(DATASET / "capability/dv2-30921c"),
+def test_cli_drops_registered_voids(tmp_path: Path) -> None:
+    victim = json.loads(DEV_ROUND.read_text())["slots"][0]["attempt_id"]
+    log = {
+        "schema": cli.PAIRED_LOG_SCHEMA,
+        "windows": [
+            {
+                "window_id": "w1",
+                "void": {"class": "ENV_SETUP_FAILED"},
+                "slots": [
+                    {"system": "opspilot", "attempt_id": victim},
+                    {"system": "holmes", "attempt_id": "h-pay-1"},
+                ],
+            }
+        ],
     }
-    with pytest.raises(bj.BinaryJudgeError) as err:
-        cli.holmes_attempts(dataset, json.loads(holmes_round.read_text()), holmes_dir)
-    assert err.value.code == "HOLMES_REPORT_MISMATCH:h1"
+    check = {"voided": [{"window_id": "w1", "systems": ["opspilot"]}]}
+    (tmp_path / "log.json").write_text(json.dumps(log))
+    (tmp_path / "check.json").write_text(json.dumps(check))
+    out = tmp_path / "judge"
+    client = FakeClient(_decide)
+    args = _judge_args(
+        out,
+        "--schedule-log",
+        str(tmp_path / "log.json"),
+        "--schedule-check",
+        str(tmp_path / "check.json"),
+    )
+    result = cli.run_judge(args, client=client, environ=ENV)
+    assert result["voided"] == 1 and result["attempts"] == 41
+    summary_path = tmp_path / "summary.json"
+    rulings = json.loads((out / "rulings.json").read_text())
+    assert victim not in rulings["rulings"]
+    cli.run_summarize(
+        cli.parser().parse_args(
+            [
+                "summarize",
+                "--items",
+                str(out / "items.json"),
+                "--out",
+                str(summary_path),
+            ]
+        )
+    )
+    summary = json.loads(summary_path.read_text())
+    assert summary["voided_attempts"] == [victim]
+    assert summary["systems"]["opspilot"]["n_attempts"] == 35
+    assert summary["systems"]["holmes"]["n_attempts"] == 6
 
 
 def test_judge_applicable_negative_fault_scenario_keeps_fault_question() -> None:

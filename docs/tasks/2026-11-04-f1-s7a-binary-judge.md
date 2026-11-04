@@ -26,14 +26,19 @@
 | 参数 | z.ai `reasoning_effort=high`；输出上限 16384；单次超时 600 s；传输错误或超时重试 1 次 | effort 照 P7；16384 是上游 classifier 的值 |
 | ReportV2 投影 | 按报告原顺序写 assessment、conclusion、summary、各 claim（类型标签 + 原文 + `E<n>`）、gaps、next steps | 原文照搬，不暴露内部 ID |
 | OpsPilot 的 checks | `q20.*` 取轮次 summary 里已复核的 Q20 期望；judge 适用的行再加现场重算的 `gate.*` | 「只确定性」行按 Q20 判；gate 要求有报告和签名，套在这些行上会把合同允许的行为也否决掉 |
-| HolmesGPT 的 checks | `final_state`：终态在答案允许的集合里；`read_only`：slot 里有就用，没有记为不适用；judge 适用的行再加 `report`（有最终回答） | Q11：HolmesGPT 只适用「只读未越权、调查跑完」 |
+| HolmesGPT 的输入 | 读 #470 `summarize` 的真实轮次 summary：`slot["raw"]` 指向 `holmes.json`，路径必须在 attempts 根目录之下，sha256 要和该尝试自己的 summary.json 对上；送 judge 的只有 `project_holmes_output` 取出的 `result` | 审查第 1 轮 X2：之前读的 slot 形状是自己夹具编的 |
+| HolmesGPT 的 checks | `final_state`：按 slot 的 `final_state` 对照答案的 `expected_outcome.final_states` 重算；`read_only`：取 slot 自己的 `checks.read_only`，没开始的为不适用；judge 适用的行再加 `report`（`result` 不为空） | Q11：HolmesGPT 只适用「只读未越权、调查跑完」；机器人 4470679556 |
+| 没开始的槽 | 两边都用合成 id（`opspilot-not-started-<题>-<槽>`、`holmes-not-started-<题>-<槽>`），计入分母，记为不过 | 审查第 1 轮 2；`eval_dev_round` 的这种槽 `attempt_id` 为 None、checks 为空 |
+| 对比分母 | `comparison` 行只含两边都有尝试、且 judge 适用的题，即问题入口；`systems` 行是各自全部题的成绩；「只确定性」的行单独放在 `deterministic_only`，各系统分开报，不进对比 | lead 裁决（审查第 1 轮 3、4）：Holmes 没有 Q20 检查，进对比会白拿分 |
+| 作废尝试 | 读 #474 的 `eval_pair_schedule` 日志和 `check` 输出，按 `voided[].window_id` 和 `systems` 在日志里取 attempt_id；这些尝试不送 judge，不进裁决、不进任何分母，列在 `voided_attempts`；去掉作废的之后再查同一题是否超过 k 次 | 审查第 1 轮 5（X3） |
+| 裁决清单 | 不写系统名，按类别排序 | 审查的可选项：让用户只看报告本身来裁 |
 | 分母 | 每个开始过的尝试都算；不足 k 次的题算 pass^k 不过；同一题超过 k 次报 `REDRAW_DETECTED` | §3.3 第 2 类 |
 | 根因证据引用率 | `conclusion ∈ {supported, partial}`，且有 fact/hypothesis claim 带事实绑定引用了签名命中的记录（复用 `report_signature_matches`，加 kind 过滤）；没有签名的题记为不适用 | §1 D 的规则原样落地 |
 
 ## 证据
 
 - 独立验收 `tests/acceptance/test_s7a_binary_scoring.py`（提交 eca22936，以及测试作者的修正 9ca39154）：32/32 通过。
-- 实现侧 `tests/test_binary_judge.py` 18 项通过，其中端到端一项跑在 #432 的 36 个证据槽位上，用假客户端。ruff 通过；mypy 全仓 155 个文件通过。
+- 实现侧 `tests/test_binary_judge.py` 22 项通过。端到端用例跑在 #432 的 36 个证据槽位上，加一份用 #470 自己的构造函数（b19e8a22）生成的真实轮次 summary（`tests/fixtures/s7a-holmes-round/`，生成脚本在同目录），用假客户端。ruff 通过；mypy 全仓 155 个文件通过。
 - 离线验证（假 judge，没有发出真实请求）：在 #432 的 36 个槽位上加 `--recording-root poa-432-impl/tmp/eval`，32 份报告的证据都和录制重新推出的结果一致。F14 HolmesGPT run1 的原始输出包成 S7b 的轮次格式，当作 dv2-2b214b 送入。结果：
   - 「只确定性」8 次，正是 #432 gate 不过的那 4 题；
   - Q11 否决 0 次；
@@ -45,5 +50,5 @@
 ## 待决
 
 - （已解决）验收原来要求按 polarity 选问句；lead 核对后裁为按有无 signature 选，测试作者在 9ca39154 改了断言，实现不变。
-- S7b 的轮次 summary 每个 slot 还没有 `read_only` 字段，HolmesGPT 侧的只读检查目前记为不适用。
+- （已解决）HolmesGPT 侧的 `read_only`：#470 每个 slot 自带 `checks.read_only`。
 - （已解决）H6：用户已确认两家 judge 的 key 有效，余额各 ≥ $20；z.ai 走 `GLM_API_KEY` 回退（lead 转达，2026-11-04）。
