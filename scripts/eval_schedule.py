@@ -437,6 +437,7 @@ def plan(
     window_length: timedelta,
     start: datetime,
     dataset: str | None = None,
+    roots: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
     planned = windows(scenarios, rules)
     records = simulate(planned, labs, rules, window_length=window_length, start=start)
@@ -691,6 +692,173 @@ def run_schedule(
     return dispatcher.records
 
 
+# -- the live window runner ---------------------------------------------------------
+
+#: Names of environment variables a labs file may never carry (credentials
+#: reach the host by the user's own command, never through this file).
+SECRET_MARKERS = ("KEY", "TOKEN", "PASSWORD", "SECRET", "AUTH")
+
+
+@dataclass(frozen=True)
+class LabSpec:
+    """One lab: where the live driver runs (``host`` an ssh alias, or None
+    for this machine), its checkout, the non-secret environment that picks
+    the lab instance (``OPSPILOT_LAB_INSTANCE``, ``OPSPILOT_LAB_LEDGERS``,
+    ``OPSPILOT_OTEL_*_URL``), its PG port, flagd URL and output root."""
+
+    name: str
+    repo: str
+    pg_port: int
+    flagd_url: str
+    output_root: str
+    host: str | None = None
+    env: Mapping[str, str] = field(default_factory=dict)
+    shared_host: bool = False
+
+
+def load_lab_specs(path: Path) -> dict[str, LabSpec]:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if data["schema"] != LABS_SCHEMA:
+            raise ScheduleError("LABS_SCHEMA")
+        specs = {
+            str(item["name"]): LabSpec(
+                name=str(item["name"]),
+                repo=str(item["repo"]),
+                pg_port=int(item["pg_port"]),
+                flagd_url=str(item["flagd_url"]),
+                output_root=str(item["output_root"]),
+                host=item.get("host"),
+                env={str(k): str(v) for k, v in (item.get("env") or {}).items()},
+                shared_host=bool(item.get("shared_host", False)),
+            )
+            for item in data["labs"]
+        }
+    except (OSError, ValueError, KeyError, TypeError):
+        raise ScheduleError("LABS_INVALID") from None
+    if len(specs) != len(data["labs"]) or not specs:
+        raise ScheduleError("LABS_INVALID")
+    for spec in specs.values():
+        if any(m in k.upper() for k in spec.env for m in SECRET_MARKERS):
+            raise ScheduleError("LABS_SECRET_IN_ENV")
+    ports = [(s.host, s.pg_port) for s in specs.values()]
+    roots = [(s.host, s.output_root) for s in specs.values()]
+    ledgers = [(s.host, s.env.get("OPSPILOT_LAB_LEDGERS")) for s in specs.values()]
+    instances = [
+        (s.host, s.env.get("OPSPILOT_LAB_INSTANCE", "0")) for s in specs.values()
+    ]
+    for seen in (ports, roots, ledgers, instances):
+        if len(set(seen)) != len(seen):
+            # two labs on one host sharing a port, output root, ledger root
+            # or lab instance would be one lab
+            raise ScheduleError("LABS_SHARED_RESOURCE")
+    return specs
+
+
+Execute = Callable[[LabSpec, Sequence[str]], tuple[int, str]]
+
+
+def _shell(spec: LabSpec, argv: Sequence[str]) -> list[str]:
+    import shlex
+
+    env = [f"{k}={shlex.quote(v)}" for k, v in sorted(spec.env.items())]
+    command = " ".join(["env", *env, shlex.join(argv)]) if env else shlex.join(argv)
+    line = f"cd {shlex.quote(spec.repo)} && {command}"
+    if spec.host is None:
+        return ["bash", "-c", line]
+    return ["ssh", "-o", "BatchMode=yes", spec.host, line]
+
+
+def subprocess_execute(spec: LabSpec, argv: Sequence[str]) -> tuple[int, str]:
+    import subprocess
+
+    proc = subprocess.run(
+        _shell(spec, argv), capture_output=True, text=True, check=False
+    )
+    return proc.returncode, proc.stdout
+
+
+class CommandWindowRunner:
+    """Runs a window as one ``scripts.eval_live`` round on its lab and reads
+    the round's ``lifecycle.json`` and ``pair.json`` back."""
+
+    def __init__(
+        self,
+        labs: Mapping[str, LabSpec],
+        roots: Mapping[str, str],
+        *,
+        round_prefix: str,
+        holder: str,
+        batch: str,
+        execute: Execute = subprocess_execute,
+        python: str = ".venv/bin/python",
+    ) -> None:
+        self.labs, self.roots = labs, roots
+        self.prefix, self.holder, self.batch = round_prefix, holder, batch
+        self.execute, self.python = execute, python
+
+    def round_id(self, window: Window) -> str:
+        return f"{self.prefix}-{window.window_id}"
+
+    def argv(self, lab: str, window: Window) -> list[str]:
+        spec = self.labs[lab]
+        if window.systems == ("opspilot",):
+            pair = "opspilot-only"
+        else:
+            pair = f"{window.systems[0]}-first"
+        return [
+            self.python, "-m", "scripts.eval_live", "--mode", "live",
+            "--round", self.round_id(window),
+            "--scenario", window.scenario_id, "--n", "1", "--parallel", "1",
+            "--holder", self.holder, "--batch", self.batch,
+            "--flagd-url", spec.flagd_url, "--pg-port", str(spec.pg_port),
+            "--scenario-root", self.roots[window.scenario_id],
+            "--output-root", spec.output_root,
+            "--pair", pair,
+        ]  # fmt: skip
+
+    def _read(self, spec: LabSpec, relative: str) -> Any:
+        code, out = self.execute(spec, ["cat", relative])
+        if code != 0:
+            return None
+        try:
+            return json.loads(out)
+        except ValueError:
+            return None
+
+    def run(self, lab: str, window: Window) -> dict[str, Any]:
+        spec = self.labs[lab]
+        code, _ = self.execute(spec, self.argv(lab, window))
+        evidence = f"{spec.output_root}/evidence/{self.round_id(window)}"
+        lifecycle = self._read(spec, f"{evidence}/lifecycle.json") or {}
+        slots = lifecycle.get("slots") or []
+        slot = slots[0] if slots and isinstance(slots[0], Mapping) else {}
+        pair = None
+        if slot.get("attempt_id"):
+            pair = self._read(spec, f"{evidence}/runs/{slot['attempt_id']}/pair.json")
+        timings = slot.get("timings") or {}
+        fault = slot.get("fault") or {}
+        record: dict[str, Any] = {
+            "round_id": self.round_id(window),
+            "exit_code": code,
+            "attempt_id": slot.get("attempt_id"),
+            "started_at": timings.get("started_at"),
+            "injected_at": fault.get("effective_at") or timings.get("started_at"),
+            "restored_at": fault.get("normal_confirmed_at"),
+            "ended_at": timings.get("ended_at"),
+            "shared_host": spec.shared_host,
+            "interrupted": code == 130 or not slot,
+        }
+        if isinstance(pair, Mapping) and isinstance(pair.get("slots"), list):
+            record["slots"] = [dict(s) for s in pair["slots"]]
+        else:
+            record["slots"] = [
+                {"system": s, "position": n + 1, "status": "not_started"}
+                for n, s in enumerate(window.systems)
+            ]
+        return record
+
+
 # -- helpers & CLI ----------------------------------------------------------------
 
 
@@ -729,6 +897,14 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--window-minutes", type=float, default=27.0)
     p.add_argument("--start")
     p.add_argument("--out", required=True)
+    r = sub.add_parser("run")
+    r.add_argument("--plan", required=True)
+    r.add_argument("--labs", required=True)
+    r.add_argument("--rules", default=str(RULES_PATH))
+    r.add_argument("--round-prefix", required=True)
+    r.add_argument("--holder", required=True)
+    r.add_argument("--batch", required=True)
+    r.add_argument("--log", required=True)
     c = sub.add_parser("check")
     c.add_argument("--plan", required=True)
     c.add_argument("--log", required=True)
@@ -745,8 +921,11 @@ def main(argv: Sequence[str] | None = None) -> int:
 
             scenarios: list[Scenario] = []
             names = []
+            roots: dict[str, str] = {}
             for root in args.dataset:
-                scenarios += scenarios_from_dataset(Path(root))
+                found = scenarios_from_dataset(Path(root))
+                scenarios += found
+                roots.update((s.scenario_id, root) for s in found)
                 names.append(str(dataset_dimension(Path(root)).value))
             if len({s.scenario_id for s in scenarios}) != len(scenarios):
                 raise ScheduleError("SCENARIO_DUPLICATE")
@@ -762,6 +941,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 window_length=timedelta(minutes=args.window_minutes),
                 start=start,
                 dataset=",".join(names),
+                roots=roots,
             )
             Path(args.out).write_text(
                 json.dumps(out, indent=2, sort_keys=True) + "\n", encoding="utf-8"
@@ -773,6 +953,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             return 0
         plan_json = json.loads(Path(args.plan).read_text(encoding="utf-8"))
+        if args.command == "run":
+            return _run(args, rules, plan_json)
         log = json.loads(Path(args.log).read_text(encoding="utf-8"))
         result = check(plan_json, log, rules)
         print(json.dumps(result, indent=2, sort_keys=True))
@@ -780,6 +962,54 @@ def main(argv: Sequence[str] | None = None) -> int:
     except ScheduleError as exc:
         print(json.dumps({"error": exc.code}), file=sys.stderr)
         return 2
+
+
+def _run(args: argparse.Namespace, rules: Rules, plan_json: Mapping[str, Any]) -> int:
+    """Execute a plan; the log is rewritten after every finished window."""
+    if plan_json.get("rules_sha256") != rules.sha256:
+        raise ScheduleError("PLAN_RULES_MISMATCH")
+    specs = load_lab_specs(Path(args.labs))
+    log_path = Path(args.log)
+    if log_path.exists():
+        raise ScheduleError("LOG_EXISTS")
+    meta = plan_json["scenarios"]
+    scenarios = {
+        sid: Scenario(sid, v["entry"], bool(v["model_fault"]))
+        for sid, v in meta.items()
+    }
+    pending = [
+        Window(w["window_id"], w["scenario_id"], w["repetition"], tuple(w["systems"]))
+        for w in plan_json["windows"]
+    ]
+    runner = CommandWindowRunner(
+        specs,
+        {sid: str(v["root"]) for sid, v in meta.items()},
+        round_prefix=args.round_prefix,
+        holder=args.holder,
+        batch=args.batch,
+    )
+    lock = threading.Lock()
+    booked: list[dict[str, Any]] = []
+
+    def write(record: dict[str, Any]) -> None:
+        with lock:
+            booked.append(record)
+            document = {
+                "schema": LOG_SCHEMA,
+                "rules_id": rules.rules_id,
+                "rules_sha256": rules.sha256,
+                "windows": booked,
+            }
+            tmp = log_path.with_suffix(".tmp")
+            tmp.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n")
+            tmp.replace(log_path)
+
+    run_schedule(
+        pending, tuple(specs), rules, runner, scenarios=scenarios, on_record=write
+    )
+    result = check(plan_json, json.loads(log_path.read_text()), rules)
+    print(json.dumps(result, sort_keys=True))
+    return 0 if not result["violations"] else 1
 
 
 if __name__ == "__main__":

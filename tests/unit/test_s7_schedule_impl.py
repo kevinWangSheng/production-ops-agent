@@ -412,3 +412,127 @@ def test_plan_cli_writes_a_plan(tmp_path):
     assert plan["dataset"].startswith("dev-v2:")
     assert plan["rules_sha256"] == es.load_rules().sha256
     assert plan["labs"] == ["a", "b"]
+
+
+# -- live window runner ----------------------------------------------------------------
+
+
+def _labs_file(tmp_path, labs):
+    path = tmp_path / "labs.json"
+    path.write_text(json.dumps({"schema": es.LABS_SCHEMA, "labs": labs}))
+    return path
+
+
+def _lab(name, instance, port, **extra):
+    return {
+        "name": name,
+        "host": "opspilot-f9-1",
+        "repo": "/root/poa",
+        "pg_port": port,
+        "flagd_url": f"http://127.0.0.1:{18080 + 100 * instance}/flagservice/",
+        "output_root": f"/root/out/{name}",
+        "env": {
+            "OPSPILOT_LAB_INSTANCE": str(instance),
+            "OPSPILOT_LAB_LEDGERS": f"/root/ledgers/{name}",
+        },
+        **extra,
+    }
+
+
+def test_lab_specs_refuse_secrets_and_shared_resources(tmp_path):
+    good = es.load_lab_specs(
+        _labs_file(tmp_path, [_lab("a", 0, 55001), _lab("b", 1, 55002)])
+    )
+    assert set(good) == {"a", "b"}
+    leaky = _lab("a", 0, 55001)
+    leaky["env"]["DEEPSEEK_API_KEY"] = "x"
+    with pytest.raises(es.ScheduleError, match="LABS_SECRET_IN_ENV"):
+        es.load_lab_specs(_labs_file(tmp_path, [leaky]))
+    with pytest.raises(es.ScheduleError, match="LABS_SHARED_RESOURCE"):
+        es.load_lab_specs(
+            _labs_file(tmp_path, [_lab("a", 0, 55001), _lab("b", 0, 55002)])
+        )
+    with pytest.raises(es.ScheduleError, match="LABS_SHARED_RESOURCE"):
+        es.load_lab_specs(
+            _labs_file(tmp_path, [_lab("a", 0, 55001), _lab("b", 1, 55001)])
+        )
+
+
+def test_command_runner_drives_one_round_per_window(tmp_path):
+    specs = es.load_lab_specs(_labs_file(tmp_path, [_lab("b", 1, 55002)]))
+    window = es.Window("dv2-2b214b-r2", "dv2-2b214b", 2, ("holmes", "opspilot"))
+    evidence = "/root/out/b/evidence/s10-dv2-2b214b-r2"
+    lifecycle = {
+        "slots": [
+            {
+                "attempt_id": "att1",
+                "timings": {
+                    "started_at": "2026-11-05T00:00:00+00:00",
+                    "ended_at": "2026-11-05T00:30:00+00:00",
+                },
+                "fault": {
+                    "effective_at": "2026-11-05T00:01:00+00:00",
+                    "normal_confirmed_at": "2026-11-05T00:20:00+00:00",
+                },
+            }
+        ]
+    }
+    pair = {
+        "slots": [
+            {"system": "holmes", "position": 1, "status": "ran"},
+            {"system": "opspilot", "position": 2, "status": "ran"},
+        ]
+    }
+    files = {
+        f"{evidence}/lifecycle.json": lifecycle,
+        f"{evidence}/runs/att1/pair.json": pair,
+    }
+    calls = []
+
+    def execute(spec, argv):
+        calls.append((spec.name, list(argv)))
+        if argv[0] == "cat":
+            found = files.get(argv[1])
+            return (0, json.dumps(found)) if found is not None else (1, "")
+        return 0, "{}"
+
+    runner = es.CommandWindowRunner(
+        specs,
+        {"dv2-2b214b": "evals/datasets/dev-v2", "dv2-30921c": "evals/datasets/dev-v2"},
+        round_prefix="s10",
+        holder="lead",
+        batch="b1",
+        execute=execute,
+    )
+    record = runner.run("b", window)
+    argv = calls[0][1]
+    assert argv[argv.index("--pair") + 1] == "holmes-first"
+    assert argv[argv.index("--round") + 1] == "s10-dv2-2b214b-r2"
+    assert argv[argv.index("--pg-port") + 1] == "55002"
+    assert argv[argv.index("--output-root") + 1] == "/root/out/b"
+    assert record["injected_at"] == "2026-11-05T00:01:00+00:00"
+    assert record["restored_at"] == "2026-11-05T00:20:00+00:00"
+    assert [s["system"] for s in record["slots"]] == ["holmes", "opspilot"]
+    assert record["interrupted"] is False
+    shell = es._shell(specs["b"], argv)
+    assert shell[:3] == ["ssh", "-o", "BatchMode=yes"]
+    assert "OPSPILOT_LAB_INSTANCE=1" in shell[-1] and shell[-1].startswith(
+        "cd /root/poa && env "
+    )
+    alone = es.Window("dv2-30921c-r1", "dv2-30921c", 1, ("opspilot",))
+    assert "opspilot-only" in runner.argv("b", alone)
+
+
+def test_command_runner_books_a_round_without_evidence_as_interrupted(tmp_path):
+    specs = es.load_lab_specs(_labs_file(tmp_path, [_lab("a", 0, 55001)]))
+    runner = es.CommandWindowRunner(
+        specs,
+        {"x": "r"},
+        round_prefix="p",
+        holder="h",
+        batch="b",
+        execute=lambda spec, argv: (2, ""),
+    )
+    record = runner.run("a", es.Window("x-r1", "x", 1, ("opspilot", "holmes")))
+    assert record["interrupted"] is True
+    assert es.classify_void(record, es.load_rules()) == "HARNESS_INTERRUPTED"

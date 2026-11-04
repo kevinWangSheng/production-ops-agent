@@ -168,6 +168,8 @@ class RoundConfig:
     # F1 closure R7: the systems that answer under this attempt's one
     # injection, in order; ``("opspilot",)`` is the unpaired driver.
     pair: tuple[str, ...] = ("opspilot",)
+    # write ``runs/<attempt>/pair.json`` (every scheduled window, R7)
+    pair_record: bool = False
 
 
 @dataclass(frozen=True)
@@ -1118,7 +1120,7 @@ def _run_slot(
             state.evidence_failed = True
         if is_v2(slot) and not _write_expectations(run_dir, slot, state):
             state.evidence_failed = True
-        if config.pair != ("opspilot",) and not _write_pair(run_dir, config, state):
+        if config.pair_record and not _write_pair(run_dir, config, state):
             state.evidence_failed = True
         out.summary = {
             "path": f"runs/{attempt_id}/summary.json",
@@ -1284,7 +1286,7 @@ def _guarded(
     # §8: the recording's parent directory is created (700) when missing; the
     # package directory itself is left to ``record()`` (OUTPUT_EXISTS rule).
     deps.recording_root.mkdir(parents=True, exist_ok=True, mode=0o700)
-    if config.pair == ("opspilot",):
+    if not config.pair_record:
         _investigate(
             config,
             deps,
@@ -1391,6 +1393,8 @@ def _investigate(
 PAIR_ORDERS = {
     "opspilot-first": ("opspilot", "holmes"),
     "holmes-first": ("holmes", "opspilot"),
+    # an alert-entry window (no HolmesGPT entry): OpsPilot alone, same record
+    "opspilot-only": ("opspilot",),
 }
 PAIR_FILE = "pair.json"
 PAIR_SCHEMA = "opspilot-eval-pair-1"
@@ -2795,7 +2799,7 @@ def _main(argv: list[str], deps: LiveDeps | None) -> int:
             except (ScenarioError, OSError):
                 raise _Usage("scenario directory invalid") from None
             if args.pair is not None:
-                check_pair(slots, probe=args.probe)
+                check_pair(slots, probe=args.probe, alone=args.pair == "opspilot-only")
         if args.recover and args.pair is not None:
             raise _Usage("--recover takes only round/holder/batch/flagd-url")
     except _Usage as exc:
@@ -2868,6 +2872,7 @@ def _main(argv: list[str], deps: LiveDeps | None) -> int:
     pair: tuple[str, ...] = ("opspilot",)
     if args.pair is not None:
         pair = PAIR_ORDERS[args.pair]
+    if "holmes" in pair:
         if getattr(live, "baseline", None) is None:
             try:
                 live = replace(live, baseline=baseline_runner(live))
@@ -2884,19 +2889,21 @@ def _main(argv: list[str], deps: LiveDeps | None) -> int:
         tuple(argv),
         args.n,
         pair,
+        args.pair is not None,
     )
     return _dispatch(args.round, live, lambda: run_round(config, live))
 
 
-def check_pair(slots: Sequence[Slot], *, probe: bool) -> None:
-    """A paired round (R7) is one v2 question-entry slot: the schedule makes
-    one round per window, and HolmesGPT has no alert entry (V2-R12)."""
+def check_pair(slots: Sequence[Slot], *, probe: bool, alone: bool = False) -> None:
+    """A scheduled round (R7) is one v2 slot: the schedule makes one round
+    per window; with HolmesGPT it is question entry, since HolmesGPT has no
+    alert entry (V2-R12)."""
     if probe:
         raise _Usage("--pair does not take --probe")
     if len(slots) != 1:
         raise _Usage("PAIR_ONE_SLOT")
     plan = slots[0].plan
-    if plan is None or plan.entry != "question":
+    if plan is None or (not alone and plan.entry != "question"):
         raise _Usage("PAIR_ENTRY_UNSUPPORTED")
 
 

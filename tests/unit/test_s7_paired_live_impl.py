@@ -62,6 +62,7 @@ def _round(lab, sid: str, order: str, baseline: Any) -> tuple[Any, Path]:
         ("t",),
         1,
         eval_live.PAIR_ORDERS[order],
+        True,
     )
     result = eval_live.run_round(config, deps)
     return result, deps.evidence_root / "s7pair"
@@ -159,3 +160,14 @@ def test_failed_regate_fails_only_the_second_system(lab, monkeypatch, order):
         assert len(baseline.calls) == 1
         assert result.slots[0].status == "setup_failed"
         assert result.slots[0].product_run_id is None
+
+
+def test_opspilot_only_window_still_writes_its_record(lab):
+    baseline = FakeBaseline()
+    result, evidence = _round(lab, "dv2-30921c", "opspilot-only", baseline)
+    (slot,) = _pair(evidence, result)["slots"]
+    assert slot["system"] == "opspilot" and slot["position"] == 1
+    assert slot["status"] == result.slots[0].status
+    assert baseline.calls == []
+    alert = eval_live.plan_slots(lab["root"], ["dv2-30921c"], 1)
+    eval_live.check_pair(alert, probe=False, alone=True)
