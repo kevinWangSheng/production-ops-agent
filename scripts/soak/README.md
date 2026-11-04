@@ -30,7 +30,7 @@ rental host (kind lab)                         da-server (control side, Compose 
   `OPSPILOT_LAB_HOST_ADDRESS=172.18.0.1 OPSPILOT_LAB_HOST_PORTS=webhook=28080,web=29464,worker=29465,observer=29466 python3 scripts/kind_lab.py up`
   so the lab's webhook and scrape targets point at the tunnel.
 - `fault.sh`: accepts exactly `flag <paymentFailure|adManualGc|loadGeneratorFloodHomepage> <on|off> <item>`,
-  `collector-restart`, `clock`, `ping`; anything else exits 64. Flags move
+  `collector-restart`, `alerts` (read-only), `clock`, `ping`; anything else exits 64. Flags move
   through `lab_fault.py` (idempotent, verified against the live ConfigMap).
 - `compose.soak.yaml` (da-server): the `soak-tunnel` sidecar (image built from
   `tunnel/Dockerfile` with the operator's uid) and json-file log rotation
@@ -43,23 +43,54 @@ rental host (kind lab)                         da-server (control side, Compose 
 
 ## Procedure
 
-1. Preconditions P1–P13 green (task record). Data directory on da-server, e.g.
-   `/home/opspilot/soak-2026-11-xx/` (later copied to `~/.agent/soak-<date>/`).
-2. `python3 -m scripts.soak plan --data <dir>` → prints the plan SHA-256; put it
-   in the task record before T0 (S-R6). The plan never changes after.
-3. Write `<dir>/soak.json` (below), the operator credential file (`user:password`,
-   mode 600) and, optionally, `<dir>/cost.json`.
-4. Smoke (P11) by hand, then start: `nohup python3 -m scripts.soak run --data <dir> &`
-   (or a systemd user unit). T0 is its first tick. The runner is restart-safe.
-5. Rental host: `python3 -m scripts.soak sample --data <rental dir> --host rental`
-   (resources every 60 s), copied next to the da-server files at the end.
-6. Environment-only interruption the probe cannot see (rental reboot,
-   provider maintenance): `python3 -m scripts.soak note-interruption --data <dir> --start … --end … --reason …`.
-7. ≥ 30 min after the runner ends: `python3 -m scripts.soak finish --data <dir>`
-   (PG export `pg.json`, `pg_dump.sql.gz`, sizes).
-8. `python3 -m scripts.soak summarize --data <dir> --out summary.json`; commit
-   `summary.json` + README under `docs/evidence/m3-soak-<date>/` (S-R15). Raw
-   files stay outside the repository.
+One rental host (`opspilot-f9-1`, shared vCPU) serves the F9 evidence and
+the F1 evaluation first; the soak runs on it afterwards (results of the
+evaluation archived first). The image is the `v0.1.0` tag's digest (S-R17).
+
+1. Rental: `install_linux.sh --no-up`, then `rental_setup.sh` (prints the
+   kind gateway). Before `kind_lab.py up`, put da-server's webhook token in
+   the lab's token file so Alertmanager presents the token the workbench
+   knows (kind_lab only creates one when the file is absent). Host to host,
+   nothing printed:
+
+   ```
+   ssh da-server 'sudo -u opspilot cat /home/opspilot/.config/opspilot/alertmanager_token' \
+     | ssh <rental> 'sudo -u <lab user> sh -c "umask 077; mkdir -p <repo>/tmp/m1-kind-lab; cat > <repo>/tmp/m1-kind-lab/alertmanager-webhook-token"'
+   ```
+
+   Then `OPSPILOT_LAB_HOST_ADDRESS=<gateway> OPSPILOT_LAB_HOST_PORTS=webhook=28080,web=29464,worker=29465,observer=29466 python3 scripts/kind_lab.py up`.
+2. Lab credentials to da-server the same way (rental file -> ssh pipe ->
+   append to the da-server file, umask 077): the Observer account into
+   `observer_env` (plus `OPSPILOT_OBSERVER_PROMETHEUS_URL=http://lab-prometheus:19090`),
+   the investigator account into `worker_env` (plus
+   `OPSPILOT_OTEL_PROMETHEUS_URL=http://lab-prometheus:19090`,
+   `OPSPILOT_OTEL_JAEGER_URL=http://lab-jaeger:16686/jaeger/ui`), the `lab`
+   account into the soak's `lab.env` (`prometheus_env_file`).
+3. da-server: `install.sh install` uses `compose.yaml` only
+   (`deploy/compose/install.sh:282`), so after it re-create every service,
+   postgres included, with the soak file set:
+   `deploy/compose/install.sh compose --profile agent -f deploy/compose/compose.lab.yaml -f scripts/soak/compose.soak.yaml up -d --force-recreate`.
+   `compose.soak.yaml` carries the log rotation, so a separate logging
+   overlay is not needed. During the soak every compose call uses that file
+   set, and `install.sh upgrade` is not run (product frozen, S-R13).
+4. `python3 -m scripts.soak plan --data <dir> --t0 <ISO> --price-input <CNY/Mtok, cache miss> --price-output <CNY/Mtok> --price-source <url+date> --deployment <name> ...`
+   prints the plan SHA-256; record it in the task record before T0 (S-R6).
+   The plan (and T0 in it) never changes after.
+5. Write `<dir>/soak.json` (below) and the operator credential file
+   (`user:password`, mode 600). Smoke (P11) by hand before T0.
+6. Before T0: `nohup python3 -m scripts.soak run --data <dir> &` (or a
+   systemd user unit). It waits for T0 and refuses to start more than 5 min
+   after it; a restart after T0 continues. Rental:
+   `python3 -m scripts.soak sample --data <rental dir> --host rental --group lab`.
+7. Environment-only interruptions the probe cannot see (rental reboot,
+   provider maintenance): `note-interruption --data <dir> --start … --end … --cause …`;
+   a lost or reinstalled rental: `note-rental-lost --data <dir> --at … --reason …`.
+8. >= 30 min after the runner wrote `soak_end`:
+   `python3 -m scripts.soak finish --data <dir> --merge <rental sample dir copy> --rental-hourly-usd … --rental-on … --rental-off … --balance <ts>=<CNY> --balance <ts>=<CNY>`
+   (PG exports, `sizes.csv` end readings, `meta.json`, `pg_dump.sql.gz`).
+9. `python3 -m scripts.soak.summarize <dir> --out summary.json`; commit
+   `summary.json` + a README under `docs/evidence/m3-soak-<date>/` (S-R15).
+   Raw files stay outside the repository.
 
 ## `soak.json`
 
@@ -78,52 +109,48 @@ rental host (kind lab)                         da-server (control side, Compose 
   "prometheus_env_file": "/home/opspilot/.soak-secrets/lab.env",
   "fault_ssh": ["ssh", "-i", "/home/opspilot/.soak-secrets/soak_fault_key", "-o", "BatchMode=yes",
                 "-o", "UserKnownHostsFile=/home/opspilot/.soak-secrets/soak_known_hosts",
-                "soakfault@<address>"],
-  "expected_deployments": []
+                "soakfault@<address>"]
 }
 ```
 
 `env` holds non-secret values only; keys and passwords stay in files.
-`prometheus_env_file` is `kind_lab.py env-file lab` output. An empty
-`expected_deployments` means "the Deployments seen in the first lab sample".
+`prometheus_env_file` is `kind_lab.py env-file lab` output. The expected
+Deployments and the token prices live in the frozen `plan.json`.
 
-## Data files (inputs of `summarize`)
+## Raw directory (the summarizer's input) and `summary.json`
 
-All timestamps are ISO 8601 UTC with `Z`. JSON-lines files tolerate a torn
-last line.
+The layout, every file's columns and every summary key and rule are the
+module docstring of `tests/acceptance/test_soak_summarize.py` (written
+independently from the contract); the code follows it. Who writes what:
 
-| File | Writer | One record |
-|---|---|---|
-| `plan.json` | `plan` | `{schema, duration_s, items:[{id, kind: episode\|noise\|agent_fault, at_s, duration_s?, flag?, steps:[{id, action, at_s \| after+delay_s, condition?, max_wait_s?, flag?}]}]}` |
-| `events.jsonl` | runner, `note-interruption`, `finish` | `{at, kind, …}`; kinds: `start {t0, plan_sha256}`, `step {step, action, status: waiting\|retry\|ok\|failed\|skipped, due, started, exit, output, stderr, reason?, condition?, condition_met?}`, `operator {action: close, actor, scripted: true, incident_id, expected_generation, reason, status, error, response}`, `open_incidents {before_step, incidents}`, `env {action, …}`, `sizes {phase, db_bytes, docker_df}`, `export {path}`, `interruption {start, end, reason}`, `error {loop, error}`, `end {t0, interruption_s}`, `finish` |
-| `probe.jsonl` | runner, every 30 s | `{at, target: web\|worker\|observer\|tunnel, status: int\|null, error, opspilot_up?: {instance: "1"\|"0"} \| null}` |
-| `runs.jsonl` | runner, every 60 s, on change | `{at, run_id, state}` |
-| `lab.jsonl` | runner, every 60 s | `{at, deployments: {name: pods} \| null, frontend_span_rate: float \| null}` |
-| `resources-<host>.jsonl` | runner / `sample`, 60 s | `{at, host, mem_available_kib, swap_free_kib, load1, disk_free_bytes, docker_exit, containers:[{name, cpu_pct, mem_bytes}]}` |
-| `clock.jsonl` | runner, start / 6 h / end | `{at, local_ntp_synchronized, local_chrony, remote_exit, remote_output, rtt_s, offset_s}` |
-| `prom/<end>.json` | runner, every 6 h and at the end | `{start, end, step_s: 60, series: {opspilot_up\|alerts\|frontend_span_rate\|checkout_error_ratio: {expr, status, error, result}}}` (`result` = Prometheus matrix) |
-| `pg.json` | `finish` | `{exported_at, t0, incidents, runs, deliveries, sessions, endings, controls, postmortem_tokens, database}` (columns in `pg.export_queries`) |
-| `cost.json` | engineer | `{deepseek_cny_per_mtok: {input_cache_hit, input_cache_miss, output}, price_source, balance_cny: {start, end}, rental: {usd_per_hour, started_at, ended_at, source}}` |
-| `soak.json` | engineer | config above |
+| File | Writer |
+|---|---|
+| `plan.json` | `plan` (also carries `t0`, `schema` and each injection's `at_s` and `steps`) |
+| `events.jsonl` | runner (`soak_start`/`soak_end`, `injection_on`/`_off`/`_skipped`, `tunnel_down`/`_up`, `env_interruption_*` for tunnel outages outside A4, `env_action`, `clock_check`, plus `step`, `operator`, `open_incidents`, `error`, `sizes`, `export`), `note-interruption`, `note-rental-lost` |
+| `readyz.csv`, `prom_up.csv`, `ksm.csv`, `alerts.jsonl` | runner (30 s / 30 s / 60 s / 60 s); alerts come from the lab Alertmanager API over the fault key (`fault.sh alerts`, read-only) |
+| `docker_stats.csv`, `host_stats.csv` | runner on da-server (group `shared` for non-OpsPilot containers), `sample` on the rental (group `lab`), merged by `finish --merge` |
+| `sizes.csv` | runner at start, `finish` at the end (`pg_database`, `docker_*` from `docker system df`) |
+| `deliveries.jsonl`, `runs.jsonl`, `sessions.jsonl`, `samples.csv`, `meta.json` | `finish` |
 
-## `summary.json`
-
-`window` (S-R4), `faults` (S-R6: each item executed, or not executed with
-each step's recorded reason; a step with no record is `documented: false`),
-`availability` (S-R7: readyz per role, tunnel, `up{job="opspilot"}` per role
-with tunnel-down and readyz-ok-but-scrape-down counts, end-to-end per
-episode), `missing_observations` (S-R8: recovery samples expected vs adopted,
-scrape gaps ≥ 2 steps, KSM pod presence), `stuck_work` (S-R9), `resources`
-(S-R10, OpsPilot containers vs the rest), `cost` (S-R11), `operator`,
-`clock` (S-R5), `inputs` (SHA-256 of every file read) and `step4` (S-R12:
-`achieved` = coverage, faults accounted for, the five sections published,
-every injected episode has a destination; `passes_flipped` is always false).
+Mappings `finish` makes: firing deliveries only; intake outcome
+`created`/`replayed` -> `run`, `handoff_created`/`handoff_replayed` -> `handoff`,
+`attached` -> `attached`; `outcome_at` = `received_at` (the decision is taken
+in the receiving transaction). Runs: `created_at` = the alert identity's
+creation for an incident's first Run, else the runner's first sight;
+`started_at` = first sight as `running` (or the first step); `finished_at` =
+first sight in a terminal state; `wall_clock_limit_s` = deadline - start.
+Sessions: `started_at` = authorization, `max_duration_s` = deadline -
+authorization. Samples: adopted samples only; `stale` -> `stale`,
+`no_data`/`timeout`/`failed` or a required signal absent -> `missing`.
+Runner-only files: `run_states.jsonl`, `frontend_rate.jsonl`, `prom/*.json`.
 
 ## Limits
 
 - Token cost is a lower bound: only committed steps carry `usage`.
-- `queued > 10 min` has the runner's 60 s resolution; scrape gaps the export's
-  60 s resolution.
+- Run times not stored in PG (created for a later Run, started, finished)
+  have the runner's 60 s resolution.
+- The rental host has shared vCPUs: resource and latency numbers describe
+  this run only and are not comparable.
 - KSM series can outlive their pod; pod presence is not proof of service.
 - Prometheus on the rental keeps its TSDB in the kind node; the 6-hourly
   exports are the record (S-R15).

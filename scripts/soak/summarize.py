@@ -1,948 +1,711 @@
-"""``summary.json`` from a soak data directory (S-R7–S-R12, S-R15).
+"""``summary.json`` from a soak raw directory (S-R4–S-R13, S-R15).
 
-Offline and deterministic: reads only the files the runner and ``finish``
-wrote (formats in ``scripts/soak/README.md``) and never calls a service. No
-numeric threshold decides anything (E1, SPEC :123); the step-4 verdict is
-the completeness rule S-R12. Every number names the file it came from, and
-``inputs`` lists the SHA-256 of every file read.
+    python3 -m scripts.soak.summarize RAW_DIR --out SUMMARY_JSON
+
+Offline and deterministic: reads only the raw files (layout and every rule:
+``tests/acceptance/test_soak_summarize.py`` module docstring and
+``scripts/soak/README.md``), never calls a service and never writes into
+the raw directory. No numeric threshold decides anything (E1, SPEC :123);
+the step-4 verdict is the completeness rule S-R12. Exit 0 when the summary
+was written (also when step 4 is not achieved), 2 without writing when
+``plan.json``, ``events.jsonl`` or ``meta.json`` is missing.
 """
 
 from __future__ import annotations
 
+import argparse
+import csv
 import hashlib
 import json
 import math
+import sys
 from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from scripts.soak.common import (
-    DURATION_S,
-    extension_s,
-    interval_total,
-    iso,
-    merge_intervals,
-    parse_time,
-    read_jsonl,
-)
+from scripts.soak.common import DURATION_S, extension_s, merge_intervals, parse_time
 
-SCHEMA = "opspilot-soak-summary/1"
+CORE = ("plan.json", "events.jsonl", "meta.json")
 CLAIM = (
-    "Lab soak on a rented host and a shared control host. Not production "
-    "evidence, not a load test, no numeric target."
+    "Lab soak on one rented shared-vCPU host (target side) and a shared "
+    "control host. Not production evidence, not a load test, no numeric "
+    "target; resource and latency numbers are descriptive only."
 )
-ALERTNAME = "CheckoutPlaceOrderErrorRatioHigh"
-#: A delivery belongs to an episode when it arrives between the flag going on
-#: and this long after it went off.
-EPISODE_SLACK_S = 15 * 60
-#: S-R7: a Run or a handoff within this long of the alert firing.
-END_TO_END_S = 10 * 60
-QUEUED_LIMIT_S = 10 * 60
-OBSERVING_GRACE_S = 5 * 60
-#: S-R9: the export must be taken at least this long after the end for the
-#: "not terminal 30 min after the end" column to be meaningful.
-SETTLE_S = 30 * 60
-TERMINAL = frozenset({"completed", "failed", "cancelled", "budget_exhausted"})
-DESTINATIONS = {
-    "created": "run",
-    "handoff_created": "handoff",
-    "attached": "attached",
-    "replayed": "replayed",
-    "handoff_replayed": "handoff_replayed",
+#: S-R5: cross-host events match within this many seconds.
+TOLERANCE_S = 2
+END_TO_END_S = 600
+QUEUED_LIMIT_S = 600
+OBSERVING_GRACE_S = 300
+NON_TERMINAL = frozenset({"queued", "running"})
+WAITING_ON_HUMAN = frozenset({"waiting_human", "paused", "blocked"})
+KSM_SERIES = ["kube_pod_owner", "kube_replicaset_owner", "kube_pod_container_info"]
+KSM_LIMITATION = (
+    "Pod presence comes only from the kube-state-metrics owner mapping; a "
+    "stale (zombie) series can outlive its pod, and presence is not proof "
+    "the pod served traffic."
+)
+SECTIONS: dict[str, tuple[str, ...]] = {
+    "availability": ("readyz.csv", "prom_up.csv", "alerts.jsonl", "deliveries.jsonl"),
+    "missing_observations": ("sessions.jsonl", "samples.csv", "prom_up.csv", "ksm.csv"),
+    "stuck_work": ("runs.jsonl", "sessions.jsonl", "alerts.jsonl", "deliveries.jsonl"),
+    "resources": ("docker_stats.csv", "host_stats.csv", "sizes.csv"),
+    "cost": ("runs.jsonl",),
 }
-#: The reverse-tunnel ports of the three health listeners (S-R1).
-INSTANCE_ROLES = {"29464": "web", "29465": "worker", "29466": "observer"}
-OPSPILOT_PREFIX = "opspilot-"
 
 
-# -- inputs -------------------------------------------------------------------
+# -- reading -------------------------------------------------------------------
 
 
-class Inputs:
-    def __init__(self, root: Path) -> None:
-        self.root = root
-        self.read: dict[str, str] = {}
-
-    def _mark(self, path: Path) -> None:
-        if path.exists():
-            rel = str(path.relative_to(self.root))
-            self.read[rel] = hashlib.sha256(path.read_bytes()).hexdigest()
-
-    def jsonl(self, name: str) -> list[dict[str, Any]]:
-        path = self.root / name
-        self._mark(path)
-        return list(read_jsonl(path))
-
-    def json(self, name: str) -> Any:
-        path = self.root / name
-        if not path.exists():
-            return None
-        self._mark(path)
-        return json.loads(path.read_text(encoding="utf-8"))
-
-    def glob(self, pattern: str) -> list[Path]:
-        return sorted(self.root.glob(pattern))
+def _jsonl(path: Path) -> list[dict[str, Any]]:
+    if not path.exists():
+        return []
+    rows = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            row = json.loads(line)
+        except ValueError:
+            continue  # a torn last line from a killed writer
+        if isinstance(row, dict):
+            rows.append(row)
+    return rows
 
 
-def _t(raw: Any) -> datetime | None:
-    if raw is None:
-        return None
-    return parse_time(str(raw))
+def _csv(path: Path) -> list[dict[str, str]]:
+    if not path.exists():
+        return []
+    with path.open(newline="", encoding="utf-8") as handle:
+        return [dict(row) for row in csv.DictReader(handle)]
 
 
 def _s(raw: Any) -> float | None:
-    moment = _t(raw)
-    return None if moment is None else moment.timestamp()
-
-
-def _pct(values: Sequence[float], q: float) -> float | None:
-    if not values:
+    if raw is None or raw == "":
         return None
-    ordered = sorted(values)
-    rank = max(1, math.ceil(q * len(ordered)))
-    return ordered[rank - 1]
+    return parse_time(str(raw)).timestamp()
 
 
-def _stats(values: Iterable[float | int | None]) -> dict[str, Any]:
-    clean = [float(v) for v in values if v is not None]
+def _num(raw: Any) -> float | None:
+    if raw is None or raw == "":
+        return None
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return None
+    return value if math.isfinite(value) else None
+
+
+def _clean(value: float) -> float | int:
+    return int(value) if float(value).is_integer() else value
+
+
+def _ids(values: Iterable[str]) -> dict[str, Any]:
+    ids = sorted(set(values))
+    return {"count": len(ids), "ids": ids}
+
+
+def _stats(values: Iterable[float | None]) -> dict[str, Any]:
+    """Nearest-rank percentiles."""
+    clean = sorted(v for v in values if v is not None)
+    if not clean:
+        return {"min": None, "p50": None, "p95": None, "max": None}
+
+    def rank(q: float) -> float | int:
+        return _clean(clean[max(1, math.ceil(q * len(clean))) - 1])
+
     return {
-        "n": len(clean),
-        "min": min(clean) if clean else None,
-        "p50": _pct(clean, 0.50),
-        "p95": _pct(clean, 0.95),
-        "max": max(clean) if clean else None,
+        "min": _clean(clean[0]),
+        "p50": rank(0.50),
+        "p95": rank(0.95),
+        "max": _clean(clean[-1]),
     }
 
 
-# -- window and faults (S-R4, S-R6) --------------------------------------------
+class Raw:
+    def __init__(self, root: Path) -> None:
+        self.root = root
+        self.plan_bytes = (root / "plan.json").read_bytes()
+        self.plan: dict[str, Any] = json.loads(self.plan_bytes)
+        self.meta: dict[str, Any] = json.loads((root / "meta.json").read_text("utf-8"))
+        events = _jsonl(root / "events.jsonl")
+        # Stable sort: the log is append-only, a late note may be out of order.
+        self.events = sorted(events, key=lambda e: _s(e.get("ts")) or 0.0)
+        self.alerts = _jsonl(root / "alerts.jsonl")
+        self.deliveries = _jsonl(root / "deliveries.jsonl")
+        self.runs = _jsonl(root / "runs.jsonl")
+        self.sessions = _jsonl(root / "sessions.jsonl")
+        self.samples = _csv(root / "samples.csv")
+        self.readyz = _csv(root / "readyz.csv")
+        self.prom_up = _csv(root / "prom_up.csv")
+        self.ksm = _csv(root / "ksm.csv")
+        self.docker = _csv(root / "docker_stats.csv")
+        self.hosts = _csv(root / "host_stats.csv")
+        self.sizes = _csv(root / "sizes.csv")
+
+    def of(self, kind: str) -> list[dict[str, Any]]:
+        return [e for e in self.events if e.get("type") == kind]
+
+    @property
+    def start(self) -> float | None:
+        starts = self.of("soak_start")
+        return _s(starts[0]["ts"]) if starts else None
+
+    @property
+    def end(self) -> float | None:
+        ends = self.of("soak_end")
+        return _s(ends[-1]["ts"]) if ends else None
+
+    @property
+    def snapshot(self) -> float:
+        return _s(self.meta.get("snapshot_at")) or self.end or self.start or 0.0
 
 
-def _step_records(events: Sequence[Mapping[str, Any]]) -> dict[str, dict[str, Any]]:
-    final: dict[str, dict[str, Any]] = {}
-    for event in events:
-        if event.get("kind") == "step" and event.get("status") in {
-            "ok",
-            "failed",
-            "skipped",
-        }:
-            final[str(event["step"])] = dict(event)
-    return final
-
-
-def tunnel_down(probes: Sequence[Mapping[str, Any]]) -> list[tuple[float, float]]:
-    """Intervals the tunnel probe failed: from the first failing tick to the
-    next good one (or the last tick)."""
-    ticks = sorted(
-        (_s(p["at"]) or 0.0, p.get("status") == 200)
-        for p in probes
-        if p.get("target") == "tunnel"
+def _iso(epoch: float | None, raw: Raw) -> str | None:
+    if epoch is None:
+        return None
+    for event in raw.events:  # keep the writer's own spelling when it has one
+        if _s(event.get("ts")) == epoch:
+            return str(event["ts"])
+    return (
+        datetime.fromtimestamp(epoch, timezone.utc).isoformat().replace("+00:00", "Z")
     )
-    intervals = []
-    start: float | None = None
-    for at, ok in ticks:
-        if not ok and start is None:
-            start = at
-        elif ok and start is not None:
-            intervals.append((start, at))
-            start = None
-    if start is not None and ticks:
-        intervals.append((start, ticks[-1][0]))
-    return intervals
 
 
-def planned_tunnel_stop(
-    steps: Mapping[str, Mapping[str, Any]],
-) -> list[tuple[float, float]]:
-    stop, start = steps.get("A4:stop"), steps.get("A4:start")
-    if stop is None or stop.get("status") != "ok":
-        return []
-    begin = _s(stop["at"]) or 0.0
-    # The tunnel needs a moment to reconnect after the start step.
-    end = (_s(start["at"]) or begin) + 120 if start is not None else math.inf
-    return [(begin, end)]
+# -- window, clock, environment (S-R4, S-R5, S-R13) -----------------------------
 
 
-def interruptions(
-    events: Sequence[Mapping[str, Any]], probes: Sequence[Mapping[str, Any]]
-) -> list[tuple[float, float, str]]:
-    """S-R4 environment-only interruptions: tunnel outages outside the planned
-    A4 stop, plus ``interruption`` notes (rental reboot, provider maintenance)."""
-    steps = _step_records(events)
-    planned = planned_tunnel_stop(steps)
-    out: list[tuple[float, float, str]] = []
-    for start, end in tunnel_down(probes):
-        pieces = [(start, end)]
-        for p_start, p_end in planned:
-            pieces = [
-                piece
-                for a, b in pieces
-                for piece in ((a, min(b, p_start)), (max(a, p_end), b))
-                if piece[1] > piece[0]
-            ]
-        out += [(a, b, "tunnel_down") for a, b in pieces]
+def _pairs(
+    events: Sequence[Mapping[str, Any]], opener: str, closer: str, until: float
+) -> list[tuple[float, float, Mapping[str, Any]]]:
+    out: list[tuple[float, float, Mapping[str, Any]]] = []
+    open_at: tuple[float, Mapping[str, Any]] | None = None
     for event in events:
-        if event.get("kind") == "interruption":
-            out.append(
-                (
-                    _s(event["start"]) or 0.0,
-                    _s(event["end"]) or 0.0,
-                    str(event.get("reason", "noted")),
-                )
-            )
+        kind = event.get("type")
+        at = _s(event.get("ts")) or 0.0
+        if kind == opener and open_at is None:
+            open_at = (at, event)
+        elif kind == closer and open_at is not None:
+            out.append((open_at[0], at, open_at[1]))
+            open_at = None
+    if open_at is not None:
+        out.append((open_at[0], max(until, open_at[0]), open_at[1]))
     return out
 
 
-def interruption_seconds(
-    events: Sequence[Mapping[str, Any]], probes: Sequence[Mapping[str, Any]]
-) -> float:
-    return interval_total((a, b) for a, b, _ in interruptions(events, probes))
+def interruptions(raw: Raw) -> list[tuple[float, float, Mapping[str, Any]]]:
+    until = raw.end or raw.snapshot
+    return _pairs(raw.events, "env_interruption_start", "env_interruption_end", until)
 
 
-def window(
-    events: Sequence[Mapping[str, Any]], probes: Sequence[Mapping[str, Any]]
-) -> dict[str, Any]:
-    start = next((e for e in events if e.get("kind") == "start"), None)
-    end = next((e for e in reversed(events) if e.get("kind") == "end"), None)
-    if start is None:
-        return {"t0": None, "coverage_ok": False, "reason": "no start event"}
-    t0 = parse_time(str(start["t0"]))
-    interrupted = interruption_seconds(events, probes)
+def window(raw: Raw) -> dict[str, Any]:
+    start, end = raw.start, raw.end
+    spans = interruptions(raw)
+    interrupted = sum(b - a for a, b in merge_intervals((a, b) for a, b, _ in spans))
     extension = extension_s(interrupted)
-    required = t0 + timedelta(seconds=DURATION_S + extension)
-    ended = _t(end["at"]) if end is not None else None
+    required = DURATION_S + extension
+    covered = None if start is None or end is None else end - start
     return {
-        "t0": iso(t0),
-        "ended_at": None if ended is None else iso(ended),
-        "planned_s": DURATION_S,
-        "interruption_s": round(interrupted, 1),
-        "interruptions": [
-            {"start": iso(_dt(a)), "end": iso(_dt(b)), "reason": r}
-            for a, b, r in interruptions(events, probes)
+        "start": raw.of("soak_start")[0]["ts"] if raw.of("soak_start") else None,
+        "end": raw.of("soak_end")[-1]["ts"] if raw.of("soak_end") else None,
+        "covered_s": None if covered is None else _clean(covered),
+        "interruption_s": _clean(interrupted),
+        "extension_s": _clean(extension),
+        "required_s": _clean(required),
+        "coverage_ok": covered is not None and covered >= required,
+        "rental_lost": bool(raw.of("rental_lost")),
+    }
+
+
+def clock(raw: Raw) -> dict[str, Any]:
+    checks = [e for e in raw.of("clock_check") if _num(e.get("offset_s")) is not None]
+    offsets = [abs(float(e["offset_s"])) for e in checks]
+    return {
+        "tolerance_s": TOLERANCE_S,
+        "max_abs_offset_s": max(offsets) if offsets else None,
+        "over_1s": [
+            {"ts": e["ts"], "host": e.get("host"), "offset_s": e["offset_s"]}
+            for e in checks
+            if abs(float(e["offset_s"])) > 1
         ],
-        "extension_s": extension,
-        "required_end": iso(required),
-        "covered_s": None if ended is None else round((ended - t0).total_seconds(), 1),
-        "coverage_ok": ended is not None and ended >= required,
+        "checks": len(checks),
     }
 
 
-def _dt(epoch: float) -> datetime:
-    return datetime.fromtimestamp(epoch, timezone.utc)
-
-
-def faults(
-    plan: Mapping[str, Any], events: Sequence[Mapping[str, Any]]
-) -> list[dict[str, Any]]:
-    """Each planned item: executed (every step ok), or not executed with the
-    recorded reason of each step that was not; a step without any record is
-    ``missing`` (undocumented)."""
-    steps = _step_records(events)
-    out = []
-    for item in plan["items"]:
-        records = []
-        for step in item["steps"]:
-            record = steps.get(step["id"])
-            entry: dict[str, Any] = {"step": step["id"], "action": step["action"]}
-            if record is None:
-                entry["status"] = "missing"
-            else:
-                entry["status"] = record["status"]
-                entry["at"] = record.get("at")
-                for key in ("reason", "exit", "stderr", "condition", "condition_met"):
-                    if key in record:
-                        entry[key] = record[key]
-            records.append(entry)
-        statuses = {r["status"] for r in records}
-        status = "executed" if statuses == {"ok"} else "not_executed"
-        out.append(
+def environment(raw: Raw) -> dict[str, Any]:
+    return {
+        "actions": [
+            {"ts": e["ts"], "action": e.get("action"), "reason": e.get("reason")}
+            for e in raw.of("env_action")
+        ],
+        "interruptions": [
             {
-                "id": item["id"],
-                "kind": item["kind"],
-                "planned_at_s": item["at_s"],
-                "status": status,
-                "documented": "missing" not in statuses,
-                "steps": records,
+                "start": _iso(a, raw),
+                "end": _iso(b, raw),
+                "cause": e.get("cause"),
+                "duration_s": _clean(b - a),
             }
-        )
-    return out
-
-
-def _item_window(
-    item: Mapping[str, Any], steps: Mapping[str, Mapping[str, Any]]
-) -> tuple[float, float] | None:
-    on = steps.get(f"{item['id']}:on")
-    if on is None or on.get("status") != "ok":
-        return None
-    off = steps.get(f"{item['id']}:off")
-    start = _s(on["at"]) or 0.0
-    end = (_s(off["at"]) if off is not None else None) or start + float(
-        item["duration_s"]
-    )
-    return start, end
-
-
-# -- availability (S-R7) --------------------------------------------------------
-
-
-def availability(
-    probes: Sequence[Mapping[str, Any]],
-    plan: Mapping[str, Any],
-    events: Sequence[Mapping[str, Any]],
-    deliveries: Sequence[Mapping[str, Any]] | None,
-) -> dict[str, Any]:
-    by_target: dict[str, list[Mapping[str, Any]]] = defaultdict(list)
-    for probe in probes:
-        by_target[str(probe.get("target"))].append(probe)
-    readyz = {}
-    for target, rows in sorted(by_target.items()):
-        if target == "tunnel":
-            continue
-        ok = sum(1 for r in rows if r.get("status") == 200)
-        readyz[target] = {
-            "ticks": len(rows),
-            "ok": ok,
-            "ratio": round(ok / len(rows), 6) if rows else None,
-        }
-    tunnel_rows = by_target.get("tunnel", [])
-    tunnel_ok = sum(1 for r in tunnel_rows if r.get("status") == 200)
-    # Secondary: up{job="opspilot"} as the lab Prometheus saw it, per role.
-    readyz_ok_at = {
-        (str(p.get("target")), str(p.get("at"))): p.get("status") == 200 for p in probes
+            for a, b, e in interruptions(raw)
+        ],
     }
-    prom: dict[str, dict[str, int]] = {}
-    for row in tunnel_rows:
-        up = row.get("opspilot_up")
-        for role in INSTANCE_ROLES.values():
-            counts = prom.setdefault(
-                role, {"ticks": 0, "up": 0, "tunnel_down": 0, "readyz_ok_prom_down": 0}
-            )
-            counts["ticks"] += 1
-            if row.get("status") != 200 or not isinstance(up, dict):
-                counts["tunnel_down"] += 1
-                continue
-            value = next(
+
+
+# -- injections (S-R6, S-R9) ------------------------------------------------------
+
+
+def _executed_episodes(raw: Raw) -> list[tuple[str, float]]:
+    planned = {
+        i["id"]
+        for i in raw.plan.get("injections", [])
+        if i.get("category") == "episode"
+    }
+    first_on: dict[str, float] = {}
+    for event in raw.of("injection_on"):
+        key = str(event.get("injection_id"))
+        if key in planned and key not in first_on:
+            first_on[key] = _s(event["ts"]) or 0.0
+    return sorted(first_on.items(), key=lambda kv: (kv[1], kv[0]))
+
+
+def links(raw: Raw) -> dict[str, dict[str, Any]]:
+    """Episode -> its firing and delivery (module docstring "Linking")."""
+    alertname = raw.plan.get("product_alertname")
+    episodes = _executed_episodes(raw)
+    close = raw.end if raw.end is not None else raw.snapshot
+    out: dict[str, dict[str, Any]] = {}
+    for index, (episode, on) in enumerate(episodes):
+        w_end = episodes[index + 1][1] if index + 1 < len(episodes) else close
+        firings = sorted(
+            (
+                (_s(a.get("starts_at")) or 0.0, str(a.get("fingerprint")))
+                for a in raw.alerts
+                if a.get("alertname") == alertname
+                and on <= (_s(a.get("starts_at")) or -math.inf) < w_end
+            ),
+        )
+        entry: dict[str, Any] = {"firing": None, "delivery": None}
+        if firings:
+            fired, fingerprint = firings[0]
+            entry["firing"] = fired
+            matches = sorted(
                 (
-                    v
-                    for inst, v in up.items()
-                    if INSTANCE_ROLES.get(inst.rsplit(":", 1)[-1]) == role
+                    d
+                    for d in raw.deliveries
+                    if str(d.get("fingerprint")) == fingerprint
+                    and (_s(d.get("received_at")) or -math.inf) >= fired - TOLERANCE_S
+                    and (_s(d.get("received_at")) or math.inf) < w_end
                 ),
-                None,
+                key=lambda d: (
+                    _s(d.get("received_at")) or 0.0,
+                    str(d.get("delivery_id")),
+                ),
             )
-            if value == "1":
-                counts["up"] += 1
-            elif readyz_ok_at.get((role, str(row.get("at")))):
-                counts["readyz_ok_prom_down"] += 1
-    return {
-        "source": "probe.jsonl",
-        "readyz": readyz,
-        "tunnel": {
-            "ticks": len(tunnel_rows),
-            "ok": tunnel_ok,
-            "ratio": round(tunnel_ok / len(tunnel_rows), 6) if tunnel_rows else None,
-            "down_intervals": [
-                {"start": iso(_dt(a)), "end": iso(_dt(b))}
-                for a, b in merge_intervals(tunnel_down(probes))
-            ],
-        },
-        "prometheus_up": prom,
-        "end_to_end": end_to_end(plan, events, deliveries),
-    }
-
-
-def _episode_deliveries(
-    item: Mapping[str, Any],
-    steps: Mapping[str, Mapping[str, Any]],
-    deliveries: Sequence[Mapping[str, Any]],
-) -> list[Mapping[str, Any]]:
-    span = _item_window(item, steps)
-    if span is None:
-        return []
-    start, end = span
-    return sorted(
-        (
-            d
-            for d in deliveries
-            if d.get("status") == "firing"
-            and d.get("alertname") == ALERTNAME
-            and start <= (_s(d.get("received_at")) or 0.0) <= end + EPISODE_SLACK_S
-        ),
-        key=lambda d: str(d.get("received_at")),
-    )
-
-
-def end_to_end(
-    plan: Mapping[str, Any],
-    events: Sequence[Mapping[str, Any]],
-    deliveries: Sequence[Mapping[str, Any]] | None,
-) -> list[dict[str, Any]]:
-    if deliveries is None:
-        return []
-    steps = _step_records(events)
-    out = []
-    for item in plan["items"]:
-        if item["kind"] != "episode":
-            continue
-        found = _episode_deliveries(item, steps, deliveries)
-        first = found[0] if found else None
-        entry: dict[str, Any] = {
-            "episode": item["id"],
-            "injected": _item_window(item, steps) is not None,
-        }
-        if first is None:
-            entry.update(firing_at=None, outcome=None, within_10_min=False)
-        else:
-            latency = (_s(first["received_at"]) or 0.0) - (
-                _s(first["starts_at"]) or 0.0
-            )
-            entry.update(
-                firing_at=first.get("starts_at"),
-                received_at=first.get("received_at"),
-                outcome=first.get("outcome"),
-                incident_id=first.get("incident_id"),
-                latency_s=round(latency, 1),
-                within_10_min=first.get("outcome") in {"created", "handoff_created"}
-                and latency <= END_TO_END_S,
-            )
-        out.append(entry)
-    return out
-
-
-# -- missing observations (S-R8) ------------------------------------------------
-
-
-def missing_observations(
-    pg: Mapping[str, Any] | None,
-    exports: Sequence[Mapping[str, Any]],
-    lab: Sequence[Mapping[str, Any]],
-    expected_deployments: Sequence[str],
-) -> dict[str, Any]:
-    sessions = []
-    totals = {"expected": 0, "recorded": 0, "missing": 0, "signal_missing_or_stale": 0}
-    exported_at = _s((pg or {}).get("exported_at"))
-    for row in (pg or {}).get("sessions", []) or []:
-        authorized = _s(row["authorized_at"]) or 0.0
-        end = _s(row.get("ended_at")) or exported_at or authorized
-        interval = max(1, int(row["sample_interval_seconds"]))
-        expected = min(
-            int(row["max_samples"]), max(0, int((end - authorized) // interval))
+            entry["delivery"] = matches[0] if matches else None
+        delivery = entry["delivery"]
+        outcome = delivery.get("outcome") if delivery else None
+        entry["disposition"] = (
+            outcome if outcome in {"run", "handoff", "attached"} else "none"
         )
-        recorded = int(row.get("adopted_samples") or 0)
-        bad = int(row.get("signal_missing_or_stale") or 0)
-        entry = {
-            "session_id": row["session_id"],
-            "incident_id": row["incident_id"],
-            "expected": expected,
-            "recorded": recorded,
-            "missing": max(0, expected - recorded),
-            "signal_missing_or_stale": bad,
-            "ended_reason": row.get("ended_reason"),
-        }
-        for key in totals:
-            totals[key] += entry[key]
-        sessions.append(entry)
-    return {
-        "recovery_samples": {
-            "source": "pg.json sessions",
-            "sessions": sessions,
-            "totals": totals,
-        },
-        "scrape_gaps": scrape_gaps(exports),
-        "lab_instances": lab_instances(lab, expected_deployments),
-    }
-
-
-def _series_points(
-    exports: Sequence[Mapping[str, Any]], name: str
-) -> tuple[int, dict[str, dict[float, str]]]:
-    step = 60
-    points: dict[str, dict[float, str]] = defaultdict(dict)
-    for export in exports:
-        step = int(export.get("step_s", step))
-        series = (export.get("series") or {}).get(name) or {}
-        for row in series.get("result") or []:
-            key = str(row["metric"].get("instance", ""))
-            for at, value in row.get("values", []):
-                points[key][float(at)] = str(value)
-    return step, points
-
-
-def scrape_gaps(exports: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
-    """S-R8(b): runs of >= 2 consecutive export steps where an opspilot
-    target is absent or 0, from the 60 s ``query_range`` exports. A span no
-    export covers is reported as ``uncovered``, not as a gap."""
-    step, points = _series_points(exports, "opspilot_up")
-    covered = merge_intervals(
-        ((_s(e["start"]) or 0.0), (_s(e["end"]) or 0.0)) for e in exports
-    )
-    gaps: dict[str, list[dict[str, Any]]] = {}
-    for instance, values in sorted(points.items()):
-        role = INSTANCE_ROLES.get(instance.rsplit(":", 1)[-1], instance)
-        found = []
-        for start, end in covered:
-            first = math.ceil(start / step) * step
-            run_start: float | None = None
-            missed = 0
-            at = first
-            while at <= end + 1e-6:
-                bad = values.get(at) != "1"
-                if bad:
-                    run_start = at if run_start is None else run_start
-                    missed += 1
-                if not bad or at + step > end + 1e-6:
-                    if run_start is not None and missed >= 2:
-                        found.append(
-                            {"start": iso(_dt(run_start)), "missed_steps": missed}
-                        )
-                    if not bad:
-                        run_start, missed = None, 0
-                at += step
-        gaps[role] = found
-    return {
-        "source": "prom/*.json opspilot_up",
-        "step_s": step,
-        "covered": [{"start": iso(_dt(a)), "end": iso(_dt(b))} for a, b in covered],
-        "gaps": gaps,
-    }
-
-
-def lab_instances(
-    lab: Sequence[Mapping[str, Any]], expected: Sequence[str]
-) -> dict[str, Any]:
-    """S-R8(c): ticks where an expected Deployment had no pod (KSM owner
-    mapping only), and ticks the query failed."""
-    names = list(expected)
-    if not names:
-        first: Mapping[str, Any] = next(
-            (r["deployments"] for r in lab if isinstance(r.get("deployments"), dict)),
-            {},
-        )
-        names = sorted(first)
-    failed = sum(1 for r in lab if not isinstance(r.get("deployments"), dict))
-    empty: dict[str, int] = {}
-    for name in names:
-        empty[name] = sum(
-            1
-            for r in lab
-            if isinstance(r.get("deployments"), dict)
-            and int(r["deployments"].get(name, 0)) == 0
-        )
-    return {
-        "source": "lab.jsonl",
-        "ticks": len(lab),
-        "query_failed_ticks": failed,
-        "expected_deployments": names,
-        "no_pod_ticks": empty,
-        "limit": "kube-state-metrics series can outlive their pod (zombie series); "
-        "pod presence is not proof the pod served traffic",
-    }
-
-
-# -- stuck work (S-R9) -----------------------------------------------------------
-
-
-def stuck_work(
-    pg: Mapping[str, Any] | None,
-    run_log: Sequence[Mapping[str, Any]],
-    plan: Mapping[str, Any],
-    events: Sequence[Mapping[str, Any]],
-    exports: Sequence[Mapping[str, Any]],
-    ended_at: str | None,
-) -> dict[str, Any]:
-    pg = pg or {}
-    exported_at = _s(pg.get("exported_at"))
-    ended = _s(ended_at)
-    runs = pg.get("runs") or []
-    not_terminal = [r["run_id"] for r in runs if r.get("state") not in TERMINAL]
-    over_wall = []
-    for r in runs:
-        deadline = _s(r.get("deadline"))
-        last = _s(r.get("last_step_at"))
-        if deadline is None:
-            continue
-        if (last is not None and last > deadline) or (
-            r.get("state") not in TERMINAL
-            and exported_at is not None
-            and exported_at > deadline
-        ):
-            over_wall.append(r["run_id"])
-    queued = queued_too_long(run_log, exported_at)
-    observing = []
-    for s in pg.get("sessions") or []:
-        deadline = _s(s.get("deadline_at"))
-        end = _s(s.get("ended_at")) or exported_at
-        if (
-            deadline is not None
-            and end is not None
-            and end > deadline + OBSERVING_GRACE_S
-        ):
-            observing.append(s["incident_id"])
-    return {
-        "source": "pg.json, runs.jsonl, prom/*.json",
-        "export_after_end_s": None
-        if exported_at is None or ended is None
-        else round(exported_at - ended, 1),
-        "export_settled": exported_at is not None
-        and ended is not None
-        and exported_at - ended >= SETTLE_S,
-        "runs_not_terminal": sorted(not_terminal),
-        "runs_over_wall_clock": sorted(over_wall),
-        "runs_queued_over_10_min": queued,
-        "incidents_observing_past_deadline": sorted(set(observing)),
-        "alerts_without_delivery": alerts_without_delivery(
-            exports, pg.get("deliveries")
-        ),
-        "injections": injections(plan, events, pg.get("deliveries")),
-    }
-
-
-def queued_too_long(
-    run_log: Sequence[Mapping[str, Any]], until: float | None
-) -> list[dict[str, Any]]:
-    """Continuous ``queued`` spans longer than 10 min in the runner's 60 s
-    state log (a resolution of one closer tick)."""
-    by_run: dict[str, list[tuple[float, str]]] = defaultdict(list)
-    for row in run_log:
-        by_run[str(row["run_id"])].append((_s(row["at"]) or 0.0, str(row["state"])))
-    out = []
-    for run_id, changes in sorted(by_run.items()):
-        changes.sort()
-        for index, (at, state) in enumerate(changes):
-            if state != "queued":
-                continue
-            nxt = changes[index + 1][0] if index + 1 < len(changes) else until
-            if nxt is not None and nxt - at > QUEUED_LIMIT_S:
-                out.append(
-                    {
-                        "run_id": run_id,
-                        "queued_at": iso(_dt(at)),
-                        "queued_s": round(nxt - at, 1),
-                    }
-                )
-    return out
-
-
-def alerts_without_delivery(
-    exports: Sequence[Mapping[str, Any]], deliveries: Sequence[Mapping[str, Any]] | None
-) -> list[dict[str, Any]] | None:
-    """Firing spans of the checkout alert in ``ALERTS`` with no firing
-    delivery received from their start to 10 min after their end."""
-    if deliveries is None:
-        return None
-    spans: list[tuple[float, float]] = []
-    for export in exports:
-        step = int(export.get("step_s", 60))
-        series = (export.get("series") or {}).get("alerts") or {}
-        for row in series.get("result") or []:
-            metric = row.get("metric", {})
-            if (
-                metric.get("alertname") != ALERTNAME
-                or metric.get("alertstate") != "firing"
-            ):
-                continue
-            spans += [(float(at), float(at) + step) for at, _ in row.get("values", [])]
-    received = [
-        _s(d.get("received_at")) or 0.0
-        for d in deliveries
-        if d.get("status") == "firing" and d.get("alertname") == ALERTNAME
-    ]
-    out = []
-    for start, end in merge_intervals(spans):
-        if not any(start <= at <= end + END_TO_END_S for at in received):
-            out.append({"start": iso(_dt(start)), "end": iso(_dt(end))})
+        out[episode] = entry
     return out
 
 
 def injections(
-    plan: Mapping[str, Any],
-    events: Sequence[Mapping[str, Any]],
-    deliveries: Sequence[Mapping[str, Any]] | None,
+    raw: Raw, linked: Mapping[str, Mapping[str, Any]]
 ) -> list[dict[str, Any]]:
-    """S-R9: where every injection went. An episode: run, handoff, attached
-    (or replayed) from its first firing delivery, ``none`` without one. A
-    noise toggle: the deliveries that opened anything in its window (U2:
-    it should open nothing)."""
-    steps = _step_records(events)
+    executed = {str(e.get("injection_id")) for e in raw.of("injection_on")}
+    skipped: dict[str, str] = {}
+    for event in raw.of("injection_skipped"):
+        skipped[str(event.get("injection_id"))] = str(event.get("reason") or "")
     out = []
-    for item in plan["items"]:
-        if item["kind"] not in {"episode", "noise"}:
-            continue
-        span = _item_window(item, steps)
-        entry: dict[str, Any] = {
-            "id": item["id"],
-            "kind": item["kind"],
-            "injected": span is not None,
-        }
-        if span is None or deliveries is None:
-            entry["destination"] = None
-        elif item["kind"] == "episode":
-            found = _episode_deliveries(item, steps, deliveries)
-            entry["destination"] = (
-                DESTINATIONS.get(str(found[0].get("outcome")), "other")
-                if found
-                else "none"
-            )
-        else:
-            start, end = span
-            opened = [
-                {"alertname": d.get("alertname"), "outcome": d.get("outcome")}
-                for d in deliveries
-                if d.get("status") == "firing"
-                and start <= (_s(d.get("received_at")) or 0.0) <= end + EPISODE_SLACK_S
-                and d.get("outcome") in {"created", "handoff_created"}
-            ]
-            entry["destination"] = "nothing_opened" if not opened else "opened"
-            entry["opened"] = opened
-        out.append(entry)
-    return out
-
-
-# -- resources (S-R10) and cost (S-R11) -----------------------------------------
-
-
-def resources(inputs: Inputs, events: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
-    hosts = {}
-    for path in inputs.glob("resources-*.jsonl"):
-        rows = inputs.jsonl(path.name)
-        host = path.stem.removeprefix("resources-")
-        containers: dict[str, list[Mapping[str, Any]]] = defaultdict(list)
-        for row in rows:
-            for c in row.get("containers") or []:
-                containers[str(c.get("name"))].append(c)
-        groups: dict[str, dict[str, Any]] = {"opspilot": {}, "other": {}}
-        for name, samples in sorted(containers.items()):
-            group = "opspilot" if name.startswith(OPSPILOT_PREFIX) else "other"
-            groups[group][name] = {
-                "cpu_pct": _stats(c.get("cpu_pct") for c in samples),
-                "mem_bytes": _stats(c.get("mem_bytes") for c in samples),
-            }
-        hosts[host] = {
-            "source": path.name,
-            "samples": len(rows),
-            "mem_available_kib": _stats(r.get("mem_available_kib") for r in rows),
-            "swap_free_kib": _stats(r.get("swap_free_kib") for r in rows),
-            "load1": _stats(r.get("load1") for r in rows),
-            "disk_free_bytes": _stats(r.get("disk_free_bytes") for r in rows),
-            "containers": groups,
-        }
-    sizes = [e for e in events if e.get("kind") == "sizes"]
-    return {
-        "hosts": hosts,
-        "sizes": [
+    for item in raw.plan.get("injections", []):
+        key = str(item["id"])
+        is_executed = key in executed
+        out.append(
             {
-                "at": e.get("at"),
-                "phase": e.get("phase"),
-                "db_bytes": e.get("db_bytes"),
-                "docker_df": e.get("docker_df"),
+                "id": key,
+                "category": item.get("category"),
+                "name": item.get("name"),
+                "executed": is_executed,
+                "skipped_reason": None if is_executed else skipped.get(key) or None,
+                "disposition": linked[key]["disposition"]
+                if is_executed and item.get("category") == "episode" and key in linked
+                else None,
             }
-            for e in sizes
-        ],
-    }
-
-
-def cost(
-    pg: Mapping[str, Any] | None, prices: Mapping[str, Any] | None
-) -> dict[str, Any]:
-    pg = pg or {}
-    tokens = {
-        "prompt": 0,
-        "completion": 0,
-        "cache_hit": 0,
-        "cache_miss": 0,
-        "runs": 0,
-        "runs_without_cache_split": 0,
-        "model_steps": 0,
-    }
-    for run in pg.get("runs") or []:
-        tokens["runs"] += 1
-        tokens["model_steps"] += int(run.get("model_steps") or 0)
-        prompt = int(float(run.get("prompt_tokens") or 0))
-        hit, miss = (
-            run.get("prompt_cache_hit_tokens"),
-            run.get("prompt_cache_miss_tokens"),
         )
-        tokens["prompt"] += prompt
-        tokens["completion"] += int(float(run.get("completion_tokens") or 0))
-        if hit is None or miss is None:
-            if prompt:
-                tokens["runs_without_cache_split"] += 1
-            tokens["cache_miss"] += prompt
-        else:
-            tokens["cache_hit"] += int(float(hit))
-            tokens["cache_miss"] += int(float(miss))
-    postmortem = (
-        (pg.get("postmortem_tokens") or [{}])[0] if pg.get("postmortem_tokens") else {}
-    )
-    pm_prompt = int(postmortem.get("prompt_tokens") or 0)
-    pm_completion = int(postmortem.get("completion_tokens") or 0)
-    out: dict[str, Any] = {
-        "source": "pg.json runs (opspilot_steps usage), cost.json",
-        "tokens": tokens,
-        "postmortem_tokens": {"prompt": pm_prompt, "completion": pm_completion},
-        "note": "a lower bound: model calls whose step was never committed "
-        "(retries, a crash mid-request) are not in opspilot_steps",
-        "langsmith": {"usd": 0, "reason": "trace outbox off (S-R18)"},
-    }
-    table = (prices or {}).get("deepseek_cny_per_mtok")
-    if isinstance(table, Mapping):
-        estimate = (
-            tokens["cache_hit"] * float(table["input_cache_hit"])
-            + (tokens["cache_miss"] + pm_prompt) * float(table["input_cache_miss"])
-            + (tokens["completion"] + pm_completion) * float(table["output"])
-        ) / 1_000_000
-        out["deepseek_cny_estimate"] = round(estimate, 4)
-        out["price_source"] = (prices or {}).get("price_source")
-    else:
-        out["deepseek_cny_estimate"] = None
-        out["price_source"] = "missing cost.json deepseek_cny_per_mtok"
-    balance = (prices or {}).get("balance_cny") or {}
-    if balance.get("start") is not None and balance.get("end") is not None:
-        out["balance_delta_cny"] = round(
-            float(balance["start"]) - float(balance["end"]), 4
-        )
-    else:
-        out["balance_delta_cny"] = None
-    rental = (prices or {}).get("rental") or {}
-    if (
-        rental.get("usd_per_hour") is not None
-        and rental.get("started_at")
-        and rental.get("ended_at")
-    ):
-        hours = (
-            (_s(rental["ended_at"]) or 0.0) - (_s(rental["started_at"]) or 0.0)
-        ) / 3600
-        out["rental"] = {
-            "hours": round(hours, 2),
-            "usd_estimate": round(hours * float(rental["usd_per_hour"]), 2),
-            "source": rental.get("source"),
-            "billing_is_authoritative": True,
-        }
-    else:
-        out["rental"] = None
     return out
 
 
-# -- S-R12 and the whole -----------------------------------------------------------
+# -- sections -----------------------------------------------------------------------
 
 
-def verdict(summary: Mapping[str, Any]) -> dict[str, Any]:
-    faults_list = summary["faults"]
-    injected = [
-        i for i in summary["stuck_work"]["injections"] if i["kind"] == "episode"
-    ]
-    checks = {
-        "coverage_ok": bool(summary["window"].get("coverage_ok")),
-        "faults_accounted": all(
-            f["status"] == "executed" or f["documented"] for f in faults_list
-        ),
-        "availability_published": bool(summary["availability"]["readyz"]),
-        "missing_observations_published": summary["inputs"].get("pg.json") is not None
-        and bool(summary["missing_observations"]["lab_instances"]["ticks"]),
-        "stuck_work_published": summary["inputs"].get("pg.json") is not None,
-        "resources_published": bool(summary["resources"]["hosts"]),
-        "cost_published": summary["inputs"].get("pg.json") is not None,
-        "injections_accounted": bool(injected)
-        and all(
-            i["destination"] not in {None, "none"} for i in injected if i["injected"]
-        ),
+def _frame(raw: Raw, section: str) -> dict[str, Any]:
+    required = SECTIONS[section]
+    missing = [name for name in required if not (raw.root / name).exists()]
+    frame: dict[str, Any] = {
+        "published": not missing,
+        "sources": [name for name in required if name not in missing],
     }
+    if missing:
+        frame["missing_sources"] = missing
+    return frame
+
+
+def _ratio(
+    rows: Sequence[Mapping[str, str]], key: str, good: float
+) -> dict[str, dict[str, Any]]:
+    by_role: dict[str, list[float | None]] = defaultdict(list)
+    for row in rows:
+        by_role[str(row.get("role"))].append(_num(row.get(key)))
+    out = {}
+    for role, values in sorted(by_role.items()):
+        ok = sum(1 for v in values if v == good)
+        out[role] = {
+            "ticks": len(values),
+            "ok": ok,
+            "ratio": _clean(ok / len(values)) if values else None,
+        }
+    return out
+
+
+def availability(raw: Raw, linked: Mapping[str, Mapping[str, Any]]) -> dict[str, Any]:
+    tunnel = _pairs(raw.events, "tunnel_down", "tunnel_up", raw.end or raw.snapshot)
+    end_to_end = []
+    for episode, entry in linked.items():
+        delivery, fired = entry["delivery"], entry["firing"]
+        outcome_at = _s(delivery.get("outcome_at")) if delivery else None
+        after = None if outcome_at is None or fired is None else outcome_at - fired
+        disposition = entry["disposition"]
+        end_to_end.append(
+            {
+                "injection_id": episode,
+                "outcome": disposition,
+                "outcome_after_s": None if after is None else _clean(round(after, 3)),
+                "within_10min": disposition in {"run", "handoff"}
+                and after is not None
+                and after <= END_TO_END_S,
+            }
+        )
     return {
-        "achieved": all(checks.values()),
-        "checks": checks,
-        "passes_flipped": False,
-        "note": "F8 passes flips only once steps 1-4 all pass (S-R17)",
+        **_frame(raw, "availability"),
+        "readyz": _ratio(raw.readyz, "status", 200),
+        "prometheus_up": _ratio(raw.prom_up, "up", 1),
+        "tunnel": {
+            "disconnects": len(tunnel),
+            "disconnected_s": _clean(sum(b - a for a, b, _ in tunnel)),
+        },
+        "end_to_end": end_to_end,
     }
 
 
-def summarize(root: Path) -> dict[str, Any]:
-    inputs = Inputs(root)
-    plan_doc = inputs.json("plan.json")
-    if plan_doc is None:
-        raise SystemExit(f"{root}: no plan.json")
-    plan_sha = hashlib.sha256((root / "plan.json").read_bytes()).hexdigest()
-    events = inputs.jsonl("events.jsonl")
-    probes = inputs.jsonl("probe.jsonl")
-    run_log = inputs.jsonl("runs.jsonl")
-    lab = inputs.jsonl("lab.jsonl")
-    inputs.jsonl("clock.jsonl")
-    pg = inputs.json("pg.json")
-    prices = inputs.json("cost.json")
-    config = inputs.json("soak.json") or {}
-    exports = []
-    for path in inputs.glob("prom/*.json"):
-        exports.append(inputs.json(str(path.relative_to(root))))
-    win = window(events, probes)
+def missing_observations(raw: Raw) -> dict[str, Any]:
+    per_session: dict[str, list[str]] = defaultdict(list)
+    for row in raw.samples:
+        per_session[str(row.get("session_id"))].append(str(row.get("signal_status")))
+    totals = {
+        "expected": 0,
+        "recorded": 0,
+        "missing": 0,
+        "signal_missing": 0,
+        "stale": 0,
+    }
+    sessions = []
+    for session in raw.sessions:
+        started = _s(session.get("started_at")) or 0.0
+        ended = _s(session.get("ended_at"))
+        until = ended if ended is not None else raw.snapshot
+        interval = max(1.0, float(session.get("interval_s") or 60))
+        expected = max(0, math.floor((until - started) / interval))
+        statuses = per_session.get(str(session.get("session_id")), [])
+        entry = {
+            "expected": expected,
+            "recorded": len(statuses),
+            "missing": max(0, expected - len(statuses)),
+            "signal_missing": sum(1 for s in statuses if s == "missing"),
+            "stale": sum(1 for s in statuses if s == "stale"),
+        }
+        for key in totals:
+            totals[key] += entry[key]
+        sessions.append({"session_id": session.get("session_id"), **entry})
+    return {
+        **_frame(raw, "missing_observations"),
+        "recovery": totals,
+        "recovery_sessions": sessions,
+        "scrape_gaps": scrape_gaps(raw.prom_up),
+        "lab_liveness": lab_liveness(raw),
+    }
+
+
+def scrape_gaps(rows: Sequence[Mapping[str, str]]) -> list[dict[str, Any]]:
+    """Runs of >= 2 consecutive ``up=0`` rows per role."""
+    by_role: dict[str, list[tuple[float, str, float | None]]] = defaultdict(list)
+    for row in rows:
+        by_role[str(row.get("role"))].append(
+            (_s(row.get("ts")) or 0.0, str(row.get("ts")), _num(row.get("up")))
+        )
+    gaps = []
+    for role, values in sorted(by_role.items()):
+        values.sort()
+        current: list[str] = []
+        for _, stamp, up in [*values, (math.inf, "", 1.0)]:
+            if up == 0:
+                current.append(stamp)
+                continue
+            if len(current) >= 2:
+                gaps.append(
+                    {
+                        "role": role,
+                        "start": current[0],
+                        "end": current[-1],
+                        "missed_scrapes": len(current),
+                    }
+                )
+            current = []
+    return gaps
+
+
+def lab_liveness(raw: Raw) -> dict[str, Any]:
+    expected = [str(d) for d in raw.plan.get("expected_deployments", [])]
+    ticks: dict[str, dict[str, float | None]] = {}
+    for row in raw.ksm:
+        ticks.setdefault(str(row.get("ts")), {})[str(row.get("deployment"))] = _num(
+            row.get("pods")
+        )
+    absent = []
+    for stamp in sorted(ticks, key=lambda t: _s(t) or 0.0):
+        for deployment in expected:
+            pods = ticks[stamp].get(deployment)
+            if not pods:
+                absent.append({"ts": stamp, "deployment": deployment})
+    return {
+        "source": "kube_state_metrics_owner_mapping",
+        "series": list(KSM_SERIES),
+        "limitation": KSM_LIMITATION,
+        "expected_deployments": expected,
+        "ticks": len(ticks),
+        "absent": absent,
+    }
+
+
+def stuck_work(raw: Raw, linked: Mapping[str, Mapping[str, Any]]) -> dict[str, Any]:
+    snapshot = raw.snapshot
+    over_wall, long_queued = [], []
+    for run in raw.runs:
+        run_id = str(run.get("run_id"))
+        created, started = _s(run.get("created_at")), _s(run.get("started_at"))
+        finished = _s(run.get("finished_at"))
+        limit = _num(run.get("wall_clock_limit_s"))
+        if started is not None and limit is not None:
+            if (finished if finished is not None else snapshot) - started > limit:
+                over_wall.append(run_id)
+        if created is not None:
+            if (
+                started if started is not None else snapshot
+            ) - created > QUEUED_LIMIT_S:
+                long_queued.append(run_id)
+    overdue = []
+    for session in raw.sessions:
+        started = _s(session.get("started_at")) or 0.0
+        ended = _s(session.get("ended_at"))
+        limit = float(session.get("max_duration_s") or 0) + OBSERVING_GRACE_S
+        if (ended if ended is not None else snapshot) - started > limit:
+            overdue.append(str(session.get("session_id")))
+    return {
+        **_frame(raw, "stuck_work"),
+        "non_terminal_runs": _ids(
+            str(r.get("run_id")) for r in raw.runs if r.get("state") in NON_TERMINAL
+        ),
+        "waiting_on_human_runs": _ids(
+            str(r.get("run_id")) for r in raw.runs if r.get("state") in WAITING_ON_HUMAN
+        ),
+        "over_wall_clock_runs": _ids(over_wall),
+        "long_queued_runs": _ids(long_queued),
+        "overdue_recovery_sessions": _ids(overdue),
+        "deliveries_without_outcome": _ids(
+            str(d.get("delivery_id"))
+            for d in raw.deliveries
+            if d.get("outcome") is None
+        ),
+        "unaccounted_injections": _ids(
+            key for key, entry in linked.items() if entry["disposition"] == "none"
+        ),
+    }
+
+
+def resources(raw: Raw) -> dict[str, Any]:
+    groups: dict[tuple[str, str, str], list[Mapping[str, str]]] = defaultdict(list)
+    for row in raw.docker:
+        groups[
+            (str(row.get("host")), str(row.get("group")), str(row.get("container")))
+        ].append(row)
+    containers, shared = [], []
+    for (host, group, name), rows in sorted(groups.items()):
+        entry = {
+            "host": host,
+            "group": group,
+            "container": name,
+            "cpu_pct": _stats(_num(r.get("cpu_pct")) for r in rows),
+            "mem_bytes": _stats(_num(r.get("mem_bytes")) for r in rows),
+        }
+        (shared if group == "shared" else containers).append(entry)
+    hosts: dict[str, list[Mapping[str, str]]] = defaultdict(list)
+    for row in raw.hosts:
+        hosts[str(row.get("host"))].append(row)
+    sizes: dict[tuple[str, str], list[tuple[float, float]]] = defaultdict(list)
+    for row in raw.sizes:
+        value = _num(row.get("bytes"))
+        if value is not None:
+            sizes[(str(row.get("host")), str(row.get("kind")))].append(
+                (_s(row.get("ts")) or 0.0, value)
+            )
+    size_rows = []
+    for (host, kind), readings in sorted(sizes.items()):
+        readings.sort()
+        start, end = readings[0][1], readings[-1][1]
+        size_rows.append(
+            {
+                "host": host,
+                "kind": kind,
+                "start_bytes": _clean(start),
+                "end_bytes": _clean(end),
+                "delta_bytes": _clean(end - start),
+            }
+        )
+    return {
+        **_frame(raw, "resources"),
+        "containers": containers,
+        "shared_services": shared,
+        "hosts": {
+            host: {
+                key: _stats(_num(r.get(key)) for r in rows)
+                for key in ("mem_available_bytes", "load1", "disk_free_bytes")
+            }
+            for host, rows in sorted(hosts.items())
+        },
+        "sizes": size_rows,
+    }
+
+
+def cost(raw: Raw) -> dict[str, Any]:
+    prices = raw.plan.get("model_price_cny_per_mtok") or {}
+    tokens_in = sum(int(_num(r.get("input_tokens")) or 0) for r in raw.runs)
+    tokens_out = sum(int(_num(r.get("output_tokens")) or 0) for r in raw.runs)
+    token_cost = None
+    if _num(prices.get("input")) is not None and _num(prices.get("output")) is not None:
+        token_cost = round(
+            tokens_in / 1e6 * float(prices["input"])
+            + tokens_out / 1e6 * float(prices["output"]),
+            6,
+        )
+    readings = sorted(
+        (
+            r
+            for r in raw.meta.get("balance_readings") or []
+            if _num(r.get("balance_cny")) is not None
+        ),
+        key=lambda r: _s(r.get("ts")) or 0.0,
+    )
+    balance = (
+        round(float(readings[0]["balance_cny"]) - float(readings[-1]["balance_cny"]), 6)
+        if len(readings) >= 2
+        else None
+    )
+    rental = raw.meta.get("rental") or {}
+    on, off = _s(rental.get("powered_on_at")), _s(rental.get("powered_off_at"))
+    hourly = _num(rental.get("hourly_usd"))
+    hours = None if on is None or off is None else (off - on) / 3600
+    return {
+        **_frame(raw, "cost"),
+        "model": {
+            "runs": len(raw.runs),
+            "input_tokens": tokens_in,
+            "output_tokens": tokens_out,
+            "token_cost_cny": token_cost,
+            "note": "lower bound: only committed steps carry usage",
+        },
+        "balance_delta_cny": balance,
+        "rental": {
+            "hours": None if hours is None else round(hours, 6),
+            "hourly_usd": hourly,
+            "estimated_usd": None
+            if hours is None or hourly is None
+            else round(hours * hourly, 6),
+            "billing_is_authoritative": True,
+        },
+        "langsmith_usd": 0,
+    }
+
+
+def step4(summary: Mapping[str, Any]) -> dict[str, Any]:
+    unmet: list[str] = []
+    if not summary["window"]["coverage_ok"]:
+        unmet.append("coverage")
+    if summary["window"]["rental_lost"]:
+        unmet.append("rental_lost")
+    for item in summary["injections"]:
+        if not item["executed"] and not item["skipped_reason"]:
+            unmet.append(f"injection_unexplained:{item['id']}")
+    for key in summary["stuck_work"]["unaccounted_injections"]["ids"]:
+        unmet.append(f"injection_unaccounted:{key}")
+    for section in SECTIONS:
+        if not summary[section]["published"]:
+            unmet.append(f"section_unpublished:{section}")
+    return {"achieved": not unmet, "unmet": unmet}
+
+
+def summarize(raw_dir: Path) -> dict[str, Any]:
+    raw = Raw(Path(raw_dir))
+    linked = links(raw)
     summary: dict[str, Any] = {
-        "schema": SCHEMA,
+        "production_proof": False,
         "claim": CLAIM,
-        "plan_sha256": plan_sha,
-        "plan_matches_start": any(
-            e.get("kind") == "start" and e.get("plan_sha256") == plan_sha
-            for e in events
-        ),
-        "window": win,
-        "faults": faults(plan_doc, events),
-        "availability": availability(
-            probes, plan_doc, events, (pg or {}).get("deliveries")
-        ),
-        "missing_observations": missing_observations(
-            pg, exports, lab, config.get("expected_deployments", ())
-        ),
-        "stuck_work": stuck_work(
-            pg, run_log, plan_doc, events, exports, win.get("ended_at")
-        ),
-        "resources": resources(inputs, events),
-        "cost": cost(pg, prices),
-        "operator": operator_actions(events),
-        "clock": clock(inputs),
-        "environment_actions": [e for e in events if e.get("kind") == "env"],
-        "errors": sum(1 for e in events if e.get("kind") == "error"),
+        "plan_sha256": hashlib.sha256(raw.plan_bytes).hexdigest(),
+        "window": window(raw),
+        "clock": clock(raw),
+        "injections": injections(raw, linked),
+        "availability": availability(raw, linked),
+        "missing_observations": missing_observations(raw),
+        "stuck_work": stuck_work(raw, linked),
+        "resources": resources(raw),
+        "cost": cost(raw),
+        "environment": environment(raw),
+        "operator": operator(raw),
+        "errors": len(raw.of("error")),
     }
-    summary["inputs"] = dict(sorted(inputs.read.items()))
-    summary["step4"] = verdict(summary)
+    summary["step4"] = step4(summary)
     return summary
 
 
-def operator_actions(events: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
-    closes = [e for e in events if e.get("kind") == "operator"]
+def operator(raw: Raw) -> dict[str, Any]:
+    closes = raw.of("operator")
+    reasons: dict[str, int] = defaultdict(int)
+    for event in closes:
+        reasons[str(event.get("reason"))] += 1
     return {
-        "actor_note": "scripted on behalf of a human (S-R3); no human interaction claimed",
+        "note": "closes scripted on behalf of a human (S-R3); no human interaction claimed",
         "closes": len(closes),
         "accepted": sum(1 for e in closes if e.get("status") == 200),
-        "by_reason": dict(
-            sorted(
-                (reason, sum(1 for e in closes if e.get("reason") == reason))
-                for reason in {str(e.get("reason")) for e in closes}
-            )
-        ),
-        "open_at_episode_start": [
-            e
-            for e in events
-            if e.get("kind") == "open_incidents" and e.get("incidents")
-        ],
+        "by_reason": dict(sorted(reasons.items())),
     }
 
 
-def clock(inputs: Inputs) -> dict[str, Any]:
-    rows = list(read_jsonl(inputs.root / "clock.jsonl"))
-    offsets = [abs(r["offset_s"]) for r in rows if r.get("offset_s") is not None]
-    return {
-        "source": "clock.jsonl",
-        "samples": len(rows),
-        "max_abs_offset_s": max(offsets) if offsets else None,
-        "over_1s": [
-            r.get("at")
-            for r in rows
-            if r.get("offset_s") is not None and abs(r["offset_s"]) > 1
-        ],
-        "match_tolerance_s": 2,
-    }
-
-
-def write(root: Path, out: Path) -> dict[str, Any]:
-    summary = summarize(root)
-    out.write_text(
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="python3 -m scripts.soak.summarize")
+    parser.add_argument("raw_dir", type=Path)
+    parser.add_argument("--out", type=Path, required=True)
+    args = parser.parse_args(argv)
+    missing = [name for name in CORE if not (args.raw_dir / name).exists()]
+    if missing:
+        print(f"missing core input: {', '.join(missing)}", file=sys.stderr)
+        return 2
+    summary = summarize(args.raw_dir)
+    args.out.write_text(
         json.dumps(summary, indent=1, sort_keys=True) + "\n", encoding="utf-8"
     )
-    return summary
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

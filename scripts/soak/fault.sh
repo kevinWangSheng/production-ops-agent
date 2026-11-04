@@ -10,6 +10,7 @@
 #
 #   flag <paymentFailure|adManualGc|loadGeneratorFloodHomepage> <on|off> <item>
 #   collector-restart
+#   alerts            (read-only: the lab Alertmanager's active alerts, JSON)
 #   clock
 #   ping
 #
@@ -62,6 +63,9 @@ case "${#words[@]}:${words[0]:-}" in
         ;;
     1:collector-restart)
         lab_fault collector-restart
+        ;;
+    1:alerts)
+        lab_fault alerts
         ;;
     1:clock)
         echo "epoch=$(date +%s.%N)"

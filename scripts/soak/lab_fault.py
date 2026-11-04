@@ -6,7 +6,7 @@ ConfigMap and verifies the live bytes, like ``kind_lab.py fault`` (whose
 whitelist stays the three eval flags). Both directions are idempotent: a
 flag already in the wanted state is reported and left alone, so a retried
 step never fails on its own earlier success. ``collector-restart`` is the
-S-R13 environment action. Every call appends a line to
+S-R13 environment action; ``alerts`` reads the lab Alertmanager. Every call appends a line to
 ``kind_lab.LAB_DIR/soak-fault.jsonl``.
 """
 
@@ -112,7 +112,34 @@ def collector_restart() -> int:
     return proc.returncode
 
 
+ALERTS_PATH = (
+    f"/api/v1/namespaces/{kind_lab.NAMESPACE}/services/"
+    "alertmanager:9093/proxy/api/v2/alerts?active=true&silenced=false&inhibited=false"
+)
+
+
+def alerts() -> int:
+    """The lab Alertmanager's active alerts (read-only, through the API
+    server's service proxy): a JSON list of fingerprint, startsAt, labels."""
+    proc = kind_lab.capture(kind_lab.kubectl("get", "--raw", ALERTS_PATH), timeout=60)
+    if proc.returncode != 0:
+        print(proc.stderr.strip()[-300:], file=sys.stderr)
+        return proc.returncode or 1
+    rows = [
+        {
+            "fingerprint": alert.get("fingerprint"),
+            "startsAt": alert.get("startsAt"),
+            "labels": alert.get("labels") or {},
+        }
+        for alert in json.loads(proc.stdout or "[]")
+    ]
+    print(json.dumps(rows, sort_keys=True))
+    return 0
+
+
 def main(argv: list[str]) -> int:
+    if argv == ["alerts"]:
+        return alerts()
     if len(argv) == 4 and argv[0] == "flag":
         return flag(argv[1], argv[2], argv[3])
     if argv == ["collector-restart"]:

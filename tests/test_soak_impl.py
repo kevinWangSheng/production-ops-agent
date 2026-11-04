@@ -36,8 +36,30 @@ T0 = datetime(2026, 11, 10, 0, 0, tzinfo=timezone.utc)
 # --- plan (S-R6) ---------------------------------------------------------------
 
 
+def _full_plan() -> dict[str, Any]:
+    return soak_plan.build_plan(
+        T0,
+        price_input=2.0,
+        price_output=3.0,
+        price_source="test",
+        expected_deployments=["payment", "checkout"],
+    )
+
+
 def _items(kind: str) -> list[dict[str, Any]]:
-    return [i for i in soak_plan.build_plan()["items"] if i["kind"] == kind]
+    return [i for i in _full_plan()["injections"] if i["category"] == kind]
+
+
+def test_plan_has_the_raw_directory_shape() -> None:
+    plan = _full_plan()
+    assert plan["product_alertname"] == "CheckoutPlaceOrderErrorRatioHigh"
+    assert plan["expected_deployments"] == ["checkout", "payment"]
+    assert plan["model_price_cny_per_mtok"] == {"input": 2.0, "output": 3.0}
+    assert plan["t0"] == iso(T0)
+    for item in plan["injections"]:
+        assert item["category"] in {"episode", "noise", "agent_fault"}
+        assert item["planned_start"] == iso(T0 + timedelta(seconds=item["at_s"]))
+        assert isinstance(item["planned_duration_s"], int) and item["name"]
 
 
 def test_plan_episodes() -> None:
@@ -45,17 +67,19 @@ def test_plan_episodes() -> None:
     assert len(episodes) == 24
     starts = [e["at_s"] for e in episodes]
     assert all(b - a == 3 * 3600 for a, b in zip(starts, starts[1:], strict=False))
-    long = {e["id"] for e in episodes if e["duration_s"] == 75 * 60}
+    long = {e["id"] for e in episodes if e["planned_duration_s"] == 75 * 60}
     assert long == {"ep08", "ep16"}
-    assert all(e["duration_s"] == 15 * 60 for e in episodes if e["id"] not in long)
-    assert all(e["flag"] == "paymentFailure" for e in episodes)
+    assert all(
+        e["planned_duration_s"] == 15 * 60 for e in episodes if e["id"] not in long
+    )
+    assert all(e["name"] == "paymentFailure" for e in episodes)
     # the last episode's 90 min cycle ends inside 72 h
     assert starts[-1] + 90 * 60 < 72 * 3600
 
 
 def test_plan_noise_and_agent_faults() -> None:
     noise = _items("noise")
-    assert sorted(n["flag"] for n in noise) == [
+    assert sorted(n["name"] for n in noise) == [
         "adManualGc",
         "adManualGc",
         "loadGeneratorFloodHomepage",
@@ -64,7 +88,7 @@ def test_plan_noise_and_agent_faults() -> None:
     busy = [(e["at_s"], e["at_s"] + 90 * 60) for e in _items("episode")]
     for n in noise:
         assert not any(
-            a < n["at_s"] + n["duration_s"] and n["at_s"] < b for a, b in busy
+            a < n["at_s"] + n["planned_duration_s"] and n["at_s"] < b for a, b in busy
         )
     agent = _items("agent_fault")
     assert [a["id"] for a in agent] == ["A1", "A2", "A3", "A4", "A5"]
@@ -74,14 +98,15 @@ def test_plan_noise_and_agent_faults() -> None:
     by_id = {a["id"]: a for a in agent}
     episodes = {e["id"]: e for e in _items("episode")}
     a3, ep = by_id["A3"], episodes[by_id["A3"]["overlaps"]]
-    assert ep["at_s"] <= a3["at_s"] < ep["at_s"] + ep["duration_s"]
-    assert a3["duration_s"] == 20 * 60 and by_id["A4"]["duration_s"] == 10 * 60
+    assert ep["at_s"] <= a3["at_s"] < ep["at_s"] + ep["planned_duration_s"]
+    assert a3["planned_duration_s"] == 20 * 60
+    assert by_id["A4"]["planned_duration_s"] == 10 * 60
     assert by_id["A1"]["steps"][0]["condition"] == "run_running"
     assert by_id["A2"]["steps"][0]["condition"] == "idle"
 
 
 def test_plan_steps_well_formed() -> None:
-    plan = soak_plan.build_plan()
+    plan = _full_plan()
     steps = soak_plan.steps(plan)
     ids = [s["id"] for s in steps]
     assert len(ids) == len(set(ids))
@@ -106,12 +131,12 @@ def test_plan_steps_well_formed() -> None:
 
 def test_freeze_is_stable_and_refuses_another_plan(tmp_path: Path) -> None:
     path = tmp_path / "plan.json"
-    sha = soak_plan.freeze(path)
-    assert soak_plan.freeze(path) == sha
+    sha = soak_plan.freeze(path, _full_plan())
+    assert soak_plan.freeze(path, _full_plan()) == sha
     assert soak_plan.load(path)[1] == sha
     path.write_text(path.read_text().replace('"ep01"', '"epXX"'))
     with pytest.raises(SystemExit):
-        soak_plan.freeze(path)
+        soak_plan.freeze(path, _full_plan())
 
 
 # --- the scripted operator (S-R3) ------------------------------------------------
@@ -208,7 +233,12 @@ def _config(tmp_path: Path) -> runner.Config:
 
 
 def _plan(*items: dict[str, Any]) -> dict[str, Any]:
-    return {"schema": soak_plan.SCHEMA, "duration_s": 72 * 3600, "items": list(items)}
+    return {
+        "schema": soak_plan.SCHEMA,
+        "t0": iso(T0),
+        "duration_s": 72 * 3600,
+        "injections": list(items),
+    }
 
 
 EPISODE = {
@@ -269,7 +299,7 @@ def fake(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Any]:
         )
         r.run_states = lambda: dict(states)  # type: ignore[method-assign]
         r.record_open_incidents = lambda step_id: None  # type: ignore[method-assign]
-        r.t0()  # T0 is the first tick
+        r.begin()  # the clock is at T0: no wait
         return r
 
     @dataclass
@@ -284,7 +314,15 @@ def fake(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Any]:
 
 
 def _steps(r: runner.Runner) -> list[dict[str, Any]]:
-    return [e for e in read_jsonl(r.events_path) if e["kind"] == "step"]
+    return [e for e in read_jsonl(r.events_path) if e["type"] == "step"]
+
+
+def _marks(r: runner.Runner) -> list[tuple[str, str]]:
+    return [
+        (e["type"], e["injection_id"])
+        for e in read_jsonl(r.events_path)
+        if e["type"].startswith("injection_")
+    ]
 
 
 def test_runner_times_followers_from_the_actual_step(fake: Any) -> None:
@@ -301,23 +339,52 @@ def test_runner_times_followers_from_the_actual_step(fake: Any) -> None:
     r.plan_tick()
     assert fake.calls[-1][-1] == "flag paymentFailure off ep01"
     assert [s["step"] for s in _steps(r)] == ["ep01:on", "ep01:off"]
+    assert _marks(r) == [("injection_on", "ep01"), ("injection_off", "ep01")]
 
 
 def test_runner_is_restart_safe(fake: Any) -> None:
     r = fake.make(_plan(EPISODE))
     r.now.advance(700)
     r.plan_tick()
-    t0 = r.t0()
     again = fake.make(_plan(EPISODE))
     again.now.advance(800)
     again.plan_tick()
-    assert again.t0() == t0
     assert len(fake.calls) == 1  # ep01:on is not repeated
+    starts = [e for e in read_jsonl(r.events_path) if e["type"] == "soak_start"]
+    assert len(starts) == 1 and starts[0]["ts"] == iso(T0)
     other = runner.Runner(
         config=r.config, data=r.data, plan=r.plan, plan_sha256="other"
     )
     with pytest.raises(SystemExit):
-        other.t0()
+        other.begin()
+
+
+def test_runner_refuses_a_start_after_t0(tmp_path: Path) -> None:
+    late = Clock(T0 + timedelta(seconds=runner.LATE_START_S + 1))
+    r = runner.Runner(
+        config=_config(tmp_path),
+        data=tmp_path,
+        plan=_plan(EPISODE),
+        plan_sha256="sha",
+        now=late,
+    )
+    with pytest.raises(SystemExit):
+        r.begin()
+
+
+def test_runner_waits_for_t0(tmp_path: Path) -> None:
+    early = Clock(T0 - timedelta(seconds=60))
+    r = runner.Runner(
+        config=_config(tmp_path),
+        data=tmp_path,
+        plan=_plan(EPISODE),
+        plan_sha256="sha",
+        now=early,
+        sleep=early.advance,
+    )
+    r.begin()
+    start = [e for e in read_jsonl(r.events_path) if e["type"] == "soak_start"]
+    assert start[0]["ts"] == iso(T0)
 
 
 def test_runner_retries_then_records_failure(fake: Any) -> None:
@@ -327,6 +394,8 @@ def test_runner_retries_then_records_failure(fake: Any) -> None:
     r.plan_tick()
     statuses = [s["status"] for s in _steps(r)]
     assert statuses == ["retry", "retry", "failed"]
+    skipped = [e for e in read_jsonl(r.events_path) if e["type"] == "injection_skipped"]
+    assert skipped[0]["injection_id"] == "ep01" and "failed" in skipped[0]["reason"]
     # the off step still runs after a failed on (restoring steps always run)
     r.now.advance(900)
     r.plan_tick()
@@ -340,6 +409,7 @@ def test_runner_skips_a_missed_injection_but_still_restores(fake: Any) -> None:
     steps = _steps(r)
     assert steps[0]["step"] == "ep01:on" and steps[0]["status"] == "skipped"
     assert steps[0]["reason"] == "missed"
+    assert _marks(r) == [("injection_skipped", "ep01")]
     r.now.advance(900)
     r.plan_tick()
     assert _steps(r)[-1]["step"] == "ep01:off" and _steps(r)[-1]["status"] == "ok"
@@ -417,7 +487,7 @@ def test_close_posts_the_workbench_form(
     form = seen["data"].decode()
     assert "action=close" in form and "expected_generation=4" in form
     assert "idempotency_key=soak-close-abc-4" in form
-    event = [e for e in read_jsonl(r.events_path) if e["kind"] == "operator"][0]
+    event = [e for e in read_jsonl(r.events_path) if e["type"] == "operator"][0]
     assert event["scripted"] is True and event["actor"] == "soak-operator"
     assert "pw" not in json.dumps(event)
 
@@ -461,134 +531,145 @@ def test_soak_end_extension() -> None:
 # --- summarizer smoke (contract tests are separate) --------------------------------
 
 
-def _write(path: Path, rows: list[dict[str, Any]]) -> None:
-    path.write_text("".join(json.dumps(r) + "\n" for r in rows))
-
-
-def test_summary_of_a_tiny_soak(tmp_path: Path) -> None:
-    plan = _plan(EPISODE)
-    (tmp_path / "plan.json").write_bytes(soak_plan.canonical(plan))
-    sha = soak_plan.load(tmp_path / "plan.json")[1]
-    on, off = T0 + timedelta(seconds=600), T0 + timedelta(seconds=1500)
-    end = T0 + timedelta(hours=72, minutes=1)
-    _write(
-        tmp_path / "events.jsonl",
-        [
-            {"at": iso(T0), "kind": "start", "t0": iso(T0), "plan_sha256": sha},
-            {"at": iso(on), "kind": "step", "step": "ep01:on", "status": "ok"},
-            {"at": iso(off), "kind": "step", "step": "ep01:off", "status": "ok"},
-            {"at": iso(end), "kind": "end", "t0": iso(T0)},
-        ],
-    )
-    _write(
-        tmp_path / "probe.jsonl",
-        [
-            {"at": iso(T0), "target": "web", "status": 200},
-            {
-                "at": iso(T0),
-                "target": "tunnel",
-                "status": 200,
-                "opspilot_up": {"172.18.0.1:29464": "1"},
-            },
-        ],
-    )
-    _write(tmp_path / "lab.jsonl", [{"at": iso(T0), "deployments": {"checkout": 1}}])
-    _write(
-        tmp_path / "resources-da-server.jsonl",
-        [
-            {
-                "at": iso(T0),
-                "host": "da-server",
-                "mem_available_kib": 100,
-                "load1": 0.5,
-                "disk_free_bytes": 10,
-                "containers": [
-                    {"name": "opspilot-web-1", "cpu_pct": 1.0, "mem_bytes": 5}
-                ],
-            },
-        ],
-    )
-    fired = on + timedelta(minutes=4)
-    (tmp_path / "pg.json").write_text(
-        json.dumps(
-            {
-                "exported_at": iso(end + timedelta(minutes=31)),
-                "runs": [
-                    {
-                        "run_id": "r1",
-                        "state": "completed",
-                        "prompt_tokens": 1000,
-                        "completion_tokens": 100,
-                        "prompt_cache_hit_tokens": 600,
-                        "prompt_cache_miss_tokens": 400,
-                        "model_steps": 3,
-                    }
-                ],
-                "deliveries": [
-                    {
-                        "status": "firing",
-                        "alertname": summarize.ALERTNAME,
-                        "outcome": "created",
-                        "starts_at": iso(fired),
-                        "received_at": iso(fired + timedelta(seconds=20)),
-                        "incident_id": "i1",
-                    }
-                ],
-                "sessions": [],
-                "postmortem_tokens": [],
-            }
-        )
-    )
-    (tmp_path / "cost.json").write_text(
-        json.dumps(
-            {
-                "deepseek_cny_per_mtok": {
-                    "input_cache_hit": 1,
-                    "input_cache_miss": 2,
-                    "output": 3,
-                },
-                "price_source": "test",
-            }
-        )
-    )
-    out = summarize.summarize(tmp_path)
-    assert out["plan_matches_start"] is True
-    assert out["window"]["coverage_ok"] is True
-    assert out["faults"][0]["status"] == "executed"
-    assert out["availability"]["end_to_end"][0]["within_10_min"] is True
-    assert out["stuck_work"]["injections"][0]["destination"] == "run"
-    assert out["stuck_work"]["export_settled"] is True
-    assert out["cost"]["deepseek_cny_estimate"] == pytest.approx(
-        (600 * 1 + 400 * 2 + 100 * 3) / 1e6
-    )
-    assert out["step4"]["achieved"] is True, out["step4"]
-    assert out["step4"]["passes_flipped"] is False
-    assert set(out["inputs"]) >= {"plan.json", "events.jsonl", "pg.json"}
-
-
-def test_interruptions_exclude_the_planned_tunnel_stop() -> None:
-    stop, start = T0 + timedelta(hours=40), T0 + timedelta(hours=40, minutes=10)
+def test_interruption_seconds_pairs_and_open_spans() -> None:
     events = [
-        {"kind": "step", "step": "A4:stop", "status": "ok", "at": iso(stop)},
-        {"kind": "step", "step": "A4:start", "status": "ok", "at": iso(start)},
-        {
-            "kind": "interruption",
-            "start": iso(T0),
-            "end": iso(T0 + timedelta(hours=1)),
-            "reason": "rental reboot",
-        },
+        {"ts": iso(T0 + timedelta(hours=1)), "type": "env_interruption_start"},
+        {"ts": iso(T0 + timedelta(hours=2)), "type": "env_interruption_end"},
+        {"ts": iso(T0 + timedelta(hours=10)), "type": "env_interruption_start"},
     ]
-    probes = [
-        {"at": iso(stop + timedelta(seconds=30)), "target": "tunnel", "status": None},
-        {"at": iso(start + timedelta(seconds=60)), "target": "tunnel", "status": 200},
-        {"at": iso(T0 + timedelta(hours=50)), "target": "tunnel", "status": None},
-        {
-            "at": iso(T0 + timedelta(hours=50, minutes=5)),
-            "target": "tunnel",
-            "status": 200,
-        },
+    now = T0 + timedelta(hours=10, minutes=30)
+    assert runner.interruption_seconds(events, now) == pytest.approx(5400)
+
+
+def test_unplanned_tunnel_outage_is_an_interruption(fake: Any) -> None:
+    r = fake.make(_plan())
+    r.tunnel_transition(False)
+    r.tunnel_transition(False)
+    r.now.advance(300)
+    r.tunnel_transition(True)
+    kinds = [e["type"] for e in read_jsonl(r.events_path)][1:]
+    assert kinds == [
+        "tunnel_down",
+        "env_interruption_start",
+        "tunnel_up",
+        "env_interruption_end",
     ]
-    assert summarize.interruption_seconds(events, probes) == pytest.approx(3600 + 300)
+
+
+def test_planned_tunnel_stop_is_not_an_interruption(fake: Any) -> None:
+    r = fake.make(_plan())
+    r.event("step", step="A4:stop", status="ok")
+    r.tunnel_transition(False)
+    r.now.advance(600)
+    r.event("step", step="A4:start", status="ok")
+    r.now.advance(30)
+    r.tunnel_transition(True)
+    kinds = [e["type"] for e in read_jsonl(r.events_path)]
+    assert "tunnel_down" in kinds and "tunnel_up" in kinds
+    assert "env_interruption_start" not in kinds
+
+
+def test_alerts_tick_records_each_firing_once(fake: Any) -> None:
+    alert = {
+        "fingerprint": "abc",
+        "startsAt": "2026-11-10T01:03:04.123456789Z",
+        "labels": {"alertname": "CheckoutPlaceOrderErrorRatioHigh"},
+    }
+    fake.results.extend([Proc(0, json.dumps([alert])), Proc(0, json.dumps([alert]))])
+    r = fake.make(_plan())
+    r.alerts_tick()
+    r.alerts_tick()
+    assert fake.calls[-1] == ["ssh", "soakfault@rental", "alerts"]
+    rows = list(read_jsonl(r.data / "alerts.jsonl"))
+    assert len(rows) == 1
+    assert rows[0]["starts_at"] == "2026-11-10T01:03:04.123456Z"
+    assert rows[0]["alertname"] == "CheckoutPlaceOrderErrorRatioHigh"
+
+
+def test_probe_writes_readyz_and_prom_up(
+    fake: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        runner,
+        "http",
+        lambda url, **kw: SimpleNamespace(status=None, error="x", body=b""),
+    )
+    r = fake.make(_plan())
+    result = [
+        {"metric": {"instance": "172.18.0.1:29464"}, "value": [0, "1"]},
+        {"metric": {"instance": "172.18.0.1:29465"}, "value": [0, "0"]},
+    ]
+    r.prom = SimpleNamespace(  # type: ignore[assignment]
+        query=lambda expr, timeout=0: (SimpleNamespace(status=200), result)
+    )
+    r.probe_tick()
+    readyz = (r.data / "readyz.csv").read_text().splitlines()
+    assert readyz[0] == "ts,role,status" and readyz[1].endswith(",web,0")
+    up = (r.data / "prom_up.csv").read_text().splitlines()
+    assert up[1:] == [
+        f"{iso(T0)},observer,0",
+        f"{iso(T0)},web,1",
+        f"{iso(T0)},worker,0",
+    ]
+
+
+def test_raw_runs_derives_times() -> None:
+    from scripts.soak.__main__ import raw_runs
+
+    rows = [
+        {
+            "run_id": "r1",
+            "incident_id": "i1",
+            "state": "completed",
+            "deadline": iso(T0 + timedelta(minutes=40)),
+            "intake_created_at": iso(T0),
+            "first_step_at": iso(T0 + timedelta(seconds=90)),
+            "last_step_at": iso(T0 + timedelta(minutes=9)),
+            "prompt_tokens": "1200",
+            "completion_tokens": 30,
+        }
+    ]
+    log = [
+        {"ts": iso(T0 + timedelta(seconds=60)), "run_id": "r1", "state": "running"},
+        {"ts": iso(T0 + timedelta(minutes=10)), "run_id": "r1", "state": "completed"},
+    ]
+    (run,) = raw_runs(rows, log)
+    assert run["created_at"] == iso(T0)
+    assert run["started_at"] == iso(T0 + timedelta(seconds=60))
+    assert run["finished_at"] == iso(T0 + timedelta(minutes=10))
+    assert run["wall_clock_limit_s"] == 39 * 60
+    assert (run["input_tokens"], run["output_tokens"]) == (1200, 30)
+
+
+def test_signal_status_mapping() -> None:
+    assert pg.signal_status("healthy", True) == "ok"
+    assert pg.signal_status("degraded", True) == "ok"
+    assert pg.signal_status("stale", True) == "stale"
+    assert pg.signal_status("no_data", True) == "missing"
+    assert pg.signal_status("healthy", False) == "missing"
+
+
+def test_runner_output_feeds_the_summarizer(fake: Any) -> None:
+    """The runner's own events and CSVs are a raw directory the summarizer
+    accepts: a simulated whole plan executes every injection."""
+    plan = _full_plan()
+    r = fake.make(plan)
+    (r.data / "plan.json").write_bytes(soak_plan.canonical(plan))
+    for _ in range(72 * 60):
+        r.plan_tick()
+        r.now.advance(60)
+    r.event("soak_end")
+    (r.data / "meta.json").write_text(json.dumps({"snapshot_at": iso(r.now())}))
+    summary = summarize.summarize(r.data)
+    assert all(item["executed"] for item in summary["injections"])
+    assert summary["window"]["coverage_ok"] is True
+    unmet = summary["step4"]["unmet"]
+    # no alerts or PG files in this simulation: episodes are unaccounted and
+    # the sections that need those files are unpublished, nothing else
+    assert all(
+        u.startswith(("injection_unaccounted:", "section_unpublished:")) for u in unmet
+    )
+    assert not any(u.startswith("injection_unexplained") for u in unmet)
 
 
 # --- fault key (S-R2) ---------------------------------------------------------------
@@ -745,7 +826,7 @@ def test_tunnel_forwards_match_the_lab_ports_and_the_rental_keys() -> None:
         "lab-jaeger",
     }
     # summarizer role mapping and the rental's permitlisten/ufw ports agree
-    assert sorted(summarize.INSTANCE_ROLES) == listen_ports[1:]
+    assert sorted(runner.INSTANCE_ROLES) == listen_ports[1:]
     setup = (SOAK / "rental_setup.sh").read_text()
     assert "WEBHOOK_PORT=28080" in setup and "HEALTH_PORTS=(29464 29465 29466)" in setup
     assert 'permitopen="127.0.0.1:19090",permitopen="127.0.0.1:16686"' in setup

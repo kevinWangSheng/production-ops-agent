@@ -12,7 +12,8 @@ flight, A2 restarts PostgreSQL while idle, A3 cuts the model egress for
 20 min over an episode, A4 stops the tunnel for 10 min over an episode's
 alert, A5 restarts the web.
 
-Every time is an offset from T0 (the runner's first tick). ``build_plan`` is
+T0 is chosen and frozen into the plan before the soak starts; every step
+time is an offset from it and the runner waits for it. ``build_plan`` is
 deterministic; ``freeze`` writes the canonical bytes once and returns their
 SHA-256, which goes into the task record before T0 and never changes after.
 """
@@ -21,12 +22,15 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Sequence
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from scripts.soak.common import DURATION_S, HOUR
+from scripts.soak.common import DURATION_S, HOUR, iso
 
-SCHEMA = "opspilot-soak-plan/1"
+SCHEMA = "opspilot-soak-plan/2"
+PRODUCT_ALERTNAME = "CheckoutPlaceOrderErrorRatioHigh"
 MINUTE = 60
 FIRST_EPISODE_S = 10 * MINUTE
 EPISODE_INTERVAL_S = 3 * HOUR
@@ -83,7 +87,8 @@ def _step(
     return step
 
 
-def build_plan() -> dict[str, Any]:
+def schedule() -> list[dict[str, Any]]:
+    """The items with offsets from T0 (the part that does not depend on T0)."""
     items: list[dict[str, Any]] = []
     for number in range(1, EPISODES + 1):
         item_id = f"ep{number:02d}"
@@ -199,7 +204,49 @@ def build_plan() -> dict[str, Any]:
         },
     ]
     items.sort(key=lambda item: (item["at_s"], item["id"]))
-    return {"schema": SCHEMA, "duration_s": DURATION_S, "items": items}
+    return items
+
+
+def build_plan(
+    t0: datetime,
+    *,
+    price_input: float,
+    price_output: float,
+    price_source: str,
+    expected_deployments: Sequence[str],
+) -> dict[str, Any]:
+    """The frozen plan in the raw-directory format the summarizer reads
+    (``summarize`` module docstring): absolute planned starts from ``t0``,
+    plus each injection's executable ``steps`` (offsets from ``t0``).
+
+    ``price_input`` is the cache-miss input price (the conservative one:
+    the summarizer has a single input price)."""
+    if t0.tzinfo is None:
+        raise ValueError("t0 needs a time zone")
+    injections = []
+    for item in schedule():
+        injections.append(
+            {
+                "id": item["id"],
+                "category": item["kind"],
+                "name": item.get("flag") or item.get("fault"),
+                "planned_start": iso(t0 + timedelta(seconds=item["at_s"])),
+                "planned_duration_s": int(item.get("duration_s", 0)),
+                "at_s": item["at_s"],
+                **{k: item[k] for k in ("branch", "overlaps") if k in item},
+                "steps": item["steps"],
+            }
+        )
+    return {
+        "schema": SCHEMA,
+        "t0": iso(t0),
+        "duration_s": DURATION_S,
+        "product_alertname": PRODUCT_ALERTNAME,
+        "expected_deployments": sorted(expected_deployments),
+        "model_price_cny_per_mtok": {"input": price_input, "output": price_output},
+        "price_source": price_source,
+        "injections": injections,
+    }
 
 
 def canonical(plan: dict[str, Any]) -> bytes:
@@ -209,13 +256,15 @@ def canonical(plan: dict[str, Any]) -> bytes:
 def steps(plan: dict[str, Any]) -> list[dict[str, Any]]:
     """Every step of the plan with its item id, in item order."""
     return [
-        {**step, "item": item["id"]} for item in plan["items"] for step in item["steps"]
+        {**step, "item": item["id"]}
+        for item in plan["injections"]
+        for step in item["steps"]
     ]
 
 
-def freeze(path: Path) -> str:
+def freeze(path: Path, plan: dict[str, Any]) -> str:
     """Write the plan once; refuse to overwrite a different frozen plan."""
-    data = canonical(build_plan())
+    data = canonical(plan)
     if path.exists():
         if path.read_bytes() != data:
             raise SystemExit(
