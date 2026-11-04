@@ -168,6 +168,15 @@ Compose 环境目录已不存在；M1-02 起实验环境是 colima profile `m1-k
 .venv/bin/python scripts/kind_lab.py stop      # 只 colima stop；集群与 release 保留，再 up 约 90 s
 ```
 
+Linux 主机（F1 收尾 S4，Ubuntu 24.04 x86_64）：`sudo scripts/kind_lab/install_linux.sh` 装固定版本的 Docker Engine（Docker apt 源，密钥按钉住的 SHA-256 校验，包 hold）、kind、kubectl、helm（发布二进制按钉住的 SHA-256 校验）和 htpasswd，调高 kind 需要的 inotify 上限，然后跑 `python3 scripts/kind_lab.py up`（`--no-up` 只装工具）。不碰防火墙、不开端口，NodePort 仍只发布在 127.0.0.1。同一组命令在 Linux 上的差别（`kind_lab.lab_runtime`，`OPSPILOT_LAB_RUNTIME=colima|docker` 可覆盖）：
+
+- docker 走默认 socket，不设 `DOCKER_CONTEXT`；`OPSPILOT_LAB_DOCKER_CONTEXT` 可指定上下文。macOS 仍是 `colima-m1-kind`。
+- 不调 colima：`up` 以「kind 集群已存在」代替「VM 在运行」跳过内存检查，并 `docker start` 节点容器；`stop` 只 `docker stop opspilot-m1-control-plane`，集群与 release 保留。
+- 内存检查读 `/proc/meminfo` 的 `MemAvailable`（门槛同为 3 GiB）。
+- Alertmanager webhook 和 OpsPilot 健康端点的抓取目标不再是 colima 的 `192.168.5.2`，而是 `kind` 网桥的 IPv4 网关（通常 `172.18.0.1`）或 `OPSPILOT_LAB_HOST_ADDRESS`；`up`/`rules-check` 把替换后的 values 写到 `tmp/m1-kind-lab/rendered/` 再交给 helm，macOS 仍直接用仓库里的文件。注意：Linux 上 pod 访问的是这个网关地址，工作台和健康端点要监听在它上面（不能只绑 127.0.0.1），主机防火墙也要放行 kind 网段到这些端口；这两步不在安装脚本里。
+- Holmes runner 的时钟检查在 Linux 上直接读主机时钟（没有 VM），swap 记录读 `/proc/meminfo`。
+- 窗口锁：macOS 用 `lockf ~/.agent/locks/kind-lab <命令>`，Linux 用同样写法的 `flock ~/.agent/locks/kind-lab <命令>`（util-linux 自带）。
+
 开 kind 窗口前先跑 `gh issue list --label needs-kind-run --state open`，把待补跑的真实 Run 并入本窗口；跑完在对应 issue 附证据并关闭。需要留到下一个 kind 窗口补跑的项，开 issue 时打 `needs-kind-run` 标签。
 
 Prometheus 基本认证（M1-02 第 4 步，D3）：`up` 首次生成 `tmp/m1-kind-lab/prometheus-auth.json`（600，四个账号 observer / investigator / collector / lab 的口令），把 bcrypt 哈希渲染成 Secret `prometheus-web-config`（Prometheus `--web.config.file`）、把 collector 推送用的口令渲染成 Secret `prometheus-web-auth`（collector `basicauth` 扩展），并写 `prometheus-observer.env` / `prometheus-investigator.env`（600，各只含该角色自己的变量名）；`kind_lab.py env-file <role>` 可重写。口令不进仓库、values、日志与证据。限制：Prometheus 自带 basic auth 对所有账号权限相同，合同要求的是独立凭据而非不同权限；Prometheus 探针改为 TCP、configmap-reload 侧车关闭（二者否则需要凭据或会 401）。工程脚本（`kind_lab.py health`、`scripts/otel_demo_observe.py`、`docs/evidence/m1-02-health-profile/collect_baseline.py`）经 `kind_lab.lab_authorization()` 用 `lab` 账号：优先 `OPSPILOT_LAB_PROMETHEUS_USERNAME/_PASSWORD`（`kind_lab.py env-file lab`），否则读 auth 文件；都没有时请求匿名、401 如实报出。
