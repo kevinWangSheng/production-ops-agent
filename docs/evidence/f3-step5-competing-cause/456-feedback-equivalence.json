@@ -1,0 +1,92 @@
+{
+  "schema": "f3-feedback-equivalence-v1",
+  "issue": "#456",
+  "pr": 468,
+  "change": "forced-final retry feedback: prose-wrapped json fence located and its citation failures appended (opspilot/investigation/reports.py)",
+  "prompt_revision_changed": false,
+  "verifier": "independent reviewer (fresh context, not the implementer), 2026-11-04",
+  "method": "Product rebuild_transcript over each Run's DB extract, including per-row input_snapshot_hash checks (the forced-final row hash covers the retry feedback bytes). Negative control wraps opspilot.investigation.context.validated_report and appends 1 byte ('X') to any non-empty retry feedback.",
+  "inputs": {
+    "f3-3b-run1": {
+      "run_id": "dbf02dca-b980-5f66-b9e7-5c62b200f411",
+      "db_extract": "tmp/lab-ledgers/f3-competing-cause/f3-3b-run1/db-extract.json (main checkout, not in repo)",
+      "db_extract_sha256": "cf8abb975f92c6713333898b361ced099004b930630525ade38f04c79b7e2c08"
+    },
+    "f3-3b-run2": {
+      "run_id": "1a9b37f1-3bfd-5a04-aa6f-0ad3b8f83530",
+      "db_extract": "tmp/lab-ledgers/f3-competing-cause/f3-3b-run2/db-extract.json (main checkout, not in repo)",
+      "db_extract_sha256": "7791f2a05c1097b1485912fd22a56f4a9acfa081edddf7f63652585456b333b9"
+    }
+  },
+  "code": {
+    "main": "147f94077624de264cde01909a9e4485118dc89f",
+    "pr_head": "09202002793f6fb242ffbe74616d951b038d5f0e"
+  },
+  "command": "PYTHONPATH=<checkout> .venv/bin/python rebuild.py [neg]  (rebuild.py: build snapshot {run=raw.runs[0], control_generation=raw.incident[0].control_generation, steps=raw.steps with UUID step_id, inputs=raw.inputs, conclusion=raw.incident[0].conclusion}; rebuild_transcript(snapshot, run_id, authorized_targets={raw.alert_identities[0].target_id}))",
+  "path_exercised": "run-2 round-10 reply starts 'I have sufficient evidence to report.\\n\\n```json'; on PR code _markdown_json_fence_body -> None, _embedded_json_fence_body -> body found, parse_report -> REPORT_INVALID; fenced body passes schema and citations, so no bytes are appended",
+  "results": {
+    "main": {
+      "f3-3b-run1": {
+        "result": "OK",
+        "live_steps": 12,
+        "next_round": 13,
+        "nonempty_feedback_sha256_16": []
+      },
+      "f3-3b-run2": {
+        "result": "OK",
+        "live_steps": 11,
+        "next_round": 12,
+        "nonempty_feedback_sha256_16": [
+          "93be98f7eb43ea29"
+        ]
+      }
+    },
+    "main_negative_control": {
+      "f3-3b-run1": {
+        "result": "OK",
+        "live_steps": 12,
+        "next_round": 13,
+        "nonempty_feedback_sha256_16": []
+      },
+      "f3-3b-run2": {
+        "result": "ContextError",
+        "code": "INCOMPATIBLE_STATE",
+        "nonempty_feedback_sha256_16": [
+          "93be98f7eb43ea29"
+        ]
+      }
+    },
+    "pr": {
+      "f3-3b-run1": {
+        "result": "OK",
+        "live_steps": 12,
+        "next_round": 13,
+        "nonempty_feedback_sha256_16": []
+      },
+      "f3-3b-run2": {
+        "result": "OK",
+        "live_steps": 11,
+        "next_round": 12,
+        "nonempty_feedback_sha256_16": [
+          "93be98f7eb43ea29"
+        ]
+      }
+    },
+    "pr_negative_control": {
+      "f3-3b-run1": {
+        "result": "OK",
+        "live_steps": 12,
+        "next_round": 13,
+        "nonempty_feedback_sha256_16": []
+      },
+      "f3-3b-run2": {
+        "result": "ContextError",
+        "code": "INCOMPATIBLE_STATE",
+        "nonempty_feedback_sha256_16": [
+          "93be98f7eb43ea29"
+        ]
+      }
+    }
+  },
+  "conclusion": "Equivalent. Both Runs rebuild OK on main and on the PR head; run-2's single forced-final retry feedback has the same sha256 prefix (93be98f7eb43ea29) under both. With 1 extra feedback byte, run-2 fails closed INCOMPATIBLE_STATE on both code versions while run-1 (no retry feedback) still rebuilds, so the hash check covers these bytes. F3 passes unchanged."
+}
