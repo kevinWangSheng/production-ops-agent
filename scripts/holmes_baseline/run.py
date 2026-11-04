@@ -93,6 +93,7 @@ def docker_env() -> dict[str, str]:
     }
     # F14_DOCKER_CONTEXT: offline smoke in another, already running daemon
     # (#385); the default is the kind lab's daemon.
+    env.pop("DOCKER_CONTEXT", None)  # only the lab's own choice applies
     context = os.environ.get("F14_DOCKER_CONTEXT") or kind_lab.docker_context()
     return env if context is None else {**env, "DOCKER_CONTEXT": context}
 

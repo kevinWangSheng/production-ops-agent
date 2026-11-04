@@ -78,6 +78,15 @@ def test_linux_uses_the_default_socket(monkeypatch: pytest.MonkeyPatch) -> None:
     assert "DOCKER_CONTEXT" not in kind_lab.docker_env()
 
 
+def test_linux_ignores_an_inherited_context(monkeypatch: pytest.MonkeyPatch) -> None:
+    # independent review: a shell DOCKER_CONTEXT must not redirect the lab
+    _platform(monkeypatch, "linux")
+    monkeypatch.setenv("DOCKER_CONTEXT", "colima-m1-kind")
+    monkeypatch.delenv("F14_DOCKER_CONTEXT", raising=False)
+    assert "DOCKER_CONTEXT" not in kind_lab.docker_env()
+    assert "DOCKER_CONTEXT" not in hrun.docker_env()
+
+
 def test_context_is_configurable(monkeypatch: pytest.MonkeyPatch) -> None:
     _platform(monkeypatch, "linux")
     monkeypatch.setenv("OPSPILOT_LAB_DOCKER_CONTEXT", "remote-lab")
