@@ -979,6 +979,8 @@ class _Attempt:
     marks: dict[str, float] = field(default_factory=dict)
     # F1 closure R7: one entry per system of a paired attempt (``pair.json``)
     pair: list[dict[str, Any]] = field(default_factory=list)
+    baseline_p95_ms: float | None = None
+    lab_restarts_before: str | None = None
 
 
 def _balance(deps: LiveDeps) -> Decimal | None:
@@ -1120,7 +1122,7 @@ def _run_slot(
             state.evidence_failed = True
         if is_v2(slot) and not _write_expectations(run_dir, slot, state):
             state.evidence_failed = True
-        if config.pair_record and not _write_pair(run_dir, config, state):
+        if config.pair_record and not _write_pair(run_dir, config, state, deps):
             state.evidence_failed = True
         out.summary = {
             "path": f"runs/{attempt_id}/summary.json",
@@ -1226,6 +1228,12 @@ def _guarded(
     if read_state(deps.ledger_root) is not None:
         # Appeared after the preflight: not ours, so touch nothing (r3/7).
         raise LabError("LAB_FAULT_FOREIGN")
+    if config.pair_record:
+        # R7 / r0.1-3: before anything is injected, the window's baseline
+        # checkout p95 and the telemetry stores' restart counts.
+        state.stage = "pair_baseline"
+        state.baseline_p95_ms = _lab_value(deps, BASELINE_P95_QUERY)
+        state.lab_restarts_before = _lab_restarts(deps)
     state.stage = "pg"
     if deps.ports.in_use(config.pg_port):
         raise LabError("PG_PORT_IN_USE")
@@ -1427,6 +1435,17 @@ class BaselineResult:
     #: the run ended on a model provider 5xx/transport failure (not injected)
     provider_error: bool = False
     output_sha256: str | None = None
+    #: HolmesGPT's own attempt id (never OpsPilot's) and its raw directory
+    attempt_id: str | None = None
+    output_path: str | None = None
+
+
+def holmes_attempt_id(round_id: str, opspilot_attempt_id: str) -> str:
+    """S7b's id for the HolmesGPT side of a paired window: deterministic,
+    never the OpsPilot id, safe as a directory name (same formula as
+    ``scripts.holmes_baseline.dataset_runner.holmes_attempt_id``)."""
+    digest = hashlib.sha256(f"{round_id}\0{opspilot_attempt_id}".encode()).hexdigest()
+    return f"holmes-{digest[:24]}"
 
 
 def _proc_stat() -> str | None:
@@ -1464,6 +1483,9 @@ def _paired(
             "product_run_created": False,
             "provider_error": False,
             "host_noise": None,
+            "attempt_id": state.record.attempt_id if system == "opspilot" else None,
+            "output_path": None,
+            "output_sha256": None,
         }
         for n, system in enumerate(config.pair, start=1)
     ]
@@ -1501,11 +1523,25 @@ HOLMES_LOCK = Path("/tmp/opspilot-holmes-baseline.lock")
 HOLMES_LOCK_POLL_SECONDS = 5.0
 
 
+def holmes_lock_enabled() -> bool:
+    """OPSPILOT_HOLMES_HOST_LOCK=1/0 decides; unset, the lock is on until
+    ``kind_lab`` names lab instances (``SUFFIX``), since S7b then suffixes
+    its helper container names per lab and HolmesGPT slots may overlap."""
+    import os
+
+    from scripts import kind_lab
+
+    configured = os.environ.get("OPSPILOT_HOLMES_HOST_LOCK")
+    if configured in ("0", "1"):
+        return configured == "1"
+    return not hasattr(kind_lab, "SUFFIX")
+
+
 @contextmanager
 def _holmes_turn(deps: LiveDeps, state: _Attempt, system: str) -> Iterator[bool]:
     """Hold the host-wide HolmesGPT lock for a ``holmes`` slot; yields
     whether it had to wait (the gate is then re-confirmed)."""
-    if system != "holmes":
+    if system != "holmes" or not holmes_lock_enabled():
         yield False
         return
     import fcntl
@@ -1568,7 +1604,7 @@ def _pair_slot(
     entry["ended_at"] = clock.now().isoformat()
     after = _proc_stat()
     steal = None if before is None or after is None else steal_percent(before, after)
-    entry["host_noise"] = {"steal_percent": steal, "baseline_p95_ratio": None}
+    entry["host_noise"] = {"steal_percent": steal, "load1": _load1()}
 
 
 def _regate(
@@ -1679,6 +1715,8 @@ def _baseline(
         product_run_created=result.product_run_created,
         provider_error=result.provider_error,
         output_sha256=result.output_sha256,
+        attempt_id=result.attempt_id,
+        output_path=result.output_path,
     )
     state.ledger.event(
         "baseline", "finished", status=result.status, reason=result.reason
@@ -1697,7 +1735,9 @@ def _recording_provider_error(directory: Path) -> bool:
     return bool(models) and models[-1].get("error") == "MODEL_UNAVAILABLE"
 
 
-def _write_pair(run_dir: Path, config: RoundConfig, state: _Attempt) -> bool:
+def _write_pair(
+    run_dir: Path, config: RoundConfig, state: _Attempt, deps: LiveDeps
+) -> bool:
     """``runs/<attempt>/pair.json``; an attempt whose shared setup failed
     before either system started shows both slots as that setup failure."""
     slots = state.pair or [
@@ -1711,16 +1751,74 @@ def _write_pair(run_dir: Path, config: RoundConfig, state: _Attempt) -> bool:
             "product_run_created": False,
             "provider_error": False,
             "host_noise": None,
+            "attempt_id": state.record.attempt_id if system == "opspilot" else None,
+            "output_path": None,
+            "output_sha256": None,
         }
         for n, system in enumerate(config.pair, start=1)
     ]
+    # After the closure: the fault is restored and washed (or not).
+    after = _lab_restarts(deps)
+    before = state.lab_restarts_before
     document = {
         "schema": PAIR_SCHEMA,
         "attempt_id": state.record.attempt_id,
         "order": list(config.pair),
         "slots": slots,
+        "baseline_p95_ms": state.baseline_p95_ms,
+        "lab_restarts": {
+            "before": before,
+            "after": after,
+            # unknown (None) when either read failed; a change voids (r3)
+            "changed": None if before is None or after is None else before != after,
+        },
     }
     return write_public_exclusive(run_dir, (PAIR_FILE,), document)
+
+
+#: r0.1-3: the window's baseline checkout p95 (ms), read before injection.
+BASELINE_P95_QUERY = (
+    "histogram_quantile(0.95, sum by (le) (rate("
+    'traces_span_metrics_duration_milliseconds_bucket{k8s_namespace_name="otel-demo",'
+    'service_name="checkout",span_kind="SPAN_KIND_SERVER",'
+    'span_name=~".*CheckoutService/PlaceOrder"}[5m])))'
+)
+#: The telemetry stores whose restart would wipe or gap the evidence the
+#: Runs read (fault-visibility 2026-11-04: Jaeger OOMKilled under the flood).
+STORE_CONTAINERS = ("jaeger", "prometheus-server")
+
+
+def _lab_value(deps: LiveDeps, expr: str) -> float | None:
+    """One instant query through the lab telemetry (None when it has no
+    ``instant`` seam, the offline doubles, or the read fails)."""
+    instant = getattr(deps.telemetry, "instant", None)
+    if instant is None:
+        return None
+    try:
+        value = instant(expr, deps.clock.now(), 5.0)
+    except Exception:  # noqa: BLE001 - a record, never a gate
+        return None
+    return None if value is None else round(float(value), 3)
+
+
+def _lab_restarts(deps: LiveDeps) -> str | None:
+    """``pod/container=restarts`` of the telemetry stores, sorted; None when
+    unreadable."""
+    reader = getattr(deps, "lab_restarts", None)
+    if reader is None:
+        return None
+    try:
+        value = reader()
+    except Exception:  # noqa: BLE001 - unknown, never a gate
+        return None
+    return None if value is None else str(value)
+
+
+def _load1() -> float | None:
+    try:
+        return float(Path("/proc/loadavg").read_text().split()[0])
+    except (OSError, ValueError, IndexError):
+        return None
 
 
 def write_intake(path: Path, payload: Mapping[str, Any]) -> None:
@@ -2974,10 +3072,11 @@ def baseline_runner(deps: LiveDeps) -> Any:
 
 class HolmesBaseline:
     """Adapts S7b ``run_attempt`` (which never touches the lab) to a paired
-    slot. No ``deadline``: it caps HolmesGPT's wall clock, which stays the
-    frozen budget aligned with OpsPilot's (R15); freshness is this driver's
-    gate before the slot. ``DEADLINE_PASSED`` (nothing started) is a setup
-    failure."""
+    slot. HolmesGPT gets its own attempt id (``holmes_attempt_id``) and
+    writes ``<output_dir>/<that id>``. No ``deadline``: it would cap
+    HolmesGPT's wall clock, which stays the frozen budget aligned with
+    OpsPilot's (R15); ``submit_not_after`` is only checked right before
+    HolmesGPT starts (``SUBMIT_LATE`` is a setup failure)."""
 
     def __init__(self, run_attempt: Callable[..., Mapping[str, Any]]) -> None:
         self.run_attempt = run_attempt
@@ -2985,14 +3084,18 @@ class HolmesBaseline:
     def run(self, request: BaselineRequest) -> BaselineResult:
         from scripts import kind_lab
 
+        own = holmes_attempt_id(request.round_id, request.attempt_id)
         out = self.run_attempt(
             request.spec,
             request.answer,
-            attempt_id=request.attempt_id,
+            attempt_id=own,
             slot=None,
             raw_root=request.output_dir,
             round_id=request.round_id,
             kind_node=f"{kind_lab.CLUSTER}-control-plane",
+            submit_not_after=None
+            if request.submit_not_after is None
+            else request.submit_not_after.timestamp(),
         )
         status = str(out.get("status"))
         reason = out.get("reason")
@@ -3013,8 +3116,10 @@ class HolmesBaseline:
             started_at=moment(out.get("started_at")),
             ended_at=moment(out.get("ended_at")),
             product_run_created=status != "setup_failed",
-            provider_error=False,
+            provider_error=bool(out.get("provider_error")),
             output_sha256=out.get("holmes_json_sha256"),
+            attempt_id=own,
+            output_path=str(request.output_dir / own),
         )
 
 
@@ -3048,6 +3153,7 @@ def real_deps(
         LocalPgLauncher,
         SocketPortProbe,
         SystemClock,
+        store_restarts,
     )
     from scripts.f11_u2_harness import resolve_ledger_root
 
@@ -3090,6 +3196,7 @@ def real_deps(
             pg=LocalPgLauncher(),
             balance=DeepSeekBalance(session.key),
             investigator=OtelDemoInvestigator(session, clock),
+            lab_restarts=lambda: store_restarts(STORE_CONTAINERS),
             ledger_root=resolve_ledger_root(ROOT),
             evidence_root=ROOT / "docs/evidence/eval",
             recording_root=ROOT / "tmp/eval",

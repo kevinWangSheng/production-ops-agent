@@ -51,6 +51,18 @@ VOIDED_NOTE = "environment not ready, rerun per rule"
 CANARY_RECHECK = "canary-recheck.json"
 CANARY_RECHECK_SCHEMA = "opspilot-eval-canary-recheck-1"
 SLOTS_PER_SCENARIO = 2
+#: F1 closure (U2): the CLI default for this round, three attempts per scenario.
+CLI_SLOTS_PER_SCENARIO = 3
+#: Void classes the paired schedule's ``check`` may name for an OpsPilot
+#: attempt (``scripts.eval_pair_schedule.VOID_ACTIONS``). An entry without a
+#: rule keeps the #432 rule: only a setup failure before any Run.
+SCHEDULE_RULES = (
+    "HOST_NOISE",
+    "LAB_RESTARTED",
+    "HARNESS_INTERRUPTED",
+    "ENV_SETUP_FAILED",
+    "PROVIDER_5XX_STORM",
+)
 #: Dimensions that must not move between the rounds of one development round.
 FROZEN_DIMENSIONS = ("code", "dataset", "evaluator", "runbook", "upstream")
 
@@ -396,6 +408,7 @@ def _registered_reruns(
     ):
         raise DevRoundError("RERUNS_INVALID")
     pairs: list[tuple[str, str, str | None]] = []
+    rules: dict[str, str | None] = {}
     for entry in entries:
         voided = entry.get("voided_attempt_id") if isinstance(entry, Mapping) else None
         rerun = entry.get("rerun_attempt_id") if isinstance(entry, Mapping) else None
@@ -409,6 +422,10 @@ def _registered_reruns(
             raise DevRoundError("RERUNS_INVALID")
         if note is not None and not isinstance(note, str):
             raise DevRoundError("RERUNS_INVALID")
+        rule = entry.get("rule")
+        if rule is not None and rule not in SCHEDULE_RULES:
+            raise DevRoundError("RERUNS_INVALID")
+        rules[voided] = rule
         pairs.append((voided, rerun, note))
     voided_ids = [v for v, _, _ in pairs]
     rerun_ids = [r for _, r, _ in pairs]
@@ -427,7 +444,14 @@ def _registered_reruns(
             if attempt_id not in started:
                 raise DevRoundError(f"RERUN_UNKNOWN:{attempt_id}")
         old, new = started[voided], started[rerun]
-        if old["status"] != "setup_failed" or old.get("product_run_id") is not None:
+        rule = rules.get(voided)
+        setup_only = rule is None or rule == "ENV_SETUP_FAILED"
+        if setup_only and (
+            old["status"] != "setup_failed" or old.get("product_run_id") is not None
+        ):
+            # the #432 rule; the schedule's other classes void a window
+            # whatever this attempt's own status (they are registered
+            # before the questions, evals/preregistered/)
             raise DevRoundError(f"RERUN_NOT_ELIGIBLE:{voided}")
         if old["scenario_id"] != new["scenario_id"]:
             raise DevRoundError(f"RERUN_SCENARIO_MISMATCH:{rerun}")
@@ -435,7 +459,7 @@ def _registered_reruns(
         began = _moment((new.get("fault") or {}).get("started_at"))
         if ended is None or began is None or began <= ended:
             raise DevRoundError(f"RERUN_ORDER:{rerun}")
-        out[voided] = {"rerun_attempt_id": rerun, "note": note}
+        out[voided] = {"rerun_attempt_id": rerun, "note": note, "rule": rule}
     return out
 
 
@@ -623,7 +647,9 @@ def aggregate(
                 "status": started[attempt_id]["status"],
                 "reason": started[attempt_id]["reason"],
                 "rerun_attempt_id": entry["rerun_attempt_id"],
-                "note": VOIDED_NOTE,
+                "note": VOIDED_NOTE if entry["rule"] is None else entry["note"],
+                # a schedule void names its preregistered rule (absent: #432)
+                **({} if entry["rule"] is None else {"rule": entry["rule"]}),
             }
             for attempt_id, entry in sorted(voided.items())
         ],
@@ -644,7 +670,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="scripts.eval_dev_round")
     parser.add_argument("--dataset", required=True)
     parser.add_argument("--round", action="append", required=True)
-    parser.add_argument("--n", type=int, default=SLOTS_PER_SCENARIO)
+    parser.add_argument("--n", type=int, default=CLI_SLOTS_PER_SCENARIO)
     parser.add_argument("--out", required=True)
     parser.add_argument("--reruns")
     args = parser.parse_args(argv)

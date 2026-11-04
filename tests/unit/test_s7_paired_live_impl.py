@@ -234,7 +234,11 @@ def test_holmes_adapter_maps_s7b_results():
     out = eval_live.HolmesBaseline(fake).run(request)
     assert out.status == "setup_failed" and not out.product_run_created
     assert "deadline" not in seen  # the frozen wall budget stays (R15)
-    assert seen["raw_root"] == Path("/x/holmes-r1") and seen["attempt_id"] == "a1"
+    own = eval_live.holmes_attempt_id("r1", "a1")
+    assert own.startswith("holmes-") and own != "a1"
+    assert seen["raw_root"] == Path("/x/holmes-r1") and seen["attempt_id"] == own
+    assert seen["submit_not_after"] == request.submit_not_after.timestamp()
+    assert out.attempt_id == own and out.output_path == f"/x/holmes-r1/{own}"
 
     ran = eval_live.HolmesBaseline(
         lambda spec, answer, **kw: {
@@ -247,3 +251,70 @@ def test_holmes_adapter_maps_s7b_results():
     ).run(request)
     assert ran.status == "ran" and ran.product_run_created
     assert ran.output_sha256 == "f" * 64
+    assert not ran.provider_error
+    late = eval_live.HolmesBaseline(
+        lambda spec, answer, **kw: {"status": "setup_failed", "reason": "SUBMIT_LATE"}
+    ).run(request)
+    assert late.status == "setup_failed" and late.reason == "SUBMIT_LATE"
+    outage = eval_live.HolmesBaseline(
+        lambda spec, answer, **kw: {
+            "status": "aborted",
+            "reason": None,
+            "provider_error": True,
+        }
+    ).run(request)
+    assert outage.provider_error and outage.product_run_created
+
+
+def test_pair_record_carries_ids_baseline_and_store_restarts(lab):
+    reads = iter(["jaeger-x/jaeger=2", "jaeger-x/jaeger=3"])
+
+    class Telemetry:
+        def __init__(self, inner):
+            self.inner = inner
+
+        def __getattr__(self, name):
+            return getattr(self.inner, name)
+
+        def instant(self, expr, at, timeout):
+            return 412.5
+
+    lab["deps"] = replace(
+        lab["deps"],
+        lab_restarts=lambda: next(reads),
+        telemetry=Telemetry(lab["deps"].telemetry),
+    )
+    result, evidence = _round(lab, "dv2-2b214b", "opspilot-first", FakeBaseline())
+    pair = _pair(evidence, result)
+    assert pair["baseline_p95_ms"] == 412.5
+    assert pair["lab_restarts"] == {
+        "before": "jaeger-x/jaeger=2",
+        "after": "jaeger-x/jaeger=3",
+        "changed": True,
+    }
+    ops = pair["slots"][0]
+    assert ops["attempt_id"] == result.slots[0].attempt_id
+    assert set(ops["host_noise"]) == {"steal_percent", "load1"}
+
+
+@pytest.mark.parametrize(
+    ("env", "suffix", "expected"),
+    [
+        (None, False, True),
+        (None, True, False),
+        ("0", False, False),
+        ("1", True, True),
+    ],
+)
+def test_holmes_host_lock_switch(monkeypatch, env, suffix, expected):
+    from scripts import kind_lab
+
+    if env is None:
+        monkeypatch.delenv("OPSPILOT_HOLMES_HOST_LOCK", raising=False)
+    else:
+        monkeypatch.setenv("OPSPILOT_HOLMES_HOST_LOCK", env)
+    if suffix:
+        monkeypatch.setattr(kind_lab, "SUFFIX", "", raising=False)
+    elif hasattr(kind_lab, "SUFFIX"):
+        monkeypatch.delattr(kind_lab, "SUFFIX")
+    assert eval_live.holmes_lock_enabled() is expected

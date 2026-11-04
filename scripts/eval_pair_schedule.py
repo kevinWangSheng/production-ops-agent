@@ -54,6 +54,7 @@ SYSTEMS = ("opspilot", "holmes")
 #: file must state exactly these (``load_rules``).
 VOID_ACTIONS = {
     "HOST_NOISE": "rerun_pair",
+    "LAB_RESTARTED": "rerun_pair",
     "HARNESS_INTERRUPTED": "rerun_pair",
     "ENV_SETUP_FAILED": "rerun_slot",
     "PROVIDER_5XX_STORM": "rerun_slot",
@@ -233,6 +234,8 @@ class _LabState:
     restored: dict[str, datetime] = field(default_factory=dict)
     busy: bool = False
     previous: dict[str, Any] | None = None
+    #: the lab's last restore is unconfirmed: it takes no further window
+    stopped: str | None = None
 
 
 class Dispatcher:
@@ -273,6 +276,8 @@ class Dispatcher:
             state = self.labs[lab]
             if state.busy:
                 raise ScheduleError("LAB_BUSY")
+            if state.stopped is not None:
+                return None, None
             best: tuple[Any, ...] | None = None
             soonest: datetime | None = None
             for window in self.pending:
@@ -307,9 +312,13 @@ class Dispatcher:
             record["predecessor"] = state.previous
             for slot in record.get("slots") or []:
                 slot.setdefault("predecessor", state.previous)
-            restored = _moment(record.get("restored_at")) or _moment(
-                record.get("ended_at")
-            )
+            stop = restore_unconfirmed(record)
+            restored = None if stop else restored_at(record)
+            if stop:
+                # never advance the wash or the gap from an unconfirmed
+                # restore: the lab stops until an engineer ran --recover
+                state.stopped = stop
+                record["lab_stopped"] = stop
             if restored is not None:
                 state.last_restored = restored
                 state.restored[window.scenario_id] = restored
@@ -332,11 +341,36 @@ class Dispatcher:
             self.records.append(record)
             state.busy = False
             self.in_flight -= 1
-            return void
+            return None if void is None else str(void)
 
     def done(self) -> bool:
         with self.lock:
             return not self.pending and self.in_flight == 0
+
+    def stopped(self, lab: str) -> bool:
+        with self.lock:
+            return self.labs[lab].stopped is not None
+
+
+def restore_unconfirmed(record: Mapping[str, Any]) -> str | None:
+    """Why a finished window leaves its lab in an unknown state, or None:
+    the driver's own restore/wash failed (exit 4), the window was
+    interrupted, or it injected and no restore was confirmed."""
+    if record.get("exit_code") == 4:
+        return "EXIT_4_RETAINED_FAULT"
+    if record.get("interrupted"):
+        return "INTERRUPTED"
+    if record.get("injected", True) and _moment(record.get("restored_at")) is None:
+        return "RESTORE_UNCONFIRMED"
+    return None
+
+
+def restored_at(record: Mapping[str, Any]) -> datetime | None:
+    """When the lab was back to normal after a window: its confirmed restore,
+    or for a window that injected nothing (``injected`` False) its end."""
+    if record.get("injected", True):
+        return _moment(record.get("restored_at"))
+    return _moment(record.get("restored_at")) or _moment(record.get("ended_at"))
 
 
 # -- void classification --------------------------------------------------------
@@ -360,13 +394,15 @@ def decide(
     Classes in precedence order (``VOID_ACTIONS``); a window that is itself
     a rerun (``rerun_of`` set) is always kept. Every slot fact comes from the
     window runner; nothing here judges an answer."""
-    keep = {"action": "keep", "systems": [], "note": None, "void": None}
+    keep: dict[str, Any] = {"action": "keep", "systems": [], "note": None, "void": None}
     if record.get("rerun_of"):
         return keep
     slots = [s for s in record.get("slots") or [] if isinstance(s, Mapping)]
     systems = [str(s.get("system")) for s in slots]
     shared = record.get("shared_host") if shared_host is None else shared_host
     p95 = record.get("baseline_p95_ms")
+    if probe_baseline_p95_ms is None:
+        probe_baseline_p95_ms = record.get("probe_baseline_p95_ms")
     p95_noisy = (
         isinstance(p95, (int, float))
         and isinstance(probe_baseline_p95_ms, (int, float))
@@ -376,6 +412,9 @@ def decide(
     found: dict[str, list[str]] = {}
     if shared and (p95_noisy or any(host_noisy(s.get("host_noise")) for s in slots)):
         found["HOST_NOISE"] = systems
+    restarts = record.get("lab_restarts")
+    if isinstance(restarts, Mapping) and restarts.get("changed") is True:
+        found["LAB_RESTARTED"] = systems
     if record.get("interrupted") or any(
         s.get("status") == "not_started" for s in slots
     ):
@@ -551,7 +590,12 @@ def plan(
             for r in records
         ],
         "scenarios": {
-            s.scenario_id: {"entry": s.entry, "model_fault": s.model_fault}
+            s.scenario_id: {
+                "entry": s.entry,
+                "model_fault": s.model_fault,
+                # the scenario root the runner passes as --scenario-root
+                "root": (roots or {}).get(s.scenario_id),
+            }
             for s in scenarios
         },
     }
@@ -743,8 +787,11 @@ def check(
         last_end: datetime | None = None
         last_restored: datetime | None = None
         restored_by_scenario: dict[str, datetime] = {}
+        unconfirmed: str | None = None
         for record in items:
             wid = str(record.get("window_id"))
+            if unconfirmed is not None:
+                violations.append(f"AFTER_UNCONFIRMED_RESTORE:{wid}")
             began = _moment(record.get("started_at")) or _moment(
                 record.get("injected_at")
             )
@@ -765,9 +812,11 @@ def check(
                 and injected - same < rules.same_scenario_gap
             ):
                 violations.append(f"GAP_SHORT:{wid}")
-            restored = _moment(record.get("restored_at")) or _moment(
-                record.get("ended_at")
-            )
+            stop = restore_unconfirmed(record)
+            if stop is not None:
+                violations.append(f"{stop}:{wid}")
+                unconfirmed = wid
+            restored = None if stop else restored_at(record)
             if restored is not None:
                 last_restored = restored
                 restored_by_scenario[sid] = restored
@@ -787,26 +836,31 @@ def check(
             )
         ]
         expected = list(origin["systems"])
-        if wid != base:
+        if wid in seen:
+            violations.append(f"RERUN_UNJUSTIFIED:{wid}")
+        elif wid != base:
             original = seen.get(base)
-            if original is None or original.get("void") is None or wid in seen:
+            if original is None or original.get("void") is None:
                 violations.append(f"RERUN_UNJUSTIFIED:{wid}")
             elif (original.get("decision") or {}).get("action") == "rerun_slot":
-                rerun = set(original["decision"].get("systems") or ())
-                expected = [s for s in expected if s in rerun]
+                chosen = set(original["decision"].get("systems") or ())
+                expected = [s for s in expected if s in chosen]
         if order != expected:
             violations.append(f"ORDER_MISMATCH:{wid}")
-        elif wid in seen:
-            violations.append(f"RERUN_UNJUSTIFIED:{wid}")
         seen[wid] = record
     counted: dict[str, dict[str, int]] = {}
+    missing: dict[str, dict[str, int]] = {}
     voided: list[dict[str, Any]] = []
+    attempts: list[dict[str, Any]] = []
     for wid, origin in planned.items():
         sid = origin["scenario_id"]
         counts = counted.setdefault(sid, {s: 0 for s in SYSTEMS})
+        lost = missing.setdefault(sid, {s: 0 for s in SYSTEMS})
         found = seen.get(wid)
         if found is None:
             violations.append(f"MISSING:{wid}")
+            for system in origin["systems"]:
+                lost[system] += 1  # a planned slot that never ran: a failure
             continue
         final = {str(s.get("system")): s for s in found.get("slots") or []}
         rerun = seen.get(f"{wid}-rerun")
@@ -820,15 +874,61 @@ def check(
                     "systems": sorted(replaced),
                 }
             )
+            note = (found.get("decision") or {}).get("note") or rules.notes.get(
+                str(found["void"])
+            )
+            for system in sorted(replaced):
+                old = final.get(system) or {}
+                attempts.append(
+                    {
+                        "system": system,
+                        "scenario_id": sid,
+                        "window_id": wid,
+                        "rule": found["void"],
+                        "note": note,
+                        "voided_attempt_id": old.get("attempt_id"),
+                        "rerun_window_id": f"{wid}-rerun",
+                        "rerun_attempt_id": replaced[system].get("attempt_id"),
+                    }
+                )
             final.update(replaced)
-        for system, slot in final.items():
-            if slot.get("status") != "not_started":
+        for system in origin["systems"]:
+            slot = final.get(system)
+            if slot is None or slot.get("status") == "not_started":
+                lost[system] += 1
+            else:
                 counts[system] += 1
     return {
         "rules_id": rules.rules_id,
         "violations": violations,
         "voided": voided,
+        # X3: every voided attempt of either system, with its rule; the
+        # judge drops these, eval_dev_round takes the OpsPilot ones
+        "voided_attempts": attempts,
         "started_slots": counted,
+        "missing_slots": missing,
+    }
+
+
+def dev_round_reruns(result: Mapping[str, Any]) -> dict[str, Any]:
+    """The OpsPilot part of ``check``'s ``voided_attempts`` as an
+    ``eval_dev_round --reruns`` registry (rule named per entry)."""
+    from scripts.eval_dev_round import RERUNS_SCHEMA
+
+    return {
+        "schema": RERUNS_SCHEMA,
+        "reruns": [
+            {
+                "voided_attempt_id": a["voided_attempt_id"],
+                "rerun_attempt_id": a["rerun_attempt_id"],
+                "note": a["note"],
+                "rule": a["rule"],
+            }
+            for a in result.get("voided_attempts") or []
+            if a["system"] == "opspilot"
+            and a.get("voided_attempt_id")
+            and a.get("rerun_attempt_id")
+        ],
     }
 
 
@@ -883,7 +983,7 @@ def run_schedule(
         while True:
             window, ready = dispatcher.take(lab, clock.now())
             if window is None:
-                if dispatcher.done():
+                if dispatcher.done() or dispatcher.stopped(lab):
                     return
                 wait = (
                     poll_seconds
@@ -914,6 +1014,8 @@ def run_schedule(
             dispatcher.finish(lab, window, record)
             if on_record is not None:
                 on_record(dispatcher.records[-1])
+            if dispatcher.stopped(lab):
+                return
 
     threads = [
         threading.Thread(target=worker, args=(lab,), name=f"lab-{lab}") for lab in labs
@@ -951,6 +1053,8 @@ class LabSpec:
     host: str | None = None
     env: Mapping[str, str] = field(default_factory=dict)
     shared_host: bool = False
+    #: the S5 probe's baseline checkout p95 for this host (HOST_NOISE)
+    probe_baseline_p95_ms: float | None = None
 
 
 def load_lab_specs(path: Path) -> dict[str, LabSpec]:
@@ -968,6 +1072,7 @@ def load_lab_specs(path: Path) -> dict[str, LabSpec]:
                 host=item.get("host"),
                 env={str(k): str(v) for k, v in (item.get("env") or {}).items()},
                 shared_host=bool(item.get("shared_host", False)),
+                probe_baseline_p95_ms=item.get("probe_baseline_p95_ms"),
             )
             for item in data["labs"]
         }
@@ -1084,8 +1189,13 @@ class CommandWindowRunner:
             "restored_at": fault.get("normal_confirmed_at"),
             "ended_at": timings.get("ended_at"),
             "shared_host": spec.shared_host,
+            "probe_baseline_p95_ms": spec.probe_baseline_p95_ms,
             "interrupted": code == 130 or not slot,
+            "injected": slot.get("fault") is not None if slot else True,
         }
+        if isinstance(pair, Mapping):
+            record["baseline_p95_ms"] = pair.get("baseline_p95_ms")
+            record["lab_restarts"] = pair.get("lab_restarts")
         if isinstance(pair, Mapping) and isinstance(pair.get("slots"), list):
             record["slots"] = [dict(s) for s in pair["slots"]]
         else:
@@ -1146,6 +1256,8 @@ def _parser() -> argparse.ArgumentParser:
     c.add_argument("--plan", required=True)
     c.add_argument("--log", required=True)
     c.add_argument("--rules", default=str(RULES_PATH))
+    # X3: the OpsPilot voided attempts as an eval_dev_round --reruns file
+    c.add_argument("--reruns-out")
     return parser
 
 
@@ -1194,6 +1306,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _run(args, rules, plan_json)
         log = json.loads(Path(args.log).read_text(encoding="utf-8"))
         result = check(plan_json, log, rules)
+        if args.reruns_out:
+            Path(args.reruns_out).write_text(
+                json.dumps(dev_round_reruns(result), indent=2, sort_keys=True) + "\n"
+            )
         print(json.dumps(result, indent=2, sort_keys=True))
         return 0 if not result["violations"] else 1
     except ScheduleError as exc:
@@ -1202,14 +1318,41 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 
 def _run(args: argparse.Namespace, rules: Rules, plan_json: Mapping[str, Any]) -> int:
-    """Execute a plan; the log is rewritten after every finished window."""
+    specs = load_lab_specs(Path(args.labs))
+    result = execute_plan(
+        plan_json,
+        specs,
+        rules,
+        Path(args.log),
+        round_prefix=args.round_prefix,
+        holder=args.holder,
+        batch=args.batch,
+    )
+    print(json.dumps(result, sort_keys=True))
+    return 0 if not result["violations"] else 1
+
+
+def execute_plan(
+    plan_json: Mapping[str, Any],
+    specs: Mapping[str, LabSpec],
+    rules: Rules,
+    log_path: Path,
+    *,
+    round_prefix: str,
+    holder: str,
+    batch: str,
+    runner: WindowRunner | None = None,
+    poll_seconds: float = 30.0,
+) -> dict[str, Any]:
+    """Execute a plan over ``specs``; the log is rewritten after every
+    finished window; returns ``check`` of the finished log."""
     if plan_json.get("rules_sha256") != rules.sha256:
         raise ScheduleError("PLAN_RULES_MISMATCH")
-    specs = load_lab_specs(Path(args.labs))
-    log_path = Path(args.log)
     if log_path.exists():
         raise ScheduleError("LOG_EXISTS")
     meta = plan_json["scenarios"]
+    if any(not v.get("root") for v in meta.values()):
+        raise ScheduleError("PLAN_ROOT_MISSING")
     scenarios = {
         sid: Scenario(sid, v["entry"], bool(v["model_fault"]))
         for sid, v in meta.items()
@@ -1218,13 +1361,14 @@ def _run(args: argparse.Namespace, rules: Rules, plan_json: Mapping[str, Any]) -
         Window(w["window_id"], w["scenario_id"], w["repetition"], tuple(w["systems"]))
         for w in plan_json["windows"]
     ]
-    runner = CommandWindowRunner(
-        specs,
-        {sid: str(v["root"]) for sid, v in meta.items()},
-        round_prefix=args.round_prefix,
-        holder=args.holder,
-        batch=args.batch,
-    )
+    if runner is None:
+        runner = CommandWindowRunner(
+            specs,
+            {sid: str(v["root"]) for sid, v in meta.items()},
+            round_prefix=round_prefix,
+            holder=holder,
+            batch=batch,
+        )
     lock = threading.Lock()
     booked: list[dict[str, Any]] = []
 
@@ -1242,11 +1386,18 @@ def _run(args: argparse.Namespace, rules: Rules, plan_json: Mapping[str, Any]) -
             tmp.replace(log_path)
 
     run_schedule(
-        pending, tuple(specs), rules, runner, scenarios=scenarios, on_record=write
+        pending,
+        tuple(specs),
+        rules,
+        runner,
+        scenarios=scenarios,
+        on_record=write,
+        poll_seconds=poll_seconds,
     )
-    result = check(plan_json, json.loads(log_path.read_text()), rules)
-    print(json.dumps(result, sort_keys=True))
-    return 0 if not result["violations"] else 1
+    if not booked:
+        write_empty = {"schema": LOG_SCHEMA, "rules_id": rules.rules_id, "windows": []}
+        log_path.write_text(json.dumps(write_empty) + "\n")
+    return check(plan_json, json.loads(log_path.read_text()), rules)
 
 
 if __name__ == "__main__":

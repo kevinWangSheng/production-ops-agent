@@ -49,7 +49,7 @@ def test_registered_rules_load(rules):
     [
         (("pairing", "order"), "random", "RULES_UNSUPPORTED"),
         (("spacing", "same_scenario_gap_scope"), "global", "RULES_UNSUPPORTED"),
-        (("void_rerun", "classes", 2, "action"), "rerun_pair", "RULES_UNSUPPORTED"),
+        (("void_rerun", "classes", 3, "action"), "rerun_pair", "RULES_UNSUPPORTED"),
         (("schema",), "other", "RULES_SCHEMA"),
         (("repetitions",), 0, "RULES_INVALID"),
     ],
@@ -609,3 +609,294 @@ def test_command_runner_books_a_round_without_evidence_as_interrupted(tmp_path):
     record = runner.run("a", es.Window("x-r1", "x", 1, ("opspilot", "holmes")))
     assert record["interrupted"] is True
     assert es.classify_void(record, es.load_rules()) == "HARNESS_INTERRUPTED"
+
+
+# -- round 1 review fixes ------------------------------------------------------------
+
+
+def test_plan_then_run_end_to_end(tmp_path):
+    labs = _labs_file(tmp_path, [_lab("a", 0, 55001), _lab("b", 1, 55002)])
+    out = tmp_path / "plan.json"
+    assert (
+        es.main(
+            ["plan", "--dataset", str(DEV_V2), "--labs", str(labs), "--out", str(out)]
+        )
+        == 0
+    )
+    plan = json.loads(out.read_text())
+    assert all(v["root"] == str(DEV_V2) for v in plan["scenarios"].values())
+    rules = es.load_rules()
+    fast = replace(
+        rules,
+        same_scenario_gap=timedelta(seconds=0.05),
+        wash_min=timedelta(seconds=0.01),
+    )
+    seen_roots: set[str] = set()
+
+    class Runner(FakeRunner):
+        def run(self, lab, window):
+            record = super().run(lab, window)
+            record["injected"] = True
+            return record
+
+    real = es.CommandWindowRunner(
+        es.load_lab_specs(labs),
+        {sid: v["root"] for sid, v in plan["scenarios"].items()},
+        round_prefix="e2e",
+        holder="h",
+        batch="b",
+        execute=lambda spec, argv: (0, ""),
+    )
+    for window in es.windows(es.scenarios_from_dataset(DEV_V2), rules)[:3]:
+        argv = real.argv("a", window)
+        seen_roots.add(argv[argv.index("--scenario-root") + 1])
+    assert seen_roots == {str(DEV_V2)}
+    result = es.execute_plan(
+        {**plan, "rules_sha256": fast.sha256},
+        es.load_lab_specs(labs),
+        fast,
+        tmp_path / "log.json",
+        round_prefix="e2e",
+        holder="h",
+        batch="b",
+        runner=Runner(),
+        poll_seconds=0.01,
+    )
+    assert result["violations"] == []
+    assert all(
+        v == {"opspilot": 0, "holmes": 0} for v in result["missing_slots"].values()
+    )
+    log = json.loads((tmp_path / "log.json").read_text())
+    assert len(log["windows"]) == len(plan["windows"])
+
+
+def test_plan_without_roots_is_refused(tmp_path):
+    rules = es.load_rules()
+    plan = {
+        "rules_sha256": rules.sha256,
+        "scenarios": {"a": {"entry": "question", "model_fault": False}},
+        "windows": [],
+    }
+    with pytest.raises(es.ScheduleError, match="PLAN_ROOT_MISSING"):
+        es.execute_plan(
+            plan,
+            {},
+            rules,
+            tmp_path / "log.json",
+            round_prefix="p",
+            holder="h",
+            batch="b",
+        )
+
+
+@pytest.mark.parametrize(
+    ("extra", "stop"),
+    [
+        ({"exit_code": 4}, "EXIT_4_RETAINED_FAULT"),
+        ({"interrupted": True}, "INTERRUPTED"),
+        ({"restored_at": None, "injected": True}, "RESTORE_UNCONFIRMED"),
+    ],
+)
+def test_unconfirmed_restore_stops_the_lab(rules, extra, stop):
+    a = es.Window("a-r1", "a", 1, ("opspilot",))
+    b = es.Window("b-r1", "b", 1, ("opspilot",))
+    dispatcher = es.Dispatcher([a, b], ["l0", "l1"], rules)
+    taken, _ = dispatcher.take("l0", T0)
+    record = {
+        "slots": [{"system": "opspilot", "position": 1, "status": "ran"}],
+        "restored_at": (T0 + timedelta(minutes=20)).isoformat(),
+        "ended_at": (T0 + timedelta(minutes=21)).isoformat(),
+        **extra,
+    }
+    dispatcher.finish("l0", taken, record)
+    assert dispatcher.stopped("l0")
+    assert dispatcher.records[-1]["lab_stopped"] == stop
+    # wash and gap never advance from it; the lab takes nothing more
+    assert dispatcher.labs["l0"].last_restored is None
+    assert dispatcher.take("l0", T0 + timedelta(hours=5)) == (None, None)
+    # its pending windows go to the other lab
+    other, _ = dispatcher.take("l1", T0)
+    assert other is not None
+
+
+def test_a_window_without_injection_needs_no_restore(rules):
+    window = es.Window("n-r1", "n", 1, ("opspilot",))
+    dispatcher = es.Dispatcher([window], ["l0"], rules)
+    dispatcher.take("l0", T0)
+    end = T0 + timedelta(minutes=9)
+    dispatcher.finish(
+        "l0",
+        window,
+        {
+            "injected": False,
+            "ended_at": end.isoformat(),
+            "slots": [{"system": "opspilot", "position": 1, "status": "ran"}],
+        },
+    )
+    assert not dispatcher.stopped("l0")
+    assert dispatcher.labs["l0"].last_restored == end
+
+
+def test_check_does_not_fall_back_to_the_end(rules):
+    plan = _plan_json(("a-r1", "a", ("opspilot",)), ("b-r1", "b", ("opspilot",)))
+    first = _record("a-r1", "a", "l0", T0, order=("opspilot",), restored_at=None)
+    later = _record("b-r1", "b", "l0", T0 + timedelta(hours=2), order=("opspilot",))
+    found = es.check(plan, _log([first, later]), rules)["violations"]
+    assert "RESTORE_UNCONFIRMED:a-r1" in found
+    assert "AFTER_UNCONFIRMED_RESTORE:b-r1" in found
+
+
+def test_runner_exit_4_stops_its_lab_in_run_schedule(rules):
+    class Exit4(FakeRunner):
+        def run(self, lab, window):
+            record = super().run(lab, window)
+            if lab == "l0":
+                record["exit_code"] = 4
+            return record
+
+    fast = replace(
+        rules,
+        same_scenario_gap=timedelta(seconds=0.05),
+        wash_min=timedelta(seconds=0.01),
+    )
+    windows = [es.Window(f"s{i}-r1", f"s{i}", 1, ("opspilot",)) for i in range(6)]
+    runner = Exit4()
+    records = es.run_schedule(windows, ("l0", "l1"), fast, runner, poll_seconds=0.01)
+    on_l0 = [lab for lab, _ in runner.calls if lab == "l0"]
+    assert len(on_l0) == 1
+    # the l0 window is interrupted-by-rule (HARNESS) only if flagged; here it
+    # ran, so every other window ran on l1
+    assert len(records) == 6
+
+
+def test_lab_restart_reruns_the_pair(rules):
+    record = {
+        "slots": [
+            {"system": "opspilot", "status": "ran"},
+            {"system": "holmes", "status": "ran"},
+        ],
+        "lab_restarts": {
+            "before": "j/jaeger=2",
+            "after": "j/jaeger=3",
+            "changed": True,
+        },
+    }
+    out = es.decide(record, rules)
+    assert out["void"] == "LAB_RESTARTED" and out["action"] == "rerun_pair"
+    record["lab_restarts"]["changed"] = None  # unknown: recorded, not voided
+    assert es.decide(record, rules)["void"] is None
+
+
+def test_probe_baseline_comes_from_the_record_on_a_shared_host(rules):
+    record = {
+        "shared_host": True,
+        "baseline_p95_ms": 700.0,
+        "probe_baseline_p95_ms": 300.0,
+        "slots": [{"system": "opspilot", "status": "ran"}],
+    }
+    assert es.decide(record, rules)["void"] == "HOST_NOISE"
+
+
+def test_check_lists_voided_attempts_of_both_systems(rules, tmp_path):
+    both = ("opspilot", "holmes")
+    plan = _plan_json(("a-r1", "a", both), ("b-r1", "b", both))
+    voided = _record(
+        "a-r1",
+        "a",
+        "l0",
+        T0,
+        void="LAB_RESTARTED",
+        decision={
+            "action": "rerun_pair",
+            "systems": list(both),
+            "note": "lab store restarted, rerun per rule",
+        },
+    )
+    voided["slots"][0]["attempt_id"] = "ops-1"
+    voided["slots"][1]["attempt_id"] = "holmes-1"
+    rerun = _record("a-r1-rerun", "a", "l0", T0 + timedelta(minutes=80))
+    rerun["slots"][0]["attempt_id"] = "ops-2"
+    rerun["slots"][1]["attempt_id"] = "holmes-2"
+    slot_void = _record(
+        "b-r1",
+        "b",
+        "l1",
+        T0,
+        void="ENV_SETUP_FAILED",
+        decision={
+            "action": "rerun_slot",
+            "systems": ["holmes"],
+            "note": "environment not ready, rerun per rule",
+        },
+    )
+    slot_void["slots"][1].update(status="setup_failed", attempt_id="holmes-3")
+    slot_rerun = _record(
+        "b-r1-rerun", "b", "l1", T0 + timedelta(minutes=80), order=("holmes",)
+    )
+    slot_rerun["slots"][0]["attempt_id"] = "holmes-4"
+    result = es.check(plan, _log([voided, rerun, slot_void, slot_rerun]), rules)
+    assert result["violations"] == []
+    rows = {(a["system"], a["voided_attempt_id"]): a for a in result["voided_attempts"]}
+    assert set(rows) == {
+        ("opspilot", "ops-1"),
+        ("holmes", "holmes-1"),
+        ("holmes", "holmes-3"),
+    }
+    assert rows[("opspilot", "ops-1")]["rule"] == "LAB_RESTARTED"
+    assert rows[("holmes", "holmes-3")]["rerun_attempt_id"] == "holmes-4"
+    registry = es.dev_round_reruns(result)
+    assert registry["reruns"] == [
+        {
+            "voided_attempt_id": "ops-1",
+            "rerun_attempt_id": "ops-2",
+            "note": "lab store restarted, rerun per rule",
+            "rule": "LAB_RESTARTED",
+        }
+    ]
+
+
+def test_dev_round_accepts_a_schedule_void_of_a_run_that_ran():
+    from scripts.eval_dev_round import DevRoundError, _registered_reruns
+
+    started = {
+        "ops-1": {
+            "status": "ran",
+            "product_run_id": "run-1",
+            "scenario_id": "a",
+            "fault": {
+                "started_at": "2026-11-05T00:00:00+00:00",
+                "ended_at": "2026-11-05T00:20:00+00:00",
+            },
+        },
+        "ops-2": {
+            "status": "ran",
+            "product_run_id": "run-2",
+            "scenario_id": "a",
+            "fault": {
+                "started_at": "2026-11-05T02:00:00+00:00",
+                "ended_at": "2026-11-05T02:20:00+00:00",
+            },
+        },
+    }
+    entry = {
+        "voided_attempt_id": "ops-1",
+        "rerun_attempt_id": "ops-2",
+        "note": "n",
+        "rule": "HOST_NOISE",
+    }
+    registry = {"schema": "opspilot-eval-dev-reruns-1", "reruns": [entry]}
+    assert _registered_reruns(registry, started)["ops-1"]["rule"] == "HOST_NOISE"
+    # without a rule (#432) or with ENV_SETUP_FAILED, a Run that ran is not eligible
+    for rule in (None, "ENV_SETUP_FAILED"):
+        registry["reruns"] = [{**entry, "rule": rule}]
+        with pytest.raises(DevRoundError, match="RERUN_NOT_ELIGIBLE"):
+            _registered_reruns(registry, started)
+    registry["reruns"] = [{**entry, "rule": "WHATEVER"}]
+    with pytest.raises(DevRoundError, match="RERUNS_INVALID"):
+        _registered_reruns(registry, started)
+
+
+def test_dev_round_cli_defaults_to_three_slots():
+    from scripts import eval_dev_round
+
+    assert eval_dev_round.CLI_SLOTS_PER_SCENARIO == 3

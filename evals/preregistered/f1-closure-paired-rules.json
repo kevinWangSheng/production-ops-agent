@@ -1,6 +1,6 @@
 {
   "schema": "opspilot-eval-preregistered-rules-1",
-  "rules_id": "f1-closure-paired-r2",
+  "rules_id": "f1-closure-paired-r3",
   "registered_at": "2026-11-04",
   "registered_before": "the F1 closure exam set is generated (rulings U1 revision, 2026-11-04 07:40 PT: void/rerun rules are written before the questions)",
   "sources": [
@@ -40,6 +40,12 @@
         "note": "host noise, pair rerun per rule"
       },
       {
+        "code": "LAB_RESTARTED",
+        "when": "a telemetry store container of the lab (jaeger, prometheus-server) restarted or was replaced between the window's pre-injection baseline and the end of its wash (pod/container restart counts differ), e.g. Jaeger OOMKilled under the homepage flood, which wipes the trace store",
+        "action": "rerun_pair",
+        "note": "lab store restarted, rerun per rule"
+      },
+      {
         "code": "HARNESS_INTERRUPTED",
         "when": "the driver was interrupted or crashed (exit 130, exit 4 retained fault recovered by --recover) before both slots of the window finished",
         "action": "rerun_pair",
@@ -66,7 +72,7 @@
       "contamination flags (reported per slot, with a sensitivity row that excludes flagged slots)",
       "a scheduling gap or wash shorter than the minimum (reported as a schedule violation, never silently dropped)"
     ],
-    "precedence": "HOST_NOISE, HARNESS_INTERRUPTED, ENV_SETUP_FAILED, PROVIDER_5XX_STORM: the first class that applies decides"
+    "precedence": "HOST_NOISE, LAB_RESTARTED, HARNESS_INTERRUPTED, ENV_SETUP_FAILED, PROVIDER_5XX_STORM: the first class that applies decides"
   },
   "denominator": "every started slot counts; a voided slot leaves the score but stays in voided_attempts; a planned slot that never started counts as a failure",
   "records_per_slot": [
@@ -74,10 +80,18 @@
     "window_id",
     "system",
     "position",
+    "attempt_id",
     "predecessor",
     "contamination",
-    "host_noise",
+    "host_noise (steal_percent, load1)",
     "started_at",
     "ended_at"
+  ],
+  "lab_state": {
+    "restore_unconfirmed": "a window that injected and has no confirmed restore, a driver exit 4 (retained fault) or an interrupted window stops its lab: no later window starts there and the wash and same-scenario gap are not advanced until an engineer ran eval_live --recover; the lab's pending windows go to the other labs"
+  },
+  "records_per_window": [
+    "baseline_p95_ms (before injection)",
+    "lab_restarts (before, after, changed)"
   ]
 }
