@@ -33,6 +33,7 @@ import sys
 import time
 import urllib.request
 from collections import Counter
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -187,7 +188,10 @@ def setup(
     capture: bool = False,
     script: Path | None = None,
     alerts: Path | None = None,
+    egress_extra: Sequence[str] = (),
 ) -> None:
+    """``egress_extra``: further ``relay.py connect`` options, e.g. the
+    dataset runner's ``--inject-503`` (S7)."""
     teardown()
     docker("network", "create", "--internal", NETWORK)
     docker(
@@ -211,6 +215,7 @@ def setup(
             "connect",
             "--allow",
             f"{hconfig.MODEL_HOST}:443",
+            *egress_extra,
         )
     )
     docker("network", "connect", NETWORK, EGRESS)
