@@ -1,6 +1,6 @@
 # F1 收尾 S7a：Q9 二值 judge 与判分汇总
 
-- 状态：进行中（实现完成；独立验收 31/32 通过，1 条有异议，已报 lead；待审查）
+- 状态：进行中（实现完成；独立验收 32/32 通过；待审查）
 - 更新日期：2026-11-04
 - 依据：裁决 `~/.agent/handoffs/opspilot-rulings-2026-11-04-f1-closure.md`（U3）；预审 `opspilot-prereview-f1-closure-plan-2026-11-04.md` §1 D、R10、R11、§3.3 第 2 类；M3 方向裁决 Q9、Q11；收口合同 r1 六类表的「判法」列（`2026-10-27-m3-closure-contract.md`）。F1 第 4 步。
 - 工作区：`feature/F1-s7-binary-judge`，`/Users/shenghuikevin/dev/AI/poa-s7-judge`
@@ -32,7 +32,7 @@
 
 ## 证据
 
-- 独立验收 `tests/acceptance/test_s7a_binary_scoring.py`（提交 eca22936，未改）：31/32 通过。未通过的一条见待决。
+- 独立验收 `tests/acceptance/test_s7a_binary_scoring.py`（提交 eca22936，以及测试作者的修正 9ca39154）：32/32 通过。
 - 实现侧 `tests/test_binary_judge.py` 18 项通过，其中端到端一项跑在 #432 的 36 个证据槽位上，用假客户端。ruff 通过；mypy 全仓 155 个文件通过。
 - 离线验证（假 judge，没有发出真实请求）：在 #432 的 36 个槽位上加 `--recording-root poa-432-impl/tmp/eval`，32 份报告的证据都和录制重新推出的结果一致。F14 HolmesGPT run1 的原始输出包成 S7b 的轮次格式，当作 dv2-2b214b 送入。结果：
   - 「只确定性」8 次，正是 #432 gate 不过的那 4 题；
@@ -44,6 +44,6 @@
 
 ## 待决
 
-- 验收第 152–161 行要求 `polarity` 翻转会改变 prompt（注释：「fault: root cause found; normal: no false attribution」）。实现按是否有注入故障（`signature`）选问句，原因见上表「有无故障怎么判」。改断言还是改实现由 lead 定；按 polarity 选问句，会在上面 4 道有故障的 negative 题上告诉 judge「没有故障」。
+- （已解决）验收原来要求按 polarity 选问句；lead 核对后裁为按有无 signature 选，测试作者在 9ca39154 改了断言，实现不变。
 - S7b 的轮次 summary 每个 slot 还没有 `read_only` 字段，HolmesGPT 侧的只读检查目前记为不适用。
 - 真实 judge 运行（S11）前，用户确认 judge key 有效、余额够（H6）。
