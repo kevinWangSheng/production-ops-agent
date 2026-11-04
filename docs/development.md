@@ -168,6 +168,15 @@ Compose 环境目录已不存在；M1-02 起实验环境是 colima profile `m1-k
 .venv/bin/python scripts/kind_lab.py stop      # 只 colima stop；集群与 release 保留，再 up 约 90 s
 ```
 
+Linux 主机（F1 收尾 S4，Ubuntu 24.04 x86_64）：`sudo scripts/kind_lab/install_linux.sh` 装固定版本的 Docker Engine（Docker apt 源，密钥按钉住的 SHA-256 校验，包 hold）、kind、kubectl、helm（发布二进制按钉住的 SHA-256 校验）和 htpasswd，调高 kind 需要的 inotify 上限，然后跑 `python3 scripts/kind_lab.py up`（`--no-up` 只装工具）。不碰防火墙、不开端口，NodePort 仍只发布在 127.0.0.1。同一组命令在 Linux 上的差别（`kind_lab.lab_runtime`，`OPSPILOT_LAB_RUNTIME=colima|docker` 可覆盖）：
+
+- docker 走默认 socket，不设 `DOCKER_CONTEXT`，环境里继承来的 `DOCKER_CONTEXT`、`DOCKER_HOST` 也会被去掉（两个平台都是）；需要指定上下文时用 `OPSPILOT_LAB_DOCKER_CONTEXT`。macOS 仍是 `colima-m1-kind`。
+- 不调 colima：`up` 以「kind 集群已存在」代替「VM 在运行」跳过内存检查，并 `docker start` 节点容器；`stop` 只 `docker stop opspilot-m1-control-plane`，集群与 release 保留。
+- 内存检查读 `/proc/meminfo` 的 `MemAvailable`（门槛同为 3 GiB）。
+- Alertmanager webhook 和 OpsPilot 健康端点的抓取目标：Linux 上不再用 colima 的 `192.168.5.2`，改为控制侧容器在 `kind` 网络上的别名，即 `opspilot-web:8080` 的 webhook 和 `opspilot-{web,worker,observer}:9464` 的抓取目标（容器端口，与 #393 的接法相同）。控制侧装好后跑 `python3 scripts/kind_lab.py connect-control --project <Compose 项目名>`，把三个运行时容器以这些别名接进 `kind` 网络；可以重复运行，缺服务时退出码为 1。Compose 每次重建容器都会断开这个连接，所以 `install.sh upgrade` 后要再跑一次。这样控制侧仍然只发布在 127.0.0.1 上，也不用改防火墙。接不进 kind 网络时可以用 `OPSPILOT_LAB_HOST_ADDRESS=<地址>` 退回主机地址加主机端口：这时服务要监听在该地址上，防火墙也要放行 kind 网段。替换后的 values 写到 `tmp/m1-kind-lab/rendered/`，`up` 和 `rules-check` 都读这里；macOS 仍直接用仓库里的文件。
+- Holmes runner 的时钟检查在 Linux 上直接读主机时钟（没有 VM），swap 记录读 `/proc/meminfo`。
+- 窗口锁：macOS 用 `lockf ~/.agent/locks/kind-lab <命令>`，Linux 用同样写法的 `flock ~/.agent/locks/kind-lab <命令>`（util-linux 自带）。
+
 开 kind 窗口前先跑 `gh issue list --label needs-kind-run --state open`，把待补跑的真实 Run 并入本窗口；跑完在对应 issue 附证据并关闭。需要留到下一个 kind 窗口补跑的项，开 issue 时打 `needs-kind-run` 标签。
 
 Prometheus 基本认证（M1-02 第 4 步，D3）：`up` 首次生成 `tmp/m1-kind-lab/prometheus-auth.json`（600，四个账号 observer / investigator / collector / lab 的口令），把 bcrypt 哈希渲染成 Secret `prometheus-web-config`（Prometheus `--web.config.file`）、把 collector 推送用的口令渲染成 Secret `prometheus-web-auth`（collector `basicauth` 扩展），并写 `prometheus-observer.env` / `prometheus-investigator.env`（600，各只含该角色自己的变量名）；`kind_lab.py env-file <role>` 可重写。口令不进仓库、values、日志与证据。限制：Prometheus 自带 basic auth 对所有账号权限相同，合同要求的是独立凭据而非不同权限；Prometheus 探针改为 TCP、configmap-reload 侧车关闭（二者否则需要凭据或会 401）。工程脚本（`kind_lab.py health`、`scripts/otel_demo_observe.py`、`docs/evidence/m1-02-health-profile/collect_baseline.py`）经 `kind_lab.lab_authorization()` 用 `lab` 账号：优先 `OPSPILOT_LAB_PROMETHEUS_USERNAME/_PASSWORD`（`kind_lab.py env-file lab`），否则读 auth 文件；都没有时请求匿名、401 如实报出。
