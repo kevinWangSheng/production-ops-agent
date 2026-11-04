@@ -30,6 +30,7 @@ LAB_VARS = (
     "OPSPILOT_LAB_RUNTIME",
     "OPSPILOT_LAB_DOCKER_CONTEXT",
     "OPSPILOT_LAB_HOST_ADDRESS",
+    "OPSPILOT_LAB_HOST_PORTS",
     "DOCKER_CONTEXT",
     "DOCKER_HOST",
 )
@@ -234,6 +235,58 @@ def test_host_address_fallback(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) 
     )
     assert hooks == ["http://172.18.0.1:8080/intake/alertmanager"]
     assert targets == ["172.18.0.1:19464", "172.18.0.1:19465", "172.18.0.1:19466"]
+
+
+def test_host_ports_override_for_the_soak_tunnel(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Soak S-R1: the reverse tunnel listens on the kind gateway with ports
+    that do not clash with the lab frontend (18080 on the rental host)."""
+    monkeypatch.setattr(kind_lab, "LAB_DIR", tmp_path)
+    _platform(monkeypatch, "linux")
+    monkeypatch.setenv("OPSPILOT_LAB_HOST_ADDRESS", "172.18.0.1")
+    monkeypatch.setenv(
+        "OPSPILOT_LAB_HOST_PORTS",
+        "webhook=28080, web=29464,worker=29465,observer=29466",
+    )
+    endpoints = kind_lab.lab_endpoints()
+    hooks, targets = _hooks_and_targets(
+        kind_lab.lab_values_file("alertmanager-values.yaml", endpoints),
+        kind_lab.lab_values_file("values.yaml", endpoints),
+    )
+    assert hooks == ["http://172.18.0.1:28080/intake/alertmanager"]
+    assert targets == ["172.18.0.1:29464", "172.18.0.1:29465", "172.18.0.1:29466"]
+
+
+def test_host_ports_partial_and_colima_address(monkeypatch: pytest.MonkeyPatch) -> None:
+    _platform(monkeypatch, "linux")
+    monkeypatch.setenv("OPSPILOT_LAB_HOST_ADDRESS", "192.168.5.2")
+    monkeypatch.setenv("OPSPILOT_LAB_HOST_PORTS", "webhook=28080")
+    endpoints = kind_lab.lab_endpoints()
+    assert endpoints == {
+        "webhook": "192.168.5.2:28080",
+        "web": "192.168.5.2:19464",
+        "worker": "192.168.5.2:19465",
+        "observer": "192.168.5.2:19466",
+    }
+
+
+@pytest.mark.parametrize(
+    "ports",
+    ["webhook=0", "webhook=65536", "webhook=8o80", "frontend=1", "webhook", "web=1,web=2"],
+)
+def test_host_ports_rejects_garbage(monkeypatch: pytest.MonkeyPatch, ports: str) -> None:
+    monkeypatch.setenv("OPSPILOT_LAB_HOST_ADDRESS", "172.18.0.1")
+    monkeypatch.setenv("OPSPILOT_LAB_HOST_PORTS", ports)
+    with pytest.raises(SystemExit):
+        kind_lab.lab_endpoints()
+
+
+def test_host_ports_require_a_host_address(monkeypatch: pytest.MonkeyPatch) -> None:
+    _platform(monkeypatch, "linux")
+    monkeypatch.setenv("OPSPILOT_LAB_HOST_PORTS", "webhook=28080")
+    with pytest.raises(SystemExit):
+        kind_lab.lab_endpoints()
 
 
 def test_host_address_rejects_garbage(monkeypatch: pytest.MonkeyPatch) -> None:

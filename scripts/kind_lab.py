@@ -72,7 +72,8 @@ NODE_CONTAINER = f"{CLUSTER}-control-plane"
 # ``m1-kind`` VM, its docker context and the colima host address. ``docker``
 # (Linux default): the host's own daemon on the default socket, no VM; the
 # control-side containers join the kind network (``connect-control``). Overrides:
-# OPSPILOT_LAB_RUNTIME, OPSPILOT_LAB_DOCKER_CONTEXT, OPSPILOT_LAB_HOST_ADDRESS.
+# OPSPILOT_LAB_RUNTIME, OPSPILOT_LAB_DOCKER_CONTEXT, OPSPILOT_LAB_HOST_ADDRESS,
+# OPSPILOT_LAB_HOST_PORTS.
 RUNTIMES = ("colima", "docker")
 # host.lima.internal under colima (vz, user-mode network): reaches the host
 # loopback. The committed values files carry this address.
@@ -319,21 +320,42 @@ def lab_endpoints() -> dict[str, str] | None:
 
     OPSPILOT_LAB_HOST_ADDRESS: that address with the host ports (fallback
     when the control side cannot join the kind network: it must then listen
-    on that address and the firewall must admit the kind subnet). Otherwise
+    on that address and the firewall must admit the kind subnet), each port
+    replaceable through OPSPILOT_LAB_HOST_PORTS (``_host_ports``). Otherwise
     colima: ``None``; docker: ``KIND_NETWORK_ENDPOINTS``.
     """
     configured = os.environ.get("OPSPILOT_LAB_HOST_ADDRESS")
+    ports = _host_ports(os.environ.get("OPSPILOT_LAB_HOST_PORTS", ""))
+    if ports and not configured:
+        raise SystemExit("OPSPILOT_LAB_HOST_PORTS needs OPSPILOT_LAB_HOST_ADDRESS")
     if configured:
         address = _checked_address(configured)
-        if address == COLIMA_HOST_ADDRESS:
+        if address == COLIMA_HOST_ADDRESS and not ports:
             return None
         return {
-            key: endpoint.replace(COLIMA_HOST_ADDRESS, address)
+            key: f"{address}:{ports.get(key, endpoint.rsplit(':', 1)[1])}"
             for key, endpoint in COLIMA_ENDPOINTS.items()
         }
     if lab_runtime() == "colima":
         return None
     return dict(KIND_NETWORK_ENDPOINTS)
+
+
+def _host_ports(spec: str) -> dict[str, int]:
+    """OPSPILOT_LAB_HOST_PORTS: ``key=port`` pairs (keys of COLIMA_ENDPOINTS)
+    replacing the host ports with the host address fallback. The 72h soak
+    (S-R1) needs them: its reverse tunnel listens on the kind gateway, where
+    18080 is the lab frontend's port on that host."""
+    ports: dict[str, int] = {}
+    for item in filter(None, (part.strip() for part in spec.split(","))):
+        key, sep, value = item.partition("=")
+        key, value = key.strip(), value.strip()
+        if not sep or key not in COLIMA_ENDPOINTS or key in ports:
+            raise SystemExit(f"lab host ports: bad entry {item!r}")
+        if not value.isdigit() or not 0 < int(value) < 65536:
+            raise SystemExit(f"lab host ports: bad port {item!r}")
+        ports[key] = int(value)
+    return ports
 
 
 def _checked_address(address: str) -> str:
