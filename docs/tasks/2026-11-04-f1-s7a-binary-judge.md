@@ -46,4 +46,4 @@
 
 - （已解决）验收原来要求按 polarity 选问句；lead 核对后裁为按有无 signature 选，测试作者在 9ca39154 改了断言，实现不变。
 - S7b 的轮次 summary 每个 slot 还没有 `read_only` 字段，HolmesGPT 侧的只读检查目前记为不适用。
-- 真实 judge 运行（S11）前，用户确认 judge key 有效、余额够（H6）。
+- （已解决）H6：用户已确认两家 judge 的 key 有效，余额各 ≥ $20；z.ai 走 `GLM_API_KEY` 回退（lead 转达，2026-11-04）。
