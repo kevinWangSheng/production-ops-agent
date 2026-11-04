@@ -33,6 +33,9 @@
   - 内存：每 30 秒用 `free -m` 采样一次，共 34 次。峰值 used 2526 MiB，最低 available 13457 MiB，swap 0。`docker stats` 显示节点约 2.0 GiB（重启后 1.7 GiB）。
   - 公网监听只有 22；ufw 没动；主机上没有放模型 key 或 LangSmith key，也没有调用模型。
 
+- 独立审查：Codex `gpt-6-astra`，全新上下文，会话 `01a1a741…`，只拿到目标、预审 §1 B、本记录和 PR diff。发现 1 项阻塞：Linux 默认路径没有清掉 shell 里继承的 `DOCKER_CONTEXT`，lab 仍会连到那个上下文。处理方法是先补回归测试（修复前 1 项失败），再在 `kind_lab.docker_env` 和 Holmes 的 `docker_env` 里先去掉继承值。复验通过：Linux 走默认 socket；`OPSPILOT_LAB_DOCKER_CONTEXT`、`F14_DOCKER_CONTEXT` 和 macOS 的 colima 上下文照常生效；没有引入新缺口。其余要求逐项核对，都已满足。
+- 收尾四个数：实施期间新冒出的合同问题 0；因合同变更重写的测试 0；环境重跑次数 2（主机上一次 stop/up 循环、一次 kind 网络接法的 `up`）；用户裁决轮数 0（接线方式由 lead 定为可逆细节）。
+
 ## 未完成与交接
 
 - pod 到控制侧的连通已解决，2026-11-04 15:48 UTC 在主机上实测。先确认旧做法确实不通：主机网关加临时监听时，主机访问得到 200，Alertmanager pod 访问超时，原因是 ufw 默认拒绝入站。改为 kind 网络之后：先 `up` 重新渲染，再起 3 个带 Compose 标签的临时探针容器（项目 `s4probe`，不发布端口），用 `connect-control --project s4probe` 接入（再次运行显示 already connected，项目不存在时退出码 1）。随后 pod 访问 `opspilot-web:9464` 得到 200；用 `amtool alert add` 发一条测试告警，探针记到 `POST /intake/alertmanager`，带 Bearer、683 字节；Prometheus `up{job="opspilot"}` 三个目标都是 1。探针容器、网络和测试告警都已清掉（告警 3 分钟后过期），ufw 没动。
