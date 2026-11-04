@@ -13,7 +13,8 @@ the workbench on the host with a bearer token (``webhook_token``).
 On a Linux host (F1 closure S4, ``lab_runtime``) the same commands use the
 host's docker daemon on the default socket instead of a colima VM, read
 ``/proc/meminfo`` for the memory check and point the webhook and the OpsPilot
-scrape targets at the kind bridge gateway; ``scripts/kind_lab/install_linux.sh``
+scrape targets at the control-side containers joined to the kind network
+(``connect-control``); ``scripts/kind_lab/install_linux.sh``
 installs the pinned tools and runs ``up``.
 
 ``up`` checks host memory, starts the colima profile, creates the kind
@@ -70,7 +71,7 @@ NODE_CONTAINER = f"{CLUSTER}-control-plane"
 # Where the lab runs (F1 closure S4). ``colima`` (macOS default): the
 # ``m1-kind`` VM, its docker context and the colima host address. ``docker``
 # (Linux default): the host's own daemon on the default socket, no VM; the
-# host is reached from pods at the kind bridge gateway. Overrides:
+# control-side containers join the kind network (``connect-control``). Overrides:
 # OPSPILOT_LAB_RUNTIME, OPSPILOT_LAB_DOCKER_CONTEXT, OPSPILOT_LAB_HOST_ADDRESS.
 RUNTIMES = ("colima", "docker")
 # host.lima.internal under colima (vz, user-mode network): reaches the host
@@ -284,41 +285,51 @@ def docker_context() -> str | None:
     return CONTEXT if lab_runtime() == "colima" else None
 
 
-def lab_host_address() -> str:
-    """The address pods use for the host: the Alertmanager webhook target and
-    the OpsPilot health scrape targets.
+#: The OpsPilot endpoints the committed values address under colima: the
+#: workbench webhook and the three health listeners as compose.lab.yaml
+#: publishes them on the host loopback.
+COLIMA_ENDPOINTS = {
+    "webhook": f"{COLIMA_HOST_ADDRESS}:8080",
+    "web": f"{COLIMA_HOST_ADDRESS}:19464",
+    "worker": f"{COLIMA_HOST_ADDRESS}:19465",
+    "observer": f"{COLIMA_HOST_ADDRESS}:19466",
+}
+#: Linux default: the control-side containers join the ``kind`` docker
+#: network under these aliases (``connect-control``) and pods reach their
+#: container ports directly; the control side keeps publishing on 127.0.0.1
+#: only and the host firewall is not involved (the #393 wiring).
+CONTROL_SERVICES = ("web", "worker", "observer")
+CONTROL_ALIASES = {service: f"opspilot-{service}" for service in CONTROL_SERVICES}
+KIND_NETWORK_ENDPOINTS = {
+    "webhook": f"{CONTROL_ALIASES['web']}:8080",
+    "web": f"{CONTROL_ALIASES['web']}:9464",
+    "worker": f"{CONTROL_ALIASES['worker']}:9464",
+    "observer": f"{CONTROL_ALIASES['observer']}:9464",
+}
 
-    OPSPILOT_LAB_HOST_ADDRESS when set; colima: ``host.lima.internal``;
-    docker: the IPv4 gateway of the ``kind`` bridge network (a service there
-    must listen on that address, not only on 127.0.0.1).
+
+def lab_endpoints() -> dict[str, str] | None:
+    """Where pods send the webhook and scrape the OpsPilot health listeners,
+    as replacements for the committed ``COLIMA_ENDPOINTS``; ``None`` keeps the
+    committed values (colima).
+
+    OPSPILOT_LAB_HOST_ADDRESS: that address with the host ports (fallback
+    when the control side cannot join the kind network: it must then listen
+    on that address and the firewall must admit the kind subnet). Otherwise
+    colima: ``None``; docker: ``KIND_NETWORK_ENDPOINTS``.
     """
     configured = os.environ.get("OPSPILOT_LAB_HOST_ADDRESS")
     if configured:
-        return _checked_address(configured)
+        address = _checked_address(configured)
+        if address == COLIMA_HOST_ADDRESS:
+            return None
+        return {
+            key: endpoint.replace(COLIMA_HOST_ADDRESS, address)
+            for key, endpoint in COLIMA_ENDPOINTS.items()
+        }
     if lab_runtime() == "colima":
-        return COLIMA_HOST_ADDRESS
-    proc = capture(
-        ["docker", "network", "inspect", "kind", "-f", "{{json .IPAM.Config}}"],
-        timeout=30,
-        env=docker_env(),
-    )
-    gateways: list[str] = []
-    if proc.returncode == 0:
-        try:
-            gateways = [
-                str(item.get("Gateway", ""))
-                for item in json.loads(proc.stdout.strip() or "[]")
-                if isinstance(item, dict)
-            ]
-        except ValueError:
-            gateways = []
-    ipv4 = [gw for gw in gateways if gw.count(".") == 3]
-    if not ipv4:
-        raise SystemExit(
-            "no IPv4 gateway on the docker network 'kind'; create the cluster "
-            "first or set OPSPILOT_LAB_HOST_ADDRESS"
-        )
-    return _checked_address(ipv4[0])
+        return None
+    return dict(KIND_NETWORK_ENDPOINTS)
 
 
 def _checked_address(address: str) -> str:
@@ -328,21 +339,99 @@ def _checked_address(address: str) -> str:
     return address
 
 
-def lab_values_file(name: str, address: str) -> Path:
+def lab_values_file(name: str, endpoints: dict[str, str] | None) -> Path:
     """The values file ``helm`` gets for ``scripts/kind_lab/<name>``.
 
-    The committed file itself under the colima address (macOS behaviour
-    unchanged); otherwise a copy under LAB_DIR with the colima host address
-    replaced by ``address`` (the webhook URL and the OpsPilot scrape targets
-    are its only uses).
+    The committed file itself when ``endpoints`` is ``None`` (macOS
+    behaviour unchanged); otherwise a copy under LAB_DIR with each committed
+    endpoint replaced (comments keep their wording), refusing a file whose
+    values still name the colima address.
     """
     source = CONFIG / name
-    if address == COLIMA_HOST_ADDRESS:
+    if endpoints is None:
         return source
+    text = source.read_text()
+    for key, committed in COLIMA_ENDPOINTS.items():
+        text = text.replace(committed, endpoints[key])
+    if any(
+        COLIMA_HOST_ADDRESS in line and not line.lstrip().startswith("#")
+        for line in text.splitlines()
+    ):
+        raise SystemExit(f"{name}: unmapped {COLIMA_HOST_ADDRESS} endpoint; refusing")
     rendered = LAB_DIR / "rendered" / name
     rendered.parent.mkdir(parents=True, exist_ok=True)
-    rendered.write_text(source.read_text().replace(COLIMA_HOST_ADDRESS, address))
+    rendered.write_text(text)
     return rendered
+
+
+def control_containers(project: str) -> dict[str, list[str]]:
+    """Container ids of each control-side service of a Compose project."""
+    found: dict[str, list[str]] = {}
+    for service in CONTROL_SERVICES:
+        proc = capture(
+            [
+                "docker",
+                "ps",
+                "-q",
+                "--filter",
+                f"label=com.docker.compose.project={project}",
+                "--filter",
+                f"label=com.docker.compose.service={service}",
+            ],
+            timeout=30,
+            env=docker_env(),
+        )
+        found[service] = proc.stdout.split() if proc.returncode == 0 else []
+    return found
+
+
+def cmd_connect_control(args: argparse.Namespace) -> int:
+    """Join the running web/worker/observer containers of a Compose project
+    to the ``kind`` network under ``CONTROL_ALIASES`` (idempotent). Compose
+    recreating a container drops the connection: run again after
+    ``install.sh upgrade``."""
+    env = docker_env()
+    report: dict[str, str] = {}
+    for service, ids in control_containers(args.project).items():
+        if len(ids) != 1:
+            report[service] = "missing" if not ids else "ambiguous"
+            continue
+        (container,) = ids
+        inspect = capture(
+            [
+                "docker",
+                "inspect",
+                container,
+                "-f",
+                "{{json .NetworkSettings.Networks}}",
+            ],
+            timeout=30,
+            env=env,
+        )
+        try:
+            networks = json.loads(inspect.stdout or "{}")
+        except ValueError:
+            networks = {}
+        if "kind" in networks:
+            report[service] = "already connected"
+            continue
+        proc = run(
+            [
+                "docker",
+                "network",
+                "connect",
+                "--alias",
+                CONTROL_ALIASES[service],
+                "kind",
+                container,
+            ],
+            env=env,
+            timeout=60,
+        )
+        report[service] = "connected" if proc.returncode == 0 else "failed"
+    print(json.dumps({"project": args.project, "kind_network": report}))
+    ok = all(v in ("connected", "already connected") for v in report.values())
+    return 0 if ok else 1
 
 
 def kubectl(*args: str) -> list[str]:
@@ -1123,8 +1212,8 @@ def cmd_up(args: argparse.Namespace) -> int:
         if not cached:
             return proc.returncode
         print("helm repo update failed; using the cached indexes (pinned versions)")
-    host_address = lab_host_address()
-    print(json.dumps({"lab_host_address": host_address}))
+    endpoints = lab_endpoints()
+    print(json.dumps({"lab_endpoints": endpoints or COLIMA_ENDPOINTS}))
     proc = run(
         helm(
             "upgrade",
@@ -1137,7 +1226,7 @@ def cmd_up(args: argparse.Namespace) -> int:
             NAMESPACE,
             "--create-namespace",
             "--values",
-            str(lab_values_file("values.yaml", host_address)),
+            str(lab_values_file("values.yaml", endpoints)),
             # The fault hook's ``kubectl patch`` (and a 2026-10-10 hand patch
             # of the rule file) own ConfigMap fields under server-side apply,
             # so a changed value there conflicts (seen 2026-10-31 adding the
@@ -1187,7 +1276,7 @@ def cmd_up(args: argparse.Namespace) -> int:
             "--namespace",
             NAMESPACE,
             "--values",
-            str(lab_values_file("alertmanager-values.yaml", host_address)),
+            str(lab_values_file("alertmanager-values.yaml", endpoints)),
             "--timeout",
             "5m",
         ),
@@ -1297,7 +1386,7 @@ def _render(release: str, chart: str, version: str, values: str, show: str) -> s
             "--namespace",
             NAMESPACE,
             "--values",
-            str(lab_values_file(values, lab_host_address())),
+            str(lab_values_file(values, lab_endpoints())),
             "--show-only",
             show,
         ),
@@ -1565,6 +1654,12 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser(
         "stop", help="stop the VM (Linux: the node); keep cluster and releases"
     ).set_defaults(func=cmd_stop)
+    connect = sub.add_parser(
+        "connect-control",
+        help="join a Compose project's web/worker/observer to the kind network",
+    )
+    connect.add_argument("--project", required=True)
+    connect.set_defaults(func=cmd_connect_control)
     env_file = sub.add_parser(
         "env-file", help="write a role's Prometheus credential env file (mode 600)"
     )

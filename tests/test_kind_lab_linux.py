@@ -144,78 +144,145 @@ def test_macos_memory_still_uses_vm_stat(monkeypatch: pytest.MonkeyPatch) -> Non
     assert seen == [["vm_stat"]]
 
 
-# --- host address (webhook + OpsPilot scrape targets)
-
-GATEWAYS = (
-    '[{"Subnet":"fc00:f853:ccd:e793::/64","Gateway":"fc00:f853:ccd:e793::1"},'
-    '{"Subnet":"172.18.0.0/16","Gateway":"172.18.0.1"}]'
-)
+# --- webhook + OpsPilot scrape targets
 
 
-def test_host_address_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
-    _platform(monkeypatch, "darwin")
-    assert kind_lab.lab_host_address() == "192.168.5.2"
-    _platform(monkeypatch, "linux")
-    seen: list[list[str]] = []
-
-    def fake(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
-        seen.append(cmd)
-        return subprocess.CompletedProcess(cmd, 0, GATEWAYS + "\n", "")
-
-    monkeypatch.setattr(kind_lab, "capture", fake)
-    assert kind_lab.lab_host_address() == "172.18.0.1"
-    assert seen and seen[0][:4] == ["docker", "network", "inspect", "kind"]
-    monkeypatch.setenv("OPSPILOT_LAB_HOST_ADDRESS", "10.0.0.7")
-    assert kind_lab.lab_host_address() == "10.0.0.7"
-
-
-def test_host_address_refuses_without_kind_network(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    _platform(monkeypatch, "linux")
-    monkeypatch.setattr(
-        kind_lab,
-        "capture",
-        lambda cmd, **kw: subprocess.CompletedProcess(cmd, 1, "", "no such network"),
+def _hooks_and_targets(am: Path, demo: Path) -> tuple[list[str], list[str]]:
+    hooks = [
+        hook["url"]
+        for receiver in yaml.safe_load(am.read_text())["config"]["receivers"]
+        for hook in receiver.get("webhook_configs", [])
+    ]
+    scrape = yaml.safe_load(
+        yaml.safe_load(demo.read_text())["prometheus"]["extraScrapeConfigs"]
     )
-    with pytest.raises(SystemExit):
-        kind_lab.lab_host_address()
+    targets = [t for job in scrape for c in job["static_configs"] for t in c["targets"]]
+    return hooks, targets
+
+
+def test_macos_keeps_the_committed_values(monkeypatch: pytest.MonkeyPatch) -> None:
+    _platform(monkeypatch, "darwin")
+    assert kind_lab.lab_endpoints() is None
+    for name in ("values.yaml", "alertmanager-values.yaml"):
+        assert kind_lab.lab_values_file(name, None) == kind_lab.CONFIG / name
+    monkeypatch.setenv("OPSPILOT_LAB_HOST_ADDRESS", "192.168.5.2")
+    _platform(monkeypatch, "linux")
+    assert kind_lab.lab_endpoints() is None
+
+
+def test_linux_targets_control_containers_on_the_kind_network(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(kind_lab, "LAB_DIR", tmp_path)
+    _platform(monkeypatch, "linux")
+
+    def no_command(*args: object, **kwargs: object) -> None:
+        raise AssertionError("resolving the endpoints must not run a command")
+
+    monkeypatch.setattr(kind_lab, "capture", no_command)
+    endpoints = kind_lab.lab_endpoints()
+    am = kind_lab.lab_values_file("alertmanager-values.yaml", endpoints)
+    demo = kind_lab.lab_values_file("values.yaml", endpoints)
+    assert tmp_path in am.parents and tmp_path in demo.parents
+    values = [
+        line
+        for line in (am.read_text() + demo.read_text()).splitlines()
+        if not line.lstrip().startswith("#")
+    ]
+    assert not [line for line in values if "192.168.5.2" in line]
+    hooks, targets = _hooks_and_targets(am, demo)
+    assert hooks == ["http://opspilot-web:8080/intake/alertmanager"]
+    assert targets == [
+        "opspilot-web:9464",
+        "opspilot-worker:9464",
+        "opspilot-observer:9464",
+    ]
+    # nothing else in the files changes
+    committed = (kind_lab.CONFIG / "alertmanager-values.yaml").read_text()
+    assert am.read_text() == committed.replace("192.168.5.2:8080", "opspilot-web:8080")
+
+
+def test_host_address_fallback(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(kind_lab, "LAB_DIR", tmp_path)
+    _platform(monkeypatch, "linux")
+    monkeypatch.setenv("OPSPILOT_LAB_HOST_ADDRESS", "172.18.0.1")
+    endpoints = kind_lab.lab_endpoints()
+    hooks, targets = _hooks_and_targets(
+        kind_lab.lab_values_file("alertmanager-values.yaml", endpoints),
+        kind_lab.lab_values_file("values.yaml", endpoints),
+    )
+    assert hooks == ["http://172.18.0.1:8080/intake/alertmanager"]
+    assert targets == ["172.18.0.1:19464", "172.18.0.1:19465", "172.18.0.1:19466"]
 
 
 def test_host_address_rejects_garbage(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("OPSPILOT_LAB_HOST_ADDRESS", "1.2.3.4/evil")
     with pytest.raises(SystemExit):
-        kind_lab.lab_host_address()
+        kind_lab.lab_endpoints()
 
 
-@pytest.mark.parametrize("name", ["values.yaml", "alertmanager-values.yaml"])
-def test_colima_address_passes_committed_values(name: str) -> None:
-    assert kind_lab.lab_values_file(name, "192.168.5.2") == kind_lab.CONFIG / name
-
-
-def test_other_address_renders_values(
+def test_unmapped_colima_endpoint_is_refused(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    monkeypatch.setattr(kind_lab, "LAB_DIR", tmp_path)
-    am = kind_lab.lab_values_file("alertmanager-values.yaml", "172.18.0.1")
-    assert tmp_path in am.parents
-    text = am.read_text()
-    assert "192.168.5.2" not in text
-    hooks = [
-        hook["url"]
-        for receiver in yaml.safe_load(text)["config"]["receivers"]
-        for hook in receiver.get("webhook_configs", [])
-    ]
-    assert hooks == ["http://172.18.0.1:8080/intake/alertmanager"]
-    committed = (kind_lab.CONFIG / "alertmanager-values.yaml").read_text()
-    assert text == committed.replace("192.168.5.2", "172.18.0.1")
+    config = tmp_path / "config"
+    config.mkdir()
+    (config / "x.yaml").write_text("url: http://192.168.5.2:9999/\n")
+    monkeypatch.setattr(kind_lab, "CONFIG", config)
+    monkeypatch.setattr(kind_lab, "LAB_DIR", tmp_path / "lab")
+    with pytest.raises(SystemExit):
+        kind_lab.lab_values_file("x.yaml", dict(kind_lab.KIND_NETWORK_ENDPOINTS))
 
-    demo = kind_lab.lab_values_file("values.yaml", "172.18.0.1")
-    scrape = yaml.safe_load(
-        yaml.safe_load(demo.read_text())["prometheus"]["extraScrapeConfigs"]
+
+def _docker_fake(
+    monkeypatch: pytest.MonkeyPatch,
+    containers: dict[str, list[str]],
+    networks: dict[str, str],
+) -> list[list[str]]:
+    seen: list[list[str]] = []
+
+    def fake(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        seen.append(list(cmd))
+        out = ""
+        if cmd[:2] == ["docker", "ps"]:
+            service = cmd[-1].rsplit("=", 1)[1]
+            out = "\n".join(containers.get(service, []))
+        elif cmd[:2] == ["docker", "inspect"]:
+            out = networks.get(cmd[2], "{}")
+        return subprocess.CompletedProcess(cmd, 0, out, "")
+
+    monkeypatch.setattr(kind_lab, "capture", fake)
+    monkeypatch.setattr(kind_lab, "run", fake)
+    return seen
+
+
+def test_connect_control_joins_each_service_under_its_alias(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _platform(monkeypatch, "linux")
+    seen = _docker_fake(
+        monkeypatch,
+        {"web": ["w1"], "worker": ["k1"], "observer": ["o1"]},
+        {"o1": '{"opspilot_default": {}, "kind": {}}'},
     )
-    targets = [t for job in scrape for c in job["static_configs"] for t in c["targets"]]
-    assert targets == ["172.18.0.1:19464", "172.18.0.1:19465", "172.18.0.1:19466"]
+    args = argparse.Namespace(project="opspilot")
+    assert kind_lab.cmd_connect_control(args) == 0
+    connects = [cmd for cmd in seen if cmd[:3] == ["docker", "network", "connect"]]
+    assert connects == [
+        ["docker", "network", "connect", "--alias", "opspilot-web", "kind", "w1"],
+        ["docker", "network", "connect", "--alias", "opspilot-worker", "kind", "k1"],
+    ]
+    ps = [cmd for cmd in seen if cmd[:2] == ["docker", "ps"]]
+    assert all("label=com.docker.compose.project=opspilot" in cmd for cmd in ps)
+
+
+def test_connect_control_reports_a_missing_service(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _platform(monkeypatch, "linux")
+    seen = _docker_fake(monkeypatch, {"web": ["w1"], "observer": ["a", "b"]}, {})
+    assert kind_lab.cmd_connect_control(argparse.Namespace(project="p")) == 1
+    connects = [cmd for cmd in seen if cmd[:3] == ["docker", "network", "connect"]]
+    assert [cmd[-1] for cmd in connects] == ["w1"]
 
 
 # --- no colima on Linux
