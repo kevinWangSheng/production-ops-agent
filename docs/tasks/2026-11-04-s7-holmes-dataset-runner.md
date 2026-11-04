@@ -47,4 +47,6 @@
 
 ## 依赖与待决
 
-- Linux 主机上的时钟与 docker 上下文由 #462（S4，`chore/linux-kind-lab`）提供；runner 调用 `run.clock_skew`/`docker_env`，#462 合并后本分支 merge `main` 即生效，未合并前在 Linux 上 `run` 会因 `colima` 不存在而失败。
+- #462 已合并并 merge 进本分支：Linux 上 `clock_skew` 读主机时钟、docker 用默认 socket。
+- 并行 lab 后缀依赖 `kind_lab.SUFFIX`（S7c 的 `chore/kind-lab-instances`，未合并）；未合并时按实例 0。
+- 未确认：Holmes/LiteLLM 对 API 真实 HTTP 503 是否重试（CONNECT 503 不重试；`first_503` 未实测），已写进 summary `disclosure`。
