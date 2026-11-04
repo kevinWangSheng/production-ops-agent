@@ -46,8 +46,8 @@ F2 持久事故、F6 恢复观察、F11 发布观察、F12 工作台、F13 复�
 | 级别 | 什么时候 | 做什么 | 费用 |
 |---|---|---|---|
 | L0 漂移检查 | 项目活跃期间每月一次，以及 OpsPilot 每次打 minor 版本 tag 前（先到者为准） | 把两份 `upstream-files.json` 的路径合并去重，和上游 `a0009195...master` 的改动文件求交集（命令见下）；同时看上游 release 说明与安全公告。只记录：上游新 HEAD、领先提交数、被改动的引用文件、是否命中下面的触发条件 | 零模型费用 |
-| L1 映射复核 | L0 命中任一触发条件 | 在新提交的独立 checkout 上，只复读引用了被改文件的映射行，重跑这些行的 `absence_checks` 命令（命令原文在表里，`<checkout>` 换成新 checkout），判断类别是否会变；已确认缺陷涉及的文件被改时，用 `run.py repro` 的脚本化模型端点用例（零费用）在新提交上重跑对应说法。结论写进复核 issue，不改 `mapping.json` | 零或极少模型费用 |
-| L2 移动 pin | L1 认为类别会变且值得更新，或要对外发布新的对比数字 | 按第 1 步重新钉住：构建镜像、新 `pin.json`、隔离取证 8 项、请求核对；改 `mapping.py` 的 `COMMIT`/`TREE` 与 `run.py` 的 `IMAGE`；重生成两份 `upstream-files.json`，按 L1 结论更新 `mapping.json`；跑下面的同条件对比子集 | 真实 Run 费用，按余额差对账 |
+| L1 映射复核 | L0 命中任一触发条件 | 在新提交的独立 checkout 上，只复读引用了被改文件的映射行，重跑这些行的 `absence_checks` 命令（命令原文在表里，`<checkout>` 换成新 checkout），判断类别是否会变；已确认缺陷涉及的文件被改时，只读源码判断缺陷是否可能已修，标「待 L2 复现」。L1 不跑运行复现：`run.py repro` 固定使用 `a0009195` 的镜像、提交与配置，换 checkout 不改变它执行的代码。结论写进复核 issue，不改 `mapping.json` | 零模型费用 |
+| L2 移动 pin | L1 认为类别会变且值得更新，或要对外发布新的对比数字 | 按第 1 步重新钉住：构建镜像、新 `pin.json`、隔离取证 8 项、请求核对；改 `mapping.py` 的 `COMMIT`/`TREE` 与 `run.py` 的 `IMAGE`；重生成两份 `upstream-files.json`；用新镜像重跑 L1 标「待 L2 复现」的 `run.py repro` 脚本化用例（零费用），再按 L1 结论与复现结果更新 `mapping.json`；跑下面的同条件对比子集 | 真实 Run 费用，按余额差对账 |
 
 L0 命令。改名的文件新旧路径都算命中。GitHub compare API 最多返回 300 个改动文件，命令在达到 300 时报错退出、不出交集，这时改用上游的完整 clone（主仓库 `tmp/upstream/holmesgpt-a0009195` 是浅克隆，不能用）：
 
