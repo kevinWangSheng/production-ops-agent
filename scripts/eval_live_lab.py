@@ -2029,18 +2029,13 @@ def lab_instant(expr: str, at: datetime, timeout: float) -> float | None:
 def store_restarts(containers: Sequence[str]) -> str | None:
     """``pod/container=restarts`` of the lab's telemetry-store containers
     (kubectl, the lab kubeconfig), sorted; None when unreadable."""
-    import subprocess
-
     try:
-        proc = subprocess.run(
+        raw = _external(
             kind_lab.kubectl("-n", kind_lab.NAMESPACE, "get", "pods", "-o", "json"),
-            capture_output=True,
-            text=True,
             timeout=30,
-            check=False,
         )
-        pods = json.loads(proc.stdout)["items"] if proc.returncode == 0 else None
-    except (OSError, subprocess.TimeoutExpired, ValueError, KeyError):
+        pods = json.loads(raw)["items"]
+    except (LabError, ValueError, KeyError, TypeError):
         return None
     if pods is None:
         return None
