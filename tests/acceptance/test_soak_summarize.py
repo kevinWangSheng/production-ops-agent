@@ -172,6 +172,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+
 from scripts.soak import summarize as soak
 
 REPO = Path(__file__).resolve().parents[2]
