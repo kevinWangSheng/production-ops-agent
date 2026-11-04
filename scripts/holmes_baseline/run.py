@@ -189,9 +189,11 @@ def setup(
     script: Path | None = None,
     alerts: Path | None = None,
     egress_extra: Sequence[str] = (),
+    kind_node: str = KIND_NODE,
 ) -> None:
     """``egress_extra``: further ``relay.py connect`` options, e.g. the
-    dataset runner's ``--inject-503`` (S7)."""
+    dataset runner's ``--inject-503`` (S7); ``kind_node``: the lab's
+    control-plane container on the ``kind`` network (one per kind instance)."""
     teardown()
     docker("network", "create", "--internal", NETWORK)
     docker(
@@ -201,9 +203,9 @@ def setup(
             "/harness/relay.py",
             "forward",
             "--route",
-            f"9090={KIND_NODE}:30090",
+            f"9090={kind_node}:30090",
             "--route",
-            f"16686={KIND_NODE}:30686",
+            f"16686={kind_node}:30686",
         )
     )
     docker("network", "connect", NETWORK, RELAY)

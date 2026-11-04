@@ -10,6 +10,7 @@
 
 ## 系统在做什么
 
+- 入口：验收约定的 `scripts.eval_holmes_dataset`（`select_scenarios`、`holmes_plan`、`result_row`，独立验收测试 `tests/acceptance/test_s7b_holmes_dataset.py`）；配对排程（S7c）进程内调 `run_attempt(spec, answer, attempt_id=, slot=, raw_root=, deadline=, kind_node=, proxy_log=)`，返回 `status` ran/setup_failed/aborted、原因码、起止时刻、`holmes_json` 路径与 sha256；CLI 是同一函数的薄封装。
 - `python -m scripts.holmes_baseline.dataset run`：在调用方已持有窗口、已注入并等待 lab 侧注入器（flagd、OTLP span）生效之后跑一次 Holmes。它只做 Holmes 侧的两种注入：
   - 缺测题：配置里把对应数据源改成 OpsPilot 用的同一个回环地址 `127.0.0.1:9`，并把 `127.0.0.1` 加进 `NO_PROXY`，让连接在容器内被拒（同 F14 第 3 步复现）。
   - 模型故障题：Holmes 的出口代理对模型 API 的 CONNECT 回 `503`：`always_503` 每次都回，`first_503` 只回第一次，之后正常建隧道。
@@ -25,9 +26,11 @@
 | H4 | 注入器白名单复用 OpsPilot 的 `validate_injectors` | OpsPilot 驱动拒收的题 Holmes 也拒收 |
 | H5 | 提示词沿用 F14 run1 形状：`stimulus.question` 加一行 `Investigation window (UTC): <提交前 300 s> to <提交时刻>.` | F14 r1 已用过；问句与时间窗与 OpsPilot 相同（V2-R15） |
 | H6 | 槽的 `final_state_expected` 只作信息列，主判仍是两家 judge（U3） | Holmes 终态只有 completed/failed/budget_exhausted |
-| H7 | 报告正文只存原始目录的 `report.md`（`result` 字段，不含 messages 与推理），summary 只留 sha256 与相对路径；judge 从 `--attempts` 根目录按 `report.path` 读 | 原始输出不进仓库（F14 r1） |
-| H8 | `upstream` 维 = `holmesgpt@<commit> image=<image id> config=<基础配置 sha>`；不同 attempt 不一致报 `MANIFEST_DRIFT:upstream` | V2-R7；amd64 与 arm64 镜像 ID 不同，不能混在一轮 |
+| H7 | judge 读原始 `out/holmes.json`：`summarize --judge-inputs` 写 S7a 的 `opspilot-holmes-judge-inputs-1`（每个已开始 attempt 一条，路径相对该文件，无输出为 null，`read_only` 为 runner 判定）；summary 只留 sha256，不含报告正文 | 原始输出不进仓库（F14 r1）；对齐 #469 |
+| H8 | `upstream` 维 = `holmesgpt@<commit> config=<基础配置 sha>`（离线可算、缺测 URL 不改它）；镜像 ID 每个 attempt 单独记，一轮内不一致报 `MANIFEST_DRIFT:image` | V2-R7 与验收测试；amd64 与 arm64 不能混在一轮 |
 | H9 | `dataset` 维 = `<数据集目录名>:<dataset_tree_hash>` | R8 前缀 |
+| H11 | `read_only` = 代理日志里 `holmes` 账号全是 GET，且 Holmes 记录的 HTTP 工具调用全是 `HTTP GET`；`completed` = 终态 completed（Q11） | Jaeger 走 relay 不进代理日志，所以另看工具调用描述 |
+| H12 | `deadline` 早于冻结墙钟时把墙钟截到 deadline，被它杀掉记 `aborted`/`DEADLINE`；墙钟预算内超时仍是 `ran` + `budget_exhausted` | 区分排程截止与预算耗尽 |
 | H10 | `--capture-model` 冒烟模式：假模型端点、假 key、不做 lab 检查；`summarize` 拒收（`ATTEMPT_NOT_REAL`） | 冒烟结果不能混进分母 |
 
 ## 证据
