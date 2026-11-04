@@ -125,6 +125,8 @@ def _rules_check(monkeypatch, receivers: str, rc: int = 0) -> tuple[int, list]:
         "prometheus.yml": "scrape_configs: []",
         "alertmanager.yml": "route: {}",
     }
+    # the committed values on any host (no kind network to resolve on Linux)
+    monkeypatch.setenv("OPSPILOT_LAB_HOST_ADDRESS", kind_lab.COLIMA_HOST_ADDRESS)
     monkeypatch.setattr(kind_lab, "capture", lambda cmd, **kw: _Proc(stdout="kind: X"))
 
     def fake_subprocess_run(cmd, **kw):
