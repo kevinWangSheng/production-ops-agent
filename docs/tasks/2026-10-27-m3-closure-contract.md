@@ -3,7 +3,7 @@
 - 记录：[M3 收口](2026-10-27-m3-closure.md)。
 - 预审：全新上下文 Agent（Opus 5.5），只读，基线 origin/main `ea2d6e16`，2026-10-31；全文在仓库外 `~/.agent/handoffs/opspilot-prereview-387-scenario-v2-2026-10-31.md`（下称「预审」，行号指该文件）。口径按 M3 方向 Q9–Q12（「同一已校准 judge」已被 Q9 取代）。
 - 裁决（r1，用户 2026-10-31 grilling，d1 会话 Q19–Q21、Q23）：V2-Q1–Q3 按推荐；V2-R1–R15 照预审（Agent 可逆默认）；租机按 Q23 修订版。记录见 `~/.agent/handoffs/opspilot-rulings-2026-10-31-m3-batch4.md`。
-- 修订 r2（用户 2026-11-04，F1 收尾计划裁决 U1（按约 07:40 PT 修订节）、U2、U6、U7，按预审推荐）：改写 Q21 隔离、规则 2 题量、规则 3 记录位置、V2-R4 问句、V2-R5 白名单与租机节，其余行不变。裁决记录 `~/.agent/handoffs/opspilot-rulings-2026-11-04-f1-closure.md`（「修订」节优先于该文件前文表格），预审 `~/.agent/handoffs/opspilot-prereview-f1-closure-plan-2026-11-04.md`（§3.1、§8–§11；其中 `opseval`、主机出题、交出权限、trace 关闭与回放上传等内容已被修订节取代）；计划与步骤见 [F1 收尾计划](2026-11-04-f1-closure-plan.md)。
+- 修订 r2（用户 2026-11-04，F1 收尾计划裁决 U1（按约 07:40 PT 修订节）、U2、U6、U7（按约 10:00 PT「只用一台租机」修订节），按预审推荐）：改写 Q21 隔离、规则 2 题量、规则 3 记录位置、V2-R4 问句、V2-R5 白名单与租机节，其余行不变。裁决记录 `~/.agent/handoffs/opspilot-rulings-2026-11-04-f1-closure.md`（「修订」节优先于该文件前文表格），预审 `~/.agent/handoffs/opspilot-prereview-f1-closure-plan-2026-11-04.md`（§3.1、§8–§11；其中 `opseval`、主机出题、交出权限、trace 关闭与回放上传等内容已被修订节取代）；计划与步骤见 [F1 收尾计划](2026-11-04-f1-closure-plan.md)。
 - 前置已满足：#283/#327（#425 合并 `ee56660e`）、#284（#426 合并 `b9a09ab7`）已关闭，V2-R10 的「第一次 v2 live 轮前合并」成立。
 - 全量探针（预审 :91-99）：把新场景放进 `evals/scenarios/` 会打断 judge、P7、#398、B3、#250、F3 第 5 步验收（`327 failed, 260 errors`），支持 V2-R1 另开目录；只给清单加 `runbook`/`dataset` 两维即 `135 failed`（`test_eval_contract.py` 维度名单钉值 `:1332` 与逐维参数化、`test_eval_b1_storage.py`、`test_eval_d_structural.py` 冻结 fixture）。这些属按合同变更修改断言，由未参与实现的测试作者改并重生成 CI 结构重放 fixture。
 
@@ -63,20 +63,23 @@
 
 验收投影（预审 :89）：F1 保持 `passes: false`；v2 开发轮跑完后第 2 步（按 V2-Q2）与第 3 步（V2-R7）在记录里记「已达成」，不翻 `passes`；第 4 步依赖保留集与 Q9 基线；第 5 步照实写「未达成，等 #295」。
 
-## 租机（Q23，r2 改为按供应商、按段）
+## 租机（Q23，r2 改为只用一台租机）
 
-r1 原文中「Linode Dedicated 8C/16G、下单由用户确认、约 $45–60」已被 r2 取代，以下按 U6、U7 与预审 §2.4、r0.1-4、r0.3-3。r1 仍有效：不拍快照，从脚本重建；不升 16C/32G，编排留本地。
+r1 原文中「Linode Dedicated 8C/16G、下单由用户确认、约 $45–60」已被 r2 取代，以下按 U6、U7 与裁决文件「只用一台租机」修订节（用户 2026-11-04 约 10:00 PT）。r1 仍有效：不拍快照，从脚本重建；不升 16C/32G，编排留本地。
 
-- 供应商现状：用户已开 Vultr 账号，月费上限够用；第 ① 段主机已由用户在 Vultr 控制台建好（Vultr 共享 `vhp-8c-16gb`，Los Angeles `lax`，Ubuntu 24.04 x86_64），记录在仓库外 `~/.agent/handoffs/rental-host-opspilot-f9-1-2026-11-04.md`。Linode 注册不撤，作独享机备选。
+- 供应商现状：用户已开 Vultr 账号，月费上限够用；唯一的租机 `opspilot-f9-1` 已由用户在 Vultr 控制台建好（Vultr 共享 `vhp-8c-16gb`，Los Angeles `lax`，Ubuntu 24.04 x86_64），记录在仓库外 `~/.agent/handoffs/rental-host-opspilot-f9-1-2026-11-04.md`。
 - 谁操作（U6 (c′)）：建机、重装、删机都由用户在供应商控制台做；Agent 不持有任何云账号 API 凭据，只拿用户在建机时放入的专用 SSH key。费用由用户在控制台建机时看到。
-- 分段：
-  - ①：第一阶段主机（共享机）做开发调试、Linux lab 与可见性探针，不重装；段后删机。
-  - ②a：开考用的新独享机（Vultr `voc-c-8c-16gb-300s-amd`，或 Linode `g6-dedicated-8`），用户在控制台建机；新机本身即干净机器，先在它上面做 F9 干净主机取证与 `v0.1.0`，再装 lab 与两个系统开考（OpsPilot 与 HolmesGPT，由本机脚本经 SSH 驱动；保留集在本机出题，不在主机上生成）；结果封存后不删，等用户重装。
-  - ②b：同一台独享机重装后跑 72h soak；③ ITBench 附加项接在后面、同一台。
+- 只用一台租机：全程只用这台 Vultr 共享 CPU 8C/16G 主机（洛杉矶），不开独享机，阶段之间不删机。顺序：
+  1. 开发调试与出题自测（当前 lab）；
+  2. 把需要保留的记录归档到本机；
+  3. 用户在控制台点一次 Reinstall；
+  4. 干净机器一键安装取证（F9 第 1 步）与 `v0.1.0`；
+  5. 在同一套环境上开考（同机多 lab；OpsPilot 与 HolmesGPT 由本机脚本经 SSH 驱动，主机上不跑 coding agent）；
+  6. 结果归档到本机；
+  7. 72h soak；③ ITBench 附加项若做也在这台机上。
   - soak 前置不变（r1 原文保留）：#290 已修（#446，2026-11-01）；#325 按 2026-11-01 Q10 关闭、移出前置；soak 的实例存活与归属证据只用 KSM 映射 `kube_pod_owner`/`kube_replicaset_owner`/`kube_pod_container_info`，span 新鲜度与样本数不作存活证据，记录写明 lab 僵尸序列限制。
-  - 预审可逆默认 R6/R6b（Agent 自定）：两段之间预计超过 24 h 就删机（destroy/delete；关机照样计费）；机房 Los Angeles（Vultr `lax`，备 `sjc`），与 da-server 同城。
-- 独享机开不出来（U7）：最多等 3 个工作日；仍不行，②a 的开考在 Vultr 共享机上跑，按预审 r0.1-3 记 steal 与基线 p95、超标整对重跑一次，结果表写明「共享 vCPU」、不报延迟对比；soak 继续等独享机。
-- 每段结束报告实际时长与费用（按供应商时价与账单核对）。
+- 共享 CPU（U7 修订）：评测与 soak 都在共享 CPU 上跑，按预注册规则记录每槽 steal、超阈值整对重跑，结果表与 soak 报告写明「共享 vCPU」，不做延迟对比。
+- 每个阶段结束报告实际时长与费用（按供应商时价与账单核对）。
 
 ## 未确认（预审 :101-108）
 
