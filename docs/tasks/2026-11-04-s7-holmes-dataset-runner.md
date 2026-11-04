@@ -34,6 +34,7 @@
 | H13 | 配对接口 `scripts.holmes_baseline.dataset_runner.paired_runner(deps).run(BaselineRequest)`：Holmes attempt ID = `holmes-` + sha256(round, OpsPilot attempt ID) 前 24 位（确定性、不等于 OpsPilot ID）；原始目录 = `<output_dir>/<该 ID>`，结果的 `output_path` 给出；`submit_not_after` 只在 setup 完、启动 Holmes 前检查（晚了 `setup_failed`/`SUBMIT_LATE`），墙钟仍 7200 s；不抛异常 | 第 1 轮审查 X1（lead 定） |
 | H14 | `provider_error`：Holmes 失败、错误日志末 3 行含供应商 5xx/传输失败标记，且经出口代理的最后一次模型 CONNECT 不是注入的 503 | 供 PROVIDER_5XX_STORM 作废规则；只看末尾，避免 Jaeger 不可达的 `Connection error` 误判 |
 | H15 | 并行 lab：容器、网络名与 relay URL 加 `kind_lab.SUFFIX`（实例 0 不变）；`upstream` 维按实例 0 的 URL 算 | 同主机多 lab 不冲突，同一轮不因实例不同而漂移；`kind_lab.SUFFIX` 未合入前按实例 0 |
+| H16 | Prometheus 代理账号文件：`holmes_secret_env` 调用时读 `kind_lab.AUTH_FILE`（随 `OPSPILOT_LAB_INSTANCE` 变），`run_attempt(auth_file=)` 可覆盖 | 同机多 lab 各用各的凭据；用 #479 的 `kind_lab.py` 实测实例 1 读 `tmp/m1-kind-lab-i1/prometheus-auth.json` |
 | H10 | `--capture-model` 冒烟模式：假模型端点、假 key、不做 lab 检查；`summarize` 拒收（`ATTEMPT_NOT_REAL`） | 冒烟结果不能混进分母 |
 
 ## 证据

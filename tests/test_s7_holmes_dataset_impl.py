@@ -406,6 +406,7 @@ class FakeLab:
         self.setup_kwargs: dict[str, Any] = {}
         self.run_kwargs: dict[str, Any] = {}
         self.torn_down = 0
+        self.auth_files: list[Path | None] = []
         monkeypatch.setattr(hrun, "frontend_span_rate", lambda: 1.0)
         monkeypatch.setattr(
             hrun,
@@ -417,7 +418,11 @@ class FakeLab:
         monkeypatch.setattr(hrun, "docker", lambda *a, **k: '[{"Id": "sha256:img"}]')
         monkeypatch.setattr(hrun, "setup", lambda **k: self.setup_kwargs.update(k))
         monkeypatch.setattr(hrun, "teardown", self.teardown)
-        monkeypatch.setattr(hrun, "holmes_secret_env", lambda key: {})
+        monkeypatch.setattr(
+            hrun,
+            "holmes_secret_env",
+            lambda key, auth_file=None: self.auth_files.append(auth_file) or {},
+        )
         monkeypatch.setattr(hrun, "egress_log", lambda name: [])
 
         def run_holmes(
@@ -721,3 +726,73 @@ def test_paired_runner_fills_only_known_result_fields(tmp_path: Path) -> None:
         lambda *a, **k: {"status": "ran", "provider_error": False}, result_type=Narrow
     ).run(request)
     assert got == Narrow(status="ran", reason=None, provider_error=False)
+
+
+# --- review round 2: per-instance Prometheus account file
+
+
+def test_secret_env_reads_the_auth_file_at_call_time(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from scripts import kind_lab
+
+    read: list[Path] = []
+    monkeypatch.setattr(
+        kind_lab, "prometheus_accounts", lambda path: read.append(path) or {}
+    )
+    monkeypatch.setattr(kind_lab, "basic_auth_header", lambda accounts, user: "Basic x")
+    monkeypatch.setattr(kind_lab, "AUTH_FILE", tmp_path / "instance.json")
+    hrun.holmes_secret_env("k")
+    hrun.holmes_secret_env("k", tmp_path / "override.json")
+    assert read == [tmp_path / "instance.json", tmp_path / "override.json"]
+
+
+def test_lab_instance_1_reads_instance_1_auth_file(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import importlib
+
+    from scripts import kind_lab
+
+    if not hasattr(kind_lab, "INSTANCE_ENV"):
+        pytest.skip("kind_lab has no lab instances on this base (#479)")
+    monkeypatch.setenv(kind_lab.INSTANCE_ENV, "1")
+    try:
+        lab1 = importlib.reload(kind_lab)
+        read: list[Path] = []
+        monkeypatch.setattr(
+            lab1, "prometheus_accounts", lambda path: read.append(path) or {}
+        )
+        monkeypatch.setattr(lab1, "basic_auth_header", lambda accounts, user: "Basic x")
+        hrun.holmes_secret_env("k")
+        assert read == [lab1.AUTH_FILE]
+        assert "m1-kind-lab-i1" in str(read[0])
+    finally:
+        monkeypatch.undo()
+        importlib.reload(kind_lab)
+
+
+def test_run_attempt_passes_the_auth_file_override(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    lab = FakeLab(monkeypatch, fake_output())
+    spec, answer = loaded()["dv2-2b214b"]
+    auth = tmp_path / "lab2-auth.json"
+    ds.run_attempt(
+        spec,
+        answer,
+        attempt_id="a",
+        slot=1,
+        raw_root=tmp_path / "raw",
+        proxy_log=lambda since: [],
+        auth_file=auth,
+    )
+    ds.run_attempt(
+        spec,
+        answer,
+        attempt_id="b",
+        slot=1,
+        raw_root=tmp_path / "raw",
+        proxy_log=lambda since: [],
+    )
+    assert lab.auth_files == [auth, None]

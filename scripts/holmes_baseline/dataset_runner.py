@@ -74,11 +74,13 @@ class PairedHolmes:
         *,
         kind_node: str | None = None,
         proxy_log: Callable[[float], list[str]] | None = None,
+        auth_file: Path | None = None,
         result_type: Callable[..., Any] | None = None,
     ) -> None:
         self.run_attempt = run_attempt
         self.kind_node = kind_node
         self.proxy_log = proxy_log
+        self.auth_file = auth_file
         self.result_type = result_type or _result_type()
 
     def _result(self, **fields: Any) -> Any:
@@ -99,6 +101,7 @@ class PairedHolmes:
                 round_id=request.round_id,
                 kind_node=self.kind_node,
                 proxy_log=self.proxy_log,
+                auth_file=self.auth_file,
                 submit_not_after=None if not_after is None else not_after.timestamp(),
             )
         except Exception as exc:  # noqa: BLE001 - never raise into the schedule
@@ -134,4 +137,5 @@ def paired_runner(deps: Any = None) -> PairedHolmes:
         run_attempt,
         kind_node=getattr(deps, "holmes_kind_node", None),
         proxy_log=getattr(deps, "holmes_proxy_log", None),
+        auth_file=getattr(deps, "holmes_auth_file", None),
     )

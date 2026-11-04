@@ -678,6 +678,7 @@ def run_attempt(
     proxy_log: ProxyLog | None = None,
     lab_checks: bool = True,
     submit_not_after: float | None = None,
+    auth_file: Path | None = None,
 ) -> dict[str, Any]:
     """One Holmes attempt for the paired schedule (S7c), in process.
 
@@ -688,8 +689,10 @@ def run_attempt(
     lines for the ``holmes`` account (default ``run.proxy_log_lines``, the
     ``kind_lab`` kubeconfig). ``submit_not_after`` (epoch seconds) is checked
     once setup is done, right before Holmes starts: later is
-    ``setup_failed``/``SUBMIT_LATE``; it never caps the Run. Returns ``status`` ``ran`` | ``setup_failed`` |
-    ``aborted`` with ``reason``, times, the attempt directory and the raw
+    ``setup_failed``/``SUBMIT_LATE``; it never caps the Run. ``auth_file``
+    overrides the lab proxy's account file (default: this process's lab
+    instance, ``kind_lab.AUTH_FILE`` read at call time). Returns ``status``
+    ``ran`` | ``setup_failed`` | ``aborted`` with ``reason``, times, the attempt directory and the raw
     output path/sha256; ``setup_failed`` means no Holmes container started.
     """
     import yaml
@@ -770,7 +773,7 @@ def run_attempt(
             directory,
             config_path,
             plan["prompt"],
-            hrun.holmes_secret_env(key),
+            hrun.holmes_secret_env(key, auth_file),
             no_proxy=no_proxy,
             wall_seconds=wall,
         )

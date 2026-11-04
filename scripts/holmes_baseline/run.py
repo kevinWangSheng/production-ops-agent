@@ -256,8 +256,12 @@ def output_dir(directory: Path) -> Path:
     return out
 
 
-def holmes_secret_env(model_key: str) -> dict[str, str]:
-    accounts = kind_lab.prometheus_accounts()
+def holmes_secret_env(model_key: str, auth_file: Path | None = None) -> dict[str, str]:
+    """``auth_file``: the lab proxy's account file; by default the lab
+    instance's ``kind_lab.AUTH_FILE``, read at call time (not an import-time
+    copy) so a process run with ``OPSPILOT_LAB_INSTANCE`` uses its own lab."""
+    path = kind_lab.AUTH_FILE if auth_file is None else auth_file
+    accounts = kind_lab.prometheus_accounts(path)
     return {
         **docker_env(),
         "DEEPSEEK_API_KEY": model_key,
