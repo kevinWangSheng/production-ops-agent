@@ -1,0 +1,161 @@
+"""S7c (F1 closure R7): a paired attempt over the PR-C offline lab doubles."""
+
+from __future__ import annotations
+
+import json
+import shutil
+from dataclasses import replace
+from pathlib import Path
+from typing import Any
+
+import pytest
+
+from opspilot.evaluation import load_scenarios_v2
+from scripts import eval_live
+from tests.acceptance import test_432_dev_round as dr
+
+DEV_V2 = dr.DEV_V2
+
+
+class FakeBaseline:
+    def __init__(self, status: str = "ran", raises: bool = False) -> None:
+        self.calls: list[eval_live.BaselineRequest] = []
+        self.status = status
+        self.raises = raises
+
+    def run(self, request: eval_live.BaselineRequest) -> eval_live.BaselineResult:
+        self.calls.append(request)
+        if self.raises:
+            raise RuntimeError("boom")
+        return eval_live.BaselineResult(
+            status=self.status,  # type: ignore[arg-type]
+            run_created=self.status != "setup_failed",
+            output_sha256="0" * 64,
+        )
+
+
+@pytest.fixture
+def lab(tmp_path: Path) -> dict[str, Any]:
+    root = tmp_path / "dev-v2"
+    shutil.copytree(DEV_V2 / "regression", root / "regression")
+    shutil.copytree(DEV_V2 / "capability", root / "capability")
+    load_scenarios_v2(root)
+    env = dr.pr_c.make_env(tmp_path)
+    env["lab"].raw = dr.ORIGINAL_V2
+    env["deps"] = replace(
+        env["deps"], scenarios_root=root, provenance=dr.Provenance("a" * 40)
+    )
+    env["root"] = root
+    return env
+
+
+def _round(lab, sid: str, order: str, baseline: Any) -> tuple[Any, Path]:
+    deps = replace(lab["deps"], baseline=baseline)
+    slots = eval_live.plan_slots(lab["root"], [sid], 1)
+    config = eval_live.RoundConfig(
+        "s7pair",
+        slots,
+        "lead",
+        "b1",
+        55999,
+        None,
+        ("t",),
+        1,
+        eval_live.PAIR_ORDERS[order],
+    )
+    result = eval_live.run_round(config, deps)
+    return result, deps.evidence_root / "s7pair"
+
+
+def _pair(evidence: Path, result: Any) -> dict[str, Any]:
+    attempt = result.slots[0].attempt_id
+    return json.loads((evidence / "runs" / attempt / "pair.json").read_text())
+
+
+@pytest.mark.parametrize(
+    ("order", "systems"),
+    [
+        ("opspilot-first", ["opspilot", "holmes"]),
+        ("holmes-first", ["holmes", "opspilot"]),
+    ],
+)
+def test_both_systems_run_under_one_injection_in_order(lab, order, systems):
+    baseline = FakeBaseline()
+    result, evidence = _round(lab, "dv2-2b214b", order, baseline)
+    pair = _pair(evidence, result)
+    assert pair["order"] == systems
+    assert [s["system"] for s in pair["slots"]] == systems
+    assert [s["position"] for s in pair["slots"]] == [1, 2]
+    holmes = next(s for s in pair["slots"] if s["system"] == "holmes")
+    opspilot = next(s for s in pair["slots"] if s["system"] == "opspilot")
+    if opspilot["status"] == "not_started" or holmes["status"] == "not_started":
+        # the second system's re-confirmation failed: recorded, never silent
+        assert any(
+            str(s["reason"]).startswith("PAIR_REGATE:") for s in pair["slots"]
+        ), pair
+    else:
+        assert len(baseline.calls) == 1
+        assert baseline.calls[0].position == systems.index("holmes") + 1
+        assert holmes["status"] == "ran"
+        assert opspilot["status"] == result.slots[0].status
+    # one injection: the round restored exactly one fault
+    assert result.slots[0].fault is not None
+
+
+def test_baseline_exception_is_that_slots_abort(lab):
+    result, evidence = _round(
+        lab, "dv2-2b214b", "holmes-first", FakeBaseline(raises=True)
+    )
+    holmes = _pair(evidence, result)["slots"][0]
+    assert holmes["status"] == "aborted" and holmes["reason"] == "BASELINE_FAILED"
+
+
+def test_unpaired_round_writes_no_pair_file(lab):
+    slots = eval_live.plan_slots(lab["root"], ["dv2-2b214b"], 1)
+    config = eval_live.RoundConfig(
+        "s7solo", slots, "lead", "b1", 55999, None, ("t",), 1
+    )
+    result = eval_live.run_round(config, lab["deps"])
+    attempt = result.slots[0].attempt_id
+    run = lab["deps"].evidence_root / "s7solo" / "runs" / attempt
+    assert run.is_dir() and not (run / "pair.json").exists()
+
+
+@pytest.mark.parametrize("sid", ["dv2-30921c"])
+def test_pair_refuses_alert_entry(lab, sid):
+    slots = eval_live.plan_slots(lab["root"], [sid], 1)
+    with pytest.raises(eval_live._Usage, match="PAIR_ENTRY_UNSUPPORTED"):
+        eval_live.check_pair(slots, probe=False)
+    two = eval_live.plan_slots(lab["root"], ["dv2-2b214b"], 2)
+    with pytest.raises(eval_live._Usage, match="PAIR_ONE_SLOT"):
+        eval_live.check_pair(two, probe=False)
+
+
+def test_shared_setup_failure_marks_both_slots(lab):
+    # adFailure's own errors are not produced by the offline lab double
+    result, evidence = _round(lab, "dv2-8b262a", "opspilot-first", FakeBaseline())
+    slots = _pair(evidence, result)["slots"]
+    assert [s["status"] for s in slots] == ["setup_failed", "setup_failed"]
+    assert {s["reason"] for s in slots} == {result.slots[0].reason}
+    assert not any(s["run_created"] for s in slots)
+
+
+@pytest.mark.parametrize("order", ["opspilot-first", "holmes-first"])
+def test_failed_regate_fails_only_the_second_system(lab, monkeypatch, order):
+    def refuse(*args: Any, **kwargs: Any) -> Any:
+        raise eval_live.LabError("SIGNATURE_NOT_RECONFIRMED")
+
+    monkeypatch.setattr(eval_live, "_regate", refuse)
+    baseline = FakeBaseline()
+    result, evidence = _round(lab, "dv2-2b214b", order, baseline)
+    first, second = _pair(evidence, result)["slots"]
+    assert second["status"] == "setup_failed"
+    assert second["reason"] == "PAIR_REGATE:SIGNATURE_NOT_RECONFIRMED"
+    assert first["status"] in ("ran", "aborted")
+    if order == "opspilot-first":
+        assert baseline.calls == []
+        assert result.slots[0].status == first["status"]
+    else:
+        assert len(baseline.calls) == 1
+        assert result.slots[0].status == "setup_failed"
+        assert result.slots[0].product_run_id is None

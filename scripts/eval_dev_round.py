@@ -42,6 +42,7 @@ from opspilot.evaluation.model import (
     dataset_tree_hash,
     load_scenarios_v2,
 )
+from scripts.eval_live import dataset_name
 from scripts.eval_live_lab import span_error
 
 SCHEMA = "opspilot-eval-dev-round-1"
@@ -450,7 +451,7 @@ def aggregate(
         spec.scenario_id: (spec, answer)
         for spec, answer in load_scenarios_v2(dataset_root)
     }
-    dataset = f"dev-v2:{dataset_tree_hash(dataset_root)}"
+    dataset = f"{dataset_name(dataset_root)}:{dataset_tree_hash(dataset_root)}"
     rounds: list[dict[str, Any]] = []
     attempts: dict[str, list[dict[str, Any]]] = {sid: [] for sid in loaded}
     dims_seen: list[dict[str, Any]] = []

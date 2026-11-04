@@ -340,6 +340,9 @@ class LiveDeps:
     # keeps them under ``ledger_root``, which always holds the lab
     # coordination files (occupation, restore intent, guards, run starts).
     attempt_root: Path | None = None
+    # F1 closure R7: the HolmesGPT side of a paired attempt
+    # (``eval_live.BaselineRequest`` -> ``BaselineResult``); None unpaired.
+    baseline: Any = None
 
 
 # -- private ledger -----------------------------------------------------------

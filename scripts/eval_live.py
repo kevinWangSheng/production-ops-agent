@@ -27,6 +27,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import signal
 import sys
 from collections.abc import Callable, Iterator, Mapping, Sequence
@@ -164,6 +165,9 @@ class RoundConfig:
     manifest: Manifest | None
     command: tuple[str, ...] = ()
     n: int = 1
+    # F1 closure R7: the systems that answer under this attempt's one
+    # injection, in order; ``("opspilot",)`` is the unpaired driver.
+    pair: tuple[str, ...] = ("opspilot",)
 
 
 @dataclass(frozen=True)
@@ -478,7 +482,8 @@ def round_binding(slots: Sequence[Slot]) -> tuple[str, str]:
 def dataset_dimension(scenarios_root: Path) -> DimensionValue:
     """V2-R7 ``dataset`` for a round's scenario root.
 
-    ``dev-v2:<tree hash>`` only for a complete v2 dataset: both group
+    ``<dataset name>:<tree hash>`` (R8; the name is the root directory's,
+    such as ``dev-v2``) only for a complete v2 dataset: both group
     directories present and ``load_scenarios_v2`` accepting the tree. A root
     with neither group is the v1 ``evals/scenarios`` set and records ``none``.
     A root with just one group, or one that fails to load, raises
@@ -501,7 +506,26 @@ def dataset_dimension(scenarios_root: Path) -> DimensionValue:
         missing = sorted(set(DATASET_GROUPS) - set(present))
         raise ScenarioError(f"DATASET_INCOMPLETE:{','.join(missing)}")
     load_scenarios_v2(scenarios_root)
-    return DimensionValue("hash", f"dev-v2:{dataset_tree_hash(scenarios_root)}", None)
+    return DimensionValue(
+        "hash",
+        f"{dataset_name(scenarios_root)}:{dataset_tree_hash(scenarios_root)}",
+        None,
+    )
+
+
+#: R8: a dataset name is its root directory's name (``dev-v2``, a sealed
+#: ``holdout-<id>``); anything else could not be told apart in a manifest.
+DATASET_NAME = re.compile(r"[a-z0-9][a-z0-9._-]{0,63}")
+
+
+def dataset_name(scenarios_root: Path) -> str:
+    """The ``dataset`` dimension's name part (F1 closure R8)."""
+    from opspilot.evaluation.model import ScenarioError
+
+    name = scenarios_root.resolve().name
+    if not DATASET_NAME.fullmatch(name):
+        raise ScenarioError("DATASET_NAME_INVALID")
+    return name
 
 
 def template_scope(
@@ -951,6 +975,8 @@ class _Attempt:
     interrupted: bool = False
     evidence_failed: bool = False  # a private evidence write raised (exit 5)
     marks: dict[str, float] = field(default_factory=dict)
+    # F1 closure R7: one entry per system of a paired attempt (``pair.json``)
+    pair: list[dict[str, Any]] = field(default_factory=list)
 
 
 def _balance(deps: LiveDeps) -> Decimal | None:
@@ -1091,6 +1117,8 @@ def _run_slot(
         if intake is not None and not _write_intake(run_dir, intake):
             state.evidence_failed = True
         if is_v2(slot) and not _write_expectations(run_dir, slot, state):
+            state.evidence_failed = True
+        if config.pair != ("opspilot",) and not _write_pair(run_dir, config, state):
             state.evidence_failed = True
         out.summary = {
             "path": f"runs/{attempt_id}/summary.json",
@@ -1256,6 +1284,44 @@ def _guarded(
     # §8: the recording's parent directory is created (700) when missing; the
     # package directory itself is left to ``record()`` (OUTPUT_EXISTS rule).
     deps.recording_root.mkdir(parents=True, exist_ok=True, mode=0o700)
+    if config.pair == ("opspilot",):
+        _investigate(
+            config,
+            deps,
+            slot,
+            state,
+            round_state,
+            gate,
+            submit_not_after,
+            alert_starts_at,
+        )
+        return
+    _paired(
+        config,
+        deps,
+        slot,
+        state,
+        signatures,
+        round_state,
+        gate,
+        submit_not_after,
+        alert_starts_at,
+    )
+
+
+def _investigate(
+    config: RoundConfig,
+    deps: LiveDeps,
+    slot: Slot,
+    state: _Attempt,
+    round_state: dict[str, Manifest],
+    gate: PreObservation,
+    submit_not_after: datetime | None,
+    alert_starts_at: datetime | None,
+) -> None:
+    """The OpsPilot Run of an attempt, after its setup (unchanged order)."""
+    clock, ledger = deps.clock, state.ledger
+    spec, answer = slot.spec, slot.answer
     state.stage = "investigate"
     state.investigating = True
     request = InvestigationRequest(
@@ -1317,6 +1383,282 @@ def _guarded(
     else:
         state.status = "ran"
     ledger.event("investigate", "finished", status=state.status, reason=state.reason)
+
+
+# -- F1 closure R7: paired attempts ---------------------------------------------
+
+#: The systems a paired attempt may run, and the second system's order.
+PAIR_ORDERS = {
+    "opspilot-first": ("opspilot", "holmes"),
+    "holmes-first": ("holmes", "opspilot"),
+}
+PAIR_FILE = "pair.json"
+PAIR_SCHEMA = "opspilot-eval-pair-1"
+PROC_STAT = Path("/proc/stat")
+
+
+@dataclass(frozen=True)
+class BaselineRequest:
+    """What the HolmesGPT side of a paired attempt gets: the same scenario,
+    the same live injection, its own private output directory."""
+
+    attempt_id: str
+    round_id: str
+    spec: ScenarioSpecV2
+    answer: AnswerV2
+    plan: InjectionPlan
+    output_dir: Path
+    position: int
+    submit_not_after: datetime | None
+
+
+@dataclass(frozen=True)
+class BaselineResult:
+    status: Literal["ran", "setup_failed", "aborted"]
+    reason: str | None = None
+    started_at: datetime | None = None
+    ended_at: datetime | None = None
+    #: a HolmesGPT investigation call was made (the setup was over)
+    run_created: bool = False
+    #: the run ended on a model provider 5xx/transport failure (not injected)
+    provider_error: bool = False
+    output_sha256: str | None = None
+
+
+def _proc_stat() -> str | None:
+    try:
+        return PROC_STAT.read_text(encoding="ascii")
+    except OSError:
+        return None
+
+
+def _paired(
+    config: RoundConfig,
+    deps: LiveDeps,
+    slot: Slot,
+    state: _Attempt,
+    signatures: tuple[SignatureRule, ...],
+    round_state: dict[str, Manifest],
+    gate: PreObservation,
+    submit_not_after: datetime | None,
+    alert_starts_at: datetime | None,
+) -> None:
+    """Both systems under the attempt's one injection, in ``config.pair``
+    order (R7). Before the second system the fault (or the normal window) is
+    re-confirmed and a synthetic span written again, so it gets the same
+    fresh evidence the first one had; a failed re-confirmation fails that
+    system's setup only. The attempt's own status stays OpsPilot's."""
+    from scripts.eval_schedule import steal_percent
+
+    clock, ledger = deps.clock, state.ledger
+    state.pair = [
+        {
+            "system": system,
+            "position": n,
+            "status": "not_started",
+            "reason": None,
+            "started_at": None,
+            "ended_at": None,
+            "run_created": False,
+            "provider_error": False,
+            "host_noise": None,
+        }
+        for n, system in enumerate(config.pair, start=1)
+    ]
+    for entry in state.pair:
+        if entry["position"] > 1:
+            state.stage = "pair_regate"
+            checkpoint()
+            try:
+                gate, submit_not_after = _regate(deps, slot, state, signatures)
+            except LabError as exc:
+                entry.update(status="setup_failed", reason=f"PAIR_REGATE:{exc.code}")
+                if entry["system"] == "opspilot":
+                    state.status, state.reason = "setup_failed", entry["reason"]
+                ledger.event("pair_regate", "failed", reason=entry["reason"])
+                return
+        before = _proc_stat()
+        entry["started_at"] = clock.now().isoformat()
+        if entry["system"] == "opspilot":
+            _investigate(
+                config,
+                deps,
+                slot,
+                state,
+                round_state,
+                gate,
+                submit_not_after,
+                alert_starts_at,
+            )
+            entry.update(
+                status=state.status,
+                reason=state.reason,
+                run_created=state.record.product_run_id is not None,
+                provider_error=_recording_provider_error(
+                    recording_dir(deps, config.round_id, state.record.attempt_id)
+                ),
+            )
+        else:
+            _baseline(config, deps, slot, state, entry, submit_not_after)
+        entry["ended_at"] = clock.now().isoformat()
+        after = _proc_stat()
+        steal = (
+            None if before is None or after is None else steal_percent(before, after)
+        )
+        entry["host_noise"] = {"steal_percent": steal, "baseline_p95_ratio": None}
+
+
+def _regate(
+    deps: LiveDeps,
+    slot: Slot,
+    state: _Attempt,
+    signatures: tuple[SignatureRule, ...],
+) -> tuple[PreObservation, datetime | None]:
+    """The second system's fresh gate: the signature (or a clean normal
+    window) in the last ``RECONFIRM_SECONDS``, each noise flag's own errors
+    again, and the synthetic span written again; returns its deadline."""
+    clock, ledger = deps.clock, state.ledger
+    plan, answer = slot.plan, slot.answer
+    assert plan is not None and isinstance(answer, AnswerV2)
+    since = clock.now() - timedelta(seconds=RECONFIRM_SECONDS)
+    effective = state.marks.get("effective_at")
+    if effective is not None:
+        since = max(since, datetime.fromtimestamp(effective, tz=since.tzinfo))
+    if answer.signature is not None:
+        gate = fault_gate(answer.signature, confirmed_at=since, deps=deps)
+        reason = SIGNATURE_NOT_RECONFIRMED
+    else:
+        window_start = clock.now() - timedelta(seconds=WINDOW_SECONDS)
+        gate = normal_window(signatures, not_before=window_start, deps=deps)
+        reason = "NORMAL_WINDOW_UNCONFIRMED"
+    with protected():
+        ledger.write("pre-observation-pair.json", _raw_observation(gate))
+    if not gate.passed:
+        raise LabError(gate.reason or reason)
+    if answer.signature is not None:
+        deadline: datetime | None = max(span.start for span in gate.matched) + FRESHNESS
+    else:
+        assert gate.window is not None
+        deadline = gate.window.end + FRESHNESS
+    for flag, rule in noise_only_rules(plan, answer) + noise_rules(plan, answer):
+        seen = fault_gate(rule, confirmed_at=since, deps=deps)
+        with protected():
+            ledger.write(
+                f"pre-observation-pair-noise-{flag}.json", _raw_observation(seen)
+            )
+        if not seen.passed:
+            raise LabError(NOISE_NOT_OBSERVED)
+        noise_deadline = max(span.start for span in seen.matched) + FRESHNESS
+        deadline = noise_deadline if deadline is None else min(deadline, noise_deadline)
+    if plan.span is not None:
+        from scripts.eval_live_inject import OtlpSpanWriter, write_span
+
+        state.stage = "pair_otlp_span"
+        writer = getattr(deps, "span_writer", None) or OtlpSpanWriter()
+
+        def planned(span: Any) -> None:
+            mark_injector(
+                deps.ledger_root,
+                "otlp_span",
+                phase="intent",
+                trace_id=span.trace_id,
+                span_end=span.end.isoformat(),
+            )
+
+        span = write_span(plan.span, writer=writer, clock=clock, on_planned=planned)
+        mark_injector(deps.ledger_root, "otlp_span", phase="effective")
+        ledger.event("pair_otlp_span", "visible", trace_id=span.trace_id)
+    ledger.event("pair_regate", "passed")
+    return gate, deadline
+
+
+def _baseline(
+    config: RoundConfig,
+    deps: LiveDeps,
+    slot: Slot,
+    state: _Attempt,
+    entry: dict[str, Any],
+    submit_not_after: datetime | None,
+) -> None:
+    """The HolmesGPT side: never raises; its outcome lands in ``entry``."""
+    runner = getattr(deps, "baseline", None)
+    state.stage = "baseline"
+    if runner is None:
+        entry.update(status="setup_failed", reason="BASELINE_UNAVAILABLE")
+        return
+    assert slot.plan is not None and isinstance(slot.spec, ScenarioSpecV2)
+    assert isinstance(slot.answer, AnswerV2)
+    output_dir = recording_dir(
+        deps, config.round_id, state.record.attempt_id
+    ).with_name(f"holmes-{config.round_id}-{state.record.attempt_id}")
+    request = BaselineRequest(
+        attempt_id=state.record.attempt_id,
+        round_id=config.round_id,
+        spec=slot.spec,
+        answer=slot.answer,
+        plan=slot.plan,
+        output_dir=output_dir,
+        position=int(entry["position"]),
+        submit_not_after=submit_not_after,
+    )
+    state.ledger.event("baseline", "started")
+    checkpoint()
+    try:
+        result = runner.run(request)
+    except (Interrupted, KeyboardInterrupt):
+        raise
+    except Exception:  # noqa: BLE001 - a baseline failure is that slot's abort
+        entry.update(status="aborted", reason="BASELINE_FAILED")
+        state.ledger.event("baseline", "failed", reason="BASELINE_FAILED")
+        return
+    entry.update(
+        status=result.status,
+        reason=result.reason,
+        run_created=result.run_created,
+        provider_error=result.provider_error,
+        output_sha256=result.output_sha256,
+    )
+    state.ledger.event(
+        "baseline", "finished", status=result.status, reason=result.reason
+    )
+
+
+def _recording_provider_error(directory: Path) -> bool:
+    """The Run's last model call failed as unavailable (provider 5xx or
+    transport): the recording's ``MODEL_UNAVAILABLE`` on its last model
+    event. Unreadable or absent recordings say False."""
+    try:
+        events = json.loads((directory / "recording.json").read_text("utf-8"))["events"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
+    models = [e for e in events if isinstance(e, Mapping) and e.get("kind") == "model"]
+    return bool(models) and models[-1].get("error") == "MODEL_UNAVAILABLE"
+
+
+def _write_pair(run_dir: Path, config: RoundConfig, state: _Attempt) -> bool:
+    """``runs/<attempt>/pair.json``; an attempt whose shared setup failed
+    before either system started shows both slots as that setup failure."""
+    slots = state.pair or [
+        {
+            "system": system,
+            "position": n,
+            "status": "setup_failed",
+            "reason": state.reason,
+            "started_at": None,
+            "ended_at": None,
+            "run_created": False,
+            "provider_error": False,
+            "host_noise": None,
+        }
+        for n, system in enumerate(config.pair, start=1)
+    ]
+    document = {
+        "schema": PAIR_SCHEMA,
+        "attempt_id": state.record.attempt_id,
+        "order": list(config.pair),
+        "slots": slots,
+    }
+    return write_public_exclusive(run_dir, (PAIR_FILE,), document)
 
 
 def write_intake(path: Path, payload: Mapping[str, Any]) -> None:
@@ -2107,6 +2449,8 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--attempt")
     # #431: a v2 dataset root such as evals/datasets/dev-v2 (relative to the
     # repository); default the v1 evals/scenarios.
+    # F1 closure R7: run HolmesGPT under the same injection, in this order.
+    parser.add_argument("--pair", choices=sorted(PAIR_ORDERS))
     parser.add_argument("--scenario-root")
     # #432 seams §3 / §10 A1: an absolute directory outside the repository
     # for the evidence, the attempt PGs and the attempts' private ledgers
@@ -2450,6 +2794,10 @@ def _main(argv: list[str], deps: LiveDeps | None) -> int:
                 slots = plan_slots(scenarios_root, args.scenario, args.n)
             except (ScenarioError, OSError):
                 raise _Usage("scenario directory invalid") from None
+            if args.pair is not None:
+                check_pair(slots, probe=args.probe)
+        if args.recover and args.pair is not None:
+            raise _Usage("--recover takes only round/holder/batch/flagd-url")
     except _Usage as exc:
         print(json.dumps({"status": "usage", "exit_code": 2, "reason": str(exc)}))
         return 2
@@ -2517,6 +2865,15 @@ def _main(argv: list[str], deps: LiveDeps | None) -> int:
             1,
         )
         return _dispatch(args.round, live, lambda: run_probe(probe, live))
+    pair: tuple[str, ...] = ("opspilot",)
+    if args.pair is not None:
+        pair = PAIR_ORDERS[args.pair]
+        if getattr(live, "baseline", None) is None:
+            try:
+                live = replace(live, baseline=baseline_runner(live))
+            except (ImportError, LabError, OSError):
+                with protected():
+                    return _final(_refused(args.round, "BASELINE_UNAVAILABLE"))
     config = RoundConfig(
         args.round,
         slots,
@@ -2526,8 +2883,30 @@ def _main(argv: list[str], deps: LiveDeps | None) -> int:
         None,
         tuple(argv),
         args.n,
+        pair,
     )
     return _dispatch(args.round, live, lambda: run_round(config, live))
+
+
+def check_pair(slots: Sequence[Slot], *, probe: bool) -> None:
+    """A paired round (R7) is one v2 question-entry slot: the schedule makes
+    one round per window, and HolmesGPT has no alert entry (V2-R12)."""
+    if probe:
+        raise _Usage("--pair does not take --probe")
+    if len(slots) != 1:
+        raise _Usage("PAIR_ONE_SLOT")
+    plan = slots[0].plan
+    if plan is None or plan.entry != "question":
+        raise _Usage("PAIR_ENTRY_UNSUPPORTED")
+
+
+def baseline_runner(deps: LiveDeps) -> Any:
+    """The real HolmesGPT side (S7 Holmes dataset runner)."""
+    from scripts.holmes_baseline.dataset_runner import (
+        paired_runner,  # type: ignore[import-not-found]
+    )
+
+    return paired_runner(deps)
 
 
 def real_deps(
