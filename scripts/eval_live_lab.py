@@ -249,6 +249,13 @@ class TelemetryProbe(Protocol):
     def checkout_calls(
         self, start: datetime, end: datetime, timeout: float
     ) -> CallCount: ...
+    # F1 S6: one Prometheus value of ``expr`` over ``[start, end]`` (its
+    # ``{window}`` is the range ``end - start``, read at ``end``);
+    # ``CallCount(None, False)`` when the query failed. Optional on offline
+    # doubles: the metric noise gate never passes without it.
+    def metric(
+        self, expr: str, start: datetime, end: datetime, timeout: float
+    ) -> CallCount: ...
 
 
 class LabIdentity(Protocol):
@@ -743,10 +750,10 @@ NOISE_NOT_OBSERVED = "NOISE_NOT_OBSERVED"
 class MetricSignal:
     """One Prometheus signal of a metric noise gate (prereview §1 A, R3).
 
-    ``expr`` is an instant PromQL query with one ``{window}`` placeholder (a
-    range such as ``120s``); it is read once over the baseline window that
-    ends when the flag became effective and once over an equally long window
-    that ends now. It passes when the observed value is at least ``ratio``
+    ``expr`` is a PromQL query with one literal ``{window}`` placeholder that
+    ``TelemetryProbe.metric`` fills with the read window's length; it is read
+    once over the baseline window that ends when the flag became effective
+    and once over an equally long window that ends now. It passes when the observed value is at least ``ratio``
     times the baseline and at least ``floor``."""
 
     signal_id: str
@@ -779,7 +786,7 @@ METRIC_NOISE_RULES: Mapping[str, MetricNoiseRule] = {
         signals=(
             MetricSignal(
                 "ad-jvm-gc-duration",
-                'sum(rate(jvm_gc_duration_seconds_sum{{service_name="ad"}}[{window}]))',
+                'sum(rate(jvm_gc_duration_seconds_sum{service_name="ad"}[{window}]))',
                 ratio=5.0,
                 floor=0.01,
             ),
@@ -791,8 +798,8 @@ METRIC_NOISE_RULES: Mapping[str, MetricNoiseRule] = {
             MetricSignal(
                 "frontend-get-root-span-rate",
                 "sum(rate(traces_span_metrics_calls_total"
-                '{{k8s_namespace_name="otel-demo",service_name="frontend",'
-                'span_kind="SPAN_KIND_SERVER",span_name="GET /"}}[{window}]))',
+                '{k8s_namespace_name="otel-demo",service_name="frontend",'
+                'span_kind="SPAN_KIND_SERVER",span_name="GET /"}[{window}]))',
                 ratio=10.0,
                 floor=1.0,
             ),
@@ -1598,14 +1605,15 @@ def fault_gate(
 
 
 def _metric(
-    deps: LiveDeps, expr: str, at: datetime, timeout: float
+    deps: LiveDeps, expr: str, start: datetime, end: datetime, timeout: float
 ) -> CallCount | None:
-    """One instant Prometheus value; None when the probe has no metric read."""
+    """One Prometheus value over ``[start, end]``; None when the probe has no
+    metric read."""
     read = getattr(deps.telemetry, "metric", None)
     if read is None:
         return None
     checkpoint()
-    value: CallCount = read(expr, at, timeout)
+    value: CallCount = read(expr, start, end, timeout)
     checkpoint()
     return value
 
@@ -1637,15 +1645,16 @@ def metric_gate(
                 min(left, max(min_window_seconds - seconds, 0.01), poll_seconds)
             )
             continue
-        end = confirmed_at + timedelta(seconds=seconds)
+        span = timedelta(seconds=seconds)
+        end = confirmed_at + span
         passed = True
         for signal in rule.signals:
-            expr = signal.expr.format(window=f"{seconds}s")
+            expr = signal.expr
             timeout = min(
                 probe_timeout, max(_remaining(clock, started, budget_seconds), 0.01)
             )
-            baseline = _metric(deps, expr, confirmed_at, timeout)
-            observed = _metric(deps, expr, end, timeout)
+            baseline = _metric(deps, expr, confirmed_at - span, confirmed_at, timeout)
+            observed = _metric(deps, expr, confirmed_at, end, timeout)
             if baseline is None or observed is None:
                 return PreObservation(
                     "fault",
@@ -1672,8 +1681,9 @@ def metric_gate(
                     "rule_id": rule.rule_id,
                     "signal_id": signal.signal_id,
                     "expr": expr,
-                    "baseline_at": confirmed_at.isoformat(),
-                    "observed_at": end.isoformat(),
+                    "window_seconds": seconds,
+                    "baseline_end": confirmed_at.isoformat(),
+                    "observed_end": end.isoformat(),
                     "baseline": baseline.value,
                     "observed": observed.value,
                     "complete": baseline.complete and observed.complete,
@@ -2179,16 +2189,24 @@ class LabTelemetry:
     def checkout_calls(
         self, start: datetime, end: datetime, timeout: float
     ) -> CallCount:
-        seconds = max(int((end - start).total_seconds()), 1)
         expr = (
             "sum(increase(traces_span_metrics_calls_total"
-            f'{{service_name="checkout"}}[{seconds}s]))'
+            '{service_name="checkout"}[{window}]))'
         )
-        return self.metric(expr, end, timeout)
+        return self.metric(expr, start, end, timeout)
 
-    def metric(self, expr: str, at: datetime, timeout: float) -> CallCount:
-        """One instant query with the lab account; an empty result is 0."""
-        query = urllib.parse.urlencode({"query": expr, "time": f"{at.timestamp():.3f}"})
+    def metric(
+        self, expr: str, start: datetime, end: datetime, timeout: float
+    ) -> CallCount:
+        """One value over ``[start, end]`` with the lab account: ``{window}``
+        in ``expr`` becomes the range ``end - start`` (at least 1 s), read at
+        ``end``; an empty result is 0, a failed query ``CallCount(None,
+        False)``."""
+        seconds = max(int((end - start).total_seconds()), 1)
+        filled = expr.replace("{window}", f"{seconds}s")
+        query = urllib.parse.urlencode(
+            {"query": filled, "time": f"{end.timestamp():.3f}"}
+        )
         status, payload = kind_lab.get_json(
             f"{kind_lab.PROMETHEUS}/api/v1/query?{query}",
             timeout=max(timeout, 0.01),

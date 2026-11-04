@@ -84,14 +84,13 @@ def test_noise_rule_lookup_by_flag_name():
     assert noise_rule("paymentFailure") is None
     for rule in METRIC_NOISE_RULES.values():
         for signal in rule.signals:
-            expr = signal.expr.format(window="90s")
-            assert "[90s]" in expr and "{window}" not in expr
+            assert signal.expr.count("{window}") == 1
 
 
 # -- metric gate -----------------------------------------------------------------
 
 RULE = MetricNoiseRule(
-    "test-rule", (MetricSignal("s", 'sum(rate(x{{a="b"}}[{window}]))', 5.0, 1.0),)
+    "test-rule", (MetricSignal("s", 'sum(rate(x{a="b"}[{window}]))', 5.0, 1.0),)
 )
 
 
@@ -112,10 +111,13 @@ class Metrics:
         self.clock, self.on_at = clock, on_at
         self.base, self.high, self.high_after = base, high, high_after
         self.complete = complete
-        self.calls: list[tuple[str, datetime]] = []
+        self.calls: list[tuple[str, datetime, datetime]] = []
 
-    def metric(self, expr: str, at: datetime, timeout: float) -> CallCount:
-        self.calls.append((expr, at))
+    def metric(
+        self, expr: str, start: datetime, end: datetime, timeout: float
+    ) -> CallCount:
+        self.calls.append((expr, start, end))
+        at = end
         if at <= self.on_at:
             return CallCount(self.base, self.complete)
         elapsed = (at - self.on_at).total_seconds()
@@ -140,8 +142,9 @@ def test_metric_gate_compares_equal_windows_before_and_after_the_flag(tmp_path):
     seconds = int((seen.window.end - on_at).total_seconds())
     assert seconds >= eval_live_lab.METRIC_MIN_WINDOW_SECONDS
     (baseline, observed) = probe.calls
-    assert baseline == (f'sum(rate(x{{a="b"}}[{seconds}s]))', on_at)
-    assert observed == (baseline[0], seen.window.end)
+    span = timedelta(seconds=seconds)
+    assert baseline == ('sum(rate(x{a="b"}[{window}]))', on_at - span, on_at)
+    assert observed == (baseline[0], on_at, seen.window.end)
     (row,) = seen.raw
     assert (row["baseline"], row["observed"], row["passed"]) == (1.0, 10.0, True)
 
@@ -194,13 +197,16 @@ def test_lab_telemetry_metric_reads_one_instant_value(monkeypatch):
     monkeypatch.setattr(eval_live_lab.kind_lab, "get_json", get_json)
     monkeypatch.setattr(eval_live_lab.kind_lab, "lab_authorization", lambda: None)
     at = datetime(2026, 11, 4, 12, 0, 0, tzinfo=pr_c.T0.tzinfo)
-    value = eval_live_lab.LabTelemetry().metric("sum(up)", at, 1.0)
+    start = at - timedelta(seconds=120)
+    value = eval_live_lab.LabTelemetry().metric(
+        "sum(rate(up[{window}]))", start, at, 1.0
+    )
     assert value == CallCount(7.5, True)
-    assert "query=sum%28up%29" in seen["url"]
+    assert "query=sum%28rate%28up%5B120s%5D%29%29" in seen["url"]
     assert f"time={at.timestamp():.3f}" in seen["url"]
 
     monkeypatch.setattr(eval_live_lab.kind_lab, "get_json", lambda *a, **k: (503, None))
-    assert eval_live_lab.LabTelemetry().metric("sum(up)", at, 1.0) == CallCount(
+    assert eval_live_lab.LabTelemetry().metric("up", start, at, 1.0) == CallCount(
         None, False
     )
 
@@ -236,8 +242,8 @@ def _round(env: dict[str, Any]) -> Any:
 
 
 def _gc_metric(lab: Any, *, high: float) -> None:
-    def metric(expr: str, at: datetime, timeout: float) -> CallCount:
-        before = lab.effective("adManualGc", at - timedelta(seconds=1))
+    def metric(expr: str, start: datetime, end: datetime, timeout: float) -> CallCount:
+        before = lab.effective("adManualGc", end - timedelta(seconds=1))
         return CallCount(high if before != "off" else 0.002, True)
 
     lab.metric = metric
