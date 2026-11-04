@@ -33,4 +33,6 @@ v2 评测 harness 接受保留集要用的 3 个 flagd 开关，并在不产生�
 
 ## 下一步与交接
 
-- 独立测试作者的验收测试推送后 cherry-pick 进来跑。
+- 独立验收测试 `tests/acceptance/test_s6_new_fault_whitelist.py`（chore/s6-acceptance-tests 73afff6f）已 cherry-pick，42 个全过，断言未改；指标读取按其约定接口 `TelemetryProbe.metric(expr, start, end, timeout)`，`{window}` 由读取方按 `end - start` 填。
+- label 核对：门里两条表达式与探针 gc(b)、fl(a) 的选择器逐字一致，探针用它们读到了非零实测值，未另上主机查询。
+- Jaeger restarts 题间检查由排程（#474）负责，不在本 PR。
