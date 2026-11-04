@@ -31,6 +31,7 @@ LAB_VARS = (
     "OPSPILOT_LAB_DOCKER_CONTEXT",
     "OPSPILOT_LAB_HOST_ADDRESS",
     "DOCKER_CONTEXT",
+    "DOCKER_HOST",
 )
 
 
@@ -85,6 +86,17 @@ def test_linux_ignores_an_inherited_context(monkeypatch: pytest.MonkeyPatch) -> 
     monkeypatch.delenv("F14_DOCKER_CONTEXT", raising=False)
     assert "DOCKER_CONTEXT" not in kind_lab.docker_env()
     assert "DOCKER_CONTEXT" not in hrun.docker_env()
+
+
+def test_an_inherited_docker_host_is_ignored(monkeypatch: pytest.MonkeyPatch) -> None:
+    # codex review P1: DOCKER_HOST would override the selected daemon
+    monkeypatch.setenv("DOCKER_HOST", "tcp://elsewhere:2375")
+    monkeypatch.delenv("F14_DOCKER_CONTEXT", raising=False)
+    for platform in ("linux", "darwin"):
+        _platform(monkeypatch, platform)
+        assert "DOCKER_HOST" not in kind_lab.docker_env()
+        assert "DOCKER_HOST" not in hrun.docker_env()
+    assert kind_lab.docker_env()["DOCKER_CONTEXT"] == "colima-m1-kind"
 
 
 def test_context_is_configurable(monkeypatch: pytest.MonkeyPatch) -> None:

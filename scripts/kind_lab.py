@@ -257,7 +257,10 @@ def docker_env() -> dict[str, str]:
         for key, value in lab_env().items()
         if key.upper() not in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY")
     }
-    env.pop("DOCKER_CONTEXT", None)  # only the lab's own choice applies
+    # Only the lab's own choice of daemon applies: an inherited context or
+    # DOCKER_HOST (which overrides any context) would redirect it.
+    env.pop("DOCKER_CONTEXT", None)
+    env.pop("DOCKER_HOST", None)
     context = docker_context()
     return env if context is None else {**env, "DOCKER_CONTEXT": context}
 

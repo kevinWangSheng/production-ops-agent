@@ -34,6 +34,7 @@
   - 公网监听只有 22；ufw 没动；主机上没有放模型 key 或 LangSmith key，也没有调用模型。
 
 - 独立审查：Codex `gpt-6-astra`，全新上下文，会话 `01a1a741…`，只拿到目标、预审 §1 B、本记录和 PR diff。发现 1 项阻塞：Linux 默认路径没有清掉 shell 里继承的 `DOCKER_CONTEXT`，lab 仍会连到那个上下文。处理方法是先补回归测试（修复前 1 项失败），再在 `kind_lab.docker_env` 和 Holmes 的 `docker_env` 里先去掉继承值。复验通过：Linux 走默认 socket；`OPSPILOT_LAB_DOCKER_CONTEXT`、`F14_DOCKER_CONTEXT` 和 macOS 的 colima 上下文照常生效；没有引入新缺口。其余要求逐项核对，都已满足。
+- `@codex review` 分诊（head `b3a3c15`），共 2 项。第一项 P1：继承的 `DOCKER_HOST` 同样会把 lab 导到别的 daemon。采纳：先补测试（修复前失败），两处 `docker_env` 都去掉 `DOCKER_HOST`。第二项是 security P2：rendered values 文件可能被换成符号链接。拒绝：这需要攻击者能写入 root 运行的 checkout，而能写 checkout 的人本来就能直接改 root 要执行的脚本；`tmp/m1-kind-lab/` 下其他文件也是同一信任边界。不对应 PRODUCT-CONSTRAINTS、C3 条文或可复现失败。
 - 收尾四个数：实施期间新冒出的合同问题 0；因合同变更重写的测试 0；环境重跑次数 2（主机上一次 stop/up 循环、一次 kind 网络接法的 `up`）；用户裁决轮数 0（接线方式由 lead 定为可逆细节）。
 
 ## 未完成与交接

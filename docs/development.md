@@ -170,7 +170,7 @@ Compose 环境目录已不存在；M1-02 起实验环境是 colima profile `m1-k
 
 Linux 主机（F1 收尾 S4，Ubuntu 24.04 x86_64）：`sudo scripts/kind_lab/install_linux.sh` 装固定版本的 Docker Engine（Docker apt 源，密钥按钉住的 SHA-256 校验，包 hold）、kind、kubectl、helm（发布二进制按钉住的 SHA-256 校验）和 htpasswd，调高 kind 需要的 inotify 上限，然后跑 `python3 scripts/kind_lab.py up`（`--no-up` 只装工具）。不碰防火墙、不开端口，NodePort 仍只发布在 127.0.0.1。同一组命令在 Linux 上的差别（`kind_lab.lab_runtime`，`OPSPILOT_LAB_RUNTIME=colima|docker` 可覆盖）：
 
-- docker 走默认 socket，不设 `DOCKER_CONTEXT`；`OPSPILOT_LAB_DOCKER_CONTEXT` 可指定上下文。macOS 仍是 `colima-m1-kind`。
+- docker 走默认 socket，不设 `DOCKER_CONTEXT`，环境里继承来的 `DOCKER_CONTEXT`、`DOCKER_HOST` 也会被去掉（两个平台都是）；需要指定上下文时用 `OPSPILOT_LAB_DOCKER_CONTEXT`。macOS 仍是 `colima-m1-kind`。
 - 不调 colima：`up` 以「kind 集群已存在」代替「VM 在运行」跳过内存检查，并 `docker start` 节点容器；`stop` 只 `docker stop opspilot-m1-control-plane`，集群与 release 保留。
 - 内存检查读 `/proc/meminfo` 的 `MemAvailable`（门槛同为 3 GiB）。
 - Alertmanager webhook 和 OpsPilot 健康端点的抓取目标：Linux 上不再用 colima 的 `192.168.5.2`，改为控制侧容器在 `kind` 网络上的别名，即 `opspilot-web:8080` 的 webhook 和 `opspilot-{web,worker,observer}:9464` 的抓取目标（容器端口，与 #393 的接法相同）。控制侧装好后跑 `python3 scripts/kind_lab.py connect-control --project <Compose 项目名>`，把三个运行时容器以这些别名接进 `kind` 网络；可以重复运行，缺服务时退出码为 1。Compose 每次重建容器都会断开这个连接，所以 `install.sh upgrade` 后要再跑一次。这样控制侧仍然只发布在 127.0.0.1 上，也不用改防火墙。接不进 kind 网络时可以用 `OPSPILOT_LAB_HOST_ADDRESS=<地址>` 退回主机地址加主机端口：这时服务要监听在该地址上，防火墙也要放行 kind 网段。替换后的 values 写到 `tmp/m1-kind-lab/rendered/`，`up` 和 `rules-check` 都读这里；macOS 仍直接用仓库里的文件。
