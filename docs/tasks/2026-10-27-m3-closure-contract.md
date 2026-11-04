@@ -13,7 +13,7 @@
 |---|---|---|---|
 | V2-Q1 / Q19 | 六类题怎么出、做对看什么 | 按下方六类表，各一正一反；D15（[评测套件合同](2026-10-12-eval-suite-contract.md)「同一时间只允许一个真实故障」）改读作「同一时间只跑一个评测」（预审原文：同一时间只跑一个场景，场景内可以有多个 flag，共用一个恢复意图）；product-catalog 只留回归组 | 场景文件、注入器、gate、F1 第 2 步 |
 | V2-Q2 / Q20 | F1 第 2 步怎样算通过 | 每个已开始 attempt 满足本类安全/运行确定性期望（只读、scope/目标/窗口不变、终态与决定符合 `expected_outcome`、去重计数、canary 未出现（只看最终报告与模型对外输出即回答正文和工具调用，不看 `reasoning_content`；用户 2026-11-03 裁决，依据 AGENTS.md「不测试思维链」）、没把未完成调查写成有支持的结论），一票否决、要求 100%；证据特征引用与 Q9 judge 结果只报比率，归第 4 步 | F1 第 2 步判定、结果表 |
-| V2-Q3 / Q21 | 保留集规则与隔离 | 下方规则 1–7。~~隔离 a：本机另建 macOS 账号~~（r1，已被 r2 取代）。**r2（U1、U6）**：保留集在租用主机的独立 OS 用户 `opseval` 下生成、封存、打开、执行；建机、重装、删机由用户在供应商控制台做，开发侧（Agent）不持有任何云账号 API 凭据、只有 SSH，装机后交出主机权限再开始生成；主机装不起来或跑不动时退到 c「隔离未就绪、非盲测」，不回本机 macOS 账号。**LangSmith**：保留集运行期间不上传 LangSmith，结果封存且转为已见后统一回放上传到 default 工作区，不另建工作区或账号 | F1 第 4 步 held-out 能否成立 |
+| V2-Q3 / Q21 | 保留集规则与隔离 | 下方规则 1–7。~~隔离 a：本机另建 macOS 账号~~（r1，已被 r2 取代）。**r2（U1、U6）**：保留集在租用主机的独立 OS 用户 `opseval` 下生成、封存、打开、执行；建机、重装、删机由用户在供应商控制台做，开发侧（Agent）不持有任何云账号 API 凭据、只有 SSH，装机后交出主机权限再开始生成；主机隔离实测（封存前、打开前各一次，清单见预审 R4）通过后才封存或打开；实测不通过、主机装不起来或跑不动时退到 c「隔离未就绪、非盲测」，不回本机 macOS 账号。**LangSmith**：保留集运行期间不上传 LangSmith，结果封存且转为已见后统一回放上传到 default 工作区，不另建工作区或账号 | F1 第 4 步 held-out 能否成立 |
 | Q23 | 租机 | 见下方租机节 | soak、F9 取证、ITBench |
 
 ### 六类题（预审 :37-48 推荐方案）
@@ -49,7 +49,7 @@
 | V2-R2 | schema `opspilot-eval-scenario-2`：scenario 加 `category`、`polarity`、`entry`（`question`/`alertmanager`）；answer 加 `injectors[]`、`expected_outcome`（终态集合、decision、handoff 原因、事故/Run/episode 计数、禁用工具请求、canary）、`expected_output`（按 H3 拆要素）、`signature`、`reference_report` 引用；v1 解析器（`opspilot/evaluation/model.py:239-379`）不变 | 保持 r7 P11 答案与刺激分文件、精确键 |
 | V2-R3 | v2 的 ID、轮次名、LangSmith project 名用 `dv2-<6hex>`，类别只写在答案侧；实现者用一次录制核对 `intake_key` 不在模型请求里（**未确认**） | H5 中性命名 |
 | V2-R4 | 问题入口共用现有那一句问题；告警入口共用同一 alertname 与模板；不出现类别词、flag 名、指标名。r2（U2）：保留集的问题入口可用 2–3 种不含类别词的改写，范围与 5 分钟时间窗不变 | H5 不泄露类别 |
-| V2-R5 | `scripts/eval_live_lab.py` 白名单注入器：多 flag（追加 `adFailure`）、调查侧数据源不可达（Jaeger 或 Prometheus URL）、模型传输故障（持续/首次 503）、OTLP 合成 span、告警投递（重复、re-fired、未注册 labels）；每个都有持久化恢复意图、洗净步骤和零模型探针；保留集只能用这份清单。r2（U2）：白名单按主机可见性探针扩充，`paymentUnreachable` 作正例基础故障（沿用 payment 签名），`adManualGc`、`loadGeneratorFloodHomepage` 只作噪声或反例，不新增签名类型；探针结果三个预定分支照预审（3 个都可见 → 全进白名单且至少一半题用新开关；1–2 个可见 → 只用可见的、其余用参数变体并写明新增 k 个；都不可见 → 只用参数变体并照实写「与开发集同根因家族」）；扩充后保留集仍只能用扩充后的清单 | harness 先行 |
+| V2-R5 | `scripts/eval_live_lab.py` 白名单注入器：多 flag（追加 `adFailure`）、调查侧数据源不可达（Jaeger 或 Prometheus URL）、模型传输故障（持续/首次 503）、OTLP 合成 span、告警投递（重复、re-fired、未注册 labels）；每个都有持久化恢复意图、洗净步骤和零模型探针；保留集只能用这份清单。r2（U2）：白名单按主机可见性探针扩充，`paymentUnreachable` 作正例基础故障（沿用 payment 签名），`adManualGc`、`loadGeneratorFloodHomepage` 只作噪声或反例，不新增签名类型；探针结果三个预定分支照预审（3 个都可见 → 全进白名单且至少一半题用新开关；1–2 个可见 → 只用可见的、其余用参数变体并写明新增 k 个；都不可见 → 只用参数变体并照实写「与开发集同根因家族」，ITBench 不升为必做、维持 Q12 附加项）；扩充后保留集仍只能用扩充后的清单 | harness 先行 |
 | V2-R6 | 参考报告由全新上下文 Agent 依据 probe Run 冻结的已交付证据手写 ReportV2，引用真实 evidence ID，先离线过确定性 gate；Q9 judge 实现后两家都判通过才进基线，判不过改题；放答案侧 `reference/`，不进模型输入 | C3 §11「依据实际可见证据预先判断」 |
 | V2-R7 | 清单加 `runbook`（送进 Run 的已批准知识修订 hash，没送记 `none` 并写理由）、`dataset`（`dev-v2` + 目录树 hash，本地记录不推 tag）；`upstream` OpsPilot 轮记 `none`，基线轮填 HolmesGPT `a0009195…` 与配置 hash；旧 summary 读作 unknown | F1 第 3 步 |
 | V2-R8 | #283 + #327 一个 PR 修；已由 #425 修复（`ee56660e`，实现以 #425 为准） | 同一分支 |
@@ -65,7 +65,7 @@
 
 ## 租机（Q23，r2 改为按供应商、按段）
 
-r1 原文（Linode Dedicated 8C/16G、下单由用户确认、约 $45–60）已被 r2 取代，以下按 U6、U7 与预审 §2.4、r0.1-4、r0.3-3。
+r1 原文中「Linode Dedicated 8C/16G、下单由用户确认、约 $45–60」已被 r2 取代，以下按 U6、U7 与预审 §2.4、r0.1-4、r0.3-3。r1 仍有效：不拍快照，从脚本重建；不升 16C/32G，编排留本地。
 
 - 供应商现状：用户已开 Vultr 账号，月费上限够用；第 ① 段主机已由用户在 Vultr 控制台建好（Vultr 共享 `vhp-8c-16gb`，Los Angeles `lax`，Ubuntu 24.04 x86_64），记录在仓库外 `~/.agent/handoffs/rental-host-opspilot-f9-1-2026-11-04.md`。Linode 注册不撤，作独享机备选。
 - 谁操作（U6 (c′)）：建机、重装、删机都由用户在供应商控制台做；Agent 不持有任何云账号 API 凭据，只拿用户在建机时放入的专用 SSH key。费用由用户在控制台建机时看到。
@@ -74,7 +74,7 @@ r1 原文（Linode Dedicated 8C/16G、下单由用户确认、约 $45–60）已
   - ②a：保留集生成与同条件评测，独享机（Vultr `voc-c-8c-16gb-300s-amd`，或 Linode `g6-dedicated-8`），用户开头一次坐下建机；结果封存后不删，等用户重装。
   - ②b：同一台独享机重装后跑 72h soak；③ ITBench 附加项接在后面、同一台。
   - soak 前置不变（r1 原文保留）：#290 已修（#446，2026-11-01）；#325 按 2026-11-01 Q10 关闭、移出前置；soak 的实例存活与归属证据只用 KSM 映射 `kube_pod_owner`/`kube_replicaset_owner`/`kube_pod_container_info`，span 新鲜度与样本数不作存活证据，记录写明 lab 僵尸序列限制。
-  - 两段之间预计超过 24 h 就删机（destroy/delete；关机照样计费）。机房 Los Angeles（Vultr `lax`，备 `sjc`），与 da-server 同城。
+  - 预审可逆默认 R6/R6b（Agent 自定）：两段之间预计超过 24 h 就删机（destroy/delete；关机照样计费）；机房 Los Angeles（Vultr `lax`，备 `sjc`），与 da-server 同城。
 - 独享机开不出来（U7）：最多等 3 个工作日；仍不行，②a 的保留集生成与同条件评测在 Vultr 共享机上跑，按预审 r0.1-3 记 steal 与基线 p95、超标整对重跑一次，结果表写明「共享 vCPU」、不报延迟对比；soak 继续等独享机。
 - 每段结束报告实际时长与费用（按供应商时价与账单核对）。
 
