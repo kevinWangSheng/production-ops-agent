@@ -36,6 +36,7 @@ from datetime import datetime, timedelta, timezone
 from email.message import Message
 from typing import Any, Literal, Protocol
 
+from scripts import kind_lab
 from scripts.eval_live_lab import (
     LAB_NAMESPACE,
     UNREACHABLE_PORT,
@@ -155,8 +156,9 @@ def front_client(
 
 # -- otlp_span -----------------------------------------------------------------
 
-OTLP_URL = "http://127.0.0.1:18080/otlp-http/v1/traces"
-JAEGER_API = "http://127.0.0.1:16686/jaeger/ui/api/traces"
+# The lab instance's frontend-proxy and Jaeger (``kind_lab.INSTANCE``).
+OTLP_URL = f"http://127.0.0.1:{kind_lab.FRONTEND_PORT}/otlp-http/v1/traces"
+JAEGER_API = f"{kind_lab.JAEGER}/api/traces"
 SPAN_SERVICE_NAMESPACE = "opentelemetry-demo"
 SPAN_INTEGRATION_ID = "m0-otel-20260909"
 SPAN_LEAD_SECONDS = 5

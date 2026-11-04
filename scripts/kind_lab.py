@@ -65,7 +65,33 @@ CONFIG = ROOT / "scripts/kind_lab"
 
 PROFILE = "m1-kind"
 CONTEXT = f"colima-{PROFILE}"
-CLUSTER = "opspilot-m1"
+# F1 closure S7c: several independent labs on one Linux host. Instance 0 is
+# the lab as it always was (names, host ports, LAB_DIR); instance n in
+# 1..MAX_INSTANCE (``docker`` runtime only: one colima VM holds one lab) gets
+# its own kind cluster, LAB_DIR, Prometheus accounts, control-side aliases
+# and host ports shifted by n * PORT_STEP. Chosen by OPSPILOT_LAB_INSTANCE,
+# a small integer, never a path (PR #111 review P1 still holds: no override
+# can point one lab's files at another's).
+INSTANCE_ENV = "OPSPILOT_LAB_INSTANCE"
+MAX_INSTANCE = 3
+PORT_STEP = 100
+
+
+def lab_instance() -> int:
+    configured = os.environ.get(INSTANCE_ENV, "0")
+    if not configured.isdigit() or not 0 <= int(configured) <= MAX_INSTANCE:
+        raise SystemExit(
+            f"{INSTANCE_ENV} must be an integer 0..{MAX_INSTANCE}, not {configured!r}"
+        )
+    return int(configured)
+
+
+INSTANCE = lab_instance()
+SUFFIX = "" if INSTANCE == 0 else f"-i{INSTANCE}"
+FRONTEND_PORT = 18080 + INSTANCE * PORT_STEP
+PROMETHEUS_PORT = 19090 + INSTANCE * PORT_STEP
+JAEGER_PORT = 16686 + INSTANCE * PORT_STEP
+CLUSTER = f"opspilot-m1{SUFFIX}"
 # The kind node container (``docker start/stop`` on a Linux host).
 NODE_CONTAINER = f"{CLUSTER}-control-plane"
 # Where the lab runs (F1 closure S4). ``colima`` (macOS default): the
@@ -100,12 +126,14 @@ COLIMA_DISK_GIB = "30"
 # pages), unless ``--skip-memory-check`` is given.
 MIN_HOST_RECLAIMABLE_GIB = 3.0
 
-PROMETHEUS = os.environ.get("OPSPILOT_OTEL_PROMETHEUS_URL", "http://127.0.0.1:19090")
+PROMETHEUS = os.environ.get(
+    "OPSPILOT_OTEL_PROMETHEUS_URL", f"http://127.0.0.1:{PROMETHEUS_PORT}"
+)
 # Same variable and meaning as the product profile: the Jaeger UI base.
 JAEGER = os.environ.get(
-    "OPSPILOT_OTEL_JAEGER_URL", "http://127.0.0.1:16686/jaeger/ui"
+    "OPSPILOT_OTEL_JAEGER_URL", f"http://127.0.0.1:{JAEGER_PORT}/jaeger/ui"
 ).rstrip("/")
-FRONTEND = "http://127.0.0.1:18080/"
+FRONTEND = f"http://127.0.0.1:{FRONTEND_PORT}/"
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -135,7 +163,7 @@ FAULT_FLAGS = {
 # lab-owned directory: fault history, the lab kubeconfig and Helm's
 # repository config/cache/data. Not configurable (PR #111 review P1: an
 # environment override could point the history at another lab's data).
-LAB_DIR = ROOT / "tmp/m1-kind-lab"
+LAB_DIR = ROOT / f"tmp/m1-kind-lab{SUFFIX}"
 HISTORY_ROOT = LAB_DIR / "engineer-only"
 KUBECONFIG = LAB_DIR / "kubeconfig"
 KUBECTL = "kubectl"
@@ -303,7 +331,9 @@ COLIMA_ENDPOINTS = {
 #: container ports directly; the control side keeps publishing on 127.0.0.1
 #: only and the host firewall is not involved (the #393 wiring).
 CONTROL_SERVICES = ("web", "worker", "observer")
-CONTROL_ALIASES = {service: f"opspilot-{service}" for service in CONTROL_SERVICES}
+CONTROL_ALIASES = {
+    service: f"opspilot-{service}{SUFFIX}" for service in CONTROL_SERVICES
+}
 KIND_NETWORK_ENDPOINTS = {
     "webhook": f"{CONTROL_ALIASES['web']}:8080",
     "web": f"{CONTROL_ALIASES['web']}:9464",
@@ -477,13 +507,45 @@ def helm(*args: str) -> list[str]:
     ]
 
 
+#: The committed kind config's cluster name and host port per NodePort
+#: (instance 0).
+KIND_CONFIG_NAME = "opspilot-m1"
+KIND_CONFIG_PORTS = {30080: 18080, 30090: 19090, 30686: 16686}
+
+
+def kind_config_file() -> Path:
+    """The committed kind config for instance 0; otherwise a copy under
+    LAB_DIR with this instance's cluster name and host ports (refused under
+    colima, whose one VM is sized for one lab)."""
+    source = CONFIG / "kind-config.yaml"
+    if INSTANCE == 0:
+        return source
+    if lab_runtime() != "docker":
+        raise SystemExit(f"{INSTANCE_ENV}>0 needs the docker runtime (Linux host)")
+    text = source.read_text()
+    name = f"name: {KIND_CONFIG_NAME}\n"
+    if text.count(name) != 1:
+        raise SystemExit("kind-config.yaml: cluster name not found; refusing")
+    text = text.replace(name, f"name: {CLUSTER}\n")
+    ports = {30080: FRONTEND_PORT, 30090: PROMETHEUS_PORT, 30686: JAEGER_PORT}
+    for container, committed in KIND_CONFIG_PORTS.items():
+        line = f"hostPort: {committed}\n"
+        if text.count(line) != 1:
+            raise SystemExit(f"kind-config.yaml: hostPort {committed} not found")
+        text = text.replace(line, f"hostPort: {ports[container]}\n")
+    rendered = LAB_DIR / "rendered" / "kind-config.yaml"
+    rendered.parent.mkdir(parents=True, exist_ok=True)
+    rendered.write_text(text)
+    return rendered
+
+
 def kind_create_cmd() -> list[str]:
     return [
         "kind",
         "create",
         "cluster",
         "--config",
-        str(CONFIG / "kind-config.yaml"),
+        str(kind_config_file()),
         "--kubeconfig",
         str(KUBECONFIG),
         "--wait",
