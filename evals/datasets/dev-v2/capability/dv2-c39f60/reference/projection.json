@@ -1,0 +1,68 @@
+{
+  "intake": {
+    "counts": {
+      "episodes": null,
+      "incidents": 1,
+      "runs": 1
+    },
+    "deliveries": [],
+    "entry": "question",
+    "model_transport": {
+      "forwarded": 0,
+      "intercepted": 2,
+      "mode": "always_503"
+    }
+  },
+  "probe": {
+    "attempt_id": "9dab4072-9b28-49b5-8d52-ae5ece6584a1",
+    "round": "dv2-ad8306"
+  },
+  "projection": {
+    "alert": null,
+    "canary_hits": null,
+    "counts": {
+      "episodes": 0,
+      "incidents": 1,
+      "runs": 1
+    },
+    "outcome": {
+      "decision": "handoff",
+      "evidence_ids": [],
+      "final_state": "failed",
+      "handoff_reasons": [
+        "MODEL_UNAVAILABLE"
+      ],
+      "report_available": false
+    },
+    "report": null,
+    "runs": [
+      {
+        "bound_target_id": "m0-otel-20260909",
+        "model_requests_used": 2,
+        "row_state": "waiting_human",
+        "run_id": "9182d3b1-3f43-40ee-8bd9-de3da0ea3e70",
+        "scope_target_ids": [
+          "m0-otel-20260909"
+        ],
+        "time_policies": [
+          {
+            "anchor_rule": null,
+            "id": "policy-window-1",
+            "window": {
+              "end": "2026-11-02T12:51:22+00:00",
+              "start": "2026-11-01T12:51:22+00:00"
+            }
+          }
+        ],
+        "tool_operations_used": 0
+      }
+    ],
+    "schema": "opspilot-eval-projection-1",
+    "tool_results": [],
+    "writes": {
+      "controls": 0,
+      "self_heal_authorizations": 0
+    }
+  },
+  "schema": "opspilot-eval-reference-projection-1"
+}

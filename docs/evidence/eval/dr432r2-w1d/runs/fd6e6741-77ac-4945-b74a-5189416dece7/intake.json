@@ -1,0 +1,14 @@
+{
+  "counts": {
+    "episodes": null,
+    "incidents": 1,
+    "runs": 1
+  },
+  "deliveries": [],
+  "entry": "question",
+  "model_transport": {
+    "forwarded": 9,
+    "intercepted": 1,
+    "mode": "first_503"
+  }
+}

@@ -1,0 +1,5269 @@
+{
+  "authorized": {
+    "policy-window-1": {
+      "end": "2026-11-02T16:32:31+00:00",
+      "start": "2026-11-01T16:32:31+00:00"
+    }
+  },
+  "delivered": [
+    {
+      "citable_as_fact": true,
+      "delivered": true,
+      "evidence_id": "157c637c-4e2b-4ffd-9a75-0238945abb88-t0:11f3e168-8c62-4f60-ad01-0eaf14585c15",
+      "status": "ok",
+      "target_id": "m0-otel-20260909",
+      "time_scope_refs": [
+        "policy-window-1"
+      ],
+      "view": {
+        "adopted": true,
+        "citable_as_fact": true,
+        "content": [
+          {
+            "metric": {
+              "rpc_grpc_status_code": "0",
+              "rpc_method": "Charge",
+              "rpc_service": "oteldemo.PaymentService"
+            },
+            "values": [
+              [
+                1793637151,
+                "21.249999999999996"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "rpc_grpc_status_code": "0",
+              "rpc_method": "Convert",
+              "rpc_service": "oteldemo.CurrencyService"
+            },
+            "values": [
+              [
+                1793637151,
+                "4.75"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "rpc_grpc_status_code": "0",
+              "rpc_method": "EmptyCart",
+              "rpc_service": "oteldemo.CartService"
+            },
+            "values": [
+              [
+                1793637151,
+                "21.249999999999996"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "rpc_grpc_status_code": "0",
+              "rpc_method": "GetCart",
+              "rpc_service": "oteldemo.CartService"
+            },
+            "values": [
+              [
+                1793637151,
+                "4.75"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "rpc_grpc_status_code": "0",
+              "rpc_method": "GetProduct",
+              "rpc_service": "oteldemo.ProductCatalogService"
+            },
+            "values": [
+              [
+                1793637151,
+                "4.75"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "rpc_grpc_status_code": "0",
+              "rpc_method": "GetQuote",
+              "rpc_service": "oteldemo.ShippingService"
+            },
+            "values": [
+              [
+                1793637151,
+                "9.6875"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "rpc_grpc_status_code": "0",
+              "rpc_method": "ShipOrder",
+              "rpc_service": "oteldemo.ShippingService"
+            },
+            "values": [
+              [
+                1793637151,
+                "4.75"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "rpc_grpc_status_code": "2",
+              "rpc_method": "Charge",
+              "rpc_service": "oteldemo.PaymentService"
+            },
+            "values": [
+              [
+                1793637151,
+                "NaN"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "rpc_grpc_status_code": "9",
+              "rpc_method": "EmptyCart",
+              "rpc_service": "oteldemo.CartService"
+            },
+            "values": [
+              [
+                1793637151,
+                "NaN"
+              ]
+            ]
+          }
+        ],
+        "data_as_of": "2026-11-02T16:32:31+00:00",
+        "dispatch_started_at": "2026-11-02T16:32:48.414215+00:00",
+        "evidence_id": "157c637c-4e2b-4ffd-9a75-0238945abb88-t0:11f3e168-8c62-4f60-ad01-0eaf14585c15",
+        "freshness_seconds": 18.536166,
+        "incomplete": false,
+        "lookback_seconds": 300,
+        "lookback_start_at": "2026-11-02T16:27:31+00:00",
+        "observed_at": "2026-11-02T16:32:49.536166+00:00",
+        "omitted_bytes": 0,
+        "omitted_rows": 0,
+        "operation_id": "157c637c-4e2b-4ffd-9a75-0238945abb88-t0",
+        "projection_revision": "m1-01-tool-view-v11",
+        "query": {
+          "end": "2026-11-02T16:32:31Z",
+          "expr": "histogram_quantile(0.95, sum by (le, rpc_service, rpc_method, rpc_grpc_status_code) (rate(rpc_client_duration_milliseconds_bucket{service_name=\"checkout\"}[5m])))",
+          "start": "2026-11-02T16:27:31Z"
+        },
+        "registry_revision": "dc86d465b4db7b13f6fa4d490b5d657a8c1f4f29ca24128fa841333da3432f29",
+        "result_count": 9,
+        "returned_count": 9,
+        "source": "otel-demo",
+        "source_end_at": "2026-11-02T16:32:31+00:00",
+        "source_start_at": "2026-11-02T16:32:31+00:00",
+        "status": "ok",
+        "target_id": "m0-otel-20260909",
+        "tool": "metrics_range_query",
+        "tool_registry_revision": "796887a8015086e8aecd45c1790b54cbe16ff09a0c4ac75e04aba12aa335d485",
+        "tool_version": "v1",
+        "truncated": false,
+        "trust": "untrusted-evidence",
+        "window": {
+          "end": "2026-11-02T16:32:31+00:00",
+          "start": "2026-11-02T16:27:31+00:00"
+        }
+      },
+      "view_sha256": "1936319e9ebaa656cd250cbf6a63a205020abbb4f05af2f7186095c8207af1d0",
+      "window": {
+        "end": "2026-11-02T16:32:31+00:00",
+        "start": "2026-11-02T16:27:31+00:00"
+      }
+    },
+    {
+      "citable_as_fact": true,
+      "delivered": true,
+      "evidence_id": "157c637c-4e2b-4ffd-9a75-0238945abb88-t1:539f8387-5b10-44b6-8fbe-d5b935f44d8c",
+      "status": "ok",
+      "target_id": "m0-otel-20260909",
+      "time_scope_refs": [
+        "policy-window-1"
+      ],
+      "view": {
+        "adopted": true,
+        "citable_as_fact": true,
+        "content": [
+          {
+            "metric": {
+              "rpc_grpc_status_code": "0",
+              "rpc_method": "Charge",
+              "rpc_service": "oteldemo.PaymentService"
+            },
+            "values": [
+              [
+                1793633551,
+                "21.249999999999996"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "rpc_grpc_status_code": "0",
+              "rpc_method": "Convert",
+              "rpc_service": "oteldemo.CurrencyService"
+            },
+            "values": [
+              [
+                1793633551,
+                "6.875000000000002"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "rpc_grpc_status_code": "0",
+              "rpc_method": "EmptyCart",
+              "rpc_service": "oteldemo.CartService"
+            },
+            "values": [
+              [
+                1793633551,
+                "17.499999999999993"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "rpc_grpc_status_code": "0",
+              "rpc_method": "GetCart",
+              "rpc_service": "oteldemo.CartService"
+            },
+            "values": [
+              [
+                1793633551,
+                "4.75"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "rpc_grpc_status_code": "0",
+              "rpc_method": "GetProduct",
+              "rpc_service": "oteldemo.ProductCatalogService"
+            },
+            "values": [
+              [
+                1793633551,
+                "4.75"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "rpc_grpc_status_code": "0",
+              "rpc_method": "GetQuote",
+              "rpc_service": "oteldemo.ShippingService"
+            },
+            "values": [
+              [
+                1793633551,
+                "17.499999999999993"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "rpc_grpc_status_code": "0",
+              "rpc_method": "ShipOrder",
+              "rpc_service": "oteldemo.ShippingService"
+            },
+            "values": [
+              [
+                1793633551,
+                "4.75"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "rpc_grpc_status_code": "2",
+              "rpc_method": "Charge",
+              "rpc_service": "oteldemo.PaymentService"
+            },
+            "values": [
+              [
+                1793633551,
+                "NaN"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "rpc_grpc_status_code": "9",
+              "rpc_method": "EmptyCart",
+              "rpc_service": "oteldemo.CartService"
+            },
+            "values": [
+              [
+                1793633551,
+                "NaN"
+              ]
+            ]
+          }
+        ],
+        "data_as_of": "2026-11-02T15:32:31+00:00",
+        "dispatch_started_at": "2026-11-02T16:32:49.553033+00:00",
+        "evidence_id": "157c637c-4e2b-4ffd-9a75-0238945abb88-t1:539f8387-5b10-44b6-8fbe-d5b935f44d8c",
+        "freshness_seconds": 3619.83333,
+        "incomplete": false,
+        "lookback_seconds": 300,
+        "lookback_start_at": "2026-11-02T15:27:31+00:00",
+        "observed_at": "2026-11-02T16:32:50.833330+00:00",
+        "omitted_bytes": 0,
+        "omitted_rows": 0,
+        "operation_id": "157c637c-4e2b-4ffd-9a75-0238945abb88-t1",
+        "projection_revision": "m1-01-tool-view-v11",
+        "query": {
+          "end": "2026-11-02T15:32:31Z",
+          "expr": "histogram_quantile(0.95, sum by (le, rpc_service, rpc_method, rpc_grpc_status_code) (rate(rpc_client_duration_milliseconds_bucket{service_name=\"checkout\"}[5m])))",
+          "start": "2026-11-02T15:27:31Z"
+        },
+        "registry_revision": "dc86d465b4db7b13f6fa4d490b5d657a8c1f4f29ca24128fa841333da3432f29",
+        "result_count": 9,
+        "returned_count": 9,
+        "source": "otel-demo",
+        "source_end_at": "2026-11-02T15:32:31+00:00",
+        "source_start_at": "2026-11-02T15:32:31+00:00",
+        "status": "ok",
+        "target_id": "m0-otel-20260909",
+        "tool": "metrics_range_query",
+        "tool_registry_revision": "796887a8015086e8aecd45c1790b54cbe16ff09a0c4ac75e04aba12aa335d485",
+        "tool_version": "v1",
+        "truncated": false,
+        "trust": "untrusted-evidence",
+        "window": {
+          "end": "2026-11-02T15:32:31+00:00",
+          "start": "2026-11-02T15:27:31+00:00"
+        }
+      },
+      "view_sha256": "6a3a882e1ea3af58f821ce7c409ea222c6b2edd48acebe84fa6a6f5f31f136bb",
+      "window": {
+        "end": "2026-11-02T15:32:31+00:00",
+        "start": "2026-11-02T15:27:31+00:00"
+      }
+    },
+    {
+      "citable_as_fact": true,
+      "delivered": true,
+      "evidence_id": "157c637c-4e2b-4ffd-9a75-0238945abb88-t2:83b0e979-40d5-4181-b9a6-92442a6999a4",
+      "status": "ok",
+      "target_id": "m0-otel-20260909",
+      "time_scope_refs": [
+        "policy-window-1"
+      ],
+      "view": {
+        "adopted": true,
+        "citable_as_fact": true,
+        "content": [
+          {
+            "metric": {
+              "service_name": "cart",
+              "span_name": "POST /oteldemo.CartService/EmptyCart",
+              "status_code": "STATUS_CODE_ERROR"
+            },
+            "values": [
+              [
+                1793637151,
+                "0"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "checkout",
+              "span_name": "oteldemo.CartService/EmptyCart",
+              "status_code": "STATUS_CODE_ERROR"
+            },
+            "values": [
+              [
+                1793637151,
+                "0"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "checkout",
+              "span_name": "oteldemo.CheckoutService/PlaceOrder",
+              "status_code": "STATUS_CODE_ERROR"
+            },
+            "values": [
+              [
+                1793637151,
+                "5"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "checkout",
+              "span_name": "oteldemo.CheckoutService/prepareOrderItems",
+              "status_code": "STATUS_CODE_ERROR"
+            },
+            "values": [
+              [
+                1793637151,
+                "0"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "checkout",
+              "span_name": "oteldemo.PaymentService/Charge",
+              "status_code": "STATUS_CODE_ERROR"
+            },
+            "values": [
+              [
+                1793637151,
+                "5"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "payment",
+              "span_name": "grpc.oteldemo.PaymentService/Charge",
+              "status_code": "STATUS_CODE_ERROR"
+            },
+            "values": [
+              [
+                1793637151,
+                "5"
+              ]
+            ]
+          }
+        ],
+        "data_as_of": "2026-11-02T16:32:31+00:00",
+        "dispatch_started_at": "2026-11-02T16:32:50.847168+00:00",
+        "evidence_id": "157c637c-4e2b-4ffd-9a75-0238945abb88-t2:83b0e979-40d5-4181-b9a6-92442a6999a4",
+        "freshness_seconds": 21.01358,
+        "incomplete": false,
+        "lookback_seconds": 300,
+        "lookback_start_at": "2026-11-02T16:27:31+00:00",
+        "observed_at": "2026-11-02T16:32:52.013580+00:00",
+        "omitted_bytes": 0,
+        "omitted_rows": 0,
+        "operation_id": "157c637c-4e2b-4ffd-9a75-0238945abb88-t2",
+        "projection_revision": "m1-01-tool-view-v11",
+        "query": {
+          "end": "2026-11-02T16:32:31Z",
+          "expr": "sum by (service_name, span_name, status_code) (increase(traces_span_metrics_calls_total{service_name=~\"checkout|payment|product-catalog|cart|currency|shipping|email\", status_code=\"STATUS_CODE_ERROR\"}[5m]))",
+          "start": "2026-11-02T16:27:31Z"
+        },
+        "registry_revision": "dc86d465b4db7b13f6fa4d490b5d657a8c1f4f29ca24128fa841333da3432f29",
+        "result_count": 6,
+        "returned_count": 6,
+        "series_note": "traces_span_metrics_calls_total counts spans of every operation of the service (internal, client and server spans alike), summed over the labels kept in this query; it is not a count of requests. status_code STATUS_CODE_UNSET means the span carried no status; it does not mean the call succeeded.",
+        "source": "otel-demo",
+        "source_end_at": "2026-11-02T16:32:31+00:00",
+        "source_start_at": "2026-11-02T16:32:31+00:00",
+        "status": "ok",
+        "target_id": "m0-otel-20260909",
+        "tool": "metrics_range_query",
+        "tool_registry_revision": "796887a8015086e8aecd45c1790b54cbe16ff09a0c4ac75e04aba12aa335d485",
+        "tool_version": "v1",
+        "truncated": false,
+        "trust": "untrusted-evidence",
+        "window": {
+          "end": "2026-11-02T16:32:31+00:00",
+          "start": "2026-11-02T16:27:31+00:00"
+        }
+      },
+      "view_sha256": "a611d7c4f01823bfbdc664e18f4c951b6678446853a2f5875eeb244374fd77f4",
+      "window": {
+        "end": "2026-11-02T16:32:31+00:00",
+        "start": "2026-11-02T16:27:31+00:00"
+      }
+    },
+    {
+      "citable_as_fact": true,
+      "delivered": true,
+      "evidence_id": "2eb9ff57-4764-49ef-889e-3525c28c487b-t0:01e3b2c3-db57-4f58-8d70-5c518f849449",
+      "status": "ok",
+      "target_id": "m0-otel-20260909",
+      "time_scope_refs": [
+        "policy-window-1"
+      ],
+      "view": {
+        "adopted": true,
+        "citable_as_fact": true,
+        "content": [
+          {
+            "duration_us": 50859,
+            "error_by_visible_tags": true,
+            "error_details": [
+              {
+                "key": "otel.status_description",
+                "location": "span_tag",
+                "original_utf8_bytes": 144,
+                "value": "failed to charge card: could not charge the card: rpc error: code = Unknown desc = Payment request failed. Invalid token. app.loyalty.level=gold",
+                "value_truncated": false
+              },
+              {
+                "key": "exception.message",
+                "location": "span_log",
+                "original_utf8_bytes": 121,
+                "timestamp_us": 1793637104593230,
+                "value": "could not charge the card: rpc error: code = Unknown desc = Payment request failed. Invalid token. app.loyalty.level=gold",
+                "value_truncated": false
+              }
+            ],
+            "omitted_error_detail_field_count": 0,
+            "operation": "oteldemo.CheckoutService/PlaceOrder",
+            "operation_truncated": false,
+            "parent_references": [
+              {
+                "parent_is_visible": true,
+                "refType": "CHILD_OF",
+                "spanID": "77427db74be0e2fc",
+                "traceID": "28787b5fff0694567b2b7d8b448d8c24"
+              }
+            ],
+            "raw_error_detail_field_count": 2,
+            "service": "checkout",
+            "service_version": "2.0.2",
+            "span_id": "3c0df12eeae35ac0",
+            "start_us": 1793637104542395,
+            "status_state": "recorded",
+            "status_tags": {
+              "error": true,
+              "otel.status_code": "ERROR",
+              "rpc.grpc.status_code": 13
+            },
+            "trace_id": "28787b5fff0694567b2b7d8b448d8c24"
+          },
+          {
+            "duration_us": 50000,
+            "error_by_visible_tags": true,
+            "error_details": [
+              {
+                "key": "exception.message",
+                "location": "span_log",
+                "original_utf8_bytes": 131,
+                "timestamp_us": 1793637141686983,
+                "value": "rpc error: code = DeadlineExceeded desc = upstream response deadline exceeded while preparing order items (request id req-u1wgjdhf)",
+                "value_truncated": false
+              },
+              {
+                "key": "exception.type",
+                "location": "span_log",
+                "original_utf8_bytes": 5,
+                "timestamp_us": 1793637141686983,
+                "value": "Error",
+                "value_truncated": false
+              }
+            ],
+            "omitted_error_detail_field_count": 0,
+            "operation": "oteldemo.CheckoutService/prepareOrderItems",
+            "operation_truncated": false,
+            "parent_references": [],
+            "raw_error_detail_field_count": 2,
+            "service": "checkout",
+            "service_version": null,
+            "span_id": "7dd4b0d0056f53a7",
+            "start_us": 1793637141636983,
+            "status_state": "recorded",
+            "status_tags": {
+              "error": true,
+              "otel.status_code": "ERROR"
+            },
+            "trace_id": "8fd8cdc55b88482d1ed0f7acda29f44d"
+          },
+          {
+            "duration_us": 36454,
+            "error_by_visible_tags": true,
+            "error_details": [
+              {
+                "key": "otel.status_description",
+                "location": "span_tag",
+                "original_utf8_bytes": 144,
+                "value": "failed to charge card: could not charge the card: rpc error: code = Unknown desc = Payment request failed. Invalid token. app.loyalty.level=gold",
+                "value_truncated": false
+              },
+              {
+                "key": "exception.message",
+                "location": "span_log",
+                "original_utf8_bytes": 121,
+                "timestamp_us": 1793637111459614,
+                "value": "could not charge the card: rpc error: code = Unknown desc = Payment request failed. Invalid token. app.loyalty.level=gold",
+                "value_truncated": false
+              }
+            ],
+            "omitted_error_detail_field_count": 0,
+            "operation": "oteldemo.CheckoutService/PlaceOrder",
+            "operation_truncated": false,
+            "parent_references": [
+              {
+                "parent_is_visible": true,
+                "refType": "CHILD_OF",
+                "spanID": "caf5b09e05b0457f",
+                "traceID": "57e3750158d8f4f8ba9348bb69fb6a6d"
+              }
+            ],
+            "raw_error_detail_field_count": 2,
+            "service": "checkout",
+            "service_version": "2.0.2",
+            "span_id": "9b0c7a820ce8d116",
+            "start_us": 1793637111423182,
+            "status_state": "recorded",
+            "status_tags": {
+              "error": true,
+              "otel.status_code": "ERROR",
+              "rpc.grpc.status_code": 13
+            },
+            "trace_id": "57e3750158d8f4f8ba9348bb69fb6a6d"
+          },
+          {
+            "duration_us": 28897,
+            "error_by_visible_tags": true,
+            "error_details": [
+              {
+                "key": "otel.status_description",
+                "location": "span_tag",
+                "original_utf8_bytes": 61,
+                "value": "Payment request failed. Invalid token. app.loyalty.level=gold",
+                "value_truncated": false
+              }
+            ],
+            "omitted_error_detail_field_count": 0,
+            "operation": "oteldemo.PaymentService/Charge",
+            "operation_truncated": false,
+            "parent_references": [
+              {
+                "parent_is_visible": true,
+                "refType": "CHILD_OF",
+                "spanID": "3c0df12eeae35ac0",
+                "traceID": "28787b5fff0694567b2b7d8b448d8c24"
+              }
+            ],
+            "raw_error_detail_field_count": 1,
+            "service": "checkout",
+            "service_version": "2.0.2",
+            "span_id": "cbeff7af87875236",
+            "start_us": 1793637104564288,
+            "status_state": "recorded",
+            "status_tags": {
+              "error": true,
+              "otel.status_code": "ERROR",
+              "rpc.grpc.status_code": 2
+            },
+            "trace_id": "28787b5fff0694567b2b7d8b448d8c24"
+          },
+          {
+            "duration_us": 19524,
+            "error_by_visible_tags": true,
+            "error_details": [
+              {
+                "key": "otel.status_description",
+                "location": "span_tag",
+                "original_utf8_bytes": 144,
+                "value": "failed to charge card: could not charge the card: rpc error: code = Unknown desc = Payment request failed. Invalid token. app.loyalty.level=gold",
+                "value_truncated": false
+              },
+              {
+                "key": "exception.message",
+                "location": "span_log",
+                "original_utf8_bytes": 121,
+                "timestamp_us": 1793637122740242,
+                "value": "could not charge the card: rpc error: code = Unknown desc = Payment request failed. Invalid token. app.loyalty.level=gold",
+                "value_truncated": false
+              }
+            ],
+            "omitted_error_detail_field_count": 0,
+            "operation": "oteldemo.CheckoutService/PlaceOrder",
+            "operation_truncated": false,
+            "parent_references": [
+              {
+                "parent_is_visible": true,
+                "refType": "CHILD_OF",
+                "spanID": "4a46d1b9773ffd12",
+                "traceID": "2d30fbf5a81504307f9b5e7a241c9adf"
+              }
+            ],
+            "raw_error_detail_field_count": 2,
+            "service": "checkout",
+            "service_version": "2.0.2",
+            "span_id": "7deebbeaa30216b5",
+            "start_us": 1793637122720753,
+            "status_state": "recorded",
+            "status_tags": {
+              "error": true,
+              "otel.status_code": "ERROR",
+              "rpc.grpc.status_code": 13
+            },
+            "trace_id": "2d30fbf5a81504307f9b5e7a241c9adf"
+          },
+          {
+            "duration_us": 14415,
+            "error_by_visible_tags": true,
+            "error_details": [
+              {
+                "key": "otel.status_description",
+                "location": "span_tag",
+                "original_utf8_bytes": 144,
+                "value": "failed to charge card: could not charge the card: rpc error: code = Unknown desc = Payment request failed. Invalid token. app.loyalty.level=gold",
+                "value_truncated": false
+              },
+              {
+                "key": "exception.message",
+                "location": "span_log",
+                "original_utf8_bytes": 121,
+                "timestamp_us": 1793637111460948,
+                "value": "could not charge the card: rpc error: code = Unknown desc = Payment request failed. Invalid token. app.loyalty.level=gold",
+                "value_truncated": false
+              }
+            ],
+            "omitted_error_detail_field_count": 0,
+            "operation": "oteldemo.CheckoutService/PlaceOrder",
+            "operation_truncated": false,
+            "parent_references": [
+              {
+                "parent_is_visible": true,
+                "refType": "CHILD_OF",
+                "spanID": "8a4cea1b7b90bf69",
+                "traceID": "4877dcb551d9ba266086999e801213d6"
+              }
+            ],
+            "raw_error_detail_field_count": 2,
+            "service": "checkout",
+            "service_version": "2.0.2",
+            "span_id": "f6cca8714bbbbda3",
+            "start_us": 1793637111446551,
+            "status_state": "recorded",
+            "status_tags": {
+              "error": true,
+              "otel.status_code": "ERROR",
+              "rpc.grpc.status_code": 13
+            },
+            "trace_id": "4877dcb551d9ba266086999e801213d6"
+          },
+          {
+            "duration_us": 10095,
+            "error_by_visible_tags": true,
+            "error_details": [
+              {
+                "key": "otel.status_description",
+                "location": "span_tag",
+                "original_utf8_bytes": 61,
+                "value": "Payment request failed. Invalid token. app.loyalty.level=gold",
+                "value_truncated": false
+              }
+            ],
+            "omitted_error_detail_field_count": 0,
+            "operation": "oteldemo.PaymentService/Charge",
+            "operation_truncated": false,
+            "parent_references": [
+              {
+                "parent_is_visible": true,
+                "refType": "CHILD_OF",
+                "spanID": "9b0c7a820ce8d116",
+                "traceID": "57e3750158d8f4f8ba9348bb69fb6a6d"
+              }
+            ],
+            "raw_error_detail_field_count": 1,
+            "service": "checkout",
+            "service_version": "2.0.2",
+            "span_id": "33a226afca36fe81",
+            "start_us": 1793637111449457,
+            "status_state": "recorded",
+            "status_tags": {
+              "error": true,
+              "otel.status_code": "ERROR",
+              "rpc.grpc.status_code": 2
+            },
+            "trace_id": "57e3750158d8f4f8ba9348bb69fb6a6d"
+          },
+          {
+            "duration_us": 8074,
+            "error_by_visible_tags": true,
+            "error_details": [
+              {
+                "key": "otel.status_description",
+                "location": "span_tag",
+                "original_utf8_bytes": 61,
+                "value": "Payment request failed. Invalid token. app.loyalty.level=gold",
+                "value_truncated": false
+              }
+            ],
+            "omitted_error_detail_field_count": 0,
+            "operation": "oteldemo.PaymentService/Charge",
+            "operation_truncated": false,
+            "parent_references": [
+              {
+                "parent_is_visible": true,
+                "refType": "CHILD_OF",
+                "spanID": "7deebbeaa30216b5",
+                "traceID": "2d30fbf5a81504307f9b5e7a241c9adf"
+              }
+            ],
+            "raw_error_detail_field_count": 1,
+            "service": "checkout",
+            "service_version": "2.0.2",
+            "span_id": "dac2575c17e2f7e1",
+            "start_us": 1793637122732109,
+            "status_state": "recorded",
+            "status_tags": {
+              "error": true,
+              "otel.status_code": "ERROR",
+              "rpc.grpc.status_code": 2
+            },
+            "trace_id": "2d30fbf5a81504307f9b5e7a241c9adf"
+          },
+          {
+            "duration_us": 3358,
+            "error_by_visible_tags": true,
+            "error_details": [
+              {
+                "key": "otel.status_description",
+                "location": "span_tag",
+                "original_utf8_bytes": 61,
+                "value": "Payment request failed. Invalid token. app.loyalty.level=gold",
+                "value_truncated": false
+              }
+            ],
+            "omitted_error_detail_field_count": 0,
+            "operation": "oteldemo.PaymentService/Charge",
+            "operation_truncated": false,
+            "parent_references": [
+              {
+                "parent_is_visible": true,
+                "refType": "CHILD_OF",
+                "spanID": "f6cca8714bbbbda3",
+                "traceID": "4877dcb551d9ba266086999e801213d6"
+              }
+            ],
+            "raw_error_detail_field_count": 1,
+            "service": "checkout",
+            "service_version": "2.0.2",
+            "span_id": "9c8b8a209308bcf3",
+            "start_us": 1793637111457437,
+            "status_state": "recorded",
+            "status_tags": {
+              "error": true,
+              "otel.status_code": "ERROR",
+              "rpc.grpc.status_code": 2
+            },
+            "trace_id": "4877dcb551d9ba266086999e801213d6"
+          },
+          {
+            "duration_us": 59707,
+            "error_by_visible_tags": false,
+            "error_details": [],
+            "omitted_error_detail_field_count": 0,
+            "operation": "oteldemo.CheckoutService/PlaceOrder",
+            "operation_truncated": false,
+            "parent_references": [
+              {
+                "parent_is_visible": true,
+                "refType": "CHILD_OF",
+                "spanID": "7554e7a134aba37a",
+                "traceID": "a6ed3344eb7f423a57c36fdc9cef0ce5"
+              }
+            ],
+            "raw_error_detail_field_count": 0,
+            "service": "checkout",
+            "service_version": "2.0.2",
+            "span_id": "54822afef351e9b4",
+            "start_us": 1793636964064253,
+            "status_state": "recorded",
+            "status_tags": {
+              "rpc.grpc.status_code": 0
+            },
+            "trace_id": "a6ed3344eb7f423a57c36fdc9cef0ce5"
+          },
+          {
+            "duration_us": 54544,
+            "error_by_visible_tags": false,
+            "error_details": [],
+            "omitted_error_detail_field_count": 0,
+            "operation": "oteldemo.CheckoutService/PlaceOrder",
+            "operation_truncated": false,
+            "parent_references": [
+              {
+                "parent_is_visible": true,
+                "refType": "CHILD_OF",
+                "spanID": "24ea8d5559b5f945",
+                "traceID": "a95802bed2daac5f80b0027779f3b6d3"
+              }
+            ],
+            "raw_error_detail_field_count": 0,
+            "service": "checkout",
+            "service_version": "2.0.2",
+            "span_id": "5d0c869249e73bea",
+            "start_us": 1793636935717770,
+            "status_state": "recorded",
+            "status_tags": {
+              "rpc.grpc.status_code": 0
+            },
+            "trace_id": "a95802bed2daac5f80b0027779f3b6d3"
+          },
+          {
+            "duration_us": 44791,
+            "error_by_visible_tags": false,
+            "error_details": [],
+            "omitted_error_detail_field_count": 0,
+            "operation": "oteldemo.CheckoutService/PlaceOrder",
+            "operation_truncated": false,
+            "parent_references": [
+              {
+                "parent_is_visible": true,
+                "refType": "CHILD_OF",
+                "spanID": "a8113ff407a302a5",
+                "traceID": "4642399c2e9e0341e9cd4081c599fe1e"
+              }
+            ],
+            "raw_error_detail_field_count": 0,
+            "service": "checkout",
+            "service_version": "2.0.2",
+            "span_id": "6f57b2ffca05d06e",
+            "start_us": 1793636926903830,
+            "status_state": "recorded",
+            "status_tags": {
+              "rpc.grpc.status_code": 0
+            },
+            "trace_id": "4642399c2e9e0341e9cd4081c599fe1e"
+          },
+          {
+            "duration_us": 44255,
+            "error_by_visible_tags": false,
+            "error_details": [],
+            "omitted_error_detail_field_count": 0,
+            "operation": "oteldemo.CheckoutService/PlaceOrder",
+            "operation_truncated": false,
+            "parent_references": [
+              {
+                "parent_is_visible": true,
+                "refType": "CHILD_OF",
+                "spanID": "3234d9aa94586e6c",
+                "traceID": "6a93abda38cb814fd780ee2fbeae70b1"
+              }
+            ],
+            "raw_error_detail_field_count": 0,
+            "service": "checkout",
+            "service_version": "2.0.2",
+            "span_id": "2a027585e05304d0",
+            "start_us": 1793636943852281,
+            "status_state": "recorded",
+            "status_tags": {
+              "rpc.grpc.status_code": 0
+            },
+            "trace_id": "6a93abda38cb814fd780ee2fbeae70b1"
+          },
+          {
+            "duration_us": 25519,
+            "error_by_visible_tags": false,
+            "error_details": [],
+            "omitted_error_detail_field_count": 0,
+            "operation": "prepareOrderItemsAndShippingQuoteFromCart",
+            "operation_truncated": false,
+            "parent_references": [
+              {
+                "parent_is_visible": true,
+                "refType": "CHILD_OF",
+                "spanID": "9b0c7a820ce8d116",
+                "traceID": "57e3750158d8f4f8ba9348bb69fb6a6d"
+              }
+            ],
+            "raw_error_detail_field_count": 0,
+            "service": "checkout",
+            "service_version": "2.0.2",
+            "span_id": "e70112d1ad950194",
+            "start_us": 1793637111423861,
+            "status_state": "not_recorded",
+            "status_tags": {},
+            "trace_id": "57e3750158d8f4f8ba9348bb69fb6a6d"
+          },
+          {
+            "duration_us": 24363,
+            "error_by_visible_tags": false,
+            "error_details": [],
+            "omitted_error_detail_field_count": 0,
+            "operation": "HTTP POST",
+            "operation_truncated": false,
+            "parent_references": [
+              {
+                "parent_is_visible": true,
+                "refType": "CHILD_OF",
+                "spanID": "54822afef351e9b4",
+                "traceID": "a6ed3344eb7f423a57c36fdc9cef0ce5"
+              }
+            ],
+            "raw_error_detail_field_count": 0,
+            "service": "checkout",
+            "service_version": "2.0.2",
+            "span_id": "0c2ef21d6794b8d1",
+            "start_us": 1793636964099451,
+            "status_state": "recorded",
+            "status_tags": {
+              "http.status_code": 200
+            },
+            "trace_id": "a6ed3344eb7f423a57c36fdc9cef0ce5"
+          },
+          {
+            "duration_us": 24015,
+            "error_by_visible_tags": false,
+            "error_details": [],
+            "omitted_error_detail_field_count": 0,
+            "operation": "HTTP POST",
+            "operation_truncated": false,
+            "parent_references": [
+              {
+                "parent_is_visible": true,
+                "refType": "CHILD_OF",
+                "spanID": "2a027585e05304d0",
+                "traceID": "6a93abda38cb814fd780ee2fbeae70b1"
+              }
+            ],
+            "raw_error_detail_field_count": 0,
+            "service": "checkout",
+            "service_version": "2.0.2",
+            "span_id": "187d1e6ff1e93d67",
+            "start_us": 1793636943872261,
+            "status_state": "recorded",
+            "status_tags": {
+              "http.status_code": 200
+            },
+            "trace_id": "6a93abda38cb814fd780ee2fbeae70b1"
+          },
+          {
+            "duration_us": 21463,
+            "error_by_visible_tags": false,
+            "error_details": [],
+            "omitted_error_detail_field_count": 0,
+            "operation": "prepareOrderItemsAndShippingQuoteFromCart",
+            "operation_truncated": false,
+            "parent_references": [
+              {
+                "parent_is_visible": true,
+                "refType": "CHILD_OF",
+                "spanID": "3c0df12eeae35ac0",
+                "traceID": "28787b5fff0694567b2b7d8b448d8c24"
+              }
+            ],
+            "raw_error_detail_field_count": 0,
+            "service": "checkout",
+            "service_version": "2.0.2",
+            "span_id": "afebcdcfd5424afb",
+            "start_us": 1793637104542692,
+            "status_state": "not_recorded",
+            "status_tags": {},
+            "trace_id": "28787b5fff0694567b2b7d8b448d8c24"
+          },
+          {
+            "duration_us": 19551,
+            "error_by_visible_tags": false,
+            "error_details": [],
+            "omitted_error_detail_field_count": 0,
+            "operation": "HTTP POST",
+            "operation_truncated": false,
+            "parent_references": [
+              {
+                "parent_is_visible": true,
+                "refType": "CHILD_OF",
+                "spanID": "5d0c869249e73bea",
+                "traceID": "a95802bed2daac5f80b0027779f3b6d3"
+              }
+            ],
+            "raw_error_detail_field_count": 0,
+            "service": "checkout",
+            "service_version": "2.0.2",
+            "span_id": "f5efdecad7e660c7",
+            "start_us": 1793636935752662,
+            "status_state": "recorded",
+            "status_tags": {
+              "http.status_code": 200
+            },
+            "trace_id": "a95802bed2daac5f80b0027779f3b6d3"
+          },
+          {
+            "duration_us": 17317,
+            "error_by_visible_tags": false,
+            "error_details": [],
+            "omitted_error_detail_field_count": 0,
+            "operation": "oteldemo.CheckoutService/PlaceOrder",
+            "operation_truncated": false,
+            "parent_references": [
+              {
+                "parent_is_visible": true,
+                "refType": "CHILD_OF",
+                "spanID": "5982b2033e3bcfce",
+                "traceID": "6595d1419c088952b131814148733940"
+              }
+            ],
+            "raw_error_detail_field_count": 0,
+            "service": "checkout",
+            "service_version": "2.0.2",
+            "span_id": "241d0c9392c17e9f",
+            "start_us": 1793636927038092,
+            "status_state": "recorded",
+            "status_tags": {
+              "rpc.grpc.status_code": 0
+            },
+            "trace_id": "6595d1419c088952b131814148733940"
+          },
+          {
+            "duration_us": 16232,
+            "error_by_visible_tags": false,
+            "error_details": [],
+            "omitted_error_detail_field_count": 0,
+            "operation": "prepareOrderItemsAndShippingQuoteFromCart",
+            "operation_truncated": false,
+            "parent_references": [
+              {
+                "parent_is_visible": true,
+                "refType": "CHILD_OF",
+                "spanID": "54822afef351e9b4",
+                "traceID": "a6ed3344eb7f423a57c36fdc9cef0ce5"
+              }
+            ],
+            "raw_error_detail_field_count": 0,
+            "service": "checkout",
+            "service_version": "2.0.2",
+            "span_id": "35adeac30c352aca",
+            "start_us": 1793636964064845,
+            "status_state": "not_recorded",
+            "status_tags": {},
+            "trace_id": "a6ed3344eb7f423a57c36fdc9cef0ce5"
+          },
+          {
+            "duration_us": 16126,
+            "error_by_visible_tags": false,
+            "error_details": [],
+            "omitted_error_detail_field_count": 0,
+            "operation": "HTTP POST",
+            "operation_truncated": false,
+            "parent_references": [
+              {
+                "parent_is_visible": true,
+                "refType": "CHILD_OF",
+                "spanID": "6f57b2ffca05d06e",
+                "traceID": "4642399c2e9e0341e9cd4081c599fe1e"
+              }
+            ],
+            "raw_error_detail_field_count": 0,
+            "service": "checkout",
+            "service_version": "2.0.2",
+            "span_id": "2f30d2e32774f75c",
+            "start_us": 1793636926932233,
+            "status_state": "recorded",
+            "status_tags": {
+              "http.status_code": 200
+            },
+            "trace_id": "4642399c2e9e0341e9cd4081c599fe1e"
+          },
+          {
+            "duration_us": 15221,
+            "error_by_visible_tags": false,
+            "error_details": [],
+            "omitted_error_detail_field_count": 0,
+            "operation": "prepareOrderItemsAndShippingQuoteFromCart",
+            "operation_truncated": false,
+            "parent_references": [
+              {
+                "parent_is_visible": true,
+                "refType": "CHILD_OF",
+                "spanID": "5d0c869249e73bea",
+                "traceID": "a95802bed2daac5f80b0027779f3b6d3"
+              }
+            ],
+            "raw_error_detail_field_count": 0,
+            "service": "checkout",
+            "service_version": "2.0.2",
+            "span_id": "325aee6c108bfd66",
+            "start_us": 1793636935718262,
+            "status_state": "not_recorded",
+            "status_tags": {},
+            "trace_id": "a95802bed2daac5f80b0027779f3b6d3"
+          },
+          {
+            "duration_us": 14475,
+            "error_by_visible_tags": false,
+            "error_details": [],
+            "omitted_error_detail_field_count": 0,
+            "operation": "prepareOrderItemsAndShippingQuoteFromCart",
+            "operation_truncated": false,
+            "parent_references": [
+              {
+                "parent_is_visible": true,
+                "refType": "CHILD_OF",
+                "spanID": "6f57b2ffca05d06e",
+                "traceID": "4642399c2e9e0341e9cd4081c599fe1e"
+              }
+            ],
+            "raw_error_detail_field_count": 0,
+            "service": "checkout",
+            "service_version": "2.0.2",
+            "span_id": "a81092d25e8344e5",
+            "start_us": 1793636926904404,
+            "status_state": "not_recorded",
+            "status_tags": {},
+            "trace_id": "4642399c2e9e0341e9cd4081c599fe1e"
+          },
+          {
+            "duration_us": 12919,
+            "error_by_visible_tags": false,
+            "error_details": [],
+            "omitted_error_detail_field_count": 0,
+            "operation": "oteldemo.CurrencyService/Convert",
+            "operation_truncated": false,
+            "parent_references": [
+              {
+                "parent_is_visible": true,
+                "refType": "CHILD_OF",
+                "spanID": "e70112d1ad950194",
+                "traceID": "57e3750158d8f4f8ba9348bb69fb6a6d"
+              }
+            ],
+            "raw_error_detail_field_count": 0,
+            "service": "checkout",
+            "service_version": "2.0.2",
+            "span_id": "1e7fa0fd18bb5eaf",
+            "start_us": 1793637111426956,
+            "status_state": "recorded",
+            "status_tags": {
+              "rpc.grpc.status_code": 0
+            },
+            "trace_id": "57e3750158d8f4f8ba9348bb69fb6a6d"
+          },
+          {
+            "duration_us": 11660,
+            "error_by_visible_tags": false,
+            "error_details": [],
+            "omitted_error_detail_field_count": 0,
+            "operation": "oteldemo.PaymentService/Charge",
+            "operation_truncated": false,
+            "parent_references": [
+              {
+                "parent_is_visible": true,
+                "refType": "CHILD_OF",
+                "spanID": "54822afef351e9b4",
+                "traceID": "a6ed3344eb7f423a57c36fdc9cef0ce5"
+              }
+            ],
+            "raw_error_detail_field_count": 0,
+            "service": "checkout",
+            "service_version": "2.0.2",
+            "span_id": "918abf4442baa439",
+            "start_us": 1793636964081168,
+            "status_state": "recorded",
+            "status_tags": {
+              "rpc.grpc.status_code": 0
+            },
+            "trace_id": "a6ed3344eb7f423a57c36fdc9cef0ce5"
+          },
+          {
+            "duration_us": 11431,
+            "error_by_visible_tags": false,
+            "error_details": [],
+            "omitted_error_detail_field_count": 0,
+            "operation": "prepareOrderItemsAndShippingQuoteFromCart",
+            "operation_truncated": false,
+            "parent_references": [
+              {
+                "parent_is_visible": true,
+                "refType": "CHILD_OF",
+                "spanID": "2a027585e05304d0",
+                "traceID": "6a93abda38cb814fd780ee2fbeae70b1"
+              }
+            ],
+            "raw_error_detail_field_count": 0,
+            "service": "checkout",
+            "service_version": "2.0.2",
+            "span_id": "989fbba0202ada4f",
+            "start_us": 1793636943852749,
+            "status_state": "not_recorded",
+            "status_tags": {},
+            "trace_id": "6a93abda38cb814fd780ee2fbeae70b1"
+          },
+          {
+            "duration_us": 10755,
+            "error_by_visible_tags": false,
+            "error_details": [],
+            "omitted_error_detail_field_count": 0,
+            "operation": "prepareOrderItemsAndShippingQuoteFromCart",
+            "operation_truncated": false,
+            "parent_references": [
+              {
+                "parent_is_visible": true,
+                "refType": "CHILD_OF",
+                "spanID": "7deebbeaa30216b5",
+                "traceID": "2d30fbf5a81504307f9b5e7a241c9adf"
+              }
+            ],
+            "raw_error_detail_field_count": 0,
+            "service": "checkout",
+            "service_version": "2.0.2",
+            "span_id": "f35a1c56118d006f",
+            "start_us": 1793637122721273,
+            "status_state": "not_recorded",
+            "status_tags": {},
+            "trace_id": "2d30fbf5a81504307f9b5e7a241c9adf"
+          },
+          {
+            "duration_us": 10616,
+            "error_by_visible_tags": false,
+            "error_details": [],
+            "omitted_error_detail_field_count": 0,
+            "operation": "prepareOrderItemsAndShippingQuoteFromCart",
+            "operation_truncated": false,
+            "parent_references": [
+              {
+                "parent_is_visible": true,
+                "refType": "CHILD_OF",
+                "spanID": "f6cca8714bbbbda3",
+                "traceID": "4877dcb551d9ba266086999e801213d6"
+              }
+            ],
+            "raw_error_detail_field_count": 0,
+            "service": "checkout",
+            "service_version": "2.0.2",
+            "span_id": "7816698dae393afb",
+            "start_us": 1793637111446791,
+            "status_state": "not_recorded",
+            "status_tags": {},
+            "trace_id": "4877dcb551d9ba266086999e801213d6"
+          },
+          {
+            "duration_us": 10280,
+            "error_by_visible_tags": false,
+            "error_details": [],
+            "omitted_error_detail_field_count": 0,
+            "operation": "oteldemo.CartService/EmptyCart",
+            "operation_truncated": false,
+            "parent_references": [
+              {
+                "parent_is_visible": true,
+                "refType": "CHILD_OF",
+                "spanID": "5d0c869249e73bea",
+                "traceID": "a95802bed2daac5f80b0027779f3b6d3"
+              }
+            ],
+            "raw_error_detail_field_count": 0,
+            "service": "checkout",
+            "service_version": "2.0.2",
+            "span_id": "e1ea88253449515f",
+            "start_us": 1793636935742245,
+            "status_state": "recorded",
+            "status_tags": {
+              "rpc.grpc.status_code": 0
+            },
+            "trace_id": "a95802bed2daac5f80b0027779f3b6d3"
+          },
+          {
+            "duration_us": 10036,
+            "error_by_visible_tags": false,
+            "error_details": [],
+            "omitted_error_detail_field_count": 0,
+            "operation": "oteldemo.ShippingService/GetQuote",
+            "operation_truncated": false,
+            "parent_references": [
+              {
+                "parent_is_visible": true,
+                "refType": "CHILD_OF",
+                "spanID": "afebcdcfd5424afb",
+                "traceID": "28787b5fff0694567b2b7d8b448d8c24"
+              }
+            ],
+            "raw_error_detail_field_count": 0,
+            "service": "checkout",
+            "service_version": "2.0.2",
+            "span_id": "4e56de292c9071df",
+            "start_us": 1793637104552488,
+            "status_state": "recorded",
+            "status_tags": {
+              "rpc.grpc.status_code": 0
+            },
+            "trace_id": "28787b5fff0694567b2b7d8b448d8c24"
+          }
+        ],
+        "data_as_of": "2026-11-02T16:32:21.686983+00:00",
+        "dispatch_started_at": "2026-11-02T16:32:34.889595+00:00",
+        "evidence_id": "2eb9ff57-4764-49ef-889e-3525c28c487b-t0:01e3b2c3-db57-4f58-8d70-5c518f849449",
+        "freshness_seconds": 13.295239,
+        "incomplete": false,
+        "lookback_seconds": null,
+        "lookback_start_at": null,
+        "observed_at": "2026-11-02T16:32:34.982222+00:00",
+        "omitted_bytes": 196066,
+        "omitted_rows": 332,
+        "operation_id": "2eb9ff57-4764-49ef-889e-3525c28c487b-t0",
+        "parent_tool": "traces_search",
+        "projection_revision": "m1-01-tool-view-v11",
+        "query": {
+          "evidence_id": "662556cb-1824-40ef-afe3-9dda4e71f818-t1:813ca3af-51f8-4d65-896e-640c7b004ddd",
+          "limit": 30,
+          "offset": 0
+        },
+        "registry_revision": "dc86d465b4db7b13f6fa4d490b5d657a8c1f4f29ca24128fa841333da3432f29",
+        "result_count": 30,
+        "returned_count": 30,
+        "slice": {
+          "offset": 0,
+          "parent_evidence_id": "662556cb-1824-40ef-afe3-9dda4e71f818-t1:813ca3af-51f8-4d65-896e-640c7b004ddd",
+          "parent_raw_sha256": "4826819350b481166f4d4889a1c15be26f1f68a4d3b1607cb5e93bd3d8525a8b",
+          "returned": 30,
+          "total_rows": 362
+        },
+        "source": "otel-demo",
+        "source_end_at": "2026-11-02T16:32:21.686983+00:00",
+        "source_start_at": "2026-11-02T16:28:44.059101+00:00",
+        "status": "ok",
+        "target_id": "m0-otel-20260909",
+        "tool": "read_evidence",
+        "tool_registry_revision": "796887a8015086e8aecd45c1790b54cbe16ff09a0c4ac75e04aba12aa335d485",
+        "tool_version": "v1",
+        "truncated": true,
+        "trust": "untrusted-evidence",
+        "window": {
+          "end": "2026-11-02T16:32:31+00:00",
+          "start": "2026-11-02T16:27:31+00:00"
+        }
+      },
+      "view_sha256": "8538a88aff26c977ba20d32ddfdea1565a827322d771bca9a1872cad480cc3b6",
+      "window": {
+        "end": "2026-11-02T16:32:31+00:00",
+        "start": "2026-11-02T16:27:31+00:00"
+      }
+    },
+    {
+      "citable_as_fact": true,
+      "delivered": true,
+      "evidence_id": "2eb9ff57-4764-49ef-889e-3525c28c487b-t1:215bf01e-fd10-4a3f-8c31-18ce0e99d5c2",
+      "status": "ok",
+      "target_id": "m0-otel-20260909",
+      "time_scope_refs": [
+        "policy-window-1"
+      ],
+      "view": {
+        "adopted": true,
+        "citable_as_fact": true,
+        "content": [
+          "http_client_duration_milliseconds_bucket",
+          "http_client_duration_milliseconds_count",
+          "http_client_duration_milliseconds_sum",
+          "http_client_request_size_bytes_total",
+          "http_client_response_size_bytes_total",
+          "process_runtime_go_cgo_calls",
+          "process_runtime_go_gc_count_total",
+          "process_runtime_go_gc_pause_ns_bucket",
+          "process_runtime_go_gc_pause_ns_count",
+          "process_runtime_go_gc_pause_ns_sum",
+          "process_runtime_go_gc_pause_ns_total",
+          "process_runtime_go_goroutines",
+          "process_runtime_go_mem_heap_alloc_bytes",
+          "process_runtime_go_mem_heap_idle_bytes",
+          "process_runtime_go_mem_heap_inuse_bytes",
+          "process_runtime_go_mem_heap_objects",
+          "process_runtime_go_mem_heap_released_bytes",
+          "process_runtime_go_mem_heap_sys_bytes",
+          "process_runtime_go_mem_live_objects",
+          "process_runtime_go_mem_lookups_total",
+          "rpc_client_duration_milliseconds_bucket",
+          "rpc_client_duration_milliseconds_count",
+          "rpc_client_duration_milliseconds_sum",
+          "rpc_client_request_size_bytes_bucket",
+          "rpc_client_request_size_bytes_count",
+          "rpc_client_request_size_bytes_sum",
+          "rpc_client_requests_per_rpc_bucket",
+          "rpc_client_requests_per_rpc_count",
+          "rpc_client_requests_per_rpc_sum",
+          "rpc_client_response_size_bytes_bucket",
+          "rpc_client_response_size_bytes_count",
+          "rpc_client_response_size_bytes_sum",
+          "rpc_client_responses_per_rpc_bucket",
+          "rpc_client_responses_per_rpc_count",
+          "rpc_client_responses_per_rpc_sum",
+          "rpc_server_duration_milliseconds_bucket",
+          "rpc_server_duration_milliseconds_count",
+          "rpc_server_duration_milliseconds_sum",
+          "rpc_server_request_size_bytes_bucket",
+          "rpc_server_request_size_bytes_count",
+          "rpc_server_request_size_bytes_sum",
+          "rpc_server_requests_per_rpc_bucket",
+          "rpc_server_requests_per_rpc_count",
+          "rpc_server_requests_per_rpc_sum",
+          "rpc_server_response_size_bytes_bucket",
+          "rpc_server_response_size_bytes_count",
+          "rpc_server_response_size_bytes_sum",
+          "rpc_server_responses_per_rpc_bucket",
+          "rpc_server_responses_per_rpc_count",
+          "rpc_server_responses_per_rpc_sum",
+          "runtime_uptime_milliseconds_total",
+          "target_info",
+          "traces_span_metrics_calls_total",
+          "traces_span_metrics_duration_milliseconds_bucket",
+          "traces_span_metrics_duration_milliseconds_count",
+          "traces_span_metrics_duration_milliseconds_sum"
+        ],
+        "data_as_of": null,
+        "dispatch_started_at": "2026-11-02T16:32:38.457599+00:00",
+        "evidence_id": "2eb9ff57-4764-49ef-889e-3525c28c487b-t1:215bf01e-fd10-4a3f-8c31-18ce0e99d5c2",
+        "freshness_seconds": null,
+        "incomplete": false,
+        "incomplete_reason": null,
+        "limit": 100,
+        "lookback_seconds": null,
+        "lookback_start_at": null,
+        "observed_at": "2026-11-02T16:32:39.636312+00:00",
+        "omitted_bytes": 0,
+        "omitted_rows": 0,
+        "operation_id": "2eb9ff57-4764-49ef-889e-3525c28c487b-t1",
+        "projection_revision": "m1-01-tool-view-v11",
+        "query": {
+          "end": "2026-11-02T16:32:31Z",
+          "match": "{service_name=\"checkout\"}",
+          "start": "2026-11-02T16:27:31Z"
+        },
+        "registry_revision": "dc86d465b4db7b13f6fa4d490b5d657a8c1f4f29ca24128fa841333da3432f29",
+        "result_count": 56,
+        "returned_count": 56,
+        "source": "otel-demo",
+        "source_end_at": null,
+        "source_start_at": null,
+        "status": "ok",
+        "target_id": "m0-otel-20260909",
+        "tool": "get_metric_names",
+        "tool_registry_revision": "796887a8015086e8aecd45c1790b54cbe16ff09a0c4ac75e04aba12aa335d485",
+        "tool_version": "v1",
+        "truncated": false,
+        "trust": "untrusted-evidence",
+        "window": {
+          "end": "2026-11-02T16:32:31+00:00",
+          "start": "2026-11-02T16:27:31+00:00"
+        }
+      },
+      "view_sha256": "e1cb2c6f127c11fac24123a376f22db0eafc244f07def04b769a15d1204ad60e",
+      "window": {
+        "end": "2026-11-02T16:32:31+00:00",
+        "start": "2026-11-02T16:27:31+00:00"
+      }
+    },
+    {
+      "citable_as_fact": false,
+      "delivered": true,
+      "evidence_id": "2ee36461-ebff-456f-8e77-22931d4fd90f-t0:3d479c70-163d-4d66-87b1-93bffae9bf70",
+      "status": "error",
+      "target_id": "m0-otel-20260909",
+      "time_scope_refs": [],
+      "view": {
+        "adopted": false,
+        "citable_as_fact": false,
+        "content": null,
+        "data_as_of": "2026-11-02T16:32:02.742429+00:00",
+        "dispatch_started_at": "2026-11-02T16:33:01.281659+00:00",
+        "evidence_id": "2ee36461-ebff-456f-8e77-22931d4fd90f-t0:3d479c70-163d-4d66-87b1-93bffae9bf70",
+        "freshness_seconds": 58.633361,
+        "incomplete": true,
+        "max_view_tokens": 25000,
+        "message": "The tool call result is too large to return: 28937/25000 tokens.\nTry to repeat the query but proactively narrow down the result (a narrower time window, a filter, or a smaller limit) so that the tool answer fits within the allowed number of tokens.",
+        "observed_at": "2026-11-02T16:33:01.375790+00:00",
+        "operation_id": "2ee36461-ebff-456f-8e77-22931d4fd90f-t0",
+        "projection_revision": "m1-01-tool-view-v11",
+        "query": {
+          "end": "2026-11-02T16:32:31Z",
+          "limit": 4,
+          "service": "payment",
+          "start": "2026-11-02T16:27:31Z"
+        },
+        "reason": "RESULT_TOO_LARGE",
+        "requested_at": "2026-11-02T16:33:01.281659+00:00",
+        "result_count": 124,
+        "row_unit": "spans",
+        "source": "otel-demo",
+        "source_contact": "confirmed",
+        "source_end_at": "2026-11-02T16:32:02.742429+00:00",
+        "source_start_at": "2026-11-02T16:31:41.703454+00:00",
+        "status": "error",
+        "suggested_limit": 99,
+        "target_id": "m0-otel-20260909",
+        "tool": "traces_search",
+        "tool_version": "v1",
+        "total_rows": 124,
+        "trust": "gateway",
+        "usage": "The whole result is kept as un-adopted evidence under evidence_id; it is not citable as it is. Read its rows with read_evidence(evidence_id, offset, limit): offset and limit count rows of row_unit, total_rows rows exist, and about suggested_limit rows starting at offset 0 fit one read. A read slice is adopted evidence of its own that may be cited for the rows it shows. Narrowing the query instead also works.",
+        "view_tokens": 28937,
+        "window": {
+          "end": "2026-11-02T16:32:31+00:00",
+          "start": "2026-11-02T16:27:31+00:00"
+        }
+      },
+      "view_sha256": "a875525165bd65a8a678375899ddb4af291c7c5045baa57df2f7ab52ed64d161",
+      "window": {
+        "end": "2026-11-02T16:32:31+00:00",
+        "start": "2026-11-02T16:27:31+00:00"
+      }
+    },
+    {
+      "citable_as_fact": true,
+      "delivered": true,
+      "evidence_id": "2ee36461-ebff-456f-8e77-22931d4fd90f-t1:2cb913d2-e0bd-4ad2-9cb8-20ac133f3a68",
+      "status": "ok",
+      "target_id": "m0-otel-20260909",
+      "time_scope_refs": [
+        "policy-window-1"
+      ],
+      "view": {
+        "adopted": true,
+        "citable_as_fact": true,
+        "content": [
+          {
+            "metric": {
+              "service_name": "cart",
+              "span_name": "POST /oteldemo.CartService/EmptyCart",
+              "status_code": "STATUS_CODE_ERROR"
+            },
+            "values": [
+              [
+                1793633551,
+                "0"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "checkout",
+              "span_name": "oteldemo.CartService/EmptyCart",
+              "status_code": "STATUS_CODE_ERROR"
+            },
+            "values": [
+              [
+                1793633551,
+                "0"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "checkout",
+              "span_name": "oteldemo.CheckoutService/PlaceOrder",
+              "status_code": "STATUS_CODE_ERROR"
+            },
+            "values": [
+              [
+                1793633551,
+                "0"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "checkout",
+              "span_name": "oteldemo.CheckoutService/prepareOrderItems",
+              "status_code": "STATUS_CODE_ERROR"
+            },
+            "values": [
+              [
+                1793633551,
+                "0"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "checkout",
+              "span_name": "oteldemo.PaymentService/Charge",
+              "status_code": "STATUS_CODE_ERROR"
+            },
+            "values": [
+              [
+                1793633551,
+                "0"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "payment",
+              "span_name": "grpc.oteldemo.PaymentService/Charge",
+              "status_code": "STATUS_CODE_ERROR"
+            },
+            "values": [
+              [
+                1793633551,
+                "0"
+              ]
+            ]
+          }
+        ],
+        "data_as_of": "2026-11-02T15:32:31+00:00",
+        "dispatch_started_at": "2026-11-02T16:33:01.441262+00:00",
+        "evidence_id": "2ee36461-ebff-456f-8e77-22931d4fd90f-t1:2cb913d2-e0bd-4ad2-9cb8-20ac133f3a68",
+        "freshness_seconds": 3631.537557,
+        "incomplete": false,
+        "lookback_seconds": 300,
+        "lookback_start_at": "2026-11-02T15:27:31+00:00",
+        "observed_at": "2026-11-02T16:33:02.537557+00:00",
+        "omitted_bytes": 0,
+        "omitted_rows": 0,
+        "operation_id": "2ee36461-ebff-456f-8e77-22931d4fd90f-t1",
+        "projection_revision": "m1-01-tool-view-v11",
+        "query": {
+          "end": "2026-11-02T15:32:31Z",
+          "expr": "sum by (service_name, span_name, status_code) (increase(traces_span_metrics_calls_total{service_name=~\"checkout|payment|product-catalog|cart|currency|shipping|email\", status_code=\"STATUS_CODE_ERROR\"}[5m]))",
+          "start": "2026-11-02T15:27:31Z"
+        },
+        "registry_revision": "dc86d465b4db7b13f6fa4d490b5d657a8c1f4f29ca24128fa841333da3432f29",
+        "result_count": 6,
+        "returned_count": 6,
+        "series_note": "traces_span_metrics_calls_total counts spans of every operation of the service (internal, client and server spans alike), summed over the labels kept in this query; it is not a count of requests. status_code STATUS_CODE_UNSET means the span carried no status; it does not mean the call succeeded.",
+        "source": "otel-demo",
+        "source_end_at": "2026-11-02T15:32:31+00:00",
+        "source_start_at": "2026-11-02T15:32:31+00:00",
+        "status": "ok",
+        "target_id": "m0-otel-20260909",
+        "tool": "metrics_range_query",
+        "tool_registry_revision": "796887a8015086e8aecd45c1790b54cbe16ff09a0c4ac75e04aba12aa335d485",
+        "tool_version": "v1",
+        "truncated": false,
+        "trust": "untrusted-evidence",
+        "window": {
+          "end": "2026-11-02T15:32:31+00:00",
+          "start": "2026-11-02T15:27:31+00:00"
+        }
+      },
+      "view_sha256": "82eb9e78b04bbd47f651c86f136e03c1d8e4cd03274330fd942817797ba49569",
+      "window": {
+        "end": "2026-11-02T15:32:31+00:00",
+        "start": "2026-11-02T15:27:31+00:00"
+      }
+    },
+    {
+      "citable_as_fact": false,
+      "delivered": true,
+      "evidence_id": "2ee36461-ebff-456f-8e77-22931d4fd90f-t2:5a9f0c6a-d639-45b8-86bc-1a217a9c5a5f",
+      "status": "no_data",
+      "target_id": "m0-otel-20260909",
+      "time_scope_refs": [
+        "policy-window-1"
+      ],
+      "view": {
+        "adopted": true,
+        "citable_as_fact": false,
+        "content": [],
+        "data_as_of": null,
+        "dispatch_started_at": "2026-11-02T16:33:02.553904+00:00",
+        "evidence_id": "2ee36461-ebff-456f-8e77-22931d4fd90f-t2:5a9f0c6a-d639-45b8-86bc-1a217a9c5a5f",
+        "freshness_seconds": null,
+        "incomplete": false,
+        "lookback_seconds": 300,
+        "lookback_start_at": "2026-11-02T16:27:31+00:00",
+        "observed_at": "2026-11-02T16:33:03.737026+00:00",
+        "omitted_bytes": 0,
+        "omitted_rows": 0,
+        "operation_id": "2ee36461-ebff-456f-8e77-22931d4fd90f-t2",
+        "projection_revision": "m1-01-tool-view-v11",
+        "query": {
+          "end": "2026-11-02T16:32:31Z",
+          "expr": "histogram_quantile(0.95, sum by (le, rpc_service, rpc_method, rpc_grpc_status_code) (rate(rpc_server_duration_milliseconds_bucket{service_name=\"payment\"}[5m])))",
+          "start": "2026-11-02T16:27:31Z"
+        },
+        "registry_revision": "dc86d465b4db7b13f6fa4d490b5d657a8c1f4f29ca24128fa841333da3432f29",
+        "result_count": 0,
+        "returned_count": 0,
+        "source": "otel-demo",
+        "source_end_at": null,
+        "source_start_at": null,
+        "status": "no_data",
+        "target_id": "m0-otel-20260909",
+        "tool": "metrics_range_query",
+        "tool_registry_revision": "796887a8015086e8aecd45c1790b54cbe16ff09a0c4ac75e04aba12aa335d485",
+        "tool_version": "v1",
+        "truncated": false,
+        "trust": "untrusted-evidence",
+        "window": {
+          "end": "2026-11-02T16:32:31+00:00",
+          "start": "2026-11-02T16:27:31+00:00"
+        }
+      },
+      "view_sha256": "3110a73656833980d85bb18af2053f8168fa473a836876b4440759753078459f",
+      "window": {
+        "end": "2026-11-02T16:32:31+00:00",
+        "start": "2026-11-02T16:27:31+00:00"
+      }
+    },
+    {
+      "citable_as_fact": false,
+      "delivered": true,
+      "evidence_id": "2ee36461-ebff-456f-8e77-22931d4fd90f-t3:2a74d32e-89f9-41d4-9dcf-2911f9d07bb7",
+      "status": "no_data",
+      "target_id": "m0-otel-20260909",
+      "time_scope_refs": [
+        "policy-window-1"
+      ],
+      "view": {
+        "adopted": true,
+        "citable_as_fact": false,
+        "content": [],
+        "data_as_of": null,
+        "dispatch_started_at": "2026-11-02T16:33:03.751633+00:00",
+        "evidence_id": "2ee36461-ebff-456f-8e77-22931d4fd90f-t3:2a74d32e-89f9-41d4-9dcf-2911f9d07bb7",
+        "freshness_seconds": null,
+        "incomplete": false,
+        "lookback_seconds": 300,
+        "lookback_start_at": "2026-11-02T15:27:31+00:00",
+        "observed_at": "2026-11-02T16:33:04.840695+00:00",
+        "omitted_bytes": 0,
+        "omitted_rows": 0,
+        "operation_id": "2ee36461-ebff-456f-8e77-22931d4fd90f-t3",
+        "projection_revision": "m1-01-tool-view-v11",
+        "query": {
+          "end": "2026-11-02T15:32:31Z",
+          "expr": "histogram_quantile(0.95, sum by (le, rpc_service, rpc_method, rpc_grpc_status_code) (rate(rpc_server_duration_milliseconds_bucket{service_name=\"payment\"}[5m])))",
+          "start": "2026-11-02T15:27:31Z"
+        },
+        "registry_revision": "dc86d465b4db7b13f6fa4d490b5d657a8c1f4f29ca24128fa841333da3432f29",
+        "result_count": 0,
+        "returned_count": 0,
+        "source": "otel-demo",
+        "source_end_at": null,
+        "source_start_at": null,
+        "status": "no_data",
+        "target_id": "m0-otel-20260909",
+        "tool": "metrics_range_query",
+        "tool_registry_revision": "796887a8015086e8aecd45c1790b54cbe16ff09a0c4ac75e04aba12aa335d485",
+        "tool_version": "v1",
+        "truncated": false,
+        "trust": "untrusted-evidence",
+        "window": {
+          "end": "2026-11-02T15:32:31+00:00",
+          "start": "2026-11-02T15:27:31+00:00"
+        }
+      },
+      "view_sha256": "d6cf9db1c9f7f46ccecde3a5a64b1dc1c18d47a3657205112a7b6d1349dbf5f9",
+      "window": {
+        "end": "2026-11-02T15:32:31+00:00",
+        "start": "2026-11-02T15:27:31+00:00"
+      }
+    },
+    {
+      "citable_as_fact": true,
+      "delivered": true,
+      "evidence_id": "662556cb-1824-40ef-afe3-9dda4e71f818-t0:9dbbb220-301b-4109-883f-5b0a52498e6e",
+      "status": "ok",
+      "target_id": "m0-otel-20260909",
+      "time_scope_refs": [
+        "policy-window-1"
+      ],
+      "view": {
+        "adopted": true,
+        "citable_as_fact": true,
+        "content": [
+          {
+            "metric": {
+              "service_name": "ad",
+              "span_name": "flagd.evaluation.v1.Service/EventStream",
+              "status_code": "STATUS_CODE_ERROR"
+            },
+            "values": [
+              [
+                1793637151,
+                "1.25"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "ad",
+              "span_name": "flagd.evaluation.v1.Service/ResolveBoolean",
+              "status_code": "STATUS_CODE_ERROR"
+            },
+            "values": [
+              [
+                1793637151,
+                "0"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "ad",
+              "span_name": "flagd.evaluation.v1.Service/ResolveBoolean",
+              "status_code": "STATUS_CODE_UNSET"
+            },
+            "values": [
+              [
+                1793637151,
+                "0"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "ad",
+              "span_name": "getAdsByCategory",
+              "status_code": "STATUS_CODE_UNSET"
+            },
+            "values": [
+              [
+                1793637151,
+                "10"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "ad",
+              "span_name": "getRandomAds",
+              "status_code": "STATUS_CODE_UNSET"
+            },
+            "values": [
+              [
+                1793637151,
+                "2.5"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "ad",
+              "span_name": "oteldemo.AdService/GetAds",
+              "status_code": "STATUS_CODE_ERROR"
+            },
+            "values": [
+              [
+                1793637151,
+                "0"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "ad",
+              "span_name": "oteldemo.AdService/GetAds",
+              "status_code": "STATUS_CODE_UNSET"
+            },
+            "values": [
+              [
+                1793637151,
+                "10"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "ad",
+              "span_name": "resolve",
+              "status_code": "STATUS_CODE_UNSET"
+            },
+            "values": [
+              [
+                1793637151,
+                "0"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "cart",
+              "span_name": "EXPIRE",
+              "status_code": "STATUS_CODE_UNSET"
+            },
+            "values": [
+              [
+                1793637151,
+                "30"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "cart",
+              "span_name": "HGET",
+              "status_code": "STATUS_CODE_UNSET"
+            },
+            "values": [
+              [
+                1793637151,
+                "66.25"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "cart",
+              "span_name": "HMSET",
+              "status_code": "STATUS_CODE_UNSET"
+            },
+            "values": [
+              [
+                1793637151,
+                "30"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "cart",
+              "span_name": "POST",
+              "status_code": "STATUS_CODE_UNSET"
+            },
+            "values": [
+              [
+                1793637151,
+                "6.25"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "cart",
+              "span_name": "POST /oteldemo.CartService/AddItem",
+              "status_code": "STATUS_CODE_UNSET"
+            },
+            "values": [
+              [
+                1793637151,
+                "23.75"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "cart",
+              "span_name": "POST /oteldemo.CartService/EmptyCart",
+              "status_code": "STATUS_CODE_ERROR"
+            },
+            "values": [
+              [
+                1793637151,
+                "0"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "cart",
+              "span_name": "POST /oteldemo.CartService/EmptyCart",
+              "status_code": "STATUS_CODE_UNSET"
+            },
+            "values": [
+              [
+                1793637151,
+                "6.25"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "cart",
+              "span_name": "POST /oteldemo.CartService/GetCart",
+              "status_code": "STATUS_CODE_UNSET"
+            },
+            "values": [
+              [
+                1793637151,
+                "42.5"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "cart",
+              "span_name": "flagd.evaluation.v1.Service/ResolveBoolean",
+              "status_code": "STATUS_CODE_UNSET"
+            },
+            "values": [
+              [
+                1793637151,
+                "6.25"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "checkout",
+              "span_name": "HTTP POST",
+              "status_code": "STATUS_CODE_UNSET"
+            },
+            "values": [
+              [
+                1793637151,
+                "6.25"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "checkout",
+              "span_name": "oteldemo.CartService/EmptyCart",
+              "status_code": "STATUS_CODE_ERROR"
+            },
+            "values": [
+              [
+                1793637151,
+                "0"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "checkout",
+              "span_name": "oteldemo.CartService/EmptyCart",
+              "status_code": "STATUS_CODE_UNSET"
+            },
+            "values": [
+              [
+                1793637151,
+                "6.25"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "checkout",
+              "span_name": "oteldemo.CartService/GetCart",
+              "status_code": "STATUS_CODE_UNSET"
+            },
+            "values": [
+              [
+                1793637151,
+                "11.25"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "checkout",
+              "span_name": "oteldemo.CheckoutService/PlaceOrder",
+              "status_code": "STATUS_CODE_ERROR"
+            },
+            "values": [
+              [
+                1793637151,
+                "5"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "checkout",
+              "span_name": "oteldemo.CheckoutService/PlaceOrder",
+              "status_code": "STATUS_CODE_UNSET"
+            },
+            "values": [
+              [
+                1793637151,
+                "6.25"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "checkout",
+              "span_name": "oteldemo.CheckoutService/prepareOrderItems",
+              "status_code": "STATUS_CODE_ERROR"
+            },
+            "values": [
+              [
+                1793637151,
+                "0"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "checkout",
+              "span_name": "oteldemo.CurrencyService/Convert",
+              "status_code": "STATUS_CODE_UNSET"
+            },
+            "values": [
+              [
+                1793637151,
+                "28.75"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "checkout",
+              "span_name": "oteldemo.PaymentService/Charge",
+              "status_code": "STATUS_CODE_ERROR"
+            },
+            "values": [
+              [
+                1793637151,
+                "5"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "checkout",
+              "span_name": "oteldemo.PaymentService/Charge",
+              "status_code": "STATUS_CODE_UNSET"
+            },
+            "values": [
+              [
+                1793637151,
+                "6.25"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "checkout",
+              "span_name": "oteldemo.ProductCatalogService/GetProduct",
+              "status_code": "STATUS_CODE_UNSET"
+            },
+            "values": [
+              [
+                1793637151,
+                "17.5"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "checkout",
+              "span_name": "oteldemo.ShippingService/GetQuote",
+              "status_code": "STATUS_CODE_UNSET"
+            },
+            "values": [
+              [
+                1793637151,
+                "11.25"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "checkout",
+              "span_name": "oteldemo.ShippingService/ShipOrder",
+              "status_code": "STATUS_CODE_UNSET"
+            },
+            "values": [
+              [
+                1793637151,
+                "6.25"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "checkout",
+              "span_name": "prepareOrderItemsAndShippingQuoteFromCart",
+              "status_code": "STATUS_CODE_UNSET"
+            },
+            "values": [
+              [
+                1793637151,
+                "11.25"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "currency",
+              "span_name": "Currency/Convert",
+              "status_code": "STATUS_CODE_OK"
+            },
+            "values": [
+              [
+                1793637151,
+                "28.75"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "email",
+              "span_name": "POST /send_order_confirmation",
+              "status_code": "STATUS_CODE_UNSET"
+            },
+            "values": [
+              [
+                1793637151,
+                "6.25"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "email",
+              "span_name": "send_email",
+              "status_code": "STATUS_CODE_UNSET"
+            },
+            "values": [
+              [
+                1793637151,
+                "6.25"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "email",
+              "span_name": "sinatra.render_template",
+              "status_code": "STATUS_CODE_UNSET"
+            },
+            "values": [
+              [
+                1793637151,
+                "12.5"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "flagd",
+              "span_name": "flagSync",
+              "status_code": "STATUS_CODE_UNSET"
+            },
+            "values": [
+              [
+                1793637151,
+                "1.25"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "flagd",
+              "span_name": "flagd.evaluation.v1.Service/EventStream",
+              "status_code": "STATUS_CODE_ERROR"
+            },
+            "values": [
+              [
+                1793637151,
+                "1.25"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "flagd",
+              "span_name": "flagd.evaluation.v1.Service/EventStream",
+              "status_code": "STATUS_CODE_UNSET"
+            },
+            "values": [
+              [
+                1793637151,
+                "0"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "flagd",
+              "span_name": "flagd.evaluation.v1.Service/ResolveBoolean",
+              "status_code": "STATUS_CODE_UNSET"
+            },
+            "values": [
+              [
+                1793637151,
+                "13.75"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "flagd",
+              "span_name": "flagd.evaluation.v1.Service/ResolveFloat",
+              "status_code": "STATUS_CODE_UNSET"
+            },
+            "values": [
+              [
+                1793637151,
+                "6.25"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "flagd",
+              "span_name": "flagd.ofrep",
+              "status_code": "STATUS_CODE_UNSET"
+            },
+            "values": [
+              [
+                1793637151,
+                "16.25"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "flagd",
+              "span_name": "resolveAnyValue",
+              "status_code": "STATUS_CODE_UNSET"
+            },
+            "values": [
+              [
+                1793637151,
+                "16.25"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "flagd",
+              "span_name": "resolveBoolean",
+              "status_code": "STATUS_CODE_UNSET"
+            },
+            "values": [
+              [
+                1793637151,
+                "27.5"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "flagd",
+              "span_name": "resolveFloat",
+              "status_code": "STATUS_CODE_UNSET"
+            },
+            "values": [
+              [
+                1793637151,
+                "12.5"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "frontend",
+              "span_name": "GET",
+              "status_code": "STATUS_CODE_ERROR"
+            },
+            "values": [
+              [
+                1793637151,
+                "0"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "frontend",
+              "span_name": "GET",
+              "status_code": "STATUS_CODE_UNSET"
+            },
+            "values": [
+              [
+                1793637151,
+                "111.25"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "frontend",
+              "span_name": "GET /",
+              "status_code": "STATUS_CODE_UNSET"
+            },
+            "values": [
+              [
+                1793637151,
+                "7.5"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "frontend",
+              "span_name": "GET /api/cart",
+              "status_code": "STATUS_CODE_UNSET"
+            },
+            "values": [
+              [
+                1793637151,
+                "6.25"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "frontend",
+              "span_name": "GET /api/data",
+              "status_code": "STATUS_CODE_UNSET"
+            },
+            "values": [
+              [
+                1793637151,
+                "10"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "frontend",
+              "span_name": "GET /api/products/{productId}",
+              "status_code": "STATUS_CODE_UNSET"
+            },
+            "values": [
+              [
+                1793637151,
+                "66.25"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "frontend",
+              "span_name": "GET /api/recommendations",
+              "status_code": "STATUS_CODE_UNSET"
+            },
+            "values": [
+              [
+                1793637151,
+                "11.25"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "frontend",
+              "span_name": "POST",
+              "status_code": "STATUS_CODE_ERROR"
+            },
+            "values": [
+              [
+                1793637151,
+                "5"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "frontend",
+              "span_name": "POST",
+              "status_code": "STATUS_CODE_UNSET"
+            },
+            "values": [
+              [
+                1793637151,
+                "30"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "frontend",
+              "span_name": "POST /api/cart",
+              "status_code": "STATUS_CODE_UNSET"
+            },
+            "values": [
+              [
+                1793637151,
+                "23.75"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "frontend",
+              "span_name": "POST /api/checkout",
+              "status_code": "STATUS_CODE_UNSET"
+            },
+            "values": [
+              [
+                1793637151,
+                "11.25"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "frontend",
+              "span_name": "dns.lookup",
+              "status_code": "STATUS_CODE_UNSET"
+            },
+            "values": [
+              [
+                1793637151,
+                "0"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "frontend",
+              "span_name": "executing api route (pages) /api/cart",
+              "status_code": "STATUS_CODE_UNSET"
+            },
+            "values": [
+              [
+                1793637151,
+                "30"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "frontend",
+              "span_name": "executing api route (pages) /api/checkout",
+              "status_code": "STATUS_CODE_ERROR"
+            },
+            "values": [
+              [
+                1793637151,
+                "5"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "frontend",
+              "span_name": "executing api route (pages) /api/checkout",
+              "status_code": "STATUS_CODE_UNSET"
+            },
+            "values": [
+              [
+                1793637151,
+                "6.25"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "frontend",
+              "span_name": "executing api route (pages) /api/data",
+              "status_code": "STATUS_CODE_ERROR"
+            },
+            "values": [
+              [
+                1793637151,
+                "0"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "frontend",
+              "span_name": "executing api route (pages) /api/data",
+              "status_code": "STATUS_CODE_UNSET"
+            },
+            "values": [
+              [
+                1793637151,
+                "10"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "frontend",
+              "span_name": "executing api route (pages) /api/products/[productId]",
+              "status_code": "STATUS_CODE_UNSET"
+            },
+            "values": [
+              [
+                1793637151,
+                "66.25"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "frontend",
+              "span_name": "executing api route (pages) /api/recommendations",
+              "status_code": "STATUS_CODE_UNSET"
+            },
+            "values": [
+              [
+                1793637151,
+                "11.25"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "frontend",
+              "span_name": "grpc.oteldemo.AdService/GetAds",
+              "status_code": "STATUS_CODE_ERROR"
+            },
+            "values": [
+              [
+                1793637151,
+                "0"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "frontend",
+              "span_name": "grpc.oteldemo.AdService/GetAds",
+              "status_code": "STATUS_CODE_UNSET"
+            },
+            "values": [
+              [
+                1793637151,
+                "10"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "frontend",
+              "span_name": "grpc.oteldemo.CartService/AddItem",
+              "status_code": "STATUS_CODE_UNSET"
+            },
+            "values": [
+              [
+                1793637151,
+                "23.75"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "frontend",
+              "span_name": "grpc.oteldemo.CartService/GetCart",
+              "status_code": "STATUS_CODE_UNSET"
+            },
+            "values": [
+              [
+                1793637151,
+                "30"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "frontend",
+              "span_name": "grpc.oteldemo.CheckoutService/PlaceOrder",
+              "status_code": "STATUS_CODE_ERROR"
+            },
+            "values": [
+              [
+                1793637151,
+                "5"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "frontend",
+              "span_name": "grpc.oteldemo.CheckoutService/PlaceOrder",
+              "status_code": "STATUS_CODE_UNSET"
+            },
+            "values": [
+              [
+                1793637151,
+                "6.25"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "frontend",
+              "span_name": "grpc.oteldemo.ProductCatalogService/GetProduct",
+              "status_code": "STATUS_CODE_UNSET"
+            },
+            "values": [
+              [
+                1793637151,
+                "120"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "frontend",
+              "span_name": "grpc.oteldemo.RecommendationService/ListRecommendations",
+              "status_code": "STATUS_CODE_UNSET"
+            },
+            "values": [
+              [
+                1793637151,
+                "11.25"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "frontend",
+              "span_name": "render route (pages) /",
+              "status_code": "STATUS_CODE_UNSET"
+            },
+            "values": [
+              [
+                1793637151,
+                "7.5"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "frontend",
+              "span_name": "resolve page components",
+              "status_code": "STATUS_CODE_UNSET"
+            },
+            "values": [
+              [
+                1793637151,
+                "7.5"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "frontend",
+              "span_name": "tcp.connect",
+              "status_code": "STATUS_CODE_UNSET"
+            },
+            "values": [
+              [
+                1793637151,
+                "0"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "frontend-proxy",
+              "span_name": "ingress",
+              "status_code": "STATUS_CODE_ERROR"
+            },
+            "values": [
+              [
+                1793637151,
+                "5"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "frontend-proxy",
+              "span_name": "ingress",
+              "status_code": "STATUS_CODE_UNSET"
+            },
+            "values": [
+              [
+                1793637151,
+                "140"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "frontend-proxy",
+              "span_name": "router frontend egress",
+              "status_code": "STATUS_CODE_ERROR"
+            },
+            "values": [
+              [
+                1793637151,
+                "5"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "frontend-proxy",
+              "span_name": "router frontend egress",
+              "status_code": "STATUS_CODE_UNSET"
+            },
+            "values": [
+              [
+                1793637151,
+                "140"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "frontend-proxy",
+              "span_name": "router opentelemetry_collector_http egress",
+              "status_code": "STATUS_CODE_UNSET"
+            },
+            "values": [
+              [
+                1793637151,
+                "0"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "load-generator",
+              "span_name": "GET",
+              "status_code": "STATUS_CODE_ERROR"
+            },
+            "values": [
+              [
+                1793637151,
+                "0"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "load-generator",
+              "span_name": "GET",
+              "status_code": "STATUS_CODE_UNSET"
+            },
+            "values": [
+              [
+                1793637151,
+                "95"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "load-generator",
+              "span_name": "POST",
+              "status_code": "STATUS_CODE_ERROR"
+            },
+            "values": [
+              [
+                1793637151,
+                "5"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "load-generator",
+              "span_name": "POST",
+              "status_code": "STATUS_CODE_UNSET"
+            },
+            "values": [
+              [
+                1793637151,
+                "46.25"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "payment",
+              "span_name": "charge",
+              "status_code": "STATUS_CODE_UNSET"
+            },
+            "values": [
+              [
+                1793637151,
+                "11.25"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "payment",
+              "span_name": "grpc.flagd.evaluation.v1.Service/ResolveFloat",
+              "status_code": "STATUS_CODE_UNSET"
+            },
+            "values": [
+              [
+                1793637151,
+                "1.25"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "payment",
+              "span_name": "grpc.oteldemo.PaymentService/Charge",
+              "status_code": "STATUS_CODE_ERROR"
+            },
+            "values": [
+              [
+                1793637151,
+                "5"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "payment",
+              "span_name": "grpc.oteldemo.PaymentService/Charge",
+              "status_code": "STATUS_CODE_UNSET"
+            },
+            "values": [
+              [
+                1793637151,
+                "6.25"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "product-catalog",
+              "span_name": "oteldemo.ProductCatalogService/GetProduct",
+              "status_code": "STATUS_CODE_UNSET"
+            },
+            "values": [
+              [
+                1793637151,
+                "132.5"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "product-catalog",
+              "span_name": "oteldemo.ProductCatalogService/ListProducts",
+              "status_code": "STATUS_CODE_UNSET"
+            },
+            "values": [
+              [
+                1793637151,
+                "10"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "quote",
+              "span_name": "POST /getquote",
+              "status_code": "STATUS_CODE_UNSET"
+            },
+            "values": [
+              [
+                1793637151,
+                "11.25"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "quote",
+              "span_name": "calculate-quote",
+              "status_code": "STATUS_CODE_UNSET"
+            },
+            "values": [
+              [
+                1793637151,
+                "11.25"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "quote",
+              "span_name": "{closure}",
+              "status_code": "STATUS_CODE_UNSET"
+            },
+            "values": [
+              [
+                1793637151,
+                "11.25"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "recommendation",
+              "span_name": "/flagd.evaluation.v1.Service/EventStream",
+              "status_code": "STATUS_CODE_ERROR"
+            },
+            "values": [
+              [
+                1793637151,
+                "0"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "recommendation",
+              "span_name": "/flagd.evaluation.v1.Service/ResolveBoolean",
+              "status_code": "STATUS_CODE_UNSET"
+            },
+            "values": [
+              [
+                1793637151,
+                "0"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "recommendation",
+              "span_name": "/oteldemo.ProductCatalogService/ListProducts",
+              "status_code": "STATUS_CODE_UNSET"
+            },
+            "values": [
+              [
+                1793637151,
+                "10"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "recommendation",
+              "span_name": "/oteldemo.RecommendationService/ListRecommendations",
+              "status_code": "STATUS_CODE_UNSET"
+            },
+            "values": [
+              [
+                1793637151,
+                "10"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "recommendation",
+              "span_name": "get_product_list",
+              "status_code": "STATUS_CODE_UNSET"
+            },
+            "values": [
+              [
+                1793637151,
+                "10"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "shipping",
+              "span_name": "POST",
+              "status_code": "STATUS_CODE_UNSET"
+            },
+            "values": [
+              [
+                1793637151,
+                "11.25"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "shipping",
+              "span_name": "oteldemo.ShippingService/GetQuote",
+              "status_code": "STATUS_CODE_UNSET"
+            },
+            "values": [
+              [
+                1793637151,
+                "11.25"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "shipping",
+              "span_name": "oteldemo.ShippingService/ShipOrder",
+              "status_code": "STATUS_CODE_UNSET"
+            },
+            "values": [
+              [
+                1793637151,
+                "6.25"
+              ]
+            ]
+          }
+        ],
+        "data_as_of": "2026-11-02T16:32:31+00:00",
+        "dispatch_started_at": "2026-11-02T16:32:33.735679+00:00",
+        "evidence_id": "662556cb-1824-40ef-afe3-9dda4e71f818-t0:9dbbb220-301b-4109-883f-5b0a52498e6e",
+        "freshness_seconds": 3.843836,
+        "incomplete": false,
+        "lookback_seconds": 300,
+        "lookback_start_at": "2026-11-02T16:27:31+00:00",
+        "observed_at": "2026-11-02T16:32:34.843836+00:00",
+        "omitted_bytes": 0,
+        "omitted_rows": 0,
+        "operation_id": "662556cb-1824-40ef-afe3-9dda4e71f818-t0",
+        "projection_revision": "m1-01-tool-view-v11",
+        "query": {
+          "end": "2026-11-02T16:32:31Z",
+          "expr": "sum by (service_name, span_name, status_code) (increase(traces_span_metrics_calls_total[5m]))",
+          "start": "2026-11-02T16:27:31Z"
+        },
+        "registry_revision": "dc86d465b4db7b13f6fa4d490b5d657a8c1f4f29ca24128fa841333da3432f29",
+        "result_count": 100,
+        "returned_count": 100,
+        "series_note": "traces_span_metrics_calls_total counts spans of every operation of the service (internal, client and server spans alike), summed over the labels kept in this query; it is not a count of requests. status_code STATUS_CODE_UNSET means the span carried no status; it does not mean the call succeeded.",
+        "source": "otel-demo",
+        "source_end_at": "2026-11-02T16:32:31+00:00",
+        "source_start_at": "2026-11-02T16:32:31+00:00",
+        "status": "ok",
+        "target_id": "m0-otel-20260909",
+        "tool": "metrics_range_query",
+        "tool_registry_revision": "796887a8015086e8aecd45c1790b54cbe16ff09a0c4ac75e04aba12aa335d485",
+        "tool_version": "v1",
+        "truncated": false,
+        "trust": "untrusted-evidence",
+        "window": {
+          "end": "2026-11-02T16:32:31+00:00",
+          "start": "2026-11-02T16:27:31+00:00"
+        }
+      },
+      "view_sha256": "efd294fd181d643d997142a3b91030c23424e9d171bfa2c674d9567d69f5a411",
+      "window": {
+        "end": "2026-11-02T16:32:31+00:00",
+        "start": "2026-11-02T16:27:31+00:00"
+      }
+    },
+    {
+      "citable_as_fact": false,
+      "delivered": true,
+      "evidence_id": "662556cb-1824-40ef-afe3-9dda4e71f818-t1:813ca3af-51f8-4d65-896e-640c7b004ddd",
+      "status": "error",
+      "target_id": "m0-otel-20260909",
+      "time_scope_refs": [],
+      "view": {
+        "adopted": false,
+        "citable_as_fact": false,
+        "content": null,
+        "data_as_of": "2026-11-02T16:32:21.686983+00:00",
+        "dispatch_started_at": "2026-11-02T16:32:34.889595+00:00",
+        "evidence_id": "662556cb-1824-40ef-afe3-9dda4e71f818-t1:813ca3af-51f8-4d65-896e-640c7b004ddd",
+        "freshness_seconds": 13.295239,
+        "incomplete": false,
+        "max_view_tokens": 25000,
+        "message": "The tool call result is too large to return: 73739/25000 tokens.\nTry to repeat the query but proactively narrow down the result (a narrower time window, a filter, or a smaller limit) so that the tool answer fits within the allowed number of tokens.",
+        "observed_at": "2026-11-02T16:32:34.982222+00:00",
+        "operation_id": "662556cb-1824-40ef-afe3-9dda4e71f818-t1",
+        "projection_revision": "m1-01-tool-view-v11",
+        "query": {
+          "end": "2026-11-02T16:32:31Z",
+          "limit": 20,
+          "service": "checkout",
+          "start": "2026-11-02T16:27:31Z"
+        },
+        "reason": "RESULT_TOO_LARGE",
+        "requested_at": "2026-11-02T16:32:34.889595+00:00",
+        "result_count": 362,
+        "row_unit": "spans",
+        "source": "otel-demo",
+        "source_contact": "confirmed",
+        "source_end_at": "2026-11-02T16:32:21.686983+00:00",
+        "source_start_at": "2026-11-02T16:28:44.059101+00:00",
+        "status": "error",
+        "suggested_limit": 105,
+        "target_id": "m0-otel-20260909",
+        "tool": "traces_search",
+        "tool_version": "v1",
+        "total_rows": 362,
+        "trust": "gateway",
+        "usage": "The whole result is kept as un-adopted evidence under evidence_id; it is not citable as it is. Read its rows with read_evidence(evidence_id, offset, limit): offset and limit count rows of row_unit, total_rows rows exist, and about suggested_limit rows starting at offset 0 fit one read. A read slice is adopted evidence of its own that may be cited for the rows it shows. Narrowing the query instead also works.",
+        "view_tokens": 73739,
+        "window": {
+          "end": "2026-11-02T16:32:31+00:00",
+          "start": "2026-11-02T16:27:31+00:00"
+        }
+      },
+      "view_sha256": "5f47960817cf3b6ad9fb702065b7c1aa22f9a77e0b2f2396e4407b25817c4703",
+      "window": {
+        "end": "2026-11-02T16:32:31+00:00",
+        "start": "2026-11-02T16:27:31+00:00"
+      }
+    },
+    {
+      "citable_as_fact": true,
+      "delivered": true,
+      "evidence_id": "67568242-28a9-420d-af2c-36e464aed70a-t0:ab695c48-d25c-423f-bf83-5805ca8a0498",
+      "status": "ok",
+      "target_id": "m0-otel-20260909",
+      "time_scope_refs": [
+        "policy-window-1"
+      ],
+      "view": {
+        "adopted": true,
+        "citable_as_fact": true,
+        "content": [
+          {
+            "duration_us": 18082,
+            "error_by_visible_tags": true,
+            "error_details": [
+              {
+                "key": "grpc.error_name",
+                "location": "span_tag",
+                "original_utf8_bytes": 5,
+                "value": "Error",
+                "value_truncated": false
+              },
+              {
+                "key": "grpc.error_message",
+                "location": "span_tag",
+                "original_utf8_bytes": 61,
+                "value": "Payment request failed. Invalid token. app.loyalty.level=gold",
+                "value_truncated": false
+              },
+              {
+                "key": "exception.message",
+                "location": "span_log",
+                "original_utf8_bytes": 61,
+                "timestamp_us": 1793637104592044,
+                "value": "Payment request failed. Invalid token. app.loyalty.level=gold",
+                "value_truncated": false
+              },
+              {
+                "key": "exception.stacktrace",
+                "location": "span_log",
+                "original_utf8_bytes": 294,
+                "timestamp_us": 1793637104592044,
+                "value": "Error: Payment request failed. Invalid token. app.loyalty.level=gold\n    at module.exports.charge (/usr/src/app/charge.js:37:13)\n    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)\n    at async Object.chargeServiceHandler [as charge] (/usr/src/app/index.js:21:22)",
+                "value_truncated": false
+              }
+            ],
+            "omitted_error_detail_field_count": 1,
+            "operation": "grpc.oteldemo.PaymentService/Charge",
+            "operation_truncated": false,
+            "parent_references": [
+              {
+                "parent_is_visible": true,
+                "refType": "CHILD_OF",
+                "spanID": "cbeff7af87875236",
+                "traceID": "28787b5fff0694567b2b7d8b448d8c24"
+              }
+            ],
+            "raw_error_detail_field_count": 5,
+            "service": "payment",
+            "service_version": "2.0.2",
+            "span_id": "b5c7305619225507",
+            "start_us": 1793637104574000,
+            "status_state": "recorded",
+            "status_tags": {
+              "error": true,
+              "otel.status_code": "ERROR"
+            },
+            "trace_id": "28787b5fff0694567b2b7d8b448d8c24"
+          },
+          {
+            "duration_us": 3027,
+            "error_by_visible_tags": true,
+            "error_details": [
+              {
+                "key": "grpc.error_name",
+                "location": "span_tag",
+                "original_utf8_bytes": 5,
+                "value": "Error",
+                "value_truncated": false
+              },
+              {
+                "key": "grpc.error_message",
+                "location": "span_tag",
+                "original_utf8_bytes": 61,
+                "value": "Payment request failed. Invalid token. app.loyalty.level=gold",
+                "value_truncated": false
+              },
+              {
+                "key": "exception.message",
+                "location": "span_log",
+                "original_utf8_bytes": 61,
+                "timestamp_us": 1793637111457992,
+                "value": "Payment request failed. Invalid token. app.loyalty.level=gold",
+                "value_truncated": false
+              },
+              {
+                "key": "exception.stacktrace",
+                "location": "span_log",
+                "original_utf8_bytes": 294,
+                "timestamp_us": 1793637111457992,
+                "value": "Error: Payment request failed. Invalid token. app.loyalty.level=gold\n    at module.exports.charge (/usr/src/app/charge.js:37:13)\n    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)\n    at async Object.chargeServiceHandler [as charge] (/usr/src/app/index.js:21:22)",
+                "value_truncated": false
+              }
+            ],
+            "omitted_error_detail_field_count": 1,
+            "operation": "grpc.oteldemo.PaymentService/Charge",
+            "operation_truncated": false,
+            "parent_references": [
+              {
+                "parent_is_visible": true,
+                "refType": "CHILD_OF",
+                "spanID": "33a226afca36fe81",
+                "traceID": "57e3750158d8f4f8ba9348bb69fb6a6d"
+              }
+            ],
+            "raw_error_detail_field_count": 5,
+            "service": "payment",
+            "service_version": "2.0.2",
+            "span_id": "8fc3478906d6dbb3",
+            "start_us": 1793637111455000,
+            "status_state": "recorded",
+            "status_tags": {
+              "error": true,
+              "otel.status_code": "ERROR"
+            },
+            "trace_id": "57e3750158d8f4f8ba9348bb69fb6a6d"
+          },
+          {
+            "duration_us": 2485,
+            "error_by_visible_tags": true,
+            "error_details": [
+              {
+                "key": "grpc.error_name",
+                "location": "span_tag",
+                "original_utf8_bytes": 5,
+                "value": "Error",
+                "value_truncated": false
+              },
+              {
+                "key": "grpc.error_message",
+                "location": "span_tag",
+                "original_utf8_bytes": 61,
+                "value": "Payment request failed. Invalid token. app.loyalty.level=gold",
+                "value_truncated": false
+              },
+              {
+                "key": "exception.message",
+                "location": "span_log",
+                "original_utf8_bytes": 61,
+                "timestamp_us": 1793637122738453,
+                "value": "Payment request failed. Invalid token. app.loyalty.level=gold",
+                "value_truncated": false
+              },
+              {
+                "key": "exception.stacktrace",
+                "location": "span_log",
+                "original_utf8_bytes": 294,
+                "timestamp_us": 1793637122738453,
+                "value": "Error: Payment request failed. Invalid token. app.loyalty.level=gold\n    at module.exports.charge (/usr/src/app/charge.js:37:13)\n    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)\n    at async Object.chargeServiceHandler [as charge] (/usr/src/app/index.js:21:22)",
+                "value_truncated": false
+              }
+            ],
+            "omitted_error_detail_field_count": 1,
+            "operation": "grpc.oteldemo.PaymentService/Charge",
+            "operation_truncated": false,
+            "parent_references": [
+              {
+                "parent_is_visible": true,
+                "refType": "CHILD_OF",
+                "spanID": "dac2575c17e2f7e1",
+                "traceID": "2d30fbf5a81504307f9b5e7a241c9adf"
+              }
+            ],
+            "raw_error_detail_field_count": 5,
+            "service": "payment",
+            "service_version": "2.0.2",
+            "span_id": "15e2e4301a94fbc8",
+            "start_us": 1793637122736000,
+            "status_state": "recorded",
+            "status_tags": {
+              "error": true,
+              "otel.status_code": "ERROR"
+            },
+            "trace_id": "2d30fbf5a81504307f9b5e7a241c9adf"
+          },
+          {
+            "duration_us": 545,
+            "error_by_visible_tags": true,
+            "error_details": [
+              {
+                "key": "grpc.error_name",
+                "location": "span_tag",
+                "original_utf8_bytes": 5,
+                "value": "Error",
+                "value_truncated": false
+              },
+              {
+                "key": "grpc.error_message",
+                "location": "span_tag",
+                "original_utf8_bytes": 61,
+                "value": "Payment request failed. Invalid token. app.loyalty.level=gold",
+                "value_truncated": false
+              },
+              {
+                "key": "exception.message",
+                "location": "span_log",
+                "original_utf8_bytes": 61,
+                "timestamp_us": 1793637111460537,
+                "value": "Payment request failed. Invalid token. app.loyalty.level=gold",
+                "value_truncated": false
+              },
+              {
+                "key": "exception.stacktrace",
+                "location": "span_log",
+                "original_utf8_bytes": 294,
+                "timestamp_us": 1793637111460537,
+                "value": "Error: Payment request failed. Invalid token. app.loyalty.level=gold\n    at module.exports.charge (/usr/src/app/charge.js:37:13)\n    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)\n    at async Object.chargeServiceHandler [as charge] (/usr/src/app/index.js:21:22)",
+                "value_truncated": false
+              }
+            ],
+            "omitted_error_detail_field_count": 1,
+            "operation": "grpc.oteldemo.PaymentService/Charge",
+            "operation_truncated": false,
+            "parent_references": [
+              {
+                "parent_is_visible": true,
+                "refType": "CHILD_OF",
+                "spanID": "9c8b8a209308bcf3",
+                "traceID": "4877dcb551d9ba266086999e801213d6"
+              }
+            ],
+            "raw_error_detail_field_count": 5,
+            "service": "payment",
+            "service_version": "2.0.2",
+            "span_id": "ae582c72f6ef695a",
+            "start_us": 1793637111460000,
+            "status_state": "recorded",
+            "status_tags": {
+              "error": true,
+              "otel.status_code": "ERROR"
+            },
+            "trace_id": "4877dcb551d9ba266086999e801213d6"
+          },
+          {
+            "duration_us": 14018,
+            "error_by_visible_tags": false,
+            "error_details": [],
+            "omitted_error_detail_field_count": 0,
+            "operation": "charge",
+            "operation_truncated": false,
+            "parent_references": [
+              {
+                "parent_is_visible": true,
+                "refType": "CHILD_OF",
+                "spanID": "b5c7305619225507",
+                "traceID": "28787b5fff0694567b2b7d8b448d8c24"
+              }
+            ],
+            "raw_error_detail_field_count": 0,
+            "service": "payment",
+            "service_version": "2.0.2",
+            "span_id": "0548875369c6be0e",
+            "start_us": 1793637104577000,
+            "status_state": "not_recorded",
+            "status_tags": {},
+            "trace_id": "28787b5fff0694567b2b7d8b448d8c24"
+          },
+          {
+            "duration_us": 13132,
+            "error_by_visible_tags": false,
+            "error_details": [],
+            "omitted_error_detail_field_count": 0,
+            "operation": "grpc.flagd.evaluation.v1.Service/ResolveFloat",
+            "operation_truncated": false,
+            "parent_references": [
+              {
+                "parent_is_visible": true,
+                "refType": "CHILD_OF",
+                "spanID": "b5c7305619225507",
+                "traceID": "28787b5fff0694567b2b7d8b448d8c24"
+              }
+            ],
+            "raw_error_detail_field_count": 0,
+            "service": "payment",
+            "service_version": "2.0.2",
+            "span_id": "18ab596c1ba9f8d5",
+            "start_us": 1793637104577000,
+            "status_state": "recorded",
+            "status_tags": {
+              "rpc.grpc.status_code": 0
+            },
+            "trace_id": "28787b5fff0694567b2b7d8b448d8c24"
+          },
+          {
+            "duration_us": 817,
+            "error_by_visible_tags": false,
+            "error_details": [],
+            "omitted_error_detail_field_count": 0,
+            "operation": "charge",
+            "operation_truncated": false,
+            "parent_references": [
+              {
+                "parent_is_visible": true,
+                "refType": "CHILD_OF",
+                "spanID": "8fc3478906d6dbb3",
+                "traceID": "57e3750158d8f4f8ba9348bb69fb6a6d"
+              }
+            ],
+            "raw_error_detail_field_count": 0,
+            "service": "payment",
+            "service_version": "2.0.2",
+            "span_id": "ec1686ca62fc1710",
+            "start_us": 1793637111457000,
+            "status_state": "not_recorded",
+            "status_tags": {},
+            "trace_id": "57e3750158d8f4f8ba9348bb69fb6a6d"
+          },
+          {
+            "duration_us": 612,
+            "error_by_visible_tags": false,
+            "error_details": [],
+            "omitted_error_detail_field_count": 0,
+            "operation": "charge",
+            "operation_truncated": false,
+            "parent_references": [
+              {
+                "parent_is_visible": true,
+                "refType": "CHILD_OF",
+                "spanID": "15e2e4301a94fbc8",
+                "traceID": "2d30fbf5a81504307f9b5e7a241c9adf"
+              }
+            ],
+            "raw_error_detail_field_count": 0,
+            "service": "payment",
+            "service_version": "2.0.2",
+            "span_id": "ba6d096a28653711",
+            "start_us": 1793637122738000,
+            "status_state": "not_recorded",
+            "status_tags": {},
+            "trace_id": "2d30fbf5a81504307f9b5e7a241c9adf"
+          },
+          {
+            "duration_us": 124,
+            "error_by_visible_tags": false,
+            "error_details": [],
+            "omitted_error_detail_field_count": 0,
+            "operation": "charge",
+            "operation_truncated": false,
+            "parent_references": [
+              {
+                "parent_is_visible": true,
+                "refType": "CHILD_OF",
+                "spanID": "ae582c72f6ef695a",
+                "traceID": "4877dcb551d9ba266086999e801213d6"
+              }
+            ],
+            "raw_error_detail_field_count": 0,
+            "service": "payment",
+            "service_version": "2.0.2",
+            "span_id": "a8538fe1e6ea1d70",
+            "start_us": 1793637111460000,
+            "status_state": "not_recorded",
+            "status_tags": {},
+            "trace_id": "4877dcb551d9ba266086999e801213d6"
+          },
+          {
+            "duration_us": 59254,
+            "error_by_visible_tags": true,
+            "error_details": [],
+            "omitted_error_detail_field_count": 0,
+            "operation": "POST",
+            "operation_truncated": false,
+            "parent_references": [],
+            "raw_error_detail_field_count": 0,
+            "service": "load-generator",
+            "service_version": "2.0.2",
+            "span_id": "04921da736e045fe",
+            "start_us": 1793637104540533,
+            "status_state": "recorded",
+            "status_tags": {
+              "error": true,
+              "http.status_code": 500,
+              "otel.status_code": "ERROR"
+            },
+            "trace_id": "28787b5fff0694567b2b7d8b448d8c24"
+          },
+          {
+            "duration_us": 58064,
+            "error_by_visible_tags": true,
+            "error_details": [],
+            "omitted_error_detail_field_count": 0,
+            "operation": "ingress",
+            "operation_truncated": false,
+            "parent_references": [
+              {
+                "parent_is_visible": true,
+                "refType": "CHILD_OF",
+                "spanID": "04921da736e045fe",
+                "traceID": "28787b5fff0694567b2b7d8b448d8c24"
+              }
+            ],
+            "raw_error_detail_field_count": 0,
+            "service": "frontend-proxy",
+            "service_version": "2.0.2",
+            "span_id": "f19271b21ec6414e",
+            "start_us": 1793637104540929,
+            "status_state": "recorded",
+            "status_tags": {
+              "error": true,
+              "http.status_code": "500",
+              "otel.status_code": "ERROR"
+            },
+            "trace_id": "28787b5fff0694567b2b7d8b448d8c24"
+          },
+          {
+            "duration_us": 58021,
+            "error_by_visible_tags": true,
+            "error_details": [],
+            "omitted_error_detail_field_count": 0,
+            "operation": "POST",
+            "operation_truncated": false,
+            "parent_references": [
+              {
+                "parent_is_visible": true,
+                "refType": "CHILD_OF",
+                "spanID": "d51ef07e264528dc",
+                "traceID": "28787b5fff0694567b2b7d8b448d8c24"
+              }
+            ],
+            "raw_error_detail_field_count": 0,
+            "service": "frontend",
+            "service_version": "2.0.2",
+            "span_id": "aff772817b450935",
+            "start_us": 1793637104541000,
+            "status_state": "recorded",
+            "status_tags": {
+              "error": true,
+              "http.status_code": 500,
+              "otel.status_code": "ERROR"
+            },
+            "trace_id": "28787b5fff0694567b2b7d8b448d8c24"
+          },
+          {
+            "duration_us": 57990,
+            "error_by_visible_tags": true,
+            "error_details": [],
+            "omitted_error_detail_field_count": 0,
+            "operation": "router frontend egress",
+            "operation_truncated": false,
+            "parent_references": [
+              {
+                "parent_is_visible": true,
+                "refType": "CHILD_OF",
+                "spanID": "f19271b21ec6414e",
+                "traceID": "28787b5fff0694567b2b7d8b448d8c24"
+              }
+            ],
+            "raw_error_detail_field_count": 0,
+            "service": "frontend-proxy",
+            "service_version": "2.0.2",
+            "span_id": "d51ef07e264528dc",
+            "start_us": 1793637104540971,
+            "status_state": "recorded",
+            "status_tags": {
+              "error": true,
+              "http.status_code": "500",
+              "otel.status_code": "ERROR"
+            },
+            "trace_id": "28787b5fff0694567b2b7d8b448d8c24"
+          },
+          {
+            "duration_us": 57759,
+            "error_by_visible_tags": true,
+            "error_details": [],
+            "omitted_error_detail_field_count": 0,
+            "operation": "POST /api/checkout",
+            "operation_truncated": false,
+            "parent_references": [
+              {
+                "parent_is_visible": true,
+                "refType": "CHILD_OF",
+                "spanID": "aff772817b450935",
+                "traceID": "28787b5fff0694567b2b7d8b448d8c24"
+              }
+            ],
+            "raw_error_detail_field_count": 0,
+            "service": "frontend",
+            "service_version": "2.0.2",
+            "span_id": "f092c048a1b78854",
+            "start_us": 1793637104541000,
+            "status_state": "recorded",
+            "status_tags": {
+              "http.status_code": 500
+            },
+            "trace_id": "28787b5fff0694567b2b7d8b448d8c24"
+          },
+          {
+            "duration_us": 57416,
+            "error_by_visible_tags": true,
+            "error_details": [
+              {
+                "key": "exception.message",
+                "location": "span_log",
+                "original_utf8_bytes": 157,
+                "timestamp_us": 1793637104595400,
+                "value": "13 INTERNAL: failed to charge card: could not charge the card: rpc error: code = Unknown desc = Payment request failed. Invalid token. app.loyalty.level=gold",
+                "value_truncated": false
+              },
+              {
+                "key": "exception.stacktrace",
+                "location": "span_log",
+                "original_utf8_bytes": 1680,
+                "timestamp_us": 1793637104595400,
+                "value": "Error: 13 INTERNAL: failed to charge card: could not charge the card: rpc error: code = Unknown desc = Payment request failed. Invalid token. app.loyalty.level=gold\n    at callErrorFromStatus (/app/node_modules/@grpc/grpc-js/build/src/call.js:32:19)\n    at Object.onReceiveStatus (/app/node_modules/@grpc/grpc-js/build/src/client.js:193:76)\n    at Object.onReceiveStatus (/app/node_modules/@grpc/grpc-js/build/src/client-interceptors.js:361:141)\n    at Object.onReceiveStatus (/app/node_modules/@grpc/grpc-js/build/src/client-interceptors.js:324:181)\n    at /app/node_modules/@grpc/grpc-js/build/src/",
+                "value_truncated": true
+              },
+              {
+                "key": "exception.type",
+                "location": "span_log",
+                "original_utf8_bytes": 2,
+                "timestamp_us": 1793637104595400,
+                "value": "13",
+                "value_truncated": false
+              }
+            ],
+            "omitted_error_detail_field_count": 0,
+            "operation": "executing api route (pages) /api/checkout",
+            "operation_truncated": false,
+            "parent_references": [
+              {
+                "parent_is_visible": true,
+                "refType": "CHILD_OF",
+                "spanID": "f092c048a1b78854",
+                "traceID": "28787b5fff0694567b2b7d8b448d8c24"
+              }
+            ],
+            "raw_error_detail_field_count": 3,
+            "service": "frontend",
+            "service_version": "2.0.2",
+            "span_id": "ee376d7e42c0521a",
+            "start_us": 1793637104541000,
+            "status_state": "recorded",
+            "status_tags": {
+              "error": true,
+              "http.status_code": 500,
+              "otel.status_code": "ERROR"
+            },
+            "trace_id": "28787b5fff0694567b2b7d8b448d8c24"
+          }
+        ],
+        "data_as_of": "2026-11-02T16:32:02.742429+00:00",
+        "dispatch_started_at": "2026-11-02T16:33:01.281659+00:00",
+        "evidence_id": "67568242-28a9-420d-af2c-36e464aed70a-t0:ab695c48-d25c-423f-bf83-5805ca8a0498",
+        "freshness_seconds": 58.633361,
+        "incomplete": true,
+        "lookback_seconds": null,
+        "lookback_start_at": null,
+        "observed_at": "2026-11-02T16:33:01.375790+00:00",
+        "omitted_bytes": 70135,
+        "omitted_rows": 109,
+        "operation_id": "67568242-28a9-420d-af2c-36e464aed70a-t0",
+        "parent_tool": "traces_search",
+        "projection_revision": "m1-01-tool-view-v11",
+        "query": {
+          "evidence_id": "2ee36461-ebff-456f-8e77-22931d4fd90f-t0:3d479c70-163d-4d66-87b1-93bffae9bf70",
+          "limit": 15,
+          "offset": 0
+        },
+        "registry_revision": "dc86d465b4db7b13f6fa4d490b5d657a8c1f4f29ca24128fa841333da3432f29",
+        "result_count": 15,
+        "returned_count": 15,
+        "slice": {
+          "offset": 0,
+          "parent_evidence_id": "2ee36461-ebff-456f-8e77-22931d4fd90f-t0:3d479c70-163d-4d66-87b1-93bffae9bf70",
+          "parent_raw_sha256": "0be99975f60258d507511041592b8f7c8eae530be454c23952850c72cd9d9b1f",
+          "returned": 15,
+          "total_rows": 124
+        },
+        "source": "otel-demo",
+        "source_end_at": "2026-11-02T16:32:02.742429+00:00",
+        "source_start_at": "2026-11-02T16:31:41.703454+00:00",
+        "status": "ok",
+        "target_id": "m0-otel-20260909",
+        "tool": "read_evidence",
+        "tool_registry_revision": "796887a8015086e8aecd45c1790b54cbe16ff09a0c4ac75e04aba12aa335d485",
+        "tool_version": "v1",
+        "truncated": true,
+        "trust": "untrusted-evidence",
+        "window": {
+          "end": "2026-11-02T16:32:31+00:00",
+          "start": "2026-11-02T16:27:31+00:00"
+        }
+      },
+      "view_sha256": "d897e99153333744f38d5d9225052323f5e13fa5cb5afd3006c3c159afb947a3",
+      "window": {
+        "end": "2026-11-02T16:32:31+00:00",
+        "start": "2026-11-02T16:27:31+00:00"
+      }
+    },
+    {
+      "citable_as_fact": true,
+      "delivered": true,
+      "evidence_id": "67568242-28a9-420d-af2c-36e464aed70a-t1:170ad9ee-3e14-4154-9273-d3d54d9b2dcf",
+      "status": "ok",
+      "target_id": "m0-otel-20260909",
+      "time_scope_refs": [
+        "policy-window-1"
+      ],
+      "view": {
+        "adopted": true,
+        "citable_as_fact": true,
+        "content": [
+          {
+            "metric": {
+              "service_name": "checkout",
+              "span_name": "oteldemo.CheckoutService/PlaceOrder"
+            },
+            "values": [
+              [
+                1793637151,
+                "92.5"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "checkout",
+              "span_name": "oteldemo.PaymentService/Charge"
+            },
+            "values": [
+              [
+                1793637151,
+                "43.99999999999999"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "payment",
+              "span_name": "grpc.oteldemo.PaymentService/Charge"
+            },
+            "values": [
+              [
+                1793637151,
+                "31.99999999999998"
+              ]
+            ]
+          }
+        ],
+        "data_as_of": "2026-11-02T16:32:31+00:00",
+        "dispatch_started_at": "2026-11-02T16:33:08.866725+00:00",
+        "evidence_id": "67568242-28a9-420d-af2c-36e464aed70a-t1:170ad9ee-3e14-4154-9273-d3d54d9b2dcf",
+        "freshness_seconds": 39.046998,
+        "incomplete": false,
+        "lookback_seconds": 300,
+        "lookback_start_at": "2026-11-02T16:27:31+00:00",
+        "observed_at": "2026-11-02T16:33:10.046998+00:00",
+        "omitted_bytes": 0,
+        "omitted_rows": 0,
+        "operation_id": "67568242-28a9-420d-af2c-36e464aed70a-t1",
+        "projection_revision": "m1-01-tool-view-v11",
+        "query": {
+          "end": "2026-11-02T16:32:31Z",
+          "expr": "histogram_quantile(0.95, sum by (le, service_name, span_name) (rate(traces_span_metrics_duration_milliseconds_bucket{service_name=~\"payment|checkout\", span_name=~\".*PaymentService/Charge|oteldemo.CheckoutService/PlaceOrder\"}[5m])))",
+          "start": "2026-11-02T16:27:31Z"
+        },
+        "registry_revision": "dc86d465b4db7b13f6fa4d490b5d657a8c1f4f29ca24128fa841333da3432f29",
+        "result_count": 3,
+        "returned_count": 3,
+        "source": "otel-demo",
+        "source_end_at": "2026-11-02T16:32:31+00:00",
+        "source_start_at": "2026-11-02T16:32:31+00:00",
+        "status": "ok",
+        "target_id": "m0-otel-20260909",
+        "tool": "metrics_range_query",
+        "tool_registry_revision": "796887a8015086e8aecd45c1790b54cbe16ff09a0c4ac75e04aba12aa335d485",
+        "tool_version": "v1",
+        "truncated": false,
+        "trust": "untrusted-evidence",
+        "window": {
+          "end": "2026-11-02T16:32:31+00:00",
+          "start": "2026-11-02T16:27:31+00:00"
+        }
+      },
+      "view_sha256": "dfa5f976b7bf6debcc506b8f9b71cb4cbbc3971e8ac336b31e99b13e29187736",
+      "window": {
+        "end": "2026-11-02T16:32:31+00:00",
+        "start": "2026-11-02T16:27:31+00:00"
+      }
+    },
+    {
+      "citable_as_fact": true,
+      "delivered": true,
+      "evidence_id": "67568242-28a9-420d-af2c-36e464aed70a-t2:0c4490cc-764b-4dbd-9f54-57e063a7ff4f",
+      "status": "ok",
+      "target_id": "m0-otel-20260909",
+      "time_scope_refs": [
+        "policy-window-1"
+      ],
+      "view": {
+        "adopted": true,
+        "citable_as_fact": true,
+        "content": [
+          {
+            "metric": {
+              "service_name": "checkout",
+              "span_name": "oteldemo.CheckoutService/PlaceOrder"
+            },
+            "values": [
+              [
+                1793633551,
+                "95"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "checkout",
+              "span_name": "oteldemo.PaymentService/Charge"
+            },
+            "values": [
+              [
+                1793633551,
+                "41.99999999999999"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "payment",
+              "span_name": "grpc.oteldemo.PaymentService/Charge"
+            },
+            "values": [
+              [
+                1793633551,
+                "7.099999999999999"
+              ]
+            ]
+          }
+        ],
+        "data_as_of": "2026-11-02T15:32:31+00:00",
+        "dispatch_started_at": "2026-11-02T16:33:10.060669+00:00",
+        "evidence_id": "67568242-28a9-420d-af2c-36e464aed70a-t2:0c4490cc-764b-4dbd-9f54-57e063a7ff4f",
+        "freshness_seconds": 3640.238102,
+        "incomplete": false,
+        "lookback_seconds": 300,
+        "lookback_start_at": "2026-11-02T15:27:31+00:00",
+        "observed_at": "2026-11-02T16:33:11.238102+00:00",
+        "omitted_bytes": 0,
+        "omitted_rows": 0,
+        "operation_id": "67568242-28a9-420d-af2c-36e464aed70a-t2",
+        "projection_revision": "m1-01-tool-view-v11",
+        "query": {
+          "end": "2026-11-02T15:32:31Z",
+          "expr": "histogram_quantile(0.95, sum by (le, service_name, span_name) (rate(traces_span_metrics_duration_milliseconds_bucket{service_name=~\"payment|checkout\", span_name=~\".*PaymentService/Charge|oteldemo.CheckoutService/PlaceOrder\"}[5m])))",
+          "start": "2026-11-02T15:27:31Z"
+        },
+        "registry_revision": "dc86d465b4db7b13f6fa4d490b5d657a8c1f4f29ca24128fa841333da3432f29",
+        "result_count": 3,
+        "returned_count": 3,
+        "source": "otel-demo",
+        "source_end_at": "2026-11-02T15:32:31+00:00",
+        "source_start_at": "2026-11-02T15:32:31+00:00",
+        "status": "ok",
+        "target_id": "m0-otel-20260909",
+        "tool": "metrics_range_query",
+        "tool_registry_revision": "796887a8015086e8aecd45c1790b54cbe16ff09a0c4ac75e04aba12aa335d485",
+        "tool_version": "v1",
+        "truncated": false,
+        "trust": "untrusted-evidence",
+        "window": {
+          "end": "2026-11-02T15:32:31+00:00",
+          "start": "2026-11-02T15:27:31+00:00"
+        }
+      },
+      "view_sha256": "992a312fbddd927d8c71b3d68520c6ced9d2de88ec349b4d895df761485d32c3",
+      "window": {
+        "end": "2026-11-02T15:32:31+00:00",
+        "start": "2026-11-02T15:27:31+00:00"
+      }
+    },
+    {
+      "citable_as_fact": true,
+      "delivered": true,
+      "evidence_id": "6cc4ff89-a5b4-4ad1-9e60-778b310aaa0c-t0:1616bc28-70d7-4ecf-ac43-a331d5ecdaba",
+      "status": "ok",
+      "target_id": "m0-otel-20260909",
+      "time_scope_refs": [
+        "policy-window-1"
+      ],
+      "view": {
+        "adopted": true,
+        "citable_as_fact": true,
+        "content": [
+          {
+            "duration_us": 8005,
+            "error_by_visible_tags": false,
+            "error_details": [],
+            "omitted_error_detail_field_count": 0,
+            "operation": "oteldemo.PaymentService/Charge",
+            "operation_truncated": false,
+            "parent_references": [
+              {
+                "parent_is_visible": true,
+                "refType": "CHILD_OF",
+                "spanID": "5d0c869249e73bea",
+                "traceID": "a95802bed2daac5f80b0027779f3b6d3"
+              }
+            ],
+            "raw_error_detail_field_count": 0,
+            "service": "checkout",
+            "service_version": "2.0.2",
+            "span_id": "9aa115440df741a2",
+            "start_us": 1793636935733551,
+            "status_state": "recorded",
+            "status_tags": {
+              "rpc.grpc.status_code": 0
+            },
+            "trace_id": "a95802bed2daac5f80b0027779f3b6d3"
+          },
+          {
+            "duration_us": 7523,
+            "error_by_visible_tags": false,
+            "error_details": [],
+            "omitted_error_detail_field_count": 0,
+            "operation": "oteldemo.ShippingService/GetQuote",
+            "operation_truncated": false,
+            "parent_references": [
+              {
+                "parent_is_visible": true,
+                "refType": "CHILD_OF",
+                "spanID": "35adeac30c352aca",
+                "traceID": "a6ed3344eb7f423a57c36fdc9cef0ce5"
+              }
+            ],
+            "raw_error_detail_field_count": 0,
+            "service": "checkout",
+            "service_version": "2.0.2",
+            "span_id": "b6785ebccdc4cd1b",
+            "start_us": 1793636964071399,
+            "status_state": "recorded",
+            "status_tags": {
+              "rpc.grpc.status_code": 0
+            },
+            "trace_id": "a6ed3344eb7f423a57c36fdc9cef0ce5"
+          },
+          {
+            "duration_us": 7205,
+            "error_by_visible_tags": false,
+            "error_details": [],
+            "omitted_error_detail_field_count": 0,
+            "operation": "oteldemo.ShippingService/GetQuote",
+            "operation_truncated": false,
+            "parent_references": [
+              {
+                "parent_is_visible": true,
+                "refType": "CHILD_OF",
+                "spanID": "e70112d1ad950194",
+                "traceID": "57e3750158d8f4f8ba9348bb69fb6a6d"
+              }
+            ],
+            "raw_error_detail_field_count": 0,
+            "service": "checkout",
+            "service_version": "2.0.2",
+            "span_id": "4bb742cc51732d6b",
+            "start_us": 1793637111439913,
+            "status_state": "recorded",
+            "status_tags": {
+              "rpc.grpc.status_code": 0
+            },
+            "trace_id": "57e3750158d8f4f8ba9348bb69fb6a6d"
+          },
+          {
+            "duration_us": 7168,
+            "error_by_visible_tags": false,
+            "error_details": [],
+            "omitted_error_detail_field_count": 0,
+            "operation": "oteldemo.PaymentService/Charge",
+            "operation_truncated": false,
+            "parent_references": [
+              {
+                "parent_is_visible": true,
+                "refType": "CHILD_OF",
+                "spanID": "6f57b2ffca05d06e",
+                "traceID": "4642399c2e9e0341e9cd4081c599fe1e"
+              }
+            ],
+            "raw_error_detail_field_count": 0,
+            "service": "checkout",
+            "service_version": "2.0.2",
+            "span_id": "29864bf2b27ac826",
+            "start_us": 1793636926918940,
+            "status_state": "recorded",
+            "status_tags": {
+              "rpc.grpc.status_code": 0
+            },
+            "trace_id": "4642399c2e9e0341e9cd4081c599fe1e"
+          },
+          {
+            "duration_us": 6866,
+            "error_by_visible_tags": false,
+            "error_details": [],
+            "omitted_error_detail_field_count": 0,
+            "operation": "prepareOrderItemsAndShippingQuoteFromCart",
+            "operation_truncated": false,
+            "parent_references": [
+              {
+                "parent_is_visible": true,
+                "refType": "CHILD_OF",
+                "spanID": "241d0c9392c17e9f",
+                "traceID": "6595d1419c088952b131814148733940"
+              }
+            ],
+            "raw_error_detail_field_count": 0,
+            "service": "checkout",
+            "service_version": "2.0.2",
+            "span_id": "f01251b6db0fcdc3",
+            "start_us": 1793636927038218,
+            "status_state": "not_recorded",
+            "status_tags": {},
+            "trace_id": "6595d1419c088952b131814148733940"
+          },
+          {
+            "duration_us": 6589,
+            "error_by_visible_tags": false,
+            "error_details": [],
+            "omitted_error_detail_field_count": 0,
+            "operation": "oteldemo.ShippingService/GetQuote",
+            "operation_truncated": false,
+            "parent_references": [
+              {
+                "parent_is_visible": true,
+                "refType": "CHILD_OF",
+                "spanID": "a81092d25e8344e5",
+                "traceID": "4642399c2e9e0341e9cd4081c599fe1e"
+              }
+            ],
+            "raw_error_detail_field_count": 0,
+            "service": "checkout",
+            "service_version": "2.0.2",
+            "span_id": "151f92fb7cccf8a3",
+            "start_us": 1793636926910549,
+            "status_state": "recorded",
+            "status_tags": {
+              "rpc.grpc.status_code": 0
+            },
+            "trace_id": "4642399c2e9e0341e9cd4081c599fe1e"
+          },
+          {
+            "duration_us": 6042,
+            "error_by_visible_tags": false,
+            "error_details": [],
+            "omitted_error_detail_field_count": 0,
+            "operation": "oteldemo.ShippingService/GetQuote",
+            "operation_truncated": false,
+            "parent_references": [
+              {
+                "parent_is_visible": true,
+                "refType": "CHILD_OF",
+                "spanID": "325aee6c108bfd66",
+                "traceID": "a95802bed2daac5f80b0027779f3b6d3"
+              }
+            ],
+            "raw_error_detail_field_count": 0,
+            "service": "checkout",
+            "service_version": "2.0.2",
+            "span_id": "eb808f1e5a39d744",
+            "start_us": 1793636935726176,
+            "status_state": "recorded",
+            "status_tags": {
+              "rpc.grpc.status_code": 0
+            },
+            "trace_id": "a95802bed2daac5f80b0027779f3b6d3"
+          },
+          {
+            "duration_us": 5820,
+            "error_by_visible_tags": false,
+            "error_details": [],
+            "omitted_error_detail_field_count": 0,
+            "operation": "oteldemo.CartService/EmptyCart",
+            "operation_truncated": false,
+            "parent_references": [
+              {
+                "parent_is_visible": true,
+                "refType": "CHILD_OF",
+                "spanID": "54822afef351e9b4",
+                "traceID": "a6ed3344eb7f423a57c36fdc9cef0ce5"
+              }
+            ],
+            "raw_error_detail_field_count": 0,
+            "service": "checkout",
+            "service_version": "2.0.2",
+            "span_id": "233c9b15768b500f",
+            "start_us": 1793636964093380,
+            "status_state": "recorded",
+            "status_tags": {
+              "rpc.grpc.status_code": 0
+            },
+            "trace_id": "a6ed3344eb7f423a57c36fdc9cef0ce5"
+          },
+          {
+            "duration_us": 5605,
+            "error_by_visible_tags": false,
+            "error_details": [],
+            "omitted_error_detail_field_count": 0,
+            "operation": "oteldemo.ShippingService/GetQuote",
+            "operation_truncated": false,
+            "parent_references": [
+              {
+                "parent_is_visible": true,
+                "refType": "CHILD_OF",
+                "spanID": "989fbba0202ada4f",
+                "traceID": "6a93abda38cb814fd780ee2fbeae70b1"
+              }
+            ],
+            "raw_error_detail_field_count": 0,
+            "service": "checkout",
+            "service_version": "2.0.2",
+            "span_id": "43277f23ba7f15ed",
+            "start_us": 1793636943856945,
+            "status_state": "recorded",
+            "status_tags": {
+              "rpc.grpc.status_code": 0
+            },
+            "trace_id": "6a93abda38cb814fd780ee2fbeae70b1"
+          },
+          {
+            "duration_us": 5180,
+            "error_by_visible_tags": false,
+            "error_details": [],
+            "omitted_error_detail_field_count": 0,
+            "operation": "oteldemo.CartService/EmptyCart",
+            "operation_truncated": false,
+            "parent_references": [
+              {
+                "parent_is_visible": true,
+                "refType": "CHILD_OF",
+                "spanID": "6f57b2ffca05d06e",
+                "traceID": "4642399c2e9e0341e9cd4081c599fe1e"
+              }
+            ],
+            "raw_error_detail_field_count": 0,
+            "service": "checkout",
+            "service_version": "2.0.2",
+            "span_id": "fca1dc569ad9d61c",
+            "start_us": 1793636926926780,
+            "status_state": "recorded",
+            "status_tags": {
+              "rpc.grpc.status_code": 0
+            },
+            "trace_id": "4642399c2e9e0341e9cd4081c599fe1e"
+          },
+          {
+            "duration_us": 4694,
+            "error_by_visible_tags": false,
+            "error_details": [],
+            "omitted_error_detail_field_count": 0,
+            "operation": "oteldemo.ShippingService/GetQuote",
+            "operation_truncated": false,
+            "parent_references": [
+              {
+                "parent_is_visible": true,
+                "refType": "CHILD_OF",
+                "spanID": "f35a1c56118d006f",
+                "traceID": "2d30fbf5a81504307f9b5e7a241c9adf"
+              }
+            ],
+            "raw_error_detail_field_count": 0,
+            "service": "checkout",
+            "service_version": "2.0.2",
+            "span_id": "4020abf0a37b762c",
+            "start_us": 1793637122725133,
+            "status_state": "recorded",
+            "status_tags": {
+              "rpc.grpc.status_code": 0
+            },
+            "trace_id": "2d30fbf5a81504307f9b5e7a241c9adf"
+          },
+          {
+            "duration_us": 4288,
+            "error_by_visible_tags": false,
+            "error_details": [],
+            "omitted_error_detail_field_count": 0,
+            "operation": "oteldemo.CurrencyService/Convert",
+            "operation_truncated": false,
+            "parent_references": [
+              {
+                "parent_is_visible": true,
+                "refType": "CHILD_OF",
+                "spanID": "35adeac30c352aca",
+                "traceID": "a6ed3344eb7f423a57c36fdc9cef0ce5"
+              }
+            ],
+            "raw_error_detail_field_count": 0,
+            "service": "checkout",
+            "service_version": "2.0.2",
+            "span_id": "55077a9f21e9f226",
+            "start_us": 1793636964067056,
+            "status_state": "recorded",
+            "status_tags": {
+              "rpc.grpc.status_code": 0
+            },
+            "trace_id": "a6ed3344eb7f423a57c36fdc9cef0ce5"
+          },
+          {
+            "duration_us": 4222,
+            "error_by_visible_tags": false,
+            "error_details": [],
+            "omitted_error_detail_field_count": 0,
+            "operation": "oteldemo.CurrencyService/Convert",
+            "operation_truncated": false,
+            "parent_references": [
+              {
+                "parent_is_visible": true,
+                "refType": "CHILD_OF",
+                "spanID": "afebcdcfd5424afb",
+                "traceID": "28787b5fff0694567b2b7d8b448d8c24"
+              }
+            ],
+            "raw_error_detail_field_count": 0,
+            "service": "checkout",
+            "service_version": "2.0.2",
+            "span_id": "788da5bd6dd6b79a",
+            "start_us": 1793637104544787,
+            "status_state": "recorded",
+            "status_tags": {
+              "rpc.grpc.status_code": 0
+            },
+            "trace_id": "28787b5fff0694567b2b7d8b448d8c24"
+          },
+          {
+            "duration_us": 3854,
+            "error_by_visible_tags": false,
+            "error_details": [],
+            "omitted_error_detail_field_count": 0,
+            "operation": "oteldemo.CartService/EmptyCart",
+            "operation_truncated": false,
+            "parent_references": [
+              {
+                "parent_is_visible": true,
+                "refType": "CHILD_OF",
+                "spanID": "2a027585e05304d0",
+                "traceID": "6a93abda38cb814fd780ee2fbeae70b1"
+              }
+            ],
+            "raw_error_detail_field_count": 0,
+            "service": "checkout",
+            "service_version": "2.0.2",
+            "span_id": "50f93b5995127d24",
+            "start_us": 1793636943868197,
+            "status_state": "recorded",
+            "status_tags": {
+              "rpc.grpc.status_code": 0
+            },
+            "trace_id": "6a93abda38cb814fd780ee2fbeae70b1"
+          },
+          {
+            "duration_us": 3378,
+            "error_by_visible_tags": false,
+            "error_details": [],
+            "omitted_error_detail_field_count": 0,
+            "operation": "oteldemo.PaymentService/Charge",
+            "operation_truncated": false,
+            "parent_references": [
+              {
+                "parent_is_visible": true,
+                "refType": "CHILD_OF",
+                "spanID": "241d0c9392c17e9f",
+                "traceID": "6595d1419c088952b131814148733940"
+              }
+            ],
+            "raw_error_detail_field_count": 0,
+            "service": "checkout",
+            "service_version": "2.0.2",
+            "span_id": "70f81a02c04dd926",
+            "start_us": 1793636927045135,
+            "status_state": "recorded",
+            "status_tags": {
+              "rpc.grpc.status_code": 0
+            },
+            "trace_id": "6595d1419c088952b131814148733940"
+          },
+          {
+            "duration_us": 3368,
+            "error_by_visible_tags": false,
+            "error_details": [],
+            "omitted_error_detail_field_count": 0,
+            "operation": "HTTP POST",
+            "operation_truncated": false,
+            "parent_references": [
+              {
+                "parent_is_visible": true,
+                "refType": "CHILD_OF",
+                "spanID": "241d0c9392c17e9f",
+                "traceID": "6595d1419c088952b131814148733940"
+              }
+            ],
+            "raw_error_detail_field_count": 0,
+            "service": "checkout",
+            "service_version": "2.0.2",
+            "span_id": "d66f2a85e294751b",
+            "start_us": 1793636927051977,
+            "status_state": "recorded",
+            "status_tags": {
+              "http.status_code": 200
+            },
+            "trace_id": "6595d1419c088952b131814148733940"
+          },
+          {
+            "duration_us": 3332,
+            "error_by_visible_tags": false,
+            "error_details": [],
+            "omitted_error_detail_field_count": 0,
+            "operation": "oteldemo.PaymentService/Charge",
+            "operation_truncated": false,
+            "parent_references": [
+              {
+                "parent_is_visible": true,
+                "refType": "CHILD_OF",
+                "spanID": "2a027585e05304d0",
+                "traceID": "6a93abda38cb814fd780ee2fbeae70b1"
+              }
+            ],
+            "raw_error_detail_field_count": 0,
+            "service": "checkout",
+            "service_version": "2.0.2",
+            "span_id": "4340b868e3a271c7",
+            "start_us": 1793636943864303,
+            "status_state": "recorded",
+            "status_tags": {
+              "rpc.grpc.status_code": 0
+            },
+            "trace_id": "6a93abda38cb814fd780ee2fbeae70b1"
+          },
+          {
+            "duration_us": 3289,
+            "error_by_visible_tags": false,
+            "error_details": [],
+            "omitted_error_detail_field_count": 0,
+            "operation": "oteldemo.CurrencyService/Convert",
+            "operation_truncated": false,
+            "parent_references": [
+              {
+                "parent_is_visible": true,
+                "refType": "CHILD_OF",
+                "spanID": "325aee6c108bfd66",
+                "traceID": "a95802bed2daac5f80b0027779f3b6d3"
+              }
+            ],
+            "raw_error_detail_field_count": 0,
+            "service": "checkout",
+            "service_version": "2.0.2",
+            "span_id": "95931520a2faf8b5",
+            "start_us": 1793636935720335,
+            "status_state": "recorded",
+            "status_tags": {
+              "rpc.grpc.status_code": 0
+            },
+            "trace_id": "a95802bed2daac5f80b0027779f3b6d3"
+          },
+          {
+            "duration_us": 2908,
+            "error_by_visible_tags": false,
+            "error_details": [],
+            "omitted_error_detail_field_count": 0,
+            "operation": "oteldemo.CurrencyService/Convert",
+            "operation_truncated": false,
+            "parent_references": [
+              {
+                "parent_is_visible": true,
+                "refType": "CHILD_OF",
+                "spanID": "a81092d25e8344e5",
+                "traceID": "4642399c2e9e0341e9cd4081c599fe1e"
+              }
+            ],
+            "raw_error_detail_field_count": 0,
+            "service": "checkout",
+            "service_version": "2.0.2",
+            "span_id": "23b63c5c8e9a221e",
+            "start_us": 1793636926907597,
+            "status_state": "recorded",
+            "status_tags": {
+              "rpc.grpc.status_code": 0
+            },
+            "trace_id": "4642399c2e9e0341e9cd4081c599fe1e"
+          },
+          {
+            "duration_us": 2797,
+            "error_by_visible_tags": false,
+            "error_details": [],
+            "omitted_error_detail_field_count": 0,
+            "operation": "oteldemo.CartService/EmptyCart",
+            "operation_truncated": false,
+            "parent_references": [
+              {
+                "parent_is_visible": true,
+                "refType": "CHILD_OF",
+                "spanID": "241d0c9392c17e9f",
+                "traceID": "6595d1419c088952b131814148733940"
+              }
+            ],
+            "raw_error_detail_field_count": 0,
+            "service": "checkout",
+            "service_version": "2.0.2",
+            "span_id": "d0f8081e3bd4acaf",
+            "start_us": 1793636927049093,
+            "status_state": "recorded",
+            "status_tags": {
+              "rpc.grpc.status_code": 0
+            },
+            "trace_id": "6595d1419c088952b131814148733940"
+          }
+        ],
+        "data_as_of": "2026-11-02T16:32:21.686983+00:00",
+        "dispatch_started_at": "2026-11-02T16:32:34.889595+00:00",
+        "evidence_id": "6cc4ff89-a5b4-4ad1-9e60-778b310aaa0c-t0:1616bc28-70d7-4ecf-ac43-a331d5ecdaba",
+        "freshness_seconds": 13.295239,
+        "incomplete": false,
+        "lookback_seconds": null,
+        "lookback_start_at": null,
+        "observed_at": "2026-11-02T16:32:34.982222+00:00",
+        "omitted_bytes": 205141,
+        "omitted_rows": 342,
+        "operation_id": "6cc4ff89-a5b4-4ad1-9e60-778b310aaa0c-t0",
+        "parent_tool": "traces_search",
+        "projection_revision": "m1-01-tool-view-v11",
+        "query": {
+          "evidence_id": "662556cb-1824-40ef-afe3-9dda4e71f818-t1:813ca3af-51f8-4d65-896e-640c7b004ddd",
+          "limit": 20,
+          "offset": 30
+        },
+        "registry_revision": "dc86d465b4db7b13f6fa4d490b5d657a8c1f4f29ca24128fa841333da3432f29",
+        "result_count": 20,
+        "returned_count": 20,
+        "slice": {
+          "offset": 30,
+          "parent_evidence_id": "662556cb-1824-40ef-afe3-9dda4e71f818-t1:813ca3af-51f8-4d65-896e-640c7b004ddd",
+          "parent_raw_sha256": "4826819350b481166f4d4889a1c15be26f1f68a4d3b1607cb5e93bd3d8525a8b",
+          "returned": 20,
+          "total_rows": 362
+        },
+        "source": "otel-demo",
+        "source_end_at": "2026-11-02T16:32:21.686983+00:00",
+        "source_start_at": "2026-11-02T16:28:44.059101+00:00",
+        "status": "ok",
+        "target_id": "m0-otel-20260909",
+        "tool": "read_evidence",
+        "tool_registry_revision": "796887a8015086e8aecd45c1790b54cbe16ff09a0c4ac75e04aba12aa335d485",
+        "tool_version": "v1",
+        "truncated": true,
+        "trust": "untrusted-evidence",
+        "window": {
+          "end": "2026-11-02T16:32:31+00:00",
+          "start": "2026-11-02T16:27:31+00:00"
+        }
+      },
+      "view_sha256": "0b49a723ee042c461edb6e365ef443d7c9ca64a451cc81176c2970a997b58371",
+      "window": {
+        "end": "2026-11-02T16:32:31+00:00",
+        "start": "2026-11-02T16:27:31+00:00"
+      }
+    },
+    {
+      "citable_as_fact": true,
+      "delivered": true,
+      "evidence_id": "6cc4ff89-a5b4-4ad1-9e60-778b310aaa0c-t1:32fa7064-8788-4e58-825d-dc2ad07d4d9a",
+      "status": "ok",
+      "target_id": "m0-otel-20260909",
+      "time_scope_refs": [
+        "policy-window-1"
+      ],
+      "view": {
+        "adopted": true,
+        "citable_as_fact": true,
+        "content": [
+          {
+            "metric": {
+              "service_name": "cart",
+              "span_name": "POST /oteldemo.CartService/GetCart"
+            },
+            "values": [
+              [
+                1793637151,
+                "2.299999999999998"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "currency",
+              "span_name": "Currency/Convert"
+            },
+            "values": [
+              [
+                1793637151,
+                "3.6999999999999975"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "email",
+              "span_name": "POST /send_order_confirmation"
+            },
+            "values": [
+              [
+                1793637151,
+                "47.49999999999999"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "email",
+              "span_name": "send_email"
+            },
+            "values": [
+              [
+                1793637151,
+                "44.99999999999999"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "product-catalog",
+              "span_name": "oteldemo.ProductCatalogService/GetProduct"
+            },
+            "values": [
+              [
+                1793637151,
+                "1.9365384615384613"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "shipping",
+              "span_name": "oteldemo.ShippingService/GetQuote"
+            },
+            "values": [
+              [
+                1793637151,
+                "9.1"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "shipping",
+              "span_name": "oteldemo.ShippingService/ShipOrder"
+            },
+            "values": [
+              [
+                1793637151,
+                "1.9"
+              ]
+            ]
+          }
+        ],
+        "data_as_of": "2026-11-02T16:32:31+00:00",
+        "dispatch_started_at": "2026-11-02T16:33:23.364021+00:00",
+        "evidence_id": "6cc4ff89-a5b4-4ad1-9e60-778b310aaa0c-t1:32fa7064-8788-4e58-825d-dc2ad07d4d9a",
+        "freshness_seconds": 53.537496,
+        "incomplete": false,
+        "lookback_seconds": 300,
+        "lookback_start_at": "2026-11-02T16:27:31+00:00",
+        "observed_at": "2026-11-02T16:33:24.537496+00:00",
+        "omitted_bytes": 0,
+        "omitted_rows": 0,
+        "operation_id": "6cc4ff89-a5b4-4ad1-9e60-778b310aaa0c-t1",
+        "projection_revision": "m1-01-tool-view-v11",
+        "query": {
+          "end": "2026-11-02T16:32:31Z",
+          "expr": "histogram_quantile(0.95, sum by (le, service_name, span_name) (rate(traces_span_metrics_duration_milliseconds_bucket{service_name=~\"cart|currency|product-catalog|shipping|email\", span_name=~\"POST /oteldemo.CartService/GetCart|Currency/Convert|oteldemo.ProductCatalogService/GetProduct|oteldemo.ShippingService/GetQuote|oteldemo.ShippingService/ShipOrder|send_email|POST /send_order_confirmation\"}[5m])))",
+          "start": "2026-11-02T16:27:31Z"
+        },
+        "registry_revision": "dc86d465b4db7b13f6fa4d490b5d657a8c1f4f29ca24128fa841333da3432f29",
+        "result_count": 7,
+        "returned_count": 7,
+        "source": "otel-demo",
+        "source_end_at": "2026-11-02T16:32:31+00:00",
+        "source_start_at": "2026-11-02T16:32:31+00:00",
+        "status": "ok",
+        "target_id": "m0-otel-20260909",
+        "tool": "metrics_range_query",
+        "tool_registry_revision": "796887a8015086e8aecd45c1790b54cbe16ff09a0c4ac75e04aba12aa335d485",
+        "tool_version": "v1",
+        "truncated": false,
+        "trust": "untrusted-evidence",
+        "window": {
+          "end": "2026-11-02T16:32:31+00:00",
+          "start": "2026-11-02T16:27:31+00:00"
+        }
+      },
+      "view_sha256": "64c40c4c33b6a7f7e11f99cff05b6c79fa4bb48965263219aa73147b4f3e7282",
+      "window": {
+        "end": "2026-11-02T16:32:31+00:00",
+        "start": "2026-11-02T16:27:31+00:00"
+      }
+    },
+    {
+      "citable_as_fact": true,
+      "delivered": true,
+      "evidence_id": "6cc4ff89-a5b4-4ad1-9e60-778b310aaa0c-t2:82538ff5-f2dc-4d3d-993c-437e1433061f",
+      "status": "ok",
+      "target_id": "m0-otel-20260909",
+      "time_scope_refs": [
+        "policy-window-1"
+      ],
+      "view": {
+        "adopted": true,
+        "citable_as_fact": true,
+        "content": [
+          {
+            "metric": {
+              "service_name": "cart",
+              "span_name": "POST /oteldemo.CartService/GetCart"
+            },
+            "values": [
+              [
+                1793633551,
+                "5.999999999999998"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "currency",
+              "span_name": "Currency/Convert"
+            },
+            "values": [
+              [
+                1793633551,
+                "1.9904761904761903"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "email",
+              "span_name": "POST /send_order_confirmation"
+            },
+            "values": [
+              [
+                1793633551,
+                "45.49999999999999"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "email",
+              "span_name": "send_email"
+            },
+            "values": [
+              [
+                1793633551,
+                "40.99999999999999"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "product-catalog",
+              "span_name": "oteldemo.ProductCatalogService/GetProduct"
+            },
+            "values": [
+              [
+                1793633551,
+                "1.9358490566037736"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "shipping",
+              "span_name": "oteldemo.ShippingService/GetQuote"
+            },
+            "values": [
+              [
+                1793633551,
+                "9.1"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "shipping",
+              "span_name": "oteldemo.ShippingService/ShipOrder"
+            },
+            "values": [
+              [
+                1793633551,
+                "1.9"
+              ]
+            ]
+          }
+        ],
+        "data_as_of": "2026-11-02T15:32:31+00:00",
+        "dispatch_started_at": "2026-11-02T16:33:24.553988+00:00",
+        "evidence_id": "6cc4ff89-a5b4-4ad1-9e60-778b310aaa0c-t2:82538ff5-f2dc-4d3d-993c-437e1433061f",
+        "freshness_seconds": 3654.741153,
+        "incomplete": false,
+        "lookback_seconds": 300,
+        "lookback_start_at": "2026-11-02T15:27:31+00:00",
+        "observed_at": "2026-11-02T16:33:25.741153+00:00",
+        "omitted_bytes": 0,
+        "omitted_rows": 0,
+        "operation_id": "6cc4ff89-a5b4-4ad1-9e60-778b310aaa0c-t2",
+        "projection_revision": "m1-01-tool-view-v11",
+        "query": {
+          "end": "2026-11-02T15:32:31Z",
+          "expr": "histogram_quantile(0.95, sum by (le, service_name, span_name) (rate(traces_span_metrics_duration_milliseconds_bucket{service_name=~\"cart|currency|product-catalog|shipping|email\", span_name=~\"POST /oteldemo.CartService/GetCart|Currency/Convert|oteldemo.ProductCatalogService/GetProduct|oteldemo.ShippingService/GetQuote|oteldemo.ShippingService/ShipOrder|send_email|POST /send_order_confirmation\"}[5m])))",
+          "start": "2026-11-02T15:27:31Z"
+        },
+        "registry_revision": "dc86d465b4db7b13f6fa4d490b5d657a8c1f4f29ca24128fa841333da3432f29",
+        "result_count": 7,
+        "returned_count": 7,
+        "source": "otel-demo",
+        "source_end_at": "2026-11-02T15:32:31+00:00",
+        "source_start_at": "2026-11-02T15:32:31+00:00",
+        "status": "ok",
+        "target_id": "m0-otel-20260909",
+        "tool": "metrics_range_query",
+        "tool_registry_revision": "796887a8015086e8aecd45c1790b54cbe16ff09a0c4ac75e04aba12aa335d485",
+        "tool_version": "v1",
+        "truncated": false,
+        "trust": "untrusted-evidence",
+        "window": {
+          "end": "2026-11-02T15:32:31+00:00",
+          "start": "2026-11-02T15:27:31+00:00"
+        }
+      },
+      "view_sha256": "3c1e847dbf4f5bfdad907f4ec3ae16eb2d8025e143cf3feb440bf5821c650999",
+      "window": {
+        "end": "2026-11-02T15:32:31+00:00",
+        "start": "2026-11-02T15:27:31+00:00"
+      }
+    },
+    {
+      "citable_as_fact": true,
+      "delivered": true,
+      "evidence_id": "9418792a-0b72-420d-bacf-2044d4759335-t0:13364e93-1751-4771-94fe-6ea341d01f69",
+      "status": "ok",
+      "target_id": "m0-otel-20260909",
+      "time_scope_refs": [
+        "policy-window-1"
+      ],
+      "view": {
+        "adopted": true,
+        "backend_spans_returned": 1,
+        "backend_traces_returned": 1,
+        "citable_as_fact": true,
+        "content": [
+          {
+            "duration_us": 50000,
+            "error_by_visible_tags": true,
+            "error_details": [
+              {
+                "key": "exception.message",
+                "location": "span_log",
+                "original_utf8_bytes": 131,
+                "timestamp_us": 1793637141686983,
+                "value": "rpc error: code = DeadlineExceeded desc = upstream response deadline exceeded while preparing order items (request id req-u1wgjdhf)",
+                "value_truncated": false
+              },
+              {
+                "key": "exception.type",
+                "location": "span_log",
+                "original_utf8_bytes": 5,
+                "timestamp_us": 1793637141686983,
+                "value": "Error",
+                "value_truncated": false
+              }
+            ],
+            "omitted_error_detail_field_count": 0,
+            "operation": "oteldemo.CheckoutService/prepareOrderItems",
+            "operation_truncated": false,
+            "parent_references": [],
+            "raw_error_detail_field_count": 2,
+            "service": "checkout",
+            "service_version": null,
+            "span_id": "7dd4b0d0056f53a7",
+            "start_us": 1793637141636983,
+            "status_state": "recorded",
+            "status_tags": {
+              "error": true,
+              "otel.status_code": "ERROR"
+            },
+            "trace_id": "8fd8cdc55b88482d1ed0f7acda29f44d"
+          }
+        ],
+        "data_as_of": "2026-11-02T16:32:21.686983+00:00",
+        "dispatch_started_at": "2026-11-02T16:33:32.538955+00:00",
+        "evidence_id": "9418792a-0b72-420d-bacf-2044d4759335-t0:13364e93-1751-4771-94fe-6ea341d01f69",
+        "freshness_seconds": 70.886166,
+        "incomplete": false,
+        "incomplete_reason": null,
+        "lookback_seconds": null,
+        "lookback_start_at": null,
+        "observed_at": "2026-11-02T16:33:32.573149+00:00",
+        "omitted_bytes": 0,
+        "omitted_rows": 0,
+        "operation_id": "9418792a-0b72-420d-bacf-2044d4759335-t0",
+        "projection_revision": "m1-01-tool-view-v11",
+        "query": {
+          "end": "2026-11-02T16:32:24Z",
+          "limit": 2,
+          "service": "checkout",
+          "start": "2026-11-02T16:32:18Z"
+        },
+        "registry_revision": "dc86d465b4db7b13f6fa4d490b5d657a8c1f4f29ca24128fa841333da3432f29",
+        "result_count": 1,
+        "returned_count": 1,
+        "source": "otel-demo",
+        "source_end_at": "2026-11-02T16:32:21.686983+00:00",
+        "source_start_at": "2026-11-02T16:32:21.636983+00:00",
+        "span_groups": [
+          {
+            "duration_us_max": 50000,
+            "duration_us_min": 50000,
+            "error_rows": 1,
+            "operation": "oteldemo.CheckoutService/prepareOrderItems",
+            "rows": 1,
+            "service": "checkout",
+            "status": {
+              "error=True;otel.status_code=\"ERROR\"": 1
+            }
+          }
+        ],
+        "span_groups_note": "span_groups summarizes the spans shown in content; spans the adapter sampled out are not counted in any group.",
+        "spans_omitted": 0,
+        "spans_shown": 1,
+        "status": "ok",
+        "target_id": "m0-otel-20260909",
+        "tool": "traces_search",
+        "tool_registry_revision": "796887a8015086e8aecd45c1790b54cbe16ff09a0c4ac75e04aba12aa335d485",
+        "tool_version": "v1",
+        "traces_requested": 2,
+        "truncated": false,
+        "trust": "untrusted-evidence",
+        "window": {
+          "end": "2026-11-02T16:32:24+00:00",
+          "start": "2026-11-02T16:32:18+00:00"
+        }
+      },
+      "view_sha256": "1fe9e8c6484d88e1a04fa4e2c344cc1011088bc8e0a1e1eee639f92f19116eac",
+      "window": {
+        "end": "2026-11-02T16:32:24+00:00",
+        "start": "2026-11-02T16:32:18+00:00"
+      }
+    },
+    {
+      "citable_as_fact": true,
+      "delivered": true,
+      "evidence_id": "9418792a-0b72-420d-bacf-2044d4759335-t1:e04b4b81-02a9-4d42-b3de-d4d2ca776ab7",
+      "status": "ok",
+      "target_id": "m0-otel-20260909",
+      "time_scope_refs": [
+        "policy-window-1"
+      ],
+      "view": {
+        "adopted": true,
+        "citable_as_fact": true,
+        "content": [
+          {
+            "metric": {
+              "service_name": "ad",
+              "span_name": "flagd.evaluation.v1.Service/EventStream"
+            },
+            "values": [
+              [
+                1793633551,
+                "1.25"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "ad",
+              "span_name": "flagd.evaluation.v1.Service/ResolveBoolean"
+            },
+            "values": [
+              [
+                1793633551,
+                "0"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "ad",
+              "span_name": "oteldemo.AdService/GetAds"
+            },
+            "values": [
+              [
+                1793633551,
+                "0"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "flagd",
+              "span_name": "flagd.evaluation.v1.Service/EventStream"
+            },
+            "values": [
+              [
+                1793633551,
+                "1.25"
+              ]
+            ]
+          }
+        ],
+        "data_as_of": "2026-11-02T15:32:31+00:00",
+        "dispatch_started_at": "2026-11-02T16:33:32.589459+00:00",
+        "evidence_id": "9418792a-0b72-420d-bacf-2044d4759335-t1:e04b4b81-02a9-4d42-b3de-d4d2ca776ab7",
+        "freshness_seconds": 3662.543447,
+        "incomplete": false,
+        "lookback_seconds": 300,
+        "lookback_start_at": "2026-11-02T15:27:31+00:00",
+        "observed_at": "2026-11-02T16:33:33.543447+00:00",
+        "omitted_bytes": 0,
+        "omitted_rows": 0,
+        "operation_id": "9418792a-0b72-420d-bacf-2044d4759335-t1",
+        "projection_revision": "m1-01-tool-view-v11",
+        "query": {
+          "end": "2026-11-02T15:32:31Z",
+          "expr": "sum by (service_name, span_name) (increase(traces_span_metrics_calls_total{service_name=~\"ad|flagd\", status_code=\"STATUS_CODE_ERROR\"}[5m]))",
+          "start": "2026-11-02T15:27:31Z"
+        },
+        "registry_revision": "dc86d465b4db7b13f6fa4d490b5d657a8c1f4f29ca24128fa841333da3432f29",
+        "result_count": 4,
+        "returned_count": 4,
+        "series_note": "traces_span_metrics_calls_total counts spans of every operation of the service (internal, client and server spans alike), summed over the labels kept in this query; it is not a count of requests. status_code STATUS_CODE_UNSET means the span carried no status; it does not mean the call succeeded.",
+        "source": "otel-demo",
+        "source_end_at": "2026-11-02T15:32:31+00:00",
+        "source_start_at": "2026-11-02T15:32:31+00:00",
+        "status": "ok",
+        "target_id": "m0-otel-20260909",
+        "tool": "metrics_range_query",
+        "tool_registry_revision": "796887a8015086e8aecd45c1790b54cbe16ff09a0c4ac75e04aba12aa335d485",
+        "tool_version": "v1",
+        "truncated": false,
+        "trust": "untrusted-evidence",
+        "window": {
+          "end": "2026-11-02T15:32:31+00:00",
+          "start": "2026-11-02T15:27:31+00:00"
+        }
+      },
+      "view_sha256": "fecd6045229194ba82d0a3b0ba1ce3856e25bde1fc16c33973b4517e03ce33ff",
+      "window": {
+        "end": "2026-11-02T15:32:31+00:00",
+        "start": "2026-11-02T15:27:31+00:00"
+      }
+    },
+    {
+      "citable_as_fact": true,
+      "delivered": true,
+      "evidence_id": "9418792a-0b72-420d-bacf-2044d4759335-t2:6764cee8-599e-4fe1-b46f-8eb9cf7a8298",
+      "status": "ok",
+      "target_id": "m0-otel-20260909",
+      "time_scope_refs": [
+        "policy-window-1"
+      ],
+      "view": {
+        "adopted": true,
+        "citable_as_fact": true,
+        "content": [
+          {
+            "metric": {
+              "service_name": "checkout",
+              "span_name": "oteldemo.CartService/EmptyCart"
+            },
+            "values": [
+              [
+                1793637151,
+                "0"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "checkout",
+              "span_name": "oteldemo.CheckoutService/PlaceOrder"
+            },
+            "values": [
+              [
+                1793637151,
+                "4.067796610169491"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "checkout",
+              "span_name": "oteldemo.CheckoutService/prepareOrderItems"
+            },
+            "values": [
+              [
+                1793637151,
+                "0"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "checkout",
+              "span_name": "oteldemo.PaymentService/Charge"
+            },
+            "values": [
+              [
+                1793637151,
+                "4.067796610169491"
+              ]
+            ]
+          },
+          {
+            "metric": {
+              "service_name": "payment",
+              "span_name": "grpc.oteldemo.PaymentService/Charge"
+            },
+            "values": [
+              [
+                1793637151,
+                "4.067796610169491"
+              ]
+            ]
+          }
+        ],
+        "data_as_of": "2026-11-02T16:32:31+00:00",
+        "dispatch_started_at": "2026-11-02T16:33:33.558466+00:00",
+        "evidence_id": "9418792a-0b72-420d-bacf-2044d4759335-t2:6764cee8-599e-4fe1-b46f-8eb9cf7a8298",
+        "freshness_seconds": 63.843492,
+        "incomplete": false,
+        "lookback_seconds": 3600,
+        "lookback_start_at": "2026-11-02T15:32:31+00:00",
+        "observed_at": "2026-11-02T16:33:34.843492+00:00",
+        "omitted_bytes": 0,
+        "omitted_rows": 0,
+        "operation_id": "9418792a-0b72-420d-bacf-2044d4759335-t2",
+        "projection_revision": "m1-01-tool-view-v11",
+        "query": {
+          "end": "2026-11-02T16:32:31Z",
+          "expr": "sum by (service_name, span_name) (increase(traces_span_metrics_calls_total{service_name=~\"checkout|payment\", status_code=\"STATUS_CODE_ERROR\"}[1h]))",
+          "start": "2026-11-02T15:32:31Z"
+        },
+        "registry_revision": "dc86d465b4db7b13f6fa4d490b5d657a8c1f4f29ca24128fa841333da3432f29",
+        "result_count": 5,
+        "returned_count": 5,
+        "series_note": "traces_span_metrics_calls_total counts spans of every operation of the service (internal, client and server spans alike), summed over the labels kept in this query; it is not a count of requests. status_code STATUS_CODE_UNSET means the span carried no status; it does not mean the call succeeded.",
+        "source": "otel-demo",
+        "source_end_at": "2026-11-02T16:32:31+00:00",
+        "source_start_at": "2026-11-02T16:32:31+00:00",
+        "status": "ok",
+        "target_id": "m0-otel-20260909",
+        "tool": "metrics_range_query",
+        "tool_registry_revision": "796887a8015086e8aecd45c1790b54cbe16ff09a0c4ac75e04aba12aa335d485",
+        "tool_version": "v1",
+        "truncated": false,
+        "trust": "untrusted-evidence",
+        "window": {
+          "end": "2026-11-02T16:32:31+00:00",
+          "start": "2026-11-02T15:32:31+00:00"
+        }
+      },
+      "view_sha256": "d789bf1126a8da6fee8356a69a8eaee840345d6826f4e5c0dbd63a482e2ab746",
+      "window": {
+        "end": "2026-11-02T16:32:31+00:00",
+        "start": "2026-11-02T15:32:31+00:00"
+      }
+    }
+  ],
+  "outcome_evidence_ids": [
+    "662556cb-1824-40ef-afe3-9dda4e71f818-t0:9dbbb220-301b-4109-883f-5b0a52498e6e",
+    "2eb9ff57-4764-49ef-889e-3525c28c487b-t0:01e3b2c3-db57-4f58-8d70-5c518f849449",
+    "2eb9ff57-4764-49ef-889e-3525c28c487b-t1:215bf01e-fd10-4a3f-8c31-18ce0e99d5c2",
+    "157c637c-4e2b-4ffd-9a75-0238945abb88-t0:11f3e168-8c62-4f60-ad01-0eaf14585c15",
+    "157c637c-4e2b-4ffd-9a75-0238945abb88-t1:539f8387-5b10-44b6-8fbe-d5b935f44d8c",
+    "157c637c-4e2b-4ffd-9a75-0238945abb88-t2:83b0e979-40d5-4181-b9a6-92442a6999a4",
+    "2ee36461-ebff-456f-8e77-22931d4fd90f-t1:2cb913d2-e0bd-4ad2-9cb8-20ac133f3a68",
+    "2ee36461-ebff-456f-8e77-22931d4fd90f-t2:5a9f0c6a-d639-45b8-86bc-1a217a9c5a5f",
+    "2ee36461-ebff-456f-8e77-22931d4fd90f-t3:2a74d32e-89f9-41d4-9dcf-2911f9d07bb7",
+    "67568242-28a9-420d-af2c-36e464aed70a-t0:ab695c48-d25c-423f-bf83-5805ca8a0498",
+    "67568242-28a9-420d-af2c-36e464aed70a-t1:170ad9ee-3e14-4154-9273-d3d54d9b2dcf",
+    "67568242-28a9-420d-af2c-36e464aed70a-t2:0c4490cc-764b-4dbd-9f54-57e063a7ff4f",
+    "6cc4ff89-a5b4-4ad1-9e60-778b310aaa0c-t0:1616bc28-70d7-4ecf-ac43-a331d5ecdaba",
+    "6cc4ff89-a5b4-4ad1-9e60-778b310aaa0c-t1:32fa7064-8788-4e58-825d-dc2ad07d4d9a",
+    "6cc4ff89-a5b4-4ad1-9e60-778b310aaa0c-t2:82538ff5-f2dc-4d3d-993c-437e1433061f",
+    "9418792a-0b72-420d-bacf-2044d4759335-t0:13364e93-1751-4771-94fe-6ea341d01f69",
+    "9418792a-0b72-420d-bacf-2044d4759335-t1:e04b4b81-02a9-4d42-b3de-d4d2ca776ab7",
+    "9418792a-0b72-420d-bacf-2044d4759335-t2:6764cee8-599e-4fe1-b46f-8eb9cf7a8298"
+  ],
+  "probe": {
+    "attempt_id": "7d8b00c8-2bee-4905-be8b-6863b3d0a9d8",
+    "manifest_hash": "ba8ef7a1c589dcf8cf4da091ddc10838a695e2f634212de5a299059b68500630",
+    "product_run_id": "e1e9dc63-51ef-44e5-978a-12228cb14903",
+    "round": "dv2-90b037",
+    "trace_url": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/ae1389da-2182-48c0-a195-4d977a116efd/r/00000000-0000-0000-0f1d-016ed412e1d3?poll=true"
+  },
+  "scenario_id": "dv2-28535a",
+  "schema": "opspilot-eval-reference-evidence-1",
+  "stimulus": {
+    "question": "Checkout is reported to show elevated errors in the OTel Demo. Using the authorized metrics range query and trace search for the last 5 minutes, determine whether checkout and its dependency calls (payment, product-catalog, cart, currency, shipping, email) show failures or elevated latency, cite trace ids, and return a json investigation report.",
+    "subject_id": "otel-demo-checkout",
+    "target_id": "m0-otel-20260909"
+  },
+  "target_id": "m0-otel-20260909"
+}

@@ -1,0 +1,20 @@
+{
+  "counts": {
+    "episodes": 1,
+    "incidents": 1,
+    "runs": 1
+  },
+  "deliveries": [
+    {
+      "http_status": 200,
+      "incident_id": "f2223864-a2ab-51f2-9f7d-b0bed5ff9079",
+      "outcome": "created",
+      "reason": null,
+      "run_id": "603dcbb1-961d-54ca-bbf9-8a24e74cada9",
+      "seq": 1,
+      "starts_at": "2026-11-03T19:11:52Z",
+      "status": "firing"
+    }
+  ],
+  "entry": "alertmanager"
+}

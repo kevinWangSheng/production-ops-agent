@@ -1,0 +1,101 @@
+{
+  "balances": [
+    {
+      "attempt_id": "68e73ff2-aab0-44e6-ba18-43d9e9211afd",
+      "balance_after_cny": "244.75",
+      "balance_before_cny": "245.95",
+      "delta_cny": "1.20",
+      "shared_key_possible": true,
+      "status": "measured"
+    }
+  ],
+  "command": [
+    "--mode",
+    "live",
+    "--round",
+    "dr432r2-rr2",
+    "--scenario-root",
+    "evals/datasets/dev-v2",
+    "--scenario",
+    "dv2-8b262a",
+    "--n",
+    "1",
+    "--parallel",
+    "1",
+    "--holder",
+    "lead-432",
+    "--batch",
+    "b432dev",
+    "--flagd-url",
+    "http://127.0.0.1:28013",
+    "--pg-port",
+    "55998"
+  ],
+  "investigator_source": {
+    "credential": "basic",
+    "http_status": 200,
+    "query": "vector(1)",
+    "result": "confirmed"
+  },
+  "manifest_hash": "f5e43bfcb6dd4d395bb7a3d25e51f57ae3fff40126de5ce7e0b7e628a4a4a0db",
+  "reason": null,
+  "recovered_at": null,
+  "retained_fault": false,
+  "round": "dr432r2-rr2",
+  "round_status": "finished",
+  "schema": "opspilot-eval-live-lifecycle-1",
+  "slots": [
+    {
+      "attempt_id": "68e73ff2-aab0-44e6-ba18-43d9e9211afd",
+      "closure_reason": null,
+      "fault": {
+        "effective_at": "2026-11-03T18:10:57.276709+00:00",
+        "injected_sha256": "91b9f5bed283b0153c4d5f2913a14530fd7bf8db7f693fd28c0b825b46fadd5e",
+        "normal_confirmed_at": "2026-11-03T18:16:45.931292+00:00",
+        "original_sha256": "1ee5c0258e3e13609ecec75979cee286ab00f442d288112e39e3db8433d176c6",
+        "restored_sha256": "1ee5c0258e3e13609ecec75979cee286ab00f442d288112e39e3db8433d176c6",
+        "washed_at": "2026-11-03T18:21:45.931292+00:00"
+      },
+      "pre_observation": {
+        "checkout_calls": 14.166666666666668,
+        "flag_confirmed_at": "2026-11-03T18:10:57.276709+00:00",
+        "kind": "fault",
+        "matched_span_ids": [
+          "dc50742e8a7ab500",
+          "8d2b76f868d3d2b8",
+          "b13de084dca0efe8",
+          "2fe4e99b9295b969"
+        ],
+        "passed": true,
+        "probes": 45,
+        "reason": null,
+        "trace_ids": [
+          "8fa5b167e684123b02338b824612030c",
+          "e71c4e626b594762987fa8bb2c3beb1e"
+        ],
+        "window": {
+          "end": "2026-11-03T18:12:22.546778+00:00",
+          "start": "2026-11-03T18:10:57.276709+00:00"
+        }
+      },
+      "product_run_id": "657538a0-ecc1-4a36-8543-697d4b794c06",
+      "reason": null,
+      "repetition": 1,
+      "scenario_id": "dv2-8b262a",
+      "scenario_version": "2",
+      "stage": "investigate",
+      "status": "ran",
+      "summary": {
+        "path": "runs/68e73ff2-aab0-44e6-ba18-43d9e9211afd/summary.json",
+        "sha256": "ad72a3dfe1b2391f4ab8cda96e86b1add2a26b03cc3968462c0c054049068153"
+      },
+      "timings": {
+        "closure_s": 321.524,
+        "ended_at": "2026-11-03T18:21:47.359530+00:00",
+        "investigation_s": 100.97,
+        "setup_s": 300.209,
+        "started_at": "2026-11-03T18:09:44.527835+00:00"
+      }
+    }
+  ]
+}

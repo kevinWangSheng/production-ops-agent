@@ -1,0 +1,132 @@
+{
+  "balances": [
+    {
+      "attempt_id": "2e70c067-fe21-4e9e-af9b-6aab510c3ddd",
+      "balance_after_cny": "59.82",
+      "balance_before_cny": "60.03",
+      "delta_cny": "0.21",
+      "shared_key_possible": true,
+      "status": "measured"
+    },
+    {
+      "attempt_id": "468e4444-b3dc-420c-b643-52e93689e9a0",
+      "balance_after_cny": "59.56",
+      "balance_before_cny": "59.82",
+      "delta_cny": "0.26",
+      "shared_key_possible": true,
+      "status": "measured"
+    }
+  ],
+  "command": [
+    "--mode",
+    "live",
+    "--round",
+    "dr432r2-w1b",
+    "--scenario-root",
+    "evals/datasets/dev-v2",
+    "--scenario",
+    "dv2-eac1f4",
+    "--n",
+    "2",
+    "--parallel",
+    "1",
+    "--holder",
+    "lead-432",
+    "--batch",
+    "b432dev",
+    "--flagd-url",
+    "http://127.0.0.1:28013",
+    "--pg-port",
+    "55998"
+  ],
+  "investigator_source": {
+    "credential": "basic",
+    "http_status": 200,
+    "query": "vector(1)",
+    "result": "confirmed"
+  },
+  "manifest_hash": "d5f888a1fad3692fd8604e6af8bc64e927b391d305d6a066d53d8cae5a2948ed",
+  "reason": null,
+  "recovered_at": null,
+  "retained_fault": false,
+  "round": "dr432r2-w1b",
+  "round_status": "finished",
+  "schema": "opspilot-eval-live-lifecycle-1",
+  "slots": [
+    {
+      "attempt_id": "2e70c067-fe21-4e9e-af9b-6aab510c3ddd",
+      "closure_reason": null,
+      "fault": {
+        "effective_at": "2026-11-03T11:42:10.631678+00:00",
+        "injected_sha256": "462e0cbd16066d5ba8f477b811aa65c478846b1dca4972ce643d2fdcb18cae09",
+        "normal_confirmed_at": "2026-11-03T11:53:21.043643+00:00",
+        "original_sha256": "1ee5c0258e3e13609ecec75979cee286ab00f442d288112e39e3db8433d176c6",
+        "restored_sha256": "1ee5c0258e3e13609ecec75979cee286ab00f442d288112e39e3db8433d176c6",
+        "washed_at": "2026-11-03T11:58:21.043643+00:00"
+      },
+      "pre_observation": null,
+      "product_run_id": null,
+      "reason": "NOISE_NOT_OBSERVED",
+      "repetition": 1,
+      "scenario_id": "dv2-eac1f4",
+      "scenario_version": "2",
+      "stage": "noise_observation",
+      "status": "setup_failed",
+      "summary": {
+        "path": "runs/2e70c067-fe21-4e9e-af9b-6aab510c3ddd/summary.json",
+        "sha256": "85289be4629001e5f670d6b9ef2fee53dd65ecdd4f6f374c1d60e1e2296b15f9"
+      },
+      "timings": {
+        "closure_s": 371.87,
+        "ended_at": "2026-11-03T11:58:23.075084+00:00",
+        "investigation_s": null,
+        "setup_s": null,
+        "started_at": "2026-11-03T11:41:27.577801+00:00"
+      }
+    },
+    {
+      "attempt_id": "468e4444-b3dc-420c-b643-52e93689e9a0",
+      "closure_reason": null,
+      "fault": {
+        "effective_at": "2026-11-03T11:58:30.823039+00:00",
+        "injected_sha256": "462e0cbd16066d5ba8f477b811aa65c478846b1dca4972ce643d2fdcb18cae09",
+        "normal_confirmed_at": "2026-11-03T12:07:07.256736+00:00",
+        "original_sha256": "1ee5c0258e3e13609ecec75979cee286ab00f442d288112e39e3db8433d176c6",
+        "restored_sha256": "1ee5c0258e3e13609ecec75979cee286ab00f442d288112e39e3db8433d176c6",
+        "washed_at": "2026-11-03T12:12:07.256736+00:00"
+      },
+      "pre_observation": {
+        "checkout_calls": 62.4997395844184,
+        "flag_confirmed_at": "2026-11-03T11:58:30.823039+00:00",
+        "kind": "normal",
+        "matched_span_ids": [],
+        "passed": true,
+        "probes": 5,
+        "reason": null,
+        "trace_ids": [],
+        "window": {
+          "end": "2026-11-03T12:03:30.823039+00:00",
+          "start": "2026-11-03T11:58:30.823039+00:00"
+        }
+      },
+      "product_run_id": "9ba4a03b-8506-4271-abe8-f02a5427e66f",
+      "reason": null,
+      "repetition": 2,
+      "scenario_id": "dv2-eac1f4",
+      "scenario_version": "2",
+      "stage": "investigate",
+      "status": "ran",
+      "summary": {
+        "path": "runs/468e4444-b3dc-420c-b643-52e93689e9a0/summary.json",
+        "sha256": "1d5a42d5123c4497aeacb7a7d811cee0fef99d75628d9af1c863d0ff55d8a20e"
+      },
+      "timings": {
+        "closure_s": 321.694,
+        "ended_at": "2026-11-03T12:12:08.800636+00:00",
+        "investigation_s": 194.646,
+        "setup_s": 309.183,
+        "started_at": "2026-11-03T11:58:23.085571+00:00"
+      }
+    }
+  ]
+}

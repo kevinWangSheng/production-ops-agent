@@ -468,7 +468,15 @@ def _scenario(root: Path, sid: str, entry: str, injectors, signature, category="
 
 
 @pytest.fixture
-def v2(tmp_path):
+def v2(tmp_path, monkeypatch):
+    # #432 seams §6: a noise flag beside a signature fault must show its own
+    # errors before the Run; the offline lab emits ad GetAds errors for it.
+    matchers = pr_c._matchers
+    monkeypatch.setattr(
+        pr_c,
+        "_matchers",
+        lambda: {**matchers(), "adFailure": [("ad", "oteldemo.AdService/GetAds")]},
+    )
     root = tmp_path / "dev-v2"
     shutil.copytree(DEV_V2 / "regression", root / "regression")
     (root / "capability").mkdir()
@@ -866,7 +874,14 @@ def test_write_intake_creates_its_parent(tmp_path):
 
 
 def test_v2_slots_expose_scenario_id_and_answer_injectors():
-    slots = eval_live.plan_slots(DEV_V2, ["all"], 1)
+    # #432: the full dataset spans four binding classes; plan one of them.
+    question = [
+        spec.scenario_id
+        for spec, answer in load_scenarios_v2(DEV_V2)
+        if spec.entry == "question"
+        and not any(i.kind == "source_unreachable" for i in answer.injectors)
+    ]
+    slots = eval_live.plan_slots(DEV_V2, question, 1)
     loaded = dict((s.scenario_id, a) for s, a in load_scenarios_v2(DEV_V2))
     for slot in slots:
         assert slot.scenario_id in loaded

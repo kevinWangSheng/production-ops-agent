@@ -1,0 +1,50 @@
+{
+  "intake": {
+    "counts": {
+      "episodes": 1,
+      "incidents": 1,
+      "runs": 0
+    },
+    "deliveries": [
+      {
+        "http_status": 200,
+        "incident_id": "bfd44d26-acd3-5185-bde8-225ea4ac7b1e",
+        "outcome": "handoff_created",
+        "reason": "TARGET_UNRESOLVED",
+        "run_id": null,
+        "seq": 1,
+        "starts_at": "2026-11-02T18:49:58Z",
+        "status": "firing"
+      }
+    ],
+    "entry": "alertmanager"
+  },
+  "probe": {
+    "attempt_id": "9cd268c7-81d5-447e-9f2e-a1dd549b5ea2",
+    "round": "dv2-16738c"
+  },
+  "projection": {
+    "alert": {
+      "handoff": true,
+      "handoff_reason": "TARGET_UNRESOLVED",
+      "lifecycle": "open",
+      "run_ids": []
+    },
+    "canary_hits": null,
+    "counts": {
+      "episodes": 1,
+      "incidents": 1,
+      "runs": 0
+    },
+    "outcome": null,
+    "report": null,
+    "runs": [],
+    "schema": "opspilot-eval-projection-1",
+    "tool_results": [],
+    "writes": {
+      "controls": 0,
+      "self_heal_authorizations": 0
+    }
+  },
+  "schema": "opspilot-eval-reference-projection-1"
+}

@@ -1,0 +1,40 @@
+{
+  "counts": {
+    "episodes": 1,
+    "incidents": 1,
+    "runs": 1
+  },
+  "deliveries": [
+    {
+      "http_status": 200,
+      "incident_id": "9a8011f0-f1ff-5fd9-9cc1-c6c31de2204a",
+      "outcome": "created",
+      "reason": null,
+      "run_id": "f7ee956f-87d7-5c4f-a4d9-0f87ee643ae1",
+      "seq": 1,
+      "starts_at": "2026-11-03T18:34:51Z",
+      "status": "firing"
+    },
+    {
+      "http_status": 200,
+      "incident_id": "9a8011f0-f1ff-5fd9-9cc1-c6c31de2204a",
+      "outcome": "replayed",
+      "reason": null,
+      "run_id": "f7ee956f-87d7-5c4f-a4d9-0f87ee643ae1",
+      "seq": 2,
+      "starts_at": "2026-11-03T18:34:51Z",
+      "status": "firing"
+    },
+    {
+      "http_status": 200,
+      "incident_id": "9a8011f0-f1ff-5fd9-9cc1-c6c31de2204a",
+      "outcome": "replayed",
+      "reason": null,
+      "run_id": "f7ee956f-87d7-5c4f-a4d9-0f87ee643ae1",
+      "seq": 3,
+      "starts_at": "2026-11-03T18:34:51Z",
+      "status": "firing"
+    }
+  ],
+  "entry": "alertmanager"
+}

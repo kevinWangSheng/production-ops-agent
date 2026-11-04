@@ -1,0 +1,51 @@
+{
+  "schema_version": "m0-report-v2",
+  "assessment_status": "completed",
+  "conclusion": "supported",
+  "summary": "Checkout errors in the 5 minutes before 18:17:25Z are caused by failing payment Charge calls: traces 352940cc302cb648a7f46d2f6e58ceff (18:16:36Z) and c6d2b8ed289425355c97e9e45bc03ffc (18:16:40Z) show checkout's oteldemo.PaymentService/Charge failing with gRPC status 2 ('Payment request failed. Invalid token.'), which fails PlaceOrder (status 13) and the frontend checkout request (HTTP 500). Metrics could not be read in this Run, so error rates and latency percentiles are unknown; the finding rests on trace evidence only.",
+  "claims": [
+    {
+      "kind": "fact",
+      "text": "Checkout's oteldemo.PaymentService/Charge spans c4f9e3bee0eef1c5 (trace 352940cc302cb648a7f46d2f6e58ceff, 18:16:36Z) and 855aeb5b83705c02 (trace c6d2b8ed289425355c97e9e45bc03ffc, 18:16:40Z) failed with gRPC status 2 and message 'Payment request failed. Invalid token.'; their parent PlaceOrder spans a920d67c3e91be0e and 768dafdaf1dbb77f ended with status 13.",
+      "evidence_ids": [
+        "1ed77f25-64e0-49e2-995d-ae37389008e9-t1:f61f101c-1a89-468e-9e46-e1ba47c77c80"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "Payment's grpc.oteldemo.PaymentService/Charge server spans 2427ac5e23fa5afd and b69ca643daba4a0a in the same two traces are marked as errors and the frontend /api/checkout requests returned HTTP 500; Charge calls at 18:12-18:15Z (e.g. trace 8f6eaf43e863bc27cb314e6494c5103b) succeeded.",
+      "evidence_ids": [
+        "fdf26cc6-da84-4c0c-b0be-0a5e858a537b-t0:84576cd8-02d4-4300-8635-86f768dd2723"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "Cart and product-catalog trace searches for the last 2-3 minutes returned no error spans.",
+      "evidence_ids": [
+        "00f51358-e485-4e9a-83c9-118437ff0b0d-t1:94cafd5f-d130-4cb5-8850-abfca82d247c",
+        "01c8c5d7-2b64-497f-8f5b-2e81e3db4fff-t0:014777d7-f3cd-4eac-9e29-4c6d00f119ef"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    }
+  ],
+  "gaps": [
+    "Metrics could not be read: no metrics view was delivered in this Run, so checkout error rates and dependency latency percentiles are unknown and latency elevation could not be assessed.",
+    "Trace search results for checkout, payment, shipping, currency and email exceeded the size limit; only paged slices were read.",
+    "Why payment rejects the card token is not visible in the telemetry read."
+  ],
+  "next_steps": [
+    "Restore access to the metrics source and re-check checkout error rate and latency.",
+    "Ask the payment owner to check why Charge returns 'Invalid token'."
+  ]
+}

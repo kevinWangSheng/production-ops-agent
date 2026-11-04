@@ -1,0 +1,121 @@
+{
+  "schema_version": "m0-report-v2",
+  "assessment_status": "completed",
+  "conclusion": "supported",
+  "summary": "Checkout is degraded in the last minutes before 21:08:26Z because cart EmptyCart calls started failing and hanging at about 21:07Z: span metrics show EmptyCart errors rising from 0 to 2.5 per 5 minutes, checkout's EmptyCart client calls returning gRPC status 9, and 2.5 of 3.75 EmptyCart calls taking longer than 15 s. In the same 5 minutes checkout PlaceOrder's mean duration rose from 53 ms to about 11.6 s and the frontend /api/checkout route from 58 ms to about 11.6 s. PlaceOrder itself still returned status 0, and payment shows no errors. This finding rests on metrics only: no trace data (Jaeger) was available in this Run, so no trace ids can be cited. Checkout is not healthy.",
+  "claims": [
+    {
+      "kind": "fact",
+      "text": "Cart's POST /oteldemo.CartService/EmptyCart error count (5-minute increase) is 0 at every 1-minute sample from 20:59Z to 21:06Z, then 1.25 at 21:07Z and 2.5 at 21:08Z; 5-minute samples over the previous three hours are 0.",
+      "evidence_ids": [
+        "a9c42b95-9f71-4cd5-9ec0-d1addee1408e-t0:bff94bc7-3c97-4b2e-b05d-7566b11f837e",
+        "316f0f46-18d0-40a0-81af-3669c3a7897d-t1:10cb08ca-4f98-442c-b89f-2b3bcc5d6739"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "Mean duration of cart EmptyCart spans is about 4-9 ms from 20:23Z to 21:06Z, then 5,767 ms at 21:07Z and 11,538 ms at 21:08Z.",
+      "evidence_ids": [
+        "a9c42b95-9f71-4cd5-9ec0-d1addee1408e-t1:6106ccbb-2ef6-43d4-892b-7e10ca0030bb",
+        "84037b89-6aa3-4b26-88d9-4c7bfa876814-t2:137a58dd-8fa5-48af-a3d1-01c8d486a10a"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "Of 3.75 cart EmptyCart spans in 21:03:26Z-21:08:26Z, 1.25 finished under 10 ms and 2.5 took longer than 15,000 ms.",
+      "evidence_ids": [
+        "40ba6325-c880-497a-b0c5-ed0adde31d3b-t0:9929e54c-48d3-46c5-aca2-d84aedf24e1b"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "In 21:03:26Z-21:08:26Z checkout's client EmptyCart calls returned gRPC status 9 about 2.5 times and status 0 about 2.5 times; checkout's Charge, Convert, GetCart, GetProduct, GetQuote and ShipOrder calls returned only status 0.",
+      "evidence_ids": [
+        "84037b89-6aa3-4b26-88d9-4c7bfa876814-t3:ab175034-3bb3-408a-85ac-5467264cfe4d"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "Mean span duration of checkout PlaceOrder is 11,598 ms in 21:03:26Z-21:08:26Z against 53 ms in the previous 5 minutes; checkout's EmptyCart client span is 11,540 ms against 6.8 ms; frontend POST /api/checkout is 11,605 ms against 58 ms; checkout's Charge client span stays at 8-13 ms.",
+      "evidence_ids": [
+        "316f0f46-18d0-40a0-81af-3669c3a7897d-t2:494b643d-5823-4015-9ae9-d8dce4269119",
+        "316f0f46-18d0-40a0-81af-3669c3a7897d-t3:70796418-3d3d-4d17-8e01-442d7b92230e"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "Error span counts in 21:03:26Z-21:08:26Z: cart EmptyCart 2.5 and checkout EmptyCart 2.5; checkout PlaceOrder, prepareOrderItems, Charge and payment Charge 0. In the previous 5 minutes all of these were 0.",
+      "evidence_ids": [
+        "da74fc9d-9ffc-472b-8532-7badfbeeef26-t0:6ceb86ac-4aca-4999-bebb-fd14822834a4",
+        "da74fc9d-9ffc-472b-8532-7badfbeeef26-t1:dbdf8688-2baa-4cb2-a495-0e3557dff8ef"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "Checkout's PlaceOrder server calls in 21:03:26Z-21:08:26Z returned gRPC status 0 about 5 times and status 13 zero times.",
+      "evidence_ids": [
+        "6fa27278-36da-4cd5-9bf0-0e2a80f91232-t0:fd245d63-edeb-4e73-aa1e-6368b5886610"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "Errors appear upstream at the same time: frontend-proxy ingress and load-generator POST error counts rise to 1.25 at 21:07Z and 2.5 at 21:08Z.",
+      "evidence_ids": [
+        "b7fd55b0-ff63-4c3c-8d12-b3827710f3be-t1:e1455e7d-3cc0-4003-9de3-d35f3b472b07"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "rejected_hypothesis",
+      "text": "Payment Charge failures as the cause: checkout's Charge calls returned only status 0 and payment Charge error spans are 0 in the window.",
+      "evidence_ids": [
+        "84037b89-6aa3-4b26-88d9-4c7bfa876814-t3:ab175034-3bb3-408a-85ac-5467264cfe4d",
+        "da74fc9d-9ffc-472b-8532-7badfbeeef26-t0:6ceb86ac-4aca-4999-bebb-fd14822834a4"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    }
+  ],
+  "gaps": [
+    "Trace data from the trace source (Jaeger) was not available in this Run: no trace search result was delivered, so no trace ids can be cited and the link between slow EmptyCart calls and slow PlaceOrder requests is inferred from aggregate span metrics, not from individual traces.",
+    "Cart's server-side RPC metrics returned no data, so cart's own view of the failing EmptyCart calls (error messages, status) is not visible.",
+    "The failure began about one minute before the window end; its persistence and full impact are based on very few samples."
+  ],
+  "next_steps": [
+    "Restore access to the trace source and inspect EmptyCart traces to confirm the per-request path and error message.",
+    "Ask the cart service owner to check why EmptyCart hangs for over 15 s and fails with FAILED_PRECONDITION (gRPC status 9)."
+  ]
+}

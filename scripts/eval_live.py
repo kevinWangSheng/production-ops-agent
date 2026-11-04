@@ -76,9 +76,12 @@ from opspilot.tools.otel_demo import OtelDemoConfig
 from scripts.eval_live_inject import ModelTransportFault as ModelTransportFault
 from scripts.eval_live_lab import (
     _STOP,
+    NOISE_NOT_OBSERVED,
+    NOISE_RULES,
     SOURCE_QUERY,
     UNREACHABLE_PORT,
     V2_FAULT_FLAGS,
+    WINDOW_SECONDS,
     AttemptLedger,
     Committed,
     FaultIntent,
@@ -179,6 +182,9 @@ class InvestigationRequest:
     # the investigator, in-process) and the first alert episode's startsAt.
     plan: InjectionPlan | None = None
     alert_starts_at: datetime | None = None
+    # v2 (#432 seams §2): the answer's canary, only to count its occurrences
+    # in the attempt PG's model output; never sent to the Run.
+    canary: str | None = None
 
 
 @dataclass(frozen=True)
@@ -202,6 +208,9 @@ class InvestigationResult:
     # v2 (#431 S5): ``runs/<attempt_id>/intake.json`` as the investigator saw
     # the intake (deliveries and PG counts); None for v1.
     intake: Mapping[str, Any] | None = None
+    # v2 (#432 seams §2): ``runs/<attempt_id>/projection.json``, the read-only
+    # PG projection Q20 is judged from; None for v1.
+    projection: Mapping[str, Any] | None = None
 
 
 @dataclass
@@ -247,7 +256,14 @@ def round_evidence(deps: LiveDeps, round_id: str) -> Path:
 
 
 def attempt_ledger_dir(deps: LiveDeps, round_id: str, attempt_id: str) -> Path:
-    return deps.ledger_root / round_id / attempt_id
+    return attempt_root(deps) / round_id / attempt_id
+
+
+def attempt_root(deps: LiveDeps) -> Path:
+    """#432 seams §10 A1: the attempts' private ledgers; the coordination
+    files stay in ``deps.ledger_root``."""
+    root = getattr(deps, "attempt_root", None)
+    return deps.ledger_root if root is None else root
 
 
 def recording_dir(deps: LiveDeps, round_id: str, attempt_id: str) -> Path:
@@ -287,7 +303,7 @@ def _round_resolver(
         attempt_resolver(
             round_id,
             attempt_id,
-            ledger_root=deps.ledger_root,
+            ledger_root=attempt_root(deps),
             recording_root=deps.recording_root,
         )
         for attempt_id in attempt_ids
@@ -1074,6 +1090,8 @@ def _run_slot(
         intake = None if state.result is None else state.result.intake
         if intake is not None and not _write_intake(run_dir, intake):
             state.evidence_failed = True
+        if is_v2(slot) and not _write_expectations(run_dir, slot, state):
+            state.evidence_failed = True
         out.summary = {
             "path": f"runs/{attempt_id}/summary.json",
             "sha256": summary_ref.sha256,
@@ -1252,6 +1270,7 @@ def _guarded(
         submit_not_after=submit_not_after,
         plan=slot.plan,
         alert_starts_at=alert_starts_at,
+        canary=answer.expected_outcome.canary if isinstance(answer, AnswerV2) else None,
     )
     ledger.event("investigate", "started")
     checkpoint()
@@ -1373,6 +1392,35 @@ def _write_intake(run_dir: Path, intake: Mapping[str, Any]) -> bool:
     return write_public_exclusive(run_dir, ("intake.json",), intake)
 
 
+def _write_expectations(run_dir: Path, slot: Slot, state: _Attempt) -> bool:
+    """#432 seams §2: ``projection.json`` (when the investigator took one) and
+    ``expectations.json`` (every started v2 attempt, setup failures included:
+    decision D1), both public and created once."""
+    from opspilot.evaluation.expectations import (
+        check_expectations,
+        expectations_document,
+    )
+
+    answer = slot.answer
+    assert isinstance(answer, AnswerV2)
+    result = state.result
+    projection = None if result is None else result.projection
+    intake = None if result is None else result.intake
+    ok = True
+    if projection is not None:
+        ok = write_public_exclusive(run_dir, ("projection.json",), projection)
+    checked = check_expectations(
+        answer,
+        attempt_status=state.status,
+        attempt_reason=state.reason,
+        projection=projection,
+        intake=intake,
+        target_id=slot.spec.stimulus.target_id,
+    )
+    document = expectations_document(answer, checked)
+    return write_public_exclusive(run_dir, ("expectations.json",), document) and ok
+
+
 def handed_off_without_run(result: InvestigationResult) -> bool:
     """#431 S4: the first delivery was ``handoff_created`` and no Run exists."""
     intake = result.intake
@@ -1442,9 +1490,27 @@ def _setup_v2(
     state.marks["effective_at"] = effective_at.timestamp()
     if plan.flags:
         mark_injector(deps.ledger_root, "flagd", phase="effective")
+    noise_only = noise_only_rules(plan, answer)
+    noise_only_deadline: datetime | None = None
+    for flag, rule in noise_only:
+        # #432 seams §12 A16: a noise-only scenario must carry its noise; wait
+        # for the noise flag's own error first, then judge checkout clean.
+        state.stage = "noise_observation"
+        seen = fault_gate(rule, confirmed_at=effective_at, deps=deps)
+        with protected():
+            ledger.write(f"pre-observation-noise-{flag}.json", _raw_observation(seen))
+        if not seen.passed:
+            raise LabError(NOISE_NOT_OBSERVED)
+        newest_noise = max(span.start for span in seen.matched) + FRESHNESS
+        if noise_only_deadline is None or newest_noise < noise_only_deadline:
+            noise_only_deadline = newest_noise
     state.stage = "pre_observation"
     if answer.signature is not None:
         gate = fault_gate(answer.signature, confirmed_at=effective_at, deps=deps)
+    elif noise_only:
+        # The trailing window, so a long noise wait is not paid twice.
+        since = max(effective_at, clock.now() - timedelta(seconds=WINDOW_SECONDS))
+        gate = normal_window(signatures, not_before=since, deps=deps)
     else:
         gate = normal_window(signatures, not_before=effective_at, deps=deps)
     state.gate = gate
@@ -1465,6 +1531,53 @@ def _setup_v2(
     else:
         assert gate.window is not None
         submit_not_after = gate.window.end + FRESHNESS
+        if noise_only_deadline is not None:
+            submit_not_after = min(submit_not_after, noise_only_deadline)
+    if plan.entry == "alertmanager" and answer.signature is not None:
+        # #432 seams §12 A14: an alert Run's frame ends at the delivery, so
+        # wait for enough fault in it (probe d17df3ec went out 25 s after
+        # one matched trace and its Run never read the fault).
+        assert submit_not_after is not None
+        state.stage = "alert_hold"
+        gate = alert_hold(
+            answer.signature,
+            gate,
+            effective_at=effective_at,
+            submit_not_after=submit_not_after,
+            deps=deps,
+        )
+        state.gate = gate
+        with protected():
+            ledger.write("pre-observation-alert-hold.json", _raw_observation(gate))
+        submit_not_after = max(span.start for span in gate.matched) + FRESHNESS
+    noise = noise_rules(plan, answer)
+    noise_deadline: datetime | None = None
+    for flag, rule in noise:
+        # #432 seams §6: the noise flag's own errors must be in the window
+        # the Run will read; its newest error also bounds the submission.
+        state.stage = "noise_observation"
+        seen = fault_gate(rule, confirmed_at=effective_at, deps=deps)
+        with protected():
+            ledger.write(f"pre-observation-noise-{flag}.json", _raw_observation(seen))
+        if not seen.passed:
+            raise LabError(NOISE_NOT_OBSERVED)
+        newest_noise = max(span.start for span in seen.matched) + FRESHNESS
+        if noise_deadline is None or newest_noise < noise_deadline:
+            noise_deadline = newest_noise
+    if noise_deadline is not None:
+        # #432 seams §12 A10: a long noise wait can outlast the signature's
+        # freshness (probe ac449f38 went stale); re-confirm the signature in
+        # the last RECONFIRM_SECONDS, then submit by the earlier deadline.
+        assert answer.signature is not None
+        state.stage = "signature_reconfirm"
+        since = max(effective_at, clock.now() - timedelta(seconds=RECONFIRM_SECONDS))
+        again = fault_gate(answer.signature, confirmed_at=since, deps=deps)
+        with protected():
+            ledger.write("pre-observation-reconfirm.json", _raw_observation(again))
+        if not again.passed:
+            raise LabError(SIGNATURE_NOT_RECONFIRMED)
+        signature_deadline = max(span.start for span in again.matched) + FRESHNESS
+        submit_not_after = min(signature_deadline, noise_deadline)
     if plan.span is not None:
         from scripts.eval_live_inject import OtlpSpanWriter, write_span
 
@@ -1485,6 +1598,93 @@ def _setup_v2(
         ledger.event("otlp_span", "visible", trace_id=span.trace_id)
     alert_starts_at = effective_at if plan.entry == "alertmanager" else None
     return gate, submit_not_after, alert_starts_at
+
+
+#: #432 seams §12 A14: an alert-entry attempt delivers once the signature
+#: gate has this many distinct matched traces, or this long after the first
+#: match, whichever comes first; never later than the freshness deadline
+#: minus the margin.
+ALERT_HOLD_TRACES = 3
+ALERT_HOLD_SECONDS = 60.0
+ALERT_HOLD_MARGIN_SECONDS = 30.0
+ALERT_HOLD_POLL_SECONDS = 5.0
+
+
+def alert_hold(
+    signature: SignatureRule,
+    gate: PreObservation,
+    *,
+    effective_at: datetime,
+    submit_not_after: datetime,
+    deps: LiveDeps,
+) -> PreObservation:
+    """Hold an alert-entry attempt's first delivery (A14): return the latest
+    passed signature observation once it has ``ALERT_HOLD_TRACES`` distinct
+    traces, or ``ALERT_HOLD_SECONDS`` have passed since the first matched
+    span, or the freshness deadline is ``ALERT_HOLD_MARGIN_SECONDS`` away --
+    whichever comes first. A later observation that does not pass keeps the
+    earlier one; the deadline always wins."""
+    clock = deps.clock
+    first = min(span.start for span in gate.matched)
+    latest = gate
+    while True:
+        checkpoint()
+        now = clock.now()
+        traces = {span.trace_id for span in latest.matched}
+        if len(traces) >= ALERT_HOLD_TRACES:
+            return latest
+        if now >= first + timedelta(seconds=ALERT_HOLD_SECONDS):
+            return latest
+        left = (submit_not_after - now).total_seconds() - ALERT_HOLD_MARGIN_SECONDS
+        if left <= 0:
+            return latest
+        clock.sleep(min(ALERT_HOLD_POLL_SECONDS, left))
+        left = (submit_not_after - clock.now()).total_seconds()
+        left -= ALERT_HOLD_MARGIN_SECONDS
+        if left <= 0:
+            return latest
+        again = fault_gate(
+            signature, confirmed_at=effective_at, deps=deps, budget_seconds=left
+        )
+        if again.passed and len(again.matched) >= len(latest.matched):
+            latest = again
+
+
+#: #432 seams §12 A10: how far back the post-noise signature re-confirmation
+#: looks (inside FRESHNESS, so a match leaves time to submit).
+RECONFIRM_SECONDS = 240
+SIGNATURE_NOT_RECONFIRMED = "SIGNATURE_NOT_RECONFIRMED"
+
+
+def noise_only_rules(
+    plan: InjectionPlan, answer: Answer | AnswerV2
+) -> tuple[tuple[str, SignatureRule], ...]:
+    """#432 seams §12 A16: the noise gates of a noise-only v2 attempt -- every
+    injected ``NOISE_RULES`` flag when the answer carries no signature (the
+    noise negative); its noise must be seen before the Run."""
+    if answer.signature is not None:
+        return ()
+    return tuple(
+        (flag.flag, NOISE_RULES[flag.flag])
+        for flag in plan.flags
+        if flag.flag in NOISE_RULES
+    )
+
+
+def noise_rules(
+    plan: InjectionPlan, answer: Answer | AnswerV2
+) -> tuple[tuple[str, SignatureRule], ...]:
+    """#432 seams §6: the noise gates of a v2 attempt -- every injected flag
+    with a ``NOISE_RULES`` entry, only when the answer carries a signature
+    (the noise sits beside a fault; a noise-only scenario keeps its normal
+    window)."""
+    if answer.signature is None:
+        return ()
+    return tuple(
+        (flag.flag, NOISE_RULES[flag.flag])
+        for flag in plan.flags
+        if flag.flag in NOISE_RULES
+    )
 
 
 def _closure(
@@ -1908,7 +2108,37 @@ def _parser() -> argparse.ArgumentParser:
     # #431: a v2 dataset root such as evals/datasets/dev-v2 (relative to the
     # repository); default the v1 evals/scenarios.
     parser.add_argument("--scenario-root")
+    # #432 seams §3 / §10 A1: an absolute directory outside the repository
+    # for the evidence, the attempt PGs and the attempts' private ledgers
+    # (probe Runs); recordings stay at <repo>/tmp/eval (B2 rule).
+    parser.add_argument("--output-root")
     return parser
+
+
+def output_root_arg(value: str | None) -> Path | None:
+    """``--output-root``: absolute and outside the repository, or None."""
+    if value is None:
+        return None
+    path = Path(value).expanduser()
+    if not path.is_absolute():
+        raise _Usage("--output-root must be an absolute path")
+    resolved = path.resolve()
+    if resolved == ROOT.resolve() or resolved.is_relative_to(ROOT.resolve()):
+        raise _Usage("--output-root must be outside the repository")
+    return resolved
+
+
+def relocate(deps: LiveDeps, output_root: Path | None) -> LiveDeps:
+    """``deps`` with evidence, PG and attempt ledgers under ``output_root``
+    (recording_root and the coordination ``ledger_root`` unchanged)."""
+    if output_root is None:
+        return deps
+    return replace(
+        deps,
+        evidence_root=output_root / "evidence",
+        pg_root=output_root / "pg",
+        attempt_root=output_root / "ledgers",
+    )
 
 
 def scenario_root_arg(value: str | None) -> Path:
@@ -2065,11 +2295,18 @@ def _signals() -> Iterator[None]:
                 signal.signal(sig, old)
 
 
-def _verify(round_id: str, attempt_id: str | None, deps: LiveDeps | None) -> int:
+def _verify(
+    round_id: str,
+    attempt_id: str | None,
+    deps: LiveDeps | None,
+    output_root: Path | None = None,
+) -> int:
     """``--verify-replay`` (r9): local files only, no seam is called."""
     from scripts.eval_live_verify import SCHEMA, verify_replay
 
     evidence_root = deps.evidence_root if deps else ROOT / "docs/evidence/eval"
+    if deps is None and output_root is not None:
+        evidence_root = output_root / "evidence"
     recording_root = deps.recording_root if deps else ROOT / "tmp/eval"
     # verify_replay takes the final snapshot itself, right before its record
     # is written, so a normal return is never merged again (R10): the record
@@ -2160,6 +2397,7 @@ def _main(argv: list[str], deps: LiveDeps | None) -> int:
         args = _parser().parse_args(argv)
         if not re.fullmatch(ROUND_PATTERN, args.round):
             raise _Usage("invalid round")
+        output_root = output_root_arg(args.output_root)
         if args.verify_replay:
             mixed = (
                 args.mode,
@@ -2173,7 +2411,7 @@ def _main(argv: list[str], deps: LiveDeps | None) -> int:
             )
             if any(value not in (None, [], False) for value in mixed):
                 raise _Usage("--verify-replay takes only --round [--attempt]")
-            return _verify(args.round, args.attempt, deps)
+            return _verify(args.round, args.attempt, deps, output_root)
         if args.attempt is not None:
             raise _Usage("--attempt only applies to --verify-replay")
         if not args.holder or not args.batch or not args.flagd_url:
@@ -2236,12 +2474,15 @@ def _main(argv: list[str], deps: LiveDeps | None) -> int:
         try:
             # Recovery needs the lab seams only, never model credentials (r10).
             extra: dict[str, Any] = {}
+            if output_root is not None:
+                # Only when given: the r10 call shape stays unchanged.
+                extra["output_root"] = output_root
             if args.scenario_root is not None:
                 root = scenario_root_arg(args.scenario_root)
-                extra = {
-                    "scenarios_root": root,
-                    "v2_probe": args.probe and is_v2_root(root),
-                }
+                extra.update(
+                    scenarios_root=root,
+                    v2_probe=args.probe and is_v2_root(root),
+                )
             deps = real_deps(
                 args.flagd_url,
                 args.round,
@@ -2254,7 +2495,8 @@ def _main(argv: list[str], deps: LiveDeps | None) -> int:
             # (e.g. while the deps were built) is 130, not 3.
             with protected():
                 return _final(_refused(args.round, code))
-    live = deps
+    # Idempotent: real_deps already relocated; injected deps (tests) too.
+    live = relocate(deps, output_root)
     if args.recover:
         return _dispatch(
             args.round,
@@ -2295,6 +2537,7 @@ def real_deps(
     probe: bool = False,
     scenarios_root: Path | None = None,
     v2_probe: bool = False,
+    output_root: Path | None = None,
 ) -> LiveDeps:
     """The only constructor of lab-touching adapters (never used offline).
 
@@ -2325,45 +2568,51 @@ def real_deps(
     if probe:
         from scripts.eval_live_lab import ProbeEnvChecker, Unavailable
 
-        return LiveDeps(
+        return relocate(
+            LiveDeps(
+                clock=clock,
+                flags=KubectlFlagStore(),
+                flagd=HttpFlagResolver(flagd_url),
+                telemetry=LabTelemetry(clock),
+                identity=KindLabIdentity(),
+                ports=SocketPortProbe(),
+                # A v2 probe starts the attempt PG for alert_delivery (#431 §7).
+                pg=LocalPgLauncher() if v2_probe else Unavailable(),
+                balance=Unavailable(),
+                investigator=Unavailable(),
+                ledger_root=resolve_ledger_root(ROOT),
+                evidence_root=ROOT / "docs/evidence/eval",
+                recording_root=ROOT / "tmp/eval",
+                pg_root=ROOT / "tmp/eval-live",
+                scenarios_root=root,
+                flagd_url=flagd_url,
+                env=ProbeEnvChecker(),
+            ),
+            output_root,
+        )
+    session = prepare_round(round_id)
+    return relocate(
+        LiveDeps(
             clock=clock,
             flags=KubectlFlagStore(),
             flagd=HttpFlagResolver(flagd_url),
             telemetry=LabTelemetry(clock),
             identity=KindLabIdentity(),
             ports=SocketPortProbe(),
-            # A v2 probe starts the attempt PG for alert_delivery (#431 §7).
-            pg=LocalPgLauncher() if v2_probe else Unavailable(),
-            balance=Unavailable(),
-            investigator=Unavailable(),
+            pg=LocalPgLauncher(),
+            balance=DeepSeekBalance(session.key),
+            investigator=OtelDemoInvestigator(session, clock),
             ledger_root=resolve_ledger_root(ROOT),
             evidence_root=ROOT / "docs/evidence/eval",
             recording_root=ROOT / "tmp/eval",
             pg_root=ROOT / "tmp/eval-live",
             scenarios_root=root,
             flagd_url=flagd_url,
-            env=ProbeEnvChecker(),
-        )
-    session = prepare_round(round_id)
-    return LiveDeps(
-        clock=clock,
-        flags=KubectlFlagStore(),
-        flagd=HttpFlagResolver(flagd_url),
-        telemetry=LabTelemetry(clock),
-        identity=KindLabIdentity(),
-        ports=SocketPortProbe(),
-        pg=LocalPgLauncher(),
-        balance=DeepSeekBalance(session.key),
-        investigator=OtelDemoInvestigator(session, clock),
-        ledger_root=resolve_ledger_root(ROOT),
-        evidence_root=ROOT / "docs/evidence/eval",
-        recording_root=ROOT / "tmp/eval",
-        pg_root=ROOT / "tmp/eval-live",
-        scenarios_root=root,
-        flagd_url=flagd_url,
-        env=LabEnvChecker(),
-        provenance=GitProvenance(ROOT),
-        investigator_source=InvestigatorSource(session.config),
+            env=LabEnvChecker(),
+            provenance=GitProvenance(ROOT),
+            investigator_source=InvestigatorSource(session.config),
+        ),
+        output_root,
     )
 
 

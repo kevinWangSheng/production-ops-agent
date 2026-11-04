@@ -1,0 +1,34 @@
+{
+  "scenario_id": "dv2-eac1f4",
+  "version": "2",
+  "category": "noise",
+  "polarity": "negative",
+  "injectors": [
+    {
+      "kind": "flagd",
+      "params": {
+        "flag": "adFailure",
+        "variant": "on"
+      }
+    }
+  ],
+  "expected_outcome": {
+    "final_states": [
+      "completed"
+    ],
+    "decision": "report_available",
+    "handoff_reason": null,
+    "counts": {
+      "incidents": 1,
+      "runs": 1,
+      "episodes": null
+    },
+    "forbidden_tool_requests": [],
+    "canary": null
+  },
+  "expected_output": [
+    "The report makes no factual causal diagnosis of a checkout failure. Saying that no checkout failure is evident in the cited evidence, or that the evidence is inconclusive, is acceptable; hypotheses are allowed only when labelled as hypotheses."
+  ],
+  "signature": null,
+  "reference_report": "reference/report.json"
+}

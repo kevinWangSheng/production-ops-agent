@@ -1,0 +1,61 @@
+{
+  "schema_version": "m0-report-v2",
+  "assessment_status": "completed",
+  "conclusion": "supported",
+  "summary": "Checkout errors in the 5 minutes before 17:26:25Z are caused by failing payment Charge calls: traces 25b9777ac20ccf787b0d08c00025665a (17:25:33Z) and 9e7d68226a825c612131181bbf0e30ed (17:26:20Z) both show checkout's oteldemo.PaymentService/Charge failing with gRPC status 2 ('Payment request failed. Invalid token.'), which fails PlaceOrder (status 13) and the frontend checkout request (HTTP 500). Errors started only at the end of the window; earlier Charge calls succeeded. No clear latency elevation in checkout's dependencies was seen.",
+  "claims": [
+    {
+      "kind": "fact",
+      "text": "Checkout's oteldemo.PaymentService/Charge spans 8842e090a68b1f10 (trace 25b9777ac20ccf787b0d08c00025665a, 17:25:33Z) and 23349e0be35f141b (trace 9e7d68226a825c612131181bbf0e30ed, 17:26:20Z) failed with gRPC status 2 and message 'Payment request failed. Invalid token.'; their parent PlaceOrder spans ended with status 13. Charge calls at 17:21-17:22Z in the same window succeeded.",
+      "evidence_ids": [
+        "da2ace6f-8334-475d-96ed-57ea050e0322-t1:01ad8a0f-5893-4979-a5d5-ce299bfa0b4b"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "Payment's grpc.oteldemo.PaymentService/Charge server spans c16db65a48b93416 and 1fc394f6822489a1 in the same two traces are marked as errors, and the frontend /api/checkout requests in those traces returned HTTP 500.",
+      "evidence_ids": [
+        "8b54f51b-f916-49f5-a30e-fa92f72bf8c0-t0:85ac71d0-d24e-44b8-9a58-4e0d72c38cad"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "Span metrics for 17:21:25Z-17:26:25Z count 1.25 checkout PlaceOrder errors, 1.25 checkout PaymentService/Charge errors and 1.25 payment Charge errors, and 0 errors for cart EmptyCart and checkout prepareOrderItems.",
+      "evidence_ids": [
+        "da2ace6f-8334-475d-96ed-57ea050e0322-t0:bf96867b-37da-438e-9e3c-2b45296cda7b"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "counter_evidence",
+      "text": "Mean client latency from checkout to payment, currency, cart, product-catalog and shipping fluctuates without a step change over 17:06Z-17:26Z (successful Charge calls about 6-16 ms, GetQuote about 6-15 ms, others under 12 ms), so there is no clear latency elevation.",
+      "evidence_ids": [
+        "542e1393-77a2-4d53-a3fb-53ee7dacec0e-t1:ad3f4ff4-451f-4d8c-ba2d-669d967a7179"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    }
+  ],
+  "gaps": [
+    "Trace search results for checkout and payment exceeded the size limit; only paged slices were read.",
+    "Only two failing traces were observed, both in the last minute before the window end, so the failure onset time and rate are based on few samples.",
+    "Why payment rejects the card token is not visible in the telemetry read."
+  ],
+  "next_steps": [
+    "Ask the payment owner to check why Charge returns 'Invalid token'.",
+    "Re-check the PlaceOrder error count over the next minutes to confirm whether the failure continues."
+  ]
+}

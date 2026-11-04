@@ -1,0 +1,15 @@
+{
+  "reruns": [
+    {
+      "note": "NOISE_NOT_OBSERVED (harness setup, no product Run); user ruling 2026-11-03: one rerun, counts as-is",
+      "rerun_attempt_id": "c45d499a-55b9-4831-b546-42dad0bfa53a",
+      "voided_attempt_id": "2e70c067-fe21-4e9e-af9b-6aab510c3ddd"
+    },
+    {
+      "note": "NOISE_NOT_OBSERVED (harness setup, no product Run); user ruling 2026-11-03: one rerun, counts as-is",
+      "rerun_attempt_id": "68e73ff2-aab0-44e6-ba18-43d9e9211afd",
+      "voided_attempt_id": "e93ff6a0-ea59-4ebe-a373-ec60e7541cd0"
+    }
+  ],
+  "schema": "opspilot-eval-dev-reruns-1"
+}

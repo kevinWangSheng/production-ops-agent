@@ -38,7 +38,7 @@ from pathlib import Path
 from typing import Any, Literal, NoReturn, Protocol
 from uuid import uuid4
 
-from opspilot.evaluation import SignatureRule, Window
+from opspilot.evaluation import SignatureRule, SpanMatcher, Window
 from opspilot.observation.release_policy import canonical_json, sha256
 from scripts import kind_lab
 
@@ -336,6 +336,10 @@ class LiveDeps:
     # ``real_deps`` always sets it from the investigator's config. None (the
     # offline doubles) skips it and records null in ``lifecycle.json``.
     investigator_source: InvestigatorSourceCheck | None = None
+    # #432 seams §3 / §10 A1: where the attempts' private ledgers go; None
+    # keeps them under ``ledger_root``, which always holds the lab
+    # coordination files (occupation, restore intent, guards, run starts).
+    attempt_root: Path | None = None
 
 
 # -- private ledger -----------------------------------------------------------
@@ -715,6 +719,18 @@ V2_FAULT_FLAGS: Mapping[str, FaultFlag] = {
     **FAULT_FLAGS,
     "adFailure": FaultFlag("adFailure", "on"),
 }
+
+#: #432 seams §6: a noise flag injected beside a signature fault must itself be
+#: seen before the Run is submitted (the #431 probe saw 0 ad errors in 300 s
+#: with payment on). The ad service's own GetAds error span, as #431 measured.
+NOISE_RULES: Mapping[str, SignatureRule] = {
+    "adFailure": SignatureRule(
+        rule_id="ad-getads-error-span-v1",
+        any_of=(SpanMatcher("ad", "oteldemo.AdService/GetAds"),),
+        min_matches=1,
+    ),
+}
+NOISE_NOT_OBSERVED = "NOISE_NOT_OBSERVED"
 INJECTOR_KINDS = (
     "flagd",
     "source_unreachable",

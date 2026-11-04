@@ -1,0 +1,23 @@
+{
+  "alert": {
+    "handoff": true,
+    "handoff_reason": "TARGET_UNRESOLVED",
+    "lifecycle": "open",
+    "run_ids": []
+  },
+  "canary_hits": null,
+  "counts": {
+    "episodes": 1,
+    "incidents": 1,
+    "runs": 0
+  },
+  "outcome": null,
+  "report": null,
+  "runs": [],
+  "schema": "opspilot-eval-projection-1",
+  "tool_results": [],
+  "writes": {
+    "controls": 0,
+    "self_heal_authorizations": 0
+  }
+}

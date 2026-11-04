@@ -53,8 +53,22 @@ def _in_window(start_us: Any, window: Window) -> bool:
     return window.start <= at <= window.end
 
 
+#: The tool whose span rows a signature reads. A ``read_evidence`` slice of
+#: such a view carries the same rows (A13, user ruling 2026-11-02: a
+#: ``traces_search`` too large to deliver whole reaches the model only that way).
+_TRACE_TOOL = "traces_search"
+_EVIDENCE_READ_TOOL = "read_evidence"
+
+
+def _trace_rows_view(view: Mapping[str, Any]) -> bool:
+    tool = view.get("tool")
+    return tool == _TRACE_TOOL or (
+        tool == _EVIDENCE_READ_TOOL and view.get("parent_tool") == _TRACE_TOOL
+    )
+
+
 def signature_matches(rule: SignatureRule, record: DeliveredRecord) -> tuple[str, ...]:
-    if record.view.get("tool") != "traces_search" or record.window is None:
+    if not _trace_rows_view(record.view) or record.window is None:
         return ()
     rows = record.view.get("content")
     if not isinstance(rows, list):

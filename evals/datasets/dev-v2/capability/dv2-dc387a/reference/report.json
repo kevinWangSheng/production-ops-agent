@@ -1,0 +1,86 @@
+{
+  "schema_version": "m0-report-v2",
+  "assessment_status": "completed",
+  "conclusion": "supported",
+  "summary": "The checkout error behind the alert is caused by a failing payment Charge call: in trace 09d0f3799bf622f812a477eef2058b72 (00:26:23Z) checkout's oteldemo.PaymentService/Charge failed with gRPC status 2 ('Payment request failed. Invalid token.'), which failed PlaceOrder (status 13) and the frontend checkout request (HTTP 500). Over the last hour checkout recorded about one PlaceOrder error and one Charge error, matched one for one, against about 83 successful orders; checkout had no PlaceOrder errors in the four preceding hourly samples. The failure is low-volume so far, and no latency elevation is visible.",
+  "claims": [
+    {
+      "kind": "fact",
+      "text": "In trace 09d0f3799bf622f812a477eef2058b72 (00:26:23Z) checkout's oteldemo.PaymentService/Charge span 42a6cb3e93715349 failed with gRPC status 2 and message 'Payment request failed. Invalid token.'; payment's grpc.oteldemo.PaymentService/Charge server span 2168e1e777489a35 is an error; checkout PlaceOrder span fd7f61eb4369184e ended with status 13 and the frontend /api/checkout request returned HTTP 500.",
+      "evidence_ids": [
+        "e3edc913-cf93-4ebe-9c24-2729a8d0ead6-t1:6fd83715-abcb-40d1-8f06-fded7774cd6a"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "A sample of checkout spans from 00:22Z-00:27:28Z shows the same failing Charge span (trace 09d0f3799bf622f812a477eef2058b72) while Charge calls at 00:22:10Z, 00:23:01Z and 00:23:22Z (e.g. trace a34a87bdba150bb3e2081e90190bb6b0) succeeded.",
+      "evidence_ids": [
+        "b479740c-13b7-4cf6-bceb-695b6d060621-t1:cdffd623-4f10-4764-96e3-1e9299bcff74"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "Span metrics over the last hour count about 1 checkout PlaceOrder error and 1 checkout PaymentService/Charge error, with 0 errors for cart EmptyCart and prepareOrderItems; across all services the only other error series are flagd EventStream spans in ad, flagd and recommendation.",
+      "evidence_ids": [
+        "d3f0604e-7853-4733-8c14-d5d74b6a5e2e-t0:8e7d9644-8384-49a5-b01f-ac5a07be5a82",
+        "a142745a-c859-4517-9ed8-17e91feec2c7-t1:0f4abb37-c9e8-4a11-998b-baa7411d93d3"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "Over the last hour checkout's PlaceOrder server calls returned gRPC status 0 about 83 times and status 13 about once; checkout's client Charge calls returned status 2 about once, and all other client methods returned status 0.",
+      "evidence_ids": [
+        "d26db2f0-c742-4903-9ce2-a64c75b58d54-t1:851ef767-a311-4799-b48c-58f4eb850361",
+        "87c49296-656b-4471-bba3-fea844d49165-t1:e3198365-58d1-4eea-a720-1156a2566b02"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "fact",
+      "text": "Hourly samples of checkout PlaceOrder errors read 0 from 20:27Z to 23:27Z and about 1 at 00:27Z, matched by checkout and payment Charge errors; earlier error episodes (e.g. 17:27Z-19:27Z samples) are separate, ended periods.",
+      "evidence_ids": [
+        "93c4b0ab-b01f-481f-a251-af7fad8ab46a-t1:7f91a5ec-b4bb-4601-bd2b-586dd8607a18"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    },
+    {
+      "kind": "counter_evidence",
+      "text": "Checkout's Charge client p95 is 22.9 ms in the latest hourly sample, within the 19-34 ms range of the past day, and PlaceOrder server p95 stays around 95 ms in recent samples, so there is no latency elevation.",
+      "evidence_ids": [
+        "b479740c-13b7-4cf6-bceb-695b6d060621-t0:f792ed6b-4cde-4ba8-a38b-11288e152dd0",
+        "e3edc913-cf93-4ebe-9c24-2729a8d0ead6-t0:ab34675b-791f-481b-9594-d8067ca553b8"
+      ],
+      "target_refs": [
+        "m0-otel-20260909"
+      ],
+      "time_scope_ref": "policy-window-1"
+    }
+  ],
+  "gaps": [
+    "Only one failing checkout trace was observed; the current failure rate rests on a single sample, and 5-minute span-metric rates up to 00:26Z had not yet registered the error.",
+    "Trace searches for checkout over wider windows exceeded the size limit; only a short trace search and an 18-span page were read.",
+    "Why payment rejects the card token is not visible in the telemetry read."
+  ],
+  "next_steps": [
+    "Ask the payment owner to check why Charge returns 'Invalid token'.",
+    "Watch checkout PlaceOrder and Charge error counts over the next minutes to see whether the failure rate grows."
+  ]
+}
