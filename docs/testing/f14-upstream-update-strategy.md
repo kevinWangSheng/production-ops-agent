@@ -12,7 +12,7 @@
 | 镜像 | 本地构建、未推送；arm64 image ID `sha256:3f2995d1…`（本机 kind lab）。开考主机上的 amd64 镜像 ID 不同，由 S9 另记，两种镜像的结果不混在一轮 | pin.json；S7 Holmes runner 任务记录 H8 |
 | 不可复现原因 | 基础镜像按 tag 引用、alpine edge 源、poetry 未锁版本、`apk upgrade` | pin.json `non_reproducible_because` |
 | 配置 | 只开 `prometheus/metrics` 与 GET-only `jaeger`，无 K8s 凭据，走 lab 只读代理 `holmes` 账号 | pin.json `config`；隔离取证 8 项全过 |
-| 代码里的钉子 | `scripts/holmes_baseline/mapping.py` 的 `COMMIT`/`TREE`，`scripts/holmes_baseline/run.py` 的 `IMAGE`；`upstream-files --check` 与 `records` 要求 checkout 恰好是这个提交且无本地改动 | 源码 |
+| 代码里的钉子 | `scripts/holmes_baseline/config.py` 的 `UPSTREAM_COMMIT`（`run.py pin` 据此核对 checkout），`mapping.py` 的 `COMMIT`/`TREE`（`upstream-files --check` 与 `records` 要求 checkout 恰好是这个提交且无本地改动），`run.py` 的 `IMAGE`、默认 checkout 路径与镜像归档名；测试 `tests/test_holmes_baseline.py`、`tests/test_415_mapping_impl.py`、`tests/acceptance/test_396_container_and_outcome.py` 也钉了这个提交。完整清单用 `grep -rn -e a0009195 -e e94a57b3 scripts tests` 列出 | 源码 |
 | 映射表 | 77 行，OpsPilot 侧对照 main `659bcd9c` | [mapping.json](../evidence/f14-upstream-mapping/mapping.json) |
 | 引用的上游文件 | 第 2 步 48 个、第 3 步另一份清单，均带 blob SHA 与行数 | [第 2 步](../evidence/f14-upstream-mapping/upstream-files.json)、[第 3 步](../evidence/f14-upstream-issues/upstream-files.json) |
 
@@ -47,7 +47,7 @@ F2 持久事故、F6 恢复观察、F11 发布观察、F12 工作台、F13 复�
 |---|---|---|---|
 | L0 漂移检查 | 项目活跃期间每月一次，以及 OpsPilot 每次打 minor 版本 tag 前（先到者为准） | 把两份 `upstream-files.json` 的路径合并去重，和上游 `a0009195...master` 的改动文件求交集（命令见下）；同时看上游 release 说明与安全公告。只记录：上游新 HEAD、领先提交数、被改动的引用文件、是否命中下面的触发条件 | 零模型费用 |
 | L1 映射复核 | L0 命中任一触发条件 | 在新提交的独立 checkout 上，只复读引用了被改文件的映射行，重跑这些行的 `absence_checks` 命令（命令原文在表里，`<checkout>` 换成新 checkout），判断类别是否会变；已确认缺陷涉及的文件被改时，只读源码判断缺陷是否可能已修，标「待 L2 复现」。L1 不跑运行复现：`run.py repro` 固定使用 `a0009195` 的镜像、提交与配置，换 checkout 不改变它执行的代码。结论写进复核 issue，不改 `mapping.json` | 零模型费用 |
-| L2 移动 pin | L1 认为类别会变且值得更新，或要对外发布新的对比数字 | 按第 1 步重新钉住：构建镜像、新 `pin.json`、隔离取证 8 项、请求核对；改 `mapping.py` 的 `COMMIT`/`TREE` 与 `run.py` 的 `IMAGE`；重生成两份 `upstream-files.json`；用新镜像重跑 L1 标「待 L2 复现」的 `run.py repro` 脚本化用例（零费用），再按 L1 结论与复现结果更新 `mapping.json`；跑下面的同条件对比子集 | 真实 Run 费用，按余额差对账 |
+| L2 移动 pin | L1 认为类别会变且值得更新，或要对外发布新的对比数字 | 按第 1 步重新钉住：构建镜像、新 `pin.json`、隔离取证 8 项、请求核对；把第 1 节「代码里的钉子」全部换成新提交（先 grep 列全；`config.py` 的 `UPSTREAM_COMMIT` 不改则 `run.py pin` 直接拒绝，钉住提交的测试属合同测试，按验收测试规则由非实现者改），并复核 `config.py` 里依赖该提交行为的说明（如输出预算变量）；重生成两份 `upstream-files.json`；用新镜像重跑 L1 标「待 L2 复现」的 `run.py repro` 脚本化用例（零费用），再按 L1 结论与复现结果更新 `mapping.json`；跑下面的同条件对比子集 | 真实 Run 费用，按余额差对账 |
 
 L0 命令。改名的文件新旧路径都算命中。GitHub compare API 最多返回 300 个改动文件，命令在达到 300 时报错退出、不出交集，这时改用上游的完整 clone（主仓库 `tmp/upstream/holmesgpt-a0009195` 是浅克隆，不能用）：
 
