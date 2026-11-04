@@ -207,6 +207,9 @@ def test_capture_args_mount_script_only_when_scripted(tmp_path: Path) -> None:
 
 def test_docker_context_defaults_to_kind(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("F14_DOCKER_CONTEXT", raising=False)
+    # the colima lab's context (the Linux branch: tests/test_kind_lab_linux.py)
+    monkeypatch.setenv("OPSPILOT_LAB_RUNTIME", "colima")
+    monkeypatch.delenv("OPSPILOT_LAB_DOCKER_CONTEXT", raising=False)
     assert hrun.docker_env()["DOCKER_CONTEXT"] == hrun.kind_lab.CONTEXT
     monkeypatch.setenv("F14_DOCKER_CONTEXT", "colima")
     assert hrun.docker_env()["DOCKER_CONTEXT"] == "colima"
