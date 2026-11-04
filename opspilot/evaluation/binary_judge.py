@@ -1,24 +1,26 @@
 """Q9 binary judge for the F1 closure comparison (S7a).
 
 Two judges from different vendors (z.ai GLM and OpenAI, neither a candidate
-model) each give one pass/fail per report, with the same prompt and the same
-input projection for both systems: the scenario's expected elements and the
-report as text (OpsPilot's ReportV2 rendered by :func:`render_report`,
-HolmesGPT's prose as returned). Where the two disagree, or one gives no
-verdict, the item goes to the user once (:func:`disputes_markdown`).
+model) each give one pass/fail per report. Both systems get the same prompt
+and the same input projection: the scenario's expected elements plus the
+report as text. OpsPilot's ReportV2 goes through
+:func:`project_opspilot_report`; HolmesGPT's final answer is used as written.
+When the two judges disagree, or one gives no verdict, the item goes to the
+user once.
 
 The prompt is HolmesGPT's own strict correctness prompt at the pinned
 upstream commit (``tests/llm/utils/classifiers.py``, ``evaluate_correctness``
 with ``evaluation_type="strict"``: choice A = all expected elements present),
-so the upstream baseline is graded the way upstream grades itself.
+followed by the Q9 question (fault: root cause substantively found; no
+fault: no false attribution) and the answer format.
 
-Q11 deterministic checks veto first: an attempt that fails them fails,
-whatever the judges say, and is not sent to a judge. OpsPilot gets one more
-column, the root-cause evidence citation rate (pre-review section 1 D), which
+Q11 deterministic checks veto first. Scenario rows the closure contract
+marks "deterministic only" never reach a judge. OpsPilot gets one more
+column, the root-cause evidence citation rate (pre-review section 1 D). It
 is reported for OpsPilot only and never enters the comparison denominator.
 
-Nothing here reads a credential except :func:`provider_configs`, and keys
-only travel in the ``Authorization`` header of :class:`HTTPCompletionClient`.
+Credentials are read only by :func:`provider_configs`, and keys travel only
+in the ``Authorization`` header of :class:`HTTPCompletionClient`.
 """
 
 from __future__ import annotations
@@ -27,33 +29,24 @@ import hashlib
 import json
 import math
 import re
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Any, Literal, Protocol
 
-from opspilot.evaluation.gate import (
-    parsed_report,
-    report_signature_matches,
-    run_gate,
-    run_scope,
-)
-from opspilot.evaluation.model import (
-    AnyAnswer,
-    DeliveredRecord,
-    Window,
-    is_fault_scenario,
-)
+from opspilot.evaluation.gate import report_signature_matches
+from opspilot.evaluation.model import DeliveredRecord, Window
 from opspilot.investigation.reports import ReportV2
 
-ITEMS_SCHEMA = "opspilot-binary-judge-items-1"
-RULINGS_SCHEMA = "opspilot-binary-judge-rulings-1"
-SUMMARY_SCHEMA = "opspilot-binary-judge-summary-1"
-HOLMES_INPUTS_SCHEMA = "opspilot-holmes-judge-inputs-1"
+Vendor = Literal["zai", "openai"]
 
-System = Literal["opspilot", "holmesgpt"]
-Provider = Literal["zai", "openai"]
-PROVIDERS: tuple[Provider, ...] = ("zai", "openai")
+#: R10: two vendors, neither a candidate model. ``name`` keys an attempt's
+#: ``verdicts``. Models are the P7 adapters' (judge.py ``_MODELS``).
+JUDGES: tuple[Mapping[str, str], ...] = (
+    {"name": "glm", "vendor": "zai", "model": "glm-5.3-flashx"},
+    {"name": "openai", "vendor": "openai", "model": "gpt-5.6-luna"},
+)
+JUDGE_NAMES = tuple(j["name"] for j in JUDGES)
 
 # Upstream HolmesGPT a0009195, tests/llm/utils/classifiers.py, strict prompt,
 # verbatim (autoevals renders {{expected}} and {{output}}).
@@ -80,6 +73,16 @@ Possible choices:
 - A: All elements are presents
 - B: Either no element is present or only some but not all elements are present
 """
+# Q9: one binary question per report, by whether a fault was injected.
+FAULT_QUESTION = (
+    "\nA fault was injected in this scenario. Choose A only if the OUTPUT "
+    "substantively identifies the root cause the EXPECTED ELEMENTS describe.\n"
+)
+NORMAL_QUESTION = (
+    "\nNo fault was injected on the investigated path in this scenario. "
+    "Choose A only if the OUTPUT attributes no failure to a cause that the "
+    "EXPECTED ELEMENTS do not describe.\n"
+)
 # Upstream asks autoevals for a chain-of-thought tool call (use_cot=True:
 # rationale, then choice); a strict json object carries the same two fields
 # on both endpoints.
@@ -88,8 +91,11 @@ ANSWER_INSTRUCTION = (
     '{"rationale": "<step-by-step reasoning, written before choosing>", '
     '"choice": "A" or "B"}\n'
 )
-PROMPT_TEMPLATE = UPSTREAM_STRICT_PROMPT + ANSWER_INSTRUCTION
-PROMPT_SHA256 = hashlib.sha256(PROMPT_TEMPLATE.encode("utf-8")).hexdigest()
+PROMPT_SHA256 = hashlib.sha256(
+    "\0".join(
+        (UPSTREAM_STRICT_PROMPT, FAULT_QUESTION, NORMAL_QUESTION, ANSWER_INSTRUCTION)
+    ).encode()
+).hexdigest()
 
 _OUTPUT_SCHEMA: Mapping[str, Any] = {
     "type": "object",
@@ -101,23 +107,16 @@ _OUTPUT_SCHEMA: Mapping[str, Any] = {
     "additionalProperties": False,
 }
 
-# Same environment names as opspilot/evaluation/judge.py.
-_BASES: Mapping[Provider, str] = {
-    "zai": "https://api.z.ai/api/paas/v4",
-    "openai": "https://api.openai.com/v1",
-}
-_ENV: Mapping[Provider, tuple[str, str, str]] = {
-    # key, base url, model
-    "zai": ("ZAI_API_KEY", "ZAI_BASE_URL", "OPSPILOT_JUDGE_MODEL"),
-    "openai": ("OPENAI_API_KEY", "OPENAI_BASE_URL", "OPENAI_JUDGE_MODEL"),
-}
-# R10: the P7 adapters' models (judge.py _MODELS); overridable by env.
-DEFAULT_MODELS: Mapping[Provider, str] = {
-    "zai": "glm-5.3-flashx",
-    "openai": "gpt-5.6-luna",
-}
-#: Never a judge: the candidate model both systems run on.
-CANDIDATE_MODELS = frozenset({"deepseek-flash", "deepseek-pro"})
+# Closure contract r1, six-category table, column 判法: these rows are
+# deterministic only. Regression rows are fault/normal judge rows.
+_DETERMINISTIC_ONLY = frozenset(
+    {
+        ("missing_telemetry", "positive"),
+        ("duplicate_event", "negative"),
+        ("model_failure", "positive"),
+        ("wrong_target", "positive"),
+    }
+)
 MAX_ATTEMPTS = 2
 
 
@@ -130,35 +129,25 @@ class BinaryJudgeError(ValueError):
 
 
 # --------------------------------------------------------------------------
-# Inputs: one subject per started attempt
+# What is judged, and how it is projected
 
 
-@dataclass(frozen=True)
-class Q11Result:
-    """Q11 deterministic checks; ``checks`` lists only those that apply."""
-
-    passed: bool
-    checks: Mapping[str, bool]
-    reasons: tuple[str, ...]
+def judge_applicable(answer: Any) -> bool:
+    return (answer.category, answer.polarity) not in _DETERMINISTIC_ONLY
 
 
-@dataclass(frozen=True)
-class JudgeSubject:
-    system: System
-    scenario_id: str
-    attempt_id: str
-    slot: int
-    category: str
-    polarity: str
-    expected_elements: tuple[str, ...]
-    output_text: str | None
-    q11: Q11Result
-    #: OpsPilot fault scenarios only (section 1 D); ``None`` = not applicable.
-    root_cause_cited: bool | None = None
+def _template(answer: Any) -> str:
+    question = FAULT_QUESTION if answer.signature is not None else NORMAL_QUESTION
+    return UPSTREAM_STRICT_PROMPT + question + ANSWER_INSTRUCTION
 
-    @property
-    def item_id(self) -> str:
-        return f"{self.system}:{self.scenario_id}:{self.attempt_id}"
+
+def judge_messages(answer: Any, report_text: str) -> list[dict[str, str]]:
+    """The one request every judge gets for one report of either system."""
+    expected = "\n- ".join(answer.expected_output)
+    head, tail = _template(answer).split("{{output}}")
+    # Output substituted last, once: report text cannot fill another slot.
+    prompt = head.replace("{{expected}}", expected) + report_text + tail
+    return [{"role": "user", "content": prompt}]
 
 
 _KIND_LABELS = {
@@ -170,21 +159,11 @@ _KIND_LABELS = {
 }
 
 
-def _evidence_label(record: DeliveredRecord | None) -> str:
-    if record is None:
-        return "unknown source"
-    tool = record.view.get("tool")
-    if tool == "read_evidence" and isinstance(record.view.get("parent_tool"), str):
-        tool = record.view["parent_tool"]
-    return tool if isinstance(tool, str) and tool else "unknown source"
+def project_opspilot_report(report: ReportV2) -> str:
+    """ReportV2 as plain text, fields in the report's own order.
 
-
-def render_report(report: ReportV2, delivered: Mapping[str, DeliveredRecord]) -> str:
-    """ReportV2 as plain text for the judge.
-
-    Field order is the report's own; opaque evidence IDs become ``E<n>``
-    labels with the tool that produced the record, so the judge sees that a
-    statement cites trace or metric evidence without internal identifiers.
+    Opaque evidence IDs become ``E<n>``. The text is kept verbatim, so the
+    judge sees the same words a reader of the report sees.
     """
     numbers: dict[str, int] = {}
     for claim in report.claims:
@@ -195,37 +174,45 @@ def render_report(report: ReportV2, delivered: Mapping[str, DeliveredRecord]) ->
         f"Conclusion: {report.conclusion}",
         "",
         "Summary:",
-        report.summary.strip(),
+        report.summary,
     ]
     if report.claims:
         lines += ["", "Statements:"]
         for claim in report.claims:
-            cites = ", ".join(
-                f"E{numbers[eid]} ({_evidence_label(delivered.get(eid))})"
-                for eid in claim.evidence_ids
-            )
+            cites = ", ".join(f"E{numbers[eid]}" for eid in claim.evidence_ids)
             suffix = f" [evidence: {cites}]" if cites else ""
-            lines.append(f"- {_KIND_LABELS[claim.kind]}: {claim.text.strip()}{suffix}")
+            lines.append(f"- {_KIND_LABELS[claim.kind]}: {claim.text}{suffix}")
     for title, values in (("Gaps", report.gaps), ("Next steps", report.next_steps)):
         if values:
             lines += ["", f"{title}:"]
-            lines += [f"- {value.strip()}" for value in values]
+            lines += [f"- {value}" for value in values]
     return "\n".join(lines) + "\n"
 
 
-def root_cause_evidence_cited(
-    answer: AnyAnswer,
+def project_holmes_output(output: Mapping[str, Any]) -> str | None:
+    """HolmesGPT's final answer (``result``) as written; blank or absent: None."""
+    result = output.get("result")
+    if not isinstance(result, str) or not result.strip():
+        return None
+    return result
+
+
+def root_cause_citation(
+    answer: Any,
     report: ReportV2 | None,
     delivered: Mapping[str, DeliveredRecord],
     authorized: Mapping[str, Window],
     scope: Any,
-) -> bool:
+) -> bool | None:
     """Section 1 D: conclusion supported/partial and a fact or hypothesis
-    claim cites a signature-hit record with fact-qualified bindings.
+    claim cites a signature-hit record with the gate's fact bindings.
 
-    Proves the fault evidence was cited in support, not that it was named
-    the cause ("payment errors, but not the cause" also passes).
+    This proves the fault evidence was cited in support. It does not prove
+    the report named it the cause: "payment errors, but not the cause"
+    also passes. ``None`` when the scenario has no signature.
     """
+    if answer.signature is None:
+        return None
     if report is None or report.conclusion not in {"supported", "partial"}:
         return False
     kept = [c for c in report.claims if c.kind in {"fact", "hypothesis"}]
@@ -237,127 +224,26 @@ def root_cause_evidence_cited(
     )
 
 
-def opspilot_subject(capture: Any, *, slot: int) -> JudgeSubject:
-    """One OpsPilot attempt from its frozen ``EvaluationCapture``.
-
-    Q11 is the deterministic gate recomputed here (schema, citations and
-    bindings, ``read_only``, final state, fault evidence signature).
-    """
-    spec, answer = capture.spec, capture.answer
-    gate = run_gate(
-        spec,
-        answer,
-        capture.outcome,
-        capture.report,
-        capture.delivered,
-        capture.authorized,
-    )
-    parsed = parsed_report(capture.report)
-    root: bool | None = None
-    if is_fault_scenario(spec, answer):
-        root = root_cause_evidence_cited(
-            answer,
-            parsed,
-            capture.delivered,
-            capture.authorized,
-            run_scope(spec, capture.outcome),
-        )
-    return JudgeSubject(
-        system="opspilot",
-        scenario_id=spec.scenario_id,
-        attempt_id=capture.attempt.attempt_id,
-        slot=slot,
-        category=answer.category,
-        polarity=answer.polarity,
-        expected_elements=tuple(answer.expected_output),
-        output_text=None
-        if parsed is None
-        else render_report(parsed, capture.delivered),
-        q11=Q11Result(gate.passed, dict(gate.checks), tuple(gate.reasons)),
-        root_cause_cited=root,
-    )
-
-
-def not_started_subject(
-    system: System, answer: Any, *, attempt_id: str, slot: int, reason: str
-) -> JudgeSubject:
-    """A started-but-unreported or never-started slot: counted, vetoed."""
-    return JudgeSubject(
-        system=system,
-        scenario_id=answer.scenario_id,
-        attempt_id=attempt_id,
-        slot=slot,
-        category=answer.category,
-        polarity=answer.polarity,
-        expected_elements=tuple(answer.expected_output),
-        output_text=None,
-        q11=Q11Result(False, {"execution": False}, (reason,)),
-        root_cause_cited=False
-        if system == "opspilot" and answer.signature is not None
-        else None,
-    )
-
-
-def holmes_subject(
-    output: Mapping[str, Any],
-    answer: Any,
-    *,
-    attempt_id: str,
-    slot: int,
-    read_only: bool,
-) -> JudgeSubject:
-    """One HolmesGPT attempt from its ``holmes ask --json-output-file`` object.
-
-    Q11 for HolmesGPT is only "read-only, no overreach" (from the runner's
-    proxy log) and "investigation finished" (finish_reason stop, non-empty
-    result).
-    """
-    result = output.get("result")
-    completed = (
-        output.get("finish_reason") == "stop"
-        and isinstance(result, str)
-        and bool(result.strip())
-    )
-    checks = {"read_only": bool(read_only), "completed": completed}
-    reasons = tuple(
-        code
-        for ok, code in (
-            (checks["read_only"], "PERMISSION_VIOLATION"),
-            (completed, "EXECUTION_NOT_COMPLETED"),
-        )
-        if not ok
-    )
-    return JudgeSubject(
-        system="holmesgpt",
-        scenario_id=answer.scenario_id,
-        attempt_id=attempt_id,
-        slot=slot,
-        category=answer.category,
-        polarity=answer.polarity,
-        expected_elements=tuple(answer.expected_output),
-        output_text=result if completed and isinstance(result, str) else None,
-        q11=Q11Result(not reasons, checks, reasons),
-    )
-
-
-def judge_prompt(subject: JudgeSubject) -> str:
-    """The one input projection both systems get: expected elements + text."""
-    if subject.output_text is None:
-        raise BinaryJudgeError("NO_OUTPUT")
-    expected = "\n- ".join(subject.expected_elements)
-    # Single pass, output last: report text cannot inject a second
-    # substitution into the template.
-    head, tail = PROMPT_TEMPLATE.split("{{output}}")
-    return head.replace("{{expected}}", expected) + subject.output_text + tail
-
-
 # --------------------------------------------------------------------------
 # Providers
+
+_BASES: Mapping[Vendor, str] = {
+    "zai": "https://api.z.ai/api/paas/v4",
+    "openai": "https://api.openai.com/v1",
+}
+# Key names: judge.py's, plus GLM_API_KEY, the z.ai key name in the user's
+# environment (lead 2026-11-04), used only when ZAI_API_KEY is unset.
+_KEYS: Mapping[Vendor, tuple[str, ...]] = {
+    "zai": ("ZAI_API_KEY", "GLM_API_KEY"),
+    "openai": ("OPENAI_API_KEY",),
+}
+_BASE_NAMES: Mapping[Vendor, str] = {"zai": "ZAI_BASE_URL", "openai": "OPENAI_BASE_URL"}
 
 
 @dataclass(frozen=True)
 class ProviderConfig:
-    provider: Provider
+    name: str
+    vendor: Vendor
     endpoint: str
     model: str
     api_key: str = field(repr=False)
@@ -368,7 +254,8 @@ class ProviderConfig:
 
     def public(self) -> dict[str, Any]:
         return {
-            "provider": self.provider,
+            "name": self.name,
+            "vendor": self.vendor,
             "endpoint": self.endpoint,
             "model": self.model,
             "timeout_seconds": self.timeout_seconds,
@@ -377,27 +264,41 @@ class ProviderConfig:
 
 
 def provider_configs(environ: Mapping[str, str]) -> tuple[ProviderConfig, ...]:
-    """Both judges from the environment; codes name variables, never values."""
+    """Both judges; error codes name variables, never values."""
     configs: list[ProviderConfig] = []
-    for provider in PROVIDERS:
-        key_name, base_name, model_name = _ENV[provider]
-        key = environ.get(key_name, "")
-        if not key.strip() or any(c in key for c in "\r\n\x00"):
-            raise BinaryJudgeError(f"JUDGE_KEY_MISSING:{key_name}")
-        base = environ.get(base_name, _BASES[provider])
-        if base != _BASES[provider]:
-            raise BinaryJudgeError(f"JUDGE_BASE_URL_NOT_ALLOWED:{base_name}")
-        model = environ.get(model_name, DEFAULT_MODELS[provider]).strip()
-        if not model or model in CANDIDATE_MODELS:
-            raise BinaryJudgeError(f"JUDGE_MODEL_INVALID:{model_name}")
-        configs.append(ProviderConfig(provider, base + "/chat/completions", model, key))
+    for judge in JUDGES:
+        vendor: Vendor = judge["vendor"]  # type: ignore[assignment]
+        names = _KEYS[vendor]
+        key = next((environ[n] for n in names if environ.get(n, "").strip()), "")
+        if not key or any(c in key for c in "\r\n\x00"):
+            raise BinaryJudgeError(f"JUDGE_KEY_MISSING:{'|'.join(names)}")
+        base = environ.get(_BASE_NAMES[vendor], _BASES[vendor])
+        if base != _BASES[vendor]:
+            raise BinaryJudgeError(f"JUDGE_BASE_URL_NOT_ALLOWED:{_BASE_NAMES[vendor]}")
+        configs.append(
+            ProviderConfig(
+                judge["name"], vendor, base + "/chat/completions", judge["model"], key
+            )
+        )
     return tuple(configs)
 
 
-def request_body(config: ProviderConfig, prompt: str) -> bytes:
+def judge_config_record() -> dict[str, Any]:
+    return {
+        "prompt_sha256": PROMPT_SHA256,
+        "prompt_source": "HolmesGPT a0009195 tests/llm/utils/classifiers.py strict",
+        "judges": [dict(j) for j in JUDGES],
+        "max_output_tokens": ProviderConfig.max_output_tokens,
+        "timeout_seconds": ProviderConfig.timeout_seconds,
+    }
+
+
+def request_body(
+    config: ProviderConfig, messages: Sequence[Mapping[str, str]]
+) -> bytes:
     body: dict[str, Any] = {
         "model": config.model,
-        "messages": [{"role": "user", "content": prompt}],
+        "messages": [dict(m) for m in messages],
         "stream": True,
         "response_format": {
             "type": "json_schema",
@@ -408,7 +309,7 @@ def request_body(config: ProviderConfig, prompt: str) -> bytes:
             },
         },
     }
-    if config.provider == "zai":
+    if config.vendor == "zai":
         # As P7: GLM-5.3 defaults to max effort, near the timeout.
         body["reasoning_effort"] = "high"
         body["max_tokens"] = config.max_output_tokens
@@ -431,7 +332,11 @@ class HTTPCompletionClient:
     """Streams through the P7 transport and SSE assembler (judge.py)."""
 
     def complete(self, config: ProviderConfig, body: bytes) -> bytes:
-        from opspilot.evaluation.judge import HTTPJudgeTransport, JudgeError
+        from opspilot.evaluation.judge import (
+            HTTPJudgeTransport,
+            JudgeError,
+            StreamTruncated,
+        )
 
         headers = {
             "Authorization": "Bearer " + config.api_key,
@@ -448,10 +353,10 @@ class HTTPCompletionClient:
             )
         except TimeoutError:
             raise BinaryJudgeError("JUDGE_TIMEOUT") from None
+        except StreamTruncated:
+            raise BinaryJudgeError("JUDGE_TRANSPORT_ERROR") from None
         except JudgeError as exc:
             code = exc.code if exc.code.startswith("JUDGE_") else "JUDGE_OUTPUT_INVALID"
-            if type(exc).__name__ == "StreamTruncated":
-                code = "JUDGE_TRANSPORT_ERROR"
             raise BinaryJudgeError(code) from None
         except Exception:
             raise BinaryJudgeError("JUDGE_TRANSPORT_ERROR") from None
@@ -462,10 +367,9 @@ class HTTPCompletionClient:
 
 @dataclass(frozen=True)
 class Verdict:
-    provider: Provider
-    request_model: str
+    name: str
+    model: str
     response_model: str | None
-    status: Literal["ok", "error"]
     passed: bool | None
     rationale: str | None
     code: str | None
@@ -474,6 +378,7 @@ class Verdict:
 
 
 _DATED = re.compile(r"(?P<base>.+)-(?P<day>\d{4}-\d{2}-\d{2})")
+_USAGE_KEYS = ("prompt_tokens", "completion_tokens", "total_tokens")
 
 
 def _identity_ok(request_model: str, response_model: object) -> bool:
@@ -489,15 +394,6 @@ def _identity_ok(request_model: str, response_model: object) -> bool:
     except ValueError:
         return False
     return True
-
-
-def _usage(doc: Mapping[str, Any]) -> dict[str, int | None]:
-    usage = doc.get("usage")
-    usage = usage if isinstance(usage, Mapping) else {}
-    return {
-        key: value if type(value := usage.get(key)) is int else None
-        for key in ("prompt_tokens", "completion_tokens", "total_tokens")
-    }
 
 
 def parse_completion(
@@ -533,17 +429,21 @@ def parse_completion(
         or type(content["rationale"]) is not str
     ):
         raise BinaryJudgeError("JUDGE_OUTPUT_INVALID")
-    return content["choice"] == "A", content["rationale"], doc["model"], _usage(doc)
+    raw_usage = doc.get("usage")
+    usage: Mapping[str, Any] = raw_usage if isinstance(raw_usage, Mapping) else {}
+    counts = {k: v if type(v := usage.get(k)) is int else None for k in _USAGE_KEYS}
+    return content["choice"] == "A", content["rationale"], doc["model"], counts
 
 
 def judge_once(
-    prompt: str, config: ProviderConfig, client: CompletionClient
+    messages: Sequence[Mapping[str, str]],
+    config: ProviderConfig,
+    client: CompletionClient,
 ) -> Verdict:
-    """One provider's verdict; a transport failure is retried once."""
+    """One judge's verdict; a transport failure or timeout is retried once."""
     attempts = 0
-    code: str | None = None
     try:
-        body = request_body(config, prompt)
+        body = request_body(config, messages)
         while True:
             attempts += 1
             try:
@@ -560,276 +460,55 @@ def judge_once(
         code = exc.code
     except Exception:
         code = "JUDGE_TRANSPORT_ERROR"
-    if code is not None:
+    else:
         return Verdict(
-            config.provider,
-            config.model,
-            None,
-            "error",
-            None,
-            None,
-            code,
-            max(1, attempts),
-            dict.fromkeys(("prompt_tokens", "completion_tokens", "total_tokens")),
+            config.name, config.model, model, passed, rationale, None, attempts, usage
         )
     return Verdict(
-        config.provider,
+        config.name,
         config.model,
-        model,
-        "ok",
-        passed,
-        rationale,
         None,
-        attempts,
-        usage,
+        None,
+        None,
+        code,
+        max(1, attempts),
+        dict.fromkeys(_USAGE_KEYS),
     )
 
 
 # --------------------------------------------------------------------------
-# Judging and agreement
-
-Agreement = Literal["vetoed", "agreed", "disagreed", "judge_error"]
-
-
-@dataclass(frozen=True)
-class JudgedItem:
-    subject: JudgeSubject
-    verdicts: tuple[Verdict, ...]
-    prompt_sha256: str | None
-
-    @property
-    def agreement(self) -> Agreement:
-        if not self.subject.q11.passed:
-            return "vetoed"
-        if len(self.verdicts) != len(PROVIDERS) or any(
-            v.status != "ok" for v in self.verdicts
-        ):
-            return "judge_error"
-        return "agreed" if len({v.passed for v in self.verdicts}) == 1 else "disagreed"
-
-    @property
-    def needs_ruling(self) -> bool:
-        return self.agreement in ("disagreed", "judge_error")
+# Scoring
+#
+# An attempt is a plain mapping (closure acceptance S7a):
+#   {"attempt_id", "system": "opspilot"|"holmes", "scenario_id",
+#    "judge_applicable", "verdicts": {judge name: bool | None},
+#    "checks": {name: bool | None}, "root_cause_citation": bool | None}
+# ``checks`` are Q11 (and, for OpsPilot, Q20) items; ``None`` = not applicable.
 
 
-def judge_subjects(
-    subjects: Iterable[JudgeSubject],
-    configs: Sequence[ProviderConfig],
-    client: CompletionClient,
-) -> list[JudgedItem]:
-    """Q11 first: a vetoed attempt is never sent to a judge."""
-    if tuple(c.provider for c in configs) != PROVIDERS:
-        raise BinaryJudgeError("JUDGE_PROVIDERS_INVALID")
-    items: list[JudgedItem] = []
-    for subject in subjects:
-        if not subject.q11.passed or subject.output_text is None:
-            items.append(JudgedItem(subject, (), None))
-            continue
-        prompt = judge_prompt(subject)
-        verdicts = tuple(judge_once(prompt, config, client) for config in configs)
-        digest = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
-        items.append(JudgedItem(subject, verdicts, digest))
-    return items
+def vetoed(attempt: Mapping[str, Any]) -> bool:
+    return any(value is False for value in attempt["checks"].values())
 
 
-def judge_config_record(configs: Sequence[ProviderConfig]) -> dict[str, Any]:
-    return {
-        "prompt_sha256": PROMPT_SHA256,
-        "prompt_source": "HolmesGPT a0009195 tests/llm/utils/classifiers.py strict",
-        "providers": [c.public() for c in configs],
-    }
+def disputed(attempt: Mapping[str, Any]) -> bool:
+    """Judges differ or one gave no verdict (never for a vetoed attempt)."""
+    if vetoed(attempt) or not attempt["judge_applicable"]:
+        return False
+    values = [attempt["verdicts"].get(name) for name in JUDGE_NAMES]
+    return any(v is None for v in values) or len(set(values)) != 1
 
 
-# --------------------------------------------------------------------------
-# Serialization (plain JSON; the item file is local, the summary is public)
-
-
-def _subject_json(s: JudgeSubject) -> dict[str, Any]:
-    return {
-        "system": s.system,
-        "scenario_id": s.scenario_id,
-        "attempt_id": s.attempt_id,
-        "slot": s.slot,
-        "category": s.category,
-        "polarity": s.polarity,
-        "expected_elements": list(s.expected_elements),
-        "output_text": s.output_text,
-        "q11": {
-            "passed": s.q11.passed,
-            "checks": dict(s.q11.checks),
-            "reasons": list(s.q11.reasons),
-        },
-        "root_cause_cited": s.root_cause_cited,
-    }
-
-
-def _verdict_json(v: Verdict) -> dict[str, Any]:
-    return {
-        "provider": v.provider,
-        "request_model": v.request_model,
-        "response_model": v.response_model,
-        "status": v.status,
-        "passed": v.passed,
-        "rationale": v.rationale,
-        "code": v.code,
-        "attempts": v.attempts,
-        "usage": dict(v.usage),
-    }
-
-
-def items_document(
-    items: Sequence[JudgedItem], *, config: Mapping[str, Any], k: int
-) -> dict[str, Any]:
-    return {
-        "schema": ITEMS_SCHEMA,
-        "k": k,
-        "judge_config": dict(config),
-        "items": [
-            {
-                "item_id": item.subject.item_id,
-                "subject": _subject_json(item.subject),
-                "verdicts": [_verdict_json(v) for v in item.verdicts],
-                "prompt_sha256": item.prompt_sha256,
-                "agreement": item.agreement,
-            }
-            for item in items
-        ],
-    }
-
-
-def load_items(doc: Mapping[str, Any]) -> tuple[list[JudgedItem], int, dict[str, Any]]:
-    if doc.get("schema") != ITEMS_SCHEMA:
-        raise BinaryJudgeError("ITEMS_SCHEMA_INVALID")
-    items: list[JudgedItem] = []
-    for raw in doc["items"]:
-        s = raw["subject"]
-        subject = JudgeSubject(
-            system=s["system"],
-            scenario_id=s["scenario_id"],
-            attempt_id=s["attempt_id"],
-            slot=s["slot"],
-            category=s["category"],
-            polarity=s["polarity"],
-            expected_elements=tuple(s["expected_elements"]),
-            output_text=s["output_text"],
-            q11=Q11Result(
-                s["q11"]["passed"], dict(s["q11"]["checks"]), tuple(s["q11"]["reasons"])
-            ),
-            root_cause_cited=s["root_cause_cited"],
-        )
-        verdicts = tuple(
-            Verdict(
-                v["provider"],
-                v["request_model"],
-                v["response_model"],
-                v["status"],
-                v["passed"],
-                v["rationale"],
-                v["code"],
-                v["attempts"],
-                dict(v["usage"]),
-            )
-            for v in raw["verdicts"]
-        )
-        item = JudgedItem(subject, verdicts, raw["prompt_sha256"])
-        if item.subject.item_id != raw["item_id"] or item.agreement != raw["agreement"]:
-            raise BinaryJudgeError("ITEMS_INCONSISTENT")
-        items.append(item)
-    ids = [i.subject.item_id for i in items]
-    if len(set(ids)) != len(ids):
-        raise BinaryJudgeError("ITEMS_DUPLICATE")
-    return items, int(doc["k"]), dict(doc["judge_config"])
-
-
-# --------------------------------------------------------------------------
-# The user's one-time ruling list
-
-_SYSTEM_NAMES = {"opspilot": "OpsPilot", "holmesgpt": "HolmesGPT"}
-_PROVIDER_NAMES = {"zai": "z.ai GLM", "openai": "OpenAI"}
-
-
-def _verdict_words(v: Verdict) -> str:
-    if v.status != "ok":
-        return f"没给出结论（{v.code}）"
-    return "过：期望要素都在" if v.passed else "不过：缺了期望要素"
-
-
-def disputes_markdown(items: Sequence[JudgedItem]) -> str:
-    """Plain-language, one entry per disputed item, for one user pass."""
-    disputed = [i for i in items if i.needs_ruling]
-    lines = [
-        "# 两家 judge 分歧，请逐题裁决",
-        "",
-        f"共 {len(disputed)} 处。每处是一份报告：两家 judge 一个说过、一个说不过，"
-        "或者有一家没给出结论。",
-        "判法和 judge 一样：报告里把「期望要素」每一条的意思都说到了就算过，"
-        "缺任何一条就不过；不要求原文一致。",
-        '在 `rulings.json` 里把对应编号的 `null` 改成 `"pass"` 或 `"fail"`。',
-    ]
-    for n, item in enumerate(disputed, 1):
-        s = item.subject
-        lines += [
-            "",
-            f"## {n}. {_SYSTEM_NAMES[s.system]}，题目 {s.scenario_id}，第 {s.slot} 次",
-            "",
-            f"编号：`{s.item_id}`",
-            "",
-            "期望要素（全部要有才算过）：",
-            "",
-            *[f"- {e}" for e in s.expected_elements],
-            "",
-            "两家 judge 怎么说：",
-            "",
-        ]
-        for v in item.verdicts:
-            lines.append(f"- {_PROVIDER_NAMES[v.provider]}：{_verdict_words(v)}")
-            if v.rationale:
-                lines += ["", "  > " + v.rationale.strip().replace("\n", "\n  > "), ""]
-        lines += [
-            "",
-            "报告原文：",
-            "",
-            "````text",
-            (s.output_text or "").rstrip(),
-            "````",
-            "",
-            "请回答：过 还是 不过？",
-        ]
-    return "\n".join(lines) + "\n"
-
-
-def rulings_template(items: Sequence[JudgedItem]) -> dict[str, Any]:
-    return {
-        "schema": RULINGS_SCHEMA,
-        "rulings": {i.subject.item_id: None for i in items if i.needs_ruling},
-    }
-
-
-def load_rulings(
-    doc: Mapping[str, Any] | None, items: Sequence[JudgedItem]
-) -> dict[str, bool]:
-    """Filled rulings; ``null`` stays pending. Unknown or undisputed ids fail."""
-    if doc is None:
-        return {}
-    if doc.get("schema") != RULINGS_SCHEMA or not isinstance(
-        doc.get("rulings"), Mapping
-    ):
-        raise BinaryJudgeError("RULINGS_SCHEMA_INVALID")
-    disputed = {i.subject.item_id for i in items if i.needs_ruling}
-    out: dict[str, bool] = {}
-    for item_id, value in doc["rulings"].items():
-        if item_id not in disputed:
-            raise BinaryJudgeError("RULING_NOT_DISPUTED")
-        if value is None:
-            continue
-        if value not in ("pass", "fail"):
-            raise BinaryJudgeError("RULING_VALUE_INVALID")
-        out[item_id] = value == "pass"
-    return out
-
-
-# --------------------------------------------------------------------------
-# Scores
+def attempt_pass(
+    attempt: Mapping[str, Any], rulings: Mapping[str, bool]
+) -> bool | None:
+    """Q11 veto first; then deterministic-only, agreed verdict, or ruling."""
+    if vetoed(attempt):
+        return False
+    if not attempt["judge_applicable"]:
+        return True
+    if disputed(attempt):
+        return rulings.get(attempt["attempt_id"])
+    return bool(attempt["verdicts"][JUDGE_NAMES[0]])
 
 
 def wilson(successes: int, n: int, z: float = 1.96) -> list[float] | None:
@@ -840,154 +519,177 @@ def wilson(successes: int, n: int, z: float = 1.96) -> list[float] | None:
     denom = 1 + z * z / n
     centre = (p + z * z / (2 * n)) / denom
     half = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / denom
-    return [round(max(0.0, centre - half), 4), round(min(1.0, centre + half), 4)]
+    return [max(0.0, centre - half), min(1.0, centre + half)]
 
 
-def _rate(successes: int, n: int) -> dict[str, Any]:
-    return {
-        "successes": successes,
-        "n": n,
-        "rate": None if n == 0 else round(successes / n, 4),
-        "wilson95": wilson(successes, n),
-    }
-
-
-def final_pass(item: JudgedItem, rulings: Mapping[str, bool]) -> bool | None:
-    """Q11 veto first; then the agreed verdict or the user's ruling."""
-    agreement = item.agreement
-    if agreement == "vetoed":
-        return False
-    if agreement == "agreed":
-        return bool(item.verdicts[0].passed)
-    return rulings.get(item.subject.item_id)
-
-
-def _system_summary(
-    items: Sequence[JudgedItem], rulings: Mapping[str, bool], k: int
+def _system_row(
+    attempts: Sequence[Mapping[str, Any]],
+    results: Mapping[str, bool | None],
+    k: int,
 ) -> dict[str, Any]:
-    finals = {i.subject.item_id: final_pass(i, rulings) for i in items}
-    pending = sorted(item_id for item_id, value in finals.items() if value is None)
-    by_scenario: dict[str, list[JudgedItem]] = {}
-    for item in items:
-        by_scenario.setdefault(item.subject.scenario_id, []).append(item)
-    scenarios: list[dict[str, Any]] = []
-    for sid in sorted(by_scenario):
-        group = sorted(by_scenario[sid], key=lambda i: i.subject.slot)
-        if len(group) > k:
+    own = [results[a["attempt_id"]] for a in attempts]
+    pending = any(r is None for r in own)
+    passed = sum(1 for r in own if r is True)
+    scenarios: dict[str, list[bool | None]] = {}
+    for a in attempts:
+        scenarios.setdefault(a["scenario_id"], []).append(results[a["attempt_id"]])
+    for sid, values in scenarios.items():
+        if len(values) > k:
             raise BinaryJudgeError(f"REDRAW_DETECTED:{sid}")
-        results = [finals[i.subject.item_id] for i in group]
-        # A slot that never started counts as a failure (Q20 rule).
-        missing = k - len(group)
-        all_pass: bool | None
-        if any(r is False for r in results) or missing:
-            all_pass = False
-        elif any(r is None for r in results):
-            all_pass = None
-        else:
-            all_pass = True
-        scenarios.append(
-            {
-                "scenario_id": sid,
-                "category": group[0].subject.category,
-                "polarity": group[0].subject.polarity,
-                "attempts": [
-                    {
-                        "item_id": i.subject.item_id,
-                        "slot": i.subject.slot,
-                        "q11_passed": i.subject.q11.passed,
-                        "q11_reasons": list(i.subject.q11.reasons),
-                        "verdicts": {v.provider: v.passed for v in i.verdicts},
-                        "agreement": i.agreement,
-                        "ruled": i.subject.item_id in rulings,
-                        "final": finals[i.subject.item_id],
-                    }
-                    for i in group
-                ],
-                "missing_slots": missing,
-                f"pass^{k}": all_pass,
-            }
-        )
-    n_slots = len(scenarios) * k
-    vetoed = sum(1 for i in items if i.agreement == "vetoed")
-    judged = [i for i in items if i.agreement != "vetoed"]
-    both_ok = [i for i in judged if i.agreement in ("agreed", "disagreed")]
-    agreed = sum(1 for i in both_ok if i.agreement == "agreed")
-    per_provider: dict[str, Any] = {}
-    for provider in PROVIDERS:
-        verdicts = [v for i in judged for v in i.verdicts if v.provider == provider]
-        per_provider[provider] = {
-            "ok": sum(1 for v in verdicts if v.status == "ok"),
-            "errors": sum(1 for v in verdicts if v.status != "ok"),
-            "passed": sum(1 for v in verdicts if v.passed is True),
-        }
-    out: dict[str, Any] = {
-        "status": "awaiting_rulings" if pending else "final",
-        "pending_rulings": pending,
-        "scenarios": len(scenarios),
-        "k": k,
-        "q11_vetoed": vetoed,
-        "judge": {
-            "judged": len(judged),
-            "both_valid": len(both_ok),
-            "agreement": _rate(agreed, len(both_ok)),
-            "disagreed": sum(1 for i in judged if i.agreement == "disagreed"),
-            "judge_errors": sum(1 for i in judged if i.agreement == "judge_error"),
-            "ruled_by_user": sum(1 for i in judged if i.subject.item_id in rulings),
-            "per_provider": per_provider,
-        },
-        "per_scenario": scenarios,
+    # A scenario with fewer than k attempts has not had k passes.
+    all_k = sum(1 for v in scenarios.values() if len(v) == k and all(v))
+    n = len(own)
+    return {
+        "n_attempts": n,
+        "passed": passed,
+        "pass_rate": None if pending or n == 0 else passed / n,
+        "pass_rate_interval": None if pending else wilson(passed, n),
+        "n_scenarios": len(scenarios),
+        "pass_k": None if pending or not scenarios else all_k / len(scenarios),
+        "pass_k_interval": None if pending else wilson(all_k, len(scenarios)),
+        "q11_vetoed": sum(1 for a in attempts if vetoed(a)),
+        "deterministic_only": sum(1 for a in attempts if not a["judge_applicable"]),
     }
-    if pending:
-        out["single_run"] = None
-        out[f"pass^{k}"] = None
-    else:
-        passes = sum(1 for value in finals.values() if value)
-        # Denominator: every slot (a never-started slot is a failure).
-        out["single_run"] = _rate(passes, n_slots)
-        out[f"pass^{k}"] = _rate(
-            sum(1 for s in scenarios if s[f"pass^{k}"]), len(scenarios)
-        )
-    return out
 
 
 def summarize(
-    items: Sequence[JudgedItem],
+    attempts: Sequence[Mapping[str, Any]],
     rulings: Mapping[str, bool],
     *,
     k: int,
-    judge_config: Mapping[str, Any],
 ) -> dict[str, Any]:
     if k < 1:
         raise BinaryJudgeError("K_INVALID")
+    ids = [a["attempt_id"] for a in attempts]
+    if len(set(ids)) != len(ids):
+        raise BinaryJudgeError("ATTEMPT_DUPLICATE")
+    results = {a["attempt_id"]: attempt_pass(a, rulings) for a in attempts}
+    needs = [a["attempt_id"] for a in attempts if results[a["attempt_id"]] is None]
+    judged = [
+        a
+        for a in attempts
+        if a["judge_applicable"]
+        and not vetoed(a)
+        and all(a["verdicts"].get(n) is not None for n in JUDGE_NAMES)
+    ]
+    agreed = sum(1 for a in judged if not disputed(a))
     systems: dict[str, Any] = {}
-    for system in ("opspilot", "holmesgpt"):
-        own = [i for i in items if i.subject.system == system]
-        if own:
-            systems[system] = _system_summary(own, rulings, k)
-    ops = [i for i in items if i.subject.system == "opspilot"]
-    applicable = [i for i in ops if i.subject.root_cause_cited is not None]
-    if "opspilot" in systems:
-        # Section 1 D: OpsPilot only, never in the comparison denominator.
-        systems["opspilot"]["root_cause_evidence_citation"] = {
-            **_rate(
-                sum(1 for i in applicable if i.subject.root_cause_cited),
-                len(applicable),
-            ),
-            "rule": "conclusion in {supported, partial} and a fact or hypothesis "
-            "claim cites a signature-hit record with fact bindings",
-            "in_comparison_denominator": False,
-        }
-    both = [i for i in items if i.agreement in ("agreed", "disagreed")]
+    for system in dict.fromkeys(a["system"] for a in attempts):
+        own = [a for a in attempts if a["system"] == system]
+        row = _system_row(own, results, k)
+        if system == "opspilot":
+            # Section 1 D: OpsPilot only, outside the comparison denominator.
+            column = [
+                a["root_cause_citation"]
+                for a in own
+                if a.get("root_cause_citation") is not None
+            ]
+            cited = sum(1 for c in column if c)
+            row["root_cause_citation"] = {
+                "n": len(column),
+                "cited": cited,
+                "rate": cited / len(column) if column else None,
+                "in_comparison_denominator": False,
+            }
+        systems[system] = row
     return {
-        "schema": SUMMARY_SCHEMA,
-        "method": "uncalibrated two-vendor binary judge + user ruling on "
-        "disagreements; Q11 deterministic checks veto first",
-        "judge_config": dict(judge_config),
-        "status": "awaiting_rulings"
-        if any(s["status"] != "final" for s in systems.values())
-        else "final",
-        "judge_agreement_overall": _rate(
-            sum(1 for i in both if i.agreement == "agreed"), len(both)
-        ),
+        "final": not needs,
+        "needs_ruling": needs,
+        "agreement": {
+            "agreed": agreed,
+            "judged": len(judged),
+            "rate": agreed / len(judged) if judged else None,
+        },
+        "attempts": {aid: {"pass": results[aid]} for aid in ids},
         "systems": systems,
     }
+
+
+# --------------------------------------------------------------------------
+# The user's one-time ruling list
+
+_SYSTEM_NAMES = {"opspilot": "OpsPilot", "holmes": "HolmesGPT"}
+_JUDGE_LABELS = {"glm": "z.ai GLM", "openai": "OpenAI"}
+
+
+def disputes_markdown(attempts: Sequence[Mapping[str, Any]]) -> str:
+    """Plain language, one entry per disputed attempt, for one user pass."""
+    rows = [a for a in attempts if disputed(a)]
+    lines = [
+        "# 两家 judge 分歧，请逐题裁决",
+        "",
+        f"共 {len(rows)} 处。每处对应一份报告：两家 judge 一家判过、一家判不过，"
+        "或者有一家没给出结论。",
+        "判法和 judge 一样：「期望要素」每一条的意思报告里都说到了，就算过；"
+        "缺任何一条就不过。不要求和原文一字不差。",
+        '在 `rulings.json` 里把对应编号的 `null` 改成 `"pass"` 或 `"fail"`。',
+    ]
+    for n, a in enumerate(rows, 1):
+        lines += [
+            "",
+            f"## {n}. {_SYSTEM_NAMES.get(a['system'], a['system'])}，"
+            f"题目 {a['scenario_id']}，第 {a.get('slot', '?')} 次",
+            "",
+            f"编号：`{a['attempt_id']}`",
+            "",
+            "期望要素（全部要有才算过）：",
+            "",
+            *[f"- {e}" for e in a.get("expected_elements", ())],
+            "",
+            "两家 judge 怎么说：",
+            "",
+        ]
+        for name in JUDGE_NAMES:
+            verdict = a["verdicts"].get(name)
+            if verdict is None:
+                words = f"没给出结论（{a.get('errors', {}).get(name)}）"
+            else:
+                words = "过：期望要素都在" if verdict else "不过：缺了期望要素"
+            lines.append(f"- {_JUDGE_LABELS[name]}：{words}")
+            rationale = a.get("rationales", {}).get(name)
+            if rationale:
+                lines += ["", "  > " + rationale.strip().replace("\n", "\n  > "), ""]
+        lines += [
+            "",
+            "报告原文：",
+            "",
+            "````text",
+            str(a.get("report_text") or "").rstrip(),
+            "````",
+            "",
+            "请回答：过，还是不过？",
+        ]
+    return "\n".join(lines) + "\n"
+
+
+RULINGS_SCHEMA = "opspilot-binary-judge-rulings-1"
+
+
+def rulings_template(attempts: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    return {
+        "schema": RULINGS_SCHEMA,
+        "rulings": {a["attempt_id"]: None for a in attempts if disputed(a)},
+    }
+
+
+def load_rulings(
+    doc: Mapping[str, Any] | None, attempts: Sequence[Mapping[str, Any]]
+) -> dict[str, bool]:
+    """Filled rulings; ``null`` stays pending. An id that is not disputed fails."""
+    if doc is None:
+        return {}
+    if doc.get("schema") != RULINGS_SCHEMA or not isinstance(
+        doc.get("rulings"), Mapping
+    ):
+        raise BinaryJudgeError("RULINGS_SCHEMA_INVALID")
+    open_ids = {a["attempt_id"] for a in attempts if disputed(a)}
+    out: dict[str, bool] = {}
+    for attempt_id, value in doc["rulings"].items():
+        if attempt_id not in open_ids:
+            raise BinaryJudgeError("RULING_NOT_DISPUTED")
+        if value is None:
+            continue
+        if value not in ("pass", "fail"):
+            raise BinaryJudgeError("RULING_VALUE_INVALID")
+        out[attempt_id] = value == "pass"
+    return out
