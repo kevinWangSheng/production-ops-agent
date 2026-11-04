@@ -77,7 +77,6 @@ from scripts.eval_live_inject import ModelTransportFault as ModelTransportFault
 from scripts.eval_live_lab import (
     _STOP,
     NOISE_NOT_OBSERVED,
-    NOISE_RULES,
     SOURCE_QUERY,
     UNREACHABLE_PORT,
     V2_FAULT_FLAGS,
@@ -89,6 +88,7 @@ from scripts.eval_live_lab import (
     Interrupted,
     LabError,
     LiveDeps,
+    MetricNoiseRule,
     PgInstance,
     PreObservation,
     Provenance,
@@ -107,6 +107,8 @@ from scripts.eval_live_lab import (
     handle_signal,
     interrupt_scope,
     mark_injector,
+    noise_gate,
+    noise_rule,
     normal_window,
     observation_json,
     protected,
@@ -116,6 +118,9 @@ from scripts.eval_live_lab import (
     stop_requested,
     validate_injectors,
     write_private,
+)
+from scripts.eval_live_lab import (
+    NOISE_RULES as NOISE_RULES,
 )
 from scripts.eval_live_lab import InjectorHarness as InjectorHarness
 
@@ -1496,12 +1501,12 @@ def _setup_v2(
         # #432 seams §12 A16: a noise-only scenario must carry its noise; wait
         # for the noise flag's own error first, then judge checkout clean.
         state.stage = "noise_observation"
-        seen = fault_gate(rule, confirmed_at=effective_at, deps=deps)
+        seen = noise_gate(rule, confirmed_at=effective_at, deps=deps)
         with protected():
             ledger.write(f"pre-observation-noise-{flag}.json", _raw_observation(seen))
         if not seen.passed:
             raise LabError(NOISE_NOT_OBSERVED)
-        newest_noise = max(span.start for span in seen.matched) + FRESHNESS
+        newest_noise = _noise_deadline(seen)
         if noise_only_deadline is None or newest_noise < noise_only_deadline:
             noise_only_deadline = newest_noise
     state.stage = "pre_observation"
@@ -1556,12 +1561,12 @@ def _setup_v2(
         # #432 seams §6: the noise flag's own errors must be in the window
         # the Run will read; its newest error also bounds the submission.
         state.stage = "noise_observation"
-        seen = fault_gate(rule, confirmed_at=effective_at, deps=deps)
+        seen = noise_gate(rule, confirmed_at=effective_at, deps=deps)
         with protected():
             ledger.write(f"pre-observation-noise-{flag}.json", _raw_observation(seen))
         if not seen.passed:
             raise LabError(NOISE_NOT_OBSERVED)
-        newest_noise = max(span.start for span in seen.matched) + FRESHNESS
+        newest_noise = _noise_deadline(seen)
         if noise_deadline is None or newest_noise < noise_deadline:
             noise_deadline = newest_noise
     if noise_deadline is not None:
@@ -1656,35 +1661,47 @@ RECONFIRM_SECONDS = 240
 SIGNATURE_NOT_RECONFIRMED = "SIGNATURE_NOT_RECONFIRMED"
 
 
+def _noise_rules(
+    plan: InjectionPlan,
+) -> tuple[tuple[str, SignatureRule | MetricNoiseRule], ...]:
+    return tuple(
+        (flag.flag, rule)
+        for flag in plan.flags
+        if (rule := noise_rule(flag.flag)) is not None
+    )
+
+
 def noise_only_rules(
     plan: InjectionPlan, answer: Answer | AnswerV2
-) -> tuple[tuple[str, SignatureRule], ...]:
+) -> tuple[tuple[str, SignatureRule | MetricNoiseRule], ...]:
     """#432 seams §12 A16: the noise gates of a noise-only v2 attempt -- every
-    injected ``NOISE_RULES`` flag when the answer carries no signature (the
-    noise negative); its noise must be seen before the Run."""
+    injected noise flag (``NOISE_RULES`` or ``METRIC_NOISE_RULES``) when the
+    answer carries no signature (the noise negative); its noise must be seen
+    before the Run."""
     if answer.signature is not None:
         return ()
-    return tuple(
-        (flag.flag, NOISE_RULES[flag.flag])
-        for flag in plan.flags
-        if flag.flag in NOISE_RULES
-    )
+    return _noise_rules(plan)
 
 
 def noise_rules(
     plan: InjectionPlan, answer: Answer | AnswerV2
-) -> tuple[tuple[str, SignatureRule], ...]:
-    """#432 seams §6: the noise gates of a v2 attempt -- every injected flag
-    with a ``NOISE_RULES`` entry, only when the answer carries a signature
-    (the noise sits beside a fault; a noise-only scenario keeps its normal
-    window)."""
+) -> tuple[tuple[str, SignatureRule | MetricNoiseRule], ...]:
+    """#432 seams §6: the noise gates of a v2 attempt -- every injected noise
+    flag (``NOISE_RULES`` or ``METRIC_NOISE_RULES``), only when the answer
+    carries a signature (the noise sits beside a fault; a noise-only scenario
+    keeps its normal window)."""
     if answer.signature is None:
         return ()
-    return tuple(
-        (flag.flag, NOISE_RULES[flag.flag])
-        for flag in plan.flags
-        if flag.flag in NOISE_RULES
-    )
+    return _noise_rules(plan)
+
+
+def _noise_deadline(seen: PreObservation) -> datetime:
+    """A passed noise gate's submission bound: its newest error span, or for
+    a metric gate (no span) the end of the window it read, plus FRESHNESS."""
+    if seen.matched:
+        return max(span.start for span in seen.matched) + FRESHNESS
+    assert seen.window is not None
+    return seen.window.end + FRESHNESS
 
 
 def _closure(

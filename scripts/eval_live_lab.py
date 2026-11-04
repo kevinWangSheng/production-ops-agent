@@ -712,12 +712,18 @@ def confirm_all_normal(
 
 # -- v2 injector whitelist (#431, V2-R5) --------------------------------------
 
-#: The v2 flag whitelist: the v1 three plus the noise flag (Q19). The v1
-#: ``FAULT_FLAGS`` table (and ``kind_lab.FAULT_FLAGS``) stays the three, so a
-#: v1 round never depends on ``adFailure``; a v2 round checks all four off.
+#: The v2 flag whitelist: the v1 three plus the noise flag (Q19), plus the
+#: F1 holdout flags (prereview U2/S6): ``paymentUnreachable`` as a checkout
+#: path base fault under the existing payment signature, ``adManualGc`` and
+#: ``loadGeneratorFloodHomepage`` as noise only. The v1 ``FAULT_FLAGS`` table
+#: (and ``kind_lab.FAULT_FLAGS``) stays the three, so a v1 round never depends
+#: on a v2 flag; a v2 round checks every flag here off.
 V2_FAULT_FLAGS: Mapping[str, FaultFlag] = {
     **FAULT_FLAGS,
     "adFailure": FaultFlag("adFailure", "on"),
+    "paymentUnreachable": FaultFlag("paymentUnreachable", "on"),
+    "adManualGc": FaultFlag("adManualGc", "on"),
+    "loadGeneratorFloodHomepage": FaultFlag("loadGeneratorFloodHomepage", "on"),
 }
 
 #: #432 seams §6: a noise flag injected beside a signature fault must itself be
@@ -731,6 +737,65 @@ NOISE_RULES: Mapping[str, SignatureRule] = {
     ),
 }
 NOISE_NOT_OBSERVED = "NOISE_NOT_OBSERVED"
+
+
+@dataclass(frozen=True)
+class MetricSignal:
+    """One Prometheus signal of a metric noise gate (prereview §1 A, R3).
+
+    ``expr`` is an instant PromQL query with one ``{window}`` placeholder (a
+    range such as ``120s``); it is read once over the baseline window that
+    ends when the flag became effective and once over an equally long window
+    that ends now. It passes when the observed value is at least ``ratio``
+    times the baseline and at least ``floor``."""
+
+    signal_id: str
+    expr: str
+    ratio: float
+    floor: float
+
+
+@dataclass(frozen=True)
+class MetricNoiseRule:
+    """A noise flag that raises no error span: its noise is confirmed when
+    every ``signals`` entry passes in the same poll (harness only; the answer
+    schema keeps its error-span signatures, R3)."""
+
+    rule_id: str
+    signals: tuple[MetricSignal, ...]
+
+
+#: Prereview §1 A / R3: the noise-only flags without error spans, looked up by
+#: flag name. Thresholds follow the visibility probe's criteria.
+METRIC_NOISE_RULES: Mapping[str, MetricNoiseRule] = {
+    "adManualGc": MetricNoiseRule(
+        rule_id="ad-manual-gc-metric-v1",
+        signals=(
+            MetricSignal(
+                "ad-jvm-gc-duration",
+                'sum(rate(jvm_gc_duration_seconds_sum{{service_name="ad"}}[{window}]))',
+                ratio=5.0,
+                floor=0.01,
+            ),
+        ),
+    ),
+    "loadGeneratorFloodHomepage": MetricNoiseRule(
+        rule_id="frontend-proxy-flood-metric-v1",
+        signals=(
+            MetricSignal(
+                "frontend-proxy-server-span-rate",
+                "sum(rate(traces_span_metrics_calls_total"
+                '{{service_name="frontend-proxy",span_kind="SPAN_KIND_SERVER"}}'
+                "[{window}]))",
+                ratio=10.0,
+                floor=1.0,
+            ),
+        ),
+    ),
+}
+#: The shortest observed window a metric gate compares (Prometheus needs a few
+#: scrapes inside a ``rate`` range).
+METRIC_MIN_WINDOW_SECONDS = 90
 INJECTOR_KINDS = (
     "flagd",
     "source_unreachable",
@@ -1526,6 +1591,142 @@ def fault_gate(
     )
 
 
+def _metric(
+    deps: LiveDeps, expr: str, at: datetime, timeout: float
+) -> CallCount | None:
+    """One instant Prometheus value; None when the probe has no metric read."""
+    read = getattr(deps.telemetry, "metric", None)
+    if read is None:
+        return None
+    checkpoint()
+    value: CallCount = read(expr, at, timeout)
+    checkpoint()
+    return value
+
+
+def metric_gate(
+    rule: MetricNoiseRule,
+    *,
+    confirmed_at: datetime,
+    deps: LiveDeps,
+    budget_seconds: float = PROPAGATION_SECONDS,
+    poll_seconds: float = POLL_SECONDS,
+    probe_timeout: float = PROBE_SECONDS,
+    min_window_seconds: float = METRIC_MIN_WINDOW_SECONDS,
+) -> PreObservation:
+    """A metric noise flag's own signal is up (prereview §1 A, R3): every
+    signal's value over ``[confirmed_at, now]`` is at least its ratio times
+    the value over the equally long window before ``confirmed_at``, and at
+    least its floor. A missing or incomplete read never passes."""
+    clock = deps.clock
+    started = clock.monotonic()
+    probes = 0
+    raw: list[Mapping[str, Any]] = []
+    while (left := _remaining(clock, started, budget_seconds)) > 0:
+        checkpoint()
+        now = clock.now()
+        seconds = int((now - confirmed_at).total_seconds())
+        if seconds < min_window_seconds:
+            clock.sleep(
+                min(left, max(min_window_seconds - seconds, 0.01), poll_seconds)
+            )
+            continue
+        end = confirmed_at + timedelta(seconds=seconds)
+        passed = True
+        for signal in rule.signals:
+            expr = signal.expr.format(window=f"{seconds}s")
+            timeout = min(
+                probe_timeout, max(_remaining(clock, started, budget_seconds), 0.01)
+            )
+            baseline = _metric(deps, expr, confirmed_at, timeout)
+            observed = _metric(deps, expr, end, timeout)
+            if baseline is None or observed is None:
+                return PreObservation(
+                    "fault",
+                    False,
+                    "METRIC_PROBE_UNAVAILABLE",
+                    confirmed_at,
+                    None,
+                    (),
+                    None,
+                    probes,
+                    tuple(raw),
+                )
+            probes += 2
+            ok = (
+                baseline.complete
+                and observed.complete
+                and baseline.value is not None
+                and observed.value is not None
+                and observed.value >= signal.ratio * baseline.value
+                and observed.value >= signal.floor
+            )
+            raw.append(
+                {
+                    "rule_id": rule.rule_id,
+                    "signal_id": signal.signal_id,
+                    "expr": expr,
+                    "baseline_at": confirmed_at.isoformat(),
+                    "observed_at": end.isoformat(),
+                    "baseline": baseline.value,
+                    "observed": observed.value,
+                    "complete": baseline.complete and observed.complete,
+                    "ratio": signal.ratio,
+                    "floor": signal.floor,
+                    "passed": ok,
+                }
+            )
+            passed = passed and ok
+        if _remaining(clock, started, budget_seconds) < 0:
+            # Results that arrived after the stage deadline never pass (r13).
+            break
+        if passed:
+            return PreObservation(
+                "fault",
+                True,
+                None,
+                confirmed_at,
+                Window(confirmed_at, end),
+                (),
+                None,
+                probes,
+                tuple(raw),
+            )
+        left = _remaining(clock, started, budget_seconds)
+        if left <= 0:
+            break
+        clock.sleep(min(poll_seconds, left))
+    return PreObservation(
+        "fault",
+        False,
+        NOISE_NOT_OBSERVED,
+        confirmed_at,
+        None,
+        (),
+        None,
+        probes,
+        tuple(raw),
+    )
+
+
+def noise_gate(
+    rule: SignatureRule | MetricNoiseRule,
+    *,
+    confirmed_at: datetime,
+    deps: LiveDeps,
+) -> PreObservation:
+    """A noise flag's own confirmation: its error span (``NOISE_RULES``) or
+    its metric signal (``METRIC_NOISE_RULES``)."""
+    if isinstance(rule, MetricNoiseRule):
+        return metric_gate(rule, confirmed_at=confirmed_at, deps=deps)
+    return fault_gate(rule, confirmed_at=confirmed_at, deps=deps)
+
+
+def noise_rule(flag: str) -> SignatureRule | MetricNoiseRule | None:
+    """The noise gate of a whitelisted flag, by name; None for a fault flag."""
+    return NOISE_RULES.get(flag) or METRIC_NOISE_RULES.get(flag)
+
+
 def normal_window(
     signatures: Sequence[SignatureRule],
     *,
@@ -1977,9 +2178,11 @@ class LabTelemetry:
             "sum(increase(traces_span_metrics_calls_total"
             f'{{service_name="checkout"}}[{seconds}s]))'
         )
-        query = urllib.parse.urlencode(
-            {"query": expr, "time": f"{end.timestamp():.3f}"}
-        )
+        return self.metric(expr, end, timeout)
+
+    def metric(self, expr: str, at: datetime, timeout: float) -> CallCount:
+        """One instant query with the lab account; an empty result is 0."""
+        query = urllib.parse.urlencode({"query": expr, "time": f"{at.timestamp():.3f}"})
         status, payload = kind_lab.get_json(
             f"{kind_lab.PROMETHEUS}/api/v1/query?{query}",
             timeout=max(timeout, 0.01),

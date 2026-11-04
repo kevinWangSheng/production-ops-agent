@@ -31,6 +31,19 @@ _FLAGS["flags"]["adFailure"] = {
     "variants": {"on": True, "off": False},
     "defaultVariant": "off",
 }
+# F1 S6 (prereview U2): the whitelist's holdout flags, as the lab ConfigMap
+# defines them (all off; the flood flag's variants are numbers).
+for _name in ("paymentUnreachable", "adManualGc"):
+    _FLAGS["flags"][_name] = {
+        "state": "ENABLED",
+        "variants": {"on": True, "off": False},
+        "defaultVariant": "off",
+    }
+_FLAGS["flags"]["loadGeneratorFloodHomepage"] = {
+    "state": "ENABLED",
+    "variants": {"on": 100, "off": 0},
+    "defaultVariant": "off",
+}
 ORIGINAL_V2 = (json.dumps(_FLAGS, indent=4) + "\n").encode()
 PAYMENT = {"kind": "flagd", "params": {"flag": "paymentFailure", "variant": "100%"}}
 AD = {"kind": "flagd", "params": {"flag": "adFailure", "variant": "on"}}
