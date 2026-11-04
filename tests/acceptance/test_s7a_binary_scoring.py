@@ -149,16 +149,21 @@ def test_one_prompt_judges_both_systems() -> None:
     assert s7a.judge_messages(answer, a) == ma
 
 
-def test_prompt_carries_the_expected_output_and_the_polarity_question() -> None:
+def test_prompt_carries_the_expected_output_and_the_signature_question() -> None:
     _, answer = load_scenario_v2(NOISE_POSITIVE)
     report = "some report"
     messages = s7a.judge_messages(answer, report)
     content = "\n".join(str(m["content"]) for m in messages)
     for element in answer.expected_output:
         assert element in content
+    # Q9: the question follows whether a fault was injected (a signature),
+    # not ``polarity``: dev-v2 negatives such as dv2-28535a also carry the
+    # paymentFailure signature and expect the payment root cause. With a
+    # signature: root cause substantively found; without: no false alarm.
+    unsigned = dataclasses.replace(answer, signature=None)
+    assert s7a.judge_messages(unsigned, report) != messages
     flipped = dataclasses.replace(answer, polarity="negative")
-    # fault: root cause found; normal: no false attribution (Q9)
-    assert s7a.judge_messages(flipped, report) != s7a.judge_messages(answer, report)
+    assert s7a.judge_messages(flipped, report) == messages
 
 
 def test_input_projections() -> None:
