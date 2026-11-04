@@ -27,7 +27,7 @@
 | ReportV2 投影 | 按报告原顺序写 assessment、conclusion、summary、各 claim（类型标签 + 原文 + `E<n>`）、gaps、next steps | 原文照搬，不暴露内部 ID |
 | OpsPilot 的 checks | `q20.*` 取轮次 summary 里已复核的 Q20 期望；judge 适用的行再加现场重算的 `gate.*` | 「只确定性」行按 Q20 判；gate 要求有报告和签名，套在这些行上会把合同允许的行为也否决掉 |
 | HolmesGPT 的输入 | 读 #470 `summarize` 的真实轮次 summary：`slot["raw"]` 指向 `holmes.json`，路径必须在 attempts 根目录之下，sha256 要和该尝试自己的 summary.json 对上；送 judge 的只有 `project_holmes_output` 取出的 `result` | 审查第 1 轮 X2：之前读的 slot 形状是自己夹具编的 |
-| HolmesGPT 的 checks | `final_state`：按 slot 的 `final_state` 对照答案的 `expected_outcome.final_states` 重算；`read_only`：取 slot 自己的 `checks.read_only`，没开始的为不适用；judge 适用的行再加 `report`（`result` 不为空） | Q11：HolmesGPT 只适用「只读未越权、调查跑完」；机器人 4470679556 |
+| HolmesGPT 的 checks | `final_state`：按 slot 的 `final_state` 对照答案的 `expected_outcome.final_states` 重算；`read_only`：取 slot 自己的 `checks.read_only`，跑过的槽没有布尔值就记为不过，没开始的为不适用；judge 适用的行再加 `report`（`result` 不为空） | Q11：HolmesGPT 只适用「只读未越权、调查跑完」；机器人 4470679556 |
 | 没开始的槽 | 两边都用合成 id（`opspilot-not-started-<题>-<槽>`、`holmes-not-started-<题>-<槽>`），计入分母，记为不过 | 审查第 1 轮 2；`eval_dev_round` 的这种槽 `attempt_id` 为 None、checks 为空 |
 | 对比分母 | `comparison` 行只含两边都有尝试、且 judge 适用的题，即问题入口；`systems` 行是各自全部题的成绩；「只确定性」的行单独放在 `deterministic_only`，各系统分开报，不进对比 | lead 裁决（审查第 1 轮 3、4）：Holmes 没有 Q20 检查，进对比会白拿分 |
 | 作废尝试 | 读 #474 的 `eval_pair_schedule` 日志和 `check` 输出，按 `voided[].window_id` 和 `systems` 在日志里取 attempt_id；这些尝试不送 judge，不进裁决、不进任何分母，列在 `voided_attempts`；去掉作废的之后再查同一题是否超过 k 次 | 审查第 1 轮 5（X3） |

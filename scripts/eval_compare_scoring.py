@@ -246,8 +246,8 @@ def holmes_attempts(
 ) -> list[dict[str, Any]]:
     """Slots of ``scripts.holmes_baseline.dataset summarize`` (#470).
 
-    Checks: ``read_only`` from the slot's own Q11 check (``None`` = not
-    applicable, e.g. never started); ``final_state`` recomputed as the slot's
+    Checks: ``read_only`` from the slot's own Q11 check (a ran slot without
+    a boolean value fails; never started: ``None``, not applicable); ``final_state`` recomputed as the slot's
     terminal state in the answer's allowed set; where the judge applies,
     ``report``: the final answer (``result``) is non-blank.
     """
@@ -270,7 +270,9 @@ def holmes_attempts(
         item["checks"] = {
             "final_state": ran
             and slot.get("final_state") in answer.expected_outcome.final_states,
-            "read_only": read_only if isinstance(read_only, bool) else None,
+            # A ran slot without a boolean read_only fails closed; only a
+            # never-started slot has it not applicable.
+            "read_only": (read_only is True) if ran else None,
         }
         if ran and slot.get("raw"):
             item["report_text"] = _holmes_text(attempts_root, slot["raw"], attempt_id)

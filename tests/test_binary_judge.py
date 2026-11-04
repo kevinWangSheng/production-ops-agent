@@ -334,6 +334,15 @@ def test_holmes_raw_hash_and_root_checked(tmp_path: Path) -> None:
     assert err.value.code == "HOLMES_RAW_OUTSIDE_ROOT:h-pay-1"
 
 
+def test_holmes_ran_slot_without_read_only_fails_closed() -> None:
+    dataset = {"dv2-2b214b": load_scenario_v2(DATASET / "regression/dv2-2b214b")}
+    doc = json.loads((HOLMES_FIXTURE / "round.json").read_text())
+    doc["slots"] = [s for s in doc["slots"] if s["attempt_id"] == "h-pay-1"]
+    doc["slots"][0]["checks"] = {"read_only": None}
+    (row,) = cli.holmes_attempts(dataset, doc, HOLMES_FIXTURE / "attempts")
+    assert row["checks"]["read_only"] is False and bj.vetoed(row)
+
+
 def test_opspilot_not_started_slot_counts_as_failure() -> None:
     dataset = {"dv2-2b214b": load_scenario_v2(DATASET / "regression/dv2-2b214b")}
     # eval_dev_round's never-started slot shape.

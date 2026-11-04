@@ -5,15 +5,15 @@ Run from a checkout of that branch:
     python gen470.py <checkout> <fixture dir>
 """
 
+import importlib
 import json
 import sys
 from pathlib import Path
 
 W, F = Path(sys.argv[1]), Path(sys.argv[2])
 sys.path.insert(0, str(W))
-import tests.test_s7_holmes_dataset_impl as t  # noqa: E402
-
-from scripts.holmes_baseline import dataset as ds  # noqa: E402
+t = importlib.import_module("tests.test_s7_holmes_dataset_impl")
+ds = importlib.import_module("scripts.holmes_baseline.dataset")
 
 att = F / "attempts"
 fo = t.fake_output
