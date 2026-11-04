@@ -347,6 +347,11 @@ class LiveDeps:
     # keeps them under ``ledger_root``, which always holds the lab
     # coordination files (occupation, restore intent, guards, run starts).
     attempt_root: Path | None = None
+    # F1 closure R7: ``store_restarts`` reader for pair.json; None offline.
+    lab_restarts: Any = None
+    # F1 closure R7: the HolmesGPT side of a paired attempt
+    # (``eval_live.BaselineRequest`` -> ``BaselineResult``); None unpaired.
+    baseline: Any = None
 
 
 # -- private ledger -----------------------------------------------------------
@@ -2186,6 +2191,9 @@ class LabTelemetry:
                 return SpanQuery(tuple(found.values()), False)
         return SpanQuery(tuple(found.values()), True)
 
+    def instant(self, expr: str, at: datetime, timeout: float) -> float | None:
+        return lab_instant(expr, at, timeout)
+
     def checkout_calls(
         self, start: datetime, end: datetime, timeout: float
     ) -> CallCount:
@@ -2224,6 +2232,47 @@ class LabTelemetry:
         except (KeyError, IndexError, TypeError, ValueError):
             return CallCount(None, False)
         return CallCount(value, True)
+
+
+def lab_instant(expr: str, at: datetime, timeout: float) -> float | None:
+    """One lab Prometheus instant query (the ``lab`` account); the first
+    sample's value, None when absent or unreadable (F1 closure R7)."""
+    query = urllib.parse.urlencode({"query": expr, "time": f"{at.timestamp():.3f}"})
+    status, payload = kind_lab.get_json(
+        f"{kind_lab.PROMETHEUS}/api/v1/query?{query}",
+        timeout=max(timeout, 0.01),
+        authorization=kind_lab.lab_authorization(),
+    )
+    if status != 200 or not isinstance(payload, dict):
+        return None
+    try:
+        rows = payload["data"]["result"]
+        value = float(rows[0]["value"][1]) if rows else None
+    except (KeyError, IndexError, TypeError, ValueError):
+        return None
+    return None if value is None or value != value else value  # NaN: none
+
+
+def store_restarts(containers: Sequence[str]) -> str | None:
+    """``pod/container=restarts`` of the lab's telemetry-store containers
+    (kubectl, the lab kubeconfig), sorted; None when unreadable."""
+    try:
+        raw = _external(
+            kind_lab.kubectl("-n", kind_lab.NAMESPACE, "get", "pods", "-o", "json"),
+            timeout=30,
+        )
+        pods = json.loads(raw)["items"]
+    except (LabError, ValueError, KeyError, TypeError):
+        return None
+    if pods is None:
+        return None
+    rows = []
+    for pod in pods:
+        name = pod.get("metadata", {}).get("name")
+        for status in pod.get("status", {}).get("containerStatuses") or []:
+            if status.get("name") in containers:
+                rows.append(f"{name}/{status['name']}={status.get('restartCount')}")
+    return ",".join(sorted(rows))
 
 
 def _get_json_sized(url: str, timeout: float) -> tuple[Any, int]:
