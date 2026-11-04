@@ -29,13 +29,14 @@ class FakeBaseline:
             raise RuntimeError("boom")
         return eval_live.BaselineResult(
             status=self.status,  # type: ignore[arg-type]
-            run_created=self.status != "setup_failed",
+            product_run_created=self.status != "setup_failed",
             output_sha256="0" * 64,
         )
 
 
 @pytest.fixture
-def lab(tmp_path: Path) -> dict[str, Any]:
+def lab(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
+    monkeypatch.setattr(eval_live, "HOLMES_LOCK", tmp_path / "holmes.lock")
     root = tmp_path / "dev-v2"
     shutil.copytree(DEV_V2 / "regression", root / "regression")
     shutil.copytree(DEV_V2 / "capability", root / "capability")
@@ -138,7 +139,7 @@ def test_shared_setup_failure_marks_both_slots(lab):
     slots = _pair(evidence, result)["slots"]
     assert [s["status"] for s in slots] == ["setup_failed", "setup_failed"]
     assert {s["reason"] for s in slots} == {result.slots[0].reason}
-    assert not any(s["run_created"] for s in slots)
+    assert not any(s["product_run_created"] for s in slots)
 
 
 @pytest.mark.parametrize("order", ["opspilot-first", "holmes-first"])
@@ -171,3 +172,78 @@ def test_opspilot_only_window_still_writes_its_record(lab):
     assert baseline.calls == []
     alert = eval_live.plan_slots(lab["root"], ["dv2-30921c"], 1)
     eval_live.check_pair(alert, probe=False, alone=True)
+
+
+def test_waiting_for_the_host_holmes_lock_reconfirms_the_gate(lab, monkeypatch):
+    import fcntl
+
+    calls: list[str] = []
+    real = eval_live._regate
+
+    def regate(*args: Any, **kwargs: Any) -> Any:
+        calls.append("regate")
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(eval_live, "_regate", regate)
+    monkeypatch.setattr(eval_live, "HOLMES_LOCK_POLL_SECONDS", 0.01)
+    holder = eval_live.HOLMES_LOCK.open("a")
+    fcntl.flock(holder, fcntl.LOCK_EX)
+    sleeps = {"n": 0}
+    clock = lab["deps"].clock
+    original = clock.sleep
+
+    def sleep(seconds: float) -> None:
+        if seconds == eval_live.HOLMES_LOCK_POLL_SECONDS:
+            sleeps["n"] += 1
+            fcntl.flock(holder, fcntl.LOCK_UN)  # another lab's slot ends
+        original(seconds)
+
+    monkeypatch.setattr(clock, "sleep", sleep)
+    _round(lab, "dv2-2b214b", "holmes-first", FakeBaseline())
+    holder.close()
+    # holmes (position 1) waited, so it re-confirms; opspilot (2) always does
+    assert sleeps["n"] >= 1
+    assert calls == ["regate", "regate"]
+
+
+def test_holmes_adapter_maps_s7b_results():
+    from datetime import UTC, datetime
+
+    seen: dict[str, Any] = {}
+
+    def fake(spec, answer, **kw):
+        seen.update(kw)
+        return {
+            "status": "aborted",
+            "reason": "DEADLINE_PASSED",
+            "started_at": None,
+            "ended_at": None,
+            "holmes_json_sha256": None,
+        }
+
+    request = eval_live.BaselineRequest(
+        attempt_id="a1",
+        round_id="r1",
+        spec=None,  # type: ignore[arg-type]
+        answer=None,  # type: ignore[arg-type]
+        plan=None,  # type: ignore[arg-type]
+        output_dir=Path("/x/holmes-r1"),
+        position=1,
+        submit_not_after=datetime.now(UTC),
+    )
+    out = eval_live.HolmesBaseline(fake).run(request)
+    assert out.status == "setup_failed" and not out.product_run_created
+    assert "deadline" not in seen  # the frozen wall budget stays (R15)
+    assert seen["raw_root"] == Path("/x/holmes-r1") and seen["attempt_id"] == "a1"
+
+    ran = eval_live.HolmesBaseline(
+        lambda spec, answer, **kw: {
+            "status": "ran",
+            "reason": None,
+            "started_at": "2026-11-05T00:00:00+00:00",
+            "ended_at": "2026-11-05T00:03:00+00:00",
+            "holmes_json_sha256": "f" * 64,
+        }
+    ).run(request)
+    assert ran.status == "ran" and ran.product_run_created
+    assert ran.output_sha256 == "f" * 64

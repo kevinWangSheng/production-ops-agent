@@ -1,6 +1,6 @@
 {
   "schema": "opspilot-eval-preregistered-rules-1",
-  "rules_id": "f1-closure-paired-r1",
+  "rules_id": "f1-closure-paired-r2",
   "registered_at": "2026-11-04",
   "registered_before": "the F1 closure exam set is generated (rulings U1 revision, 2026-11-04 07:40 PT: void/rerun rules are written before the questions)",
   "sources": [
@@ -9,8 +9,13 @@
     "scripts/eval_dev_round.py registered reruns (seams-432 section 5a)"
   ],
   "repetitions": 3,
-  "systems": ["opspilot", "holmes"],
-  "holmes_entries": ["question"],
+  "systems": [
+    "opspilot",
+    "holmes"
+  ],
+  "holmes_entries": [
+    "question"
+  ],
   "pairing": {
     "same_injection": true,
     "order": "alternate",
@@ -26,43 +31,53 @@
   },
   "void_rerun": {
     "max_reruns_per_window": 1,
-    "rerun_unit": "window",
-    "rerun_note": "a rerun repeats the whole window (both systems, same planned order) so the pair stays symmetric; every voided slot stays in voided_attempts",
+    "rerun_note": "rerun_slot repeats only the failed system's slot in a new window of its own (same injection plan); rerun_pair repeats the whole window, both systems in the planned order, so the pair stays symmetric; every voided slot stays in voided_attempts",
     "classes": [
       {
-        "code": "ENV_SETUP_FAILED",
-        "when": "a slot of the window ended setup_failed before its own Run was created (lab, PG, injection, pre-observation gate or its re-confirmation before the second system, HolmesGPT container start)",
-        "action": "rerun_window",
-        "note": "environment not ready, rerun per rule"
-      },
-      {
-        "code": "PROVIDER_5XX_STORM",
-        "when": "a slot's Run ended on a model provider failure: its last model call failed as unavailable (provider HTTP 5xx or connection failure, after the system's own retries), and the scenario injects no model transport fault",
-        "action": "rerun_window",
-        "note": "provider outage, rerun per rule"
-      },
-      {
         "code": "HOST_NOISE",
-        "when": "on a shared-vCPU host only (U7): any slot of the window has CPU steal above 5 percent, or the window's baseline checkout p95 exceeds twice the S5 probe baseline",
-        "action": "rerun_window",
+        "when": "on a shared-vCPU host only (U7): any slot of the window has CPU steal strictly above 5 percent, or the window's baseline checkout p95 is strictly above twice the S5 probe baseline",
+        "action": "rerun_pair",
         "note": "host noise, pair rerun per rule"
       },
       {
         "code": "HARNESS_INTERRUPTED",
         "when": "the driver was interrupted or crashed (exit 130, exit 4 retained fault recovered by --recover) before both slots of the window finished",
-        "action": "rerun_window",
+        "action": "rerun_pair",
         "note": "harness interrupted, rerun per rule"
+      },
+      {
+        "code": "ENV_SETUP_FAILED",
+        "when": "a slot ended setup_failed before its own Run was created (lab, PG, injection, pre-observation gate or its re-confirmation before the second system, HolmesGPT container start); a slot whose Run was created is scored as it ended",
+        "action": "rerun_slot",
+        "note": "environment not ready, rerun per rule"
+      },
+      {
+        "code": "PROVIDER_5XX_STORM",
+        "when": "a slot's Run ended on a model provider failure: its last model call failed as unavailable (provider HTTP 5xx or connection failure, after the system's own retries), and the scenario injects no model transport fault",
+        "action": "rerun_slot",
+        "note": "provider outage, rerun per rule"
       }
     ],
-    "after_rerun": "the rerun counts as it ends, whatever class it fails with; it is never voided in turn",
+    "after_rerun": "a rerun (pair or slot) counts as it ends, whatever class it fails with; it is never rerun in turn",
     "never_void": [
       "a wrong, missing or invalid answer of either system",
       "a system timing out, exhausting its step or token budget, or refusing",
       "a Run that started and failed on anything outside the classes above",
       "contamination flags (reported per slot, with a sensitivity row that excludes flagged slots)",
       "a scheduling gap or wash shorter than the minimum (reported as a schedule violation, never silently dropped)"
-    ]
+    ],
+    "precedence": "HOST_NOISE, HARNESS_INTERRUPTED, ENV_SETUP_FAILED, PROVIDER_5XX_STORM: the first class that applies decides"
   },
   "denominator": "every started slot counts; a voided slot leaves the score but stays in voided_attempts; a planned slot that never started counts as a failure",
-  "records_per_slot": ["lab", "window_id", "system", "position", "predecessor", "contamination", "host_noise", "started_at", "ended_at"]
+  "records_per_slot": [
+    "lab",
+    "window_id",
+    "system",
+    "position",
+    "predecessor",
+    "contamination",
+    "host_noise",
+    "started_at",
+    "ended_at"
+  ]
 }

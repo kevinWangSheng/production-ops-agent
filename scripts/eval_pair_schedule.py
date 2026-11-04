@@ -13,9 +13,9 @@ least ``same_scenario_min_gap_seconds`` (fault restored to next injection),
 and between any two windows at least ``wash_min_seconds``. Two labs share no
 Prometheus or Jaeger, so a fault on one cannot be read on the other.
 
-    .venv/bin/python -m scripts.eval_schedule plan --dataset evals/datasets/dev-v2 \\
+    .venv/bin/python -m scripts.eval_pair_schedule plan --dataset evals/datasets/dev-v2 \\
         --labs labs.json [--rules RULES] [--window-minutes 27] --out plan.json
-    .venv/bin/python -m scripts.eval_schedule check --plan plan.json --log log.json \\
+    .venv/bin/python -m scripts.eval_pair_schedule check --plan plan.json --log log.json \\
         [--rules RULES]
 
 ``plan`` is offline and deterministic: it simulates the same dispatcher the
@@ -50,12 +50,15 @@ PLAN_SCHEMA = "opspilot-eval-paired-plan-1"
 LOG_SCHEMA = "opspilot-eval-paired-log-1"
 LABS_SCHEMA = "opspilot-eval-labs-1"
 SYSTEMS = ("opspilot", "holmes")
-VOID_CLASSES = (
-    "ENV_SETUP_FAILED",
-    "PROVIDER_5XX_STORM",
-    "HOST_NOISE",
-    "HARNESS_INTERRUPTED",
-)
+#: The void classes in precedence order and what each reruns; the rules
+#: file must state exactly these (``load_rules``).
+VOID_ACTIONS = {
+    "HOST_NOISE": "rerun_pair",
+    "HARNESS_INTERRUPTED": "rerun_pair",
+    "ENV_SETUP_FAILED": "rerun_slot",
+    "PROVIDER_5XX_STORM": "rerun_slot",
+}
+VOID_CLASSES = tuple(VOID_ACTIONS)
 #: r0.1-3: the shared-vCPU thresholds of the HOST_NOISE class.
 STEAL_LIMIT_PERCENT = 5.0
 BASELINE_P95_LIMIT_RATIO = 2.0
@@ -82,6 +85,8 @@ class Rules:
     max_reruns: int
     void_classes: tuple[str, ...]
     sha256: str | None = None
+    #: per void class, the note an original keeps once it is rerun
+    notes: Mapping[str, str] = field(default_factory=dict)
 
 
 def load_rules(path: Path = RULES_PATH) -> Rules:
@@ -106,9 +111,8 @@ def load_rules(path: Path = RULES_PATH) -> Rules:
             pairing["order"] == "alternate",
             spacing["same_scenario_gap_scope"] == "lab",
             spacing["one_window_per_lab"] is True,
-            void["rerun_unit"] == "window",
-            all(c["action"] == "rerun_window" for c in void["classes"]),
-            {c["code"] for c in void["classes"]} <= set(VOID_CLASSES),
+            [(c["code"], c["action"]) for c in void["classes"]]
+            == list(VOID_ACTIONS.items()),
         )
         if not all(checks):
             raise ScheduleError("RULES_UNSUPPORTED")
@@ -123,6 +127,7 @@ def load_rules(path: Path = RULES_PATH) -> Rules:
             max_reruns=int(void["max_reruns_per_window"]),
             void_classes=tuple(c["code"] for c in void["classes"]),
             sha256=hashlib.sha256(raw).hexdigest(),
+            notes={str(c["code"]): str(c["note"]) for c in void["classes"]},
         )
     except (KeyError, TypeError, ValueError):
         raise ScheduleError("RULES_INVALID") from None
@@ -150,14 +155,22 @@ class Window:
     systems: tuple[str, ...]
     #: 0 the first run of this window, 1 its registered rerun
     attempt: int = 0
+    #: the voided window this one reruns (all of it, or only some systems)
+    rerun_of: str | None = None
 
-    def rerun(self) -> Window:
+    def rerun(self, systems: Sequence[str] | None = None) -> Window:
+        keep = (
+            self.systems
+            if systems is None
+            else tuple(s for s in self.systems if s in systems)
+        )
         return Window(
             f"{self.window_id}-rerun",
             self.scenario_id,
             self.repetition,
-            self.systems,
+            keep,
             self.attempt + 1,
+            self.window_id,
         )
 
     def as_json(self) -> dict[str, Any]:
@@ -167,6 +180,7 @@ class Window:
             "repetition": self.repetition,
             "systems": list(self.systems),
             "attempt": self.attempt,
+            "rerun_of": self.rerun_of,
         }
 
 
@@ -186,13 +200,17 @@ def scenarios_from_dataset(root: Path) -> tuple[Scenario, ...]:
 
 def windows(scenarios: Sequence[Scenario], rules: Rules) -> tuple[Window, ...]:
     """Every scenario ``repetitions`` times. Repetition r (1-based) of the
-    i-th scenario puts OpsPilot first when ``i + r`` is even: each scenario
-    alternates, and consecutive scenarios start on opposite sides, so the
-    totals of first positions differ by at most one per two scenarios."""
+    i-th paired scenario (counting only scenarios HolmesGPT answers) puts
+    OpsPilot first when ``i + r`` is even: each scenario alternates, and
+    consecutive paired scenarios start on opposite sides, so the totals of
+    first positions differ by at most one."""
     out = []
-    for i, scenario in enumerate(scenarios):
+    i = -1
+    for scenario in scenarios:
+        paired = scenario.entry in rules.holmes_entries
+        i += paired
         for r in range(1, rules.repetitions + 1):
-            if scenario.entry in rules.holmes_entries:
+            if paired:
                 order: tuple[str, ...] = (
                     SYSTEMS if (i + r) % 2 == 0 else tuple(reversed(SYSTEMS))
                 )
@@ -300,10 +318,14 @@ class Dispatcher:
                     "scenario_id": window.scenario_id,
                     "restored_at": restored.isoformat(),
                 }
-            void = classify_void(record, self.rules)
+            decision = decide(record, self.rules)
+            void = decision["void"]
             record["void"] = void
+            record["decision"] = {k: decision[k] for k in ("action", "systems", "note")}
             if void is not None and window.attempt < self.rules.max_reruns:
-                rerun = window.rerun()
+                rerun = window.rerun(
+                    None if decision["action"] == "rerun_pair" else decision["systems"]
+                )
                 self.rank[rerun.window_id] = self.rank.get(window.window_id, 0)
                 self.pending.append(rerun)
                 record["rerun_window_id"] = rerun.window_id
@@ -320,33 +342,86 @@ class Dispatcher:
 # -- void classification --------------------------------------------------------
 
 
-def classify_void(record: Mapping[str, Any], rules: Rules) -> str | None:
-    """The preregistered void class of a finished window, or None.
+def _rules() -> Rules:
+    return load_rules()
 
-    The classes are checked in the rule file's order. Every slot's facts come
-    from the window runner; nothing here judges an answer."""
+
+def decide(
+    record: Mapping[str, Any],
+    rules: Rules,
+    *,
+    shared_host: bool | None = None,
+    probe_baseline_p95_ms: float | None = None,
+) -> dict[str, Any]:
+    """The preregistered rerun decision of a finished window (or pair):
+    ``{"action": "keep" | "rerun_pair" | "rerun_slot", "systems": [...],
+    "note": str | None, "void": class | None}``.
+
+    Classes in precedence order (``VOID_ACTIONS``); a window that is itself
+    a rerun (``rerun_of`` set) is always kept. Every slot fact comes from the
+    window runner; nothing here judges an answer."""
+    keep = {"action": "keep", "systems": [], "note": None, "void": None}
+    if record.get("rerun_of"):
+        return keep
     slots = [s for s in record.get("slots") or [] if isinstance(s, Mapping)]
-    found: list[str] = []
+    systems = [str(s.get("system")) for s in slots]
+    shared = record.get("shared_host") if shared_host is None else shared_host
+    p95 = record.get("baseline_p95_ms")
+    p95_noisy = (
+        isinstance(p95, (int, float))
+        and isinstance(probe_baseline_p95_ms, (int, float))
+        and probe_baseline_p95_ms > 0
+        and p95 > BASELINE_P95_LIMIT_RATIO * probe_baseline_p95_ms
+    )
+    found: dict[str, list[str]] = {}
+    if shared and (p95_noisy or any(host_noisy(s.get("host_noise")) for s in slots)):
+        found["HOST_NOISE"] = systems
     if record.get("interrupted") or any(
         s.get("status") == "not_started" for s in slots
     ):
-        found.append("HARNESS_INTERRUPTED")
-    if any(
-        s.get("status") == "setup_failed" and not s.get("run_created") for s in slots
-    ):
-        found.append("ENV_SETUP_FAILED")
-    if not record.get("model_fault") and any(
-        s.get("provider_error") is True for s in slots
-    ):
-        found.append("PROVIDER_5XX_STORM")
-    if record.get("shared_host") and any(
-        host_noisy(s.get("host_noise")) for s in slots
-    ):
-        found.append("HOST_NOISE")
+        found["HARNESS_INTERRUPTED"] = systems
+    failed = [
+        str(s.get("system"))
+        for s in slots
+        if s.get("status") == "setup_failed" and not s.get("product_run_created")
+    ]
+    if failed:
+        found["ENV_SETUP_FAILED"] = failed
+    outage = [
+        str(s.get("system"))
+        for s in slots
+        if s.get("provider_error") is True and not record.get("model_fault")
+    ]
+    if outage:
+        found["PROVIDER_5XX_STORM"] = outage
     for code in rules.void_classes:
         if code in found:
-            return code
-    return None
+            return {
+                "action": VOID_ACTIONS[code],
+                "systems": found[code],
+                "note": rules.notes.get(code),
+                "void": code,
+            }
+    return keep
+
+
+def rerun_decision(
+    pair: Mapping[str, Any], *, shared_host: bool, probe_baseline_p95_ms: float
+) -> dict[str, Any]:
+    """Public form of ``decide`` for one executed pair (acceptance entry)."""
+    out = decide(
+        pair,
+        _rules(),
+        shared_host=shared_host,
+        probe_baseline_p95_ms=probe_baseline_p95_ms,
+    )
+    return {k: out[k] for k in ("action", "systems", "note")}
+
+
+def classify_void(record: Mapping[str, Any], rules: Rules) -> str | None:
+    """The void class ``decide`` gives a finished window, or None."""
+    void = decide(record, rules)["void"]
+    return None if void is None else str(void)
 
 
 def host_noisy(noise: Any) -> bool:
@@ -378,8 +453,10 @@ def steal_percent(before: str, after: str) -> float | None:
         return None
     delta = [y - x for x, y in zip(a, b, strict=True)]
     total = sum(delta)
-    if total <= 0 or any(d < 0 for d in delta):
+    if any(d < 0 for d in delta):
         return None
+    if total == 0:
+        return 0.0
     return round(100.0 * delta[7] / total, 3)
 
 
@@ -393,9 +470,11 @@ def simulate(
     *,
     window_length: timedelta,
     start: datetime,
+    per_system: bool = False,
 ) -> list[dict[str, Any]]:
-    """The dispatcher run with every window taking ``window_length`` from
-    injection to restore: the planned order, lab and estimated times."""
+    """The dispatcher run with every window taking ``window_length`` (times
+    the number of its systems with ``per_system``) from injection to
+    restore: the planned order, lab and estimated times."""
     dispatcher = Dispatcher(pending, labs, rules)
     free = dict.fromkeys(labs, start)
     while not dispatcher.done():
@@ -410,7 +489,7 @@ def simulate(
             free[lab] = ready
             continue
         begin = free[lab]
-        end = begin + window_length
+        end = begin + window_length * (len(window.systems) if per_system else 1)
         dispatcher.finish(
             lab,
             window,
@@ -476,6 +555,153 @@ def plan(
             for s in scenarios
         },
     }
+
+
+# -- acceptance entry points (S7c) ---------------------------------------------------
+
+
+def rules_sha256() -> str:
+    """sha256 of the preregistered rules file as committed."""
+    digest = load_rules().sha256
+    assert digest is not None
+    return digest
+
+
+#: The preregistered void/rerun rules (``RULES_PATH``), as written.
+RULES: Mapping[str, Any] = json.loads(RULES_PATH.read_text(encoding="utf-8"))
+
+
+def plan_schedule(
+    scenarios: Sequence[tuple[Any, Any]],
+    *,
+    k: int = 3,
+    labs: int = 1,
+    slot_seconds: float,
+    wash_seconds: float = 600,
+    same_scenario_gap_seconds: float = 3600,
+    seed: str,
+) -> dict[str, Any]:
+    """The planned pairs over ``labs`` independent labs, each slot taking
+    ``slot_seconds``; deterministic (``seed`` is recorded, the order is the
+    fixed dispatcher order). The minimums of the rules cannot be lowered."""
+    base = load_rules()
+    if wash_seconds < base.wash_min.total_seconds():
+        raise ValueError("wash_seconds below the registered minimum")
+    if same_scenario_gap_seconds < base.same_scenario_gap.total_seconds():
+        raise ValueError("same_scenario_gap_seconds below the registered minimum")
+    if k < 1 or labs < 1 or slot_seconds <= 0:
+        raise ValueError("k, labs and slot_seconds must be positive")
+    from dataclasses import replace
+
+    rules = replace(
+        base,
+        repetitions=k,
+        wash_min=timedelta(seconds=wash_seconds),
+        same_scenario_gap=timedelta(seconds=same_scenario_gap_seconds),
+    )
+    found = tuple(
+        Scenario(
+            spec.scenario_id,
+            spec.entry,
+            any(i.kind == "model_transport" for i in answer.injectors),
+        )
+        for spec, answer in scenarios
+    )
+    names = [str(n) for n in range(labs)]
+    epoch = datetime(2026, 1, 1, tzinfo=UTC)
+    records = simulate(
+        windows(found, rules),
+        names,
+        rules,
+        window_length=timedelta(seconds=slot_seconds),
+        start=epoch,
+        per_system=True,
+    )
+
+    def seconds(value: Any) -> float:
+        moment = _moment(value)
+        assert moment is not None
+        return (moment - epoch).total_seconds()
+
+    return {
+        "k": k,
+        "labs": labs,
+        "seed": seed,
+        "rules_sha256": rules.sha256,
+        "pairs": [
+            {
+                "pair_id": r["window_id"],
+                "lab": int(r["lab"]),
+                "scenario_id": r["scenario_id"],
+                "attempt": r["repetition"],
+                "systems": list(r["systems"]),
+                "start_s": seconds(r["injected_at"]),
+                "end_s": seconds(r["restored_at"]),
+            }
+            for r in records
+        ],
+    }
+
+
+def annotate_executed(slots: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    """Executed slots in input order, each with ``predecessor`` (the latest
+    earlier pair on the same lab: id, scenario, minutes from its end to this
+    pair's start) and ``violations`` (``WASH_SHORT``, ``SAME_SCENARIO_GAP``
+    against the registered minimums). Labs are independent; a pair's
+    partner slot is never its predecessor."""
+    rules = load_rules()
+    pairs: dict[tuple[str, str], dict[str, Any]] = {}
+    for slot in slots:
+        key = (str(slot["lab"]), str(slot["pair_id"]))
+        began, ended = _moment(slot.get("started_at")), _moment(slot.get("ended_at"))
+        item = pairs.setdefault(
+            key, {"scenario_id": slot["scenario_id"], "start": began, "end": ended}
+        )
+        if began is not None and (item["start"] is None or began < item["start"]):
+            item["start"] = began
+        if ended is not None and (item["end"] is None or ended > item["end"]):
+            item["end"] = ended
+    notes: dict[tuple[str, str], tuple[dict[str, Any] | None, list[str]]] = {}
+    for (lab, pid), item in pairs.items():
+        earlier = [
+            (other_pid, other)
+            for (other_lab, other_pid), other in pairs.items()
+            if other_lab == lab
+            and other_pid != pid
+            and other["end"] is not None
+            and item["start"] is not None
+            and other["end"] <= item["start"]
+        ]
+        predecessor = None
+        violations: list[str] = []
+        if earlier:
+            last_pid, last = max(earlier, key=lambda e: e[1]["end"])
+            gap = item["start"] - last["end"]
+            predecessor = {
+                "pair_id": last_pid,
+                "scenario_id": last["scenario_id"],
+                "gap_minutes": round(gap.total_seconds() / 60, 2),
+            }
+            if gap < rules.wash_min:
+                violations.append("WASH_SHORT")
+            if any(
+                other["scenario_id"] == item["scenario_id"]
+                and item["start"] - other["end"] < rules.same_scenario_gap
+                for _, other in earlier
+            ):
+                violations.append("SAME_SCENARIO_GAP")
+        notes[(lab, pid)] = (predecessor, violations)
+    out = []
+    for slot in slots:
+        predecessor, violations = notes[(str(slot["lab"]), str(slot["pair_id"]))]
+        out.append(
+            {
+                **slot,
+                "predecessor": None if predecessor is None else dict(predecessor),
+                "violations": list(violations),
+            }
+        )
+    return out
 
 
 # -- check -----------------------------------------------------------------------
@@ -560,12 +786,16 @@ def check(
                 record.get("slots") or [], key=lambda s: s.get("position", 0)
             )
         ]
-        if order != list(origin["systems"]):
-            violations.append(f"ORDER_MISMATCH:{wid}")
+        expected = list(origin["systems"])
         if wid != base:
             original = seen.get(base)
             if original is None or original.get("void") is None or wid in seen:
                 violations.append(f"RERUN_UNJUSTIFIED:{wid}")
+            elif (original.get("decision") or {}).get("action") == "rerun_slot":
+                rerun = set(original["decision"].get("systems") or ())
+                expected = [s for s in expected if s in rerun]
+        if order != expected:
+            violations.append(f"ORDER_MISMATCH:{wid}")
         elif wid in seen:
             violations.append(f"RERUN_UNJUSTIFIED:{wid}")
         seen[wid] = record
@@ -578,15 +808,22 @@ def check(
         if found is None:
             violations.append(f"MISSING:{wid}")
             continue
-        record = final = found
-        if record.get("void") is not None and f"{wid}-rerun" in seen:
+        final = {str(s.get("system")): s for s in found.get("slots") or []}
+        rerun = seen.get(f"{wid}-rerun")
+        if found.get("void") is not None and rerun is not None:
+            replaced = {str(s.get("system")): s for s in rerun.get("slots") or []}
             voided.append(
-                {"window_id": wid, "void": record["void"], "rerun": f"{wid}-rerun"}
+                {
+                    "window_id": wid,
+                    "void": found["void"],
+                    "rerun": f"{wid}-rerun",
+                    "systems": sorted(replaced),
+                }
             )
-            final = seen[f"{wid}-rerun"]
-        for slot in final.get("slots") or []:
+            final.update(replaced)
+        for system, slot in final.items():
             if slot.get("status") != "not_started":
-                counts[str(slot.get("system"))] += 1
+                counts[system] += 1
     return {
         "rules_id": rules.rules_id,
         "violations": violations,
@@ -888,7 +1125,7 @@ def load_labs(path: Path) -> tuple[str, ...]:
 
 
 def _parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="scripts.eval_schedule")
+    parser = argparse.ArgumentParser(prog="scripts.eval_pair_schedule")
     sub = parser.add_subparsers(dest="command", required=True)
     p = sub.add_parser("plan")
     p.add_argument("--dataset", required=True, action="append")

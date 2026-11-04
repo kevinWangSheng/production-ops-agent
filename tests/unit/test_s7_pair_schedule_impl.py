@@ -13,7 +13,7 @@ from typing import Any
 import pytest
 
 from opspilot.evaluation import ScenarioError, dataset_tree_hash
-from scripts import eval_schedule as es
+from scripts import eval_pair_schedule as es
 from scripts.eval_dev_round import aggregate
 from scripts.eval_live import dataset_dimension
 
@@ -49,7 +49,7 @@ def test_registered_rules_load(rules):
     [
         (("pairing", "order"), "random", "RULES_UNSUPPORTED"),
         (("spacing", "same_scenario_gap_scope"), "global", "RULES_UNSUPPORTED"),
-        (("void_rerun", "rerun_unit"), "slot", "RULES_UNSUPPORTED"),
+        (("void_rerun", "classes", 2, "action"), "rerun_pair", "RULES_UNSUPPORTED"),
         (("schema",), "other", "RULES_SCHEMA"),
         (("repetitions",), 0, "RULES_INVALID"),
     ],
@@ -210,18 +210,53 @@ def test_check_reports_each_broken_rule(rules):
     assert "MISSING:d-r1" in found
 
 
-def test_check_counts_the_rerun_instead_of_the_voided_window(rules):
+def test_check_counts_the_rerun_instead_of_the_voided_slot(rules):
     both = ("opspilot", "holmes")
-    plan = _plan_json(("a-r1", "a", both))
-    voided = _record("a-r1", "a", "l0", T0, void="ENV_SETUP_FAILED")
+    plan = _plan_json(("a-r1", "a", both), ("b-r1", "b", both))
+    voided = _record(
+        "a-r1",
+        "a",
+        "l0",
+        T0,
+        void="ENV_SETUP_FAILED",
+        decision={"action": "rerun_slot", "systems": ["holmes"], "note": "x"},
+    )
     voided["slots"][1]["status"] = "setup_failed"
-    rerun = _record("a-r1-rerun", "a", "l0", T0 + timedelta(minutes=80))
-    result = es.check(plan, _log([voided, rerun]), rules)
+    rerun = _record(
+        "a-r1-rerun", "a", "l0", T0 + timedelta(minutes=80), order=("holmes",)
+    )
+    noisy = _record(
+        "b-r1",
+        "b",
+        "l1",
+        T0,
+        void="HOST_NOISE",
+        decision={"action": "rerun_pair", "systems": list(both), "note": "y"},
+    )
+    pair_rerun = _record("b-r1-rerun", "b", "l1", T0 + timedelta(minutes=80))
+    result = es.check(plan, _log([voided, rerun, noisy, pair_rerun]), rules)
     assert result["violations"] == []
     assert result["voided"] == [
-        {"window_id": "a-r1", "void": "ENV_SETUP_FAILED", "rerun": "a-r1-rerun"}
+        {
+            "window_id": "a-r1",
+            "void": "ENV_SETUP_FAILED",
+            "rerun": "a-r1-rerun",
+            "systems": ["holmes"],
+        },
+        {
+            "window_id": "b-r1",
+            "void": "HOST_NOISE",
+            "rerun": "b-r1-rerun",
+            "systems": ["holmes", "opspilot"],
+        },
     ]
     assert result["started_slots"]["a"] == {"opspilot": 1, "holmes": 1}
+    # a slot rerun that also repeats the healthy system breaks the plan
+    bad = _record("a-r1-rerun", "a", "l0", T0 + timedelta(minutes=80))
+    assert (
+        "ORDER_MISMATCH:a-r1-rerun"
+        in es.check(plan, _log([voided, bad]), rules)["violations"]
+    )
 
 
 # -- void classes ------------------------------------------------------------------
@@ -236,11 +271,14 @@ def _slots(*items: dict[str, Any]) -> dict[str, Any]:
     [
         (_slots({"status": "ran"}, {"status": "ran"}), None),
         (
-            _slots({"status": "ran"}, {"status": "setup_failed", "run_created": False}),
+            _slots(
+                {"status": "ran"},
+                {"status": "setup_failed", "product_run_created": False},
+            ),
             "ENV_SETUP_FAILED",
         ),
         # a Run existed: the setup failure is the system's own
-        (_slots({"status": "setup_failed", "run_created": True}), None),
+        (_slots({"status": "setup_failed", "product_run_created": True}), None),
         (_slots({"status": "aborted"}), None),
         (_slots({"status": "ran", "provider_error": True}), "PROVIDER_5XX_STORM"),
         (
@@ -270,17 +308,23 @@ def test_void_classes(rules, record, code):
     assert es.classify_void(record, rules) == code
 
 
-def test_a_voided_window_is_rerun_once(rules):
+def test_a_voided_slot_is_rerun_once_alone(rules):
     window = es.Window("a-r1", "a", 1, ("opspilot", "holmes"))
     dispatcher = es.Dispatcher([window], ["l0"], rules)
-    failed = _slots({"system": "opspilot", "position": 1, "status": "setup_failed"})
     taken, _ = dispatcher.take("l0", T0)
     assert taken == window
-    assert (
-        dispatcher.finish("l0", window, {**failed, "restored_at": T0.isoformat()})
-        == "ENV_SETUP_FAILED"
-    )
-    assert [w.window_id for w in dispatcher.pending] == ["a-r1-rerun"]
+    record = {
+        "slots": [
+            {"system": "opspilot", "position": 1, "status": "ran"},
+            {"system": "holmes", "position": 2, "status": "setup_failed"},
+        ],
+        "restored_at": T0.isoformat(),
+    }
+    assert dispatcher.finish("l0", window, record) == "ENV_SETUP_FAILED"
+    (rerun_window,) = dispatcher.pending
+    assert rerun_window.window_id == "a-r1-rerun"
+    assert rerun_window.systems == ("holmes",)
+    assert rerun_window.rerun_of == "a-r1"
     # the wash and the same-scenario gap still hold for the rerun
     assert dispatcher.take("l0", T0 + timedelta(minutes=5)) == (
         None,
@@ -288,10 +332,34 @@ def test_a_voided_window_is_rerun_once(rules):
     )
     rerun, _ = dispatcher.take("l0", T0 + timedelta(minutes=60))
     assert rerun is not None and rerun.attempt == 1
-    dispatcher.finish("l0", rerun, {**failed, "restored_at": T0.isoformat()})
+    failed = {
+        "slots": [{"system": "holmes", "position": 1, "status": "setup_failed"}],
+        "restored_at": T0.isoformat(),
+    }
+    assert dispatcher.finish("l0", rerun, failed) is None  # never rerun again
     assert dispatcher.pending == [] and dispatcher.done()
-    assert dispatcher.records[-1]["void"] == "ENV_SETUP_FAILED"
-    assert "rerun_window_id" not in dispatcher.records[-1]
+    assert dispatcher.records[-1]["decision"]["action"] == "keep"
+
+
+def test_host_noise_reruns_the_whole_window(rules):
+    window = es.Window("a-r1", "a", 1, ("holmes", "opspilot"))
+    dispatcher = es.Dispatcher([window], ["l0"], rules)
+    dispatcher.take("l0", T0)
+    record = {
+        "shared_host": True,
+        "slots": [
+            {
+                "system": "holmes",
+                "position": 1,
+                "status": "ran",
+                "host_noise": {"steal_percent": 7.0},
+            },
+            {"system": "opspilot", "position": 2, "status": "ran"},
+        ],
+        "restored_at": T0.isoformat(),
+    }
+    assert dispatcher.finish("l0", window, record) == "HOST_NOISE"
+    assert dispatcher.pending[0].systems == ("holmes", "opspilot")
 
 
 def test_steal_percent():
@@ -329,7 +397,12 @@ class FakeRunner:
             "restored_at": end.isoformat(),
             "ended_at": end.isoformat(),
             "slots": [
-                {"system": s, "position": n + 1, "status": status, "run_created": False}
+                {
+                    "system": s,
+                    "position": n + 1,
+                    "status": status,
+                    "product_run_created": False,
+                }
                 for n, s in enumerate(window.systems)
             ],
         }

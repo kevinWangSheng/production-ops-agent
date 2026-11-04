@@ -1423,7 +1423,7 @@ class BaselineResult:
     started_at: datetime | None = None
     ended_at: datetime | None = None
     #: a HolmesGPT investigation call was made (the setup was over)
-    run_created: bool = False
+    product_run_created: bool = False
     #: the run ended on a model provider 5xx/transport failure (not injected)
     provider_error: bool = False
     output_sha256: str | None = None
@@ -1452,9 +1452,7 @@ def _paired(
     re-confirmed and a synthetic span written again, so it gets the same
     fresh evidence the first one had; a failed re-confirmation fails that
     system's setup only. The attempt's own status stays OpsPilot's."""
-    from scripts.eval_schedule import steal_percent
-
-    clock, ledger = deps.clock, state.ledger
+    ledger = state.ledger
     state.pair = [
         {
             "system": system,
@@ -1463,53 +1461,114 @@ def _paired(
             "reason": None,
             "started_at": None,
             "ended_at": None,
-            "run_created": False,
+            "product_run_created": False,
             "provider_error": False,
             "host_noise": None,
         }
         for n, system in enumerate(config.pair, start=1)
     ]
     for entry in state.pair:
-        if entry["position"] > 1:
-            state.stage = "pair_regate"
-            checkpoint()
-            try:
-                gate, submit_not_after = _regate(deps, slot, state, signatures)
-            except LabError as exc:
-                entry.update(status="setup_failed", reason=f"PAIR_REGATE:{exc.code}")
-                if entry["system"] == "opspilot":
-                    state.status, state.reason = "setup_failed", entry["reason"]
-                ledger.event("pair_regate", "failed", reason=entry["reason"])
-                return
-        before = _proc_stat()
-        entry["started_at"] = clock.now().isoformat()
-        if entry["system"] == "opspilot":
-            _investigate(
+        with _holmes_turn(deps, state, entry["system"]) as waited:
+            if entry["position"] > 1 or waited:
+                state.stage = "pair_regate"
+                checkpoint()
+                try:
+                    gate, submit_not_after = _regate(deps, slot, state, signatures)
+                except LabError as exc:
+                    entry.update(
+                        status="setup_failed", reason=f"PAIR_REGATE:{exc.code}"
+                    )
+                    if entry["system"] == "opspilot":
+                        state.status, state.reason = "setup_failed", entry["reason"]
+                    ledger.event("pair_regate", "failed", reason=entry["reason"])
+                    return
+            _pair_slot(
                 config,
                 deps,
                 slot,
                 state,
                 round_state,
+                entry,
                 gate,
                 submit_not_after,
                 alert_starts_at,
             )
-            entry.update(
-                status=state.status,
-                reason=state.reason,
-                run_created=state.record.product_run_id is not None,
-                provider_error=_recording_provider_error(
-                    recording_dir(deps, config.round_id, state.record.attempt_id)
-                ),
-            )
-        else:
-            _baseline(config, deps, slot, state, entry, submit_not_after)
-        entry["ended_at"] = clock.now().isoformat()
-        after = _proc_stat()
-        steal = (
-            None if before is None or after is None else steal_percent(before, after)
+
+
+#: HolmesGPT's helper containers have fixed names (S7b), so one HolmesGPT
+#: slot at a time per host: labs on one host take turns through this lock.
+HOLMES_LOCK = Path("/tmp/opspilot-holmes-baseline.lock")
+HOLMES_LOCK_POLL_SECONDS = 5.0
+
+
+@contextmanager
+def _holmes_turn(deps: LiveDeps, state: _Attempt, system: str) -> Iterator[bool]:
+    """Hold the host-wide HolmesGPT lock for a ``holmes`` slot; yields
+    whether it had to wait (the gate is then re-confirmed)."""
+    if system != "holmes":
+        yield False
+        return
+    import fcntl
+
+    waited = False
+    with HOLMES_LOCK.open("a") as handle:
+        while True:
+            try:
+                fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if not waited:
+                    state.ledger.event("baseline", "waiting_for_host_lock")
+                waited = True
+                checkpoint()
+                deps.clock.sleep(HOLMES_LOCK_POLL_SECONDS)
+        try:
+            yield waited
+        finally:
+            fcntl.flock(handle, fcntl.LOCK_UN)
+
+
+def _pair_slot(
+    config: RoundConfig,
+    deps: LiveDeps,
+    slot: Slot,
+    state: _Attempt,
+    round_state: dict[str, Manifest],
+    entry: dict[str, Any],
+    gate: PreObservation,
+    submit_not_after: datetime | None,
+    alert_starts_at: datetime | None,
+) -> None:
+    from scripts.eval_pair_schedule import steal_percent
+
+    clock = deps.clock
+    before = _proc_stat()
+    entry["started_at"] = clock.now().isoformat()
+    if entry["system"] == "opspilot":
+        _investigate(
+            config,
+            deps,
+            slot,
+            state,
+            round_state,
+            gate,
+            submit_not_after,
+            alert_starts_at,
         )
-        entry["host_noise"] = {"steal_percent": steal, "baseline_p95_ratio": None}
+        entry.update(
+            status=state.status,
+            reason=state.reason,
+            product_run_created=state.record.product_run_id is not None,
+            provider_error=_recording_provider_error(
+                recording_dir(deps, config.round_id, state.record.attempt_id)
+            ),
+        )
+    else:
+        _baseline(config, deps, slot, state, entry, submit_not_after)
+    entry["ended_at"] = clock.now().isoformat()
+    after = _proc_stat()
+    steal = None if before is None or after is None else steal_percent(before, after)
+    entry["host_noise"] = {"steal_percent": steal, "baseline_p95_ratio": None}
 
 
 def _regate(
@@ -1592,9 +1651,8 @@ def _baseline(
         return
     assert slot.plan is not None and isinstance(slot.spec, ScenarioSpecV2)
     assert isinstance(slot.answer, AnswerV2)
-    output_dir = recording_dir(
-        deps, config.round_id, state.record.attempt_id
-    ).with_name(f"holmes-{config.round_id}-{state.record.attempt_id}")
+    # HolmesGPT writes ``<output_dir>/<attempt_id>`` (S7b ``run_attempt``).
+    output_dir = deps.recording_root / f"holmes-{config.round_id}"
     request = BaselineRequest(
         attempt_id=state.record.attempt_id,
         round_id=config.round_id,
@@ -1618,7 +1676,7 @@ def _baseline(
     entry.update(
         status=result.status,
         reason=result.reason,
-        run_created=result.run_created,
+        product_run_created=result.product_run_created,
         provider_error=result.provider_error,
         output_sha256=result.output_sha256,
     )
@@ -1650,7 +1708,7 @@ def _write_pair(run_dir: Path, config: RoundConfig, state: _Attempt) -> bool:
             "reason": state.reason,
             "started_at": None,
             "ended_at": None,
-            "run_created": False,
+            "product_run_created": False,
             "provider_error": False,
             "host_noise": None,
         }
@@ -2908,12 +2966,56 @@ def check_pair(slots: Sequence[Slot], *, probe: bool, alone: bool = False) -> No
 
 
 def baseline_runner(deps: LiveDeps) -> Any:
-    """The real HolmesGPT side (S7 Holmes dataset runner)."""
-    from scripts.holmes_baseline.dataset_runner import (
-        paired_runner,  # type: ignore[import-not-found]
-    )
+    """The real HolmesGPT side: S7b ``scripts.holmes_baseline.dataset``."""
+    from scripts.holmes_baseline.dataset import run_attempt
 
-    return paired_runner(deps)
+    return HolmesBaseline(run_attempt)
+
+
+class HolmesBaseline:
+    """Adapts S7b ``run_attempt`` (which never touches the lab) to a paired
+    slot. No ``deadline``: it caps HolmesGPT's wall clock, which stays the
+    frozen budget aligned with OpsPilot's (R15); freshness is this driver's
+    gate before the slot. ``DEADLINE_PASSED`` (nothing started) is a setup
+    failure."""
+
+    def __init__(self, run_attempt: Callable[..., Mapping[str, Any]]) -> None:
+        self.run_attempt = run_attempt
+
+    def run(self, request: BaselineRequest) -> BaselineResult:
+        from scripts import kind_lab
+
+        out = self.run_attempt(
+            request.spec,
+            request.answer,
+            attempt_id=request.attempt_id,
+            slot=None,
+            raw_root=request.output_dir,
+            round_id=request.round_id,
+            kind_node=f"{kind_lab.CLUSTER}-control-plane",
+        )
+        status = str(out.get("status"))
+        reason = out.get("reason")
+        if status == "aborted" and reason == "DEADLINE_PASSED":
+            status = "setup_failed"
+        if status not in ("ran", "setup_failed", "aborted"):
+            status, reason = "aborted", f"BASELINE_STATUS:{status}"
+
+        def moment(value: Any) -> datetime | None:
+            try:
+                return None if value is None else datetime.fromisoformat(str(value))
+            except ValueError:
+                return None
+
+        return BaselineResult(
+            status=status,  # type: ignore[arg-type]
+            reason=None if reason is None else str(reason),
+            started_at=moment(out.get("started_at")),
+            ended_at=moment(out.get("ended_at")),
+            product_run_created=status != "setup_failed",
+            provider_error=False,
+            output_sha256=out.get("holmes_json_sha256"),
+        )
 
 
 def real_deps(
