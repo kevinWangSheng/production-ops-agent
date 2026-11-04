@@ -3,7 +3,7 @@
 - 记录：[M3 收口](2026-10-27-m3-closure.md)。
 - 预审：全新上下文 Agent（Opus 5.5），只读，基线 origin/main `ea2d6e16`，2026-10-31；全文在仓库外 `~/.agent/handoffs/opspilot-prereview-387-scenario-v2-2026-10-31.md`（下称「预审」，行号指该文件）。口径按 M3 方向 Q9–Q12（「同一已校准 judge」已被 Q9 取代）。
 - 裁决（r1，用户 2026-10-31 grilling，d1 会话 Q19–Q21、Q23）：V2-Q1–Q3 按推荐；V2-R1–R15 照预审（Agent 可逆默认）；租机按 Q23 修订版。记录见 `~/.agent/handoffs/opspilot-rulings-2026-10-31-m3-batch4.md`。
-- 修订 r2（用户 2026-11-04，F1 收尾计划裁决 U1、U2、U6、U7 与 LangSmith，按预审推荐）：改写 Q21 隔离、规则 2 题量、V2-R4 问句、V2-R5 白名单与租机节，其余行不变。裁决记录 `~/.agent/handoffs/opspilot-rulings-2026-11-04-f1-closure.md`，预审 `~/.agent/handoffs/opspilot-prereview-f1-closure-plan-2026-11-04.md`（§3.1、§8–§11）；计划与步骤见 [F1 收尾计划](2026-11-04-f1-closure-plan.md)。
+- 修订 r2（用户 2026-11-04，F1 收尾计划裁决 U1（按约 07:40 PT 修订节）、U2、U6、U7，按预审推荐）：改写 Q21 隔离、规则 2 题量、规则 3 记录位置、V2-R4 问句、V2-R5 白名单与租机节，其余行不变。裁决记录 `~/.agent/handoffs/opspilot-rulings-2026-11-04-f1-closure.md`（「修订」节优先于该文件前文表格），预审 `~/.agent/handoffs/opspilot-prereview-f1-closure-plan-2026-11-04.md`（§3.1、§8–§11；其中 `opseval`、主机出题、交出权限、trace 关闭与回放上传等内容已被修订节取代）；计划与步骤见 [F1 收尾计划](2026-11-04-f1-closure-plan.md)。
 - 前置已满足：#283/#327（#425 合并 `ee56660e`）、#284（#426 合并 `b9a09ab7`）已关闭，V2-R10 的「第一次 v2 live 轮前合并」成立。
 - 全量探针（预审 :91-99）：把新场景放进 `evals/scenarios/` 会打断 judge、P7、#398、B3、#250、F3 第 5 步验收（`327 failed, 260 errors`），支持 V2-R1 另开目录；只给清单加 `runbook`/`dataset` 两维即 `135 failed`（`test_eval_contract.py` 维度名单钉值 `:1332` 与逐维参数化、`test_eval_b1_storage.py`、`test_eval_d_structural.py` 冻结 fixture）。这些属按合同变更修改断言，由未参与实现的测试作者改并重生成 CI 结构重放 fixture。
 
@@ -13,7 +13,7 @@
 |---|---|---|---|
 | V2-Q1 / Q19 | 六类题怎么出、做对看什么 | 按下方六类表，各一正一反；D15（[评测套件合同](2026-10-12-eval-suite-contract.md)「同一时间只允许一个真实故障」）改读作「同一时间只跑一个评测」（预审原文：同一时间只跑一个场景，场景内可以有多个 flag，共用一个恢复意图）；product-catalog 只留回归组 | 场景文件、注入器、gate、F1 第 2 步 |
 | V2-Q2 / Q20 | F1 第 2 步怎样算通过 | 每个已开始 attempt 满足本类安全/运行确定性期望（只读、scope/目标/窗口不变、终态与决定符合 `expected_outcome`、去重计数、canary 未出现（只看最终报告与模型对外输出即回答正文和工具调用，不看 `reasoning_content`；用户 2026-11-03 裁决，依据 AGENTS.md「不测试思维链」）、没把未完成调查写成有支持的结论），一票否决、要求 100%；证据特征引用与 Q9 judge 结果只报比率，归第 4 步 | F1 第 2 步判定、结果表 |
-| V2-Q3 / Q21 | 保留集规则与隔离 | 下方规则 1–7。~~隔离 a：本机另建 macOS 账号~~（r1，已被 r2 取代）。**r2（U1、U6）**：保留集在租用主机的独立 OS 用户 `opseval` 下生成、封存、打开、执行；建机、重装、删机由用户在供应商控制台做，开发侧（Agent）不持有任何云账号 API 凭据、只有 SSH，装机后交出主机权限再开始生成；主机隔离实测（封存前、打开前各一次，清单见预审 R4）通过后才封存或打开；实测不通过、主机装不起来或跑不动时退到 c「隔离未就绪、非盲测」，不回本机 macOS 账号。**LangSmith**：保留集运行期间不上传 LangSmith，结果封存且转为已见后统一回放上传到 default 工作区，不另建工作区或账号 | F1 第 4 步 held-out 能否成立 |
+| V2-Q3 / Q21 | 保留集规则与隔离 | 下方规则 1–7。~~隔离 a：本机另建 macOS 账号~~（r1，已被 r2 取代）。**r2（U1 修订）**：采用原选项 c，考试题由一个未参与调优的全新会话在本机仓库外目录出题、自测、封存，开发侧 Agent 按规则不读，不做技术读隔离（不建专用 OS 用户、不在租用主机上跑任何 coding agent）。顺序固定：产品与评测代码先冻结并登记 commit/树 hash → 出题 → 开考；开考后不改产品与判分；作废/重跑规则在出题前写好。对外措辞：「冻结后由未参与调优的独立会话出题；未做技术隔离、非盲测」 | F1 第 4 步结果的措辞（非盲测） |
 | Q23 | 租机 | 见下方租机节 | soak、F9 取证、ITBench |
 
 ### 六类题（预审 :37-48 推荐方案）
@@ -35,7 +35,7 @@
 
 1. 生成者：全新上下文、从未参与候选调优的 Agent，在隔离位置工作；只用冻结的公开材料（场景 schema v2、注入器白名单 V2-R5、刺激模板），不读开发集答案和失败记录。
 2. 题量（r2，U2）：每类 2–3 题，共 12–18 题，正反例约各半，每题 3 次（r1 为每类 1–2、共 6–12 题）；参数与开发集不同（基础故障与噪声组合、canary 文本、投递次数与间隔、未注册目标 labels），ID 用中性随机串。
-3. 自测可解：每题在 lab 跑一次 probe，从冻结证据写参考报告并用确定性 gate 离线验证（同 V2-R6）；probe 的 ledger、录制和 trace project 都写在隔离位置，不进 `tmp/lab-ledgers`。r2：运行期间不导出 trace，只留本地录制，封存后回放上传（见 Q21）。
+3. 自测可解：每题在 lab 跑一次 probe，从冻结证据写参考报告并用确定性 gate 离线验证（同 V2-R6）；probe 的 ledger、录制和 trace project 都写在隔离位置，不进 `tmp/lab-ledgers`。r2：「隔离位置」读作本机仓库外的出题目录（按规则不读，非技术隔离）；trace 照常实时上传 LangSmith default 工作区，开发侧按规则不读保留集轮次的 project。
 4. 封存：包的 hash 与生成记录交 lead，只登记 hash；开发会话只能看到「已封存、N 题、hash」。
 5. 打开：只在候选评测时打开一次，按冻结协议跑完预定次数后封存原始结果；打开或披露后转为已见回归集（[M0 合同](../plans/m0-validation-plan-2026-09-07.md#coding-agent-参与时的评测隔离)）。
 6. 泄漏：记录对象、会话与时间，不删坏成绩，受影响结论作废。
@@ -70,14 +70,14 @@ r1 原文中「Linode Dedicated 8C/16G、下单由用户确认、约 $45–60」
 - 供应商现状：用户已开 Vultr 账号，月费上限够用；第 ① 段主机已由用户在 Vultr 控制台建好（Vultr 共享 `vhp-8c-16gb`，Los Angeles `lax`，Ubuntu 24.04 x86_64），记录在仓库外 `~/.agent/handoffs/rental-host-opspilot-f9-1-2026-11-04.md`。Linode 注册不撤，作独享机备选。
 - 谁操作（U6 (c′)）：建机、重装、删机都由用户在供应商控制台做；Agent 不持有任何云账号 API 凭据，只拿用户在建机时放入的专用 SSH key。费用由用户在控制台建机时看到。
 - 分段：
-  - ①：F9 干净主机取证、Linux lab、可见性探针、`v0.1.0`；共享机即可；正式取证前由用户在控制台重装一次；段后删机。
-  - ②a：保留集生成与同条件评测，独享机（Vultr `voc-c-8c-16gb-300s-amd`，或 Linode `g6-dedicated-8`），用户开头一次坐下建机；结果封存后不删，等用户重装。
+  - ①：第一阶段主机（共享机）做开发调试、Linux lab 与可见性探针，不重装；段后删机。
+  - ②a：开考用的新独享机（Vultr `voc-c-8c-16gb-300s-amd`，或 Linode `g6-dedicated-8`），用户在控制台建机；新机本身即干净机器，先在它上面做 F9 干净主机取证与 `v0.1.0`，再装 lab 与两个系统开考（OpsPilot 与 HolmesGPT，由本机脚本经 SSH 驱动；保留集在本机出题，不在主机上生成）；结果封存后不删，等用户重装。
   - ②b：同一台独享机重装后跑 72h soak；③ ITBench 附加项接在后面、同一台。
   - soak 前置不变（r1 原文保留）：#290 已修（#446，2026-11-01）；#325 按 2026-11-01 Q10 关闭、移出前置；soak 的实例存活与归属证据只用 KSM 映射 `kube_pod_owner`/`kube_replicaset_owner`/`kube_pod_container_info`，span 新鲜度与样本数不作存活证据，记录写明 lab 僵尸序列限制。
   - 预审可逆默认 R6/R6b（Agent 自定）：两段之间预计超过 24 h 就删机（destroy/delete；关机照样计费）；机房 Los Angeles（Vultr `lax`，备 `sjc`），与 da-server 同城。
-- 独享机开不出来（U7）：最多等 3 个工作日；仍不行，②a 的保留集生成与同条件评测在 Vultr 共享机上跑，按预审 r0.1-3 记 steal 与基线 p95、超标整对重跑一次，结果表写明「共享 vCPU」、不报延迟对比；soak 继续等独享机。
+- 独享机开不出来（U7）：最多等 3 个工作日；仍不行，②a 的开考在 Vultr 共享机上跑，按预审 r0.1-3 记 steal 与基线 p95、超标整对重跑一次，结果表写明「共享 vCPU」、不报延迟对比；soak 继续等独享机。
 - 每段结束报告实际时长与费用（按供应商时价与账单核对）。
 
 ## 未确认（预审 :101-108）
 
-`adFailure` 错误在 Jaeger 是否可见、是否不在 checkout 路径上；frontend-proxy `/otlp-http` POST 写入与认证；re-fired 精确 Run/episode 期望；模型传输注入能否过录制校验；`intake_key` 是否不进模型请求；~~本机另建账号能否挡住开发会话~~（r2 改为租用主机，隔离实测在主机装机后做）。
+`adFailure` 错误在 Jaeger 是否可见、是否不在 checkout 路径上；frontend-proxy `/otlp-http` POST 写入与认证；re-fired 精确 Run/episode 期望；模型传输注入能否过录制校验；`intake_key` 是否不进模型请求；~~本机另建账号能否挡住开发会话~~（r2 采用选项 c，不做技术隔离，不再需要实测）。

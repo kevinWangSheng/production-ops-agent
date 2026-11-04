@@ -15,7 +15,6 @@
 2. **只在实验环境导出。** 导出只在合成流量的实验环境开启：可附模型输入输出与工具结果。任何模式下凭据、`reasoning_content` 及其他 provider 私有协议字段都不进 span（PRODUCT-CONSTRAINTS「Data flow contract」、C3 第 440–441 行）。产品模式在 C3 §11 的白名单 outbox 建成前完全不导出（包括 incident/run ID 等业务标识）。
    - 产品模式 outbox（用户 2026-10-31 裁决，#243）：`OPSPILOT_TRACE=outbox` 默认关，只发标识、版本、数字和固定码；打开须 endpoint 在白名单、`LANGSMITH_PROJECT` 以 `opspilot-lab-` 开头、key 存在，缺一不投递并在 `/metrics` 报原因码；不再要求数据源回环，lab 身份由运维以项目名前缀声明；产品项目只用 14 天基础保留。
 3. **开发实验证据上平台。** 接入后，每轮实验一个 LangSmith project，独立审查判定写成 feedback。仓库只留每次 Run 的冻结摘要（报告、判定、计数、费用、trace ID 与链接、ledger 哈希），原始 ledger 不再入库。已入库的历史证据不动，不改写 git 历史。
-   - 保留集轮次修订（用户 2026-11-04 裁决，[F1 收尾计划](../tasks/2026-11-04-f1-closure-plan.md)）：租用主机上的保留集轮次运行期间不实时上传 trace，只留本地录制（按预审 r0.4 计划，同机开发集轮次同样处理）；结果封存且保留集转为已见后，从录制回放上传到 default 工作区，仍一轮一个 project。理由：只有一个工作区、开发侧 key 可读，运行时上传即泄题。决定 4（长期依据是仓库冻结摘要）不变。
 4. **保留期约束。** LangSmith SaaS 基础保留 14 天，长保留自 2026-09-14 起最长 180 天（[官方文档](https://docs.langchain.com/langsmith/data-purging-compliance)）。因此平台上的原始 trace 只服务审查窗口和轮次对比；PR 与验收引用的长期依据是仓库里的冻结摘要。实验 project 设为最长保留。
 5. **对 C3 的有界偏离（用户 2026-10-05 决定，仅限实验环境）。**
    - C3 §11「可观测性」要求 LangSmith 只经业务事务内的 outbox 接收白名单 DTO；实验环境改为 OTel 直连导出，允许有界丢弃，不经 outbox。产品模式仍按 C3。
