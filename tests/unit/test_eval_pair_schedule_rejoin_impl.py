@@ -51,10 +51,12 @@ def test_a_recovered_lab_rejoins_and_counts_wash_and_gap_from_the_recovery(rules
     dispatcher = es.Dispatcher([a, b, a2], ["l0"], rules)
     ended = _stop(dispatcher, "l0", a)
     # still stopped: a recovery from before the stop does not count
-    assert dispatcher.rejoin("l0", ended - timedelta(seconds=1)) is False
+    assert dispatcher.rejoin("l0", ended - timedelta(seconds=1), "a-r1") is False
     assert dispatcher.take("l0", T0 + timedelta(hours=5)) == (None, None)
     recovered = ended + timedelta(minutes=5)
-    assert dispatcher.rejoin("l0", recovered) is True
+    # a recovery bound to another window's stop does not count either
+    assert dispatcher.rejoin("l0", ended + timedelta(minutes=5), "z-r1") is False
+    assert dispatcher.rejoin("l0", recovered, "a-r1") is True
     assert not dispatcher.stopped("l0")
     # the wash counts from the recovery
     window, ready = dispatcher.take("l0", recovered + timedelta(seconds=1))
@@ -115,20 +117,23 @@ def test_run_schedule_waits_for_a_rejoin_then_uses_the_lab_again(rules):
         wash_min=timedelta(seconds=0.01),
     )
     windows = [es.Window(f"s{i}-r1", f"s{i}", 1, ("opspilot",)) for i in range(8)]
-    recovered: dict[str, datetime] = {}
+    recovered: dict[str, tuple[str, datetime]] = {}
     stopped_once = threading.Event()
+    stopper: list[str] = []
 
     class StopL0Once(FakeRunner):
         def run(self, lab: str, window: es.Window) -> dict[str, Any]:
             record = super().run(lab, window)
             if lab == "l0" and not stopped_once.is_set():
+                stopper.append(window.window_id)
                 stopped_once.set()
                 record["exit_code"] = 4
             return record
 
-    def rejoin(lab: str) -> datetime | None:
+    def rejoin(lab: str) -> tuple[str, datetime] | None:
         if lab == "l0" and stopped_once.is_set() and lab not in recovered:
-            recovered[lab] = datetime.now(UTC)  # the engineer ran --recover
+            # the engineer ran --recover for that stop
+            recovered[lab] = (stopper[0], datetime.now(UTC))
         return recovered.get(lab)
 
     runner = StopL0Once()
@@ -252,7 +257,7 @@ def test_rejoin_needs_the_recover_record_of_the_stopping_round(tmp_path):
     read: list[list[str]] = []
     execute = _on_lab(_recovery(at), calls=read)
     got = es.confirm_recovery(log, "a", spec, "p", PATH, now=NOW, execute=execute)
-    assert got == at
+    assert got == ("x-r1", at)
     assert read == [["cat", PATH], [".venv/bin/python", "-c", es.LEDGER_STATE_PROBE]]
 
 
@@ -323,7 +328,7 @@ def test_a_runner_exception_stop_finds_its_round_by_the_prefix(tmp_path):
         log, "a", _spec(tmp_path), "p", PATH, now=NOW,
         execute=_on_lab(_recovery(at, attempt_id="whatever")),
     )  # fmt: skip
-    assert got == at
+    assert got == ("x-r1", at)
 
 
 def test_rejoin_cli_reads_the_recovery_on_the_lab_and_leaves_the_marker(
@@ -362,7 +367,7 @@ def test_rejoin_cli_reads_the_recovery_on_the_lab_and_leaves_the_marker(
     assert es.read_rejoin(log)("a") is None
     (ledgers / "fault-active.json").unlink()
     assert es.main(argv) == 0
-    assert es.read_rejoin(log)("a") == at
+    assert es.read_rejoin(log)("a") == ("x-r1", at)
     assert es.read_rejoin(log)("b") is None
     bad = [*argv[:6], "../x", *argv[7:]]
     assert es.main(bad) == 2
@@ -408,3 +413,114 @@ def test_run_ends_when_every_lab_is_stopped(rules):
     result = es.check(plan, {"schema": es.LOG_SCHEMA, "windows": records}, fast)
     missing = [v for v in result["violations"] if v.startswith("MISSING:")]
     assert len(missing) == len(windows) - 2  # disclosed, never dropped
+
+
+def test_an_old_rejoin_never_ends_a_later_stop_without_an_end_time(rules):
+    """Codex P1 (#492): a marker answers one stop. After a rejoin, a second
+    stop without ``ended_at`` is not ended by the first stop's marker."""
+    fast = replace(
+        rules,
+        same_scenario_gap=timedelta(seconds=0.01),
+        wash_min=timedelta(seconds=0.01),
+    )
+    windows = [es.Window(f"s{i}-r1", f"s{i}", 1, ("opspilot",)) for i in range(8)]
+    stops: list[str] = []
+    marker: list[tuple[str, datetime]] = []
+
+    class StopL0Always(FakeRunner):
+        def run(self, lab: str, window: es.Window) -> dict[str, Any]:
+            record = super().run(lab, window)
+            if lab == "l0":
+                stops.append(window.window_id)
+                record["interrupted"] = True
+                record["ended_at"] = None  # e.g. no lifecycle was written
+            return record
+
+    def rejoin(lab: str) -> tuple[str, datetime] | None:
+        if lab == "l0" and stops and not marker:
+            marker.append((stops[0], datetime.now(UTC)))  # one --recover only
+        return marker[0] if marker and lab == "l0" else None
+
+    done: list[list[dict[str, Any]]] = []
+    thread = threading.Thread(
+        target=lambda: done.append(
+            es.run_schedule(
+                windows,
+                ("l0", "l1"),
+                fast,
+                StopL0Always(),
+                poll_seconds=0.01,
+                rejoin=rejoin,
+            )
+        ),
+        daemon=True,
+    )
+    thread.start()
+    thread.join(timeout=10)
+    assert not thread.is_alive()
+    (records,) = done
+    on_l0 = [r for r in records if r["lab"] == "l0"]
+    assert len(on_l0) == 2  # rejoined once, then stays stopped
+    assert on_l0[1]["rejoined"]["after"] == on_l0[0]["window_id"]
+    assert on_l0[1]["lab_stopped"] == "INTERRUPTED"
+    # l1 ran the rest (and the reruns): no planned window went missing
+    assert all(r["lab"] == "l1" for r in records if r not in on_l0)
+    plan = {"windows": [w.as_json() for w in windows]}
+    result = es.check(plan, {"schema": es.LOG_SCHEMA, "windows": records}, fast)
+    assert not [v for v in result["violations"] if v.startswith("MISSING:")]
+
+
+def test_check_orders_a_usage_refusal_by_its_dispatch_time(rules):
+    """Codex P1 (#492): a recovered lab, then a usage refusal (exit 2, no
+    lifecycle) that carries the rejoin, then its rerun: no false
+    AFTER_UNCONFIRMED_RESTORE."""
+    a = es.Window("a-r1", "a", 1, ("opspilot",))
+    b = es.Window("b-r1", "b", 1, ("opspilot", "holmes"))
+    dispatcher = es.Dispatcher([a, b], ["l0"], rules)
+    ended = _stop(dispatcher, "l0", a)
+    recovered = ended + timedelta(minutes=5)
+    assert dispatcher.rejoin("l0", recovered, "a-r1")
+    launched = recovered + rules.wash_min
+    taken, _ = dispatcher.take("l0", launched)
+    assert taken == b
+    specs = {"l0": _spec_named("l0")}
+    runner = es.CommandWindowRunner(
+        specs,
+        {"b": "r"},
+        round_prefix="p",
+        holder="h",
+        batch="b",
+        execute=lambda spec, argv: (2, ""),
+        now=lambda: launched,
+    )
+    refusal = runner.run("l0", b)
+    assert refusal["started_at"] == launched.isoformat()
+    assert refusal.get("ended_at") is None  # it restored nothing
+    assert dispatcher.finish("l0", b, refusal) == "HARNESS_INTERRUPTED"
+    assert dispatcher.records[-1]["rejoined"]["after"] == "a-r1"
+    rerun, _ = dispatcher.take("l0", launched + timedelta(minutes=1))
+    assert rerun is not None and rerun.window_id == "b-r1-rerun"
+    start = launched + timedelta(minutes=1)
+    dispatcher.finish(
+        "l0",
+        rerun,
+        {
+            "slots": [
+                {"system": "opspilot", "position": 1, "status": "ran"},
+                {"system": "holmes", "position": 2, "status": "ran"},
+            ],
+            "injected_at": start.isoformat(),
+            "started_at": start.isoformat(),
+            "restored_at": (start + timedelta(minutes=20)).isoformat(),
+            "ended_at": (start + timedelta(minutes=21)).isoformat(),
+        },
+    )
+    plan = {"windows": [w.as_json() for w in (a, b)]}
+    log = {"schema": es.LOG_SCHEMA, "windows": dispatcher.records}
+    found = es.check(plan, log, rules)["violations"]
+    assert not [v for v in found if v.startswith("AFTER_UNCONFIRMED_RESTORE")]
+    assert "INTERRUPTED:a-r1" in found  # the stop itself stays reported
+
+
+def _spec_named(name: str) -> es.LabSpec:
+    return es.LabSpec(name, "/repo", 55001, "http://127.0.0.1:18080/", "/out")

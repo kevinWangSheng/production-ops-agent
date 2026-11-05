@@ -376,19 +376,23 @@ class Dispatcher:
         with self.lock:
             return all(state.stopped is not None for state in self.labs.values())
 
-    def rejoin(self, lab: str, recovered_at: datetime) -> bool:
+    def rejoin(self, lab: str, recovered_at: datetime, after: str) -> bool:
         """Put a stopped lab back after an engineer ran ``eval_live
         --recover`` (rules ``lab_state``: the lab stops *until* then).
-        ``recovered_at`` (when the recovery confirmed normal) must be after
-        the stopping window ended; the wash and the stopped scenario's gap
-        count from it. The next window of the lab books it as ``rejoined``
-        (``check`` reads it). False when the lab is not stopped or the
-        recovery predates the stop."""
+        ``after`` names the window whose stop the recovery answers: a
+        recovery of an earlier stop never ends a later one. ``recovered_at``
+        (when the recovery confirmed normal) must be after the stopping
+        window ended; the wash and the stopped scenario's gap count from it.
+        The next window of the lab books it as ``rejoined`` (``check`` reads
+        it). False when the lab is not stopped, was stopped by another
+        window, or the recovery predates the stop."""
         with self.lock:
             state = self.labs[lab]
             if state.stopped is None or state.stopped_by is None:
                 return False
             wid, sid, ended = state.stopped_by
+            if wid != after:
+                return False
             if ended is not None and recovered_at <= ended:
                 return False
             state.rejoined = {
@@ -1039,7 +1043,7 @@ def run_schedule(
     scenarios: Mapping[str, Scenario] | None = None,
     on_record: Callable[[dict[str, Any]], None] | None = None,
     poll_seconds: float = 30.0,
-    rejoin: Callable[[str], datetime | None] | None = None,
+    rejoin: Callable[[str], tuple[str, datetime] | None] | None = None,
 ) -> list[dict[str, Any]]:
     """One thread per lab, each taking windows from the shared dispatcher
     until nothing is pending or in flight. Records are booked in finish
@@ -1063,8 +1067,10 @@ def run_schedule(
                 if dispatcher.stopped(lab):
                     if rejoin is None:
                         return
-                    recovered = rejoin(lab)
-                    if recovered is not None and dispatcher.rejoin(lab, recovered):
+                    marker = rejoin(lab)
+                    if marker is not None and dispatcher.rejoin(
+                        lab, marker[1], after=marker[0]
+                    ):
                         continue
                     if dispatcher.all_stopped():
                         # no lab runs: end as without rejoin; the pending
@@ -1224,10 +1230,12 @@ class CommandWindowRunner:
         batch: str,
         execute: Execute = subprocess_execute,
         python: str = ".venv/bin/python",
+        now: Callable[[], datetime] | None = None,
     ) -> None:
         self.labs, self.roots = labs, roots
         self.prefix, self.holder, self.batch = round_prefix, holder, batch
         self.execute, self.python = execute, python
+        self.now = now or SystemClock().now
 
     def round_id(self, window: Window) -> str:
         return f"{self.prefix}-{window.window_id}"
@@ -1260,6 +1268,7 @@ class CommandWindowRunner:
 
     def run(self, lab: str, window: Window) -> dict[str, Any]:
         spec = self.labs[lab]
+        launched = self.now()
         code, _ = self.execute(spec, self.argv(lab, window))
         evidence = f"{spec.output_root}/evidence/{self.round_id(window)}"
         lifecycle = self._read(spec, f"{evidence}/lifecycle.json") or {}
@@ -1288,8 +1297,12 @@ class CommandWindowRunner:
             # eval_live exits 2 only on a usage error, before any lab
             # adapter exists: nothing was injected, nothing to --recover.
             # Its slots never started (HARNESS_INTERRUPTED, rerun_pair);
-            # the lab is not stopped.
+            # the lab is not stopped. It has no lifecycle timings: its
+            # dispatch time orders it among the lab's windows in ``check``
+            # (no ended_at: it restored nothing, so it advances no wash or
+            # gap).
             record["refused"] = "USAGE"
+            record["started_at"] = launched.isoformat()
         if isinstance(pair, Mapping):
             record["baseline_p95_ms"] = pair.get("baseline_p95_ms")
             record["lab_restarts"] = pair.get("lab_restarts")
@@ -1377,11 +1390,13 @@ def _lab_file(log_path: Path, lab: str) -> Path:
     return rejoin_dir(log_path) / f"{lab}.json"
 
 
-def write_rejoin(log_path: Path, lab: str, recovered_at: datetime) -> Path:
+def write_rejoin(log_path: Path, lab: str, after: str, recovered_at: datetime) -> Path:
+    """The marker answers the stop of window ``after`` only."""
     path = _lab_file(log_path, lab)
     path.parent.mkdir(exist_ok=True)
     tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps({"lab": lab, "recovered_at": recovered_at.isoformat()}))
+    document = {"lab": lab, "after": after, "recovered_at": recovered_at.isoformat()}
+    tmp.write_text(json.dumps(document))
     tmp.replace(path)
     return path
 
@@ -1415,9 +1430,9 @@ def confirm_recovery(
     now: datetime,
     execute: Execute | None = None,
     python: str = ".venv/bin/python",
-) -> datetime:
-    """When ``eval_live --recover`` confirmed ``lab`` normal after its stop:
-    the ``recovered_at`` of the recovery record ``recovery`` (read on the
+) -> tuple[str, datetime]:
+    """The stopping window and when ``eval_live --recover`` confirmed ``lab``
+    normal after it: the ``recovered_at`` of the recovery record ``recovery`` (read on the
     lab), which must be the stopping window's round (and attempt), later
     than that window's end and not later than ``now``; and the lab's ledger
     root holds no restore intent and no active run marker now (``--recover``
@@ -1482,19 +1497,22 @@ def confirm_recovery(
         raise ScheduleError("LAB_FAULT_RETAINED")
     if state["active"]:
         raise ScheduleError("LAB_DRIVER_ACTIVE")
-    return recovered
+    return str(stop.get("window_id")), recovered
 
 
-def read_rejoin(log_path: Path) -> Callable[[str], datetime | None]:
-    """``run_schedule``'s ``rejoin``: the recovery time a ``rejoin`` command
-    left for a lab, or None."""
+def read_rejoin(log_path: Path) -> Callable[[str], tuple[str, datetime] | None]:
+    """``run_schedule``'s ``rejoin``: (the stopping window, the recovery
+    time) a ``rejoin`` command left for a lab, or None."""
 
-    def read(lab: str) -> datetime | None:
+    def read(lab: str) -> tuple[str, datetime] | None:
         try:
             data = json.loads(_lab_file(log_path, lab).read_text(encoding="utf-8"))
         except (OSError, ValueError, ScheduleError):
             return None
-        return _moment(data.get("recovered_at")) if isinstance(data, dict) else None
+        if not isinstance(data, dict) or not isinstance(data.get("after"), str):
+            return None
+        recovered = _moment(data.get("recovered_at"))
+        return None if recovered is None else (data["after"], recovered)
 
     return read
 
@@ -1506,7 +1524,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             specs = load_lab_specs(Path(args.labs))
             if args.lab not in specs:
                 raise ScheduleError("LAB_UNKNOWN")
-            recovered = confirm_recovery(
+            after, recovered = confirm_recovery(
                 Path(args.log),
                 args.lab,
                 specs[args.lab],
@@ -1514,7 +1532,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 args.recovery,
                 now=datetime.now(UTC),
             )
-            path = write_rejoin(Path(args.log), args.lab, recovered)
+            path = write_rejoin(Path(args.log), args.lab, after, recovered)
             print(json.dumps({"lab": args.lab, "rejoin": str(path)}))
             return 0
         rules = load_rules(Path(args.rules))
