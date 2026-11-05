@@ -1,0 +1,7 @@
+PasswordAuthentication yes
+sshd -t ok
+permitrootlogin without-password
+pubkeyauthentication yes
+passwordauthentication no
+kbdinteractiveauthentication no
+root@<rental-host>: Permission denied (publickey).

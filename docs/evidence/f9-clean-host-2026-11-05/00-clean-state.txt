@@ -1,0 +1,69 @@
++ date -u +%FT%TZ
+2026-11-05T08:08:01Z
++ uptime
+ 08:08:01 up 1 min,  1 user,  load average: 0.08, 0.04, 0.01
+Linux opspilot-f9-1 6.8.0-147-generic #147-Ubuntu SMP PREEMPT_DYNAMIC Thu Sep 24 11:33:16 UTC 2026 x86_64 x86_64 x86_64 GNU/Linux
++ uname -a
++ . /etc/os-release
+++ PRETTY_NAME='Ubuntu 24.04.5 LTS'
+Ubuntu 24.04.5 LTS
+++ NAME=Ubuntu
+++ VERSION_ID=24.04
+++ VERSION='24.04.5 LTS (Noble Numbat)'
+++ VERSION_CODENAME=noble
+++ ID=ubuntu
+++ ID_LIKE=debian
+++ HOME_URL=https://www.ubuntu.com/
+++ SUPPORT_URL=https://help.ubuntu.com/
+++ BUG_REPORT_URL=https://bugs.launchpad.net/ubuntu/
+++ PRIVACY_POLICY_URL=https://www.ubuntu.com/legal/terms-and-policies/privacy-policy
+++ UBUNTU_CODENAME=noble
+++ LOGO=ubuntu-logo
++ echo 'Ubuntu 24.04.5 LTS'
++ nproc
+8
+               total        used        free      shared  buff/cache   available
+Mem:           15984         496       15437           1         323       15488
+Swap:           8191           0        8191
+Filesystem      Size  Used Avail Use% Mounted on
+/dev/vda2       328G   12G  303G   4% /
++ free -m
++ df -h /
++ dpkg -l
++ wc -l
+832
++ dpkg -l
++ grep -c '^ii'
+827
+/usr/bin/htpasswd
++ command -v docker kind kubectl helm htpasswd
++ ls /usr/local/bin
+id: ‘opseval’: no such user
+50-cloud-init.conf
+Status: active
+Logging: on (low)
+Default: deny (incoming), allow (outgoing), disabled (routed)
+New profiles: skip
+
+To                         Action      From
+--                         ------      ----
+22/tcp                     ALLOW IN    Anywhere                  
+22/tcp (v6)                ALLOW IN    Anywhere (v6)             
+
+State  Recv-Q Send-Q Local Address:Port Peer Address:PortProcess                                   
+LISTEN 0      4096   127.0.0.53%lo:53        0.0.0.0:*    users:(("systemd-resolve",pid=703,fd=15))
+LISTEN 0      128          0.0.0.0:22        0.0.0.0:*    users:(("sshd",pid=1116,fd=3))           
+LISTEN 0      4096      127.0.0.54:53        0.0.0.0:*    users:(("systemd-resolve",pid=703,fd=17))
+LISTEN 0      128             [::]:22           [::]:*    users:(("sshd",pid=1116,fd=4))           
++ id opseval
++ ls /etc/ssh/sshd_config.d
++ ufw status verbose
++ ss -ltnp
++ ls -la /root
+total 24
+drwx------  4 root root 4096 Nov  5 08:07 .
+drwxr-xr-x 23 root root 4096 Nov  5 08:06 ..
+-rw-r--r--  1 root root 3106 Apr 22  2024 .bashrc
+drwx------  2 root root 4096 Nov  5 08:07 .cache
+-rw-r--r--  1 root root  161 Apr 22  2024 .profile
+drwx------  2 root root 4096 Nov  3 08:00 .ssh
