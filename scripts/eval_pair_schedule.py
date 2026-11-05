@@ -17,6 +17,14 @@ Prometheus or Jaeger, so a fault on one cannot be read on the other.
         --labs labs.json [--rules RULES] [--window-minutes 27] --out plan.json
     .venv/bin/python -m scripts.eval_pair_schedule check --plan plan.json --log log.json \\
         [--rules RULES]
+    .venv/bin/python -m scripts.eval_pair_schedule rejoin --log log.json --lab NAME \\
+        [--recovered-at ISO]
+
+``rejoin`` puts a lab that a running ``run`` stopped (unconfirmed restore,
+exit 4, interrupted window) back into its rotation; run it only after
+``eval_live --recover`` for that lab's round finished (``--recovered-at``
+defaults to now). It writes ``<log>.rejoin/<lab>.json``, which ``run``
+polls; the lab's next window records the rejoin.
 
 ``plan`` is offline and deterministic: it simulates the same dispatcher the
 runner uses with an estimated window length, so the plan shows the order and
@@ -236,6 +244,10 @@ class _LabState:
     previous: dict[str, Any] | None = None
     #: the lab's last restore is unconfirmed: it takes no further window
     stopped: str | None = None
+    #: the window that stopped it: (window_id, scenario_id, ended_at)
+    stopped_by: tuple[str, str, datetime | None] | None = None
+    #: a rejoin after ``eval_live --recover``, booked on the next window
+    rejoined: dict[str, Any] | None = None
 
 
 class Dispatcher:
@@ -318,7 +330,14 @@ class Dispatcher:
                 # never advance the wash or the gap from an unconfirmed
                 # restore: the lab stops until an engineer ran --recover
                 state.stopped = stop
+                state.stopped_by = (
+                    window.window_id,
+                    window.scenario_id,
+                    _moment(record.get("ended_at")),
+                )
                 record["lab_stopped"] = stop
+            if state.rejoined is not None:
+                record["rejoined"], state.rejoined = state.rejoined, None
             if restored is not None:
                 state.last_restored = restored
                 state.restored[window.scenario_id] = restored
@@ -350,6 +369,31 @@ class Dispatcher:
     def stopped(self, lab: str) -> bool:
         with self.lock:
             return self.labs[lab].stopped is not None
+
+    def rejoin(self, lab: str, recovered_at: datetime) -> bool:
+        """Put a stopped lab back after an engineer ran ``eval_live
+        --recover`` (rules ``lab_state``: the lab stops *until* then).
+        ``recovered_at`` (when the recovery confirmed normal) must be after
+        the stopping window ended; the wash and the stopped scenario's gap
+        count from it. The next window of the lab books it as ``rejoined``
+        (``check`` reads it). False when the lab is not stopped or the
+        recovery predates the stop."""
+        with self.lock:
+            state = self.labs[lab]
+            if state.stopped is None or state.stopped_by is None:
+                return False
+            wid, sid, ended = state.stopped_by
+            if ended is not None and recovered_at <= ended:
+                return False
+            state.rejoined = {
+                "after": wid,
+                "stop": state.stopped,
+                "recovered_at": recovered_at.isoformat(),
+            }
+            state.stopped, state.stopped_by = None, None
+            state.last_restored = recovered_at
+            state.restored[sid] = recovered_at
+            return True
 
 
 def restore_unconfirmed(record: Mapping[str, Any]) -> str | None:
@@ -787,11 +831,26 @@ def check(
         last_end: datetime | None = None
         last_restored: datetime | None = None
         restored_by_scenario: dict[str, datetime] = {}
-        unconfirmed: str | None = None
+        unconfirmed: tuple[str, str, datetime | None] | None = None
         for record in items:
             wid = str(record.get("window_id"))
             if unconfirmed is not None:
-                violations.append(f"AFTER_UNCONFIRMED_RESTORE:{wid}")
+                back = record.get("rejoined")
+                recovered = (
+                    _moment(back.get("recovered_at"))
+                    if isinstance(back, Mapping) and back.get("after") == unconfirmed[0]
+                    else None
+                )
+                if recovered is not None and (
+                    unconfirmed[2] is None or recovered > unconfirmed[2]
+                ):
+                    # rejoined after eval_live --recover: wash and gap count
+                    # from the recovery
+                    last_restored = recovered
+                    restored_by_scenario[unconfirmed[1]] = recovered
+                    unconfirmed = None
+                else:
+                    violations.append(f"AFTER_UNCONFIRMED_RESTORE:{wid}")
             began = _moment(record.get("started_at")) or _moment(
                 record.get("injected_at")
             )
@@ -815,7 +874,11 @@ def check(
             stop = restore_unconfirmed(record)
             if stop is not None:
                 violations.append(f"{stop}:{wid}")
-                unconfirmed = wid
+                unconfirmed = (
+                    wid,
+                    str(record.get("scenario_id")),
+                    _moment(record.get("ended_at")),
+                )
             restored = None if stop else restored_at(record)
             if restored is not None:
                 last_restored = restored
@@ -970,10 +1033,16 @@ def run_schedule(
     scenarios: Mapping[str, Scenario] | None = None,
     on_record: Callable[[dict[str, Any]], None] | None = None,
     poll_seconds: float = 30.0,
+    rejoin: Callable[[str], datetime | None] | None = None,
 ) -> list[dict[str, Any]]:
     """One thread per lab, each taking windows from the shared dispatcher
     until nothing is pending or in flight. Records are booked in finish
-    order; ``on_record`` sees each (the CLI appends it to the log)."""
+    order; ``on_record`` sees each (the CLI appends it to the log).
+
+    A stopped lab ends its thread, unless ``rejoin`` is given: then it waits
+    (while windows remain) for ``rejoin(lab)`` to report when an engineer's
+    ``eval_live --recover`` confirmed the lab normal, and takes windows
+    again from then (``Dispatcher.rejoin``)."""
     clock = clock or SystemClock()
     dispatcher = Dispatcher(pending, labs, rules)
     model_fault = {k: v.model_fault for k, v in (scenarios or {}).items()}
@@ -983,8 +1052,15 @@ def run_schedule(
         while True:
             window, ready = dispatcher.take(lab, clock.now())
             if window is None:
-                if dispatcher.done() or dispatcher.stopped(lab):
+                if dispatcher.done():
                     return
+                if dispatcher.stopped(lab):
+                    if rejoin is None:
+                        return
+                    recovered = rejoin(lab)
+                    if recovered is None or not dispatcher.rejoin(lab, recovered):
+                        clock.sleep(poll_seconds)
+                    continue
                 wait = (
                     poll_seconds
                     if ready is None
@@ -1009,13 +1085,11 @@ def run_schedule(
                 if on_record is not None:
                     on_record(dispatcher.records[-1])
                 errors.append(exc)
-                return
+                continue  # the lab is stopped: ends, or waits for a rejoin
             record.setdefault("model_fault", model_fault.get(window.scenario_id, False))
             dispatcher.finish(lab, window, record)
             if on_record is not None:
                 on_record(dispatcher.records[-1])
-            if dispatcher.stopped(lab):
-                return
 
     threads = [
         threading.Thread(target=worker, args=(lab,), name=f"lab-{lab}") for lab in labs
@@ -1120,6 +1194,11 @@ def subprocess_execute(spec: LabSpec, argv: Sequence[str]) -> tuple[int, str]:
     return proc.returncode, proc.stdout
 
 
+#: ``scripts.eval_live`` exit code of a usage error (``_main``: argument
+#: checks, before ``real_deps`` builds any lab adapter).
+USAGE_EXIT = 2
+
+
 class CommandWindowRunner:
     """Runs a window as one ``scripts.eval_live`` round on its lab and reads
     the round's ``lifecycle.json`` and ``pair.json`` back."""
@@ -1180,6 +1259,7 @@ class CommandWindowRunner:
             pair = self._read(spec, f"{evidence}/runs/{slot['attempt_id']}/pair.json")
         timings = slot.get("timings") or {}
         fault = slot.get("fault") or {}
+        refused = code == USAGE_EXIT and not slot
         record: dict[str, Any] = {
             "round_id": self.round_id(window),
             "exit_code": code,
@@ -1190,9 +1270,15 @@ class CommandWindowRunner:
             "ended_at": timings.get("ended_at"),
             "shared_host": spec.shared_host,
             "probe_baseline_p95_ms": spec.probe_baseline_p95_ms,
-            "interrupted": code == 130 or not slot,
-            "injected": slot.get("fault") is not None if slot else True,
+            "interrupted": (code == 130 or not slot) and not refused,
+            "injected": slot.get("fault") is not None if slot else not refused,
         }
+        if refused:
+            # eval_live exits 2 only on a usage error, before any lab
+            # adapter exists: nothing was injected, nothing to --recover.
+            # Its slots never started (HARNESS_INTERRUPTED, rerun_pair);
+            # the lab is not stopped.
+            record["refused"] = "USAGE"
         if isinstance(pair, Mapping):
             record["baseline_p95_ms"] = pair.get("baseline_p95_ms")
             record["lab_restarts"] = pair.get("lab_restarts")
@@ -1258,12 +1344,61 @@ def _parser() -> argparse.ArgumentParser:
     c.add_argument("--rules", default=str(RULES_PATH))
     # X3: the OpsPilot voided attempts as an eval_dev_round --reruns file
     c.add_argument("--reruns-out")
+    j = sub.add_parser("rejoin")
+    j.add_argument("--log", required=True)
+    j.add_argument("--lab", required=True)
+    j.add_argument("--recovered-at")
     return parser
+
+
+def rejoin_dir(log_path: Path) -> Path:
+    """Where ``rejoin`` leaves a recovered lab for a running ``run``."""
+    return log_path.with_name(log_path.name + ".rejoin")
+
+
+def _lab_file(log_path: Path, lab: str) -> Path:
+    import re
+
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}", lab):
+        raise ScheduleError("LAB_NAME_INVALID")
+    return rejoin_dir(log_path) / f"{lab}.json"
+
+
+def write_rejoin(log_path: Path, lab: str, recovered_at: datetime) -> Path:
+    path = _lab_file(log_path, lab)
+    path.parent.mkdir(exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps({"lab": lab, "recovered_at": recovered_at.isoformat()}))
+    tmp.replace(path)
+    return path
+
+
+def read_rejoin(log_path: Path) -> Callable[[str], datetime | None]:
+    """``run_schedule``'s ``rejoin``: the recovery time a ``rejoin`` command
+    left for a lab, or None."""
+
+    def read(lab: str) -> datetime | None:
+        try:
+            data = json.loads(_lab_file(log_path, lab).read_text(encoding="utf-8"))
+        except (OSError, ValueError, ScheduleError):
+            return None
+        return _moment(data.get("recovered_at")) if isinstance(data, dict) else None
+
+    return read
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
+        if args.command == "rejoin":
+            recovered = (
+                _moment(args.recovered_at) if args.recovered_at else datetime.now(UTC)
+            )
+            if recovered is None:
+                raise ScheduleError("RECOVERED_AT_INVALID")
+            path = write_rejoin(Path(args.log), args.lab, recovered)
+            print(json.dumps({"lab": args.lab, "rejoin": str(path)}))
+            return 0
         rules = load_rules(Path(args.rules))
         if args.command == "plan":
             from scripts.eval_live import dataset_dimension
@@ -1393,6 +1528,7 @@ def execute_plan(
         scenarios=scenarios,
         on_record=write,
         poll_seconds=poll_seconds,
+        rejoin=read_rejoin(log_path),
     )
     if not booked:
         write_empty = {"schema": LOG_SCHEMA, "rules_id": rules.rules_id, "windows": []}
