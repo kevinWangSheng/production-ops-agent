@@ -66,10 +66,27 @@ async def _splice(
     return up, down
 
 
+class Inject503:
+    """The dataset runner's model transport fault (S7): answer an
+    allowlisted CONNECT with 503 instead of tunnelling it. ``always``: every
+    CONNECT; ``first``: only the first allowlisted one; ``None``: never."""
+
+    def __init__(self, mode: str | None) -> None:
+        if mode not in (None, "always", "first"):
+            raise ValueError(mode)
+        self.mode = mode
+        self.seen = 0
+
+    def take(self) -> bool:
+        self.seen += 1
+        return self.mode == "always" or (self.mode == "first" and self.seen == 1)
+
+
 async def handle_connect(
     reader: asyncio.StreamReader,
     writer: asyncio.StreamWriter,
     allow: frozenset[str],
+    inject: Inject503 | None = None,
 ) -> None:
     peer = writer.get_extra_info("peername")
     try:
@@ -84,6 +101,19 @@ async def handle_connect(
         await writer.drain()
         writer.close()
         log(mode="connect", client=str(peer), allowed=False, reason=reason)
+        return
+    if inject is not None and inject.take():
+        writer.write(b"HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\n\r\n")
+        await writer.drain()
+        writer.close()
+        log(
+            mode="connect",
+            client=str(peer),
+            target=target,
+            allowed=False,
+            injected=True,
+            reason="injected 503",
+        )
         return
     host, port = target.rsplit(":", 1)
     try:
@@ -148,15 +178,21 @@ async def serve(args: argparse.Namespace) -> None:
     servers = []
     if args.mode == "connect":
         allow = frozenset(a.lower() for a in args.allow)
+        inject = Inject503(args.inject_503)
         servers.append(
             await asyncio.start_server(
-                lambda r, w: handle_connect(r, w, allow),
+                lambda r, w: handle_connect(r, w, allow, inject),
                 "0.0.0.0",
                 args.listen,
                 limit=MAX_HEADER_BYTES,
             )
         )
-        log(mode="connect", listening=args.listen, allow=sorted(allow))
+        log(
+            mode="connect",
+            listening=args.listen,
+            allow=sorted(allow),
+            inject_503=args.inject_503,
+        )
     else:
         for spec in args.route:
             port, target = spec.split("=", 1)
@@ -175,6 +211,7 @@ def main(argv: list[str] | None = None) -> int:
     connect = sub.add_parser("connect")
     connect.add_argument("--listen", type=int, default=3128)
     connect.add_argument("--allow", action="append", required=True, help="host:port")
+    connect.add_argument("--inject-503", choices=("always", "first"), default=None)
     forward = sub.add_parser("forward")
     forward.add_argument(
         "--route", action="append", required=True, help="port=host:port"
