@@ -3154,6 +3154,14 @@ def real_deps(
     ``probe`` (r8) builds the lab seams only: no credential file is read and
     the model, PG and balance seats refuse any use.
     """
+    from scripts import kind_lab
+
+    # several labs on one host: refuse an unsupported instance or a
+    # telemetry URL of another instance before any lab adapter exists
+    try:
+        kind_lab.check_instance()
+    except SystemExit:
+        raise LabError("LAB_INSTANCE_UNSUPPORTED") from None
     from scripts.eval_live_investigator import (
         InvestigatorSource,
         OtelDemoInvestigator,
