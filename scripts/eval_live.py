@@ -1188,10 +1188,17 @@ def _attempt_body(
 
 
 def _fail(state: _Attempt, code: str) -> None:
-    if state.reason is None:
-        state.reason = code
-    state.status = "aborted" if state.investigating else "setup_failed"
-    state.ledger.event(state.stage, "failed", reason=state.reason)
+    if state.result is not None:
+        # The OpsPilot Run already finished (a paired attempt's later stage
+        # failed): its status and reason stand, and the pair entries stay as
+        # they are (an unrun one stays not_started, so the scheduler reads a
+        # harness interruption); the code goes to the ledger only.
+        state.ledger.event(state.stage, "failed", reason=code)
+    else:
+        if state.reason is None:
+            state.reason = code
+        state.status = "aborted" if state.investigating else "setup_failed"
+        state.ledger.event(state.stage, "failed", reason=state.reason)
     if code == "LAB_FAULT_FOREIGN":
         # Another holder's fault is live: no further slot may start (exit 1;
         # exit 4 stays for this driver's own restore/wash failure).
@@ -1364,6 +1371,7 @@ def _investigate(
         ledger.event("investigate", "failed", reason=state.reason)
         return
     state.result = result
+    state.investigating = False
     state.marks["investigation_end"] = clock.monotonic()
     if result.product_run_id is not None:
         state.record = replace(state.record, product_run_id=result.product_run_id)
@@ -1644,15 +1652,17 @@ def _regate(
     else:
         assert gate.window is not None
         deadline = gate.window.end + FRESHNESS
-    for flag, rule in noise_only_rules(plan, answer) + noise_rules(plan, answer):
-        seen = fault_gate(rule, confirmed_at=since, deps=deps)
+    for flag, rule in _metric_last(
+        noise_only_rules(plan, answer) + noise_rules(plan, answer)
+    ):
+        seen = noise_gate(rule, confirmed_at=since, deps=deps)
         with protected():
             ledger.write(
                 f"pre-observation-pair-noise-{flag}.json", _raw_observation(seen)
             )
         if not seen.passed:
             raise LabError(NOISE_NOT_OBSERVED)
-        noise_deadline = max(span.start for span in seen.matched) + FRESHNESS
+        noise_deadline = _noise_deadline(seen)
         deadline = noise_deadline if deadline is None else min(deadline, noise_deadline)
     if plan.span is not None:
         from scripts.eval_live_inject import OtlpSpanWriter, write_span
@@ -1999,7 +2009,9 @@ def _setup_v2(
         mark_injector(deps.ledger_root, "flagd", phase="effective")
     noise_only = noise_only_rules(plan, answer)
     noise_only_deadline: datetime | None = None
-    for flag, rule in noise_only:
+    # Span-gated flags first, metric ones last: a metric gate's deadline is
+    # its window end, so a slow span wait after it would leave it stale.
+    for flag, rule in _metric_last(noise_only):
         # #432 seams §12 A16: a noise-only scenario must carry its noise; wait
         # for the noise flag's own error first, then judge checkout clean.
         state.stage = "noise_observation"
@@ -2059,7 +2071,7 @@ def _setup_v2(
         submit_not_after = max(span.start for span in gate.matched) + FRESHNESS
     noise = noise_rules(plan, answer)
     noise_deadline: datetime | None = None
-    for flag, rule in noise:
+    for flag, rule in _metric_last(noise):
         # #432 seams §6: the noise flag's own errors must be in the window
         # the Run will read; its newest error also bounds the submission.
         state.stage = "noise_observation"
@@ -2195,6 +2207,13 @@ def noise_rules(
     if answer.signature is None:
         return ()
     return _noise_rules(plan)
+
+
+def _metric_last(
+    rules: tuple[tuple[str, SignatureRule | MetricNoiseRule], ...],
+) -> tuple[tuple[str, SignatureRule | MetricNoiseRule], ...]:
+    """The noise flags in gate order: error-span rules, then metric rules."""
+    return tuple(sorted(rules, key=lambda item: isinstance(item[1], MetricNoiseRule)))
 
 
 def _noise_deadline(seen: PreObservation) -> datetime:
