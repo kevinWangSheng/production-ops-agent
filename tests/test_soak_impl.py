@@ -1044,3 +1044,16 @@ def test_l1_l2_rental_setup_rules() -> None:
     assert "AllowStreamLocalForwarding no" in setup
     assert "PermitOpen 127.0.0.1:19090 127.0.0.1:16686" in setup
     assert "PermitListen $permit_listen" in setup
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("2026-11-05T01:02:03.123456789Z", "2026-11-05T01:02:03.123456Z"),
+        ("2026-11-05T01:02:03.123456789+00:00", "2026-11-05T01:02:03.123456Z"),
+        ("2026-11-05T01:02:03.5-08:00", "2026-11-05T09:02:03.500000Z"),
+        ("2026-11-05T01:02:03Z", "2026-11-05T01:02:03Z"),
+    ],
+)
+def test_normalize_ts_keeps_the_offset(raw: str, expected: str) -> None:
+    assert runner.normalize_ts(raw) == expected

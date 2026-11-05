@@ -784,7 +784,7 @@ def normalize_ts(raw: str) -> str:
     text = raw.strip()
     if "." in text:
         head, _, rest = text.partition(".")
-        digits = "".join(ch for ch in rest if ch.isdigit())
+        digits = rest[: len(rest) - len(rest.lstrip("0123456789"))]
         zone = rest[len(digits) :]
         text = f"{head}.{digits[:6].ljust(6, '0')}{zone}"
     return iso(parse_time(text))
