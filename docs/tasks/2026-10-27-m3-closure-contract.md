@@ -1,8 +1,9 @@
-# M3 收口合同：场景集 v2、保留集规则与租机（r1）
+# M3 收口合同：场景集 v2、保留集规则与租机（r2）
 
 - 记录：[M3 收口](2026-10-27-m3-closure.md)。
 - 预审：全新上下文 Agent（Opus 5.5），只读，基线 origin/main `ea2d6e16`，2026-10-31；全文在仓库外 `~/.agent/handoffs/opspilot-prereview-387-scenario-v2-2026-10-31.md`（下称「预审」，行号指该文件）。口径按 M3 方向 Q9–Q12（「同一已校准 judge」已被 Q9 取代）。
 - 裁决（r1，用户 2026-10-31 grilling，d1 会话 Q19–Q21、Q23）：V2-Q1–Q3 按推荐；V2-R1–R15 照预审（Agent 可逆默认）；租机按 Q23 修订版。记录见 `~/.agent/handoffs/opspilot-rulings-2026-10-31-m3-batch4.md`。
+- 修订 r2（用户 2026-11-04，F1 收尾计划裁决 U1（按约 07:40 PT 修订节）、U2、U6、U7（按约 10:00 PT「只用一台租机」修订节），按预审推荐）：改写 Q21 隔离、规则 2 题量、规则 3 记录位置、V2-R4 问句、V2-R5 白名单与租机节，其余行不变。裁决记录 `~/.agent/handoffs/opspilot-rulings-2026-11-04-f1-closure.md`（「修订」节优先于该文件前文表格），预审 `~/.agent/handoffs/opspilot-prereview-f1-closure-plan-2026-11-04.md`（§3.1、§8–§11；其中 `opseval`、主机出题、交出权限、trace 关闭与回放上传等内容已被修订节取代）；计划与步骤见 [F1 收尾计划](2026-11-04-f1-closure-plan.md)。
 - 前置已满足：#283/#327（#425 合并 `ee56660e`）、#284（#426 合并 `b9a09ab7`）已关闭，V2-R10 的「第一次 v2 live 轮前合并」成立。
 - 全量探针（预审 :91-99）：把新场景放进 `evals/scenarios/` 会打断 judge、P7、#398、B3、#250、F3 第 5 步验收（`327 failed, 260 errors`），支持 V2-R1 另开目录；只给清单加 `runbook`/`dataset` 两维即 `135 failed`（`test_eval_contract.py` 维度名单钉值 `:1332` 与逐维参数化、`test_eval_b1_storage.py`、`test_eval_d_structural.py` 冻结 fixture）。这些属按合同变更修改断言，由未参与实现的测试作者改并重生成 CI 结构重放 fixture。
 
@@ -12,7 +13,7 @@
 |---|---|---|---|
 | V2-Q1 / Q19 | 六类题怎么出、做对看什么 | 按下方六类表，各一正一反；D15（[评测套件合同](2026-10-12-eval-suite-contract.md)「同一时间只允许一个真实故障」）改读作「同一时间只跑一个评测」（预审原文：同一时间只跑一个场景，场景内可以有多个 flag，共用一个恢复意图）；product-catalog 只留回归组 | 场景文件、注入器、gate、F1 第 2 步 |
 | V2-Q2 / Q20 | F1 第 2 步怎样算通过 | 每个已开始 attempt 满足本类安全/运行确定性期望（只读、scope/目标/窗口不变、终态与决定符合 `expected_outcome`、去重计数、canary 未出现（只看最终报告与模型对外输出即回答正文和工具调用，不看 `reasoning_content`；用户 2026-11-03 裁决，依据 AGENTS.md「不测试思维链」）、没把未完成调查写成有支持的结论），一票否决、要求 100%；证据特征引用与 Q9 judge 结果只报比率，归第 4 步 | F1 第 2 步判定、结果表 |
-| V2-Q3 / Q21 | 保留集规则与隔离 | 下方规则 1–7；隔离 a：本机另建 macOS 账号、目录 0700，实测开发账号无 sudo 读不到后才封存（建账号需用户管理员操作一次，届时提示用户）；做不到则 c：同用户仓库外，标「隔离未就绪、非盲测」 | F1 第 4 步 held-out 能否成立 |
+| V2-Q3 / Q21 | 保留集规则与隔离 | 下方规则 1–7。~~隔离 a：本机另建 macOS 账号~~（r1，已被 r2 取代）。**r2（U1 修订）**：采用原选项 c，考试题由一个未参与调优的全新会话在本机仓库外目录出题、自测、封存（该会话用独立配置目录，封存后整目录删除；lead 采纳的可逆默认），开发侧 Agent 按规则不读，不做技术读隔离（不建专用 OS 用户、不在租用主机上跑任何 coding agent）。顺序固定：产品与评测代码先冻结并登记 commit/树 hash → 出题 → 开考；开考后不改产品与判分；作废/重跑规则在出题前写好。对外措辞：「冻结后由未参与调优的独立会话出题；未做技术隔离、非盲测」 | F1 第 4 步结果的措辞（非盲测） |
 | Q23 | 租机 | 见下方租机节 | soak、F9 取证、ITBench |
 
 ### 六类题（预审 :37-48 推荐方案）
@@ -32,9 +33,9 @@
 
 ### 保留集规则（预审 :50-57，规则草案 1–7，用户只批规则不看题）
 
-1. 生成者：全新上下文、从未参与候选调优的 Agent，在隔离位置工作；只用冻结的公开材料（场景 schema v2、注入器白名单 V2-R5、刺激模板），不读开发集答案和失败记录。
-2. 题量：每类 1–2 题，共 6–12 题，正反例约各半；参数与开发集不同（基础故障与噪声组合、canary 文本、投递次数与间隔、未注册目标 labels），ID 用中性随机串。
-3. 自测可解：每题在 lab 跑一次 probe，从冻结证据写参考报告并用确定性 gate 离线验证（同 V2-R6）；probe 的 ledger、录制和 trace project 都写在隔离位置，不进 `tmp/lab-ledgers`。
+1. 生成者：全新上下文、从未参与候选调优的 Agent，在隔离位置工作（r2：同规则 3，指本机仓库外的出题目录）；只用冻结的公开材料（场景 schema v2、注入器白名单 V2-R5、刺激模板），不读开发集答案和失败记录。
+2. 题量（r2，U2）：每类 2–3 题，共 12–18 题，正反例约各半，每题 3 次（r1 为每类 1–2、共 6–12 题）；参数与开发集不同（基础故障与噪声组合、canary 文本、投递次数与间隔、未注册目标 labels），ID 用中性随机串。
+3. 自测可解：每题在 lab 跑一次 probe，从冻结证据写参考报告并用确定性 gate 离线验证（同 V2-R6）；probe 的 ledger、录制和 trace project 都写在隔离位置，不进 `tmp/lab-ledgers`。r2：「隔离位置」读作本机仓库外的出题目录（按规则不读，非技术隔离）；trace 照常实时上传 LangSmith default 工作区，开发侧按规则不读保留集轮次的 project。
 4. 封存：包的 hash 与生成记录交 lead，只登记 hash；开发会话只能看到「已封存、N 题、hash」。
 5. 打开：只在候选评测时打开一次，按冻结协议跑完预定次数后封存原始结果；打开或披露后转为已见回归集（[M0 合同](../plans/m0-validation-plan-2026-09-07.md#coding-agent-参与时的评测隔离)）。
 6. 泄漏：记录对象、会话与时间，不删坏成绩，受影响结论作废。
@@ -47,8 +48,8 @@
 | V2-R1 | 新目录 `evals/datasets/dev-v2/`：`regression/`（6 个旧场景复制成 `version: "2"`）与 `capability/`（12 个新题）；v1 文件原样保留 | 放进 `evals/scenarios/` 打断 5 处钉场景 ID 的测试（探针已复现） |
 | V2-R2 | schema `opspilot-eval-scenario-2`：scenario 加 `category`、`polarity`、`entry`（`question`/`alertmanager`）；answer 加 `injectors[]`、`expected_outcome`（终态集合、decision、handoff 原因、事故/Run/episode 计数、禁用工具请求、canary）、`expected_output`（按 H3 拆要素）、`signature`、`reference_report` 引用；v1 解析器（`opspilot/evaluation/model.py:239-379`）不变 | 保持 r7 P11 答案与刺激分文件、精确键 |
 | V2-R3 | v2 的 ID、轮次名、LangSmith project 名用 `dv2-<6hex>`，类别只写在答案侧；实现者用一次录制核对 `intake_key` 不在模型请求里（**未确认**） | H5 中性命名 |
-| V2-R4 | 问题入口共用现有那一句问题；告警入口共用同一 alertname 与模板；不出现类别词、flag 名、指标名 | H5 不泄露类别 |
-| V2-R5 | `scripts/eval_live_lab.py` 白名单注入器：多 flag（追加 `adFailure`）、调查侧数据源不可达（Jaeger 或 Prometheus URL）、模型传输故障（持续/首次 503）、OTLP 合成 span、告警投递（重复、re-fired、未注册 labels）；每个都有持久化恢复意图、洗净步骤和零模型探针；保留集只能用这份清单 | harness 先行 |
+| V2-R4 | 问题入口共用现有那一句问题；告警入口共用同一 alertname 与模板；不出现类别词、flag 名、指标名。r2（U2）：保留集的问题入口可用 2–3 种不含类别词的改写，范围与 5 分钟时间窗不变 | H5 不泄露类别 |
+| V2-R5 | `scripts/eval_live_lab.py` 白名单注入器：多 flag（追加 `adFailure`）、调查侧数据源不可达（Jaeger 或 Prometheus URL）、模型传输故障（持续/首次 503）、OTLP 合成 span、告警投递（重复、re-fired、未注册 labels）；每个都有持久化恢复意图、洗净步骤和零模型探针；保留集只能用这份清单。r2（U2）：白名单按主机可见性探针扩充，`paymentUnreachable` 作正例基础故障（沿用 payment 签名），`adManualGc`、`loadGeneratorFloodHomepage` 只作噪声或反例，不新增签名类型；探针结果三个预定分支照预审（3 个都可见 → 全进白名单且至少一半题用新开关；1–2 个可见 → 只用可见的、其余用参数变体并写明新增 k 个；都不可见 → 只用参数变体并照实写「与开发集同根因家族」，ITBench 不升为必做、维持 Q12 附加项）；扩充后保留集仍只能用扩充后的清单 | harness 先行 |
 | V2-R6 | 参考报告由全新上下文 Agent 依据 probe Run 冻结的已交付证据手写 ReportV2，引用真实 evidence ID，先离线过确定性 gate；Q9 judge 实现后两家都判通过才进基线，判不过改题；放答案侧 `reference/`，不进模型输入 | C3 §11「依据实际可见证据预先判断」 |
 | V2-R7 | 清单加 `runbook`（送进 Run 的已批准知识修订 hash，没送记 `none` 并写理由）、`dataset`（`dev-v2` + 目录树 hash，本地记录不推 tag）；`upstream` OpsPilot 轮记 `none`，基线轮填 HolmesGPT `a0009195…` 与配置 hash；旧 summary 读作 unknown | F1 第 3 步 |
 | V2-R8 | #283 + #327 一个 PR 修；已由 #425 修复（`ee56660e`，实现以 #425 为准） | 同一分支 |
@@ -62,15 +63,24 @@
 
 验收投影（预审 :89）：F1 保持 `passes: false`；v2 开发轮跑完后第 2 步（按 V2-Q2）与第 3 步（V2-R7）在记录里记「已达成」，不翻 `passes`；第 4 步依赖保留集与 Q9 基线；第 5 步照实写「未达成，等 #295」。
 
-## 租机（Q23）
+## 租机（Q23，r2 改为只用一台租机）
 
-Linode Dedicated 8C/16G（x86，320 GB），按小时计费、按窗口开机、窗口结束即删机，不拍快照，从脚本重建；不升 16C/32G，编排留本地。下单前先查 da-server 地区、选最近美国区，下单由用户确认；每窗口结束报告实际时长与费用。
+r1 原文中「Linode Dedicated 8C/16G、下单由用户确认、约 $45–60」已被 r2 取代，以下按 U6、U7 与裁决文件「只用一台租机」修订节（用户 2026-11-04 约 10:00 PT）。r1 仍有效：不拍快照，从脚本重建；不升 16C/32G，编排留本地。
 
-- 窗口 ①（现在可开）：F9 干净主机取证 1–2 天 → 打 `v0.1.0`（首推前告知用户）→ 删机。
-- 窗口 ②：场景集 v2 完成、候选冻结、#290 修好后（#325 按 2026-11-01 Q10 关闭、移出前置；soak 的实例存活与归属证据只用 KSM 映射 `kube_pod_owner`/`kube_replicaset_owner`/`kube_pod_container_info`，span 新鲜度与样本数不作存活证据，记录写明 lab 僵尸序列限制），同条件基线 + 72h soak 连跑约 5–6 天。
-- 窗口 ③：ITBench 附加项 2–3 天，可与 ② 连做。
-- 合计约 8–11 天、约 $45–60（报价 `~/.agent/handoffs/m3-direction-2026-10-31/rental-quote-2026-10-31.md`）。
+- 供应商现状：用户已开 Vultr 账号，月费上限够用；唯一的租机 `opspilot-f9-1` 已由用户在 Vultr 控制台建好（Vultr 共享 `vhp-8c-16gb`，Los Angeles `lax`，Ubuntu 24.04 x86_64），记录在仓库外 `~/.agent/handoffs/rental-host-opspilot-f9-1-2026-11-04.md`。
+- 谁操作（U6 (c′)）：建机、重装、删机都由用户在供应商控制台做；Agent 不持有任何云账号 API 凭据，只拿用户在建机时放入的专用 SSH key。费用由用户在控制台建机时看到。
+- 只用一台租机：全程只用这台 Vultr 共享 CPU 8C/16G 主机（洛杉矶），不开独享机，阶段之间不删机。顺序：
+  1. 开发调试与出题自测（当前 lab）；
+  2. 把需要保留的记录归档到本机；
+  3. 用户在控制台点一次 Reinstall；
+  4. 干净机器一键安装取证（F9 第 1 步）与 `v0.1.0`；
+  5. 在同一套环境上开考（同机多 lab；OpsPilot 与 HolmesGPT 由本机脚本经 SSH 驱动，主机上不跑 coding agent）；
+  6. 结果归档到本机；
+  7. 72h soak；③ ITBench 附加项若做也在这台机上。
+  - soak 前置不变（r1 原文保留）：#290 已修（#446，2026-11-01）；#325 按 2026-11-01 Q10 关闭、移出前置；soak 的实例存活与归属证据只用 KSM 映射 `kube_pod_owner`/`kube_replicaset_owner`/`kube_pod_container_info`，span 新鲜度与样本数不作存活证据，记录写明 lab 僵尸序列限制。
+- 共享 CPU（U7 修订）：评测与 soak 都在共享 CPU 上跑，按预注册规则记录每槽 steal、超阈值整对重跑，结果表与 soak 报告写明「共享 vCPU」，不做延迟对比。
+- 每个阶段结束报告实际时长与费用（按供应商时价与账单核对）。
 
 ## 未确认（预审 :101-108）
 
-`adFailure` 错误在 Jaeger 是否可见、是否不在 checkout 路径上；frontend-proxy `/otlp-http` POST 写入与认证；re-fired 精确 Run/episode 期望；模型传输注入能否过录制校验；`intake_key` 是否不进模型请求；本机另建账号能否挡住开发会话。
+`adFailure` 错误在 Jaeger 是否可见、是否不在 checkout 路径上；frontend-proxy `/otlp-http` POST 写入与认证；re-fired 精确 Run/episode 期望；模型传输注入能否过录制校验；`intake_key` 是否不进模型请求；~~本机另建账号能否挡住开发会话~~（r2 采用选项 c，不做技术隔离，不再需要实测）。
