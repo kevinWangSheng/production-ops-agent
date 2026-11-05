@@ -871,12 +871,24 @@ STALLED = {
     ("row", "faults_active", "soon", "expected"),
     [
         (STALLED, False, True, "before_next_injection_run_waiting_human"),
-        ({**STALLED, "current_run_state": "failed"}, False, True,
-         "before_next_injection_run_failed"),
-        ({**STALLED, "current_run_state": "blocked"}, False, True,
-         "before_next_injection_run_blocked"),
-        ({**STALLED, "current_run_state": "budget_exhausted"}, False, True,
-         "before_next_injection_run_budget_exhausted"),
+        (
+            {**STALLED, "current_run_state": "failed"},
+            False,
+            True,
+            "before_next_injection_run_failed",
+        ),
+        (
+            {**STALLED, "current_run_state": "blocked"},
+            False,
+            True,
+            "before_next_injection_run_blocked",
+        ),
+        (
+            {**STALLED, "current_run_state": "budget_exhausted"},
+            False,
+            True,
+            "before_next_injection_run_budget_exhausted",
+        ),
         (STALLED, False, False, None),  # not before an injection
         (STALLED, True, True, None),  # a fault is still on
         ({**STALLED, "observations_in_flight": 1}, False, True, None),
@@ -888,7 +900,10 @@ STALLED = {
 def test_b1_closes_stalled_incidents_before_the_next_injection(
     row: dict[str, Any], faults_active: bool, soon: bool, expected: str | None
 ) -> None:
-    assert pg.should_close(row, faults_active=faults_active, injection_soon=soon) == expected
+    assert (
+        pg.should_close(row, faults_active=faults_active, injection_soon=soon)
+        == expected
+    )
 
 
 def test_b1_injection_soon_window(fake: Any) -> None:
@@ -972,8 +987,11 @@ def test_b2_summary_lists_injections_left_on(tmp_path: Path) -> None:
     (raw / "meta.json").write_text("{}")
     rows = [
         {"ts": iso(T0), "type": "soak_start"},
-        {"ts": iso(T0 + timedelta(seconds=600)), "type": "injection_on",
-         "injection_id": "ep01"},
+        {
+            "ts": iso(T0 + timedelta(seconds=600)),
+            "type": "injection_on",
+            "injection_id": "ep01",
+        },
         {"ts": iso(T0 + timedelta(hours=72)), "type": "soak_end"},
     ]
     (raw / "events.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
@@ -986,7 +1004,9 @@ def test_m1_failed_prometheus_query_writes_down_rows(
     fake: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(
-        runner, "http", lambda url, **kw: SimpleNamespace(status=200, error=None, body=b"")
+        runner,
+        "http",
+        lambda url, **kw: SimpleNamespace(status=200, error=None, body=b""),
     )
     r = fake.make(_plan())
     r.prom = SimpleNamespace(  # type: ignore[assignment]
@@ -1006,7 +1026,9 @@ def test_m2_outage_past_the_planned_window_is_an_interruption(fake: Any) -> None
     r.tunnel_transition(False)  # planned: no interruption
     r.now.advance(runner.TUNNEL_STOP_S + runner.TUNNEL_RECONNECT_GRACE_S - 1)
     r.tunnel_transition(False)
-    assert "env_interruption_start" not in [e["type"] for e in read_jsonl(r.events_path)]
+    assert "env_interruption_start" not in [
+        e["type"] for e in read_jsonl(r.events_path)
+    ]
     r.now.advance(2)  # no A4:start record (runner restarted), window over
     r.tunnel_transition(False)
     r.tunnel_transition(False)
