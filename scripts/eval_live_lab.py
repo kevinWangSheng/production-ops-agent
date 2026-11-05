@@ -1632,12 +1632,17 @@ def metric_gate(
     poll_seconds: float = POLL_SECONDS,
     probe_timeout: float = PROBE_SECONDS,
     min_window_seconds: float = METRIC_MIN_WINDOW_SECONDS,
+    baseline_end: datetime | None = None,
 ) -> PreObservation:
     """A metric noise flag's own signal is up (prereview §1 A, R3): every
     signal's value over ``[confirmed_at, now]`` is at least its ratio times
-    the value over the equally long window before ``confirmed_at``, and at
-    least its floor. A missing or incomplete read never passes."""
+    the value over the equally long window before ``baseline_end`` (default
+    ``confirmed_at``), and at least its floor. A re-confirmation reads a
+    trailing window inside the noise, so it passes the flag's effective time
+    as ``baseline_end`` to keep the pre-injection baseline. A missing or
+    incomplete read never passes."""
     clock = deps.clock
+    base_end = confirmed_at if baseline_end is None else baseline_end
     started = clock.monotonic()
     probes = 0
     raw: list[Mapping[str, Any]] = []
@@ -1658,7 +1663,7 @@ def metric_gate(
             timeout = min(
                 probe_timeout, max(_remaining(clock, started, budget_seconds), 0.01)
             )
-            baseline = _metric(deps, expr, confirmed_at - span, confirmed_at, timeout)
+            baseline = _metric(deps, expr, base_end - span, base_end, timeout)
             observed = _metric(deps, expr, confirmed_at, end, timeout)
             if baseline is None or observed is None:
                 return PreObservation(
@@ -1687,7 +1692,7 @@ def metric_gate(
                     "signal_id": signal.signal_id,
                     "expr": expr,
                     "window_seconds": seconds,
-                    "baseline_end": confirmed_at.isoformat(),
+                    "baseline_end": base_end.isoformat(),
                     "observed_end": end.isoformat(),
                     "baseline": baseline.value,
                     "observed": observed.value,
@@ -1735,11 +1740,15 @@ def noise_gate(
     *,
     confirmed_at: datetime,
     deps: LiveDeps,
+    baseline_end: datetime | None = None,
 ) -> PreObservation:
     """A noise flag's own confirmation: its error span (``NOISE_RULES``) or
-    its metric signal (``METRIC_NOISE_RULES``)."""
+    its metric signal (``METRIC_NOISE_RULES``, whose baseline window ends at
+    ``baseline_end``, default ``confirmed_at``)."""
     if isinstance(rule, MetricNoiseRule):
-        return metric_gate(rule, confirmed_at=confirmed_at, deps=deps)
+        return metric_gate(
+            rule, confirmed_at=confirmed_at, deps=deps, baseline_end=baseline_end
+        )
     return fault_gate(rule, confirmed_at=confirmed_at, deps=deps)
 
 

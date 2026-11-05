@@ -1634,8 +1634,10 @@ def _regate(
     assert plan is not None and isinstance(answer, AnswerV2)
     since = clock.now() - timedelta(seconds=RECONFIRM_SECONDS)
     effective = state.marks.get("effective_at")
+    effective_at: datetime | None = None
     if effective is not None:
-        since = max(since, datetime.fromtimestamp(effective, tz=since.tzinfo))
+        effective_at = datetime.fromtimestamp(effective, tz=since.tzinfo)
+        since = max(since, effective_at)
     if answer.signature is not None:
         gate = fault_gate(answer.signature, confirmed_at=since, deps=deps)
         reason = SIGNATURE_NOT_RECONFIRMED
@@ -1655,7 +1657,12 @@ def _regate(
     for flag, rule in _metric_last(
         noise_only_rules(plan, answer) + noise_rules(plan, answer)
     ):
-        seen = noise_gate(rule, confirmed_at=since, deps=deps)
+        # The noise must still be up in the trailing window; a metric rule
+        # still compares it with the window before the flag became effective
+        # (a baseline ending at ``since`` lies inside the noise).
+        seen = noise_gate(
+            rule, confirmed_at=since, deps=deps, baseline_end=effective_at
+        )
         with protected():
             ledger.write(
                 f"pre-observation-pair-noise-{flag}.json", _raw_observation(seen)
