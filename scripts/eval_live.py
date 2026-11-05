@@ -1190,11 +1190,9 @@ def _attempt_body(
 def _fail(state: _Attempt, code: str) -> None:
     if state.result is not None:
         # The OpsPilot Run already finished (a paired attempt's later stage
-        # failed): its status and reason stand; the systems not yet run fail
-        # their setup instead.
-        for entry in state.pair:
-            if entry["status"] == "not_started":
-                entry.update(status="setup_failed", reason=f"PAIR:{code}")
+        # failed): its status and reason stand, and the pair entries stay as
+        # they are (an unrun one stays not_started, so the scheduler reads a
+        # harness interruption); the code goes to the ledger only.
         state.ledger.event(state.stage, "failed", reason=code)
     else:
         if state.reason is None:

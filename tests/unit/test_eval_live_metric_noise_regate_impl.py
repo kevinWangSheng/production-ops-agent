@@ -96,7 +96,20 @@ def test_a_finished_run_is_not_relabeled_when_the_regate_crashes(lab, monkeypatc
     assert (result.slots[0].status, result.slots[0].reason) == expected
     assert (first["status"], first["reason"]) == expected
     assert result.slots[0].product_run_id is not None
-    assert (second["status"], second["reason"]) == ("setup_failed", "PAIR:DRIVER_ERROR")
+    assert expected == ("ran", None)
+    assert first["status"] == "ran"
+    # the unrun system stays not_started: the scheduler reruns the pair
+    assert (second["status"], second["reason"]) == ("not_started", None)
+    ledger = lab["deps"].ledger_root / "s7pair" / result.slots[0].attempt_id
+    events = [
+        json.loads(row)
+        for path in ledger.glob("*.jsonl")
+        for row in path.read_text().splitlines()
+    ]
+    assert any(
+        e["event"] == "failed" and e["detail"].get("reason") == "DRIVER_ERROR"
+        for e in events
+    )
     assert baseline.calls == []
     assert lab["lab"].raw == s7.dr.ORIGINAL_V2
 
