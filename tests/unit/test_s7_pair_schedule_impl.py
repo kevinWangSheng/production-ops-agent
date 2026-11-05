@@ -596,7 +596,8 @@ def test_command_runner_drives_one_round_per_window(tmp_path):
     assert "opspilot-only" in runner.argv("b", alone)
 
 
-def test_command_runner_books_a_round_without_evidence_as_interrupted(tmp_path):
+@pytest.mark.parametrize("code", [1, 255])  # a crash, a lost ssh connection
+def test_command_runner_books_a_round_without_evidence_as_interrupted(tmp_path, code):
     specs = es.load_lab_specs(_labs_file(tmp_path, [_lab("a", 0, 55001)]))
     runner = es.CommandWindowRunner(
         specs,
@@ -604,7 +605,7 @@ def test_command_runner_books_a_round_without_evidence_as_interrupted(tmp_path):
         round_prefix="p",
         holder="h",
         batch="b",
-        execute=lambda spec, argv: (2, ""),
+        execute=lambda spec, argv: (code, ""),
     )
     record = runner.run("a", es.Window("x-r1", "x", 1, ("opspilot", "holmes")))
     assert record["interrupted"] is True
