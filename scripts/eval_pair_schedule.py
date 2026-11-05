@@ -1438,6 +1438,7 @@ def confirm_recovery(
     root holds no restore intent and no active run marker now (``--recover``
     can write the record and still exit 1 with its marker left). Raises
     otherwise."""
+    import posixpath
     import re
 
     try:
@@ -1450,7 +1451,9 @@ def confirm_recovery(
         raise ScheduleError("LAB_NOT_STOPPED")
     stop = stops[-1]
     round_id = stop.get("round_id") or f"{round_prefix}-{stop.get('window_id')}"
-    folder = f"{spec.output_root}/evidence/{round_id}"
+    # the paths live on the lab, so normalize lexically (no local resolve)
+    folder = posixpath.normpath(f"{spec.output_root}/evidence/{round_id}")
+    recovery = posixpath.normpath(recovery)
     name = recovery.rsplit("/", 1)[-1]
     if recovery != f"{folder}/{name}" or not re.fullmatch(
         r"recovery-\d{8}T\d{6}Z(-\d{1,2})?\.json", name

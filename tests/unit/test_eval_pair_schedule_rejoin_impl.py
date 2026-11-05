@@ -524,3 +524,27 @@ def test_check_orders_a_usage_refusal_by_its_dispatch_time(rules):
 
 def _spec_named(name: str) -> es.LabSpec:
     return es.LabSpec(name, "/repo", 55001, "http://127.0.0.1:18080/", "/out")
+
+
+@pytest.mark.parametrize(
+    ("output_root", "path"),
+    [
+        ("/root/out/a/", PATH),
+        ("/root/out/x/../a", PATH),
+        ("/root/out/a", "/root/out/a/evidence/./p-x-r1/recovery-20261105T030000Z.json"),
+    ],
+)  # fmt: skip
+def test_rejoin_normalizes_the_output_root_and_recovery_path(
+    tmp_path, output_root, path
+):
+    import dataclasses
+
+    log = _stopped_log(tmp_path)
+    spec = dataclasses.replace(_spec(tmp_path), output_root=output_root)
+    at = STOP_END + timedelta(minutes=30)
+    read: list[list[str]] = []
+    got = es.confirm_recovery(
+        log, "a", spec, "p", path, now=NOW, execute=_on_lab(_recovery(at), calls=read)
+    )
+    assert got == ("x-r1", at)
+    assert read[0] == ["cat", PATH]
