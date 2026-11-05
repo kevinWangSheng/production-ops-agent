@@ -192,16 +192,167 @@ def test_a_usage_refusal_does_not_stop_the_lab_and_reruns_the_pair(tmp_path, rul
     assert taken is not None
 
 
-def test_rejoin_cli_leaves_the_recovery_for_the_running_schedule(tmp_path: Path):
+NOW = T0 + timedelta(hours=3)
+STOP_END = T0 + timedelta(minutes=21)
+
+
+def _stopped_log(tmp_path: Path, **stop: Any) -> Path:
     log = tmp_path / "log.json"
-    at = "2026-11-05T17:00:00+00:00"
-    assert (
-        es.main(["rejoin", "--log", str(log), "--lab", "lab-2", "--recovered-at", at])
-        == 0
+    record = {
+        "window_id": "x-r1",
+        "lab": "a",
+        "round_id": "p-x-r1",
+        "attempt_id": "att-1",
+        "ended_at": STOP_END.isoformat(),
+        "lab_stopped": "EXIT_4_RETAINED_FAULT",
+        **stop,
+    }
+    log.write_text(json.dumps({"schema": es.LOG_SCHEMA, "windows": [record]}))
+    return log
+
+
+def _recovery(at: datetime, **extra: Any) -> str:
+    return json.dumps(
+        {
+            "schema": es.RECOVERY_SCHEMA,
+            "round": "p-x-r1",
+            "attempt_id": "att-1",
+            "recovered_at": at.isoformat(),
+            **extra,
+        }
     )
-    marker = json.loads((tmp_path / "log.json.rejoin" / "lab-2.json").read_text())
-    assert marker["recovered_at"] == at
-    read = es.read_rejoin(log)
-    assert read("lab-2") == datetime.fromisoformat(at)
-    assert read("lab-0") is None
-    assert es.main(["rejoin", "--log", str(log), "--lab", "../x"]) == 2
+
+
+def _spec(tmp_path: Path) -> es.LabSpec:
+    return es.load_lab_specs(_labs_file(tmp_path, [_lab("a", 0, 55001)]))["a"]
+
+
+PATH = "/root/out/a/evidence/p-x-r1/recovery-20261105T030000Z.json"
+
+
+def test_rejoin_needs_the_recover_record_of_the_stopping_round(tmp_path):
+    log, spec = _stopped_log(tmp_path), _spec(tmp_path)
+    at = STOP_END + timedelta(minutes=30)
+    read: list[list[str]] = []
+
+    def execute(lab: es.LabSpec, argv: Any) -> tuple[int, str]:
+        read.append(list(argv))
+        return 0, _recovery(at)
+
+    got = es.confirm_recovery(log, "a", spec, "p", PATH, now=NOW, execute=execute)
+    assert got == at
+    assert read == [["cat", PATH]]
+
+
+@pytest.mark.parametrize(
+    ("record", "path", "code"),
+    [
+        # recovered_at later than now
+        (_recovery(NOW + timedelta(seconds=1)), PATH, "RECOVERED_AT_IN_FUTURE"),
+        # a recovery from before the stopping window ended
+        (_recovery(STOP_END), PATH, "RECOVERY_BEFORE_STOP"),
+        # another round's or attempt's recovery, or no recovery record at all
+        (_recovery(NOW, round="p-y-r1"), PATH, "RECOVERY_INVALID"),
+        (_recovery(NOW, attempt_id="att-2"), PATH, "RECOVERY_INVALID"),
+        (_recovery(NOW, schema="other"), PATH, "RECOVERY_INVALID"),
+        (None, PATH, "RECOVERY_UNREADABLE"),
+        # a file outside the stopping round's evidence
+        (_recovery(NOW), "/root/out/a/evidence/p-y-r1/recovery-20261105T030000Z.json",
+         "RECOVERY_PATH_INVALID"),
+        (_recovery(NOW), "/root/out/a/evidence/p-x-r1/lifecycle.json",
+         "RECOVERY_PATH_INVALID"),
+    ],
+)  # fmt: skip
+def test_rejoin_refuses_without_a_matching_recovery(tmp_path, record, path, code):
+    log, spec = _stopped_log(tmp_path), _spec(tmp_path)
+
+    def execute(lab: es.LabSpec, argv: Any) -> tuple[int, str]:
+        return (1, "") if record is None else (0, record)
+
+    with pytest.raises(es.ScheduleError) as raised:
+        es.confirm_recovery(log, "a", spec, "p", path, now=NOW, execute=execute)
+    assert raised.value.code == code
+
+
+def test_rejoin_refuses_a_lab_that_is_not_stopped(tmp_path):
+    log = _stopped_log(tmp_path, lab_stopped=None)
+    with pytest.raises(es.ScheduleError) as raised:
+        es.confirm_recovery(
+            log, "a", _spec(tmp_path), "p", PATH, now=NOW, execute=lambda *a: (0, "")
+        )
+    assert raised.value.code == "LAB_NOT_STOPPED"
+
+
+def test_a_runner_exception_stop_finds_its_round_by_the_prefix(tmp_path):
+    # the run_schedule exception record has no round_id or attempt_id
+    log = _stopped_log(tmp_path, round_id=None, attempt_id=None)
+    at = STOP_END + timedelta(minutes=5)
+    got = es.confirm_recovery(
+        log, "a", _spec(tmp_path), "p", PATH, now=NOW,
+        execute=lambda *a: (0, _recovery(at, attempt_id="whatever")),
+    )  # fmt: skip
+    assert got == at
+
+
+def test_rejoin_cli_reads_the_recovery_on_the_lab_and_leaves_the_marker(tmp_path):
+    out = tmp_path / "out"
+    labs = tmp_path / "labs.json"
+    lab = _lab("a", 0, 55001, host=None, repo=str(tmp_path), output_root=str(out))
+    labs.write_text(json.dumps({"schema": es.LABS_SCHEMA, "labs": [lab]}))
+    log = _stopped_log(tmp_path)
+    at = datetime.now(UTC).replace(microsecond=0)
+    evidence = out / "evidence" / "p-x-r1"
+    evidence.mkdir(parents=True)
+    path = evidence / "recovery-20261105T030000Z.json"
+    argv = ["rejoin", "--log", str(log), "--labs", str(labs), "--lab", "a",
+            "--round-prefix", "p", "--recovery", str(path)]  # fmt: skip
+    assert es.main(argv) == 2  # no recovery record yet: refused, no marker
+    assert es.read_rejoin(log)("a") is None
+    path.write_text(_recovery(at))
+    assert es.main(argv) == 0
+    assert es.read_rejoin(log)("a") == at
+    assert es.read_rejoin(log)("b") is None
+    bad = [*argv[:6], "../x", *argv[7:]]
+    assert es.main(bad) == 2
+
+
+def test_run_ends_when_every_lab_is_stopped(rules):
+    """With a rejoin reader that never reports a recovery, every lab stopped
+    ends ``run`` (bounded: the test fails instead of hanging)."""
+
+    class AllExit4(FakeRunner):
+        def run(self, lab: str, window: es.Window) -> dict[str, Any]:
+            record = super().run(lab, window)
+            record["exit_code"] = 4
+            return record
+
+    fast = replace(
+        rules,
+        same_scenario_gap=timedelta(seconds=0.01),
+        wash_min=timedelta(seconds=0.01),
+    )
+    windows = [es.Window(f"s{i}-r1", f"s{i}", 1, ("opspilot",)) for i in range(6)]
+    done: list[list[dict[str, Any]]] = []
+    thread = threading.Thread(
+        target=lambda: done.append(
+            es.run_schedule(
+                windows,
+                ("l0", "l1"),
+                fast,
+                AllExit4(),
+                poll_seconds=0.01,
+                rejoin=lambda lab: None,
+            )
+        ),
+        daemon=True,
+    )
+    thread.start()
+    thread.join(timeout=10)
+    assert not thread.is_alive(), "run_schedule kept waiting with every lab stopped"
+    (records,) = done
+    assert sorted(r["lab"] for r in records) == ["l0", "l1"]
+    assert all(r["lab_stopped"] == "EXIT_4_RETAINED_FAULT" for r in records)
+    plan = {"windows": [w.as_json() for w in windows]}
+    result = es.check(plan, {"schema": es.LOG_SCHEMA, "windows": records}, fast)
+    missing = [v for v in result["violations"] if v.startswith("MISSING:")]
+    assert len(missing) == len(windows) - 2  # disclosed, never dropped

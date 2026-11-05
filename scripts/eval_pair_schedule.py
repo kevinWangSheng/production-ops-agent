@@ -17,14 +17,16 @@ Prometheus or Jaeger, so a fault on one cannot be read on the other.
         --labs labs.json [--rules RULES] [--window-minutes 27] --out plan.json
     .venv/bin/python -m scripts.eval_pair_schedule check --plan plan.json --log log.json \\
         [--rules RULES]
-    .venv/bin/python -m scripts.eval_pair_schedule rejoin --log log.json --lab NAME \\
-        [--recovered-at ISO]
+    .venv/bin/python -m scripts.eval_pair_schedule rejoin --log log.json --labs labs.json \\
+        --lab NAME --round-prefix P --recovery OUTPUT_ROOT/evidence/ROUND/recovery-*.json
 
 ``rejoin`` puts a lab that a running ``run`` stopped (unconfirmed restore,
-exit 4, interrupted window) back into its rotation; run it only after
-``eval_live --recover`` for that lab's round finished (``--recovered-at``
-defaults to now). It writes ``<log>.rejoin/<lab>.json``, which ``run``
-polls; the lab's next window records the rejoin.
+exit 4, interrupted window) back into its rotation once ``eval_live
+--recover`` confirmed it normal: it reads that recovery record on the lab
+(``confirm_recovery``) and refuses without one. It writes
+``<log>.rejoin/<lab>.json``, which ``run`` polls while another lab still
+runs; the lab's next window records the rejoin. When every lab is stopped,
+``run`` ends and the remaining windows stay MISSING, as before.
 
 ``plan`` is offline and deterministic: it simulates the same dispatcher the
 runner uses with an estimated window length, so the plan shows the order and
@@ -369,6 +371,10 @@ class Dispatcher:
     def stopped(self, lab: str) -> bool:
         with self.lock:
             return self.labs[lab].stopped is not None
+
+    def all_stopped(self) -> bool:
+        with self.lock:
+            return all(state.stopped is not None for state in self.labs.values())
 
     def rejoin(self, lab: str, recovered_at: datetime) -> bool:
         """Put a stopped lab back after an engineer ran ``eval_live
@@ -1040,7 +1046,7 @@ def run_schedule(
     order; ``on_record`` sees each (the CLI appends it to the log).
 
     A stopped lab ends its thread, unless ``rejoin`` is given: then it waits
-    (while windows remain) for ``rejoin(lab)`` to report when an engineer's
+    (while windows remain and another lab is not stopped) for ``rejoin(lab)`` to report when an engineer's
     ``eval_live --recover`` confirmed the lab normal, and takes windows
     again from then (``Dispatcher.rejoin``)."""
     clock = clock or SystemClock()
@@ -1058,8 +1064,13 @@ def run_schedule(
                     if rejoin is None:
                         return
                     recovered = rejoin(lab)
-                    if recovered is None or not dispatcher.rejoin(lab, recovered):
-                        clock.sleep(poll_seconds)
+                    if recovered is not None and dispatcher.rejoin(lab, recovered):
+                        continue
+                    if dispatcher.all_stopped():
+                        # no lab runs: end as without rejoin; the pending
+                        # windows stay MISSING in ``check``
+                        return
+                    clock.sleep(poll_seconds)
                     continue
                 wait = (
                     poll_seconds
@@ -1346,8 +1357,10 @@ def _parser() -> argparse.ArgumentParser:
     c.add_argument("--reruns-out")
     j = sub.add_parser("rejoin")
     j.add_argument("--log", required=True)
+    j.add_argument("--labs", required=True)
     j.add_argument("--lab", required=True)
-    j.add_argument("--recovered-at")
+    j.add_argument("--round-prefix", required=True)
+    j.add_argument("--recovery", required=True)
     return parser
 
 
@@ -1373,6 +1386,72 @@ def write_rejoin(log_path: Path, lab: str, recovered_at: datetime) -> Path:
     return path
 
 
+#: ``scripts.eval_live --recover`` writes this record into the round's
+#: evidence only after its restore and wash confirmed the lab normal
+#: (``_recover_round``); nothing else writes it.
+RECOVERY_SCHEMA = "opspilot-eval-live-recovery-1"
+
+
+def confirm_recovery(
+    log_path: Path,
+    lab: str,
+    spec: LabSpec,
+    round_prefix: str,
+    recovery: str,
+    *,
+    now: datetime,
+    execute: Execute | None = None,
+) -> datetime:
+    """When ``eval_live --recover`` confirmed ``lab`` normal after its stop:
+    the ``recovered_at`` of the recovery record ``recovery`` (read on the
+    lab), which must be the stopping window's round (and attempt), later
+    than that window's end and not later than ``now``. Raises otherwise."""
+    import re
+
+    try:
+        log = json.loads(log_path.read_text(encoding="utf-8"))
+        windows = [w for w in log["windows"] if isinstance(w, Mapping)]
+    except (OSError, ValueError, KeyError, TypeError):
+        raise ScheduleError("LOG_INVALID") from None
+    stops = [w for w in windows if w.get("lab") == lab and w.get("lab_stopped")]
+    if not stops:
+        raise ScheduleError("LAB_NOT_STOPPED")
+    stop = stops[-1]
+    round_id = stop.get("round_id") or f"{round_prefix}-{stop.get('window_id')}"
+    folder = f"{spec.output_root}/evidence/{round_id}"
+    name = recovery.rsplit("/", 1)[-1]
+    if recovery != f"{folder}/{name}" or not re.fullmatch(
+        r"recovery-\d{8}T\d{6}Z(-\d{1,2})?\.json", name
+    ):
+        raise ScheduleError("RECOVERY_PATH_INVALID")
+    code, out = (execute or subprocess_execute)(spec, ["cat", recovery])
+    if code != 0:
+        raise ScheduleError("RECOVERY_UNREADABLE")
+    try:
+        document = json.loads(out)
+    except ValueError:
+        raise ScheduleError("RECOVERY_INVALID") from None
+    if (
+        not isinstance(document, dict)
+        or document.get("schema") != RECOVERY_SCHEMA
+        or document.get("round") != round_id
+        or (
+            stop.get("attempt_id") is not None
+            and document.get("attempt_id") != stop.get("attempt_id")
+        )
+    ):
+        raise ScheduleError("RECOVERY_INVALID")
+    recovered = _moment(document.get("recovered_at"))
+    if recovered is None:
+        raise ScheduleError("RECOVERY_INVALID")
+    if recovered > now:
+        raise ScheduleError("RECOVERED_AT_IN_FUTURE")
+    ended = _moment(stop.get("ended_at"))
+    if ended is not None and recovered <= ended:
+        raise ScheduleError("RECOVERY_BEFORE_STOP")
+    return recovered
+
+
 def read_rejoin(log_path: Path) -> Callable[[str], datetime | None]:
     """``run_schedule``'s ``rejoin``: the recovery time a ``rejoin`` command
     left for a lab, or None."""
@@ -1391,11 +1470,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
         if args.command == "rejoin":
-            recovered = (
-                _moment(args.recovered_at) if args.recovered_at else datetime.now(UTC)
+            specs = load_lab_specs(Path(args.labs))
+            if args.lab not in specs:
+                raise ScheduleError("LAB_UNKNOWN")
+            recovered = confirm_recovery(
+                Path(args.log),
+                args.lab,
+                specs[args.lab],
+                args.round_prefix,
+                args.recovery,
+                now=datetime.now(UTC),
             )
-            if recovered is None:
-                raise ScheduleError("RECOVERED_AT_INVALID")
             path = write_rejoin(Path(args.log), args.lab, recovered)
             print(json.dumps({"lab": args.lab, "rejoin": str(path)}))
             return 0
