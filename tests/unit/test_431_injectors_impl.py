@@ -33,6 +33,19 @@ FLAGS["flags"]["adFailure"] = {
     "variants": {"on": True, "off": False},
     "defaultVariant": "off",
 }
+# F1 S6 (prereview U2): the whitelist's holdout flags, as the lab ConfigMap
+# defines them (all off; the flood flag's variants are numbers).
+for _name in ("paymentUnreachable", "adManualGc"):
+    FLAGS["flags"][_name] = {
+        "state": "ENABLED",
+        "variants": {"on": True, "off": False},
+        "defaultVariant": "off",
+    }
+FLAGS["flags"]["loadGeneratorFloodHomepage"] = {
+    "state": "ENABLED",
+    "variants": {"on": 100, "off": 0},
+    "defaultVariant": "off",
+}
 ORIGINAL_V2 = (json.dumps(FLAGS, indent=4) + "\n").encode()
 PAYMENT = {"kind": "flagd", "params": {"flag": "paymentFailure", "variant": "100%"}}
 AD = {"kind": "flagd", "params": {"flag": "adFailure", "variant": "on"}}
@@ -250,10 +263,16 @@ def test_injectors_outside_the_whitelist_are_refused(entry, items, code):
         validate_injectors(entry, inj(*items))
 
 
-def test_v1_whitelist_is_unchanged_and_v2_adds_only_adfailure():
+def test_v1_whitelist_is_unchanged_and_v2_adds_only_the_v2_flags():
     v1 = {f.flag: f.fault_variant for f in eval_live_lab.FAULT_FLAGS.values()}
     v2 = {f.flag: f.fault_variant for f in eval_live_lab.V2_FAULT_FLAGS.values()}
-    assert v2 == {**v1, "adFailure": "on"} and "adFailure" not in v1
+    added = {
+        "adFailure": "on",
+        "paymentUnreachable": "on",
+        "adManualGc": "on",
+        "loadGeneratorFloodHomepage": "on",
+    }
+    assert v2 == {**v1, **added} and not set(added) & set(v1)
 
 
 # -- model transport -----------------------------------------------------------
