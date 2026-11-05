@@ -1390,6 +1390,19 @@ def write_rejoin(log_path: Path, lab: str, recovered_at: datetime) -> Path:
 #: evidence only after its restore and wash confirmed the lab normal
 #: (``_recover_round``); nothing else writes it.
 RECOVERY_SCHEMA = "opspilot-eval-live-recovery-1"
+#: Run on the lab, in its checkout and environment: the driver's coordination
+#: state in its ledger root now, through the driver's own helpers (the ledger
+#: root ``eval_live`` uses, its restore intent ``STATE_FILE``, F11's
+#: ``.active-*.json`` run markers).
+LEDGER_STATE_PROBE = (
+    "import json\n"
+    "from scripts.f11_u2_harness import resolve_ledger_root\n"
+    "from scripts.eval_live_lab import STATE_FILE\n"
+    "root = resolve_ledger_root()\n"
+    "state = root / STATE_FILE\n"
+    "print(json.dumps({'retained': state.exists() or state.is_symlink(),\n"
+    "    'active': sorted(p.name for p in root.glob('.active-*.json'))}))\n"
+)
 
 
 def confirm_recovery(
@@ -1401,11 +1414,15 @@ def confirm_recovery(
     *,
     now: datetime,
     execute: Execute | None = None,
+    python: str = ".venv/bin/python",
 ) -> datetime:
     """When ``eval_live --recover`` confirmed ``lab`` normal after its stop:
     the ``recovered_at`` of the recovery record ``recovery`` (read on the
     lab), which must be the stopping window's round (and attempt), later
-    than that window's end and not later than ``now``. Raises otherwise."""
+    than that window's end and not later than ``now``; and the lab's ledger
+    root holds no restore intent and no active run marker now (``--recover``
+    can write the record and still exit 1 with its marker left). Raises
+    otherwise."""
     import re
 
     try:
@@ -1424,7 +1441,8 @@ def confirm_recovery(
         r"recovery-\d{8}T\d{6}Z(-\d{1,2})?\.json", name
     ):
         raise ScheduleError("RECOVERY_PATH_INVALID")
-    code, out = (execute or subprocess_execute)(spec, ["cat", recovery])
+    run = execute or subprocess_execute
+    code, out = run(spec, ["cat", recovery])
     if code != 0:
         raise ScheduleError("RECOVERY_UNREADABLE")
     try:
@@ -1449,6 +1467,21 @@ def confirm_recovery(
     ended = _moment(stop.get("ended_at"))
     if ended is not None and recovered <= ended:
         raise ScheduleError("RECOVERY_BEFORE_STOP")
+    code, out = run(spec, [python, "-c", LEDGER_STATE_PROBE])
+    try:
+        state = json.loads(out.strip().splitlines()[-1]) if code == 0 else None
+    except (ValueError, IndexError):
+        state = None
+    if (
+        not isinstance(state, dict)
+        or type(state.get("retained")) is not bool
+        or not isinstance(state.get("active"), list)
+    ):
+        raise ScheduleError("LAB_STATE_UNCONFIRMED")
+    if state["retained"]:
+        raise ScheduleError("LAB_FAULT_RETAINED")
+    if state["active"]:
+        raise ScheduleError("LAB_DRIVER_ACTIVE")
     return recovered
 
 

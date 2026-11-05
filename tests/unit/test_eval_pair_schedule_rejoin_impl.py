@@ -228,20 +228,54 @@ def _spec(tmp_path: Path) -> es.LabSpec:
 
 
 PATH = "/root/out/a/evidence/p-x-r1/recovery-20261105T030000Z.json"
+CLEAN = json.dumps({"retained": False, "active": []})
+
+
+def _on_lab(record: str | None, state: str = CLEAN, calls: list[Any] | None = None):
+    """The lab: ``cat`` returns the recovery record, the python probe the
+    ledger-root state."""
+
+    def execute(lab: es.LabSpec, argv: Any) -> tuple[int, str]:
+        if calls is not None:
+            calls.append(list(argv))
+        if argv[0] == "cat":
+            return (1, "") if record is None else (0, record)
+        assert argv[1:] == ["-c", es.LEDGER_STATE_PROBE]
+        return 0, state
+
+    return execute
 
 
 def test_rejoin_needs_the_recover_record_of_the_stopping_round(tmp_path):
     log, spec = _stopped_log(tmp_path), _spec(tmp_path)
     at = STOP_END + timedelta(minutes=30)
     read: list[list[str]] = []
-
-    def execute(lab: es.LabSpec, argv: Any) -> tuple[int, str]:
-        read.append(list(argv))
-        return 0, _recovery(at)
-
+    execute = _on_lab(_recovery(at), calls=read)
     got = es.confirm_recovery(log, "a", spec, "p", PATH, now=NOW, execute=execute)
     assert got == at
-    assert read == [["cat", PATH]]
+    assert read == [["cat", PATH], [".venv/bin/python", "-c", es.LEDGER_STATE_PROBE]]
+
+
+@pytest.mark.parametrize(
+    ("state", "code"),
+    [
+        # --recover wrote its record, then exited 1 with its active marker left
+        (json.dumps({"retained": False, "active": [".active-ab.json"]}),
+         "LAB_DRIVER_ACTIVE"),
+        # a restore intent is (again) in the ledger root
+        (json.dumps({"retained": True, "active": []}), "LAB_FAULT_RETAINED"),
+        ("", "LAB_STATE_UNCONFIRMED"),
+        (json.dumps({"retained": "no", "active": []}), "LAB_STATE_UNCONFIRMED"),
+    ],
+)  # fmt: skip
+def test_rejoin_refuses_a_recovery_record_while_the_lab_is_not_clear(
+    tmp_path, state, code
+):
+    log, spec = _stopped_log(tmp_path), _spec(tmp_path)
+    execute = _on_lab(_recovery(STOP_END + timedelta(minutes=30)), state)
+    with pytest.raises(es.ScheduleError) as raised:
+        es.confirm_recovery(log, "a", spec, "p", PATH, now=NOW, execute=execute)
+    assert raised.value.code == code
 
 
 @pytest.mark.parametrize(
@@ -266,9 +300,7 @@ def test_rejoin_needs_the_recover_record_of_the_stopping_round(tmp_path):
 def test_rejoin_refuses_without_a_matching_recovery(tmp_path, record, path, code):
     log, spec = _stopped_log(tmp_path), _spec(tmp_path)
 
-    def execute(lab: es.LabSpec, argv: Any) -> tuple[int, str]:
-        return (1, "") if record is None else (0, record)
-
+    execute = _on_lab(record)
     with pytest.raises(es.ScheduleError) as raised:
         es.confirm_recovery(log, "a", spec, "p", path, now=NOW, execute=execute)
     assert raised.value.code == code
@@ -289,15 +321,20 @@ def test_a_runner_exception_stop_finds_its_round_by_the_prefix(tmp_path):
     at = STOP_END + timedelta(minutes=5)
     got = es.confirm_recovery(
         log, "a", _spec(tmp_path), "p", PATH, now=NOW,
-        execute=lambda *a: (0, _recovery(at, attempt_id="whatever")),
+        execute=_on_lab(_recovery(at, attempt_id="whatever")),
     )  # fmt: skip
     assert got == at
 
 
-def test_rejoin_cli_reads_the_recovery_on_the_lab_and_leaves_the_marker(tmp_path):
-    out = tmp_path / "out"
+def test_rejoin_cli_reads_the_recovery_on_the_lab_and_leaves_the_marker(
+    tmp_path, capsys
+):
+    out, ledgers = tmp_path / "out", tmp_path / "ledgers"
+    ledgers.mkdir()
     labs = tmp_path / "labs.json"
-    lab = _lab("a", 0, 55001, host=None, repo=str(tmp_path), output_root=str(out))
+    env = {"OPSPILOT_LAB_INSTANCE": "0", "OPSPILOT_LAB_LEDGERS": str(ledgers)}
+    lab = _lab("a", 0, 55001, host=None, repo=str(es.ROOT), output_root=str(out),
+               env=env)  # fmt: skip
     labs.write_text(json.dumps({"schema": es.LABS_SCHEMA, "labs": [lab]}))
     log = _stopped_log(tmp_path)
     at = datetime.now(UTC).replace(microsecond=0)
@@ -306,9 +343,24 @@ def test_rejoin_cli_reads_the_recovery_on_the_lab_and_leaves_the_marker(tmp_path
     path = evidence / "recovery-20261105T030000Z.json"
     argv = ["rejoin", "--log", str(log), "--labs", str(labs), "--lab", "a",
             "--round-prefix", "p", "--recovery", str(path)]  # fmt: skip
-    assert es.main(argv) == 2  # no recovery record yet: refused, no marker
+
+    def refused() -> str:
+        assert es.main(argv) == 2
+        return json.loads(capsys.readouterr().err.strip().splitlines()[-1])["error"]
+
+    assert refused() == "RECOVERY_UNREADABLE"  # no record yet: no marker
     assert es.read_rejoin(log)("a") is None
     path.write_text(_recovery(at))
+    # the real probe, on this checkout: a run marker left in the ledger root
+    marker = ledgers / ".active-0123.json"
+    marker.write_text("{}")
+    assert refused() == "LAB_DRIVER_ACTIVE"
+    assert es.read_rejoin(log)("a") is None
+    marker.unlink()
+    (ledgers / "fault-active.json").write_text("{}")
+    assert refused() == "LAB_FAULT_RETAINED"
+    assert es.read_rejoin(log)("a") is None
+    (ledgers / "fault-active.json").unlink()
     assert es.main(argv) == 0
     assert es.read_rejoin(log)("a") == at
     assert es.read_rejoin(log)("b") is None
