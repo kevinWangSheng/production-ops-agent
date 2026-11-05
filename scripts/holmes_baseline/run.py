@@ -35,6 +35,7 @@ import sys
 import time
 import urllib.request
 from collections import Counter
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -69,12 +70,17 @@ UPSTREAM_DIR = Path(
 )
 IMAGE = "opspilot-f14/holmesgpt:a0009195"
 HELPER_IMAGE = "python:3.11-alpine"
-NETWORK = "f14-holmes-internal"
-RELAY = "f14-lab-relay"
-EGRESS = "f14-egress"
-CAPTURE = "f14-capture"
-HOLMES = "f14-holmes"
-ALERTMANAGER = "f14-alertmanager"
+# Per lab instance (S7, parallel labs on one host): instance 0 keeps the F14
+# names; instance n appends ``kind_lab.SUFFIX`` ("-i<n>") so containers and
+# networks of two labs never collide. Absent SUFFIX (no instance support in
+# kind_lab yet) means instance 0.
+SUFFIX = getattr(kind_lab, "SUFFIX", "")
+NETWORK = f"f14-holmes-internal{SUFFIX}"
+RELAY = f"f14-lab-relay{SUFFIX}"
+EGRESS = f"f14-egress{SUFFIX}"
+CAPTURE = f"f14-capture{SUFFIX}"
+HOLMES = f"f14-holmes{SUFFIX}"
+ALERTMANAGER = f"f14-alertmanager{SUFFIX}"
 KIND_NODE = f"{kind_lab.CLUSTER}-control-plane"
 PROMETHEUS_URL = f"http://{RELAY}:9090"
 JAEGER_URL = f"http://{RELAY}:16686/jaeger/ui"
@@ -193,7 +199,12 @@ def setup(
     capture: bool = False,
     script: Path | None = None,
     alerts: Path | None = None,
+    egress_extra: Sequence[str] = (),
+    kind_node: str = KIND_NODE,
 ) -> None:
+    """``egress_extra``: further ``relay.py connect`` options, e.g. the
+    dataset runner's ``--inject-503`` (S7); ``kind_node``: the lab's
+    control-plane container on the ``kind`` network (one per kind instance)."""
     teardown()
     docker("network", "create", "--internal", NETWORK)
     docker(
@@ -203,9 +214,9 @@ def setup(
             "/harness/relay.py",
             "forward",
             "--route",
-            f"9090={KIND_NODE}:30090",
+            f"9090={kind_node}:30090",
             "--route",
-            f"16686={KIND_NODE}:30686",
+            f"16686={kind_node}:30686",
         )
     )
     docker("network", "connect", NETWORK, RELAY)
@@ -217,6 +228,7 @@ def setup(
             "connect",
             "--allow",
             f"{hconfig.MODEL_HOST}:443",
+            *egress_extra,
         )
     )
     docker("network", "connect", NETWORK, EGRESS)
@@ -244,8 +256,12 @@ def output_dir(directory: Path) -> Path:
     return out
 
 
-def holmes_secret_env(model_key: str) -> dict[str, str]:
-    accounts = kind_lab.prometheus_accounts()
+def holmes_secret_env(model_key: str, auth_file: Path | None = None) -> dict[str, str]:
+    """``auth_file``: the lab proxy's account file; by default the lab
+    instance's ``kind_lab.AUTH_FILE``, read at call time (not an import-time
+    copy) so a process run with ``OPSPILOT_LAB_INSTANCE`` uses its own lab."""
+    path = kind_lab.AUTH_FILE if auth_file is None else auth_file
+    accounts = kind_lab.prometheus_accounts(path)
     return {
         **docker_env(),
         "DEEPSEEK_API_KEY": model_key,
