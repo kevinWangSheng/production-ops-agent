@@ -548,3 +548,43 @@ def test_rejoin_normalizes_the_output_root_and_recovery_path(
     )
     assert got == ("x-r1", at)
     assert read[0] == ["cat", PATH]
+
+
+def test_an_exception_stop_is_ordered_before_the_windows_after_its_rejoin(rules):
+    # a runner exception books no injected_at; without started_at, check()
+    # sorts the stop after the rejoined windows and never sees the boundary
+    fast = replace(
+        rules,
+        same_scenario_gap=timedelta(seconds=0.01),
+        wash_min=timedelta(seconds=0.01),
+    )
+    windows = [es.Window(f"s{i}-r1", f"s{i}", 1, ("opspilot",)) for i in range(4)]
+    raised = threading.Event()
+    stopper: list[str] = []
+
+    class RaiseOnL0Once(FakeRunner):
+        def run(self, lab: str, window: es.Window) -> dict[str, Any]:
+            if lab == "l0" and not raised.is_set():
+                stopper.append(window.window_id)
+                raised.set()
+                raise RuntimeError("driver lost")
+            return super().run(lab, window)
+
+    recovered: dict[str, tuple[str, datetime]] = {}
+
+    def rejoin(lab: str) -> tuple[str, datetime] | None:
+        if lab == "l0" and raised.is_set() and lab not in recovered:
+            recovered[lab] = (stopper[0], datetime.now(UTC))
+        return recovered.get(lab)
+
+    records = es.run_schedule(
+        windows, ("l0",), fast, RaiseOnL0Once(), poll_seconds=0.01, rejoin=rejoin
+    )
+    stop, *after = [r for r in records if r["lab"] == "l0"]
+    assert stop["error"] == "RuntimeError" and after
+    assert stop["started_at"] <= stop["ended_at"] <= after[0]["started_at"]
+    plan = {"windows": [w.as_json() for w in windows]}
+    # drop the rejoin: the window after the stop must be flagged
+    unjoined = [{k: v for k, v in r.items() if k != "rejoined"} for r in records]
+    found = es.check(plan, {"schema": es.LOG_SCHEMA, "windows": unjoined}, fast)
+    assert f"AFTER_UNCONFIRMED_RESTORE:{after[0]['window_id']}" in found["violations"]

@@ -1085,12 +1085,16 @@ def run_schedule(
                 )
                 clock.sleep(max(0.0, min(wait, poll_seconds)))
                 continue
+            dispatched = clock.now()
             try:
                 record = runner.run(lab, window)
             except BaseException as exc:  # noqa: BLE001 - booked, then the lab stops
                 record = {
                     "interrupted": True,
                     "error": type(exc).__name__,
+                    # check() orders a lab's records by injected_at/started_at;
+                    # the dispatch time keeps this stop before a rejoin's windows
+                    "started_at": dispatched.isoformat(),
                     "ended_at": clock.now().isoformat(),
                     "slots": [
                         {"system": s, "position": n + 1, "status": "not_started"}
