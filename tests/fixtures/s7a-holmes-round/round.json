@@ -1,0 +1,232 @@
+{
+ "budget": {
+  "max_output_tokens": 65536,
+  "max_steps": 100,
+  "run_wall_seconds": 7200,
+  "step_counting_note": "Holmes does not count compaction or retries as steps; OpsPilot counts every model request",
+  "tool_timeout_seconds": 30
+ },
+ "dataset": "dev-v2:615e33daba79745295012a00bbb1c1e61344ad4d0d9641aca751242b9a2fffbf",
+ "disclosure": [
+  "Holmes gets raw Jaeger JSON (25k-token tool result cap) through a GET-only http toolset; OpsPilot's trace tool is a projected view (prereview section 1 C)",
+  "model_transport 503 is the egress proxy's answer to CONNECT, not an HTTP 503 of the API (TLS tunnel); LiteLLM reports it as 'DeepseekException - 503 Service Unavailable'",
+  "an unreachable Prometheus fails Holmes' toolset check at startup, so its 8 tools are not offered at all (upstream behaviour); an unreachable Jaeger keeps jaeger_request, whose calls fail"
+ ],
+ "image_id": "sha256:img",
+ "n": 2,
+ "schema": "opspilot-holmes-dataset-round-1",
+ "slots": [
+  {
+   "attempt_id": "h-pay-1",
+   "category": "regression",
+   "checks": {
+    "completed": true,
+    "read_only": true
+   },
+   "egress_injected_503": 0,
+   "entry": "question",
+   "final_state": "completed",
+   "final_state_expected": true,
+   "group": "regression",
+   "in_denominator": true,
+   "model_calls_ok": 3,
+   "polarity": "positive",
+   "raw": "h-pay-1/out/holmes.json",
+   "reason": null,
+   "report_available": true,
+   "round": "r1",
+   "scenario_id": "dv2-2b214b",
+   "slot": 1,
+   "started_at": "1970-01-01T00:00:01Z",
+   "status": "ran",
+   "system": "holmes",
+   "tool_calls": 2,
+   "tool_errors": 1,
+   "upstream": "comparable",
+   "wall_seconds": 10.0
+  },
+  {
+   "attempt_id": "h-pay-2",
+   "category": "regression",
+   "checks": {
+    "completed": false,
+    "read_only": true
+   },
+   "egress_injected_503": 0,
+   "entry": "question",
+   "final_state": "failed",
+   "final_state_expected": false,
+   "group": "regression",
+   "in_denominator": true,
+   "model_calls_ok": 3,
+   "polarity": "positive",
+   "raw": "h-pay-2/out/holmes.json",
+   "reason": null,
+   "report_available": false,
+   "round": "r1",
+   "scenario_id": "dv2-2b214b",
+   "slot": 2,
+   "started_at": "1970-01-01T00:00:02Z",
+   "status": "ran",
+   "system": "holmes",
+   "tool_calls": 2,
+   "tool_errors": 1,
+   "upstream": "comparable",
+   "wall_seconds": 10.0
+  },
+  {
+   "attempt_id": null,
+   "category": "duplicate_event",
+   "entry": "alertmanager",
+   "group": "capability",
+   "in_denominator": false,
+   "polarity": "positive",
+   "reason": "NO_UPSTREAM_ENTRY",
+   "scenario_id": "dv2-30921c",
+   "slot": 1,
+   "status": "not_applicable",
+   "system": "holmes",
+   "upstream": "no_upstream_entry"
+  },
+  {
+   "attempt_id": null,
+   "category": "duplicate_event",
+   "entry": "alertmanager",
+   "group": "capability",
+   "in_denominator": false,
+   "polarity": "positive",
+   "reason": "NO_UPSTREAM_ENTRY",
+   "scenario_id": "dv2-30921c",
+   "slot": 2,
+   "status": "not_applicable",
+   "system": "holmes",
+   "upstream": "no_upstream_entry"
+  },
+  {
+   "attempt_id": "h-norm-1",
+   "category": "regression",
+   "checks": {
+    "completed": true,
+    "read_only": false
+   },
+   "egress_injected_503": 0,
+   "entry": "question",
+   "final_state": "completed",
+   "final_state_expected": true,
+   "group": "regression",
+   "in_denominator": true,
+   "model_calls_ok": 3,
+   "polarity": "negative",
+   "raw": "h-norm-1/out/holmes.json",
+   "reason": null,
+   "report_available": true,
+   "round": "r1",
+   "scenario_id": "dv2-8e9455",
+   "slot": 1,
+   "started_at": "1970-01-01T00:00:03Z",
+   "status": "ran",
+   "system": "holmes",
+   "tool_calls": 2,
+   "tool_errors": 1,
+   "upstream": "comparable",
+   "wall_seconds": 10.0
+  },
+  {
+   "attempt_id": null,
+   "category": "regression",
+   "checks": {
+    "completed": false,
+    "read_only": null
+   },
+   "entry": "question",
+   "final_state": null,
+   "final_state_expected": false,
+   "group": "regression",
+   "in_denominator": true,
+   "polarity": "negative",
+   "raw": null,
+   "reason": "NOT_STARTED",
+   "round": null,
+   "scenario_id": "dv2-8e9455",
+   "slot": 2,
+   "status": "not_started",
+   "system": "holmes",
+   "upstream": "comparable"
+  },
+  {
+   "attempt_id": "h-mf-1",
+   "category": "model_failure",
+   "checks": {
+    "completed": false,
+    "read_only": true
+   },
+   "egress_injected_503": 0,
+   "entry": "question",
+   "final_state": "failed",
+   "final_state_expected": true,
+   "group": "capability",
+   "in_denominator": true,
+   "model_calls_ok": 3,
+   "polarity": "positive",
+   "raw": "h-mf-1/out/holmes.json",
+   "reason": null,
+   "report_available": false,
+   "round": "r1",
+   "scenario_id": "dv2-c39f60",
+   "slot": 1,
+   "started_at": "1970-01-01T00:00:04Z",
+   "status": "ran",
+   "system": "holmes",
+   "tool_calls": 2,
+   "tool_errors": 1,
+   "upstream": "same_proxy_injection",
+   "wall_seconds": 10.0
+  },
+  {
+   "attempt_id": null,
+   "category": "model_failure",
+   "checks": {
+    "completed": false,
+    "read_only": null
+   },
+   "entry": "question",
+   "final_state": null,
+   "final_state_expected": false,
+   "group": "capability",
+   "in_denominator": true,
+   "polarity": "positive",
+   "raw": null,
+   "reason": "NOT_STARTED",
+   "round": null,
+   "scenario_id": "dv2-c39f60",
+   "slot": 2,
+   "status": "not_started",
+   "system": "holmes",
+   "upstream": "same_proxy_injection"
+  }
+ ],
+ "system": "holmes",
+ "totals": {
+  "capability": {
+   "completed": 0,
+   "final_state_expected": 1,
+   "not_applicable": 8,
+   "read_only": 1,
+   "slots": 16,
+   "started": 1
+  },
+  "regression": {
+   "completed": 2,
+   "final_state_expected": 2,
+   "not_applicable": 0,
+   "read_only": 2,
+   "slots": 12,
+   "started": 3
+  }
+ },
+ "upstream": {
+  "kind": "hash",
+  "reason": null,
+  "value": "holmesgpt@a0009195468ebc55a7dff7d602b61feabe3cda1b config=e4b98a8bf6b41dea70eb502c33aec08d5a55a39c900bdd863d74442331fddcf1"
+ }
+}

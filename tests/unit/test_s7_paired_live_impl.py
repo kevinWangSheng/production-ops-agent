@@ -186,6 +186,7 @@ def test_waiting_for_the_host_holmes_lock_reconfirms_the_gate(lab, monkeypatch):
 
     monkeypatch.setattr(eval_live, "_regate", regate)
     monkeypatch.setattr(eval_live, "HOLMES_LOCK_POLL_SECONDS", 0.01)
+    monkeypatch.setenv("OPSPILOT_HOLMES_HOST_LOCK", "1")  # on, whatever kind_lab
     holder = eval_live.HOLMES_LOCK.open("a")
     fcntl.flock(holder, fcntl.LOCK_EX)
     sleeps = {"n": 0}
