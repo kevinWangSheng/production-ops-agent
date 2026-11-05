@@ -144,6 +144,22 @@ authorization. Samples: adopted samples only; `stale` -> `stale`,
 `no_data`/`timeout`/`failed` or a required signal absent -> `missing`.
 Runner-only files: `run_states.jsonl`, `frontend_rate.jsonl`, `prom/*.json`.
 
+## What the evidence README must state
+
+- Incident closes are scripted on behalf of a human (S-R3), with the B1
+  extension: shortly before the next injection (10 min), with no fault on
+  and no observation in flight, an `open` incident whose current Run is
+  `waiting_human`/`failed`/`blocked`/`budget_exhausted` is closed too
+  (reason `before_next_injection_run_<state>`). `summary.json` `operator`
+  lists closes by reason, injections that attached to an earlier incident,
+  and the incidents still open when each injection started.
+- A restoring step (flag off, egress restore, tunnel start, worker up) that
+  fails is retried every 60 s until it succeeds; new flag injections wait
+  meanwhile. `stuck_work.injections_left_on` lists any injection left on.
+- `prom_up.csv` rows with `source=query_failed` are failed queries
+  (Prometheus or tunnel), counted as `up=0` for all three roles.
+- One shared-vCPU rental host; not production evidence.
+
 ## Limits
 
 - Token cost is a lower bound: only committed steps carry `usage`.

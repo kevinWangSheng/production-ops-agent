@@ -607,9 +607,9 @@ def test_probe_writes_readyz_and_prom_up(
     assert readyz[0] == "ts,role,status" and readyz[1].endswith(",web,0")
     up = (r.data / "prom_up.csv").read_text().splitlines()
     assert up[1:] == [
-        f"{iso(T0)},observer,0",
-        f"{iso(T0)},web,1",
-        f"{iso(T0)},worker,0",
+        f"{iso(T0)},observer,0,prometheus",
+        f"{iso(T0)},web,1,prometheus",
+        f"{iso(T0)},worker,0,prometheus",
     ]
 
 
@@ -853,3 +853,172 @@ def test_shell_scripts_parse() -> None:
             ["bash", "-n", str(SOAK / name)], capture_output=True, text=True, timeout=30
         )
         assert proc.returncode == 0, proc.stderr
+
+
+# --- #477 round-1 fixes ------------------------------------------------------------
+
+
+STALLED = {
+    "lifecycle": "open",
+    "last_transition": None,
+    "active_runs": 0,
+    "current_run_state": "waiting_human",
+    "observations_in_flight": 0,
+}
+
+
+@pytest.mark.parametrize(
+    ("row", "faults_active", "soon", "expected"),
+    [
+        (STALLED, False, True, "before_next_injection_run_waiting_human"),
+        ({**STALLED, "current_run_state": "failed"}, False, True,
+         "before_next_injection_run_failed"),
+        ({**STALLED, "current_run_state": "blocked"}, False, True,
+         "before_next_injection_run_blocked"),
+        ({**STALLED, "current_run_state": "budget_exhausted"}, False, True,
+         "before_next_injection_run_budget_exhausted"),
+        (STALLED, False, False, None),  # not before an injection
+        (STALLED, True, True, None),  # a fault is still on
+        ({**STALLED, "observations_in_flight": 1}, False, True, None),
+        ({**STALLED, "current_run_state": "running"}, False, True, None),
+        ({**STALLED, "current_run_state": "completed"}, False, True, None),
+        ({**STALLED, "lifecycle": "observing_recovery"}, False, True, None),
+    ],
+)
+def test_b1_closes_stalled_incidents_before_the_next_injection(
+    row: dict[str, Any], faults_active: bool, soon: bool, expected: str | None
+) -> None:
+    assert pg.should_close(row, faults_active=faults_active, injection_soon=soon) == expected
+
+
+def test_b1_injection_soon_window(fake: Any) -> None:
+    r = fake.make(_plan(EPISODE))  # ep01:on due at T0+600
+    assert r.injection_soon({}) is True
+    r.now.advance(-1)  # 601 s before
+    assert r.injection_soon({}) is False
+    r.now.advance(1 + 601)  # due passed
+    assert r.injection_soon({}) is False
+
+
+def test_b1_close_candidates_carry_run_state_and_observations() -> None:
+    sql = pg.close_candidates_sql(T0)
+    assert "current_run_state" in sql and "observations_in_flight" in sql
+
+
+def test_b2_failed_off_keeps_the_flag_on_and_holds_injections(fake: Any) -> None:
+    second = {
+        **EPISODE,
+        "id": "ep02",
+        "at_s": 2000,
+        "steps": [
+            {**EPISODE["steps"][0], "id": "ep02:on", "at_s": 2000},
+            {**EPISODE["steps"][1], "id": "ep02:off", "after": "ep02:on"},
+        ],
+    }
+    r = fake.make(_plan(EPISODE, second))
+    r.now.advance(600)
+    r.plan_tick()  # ep01:on ok
+    r.now.advance(900)
+    fake.results.extend([Proc(1, "", "ssh down")] * 3)
+    r.plan_tick()  # ep01:off fails three times
+    steps = _steps(r)
+    assert steps[-1]["step"] == "ep01:off" and steps[-1]["status"] == "restore_failed"
+    assert "ep01:off" not in runner.finished_steps(list(read_jsonl(r.events_path)))
+    assert runner.flags_on(r.steps, runner.finished_steps(_steps(r))) == ["ep01"]
+    calls = len(fake.calls)
+    r.now.advance(10)
+    r.plan_tick()  # within the retry back-off: nothing
+    assert len(fake.calls) == calls
+    r.now.advance(runner.RESTORE_RETRY_S)
+    fake.results.extend([Proc(1, "", "ssh down")] * 3)
+    r.now.advance(2000 - (600 + 900 + 10 + runner.RESTORE_RETRY_S) - 60)
+    r.plan_tick()
+    # ep02:on is due but held while ep01 is still on; only ep01:off was tried
+    assert all(c[-1] == "flag paymentFailure off ep01" for c in fake.calls[calls:])
+    r.now.advance(runner.RESTORE_RETRY_S + 60)
+    r.plan_tick()  # ep01:off now succeeds, then ep02:on runs
+    assert fake.calls[-2][-1] == "flag paymentFailure off ep01"
+    assert fake.calls[-1][-1] == "flag paymentFailure on ep02"
+    assert ("injection_off", "ep01") in _marks(r)
+
+
+def test_b2_held_injection_is_skipped_with_a_reason(fake: Any) -> None:
+    second = {
+        **EPISODE,
+        "id": "ep02",
+        "at_s": 2000,
+        "steps": [
+            {**EPISODE["steps"][0], "id": "ep02:on", "at_s": 2000},
+            {**EPISODE["steps"][1], "id": "ep02:off", "after": "ep02:on"},
+        ],
+    }
+    r = fake.make(_plan(EPISODE, second))
+    r.now.advance(600)
+    r.plan_tick()
+    fake.results.extend([Proc(1, "", "x")] * 100)
+    r.now.advance(2000 - 600 + runner.MISSED_AFTER_S + 1)
+    r.plan_tick()
+    skipped = [e for e in read_jsonl(r.events_path) if e["type"] == "injection_skipped"]
+    assert skipped and skipped[0]["injection_id"] == "ep02"
+    assert "still on (ep01)" in skipped[0]["reason"]
+
+
+def test_b2_summary_lists_injections_left_on(tmp_path: Path) -> None:
+    plan = _plan(EPISODE)
+    plan.update(product_alertname="X", expected_deployments=[])
+    raw = tmp_path / "raw"
+    raw.mkdir()
+    (raw / "plan.json").write_bytes(soak_plan.canonical(plan))
+    (raw / "meta.json").write_text("{}")
+    rows = [
+        {"ts": iso(T0), "type": "soak_start"},
+        {"ts": iso(T0 + timedelta(seconds=600)), "type": "injection_on",
+         "injection_id": "ep01"},
+        {"ts": iso(T0 + timedelta(hours=72)), "type": "soak_end"},
+    ]
+    (raw / "events.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
+    summary = summarize.summarize(raw)
+    assert summary["stuck_work"]["injections_left_on"] == {"count": 1, "ids": ["ep01"]}
+    assert "injection_left_on:ep01" in summary["step4"]["unmet"]
+
+
+def test_m1_failed_prometheus_query_writes_down_rows(
+    fake: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        runner, "http", lambda url, **kw: SimpleNamespace(status=200, error=None, body=b"")
+    )
+    r = fake.make(_plan())
+    r.prom = SimpleNamespace(  # type: ignore[assignment]
+        query=lambda expr, timeout=0: (SimpleNamespace(status=None), None)
+    )
+    r.probe_tick()
+    rows = (r.data / "prom_up.csv").read_text().splitlines()
+    assert rows[0] == "ts,role,up,source"
+    assert rows[1:] == [
+        f"{iso(T0)},{role},0,query_failed" for role in ("observer", "web", "worker")
+    ]
+
+
+def test_m2_outage_past_the_planned_window_is_an_interruption(fake: Any) -> None:
+    r = fake.make(_plan())
+    r.event("step", step="A4:stop", status="ok")
+    r.tunnel_transition(False)  # planned: no interruption
+    r.now.advance(runner.TUNNEL_STOP_S + runner.TUNNEL_RECONNECT_GRACE_S - 1)
+    r.tunnel_transition(False)
+    assert "env_interruption_start" not in [e["type"] for e in read_jsonl(r.events_path)]
+    r.now.advance(2)  # no A4:start record (runner restarted), window over
+    r.tunnel_transition(False)
+    r.tunnel_transition(False)
+    kinds = [e["type"] for e in read_jsonl(r.events_path)]
+    assert kinds.count("env_interruption_start") == 1
+    r.tunnel_transition(True)
+    assert [e["type"] for e in read_jsonl(r.events_path)][-1] == "env_interruption_end"
+
+
+def test_l1_l2_rental_setup_rules() -> None:
+    setup = (SOAK / "rental_setup.sh").read_text()
+    assert "exactly one line" in setup
+    assert "AllowStreamLocalForwarding no" in setup
+    assert "PermitOpen 127.0.0.1:19090 127.0.0.1:16686" in setup
+    assert "PermitListen $permit_listen" in setup

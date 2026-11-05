@@ -17,6 +17,10 @@ from scripts.soak.common import iso
 ACTIVE_RUN_STATES = ("queued", "running", "waiting_human")
 TERMINAL_RUN_STATES = ("completed", "failed", "cancelled", "budget_exhausted")
 UNCONFIRMED = "observation_ended_unconfirmed"
+#: S-R3 extension (lead, #477 review B1): Run states that will not move
+#: without a human; such an open incident is closed shortly before the next
+#: injection so that injection opens a new incident instead of attaching.
+STALLED_RUN_STATES = ("waiting_human", "failed", "blocked", "budget_exhausted")
 
 
 def _since(t0: datetime) -> str:
@@ -35,7 +39,12 @@ def close_candidates_sql(t0: datetime) -> str:
         "   WHERE e.incident_id = i.incident_id ORDER BY e.recorded_at DESC LIMIT 1)"
         "   AS last_transition,"
         " (SELECT count(*) FROM opspilot_runs r WHERE r.incident_id = i.incident_id"
-        f"   AND r.state IN ({_active()})) AS active_runs"
+        f"   AND r.state IN ({_active()})) AS active_runs,"
+        " (SELECT r.state FROM opspilot_runs r WHERE r.run_id = i.current_run_id)"
+        "   AS current_run_state,"
+        " (SELECT count(*) FROM opspilot_observation_sessions o"
+        "   WHERE o.incident_id = i.incident_id AND o.state = 'authorized')"
+        "   AS observations_in_flight"
         " FROM opspilot_incidents i"
         " WHERE i.lifecycle IN ('open', 'resolved')"
         " AND i.current_run_id IS NOT NULL AND i.merged_into_incident_id IS NULL"
@@ -52,24 +61,36 @@ def run_states_sql(t0: datetime) -> str:
     )
 
 
-def should_close(row: Mapping[str, Any], *, faults_active: bool) -> str | None:
+def should_close(
+    row: Mapping[str, Any], *, faults_active: bool, injection_soon: bool = False
+) -> str | None:
     """S-R3: why the scripted operator closes this incident now, or ``None``.
 
     ``resolved`` (an independent healthy observation confirmed recovery)
-    closes at once. ``open`` closes only after its last observation ended
+    closes at once. ``open`` closes after its last observation ended
     unconfirmed, no Run of it is still active and no injected fault is on
-    any more. Anything else stays for a human.
+    any more. The B1 extension: ``open`` also closes when the next injection
+    is at most 10 min away (``injection_soon``), no fault is on, no
+    observation of it is in flight and its current Run is stalled
+    (``STALLED_RUN_STATES``). Anything else stays for a human.
     """
     lifecycle = row.get("lifecycle")
     if lifecycle == "resolved":
         return "resolved"
+    if lifecycle != "open" or faults_active:
+        return None
     if (
-        lifecycle == "open"
-        and row.get("last_transition") == UNCONFIRMED
+        row.get("last_transition") == UNCONFIRMED
         and int(row.get("active_runs") or 0) == 0
-        and not faults_active
     ):
         return "observation_ended_unconfirmed_fault_cleared"
+    state = row.get("current_run_state")
+    if (
+        injection_soon
+        and state in STALLED_RUN_STATES
+        and int(row.get("observations_in_flight") or 0) == 0
+    ):
+        return f"before_next_injection_run_{state}"
     return None
 
 

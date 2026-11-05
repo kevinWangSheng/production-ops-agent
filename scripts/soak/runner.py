@@ -58,6 +58,14 @@ LATE_START_S = 300
 MISSED_AFTER_S = 30 * 60
 STEP_ATTEMPTS = 3
 STEP_RETRY_S = 30
+#: A restoring step that failed all attempts is tried again after this long,
+#: until it succeeds (#477 review B2); injections wait meanwhile.
+RESTORE_RETRY_S = 60
+#: B1: the window before a planned ``flag_on`` in which stalled open
+#: incidents are closed.
+PRE_INJECTION_S = 10 * 60
+#: A4's planned tunnel stop when the start step has no record yet (M2).
+TUNNEL_STOP_S = 10 * 60
 #: S-R13: frontend span rate 0 for this long -> restart the OTel collector.
 COLLECTOR_STALL_S = 10 * 60
 #: After the planned tunnel start, the reconnect is still part of A4.
@@ -87,7 +95,8 @@ KSM_QUERIES = {
 }
 CSV_HEADERS = {
     "readyz.csv": ["ts", "role", "status"],
-    "prom_up.csv": ["ts", "role", "up"],
+    # ``source``: prometheus | query_failed (an extra column, #477 M1)
+    "prom_up.csv": ["ts", "role", "up", "source"],
     "ksm.csv": ["ts", "deployment", "pods"],
     "docker_stats.csv": ["ts", "host", "group", "container", "cpu_pct", "mem_bytes"],
     "host_stats.csv": ["ts", "host", "mem_available_bytes", "load1", "disk_free_bytes"],
@@ -178,16 +187,18 @@ def due_at(
 def flags_on(
     steps: Sequence[Mapping[str, Any]], done: Mapping[str, Mapping[str, Any]]
 ) -> list[str]:
-    """Injections whose flag was turned on and not yet turned off."""
+    """Injections whose flag was turned on and not yet turned off by an
+    ``ok`` off step (#477 review B2: a failed off leaves the flag on)."""
     active = []
     for step in steps:
         if step["action"] != "flag_on":
             continue
         on = done.get(str(step["id"]))
+        off = done.get(f"{step['item']}:off")
         if (
             on is not None
             and on.get("status") == "ok"
-            and f"{step['item']}:off" not in done
+            and (off is None or off.get("status") != "ok")
         ):
             active.append(str(step["item"]))
     return active
@@ -239,6 +250,7 @@ class Runner:
         self._zero_rate_since: datetime | None = None
         self._last_run_states: dict[str, str] = {}
         self._tunnel_ok: bool | None = None
+        self._retry_after: dict[str, datetime] = {}
         self._seen_alerts: set[tuple[str, str]] = {
             (str(a.get("fingerprint")), str(a.get("starts_at")))
             for a in read_jsonl(self.data / "alerts.jsonl")
@@ -337,21 +349,31 @@ class Runner:
             due = due_at(step, self.t0, done)
             if due is None or now < due:
                 continue
+            if now < self._retry_after.get(step_id, now):
+                continue
             restoring = step["action"] in RESTORING_ACTIONS
             late = (now - due).total_seconds()
+            held = step["action"] == "flag_on" and [
+                item for item in flags_on(self.steps, done) if item != step["item"]
+            ]
             if not restoring and late > MISSED_AFTER_S + int(step.get("max_wait_s", 0)):
+                reason = (
+                    f"a previous injection is still on ({', '.join(held)})"
+                    if held
+                    else f"runner was down; {int(late)} s late"
+                )
                 self.event(
                     "step",
                     step=step_id,
                     status="skipped",
-                    reason="missed",
+                    reason="held" if held else "missed",
                     due=iso(due),
                 )
-                self.mark(
-                    step, "skipped", reason=f"runner was down; {int(late)} s late"
-                )
+                self.mark(step, "skipped", reason=reason)
                 done = finished_steps(self.events())
                 continue
+            if held:
+                continue  # B2: no new injection while a flag could not be turned off
             condition = step.get("condition")
             condition_met: bool | None = None
             if condition is not None:
@@ -420,6 +442,13 @@ class Runner:
                 self.event("step", status="ok", **fields)
                 self.mark(step, "ok")
                 return
+            if attempt == STEP_ATTEMPTS and step["action"] in RESTORING_ACTIONS:
+                # B2: not finished; tried again until it succeeds
+                self.event("step", status="restore_failed", **fields)
+                self._retry_after[step_id] = self.now() + timedelta(
+                    seconds=RESTORE_RETRY_S
+                )
+                return
             if attempt == STEP_ATTEMPTS:
                 self.event("step", status="failed", **fields)
                 self.mark(
@@ -457,11 +486,24 @@ class Runner:
                     {"ts": iso(self.now()), "run_id": run_id, "state": state},
                 )
         self._last_run_states = states
-        active = bool(flags_on(self.steps, finished_steps(self.events())))
+        done = finished_steps(self.events())
+        active = bool(flags_on(self.steps, done))
+        soon = self.injection_soon(done)
         for row in self.db.rows(pg.close_candidates_sql(self.t0)):
-            reason = pg.should_close(row, faults_active=active)
+            reason = pg.should_close(row, faults_active=active, injection_soon=soon)
             if reason is not None:
                 self.close(row, reason)
+
+    def injection_soon(self, done: Mapping[str, Mapping[str, Any]]) -> bool:
+        """B1: a planned ``flag_on`` not yet done is due within 10 min."""
+        now = self.now()
+        for step in self.steps:
+            if step["action"] != "flag_on" or str(step["id"]) in done:
+                continue
+            due = due_at(step, self.t0, done)
+            if due is not None and 0 <= (due - now).total_seconds() <= PRE_INJECTION_S:
+                return True
+        return False
 
     def close(self, row: Mapping[str, Any], reason: str) -> None:
         incident = str(row["incident_id"])
@@ -503,14 +545,20 @@ class Runner:
     # probes and samples ----------------------------------------------------
 
     def _planned_tunnel_stop(self) -> bool:
+        """Inside A4's planned outage: from the stop step to the start step
+        (or the stop plus its planned 10 min when the start has no record,
+        e.g. after a runner restart) plus the reconnect grace (#477 M2)."""
         done = finished_steps(self.events())
         stop, start = done.get("A4:stop"), done.get("A4:start")
         if stop is None or stop.get("status") != "ok":
             return False
-        if start is None:
-            return True
-        since = (self.now() - parse_time(str(start["ts"]))).total_seconds()
-        return since < TUNNEL_RECONNECT_GRACE_S
+        stopped = parse_time(str(stop["ts"]))
+        if start is not None:
+            ends = parse_time(str(start["ts"]))
+        else:
+            ends = stopped + timedelta(seconds=TUNNEL_STOP_S)
+        limit = ends + timedelta(seconds=TUNNEL_RECONNECT_GRACE_S)
+        return stopped <= self.now() < limit
 
     def probe_tick(self) -> None:
         at = iso(self.now())
@@ -521,6 +569,7 @@ class Runner:
         append_csv(self.data / "readyz.csv", rows)
         reply, result = self.prom.query(OPSPILOT_UP, timeout=10)
         ok = reply.status == 200 and result is not None
+        up: dict[str | None, Any] = {}
         if ok and result is not None:
             up = {
                 INSTANCE_ROLES.get(
@@ -528,13 +577,15 @@ class Runner:
                 ): s["value"][1]
                 for s in result
             }
-            append_csv(
-                self.data / "prom_up.csv",
-                [
-                    [at, role, 1 if up.get(role) == "1" else 0]
-                    for role in sorted(INSTANCE_ROLES.values())
-                ],
-            )
+        # M1: a failed query is a failed scrape for every role, marked so
+        source = "prometheus" if ok else "query_failed"
+        append_csv(
+            self.data / "prom_up.csv",
+            [
+                [at, role, 1 if up.get(role) == "1" else 0, source]
+                for role in sorted(INSTANCE_ROLES.values())
+            ],
+        )
         self.tunnel_transition(ok)
 
     def tunnel_transition(self, ok: bool) -> None:
@@ -547,9 +598,6 @@ class Runner:
                 if e.get("type") in {"tunnel_down", "tunnel_up"}
             ]
             self._tunnel_ok = not last or last[-1]["type"] == "tunnel_up"
-        if ok == self._tunnel_ok:
-            return
-        self._tunnel_ok = ok
         events = self.events()
         interrupted = [
             e
@@ -560,6 +608,12 @@ class Runner:
         open_interruption = (
             bool(interrupted) and interrupted[-1]["type"] == "env_interruption_start"
         )
+        if ok == self._tunnel_ok:
+            if not ok and not open_interruption and not self._planned_tunnel_stop():
+                # M2: still down after A4's planned window (or its grace)
+                self.event("env_interruption_start", cause="tunnel_down")
+            return
+        self._tunnel_ok = ok
         if not ok:
             self.event("tunnel_down")
             if not self._planned_tunnel_stop():

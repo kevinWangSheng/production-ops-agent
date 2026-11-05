@@ -41,6 +41,7 @@ done
 [[ -n "$LAB_USER" ]] && id "$LAB_USER" >/dev/null || die "--lab-user must name an existing user"
 for key in "$TUNNEL_KEY" "$FAULT_KEY"; do
     [[ -f "$key" ]] || die "public key file missing: $key"
+    [[ "$(grep -c '' "$key")" -eq 1 ]] || die "$key must hold exactly one line"
     grep -qE '^(ssh-ed25519|ecdsa-sha2-nistp256) [A-Za-z0-9+/=]+( [^"]*)?$' "$key" \
         || die "$key is not a single ed25519/ecdsa public key line"
 done
@@ -64,8 +65,10 @@ ensure_user "$TUNNEL_USER" /usr/sbin/nologin
 ensure_user "$FAULT_USER" /bin/sh
 
 listens=""
+permit_listen=""
 for port in "$WEBHOOK_PORT" "${HEALTH_PORTS[@]}"; do
     listens+=",permitlisten=\"$GATEWAY:$port\""
+    permit_listen+="${permit_listen:+ }$GATEWAY:$port"
 done
 printf 'restrict,port-forwarding,permitopen="127.0.0.1:19090",permitopen="127.0.0.1:16686"%s %s\n' \
     "$listens" "$(cat "$TUNNEL_KEY")" >"/home/$TUNNEL_USER/.ssh/authorized_keys"
@@ -96,12 +99,17 @@ cat >"$dropin" <<EOF
 # OpsPilot 72h soak (scripts/soak/rental_setup.sh). Remove with the host.
 Match User $TUNNEL_USER
     AllowTcpForwarding yes
+    AllowStreamLocalForwarding no
     GatewayPorts clientspecified
+    # the same targets as the key options in authorized_keys
+    PermitOpen 127.0.0.1:19090 127.0.0.1:16686
+    PermitListen $permit_listen
     PermitTTY no
     X11Forwarding no
     AllowAgentForwarding no
 Match User $FAULT_USER
     AllowTcpForwarding no
+    AllowStreamLocalForwarding no
     PermitTTY no
     X11Forwarding no
     AllowAgentForwarding no

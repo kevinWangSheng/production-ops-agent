@@ -531,7 +531,21 @@ def stuck_work(raw: Raw, linked: Mapping[str, Mapping[str, Any]]) -> dict[str, A
         "unaccounted_injections": _ids(
             key for key, entry in linked.items() if entry["disposition"] == "none"
         ),
+        "injections_left_on": _ids(left_on(raw)),
     }
+
+
+def left_on(raw: Raw) -> list[str]:
+    """#477 B2: injections whose plan has a restoring step (more than one
+    step) that were turned on and never got their ``injection_off``. Plans
+    without ``steps`` (hand-written raw directories) have none."""
+    on = {str(e.get("injection_id")) for e in raw.of("injection_on")}
+    off = {str(e.get("injection_id")) for e in raw.of("injection_off")}
+    return [
+        str(item["id"])
+        for item in raw.plan.get("injections", [])
+        if len(item.get("steps") or []) > 1 and str(item["id"]) in on - off
+    ]
 
 
 def resources(raw: Raw) -> dict[str, Any]:
@@ -649,6 +663,8 @@ def step4(summary: Mapping[str, Any]) -> dict[str, Any]:
             unmet.append(f"injection_unexplained:{item['id']}")
     for key in summary["stuck_work"]["unaccounted_injections"]["ids"]:
         unmet.append(f"injection_unaccounted:{key}")
+    for key in summary["stuck_work"]["injections_left_on"]["ids"]:
+        unmet.append(f"injection_left_on:{key}")
     for section in SECTIONS:
         if not summary[section]["published"]:
             unmet.append(f"section_unpublished:{section}")
@@ -671,14 +687,17 @@ def summarize(raw_dir: Path) -> dict[str, Any]:
         "resources": resources(raw),
         "cost": cost(raw),
         "environment": environment(raw),
-        "operator": operator(raw),
+        "operator": operator(raw, linked),
         "errors": len(raw.of("error")),
     }
     summary["step4"] = step4(summary)
     return summary
 
 
-def operator(raw: Raw) -> dict[str, Any]:
+def operator(raw: Raw, linked: Mapping[str, Mapping[str, Any]]) -> dict[str, Any]:
+    """The scripted closes (S-R3 and its B1 extension, by reason), the
+    episodes that attached to an earlier incident instead of opening one,
+    and what was still open when each injection started."""
     closes = raw.of("operator")
     reasons: dict[str, int] = defaultdict(int)
     for event in closes:
@@ -688,6 +707,23 @@ def operator(raw: Raw) -> dict[str, Any]:
         "closes": len(closes),
         "accepted": sum(1 for e in closes if e.get("status") == 200),
         "by_reason": dict(sorted(reasons.items())),
+        "attached_injections": [
+            {
+                "injection_id": key,
+                "incident_id": (entry["delivery"] or {}).get("incident_id"),
+            }
+            for key, entry in linked.items()
+            if entry["disposition"] == "attached"
+        ],
+        "open_incidents_at_injection": [
+            {
+                "ts": e["ts"],
+                "before_step": e.get("before_step"),
+                "incidents": e.get("incidents") or [],
+            }
+            for e in raw.of("open_incidents")
+            if e.get("incidents")
+        ],
     }
 
 
