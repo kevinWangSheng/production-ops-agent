@@ -1,0 +1,44 @@
+2026-11-05T08:14:29Z
+health ok True {'prometheus': True, 'jaeger': True, 'frontend': True, 'deployments': True}
+ad-757d59f5dd-fvsq8 1/1 Running 0
+alertmanager-0 1/1 Running 0
+cart-549b8757d-sqskf 1/1 Running 0
+checkout-6578865d87-29f5f 1/1 Running 0
+currency-6db8974b78-9cmcj 1/1 Running 0
+email-6cd97b67f9-b87jc 1/1 Running 0
+flagd-d6485586b-fxntf 1/1 Running 0
+frontend-6c9bc688bf-prh94 1/1 Running 0
+frontend-proxy-844799bcdb-bh9tm 1/1 Running 0
+image-provider-575d7b4846-2cxd7 1/1 Running 0
+jaeger-585cd6775-qpdlc 1/1 Running 0
+kube-state-metrics-7cbf5b996-f645l 1/1 Running 0
+load-generator-5ff476786d-jth4c 1/1 Running 0
+otel-collector-845f9747bd-sv9mx 1/1 Running 0
+payment-6f7bc865d6-tlhs4 1/1 Running 0
+product-catalog-777f5468d4-dvkl4 1/1 Running 0
+prometheus-9bc78b5f7-x8s8t 1/1 Running 0
+prometheus-readonly-proxy-56b987c9dd-mt2k7 1/1 Running 0
+quote-75774ddb4c-8d4w6 1/1 Running 0
+recommendation-9d497476-gthdd 1/1 Running 0
+shipping-6fc5f694db-664gh 1/1 Running 0
+valkey-cart-d6456b5b6-4x4pr 1/1 Running 0
+frontend span rate 1.5738055555555557
+anon 401 write 403
+jaeger checkout traces 3
+flags 11 ['off']
+{"ok": true, "exit": {"rules": 0, "config": 0, "alertmanager": 0, "self_route": 0}}
+containerd.io docker-buildx-plugin docker-ce docker-ce-cli docker-compose-plugin 
+State  Recv-Q Send-Q Local Address:Port  Peer Address:PortProcess
+LISTEN 0      128          0.0.0.0:22         0.0.0.0:*          
+LISTEN 0      128             [::]:22            [::]:*          
+Status: active
+
+To                         Action      From
+--                         ------      ----
+22/tcp                     ALLOW       Anywhere                  
+22/tcp (v6)                ALLOW       Anywhere (v6)             
+               total        used        free      shared  buff/cache   available
+Mem:           15984        2539        4133          38        9692       13445
+Swap:           8191           0        8191
+opspilot-m1-control-plane 1.954GiB / 15.61GiB
+install peak used MiB 2356 min available MiB 13627

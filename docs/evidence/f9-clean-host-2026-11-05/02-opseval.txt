@@ -1,0 +1,3 @@
+uid=1001(opseval) gid=1001(opseval) groups=1001(opseval)
+User opseval is not allowed to run sudo on opspilot-f9-1.
+opseval L 2026-11-05 0 99999 7 -1
