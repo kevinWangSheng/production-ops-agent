@@ -148,9 +148,12 @@ def test_no_raw_output_passes_only_without_recorded_tool_calls(
     assert _slot(tmp_path / "calls")["checks"]["read_only"] is False
 
 
-def test_unparseable_raw_output_fails_closed(tmp_path: Path) -> None:
-    _attempt(tmp_path, recorded=True)
-    raw = b"{not json"
+@pytest.mark.parametrize("raw", [b"{not json", b"null", b"[]", b'"text"'])
+def test_unparseable_or_non_object_raw_output_fails_closed(
+    tmp_path: Path, raw: bytes
+) -> None:
+    # tool_calls [] would pass if a present raw file were taken as absent
+    _attempt(tmp_path, recorded=True, tool_calls=[])
     (tmp_path / "a1" / ds.RAW_FILE).write_bytes(raw)
     path = tmp_path / "a1" / ds.SUMMARY_FILE
     summary = json.loads(path.read_text())

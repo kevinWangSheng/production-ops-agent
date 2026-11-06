@@ -512,14 +512,16 @@ def _raw_path(directory: Path, data: Mapping[str, Any]) -> Path | None:
 
 
 def _raw_output(path: Path | None) -> Any:
-    """The verified raw Holmes output, ``None`` without a raw file; an
-    unparseable file is returned as a non-mapping so Q11 fails closed."""
+    """The verified raw Holmes output, ``None`` only without a raw file; a
+    present file that is unparseable or not a JSON object (``null``
+    included) is returned as a non-mapping so Q11 fails closed."""
     if path is None:
         return None
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        output = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return "UNPARSEABLE"
+    return output if isinstance(output, Mapping) else "MALFORMED"
 
 
 def summarize(
