@@ -565,6 +565,7 @@ def _segment_voids(
             pending.append(
                 {
                     "voided": str(voided),
+                    "scenario": row["scenario_id"],
                     "rerun_attempt_id": str(rerun),
                     "note": row.get("note"),
                     "rule": row["rule"],
@@ -582,6 +583,7 @@ def _segment_voids(
             pending.append(
                 {
                     "voided": entry["voided_attempt_id"],
+                    "scenario": entry["scenario_id"],
                     "rerun_attempt_id": entry["rerun_attempt_id"],
                     "note": entry.get("note") or entry["basis"],
                     "rule": entry.get("rule"),
@@ -593,6 +595,7 @@ def _segment_voids(
     reruns: set[str] = set()
     for item in pending:
         voided, rerun = item.pop("voided"), item["rerun_attempt_id"]
+        declared = item.pop("scenario")
         if voided in out:
             raise DevRoundError(f"VOID_DUPLICATE:{voided}")
         if rerun in reruns:
@@ -602,7 +605,7 @@ def _segment_voids(
             if attempt_id not in started:
                 raise DevRoundError(f"RERUN_UNKNOWN:{attempt_id}")
         old, new = started[voided], started[rerun]
-        if old["scenario_id"] != new["scenario_id"]:
+        if not old["scenario_id"] == new["scenario_id"] == declared:
             raise DevRoundError(f"RERUN_SCENARIO_MISMATCH:{rerun}")
         # strictly later than the voided attempt's end: a chain can not loop
         ended = _moment((old.get("fault") or {}).get("ended_at"))

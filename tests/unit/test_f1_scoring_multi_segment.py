@@ -132,6 +132,17 @@ def test_chain_across_checks_and_registry_whatever_status():
             "RERUN_SCENARIO_MISMATCH:ops-5",
         ),
         ([{"voided_attempts": [_row("ops-2", "ops-9")]}], None, "RERUN_UNKNOWN:ops-9"),
+        # declared scenario b, both attempts of scenario a
+        (
+            [{"voided_attempts": [_row("ops-2", "ops-3", sid="b")]}],
+            None,
+            "RERUN_SCENARIO_MISMATCH:ops-3",
+        ),
+        (
+            [],
+            _registry(_reg("ops-3", "ops-4", sid="b")),
+            "RERUN_SCENARIO_MISMATCH:ops-4",
+        ),
         ([], _registry(_reg("ops-9", "ops-4")), "RERUN_UNKNOWN:ops-9"),
         (
             [{"voided_attempts": [_row("ops-2", "ops-3", rule="WHATEVER")]}],
