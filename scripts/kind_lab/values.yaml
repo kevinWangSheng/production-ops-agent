@@ -98,18 +98,53 @@ opentelemetry-collector:
 
 jaeger:
   allInOne:
+    # #496: at 1Gi both exam labs were OOMKilled after about 13.7h (normal
+    # RSS 260-300 MB), which wipes every stored trace; a 72h soak would hit
+    # that about 5 times. In jaegertracing/all-in-one 1.53.0 (this chart's
+    # image) the in-memory store's only bound is a trace COUNT
+    # (--memory.max-traces, a ring of trace ids; plugin/storage/memory/
+    # memory.go at v1.53.0); a trace's span list, the service/operation maps
+    # and query-time copies are outside it, and the Go GC lets the heap reach
+    # twice the live size before collecting. This change:
+    #   - GOMEMLIMIT (a Go runtime setting, Go >= 1.19; Jaeger 1.53 builds
+    #     with Go >= 1.20): a soft limit -- the GC runs more often as the
+    #     runtime's memory nears 1536MiB, which removes the "heap up to twice
+    #     the live size" headroom; it cannot cap live data, and the runtime
+    #     may exceed it (go.dev/doc/gc-guide#Memory_limit);
+    #   - the limit itself, 2Gi (Q2 ruling 2026-11-06).
+    # The trace count stays 5000 (it counts trace ids, not spans): how much
+    # time 5000 traces cover at the lab's background load is not measured,
+    # and the soak's longest fault window is 75 min (S-R6,
+    # docs/tasks/2026-11-04-m3-soak.md), so a lower count could drop
+    # fault-onset traces before what grows is known. The pre-soak rehearsal
+    # (#497) samples RSS, the Go heap and heap profiles on the admin port
+    # (14269: /metrics, /debug/pprof/heap), checks RSS levels off and
+    # measures the age of the oldest kept trace; it lowers the count, or
+    # picks another bound, from what the profile shows if RSS keeps rising.
+    # The chart's lists are replaced, not merged, so its args and env are
+    # restated unchanged.
+    args:
+      - "--memory.max-traces=5000"
+      - "--query.base-path=/jaeger/ui"
+      - "--prometheus.server-url=http://prometheus:9090"
+      - "--prometheus.query.normalize-calls=true"
+      - "--prometheus.query.normalize-duration=true"
+    extraEnv:
+      - name: METRICS_STORAGE_TYPE
+        value: prometheus
+      - name: COLLECTOR_OTLP_GRPC_HOST_PORT
+        value: 0.0.0.0:4317
+      - name: COLLECTOR_OTLP_HTTP_HOST_PORT
+        value: 0.0.0.0:4318
+      - name: GOMEMLIMIT
+        value: 1536MiB
     resources:
       limits:
-        # 1Gi (was 400Mi; F1 closure, fault-visibility 2026-11-04): under the
-        # loadGeneratorFloodHomepage flood the in-memory store filled up and
-        # one wide query pushed Jaeger to OOMKilled at 400Mi, which wipes
-        # every stored trace. Observed use: 63 MB idle, about 150 MB after a
-        # 7 min flood (the store is bounded by --memory.max-traces=5000).
         # A limit, not a request: three labs on one 16 GB host (6.2 GB used
-        # with all three up, measured 2026-11-04) keep their real use; the
-        # worst case adds 3 x 0.6 GB. A store restart still voids the window
-        # (LAB_RESTARTED, evals/preregistered/f1-closure-paired-rules.json).
-        memory: 1Gi
+        # with all three up, measured 2026-11-04) keep their real use. A
+        # store restart still voids the window (LAB_RESTARTED,
+        # evals/preregistered/f1-closure-paired-rules.json).
+        memory: 2Gi
 
 prometheus:
   # Basic auth for every HTTP endpoint (M1-02 step 4, D3): the web config
