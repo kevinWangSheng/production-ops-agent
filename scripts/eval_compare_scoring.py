@@ -319,15 +319,60 @@ def voided_attempts(log: Mapping[str, Any], check: Mapping[str, Any]) -> list[st
     return sorted(set(ids))
 
 
-def registry_voided_attempts(registry: Any) -> list[str]:
-    """Attempt ids of a cross-segment void registry, both systems."""
+def registry_voided_attempts(
+    registry: Any,
+    attempts: Sequence[Mapping[str, Any]],
+    checks: Sequence[Mapping[str, Any]],
+    scenarios: Collection[str],
+) -> list[str]:
+    """Attempt ids of a cross-segment void registry, both systems.
+
+    The registry only discloses voids the round summaries already applied
+    (``eval_dev_round --voids``, ``holmes_baseline.dataset --voided``): a
+    void that names a scored attempt is ``VOID_SCORED``. Each entry's
+    replacement chain (through the registry and the checks'
+    ``voided_attempts``) must end, without a loop, at a scored attempt of
+    the entry's own system and scenario (``VOID_RERUN_UNKNOWN``,
+    ``VOID_CYCLE``). Entries of scenarios outside this dataset are skipped.
+    """
     from scripts.eval_dev_round import void_registry_entries
 
     try:
-        entries = void_registry_entries(registry)
+        entries = [
+            e for e in void_registry_entries(registry) if e["scenario_id"] in scenarios
+        ]
     except ValueError:
         raise BinaryJudgeError("VOIDS_INVALID") from None
-    return sorted({str(e["voided_attempt_id"]) for e in entries})
+    scored = {str(a["attempt_id"]): a for a in attempts}
+    successor: dict[str, str] = {}
+    for check in checks:
+        for row in check.get("voided_attempts") or []:
+            if isinstance(row, Mapping) and row.get("voided_attempt_id"):
+                if row.get("rerun_attempt_id"):
+                    successor[str(row["voided_attempt_id"])] = str(
+                        row["rerun_attempt_id"]
+                    )
+    for entry in entries:
+        successor[entry["voided_attempt_id"]] = entry["rerun_attempt_id"]
+    for entry in entries:
+        voided = entry["voided_attempt_id"]
+        if voided in scored:
+            raise BinaryJudgeError(f"VOID_SCORED:{voided}")
+        seen = {voided}
+        current = entry["rerun_attempt_id"]
+        while current in successor:
+            if current in seen:
+                raise BinaryJudgeError(f"VOID_CYCLE:{voided}")
+            seen.add(current)
+            current = successor[current]
+        final = scored.get(current)
+        if (
+            final is None
+            or final["system"] != entry["system"]
+            or final["scenario_id"] != entry["scenario_id"]
+        ):
+            raise BinaryJudgeError(f"VOID_RERUN_UNKNOWN:{voided}")
+    return sorted({e["voided_attempt_id"] for e in entries})
 
 
 def judge_attempts(
@@ -406,12 +451,15 @@ def run_judge(
     if len(logs) != len(checks):
         raise BinaryJudgeError("SCHEDULE_LOG_AND_CHECK_REQUIRED")
     voided_ids: set[str] = set()
-    for log_path, check_path in zip(logs, checks, strict=True):
-        voided_ids.update(
-            voided_attempts(_read_json(Path(log_path)), _read_json(Path(check_path)))
-        )
+    check_docs = [_read_json(Path(path)) for path in checks]
+    for log_path, check_doc in zip(logs, check_docs, strict=True):
+        voided_ids.update(voided_attempts(_read_json(Path(log_path)), check_doc))
     if args.voids:
-        voided_ids.update(registry_voided_attempts(_read_json(Path(args.voids))))
+        voided_ids.update(
+            registry_voided_attempts(
+                _read_json(Path(args.voids)), attempts, check_docs, set(dataset)
+            )
+        )
     voided = sorted(voided_ids)
     judge_attempts(attempts, dataset, client, environ, voided=set(voided))
     live = [a for a in attempts if a["attempt_id"] not in voided]

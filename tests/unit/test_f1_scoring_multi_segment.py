@@ -272,11 +272,35 @@ def test_cli_takes_one_check_per_segment(lab, chain, tmp_path):
     assert json.loads(bad.stdout)["reason"] == "VOIDS_INVALID"
 
 
+def _judge(tmp_path, name, *extra):
+    from scripts import eval_compare_scoring as cli
+    from tests.test_binary_judge import ENV, FakeClient, _decide, _judge_args
+
+    return cli.run_judge(
+        _judge_args(tmp_path / name, *extra), client=FakeClient(_decide), environ=ENV
+    )
+
+
+def _scored():
+    from tests.test_binary_judge import DEV_ROUND, HOLMES_FIXTURE
+
+    ops = json.loads(DEV_ROUND.read_text())["slots"]
+    holmes = json.loads((HOLMES_FIXTURE / "round.json").read_text())["slots"]
+    h = next(x for x in holmes if x["attempt_id"] == "h-pay-1")
+    return ops, h["scenario_id"]
+
+
+def _write(tmp_path, name, doc):
+    path = tmp_path / name
+    path.write_text(json.dumps(doc))
+    return str(path)
+
+
 def test_compare_scoring_unions_segment_pairs_and_registry(tmp_path):
     from scripts import eval_compare_scoring as cli
-    from tests.test_binary_judge import DEV_ROUND, ENV, FakeClient, _decide, _judge_args
 
-    ids = [s["attempt_id"] for s in json.loads(DEV_ROUND.read_text())["slots"][:3]]
+    ops, h_sid = _scored()
+    ids = [s["attempt_id"] for s in ops[:3]]
     pairs = []
     # the same window id in two segments: each check reads only its own log
     for i, victim in enumerate(ids[:2]):
@@ -291,43 +315,68 @@ def test_compare_scoring_unions_segment_pairs_and_registry(tmp_path):
             ],
         }
         check = {"voided": [{"window_id": "w1", "systems": ["opspilot"]}]}
-        (tmp_path / f"log-{i}.json").write_text(json.dumps(log))
-        (tmp_path / f"check-{i}.json").write_text(json.dumps(check))
         pairs += [
             "--schedule-log",
-            str(tmp_path / f"log-{i}.json"),
+            _write(tmp_path, f"log-{i}.json", log),
             "--schedule-check",
-            str(tmp_path / f"check-{i}.json"),
+            _write(tmp_path, f"check-{i}.json", check),
         ]
-    registry = tmp_path / "voids.json"
-    registry.write_text(
-        json.dumps(
-            _registry(
-                _reg(ids[2], "later", sid="x"),
-                _reg("h-pay-1", "later-h", sid="x", system="holmes"),
-            )
-        )
+    # registry voids were already applied upstream: they name attempts no
+    # longer scored, replaced (via a chain) by a scored attempt
+    registry = _registry(
+        _reg("ops-gone-1", "ops-gone-2", sid=ops[2]["scenario_id"]),
+        _reg("ops-gone-2", ids[2], sid=ops[2]["scenario_id"]),
+        _reg("h-gone", "h-pay-1", sid=h_sid, system="holmes"),
+        _reg("elsewhere", "elsewhere-2", sid="other-dataset"),
     )
-    out = tmp_path / "judge"
-    args = _judge_args(out, *pairs, "--voids", str(registry))
-    result = cli.run_judge(args, client=FakeClient(_decide), environ=ENV)
-    assert result["voided"] == 4 and result["attempts"] == 38
-    assert json.loads((out / "items.json").read_text())["voided"] == sorted(
-        [*ids, "h-pay-1"]
-    )
+    voids = _write(tmp_path, "voids.json", registry)
+    result = _judge(tmp_path, "judge", *pairs, "--voids", voids)
+    assert result["voided"] == 2 and result["attempts"] == 40
+    items = json.loads((tmp_path / "judge" / "items.json").read_text())
+    assert items["voided"] == sorted([*ids[:2], "ops-gone-1", "ops-gone-2", "h-gone"])
     # a log without its check (or the reverse) is refused
-    lone = _judge_args(
-        tmp_path / "lone", *pairs, "--schedule-log", str(tmp_path / "log-0.json")
-    )
     with pytest.raises(cli.BinaryJudgeError) as err:
-        cli.run_judge(lone, client=FakeClient(_decide), environ=ENV)
+        _judge(tmp_path, "lone", *pairs, "--schedule-log", str(tmp_path / "log-0.json"))
     assert err.value.code == "SCHEDULE_LOG_AND_CHECK_REQUIRED"
-    bad = tmp_path / "bad.json"
-    bad.write_text(json.dumps({"schema": "x", "voided_attempts": []}))
+
+
+@pytest.mark.parametrize(
+    ("entries", "expected"),
+    [
+        (
+            lambda o, h: [
+                _reg(o[0]["attempt_id"], o[1]["attempt_id"], sid=o[0]["scenario_id"])
+            ],
+            "VOID_SCORED",
+        ),
+        (
+            lambda o, h: [_reg("gone", "ghost", sid=o[0]["scenario_id"])],
+            "VOID_RERUN_UNKNOWN:gone",
+        ),
+        # declared holmes, replaced by an OpsPilot attempt
+        (
+            lambda o, h: [
+                _reg(
+                    "gone", o[0]["attempt_id"], sid=o[0]["scenario_id"], system="holmes"
+                )
+            ],
+            "VOID_RERUN_UNKNOWN:gone",
+        ),
+        (
+            lambda o, h: [_reg("gone", "h-pay-1", sid=o[0]["scenario_id"])],
+            "VOID_RERUN_UNKNOWN:gone",
+        ),
+        (lambda o, h: [_reg("a", "b", sid=h), _reg("b", "a", sid=h)], "VOID_CYCLE"),
+        (lambda o, h: [{"schema": "x"}], "VOIDS_INVALID"),
+    ],
+)
+def test_compare_scoring_registry_refusals(tmp_path, entries, expected):
+    from scripts import eval_compare_scoring as cli
+
+    ops, h_sid = _scored()
+    rows = entries(ops, h_sid)
+    doc = rows[0] if expected == "VOIDS_INVALID" else _registry(*rows)
+    voids = _write(tmp_path, "voids.json", doc)
     with pytest.raises(cli.BinaryJudgeError) as err:
-        cli.run_judge(
-            _judge_args(tmp_path / "bad", "--voids", str(bad)),
-            client=FakeClient(_decide),
-            environ=ENV,
-        )
-    assert err.value.code == "VOIDS_INVALID"
+        _judge(tmp_path, "out", "--voids", voids)
+    assert err.value.code.startswith(expected)
