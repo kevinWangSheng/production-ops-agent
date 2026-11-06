@@ -380,6 +380,13 @@ def test_compare_scoring_unions_segment_pairs_and_registry(tmp_path):
         (lambda o, h: [_reg("a", "b", sid=h), _reg("b", "a", sid=h)], "VOID_CYCLE"),
         (
             lambda o, h: [
+                _reg("gone-1", "h-pay-1", sid=h, system="holmes"),
+                _reg("gone-2", "h-pay-1", sid=h, system="holmes"),
+            ],
+            "RERUN_DUPLICATE:h-pay-1",
+        ),
+        (
+            lambda o, h: [
                 _reg("gone", "h-pay-1", sid=h, system="holmes"),
                 _reg("gone", "other", sid=h, system="holmes"),
             ],

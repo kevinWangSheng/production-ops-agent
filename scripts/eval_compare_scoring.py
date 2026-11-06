@@ -334,7 +334,7 @@ def registry_voided_attempts(
     ``voided_attempts``) must end, without a loop, at a scored attempt of
     the entry's own system and scenario (``VOID_RERUN_UNKNOWN``,
     ``VOID_CYCLE``); an attempt voided twice across the checks and the
-    registry is ``VOID_DUPLICATE``. Entries of scenarios outside this
+    registry is ``VOID_DUPLICATE``, a rerun named twice ``RERUN_DUPLICATE``. Entries of scenarios outside this
     dataset are skipped.
     """
     from scripts.eval_dev_round import void_registry_entries
@@ -348,11 +348,17 @@ def registry_voided_attempts(
     scored = {str(a["attempt_id"]): a for a in attempts}
     successor: dict[str, str] = {}
 
+    replacements: set[str] = set()
+
     def link(voided: str, rerun: str) -> None:
-        # one void per attempt across every check and the registry
+        # across every check and the registry, an attempt is voided at most
+        # once and replaces at most one voided attempt
         if voided in successor:
             raise BinaryJudgeError(f"VOID_DUPLICATE:{voided}")
+        if rerun in replacements:
+            raise BinaryJudgeError(f"RERUN_DUPLICATE:{rerun}")
         successor[voided] = rerun
+        replacements.add(rerun)
 
     for check in checks:
         for row in check.get("voided_attempts") or []:
