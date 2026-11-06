@@ -605,6 +605,22 @@ def _jaeger_rows(data: Any) -> list[dict[str, Any]]:
     return rows
 
 
+def _range_window(params: Mapping[str, Any]) -> dict[str, Any]:
+    """A range query's window as ISO times. Holmes also takes ``start`` as a
+    negative number of seconds relative to ``end``; that is resolved when
+    ``end`` is an absolute time. An ``end`` of "now" is not recorded, so
+    such a window stays unresolved (no overlap is reported for it)."""
+    start, end = params.get("start"), params.get("end")
+    upper = _moment(end)
+    try:
+        offset = float(start) if isinstance(start, (str, int, float)) else None
+    except ValueError:
+        offset = None
+    if offset is not None and offset < 0 and upper is not None:
+        start = (upper + timedelta(seconds=offset)).isoformat()
+    return {"start": start, "end": end}
+
+
 def holmes_views(output: Mapping[str, Any]) -> list[dict[str, Any]]:
     """The isolation view (``eval_dev_round._views`` shape) of each tool
     result Holmes received: its text, Jaeger span rows, and a Prometheus
@@ -629,7 +645,7 @@ def holmes_views(output: Mapping[str, Any]) -> list[dict[str, Any]]:
                 "evidence_id": call.get("tool_call_id"),
                 "tool": tool,
                 "span_view": tool == JAEGER_TOOL,
-                "window": {"start": params.get("start"), "end": params.get("end")}
+                "window": _range_window(params)
                 if tool in METRICS_RANGE_TOOLS
                 else None,
                 "rows": _jaeger_rows(data) if tool == JAEGER_TOOL else [],

@@ -396,3 +396,12 @@ def test_summarize_output_keeps_every_main_number(tmp_path):
     for key, value in plain.items():
         assert doc[key] == value, key
     assert doc["contamination_sensitivity"]["flagged_windows"] == ["w1"]
+
+
+def test_holmes_relative_range_start_is_resolved_against_its_end():
+    absolute = ds._range_window({"start": "-600", "end": _iso(10)})
+    assert absolute == {"start": _iso(0), "end": _iso(10)}
+    unresolved = ds._range_window({"start": "-600", "end": None})
+    assert unresolved == {"start": "-600", "end": None}
+    iso = ds._range_window({"start": _iso(1), "end": _iso(2)})
+    assert iso == {"start": _iso(1), "end": _iso(2)}
