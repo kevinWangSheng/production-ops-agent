@@ -13,7 +13,10 @@ one scenario is ``REDRAW_DETECTED``); a slot that never started counts as a
 Q20 failure. Q20 is re-checked from each attempt's public ``projection.json``
 and ``intake.json`` and must equal the stored ``expectations.json``
 (``EXPECTATIONS_MISMATCH``). All rounds must share the code, dataset,
-evaluator, runbook and upstream dimensions (``MANIFEST_DRIFT``). Regression
+evaluator, runbook and upstream dimensions (``MANIFEST_DRIFT``); with
+``--code-commit`` (repeated) the code dimension may differ only within those
+commits, when ``opspilot/`` is identical across them, and the output's
+``code_set`` discloses the commits and attempt counts. Regression
 and capability groups are reported separately; the gate is a ratio only.
 
 Registered reruns (seams-432 section 5a, ``--reruns``): an attempt that
@@ -27,8 +30,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
 import sys
-from collections.abc import Mapping, Sequence
+from collections import Counter
+from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -65,6 +70,35 @@ SCHEDULE_RULES = (
 )
 #: Dimensions that must not move between the rounds of one development round.
 FROZEN_DIMENSIONS = ("code", "dataset", "evaluator", "runbook", "upstream")
+#: The product scope a registered code set must leave identical (F1 ruling
+#: 2026-11-05, S1): driver commits may differ only outside it.
+PRODUCT_SCOPE = "opspilot"
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+def git_product_tree(commit: str) -> tuple[str, str] | None:
+    """``(full commit SHA, tree hash of PRODUCT_SCOPE)`` at ``commit`` in this
+    repository; ``None`` when either cannot be resolved."""
+    out: list[str] = []
+    for rev in (f"{commit}^{{commit}}", f"{commit}^{{commit}}:{PRODUCT_SCOPE}"):
+        try:
+            done = subprocess.run(
+                ["git", "rev-parse", "--verify", "--quiet", rev],
+                cwd=REPO_ROOT,
+                capture_output=True,
+                text=True,
+                timeout=30,
+                check=False,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return None
+        if done.returncode != 0 or not done.stdout.strip():
+            return None
+        out.append(done.stdout.strip())
+    return out[0], out[1]
+
+
+ProductTree = Callable[[str], tuple[str, str] | None]
 
 
 class DevRoundError(Exception):
@@ -463,14 +497,54 @@ def _registered_reruns(
     return out
 
 
+def _code_set(
+    dims_seen: Sequence[Mapping[str, Any]],
+    code_commits: Sequence[str],
+    product_tree: ProductTree,
+) -> dict[str, Any]:
+    """S1 (F1 ruling 2026-11-05): the ``code`` dimension may differ across
+    attempts only within the registered ``code_commits``, and only when
+    ``PRODUCT_SCOPE`` has one tree across all of them; anything else is
+    ``MANIFEST_DRIFT:code``. Returns the disclosure of the accepted set."""
+    registered: dict[str, str] = {}
+    for commit in code_commits:
+        resolved = product_tree(commit)
+        if resolved is None:
+            raise DevRoundError("MANIFEST_DRIFT:code")
+        registered[resolved[0]] = resolved[1]
+    trees = set(registered.values())
+    if len(trees) != 1:
+        raise DevRoundError("MANIFEST_DRIFT:code")
+    counts: Counter[str] = Counter()
+    for dims in dims_seen:
+        code = dims.get("code")
+        if not isinstance(code, Mapping) or code.get("kind") != "version":
+            raise DevRoundError("MANIFEST_DRIFT:code")
+        resolved = product_tree(str(code.get("value") or ""))
+        if not code.get("value") or resolved is None or resolved[0] not in registered:
+            raise DevRoundError("MANIFEST_DRIFT:code")
+        counts[resolved[0]] += 1
+    return {
+        "scope": f"{PRODUCT_SCOPE}/",
+        "product_tree": next(iter(trees)),
+        "registered": sorted(registered),
+        "attempts_by_commit": dict(sorted(counts.items())),
+    }
+
+
 def aggregate(
     round_dirs: Sequence[Path],
     dataset_root: Path,
     *,
     n: int = SLOTS_PER_SCENARIO,
     reruns: Mapping[str, Any] | None = None,
+    code_commits: Sequence[str] | None = None,
+    product_tree: ProductTree | None = None,
 ) -> dict[str, Any]:
-    """The development round summary (seams-432 section 5)."""
+    """The development round summary (seams-432 section 5).
+
+    ``code_commits`` registers driver commits the ``code`` dimension may
+    differ within (``_code_set``); ``None`` keeps every dimension frozen."""
     loaded = {
         spec.scenario_id: (spec, answer)
         for spec, answer in load_scenarios_v2(dataset_root)
@@ -530,8 +604,15 @@ def aggregate(
         if sum(1 for a in items if str(a["attempt_id"]) not in voided) > n:
             raise DevRoundError(f"REDRAW_DETECTED:{sid}")
     reference = dims_seen[0] if dims_seen else {}
+    code_set = (
+        None
+        if code_commits is None
+        else _code_set(dims_seen, code_commits, product_tree or git_product_tree)
+    )
     for dims in dims_seen:
         for name in FROZEN_DIMENSIONS:
+            if name == "code" and code_set is not None:
+                continue  # checked by _code_set
             if dims.get(name) != reference.get(name):
                 raise DevRoundError(f"MANIFEST_DRIFT:{name}")
     if reference and (reference.get("dataset") or {}).get("value") != dataset:
@@ -629,6 +710,8 @@ def aggregate(
         "schema": SCHEMA,
         "dataset": dataset,
         "code": code.get("value"),
+        # S1 disclosure: present only when a code set was registered
+        **({} if code_set is None else {"code_set": code_set}),
         "rounds": rounds,
         "step3": {
             name: reference.get(name) for name in ("runbook", "dataset", "upstream")
@@ -673,6 +756,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--n", type=int, default=CLI_SLOTS_PER_SCENARIO)
     parser.add_argument("--out", required=True)
     parser.add_argument("--reruns")
+    parser.add_argument(
+        "--code-commit",
+        action="append",
+        dest="code_commits",
+        help="register a driver commit the code dimension may differ within "
+        "(repeat; product scope must be identical across them)",
+    )
     args = parser.parse_args(argv)
     try:
         reruns = None
@@ -688,6 +778,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             Path(args.dataset),
             n=args.n,
             reruns=reruns,
+            code_commits=args.code_commits,
         )
     except DevRoundError as exc:
         print(json.dumps({"exit_code": 1, "reason": exc.code}))
