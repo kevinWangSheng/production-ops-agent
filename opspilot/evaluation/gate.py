@@ -8,7 +8,9 @@ from datetime import UTC, datetime
 from typing import Any
 
 from opspilot.acceptance import IncidentOutcome
+from opspilot.evaluation.expectations import NO_RUN, ExpectationResult
 from opspilot.evaluation.model import (
+    AnswerV2,
     AnyAnswer,
     AnyScenarioSpec,
     DeliveredRecord,
@@ -253,6 +255,35 @@ def report_signature_matches(
     return hits
 
 
+def expects_no_run(answer: AnyAnswer) -> bool:
+    """The scenario expects no Run: ``no_run`` is its only allowed final state.
+
+    An answer that also allows a Run state keeps the ordinary gate.
+    """
+    return isinstance(answer, AnswerV2) and set(
+        answer.expected_outcome.final_states
+    ) == {NO_RUN}
+
+
+def no_run_gate(expectations: ExpectationResult | None) -> GateResult:
+    """Gate of an attempt whose scenario expects no Run (user ruling Q8,
+    2026-11-06): it passes exactly when that attempt's own expectations
+    passed. Missing expectations fail."""
+    reasons: tuple[str, ...]
+    if expectations is None:
+        passed, reasons = False, ("EXPECTATIONS_MISSING",)
+    elif expectations.passed is True:
+        passed, reasons = True, ()
+    else:
+        passed = False
+        reasons = ("EXPECTATIONS_FAILED", *expectations.reasons)
+    return GateResult(
+        passed=passed,
+        checks=dict.fromkeys(GATE_CHECKS, passed),
+        reasons=tuple(dict.fromkeys(reasons)),
+    )
+
+
 def run_gate(
     spec: AnyScenarioSpec,
     answer: AnyAnswer,
@@ -260,7 +291,18 @@ def run_gate(
     report: ReportCapture | None,
     delivered: Mapping[str, DeliveredRecord],
     authorized: Mapping[str, Window],
+    *,
+    expectations: ExpectationResult | None = None,
 ) -> GateResult:
+    """The deterministic gate of one attempt.
+
+    With ``expectations`` given and a scenario that expects no Run, the gate
+    is that attempt's expectations (``no_run_gate``). Without them the gate
+    is unchanged, so a stored summary, written before its attempt's
+    expectations exist, still re-derives to the same result.
+    """
+    if expectations is not None and expects_no_run(answer):
+        return no_run_gate(expectations)
     checks: dict[str, bool] = {}
     reasons: list[str] = []
 
