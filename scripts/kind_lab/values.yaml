@@ -107,17 +107,20 @@ jaeger:
     # and query-time copies are outside it, and the Go GC lets the heap reach
     # twice the live size before collecting. This change:
     #   - GOMEMLIMIT (a Go runtime setting, Go >= 1.19; Jaeger 1.53 builds
-    #     with Go >= 1.20): the GC collects harder as the heap nears 1536MiB
-    #     instead of growing into the container limit;
+    #     with Go >= 1.20): a soft limit -- the GC runs more often as the
+    #     runtime's memory nears 1536MiB, which removes the "heap up to twice
+    #     the live size" headroom; it cannot cap live data, and the runtime
+    #     may exceed it (go.dev/doc/gc-guide#Memory_limit);
     #   - the limit itself, 2Gi (Q2 ruling 2026-11-06).
-    # The trace count stays 5000: at the lab's background load (frontend
-    # span rate about 1.5/s in docs/evidence/f3-step5-competing-cause) that
-    # is roughly an hour of traces, and the soak's longest fault window is
-    # 75 min, so a lower count would drop fault-onset traces before what
-    # grows is known. The pre-soak rehearsal (#497) samples RSS, the Go heap
-    # and heap profiles on the admin port (14269: /metrics,
-    # /debug/pprof/heap) to confirm RSS levels off, and picks a further
-    # bound from what the profile shows if it does not.
+    # The trace count stays 5000 (it counts trace ids, not spans): how much
+    # time 5000 traces cover at the lab's background load is not measured,
+    # and the soak's longest fault window is 75 min (S-R6,
+    # docs/tasks/2026-11-04-m3-soak.md), so a lower count could drop
+    # fault-onset traces before what grows is known. The pre-soak rehearsal
+    # (#497) samples RSS, the Go heap and heap profiles on the admin port
+    # (14269: /metrics, /debug/pprof/heap), checks RSS levels off and
+    # measures the age of the oldest kept trace; it lowers the count, or
+    # picks another bound, from what the profile shows if RSS keeps rising.
     # The chart's lists are replaced, not merged, so its args and env are
     # restated unchanged.
     args:

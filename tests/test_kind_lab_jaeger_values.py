@@ -10,6 +10,8 @@ from pathlib import Path
 
 import yaml
 
+from scripts import kind_lab
+
 CONFIG = Path(__file__).resolve().parents[1] / "scripts" / "kind_lab"
 UNITS = {"Mi": 2**20, "Gi": 2**30, "MiB": 2**20, "GiB": 2**30}
 
@@ -26,6 +28,12 @@ CHART_ENV = {
     "COLLECTOR_OTLP_GRPC_HOST_PORT": "0.0.0.0:4317",
     "COLLECTOR_OTLP_HTTP_HOST_PORT": "0.0.0.0:4318",
 }
+
+
+def test_restated_lists_match_the_pinned_chart() -> None:
+    # CHART_ARGS/CHART_ENV were read from this chart version's values.yaml
+    # (jaeger.allInOne.args/extraEnv); a chart bump must re-check them
+    assert kind_lab.DEMO_CHART_VERSION == "0.37.8"
 
 
 def _bytes(quantity: str) -> int:
