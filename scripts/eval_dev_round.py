@@ -24,6 +24,13 @@ failed in harness setup before any product Run existed may be voided by
 exactly one later attempt of the same scenario. The voided attempt leaves
 the slots and Q20 but stays in ``voided_attempts``, the cost and the
 isolation check; the rerun counts as-is and is never voided in turn.
+
+Duplicate-call refusal receipts (seams-432 section 2, F1 revision
+2026-11-06): ``read_only`` no longer counts the loop's refusal to re-run an
+exact repeat (``status: denied``, ``DUPLICATE_TOOL_CALL``, no tool). Stored
+expectations computed before that may differ from the re-check only in
+``read_only`` False -> True and ``WRITE_OBSERVED``; such a slot carries
+``refusal_rechecked: true`` and its stored result in ``expectations_stored``.
 """
 
 from __future__ import annotations
@@ -40,7 +47,7 @@ from pathlib import Path
 from typing import Any
 
 from opspilot.evaluation import REQUIRED_DIMENSIONS
-from opspilot.evaluation.expectations import check_expectations
+from opspilot.evaluation.expectations import check_expectations, is_duplicate_refusal
 from opspilot.evaluation.model import (
     AnswerV2,
     ScenarioSpecV2,
@@ -155,26 +162,56 @@ def _binding(
     return list(next(iter(classes)))
 
 
+#: Per check: the reason code that goes with its failure.
+_REVISABLE = {"canary_absent": "CANARY_PRESENT", "read_only": "WRITE_OBSERVED"}
+
+
 def _same_expectations(
-    stored: Mapping[str, Any], checked: Mapping[str, Any], *, canary_rechecked: bool
+    stored: Mapping[str, Any],
+    checked: Mapping[str, Any],
+    *,
+    canary_rechecked: bool,
+    refusal_rechecked: bool = False,
 ) -> bool:
-    """Stored and re-checked Q20 agree; after an outward-only canary recheck
-    (section 5b) they may differ only in ``canary_absent`` and what follows
-    from it (``CANARY_PRESENT`` and ``passed``)."""
+    """Stored and re-checked Q20 agree, up to two disclosed revisions:
+
+    - after an outward-only canary recheck (section 5b), ``canary_absent``
+      and what follows from it (``CANARY_PRESENT`` and ``passed``);
+    - when the projection holds a duplicate-call refusal receipt (section 2,
+      F1 revision 2026-11-06), ``read_only`` from False to True and its
+      ``WRITE_OBSERVED`` -- the receipt executed nothing, and the stored
+      result predates the rule that skips it.
+    """
     if all(stored.get(k) == checked[k] for k in ("passed", "checks", "reasons")):
         return True
-    if not canary_rechecked:
-        return False
     old, new = stored.get("checks"), checked["checks"]
     if not isinstance(old, Mapping) or set(old) != set(new):
         return False
-    if any(old[k] != new[k] for k in new if k != "canary_absent"):
+    revised = set()
+    if canary_rechecked:
+        revised.add("canary_absent")
+    # Only an actual False -> True transition; anything else stays strict.
+    if refusal_rechecked and old["read_only"] is False and new["read_only"] is True:
+        revised.add("read_only")
+    if not revised:
         return False
-    old_reasons = [r for r in stored.get("reasons") or [] if r != "CANARY_PRESENT"]
-    new_reasons = [r for r in checked["reasons"] if r != "CANARY_PRESENT"]
+    if any(old[k] != new[k] for k in new if k not in revised):
+        return False
+    codes = {_REVISABLE[name] for name in revised}
+    old_reasons = [r for r in stored.get("reasons") or [] if r not in codes]
+    new_reasons = [r for r in checked["reasons"] if r not in codes]
     if old_reasons != new_reasons:
         return False
-    return checked["passed"] == (not new_reasons and new["canary_absent"] is not False)
+    return checked["passed"] == (
+        not new_reasons and all(new[name] is not False for name in revised)
+    )
+
+
+def _has_duplicate_refusal(projection: Any) -> bool:
+    if not isinstance(projection, Mapping):
+        return False
+    items = projection.get("tool_results") or []
+    return any(isinstance(i, Mapping) and is_duplicate_refusal(i) for i in items)
 
 
 def _attempt(
@@ -229,10 +266,15 @@ def _attempt(
         intake=intake,
         target_id=target_id,
     ).as_json()
+    refusal = _has_duplicate_refusal(projection)
     if not isinstance(stored, Mapping) or not _same_expectations(
-        stored, checked, canary_rechecked=recheck is not None
+        stored,
+        checked,
+        canary_rechecked=recheck is not None,
+        refusal_rechecked=refusal,
     ):
         raise DevRoundError(f"EXPECTATIONS_MISMATCH:{run_dir.name}")
+    revised = any(stored.get(k) != checked[k] for k in ("passed", "checks", "reasons"))
     gate = (summary.get("evaluation") or {}).get("gate") or {}
     traces = (summary.get("trace") or {}).get("entries") or []
     return {
@@ -242,8 +284,11 @@ def _attempt(
         "reason": slot.get("reason"),
         "expectations": checked,
         "canary_rechecked": recheck is not None,
+        "refusal_rechecked": revised
+        and refusal
+        and stored["checks"]["read_only"] != checked["checks"]["read_only"],
         "expectations_stored": None
-        if recheck is None
+        if recheck is None and not revised
         else {key: stored.get(key) for key in ("passed", "checks", "reasons")},
         "gate": {"passed": gate.get("passed"), "reasons": gate.get("reasons")},
         "trace_url": next(
@@ -778,6 +823,7 @@ def aggregate(
                         "reason": item["reason"],
                         "expectations": item["expectations"],
                         "canary_rechecked": item["canary_rechecked"],
+                        "refusal_rechecked": item["refusal_rechecked"],
                         "expectations_stored": item["expectations_stored"],
                         "gate": item["gate"],
                         "trace_url": item["trace_url"],
@@ -799,6 +845,7 @@ def aggregate(
                             "reasons": ["NOT_STARTED"],
                         },
                         "canary_rechecked": False,
+                        "refusal_rechecked": False,
                         "expectations_stored": None,
                         "gate": {"passed": None, "reasons": None},
                         "trace_url": None,
