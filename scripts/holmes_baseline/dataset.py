@@ -298,7 +298,8 @@ def stored_read_only(data: Mapping[str, Any], raw_output: Any) -> bool:
             return False  # tampered or malformed count
         fields = str(key).split()
         # same reading as read_only(): a key without a uri is judged with ""
-        if not fields or not _proxy_read(
+        # proxy_request_counts writes at most "METHOD uri status"
+        if not 1 <= len(fields) <= 3 or not _proxy_read(
             fields[0], fields[1] if len(fields) >= 2 else ""
         ):
             return False

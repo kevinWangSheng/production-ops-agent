@@ -235,3 +235,9 @@ def test_malformed_tool_calls_fail_closed(tool_calls: Any) -> None:
     stored = {"proxy_requests_holmes": {"GET /api/v1/series 200": 1}, "tool_calls": []}
     assert ds.stored_read_only(stored, output) is False
     assert ds.read_only(output, ()) is False
+
+
+@pytest.mark.parametrize("key", ["GET /api/v1/query 200 extra", "", "   "])
+def test_request_key_not_written_by_the_producer_fails_closed(key: str) -> None:
+    stored = {"proxy_requests_holmes": {key: 1}, "tool_calls": []}
+    assert ds.stored_read_only(stored, fake_output(tool_calls=[])) is False
