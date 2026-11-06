@@ -31,6 +31,11 @@ exact repeat (``status: denied``, ``DUPLICATE_TOOL_CALL``, no tool). Stored
 expectations computed before that may differ from the re-check only in
 ``read_only`` False -> True and ``WRITE_OBSERVED``; such a slot carries
 ``refusal_rechecked: true`` and its stored result in ``expectations_stored``.
+
+Contamination (#513): each slot records its ``lab`` (the round's own
+``--output-root``) and only earlier faults on that lab are predecessors.
+``--timeline-round`` (with ``--timeline-dataset``) adds the faults of other
+rounds that shared the labs, e.g. the held-out windows of the same exam.
 """
 
 from __future__ import annotations
@@ -304,6 +309,9 @@ def _attempt(
 #: Span-row views a prior fault can leak through (A13: a read_evidence slice
 #: of a trace search carries the same rows).
 _SPAN_TOOLS = ("traces_search",)
+#: Metrics views whose query window can overlap an earlier fault
+#: (OpsPilot's tool; HolmesGPT's Prometheus range query, #513).
+METRICS_RANGE_TOOLS = ("metrics_range_query", "execute_prometheus_range_query")
 
 
 def _moment(value: Any) -> datetime | None:
@@ -366,28 +374,200 @@ def _views(delivered: Any) -> list[dict[str, Any]]:
     return out
 
 
+def lab_of(lifecycle: Any) -> str | None:
+    """The lab a round ran on: the ``--output-root`` of its own driver
+    command (``lifecycle.json`` ``command``). ``eval_pair_schedule`` gives
+    every lab its own output root, so it names the lab; ``None`` when the
+    command does not carry one (a lab-agnostic round)."""
+    command = lifecycle.get("command") if isinstance(lifecycle, Mapping) else None
+    if not isinstance(command, list):
+        return None
+    for flag, value in zip(command, command[1:], strict=False):
+        if flag == "--output-root" and isinstance(value, str) and value:
+            return value.rstrip("/") or value
+    return None
+
+
+def same_lab(a: str | None, b: str | None) -> bool:
+    """An unknown lab (``None``) may be any lab, so it matches every lab."""
+    return a is None or b is None or a == b
+
+
+def fault_entry(item: Mapping[str, Any], answer: AnswerV2) -> dict[str, Any] | None:
+    """The earlier fault an attempt leaves in its lab, or ``None`` when it
+    changed nothing there (alert-only or model-transport-only) or its
+    interval is unknown. ``item`` has ``scenario_id``, ``attempt_id``,
+    ``fault`` (``_interval``) and optionally ``lab``."""
+    own = item.get("fault") or {}
+    begin = _moment(own.get("effective_at"))
+    end = _moment(own.get("restored_at")) or _moment(own.get("ended_at"))
+    message = next(
+        (
+            str(i.params.get("message"))
+            for i in answer.injectors
+            if i.kind == "otlp_span"
+        ),
+        None,
+    )
+    lab_fault = message is not None or any(i.kind == "flagd" for i in answer.injectors)
+    if begin is None and message is not None:
+        begin = _moment(own.get("started_at"))
+    if not (lab_fault and begin is not None and end is not None):
+        return None
+    wanted = (
+        set()
+        if answer.signature is None
+        else {(m.service, m.operation) for m in answer.signature.any_of}
+    )
+    return {
+        "scenario_id": str(item["scenario_id"]),
+        "attempt_id": item["attempt_id"],
+        "lab": item.get("lab"),
+        "begin": begin,
+        "end": end,
+        "wanted": wanted,
+        "message": message,
+    }
+
+
+def prior_faults(
+    faults: Sequence[Mapping[str, Any]], began: datetime | None, lab: str | None
+) -> list[Mapping[str, Any]]:
+    """Earlier faults on the same lab that ended before ``began``."""
+    return [
+        f
+        for f in faults
+        if same_lab(f.get("lab"), lab) and (began is None or f["end"] <= began)
+    ]
+
+
+def isolation_flags(
+    prior: Sequence[Mapping[str, Any]],
+    began: datetime | None,
+    views: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    """``predecessor``, ``contamination`` and ``metrics_overlap`` of one
+    attempt against its ``prior_faults`` (the rule ``isolation`` documents);
+    shared with the HolmesGPT round summary."""
+    predecessor = None
+    if prior:
+        last = max(prior, key=lambda f: f["end"])
+        predecessor = {
+            "scenario_id": last["scenario_id"],
+            "attempt_id": last["attempt_id"],
+            "fault_end": last["end"].isoformat(),
+            "gap_minutes": None
+            if began is None
+            else round((began - last["end"]).total_seconds() / 60, 1),
+            "injection": last["message"] is not None,
+        }
+    flags: set[str] = set()
+    overlaps: set[str] = set()
+    for view in views:
+        for fault in prior:
+            if fault["message"] is not None and fault["message"] in view["text"]:
+                flags.add(f"PRIOR_INJECTION_TEXT:{fault['scenario_id']}")
+            if view["span_view"]:
+                for row in view["rows"]:
+                    if not row["error"] or not isinstance(row["start_us"], int):
+                        continue
+                    at = datetime.fromtimestamp(row["start_us"] / 1e6, tz=UTC)
+                    if (row["service"], row["operation"]) in fault["wanted"] and fault[
+                        "begin"
+                    ] <= at <= fault["end"]:
+                        flags.add(f"PRIOR_FAULT_SPAN:{fault['scenario_id']}")
+            elif view["tool"] in METRICS_RANGE_TOOLS:
+                window = view.get("window") or {}
+                lo, hi = _moment(window.get("start")), _moment(window.get("end"))
+                if lo and hi and lo <= fault["end"] and fault["begin"] <= hi:
+                    overlaps.add(fault["scenario_id"])
+    return {
+        "predecessor": predecessor,
+        "contamination": sorted(flags),
+        "metrics_overlap": sorted(overlaps),
+    }
+
+
+def lifecycle_faults(
+    round_dirs: Sequence[Path],
+    loaded: Mapping[str, tuple[ScenarioSpecV2, AnswerV2]],
+) -> tuple[list[dict[str, Any]], dict[str, str | None]]:
+    """The lab faults the rounds' own ``lifecycle.json`` record (every
+    started slot, voided ones included) and each round's lab (``lab_of``).
+    The HolmesGPT round summary reads its timeline here (#513): a paired
+    window has one injection, recorded once, in its round's lifecycle."""
+    faults: list[dict[str, Any]] = []
+    labs: dict[str, str | None] = {}
+    for round_dir in round_dirs:
+        lifecycle = _json(round_dir / "lifecycle.json")
+        if not isinstance(lifecycle, Mapping):
+            raise DevRoundError(f"LIFECYCLE_MISSING:{round_dir.name}")
+        lab = lab_of(lifecycle)
+        labs[str(lifecycle.get("round"))] = lab
+        for slot in lifecycle.get("slots") or []:
+            if not isinstance(slot, Mapping) or not slot.get("attempt_id"):
+                continue
+            sid = str(slot.get("scenario_id"))
+            if sid not in loaded:
+                raise DevRoundError(f"UNKNOWN_SCENARIO:{sid}")
+            entry = fault_entry(
+                {
+                    "scenario_id": sid,
+                    "attempt_id": slot["attempt_id"],
+                    "lab": lab,
+                    "fault": _interval(slot),
+                },
+                loaded[sid][1],
+            )
+            if entry is not None:
+                faults.append(entry)
+    return faults, labs
+
+
+def timeline_scenarios(
+    loaded: Mapping[str, tuple[ScenarioSpecV2, AnswerV2]],
+    dataset_roots: Sequence[Path],
+) -> dict[str, tuple[ScenarioSpecV2, AnswerV2]]:
+    """``loaded`` plus the scenarios of other datasets whose windows shared
+    the labs (the exam ran dev and held-out windows on the same labs); one
+    id in two datasets is ``TIMELINE_SCENARIO_CONFLICT``."""
+    out = dict(loaded)
+    for root in dataset_roots:
+        for spec, answer in load_scenarios_v2(root):
+            if spec.scenario_id in out:
+                raise DevRoundError(f"TIMELINE_SCENARIO_CONFLICT:{spec.scenario_id}")
+            out[spec.scenario_id] = (spec, answer)
+    return out
+
+
 def isolation(
     attempts: Sequence[Mapping[str, Any]],
     loaded: Mapping[str, tuple[ScenarioSpecV2, AnswerV2]],
+    context: Sequence[Mapping[str, Any]] = (),
 ) -> dict[str, dict[str, Any]]:
     """Per attempt id: its predecessor fault and the contamination flags
     (seams-432 §12 A11/A12). Pure; reads only what ``_attempt`` kept.
 
-    * ``predecessor``: the latest earlier attempt (any round) that injected a
-      flag or a synthetic span, with its scenario, end of fault and the gap
-      in minutes to this attempt's start.
+    * ``predecessor``: the latest earlier attempt (any round) on the same
+      lab that injected a flag or a synthetic span, with its scenario, end
+      of fault and the gap in minutes to this attempt's start.
     * ``contamination``: ``PRIOR_FAULT_SPAN:<scenario>`` when a delivered
-      span row matches an earlier attempt's signature, is an error, and
-      starts inside that attempt's fault interval; ``PRIOR_INJECTION_TEXT:
-      <scenario>`` when a delivered view contains an earlier attempt's
-      injected span message.
-    * ``metrics_overlap`` (informational, never a failure): earlier faults
-      whose interval a delivered metrics view's window overlaps; the tools
-      allow metrics windows up to the 24 h frame, so no wash removes them.
+      span row matches an earlier same-lab attempt's signature, is an
+      error, and starts inside that attempt's fault interval;
+      ``PRIOR_INJECTION_TEXT:<scenario>`` when a delivered view contains an
+      earlier same-lab attempt's injected span message.
+    * ``metrics_overlap`` (informational, never a failure): earlier
+      same-lab faults whose interval a delivered metrics view's window
+      overlaps; the tools allow metrics windows up to the 24 h frame, so no
+      wash removes them.
 
     Only attempts that changed the lab (a flagd injector or a synthetic
     span) count as earlier faults; an alert-only or model-transport-only
-    attempt does not.
+    attempt does not. Each lab has its own telemetry stores, so a fault on
+    another lab is never a predecessor (#513); an attempt without a known
+    ``lab`` (``lab_of``) is compared with every lab. ``context`` adds
+    earlier faults of windows outside ``attempts`` (``lifecycle_faults`` of
+    the other rounds that ran on the same labs).
     """
 
     def start(item: Mapping[str, Any]) -> datetime:
@@ -400,77 +580,14 @@ def isolation(
     for item in ordered:
         sid = str(item["scenario_id"])
         answer = loaded[sid][1]
-        own = item.get("fault") or {}
-        began = _moment(own.get("started_at"))
-        prior = [f for f in faults if began is None or f["end"] <= began]
-        predecessor = None
-        if prior:
-            last = max(prior, key=lambda f: f["end"])
-            predecessor = {
-                "scenario_id": last["scenario_id"],
-                "attempt_id": last["attempt_id"],
-                "fault_end": last["end"].isoformat(),
-                "gap_minutes": None
-                if began is None
-                else round((began - last["end"]).total_seconds() / 60, 1),
-                "injection": last["message"] is not None,
-            }
-        flags: set[str] = set()
-        overlaps: set[str] = set()
-        for view in item.get("views") or []:
-            for fault in prior:
-                if fault["message"] is not None and fault["message"] in view["text"]:
-                    flags.add(f"PRIOR_INJECTION_TEXT:{fault['scenario_id']}")
-                if view["span_view"]:
-                    for row in view["rows"]:
-                        if not row["error"] or not isinstance(row["start_us"], int):
-                            continue
-                        at = datetime.fromtimestamp(row["start_us"] / 1e6, tz=UTC)
-                        if (row["service"], row["operation"]) in fault[
-                            "wanted"
-                        ] and fault["begin"] <= at <= fault["end"]:
-                            flags.add(f"PRIOR_FAULT_SPAN:{fault['scenario_id']}")
-                elif view["tool"] == "metrics_range_query":
-                    window = view.get("window") or {}
-                    lo, hi = _moment(window.get("start")), _moment(window.get("end"))
-                    if lo and hi and lo <= fault["end"] and fault["begin"] <= hi:
-                        overlaps.add(fault["scenario_id"])
-        out[str(item["attempt_id"])] = {
-            "predecessor": predecessor,
-            "contamination": sorted(flags),
-            "metrics_overlap": sorted(overlaps),
-        }
-        begin = _moment(own.get("effective_at"))
-        end = _moment(own.get("restored_at")) or _moment(own.get("ended_at"))
-        message = next(
-            (
-                str(i.params.get("message"))
-                for i in answer.injectors
-                if i.kind == "otlp_span"
-            ),
-            None,
+        began = _moment((item.get("fault") or {}).get("started_at"))
+        prior = prior_faults([*faults, *context], began, item.get("lab"))
+        out[str(item["attempt_id"])] = isolation_flags(
+            prior, began, item.get("views") or []
         )
-        lab_fault = message is not None or any(
-            i.kind == "flagd" for i in answer.injectors
-        )
-        if begin is None and message is not None:
-            begin = began
-        if lab_fault and begin is not None and end is not None:
-            wanted = (
-                set()
-                if answer.signature is None
-                else {(m.service, m.operation) for m in answer.signature.any_of}
-            )
-            faults.append(
-                {
-                    "scenario_id": sid,
-                    "attempt_id": item["attempt_id"],
-                    "begin": begin,
-                    "end": end,
-                    "wanted": wanted,
-                    "message": message,
-                }
-            )
+        entry = fault_entry(item, answer)
+        if entry is not None:
+            faults.append(entry)
     return out
 
 
@@ -585,11 +702,16 @@ def aggregate(
     reruns: Mapping[str, Any] | None = None,
     code_commits: Sequence[str] | None = None,
     product_tree: ProductTree | None = None,
+    timeline_rounds: Sequence[Path] = (),
+    timeline_datasets: Sequence[Path] = (),
 ) -> dict[str, Any]:
     """The development round summary (seams-432 section 5).
 
     ``code_commits`` registers driver commits the ``code`` dimension may
-    differ within (``_code_set``); ``None`` keeps every dimension frozen."""
+    differ within (``_code_set``); ``None`` keeps every dimension frozen.
+    ``timeline_rounds`` (with the ``timeline_datasets`` their scenarios come
+    from) are other rounds that ran on the same labs: they add earlier
+    faults to the isolation check and nothing else (#513)."""
     loaded = {
         spec.scenario_id: (spec, answer)
         for spec, answer in load_scenarios_v2(dataset_root)
@@ -607,6 +729,7 @@ def aggregate(
         if unknown:
             raise DevRoundError(f"UNKNOWN_SCENARIO:{sorted(unknown)[0]}")
         round_id = str(lifecycle.get("round"))
+        lab = lab_of(lifecycle)
         rounds.append(
             {
                 "round": round_id,
@@ -639,6 +762,7 @@ def aggregate(
                     "round": round_id,
                     "attempt_id": attempt_id,
                     "scenario_id": sid,
+                    "lab": lab,
                     **item,
                 }
             )
@@ -662,7 +786,16 @@ def aggregate(
                 raise DevRoundError(f"MANIFEST_DRIFT:{name}")
     if reference and (reference.get("dataset") or {}).get("value") != dataset:
         raise DevRoundError("MANIFEST_DRIFT:dataset")
-    isolated = isolation([a for items in attempts.values() for a in items], loaded)
+    context = [
+        f
+        for f in lifecycle_faults(
+            timeline_rounds, timeline_scenarios(loaded, timeline_datasets)
+        )[0]
+        if str(f["attempt_id"]) not in started
+    ]
+    isolated = isolation(
+        [a for items in attempts.values() for a in items], loaded, context
+    )
     out_slots: list[dict[str, Any]] = []
     for sid in sorted(loaded):
         spec, answer = loaded[sid]
@@ -698,6 +831,7 @@ def aggregate(
                         "gate": item["gate"],
                         "trace_url": item["trace_url"],
                         "rerun_of": rerun_of.get(str(item["attempt_id"])),
+                        "lab": item["lab"],
                         **isolated[str(item["attempt_id"])],
                     }
                 )
@@ -720,6 +854,7 @@ def aggregate(
                         "gate": {"passed": None, "reasons": None},
                         "trace_url": None,
                         "rerun_of": None,
+                        "lab": None,
                         "predecessor": None,
                         "contamination": [],
                         "metrics_overlap": [],
@@ -810,6 +945,19 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="register a driver commit the code dimension may differ within "
         "(repeat; product scope must be identical across them)",
     )
+    parser.add_argument(
+        "--timeline-round",
+        action="append",
+        default=[],
+        help="another round that ran on the same labs (repeat): adds its "
+        "faults to the contamination check only (#513)",
+    )
+    parser.add_argument(
+        "--timeline-dataset",
+        action="append",
+        default=[],
+        help="the dataset of --timeline-round scenarios outside --dataset",
+    )
     args = parser.parse_args(argv)
     try:
         reruns = None
@@ -826,6 +974,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             n=args.n,
             reruns=reruns,
             code_commits=args.code_commits,
+            timeline_rounds=[Path(p) for p in args.timeline_round],
+            timeline_datasets=[Path(p) for p in args.timeline_dataset],
         )
     except DevRoundError as exc:
         print(json.dumps({"exit_code": 1, "reason": exc.code}))

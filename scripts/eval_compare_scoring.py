@@ -40,6 +40,11 @@ under synthetic ids.
 With ``--schedule-log`` and ``--schedule-check`` (#474 ``eval_pair_schedule``
 log and its ``check`` output), registered voided attempts are left out of
 judging, rulings and every denominator, and listed as ``voided_attempts``.
+
+Contamination flags (#513) never void a slot (preregistered r3
+``never_void``): each item carries its slot's ``window`` and
+``contamination``, and ``summarize`` adds ``contamination_sensitivity``,
+the main numbers again without the windows where either system was flagged.
 """
 
 from __future__ import annotations
@@ -120,6 +125,70 @@ def _base(system: str, answer: AnswerV2, attempt_id: str, slot: int) -> dict[str
     }
 
 
+def _isolation(slot: Mapping[str, Any]) -> dict[str, Any]:
+    """The slot's window (its round) and contamination flags, as its round
+    summary recorded them (#513); ``None`` flags mean not recorded."""
+    flags = slot.get("contamination")
+    return {
+        "window": slot.get("round"),
+        "contamination": list(flags) if isinstance(flags, list) else None,
+    }
+
+
+def contamination_sensitivity(
+    attempts: Sequence[Mapping[str, Any]],
+    rulings: Mapping[str, bool],
+    *,
+    k: int,
+    voided: Collection[str] = (),
+) -> dict[str, Any]:
+    """Preregistered rules r3 ``never_void``: contamination flags never void
+    a slot; they are reported per slot with a sensitivity row that excludes
+    flagged slots. A window (round) where either system's slot is flagged
+    leaves for both systems, so the comparison stays on shared windows; a
+    flagged slot without a window leaves alone. The row repeats the main
+    number (attempt pass rate) of ``summarize``; pass^k is left out because
+    a scenario missing a slot can never reach k passes."""
+    live = [a for a in attempts if a["attempt_id"] not in voided]
+    flagged = [a for a in live if a.get("contamination")]
+    windows = {a.get("window") for a in flagged if a.get("window")}
+    excluded = {
+        a["attempt_id"]
+        for a in live
+        if a.get("contamination") or (a.get("window") and a.get("window") in windows)
+    }
+    kept = [a for a in live if a["attempt_id"] not in excluded]
+    scored = summarize(
+        kept, {i: v for i, v in rulings.items() if i not in excluded}, k=k
+    )
+
+    def main(row: Mapping[str, Any]) -> dict[str, Any]:
+        return {
+            key: row.get(key)
+            for key in ("n_attempts", "passed", "pass_rate", "pass_rate_interval")
+        }
+
+    systems = list(dict.fromkeys(a["system"] for a in live))
+    return {
+        "rule": "exclude every window with a contamination-flagged slot of "
+        "either system (r3 never_void sensitivity row)",
+        "flagged_attempts": sorted(a["attempt_id"] for a in flagged),
+        "flagged_windows": sorted(windows),
+        "excluded": {
+            s: sum(1 for a in live if a["system"] == s and a["attempt_id"] in excluded)
+            for s in systems
+        },
+        "unrecorded": sorted(
+            a["attempt_id"] for a in live if a.get("contamination") is None
+        ),
+        "systems": {s: main(r) for s, r in scored["systems"].items()},
+        "comparison": {
+            "scenarios": scored["comparison"]["scenarios"],
+            "systems": {s: main(r) for s, r in scored["comparison"]["systems"].items()},
+        },
+    }
+
+
 def _check_recording(capture: Any, recording_root: Path) -> None:
     """The capture's evidence equals what its live recording re-derives."""
     from opspilot.evaluation.live import evidence_from_recording
@@ -165,10 +234,12 @@ def opspilot_attempts(
             )
             item["checks"] = {"attempt_ran": False}
             item["root_cause_citation"] = None if answer.signature is None else False
+            item |= _isolation(slot)
             out.append(item)
             continue
         attempt_id = slot["attempt_id"]
         item = _base("opspilot", answer, attempt_id, slot["slot"])
+        item |= _isolation(slot)
         expectations = slot.get("expectations") or {}
         item["checks"] = {
             f"q20.{name}": value
@@ -274,6 +345,7 @@ def holmes_attempts(
             slot["attempt_id"] if ran else f"holmes-not-started-{sid}-{slot['slot']}"
         )
         item = _base("holmes", answer, attempt_id, slot["slot"])
+        item |= _isolation(slot)
         read_only = (slot.get("checks") or {}).get("read_only")
         item["checks"] = {
             "final_state": ran
@@ -435,6 +507,9 @@ def run_summarize(args: argparse.Namespace) -> dict[str, Any]:
         "k": doc["k"],
         "ruled_by_user": sorted(rulings),
         **scored,
+        "contamination_sensitivity": contamination_sensitivity(
+            attempts, rulings, k=int(doc["k"]), voided=voided
+        ),
     }
     _write_new(Path(args.out), _dump(summary))
     return {"final": summary["final"], "out": args.out}
