@@ -353,9 +353,10 @@ def noise_opened_work(
 ) -> dict[str, list[dict[str, Any]]]:
     """#487 (U2): noise toggles must not open a Run. Per executed noise
     injection, every delivery whose ``outcome`` is ``run`` or ``handoff`` and
-    whose ``received_at`` lies in [on, off + slack] (off missing: the soak's
-    end). A delivery that is also an episode's linked delivery is still
-    listed, with that ``episode``. Reported, not a step-4 code."""
+    whose ``received_at`` lies in [on, off + slack]; with no ``injection_off``
+    the toggle is still on and the window has no end. A delivery that is
+    also an episode's linked delivery is still listed, with that
+    ``episode``. Reported, not a step-4 code."""
     noise = {
         str(i["id"])
         for i in raw.plan.get("injections", [])
@@ -366,7 +367,6 @@ def noise_opened_work(
         for episode, entry in linked.items()
         if entry["delivery"]
     }
-    close = raw.end if raw.end is not None else raw.snapshot
     out: dict[str, list[dict[str, Any]]] = {}
     for key in sorted(noise):
         ons = [
@@ -384,7 +384,8 @@ def noise_opened_work(
             and (t := _s(e.get("ts"))) is not None
             and t >= on
         ]
-        until = (min(offs) if offs else max(close, on)) + NOISE_SLACK_S
+        # never turned off: the toggle is still on, so the window stays open
+        until = min(offs) + NOISE_SLACK_S if offs else math.inf
         hits = sorted(
             (
                 d

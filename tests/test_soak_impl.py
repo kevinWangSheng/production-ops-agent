@@ -1149,14 +1149,14 @@ def test_487_summary_lists_work_opened_inside_a_noise_window(tmp_path: Path) -> 
     assert not any("nz1" in u or "noise" in u for u in summary["step4"]["unmet"])
 
 
-def test_487_noise_never_turned_off_is_checked_to_the_end(tmp_path: Path) -> None:
+def test_487_noise_never_turned_off_has_an_open_window(tmp_path: Path) -> None:
     plan = _plan({**NOISE_ITEM, "category": "noise"})
     plan.update(product_alertname="X", expected_deployments=[])
     raw = tmp_path / "raw"
     raw.mkdir()
     (raw / "plan.json").write_bytes(soak_plan.canonical(plan))
     (raw / "meta.json").write_text("{}")
-    late = iso(T0 + timedelta(hours=60))
+    late = iso(T0 + timedelta(hours=72, seconds=601))
     events = [
         {"ts": iso(T0), "type": "soak_start"},
         {
