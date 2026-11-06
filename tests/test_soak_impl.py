@@ -670,6 +670,13 @@ def test_runner_output_feeds_the_summarizer(fake: Any) -> None:
         u.startswith(("injection_unaccounted:", "section_unpublished:")) for u in unmet
     )
     assert not any(u.startswith("injection_unexplained") for u in unmet)
+    # #486: no Run is ever running here, so A1 ran with its condition unmet;
+    # A2 waits for idle, which holds
+    items = {item["id"]: item for item in summary["injections"]}
+    assert [c["step"] for c in items["A1"]["unmet_conditions"]] == ["A1:kill"]
+    assert items["A1"]["unmet_conditions"][0]["condition"] == "run_running"
+    assert items["A2"]["unmet_conditions"] == []
+    assert not any(u.startswith("condition") for u in unmet)
 
 
 # --- fault key (S-R2) ---------------------------------------------------------------
@@ -1057,3 +1064,242 @@ def test_l1_l2_rental_setup_rules() -> None:
 )
 def test_normalize_ts_keeps_the_offset(raw: str, expected: str) -> None:
     assert runner.normalize_ts(raw) == expected
+
+
+def _raw(tmp_path: Path, plan: dict[str, Any], rows: list[dict[str, Any]]) -> Path:
+    plan = {**plan, "product_alertname": "X", "expected_deployments": []}
+    raw = tmp_path / "raw"
+    raw.mkdir()
+    (raw / "plan.json").write_bytes(soak_plan.canonical(plan))
+    (raw / "meta.json").write_text("{}")
+    (raw / "events.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
+    return raw
+
+
+def test_486_summary_shows_steps_run_with_their_condition_unmet(
+    tmp_path: Path,
+) -> None:
+    """#486: a conditional step that ran after its maximum wait is listed on
+    its injection, a met one is not, and step 4 is unchanged."""
+    met = {**KILL, "id": "A9", "steps": [{**KILL["steps"][0], "id": "A9:kill"}]}
+    pg = {
+        "id": "A2",
+        "kind": "agent_fault",
+        "at_s": 5000,
+        "steps": [
+            {
+                "id": "A2:restart",
+                "action": "pg_restart",
+                "at_s": 5000,
+                "condition": "idle",
+            }
+        ],
+    }
+    plan = _plan(KILL, met, pg)
+
+    def at(seconds: int) -> str:
+        return iso(T0 + timedelta(seconds=seconds))
+
+    def step(seconds: int, step_id: str, status: str, **extra: Any) -> dict[str, Any]:
+        return {
+            "ts": at(seconds),
+            "type": "step",
+            "step": step_id,
+            "status": status,
+            **extra,
+        }
+
+    rows = [
+        {"ts": at(0), "type": "soak_start"},
+        step(1000, "A1:kill", "waiting", condition="run_running"),
+        step(2800, "A1:kill", "retry", condition="run_running", condition_met=False),
+        step(2810, "A1:kill", "ok", condition="run_running", condition_met=False),
+        {"ts": at(2810), "type": "injection_on", "injection_id": "A1"},
+        step(2840, "A1:recover", "ok"),
+        {"ts": at(2840), "type": "injection_off", "injection_id": "A1"},
+        step(1000, "A9:kill", "ok", condition="run_running", condition_met=True),
+        {"ts": at(1000), "type": "injection_on", "injection_id": "A9"},
+        step(6800, "A2:restart", "failed", condition="idle", condition_met=False),
+        {
+            "ts": at(6800),
+            "type": "injection_skipped",
+            "injection_id": "A2",
+            "reason": "x",
+        },
+        {"ts": at(72 * 3600), "type": "soak_end"},
+    ]
+    summary = summarize.summarize(_raw(tmp_path, plan, rows))
+    items = {item["id"]: item for item in summary["injections"]}
+    assert items["A1"]["unmet_conditions"] == [
+        {"step": "A1:kill", "condition": "run_running", "ts": at(2800), "status": "ok"}
+    ]
+    assert items["A9"]["unmet_conditions"] == []
+    # a failed step whose condition was unmet is still reported
+    assert items["A2"]["unmet_conditions"] == [
+        {"step": "A2:restart", "condition": "idle", "ts": at(6800), "status": "failed"}
+    ]
+    # reported, not a step-4 code
+    assert not any("A1" in u or "A9" in u for u in summary["step4"]["unmet"])
+
+
+NOISE_ITEM = {
+    "id": "nz1",
+    "kind": "noise",
+    "flag": "adManualGc",
+    "at_s": 7200,
+    "duration_s": 900,
+    "steps": [
+        {"id": "nz1:on", "action": "flag_on", "at_s": 7200, "flag": "adManualGc"},
+        {
+            "id": "nz1:off",
+            "action": "flag_off",
+            "after": "nz1:on",
+            "delay_s": 900,
+            "flag": "adManualGc",
+        },
+    ],
+}
+
+
+def test_487_summary_lists_work_opened_inside_a_noise_window(tmp_path: Path) -> None:
+    """#487: a delivery that opened a Run or a handoff between a noise
+    toggle's on and its off plus the slack is listed on the noise injection
+    and under ``stuck_work``; outside the window, ``attached`` and null
+    outcomes are not; step 4 is unchanged."""
+    plan = _plan(
+        {**EPISODE, "category": "episode"}, {**NOISE_ITEM, "category": "noise"}
+    )
+    plan.update(product_alertname="X", expected_deployments=[])
+    raw = tmp_path / "raw"
+    raw.mkdir()
+    (raw / "plan.json").write_bytes(soak_plan.canonical(plan))
+    (raw / "meta.json").write_text("{}")
+
+    def at(seconds: float) -> str:
+        return iso(T0 + timedelta(seconds=seconds))
+
+    on, off = 7200, 8100
+    slack = summarize.NOISE_SLACK_S
+    events = [
+        {"ts": at(0), "type": "soak_start"},
+        {"ts": at(600), "type": "injection_on", "injection_id": "ep01"},
+        {"ts": at(1500), "type": "injection_off", "injection_id": "ep01"},
+        {"ts": at(on), "type": "injection_on", "injection_id": "nz1"},
+        {"ts": at(off), "type": "injection_off", "injection_id": "nz1"},
+        {"ts": at(72 * 3600), "type": "soak_end"},
+    ]
+    (raw / "events.jsonl").write_text("".join(json.dumps(r) + "\n" for r in events))
+
+    def delivery(name: str, seconds: float, outcome: str | None) -> dict[str, Any]:
+        return {
+            "delivery_id": name,
+            "fingerprint": f"fp-{name}",
+            "received_at": at(seconds),
+            "outcome": outcome,
+            "outcome_at": at(seconds) if outcome else None,
+            "run_id": f"run-{name}" if outcome == "run" else None,
+            "incident_id": f"inc-{name}" if outcome else None,
+        }
+
+    deliveries = [
+        delivery("before", on - 1, "run"),
+        delivery("run_in", on + 60, "run"),
+        delivery("attached_in", on + 120, "attached"),
+        delivery("null_in", on + 180, None),
+        delivery("handoff_slack", off + slack, "handoff"),
+        delivery("after", off + slack + 1, "run"),
+    ]
+    (raw / "deliveries.jsonl").write_text(
+        "".join(json.dumps(d) + "\n" for d in deliveries)
+    )
+    summary = summarize.summarize(raw)
+    items = {item["id"]: item for item in summary["injections"]}
+    opened = items["nz1"]["opened_work"]
+    assert [o["delivery_id"] for o in opened] == ["run_in", "handoff_slack"]
+    assert opened[0] == {
+        "delivery_id": "run_in",
+        "received_at": at(on + 60),
+        "outcome": "run",
+        "run_id": "run-run_in",
+        "incident_id": "inc-run_in",
+        "episode": None,
+    }
+    assert items["ep01"]["opened_work"] is None
+    assert summary["stuck_work"]["noise_opened_work"] == {
+        "count": 2,
+        "ids": ["handoff_slack", "run_in"],
+    }
+    assert not any("nz1" in u or "noise" in u for u in summary["step4"]["unmet"])
+
+
+def test_487_noise_never_turned_off_has_an_open_window(tmp_path: Path) -> None:
+    plan = _plan({**NOISE_ITEM, "category": "noise"})
+    plan.update(product_alertname="X", expected_deployments=[])
+    raw = tmp_path / "raw"
+    raw.mkdir()
+    (raw / "plan.json").write_bytes(soak_plan.canonical(plan))
+    (raw / "meta.json").write_text("{}")
+    late = iso(T0 + timedelta(hours=72, seconds=601))
+    events = [
+        {"ts": iso(T0), "type": "soak_start"},
+        {
+            "ts": iso(T0 + timedelta(seconds=7200)),
+            "type": "injection_on",
+            "injection_id": "nz1",
+        },
+        {"ts": iso(T0 + timedelta(hours=72)), "type": "soak_end"},
+    ]
+    (raw / "events.jsonl").write_text("".join(json.dumps(r) + "\n" for r in events))
+    (raw / "deliveries.jsonl").write_text(
+        json.dumps(
+            {"delivery_id": "D1", "received_at": late, "outcome": "run", "run_id": "R1"}
+        )
+        + "\n"
+    )
+    summary = summarize.summarize(raw)
+    assert summary["stuck_work"]["noise_opened_work"] == {"count": 1, "ids": ["D1"]}
+    assert "injection_left_on:nz1" in summary["step4"]["unmet"]
+
+
+def test_487_noise_delivery_linked_to_an_episode_names_it(tmp_path: Path) -> None:
+    plan = _plan(
+        {**EPISODE, "category": "episode"}, {**NOISE_ITEM, "category": "noise"}
+    )
+    plan.update(product_alertname="X", expected_deployments=[])
+    raw = tmp_path / "raw"
+    raw.mkdir()
+    (raw / "plan.json").write_bytes(soak_plan.canonical(plan))
+    (raw / "meta.json").write_text("{}")
+
+    def at(seconds: float) -> str:
+        return iso(T0 + timedelta(seconds=seconds))
+
+    events = [
+        {"ts": at(0), "type": "soak_start"},
+        {"ts": at(600), "type": "injection_on", "injection_id": "ep01"},
+        {"ts": at(7200), "type": "injection_on", "injection_id": "nz1"},
+        {"ts": at(8100), "type": "injection_off", "injection_id": "nz1"},
+        {"ts": at(72 * 3600), "type": "soak_end"},
+    ]
+    (raw / "events.jsonl").write_text("".join(json.dumps(r) + "\n" for r in events))
+    (raw / "alerts.jsonl").write_text(
+        json.dumps({"alertname": "X", "fingerprint": "f", "starts_at": at(7300)}) + "\n"
+    )
+    (raw / "deliveries.jsonl").write_text(
+        json.dumps(
+            {
+                "delivery_id": "D1",
+                "fingerprint": "f",
+                "received_at": at(7310),
+                "outcome": "run",
+                "outcome_at": at(7310),
+                "run_id": "R1",
+                "incident_id": "I1",
+            }
+        )
+        + "\n"
+    )
+    summary = summarize.summarize(raw)
+    items = {item["id"]: item for item in summary["injections"]}
+    assert items["ep01"]["disposition"] == "run"
+    assert items["nz1"]["opened_work"][0]["episode"] == "ep01"
