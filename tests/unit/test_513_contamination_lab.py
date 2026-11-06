@@ -352,6 +352,22 @@ def test_sensitivity_drops_flagged_windows_for_both_systems():
     assert row["systems"]["holmes"]["n_attempts"] == 1
 
 
+def test_sensitivity_reports_a_system_whose_every_slot_was_excluded():
+    items = [
+        _item("op-1", "opspilot", "s1", "w1", ["PRIOR_FAULT_SPAN:x"]),
+        _item("h-1", "holmes", "s1", "w1", []),
+    ]
+    row = compare.contamination_sensitivity(items, {}, k=3)
+    empty = {
+        "n_attempts": 0,
+        "passed": 0,
+        "pass_rate": None,
+        "pass_rate_interval": None,
+    }
+    assert row["systems"] == {"opspilot": empty, "holmes": empty}
+    assert row["comparison"]["systems"] == {"opspilot": empty, "holmes": empty}
+
+
 def test_sensitivity_ignores_voided_attempts():
     row = compare.contamination_sensitivity(ITEMS, {}, k=3, voided={"op-1"})
     assert row["flagged_windows"] == []

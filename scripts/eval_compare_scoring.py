@@ -162,13 +162,21 @@ def contamination_sensitivity(
         kept, {i: v for i, v in rulings.items() if i not in excluded}, k=k
     )
 
-    def main(row: Mapping[str, Any]) -> dict[str, Any]:
+    def main(row: Mapping[str, Any] | None) -> dict[str, Any]:
+        if row is None:  # every slot of this system was excluded
+            return {
+                "n_attempts": 0,
+                "passed": 0,
+                "pass_rate": None,
+                "pass_rate_interval": None,
+            }
         return {
             key: row.get(key)
             for key in ("n_attempts", "passed", "pass_rate", "pass_rate_interval")
         }
 
     systems = list(dict.fromkeys(a["system"] for a in live))
+    compared = scored["comparison"]["systems"]
     return {
         "rule": "exclude every window with a contamination-flagged slot of "
         "either system (r3 never_void sensitivity row)",
@@ -181,10 +189,12 @@ def contamination_sensitivity(
         "unrecorded": sorted(
             a["attempt_id"] for a in live if a.get("contamination") is None
         ),
-        "systems": {s: main(r) for s, r in scored["systems"].items()},
+        "systems": {s: main(scored["systems"].get(s)) for s in systems},
         "comparison": {
             "scenarios": scored["comparison"]["scenarios"],
-            "systems": {s: main(r) for s, r in scored["comparison"]["systems"].items()},
+            "systems": {s: main(compared.get(s)) for s in systems}
+            if len(systems) > 1
+            else {},
         },
     }
 
