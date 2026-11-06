@@ -319,6 +319,7 @@ def injections(
     skipped: dict[str, str] = {}
     for event in raw.of("injection_skipped"):
         skipped[str(event.get("injection_id"))] = str(event.get("reason") or "")
+    noise = noise_opened_work(raw, linked)
     out = []
     for item in raw.plan.get("injections", []):
         key = str(item["id"])
@@ -333,8 +334,77 @@ def injections(
                 "disposition": linked[key]["disposition"]
                 if is_executed and item.get("category") == "episode" and key in linked
                 else None,
+                "opened_work": noise.get(key)
+                if item.get("category") == "noise"
+                else None,
             }
         )
+    return out
+
+
+#: #487: a noise window runs from ``injection_on`` to ``injection_off`` plus
+#: this slack (an alert's ``for`` and Alertmanager grouping delay a delivery;
+#: the same 10 min bound as the end-to-end check).
+NOISE_SLACK_S = END_TO_END_S
+
+
+def noise_opened_work(
+    raw: Raw, linked: Mapping[str, Mapping[str, Any]]
+) -> dict[str, list[dict[str, Any]]]:
+    """#487 (U2): noise toggles must not open a Run. Per executed noise
+    injection, every delivery whose ``outcome`` is ``run`` or ``handoff`` and
+    whose ``received_at`` lies in [on, off + slack] (off missing: the soak's
+    end). A delivery that is also an episode's linked delivery is still
+    listed, with that ``episode``. Reported, not a step-4 code."""
+    noise = {
+        str(i["id"])
+        for i in raw.plan.get("injections", [])
+        if i.get("category") == "noise"
+    }
+    by_delivery = {
+        str((entry["delivery"] or {}).get("delivery_id")): episode
+        for episode, entry in linked.items()
+        if entry["delivery"]
+    }
+    close = raw.end if raw.end is not None else raw.snapshot
+    out: dict[str, list[dict[str, Any]]] = {}
+    for key in sorted(noise):
+        ons = [
+            t
+            for e in raw.of("injection_on")
+            if str(e.get("injection_id")) == key and (t := _s(e.get("ts"))) is not None
+        ]
+        if not ons:
+            continue
+        on = min(ons)
+        offs = [
+            t
+            for e in raw.of("injection_off")
+            if str(e.get("injection_id")) == key
+            and (t := _s(e.get("ts"))) is not None
+            and t >= on
+        ]
+        until = (min(offs) if offs else max(close, on)) + NOISE_SLACK_S
+        hits = sorted(
+            (
+                d
+                for d in raw.deliveries
+                if d.get("outcome") in {"run", "handoff"}
+                and on <= (_s(d.get("received_at")) or -math.inf) <= until
+            ),
+            key=lambda d: (_s(d.get("received_at")) or 0.0, str(d.get("delivery_id"))),
+        )
+        out[key] = [
+            {
+                "delivery_id": d.get("delivery_id"),
+                "received_at": d.get("received_at"),
+                "outcome": d.get("outcome"),
+                "run_id": d.get("run_id"),
+                "incident_id": d.get("incident_id"),
+                "episode": by_delivery.get(str(d.get("delivery_id"))),
+            }
+            for d in hits
+        ]
     return out
 
 
@@ -532,6 +602,11 @@ def stuck_work(raw: Raw, linked: Mapping[str, Mapping[str, Any]]) -> dict[str, A
             key for key, entry in linked.items() if entry["disposition"] == "none"
         ),
         "injections_left_on": _ids(left_on(raw)),
+        "noise_opened_work": _ids(
+            str(hit["delivery_id"])
+            for hits in noise_opened_work(raw, linked).values()
+            for hit in hits
+        ),
     }
 
 
