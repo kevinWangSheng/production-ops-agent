@@ -41,6 +41,7 @@ from typing import Any
 
 from opspilot.evaluation import REQUIRED_DIMENSIONS
 from opspilot.evaluation.expectations import check_expectations
+from opspilot.evaluation.gate import expects_no_run, no_run_gate
 from opspilot.evaluation.model import (
     AnswerV2,
     ScenarioSpecV2,
@@ -218,19 +219,32 @@ def _attempt(
                 for key in ("report", "step_responses", "step_reasoning")
             }
         }
-    checked = check_expectations(
+    result = check_expectations(
         answer,
         attempt_status=status,
         attempt_reason=slot.get("reason"),
         projection=projection,
         intake=intake,
         target_id=target_id,
-    ).as_json()
+    )
+    checked = result.as_json()
     if not isinstance(stored, Mapping) or not _same_expectations(
         stored, checked, canary_rechecked=recheck is not None
     ):
         raise DevRoundError(f"EXPECTATIONS_MISMATCH:{run_dir.name}")
-    gate = (summary.get("evaluation") or {}).get("gate") or {}
+    stored_gate = (summary.get("evaluation") or {}).get("gate") or {}
+    gate: Mapping[str, Any] = stored_gate
+    gate_recorded = None
+    if expects_no_run(answer):
+        # Q8 (user ruling 2026-11-06): a scenario that expects no Run is gated
+        # by this attempt's re-checked expectations; the stored summary stays
+        # as written and its gate is disclosed as ``gate_recorded``.
+        derived = no_run_gate(result)
+        gate = {"passed": derived.passed, "reasons": list(derived.reasons)}
+        gate_recorded = {
+            "passed": stored_gate.get("passed"),
+            "reasons": stored_gate.get("reasons"),
+        }
     traces = (summary.get("trace") or {}).get("entries") or []
     return {
         "started_at": capture.get("started_at"),
@@ -243,6 +257,7 @@ def _attempt(
         if recheck is None
         else {key: stored.get(key) for key in ("passed", "checks", "reasons")},
         "gate": {"passed": gate.get("passed"), "reasons": gate.get("reasons")},
+        "gate_recorded": gate_recorded,
         "trace_url": next(
             (t.get("url") for t in traces if isinstance(t, Mapping) and t.get("url")),
             None,
@@ -650,6 +665,7 @@ def aggregate(
                         "canary_rechecked": item["canary_rechecked"],
                         "expectations_stored": item["expectations_stored"],
                         "gate": item["gate"],
+                        "gate_recorded": item["gate_recorded"],
                         "trace_url": item["trace_url"],
                         "rerun_of": rerun_of.get(str(item["attempt_id"])),
                         **isolated[str(item["attempt_id"])],
@@ -671,6 +687,7 @@ def aggregate(
                         "canary_rechecked": False,
                         "expectations_stored": None,
                         "gate": {"passed": None, "reasons": None},
+                        "gate_recorded": None,
                         "trace_url": None,
                         "rerun_of": None,
                         "predecessor": None,
