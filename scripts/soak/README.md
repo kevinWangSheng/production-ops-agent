@@ -156,6 +156,13 @@ Runner-only files: `run_states.jsonl`, `frontend_rate.jsonl`, `prom/*.json`.
 - A restoring step (flag off, egress restore, tunnel start, worker up) that
   fails is retried every 60 s until it succeeds; new flag injections wait
   meanwhile. `stuck_work.injections_left_on` lists any injection left on.
+- Noise toggles must not open a Run (U2): `injections[].opened_work` (noise
+  only; `null` for other kinds and unexecuted noise) lists every delivery
+  with outcome `run`/`handoff` received between the toggle's `injection_on`
+  and its `injection_off` + 600 s (no off: the toggle is still on, no
+  end), naming the `episode` when it is also an episode's linked delivery;
+  `stuck_work.noise_opened_work` has their delivery ids. Reported, not a
+  step-4 code.
 - A1 (Run in flight) and A2 (idle) wait at most 30 min for their condition
   and then run anyway; `injections[].unmet_conditions` lists each such step
   (`step`, `condition`, first `ts`, last `status`). Reported, not a step-4
