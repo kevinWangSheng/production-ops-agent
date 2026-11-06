@@ -40,6 +40,15 @@ under synthetic ids.
 With ``--schedule-log`` and ``--schedule-check`` (#474 ``eval_pair_schedule``
 log and its ``check`` output), registered voided attempts are left out of
 judging, rulings and every denominator, and listed as ``voided_attempts``.
+An exam run in segments repeats the pair, one per segment, matched in
+order (each check reads only its own log); ``--voids`` adds the
+cross-segment registry (``scripts.eval_dev_round.VOIDS_SCHEMA``) of both
+systems.
+
+Contamination flags (#513) never void a slot (preregistered r3
+``never_void``): each item carries its slot's ``window`` and
+``contamination``, and ``summarize`` adds ``contamination_sensitivity``,
+the main numbers again without the windows where either system was flagged.
 """
 
 from __future__ import annotations
@@ -120,6 +129,80 @@ def _base(system: str, answer: AnswerV2, attempt_id: str, slot: int) -> dict[str
     }
 
 
+def _isolation(slot: Mapping[str, Any]) -> dict[str, Any]:
+    """The slot's window (its round) and contamination flags, as its round
+    summary recorded them (#513); ``None`` flags mean not recorded."""
+    flags = slot.get("contamination")
+    return {
+        "window": slot.get("round"),
+        "contamination": list(flags) if isinstance(flags, list) else None,
+    }
+
+
+def contamination_sensitivity(
+    attempts: Sequence[Mapping[str, Any]],
+    rulings: Mapping[str, bool],
+    *,
+    k: int,
+    voided: Collection[str] = (),
+) -> dict[str, Any]:
+    """Preregistered rules r3 ``never_void``: contamination flags never void
+    a slot; they are reported per slot with a sensitivity row that excludes
+    flagged slots. A window (round) where either system's slot is flagged
+    leaves for both systems, so the comparison stays on shared windows; a
+    flagged slot without a window leaves alone. The row repeats the main
+    number (attempt pass rate) of ``summarize``; pass^k is left out because
+    a scenario missing a slot can never reach k passes."""
+    live = [a for a in attempts if a["attempt_id"] not in voided]
+    flagged = [a for a in live if a.get("contamination")]
+    windows = {a.get("window") for a in flagged if a.get("window")}
+    excluded = {
+        a["attempt_id"]
+        for a in live
+        if a.get("contamination") or (a.get("window") and a.get("window") in windows)
+    }
+    kept = [a for a in live if a["attempt_id"] not in excluded]
+    scored = summarize(
+        kept, {i: v for i, v in rulings.items() if i not in excluded}, k=k
+    )
+
+    def main(row: Mapping[str, Any] | None) -> dict[str, Any]:
+        if row is None:  # every slot of this system was excluded
+            return {
+                "n_attempts": 0,
+                "passed": 0,
+                "pass_rate": None,
+                "pass_rate_interval": None,
+            }
+        return {
+            key: row.get(key)
+            for key in ("n_attempts", "passed", "pass_rate", "pass_rate_interval")
+        }
+
+    systems = list(dict.fromkeys(a["system"] for a in live))
+    compared = scored["comparison"]["systems"]
+    return {
+        "rule": "exclude every window with a contamination-flagged slot of "
+        "either system (r3 never_void sensitivity row)",
+        "flagged_attempts": sorted(a["attempt_id"] for a in flagged),
+        "flagged_windows": sorted(windows),
+        "excluded": {
+            s: sum(1 for a in live if a["system"] == s and a["attempt_id"] in excluded)
+            for s in systems
+        },
+        "unrecorded": sorted(
+            a["attempt_id"] for a in live if a.get("contamination") is None
+        ),
+        "systems": {s: main(scored["systems"].get(s)) for s in systems},
+        "comparison": {
+            "scenarios": scored["comparison"]["scenarios"],
+            "systems": {s: main(compared.get(s)) for s in systems}
+            if len(systems) > 1
+            else {},
+        },
+    }
+
+
 def _check_recording(capture: Any, recording_root: Path) -> None:
     """The capture's evidence equals what its live recording re-derives."""
     from opspilot.evaluation.live import evidence_from_recording
@@ -165,10 +248,12 @@ def opspilot_attempts(
             )
             item["checks"] = {"attempt_ran": False}
             item["root_cause_citation"] = None if answer.signature is None else False
+            item |= _isolation(slot)
             out.append(item)
             continue
         attempt_id = slot["attempt_id"]
         item = _base("opspilot", answer, attempt_id, slot["slot"])
+        item |= _isolation(slot)
         expectations = slot.get("expectations") or {}
         item["checks"] = {
             f"q20.{name}": value
@@ -274,6 +359,7 @@ def holmes_attempts(
             slot["attempt_id"] if ran else f"holmes-not-started-{sid}-{slot['slot']}"
         )
         item = _base("holmes", answer, attempt_id, slot["slot"])
+        item |= _isolation(slot)
         read_only = (slot.get("checks") or {}).get("read_only")
         item["checks"] = {
             "final_state": ran
@@ -313,6 +399,78 @@ def voided_attempts(log: Mapping[str, Any], check: Mapping[str, Any]) -> list[st
             if slot.get("system") in systems and slot.get("attempt_id"):
                 ids.append(str(slot["attempt_id"]))
     return sorted(set(ids))
+
+
+def registry_voided_attempts(
+    registry: Any,
+    attempts: Sequence[Mapping[str, Any]],
+    checks: Sequence[Mapping[str, Any]],
+    scenarios: Collection[str],
+) -> list[str]:
+    """Attempt ids of a cross-segment void registry, both systems.
+
+    The registry only discloses voids the round summaries already applied
+    (``eval_dev_round --voids``, ``holmes_baseline.dataset --voided``): a
+    void that names a scored attempt is ``VOID_SCORED``. Each entry's
+    replacement chain (through the registry and the checks'
+    ``voided_attempts``) must end, without a loop, at a scored attempt of
+    the entry's own system and scenario (``VOID_RERUN_UNKNOWN``,
+    ``VOID_CYCLE``); an attempt voided twice across the checks and the
+    registry is ``VOID_DUPLICATE``, a rerun named twice ``RERUN_DUPLICATE``. Entries of scenarios outside this
+    dataset are skipped.
+    """
+    from scripts.eval_dev_round import void_registry_entries
+
+    try:
+        entries = [
+            e for e in void_registry_entries(registry) if e["scenario_id"] in scenarios
+        ]
+    except ValueError:
+        raise BinaryJudgeError("VOIDS_INVALID") from None
+    scored = {str(a["attempt_id"]): a for a in attempts}
+    successor: dict[str, str] = {}
+
+    replacements: set[str] = set()
+
+    def link(voided: str, rerun: str) -> None:
+        # across every check and the registry, an attempt is voided at most
+        # once and replaces at most one voided attempt
+        if voided in successor:
+            raise BinaryJudgeError(f"VOID_DUPLICATE:{voided}")
+        if rerun in replacements:
+            raise BinaryJudgeError(f"RERUN_DUPLICATE:{rerun}")
+        successor[voided] = rerun
+        replacements.add(rerun)
+
+    for check in checks:
+        for row in check.get("voided_attempts") or []:
+            if (
+                isinstance(row, Mapping)
+                and row.get("voided_attempt_id")
+                and row.get("rerun_attempt_id")
+            ):
+                link(str(row["voided_attempt_id"]), str(row["rerun_attempt_id"]))
+    for entry in entries:
+        link(entry["voided_attempt_id"], entry["rerun_attempt_id"])
+    for entry in entries:
+        voided = entry["voided_attempt_id"]
+        if voided in scored:
+            raise BinaryJudgeError(f"VOID_SCORED:{voided}")
+        seen = {voided}
+        current = entry["rerun_attempt_id"]
+        while current in successor:
+            if current in seen:
+                raise BinaryJudgeError(f"VOID_CYCLE:{voided}")
+            seen.add(current)
+            current = successor[current]
+        final = scored.get(current)
+        if (
+            final is None
+            or final["system"] != entry["system"]
+            or final["scenario_id"] != entry["scenario_id"]
+        ):
+            raise BinaryJudgeError(f"VOID_RERUN_UNKNOWN:{voided}")
+    return sorted({e["voided_attempt_id"] for e in entries})
 
 
 def judge_attempts(
@@ -387,13 +545,20 @@ def run_judge(
     ids = [a["attempt_id"] for a in attempts]
     if len(set(ids)) != len(ids):
         raise BinaryJudgeError("ATTEMPT_DUPLICATE")
-    voided: list[str] = []
-    if args.schedule_log or args.schedule_check:
-        if not (args.schedule_log and args.schedule_check):
-            raise BinaryJudgeError("SCHEDULE_LOG_AND_CHECK_REQUIRED")
-        voided = voided_attempts(
-            _read_json(Path(args.schedule_log)), _read_json(Path(args.schedule_check))
+    logs, checks = args.schedule_log or [], args.schedule_check or []
+    if len(logs) != len(checks):
+        raise BinaryJudgeError("SCHEDULE_LOG_AND_CHECK_REQUIRED")
+    voided_ids: set[str] = set()
+    check_docs = [_read_json(Path(path)) for path in checks]
+    for log_path, check_doc in zip(logs, check_docs, strict=True):
+        voided_ids.update(voided_attempts(_read_json(Path(log_path)), check_doc))
+    if args.voids:
+        voided_ids.update(
+            registry_voided_attempts(
+                _read_json(Path(args.voids)), attempts, check_docs, set(dataset)
+            )
         )
+    voided = sorted(voided_ids)
     judge_attempts(attempts, dataset, client, environ, voided=set(voided))
     live = [a for a in attempts if a["attempt_id"] not in voided]
     out = Path(args.out)
@@ -435,6 +600,9 @@ def run_summarize(args: argparse.Namespace) -> dict[str, Any]:
         "k": doc["k"],
         "ruled_by_user": sorted(rulings),
         **scored,
+        "contamination_sensitivity": contamination_sensitivity(
+            attempts, rulings, k=int(doc["k"]), voided=voided
+        ),
     }
     _write_new(Path(args.out), _dump(summary))
     return {"final": summary["final"], "out": args.out}
@@ -452,8 +620,10 @@ def parser() -> argparse.ArgumentParser:
     j.add_argument("--recording-root")
     j.add_argument("--holmes-round")
     j.add_argument("--holmes-attempts")
-    j.add_argument("--schedule-log")
-    j.add_argument("--schedule-check")
+    # repeated once per exam segment, logs and checks matched in order
+    j.add_argument("--schedule-log", action="append")
+    j.add_argument("--schedule-check", action="append")
+    j.add_argument("--voids")
     s = sub.add_parser("summarize")
     s.add_argument("--items", required=True)
     s.add_argument("--rulings")

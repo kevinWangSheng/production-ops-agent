@@ -24,6 +24,18 @@ failed in harness setup before any product Run existed may be voided by
 exactly one later attempt of the same scenario. The voided attempt leaves
 the slots and Q20 but stays in ``voided_attempts``, the cost and the
 isolation check; the rerun counts as-is and is never voided in turn.
+
+Duplicate-call refusal receipts (seams-432 section 2, F1 revision
+2026-11-06): ``read_only`` no longer counts the loop's refusal to re-run an
+exact repeat (``status: denied``, ``DUPLICATE_TOOL_CALL``, no tool). Stored
+expectations computed before that may differ from the re-check only in
+``read_only`` False -> True and ``WRITE_OBSERVED``; such a slot carries
+``refusal_rechecked: true`` and its stored result in ``expectations_stored``.
+
+Contamination (#513): each slot records its ``lab`` (the round's own
+``--output-root``) and only earlier faults on that lab are predecessors.
+``--timeline-round`` (with ``--timeline-dataset``) adds the faults of other
+rounds that shared the labs, e.g. the held-out windows of the same exam.
 """
 
 from __future__ import annotations
@@ -33,14 +45,15 @@ import json
 import subprocess
 import sys
 from collections import Counter
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
 
 from opspilot.evaluation import REQUIRED_DIMENSIONS
-from opspilot.evaluation.expectations import check_expectations
+from opspilot.evaluation.expectations import check_expectations, is_duplicate_refusal
+from opspilot.evaluation.gate import expects_no_run, no_run_gate
 from opspilot.evaluation.model import (
     AnswerV2,
     ScenarioSpecV2,
@@ -52,6 +65,9 @@ from scripts.eval_live_lab import span_error
 
 SCHEMA = "opspilot-eval-dev-round-1"
 RERUNS_SCHEMA = "opspilot-eval-dev-reruns-1"
+#: The cross-segment void registry (``--voids``): ``voided_attempts`` entries
+#: in the shape of ``eval_pair_schedule.check``'s, each with a ``basis``.
+VOIDS_SCHEMA = "opspilot-eval-cross-segment-voids-1"
 VOIDED_NOTE = "environment not ready, rerun per rule"
 CANARY_RECHECK = "canary-recheck.json"
 CANARY_RECHECK_SCHEMA = "opspilot-eval-canary-recheck-1"
@@ -152,26 +168,56 @@ def _binding(
     return list(next(iter(classes)))
 
 
+#: Per check: the reason code that goes with its failure.
+_REVISABLE = {"canary_absent": "CANARY_PRESENT", "read_only": "WRITE_OBSERVED"}
+
+
 def _same_expectations(
-    stored: Mapping[str, Any], checked: Mapping[str, Any], *, canary_rechecked: bool
+    stored: Mapping[str, Any],
+    checked: Mapping[str, Any],
+    *,
+    canary_rechecked: bool,
+    refusal_rechecked: bool = False,
 ) -> bool:
-    """Stored and re-checked Q20 agree; after an outward-only canary recheck
-    (section 5b) they may differ only in ``canary_absent`` and what follows
-    from it (``CANARY_PRESENT`` and ``passed``)."""
+    """Stored and re-checked Q20 agree, up to two disclosed revisions:
+
+    - after an outward-only canary recheck (section 5b), ``canary_absent``
+      and what follows from it (``CANARY_PRESENT`` and ``passed``);
+    - when the projection holds a duplicate-call refusal receipt (section 2,
+      F1 revision 2026-11-06), ``read_only`` from False to True and its
+      ``WRITE_OBSERVED`` -- the receipt executed nothing, and the stored
+      result predates the rule that skips it.
+    """
     if all(stored.get(k) == checked[k] for k in ("passed", "checks", "reasons")):
         return True
-    if not canary_rechecked:
-        return False
     old, new = stored.get("checks"), checked["checks"]
     if not isinstance(old, Mapping) or set(old) != set(new):
         return False
-    if any(old[k] != new[k] for k in new if k != "canary_absent"):
+    revised = set()
+    if canary_rechecked:
+        revised.add("canary_absent")
+    # Only an actual False -> True transition; anything else stays strict.
+    if refusal_rechecked and old["read_only"] is False and new["read_only"] is True:
+        revised.add("read_only")
+    if not revised:
         return False
-    old_reasons = [r for r in stored.get("reasons") or [] if r != "CANARY_PRESENT"]
-    new_reasons = [r for r in checked["reasons"] if r != "CANARY_PRESENT"]
+    if any(old[k] != new[k] for k in new if k not in revised):
+        return False
+    codes = {_REVISABLE[name] for name in revised}
+    old_reasons = [r for r in stored.get("reasons") or [] if r not in codes]
+    new_reasons = [r for r in checked["reasons"] if r not in codes]
     if old_reasons != new_reasons:
         return False
-    return checked["passed"] == (not new_reasons and new["canary_absent"] is not False)
+    return checked["passed"] == (
+        not new_reasons and all(new[name] is not False for name in revised)
+    )
+
+
+def _has_duplicate_refusal(projection: Any) -> bool:
+    if not isinstance(projection, Mapping):
+        return False
+    items = projection.get("tool_results") or []
+    return any(isinstance(i, Mapping) and is_duplicate_refusal(i) for i in items)
 
 
 def _attempt(
@@ -218,19 +264,37 @@ def _attempt(
                 for key in ("report", "step_responses", "step_reasoning")
             }
         }
-    checked = check_expectations(
+    result = check_expectations(
         answer,
         attempt_status=status,
         attempt_reason=slot.get("reason"),
         projection=projection,
         intake=intake,
         target_id=target_id,
-    ).as_json()
+    )
+    checked = result.as_json()
+    refusal = _has_duplicate_refusal(projection)
     if not isinstance(stored, Mapping) or not _same_expectations(
-        stored, checked, canary_rechecked=recheck is not None
+        stored,
+        checked,
+        canary_rechecked=recheck is not None,
+        refusal_rechecked=refusal,
     ):
         raise DevRoundError(f"EXPECTATIONS_MISMATCH:{run_dir.name}")
-    gate = (summary.get("evaluation") or {}).get("gate") or {}
+    revised = any(stored.get(k) != checked[k] for k in ("passed", "checks", "reasons"))
+    stored_gate = (summary.get("evaluation") or {}).get("gate") or {}
+    gate: Mapping[str, Any] = stored_gate
+    gate_recorded = None
+    if expects_no_run(answer):
+        # Q8 (user ruling 2026-11-06): a scenario that expects no Run is gated
+        # by this attempt's re-checked expectations; the stored summary stays
+        # as written and its gate is disclosed as ``gate_recorded``.
+        derived = no_run_gate(result)
+        gate = {"passed": derived.passed, "reasons": list(derived.reasons)}
+        gate_recorded = {
+            "passed": stored_gate.get("passed"),
+            "reasons": stored_gate.get("reasons"),
+        }
     traces = (summary.get("trace") or {}).get("entries") or []
     return {
         "started_at": capture.get("started_at"),
@@ -239,10 +303,14 @@ def _attempt(
         "reason": slot.get("reason"),
         "expectations": checked,
         "canary_rechecked": recheck is not None,
+        "refusal_rechecked": revised
+        and refusal
+        and stored["checks"]["read_only"] != checked["checks"]["read_only"],
         "expectations_stored": None
-        if recheck is None
+        if recheck is None and not revised
         else {key: stored.get(key) for key in ("passed", "checks", "reasons")},
         "gate": {"passed": gate.get("passed"), "reasons": gate.get("reasons")},
+        "gate_recorded": gate_recorded,
         "trace_url": next(
             (t.get("url") for t in traces if isinstance(t, Mapping) and t.get("url")),
             None,
@@ -259,6 +327,9 @@ def _attempt(
 #: Span-row views a prior fault can leak through (A13: a read_evidence slice
 #: of a trace search carries the same rows).
 _SPAN_TOOLS = ("traces_search",)
+#: Metrics views whose query window can overlap an earlier fault
+#: (OpsPilot's tool; HolmesGPT's Prometheus range query, #513).
+METRICS_RANGE_TOOLS = ("metrics_range_query", "execute_prometheus_range_query")
 
 
 def _moment(value: Any) -> datetime | None:
@@ -321,28 +392,200 @@ def _views(delivered: Any) -> list[dict[str, Any]]:
     return out
 
 
+def lab_of(lifecycle: Any) -> str | None:
+    """The lab a round ran on: the ``--output-root`` of its own driver
+    command (``lifecycle.json`` ``command``). ``eval_pair_schedule`` gives
+    every lab its own output root, so it names the lab; ``None`` when the
+    command does not carry one (a lab-agnostic round)."""
+    command = lifecycle.get("command") if isinstance(lifecycle, Mapping) else None
+    if not isinstance(command, list):
+        return None
+    for flag, value in zip(command, command[1:], strict=False):
+        if flag == "--output-root" and isinstance(value, str) and value:
+            return value.rstrip("/") or value
+    return None
+
+
+def same_lab(a: str | None, b: str | None) -> bool:
+    """An unknown lab (``None``) may be any lab, so it matches every lab."""
+    return a is None or b is None or a == b
+
+
+def fault_entry(item: Mapping[str, Any], answer: AnswerV2) -> dict[str, Any] | None:
+    """The earlier fault an attempt leaves in its lab, or ``None`` when it
+    changed nothing there (alert-only or model-transport-only) or its
+    interval is unknown. ``item`` has ``scenario_id``, ``attempt_id``,
+    ``fault`` (``_interval``) and optionally ``lab``."""
+    own = item.get("fault") or {}
+    begin = _moment(own.get("effective_at"))
+    end = _moment(own.get("restored_at")) or _moment(own.get("ended_at"))
+    message = next(
+        (
+            str(i.params.get("message"))
+            for i in answer.injectors
+            if i.kind == "otlp_span"
+        ),
+        None,
+    )
+    lab_fault = message is not None or any(i.kind == "flagd" for i in answer.injectors)
+    if begin is None and message is not None:
+        begin = _moment(own.get("started_at"))
+    if not (lab_fault and begin is not None and end is not None):
+        return None
+    wanted = (
+        set()
+        if answer.signature is None
+        else {(m.service, m.operation) for m in answer.signature.any_of}
+    )
+    return {
+        "scenario_id": str(item["scenario_id"]),
+        "attempt_id": item["attempt_id"],
+        "lab": item.get("lab"),
+        "begin": begin,
+        "end": end,
+        "wanted": wanted,
+        "message": message,
+    }
+
+
+def prior_faults(
+    faults: Sequence[Mapping[str, Any]], began: datetime | None, lab: str | None
+) -> list[Mapping[str, Any]]:
+    """Earlier faults on the same lab that ended before ``began``."""
+    return [
+        f
+        for f in faults
+        if same_lab(f.get("lab"), lab) and (began is None or f["end"] <= began)
+    ]
+
+
+def isolation_flags(
+    prior: Sequence[Mapping[str, Any]],
+    began: datetime | None,
+    views: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    """``predecessor``, ``contamination`` and ``metrics_overlap`` of one
+    attempt against its ``prior_faults`` (the rule ``isolation`` documents);
+    shared with the HolmesGPT round summary."""
+    predecessor = None
+    if prior:
+        last = max(prior, key=lambda f: f["end"])
+        predecessor = {
+            "scenario_id": last["scenario_id"],
+            "attempt_id": last["attempt_id"],
+            "fault_end": last["end"].isoformat(),
+            "gap_minutes": None
+            if began is None
+            else round((began - last["end"]).total_seconds() / 60, 1),
+            "injection": last["message"] is not None,
+        }
+    flags: set[str] = set()
+    overlaps: set[str] = set()
+    for view in views:
+        for fault in prior:
+            if fault["message"] is not None and fault["message"] in view["text"]:
+                flags.add(f"PRIOR_INJECTION_TEXT:{fault['scenario_id']}")
+            if view["span_view"]:
+                for row in view["rows"]:
+                    if not row["error"] or not isinstance(row["start_us"], int):
+                        continue
+                    at = datetime.fromtimestamp(row["start_us"] / 1e6, tz=UTC)
+                    if (row["service"], row["operation"]) in fault["wanted"] and fault[
+                        "begin"
+                    ] <= at <= fault["end"]:
+                        flags.add(f"PRIOR_FAULT_SPAN:{fault['scenario_id']}")
+            elif view["tool"] in METRICS_RANGE_TOOLS:
+                window = view.get("window") or {}
+                lo, hi = _moment(window.get("start")), _moment(window.get("end"))
+                if lo and hi and lo <= fault["end"] and fault["begin"] <= hi:
+                    overlaps.add(fault["scenario_id"])
+    return {
+        "predecessor": predecessor,
+        "contamination": sorted(flags),
+        "metrics_overlap": sorted(overlaps),
+    }
+
+
+def lifecycle_faults(
+    round_dirs: Sequence[Path],
+    loaded: Mapping[str, tuple[ScenarioSpecV2, AnswerV2]],
+) -> tuple[list[dict[str, Any]], dict[str, str | None]]:
+    """The lab faults the rounds' own ``lifecycle.json`` record (every
+    started slot, voided ones included) and each round's lab (``lab_of``).
+    The HolmesGPT round summary reads its timeline here (#513): a paired
+    window has one injection, recorded once, in its round's lifecycle."""
+    faults: list[dict[str, Any]] = []
+    labs: dict[str, str | None] = {}
+    for round_dir in round_dirs:
+        lifecycle = _json(round_dir / "lifecycle.json")
+        if not isinstance(lifecycle, Mapping):
+            raise DevRoundError(f"LIFECYCLE_MISSING:{round_dir.name}")
+        lab = lab_of(lifecycle)
+        labs[str(lifecycle.get("round"))] = lab
+        for slot in lifecycle.get("slots") or []:
+            if not isinstance(slot, Mapping) or not slot.get("attempt_id"):
+                continue
+            sid = str(slot.get("scenario_id"))
+            if sid not in loaded:
+                raise DevRoundError(f"UNKNOWN_SCENARIO:{sid}")
+            entry = fault_entry(
+                {
+                    "scenario_id": sid,
+                    "attempt_id": slot["attempt_id"],
+                    "lab": lab,
+                    "fault": _interval(slot),
+                },
+                loaded[sid][1],
+            )
+            if entry is not None:
+                faults.append(entry)
+    return faults, labs
+
+
+def timeline_scenarios(
+    loaded: Mapping[str, tuple[ScenarioSpecV2, AnswerV2]],
+    dataset_roots: Sequence[Path],
+) -> dict[str, tuple[ScenarioSpecV2, AnswerV2]]:
+    """``loaded`` plus the scenarios of other datasets whose windows shared
+    the labs (the exam ran dev and held-out windows on the same labs); one
+    id in two datasets is ``TIMELINE_SCENARIO_CONFLICT``."""
+    out = dict(loaded)
+    for root in dataset_roots:
+        for spec, answer in load_scenarios_v2(root):
+            if spec.scenario_id in out:
+                raise DevRoundError(f"TIMELINE_SCENARIO_CONFLICT:{spec.scenario_id}")
+            out[spec.scenario_id] = (spec, answer)
+    return out
+
+
 def isolation(
     attempts: Sequence[Mapping[str, Any]],
     loaded: Mapping[str, tuple[ScenarioSpecV2, AnswerV2]],
+    context: Sequence[Mapping[str, Any]] = (),
 ) -> dict[str, dict[str, Any]]:
     """Per attempt id: its predecessor fault and the contamination flags
     (seams-432 §12 A11/A12). Pure; reads only what ``_attempt`` kept.
 
-    * ``predecessor``: the latest earlier attempt (any round) that injected a
-      flag or a synthetic span, with its scenario, end of fault and the gap
-      in minutes to this attempt's start.
+    * ``predecessor``: the latest earlier attempt (any round) on the same
+      lab that injected a flag or a synthetic span, with its scenario, end
+      of fault and the gap in minutes to this attempt's start.
     * ``contamination``: ``PRIOR_FAULT_SPAN:<scenario>`` when a delivered
-      span row matches an earlier attempt's signature, is an error, and
-      starts inside that attempt's fault interval; ``PRIOR_INJECTION_TEXT:
-      <scenario>`` when a delivered view contains an earlier attempt's
-      injected span message.
-    * ``metrics_overlap`` (informational, never a failure): earlier faults
-      whose interval a delivered metrics view's window overlaps; the tools
-      allow metrics windows up to the 24 h frame, so no wash removes them.
+      span row matches an earlier same-lab attempt's signature, is an
+      error, and starts inside that attempt's fault interval;
+      ``PRIOR_INJECTION_TEXT:<scenario>`` when a delivered view contains an
+      earlier same-lab attempt's injected span message.
+    * ``metrics_overlap`` (informational, never a failure): earlier
+      same-lab faults whose interval a delivered metrics view's window
+      overlaps; the tools allow metrics windows up to the 24 h frame, so no
+      wash removes them.
 
     Only attempts that changed the lab (a flagd injector or a synthetic
     span) count as earlier faults; an alert-only or model-transport-only
-    attempt does not.
+    attempt does not. Each lab has its own telemetry stores, so a fault on
+    another lab is never a predecessor (#513); an attempt without a known
+    ``lab`` (``lab_of``) is compared with every lab. ``context`` adds
+    earlier faults of windows outside ``attempts`` (``lifecycle_faults`` of
+    the other rounds that ran on the same labs).
     """
 
     def start(item: Mapping[str, Any]) -> datetime:
@@ -355,77 +598,14 @@ def isolation(
     for item in ordered:
         sid = str(item["scenario_id"])
         answer = loaded[sid][1]
-        own = item.get("fault") or {}
-        began = _moment(own.get("started_at"))
-        prior = [f for f in faults if began is None or f["end"] <= began]
-        predecessor = None
-        if prior:
-            last = max(prior, key=lambda f: f["end"])
-            predecessor = {
-                "scenario_id": last["scenario_id"],
-                "attempt_id": last["attempt_id"],
-                "fault_end": last["end"].isoformat(),
-                "gap_minutes": None
-                if began is None
-                else round((began - last["end"]).total_seconds() / 60, 1),
-                "injection": last["message"] is not None,
-            }
-        flags: set[str] = set()
-        overlaps: set[str] = set()
-        for view in item.get("views") or []:
-            for fault in prior:
-                if fault["message"] is not None and fault["message"] in view["text"]:
-                    flags.add(f"PRIOR_INJECTION_TEXT:{fault['scenario_id']}")
-                if view["span_view"]:
-                    for row in view["rows"]:
-                        if not row["error"] or not isinstance(row["start_us"], int):
-                            continue
-                        at = datetime.fromtimestamp(row["start_us"] / 1e6, tz=UTC)
-                        if (row["service"], row["operation"]) in fault[
-                            "wanted"
-                        ] and fault["begin"] <= at <= fault["end"]:
-                            flags.add(f"PRIOR_FAULT_SPAN:{fault['scenario_id']}")
-                elif view["tool"] == "metrics_range_query":
-                    window = view.get("window") or {}
-                    lo, hi = _moment(window.get("start")), _moment(window.get("end"))
-                    if lo and hi and lo <= fault["end"] and fault["begin"] <= hi:
-                        overlaps.add(fault["scenario_id"])
-        out[str(item["attempt_id"])] = {
-            "predecessor": predecessor,
-            "contamination": sorted(flags),
-            "metrics_overlap": sorted(overlaps),
-        }
-        begin = _moment(own.get("effective_at"))
-        end = _moment(own.get("restored_at")) or _moment(own.get("ended_at"))
-        message = next(
-            (
-                str(i.params.get("message"))
-                for i in answer.injectors
-                if i.kind == "otlp_span"
-            ),
-            None,
+        began = _moment((item.get("fault") or {}).get("started_at"))
+        prior = prior_faults([*faults, *context], began, item.get("lab"))
+        out[str(item["attempt_id"])] = isolation_flags(
+            prior, began, item.get("views") or []
         )
-        lab_fault = message is not None or any(
-            i.kind == "flagd" for i in answer.injectors
-        )
-        if begin is None and message is not None:
-            begin = began
-        if lab_fault and begin is not None and end is not None:
-            wanted = (
-                set()
-                if answer.signature is None
-                else {(m.service, m.operation) for m in answer.signature.any_of}
-            )
-            faults.append(
-                {
-                    "scenario_id": sid,
-                    "attempt_id": item["attempt_id"],
-                    "begin": begin,
-                    "end": end,
-                    "wanted": wanted,
-                    "message": message,
-                }
-            )
+        entry = fault_entry(item, answer)
+        if entry is not None:
+            faults.append(entry)
     return out
 
 
@@ -497,6 +677,122 @@ def _registered_reruns(
     return out
 
 
+def void_registry_entries(document: Any) -> list[Mapping[str, Any]]:
+    """The entries of a cross-segment void registry (``VOIDS_SCHEMA``).
+
+    Each names its ``system``, ``scenario_id``, a ``voided_attempt_id``, the
+    ``rerun_attempt_id`` that replaces it and a non-blank ``basis``; ``rule``
+    (a schedule class) and ``note`` are optional. Raises ``ValueError``."""
+    entries = document.get("voided_attempts") if isinstance(document, Mapping) else None
+    if (
+        not isinstance(document, Mapping)
+        or document.get("schema") != VOIDS_SCHEMA
+        or not isinstance(entries, list)
+    ):
+        raise ValueError("VOIDS_INVALID")
+    for entry in entries:
+        if not isinstance(entry, Mapping):
+            raise ValueError("VOIDS_INVALID")
+        for key in (
+            "system",
+            "scenario_id",
+            "voided_attempt_id",
+            "rerun_attempt_id",
+            "basis",
+        ):
+            value = entry.get(key)
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError("VOIDS_INVALID")
+        rule, note = entry.get("rule"), entry.get("note")
+        if rule is not None and rule not in SCHEDULE_RULES:
+            raise ValueError("VOIDS_INVALID")
+        if note is not None and not isinstance(note, str):
+            raise ValueError("VOIDS_INVALID")
+    return entries
+
+
+def _segment_voids(
+    checks: Sequence[Any],
+    registry: Any,
+    started: Mapping[str, Mapping[str, Any]],
+    scenarios: Collection[str],
+) -> dict[str, dict[str, Any]]:
+    """Multi-segment voids: the OpsPilot ``voided_attempts`` of every
+    segment's schedule ``check`` plus the cross-segment registry. A paired
+    plan may cover several datasets, so rows of scenarios outside this
+    dataset (``scenarios``) are skipped; every other row must resolve. Returns
+    voided attempt id -> its entry (``_registered_reruns``' shape plus
+    ``source`` and, for the registry, ``basis``)."""
+    pending: list[dict[str, Any]] = []
+    for check in checks:
+        rows = check.get("voided_attempts") if isinstance(check, Mapping) else None
+        if not isinstance(rows, list):
+            raise DevRoundError("SCHEDULE_CHECK_INVALID")
+        for row in rows:
+            if not isinstance(row, Mapping) or row.get("rule") not in SCHEDULE_RULES:
+                raise DevRoundError("SCHEDULE_CHECK_INVALID")
+            if (
+                row.get("system") != "opspilot"
+                or row.get("scenario_id") not in scenarios
+            ):
+                continue
+            voided, rerun = row.get("voided_attempt_id"), row.get("rerun_attempt_id")
+            if not voided or not rerun:
+                continue  # nothing started to void, or no rerun (dev_round_reruns)
+            pending.append(
+                {
+                    "voided": str(voided),
+                    "scenario": row["scenario_id"],
+                    "rerun_attempt_id": str(rerun),
+                    "note": row.get("note"),
+                    "rule": row["rule"],
+                    "source": "schedule_check",
+                }
+            )
+    if registry is not None:
+        try:
+            entries = void_registry_entries(registry)
+        except ValueError:
+            raise DevRoundError("VOIDS_INVALID") from None
+        for entry in entries:
+            if entry["system"] != "opspilot" or entry["scenario_id"] not in scenarios:
+                continue
+            pending.append(
+                {
+                    "voided": entry["voided_attempt_id"],
+                    "scenario": entry["scenario_id"],
+                    "rerun_attempt_id": entry["rerun_attempt_id"],
+                    "note": entry.get("note") or entry["basis"],
+                    "rule": entry.get("rule"),
+                    "source": "registry",
+                    "basis": entry["basis"],
+                }
+            )
+    out: dict[str, dict[str, Any]] = {}
+    reruns: set[str] = set()
+    for item in pending:
+        voided, rerun = item.pop("voided"), item["rerun_attempt_id"]
+        declared = item.pop("scenario")
+        if voided in out:
+            raise DevRoundError(f"VOID_DUPLICATE:{voided}")
+        if rerun in reruns:
+            raise DevRoundError(f"RERUN_DUPLICATE:{rerun}")
+        reruns.add(rerun)
+        for attempt_id in (voided, rerun):
+            if attempt_id not in started:
+                raise DevRoundError(f"RERUN_UNKNOWN:{attempt_id}")
+        old, new = started[voided], started[rerun]
+        if not old["scenario_id"] == new["scenario_id"] == declared:
+            raise DevRoundError(f"RERUN_SCENARIO_MISMATCH:{rerun}")
+        # strictly later than the voided attempt's end: a chain can not loop
+        ended = _moment((old.get("fault") or {}).get("ended_at"))
+        began = _moment((new.get("fault") or {}).get("started_at"))
+        if ended is None or began is None or began <= ended:
+            raise DevRoundError(f"RERUN_ORDER:{rerun}")
+        out[voided] = item
+    return out
+
+
 def _code_set(
     dims_seen: Sequence[Mapping[str, Any]],
     code_commits: Sequence[str],
@@ -540,11 +836,24 @@ def aggregate(
     reruns: Mapping[str, Any] | None = None,
     code_commits: Sequence[str] | None = None,
     product_tree: ProductTree | None = None,
+    timeline_rounds: Sequence[Path] = (),
+    timeline_datasets: Sequence[Path] = (),
+    schedule_checks: Sequence[Any] | None = None,
+    voids: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """The development round summary (seams-432 section 5).
 
     ``code_commits`` registers driver commits the ``code`` dimension may
-    differ within (``_code_set``); ``None`` keeps every dimension frozen."""
+    differ within (``_code_set``); ``None`` keeps every dimension frozen.
+    ``timeline_rounds`` (with the ``timeline_datasets`` their scenarios come
+    from) are other rounds that ran on the same labs: they add earlier
+    faults to the isolation check and nothing else (#513).
+    ``schedule_checks`` (one paired-schedule ``check`` output per segment)
+    and ``voids`` (the cross-segment registry) select the multi-segment
+    voids (``_segment_voids``) instead of ``reruns``."""
+    segmented = schedule_checks is not None or voids is not None
+    if segmented and reruns is not None:
+        raise DevRoundError("RERUNS_WITH_SCHEDULE_CHECK")
     loaded = {
         spec.scenario_id: (spec, answer)
         for spec, answer in load_scenarios_v2(dataset_root)
@@ -562,6 +871,7 @@ def aggregate(
         if unknown:
             raise DevRoundError(f"UNKNOWN_SCENARIO:{sorted(unknown)[0]}")
         round_id = str(lifecycle.get("round"))
+        lab = lab_of(lifecycle)
         rounds.append(
             {
                 "round": round_id,
@@ -594,11 +904,15 @@ def aggregate(
                     "round": round_id,
                     "attempt_id": attempt_id,
                     "scenario_id": sid,
+                    "lab": lab,
                     **item,
                 }
             )
     started = {str(a["attempt_id"]): a for items in attempts.values() for a in items}
-    voided = {} if reruns is None else _registered_reruns(reruns, started)
+    if segmented:
+        voided = _segment_voids(schedule_checks or (), voids, started, set(loaded))
+    else:
+        voided = {} if reruns is None else _registered_reruns(reruns, started)
     rerun_of = {str(v["rerun_attempt_id"]): k for k, v in voided.items()}
     for sid, items in attempts.items():
         if sum(1 for a in items if str(a["attempt_id"]) not in voided) > n:
@@ -617,7 +931,16 @@ def aggregate(
                 raise DevRoundError(f"MANIFEST_DRIFT:{name}")
     if reference and (reference.get("dataset") or {}).get("value") != dataset:
         raise DevRoundError("MANIFEST_DRIFT:dataset")
-    isolated = isolation([a for items in attempts.values() for a in items], loaded)
+    context = [
+        f
+        for f in lifecycle_faults(
+            timeline_rounds, timeline_scenarios(loaded, timeline_datasets)
+        )[0]
+        if str(f["attempt_id"]) not in started
+    ]
+    isolated = isolation(
+        [a for items in attempts.values() for a in items], loaded, context
+    )
     out_slots: list[dict[str, Any]] = []
     for sid in sorted(loaded):
         spec, answer = loaded[sid]
@@ -648,10 +971,13 @@ def aggregate(
                         "reason": item["reason"],
                         "expectations": item["expectations"],
                         "canary_rechecked": item["canary_rechecked"],
+                        "refusal_rechecked": item["refusal_rechecked"],
                         "expectations_stored": item["expectations_stored"],
                         "gate": item["gate"],
+                        "gate_recorded": item["gate_recorded"],
                         "trace_url": item["trace_url"],
                         "rerun_of": rerun_of.get(str(item["attempt_id"])),
+                        "lab": item["lab"],
                         **isolated[str(item["attempt_id"])],
                     }
                 )
@@ -669,10 +995,13 @@ def aggregate(
                             "reasons": ["NOT_STARTED"],
                         },
                         "canary_rechecked": False,
+                        "refusal_rechecked": False,
                         "expectations_stored": None,
                         "gate": {"passed": None, "reasons": None},
+                        "gate_recorded": None,
                         "trace_url": None,
                         "rerun_of": None,
+                        "lab": None,
                         "predecessor": None,
                         "contamination": [],
                         "metrics_overlap": [],
@@ -730,9 +1059,13 @@ def aggregate(
                 "status": started[attempt_id]["status"],
                 "reason": started[attempt_id]["reason"],
                 "rerun_attempt_id": entry["rerun_attempt_id"],
-                "note": VOIDED_NOTE if entry["rule"] is None else entry["note"],
+                "note": VOIDED_NOTE
+                if entry["rule"] is None and "source" not in entry
+                else entry["note"],
                 # a schedule void names its preregistered rule (absent: #432)
                 **({} if entry["rule"] is None else {"rule": entry["rule"]}),
+                # multi-segment voids name where they come from
+                **{k: entry[k] for k in ("source", "basis") if k in entry},
             }
             for attempt_id, entry in sorted(voided.items())
         ],
@@ -749,6 +1082,17 @@ def aggregate(
     }
 
 
+def _input(path: str, code: str) -> Any:
+    """A JSON input file; missing or unreadable is ``code``."""
+    try:
+        document = _json(Path(path))
+    except DevRoundError:
+        document = None
+    if document is None:
+        raise DevRoundError(code)
+    return document
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="scripts.eval_dev_round")
     parser.add_argument("--dataset", required=True)
@@ -763,8 +1107,36 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="register a driver commit the code dimension may differ within "
         "(repeat; product scope must be identical across them)",
     )
+    parser.add_argument(
+        "--timeline-round",
+        action="append",
+        default=[],
+        help="another round that ran on the same labs (repeat): adds its "
+        "faults to the contamination check only (#513)",
+    )
+    parser.add_argument(
+        "--timeline-dataset",
+        action="append",
+        default=[],
+        help="the dataset of --timeline-round scenarios outside --dataset",
+    )
+    parser.add_argument(
+        "--schedule-check",
+        action="append",
+        dest="schedule_checks",
+        help="a paired-schedule check output whose OpsPilot voided_attempts "
+        "are voided (repeat, one per exam segment); excludes --reruns",
+    )
+    parser.add_argument(
+        "--voids",
+        help=f"cross-segment void registry ({VOIDS_SCHEMA}); excludes --reruns",
+    )
     args = parser.parse_args(argv)
     try:
+        checks = None
+        if args.schedule_checks is not None:
+            checks = [_input(p, "SCHEDULE_CHECK_INVALID") for p in args.schedule_checks]
+        voids = None if args.voids is None else _input(args.voids, "VOIDS_INVALID")
         reruns = None
         if args.reruns is not None:
             try:
@@ -779,6 +1151,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             n=args.n,
             reruns=reruns,
             code_commits=args.code_commits,
+            timeline_rounds=[Path(p) for p in args.timeline_round],
+            timeline_datasets=[Path(p) for p in args.timeline_dataset],
+            schedule_checks=checks,
+            voids=voids,
         )
     except DevRoundError as exc:
         print(json.dumps({"exit_code": 1, "reason": exc.code}))
