@@ -312,13 +312,53 @@ def links(raw: Raw) -> dict[str, dict[str, Any]]:
     return out
 
 
+def _step_owner(raw: Raw) -> dict[str, str]:
+    """Step id -> injection id from the plan's ``steps``; a step the plan
+    does not list belongs to the id before its first ``:``."""
+    owner: dict[str, str] = {}
+    for item in raw.plan.get("injections", []):
+        for step in item.get("steps") or []:
+            owner[str(step.get("id"))] = str(item["id"])
+    return owner
+
+
+def unmet_conditions(raw: Raw) -> dict[str, list[dict[str, Any]]]:
+    """#486 (S-R12): conditional steps (A1 ``run_running``, A2 ``idle``) that
+    waited their maximum and then ran anyway. The runner's ``step`` records
+    of an attempt carry ``condition`` and ``condition_met``; any record with
+    ``condition_met: false`` counts, whatever its status, so a failed or
+    retried attempt is reported too. One entry per step: its first such
+    record's time and the status of its last record."""
+    owner = _step_owner(raw)
+    found: dict[str, dict[str, Any]] = {}
+    for event in raw.of("step"):
+        if event.get("condition_met") is not False:
+            continue
+        step = str(event.get("step"))
+        entry = found.setdefault(
+            step,
+            {
+                "step": step,
+                "condition": event.get("condition"),
+                "ts": event.get("ts"),
+            },
+        )
+        entry["status"] = event.get("status")
+    out: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for step, entry in found.items():
+        out[owner.get(step, step.split(":", 1)[0])].append(entry)
+    return dict(out)
+
+
 def injections(
     raw: Raw, linked: Mapping[str, Mapping[str, Any]]
 ) -> list[dict[str, Any]]:
     executed = {str(e.get("injection_id")) for e in raw.of("injection_on")}
+    unmet = unmet_conditions(raw)
     skipped: dict[str, str] = {}
     for event in raw.of("injection_skipped"):
         skipped[str(event.get("injection_id"))] = str(event.get("reason") or "")
+    noise = noise_opened_work(raw, linked)
     out = []
     for item in raw.plan.get("injections", []):
         key = str(item["id"])
@@ -333,8 +373,79 @@ def injections(
                 "disposition": linked[key]["disposition"]
                 if is_executed and item.get("category") == "episode" and key in linked
                 else None,
+                "opened_work": noise.get(key)
+                if item.get("category") == "noise"
+                else None,
+                "unmet_conditions": unmet.get(key, []),
             }
         )
+    return out
+
+
+#: #487: a noise window runs from ``injection_on`` to ``injection_off`` plus
+#: this slack (an alert's ``for`` and Alertmanager grouping delay a delivery;
+#: the same 10 min bound as the end-to-end check).
+NOISE_SLACK_S = END_TO_END_S
+
+
+def noise_opened_work(
+    raw: Raw, linked: Mapping[str, Mapping[str, Any]]
+) -> dict[str, list[dict[str, Any]]]:
+    """#487 (U2): noise toggles must not open a Run. Per executed noise
+    injection, every delivery whose ``outcome`` is ``run`` or ``handoff`` and
+    whose ``received_at`` lies in [on, off + slack]; with no ``injection_off``
+    the toggle is still on and the window has no end. A delivery that is
+    also an episode's linked delivery is still listed, with that
+    ``episode``. Reported, not a step-4 code."""
+    noise = {
+        str(i["id"])
+        for i in raw.plan.get("injections", [])
+        if i.get("category") == "noise"
+    }
+    by_delivery = {
+        str((entry["delivery"] or {}).get("delivery_id")): episode
+        for episode, entry in linked.items()
+        if entry["delivery"]
+    }
+    out: dict[str, list[dict[str, Any]]] = {}
+    for key in sorted(noise):
+        ons = [
+            t
+            for e in raw.of("injection_on")
+            if str(e.get("injection_id")) == key and (t := _s(e.get("ts"))) is not None
+        ]
+        if not ons:
+            continue
+        on = min(ons)
+        offs = [
+            t
+            for e in raw.of("injection_off")
+            if str(e.get("injection_id")) == key
+            and (t := _s(e.get("ts"))) is not None
+            and t >= on
+        ]
+        # never turned off: the toggle is still on, so the window stays open
+        until = min(offs) + NOISE_SLACK_S if offs else math.inf
+        hits = sorted(
+            (
+                d
+                for d in raw.deliveries
+                if d.get("outcome") in {"run", "handoff"}
+                and on <= (_s(d.get("received_at")) or -math.inf) <= until
+            ),
+            key=lambda d: (_s(d.get("received_at")) or 0.0, str(d.get("delivery_id"))),
+        )
+        out[key] = [
+            {
+                "delivery_id": d.get("delivery_id"),
+                "received_at": d.get("received_at"),
+                "outcome": d.get("outcome"),
+                "run_id": d.get("run_id"),
+                "incident_id": d.get("incident_id"),
+                "episode": by_delivery.get(str(d.get("delivery_id"))),
+            }
+            for d in hits
+        ]
     return out
 
 
@@ -532,6 +643,11 @@ def stuck_work(raw: Raw, linked: Mapping[str, Mapping[str, Any]]) -> dict[str, A
             key for key, entry in linked.items() if entry["disposition"] == "none"
         ),
         "injections_left_on": _ids(left_on(raw)),
+        "noise_opened_work": _ids(
+            str(hit["delivery_id"])
+            for hits in noise_opened_work(raw, linked).values()
+            for hit in hits
+        ),
     }
 
 
