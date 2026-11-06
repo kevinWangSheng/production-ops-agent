@@ -670,6 +670,13 @@ def test_runner_output_feeds_the_summarizer(fake: Any) -> None:
         u.startswith(("injection_unaccounted:", "section_unpublished:")) for u in unmet
     )
     assert not any(u.startswith("injection_unexplained") for u in unmet)
+    # #486: no Run is ever running here, so A1 ran with its condition unmet;
+    # A2 waits for idle, which holds
+    items = {item["id"]: item for item in summary["injections"]}
+    assert [c["step"] for c in items["A1"]["unmet_conditions"]] == ["A1:kill"]
+    assert items["A1"]["unmet_conditions"][0]["condition"] == "run_running"
+    assert items["A2"]["unmet_conditions"] == []
+    assert not any(u.startswith("condition") for u in unmet)
 
 
 # --- fault key (S-R2) ---------------------------------------------------------------
@@ -1057,3 +1064,79 @@ def test_l1_l2_rental_setup_rules() -> None:
 )
 def test_normalize_ts_keeps_the_offset(raw: str, expected: str) -> None:
     assert runner.normalize_ts(raw) == expected
+
+
+def _raw(tmp_path: Path, plan: dict[str, Any], rows: list[dict[str, Any]]) -> Path:
+    plan = {**plan, "product_alertname": "X", "expected_deployments": []}
+    raw = tmp_path / "raw"
+    raw.mkdir()
+    (raw / "plan.json").write_bytes(soak_plan.canonical(plan))
+    (raw / "meta.json").write_text("{}")
+    (raw / "events.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
+    return raw
+
+
+def test_486_summary_shows_steps_run_with_their_condition_unmet(
+    tmp_path: Path,
+) -> None:
+    """#486: a conditional step that ran after its maximum wait is listed on
+    its injection, a met one is not, and step 4 is unchanged."""
+    met = {**KILL, "id": "A9", "steps": [{**KILL["steps"][0], "id": "A9:kill"}]}
+    pg = {
+        "id": "A2",
+        "kind": "agent_fault",
+        "at_s": 5000,
+        "steps": [
+            {
+                "id": "A2:restart",
+                "action": "pg_restart",
+                "at_s": 5000,
+                "condition": "idle",
+            }
+        ],
+    }
+    plan = _plan(KILL, met, pg)
+
+    def at(seconds: int) -> str:
+        return iso(T0 + timedelta(seconds=seconds))
+
+    def step(seconds: int, step_id: str, status: str, **extra: Any) -> dict[str, Any]:
+        return {
+            "ts": at(seconds),
+            "type": "step",
+            "step": step_id,
+            "status": status,
+            **extra,
+        }
+
+    rows = [
+        {"ts": at(0), "type": "soak_start"},
+        step(1000, "A1:kill", "waiting", condition="run_running"),
+        step(2800, "A1:kill", "retry", condition="run_running", condition_met=False),
+        step(2810, "A1:kill", "ok", condition="run_running", condition_met=False),
+        {"ts": at(2810), "type": "injection_on", "injection_id": "A1"},
+        step(2840, "A1:recover", "ok"),
+        {"ts": at(2840), "type": "injection_off", "injection_id": "A1"},
+        step(1000, "A9:kill", "ok", condition="run_running", condition_met=True),
+        {"ts": at(1000), "type": "injection_on", "injection_id": "A9"},
+        step(6800, "A2:restart", "failed", condition="idle", condition_met=False),
+        {
+            "ts": at(6800),
+            "type": "injection_skipped",
+            "injection_id": "A2",
+            "reason": "x",
+        },
+        {"ts": at(72 * 3600), "type": "soak_end"},
+    ]
+    summary = summarize.summarize(_raw(tmp_path, plan, rows))
+    items = {item["id"]: item for item in summary["injections"]}
+    assert items["A1"]["unmet_conditions"] == [
+        {"step": "A1:kill", "condition": "run_running", "ts": at(2800), "status": "ok"}
+    ]
+    assert items["A9"]["unmet_conditions"] == []
+    # a failed step whose condition was unmet is still reported
+    assert items["A2"]["unmet_conditions"] == [
+        {"step": "A2:restart", "condition": "idle", "ts": at(6800), "status": "failed"}
+    ]
+    # reported, not a step-4 code
+    assert not any("A1" in u or "A9" in u for u in summary["step4"]["unmet"])

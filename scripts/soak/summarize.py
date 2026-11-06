@@ -312,10 +312,49 @@ def links(raw: Raw) -> dict[str, dict[str, Any]]:
     return out
 
 
+def _step_owner(raw: Raw) -> dict[str, str]:
+    """Step id -> injection id from the plan's ``steps``; a step the plan
+    does not list belongs to the id before its first ``:``."""
+    owner: dict[str, str] = {}
+    for item in raw.plan.get("injections", []):
+        for step in item.get("steps") or []:
+            owner[str(step.get("id"))] = str(item["id"])
+    return owner
+
+
+def unmet_conditions(raw: Raw) -> dict[str, list[dict[str, Any]]]:
+    """#486 (S-R12): conditional steps (A1 ``run_running``, A2 ``idle``) that
+    waited their maximum and then ran anyway. The runner's ``step`` records
+    of an attempt carry ``condition`` and ``condition_met``; any record with
+    ``condition_met: false`` counts, whatever its status, so a failed or
+    retried attempt is reported too. One entry per step: its first such
+    record's time and the status of its last record."""
+    owner = _step_owner(raw)
+    found: dict[str, dict[str, Any]] = {}
+    for event in raw.of("step"):
+        if event.get("condition_met") is not False:
+            continue
+        step = str(event.get("step"))
+        entry = found.setdefault(
+            step,
+            {
+                "step": step,
+                "condition": event.get("condition"),
+                "ts": event.get("ts"),
+            },
+        )
+        entry["status"] = event.get("status")
+    out: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for step, entry in found.items():
+        out[owner.get(step, step.split(":", 1)[0])].append(entry)
+    return dict(out)
+
+
 def injections(
     raw: Raw, linked: Mapping[str, Mapping[str, Any]]
 ) -> list[dict[str, Any]]:
     executed = {str(e.get("injection_id")) for e in raw.of("injection_on")}
+    unmet = unmet_conditions(raw)
     skipped: dict[str, str] = {}
     for event in raw.of("injection_skipped"):
         skipped[str(event.get("injection_id"))] = str(event.get("reason") or "")
@@ -333,6 +372,7 @@ def injections(
                 "disposition": linked[key]["disposition"]
                 if is_executed and item.get("category") == "episode" and key in linked
                 else None,
+                "unmet_conditions": unmet.get(key, []),
             }
         )
     return out
