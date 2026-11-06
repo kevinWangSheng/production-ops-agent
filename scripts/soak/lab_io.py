@@ -139,7 +139,13 @@ def _result(reply: Reply) -> list[Any] | None:
 
 class Database:
     """Read-only SQL through ``compose exec postgres psql`` (PostgreSQL has no
-    host port, C3 §11). Each query is wrapped so psql prints one JSON array."""
+    host port, C3 §11). Each query is wrapped so psql prints one JSON array.
+
+    ``jsonb_agg``, not ``json_agg``: PostgreSQL's ``json_agg`` puts ", \\n "
+    between elements, so two or more rows span several lines (the 2026-11-06
+    rehearsal, #497: the closer failed from the second incident on);
+    ``jsonb`` text is one line. The parser still reads the whole array from
+    its first line on, whatever the line breaks."""
 
     def __init__(
         self,
@@ -152,7 +158,7 @@ class Database:
         self._env = env
 
     def rows(self, sql: str, *, timeout: float = 60.0) -> list[dict[str, Any]]:
-        wrapped = f"SELECT coalesce(json_agg(t), '[]'::json) FROM ({sql}) t"
+        wrapped = f"SELECT coalesce(jsonb_agg(t), '[]'::jsonb) FROM ({sql}) t"
         cmd = [
             *self._compose,
             "exec",
@@ -179,7 +185,13 @@ class Database:
         lines = [line for line in proc.stdout.splitlines() if line.strip()]
         if not lines:
             raise RuntimeError("psql printed nothing")
-        rows = json.loads(lines[-1])
+        start = next((i for i, line in enumerate(lines) if line.startswith("[")), None)
+        if start is None:
+            raise RuntimeError("psql did not print a JSON array")
+        try:
+            rows = json.loads("\n".join(lines[start:]))
+        except ValueError as exc:
+            raise RuntimeError(f"psql printed invalid JSON: {exc}") from None
         if not isinstance(rows, list):
             raise RuntimeError("psql did not print a JSON array")
         return rows
