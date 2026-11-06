@@ -269,6 +269,7 @@ def no_run_gate(expectations: ExpectationResult | None) -> GateResult:
     """Gate of an attempt whose scenario expects no Run (user ruling Q8,
     2026-11-06): it passes exactly when that attempt's own expectations
     passed. Missing expectations fail."""
+    reasons: tuple[str, ...]
     if expectations is None:
         passed, reasons = False, ("EXPECTATIONS_MISSING",)
     elif expectations.passed is True:
