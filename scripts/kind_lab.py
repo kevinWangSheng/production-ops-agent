@@ -997,6 +997,49 @@ def roll_prometheus_on_config_change() -> int:
     ).returncode
 
 
+COLLECTOR_DEPLOYMENT = "otel-collector"
+
+
+def roll_collector_on_auth_change() -> int:
+    """Stamp the push-credential Secret's hash on the collector's pod template.
+
+    The collector reads its Prometheus password from ``prometheus-web-auth``
+    as an env var (``extraEnvsFrom`` in values.yaml), fixed at pod start.
+    ``up`` re-applies that Secret from the auth file, and Prometheus picks up
+    a new web config from its mounted Secret, but a running collector kept
+    pushing with the old password until rolled by hand (#488). A changed
+    Secret rolls the pod; the same Secret patches nothing.
+    """
+    proc = capture(
+        kubectl("-n", NAMESPACE, "get", "secret", COLLECTOR_AUTH_SECRET, "-o", "json")
+    )
+    if proc.returncode:
+        # stderr stays out: it is diagnostics about a Secret
+        print("cannot read collector auth Secret", file=sys.stderr)
+        return proc.returncode
+    try:
+        digest = config_sha256(json.loads(proc.stdout))
+    except ValueError:
+        print("invalid collector auth Secret", file=sys.stderr)
+        return 1
+    patch = {
+        "spec": {
+            "template": {"metadata": {"annotations": {CONFIG_HASH_ANNOTATION: digest}}}
+        }
+    }
+    return run(
+        kubectl(
+            "-n",
+            NAMESPACE,
+            "patch",
+            "deployment",
+            COLLECTOR_DEPLOYMENT,
+            "-p",
+            json.dumps(patch),
+        )
+    ).returncode
+
+
 def apply_webhook_secret(token: str) -> int:
     """The Secret Alertmanager reads its bearer token from
     (``credentials_file``, scripts/kind_lab/alertmanager-values.yaml)."""
@@ -1372,6 +1415,9 @@ def cmd_up(args: argparse.Namespace) -> int:
     if code != 0:
         return code
     code = roll_prometheus_on_config_change()
+    if code != 0:
+        return code
+    code = roll_collector_on_auth_change()
     if code != 0:
         return code
     proc = run(
