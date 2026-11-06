@@ -40,6 +40,10 @@ under synthetic ids.
 With ``--schedule-log`` and ``--schedule-check`` (#474 ``eval_pair_schedule``
 log and its ``check`` output), registered voided attempts are left out of
 judging, rulings and every denominator, and listed as ``voided_attempts``.
+An exam run in segments repeats the pair, one per segment, matched in
+order (each check reads only its own log); ``--voids`` adds the
+cross-segment registry (``scripts.eval_dev_round.VOIDS_SCHEMA``) of both
+systems.
 """
 
 from __future__ import annotations
@@ -315,6 +319,78 @@ def voided_attempts(log: Mapping[str, Any], check: Mapping[str, Any]) -> list[st
     return sorted(set(ids))
 
 
+def registry_voided_attempts(
+    registry: Any,
+    attempts: Sequence[Mapping[str, Any]],
+    checks: Sequence[Mapping[str, Any]],
+    scenarios: Collection[str],
+) -> list[str]:
+    """Attempt ids of a cross-segment void registry, both systems.
+
+    The registry only discloses voids the round summaries already applied
+    (``eval_dev_round --voids``, ``holmes_baseline.dataset --voided``): a
+    void that names a scored attempt is ``VOID_SCORED``. Each entry's
+    replacement chain (through the registry and the checks'
+    ``voided_attempts``) must end, without a loop, at a scored attempt of
+    the entry's own system and scenario (``VOID_RERUN_UNKNOWN``,
+    ``VOID_CYCLE``); an attempt voided twice across the checks and the
+    registry is ``VOID_DUPLICATE``, a rerun named twice ``RERUN_DUPLICATE``. Entries of scenarios outside this
+    dataset are skipped.
+    """
+    from scripts.eval_dev_round import void_registry_entries
+
+    try:
+        entries = [
+            e for e in void_registry_entries(registry) if e["scenario_id"] in scenarios
+        ]
+    except ValueError:
+        raise BinaryJudgeError("VOIDS_INVALID") from None
+    scored = {str(a["attempt_id"]): a for a in attempts}
+    successor: dict[str, str] = {}
+
+    replacements: set[str] = set()
+
+    def link(voided: str, rerun: str) -> None:
+        # across every check and the registry, an attempt is voided at most
+        # once and replaces at most one voided attempt
+        if voided in successor:
+            raise BinaryJudgeError(f"VOID_DUPLICATE:{voided}")
+        if rerun in replacements:
+            raise BinaryJudgeError(f"RERUN_DUPLICATE:{rerun}")
+        successor[voided] = rerun
+        replacements.add(rerun)
+
+    for check in checks:
+        for row in check.get("voided_attempts") or []:
+            if (
+                isinstance(row, Mapping)
+                and row.get("voided_attempt_id")
+                and row.get("rerun_attempt_id")
+            ):
+                link(str(row["voided_attempt_id"]), str(row["rerun_attempt_id"]))
+    for entry in entries:
+        link(entry["voided_attempt_id"], entry["rerun_attempt_id"])
+    for entry in entries:
+        voided = entry["voided_attempt_id"]
+        if voided in scored:
+            raise BinaryJudgeError(f"VOID_SCORED:{voided}")
+        seen = {voided}
+        current = entry["rerun_attempt_id"]
+        while current in successor:
+            if current in seen:
+                raise BinaryJudgeError(f"VOID_CYCLE:{voided}")
+            seen.add(current)
+            current = successor[current]
+        final = scored.get(current)
+        if (
+            final is None
+            or final["system"] != entry["system"]
+            or final["scenario_id"] != entry["scenario_id"]
+        ):
+            raise BinaryJudgeError(f"VOID_RERUN_UNKNOWN:{voided}")
+    return sorted({e["voided_attempt_id"] for e in entries})
+
+
 def judge_attempts(
     attempts: Sequence[dict[str, Any]],
     dataset: Dataset,
@@ -387,13 +463,20 @@ def run_judge(
     ids = [a["attempt_id"] for a in attempts]
     if len(set(ids)) != len(ids):
         raise BinaryJudgeError("ATTEMPT_DUPLICATE")
-    voided: list[str] = []
-    if args.schedule_log or args.schedule_check:
-        if not (args.schedule_log and args.schedule_check):
-            raise BinaryJudgeError("SCHEDULE_LOG_AND_CHECK_REQUIRED")
-        voided = voided_attempts(
-            _read_json(Path(args.schedule_log)), _read_json(Path(args.schedule_check))
+    logs, checks = args.schedule_log or [], args.schedule_check or []
+    if len(logs) != len(checks):
+        raise BinaryJudgeError("SCHEDULE_LOG_AND_CHECK_REQUIRED")
+    voided_ids: set[str] = set()
+    check_docs = [_read_json(Path(path)) for path in checks]
+    for log_path, check_doc in zip(logs, check_docs, strict=True):
+        voided_ids.update(voided_attempts(_read_json(Path(log_path)), check_doc))
+    if args.voids:
+        voided_ids.update(
+            registry_voided_attempts(
+                _read_json(Path(args.voids)), attempts, check_docs, set(dataset)
+            )
         )
+    voided = sorted(voided_ids)
     judge_attempts(attempts, dataset, client, environ, voided=set(voided))
     live = [a for a in attempts if a["attempt_id"] not in voided]
     out = Path(args.out)
@@ -452,8 +535,10 @@ def parser() -> argparse.ArgumentParser:
     j.add_argument("--recording-root")
     j.add_argument("--holmes-round")
     j.add_argument("--holmes-attempts")
-    j.add_argument("--schedule-log")
-    j.add_argument("--schedule-check")
+    # repeated once per exam segment, logs and checks matched in order
+    j.add_argument("--schedule-log", action="append")
+    j.add_argument("--schedule-check", action="append")
+    j.add_argument("--voids")
     s = sub.add_parser("summarize")
     s.add_argument("--items", required=True)
     s.add_argument("--rulings")
