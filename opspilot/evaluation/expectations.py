@@ -145,11 +145,35 @@ def _window(value: Any) -> tuple[datetime, datetime] | None:
     return start, end
 
 
+#: The loop's model-visible answer to an exact repeat of an earlier call
+#: (``opspilot/investigation/loop.py`` ``_duplicate_call_view``): nothing is
+#: executed -- no gateway, ledger or source is touched -- and the view has no
+#: ``tool`` field.
+DUPLICATE_REFUSAL_STATUS = "denied"
+DUPLICATE_REFUSAL_REASON = "DUPLICATE_TOOL_CALL"
+
+
+def is_duplicate_refusal(item: Mapping[str, Any]) -> bool:
+    """A tool_result that is the product's refusal to run a repeated call,
+    not a tool call (cf. ``recording.py``/``replay.py``)."""
+    return (
+        item.get("status") == DUPLICATE_REFUSAL_STATUS
+        and item.get("reason") == DUPLICATE_REFUSAL_REASON
+    )
+
+
 def _read_only(projection: Mapping[str, Any]) -> bool:
+    """Every executed tool is a registered (read-only) tool and nothing was
+    written. Only the duplicate-call refusal receipt is skipped: it executed
+    nothing. Any other unknown or missing tool still fails closed."""
     tools = _registered_tools()
     writes = projection.get("writes") or {}
     return (
-        all(item.get("tool") in tools for item in _tool_results(projection))
+        all(
+            item.get("tool") in tools
+            for item in _tool_results(projection)
+            if not is_duplicate_refusal(item)
+        )
         and writes.get("controls") == 0
         and writes.get("self_heal_authorizations") == 0
     )
