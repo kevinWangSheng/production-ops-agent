@@ -40,6 +40,10 @@ under synthetic ids.
 With ``--schedule-log`` and ``--schedule-check`` (#474 ``eval_pair_schedule``
 log and its ``check`` output), registered voided attempts are left out of
 judging, rulings and every denominator, and listed as ``voided_attempts``.
+An exam run in segments repeats the pair, one per segment, matched in
+order (each check reads only its own log); ``--voids`` adds the
+cross-segment registry (``scripts.eval_dev_round.VOIDS_SCHEMA``) of both
+systems.
 """
 
 from __future__ import annotations
@@ -315,6 +319,17 @@ def voided_attempts(log: Mapping[str, Any], check: Mapping[str, Any]) -> list[st
     return sorted(set(ids))
 
 
+def registry_voided_attempts(registry: Any) -> list[str]:
+    """Attempt ids of a cross-segment void registry, both systems."""
+    from scripts.eval_dev_round import void_registry_entries
+
+    try:
+        entries = void_registry_entries(registry)
+    except ValueError:
+        raise BinaryJudgeError("VOIDS_INVALID") from None
+    return sorted({str(e["voided_attempt_id"]) for e in entries})
+
+
 def judge_attempts(
     attempts: Sequence[dict[str, Any]],
     dataset: Dataset,
@@ -387,13 +402,17 @@ def run_judge(
     ids = [a["attempt_id"] for a in attempts]
     if len(set(ids)) != len(ids):
         raise BinaryJudgeError("ATTEMPT_DUPLICATE")
-    voided: list[str] = []
-    if args.schedule_log or args.schedule_check:
-        if not (args.schedule_log and args.schedule_check):
-            raise BinaryJudgeError("SCHEDULE_LOG_AND_CHECK_REQUIRED")
-        voided = voided_attempts(
-            _read_json(Path(args.schedule_log)), _read_json(Path(args.schedule_check))
+    logs, checks = args.schedule_log or [], args.schedule_check or []
+    if len(logs) != len(checks):
+        raise BinaryJudgeError("SCHEDULE_LOG_AND_CHECK_REQUIRED")
+    voided_ids: set[str] = set()
+    for log_path, check_path in zip(logs, checks, strict=True):
+        voided_ids.update(
+            voided_attempts(_read_json(Path(log_path)), _read_json(Path(check_path)))
         )
+    if args.voids:
+        voided_ids.update(registry_voided_attempts(_read_json(Path(args.voids))))
+    voided = sorted(voided_ids)
     judge_attempts(attempts, dataset, client, environ, voided=set(voided))
     live = [a for a in attempts if a["attempt_id"] not in voided]
     out = Path(args.out)
@@ -452,8 +471,10 @@ def parser() -> argparse.ArgumentParser:
     j.add_argument("--recording-root")
     j.add_argument("--holmes-round")
     j.add_argument("--holmes-attempts")
-    j.add_argument("--schedule-log")
-    j.add_argument("--schedule-check")
+    # repeated once per exam segment, logs and checks matched in order
+    j.add_argument("--schedule-log", action="append")
+    j.add_argument("--schedule-check", action="append")
+    j.add_argument("--voids")
     s = sub.add_parser("summarize")
     s.add_argument("--items", required=True)
     s.add_argument("--rulings")
