@@ -53,6 +53,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -72,7 +73,7 @@ from scripts.eval_live_lab import (
     validate_injectors,
 )
 from scripts.holmes_baseline import config as hconfig
-from scripts.holmes_baseline.project import project_outcome
+from scripts.holmes_baseline.project import QUERY_PATHS, project_outcome
 
 ATTEMPT_SCHEMA = "opspilot-holmes-attempt-2"
 ROUND_SCHEMA = "opspilot-holmes-dataset-round-1"
@@ -231,13 +232,27 @@ def holmes_plan(
     }
 
 
+def _proxy_read(method: str, uri: str) -> bool:
+    """A GET, or a POST to exactly Prometheus ``/api/v1/query`` or
+    ``/api/v1/query_range`` (a read; POST only carries a longer query). The
+    query string is ignored; an absolute URL is reduced to its path."""
+    if method == "GET":
+        return True
+    if method != "POST":
+        return False
+    path = urlsplit(uri).path if "://" in uri else uri.split("?", 1)[0]
+    return path in QUERY_PATHS
+
+
 def read_only(output: Mapping[str, Any], proxy_log_lines: Sequence[str]) -> bool:
     """Q11 (Holmes): every request of the ``holmes`` account in the lab proxy
-    log is a GET, and every Jaeger tool call Holmes records is an HTTP GET."""
+    log is a read (``_proxy_read``), and every Jaeger tool call Holmes records
+    is an HTTP GET."""
     for line in proxy_log_lines:
         fields = line.split()
-        if len(fields) >= 3 and fields[1] == "holmes" and fields[2] != "GET":
-            return False
+        if len(fields) >= 3 and fields[1] == "holmes":
+            if not _proxy_read(fields[2], fields[3] if len(fields) >= 4 else ""):
+                return False
     for call in output.get("tool_calls") or []:
         description = call.get("description") if isinstance(call, Mapping) else None
         if isinstance(description, str) and description.startswith("HTTP "):
