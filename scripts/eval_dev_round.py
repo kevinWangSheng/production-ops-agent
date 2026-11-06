@@ -45,7 +45,7 @@ import json
 import subprocess
 import sys
 from collections import Counter
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -65,6 +65,9 @@ from scripts.eval_live_lab import span_error
 
 SCHEMA = "opspilot-eval-dev-round-1"
 RERUNS_SCHEMA = "opspilot-eval-dev-reruns-1"
+#: The cross-segment void registry (``--voids``): ``voided_attempts`` entries
+#: in the shape of ``eval_pair_schedule.check``'s, each with a ``basis``.
+VOIDS_SCHEMA = "opspilot-eval-cross-segment-voids-1"
 VOIDED_NOTE = "environment not ready, rerun per rule"
 CANARY_RECHECK = "canary-recheck.json"
 CANARY_RECHECK_SCHEMA = "opspilot-eval-canary-recheck-1"
@@ -674,6 +677,122 @@ def _registered_reruns(
     return out
 
 
+def void_registry_entries(document: Any) -> list[Mapping[str, Any]]:
+    """The entries of a cross-segment void registry (``VOIDS_SCHEMA``).
+
+    Each names its ``system``, ``scenario_id``, a ``voided_attempt_id``, the
+    ``rerun_attempt_id`` that replaces it and a non-blank ``basis``; ``rule``
+    (a schedule class) and ``note`` are optional. Raises ``ValueError``."""
+    entries = document.get("voided_attempts") if isinstance(document, Mapping) else None
+    if (
+        not isinstance(document, Mapping)
+        or document.get("schema") != VOIDS_SCHEMA
+        or not isinstance(entries, list)
+    ):
+        raise ValueError("VOIDS_INVALID")
+    for entry in entries:
+        if not isinstance(entry, Mapping):
+            raise ValueError("VOIDS_INVALID")
+        for key in (
+            "system",
+            "scenario_id",
+            "voided_attempt_id",
+            "rerun_attempt_id",
+            "basis",
+        ):
+            value = entry.get(key)
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError("VOIDS_INVALID")
+        rule, note = entry.get("rule"), entry.get("note")
+        if rule is not None and rule not in SCHEDULE_RULES:
+            raise ValueError("VOIDS_INVALID")
+        if note is not None and not isinstance(note, str):
+            raise ValueError("VOIDS_INVALID")
+    return entries
+
+
+def _segment_voids(
+    checks: Sequence[Any],
+    registry: Any,
+    started: Mapping[str, Mapping[str, Any]],
+    scenarios: Collection[str],
+) -> dict[str, dict[str, Any]]:
+    """Multi-segment voids: the OpsPilot ``voided_attempts`` of every
+    segment's schedule ``check`` plus the cross-segment registry. A paired
+    plan may cover several datasets, so rows of scenarios outside this
+    dataset (``scenarios``) are skipped; every other row must resolve. Returns
+    voided attempt id -> its entry (``_registered_reruns``' shape plus
+    ``source`` and, for the registry, ``basis``)."""
+    pending: list[dict[str, Any]] = []
+    for check in checks:
+        rows = check.get("voided_attempts") if isinstance(check, Mapping) else None
+        if not isinstance(rows, list):
+            raise DevRoundError("SCHEDULE_CHECK_INVALID")
+        for row in rows:
+            if not isinstance(row, Mapping) or row.get("rule") not in SCHEDULE_RULES:
+                raise DevRoundError("SCHEDULE_CHECK_INVALID")
+            if (
+                row.get("system") != "opspilot"
+                or row.get("scenario_id") not in scenarios
+            ):
+                continue
+            voided, rerun = row.get("voided_attempt_id"), row.get("rerun_attempt_id")
+            if not voided or not rerun:
+                continue  # nothing started to void, or no rerun (dev_round_reruns)
+            pending.append(
+                {
+                    "voided": str(voided),
+                    "scenario": row["scenario_id"],
+                    "rerun_attempt_id": str(rerun),
+                    "note": row.get("note"),
+                    "rule": row["rule"],
+                    "source": "schedule_check",
+                }
+            )
+    if registry is not None:
+        try:
+            entries = void_registry_entries(registry)
+        except ValueError:
+            raise DevRoundError("VOIDS_INVALID") from None
+        for entry in entries:
+            if entry["system"] != "opspilot" or entry["scenario_id"] not in scenarios:
+                continue
+            pending.append(
+                {
+                    "voided": entry["voided_attempt_id"],
+                    "scenario": entry["scenario_id"],
+                    "rerun_attempt_id": entry["rerun_attempt_id"],
+                    "note": entry.get("note") or entry["basis"],
+                    "rule": entry.get("rule"),
+                    "source": "registry",
+                    "basis": entry["basis"],
+                }
+            )
+    out: dict[str, dict[str, Any]] = {}
+    reruns: set[str] = set()
+    for item in pending:
+        voided, rerun = item.pop("voided"), item["rerun_attempt_id"]
+        declared = item.pop("scenario")
+        if voided in out:
+            raise DevRoundError(f"VOID_DUPLICATE:{voided}")
+        if rerun in reruns:
+            raise DevRoundError(f"RERUN_DUPLICATE:{rerun}")
+        reruns.add(rerun)
+        for attempt_id in (voided, rerun):
+            if attempt_id not in started:
+                raise DevRoundError(f"RERUN_UNKNOWN:{attempt_id}")
+        old, new = started[voided], started[rerun]
+        if not old["scenario_id"] == new["scenario_id"] == declared:
+            raise DevRoundError(f"RERUN_SCENARIO_MISMATCH:{rerun}")
+        # strictly later than the voided attempt's end: a chain can not loop
+        ended = _moment((old.get("fault") or {}).get("ended_at"))
+        began = _moment((new.get("fault") or {}).get("started_at"))
+        if ended is None or began is None or began <= ended:
+            raise DevRoundError(f"RERUN_ORDER:{rerun}")
+        out[voided] = item
+    return out
+
+
 def _code_set(
     dims_seen: Sequence[Mapping[str, Any]],
     code_commits: Sequence[str],
@@ -719,6 +838,8 @@ def aggregate(
     product_tree: ProductTree | None = None,
     timeline_rounds: Sequence[Path] = (),
     timeline_datasets: Sequence[Path] = (),
+    schedule_checks: Sequence[Any] | None = None,
+    voids: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """The development round summary (seams-432 section 5).
 
@@ -726,7 +847,13 @@ def aggregate(
     differ within (``_code_set``); ``None`` keeps every dimension frozen.
     ``timeline_rounds`` (with the ``timeline_datasets`` their scenarios come
     from) are other rounds that ran on the same labs: they add earlier
-    faults to the isolation check and nothing else (#513)."""
+    faults to the isolation check and nothing else (#513).
+    ``schedule_checks`` (one paired-schedule ``check`` output per segment)
+    and ``voids`` (the cross-segment registry) select the multi-segment
+    voids (``_segment_voids``) instead of ``reruns``."""
+    segmented = schedule_checks is not None or voids is not None
+    if segmented and reruns is not None:
+        raise DevRoundError("RERUNS_WITH_SCHEDULE_CHECK")
     loaded = {
         spec.scenario_id: (spec, answer)
         for spec, answer in load_scenarios_v2(dataset_root)
@@ -782,7 +909,10 @@ def aggregate(
                 }
             )
     started = {str(a["attempt_id"]): a for items in attempts.values() for a in items}
-    voided = {} if reruns is None else _registered_reruns(reruns, started)
+    if segmented:
+        voided = _segment_voids(schedule_checks or (), voids, started, set(loaded))
+    else:
+        voided = {} if reruns is None else _registered_reruns(reruns, started)
     rerun_of = {str(v["rerun_attempt_id"]): k for k, v in voided.items()}
     for sid, items in attempts.items():
         if sum(1 for a in items if str(a["attempt_id"]) not in voided) > n:
@@ -929,9 +1059,13 @@ def aggregate(
                 "status": started[attempt_id]["status"],
                 "reason": started[attempt_id]["reason"],
                 "rerun_attempt_id": entry["rerun_attempt_id"],
-                "note": VOIDED_NOTE if entry["rule"] is None else entry["note"],
+                "note": VOIDED_NOTE
+                if entry["rule"] is None and "source" not in entry
+                else entry["note"],
                 # a schedule void names its preregistered rule (absent: #432)
                 **({} if entry["rule"] is None else {"rule": entry["rule"]}),
+                # multi-segment voids name where they come from
+                **{k: entry[k] for k in ("source", "basis") if k in entry},
             }
             for attempt_id, entry in sorted(voided.items())
         ],
@@ -946,6 +1080,17 @@ def aggregate(
             "attempts_unknown": unknown_cost,
         },
     }
+
+
+def _input(path: str, code: str) -> Any:
+    """A JSON input file; missing or unreadable is ``code``."""
+    try:
+        document = _json(Path(path))
+    except DevRoundError:
+        document = None
+    if document is None:
+        raise DevRoundError(code)
+    return document
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -975,8 +1120,23 @@ def main(argv: Sequence[str] | None = None) -> int:
         default=[],
         help="the dataset of --timeline-round scenarios outside --dataset",
     )
+    parser.add_argument(
+        "--schedule-check",
+        action="append",
+        dest="schedule_checks",
+        help="a paired-schedule check output whose OpsPilot voided_attempts "
+        "are voided (repeat, one per exam segment); excludes --reruns",
+    )
+    parser.add_argument(
+        "--voids",
+        help=f"cross-segment void registry ({VOIDS_SCHEMA}); excludes --reruns",
+    )
     args = parser.parse_args(argv)
     try:
+        checks = None
+        if args.schedule_checks is not None:
+            checks = [_input(p, "SCHEDULE_CHECK_INVALID") for p in args.schedule_checks]
+        voids = None if args.voids is None else _input(args.voids, "VOIDS_INVALID")
         reruns = None
         if args.reruns is not None:
             try:
@@ -993,6 +1153,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             code_commits=args.code_commits,
             timeline_rounds=[Path(p) for p in args.timeline_round],
             timeline_datasets=[Path(p) for p in args.timeline_dataset],
+            schedule_checks=checks,
+            voids=voids,
         )
     except DevRoundError as exc:
         print(json.dumps({"exit_code": 1, "reason": exc.code}))
