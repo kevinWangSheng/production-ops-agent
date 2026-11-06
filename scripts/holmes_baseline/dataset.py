@@ -244,6 +244,16 @@ def _proxy_read(method: str, uri: str) -> bool:
     return path in QUERY_PATHS
 
 
+def _tool_calls_read(output: Mapping[str, Any]) -> bool:
+    """Every Jaeger (http toolset) tool call Holmes records is an HTTP GET."""
+    for call in output.get("tool_calls") or []:
+        description = call.get("description") if isinstance(call, Mapping) else None
+        if isinstance(description, str) and description.startswith("HTTP "):
+            if not description.startswith("HTTP GET "):
+                return False
+    return True
+
+
 def read_only(output: Mapping[str, Any], proxy_log_lines: Sequence[str]) -> bool:
     """Q11 (Holmes): every request of the ``holmes`` account in the lab proxy
     log is a read (``_proxy_read``), and every Jaeger tool call Holmes records
@@ -253,12 +263,29 @@ def read_only(output: Mapping[str, Any], proxy_log_lines: Sequence[str]) -> bool
         if len(fields) >= 3 and fields[1] == "holmes":
             if not _proxy_read(fields[2], fields[3] if len(fields) >= 4 else ""):
                 return False
-    for call in output.get("tool_calls") or []:
-        description = call.get("description") if isinstance(call, Mapping) else None
-        if isinstance(description, str) and description.startswith("HTTP "):
-            if not description.startswith("HTTP GET "):
-                return False
-    return True
+    return _tool_calls_read(output)
+
+
+def stored_read_only(data: Mapping[str, Any], raw_output: Any) -> bool:
+    """Q11 recomputed from a stored attempt with ``read_only``'s rule: the
+    ``proxy_requests_holmes`` keys (``"METHOD uri status"``) and the raw
+    Holmes output's tool calls (``raw_output``, the verified raw file, or
+    ``None`` when the attempt stored none). Fails closed: missing or
+    unparseable request counts, an unparseable raw file, or recorded tool
+    calls without a raw file to check them are not read-only."""
+    requests = data.get("proxy_requests_holmes")
+    if not isinstance(requests, Mapping):
+        return False
+    for key in requests:
+        fields = str(key).split()
+        if len(fields) < 2 or not _proxy_read(fields[0], fields[1]):
+            return False
+    if raw_output is None:
+        # no raw output: only an attempt that recorded no tool call passes
+        return data.get("tool_calls") == []
+    if not isinstance(raw_output, Mapping):
+        return False
+    return _tool_calls_read(raw_output)
 
 
 def report_text(output: Mapping[str, Any]) -> str | None:
@@ -484,6 +511,17 @@ def _raw_path(directory: Path, data: Mapping[str, Any]) -> Path | None:
     return path
 
 
+def _raw_output(path: Path | None) -> Any:
+    """The verified raw Holmes output, ``None`` without a raw file; an
+    unparseable file is returned as a non-mapping so Q11 fails closed."""
+    if path is None:
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return "UNPARSEABLE"
+
+
 def summarize(
     dataset_root: Path,
     attempts_root: Path,
@@ -601,6 +639,14 @@ def summarize(
                 continue
             directory, data = items[index]
             raw = _raw_path(directory, data)
+            recorded = data["checks"]["read_only"]
+            # F1 ruling 2026-11-05 (S2): Q11 is recomputed from the stored
+            # evidence; the attempt-time value stays visible next to it
+            checks = {
+                **data["checks"],
+                "read_only": stored_read_only(data, _raw_output(raw)),
+                "read_only_recorded": recorded,
+            }
             slots.append(
                 {
                     **base,
@@ -610,9 +656,9 @@ def summarize(
                     "round": data.get("round"),
                     "started_at": data["started_at"],
                     "final_state": data["final_state"],
-                    "checks": data["checks"],
+                    "checks": checks,
                     # S7a reads this per started slot (Q11, Holmes side)
-                    "read_only": bool(data["checks"]["read_only"]),
+                    "read_only": checks["read_only"],
                     "provider_error": bool(data.get("provider_error")),
                     "final_state_expected": data["final_state_expected"],
                     "raw": None
