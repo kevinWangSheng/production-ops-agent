@@ -214,15 +214,23 @@ def opspilot_attempts(
     return out
 
 
+#: ``scripts.holmes_baseline.dataset.RAW_FILE``, relative to the attempt
+HOLMES_RAW_FILE = ("out", "holmes.json")
+
+
 def _holmes_text(attempts_root: Path, rel: str, attempt_id: str) -> str | None:
     """The ``result`` of the attempt's raw ``holmes.json``, after checking
     that the file stays under the attempts root and matches the hash its own
     attempt summary recorded. Nothing else of the raw output is used."""
     root = attempts_root.resolve()
     path = (attempts_root / rel).resolve()
-    if not path.is_relative_to(root) or len(path.relative_to(root).parts) < 2:
+    parts = path.relative_to(root).parts if path.is_relative_to(root) else ()
+    # the attempt directory holds the raw file at HOLMES_RAW_FILE; it may sit
+    # under a round directory (<attempts>/holmes-<round>/<attempt>/...)
+    n = len(HOLMES_RAW_FILE)
+    if len(parts) <= n or parts[-n:] != HOLMES_RAW_FILE:
         raise BinaryJudgeError(f"HOLMES_RAW_OUTSIDE_ROOT:{attempt_id}")
-    directory = root / path.relative_to(root).parts[0]
+    directory = root.joinpath(*parts[:-n])
     attempt = _read_json(directory / "summary.json")
     expected = (
         (attempt.get("raw") or {}).get("sha256")

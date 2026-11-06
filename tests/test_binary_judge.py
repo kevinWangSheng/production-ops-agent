@@ -477,3 +477,44 @@ def test_judge_applicable_negative_fault_scenario_keeps_fault_question() -> None
     answer = dataclasses.replace(_answer(), polarity="negative")
     assert bj.judge_applicable(answer)
     assert bj.FAULT_QUESTION in bj.judge_messages(answer, "R")[0]["content"]
+
+
+def test_holmes_raw_in_nested_round_layout(tmp_path: Path) -> None:
+    # The exam stores attempts under a round directory:
+    # <attempts>/holmes-<round>/<attempt>/{summary.json,out/holmes.json}
+    import shutil
+
+    root = tmp_path / "attempts"
+    shutil.copytree(HOLMES_FIXTURE / "attempts", root / "holmes-r1")
+    dataset = {"dv2-2b214b": load_scenario_v2(DATASET / "regression/dv2-2b214b")}
+    doc = json.loads((HOLMES_FIXTURE / "round.json").read_text())
+    doc["slots"] = [s for s in doc["slots"] if s["attempt_id"] == "h-pay-1"]
+    doc["slots"][0]["raw"] = "holmes-r1/h-pay-1/out/holmes.json"
+    (row,) = cli.holmes_attempts(dataset, doc, root)
+    raw = json.loads((root / "holmes-r1/h-pay-1/out/holmes.json").read_text())
+    assert row["report_text"] == raw["result"]
+    (root / "holmes-r1/h-pay-1/out/holmes.json").write_text('{"result": "x"}')
+    with pytest.raises(bj.BinaryJudgeError) as err:
+        cli.holmes_attempts(dataset, doc, root)
+    assert err.value.code == "HOLMES_RAW_MISMATCH:h-pay-1"
+
+
+def test_holmes_raw_not_at_the_raw_file_place_is_refused(tmp_path: Path) -> None:
+    import shutil
+
+    root = tmp_path / "attempts"
+    shutil.copytree(HOLMES_FIXTURE / "attempts", root)
+    dataset = {"dv2-2b214b": load_scenario_v2(DATASET / "regression/dv2-2b214b")}
+    doc = json.loads((HOLMES_FIXTURE / "round.json").read_text())
+    doc["slots"] = [s for s in doc["slots"] if s["attempt_id"] == "h-pay-1"]
+    for rel in ("h-pay-1/summary.json", "out/holmes.json"):
+        doc["slots"][0]["raw"] = rel
+        with pytest.raises(bj.BinaryJudgeError) as err:
+            cli.holmes_attempts(dataset, doc, root)
+        assert err.value.code == "HOLMES_RAW_OUTSIDE_ROOT:h-pay-1"
+
+
+def test_holmes_raw_file_place_matches_the_producer() -> None:
+    from scripts.holmes_baseline.dataset import RAW_FILE
+
+    assert Path(RAW_FILE).parts == cli.HOLMES_RAW_FILE
