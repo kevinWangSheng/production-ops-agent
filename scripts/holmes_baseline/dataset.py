@@ -246,8 +246,13 @@ def _proxy_read(method: str, uri: str) -> bool:
 
 def _tool_calls_read(output: Mapping[str, Any]) -> bool:
     """Every Jaeger (http toolset) tool call Holmes records is an HTTP GET."""
-    for call in output.get("tool_calls") or []:
-        description = call.get("description") if isinstance(call, Mapping) else None
+    calls = output.get("tool_calls") or []
+    if not isinstance(calls, list):
+        return False  # malformed: fails closed
+    for call in calls:
+        if not isinstance(call, Mapping):
+            return False
+        description = call.get("description")
         if isinstance(description, str) and description.startswith("HTTP "):
             if not description.startswith("HTTP GET "):
                 return False
@@ -267,13 +272,13 @@ def read_only(output: Mapping[str, Any], proxy_log_lines: Sequence[str]) -> bool
 
 
 def proxy_request_counts(proxy_log_lines: Sequence[str]) -> dict[str, int]:
-    """``proxy_requests_holmes``: ``"METHOD uri status"`` counts of every line
-    ``read_only`` judges (three or more fields), so a short line is kept as
+    """``proxy_requests_holmes``: ``"METHOD uri status"`` counts of exactly the
+    lines ``read_only`` judges (``holmes`` account, three or more fields), so a short line is kept as
     ``"METHOD"`` or ``"METHOD uri"`` and the stored check sees it too."""
     counts = Counter(
         " ".join(fields[2:5])
         for fields in (line.split() for line in proxy_log_lines)
-        if len(fields) >= 5 or (len(fields) >= 3 and fields[1] == "holmes")
+        if len(fields) >= 3 and fields[1] == "holmes"
     )
     return dict(sorted(counts.items()))
 
@@ -288,7 +293,9 @@ def stored_read_only(data: Mapping[str, Any], raw_output: Any) -> bool:
     requests = data.get("proxy_requests_holmes")
     if not isinstance(requests, Mapping):
         return False
-    for key in requests:
+    for key, count in requests.items():
+        if type(count) is not int or count < 1:
+            return False  # tampered or malformed count
         fields = str(key).split()
         # same reading as read_only(): a key without a uri is judged with ""
         if not fields or not _proxy_read(

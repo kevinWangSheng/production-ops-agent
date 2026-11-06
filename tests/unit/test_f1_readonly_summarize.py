@@ -196,3 +196,31 @@ def test_short_lines_share_the_attempt_time_rule() -> None:
         summary = ds.proxy_request_counts(lines)
         stored = {"proxy_requests_holmes": summary, "tool_calls": []}
         assert ds.stored_read_only(stored, output) is ds.read_only(output, lines)
+
+
+def test_only_holmes_account_lines_are_counted() -> None:
+    lines = ("t opspilot POST /api/v1/admin 200 1 2 0.1", *EXAM_LINES)
+    counts = ds.proxy_request_counts(lines)
+    assert not any("admin" in key for key in counts)
+    stored = {"proxy_requests_holmes": counts, "tool_calls": []}
+    output = fake_output(tool_calls=[JAEGER_GET])
+    assert ds.stored_read_only(stored, output) is ds.read_only(output, lines) is True
+
+
+@pytest.mark.parametrize("count", [None, 0, -1, "1", 1.5, True])
+def test_request_count_that_is_not_a_positive_int_fails_closed(count: Any) -> None:
+    stored = {
+        "proxy_requests_holmes": {"GET /api/v1/series 200": count},
+        "tool_calls": [],
+    }
+    assert ds.stored_read_only(stored, fake_output(tool_calls=[])) is False
+
+
+@pytest.mark.parametrize(
+    "tool_calls", ["HTTP POST http://x/api", [None], ["HTTP GET x"], {"a": 1}]
+)
+def test_malformed_tool_calls_fail_closed(tool_calls: Any) -> None:
+    output = {**fake_output(tool_calls=[]), "tool_calls": tool_calls}
+    stored = {"proxy_requests_holmes": {"GET /api/v1/series 200": 1}, "tool_calls": []}
+    assert ds.stored_read_only(stored, output) is False
+    assert ds.read_only(output, ()) is False
