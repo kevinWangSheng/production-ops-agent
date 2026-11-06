@@ -172,3 +172,27 @@ def test_attempt_time_and_stored_checks_share_one_rule() -> None:
         counts = {" ".join(line.split()[2:5]): 1 for line in lines}
         stored = {"proxy_requests_holmes": counts, "tool_calls": []}
         assert ds.stored_read_only(stored, output) is ds.read_only(output, lines)
+
+
+@pytest.mark.parametrize(
+    "short_line", ["t holmes POST /api/v1/admin", "t holmes DELETE"]
+)
+def test_short_holmes_proxy_line_is_kept_and_fails_closed(
+    tmp_path: Path, short_line: str
+) -> None:
+    # read_only() judges holmes lines of three or more fields; the stored
+    # counts must keep them so the recomputation sees the same requests
+    slot = _slot(_attempt(tmp_path, lines=(*EXAM_LINES, short_line), recorded=True))
+    assert slot["checks"]["read_only"] is False
+
+
+def test_short_lines_share_the_attempt_time_rule() -> None:
+    output = fake_output(tool_calls=[JAEGER_GET])
+    for lines in (
+        (*EXAM_LINES, "t holmes GET /api/v1/series"),
+        (*EXAM_LINES, "t holmes POST /api/v1/admin"),
+        (*EXAM_LINES, "t holmes POST"),
+    ):
+        summary = ds.proxy_request_counts(lines)
+        stored = {"proxy_requests_holmes": summary, "tool_calls": []}
+        assert ds.stored_read_only(stored, output) is ds.read_only(output, lines)

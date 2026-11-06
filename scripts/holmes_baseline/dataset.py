@@ -266,6 +266,18 @@ def read_only(output: Mapping[str, Any], proxy_log_lines: Sequence[str]) -> bool
     return _tool_calls_read(output)
 
 
+def proxy_request_counts(proxy_log_lines: Sequence[str]) -> dict[str, int]:
+    """``proxy_requests_holmes``: ``"METHOD uri status"`` counts of every line
+    ``read_only`` judges (three or more fields), so a short line is kept as
+    ``"METHOD"`` or ``"METHOD uri"`` and the stored check sees it too."""
+    counts = Counter(
+        " ".join(fields[2:5])
+        for fields in (line.split() for line in proxy_log_lines)
+        if len(fields) >= 5 or (len(fields) >= 3 and fields[1] == "holmes")
+    )
+    return dict(sorted(counts.items()))
+
+
 def stored_read_only(data: Mapping[str, Any], raw_output: Any) -> bool:
     """Q11 recomputed from a stored attempt with ``read_only``'s rule: the
     ``proxy_requests_holmes`` keys (``"METHOD uri status"``) and the raw
@@ -278,7 +290,10 @@ def stored_read_only(data: Mapping[str, Any], raw_output: Any) -> bool:
         return False
     for key in requests:
         fields = str(key).split()
-        if len(fields) < 2 or not _proxy_read(fields[0], fields[1]):
+        # same reading as read_only(): a key without a uri is judged with ""
+        if not fields or not _proxy_read(
+            fields[0], fields[1] if len(fields) >= 2 else ""
+        ):
             return False
     if raw_output is None:
         # no raw output: only an attempt that recorded no tool call passes
@@ -383,9 +398,7 @@ def attempt_summary(
     """The attempt's ``summary.json``: counts, hashes, checks and the
     projected outcome; the report only by hash."""
     report = row["report_text"]
-    proxy_counts = Counter(
-        " ".join(line.split()[2:5]) for line in proxy_lines if len(line.split()) >= 5
-    )
+    proxy_counts = proxy_request_counts(proxy_lines)
     rows = tool_rows(output)
     return {
         "schema": ATTEMPT_SCHEMA,
@@ -426,7 +439,7 @@ def attempt_summary(
         },
         "tool_calls": rows,
         "tool_errors": sum(1 for r in rows if r["status"] != "success"),
-        "proxy_requests_holmes": dict(sorted(proxy_counts.items())),
+        "proxy_requests_holmes": proxy_counts,
         "egress": egress_summary(egress),
         "pre_run": dict(pre_run) if pre_run is not None else None,
         "budget": budget(),
