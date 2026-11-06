@@ -181,26 +181,18 @@ def _same_expectations(
     """
     if all(stored.get(k) == checked[k] for k in ("passed", "checks", "reasons")):
         return True
-    revised = {
-        name
-        for name, allowed in (
-            ("canary_absent", canary_rechecked),
-            ("read_only", refusal_rechecked),
-        )
-        if allowed
-    }
-    if not revised:
-        return False
     old, new = stored.get("checks"), checked["checks"]
     if not isinstance(old, Mapping) or set(old) != set(new):
         return False
-    if any(old[k] != new[k] for k in new if k not in revised):
+    revised = set()
+    if canary_rechecked:
+        revised.add("canary_absent")
+    # Only an actual False -> True transition; anything else stays strict.
+    if refusal_rechecked and old["read_only"] is False and new["read_only"] is True:
+        revised.add("read_only")
+    if not revised:
         return False
-    if (
-        "read_only" in revised
-        and old["read_only"] != new["read_only"]
-        and (old["read_only"] is not False or new["read_only"] is not True)
-    ):
+    if any(old[k] != new[k] for k in new if k not in revised):
         return False
     codes = {_REVISABLE[name] for name in revised}
     old_reasons = [r for r in stored.get("reasons") or [] if r not in codes]

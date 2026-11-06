@@ -178,6 +178,20 @@ def test_receipt_does_not_excuse_read_only_turning_false(tmp_path):
         aggregate([round_dir], DEV_V2)
 
 
+def test_receipt_does_not_excuse_a_stale_write_reason_without_transition(tmp_path):
+    # Review finding: stored read_only True but a stale WRITE_OBSERVED/passed.
+    round_dir, run_dir = _round(tmp_path)
+    _add_receipt(run_dir)
+    path = run_dir / "expectations.json"
+    stored = json.loads(path.read_text())
+    assert stored["checks"]["read_only"] is True
+    stored["passed"] = False
+    stored["reasons"] = [*stored["reasons"], "WRITE_OBSERVED"]
+    path.write_text(json.dumps(stored))
+    with pytest.raises(Exception, match="EXPECTATIONS_MISMATCH"):
+        aggregate([round_dir], DEV_V2)
+
+
 def test_refusal_and_canary_revisions_compose(tmp_path):
     round_dir, run_dir = _aggregate_round_with_recheck(
         tmp_path, report=0, step_responses=0, step_reasoning=1
