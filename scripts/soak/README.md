@@ -156,6 +156,10 @@ Runner-only files: `run_states.jsonl`, `frontend_rate.jsonl`, `prom/*.json`.
 - A restoring step (flag off, egress restore, tunnel start, worker up) that
   fails is retried every 60 s until it succeeds; new flag injections wait
   meanwhile. `stuck_work.injections_left_on` lists any injection left on.
+- A1 (Run in flight) and A2 (idle) wait at most 30 min for their condition
+  and then run anyway; `injections[].unmet_conditions` lists each such step
+  (`step`, `condition`, first `ts`, last `status`). Reported, not a step-4
+  code.
 - `prom_up.csv` rows with `source=query_failed` are failed queries
   (Prometheus or tunnel), counted as `up=0` for all three roles.
 - One shared-vCPU rental host; not production evidence.
