@@ -65,11 +65,20 @@ from opspilot.evaluation.model import (
     load_scenarios_v2,
 )
 from scripts import kind_lab
-from scripts.eval_dev_round import upstream_applicability
+from scripts.eval_dev_round import (
+    METRICS_RANGE_TOOLS,
+    DevRoundError,
+    isolation_flags,
+    lifecycle_faults,
+    prior_faults,
+    timeline_scenarios,
+    upstream_applicability,
+)
 from scripts.eval_live_lab import (
     UNREACHABLE_URLS,
     WINDOW_SECONDS,
     LabError,
+    span_error,
     validate_injectors,
 )
 from scripts.holmes_baseline import config as hconfig
@@ -545,6 +554,117 @@ def _raw_output(path: Path | None) -> Any:
     return output if isinstance(output, Mapping) else "MALFORMED"
 
 
+#: The Holmes tool whose results can carry Jaeger span rows.
+JAEGER_TOOL = "jaeger_request"
+
+
+def _jaeger_rows(data: Any) -> list[dict[str, Any]]:
+    """Span rows of every Jaeger trace object (``spans`` with
+    ``processes``) in a tool result; a result projected by ``jq`` that drops
+    that structure has none (its text is still checked)."""
+    if isinstance(data, str):
+        try:
+            data = json.loads(data)
+        except ValueError:
+            return []
+    rows: list[dict[str, Any]] = []
+    stack = [data]
+    while stack:
+        node = stack.pop()
+        if isinstance(node, list):
+            stack.extend(node)
+            continue
+        if not isinstance(node, Mapping):
+            continue
+        spans, processes = node.get("spans"), node.get("processes")
+        if isinstance(spans, list) and isinstance(processes, Mapping):
+            for span in spans:
+                if not isinstance(span, Mapping):
+                    continue
+                process = processes.get(span.get("processID"))
+                tags = {
+                    t["key"]: t.get("value")
+                    for t in span.get("tags") or []
+                    if isinstance(t, Mapping) and isinstance(t.get("key"), str)
+                }
+                start = span.get("startTime")
+                rows.append(
+                    {
+                        "service": process.get("serviceName")
+                        if isinstance(process, Mapping)
+                        else None,
+                        "operation": span.get("operationName"),
+                        "start_us": start
+                        if isinstance(start, int) and not isinstance(start, bool)
+                        else None,
+                        "error": span_error(tags),
+                    }
+                )
+            continue
+        stack.extend(node.values())
+    return rows
+
+
+def _range_window(params: Mapping[str, Any]) -> dict[str, Any]:
+    """A range query's window as ISO times. Holmes also takes ``start`` as a
+    negative number of seconds relative to ``end``; that is resolved when
+    ``end`` is an absolute time. An ``end`` of "now" is not recorded, so
+    such a window stays unresolved (no overlap is reported for it)."""
+    start, end = params.get("start"), params.get("end")
+    upper = _moment(end)
+    try:
+        offset = float(start) if isinstance(start, (str, int, float)) else None
+    except ValueError:
+        offset = None
+    if offset is not None and offset < 0 and upper is not None:
+        start = (upper + timedelta(seconds=offset)).isoformat()
+    return {"start": start, "end": end}
+
+
+def holmes_views(output: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """The isolation view (``eval_dev_round._views`` shape) of each tool
+    result Holmes received: its text, Jaeger span rows, and a Prometheus
+    range query's window."""
+    views: list[dict[str, Any]] = []
+    for call in output.get("tool_calls") or []:
+        if not isinstance(call, Mapping):
+            continue
+        result = call.get("result") if isinstance(call.get("result"), Mapping) else {}
+        params = (
+            result.get("params") if isinstance(result.get("params"), Mapping) else {}
+        )
+        tool = call.get("tool_name")
+        data, error = result.get("data"), result.get("error")
+        text = "\n".join(
+            v if isinstance(v, str) else json.dumps(v, ensure_ascii=False)
+            for v in (data, error)
+            if v is not None
+        )
+        views.append(
+            {
+                "evidence_id": call.get("tool_call_id"),
+                "tool": tool,
+                "span_view": tool == JAEGER_TOOL,
+                "window": _range_window(params)
+                if tool in METRICS_RANGE_TOOLS
+                else None,
+                "rows": _jaeger_rows(data) if tool == JAEGER_TOOL else [],
+                "text": text,
+            }
+        )
+    return views
+
+
+def _moment(value: Any) -> datetime | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        moment = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return moment if moment.tzinfo is not None else None
+
+
 def summarize(
     dataset_root: Path,
     attempts_root: Path,
@@ -552,6 +672,8 @@ def summarize(
     n: int = SLOTS_PER_SCENARIO,
     rounds: Sequence[str] | None = None,
     voided: Mapping[str, Mapping[str, Any]] | None = None,
+    round_dirs: Sequence[Path] | None = None,
+    timeline_datasets: Sequence[Path] = (),
 ) -> dict[str, Any]:
     """The Holmes rows in the dev-round slot shape (``eval_dev_round``):
     every scenario gets ``n`` slots; alert-entry scenarios are
@@ -562,9 +684,27 @@ def summarize(
     (``holmes_voided``) attempts are dropped before slotting, so a voided
     window's rerun takes its slot and a slot that never ran still counts;
     each voided id must be a read attempt of the same scenario as its rerun.
-    No attempt at all is ``NO_ATTEMPTS``, never an empty round."""
+    No attempt at all is ``NO_ATTEMPTS``, never an empty round.
+
+    ``round_dirs`` (the OpsPilot round directories of the same windows, as
+    ``eval_dev_round --round`` reads them) give each ran slot its ``lab``,
+    ``predecessor``, ``contamination`` and ``metrics_overlap`` by the
+    OpsPilot rule (``eval_dev_round.isolation``, #513): earlier faults on
+    the same lab, from the rounds' ``lifecycle.json``, against the tool
+    results in the slot's raw ``holmes.json``. Without them those fields
+    are ``None`` (not recorded); a ran slot whose round has no directory
+    is ``ROUND_LIFECYCLE_MISSING``. Pass every round that ran on the labs,
+    other datasets' too, with those datasets in ``timeline_datasets``."""
     voided = dict(voided or {})
     loaded = {s.scenario_id: (s, a) for s, a in load_scenarios_v2(dataset_root)}
+    timeline: tuple[list[dict[str, Any]], dict[str, str | None]] | None = None
+    if round_dirs is not None:
+        try:
+            timeline = lifecycle_faults(
+                round_dirs, timeline_scenarios(loaded, timeline_datasets)
+            )
+        except DevRoundError as exc:
+            raise DatasetError(exc.code) from None
     plans = {sid: injection_plan(s, a) for sid, (s, a) in loaded.items()}
     by_scenario: dict[str, list[tuple[Path, dict[str, Any]]]] = {
         sid: [] for sid in loaded
@@ -653,6 +793,10 @@ def summarize(
                         "reason": "NOT_STARTED",
                         "attempt_id": None,
                         "round": None,
+                        "lab": None,
+                        "predecessor": None,
+                        "contamination": [],
+                        "metrics_overlap": [],
                         "final_state": None,
                         "checks": {"read_only": None, "completed": False},
                         "final_state_expected": False,
@@ -663,11 +807,35 @@ def summarize(
             directory, data = items[index]
             raw = _raw_path(directory, data)
             recorded = data["checks"]["read_only"]
+            output = _raw_output(raw)
+            isolated: dict[str, Any] = {
+                "lab": None,
+                "predecessor": None,
+                "contamination": None,
+                "metrics_overlap": None,
+            }
+            if timeline is not None:
+                round_id = str(data.get("round"))
+                if round_id not in timeline[1]:
+                    raise DatasetError(f"ROUND_LIFECYCLE_MISSING:{round_id}")
+                lab = timeline[1][round_id]
+                began = _moment(data.get("started_at"))
+                flags = isolation_flags(
+                    prior_faults(timeline[0], began, lab),
+                    began,
+                    holmes_views(output) if isinstance(output, Mapping) else [],
+                )
+                if not isinstance(output, Mapping) and not (
+                    output is None and data["outcome"]["tool_calls"] == 0
+                ):
+                    # tool results it got are unreadable: unknown, not clean
+                    flags["contamination"] = None
+                isolated = {"lab": lab, **flags}
             # F1 ruling 2026-11-05 (S2): Q11 is recomputed from the stored
             # evidence; the attempt-time value stays visible next to it
             checks = {
                 **data["checks"],
-                "read_only": stored_read_only(data, _raw_output(raw)),
+                "read_only": stored_read_only(data, output),
                 "read_only_recorded": recorded,
             }
             slots.append(
@@ -693,6 +861,7 @@ def summarize(
                     "model_calls_ok": data["outcome"]["model_calls_ok"],
                     "egress_injected_503": data["egress"]["injected_503"],
                     "wall_seconds": data["wall_seconds"],
+                    **isolated,
                 }
             )
     totals: dict[str, dict[str, int]] = {}
@@ -730,6 +899,11 @@ def summarize(
             "an unreachable Prometheus fails Holmes' toolset check at startup, "
             "so its 8 tools are not offered at all (upstream behaviour); an "
             "unreachable Jaeger keeps jaeger_request, whose calls fail",
+            "contamination (#513): the OpsPilot rule on the same lab's earlier "
+            "faults; PRIOR_FAULT_SPAN needs span rows, which only Jaeger "
+            "results that keep the trace structure (spans with processes) "
+            "carry; a result Holmes projected with jq is checked by text "
+            "(PRIOR_INJECTION_TEXT) only",
             "unconfirmed: whether Holmes/LiteLLM would retry a real HTTP 503 "
             "from the API; the CONNECT 503 was not retried (first_503 not "
             "run live)",
@@ -1025,6 +1199,8 @@ def cmd_summarize(args: argparse.Namespace) -> int:
             n=args.n,
             rounds=args.round or None,
             voided=voided,
+            round_dirs=[Path(p) for p in args.round_dir] if args.round_dir else None,
+            timeline_datasets=[Path(p) for p in args.timeline_dataset],
         )
     except DatasetError as exc:
         print(json.dumps({"exit_code": 1, "reason": exc.code}))
@@ -1078,6 +1254,18 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--voided",
         default=None,
         help="#474 eval_pair_schedule check output (its voided_attempts)",
+    )
+    summ.add_argument(
+        "--round-dir",
+        action="append",
+        help="an OpsPilot round directory (lifecycle.json) of the same "
+        "windows; repeat for all of them to record contamination (#513)",
+    )
+    summ.add_argument(
+        "--timeline-dataset",
+        action="append",
+        default=[],
+        help="the dataset of --round-dir scenarios outside --dataset",
     )
     summ.set_defaults(func=cmd_summarize)
     args = parser.parse_args(argv)
