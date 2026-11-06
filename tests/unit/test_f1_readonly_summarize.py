@@ -217,7 +217,18 @@ def test_request_count_that_is_not_a_positive_int_fails_closed(count: Any) -> No
 
 
 @pytest.mark.parametrize(
-    "tool_calls", ["HTTP POST http://x/api", [None], ["HTTP GET x"], {"a": 1}]
+    "tool_calls",
+    [
+        "HTTP POST http://x/api",
+        [None],
+        ["HTTP GET x"],
+        {"a": 1},
+        None,
+        "",
+        0,
+        False,
+        {},
+    ],
 )
 def test_malformed_tool_calls_fail_closed(tool_calls: Any) -> None:
     output = {**fake_output(tool_calls=[]), "tool_calls": tool_calls}

@@ -246,7 +246,7 @@ def _proxy_read(method: str, uri: str) -> bool:
 
 def _tool_calls_read(output: Mapping[str, Any]) -> bool:
     """Every Jaeger (http toolset) tool call Holmes records is an HTTP GET."""
-    calls = output.get("tool_calls") or []
+    calls = output.get("tool_calls", [])  # absent = no tool call
     if not isinstance(calls, list):
         return False  # malformed: fails closed
     for call in calls:
