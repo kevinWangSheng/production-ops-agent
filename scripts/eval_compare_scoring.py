@@ -333,7 +333,9 @@ def registry_voided_attempts(
     replacement chain (through the registry and the checks'
     ``voided_attempts``) must end, without a loop, at a scored attempt of
     the entry's own system and scenario (``VOID_RERUN_UNKNOWN``,
-    ``VOID_CYCLE``). Entries of scenarios outside this dataset are skipped.
+    ``VOID_CYCLE``); an attempt voided twice across the checks and the
+    registry is ``VOID_DUPLICATE``. Entries of scenarios outside this
+    dataset are skipped.
     """
     from scripts.eval_dev_round import void_registry_entries
 
@@ -345,15 +347,23 @@ def registry_voided_attempts(
         raise BinaryJudgeError("VOIDS_INVALID") from None
     scored = {str(a["attempt_id"]): a for a in attempts}
     successor: dict[str, str] = {}
+
+    def link(voided: str, rerun: str) -> None:
+        # one void per attempt across every check and the registry
+        if voided in successor:
+            raise BinaryJudgeError(f"VOID_DUPLICATE:{voided}")
+        successor[voided] = rerun
+
     for check in checks:
         for row in check.get("voided_attempts") or []:
-            if isinstance(row, Mapping) and row.get("voided_attempt_id"):
-                if row.get("rerun_attempt_id"):
-                    successor[str(row["voided_attempt_id"])] = str(
-                        row["rerun_attempt_id"]
-                    )
+            if (
+                isinstance(row, Mapping)
+                and row.get("voided_attempt_id")
+                and row.get("rerun_attempt_id")
+            ):
+                link(str(row["voided_attempt_id"]), str(row["rerun_attempt_id"]))
     for entry in entries:
-        successor[entry["voided_attempt_id"]] = entry["rerun_attempt_id"]
+        link(entry["voided_attempt_id"], entry["rerun_attempt_id"])
     for entry in entries:
         voided = entry["voided_attempt_id"]
         if voided in scored:

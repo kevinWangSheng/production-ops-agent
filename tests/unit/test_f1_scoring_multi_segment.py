@@ -378,6 +378,13 @@ def test_compare_scoring_unions_segment_pairs_and_registry(tmp_path):
             "VOID_RERUN_UNKNOWN:gone",
         ),
         (lambda o, h: [_reg("a", "b", sid=h), _reg("b", "a", sid=h)], "VOID_CYCLE"),
+        (
+            lambda o, h: [
+                _reg("gone", "h-pay-1", sid=h, system="holmes"),
+                _reg("gone", "other", sid=h, system="holmes"),
+            ],
+            "VOID_DUPLICATE:gone",
+        ),
         (lambda o, h: [{"schema": "x"}], "VOIDS_INVALID"),
     ],
 )
@@ -391,3 +398,27 @@ def test_compare_scoring_registry_refusals(tmp_path, entries, expected):
     with pytest.raises(cli.BinaryJudgeError) as err:
         _judge(tmp_path, "out", "--voids", voids)
     assert err.value.code.startswith(expected)
+
+
+def test_compare_scoring_registry_conflicting_with_a_check_is_refused(tmp_path):
+    from scripts import eval_compare_scoring as cli
+
+    _ops, h_sid = _scored()
+    log = {"schema": cli.PAIRED_LOG_SCHEMA, "windows": []}
+    check = {
+        "voided": [],
+        "voided_attempts": [_row("h-gone", "h-elsewhere", system="holmes", sid=h_sid)],
+    }
+    registry = _registry(_reg("h-gone", "h-pay-1", sid=h_sid, system="holmes"))
+    with pytest.raises(cli.BinaryJudgeError) as err:
+        _judge(
+            tmp_path,
+            "out",
+            "--schedule-log",
+            _write(tmp_path, "log.json", log),
+            "--schedule-check",
+            _write(tmp_path, "check.json", check),
+            "--voids",
+            _write(tmp_path, "voids.json", registry),
+        )
+    assert err.value.code == "VOID_DUPLICATE:h-gone"
