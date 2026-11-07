@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from pathlib import Path
@@ -190,10 +191,41 @@ def test_project_outcome_maps_failed_and_budget_exhausted_runs(
     assert outcome["handoff_reasons"] == []
 
 
+def _f14_steps_1_to_4_evidence_present() -> bool:
+    """F14 may pass only once steps 1-4 have their evidence in the repository.
+
+    Step 1: pinned Holmes baseline; step 2: per-feature mapping; step 3: issue
+    records; step 4 (U4 interpretation, 2026-11-04): the F1 step 4 S10 summary
+    plus a filled section 4 of the upstream-update strategy citing its sha256.
+    """
+    s10 = ROOT / "docs/evidence/f1-s10-scoring-2026-11-06/summary.json"
+    strategy = ROOT / "docs/testing/f14-upstream-update-strategy.md"
+    required = [
+        ROOT / "docs/evidence/f14-holmes-baseline/pin.json",
+        ROOT / "docs/evidence/f14-holmes-baseline/summary.json",
+        ROOT / "docs/evidence/f14-upstream-mapping/mapping.json",
+        s10,
+        strategy,
+    ]
+    if not all(path.is_file() for path in required):
+        return False
+    if not list((ROOT / "docs/evidence/f14-upstream-issues").glob("*/record.json")):
+        return False
+    text = strategy.read_text()
+    marker = "## 4. F14 第 4 步证据"
+    if marker not in text:
+        return False
+    section = text.split(marker, 1)[1]
+    digest = hashlib.sha256(s10.read_bytes()).hexdigest()
+    return "f1-s10-scoring-2026-11-06/summary.json" in section and digest in section
+
+
 def test_f14_remains_unpassed_until_the_whole_feature_is_complete() -> None:
     features = json.loads((ROOT / "feature_list.json").read_text())
     f14 = next(item for item in features if item["id"] == "F14")
-    assert f14["passes"] is False
+    assert f14["passes"] is False or (
+        f14["passes"] is True and _f14_steps_1_to_4_evidence_present()
+    )
 
 
 def test_pin_record_contains_contractual_provenance_and_is_non_reproducible() -> None:

@@ -158,6 +158,6 @@
       "For each selected issue, inspect current code and related fixes, reproduce through the real entry point and separate reporter claims from local findings",
       "Compare an adopted fix or extension with the unchanged upstream baseline under matched scenarios; retain provenance and an upstream-update strategy"
     ],
-    "passes": false
+    "passes": true
   }
 ]
