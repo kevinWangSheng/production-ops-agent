@@ -96,7 +96,7 @@ Two exposures are on record. Neither voided the holdout conclusions; they are ha
 
 **Product scope did not change.** `opspilot/` is identical across all three commits the exam ran on.
 
-**Eval harness fixes during the exam.** The exam ran on `c0658dd0`, then `c90f9fdb` ([#490](https://github.com/kevinWangSheng/production-ops-agent/pull/490), a re-check bug that crashed the second system on metric-noise scenarios), then `d3330fe8` ([#491](https://github.com/kevinWangSheng/production-ops-agent/pull/491), the metric-noise re-check uses the pre-injection baseline; [#492](https://github.com/kevinWangSheng/production-ops-agent/pull/492), a recovered lab can rejoin). Attempts per commit, voided attempts included: dev 18 / 15 / 23, holdout 13 / 5 / 25.
+**Eval harness fixes during the exam.** The exam ran on `c0658dd0`, then `c90f9fdb` ([#490](https://github.com/kevinWangSheng/production-ops-agent/pull/490), a re-check bug that crashed the second system on metric-noise scenarios), then `d3330fe8`, which contains both [#491](https://github.com/kevinWangSheng/production-ops-agent/pull/491) (merged as `8b721b0a`: the metric-noise re-check uses the pre-injection baseline) and [#492](https://github.com/kevinWangSheng/production-ops-agent/pull/492) (merged as `d3330fe8`: a recovered lab can rejoin). Attempts per commit, voided attempts included: dev 18 / 15 / 23, holdout 13 / 5 / 25.
 
 **Scoring corrections after the exam started.** All scoring code is public in `scripts/eval_compare_scoring.py` and `scripts/eval_dev_round.py`; stored exam records were not rewritten.
 
