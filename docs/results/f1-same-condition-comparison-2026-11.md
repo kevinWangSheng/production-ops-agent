@@ -108,7 +108,12 @@ Two exposures are on record. Neither voided the holdout conclusions; they are ha
 - [#510](https://github.com/kevinWangSheng/production-ops-agent/pull/510): OpsPilot's read-only refusal receipts (a duplicate-call refusal) no longer count as a write. One holdout slot (`95fdb7`, slot 2) changed from read_only false to true; it is no longer vetoed, and both judges passed it.
 - [#518](https://github.com/kevinWangSheng/production-ops-agent/pull/518): contamination recorded per lab for both systems, plus the sensitivity row above. Scores unchanged.
 
-No exam or scoring rule parameter changed after the exam started; the one departure from a rule is the rescheduling described above.
+**Who decided these scoring changes.** The closure plan (ruling U1) says the product and the scoring are not changed after the exam opens. The scoring changes above depart from that, so this page states who decided each one. They fall into two groups:
+
+- **Each ruled on separately by the user:** #493 and #494 (rulings S1 and S2, 2026-11-05), #504 (ruling Q8), and #510 (the user agreed on 2026-11-06).
+- **Made by the coordinator to carry out existing rulings, with no separate user ruling:** #495 (a crash fix so the judge can read HolmesGPT's nested directory layout), #509 (the void-registry tooling, which implements the user's earlier void and rerun rulings) and #518 (contamination recorded per lab; it is recorded only, voids nothing, and adds the sensitivity row). None of these three changes the pass criteria.
+
+The exam rules themselves (wash time, gaps, void and rerun rules, budgets) were not edited after the exam opened; the one departure from them is the rescheduling described above.
 
 ## Judging
 
