@@ -93,7 +93,7 @@ gh api repos/HolmesGPT/holmesgpt/compare/a0009195468ebc55a7dff7d602b61feabe3cda1
 
 | 项 | 内容 |
 |---|---|
-| F1 第 4 步结果 | [`docs/evidence/f1-s10-scoring-2026-11-06/summary.json`](../evidence/f1-s10-scoring-2026-11-06/README.md)，sha256 见该目录 README 与 PR；结果页另由 S11（#502）发布 |
+| F1 第 4 步结果 | [`summary.json`](../evidence/f1-s10-scoring-2026-11-06/summary.json)（说明见同目录 [README](../evidence/f1-s10-scoring-2026-11-06/README.md)），sha256 `c59ae2a7f708b9585f176c647515d5a9d95af89508d1c0789bf00d9d83943cd2`；结果页另由 S11（#502）发布 |
 | 对比条件 | OpsPilot 驱动提交 `c0658dd0` / `c90f9fdb` / `d3330fe8`，`opspilot/` 树 `4e505066…`，三者相同（产品范围未变，开考后只改了评测脚本）；判分代码 main `6f69c622`；Holmes `a0009195`，开考主机 amd64 镜像 `sha256:8674479f…`，配置 `e4b98a8b…`；两边模型都是 `deepseek-flash`，同一只读代理，预算见 `conditions`；一台租用的共享 vCPU 主机、3 套 lab（U7） |
 | 数据集 | `dev-v2:615e33da…`，18 题；`holdout-7ec15a:038fe4d3…`，12 题；每题 3 次 |
 | 结果摘要 | 问题入口题配对对比（全部已开始的尝试都计入分母）：开发集 OpsPilot 32/36、pass^3 8/12，Holmes 25/36、pass^3 8/12；保留集 OpsPilot 14/18、pass^3 3/6，Holmes 9/18、pass^3 1/6。两家 judge 一致率 68/74、34/37，用户裁决 9 处。Q11 一票否决：开发集 OpsPilot 1、Holmes 3，保留集 OpsPilot 2、Holmes 3。OpsPilot 根因证据引用率 36/42、22/33（不进对比分母） |
