@@ -556,12 +556,34 @@ def _f14_steps_1_to_4_evidence_present() -> bool:
         return False
     if not list((ROOT / "docs/evidence/f14-upstream-issues").glob("*/record.json")):
         return False
+    raw = s10.read_bytes()
+    # Pin the S10 summary reviewed in PR #523; edits to frozen evidence revoke the flip.
+    if (
+        hashlib.sha256(raw).hexdigest()
+        != "c59ae2a7f708b9585f176c647515d5a9d95af89508d1c0789bf00d9d83943cd2"
+    ):
+        return False
+    summary = json.loads(raw)
+    if summary.get("schema") != "opspilot-f1-s10-scoring-1":
+        return False
+    if "F14 step 4" not in summary.get("scope", ""):
+        return False
+    results = summary.get("results", {})
+    if not all(
+        isinstance(results.get(split), dict) and results[split]
+        for split in ("dev", "holdout")
+    ):
+        return False
+    if not summary.get("per_scenario") or not summary.get("conditions", {}).get(
+        "holmes"
+    ):
+        return False
     text = strategy.read_text()
     marker = "## 4. F14 第 4 步证据"
     if marker not in text:
         return False
     section = text.split(marker, 1)[1]
-    digest = hashlib.sha256(s10.read_bytes()).hexdigest()
+    digest = hashlib.sha256(raw).hexdigest()
     return "f1-s10-scoring-2026-11-06/summary.json" in section and digest in section
 
 
