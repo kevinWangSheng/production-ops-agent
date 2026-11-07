@@ -536,7 +536,58 @@ def test_upstream_manifest_and_human_page_are_complete():
     assert "f14-upstream-issues.md" in (ROOT / "docs/README.md").read_text()
 
 
-def test_baseline_files_are_byte_identical_to_origin_and_f14_stays_unpassed():
+def _f14_steps_1_to_4_evidence_present() -> bool:
+    """F14 may pass only once steps 1-4 have their evidence in the repository.
+
+    Step 1: pinned Holmes baseline; step 2: per-feature mapping; step 3: issue
+    records; step 4 (U4 interpretation, 2026-11-04): the F1 step 4 S10 summary
+    plus a filled section 4 of the upstream-update strategy citing its sha256.
+    """
+    s10 = ROOT / "docs/evidence/f1-s10-scoring-2026-11-06/summary.json"
+    strategy = ROOT / "docs/testing/f14-upstream-update-strategy.md"
+    required = [
+        ROOT / "docs/evidence/f14-holmes-baseline/pin.json",
+        ROOT / "docs/evidence/f14-holmes-baseline/summary.json",
+        ROOT / "docs/evidence/f14-upstream-mapping/mapping.json",
+        s10,
+        strategy,
+    ]
+    if not all(path.is_file() for path in required):
+        return False
+    if not list((ROOT / "docs/evidence/f14-upstream-issues").glob("*/record.json")):
+        return False
+    raw = s10.read_bytes()
+    # Pin the S10 summary reviewed in PR #523; edits to frozen evidence revoke the flip.
+    if (
+        hashlib.sha256(raw).hexdigest()
+        != "c59ae2a7f708b9585f176c647515d5a9d95af89508d1c0789bf00d9d83943cd2"
+    ):
+        return False
+    summary = json.loads(raw)
+    if summary.get("schema") != "opspilot-f1-s10-scoring-1":
+        return False
+    if "F14 step 4" not in summary.get("scope", ""):
+        return False
+    results = summary.get("results", {})
+    if not all(
+        isinstance(results.get(split), dict) and results[split]
+        for split in ("dev", "holdout")
+    ):
+        return False
+    if not summary.get("per_scenario") or not summary.get("conditions", {}).get(
+        "holmes"
+    ):
+        return False
+    text = strategy.read_text()
+    marker = "## 4. F14 第 4 步证据"
+    if marker not in text:
+        return False
+    section = text.split(marker, 1)[1]
+    digest = hashlib.sha256(raw).hexdigest()
+    return "f1-s10-scoring-2026-11-06/summary.json" in section and digest in section
+
+
+def test_baseline_files_are_byte_identical_and_f14_passes_only_after_steps_1_to_4():
     baseline_files = [
         "pin.json",
         "request-check.json",
@@ -553,10 +604,8 @@ def test_baseline_files_are_byte_identical_to_origin_and_f14_stays_unpassed():
         )
         assert path.read_bytes() == expected
     features = load(ROOT / "feature_list.json")
-    assert (
-        next(feature for feature in features if feature["id"] == "F14")["passes"]
-        is False
-    )
+    passes = next(feature for feature in features if feature["id"] == "F14")["passes"]
+    assert passes is False or (passes is True and _f14_steps_1_to_4_evidence_present())
 
 
 def test_capture_default_request_check_function_remains_unchanged():
