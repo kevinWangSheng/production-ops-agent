@@ -6,7 +6,7 @@
 |---|---|---|
 | 2 全流程 | **部分通过** | 触发、调查、证据、恢复观察、关闭与复盘都有记录，关闭是用户本人在工作台做的。本次 Run 没有转人工（`handoff: false`），也没有「系统外人工处理」的登记（`register_remediation`），所以 human handoff 与 external human handling 两项在本机没有覆盖 |
 | 3 杀 worker | **通过** | Run 进行中 `docker kill` worker，租约到期后新 worker 以 epoch 2 从下一轮续跑，同一个 incident，没有重复 incident，报告发布，恢复观察照常走到 `recovery_confirmed` |
-| 4 钉住版本 | **部分通过** | 本机构建 → `v0.1.0` 发布镜像（按 digest）→ 按 UPGRADE.md 回滚到本机构建 → 再升回 `v0.1.0`，三次切换都带着在途工作，数据都在，升级后新 Run 正常完成。两个版本的 schema head 相同、运行时代码相同，没有覆盖跨 schema 的真实版本变化 |
+| 4 钉住版本 | **部分通过** | 本机构建 → `v0.1.0` 发布镜像（按 digest）→ 按 UPGRADE.md 回滚到本机构建 → 再升回 `v0.1.0`，三次 `install.sh upgrade` 都退出 0，切换时都带着在途工作，数据都在，升级后新 Run 正常完成。不算通过的原因有三条。第一，UPGRADE.md 回滚的第 2 步（schema downgrade）退出码是 1，因为两个版本的 head 相同而被拒，没有任何改动，所以文档写的回滚顺序没有照原样走完。第二，回滚的目标 `opspilot:local` 不是钉住的 artifact：同一提交重建后镜像 ID 变了，所以只有往前升级这一方向用的是钉住的 artifact。第三，两个版本的 schema head 与运行时代码都相同，没有跨 schema 的版本变化 |
 
 ## 第 2 步：一次事故从告警到归档
 
