@@ -1,6 +1,6 @@
 # Threat model
 
-Scope: the Compose install in [deploy/compose/](../../deploy/compose/) (`v0.1.0` code) on one control host, investigating one target through read-only telemetry. The rules the product must satisfy are in [PRODUCT-CONSTRAINTS.md](../../PRODUCT-CONSTRAINTS.md); this page lists what enforces each rule today, the evidence for it, and what is not enforced. It has not been reviewed by a security specialist and the product has never faced a real production environment ([limitations](limitations.md)).
+Scope: the Compose install in [deploy/compose/](../../deploy/compose/) (main as of 2026-11-10, release `v0.1.1`) on one control host, investigating one target through read-only telemetry. The rules the product must satisfy are in [PRODUCT-CONSTRAINTS.md](../../PRODUCT-CONSTRAINTS.md); this page lists what enforces each rule today, the evidence for it, and what is not enforced. It has not been reviewed by a security specialist and the product has never faced a real production environment ([limitations](limitations.md)).
 
 ## Assets
 

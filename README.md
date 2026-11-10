@@ -22,7 +22,7 @@ Milestone M3 (effect and delivery acceptance) is open: most of its evidence is i
 
 - 8 of 11 features pass all their acceptance steps in [feature_list.json](feature_list.json) (F2, F3, F6, F7, F11, F12, F13, F14). F1, F8 and F9 are open.
 - Everything was measured in a kind lab running the OpenTelemetry Demo: synthetic load-generator traffic, injected faults, a real model (DeepSeek). That includes a [same-condition comparison with HolmesGPT](docs/results/f1-same-condition-comparison-2026-11.md) (F1 step 5, calibrated judging, is not achieved), a [72-hour lab soak](docs/evidence/m3-soak-2026-11-07/README.md), and an install, full incident flow, worker kill and pinned-image upgrade/rollback on a freshly reinstalled host ([step 1](docs/evidence/f9-clean-install-2026-11-09/README.md), [steps 2–4](docs/evidence/f9-steps-2-4-2026-11-10/README.md), several items only partially passed).
-- `v0.1.0` is tagged and its image is published as `ghcr.io/kevinwangsheng/opspilot@sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd`.
+- Releases are tagged and published to GHCR by the release workflow. The latest is `v0.1.1` (2026-11-10); the soak and the clean-host runs used `v0.1.0`, `ghcr.io/kevinwangsheng/opspilot@sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd`.
 
 For a guided tour, start at the [portfolio walkthrough](docs/portfolio/README.md); what the evidence does not show is in [limitations](docs/portfolio/limitations.md). Work order: [ROADMAP.md](ROADMAP.md).
 

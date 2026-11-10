@@ -1,6 +1,6 @@
 # Architecture
 
-What runs, what it owns, and how one incident moves through it. Checked against main as of 2026-11-10 (`v0.1.0` code plus later docs and lab fixes). The authoritative contract is the Chinese [C3 technical design](../design/technical-proposal-2026-09-07.md); where this page and C3 differ, C3 wins, and the gaps listed under "Where the code differs from C3" are known and tracked.
+What runs, what it owns, and how one incident moves through it. Checked against main as of 2026-11-10 (release `v0.1.1`; the evidence linked here was recorded on `v0.1.0`). The authoritative contract is the Chinese [C3 technical design](../design/technical-proposal-2026-09-07.md); where this page and C3 differ, C3 wins, and the gaps listed under "Where the code differs from C3" are known and tracked.
 
 ## Processes
 

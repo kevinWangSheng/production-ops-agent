@@ -9,7 +9,7 @@ All commands run from the checkout as the installing user. `install.sh compose .
 | Check | How | What "healthy" looks like |
 |---|---|---|
 | Containers | `deploy/compose/install.sh compose ps` | `web`, `worker`, `observer` running and `healthy` (each healthcheck reads its own `/readyz` on container port 9464) |
-| Readiness | `/readyz` on each runtime | `200 {"status": "ready", "version": "0.1.0"}`; it fails when the schema is not at head or the runtime's poll loop is stale |
+| Readiness | `/readyz` on each runtime | `200 {"status": "ready", "version": "<product version>"}`; it fails when the schema is not at head or the runtime's poll loop is stale |
 | Metrics | `/metrics` on each runtime (published to the host only by the lab override `compose.lab.yaml`) | `opspilot_queue_depth`, `opspilot_model_calls_total{category}`, `opspilot_model_consecutive_failures`, `opspilot_last_poll_age_seconds`, `opspilot_schema_at_head`, `opspilot_build_info`, trace-outbox gauges |
 | Logs | `deploy/compose/install.sh compose logs worker` (or `web`, `observer`) | Structured JSON lines with fixed codes and ids; no secrets |
 | Work | Workbench incident list | Runs move through `queued → running → completed` or `waiting_human` with a reason |
