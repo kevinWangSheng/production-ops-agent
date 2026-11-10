@@ -211,3 +211,7 @@ deploy/compose/install.sh uninstall --purge-data     # 同时删除数据库；�
 6. [ROADMAP.md](ROADMAP.md)：状态表与工作顺序。
 7. [文档导航](docs/README.md) 与 [开发指南](docs/development.md)：权威来源、从源码运行、测试。
 8. [M1 端到端演示](docs/demo/m1-end-to-end.md)：kind lab 上从告警到调查、恢复与复盘。
+
+## 许可证
+
+OpsPilot 以 [MIT 许可证](LICENSE) 发布。仓库中的第三方材料保留各自的许可证：内置的 DeepSeek tokenizer（MIT，`opspilot/tools/tokenizer/LICENSE`）和 HolmesGPT 文本摘录（Apache-2.0，`third_party/holmesgpt/LICENSE`）；复制了什么、放在哪里见[上游归属](docs/portfolio/upstream-attribution.md)（英文）。
