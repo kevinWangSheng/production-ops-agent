@@ -1,0 +1,77 @@
+{
+  "evidence": "f8-step1-stuck-run-2026-11-10",
+  "category": "integration_run",
+  "production_proof": false,
+  "f8_passes_flipped": false,
+  "stack": {
+    "host": "local colima VM m1-kind",
+    "compose_project": "opspilot-393",
+    "services_started": ["web", "worker"],
+    "tool_profile": "fixture",
+    "trace": "outbox",
+    "model": "deepseek-flash (real)",
+    "repo_head": "ee6fc62c",
+    "image_revision": "9b208cd13cc6c28e97ab9c0d1cb074a13dd3cf34",
+    "image_version": "0.1.1",
+    "image_id": "sha256:ad770d789dab14c5565888c4a6052ef40c507fc63cdab434882e7912b23b2f73",
+    "code_diff_head_vs_image": "none outside docs/ and ROADMAP.md (9b208cd1..ee6fc62c)"
+  },
+  "signal": {
+    "metric": "opspilot_queue_depth{state=\"running_lapsed\"}",
+    "exposed_by": "web /metrics",
+    "definition": "open automatic incident, current Run state=running, deadline not passed, lease_until NULL or <= now (opspilot/web/__main__.py _QUEUE_DEPTH_SQL, same condition as DurableStore.claimable_incidents)",
+    "lease_seconds": 420
+  },
+  "ids": {
+    "incident_id": "75ea6248-3da4-502f-80db-823106e6d2b9",
+    "run_id": "7f1e5f5d-7799-5f50-8bf2-6640f60c7ef3"
+  },
+  "timeline_utc": {
+    "alert_accepted": "2026-11-10T15:02:40.99Z",
+    "claimed_epoch1": "2026-11-10T15:02:41.68Z",
+    "tool_committed": "2026-11-10T15:02:43.86Z",
+    "worker_sigkill": "2026-11-10T15:02:44.44Z",
+    "lease_until_epoch1": "2026-11-10T15:09:43.86Z",
+    "last_sample_running_lapsed_0": "2026-11-10T15:09:46.589Z",
+    "first_sample_running_lapsed_1": "2026-11-10T15:09:49.634Z",
+    "sampler_ended": "2026-11-10T15:22:57.022Z",
+    "manual_reads_running_lapsed_1": ["2026-11-10T16:36:01Z", "2026-11-10T16:36:11.063Z", "2026-11-10T16:36:19.199Z"],
+    "worker_restarted": "2026-11-10T16:36:23.30Z",
+    "claimed_epoch2": "2026-11-10T16:36:25.33Z",
+    "first_sample_running_lapsed_0_after_resume": "2026-11-10T16:36:25.315Z",
+    "run_handoff": "2026-11-10T16:36:41.41Z",
+    "run_deadline": "2026-11-10T17:02:40.87Z"
+  },
+  "samples": {
+    "interval_seconds": 3,
+    "running_lapsed_0_before_lapse": 141,
+    "running_lapsed_1_while_lapsed": 261,
+    "running_lapsed_0_after_resume": 12,
+    "build_info_revision_every_web_sample": "9b208cd13cc6c28e97ab9c0d1cb074a13dd3cf34",
+    "queued_every_sample": 0
+  },
+  "pg": {
+    "lapsed_row": {"state": "running", "epoch": 1, "owner_set": true, "lease_until": "2026-11-10T15:09:43.86Z", "lapsed": true, "read_at": "2026-11-10T16:36:12.15Z"},
+    "steps": [
+      {"sequence": 0, "logical_key": "ctx0:round-1", "status": "tool_result_committed", "epoch": 1},
+      {"sequence": 1, "logical_key": "ctx0:round-2", "status": "response_committed", "epoch": 2},
+      {"sequence": 2, "logical_key": "conclusion:g0:ctx0:round-2", "status": "response_committed", "epoch": 2}
+    ],
+    "events": ["intake_accepted", "run_claimed(epoch 1)", "step_committed", "tool_committed", "run_claimed(epoch 2)", "step_committed", "run_handoff(INCOMPLETE_INVESTIGATION)"],
+    "final_state": "waiting_human",
+    "trace_outbox": {"rows": 6, "pending_while_worker_down": 3, "delivered_after_resume": 6, "rows_with_image_revision": 4, "rows_with_incident_id": 6}
+  },
+  "log": {
+    "worker_line_ts": "2026-11-10T16:36:41.407Z",
+    "kv_incident": "75ea6248-3da4-502f-80db-823106e6d2b9",
+    "status": "handed_off",
+    "reason": "INCOMPLETE_INVESTIGATION",
+    "revision": "9b208cd13cc6c28e97ab9c0d1cb074a13dd3cf34"
+  },
+  "model_calls": 2,
+  "unconfirmed": [
+    "LangSmith readback not run: delivery is shown only by PG outbox state=delivered",
+    "metric samples missing 15:22:57Z-16:36:01Z (sampler ended; PG row and later manual reads show the Run stayed lapsed)",
+    "observer not started"
+  ]
+}
