@@ -29,6 +29,10 @@
 
 Use explicit Markdown links from the repository entry point. If current sources disagree, resolve the inconsistency before implementation; historical drafts cannot override current SPEC. User instructions remain authoritative.
 
+## Portfolio
+
+- [Portfolio walkthrough](portfolio/README.md): reviewer entry point (F9 step 5), linking [architecture](portfolio/architecture.md), [threat model](portfolio/threat-model.md), [operations](portfolio/operations.md), [upstream attribution](portfolio/upstream-attribution.md) and [limitations](portfolio/limitations.md). English; every claim links to repo files or `evidence/`; lab runs are labelled synthetic traffic and injected faults, not production observation.
+
 ## Demo
 
 - [M1 端到端演示](demo/m1-end-to-end.md)：一页说明系统从告警到批准复盘知识做了什么、复现命令（凭据为占位符）、工作台看什么与已知限制；对应运行记录 [M1 退出端到端运行](evidence/m1-exit-e2e/run.md)。
