@@ -1,0 +1,79 @@
+{
+  "feature": "F9",
+  "steps": [2, 3, 4],
+  "host": "opspilot-f9-1 (same single host as F9 step 1; kind lab + Compose project opspilot, otel-demo profile)",
+  "category": "integration run; not production, not soak; injected flagd paymentFailure, lab load-generator traffic",
+  "model": "deepseek-flash",
+  "trace": "none (tracing off, no LangSmith credential on the host)",
+  "step2": {
+    "verdict": "partial",
+    "verdict_reason": "trigger, investigation, evidence, recovery observation, real human close and postmortem recorded; the Run did not hand off (handoff false) and no external handling was registered (no register_remediation), so human handoff and external human handling are not covered on this host",
+    "incident_id": "3c6deab1-96cf-549a-859c-466f4a385848",
+    "run_id": "97890bd2-ffe6-520c-8689-ed8d32b52b37",
+    "trigger": {"table": "opspilot_alert_deliveries", "delivery_id": 1, "alert": "CheckoutPlaceOrderErrorRatioHigh", "starts_at": "2026-11-10T07:12:54Z", "received_at": "2026-11-10T07:13:04Z", "outcome": "created"},
+    "investigation": {"run_claimed": "2026-11-10T07:13:04Z", "steps": 13, "rounds": 12, "tool_operations": 20, "run_completed": "2026-11-10T07:16:17Z", "published": true},
+    "evidence": {"rows": 20, "adopted": 19, "report_conclusion": "supported"},
+    "human_handoff": {"in_this_run": false, "handoff_reasons": [], "inputs_rows": 0, "prior_coverage": "m3-soak-2026-11-07 ep03 and A3 (Run 2c1120e2 waiting_human), closed by a script operator, not a human", "bounded_drill_possible_without_user": "compose.drill-egress.yaml egress cut + fault yields waiting_human; the human takeover, register_remediation and close need the user; not done"},
+    "external_human_handling": {"register_remediation": false, "note": "fault was restored by the step-1 execution agent's script, not by a human outside the system"},
+    "recovery_observation": {"session_id": "7cc8ee35-e9e2-5d59-b0f2-ee2d6afad039", "authorized_by": "system", "authorized_at": "2026-11-10T07:16:26Z", "samples": 20, "healthy_samples": 14, "healthy_since": "2026-11-10T07:32:32Z", "ending_id": "0b6a15e3-c0aa-4535-8167-98cc776860de", "ended": "recovery_confirmed", "ended_at": "2026-11-10T07:43:50Z", "lifecycle": "observing_recovery -> resolved"},
+    "human_close": {"audit_id": "2de6586e-537e-49a0-847e-90d14efab888", "action": "close", "actor": "operator", "channel": "web", "generation": "0 -> 1", "at": "2026-11-10T09:39:14Z", "performed_by": "the user, in the workbench"},
+    "archive": {"postmortem_id": "c6f4ef12-7189-4ee5-b32e-7428997860e0", "v1": {"created": "2026-11-10T07:45:14Z", "state": "stale", "stale_reason": "control_generation_changed"}, "v2": {"created": "2026-11-10T09:40:21Z", "state": "under_review", "conclusions": 18, "uncertain": 3}, "knowledge_entries": 0},
+    "usage": {"model_calls_settled": 12, "unsettled": 0, "cache_hit": 324608, "cache_miss": 39866, "output": 26185, "cny_estimate": 0.3022, "period": "peak"}
+  },
+  "step3": {
+    "verdict": "pass",
+    "fault": {"experiment_id": "f9-step3-worker-kill-20261110", "injected_at": "2026-11-10T09:48:49Z", "restored_at": "2026-11-10T10:07:03Z", "verified": true},
+    "incident_id": "487fac98-a430-5635-a8f7-b4ebee87de2c",
+    "related_incident_id": "3c6deab1-96cf-549a-859c-466f4a385848",
+    "run_id": "f3dfb53c-4ac0-5177-a7d9-302d42b86e34",
+    "kill": {"command": "docker kill opspilot-worker-1", "at": "2026-11-10T09:54:10.088Z", "breakpoint": "round-1 step and both tool results committed, round-2 model call in flight", "lease_until": "2026-11-10T10:01:08Z"},
+    "restart": {"restart_policy_brought_back": false, "command": "deploy/compose/install.sh compose start worker", "worker_started": "2026-11-10T09:54:45Z"},
+    "resume": {"run_claimed_epoch2": "2026-11-10T10:01:11Z", "resumed_from": "ctx0:round-2", "run_completed": "2026-11-10T10:05:21Z", "published": true, "final_epoch": 2},
+    "incidents_before": 1, "incidents_after": 2, "duplicate_incident": false, "runs_for_incident": 1,
+    "tool_charges_by_epoch": {"1": 2, "2": 28}, "duplicate_tool_commits": 0,
+    "report": {"assessment": "completed", "conclusion": "partial", "rounds": 18, "claims": 16, "gaps": 5, "content_sha256": "61a522d29ba16895224dc69da935898538b1a724d7f7067002c80d440f6d5fd7"},
+    "workbench": {"operator": 200, "anonymous": 401, "shows": "run completed · epoch 2 · budget 18 spent / 1 reserved / 0 unknown"},
+    "recovery_observation": {"session_id": "12259232-acab-54a5-a275-ee561b41a17d", "authorized_at": "2026-11-10T10:05:27Z", "ended": "recovery_confirmed", "ended_at": "2026-11-10T10:23:37Z", "samples": 13, "lifecycle": "observing_recovery -> resolved", "spanned_version_switches": 3},
+    "postmortem_v1": {"created": "2026-11-10T10:25:14Z", "state": "under_review"},
+    "orphaned_reservation_527": "42e2677f-429f-5e12-9051-7706ee2ede84",
+    "usage": {"model_calls_settled": 18, "unsettled": 1, "cache_hit": 747648, "cache_miss": 52215, "output": 32476, "cny_estimate": 0.1998, "peak_calls": 1, "offpeak_calls": 17},
+    "prior_coverage": ["m3-soak-2026-11-07 A1 (Run d687184a)", "f2-kill-resume-live"]
+  },
+  "step4": {
+    "verdict": "partial",
+    "verdict_reason": "the three install.sh upgrade runs (to the v0.1.0 digest, back to the local build, to the v0.1.0 digest again) exit 0 with in-flight work, data preserved, and a new Run completes across the rollback; but (1) the documented rollback step 2 (schema downgrade) exits 1 and changes nothing because both heads are equal, so the documented rollback sequence did not run as written; (2) the rollback target is opspilot:local, which is not a pinned artifact (rebuilding the same commit gave a different image id), so only the forward direction ran against a pinned artifact; (3) both versions share schema head 0024 and runtime code, so there was no cross-schema version change",
+    "release": {"tag": "v0.1.0", "commit": "dd9534316a6b95e3513f2c68c3f13e45bc7ea322", "image": "ghcr.io/kevinwangsheng/opspilot@sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd", "release_workflow_run": "https://github.com/kevinWangSheng/production-ops-agent/actions/runs/42226724770", "release_workflow_conclusion": "success", "ci_run_on_commit": "https://github.com/kevinWangSheng/production-ops-agent/actions/runs/42223101968", "ci_conclusion": "success", "github_release_page": "absent (tag and GHCR image only)", "pull": "anonymous, no registry login on host"},
+    "correction_to_step1": "step-1 evidence said no published image or v0.1.0 tag existed; both were published 2026-11-06",
+    "local_build": {"commit": "8de996d9151e121109d51ebc2e064355369ba7ff", "image_before": "sha256:2de313b01125003ac586cb7fce5047cccb45c086fd228fd856483e429864ca9a", "image_after_rebuild": "sha256:263148ca816dbdebef55ccf797bad88afa425202a2e814b8ebe046a8ad9f15e6"},
+    "version_difference": {"commits": 11, "runtime_code_diff": "only opspilot/evaluation/{expectations,gate}.py", "schema_head_both": "0024_trace_outbox", "run_versions_identical": true},
+    "install_env": {"OPSPILOT_PROJECT": "opspilot", "OPSPILOT_WEB_HOST_PORT": "18180", "OPSPILOT_TOOL_PROFILE": "otel-demo", "OPSPILOT_START_AGENT": "1", "OPSPILOT_OBSERVER_PROMETHEUS_URL": "http://opspilot-m1-control-plane:30090", "OPSPILOT_TRACE": "off", "OPSPILOT_IMAGE": "set per upgrade on the command line, recorded by install.sh"},
+    "phases": [
+      {"id": "U1", "from": "opspilot:local (8de996d9)", "to": "v0.1.0 digest", "start": "2026-11-10T10:08:01Z", "end": "2026-11-10T10:08:23Z", "wall_s": 22.85, "exit": 0, "migrate": "schema unchanged: 0024_trace_outbox", "in_flight": ["observation 12259232"]},
+      {"id": "new_run", "at": "2026-11-10T10:09:26Z", "intake": "POST /intake/events (event token, target m0-otel-20260909)", "http": 201, "incident_id": "5124066a-a720-53a0-9cf8-ef9e254ea61a", "run_id": "76666388-57a2-5f52-b41f-c4c362fc3f15"},
+      {"id": "R1", "command": "install.sh compose stop web worker observer", "start": "2026-11-10T10:09:33Z", "end": "2026-11-10T10:10:08Z", "exit": 0, "in_flight": ["Run 76666388 (epoch 1, 4 rounds)", "observation 12259232"]},
+      {"id": "R2", "command": "install.sh compose run --rm --no-deps migrate python -m opspilot.schema downgrade --to 0024_trace_outbox", "exit": 1, "output": "revision 0024_trace_outbox is not lower than the current 0024_trace_outbox: downgrade only goes to an older revision", "changed": false},
+      {"id": "R3", "from": "v0.1.0 digest", "to": "opspilot:local (8de996d9)", "start": "2026-11-10T10:10:10Z", "end": "2026-11-10T10:10:20Z", "wall_s": 10.07, "exit": 0, "migrate": "schema unchanged: 0024_trace_outbox"},
+      {"id": "U3", "from": "opspilot:local", "to": "v0.1.0 digest", "start": "2026-11-10T10:22:49Z", "end": "2026-11-10T10:23:00Z", "wall_s": 10.69, "exit": 0, "in_flight": ["observation 12259232", "observation b9ea386c"]}
+    ],
+    "after_each_switch": {"readyz": [200, 200, 200], "alembic": "0024_trace_outbox", "incident_3c6deab1": "closed / generation 1", "connect_control": "connected x3"},
+    "row_counts": {
+      "S0": {"incidents": 2, "runs": 2, "steps": 32, "evidence": 49, "controls": 3, "subject_events": 90, "obs_samples": 21, "pm_versions": 2},
+      "S5": {"incidents": 3, "runs": 3, "steps": 51, "evidence": 82, "controls": 4, "subject_events": 145, "obs_samples": 33, "pm_versions": 2},
+      "non_decreasing": true
+    },
+    "run_across_rollback": {"run_id": "76666388-57a2-5f52-b41f-c4c362fc3f15", "epoch1_on": "v0.1.0", "epoch2_on": "opspilot:local", "run_claimed_epoch2": "2026-11-10T10:17:04Z", "resumed_from": "ctx0:round-5", "run_completed": "2026-11-10T10:21:15Z", "published": true, "report_conclusion": "partial", "tool_charges_by_epoch": {"1": 8, "2": 25}, "duplicate_tool_commits": 0, "orphaned_reservation_527": 1},
+    "observation_sample_gap": "none visible: 12259232 sample intervals 82-92 s across all three stops",
+    "usage": {"model_calls_settled": 18, "unsettled": 1, "cache_hit": 704384, "cache_miss": 54597, "output": 38885, "cny_estimate": 0.2242, "period": "offpeak"},
+    "final_state": {"image": "v0.1.0 digest", "incident_487fac98": "resolved", "incident_5124066a": "observing_recovery (b9ea386c)"},
+    "doc_findings": [
+      "UPGRADE.md rollback step 2 refuses (exit 1, no change) when old and new heads are equal; the doc does not say to skip it",
+      "rebuilding opspilot:local from the same commit gave a different image id (cached layers, new manifest); only the release digest is a reproducible pinned artifact",
+      "install.sh compose start worker also runs migrate and init-roles through depends_on"
+    ],
+    "prior_coverage": "F8 step 3 (#429): cross-schema 0023->0024 upgrade, rollback and INCOMPATIBLE_STATE on local colima, fixture profile"
+  },
+  "cost": {"method": "step usage tokens x deepseek-flash price from the soak cost page, Beijing peak/off-peak", "settled_calls": 48, "cny_estimate": 0.7262, "unsettled_calls_not_costed": 2, "balance_or_console": "not used", "postmortem_model_use": "unverified"},
+  "not_proven": ["production", "soak", "real-human handoff and register_remediation", "postmortem human review / knowledge entry", "other kill breakpoints on this host", "restart policy recovering a killed worker", "cross-schema version change on this host", "INCOMPATIBLE_STATE on this host", "LangSmith trace", "cost by balance delta"],
+  "raw_records": "outside the repo: ~/.cache/opspilot-f9-steps-2-4-2026-11-10/raw/ (host /root/f9-steps-2-4/)",
+  "recorded_at": "2026-11-10T10:30:00Z"
+}
