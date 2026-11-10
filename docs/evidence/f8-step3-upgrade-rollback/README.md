@@ -82,5 +82,17 @@ OLD、`04eec52d`、NEW 三者的 `versions` 元组相同（prompt `bef70649a3a8`
 
 ## trace 与费用
 
-- trace：无。#428（outbox PR-2，LangSmith 投递）未合并，compose 没有 `OPSPILOT_TRACE`。合并后补一段带 trace 的演练，或说明不补的理由（跟进见 #429）。
-- 费用：本次演练共 8 个真实 Run，约 22 次已提交的模型轮次（7 个 Run 各 3 轮，被拦的 Run 1 轮）。其中 2 个 Run（`b2966b23`、`230edc28`）只为准备观察会话。Agent 没有观察 DeepSeek 余额（K2），余额对账由 lead 写入简报。
+### trace（2026-11-10 补记）
+
+- 本次 8 个 Run 没有 trace：演练在 2026-11-01，那时 #428（outbox 投递到 LangSmith）还没合并（11-02 由 PR #441 合并），OLD `e0c11f1e`、NEW `a285cfc5`、INCOMPAT 三个构建都没有产品模式投递（只有 lab 直发的 `OPSPILOT_TRACE=lab`），compose 没有设 `OPSPILOT_TRACE`，即按默认 `off` 运行，所以不存在可附的 LangSmith 链接。0024 的触发器照样写了 outbox 行，但从未投递：回滚时 downgrade 删掉了 `pending=16` 行（见上表）。
+- #441 合并后不补带 trace 的演练，理由：
+  1. 回滚段在设计上无法完整 trace：旧版 head 是 0023，没有 outbox 表与投递代码；回滚时 downgrade 按 Q18 删掉 outbox 表，未投递的 span 照合同丢弃。补跑只能多出升级段和不兼容段在新版一侧的部分 span，回滚段一侧仍然是空的。
+  2. 「Run 跨 worker 重启续跑时 trace 还能投到」已由 #428 真实证据证明：故障②在投递中途 SIGKILL worker，Run `7da57ca3` 在租约到期后由新 worker 续跑到 `waiting_human`，outbox 行重领重投，LangSmith 上该 span 只有一条（[243-trace-outbox](../243-trace-outbox/README.md)）。按事故与版本在 LangSmith 筛选也在那里通过。
+  3. 本步的判定项（在途形状、只增不减、不兼容拒绝）都由 PG 快照与 Run 事件确定性判定，trace 不参与判定。
+- 72h soak 同样不开 trace（soak 记录 S-R18：控制侧不放 LangSmith key）。
+
+### 费用（2026-11-10 补记）
+
+主数取 token×单价，见 [cost-primary.json](cost-primary.json)：从保留的 `opspilot-393` PG 卷只读查询这 8 个 Run 的 `opspilot_steps.usage`，22 次已结算调用（缓存命中 44544、未命中 9097、输出 15823 token），单价取 DeepSeek 官方价格页（`deepseek-flash`，2026-11-07 读取，假定 11-01 相同，未核对）。窗口是北京时间周日 23:35 到周一 01:25，全部闲时：**CNY 0.0733**。另有 3 次调用在 worker 被 SIGKILL 时还在进行（形状①两次、不兼容段一次，预留停在 `reserved`），没有用量记录，供应商是否计费未知；按本次最贵一步的 3 倍估上限 CNY 0.0331，合计上限 **CNY 0.1064**。
+
+不用余额差：DeepSeek 余额是账户级，同账户其他 key 也在消耗（用户 2026-11-06），差额代表不了本次演练；不用控制台：只按天、按账户汇总（用户 2026-11-09）。口径与 [72h soak 费用](../m3-soak-2026-11-07/README.md#费用) 相同。2 个准备观察会话的 Run（`b2966b23`、`230edc28`）计入。

@@ -223,4 +223,4 @@ Compose 抽检（F8L-Q3/O8，2026-11-02 00:00–00:03Z，持 `~/.agent/locks/kin
 - 第 1 实施步骤：PR-1 #413（PR #418）与 PR-2 #414（PR #421）均已合并。
 - 结构化日志：合同 r2 + r2.1 已裁决；2026-11-01 用户要求提高并发后提前开工（原排 #428 合并后），实现在 `feature/F8-386-structured-logs`（见「结构化日志实现」）；Compose 抽检已做（2026-11-02，全部行为 JSON、无凭据与 provider 文本）；独立验收测试 31 项通过，待独立审查。
 - #243 outbox：合同 r3 已裁决；#427（PR-1 写入侧）已合并 `04eec52d`；#428（PR-2 投递侧）实现在 `feature/F8-428-outbox-delivery`（worktree `~/dev/AI/poa-428-impl`），真实证据见 [243-trace-outbox](../evidence/243-trace-outbox/README.md)。
-- 第 3 步升级回滚演练：合同 r3 已裁决；#429，等 #427 合并（trace 证据等 #428）。
+- 第 3 步升级回滚演练：已合并（PR #439）；trace 说明与费用 2026-11-10 补在证据目录。四步逐步核对见 [F8 逐步核对](2026-11-10-f8-verification.md)。
