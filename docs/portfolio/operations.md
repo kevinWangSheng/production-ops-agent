@@ -30,7 +30,7 @@ Self-alerts: the lab ships two Prometheus rules about OpsPilot itself, `OpsPilot
 ## Upgrade and rollback
 
 - Upgrade: `OPSPILOT_IMAGE=ghcr.io/kevinwangsheng/opspilot@sha256:<digest> deploy/compose/install.sh upgrade` (pulled images must be pinned by digest), or `git pull && deploy/compose/install.sh upgrade` to rebuild from the checkout. The installer stops all runtimes, migrates, checks the logins and starts them again; no rolling upgrade.
-- Rollback: the steps in [UPGRADE.md](../../deploy/compose/UPGRADE.md#rolling-back). When both versions have the same schema head, the schema-downgrade step refuses with exit code 1 and changes nothing; skip it ([#534](https://github.com/kevinWangSheng/production-ops-agent/issues/534)).
+- Rollback: the steps in [UPGRADE.md](../../deploy/compose/UPGRADE.md#rolling-back). When both versions have the same schema head, skip the schema-downgrade step, as UPGRADE.md now says (run anyway, it exits 1 and changes nothing). Roll back to a published digest; a locally rebuilt `opspilot:local` is not a pinned target.
 - In the lab, after every `upgrade` run `python3 scripts/kind_lab.py connect-control --project opspilot` again to rejoin the runtimes to the lab network.
 - Evidence: in-flight work survived image upgrade, rollback and re-upgrade on the clean host ([f9-steps-2-4](../evidence/f9-steps-2-4-2026-11-10/README.md) step 4, same schema head on both sides); a cross-schema upgrade and rollback `0023 → 0024` on a local VM ([f8-step3-upgrade-rollback](../evidence/f8-step3-upgrade-rollback/README.md)).
 
