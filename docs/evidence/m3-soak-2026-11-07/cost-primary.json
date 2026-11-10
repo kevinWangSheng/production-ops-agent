@@ -1,0 +1,11 @@
+{
+  "scope": "Runs of incidents created 2026-11-07T01:05:00Z..2026-11-10T01:05:19Z (excludes pre-T0 rehearsal Runs); opspilot_steps with numeric usage",
+  "price_source": "https://api-docs.deepseek.com/zh-cn/quick_start/pricing (deepseek-flash; page carries no date), read 2026-11-07",
+  "peak_rule": "Beijing time Mon-Fri 09:00-12:00 and 14:00-18:00 peak (Chinese public holidays off-peak; none in window); 11-07 and 11-08 Beijing are weekend, fully off-peak",
+  "rates_cny_per_mtok": {"offpeak": {"cache_hit": 0.02, "cache_miss": 1, "output": 4}, "peak": {"cache_hit": 0.04, "cache_miss": 2, "output": 8}},
+  "offpeak": {"steps": 239, "cache_hit": 8542336, "cache_miss": 1463788, "output": 541899, "cny": 3.8022},
+  "peak": {"steps": 28, "cache_hit": 1102848, "cache_miss": 99113, "output": 51873, "cny": 0.6573},
+  "total_cny": 4.4595,
+  "upper_bound_summary_json_cny": 27.166346,
+  "cross_check": "per-key usage read by the user in the DeepSeek console; account balance is shared with other keys and not used"
+}
