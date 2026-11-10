@@ -53,7 +53,7 @@ A3 在 ep12 期间切断模型出口 20 min。ep12 的 Run `2c1120e2` 第一次�
 - 主数：`cost-primary.json`，范围为 T0 之后创建的事故的 Run（不含彩排）。按每一步的 `usage` 分别计缓存命中、未命中与输出 token，并按调用时刻换算北京时间划分高峰（周一至周五 09:00–12:00、14:00–18:00）与闲时；11-07、11-08 是北京时间周末，全天闲时，只有 11-09（周一）有高峰。单价取 DeepSeek 官方价格页（`https://api-docs.deepseek.com/zh-cn/quick_start/pricing`，`deepseek-flash`，页面无日期，2026-11-07 读取）。闲时 239 步 CNY 3.80，高峰 28 步 CNY 0.66，合计 **CNY 4.46**。
 - `summary.json` 的 `token_cost_cny = 27.17` 是按冻结计划的单一价格（高峰缓存未命中 2/8 CNY 每百万 token）算的上限。
 - 对照：用户在 DeepSeek 控制台读取本 soak 专用 key 的用量——**待用户读取**。
-- 账户余额不用于费用：同一账户下其他 key 也在消耗，余额差不能代表本 soak。
+- 账户余额不用于费用：同一账户下其他 key 也在消耗，余额差不能代表本 soak。原 Q4 裁决定的「余额差为主数」因此由用户 2026-11-06 改为本节口径（见 soak 记录 Q4 修订），`summary.json` 的 `balance_delta_cny` 留空。控制台对照尚未读取，费用一项在读取前只有主数。
 - 租用主机费用以供应商账单为准，未计入 `summary.json`。
 
 ## 偏差
