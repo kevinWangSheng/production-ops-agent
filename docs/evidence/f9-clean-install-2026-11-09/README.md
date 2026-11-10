@@ -2,7 +2,8 @@
 
 类别：集成运行（租机，真实 OpenTelemetry Demo lab，真实 DeepSeek 模型，`otel-demo` 工具档）。不是生产证明，不是 soak。冻结摘要见 [summary.json](summary.json)。
 
-- 结论：**通过**。主机刚在控制台 Reinstall，从 `git clone` 开始，按文档跑 `sudo scripts/kind_lab/install_linux.sh`（lab）和 `deploy/compose/install.sh install` / `upgrade`（控制侧），退出码都是 0。三个运行时 `/readyz` 200，lab 流量正常，lab Prometheus 抓到三个 OpsPilot 目标。注入一次 `paymentFailure` 后，告警经 Alertmanager webhook 送进工作台，开出 incident 和 Run，Run `completed`，报告 `supported`，在工作台可见。
+- 结论：**部分通过**。主机刚在控制台 Reinstall，从 `git clone` 开始，按文档跑 `sudo scripts/kind_lab/install_linux.sh`（lab）和 `deploy/compose/install.sh install` / `upgrade`（控制侧），退出码都是 0。三个运行时 `/readyz` 200，lab 流量正常，lab Prometheus 抓到三个 OpsPilot 目标。注入一次 `paymentFailure` 后，告警经 Alertmanager webhook 送进工作台，开出 incident 和 Run，Run `completed`，报告 `supported`，在工作台可见。
+- 不算完整通过的原因：在 `8de996d9` 的文档下，接上 Agent 还要 3 处文档没写的步骤（换工作台端口、对齐 webhook token、填 `otel-demo` 接线值），外加文档没说明的非 root 用户准备。本 PR 在 `docs/development.md` 补了单机接法，用户面向的 README 在 #531。要算 F9 第 1 步通过，需要在补好文档之后，从干净主机按文档原样再跑一次，不再需要文档外的步骤。
 - 有 4 处文档与实际不符，记在下面「文档与实际」，都做了最小绕过。第 1、2、4 条已在 `docs/development.md` 的 Linux 小节补了一条单机接法。
 - 从第一条命令到 Agent 就绪约 6 分钟，到 Run 完成约 16 分钟。
 

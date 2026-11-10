@@ -1,7 +1,8 @@
 {
   "feature": "F9",
   "step": 1,
-  "verdict": "pass",
+  "verdict": "partial",
+  "verdict_reason": "both scripts exit 0 and one real Run completed, but connecting the Agent needed steps the docs at this commit did not contain (port, webhook token, otel-demo wiring, non-root user); pass requires a clean rerun on the updated docs",
   "host": {
     "name": "opspilot-f9-1",
     "provider": "vultr shared vCPU",
