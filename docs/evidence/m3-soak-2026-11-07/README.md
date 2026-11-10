@@ -54,7 +54,7 @@ A3 在 ep12 期间切断模型出口 20 min。ep12 的 Run `2c1120e2` 第一次�
 - `summary.json` 的 `token_cost_cny = 27.17` 是按冻结计划的单一价格（高峰缓存未命中 2/8 CNY 每百万 token）算的上限。
 - 控制台对照未做：用户 2026-11-09 告知 DeepSeek 控制台只按天、按账户汇总，给不出本 key 在 soak 窗口内的金额或 token；总管据此不做控制台对照。费用只有上面的主数（CNY 4.46）和下面的上限。
 - 账户余额不用于费用：同一账户下其他 key 也在消耗，余额差不能代表本 soak。原 Q4 裁决定的是「余额差为主数」：用户 2026-11-06 告知余额是账户级、由其他 key 的实验共用，且本 key 在控制台的用量不到 CNY 1；总管据此改为本节口径（见 soak 记录 Q4 修订），`summary.json` 的 `balance_delta_cny` 留空。控制台对照见上一条，不做。
-- 租用主机费用以供应商账单为准，未计入 `summary.json`。
+- 租用主机：按 Vultr **牌价**估算，不是账单（账单为准，`billing_is_authoritative` 仍为 true）。机型 `vhp-8c-16gb`（High Performance 共享 vCPU，8 vCPU / 16 GB / 350 GB NVMe，lax；实测 AMD EPYC-Genoa），牌价取 Vultr 官方公开 API `https://api.vultr.com/v2/plans`（2026-11-10 读取；定价页 `https://www.vultr.com/pricing/` 对脚本返回 403）：`-amd` 与 `-intel` 两个变体都是 $0.132/h、月封顶 $96，lax 无地区加价。soak 窗口 259218 s = 72.005 h × $0.132 = **约 $9.50**，写入 `summary.json` `cost.rental`。背景：同一台机 2026-11-04 约 13:45–13:52Z 创建，先做 F9 取证与 F1 判分再跑 soak；到 soak 结束（11-10 01:05Z）已租约 131 h，牌价约 $17.3；之后是否已 destroy 未确认。控制台汇总曾显示 $0.14/h，与牌价不同的原因未确认。
 
 ## 偏差
 

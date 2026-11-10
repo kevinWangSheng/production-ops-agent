@@ -186,6 +186,8 @@ Docker 宿主 daemon 的 json-file 轮转配置；`web/service.py:1579,1659` 的
 | OB-Q4 / Q17 | F8 第 1 步「成本按事故和版本关联」口径 | (a) 发 token 数 + `ls_provider=deepseek` + `ls_model_name`；LangSmith 工作区配 DeepSeek 价格条目由平台估算美元成本，按 incident/version 元数据筛选；证据写明「估算，权威为余额差」，并对一轮估算总额与余额差对比一次 | F8 第 1 步判定口径 |
 | OB-Q5 / Q18 | 迁移与 downgrade | (a) 新迁移 0024，downgrade 不拒绝：先按 pending/delivered/dropped 统计行数并 `RAISE NOTICE`（只有计数），再删触发器与函数、撤授权、删表；有未导出行也照删，业务表一行不动。拆 PR-1（写入侧，带 0024，不出境）与 PR-2（投递出境） | 回滚路径；F8 第 3 步两个版本（F8S3-Q1） |
 
+Q17 修订（用户 2026-11-10 裁决）：证据中「对一轮估算总额与余额差对比一次」改为：对同一 Run 把 LangSmith 估算与 OpsPilot 自记的 token 用量（`opspilot_steps.usage`）× DeepSeek 官方单价对比一次。理由：DeepSeek 余额是账户级、由其他 key 共用，控制台只按天和账户汇总。已做一次：Run `2e4ef59a`（[f8-step1-joined-2026-11-10](../evidence/f8-step1-joined-2026-11-10/README.md)，北京时间闲时）LangSmith 估算 $0.00482625；token×单价 CNY 0.02879，按 6.6760 CNY/USD（美联储 H.10 2026-11-06 中午买入价，11-09 发布，2026-11-10 读取 `https://www.federalreserve.gov/releases/h10/current/`）折 $0.00431；LangSmith 高 11.9%（差 $0.00051）。LangSmith 用的是平台内置条目 `DeepSeek V4.1 Flash`（scope `BUILTIN`，匹配 `^deepseek\-flash$`，2026-11-10 用 `GET /api/v1/model-price-map` 读取），工作区没有自建 DeepSeek 条目：输入 $0.15、输出 $0.60、缓存读 $0.003 每百万 token。4803×0.15 + 6843×0.60（每百万）= $0.00482625，与估算逐位相同；差额来自缓存命中：outbox 只发 prompt 总数，3456 个缓存命中 token 被按未命中价计（约 $0.00051）。条目不分峰谷，北京时间高峰时 LangSmith 会偏低。
+
 固定码形状（预审 :45 OB-Q1 (a) 原文节选，字节照抄）：
 
 ```text
