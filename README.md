@@ -211,3 +211,7 @@ Upgrade order, image pinning (`OPSPILOT_IMAGE=<name>@sha256:<digest>`) and targe
 6. [ROADMAP.md](ROADMAP.md) — status table and work order (Chinese).
 7. [Documentation guide](docs/README.md) and [development guide](docs/development.md) — sources of truth, running from source, tests (Chinese).
 8. [M1 end-to-end demo](docs/demo/m1-end-to-end.md) — alert to investigation, recovery and postmortem on the kind lab.
+
+## License
+
+OpsPilot is released under the [MIT License](LICENSE). Third-party material in the repository keeps its own license: the vendored DeepSeek tokenizer (MIT, `opspilot/tools/tokenizer/LICENSE`) and the HolmesGPT text excerpts (Apache-2.0, `third_party/holmesgpt/LICENSE`); see [upstream attribution](docs/portfolio/upstream-attribution.md) for what is copied and where.
