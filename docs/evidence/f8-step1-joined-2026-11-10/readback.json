@@ -1,0 +1,112 @@
+{
+  "content_scan": {
+    "api_key_literal": 0,
+    "authorization": 0,
+    "bearer ": 0,
+    "gen_ai.completion": 0,
+    "gen_ai.prompt": 0,
+    "metadata_keys_outside_allowlist": 0,
+    "promql": 0,
+    "reasoning_content": 0,
+    "runs_with_inputs": 0,
+    "runs_with_outputs": 0,
+    "x-api-key": 0
+  },
+  "cost_note": "LangSmith estimate; the authority is the supplier balance difference (Q17)",
+  "expected": {
+    "otel_trace_ids": [
+      "168352203013d9bd560ba10d740cacd0"
+    ],
+    "outbox_rows": 6,
+    "root_run_id": "00000000-0000-0000-83dd-1f994a25ad49",
+    "trace_key": "00000000-0000-0000-83dd-1f994a25ad49"
+  },
+  "failures": [],
+  "filters": {
+    "by_incident_id": 7,
+    "by_incident_id_and_image_revision": 4
+  },
+  "identity": {
+    "duplicated": 0,
+    "found": 6,
+    "missing": 0,
+    "rows": {
+      "model_step:2e4ef59a-6350-5ca0-9a60-e7048418107b:0": {
+        "derived_run_id": "00000000-0000-0000-1b06-a298592d67bc",
+        "found": true,
+        "same_identity_count": 1
+      },
+      "model_step:2e4ef59a-6350-5ca0-9a60-e7048418107b:1": {
+        "derived_run_id": "00000000-0000-0000-404d-e71e00376248",
+        "found": true,
+        "same_identity_count": 1
+      },
+      "model_step:2e4ef59a-6350-5ca0-9a60-e7048418107b:2": {
+        "derived_run_id": "00000000-0000-0000-9289-7ea765226dc4",
+        "found": true,
+        "same_identity_count": 1
+      },
+      "run_state:2e4ef59a-6350-5ca0-9a60-e7048418107b:1": {
+        "derived_run_id": "00000000-0000-0000-2b77-b3a7d3dab0aa",
+        "found": true,
+        "same_identity_count": 1
+      },
+      "run_state:2e4ef59a-6350-5ca0-9a60-e7048418107b:2": {
+        "derived_run_id": "00000000-0000-0000-e724-5392d37d6524",
+        "found": true,
+        "same_identity_count": 1
+      },
+      "tool_result:2e4ef59a-6350-5ca0-9a60-e7048418107b:0:call_00_3WbRyoWTpkhmHbQ41wuK5606": {
+        "derived_run_id": "00000000-0000-0000-22ad-e8944fb72bcc",
+        "found": true,
+        "same_identity_count": 1
+      }
+    }
+  },
+  "incident_id": "6d857d18-3003-5b62-b82d-f02cea7abbe5",
+  "project": "opspilot-lab-428",
+  "root": {
+    "error": null,
+    "found": true,
+    "link": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/1a1a92bb-976f-4dd7-8a68-283c492b3b61/r/00000000-0000-0000-83dd-1f994a25ad49?poll=true",
+    "name": "opspilot.run",
+    "status": "success",
+    "total_cost_estimate": "0.00482625",
+    "total_tokens": 11646
+  },
+  "run_id": "2e4ef59a-6350-5ca0-9a60-e7048418107b",
+  "trace": {
+    "llm_tokens": {
+      "completion_tokens": 6843,
+      "prompt_tokens": 4803,
+      "total_tokens": 11646
+    },
+    "ls_model_name": {
+      "deepseek-flash": 2
+    },
+    "ls_provider": {
+      "deepseek": 3
+    },
+    "names": {
+      "opspilot.model_step": 3,
+      "opspilot.run": 1,
+      "opspilot.run_state.running": 1,
+      "opspilot.run_state.waiting_human": 1,
+      "opspilot.tool.metrics_range_query": 1
+    },
+    "run_state": {
+      "running": 1,
+      "waiting_human": 2
+    },
+    "run_types": {
+      "chain": 3,
+      "llm": 3,
+      "tool": 1
+    },
+    "runs": 7,
+    "tool_reason": {},
+    "tool_status_class": {
+      "ok": 1
+    }
+  }
+}

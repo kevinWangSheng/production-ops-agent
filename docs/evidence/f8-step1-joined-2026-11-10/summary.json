@@ -1,0 +1,135 @@
+{
+ "category": "integration run (local colima m1-kind VM, Compose project opspilot-393, fixture tool profile, real DeepSeek, real LangSmith SaaS project opspilot-lab-428); not production proof, not a soak",
+ "purpose": "feature_list.json F8 step 1: one bounded real Run with every surface recorded side by side for the same incident_id and image revision",
+ "build": {
+  "head": "9b208cd13cc6c28e97ab9c0d1cb074a13dd3cf34",
+  "version": "0.1.1",
+  "image_id": "sha256:ad770d789dab14c5565888c4a6052ef40c507fc63cdab434882e7912b23b2f73",
+  "install": "install.sh upgrade, OPSPILOT_TRACE=outbox, OPSPILOT_START_AGENT=1, compose.lab.yaml health ports",
+  "schema": "0024_trace_outbox (unchanged by the upgrade)"
+ },
+ "window_utc": {
+  "upgrade_start": "2026-11-10T13:41:40Z",
+  "runtimes_ready": "2026-11-10T13:42:39Z",
+  "alert": "2026-11-10T13:42:51Z",
+  "run_stopped": "2026-11-10T13:43:32Z",
+  "outbox_drained": "2026-11-10T13:43:35Z (pending 0 in the next 2 s sample)",
+  "runtimes_stopped": "2026-11-10T13:46:48Z"
+ },
+ "host": {
+  "swap_before": "used 18451.50M of 19456.00M (free 1004.50M)",
+  "note": "no latency or recovery observation in this run, so host memory pressure does not affect any judgment here"
+ },
+ "incident_id": "6d857d18-3003-5b62-b82d-f02cea7abbe5",
+ "run_id": "2e4ef59a-6350-5ca0-9a60-e7048418107b",
+ "target": "checkout-prod (registered fixture target; fresh alert fingerprint, so the two open checkout incidents from 2026-10-31/11-01 were not candidates)",
+ "outcome": {
+  "run_state": "waiting_human",
+  "handoff_reasons": [
+   "INCOMPLETE_INVESTIGATION"
+  ],
+  "model_calls": 2,
+  "budget": {
+   "limit": 100,
+   "spent": 2,
+   "reserved": 0,
+   "unknown": 0
+  },
+  "tool_operations_used": 1
+ },
+ "surfaces": {
+  "health": {
+   "join": "version",
+   "value": "healthz/readyz 200 on web, worker, observer before and after the Run; build_info revision on all three = HEAD"
+  },
+  "trace": {
+   "join": "incident+version",
+   "value": "LangSmith: by incident_id 7 runs, by incident_id+image_revision 4 runs; 6/6 outbox rows found, 0 duplicated, 0 missing; root opspilot.run found",
+   "link": "https://smith.langchain.com/o/c7727675-dcae-4751-8582-7ecaae39a80f/projects/p/1a1a92bb-976f-4dd7-8a68-283c492b3b61/r/00000000-0000-0000-83dd-1f994a25ad49?poll=true"
+  },
+  "metrics": {
+   "join": "version + time window",
+   "value": "worker opspilot_model_calls_total{category=ok} 0->1 (13:42:55Z) ->2 (13:43:34Z); in_flight_attempts 1 from 13:42:53Z to 13:43:34Z; trace_outbox_pending peak 2 at 13:42:59Z, 0 at 13:43:01Z; dropped_total all reasons 0; trace_export_enabled{reason=ENABLED} 1"
+  },
+  "structured_logs": {
+   "join": "incident+version",
+   "value": "worker JSON line 13:43:32.659Z: kv.incident=6d857d18-..., status=handed_off, reason=INCOMPLETE_INVESTIGATION, version 0.1.1, revision=HEAD; every log line of the three runtimes in the window carries revision=HEAD; the web intake access line carries no incident"
+  },
+  "queue_depth": {
+   "join": "version + time window",
+   "value": "opspilot_queue_depth{state=queued} 0 and {state=running_lapsed} 0 in every 2 s sample; the Run was queued for 36 ms (intake 13:42:52.010Z, claim 13:42:52.046Z), below the sampling interval"
+  },
+  "provider_status": {
+   "join": "version + time window (metrics); incident via trace ls_provider/ls_model_name",
+   "value": "last_model_call_category{category=ok} 1, consecutive_failures 0; LangSmith ls_provider deepseek x3, ls_model_name deepseek-flash x2"
+  },
+  "tool_errors": {
+   "join": "incident+version",
+   "value": "one tool call, tool_status_class ok x1, tool_reason {} (no error in this Run); PG tool_committed status ok, adopted. No tool error occurred: the fixture has one valid expression and the model used it. The error-code path (TARGET_NOT_REGISTERED filtered by incident in LangSmith) is in docs/evidence/243-trace-outbox on a different Run"
+  },
+  "stuck_runs": {
+   "join": "version + time window (metric); incident via PG",
+   "value": "running_lapsed 0 throughout; PG: this Run went running->waiting_human, lease cleared, no running row with an expired lease for this incident"
+  },
+  "tokens": {
+   "join": "incident+version",
+   "value": {
+    "langsmith": {
+     "completion_tokens": 6843,
+     "prompt_tokens": 4803,
+     "total_tokens": 11646
+    },
+    "pg_steps": {
+     "prompt": 4803,
+     "completion": 6843,
+     "reasoning": 5326,
+     "cache_hit": 3456,
+     "cache_miss": 1347
+    },
+    "match": true
+   }
+  },
+  "cost": {
+   "join": "incident+version",
+   "value": {
+    "langsmith_estimate_usd": "0.00482625",
+    "token_x_price_cny": 0.0288,
+    "rates_cny_per_mtok_offpeak": {
+     "cache_hit": 0.02,
+     "cache_miss": 1,
+     "output": 4
+    },
+    "price_source": "https://api-docs.deepseek.com/zh-cn/quick_start/pricing (deepseek-flash), read 2026-11-10; same rates as the soak's 2026-11-07 read",
+    "peak_rule": "Beijing Mon-Fri 09:00-12:00, 14:00-18:00 peak; the Run was Beijing Tue 21:42-21:43, off-peak",
+    "not_used": "account balance difference and DeepSeek console (account-level, shared by other keys)"
+   }
+  }
+ },
+ "readback": {
+  "script": "scripts/outbox_trace_check.py",
+  "exit": 0,
+  "failures": [],
+  "content_scan": {
+   "api_key_literal": 0,
+   "authorization": 0,
+   "bearer ": 0,
+   "gen_ai.completion": 0,
+   "gen_ai.prompt": 0,
+   "metadata_keys_outside_allowlist": 0,
+   "promql": 0,
+   "reasoning_content": 0,
+   "runs_with_inputs": 0,
+   "runs_with_outputs": 0,
+   "x-api-key": 0
+  }
+ },
+ "files": {
+  "rows.json": "outbox rows (no payload)",
+  "payloads.json": "the 6 outbox payloads (allowlisted keys only)",
+  "readback.json": "LangSmith readback",
+  "steps-usage.json": "opspilot_steps usage per step (no content)"
+ },
+ "raw_outside_repo": "~/.cache/opspilot-f8s1-run/ (timeline.log, upgrade.out, metrics-samples.txt, metrics-final-*.txt, logs-*.log)",
+ "teardown": "web, worker, observer stopped; postgres (running before this task) left running with its volume and secrets dir; target_identities.json unchanged (sha256 1714ab7b...); opspilot:local now the 9b208cd1 build",
+ "passes": "not flipped"
+}

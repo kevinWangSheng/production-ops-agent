@@ -1,0 +1,44 @@
+[
+    {
+        "kind": "model_step",
+        "idempotency_key": "model_step:2e4ef59a-6350-5ca0-9a60-e7048418107b:0",
+        "run_id": "2e4ef59a-6350-5ca0-9a60-e7048418107b",
+        "state": "delivered",
+        "attempts": 1
+    },
+    {
+        "kind": "model_step",
+        "idempotency_key": "model_step:2e4ef59a-6350-5ca0-9a60-e7048418107b:1",
+        "run_id": "2e4ef59a-6350-5ca0-9a60-e7048418107b",
+        "state": "delivered",
+        "attempts": 1
+    },
+    {
+        "kind": "model_step",
+        "idempotency_key": "model_step:2e4ef59a-6350-5ca0-9a60-e7048418107b:2",
+        "run_id": "2e4ef59a-6350-5ca0-9a60-e7048418107b",
+        "state": "delivered",
+        "attempts": 1
+    },
+    {
+        "kind": "run_state",
+        "idempotency_key": "run_state:2e4ef59a-6350-5ca0-9a60-e7048418107b:1",
+        "run_id": "2e4ef59a-6350-5ca0-9a60-e7048418107b",
+        "state": "delivered",
+        "attempts": 1
+    },
+    {
+        "kind": "run_state",
+        "idempotency_key": "run_state:2e4ef59a-6350-5ca0-9a60-e7048418107b:2",
+        "run_id": "2e4ef59a-6350-5ca0-9a60-e7048418107b",
+        "state": "delivered",
+        "attempts": 1
+    },
+    {
+        "kind": "tool_result",
+        "idempotency_key": "tool_result:2e4ef59a-6350-5ca0-9a60-e7048418107b:0:call_00_3WbRyoWTpkhmHbQ41wuK5606",
+        "run_id": "2e4ef59a-6350-5ca0-9a60-e7048418107b",
+        "state": "delivered",
+        "attempts": 1
+    }
+]
