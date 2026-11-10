@@ -182,8 +182,10 @@ def test_installer_accepts_a_lab_user() -> None:
 
 def test_installer_checks_the_lab_user_before_installing() -> None:
     text = INSTALLER.read_text()
-    check = text.index('sudo -u "$LAB_USER" test -w "$REPO_ROOT"')
+    check = text.index('runuser -u "$LAB_USER" -- test -w "$REPO_ROOT"')
     assert check < text.index("apt-get update")
+    # codex P1 (#532): a root-only minimal image may have no sudo at all
+    assert "sudo -u" not in text
     assert 'LAB_USER="${SUDO_USER:-root}"' in text
 
 

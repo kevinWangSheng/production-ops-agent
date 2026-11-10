@@ -69,7 +69,8 @@ die() { printf 'install_linux: %s\n' "$*" >&2; exit 1; }
     die "Ubuntu 24.04 (noble) only, got ${PRETTY_NAME:-unknown}"
 if [ "$LAB_USER" != root ]; then
     id -u "$LAB_USER" >/dev/null 2>&1 || die "no such user: $LAB_USER"
-    sudo -u "$LAB_USER" test -w "$REPO_ROOT" ||
+    # runuser (util-linux) rather than sudo: a minimal image may lack sudo
+    runuser -u "$LAB_USER" -- test -w "$REPO_ROOT" ||
         die "$LAB_USER cannot write $REPO_ROOT; clone the repository as $LAB_USER"
 fi
 
@@ -162,4 +163,5 @@ if [ "$LAB_USER" = "root" ]; then
 fi
 usermod -aG docker "$LAB_USER"
 log "python3 scripts/kind_lab.py up (as $LAB_USER, docker group)"
-exec sudo -u "$LAB_USER" -H sg docker -c "python3 scripts/kind_lab.py up"
+LAB_HOME="$(getent passwd "$LAB_USER" | cut -d: -f6)"
+exec runuser -u "$LAB_USER" -- env HOME="$LAB_HOME" sg docker -c "python3 scripts/kind_lab.py up"
