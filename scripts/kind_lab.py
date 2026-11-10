@@ -506,6 +506,154 @@ def cmd_connect_control(args: argparse.Namespace) -> int:
     return 0 if ok else 1
 
 
+#: Single-host wiring (F9 step 1, #531): lab and control side on one Linux
+#: host. Inside the ``kind`` network the control containers reach the lab's
+#: readonly Prometheus proxy and Jaeger on the kind node's NodePorts.
+NODE_PROMETHEUS_URL = f"http://{NODE_CONTAINER}:30090"
+NODE_JAEGER_URL = f"http://{NODE_CONTAINER}:30686/jaeger/ui"
+#: The workbench host port: the lab frontend holds FRONTEND_PORT, and every
+#: lab instance's ports are PORT_STEP apart, so +10 collides with none.
+CONTROL_WEB_PORT = FRONTEND_PORT + 10
+#: The otel-demo profile's one target (``opspilot.tools.otel_demo``) and the
+#: registry entry the checkout alert rule's labels resolve to (as
+#: ``scripts/eval_live_inject.ALERT_TARGET``).
+OTEL_TARGET_ID = "m0-otel-20260909"
+OTEL_TARGET = {
+    "integration_id": OTEL_TARGET_ID,
+    "cluster_uid": CLUSTER,
+    "namespace": NAMESPACE,
+    "workload": "checkout",
+    "health_profile_id": "otel-demo-checkout",
+    "match": {
+        "version": 1,
+        "labels": {"namespace": NAMESPACE, "service": "checkout"},
+    },
+}
+
+
+def control_secrets_dir(configured: str | None) -> Path:
+    """The installer's default secrets directory (``deploy/compose/install.sh``)."""
+    if configured:
+        path = Path(configured)
+    elif os.environ.get("OPSPILOT_SECRETS_DIR"):
+        path = Path(os.environ["OPSPILOT_SECRETS_DIR"])
+    else:
+        base = os.environ.get("XDG_CONFIG_HOME") or str(Path.home() / ".config")
+        path = Path(base) / "opspilot"
+    path = path.expanduser().absolute()
+    if path.resolve().is_relative_to(ROOT.resolve()):
+        raise SystemExit("the secrets directory must be outside the repository")
+    return path
+
+
+def _active_keys(text: str) -> set[str]:
+    keys = set()
+    for line in text.splitlines():
+        line = line.strip()
+        if line and not line.startswith("#") and "=" in line:
+            keys.add(line.split("=", 1)[0].strip())
+    return keys
+
+
+def _merge_env(path: Path, lines: Mapping[str, str]) -> str:
+    """Append ``KEY=value`` for each key ``path`` has no active line for;
+    an existing line is kept, whatever its value."""
+    current = path.read_text() if path.exists() else ""
+    present = _active_keys(current)
+    missing = {k: v for k, v in lines.items() if k not in present}
+    if not missing:
+        os.chmod(path, 0o600)
+        return "kept"
+    if current and not current.endswith("\n"):
+        current += "\n"
+    _private_write(path, current + "".join(f"{k}={v}\n" for k, v in missing.items()))
+    return "written" if not present & set(lines) else "completed"
+
+
+def cmd_control_secrets(args: argparse.Namespace) -> int:
+    """Prepare the control side's secrets directory for this lab on the same
+    host, before ``install.sh install`` (#531): the lab's Alertmanager token
+    as ``alertmanager_token`` (the installer generates one only when the
+    file is absent), the otel-demo endpoints and the investigator / Observer
+    accounts in ``worker_env`` / ``observer_env``, the lab target in
+    ``target_identities.json`` and, for a first install, ``install.env``
+    with a workbench port clear of the lab frontend. Never prints a value."""
+    secrets_dir = control_secrets_dir(args.secrets_dir)
+    secrets_dir.mkdir(parents=True, exist_ok=True)
+    os.chmod(secrets_dir, 0o700)
+    report: dict[str, str] = {}
+    lab_token = webhook_token(WEBHOOK_TOKEN_FILE)
+    token_file = secrets_dir / "alertmanager_token"
+    if token_file.exists() and token_file.read_text().strip() != lab_token:
+        print(
+            f"{token_file} already holds another token (the installer generated it); "
+            "the workbench accepts only that one. Give the lab the same token: "
+            f"install -m 600 {token_file} {WEBHOOK_TOKEN_FILE} && "
+            "python3 scripts/kind_lab.py up",
+            file=sys.stderr,
+        )
+        return 1
+    report["alertmanager_token"] = "kept" if token_file.exists() else "written"
+    if not token_file.exists():
+        _private_write(token_file, lab_token + "\n")
+    os.chmod(token_file, 0o600)
+    accounts = prometheus_accounts(AUTH_FILE)
+    roles = {
+        "worker_env": (
+            "investigator",
+            {
+                "OPSPILOT_OTEL_PROMETHEUS_URL": NODE_PROMETHEUS_URL,
+                "OPSPILOT_OTEL_JAEGER_URL": NODE_JAEGER_URL,
+            },
+        ),
+        "observer_env": ("observer", {}),
+    }
+    for name, (role, extra) in roles.items():
+        user_var, password_var = ROLE_ENV_VARS[role]
+        lines = {**extra, user_var: role, password_var: accounts[role]}
+        report[name] = _merge_env(secrets_dir / name, lines)
+    targets_file = secrets_dir / "target_identities.json"
+    targets = json.loads(targets_file.read_text()) if targets_file.exists() else {}
+    if not isinstance(targets, dict):
+        raise SystemExit(f"{targets_file} is not a JSON object; refusing")
+    if OTEL_TARGET_ID in targets:
+        report["target_identities.json"] = "kept"
+    else:
+        targets[OTEL_TARGET_ID] = OTEL_TARGET
+        _private_write(targets_file, json.dumps(targets, indent=2) + "\n")
+        report["target_identities.json"] = "written"
+    settings = secrets_dir / "install.env"
+    wanted = {
+        "OPSPILOT_WEB_HOST_PORT": str(CONTROL_WEB_PORT),
+        "OPSPILOT_TOOL_PROFILE": "otel-demo",
+        "OPSPILOT_OBSERVER_PROMETHEUS_URL": NODE_PROMETHEUS_URL,
+    }
+    differing: list[str] = []
+    if settings.exists():
+        report["install.env"] = "kept"
+        saved = dict(
+            line.split("=", 1)
+            for line in settings.read_text().splitlines()
+            if "=" in line
+        )
+        differing = [f"{k}={v}" for k, v in wanted.items() if saved.get(k) != v]
+    else:
+        _private_write(settings, "".join(f"{k}={v}\n" for k, v in wanted.items()))
+        report["install.env"] = "written"
+    print(json.dumps({"secrets_dir": str(secrets_dir), "files": report}))
+    if differing:
+        print(
+            "install.env (an earlier install) has other values; for this lab pass "
+            f"{' '.join(differing)} to the next install.sh run"
+        )
+    print(
+        f"next: add DEEPSEEK_API_KEY=<key> to {secrets_dir}/worker_env, then "
+        "OPSPILOT_START_AGENT=1 deploy/compose/install.sh install && "
+        "python3 scripts/kind_lab.py connect-control --project opspilot"
+    )
+    return 0
+
+
 def kubectl(*args: str) -> list[str]:
     """Always the lab kubeconfig and context; never the user's current one."""
     return [
@@ -1834,6 +1982,15 @@ def main(argv: list[str] | None = None) -> int:
     )
     connect.add_argument("--project", required=True)
     connect.set_defaults(func=cmd_connect_control)
+    control = sub.add_parser(
+        "control-secrets",
+        help="prepare install.sh's secrets for this lab on the same host (#531)",
+    )
+    control.add_argument(
+        "--secrets-dir",
+        help="default $OPSPILOT_SECRETS_DIR, else ${XDG_CONFIG_HOME:-~/.config}/opspilot",
+    )
+    control.set_defaults(func=cmd_control_secrets)
     env_file = sub.add_parser(
         "env-file", help="write a role's Prometheus credential env file (mode 600)"
     )

@@ -32,6 +32,14 @@ The install runs on the control side: one Linux host running PostgreSQL, the web
 
 You need a Linux host with Docker Engine and the Compose v2 plugin, `bash`, `python3` (standard library only, used to hash the generated credentials) and this repository checked out. Run everything as a dedicated **non-root** user that can use Docker; `install.sh` refuses to run as root. macOS with colima works for development only.
 
+On an image that only allows root logins, create that user as root and continue from its login shell; it needs no sudo (to run the pinned lab on the same host, follow [the lab section](#the-opentelemetry-demo-lab-on-the-same-host) instead, which also installs Docker):
+
+```sh
+adduser --disabled-password --gecos "" opspilot
+usermod -aG docker opspilot
+su - opspilot
+```
+
 ### 1. Install
 
 ```sh
@@ -144,6 +152,29 @@ receivers:
 The incident, the Run and its report then appear in the workbench. In the recorded run a synthetic Alertmanager-format alert was posted to this endpoint; the second Run completed and its report was shown in the workbench. That run differed from the steps above only in port 18180, a non-default secrets directory and lab wiring: the Observer container was attached to the kind network to reach the lab's read-only Prometheus proxy.
 
 The `otel-demo` tool profile (`OPSPILOT_TOOL_PROFILE=otel-demo`, plus the `OPSPILOT_OTEL_*` endpoints and credentials in `worker_env`) reads a pinned OpenTelemetry Demo lab instead of the fixture.
+
+### The OpenTelemetry Demo lab on the same host
+
+To try OpsPilot against the pinned lab (a kind cluster running the OpenTelemetry Demo, its Prometheus, Jaeger and an Alertmanager) on one clean Ubuntu 24.04 x86_64 host, run this instead of steps 1-5. As root:
+
+```sh
+adduser --disabled-password --gecos "" opspilot
+su - opspilot -c 'git clone https://github.com/kevinWangSheng/production-ops-agent.git'
+/home/opspilot/production-ops-agent/scripts/kind_lab/install_linux.sh --user opspilot
+su - opspilot
+```
+
+`install_linux.sh` installs pinned Docker Engine, kind, kubectl and helm, adds `opspilot` to the `docker` group and starts the lab as that user (about 5 minutes; it ends with a health report). Then, as `opspilot`:
+
+```sh
+cd production-ops-agent
+python3 scripts/kind_lab.py control-secrets
+${EDITOR:-vi} ~/.config/opspilot/worker_env      # add DEEPSEEK_API_KEY=<your key>
+OPSPILOT_START_AGENT=1 deploy/compose/install.sh install
+python3 scripts/kind_lab.py connect-control --project opspilot
+```
+
+`control-secrets` fills the secrets directory before the first install: the lab's Alertmanager token as `alertmanager_token` (so the workbench accepts the lab's alerts), the lab's Prometheus and Jaeger addresses and read-only accounts in `worker_env` and `observer_env`, the lab target `m0-otel-20260909` in `target_identities.json`, and `install.env` with the `otel-demo` profile, the Observer's Prometheus URL and workbench port `18090` (the lab frontend holds 18080). It never overwrites a value already there and prints no secret; if `install.sh install` already generated its own token, it stops and says how to give the lab that token instead. `connect-control` joins the three runtime containers to the lab's `kind` network; run it again after every `install.sh upgrade`. The workbench is then at `http://127.0.0.1:18090`, and `python3 scripts/kind_lab.py fault inject --experiment-id <id>` makes the lab's checkout alert fire after about 5-7 minutes (`fault restore --experiment-id <id>` undoes it).
 
 ### Installer settings
 

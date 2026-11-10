@@ -4,6 +4,7 @@
 #
 #   sudo scripts/kind_lab/install_linux.sh            # install tools, then kind_lab.py up
 #   sudo scripts/kind_lab/install_linux.sh --no-up    # install tools only
+#   scripts/kind_lab/install_linux.sh --user <name>   # as root: the lab user
 #
 # Supported: Ubuntu 24.04 (noble) on x86_64. Installs pinned versions only:
 # Docker Engine from Docker's apt repository (key checked against a pinned
@@ -13,10 +14,12 @@
 # multi-pod cluster. It does not touch the firewall and opens no port: kind
 # publishes the lab NodePorts on 127.0.0.1 only (scripts/kind_lab/kind-config.yaml).
 #
-# Run as root (sudo). When started through sudo by a regular user, that user
-# joins the docker group and runs ``kind_lab.py up``; lab state goes to the
-# git-ignored tmp/m1-kind-lab/ of this checkout. Re-running is safe: binaries
-# whose checksum already matches are kept, and ``up`` is idempotent.
+# Run as root (sudo). When started through sudo by a regular user, or as root
+# with --user <name> (a root-only image: no sudo-capable user is needed), that
+# user joins the docker group and runs ``kind_lab.py up``; lab state goes to
+# the git-ignored tmp/m1-kind-lab/ of this checkout, which that user must
+# own. Re-running is safe: binaries whose checksum already matches are kept,
+# and ``up`` is idempotent.
 set -euo pipefail
 
 DOCKER_VERSION="5:29.2.1-1~ubuntu.24.04~noble"
@@ -34,17 +37,24 @@ HELM_SHA256="86584a54def73570558f66f5111cc53dfed56689637ae32c1201205d494f54fb"
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 RUN_UP=1
+LAB_USER="${SUDO_USER:-root}"
 
 usage() {
-    sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'
 }
 
-for arg in "$@"; do
-    case "$arg" in
+while [ $# -gt 0 ]; do
+    case "$1" in
         --no-up) RUN_UP=0 ;;
+        --user)
+            [ $# -ge 2 ] || { echo "--user needs a name" >&2; exit 2; }
+            LAB_USER="$2"
+            shift
+            ;;
         -h | --help) usage; exit 0 ;;
-        *) echo "unknown argument: $arg" >&2; usage >&2; exit 2 ;;
+        *) echo "unknown argument: $1" >&2; usage >&2; exit 2 ;;
     esac
+    shift
 done
 
 log() { printf '+ %s\n' "$*"; }
@@ -57,6 +67,12 @@ die() { printf 'install_linux: %s\n' "$*" >&2; exit 1; }
 . /etc/os-release
 [ "${ID:-}" = "ubuntu" ] && [ "${VERSION_CODENAME:-}" = "noble" ] ||
     die "Ubuntu 24.04 (noble) only, got ${PRETTY_NAME:-unknown}"
+if [ "$LAB_USER" != root ]; then
+    id -u "$LAB_USER" >/dev/null 2>&1 || die "no such user: $LAB_USER"
+    # runuser (util-linux) rather than sudo: a minimal image may lack sudo
+    runuser -u "$LAB_USER" -- test -w "$REPO_ROOT" ||
+        die "$LAB_USER cannot write $REPO_ROOT; clone the repository as $LAB_USER"
+fi
 
 export DEBIAN_FRONTEND=noninteractive
 WORK="$(mktemp -d)"
@@ -140,7 +156,6 @@ if [ "$RUN_UP" -eq 0 ]; then
     exit 0
 fi
 
-LAB_USER="${SUDO_USER:-root}"
 cd "$REPO_ROOT"
 if [ "$LAB_USER" = "root" ]; then
     log "python3 scripts/kind_lab.py up (as root)"
@@ -148,4 +163,5 @@ if [ "$LAB_USER" = "root" ]; then
 fi
 usermod -aG docker "$LAB_USER"
 log "python3 scripts/kind_lab.py up (as $LAB_USER, docker group)"
-exec sudo -u "$LAB_USER" -H sg docker -c "python3 scripts/kind_lab.py up"
+LAB_HOME="$(getent passwd "$LAB_USER" | cut -d: -f6)"
+exec runuser -u "$LAB_USER" -- env HOME="$LAB_HOME" sg docker -c "python3 scripts/kind_lab.py up"
