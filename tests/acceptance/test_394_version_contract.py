@@ -82,7 +82,7 @@ def _write_repo(
 def test_pyproject_uv_lock_and_runtime_version_agree() -> None:
     pyproject = tomllib.loads((REPO / "pyproject.toml").read_text())
     version = pyproject["project"]["version"]
-    assert version == "0.1.0"
+    assert version == "0.1.1"
 
     lock = tomllib.loads((REPO / "uv.lock").read_text())
     matches = [
@@ -136,7 +136,7 @@ def _stdlib_python() -> str:
 
 
 @pytest.mark.parametrize(
-    "args", [[], ["--tag", "v0.1.0"]], ids=["no-tag", "matching-tag"]
+    "args", [[], ["--tag", "v0.1.1"]], ids=["no-tag", "matching-tag"]
 )
 def test_check_version_cli_exits_zero_on_the_repository(args: list[str]) -> None:
     assert CHECK_VERSION.is_file(), (
@@ -157,7 +157,7 @@ def test_check_version_cli_exits_one_with_problems_on_stderr() -> None:
         f"missing release checker: {CHECK_VERSION.relative_to(REPO)}"
     )
     bad = subprocess.run(
-        [_stdlib_python(), "-I", str(CHECK_VERSION), "--tag", "v0.1.1"],
+        [_stdlib_python(), "-I", str(CHECK_VERSION), "--tag", "v0.0.0"],
         cwd=REPO,
         capture_output=True,
         text=True,

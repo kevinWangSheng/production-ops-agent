@@ -163,7 +163,7 @@ def test_version_and_revision_callsite_kv_do_not_override_top_level_fields():
     _logs().configure({"OPSPILOT_REVISION": "abc123"}, stream=stream)
     logging.getLogger("opspilot.version").info("version=%s revision=%s", 7, "callsite")
     record = _records(stream.getvalue())[0]
-    assert record["version"] == "0.1.0"
+    assert record["version"] == "0.1.1"
     assert record["revision"] == "abc123"
     assert record["kv"] == {"version": 7, "revision": "callsite"}
 
