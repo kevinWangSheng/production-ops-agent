@@ -212,9 +212,9 @@
   "published": true,
   "rental": {
    "billing_is_authoritative": true,
-   "estimated_usd": null,
-   "hourly_usd": null,
-   "hours": null
+   "estimated_usd": 9.5,
+   "hourly_usd": 0.132,
+   "hours": 72.005
   },
   "sources": [
    "runs.jsonl"
