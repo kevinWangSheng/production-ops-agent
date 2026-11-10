@@ -18,13 +18,13 @@ What it will not do is fixed in [PRODUCT-CONSTRAINTS.md](PRODUCT-CONSTRAINTS.md)
 
 ## Status
 
-Milestone M3 (effect and delivery acceptance) is in progress. This is a portfolio project built to production engineering standards; it is **not production-proven**.
+Milestone M3 (effect and delivery acceptance) is open: most of its evidence is in, and F1, F8 and F9 are not yet marked as passing. This is a portfolio project built to production engineering standards; it has **never run in production**.
 
-- 7 of 11 features pass their acceptance steps in [feature_list.json](feature_list.json) (F2, F3, F6, F7, F11, F12, F13). F1, F8, F9 and F14 are open.
-- Acceptance runs used a local kind cluster running the OpenTelemetry Demo with injected faults, and a real model (DeepSeek). These are integration runs, not production observation.
-- The Compose install below has been run on a local Linux VM, including one real investigation through the installed stack ([evidence](docs/evidence/f9-393-installed-investigation/README.md)). A clean-host install on a fresh Linux server, the published image and the `v0.1.0` tag, a 72-hour soak and a same-conditions comparison with HolmesGPT are still open.
+- 8 of 11 features pass all their acceptance steps in [feature_list.json](feature_list.json) (F2, F3, F6, F7, F11, F12, F13, F14). F1, F8 and F9 are open.
+- Everything was measured in a kind lab running the OpenTelemetry Demo: synthetic load-generator traffic, injected faults, a real model (DeepSeek). That includes a [same-condition comparison with HolmesGPT](docs/results/f1-same-condition-comparison-2026-11.md) (F1 step 5, calibrated judging, is not achieved), a [72-hour lab soak](docs/evidence/m3-soak-2026-11-07/README.md), and an install, full incident flow, worker kill and pinned-image upgrade/rollback on a freshly reinstalled host ([step 1](docs/evidence/f9-clean-install-2026-11-09/README.md), [steps 2–4](docs/evidence/f9-steps-2-4-2026-11-10/README.md), several items only partially passed).
+- Releases are tagged and published to GHCR by the release workflow. The latest is `v0.1.1` (2026-11-10); the soak and the clean-host runs used `v0.1.0`, `ghcr.io/kevinwangsheng/opspilot@sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd`.
 
-Current work order and evidence: [ROADMAP.md](ROADMAP.md).
+For a guided tour, start at the [portfolio walkthrough](docs/portfolio/README.md); what the evidence does not show is in [limitations](docs/portfolio/limitations.md). Work order: [ROADMAP.md](ROADMAP.md).
 
 ## Install with Docker Compose
 
@@ -203,10 +203,11 @@ Upgrade order, image pinning (`OPSPILOT_IMAGE=<name>@sha256:<digest>`) and targe
 
 ## Further reading
 
-1. [PRD.md](PRD.md) and [feature_list.json](feature_list.json) — user capabilities and acceptance steps.
-2. [SPEC.md](SPEC.md) — scope, technology choices, implementation gates (Chinese).
-3. [PRODUCT-CONSTRAINTS.md](PRODUCT-CONSTRAINTS.md) — runtime constraints on product code.
-4. [Scope ADR](docs/adr/0001-readonly-investigation-boundary.md) — why production writes and release gates are excluded.
-5. [ROADMAP.md](ROADMAP.md) — status table and work order (Chinese).
-6. [Documentation guide](docs/README.md) and [development guide](docs/development.md) — sources of truth, running from source, tests (Chinese).
-7. [M1 end-to-end demo](docs/demo/m1-end-to-end.md) — alert to investigation, recovery and postmortem on the kind lab.
+1. [Portfolio walkthrough](docs/portfolio/README.md) — architecture, threat model, operations, upstream attribution, evaluation results and limitations.
+2. [PRD.md](PRD.md) and [feature_list.json](feature_list.json) — user capabilities and acceptance steps.
+3. [SPEC.md](SPEC.md) — scope, technology choices, implementation gates (Chinese).
+4. [PRODUCT-CONSTRAINTS.md](PRODUCT-CONSTRAINTS.md) — runtime constraints on product code.
+5. [Scope ADR](docs/adr/0001-readonly-investigation-boundary.md) — why production writes and release gates are excluded.
+6. [ROADMAP.md](ROADMAP.md) — status table and work order (Chinese).
+7. [Documentation guide](docs/README.md) and [development guide](docs/development.md) — sources of truth, running from source, tests (Chinese).
+8. [M1 end-to-end demo](docs/demo/m1-end-to-end.md) — alert to investigation, recovery and postmortem on the kind lab.

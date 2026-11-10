@@ -18,19 +18,27 @@ OpsPilot 是持续运行的事故与发布后调查 Agent。它只读取遥测�
 
 ## 状态
 
-当前在 M3（效果与交付验收）阶段。这是按生产工程标准做的作品集项目，**没有经过生产验证**。
+M3（效果与交付验收）仍在进行：大部分证据已就位，F1、F8、F9 尚未标为通过。这是按生产工程标准做的作品集项目，**从未在生产环境运行过**。
 
-- [feature_list.json](feature_list.json) 中 11 个功能有 7 个通过全部验收步骤（F2、F3、F6、F7、F11、F12、F13）；F1、F8、F9、F14 未完成。
-- 验收运行使用本机 kind 集群上的 OpenTelemetry Demo 加故障注入，以及真实模型（DeepSeek）。这些是集成运行，不是生产观察。
-- 下面的 Compose 安装已在本机 Linux VM 上跑通，包括经安装后的栈完成一次真实调查（[证据](docs/evidence/f9-393-installed-investigation/README.md)）。全新 Linux 主机上的干净安装、镜像发布与 `v0.1.0` tag、72 小时 soak、与 HolmesGPT 的同条件对比都还没做。
+- [feature_list.json](feature_list.json) 中 11 个功能有 8 个通过全部验收步骤（F2、F3、F6、F7、F11、F12、F13、F14）；F1、F8、F9 未完成。
+- 所有测量都在运行 OpenTelemetry Demo 的 kind 实验环境里完成：流量是 load-generator 合成的，故障是注入的，模型是真实的（DeepSeek）。包括[与 HolmesGPT 的同条件对比](docs/results/f1-same-condition-comparison-2026-11.md)（F1 第 5 步「校准后的判分」未达成）、[72 小时 lab soak](docs/evidence/m3-soak-2026-11-07/README.md)，以及在刚重装的租用主机上完成的安装、完整事故流程、杀 worker 和按 digest 钉住镜像的升级与回滚（[第 1 步](docs/evidence/f9-clean-install-2026-11-09/README.md)、[第 2–4 步](docs/evidence/f9-steps-2-4-2026-11-10/README.md)，其中几项只是部分通过）。
+- 版本由 release workflow 打 tag 并发布到 GHCR。最新是 `v0.1.1`（2026-11-10）；soak 与干净主机运行用的是 `v0.1.0`：`ghcr.io/kevinwangsheng/opspilot@sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd`。
 
-工作顺序与证据见 [ROADMAP.md](ROADMAP.md)。
+导览见[作品集导览](docs/portfolio/README.md)（英文），证据不能说明的事见[限制](docs/portfolio/limitations.md)。工作顺序见 [ROADMAP.md](ROADMAP.md)。
 
 ## 用 Docker Compose 安装
 
 安装在控制侧：一台 Linux 主机上运行 PostgreSQL、web 工作台、worker（调查者）和 Observer，各自是同一个产品镜像起的独立容器。工作台只发布在 `127.0.0.1`，PostgreSQL 不发布端口。
 
 需要：装有 Docker Engine 与 Compose v2 插件的 Linux 主机、`bash`、`python3`（只用标准库，给生成的凭据算哈希）、本仓库的 checkout。全程用一个能使用 Docker 的专用**非 root** 用户执行，`install.sh` 拒绝以 root 运行。macOS + colima 只用于开发。
+
+如果镜像只允许 root 登录，先以 root 建这个用户，再从它的登录 shell 继续；它不需要 sudo（要在同一台主机上跑固定版本的 lab，改按[同机 lab 一节](#同一台主机上的-opentelemetry-demo-lab)做，那一节也会安装 Docker）：
+
+```sh
+adduser --disabled-password --gecos "" opspilot
+usermod -aG docker opspilot
+su - opspilot
+```
 
 ### 1. 安装
 
@@ -145,6 +153,29 @@ receivers:
 
 `otel-demo` 工具档（`OPSPILOT_TOOL_PROFILE=otel-demo`，并在 `worker_env` 写入 `OPSPILOT_OTEL_*` 地址与凭据）读取固定版本的 OpenTelemetry Demo lab，而不是 fixture。
 
+### 同一台主机上的 OpenTelemetry Demo lab
+
+要在一台干净的 Ubuntu 24.04 x86_64 主机上让 OpsPilot 对接固定版本的 lab（kind 集群上的 OpenTelemetry Demo、它的 Prometheus、Jaeger 和一个 Alertmanager），用下面的步骤代替第 1–5 步。以 root：
+
+```sh
+adduser --disabled-password --gecos "" opspilot
+su - opspilot -c 'git clone https://github.com/kevinWangSheng/production-ops-agent.git'
+/home/opspilot/production-ops-agent/scripts/kind_lab/install_linux.sh --user opspilot
+su - opspilot
+```
+
+`install_linux.sh` 安装固定版本的 Docker Engine、kind、kubectl 和 helm，把 `opspilot` 加入 `docker` 组，并以该用户启动 lab（约 5 分钟，最后输出健康报告）。然后以 `opspilot`：
+
+```sh
+cd production-ops-agent
+python3 scripts/kind_lab.py control-secrets
+${EDITOR:-vi} ~/.config/opspilot/worker_env      # 加入 DEEPSEEK_API_KEY=<你的 key>
+OPSPILOT_START_AGENT=1 deploy/compose/install.sh install
+python3 scripts/kind_lab.py connect-control --project opspilot
+```
+
+`control-secrets` 在首次安装前填好密钥目录：lab 的 Alertmanager 令牌写成 `alertmanager_token`（工作台据此接受 lab 的告警），lab 的 Prometheus 与 Jaeger 地址和只读账号写进 `worker_env` 与 `observer_env`，lab 目标 `m0-otel-20260909` 写进 `target_identities.json`，`install.env` 写入 `otel-demo` 工具档、Observer 的 Prometheus URL 和工作台端口 `18090`（18080 被 lab 前端占用）。已有的值不会被覆盖，也不打印任何密钥；如果 `install.sh install` 已经生成了自己的令牌，它会停下并说明怎样把那个令牌交给 lab。`connect-control` 把三个运行时容器接入 lab 的 `kind` 网络；每次 `install.sh upgrade` 之后都要再跑一次。之后工作台在 `http://127.0.0.1:18090`，`python3 scripts/kind_lab.py fault inject --experiment-id <id>` 会让 lab 的 checkout 告警在约 5–7 分钟后触发（`fault restore --experiment-id <id>` 撤销）。
+
 ### 安装器设置
 
 在 `install`、`upgrade`、`uninstall` 或 `compose` 时以环境变量给出。实际使用的值保存在 `<密钥目录>/install.env`，之后的运行沿用，除非重新给出（`OPSPILOT_SECRETS_DIR` 本身记在 `${XDG_STATE_HOME:-~/.local/state}/opspilot/installs/<项目名>`）。
@@ -172,10 +203,11 @@ deploy/compose/install.sh uninstall --purge-data     # 同时删除数据库；�
 
 ## 延伸阅读
 
-1. [PRD.md](PRD.md) 与 [feature_list.json](feature_list.json)：用户能力与验收步骤。
-2. [SPEC.md](SPEC.md)：范围、技术选型、实施门槛。
-3. [PRODUCT-CONSTRAINTS.md](PRODUCT-CONSTRAINTS.md)：产品代码的运行时约束。
-4. [范围 ADR](docs/adr/0001-readonly-investigation-boundary.md)：为什么不做生产写入和发布门。
-5. [ROADMAP.md](ROADMAP.md)：状态表与工作顺序。
-6. [文档导航](docs/README.md) 与 [开发指南](docs/development.md)：权威来源、从源码运行、测试。
-7. [M1 端到端演示](docs/demo/m1-end-to-end.md)：kind lab 上从告警到调查、恢复与复盘。
+1. [作品集导览](docs/portfolio/README.md)：架构、威胁模型、运维、上游归属、评测结果与限制（英文）。
+2. [PRD.md](PRD.md) 与 [feature_list.json](feature_list.json)：用户能力与验收步骤。
+3. [SPEC.md](SPEC.md)：范围、技术选型、实施门槛。
+4. [PRODUCT-CONSTRAINTS.md](PRODUCT-CONSTRAINTS.md)：产品代码的运行时约束。
+5. [范围 ADR](docs/adr/0001-readonly-investigation-boundary.md)：为什么不做生产写入和发布门。
+6. [ROADMAP.md](ROADMAP.md)：状态表与工作顺序。
+7. [文档导航](docs/README.md) 与 [开发指南](docs/development.md)：权威来源、从源码运行、测试。
+8. [M1 端到端演示](docs/demo/m1-end-to-end.md)：kind lab 上从告警到调查、恢复与复盘。
