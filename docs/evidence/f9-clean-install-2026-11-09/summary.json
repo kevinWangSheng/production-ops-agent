@@ -1,0 +1,73 @@
+{
+  "feature": "F9",
+  "step": 1,
+  "verdict": "partial",
+  "verdict_reason": "both scripts exit 0 and one real Run completed, but connecting the Agent needed steps the docs at this commit did not contain (port, webhook token, otel-demo wiring, non-root user); pass requires a clean rerun on the updated docs",
+  "host": {
+    "name": "opspilot-f9-1",
+    "provider": "vultr shared vCPU",
+    "reinstalled_at": "2026-11-10T06:56:00Z",
+    "os": "Ubuntu 24.04.5 LTS",
+    "kernel": "6.8.0-147-generic",
+    "arch": "x86_64",
+    "vcpu": 8,
+    "mem_mib": 15984,
+    "disk_gb": 328
+  },
+  "commit": "8de996d9151e121109d51ebc2e064355369ba7ff",
+  "image_id": "sha256:2de313b01125003ac586cb7fce5047cccb45c086fd228fd856483e429864ca9a",
+  "image_source": "built from checkout (opspilot:local); no published image or v0.1.0 tag yet",
+  "postgres_image": "postgres@sha256:2a0d0fe14825b0939f78a8cad5cd4e6aa68bf94d0e5dd96e24b6d23af4315545",
+  "version": "0.1.0",
+  "schema_head": "0024_trace_outbox",
+  "tool_versions": {"docker": "29.2.1", "kind": "v0.33.0", "kubectl": "v1.37.1", "helm": "v4.3.0"},
+  "topology": "single host: kind lab and Compose control side; control containers joined to the kind network (connect-control)",
+  "phases": {
+    "lab_install": {"command": "sudo scripts/kind_lab/install_linux.sh", "start": "2026-11-10T07:00:29Z", "end": "2026-11-10T07:04:47Z", "wall_s": 258, "exit": 0},
+    "control_install": {"command": "OPSPILOT_WEB_HOST_PORT=18180 OPSPILOT_TOOL_PROFILE=otel-demo deploy/compose/install.sh install", "start": "2026-11-10T07:05:31Z", "end": "2026-11-10T07:05:57Z", "wall_s": 26, "exit": 0},
+    "agent_start": {"command": "OPSPILOT_START_AGENT=1 OPSPILOT_OBSERVER_PROMETHEUS_URL=http://opspilot-m1-control-plane:30090 deploy/compose/install.sh upgrade", "start": "2026-11-10T07:06:20Z", "end": "2026-11-10T07:06:30Z", "wall_s": 10, "exit": 0},
+    "connect_control": {"command": "python3 scripts/kind_lab.py connect-control --project opspilot", "at": "2026-11-10T07:06:31Z", "result": {"web": "connected", "worker": "connected", "observer": "connected"}, "exit": 0}
+  },
+  "install_memory": {"peak_used_mib": 2351, "min_available_mib": 13632, "swap_used_mib": 0},
+  "health": {
+    "lab_health_ok": true,
+    "readyz": {"web": 200, "worker": 200, "observer": 200},
+    "lab_prometheus_up_opspilot_targets": [1, 1, 1],
+    "frontend_span_rate_per_s": 2.25,
+    "workbench_basic_auth": 200,
+    "workbench_anonymous": 401
+  },
+  "run": {
+    "fault": {"flag": "paymentFailure", "injected_at": "2026-11-10T07:07:39Z", "restored_at": "2026-11-10T07:19:37Z", "verified": true},
+    "alert": {"name": "CheckoutPlaceOrderErrorRatioHigh", "starts_at": "2026-11-10T07:12:54Z", "received_at": "2026-11-10T07:13:04Z", "outcome": "created", "actor": "alertmanager"},
+    "incident_id": "3c6deab1-96cf-549a-859c-466f4a385848",
+    "run_id": "97890bd2-ffe6-520c-8689-ed8d32b52b37",
+    "run_final_state": "completed",
+    "attempt_status": "published",
+    "published_at": "2026-11-10T07:16:17Z",
+    "model": "deepseek-flash",
+    "model_calls": 12,
+    "tokens": {"prompt": 364474, "prompt_cache_miss": 39866, "completion": 26185},
+    "tool_operations": 20,
+    "tool_seconds": 27.1,
+    "budget": "12 spent / 0 reserved / 0 unknown of 100",
+    "report": {
+      "assessment": "completed",
+      "conclusion": "supported",
+      "content_sha256": "8c393d2b81ac2181e384bf4058cc127109cf216e44ecd6ef2c15ab69026cec54",
+      "facts": 9, "hypotheses": 1, "counter_evidence": 2, "rejected_hypotheses": 1, "unknowns": 7, "recommendations": 0,
+      "root_cause_matches_injection": true
+    },
+    "report_visible_in_workbench": true,
+    "recovery_observation": {"authorized_by": "system", "authorized_at": "2026-11-10T07:16:26Z", "first_sample": "degraded", "ended": false},
+    "trace": "none: no LangSmith key available; OPSPILOT_TRACE=off"
+  },
+  "doc_findings": [
+    "lab frontend and installer default both use 127.0.0.1:18080; used OPSPILOT_WEB_HOST_PORT=18180",
+    "lab webhook token and installer alertmanager_token are generated independently; single-host alignment undocumented; seeded installer token from lab token before install",
+    "docs require a dedicated non-root sudo-capable user but do not say how to create it on a root-only image; temporary scoped NOPASSWD sudoers entry, removed after lab install",
+    "otel-demo single-host wiring (OTEL URLs, env-file accounts, m0-otel-20260909 target identity) not written out"
+  ],
+  "not_proven": ["production", "soak", "published image / v0.1.0", "LangSmith trace", "cost by balance delta", "recovery verdict", "incident close"],
+  "recorded_at": "2026-11-10T07:30:00Z"
+}
