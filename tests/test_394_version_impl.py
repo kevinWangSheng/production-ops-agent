@@ -50,17 +50,17 @@ def _replace(path: Path, old: str, new: str) -> None:
 
 
 def test_runtime_version_is_the_pyproject_version() -> None:
-    assert _pyproject_version() == "0.1.0"
+    assert _pyproject_version() == "0.1.1"
     assert opspilot.__version__ == _pyproject_version()
 
 
 def test_repository_passes_the_check_with_and_without_its_tag() -> None:
     check = _load_check()
     assert check(ROOT) == []
-    assert check(ROOT, tag="v0.1.0") == []
+    assert check(ROOT, tag="v0.1.1") == []
 
 
-@pytest.mark.parametrize("tag", ["0.1.0", "v0.1.1", "v0.1.0-rc1", "v0.1", ""])
+@pytest.mark.parametrize("tag", ["0.1.1", "v0.1.0", "v0.1.1-rc1", "v0.1", ""])
 def test_tag_must_be_v_plus_version(tag: str) -> None:
     problems = _load_check()(ROOT, tag=tag)
     assert len(problems) == 1 and "tag" in problems[0], problems
@@ -69,7 +69,7 @@ def test_tag_must_be_v_plus_version(tag: str) -> None:
 def test_package_version_mismatch_is_reported(repo: Path) -> None:
     _replace(
         repo / "opspilot" / "__init__.py",
-        '__version__ = "0.1.0"',
+        '__version__ = "0.1.1"',
         '__version__ = "0.2.0"',
     )
     problems = _load_check()(repo)
@@ -77,7 +77,7 @@ def test_package_version_mismatch_is_reported(repo: Path) -> None:
 
 
 def test_missing_package_version_is_reported(repo: Path) -> None:
-    _replace(repo / "opspilot" / "__init__.py", '__version__ = "0.1.0"', "")
+    _replace(repo / "opspilot" / "__init__.py", '__version__ = "0.1.1"', "")
     problems = _load_check()(repo)
     assert len(problems) == 1 and "__version__" in problems[0], problems
 
@@ -85,7 +85,7 @@ def test_missing_package_version_is_reported(repo: Path) -> None:
 def test_lock_version_mismatch_is_reported(repo: Path) -> None:
     _replace(
         repo / "uv.lock",
-        'name = "opspilot"\nversion = "0.1.0"',
+        'name = "opspilot"\nversion = "0.1.1"',
         'name = "opspilot"\nversion = "0.0.0"',
     )
     problems = _load_check()(repo)
@@ -96,14 +96,14 @@ def test_lock_version_mismatch_is_reported(repo: Path) -> None:
     "version", ["0.1", "v0.1.0", "0.1.0rc1", "01.1.0", "0.1.0-rc.1"]
 )
 def test_pyproject_version_must_be_plain_semver(repo: Path, version: str) -> None:
-    _replace(repo / "pyproject.toml", 'version = "0.1.0"', f'version = "{version}"')
+    _replace(repo / "pyproject.toml", 'version = "0.1.1"', f'version = "{version}"')
     problems = _load_check()(repo)
     assert any("SemVer" in p for p in problems), problems
 
 
 def test_cli_runs_without_the_venv_and_reports_on_stderr() -> None:
     ok = subprocess.run(
-        ["python3", "-I", str(SCRIPT), "--tag", "v0.1.0"],
+        ["python3", "-I", str(SCRIPT), "--tag", "v0.1.1"],
         cwd=ROOT,
         capture_output=True,
         text=True,
