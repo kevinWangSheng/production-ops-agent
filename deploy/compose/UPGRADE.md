@@ -73,10 +73,19 @@ the newer migrations.
    `deploy/compose/install.sh compose run --rm --no-deps migrate python -m opspilot.schema downgrade --to <old head>`.
    It prints `schema current:` and `schema target:` before it changes
    anything, and `schema downgraded: <old head>` when done.
-3. Upgrade from the old release's checkout (or with `OPSPILOT_IMAGE` set to
-   its digest): `deploy/compose/install.sh upgrade`. Its `migrate` reports
-   `unchanged`, `init-roles` runs, and each runtime verifies the schema head
-   on start.
+   Skip this step when the old head is the same revision as the new
+   release's head (the revision the new release's `install.sh upgrade`
+   reported as `schema upgraded:` or `schema unchanged:`): there is nothing
+   to downgrade. Run anyway, it exits 1 with `schema current: <old head>`
+   and `revision <old head> is not lower than the current <old head>`, and
+   changes nothing; go on to step 3.
+3. Upgrade from the old release's checkout, or with `OPSPILOT_IMAGE` set to
+   its published digest:
+   `OPSPILOT_IMAGE=ghcr.io/kevinwangsheng/opspilot@sha256:<64 hex> deploy/compose/install.sh upgrade`.
+   A locally built image (`opspilot:local`) is not a pinned rollback target:
+   rebuilding the same commit gives a different image ID. Its `migrate`
+   reports `unchanged`, `init-roles` runs, and each runtime verifies the
+   schema head on start.
 
 A downgrade is refused, and changes nothing, when it would delete records
 that only the newer schema can hold (a migration's downgrade checks this
