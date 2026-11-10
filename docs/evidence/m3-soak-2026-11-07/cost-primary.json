@@ -7,5 +7,5 @@
   "peak": {"steps": 28, "cache_hit": 1102848, "cache_miss": 99113, "output": 51873, "cny": 0.6573},
   "total_cny": 4.4595,
   "upper_bound_summary_json_cny": 27.166346,
-  "cross_check": "per-key usage read by the user in the DeepSeek console; account balance is shared with other keys and not used"
+  "cross_check": "not done: per user 2026-11-09 the DeepSeek console aggregates only by day and by account, so it cannot give this key's amount or tokens for the soak window; account balance is shared with other keys and not used"
 }
