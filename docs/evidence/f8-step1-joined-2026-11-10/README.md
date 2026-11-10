@@ -39,7 +39,7 @@
 ## 证明不了什么
 
 - 没有出现工具错误：fixture 只有一个合法表达式，模型用对了。工具错误码能按事故在 LangSmith 筛到，证据在 [243-trace-outbox](../243-trace-outbox/README.md)（`TARGET_NOT_REGISTERED`，另一个 Run）。要在同一个 Run 上同时得到成功调用和错误码，需要改 fixture 或注入故障，本次没做。
-- 卡住的 Run 只看到 0：本 Run 没有卡住，`running_lapsed` 能变成非零的证据在 [f8-step1-drills](../f8-step1-drills/README.md)。
+- 卡住的 Run 只看到 0：本 Run 没有卡住。[f8-step1-drills](../f8-step1-drills/README.md) 里 `running_lapsed` 也只有 0（更正：此处原写那里有非零证据，不对）。非零值、它和事故与版本的对应，见 [f8-step1-stuck-run-2026-11-10](../f8-step1-stuck-run-2026-11-10/README.md)。
 - 队列深度没采到非零值，原因见上表。
 - 指标、健康和队列深度只能按版本加时间窗对上事故，这是合同的设计（事故 ID 不作指标标签）；并发 Run 多时时间窗会重叠，需要回到 trace 或 PG 按事故查。
 - `run_state` 行与根 span 不带镜像字段（PR-1 已知形状），所以 LangSmith 按事故加 revision 只筛到 4 个 run（3 个模型步、1 个工具结果），按事故能筛到全部 7 个。
