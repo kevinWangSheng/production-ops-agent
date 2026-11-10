@@ -1,0 +1,7202 @@
+{
+ "availability": {
+  "end_to_end": [
+   {
+    "injection_id": "ep01",
+    "outcome": "run",
+    "outcome_after_s": 10.034,
+    "within_10min": true
+   },
+   {
+    "injection_id": "ep02",
+    "outcome": "run",
+    "outcome_after_s": 10.036,
+    "within_10min": true
+   },
+   {
+    "injection_id": "ep03",
+    "outcome": "run",
+    "outcome_after_s": 10.038,
+    "within_10min": true
+   },
+   {
+    "injection_id": "ep04",
+    "outcome": "run",
+    "outcome_after_s": 10.032,
+    "within_10min": true
+   },
+   {
+    "injection_id": "ep05",
+    "outcome": "run",
+    "outcome_after_s": 10.047,
+    "within_10min": true
+   },
+   {
+    "injection_id": "ep06",
+    "outcome": "run",
+    "outcome_after_s": 10.05,
+    "within_10min": true
+   },
+   {
+    "injection_id": "ep07",
+    "outcome": "run",
+    "outcome_after_s": 10.034,
+    "within_10min": true
+   },
+   {
+    "injection_id": "ep08",
+    "outcome": "run",
+    "outcome_after_s": 10.047,
+    "within_10min": true
+   },
+   {
+    "injection_id": "ep09",
+    "outcome": "run",
+    "outcome_after_s": 10.055,
+    "within_10min": true
+   },
+   {
+    "injection_id": "ep10",
+    "outcome": "run",
+    "outcome_after_s": 10.051,
+    "within_10min": true
+   },
+   {
+    "injection_id": "ep11",
+    "outcome": "run",
+    "outcome_after_s": 10.052,
+    "within_10min": true
+   },
+   {
+    "injection_id": "ep12",
+    "outcome": "run",
+    "outcome_after_s": 10.03,
+    "within_10min": true
+   },
+   {
+    "injection_id": "ep13",
+    "outcome": "run",
+    "outcome_after_s": 10.039,
+    "within_10min": true
+   },
+   {
+    "injection_id": "ep14",
+    "outcome": "run",
+    "outcome_after_s": 10.045,
+    "within_10min": true
+   },
+   {
+    "injection_id": "ep15",
+    "outcome": "run",
+    "outcome_after_s": 493.985,
+    "within_10min": true
+   },
+   {
+    "injection_id": "ep16",
+    "outcome": "run",
+    "outcome_after_s": 10.025,
+    "within_10min": true
+   },
+   {
+    "injection_id": "ep17",
+    "outcome": "run",
+    "outcome_after_s": 10.035,
+    "within_10min": true
+   },
+   {
+    "injection_id": "ep18",
+    "outcome": "run",
+    "outcome_after_s": 10.029,
+    "within_10min": true
+   },
+   {
+    "injection_id": "ep19",
+    "outcome": "run",
+    "outcome_after_s": 10.039,
+    "within_10min": true
+   },
+   {
+    "injection_id": "ep20",
+    "outcome": "run",
+    "outcome_after_s": 10.032,
+    "within_10min": true
+   },
+   {
+    "injection_id": "ep21",
+    "outcome": "run",
+    "outcome_after_s": 10.03,
+    "within_10min": true
+   },
+   {
+    "injection_id": "ep22",
+    "outcome": "run",
+    "outcome_after_s": 10.032,
+    "within_10min": true
+   },
+   {
+    "injection_id": "ep23",
+    "outcome": "run",
+    "outcome_after_s": 10.031,
+    "within_10min": true
+   },
+   {
+    "injection_id": "ep24",
+    "outcome": "run",
+    "outcome_after_s": 10.033,
+    "within_10min": true
+   }
+  ],
+  "prometheus_up": {
+   "observer": {
+    "ok": 8353,
+    "ratio": 0.9974922378791498,
+    "ticks": 8374
+   },
+   "web": {
+    "ok": 8353,
+    "ratio": 0.9974922378791498,
+    "ticks": 8374
+   },
+   "worker": {
+    "ok": 8352,
+    "ratio": 0.9973728206352998,
+    "ticks": 8374
+   }
+  },
+  "published": true,
+  "readyz": {
+   "observer": {
+    "ok": 8185,
+    "ratio": 0.9774301409123477,
+    "ticks": 8374
+   },
+   "web": {
+    "ok": 8374,
+    "ratio": 1,
+    "ticks": 8374
+   },
+   "worker": {
+    "ok": 8370,
+    "ratio": 0.9995223310246,
+    "ticks": 8374
+   }
+  },
+  "sources": [
+   "readyz.csv",
+   "prom_up.csv",
+   "alerts.jsonl",
+   "deliveries.jsonl"
+  ],
+  "tunnel": {
+   "disconnected_s": 601.2847440242767,
+   "disconnects": 1
+  }
+ },
+ "claim": "Lab soak on one rented shared-vCPU host (target side) and a shared control host. Not production evidence, not a load test, no numeric target; resource and latency numbers are descriptive only.",
+ "clock": {
+  "checks": 13,
+  "max_abs_offset_s": 0.376,
+  "over_1s": [],
+  "tolerance_s": 2
+ },
+ "cost": {
+  "balance_delta_cny": null,
+  "langsmith_usd": 0,
+  "model": {
+   "input_tokens": 11208085,
+   "note": "lower bound: only committed steps carry usage",
+   "output_tokens": 593772,
+   "runs": 24,
+   "token_cost_cny": 27.166346
+  },
+  "published": true,
+  "rental": {
+   "billing_is_authoritative": true,
+   "estimated_usd": null,
+   "hourly_usd": null,
+   "hours": null
+  },
+  "sources": [
+   "runs.jsonl"
+  ]
+ },
+ "environment": {
+  "actions": [],
+  "interruptions": []
+ },
+ "errors": 0,
+ "injections": [
+  {
+   "category": "episode",
+   "disposition": "run",
+   "executed": true,
+   "id": "ep01",
+   "name": "paymentFailure",
+   "opened_work": null,
+   "skipped_reason": null,
+   "unmet_conditions": []
+  },
+  {
+   "category": "episode",
+   "disposition": "run",
+   "executed": true,
+   "id": "ep02",
+   "name": "paymentFailure",
+   "opened_work": null,
+   "skipped_reason": null,
+   "unmet_conditions": []
+  },
+  {
+   "category": "episode",
+   "disposition": "run",
+   "executed": true,
+   "id": "ep03",
+   "name": "paymentFailure",
+   "opened_work": null,
+   "skipped_reason": null,
+   "unmet_conditions": []
+  },
+  {
+   "category": "noise",
+   "disposition": null,
+   "executed": true,
+   "id": "nz1",
+   "name": "adManualGc",
+   "opened_work": [],
+   "skipped_reason": null,
+   "unmet_conditions": []
+  },
+  {
+   "category": "episode",
+   "disposition": "run",
+   "executed": true,
+   "id": "ep04",
+   "name": "paymentFailure",
+   "opened_work": null,
+   "skipped_reason": null,
+   "unmet_conditions": []
+  },
+  {
+   "category": "episode",
+   "disposition": "run",
+   "executed": true,
+   "id": "ep05",
+   "name": "paymentFailure",
+   "opened_work": null,
+   "skipped_reason": null,
+   "unmet_conditions": []
+  },
+  {
+   "category": "agent_fault",
+   "disposition": null,
+   "executed": true,
+   "id": "A1",
+   "name": "worker_kill",
+   "opened_work": null,
+   "skipped_reason": null,
+   "unmet_conditions": []
+  },
+  {
+   "category": "episode",
+   "disposition": "run",
+   "executed": true,
+   "id": "ep06",
+   "name": "paymentFailure",
+   "opened_work": null,
+   "skipped_reason": null,
+   "unmet_conditions": []
+  },
+  {
+   "category": "episode",
+   "disposition": "run",
+   "executed": true,
+   "id": "ep07",
+   "name": "paymentFailure",
+   "opened_work": null,
+   "skipped_reason": null,
+   "unmet_conditions": []
+  },
+  {
+   "category": "noise",
+   "disposition": null,
+   "executed": true,
+   "id": "nz2",
+   "name": "loadGeneratorFloodHomepage",
+   "opened_work": [],
+   "skipped_reason": null,
+   "unmet_conditions": []
+  },
+  {
+   "category": "episode",
+   "disposition": "run",
+   "executed": true,
+   "id": "ep08",
+   "name": "paymentFailure",
+   "opened_work": null,
+   "skipped_reason": null,
+   "unmet_conditions": []
+  },
+  {
+   "category": "episode",
+   "disposition": "run",
+   "executed": true,
+   "id": "ep09",
+   "name": "paymentFailure",
+   "opened_work": null,
+   "skipped_reason": null,
+   "unmet_conditions": []
+  },
+  {
+   "category": "agent_fault",
+   "disposition": null,
+   "executed": true,
+   "id": "A2",
+   "name": "pg_restart",
+   "opened_work": null,
+   "skipped_reason": null,
+   "unmet_conditions": []
+  },
+  {
+   "category": "episode",
+   "disposition": "run",
+   "executed": true,
+   "id": "ep10",
+   "name": "paymentFailure",
+   "opened_work": null,
+   "skipped_reason": null,
+   "unmet_conditions": []
+  },
+  {
+   "category": "episode",
+   "disposition": "run",
+   "executed": true,
+   "id": "ep11",
+   "name": "paymentFailure",
+   "opened_work": null,
+   "skipped_reason": null,
+   "unmet_conditions": []
+  },
+  {
+   "category": "agent_fault",
+   "disposition": null,
+   "executed": true,
+   "id": "A3",
+   "name": "egress_cut",
+   "opened_work": null,
+   "skipped_reason": null,
+   "unmet_conditions": []
+  },
+  {
+   "category": "episode",
+   "disposition": "run",
+   "executed": true,
+   "id": "ep12",
+   "name": "paymentFailure",
+   "opened_work": null,
+   "skipped_reason": null,
+   "unmet_conditions": []
+  },
+  {
+   "category": "episode",
+   "disposition": "run",
+   "executed": true,
+   "id": "ep13",
+   "name": "paymentFailure",
+   "opened_work": null,
+   "skipped_reason": null,
+   "unmet_conditions": []
+  },
+  {
+   "category": "noise",
+   "disposition": null,
+   "executed": true,
+   "id": "nz3",
+   "name": "adManualGc",
+   "opened_work": [],
+   "skipped_reason": null,
+   "unmet_conditions": []
+  },
+  {
+   "category": "episode",
+   "disposition": "run",
+   "executed": true,
+   "id": "ep14",
+   "name": "paymentFailure",
+   "opened_work": null,
+   "skipped_reason": null,
+   "unmet_conditions": []
+  },
+  {
+   "category": "episode",
+   "disposition": "run",
+   "executed": true,
+   "id": "ep15",
+   "name": "paymentFailure",
+   "opened_work": null,
+   "skipped_reason": null,
+   "unmet_conditions": []
+  },
+  {
+   "category": "agent_fault",
+   "disposition": null,
+   "executed": true,
+   "id": "A4",
+   "name": "tunnel_stop",
+   "opened_work": null,
+   "skipped_reason": null,
+   "unmet_conditions": []
+  },
+  {
+   "category": "episode",
+   "disposition": "run",
+   "executed": true,
+   "id": "ep16",
+   "name": "paymentFailure",
+   "opened_work": null,
+   "skipped_reason": null,
+   "unmet_conditions": []
+  },
+  {
+   "category": "episode",
+   "disposition": "run",
+   "executed": true,
+   "id": "ep17",
+   "name": "paymentFailure",
+   "opened_work": null,
+   "skipped_reason": null,
+   "unmet_conditions": []
+  },
+  {
+   "category": "episode",
+   "disposition": "run",
+   "executed": true,
+   "id": "ep18",
+   "name": "paymentFailure",
+   "opened_work": null,
+   "skipped_reason": null,
+   "unmet_conditions": []
+  },
+  {
+   "category": "agent_fault",
+   "disposition": null,
+   "executed": true,
+   "id": "A5",
+   "name": "web_restart",
+   "opened_work": null,
+   "skipped_reason": null,
+   "unmet_conditions": []
+  },
+  {
+   "category": "episode",
+   "disposition": "run",
+   "executed": true,
+   "id": "ep19",
+   "name": "paymentFailure",
+   "opened_work": null,
+   "skipped_reason": null,
+   "unmet_conditions": []
+  },
+  {
+   "category": "noise",
+   "disposition": null,
+   "executed": true,
+   "id": "nz4",
+   "name": "loadGeneratorFloodHomepage",
+   "opened_work": [],
+   "skipped_reason": null,
+   "unmet_conditions": []
+  },
+  {
+   "category": "episode",
+   "disposition": "run",
+   "executed": true,
+   "id": "ep20",
+   "name": "paymentFailure",
+   "opened_work": null,
+   "skipped_reason": null,
+   "unmet_conditions": []
+  },
+  {
+   "category": "episode",
+   "disposition": "run",
+   "executed": true,
+   "id": "ep21",
+   "name": "paymentFailure",
+   "opened_work": null,
+   "skipped_reason": null,
+   "unmet_conditions": []
+  },
+  {
+   "category": "episode",
+   "disposition": "run",
+   "executed": true,
+   "id": "ep22",
+   "name": "paymentFailure",
+   "opened_work": null,
+   "skipped_reason": null,
+   "unmet_conditions": []
+  },
+  {
+   "category": "episode",
+   "disposition": "run",
+   "executed": true,
+   "id": "ep23",
+   "name": "paymentFailure",
+   "opened_work": null,
+   "skipped_reason": null,
+   "unmet_conditions": []
+  },
+  {
+   "category": "episode",
+   "disposition": "run",
+   "executed": true,
+   "id": "ep24",
+   "name": "paymentFailure",
+   "opened_work": null,
+   "skipped_reason": null,
+   "unmet_conditions": []
+  }
+ ],
+ "missing_observations": {
+  "lab_liveness": {
+   "absent": [],
+   "expected_deployments": [
+    "ad",
+    "cart",
+    "checkout",
+    "currency",
+    "email",
+    "flagd",
+    "frontend",
+    "frontend-proxy",
+    "image-provider",
+    "jaeger",
+    "kube-state-metrics",
+    "load-generator",
+    "otel-collector",
+    "payment",
+    "product-catalog",
+    "prometheus",
+    "prometheus-readonly-proxy",
+    "quote",
+    "recommendation",
+    "shipping",
+    "valkey-cart"
+   ],
+   "limitation": "Pod presence comes only from the kube-state-metrics owner mapping; a stale (zombie) series can outlive its pod, and presence is not proof the pod served traffic.",
+   "series": [
+    "kube_pod_owner",
+    "kube_replicaset_owner",
+    "kube_pod_container_info"
+   ],
+   "source": "kube_state_metrics_owner_mapping",
+   "ticks": 4039
+  },
+  "published": true,
+  "recovery": {
+   "expected": 574,
+   "missing": 157,
+   "recorded": 417,
+   "signal_missing": 5,
+   "stale": 0
+  },
+  "recovery_sessions": [
+   {
+    "expected": 23,
+    "missing": 6,
+    "recorded": 17,
+    "session_id": "35ab6e2e-f94d-56dd-8606-cd69f1224f2a",
+    "signal_missing": 0,
+    "stale": 0
+   },
+   {
+    "expected": 23,
+    "missing": 6,
+    "recorded": 17,
+    "session_id": "b7f4365b-06e9-5357-8808-92c8d6126cc8",
+    "signal_missing": 0,
+    "stale": 0
+   },
+   {
+    "expected": 21,
+    "missing": 6,
+    "recorded": 15,
+    "session_id": "106f3818-ee56-5652-96c7-c573d18f7a83",
+    "signal_missing": 0,
+    "stale": 0
+   },
+   {
+    "expected": 22,
+    "missing": 6,
+    "recorded": 16,
+    "session_id": "4db7ba03-460c-5123-8bb7-c511cc75abb3",
+    "signal_missing": 0,
+    "stale": 0
+   },
+   {
+    "expected": 16,
+    "missing": 4,
+    "recorded": 12,
+    "session_id": "2c9995ea-702f-5888-994a-983e01bdfb81",
+    "signal_missing": 0,
+    "stale": 0
+   },
+   {
+    "expected": 22,
+    "missing": 6,
+    "recorded": 16,
+    "session_id": "800aa11c-3bd8-5248-b77a-baa6d1ace66a",
+    "signal_missing": 0,
+    "stale": 0
+   },
+   {
+    "expected": 56,
+    "missing": 16,
+    "recorded": 40,
+    "session_id": "a8a6f9d0-8d11-574b-8089-1a284b5db855",
+    "signal_missing": 0,
+    "stale": 0
+   },
+   {
+    "expected": 22,
+    "missing": 6,
+    "recorded": 16,
+    "session_id": "c4a64c21-be34-59ba-b439-768eb4b3fde6",
+    "signal_missing": 0,
+    "stale": 0
+   },
+   {
+    "expected": 22,
+    "missing": 6,
+    "recorded": 16,
+    "session_id": "4b999404-e885-543d-9ef9-3bccddd03bba",
+    "signal_missing": 0,
+    "stale": 0
+   },
+   {
+    "expected": 25,
+    "missing": 7,
+    "recorded": 18,
+    "session_id": "cc393211-da41-5313-9bac-90e6c90c94e4",
+    "signal_missing": 0,
+    "stale": 0
+   },
+   {
+    "expected": 23,
+    "missing": 6,
+    "recorded": 17,
+    "session_id": "094b727d-a76c-59e8-858e-7a36a719b0f3",
+    "signal_missing": 0,
+    "stale": 0
+   },
+   {
+    "expected": 22,
+    "missing": 6,
+    "recorded": 16,
+    "session_id": "077fcaa8-1296-506e-9259-a61b53a483ea",
+    "signal_missing": 0,
+    "stale": 0
+   },
+   {
+    "expected": 16,
+    "missing": 4,
+    "recorded": 12,
+    "session_id": "204cf3ec-969f-554a-8f3a-1c8b5ae8d51c",
+    "signal_missing": 0,
+    "stale": 0
+   },
+   {
+    "expected": 56,
+    "missing": 16,
+    "recorded": 40,
+    "session_id": "49661ca4-430d-5faf-8469-8965a968c9a7",
+    "signal_missing": 0,
+    "stale": 0
+   },
+   {
+    "expected": 29,
+    "missing": 8,
+    "recorded": 21,
+    "session_id": "d02085ab-fa8a-5432-bb88-3130e9127423",
+    "signal_missing": 2,
+    "stale": 0
+   },
+   {
+    "expected": 22,
+    "missing": 6,
+    "recorded": 16,
+    "session_id": "e859e302-4e6d-5136-b991-52bc43851679",
+    "signal_missing": 0,
+    "stale": 0
+   },
+   {
+    "expected": 23,
+    "missing": 6,
+    "recorded": 17,
+    "session_id": "dcabb6bb-80c8-59af-8ab9-bd6b8c40aab2",
+    "signal_missing": 0,
+    "stale": 0
+   },
+   {
+    "expected": 28,
+    "missing": 8,
+    "recorded": 20,
+    "session_id": "e0612d53-d03a-553b-a130-ad5906d5a950",
+    "signal_missing": 1,
+    "stale": 0
+   },
+   {
+    "expected": 33,
+    "missing": 9,
+    "recorded": 24,
+    "session_id": "9ee47a5c-ca0c-577e-8e03-e230b6f211fc",
+    "signal_missing": 1,
+    "stale": 0
+   },
+   {
+    "expected": 23,
+    "missing": 6,
+    "recorded": 17,
+    "session_id": "7c4348d1-8908-5129-b6b5-7453d904aadf",
+    "signal_missing": 0,
+    "stale": 0
+   },
+   {
+    "expected": 25,
+    "missing": 7,
+    "recorded": 18,
+    "session_id": "6b223e26-3276-5ce0-a79e-637e565d1f04",
+    "signal_missing": 0,
+    "stale": 0
+   },
+   {
+    "expected": 22,
+    "missing": 6,
+    "recorded": 16,
+    "session_id": "26a3ec6b-6560-5e30-83e2-0bc89b67c8f0",
+    "signal_missing": 1,
+    "stale": 0
+   }
+  ],
+  "scrape_gaps": [
+   {
+    "end": "2026-11-08T19:28:10.745540Z",
+    "missed_scrapes": 21,
+    "role": "observer",
+    "start": "2026-11-08T19:18:10.380875Z"
+   },
+   {
+    "end": "2026-11-08T19:27:40.730511Z",
+    "missed_scrapes": 20,
+    "role": "web",
+    "start": "2026-11-08T19:18:10.380875Z"
+   },
+   {
+    "end": "2026-11-07T16:20:42.986021Z",
+    "missed_scrapes": 2,
+    "role": "worker",
+    "start": "2026-11-07T16:20:12.082692Z"
+   },
+   {
+    "end": "2026-11-08T19:27:40.730511Z",
+    "missed_scrapes": 20,
+    "role": "worker",
+    "start": "2026-11-08T19:18:10.380875Z"
+   }
+  ],
+  "sources": [
+   "sessions.jsonl",
+   "samples.csv",
+   "prom_up.csv",
+   "ksm.csv"
+  ]
+ },
+ "operator": {
+  "accepted": 24,
+  "attached_injections": [],
+  "by_reason": {
+   "before_next_injection_run_waiting_human": 2,
+   "observation_ended_unconfirmed_fault_cleared": 2,
+   "resolved": 20
+  },
+  "closes": 24,
+  "note": "closes scripted on behalf of a human (S-R3); no human interaction claimed",
+  "open_incidents_at_injection": []
+ },
+ "plan_sha256": "b3bef1034afba77d8ac82749d327a0c01bf1766c9c3191a5872b899f377c35e0",
+ "production_proof": false,
+ "resources": {
+  "containers": [
+   {
+    "container": "opspilot-observer-1",
+    "cpu_pct": {
+     "max": 86.26,
+     "min": 0.03,
+     "p50": 0.33,
+     "p95": 50.55
+    },
+    "group": "opspilot",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 68566384,
+     "min": 16137584,
+     "p50": 54022635,
+     "p95": 54599352
+    }
+   },
+   {
+    "container": "opspilot-postgres-1",
+    "cpu_pct": {
+     "max": 43.88,
+     "min": 0,
+     "p50": 5.91,
+     "p95": 15.05
+    },
+    "group": "opspilot",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 91309998,
+     "min": 47584378,
+     "p50": 67706552,
+     "p95": 80362864
+    }
+   },
+   {
+    "container": "opspilot-soak-tunnel-1",
+    "cpu_pct": {
+     "max": 2.05,
+     "min": 0,
+     "p50": 0,
+     "p95": 0.38
+    },
+    "group": "opspilot",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 3579838,
+     "min": 942080,
+     "p50": 2543845,
+     "p95": 3309305
+    }
+   },
+   {
+    "container": "opspilot-web-1",
+    "cpu_pct": {
+     "max": 103.82,
+     "min": 0.26,
+     "p50": 13.06,
+     "p95": 55.89
+    },
+    "group": "opspilot",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 91026882,
+     "min": 21516779,
+     "p50": 63197675,
+     "p95": 85679144
+    }
+   },
+   {
+    "container": "opspilot-worker-1",
+    "cpu_pct": {
+     "max": 102.82,
+     "min": 0.13,
+     "p50": 0.69,
+     "p95": 51.03
+    },
+    "group": "opspilot",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 304821043,
+     "min": 133483724,
+     "p50": 225653555,
+     "p95": 266023731
+    }
+   },
+   {
+    "container": "opspilot-m1-control-plane",
+    "cpu_pct": {
+     "max": 97.05,
+     "min": 11.26,
+     "p50": 17.85,
+     "p95": 30.31
+    },
+    "group": "opspilot",
+    "host": "rental",
+    "mem_bytes": {
+     "max": 3651795943,
+     "min": 3256658952,
+     "p50": 3526168150,
+     "p95": 3586297692
+    }
+   }
+  ],
+  "hosts": {
+   "da-server": {
+    "disk_free_bytes": {
+     "max": 65655349248,
+     "min": 60520198144,
+     "p50": 64850849792,
+     "p95": 65644904448
+    },
+    "load1": {
+     "max": 7.25,
+     "min": 0.22,
+     "p50": 0.97,
+     "p95": 4.36
+    },
+    "mem_available_bytes": {
+     "max": 6998040576,
+     "min": 3374104576,
+     "p50": 6648836096,
+     "p95": 6887735296
+    }
+   },
+   "rental": {
+    "disk_free_bytes": {
+     "max": 300859650048,
+     "min": 299922792448,
+     "p50": 300379115520,
+     "p95": 300748218368
+    },
+    "load1": {
+     "max": 2.49,
+     "min": 0,
+     "p50": 0.14,
+     "p95": 0.63
+    },
+    "mem_available_bytes": {
+     "max": 13662863360,
+     "min": 13295439872,
+     "p50": 13499678720,
+     "p95": 13571899392
+    }
+   }
+  },
+  "published": true,
+  "shared_services": [
+   {
+    "container": "cohort-retention-matrix__6rw6xnq__env-main-1",
+    "cpu_pct": {
+     "max": 167.13,
+     "min": 9.61,
+     "p50": 22.9,
+     "p95": 167.13
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 535402905,
+     "min": 360919859,
+     "p50": 465987174,
+     "p95": 535402905
+    }
+   },
+   {
+    "container": "cohort-retention-matrix__6vykzgi__env-main-1",
+    "cpu_pct": {
+     "max": 113.88,
+     "min": 8.12,
+     "p50": 103.01,
+     "p95": 113.88
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 769969356,
+     "min": 277138636,
+     "p50": 339948339,
+     "p95": 769969356
+    }
+   },
+   {
+    "container": "cohort-retention-matrix__7o6ahwt__env-main-1",
+    "cpu_pct": {
+     "max": 138.1,
+     "min": 21.27,
+     "p50": 26.68,
+     "p95": 138.1
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 618554982,
+     "min": 238341324,
+     "p50": 436102758,
+     "p95": 618554982
+    }
+   },
+   {
+    "container": "cohort-retention-matrix__7smq2s7__env-main-1",
+    "cpu_pct": {
+     "max": 124.29,
+     "min": 9.4,
+     "p50": 94.77,
+     "p95": 124.29
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 913938841,
+     "min": 221668966,
+     "p50": 631242752,
+     "p95": 913938841
+    }
+   },
+   {
+    "container": "cohort-retention-matrix__8ktnctp__env-main-1",
+    "cpu_pct": {
+     "max": 135.07,
+     "min": 7.83,
+     "p50": 78.9,
+     "p95": 135.07
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 624007577,
+     "min": 213175500,
+     "p50": 402758041,
+     "p95": 624007577
+    }
+   },
+   {
+    "container": "cohort-retention-matrix__9tgd7vt__env-main-1",
+    "cpu_pct": {
+     "max": 106.3,
+     "min": 3.71,
+     "p50": 93.88,
+     "p95": 106.3
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 407476633,
+     "min": 132330291,
+     "p50": 339319193,
+     "p95": 407476633
+    }
+   },
+   {
+    "container": "cohort-retention-matrix__aa5qoym__env-main-1",
+    "cpu_pct": {
+     "max": 105.72,
+     "min": 4.2,
+     "p50": 29.84,
+     "p95": 105.72
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 717855129,
+     "min": 806912,
+     "p50": 402024038,
+     "p95": 717855129
+    }
+   },
+   {
+    "container": "cohort-retention-matrix__de6zzzf__env-main-1",
+    "cpu_pct": {
+     "max": 117.17,
+     "min": 9.65,
+     "p50": 28.87,
+     "p95": 117.17
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 768186777,
+     "min": 213385216,
+     "p50": 372768768,
+     "p95": 768186777
+    }
+   },
+   {
+    "container": "cohort-retention-matrix__gvhtsb4__env-main-1",
+    "cpu_pct": {
+     "max": 113.17,
+     "min": 29.76,
+     "p50": 99.22,
+     "p95": 113.17
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 720896000,
+     "min": 335439462,
+     "p50": 489684992,
+     "p95": 720896000
+    }
+   },
+   {
+    "container": "cohort-retention-matrix__gzdgewm__env-main-1",
+    "cpu_pct": {
+     "max": 106.5,
+     "min": 0,
+     "p50": 41.17,
+     "p95": 106.5
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 742916096,
+     "min": 47804579,
+     "p50": 388287692,
+     "p95": 742916096
+    }
+   },
+   {
+    "container": "cohort-retention-matrix__k3zm8yx__env-main-1",
+    "cpu_pct": {
+     "max": 115.16,
+     "min": 20.63,
+     "p50": 78.38,
+     "p95": 115.16
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 598946611,
+     "min": 296537292,
+     "p50": 417962393,
+     "p95": 598946611
+    }
+   },
+   {
+    "container": "cohort-retention-matrix__kgizbme__env-main-1",
+    "cpu_pct": {
+     "max": 133.18,
+     "min": 3.95,
+     "p50": 46.47,
+     "p95": 133.18
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 510027366,
+     "min": 159383552,
+     "p50": 413348659,
+     "p95": 510027366
+    }
+   },
+   {
+    "container": "cohort-retention-matrix__npyjkjy__env-main-1",
+    "cpu_pct": {
+     "max": 104.11,
+     "min": 2.22,
+     "p50": 101.21,
+     "p95": 104.11
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 561512448,
+     "min": 220725248,
+     "p50": 406637772,
+     "p95": 561512448
+    }
+   },
+   {
+    "container": "cohort-retention-matrix__ttxejeg__env-main-1",
+    "cpu_pct": {
+     "max": 136,
+     "min": 26.53,
+     "p50": 100.87,
+     "p95": 136
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 712926822,
+     "min": 48087695,
+     "p50": 403596902,
+     "p95": 712926822
+    }
+   },
+   {
+    "container": "cohort-retention-matrix__ujrzvnw__env-main-1",
+    "cpu_pct": {
+     "max": 110.28,
+     "min": 0,
+     "p50": 65.34,
+     "p95": 110.28
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 448580812,
+     "min": 671744,
+     "p50": 371929907,
+     "p95": 448580812
+    }
+   },
+   {
+    "container": "cohort-retention-matrix__vy5gi3c__env-main-1",
+    "cpu_pct": {
+     "max": 102.64,
+     "min": 0.99,
+     "p50": 12.31,
+     "p95": 102.64
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 608174080,
+     "min": 806912,
+     "p50": 459066572,
+     "p95": 608174080
+    }
+   },
+   {
+    "container": "cohort-retention-matrix__wjzung5__env-main-1",
+    "cpu_pct": {
+     "max": 105.18,
+     "min": 1.41,
+     "p50": 77.6,
+     "p95": 105.18
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 610690662,
+     "min": 213175500,
+     "p50": 448056524,
+     "p95": 610690662
+    }
+   },
+   {
+    "container": "cohort-retention-matrix__xl9jqiy__env-main-1",
+    "cpu_pct": {
+     "max": 102.19,
+     "min": 23.35,
+     "p50": 72.28,
+     "p95": 102.19
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 392062566,
+     "min": 164836147,
+     "p50": 335858892,
+     "p95": 392062566
+    }
+   },
+   {
+    "container": "cohort-retention-matrix__ycntvja__env-main-1",
+    "cpu_pct": {
+     "max": 136.11,
+     "min": 0,
+     "p50": 36.03,
+     "p95": 136.11
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 449209958,
+     "min": 790528,
+     "p50": 380528230,
+     "p95": 449209958
+    }
+   },
+   {
+    "container": "cohort-retention-matrix__zb5knxc__env-main-1",
+    "cpu_pct": {
+     "max": 105.24,
+     "min": 7.78,
+     "p50": 42.29,
+     "p95": 105.24
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 700973056,
+     "min": 76850135,
+     "p50": 449524531,
+     "p95": 700973056
+    }
+   },
+   {
+    "container": "cohort-retention-matrix__znmf3zd__env-main-1",
+    "cpu_pct": {
+     "max": 123.38,
+     "min": 9.44,
+     "p50": 23.43,
+     "p95": 123.38
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 430650163,
+     "min": 41093693,
+     "p50": 334810316,
+     "p95": 430650163
+    }
+   },
+   {
+    "container": "da-dab-mongo",
+    "cpu_pct": {
+     "max": 6.33,
+     "min": 1.03,
+     "p50": 1.66,
+     "p95": 3.22
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 183395942,
+     "min": 35840327,
+     "p50": 39090913,
+     "p95": 182871654
+    }
+   },
+   {
+    "container": "da-dab-postgres",
+    "cpu_pct": {
+     "max": 2.66,
+     "min": 0,
+     "p50": 0,
+     "p95": 0.03
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 13295943,
+     "min": 7815036,
+     "p50": 8851030,
+     "p95": 9641656
+    }
+   },
+   {
+    "container": "dbt-basket-composition-analysis__3chfoq4__env-main-1",
+    "cpu_pct": {
+     "max": 99.78,
+     "min": 10.07,
+     "p50": 27.81,
+     "p95": 99.78
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 541274931,
+     "min": 47185920,
+     "p50": 367106457,
+     "p95": 541274931
+    }
+   },
+   {
+    "container": "dbt-basket-composition-analysis__axta3w4__env-main-1",
+    "cpu_pct": {
+     "max": 89.91,
+     "min": 0.77,
+     "p50": 27.02,
+     "p95": 89.91
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 567908761,
+     "min": 311112499,
+     "p50": 376543641,
+     "p95": 567908761
+    }
+   },
+   {
+    "container": "dbt-basket-composition-analysis__dc6gamm__env-main-1",
+    "cpu_pct": {
+     "max": 115.92,
+     "min": 0,
+     "p50": 20.25,
+     "p95": 115.92
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 683776409,
+     "min": 671744,
+     "p50": 421842124,
+     "p95": 683776409
+    }
+   },
+   {
+    "container": "dbt-basket-composition-analysis__fp7q7wa__env-main-1",
+    "cpu_pct": {
+     "max": 110.13,
+     "min": 6.11,
+     "p50": 29.59,
+     "p95": 110.13
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 624531865,
+     "min": 415865241,
+     "p50": 481296384,
+     "p95": 624531865
+    }
+   },
+   {
+    "container": "dbt-basket-composition-analysis__gjpaiuu__env-main-1",
+    "cpu_pct": {
+     "max": 105.91,
+     "min": 6.52,
+     "p50": 13.32,
+     "p95": 105.91
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 795974041,
+     "min": 334390886,
+     "p50": 555535564,
+     "p95": 795974041
+    }
+   },
+   {
+    "container": "dbt-basket-composition-analysis__he5r7jk__env-main-1",
+    "cpu_pct": {
+     "max": 198.47,
+     "min": 7.85,
+     "p50": 27.73,
+     "p95": 198.47
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 905340518,
+     "min": 41838182,
+     "p50": 631347609,
+     "p95": 905340518
+    }
+   },
+   {
+    "container": "dbt-basket-composition-analysis__i9alwvu__env-main-1",
+    "cpu_pct": {
+     "max": 116.84,
+     "min": 12.19,
+     "p50": 97.71,
+     "p95": 116.84
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 749522124,
+     "min": 99855892,
+     "p50": 446798233,
+     "p95": 749522124
+    }
+   },
+   {
+    "container": "dbt-basket-composition-analysis__izuyjco__env-main-1",
+    "cpu_pct": {
+     "max": 202.53,
+     "min": 10.21,
+     "p50": 25.37,
+     "p95": 202.53
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 750046412,
+     "min": 52774830,
+     "p50": 494403584,
+     "p95": 750046412
+    }
+   },
+   {
+    "container": "dbt-basket-composition-analysis__kcdf2pv__env-main-1",
+    "cpu_pct": {
+     "max": 103.09,
+     "min": 17.69,
+     "p50": 35.02,
+     "p95": 103.09
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 761790464,
+     "min": 42656071,
+     "p50": 434005606,
+     "p95": 761790464
+    }
+   },
+   {
+    "container": "dbt-basket-composition-analysis__l75nli5__env-main-1",
+    "cpu_pct": {
+     "max": 110.25,
+     "min": 8.6,
+     "p50": 42.19,
+     "p95": 110.25
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 684929843,
+     "min": 341416345,
+     "p50": 448895385,
+     "p95": 684929843
+    }
+   },
+   {
+    "container": "dbt-basket-composition-analysis__lzbs6v9__env-main-1",
+    "cpu_pct": {
+     "max": 190.9,
+     "min": 0,
+     "p50": 22.37,
+     "p95": 190.9
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 724146585,
+     "min": 675840,
+     "p50": 447951667,
+     "p95": 724146585
+    }
+   },
+   {
+    "container": "dbt-basket-composition-analysis__n8gnbze__env-main-1",
+    "cpu_pct": {
+     "max": 120.25,
+     "min": 16.39,
+     "p50": 49.63,
+     "p95": 120.25
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 750780416,
+     "min": 250819379,
+     "p50": 444281651,
+     "p95": 750780416
+    }
+   },
+   {
+    "container": "dbt-basket-composition-analysis__tv7nzgk__env-main-1",
+    "cpu_pct": {
+     "max": 129.24,
+     "min": 0,
+     "p50": 12.41,
+     "p95": 129.24
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 696673894,
+     "min": 679936,
+     "p50": 493669580,
+     "p95": 696673894
+    }
+   },
+   {
+    "container": "dbt-basket-composition-analysis__xkqnwkr__env-main-1",
+    "cpu_pct": {
+     "max": 111.45,
+     "min": 0,
+     "p50": 12.4,
+     "p95": 111.45
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 729599180,
+     "min": 798720,
+     "p50": 596744601,
+     "p95": 729599180
+    }
+   },
+   {
+    "container": "dbt-basket-composition-analysis__yagxukd__env-main-1",
+    "cpu_pct": {
+     "max": 136.78,
+     "min": 0,
+     "p50": 19.73,
+     "p95": 136.78
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 491362713,
+     "min": 44449136,
+     "p50": 452250828,
+     "p95": 491362713
+    }
+   },
+   {
+    "container": "dbt-cart-abandonment-recovery__5fdamcm__env-main-1",
+    "cpu_pct": {
+     "max": 131.01,
+     "min": 9.23,
+     "p50": 99.31,
+     "p95": 131.01
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 669201203,
+     "min": 232574156,
+     "p50": 377487360,
+     "p95": 669201203
+    }
+   },
+   {
+    "container": "dbt-cart-abandonment-recovery__9hwqafd__env-main-1",
+    "cpu_pct": {
+     "max": 136.08,
+     "min": 4.86,
+     "p50": 25.26,
+     "p95": 136.08
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 908800819,
+     "min": 232783872,
+     "p50": 496605593,
+     "p95": 908800819
+    }
+   },
+   {
+    "container": "dbt-cart-abandonment-recovery__qkz3kfb__env-main-1",
+    "cpu_pct": {
+     "max": 123.18,
+     "min": 7.85,
+     "p50": 100.86,
+     "p95": 123.18
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 627153305,
+     "min": 41754296,
+     "p50": 346554368,
+     "p95": 627153305
+    }
+   },
+   {
+    "container": "dbt-cart-abandonment-recovery__roi9xwd__env-main-1",
+    "cpu_pct": {
+     "max": 105.14,
+     "min": 0,
+     "p50": 24.89,
+     "p95": 105.14
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 791779737,
+     "min": 229008998,
+     "p50": 429811302,
+     "p95": 791779737
+    }
+   },
+   {
+    "container": "dbt-cart-abandonment-recovery__ugs3xwh__env-main-1",
+    "cpu_pct": {
+     "max": 120.93,
+     "min": 0,
+     "p50": 91.43,
+     "p95": 120.93
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 589509427,
+     "min": 663552,
+     "p50": 408525209,
+     "p95": 589509427
+    }
+   },
+   {
+    "container": "dbt-cart-abandonment-recovery__wy4lfbu__env-main-1",
+    "cpu_pct": {
+     "max": 116.09,
+     "min": 21.65,
+     "p50": 99.73,
+     "p95": 116.09
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 707683942,
+     "min": 344771788,
+     "p50": 409364070,
+     "p95": 707683942
+    }
+   },
+   {
+    "container": "dbt-cart-abandonment-recovery__xjnd4de__env-main-1",
+    "cpu_pct": {
+     "max": 136.92,
+     "min": 22.86,
+     "p50": 56.42,
+     "p95": 136.92
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 496815308,
+     "min": 326526566,
+     "p50": 412195225,
+     "p95": 496815308
+    }
+   },
+   {
+    "container": "dbt-channel-attribution-analysis__2voxbhw__env-main-1",
+    "cpu_pct": {
+     "max": 107.81,
+     "min": 0,
+     "p50": 27.22,
+     "p95": 107.81
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 694157312,
+     "min": 667648,
+     "p50": 429391872,
+     "p95": 694157312
+    }
+   },
+   {
+    "container": "dbt-channel-attribution-analysis__55cwnc4__env-main-1",
+    "cpu_pct": {
+     "max": 116.46,
+     "min": 9.44,
+     "p50": 29.01,
+     "p95": 116.46
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 705377075,
+     "min": 64602767,
+     "p50": 458856857,
+     "p95": 705377075
+    }
+   },
+   {
+    "container": "dbt-channel-attribution-analysis__9mp3nfq__env-main-1",
+    "cpu_pct": {
+     "max": 107.21,
+     "min": 2.21,
+     "p50": 16.58,
+     "p95": 107.21
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 743440384,
+     "min": 342464921,
+     "p50": 440716492,
+     "p95": 743440384
+    }
+   },
+   {
+    "container": "dbt-channel-attribution-analysis__cmbkekf__env-main-1",
+    "cpu_pct": {
+     "max": 118.97,
+     "min": 3.53,
+     "p50": 35.7,
+     "p95": 118.97
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 796183756,
+     "min": 41544581,
+     "p50": 632501043,
+     "p95": 796183756
+    }
+   },
+   {
+    "container": "dbt-channel-attribution-analysis__dxer5hn__env-main-1",
+    "cpu_pct": {
+     "max": 121.55,
+     "min": 0,
+     "p50": 9.42,
+     "p95": 121.55
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 711773388,
+     "min": 806912,
+     "p50": 636485632,
+     "p95": 711773388
+    }
+   },
+   {
+    "container": "dbt-channel-attribution-analysis__ea2xcj7__env-main-1",
+    "cpu_pct": {
+     "max": 102.82,
+     "min": 8.29,
+     "p50": 36.27,
+     "p95": 102.82
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 526490009,
+     "min": 351902105,
+     "p50": 404750336,
+     "p95": 526490009
+    }
+   },
+   {
+    "container": "dbt-channel-attribution-analysis__egbl995__env-main-1",
+    "cpu_pct": {
+     "max": 126.73,
+     "min": 5.3,
+     "p50": 103.85,
+     "p95": 126.73
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 688075571,
+     "min": 320339968,
+     "p50": 491991859,
+     "p95": 688075571
+    }
+   },
+   {
+    "container": "dbt-channel-attribution-analysis__ft9nrdf__env-main-1",
+    "cpu_pct": {
+     "max": 106.61,
+     "min": 10.07,
+     "p50": 25.84,
+     "p95": 106.61
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 698666188,
+     "min": 321178828,
+     "p50": 395208294,
+     "p95": 698666188
+    }
+   },
+   {
+    "container": "dbt-channel-attribution-analysis__mgmsmso__env-main-1",
+    "cpu_pct": {
+     "max": 210.1,
+     "min": 8.09,
+     "p50": 24.83,
+     "p95": 210.1
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 749312409,
+     "min": 277977497,
+     "p50": 473851494,
+     "p95": 749312409
+    }
+   },
+   {
+    "container": "dbt-channel-attribution-analysis__nhdjbvj__env-main-1",
+    "cpu_pct": {
+     "max": 123.47,
+     "min": 2.88,
+     "p50": 72.15,
+     "p95": 123.47
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 843789107,
+     "min": 349804953,
+     "p50": 578394521,
+     "p95": 843789107
+    }
+   },
+   {
+    "container": "dbt-channel-attribution-analysis__qmrlqrb__env-main-1",
+    "cpu_pct": {
+     "max": 111.49,
+     "min": 11.37,
+     "p50": 24.63,
+     "p95": 111.49
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 1020264448,
+     "min": 233308160,
+     "p50": 632081612,
+     "p95": 1020264448
+    }
+   },
+   {
+    "container": "dbt-channel-attribution-analysis__sjbhkfq__env-main-1",
+    "cpu_pct": {
+     "max": 110.1,
+     "min": 22.96,
+     "p50": 98.31,
+     "p95": 110.1
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 746690969,
+     "min": 45046824,
+     "p50": 389965414,
+     "p95": 746690969
+    }
+   },
+   {
+    "container": "dbt-channel-attribution-analysis__tumtsw6__env-main-1",
+    "cpu_pct": {
+     "max": 109.21,
+     "min": 0,
+     "p50": 25.66,
+     "p95": 109.21
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 606915788,
+     "min": 806912,
+     "p50": 473956352,
+     "p95": 606915788
+    }
+   },
+   {
+    "container": "dbt-channel-attribution-analysis__vcdby8v__env-main-1",
+    "cpu_pct": {
+     "max": 119.3,
+     "min": 1.03,
+     "p50": 27.8,
+     "p95": 119.3
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 655569715,
+     "min": 72309800,
+     "p50": 451936256,
+     "p95": 655569715
+    }
+   },
+   {
+    "container": "dbt-channel-attribution-analysis__vrstdzl__env-main-1",
+    "cpu_pct": {
+     "max": 77.24,
+     "min": 0.91,
+     "p50": 21.36,
+     "p95": 77.24
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 400346316,
+     "min": 308281344,
+     "p50": 370461900,
+     "p95": 400346316
+    }
+   },
+   {
+    "container": "dbt-customer-churn-cohorts__33dfzzd__env-main-1",
+    "cpu_pct": {
+     "max": 119.63,
+     "min": 0,
+     "p50": 27.87,
+     "p95": 119.63
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 665111756,
+     "min": 226911846,
+     "p50": 561827020,
+     "p95": 665111756
+    }
+   },
+   {
+    "container": "dbt-customer-churn-cohorts__5qc757u__env-main-1",
+    "cpu_pct": {
+     "max": 143.6,
+     "min": 10.85,
+     "p50": 40.77,
+     "p95": 143.6
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 791255449,
+     "min": 43379589,
+     "p50": 405379481,
+     "p95": 791255449
+    }
+   },
+   {
+    "container": "dbt-customer-churn-cohorts__f3atntn__env-main-1",
+    "cpu_pct": {
+     "max": 111.09,
+     "min": 18.93,
+     "p50": 100.79,
+     "p95": 111.09
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 590033715,
+     "min": 307547340,
+     "p50": 421842124,
+     "p95": 590033715
+    }
+   },
+   {
+    "container": "dbt-customer-churn-cohorts__jqhhnae__env-main-1",
+    "cpu_pct": {
+     "max": 121.28,
+     "min": 0,
+     "p50": 102.15,
+     "p95": 121.28
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 712821964,
+     "min": 667648,
+     "p50": 399822028,
+     "p95": 712821964
+    }
+   },
+   {
+    "container": "dbt-customer-churn-cohorts__rt9pbr2__env-main-1",
+    "cpu_pct": {
+     "max": 117.67,
+     "min": 9.27,
+     "p50": 80.64,
+     "p95": 117.67
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 730647756,
+     "min": 167352729,
+     "p50": 409678643,
+     "p95": 730647756
+    }
+   },
+   {
+    "container": "dbt-customer-churn-cohorts__vuzjlx5__env-main-1",
+    "cpu_pct": {
+     "max": 128.44,
+     "min": 0,
+     "p50": 83.65,
+     "p95": 128.44
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 786956288,
+     "min": 224080691,
+     "p50": 374236774,
+     "p95": 786956288
+    }
+   },
+   {
+    "container": "dbt-customer-churn-cohorts__xt6cnef__env-main-1",
+    "cpu_pct": {
+     "max": 105.8,
+     "min": 9.1,
+     "p50": 24.26,
+     "p95": 105.8
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 650746265,
+     "min": 360080998,
+     "p50": 472278630,
+     "p95": 650746265
+    }
+   },
+   {
+    "container": "dbt-customer-churn-early-warning__2uhxxl2__env-main-1",
+    "cpu_pct": {
+     "max": 108.69,
+     "min": 0,
+     "p50": 24.04,
+     "p95": 108.69
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 632186470,
+     "min": 806912,
+     "p50": 420583833,
+     "p95": 632186470
+    }
+   },
+   {
+    "container": "dbt-customer-churn-early-warning__774rxsd__env-main-1",
+    "cpu_pct": {
+     "max": 109.09,
+     "min": 11.93,
+     "p50": 40.14,
+     "p95": 109.09
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 658191155,
+     "min": 406742630,
+     "p50": 434739609,
+     "p95": 658191155
+    }
+   },
+   {
+    "container": "dbt-customer-churn-early-warning__9kikxk5__env-main-1",
+    "cpu_pct": {
+     "max": 124.74,
+     "min": 17.13,
+     "p50": 28.48,
+     "p95": 124.74
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 475634073,
+     "min": 313838796,
+     "p50": 376963072,
+     "p95": 475634073
+    }
+   },
+   {
+    "container": "dbt-customer-churn-early-warning__abukgtz__env-main-1",
+    "cpu_pct": {
+     "max": 133.25,
+     "min": 7.3,
+     "p50": 100.68,
+     "p95": 133.25
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 684824985,
+     "min": 251658240,
+     "p50": 385351680,
+     "p95": 684824985
+    }
+   },
+   {
+    "container": "dbt-customer-churn-early-warning__bls296p__env-main-1",
+    "cpu_pct": {
+     "max": 128.2,
+     "min": 0,
+     "p50": 80.14,
+     "p95": 128.2
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 613626675,
+     "min": 679936,
+     "p50": 393740288,
+     "p95": 613626675
+    }
+   },
+   {
+    "container": "dbt-customer-churn-early-warning__cjpt64o__env-main-1",
+    "cpu_pct": {
+     "max": 105.84,
+     "min": 6.3,
+     "p50": 41.38,
+     "p95": 105.84
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 505203916,
+     "min": 160746700,
+     "p50": 356306124,
+     "p95": 505203916
+    }
+   },
+   {
+    "container": "dbt-customer-churn-early-warning__dp9pueq__env-main-1",
+    "cpu_pct": {
+     "max": 117.01,
+     "min": 0,
+     "p50": 60.94,
+     "p95": 117.01
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 809500672,
+     "min": 671744,
+     "p50": 364694732,
+     "p95": 809500672
+    }
+   },
+   {
+    "container": "dbt-customer-churn-early-warning__dxf4fby__env-main-1",
+    "cpu_pct": {
+     "max": 109.09,
+     "min": 16.05,
+     "p50": 101.2,
+     "p95": 109.09
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 722364006,
+     "min": 43232788,
+     "p50": 464728883,
+     "p95": 722364006
+    }
+   },
+   {
+    "container": "dbt-customer-churn-early-warning__i7sz2xj__env-main-1",
+    "cpu_pct": {
+     "max": 123.5,
+     "min": 7.61,
+     "p50": 33.62,
+     "p95": 123.5
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 540750643,
+     "min": 51222937,
+     "p50": 381471948,
+     "p95": 540750643
+    }
+   },
+   {
+    "container": "dbt-customer-churn-early-warning__kghgrmc__env-main-1",
+    "cpu_pct": {
+     "max": 137.3,
+     "min": 11.96,
+     "p50": 97.37,
+     "p95": 137.3
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 657037721,
+     "min": 40485519,
+     "p50": 357354700,
+     "p95": 657037721
+    }
+   },
+   {
+    "container": "dbt-customer-churn-early-warning__n4ikb2f__env-main-1",
+    "cpu_pct": {
+     "max": 109.48,
+     "min": 1.15,
+     "p50": 27.72,
+     "p95": 109.48
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 492621004,
+     "min": 115238502,
+     "p50": 397095731,
+     "p95": 492621004
+    }
+   },
+   {
+    "container": "dbt-customer-churn-early-warning__nchkbtg__env-main-1",
+    "cpu_pct": {
+     "max": 113.25,
+     "min": 0,
+     "p50": 22.93,
+     "p95": 113.25
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 475843788,
+     "min": 663552,
+     "p50": 339424051,
+     "p95": 475843788
+    }
+   },
+   {
+    "container": "dbt-customer-churn-early-warning__tfq7jay__env-main-1",
+    "cpu_pct": {
+     "max": 104.95,
+     "min": 0,
+     "p50": 20.52,
+     "p95": 104.95
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 507301068,
+     "min": 111778201,
+     "p50": 384617676,
+     "p95": 507301068
+    }
+   },
+   {
+    "container": "dbt-customer-churn-early-warning__xa7cdwc__env-main-1",
+    "cpu_pct": {
+     "max": 105.25,
+     "min": 22.73,
+     "p50": 79.26,
+     "p95": 105.25
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 699400192,
+     "min": 368784179,
+     "p50": 386714828,
+     "p95": 699400192
+    }
+   },
+   {
+    "container": "dbt-customer-churn-early-warning__zpt47mi__env-main-1",
+    "cpu_pct": {
+     "max": 127.37,
+     "min": 13.84,
+     "p50": 47.01,
+     "p95": 127.37
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 633759334,
+     "min": 38126223,
+     "p50": 480038092,
+     "p95": 633759334
+    }
+   },
+   {
+    "container": "dbt-customer-cltv-forecasting__53rxxkv__env-main-1",
+    "cpu_pct": {
+     "max": 101.56,
+     "min": 0,
+     "p50": 29.73,
+     "p95": 101.56
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 579233382,
+     "min": 811008,
+     "p50": 376858214,
+     "p95": 579233382
+    }
+   },
+   {
+    "container": "dbt-customer-cltv-forecasting__6psbhrf__env-main-1",
+    "cpu_pct": {
+     "max": 109.22,
+     "min": 22.17,
+     "p50": 34.16,
+     "p95": 109.22
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 492935577,
+     "min": 228484710,
+     "p50": 438304768,
+     "p95": 492935577
+    }
+   },
+   {
+    "container": "dbt-customer-cltv-forecasting__emju4mt__env-main-1",
+    "cpu_pct": {
+     "max": 148.78,
+     "min": 0.63,
+     "p50": 26.17,
+     "p95": 148.78
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 494508441,
+     "min": 251448524,
+     "p50": 393006284,
+     "p95": 494508441
+    }
+   },
+   {
+    "container": "dbt-customer-cltv-forecasting__fr3yg8y__env-main-1",
+    "cpu_pct": {
+     "max": 107.26,
+     "min": 0,
+     "p50": 66.66,
+     "p95": 107.26
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 483288678,
+     "min": 675840,
+     "p50": 354418688,
+     "p95": 483288678
+    }
+   },
+   {
+    "container": "dbt-customer-cltv-forecasting__vtbzvww__env-main-1",
+    "cpu_pct": {
+     "max": 110.44,
+     "min": 9.96,
+     "p50": 98.61,
+     "p95": 110.44
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 460429721,
+     "min": 158649548,
+     "p50": 340367769,
+     "p95": 460429721
+    }
+   },
+   {
+    "container": "dbt-customer-cltv-forecasting__yitbonq__env-main-1",
+    "cpu_pct": {
+     "max": 100.09,
+     "min": 24.28,
+     "p50": 54.29,
+     "p95": 100.09
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 585629696,
+     "min": 90534051,
+     "p50": 389545984,
+     "p95": 585629696
+    }
+   },
+   {
+    "container": "dbt-customer-cltv-forecasting__yqqbq6b__env-main-1",
+    "cpu_pct": {
+     "max": 130.14,
+     "min": 34.37,
+     "p50": 77.48,
+     "p95": 130.14
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 375285350,
+     "min": 94235525,
+     "p50": 173853900,
+     "p95": 375285350
+    }
+   },
+   {
+    "container": "dbt-customer-cross-sell-insights__iedzbpq__env-main-1",
+    "cpu_pct": {
+     "max": 99.19,
+     "min": 0,
+     "p50": 32.06,
+     "p95": 99.19
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 689438720,
+     "min": 794624,
+     "p50": 414292377,
+     "p95": 689438720
+    }
+   },
+   {
+    "container": "dbt-customer-cross-sell-insights__nacffww__env-main-1",
+    "cpu_pct": {
+     "max": 136.23,
+     "min": 0,
+     "p50": 35.96,
+     "p95": 136.23
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 886990438,
+     "min": 234461593,
+     "p50": 479408947,
+     "p95": 886990438
+    }
+   },
+   {
+    "container": "dbt-customer-cross-sell-insights__oc3fzd9__env-main-1",
+    "cpu_pct": {
+     "max": 106.39,
+     "min": 25.48,
+     "p50": 76.57,
+     "p95": 106.39
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 929248051,
+     "min": 42876272,
+     "p50": 583113113,
+     "p95": 929248051
+    }
+   },
+   {
+    "container": "dbt-daily-order-summary__5mgvank__env-main-1",
+    "cpu_pct": {
+     "max": 116.12,
+     "min": 40.16,
+     "p50": 101.04,
+     "p95": 116.12
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 439877632,
+     "min": 187485388,
+     "p50": 248931942,
+     "p95": 439877632
+    }
+   },
+   {
+    "container": "dbt-daily-order-summary__fmf8u7u__env-main-1",
+    "cpu_pct": {
+     "max": 104.88,
+     "min": 24.54,
+     "p50": 101.01,
+     "p95": 104.88
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 336383180,
+     "min": 72037171,
+     "p50": 334181171,
+     "p95": 336383180
+    }
+   },
+   {
+    "container": "dbt-daily-order-summary__gpvezcz__env-main-1",
+    "cpu_pct": {
+     "max": 105.78,
+     "min": 0,
+     "p50": 12,
+     "p95": 105.78
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 445644800,
+     "min": 684032,
+     "p50": 372768768,
+     "p95": 445644800
+    }
+   },
+   {
+    "container": "dbt-daily-order-summary__hgfngp3__env-main-1",
+    "cpu_pct": {
+     "max": 108.5,
+     "min": 28.03,
+     "p50": 32.5,
+     "p95": 108.5
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 465358028,
+     "min": 33365688,
+     "p50": 348441804,
+     "p95": 465358028
+    }
+   },
+   {
+    "container": "dbt-daily-order-summary__ilkac3u__env-main-1",
+    "cpu_pct": {
+     "max": 102.38,
+     "min": 100.15,
+     "p50": 100.69,
+     "p95": 102.38
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 425512140,
+     "min": 72823603,
+     "p50": 186541670,
+     "p95": 425512140
+    }
+   },
+   {
+    "container": "dbt-daily-order-summary__j4czr83__env-main-1",
+    "cpu_pct": {
+     "max": 124.11,
+     "min": 11.21,
+     "p50": 102.48,
+     "p95": 124.11
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 494927872,
+     "min": 39426457,
+     "p50": 369832755,
+     "p95": 494927872
+    }
+   },
+   {
+    "container": "dbt-daily-order-summary__x4mvj6z__env-main-1",
+    "cpu_pct": {
+     "max": 125.31,
+     "min": 100.75,
+     "p50": 102.31,
+     "p95": 125.31
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 530579456,
+     "min": 179621068,
+     "p50": 236873318,
+     "p95": 530579456
+    }
+   },
+   {
+    "container": "dbt-dq-macro-enforcement__7nayemx__env-main-1",
+    "cpu_pct": {
+     "max": 108,
+     "min": 4.25,
+     "p50": 36.2,
+     "p95": 108
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 767557632,
+     "min": 2866806,
+     "p50": 491887001,
+     "p95": 767557632
+    }
+   },
+   {
+    "container": "dbt-dq-macro-enforcement__7v7cph9__env-main-1",
+    "cpu_pct": {
+     "max": 106.01,
+     "min": 0,
+     "p50": 37.25,
+     "p95": 106.01
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 795240038,
+     "min": 684032,
+     "p50": 428553011,
+     "p95": 795240038
+    }
+   },
+   {
+    "container": "dbt-dq-macro-enforcement__agmuhgm__env-main-1",
+    "cpu_pct": {
+     "max": 124.49,
+     "min": 0,
+     "p50": 35.85,
+     "p95": 124.49
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 738721792,
+     "min": 58479083,
+     "p50": 606391500,
+     "p95": 738721792
+    }
+   },
+   {
+    "container": "dbt-dq-macro-enforcement__buzm357__env-main-1",
+    "cpu_pct": {
+     "max": 116.67,
+     "min": 16.69,
+     "p50": 34.5,
+     "p95": 116.67
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 617401548,
+     "min": 782336,
+     "p50": 381367091,
+     "p95": 617401548
+    }
+   },
+   {
+    "container": "dbt-dq-macro-enforcement__cfpcn3m__env-main-1",
+    "cpu_pct": {
+     "max": 113.07,
+     "min": 9.88,
+     "p50": 43.8,
+     "p95": 113.07
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 510866227,
+     "min": 214328934,
+     "p50": 380003942,
+     "p95": 510866227
+    }
+   },
+   {
+    "container": "dbt-dq-macro-enforcement__dvwbp8k__env-main-1",
+    "cpu_pct": {
+     "max": 107.89,
+     "min": 9.7,
+     "p50": 16.11,
+     "p95": 107.89
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 749836697,
+     "min": 95514787,
+     "p50": 514536243,
+     "p95": 749836697
+    }
+   },
+   {
+    "container": "dbt-dq-macro-enforcement__enydoy5__env-main-1",
+    "cpu_pct": {
+     "max": 105.2,
+     "min": 5.63,
+     "p50": 95.7,
+     "p95": 105.2
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 819776716,
+     "min": 307966771,
+     "p50": 352426393,
+     "p95": 819776716
+    }
+   },
+   {
+    "container": "dbt-dq-macro-enforcement__fr5fhns__env-main-1",
+    "cpu_pct": {
+     "max": 104.15,
+     "min": 0,
+     "p50": 39.95,
+     "p95": 104.15
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 696254464,
+     "min": 232888729,
+     "p50": 398563737,
+     "p95": 696254464
+    }
+   },
+   {
+    "container": "dbt-dq-macro-enforcement__kqnknmd__env-main-1",
+    "cpu_pct": {
+     "max": 107.36,
+     "min": 6.29,
+     "p50": 32.02,
+     "p95": 107.36
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 688914432,
+     "min": 238760755,
+     "p50": 431384166,
+     "p95": 688914432
+    }
+   },
+   {
+    "container": "dbt-dq-macro-enforcement__l3dj3z7__env-main-1",
+    "cpu_pct": {
+     "max": 107.35,
+     "min": 8.99,
+     "p50": 33.63,
+     "p95": 107.35
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 669410918,
+     "min": 267806310,
+     "p50": 467979468,
+     "p95": 669410918
+    }
+   },
+   {
+    "container": "dbt-dq-macro-enforcement__l4fomus__env-main-1",
+    "cpu_pct": {
+     "max": 98.72,
+     "min": 0,
+     "p50": 17.3,
+     "p95": 98.72
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 467664896,
+     "min": 806912,
+     "p50": 337641472,
+     "p95": 467664896
+    }
+   },
+   {
+    "container": "dbt-dq-macro-enforcement__ppd4uff__env-main-1",
+    "cpu_pct": {
+     "max": 123.31,
+     "min": 7.88,
+     "p50": 21.42,
+     "p95": 123.31
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 622329856,
+     "min": 46881832,
+     "p50": 441660211,
+     "p95": 622329856
+    }
+   },
+   {
+    "container": "dbt-dq-macro-enforcement__st5z2hu__env-main-1",
+    "cpu_pct": {
+     "max": 103.09,
+     "min": 15.04,
+     "p50": 30.36,
+     "p95": 103.09
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 459066572,
+     "min": 27671920,
+     "p50": 351902105,
+     "p95": 459066572
+    }
+   },
+   {
+    "container": "dbt-dq-macro-enforcement__wma4buv__env-main-1",
+    "cpu_pct": {
+     "max": 185.44,
+     "min": 1.39,
+     "p50": 101.27,
+     "p95": 185.44
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 779930828,
+     "min": 91572142,
+     "p50": 555745280,
+     "p95": 779930828
+    }
+   },
+   {
+    "container": "dbt-dq-macro-enforcement__xvmdcwx__env-main-1",
+    "cpu_pct": {
+     "max": 107.57,
+     "min": 6.05,
+     "p50": 63.72,
+     "p95": 107.57
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 761580748,
+     "min": 250085376,
+     "p50": 446273945,
+     "p95": 761580748
+    }
+   },
+   {
+    "container": "dbt-fix-cac-payback-waterfall__7qfbw2g__env-main-1",
+    "cpu_pct": {
+     "max": 119.1,
+     "min": 21.51,
+     "p50": 41.43,
+     "p95": 119.1
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 564553318,
+     "min": 351797248,
+     "p50": 387763404,
+     "p95": 564553318
+    }
+   },
+   {
+    "container": "dbt-fix-cac-payback-waterfall__aaveznq__env-main-1",
+    "cpu_pct": {
+     "max": 164.41,
+     "min": 0,
+     "p50": 36.76,
+     "p95": 164.41
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 471125196,
+     "min": 52953088,
+     "p50": 413977804,
+     "p95": 471125196
+    }
+   },
+   {
+    "container": "dbt-fix-cac-payback-waterfall__adqhtkp__env-main-1",
+    "cpu_pct": {
+     "max": 106.49,
+     "min": 3.86,
+     "p50": 25.31,
+     "p95": 106.49
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 506671923,
+     "min": 49083842,
+     "p50": 380842803,
+     "p95": 506671923
+    }
+   },
+   {
+    "container": "dbt-fix-cac-payback-waterfall__pvubfuj__env-main-1",
+    "cpu_pct": {
+     "max": 112.51,
+     "min": 4.52,
+     "p50": 93.97,
+     "p95": 112.51
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 525336576,
+     "min": 233517875,
+     "p50": 461373440,
+     "p95": 525336576
+    }
+   },
+   {
+    "container": "dbt-fix-cac-payback-waterfall__rzcbfha__env-main-1",
+    "cpu_pct": {
+     "max": 102.61,
+     "min": 0,
+     "p50": 23.15,
+     "p95": 102.61
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 516004249,
+     "min": 671744,
+     "p50": 396466585,
+     "p95": 516004249
+    }
+   },
+   {
+    "container": "dbt-fix-cac-payback-waterfall__tnvsqyg__env-main-1",
+    "cpu_pct": {
+     "max": 91.4,
+     "min": 22.88,
+     "p50": 34.12,
+     "p95": 91.4
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 453404262,
+     "min": 316040806,
+     "p50": 347393228,
+     "p95": 453404262
+    }
+   },
+   {
+    "container": "dbt-fix-cac-payback-waterfall__utngq6e__env-main-1",
+    "cpu_pct": {
+     "max": 101.09,
+     "min": 25.53,
+     "p50": 81.79,
+     "p95": 101.09
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 577241088,
+     "min": 66542632,
+     "p50": 348441804,
+     "p95": 577241088
+    }
+   },
+   {
+    "container": "dbt-fix-customer-snapshot-and-bu__2myiepq__env-main-1",
+    "cpu_pct": {
+     "max": 156.38,
+     "min": 18.57,
+     "p50": 35.19,
+     "p95": 156.38
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 978635980,
+     "min": 111044198,
+     "p50": 482764390,
+     "p95": 978635980
+    }
+   },
+   {
+    "container": "dbt-fix-customer-snapshot-and-bu__74vuyes__env-main-1",
+    "cpu_pct": {
+     "max": 141.24,
+     "min": 6.81,
+     "p50": 77.33,
+     "p95": 141.24
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 732535193,
+     "min": 43610275,
+     "p50": 489055846,
+     "p95": 732535193
+    }
+   },
+   {
+    "container": "dbt-fix-customer-snapshot-and-bu__7mykspj__env-main-1",
+    "cpu_pct": {
+     "max": 112.33,
+     "min": 4.85,
+     "p50": 99.35,
+     "p95": 109.29
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 924005171,
+     "min": 142291763,
+     "p50": 571683635,
+     "p95": 823027302
+    }
+   },
+   {
+    "container": "dbt-fix-customer-snapshot-and-bu__gpbu3e6__env-main-1",
+    "cpu_pct": {
+     "max": 125.52,
+     "min": 0,
+     "p50": 47.16,
+     "p95": 125.52
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 719847424,
+     "min": 46892318,
+     "p50": 475843788,
+     "p95": 719847424
+    }
+   },
+   {
+    "container": "dbt-fix-customer-snapshot-and-bu__pwmzmqn__env-main-1",
+    "cpu_pct": {
+     "max": 127.73,
+     "min": 5.89,
+     "p50": 22.82,
+     "p95": 124.38
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 1076963049,
+     "min": 35892756,
+     "p50": 657876582,
+     "p95": 882376704
+    }
+   },
+   {
+    "container": "dbt-fix-customer-snapshot-and-bu__sk3z9pq__env-main-1",
+    "cpu_pct": {
+     "max": 106.35,
+     "min": 9.68,
+     "p50": 33.38,
+     "p95": 106.35
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 794086604,
+     "min": 73190604,
+     "p50": 501953331,
+     "p95": 794086604
+    }
+   },
+   {
+    "container": "dbt-fix-customer-snapshot-and-bu__uaqolgd__env-main-1",
+    "cpu_pct": {
+     "max": 134.5,
+     "min": 20.25,
+     "p50": 27.45,
+     "p95": 134.5
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 923480883,
+     "min": 248827084,
+     "p50": 582693683,
+     "p95": 923480883
+    }
+   },
+   {
+    "container": "dbt-fix-daily-cohorts__9gkzjck__env-main-1",
+    "cpu_pct": {
+     "max": 122.09,
+     "min": 101.91,
+     "p50": 102.45,
+     "p95": 122.09
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 593598873,
+     "min": 220830105,
+     "p50": 459695718,
+     "p95": 593598873
+    }
+   },
+   {
+    "container": "dbt-fix-daily-cohorts__ba5whuv__env-main-1",
+    "cpu_pct": {
+     "max": 125.34,
+     "min": 11.23,
+     "p50": 26.82,
+     "p95": 125.34
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 411985510,
+     "min": 43641733,
+     "p50": 354628403,
+     "p95": 411985510
+    }
+   },
+   {
+    "container": "dbt-fix-daily-cohorts__dgtxkq9__env-main-1",
+    "cpu_pct": {
+     "max": 103.74,
+     "min": 6.26,
+     "p50": 23.24,
+     "p95": 103.74
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 900097638,
+     "min": 370461900,
+     "p50": 566126182,
+     "p95": 900097638
+    }
+   },
+   {
+    "container": "dbt-fix-daily-cohorts__ouutky9__env-main-1",
+    "cpu_pct": {
+     "max": 84.55,
+     "min": 5.4,
+     "p50": 25.46,
+     "p95": 84.55
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 419640115,
+     "min": 54358179,
+     "p50": 415026380,
+     "p95": 419640115
+    }
+   },
+   {
+    "container": "dbt-fix-daily-cohorts__qscsgnp__env-main-1",
+    "cpu_pct": {
+     "max": 124.79,
+     "min": 8.03,
+     "p50": 40.56,
+     "p95": 124.79
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 604504064,
+     "min": 36920360,
+     "p50": 421003264,
+     "p95": 604504064
+    }
+   },
+   {
+    "container": "dbt-fix-daily-cohorts__sfppqnx__env-main-1",
+    "cpu_pct": {
+     "max": 121.99,
+     "min": 21.4,
+     "p50": 106.63,
+     "p95": 121.99
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 765565337,
+     "min": 333237452,
+     "p50": 380213657,
+     "p95": 765565337
+    }
+   },
+   {
+    "container": "dbt-fix-daily-cohorts__uk6htyb__env-main-1",
+    "cpu_pct": {
+     "max": 109.3,
+     "min": 3.4,
+     "p50": 32.47,
+     "p95": 109.3
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 658400870,
+     "min": 338690048,
+     "p50": 513697382,
+     "p95": 658400870
+    }
+   },
+   {
+    "container": "dbt-fix-division-by-zero__5wlbtps__env-main-1",
+    "cpu_pct": {
+     "max": 105.55,
+     "min": 15.07,
+     "p50": 30.26,
+     "p95": 105.55
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 684090982,
+     "min": 823296,
+     "p50": 363541299,
+     "p95": 684090982
+    }
+   },
+   {
+    "container": "dbt-fix-division-by-zero__fpuujef__env-main-1",
+    "cpu_pct": {
+     "max": 114.79,
+     "min": 13.63,
+     "p50": 27.91,
+     "p95": 114.79
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 812751257,
+     "min": 54630809,
+     "p50": 375180492,
+     "p95": 812751257
+    }
+   },
+   {
+    "container": "dbt-fix-division-by-zero__mtjm5k8__env-main-1",
+    "cpu_pct": {
+     "max": 103.72,
+     "min": 25.34,
+     "p50": 69.85,
+     "p95": 103.72
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 640889651,
+     "min": 341835776,
+     "p50": 406113484,
+     "p95": 640889651
+    }
+   },
+   {
+    "container": "dbt-fix-division-by-zero__tc6tmtj__env-main-1",
+    "cpu_pct": {
+     "max": 102.42,
+     "min": 22.55,
+     "p50": 27.55,
+     "p95": 102.42
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 874931814,
+     "min": 49429872,
+     "p50": 397829734,
+     "p95": 874931814
+    }
+   },
+   {
+    "container": "dbt-fix-inventory-balance__4iabbpm__env-main-1",
+    "cpu_pct": {
+     "max": 110.56,
+     "min": 0,
+     "p50": 39.13,
+     "p95": 110.56
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 567279616,
+     "min": 47877980,
+     "p50": 396361728,
+     "p95": 567279616
+    }
+   },
+   {
+    "container": "dbt-fix-inventory-balance__ak4ysxs__env-main-1",
+    "cpu_pct": {
+     "max": 110.31,
+     "min": 34.6,
+     "p50": 101.04,
+     "p95": 110.31
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 612263526,
+     "min": 309329920,
+     "p50": 527433728,
+     "p95": 612263526
+    }
+   },
+   {
+    "container": "dbt-fix-inventory-balance__azeeuac__env-main-1",
+    "cpu_pct": {
+     "max": 102.87,
+     "min": 3.46,
+     "p50": 35.15,
+     "p95": 102.87
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 663958323,
+     "min": 227436134,
+     "p50": 568537907,
+     "p95": 663958323
+    }
+   },
+   {
+    "container": "dbt-fix-inventory-balance__bc9gbht__env-main-1",
+    "cpu_pct": {
+     "max": 111.62,
+     "min": 21.73,
+     "p50": 69.83,
+     "p95": 111.62
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 443862220,
+     "min": 206779187,
+     "p50": 378326220,
+     "p95": 443862220
+    }
+   },
+   {
+    "container": "dbt-fix-inventory-balance__bv4crbd__env-main-1",
+    "cpu_pct": {
+     "max": 117.03,
+     "min": 8.73,
+     "p50": 16.21,
+     "p95": 117.03
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 702860492,
+     "min": 407266918,
+     "p50": 570215628,
+     "p95": 702860492
+    }
+   },
+   {
+    "container": "dbt-fix-inventory-balance__cismslw__env-main-1",
+    "cpu_pct": {
+     "max": 178.64,
+     "min": 0,
+     "p50": 30.49,
+     "p95": 178.64
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 598736896,
+     "min": 675840,
+     "p50": 411880652,
+     "p95": 598736896
+    }
+   },
+   {
+    "container": "dbt-fix-inventory-balance__cr9nwdc__env-main-1",
+    "cpu_pct": {
+     "max": 127.48,
+     "min": 0,
+     "p50": 21.66,
+     "p95": 127.48
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 999397785,
+     "min": 667648,
+     "p50": 523763712,
+     "p95": 999397785
+    }
+   },
+   {
+    "container": "dbt-fix-inventory-balance__gftxhgj__env-main-1",
+    "cpu_pct": {
+     "max": 193.61,
+     "min": 28,
+     "p50": 104.88,
+     "p95": 193.61
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 2273111441,
+     "min": 179621068,
+     "p50": 400136601,
+     "p95": 2273111441
+    }
+   },
+   {
+    "container": "dbt-fix-inventory-balance__iyxhznp__env-main-1",
+    "cpu_pct": {
+     "max": 107.36,
+     "min": 0.98,
+     "p50": 66.48,
+     "p95": 107.36
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 565497036,
+     "min": 110519910,
+     "p50": 415445811,
+     "p95": 565497036
+    }
+   },
+   {
+    "container": "dbt-fix-inventory-balance__kkamzz9__env-main-1",
+    "cpu_pct": {
+     "max": 130.09,
+     "min": 0,
+     "p50": 73.16,
+     "p95": 130.09
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 762209894,
+     "min": 58510540,
+     "p50": 548510105,
+     "p95": 762209894
+    }
+   },
+   {
+    "container": "dbt-fix-inventory-balance__lqh74hp__env-main-1",
+    "cpu_pct": {
+     "max": 211.95,
+     "min": 8.02,
+     "p50": 74.39,
+     "p95": 211.95
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 1021417881,
+     "min": 113351065,
+     "p50": 617820979,
+     "p95": 1021417881
+    }
+   },
+   {
+    "container": "dbt-fix-inventory-balance__m54xwx3__env-main-1",
+    "cpu_pct": {
+     "max": 117.91,
+     "min": 6.71,
+     "p50": 31.07,
+     "p95": 117.91
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 721734860,
+     "min": 30565990,
+     "p50": 532571750,
+     "p95": 721734860
+    }
+   },
+   {
+    "container": "dbt-fix-inventory-balance__q2wd89n__env-main-1",
+    "cpu_pct": {
+     "max": 111,
+     "min": 18.35,
+     "p50": 25.2,
+     "p95": 111
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 752877568,
+     "min": 187695104,
+     "p50": 349909811,
+     "p95": 752877568
+    }
+   },
+   {
+    "container": "dbt-fix-inventory-balance__r3xfct5__env-main-1",
+    "cpu_pct": {
+     "max": 101.21,
+     "min": 22.55,
+     "p50": 38.47,
+     "p95": 101.21
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 551970406,
+     "min": 273049190,
+     "p50": 326841139,
+     "p95": 551970406
+    }
+   },
+   {
+    "container": "dbt-fix-inventory-balance__yr8psgh__env-main-1",
+    "cpu_pct": {
+     "max": 139.89,
+     "min": 1.9,
+     "p50": 16.47,
+     "p95": 139.89
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 494298726,
+     "min": 811008,
+     "p50": 446693376,
+     "p95": 494298726
+    }
+   },
+   {
+    "container": "dbt-fix-marketing-attribution__4v47uwb__env-main-1",
+    "cpu_pct": {
+     "max": 102.6,
+     "min": 20.09,
+     "p50": 30.73,
+     "p95": 102.6
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 663853465,
+     "min": 75675729,
+     "p50": 516528537,
+     "p95": 663853465
+    }
+   },
+   {
+    "container": "dbt-fix-marketing-attribution__9ukch25__env-main-1",
+    "cpu_pct": {
+     "max": 110.46,
+     "min": 7.97,
+     "p50": 11.53,
+     "p95": 110.46
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 473012633,
+     "min": 234671308,
+     "p50": 404750336,
+     "p95": 473012633
+    }
+   },
+   {
+    "container": "dbt-fix-marketing-attribution__fanqd86__env-main-1",
+    "cpu_pct": {
+     "max": 109.71,
+     "min": 19.08,
+     "p50": 70.91,
+     "p95": 109.71
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 634073907,
+     "min": 166513868,
+     "p50": 381052518,
+     "p95": 634073907
+    }
+   },
+   {
+    "container": "dbt-fix-marketing-attribution__kld5cef__env-main-1",
+    "cpu_pct": {
+     "max": 139.1,
+     "min": 30.28,
+     "p50": 102.58,
+     "p95": 139.1
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 608593510,
+     "min": 289931264,
+     "p50": 396676300,
+     "p95": 608593510
+    }
+   },
+   {
+    "container": "dbt-fix-marketing-attribution__ne7b2jr__env-main-1",
+    "cpu_pct": {
+     "max": 112.13,
+     "min": 0,
+     "p50": 99.62,
+     "p95": 112.13
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 615828684,
+     "min": 73054289,
+     "p50": 405274624,
+     "p95": 615828684
+    }
+   },
+   {
+    "container": "dbt-fix-marketing-attribution__vnwsvtg__env-main-1",
+    "cpu_pct": {
+     "max": 105.13,
+     "min": 12.4,
+     "p50": 29.03,
+     "p95": 105.13
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 531103744,
+     "min": 92851404,
+     "p50": 395942297,
+     "p95": 531103744
+    }
+   },
+   {
+    "container": "dbt-fix-marketing-attribution__zbghqpv__env-main-1",
+    "cpu_pct": {
+     "max": 147.79,
+     "min": 9.93,
+     "p50": 100.48,
+     "p95": 147.79
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 861090611,
+     "min": 40296775,
+     "p50": 444176793,
+     "p95": 861090611
+    }
+   },
+   {
+    "container": "dbt-fix-refund-reconciliation__6f2edby__env-main-1",
+    "cpu_pct": {
+     "max": 110.75,
+     "min": 5.58,
+     "p50": 16.09,
+     "p95": 110.75
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 512229376,
+     "min": 209400627,
+     "p50": 414292377,
+     "p95": 512229376
+    }
+   },
+   {
+    "container": "dbt-fix-refund-reconciliation__9jkuqmj__env-main-1",
+    "cpu_pct": {
+     "max": 101.04,
+     "min": 26.2,
+     "p50": 34.24,
+     "p95": 101.04
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 585944268,
+     "min": 113665638,
+     "p50": 359137280,
+     "p95": 585944268
+    }
+   },
+   {
+    "container": "dbt-fix-refund-reconciliation__a5hqbuy__env-main-1",
+    "cpu_pct": {
+     "max": 121.54,
+     "min": 0.82,
+     "p50": 98.84,
+     "p95": 121.54
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 639421644,
+     "min": 275146342,
+     "p50": 414502092,
+     "p95": 639421644
+    }
+   },
+   {
+    "container": "dbt-fix-refund-reconciliation__cxc96yc__env-main-1",
+    "cpu_pct": {
+     "max": 106.1,
+     "min": 7.71,
+     "p50": 55.85,
+     "p95": 106.1
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 534144614,
+     "min": 704512,
+     "p50": 374551347,
+     "p95": 534144614
+    }
+   },
+   {
+    "container": "dbt-fix-refund-reconciliation__napkftv__env-main-1",
+    "cpu_pct": {
+     "max": 101.19,
+     "min": 18.4,
+     "p50": 97.08,
+     "p95": 101.19
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 523344281,
+     "min": 306813337,
+     "p50": 411775795,
+     "p95": 523344281
+    }
+   },
+   {
+    "container": "dbt-fix-refund-reconciliation__pwamtea__env-main-1",
+    "cpu_pct": {
+     "max": 102.91,
+     "min": 12.66,
+     "p50": 71.34,
+     "p95": 102.91
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 361339289,
+     "min": 4153409,
+     "p50": 161900134,
+     "p95": 361339289
+    }
+   },
+   {
+    "container": "dbt-fix-refund-reconciliation__tp9ahnp__env-main-1",
+    "cpu_pct": {
+     "max": 123.82,
+     "min": 1.15,
+     "p50": 25.69,
+     "p95": 123.82
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 582798540,
+     "min": 47007662,
+     "p50": 404960051,
+     "p95": 582798540
+    }
+   },
+   {
+    "container": "dbt-fraud-detection-model__6j4swfc__env-main-1",
+    "cpu_pct": {
+     "max": 121.09,
+     "min": 5.56,
+     "p50": 18.32,
+     "p95": 121.09
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 616248115,
+     "min": 41722839,
+     "p50": 530160025,
+     "p95": 616248115
+    }
+   },
+   {
+    "container": "dbt-fraud-detection-model__9v7jv97__env-main-1",
+    "cpu_pct": {
+     "max": 106.29,
+     "min": 3.63,
+     "p50": 31.27,
+     "p95": 106.29
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 561512448,
+     "min": 92106915,
+     "p50": 367630745,
+     "p95": 561512448
+    }
+   },
+   {
+    "container": "dbt-fraud-detection-model__nsqeqdn__env-main-1",
+    "cpu_pct": {
+     "max": 108.64,
+     "min": 0,
+     "p50": 23.3,
+     "p95": 108.64
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 535193190,
+     "min": 0,
+     "p50": 363017011,
+     "p95": 535193190
+    }
+   },
+   {
+    "container": "dbt-fraud-detection-model__parhgbl__env-main-1",
+    "cpu_pct": {
+     "max": 109.56,
+     "min": 0,
+     "p50": 10.13,
+     "p95": 109.56
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 694262169,
+     "min": 667648,
+     "p50": 451726540,
+     "p95": 694262169
+    }
+   },
+   {
+    "container": "dbt-fraud-detection-model__vgnojyj__env-main-1",
+    "cpu_pct": {
+     "max": 133.34,
+     "min": 36.26,
+     "p50": 102.79,
+     "p95": 133.34
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 706949939,
+     "min": 24347934,
+     "p50": 458961715,
+     "p95": 706949939
+    }
+   },
+   {
+    "container": "dbt-fraud-detection-model__ytqvjdq__env-main-1",
+    "cpu_pct": {
+     "max": 127,
+     "min": 26.63,
+     "p50": 84.43,
+     "p95": 127
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 735995494,
+     "min": 349909811,
+     "p50": 391013990,
+     "p95": 735995494
+    }
+   },
+   {
+    "container": "dbt-fraud-detection-model__yworosh__env-main-1",
+    "cpu_pct": {
+     "max": 109.81,
+     "min": 22.16,
+     "p50": 50.53,
+     "p95": 109.81
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 734737203,
+     "min": 305659904,
+     "p50": 402338611,
+     "p95": 734737203
+    }
+   },
+   {
+    "container": "dbt-gl-reconciliation__2nypake__env-main-1",
+    "cpu_pct": {
+     "max": 116.9,
+     "min": 7.36,
+     "p50": 40.36,
+     "p95": 116.9
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 456969420,
+     "min": 336068608,
+     "p50": 421527552,
+     "p95": 456969420
+    }
+   },
+   {
+    "container": "dbt-gl-reconciliation__3abalct__env-main-1",
+    "cpu_pct": {
+     "max": 111.69,
+     "min": 7.42,
+     "p50": 13.63,
+     "p95": 111.69
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 590872576,
+     "min": 191574835,
+     "p50": 515794534,
+     "p95": 590872576
+    }
+   },
+   {
+    "container": "dbt-gl-reconciliation__5rksfyq__env-main-1",
+    "cpu_pct": {
+     "max": 107.28,
+     "min": 4.5,
+     "p50": 10.54,
+     "p95": 107.28
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 502792192,
+     "min": 180459929,
+     "p50": 430964736,
+     "p95": 502792192
+    }
+   },
+   {
+    "container": "dbt-gl-reconciliation__akrwzsc__env-main-1",
+    "cpu_pct": {
+     "max": 36.12,
+     "min": 0.05,
+     "p50": 22.48,
+     "p95": 36.12
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 454243123,
+     "min": 757760,
+     "p50": 371195904,
+     "p95": 454243123
+    }
+   },
+   {
+    "container": "dbt-gl-reconciliation__dhqchk4__env-main-1",
+    "cpu_pct": {
+     "max": 110.81,
+     "min": 8.11,
+     "p50": 20.34,
+     "p95": 110.81
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 571683635,
+     "min": 170079027,
+     "p50": 465567744,
+     "p95": 571683635
+    }
+   },
+   {
+    "container": "dbt-gl-reconciliation__dzuhuzy__env-main-1",
+    "cpu_pct": {
+     "max": 118.52,
+     "min": 21.29,
+     "p50": 33.66,
+     "p95": 118.52
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 506357350,
+     "min": 177628774,
+     "p50": 389860556,
+     "p95": 506357350
+    }
+   },
+   {
+    "container": "dbt-gl-reconciliation__fnd5jyh__env-main-1",
+    "cpu_pct": {
+     "max": 114.8,
+     "min": 8.79,
+     "p50": 17.57,
+     "p95": 112.05
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 726558310,
+     "min": 325268275,
+     "p50": 584685977,
+     "p95": 688075571
+    }
+   },
+   {
+    "container": "dbt-gl-reconciliation__kmpkv7x__env-main-1",
+    "cpu_pct": {
+     "max": 176.85,
+     "min": 0.96,
+     "p50": 12.9,
+     "p95": 176.85
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 716282265,
+     "min": 347393228,
+     "p50": 647810252,
+     "p95": 716282265
+    }
+   },
+   {
+    "container": "dbt-gl-reconciliation__nfx4wtz__env-main-1",
+    "cpu_pct": {
+     "max": 135.18,
+     "min": 25.24,
+     "p50": 32.1,
+     "p95": 135.18
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 618974412,
+     "min": 223975833,
+     "p50": 362283008,
+     "p95": 618974412
+    }
+   },
+   {
+    "container": "dbt-gl-reconciliation__nw9gzdk__env-main-1",
+    "cpu_pct": {
+     "max": 203.78,
+     "min": 6.93,
+     "p50": 36.79,
+     "p95": 203.78
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 860880896,
+     "min": 354523545,
+     "p50": 556374425,
+     "p95": 860880896
+    }
+   },
+   {
+    "container": "dbt-gl-reconciliation__rdyeo8u__env-main-1",
+    "cpu_pct": {
+     "max": 103.3,
+     "min": 21.06,
+     "p50": 25.18,
+     "p95": 103.3
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 470915481,
+     "min": 190526259,
+     "p50": 384722534,
+     "p95": 470915481
+    }
+   },
+   {
+    "container": "dbt-gl-reconciliation__rqheorc__env-main-1",
+    "cpu_pct": {
+     "max": 123.46,
+     "min": 16.24,
+     "p50": 32.49,
+     "p95": 123.46
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 517891686,
+     "min": 24452792,
+     "p50": 357878988,
+     "p95": 517891686
+    }
+   },
+   {
+    "container": "dbt-gl-reconciliation__rwpwdzj__env-main-1",
+    "cpu_pct": {
+     "max": 126.78,
+     "min": 0,
+     "p50": 24.25,
+     "p95": 126.78
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 563609600,
+     "min": 47794094,
+     "p50": 352216678,
+     "p95": 563609600
+    }
+   },
+   {
+    "container": "dbt-gl-reconciliation__szmtkms__env-main-1",
+    "cpu_pct": {
+     "max": 201.42,
+     "min": 8.65,
+     "p50": 31.52,
+     "p95": 201.42
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 646027673,
+     "min": 235090739,
+     "p50": 527538585,
+     "p95": 646027673
+    }
+   },
+   {
+    "container": "dbt-gl-reconciliation__uyrzmf8__env-main-1",
+    "cpu_pct": {
+     "max": 108.99,
+     "min": 6.63,
+     "p50": 12.42,
+     "p95": 108.99
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 655569715,
+     "min": 273258905,
+     "p50": 452460544,
+     "p95": 655569715
+    }
+   },
+   {
+    "container": "dbt-incremental-late-arriving-sa__admd7zc__env-main-1",
+    "cpu_pct": {
+     "max": 124.11,
+     "min": 0,
+     "p50": 25.18,
+     "p95": 124.11
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 745642393,
+     "min": 47951380,
+     "p50": 374551347,
+     "p95": 745642393
+    }
+   },
+   {
+    "container": "dbt-incremental-late-arriving-sa__bpkigjw__env-main-1",
+    "cpu_pct": {
+     "max": 113.22,
+     "min": 22.67,
+     "p50": 33.7,
+     "p95": 113.22
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 669201203,
+     "min": 392796569,
+     "p50": 443128217,
+     "p95": 669201203
+    }
+   },
+   {
+    "container": "dbt-incremental-late-arriving-sa__enewwef__env-main-1",
+    "cpu_pct": {
+     "max": 140,
+     "min": 10.72,
+     "p50": 70.17,
+     "p95": 131.66
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 912261120,
+     "min": 266338304,
+     "p50": 630508748,
+     "p95": 902194790
+    }
+   },
+   {
+    "container": "dbt-incremental-late-arriving-sa__gjgnngj__env-main-1",
+    "cpu_pct": {
+     "max": 142.67,
+     "min": 0,
+     "p50": 20.65,
+     "p95": 142.67
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 918447718,
+     "min": 41062236,
+     "p50": 361653862,
+     "p95": 918447718
+    }
+   },
+   {
+    "container": "dbt-incremental-late-arriving-sa__gjjbyve__env-main-1",
+    "cpu_pct": {
+     "max": 208.62,
+     "min": 0,
+     "p50": 29.61,
+     "p95": 144.42
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 827536179,
+     "min": 111463628,
+     "p50": 644664524,
+     "p95": 821978726
+    }
+   },
+   {
+    "container": "dbt-incremental-late-arriving-sa__gyoe8ug__env-main-1",
+    "cpu_pct": {
+     "max": 209.85,
+     "min": 2.14,
+     "p50": 29.91,
+     "p95": 188.71
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 958503321,
+     "min": 406323200,
+     "p50": 667838054,
+     "p95": 870842368
+    }
+   },
+   {
+    "container": "dbt-incremental-late-arriving-sa__n7njcxx__env-main-1",
+    "cpu_pct": {
+     "max": 113.33,
+     "min": 7.33,
+     "p50": 32.23,
+     "p95": 103.02
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 864446054,
+     "min": 235719884,
+     "p50": 620232704,
+     "p95": 704328499
+    }
+   },
+   {
+    "container": "dbt-incremental-late-arriving-sa__p2gugwd__env-main-1",
+    "cpu_pct": {
+     "max": 200.79,
+     "min": 6.91,
+     "p50": 23.01,
+     "p95": 130.44
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 862453760,
+     "min": 170603315,
+     "p50": 522190848,
+     "p95": 754974720
+    }
+   },
+   {
+    "container": "dbt-incremental-late-arriving-sa__pvpasz8__env-main-1",
+    "cpu_pct": {
+     "max": 104.4,
+     "min": 9.51,
+     "p50": 20.4,
+     "p95": 104.4
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 462422016,
+     "min": 131176857,
+     "p50": 402338611,
+     "p95": 462422016
+    }
+   },
+   {
+    "container": "dbt-incremental-late-arriving-sa__ru9pjix__env-main-1",
+    "cpu_pct": {
+     "max": 123.45,
+     "min": 1.19,
+     "p50": 100.23,
+     "p95": 123.45
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 836029644,
+     "min": 44344279,
+     "p50": 405589196,
+     "p95": 836029644
+    }
+   },
+   {
+    "container": "dbt-incremental-late-arriving-sa__sbuhbyx__env-main-1",
+    "cpu_pct": {
+     "max": 128.81,
+     "min": 3.28,
+     "p50": 23.62,
+     "p95": 102.45
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 571369062,
+     "min": 132644864,
+     "p50": 491152998,
+     "p95": 546622668
+    }
+   },
+   {
+    "container": "dbt-incremental-late-arriving-sa__seefba5__env-main-1",
+    "cpu_pct": {
+     "max": 197.75,
+     "min": 0,
+     "p50": 26.04,
+     "p95": 197.75
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 636171059,
+     "min": 667648,
+     "p50": 425616998,
+     "p95": 636171059
+    }
+   },
+   {
+    "container": "dbt-incremental-late-arriving-sa__sratkxa__env-main-1",
+    "cpu_pct": {
+     "max": 194.96,
+     "min": 8.25,
+     "p50": 23.61,
+     "p95": 150.8
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 723202867,
+     "min": 268016025,
+     "p50": 524183142,
+     "p95": 716072550
+    }
+   },
+   {
+    "container": "dbt-incremental-late-arriving-sa__waakxf9__env-main-1",
+    "cpu_pct": {
+     "max": 116.11,
+     "min": 0,
+     "p50": 49.76,
+     "p95": 116.11
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 778043392,
+     "min": 765952,
+     "p50": 414606950,
+     "p95": 778043392
+    }
+   },
+   {
+    "container": "dbt-incremental-late-arriving-sa__y9zxpg2__env-main-1",
+    "cpu_pct": {
+     "max": 136.18,
+     "min": 0,
+     "p50": 29.94,
+     "p95": 135.92
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 976853401,
+     "min": 48758784,
+     "p50": 576297369,
+     "p95": 773744230
+    }
+   },
+   {
+    "container": "dbt-inventory-turnover-analysis__cvhi9zc__env-main-1",
+    "cpu_pct": {
+     "max": 108.33,
+     "min": 2.85,
+     "p50": 71.99,
+     "p95": 108.33
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 627048448,
+     "min": 293286707,
+     "p50": 449105100,
+     "p95": 627048448
+    }
+   },
+   {
+    "container": "dbt-inventory-turnover-analysis__gsk4ayc__env-main-1",
+    "cpu_pct": {
+     "max": 130.06,
+     "min": 20.7,
+     "p50": 102.89,
+     "p95": 130.06
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 525022003,
+     "min": 35724984,
+     "p50": 401499750,
+     "p95": 525022003
+    }
+   },
+   {
+    "container": "dbt-inventory-turnover-analysis__knhx36v__env-main-1",
+    "cpu_pct": {
+     "max": 130.29,
+     "min": 17.36,
+     "p50": 37.26,
+     "p95": 130.29
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 494508441,
+     "min": 57315164,
+     "p50": 353999257,
+     "p95": 494508441
+    }
+   },
+   {
+    "container": "dbt-inventory-turnover-analysis__p7thgh9__env-main-1",
+    "cpu_pct": {
+     "max": 112.58,
+     "min": 11.07,
+     "p50": 34.98,
+     "p95": 112.58
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 573466214,
+     "min": 46577745,
+     "p50": 422471270,
+     "p95": 573466214
+    }
+   },
+   {
+    "container": "dbt-inventory-turnover-analysis__umiyfyk__env-main-1",
+    "cpu_pct": {
+     "max": 99.32,
+     "min": 9.84,
+     "p50": 24.58,
+     "p95": 99.32
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 606810931,
+     "min": 794624,
+     "p50": 397829734,
+     "p95": 606810931
+    }
+   },
+   {
+    "container": "dbt-inventory-turnover-analysis__xbc5tzz__env-main-1",
+    "cpu_pct": {
+     "max": 136.18,
+     "min": 0.86,
+     "p50": 29.48,
+     "p95": 136.18
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 655674572,
+     "min": 47018147,
+     "p50": 407896064,
+     "p95": 655674572
+    }
+   },
+   {
+    "container": "dbt-inventory-turnover-analysis__yq7yz62__env-main-1",
+    "cpu_pct": {
+     "max": 105.61,
+     "min": 3.64,
+     "p50": 26.11,
+     "p95": 105.61
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 683252121,
+     "min": 223975833,
+     "p50": 349804953,
+     "p95": 683252121
+    }
+   },
+   {
+    "container": "dbt-multi-warehouse-stock-rebala__97ofjmt__env-main-1",
+    "cpu_pct": {
+     "max": 110.38,
+     "min": 2.22,
+     "p50": 22.95,
+     "p95": 103.37
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 829843046,
+     "min": 396990873,
+     "p50": 674129510,
+     "p95": 722678579
+    }
+   },
+   {
+    "container": "dbt-multi-warehouse-stock-rebala__9ns6byi__env-main-1",
+    "cpu_pct": {
+     "max": 125.05,
+     "min": 0,
+     "p50": 31.53,
+     "p95": 125.05
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 756233011,
+     "min": 233832448,
+     "p50": 401814323,
+     "p95": 756233011
+    }
+   },
+   {
+    "container": "dbt-multi-warehouse-stock-rebala__eblsppe__env-main-1",
+    "cpu_pct": {
+     "max": 128.92,
+     "min": 12.71,
+     "p50": 52.81,
+     "p95": 128.92
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 903243366,
+     "min": 231001292,
+     "p50": 447741952,
+     "p95": 903243366
+    }
+   },
+   {
+    "container": "dbt-multi-warehouse-stock-rebala__iuyltfe__env-main-1",
+    "cpu_pct": {
+     "max": 119.11,
+     "min": 25.78,
+     "p50": 88.16,
+     "p95": 119.11
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 485805260,
+     "min": 216006656,
+     "p50": 334600601,
+     "p95": 485805260
+    }
+   },
+   {
+    "container": "dbt-multi-warehouse-stock-rebala__k6mqvlz__env-main-1",
+    "cpu_pct": {
+     "max": 137.61,
+     "min": 0,
+     "p50": 58.61,
+     "p95": 137.61
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 576192512,
+     "min": 152567808,
+     "p50": 468818329,
+     "p95": 576192512
+    }
+   },
+   {
+    "container": "dbt-multi-warehouse-stock-rebala__la4ufb9__env-main-1",
+    "cpu_pct": {
+     "max": 177.08,
+     "min": 3.74,
+     "p50": 13.3,
+     "p95": 108.11
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 881747558,
+     "min": 102561218,
+     "p50": 679582105,
+     "p95": 748368691
+    }
+   },
+   {
+    "container": "dbt-multi-warehouse-stock-rebala__xamcf3q__env-main-1",
+    "cpu_pct": {
+     "max": 105.18,
+     "min": 0,
+     "p50": 25.22,
+     "p95": 105.18
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 525336576,
+     "min": 794624,
+     "p50": 458542284,
+     "p95": 525336576
+    }
+   },
+   {
+    "container": "dbt-order-fulfillment-metrics__3ivywss__env-main-1",
+    "cpu_pct": {
+     "max": 109.18,
+     "min": 5.86,
+     "p50": 41.75,
+     "p95": 109.18
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 476158361,
+     "min": 101124669,
+     "p50": 154874675,
+     "p95": 476158361
+    }
+   },
+   {
+    "container": "dbt-order-fulfillment-metrics__atbcqas__env-main-1",
+    "cpu_pct": {
+     "max": 115.82,
+     "min": 32.66,
+     "p50": 44.96,
+     "p95": 115.82
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 488741273,
+     "min": 53456404,
+     "p50": 370881331,
+     "p95": 488741273
+    }
+   },
+   {
+    "container": "dbt-order-fulfillment-metrics__cdt8tag__env-main-1",
+    "cpu_pct": {
+     "max": 132.03,
+     "min": 7.14,
+     "p50": 23.9,
+     "p95": 132.03
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 468713472,
+     "min": 794624,
+     "p50": 431698739,
+     "p95": 468713472
+    }
+   },
+   {
+    "container": "dbt-order-fulfillment-metrics__cnlvzal__env-main-1",
+    "cpu_pct": {
+     "max": 115.01,
+     "min": 7.82,
+     "p50": 98.39,
+     "p95": 115.01
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 782971699,
+     "min": 235405312,
+     "p50": 524917145,
+     "p95": 782971699
+    }
+   },
+   {
+    "container": "dbt-order-fulfillment-metrics__cuzhtdq__env-main-1",
+    "cpu_pct": {
+     "max": 132.47,
+     "min": 0,
+     "p50": 33.86,
+     "p95": 132.47
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 437990195,
+     "min": 667648,
+     "p50": 314258227,
+     "p95": 437990195
+    }
+   },
+   {
+    "container": "dbt-order-fulfillment-metrics__djd2kpp__env-main-1",
+    "cpu_pct": {
+     "max": 200.13,
+     "min": 9.69,
+     "p50": 102.13,
+     "p95": 200.13
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 536870912,
+     "min": 137573171,
+     "p50": 382835097,
+     "p95": 536870912
+    }
+   },
+   {
+    "container": "dbt-order-fulfillment-metrics__fssjeij__env-main-1",
+    "cpu_pct": {
+     "max": 197.15,
+     "min": 12.81,
+     "p50": 101.13,
+     "p95": 197.15
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 483708108,
+     "min": 51527024,
+     "p50": 344247500,
+     "p95": 483708108
+    }
+   },
+   {
+    "container": "dbt-order-fulfillment-metrics__htljdgi__env-main-1",
+    "cpu_pct": {
+     "max": 201.84,
+     "min": 12.69,
+     "p50": 32.84,
+     "p95": 201.84
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 652528844,
+     "min": 255642828,
+     "p50": 445539942,
+     "p95": 652528844
+    }
+   },
+   {
+    "container": "dbt-order-fulfillment-metrics__mpsgr9j__env-main-1",
+    "cpu_pct": {
+     "max": 109.85,
+     "min": 1.65,
+     "p50": 15.6,
+     "p95": 109.85
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 634912768,
+     "min": 239180185,
+     "p50": 414082662,
+     "p95": 634912768
+    }
+   },
+   {
+    "container": "dbt-order-fulfillment-metrics__s3g8c7c__env-main-1",
+    "cpu_pct": {
+     "max": 120.03,
+     "min": 22.02,
+     "p50": 22.33,
+     "p95": 120.03
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 496710451,
+     "min": 381576806,
+     "p50": 417228390,
+     "p95": 496710451
+    }
+   },
+   {
+    "container": "dbt-order-fulfillment-metrics__uuarcz3__env-main-1",
+    "cpu_pct": {
+     "max": 120.45,
+     "min": 8.36,
+     "p50": 97.73,
+     "p95": 120.45
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 507510784,
+     "min": 199858585,
+     "p50": 470600908,
+     "p95": 507510784
+    }
+   },
+   {
+    "container": "dbt-order-fulfillment-metrics__v9verrr__env-main-1",
+    "cpu_pct": {
+     "max": 120.95,
+     "min": 0,
+     "p50": 77.55,
+     "p95": 120.95
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 653787136,
+     "min": 675840,
+     "p50": 351797248,
+     "p95": 653787136
+    }
+   },
+   {
+    "container": "dbt-order-fulfillment-metrics__vvaeetr__env-main-1",
+    "cpu_pct": {
+     "max": 105.82,
+     "min": 35.67,
+     "p50": 101.61,
+     "p95": 105.82
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 482659532,
+     "min": 113455923,
+     "p50": 369937612,
+     "p95": 482659532
+    }
+   },
+   {
+    "container": "dbt-order-fulfillment-metrics__x6omoct__env-main-1",
+    "cpu_pct": {
+     "max": 120.7,
+     "min": 8.4,
+     "p50": 107.01,
+     "p95": 120.7
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 647600537,
+     "min": 169869312,
+     "p50": 436312473,
+     "p95": 647600537
+    }
+   },
+   {
+    "container": "dbt-order-fulfillment-metrics__zvoxd4t__env-main-1",
+    "cpu_pct": {
+     "max": 108.46,
+     "min": 6.97,
+     "p50": 27.88,
+     "p95": 108.46
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 629774745,
+     "min": 165045862,
+     "p50": 326841139,
+     "p95": 629774745
+    }
+   },
+   {
+    "container": "dbt-price-elasticity__n99kp4b__env-main-1",
+    "cpu_pct": {
+     "max": 114.01,
+     "min": 14.14,
+     "p50": 99.9,
+     "p95": 109.35
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 627782451,
+     "min": 157810688,
+     "p50": 413453516,
+     "p95": 537080627
+    }
+   },
+   {
+    "container": "dbt-price-elasticity__nqsgkts__env-main-1",
+    "cpu_pct": {
+     "max": 124.59,
+     "min": 14.43,
+     "p50": 103.06,
+     "p95": 120.59
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 676331520,
+     "min": 103316193,
+     "p50": 451411968,
+     "p95": 630299033
+    }
+   },
+   {
+    "container": "dbt-price-elasticity__nscpsju__env-main-1",
+    "cpu_pct": {
+     "max": 126.34,
+     "min": 6.55,
+     "p50": 101.02,
+     "p95": 107.91
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 725614592,
+     "min": 374236774,
+     "p50": 472907776,
+     "p95": 681154969
+    }
+   },
+   {
+    "container": "dbt-price-elasticity__rv3ybkb__env-main-1",
+    "cpu_pct": {
+     "max": 118.95,
+     "min": 13.02,
+     "p50": 100.09,
+     "p95": 112.92
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 628097024,
+     "min": 373293056,
+     "p50": 452565401,
+     "p95": 614675251
+    }
+   },
+   {
+    "container": "dbt-price-elasticity__utac7ae__env-main-1",
+    "cpu_pct": {
+     "max": 114.48,
+     "min": 0,
+     "p50": 100.82,
+     "p95": 114.32
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 614675251,
+     "min": 87231037,
+     "p50": 475109785,
+     "p95": 613102387
+    }
+   },
+   {
+    "container": "dbt-price-elasticity__yufpbd8__env-main-1",
+    "cpu_pct": {
+     "max": 113.4,
+     "min": 15.71,
+     "p50": 100.35,
+     "p95": 109.69
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 694157312,
+     "min": 313943654,
+     "p50": 432852172,
+     "p95": 634073907
+    }
+   },
+   {
+    "container": "dbt-price-elasticity__zeyvv2k__env-main-1",
+    "cpu_pct": {
+     "max": 112.34,
+     "min": 0,
+     "p50": 100.42,
+     "p95": 112.09
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 650641408,
+     "min": 679936,
+     "p50": 459276288,
+     "p95": 612263526
+    }
+   },
+   {
+    "container": "dbt-product-affinity__8qwgope__env-main-1",
+    "cpu_pct": {
+     "max": 135.43,
+     "min": 2.96,
+     "p50": 24.59,
+     "p95": 135.43
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 625265868,
+     "min": 84200652,
+     "p50": 523134566,
+     "p95": 625265868
+    }
+   },
+   {
+    "container": "dbt-product-affinity__nmkktjj__env-main-1",
+    "cpu_pct": {
+     "max": 107.9,
+     "min": 0.61,
+     "p50": 27.12,
+     "p95": 107.9
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 515689676,
+     "min": 298319872,
+     "p50": 466196889,
+     "p95": 515689676
+    }
+   },
+   {
+    "container": "dbt-product-affinity__pmw85jr__env-main-1",
+    "cpu_pct": {
+     "max": 139.03,
+     "min": 0,
+     "p50": 101,
+     "p95": 139.03
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 925158604,
+     "min": 227226419,
+     "p50": 625370726,
+     "p95": 925158604
+    }
+   },
+   {
+    "container": "dbt-product-affinity__snjk38k__env-main-1",
+    "cpu_pct": {
+     "max": 200.34,
+     "min": 7.47,
+     "p50": 25.25,
+     "p95": 197.97
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 850080563,
+     "min": 97412710,
+     "p50": 540750643,
+     "p95": 674653798
+    }
+   },
+   {
+    "container": "dbt-product-affinity__v8vsgky__env-main-1",
+    "cpu_pct": {
+     "max": 104.65,
+     "min": 0,
+     "p50": 23.12,
+     "p95": 104.65
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 715233689,
+     "min": 671744,
+     "p50": 370881331,
+     "p95": 715233689
+    }
+   },
+   {
+    "container": "dbt-product-affinity__zhcfu9b__env-main-1",
+    "cpu_pct": {
+     "max": 121.43,
+     "min": 12.05,
+     "p50": 76.95,
+     "p95": 121.43
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 597793177,
+     "min": 49524244,
+     "p50": 400765747,
+     "p95": 597793177
+    }
+   },
+   {
+    "container": "dbt-product-affinity__zus22jj__env-main-1",
+    "cpu_pct": {
+     "max": 103.75,
+     "min": 22.77,
+     "p50": 32.91,
+     "p95": 103.75
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 771227648,
+     "min": 42278584,
+     "p50": 490523852,
+     "p95": 771227648
+    }
+   },
+   {
+    "container": "dbt-receivables-aging-buckets__e2ew4qa__env-main-1",
+    "cpu_pct": {
+     "max": 103.63,
+     "min": 11.57,
+     "p50": 91.61,
+     "p95": 103.63
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 827116748,
+     "min": 111044198,
+     "p50": 488426700,
+     "p95": 827116748
+    }
+   },
+   {
+    "container": "dbt-receivables-aging-buckets__i7lcjgn__env-main-1",
+    "cpu_pct": {
+     "max": 104.27,
+     "min": 6.57,
+     "p50": 84.56,
+     "p95": 104.27
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 777623961,
+     "min": 49608130,
+     "p50": 435578470,
+     "p95": 777623961
+    }
+   },
+   {
+    "container": "dbt-receivables-aging-buckets__ywc49kz__env-main-1",
+    "cpu_pct": {
+     "max": 104.58,
+     "min": 24.35,
+     "p50": 98.86,
+     "p95": 104.58
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 633444761,
+     "min": 312999936,
+     "p50": 404855193,
+     "p95": 633444761
+    }
+   },
+   {
+    "container": "dbt-rfm-customer-segmentation__9nm93bg__env-main-1",
+    "cpu_pct": {
+     "max": 127.61,
+     "min": 0,
+     "p50": 22.1,
+     "p95": 127.61
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 769549926,
+     "min": 229428428,
+     "p50": 442289356,
+     "p95": 769549926
+    }
+   },
+   {
+    "container": "dbt-rfm-customer-segmentation__c5jwqwe__env-main-1",
+    "cpu_pct": {
+     "max": 106.86,
+     "min": 20.53,
+     "p50": 90,
+     "p95": 106.86
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 653053132,
+     "min": 72792145,
+     "p50": 344771788,
+     "p95": 653053132
+    }
+   },
+   {
+    "container": "dbt-rfm-customer-segmentation__eh9xhq2__env-main-1",
+    "cpu_pct": {
+     "max": 116.69,
+     "min": 17.77,
+     "p50": 97.43,
+     "p95": 116.69
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 451202252,
+     "min": 794624,
+     "p50": 333447168,
+     "p95": 451202252
+    }
+   },
+   {
+    "container": "dbt-rfm-customer-segmentation__hbh4mns__env-main-1",
+    "cpu_pct": {
+     "max": 110.09,
+     "min": 5.39,
+     "p50": 21.19,
+     "p95": 110.09
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 611948953,
+     "min": 99467919,
+     "p50": 392481996,
+     "p95": 611948953
+    }
+   },
+   {
+    "container": "dbt-rfm-customer-segmentation__kwjdoqd__env-main-1",
+    "cpu_pct": {
+     "max": 132.92,
+     "min": 0.91,
+     "p50": 104.36,
+     "p95": 132.92
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 863292620,
+     "min": 249351372,
+     "p50": 372768768,
+     "p95": 863292620
+    }
+   },
+   {
+    "container": "dbt-rfm-customer-segmentation__rhsobpy__env-main-1",
+    "cpu_pct": {
+     "max": 115.36,
+     "min": 7.47,
+     "p50": 34.38,
+     "p95": 115.36
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 570635059,
+     "min": 424044134,
+     "p50": 478989516,
+     "p95": 570635059
+    }
+   },
+   {
+    "container": "dbt-rfm-customer-segmentation__twk9naa__env-main-1",
+    "cpu_pct": {
+     "max": 102.35,
+     "min": 7.64,
+     "p50": 56.35,
+     "p95": 102.35
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 562141593,
+     "min": 36888903,
+     "p50": 424253849,
+     "p95": 562141593
+    }
+   },
+   {
+    "container": "dbt-sales-funnel-analysis__5ew8rpt__env-main-1",
+    "cpu_pct": {
+     "max": 117.37,
+     "min": 7.88,
+     "p50": 22.8,
+     "p95": 112.85
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 699085619,
+     "min": 255852544,
+     "p50": 635227340,
+     "p95": 684720128
+    }
+   },
+   {
+    "container": "dbt-sales-funnel-analysis__9jfxjmf__env-main-1",
+    "cpu_pct": {
+     "max": 141.08,
+     "min": 8.3,
+     "p50": 12.44,
+     "p95": 141.08
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 577555660,
+     "min": 44344279,
+     "p50": 462317158,
+     "p95": 577555660
+    }
+   },
+   {
+    "container": "dbt-sales-funnel-analysis__d55kvuq__env-main-1",
+    "cpu_pct": {
+     "max": 126.23,
+     "min": 7.61,
+     "p50": 25.87,
+     "p95": 126.23
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 559520153,
+     "min": 333027737,
+     "p50": 402128896,
+     "p95": 559520153
+    }
+   },
+   {
+    "container": "dbt-sales-funnel-analysis__eybfrt3__env-main-1",
+    "cpu_pct": {
+     "max": 190.39,
+     "min": 6.26,
+     "p50": 14.3,
+     "p95": 190.39
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 679686963,
+     "min": 249036800,
+     "p50": 534354329,
+     "p95": 679686963
+    }
+   },
+   {
+    "container": "dbt-sales-funnel-analysis__fa7zsut__env-main-1",
+    "cpu_pct": {
+     "max": 132.81,
+     "min": 4.58,
+     "p50": 31.41,
+     "p95": 132.81
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 780140544,
+     "min": 300731596,
+     "p50": 618450124,
+     "p95": 780140544
+    }
+   },
+   {
+    "container": "dbt-sales-funnel-analysis__gmdlfox__env-main-1",
+    "cpu_pct": {
+     "max": 126.94,
+     "min": 7.83,
+     "p50": 28.42,
+     "p95": 126.94
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 560463872,
+     "min": 51170508,
+     "p50": 387553689,
+     "p95": 560463872
+    }
+   },
+   {
+    "container": "dbt-sales-funnel-analysis__jtymmx4__env-main-1",
+    "cpu_pct": {
+     "max": 141.51,
+     "min": 8.48,
+     "p50": 23.3,
+     "p95": 141.51
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 718169702,
+     "min": 111568486,
+     "p50": 643196518,
+     "p95": 718169702
+    }
+   },
+   {
+    "container": "dbt-sales-funnel-analysis__npplect__env-main-1",
+    "cpu_pct": {
+     "max": 101.03,
+     "min": 0,
+     "p50": 34.98,
+     "p95": 101.03
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 651794841,
+     "min": 85312143,
+     "p50": 409364070,
+     "p95": 651794841
+    }
+   },
+   {
+    "container": "dbt-sales-funnel-analysis__qszbkni__env-main-1",
+    "cpu_pct": {
+     "max": 125.33,
+     "min": 6.17,
+     "p50": 15.89,
+     "p95": 115.4
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 665636044,
+     "min": 16106127,
+     "p50": 572522496,
+     "p95": 634703052
+    }
+   },
+   {
+    "container": "dbt-sales-funnel-analysis__tqtnnts__env-main-1",
+    "cpu_pct": {
+     "max": 107.21,
+     "min": 0,
+     "p50": 20.91,
+     "p95": 107.21
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 720896000,
+     "min": 798720,
+     "p50": 506776780,
+     "p95": 720896000
+    }
+   },
+   {
+    "container": "dbt-sales-funnel-analysis__tro4z2f__env-main-1",
+    "cpu_pct": {
+     "max": 159.53,
+     "min": 8.53,
+     "p50": 17.52,
+     "p95": 129.58
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 699819622,
+     "min": 71219281,
+     "p50": 464519168,
+     "p95": 632291328
+    }
+   },
+   {
+    "container": "dbt-sales-funnel-analysis__u8epmre__env-main-1",
+    "cpu_pct": {
+     "max": 110.03,
+     "min": 0,
+     "p50": 47.76,
+     "p95": 110.03
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 472068915,
+     "min": 671744,
+     "p50": 392481996,
+     "p95": 472068915
+    }
+   },
+   {
+    "container": "dbt-sales-funnel-analysis__vhamxwk__env-main-1",
+    "cpu_pct": {
+     "max": 29.97,
+     "min": 3.83,
+     "p50": 22.93,
+     "p95": 29.97
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 410936934,
+     "min": 322332262,
+     "p50": 400136601,
+     "p95": 410936934
+    }
+   },
+   {
+    "container": "dbt-sales-funnel-analysis__wklphkq__env-main-1",
+    "cpu_pct": {
+     "max": 108.69,
+     "min": 0.67,
+     "p50": 33.39,
+     "p95": 108.69
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 409783500,
+     "min": 167352729,
+     "p50": 385456537,
+     "p95": 409783500
+    }
+   },
+   {
+    "container": "dbt-sales-funnel-analysis__yc9d5h4__env-main-1",
+    "cpu_pct": {
+     "max": 111.91,
+     "min": 25.52,
+     "p50": 52.38,
+     "p95": 111.91
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 495032729,
+     "min": 39940259,
+     "p50": 349595238,
+     "p95": 495032729
+    }
+   },
+   {
+    "container": "dbt-session-attribution__cdqfzft__env-main-1",
+    "cpu_pct": {
+     "max": 106.11,
+     "min": 0.77,
+     "p50": 18.84,
+     "p95": 106.11
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 574409932,
+     "min": 97580482,
+     "p50": 365219020,
+     "p95": 574409932
+    }
+   },
+   {
+    "container": "dbt-session-attribution__nwyt5ts__env-main-1",
+    "cpu_pct": {
+     "max": 114.58,
+     "min": 25.56,
+     "p50": 49.37,
+     "p95": 114.58
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 521876275,
+     "min": 125619404,
+     "p50": 364694732,
+     "p95": 521876275
+    }
+   },
+   {
+    "container": "dbt-session-attribution__slks3do__env-main-1",
+    "cpu_pct": {
+     "max": 112.56,
+     "min": 5.17,
+     "p50": 61.48,
+     "p95": 112.56
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 628621312,
+     "min": 322227404,
+     "p50": 458332569,
+     "p95": 628621312
+    }
+   },
+   {
+    "container": "dbt-session-attribution__trdvdkb__env-main-1",
+    "cpu_pct": {
+     "max": 42.67,
+     "min": 0,
+     "p50": 19.25,
+     "p95": 42.67
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 506357350,
+     "min": 675840,
+     "p50": 395837440,
+     "p95": 506357350
+    }
+   },
+   {
+    "container": "dbt-session-attribution__uurrqcn__env-main-1",
+    "cpu_pct": {
+     "max": 102.18,
+     "min": 0,
+     "p50": 24.5,
+     "p95": 102.18
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 752877568,
+     "min": 81904271,
+     "p50": 348651520,
+     "p95": 752877568
+    }
+   },
+   {
+    "container": "dbt-session-attribution__xsrnkia__env-main-1",
+    "cpu_pct": {
+     "max": 114.42,
+     "min": 11.41,
+     "p50": 25.55,
+     "p95": 114.42
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 671298355,
+     "min": 36584816,
+     "p50": 321912832,
+     "p95": 671298355
+    }
+   },
+   {
+    "container": "dbt-session-attribution__zugpwt2__env-main-1",
+    "cpu_pct": {
+     "max": 101.96,
+     "min": 9.06,
+     "p50": 24.62,
+     "p95": 101.96
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 442079641,
+     "min": 92127887,
+     "p50": 377487360,
+     "p95": 442079641
+    }
+   },
+   {
+    "container": "dbt-supplier-payment-optimizatio__36wu3su__env-main-1",
+    "cpu_pct": {
+     "max": 102.08,
+     "min": 7.22,
+     "p50": 24.7,
+     "p95": 102.08
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 653891993,
+     "min": 66007859,
+     "p50": 401604608,
+     "p95": 653891993
+    }
+   },
+   {
+    "container": "dbt-supplier-payment-optimizatio__54bwbif__env-main-1",
+    "cpu_pct": {
+     "max": 177.01,
+     "min": 0,
+     "p50": 11.08,
+     "p95": 177.01
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 792094310,
+     "min": 675840,
+     "p50": 616772403,
+     "p95": 792094310
+    }
+   },
+   {
+    "container": "dbt-supplier-payment-optimizatio__hezw9a4__env-main-1",
+    "cpu_pct": {
+     "max": 103.74,
+     "min": 0,
+     "p50": 26.12,
+     "p95": 103.74
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 408315494,
+     "min": 59160657,
+     "p50": 298319872,
+     "p95": 408315494
+    }
+   },
+   {
+    "container": "dbt-supplier-payment-optimizatio__hpvtxtv__env-main-1",
+    "cpu_pct": {
+     "max": 109.52,
+     "min": 14.12,
+     "p50": 62.01,
+     "p95": 109.52
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 608698368,
+     "min": 342360064,
+     "p50": 556164710,
+     "p95": 608698368
+    }
+   },
+   {
+    "container": "dbt-supplier-payment-optimizatio__hrgxbwo__env-main-1",
+    "cpu_pct": {
+     "max": 102.78,
+     "min": 1.11,
+     "p50": 25.33,
+     "p95": 102.78
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 628621312,
+     "min": 210554060,
+     "p50": 368574464,
+     "p95": 628621312
+    }
+   },
+   {
+    "container": "dbt-supplier-payment-optimizatio__ndo838c__env-main-1",
+    "cpu_pct": {
+     "max": 101.31,
+     "min": 23.7,
+     "p50": 42.05,
+     "p95": 101.31
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 502477619,
+     "min": 24746393,
+     "p50": 383044812,
+     "p95": 502477619
+    }
+   },
+   {
+    "container": "dbt-supplier-payment-optimizatio__qtzyxie__env-main-1",
+    "cpu_pct": {
+     "max": 104.9,
+     "min": 26.9,
+     "p50": 37.99,
+     "p95": 104.9
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 552914124,
+     "min": 305869619,
+     "p50": 374236774,
+     "p95": 552914124
+    }
+   },
+   {
+    "container": "dbt-test-orders-filter__an5fmse__env-main-1",
+    "cpu_pct": {
+     "max": 107.26,
+     "min": 23.67,
+     "p50": 103.22,
+     "p95": 107.26
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 702336204,
+     "min": 55375298,
+     "p50": 361024716,
+     "p95": 702336204
+    }
+   },
+   {
+    "container": "dbt-test-orders-filter__hfk9wdd__env-main-1",
+    "cpu_pct": {
+     "max": 108.3,
+     "min": 12.53,
+     "p50": 29.13,
+     "p95": 108.3
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 483183820,
+     "min": 802816,
+     "p50": 391643136,
+     "p95": 483183820
+    }
+   },
+   {
+    "container": "dbt-test-orders-filter__ifmxc9c__env-main-1",
+    "cpu_pct": {
+     "max": 105.74,
+     "min": 16.63,
+     "p50": 24.42,
+     "p95": 105.74
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 1041655398,
+     "min": 341416345,
+     "p50": 462946304,
+     "p95": 1041655398
+    }
+   },
+   {
+    "container": "dbt-test-orders-filter__lfsce58__env-main-1",
+    "cpu_pct": {
+     "max": 106.8,
+     "min": 8.58,
+     "p50": 64.89,
+     "p95": 106.8
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 702126489,
+     "min": 3994025,
+     "p50": 340262912,
+     "p95": 702126489
+    }
+   },
+   {
+    "container": "dbt-test-orders-filter__m9yxzgv__env-main-1",
+    "cpu_pct": {
+     "max": 110.42,
+     "min": 15.58,
+     "p50": 23.88,
+     "p95": 110.42
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 599890329,
+     "min": 281123225,
+     "p50": 375390208,
+     "p95": 599890329
+    }
+   },
+   {
+    "container": "dbt-test-orders-filter__tfmrwiz__env-main-1",
+    "cpu_pct": {
+     "max": 105.99,
+     "min": 11.66,
+     "p50": 24.9,
+     "p95": 105.99
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 762000179,
+     "min": 445644800,
+     "p50": 509293363,
+     "p95": 762000179
+    }
+   },
+   {
+    "container": "dbt-test-orders-filter__unnflxe__env-main-1",
+    "cpu_pct": {
+     "max": 120.42,
+     "min": 15.69,
+     "p50": 26.43,
+     "p95": 120.42
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 662070886,
+     "min": 43694161,
+     "p50": 395522867,
+     "p95": 662070886
+    }
+   },
+   {
+    "container": "dbt-weekly-sales-growth__42fnuxu__env-main-1",
+    "cpu_pct": {
+     "max": 103.58,
+     "min": 5.08,
+     "p50": 30.57,
+     "p95": 103.58
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 402024038,
+     "min": 352740966,
+     "p50": 357983846,
+     "p95": 402024038
+    }
+   },
+   {
+    "container": "dbt-weekly-sales-growth__5v2irxn__env-main-1",
+    "cpu_pct": {
+     "max": 105.21,
+     "min": 45.55,
+     "p50": 102.67,
+     "p95": 105.21
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 406532915,
+     "min": 282486374,
+     "p50": 329986867,
+     "p95": 406532915
+    }
+   },
+   {
+    "container": "dbt-weekly-sales-growth__9nuzdoe__env-main-1",
+    "cpu_pct": {
+     "max": 112.46,
+     "min": 0,
+     "p50": 92.63,
+     "p95": 112.46
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 696883609,
+     "min": 679936,
+     "p50": 474900070,
+     "p95": 696883609
+    }
+   },
+   {
+    "container": "dbt-weekly-sales-growth__b3jszty__env-main-1",
+    "cpu_pct": {
+     "max": 196.65,
+     "min": 12.19,
+     "p50": 101.82,
+     "p95": 196.65
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 538758348,
+     "min": 226806988,
+     "p50": 388497408,
+     "p95": 538758348
+    }
+   },
+   {
+    "container": "dbt-weekly-sales-growth__cnmdsfj__env-main-1",
+    "cpu_pct": {
+     "max": 53.04,
+     "min": 28.66,
+     "p50": 33,
+     "p95": 53.04
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 488531558,
+     "min": 376963072,
+     "p50": 410412646,
+     "p95": 488531558
+    }
+   },
+   {
+    "container": "dbt-weekly-sales-growth__dqkfkek__env-main-1",
+    "cpu_pct": {
+     "max": 148.48,
+     "min": 9.84,
+     "p50": 26.08,
+     "p95": 148.48
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 409888358,
+     "min": 199963443,
+     "p50": 240962764,
+     "p95": 409888358
+    }
+   },
+   {
+    "container": "dbt-weekly-sales-growth__kjsrd6k__env-main-1",
+    "cpu_pct": {
+     "max": 114.74,
+     "min": 0,
+     "p50": 24.8,
+     "p95": 114.74
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 680525824,
+     "min": 737280,
+     "p50": 460849152,
+     "p95": 680525824
+    }
+   },
+   {
+    "container": "dbt-weekly-sales-growth__mpkphc5__env-main-1",
+    "cpu_pct": {
+     "max": 115.33,
+     "min": 24.84,
+     "p50": 91.99,
+     "p95": 115.33
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 542008934,
+     "min": 364589875,
+     "p50": 497444454,
+     "p95": 542008934
+    }
+   },
+   {
+    "container": "dbt-weekly-sales-growth__nkcjktm__env-main-1",
+    "cpu_pct": {
+     "max": 104.46,
+     "min": 8.4,
+     "p50": 103.22,
+     "p95": 104.46
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 657771724,
+     "min": 108632473,
+     "p50": 377172787,
+     "p95": 657771724
+    }
+   },
+   {
+    "container": "dbt-weekly-sales-growth__p4aggzo__env-main-1",
+    "cpu_pct": {
+     "max": 106.13,
+     "min": 22.94,
+     "p50": 60.6,
+     "p95": 106.13
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 502582476,
+     "min": 105381888,
+     "p50": 399612313,
+     "p95": 502582476
+    }
+   },
+   {
+    "container": "dbt-weekly-sales-growth__p76bxyg__env-main-1",
+    "cpu_pct": {
+     "max": 103.47,
+     "min": 10.45,
+     "p50": 22.21,
+     "p95": 103.47
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 507196211,
+     "min": 73337405,
+     "p50": 370252185,
+     "p95": 507196211
+    }
+   },
+   {
+    "container": "dbt-weekly-sales-growth__vgnuvt7__env-main-1",
+    "cpu_pct": {
+     "max": 105.96,
+     "min": 10.81,
+     "p50": 27.31,
+     "p95": 105.96
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 450258534,
+     "min": 103263764,
+     "p50": 347917516,
+     "p95": 450258534
+    }
+   },
+   {
+    "container": "dbt-weekly-sales-growth__vwvgk4k__env-main-1",
+    "cpu_pct": {
+     "max": 105.04,
+     "min": 22.73,
+     "p50": 31.61,
+     "p95": 105.04
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 367630745,
+     "min": 27084718,
+     "p50": 154245529,
+     "p95": 367630745
+    }
+   },
+   {
+    "container": "dbt-weekly-sales-growth__w7k6bm7__env-main-1",
+    "cpu_pct": {
+     "max": 110.12,
+     "min": 12.66,
+     "p50": 56.53,
+     "p95": 110.12
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 663014604,
+     "min": 346868940,
+     "p50": 605133209,
+     "p95": 663014604
+    }
+   },
+   {
+    "container": "dbt-weekly-sales-growth__wvlgjge__env-main-1",
+    "cpu_pct": {
+     "max": 102.25,
+     "min": 0,
+     "p50": 26.73,
+     "p95": 102.25
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 480352665,
+     "min": 75707187,
+     "p50": 333342310,
+     "p95": 480352665
+    }
+   },
+   {
+    "container": "deferred-revenue-recognition__4yjf8vn__env-main-1",
+    "cpu_pct": {
+     "max": 123.85,
+     "min": 7.56,
+     "p50": 48.8,
+     "p95": 123.85
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 773219942,
+     "min": 48674897,
+     "p50": 482659532,
+     "p95": 773219942
+    }
+   },
+   {
+    "container": "deferred-revenue-recognition__7vxsud9__env-main-1",
+    "cpu_pct": {
+     "max": 104.74,
+     "min": 3.5,
+     "p50": 28.4,
+     "p95": 104.74
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 595905740,
+     "min": 224604979,
+     "p50": 397829734,
+     "p95": 595905740
+    }
+   },
+   {
+    "container": "deferred-revenue-recognition__fbufxdv__env-main-1",
+    "cpu_pct": {
+     "max": 125.47,
+     "min": 9.94,
+     "p50": 23.23,
+     "p95": 125.47
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 699609907,
+     "min": 27273461,
+     "p50": 464728883,
+     "p95": 699609907
+    }
+   },
+   {
+    "container": "deferred-revenue-recognition__gq4m2uc__env-main-1",
+    "cpu_pct": {
+     "max": 107.33,
+     "min": 29.99,
+     "p50": 74.99,
+     "p95": 107.33
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 516738252,
+     "min": 42960158,
+     "p50": 389441126,
+     "p95": 516738252
+    }
+   },
+   {
+    "container": "deferred-revenue-recognition__gslyq2p__env-main-1",
+    "cpu_pct": {
+     "max": 105.07,
+     "min": 12.08,
+     "p50": 31.11,
+     "p95": 105.07
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 478570086,
+     "min": 268120883,
+     "p50": 387239116,
+     "p95": 478570086
+    }
+   },
+   {
+    "container": "deferred-revenue-recognition__iixk6cr__env-main-1",
+    "cpu_pct": {
+     "max": 121.83,
+     "min": 24.06,
+     "p50": 101.85,
+     "p95": 121.83
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 513697382,
+     "min": 218313523,
+     "p50": 358717849,
+     "p95": 513697382
+    }
+   },
+   {
+    "container": "deferred-revenue-recognition__rrzqich__env-main-1",
+    "cpu_pct": {
+     "max": 129.25,
+     "min": 12.3,
+     "p50": 43.27,
+     "p95": 129.25
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 592969728,
+     "min": 387868262,
+     "p50": 444071936,
+     "p95": 592969728
+    }
+   },
+   {
+    "container": "fifo-inventory-cogs__bep63o5__env-main-1",
+    "cpu_pct": {
+     "max": 154.59,
+     "min": 4.89,
+     "p50": 17.05,
+     "p95": 154.59
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 823237017,
+     "min": 315726233,
+     "p50": 404435763,
+     "p95": 823237017
+    }
+   },
+   {
+    "container": "fifo-inventory-cogs__dfp886b__env-main-1",
+    "cpu_pct": {
+     "max": 122.78,
+     "min": 0.81,
+     "p50": 33.41,
+     "p95": 122.78
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 556793856,
+     "min": 227645849,
+     "p50": 425931571,
+     "p95": 556793856
+    }
+   },
+   {
+    "container": "fifo-inventory-cogs__htgfqp3__env-main-1",
+    "cpu_pct": {
+     "max": 114.9,
+     "min": 4.78,
+     "p50": 29.11,
+     "p95": 114.9
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 932918067,
+     "min": 391118848,
+     "p50": 627363020,
+     "p95": 932918067
+    }
+   },
+   {
+    "container": "fifo-inventory-cogs__pzhvszs__env-main-1",
+    "cpu_pct": {
+     "max": 110.23,
+     "min": 0,
+     "p50": 29.46,
+     "p95": 110.23
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 647600537,
+     "min": 671744,
+     "p50": 549244108,
+     "p95": 647600537
+    }
+   },
+   {
+    "container": "fifo-inventory-cogs__shffaze__env-main-1",
+    "cpu_pct": {
+     "max": 114.68,
+     "min": 0.87,
+     "p50": 18.29,
+     "p95": 105.58
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 685349273,
+     "min": 396466585,
+     "p50": 551760691,
+     "p95": 666999193
+    }
+   },
+   {
+    "container": "fifo-inventory-cogs__ujigxhr__env-main-1",
+    "cpu_pct": {
+     "max": 117.82,
+     "min": 3.42,
+     "p50": 23.47,
+     "p95": 117.82
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 801216921,
+     "min": 49671045,
+     "p50": 359871283,
+     "p95": 801216921
+    }
+   },
+   {
+    "container": "fifo-inventory-cogs__yjtqzkb__env-main-1",
+    "cpu_pct": {
+     "max": 172.84,
+     "min": 5.99,
+     "p50": 27.83,
+     "p95": 115.47
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 990904320,
+     "min": 284059238,
+     "p50": 631871897,
+     "p95": 819462144
+    }
+   },
+   {
+    "container": "marketing-campaigns-harbor__2mhkz9g__env-main-1",
+    "cpu_pct": {
+     "max": 188.02,
+     "min": 6.9,
+     "p50": 29.29,
+     "p95": 165.07
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 751514419,
+     "min": 107164467,
+     "p50": 478674944,
+     "p95": 722364006
+    }
+   },
+   {
+    "container": "marketing-campaigns-harbor__czt8d4a__env-main-1",
+    "cpu_pct": {
+     "max": 106.48,
+     "min": 22.15,
+     "p50": 98.81,
+     "p95": 106.48
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 483917824,
+     "min": 130337996,
+     "p50": 372559052,
+     "p95": 483917824
+    }
+   },
+   {
+    "container": "marketing-campaigns-harbor__eapcup4__env-main-1",
+    "cpu_pct": {
+     "max": 143.88,
+     "min": 5.01,
+     "p50": 27.74,
+     "p95": 143.88
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 593389158,
+     "min": 150156083,
+     "p50": 452775116,
+     "p95": 593389158
+    }
+   },
+   {
+    "container": "marketing-campaigns-harbor__gw89eci__env-main-1",
+    "cpu_pct": {
+     "max": 126.67,
+     "min": 16.62,
+     "p50": 94.57,
+     "p95": 126.67
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 649592832,
+     "min": 44574965,
+     "p50": 228904140,
+     "p95": 649592832
+    }
+   },
+   {
+    "container": "marketing-campaigns-harbor__ha7iyye__env-main-1",
+    "cpu_pct": {
+     "max": 109.18,
+     "min": 5.59,
+     "p50": 97.15,
+     "p95": 109.18
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 604504064,
+     "min": 173224755,
+     "p50": 311007641,
+     "p95": 604504064
+    }
+   },
+   {
+    "container": "marketing-campaigns-harbor__qupiosa__env-main-1",
+    "cpu_pct": {
+     "max": 111.84,
+     "min": 9.28,
+     "p50": 101.71,
+     "p95": 111.84
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 734737203,
+     "min": 189477683,
+     "p50": 365323878,
+     "p95": 734737203
+    }
+   },
+   {
+    "container": "marketing-campaigns-harbor__tbkowr2__env-main-1",
+    "cpu_pct": {
+     "max": 108.39,
+     "min": 0,
+     "p50": 100,
+     "p95": 108.39
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 558471577,
+     "min": 47836037,
+     "p50": 167562444,
+     "p95": 558471577
+    }
+   },
+   {
+    "container": "pos-operations__dj8fdkj__env-main-1",
+    "cpu_pct": {
+     "max": 118.53,
+     "min": 2.93,
+     "p50": 24.24,
+     "p95": 118.53
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 964794777,
+     "min": 248827084,
+     "p50": 392586854,
+     "p95": 964794777
+    }
+   },
+   {
+    "container": "pos-operations__qqpofrt__env-main-1",
+    "cpu_pct": {
+     "max": 103.77,
+     "min": 3.56,
+     "p50": 32.24,
+     "p95": 103.77
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 702860492,
+     "min": 72278343,
+     "p50": 412824371,
+     "p95": 702860492
+    }
+   },
+   {
+    "container": "pos-operations__s86ztva__env-main-1",
+    "cpu_pct": {
+     "max": 141.48,
+     "min": 18.43,
+     "p50": 75.17,
+     "p95": 141.48
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 803943219,
+     "min": 194930278,
+     "p50": 474166067,
+     "p95": 803943219
+    }
+   },
+   {
+    "container": "promotional-lift-analysis__6j4mpkl__env-main-1",
+    "cpu_pct": {
+     "max": 113.48,
+     "min": 6.32,
+     "p50": 25.19,
+     "p95": 113.48
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 511390515,
+     "min": 399297740,
+     "p50": 455081984,
+     "p95": 511390515
+    }
+   },
+   {
+    "container": "promotional-lift-analysis__evwsi3l__env-main-1",
+    "cpu_pct": {
+     "max": 104.17,
+     "min": 12.64,
+     "p50": 26.89,
+     "p95": 104.17
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 598632038,
+     "min": 349595238,
+     "p50": 432642457,
+     "p95": 598632038
+    }
+   },
+   {
+    "container": "promotional-lift-analysis__fzvk3xz__env-main-1",
+    "cpu_pct": {
+     "max": 127.21,
+     "min": 22.99,
+     "p50": 85.41,
+     "p95": 127.21
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 663748608,
+     "min": 343198924,
+     "p50": 577765376,
+     "p95": 663748608
+    }
+   },
+   {
+    "container": "promotional-lift-analysis__h6alrdd__env-main-1",
+    "cpu_pct": {
+     "max": 174.2,
+     "min": 0.53,
+     "p50": 30.06,
+     "p95": 174.2
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 665006899,
+     "min": 1732247,
+     "p50": 377906790,
+     "p95": 665006899
+    }
+   },
+   {
+    "container": "promotional-lift-analysis__j4pv5ay__env-main-1",
+    "cpu_pct": {
+     "max": 115.01,
+     "min": 0,
+     "p50": 23.92,
+     "p95": 115.01
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 691850444,
+     "min": 667648,
+     "p50": 411041792,
+     "p95": 691850444
+    }
+   },
+   {
+    "container": "promotional-lift-analysis__sedcsa6__env-main-1",
+    "cpu_pct": {
+     "max": 107.95,
+     "min": 0,
+     "p50": 21.5,
+     "p95": 107.95
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 383883673,
+     "min": 53183774,
+     "p50": 359976140,
+     "p95": 383883673
+    }
+   },
+   {
+    "container": "promotional-lift-analysis__vtkxevo__env-main-1",
+    "cpu_pct": {
+     "max": 123.34,
+     "min": 14.37,
+     "p50": 27.61,
+     "p95": 123.34
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 901355929,
+     "min": 239075328,
+     "p50": 400556032,
+     "p95": 901355929
+    }
+   },
+   {
+    "container": "sub2api",
+    "cpu_pct": {
+     "max": 33.35,
+     "min": 0.66,
+     "p50": 1.47,
+     "p95": 4.92
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 55406755,
+     "min": 35148267,
+     "p50": 49408901,
+     "p95": 51967426
+    }
+   },
+   {
+    "container": "sub2api-postgres",
+    "cpu_pct": {
+     "max": 53.51,
+     "min": 0.5,
+     "p50": 0.83,
+     "p95": 7.11
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 137258598,
+     "min": 56528732,
+     "p50": 120481382,
+     "p95": 127401984
+    }
+   },
+   {
+    "container": "sub2api-redis",
+    "cpu_pct": {
+     "max": 15.98,
+     "min": 0.32,
+     "p50": 0.47,
+     "p95": 4.67
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 8552185,
+     "min": 4521459,
+     "p50": 4772069,
+     "p95": 5713690
+    }
+   },
+   {
+    "container": "tier-migration-analysis__bbfxd3y__env-main-1",
+    "cpu_pct": {
+     "max": 141.69,
+     "min": 0,
+     "p50": 33.6,
+     "p95": 141.69
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 733583769,
+     "min": 114189926,
+     "p50": 367630745,
+     "p95": 733583769
+    }
+   },
+   {
+    "container": "tier-migration-analysis__klma9y4__env-main-1",
+    "cpu_pct": {
+     "max": 194.36,
+     "min": 0.83,
+     "p50": 11.61,
+     "p95": 121.14
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 766089625,
+     "min": 116182220,
+     "p50": 532781465,
+     "p95": 687131852
+    }
+   },
+   {
+    "container": "tier-migration-analysis__loeghgf__env-main-1",
+    "cpu_pct": {
+     "max": 102.71,
+     "min": 5.8,
+     "p50": 25.5,
+     "p95": 102.71
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 406008627,
+     "min": 218523238,
+     "p50": 376858214,
+     "p95": 406008627
+    }
+   },
+   {
+    "container": "tier-migration-analysis__sapsffp__env-main-1",
+    "cpu_pct": {
+     "max": 128.34,
+     "min": 20.28,
+     "p50": 101.17,
+     "p95": 128.34
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 903977369,
+     "min": 83519078,
+     "p50": 555430707,
+     "p95": 903977369
+    }
+   },
+   {
+    "container": "tier-migration-analysis__tzyqu6v__env-main-1",
+    "cpu_pct": {
+     "max": 109.03,
+     "min": 21.6,
+     "p50": 36.65,
+     "p95": 109.03
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 639841075,
+     "min": 324114841,
+     "p50": 424253849,
+     "p95": 639841075
+    }
+   },
+   {
+    "container": "tier-migration-analysis__wuhyevc__env-main-1",
+    "cpu_pct": {
+     "max": 110.19,
+     "min": 18.29,
+     "p50": 25.56,
+     "p95": 110.19
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 766613913,
+     "min": 260780851,
+     "p50": 453928550,
+     "p95": 766613913
+    }
+   },
+   {
+    "container": "tier-migration-analysis__xpofhrf__env-main-1",
+    "cpu_pct": {
+     "max": 112.08,
+     "min": 6.37,
+     "p50": 11.83,
+     "p95": 105.74
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 726768025,
+     "min": 190316544,
+     "p50": 497968742,
+     "p95": 666999193
+    }
+   },
+   {
+    "container": "web-session-quality-scoring__dcicb5e__env-main-1",
+    "cpu_pct": {
+     "max": 111.2,
+     "min": 0,
+     "p50": 37.2,
+     "p95": 111.2
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 863187763,
+     "min": 59317944,
+     "p50": 382101094,
+     "p95": 863187763
+    }
+   },
+   {
+    "container": "web-session-quality-scoring__spkxubx__env-main-1",
+    "cpu_pct": {
+     "max": 105.67,
+     "min": 6.98,
+     "p50": 28.14,
+     "p95": 105.67
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 683566694,
+     "min": 87147151,
+     "p50": 374761062,
+     "p95": 683566694
+    }
+   },
+   {
+    "container": "web-session-quality-scoring__tl9hnei__env-main-1",
+    "cpu_pct": {
+     "max": 140.9,
+     "min": 19.68,
+     "p50": 100.7,
+     "p95": 140.9
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 683671552,
+     "min": 340367769,
+     "p50": 405903769,
+     "p95": 683671552
+    }
+   },
+   {
+    "container": "workforce-analytics__2qzj3zu__env-main-1",
+    "cpu_pct": {
+     "max": 111.4,
+     "min": 4.1,
+     "p50": 31.12,
+     "p95": 108.72
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 598422323,
+     "min": 249875660,
+     "p50": 403596902,
+     "p95": 590558003
+    }
+   },
+   {
+    "container": "workforce-analytics__2rpnarv__env-main-1",
+    "cpu_pct": {
+     "max": 195.15,
+     "min": 0.68,
+     "p50": 13.24,
+     "p95": 113.06
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 603874918,
+     "min": 177104486,
+     "p50": 528587161,
+     "p95": 581749964
+    }
+   },
+   {
+    "container": "workforce-analytics__4m7hshb__env-main-1",
+    "cpu_pct": {
+     "max": 110.47,
+     "min": 3.62,
+     "p50": 101.4,
+     "p95": 110.47
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 592235724,
+     "min": 52638515,
+     "p50": 347707801,
+     "p95": 592235724
+    }
+   },
+   {
+    "container": "workforce-analytics__g2kdzme__env-main-1",
+    "cpu_pct": {
+     "max": 114.77,
+     "min": 0.97,
+     "p50": 27.1,
+     "p95": 114.77
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 821349580,
+     "min": 135476019,
+     "p50": 402548326,
+     "p95": 821349580
+    }
+   },
+   {
+    "container": "workforce-analytics__g4gxwj8__env-main-1",
+    "cpu_pct": {
+     "max": 137.56,
+     "min": 0,
+     "p50": 45.5,
+     "p95": 137.56
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 642462515,
+     "min": 675840,
+     "p50": 403911475,
+     "p95": 642462515
+    }
+   },
+   {
+    "container": "workforce-analytics__lqikmmr__env-main-1",
+    "cpu_pct": {
+     "max": 179.64,
+     "min": 6.2,
+     "p50": 28.29,
+     "p95": 138.94
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 933337497,
+     "min": 311007641,
+     "p50": 681993830,
+     "p95": 765355622
+    }
+   },
+   {
+    "container": "workforce-analytics__zyejxxw__env-main-1",
+    "cpu_pct": {
+     "max": 112.71,
+     "min": 4.24,
+     "p50": 27.09,
+     "p95": 112.71
+    },
+    "group": "shared",
+    "host": "da-server",
+    "mem_bytes": {
+     "max": 608278937,
+     "min": 106535321,
+     "p50": 417018675,
+     "p95": 608278937
+    }
+   }
+  ],
+  "sizes": [
+   {
+    "delta_bytes": 0,
+    "end_bytes": 874800000,
+    "host": "da-server",
+    "kind": "docker_build_cache",
+    "start_bytes": 874800000
+   },
+   {
+    "delta_bytes": 8200,
+    "end_bytes": 208900,
+    "host": "da-server",
+    "kind": "docker_containers",
+    "start_bytes": 200700
+   },
+   {
+    "delta_bytes": 360000000,
+    "end_bytes": 19870000000,
+    "host": "da-server",
+    "kind": "docker_images",
+    "start_bytes": 19510000000
+   },
+   {
+    "delta_bytes": 66000000,
+    "end_bytes": 1693000000,
+    "host": "da-server",
+    "kind": "docker_local_volumes",
+    "start_bytes": 1627000000
+   },
+   {
+    "delta_bytes": 18563072,
+    "end_bytes": 34412211,
+    "host": "da-server",
+    "kind": "pg_database",
+    "start_bytes": 15849139
+   }
+  ],
+  "sources": [
+   "docker_stats.csv",
+   "host_stats.csv",
+   "sizes.csv"
+  ]
+ },
+ "step4": {
+  "achieved": true,
+  "unmet": []
+ },
+ "stuck_work": {
+  "deliveries_without_outcome": {
+   "count": 0,
+   "ids": []
+  },
+  "injections_left_on": {
+   "count": 0,
+   "ids": []
+  },
+  "long_queued_runs": {
+   "count": 0,
+   "ids": []
+  },
+  "noise_opened_work": {
+   "count": 0,
+   "ids": []
+  },
+  "non_terminal_runs": {
+   "count": 0,
+   "ids": []
+  },
+  "over_wall_clock_runs": {
+   "count": 1,
+   "ids": [
+    "2c1120e2-1ab2-5ae9-ad02-41b8b1346738"
+   ]
+  },
+  "overdue_recovery_sessions": {
+   "count": 0,
+   "ids": []
+  },
+  "published": true,
+  "sources": [
+   "runs.jsonl",
+   "sessions.jsonl",
+   "alerts.jsonl",
+   "deliveries.jsonl"
+  ],
+  "unaccounted_injections": {
+   "count": 0,
+   "ids": []
+  },
+  "waiting_on_human_runs": {
+   "count": 0,
+   "ids": []
+  }
+ },
+ "window": {
+  "coverage_ok": true,
+  "covered_s": 259218.30244088173,
+  "end": "2026-11-10T01:05:18.305311Z",
+  "extension_s": 0,
+  "interruption_s": 0,
+  "rental_lost": false,
+  "required_s": 259200,
+  "start": "2026-11-07T01:05:00.002870Z"
+ }
+}
