@@ -1,0 +1,27 @@
+{
+  "scope": "the 8 real Runs listed in summary.json cost.runs (2026-11-01 15:35:00Z..17:25:04Z, DB clock); opspilot_steps rows with numeric usage, read 2026-11-10 from the retained opspilot-393 PG volume (read-only query)",
+  "price_source": "https://api-docs.deepseek.com/zh-cn/quick_start/pricing (deepseek-flash; page carries no date), read 2026-11-07 for the soak; assumed unchanged on 2026-11-01 (not verified)",
+  "model": "deepseek-flash (response_model on every step)",
+  "peak_rule": "Beijing time Mon-Fri 09:00-12:00 and 14:00-18:00 peak; the window is Beijing 2026-11-01 23:35 (Sunday) to 2026-11-02 01:25 (Monday), fully off-peak",
+  "rates_cny_per_mtok": {"offpeak": {"cache_hit": 0.02, "cache_miss": 1, "output": 4}},
+  "settled_calls": {"steps": 22, "cache_hit": 44544, "cache_miss": 9097, "output": 15823, "cny": 0.0733},
+  "per_run": [
+    {"run": "b2966b23", "role": "setup", "steps": 3, "cache_hit": 6784, "cache_miss": 1519, "output": 3360},
+    {"run": "230edc28", "role": "setup", "steps": 3, "cache_hit": 6272, "cache_miss": 1594, "output": 3009},
+    {"run": "6119c0e5", "role": "upgrade shape 1", "steps": 3, "cache_hit": 6016, "cache_miss": 1050, "output": 1412},
+    {"run": "22f11471", "role": "upgrade shape 2", "steps": 3, "cache_hit": 5888, "cache_miss": 1070, "output": 1730},
+    {"run": "1d06ab45", "role": "rollback shape 1", "steps": 3, "cache_hit": 6144, "cache_miss": 1058, "output": 2263},
+    {"run": "0f29fe00", "role": "rollback shape 2", "steps": 3, "cache_hit": 5888, "cache_miss": 1028, "output": 2112},
+    {"run": "ecde07b8", "role": "incompatible, blocked", "steps": 1, "cache_hit": 1408, "cache_miss": 668, "output": 139},
+    {"run": "e7ca88c8", "role": "incompatible, human new_run", "steps": 3, "cache_hit": 6144, "cache_miss": 1110, "output": 1798}
+  ],
+  "unsettled_calls": {
+    "count": 3,
+    "source": "opspilot_budget_reservations state=reserved, one each on 6119c0e5, 1d06ab45, ecde07b8: the model calls in flight when the worker was SIGKILLed (shape 1 and the incompatible segment)",
+    "usage": "none recorded; whether the provider billed them is unknown",
+    "upper_bound_cny": 0.0331,
+    "upper_bound_rule": "3 x the most expensive settled step in this drill (CNY 0.0110)"
+  },
+  "total_cny": {"settled": 0.0733, "upper_bound": 0.1064},
+  "not_used": "DeepSeek account balance (shared by other keys, so a balance difference does not isolate this drill; user 2026-11-06) and the DeepSeek console (aggregates by day and account only; user 2026-11-09). Same rule as docs/evidence/m3-soak-2026-11-07/cost-primary.json."
+}
