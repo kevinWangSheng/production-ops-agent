@@ -1,0 +1,9 @@
+# Written by the orchestrating agent at 2026-11-11T18:49:50Z; not a command log.
+# The user stated in the orchestrator session on 2026-11-11 (about 18:40Z) that they personally restored the paymentFailure fault
+# from their own terminal earlier today. The command output was not kept.
+# Corroborating observations made by the agent (read-only):
+#   - 60-step2-fault-inject.log: inject at 2026-11-11T13:42:05Z; no restore log exists in this directory.
+#   - flagd-config read at about 18:35Z: paymentFailure state=ENABLED defaultVariant=off (resourceVersion 63366).
+#   - opspilot_alert_deliveries: last firing replay received 17:48:04Z; resolved (resolved_attached) received 18:31:04Z.
+#   - sshd journal: root logins from the user machine continue until 18:27:48Z; the exact restore time is not recorded.
+# The restore therefore happened before the takeover (18:48:52Z) and register_remediation (18:49:12Z), not between them.

@@ -1,0 +1,19 @@
+#!/usr/bin/env python3
+"""Close one staging incident through the workbench control endpoint, as the operator would by
+clicking Close: POST /incidents/<id>/control (Basic Auth user 'operator', Origin = staging
+workbench). The password is read from the staging secrets dir and never printed.
+Usage: close_staging.py <incident_id> <expected_generation>"""
+import base64, datetime, json, pathlib, secrets, sys, urllib.parse, urllib.request
+inc, gen = sys.argv[1], sys.argv[2]
+pw = (pathlib.Path.home() / ".config/opspilot-staging/ui_password").read_text().strip()
+base = "http://127.0.0.1:18190"
+form = {"action": "close", "expected_generation": gen,
+        "idempotency_key": "close-%s-%s" % (gen, secrets.token_hex(16))}
+req = urllib.request.Request(base + "/incidents/%s/control" % inc, data=urllib.parse.urlencode(form).encode(),
+    headers={"Authorization": "Basic " + base64.b64encode(("operator:" + pw).encode()).decode(),
+             "Origin": base, "Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json"})
+print(datetime.datetime.now(datetime.timezone.utc).isoformat(), "POST /incidents/%s/control action=close expected_generation=%s idempotency_key=%s" % (inc, gen, form["idempotency_key"]))
+try:
+    r = urllib.request.urlopen(req, timeout=30); print("http", r.status, r.read()[:500].decode(errors="replace"))
+except urllib.error.HTTPError as e:
+    print("http", e.code, e.read()[:500].decode(errors="replace")); sys.exit(1)

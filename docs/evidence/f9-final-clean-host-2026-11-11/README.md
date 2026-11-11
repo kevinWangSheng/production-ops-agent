@@ -8,6 +8,8 @@
 | 2 全流程 | **部分达成** | 七个要素在本机都观察到了，但分在两个 incident 上：转人工、系统外处理、恢复观察、关闭归档在 `fb89cdf2` 上；有证据的调查在 `1fbdce34` 上。`fb89cdf2` 的转人工是切断模型出口造成的，它的 Run 没有任何调查与证据。两个 incident 合起来是否满足这一步，由用户裁决 |
 | 4 钉住版本的构建、升级与恢复 | **部分达成** | 按 digest 从 `v0.1.0` 升到 `v0.1.1` 再按 UPGRADE.md 回滚，命令都按文档退出，在途恢复观察跨三次切换走到 `recovery_confirmed`。缺：独立的 staging 主机、跨 schema 的版本变化、每次切换后的数据库快照（脚本 SQL 写错）、环境配置文件内容 |
 
+第 2、4 步后续见[终轮第二次](../f9-final2-2026-11-11/README.md)（同日，按用户裁决重做）。
+
 ## 第 1 步：从干净主机到 Agent 接上
 
 代码：`git clone` 得到 main `9416041d`（`9416041 docs: fix portfolio tool-count and human-decision claims …`），没有另外 checkout。

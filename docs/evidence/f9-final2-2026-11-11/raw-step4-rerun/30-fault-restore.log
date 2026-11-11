@@ -1,0 +1,9 @@
+2026-11-11T20:13:31Z staging session authorized: 27c61712-da7f-5afb-a127-56e64eab168c | authorized | automatic | system | 2026-11-11 20:13:03.451915+00
+run | 0a2f20e4-7fc1-57f1-9fbb-479bba283922 | completed | 12 | 21
+decision | c030a3a3-0369-5ba3-a7fd-d44066a31286 | 0 | authorized |  | 0 |  | 27c61712-da7f-5afb-a127-56e64eab168c | 2026-11-11 20:13:03.453363+00 | 2026-11-11 20:13:03.453363+00
+### fault restore at 2026-11-11T20:13:31Z
++ kubectl -n otel-demo patch configmap flagd-config (paymentFailure -> off)
+restore completed and verified on the lab ConfigMap (sha256 1ee5c0258e3e); flagd reloads the mounted file after the kubelet sync (about a minute)
+rc=0
+### done at 2026-11-11T20:13:31Z -- no further fault injection until the drill ends
+flagd demo.flagd.json paymentFailure defaultVariant= off

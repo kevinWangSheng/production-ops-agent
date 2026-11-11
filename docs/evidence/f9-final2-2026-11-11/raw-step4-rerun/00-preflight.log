@@ -1,0 +1,87 @@
+2026-11-11T20:01:22Z
+# preflight: kind_lab health
+{
+  "prometheus": {
+    "url": "http://127.0.0.1:19090",
+    "status": 200,
+    "span_metrics": true,
+    "kube_state_metrics": true,
+    "ok": true
+  },
+  "jaeger": {
+    "url": "http://127.0.0.1:16686/jaeger/ui",
+    "status": 200,
+    "ok": true,
+    "services": [
+      "ad",
+      "cart",
+      "checkout",
+      "currency",
+      "email",
+      "flagd",
+      "frontend",
+      "frontend-proxy",
+      "jaeger-all-in-one",
+      "load-generator",
+      "payment",
+      "product-catalog",
+      "quote",
+      "recommendation",
+      "shipping"
+    ]
+  },
+  "frontend": {
+    "url": "http://127.0.0.1:18080/",
+    "status": 200,
+    "ok": true
+  },
+  "deployments": {
+    "not_ready": [],
+    "ok": true
+  },
+  "ok": true
+}
+rc=0
+# flagd paymentFailure
+E1111 20:01:24.299162 2086293 memcache.go:381] "Couldn't get current server API group list" err="Get \"http://localhost:8080/api?timeout=32s\": dial tcp [::1]:8080: connect: connection refused"
+E1111 20:01:24.299466 2086293 memcache.go:381] "Couldn't get current server API group list" err="Get \"http://localhost:8080/api?timeout=32s\": dial tcp [::1]:8080: connect: connection refused"
+E1111 20:01:24.301471 2086293 memcache.go:381] "Couldn't get current server API group list" err="Get \"http://localhost:8080/api?timeout=32s\": dial tcp [::1]:8080: connect: connection refused"
+E1111 20:01:24.301793 2086293 memcache.go:381] "Couldn't get current server API group list" err="Get \"http://localhost:8080/api?timeout=32s\": dial tcp [::1]:8080: connect: connection refused"
+E1111 20:01:24.303204 2086293 memcache.go:381] "Couldn't get current server API group list" err="Get \"http://localhost:8080/api?timeout=32s\": dial tcp [::1]:8080: connect: connection refused"
+The connection to the server localhost:8080 was refused - did you specify the right host or port?
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+  File "/usr/lib/python3.12/json/__init__.py", line 346, in loads
+    return _default_decoder.decode(s)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/json/decoder.py", line 337, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/json/decoder.py", line 355, in raw_decode
+    raise JSONDecodeError("Expecting value", s, err.value) from None
+json.decoder.JSONDecodeError: Expecting value: line 1 column 1 (char 0)
+# docker ps
+opspilot-m1-control-plane kindest/node:v1.37.0 Up 14 hours
+opspilot-observer-1 228df9f72e69 Up 6 hours (healthy)
+opspilot-postgres-1 2a0d0fe14825 Up 14 hours (healthy)
+opspilot-staging-observer-1 0af7b9ff4b71 Up 7 hours (healthy)
+opspilot-staging-postgres-1 2a0d0fe14825 Up 7 hours (healthy)
+opspilot-staging-web-1 0af7b9ff4b71 Up 7 hours (healthy)
+opspilot-staging-worker-1 0af7b9ff4b71 Up 7 hours (healthy)
+opspilot-web-1 228df9f72e69 Up 6 hours (healthy)
+opspilot-worker-1 228df9f72e69 Up 6 hours (healthy)
+2026-11-11T20:01:24Z
+flagd demo.flagd.json paymentFailure defaultVariant= off
+--- state at 2026-11-11T20:03:07Z
+opspilot incident | aa6f1172 | cancelled | closed | human_owned | 3 | 2026-11-11 13:48:04.385983+00 | 2026-11-11 19:22:22.623768+00
+opspilot run | 78419b8b | aa6f1172 | cancelled | 2 | 4
+opspilot session | 86636672-0174-5cb2-b21a-54e71065b999 | aa6f1172 | completed | recovery_confirmed | 2026-11-11 18:54:23.225469+00 | 12 | 2026-11-11 19:05:40.484567+00
+opspilot last_sample | 86636672 | 12 | healthy | 2026-11-11 19:05:18.634823+00
+opspilot last_sample | 86636672 | 11 | healthy | 2026-11-11 19:03:56.717068+00
+opspilot delivery | 2026-11-11 18:31:04.551548+00 | resolved | resolved_attached | aa6f1172
+opspilot delivery | 2026-11-11 17:48:04.524414+00 | firing | replayed | aa6f1172
+opspilot-staging incident | 69778314 | queued | open | automatic | 0 | 2026-11-11 13:24:09.676435+00 | 
+opspilot-staging run | 2dcc2d92 | 69778314 | completed | 14 | 28
+opspilot-staging last_sample | 23204a25 | 40 | degraded | 2026-11-11 14:22:24.21726+00
+opspilot-staging last_sample | 23204a25 | 39 | degraded | 2026-11-11 14:21:02.311156+00
+opspilot-staging delivery | 2026-11-11 13:24:09.661167+00 | firing | created | 69778314

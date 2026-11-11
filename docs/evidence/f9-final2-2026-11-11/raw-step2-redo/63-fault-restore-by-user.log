@@ -1,0 +1,12 @@
+# Run by the user (not the agent) from their own machine via the Claude Code "!" prefix at 2026-11-11T21:59:59Z.
+# The pasted command was wrapped onto two lines, so tee had no file argument and nothing was written on the host;
+# the lines below are the command and its output as captured in the orchestrator session, saved by the agent at 2026-11-11T22:00:11Z.
+# Command:
+#   ssh opspilot-f9-1 "su - opspilot -c \x27cd production-ops-agent && (date -u +%FT%TZ; python3 scripts/kind_lab.py fault restore --experiment-id f9-final4-step2; echo rc=\$?; date -u +%FT%TZ) 2>&1 | tee
+#     ~/f9-final4/63-fault-restore-by-user.log\x27"
+2026-11-11T21:59:59Z
++ kubectl -n otel-demo patch configmap flagd-config (paymentFailure -> off)
+restore completed and verified on the lab ConfigMap (sha256 1ee5c0258e3e); flagd reloads the mounted file after the kubelet sync (about a minute)
+rc=0
+2026-11-11T21:59:59Z
+-bash: line 2: /home/opspilot/f9-final4/63-fault-restore-by-user.log: No such file or directory

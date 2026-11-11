@@ -1,0 +1,103 @@
+### R0 save staging v0.1.1 container logs before rollback at 2026-11-11T20:03:56Z
+saved
+### R1 stop every staging runtime (UPGRADE.md Rolling back step 1) at 2026-11-11T20:03:56Z
++ env OPSPILOT_PROJECT=opspilot-staging OPSPILOT_SECRETS_DIR=/home/opspilot/.config/opspilot-staging deploy/compose/install.sh compose stop web worker observer
+ Container opspilot-staging-web-1 Stopping 
+ Container opspilot-staging-worker-1 Stopping 
+ Container opspilot-staging-observer-1 Stopping 
+ Container opspilot-staging-web-1 Stopped 
+ Container opspilot-staging-worker-1 Stopped 
+ Container opspilot-staging-observer-1 Stopped 
+rc=0
+### R2 schema head: v0.1.1 upgrade reported 'schema unchanged: 0024_trace_outbox', v0.1.0 head is 0024_trace_outbox; same revision, so step 2 (downgrade) is skipped as UPGRADE.md says at 2026-11-11T20:03:57Z
+alembic current | 0024_trace_outbox
+### R3 upgrade staging with the v0.1.0 digest (UPGRADE.md Rolling back step 3) at 2026-11-11T20:03:57Z
++ env OPSPILOT_PROJECT=opspilot-staging OPSPILOT_SECRETS_DIR=/home/opspilot/.config/opspilot-staging OPSPILOT_IMAGE=ghcr.io/kevinwangsheng/opspilot@sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd deploy/compose/install.sh upgrade
+[opspilot-install 2026-11-11T20:03:57Z] pulling ghcr.io/kevinwangsheng/opspilot@sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd
+ghcr.io/kevinwangsheng/opspilot@sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd: Pulling from kevinwangsheng/opspilot
+Digest: sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd
+Status: Image is up to date for ghcr.io/kevinwangsheng/opspilot@sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd
+ghcr.io/kevinwangsheng/opspilot@sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd
+[opspilot-install 2026-11-11T20:03:58Z] stopping runtimes (web worker observer) before migrating
+ Container opspilot-staging-worker-1 Stopping 
+ Container opspilot-staging-web-1 Stopping 
+ Container opspilot-staging-observer-1 Stopping 
+ Container opspilot-staging-worker-1 Stopped 
+ Container opspilot-staging-web-1 Stopped 
+ Container opspilot-staging-observer-1 Stopped 
+[opspilot-install 2026-11-11T20:03:58Z] starting postgres
+ Container opspilot-staging-postgres-1 Running 
+ Container opspilot-staging-postgres-1 Waiting 
+ Container opspilot-staging-postgres-1 Healthy 
+[opspilot-install 2026-11-11T20:03:58Z] migrate: start
+ Container opspilot-staging-migrate-1 Recreate 
+ Container opspilot-staging-migrate-1 Recreated 
+Attaching to migrate-1
+ Container opspilot-staging-migrate-1 Starting 
+ Container opspilot-staging-migrate-1 Started 
+migrate-1  | schema unchanged: 0024_trace_outbox
+[Kmigrate-1 exited with code 0
+ Compose Stopping Aborting on container exit...
+ Container opspilot-staging-migrate-1 Stopping 
+ Container opspilot-staging-migrate-1 Stopped 
+[opspilot-install 2026-11-11T20:04:00Z] migrate: done
+[opspilot-install 2026-11-11T20:04:00Z] init-roles: start
+ Container opspilot-staging-init-roles-1 Recreate 
+ Container opspilot-staging-init-roles-1 Recreated 
+Attaching to init-roles-1
+ Container opspilot-staging-init-roles-1 Starting 
+ Container opspilot-staging-init-roles-1 Started 
+init-roles-1  | opspilot_web: login opspilot_web_app ok, schema at head 0024_trace_outbox
+init-roles-1  | opspilot_worker: login opspilot_worker_app ok, schema at head 0024_trace_outbox
+init-roles-1  | opspilot_observer: login opspilot_observer_app ok, schema at head 0024_trace_outbox
+init-roles-1  | opspilot_retention: login opspilot_retention_app ok, schema at head 0024_trace_outbox
+[Kinit-roles-1 exited with code 0
+ Compose Stopping Aborting on container exit...
+ Container opspilot-staging-init-roles-1 Stopping 
+ Container opspilot-staging-init-roles-1 Stopped 
+[opspilot-install 2026-11-11T20:04:01Z] init-roles: done
+[opspilot-install 2026-11-11T20:04:01Z] starting runtimes: web worker observer
+ Container opspilot-staging-observer-1 Recreate 
+ Container opspilot-staging-worker-1 Recreate 
+ Container opspilot-staging-web-1 Recreate 
+ Container opspilot-staging-worker-1 Recreated 
+ Container opspilot-staging-observer-1 Recreated 
+ Container opspilot-staging-web-1 Recreated 
+ Container opspilot-staging-web-1 Starting 
+ Container opspilot-staging-worker-1 Starting 
+ Container opspilot-staging-observer-1 Starting 
+ Container opspilot-staging-observer-1 Started 
+ Container opspilot-staging-worker-1 Started 
+ Container opspilot-staging-web-1 Started 
+ Container opspilot-staging-observer-1 Waiting 
+ Container opspilot-staging-web-1 Waiting 
+ Container opspilot-staging-worker-1 Waiting 
+ Container opspilot-staging-web-1 Healthy 
+ Container opspilot-staging-worker-1 Healthy 
+ Container opspilot-staging-observer-1 Healthy 
+[opspilot-install 2026-11-11T20:04:07Z] workbench: http://127.0.0.1:18190 (loopback only)
+[opspilot-install 2026-11-11T20:04:07Z] login: user 'operator', password in /home/opspilot/.config/opspilot-staging/ui_password
+[opspilot-install 2026-11-11T20:04:07Z] Alertmanager bearer token: /home/opspilot/.config/opspilot-staging/alertmanager_token
+rc=0
+### R4 staging re-join kind network without aliases (undocumented, same as f9-final2 12-staging-network.log / step4b.sh S3) at 2026-11-11T20:04:07Z
+web rc=0
+worker rc=0
+observer rc=0
+### R5 staging snapshot on v0.1.0 at 2026-11-11T20:05:07Z
+snap rc=0
+web config_image=ghcr.io/kevinwangsheng/opspilot@sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd image_id=sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd started=2026-11-11T20:04:01.900989387Z
+web readyz 200 {"status": "ready", "version": "0.1.0"}
+worker config_image=ghcr.io/kevinwangsheng/opspilot@sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd image_id=sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd started=2026-11-11T20:04:01.90167293Z
+worker readyz 200 {"status": "ready", "version": "0.1.0"}
+observer config_image=ghcr.io/kevinwangsheng/opspilot@sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd image_id=sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd started=2026-11-11T20:04:01.902037212Z
+observer readyz 200 {"status": "ready", "version": "0.1.0"}
+alembic | 0024_trace_outbox
+incident | 69778314-65d3-5e3c-90a1-2b2b58d9ca03 | queued | closed | automatic | 1 | 2026-11-11 13:24:09.676435+00 | 2026-11-11 20:03:34.323729+00
+session | 23204a25-b054-5c2c-a18c-e559967af7cc | 69778314-65d3-5e3c-90a1-2b2b58d9ca03 | expired | max_samples_exhausted |  | 40 | 2026-11-11 13:28:01.868409+00 | 2026-11-11 14:22:46.175962+00
+count_controls | 2
+count_evidence | 28
+count_samples | 40
+count_steps | 15
+count_alert_deliveries | 1
+count_postmortem_versions | 1
+### done at 2026-11-11T20:05:08Z

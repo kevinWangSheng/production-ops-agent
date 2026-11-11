@@ -1,0 +1,39 @@
+=== snapshot project=opspilot label=before-anything at 2026-11-11T13:16:04Z
+opspilot-m1-control-plane kindest/node:v1.37.0 Up 7 hours
+opspilot-observer-1 228df9f72e69 Up 5 hours (healthy)
+opspilot-postgres-1 2a0d0fe14825 Up 7 hours (healthy)
+opspilot-staging-observer-1 228df9f72e69 Up 33 seconds (healthy)
+opspilot-staging-postgres-1 2a0d0fe14825 Up 39 seconds (healthy)
+opspilot-staging-web-1 228df9f72e69 Up 33 seconds (healthy)
+opspilot-staging-worker-1 228df9f72e69 Up 33 seconds (healthy)
+opspilot-web-1 228df9f72e69 Up 5 hours (healthy)
+opspilot-worker-1 228df9f72e69 Up 5 hours (healthy)
+web config_image=ghcr.io/kevinwangsheng/opspilot@sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd image_id=sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd started=2026-11-11T07:56:13.337200795Z
+web healthz 200 {"status": "ok", "version": "0.1.0"}
+web readyz 200 {"status": "ready", "version": "0.1.0"}
+web log     590 "version": "0.1.0", "revision": "dd9534316a6b95e3513f2c68c3f13e45bc7ea322"
+worker config_image=ghcr.io/kevinwangsheng/opspilot@sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd image_id=sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd started=2026-11-11T07:56:13.338330462Z
+worker healthz 200 {"status": "ok", "version": "0.1.0"}
+worker readyz 200 {"status": "ready", "version": "0.1.0"}
+worker log       6 "version": "0.1.0", "revision": "dd9534316a6b95e3513f2c68c3f13e45bc7ea322"
+observer config_image=ghcr.io/kevinwangsheng/opspilot@sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd image_id=sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd started=2026-11-11T07:56:13.336944613Z
+observer healthz 200 {"status": "ok", "version": "0.1.0"}
+observer readyz 200 {"status": "ready", "version": "0.1.0"}
+observer log      14 "version": "0.1.0", "revision": "dd9534316a6b95e3513f2c68c3f13e45bc7ea322"
+db_now | 2026-11-11 13:16:05.089886+00
+alembic | 0024_trace_outbox
+incident | fb89cdf2-98a8-5ec0-a70f-cd93fb321214 | cancelled | closed | human_owned | 3 | 2026-11-11 06:22:04.386821+00 | 2026-11-11 07:42:10.340733+00
+incident | 1fbdce34-377c-5a57-9a2a-6ae81e1d5364 | queued | resolved | automatic | 0 | 2026-11-11 07:49:04.385548+00 | 
+run | 79970de4-e57f-5d09-8189-5d05bd160f5b | fb89cdf2-98a8-5ec0-a70f-cd93fb321214 | cancelled | 1 | 0 | 0
+run | f29d655b-66f6-5cc6-a57f-67c627134848 | 1fbdce34-377c-5a57-9a2a-6ae81e1d5364 | completed | 1 | 10 | 17
+session | 7244f7fd-29e0-599f-95f1-a9ce7dfc0a57 | fb89cdf2-98a8-5ec0-a70f-cd93fb321214 | completed | recovery_confirmed | 2026-11-11 07:15:21.729994+00 | 12 | 2026-11-11 07:10:14.734222+00 | 2026-11-11 07:26:39.381335+00
+session | 95983fe0-c6aa-563c-9c2a-3853c9d0d9db | 1fbdce34-377c-5a57-9a2a-6ae81e1d5364 | completed | recovery_confirmed | 2026-11-11 07:58:36.432805+00 | 13 | 2026-11-11 07:52:29.779291+00 | 2026-11-11 08:09:53.882733+00
+count_controls | 4
+count_evidence | 17
+count_samples | 25
+count_steps | 12
+count_alert_deliveries | 6
+count_postmortem_versions | 2
+last_sample | 13 | healthy | 2026-11-11 08:09:32.113747+00
+last_sample | 12 | healthy | 2026-11-11 08:08:10.115984+00
+last_sample | 11 | healthy | 2026-11-11 08:06:48.120454+00

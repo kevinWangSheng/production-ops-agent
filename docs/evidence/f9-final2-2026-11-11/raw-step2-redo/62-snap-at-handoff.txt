@@ -1,0 +1,47 @@
+=== snapshot project=opspilot label=at-handoff at 2026-11-11T21:51:35Z
+opspilot-m1-control-plane kindest/node:v1.37.0 Up 16 hours
+opspilot-observer-1 228df9f72e69 Up 8 hours (healthy)
+opspilot-postgres-1 2a0d0fe14825 Up 16 hours (healthy)
+opspilot-staging-observer-1 0af7b9ff4b71 Up 2 hours (healthy)
+opspilot-staging-postgres-1 2a0d0fe14825 Up 9 hours (healthy)
+opspilot-staging-web-1 0af7b9ff4b71 Up 2 hours (healthy)
+opspilot-staging-worker-1 0af7b9ff4b71 Up 2 hours (healthy)
+opspilot-web-1 228df9f72e69 Up 8 hours (healthy)
+opspilot-worker-1 228df9f72e69 Up 8 hours (healthy)
+web config_image=ghcr.io/kevinwangsheng/opspilot@sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd image_id=sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd started=2026-11-11T13:33:40.050250554Z
+web healthz 200 {"status": "ok", "version": "0.1.0"}
+web readyz 200 {"status": "ready", "version": "0.1.0"}
+web log     905 "version": "0.1.0", "revision": "dd9534316a6b95e3513f2c68c3f13e45bc7ea322"
+worker config_image=ghcr.io/kevinwangsheng/opspilot@sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd image_id=sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd started=2026-11-11T13:33:40.050001572Z
+worker healthz 200 {"status": "ok", "version": "0.1.0"}
+worker readyz 200 {"status": "ready", "version": "0.1.0"}
+worker log      12 "version": "0.1.0", "revision": "dd9534316a6b95e3513f2c68c3f13e45bc7ea322"
+observer config_image=ghcr.io/kevinwangsheng/opspilot@sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd image_id=sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd started=2026-11-11T13:33:40.049628051Z
+observer healthz 200 {"status": "ok", "version": "0.1.0"}
+observer readyz 200 {"status": "ready", "version": "0.1.0"}
+observer log      31 "version": "0.1.0", "revision": "dd9534316a6b95e3513f2c68c3f13e45bc7ea322"
+db_now | 2026-11-11 21:51:36.78945+00
+alembic | 0024_trace_outbox
+incident | fb89cdf2-98a8-5ec0-a70f-cd93fb321214 | cancelled | closed | human_owned | 3 | 2026-11-11 06:22:04.386821+00 | 2026-11-11 07:42:10.340733+00
+incident | 1fbdce34-377c-5a57-9a2a-6ae81e1d5364 | queued | closed | automatic | 1 | 2026-11-11 07:49:04.385548+00 | 2026-11-11 13:41:26.210499+00
+incident | aa6f1172-b014-56bc-8761-fd1883a52cd0 | cancelled | closed | human_owned | 3 | 2026-11-11 13:48:04.385983+00 | 2026-11-11 19:22:22.623768+00
+incident | c030a3a3-0369-5ba3-a7fd-d44066a31286 | queued | closed | automatic | 1 | 2026-11-11 20:10:04.385383+00 | 2026-11-11 21:44:02.463683+00
+incident | 65b0490a-df80-51b2-adfa-698c53a9ee7b | queued | open | automatic | 0 | 2026-11-11 21:51:04.388209+00 | 
+run | 79970de4-e57f-5d09-8189-5d05bd160f5b | fb89cdf2-98a8-5ec0-a70f-cd93fb321214 | cancelled | 1 | 0 | 0
+run | f29d655b-66f6-5cc6-a57f-67c627134848 | 1fbdce34-377c-5a57-9a2a-6ae81e1d5364 | completed | 1 | 10 | 17
+run | 78419b8b-54a6-5bee-9e47-b915a83c0b9c | aa6f1172-b014-56bc-8761-fd1883a52cd0 | cancelled | 1 | 2 | 4
+run | 0a2f20e4-7fc1-57f1-9fbb-479bba283922 | c030a3a3-0369-5ba3-a7fd-d44066a31286 | completed | 1 | 9 | 17
+run | 50936b1d-2e18-5f18-8dd1-caa0afcd84f9 | 65b0490a-df80-51b2-adfa-698c53a9ee7b | waiting_human | 1 | 2 | 4
+session | 7244f7fd-29e0-599f-95f1-a9ce7dfc0a57 | fb89cdf2-98a8-5ec0-a70f-cd93fb321214 | completed | recovery_confirmed | 2026-11-11 07:15:21.729994+00 | 12 | 2026-11-11 07:10:14.734222+00 | 2026-11-11 07:26:39.381335+00
+session | 95983fe0-c6aa-563c-9c2a-3853c9d0d9db | 1fbdce34-377c-5a57-9a2a-6ae81e1d5364 | completed | recovery_confirmed | 2026-11-11 07:58:36.432805+00 | 13 | 2026-11-11 07:52:29.779291+00 | 2026-11-11 08:09:53.882733+00
+session | 86636672-0174-5cb2-b21a-54e71065b999 | aa6f1172-b014-56bc-8761-fd1883a52cd0 | completed | recovery_confirmed | 2026-11-11 18:54:23.225469+00 | 12 | 2026-11-11 18:49:12.589336+00 | 2026-11-11 19:05:40.484567+00
+session | 27c61712-da7f-5afb-a127-56e64eab168c | c030a3a3-0369-5ba3-a7fd-d44066a31286 | completed | recovery_confirmed | 2026-11-11 20:23:23.01876+00 | 16 | 2026-11-11 20:12:43.883034+00 | 2026-11-11 20:34:39.982598+00
+count_controls | 10
+count_evidence | 42
+count_samples | 53
+count_steps | 28
+count_alert_deliveries | 17
+count_postmortem_versions | 7
+last_sample | 16 | healthy | 2026-11-11 20:34:18.123074+00
+last_sample | 15 | healthy | 2026-11-11 20:32:56.220058+00
+last_sample | 14 | healthy | 2026-11-11 20:31:34.426394+00

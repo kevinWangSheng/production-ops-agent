@@ -1,0 +1,10 @@
+2026-11-11T13:15:35Z
+# UNDOCUMENTED: join staging runtimes to the kind network WITHOUT the opspilot-* aliases (connect-control would give staging the aliases the lab Alertmanager and Prometheus resolve, colliding with the main install)
+web rc=0
+worker rc=0
+observer rc=0
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+  File "<frozen os>", line 714, in __getitem__
+KeyError: 'OPSPILOT_OTEL_PROMETHEUS_URL'
+2026-11-11T13:15:36Z

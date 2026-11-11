@@ -1,0 +1,449 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Incident aa6f1172-b014-56bc-8761-fd1883a52cd0</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { font: 14px/1.4 system-ui, sans-serif; margin: 0; padding: 16px; max-width: 1100px; }
+    h1, h2, h3 { margin: 0.6em 0 0.3em; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { text-align: left; padding: 4px 8px; border-bottom: 1px solid #ddd; vertical-align: top; }
+    code, pre { font-family: ui-monospace, monospace; font-size: 12px; }
+    pre { white-space: pre-wrap; word-break: break-all; background: #f6f6f6; padding: 8px; }
+    .badge { display: inline-block; padding: 1px 6px; border-radius: 3px; background: #eee; }
+    .facts { border-left: 4px solid #2a7; padding-left: 8px; }
+    .hypotheses { border-left: 4px solid #27c; padding-left: 8px; }
+    .counter { border-left: 4px solid #c52; padding-left: 8px; }
+    .rejected { border-left: 4px solid #999; padding-left: 8px; }
+    .unknown { border-left: 4px solid #e9b400; padding-left: 8px; }
+    .recommend { border-left: 4px solid #75c; padding-left: 8px; }
+    form.inline { display: inline-block; margin: 4px 8px 4px 0; }
+    #progress li { margin: 2px 0; }
+    .muted { color: #666; }
+  </style>
+</head>
+<body>
+  <header>
+    <a href="/">Incidents</a> · <a href="/version-changes">Version changes</a>
+    <span class="muted">· signed in as <code>operator</code> (ui_basic)</span>
+  </header>
+  
+<h1>Incident <code>aa6f1172-b014-56bc-8761-fd1883a52cd0</code></h1>
+<p>
+  lifecycle <span class="badge" id="incident-lifecycle">open</span>
+  · mode <span class="badge" id="incident-mode">automatic</span>
+  · <span class="badge" id="concluded">no conclusion</span>
+  · control generation <strong id="control-generation">0</strong>
+  · run <code>78419b8b-54a6-5bee-9e47-b915a83c0b9c</code> <span class="badge" id="run-state">waiting_human</span>
+  · epoch 1
+  · budget 2 spent / 0 reserved / 2 unknown of 100
+  · deadline 2026-11-11 15:48:04.374490+00:00
+</p>
+
+<p>Opened after closed incident <a id="related-incident" href="/incidents/1fbdce34-377c-5a57-9a2a-6ae81e1d5364"><code>1fbdce34-377c-5a57-9a2a-6ae81e1d5364</code></a>
+  <span class="muted">(same alert on the same target; the closed incident was not reopened)</span></p>
+
+
+
+
+
+<p>Current target: <code id="current-target">m0-otel-20260909</code></p>
+
+
+
+<p>Target request: <code>m0-otel-20260909</code> <span class="muted">(unresolved operator input; identity is registry-resolved by the investigator)</span></p>
+
+
+<h2>Question</h2>
+<pre>Alertmanager alert CheckoutPlaceOrderErrorRatioHigh (severity critical) is firing for service otel-demo/checkout since 2026-11-11T13:47:54Z.
+Alert expression (PromQL): label_replace(label_replace((sum by (k8s_namespace_name, service_name) (rate(traces_span_metrics_calls_total{k8s_namespace_name=&#34;otel-demo&#34;,service_name=&#34;checkout&#34;,span_kind=&#34;SPAN_KIND_SERVER&#34;,span_name=~&#34;.*CheckoutService/PlaceOrder&#34;,status_code=&#34;STATUS_CODE_ERROR&#34;}[5m]))) / (sum by (k8s_namespace_name, service_name) (rate(traces_span_metrics_calls_total{k8s_namespace_name=&#34;otel-demo&#34;,service_name=&#34;checkout&#34;,span_kind=&#34;SPAN_KIND_SERVER&#34;,span_name=~&#34;.*CheckoutService/PlaceOrder&#34;}[5m]))), &#34;namespace&#34;, &#34;$1&#34;, &#34;k8s_namespace_name&#34;, &#34;(.*)&#34;), &#34;service&#34;, &#34;$1&#34;, &#34;service_name&#34;, &#34;(.*)&#34;) &gt; 0.5
+Investigate why this alert is firing.</pre>
+
+
+
+
+
+<section id="alert-intake">
+<h2>Alert</h2>
+<p>
+  Alertmanager identity <code id="alert-fingerprint">83f7541ae0105d42</code>
+  · starts at <code id="alert-starts-at">2026-11-11T13:47:54Z</code>
+  <span class="muted">(received as <code>2026-11-11T13:47:54.365Z</code>)</span>
+  
+  · target <code id="alert-target">m0-otel-20260909</code>
+  
+</p>
+
+<p>Affected service <code id="alert-affected-service">otel-demo/checkout</code>
+  <span class="muted">(focus for the investigation; it does not narrow what the tools may query)</span></p>
+
+
+<h3>Annotations <span class="muted">(startsAt <code id="alert-latest-starts-at">2026-11-11T13:47:54Z</code>, revision 1, untrusted alert text, credentials redacted)</span></h3>
+
+<table id="alert-annotations">
+  <tbody>
+  
+  <tr><td><code>description</code></td><td><pre>100% of checkout PlaceOrder server spans ended in error over the last 5 minutes.</pre></td></tr>
+  
+  <tr><td><code>summary</code></td><td><pre>checkout PlaceOrder error ratio above 50%</pre></td></tr>
+  
+  </tbody>
+</table>
+
+
+
+
+<h3>Deliveries</h3>
+<table id="alert-deliveries">
+  <thead><tr><th>#</th><th>Starts at</th><th>Status</th><th>Outcome</th><th>Actor</th><th>Annotation revision</th><th>Raw sha256</th></tr></thead>
+  <tbody>
+  
+  <tr><td>1</td><td><code>2026-11-11T13:47:54Z</code></td><td>firing</td><td><code>created</code></td><td><code>alertmanager</code></td><td>1</td><td><code>3cc6456144bdb02e2967c368c8900e5f088e795d8751a639cfa3d2c8d21ca31c</code></td></tr>
+  
+  </tbody>
+</table>
+</section>
+
+
+<h2>Human control</h2>
+
+<p class="muted">Every action is a conditional update against generation 0. A stale form is refused, never applied.</p>
+
+<form class="inline" method="post" action="/incidents/aa6f1172-b014-56bc-8761-fd1883a52cd0/control">
+  <input type="hidden" name="action" value="cancel">
+  <input type="hidden" name="expected_generation" value="0">
+  <input type="hidden" name="idempotency_key" value="cancel-0-4281291eb4e84bfca71eeb3db1b06077">
+  
+  <button type="submit">cancel</button>
+</form>
+
+<form class="inline" method="post" action="/incidents/aa6f1172-b014-56bc-8761-fd1883a52cd0/control">
+  <input type="hidden" name="action" value="close">
+  <input type="hidden" name="expected_generation" value="0">
+  <input type="hidden" name="idempotency_key" value="close-0-4281291eb4e84bfca71eeb3db1b06077">
+  
+  <button type="submit">close</button>
+</form>
+
+<form class="inline" method="post" action="/incidents/aa6f1172-b014-56bc-8761-fd1883a52cd0/control">
+  <input type="hidden" name="action" value="correct">
+  <input type="hidden" name="expected_generation" value="0">
+  <input type="hidden" name="idempotency_key" value="correct-0-4281291eb4e84bfca71eeb3db1b06077">
+  
+    <input name="text" placeholder="correction / added fact" required maxlength="8192">
+  
+  <button type="submit">correct</button>
+</form>
+
+<form class="inline" method="post" action="/incidents/aa6f1172-b014-56bc-8761-fd1883a52cd0/control">
+  <input type="hidden" name="action" value="follow_up">
+  <input type="hidden" name="expected_generation" value="0">
+  <input type="hidden" name="idempotency_key" value="follow_up-0-4281291eb4e84bfca71eeb3db1b06077">
+  
+    <input name="text" placeholder="follow-up question" required maxlength="8192">
+  
+  <button type="submit">follow_up</button>
+</form>
+
+<form class="inline" method="post" action="/incidents/aa6f1172-b014-56bc-8761-fd1883a52cd0/control">
+  <input type="hidden" name="action" value="merge_into">
+  <input type="hidden" name="expected_generation" value="0">
+  <input type="hidden" name="idempotency_key" value="merge_into-0-4281291eb4e84bfca71eeb3db1b06077">
+  
+    <input name="into_incident_id" placeholder="surviving incident id (same target)" required maxlength="36">
+    <input name="text" placeholder="why (optional)" maxlength="8192">
+  
+  <button type="submit">merge_into</button>
+</form>
+
+<form class="inline" method="post" action="/incidents/aa6f1172-b014-56bc-8761-fd1883a52cd0/control">
+  <input type="hidden" name="action" value="pause">
+  <input type="hidden" name="expected_generation" value="0">
+  <input type="hidden" name="idempotency_key" value="pause-0-4281291eb4e84bfca71eeb3db1b06077">
+  
+  <button type="submit">pause</button>
+</form>
+
+<form class="inline" method="post" action="/incidents/aa6f1172-b014-56bc-8761-fd1883a52cd0/control">
+  <input type="hidden" name="action" value="register_remediation">
+  <input type="hidden" name="expected_generation" value="0">
+  <input type="hidden" name="idempotency_key" value="register_remediation-0-4281291eb4e84bfca71eeb3db1b06077">
+  
+    <input name="revision" placeholder="target revision after handling" required maxlength="256">
+  
+  <button type="submit">register_remediation</button>
+</form>
+
+<form class="inline" method="post" action="/incidents/aa6f1172-b014-56bc-8761-fd1883a52cd0/control">
+  <input type="hidden" name="action" value="resume">
+  <input type="hidden" name="expected_generation" value="0">
+  <input type="hidden" name="idempotency_key" value="resume-0-4281291eb4e84bfca71eeb3db1b06077">
+  
+  <button type="submit">resume</button>
+</form>
+
+<form class="inline" method="post" action="/incidents/aa6f1172-b014-56bc-8761-fd1883a52cd0/control">
+  <input type="hidden" name="action" value="takeover">
+  <input type="hidden" name="expected_generation" value="0">
+  <input type="hidden" name="idempotency_key" value="takeover-0-4281291eb4e84bfca71eeb3db1b06077">
+  
+  <button type="submit">takeover</button>
+</form>
+
+<p class="muted"><code>register_remediation</code> records that the incident was handled outside the system and starts an independent recovery observation under HealthProfile <code>otel-demo-checkout@b72bbe2e30be</code>. It does not touch the investigated system.</p>
+
+<h2>Recovery observation</h2>
+<p class="muted" id="observation-none">No recovery observation authorized.</p>
+
+
+<section id="postmortem">
+<h2>Postmortem <span class="muted">(draft until a human approves it; only approved versions become knowledge)</span></h2>
+<p>
+  status <span class="badge" id="postmortem-status">not_generated</span>
+  
+  
+  
+</p>
+<p class="muted">No postmortem generated yet: one is drafted after the recovery observation has ended.</p>
+
+
+
+
+
+
+<p class="muted" id="postmortem-schedule">
+  
+  
+  consecutive failures 0
+  
+  
+</p>
+
+
+
+
+</section>
+
+
+<section id="knowledge-hints">
+<h2>Historical knowledge hints</h2>
+
+
+<p>Status: ok · retrieved at 2026-11-11T13:48:04.376194+00:00 · freshness threshold 2592000 seconds · omitted for size 0</p>
+<ul></ul>
+
+</section>
+
+<h2 id="investigation-report">Investigation report <span class="muted">(the investigator's causal conclusion; it does not certify recovery)</span></h2>
+
+
+  <p class="muted" id="report-missing">No published conclusion yet.
+  Last attempt: <code>failed</code>
+    
+      handoff <code>MODEL_UNAVAILABLE</code>
+    
+  </p>
+  
+
+
+
+
+
+
+<section id="coverage-gaps">
+  <h2>Coverage gaps <span class="muted">(counted from this Run's committed tool results, not written by the investigator)</span></h2>
+  
+  
+  <table>
+    <thead><tr><th>Source</th><th>State</th><th>ok</th><th>no data</th><th>not ok</th><th>Reasons</th></tr></thead>
+    <tbody>
+    
+    <tr class="coverage-source coverage-gap" data-source="jaeger" data-state="failed">
+      <td><code>jaeger</code></td>
+      <td><span class="badge">failed</span> <strong>gap</strong>: <span class="muted">no query succeeded</span></td>
+      <td>0</td>
+      <td>0</td>
+      <td>1</td>
+      <td><code>RESULT_TOO_LARGE</code> ×1</td>
+    </tr>
+    
+    <tr class="coverage-source" data-source="prometheus" data-state="all_ok">
+      <td><code>prometheus</code></td>
+      <td><span class="badge">all_ok</span> <span class="muted">every query ran without an error or refusal (no-data counts shown separately)</span></td>
+      <td>3</td>
+      <td>0</td>
+      <td>0</td>
+      <td></td>
+    </tr>
+    
+    <tr class="coverage-source coverage-gap" data-source="kubernetes_state" data-state="not_integrated">
+      <td><code>kubernetes_state</code></td>
+      <td><span class="badge">not_integrated</span> <strong>gap</strong>: <span class="muted">not integrated (cannot be queried)</span></td>
+      <td>0</td>
+      <td>0</td>
+      <td>0</td>
+      <td></td>
+    </tr>
+    
+    <tr class="coverage-source coverage-gap" data-source="pod_logs" data-state="not_integrated">
+      <td><code>pod_logs</code></td>
+      <td><span class="badge">not_integrated</span> <strong>gap</strong>: <span class="muted">not integrated (cannot be queried)</span></td>
+      <td>0</td>
+      <td>0</td>
+      <td>0</td>
+      <td></td>
+    </tr>
+    
+    <tr class="coverage-source coverage-gap" data-source="change_history" data-state="not_integrated">
+      <td><code>change_history</code></td>
+      <td><span class="badge">not_integrated</span> <strong>gap</strong>: <span class="muted">not integrated (cannot be queried)</span></td>
+      <td>0</td>
+      <td>0</td>
+      <td>0</td>
+      <td></td>
+    </tr>
+    
+    </tbody>
+  </table>
+  
+  
+</section>
+
+
+
+
+<h2>Steps</h2>
+
+<table>
+  <thead><tr><th>#</th><th>Key</th><th>Status</th><th>Generation</th><th>Finish</th><th>Tools</th></tr></thead>
+  <tbody>
+  
+  <tr>
+    <td>0</td>
+    <td><code>ctx0:round-1</code></td>
+    <td><span class="badge">tool_result_committed</span></td>
+    <td>0</td>
+    <td>tool_calls</td>
+    <td>
+      2 / 2
+      
+        <br><code>metrics_range_query</code> → <span class="badge">ok</span>
+        
+        
+        
+        
+        <a href="/incidents/aa6f1172-b014-56bc-8761-fd1883a52cd0/evidence/818d6dd5-007c-4244-ae5c-29dc43789a8f-t0:82be07d5-8332-408e-bd9d-2377682ec5ec"><code>818d6dd5-007c-4244-ae5c-29dc43789a8f-t0:82be07d5-8332-408e-bd9d-2377682ec5ec</code></a>
+        
+      
+        <br><code>traces_search</code> → <span class="badge">error</span>
+        
+        <code>RESULT_TOO_LARGE</code>
+        
+        
+        <a href="/incidents/aa6f1172-b014-56bc-8761-fd1883a52cd0/evidence/818d6dd5-007c-4244-ae5c-29dc43789a8f-t1:d0b7d0ff-8321-420e-8b85-f032ac966d62"><code>818d6dd5-007c-4244-ae5c-29dc43789a8f-t1:d0b7d0ff-8321-420e-8b85-f032ac966d62</code></a>
+        <span class="muted">(not adopted)</span>
+      
+    </td>
+  </tr>
+  
+  <tr>
+    <td>1</td>
+    <td><code>ctx0:round-2</code></td>
+    <td><span class="badge">tool_result_committed</span></td>
+    <td>0</td>
+    <td>tool_calls</td>
+    <td>
+      2 / 2
+      
+        <br><code>metrics_range_query</code> → <span class="badge">ok</span>
+        
+        
+        
+        
+        <a href="/incidents/aa6f1172-b014-56bc-8761-fd1883a52cd0/evidence/9e0f16f7-3d41-4ecd-9721-09ee6b4791e3-t0:14498522-2859-4088-9264-f6ae5ee40013"><code>9e0f16f7-3d41-4ecd-9721-09ee6b4791e3-t0:14498522-2859-4088-9264-f6ae5ee40013</code></a>
+        
+      
+        <br><code>metrics_range_query</code> → <span class="badge">ok</span>
+        
+        
+        
+        
+        <a href="/incidents/aa6f1172-b014-56bc-8761-fd1883a52cd0/evidence/9e0f16f7-3d41-4ecd-9721-09ee6b4791e3-t1:0b65c73a-12fe-4cba-82fb-f422a38ba700"><code>9e0f16f7-3d41-4ecd-9721-09ee6b4791e3-t1:0b65c73a-12fe-4cba-82fb-f422a38ba700</code></a>
+        
+      
+    </td>
+  </tr>
+  
+  <tr>
+    <td>2</td>
+    <td><code>conclusion:g0:ctx0:round-2</code></td>
+    <td><span class="badge">response_committed</span></td>
+    <td>0</td>
+    <td></td>
+    <td>
+      0 / 0
+      
+    </td>
+  </tr>
+  
+  </tbody>
+</table>
+
+
+
+<p id="not-integrated">Not integrated for this Run (cannot be queried): <code>kubernetes_state</code>, <code>pod_logs</code>, <code>change_history</code></p>
+
+
+<h2>Investigation history</h2>
+<p class="muted">No earlier Runs.</p>
+
+<h2>Human decisions</h2>
+<p class="muted">None recorded.</p>
+
+<h2>Live progress <span class="muted">(persistent sequence, resumes from 9)</span></h2>
+<ul id="progress">
+  
+  <li data-sequence="1"><code>1</code> <strong>intake_accepted</strong> <span class="muted">{"actor_id": "alertmanager", "channel": "event_token", "question": "Alertmanager alert CheckoutPlaceOrderErrorRatioHigh (severity critical) is firing for service otel-demo/checkout since 2026-11-11T13:47:54Z.\nAlert expression (PromQL): label_replace(label_replace((sum by (k8s_namespace_name, service_name) (rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\",status_code=\"STATUS_CODE_ERROR\"}[5m]))) / (sum by (k8s_namespace_name, service_name) (rate(traces_span_metrics_calls_total{k8s_namespace_name=\"otel-demo\",service_name=\"checkout\",span_kind=\"SPAN_KIND_SERVER\",span_name=~\".*CheckoutService/PlaceOrder\"}[5m]))), \"namespace\", \"$1\", \"k8s_namespace_name\", \"(.*)\"), \"service\", \"$1\", \"service_name\", \"(.*)\") \u003e 0.5\nInvestigate why this alert is firing.", "received_at": "2026-11-11T13:48:04.372496+00:00", "request_id": "92e7fb1a-739a-45d0-a142-cc5a6a816dbe", "run_id": "78419b8b-54a6-5bee-9e47-b915a83c0b9c", "target_id": "m0-otel-20260909"}</span></li>
+  
+  <li data-sequence="2"><code>2</code> <strong>run_claimed</strong> <span class="muted">{"control_generation": 0, "epoch": 1, "run_id": "78419b8b-54a6-5bee-9e47-b915a83c0b9c"}</span></li>
+  
+  <li data-sequence="3"><code>3</code> <strong>step_committed</strong> <span class="muted">{"finish_reason": "tool_calls", "logical_key": "ctx0:round-1", "planned_tools": 2, "run_id": "78419b8b-54a6-5bee-9e47-b915a83c0b9c", "step_id": "818d6dd5-007c-4244-ae5c-29dc43789a8f"}</span></li>
+  
+  <li data-sequence="4"><code>4</code> <strong>tool_committed</strong> <span class="muted">{"adopted": false, "evidence_id": "818d6dd5-007c-4244-ae5c-29dc43789a8f-t1:d0b7d0ff-8321-420e-8b85-f032ac966d62", "ordinal": 1, "run_id": "78419b8b-54a6-5bee-9e47-b915a83c0b9c", "status": "error", "step_id": "818d6dd5-007c-4244-ae5c-29dc43789a8f", "target_id": "m0-otel-20260909", "tool": "traces_search"}</span></li>
+  
+  <li data-sequence="5"><code>5</code> <strong>tool_committed</strong> <span class="muted">{"adopted": true, "evidence_id": "818d6dd5-007c-4244-ae5c-29dc43789a8f-t0:82be07d5-8332-408e-bd9d-2377682ec5ec", "ordinal": 0, "run_id": "78419b8b-54a6-5bee-9e47-b915a83c0b9c", "status": "ok", "step_id": "818d6dd5-007c-4244-ae5c-29dc43789a8f", "target_id": "m0-otel-20260909", "tool": "metrics_range_query"}</span></li>
+  
+  <li data-sequence="6"><code>6</code> <strong>step_committed</strong> <span class="muted">{"finish_reason": "tool_calls", "logical_key": "ctx0:round-2", "planned_tools": 2, "run_id": "78419b8b-54a6-5bee-9e47-b915a83c0b9c", "step_id": "9e0f16f7-3d41-4ecd-9721-09ee6b4791e3"}</span></li>
+  
+  <li data-sequence="7"><code>7</code> <strong>tool_committed</strong> <span class="muted">{"adopted": true, "evidence_id": "9e0f16f7-3d41-4ecd-9721-09ee6b4791e3-t0:14498522-2859-4088-9264-f6ae5ee40013", "ordinal": 0, "run_id": "78419b8b-54a6-5bee-9e47-b915a83c0b9c", "status": "ok", "step_id": "9e0f16f7-3d41-4ecd-9721-09ee6b4791e3", "target_id": "m0-otel-20260909", "tool": "metrics_range_query"}</span></li>
+  
+  <li data-sequence="8"><code>8</code> <strong>tool_committed</strong> <span class="muted">{"adopted": true, "evidence_id": "9e0f16f7-3d41-4ecd-9721-09ee6b4791e3-t1:0b65c73a-12fe-4cba-82fb-f422a38ba700", "ordinal": 1, "run_id": "78419b8b-54a6-5bee-9e47-b915a83c0b9c", "status": "ok", "step_id": "9e0f16f7-3d41-4ecd-9721-09ee6b4791e3", "target_id": "m0-otel-20260909", "tool": "metrics_range_query"}</span></li>
+  
+  <li data-sequence="9"><code>9</code> <strong>run_handoff</strong> <span class="muted">{"control_generation": 0, "evidence_ids": ["818d6dd5-007c-4244-ae5c-29dc43789a8f-t0:82be07d5-8332-408e-bd9d-2377682ec5ec", "9e0f16f7-3d41-4ecd-9721-09ee6b4791e3-t0:14498522-2859-4088-9264-f6ae5ee40013", "9e0f16f7-3d41-4ecd-9721-09ee6b4791e3-t1:0b65c73a-12fe-4cba-82fb-f422a38ba700"], "execution": "failed", "handoff": true, "parked": true, "published": false, "reasons": ["MODEL_UNAVAILABLE"], "reconciled": false, "report_sha256": null, "run_id": "78419b8b-54a6-5bee-9e47-b915a83c0b9c"}</span></li>
+  
+</ul>
+<script>
+(function () {
+  var cursor = 9;
+  var list = document.getElementById("progress");
+  var reloadKinds = {"run_completed": 1, "run_handoff": 1, "control_applied": 1, "reload": 1};
+  var postmortemKinds = ["postmortem_generated", "postmortem_generation_failed", "postmortem_stale", "postmortem_reviewed", "knowledge_changed"];
+  postmortemKinds.forEach(function (kind) { reloadKinds[kind] = 1; });
+  var source = new EventSource("/incidents/aa6f1172-b014-56bc-8761-fd1883a52cd0/events?cursor=" + cursor);
+  source.onmessage = function () {};
+  ["intake_accepted", "run_claimed", "run_claim_refused", "step_committed", "tool_committed",
+   "run_completed", "run_handoff", "control_applied", "reload"].concat(postmortemKinds).forEach(function (kind) {
+    source.addEventListener(kind, function (event) {
+      var item = document.createElement("li");
+      var seq = event.lastEventId || "";
+      item.textContent = seq + " " + kind + " " + event.data;
+      list.appendChild(item);
+      if (reloadKinds[kind]) { source.close(); window.location.reload(); }
+    });
+  });
+})();
+</script>
+
+</body>
+</html>

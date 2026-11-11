@@ -1,0 +1,31 @@
+=== snapshot project=opspilot-staging label=staging-after-rollback-v010 at 2026-11-11T20:05:07Z
+opspilot-staging-observer-1 228df9f72e69 Up About a minute (healthy)
+opspilot-staging-postgres-1 2a0d0fe14825 Up 7 hours (healthy)
+opspilot-staging-web-1 228df9f72e69 Up About a minute (healthy)
+opspilot-staging-worker-1 228df9f72e69 Up About a minute (healthy)
+web config_image=ghcr.io/kevinwangsheng/opspilot@sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd image_id=sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd started=2026-11-11T20:04:01.900989387Z
+web healthz 200 {"status": "ok", "version": "0.1.0"}
+web readyz 200 {"status": "ready", "version": "0.1.0"}
+web log       5 "version": "0.1.0", "revision": "dd9534316a6b95e3513f2c68c3f13e45bc7ea322"
+worker config_image=ghcr.io/kevinwangsheng/opspilot@sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd image_id=sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd started=2026-11-11T20:04:01.90167293Z
+worker healthz 200 {"status": "ok", "version": "0.1.0"}
+worker readyz 200 {"status": "ready", "version": "0.1.0"}
+worker log       5 "version": "0.1.0", "revision": "dd9534316a6b95e3513f2c68c3f13e45bc7ea322"
+observer config_image=ghcr.io/kevinwangsheng/opspilot@sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd image_id=sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd started=2026-11-11T20:04:01.902037212Z
+observer healthz 200 {"status": "ok", "version": "0.1.0"}
+observer readyz 200 {"status": "ready", "version": "0.1.0"}
+observer log       3 "version": "0.1.0", "revision": "dd9534316a6b95e3513f2c68c3f13e45bc7ea322"
+db_now | 2026-11-11 20:05:08.788417+00
+alembic | 0024_trace_outbox
+incident | 69778314-65d3-5e3c-90a1-2b2b58d9ca03 | queued | closed | automatic | 1 | 2026-11-11 13:24:09.676435+00 | 2026-11-11 20:03:34.323729+00
+run | 2dcc2d92-824e-53da-bed6-cc713124f068 | 69778314-65d3-5e3c-90a1-2b2b58d9ca03 | completed | 1 | 14 | 28
+session | 23204a25-b054-5c2c-a18c-e559967af7cc | 69778314-65d3-5e3c-90a1-2b2b58d9ca03 | expired | max_samples_exhausted |  | 40 | 2026-11-11 13:28:01.868409+00 | 2026-11-11 14:22:46.175962+00
+count_controls | 2
+count_evidence | 28
+count_samples | 40
+count_steps | 15
+count_alert_deliveries | 1
+count_postmortem_versions | 1
+last_sample | 40 | degraded | 2026-11-11 14:22:24.21726+00
+last_sample | 39 | degraded | 2026-11-11 14:21:02.311156+00
+last_sample | 38 | degraded | 2026-11-11 14:19:40.313215+00

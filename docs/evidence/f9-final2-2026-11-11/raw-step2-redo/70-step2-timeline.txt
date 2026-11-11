@@ -1,0 +1,23 @@
+now | 2026-11-11 22:28:24.15512+00
+incident | {"mode": "human_owned", "state": "cancelled", "priority": 0, "closed_at": "2026-11-11T22:27:58.08412+00:00", "lifecycle": "closed", "target_id": "dca3d072-39b6-46c6-a827-fb1b107cc276", "conclusion": null, "created_at": "2026-11-11T21:51:04.388209+00:00", "intake_key": "intake:evt:0c273b2eed8e92363b94e1cc6de768f74b586cf7417c086e02c8f08c55efb739", "incident_id": "65b0490a-df80-51b2-adfa-698c53a9ee7b", "current_run_id": "50936b1d-2e18-5f18-8dd1-caa0afcd84f9", "control_generation": 3, "related_incident_id": "c030a3a3-0369-5ba3-a7fd-d44066a31286", "observation_generation": 1, "merged_into_incident_id": null}
+run | 50936b1d-2e18-5f18-8dd1-caa0afcd84f9 | cancelled | 1 | 2 | 4
+control | 2026-11-11 21:59:44.931716+00 | takeover | operator | web | 0 | 1 | 
+control | 2026-11-11 22:00:16.91738+00 | register_remediation | operator | web | 1 | 2 | payment:fault-restored
+control | 2026-11-11 22:27:58.084996+00 | close | operator | web | 2 | 3 | 
+delivery | 2026-11-11 21:51:04.373947+00 | firing | created | 2026-11-11 21:50:54+00
+delivery | 2026-11-11 22:03:04.380631+00 | resolved | resolved_attached | 2026-11-11 21:50:54+00
+session | {"state": "completed", "target": {"revision": "payment:fault-restored", "namespace": "otel-demo", "cluster_uid": "opspilot-m1", "resource_uid": "m0-otel-20260909", "integration_id": "m0-otel-20260909"}, "purpose": "incident_recovery", "target_id": "dca3d072-39b6-46c6-a827-fb1b107cc276", "authorized": true, "created_at": "2026-11-11T22:00:16.916562+00:00", "session_id": "b4367964-62b9-5889-a6cb-29c9fce8f318", "subject_id": "65b0490a-df80-51b2-adfa-698c53a9ee7b", "updated_at": "2026-11-11T22:16:40.583075+00:00", "deadline_at": "2026-11-11T23:00:16.910287+00:00", "incident_id": "65b0490a-df80-51b2-adfa-698c53a9ee7b", "max_samples": 40, "ended_reason": "recovery_confirmed", "subject_kind": "incident", "adopted_count": 12, "authorized_at": "2026-11-11T22:00:16.916562+00:00", "authorized_by": "operator", "healthy_since": "2026-11-11T22:05:23.822179+00:00", "tracking_since": null, "tracking_until": null, "issued_sequence": 12, "adopted_sequence": 12, "adopted_window_end": "2026-11-11T22:16:18.816231+00:00", "active_sample_epoch": 1, "active_sample_owner": null, "active_sample_due_at": null, "active_sample_job_id": null, "authorization_source": "post_remediation", "active_sample_sequence": null, "observation_generation": 1, "release_observation_id": null, "health_profile_revision": "otel-demo-checkout@b72bbe2e30be", "release_policy_revision": null, "sample_interval_seconds": 60, "sustained_window_seconds": 600, "active_sample_lease_until": null, "subject_control_generation": 2, "authorized_global_generation": 0, "authorized_target_generation": 0, "release_budget_used_at_authorization": null}
+sample | 1 | degraded | 2026-11-11 22:01:18.131701+00
+sample | 2 | degraded | 2026-11-11 22:02:40.024943+00
+sample | 3 | degraded | 2026-11-11 22:04:01.919727+00
+sample | 4 | healthy | 2026-11-11 22:05:23.822179+00
+sample | 5 | healthy | 2026-11-11 22:06:45.715785+00
+sample | 6 | healthy | 2026-11-11 22:08:07.614549+00
+sample | 7 | healthy | 2026-11-11 22:09:29.516084+00
+sample | 8 | healthy | 2026-11-11 22:10:51.323861+00
+sample | 9 | healthy | 2026-11-11 22:12:13.215857+00
+sample | 10 | healthy | 2026-11-11 22:13:35.113208+00
+sample | 11 | healthy | 2026-11-11 22:14:56.922837+00
+sample | 12 | healthy | 2026-11-11 22:16:18.816231+00
+evidence_count | 4
+postmortem | 7

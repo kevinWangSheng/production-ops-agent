@@ -1,0 +1,728 @@
+{
+  "feature": "F9",
+  "session": "second final run for steps 2 and 4, 2026-11-11 UTC (2026-11-11 PT morning)",
+  "category": "integration run; not production, not soak; synthetic lab traffic, injected flagd faults, model egress cut on purpose",
+  "steps_covered": [2, 4],
+  "steps_not_covered": {"1": "met in docs/evidence/f9-final-clean-host-2026-11-11", "3": "not rerun; see docs/evidence/f9-steps-2-4-2026-11-10", "5": "documentation; see docs/portfolio"},
+  "passes_changed": false,
+  "user_rulings_applied": {
+    "2": "redo as one incident: evidence first, then model egress cut, handoff, user takeover, external restore, register_remediation, recovery_confirmed, close",
+    "4": "staging is a second Compose project opspilot-staging on the same rental VM, upgraded before the main project; v0.1.0 and v0.1.1 sharing runtime code is accepted and stated"
+  },
+  "host": {"alias": "opspilot-f9-1", "reinstalled": false, "note": "same host as the previous round, continued without reinstall"},
+  "archive": {
+    "file": "f9-final2-host-evidence.tgz (kept outside the repo)",
+    "sha256": "5588901ae13837dbabbe78416736780904fa900ff0a627307673c9ad3616fca0",
+    "files": 41,
+    "copied_to_raw": 41,
+    "renamed": {"forward_alert.py": "forward_alert.py.txt (content unchanged, sha256 0bf0dfe1b6d076d48cab5fd19c6752d3470130e6a07ddb14f5e834b2f809ee8c; keeps ruff off the verbatim script)"},
+    "supplement": "3 files collected read-only at about 2026-11-11T19:27Z by the evidence-PR agent: staging observer docker logs, main and staging DB SELECT results",
+    "redactions": "none needed: no passwords, tokens, API keys, cookies, CSRF values or credentialed DSNs; idempotency_key form values kept as-is like earlier workbench page evidence; only 127.0.0.1, 0.0.0.0 and Docker-internal 172.18/172.19 addresses; gitleaks 8.30.1 found nothing"
+  },
+  "verdicts": {
+    "2": {"verdict": "partial", "reason": "all seven elements on one incident aa6f1172 in the ruled order except external handling: the user restored the fault before takeover, with no command output and no recorded time"},
+    "4": {"verdict": "partial", "reason": "staging upgraded first, then main upgraded and rolled back per UPGRADE.md by digest, all commands exit 0, DB snapshots after every switch with unchanged counts; the in-flight staging observation expired (max_samples_exhausted) instead of confirming, main had no in-flight work, staging needed two undocumented steps, both versions share runtime code and schema head, build/CI cited not rerun"}
+  },
+  "step4": {
+    "script": "raw/step4b.sh",
+    "snapshot_script": "raw/snap.sh",
+    "releases": {
+      "v0.1.0": {"commit": "dd9534316a6b95e3513f2c68c3f13e45bc7ea322", "image": "ghcr.io/kevinwangsheng/opspilot@sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd"},
+      "v0.1.1": {"commit": "9b208cd13cc6c28e97ab9c0d1cb074a13dd3cf34", "image": "ghcr.io/kevinwangsheng/opspilot@sha256:0af7b9ff4b71e2c0b0b71d99020f35ed67f79eef958f612938f6adc102fff25e"}
+    },
+    "version_difference": "runtime code and schema head identical (0024_trace_outbox); every migrate printed 'schema unchanged'",
+    "staging": {
+      "project": "opspilot-staging",
+      "same_vm_as_main": true,
+      "workbench_port": 18190,
+      "control_secrets_at": "2026-11-11T13:15:08Z",
+      "install": {"start": "2026-11-11T13:15:23Z", "end": "2026-11-11T13:15:35Z", "image": "v0.1.0 digest", "exit": 0, "schema": "upgraded 0024_trace_outbox"},
+      "undocumented_steps": [
+        "docker network connect kind for the three staging runtimes without aliases (raw/12-staging-network.log), repeated after the upgrade",
+        "forward_alert.py: copy the main install's firing alert and POST it to the staging intake (raw/31-forward-alert.log)"
+      ],
+      "failed_probe": "12-staging-network.log KeyError OPSPILOT_OTEL_PROMETHEUS_URL; cause not checked; staging observer samples were present=True",
+      "fault_injected_at": "2026-11-11T13:16:25Z",
+      "alert_forwarded_at": "2026-11-11T13:24:09Z",
+      "incident_id": "69778314-65d3-5e3c-90a1-2b2b58d9ca03",
+      "run_id": "2dcc2d92-824e-53da-bed6-cc713124f068",
+      "run": {"state": "completed", "budget_spent": 14, "tool_operations": 28, "evidence_rows": 28, "published_at_about": "2026-11-11T13:27:41Z"},
+      "fault_restored_at": "2026-11-11T13:28:09Z",
+      "upgrade": {"start": "2026-11-11T13:29:28Z", "end": "2026-11-11T13:29:39Z", "to": "v0.1.1 digest", "exit": 0},
+      "observer_readyz": [
+        {"at": "2026-11-11T13:32:09Z", "status": 503},
+        {"at": "2026-11-11T13:34:47Z", "status": 503},
+        {"at": "2026-11-11T19:22:55Z", "status": 200}
+      ],
+      "observer_readyz_note": "both 503 probes fall inside an in-progress sample; matches the pattern in issue 522 (Observer /readyz POLL_STALE while a recovery sample is in progress); 503 body not captured, reason code unconfirmed",
+      "inflight_observation": {
+        "session_id": "23204a25-b054-5c2c-a18c-e559967af7cc",
+        "authorization_source": "automatic",
+        "authorized_at": "2026-11-11T13:28:01Z",
+        "max_samples": 40,
+        "sustained_window_seconds": 600,
+        "samples": [
+          {"seq": "1-3", "outcome": "degraded", "window_end": "13:29:06Z-13:31:51Z"},
+          {"seq": "4-7", "outcome": "healthy", "window_end": "13:33:13Z-13:37:19Z"},
+          {"seq": 8, "outcome": "no_data", "window_end": "13:38:41Z"},
+          {"seq": "9-11", "outcome": "healthy", "window_end": "13:40:03Z-13:42:46Z"},
+          {"seq": "12-40", "outcome": "degraded", "window_end": "13:44:08Z-14:22:24Z"}
+        ],
+        "crossed_upgrade": "sample 1 before the staging upgrade, samples 2-40 adopted by the v0.1.1 observer",
+        "ended": "expired / max_samples_exhausted",
+        "ended_at": "2026-11-11T14:22:46Z",
+        "incident_after": "lifecycle open",
+        "cause": "inferred from timing: degraded from sample 12 matches the step-2 fault injected at 13:42:05Z on the same lab; no_data at sample 8 not explained"
+      },
+      "counts_unchanged_across": ["40-snap-staging-before-upgrade", "52-snap-staging-after-upgrade", "57-snap-staging-later"]
+    },
+    "main": {
+      "project": "opspilot",
+      "start_image": "v0.1.0 digest (state after the previous round's rollback)",
+      "inflight_work_during_switch": false,
+      "phases": [
+        {"id": "M2", "what": "upgrade v0.1.0 -> v0.1.1 by digest", "start": "2026-11-11T13:32:11Z", "end": "2026-11-11T13:32:28Z", "upgrade_exit": 0, "connect_control_exit": 0, "schema": "unchanged 0024_trace_outbox"},
+        {"id": "R1", "what": "compose stop web worker observer", "at": "2026-11-11T13:33:29Z", "exit": 0},
+        {"id": "R2", "what": "same head 0024_trace_outbox, downgrade skipped per UPGRADE.md", "at": "2026-11-11T13:33:35Z", "run": false},
+        {"id": "R3", "what": "upgrade with v0.1.0 digest", "start": "2026-11-11T13:33:35Z", "end": "2026-11-11T13:33:45Z", "upgrade_exit": 0, "connect_control_exit": 0}
+      ],
+      "snapshots": {"before": "raw/53-snap-main-before-upgrade.txt", "after_upgrade": "raw/54-snap-main-after-upgrade.txt", "after_rollback": "raw/56-snap-main-after-rollback.txt"},
+      "counts_each_snapshot": {"alembic": "0024_trace_outbox", "incidents": 2, "controls": 4, "evidence": 17, "samples": 25, "steps": 12, "alert_deliveries": 8, "postmortem_versions": 3},
+      "readyz_after_each_switch": "200 on web, worker and observer",
+      "step4_alert_on_main": "13:24:04Z firing attached to the still-open 1fbdce34; 13:32:04Z resolved_attached"
+    },
+    "container_logs_saved": ["logs-51 staging v0.1.0", "logs-53 main v0.1.0", "logs-55 main v0.1.1"],
+    "install_env": "keys only (raw/21-install-env-keys.txt)",
+    "gaps": [
+      "in-flight staging observation 23204a25 expired (max_samples_exhausted, 40 samples), not recovery_confirmed",
+      "no in-flight work on main during its upgrade and rollback",
+      "staging observer /readyz 503 twice during sampling; body not captured; link to issue 522 unconfirmed",
+      "staging on the same VM; two undocumented steps (network join without aliases, alert forwarding)",
+      "v0.1.0 and v0.1.1 share runtime code and schema head; no cross-schema upgrade or downgrade; no INCOMPATIBLE_STATE case",
+      "staging DEEPSEEK_API_KEY insertion not logged; staging v0.1.1 container logs not saved at the time (observer log added later in supplement)",
+      "install.env values not exported",
+      "build, CI and release cited, not rerun"
+    ]
+  },
+  "step2": {
+    "note": "kept as recorded (13:41Z-19:23Z); redone in the ruled order on one incident, see step2_redo",
+    "incident_id": "aa6f1172-b014-56bc-8761-fd1883a52cd0",
+    "run_id": "78419b8b-54a6-5bee-9e47-b915a83c0b9c",
+    "image": "v0.1.0 digest (main after the step-4 rollback)",
+    "previous_incident_closed": {"incident_id": "1fbdce34-377c-5a57-9a2a-6ae81e1d5364", "at": "2026-11-11T13:41:26Z", "actor": "operator", "channel": "web", "who_clicked": "not in the archive"},
+    "fault_injected_at": "2026-11-11T13:42:05Z",
+    "alert": {"name": "CheckoutPlaceOrderErrorRatioHigh", "starts_at": "2026-11-11T13:47:54Z", "received_at": "2026-11-11T13:48:04Z", "outcome": "created", "actor": "alertmanager"},
+    "related_incident_id": "1fbdce34-377c-5a57-9a2a-6ae81e1d5364",
+    "investigation_before_cut": {
+      "rounds": 2,
+      "tool_calls": [
+        {"round": 1, "tool": "metrics_range_query", "status": "ok", "adopted": true},
+        {"round": 1, "tool": "traces_search", "status": "error RESULT_TOO_LARGE", "adopted": false},
+        {"round": 2, "tool": "metrics_range_query", "status": "ok", "adopted": true},
+        {"round": 2, "tool": "metrics_range_query", "status": "ok", "adopted": true}
+      ],
+      "evidence_rows": 4,
+      "evidence_ids_in_handoff": 3,
+      "extra_step": "conclusion:g0:ctx0:round-2 response_committed; content not exported; no report published"
+    },
+    "egress_cut": {"method": "root iptables DOCKER-USER REJECT tcp/443 from the worker's two container addresses", "cut_at": "2026-11-11T13:48:18.996Z", "restored_at": "2026-11-11T13:48:25.377Z", "duration_s": 6.4},
+    "handed_off_at": "2026-11-11T13:48:23.956Z",
+    "handoff_reason": "MODEL_UNAVAILABLE",
+    "run_state_after_handoff": "waiting_human",
+    "model_reservations": {"spent": 2, "unknown": 2},
+    "replayed_firing_deliveries": ["14:48:04Z", "15:48:04Z", "16:48:04Z", "17:48:04Z"],
+    "external_fault_restore": {"by": "user, own terminal", "at": "before 2026-11-11T18:31:04Z, exact time not recorded", "command_output_kept": false, "record": "raw/63-fault-restore-by-user.txt is an orchestrator note, not a command log", "corroboration": ["last root ssh login from the user machine 18:27:48Z", "resolved delivery 18:31:04Z", "flagd-config defaultVariant=off read at about 18:35Z"]},
+    "alert_resolved_at": "2026-11-11T18:31:04Z",
+    "controls": [
+      {"kind": "takeover", "actor": "operator", "channel": "web", "generation": "0->1", "at": "2026-11-11T18:48:52Z"},
+      {"kind": "register_remediation", "actor": "operator", "channel": "web", "generation": "1->2", "at": "2026-11-11T18:49:12Z", "revision": "payment:fault-restored"},
+      {"kind": "close", "actor": "operator", "channel": "web", "generation": "2->3", "at": "2026-11-11T19:22:22Z"}
+    ],
+    "handoff_to_takeover_s": 18029,
+    "observation": {"session_id": "86636672-0174-5cb2-b21a-54e71065b999", "authorization_source": "post_remediation", "authorized_by": "operator", "health_profile": "otel-demo-checkout@b72bbe2e30be", "samples": 12, "healthy": 12, "sample_interval_seconds": 60, "sustained_window_seconds": 600, "max_samples": 40, "healthy_since": "2026-11-11T18:54:23Z", "ended": "recovery_confirmed", "ended_at": "2026-11-11T19:05:40Z", "lifecycle": "observing_recovery -> resolved"},
+    "final": {"lifecycle": "closed", "state": "cancelled", "mode": "human_owned", "run_state": "cancelled", "control_generation": 3, "closed_at": "2026-11-11T19:22:22Z"},
+    "postmortem": {"version": 1, "created_at": "2026-11-11T19:23:04Z", "state": "under_review", "knowledge_entries": 0},
+    "order_vs_ruling": "ruled: takeover -> external restore -> register_remediation; observed: external restore -> takeover -> register_remediation",
+    "gaps": [
+      "external restore happened before takeover, not between takeover and register_remediation",
+      "restore command output not kept; exact restore time not recorded",
+      "handoff forced by cutting model egress for about 6.4 s, not a natural model failure",
+      "about 5 h between handoff (13:48:24Z) and takeover (18:48:52Z), waiting for the user; hourly replays meanwhile",
+      "conclusion step content and the two unknown reservations not exported",
+      "user actions are DB audit rows only, no workbench screenshots; who closed 1fbdce34 at 13:41:26Z is not in the archive",
+      "postmortem not reviewed; knowledge entries 0",
+      "no LangSmith trace (TRACE_MODE_OFF); no token or balance cost record"
+    ]
+  },
+  "step4_rerun": {
+    "why": "independent review: step 4 not met only because the in-flight staging observation 23204a25 expired; rerun only the staging recovery/upgrade segment with no fault injected inside the observation window",
+    "addresses": "step4.staging.inflight_observation (kept as recorded)",
+    "window_utc": {
+      "start": "2026-11-11T20:01:22Z",
+      "end": "2026-11-11T20:36:12Z"
+    },
+    "host_dir": "/home/opspilot/f9-final3",
+    "raw": "raw-step4-rerun/",
+    "archive": {
+      "file": "f9-final3-host-evidence.tgz (kept outside the repo)",
+      "sha256": "6584e7a849935926729f307cd18b85ca61ecf8eef3556f3e854f579cf1a3dbd8",
+      "files": 39,
+      "copied_to_raw": 39,
+      "renamed": {
+        "forward_alert.py": "forward_alert.py.txt (sha256 0bf0dfe1b6d076d48cab5fd19c6752d3470130e6a07ddb14f5e834b2f809ee8c, same bytes as the previous round)",
+        "close_staging.py": "close_staging.py.txt (sha256 a011b742243da2fefbf0c4a32fd37181c0fc88b3479377ad26b853c66ef8a5b2)"
+      },
+      "content_change": "02-staging-close-old-incident.log line 3: the 32-hex nonce of the close idempotency_key replaced by <32-hex nonce omitted in the repo copy> (gitleaks generic-api-key false positive; not a credential; original value in the archive)",
+      "secret_check": "only credential file names and the code reading them; actual ui_password, alertmanager_token (both projects) and DEEPSEEK_API_KEY values compared against all 39 files: no match"
+    },
+    "timeline": [
+      {
+        "at": "2026-11-11T20:01:22Z",
+        "what": "preflight: lab health ok, paymentFailure off, both projects /readyz 200; staging 69778314 open with expired observation",
+        "raw": [
+          "raw-step4-rerun/00-preflight.log",
+          "raw-step4-rerun/01-snap-main-preflight.txt",
+          "raw-step4-rerun/01-snap-staging-preflight.txt"
+        ]
+      },
+      {
+        "at": "2026-11-11T20:03:34Z",
+        "what": "decision: close staging 69778314 via workbench control endpoint (operator, action=close, http 200, generation 0->1) so the next alert opens a new incident, Run and automatic observation; no DB writes",
+        "raw": "raw-step4-rerun/02-staging-close-old-incident.log"
+      },
+      {
+        "at": "2026-11-11T20:03:57Z/20:05:07Z",
+        "what": "staging rollback v0.1.1 -> v0.1.0 per UPGRADE.md: compose stop (rc 0), downgrade skipped (same head 0024_trace_outbox), upgrade with v0.1.0 digest (rc 0, schema unchanged), kind network re-join without aliases (rc 0), /readyz 200 0.1.0",
+        "raw": [
+          "raw-step4-rerun/10-step1-staging-rollback.log",
+          "raw-step4-rerun/11-snap-staging-after-rollback.txt"
+        ]
+      },
+      {
+        "at": "2026-11-11T20:05:38Z",
+        "what": "fault inject f9-final3-step4 (ConfigMap e47d27c2fa01), the only injection of this rerun",
+        "raw": "raw-step4-rerun/20-fault-inject.log"
+      },
+      {
+        "at": "2026-11-11T20:10:04Z",
+        "what": "lab Alertmanager -> main: created incident c030a3a3, Run 0a2f20e4"
+      },
+      {
+        "at": "2026-11-11T20:10:10Z",
+        "what": "forward_alert.py -> staging: http 200 created, same incident and Run ids, related_incident_id 69778314",
+        "raw": "raw-step4-rerun/21-forward-alert.log"
+      },
+      {
+        "at": "2026-11-11T20:12:58Z",
+        "what": "staging Run published (completed, budget 12, tool operations 21)"
+      },
+      {
+        "at": "2026-11-11T20:13:03Z",
+        "what": "staging auto_authorize_observation, actor system, session 27c61712"
+      },
+      {
+        "at": "2026-11-11T20:13:31Z",
+        "what": "fault restore (ConfigMap 1ee5c0258e3e), run by restore_when_authorized.sh as soon as the staging session was authorized; nothing injected afterwards",
+        "raw": "raw-step4-rerun/30-fault-restore.log"
+      },
+      {
+        "at": "2026-11-11T20:14:31Z",
+        "what": "sample 1 written by the v0.1.0 observer (degraded, window_end 20:14:08)"
+      },
+      {
+        "at": "2026-11-11T20:14:48Z/20:14:59Z",
+        "what": "digest switch: staging upgrade v0.1.0 -> v0.1.1 per UPGRADE.md (rc 0, schema unchanged), kind re-join rc 0; same session still authorized with 1 sample right after",
+        "raw": [
+          "raw-step4-rerun/40-snap-staging-before-upgrade.txt",
+          "raw-step4-rerun/42-step4-staging-upgrade.log"
+        ]
+      },
+      {
+        "at": "2026-11-11T20:16:30Z",
+        "what": "snapshot on v0.1.1: all three /readyz 200 (observer included), counts unchanged except samples 41->42",
+        "raw": "raw-step4-rerun/43-snap-staging-after-upgrade.txt"
+      },
+      {
+        "at": "2026-11-11T20:35:03Z",
+        "what": "session 27c61712 completed / recovery_confirmed, incident lifecycle resolved",
+        "raw": [
+          "raw-step4-rerun/50-staging-session-samples.txt",
+          "raw-step4-rerun/51-snap-staging-final.txt"
+        ]
+      }
+    ],
+    "inflight_observation": {
+      "session_id_before_switch": "27c61712-da7f-5afb-a127-56e64eab168c",
+      "session_id_after_switch": "27c61712-da7f-5afb-a127-56e64eab168c",
+      "incident_id": "c030a3a3-0369-5ba3-a7fd-d44066a31286",
+      "authorization_source": "automatic",
+      "authorized_by": "system",
+      "authorized_at": "2026-11-11T20:13:03Z",
+      "sample_interval_seconds": 60,
+      "sustained_window_seconds": 600,
+      "max_samples": 40,
+      "switch": {
+        "start": "2026-11-11T20:14:48Z",
+        "end": "2026-11-11T20:14:59Z",
+        "from": "v0.1.0 digest",
+        "to": "v0.1.1 digest"
+      },
+      "samples": [
+        {
+          "seq": 1,
+          "outcome": "degraded",
+          "window_end": "20:14:08Z",
+          "observer": "v0.1.0"
+        },
+        {
+          "seq": "2-3",
+          "outcome": "degraded",
+          "window_end": "20:15:35Z-20:16:56Z",
+          "observer": "v0.1.1"
+        },
+        {
+          "seq": "4-5",
+          "outcome": "healthy",
+          "window_end": "20:18:18Z-20:19:40Z",
+          "observer": "v0.1.1"
+        },
+        {
+          "seq": "6-7",
+          "outcome": "no_data",
+          "window_end": "20:21:02Z-20:22:24Z",
+          "observer": "v0.1.1"
+        },
+        {
+          "seq": "8-16",
+          "outcome": "healthy",
+          "window_end": "20:23:46Z-20:34:42Z",
+          "observer": "v0.1.1"
+        }
+      ],
+      "sample_count": 16,
+      "samples_before_switch": 1,
+      "samples_after_switch": 15,
+      "all_adopted": true,
+      "healthy_since": "2026-11-11T20:23:46Z",
+      "ended": "completed / recovery_confirmed",
+      "ended_at": "2026-11-11T20:35:03Z",
+      "incident_after": "lifecycle resolved, mode automatic, not closed"
+    },
+    "observer_readyz_after_switch": {
+      "at": "2026-11-11T20:16:30Z",
+      "status": 200
+    },
+    "main_same_alert": {
+      "upgraded": false,
+      "image": "v0.1.0 digest",
+      "workbench_actions": "none",
+      "incident_id": "c030a3a3-0369-5ba3-a7fd-d44066a31286",
+      "run": {
+        "id": "0a2f20e4-7fc1-57f1-9fbb-479bba283922",
+        "state": "completed",
+        "published_at": "2026-11-11T20:12:40Z",
+        "budget_spent": 9,
+        "tool_operations": 17
+      },
+      "observation": {
+        "session_id": "27c61712-da7f-5afb-a127-56e64eab168c",
+        "authorized_at": "2026-11-11T20:12:43Z",
+        "samples": 16,
+        "outcomes": "1-3 degraded, 4-6 healthy, 7 no_data, 8-16 healthy",
+        "ended": "completed / recovery_confirmed",
+        "ended_at": "2026-11-11T20:34:39Z"
+      },
+      "resolved_delivery": "2026-11-11T20:17:04Z resolved_attached",
+      "postmortem": "v1 generated 2026-11-11T20:36:12Z",
+      "final_state": "c030a3a3 lifecycle resolved, mode automatic, not closed; no in-flight Run or observation; all other incidents closed; left for the orchestrator",
+      "raw": [
+        "raw-step4-rerun/50-main-session-samples.txt",
+        "raw-step4-rerun/51-snap-main-final.txt"
+      ]
+    },
+    "staging_final_state": "v0.1.1 digest; 69778314 closed; c030a3a3 resolved, not closed; no in-flight Run or observation; paymentFailure off",
+    "container_logs_saved": [
+      "logs-10 staging v0.1.1 before rollback",
+      "logs-41 staging v0.1.0 before upgrade",
+      "logs-52 staging v0.1.1 after the session ended",
+      "logs-53 main since 20:00Z"
+    ],
+    "deviations": [
+      "closed staging incident 69778314 (operator, workbench control endpoint, not a browser click) to get a fresh Run and automatic observation; it triggered a staging postmortem that failed once (MODEL_UNAVAILABLE, 20:10:03Z) and succeeded on retry (20:11:42Z); cause of the failure not checked",
+      "two undocumented staging steps repeated from the previous round: kind network join without aliases, forward_alert.py (firing only, so staging got no resolved delivery)"
+    ],
+    "gaps": [
+      "v0.1.0 and v0.1.1 share runtime code and schema head; continuation across a code or schema change not shown; staging rollback skipped the downgrade (same head)",
+      "no_data samples with present=True (staging 6-7, main 7) not explained",
+      "configured sample interval 60 s, observed about 82 s; not checked",
+      "one switch, one session, single VM, synthetic traffic and injected fault; not soak, not production",
+      "main not upgraded in this rerun; main upgrade and rollback still only show data retention without in-flight work",
+      "no LangSmith trace, no token record, no balance reconciliation"
+    ]
+  },
+  "step2_redo": {
+    "why": "independent review: step 2 not met only because the external restore happened before takeover with no command output or exact time; redo one incident strictly in the ruled order and keep the command output",
+    "addresses": "step2 (kept as recorded)",
+    "project": "opspilot (main), v0.1.0 digest; web, worker and observer not restarted since 2026-11-11T13:33:40Z",
+    "window_utc": {
+      "start": "2026-11-11T21:43:04Z",
+      "end": "2026-11-11T22:28:50Z"
+    },
+    "host_dir": "/home/opspilot/f9-final4",
+    "raw": "raw-step2-redo/",
+    "archive": {
+      "file": "f9-final4-host-evidence.tgz (kept outside the repo)",
+      "sha256": "3816ed0251248956b5901b80d76b3c5027c0a90e1c22104c36a289bcf4f1f02e",
+      "files": 14,
+      "copied_to_raw": 14,
+      "renamed": {},
+      "content_change": "none",
+      "notes": [
+        "61-worker-full-log-at-handoff.log and 72-worker-log-final.log are identical",
+        "snap.sh is byte-identical to raw/snap.sh and raw-step4-rerun/snap.sh",
+        "block_model_midrun4.sh is new; the script used in the first step-2 run is not in the repo, so the two cannot be compared",
+        "63-fault-restore-by-user.log is a transcript saved by the agent at 22:00:11Z, not a log written on the host"
+      ]
+    },
+    "supplement": {
+      "files": [
+        "supplement/s4-step2-redo-db.txt",
+        "supplement/s4-step2-redo-db.sql",
+        "supplement/s5-step2-redo-host.txt"
+      ],
+      "collected_at": "about 2026-11-11T22:31Z, read-only (SELECTs, iptables -S, journalctl, kubectl get); nothing written on the host",
+      "omitted_at_query_time": [
+        "intake question (sha256 given)",
+        "control idempotency_key values"
+      ],
+      "replaced_before_saving": "sshd client address, port and key fingerprint -> <client omitted>"
+    },
+    "secret_check": "35 values of length >= 12 from both projects' secrets directories (ui_password, alertmanager_token, postgres_password, *_pgpass, web_event_tokens, web_ui_users, worker_env incl. DEEPSEEK_API_KEY, ...) compared on the host against raw-step2-redo and s4/s5: only the plain word 'alertmanager' (caller name in web_event_tokens) matched; gitleaks 8.30.1 found nothing in raw-step2-redo and supplement",
+    "incident_id": "65b0490a-df80-51b2-adfa-698c53a9ee7b",
+    "run_id": "50936b1d-2e18-5f18-8dd1-caa0afcd84f9",
+    "related_incident_id": "c030a3a3-0369-5ba3-a7fd-d44066a31286",
+    "preparation": {
+      "what": "user closed the leftover main incident c030a3a3 in the workbench (close, operator, web) so the next alert opens a new incident",
+      "at": "2026-11-11T21:44:02Z",
+      "side_effect": "postmortem v2 for c030a3a3 at 2026-11-11T21:45:38Z",
+      "raw": "raw-step2-redo/01-prior-incident-closed-by-user.txt"
+    },
+    "timeline": [
+      {
+        "at": "2026-11-11T21:43:04Z",
+        "what": "preflight snapshot: /readyz 200 on all three, 0.1.0; c030a3a3 resolved not closed; nothing in flight",
+        "raw": "raw-step2-redo/00-snap-main-preflight.txt"
+      },
+      {
+        "at": "2026-11-11T21:44:02Z",
+        "what": "preparation: user closes c030a3a3",
+        "raw": "raw-step2-redo/01-prior-incident-closed-by-user.txt"
+      },
+      {
+        "at": "2026-11-11T21:44:12Z",
+        "what": "agent starts the root egress-cut script (min 3 evidence rows)",
+        "raw": "raw-step2-redo/60-midrun-egress-cut.log"
+      },
+      {
+        "at": "2026-11-11T21:44:14Z",
+        "what": "agent: fault inject f9-final4-step2 (ConfigMap e47d27c2fa01), rc 0",
+        "raw": "raw-step2-redo/60-step2-fault-inject.log"
+      },
+      {
+        "at": "2026-11-11T21:51:04.374Z",
+        "element": "trigger",
+        "what": "alert firing (startsAt 21:50:54Z), outcome created, actor alertmanager -> incident 65b0490a, Run 50936b1d; run_claimed 21:51:04.475Z",
+        "raw": [
+          "raw-step2-redo/70-step2-timeline.txt",
+          "supplement/s4-step2-redo-db.txt"
+        ]
+      },
+      {
+        "at": "2026-11-11T21:51:06.766Z/21:51:07.686Z",
+        "element": "investigation, evidence",
+        "what": "round 1 (ctx0:round-1, deepseek-flash, tool_calls): traces_search error not adopted; metrics_range_query ok adopted",
+        "raw": "supplement/s4-step2-redo-db.txt"
+      },
+      {
+        "at": "2026-11-11T21:51:11.680Z/21:51:11.775Z",
+        "element": "investigation, evidence",
+        "what": "round 2 committed; read_evidence ok adopted; evidence rows 3",
+        "raw": "supplement/s4-step2-redo-db.txt"
+      },
+      {
+        "at": "2026-11-11T21:51:11.792Z",
+        "what": "script sees Run running with 3 evidence rows",
+        "raw": "raw-step2-redo/60-midrun-egress-cut.log"
+      },
+      {
+        "at": "2026-11-11T21:51:11.815Z",
+        "element": "model egress cut",
+        "what": "DOCKER-USER REJECT tcp/443 from the worker's two container addresses",
+        "raw": "raw-step2-redo/60-midrun-egress-cut.log"
+      },
+      {
+        "at": "2026-11-11T21:51:12.589Z",
+        "element": "evidence",
+        "what": "round 2 second tool metrics_range_query ok adopted (4th evidence row, after the cut; tools reach lab Prometheus, not tcp/443)",
+        "raw": "supplement/s4-step2-redo-db.txt"
+      },
+      {
+        "at": "2026-11-11T21:51:12.617Z",
+        "element": "human handoff",
+        "what": "conclusion step execution failed, handoff MODEL_UNAVAILABLE, report_content null; run_handoff published false, cites the 3 adopted evidence ids; worker log status=handed_off reason=MODEL_UNAVAILABLE",
+        "raw": [
+          "supplement/s4-step2-redo-db.txt",
+          "raw-step2-redo/61-worker-full-log-at-handoff.log"
+        ]
+      },
+      {
+        "at": "2026-11-11T21:51:13.999Z",
+        "what": "Run waiting_human",
+        "raw": "raw-step2-redo/60-midrun-egress-cut.log"
+      },
+      {
+        "at": "2026-11-11T21:51:14.044Z",
+        "what": "rules removed; worker -> api.deepseek.com:443 tcp ok",
+        "raw": "raw-step2-redo/60-midrun-egress-cut.log"
+      },
+      {
+        "at": "2026-11-11T21:51:35Z",
+        "what": "snapshot: incident open, automatic, generation 0; Run waiting_human, budget 2, tool operations 4",
+        "raw": "raw-step2-redo/62-snap-at-handoff.txt"
+      },
+      {
+        "at": "2026-11-11T21:59:44.932Z",
+        "element": "user takeover",
+        "what": "takeover, operator, web, generation 0->1",
+        "raw": [
+          "raw-step2-redo/70-step2-timeline.txt",
+          "supplement/s4-step2-redo-db.txt"
+        ]
+      },
+      {
+        "at": "2026-11-11T21:59:59Z",
+        "element": "external human handling",
+        "what": "fault restore f9-final4-step2 (ConfigMap 1ee5c0258e3e, paymentFailure -> off), rc 0, run from the user's machine per the transcript",
+        "raw": [
+          "raw-step2-redo/63-fault-restore-by-user.log",
+          "supplement/s5-step2-redo-host.txt"
+        ]
+      },
+      {
+        "at": "2026-11-11T22:00:16.917Z",
+        "element": "external human handling",
+        "what": "register_remediation, operator, web, 1->2, revision payment:fault-restored; observation b4367964 authorized post_remediation by operator",
+        "raw": [
+          "raw-step2-redo/70-step2-timeline.txt",
+          "supplement/s4-step2-redo-db.txt"
+        ]
+      },
+      {
+        "at": "2026-11-11T22:03:04Z",
+        "what": "alert resolved, resolved_attached",
+        "raw": "raw-step2-redo/70-step2-timeline.txt"
+      },
+      {
+        "at": "2026-11-11T22:16:40.583Z",
+        "element": "recovery observation",
+        "what": "session b4367964 completed / recovery_confirmed, lifecycle observing_recovery -> resolved",
+        "raw": [
+          "raw-step2-redo/70-step2-timeline.txt",
+          "raw-step2-redo/73-observer-log.log",
+          "supplement/s4-step2-redo-db.txt"
+        ]
+      },
+      {
+        "at": "2026-11-11T22:27:58.085Z",
+        "element": "incident archive",
+        "what": "close, operator, web, 2->3; incident closed, human_owned, cancelled; Run cancelled",
+        "raw": [
+          "raw-step2-redo/70-step2-timeline.txt",
+          "raw-step2-redo/71-snap-final.txt"
+        ]
+      },
+      {
+        "at": "2026-11-11T22:28:50Z",
+        "element": "incident archive",
+        "what": "postmortem bedcab61 v1 under_review (last_run_id 50936b1d, session b4367964); knowledge entries 0",
+        "raw": "supplement/s4-step2-redo-db.txt"
+      }
+    ],
+    "ruled_order": [
+      {
+        "n": 1,
+        "ruled": "evidence gathered",
+        "at": "2026-11-11T21:51:11.775Z",
+        "basis": "3rd evidence row (s4 subject_event 7); script saw 3 rows at 21:51:11.792Z"
+      },
+      {
+        "n": 2,
+        "ruled": "model egress cut",
+        "at": "2026-11-11T21:51:11.815Z",
+        "basis": "60-midrun-egress-cut.log"
+      },
+      {
+        "n": 3,
+        "ruled": "handoff",
+        "at": "2026-11-11T21:51:12.617Z",
+        "basis": "s4 subject_event 9, worker log"
+      },
+      {
+        "n": 4,
+        "ruled": "user takeover",
+        "at": "2026-11-11T21:59:44.932Z",
+        "basis": "opspilot_controls"
+      },
+      {
+        "n": 5,
+        "ruled": "external restore",
+        "at": "2026-11-11T21:59:59Z",
+        "basis": "transcript 63; host journal su 21:59:59.317Z-21:59:59.540Z; flagd-config managedFields kubectl-patch Update 21:59:59Z"
+      },
+      {
+        "n": 6,
+        "ruled": "register_remediation",
+        "at": "2026-11-11T22:00:16.917Z",
+        "basis": "opspilot_controls"
+      },
+      {
+        "n": 7,
+        "ruled": "recovery_confirmed",
+        "at": "2026-11-11T22:16:40.583Z",
+        "basis": "observation session and ending"
+      },
+      {
+        "n": 8,
+        "ruled": "close",
+        "at": "2026-11-11T22:27:58.085Z",
+        "basis": "opspilot_controls"
+      }
+    ],
+    "ruled_order_holds": "all eight times strictly increasing on incident 65b0490a per the raw files; the 4th evidence row (21:51:12.589Z) was written after the cut and before the handoff and is cited by it",
+    "step_elements": {
+      "business traffic and a fault": "load-generator traffic (no separate rate record; samples show requests=24 per window); flagd injection 21:44:14Z",
+      "trigger": "Alertmanager webhook created 65b0490a and Run 50936b1d",
+      "investigation": "two successful model rounds, four tool calls; model calls after the cut failed",
+      "evidence": "4 rows, 3 adopted (2 metrics_range_query, 1 read_evidence), traces_search error not adopted; content not exported",
+      "human handoff": "MODEL_UNAVAILABLE -> waiting_human, no report published",
+      "external human handling": "user takeover, then external fault restore, then register_remediation in the workbench",
+      "recovery observation": "b4367964 opened by register_remediation; 3 degraded then 9 healthy; recovery_confirmed",
+      "incident archive": "closed; postmortem v1 under_review"
+    },
+    "egress_cut": {
+      "method": "root iptables DOCKER-USER REJECT tcp/443 from the worker's two container addresses",
+      "cut_at": "2026-11-11T21:51:11.815Z",
+      "restored_at": "2026-11-11T21:51:14.044Z",
+      "duration_s": 2.2
+    },
+    "handoff_to_takeover_s": 512,
+    "external_fault_restore": {
+      "by": "user per the transcript header and the orchestrator; host records cannot tell the user from the agent (same machine and key)",
+      "at": "2026-11-11T21:59:59Z",
+      "command": "ssh opspilot-f9-1 \"su - opspilot -c 'cd production-ops-agent && python3 scripts/kind_lab.py fault restore --experiment-id f9-final4-step2 ...'\"",
+      "output": "paymentFailure -> off, ConfigMap 1ee5c0258e3e, rc=0",
+      "record": "raw-step2-redo/63-fault-restore-by-user.log: the pasted command wrapped onto two lines so tee wrote nothing on the host; the command and output captured in the orchestrator session were saved to the host by the agent at 22:00:11Z",
+      "host_corroboration": [
+        "root ssh session 2808 21:59:58.950Z-21:59:59.722Z with su to opspilot 21:59:59.317Z-21:59:59.540Z",
+        "flagd-config managedFields: last kubectl-patch Update 21:59:59Z; paymentFailure now off",
+        "session 2809 22:00:11Z matches the agent saving the file"
+      ],
+      "after_takeover_s": 14,
+      "before_register_remediation_s": 17
+    },
+    "controls": [
+      {
+        "kind": "takeover",
+        "actor": "operator",
+        "channel": "web",
+        "generation": "0->1",
+        "at": "2026-11-11T21:59:44.932Z"
+      },
+      {
+        "kind": "register_remediation",
+        "actor": "operator",
+        "channel": "web",
+        "generation": "1->2",
+        "at": "2026-11-11T22:00:16.917Z",
+        "revision": "payment:fault-restored"
+      },
+      {
+        "kind": "close",
+        "actor": "operator",
+        "channel": "web",
+        "generation": "2->3",
+        "at": "2026-11-11T22:27:58.085Z"
+      }
+    ],
+    "run": {
+      "state_after_handoff": "waiting_human",
+      "final_state": "cancelled",
+      "budget_limit": 100,
+      "budget_spent": 2,
+      "budget_unknown": 2,
+      "tool_operations": 4,
+      "reservations": {
+        "spent": 2,
+        "unknown": 2,
+        "unknown_note": "inferred to be the two failed calls after the cut (model_requests_used 4, two successful steps); reservations have no timestamps"
+      },
+      "report_published": false
+    },
+    "observation": {
+      "session_id": "b4367964-62b9-5889-a6cb-29c9fce8f318",
+      "authorization_source": "post_remediation",
+      "authorized_by": "operator",
+      "health_profile": "otel-demo-checkout@b72bbe2e30be",
+      "samples": 12,
+      "outcomes": "1-3 degraded (window_end 22:01:18Z-22:04:01Z), 4-12 healthy (22:05:23Z-22:16:18Z), all adopted",
+      "sample_interval_seconds": 60,
+      "sustained_window_seconds": 600,
+      "max_samples": 40,
+      "healthy_since": "2026-11-11T22:05:23Z",
+      "ended": "completed / recovery_confirmed",
+      "ended_at": "2026-11-11T22:16:40Z",
+      "lifecycle": "observing_recovery -> resolved"
+    },
+    "final": {
+      "lifecycle": "closed",
+      "state": "cancelled",
+      "mode": "human_owned",
+      "run_state": "cancelled",
+      "control_generation": 3,
+      "closed_at": "2026-11-11T22:27:58Z",
+      "host_after": "no open incident, no in-flight Run or observation, DOCKER-USER empty, paymentFailure off (s4, s5 at about 22:31Z)"
+    },
+    "postmortem": {
+      "postmortem_id": "bedcab61-a4e2-4d0c-98ae-087e01b6b03c",
+      "version": 1,
+      "created_at": "2026-11-11T22:28:50Z",
+      "state": "under_review",
+      "model": "deepseek-flash",
+      "model_requests": 1,
+      "knowledge_entries": 0,
+      "note": "after 70-step2-timeline (22:28:24Z) and 71-snap-final (22:28:14Z), so their postmortem count 7 excludes it"
+    },
+    "tokens_recorded": {
+      "run_successful_calls_total": 14701,
+      "postmortem_prompt": 17179,
+      "postmortem_completion": 9173,
+      "failed_calls": "unknown"
+    },
+    "trace": {
+      "mode": "TRACE_MODE_OFF (worker log)",
+      "outbox_rows_for_incident": 11,
+      "outbox_state": "all pending"
+    },
+    "gaps": [
+      "handoff forced by cutting model egress for about 2.2 s, not a natural model failure",
+      "the restore record is an agent-saved transcript of the user's output, not a log written on the host; host records corroborate the time (journal su, ConfigMap managedFields) but cannot tell who ran it",
+      "the Run produced evidence but published no report before the handoff; evidence content and the failed calls not exported",
+      "two unknown budget reservations attributed to the failed calls by inference only",
+      "user actions are DB audit rows only, no workbench screenshots",
+      "postmortem v1 not reviewed; knowledge entries 0",
+      "no LangSmith trace (TRACE_MODE_OFF, 11 outbox rows pending); no balance reconciliation; tokens of the failed calls unknown",
+      "the previous incident c030a3a3 was closed by the user as preparation, which also generated its postmortem v2",
+      "one run, single VM, synthetic traffic and injected fault; not soak, not production"
+    ]
+  }
+}

@@ -1,0 +1,10 @@
+2026-11-11T20:03:34Z
+# DECISION (preflight): staging incident 69778314 is open (lifecycle open, mode automatic, generation 0) with its only observation expired. A forwarded alert with the same fingerprint would be attached to it without a new Run (opspilot/persistence/alerts.py: an open incident takes the alert as attached), and the automatic observation is decided once per (incident, control generation) (opspilot/observation/store.py auto_observation_candidates). Smallest in-product way to get a fresh Run and a fresh automatic observation: close 69778314 through the staging workbench control endpoint as operator (the same close action used on main 1fbdce34 at 13:41:26), so the next alert opens a new incident. No database writes.
+2026-11-11T20:03:34.272049+00:00 POST /incidents/69778314-65d3-5e3c-90a1-2b2b58d9ca03/control action=close expected_generation=0 idempotency_key=close-0-<32-hex nonce omitted in the repo copy>
+http 200 {"incident_id":"69778314-65d3-5e3c-90a1-2b2b58d9ca03","action":"close","generation":1,"replayed":false,"sequence":47}
+rc=0
+69778314-65d3-5e3c-90a1-2b2b58d9ca03 | queued | closed | automatic | 1 | 2026-11-11 20:03:34.323729+00
+ERROR:  column "sequence" does not exist
+LINE 1: select sequence, action, actor_id, channel, created_at from ...
+               ^
+2026-11-11T20:03:37Z

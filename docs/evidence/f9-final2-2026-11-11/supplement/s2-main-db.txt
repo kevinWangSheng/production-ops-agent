@@ -1,0 +1,28 @@
+# Collected read-only by the evidence-PR agent after the run: psql SELECTs on the main project's database (opspilot-postgres-1).
+# Queries: controls (incident_id, created_at, action, actor, channel, expected/resulting generation) order by created_at; observation sessions; postmortem versions joined to sessions; knowledge entry count; alert deliveries received after 13:00Z.
+db_now | 2026-11-11 19:27:12.968035+00
+control | fb89cdf2-98a8-5ec0-a70f-cd93fb321214 | 2026-11-11 07:08:11.288213+00 | takeover | operator | web | 0 | 1
+control | fb89cdf2-98a8-5ec0-a70f-cd93fb321214 | 2026-11-11 07:10:14.735199+00 | register_remediation | operator | web | 1 | 2
+control | fb89cdf2-98a8-5ec0-a70f-cd93fb321214 | 2026-11-11 07:42:10.341661+00 | close | operator | web | 2 | 3
+control | 1fbdce34-377c-5a57-9a2a-6ae81e1d5364 | 2026-11-11 07:52:29.780079+00 | auto_authorize_observation | system |  | 0 | 0
+control | 1fbdce34-377c-5a57-9a2a-6ae81e1d5364 | 2026-11-11 13:41:26.211611+00 | close | operator | web | 0 | 1
+control | aa6f1172-b014-56bc-8761-fd1883a52cd0 | 2026-11-11 18:48:52.784158+00 | takeover | operator | web | 0 | 1
+control | aa6f1172-b014-56bc-8761-fd1883a52cd0 | 2026-11-11 18:49:12.59018+00 | register_remediation | operator | web | 1 | 2
+control | aa6f1172-b014-56bc-8761-fd1883a52cd0 | 2026-11-11 19:22:22.62458+00 | close | operator | web | 2 | 3
+session_obs | 7244f7fd-29e0-599f-95f1-a9ce7dfc0a57 | fb89cdf2-98a8-5ec0-a70f-cd93fb321214 | completed | recovery_confirmed
+session_obs | 95983fe0-c6aa-563c-9c2a-3853c9d0d9db | 1fbdce34-377c-5a57-9a2a-6ae81e1d5364 | completed | recovery_confirmed
+session_obs | 86636672-0174-5cb2-b21a-54e71065b999 | aa6f1172-b014-56bc-8761-fd1883a52cd0 | completed | recovery_confirmed
+postmortem | fb89cdf2-98a8-5ec0-a70f-cd93fb321214 | 7244f7fd-29e0-599f-95f1-a9ce7dfc0a57 | 1 | under_review | worker | 2026-11-11 07:42:44.443199+00
+postmortem | 1fbdce34-377c-5a57-9a2a-6ae81e1d5364 | 95983fe0-c6aa-563c-9c2a-3853c9d0d9db | 1 | stale | worker | 2026-11-11 08:11:13.546052+00
+postmortem | 1fbdce34-377c-5a57-9a2a-6ae81e1d5364 | 95983fe0-c6aa-563c-9c2a-3853c9d0d9db | 2 | stale | worker | 2026-11-11 13:25:48.42333+00
+postmortem | 1fbdce34-377c-5a57-9a2a-6ae81e1d5364 | 95983fe0-c6aa-563c-9c2a-3853c9d0d9db | 3 | under_review | worker | 2026-11-11 13:42:50.487911+00
+postmortem | aa6f1172-b014-56bc-8761-fd1883a52cd0 | 86636672-0174-5cb2-b21a-54e71065b999 | 1 | under_review | worker | 2026-11-11 19:23:04.846479+00
+knowledge_entries | 0
+delivery | 1fbdce34-377c-5a57-9a2a-6ae81e1d5364 | 2026-11-11 13:24:04.373277+00 | firing | attached | 2026-11-11 13:23:54+00
+delivery | 1fbdce34-377c-5a57-9a2a-6ae81e1d5364 | 2026-11-11 13:32:04.378435+00 | resolved | resolved_attached | 2026-11-11 13:23:54+00
+delivery | aa6f1172-b014-56bc-8761-fd1883a52cd0 | 2026-11-11 13:48:04.372496+00 | firing | created | 2026-11-11 13:47:54+00
+delivery | aa6f1172-b014-56bc-8761-fd1883a52cd0 | 2026-11-11 14:48:04.410851+00 | firing | replayed | 2026-11-11 13:47:54+00
+delivery | aa6f1172-b014-56bc-8761-fd1883a52cd0 | 2026-11-11 15:48:04.448355+00 | firing | replayed | 2026-11-11 13:47:54+00
+delivery | aa6f1172-b014-56bc-8761-fd1883a52cd0 | 2026-11-11 16:48:04.487405+00 | firing | replayed | 2026-11-11 13:47:54+00
+delivery | aa6f1172-b014-56bc-8761-fd1883a52cd0 | 2026-11-11 17:48:04.524414+00 | firing | replayed | 2026-11-11 13:47:54+00
+delivery | aa6f1172-b014-56bc-8761-fd1883a52cd0 | 2026-11-11 18:31:04.551548+00 | resolved | resolved_attached | 2026-11-11 13:47:54+00

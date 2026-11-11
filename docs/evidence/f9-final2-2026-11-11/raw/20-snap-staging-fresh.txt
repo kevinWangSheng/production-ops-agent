@@ -1,0 +1,25 @@
+=== snapshot project=opspilot-staging label=fresh-install-v0.1.0 at 2026-11-11T13:16:03Z
+opspilot-staging-observer-1 228df9f72e69 Up 32 seconds (healthy)
+opspilot-staging-postgres-1 2a0d0fe14825 Up 38 seconds (healthy)
+opspilot-staging-web-1 228df9f72e69 Up 32 seconds (healthy)
+opspilot-staging-worker-1 228df9f72e69 Up 32 seconds (healthy)
+web config_image=ghcr.io/kevinwangsheng/opspilot@sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd image_id=sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd started=2026-11-11T13:15:30.249534982Z
+web healthz 200 {"status": "ok", "version": "0.1.0"}
+web readyz 200 {"status": "ready", "version": "0.1.0"}
+web log       5 "version": "0.1.0", "revision": "dd9534316a6b95e3513f2c68c3f13e45bc7ea322"
+worker config_image=ghcr.io/kevinwangsheng/opspilot@sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd image_id=sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd started=2026-11-11T13:15:30.249283601Z
+worker healthz 200 {"status": "ok", "version": "0.1.0"}
+worker readyz 200 {"status": "ready", "version": "0.1.0"}
+worker log       5 "version": "0.1.0", "revision": "dd9534316a6b95e3513f2c68c3f13e45bc7ea322"
+observer config_image=ghcr.io/kevinwangsheng/opspilot@sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd image_id=sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd started=2026-11-11T13:15:30.249004609Z
+observer healthz 200 {"status": "ok", "version": "0.1.0"}
+observer readyz 200 {"status": "ready", "version": "0.1.0"}
+observer log       3 "version": "0.1.0", "revision": "dd9534316a6b95e3513f2c68c3f13e45bc7ea322"
+db_now | 2026-11-11 13:16:04.137028+00
+alembic | 0024_trace_outbox
+count_controls | 0
+count_evidence | 0
+count_samples | 0
+count_steps | 0
+count_alert_deliveries | 0
+count_postmortem_versions | 0

@@ -1,0 +1,28 @@
+=== snapshot project=opspilot-staging label=before-upgrade at 2026-11-11T13:28:54Z
+opspilot-staging-observer-1 228df9f72e69 Up 13 minutes (healthy)
+opspilot-staging-postgres-1 2a0d0fe14825 Up 13 minutes (healthy)
+opspilot-staging-web-1 228df9f72e69 Up 13 minutes (healthy)
+opspilot-staging-worker-1 228df9f72e69 Up 13 minutes (healthy)
+web config_image=ghcr.io/kevinwangsheng/opspilot@sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd image_id=sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd started=2026-11-11T13:15:30.249534982Z
+web healthz 200 {"status": "ok", "version": "0.1.0"}
+web readyz 200 {"status": "ready", "version": "0.1.0"}
+web log       6 "version": "0.1.0", "revision": "dd9534316a6b95e3513f2c68c3f13e45bc7ea322"
+worker config_image=ghcr.io/kevinwangsheng/opspilot@sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd image_id=sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd started=2026-11-11T13:15:30.249283601Z
+worker healthz 200 {"status": "ok", "version": "0.1.0"}
+worker readyz 200 {"status": "ready", "version": "0.1.0"}
+worker log       6 "version": "0.1.0", "revision": "dd9534316a6b95e3513f2c68c3f13e45bc7ea322"
+observer config_image=ghcr.io/kevinwangsheng/opspilot@sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd image_id=sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd started=2026-11-11T13:15:30.249004609Z
+observer healthz 200 {"status": "ok", "version": "0.1.0"}
+observer readyz 200 {"status": "ready", "version": "0.1.0"}
+observer log       3 "version": "0.1.0", "revision": "dd9534316a6b95e3513f2c68c3f13e45bc7ea322"
+db_now | 2026-11-11 13:28:55.27833+00
+alembic | 0024_trace_outbox
+incident | 69778314-65d3-5e3c-90a1-2b2b58d9ca03 | queued | observing_recovery | automatic | 0 | 2026-11-11 13:24:09.676435+00 | 
+run | 2dcc2d92-824e-53da-bed6-cc713124f068 | 69778314-65d3-5e3c-90a1-2b2b58d9ca03 | completed | 1 | 14 | 28
+session | 23204a25-b054-5c2c-a18c-e559967af7cc | 69778314-65d3-5e3c-90a1-2b2b58d9ca03 | authorized |  |  | 0 | 2026-11-11 13:28:01.868409+00 | 2026-11-11 13:28:01.868409+00
+count_controls | 1
+count_evidence | 28
+count_samples | 0
+count_steps | 15
+count_alert_deliveries | 1
+count_postmortem_versions | 0
