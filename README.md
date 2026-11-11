@@ -2,7 +2,7 @@
 
 English | [简体中文](README.zh-CN.md)
 
-OpsPilot is a continuously running agent for incident and post-release investigation. It reads telemetry, never changes production, and leaves every decision to a human.
+OpsPilot is a continuously running agent for incident and post-release investigation. It reads telemetry and never executes production changes or remediation. Recovery observation (read-only) can be authorized automatically after a qualifying conclusion; everything else stays under human control.
 
 Internal process documents are written in Chinese. Where this README and the Chinese contract documents ([SPEC.md](SPEC.md), [PRODUCT-CONSTRAINTS.md](PRODUCT-CONSTRAINTS.md), the [C3 technical design](docs/design/technical-proposal-2026-09-07.md), task records) disagree, the Chinese contract documents are authoritative.
 
@@ -10,7 +10,7 @@ Internal process documents are written in Chinese. Where this README and the Chi
 
 - **Investigates.** An Alertmanager alert opens an incident. When the alert matches a configured target, an investigation Run starts; otherwise the incident is handed to a human. The model gathers evidence through read-only, target-scoped tools, keeps competing hypotheses, and publishes a report that separates facts, hypotheses and gaps. When evidence is missing it says so, or hands the incident to a human, instead of guessing.
 - **Works with a human.** In the workbench an operator reads the report, asks follow-up questions (each opens a new Run), pauses investigation globally or per target, and closes or reopens incidents. Human control always takes precedence over the agent.
-- **Observes recovery independently.** After a human has handled an incident, a separate Observer process with its own read-only Prometheus account samples service health and records whether the service recovered. It never performs a recovery action.
+- **Observes recovery independently.** After a human has handled an incident, or automatically after a qualifying conclusion, a separate Observer process with its own read-only Prometheus account samples service health and records whether the service recovered. It never performs a recovery action.
 - **Drafts reviewed postmortems.** The worker drafts a postmortem from the incident record; it becomes knowledge for later investigations only after a human approves it in the workbench.
 - **Watches releases.** A version-change event starts an observation window; a delayed regression becomes an incident. OpsPilot never approves, blocks or executes a release.
 
