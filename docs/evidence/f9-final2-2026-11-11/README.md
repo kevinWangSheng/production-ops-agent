@@ -11,6 +11,8 @@
 
 上表是 13:15–14:22 那一轮的记录，保持原样。独立审查认为第 4 步只差「在途观察跨 digest 切换后走到 `recovery_confirmed`」。20:01–20:36 只重做了 staging 的恢复/升级这一段，观察窗口内没有再注入故障：同一个观察会话 `27c61712` 在 `v0.1.0` 上取了第 1 个样本，切到 `v0.1.1` 后继续取样，以 `completed / recovery_confirmed` 结束。见下文[第 4 步重做](#第-4-步重做staging-在途观察跨-digest-切换2001z2036z)。
 
+独立审查认为第 2 步未达成，唯一原因是系统外恢复在接管之前、没有命令输出和确切时刻。21:44–22:28 在主项目上按裁决顺序重做了一个 incident `65b0490a`，见下文[第 2 步重做](#第-2-步重做一个-incident-按裁决顺序走完2144z2228z)。
+
 ## 第 4 步：staging 先升级，再升级并回滚主项目
 
 ### 版本（引用，本轮没有重跑构建或 CI）
@@ -144,6 +146,8 @@ staging 会话 `27c61712` 的 16 个样本（每个窗口 5 分钟，全部 `ado
 
 ## 第 2 步：一个 incident 走完全流程
 
+本节是 13:41–19:23 那次的记录，保持原样；按裁决顺序的重做见[第 2 步重做](#第-2-步重做一个-incident-按裁决顺序走完2144z2228z)。
+
 主项目此时跑的是 `v0.1.0` digest（第 4 步回滚后）。13:41:26 `1fbdce34` 被关闭（`close`，actor `operator`，channel `web`，generation 0→1，[supplement/s2-main-db.txt](supplement/s2-main-db.txt)），之后的告警才会开新单；这一步是谁点的不在归档里。
 
 | 时间 | 事件 | 原始记录 |
@@ -181,6 +185,95 @@ staging 会话 `27c61712` 的 16 个样本（每个窗口 5 分钟，全部 `ado
 | 归档 | 关闭；复盘 v1 待审 | 覆盖到「关闭 + 复盘待审」；没有审核成知识 |
 
 和上一轮相比：这次调查、证据、转人工、人工处理、恢复观察、关闭都在同一个 incident 上。
+
+## 第 2 步重做：一个 incident 按裁决顺序走完（21:44Z–22:28Z）
+
+为补独立审查指出的缺口（系统外恢复在接管之前，没有命令输出和确切时刻），在主项目 `opspilot`（`v0.1.0` digest，三个运行时 13:33:40 起没有重启）上重做一个 incident，按裁决顺序：先有证据 → 切模型出口 → 转人工 → 用户接管 → 系统外恢复 → `register_remediation` → `recovery_confirmed` → 关闭。原始记录在 [raw-step2-redo/](raw-step2-redo/)，是主机 `/home/opspilot/f9-final4/` 的副本；事后补的只读查询是 [supplement/s4-step2-redo-db.txt](supplement/s4-step2-redo-db.txt)（SQL 在 [s4-step2-redo-db.sql](supplement/s4-step2-redo-db.sql)）和 [supplement/s5-step2-redo-host.txt](supplement/s5-step2-redo-host.txt)。[snap.sh](raw-step2-redo/snap.sh) 与前两次逐字节相同；切出口的 [block_model_midrun4.sh](raw-step2-redo/block_model_midrun4.sh) 是新写的，按「本脚本启动后出现的新 Run 有 N 行证据」触发（第一次用的脚本没有入库，两者差别无法对照）。
+
+| 时间 | 事件 | 原始记录 |
+|---|---|---|
+| 21:43:04 | 预检快照：三个运行时 `/readyz` 200，`0.1.0` / `dd953431…`；`c030a3a3`（第 4 步重做时的告警开出的单）`resolved`、没有关闭，没有在途的 Run 或观察 | [00-snap-main-preflight.txt](raw-step2-redo/00-snap-main-preflight.txt) |
+| 21:44:02 | **准备**：用户在工作台关闭 `c030a3a3`（`close`，operator，web）。不关的话同指纹的新告警只会 `attached`。副作用：21:45:38 生成了 `c030a3a3` 的复盘 v2 | [01-prior-incident-closed-by-user.txt](raw-step2-redo/01-prior-incident-closed-by-user.txt)、[61-worker-full-log-at-handoff.log](raw-step2-redo/61-worker-full-log-at-handoff.log) |
+| 21:44:12 | 编排 Agent 以 root 启动切出口脚本，记下已有的 4 个 Run | [60-midrun-egress-cut.log](raw-step2-redo/60-midrun-egress-cut.log) |
+| 21:44:14 | 编排 Agent `fault inject --experiment-id f9-final4-step2`（ConfigMap `e47d27c2fa01`），rc 0 | [60-step2-fault-inject.log](raw-step2-redo/60-step2-fault-inject.log) |
+| 21:51:04.374 | **触发**：告警 firing（startsAt 21:50:54），outcome `created`，actor `alertmanager`：incident `65b0490a-df80-51b2-adfa-698c53a9ee7b`，Run `50936b1d-2e18-5f18-8dd1-caa0afcd84f9`，`related_incident_id` 指向 `c030a3a3`；21:51:04.475 `run_claimed` | [70-step2-timeline.txt](raw-step2-redo/70-step2-timeline.txt)、s4 的 `delivery` 与 `subject_event` 1–2 |
+| 21:51:06.766–21:51:07.686 | **调查**第 1 轮（`ctx0:round-1`，`deepseek-flash`，`tool_calls`）：`traces_search` 报错、未采用；`metrics_range_query` ok、采用 | s4 的 `step` 0、`evidence`、`subject_event` 3–5 |
+| 21:51:11.680–21:51:11.775 | 第 2 轮（`ctx0:round-2`）提交，`read_evidence` ok、采用，此时证据 3 行 | s4 的 `step` 1、`subject_event` 6–7 |
+| 21:51:11.792 | 脚本看到 Run `running`、证据 3 行，触发 | 60-midrun-egress-cut.log |
+| 21:51:11.815 | **切出口**：`DOCKER-USER` 两条规则拒绝 worker 两个容器地址的 tcp/443 | 同上 |
+| 21:51:12.589 | 第 2 轮第二个工具 `metrics_range_query` ok、采用，证据第 4 行。它落在切断之后（工具走 lab 内网的 Prometheus，不经 443） | s4 的 `subject_event` 8 |
+| 21:51:12.613 / 21:51:12.617 | **转人工**：`conclusion:g0:ctx0:round-2` 步，`execution failed`、`handoff_reasons ["MODEL_UNAVAILABLE"]`、`report_content null`；`run_handoff` 事件 `published false`、`report_sha256 null`，引用 3 个已采用证据 id（报错的 `traces_search` 不在内）；worker 日志 `status=handed_off reason=MODEL_UNAVAILABLE` | s4 的 `step` 2、`subject_event` 9；61-worker-full-log-at-handoff.log |
+| 21:51:13.999 | Run `waiting_human` | 60-midrun-egress-cut.log |
+| 21:51:14.044 | 删掉两条规则，worker 到 `api.deepseek.com:443` tcp ok。出口断了约 2.2 秒 | 同上 |
+| 21:51:35 | 快照：incident `open`、mode `automatic`、generation 0；Run `waiting_human`，预算 2，工具操作 4 | [62-snap-at-handoff.txt](raw-step2-redo/62-snap-at-handoff.txt) |
+| 21:59:44.932 | **用户接管**：`takeover`，operator，web，generation 0→1 | 70-step2-timeline.txt、s4 的 `control` 与 `subject_event` 10 |
+| 21:59:59 | **系统外恢复**：用户从自己的机器经 Claude Code `!` 前缀执行 `ssh … kind_lab.py fault restore --experiment-id f9-final4-step2`；输出：ConfigMap `1ee5c0258e3e`，`paymentFailure -> off`，rc 0，前后时间戳都是 21:59:59Z | [63-fault-restore-by-user.log](raw-step2-redo/63-fault-restore-by-user.log)：**编排会话里捕获的输出，由 Agent 在 22:00:11 存到主机，不是主机上写出的日志**（见下）。主机侧旁证见 s5 |
+| 22:00:16.917 | **`register_remediation`**：operator，web，1→2，revision `payment:fault-restored`；开出观察 `b4367964-62b9-5889-a6cb-29c9fce8f318`，`authorization_source post_remediation`，`authorized_by operator`，HealthProfile `otel-demo-checkout@b72bbe2e30be`，间隔 60 s，持续窗口 600 s，上限 40 | 70-step2-timeline.txt、s4 的 `control` |
+| 22:03:04 | 告警 resolved，`resolved_attached` | 70-step2-timeline.txt |
+| 22:01:18–22:16:18 | 12 个样本（窗口止于）：1–3 `degraded`（22:01:18、22:02:40、22:04:01），4–12 `healthy`（22:05:23–22:16:18），全部 `adopted`；`healthy_since` 22:05:23 | 70-step2-timeline.txt、[73-observer-log.log](raw-step2-redo/73-observer-log.log) |
+| 22:16:40.583 | **恢复确认**：`completed / recovery_confirmed`，lifecycle `observing_recovery → resolved` | 70-step2-timeline.txt、s4 的 `observation_ending` |
+| 22:27:58.085 | **关闭**：`close`，operator，web，2→3；incident `closed`、mode `human_owned`、state `cancelled`，Run `cancelled` | 70-step2-timeline.txt、[71-snap-final.txt](raw-step2-redo/71-snap-final.txt) |
+| 22:28:50 | **归档**：复盘 `bedcab61-a4e2-4d0c-98ae-087e01b6b03c` v1，`under_review`，`last_run_id` 为本 Run，`observation_session_id` 为 `b4367964`；生成用 `deepseek-flash` 1 次请求（22:28:08–22:28:50）；知识库 0 条 | s4 的 `postmortem*`、`subject_event` 15。70 号时间线（22:28:24）和 71 号快照（22:28:14）早于它，所以里面的复盘计数 7 不含这一条 |
+
+### 系统外恢复的记录从哪来
+
+主机上的 [63-fault-restore-by-user.log](raw-step2-redo/63-fault-restore-by-user.log) 不是 `tee` 写出的：用户粘贴的命令折成了两行，`tee` 没拿到文件参数，第二行把路径当命令执行，报 `No such file or directory`。文件内容是编排会话里捕获的命令和输出，由 Agent 在 22:00:11 存到主机，文件头写明了这一点。所以**这份文件是 Agent 保存的转录，不是主机写出的日志**。
+
+主机侧能独立核对的（[s5-step2-redo-host.txt](supplement/s5-step2-redo-host.txt)，事后只读取）：
+
+- 系统日志：21:59:58.950 一次 root ssh 登录（session 2808），21:59:59.317–21:59:59.540 `su` 到 `opspilot`，21:59:59.722 断开，与命令形状 `ssh … "su - opspilot -c '…'"` 和输出里的 21:59:59Z 一致。22:00:11.336–22:00:12.167 的 session 2809 与 Agent 存文件的时间一致。
+- lab ConfigMap `flagd-config` 的 `managedFields`：最后一次 `kubectl-patch Update` 在 21:59:59Z；现在 `paymentFailure` 为 `off`。
+- 这两条只能证明恢复发生在 21:59:59（秒级），在接管（21:59:44.932）之后约 14 秒、`register_remediation`（22:00:16.917）之前约 17 秒，不依赖转录。**不能证明是谁执行的**：Agent 和用户的 ssh 来自同一台机器、同一把钥匙。「用户执行」只有转录文件头和编排者的陈述。
+
+### 对照验收步骤与裁决顺序
+
+F9 第 2 步原文的七个要素：
+
+| 要素 | 本次记录 | 原始文件 |
+|---|---|---|
+| business traffic and a fault | load-generator 持续流量（没有单独的速率记录，观察样本每个窗口 `requests=24`）；21:44:14 flagd 注入 | 60-step2-fault-inject.log、73-observer-log.log |
+| trigger | Alertmanager webhook `created` → `65b0490a` 与 Run `50936b1d` | 70-step2-timeline.txt、s4 |
+| investigation | 两轮成功的模型调用，四次工具调用；切断后的模型调用失败 | s4 的 `step`、`subject_event` 3–9 |
+| evidence | 4 行，3 行采用（两个 `metrics_range_query`、一个 `read_evidence`），`traces_search` 报错未采用；转人工事件引用 3 个采用的 id；证据内容没有导出 | s4 的 `evidence`、`subject_event` 9 |
+| human handoff | `MODEL_UNAVAILABLE` → `waiting_human`，没有发布报告 | 60-midrun-egress-cut.log、61-worker-full-log-at-handoff.log、s4 |
+| external human handling | 接管后用户在系统外恢复故障，再在工作台 `register_remediation` | 70-step2-timeline.txt、63-fault-restore-by-user.log、s5 |
+| recovery observation | `b4367964` 由人工登记开出，3 个 `degraded` 后 9 个 `healthy`，独立确认 | 70-step2-timeline.txt、73-observer-log.log |
+| incident archive | 关闭；复盘 v1 `under_review` | 70-step2-timeline.txt、71-snap-final.txt、s4 |
+
+裁决顺序逐项对照（都在 `65b0490a` 上）：
+
+| # | 裁决 | 时刻 | 依据 |
+|---|---|---|---|
+| 1 | 先有证据 | 21:51:11.775 证据第 3 行 | s4 `subject_event` 7；脚本 21:51:11.792 看到 3 行 |
+| 2 | 切模型出口 | 21:51:11.815 | 60-midrun-egress-cut.log |
+| 3 | 转人工 | 21:51:12.617 | s4 `subject_event` 9、worker 日志 |
+| 4 | 用户接管 | 21:59:44.932 | `opspilot_controls` |
+| 5 | 系统外恢复 | 21:59:59 | 63（转录）、s5（系统日志、`managedFields`） |
+| 6 | `register_remediation` | 22:00:16.917 | `opspilot_controls` |
+| 7 | `recovery_confirmed` | 22:16:40.583 | 观察会话、`observation_ending` |
+| 8 | 关闭 | 22:27:58.085 | `opspilot_controls` |
+
+按这些原始记录，八个时刻严格递增，没有颠倒。唯一的细节：第 4 行证据（21:51:12.589）是在切断之后、转人工之前写入的，转人工引用的 3 个 id 里有它。
+
+### 这次重做的缺口
+
+- 转人工是人为切断模型出口（`DOCKER-USER` REJECT，约 2.2 秒）造成的，不是自然发生的模型故障。
+- 系统外恢复的命令记录是 Agent 保存的转录，不是主机上写出的日志；主机侧只有时间旁证（系统日志的 `su`、ConfigMap 的 `managedFields`），不能区分执行者是用户还是 Agent。
+- Run 留下了证据，但转人工前没有发布报告（`published false`、`report_content null`）；证据内容和两次失败调用的细节没有导出。
+- 模型预算 4 个预留：2 个 `spent`（2.27 s、3.98 s），2 个 `unknown`（各计 360 s）。conclusion 步记 `model_requests_used 4`，成功的只有 2 步，所以推断这两个 `unknown` 是切断后失败的两次调用；预留行没有时间戳，无法直接核对。
+- 用户的操作（关闭 `c030a3a3`、接管、`register_remediation`、关闭）只有数据库审计行，没有工作台截图。
+- 复盘 v1 没有审核，知识库为 0。
+- 没有 LangSmith trace：worker 日志 `trace outbox delivery off: TRACE_MODE_OFF`，这个 incident 的 11 行 trace outbox 全部 `pending`。没有按余额对账；token 只有库里的记录：两次成功的模型调用共 14701（5545 + 9156），复盘生成 prompt 17179、completion 9173；两次失败调用的 token 未知。
+- 关闭前一个 incident `c030a3a3` 是为这次重做做的准备，顺带生成了它的复盘 v2。
+- 每个环节只跑了一次，单机，合成流量加注入故障；不是 soak，也不是生产。
+
+### 原始记录与脱敏
+
+[raw-step2-redo/](raw-step2-redo/) 是归档 `f9-final4-host-evidence.tgz`（sha256 `3816ed0251248956b5901b80d76b3c5027c0a90e1c22104c36a289bcf4f1f02e`，14 个文件加 1 个目录，存在仓库外）的原样副本，没有改名也没有改内容（没有 `.py` 文件）。`61-worker-full-log-at-handoff.log` 与 `72-worker-log-final.log` 内容相同：handoff 之后 worker 到 72 号导出（约 22:28）为止没有再写日志；复盘生成于 22:28:50，推断那一行日志晚于导出，没有补取。`60-midrun-egress-cut.log` 是 root 脚本的输出，`63-fault-restore-by-user.log` 是 Agent 保存的转录（见上）。
+
+supplement 的 s4、s5 是写这份证据时（约 22:31Z）从主机只读取的：s4 是主项目数据库的 `SELECT`（意图写在文件头，SQL 原文同目录）；s5 是 `iptables -S DOCKER-USER`（现在只剩空链）、21:59:50–22:00:15 的系统日志（只留 root 登录、`su`、logind 行，过滤掉互联网扫描的失败登录）和 `flagd-config` 的 `managedFields`。主机上没有写文件，也没有改动任何服务。s4 里有三处是查询时主动省略的：intake 事件的 `question` 只给 sha256，三条 control 的 `idempotency_key` 不导出（形如 `…:takeover-0-<32 位十六进制>`，是幂等键，不是凭据；省略是为了不再碰上 gitleaks `generic-api-key` 的误报）。s5 的 sshd 行里，客户端地址、端口和密钥指纹在本地保存前换成 `<client omitted>`。
+
+入库前逐个检查过：没有口令、token、API key、cookie 或带凭据的 DSN；地址只有 127.0.0.1、0.0.0.0 和 Docker 内部网段 172.18.0.4、172.19.0.3。另外把主机两个项目凭据目录里所有长度不小于 12 的值（`ui_password`、`alertmanager_token`、`postgres_password`、各 `*_pgpass`、`web_event_tokens`、`web_ui_users`、`worker_env` 里的 `DEEPSEEK_API_KEY` 等，共 35 个）与 raw-step2-redo 和 s4、s5 逐字比对（比对在主机上进行，值没有离开主机），只命中 `alertmanager` 这个词本身（`web_event_tokens` 里的调用方名称，不是密钥）。gitleaks 8.30.1 扫描 raw-step2-redo 与 supplement 无发现。
 
 ## 缺口
 

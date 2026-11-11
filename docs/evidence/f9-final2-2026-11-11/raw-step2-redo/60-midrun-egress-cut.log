@@ -1,0 +1,15 @@
+known runs at start: '0a2f20e4-7fc1-57f1-9fbb-479bba283922','78419b8b-54a6-5bee-9e47-b915a83c0b9c','79970de4-e57f-5d09-8189-5d05bd160f5b','f29d655b-66f6-5cc6-a57f-67c627134848'
+waiting for a new Run with >= 3 evidence rows; started 2026-11-11T21:44:12Z
+trigger at 2026-11-11T21:51:11.792Z: 50936b1d-2e18-5f18-8dd1-caa0afcd84f9 | running | 3
+rule added for worker ip 172.18.0.4 (tcp/443 REJECT)
+rule added for worker ip 172.19.0.3 (tcp/443 REJECT)
+egress cut at 2026-11-11T21:51:11.815Z
+-A DOCKER-USER -s 172.19.0.3/32 -p tcp -m tcp --dport 443 -j REJECT --reject-with tcp-reset
+-A DOCKER-USER -s 172.18.0.4/32 -p tcp -m tcp --dport 443 -j REJECT --reject-with tcp-reset
+Run left running at 2026-11-11T21:51:13.999Z: state=waiting_human
+worker log saved (12 lines)
+rule removed for 172.18.0.4
+rule removed for 172.19.0.3
+egress restored at 2026-11-11T21:51:14.044Z
+-N DOCKER-USER
+worker -> api.deepseek.com:443 tcp ok

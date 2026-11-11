@@ -1,0 +1,40 @@
+# Collected read-only by the evidence-PR agent after the step-2 redo, on host opspilot-f9-1 (root over ssh).
+# 1) DOCKER-USER chain now; 2) journal lines 21:59:50Z-22:00:15Z for accepted root ssh sessions, su and systemd-logind
+#    (failed logins of unrelated internet scanners filtered out on the host by grep);
+# 3) the lab flagd-config ConfigMap now: managedFields times and paymentFailure defaultVariant.
+# The client address, port and key fingerprint in the sshd lines are replaced by <client omitted> locally before saving.
+# The agent's and the user's ssh sessions come from the same machine with the same key, so these lines cannot tell who ran a session.
+--- date
+2026-11-11T22:32:14Z
+--- iptables -S DOCKER-USER
+-N DOCKER-USER
+--- journal 21:59:50Z-22:00:15Z
+2026-11-11T21:59:56.114161+00:00 opspilot-f9-1 sshd[2480782]: Accepted publickey for root from <client omitted>
+2026-11-11T21:59:56.115635+00:00 opspilot-f9-1 sshd[2480782]: pam_unix(sshd:session): session opened for user root(uid=0) by root(uid=0)
+2026-11-11T21:59:56.118404+00:00 opspilot-f9-1 systemd-logind[1097]: New session 2807 of user root.
+2026-11-11T21:59:56.955462+00:00 opspilot-f9-1 sshd[2480782]: Disconnected from user root <client omitted>
+2026-11-11T21:59:56.955585+00:00 opspilot-f9-1 sshd[2480782]: pam_unix(sshd:session): session closed for user root
+2026-11-11T21:59:56.958191+00:00 opspilot-f9-1 systemd-logind[1097]: Session 2807 logged out. Waiting for processes to exit.
+2026-11-11T21:59:56.958805+00:00 opspilot-f9-1 systemd-logind[1097]: Removed session 2807.
+2026-11-11T21:59:58.950204+00:00 opspilot-f9-1 sshd[2480950]: Accepted publickey for root from <client omitted>
+2026-11-11T21:59:58.951793+00:00 opspilot-f9-1 sshd[2480950]: pam_unix(sshd:session): session opened for user root(uid=0) by root(uid=0)
+2026-11-11T21:59:58.954213+00:00 opspilot-f9-1 systemd-logind[1097]: New session 2808 of user root.
+2026-11-11T21:59:59.316558+00:00 opspilot-f9-1 su[2481077]: (to opspilot) root on none
+2026-11-11T21:59:59.317411+00:00 opspilot-f9-1 su[2481077]: pam_unix(su-l:session): session opened for user opspilot(uid=1001) by root(uid=0)
+2026-11-11T21:59:59.540283+00:00 opspilot-f9-1 su[2481077]: pam_unix(su-l:session): session closed for user opspilot
+2026-11-11T21:59:59.722167+00:00 opspilot-f9-1 sshd[2480950]: Disconnected from user root <client omitted>
+2026-11-11T21:59:59.722258+00:00 opspilot-f9-1 sshd[2480950]: pam_unix(sshd:session): session closed for user root
+2026-11-11T21:59:59.725012+00:00 opspilot-f9-1 systemd-logind[1097]: Session 2808 logged out. Waiting for processes to exit.
+2026-11-11T21:59:59.725644+00:00 opspilot-f9-1 systemd-logind[1097]: Removed session 2808.
+2026-11-11T22:00:11.335654+00:00 opspilot-f9-1 sshd[2481709]: Accepted publickey for root from <client omitted>
+2026-11-11T22:00:11.337133+00:00 opspilot-f9-1 sshd[2481709]: pam_unix(sshd:session): session opened for user root(uid=0) by root(uid=0)
+2026-11-11T22:00:11.340299+00:00 opspilot-f9-1 systemd-logind[1097]: New session 2809 of user root.
+2026-11-11T22:00:12.167240+00:00 opspilot-f9-1 sshd[2481709]: Disconnected from user root <client omitted>
+2026-11-11T22:00:12.167330+00:00 opspilot-f9-1 sshd[2481709]: pam_unix(sshd:session): session closed for user root
+2026-11-11T22:00:12.170483+00:00 opspilot-f9-1 systemd-logind[1097]: Session 2809 logged out. Waiting for processes to exit.
+2026-11-11T22:00:12.171240+00:00 opspilot-f9-1 systemd-logind[1097]: Removed session 2809.
+--- flagd-config
+resourceVersion 81203
+managedField helm Apply 2026-11-11T06:09:19Z
+managedField kubectl-patch Update 2026-11-11T21:59:59Z
+flagd demo.flagd.json paymentFailure defaultVariant= off
