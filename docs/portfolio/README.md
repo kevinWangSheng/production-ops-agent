@@ -1,6 +1,6 @@
 # Portfolio walkthrough
 
-A path through the project for a reviewer. Allow about 20 minutes. OpsPilot is a read-only incident investigator. It reads telemetry and writes evidence-backed reports. A separate process checks whether the service recovered, and every decision stays with a human. It was built and measured only against a lab with synthetic traffic and injected faults. It has never run in production ([limitations](limitations.md)).
+A path through the project for a reviewer. Allow about 20 minutes. OpsPilot is a read-only incident investigator. It reads telemetry and writes evidence-backed reports. A separate process checks whether the service recovered. OpsPilot never executes production changes or remediation; recovery observation (read-only) can be authorized automatically after a qualifying conclusion, and everything else stays under human control. It was built and measured only against a lab with synthetic traffic and injected faults. It has never run in production ([limitations](limitations.md)).
 
 ## 1. What it is and what it refuses to do (3 min)
 
