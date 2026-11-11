@@ -1,0 +1,20 @@
+now | 2026-11-11 08:10:22.082298+00
+incident | fb89cdf2-98a8-5ec0-a70f-cd93fb321214 | cancelled | closed | human_owned | 3
+incident | 1fbdce34-377c-5a57-9a2a-6ae81e1d5364 | queued | resolved | automatic | 0
+session | 7244f7fd-29e0-599f-95f1-a9ce7dfc0a57 | completed | recovery_confirmed | 2026-11-11 07:15:21.729994+00 | 12 | 2026-11-11 07:26:39.381335+00
+session | 95983fe0-c6aa-563c-9c2a-3853c9d0d9db | completed | recovery_confirmed | 2026-11-11 07:58:36.432805+00 | 13 | 2026-11-11 08:09:53.882733+00
+sample | 1 | failed | adopted | 2026-11-11 07:48:41.274802+00 | 2026-11-11 07:53:41.274802+00 | f
+sample | 2 | degraded | adopted | 2026-11-11 07:49:44.559774+00 | 2026-11-11 07:54:44.559774+00 | f
+sample | 3 | failed | adopted | 2026-11-11 07:51:14.3883+00 | 2026-11-11 07:56:14.3883+00 | f
+sample | 4 | healthy | adopted | 2026-11-11 07:52:14.503014+00 | 2026-11-11 07:57:14.503014+00 | f
+sample | 5 | healthy | adopted | 2026-11-11 07:53:36.432805+00 | 2026-11-11 07:58:36.432805+00 | t
+sample | 6 | healthy | adopted | 2026-11-11 07:54:58.322627+00 | 2026-11-11 07:59:58.322627+00 | t
+sample | 7 | healthy | adopted | 2026-11-11 07:56:20.325333+00 | 2026-11-11 08:01:20.325333+00 | t
+sample | 8 | healthy | adopted | 2026-11-11 07:57:42.219897+00 | 2026-11-11 08:02:42.219897+00 | t
+sample | 9 | healthy | adopted | 2026-11-11 07:59:04.214475+00 | 2026-11-11 08:04:04.214475+00 | t
+sample | 10 | healthy | adopted | 2026-11-11 08:00:26.213253+00 | 2026-11-11 08:05:26.213253+00 | t
+sample | 11 | healthy | adopted | 2026-11-11 08:01:48.120454+00 | 2026-11-11 08:06:48.120454+00 | t
+sample | 12 | healthy | adopted | 2026-11-11 08:03:10.115984+00 | 2026-11-11 08:08:10.115984+00 | t
+sample | 13 | healthy | adopted | 2026-11-11 08:04:32.113747+00 | 2026-11-11 08:09:32.113747+00 | t
+ending | {"job_id": "4e58b59a-2118-44ad-86f0-cabd1bfadce2", "purpose": "incident_recovery", "ending_id": "fbf0d433-93e9-43df-bcef-819671b96869", "sample_id": "3fb8f56e-6416-4ab3-b952-320ffd1dd777", "session_id": "95983fe0-c6aa-563c-9c2a-3853c9d0d9db", "subject_id": "1fbdce34-377c-5a57-9a2a-6ae81e1d5364", "transition": "recovery_confirmed", "anomaly_key": null, "incident_id": "1fbdce34-377c-5a57-9a2a-6ae81e1d5364", "recorded_at": "2026-11-11T08:09:53.883138+00:00", "ended_reason": "recovery_confirmed", "job_sequence": 13, "subject_kind": "incident", "lifecycle_after": "resolved", "lifecycle_before": "observing_recovery", "subject_state_after": "resolved", "subject_state_before": "observing_recovery", "release_observation_id": null}
+pm_versions | 1

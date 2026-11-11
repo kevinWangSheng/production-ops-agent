@@ -1,0 +1,338 @@
+2026-11-11T06:14:04Z
+[opspilot-install 2026-11-11T06:14:04Z] building opspilot:local 0.1.1 (9416041d93b8e9844dd9a84b736319174b4d419a) from /home/opspilot/production-ops-agent
+#0 building with "default" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile
+#1 transferring dockerfile: 2.57kB done
+#1 DONE 0.0s
+
+#2 [internal] load metadata for docker.io/library/python:3.12.13-slim@sha256:229a2c5bfa27522db7815ea81f9bed70af17ccb9de9fc7ad142b1877b5830d36
+#2 ...
+
+#3 [internal] load metadata for ghcr.io/astral-sh/uv:0.10.8@sha256:88234bc9e09c2b2f6d176a3daf411419eb0370d450a08129257410de9cfafd2a
+#3 DONE 0.6s
+
+#2 [internal] load metadata for docker.io/library/python:3.12.13-slim@sha256:229a2c5bfa27522db7815ea81f9bed70af17ccb9de9fc7ad142b1877b5830d36
+#2 DONE 0.8s
+
+#4 [internal] load .dockerignore
+#4 transferring context: 370B done
+#4 DONE 0.0s
+
+#5 [internal] load build context
+#5 transferring context: 9.74MB 0.1s done
+#5 DONE 0.1s
+
+#6 [build 1/5] FROM docker.io/library/python:3.12.13-slim@sha256:229a2c5bfa27522db7815ea81f9bed70af17ccb9de9fc7ad142b1877b5830d36
+#6 resolve docker.io/library/python:3.12.13-slim@sha256:229a2c5bfa27522db7815ea81f9bed70af17ccb9de9fc7ad142b1877b5830d36 0.0s done
+#6 sha256:b3c7a9bdb4f2a30d0a1358438d1539c06b86da99135cfd9d92756863cc87ae18 249B / 249B 0.1s done
+#6 sha256:c85ad0bcaca895afa08053538ec1ea7642c7e9e05f5684d18e3627a2316ca8ae 0B / 12.11MB 0.2s
+#6 sha256:5a31db4cd47898e862a567028aa41f7a11d814cf69be6904173402a8b8eac5cb 0B / 1.29MB 0.2s
+#6 sha256:26c307b5e35a59ce911f5fde5b9458120ec8734e831ea2da5649a9ad14abfd3d 0B / 29.78MB 0.2s
+#6 sha256:c85ad0bcaca895afa08053538ec1ea7642c7e9e05f5684d18e3627a2316ca8ae 12.11MB / 12.11MB 0.2s done
+#6 sha256:5a31db4cd47898e862a567028aa41f7a11d814cf69be6904173402a8b8eac5cb 1.29MB / 1.29MB 0.2s done
+#6 sha256:26c307b5e35a59ce911f5fde5b9458120ec8734e831ea2da5649a9ad14abfd3d 22.02MB / 29.78MB 0.3s
+#6 sha256:26c307b5e35a59ce911f5fde5b9458120ec8734e831ea2da5649a9ad14abfd3d 29.78MB / 29.78MB 0.3s done
+#6 extracting sha256:26c307b5e35a59ce911f5fde5b9458120ec8734e831ea2da5649a9ad14abfd3d
+#6 ...
+
+#7 [uv 1/1] FROM ghcr.io/astral-sh/uv:0.10.8@sha256:88234bc9e09c2b2f6d176a3daf411419eb0370d450a08129257410de9cfafd2a
+#7 resolve ghcr.io/astral-sh/uv:0.10.8@sha256:88234bc9e09c2b2f6d176a3daf411419eb0370d450a08129257410de9cfafd2a 0.0s done
+#7 sha256:b901cf66da4519d52e3de9c7ddbc38dbe11cb81800702fc03319a44aae757632 23.18MB / 23.18MB 0.5s done
+#7 sha256:4b960d52aa412716b9c56c6af83aa759b100dbe327efa59cd8201ac50982795a 98B / 98B 0.2s done
+#7 extracting sha256:b901cf66da4519d52e3de9c7ddbc38dbe11cb81800702fc03319a44aae757632 0.2s done
+#7 DONE 0.8s
+
+#7 [uv 1/1] FROM ghcr.io/astral-sh/uv:0.10.8@sha256:88234bc9e09c2b2f6d176a3daf411419eb0370d450a08129257410de9cfafd2a
+#7 extracting sha256:4b960d52aa412716b9c56c6af83aa759b100dbe327efa59cd8201ac50982795a done
+#7 DONE 0.8s
+
+#6 [build 1/5] FROM docker.io/library/python:3.12.13-slim@sha256:229a2c5bfa27522db7815ea81f9bed70af17ccb9de9fc7ad142b1877b5830d36
+#6 extracting sha256:26c307b5e35a59ce911f5fde5b9458120ec8734e831ea2da5649a9ad14abfd3d 0.6s done
+#6 DONE 1.0s
+
+#6 [build 1/5] FROM docker.io/library/python:3.12.13-slim@sha256:229a2c5bfa27522db7815ea81f9bed70af17ccb9de9fc7ad142b1877b5830d36
+#6 extracting sha256:5a31db4cd47898e862a567028aa41f7a11d814cf69be6904173402a8b8eac5cb 0.1s done
+#6 extracting sha256:c85ad0bcaca895afa08053538ec1ea7642c7e9e05f5684d18e3627a2316ca8ae
+#6 extracting sha256:c85ad0bcaca895afa08053538ec1ea7642c7e9e05f5684d18e3627a2316ca8ae 0.3s done
+#6 DONE 1.4s
+
+#6 [build 1/5] FROM docker.io/library/python:3.12.13-slim@sha256:229a2c5bfa27522db7815ea81f9bed70af17ccb9de9fc7ad142b1877b5830d36
+#6 extracting sha256:b3c7a9bdb4f2a30d0a1358438d1539c06b86da99135cfd9d92756863cc87ae18 done
+#6 DONE 1.4s
+
+#8 [build 2/5] COPY --from=uv /uv /usr/local/bin/uv
+#8 DONE 0.3s
+
+#9 [runtime 2/6] RUN groupadd --system --gid 10001 opspilot     && useradd --system --uid 10001 --gid 10001 --no-create-home        --home-dir /nonexistent --shell /usr/sbin/nologin opspilot
+#9 0.213 useradd warning: opspilot's uid 10001 is greater than SYS_UID_MAX 999
+#9 DONE 0.3s
+
+#10 [runtime 3/6] WORKDIR /app
+#10 DONE 0.0s
+
+#11 [build 3/5] WORKDIR /app
+#11 DONE 0.0s
+
+#12 [build 4/5] COPY pyproject.toml uv.lock .python-version ./
+#12 DONE 0.0s
+
+#13 [build 5/5] RUN uv sync --locked --no-dev --no-default-groups --group m0 --group web
+#13 0.296 Using CPython 3.12.13 interpreter at: /usr/local/bin/python3.12
+#13 0.296 Creating virtual environment at: .venv
+#13 0.303 Resolved 73 packages in 0.96ms
+#13 0.346 Downloading zstandard (5.3MiB)
+#13 0.347 Downloading pydantic-core (2.0MiB)
+#13 0.347 Downloading tokenizers (3.2MiB)
+#13 0.347 Downloading hf-xet (4.3MiB)
+#13 0.348 Downloading openai (1.7MiB)
+#13 0.355 Downloading sqlalchemy (4.5MiB)
+#13 0.355 Downloading psycopg-binary (4.9MiB)
+#13 0.598  Downloaded pydantic-core
+#13 0.690  Downloaded tokenizers
+#13 0.701  Downloaded hf-xet
+#13 0.707  Downloaded zstandard
+#13 0.707  Downloaded psycopg-binary
+#13 0.772  Downloaded sqlalchemy
+#13 0.914  Downloaded openai
+#13 0.915 Prepared 59 packages in 610ms
+#13 1.329 Installed 59 packages in 413ms
+#13 2.082 Bytecode compiled 3739 files in 753ms
+#13 2.082  + alembic==1.20.0
+#13 2.082  + annotated-doc==0.0.5
+#13 2.082  + annotated-types==0.8.0
+#13 2.082  + anyio==4.15.1
+#13 2.082  + certifi==2026.7.22
+#13 2.082  + charset-normalizer==3.5.1
+#13 2.082  + click==8.5.0
+#13 2.082  + distro==1.9.0
+#13 2.082  + fastapi==0.141.1
+#13 2.082  + filelock==4.0.6
+#13 2.082  + fsspec==2026.9.0
+#13 2.082  + googleapis-common-protos==1.75.5
+#13 2.082  + h11==0.16.0
+#13 2.082  + hf-xet==1.6.0
+#13 2.082  + httpcore==1.0.9
+#13 2.082  + httpcore2==2.12.0
+#13 2.082  + httpx==0.28.1
+#13 2.082  + httpx2==2.12.0
+#13 2.082  + huggingface-hub==1.33.0
+#13 2.082  + idna==3.19
+#13 2.082  + jinja2==3.1.6
+#13 2.082  + jiter==0.16.0
+#13 2.082  + langsmith==0.12.2
+#13 2.082  + mako==1.4.3
+#13 2.082  + markupsafe==3.0.3
+#13 2.082  + openai==3.10.0
+#13 2.082  + opentelemetry-api==1.45.0
+#13 2.082  + opentelemetry-exporter-http-transport==0.66b0
+#13 2.082  + opentelemetry-exporter-otlp-common==0.66b0
+#13 2.082  + opentelemetry-exporter-otlp-proto-common==1.45.0
+#13 2.082  + opentelemetry-exporter-otlp-proto-http==1.45.0
+#13 2.082  + opentelemetry-proto==1.45.0
+#13 2.083  + opentelemetry-sdk==1.45.0
+#13 2.083  + opentelemetry-semantic-conventions==0.66b0
+#13 2.083  + orjson==3.12.0
+#13 2.083  + packaging==26.3
+#13 2.083  + protobuf==7.36.2
+#13 2.083  + psycopg==3.3.3
+#13 2.083  + psycopg-binary==3.3.3
+#13 2.083  + psycopg-pool==3.3.3
+#13 2.083  + pydantic==2.13.5
+#13 2.083  + pydantic-core==2.46.5
+#13 2.083  + pyyaml==6.0.3
+#13 2.083  + requests==2.34.2
+#13 2.083  + requests-toolbelt==1.0.0
+#13 2.083  + sniffio==1.3.1
+#13 2.083  + sqlalchemy==2.1.3
+#13 2.083  + starlette==1.6.0
+#13 2.083  + tokenizers==0.23.2
+#13 2.083  + tqdm==4.70.1
+#13 2.083  + truststore==0.10.4
+#13 2.083  + typing-extensions==4.16.0
+#13 2.083  + typing-inspection==0.4.4
+#13 2.083  + urllib3==2.7.0
+#13 2.083  + uuid-utils==0.17.1
+#13 2.083  + uvicorn==0.53.0
+#13 2.083  + websockets==17.1
+#13 2.083  + xxhash==4.0.1
+#13 2.083  + zstandard==0.25.0
+#13 DONE 2.4s
+
+#14 [runtime 4/6] COPY --from=build /app/.venv /app/.venv
+#14 DONE 1.1s
+
+#15 [runtime 5/6] COPY opspilot /app/opspilot
+#15 DONE 0.1s
+
+#16 [runtime 6/6] COPY deploy/docker-entrypoint.sh /usr/local/bin/opspilot-entrypoint
+#16 DONE 0.0s
+
+#17 exporting to image
+#17 exporting layers
+#17 exporting layers 4.7s done
+#17 exporting manifest sha256:c72bf9acf681f20c2f48b30b17e45a95870bdb2207134ca06e206582ffbb6977 done
+#17 exporting config sha256:068db2ece009b959bb05d4d33dd05412b402bf54289476f74bafadd59037ad2f done
+#17 exporting attestation manifest sha256:2636b0ee23ee525b4c82d32f8bd289a835e9dbdbc703dd880467494c6c6cb3ab done
+#17 exporting manifest list sha256:d7ec4b2155c5db8647cb28e4987c233be01a7e802d961db30eba4a5f38b1c4ee done
+#17 naming to docker.io/library/opspilot:local done
+#17 unpacking to docker.io/library/opspilot:local
+#17 unpacking to docker.io/library/opspilot:local 1.7s done
+#17 DONE 6.5s
+[opspilot-install 2026-11-11T06:14:17Z] generated postgres_password
+[opspilot-install 2026-11-11T06:14:17Z] generated owner_pgpass
+[opspilot-install 2026-11-11T06:14:17Z] generated web_pgpass
+[opspilot-install 2026-11-11T06:14:17Z] generated worker_pgpass
+[opspilot-install 2026-11-11T06:14:17Z] generated observer_pgpass
+[opspilot-install 2026-11-11T06:14:17Z] generated retention_pgpass
+[opspilot-install 2026-11-11T06:14:17Z] generated ui_password
+[opspilot-install 2026-11-11T06:14:17Z] generated web_ui_users
+[opspilot-install 2026-11-11T06:14:17Z] generated web_event_tokens
+[opspilot-install 2026-11-11T06:14:17Z] stopping runtimes (web worker observer) before migrating
+[opspilot-install 2026-11-11T06:14:17Z] starting postgres
+ Image postgres@sha256:2a0d0fe14825b0939f78a8cad5cd4e6aa68bf94d0e5dd96e24b6d23af4315545 Pulling 
+ a980c9fcef8c Pulling fs layer 0B
+ 2f80f30ad7f1 Pulling fs layer 0B
+ 156a40446245 Pulling fs layer 0B
+ 57fb71246055 Pulling fs layer 0B
+ 06b86868b609 Pulling fs layer 0B
+ 4603be59720a Pulling fs layer 0B
+ 3cc5adf8351e Pulling fs layer 0B
+ f0241e7beec7 Pulling fs layer 0B
+ 3d94305211dc Pulling fs layer 0B
+ 9a3a8cff569f Pulling fs layer 0B
+ 9bd8688dc8e1 Pulling fs layer 0B
+ 1d4072181936 Pulling fs layer 0B
+ 472ffdecc4a8 Pulling fs layer 0B
+ 7af37a00632a Pulling fs layer 0B
+ a980c9fcef8c Download complete 0B
+ 3d94305211dc Download complete 0B
+ f0241e7beec7 Downloading 1.491MB
+ 9bd8688dc8e1 Download complete 0B
+ 57fb71246055 Downloading 3.146MB
+ 7af37a00632a Download complete 0B
+ 9a3a8cff569f Downloading 1.049MB
+ 2f80f30ad7f1 Download complete 0B
+ 472ffdecc4a8 Download complete 0B
+ 156a40446245 Downloading 4.194MB
+ 3cc5adf8351e Download complete 0B
+ 4603be59720a Download complete 0B
+ 06b86868b609 Download complete 0B
+ f0241e7beec7 Downloading 22.02MB
+ 1d4072181936 Download complete 0B
+ 57fb71246055 Downloading 24.86MB
+ 9a3a8cff569f Download complete 0B
+ 156a40446245 Download complete 0B
+ 57fb71246055 Download complete 0B
+ f0241e7beec7 Downloading 42.99MB
+ 57fb71246055 Extracting 1B
+ 1e1debc0061d Download complete 0B
+ 0d0aaf6e7975 Download complete 0B
+ f0241e7beec7 Downloading 63.59MB
+ 57fb71246055 Extracting 1B
+ f0241e7beec7 Downloading 85.98MB
+ 57fb71246055 Extracting 1B
+ f0241e7beec7 Downloading 108MB
+ 57fb71246055 Extracting 1B
+ f0241e7beec7 Download complete 0B
+ 57fb71246055 Extracting 1B
+ 57fb71246055 Extracting 1B
+ a980c9fcef8c Pull complete 0B
+ 9a3a8cff569f Extracting 1B
+ 57fb71246055 Pull complete 0B
+ 1d4072181936 Pull complete 0B
+ 9a3a8cff569f Pull complete 0B
+ 156a40446245 Extracting 1B
+ 156a40446245 Extracting 1B
+ 7af37a00632a Pull complete 0B
+ 2f80f30ad7f1 Pull complete 0B
+ 472ffdecc4a8 Pull complete 0B
+ 156a40446245 Pull complete 0B
+ f0241e7beec7 Extracting 1B
+ f0241e7beec7 Extracting 1B
+ f0241e7beec7 Extracting 1B
+ f0241e7beec7 Extracting 1B
+ f0241e7beec7 Extracting 1B
+ f0241e7beec7 Extracting 1B
+ f0241e7beec7 Extracting 1B
+ f0241e7beec7 Extracting 1B
+ f0241e7beec7 Extracting 1B
+ f0241e7beec7 Extracting 1B
+ f0241e7beec7 Extracting 2B
+ f0241e7beec7 Extracting 2B
+ f0241e7beec7 Extracting 2B
+ f0241e7beec7 Extracting 2B
+ f0241e7beec7 Extracting 2B
+ f0241e7beec7 Extracting 2B
+ f0241e7beec7 Extracting 2B
+ 3d94305211dc Pull complete 0B
+ 9bd8688dc8e1 Pull complete 0B
+ 3cc5adf8351e Pull complete 0B
+ 3d94305211dc Pull complete 0B
+ 9bd8688dc8e1 Pull complete 0B
+ 3cc5adf8351e Pull complete 0B
+ 4603be59720a Pull complete 0B
+ 06b86868b609 Pull complete 0B
+ f0241e7beec7 Pull complete 0B
+ Image postgres@sha256:2a0d0fe14825b0939f78a8cad5cd4e6aa68bf94d0e5dd96e24b6d23af4315545 Pulled 
+ Network opspilot_default Creating 
+ Network opspilot_default Created 
+ Volume opspilot_pgdata Creating 
+ Volume opspilot_pgdata Created 
+ Container opspilot-postgres-1 Creating 
+ Container opspilot-postgres-1 Created 
+ Container opspilot-postgres-1 Starting 
+ Container opspilot-postgres-1 Started 
+ Container opspilot-postgres-1 Waiting 
+ Container opspilot-postgres-1 Healthy 
+[opspilot-install 2026-11-11T06:14:24Z] migrate: start
+ Container opspilot-migrate-1 Creating 
+ Container opspilot-migrate-1 Created 
+Attaching to migrate-1
+ Container opspilot-migrate-1 Starting 
+ Container opspilot-migrate-1 Started 
+migrate-1  | schema upgraded: 0024_trace_outbox
+[Kmigrate-1 exited with code 0
+ Compose Stopping Aborting on container exit...
+ Container opspilot-migrate-1 Stopping 
+ Container opspilot-migrate-1 Stopped 
+[opspilot-install 2026-11-11T06:14:26Z] migrate: done
+[opspilot-install 2026-11-11T06:14:26Z] init-roles: start
+ Container opspilot-init-roles-1 Creating 
+ Container opspilot-init-roles-1 Created 
+Attaching to init-roles-1
+ Container opspilot-init-roles-1 Starting 
+ Container opspilot-init-roles-1 Started 
+init-roles-1  | opspilot_web: login opspilot_web_app ok, schema at head 0024_trace_outbox
+init-roles-1  | opspilot_worker: login opspilot_worker_app ok, schema at head 0024_trace_outbox
+init-roles-1  | opspilot_observer: login opspilot_observer_app ok, schema at head 0024_trace_outbox
+init-roles-1  | opspilot_retention: login opspilot_retention_app ok, schema at head 0024_trace_outbox
+[Kinit-roles-1 exited with code 0
+ Compose Stopping Aborting on container exit...
+ Container opspilot-init-roles-1 Stopping 
+ Container opspilot-init-roles-1 Stopped 
+[opspilot-install 2026-11-11T06:14:27Z] init-roles: done
+[opspilot-install 2026-11-11T06:14:27Z] starting runtimes: web worker observer
+ Container opspilot-web-1 Creating 
+ Container opspilot-worker-1 Creating 
+ Container opspilot-observer-1 Creating 
+ Container opspilot-observer-1 Created 
+ Container opspilot-worker-1 Created 
+ Container opspilot-web-1 Created 
+ Container opspilot-worker-1 Starting 
+ Container opspilot-observer-1 Starting 
+ Container opspilot-web-1 Starting 
+ Container opspilot-web-1 Started 
+ Container opspilot-worker-1 Started 
+ Container opspilot-observer-1 Started 
+ Container opspilot-worker-1 Waiting 
+ Container opspilot-observer-1 Waiting 
+ Container opspilot-web-1 Waiting 
+ Container opspilot-web-1 Healthy 
+ Container opspilot-worker-1 Healthy 
+ Container opspilot-observer-1 Healthy 
+[opspilot-install 2026-11-11T06:14:33Z] workbench: http://127.0.0.1:18090 (loopback only)
+[opspilot-install 2026-11-11T06:14:33Z] login: user 'operator', password in /home/opspilot/.config/opspilot/ui_password
+[opspilot-install 2026-11-11T06:14:33Z] Alertmanager bearer token: /home/opspilot/.config/opspilot/alertmanager_token
+rc=0
+2026-11-11T06:14:33Z

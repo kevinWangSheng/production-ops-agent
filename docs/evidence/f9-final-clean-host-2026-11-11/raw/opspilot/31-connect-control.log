@@ -1,0 +1,7 @@
+2026-11-11T06:14:33Z
++ docker network connect --alias opspilot-web kind 912e235d08bd
++ docker network connect --alias opspilot-worker kind 4189efb36088
++ docker network connect --alias opspilot-observer kind b010a886b8d8
+{"project": "opspilot", "kind_network": {"web": "connected", "worker": "connected", "observer": "connected"}}
+rc=0
+2026-11-11T06:14:33Z

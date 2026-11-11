@@ -1,0 +1,16 @@
+now | 2026-11-11 07:58:22.314238+00
+alembic | 0024_trace_outbox
+incident | fb89cdf2-98a8-5ec0-a70f-cd93fb321214 | cancelled | closed | human_owned | 3 | 2026-11-11 07:42:10.340733+00
+incident | 1fbdce34-377c-5a57-9a2a-6ae81e1d5364 | queued | observing_recovery | automatic | 0 | 
+run | 79970de4-e57f-5d09-8189-5d05bd160f5b | cancelled | 1 | 0 | 0
+run | f29d655b-66f6-5cc6-a57f-67c627134848 | completed | 1 | 10 | 17
+controls | 4
+evidence | 17
+session | 7244f7fd-29e0-599f-95f1-a9ce7dfc0a57 | completed | recovery_confirmed | 2026-11-11 07:15:21.729994+00 | 12 | 2026-11-11 07:10:14.734222+00 | 2026-11-11 07:26:39.381335+00
+session | 95983fe0-c6aa-563c-9c2a-3853c9d0d9db | authorized |  |  | 4 | 2026-11-11 07:52:29.779291+00 | 2026-11-11 07:57:36.380493+00
+sample_cols | sample_id session_id job_id sequence epoch window_start window_end outcome required_signals_present subject_control_generation observation_generation health_profile_revision disposition reason confirms_health health_basis subject_lifecycle incident_control_generation incident_observation_generation scope_suspended global_generation target_generation within_deadline lease_valid lease_stamps_match readings_consistent transition submitted_at purpose subject_kind subject_id current_subject_state current_subject_control_generation current_subject_observation_generation decision_at release_evidence_sha256 release_evaluation release_receipt
+sample | {"epoch": 1, "job_id": "02bbaee1-ddb9-4313-83c9-3b886cd25089", "reason": "adopted", "outcome": "healthy", "purpose": "incident_recovery", "sequence": 4, "sample_id": "dd34eef7-2c87-456a-a318-0511430439c8", "session_id": "95983fe0-c6aa-563c-9c2a-3853c9d0d9db", 
+sample | {"epoch": 1, "job_id": "17bcbc75-a628-45f1-ae4f-cc89a0c1c7d5", "reason": "adopted", "outcome": "degraded", "purpose": "incident_recovery", "sequence": 2, "sample_id": "0d6c2756-c35c-4281-bac5-fda934c4a916", "session_id": "95983fe0-c6aa-563c-9c2a-3853c9d0d9db",
+sample | {"epoch": 1, "job_id": "80f0e1e9-e06d-433d-9f43-e3a04a502d26", "reason": "adopted", "outcome": "failed", "purpose": "incident_recovery", "sequence": 3, "sample_id": "783ac5d4-6018-4087-b56b-d9773767228f", "session_id": "95983fe0-c6aa-563c-9c2a-3853c9d0d9db", "
+sample | {"epoch": 1, "job_id": "9923572c-dc1c-4e2c-9bf0-761afc6bedca", "reason": "adopted", "outcome": "failed", "purpose": "incident_recovery", "sequence": 1, "sample_id": "3091506c-2985-4cf5-ab96-34a32c5bc4e6", "session_id": "95983fe0-c6aa-563c-9c2a-3853c9d0d9db", "
+pm | {"created_at": "2026-11-11T07:42:44.437728+00:00", "generation": 2, "updated_at": "2026-11-11T07:42:44.449619+00:00", "incident_id": "fb89cdf2-98a8-5ec0-a70f-cd93fb321214", "postmortem_id": "f114f69c-5c6f-4981-975b-81767929489c", "latest_version": 1}

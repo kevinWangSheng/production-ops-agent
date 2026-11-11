@@ -1,0 +1,11 @@
+2026-11-11T06:08:16Z
+PRETTY_NAME="Ubuntu 24.04.5 LTS"
+6.8.0-147-generic
+users:
+linuxuser
+docker: absent
+kind: absent
+127.0.0.53%lo:53 users:(("systemd-resolve",pid=774,fd=15))
+0.0.0.0:22 users:(("sshd",pid=1114,fd=3))
+127.0.0.54:53 users:(("systemd-resolve",pid=774,fd=17))
+[::]:22 users:(("sshd",pid=1114,fd=4))

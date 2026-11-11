@@ -1,0 +1,135 @@
+{
+  "feature": "F9",
+  "session": "final clean-host run, 2026-11-11 UTC (2026-11-10 PT)",
+  "category": "integration run; not production, not soak; synthetic lab traffic and injected flagd faults",
+  "steps_covered": [1, 2, 4],
+  "steps_not_covered": {"3": "not rerun; see docs/evidence/f9-steps-2-4-2026-11-10", "5": "documentation; see docs/portfolio"},
+  "passes_changed": false,
+  "host": {
+    "alias": "opspilot-f9-1",
+    "provider": "vultr shared vCPU, reinstalled by the user in the console before this run",
+    "os": "Ubuntu 24.04.5 LTS",
+    "kernel": "6.8.0-147-generic",
+    "clean_state_at": "2026-11-11T06:08:16Z",
+    "clean_state": {"home_users": ["linuxuser"], "docker": "absent", "kind": "absent", "listening": ["22", "local DNS"]}
+  },
+  "archive": {
+    "file": "f9-final-host-evidence.tgz (kept outside the repo)",
+    "sha256": "29567e235d651ed02b026d35b208ff10011015fa0644e62d718983fee7e0a376",
+    "entries": 22,
+    "copied_to_raw": 20,
+    "redactions": "none needed: no host addresses, SSH fingerprints, secret values or 10.x/172.x addresses found; gitleaks found nothing"
+  },
+  "verdicts": {
+    "1": {"verdict": "met", "reason": "clean host checked; only the README same-host lab commands were used; every script and command exited 0; runtimes joined the lab and the first alert opened an incident and a Run"},
+    "2": {"verdict": "partial", "reason": "all seven elements were observed on the host but split across two incidents: handoff, external human handling, recovery observation and archive on fb89cdf2, whose Run made no model call succeed and has no evidence; investigation and evidence on 1fbdce34, which was not handed off or closed. Whether two incidents together satisfy the step is a user decision"},
+    "4": {"verdict": "partial", "reason": "pinned-digest upgrade v0.1.0 -> v0.1.1 and UPGRADE.md rollback exited as documented and an in-flight recovery observation reached recovery_confirmed across all three switches; no separate staging host, no schema change between versions, per-transition DB snapshots failed, install.env contents not captured"}
+  },
+  "step1": {
+    "commit": "9416041d93b8e9844dd9a84b736319174b4d419a",
+    "commands": [
+      {"who": "root", "cmd": "adduser --disabled-password --gecos \"\" opspilot; su - opspilot -c 'git clone ...'; scripts/kind_lab/install_linux.sh --user opspilot", "start": "2026-11-11T06:08:16Z", "end": "2026-11-11T06:11:54Z", "result": "lab health ok"},
+      {"who": "opspilot", "cmd": "python3 scripts/kind_lab.py control-secrets", "at": "2026-11-11T06:12:59Z", "exit": 0},
+      {"who": "user", "cmd": "append DEEPSEEK_API_KEY to worker_env via ssh pipe (README says editor)", "at": "about 2026-11-11T06:13Z", "logged": false},
+      {"who": "opspilot", "cmd": "OPSPILOT_START_AGENT=1 deploy/compose/install.sh install", "start": "2026-11-11T06:14:04Z", "end": "2026-11-11T06:14:33Z", "exit": 0},
+      {"who": "opspilot", "cmd": "python3 scripts/kind_lab.py connect-control --project opspilot", "at": "2026-11-11T06:14:33Z", "exit": 0, "result": {"web": "connected", "worker": "connected", "observer": "connected"}}
+    ],
+    "image": {"ref": "opspilot:local", "version": "0.1.1", "revision": "9416041d93b8e9844dd9a84b736319174b4d419a", "id": "sha256:d7ec4b2155c5db8647cb28e4987c233be01a7e802d961db30eba4a5f38b1c4ee", "source": "built from the checkout by install.sh"},
+    "postgres_image": "postgres@sha256:2a0d0fe14825b0939f78a8cad5cd4e6aa68bf94d0e5dd96e24b6d23af4315545",
+    "schema_head": "0024_trace_outbox",
+    "workbench": "127.0.0.1:18090",
+    "first_command_to_connected_s": 377,
+    "undocumented_steps": 0,
+    "gaps": ["key insertion not logged", "no separate /readyz probe; health only from Compose healthy status", "reinstall time not in the archive"]
+  },
+  "step2": {
+    "handoff_incident": {
+      "incident_id": "fb89cdf2-98a8-5ec0-a70f-cd93fb321214",
+      "run_id": "79970de4-e57f-5d09-8189-5d05bd160f5b",
+      "drill_egress_cut_at": "2026-11-11T06:15:08Z",
+      "fault_injected_at": "2026-11-11T06:15:10Z",
+      "alert": {"name": "CheckoutPlaceOrderErrorRatioHigh", "starts_at": "2026-11-11T06:21:54Z", "outcome": "created", "actor": "alertmanager"},
+      "incident_created_at": "2026-11-11T06:22:04Z",
+      "handed_off_at": "2026-11-11T06:22:05.920Z",
+      "handoff_reason": "MODEL_UNAVAILABLE",
+      "run_state_after_handoff": "waiting_human",
+      "model_reservations": {"unknown": 2, "spent": 0},
+      "egress_restored_at": "2026-11-11T06:22:46Z",
+      "later_alert_deliveries": ["resolved_attached (endsAt 06:58:54Z, cause not checked)", "attached (startsAt 07:01:54Z)", "resolved_attached (endsAt 07:11:54Z)"],
+      "controls": [
+        {"kind": "takeover", "actor": "operator", "channel": "web", "generation": "0->1", "at": "2026-11-11T07:08:11Z"},
+        {"kind": "register_remediation", "actor": "operator", "channel": "web", "generation": "1->2", "at": "2026-11-11T07:10:14Z", "revision": "payment:fault-restored"},
+        {"kind": "close", "actor": "operator", "channel": "web", "generation": "2->3", "at": "2026-11-11T07:42:10Z"}
+      ],
+      "external_fault_restore": {"by": "user, own terminal", "at": "about 2026-11-11T07:10Z", "verified": true},
+      "observation": {"session_id": "7244f7fd-29e0-599f-95f1-a9ce7dfc0a57", "authorization_source": "post_remediation", "authorized_by": "operator", "samples": 12, "degraded": 2, "healthy": 10, "healthy_since": "2026-11-11T07:15:21Z", "ended": "recovery_confirmed", "ended_at": "2026-11-11T07:26:39Z", "lifecycle": "observing_recovery -> resolved"},
+      "final": {"lifecycle": "closed", "mode": "human_owned", "run_state": "cancelled", "control_generation": 3},
+      "postmortem": {"version": 1, "created_at": "2026-11-11T07:42:44Z", "state": "under_review", "knowledge_entries": 0}
+    },
+    "normal_incident": {
+      "incident_id": "1fbdce34-377c-5a57-9a2a-6ae81e1d5364",
+      "run_id": "f29d655b-66f6-5cc6-a57f-67c627134848",
+      "related_incident_id": "fb89cdf2-98a8-5ec0-a70f-cd93fb321214",
+      "fault_injected_at": "2026-11-11T07:42:52Z",
+      "incident_created_at": "2026-11-11T07:49:04Z",
+      "run_state": "completed",
+      "rounds": 10,
+      "model_reservations_spent": 10,
+      "tool_operations": 17,
+      "evidence_rows": 17,
+      "handoff": false,
+      "report": {"assessment": "completed", "conclusion": "partial", "root_cause_direction": "payment PaymentService/Charge 'Payment request failed. Invalid token.' (charge.js:37); matches the injected paymentFailure flag"},
+      "observation": {"session_id": "95983fe0-c6aa-563c-9c2a-3853c9d0d9db", "authorization_source": "automatic", "authorized_at": "2026-11-11T07:52:29Z", "ended": "recovery_confirmed", "ended_at": "2026-11-11T08:09:53Z"},
+      "fault_restored_at": "2026-11-11T07:52:55Z",
+      "fault_restored_by": "execution agent",
+      "closed": false
+    },
+    "gaps": [
+      "only one worker log line kept, hand-copied before the worker container was recreated",
+      "user actions are DB audit rows only, no workbench screenshots",
+      "46 min between handoff (06:22:05Z) and takeover (07:08:11Z), waiting for the user",
+      "no single incident covers investigation with evidence and human handoff and archive",
+      "postmortem not reviewed; knowledge entries 0",
+      "no LangSmith trace; no token or balance cost record"
+    ]
+  },
+  "step4": {
+    "script": "raw/opspilot/step4.sh",
+    "start_image": "opspilot:local 0.1.1 (9416041d)",
+    "releases": {
+      "v0.1.0": {"commit": "dd9534316a6b95e3513f2c68c3f13e45bc7ea322", "image": "ghcr.io/kevinwangsheng/opspilot@sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd", "release_run": 42226724770},
+      "v0.1.1": {"commit": "9b208cd13cc6c28e97ab9c0d1cb074a13dd3cf34", "image": "ghcr.io/kevinwangsheng/opspilot@sha256:0af7b9ff4b71e2c0b0b71d99020f35ed67f79eef958f612938f6adc102fff25e", "release_run": 42824773408, "ci_run": 42824741602}
+    },
+    "version_difference": "runtime code and schema head identical; only version string, evaluation code, UPGRADE.md and pyproject differ",
+    "phases": [
+      {"id": "A", "what": "local build -> pinned v0.1.0", "start": "2026-11-11T07:53:22Z", "end": "2026-11-11T07:53:45Z", "upgrade_exit": 0, "connect_control_exit": 0, "schema": "unchanged 0024_trace_outbox", "running_image_id": "sha256:228df9f7"},
+      {"id": "B", "what": "pinned v0.1.0 -> pinned v0.1.1", "start": "2026-11-11T07:54:07Z", "end": "2026-11-11T07:54:29Z", "upgrade_exit": 0, "connect_control_exit": 0, "schema": "unchanged 0024_trace_outbox", "running_image_id": "sha256:0af7b9ff"},
+      {"id": "C", "what": "UPGRADE.md rollback to pinned v0.1.0", "start": "2026-11-11T07:56:00Z", "end": "2026-11-11T07:56:19Z", "stop_exit": 0, "same_head_downgrade_exit": 1, "same_head_downgrade_documented": true, "upgrade_exit": 0, "connect_control_exit": 0, "running_image_id": "sha256:228df9f7"}
+    ],
+    "post_state_at": "2026-11-11T07:58:22Z",
+    "post_state": {"alembic": "0024_trace_outbox", "incidents": 2, "runs": 2, "controls": 4, "evidence": 17},
+    "inflight_observation": {
+      "session_id": "95983fe0-c6aa-563c-9c2a-3853c9d0d9db",
+      "samples": [
+        {"seq": 1, "outcome": "failed", "window_end": "2026-11-11T07:53:41Z"},
+        {"seq": 2, "outcome": "degraded", "window_end": "2026-11-11T07:54:44Z"},
+        {"seq": 3, "outcome": "failed", "window_end": "2026-11-11T07:56:14Z"},
+        {"seq": "4-13", "outcome": "healthy"}
+      ],
+      "healthy_since": "2026-11-11T07:58:36Z",
+      "ended": "recovery_confirmed",
+      "ended_at": "2026-11-11T08:09:53Z",
+      "failed_degraded_cause": "not checked; inferred from timing: samples 1 and 3 fall in the seconds after A and C restart the runtimes and before connect-control, sample 2's window lies mostly in the fault period"
+    },
+    "gaps": [
+      "per-transition DB snapshots failed: unquoted row labels in step4.sh SQL were read as column names",
+      "package-version probe failed (PackageNotFoundError); version checked only by image digest",
+      "/healthz curl went to the workbench port 18090 (404); /readyz is on 9464 inside the containers",
+      "no v0.1.1 container logs kept",
+      "no separate staging host",
+      "no cross-schema upgrade or rollback (both versions at 0024_trace_outbox)",
+      "install.env contents not captured",
+      "no complete pre-switch count snapshot; 'unchanged' compared against the 07:42Z and 07:52Z partial records"
+    ]
+  }
+}

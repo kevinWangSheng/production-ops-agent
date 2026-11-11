@@ -1,0 +1,274 @@
++ date -u +%FT%TZ
+2026-11-11T06:08:16Z
++ adduser --disabled-password --gecos '' opspilot
+info: Adding user `opspilot' ...
+info: Selecting UID/GID from range 1000 to 59999 ...
+info: Adding new group `opspilot' (1001) ...
+info: Adding new user `opspilot' (1001) with group `opspilot (1001)' ...
+info: Creating home directory `/home/opspilot' ...
+info: Copying files from `/etc/skel' ...
+info: Adding new user `opspilot' to supplemental / extra groups `users' ...
+info: Adding user `opspilot' to group `users' ...
++ su - opspilot -c 'git clone https://github.com/kevinWangSheng/production-ops-agent.git'
+Cloning into 'production-ops-agent'...
++ su - opspilot -c 'cd production-ops-agent && git log --oneline -1'
+9416041 docs: fix portfolio tool-count and human-decision claims, ROADMAP F8 passes (#544)
++ /home/opspilot/production-ops-agent/scripts/kind_lab/install_linux.sh --user opspilot
++ apt prerequisites
+Hit:1 http://ubuntu.mirror.constant.com noble InRelease
+Get:2 http://security.ubuntu.com/ubuntu noble-security InRelease [126 kB]
+Get:3 http://ubuntu.mirror.constant.com noble-updates InRelease [126 kB]
+Get:4 http://ubuntu.mirror.constant.com noble-backports InRelease [126 kB]
+Get:5 http://ubuntu.mirror.constant.com noble-updates/main amd64 Packages [1,444 kB]
+Get:6 http://security.ubuntu.com/ubuntu noble-security/main amd64 Packages [1,160 kB]
+Get:7 http://ubuntu.mirror.constant.com noble-updates/main Translation-en [315 kB]
+Get:8 http://ubuntu.mirror.constant.com noble-updates/main amd64 Components [181 kB]
+Get:9 http://ubuntu.mirror.constant.com noble-updates/restricted amd64 Packages [1,879 kB]
+Get:10 http://ubuntu.mirror.constant.com noble-updates/restricted Translation-en [429 kB]
+Get:11 http://ubuntu.mirror.constant.com noble-updates/universe amd64 Packages [1,711 kB]
+Get:12 http://ubuntu.mirror.constant.com noble-updates/universe Translation-en [344 kB]
+Get:13 http://ubuntu.mirror.constant.com noble-updates/universe amd64 Components [388 kB]
+Get:14 http://ubuntu.mirror.constant.com noble-updates/multiverse amd64 Packages [50.7 kB]
+Get:15 http://ubuntu.mirror.constant.com noble-updates/multiverse Translation-en [14.3 kB]
+Get:16 http://ubuntu.mirror.constant.com noble-updates/multiverse amd64 Components [940 B]
+Get:17 http://ubuntu.mirror.constant.com noble-backports/main amd64 Components [5,736 B]
+Get:18 http://ubuntu.mirror.constant.com noble-backports/universe amd64 Components [12.6 kB]
+Get:19 http://security.ubuntu.com/ubuntu noble-security/main Translation-en [234 kB]
+Get:20 http://security.ubuntu.com/ubuntu noble-security/main amd64 Components [46.3 kB]
+Get:21 http://security.ubuntu.com/ubuntu noble-security/restricted amd64 Packages [1,729 kB]
+Get:22 http://security.ubuntu.com/ubuntu noble-security/restricted Translation-en [396 kB]
+Get:23 http://security.ubuntu.com/ubuntu noble-security/universe amd64 Packages [1,228 kB]
+Get:24 http://security.ubuntu.com/ubuntu noble-security/universe Translation-en [248 kB]
+Get:25 http://security.ubuntu.com/ubuntu noble-security/universe amd64 Components [76.3 kB]
+Get:26 http://security.ubuntu.com/ubuntu noble-security/multiverse amd64 Packages [45.4 kB]
+Get:27 http://security.ubuntu.com/ubuntu noble-security/multiverse Translation-en [12.4 kB]
+Fetched 12.3 MB in 2s (5,733 kB/s)
+Reading package lists...
+
+Running kernel seems to be up-to-date.
+
+No services need to be restarted.
+
+No containers need to be restarted.
+
+No user sessions are running outdated binaries.
+
+No VM guests are running outdated hypervisor (qemu) binaries on this host.
+Get:1 https://download.docker.com/linux/ubuntu noble InRelease [48.5 kB]
+Get:2 https://download.docker.com/linux/ubuntu noble/stable amd64 Packages [73.4 kB]
+Hit:3 http://ubuntu.mirror.constant.com noble InRelease
+Hit:4 http://ubuntu.mirror.constant.com noble-updates InRelease
+Hit:5 http://ubuntu.mirror.constant.com noble-backports InRelease
+Hit:6 http://security.ubuntu.com/ubuntu noble-security InRelease
+Fetched 122 kB in 1s (241 kB/s)
+Reading package lists...
++ docker-ce 5:29.2.1-1~ubuntu.24.04~noble
+
+Running kernel seems to be up-to-date.
+
+No services need to be restarted.
+
+No containers need to be restarted.
+
+No user sessions are running outdated binaries.
+
+No VM guests are running outdated hypervisor (qemu) binaries on this host.
+Synchronizing state of docker.service with SysV service script with /usr/lib/systemd/systemd-sysv-install.
+Executing: /usr/lib/systemd/systemd-sysv-install enable docker
++ kind from https://github.com/kubernetes-sigs/kind/releases/download/v0.33.0/kind-linux-amd64
++ kubectl from https://dl.k8s.io/release/v1.37.1/bin/linux/amd64/kubectl
++ helm v4.3.0
++ inotify limits for kind
++ installed versions
+docker 29.2.1
+kind v0.33.0 go1.26.7 linux/amd64
+Client Version: v1.37.1
+v4.3.0+gbec5b06
++ python3 scripts/kind_lab.py up (as opspilot, docker group)
+{"runtime": "docker", "host_reclaimable_gib": 14.8519287109375}
++ kind create cluster --config /home/opspilot/production-ops-agent/scripts/kind_lab/kind-config.yaml --kubeconfig /home/opspilot/production-ops-agent/tmp/m1-kind-lab/kubeconfig --wait 120s
+Creating cluster "opspilot-m1" ...
+ • Ensuring node image (kindest/node:v1.37.0) 🖼️  ...
+ ✓ Ensuring node image (kindest/node:v1.37.0) 🖼️
+ • Preparing nodes 📦   ...
+ ✓ Preparing nodes 📦 
+ • Writing configuration 📜  ...
+ ✓ Writing configuration 📜
+ • Starting control-plane 🕹️  ...
+ ✓ Starting control-plane 🕹️
+ • Installing CNI 🔌  ...
+ ✓ Installing CNI 🔌
+ • Installing StorageClass 💾  ...
+ ✓ Installing StorageClass 💾
+ • Waiting ≤ 2m0s for control-plane = Ready ⏳  ...
+ ✓ Waiting ≤ 2m0s for control-plane = Ready ⏳
+ • Ready after 16s 💚
+Set kubectl context to "kind-opspilot-m1"
+You can now use your cluster with:
+
+kubectl cluster-info --context kind-opspilot-m1 --kubeconfig /home/opspilot/production-ops-agent/tmp/m1-kind-lab/kubeconfig
+
+Not sure what to do next? 😅  Check out https://kind.sigs.k8s.io/docs/user/quick-start/
++ kubectl --kubeconfig /home/opspilot/production-ops-agent/tmp/m1-kind-lab/kubeconfig --context kind-opspilot-m1 wait --for=condition=Ready node --all --timeout=180s
+node/opspilot-m1-control-plane condition met
++ kubectl apply secret/prometheus-web-config (values not shown)
++ kubectl apply secret/prometheus-web-auth (values not shown)
++ wrote /home/opspilot/production-ops-agent/tmp/m1-kind-lab/prometheus-<role>.env for ['holmes', 'investigator', 'lab', 'observer']
++ kubectl apply secret/alertmanager-opspilot-webhook (values not shown)
++ wrote /home/opspilot/production-ops-agent/tmp/m1-kind-lab/workbench-alertmanager.env (alertmanager, release-deployer; token hashes only)
++ helm repo add --force-update open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts
+"open-telemetry" has been added to your repositories
++ helm repo add --force-update prometheus-community https://prometheus-community.github.io/helm-charts
+"prometheus-community" has been added to your repositories
++ helm repo update open-telemetry prometheus-community
+Hang tight while we grab the latest from your chart repositories...
+...Successfully got an update from the "open-telemetry" chart repository
+...Successfully got an update from the "prometheus-community" chart repository
+Update Complete. ⎈Happy Helming!⎈
+{"lab_endpoints": {"webhook": "opspilot-web:8080", "web": "opspilot-web:9464", "worker": "opspilot-worker:9464", "observer": "opspilot-observer:9464"}}
++ helm --kubeconfig /home/opspilot/production-ops-agent/tmp/m1-kind-lab/kubeconfig --kube-context kind-opspilot-m1 upgrade --install otel-demo open-telemetry/opentelemetry-demo --version 0.37.8 --namespace otel-demo --create-namespace --values /home/opspilot/production-ops-agent/tmp/m1-kind-lab/rendered/values.yaml --force-conflicts --timeout 15m
+Release "otel-demo" does not exist. Installing it now.
+NAME: otel-demo
+LAST DEPLOYED: Wed Nov 11 06:09:18 2026
+NAMESPACE: otel-demo
+STATUS: deployed
+REVISION: 1
+DESCRIPTION: Install complete
+TEST SUITE: None
+NOTES:
+=======================================================================================
+
+
+ ██████╗ ████████╗███████╗██╗         ██████╗ ███████╗███╗   ███╗ ██████╗
+██╔═══██╗╚══██╔══╝██╔════╝██║         ██╔══██╗██╔════╝████╗ ████║██╔═══██╗
+██║   ██║   ██║   █████╗  ██║         ██║  ██║█████╗  ██╔████╔██║██║   ██║
+██║   ██║   ██║   ██╔══╝  ██║         ██║  ██║██╔══╝  ██║╚██╔╝██║██║   ██║
+╚██████╔╝   ██║   ███████╗███████╗    ██████╔╝███████╗██║ ╚═╝ ██║╚██████╔╝
+ ╚═════╝    ╚═╝   ╚══════╝╚══════╝    ╚═════╝ ╚══════╝╚═╝     ╚═╝ ╚═════╝
+
+
+- All services are available via the Frontend proxy: http://localhost:8080
+  by running these commands:
+     kubectl --namespace otel-demo port-forward svc/frontend-proxy 8080:8080
+
+  The following services are available at these paths after the frontend-proxy service is exposed with port forwarding:
+  Webstore             http://localhost:8080/
+  Jaeger UI            http://localhost:8080/jaeger/ui/
+  Grafana              http://localhost:8080/grafana/
+  Load Generator UI    http://localhost:8080/loadgen/
+  Feature Flags UI     http://localhost:8080/feature/
++ kubectl apply secret/prometheus-readonly-proxy (values not shown)
++ kubectl --kubeconfig /home/opspilot/production-ops-agent/tmp/m1-kind-lab/kubeconfig --context kind-opspilot-m1 apply -f /home/opspilot/production-ops-agent/scripts/kind_lab/prometheus-readonly-proxy.yaml
+deployment.apps/prometheus-readonly-proxy created
+service/prometheus-readonly-proxy created
++ kubectl --kubeconfig /home/opspilot/production-ops-agent/tmp/m1-kind-lab/kubeconfig --context kind-opspilot-m1 -n otel-demo patch deployment prometheus-readonly-proxy -p {"spec": {"template": {"metadata": {"annotations": {"opspilot.lab/config-sha256": "6ed250cde837d3c93936ab101ab2e20effd6216a555466db2ad3dca323717b78"}}}}}
+deployment.apps/prometheus-readonly-proxy patched
++ kubectl --kubeconfig /home/opspilot/production-ops-agent/tmp/m1-kind-lab/kubeconfig --context kind-opspilot-m1 -n otel-demo rollout status deployment/prometheus-readonly-proxy --timeout=180s
+Waiting for deployment spec update to be observed...
+Waiting for deployment spec update to be observed...
+Waiting for deployment "prometheus-readonly-proxy" rollout to finish: 0 of 1 updated replicas are available...
+deployment "prometheus-readonly-proxy" successfully rolled out
++ kubectl --kubeconfig /home/opspilot/production-ops-agent/tmp/m1-kind-lab/kubeconfig --context kind-opspilot-m1 -n otel-demo patch deployment prometheus -p {"spec": {"template": {"metadata": {"annotations": {"opspilot.lab/config-sha256": "f6b9685d829b5e5ea2ae0fedb787e407d661b4e64707a0378da06f34c53a50f1"}}}}}
+deployment.apps/prometheus patched
++ kubectl --kubeconfig /home/opspilot/production-ops-agent/tmp/m1-kind-lab/kubeconfig --context kind-opspilot-m1 -n otel-demo patch deployment otel-collector -p {"spec": {"template": {"metadata": {"annotations": {"opspilot.lab/config-sha256": "f7fe188b4949a4e2214407f1676e7f97135094953ed7382fb536269219b1261f"}}}}}
+deployment.apps/otel-collector patched
++ helm --kubeconfig /home/opspilot/production-ops-agent/tmp/m1-kind-lab/kubeconfig --kube-context kind-opspilot-m1 upgrade --install kube-state-metrics prometheus-community/kube-state-metrics --version 8.6.0 --namespace otel-demo --values /home/opspilot/production-ops-agent/scripts/kind_lab/kube-state-metrics-values.yaml --timeout 5m
+Release "kube-state-metrics" does not exist. Installing it now.
+NAME: kube-state-metrics
+LAST DEPLOYED: Wed Nov 11 06:10:45 2026
+NAMESPACE: otel-demo
+STATUS: deployed
+REVISION: 1
+DESCRIPTION: Install complete
+TEST SUITE: None
+NOTES:
+kube-state-metrics is a simple service that listens to the Kubernetes API server and generates metrics about the state of the objects.
+The exposed metrics can be found here:
+https://github.com/kubernetes/kube-state-metrics/blob/master/docs/README.md#exposed-metrics
+
+The metrics are exported on the HTTP endpoint /metrics on the listening port.
+In your case, kube-state-metrics.otel-demo.svc.cluster.local:8080/metrics
+
+They are served either as plaintext or protobuf depending on the Accept header.
+They are designed to be consumed either by Prometheus itself or by a scraper that is compatible with scraping a Prometheus client endpoint.
++ helm --kubeconfig /home/opspilot/production-ops-agent/tmp/m1-kind-lab/kubeconfig --kube-context kind-opspilot-m1 upgrade --install alertmanager prometheus-community/alertmanager --version 1.24.0 --namespace otel-demo --values /home/opspilot/production-ops-agent/tmp/m1-kind-lab/rendered/alertmanager-values.yaml --timeout 5m
+Release "alertmanager" does not exist. Installing it now.
+NAME: alertmanager
+LAST DEPLOYED: Wed Nov 11 06:10:46 2026
+NAMESPACE: otel-demo
+STATUS: deployed
+REVISION: 1
+DESCRIPTION: Install complete
+TEST SUITE: None
+NOTES:
+1. Get the application URL by running these commands:
+  export POD_NAME=$(kubectl get pods --namespace otel-demo -l "app.kubernetes.io/name=alertmanager,app.kubernetes.io/instance=alertmanager" -o jsonpath="{.items[0].metadata.name}")
+  echo "Visit http://127.0.0.1:9093 to use your application"
+  kubectl --namespace otel-demo port-forward $POD_NAME 9093:80
++ kubectl --kubeconfig /home/opspilot/production-ops-agent/tmp/m1-kind-lab/kubeconfig --context kind-opspilot-m1 apply -f /home/opspilot/production-ops-agent/scripts/kind_lab/jaeger-nodeport.yaml
+service/jaeger-query-nodeport created
++ kubectl --kubeconfig /home/opspilot/production-ops-agent/tmp/m1-kind-lab/kubeconfig --context kind-opspilot-m1 -n otel-demo wait --for=condition=Available deployment --all --timeout=900s
+deployment.apps/ad condition met
+deployment.apps/cart condition met
+deployment.apps/checkout condition met
+deployment.apps/currency condition met
+deployment.apps/email condition met
+deployment.apps/flagd condition met
+deployment.apps/frontend condition met
+deployment.apps/frontend-proxy condition met
+deployment.apps/image-provider condition met
+deployment.apps/jaeger condition met
+deployment.apps/kube-state-metrics condition met
+deployment.apps/load-generator condition met
+deployment.apps/otel-collector condition met
+deployment.apps/payment condition met
+deployment.apps/product-catalog condition met
+deployment.apps/prometheus condition met
+deployment.apps/prometheus-readonly-proxy condition met
+deployment.apps/quote condition met
+deployment.apps/recommendation condition met
+deployment.apps/shipping condition met
+deployment.apps/valkey-cart condition met
+{
+  "prometheus": {
+    "url": "http://127.0.0.1:19090",
+    "status": 200,
+    "span_metrics": true,
+    "kube_state_metrics": true,
+    "ok": true
+  },
+  "jaeger": {
+    "url": "http://127.0.0.1:16686/jaeger/ui",
+    "status": 200,
+    "ok": true,
+    "services": [
+      "ad",
+      "cart",
+      "checkout",
+      "currency",
+      "email",
+      "flagd",
+      "frontend",
+      "frontend-proxy",
+      "jaeger-all-in-one",
+      "load-generator",
+      "payment",
+      "product-catalog",
+      "quote",
+      "recommendation",
+      "shipping"
+    ]
+  },
+  "frontend": {
+    "url": "http://127.0.0.1:18080/",
+    "status": 200,
+    "ok": true
+  },
+  "deployments": {
+    "not_ready": [],
+    "ok": true
+  },
+  "ok": true
+}
++ date -u +%FT%TZ
+2026-11-11T06:11:54Z

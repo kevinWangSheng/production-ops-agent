@@ -1,0 +1,4 @@
+# Run by the user (not the agent) from their own terminal, shortly before the timestamp printed when this note was written (~2026-11-11T07:10Z):
+#   ssh opspilot-f9-1 "su - opspilot -c 'cd production-ops-agent && python3 scripts/kind_lab.py fault restore --experiment-id f9-final-handoff'"
++ kubectl -n otel-demo patch configmap flagd-config (paymentFailure -> off)
+restore completed and verified on the lab ConfigMap (sha256 1ee5c0258e3e); flagd reloads the mounted file after the kubelet sync (about a minute)
