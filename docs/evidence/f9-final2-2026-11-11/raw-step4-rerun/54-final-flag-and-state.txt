@@ -1,0 +1,21 @@
+flagd demo.flagd.json paymentFailure defaultVariant= off
+--- state at 2026-11-11T20:36:12Z
+opspilot incident | aa6f1172 | cancelled | closed | human_owned | 3 | 2026-11-11 13:48:04.385983+00 | 2026-11-11 19:22:22.623768+00
+opspilot incident | c030a3a3 | queued | resolved | automatic | 0 | 2026-11-11 20:10:04.385383+00 | 
+opspilot run | 78419b8b | aa6f1172 | cancelled | 2 | 4
+opspilot run | 0a2f20e4 | c030a3a3 | completed | 9 | 17
+opspilot session | 86636672-0174-5cb2-b21a-54e71065b999 | aa6f1172 | completed | recovery_confirmed | 2026-11-11 18:54:23.225469+00 | 12 | 2026-11-11 19:05:40.484567+00
+opspilot session | 27c61712-da7f-5afb-a127-56e64eab168c | c030a3a3 | completed | recovery_confirmed | 2026-11-11 20:23:23.01876+00 | 16 | 2026-11-11 20:34:39.982598+00
+opspilot last_sample | 27c61712 | 16 | healthy | 2026-11-11 20:34:18.123074+00
+opspilot last_sample | 27c61712 | 15 | healthy | 2026-11-11 20:32:56.220058+00
+opspilot delivery | 2026-11-11 20:17:04.377271+00 | resolved | resolved_attached | c030a3a3
+opspilot delivery | 2026-11-11 20:10:04.373093+00 | firing | created | c030a3a3
+opspilot-staging incident | 69778314 | queued | closed | automatic | 1 | 2026-11-11 13:24:09.676435+00 | 2026-11-11 20:03:34.323729+00
+opspilot-staging incident | c030a3a3 | queued | resolved | automatic | 0 | 2026-11-11 20:10:10.88003+00 | 
+opspilot-staging run | 2dcc2d92 | 69778314 | completed | 14 | 28
+opspilot-staging run | 0a2f20e4 | c030a3a3 | completed | 12 | 21
+opspilot-staging session | 27c61712-da7f-5afb-a127-56e64eab168c | c030a3a3 | completed | recovery_confirmed | 2026-11-11 20:23:46.613417+00 | 16 | 2026-11-11 20:35:03.880432+00
+opspilot-staging last_sample | 27c61712 | 16 | healthy | 2026-11-11 20:34:42.019659+00
+opspilot-staging last_sample | 27c61712 | 15 | healthy | 2026-11-11 20:33:20.014978+00
+opspilot-staging delivery | 2026-11-11 20:10:10.865666+00 | firing | created | c030a3a3
+opspilot-staging delivery | 2026-11-11 13:24:09.661167+00 | firing | created | 69778314

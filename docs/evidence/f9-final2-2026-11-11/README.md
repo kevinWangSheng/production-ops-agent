@@ -9,6 +9,8 @@
 | 2 全流程 | **部分达成** | 七个要素都落在同一个 incident `aa6f1172` 上：告警开单 → Run 留下 4 行证据 → 切模型出口后转人工 → 用户接管 → `register_remediation` → 独立观察 `recovery_confirmed` → 关闭，复盘待审。与裁决顺序不同的是系统外恢复：用户在接管**之前**就恢复了故障，没有留下命令输出，确切时刻也没有记录 |
 | 4 钉住版本的构建、升级与恢复 | **部分达成** | staging 项目先按 digest 从 `v0.1.0` 升到 `v0.1.1`，主项目随后升级再按 UPGRADE.md 回滚，命令都退出 0，每次切换后都有数据库快照，计数不变。缺：staging 上在途的恢复观察没有走到确认（40 个样本用完，`expired / max_samples_exhausted`），主项目切换时没有在途工作；staging 接入 lab 需要两处文档外的操作；两个版本运行时代码与 schema 相同；构建与 CI 是引用，没有重跑 |
 
+上表是 13:15–14:22 那一轮的记录，保持原样。独立审查认为第 4 步只差「在途观察跨 digest 切换后走到 `recovery_confirmed`」。20:01–20:36 只重做了 staging 的恢复/升级这一段，观察窗口内没有再注入故障：同一个观察会话 `27c61712` 在 `v0.1.0` 上取了第 1 个样本，切到 `v0.1.1` 后继续取样，以 `completed / recovery_confirmed` 结束。见下文[第 4 步重做](#第-4-步重做staging-在途观察跨-digest-切换2001z2036z)。
+
 ## 第 4 步：staging 先升级，再升级并回滚主项目
 
 ### 版本（引用，本轮没有重跑构建或 CI）
@@ -86,6 +88,60 @@ S4（13:32:09）和 S5（13:34:47）两次探测，staging observer 都是 503�
 | pinned artifacts | 每次都用 `@sha256:` digest，快照里 `docker inspect` 的 `config_image` 与 `image_id` 核对 | 覆盖 |
 | explicit environment configuration | 每条命令行给出 `OPSPILOT_PROJECT`、`OPSPILOT_SECRETS_DIR`、`OPSPILOT_IMAGE` 等；两个项目 `install.env` 的键名已导出 | 部分：`install.env` 只导出了键名，没有值 |
 
+## 第 4 步重做：staging 在途观察跨 digest 切换（20:01Z–20:36Z）
+
+只重做 staging 的恢复/升级这一段，为的是补上面 `23204a25` 没有走到确认的缺口。主项目没有升级。原始记录在 [raw-step4-rerun/](raw-step4-rerun/)，是主机 `/home/opspilot/f9-final3/` 的副本。命令沿用上一轮：[snap.sh](raw-step4-rerun/snap.sh) 与上一轮相同，[forward_alert.py](raw-step4-rerun/forward_alert.py.txt) 与上一轮逐字节相同（sha256 `0bf0dfe1…`），接入 `kind` 网络仍然不带别名。新写的脚本只有：回滚 [step1.sh](raw-step4-rerun/step1.sh)、升级 [step4.sh](raw-step4-rerun/step4.sh)、观察授权后立即恢复故障的 [restore_when_authorized.sh](raw-step4-rerun/restore_when_authorized.sh)、关闭旧 incident 的 [close_staging.py](raw-step4-rerun/close_staging.py.txt)、导出 [final.sh](raw-step4-rerun/final.sh)，以及只读的 [q.sh](raw-step4-rerun/q.sh)、[state.sh](raw-step4-rerun/state.sh)、[flag.sh](raw-step4-rerun/flag.sh)。
+
+| 时间 | 做了什么 | 结果（原始记录） |
+|---|---|---|
+| 20:01:22 | 预检，只读 | `kind_lab.py health` 为 ok；`paymentFailure` 为 `off`；两个项目三个运行时 `/readyz` 都是 200，主项目在 `0.1.0`、staging 在 `0.1.1`；主项目 incident 全部 `closed`；staging 的 `69778314` 仍是 `open`，它唯一的观察已经 `expired`（[00-preflight.log](raw-step4-rerun/00-preflight.log)、[01-snap-main-preflight.txt](raw-step4-rerun/01-snap-main-preflight.txt)、[01-snap-staging-preflight.txt](raw-step4-rerun/01-snap-staging-preflight.txt)） |
+| 20:03:34 | **本轮决定**：在 staging 上关闭 `69778314`（operator 通过工作台控制接口 `POST /incidents/<id>/control action=close`，Basic Auth 加 staging 工作台的 Origin，和点 Close 按钮走的是同一条路径） | http 200，generation 0→1，`closed`（[02-staging-close-old-incident.log](raw-step4-rerun/02-staging-close-old-incident.log)）。原因：incident 没关时，同指纹的新告警只会 `attached`，不开新 Run（`opspilot/persistence/alerts.py`）；自动观察对每个 `(incident, control generation)` 只决定一次（`opspilot/observation/store.py` `auto_observation_candidates`）。不关这个单就得不到新的 Run 和新的自动观察。主项目 13:41:26 关 `1fbdce34` 用的也是 close。没有手写数据库 |
+| 20:03:57–20:05:07 | 按 UPGRADE.md「Rolling back」把 staging 回滚到 `v0.1.0` digest | 先保存 `v0.1.1` 日志（`logs-10-*`）；`compose stop web worker observer` 退出 0；`alembic_version` 为 `0024_trace_outbox`，与旧版 head 相同，按文档跳过第 2 步 downgrade；`OPSPILOT_IMAGE=<v0.1.0 digest> install.sh upgrade` 退出 0，`schema unchanged`；不带别名重新接入 `kind`，三条 `rc=0`；快照：三个运行时 `0.1.0`、`/readyz` 200（[10-step1-staging-rollback.log](raw-step4-rerun/10-step1-staging-rollback.log)、[11-snap-staging-after-rollback.txt](raw-step4-rerun/11-snap-staging-after-rollback.txt)） |
+| 20:05:38 | `fault inject --experiment-id f9-final3-step4`（ConfigMap `e47d27c2fa01`） | rc 0（[20-fault-inject.log](raw-step4-rerun/20-fault-inject.log)）。这是本轮唯一一次注入 |
+| 20:10:04 | lab Alertmanager 把告警投给主项目 | 主项目 `created`：incident `c030a3a3-0369-5ba3-a7fd-d44066a31286`，Run `0a2f20e4-7fc1-57f1-9fbb-479bba283922` |
+| 20:10:10 | **文档外**（同上一轮）：`forward_alert.py` 转发给 staging | http 200，`created`：incident、Run 的 id 和主项目相同（`c030a3a3`、`0a2f20e4`，同一条告警推出同一个 id），`related_incident_id` 指向刚关闭的 `69778314`（[21-forward-alert.log](raw-step4-rerun/21-forward-alert.log)） |
+| 20:12:58 | staging Run 发布 | worker 日志 `status=published`（`v0.1.0`）；Run `completed`，预算 12，工具操作 21（[logs-41-…-staging-worker.log](raw-step4-rerun/logs-41-before-upgrade-v010-opspilot-staging-worker.log)） |
+| 20:13:03 | 系统自动授权恢复观察 `27c61712-da7f-5afb-a127-56e64eab168c` | `auto_authorize_observation`，actor `system`，`authorization_source automatic`；间隔 60 s，持续窗口 600 s，上限 40，截止 21:13:03 |
+| 20:13:31 | `fault restore`（ConfigMap `1ee5c0258e3e`），由 [restore_when_authorized.sh](raw-step4-rerun/restore_when_authorized.sh) 在看到 staging 授权后立即执行 | rc 0，之后 `paymentFailure` 为 `off`（[30-fault-restore.log](raw-step4-rerun/30-fault-restore.log)）。从这一刻到 20:36 收尾，lab 上没有再注入任何东西 |
+| 20:14:31 | staging `v0.1.0` observer 写入第 1 个样本 | `degraded`，窗口止于 20:14:08，`adopted` |
+| 20:14:47 | 升级前检查与快照 | 会话 `authorized`，1 个样本；三个运行时 `0.1.0`、`/readyz` 200（[40-snap-staging-before-upgrade.txt](raw-step4-rerun/40-snap-staging-before-upgrade.txt)），保存 `v0.1.0` 日志 `logs-41-*` |
+| **20:14:48–20:14:59** | **切换**：`OPSPILOT_IMAGE=<v0.1.1 digest> install.sh upgrade` | 退出 0；stop → postgres → `schema unchanged: 0024_trace_outbox` → init-roles → 三个运行时 healthy；不带别名重新接入 `kind`，三条 `rc=0`（[42-step4-staging-upgrade.log](raw-step4-rerun/42-step4-staging-upgrade.log)） |
+| 20:14:59 | 切换后立即查 | 同一会话 `27c61712` 仍是 `authorized`，1 个样本 |
+| 20:15:56 | `v0.1.1` observer 写入第 2 个样本 | `degraded`，`adopted`（[logs-52-…-staging-observer.log](raw-step4-rerun/logs-52-on-v011-opspilot-staging-observer.log)） |
+| 20:16:30 | 升级后 90 s 快照 | 三个运行时 `0.1.1`，**observer `/readyz` 这次是 200**；会话 `authorized`，2 个样本；证据 48、steps 28、controls 3、投递 2、复盘版本 2，与升级前的 40 号快照相同，样本 41→42（[43-snap-staging-after-upgrade.txt](raw-step4-rerun/43-snap-staging-after-upgrade.txt)） |
+| 20:35:03 | 会话结束 | **`completed / recovery_confirmed`**，16 个样本，`healthy_since` 20:23:46；incident `c030a3a3` 的 lifecycle 变为 `resolved`，mode `automatic`（[50-staging-session-samples.txt](raw-step4-rerun/50-staging-session-samples.txt)、[51-snap-staging-final.txt](raw-step4-rerun/51-snap-staging-final.txt)） |
+
+staging 会话 `27c61712` 的 16 个样本（每个窗口 5 分钟，全部 `adopted`）：
+
+| 样本 | 窗口止于 | 结果 | 由谁采 |
+|---|---|---|---|
+| 1 | 20:14:08 | `degraded` | `v0.1.0` observer（日志 `logs-41`，20:14:31 写入） |
+| 2–3 | 20:15:35、20:16:56 | `degraded` | `v0.1.1` observer（日志 `logs-52`，下同） |
+| 4–5 | 20:18:18、20:19:40 | `healthy` | |
+| 6–7 | 20:21:02、20:22:24 | `no_data`（日志 `present=True`） | |
+| 8–16 | 20:23:46–20:34:42 | `healthy` | |
+
+第 8 个样本起连续健康，第 16 个样本（窗口止于 20:34:42）满 600 s，20:35:03 确认。切换前后是同一个 session id `27c61712-da7f-5afb-a127-56e64eab168c`，1 个样本在旧 digest 上，15 个样本在新 digest 上。
+
+**主项目对同一条告警做了什么**（没有升级，一直在 `v0.1.0`，没有操作工作台）：20:10:04 开出 `c030a3a3`，Run `0a2f20e4` 在 20:12:40 发布（预算 9，工具操作 17），20:12:43 自动授权观察，session id 同样是 `27c61712`；20:17:04 收到 resolved 投递（`resolved_attached`）；观察 16 个样本（1–3 `degraded`，4–6 `healthy`，7 `no_data`，8–16 `healthy`），20:34:39 `completed / recovery_confirmed`，lifecycle `resolved`；20:36:12 复盘 v1 生成。最终状态：incident `c030a3a3` 为 `resolved`、mode `automatic`、**没有关闭**，没有在途的 Run 或观察；其他 incident 都已 `closed`（[50-main-session-samples.txt](raw-step4-rerun/50-main-session-samples.txt)、[51-snap-main-final.txt](raw-step4-rerun/51-snap-main-final.txt)、[logs-53-main-*](raw-step4-rerun/logs-53-main-since-2000Z-opspilot-worker.log)）。是否关闭这个单留给编排者决定。
+
+**两个项目的最终状态**（20:36:12，[54-final-flag-and-state.txt](raw-step4-rerun/54-final-flag-and-state.txt)）：`paymentFailure` 为 `off`。staging 在 `v0.1.1` digest，`69778314` 为 `closed`，`c030a3a3` 为 `resolved`（没有关闭），没有在途的 Run 或观察。主项目在 `v0.1.0` digest，情况见上段。
+
+### 这次重做的缺口
+
+- 关闭 staging 旧单 `69778314` 是本轮为得到新观察而做的一次人工控制（operator，通过工作台控制接口，不是浏览器点击，没有截图）。它触发了 staging 对 `69778314` 的复盘：20:10:03 第一次 `failed code=MODEL_UNAVAILABLE`，20:11:42 第二次成功（v2）；第一次失败的原因没有查。
+- 这次切换是 `v0.1.0 → v0.1.1`，两版运行时代码与 schema head 相同（已裁决接受），所以验证的是按 digest 切换时在途观察的延续，不是跨代码或跨 schema 的延续。staging 回滚时跳过了 downgrade（同 head，按文档）。
+- staging 仍靠两处文档外操作接入 lab：不带别名接入 `kind` 网络，`forward_alert.py` 只转发 firing，所以 staging 没有收到 resolved 投递；它的 lifecycle 是观察确认后变成 `resolved` 的。
+- 样本 6–7（staging）和样本 7（主项目）是 `no_data`，日志里却是 `present=True`；两个项目在相邻时间都出现，像是 lab 侧的现象，原因**未查**。上一轮样本 8 的 `no_data` 也未查。
+- 配置的采样间隔是 60 s，实际相邻样本约 82 s；本轮没有查原因。
+- 只有一次切换、一个会话，单机，合成流量加注入故障；不是 soak，也不是生产。
+- 没有 LangSmith trace，没有记录 token，也没有按余额对账（两个 Run 加一次复盘重试的 DeepSeek 调用）。
+- 主项目这次没有升级，主项目的升级与回滚仍只有上面 13:32–13:34 的数据保留记录，没有在途工作。
+
+### 原始记录
+
+[raw-step4-rerun/](raw-step4-rerun/) 是主机 `/home/opspilot/f9-final3/` 下 39 个文件的原样副本（归档 `f9-final3-host-evidence.tgz`，sha256 `6584e7a849935926729f307cd18b85ca61ecf8eef3556f3e854f579cf1a3dbd8`，39 个文件加 1 个目录，存在仓库外）。改动有两处。一是两个文件名：`forward_alert.py` 存为 `forward_alert.py.txt`（sha256 `0bf0dfe1…`），`close_staging.py` 存为 `close_staging.py.txt`（sha256 `a011b742…`），内容不变，避免 ruff 把原样脚本当成待格式化的代码。二是 [02-staging-close-old-incident.log](raw-step4-rerun/02-staging-close-old-incident.log) 第 3 行：`close_staging.py` 发出的 `idempotency_key` 是 `close-0-<32 位十六进制>`，这是幂等键，不是凭据，但 gitleaks 的 `generic-api-key` 规则会把它当成密钥，所以仓库副本里把这 32 位换成了 `<32-hex nonce omitted in the repo copy>`；归档里是原值。入库前逐个检查过：只出现凭据文件名（`ui_password`、`alertmanager_token`）和读取它们的代码，没有值；另外把主机上两个项目的 `ui_password`、`alertmanager_token` 和 `DEEPSEEK_API_KEY` 的实际值与全部 39 个文件逐字比对，没有命中。gitleaks 8.30.1 扫描整个证据目录无发现。
+
 ## 第 2 步：一个 incident 走完全流程
 
 主项目此时跑的是 `v0.1.0` digest（第 4 步回滚后）。13:41:26 `1fbdce34` 被关闭（`close`，actor `operator`，channel `web`，generation 0→1，[supplement/s2-main-db.txt](supplement/s2-main-db.txt)），之后的告警才会开新单；这一步是谁点的不在归档里。
@@ -154,7 +210,7 @@ S4（13:32:09）和 S5（13:34:47）两次探测，staging observer 都是 503�
 
 - 不是生产观察，不是 soak。每项只跑了一次，单机，合成流量加注入故障，转人工靠切断出口。
 - 不证明不同代码或不同 schema 的版本之间能升级与回滚。
-- 不证明在途工作能跨升级走到确认恢复。
+- 不证明在途工作能跨升级走到确认恢复。（13:15–14:22 那一轮如此；20:01–20:36 的重做里，staging 上的一个观察会话跨同代码的 digest 切换走到了 `recovery_confirmed`，见上文重做一节。）
 - 第 1、3、5 步本轮没有重做。
 - 本 PR 不改 `feature_list.json`，F9 `passes` 仍为 false；是否达成由独立审查与用户判断。
 

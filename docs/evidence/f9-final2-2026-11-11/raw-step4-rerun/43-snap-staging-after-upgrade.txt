@@ -1,0 +1,34 @@
+=== snapshot project=opspilot-staging label=staging-after-upgrade-v011 at 2026-11-11T20:16:30Z
+opspilot-staging-observer-1 0af7b9ff4b71 Up About a minute (healthy)
+opspilot-staging-postgres-1 2a0d0fe14825 Up 7 hours (healthy)
+opspilot-staging-web-1 0af7b9ff4b71 Up About a minute (healthy)
+opspilot-staging-worker-1 0af7b9ff4b71 Up About a minute (healthy)
+web config_image=ghcr.io/kevinwangsheng/opspilot@sha256:0af7b9ff4b71e2c0b0b71d99020f35ed67f79eef958f612938f6adc102fff25e image_id=sha256:0af7b9ff4b71e2c0b0b71d99020f35ed67f79eef958f612938f6adc102fff25e started=2026-11-11T20:14:54.049810921Z
+web healthz 200 {"status": "ok", "version": "0.1.1"}
+web readyz 200 {"status": "ready", "version": "0.1.1"}
+web log       5 "version": "0.1.1", "revision": "9b208cd13cc6c28e97ab9c0d1cb074a13dd3cf34"
+worker config_image=ghcr.io/kevinwangsheng/opspilot@sha256:0af7b9ff4b71e2c0b0b71d99020f35ed67f79eef958f612938f6adc102fff25e image_id=sha256:0af7b9ff4b71e2c0b0b71d99020f35ed67f79eef958f612938f6adc102fff25e started=2026-11-11T20:14:54.049536189Z
+worker healthz 200 {"status": "ok", "version": "0.1.1"}
+worker readyz 200 {"status": "ready", "version": "0.1.1"}
+worker log       5 "version": "0.1.1", "revision": "9b208cd13cc6c28e97ab9c0d1cb074a13dd3cf34"
+observer config_image=ghcr.io/kevinwangsheng/opspilot@sha256:0af7b9ff4b71e2c0b0b71d99020f35ed67f79eef958f612938f6adc102fff25e image_id=sha256:0af7b9ff4b71e2c0b0b71d99020f35ed67f79eef958f612938f6adc102fff25e started=2026-11-11T20:14:54.050142382Z
+observer healthz 200 {"status": "ok", "version": "0.1.1"}
+observer readyz 200 {"status": "ready", "version": "0.1.1"}
+observer log       4 "version": "0.1.1", "revision": "9b208cd13cc6c28e97ab9c0d1cb074a13dd3cf34"
+db_now | 2026-11-11 20:16:30.985493+00
+alembic | 0024_trace_outbox
+incident | 69778314-65d3-5e3c-90a1-2b2b58d9ca03 | queued | closed | automatic | 1 | 2026-11-11 13:24:09.676435+00 | 2026-11-11 20:03:34.323729+00
+incident | c030a3a3-0369-5ba3-a7fd-d44066a31286 | queued | observing_recovery | automatic | 0 | 2026-11-11 20:10:10.88003+00 | 
+run | 2dcc2d92-824e-53da-bed6-cc713124f068 | 69778314-65d3-5e3c-90a1-2b2b58d9ca03 | completed | 1 | 14 | 28
+run | 0a2f20e4-7fc1-57f1-9fbb-479bba283922 | c030a3a3-0369-5ba3-a7fd-d44066a31286 | completed | 1 | 12 | 21
+session | 23204a25-b054-5c2c-a18c-e559967af7cc | 69778314-65d3-5e3c-90a1-2b2b58d9ca03 | expired | max_samples_exhausted |  | 40 | 2026-11-11 13:28:01.868409+00 | 2026-11-11 14:22:46.175962+00
+session | 27c61712-da7f-5afb-a127-56e64eab168c | c030a3a3-0369-5ba3-a7fd-d44066a31286 | authorized |  |  | 2 | 2026-11-11 20:13:03.451915+00 | 2026-11-11 20:15:56.880647+00
+count_controls | 3
+count_evidence | 48
+count_samples | 42
+count_steps | 28
+count_alert_deliveries | 2
+count_postmortem_versions | 2
+last_sample | 2 | degraded | 2026-11-11 20:15:35.067329+00
+last_sample | 1 | degraded | 2026-11-11 20:14:08.309072+00
+last_sample | 40 | degraded | 2026-11-11 14:22:24.21726+00

@@ -1,0 +1,38 @@
+#!/usr/bin/env python3
+"""Wait for the next firing alert the lab Alertmanager delivers to the main install, then POST the
+same alert (Alertmanager webhook v4 body, one alert) to the staging install's intake endpoint.
+Staging is not on the lab's alert route (it has no opspilot-web alias), so this is how it gets the alert."""
+import json, subprocess, sys, time, urllib.request, pathlib, datetime
+T0 = sys.argv[1]  # ISO timestamp; only deliveries received after it count
+SQL = ("select alert_json from opspilot_alert_deliveries where status='firing' and received_at > '%s' "
+       "order by received_at limit 1" % T0)
+def q():
+    p = subprocess.run(["docker", "exec", "-i", "opspilot-postgres-1", "sh", "-c",
+                        'psql -U "$POSTGRES_USER" -d "${POSTGRES_DB:-$POSTGRES_USER}" -At'],
+                       input=SQL, capture_output=True, text=True)
+    return p.stdout.strip()
+deadline = time.time() + 1500
+while time.time() < deadline:
+    row = q()
+    if row:
+        break
+    time.sleep(10)
+else:
+    sys.exit("no firing delivery on main within 25 min")
+alert = json.loads(row)
+alert["status"] = "firing"
+labels = alert["labels"]
+body = {"version": "4", "groupKey": '{}:{alertname="%s"}' % labels["alertname"], "truncatedAlerts": 0,
+        "status": "firing", "receiver": "opspilot", "groupLabels": {"alertname": labels["alertname"]},
+        "commonLabels": labels, "commonAnnotations": alert.get("annotations", {}),
+        "externalURL": "http://alertmanager:9093", "alerts": [alert]}
+token = (pathlib.Path.home() / ".config/opspilot-staging/alertmanager_token").read_text().strip()
+req = urllib.request.Request("http://127.0.0.1:18190/intake/alertmanager", data=json.dumps(body).encode(),
+                             headers={"Authorization": "Bearer " + token, "Content-Type": "application/json"})
+now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+try:
+    r = urllib.request.urlopen(req, timeout=30)
+    print(now, "forwarded to staging: http", r.status, r.read()[:500].decode(errors="replace"))
+except urllib.error.HTTPError as e:
+    print(now, "staging refused: http", e.code, e.read()[:500].decode(errors="replace")); sys.exit(1)
+print("alert startsAt", alert.get("startsAt"), "fingerprint", alert.get("fingerprint"), "labels", json.dumps(labels))

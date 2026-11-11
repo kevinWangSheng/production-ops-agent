@@ -152,5 +152,211 @@
       "postmortem not reviewed; knowledge entries 0",
       "no LangSmith trace (TRACE_MODE_OFF); no token or balance cost record"
     ]
+  },
+  "step4_rerun": {
+    "why": "independent review: step 4 not met only because the in-flight staging observation 23204a25 expired; rerun only the staging recovery/upgrade segment with no fault injected inside the observation window",
+    "addresses": "step4.staging.inflight_observation (kept as recorded)",
+    "window_utc": {
+      "start": "2026-11-11T20:01:22Z",
+      "end": "2026-11-11T20:36:12Z"
+    },
+    "host_dir": "/home/opspilot/f9-final3",
+    "raw": "raw-step4-rerun/",
+    "archive": {
+      "file": "f9-final3-host-evidence.tgz (kept outside the repo)",
+      "sha256": "6584e7a849935926729f307cd18b85ca61ecf8eef3556f3e854f579cf1a3dbd8",
+      "files": 39,
+      "copied_to_raw": 39,
+      "renamed": {
+        "forward_alert.py": "forward_alert.py.txt (sha256 0bf0dfe1b6d076d48cab5fd19c6752d3470130e6a07ddb14f5e834b2f809ee8c, same bytes as the previous round)",
+        "close_staging.py": "close_staging.py.txt (sha256 a011b742243da2fefbf0c4a32fd37181c0fc88b3479377ad26b853c66ef8a5b2)"
+      },
+      "content_change": "02-staging-close-old-incident.log line 3: the 32-hex nonce of the close idempotency_key replaced by <32-hex nonce omitted in the repo copy> (gitleaks generic-api-key false positive; not a credential; original value in the archive)",
+      "secret_check": "only credential file names and the code reading them; actual ui_password, alertmanager_token (both projects) and DEEPSEEK_API_KEY values compared against all 39 files: no match"
+    },
+    "timeline": [
+      {
+        "at": "2026-11-11T20:01:22Z",
+        "what": "preflight: lab health ok, paymentFailure off, both projects /readyz 200; staging 69778314 open with expired observation",
+        "raw": [
+          "raw-step4-rerun/00-preflight.log",
+          "raw-step4-rerun/01-snap-main-preflight.txt",
+          "raw-step4-rerun/01-snap-staging-preflight.txt"
+        ]
+      },
+      {
+        "at": "2026-11-11T20:03:34Z",
+        "what": "decision: close staging 69778314 via workbench control endpoint (operator, action=close, http 200, generation 0->1) so the next alert opens a new incident, Run and automatic observation; no DB writes",
+        "raw": "raw-step4-rerun/02-staging-close-old-incident.log"
+      },
+      {
+        "at": "2026-11-11T20:03:57Z/20:05:07Z",
+        "what": "staging rollback v0.1.1 -> v0.1.0 per UPGRADE.md: compose stop (rc 0), downgrade skipped (same head 0024_trace_outbox), upgrade with v0.1.0 digest (rc 0, schema unchanged), kind network re-join without aliases (rc 0), /readyz 200 0.1.0",
+        "raw": [
+          "raw-step4-rerun/10-step1-staging-rollback.log",
+          "raw-step4-rerun/11-snap-staging-after-rollback.txt"
+        ]
+      },
+      {
+        "at": "2026-11-11T20:05:38Z",
+        "what": "fault inject f9-final3-step4 (ConfigMap e47d27c2fa01), the only injection of this rerun",
+        "raw": "raw-step4-rerun/20-fault-inject.log"
+      },
+      {
+        "at": "2026-11-11T20:10:04Z",
+        "what": "lab Alertmanager -> main: created incident c030a3a3, Run 0a2f20e4"
+      },
+      {
+        "at": "2026-11-11T20:10:10Z",
+        "what": "forward_alert.py -> staging: http 200 created, same incident and Run ids, related_incident_id 69778314",
+        "raw": "raw-step4-rerun/21-forward-alert.log"
+      },
+      {
+        "at": "2026-11-11T20:12:58Z",
+        "what": "staging Run published (completed, budget 12, tool operations 21)"
+      },
+      {
+        "at": "2026-11-11T20:13:03Z",
+        "what": "staging auto_authorize_observation, actor system, session 27c61712"
+      },
+      {
+        "at": "2026-11-11T20:13:31Z",
+        "what": "fault restore (ConfigMap 1ee5c0258e3e), run by restore_when_authorized.sh as soon as the staging session was authorized; nothing injected afterwards",
+        "raw": "raw-step4-rerun/30-fault-restore.log"
+      },
+      {
+        "at": "2026-11-11T20:14:31Z",
+        "what": "sample 1 written by the v0.1.0 observer (degraded, window_end 20:14:08)"
+      },
+      {
+        "at": "2026-11-11T20:14:48Z/20:14:59Z",
+        "what": "digest switch: staging upgrade v0.1.0 -> v0.1.1 per UPGRADE.md (rc 0, schema unchanged), kind re-join rc 0; same session still authorized with 1 sample right after",
+        "raw": [
+          "raw-step4-rerun/40-snap-staging-before-upgrade.txt",
+          "raw-step4-rerun/42-step4-staging-upgrade.log"
+        ]
+      },
+      {
+        "at": "2026-11-11T20:16:30Z",
+        "what": "snapshot on v0.1.1: all three /readyz 200 (observer included), counts unchanged except samples 41->42",
+        "raw": "raw-step4-rerun/43-snap-staging-after-upgrade.txt"
+      },
+      {
+        "at": "2026-11-11T20:35:03Z",
+        "what": "session 27c61712 completed / recovery_confirmed, incident lifecycle resolved",
+        "raw": [
+          "raw-step4-rerun/50-staging-session-samples.txt",
+          "raw-step4-rerun/51-snap-staging-final.txt"
+        ]
+      }
+    ],
+    "inflight_observation": {
+      "session_id_before_switch": "27c61712-da7f-5afb-a127-56e64eab168c",
+      "session_id_after_switch": "27c61712-da7f-5afb-a127-56e64eab168c",
+      "incident_id": "c030a3a3-0369-5ba3-a7fd-d44066a31286",
+      "authorization_source": "automatic",
+      "authorized_by": "system",
+      "authorized_at": "2026-11-11T20:13:03Z",
+      "sample_interval_seconds": 60,
+      "sustained_window_seconds": 600,
+      "max_samples": 40,
+      "switch": {
+        "start": "2026-11-11T20:14:48Z",
+        "end": "2026-11-11T20:14:59Z",
+        "from": "v0.1.0 digest",
+        "to": "v0.1.1 digest"
+      },
+      "samples": [
+        {
+          "seq": 1,
+          "outcome": "degraded",
+          "window_end": "20:14:08Z",
+          "observer": "v0.1.0"
+        },
+        {
+          "seq": "2-3",
+          "outcome": "degraded",
+          "window_end": "20:15:35Z-20:16:56Z",
+          "observer": "v0.1.1"
+        },
+        {
+          "seq": "4-5",
+          "outcome": "healthy",
+          "window_end": "20:18:18Z-20:19:40Z",
+          "observer": "v0.1.1"
+        },
+        {
+          "seq": "6-7",
+          "outcome": "no_data",
+          "window_end": "20:21:02Z-20:22:24Z",
+          "observer": "v0.1.1"
+        },
+        {
+          "seq": "8-16",
+          "outcome": "healthy",
+          "window_end": "20:23:46Z-20:34:42Z",
+          "observer": "v0.1.1"
+        }
+      ],
+      "sample_count": 16,
+      "samples_before_switch": 1,
+      "samples_after_switch": 15,
+      "all_adopted": true,
+      "healthy_since": "2026-11-11T20:23:46Z",
+      "ended": "completed / recovery_confirmed",
+      "ended_at": "2026-11-11T20:35:03Z",
+      "incident_after": "lifecycle resolved, mode automatic, not closed"
+    },
+    "observer_readyz_after_switch": {
+      "at": "2026-11-11T20:16:30Z",
+      "status": 200
+    },
+    "main_same_alert": {
+      "upgraded": false,
+      "image": "v0.1.0 digest",
+      "workbench_actions": "none",
+      "incident_id": "c030a3a3-0369-5ba3-a7fd-d44066a31286",
+      "run": {
+        "id": "0a2f20e4-7fc1-57f1-9fbb-479bba283922",
+        "state": "completed",
+        "published_at": "2026-11-11T20:12:40Z",
+        "budget_spent": 9,
+        "tool_operations": 17
+      },
+      "observation": {
+        "session_id": "27c61712-da7f-5afb-a127-56e64eab168c",
+        "authorized_at": "2026-11-11T20:12:43Z",
+        "samples": 16,
+        "outcomes": "1-3 degraded, 4-6 healthy, 7 no_data, 8-16 healthy",
+        "ended": "completed / recovery_confirmed",
+        "ended_at": "2026-11-11T20:34:39Z"
+      },
+      "resolved_delivery": "2026-11-11T20:17:04Z resolved_attached",
+      "postmortem": "v1 generated 2026-11-11T20:36:12Z",
+      "final_state": "c030a3a3 lifecycle resolved, mode automatic, not closed; no in-flight Run or observation; all other incidents closed; left for the orchestrator",
+      "raw": [
+        "raw-step4-rerun/50-main-session-samples.txt",
+        "raw-step4-rerun/51-snap-main-final.txt"
+      ]
+    },
+    "staging_final_state": "v0.1.1 digest; 69778314 closed; c030a3a3 resolved, not closed; no in-flight Run or observation; paymentFailure off",
+    "container_logs_saved": [
+      "logs-10 staging v0.1.1 before rollback",
+      "logs-41 staging v0.1.0 before upgrade",
+      "logs-52 staging v0.1.1 after the session ended",
+      "logs-53 main since 20:00Z"
+    ],
+    "deviations": [
+      "closed staging incident 69778314 (operator, workbench control endpoint, not a browser click) to get a fresh Run and automatic observation; it triggered a staging postmortem that failed once (MODEL_UNAVAILABLE, 20:10:03Z) and succeeded on retry (20:11:42Z); cause of the failure not checked",
+      "two undocumented staging steps repeated from the previous round: kind network join without aliases, forward_alert.py (firing only, so staging got no resolved delivery)"
+    ],
+    "gaps": [
+      "v0.1.0 and v0.1.1 share runtime code and schema head; continuation across a code or schema change not shown; staging rollback skipped the downgrade (same head)",
+      "no_data samples with present=True (staging 6-7, main 7) not explained",
+      "configured sample interval 60 s, observed about 82 s; not checked",
+      "one switch, one session, single VM, synthetic traffic and injected fault; not soak, not production",
+      "main not upgraded in this rerun; main upgrade and rollback still only show data retention without in-flight work",
+      "no LangSmith trace, no token record, no balance reconciliation"
+    ]
   }
 }
