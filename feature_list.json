@@ -87,7 +87,7 @@
       "Exercise a versioned configuration or state-schema upgrade and its documented rollback or compatible recovery, including in-flight incidents",
       "Run at least a 72-hour lab soak with background activity, failures and recovery; publish availability, missing observations, stuck work, resource use and cost without claiming production proof"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": "F9",

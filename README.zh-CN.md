@@ -18,9 +18,9 @@ OpsPilot 是持续运行的事故与发布后调查 Agent。它只读取遥测�
 
 ## 状态
 
-M3（效果与交付验收）仍在进行：大部分证据已就位，F1、F8、F9 尚未标为通过。这是按生产工程标准做的作品集项目，**从未在生产环境运行过**。
+M3（效果与交付验收）仍在进行：大部分证据已就位，F1、F9 尚未标为通过。这是按生产工程标准做的作品集项目，**从未在生产环境运行过**。
 
-- [feature_list.json](feature_list.json) 中 11 个功能有 8 个通过全部验收步骤（F2、F3、F6、F7、F11、F12、F13、F14）；F1、F8、F9 未完成。
+- [feature_list.json](feature_list.json) 中 11 个功能有 9 个通过全部验收步骤（F2、F3、F6、F7、F8、F11、F12、F13、F14）；F1、F9 未完成。F8（持续运行）只凭 lab 证据通过，不是生产证明。
 - 所有测量都在运行 OpenTelemetry Demo 的 kind 实验环境里完成：流量是 load-generator 合成的，故障是注入的，模型是真实的（DeepSeek）。包括[与 HolmesGPT 的同条件对比](docs/results/f1-same-condition-comparison-2026-11.md)（F1 第 5 步「校准后的判分」未达成）、[72 小时 lab soak](docs/evidence/m3-soak-2026-11-07/README.md)，以及在刚重装的租用主机上完成的安装、完整事故流程、杀 worker 和按 digest 钉住镜像的升级与回滚（[第 1 步](docs/evidence/f9-clean-install-2026-11-09/README.md)、[第 2–4 步](docs/evidence/f9-steps-2-4-2026-11-10/README.md)，其中几项只是部分通过）。
 - 版本由 release workflow 打 tag 并发布到 GHCR。最新是 `v0.1.1`（2026-11-10）；soak 与干净主机运行用的是 `v0.1.0`：`ghcr.io/kevinwangsheng/opspilot@sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd`。
 
