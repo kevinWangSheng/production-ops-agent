@@ -1,0 +1,30 @@
+=== snapshot project=opspilot-staging label=after-upgrade-v011 at 2026-11-11T13:32:09Z
+opspilot-staging-observer-1 0af7b9ff4b71 Up 2 minutes (healthy)
+opspilot-staging-postgres-1 2a0d0fe14825 Up 16 minutes (healthy)
+opspilot-staging-web-1 0af7b9ff4b71 Up 2 minutes (healthy)
+opspilot-staging-worker-1 0af7b9ff4b71 Up 2 minutes (healthy)
+web config_image=ghcr.io/kevinwangsheng/opspilot@sha256:0af7b9ff4b71e2c0b0b71d99020f35ed67f79eef958f612938f6adc102fff25e image_id=sha256:0af7b9ff4b71e2c0b0b71d99020f35ed67f79eef958f612938f6adc102fff25e started=2026-11-11T13:29:33.359176101Z
+web healthz 200 {"status": "ok", "version": "0.1.1"}
+web readyz 200 {"status": "ready", "version": "0.1.1"}
+web log       5 "version": "0.1.1", "revision": "9b208cd13cc6c28e97ab9c0d1cb074a13dd3cf34"
+worker config_image=ghcr.io/kevinwangsheng/opspilot@sha256:0af7b9ff4b71e2c0b0b71d99020f35ed67f79eef958f612938f6adc102fff25e image_id=sha256:0af7b9ff4b71e2c0b0b71d99020f35ed67f79eef958f612938f6adc102fff25e started=2026-11-11T13:29:33.358886099Z
+worker healthz 200 {"status": "ok", "version": "0.1.1"}
+worker readyz 200 {"status": "ready", "version": "0.1.1"}
+worker log       5 "version": "0.1.1", "revision": "9b208cd13cc6c28e97ab9c0d1cb074a13dd3cf34"
+observer config_image=ghcr.io/kevinwangsheng/opspilot@sha256:0af7b9ff4b71e2c0b0b71d99020f35ed67f79eef958f612938f6adc102fff25e image_id=sha256:0af7b9ff4b71e2c0b0b71d99020f35ed67f79eef958f612938f6adc102fff25e started=2026-11-11T13:29:33.358323037Z
+observer healthz 200 {"status": "ok", "version": "0.1.1"}
+observer readyz ERROR 503 HTTP Error 503: Service Unavailable
+observer log       4 "version": "0.1.1", "revision": "9b208cd13cc6c28e97ab9c0d1cb074a13dd3cf34"
+db_now | 2026-11-11 13:32:10.213815+00
+alembic | 0024_trace_outbox
+incident | 69778314-65d3-5e3c-90a1-2b2b58d9ca03 | queued | observing_recovery | automatic | 0 | 2026-11-11 13:24:09.676435+00 | 
+run | 2dcc2d92-824e-53da-bed6-cc713124f068 | 69778314-65d3-5e3c-90a1-2b2b58d9ca03 | completed | 1 | 14 | 28
+session | 23204a25-b054-5c2c-a18c-e559967af7cc | 69778314-65d3-5e3c-90a1-2b2b58d9ca03 | authorized |  |  | 2 | 2026-11-11 13:28:01.868409+00 | 2026-11-11 13:31:51.524617+00
+count_controls | 1
+count_evidence | 28
+count_samples | 2
+count_steps | 15
+count_alert_deliveries | 1
+count_postmortem_versions | 0
+last_sample | 2 | degraded | 2026-11-11 13:30:29.476359+00
+last_sample | 1 | degraded | 2026-11-11 13:29:06.752163+00

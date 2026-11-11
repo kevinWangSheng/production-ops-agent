@@ -1,0 +1,4 @@
+2026-11-11T13:28:09Z
++ kubectl -n otel-demo patch configmap flagd-config (paymentFailure -> off)
+restore completed and verified on the lab ConfigMap (sha256 1ee5c0258e3e); flagd reloads the mounted file after the kubelet sync (about a minute)
+rc=0

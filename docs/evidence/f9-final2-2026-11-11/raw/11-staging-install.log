@@ -1,0 +1,79 @@
+2026-11-11T13:15:23Z
+# OPSPILOT_PROJECT=opspilot-staging OPSPILOT_SECRETS_DIR=~/.config/opspilot-staging OPSPILOT_WEB_HOST_PORT=18190 OPSPILOT_IMAGE=<v0.1.0 digest> OPSPILOT_START_AGENT=1 deploy/compose/install.sh install
+[opspilot-install 2026-11-11T13:15:23Z] pulling ghcr.io/kevinwangsheng/opspilot@sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd
+ghcr.io/kevinwangsheng/opspilot@sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd: Pulling from kevinwangsheng/opspilot
+Digest: sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd
+Status: Image is up to date for ghcr.io/kevinwangsheng/opspilot@sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd
+ghcr.io/kevinwangsheng/opspilot@sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd
+[opspilot-install 2026-11-11T13:15:24Z] generated postgres_password
+[opspilot-install 2026-11-11T13:15:24Z] generated owner_pgpass
+[opspilot-install 2026-11-11T13:15:24Z] generated web_pgpass
+[opspilot-install 2026-11-11T13:15:24Z] generated worker_pgpass
+[opspilot-install 2026-11-11T13:15:24Z] generated observer_pgpass
+[opspilot-install 2026-11-11T13:15:24Z] generated retention_pgpass
+[opspilot-install 2026-11-11T13:15:24Z] generated ui_password
+[opspilot-install 2026-11-11T13:15:24Z] generated web_ui_users
+[opspilot-install 2026-11-11T13:15:24Z] generated web_event_tokens
+[opspilot-install 2026-11-11T13:15:24Z] stopping runtimes (web worker observer) before migrating
+[opspilot-install 2026-11-11T13:15:24Z] starting postgres
+ Network opspilot-staging_default Creating 
+ Network opspilot-staging_default Created 
+ Volume opspilot-staging_pgdata Creating 
+ Volume opspilot-staging_pgdata Created 
+ Container opspilot-staging-postgres-1 Creating 
+ Container opspilot-staging-postgres-1 Created 
+ Container opspilot-staging-postgres-1 Starting 
+ Container opspilot-staging-postgres-1 Started 
+ Container opspilot-staging-postgres-1 Waiting 
+ Container opspilot-staging-postgres-1 Healthy 
+[opspilot-install 2026-11-11T13:15:27Z] migrate: start
+ Container opspilot-staging-migrate-1 Creating 
+ Container opspilot-staging-migrate-1 Created 
+Attaching to migrate-1
+ Container opspilot-staging-migrate-1 Starting 
+ Container opspilot-staging-migrate-1 Started 
+migrate-1  | schema upgraded: 0024_trace_outbox
+[Kmigrate-1 exited with code 0
+ Compose Stopping Aborting on container exit...
+ Container opspilot-staging-migrate-1 Stopping 
+ Container opspilot-staging-migrate-1 Stopped 
+[opspilot-install 2026-11-11T13:15:28Z] migrate: done
+[opspilot-install 2026-11-11T13:15:28Z] init-roles: start
+ Container opspilot-staging-init-roles-1 Creating 
+ Container opspilot-staging-init-roles-1 Created 
+Attaching to init-roles-1
+ Container opspilot-staging-init-roles-1 Starting 
+ Container opspilot-staging-init-roles-1 Started 
+init-roles-1  | opspilot_web: login opspilot_web_app ok, schema at head 0024_trace_outbox
+init-roles-1  | opspilot_worker: login opspilot_worker_app ok, schema at head 0024_trace_outbox
+init-roles-1  | opspilot_observer: login opspilot_observer_app ok, schema at head 0024_trace_outbox
+init-roles-1  | opspilot_retention: login opspilot_retention_app ok, schema at head 0024_trace_outbox
+[Kinit-roles-1 exited with code 0
+ Compose Stopping Aborting on container exit...
+ Container opspilot-staging-init-roles-1 Stopping 
+ Container opspilot-staging-init-roles-1 Stopped 
+[opspilot-install 2026-11-11T13:15:30Z] init-roles: done
+[opspilot-install 2026-11-11T13:15:30Z] starting runtimes: web worker observer
+ Container opspilot-staging-observer-1 Creating 
+ Container opspilot-staging-worker-1 Creating 
+ Container opspilot-staging-web-1 Creating 
+ Container opspilot-staging-worker-1 Created 
+ Container opspilot-staging-observer-1 Created 
+ Container opspilot-staging-web-1 Created 
+ Container opspilot-staging-observer-1 Starting 
+ Container opspilot-staging-web-1 Starting 
+ Container opspilot-staging-worker-1 Starting 
+ Container opspilot-staging-observer-1 Started 
+ Container opspilot-staging-worker-1 Started 
+ Container opspilot-staging-web-1 Started 
+ Container opspilot-staging-web-1 Waiting 
+ Container opspilot-staging-worker-1 Waiting 
+ Container opspilot-staging-observer-1 Waiting 
+ Container opspilot-staging-web-1 Healthy 
+ Container opspilot-staging-worker-1 Healthy 
+ Container opspilot-staging-observer-1 Healthy 
+[opspilot-install 2026-11-11T13:15:35Z] workbench: http://127.0.0.1:18190 (loopback only)
+[opspilot-install 2026-11-11T13:15:35Z] login: user 'operator', password in /home/opspilot/.config/opspilot-staging/ui_password
+[opspilot-install 2026-11-11T13:15:35Z] Alertmanager bearer token: /home/opspilot/.config/opspilot-staging/alertmanager_token
+rc=0
+2026-11-11T13:15:35Z

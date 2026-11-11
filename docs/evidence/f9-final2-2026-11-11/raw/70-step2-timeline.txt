@@ -1,0 +1,27 @@
+now | 2026-11-11 19:23:07.068711+00
+incident | {"mode": "human_owned", "state": "cancelled", "priority": 0, "closed_at": "2026-11-11T19:22:22.623768+00:00", "lifecycle": "closed", "target_id": "dca3d072-39b6-46c6-a827-fb1b107cc276", "conclusion": null, "created_at": "2026-11-11T13:48:04.385983+00:00", "intake_key": "intake:evt:49c352af4e6a83a4073e5a4e989e0736f803886f437f0927d0f5c08c14a78423", "incident_id": "aa6f1172-b014-56bc-8761-fd1883a52cd0", "current_run_id": "78419b8b-54a6-5bee-9e47-b915a83c0b9c", "control_generation": 3, "related_incident_id": "1fbdce34-377c-5a57-9a2a-6ae81e1d5364", "observation_generation": 1, "merged_into_incident_id": null}
+run | 78419b8b-54a6-5bee-9e47-b915a83c0b9c | cancelled | 1 | 2 | 4
+control | 2026-11-11 18:48:52.784158+00 | takeover | operator | web | 0 | 1 | 
+control | 2026-11-11 18:49:12.59018+00 | register_remediation | operator | web | 1 | 2 | payment:fault-restored
+control | 2026-11-11 19:22:22.62458+00 | close | operator | web | 2 | 3 | 
+delivery | 2026-11-11 13:48:04.372496+00 | firing | created | 2026-11-11 13:47:54+00
+delivery | 2026-11-11 14:48:04.410851+00 | firing | replayed | 2026-11-11 13:47:54+00
+delivery | 2026-11-11 15:48:04.448355+00 | firing | replayed | 2026-11-11 13:47:54+00
+delivery | 2026-11-11 16:48:04.487405+00 | firing | replayed | 2026-11-11 13:47:54+00
+delivery | 2026-11-11 17:48:04.524414+00 | firing | replayed | 2026-11-11 13:47:54+00
+delivery | 2026-11-11 18:31:04.551548+00 | resolved | resolved_attached | 2026-11-11 13:47:54+00
+session | {"state": "completed", "target": {"revision": "payment:fault-restored", "namespace": "otel-demo", "cluster_uid": "opspilot-m1", "resource_uid": "m0-otel-20260909", "integration_id": "m0-otel-20260909"}, "purpose": "incident_recovery", "target_id": "dca3d072-39b6-46c6-a827-fb1b107cc276", "authorized": true, "created_at": "2026-11-11T18:49:12.589336+00:00", "session_id": "86636672-0174-5cb2-b21a-54e71065b999", "subject_id": "aa6f1172-b014-56bc-8761-fd1883a52cd0", "updated_at": "2026-11-11T19:05:40.484567+00:00", "deadline_at": "2026-11-11T19:49:12.584161+00:00", "incident_id": "aa6f1172-b014-56bc-8761-fd1883a52cd0", "max_samples": 40, "ended_reason": "recovery_confirmed", "subject_kind": "incident", "adopted_count": 12, "authorized_at": "2026-11-11T18:49:12.589336+00:00", "authorized_by": "operator", "healthy_since": "2026-11-11T18:54:23.225469+00:00", "tracking_since": null, "tracking_until": null, "issued_sequence": 12, "adopted_sequence": 12, "adopted_window_end": "2026-11-11T19:05:18.634823+00:00", "active_sample_epoch": 1, "active_sample_owner": null, "active_sample_due_at": null, "active_sample_job_id": null, "authorization_source": "post_remediation", "active_sample_sequence": null, "observation_generation": 1, "release_observation_id": null, "health_profile_revision": "otel-demo-checkout@b72bbe2e30be", "release_policy_revision": null, "sample_interval_seconds": 60, "sustained_window_seconds": 600, "active_sample_lease_until": null, "subject_control_generation": 2, "authorized_global_generation": 0, "authorized_target_generation": 0, "release_budget_used_at_authorization": null}
+sample | 1 | healthy | 2026-11-11 18:50:17.431232+00
+sample | 2 | healthy | 2026-11-11 18:51:39.419741+00
+sample | 3 | healthy | 2026-11-11 18:53:01.327442+00
+sample | 4 | healthy | 2026-11-11 18:54:23.225469+00
+sample | 5 | healthy | 2026-11-11 18:55:45.229584+00
+sample | 6 | healthy | 2026-11-11 18:57:07.122796+00
+sample | 7 | healthy | 2026-11-11 18:58:29.0213+00
+sample | 8 | healthy | 2026-11-11 18:59:50.921323+00
+sample | 9 | healthy | 2026-11-11 19:01:12.914639+00
+sample | 10 | healthy | 2026-11-11 19:02:34.813267+00
+sample | 11 | healthy | 2026-11-11 19:03:56.717068+00
+sample | 12 | healthy | 2026-11-11 19:05:18.634823+00
+evidence_count | 4
+postmortem | 5

@@ -1,0 +1,6 @@
+{"ts": "2026-11-11T13:15:31.766Z", "level": "INFO", "logger": "opspilot.health", "msg": "health listener bind=0.0.0.0:9464 port=9464", "version": "0.1.0", "revision": "dd9534316a6b95e3513f2c68c3f13e45bc7ea322", "kv": {"bind": "0.0.0.0:9464", "port": 9464}}
+{"ts": "2026-11-11T13:15:31.783Z", "level": "INFO", "logger": "uvicorn.error", "msg": "Started server process [1]", "version": "0.1.0", "revision": "dd9534316a6b95e3513f2c68c3f13e45bc7ea322"}
+{"ts": "2026-11-11T13:15:31.783Z", "level": "INFO", "logger": "uvicorn.error", "msg": "Waiting for application startup.", "version": "0.1.0", "revision": "dd9534316a6b95e3513f2c68c3f13e45bc7ea322"}
+{"ts": "2026-11-11T13:15:31.783Z", "level": "INFO", "logger": "uvicorn.error", "msg": "Application startup complete.", "version": "0.1.0", "revision": "dd9534316a6b95e3513f2c68c3f13e45bc7ea322"}
+{"ts": "2026-11-11T13:15:31.784Z", "level": "INFO", "logger": "uvicorn.error", "msg": "Uvicorn running on http://0.0.0.0:8080 (Press CTRL+C to quit)", "version": "0.1.0", "revision": "dd9534316a6b95e3513f2c68c3f13e45bc7ea322"}
+{"ts": "2026-11-11T13:24:09.685Z", "level": "INFO", "logger": "uvicorn.access", "msg": "172.18.0.1:49762 - \"POST /intake/alertmanager HTTP/1.1\" 200", "version": "0.1.0", "revision": "dd9534316a6b95e3513f2c68c3f13e45bc7ea322"}

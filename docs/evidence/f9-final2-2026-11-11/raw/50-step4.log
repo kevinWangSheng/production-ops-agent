@@ -1,0 +1,287 @@
+### S1 save staging v0.1.0 logs at 2026-11-11T13:29:28Z
+saved container logs: 51-before-upgrade-v010 opspilot-staging
+### S2 staging upgrade to v0.1.1 digest at 2026-11-11T13:29:28Z
++ env OPSPILOT_PROJECT=opspilot-staging OPSPILOT_SECRETS_DIR=/home/opspilot/.config/opspilot-staging OPSPILOT_IMAGE=ghcr.io/kevinwangsheng/opspilot@sha256:0af7b9ff4b71e2c0b0b71d99020f35ed67f79eef958f612938f6adc102fff25e deploy/compose/install.sh upgrade
+[opspilot-install 2026-11-11T13:29:28Z] pulling ghcr.io/kevinwangsheng/opspilot@sha256:0af7b9ff4b71e2c0b0b71d99020f35ed67f79eef958f612938f6adc102fff25e
+ghcr.io/kevinwangsheng/opspilot@sha256:0af7b9ff4b71e2c0b0b71d99020f35ed67f79eef958f612938f6adc102fff25e: Pulling from kevinwangsheng/opspilot
+Digest: sha256:0af7b9ff4b71e2c0b0b71d99020f35ed67f79eef958f612938f6adc102fff25e
+Status: Image is up to date for ghcr.io/kevinwangsheng/opspilot@sha256:0af7b9ff4b71e2c0b0b71d99020f35ed67f79eef958f612938f6adc102fff25e
+ghcr.io/kevinwangsheng/opspilot@sha256:0af7b9ff4b71e2c0b0b71d99020f35ed67f79eef958f612938f6adc102fff25e
+[opspilot-install 2026-11-11T13:29:28Z] stopping runtimes (web worker observer) before migrating
+ Container opspilot-staging-observer-1 Stopping 
+ Container opspilot-staging-worker-1 Stopping 
+ Container opspilot-staging-web-1 Stopping 
+ Container opspilot-staging-web-1 Stopped 
+ Container opspilot-staging-observer-1 Stopped 
+ Container opspilot-staging-worker-1 Stopped 
+[opspilot-install 2026-11-11T13:29:29Z] starting postgres
+ Container opspilot-staging-postgres-1 Running 
+ Container opspilot-staging-postgres-1 Waiting 
+ Container opspilot-staging-postgres-1 Healthy 
+[opspilot-install 2026-11-11T13:29:30Z] migrate: start
+ Container opspilot-staging-migrate-1 Recreate 
+ Container opspilot-staging-migrate-1 Recreated 
+Attaching to migrate-1
+ Container opspilot-staging-migrate-1 Starting 
+ Container opspilot-staging-migrate-1 Started 
+migrate-1  | schema unchanged: 0024_trace_outbox
+[Kmigrate-1 exited with code 0
+ Compose Stopping Aborting on container exit...
+ Container opspilot-staging-migrate-1 Stopping 
+ Container opspilot-staging-migrate-1 Stopped 
+[opspilot-install 2026-11-11T13:29:31Z] migrate: done
+[opspilot-install 2026-11-11T13:29:31Z] init-roles: start
+ Container opspilot-staging-init-roles-1 Recreate 
+ Container opspilot-staging-init-roles-1 Recreated 
+Attaching to init-roles-1
+ Container opspilot-staging-init-roles-1 Starting 
+ Container opspilot-staging-init-roles-1 Started 
+init-roles-1  | opspilot_web: login opspilot_web_app ok, schema at head 0024_trace_outbox
+init-roles-1  | opspilot_worker: login opspilot_worker_app ok, schema at head 0024_trace_outbox
+init-roles-1  | opspilot_observer: login opspilot_observer_app ok, schema at head 0024_trace_outbox
+init-roles-1  | opspilot_retention: login opspilot_retention_app ok, schema at head 0024_trace_outbox
+[Kinit-roles-1 exited with code 0
+ Compose Stopping Aborting on container exit...
+ Container opspilot-staging-init-roles-1 Stopping 
+ Container opspilot-staging-init-roles-1 Stopped 
+[opspilot-install 2026-11-11T13:29:33Z] init-roles: done
+[opspilot-install 2026-11-11T13:29:33Z] starting runtimes: web worker observer
+ Container opspilot-staging-worker-1 Recreate 
+ Container opspilot-staging-web-1 Recreate 
+ Container opspilot-staging-observer-1 Recreate 
+ Container opspilot-staging-worker-1 Recreated 
+ Container opspilot-staging-observer-1 Recreated 
+ Container opspilot-staging-web-1 Recreated 
+ Container opspilot-staging-observer-1 Starting 
+ Container opspilot-staging-worker-1 Starting 
+ Container opspilot-staging-web-1 Starting 
+ Container opspilot-staging-web-1 Started 
+ Container opspilot-staging-observer-1 Started 
+ Container opspilot-staging-worker-1 Started 
+ Container opspilot-staging-worker-1 Waiting 
+ Container opspilot-staging-observer-1 Waiting 
+ Container opspilot-staging-web-1 Waiting 
+ Container opspilot-staging-web-1 Healthy 
+ Container opspilot-staging-observer-1 Healthy 
+ Container opspilot-staging-worker-1 Healthy 
+[opspilot-install 2026-11-11T13:29:39Z] workbench: http://127.0.0.1:18190 (loopback only)
+[opspilot-install 2026-11-11T13:29:39Z] login: user 'operator', password in /home/opspilot/.config/opspilot-staging/ui_password
+[opspilot-install 2026-11-11T13:29:39Z] Alertmanager bearer token: /home/opspilot/.config/opspilot-staging/alertmanager_token
+rc=0
+### S3 staging re-join kind network without aliases (undocumented, see 12-staging-network.log) at 2026-11-11T13:29:39Z
+web rc=0
+worker rc=0
+observer rc=0
+### S4 staging snapshot on v0.1.1 (150 s after upgrade, 2 Observer intervals) at 2026-11-11T13:32:09Z
+snap rc=0
+web readyz 200 {"status": "ready", "version": "0.1.1"}
+worker readyz 200 {"status": "ready", "version": "0.1.1"}
+observer readyz ERROR 503 HTTP Error 503: Service Unavailable
+alembic | 0024_trace_outbox
+session | 23204a25-b054-5c2c-a18c-e559967af7cc | 69778314-65d3-5e3c-90a1-2b2b58d9ca03 | authorized |  |  | 2 | 2026-11-11 13:28:01.868409+00 | 2026-11-11 13:31:51.524617+00
+count_samples | 2
+last_sample | 2 | degraded | 2026-11-11 13:30:29.476359+00
+last_sample | 1 | degraded | 2026-11-11 13:29:06.752163+00
+### M1 main snapshot + logs before upgrade at 2026-11-11T13:32:10Z
+saved container logs: 53-before-upgrade-v010 opspilot
+### M2 main upgrade to v0.1.1 digest at 2026-11-11T13:32:11Z
++ OPSPILOT_IMAGE=ghcr.io/kevinwangsheng/opspilot@sha256:0af7b9ff4b71e2c0b0b71d99020f35ed67f79eef958f612938f6adc102fff25e
++ deploy/compose/install.sh upgrade
+[opspilot-install 2026-11-11T13:32:11Z] pulling ghcr.io/kevinwangsheng/opspilot@sha256:0af7b9ff4b71e2c0b0b71d99020f35ed67f79eef958f612938f6adc102fff25e
+ghcr.io/kevinwangsheng/opspilot@sha256:0af7b9ff4b71e2c0b0b71d99020f35ed67f79eef958f612938f6adc102fff25e: Pulling from kevinwangsheng/opspilot
+Digest: sha256:0af7b9ff4b71e2c0b0b71d99020f35ed67f79eef958f612938f6adc102fff25e
+Status: Image is up to date for ghcr.io/kevinwangsheng/opspilot@sha256:0af7b9ff4b71e2c0b0b71d99020f35ed67f79eef958f612938f6adc102fff25e
+ghcr.io/kevinwangsheng/opspilot@sha256:0af7b9ff4b71e2c0b0b71d99020f35ed67f79eef958f612938f6adc102fff25e
+[opspilot-install 2026-11-11T13:32:11Z] stopping runtimes (web worker observer) before migrating
+ Container opspilot-worker-1 Stopping 
+ Container opspilot-web-1 Stopping 
+ Container opspilot-observer-1 Stopping 
+ Container opspilot-observer-1 Stopped 
+ Container opspilot-worker-1 Stopped 
+ Container opspilot-web-1 Stopped 
+[opspilot-install 2026-11-11T13:32:18Z] starting postgres
+ Container opspilot-postgres-1 Running 
+ Container opspilot-postgres-1 Waiting 
+ Container opspilot-postgres-1 Healthy 
+[opspilot-install 2026-11-11T13:32:19Z] migrate: start
+ Container opspilot-migrate-1 Recreate 
+ Container opspilot-migrate-1 Recreated 
+Attaching to migrate-1
+ Container opspilot-migrate-1 Starting 
+ Container opspilot-migrate-1 Started 
+migrate-1  | schema unchanged: 0024_trace_outbox
+[Kmigrate-1 exited with code 0
+ Compose Stopping Aborting on container exit...
+ Container opspilot-migrate-1 Stopping 
+ Container opspilot-migrate-1 Stopped 
+[opspilot-install 2026-11-11T13:32:20Z] migrate: done
+[opspilot-install 2026-11-11T13:32:20Z] init-roles: start
+ Container opspilot-init-roles-1 Recreate 
+ Container opspilot-init-roles-1 Recreated 
+Attaching to init-roles-1
+ Container opspilot-init-roles-1 Starting 
+ Container opspilot-init-roles-1 Started 
+init-roles-1  | opspilot_web: login opspilot_web_app ok, schema at head 0024_trace_outbox
+init-roles-1  | opspilot_worker: login opspilot_worker_app ok, schema at head 0024_trace_outbox
+init-roles-1  | opspilot_observer: login opspilot_observer_app ok, schema at head 0024_trace_outbox
+init-roles-1  | opspilot_retention: login opspilot_retention_app ok, schema at head 0024_trace_outbox
+[Kinit-roles-1 exited with code 0
+ Compose Stopping Aborting on container exit...
+ Container opspilot-init-roles-1 Stopping 
+ Container opspilot-init-roles-1 Stopped 
+[opspilot-install 2026-11-11T13:32:22Z] init-roles: done
+[opspilot-install 2026-11-11T13:32:22Z] starting runtimes: web worker observer
+ Container opspilot-worker-1 Recreate 
+ Container opspilot-observer-1 Recreate 
+ Container opspilot-web-1 Recreate 
+ Container opspilot-worker-1 Recreated 
+ Container opspilot-observer-1 Recreated 
+ Container opspilot-web-1 Recreated 
+ Container opspilot-worker-1 Starting 
+ Container opspilot-observer-1 Starting 
+ Container opspilot-web-1 Starting 
+ Container opspilot-observer-1 Started 
+ Container opspilot-worker-1 Started 
+ Container opspilot-web-1 Started 
+ Container opspilot-web-1 Waiting 
+ Container opspilot-worker-1 Waiting 
+ Container opspilot-observer-1 Waiting 
+ Container opspilot-web-1 Healthy 
+ Container opspilot-observer-1 Healthy 
+ Container opspilot-worker-1 Healthy 
+[opspilot-install 2026-11-11T13:32:28Z] workbench: http://127.0.0.1:18090 (loopback only)
+[opspilot-install 2026-11-11T13:32:28Z] login: user 'operator', password in /home/opspilot/.config/opspilot/ui_password
+[opspilot-install 2026-11-11T13:32:28Z] Alertmanager bearer token: /home/opspilot/.config/opspilot/alertmanager_token
+rc=0
++ python3 scripts/kind_lab.py connect-control --project opspilot
++ docker network connect --alias opspilot-web kind d8e958f6c9e9
++ docker network connect --alias opspilot-worker kind abe1ad343f32
++ docker network connect --alias opspilot-observer kind db771d22876b
+{"project": "opspilot", "kind_network": {"web": "connected", "worker": "connected", "observer": "connected"}}
+rc=0
+### M3 main snapshot on v0.1.1 at 2026-11-11T13:33:28Z
+snap rc=0
+web readyz 200 {"status": "ready", "version": "0.1.1"}
+worker readyz 200 {"status": "ready", "version": "0.1.1"}
+observer readyz 200 {"status": "ready", "version": "0.1.1"}
+alembic | 0024_trace_outbox
+incident | fb89cdf2-98a8-5ec0-a70f-cd93fb321214 | cancelled | closed | human_owned | 3 | 2026-11-11 06:22:04.386821+00 | 2026-11-11 07:42:10.340733+00
+incident | 1fbdce34-377c-5a57-9a2a-6ae81e1d5364 | queued | resolved | automatic | 0 | 2026-11-11 07:49:04.385548+00 | 
+count_controls | 4
+count_evidence | 17
+count_samples | 25
+count_steps | 12
+count_alert_deliveries | 8
+count_postmortem_versions | 3
+### M4 save main v0.1.1 logs before rollback at 2026-11-11T13:33:29Z
+saved container logs: 55-on-v011 opspilot
+### R1 rollback main per UPGRADE.md: stop runtimes at 2026-11-11T13:33:29Z
++ deploy/compose/install.sh compose stop web worker observer
+ Container opspilot-observer-1 Stopping 
+ Container opspilot-web-1 Stopping 
+ Container opspilot-worker-1 Stopping 
+ Container opspilot-observer-1 Stopped 
+ Container opspilot-worker-1 Stopped 
+ Container opspilot-web-1 Stopped 
+rc=0
+### R2 schema heads: same revision, so UPGRADE.md says skip the downgrade (not run this time; run once in round 1 with rc=1) at 2026-11-11T13:33:35Z
+alembic current|0024_trace_outbox
+### R3 upgrade main with the v0.1.0 digest at 2026-11-11T13:33:35Z
++ OPSPILOT_IMAGE=ghcr.io/kevinwangsheng/opspilot@sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd
++ deploy/compose/install.sh upgrade
+[opspilot-install 2026-11-11T13:33:35Z] pulling ghcr.io/kevinwangsheng/opspilot@sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd
+ghcr.io/kevinwangsheng/opspilot@sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd: Pulling from kevinwangsheng/opspilot
+Digest: sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd
+Status: Image is up to date for ghcr.io/kevinwangsheng/opspilot@sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd
+ghcr.io/kevinwangsheng/opspilot@sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd
+[opspilot-install 2026-11-11T13:33:36Z] stopping runtimes (web worker observer) before migrating
+ Container opspilot-observer-1 Stopping 
+ Container opspilot-web-1 Stopping 
+ Container opspilot-worker-1 Stopping 
+ Container opspilot-observer-1 Stopped 
+ Container opspilot-web-1 Stopped 
+ Container opspilot-worker-1 Stopped 
+[opspilot-install 2026-11-11T13:33:36Z] starting postgres
+ Container opspilot-postgres-1 Running 
+ Container opspilot-postgres-1 Waiting 
+ Container opspilot-postgres-1 Healthy 
+[opspilot-install 2026-11-11T13:33:37Z] migrate: start
+ Container opspilot-migrate-1 Recreate 
+ Container opspilot-migrate-1 Recreated 
+Attaching to migrate-1
+ Container opspilot-migrate-1 Starting 
+ Container opspilot-migrate-1 Started 
+migrate-1  | schema unchanged: 0024_trace_outbox
+[Kmigrate-1 exited with code 0
+ Compose Stopping Aborting on container exit...
+ Container opspilot-migrate-1 Stopping 
+ Container opspilot-migrate-1 Stopped 
+[opspilot-install 2026-11-11T13:33:38Z] migrate: done
+[opspilot-install 2026-11-11T13:33:38Z] init-roles: start
+ Container opspilot-init-roles-1 Recreate 
+ Container opspilot-init-roles-1 Recreated 
+Attaching to init-roles-1
+ Container opspilot-init-roles-1 Starting 
+ Container opspilot-init-roles-1 Started 
+init-roles-1  | opspilot_web: login opspilot_web_app ok, schema at head 0024_trace_outbox
+init-roles-1  | opspilot_worker: login opspilot_worker_app ok, schema at head 0024_trace_outbox
+init-roles-1  | opspilot_observer: login opspilot_observer_app ok, schema at head 0024_trace_outbox
+init-roles-1  | opspilot_retention: login opspilot_retention_app ok, schema at head 0024_trace_outbox
+[Kinit-roles-1 exited with code 0
+ Compose Stopping Aborting on container exit...
+ Container opspilot-init-roles-1 Stopping 
+ Container opspilot-init-roles-1 Stopped 
+[opspilot-install 2026-11-11T13:33:39Z] init-roles: done
+[opspilot-install 2026-11-11T13:33:39Z] starting runtimes: web worker observer
+ Container opspilot-worker-1 Recreate 
+ Container opspilot-observer-1 Recreate 
+ Container opspilot-web-1 Recreate 
+ Container opspilot-observer-1 Recreated 
+ Container opspilot-worker-1 Recreated 
+ Container opspilot-web-1 Recreated 
+ Container opspilot-observer-1 Starting 
+ Container opspilot-worker-1 Starting 
+ Container opspilot-web-1 Starting 
+ Container opspilot-worker-1 Started 
+ Container opspilot-web-1 Started 
+ Container opspilot-observer-1 Started 
+ Container opspilot-worker-1 Waiting 
+ Container opspilot-observer-1 Waiting 
+ Container opspilot-web-1 Waiting 
+ Container opspilot-web-1 Healthy 
+ Container opspilot-observer-1 Healthy 
+ Container opspilot-worker-1 Healthy 
+[opspilot-install 2026-11-11T13:33:45Z] workbench: http://127.0.0.1:18090 (loopback only)
+[opspilot-install 2026-11-11T13:33:45Z] login: user 'operator', password in /home/opspilot/.config/opspilot/ui_password
+[opspilot-install 2026-11-11T13:33:45Z] Alertmanager bearer token: /home/opspilot/.config/opspilot/alertmanager_token
+rc=0
++ python3 scripts/kind_lab.py connect-control --project opspilot
++ docker network connect --alias opspilot-web kind d7802d6961c6
++ docker network connect --alias opspilot-worker kind 8257087fdd8a
++ docker network connect --alias opspilot-observer kind c50d2ba715e7
+{"project": "opspilot", "kind_network": {"web": "connected", "worker": "connected", "observer": "connected"}}
+rc=0
+### R4 main snapshot after rollback at 2026-11-11T13:34:46Z
+snap rc=0
+web readyz 200 {"status": "ready", "version": "0.1.0"}
+worker readyz 200 {"status": "ready", "version": "0.1.0"}
+observer readyz 200 {"status": "ready", "version": "0.1.0"}
+alembic | 0024_trace_outbox
+incident | fb89cdf2-98a8-5ec0-a70f-cd93fb321214 | cancelled | closed | human_owned | 3 | 2026-11-11 06:22:04.386821+00 | 2026-11-11 07:42:10.340733+00
+incident | 1fbdce34-377c-5a57-9a2a-6ae81e1d5364 | queued | resolved | automatic | 0 | 2026-11-11 07:49:04.385548+00 | 
+count_controls | 4
+count_evidence | 17
+count_samples | 25
+count_steps | 12
+count_alert_deliveries | 8
+count_postmortem_versions | 3
+### S5 staging snapshot again (still v0.1.1, in-flight session) at 2026-11-11T13:34:47Z
+web readyz 200 {"status": "ready", "version": "0.1.1"}
+worker readyz 200 {"status": "ready", "version": "0.1.1"}
+observer readyz ERROR 503 HTTP Error 503: Service Unavailable
+session | 23204a25-b054-5c2c-a18c-e559967af7cc | 69778314-65d3-5e3c-90a1-2b2b58d9ca03 | authorized |  | 2026-11-11 13:33:13.4205+00 | 4 | 2026-11-11 13:28:01.868409+00 | 2026-11-11 13:34:35.416492+00
+count_samples | 4
+last_sample | 4 | healthy | 2026-11-11 13:33:13.4205+00
+last_sample | 3 | degraded | 2026-11-11 13:31:51.52779+00
+last_sample | 2 | degraded | 2026-11-11 13:30:29.476359+00
+### done at 2026-11-11T13:34:48Z

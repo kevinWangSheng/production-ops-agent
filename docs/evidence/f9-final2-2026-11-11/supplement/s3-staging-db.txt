@@ -1,0 +1,49 @@
+# Collected read-only by the evidence-PR agent after the run: psql SELECTs on the staging project's database (opspilot-staging-postgres-1).
+# Queries: observation session row; sample outcome counts; every sample (sequence, outcome, window_end); controls; incidents.
+db_now | 2026-11-11 19:27:37.791742+00
+session | 23204a25-b054-5c2c-a18c-e559967af7cc | expired | max_samples_exhausted | 40 | 60 | 600 | automatic | 2026-11-11 13:28:01.868409+00 | 2026-11-11 14:28:01.864166+00 | 
+sample_outcomes | degraded | 32 | 1 | 40
+sample_outcomes | healthy | 7 | 4 | 11
+sample_outcomes | no_data | 1 | 8 | 8
+sample | 1 | degraded | 2026-11-11 13:29:06.752163+00
+sample | 2 | degraded | 2026-11-11 13:30:29.476359+00
+sample | 3 | degraded | 2026-11-11 13:31:51.52779+00
+sample | 4 | healthy | 2026-11-11 13:33:13.4205+00
+sample | 5 | healthy | 2026-11-11 13:34:35.419362+00
+sample | 6 | healthy | 2026-11-11 13:35:57.31386+00
+sample | 7 | healthy | 2026-11-11 13:37:19.218696+00
+sample | 8 | no_data | 2026-11-11 13:38:41.12112+00
+sample | 9 | healthy | 2026-11-11 13:40:03.017097+00
+sample | 10 | healthy | 2026-11-11 13:41:24.915455+00
+sample | 11 | healthy | 2026-11-11 13:42:46.816135+00
+sample | 12 | degraded | 2026-11-11 13:44:08.718982+00
+sample | 13 | degraded | 2026-11-11 13:45:30.62075+00
+sample | 14 | degraded | 2026-11-11 13:46:52.622272+00
+sample | 15 | degraded | 2026-11-11 13:48:14.620631+00
+sample | 16 | degraded | 2026-11-11 13:49:38.317591+00
+sample | 17 | degraded | 2026-11-11 13:51:00.219222+00
+sample | 18 | degraded | 2026-11-11 13:52:22.114866+00
+sample | 19 | degraded | 2026-11-11 13:53:44.020372+00
+sample | 20 | degraded | 2026-11-11 13:55:05.914516+00
+sample | 21 | degraded | 2026-11-11 13:56:27.818622+00
+sample | 22 | degraded | 2026-11-11 13:57:49.719008+00
+sample | 23 | degraded | 2026-11-11 13:59:11.618492+00
+sample | 24 | degraded | 2026-11-11 14:00:33.520106+00
+sample | 25 | degraded | 2026-11-11 14:01:55.421065+00
+sample | 26 | degraded | 2026-11-11 14:03:17.321066+00
+sample | 27 | degraded | 2026-11-11 14:04:39.219288+00
+sample | 28 | degraded | 2026-11-11 14:06:01.216067+00
+sample | 29 | degraded | 2026-11-11 14:07:23.119529+00
+sample | 30 | degraded | 2026-11-11 14:08:45.015153+00
+sample | 31 | degraded | 2026-11-11 14:10:06.921149+00
+sample | 32 | degraded | 2026-11-11 14:11:28.816146+00
+sample | 33 | degraded | 2026-11-11 14:12:50.812884+00
+sample | 34 | degraded | 2026-11-11 14:14:12.714357+00
+sample | 35 | degraded | 2026-11-11 14:15:34.61577+00
+sample | 36 | degraded | 2026-11-11 14:16:56.51269+00
+sample | 37 | degraded | 2026-11-11 14:18:18.419043+00
+sample | 38 | degraded | 2026-11-11 14:19:40.313215+00
+sample | 39 | degraded | 2026-11-11 14:21:02.311156+00
+sample | 40 | degraded | 2026-11-11 14:22:24.21726+00
+control | 69778314-65d3-5e3c-90a1-2b2b58d9ca03 | 2026-11-11 13:28:01.869377+00 | auto_authorize_observation | system
+incident | 69778314-65d3-5e3c-90a1-2b2b58d9ca03 | open | automatic | 
