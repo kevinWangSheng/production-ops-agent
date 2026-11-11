@@ -1,0 +1,533 @@
++ cd /home/opspilot/production-ops-agent
++ V010=ghcr.io/kevinwangsheng/opspilot@sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd
++ V011=ghcr.io/kevinwangsheng/opspilot@sha256:0af7b9ff4b71e2c0b0b71d99020f35ed67f79eef958f612938f6adc102fff25e
++ snap 'before (opspilot:local from checkout 9416041)'
+++ date -u +%FT%TZ
++ echo '=== snapshot: before (opspilot:local from checkout 9416041) 2026-11-11T07:53:21Z'
+=== snapshot: before (opspilot:local from checkout 9416041) 2026-11-11T07:53:21Z
++ docker ps --format '{{.Names}} {{.Image}} {{.Status}}'
++ grep opspilot-
+opspilot-worker-1 opspilot:local Up 2 hours (healthy)
+opspilot-observer-1 opspilot:local Up 2 hours (healthy)
+opspilot-web-1 opspilot:local Up 2 hours (healthy)
+opspilot-postgres-1 2a0d0fe14825 Up 2 hours (healthy)
+opspilot-m1-control-plane kindest/node:v1.37.0 Up 2 hours
++ for c in web worker observer
++ docker inspect opspilot-web-1 --format 'web image={{.Config.Image}} id={{.Image}}'
+web image=opspilot:local id=sha256:d7ec4b2155c5db8647cb28e4987c233be01a7e802d961db30eba4a5f38b1c4ee
++ docker exec opspilot-web-1 python -c 'import opspilot,importlib.metadata as m; print("web version", m.version("opspilot"))'
++ tail -1
+importlib.metadata.PackageNotFoundError: No package metadata was found for opspilot
++ for c in web worker observer
++ docker inspect opspilot-worker-1 --format 'worker image={{.Config.Image}} id={{.Image}}'
+worker image=opspilot:local id=sha256:d7ec4b2155c5db8647cb28e4987c233be01a7e802d961db30eba4a5f38b1c4ee
++ docker exec opspilot-worker-1 python -c 'import opspilot,importlib.metadata as m; print("worker version", m.version("opspilot"))'
++ tail -1
+importlib.metadata.PackageNotFoundError: No package metadata was found for opspilot
++ for c in web worker observer
++ docker inspect opspilot-observer-1 --format 'observer image={{.Config.Image}} id={{.Image}}'
+observer image=opspilot:local id=sha256:d7ec4b2155c5db8647cb28e4987c233be01a7e802d961db30eba4a5f38b1c4ee
++ docker exec opspilot-observer-1 python -c 'import opspilot,importlib.metadata as m; print("observer version", m.version("opspilot"))'
++ tail -1
+importlib.metadata.PackageNotFoundError: No package metadata was found for opspilot
++ /home/opspilot/f9-final/q.sh
+ERROR:  column "alembic" does not exist
+LINE 1: select alembic, version_num from alembic_version;
+               ^
+ERROR:  column "incident" does not exist
+LINE 1: select incident, incident_id, state, lifecycle, control_gene...
+               ^
+HINT:  Perhaps you meant to reference the column "opspilot_incidents.incident_id".
+ERROR:  column "run" does not exist
+LINE 1: select run, run_id, state, epoch from opspilot_runs;
+               ^
+ERROR:  column "session" does not exist
+LINE 1: select session, session_id, state, ended_reason, adopted_cou...
+               ^
+HINT:  Perhaps you meant to reference the column "opspilot_observation_sessions.session_id".
+ERROR:  column "controls" does not exist
+LINE 1: select controls, count(*) from opspilot_controls;
+               ^
+ERROR:  column "evidence" does not exist
+LINE 1: select evidence, count(*) from opspilot_evidence;
+               ^
+HINT:  Perhaps you meant to reference the column "opspilot_evidence.evidence_id".
+ERROR:  column "samples" does not exist
+LINE 1: select samples, count(*) from opspilot_observation_samples;
+               ^
+HINT:  Perhaps you meant to reference the column "opspilot_observation_samples.sample_id".
++ curl -s -o /dev/null -w 'workbench http %{http_code}\n' http://127.0.0.1:18090/healthz
+workbench http 404
++ echo '### A: move to pinned v0.1.0'
+### A: move to pinned v0.1.0
++ date -u +%FT%TZ
+2026-11-11T07:53:22Z
++ OPSPILOT_IMAGE=ghcr.io/kevinwangsheng/opspilot@sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd
++ deploy/compose/install.sh upgrade
+[opspilot-install 2026-11-11T07:53:22Z] pulling ghcr.io/kevinwangsheng/opspilot@sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd
+ghcr.io/kevinwangsheng/opspilot@sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd: Pulling from kevinwangsheng/opspilot
+a62e800f4b26: Pulling fs layer
+cd8becc1dd5e: Pulling fs layer
+cf264a6a458b: Pulling fs layer
+1a956b632271: Pulling fs layer
+79489b825cae: Pulling fs layer
+44136fa355b3: Download complete
+2912f9787fc3: Download complete
+a62e800f4b26: Download complete
+cf264a6a458b: Download complete
+cd8becc1dd5e: Download complete
+cf264a6a458b: Pull complete
+cd8becc1dd5e: Pull complete
+1a956b632271: Download complete
+79489b825cae: Download complete
+79489b825cae: Pull complete
+a62e800f4b26: Pull complete
+1a956b632271: Pull complete
+Digest: sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd
+Status: Downloaded newer image for ghcr.io/kevinwangsheng/opspilot@sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd
+ghcr.io/kevinwangsheng/opspilot@sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd
+[opspilot-install 2026-11-11T07:53:26Z] stopping runtimes (web worker observer) before migrating
+ Container opspilot-observer-1 Stopping 
+ Container opspilot-worker-1 Stopping 
+ Container opspilot-web-1 Stopping 
+ Container opspilot-observer-1 Stopped 
+ Container opspilot-worker-1 Stopped 
+ Container opspilot-web-1 Stopped 
+[opspilot-install 2026-11-11T07:53:36Z] starting postgres
+ Container opspilot-postgres-1 Running 
+ Container opspilot-postgres-1 Waiting 
+ Container opspilot-postgres-1 Healthy 
+[opspilot-install 2026-11-11T07:53:37Z] migrate: start
+ Container opspilot-migrate-1 Recreate 
+ Container opspilot-migrate-1 Recreated 
+Attaching to migrate-1
+ Container opspilot-migrate-1 Starting 
+ Container opspilot-migrate-1 Started 
+migrate-1  | schema unchanged: 0024_trace_outbox
+[Kmigrate-1 exited with code 0
+ Compose Stopping Aborting on container exit...
+ Container opspilot-migrate-1 Stopping 
+ Container opspilot-migrate-1 Stopped 
+[opspilot-install 2026-11-11T07:53:38Z] migrate: done
+[opspilot-install 2026-11-11T07:53:38Z] init-roles: start
+ Container opspilot-init-roles-1 Recreate 
+ Container opspilot-init-roles-1 Recreated 
+Attaching to init-roles-1
+ Container opspilot-init-roles-1 Starting 
+ Container opspilot-init-roles-1 Started 
+init-roles-1  | opspilot_web: login opspilot_web_app ok, schema at head 0024_trace_outbox
+init-roles-1  | opspilot_worker: login opspilot_worker_app ok, schema at head 0024_trace_outbox
+init-roles-1  | opspilot_observer: login opspilot_observer_app ok, schema at head 0024_trace_outbox
+init-roles-1  | opspilot_retention: login opspilot_retention_app ok, schema at head 0024_trace_outbox
+[Kinit-roles-1 exited with code 0
+ Compose Stopping Aborting on container exit...
+ Container opspilot-init-roles-1 Stopping 
+ Container opspilot-init-roles-1 Stopped 
+[opspilot-install 2026-11-11T07:53:40Z] init-roles: done
+[opspilot-install 2026-11-11T07:53:40Z] starting runtimes: web worker observer
+ Container opspilot-observer-1 Recreate 
+ Container opspilot-worker-1 Recreate 
+ Container opspilot-web-1 Recreate 
+ Container opspilot-observer-1 Recreated 
+ Container opspilot-worker-1 Recreated 
+ Container opspilot-web-1 Recreated 
+ Container opspilot-observer-1 Starting 
+ Container opspilot-worker-1 Starting 
+ Container opspilot-web-1 Starting 
+ Container opspilot-observer-1 Started 
+ Container opspilot-web-1 Started 
+ Container opspilot-worker-1 Started 
+ Container opspilot-observer-1 Waiting 
+ Container opspilot-web-1 Waiting 
+ Container opspilot-worker-1 Waiting 
+ Container opspilot-web-1 Healthy 
+ Container opspilot-worker-1 Healthy 
+ Container opspilot-observer-1 Healthy 
+[opspilot-install 2026-11-11T07:53:45Z] workbench: http://127.0.0.1:18090 (loopback only)
+[opspilot-install 2026-11-11T07:53:45Z] login: user 'operator', password in /home/opspilot/.config/opspilot/ui_password
+[opspilot-install 2026-11-11T07:53:45Z] Alertmanager bearer token: /home/opspilot/.config/opspilot/alertmanager_token
++ echo rc=0
+rc=0
++ python3 scripts/kind_lab.py connect-control --project opspilot
++ docker network connect --alias opspilot-web kind 0158cd0d40de
++ docker network connect --alias opspilot-worker kind d8f520497a03
++ docker network connect --alias opspilot-observer kind cc1180861e22
+{"project": "opspilot", "kind_network": {"web": "connected", "worker": "connected", "observer": "connected"}}
++ echo rc=0
+rc=0
++ sleep 20
++ snap 'on v0.1.0'
+++ date -u +%FT%TZ
++ echo '=== snapshot: on v0.1.0 2026-11-11T07:54:06Z'
+=== snapshot: on v0.1.0 2026-11-11T07:54:06Z
++ docker ps --format '{{.Names}} {{.Image}} {{.Status}}'
++ grep opspilot-
+opspilot-web-1 228df9f72e69 Up 26 seconds (healthy)
+opspilot-observer-1 228df9f72e69 Up 26 seconds (healthy)
+opspilot-worker-1 228df9f72e69 Up 26 seconds (healthy)
+opspilot-postgres-1 2a0d0fe14825 Up 2 hours (healthy)
+opspilot-m1-control-plane kindest/node:v1.37.0 Up 2 hours
++ for c in web worker observer
++ docker inspect opspilot-web-1 --format 'web image={{.Config.Image}} id={{.Image}}'
+web image=ghcr.io/kevinwangsheng/opspilot@sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd id=sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd
++ docker exec opspilot-web-1 python -c 'import opspilot,importlib.metadata as m; print("web version", m.version("opspilot"))'
++ tail -1
+importlib.metadata.PackageNotFoundError: No package metadata was found for opspilot
++ for c in web worker observer
++ docker inspect opspilot-worker-1 --format 'worker image={{.Config.Image}} id={{.Image}}'
+worker image=ghcr.io/kevinwangsheng/opspilot@sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd id=sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd
++ docker exec opspilot-worker-1 python -c 'import opspilot,importlib.metadata as m; print("worker version", m.version("opspilot"))'
++ tail -1
+importlib.metadata.PackageNotFoundError: No package metadata was found for opspilot
++ for c in web worker observer
++ docker inspect opspilot-observer-1 --format 'observer image={{.Config.Image}} id={{.Image}}'
+observer image=ghcr.io/kevinwangsheng/opspilot@sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd id=sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd
++ docker exec opspilot-observer-1 python -c 'import opspilot,importlib.metadata as m; print("observer version", m.version("opspilot"))'
++ tail -1
+importlib.metadata.PackageNotFoundError: No package metadata was found for opspilot
++ /home/opspilot/f9-final/q.sh
+ERROR:  column "alembic" does not exist
+LINE 1: select alembic, version_num from alembic_version;
+               ^
+ERROR:  column "incident" does not exist
+LINE 1: select incident, incident_id, state, lifecycle, control_gene...
+               ^
+HINT:  Perhaps you meant to reference the column "opspilot_incidents.incident_id".
+ERROR:  column "run" does not exist
+LINE 1: select run, run_id, state, epoch from opspilot_runs;
+               ^
+ERROR:  column "session" does not exist
+LINE 1: select session, session_id, state, ended_reason, adopted_cou...
+               ^
+HINT:  Perhaps you meant to reference the column "opspilot_observation_sessions.session_id".
+ERROR:  column "controls" does not exist
+LINE 1: select controls, count(*) from opspilot_controls;
+               ^
+ERROR:  column "evidence" does not exist
+LINE 1: select evidence, count(*) from opspilot_evidence;
+               ^
+HINT:  Perhaps you meant to reference the column "opspilot_evidence.evidence_id".
+ERROR:  column "samples" does not exist
+LINE 1: select samples, count(*) from opspilot_observation_samples;
+               ^
+HINT:  Perhaps you meant to reference the column "opspilot_observation_samples.sample_id".
++ curl -s -o /dev/null -w 'workbench http %{http_code}\n' http://127.0.0.1:18090/healthz
+workbench http 404
++ echo '### B: upgrade to pinned v0.1.1'
+### B: upgrade to pinned v0.1.1
++ date -u +%FT%TZ
+2026-11-11T07:54:07Z
++ OPSPILOT_IMAGE=ghcr.io/kevinwangsheng/opspilot@sha256:0af7b9ff4b71e2c0b0b71d99020f35ed67f79eef958f612938f6adc102fff25e
++ deploy/compose/install.sh upgrade
+[opspilot-install 2026-11-11T07:54:07Z] pulling ghcr.io/kevinwangsheng/opspilot@sha256:0af7b9ff4b71e2c0b0b71d99020f35ed67f79eef958f612938f6adc102fff25e
+ghcr.io/kevinwangsheng/opspilot@sha256:0af7b9ff4b71e2c0b0b71d99020f35ed67f79eef958f612938f6adc102fff25e: Pulling from kevinwangsheng/opspilot
+16c8f43b01f2: Pulling fs layer
+1097228125e3: Pulling fs layer
+4a3fefadd491: Pulling fs layer
+ed3085174fca: Pulling fs layer
+3ad74ad2f2f4: Pulling fs layer
+44136fa355b3: Already exists
+86c45b6e7da3: Download complete
+16c8f43b01f2: Download complete
+4a3fefadd491: Download complete
+3ad74ad2f2f4: Download complete
+16c8f43b01f2: Pull complete
+3ad74ad2f2f4: Pull complete
+1097228125e3: Download complete
+ed3085174fca: Download complete
+ed3085174fca: Pull complete
+4a3fefadd491: Pull complete
+1097228125e3: Pull complete
+Digest: sha256:0af7b9ff4b71e2c0b0b71d99020f35ed67f79eef958f612938f6adc102fff25e
+Status: Downloaded newer image for ghcr.io/kevinwangsheng/opspilot@sha256:0af7b9ff4b71e2c0b0b71d99020f35ed67f79eef958f612938f6adc102fff25e
+ghcr.io/kevinwangsheng/opspilot@sha256:0af7b9ff4b71e2c0b0b71d99020f35ed67f79eef958f612938f6adc102fff25e
+[opspilot-install 2026-11-11T07:54:11Z] stopping runtimes (web worker observer) before migrating
+ Container opspilot-web-1 Stopping 
+ Container opspilot-worker-1 Stopping 
+ Container opspilot-observer-1 Stopping 
+ Container opspilot-observer-1 Stopped 
+ Container opspilot-worker-1 Stopped 
+ Container opspilot-web-1 Stopped 
+[opspilot-install 2026-11-11T07:54:19Z] starting postgres
+ Container opspilot-postgres-1 Running 
+ Container opspilot-postgres-1 Waiting 
+ Container opspilot-postgres-1 Healthy 
+[opspilot-install 2026-11-11T07:54:20Z] migrate: start
+ Container opspilot-migrate-1 Recreate 
+ Container opspilot-migrate-1 Recreated 
+Attaching to migrate-1
+ Container opspilot-migrate-1 Starting 
+ Container opspilot-migrate-1 Started 
+migrate-1  | schema unchanged: 0024_trace_outbox
+[Kmigrate-1 exited with code 0
+ Compose Stopping Aborting on container exit...
+ Container opspilot-migrate-1 Stopping 
+ Container opspilot-migrate-1 Stopped 
+[opspilot-install 2026-11-11T07:54:21Z] migrate: done
+[opspilot-install 2026-11-11T07:54:21Z] init-roles: start
+ Container opspilot-init-roles-1 Recreate 
+ Container opspilot-init-roles-1 Recreated 
+Attaching to init-roles-1
+ Container opspilot-init-roles-1 Starting 
+ Container opspilot-init-roles-1 Started 
+init-roles-1  | opspilot_web: login opspilot_web_app ok, schema at head 0024_trace_outbox
+init-roles-1  | opspilot_worker: login opspilot_worker_app ok, schema at head 0024_trace_outbox
+init-roles-1  | opspilot_observer: login opspilot_observer_app ok, schema at head 0024_trace_outbox
+init-roles-1  | opspilot_retention: login opspilot_retention_app ok, schema at head 0024_trace_outbox
+[Kinit-roles-1 exited with code 0
+ Compose Stopping Aborting on container exit...
+ Container opspilot-init-roles-1 Stopping 
+ Container opspilot-init-roles-1 Stopped 
+[opspilot-install 2026-11-11T07:54:23Z] init-roles: done
+[opspilot-install 2026-11-11T07:54:23Z] starting runtimes: web worker observer
+ Container opspilot-web-1 Recreate 
+ Container opspilot-observer-1 Recreate 
+ Container opspilot-worker-1 Recreate 
+ Container opspilot-observer-1 Recreated 
+ Container opspilot-worker-1 Recreated 
+ Container opspilot-web-1 Recreated 
+ Container opspilot-observer-1 Starting 
+ Container opspilot-worker-1 Starting 
+ Container opspilot-web-1 Starting 
+ Container opspilot-worker-1 Started 
+ Container opspilot-observer-1 Started 
+ Container opspilot-web-1 Started 
+ Container opspilot-observer-1 Waiting 
+ Container opspilot-web-1 Waiting 
+ Container opspilot-worker-1 Waiting 
+ Container opspilot-web-1 Healthy 
+ Container opspilot-worker-1 Healthy 
+ Container opspilot-observer-1 Healthy 
+[opspilot-install 2026-11-11T07:54:29Z] workbench: http://127.0.0.1:18090 (loopback only)
+[opspilot-install 2026-11-11T07:54:29Z] login: user 'operator', password in /home/opspilot/.config/opspilot/ui_password
+[opspilot-install 2026-11-11T07:54:29Z] Alertmanager bearer token: /home/opspilot/.config/opspilot/alertmanager_token
++ echo rc=0
+rc=0
++ python3 scripts/kind_lab.py connect-control --project opspilot
++ docker network connect --alias opspilot-web kind 2d211a64b254
++ docker network connect --alias opspilot-worker kind ce8364a53bec
++ docker network connect --alias opspilot-observer kind eeb0ab565bb9
+{"project": "opspilot", "kind_network": {"web": "connected", "worker": "connected", "observer": "connected"}}
++ echo rc=0
+rc=0
++ sleep 90
++ snap 'on v0.1.1 (after 90s, Observer sampling should continue)'
+++ date -u +%FT%TZ
++ echo '=== snapshot: on v0.1.1 (after 90s, Observer sampling should continue) 2026-11-11T07:55:59Z'
+=== snapshot: on v0.1.1 (after 90s, Observer sampling should continue) 2026-11-11T07:55:59Z
++ docker ps --format '{{.Names}} {{.Image}} {{.Status}}'
++ grep opspilot-
+opspilot-web-1 0af7b9ff4b71 Up About a minute (healthy)
+opspilot-worker-1 0af7b9ff4b71 Up About a minute (healthy)
+opspilot-observer-1 0af7b9ff4b71 Up About a minute (healthy)
+opspilot-postgres-1 2a0d0fe14825 Up 2 hours (healthy)
+opspilot-m1-control-plane kindest/node:v1.37.0 Up 2 hours
++ for c in web worker observer
++ docker inspect opspilot-web-1 --format 'web image={{.Config.Image}} id={{.Image}}'
+web image=ghcr.io/kevinwangsheng/opspilot@sha256:0af7b9ff4b71e2c0b0b71d99020f35ed67f79eef958f612938f6adc102fff25e id=sha256:0af7b9ff4b71e2c0b0b71d99020f35ed67f79eef958f612938f6adc102fff25e
++ docker exec opspilot-web-1 python -c 'import opspilot,importlib.metadata as m; print("web version", m.version("opspilot"))'
++ tail -1
+importlib.metadata.PackageNotFoundError: No package metadata was found for opspilot
++ for c in web worker observer
++ docker inspect opspilot-worker-1 --format 'worker image={{.Config.Image}} id={{.Image}}'
+worker image=ghcr.io/kevinwangsheng/opspilot@sha256:0af7b9ff4b71e2c0b0b71d99020f35ed67f79eef958f612938f6adc102fff25e id=sha256:0af7b9ff4b71e2c0b0b71d99020f35ed67f79eef958f612938f6adc102fff25e
++ docker exec opspilot-worker-1 python -c 'import opspilot,importlib.metadata as m; print("worker version", m.version("opspilot"))'
++ tail -1
+importlib.metadata.PackageNotFoundError: No package metadata was found for opspilot
++ for c in web worker observer
++ docker inspect opspilot-observer-1 --format 'observer image={{.Config.Image}} id={{.Image}}'
+observer image=ghcr.io/kevinwangsheng/opspilot@sha256:0af7b9ff4b71e2c0b0b71d99020f35ed67f79eef958f612938f6adc102fff25e id=sha256:0af7b9ff4b71e2c0b0b71d99020f35ed67f79eef958f612938f6adc102fff25e
++ docker exec opspilot-observer-1 python -c 'import opspilot,importlib.metadata as m; print("observer version", m.version("opspilot"))'
++ tail -1
+importlib.metadata.PackageNotFoundError: No package metadata was found for opspilot
++ /home/opspilot/f9-final/q.sh
+ERROR:  column "alembic" does not exist
+LINE 1: select alembic, version_num from alembic_version;
+               ^
+ERROR:  column "incident" does not exist
+LINE 1: select incident, incident_id, state, lifecycle, control_gene...
+               ^
+HINT:  Perhaps you meant to reference the column "opspilot_incidents.incident_id".
+ERROR:  column "run" does not exist
+LINE 1: select run, run_id, state, epoch from opspilot_runs;
+               ^
+ERROR:  column "session" does not exist
+LINE 1: select session, session_id, state, ended_reason, adopted_cou...
+               ^
+HINT:  Perhaps you meant to reference the column "opspilot_observation_sessions.session_id".
+ERROR:  column "controls" does not exist
+LINE 1: select controls, count(*) from opspilot_controls;
+               ^
+ERROR:  column "evidence" does not exist
+LINE 1: select evidence, count(*) from opspilot_evidence;
+               ^
+HINT:  Perhaps you meant to reference the column "opspilot_evidence.evidence_id".
+ERROR:  column "samples" does not exist
+LINE 1: select samples, count(*) from opspilot_observation_samples;
+               ^
+HINT:  Perhaps you meant to reference the column "opspilot_observation_samples.sample_id".
++ curl -s -o /dev/null -w 'workbench http %{http_code}\n' http://127.0.0.1:18090/healthz
+workbench http 404
++ echo '### C: rollback to v0.1.0 (UPGRADE.md Rolling back)'
+### C: rollback to v0.1.0 (UPGRADE.md Rolling back)
++ date -u +%FT%TZ
+2026-11-11T07:56:00Z
++ deploy/compose/install.sh compose stop web worker observer
+ Container opspilot-observer-1 Stopping 
+ Container opspilot-worker-1 Stopping 
+ Container opspilot-web-1 Stopping 
+ Container opspilot-worker-1 Stopped 
+ Container opspilot-observer-1 Stopped 
+ Container opspilot-web-1 Stopped 
++ echo rc=0
+rc=0
++ echo 'step 2 check: run the downgrade to the same head; documented to exit 1 and change nothing'
+step 2 check: run the downgrade to the same head; documented to exit 1 and change nothing
+++ /home/opspilot/f9-final/q.sh
++ HEAD_REV=0024_trace_outbox
++ deploy/compose/install.sh compose run --rm --no-deps migrate python -m opspilot.schema downgrade --to 0024_trace_outbox
+ Container opspilot-migrate-run-60b433f56ace Creating 
+ Container opspilot-migrate-run-60b433f56ace Created 
+schema current: 0024_trace_outbox
+revision 0024_trace_outbox is not lower than the current 0024_trace_outbox: downgrade only goes to an older revision
+
++ echo 'downgrade rc=1 (expected 1, same head)'
+downgrade rc=1 (expected 1, same head)
++ OPSPILOT_IMAGE=ghcr.io/kevinwangsheng/opspilot@sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd
++ deploy/compose/install.sh upgrade
+[opspilot-install 2026-11-11T07:56:09Z] pulling ghcr.io/kevinwangsheng/opspilot@sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd
+ghcr.io/kevinwangsheng/opspilot@sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd: Pulling from kevinwangsheng/opspilot
+Digest: sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd
+Status: Image is up to date for ghcr.io/kevinwangsheng/opspilot@sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd
+ghcr.io/kevinwangsheng/opspilot@sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd
+[opspilot-install 2026-11-11T07:56:09Z] stopping runtimes (web worker observer) before migrating
+ Container opspilot-worker-1 Stopping 
+ Container opspilot-web-1 Stopping 
+ Container opspilot-observer-1 Stopping 
+ Container opspilot-worker-1 Stopped 
+ Container opspilot-web-1 Stopped 
+ Container opspilot-observer-1 Stopped 
+[opspilot-install 2026-11-11T07:56:09Z] starting postgres
+ Container opspilot-postgres-1 Running 
+ Container opspilot-postgres-1 Waiting 
+ Container opspilot-postgres-1 Healthy 
+[opspilot-install 2026-11-11T07:56:10Z] migrate: start
+ Container opspilot-migrate-1 Recreate 
+ Container opspilot-migrate-1 Recreated 
+Attaching to migrate-1
+ Container opspilot-migrate-1 Starting 
+ Container opspilot-migrate-1 Started 
+migrate-1  | schema unchanged: 0024_trace_outbox
+[Kmigrate-1 exited with code 0
+ Compose Stopping Aborting on container exit...
+ Container opspilot-migrate-1 Stopping 
+ Container opspilot-migrate-1 Stopped 
+[opspilot-install 2026-11-11T07:56:11Z] migrate: done
+[opspilot-install 2026-11-11T07:56:11Z] init-roles: start
+ Container opspilot-init-roles-1 Recreate 
+ Container opspilot-init-roles-1 Recreated 
+Attaching to init-roles-1
+ Container opspilot-init-roles-1 Starting 
+ Container opspilot-init-roles-1 Started 
+init-roles-1  | opspilot_web: login opspilot_web_app ok, schema at head 0024_trace_outbox
+init-roles-1  | opspilot_worker: login opspilot_worker_app ok, schema at head 0024_trace_outbox
+init-roles-1  | opspilot_observer: login opspilot_observer_app ok, schema at head 0024_trace_outbox
+init-roles-1  | opspilot_retention: login opspilot_retention_app ok, schema at head 0024_trace_outbox
+[Kinit-roles-1 exited with code 0
+ Compose Stopping Aborting on container exit...
+ Container opspilot-init-roles-1 Stopping 
+ Container opspilot-init-roles-1 Stopped 
+[opspilot-install 2026-11-11T07:56:13Z] init-roles: done
+[opspilot-install 2026-11-11T07:56:13Z] starting runtimes: web worker observer
+ Container opspilot-web-1 Recreate 
+ Container opspilot-worker-1 Recreate 
+ Container opspilot-observer-1 Recreate 
+ Container opspilot-worker-1 Recreated 
+ Container opspilot-observer-1 Recreated 
+ Container opspilot-web-1 Recreated 
+ Container opspilot-observer-1 Starting 
+ Container opspilot-web-1 Starting 
+ Container opspilot-worker-1 Starting 
+ Container opspilot-web-1 Started 
+ Container opspilot-worker-1 Started 
+ Container opspilot-observer-1 Started 
+ Container opspilot-worker-1 Waiting 
+ Container opspilot-observer-1 Waiting 
+ Container opspilot-web-1 Waiting 
+ Container opspilot-web-1 Healthy 
+ Container opspilot-observer-1 Healthy 
+ Container opspilot-worker-1 Healthy 
+[opspilot-install 2026-11-11T07:56:19Z] workbench: http://127.0.0.1:18090 (loopback only)
+[opspilot-install 2026-11-11T07:56:19Z] login: user 'operator', password in /home/opspilot/.config/opspilot/ui_password
+[opspilot-install 2026-11-11T07:56:19Z] Alertmanager bearer token: /home/opspilot/.config/opspilot/alertmanager_token
++ echo rc=0
+rc=0
++ python3 scripts/kind_lab.py connect-control --project opspilot
++ docker network connect --alias opspilot-web kind 23b9b982de57
++ docker network connect --alias opspilot-worker kind 7a21c300bde3
++ docker network connect --alias opspilot-observer kind 3ae79e5b19bc
+{"project": "opspilot", "kind_network": {"web": "connected", "worker": "connected", "observer": "connected"}}
++ echo rc=0
+rc=0
++ sleep 90
++ snap 'rolled back to v0.1.0 (after 90s)'
+++ date -u +%FT%TZ
++ echo '=== snapshot: rolled back to v0.1.0 (after 90s) 2026-11-11T07:57:49Z'
+=== snapshot: rolled back to v0.1.0 (after 90s) 2026-11-11T07:57:49Z
++ docker ps --format '{{.Names}} {{.Image}} {{.Status}}'
++ grep opspilot-
+opspilot-web-1 228df9f72e69 Up About a minute (healthy)
+opspilot-worker-1 228df9f72e69 Up About a minute (healthy)
+opspilot-observer-1 228df9f72e69 Up About a minute (healthy)
+opspilot-postgres-1 2a0d0fe14825 Up 2 hours (healthy)
+opspilot-m1-control-plane kindest/node:v1.37.0 Up 2 hours
++ for c in web worker observer
++ docker inspect opspilot-web-1 --format 'web image={{.Config.Image}} id={{.Image}}'
+web image=ghcr.io/kevinwangsheng/opspilot@sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd id=sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd
++ docker exec opspilot-web-1 python -c 'import opspilot,importlib.metadata as m; print("web version", m.version("opspilot"))'
++ tail -1
+importlib.metadata.PackageNotFoundError: No package metadata was found for opspilot
++ for c in web worker observer
++ docker inspect opspilot-worker-1 --format 'worker image={{.Config.Image}} id={{.Image}}'
+worker image=ghcr.io/kevinwangsheng/opspilot@sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd id=sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd
++ docker exec opspilot-worker-1 python -c 'import opspilot,importlib.metadata as m; print("worker version", m.version("opspilot"))'
++ tail -1
+importlib.metadata.PackageNotFoundError: No package metadata was found for opspilot
++ for c in web worker observer
++ docker inspect opspilot-observer-1 --format 'observer image={{.Config.Image}} id={{.Image}}'
+observer image=ghcr.io/kevinwangsheng/opspilot@sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd id=sha256:228df9f72e6964e1d7d7110365d3b59330d7fc93ebd89e62b70631de6c7aaabd
++ docker exec opspilot-observer-1 python -c 'import opspilot,importlib.metadata as m; print("observer version", m.version("opspilot"))'
++ tail -1
+importlib.metadata.PackageNotFoundError: No package metadata was found for opspilot
++ /home/opspilot/f9-final/q.sh
+ERROR:  column "alembic" does not exist
+LINE 1: select alembic, version_num from alembic_version;
+               ^
+ERROR:  column "incident" does not exist
+LINE 1: select incident, incident_id, state, lifecycle, control_gene...
+               ^
+HINT:  Perhaps you meant to reference the column "opspilot_incidents.incident_id".
+ERROR:  column "run" does not exist
+LINE 1: select run, run_id, state, epoch from opspilot_runs;
+               ^
+ERROR:  column "session" does not exist
+LINE 1: select session, session_id, state, ended_reason, adopted_cou...
+               ^
+HINT:  Perhaps you meant to reference the column "opspilot_observation_sessions.session_id".
+ERROR:  column "controls" does not exist
+LINE 1: select controls, count(*) from opspilot_controls;
+               ^
+ERROR:  column "evidence" does not exist
+LINE 1: select evidence, count(*) from opspilot_evidence;
+               ^
+HINT:  Perhaps you meant to reference the column "opspilot_evidence.evidence_id".
+ERROR:  column "samples" does not exist
+LINE 1: select samples, count(*) from opspilot_observation_samples;
+               ^
+HINT:  Perhaps you meant to reference the column "opspilot_observation_samples.sample_id".
++ curl -s -o /dev/null -w 'workbench http %{http_code}\n' http://127.0.0.1:18090/healthz
+workbench http 404
++ echo '### done'
+### done
++ date -u +%FT%TZ
+2026-11-11T07:57:50Z

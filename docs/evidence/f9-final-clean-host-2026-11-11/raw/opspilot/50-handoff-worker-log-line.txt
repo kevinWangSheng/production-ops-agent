@@ -1,0 +1,3 @@
+# Copied from `docker logs opspilot-worker-1 | grep handoff` output at 2026-11-11T06:22:46Z, just before the worker container
+# was recreated to restore model egress (the container's log was removed by the recreate; this one line is what was captured).
+{"ts": "2026-11-11T06:22:05.920Z", "level": "INFO", "logger": "opspilot.worker", "msg": "attempt incident=fb89cdf2-98a8-5ec0-a70f-cd93fb321214 status=handed_off reason=MODEL_UNAVAILABLE", "version": "0.1.1", "revision": "9416041d93b8e9844dd9a84b736319174b4d419a", "kv": {"incident": "fb89cdf2-98a8-5ec0-a70f-cd93fb321214", "status": "handed_off", "reason": "MODEL_UNAVAILABLE"}}

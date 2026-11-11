@@ -1,0 +1,10 @@
+2026-11-11T06:22:46Z
+# restore worker model egress
+ Container opspilot-worker-1 Recreate 
+ Container opspilot-worker-1 Recreated 
+ Container opspilot-worker-1 Starting 
+ Container opspilot-worker-1 Started 
++ docker network connect --alias opspilot-worker kind 63549de6031c
+{"project": "opspilot", "kind_network": {"web": "already connected", "worker": "connected", "observer": "already connected"}}
+extra_hosts=[]
+2026-11-11T06:22:47Z

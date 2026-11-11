@@ -1,0 +1,23 @@
+2026-11-11T06:15:08Z
+# drill: cut worker model egress
+ Container opspilot-worker-1 Recreate 
+ Container opspilot-worker-1 Recreated 
+ Container opspilot-worker-1 Starting 
+ Container opspilot-worker-1 Started 
+rc=0
++ docker network connect --alias opspilot-worker kind 282de57d5166
+{"project": "opspilot", "kind_network": {"web": "already connected", "worker": "connected", "observer": "already connected"}}
+rc=0
+extra_hosts=[api.deepseek.com:127.0.0.1]
+127.0.0.1       api.deepseek.com
+opspilot-worker-1 Up Less than a second (health: starting)
+opspilot-observer-1 Up 42 seconds (healthy)
+opspilot-web-1 Up 42 seconds (healthy)
+opspilot-postgres-1 Up 48 seconds (healthy)
+opspilot-m1-control-plane Up 6 minutes
+2026-11-11T06:15:10Z
+# fault inject
++ kubectl -n otel-demo patch configmap flagd-config (paymentFailure -> 100%)
+inject completed and verified on the lab ConfigMap (sha256 e47d27c2fa01); flagd reloads the mounted file after the kubelet sync (about a minute)
+rc=0
+2026-11-11T06:15:10Z
