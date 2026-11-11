@@ -1,6 +1,6 @@
 # M3 运行可观测（F8 第 1–3 步）
 
-- 状态：进行中（第 1 实施步骤合同 r1 已裁决；PR-1 #413 已合并 `6845ffc7`（PR #418）；PR-2 #414 lab 抓取、两条自告警与两次演练已合并 `7cd29308`（PR #421）；结构化日志合同 r2 已裁决（2026-10-31），2026-11-01 补 r2.1 并转为执行（#428 合并后首条空闲线）；#243 outbox 与第 3 步升级回滚合同 r3 已裁决（2026-10-31），实施 #427 → #428，演练 #429）
+- 状态：已完成（2026-11-10 F8 `passes` 翻为 true，见 [F8 逐步核对](2026-11-10-f8-verification.md)；以下为历史进展：第 1 实施步骤合同 r1 已裁决；PR-1 #413 已合并 `6845ffc7`（PR #418）；PR-2 #414 lab 抓取、两条自告警与两次演练已合并 `7cd29308`（PR #421）；结构化日志合同 r2 已裁决（2026-10-31），2026-11-01 补 r2.1 并转为执行（#428 合并后首条空闲线）；#243 outbox 与第 3 步升级回滚合同 r3 已裁决（2026-10-31），实施 #427 → #428，演练 #429）
 - 更新日期：2026-11-01
 - 依据：[M3 开放决策](2026-10-27-m2-exit-m3-opening-decision.md) Q2 第 4 条、Q5、Q6；feature_list.json F8；C3 §11（可观测性、outbox、部署与 schema 迁移）；#243 #159
 - 工作区：#413、#414 的 worktree 均已在合并后删除；结构化日志未创建
@@ -44,7 +44,7 @@
 - Q14 出口白名单：产品模式只发标识、版本、数字和固定码；不发提示词/回复、工具视图与原始结果、查询、目标名/服务名/告警标签、报告正文、`reasoning_content`、凭据。
 - Q15 开关：`OPSPILOT_TRACE=outbox` 默认关；endpoint 在白名单、`LANGSMITH_PROJECT` 以 `opspilot-lab-` 开头、key 存在，缺一 fail-closed 并在 `/metrics` 报原因码；不再要求数据源回环。ADR-0006 决定 2 追加一行。
 - Q16 保留：本地行投递成功或丢弃 7 天后删除（worker 只对 outbox 表有 DELETE）；LangSmith 产品项目只用 14 天基础保留；C3 §11 偏离改写为「产品项目 14 天自然过期」。
-- Q17 成本：token 数 + `ls_provider=deepseek` + `ls_model_name`，平台估算，证据写「估算，权威为余额差」，对比一次。
+- Q17 成本：token 数 + `ls_provider=deepseek` + `ls_model_name`，平台估算，证据写「估算，权威为余额差」，对比一次（已被 Q17 修订取代：改为同一 Run 的 LangSmith 估算对照 PG token×官方单价，见合同 Q17 修订）。
 - Q18 迁移：0024，downgrade 删表照删（`RAISE NOTICE` 计数）；PR-1 写入侧（#427，不出境）→ PR-2 投递侧（#428）。
 - Q25 两个版本：PR-1 合并提交 vs 它的父提交，本地构建，同为 0.1.0；F9 第 4 步不因本步通过。
 - Q26 回滚：停全部 → 新版镜像 `opspilot.schema downgrade --to <旧 head>` → 旧 checkout `install.sh upgrade`；downgrade 被拒时前滚修复，写入 UPGRADE.md，C3 §11 补同义规则。
@@ -143,7 +143,7 @@ opspilot_observation_due 0
 
 真实运行（2026-10-31 16:13–16:33Z，持 kind-lab 锁；栈 `opspilot-393`，镜像由 `install.sh upgrade` 从本 worktree 构建）：证据 [f8-step1-drills](../evidence/f8-step1-drills/README.md)。Prometheus pod 经 `192.168.5.2` 抓到三个监听（合同未确认项已实测）。演练一：停 worker 后 Run `queued`、`queue_depth` 0→1，`OpsPilotAgentAbsent` 约 3m46s 后 firing → `opspilot-self`；过 deadline 后打开事故页，清扫得到 `DEADLINE_EXCEEDED`。演练二：两次 `MODEL_UNAVAILABLE`，Run `waiting_human`，连续失败数 2，`OpsPilotModelCallsFailing` firing → `opspilot-self`；去掉 override 后人工 `resume`，两次模型调用 `ok`，Run 因演练目标不在 fixture 工具登记里以 `INCOMPLETE_INVESTIGATION` 交接。所有集成的 Alertmanager 通知计数均为 0。promtool/amtool 全部通过。
 
-费用：被拦截的调用在本机就被拒绝，没有供应商费用；人工 `resume` 产生 2 次真实调用。余额差待用户对账（K2）。
+费用：被拦截的调用在本机就被拒绝，没有供应商费用；人工 `resume` 产生 2 次真实调用。余额差待用户对账（K2）（已被 Q17 修订取代）。
 
 未做：独立审查；全量 `make check`/pytest；F8 `passes` 保持 false。lab 留在本分支的配置上：停栈后 `OpsPilotAgentAbsent` 持续 firing 到 `opspilot-self`，不通知任何东西。
 
@@ -160,7 +160,7 @@ opspilot_observation_due 0
 - 投递侧再校验载荷：只读 `PAYLOAD_KEYS`，字符串须形如 `^[A-Za-z0-9._:+-]{1,64}$`、数字须为数字，否则该行 `UNSERIALIZABLE`。
 - `tests/acceptance/test_413_entry_points_and_compose.py` 的 install.env 键集合加 `OPSPILOT_TRACE`：OB-R12 明文要求新增此键，属合同变更带来的钉值更新（同该测试里 #393 那一行），不是削弱验收。
 
-验证：`tests/test_428_outbox_delivery_impl.py`（42 项，无库）、`tests/integration/test_428_outbox_delivery_postgres.py`（12 项，worker 角色 + 回环假端点，临时 PG 17 端口 55448）；PR-1 PG 测试与 `test_runtime_roles_postgres.py` 回归通过。真实证据（OB-R13，2026-11-02）：[243-trace-outbox](../evidence/243-trace-outbox/README.md)，4 个真实 Run、12 次模型请求、LangSmith 估算 $0.0086（余额差待用户对账）；故障①通过，故障②命中但「是否去重」只能部分回答；演练目标无成功工具调用。
+验证：`tests/test_428_outbox_delivery_impl.py`（42 项，无库）、`tests/integration/test_428_outbox_delivery_postgres.py`（12 项，worker 角色 + 回环假端点，临时 PG 17 端口 55448）；PR-1 PG 测试与 `test_runtime_roles_postgres.py` 回归通过。真实证据（OB-R13，2026-11-02）：[243-trace-outbox](../evidence/243-trace-outbox/README.md)，4 个真实 Run、12 次模型请求、LangSmith 估算 $0.0086（余额差待用户对账，已被 Q17 修订取代）；故障①通过，故障②命中但「是否去重」只能部分回答；演练目标无成功工具调用。
 
 ## 结构化日志实现（对齐合同 r2 + r2.1）
 
@@ -208,7 +208,7 @@ Compose 抽检（F8L-Q3/O8，2026-11-02 00:00–00:03Z，持 `~/.agent/locks/kin
 - `install.sh compose logs` 三服务（web 37 行、worker 53 行、observer 42 行），加停栈后 `docker logs` 全量（web 41、worker 78、observer 63）：**每行都能 `json.loads`，前 6 个键依次为 `ts level logger msg version revision`，`revision` 均为 `b713ea256e26…`，没有非 JSON 行**；出现的 logger 有 `opspilot.worker/postmortem/observer/health`、`__main__`（web）、`psycopg.pool`、`uvicorn.error`、`uvicorn.access`（R6 生效，web 的 `opspilot.health` INFO 行开始出现）。
 - 人工核对：`sk-`、`bearer`、`api_key`、`authorization`、`password`、`deepseek`、`token=`、`postgresql://` 在全部日志中 0 命中；消息只有 ID、固定码、状态与 psycopg 的 host/port；无模型输出文本。web 3 处 `.exception()` 在停 PG 时触发，`exc` 是一行 JSON（31–34 行 traceback），末行 `PersistenceError: TIMEOUT`，链上是 `psycopg_pool.PoolTimeout`，不含 DSN。
 - 收尾：先按原计划停栈（`install.sh compose stop` 不停 `agent` profile 的 worker/observer，补 `--profile agent stop`），随后按 lead 更正（栈要留给 #428）00:08Z 重新 `compose start postgres` 与 `compose --profile agent start web worker observer`（依赖链重跑 migrate/init-roles，均 exit 0）。最终状态 00:08:56Z：web/worker/observer/postgres 均 healthy，三个 `/readyz` 200，镜像 `opspilot:local` = `sha256:8bfc5078…`（revision `b713ea25`），卷 `opspilot-393_pgdata` 保留，重启后日志 18 行全部 JSON。`target_identities.json` 未改动，sha256 前后均 `1714ab7b…`。事故 `def8ea51…`（checkout-prod）经工作台 control 路径 `close`（generation 0→1）；`4dc7065b…`（未登记目标的 handoff 事故）页面不提供 close，保持开放。
-- 告警令牌照 #393/#414 先例只在触发脚本内存里读用，未打印；`worker_env`、模型 key 未读取（K2）。费用：3 次真实调用，余额差待对账。
+- 告警令牌照 #393/#414 先例只在触发脚本内存里读用，未打印；`worker_env`、模型 key 未读取（K2）。费用：3 次真实调用，余额差待对账（已被 Q17 修订取代）。
 
 摘录（原样，UUID 未改）：
 

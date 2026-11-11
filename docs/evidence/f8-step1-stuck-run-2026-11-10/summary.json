@@ -46,7 +46,7 @@
     "interval_seconds": 3,
     "running_lapsed_0_before_lapse": 141,
     "running_lapsed_1_while_lapsed": 261,
-    "running_lapsed_0_after_resume": 12,
+    "running_lapsed_0_after_resume": 16,
     "build_info_revision_every_web_sample": "9b208cd13cc6c28e97ab9c0d1cb074a13dd3cf34",
     "queued_every_sample": 0
   },

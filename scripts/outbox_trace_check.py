@@ -32,8 +32,8 @@ What it reports (JSON on stdout, or ``--out``):
   by ``incident_id`` + ``image_revision``;
 * the trace: run counts by ``langsmith.span.kind``, llm token sums,
   ``ls_provider`` / ``ls_model_name`` values, tool status classes and reason
-  codes, run states, the root run's ``total_cost`` (platform estimate; the
-  authority is the balance difference, Q17) and the root run link;
+  codes, run states, the root run's ``total_cost`` (platform estimate; compared
+  with PG token usage x list price per the Q17 amendment) and the root run link;
 * identity: for every outbox row, whether a run with the derived id exists,
   and how many runs in the trace share its (name, step/state) identity --
   more than one means LangSmith did not deduplicate a redelivered span
@@ -359,7 +359,7 @@ def check(
         "trace": {"runs": len(trace), **summarize_trace(trace)},
         "identity": identity_check(trace, expected["span_run_ids"]),
         "content_scan": content_scan(trace, secret),
-        "cost_note": "LangSmith estimate; the authority is the supplier balance difference (Q17)",
+        "cost_note": "LangSmith estimate; compare once with PG opspilot_steps.usage x DeepSeek list price (Q17 amendment 2026-11-10)",
     }
 
 

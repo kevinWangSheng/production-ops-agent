@@ -12,7 +12,7 @@
     "runs_with_outputs": 0,
     "x-api-key": 0
   },
-  "cost_note": "LangSmith estimate; the authority is the supplier balance difference (Q17)",
+  "cost_note": "LangSmith estimate; the authority is the supplier balance difference (Q17) [superseded by the Q17 amendment 2026-11-10: compare with PG opspilot_steps.usage x DeepSeek list price; the balance is account-shared]",
   "expected": {
     "otel_trace_ids": [
       "168352203013d9bd560ba10d740cacd0"
