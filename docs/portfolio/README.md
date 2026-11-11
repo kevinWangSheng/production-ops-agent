@@ -41,7 +41,7 @@ An older Chinese walkthrough of the M1 flow, including knowledge approval, is in
 ## 5. How it was built (3 min)
 
 - Contracts first. Design decisions are in the Chinese [C3 technical design](../design/technical-proposal-2026-09-07.md) and the [ADRs](../adr/). Acceptance steps are in [feature_list.json](../../feature_list.json). A feature's `passes` flag is flipped only when every step has evidence.
-- Evidence over claims. Real runs leave a frozen `summary.json` under [docs/evidence/](../evidence/), with raw logs kept outside the repository. Partial results and failures are recorded as such: F9 steps 1, 2 and 4 are marked partial in their own evidence.
+- Evidence over claims. Real runs leave a frozen `summary.json` under [docs/evidence/](../evidence/), with raw logs kept outside the repository. Partial results and failures are recorded as such: in the [final clean-host evidence](../evidence/f9-final-clean-host-2026-11-11/README.md) F9 step 1 is met, and steps 2 and 4 are still partial.
 - Separate authors. Acceptance tests and reviews come from agents that did not write the implementation, as required by the project rules in [AGENTS.md](../../AGENTS.md). The work order and status are in [ROADMAP.md](../../ROADMAP.md) (Chinese).
 
 ## Try it
