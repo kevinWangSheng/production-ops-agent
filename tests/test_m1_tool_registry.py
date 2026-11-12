@@ -44,6 +44,7 @@ def test_read_only_flag_cannot_be_turned_off():
         registration(read_only=False)
 
 
+@pytest.mark.xfail(strict=True, reason="A2 probe: Q3 allows secret-bearing sources")
 def test_sources_that_may_return_secrets_are_refused_at_registration():
     with pytest.raises(ToolContractError, match="SECRET_BEARING_SOURCE_FORBIDDEN"):
         registration(may_contain_secrets=True)
