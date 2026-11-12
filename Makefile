@@ -6,12 +6,15 @@ setup:
 doctor:
 	python3 scripts/doctor.py
 
+# CI passes PYTEST_ARGS to run the suite in parallel (#519); locally it stays serial.
+PYTEST_ARGS ?=
+
 check: doctor
 	uv lock --check --offline --no-python-downloads
 	.venv/bin/ruff check .
 	.venv/bin/ruff format --check .
 	.venv/bin/mypy
-	.venv/bin/python -m pytest
+	.venv/bin/python -m pytest $(PYTEST_ARGS)
 
 test: doctor
 	uv lock --check --offline --no-python-downloads
