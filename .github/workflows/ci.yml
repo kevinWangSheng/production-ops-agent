@@ -27,10 +27,36 @@ jobs:
           fetch-depth: 0
       # #519: a PR that only changes Markdown no code reads takes a fast pass;
       # the job still runs and reports, and the secret scan always runs.
+      # The inline pre-check does not trust the PR's own files: unless every
+      # change is an added or edited regular *.md file (so scripts/ and
+      # .github/ edits never qualify), the job runs in full without asking
+      # scripts/ci_scope.py. Any failure here also means the full run.
       - name: Decide scope
         id: scope
         if: github.event_name == 'pull_request'
-        run: python3 scripts/ci_scope.py
+        run: |
+          if python3 -I - <<'PY'
+          import subprocess, sys
+          def git(*args):
+              return subprocess.run(["git", *args], capture_output=True, check=True).stdout
+          if len(git("rev-list", "--parents", "-n", "1", "HEAD").split()) != 3:
+              sys.exit("full run: HEAD is not a merge commit")
+          fields = git("diff", "--raw", "--no-renames", "-z", "HEAD^1", "HEAD").split(b"\0")
+          if fields and fields[-1] == b"":
+              fields.pop()
+          if not fields or len(fields) % 2:
+              sys.exit("full run: empty or unexpected diff")
+          for meta, path in zip(fields[0::2], fields[1::2]):
+              old, new, _, _, status = meta.decode().lstrip(":").split()
+              regular = (status, old, new) in {("A", "000000", "100644"), ("M", "100644", "100644")}
+              if not (regular and path.endswith(b".md")):
+                  sys.exit(f"full run: {status} {old}->{new} {path!r}")
+          PY
+          then
+            python3 scripts/ci_scope.py
+          else
+            echo "full=true" | tee -a "$GITHUB_OUTPUT"
+          fi
       - name: Set up uv and Python
         uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
         with:
@@ -107,10 +133,36 @@ jobs:
           persist-credentials: false
           # The merge commit and its parents, for the scope check.
           fetch-depth: 2
+      # The inline pre-check does not trust the PR's own files: unless every
+      # change is an added or edited regular *.md file (so scripts/ and
+      # .github/ edits never qualify), the job runs in full without asking
+      # scripts/ci_scope.py. Any failure here also means the full run.
       - name: Decide scope
         id: scope
         if: github.event_name == 'pull_request'
-        run: python3 scripts/ci_scope.py
+        run: |
+          if python3 -I - <<'PY'
+          import subprocess, sys
+          def git(*args):
+              return subprocess.run(["git", *args], capture_output=True, check=True).stdout
+          if len(git("rev-list", "--parents", "-n", "1", "HEAD").split()) != 3:
+              sys.exit("full run: HEAD is not a merge commit")
+          fields = git("diff", "--raw", "--no-renames", "-z", "HEAD^1", "HEAD").split(b"\0")
+          if fields and fields[-1] == b"":
+              fields.pop()
+          if not fields or len(fields) % 2:
+              sys.exit("full run: empty or unexpected diff")
+          for meta, path in zip(fields[0::2], fields[1::2]):
+              old, new, _, _, status = meta.decode().lstrip(":").split()
+              regular = (status, old, new) in {("A", "000000", "100644"), ("M", "100644", "100644")}
+              if not (regular and path.endswith(b".md")):
+                  sys.exit(f"full run: {status} {old}->{new} {path!r}")
+          PY
+          then
+            python3 scripts/ci_scope.py
+          else
+            echo "full=true" | tee -a "$GITHUB_OUTPUT"
+          fi
       - name: Set up uv and Python
         uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
         with:

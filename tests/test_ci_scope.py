@@ -13,12 +13,21 @@ ci_scope = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(ci_scope)
 
 
+def added(path):
+    return ci_scope.Change("A", "000000", "100644", path)
+
+
+def edited(path):
+    return ci_scope.Change("M", "100644", "100644", path)
+
+
 @pytest.mark.parametrize(
     "path",
     ["NOTES-519-fixture.md", "docs/tasks/2026-01-01-fixture-519.md"],
 )
 def test_unreferenced_markdown_takes_the_fast_pass(path):
-    assert ci_scope.blocking_reasons([path], references="unrelated text") == []
+    assert ci_scope.blocking_reasons([added(path)], references="unrelated text") == []
+    assert ci_scope.blocking_reasons([edited(path)], references="unrelated text") == []
 
 
 @pytest.mark.parametrize(
@@ -33,20 +42,41 @@ def test_unreferenced_markdown_takes_the_fast_pass(path):
     ],
 )
 def test_anything_else_keeps_the_full_run(path):
-    assert ci_scope.blocking_reasons([path], references="")
+    assert ci_scope.blocking_reasons([edited(path)], references="")
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        ("A", "000000", "120000"),  # symlink named *.md
+        ("A", "000000", "160000"),  # submodule gitlink named *.md
+        ("M", "100644", "100755"),  # mode change
+        ("M", "120000", "120000"),  # symlink retargeted
+        ("T", "100644", "120000"),  # regular file turned into a symlink
+        ("D", "100644", "000000"),  # deletion (also half of a rename)
+        ("A", "000000", "100755"),  # executable
+    ],
+)
+def test_only_regular_file_additions_and_edits_can_skip(change):
+    status, old, new = change
+    entry = ci_scope.Change(status, old, new, "docs/tasks/2026-01-01-fixture-519.md")
+    assert ci_scope.blocking_reasons([entry], references="")
 
 
 def test_a_document_named_by_code_keeps_the_full_run():
     references = 'TEXT = (ROOT / "docs/tasks/2026-01-01-fixture-519.md").read_text()'
     reasons = ci_scope.blocking_reasons(
-        ["docs/tasks/2026-01-01-fixture-519.md"], references
+        [edited("docs/tasks/2026-01-01-fixture-519.md")], references
     )
     assert reasons
 
 
 def test_one_blocking_path_among_documents_keeps_the_full_run():
-    paths = ["docs/tasks/2026-01-01-fixture-519.md", "opspilot/fixture_519.py"]
-    assert ci_scope.blocking_reasons(paths, references="")
+    changes = [
+        added("docs/tasks/2026-01-01-fixture-519.md"),
+        added("opspilot/fixture_519.py"),
+    ]
+    assert ci_scope.blocking_reasons(changes, references="")
 
 
 def test_an_empty_diff_keeps_the_full_run():
@@ -57,7 +87,7 @@ def _git(root, *args):
     subprocess.run(["git", *args], cwd=root, check=True, capture_output=True)
 
 
-def _merge_repo(tmp_path, changed):
+def _merge_repo(tmp_path, changed, *, symlinks=(), removed=()):
     root = tmp_path / "repo"
     root.mkdir()
     _git(root, "init", "-q", "-b", "main")
@@ -66,6 +96,9 @@ def _merge_repo(tmp_path, changed):
     _git(root, "config", "commit.gpgsign", "false")
     (root / "tests").mkdir()
     (root / "tests" / "test_reads.py").write_text('DOC = "docs/read-519.md"\n')
+    (root / "data-519.json").write_text("{}\n")
+    (root / "docs").mkdir()
+    (root / "docs" / "old-519.md").write_text("old\n")
     _git(root, "add", "-A")
     _git(root, "commit", "-q", "-m", "base")
     _git(root, "checkout", "-q", "-b", "pr")
@@ -73,6 +106,11 @@ def _merge_repo(tmp_path, changed):
         path = root / name
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("changed\n")
+    for name, target in symlinks:
+        (root / name).parent.mkdir(parents=True, exist_ok=True)
+        (root / name).symlink_to(target)
+    for name in removed:
+        (root / name).unlink()
     _git(root, "add", "-A")
     _git(root, "commit", "-q", "-m", "pr")
     _git(root, "checkout", "-q", "main")
@@ -81,6 +119,26 @@ def _merge_repo(tmp_path, changed):
     _git(root, "commit", "-q", "-m", "main moved")
     _git(root, "merge", "-q", "--no-ff", "-m", "merge", "pr")
     return root
+
+
+def test_a_symlink_named_like_a_document_keeps_the_full_run(tmp_path, monkeypatch):
+    root = _merge_repo(
+        tmp_path, [], symlinks=[("docs/unreferenced-519.md", "../data-519.json")]
+    )
+    output = tmp_path / "github_output"
+    monkeypatch.chdir(root)
+    monkeypatch.setenv("GITHUB_OUTPUT", str(output))
+    assert ci_scope.main() == 0
+    assert output.read_text() == "full=true\n"
+
+
+def test_a_deleted_document_keeps_the_full_run(tmp_path, monkeypatch):
+    root = _merge_repo(tmp_path, ["docs/new-519.md"], removed=["docs/old-519.md"])
+    output = tmp_path / "github_output"
+    monkeypatch.chdir(root)
+    monkeypatch.setenv("GITHUB_OUTPUT", str(output))
+    assert ci_scope.main() == 0
+    assert output.read_text() == "full=true\n"
 
 
 @pytest.mark.parametrize(
