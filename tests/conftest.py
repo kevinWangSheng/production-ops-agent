@@ -24,6 +24,27 @@ def pytest_collection_modifyitems(config, items):
             item.add_marker(pytest.mark.serial)
 
 
+def _utf8_safe(text):
+    return text.encode("utf-8", "backslashreplace").decode("utf-8")
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    """Under pytest-xdist a worker ships each report to the controller as
+    UTF-8; captured output holding a lone surrogate (tests that log one on
+    purpose) would abort the worker. Escape it in the captured sections only;
+    outcomes are untouched. Serial runs are unaffected (#519)."""
+    outcome = yield
+    if not hasattr(item.config, "workerinput"):
+        return
+    report = outcome.get_result()
+    report.sections = [
+        (title, _utf8_safe(content)) for title, content in report.sections
+    ]
+    if isinstance(report.longrepr, str):
+        report.longrepr = _utf8_safe(report.longrepr)
+
+
 @pytest.fixture(autouse=True)
 def _undo_process_logging():
     """Tests that call an entry point's ``main()`` in-process run
