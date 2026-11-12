@@ -203,7 +203,14 @@ def _utf8_text(value: str) -> bool:
 # the evidence-read transport refuses a record this Run may not read before
 # anything is read, and the executor reports it as ``denied``.
 SOURCE_ERROR_REASONS = frozenset(
-    {"EVIDENCE_NOT_READABLE", "INVALID_PARAMS", "SOURCE_ERROR", "SOURCE_UNAVAILABLE"}
+    {
+        "EVIDENCE_NOT_READABLE",
+        "INVALID_PARAMS",
+        "RESOURCE_NOT_ALLOWED",
+        "SOURCE_ERROR",
+        "SOURCE_FORBIDDEN",
+        "SOURCE_UNAVAILABLE",
+    }
 )
 
 _NAME = re.compile(r"[a-z0-9][a-z0-9._-]{2,63}")

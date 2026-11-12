@@ -41,6 +41,10 @@ def _registrations() -> tuple[ToolRegistration, ...]:
                 cannot_prove="state inside the incident window",
             ),
             may_contain_secrets=True,
+            error_classes={
+                "403": "SOURCE_FORBIDDEN",
+                "SECRET_KIND": "RESOURCE_NOT_ALLOWED",
+            },
         )
         for name in (JQ_TOOL, COUNT_TOOL)
     )
