@@ -25,6 +25,12 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
+      # #519: a PR that only changes Markdown no code reads takes a fast pass;
+      # the job still runs and reports, and the secret scan always runs.
+      - name: Decide scope
+        id: scope
+        if: github.event_name == 'pull_request'
+        run: python3 scripts/ci_scope.py
       - name: Set up uv and Python
         uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
         with:
@@ -33,13 +39,20 @@ jobs:
           enable-cache: false
       - name: Install locked development dependencies
         run: make setup
+      # Parallel pass over everything not marked serial (tests/conftest.py),
+      # then the serial tests alone so thread-timing tests keep a quiet runner.
       - name: Run development checks
-        run: make check
+        if: steps.scope.outputs.full != 'false'
+        run: make check PYTEST_ARGS='-n auto --dist loadfile -m "not serial"'
+      - name: Run serial tests
+        if: steps.scope.outputs.full != 'false'
+        run: .venv/bin/python -m pytest -m serial
       # PR-D1 (D07): a fresh network namespace without interfaces, back as the
       # runner user, only PATH/LANG and a throwaway HOME. Before the entry runs,
       # the namespace must hold only lo and an outbound connect must fail with
       # "unreachable"; anything else (success, other errors) fails the step.
       - name: Structural replay (offline, no credentials)
+        if: steps.scope.outputs.full != 'false'
         run: |
           sandbox_home="$(mktemp -d)"
           sudo unshare --net -- \
@@ -92,6 +105,12 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+          # The merge commit and its parents, for the scope check.
+          fetch-depth: 2
+      - name: Decide scope
+        id: scope
+        if: github.event_name == 'pull_request'
+        run: python3 scripts/ci_scope.py
       - name: Set up uv and Python
         uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
         with:
@@ -101,6 +120,7 @@ jobs:
       - name: Install locked experiment dependencies
         run: make setup
       - name: Install PostgreSQL 17 client (pg_dump must match the 17.9 service)
+        if: steps.scope.outputs.full != 'false'
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq postgresql-common
@@ -108,6 +128,7 @@ jobs:
           sudo apt-get install -y -qq postgresql-client-17
           /usr/lib/postgresql/17/bin/pg_dump --version
       - name: Migration path 1, empty database to head
+        if: steps.scope.outputs.full != 'false'
         env:
           OPSPILOT_DSN: host=127.0.0.1 port=55431 dbname=m0_budget user=m0_lab
           OPSPILOT_PG_DUMP: /usr/lib/postgresql/17/bin/pg_dump
@@ -117,6 +138,7 @@ jobs:
           grep -q "schema upgraded: ${HEAD}" /tmp/migrate-empty.log
           .venv/bin/python -m opspilot.schema check
       - name: Migration path 2, database built by the pre-Alembic DDL, takeover to head
+        if: steps.scope.outputs.full != 'false'
         env:
           OPSPILOT_PG_DUMP: /usr/lib/postgresql/17/bin/pg_dump
         run: |
@@ -137,6 +159,7 @@ jobs:
           print(f"fresh head and takeover dumps identical ({len(fresh.splitlines())} lines)")
           PY
       - name: Verify ledger and adapter integration on synthetic PostgreSQL
+        if: steps.scope.outputs.full != 'false'
         env:
           M0_B_POSTGRES: "1"
           M1_DURABLE_POSTGRES: "1"

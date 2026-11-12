@@ -8,6 +8,21 @@ import pytest
 
 pytest_plugins = ("tests.f6_fixtures",)
 
+# Test files whose assertions depend on thread timing. CI runs them after the
+# parallel pass with no other workers competing for the CPU (#519).
+SERIAL_FILES = frozenset(
+    {
+        "tests/test_m1_web_worker.py",  # #447: stop-before-next-claim race
+    }
+)
+
+
+def pytest_collection_modifyitems(config, items):
+    root = config.rootpath
+    for item in items:
+        if item.path.relative_to(root).as_posix() in SERIAL_FILES:
+            item.add_marker(pytest.mark.serial)
+
 
 @pytest.fixture(autouse=True)
 def _undo_process_logging():
