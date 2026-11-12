@@ -25,6 +25,8 @@ def _item(aid, sid, system, glm, openai, text="report", **extra):
         "expected_elements": [f"element {len(sid)}"],
         "verdicts": {"glm": glm, "openai": openai},
         "report_text": text,
+        "judge_applicable": True,
+        "checks": {},
         **extra,
     }
 
@@ -51,7 +53,9 @@ def _sources():
                 "see https://holmesgpt.dev/x",
             ),
             _item("a-3", "dv2-bbb222", "opspilot", False, False),
-            _item("a-4", "dv2-bbb222", "opspilot", None, None),  # not judged
+            _item(
+                "a-4", "dv2-bbb222", "opspilot", None, None, judge_applicable=False
+            ),  # deterministic only: not judged
             _item("v-1", "dv2-bbb222", "opspilot", True, True),  # voided
         ],
     }
@@ -344,7 +348,13 @@ def test_recompute_replaces_only_judged_attempts():
     }
 
 
-def test_freeze_rejects_a_changed_pack(tmp_path: Path):
+def _register(monkeypatch, tmp_path: Path, freeze_path: Path) -> None:
+    reg = tmp_path / "freeze.json.sha256"
+    reg.write_text(f"{r.sha256_bytes(freeze_path.read_bytes())}  freeze.json\n")
+    monkeypatch.setattr(r, "REGISTERED_FREEZE", reg)
+
+
+def test_freeze_rejects_a_changed_pack(tmp_path: Path, monkeypatch):
     pack, key, _ = _pack()
     manifest = r.write_pack(tmp_path / "pack", pack, key, b"instructions\n")
     freeze = {
@@ -354,6 +364,7 @@ def test_freeze_rejects_a_changed_pack(tmp_path: Path):
     }
     path = tmp_path / "freeze.json"
     path.write_text(json.dumps(freeze))
+    _register(monkeypatch, tmp_path, path)
     assert r.load_freeze(path, tmp_path / "pack")["threshold"] == THRESHOLD
     (tmp_path / "pack/pack/instructions.md").write_text("changed\n")
     with pytest.raises(r.RecalError, match="PACK_NOT_FROZEN:pack/instructions.md"):
@@ -367,7 +378,7 @@ def test_write_pack_refuses_to_overwrite(tmp_path: Path):
         r.write_pack(tmp_path, pack, key, b"x")
 
 
-def test_labels_and_compare_cli_end_to_end(tmp_path: Path):
+def test_labels_and_compare_cli_end_to_end(tmp_path: Path, monkeypatch):
     pack, key, _ = _pack()
     manifest = r.write_pack(tmp_path / "p", pack, key, b"INSTR\n")
     freeze = tmp_path / "freeze.json"
@@ -376,6 +387,10 @@ def test_labels_and_compare_cli_end_to_end(tmp_path: Path):
             {
                 "schema": r.FREEZE_SCHEMA,
                 "pack_files": manifest["files"],
+                "pack_count": 4,
+                "prior_rulings_non_blind": [
+                    {"attempt_id": "holmes-a2", "ruling": "fail"}
+                ],
                 "threshold": {
                     "denominator": 3,
                     "min_agree": 3,
@@ -385,6 +400,7 @@ def test_labels_and_compare_cli_end_to_end(tmp_path: Path):
             }
         )
     )
+    _register(monkeypatch, tmp_path, freeze)
     a = {i: ("pass" if e["pipeline"] else "fail") for i, e in key["items"].items()}
     b = dict(a)
     flip = _ids(key, "a-3")
@@ -441,3 +457,147 @@ def test_labels_and_compare_cli_end_to_end(tmp_path: Path):
         "achieved": True,
     }
     assert "report" not in result.read_text()
+
+
+# --- review fixes (PR #551) -------------------------------------------------
+
+
+def test_export_refuses_a_judge_applicable_item_without_verdicts():
+    sources = _sources()
+    sources["dev"]["attempts"].append(
+        _item("a-5", "dv2-bbb222", "opspilot", None, None)
+    )
+    with pytest.raises(r.RecalError, match="VERDICT_MISSING:a-5"):
+        r.build_pack(sources, QUESTIONS, {}, {}, dataset_names=[], seed=b"\0" * 32)
+    sources = _sources()
+    sources["dev"]["attempts"].append(
+        _item("a-6", "dv2-bbb222", "opspilot", True, None)
+    )
+    with pytest.raises(r.RecalError, match="VERDICT_MISSING:a-6"):
+        r.build_pack(sources, QUESTIONS, {}, {}, dataset_names=[], seed=b"\0" * 32)
+
+
+def test_vetoed_item_is_skipped_and_unknown_system_refused():
+    sources = _sources()
+    sources["dev"]["attempts"].append(
+        _item("a-7", "dv2-bbb222", "opspilot", None, None, checks={"gate.x": False})
+    )
+    pack, _key, _ = r.build_pack(
+        sources, QUESTIONS, {}, {}, dataset_names=[], seed=b"\0" * 32
+    )
+    assert pack["count"] == 4
+    sources["dev"]["attempts"].append(_item("a-8", "dv2-bbb222", "acme", True, True))
+    with pytest.raises(r.RecalError, match="SYSTEM_UNKNOWN"):
+        r.build_pack(sources, QUESTIONS, {}, {}, dataset_names=[], seed=b"\0" * 32)
+
+
+def _freeze_doc(**over):
+    doc = {
+        "pack_count": 4,
+        "threshold": {"denominator": 3},
+        "prior_rulings_non_blind": [{"attempt_id": "holmes-a2", "ruling": "fail"}],
+    }
+    return doc | over
+
+
+def test_check_items_enforces_count_denominator_and_prior_rulings():
+    _p, key, _ = _pack()
+    r.check_items(key, _freeze_doc())
+    with pytest.raises(r.RecalError, match="ITEM_COUNT_DIFFERS:4"):
+        r.check_items(key, _freeze_doc(pack_count=111))
+    with pytest.raises(r.RecalError, match="DENOMINATOR_DIFFERS:3"):
+        r.check_items(key, _freeze_doc(threshold={"denominator": 102}))
+    with pytest.raises(r.RecalError, match="PRIOR_RULINGS_DIFFER"):
+        r.check_items(
+            key,
+            _freeze_doc(
+                prior_rulings_non_blind=[{"attempt_id": "x", "ruling": "fail"}]
+            ),
+        )
+    with pytest.raises(r.RecalError, match="PRIOR_RULINGS_DIFFER"):
+        r.check_items(
+            key,
+            _freeze_doc(
+                prior_rulings_non_blind=[{"attempt_id": "holmes-a2", "ruling": "pass"}]
+            ),
+        )
+
+
+def test_freeze_must_match_the_registered_hash(tmp_path: Path, monkeypatch):
+    pack, key, _ = _pack()
+    manifest = r.write_pack(tmp_path / "pack", pack, key, b"i\n")
+    path = tmp_path / "freeze.json"
+    path.write_text(
+        json.dumps({"schema": r.FREEZE_SCHEMA, "pack_files": manifest["files"]})
+    )
+    _register(monkeypatch, tmp_path, path)
+    r.load_freeze(path, tmp_path / "pack")
+    path.write_text(
+        json.dumps({"schema": r.FREEZE_SCHEMA, "pack_files": manifest["files"], "x": 0})
+    )
+    with pytest.raises(r.RecalError, match="FREEZE_NOT_REGISTERED"):
+        r.load_freeze(path, tmp_path / "pack")
+
+
+def test_committed_freeze_matches_its_registration():
+    freeze = r.REGISTERED_FREEZE.parent / "freeze.json"
+    assert r.sha256_bytes(freeze.read_bytes()) == r.registered_freeze_sha256()
+
+
+def test_export_out_inside_a_git_tree_is_refused_and_files_are_private(tmp_path: Path):
+    repo = tmp_path / "repo"
+    (repo / ".git").mkdir(parents=True)
+    with pytest.raises(r.RecalError, match="OUT_INSIDE_GIT_WORK_TREE"):
+        r.refuse_inside_git_tree(repo / "docs" / "pack")
+    r.refuse_inside_git_tree(tmp_path / "private" / "pack")
+    pack, key, _ = _pack()
+    out = tmp_path / "private" / "pack"
+    r.write_pack(out, pack, key, b"i\n")
+    assert (out.stat().st_mode & 0o777) == 0o700
+    assert ((out / "private").stat().st_mode & 0o777) == 0o700
+    assert ((out / "private/identity-map.json").stat().st_mode & 0o777) == 0o600
+    assert ((out / "pack/pack.json").stat().st_mode & 0o777) == 0o600
+
+
+def test_duplicate_label_ids_are_refused(tmp_path: Path):
+    path = tmp_path / "labels.json"
+    path.write_text(
+        '{"schema": "judge-recal-labels-1", "labeller": "A",'
+        ' "labels": {"R001": "pass", "R001": "fail"}}'
+    )
+    with pytest.raises(r.RecalError, match="DUPLICATE_KEY:R001"):
+        r._read_json(path)
+
+
+def _reconstruct_module():
+    import importlib.util
+
+    path = r.REGISTERED_FREEZE.parent / "reconstruct_check.py"
+    spec = importlib.util.spec_from_file_location("reconstruct_check", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_reconstruct_check_reports_every_failure():
+    failures = _reconstruct_module().failures
+    ok = {
+        "dataset_hash_matches_published": True,
+        "items_sha256_matches_published": True,
+        "items_prompt_sha256": "h",
+        "judged": 2,
+        "published_judged": 2,
+        "published_not_in_items": [],
+        "mismatches": [],
+    }
+    assert failures({"prompt_sha256_current": "h", "datasets": {"dev": ok}}) == []
+    bad = ok | {
+        "items_sha256_matches_published": False,
+        "published_not_in_items": ["x"],
+        "mismatches": [["a", "report_text_differs"]],
+    }
+    assert failures({"prompt_sha256_current": "h", "datasets": {"dev": bad}}) == [
+        "dev:items_sha256_matches_published",
+        "dev:published_not_in_items",
+        "dev:mismatches",
+    ]

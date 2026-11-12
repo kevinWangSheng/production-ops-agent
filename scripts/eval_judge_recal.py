@@ -37,6 +37,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import random
 import re
 import secrets
@@ -56,6 +57,8 @@ RESULT_SCHEMA = "opspilot-judge-recal-result-1"
 FREEZE_SCHEMA = "opspilot-judge-recal-freeze-1"
 ITEMS_SCHEMA = "opspilot-compare-scoring-items-1"
 JUDGE_NAMES = ("glm", "openai")
+#: the only systems whose names the redaction and leak scan cover
+KNOWN_SYSTEMS = frozenset({"opspilot", "holmes"})
 LABEL_VALUES = ("pass", "fail")
 
 #: Names replaced in report text before export: either system's name, as it
@@ -83,14 +86,40 @@ def _dump(value: Any) -> bytes:
 
 
 def _write_new(path: Path, data: bytes) -> None:
+    """Never overwrites; directories 0700, files 0600 (private data)."""
+    missing = [d for d in (path.parent, *path.parent.parents) if not d.exists()]
     path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "xb") as handle:
+    for directory in missing:
+        os.chmod(directory, 0o700)
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "wb") as handle:
         handle.write(data)
+
+
+def refuse_inside_git_tree(out: Path) -> None:
+    """Private outputs (report text, expected elements, identity map) must
+    not land in any git work tree."""
+    for directory in (out.resolve(), *out.resolve().parents):
+        if (directory / ".git").exists():
+            raise RecalError("OUT_INSIDE_GIT_WORK_TREE")
+
+
+def _no_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    for k, v in pairs:
+        if k in out:
+            raise RecalError(f"DUPLICATE_KEY:{k}")
+        out[k] = v
+    return out
 
 
 def _read_json(path: Path) -> Any:
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        return json.loads(
+            path.read_text(encoding="utf-8"), object_pairs_hook=_no_duplicate_keys
+        )
+    except RecalError:
+        raise
     except FileNotFoundError:
         raise RecalError(f"FILE_MISSING:{path.name}") from None
     except (OSError, ValueError):
@@ -104,6 +133,14 @@ def _read_json(path: Path) -> Any:
 def judged(item: Mapping[str, Any]) -> bool:
     verdicts = item.get("verdicts") or {}
     return any(verdicts.get(name) is not None for name in JUDGE_NAMES)
+
+
+def needs_judging(item: Mapping[str, Any]) -> bool:
+    """Judge-applicable and not vetoed by a deterministic check."""
+    checks = item.get("checks") or {}
+    return item.get("judge_applicable") is True and not any(
+        v is False for v in checks.values()
+    )
 
 
 def pipeline_verdict(item: Mapping[str, Any]) -> bool | None:
@@ -159,8 +196,16 @@ def build_pack(
             raise RecalError(f"ITEMS_SCHEMA_INVALID:{label}")
         voided = set(doc.get("voided") or ())
         for item in doc["attempts"]:
-            if item["attempt_id"] in voided or not judged(item):
+            if item["attempt_id"] in voided:
                 continue
+            if not needs_judging(item):
+                if judged(item):
+                    raise RecalError(f"JUDGED_UNEXPECTEDLY:{item['attempt_id']}")
+                continue
+            if any((item.get("verdicts") or {}).get(n) is None for n in JUDGE_NAMES):
+                raise RecalError(f"VERDICT_MISSING:{item['attempt_id']}")
+            if item.get("system") not in KNOWN_SYSTEMS:
+                raise RecalError("SYSTEM_UNKNOWN")
             q = questions.get((label, item["scenario_id"]))
             if q is None:
                 raise RecalError(f"SCENARIO_UNKNOWN:{item['scenario_id']}")
@@ -297,6 +342,7 @@ def _pairs(values: Sequence[str], flag: str) -> dict[str, Path]:
 
 
 def run_export(args: argparse.Namespace) -> dict[str, Any]:
+    refuse_inside_git_tree(Path(args.out))
     items = _pairs(args.items, "--items")
     roots = _pairs(args.dataset, "--dataset")
     if set(items) != set(roots):
@@ -334,8 +380,33 @@ def run_export(args: argparse.Namespace) -> dict[str, Any]:
 # Freeze
 
 
+#: the registered sha256 of the committed freeze file (``sha256sum`` format)
+REGISTERED_FREEZE = (
+    Path(__file__).resolve().parents[1]
+    / "docs/evidence/f1-judge-recal-2026-11/freeze.json.sha256"
+)
+
+
+def registered_freeze_sha256(path: Path | None = None) -> str:
+    try:
+        text = (path or REGISTERED_FREEZE).read_text(encoding="utf-8")
+    except OSError:
+        raise RecalError("FREEZE_REGISTRATION_MISSING") from None
+    digest = text.split()[0] if text.split() else ""
+    if not re.fullmatch(r"[0-9a-f]{64}", digest):
+        raise RecalError("FREEZE_REGISTRATION_INVALID")
+    return digest
+
+
 def load_freeze(path: Path, pack_dir: Path) -> dict[str, Any]:
-    """The frozen thresholds, after checking the pack is the frozen one."""
+    """The frozen thresholds, after checking that the freeze file is the
+    registered one and the pack is the frozen one."""
+    try:
+        data = path.read_bytes()
+    except OSError:
+        raise RecalError(f"FILE_MISSING:{path.name}") from None
+    if sha256_bytes(data) != registered_freeze_sha256():
+        raise RecalError("FREEZE_NOT_REGISTERED")
     freeze = _read_json(path)
     if freeze.get("schema") != FREEZE_SCHEMA:
         raise RecalError("FREEZE_SCHEMA_INVALID")
@@ -346,6 +417,29 @@ def load_freeze(path: Path, pack_dir: Path) -> dict[str, Any]:
     if not freeze.get("pack_files"):
         raise RecalError("FREEZE_PACK_FILES_MISSING")
     return freeze
+
+
+def check_items(key: Mapping[str, Any], freeze: Mapping[str, Any]) -> None:
+    """The pack has exactly the frozen item count; the flow denominator is
+    the frozen one; every other item is a frozen prior ruling (Q3)."""
+    items = key["items"]
+    if len(items) != int(freeze["pack_count"]):
+        raise RecalError(f"ITEM_COUNT_DIFFERS:{len(items)}")
+    flow = [
+        i
+        for i, e in items.items()
+        if e["pipeline"] is not None and e.get("user_ruling") is None
+    ]
+    if len(flow) != int(freeze["threshold"]["denominator"]):
+        raise RecalError(f"DENOMINATOR_DIFFERS:{len(flow)}")
+    prior = {
+        str(d["attempt_id"]): d["ruling"] for d in freeze["prior_rulings_non_blind"]
+    }
+    rest = {
+        e["attempt_id"]: e.get("user_ruling") for i, e in items.items() if i not in flow
+    }
+    if rest != prior:
+        raise RecalError("PRIOR_RULINGS_DIFFER")
 
 
 # --------------------------------------------------------------------------
@@ -441,8 +535,10 @@ def adjudication_template(ids: Sequence[str]) -> dict[str, Any]:
 
 def run_labels(args: argparse.Namespace) -> dict[str, Any]:
     pack_dir = Path(args.pack)
-    load_freeze(Path(args.freeze), pack_dir)
+    refuse_inside_git_tree(Path(args.out))
+    freeze = load_freeze(Path(args.freeze), pack_dir)
     key = _read_json(pack_dir / "private/identity-map.json")
+    check_items(key, freeze)
     pack = _read_json(pack_dir / "pack/pack.json")
     docs = [_read_json(Path(p)) for p in args.label]
     merged = merge_labels(key, docs)
@@ -621,6 +717,7 @@ def run_compare(args: argparse.Namespace) -> dict[str, Any]:
     pack_dir = Path(args.pack)
     freeze = load_freeze(Path(args.freeze), pack_dir)
     key = _read_json(pack_dir / "private/identity-map.json")
+    check_items(key, freeze)
     merged = _read_json(Path(args.merged))
     gold = gold_labels(key, merged, _read_json(Path(args.adjudication)))
     published = _read_json(Path(args.published)) if args.published else None
