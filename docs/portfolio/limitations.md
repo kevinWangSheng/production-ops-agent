@@ -1,6 +1,6 @@
 # Limitations
 
-What the evidence in this repository does and does not show, as of 2026-11-10.
+What the evidence in this repository does and does not show, as of 2026-11-11.
 
 ## No production observation
 
@@ -30,12 +30,20 @@ All evidence pages mark themselves as integration runs, drills or a lab soak. No
 
 ## Acceptance status
 
-[feature_list.json](../../feature_list.json) shows 9 of 11 features passing. These are still open:
+[feature_list.json](../../feature_list.json) shows 10 of 11 features passing. This one is still open:
 
 | Feature | Open item | Evidence |
 |---|---|---|
 | F1 evaluation | Step 5 (calibrated judging) is not achieved | [results](../results/f1-same-condition-comparison-2026-11.md) |
-| F9 delivery | Step 1 is met: on 2026-11-11 a freshly reinstalled host ran only the README commands and the agent connected and handled an alert. Step 2 is partial: every element was observed, but split across two incidents. One was handed off (caused by cutting the model egress, so its Run has no investigation or evidence), handled outside OpsPilot by the user, observed to recovery and closed; the other had the evidenced investigation but no handoff and was not closed. The postmortem was generated but not reviewed. Step 4 is partial: upgrade and rollback ran by pinned digests (`v0.1.0` ↔ `v0.1.1`) as UPGRADE.md describes, but there was no separate staging deployment, and both versions have the same runtime code and schema head | [final clean-host run](../evidence/f9-final-clean-host-2026-11-11/README.md); step 3: [steps 2–4](../evidence/f9-steps-2-4-2026-11-10/README.md) |
+
+F9 delivery passes on lab evidence only. An independent reviewer judged steps 1, 3 and 5 met and steps 2 and 4 met with limits. Evidence: step 1 [final clean-host run](../evidence/f9-final-clean-host-2026-11-11/README.md), step 3 [steps 2–4](../evidence/f9-steps-2-4-2026-11-10/README.md), steps 2 and 4 [second final run](../evidence/f9-final2-2026-11-11/README.md), step 5 this portfolio. The limits:
+
+- It is an integration run on one rented VM with a kind lab, synthetic traffic and injected faults. It is not production proof and not a soak.
+- Step 2: the handoff was forced by cutting the model egress for about 2.2 s. No report was published before the handoff, and the details of the failed model calls were not exported.
+- Step 2: host records (a `su` in the system log, the ConfigMap's `managedFields`) corroborate the time of the external fault restore, 21:59:59Z, between takeover and `register_remediation`. They cannot show who ran it, because the user and the agent connect from the same machine with the same key. That the user ran it rests on the user's statement plus that corroboration.
+- Step 2: the postmortem is still `under_review`, and the knowledge base has 0 entries.
+- Step 4: `v0.1.0` and `v0.1.1` share runtime code and schema head, so no code or schema change was upgraded across. Staging is a second Compose project on the same VM and needed two undocumented steps to join the lab (network join without aliases, alert forwarding). An in-flight recovery observation on staging continued across the digest switch and reached `recovery_confirmed`; the main project's upgrade and rollback had no in-flight work.
+- The cause of two `no_data` samples in that staging observation is unknown. These runs have no LangSmith trace and no cost reconciliation against the supplier balance.
 
 Investigation quality is uneven. Published reports are often `partial` rather than `supported`; for example, two of the three Runs on the clean host were `partial` ([steps 2–4](../evidence/f9-steps-2-4-2026-11-10/README.md)). The M1-01 strict criterion (no unresolved P1/P2 review finding in any accepted Run) was never met ([closure record](../tasks/2026-09-28-m1-01-closure.md)).
 
