@@ -43,7 +43,7 @@ from opspilot.tools.otel_demo import (
 __all__ = ["PROFILE_ENV", "PROFILE_NAMES", "ToolProfile", "select_profile"]
 
 PROFILE_ENV = "OPSPILOT_TOOL_PROFILE"
-PROFILE_NAMES = ("fixture", "otel-demo")
+PROFILE_NAMES = ("fixture", "otel-demo", "otel-demo-k8s")
 
 
 @dataclass(frozen=True)
@@ -84,4 +84,15 @@ def select_profile(env: Mapping[str, str]) -> ToolProfile:
         return _fixture()
     if name == "otel-demo":
         return _otel_demo(env)
+    if name == "otel-demo-k8s":
+        from opspilot.tools.kubernetes_core import _registrations
+
+        _registrations()
+        base = _otel_demo(env)
+        return ToolProfile(
+            name="otel-demo-k8s",
+            face=base.face,
+            versions=base.versions,
+            executor_factory=base.executor_factory,
+        )
     raise SystemExit(f"{PROFILE_ENV} must be one of {', '.join(PROFILE_NAMES)}")

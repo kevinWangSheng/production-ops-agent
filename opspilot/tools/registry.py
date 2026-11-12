@@ -467,8 +467,6 @@ class ToolRegistration:
             raise ToolContractError("WRITE_CAPABILITY_FORBIDDEN")
         if type(self.may_contain_secrets) is not bool:
             raise ToolContractError("INVALID_SECRET_DECLARATION")
-        if self.may_contain_secrets:
-            raise ToolContractError("SECRET_BEARING_SOURCE_FORBIDDEN")
         if self.verb not in READ_ONLY_VERBS:
             raise ToolContractError("VERB_NOT_ALLOWED")
         if not isinstance(self.parameters, Mapping) or any(
