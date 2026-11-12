@@ -46,9 +46,9 @@
 4. compose 对缺失的 secret 文件的实际表现（本机不能起 Docker）；按推断，CA secret 不放进基础 `compose.yaml`。
 5. lab 的 ConfigMap 里有没有 lab 自己的凭据（预期没有，要实测）。
 
-## 流程待定（交 lead）
+## 合并方式
 
-A1 改 `deploy/` 里 worker 拿凭据的方式，按 AGENTS.md 是「数据流与凭据」类用户门 PR，还是算已裁决内容的落实，由 lead 定。
+A1 改 `deploy/` 里 worker 拿凭据的方式，属「数据流与凭据」类变更，按功能 PR 的用户门处理：简报里单列这一处，由用户合并或授权合并。
 
 ## 下一步
 

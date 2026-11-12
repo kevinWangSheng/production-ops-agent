@@ -1,6 +1,6 @@
 # 工具面拓展 B2：告警规则、抓取目标与指标元数据
 
-- 状态：待裁决（B2-1 等用户裁决；开工说明其余部分已齐，未实现；在 A5 合并后开工）
+- 状态：阻塞（B2-1 等用户裁决；开工说明其余部分已齐，未实现；在 A5 合并后开工）
 - 更新日期：2026-11-12
 - 依据：[工具面拓展任务记录](2026-11-12-tool-expansion.md)、[决定表 r3](2026-11-12-tool-expansion-contract.md)（r3 的 B2-1 至 B2-6）、C3 第 8 节；上游 HolmesGPT `a0009195` 的 `prometheus/prometheus.py` 与 `kubernetes.yaml`；Prometheus `v3.5.0` API 文档；F14 上游对照合同（[任务记录](2026-10-27-m3-f14-upstream-contract.md)）。issue #561。开工前预审在仓库外（A4、A5、B2 预审，2026-11-12）。
 - 工作区：开工时另开 worktree，分支 `feature/tool-expansion-b2-prometheus-rules`，写入本节。
