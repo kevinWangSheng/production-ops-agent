@@ -41,10 +41,9 @@ from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
-from opspilot.tools import TransportError, TransportRequest
+from opspilot.tools import TransportError, TransportRequest, kubernetes_core
 from opspilot.tools.executor import ToolRequest, TransportTimeout
 from opspilot.tools.outcomes import Window
-from opspilot.tools import kubernetes_core
 from opspilot.tools.profiles import PROFILE_ENV, select_profile
 from tests.m1_tool_support import FakeClock
 from tests.test_m1_otel_demo_contract import NOW, TARGET_ID
@@ -64,7 +63,6 @@ from tests.test_tool_expansion_a2_contract import (
     _url,
     _view,
 )
-
 
 TABULAR_TOOL = "kubernetes_tabular_query"
 A6_AUTHORIZED_WINDOW = Window(NOW - timedelta(hours=6), NOW)
@@ -139,7 +137,9 @@ def _header_labels(view: dict[str, object]) -> list[str]:
 def _assert_invalid_columns(outcome, bad_column: str) -> None:
     # The outer executor reason remains the standard parameter error; the
     # fixed adapter code and offending column must be visible to the model.
-    assert (outcome.status, outcome.reason) == ("error", "INVALID_PARAMS"), outcome.model_view
+    assert (outcome.status, outcome.reason) == ("error", "INVALID_PARAMS"), (
+        outcome.model_view
+    )
     view = _view(outcome)
     assert view["content"] is None
     rendered = json.dumps(view, ensure_ascii=False)
@@ -150,8 +150,12 @@ def _assert_invalid_columns(outcome, bad_column: str) -> None:
 def test_extension_surface_adds_tabular_query_without_pinning_future_tools():
     base = select_profile({PROFILE_ENV: "otel-demo"})
     ext = select_profile({PROFILE_ENV: "otel-demo-ext"})
-    base_names = [item["function"]["name"] for item in base.face(FakeClock()).tool_schemas]
-    ext_names = [item["function"]["name"] for item in ext.face(FakeClock()).tool_schemas]
+    base_names = [
+        item["function"]["name"] for item in base.face(FakeClock()).tool_schemas
+    ]
+    ext_names = [
+        item["function"]["name"] for item in ext.face(FakeClock()).tool_schemas
+    ]
     assert tuple(base_names) == BASE_TOOL_NAMES
     assert ext_names[: len(base_names)] == base_names
     assert set(ext_names) >= set(base_names) | {TABULAR_TOOL}
@@ -314,12 +318,14 @@ def test_missing_fields_array_expansion_and_index_out_of_bounds_are_stable(monke
 
 
 def test_cluster_scoped_kind_ignores_namespace_and_records_note(monkeypatch):
-    opener = KubeOpener(
-        [_list([{"metadata": {"name": "node-a"}}], kind="NodeList")]
-    )
+    opener = KubeOpener([_list([{"metadata": {"name": "node-a"}}], kind="NodeList")])
     executor, _, _, _, _ = _executor(monkeypatch, opener)
     outcome = executor.execute(
-        _call(_params(kind="nodes", namespace=K8S_NAMESPACE, columns="NAME:.metadata.name"))
+        _call(
+            _params(
+                kind="nodes", namespace=K8S_NAMESPACE, columns="NAME:.metadata.name"
+            )
+        )
     )
     assert outcome.status == "ok", outcome.model_view
     assert _rows(outcome) == [["node-a"]]
@@ -334,7 +340,10 @@ def test_events_outside_the_wider_authorized_window_are_dropped(monkeypatch):
     opener = KubeOpener(
         [
             _list(
-                [_event("in-window", inside, reason="BackOff"), _event("late", outside, reason="Failed")],
+                [
+                    _event("in-window", inside, reason="BackOff"),
+                    _event("late", outside, reason="Failed"),
+                ],
                 kind="EventList",
             )
         ]
@@ -385,7 +394,9 @@ def test_more_than_twenty_columns_or_two_thousand_chars_is_invalid_before_reques
     assert opener.requests == []
 
 
-def test_twenty_columns_and_two_thousand_chars_are_accepted_at_the_boundary(monkeypatch):
+def test_twenty_columns_and_two_thousand_chars_are_accepted_at_the_boundary(
+    monkeypatch,
+):
     opener = KubeOpener([_list([_tabular_pod("boundary")])])
     executor, _, _, _, _ = _executor(monkeypatch, opener)
     twenty = ",".join(f"C{i}:.metadata.name" for i in range(20))
@@ -468,9 +479,7 @@ def test_view_over_max_tokens_refuses_whole_result_without_partial_rows(monkeypa
 def test_pathological_filter_pattern_is_hard_stopped_with_a2_timeout_class():
     if shutil.which("jq") is None:
         pytest.skip("local jq is required for the A2 Kubernetes transport seam")
-    opener = KubeOpener(
-        [_list([_tabular_pod("regex", blob="a" * 20000 + "!")])]
-    )
+    opener = KubeOpener([_list([_tabular_pod("regex", blob="a" * 20000 + "!")])])
     transport = kubernetes_core.KubernetesTransport(
         credentials={kubernetes_core.CREDENTIAL_REF: K8S_TOKEN},
         jq_path=shutil.which("jq"),
@@ -493,4 +502,3 @@ def test_pathological_filter_pattern_is_hard_stopped_with_a2_timeout_class():
     with pytest.raises(TransportTimeout) as raised:
         transport.fetch(request)
     assert raised.value.source_contact == "confirmed"
-
