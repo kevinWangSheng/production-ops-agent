@@ -30,7 +30,7 @@
 | R2 | 扩展档位的组成 | 新档位，复用 `otel-demo` 的全部工具（字节不变）再加新工具 | 不动现有档位版本 |
 | R3 | 凭据引用 | 每个后端独立 `credential_ref` 与 `OPSPILOT_K8S_*` 变量，不互相回退 | C3 §12 凭据分离 |
 | R4 | token 形态 | `kubectl create token` 的有期限 token，放 lab 私有目录 | 不留长期 Secret |
-| R5 | 集群身份的动词与范围 | ClusterRole 加 ClusterRoleBinding，规则照上游默认规则（无 `secrets`），只给 `get`、`list`，不含 `watch` | N4 裁决为集群级；工具不用 watch |
+| R5 | 集群身份的动词与范围 | ClusterRole 加 ClusterRoleBinding，规则照上游默认规则（无 `secrets`），只给 `get`、`list`，不含 `watch` | N4 裁决为集群级；工具不用 watch。C3 第 8 节写的「get、list、watch、logs」是上限，扩展档位按最小授权不给 watch，不冲突 |
 | R6 | 分页与资源解析 | 每页 500；资源名用静态表解析（r2 改写，见 A2-5、A2-9） | 没有真集群时 API 发现风险最高；Secret 与未授权资源自然不在表里 |
 | R7 | 对象投影 | 去掉 `metadata.managedFields`，其余原样交给 jq | 纯噪声且体积大 |
 | R8 | 日志条数 | 默认 100，硬上限 1000，超出标「不完整」与省略条数 | 同上游默认 |

@@ -19,6 +19,8 @@
 - 对象是查询那一刻的状态，工具描述写明它不能证明事故发生时的状态；事件只返回授权时间框内的。
 - 结果超过大小上限时整条拒绝，不返回部分结果。
 - 配置只在 worker 读：`OPSPILOT_K8S_API_URL`、`OPSPILOT_K8S_TOKEN`、`OPSPILOT_K8S_CA_FILE`、`OPSPILOT_K8S_NAMESPACE`。worker 选了扩展档位但缺配置或找不到 jq 时启动失败。
+- 读配置的边界：web 也会选档位（启动时取版本与工具面），所以扩展档位的版本与工具面必须在没有任何 `OPSPILOT_K8S_*` 时也能构造；Kubernetes 配置只在 worker 构造执行器时读。合同测试覆盖两条：web 没有这些变量能正常启动；worker 缺配置时以固定代码启动失败。
+- 凭据不串用：执行器会把目标的凭据引用放进每个请求（`opspilot/tools/executor.py:860-864`），Kubernetes 传输不用它，只用自己的凭据槽 `k8s-ro`；Prometheus、Jaeger、Kubernetes 三个后端互不回退。合同测试证明：Kubernetes 请求不带 Prometheus 或 Jaeger 的凭据，反过来也一样；缺 `k8s-ro` 时 Kubernetes 工具报凭据错误，不拿别的凭据顶替。
 
 细节（分页、jq 子进程的限制、错误分类、时间字段、原因码）以决定表 A2-1 至 A2-15 为准。
 
