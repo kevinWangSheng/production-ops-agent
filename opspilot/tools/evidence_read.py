@@ -394,9 +394,9 @@ class RoutedTransport:
         if kubernetes is not None:
             # Imported here: kubernetes_core imports otel_demo, which imports
             # this module.
-            from .kubernetes_core import KUBERNETES_TOOLS
+            from .kubernetes_core import K8S_TOOLS
 
-            self._routes.update(dict.fromkeys(KUBERNETES_TOOLS, kubernetes))
+            self._routes.update(dict.fromkeys(K8S_TOOLS, kubernetes))
         self._routes.update(routes or {})
         if EVIDENCE_TOOL in self._routes:
             raise ValueError("ROUTE_SHADOWS_EVIDENCE_TOOL")

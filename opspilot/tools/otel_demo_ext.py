@@ -90,7 +90,7 @@ def _data_sources() -> dict[str, Any]:
         "available": {
             "prometheus": sorted(otel_demo.PROMETHEUS_TOOLS),
             "jaeger": [otel_demo.TRACES_TOOL],
-            "kubernetes": sorted(kubernetes_core.KUBERNETES_TOOLS),
+            "kubernetes": sorted(kubernetes_core.K8S_TOOLS),
         },
         "not_integrated": list(_NOT_INTEGRATED),
         "instruction": DATA_SOURCES_INSTRUCTION,

@@ -3,7 +3,7 @@
 A2 of the tool expansion (docs/tasks/2026-11-12-tool-expansion-a2.md,
 decision table r2 A2-1 to A2-15). The two tools are the upstream HolmesGPT
 ``kubernetes/core`` tools of the same names and parameters, served by a
-direct HTTPS GET to the API server (R1) instead of a ``kubectl`` pipe:
+direct HTTPS GET to the API server (R1) instead of a command-line client pipe:
 
 * ``kind`` is a plural resource name from the static table ``RESOURCES``
   (A2-5). Anything naming ``secret`` in any case or number is refused with
@@ -88,7 +88,7 @@ __all__ = [
     "ENDPOINT_SELECTOR",
     "ERROR_CLASSES",
     "JQ_QUERY_TOOL",
-    "KUBERNETES_TOOLS",
+    "K8S_TOOLS",
     "NAMESPACE_ENV",
     "RESOURCES",
     "TOKEN_ENV",
@@ -110,7 +110,7 @@ __all__ = [
 JQ_QUERY_TOOL = "kubernetes_jq_query"
 COUNT_TOOL = "kubernetes_count"
 TOOL_NAMES: tuple[str, ...] = (JQ_QUERY_TOOL, COUNT_TOOL)
-KUBERNETES_TOOLS: frozenset[str] = frozenset(TOOL_NAMES)
+K8S_TOOLS: frozenset[str] = frozenset(TOOL_NAMES)
 
 #: The Kubernetes transport's own credential slot (A2-1); the target's
 #: ``credential_ref`` names the Prometheus slot and is not used here.
@@ -436,7 +436,7 @@ class ListResult:
     """Every object of one kind (one scope), merged across pages.
 
     ``items`` have ``managedFields`` removed and carry ``kind``/``apiVersion``
-    as a ``kubectl get -o json`` list does; events are already limited to the
+    as the upstream tools' JSON list output does; events are already limited to the
     window. ``source_start_at``/``source_end_at`` bound the kept events' own
     timestamps (``None`` for other kinds: an object is current state).
     """
@@ -916,7 +916,7 @@ class KubernetesTransport:
         self._monotonic = monotonic or _monotonic
 
     def fetch(self, request: TransportRequest) -> TransportResponse:
-        if request.tool not in KUBERNETES_TOOLS:
+        if request.tool not in K8S_TOOLS:
             raise TransportError("TOOL_NOT_SUPPORTED")
         deadline = self._monotonic() + request.timeout_seconds
         params = request.params
@@ -937,7 +937,7 @@ class KubernetesTransport:
         self._client.token()  # a missing slot fails before anything runs
         endpoint = request.selector.get(ENDPOINT_SELECTOR, "")
         if not endpoint:
-            raise TransportError("KUBERNETES_ENDPOINT_MISSING")
+            raise TransportError("K8S_ENDPOINT_MISSING")
         if self._jq_path is None:
             self._jq_path = require_jq()
         jq = _Jq(self._jq_path)

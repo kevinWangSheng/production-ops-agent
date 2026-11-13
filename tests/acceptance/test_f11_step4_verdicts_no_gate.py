@@ -469,8 +469,7 @@ def test_item3_only_migration_or_bounded_kubernetes_jq_starts_processes() -> Non
                     and names == ["subprocess"]
                 )
                 if imports_process and (
-                    relative not in SUBPROCESS_ALLOWED
-                    and not allowed_kubernetes_import
+                    relative not in SUBPROCESS_ALLOWED and not allowed_kubernetes_import
                 ):
                     offenders.append((relative, "imports a process module"))
                 if isinstance(node, ast.ImportFrom) and node.module == "os":
