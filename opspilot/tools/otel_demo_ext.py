@@ -229,8 +229,9 @@ def otel_demo_ext_executor_factory(
         credentials={otel_demo.CREDENTIAL_REF: config.token},
         basic_auth={} if pair is None else {otel_demo.CREDENTIAL_REF: pair},
     )
+    # A4: anonymous, like the lab Jaeger's query port; the slot is named only.
     traces = jaeger_query.JaegerQueryTransport(
-        credentials={otel_demo.CREDENTIAL_REF: config.token},
+        credentials={otel_demo.CREDENTIAL_REF: None},
     )
     cluster = kubernetes_core.KubernetesTransport(
         credentials={kubernetes_core.CREDENTIAL_REF: kubernetes.token},

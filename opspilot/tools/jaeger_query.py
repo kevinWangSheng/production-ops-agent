@@ -349,9 +349,22 @@ class JaegerQueryTransport(otel_demo.OtelDemoTransport):
     the target selector; any other tool is ``TOOL_NOT_SUPPORTED``.
 
     The GET itself is the parent's (``_get``): no proxy, no redirect, the
-    bearer token of ``credential_ref`` if one is configured (the lab Jaeger
-    is anonymous), the request deadline and a bounded read.
+    request deadline and a bounded read. Anonymous: the lab Jaeger is reached
+    on its anonymous query port (A4 brief), so whatever token a slot holds is
+    dropped here and no ``Authorization`` header is ever sent -- neither the
+    Prometheus basic auth (``_get`` sends it only for Prometheus tools) nor a
+    bearer token. A slot must still be registered (``CREDENTIAL_REF_UNKNOWN``).
     """
+
+    def __init__(
+        self,
+        *,
+        credentials: Mapping[str, str | None],
+        # ``urllib.request.OpenerDirector | None``, typed loosely so this
+        # module imports no network library itself.
+        opener: Any = None,
+    ) -> None:
+        super().__init__(credentials=dict.fromkeys(credentials), opener=opener)
 
     def fetch(self, request: TransportRequest) -> TransportResponse:
         if request.credential_ref not in self._credentials:
@@ -440,10 +453,14 @@ class JaegerQueryTransport(otel_demo.OtelDemoTransport):
             query.append(("operation", operation))
         if tags:
             query.append(("tags", json.dumps(tags, separators=(",", ":"))))
-        if "min_duration" in durations:
-            query.append(("minDuration", f"{durations['min_duration']}ns"))
-        if "max_duration" in durations:
-            query.append(("maxDuration", f"{durations['max_duration']}ns"))
+        # Sent as written: Jaeger parses Go durations itself, and every
+        # string ``parse_duration`` accepts is one Go's parser accepts.
+        for name, wire in (
+            ("min_duration", "minDuration"),
+            ("max_duration", "maxDuration"),
+        ):
+            if name in durations:
+                query.append((wire, str(params[name])))
         query += [
             ("start", str(int(window.start.timestamp() * 1_000_000))),
             ("end", str(int(window.end.timestamp() * 1_000_000))),
@@ -892,9 +909,8 @@ TOOL_SCHEMAS: tuple[Mapping[str, Any], ...] = (
                 "List the service names the registered target's Jaeger has "
                 "seen since it last started. Use it to find the exact service "
                 "name for traces_search_by_tags or traces_list_operations. "
-                "The list has no time range: a service missing from it is not "
-                "proof the service does not exist or made no calls, and a "
-                "Jaeger restart empties it."
+                "The list has no time range: a service missing from it does "
+                "not prove the service does not exist or made no calls, and a Jaeger restart empties it."
             ),
             "parameters": {"type": "object", "properties": {}, "required": []},
         },
@@ -908,7 +924,7 @@ TOOL_SCHEMAS: tuple[Mapping[str, Any], ...] = (
                 "has seen for one service since it last started, each with its "
                 "span kind; names are credential-redacted and cut to 150 "
                 "characters. The list has no time range: an operation missing "
-                "from it is not proof it does not exist, and a Jaeger restart "
+                "from it does not prove it does not exist, and a Jaeger restart "
                 "empties it."
             ),
             "parameters": {
@@ -991,7 +1007,7 @@ _ERROR_CLASSES = {
     "404": "INVALID_PARAMS",
     "503": "SOURCE_UNAVAILABLE",
     "INVALID_SERVICE": "INVALID_PARAMS",
-    "INVALID_TAGS": "INVALID_PARAMS",
+    "INVALID_TAGS": "INVALID_TAGS",
     "INVALID_OPERATION": "INVALID_PARAMS",
     "INVALID_DURATION": "INVALID_PARAMS",
     "INVALID_LIMIT": "INVALID_PARAMS",

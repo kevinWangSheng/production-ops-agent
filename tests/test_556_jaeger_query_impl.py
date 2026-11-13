@@ -58,10 +58,18 @@ class JaegerOpener:
     def __init__(self, *replies):
         self.replies = list(replies)
         self.urls: list[str] = []
+        self.headers: list[dict[str, str]] = []
 
     def open(self, request, timeout=None):
         url = request.full_url
         self.urls.append(url)
+        self.headers.append(
+            {
+                k.lower(): v
+                for k, v in {**request.headers, **request.unredirected_hdrs}.items()
+                if k.lower() == "authorization"
+            }
+        )
         assert request.get_method() == "GET"
         value = self.replies.pop(0)
         if isinstance(value, tuple):
@@ -200,8 +208,8 @@ def test_search_sends_every_filter_and_records_the_query(monkeypatch):
         "error": "true",
     }
     assert query["operation"] == ["POST /x"]
-    assert query["minDuration"] == ["100000000ns"]
-    assert query["maxDuration"] == ["2000000000ns"]
+    assert query["minDuration"] == ["100ms"]
+    assert query["maxDuration"] == ["2s"]
     assert query["limit"] == ["5"]
     view = outcome.model_view
     assert view["incomplete"] is False
@@ -241,7 +249,6 @@ def test_search_errors_in_body_mark_incomplete_and_empty_hints_service(monkeypat
 @pytest.mark.parametrize(
     "params",
     [
-        {"service": "checkout", "tags": "broken"},
         {"service": ""},
         {"service": "a" * 201},
         {"service": "bad\x00name"},
@@ -255,6 +262,24 @@ def test_search_refusals_send_nothing(monkeypatch, params):
     outcome = executor.execute(_call(jq.SEARCH_BY_TAGS_TOOL, params))
     assert (outcome.status, outcome.reason) == ("error", "INVALID_PARAMS")
     assert opener.urls == []
+
+
+def test_invalid_tags_is_its_own_outcome_reason(monkeypatch):
+    executor, opener = _ext(monkeypatch)
+    outcome = executor.execute(
+        _call(jq.SEARCH_BY_TAGS_TOOL, {"service": "checkout", "tags": "broken"})
+    )
+    assert (outcome.status, outcome.reason) == ("error", "INVALID_TAGS")
+    assert opener.urls == []
+
+
+def test_configured_otel_token_is_not_sent_to_jaeger():
+    opener = JaegerOpener(_envelope(["cart"]))
+    transport = jq.JaegerQueryTransport(
+        credentials={CREDENTIAL_REF: "otel-aaaaaaaa357"}, opener=opener
+    )
+    transport.fetch(_transport_request(jq.LIST_SERVICES_TOOL, {}, WINDOW))
+    assert opener.headers == [{}]
 
 
 def test_invalid_tags_reason_code():
