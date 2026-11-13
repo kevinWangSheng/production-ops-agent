@@ -28,6 +28,10 @@ PROM_URL = "http://127.0.0.1:19090"
 JAEGER_URL = "http://127.0.0.1:16686/jaeger/ui"
 K8S_TOKEN = "k8s-aaaaaaaa357"
 OTEL_TOKEN = "otel-aaaaaaaa357"
+PROM_USERNAME = "prom-user-aaaa357"
+PROM_PASSWORD = "prom-pass-aaaa357"
+LANGSMITH_KEY = "ls-aaaaaaaa357"
+TRACE_TAGS = "error=true"
 NAMESPACE = "otel-demo"
 POD = "checkout-0"
 LOG_MARKER = "log-text-must-not-be-written"
@@ -192,6 +196,12 @@ def env(tmp_path):
         "OPSPILOT_OTEL_PROMETHEUS_URL": PROM_URL,
         "OPSPILOT_OTEL_JAEGER_URL": JAEGER_URL,
         "OPSPILOT_OTEL_TOKEN": OTEL_TOKEN,
+        "OPSPILOT_OTEL_PROMETHEUS_USERNAME": PROM_USERNAME,
+        "OPSPILOT_OTEL_PROMETHEUS_PASSWORD": PROM_PASSWORD,
+        # The full lab gate (check_lab_target), as on the lab worker.
+        "OPSPILOT_TRACE": "lab",
+        "LANGSMITH_PROJECT": "opspilot-lab-tool-sample",
+        "LANGSMITH_API_KEY": LANGSMITH_KEY,
     }
 
 
@@ -212,6 +222,8 @@ def _main(env, evidence: Path, *extra: str) -> tuple[int, list[str]]:
             WINDOW_END.isoformat(),
             "--log-pod",
             POD,
+            "--trace-tags",
+            TRACE_TAGS,
             *extra,
         ],
         env=env,
@@ -233,6 +245,7 @@ def test_all_items_pass_through_the_product_executor(env, monkeypatch, tmp_path)
     assert code == 0, lines
     result = _load(evidence, "result.json")
     assert result["all_executed_passed"] is True
+    assert result["all_requested_passed"] is True
     assert {
         name: item["verdict"] for name, item in result["items"].items()
     } == dict.fromkeys(items.split(","), "pass")
@@ -269,7 +282,15 @@ def test_all_items_pass_through_the_product_executor(env, monkeypatch, tmp_path)
 
     written = "".join(path.read_text() for path in evidence.iterdir())
     assert LOG_MARKER not in written
-    assert K8S_TOKEN not in written and OTEL_TOKEN not in written
+    for value in (K8S_TOKEN, OTEL_TOKEN, PROM_USERNAME, PROM_PASSWORD, LANGSMITH_KEY):
+        assert value not in written
+    traces = _load(evidence, "traces.json")
+    assert traces["model_view"]["query"]["tags"] == TRACE_TAGS
+    search = next(
+        url for url in opener.requests if url.split("?")[0].endswith("/api/traces")
+    )
+    assert "tags=" in search
+    assert secret["dispatched"] is False
     run_md = (evidence / "run.md").read_text()
     assert "| logs | `fetch_pod_logs` | ok / None | pass |" in run_md
 
@@ -399,3 +420,186 @@ def test_missing_log_pod_and_existing_evidence_are_refused(env, monkeypatch, tmp
     assert _main(env, evidence, "--items", "secret")[0] == 0
     code, lines = _main(env, evidence, "--items", "secret")
     assert code == 2 and any("EVIDENCE_EXISTS" in line for line in lines)
+
+
+# -- review fixes (PR #607) ---------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "overrides, code",
+    [
+        ({"OPSPILOT_TRACE": "off"}, "TRACE_MODE_NOT_LAB"),
+        ({"LANGSMITH_PROJECT": "production"}, "PROJECT_NOT_LAB"),
+        ({"LANGSMITH_API_KEY": ""}, "LANGSMITH_KEY_MISSING"),
+    ],
+)
+def test_the_whole_lab_gate_is_fail_closed(env, monkeypatch, tmp_path, overrides, code):
+    opener = _install(monkeypatch, LabOpener())
+    exit_code, lines = _main({**env, **overrides}, tmp_path / "evidence")
+    assert exit_code == 2
+    assert any(code in line for line in lines)
+    assert opener.requests == []
+    assert not (tmp_path / "evidence").exists()
+
+
+@pytest.mark.parametrize("value", [PROM_USERNAME, PROM_PASSWORD, LANGSMITH_KEY])
+def test_every_product_credential_in_the_output_writes_nothing(
+    env, monkeypatch, tmp_path, value
+):
+    # A Pod name carrying the value puts it in the tabular preview rows.
+    _install(monkeypatch, LabOpener(pods=(value,)))
+    evidence = tmp_path / "evidence"
+    code, lines = _main(env, evidence, "--items", "tabular")
+    assert code == 2
+    assert any("CREDENTIAL_IN_OUTPUT" in line for line in lines)
+    assert not evidence.exists() or not any(evidence.iterdir())
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        ("--items", "tabular", "--set", f"tabular.{K8S_TOKEN}"),
+        ("--items", "tabular", "--set", f"{K8S_TOKEN}"),
+        ("--items", f"tabular,{OTEL_TOKEN}"),
+        ("--items", "logs", "--log-limit", PROM_PASSWORD),
+        ("--items", "tabular", f"--{LANGSMITH_KEY}"),
+        ("--items", "tabular", "--window-end", PROM_USERNAME),
+        ("--items", "tabular", "--allow-skip", K8S_TOKEN),
+    ],
+)
+def test_error_messages_never_echo_a_credential(env, monkeypatch, tmp_path, extra):
+    _install(monkeypatch, LabOpener())
+    code, lines = _main(env, tmp_path / "evidence", *extra)
+    assert code == 2, lines
+    printed = "\n".join(lines)
+    for value in (K8S_TOKEN, OTEL_TOKEN, PROM_USERNAME, PROM_PASSWORD, LANGSMITH_KEY):
+        assert value not in printed
+
+
+def _rules_registered() -> bool:
+    profile = tool_sample.select_profile({tool_sample.PROFILE_ENV: tool_sample.PROFILE})
+    names = {
+        item["function"]["name"]
+        for item in profile.face(FakeClock(start=NOW)).tool_schemas
+    }
+    return tool_sample.ITEMS["rules"] in names
+
+
+def test_a_requested_skip_fails_unless_allowed(env, monkeypatch, tmp_path):
+    if _rules_registered():
+        pytest.skip("list_prometheus_rules is registered in this build")
+    _install(monkeypatch, LabOpener())
+    evidence = tmp_path / "denied"
+    code, _ = _main(env, evidence, "--items", "secret,rules")
+    assert code == 1
+    result = _load(evidence, "result.json")
+    assert result["all_executed_passed"] is True
+    assert result["all_requested_passed"] is False
+    assert result["items"]["rules"]["skip_allowed"] is False
+
+    evidence = tmp_path / "allowed"
+    code, _ = _main(env, evidence, "--items", "secret,rules", "--allow-skip", "rules")
+    assert code == 0
+    result = _load(evidence, "result.json")
+    assert result["all_requested_passed"] is True
+    assert result["allowed_skips"] == ["rules"]
+    assert "skipped (allowed)" in (evidence / "run.md").read_text()
+
+
+def test_traces_without_a_tag_condition_are_refused(env, monkeypatch, tmp_path):
+    opener = _install(monkeypatch, LabOpener())
+    lines: list[str] = []
+    code = tool_sample.main(
+        [
+            "--evidence-dir",
+            str(tmp_path / "evidence"),
+            "--window-start",
+            WINDOW_START.isoformat(),
+            "--window-end",
+            WINDOW_END.isoformat(),
+            "--items",
+            "traces",
+        ],
+        env=env,
+        clock=FakeClock(start=NOW),
+        out=lines.append,
+    )
+    assert code == 2
+    assert any("TRACE_TAGS_REQUIRED" in line for line in lines)
+    assert opener.requests == []
+
+
+# Verdict arithmetic on hand-built outcomes: the shapes the executor cannot be
+# made to produce through a source double.
+
+
+class _Operation:
+    def __init__(self, dispatched: bool):
+        self.dispatched = dispatched
+
+
+class _Outcome:
+    def __init__(
+        self, view, *, status="ok", reason=None, contact="confirmed", dispatched=True
+    ):
+        self.model_view = view
+        self.status = status
+        self.reason = reason
+        self.source_contact = contact
+        self.operation = _Operation(dispatched)
+        self.evidence = None
+        self.adopted = True
+
+
+def _failed(item, outcome, *, params=None, charges=()):
+    checks = tool_sample.judge(
+        item, outcome, params=params or {}, charges=list(charges)
+    )
+    return {check["check"] for check in checks if not check["ok"]}
+
+
+def test_log_omitted_count_must_equal_returned_minus_shown():
+    rows = [{"timestamp": "t", "container": "app", "previous": False}] * 100
+    view = {
+        "content": rows,
+        "incomplete": True,
+        "lines_shown": 100,
+        "backend_lines_returned": 150,
+        "lines_omitted": 50,
+    }
+    assert _failed("logs", _Outcome(view)) == set()
+    assert _failed("logs", _Outcome({**view, "lines_omitted": 7})) == {
+        "lines_omitted == backend_lines_returned - lines_shown"
+    }
+
+
+def test_secret_needs_a_settled_reservation_and_an_undispatched_operation():
+    refused = {"content": None}
+    settled = [{"settled": True, "seconds": 0.0}]
+
+    def secret(**kwargs):
+        return _Outcome(
+            refused,
+            status="error",
+            reason="RESOURCE_NOT_ALLOWED",
+            contact="none",
+            dispatched=kwargs.get("dispatched", False),
+        )
+
+    assert _failed("secret", secret(), charges=settled) == set()
+    assert _failed("secret", secret(), charges=()) == {
+        "reserved and every reservation settled at 0 s"
+    }
+    assert _failed("secret", secret(dispatched=True), charges=settled) == {
+        "operation.dispatched is False"
+    }
+
+
+def test_traces_verdict_checks_the_recorded_tag_condition():
+    view = {"content": [], "result_count": 1, "query": {"service": "frontend"}}
+    params = {"service": "frontend", "tags": TRACE_TAGS}
+    assert _failed("traces", _Outcome(view), params=params) == {
+        "request carried the tag condition"
+    }
+    tagged = {**view, "query": {"service": "frontend", "tags": TRACE_TAGS}}
+    assert _failed("traces", _Outcome(tagged), params=params) == set()

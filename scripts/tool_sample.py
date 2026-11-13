@@ -9,12 +9,16 @@ transports, size and time ceilings, lab-target selector and evidence
 projection a worker uses. What it does not use is the durable layer: the
 Run row, control state and evidence store are in-memory stand-ins
 (``_SampleStore`` / ``_MemorySink``), because no incident or Run exists.
+They are for this single-threaded sample only, not general store doubles.
 
 Configuration is the product's: ``OPSPILOT_K8S_*``,
 ``OPSPILOT_OTEL_PROMETHEUS_*``, ``OPSPILOT_OTEL_JAEGER_URL`` and
 ``OPSPILOT_OTEL_TOKEN`` from the environment; no credential is accepted on
-the command line. Every data-source address must be a lab host (the
-``*_NOT_LAB`` codes of ``opspilot.tracing.check_lab_target``).
+the command line. The whole lab gate ``opspilot.tracing.check_lab_target``
+must pass, fail-closed and unfiltered: lab data-source hosts, and the same
+``OPSPILOT_TRACE=lab`` / ``opspilot-lab-*`` LangSmith settings a lab worker
+runs with. The script itself sends nothing to LangSmith; requiring the full
+gate means it only runs in an environment already proven to be the lab.
 
 Output under ``--evidence-dir``: one ``<item>.json`` per item (tool, params,
 status, reason, source contact, the model view without its ``content``, a
@@ -23,6 +27,11 @@ content summary, evidence metadata, the deterministic verdict), plus
 text is never written (line counts and the first rows' timestamp and
 container only). Before anything is written, the serialized output is
 searched for every configured credential value; one hit writes nothing.
+Messages printed to stdout never echo argument values and are redacted with
+the same credential values.
+
+Every requested item must pass; an item whose tool is not registered in this
+build fails the run unless ``--allow-skip <item>`` names it.
 
 Development script, not product code.
 """
@@ -71,12 +80,17 @@ DEFAULT_COLUMNS = (
 TABULAR_KEYS = ("header", "content", "count", "scope", "notes")
 LOG_VIEW_LIMIT = 100
 #: Credential variables whose values must never appear in the output.
+#: Every credential the product reads on this path: the Kubernetes token,
+#: the OTel bearer token, both halves of the Prometheus basic auth
+#: (``OtelDemoConfig.from_env``) and the LangSmith key the lab gate requires.
 SECRET_ENV = (
     "OPSPILOT_K8S_TOKEN",
     "OPSPILOT_OTEL_TOKEN",
+    "OPSPILOT_OTEL_PROMETHEUS_USERNAME",
     "OPSPILOT_OTEL_PROMETHEUS_PASSWORD",
+    "LANGSMITH_API_KEY",
 )
-_LAB_CODES = frozenset({"PROMETHEUS_NOT_LAB", "JAEGER_NOT_LAB", "KUBERNETES_NOT_LAB"})
+REDACTED = "[REDACTED]"
 _CELL_CHARS = 120
 _PREVIEW_ROWS = 3
 
@@ -198,9 +212,9 @@ def _parse_moment(text: str) -> datetime:
     try:
         value = datetime.fromisoformat(text.replace("Z", "+00:00"))
     except ValueError as exc:
-        raise SampleError(f"BAD_TIME: {text!r}") from exc
+        raise SampleError("BAD_TIME: not an ISO-8601 time") from exc
     if value.tzinfo is None:
-        raise SampleError(f"TIME_WITHOUT_TIMEZONE: {text!r}")
+        raise SampleError("TIME_WITHOUT_TIMEZONE: give an offset or Z")
     return value.astimezone(timezone.utc).replace(microsecond=0)
 
 
@@ -232,21 +246,27 @@ def default_params(
             "namespace": namespace,
         }
     if item == "traces":
-        params = {"service": args.trace_service, "limit": args.trace_limit}
-        if args.trace_tags:
-            params["tags"] = args.trace_tags
-        return params
+        if not args.trace_tags:
+            raise SampleError(
+                "TRACE_TAGS_REQUIRED: --trace-tags gives the tag condition "
+                "(logfmt) the traces item searches by"
+            )
+        return {
+            "service": args.trace_service,
+            "tags": args.trace_tags,
+            "limit": args.trace_limit,
+        }
     if item == "prom_instant":
         return {"query": args.prom_query}
     if item == "rules":
         return {}
-    raise SampleError(f"UNKNOWN_ITEM: {item}")
+    raise SampleError("UNKNOWN_ITEM")
 
 
 def _override(params: dict[str, Any], assignment: str) -> None:
     key, sep, raw = assignment.partition("=")
     if not sep or not key:
-        raise SampleError(f"BAD_SET: {assignment!r}")
+        raise SampleError("BAD_SET: expected ITEM.KEY=VALUE")
     try:
         params[key] = json.loads(raw)
     except json.JSONDecodeError:
@@ -355,6 +375,19 @@ def judge(
             isinstance(read, int) and isinstance(shown, int) and read > shown,
             {"backend_lines_returned": read, "lines_shown": shown},
         )
+        _check(
+            checks,
+            "lines_omitted == backend_lines_returned - lines_shown",
+            isinstance(read, int)
+            and isinstance(shown, int)
+            and isinstance(omitted, int)
+            and omitted == read - shown,
+            {
+                "lines_omitted": omitted,
+                "backend_lines_returned": read,
+                "lines_shown": shown,
+            },
+        )
     elif item == "secret":
         _check(
             checks,
@@ -370,8 +403,15 @@ def judge(
         )
         _check(
             checks,
-            "no read dispatched (every reservation settled at 0 s)",
-            all(item["settled"] and item["seconds"] == 0 for item in charges),
+            "operation.dispatched is False",
+            outcome.operation.dispatched is False,
+            outcome.operation.dispatched,
+        )
+        _check(
+            checks,
+            "reserved and every reservation settled at 0 s",
+            bool(charges)
+            and all(item["settled"] and item["seconds"] == 0 for item in charges),
             [
                 {"settled": item["settled"], "seconds": item["seconds"]}
                 for item in charges
@@ -394,6 +434,15 @@ def judge(
             outcome.source_contact,
         )
         _check(checks, "evidence adopted", outcome.adopted, outcome.adopted)
+        if item == "traces":
+            sent = view.get("query")
+            sent_tags = sent.get("tags") if isinstance(sent, dict) else None
+            _check(
+                checks,
+                "request carried the tag condition",
+                bool(params.get("tags")) and sent_tags == params.get("tags"),
+                {"requested": params.get("tags"), "recorded": sent_tags},
+            )
     return checks
 
 
@@ -461,7 +510,8 @@ def evidence_meta(record: EvidenceRecord | None) -> dict[str, Any] | None:
 
 
 def _lab_problems(env: Mapping[str, str]) -> list[str]:
-    return sorted(set(check_lab_target(env)) & _LAB_CODES)
+    """Every code of the lab gate, unfiltered (fail-closed)."""
+    return sorted(check_lab_target(env))
 
 
 def run_sample(
@@ -469,6 +519,7 @@ def run_sample(
     run: SampleRun,
     *,
     clock: Any = None,
+    allow_skip: frozenset[str] = frozenset(),
 ) -> dict[str, Any]:
     """Call each spec once; returns ``{"result": ..., "files": {name: text}}``.
 
@@ -522,6 +573,7 @@ def run_sample(
                 "params": spec.params,
                 "verdict": "skipped",
                 "skip_reason": "TOOL_NOT_REGISTERED in this build",
+                "skip_allowed": spec.item in allow_skip,
             }
         else:
             known = {item["dispatch_id"] for item in store.charges}
@@ -549,6 +601,7 @@ def run_sample(
                 "status": outcome.status,
                 "reason": outcome.reason,
                 "source_contact": outcome.source_contact,
+                "dispatched": outcome.operation.dispatched,
                 "adopted": outcome.adopted,
                 "model_view_keys": sorted([*view, "content"]),
                 "model_view": view,
@@ -580,6 +633,7 @@ def run_sample(
             name: {
                 "tool": item["tool"],
                 "verdict": item["verdict"],
+                "skip_allowed": item.get("skip_allowed"),
                 "status": item.get("status"),
                 "reason": item.get("reason"),
                 "failed_checks": [
@@ -592,6 +646,16 @@ def run_sample(
         },
         "all_executed_passed": bool(executed)
         and all(item["verdict"] == "pass" for item in executed),
+        # The primary verdict: every requested item passed, or was skipped
+        # and named by --allow-skip.
+        "all_requested_passed": bool(executed)
+        and all(
+            item["verdict"] == "pass"
+            or (item["verdict"] == "skipped" and item["skip_allowed"])
+            for item in items.values()
+        ),
+        "allowed_skips": sorted(allow_skip),
+        "lab_gate": {"check": "opspilot.tracing.check_lab_target", "failures": []},
         "operations_charged": len(store.charges),
         "credential_hits": 0,
         **run.extra,
@@ -604,9 +668,20 @@ def run_sample(
     return {"result": result, "files": files}
 
 
+def _credential_values(env: Mapping[str, str]) -> list[str]:
+    return [env[name] for name in SECRET_ENV if env.get(name)]
+
+
 def credential_hits(env: Mapping[str, str], texts: Sequence[str] | Any) -> int:
-    values = [env[name] for name in SECRET_ENV if env.get(name)]
+    values = _credential_values(env)
     return sum(text.count(value) for text in texts for value in values)
+
+
+def redact(text: str, env: Mapping[str, str]) -> str:
+    """``text`` with every configured credential value replaced, longest first."""
+    for value in sorted(_credential_values(env), key=len, reverse=True):
+        text = text.replace(value, REDACTED)
+    return text
 
 
 def _dump(value: Any) -> str:
@@ -630,6 +705,9 @@ def render_markdown(result: Mapping[str, Any], items: Mapping[str, Any]) -> str:
         f"- 档位：`{result['profile']}`，"
         f"`tool_schema_revision={result['versions'].get('tool_schema_revision')}`",
         f"- 记账操作数：{result['operations_charged']}；凭据原文命中：0",
+        f"- 主判定 all_requested_passed：{result['all_requested_passed']}"
+        f"（允许跳过：{', '.join(result['allowed_skips']) or '无'}）；"
+        "lab 闸门 check_lab_target 全部通过",
         "",
         "| 项 | 工具 | status / reason | 判定 | 关键观察 |",
         "|---|---|---|---|---|",
@@ -637,7 +715,9 @@ def render_markdown(result: Mapping[str, Any], items: Mapping[str, Any]) -> str:
     for name, item in items.items():
         if item["verdict"] == "skipped":
             lines.append(
-                f"| {name} | `{item['tool']}` | - | skipped | {item['skip_reason']} |"
+                f"| {name} | `{item['tool']}` | - | skipped"
+                f"{' (allowed)' if item['skip_allowed'] else ' (not allowed)'} | "
+                f"{item['skip_reason']} |"
             )
             continue
         observed = "; ".join(
@@ -655,7 +735,7 @@ def render_markdown(result: Mapping[str, Any], items: Mapping[str, Any]) -> str:
 def write_files(evidence_dir: Path, files: Mapping[str, str]) -> None:
     evidence_dir.mkdir(parents=True, exist_ok=True)
     if (evidence_dir / "result.json").exists():
-        raise SampleError(f"EVIDENCE_EXISTS: {evidence_dir / 'result.json'}")
+        raise SampleError("EVIDENCE_EXISTS: result.json is already in --evidence-dir")
     for name, text in files.items():
         (evidence_dir / name).write_text(text)
 
@@ -663,8 +743,15 @@ def write_files(evidence_dir: Path, files: Mapping[str, str]) -> None:
 # -- CLI --------------------------------------------------------------------
 
 
+class _Parser(argparse.ArgumentParser):
+    """Argument errors become a ``SampleError`` so ``main`` redacts them."""
+
+    def error(self, message: str) -> Any:
+        raise SampleError(f"BAD_ARGUMENTS: {message}")
+
+
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
+    parser = _Parser(
         description="Call otel-demo-ext tools directly (no model) for #580 evidence."
     )
     parser.add_argument("--evidence-dir", required=True, type=Path)
@@ -685,7 +772,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--log-pod", help="Pod with more than 100 lines in the window")
     parser.add_argument("--log-limit", type=int)
     parser.add_argument("--trace-service", default="frontend")
-    parser.add_argument("--trace-tags", help="logfmt, e.g. error=true")
+    parser.add_argument(
+        "--trace-tags",
+        help="logfmt tag condition, e.g. error=true; required for the traces item",
+    )
     parser.add_argument("--trace-limit", type=int, default=5)
     parser.add_argument("--prom-query", default="up")
     parser.add_argument(
@@ -694,6 +784,14 @@ def build_parser() -> argparse.ArgumentParser:
         default=[],
         metavar="ITEM.KEY=VALUE",
         help="override one parameter (VALUE parsed as JSON when it is JSON)",
+    )
+    parser.add_argument(
+        "--allow-skip",
+        action="append",
+        default=[],
+        metavar="ITEM",
+        help="let this item be skipped when its tool is not registered "
+        "(repeatable or comma-separated); otherwise a skip fails the run",
     )
     return parser
 
@@ -717,7 +815,7 @@ def build_run(
     names = [name.strip() for name in args.items.split(",") if name.strip()]
     unknown = [name for name in names if name not in ITEMS]
     if unknown or not names:
-        raise SampleError(f"UNKNOWN_ITEM: {','.join(unknown) or '(none)'}")
+        raise SampleError(f"UNKNOWN_ITEM: --items takes {', '.join(ITEMS)}")
     namespace = args.namespace or env.get("OPSPILOT_K8S_NAMESPACE") or ""
     specs: list[SampleSpec] = []
     for name in names:
@@ -725,11 +823,19 @@ def build_run(
         for assignment in args.set:
             target, sep, rest = assignment.partition(".")
             if not sep:
-                raise SampleError(f"BAD_SET: {assignment!r}")
+                raise SampleError("BAD_SET: expected ITEM.KEY=VALUE")
             if target == name:
                 _override(params, rest)
         specs.append(SampleSpec(item=name, tool=ITEMS[name], params=params))
     return SampleRun(window=window, specs=specs, evidence_dir=args.evidence_dir)
+
+
+def _allowed_skips(values: Sequence[str]) -> frozenset[str]:
+    names = {name.strip() for value in values for name in value.split(",")}
+    names.discard("")
+    if names - set(ITEMS):
+        raise SampleError(f"UNKNOWN_ITEM: --allow-skip takes {', '.join(ITEMS)}")
+    return frozenset(names)
 
 
 def main(
@@ -738,21 +844,27 @@ def main(
     clock: Any = None,
     out: Callable[[str], None] = print,
 ) -> int:
-    args = build_parser().parse_args(argv)
     env = dict(os.environ if env is None else env)
     clock = clock or SystemClock()
     try:
+        args = build_parser().parse_args(argv)
         run = build_run(args, env, clock)
-        produced = run_sample(env, run, clock=clock)
+        produced = run_sample(
+            env, run, clock=clock, allow_skip=_allowed_skips(args.allow_skip)
+        )
         write_files(run.evidence_dir, produced["files"])
     except SampleError as exc:
-        out(f"tool_sample: {exc}")
+        out(redact(f"tool_sample: {exc}", env))
+        return 2
+    except Exception as exc:  # never print an unredacted traceback
+        out(redact(f"tool_sample: {type(exc).__name__}: {exc}", env))
         return 2
     result = produced["result"]
     for name, item in result["items"].items():
         out(f"{name}: {item['verdict']} ({item['status']}/{item['reason']})")
-    out(f"evidence: {run.evidence_dir}")
-    return 0 if result["all_executed_passed"] else 1
+    out(f"all_requested_passed: {result['all_requested_passed']}")
+    out(redact(f"evidence: {run.evidence_dir}", env))
+    return 0 if result["all_requested_passed"] else 1
 
 
 if __name__ == "__main__":
