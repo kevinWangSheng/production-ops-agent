@@ -76,6 +76,7 @@
 - 全量探针都未跑（A3、A6 与 A4、A5、B2 两份预审均受「不开 PR、不跑全量 pytest」约束）。须在 A2 合并后各开草稿 PR 经 CI 补跑，结果补进本节。预计：A3、A4、A5、A6 只加扩展档位，0 失败；B2 预计失败即 B2-1 列出的 4 个钉 403 的测试文件。
   - A4（2026-11-13，探针骨架 `a035c1da`，草稿 PR #592）：全量 CI 1 failed / 11985 passed / 2550 skipped。唯一失败是 `tests/test_tool_expansion_a2_contract.py` 断言扩展档位工具集恰好等于 otel-demo 加两个 Kubernetes 工具，与 A2-2「A3–A6 也进这个档位」冲突；已在 A4 分支由测试作者改为超集断言（`e266ff22`）。
   - A5 已补跑（探针草稿 PR #591）：2 failed / 11984 passed / 2550 skipped。两个失败都是 A2 测试把扩展档位钉死为只多 A2 两个工具：`tests/test_tool_expansion_a2_contract.py` 的全集断言，与 `tests/test_554_kubernetes_core_impl.py:421` 的位置断言。A5 代码 PR #593 已把前者改为 ⊇ 形式，后者改为不依赖位置；`otel-demo` 字节不变。
+  - A3（2026-11-13，探针骨架 `9384f5e6`，草稿 PR #596，已关闭）：全量 CI 0 failed / 12158 passed / 2550 skipped；只加扩展档位，`otel-demo` 字节不变。
 
 ### N3：lab 的 Jaeger 能做什么
 
