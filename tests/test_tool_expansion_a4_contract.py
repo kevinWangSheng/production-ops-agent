@@ -44,10 +44,12 @@ from opspilot.tools import ToolRequest
 from opspilot.tools.profiles import PROFILE_ENV, ToolProfile, select_profile
 from tests.m1_tool_support import FakeClock, RecordingSink
 from tests.test_m1_otel_demo_contract import (
-    FakeStore,
     NOW,
-    WINDOW as AUTHORIZED_WINDOW,
+    FakeStore,
     _lease,
+)
+from tests.test_m1_otel_demo_contract import (
+    WINDOW as AUTHORIZED_WINDOW,
 )
 
 EXT_PROFILE = "otel-demo-ext"
@@ -132,7 +134,11 @@ def _reply(body: bytes, status: int = 200):
 
 
 def _url(request) -> str:
-    return request.full_url if isinstance(request, urllib.request.Request) else str(request)
+    return (
+        request.full_url
+        if isinstance(request, urllib.request.Request)
+        else str(request)
+    )
 
 
 def _headers(request) -> dict[str, str]:
@@ -176,7 +182,9 @@ def _span(
     return value
 
 
-def _trace_payload(spans: list[dict], *, service: str = "payments", errors=None) -> bytes:
+def _trace_payload(
+    spans: list[dict], *, service: str = "payments", errors=None
+) -> bytes:
     return json.dumps(
         {
             "data": [
@@ -314,16 +322,11 @@ def test_extension_surface_is_existing_ext_plus_four_and_otel_demo_is_pinned():
     assert base.versions() == select_profile({PROFILE_ENV: "otel-demo"}).versions()
     assert ext.versions()["tool_schema_revision"].startswith("otel-demo-ext-")
 
-    base_schemas = {
-        item["function"]["name"]: item
-        for item in base_face.tool_schemas
-    }
-    ext_schemas = {
-        item["function"]["name"]: item
-        for item in ext_face.tool_schemas
-    }
+    base_schemas = {item["function"]["name"]: item for item in base_face.tool_schemas}
+    ext_schemas = {item["function"]["name"]: item for item in ext_face.tool_schemas}
     assert base_schemas["traces_search"] == next(
-        item for item in otel_demo.TOOL_SCHEMAS
+        item
+        for item in otel_demo.TOOL_SCHEMAS
         if item["function"]["name"] == "traces_search"
     )
     assert ext_schemas["traces_search"] == base_schemas["traces_search"]
@@ -332,24 +335,39 @@ def test_extension_surface_is_existing_ext_plus_four_and_otel_demo_is_pinned():
 def test_a4_schemas_describe_parameters_and_red_lines():
     schemas = _schema_map()
     assert set(schemas[TRACE_SEARCH]["parameters"]["properties"]) == {
-        "service", "tags", "operation", "min_duration", "max_duration",
-        "limit", "start", "end",
+        "service",
+        "tags",
+        "operation",
+        "min_duration",
+        "max_duration",
+        "limit",
+        "start",
+        "end",
     }
     assert schemas[TRACE_SEARCH]["parameters"]["required"] == ["service"]
     assert set(schemas[TRACE_BY_ID]["parameters"]["properties"]) == {
-        "trace_id", "start", "end"
+        "trace_id",
+        "start",
+        "end",
     }
     assert schemas[TRACE_BY_ID]["parameters"]["required"] == ["trace_id"]
     assert set(schemas[LIST_SERVICES]["parameters"]["properties"]) == set()
     assert set(schemas[LIST_OPERATIONS]["parameters"]["properties"]) == {
-        "service", "span_kind"
+        "service",
+        "span_kind",
     }
     assert schemas[LIST_OPERATIONS]["parameters"]["required"] == ["service"]
 
     search_text = schemas[TRACE_SEARCH]["description"].lower()
     assert "span" in search_text and "duration" in search_text
-    assert "same" in search_text or "one span" in search_text or "individual" in search_text
-    assert "service" in search_text and ("empty" in search_text or "check" in search_text)
+    assert (
+        "same" in search_text
+        or "one span" in search_text
+        or "individual" in search_text
+    )
+    assert "service" in search_text and (
+        "empty" in search_text or "check" in search_text
+    )
     list_text = schemas[LIST_SERVICES]["description"].lower()
     assert ("startup" in list_text or "restart" in list_text) and (
         "cannot" in list_text or "not prove" in list_text
@@ -360,7 +378,9 @@ def test_a4_schemas_describe_parameters_and_red_lines():
     )
 
 
-@pytest.mark.parametrize("service", ["", "x" * 201, "payments\ninternal", "payments\x00internal"])
+@pytest.mark.parametrize(
+    "service", ["", "x" * 201, "payments\ninternal", "payments\x00internal"]
+)
 def test_search_service_validation_is_before_request(monkeypatch, service):
     opener = JaegerOpener(routes={"/api/traces": _search_payload()})
     executor, _, _, _, _ = _executor(monkeypatch, opener)
@@ -409,10 +429,15 @@ def test_search_invalid_logfmt_and_reversed_or_bad_durations_never_send(monkeypa
     cases = [
         ({"service": "payments", "tags": 'http.status_code="500'}, "INVALID_TAGS"),
         ({"service": "payments", "min_duration": "5"}, "INVALID_PARAMS"),
-        ({"service": "payments", "min_duration": "3s", "max_duration": "2s"}, "INVALID_PARAMS"),
+        (
+            {"service": "payments", "min_duration": "3s", "max_duration": "2s"},
+            "INVALID_PARAMS",
+        ),
     ]
     for params, reason in cases:
-        outcome = executor.execute(_call(TRACE_SEARCH, params, index=len(opener.requests)))
+        outcome = executor.execute(
+            _call(TRACE_SEARCH, params, index=len(opener.requests))
+        )
         assert (outcome.status, outcome.reason) == ("error", reason)
     assert opener.requests == []
 
@@ -444,9 +469,7 @@ def test_search_limit_keeps_the_newest_results_when_backend_returns_more_than_re
 ):
     opener = JaegerOpener(routes={"/api/traces": _search_payload(3)})
     executor, _, _, _, _ = _executor(monkeypatch, opener)
-    outcome = executor.execute(
-        _call(TRACE_SEARCH, {"service": "payments", "limit": 2})
-    )
+    outcome = executor.execute(_call(TRACE_SEARCH, {"service": "payments", "limit": 2}))
     assert outcome.status == "ok"
     content = _content(outcome)
     assert len(content) == 2
@@ -475,13 +498,19 @@ def test_query_by_id_validates_hex_id_and_filters_out_of_window_spans_in_time_or
     assert view["window"] == AUTHORIZED_WINDOW.as_json()
     content = _content(outcome)
     assert len(content) == 2
-    assert [row["start_us"] for row in content] == sorted(row["start_us"] for row in content)
-    assert "1" in json.dumps(view) and ("drop" in json.dumps(view).lower() or "outside" in json.dumps(view).lower())
+    assert [row["start_us"] for row in content] == sorted(
+        row["start_us"] for row in content
+    )
+    assert "1" in json.dumps(view) and (
+        "drop" in json.dumps(view).lower() or "outside" in json.dumps(view).lower()
+    )
     assert urlsplit(_url(opener.requests[0])).path.endswith("/api/traces/" + TRACE_ID)
 
 
 @pytest.mark.parametrize("trace_id", ["", "g" * 32, "a" * 33])
-def test_query_by_id_rejects_non_hex_or_wrong_length_without_request(monkeypatch, trace_id):
+def test_query_by_id_rejects_non_hex_or_wrong_length_without_request(
+    monkeypatch, trace_id
+):
     opener = JaegerOpener(routes={"/api/traces/" + TRACE_ID: _trace_payload([])})
     executor, _, _, _, _ = _executor(monkeypatch, opener)
     outcome = executor.execute(_call(TRACE_BY_ID, {"trace_id": trace_id}))
@@ -490,9 +519,7 @@ def test_query_by_id_rejects_non_hex_or_wrong_length_without_request(monkeypatch
 
 
 def test_query_by_id_404_is_successful_no_data_with_ring_limitation(monkeypatch):
-    opener = JaegerOpener(
-        statuses={"/api/traces/" + TRACE_ID: (404, b'{"errors":[]}')}
-    )
+    opener = JaegerOpener(statuses={"/api/traces/" + TRACE_ID: (404, b'{"errors":[]}')})
     executor, _, _, _, _ = _executor(monkeypatch, opener)
     outcome = executor.execute(_call(TRACE_BY_ID, {"trace_id": TRACE_ID}))
     assert (outcome.status, outcome.reason) == ("no_data", "NO_DATA")
@@ -516,10 +543,21 @@ def test_query_by_id_never_samples_and_keeps_projection_whitelist(monkeypatch):
     outcome = executor.execute(_call(TRACE_BY_ID, {"trace_id": TRACE_ID}))
     assert len(_content(outcome)) == 3
     allowed = {
-        "trace_id", "span_id", "service", "service_version", "operation",
-        "operation_truncated", "start_us", "duration_us", "error_by_visible_tags",
-        "status_tags", "status_state", "parent_references", "error_details",
-        "raw_error_detail_field_count", "omitted_error_detail_field_count",
+        "trace_id",
+        "span_id",
+        "service",
+        "service_version",
+        "operation",
+        "operation_truncated",
+        "start_us",
+        "duration_us",
+        "error_by_visible_tags",
+        "status_tags",
+        "status_state",
+        "parent_references",
+        "error_details",
+        "raw_error_detail_field_count",
+        "omitted_error_detail_field_count",
     }
     assert all(set(row) <= allowed for row in _content(outcome))
     assert "unknown_span_field" not in json.dumps(_content(outcome))
@@ -596,9 +634,8 @@ def test_services_and_operations_have_no_time_parameters_and_leave_source_time_e
     operation_parts = urlsplit(_url(operation_request))
     query = parse_qs(operation_parts.query)
     assert query["spanKind"] == ["server"]
-    assert (
-        query.get("service") == ["payments"]
-        or operation_parts.path.endswith("/api/services/payments/operations")
+    assert query.get("service") == ["payments"] or operation_parts.path.endswith(
+        "/api/services/payments/operations"
     )
     assert "start" not in query and "end" not in query
 
@@ -628,8 +665,12 @@ def test_list_tools_reject_model_time_parameters_before_request(monkeypatch):
         (LIST_OPERATIONS, "/api/services/payments/operations", {"service": "payments"}),
     ],
 )
-@pytest.mark.parametrize("status,reason", [(400, "INVALID_PARAMS"), (500, "SOURCE_UNAVAILABLE")])
-def test_a4_http_errors_use_fixed_classification(monkeypatch, tool, path, params, status, reason):
+@pytest.mark.parametrize(
+    "status,reason", [(400, "INVALID_PARAMS"), (500, "SOURCE_UNAVAILABLE")]
+)
+def test_a4_http_errors_use_fixed_classification(
+    monkeypatch, tool, path, params, status, reason
+):
     statuses = {path: (status, b'{"errors":["bad"]}')}
     if tool == LIST_OPERATIONS:
         statuses["/api/operations"] = (status, b'{"errors":["bad"]}')
@@ -675,4 +716,3 @@ def test_new_jaeger_tools_are_anonymous_and_do_not_forward_prom_or_k8s_credentia
         assert "authorization" not in headers
         assert OTEL_TOKEN not in json.dumps(headers)
         assert K8S_TOKEN not in json.dumps(headers)
-
