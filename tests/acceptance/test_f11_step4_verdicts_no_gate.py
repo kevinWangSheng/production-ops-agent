@@ -486,11 +486,15 @@ def test_item3_only_migration_or_bounded_kubernetes_jq_starts_processes() -> Non
                             subprocess_aliases.add("subprocess")
                     if alias.name == "os" and alias.asname is not None:
                         os_aliases.add(alias.asname)
-                    if alias.name.split(".")[0] in {"pty", "subprocess"}:
-                        if (
-                            relative not in SUBPROCESS_ALLOWED
-                            and relative != KUBERNETES_CORE_RELATIVE
-                        ):
+                    process_root = alias.name.split(".")[0]
+                    if process_root == "pty":
+                        if relative not in SUBPROCESS_ALLOWED:
+                            offenders.append((relative, "imports pty"))
+                    elif process_root == "subprocess":
+                        if relative == KUBERNETES_CORE_RELATIVE:
+                            if alias.asname is not None:
+                                offenders.append((relative, "subprocess alias"))
+                        elif relative not in SUBPROCESS_ALLOWED:
                             offenders.append((relative, "imports a process module"))
             elif isinstance(node, ast.ImportFrom):
                 if (
@@ -731,6 +735,33 @@ _NETWORK_ROOTS = {
     "websockets",
     "grpc",
 }
+KUBERNETES_NETWORK_ALLOWED = frozenset(
+    {"urllib.request", "urllib.parse", "urllib.error", "ssl"}
+)
+KUBERNETES_NETWORK_FORBIDDEN = frozenset(
+    {"http.client", "socket", "requests", "httpx", "aiohttp", "urllib3"}
+)
+
+
+def test_item3_kubernetes_module_uses_only_the_read_transport_network_stack() -> None:
+    kubernetes_path = PACKAGE / "tools" / "kubernetes_core.py"
+    if not kubernetes_path.is_file():
+        return
+    tree = ast.parse(kubernetes_path.read_text(), filename=str(kubernetes_path))
+    offenders = []
+    for imported in _imported(tree):
+        if any(
+            imported == root or imported.startswith(root + ".")
+            for root in KUBERNETES_NETWORK_FORBIDDEN
+        ):
+            offenders.append(f"forbidden network import {imported}")
+            continue
+        if imported.startswith("urllib") and not any(
+            imported == root or imported.startswith(root + ".")
+            for root in KUBERNETES_NETWORK_ALLOWED
+        ):
+            offenders.append(f"non-whitelisted urllib import {imported}")
+    assert offenders == []
 
 
 def _closure(module: str) -> list[str]:
