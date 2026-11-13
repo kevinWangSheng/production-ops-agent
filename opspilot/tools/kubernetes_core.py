@@ -598,9 +598,13 @@ class KubernetesClient:
         field_selector: str | None,
         window: Window,
         deadline: float,
+        consumer: str = "jq ran",
     ) -> ListResult | TransportResponse:
         """All objects of ``resource`` in scope: pages of ``PAGE_LIMIT`` read
         to the end under one ``MAX_SOURCE_READ_BYTES`` budget (A2-9).
+
+        ``consumer`` names what runs over the list in the event notes
+        ("dropped before <consumer>"): jq for A2, the columns for A6.
 
         Returns a ``TransportResponse`` for a source error (the caller hands
         it on): 4xx as its HTTP status code, a page that is not a list as an
@@ -664,12 +668,12 @@ class KubernetesClient:
             if outside:
                 notes.append(
                     f"{outside} events outside the authorized window were "
-                    "dropped before jq ran."
+                    f"dropped before {consumer}."
                 )
             if untimed:
                 notes.append(
                     f"{untimed} events without any timestamp were dropped "
-                    "before jq ran (they cannot be placed in the window)."
+                    f"before {consumer} (they cannot be placed in the window)."
                 )
         return ListResult(
             items=items,
