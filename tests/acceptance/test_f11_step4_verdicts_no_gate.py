@@ -4,15 +4,19 @@ policy".
 
 Independent acceptance tests for ``docs/tasks/2026-10-24-f11-pr5-contract.md``
 section 4, step 4, items 1-5 (A10 / D5 projection, D2 control refusals,
-D8 ``release_outcome_from_durable``, A8 no Kubernetes credentials, A11).
+D8 ``release_outcome_from_durable``, the no-gate code surface, A11).
 
-U-5 (decided, recorded here as context): the lab has no CI gate, so "no
-result changes a required CI check" is proven at the CI layer by code
-surface (no Kubernetes client, no kubectl / subprocess, no GitHub or CI API
-client in ``opspilot/``; the Observer's outbound HTTP goes to Prometheus
-only) plus "the three product entry points read no KUBECONFIG, Kubernetes
-service-account token or CI / GitHub token" (a static check of what their
-configuration can read). Items 3 and 4 below are those tests.
+U-5 was revised 2026-11-13 for PR #588 after the user's 2026-11-12 X1/Q1/Q2
+decisions.  The product may now hold one read-only Kubernetes credential in
+the A2 extension profile, and model-written jq may run in its bounded child
+process.  The code-surface proof therefore requires: Kubernetes access is
+confined to ``opspilot/tools/kubernetes_core.py``; that transport is GET-only;
+the module has no ``kubectl`` client and no GitHub/GitLab/CI/forge client; and
+the other product modules retain their original forbidden-client checks.  A2's
+contract test records that web face/version construction works without
+``OPSPILOT_K8S_*`` variables, while worker configuration is the only place
+that reads them.  Item 4 still rejects KUBECONFIG, service-account token paths,
+CI/forge credentials and credential files for every product entry point.
 
 PostgreSQL tests use ``tests/acceptance/f11_steps_support.py``; the code
 surface tests need no database.
@@ -356,6 +360,10 @@ FORBIDDEN_TEXT = re.compile(
     r"|/api/v1/namespaces|kubernetes\.default|\bkubectl\b|\bhelm\b|\bargocd\b"
     r"|\bgh\s+(?:pr|api|workflow|run)\b"
 )
+KUBERNETES_CORE_RELATIVE = "opspilot/tools/kubernetes_core.py"
+KUBERNETES_READ_API_PATH = re.compile(
+    r"^/api/v1(?:/[^\s\"']*)?$|^/apis/[A-Za-z0-9_.-]+/v1(?:/[^\s\"']*)?$"
+)
 
 
 def _imported(tree: ast.AST) -> list[str]:
@@ -391,20 +399,36 @@ def test_item3_no_product_module_imports_a_kubernetes_forge_or_ci_client() -> No
 
 
 def test_item3_no_product_module_names_kubectl_or_a_cluster_ci_or_forge_api() -> None:
+    def forbidden(path: Path, value: str) -> str | None:
+        relative = str(path.relative_to(REPO))
+        for match in FORBIDDEN_TEXT.finditer(value):
+            if (
+                relative == KUBERNETES_CORE_RELATIVE
+                and KUBERNETES_READ_API_PATH.fullmatch(match.group())
+            ):
+                continue
+            return match.group()
+        return None
+
     offenders = [
         (str(path.relative_to(REPO)), node.value[:80])
         for path, tree in _trees()
         for node in ast.walk(tree)
         if isinstance(node, ast.Constant)
         and isinstance(node.value, str)
-        and FORBIDDEN_TEXT.search(node.value)
+        and forbidden(path, node.value) is not None
     ]
     assert offenders == []
 
 
 #: ``opspilot/schema.py`` is the migration tool (``make migrate``), not a
 #: product process; it shells out to ``pg_dump`` only (ambiguity note E2).
+#: A2's Kubernetes module is the one bounded exception for jq's child process.
 SUBPROCESS_ALLOWED = {"opspilot/schema.py"}
+KUBERNETES_PROCESS_ALLOWED = {
+    ("subprocess", "run"),
+    ("subprocess", "Popen"),
+}
 PROCESS_CALLS = {
     ("subprocess", name)
     for name in ("run", "Popen", "call", "check_call", "check_output", "getoutput")
@@ -425,7 +449,7 @@ PROCESS_CALLS = {
 }
 
 
-def test_item3_only_the_migration_tool_starts_a_process_and_only_pg_dump() -> None:
+def test_item3_only_migration_or_bounded_kubernetes_jq_starts_processes() -> None:
     offenders = []
     for path, tree in _trees():
         relative = str(path.relative_to(REPO))
@@ -436,26 +460,79 @@ def test_item3_only_the_migration_tool_starts_a_process_and_only_pg_dump() -> No
                     if isinstance(node, ast.Import)
                     else [node.module or ""]
                 )
-                if any(n.split(".")[0] in {"subprocess", "pty"} for n in names) and (
+                imports_process = any(
+                    n.split(".")[0] in {"subprocess", "pty"} for n in names
+                )
+                allowed_kubernetes_import = (
+                    relative == KUBERNETES_CORE_RELATIVE
+                    and isinstance(node, ast.Import)
+                    and names == ["subprocess"]
+                )
+                if imports_process and (
                     relative not in SUBPROCESS_ALLOWED
+                    and not allowed_kubernetes_import
                 ):
                     offenders.append((relative, "imports a process module"))
                 if isinstance(node, ast.ImportFrom) and node.module == "os":
                     bad = {a.name for a in node.names} & {n for _, n in PROCESS_CALLS}
                     if bad:
                         offenders.append((relative, f"from os import {sorted(bad)}"))
+                if (
+                    isinstance(node, ast.ImportFrom)
+                    and node.module == "subprocess"
+                    and relative == KUBERNETES_CORE_RELATIVE
+                ):
+                    offenders.append((relative, "from subprocess import ..."))
             if (
                 isinstance(node, ast.Call)
                 and isinstance(node.func, ast.Attribute)
                 and isinstance(node.func.value, ast.Name)
                 and (node.func.value.id, node.func.attr) in PROCESS_CALLS
-                and relative not in SUBPROCESS_ALLOWED
             ):
-                offenders.append((relative, f"{node.func.value.id}.{node.func.attr}"))
+                pair = (node.func.value.id, node.func.attr)
+                if relative == KUBERNETES_CORE_RELATIVE:
+                    if pair not in KUBERNETES_PROCESS_ALLOWED:
+                        offenders.append((relative, f"{pair[0]}.{pair[1]}"))
+                    if any(
+                        keyword.arg == "shell"
+                        and isinstance(keyword.value, ast.Constant)
+                        and keyword.value.value is True
+                        for keyword in node.keywords
+                    ):
+                        offenders.append((relative, "shell=True"))
+                elif relative not in SUBPROCESS_ALLOWED:
+                    offenders.append((relative, f"{pair[0]}.{pair[1]}"))
     assert offenders == []
     schema_text = (PACKAGE / "schema.py").read_text()
     assert "pg_dump" in schema_text
     assert not FORBIDDEN_TEXT.search(schema_text)
+    kubernetes_path = PACKAGE / "tools" / "kubernetes_core.py"
+    if kubernetes_path.is_file():
+        assert "jq" in kubernetes_path.read_text()
+
+
+def test_item3_kubernetes_transport_constructs_get_only_requests() -> None:
+    """Static GET-only proof keeps this F11 gate hermetic.
+
+    The A2 contract tests separately exercise the injected opener and assert
+    every observed request method is GET.  This check guards the implementation
+    surface even when no Kubernetes server or worker process is available in
+    the F11 acceptance environment.
+    """
+    kubernetes_path = PACKAGE / "tools" / "kubernetes_core.py"
+    if not kubernetes_path.is_file():
+        return
+    tree = ast.parse(kubernetes_path.read_text(), filename=str(kubernetes_path))
+    method_values = [
+        keyword.value.value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        for keyword in node.keywords
+        if keyword.arg == "method"
+        and isinstance(keyword.value, ast.Constant)
+        and isinstance(keyword.value.value, str)
+    ]
+    assert method_values and set(method_values) == {"GET"}
 
 
 _NETWORK_ROOTS = {
@@ -572,6 +649,8 @@ FORBIDDEN_ENV = re.compile(
     r"KUBE|KUBERNETES|SERVICE_?ACCOUNT|GITHUB|^GH_|GITLAB|JENKINS|BUILDKITE"
     r"|CIRCLE|TRAVIS|^CI_|^CI$|ARGO|^ACTIONS_|^RUNNER_|^BUILD_|^DRONE"
 )
+ALLOWED_K8S_ENV = re.compile(r"^OPSPILOT_K8S_[A-Z0-9_]+$")
+ALLOWED_K8S_LAB_CODE = "KUBERNETES_NOT_LAB"
 ENV_NAME = re.compile(r"^[A-Z][A-Z0-9_]+$")
 CREDENTIAL_PATHS = re.compile(
     r"/var/run/secrets/kubernetes\.io|serviceaccount/token|\.kube/config"
@@ -636,7 +715,11 @@ def test_item4_an_entry_point_reads_no_cluster_ci_or_forge_credential(
 ) -> None:
     """Static check of what the entry's configuration reads: every
     environment read in the product modules its process loads, and every
-    environment-variable-shaped string or credential path they contain."""
+    environment-variable-shaped string or credential path they contain.  A2's
+    web face/version mapping test covers the fact that web does not read the
+    allowed ``OPSPILOT_K8S_*`` names at runtime; this test keeps the names
+    allowed while rejecting credential paths and every other cluster/CI/forge
+    name."""
     reads: dict[str, str] = {}
     names: dict[str, str] = {}
     paths: list[tuple[str, str]] = []
@@ -658,7 +741,11 @@ def test_item4_an_entry_point_reads_no_cluster_ci_or_forge_credential(
     assert reads, f"{entry}: the scan found no environment read at all"
     assert {n: m for n, m in reads.items() if not n.startswith(ENV_PREFIXES)} == {}
     assert {
-        n: m for n, m in {**names, **reads}.items() if FORBIDDEN_ENV.search(n)
+        n: m
+        for n, m in {**names, **reads}.items()
+        if FORBIDDEN_ENV.search(n)
+        and not ALLOWED_K8S_ENV.fullmatch(n)
+        and n != ALLOWED_K8S_LAB_CODE
     } == {}
     assert paths == []
 
