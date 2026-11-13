@@ -467,6 +467,12 @@ class TransportResponse:
     strings the adapter decoded from an error envelope it allows echoing
     (#311 U1: Prometheus 400/422); the executor validates, redacts and bounds
     them (R1/R2). All three stay ``None`` for any other response.
+
+    ``incomplete`` is the adapter's own finding that the source may hold more
+    rows than it returned (tool expansion A5-4: a discovery answer of exactly
+    the fixed limit), for a signal the exact source bytes cannot carry in the
+    registration's ``incomplete_marker``. It is OR-ed with that marker; it
+    never clears it. Anything but a ``bool`` is MALFORMED_RESULT.
     """
 
     body: bytes
@@ -484,6 +490,7 @@ class TransportResponse:
     http_status: int | None = None
     source_error_type: str | None = None
     source_error_text: str | None = None
+    incomplete: bool = False
 
 
 @runtime_checkable
@@ -1470,6 +1477,10 @@ class ReadOnlyToolExecutor:
             return _problem("error", "MALFORMED_RESULT")
         if _unit_fields_problem(response, len(rows)):
             return _problem("error", "MALFORMED_RESULT")
+        if type(response.incomplete) is not bool or (
+            response.incomplete and response.carried is not None
+        ):
+            return _problem("error", "MALFORMED_RESULT")
         assert operation.finished_at is not None
         if response.carried is not None and _carried_problem(
             plan.registration, response, operation.finished_at
@@ -1797,7 +1808,7 @@ class ReadOnlyToolExecutor:
         incomplete = (
             bool(carried["incomplete"])
             if carried is not None
-            else _incomplete(registration, payload)
+            else _incomplete(registration, payload) or response.incomplete
         )
         dispatch_started_at = (
             cast("datetime | None", carried["dispatch_started_at"])

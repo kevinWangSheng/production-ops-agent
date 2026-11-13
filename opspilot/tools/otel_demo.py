@@ -72,7 +72,7 @@ import threading
 import urllib.error
 import urllib.parse
 import urllib.request
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from concurrent.futures import Future
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -1402,7 +1402,12 @@ def _utf8(text: str) -> bool:
     return True
 
 
-def _source_error_response(fetched: _Fetched, tool: str) -> TransportResponse:
+def _source_error_response(
+    fetched: _Fetched,
+    tool: str,
+    *,
+    prometheus_tools: frozenset[str] = PROMETHEUS_TOOLS,
+) -> TransportResponse:
     """A non-200 answer the source sent (5xx already raised in ``_get``).
 
     Every one reports its HTTP status (#311 U2). Only a Prometheus tool's
@@ -1411,11 +1416,13 @@ def _source_error_response(fetched: _Fetched, tool: str) -> TransportResponse:
     -- whose strings encode back to UTF-8 (no lone surrogate)
     -- hands its decoded strings on (U1, R1); a body cut at
     ``ERROR_BODY_BYTES`` does not parse and echoes nothing. The executor
-    redacts and bounds the text.
+    redacts and bounds the text. ``prometheus_tools`` is the transport's set
+    of Prometheus-backed tools (``OtelDemoTransport``'s constructor
+    parameter, default ``PROMETHEUS_TOOLS``).
     """
     error_type: str | None = None
     error_text: str | None = None
-    if tool in PROMETHEUS_TOOLS and fetched.status in _ECHOED_STATUSES:
+    if tool in prometheus_tools and fetched.status in _ECHOED_STATUSES:
         try:
             text = fetched.body.decode("utf-8")
             payload = json.loads(text)
@@ -1449,6 +1456,13 @@ class OtelDemoTransport:
     sent as HTTP basic auth on every Prometheus request (``PROMETHEUS_TOOLS``:
     the range query and the #307 A discovery tools) -- the lab Prometheus
     authenticates since M1-02 step 4, Jaeger stays anonymous.
+
+    ``prometheus_tools`` names the tools whose backend is the target's
+    Prometheus: basic auth, the ``503`` + ``errorType=timeout`` timeout and
+    the 400/422 error echo apply to exactly these. The default is this
+    profile's ``PROMETHEUS_TOOLS``; ``otel-demo-ext`` widens it for its own
+    Prometheus tools (tool expansion A5-7) without touching that set, which
+    is part of ``otel-demo``'s version hash.
     """
 
     def __init__(
@@ -1457,9 +1471,11 @@ class OtelDemoTransport:
         credentials: Mapping[str, str | None],
         opener: urllib.request.OpenerDirector | None = None,
         basic_auth: Mapping[str, tuple[str, str]] | None = None,
+        prometheus_tools: Iterable[str] = PROMETHEUS_TOOLS,
     ) -> None:
         self._credentials = dict(credentials)
         self._basic_auth = dict(basic_auth or {})
+        self._prometheus_tools = frozenset(prometheus_tools)
         self._opener = opener or urllib.request.build_opener(
             urllib.request.ProxyHandler({}), _NoRedirect()
         )
@@ -1479,12 +1495,18 @@ class OtelDemoTransport:
 
     # -- HTTP --------------------------------------------------------------
 
+    def source_error(self, fetched: _Fetched, tool: str) -> TransportResponse:
+        """``_source_error_response`` with this transport's Prometheus tools."""
+        return _source_error_response(
+            fetched, tool, prometheus_tools=self._prometheus_tools
+        )
+
     def _get(self, url: str, request: TransportRequest, *, max_bytes: int) -> _Fetched:
         headers = {"Accept": "application/json"}
         token = self._credentials[request.credential_ref]
         pair = (
             self._basic_auth.get(request.credential_ref)
-            if request.tool in PROMETHEUS_TOOLS
+            if request.tool in self._prometheus_tools
             else None
         )
         if pair is not None:
@@ -1509,7 +1531,7 @@ class OtelDemoTransport:
                         body = error.read(ERROR_BODY_BYTES)
                     code = int(error.code)
                     if code >= 500:
-                        if code == 503 and request.tool in PROMETHEUS_TOOLS:
+                        if code == 503 and request.tool in self._prometheus_tools:
                             try:
                                 payload = json.loads(body)
                             except (ValueError, UnicodeDecodeError):
@@ -1590,7 +1612,7 @@ class OtelDemoTransport:
         )
         fetched = self._get(url, request, max_bytes=request.max_result_bytes)
         if fetched.status != 200:
-            return _source_error_response(fetched, request.tool)
+            return self.source_error(fetched, request.tool)
         start_at, end_at = _prometheus_bounds(fetched.body)
         return TransportResponse(
             body=fetched.body,
@@ -1654,7 +1676,7 @@ class OtelDemoTransport:
         )
         fetched = self._get(url, request, max_bytes=request.max_result_bytes)
         if fetched.status != 200:
-            return _source_error_response(fetched, request.tool)
+            return self.source_error(fetched, request.tool)
         try:
             payload = json.loads(fetched.body.decode("utf-8"))
         except (UnicodeDecodeError, ValueError):
@@ -1699,7 +1721,7 @@ class OtelDemoTransport:
         )
         fetched = self._get(url, request, max_bytes=TRACE_SOURCE_READ_BYTES)
         if fetched.status != 200:
-            return _source_error_response(fetched, request.tool)
+            return self.source_error(fetched, request.tool)
         try:
             payload = json.loads(fetched.body.decode("utf-8"))
         except (UnicodeDecodeError, ValueError):

@@ -2,7 +2,8 @@
 
 Every ``otel-demo`` tool, byte for byte (``opspilot.tools.otel_demo`` is not
 changed), plus the cluster object queries of
-:mod:`opspilot.tools.kubernetes_core`. Later tool-expansion items (Pod logs,
+:mod:`opspilot.tools.kubernetes_core` and the Prometheus instant query, series
+and label-name tools of :mod:`opspilot.tools.prometheus_ext` (A5). Later tool-expansion items (Pod logs,
 column queries, more trace and Prometheus tools) join this profile, never
 ``otel-demo``.
 
@@ -196,6 +197,8 @@ def _overflow_summary(
         return {"row_unit": "results"}
     if tool == kubernetes_core.COUNT_TOOL:
         return {"row_unit": "matches"}
+    if tool in prometheus_ext.PROMETHEUS_EXT_TOOLS:
+        return prometheus_ext.overflow_summary(tool, rows, query)
     return otel_demo.overflow_summary(tool, rows, query)
 
 
@@ -224,6 +227,10 @@ def otel_demo_ext_executor_factory(
     sources = otel_demo.OtelDemoTransport(
         credentials={otel_demo.CREDENTIAL_REF: config.token},
         basic_auth={} if pair is None else {otel_demo.CREDENTIAL_REF: pair},
+        # A5-7: this profile's Prometheus tools get the same basic auth, 503
+        # timeout and error echo; ``otel_demo.PROMETHEUS_TOOLS`` is unchanged.
+        prometheus_tools=otel_demo.PROMETHEUS_TOOLS
+        | prometheus_ext.PROMETHEUS_EXT_TOOLS,
     )
     prometheus = prometheus_ext.PrometheusExtTransport(sources)
     cluster = kubernetes_core.KubernetesTransport(
