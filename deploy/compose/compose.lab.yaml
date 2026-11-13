@@ -2,6 +2,10 @@
 # listener (container port 9464: /healthz /readyz /metrics, no
 # authentication) on the host loopback for the lab Prometheus and for curl.
 # Never part of a default install: install.sh and compose.yaml do not use it.
+# It also gives the worker (only the worker) the lab's read-only cluster CA as
+# the k8s_ca secret (A1-7, #553): OPSPILOT_K8S_CA_FILE=/run/secrets/k8s_ca in
+# worker_env. `scripts/kind_lab.py control-secrets` writes
+# <secrets dir>/k8s_ca.crt and recreates a running worker with this file.
 #
 #   docker compose -p <project> -f deploy/compose/compose.yaml \
 #     -f deploy/compose/compose.lab.yaml up ...
@@ -20,6 +24,8 @@ services:
         host_ip: 127.0.0.1
         published: "19465"
         protocol: tcp
+    secrets:
+      - k8s_ca
 
   observer:
     ports:
@@ -27,3 +33,7 @@ services:
         host_ip: 127.0.0.1
         published: "19466"
         protocol: tcp
+
+secrets:
+  k8s_ca:
+    file: ${OPSPILOT_SECRETS_DIR:?run deploy/compose/install.sh}/k8s_ca.crt

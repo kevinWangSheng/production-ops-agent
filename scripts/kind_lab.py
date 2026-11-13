@@ -31,7 +31,10 @@ cluster and releases installed (no ``kind delete``, no ``helm uninstall``);
 ``FAULT_FLAGS`` to its fault variant / back to ``off``), recording original and
 changed bytes with SHA-256 under an engineer-only history directory and
 refusing a second injection or a restore over an unexpected edit, like the
-M0 ``development_fault.py`` hook.
+M0 ``development_fault.py`` hook. ``up`` also applies the read-only cluster
+identity (``scripts/kind_lab/opspilot-readonly-rbac.yaml``, A1 #553) and
+issues it a 24h token under LAB_DIR; ``k8s-token`` re-issues only the token
+and ``control-secrets`` hands it to the control-side worker.
 
 This is an engineer script: it starts, stops and mutates the *lab*, which
 PRODUCT-CONSTRAINTS reserves for engineers and isolated harnesses. Nothing
@@ -450,7 +453,11 @@ def cmd_connect_control(args: argparse.Namespace) -> int:
     ``install.sh upgrade``."""
     env = docker_env()
     report: dict[str, str] = {}
+    # ``services``: only these (control-secrets rejoins a recreated worker)
+    services = getattr(args, "services", CONTROL_SERVICES)
     for service, ids in control_containers(args.project).items():
+        if service not in services:
+            continue
         if len(ids) != 1:
             report[service] = "missing" if not ids else "ambiguous"
             continue
@@ -612,6 +619,18 @@ def cmd_control_secrets(args: argparse.Namespace) -> int:
         user_var, password_var = ROLE_ENV_VARS[role]
         lines = {**extra, user_var: role, password_var: accounts[role]}
         report[name] = _merge_env(secrets_dir / name, lines)
+    settings = secrets_dir / "install.env"
+    project = (
+        getattr(args, "project", None)
+        or (
+            _read_env_values(settings).get("OPSPILOT_PROJECT")
+            if settings.exists()
+            else None
+        )
+        or "opspilot"
+    )
+    k8s = control_k8s_wiring(secrets_dir, project)
+    report.update(k8s or {})
     targets_file = secrets_dir / "target_identities.json"
     targets = json.loads(targets_file.read_text()) if targets_file.exists() else {}
     if not isinstance(targets, dict):
@@ -651,6 +670,19 @@ def cmd_control_secrets(args: argparse.Namespace) -> int:
         "OPSPILOT_START_AGENT=1 deploy/compose/install.sh install && "
         "python3 scripts/kind_lab.py connect-control --project opspilot"
     )
+    if k8s is None:
+        print(
+            "no read-only cluster token in this lab yet (run `kind_lab.py up` or "
+            "`kind_lab.py k8s-token`); worker_env has no OPSPILOT_K8S_* lines"
+        )
+    elif report.get("worker") == "not running":
+        print(
+            "the cluster CA reaches the worker only through compose.lab.yaml: "
+            "after install.sh install (or upgrade) run control-secrets again "
+            "to recreate the worker with it"
+        )
+    if str(report.get("worker", "")).endswith("failed"):
+        return 1
     return 0
 
 
@@ -754,6 +786,326 @@ def _private_write(path: Path, content: str) -> None:
     ) as handle:
         handle.write(content)
     os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
+
+
+# -- read-only cluster identity (A1, #553; decision table r3 A1-1 .. A1-7) ----
+
+#: The identity's manifest, namespace, ServiceAccount and ClusterRole /
+#: ClusterRoleBinding name (A1-1).
+K8S_RBAC_MANIFEST = CONFIG / "opspilot-readonly-rbac.yaml"
+K8S_IDENTITY_NAMESPACE = "opspilot-readonly"
+K8S_SERVICE_ACCOUNT = "opspilot-investigator"
+K8S_CLUSTER_ROLE = "opspilot-investigator-readonly"
+#: ``kubectl create token --duration`` (A1-3); the API server may shorten it,
+#: so the expiry recorded is the one the TokenRequest returns.
+K8S_TOKEN_DURATION = "24h"
+#: Files under LAB_DIR (A1-4), resolved at call time like LAB_DIR itself.
+K8S_CA_NAME = "k8s-ca.crt"
+K8S_ENV_NAME = "k8s-investigator.env"
+K8S_TOKEN_RECORD_NAME = "k8s-token.json"
+#: The API server's port inside the kind network (A1-6).
+K8S_NODE_API_PORT = 6443
+#: The CA as the worker container sees it: the ``k8s_ca`` secret of
+#: ``deploy/compose/compose.lab.yaml``, from ``<secrets dir>/k8s_ca.crt``.
+K8S_CONTROL_CA_NAME = "k8s_ca.crt"
+K8S_CONTAINER_CA_FILE = "/run/secrets/k8s_ca"
+K8S_API_URL_VAR = "OPSPILOT_K8S_API_URL"
+K8S_TOKEN_VAR = "OPSPILOT_K8S_TOKEN"
+K8S_CA_FILE_VAR = "OPSPILOT_K8S_CA_FILE"
+
+
+def k8s_lab_files() -> dict[str, Path]:
+    return {
+        "ca": LAB_DIR / K8S_CA_NAME,
+        "env": LAB_DIR / K8S_ENV_NAME,
+        "record": LAB_DIR / K8S_TOKEN_RECORD_NAME,
+    }
+
+
+def k8s_api_url(form: str, server: str | None = None) -> str:
+    """The one place both API addresses come from (A1-6): ``host`` is the
+    lab kubeconfig's loopback server (its port is random per cluster, so the
+    caller re-reads it every time), ``container`` the kind node container's
+    in-network address for the control-side containers."""
+    if form == "container":
+        return f"https://{NODE_CONTAINER}:{K8S_NODE_API_PORT}"
+    if form != "host":
+        raise ValueError(f"unknown API address form {form!r}")
+    parts = urllib.parse.urlsplit(server or "")
+    try:
+        port = parts.port
+    except ValueError:
+        port = None
+    if (
+        parts.scheme != "https"
+        or parts.hostname != "127.0.0.1"
+        or port is None
+        or parts.path not in ("", "/")
+        or parts.query
+        or parts.username
+    ):
+        raise SystemExit(
+            "the lab kubeconfig's server is not https://127.0.0.1:<port>; refusing"
+        )
+    return f"https://127.0.0.1:{port}"
+
+
+def lab_kubeconfig_cluster() -> tuple[str, bytes] | None:
+    """``(server, CA PEM)`` of the lab context, from the lab kubeconfig's
+    ``certificate-authority-data`` (A1-5); ``None`` (reason on stderr) if
+    kubectl cannot read it."""
+    proc = capture(kubectl("config", "view", "--raw", "--minify", "-o", "json"))
+    if proc.returncode != 0:
+        print(proc.stderr, file=sys.stderr)
+        return None
+    try:
+        (cluster,) = json.loads(proc.stdout)["clusters"]
+        server = str(cluster["cluster"]["server"])
+        ca = base64.b64decode(
+            cluster["cluster"]["certificate-authority-data"], validate=True
+        )
+    except (KeyError, TypeError, ValueError):
+        print(
+            "lab kubeconfig: no single cluster with server and CA data", file=sys.stderr
+        )
+        return None
+    if b"BEGIN CERTIFICATE" not in ca:
+        print(
+            "lab kubeconfig: certificate-authority-data is not a PEM certificate",
+            file=sys.stderr,
+        )
+        return None
+    return server, ca
+
+
+def apply_k8s_identity() -> int:
+    """Apply the read-only identity's Namespace, ServiceAccount, ClusterRole
+    and ClusterRoleBinding (idempotent)."""
+    return run(kubectl("apply", "-f", str(K8S_RBAC_MANIFEST))).returncode
+
+
+def issue_k8s_token() -> int:
+    """Issue a fresh token for the identity and write the host-form env file,
+    the CA and the token record under LAB_DIR (mode 600). The token is never
+    printed; the record holds its expiry only (A1-3, A1-4)."""
+    cluster = lab_kubeconfig_cluster()
+    if cluster is None:
+        return 1
+    server, ca = cluster
+    host_url = k8s_api_url("host", server)
+    proc = capture(
+        kubectl(
+            "-n",
+            K8S_IDENTITY_NAMESPACE,
+            "create",
+            "token",
+            K8S_SERVICE_ACCOUNT,
+            f"--duration={K8S_TOKEN_DURATION}",
+            "-o",
+            "json",
+        )
+    )
+    if proc.returncode != 0:
+        # kubectl's error text, never stdout (which would hold the token)
+        print(proc.stderr, file=sys.stderr)
+        return proc.returncode
+    try:
+        status = json.loads(proc.stdout)["status"]
+        token = str(status["token"])
+        expires_at = str(status["expirationTimestamp"])
+    except (KeyError, TypeError, ValueError):
+        print(
+            "kubectl create token: no TokenRequest status in the output",
+            file=sys.stderr,
+        )
+        return 1
+    if not token or any(c.isspace() for c in token):
+        print("kubectl create token: unusable token in the output", file=sys.stderr)
+        return 1
+    files = k8s_lab_files()
+    _private_write(files["ca"], ca.decode())
+    _private_write(
+        files["env"],
+        f"{K8S_API_URL_VAR}={host_url}\n"
+        f"{K8S_TOKEN_VAR}={token}\n"
+        f"{K8S_CA_FILE_VAR}={files['ca']}\n",
+    )
+    record = {
+        "service_account": f"{K8S_IDENTITY_NAMESPACE}/{K8S_SERVICE_ACCOUNT}",
+        "cluster_role": K8S_CLUSTER_ROLE,
+        "requested_duration": K8S_TOKEN_DURATION,
+        "issued_at": datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "expires_at": expires_at,
+        "api_url": {"host": host_url, "container": k8s_api_url("container")},
+        "rbac_manifest_sha256": hashlib.sha256(
+            K8S_RBAC_MANIFEST.read_bytes()
+        ).hexdigest(),
+    }
+    _private_write(files["record"], json.dumps(record, indent=2) + "\n")
+    print(
+        f"+ wrote {files['env']}, {files['ca']} and {files['record']} "
+        f"(token expires {expires_at}; value not shown)"
+    )
+    return 0
+
+
+def cmd_k8s_token(args: argparse.Namespace) -> int:
+    """Re-issue only the read-only identity's token on a running lab, without
+    the rest of ``up``. Containers pick it up with ``control-secrets``."""
+    return issue_k8s_token()
+
+
+def _read_env_values(path: Path) -> dict[str, str]:
+    """First active ``KEY=value`` per key; never executes the file."""
+    values: dict[str, str] = {}
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        values.setdefault(key.strip(), value.strip())
+    return values
+
+
+def _replace_env(path: Path, lines: Mapping[str, str]) -> str:
+    """Set each ``KEY=value`` in ``path``: the first active line of a key is
+    replaced, later active lines of it dropped, a missing key appended;
+    every other line is kept. ``unchanged`` / ``replaced`` / ``written``."""
+    current = path.read_text() if path.exists() else ""
+    out: list[str] = []
+    seen: set[str] = set()
+    for raw in current.splitlines():
+        stripped = raw.strip()
+        key = stripped.split("=", 1)[0].strip() if "=" in stripped else ""
+        if stripped and not stripped.startswith("#") and key in lines:
+            if key not in seen:
+                out.append(f"{key}={lines[key]}")
+                seen.add(key)
+            continue
+        out.append(raw)
+    out.extend(f"{k}={v}" for k, v in lines.items() if k not in seen)
+    text = "\n".join(out) + "\n"
+    if text == current:
+        os.chmod(path, 0o600)
+        return "unchanged"
+    _private_write(path, text)
+    return "replaced" if seen else "written"
+
+
+COMPOSE_DIR = ROOT / "deploy" / "compose"
+#: install.env keys the worker's Compose interpolation reads (install.sh
+#: SETTINGS minus the agent switch).
+INSTALL_SETTINGS = (
+    "OPSPILOT_PROJECT",
+    "OPSPILOT_WEB_HOST_PORT",
+    "OPSPILOT_IMAGE",
+    "OPSPILOT_TOOL_PROFILE",
+    "OPSPILOT_OBSERVER_PROMETHEUS_URL",
+    "OPSPILOT_TRACE",
+)
+
+
+def worker_has_k8s_ca(container: str) -> bool:
+    """Whether a worker container mounts the CA secret (it does only when
+    created with the lab override; ``install.sh`` creates it without)."""
+    proc = capture(
+        ["docker", "inspect", container, "-f", "{{json .Mounts}}"],
+        timeout=30,
+        env=docker_env(),
+    )
+    try:
+        mounts = json.loads(proc.stdout or "[]") if proc.returncode == 0 else []
+    except ValueError:
+        mounts = []
+    return isinstance(mounts, list) and any(
+        isinstance(m, dict) and m.get("Destination") == K8S_CONTAINER_CA_FILE
+        for m in mounts
+    )
+
+
+def restart_control_worker(project: str, secrets_dir: Path, *, changed: bool) -> str:
+    """Recreate a running worker of ``project`` with the lab override (which
+    mounts the CA) so its entrypoint exports the new ``OPSPILOT_K8S_*``, then
+    rejoin it to the kind network (recreating drops the connection). Only
+    when the values changed or the worker lacks the CA mount; ``not
+    running`` when the project has no worker yet."""
+    ids = control_containers(project)["worker"]
+    if not ids:
+        return "not running"
+    if not changed and all(worker_has_k8s_ca(i) for i in ids):
+        return "unchanged"
+    env = docker_env()
+    settings = secrets_dir / "install.env"
+    if settings.exists():
+        saved = _read_env_values(settings)
+        env.update({k: saved[k] for k in INSTALL_SETTINGS if k in saved})
+    env.update(
+        OPSPILOT_SECRETS_DIR=str(secrets_dir),
+        OPSPILOT_PROJECT=project,
+        OPSPILOT_RUNTIME_UID=str(os.getuid()),
+        OPSPILOT_RUNTIME_GID=str(os.getgid()),
+        COMPOSE_PROFILES="agent",
+    )
+    proc = run(
+        [
+            "docker",
+            "compose",
+            "-p",
+            project,
+            "-f",
+            str(COMPOSE_DIR / "compose.yaml"),
+            "-f",
+            str(COMPOSE_DIR / "compose.lab.yaml"),
+            "up",
+            "--detach",
+            "--no-deps",
+            "--force-recreate",
+            "--wait",
+            "worker",
+        ],
+        env=env,
+        timeout=300,
+    )
+    if proc.returncode != 0:
+        return "restart failed"
+    code = cmd_connect_control(
+        argparse.Namespace(project=project, services=("worker",))
+    )
+    return "restarted" if code == 0 else "restarted, kind network join failed"
+
+
+def control_k8s_wiring(secrets_dir: Path, project: str) -> dict[str, str] | None:
+    """The container form of the identity in ``worker_env`` (A1-7): the CA
+    as ``<secrets dir>/k8s_ca.crt``, the token and the in-network address
+    replacing older values, the CA path added once; then a running worker
+    is restarted. ``None`` (nothing written) when the lab has issued no
+    token yet."""
+    files = k8s_lab_files()
+    if not (files["env"].exists() and files["ca"].exists()):
+        return None
+    token = _read_env_values(files["env"]).get(K8S_TOKEN_VAR, "")
+    if not token:
+        raise SystemExit(f"{files['env']} holds no {K8S_TOKEN_VAR}; run k8s-token")
+    ca_target = secrets_dir / K8S_CONTROL_CA_NAME
+    ca = files["ca"].read_text()
+    ca_state = "unchanged"
+    if not ca_target.exists() or ca_target.read_text() != ca:
+        ca_state = "written"
+        _private_write(ca_target, ca)
+    os.chmod(ca_target, 0o600)
+    worker_env = secrets_dir / "worker_env"
+    replaced = _replace_env(
+        worker_env,
+        {K8S_API_URL_VAR: k8s_api_url("container"), K8S_TOKEN_VAR: token},
+    )
+    merged = _merge_env(worker_env, {K8S_CA_FILE_VAR: K8S_CONTAINER_CA_FILE})
+    changed = ca_state != "unchanged" or replaced != "unchanged" or merged != "kept"
+    report = {
+        K8S_CONTROL_CA_NAME: ca_state,
+        "worker_env.k8s": replaced if replaced != "unchanged" else merged,
+    }
+    report["worker"] = restart_control_worker(project, secrets_dir, changed=changed)
+    return report
 
 
 def prometheus_accounts(path: Path = AUTH_FILE) -> dict[str, str]:
@@ -1609,6 +1961,14 @@ def cmd_up(args: argparse.Namespace) -> int:
     proc = run(kubectl("apply", "-f", str(CONFIG / "jaeger-nodeport.yaml")))
     if proc.returncode != 0:
         return proc.returncode
+    # The read-only cluster identity and a fresh token (A1-1, A1-3): every
+    # ``up`` re-issues it, before the waits so a slow demo still gets one.
+    code = apply_k8s_identity()
+    if code != 0:
+        return code
+    code = issue_k8s_token()
+    if code != 0:
+        return code
     proc = run(
         kubectl(
             "-n",
@@ -1990,7 +2350,16 @@ def main(argv: list[str] | None = None) -> int:
         "--secrets-dir",
         help="default $OPSPILOT_SECRETS_DIR, else ${XDG_CONFIG_HOME:-~/.config}/opspilot",
     )
+    control.add_argument(
+        "--project",
+        help="Compose project whose running worker gets the new cluster token "
+        "(default: install.env's OPSPILOT_PROJECT, else opspilot)",
+    )
     control.set_defaults(func=cmd_control_secrets)
+    sub.add_parser(
+        "k8s-token",
+        help="re-issue only the read-only cluster identity's 24h token (A1)",
+    ).set_defaults(func=cmd_k8s_token)
     env_file = sub.add_parser(
         "env-file", help="write a role's Prometheus credential env file (mode 600)"
     )

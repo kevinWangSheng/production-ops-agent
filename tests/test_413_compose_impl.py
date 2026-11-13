@@ -36,7 +36,9 @@ def test_the_default_file_publishes_only_the_workbench():
 
 
 def test_the_lab_override_publishes_the_health_ports_on_loopback_only():
-    assert LAB == {
+    # A1 (#553) adds the worker's cluster CA secret; the ports are unchanged.
+    ports = {name: {"ports": service["ports"]} for name, service in LAB.items()}
+    assert ports == {
         name: {
             "ports": [
                 {
