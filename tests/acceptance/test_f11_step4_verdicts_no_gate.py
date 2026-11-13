@@ -671,9 +671,7 @@ def test_item3_only_migration_or_bounded_kubernetes_children_start_processes() -
                 if not isinstance(node, ast.Call):
                     return False
                 function = node.func
-                return (
-                    isinstance(function, ast.Name) and function.id == name
-                ) or (
+                return (isinstance(function, ast.Name) and function.id == name) or (
                     isinstance(function, ast.Attribute) and function.attr == name
                 )
 
@@ -775,7 +773,9 @@ def test_item3_only_migration_or_bounded_kubernetes_children_start_processes() -
                 )
 
             if regex_constants and not is_regex_child_path(regex_constants[0].value):
-                offenders.append((relative, "REGEX_CHILD is not Path(__file__) sibling"))
+                offenders.append(
+                    (relative, "REGEX_CHILD is not Path(__file__) sibling")
+                )
             if not (PACKAGE / "tools" / "_regex_child.py").is_file():
                 offenders.append((relative, "_regex_child.py is missing"))
 
