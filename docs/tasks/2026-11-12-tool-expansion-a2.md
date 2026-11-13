@@ -1,6 +1,6 @@
 # 工具面拓展 A2：扩展档位与集群对象只读查询
 
-- 状态：实施中（独立合同测试已合入，除一条与 A2-1 冲突的断言外均通过，见偏离）
+- 状态：实施中（独立合同测试已合入；剩余一条按裁决由测试作者改写）
 - 更新日期：2026-11-13
 - 依据：[工具面拓展任务记录](2026-11-12-tool-expansion.md)、[决定表 r3](2026-11-12-tool-expansion-contract.md)（r1 用户裁决，r2 的 A2-1 至 A2-15；r3 是后续各项对 A2 的要求）、SPEC 2026-11-12 段、C3 第 3、8、12 节；上游 HolmesGPT `a0009195` 的 `kubernetes/core`。issue #554。
 - 工作区：worktree `/Users/shenghuikevin/dev/AI/poa-a2-impl`，分支 `feature/tool-expansion-a2-k8s-core`（起点 `origin/main` `52d640a0`）。
@@ -90,8 +90,8 @@
 
 偏离与已知限制：
 
-- 合同测试 `test_kubernetes_and_otel_credentials_are_separate_and_named_by_slot` 要求集群工具操作记录的 `credential_ref` 为 `k8s-ro`；A2-1 定的是登记在现有目标下、执行器不改，执行器按目标写 `otel-demo-ro`，该断言未迎合，待裁决。请求头的凭据分离已满足。
-- 合同测试的 CA 路径 `/etc/ssl/cert.pem` 在 Ubuntu CI 上可能不存在，实现在配置期拒绝不可读的 CA 文件，CI 上依赖它的用例会以 `K8S_CONFIG_INVALID` 失败，待裁决。
+- 已裁决（编排者 2026-11-13）：集群工具操作记录的 `credential_ref` 按 A2-1 仍写目标的 `otel-demo-ro`，改合同测试，实现不动。
+- 已裁决（编排者 2026-11-13）：合同测试的 CA 路径改用 `tmp_path` 文件，实现保留配置期 CA 可读检查；两个新原因码归 `error`、去掉 jq 编译预检均接受。
 
 - CA 文件内容在配置期只查可读；载入失败时 TLS 上下文没有任何信任根，每次握手失败报 `SOURCE_UNAVAILABLE`，不回落到系统根证书。没在启动时拒绝，是为了让替身测试用假 CA 文件也能构造执行器。
 - jq 与 API 的错误文本不回显给模型（只有 HTTP 状态）；模型改表达式只能看原因码。
