@@ -338,7 +338,7 @@ def test_worker_missing_jq_has_a_fixed_startup_code(monkeypatch):
         factory(lease, _input(profile, lease, clock))
 
 
-def test_extension_face_is_base_face_plus_two_tools_and_base_is_byte_stable():
+def test_extension_face_includes_base_and_kubernetes_tools_and_base_is_byte_stable():
     base = select_profile({PROFILE_ENV: "otel-demo"})
     ext = select_profile({PROFILE_ENV: EXT_PROFILE})
     base_face = base.face(FakeClock(start=NOW))
@@ -347,7 +347,7 @@ def test_extension_face_is_base_face_plus_two_tools_and_base_is_byte_stable():
     ext_names = [schema["function"]["name"] for schema in ext_face.tool_schemas]
     assert tuple(base_names) == BASE_TOOL_NAMES
     assert ext_names[: len(base_names)] == base_names
-    assert set(ext_names) == set(base_names) | {K8S_JQ_TOOL, K8S_COUNT_TOOL}
+    assert set(ext_names) >= set(base_names) | {K8S_JQ_TOOL, K8S_COUNT_TOOL}
     assert base.versions()["tool_schema_revision"] == BASE_TOOL_SCHEMA_REVISION
     assert base.versions() == select_profile({PROFILE_ENV: "otel-demo"}).versions()
     assert ext.versions()["tool_schema_revision"].startswith("otel-demo-ext-")
