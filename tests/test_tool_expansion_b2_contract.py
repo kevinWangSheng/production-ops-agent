@@ -238,9 +238,7 @@ def _assert_current_state_description(tool: str) -> None:
     assert ("query" in text or "current" in text or "instant" in text) and (
         "prove" in text or "histor" in text or "incident" in text
     )
-    assert any(
-        marker in text for marker in ("histor", "incident", "before", "past")
-    )
+    assert any(marker in text for marker in ("histor", "incident", "before", "past"))
 
 
 def test_extension_surface_adds_b2_and_otel_demo_is_byte_stable():
@@ -310,7 +308,7 @@ def test_list_rules_forwards_filters_verbatim_and_preserves_active_alerts(monkey
                 {
                     "state": "firing",
                     "name": "CheckoutDown",
-                    "query": "up{job=\"checkout\"} == 0",
+                    "query": 'up{job="checkout"} == 0',
                     "duration": "5m",
                     "labels": {"severity": "critical"},
                     "annotations": {"summary": "checkout is down"},
@@ -402,7 +400,9 @@ def test_get_prometheus_target_queries_active_and_filters_labels_job_without_dis
     assert opener.timeouts == [30.0]
 
 
-def test_get_metric_metadata_uses_fixed_limit_and_marks_100_rows_incomplete(monkeypatch):
+def test_get_metric_metadata_uses_fixed_limit_and_marks_100_rows_incomplete(
+    monkeypatch,
+):
     metadata = {
         f"checkout_metric_{index}": [
             {"type": "gauge", "help": f"synthetic help {index}", "unit": ""}
