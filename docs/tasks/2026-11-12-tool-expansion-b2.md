@@ -51,6 +51,8 @@ lab 的 Prometheus 只读代理现在**有意拒绝**告警规则与指标元数
 
 骨架提交 `4df603ab`（三个工具名进扩展档位、代理放行三条）交 lead 推草稿 PR 经 CI 补跑。本机定向跑的红项：`tests/test_kind_lab_readonly_proxy.py:210-211`、`tests/acceptance/test_396_proxy_contract.py:67-72`，另有两处预审没列的：`tests/test_399_isolation_impl.py:183` 与 `tests/acceptance/test_399_isolation.py:188-189`——Holmes 隔离检查的代理日志放行集合直接取 `kind_lab.READ_PATHS`（`scripts/holmes_baseline/isolation.py:148`），按 B2-1 = a holmes GET 这三条不再算违规，测试意图随裁决翻转。`tests/test_f7_authz_probe.py:277` 仍绿（holmes 对 rules、metadata 的表单 POST 仍 403）。
 
+全量 CI（草稿 PR #595，2026-11-13）：5 failed / 12213 passed / 2550 skipped。5 个失败就是上面这些钉旧拒绝的测试：`test_396_proxy_contract` 的 f7 探针行、`test_kind_lab_readonly_proxy` 的表单 POST 用例、`test_399_isolation_impl` 1 条、`acceptance/test_399_isolation` 2 条，没有别的失败。它们已在代码 PR #597 由测试作者按 B2-1 改写。
+
 ## 实施记录
 
 自行决定的可逆技术细节：
