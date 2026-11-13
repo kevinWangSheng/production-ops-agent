@@ -98,8 +98,14 @@ __all__ = [
     "KubernetesTransport",
     "ListResult",
     "Resource",
+    "LineFilter",
     "check_namespace",
+    "check_object_name",
     "check_selector",
+    "filter_lines",
+    "pattern_problem",
+    "pod_url",
+    "require_python",
     "kubernetes_registrations",
     "require_jq",
     "resolve_kind",
@@ -149,6 +155,11 @@ _JQ_COMPILE_STATUS = 3
 _JQ_RUNTIME_STATUS = 5
 
 _DNS_LABEL = re.compile(r"[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?")
+#: A3-6: an object name (a Pod's) is a DNS subdomain, at most 253 characters.
+_DNS_SUBDOMAIN = re.compile(
+    r"[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*"
+)
+MAX_OBJECT_NAME_CHARS = 253
 _JQ_FORBIDDEN = ("import", "include")
 
 
@@ -250,6 +261,29 @@ def resolve_kind(kind: object) -> tuple[Resource | None, str | None]:
 def check_namespace(namespace: object) -> bool:
     """A2-7: a namespace is a DNS label (it is spliced into the path)."""
     return isinstance(namespace, str) and _DNS_LABEL.fullmatch(namespace) is not None
+
+
+def check_object_name(name: object) -> bool:
+    """A3-6: an object name is a DNS subdomain (it is spliced into the path)."""
+    return (
+        isinstance(name, str)
+        and len(name) <= MAX_OBJECT_NAME_CHARS
+        and _DNS_SUBDOMAIN.fullmatch(name) is not None
+    )
+
+
+def pod_url(endpoint: str, namespace: str, pod_name: str, *, log: bool = False) -> str:
+    """The URL of one Pod, or of its ``log`` subresource (A3-2).
+
+    ``namespace`` and ``pod_name`` must already have passed
+    ``check_namespace`` and ``check_object_name``; they are still
+    percent-encoded so nothing in them can change the path.
+    """
+    base = endpoint.rstrip("/") + RESOURCES["pods"].path(
+        urllib.parse.quote(namespace, safe="")
+    )
+    url = f"{base}/{urllib.parse.quote(pod_name, safe='')}"
+    return url + "/log" if log else url
 
 
 def check_selector(value: object) -> bool:
@@ -417,6 +451,9 @@ def kubernetes_opener(ca_file: str | None) -> urllib.request.OpenerDirector:
 class _Fetched:
     status: int
     body: bytes
+    #: ``get(..., cut=True)`` only: the 2xx body ran past ``max_bytes`` and
+    #: was cut there (A3-3: a log stream keeps what it read).
+    cut: bool = False
 
 
 def _monotonic() -> float:
@@ -476,15 +513,25 @@ class KubernetesClient:
             raise TransportError("CREDENTIAL_REF_UNKNOWN")
         return token
 
-    def get(self, url: str, *, deadline: float, max_bytes: int) -> _Fetched:
+    def get(
+        self,
+        url: str,
+        *,
+        deadline: float,
+        max_bytes: int,
+        accept: str = "application/json",
+        cut: bool = False,
+    ) -> _Fetched:
         """One GET bounded by ``deadline`` (monotonic) and ``max_bytes``.
 
         2xx and 4xx come back (a 4xx body cut at ``ERROR_BODY_BYTES``); 5xx is
         ``TransportUnavailable``; a body past ``max_bytes`` is
-        ``TransportResultTooLarge``; the deadline is ``TransportTimeout``.
+        ``TransportResultTooLarge`` -- or, with ``cut=True``, its first
+        ``max_bytes`` bytes with ``_Fetched.cut`` set (A3-3); the deadline is
+        ``TransportTimeout``.
         """
         headers = {
-            "Accept": "application/json",
+            "Accept": accept,
             "Authorization": f"Bearer {self.token()}",
         }
         http_request = urllib.request.Request(url, headers=headers, method="GET")
@@ -507,6 +554,8 @@ class KubernetesClient:
                         raise TransportUnavailable(str(code)) from None
                     return _Fetched(code, body)
                 if len(body) > max_bytes:
+                    if cut:
+                        return _Fetched(status, body[:max_bytes], cut=True)
                     raise TransportResultTooLarge(str(max_bytes))
                 return _Fetched(status, body)
             finally:
@@ -871,6 +920,174 @@ class _Jq:
             deadline=deadline,
             source_contact="confirmed",
         )
+
+
+# -- bounded regular-expression child (A3-7; reused by A6) --------------------
+
+#: A3-7: the longest pattern the child is given.
+MAX_PATTERN_CHARS = 2000
+
+#: The child program: Python ``re`` over a JSON list of lines read from
+#: stdin. It imports only the standard library and writes one JSON object:
+#: ``keep`` (one ``1``/``0`` per line), the removal counts and, per pattern,
+#: ``regex`` or ``substring`` (a pattern that does not compile is matched as
+#: a substring, with the same case rule).
+_FILTER_PROGRAM = """\
+import json
+import re
+import sys
+
+
+def main():
+    spec = json.loads(sys.stdin.buffer.read())
+    ignore_case = bool(spec["ignore_case"])
+    flags = re.IGNORECASE if ignore_case else 0
+
+    def compiled(pattern):
+        if pattern is None:
+            return None, None
+        try:
+            return re.compile(pattern, flags), "regex"
+        except (re.error, RecursionError, OverflowError, ValueError):
+            return None, "substring"
+
+    def hit(pattern, regex, text):
+        if regex is not None:
+            return regex.search(text) is not None
+        if ignore_case:
+            return pattern.lower() in text.lower()
+        return pattern in text
+
+    include = spec["include"]
+    exclude = spec["exclude"]
+    include_regex, include_mode = compiled(include)
+    exclude_regex, exclude_mode = compiled(exclude)
+    keep = []
+    removed_include = 0
+    removed_exclude = 0
+    for text in spec["lines"]:
+        if include is not None and not hit(include, include_regex, text):
+            removed_include += 1
+            keep.append("0")
+        elif exclude is not None and hit(exclude, exclude_regex, text):
+            removed_exclude += 1
+            keep.append("0")
+        else:
+            keep.append("1")
+    result = {
+        "keep": "".join(keep),
+        "include_mode": include_mode,
+        "exclude_mode": exclude_mode,
+        "removed_include": removed_include,
+        "removed_exclude": removed_exclude,
+    }
+    sys.stdout.buffer.write(json.dumps(result).encode("ascii"))
+
+
+main()
+"""
+
+
+def require_python() -> str:
+    """The absolute path of ``python3`` on this worker's PATH, or a startup
+    error (A3-7: the regex child needs an interpreter; like jq, a worker of
+    the extended profile without one does not start)."""
+    path = shutil.which("python3")
+    if not path:
+        raise ToolContractError("PYTHON_NOT_FOUND")
+    return os.path.abspath(path)
+
+
+def pattern_problem(pattern: object) -> bool:
+    """A3-7: a pattern is a non-empty string of at most 2000 characters."""
+    return (
+        not isinstance(pattern, str)
+        or not pattern
+        or len(pattern) > MAX_PATTERN_CHARS
+        or "\x00" in pattern
+    )
+
+
+@dataclass(frozen=True)
+class LineFilter:
+    """What the child decided: one flag per input line and how it matched."""
+
+    keep: tuple[bool, ...]
+    include_mode: str | None
+    exclude_mode: str | None
+    removed_include: int
+    removed_exclude: int
+
+
+def filter_lines(
+    lines: Sequence[str],
+    *,
+    include: str | None,
+    exclude: str | None,
+    ignore_case: bool,
+    python_path: str,
+    deadline: float,
+) -> LineFilter | None:
+    """Run ``include``/``exclude`` over ``lines`` in a bounded child.
+
+    The child is ``python_path`` in isolated mode without ``site``
+    (``-I -S -B``), started by ``run_isolated``: no shell, an empty
+    environment, an empty working directory, the call's remaining time
+    (a pathological pattern is killed: ``timeout``/``TOOL_TIMEOUT``, the jq
+    timeout class) and 512 MiB of memory. A line is kept when it matches
+    ``include`` (if given) and does not match ``exclude`` (if given).
+    ``None`` when the child failed or answered something malformed.
+    Patterns must already have passed ``pattern_problem``.
+    """
+    spec = {
+        "ignore_case": ignore_case,
+        "include": include,
+        "exclude": exclude,
+        "lines": list(lines),
+    }
+    stdin = json.dumps(spec, separators=(",", ":")).encode("ascii")
+    with tempfile.TemporaryDirectory(prefix="opspilot-re-") as root:
+        work = Path(root) / "work"
+        work.mkdir()
+        program = Path(root) / "filter.py"
+        program.write_text(_FILTER_PROGRAM, encoding="utf-8")
+        status, output = run_isolated(
+            [python_path, "-I", "-S", "-B", str(program)],
+            stdin,
+            deadline=deadline,
+            max_output_bytes=len(lines) + 4096,
+            cwd=str(work),
+        )
+    if status != 0:
+        return None
+    try:
+        answer = json.loads(output.decode("ascii"))
+    except (UnicodeDecodeError, ValueError, RecursionError):
+        return None
+    if not isinstance(answer, dict):
+        return None
+    keep = answer.get("keep")
+    if not isinstance(keep, str) or len(keep) != len(lines) or set(keep) - {"0", "1"}:
+        return None
+    modes = (answer.get("include_mode"), answer.get("exclude_mode"))
+    if any(mode not in (None, "regex", "substring") for mode in modes):
+        return None
+    removed_include = answer.get("removed_include")
+    removed_exclude = answer.get("removed_exclude")
+    if not (
+        type(removed_include) is int
+        and type(removed_exclude) is int
+        and removed_include >= 0
+        and removed_exclude >= 0
+    ):
+        return None
+    return LineFilter(
+        keep=tuple(flag == "1" for flag in keep),
+        include_mode=modes[0],
+        exclude_mode=modes[1],
+        removed_include=removed_include,
+        removed_exclude=removed_exclude,
+    )
 
 
 # -- transport -------------------------------------------------------------------

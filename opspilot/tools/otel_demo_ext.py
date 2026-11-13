@@ -21,7 +21,9 @@ travels in the target selector (``kubernetes_endpoint``) and the token in the
 Kubernetes transport's own credential slot ``k8s-ro``. Tools are routed to
 their transport by exact name (``RoutedTransport``); the Jaeger trace tools
 of :mod:`opspilot.tools.jaeger_query` (A4) go to its ``JaegerQueryTransport``
-over the same ``traces_endpoint`` and credential slot as ``traces_search``.
+over the same ``traces_endpoint`` and credential slot as ``traces_search``;
+``fetch_pod_logs`` (A3, :mod:`opspilot.tools.kubernetes_logs`) goes to its
+``PodLogsTransport`` over the Kubernetes address and ``k8s-ro`` slot.
 """
 
 from __future__ import annotations
@@ -234,15 +236,19 @@ def otel_demo_ext_executor_factory(
     config: otel_demo.OtelDemoConfig | None = None,
     kubernetes: kubernetes_core.KubernetesConfig,
     jq_path: str | None = None,
+    python_path: str | None = None,
     token_counter: TokenCounter | None = None,
 ) -> ExecutorFactory:
     """An ``ExecutorFactory`` over this profile; built once per worker slot.
 
     ``jq_path`` defaults to ``jq`` on PATH: a worker without it does not start
-    (``JQ_UNAVAILABLE``, A2-8), nor without a tokenizer.
+    (``JQ_UNAVAILABLE``, A2-8), nor without a tokenizer. ``python_path``
+    (the Pod log filters' regex child, A3-7) defaults to ``python3`` on PATH
+    the same way (``PYTHON_NOT_FOUND``).
     """
     config = config or otel_demo.OtelDemoConfig()
     jq = jq_path or kubernetes_core.require_jq()
+    python = python_path or kubernetes_core.require_python()
     counter = token_counter if token_counter is not None else default_counter()
     registrations = otel_demo_ext_registrations(config, kubernetes)
     tools = ToolRegistry(registrations.tools)
@@ -267,7 +273,12 @@ def otel_demo_ext_executor_factory(
         ca_file=kubernetes.ca_file,
         application_namespace=kubernetes.namespace,
     )
-    logs = kubernetes_logs.PodLogsTransport()
+    logs = kubernetes_logs.PodLogsTransport(
+        credentials={kubernetes_core.CREDENTIAL_REF: kubernetes.token},
+        python_path=python,
+        ca_file=kubernetes.ca_file,
+        application_namespace=kubernetes.namespace,
+    )
     control = otel_demo.DurableControl(store)
     reader = cast(
         "EvidenceReader | None",
