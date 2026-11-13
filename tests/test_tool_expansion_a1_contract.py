@@ -312,7 +312,9 @@ def test_control_secrets_replaces_worker_k8s_lines_and_restarts_worker(
         "OPSPILOT_K8S_TOKEN=oldtoken357\n"
         f"OPSPILOT_K8S_CA_FILE={lab_dir / 'k8s-ca.crt'}\n"
     )
-    (lab_dir / "webhook-token").write_text("webhook-token\n")
+    webhook_token = lab_dir / "webhook-token"
+    webhook_token.write_text("webhook-token\n")
+    webhook_token.chmod(0o600)
     monkeypatch.setattr(
         kind_lab,
         "prometheus_accounts",
@@ -324,14 +326,25 @@ def test_control_secrets_replaces_worker_k8s_lines_and_restarts_worker(
         restarted.append(list(cmd))
         return subprocess.CompletedProcess(cmd, 0, "", "")
 
+    def fake_capture(cmd: list[str], **_: Any) -> subprocess.CompletedProcess[str]:
+        output = "worker-container-id\n" if cmd and cmd[0] == "docker" and "ps" in cmd else ""
+        return subprocess.CompletedProcess(cmd, 0, output, "")
+
     monkeypatch.setattr(kind_lab, "run", fake_run)
+    monkeypatch.setattr(kind_lab, "capture", fake_capture)
     assert kind_lab.main(["control-secrets", "--secrets-dir", str(secrets_dir)]) == 0
     worker = _env(secrets_dir / "worker_env")
-    assert worker["OPSPILOT_K8S_API_URL"] == "https://127.0.0.1:26443"
+    container_url = f"https://{kind_lab.NODE_CONTAINER}:6443"
+    assert worker["OPSPILOT_K8S_API_URL"] == container_url
     assert worker["OPSPILOT_K8S_TOKEN"] == "bbbbbbbb357"
     assert "https://127.0.0.1:16443" not in (secrets_dir / "worker_env").read_text()
     assert "oldtoken357" not in (secrets_dir / "worker_env").read_text()
-    assert any("restart" in cmd and "worker" in cmd for cmd in restarted)
+    assert any(
+        "worker" in cmd
+        and ("restart" in cmd or ("up" in cmd and "--force-recreate" in cmd))
+        and not {"web", "observer"} & set(cmd)
+        for cmd in restarted
+    )
 
 
 def test_entrypoint_exports_the_k8s_allowlist_from_worker_env(tmp_path: Path) -> None:
@@ -429,12 +442,31 @@ def _probe_method(args: tuple[Any, ...], kwargs: dict[str, Any]) -> str:
 
 def _probe_matrix(monkeypatch: pytest.MonkeyPatch, mismatch: bool = False) -> dict[str, Any]:
     seen: list[tuple[str, str]] = []
+    known_secrets = ("lab-known-secret-357",)
 
     def fake_request(*args: Any, **kwargs: Any) -> tuple[int, bytes]:
         method = _probe_method(args, kwargs)
         path = _probe_path(args, kwargs)
         seen.append((method, path))
+        headers: dict[str, str] = {}
+        for value in (*args, *kwargs.values()):
+            if isinstance(value, dict):
+                headers.update({str(key).lower(): str(item) for key, item in value.items()})
         write = method in {"POST", "PUT", "PATCH", "DELETE"}
+        query = path.partition("?")[2].split("&")
+        watches = {item.lower() for item in query if item.lower() in {"watch=true", "watch=1"}}
+        impersonating = any(
+            key in {"impersonate-user", "impersonate-group"} for key in headers
+        )
+        custom_groups = (
+            "source.toolkit.fluxcd.io",
+            "networking.istio.io",
+            "argoproj.io",
+            "chaos-mesh.org",
+            "monitoring.coreos.com",
+            "openshift.io",
+        )
+        custom_resource = any(f"/apis/{group}/" in path for group in custom_groups)
         if write:
             assert "dryRun=All" in unquote(path)
         denied = any(
@@ -446,24 +478,33 @@ def _probe_matrix(monkeypatch: pytest.MonkeyPatch, mismatch: bool = False) -> di
                 "/portforward",
                 "/proxy",
                 "/serviceaccounts/token",
-                "/argoproj.io/",
-                "/fluxcd.io/",
-                "/istio.io/",
-                "/chaos-mesh.org/",
-                "/monitoring.coreos.com/",
-                "/openshift.com/",
             )
-        )
+        ) or bool(watches) or impersonating or custom_resource
         status = 403 if write or denied else 200
         if mismatch and denied:
             status = 200
+        if "/configmaps" in path and method == "GET" and not denied:
+            body = {
+                "apiVersion": "v1",
+                "kind": "ConfigMapList",
+                "items": [
+                    {
+                        "apiVersion": "v1",
+                        "kind": "ConfigMap",
+                        "metadata": {"name": "flagd-config"},
+                        "data": {"paymentFailure": "off"},
+                    }
+                ],
+            }
+            return status, json.dumps(body).encode()
         return status, b"{}"
 
     monkeypatch.setattr(probe, "authorization", lambda *args, **kwargs: "Bearer aaaaaaaaa357")
     monkeypatch.setattr(probe, "request", fake_request)
-    report = probe.probe()
+    report = probe.probe(known_secrets=known_secrets)
     assert seen, "probe must exercise the fake transport"
     assert any(method in {"POST", "PUT", "PATCH", "DELETE"} for method, _ in seen)
+    assert report.get("known_secret_hits") == 0
     return report
 
 
