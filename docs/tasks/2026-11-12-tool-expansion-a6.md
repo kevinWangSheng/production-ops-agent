@@ -1,9 +1,9 @@
 # 工具面拓展 A6：按列查询集群对象
 
-- 状态：待开始（开工说明已齐，未实现；在 A2 合并后开工）
-- 更新日期：2026-11-12
+- 状态：实施中（代码与实现者单元测试已提交；等独立合同测试合入后对齐，未开 PR）
+- 更新日期：2026-11-13
 - 依据：[工具面拓展任务记录](2026-11-12-tool-expansion.md)、[决定表 r3](2026-11-12-tool-expansion-contract.md)（r1 的 R16，r2 的 A2-1 至 A2-15，r3 的 A6-1 至 A6-6）、C3 第 8 节；上游 HolmesGPT `a0009195` 的 `kubernetes.yaml` 里 `kubernetes_tabular_query`。issue #558。开工前预审在仓库外（A3、A6 预审，2026-11-12），没有需要用户裁决的项。
-- 工作区：开工时另开 worktree，分支 `feature/tool-expansion-a6-tabular-query`，写入本节。
+- 工作区：worktree `/Users/shenghuikevin/dev/AI/poa-a6-impl`，分支 `feature/tool-expansion-a6-tabular-query`（起点 `origin/main` `b717e1ef`）；探针骨架 `6469127c`。
 
 ## 目标
 
@@ -38,6 +38,22 @@ kubectl、服务端表格打印、完整 JSONPath、带点 label 键、评测回
 
 1. 不带 namespace 的全集群 Pod 列表是否常碰 4 MiB 读取上限（按列查询的典型用法正是不带 namespace，碰到概率比 jq 工具高，未确认）。
 2. 其余同 [A2 开工说明](2026-11-12-tool-expansion-a2.md) 的风险清单。
+
+## 实施记录
+
+新模块 `opspilot/tools/kubernetes_tabular.py`，由 `KubernetesTransport` 按工具名分派（与 A3 同法），扩展档位的 schema、注册、`data_sources`、routes 与 `kubernetes_core._registrations` 都加了这一项；`otel-demo` 字节不变。`INVALID_COLUMNS` 照 A4 加进 `registry.SOURCE_ERROR_REASONS` 与 `outcomes.ERROR_REASONS`。
+
+自行决定的可逆细节：
+
+- 取数直接调 A2 的 `KubernetesClient.list_objects`；给它加了一个默认 `"jq ran"` 的 `consumer` 参数，只改事件备注的措辞（A6 写「before the columns were read」），A2 输出不变。
+- 列写法另接受可选的开头点（`metadata.name`），与上游打印器的宽松写法一致；列前后空白去掉。下标只收非负整数，负下标、切片、过滤、带引号的键、`..` 一律 `INVALID_COLUMNS`。列名按 `,` 切、每列按 `:` 切且必须恰好两段（同上游），所以带 `:` 的切片报的是「不是 HEADER:PATH」。
+- 单元格：字符串原样，其他值用规范 JSON（`true`、`3`、`{"app":"x"}`；上游打印 Go 的 map 写法，模型更好读 JSON）；`null` 与路径没走到都算 `<none>`；多个值用逗号拼。
+- `filter_pattern` 匹配单元格用三个空格拼成的行（上游表格列间至少三个空格），不含表头；没有行时不起子进程，`filter_mode` 为空；编不过的模式沿用 A3 子进程的退化子串匹配并写进 notes（上游 `grep -E` 会报错得零行）。
+- 返回体 `{header, rows, count, scope, notes}`；由于执行器只把 `result_path`（`rows`）当 content 给模型，表头、计数、范围、备注同时放进视图字段，另加 `total_items_processed`、`rows_removed_by_filter`、`filter_mode`、`pages_read`、`cannot_prove`。`scope` 在 A2 的键上加了 `label_selector`、`field_selector`（上游 scope 的键）。
+- 事件的来源时间取过滤后保留行对应事件的首尾（A6-6 的「保留事件」按最终返回的行算，更窄）。
+- 错误码表：A2 的表去掉 jq 专用码，加 `INVALID_COLUMNS`、`INVALID_FILTER`（参数错误）、`FILTER_FAILED`（来源错误，同 A3）。校验顺序 kind（Secret 先）→ namespace → 选择器 → 列 → 正则。
+
+已知限制：`INVALID_COLUMNS` 回显的出错列只在拒绝体里（`column`、`problem`），执行器对未发送的拒绝只把原因码给模型，模型看不到是哪一列（要让模型看到需改执行器，范围外）。
 
 ## 依赖 A2 与 A3 的假设
 
