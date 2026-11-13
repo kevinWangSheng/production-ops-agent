@@ -74,6 +74,7 @@
 - **B2-1 已由用户裁决为 a**（2026-11-12），见下方 B2 小节。
 - A1 对「上游默认规则」取窄读法：只用上游模板里不带条件的规则，上游默认打开的自定义资源授权（Argo、Flux、Istio 等）、`monitoring.coreos.com` 与 openshift 块都不搬，与 Q6 一致；lab 没装这些 CRD，对行为无影响。
 - 全量探针都未跑（A3、A6 与 A4、A5、B2 两份预审均受「不开 PR、不跑全量 pytest」约束）。须在 A2 合并后各开草稿 PR 经 CI 补跑，结果补进本节。预计：A3、A4、A5、A6 只加扩展档位，0 失败；B2 预计失败即 B2-1 列出的 4 个钉 403 的测试文件。
+  - A4（2026-11-13，探针骨架 `a035c1da`，草稿 PR #592）：全量 CI 1 failed / 11985 passed / 2550 skipped。唯一失败是 `tests/test_tool_expansion_a2_contract.py` 断言扩展档位工具集恰好等于 otel-demo 加两个 Kubernetes 工具，与 A2-2「A3–A6 也进这个档位」冲突；已在 A4 分支由测试作者改为超集断言（`e266ff22`）。
 
 ### N3：lab 的 Jaeger 能做什么
 
