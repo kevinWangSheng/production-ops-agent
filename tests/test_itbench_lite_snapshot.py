@@ -12,6 +12,7 @@ import pytest
 from scripts.itbench_lite.snapshot import (
     AnswerFilePresent,
     NotWhitelisted,
+    UnsafeSnapshot,
     load_snapshot,
 )
 
@@ -134,3 +135,34 @@ def test_tsv_cells_keep_quoted_tabs_and_newlines(tmp_path):
     assert rows == [
         {"Timestamp": "2025-01-01 00:00:00.5", "Body": 'line one\nline\ttwo "q"'}
     ]
+
+
+@pytest.mark.parametrize("linked", ["metrics", "alerts", "nested"])
+def test_directory_symlink_in_the_tree_refuses_start(tmp_path, linked):
+    root = _scenario(tmp_path / "s")
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "ground_truth.yaml").write_text("x")
+    (outside / "pod_b.tsv").write_text("timestamp\tvalue\n")
+    target = root / linked
+    if target.exists():
+        for child in target.iterdir():
+            child.unlink()
+        target.rmdir()
+    os.symlink(outside, target)
+    with pytest.raises(UnsafeSnapshot):
+        load_snapshot(root)
+
+
+def test_unlistable_subdirectory_refuses_start(tmp_path):
+    root = _scenario(tmp_path / "s")
+    hidden = root / "nested"
+    hidden.mkdir()
+    hidden.chmod(0)
+    try:
+        if os.access(hidden, os.R_OK):
+            pytest.skip("running with privileges that ignore directory modes")
+        with pytest.raises(UnsafeSnapshot):
+            load_snapshot(root)
+    finally:
+        hidden.chmod(0o700)

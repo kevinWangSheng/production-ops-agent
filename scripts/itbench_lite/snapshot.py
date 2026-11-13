@@ -43,6 +43,10 @@ class AnswerFilePresent(RuntimeError):
     """The scenario directory holds an answer file; the adapter will not start."""
 
 
+class UnsafeSnapshot(RuntimeError):
+    """The scenario tree cannot be checked completely; the adapter will not start."""
+
+
 class NotWhitelisted(PermissionError):
     """A read outside the loader's whitelist."""
 
@@ -51,17 +55,30 @@ def _is_answer_name(name: str) -> bool:
     return name.casefold() in ANSWER_FILE_NAMES
 
 
-def refuse_answer_files(root: Path) -> None:
-    """Raise ``AnswerFilePresent`` if any file name below ``root`` is an answer name.
+def _walk_error(error: OSError) -> None:
+    raise UnsafeSnapshot(
+        "scenario directory cannot be fully listed; refusing to start"
+    ) from error
 
-    Walks names only (``os.walk`` lists directory entries, it opens no file)
-    and does not follow directory symlinks.
+
+def refuse_answer_files(root: Path) -> None:
+    """Raise unless every name below ``root`` was listed and none is an answer name.
+
+    Walks names only (``os.walk`` lists directory entries, it opens no file).
+    Fails closed: a directory symlink anywhere in the tree (which the walk
+    would not follow but a later glob would) and any listing error raise
+    ``UnsafeSnapshot``; an answer name raises ``AnswerFilePresent``.
     """
-    for _dirpath, dirnames, filenames in os.walk(root):
+    for dirpath, dirnames, filenames in os.walk(root, onerror=_walk_error):
         for name in (*filenames, *dirnames):
             if _is_answer_name(name):
                 raise AnswerFilePresent(
                     "scenario directory holds an answer file; refusing to start"
+                )
+        for name in dirnames:
+            if os.path.islink(os.path.join(dirpath, name)):
+                raise UnsafeSnapshot(
+                    "scenario directory holds a directory symlink; refusing to start"
                 )
 
 

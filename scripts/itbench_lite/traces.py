@@ -14,6 +14,7 @@ import argparse
 import ast
 import ipaddress
 import json
+import re
 import sys
 import urllib.request
 from collections import defaultdict
@@ -26,6 +27,8 @@ from scripts.itbench_lite.shift import NS, parse_clickhouse_ns
 from scripts.itbench_lite.snapshot import Snapshot, load_snapshot
 
 DEFAULT_BATCH = 3000
+_TRACE_ID = re.compile(r"[0-9a-fA-F]{32}")
+_SPAN_ID = re.compile(r"[0-9a-fA-F]{16}")
 TIMEOUT_SECONDS = 60
 
 #: ClickHouse writes ``ptrace`` enum names; the proto names are accepted too.
@@ -75,6 +78,14 @@ def _attributes(value: Mapping[Any, Any]) -> list[dict[str, Any]]:
     return [{"key": str(k), "value": {"stringValue": str(v)}} for k, v in value.items()]
 
 
+def _id(value: object, pattern: re.Pattern[str], what: str) -> str:
+    """A hex trace or span id as OTLP/JSON wants it; all-zero ids are invalid."""
+    text = str(value)
+    if pattern.fullmatch(text) is None or not text.strip("0"):
+        raise ValueError(f"invalid {what}")
+    return text
+
+
 def _ns(text: str, offset_seconds: int) -> int:
     return parse_clickhouse_ns(text) + offset_seconds * NS
 
@@ -111,8 +122,8 @@ def span_from_row(row: Mapping[str, str], offset_seconds: int) -> dict[str, Any]
         raise ValueError("link arrays differ in length")
     links = [
         {
-            "traceId": str(trace),
-            "spanId": str(span),
+            "traceId": _id(trace, _TRACE_ID, "link trace id"),
+            "spanId": _id(span, _SPAN_ID, "link span id"),
             "traceState": str(state),
             "attributes": _attributes(dict(attr)),
         }
@@ -120,11 +131,9 @@ def span_from_row(row: Mapping[str, str], offset_seconds: int) -> dict[str, Any]
             link_traces, link_spans, link_states, link_attrs, strict=True
         )
     ]
-    if not row["TraceId"] or not row["SpanId"]:
-        raise ValueError("missing trace or span id")
     span: dict[str, Any] = {
-        "traceId": row["TraceId"],
-        "spanId": row["SpanId"],
+        "traceId": _id(row["TraceId"], _TRACE_ID, "trace id"),
+        "spanId": _id(row["SpanId"], _SPAN_ID, "span id"),
         "name": row["SpanName"],
         "kind": kind,
         "startTimeUnixNano": str(start),
@@ -135,7 +144,7 @@ def span_from_row(row: Mapping[str, str], offset_seconds: int) -> dict[str, Any]
         "status": {"code": status, "message": row.get("StatusMessage") or ""},
     }
     if row.get("ParentSpanId"):
-        span["parentSpanId"] = row["ParentSpanId"]
+        span["parentSpanId"] = _id(row["ParentSpanId"], _SPAN_ID, "parent span id")
     if row.get("TraceState"):
         span["traceState"] = row["TraceState"]
     return span

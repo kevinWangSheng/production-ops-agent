@@ -92,9 +92,9 @@ L6 裁决后写入决定表。实现会话可先做不依赖 A 系列的部分�
 - 平移量取整秒并向下取整：所有时间戳保留原有小数位与格式，最晚结束时刻落在「投递时刻 − 60 s」之前不到 1 秒。
 - 各类的结束时刻：指标取有值行的时间戳；trace 取 span 开始加时长，再与 span 事件时间取最大；告警取所有告警文件里的 `activeAt`；对象只取采集时间列（对象体里可能有过期日之类的未来值）；事件取采集时间与事件体里的 RFC 3339 时间；日志取 `Timestamp`。
 - 对象与事件行的平移改写 `Timestamp`、`TimestampTime` 和 `Body` 里所有恰好是 RFC 3339 的字符串，Go 零时刻不动；日志只改时间列，正文不改。
-- 答案文件检查只看名字，大小写不敏感，覆盖整个目录树（含同名目录）和白名单文件的符号链接目标；名单：`ground_truth.yaml/.yml`、`assertion.json`、`status.json`。
+- 答案文件检查只看名字，大小写不敏感，覆盖整个目录树（含同名目录）和白名单文件的符号链接目标；名单：`ground_truth.yaml/.yml`、`assertion.json`、`status.json`。目录树里有目录符号链接或有子目录列不出来时也拒绝启动（fail-closed）。
 - 指标去重保留第一个值并计数冲突；空值、坏 tags、非法指标名或标签名的行跳过并计数；派生 `calls_total` 替换有对应 `+Inf` 桶的原序列，没有桶的原序列保留；无标签序列不写花括号。
-- trace 任何一行转换失败就报错退出（不静默丢 span）；SpanKind 与 StatusCode 同时认 ClickHouse 的 `Server`/`Error` 写法和 proto 的 `SPAN_KIND_*`/`STATUS_CODE_*` 写法，未知值报错；按服务、资源属性、scope 分组，带上 links。
+- trace 任何一行转换失败就报错退出（不静默丢 span）；trace ID 须为 32 位、span ID 与 parent 须为 16 位非全零十六进制（parent 可空，links 同样校验）；SpanKind 与 StatusCode 同时认 ClickHouse 的 `Server`/`Error` 写法和 proto 的 `SPAN_KIND_*`/`STATUS_CODE_*` 写法，未知值报错；按服务、资源属性、scope 分组，带上 links。
 - 入口告警只取 `state=firing`；同一时刻按排序后的标签打破平局。webhook 的 `startsAt` 保留原小数位，`endsAt` 用零时刻，不带 `generatorURL`（Prometheus 告警 API 没有这一项，所以问句里不会出现 PromQL）。
 - 目标条目配置只传 `match.labels`；选出的告警不带这些标签就报错，不投递。默认配置用告警的 `service_name`。
 - 投递与 trace 灌入只允许回环地址。2 分钟作废线提供成纯函数 `delivery_gap_ok`，由驱动调用。

@@ -139,6 +139,23 @@ def test_proto_enum_names_are_accepted(tmp_path):
         {"SpanAttributes": "{broken"},
         {"Events.Name": "['a', 'b']"},
         {"SpanId": ""},
+        {"TraceId": "not-hex"},
+        {"TraceId": "0af7651916cd43dd8448eb211c80319"},
+        {"TraceId": "0" * 32},
+        {"SpanId": "b7ad6b71692033zz"},
+        {"ParentSpanId": "b7ad6b716920"},
+        {
+            "Links.TraceId": "['nothex']",
+            "Links.SpanId": "['b7ad6b7169203330']",
+            "Links.TraceState": "['']",
+            "Links.Attributes": "[{}]",
+        },
+        {
+            "Links.TraceId": f"['{TRACE}']",
+            "Links.SpanId": "['short']",
+            "Links.TraceState": "['']",
+            "Links.Attributes": "[{}]",
+        },
     ],
 )
 def test_a_bad_row_fails_instead_of_dropping_a_span(tmp_path, over):
