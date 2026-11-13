@@ -52,8 +52,12 @@ __all__ = [
     "LABELS_TOOL",
     "LIST_INCOMPLETE_REASON",
     "LIST_LIMIT",
+    "METADATA_TOOL",
     "PROMETHEUS_EXT_TOOLS",
+    "RULES_TOOL",
     "SERIES_TOOL",
+    "STATE_TOOL_NAMES",
+    "TARGET_TOOL",
     "TOOL_NAMES",
     "TOOL_SCHEMAS",
     "PrometheusExtTransport",
@@ -64,7 +68,17 @@ __all__ = [
 INSTANT_QUERY_TOOL = "execute_prometheus_instant_query"
 SERIES_TOOL = "get_series"
 LABELS_TOOL = "get_all_labels"
-TOOL_NAMES: tuple[str, ...] = (INSTANT_QUERY_TOOL, SERIES_TOOL, LABELS_TOOL)
+RULES_TOOL = "list_prometheus_rules"
+TARGET_TOOL = "get_prometheus_target"
+METADATA_TOOL = "get_metric_metadata"
+#: B2 (#561): the three no-window state tools.
+STATE_TOOL_NAMES: tuple[str, ...] = (RULES_TOOL, TARGET_TOOL, METADATA_TOOL)
+TOOL_NAMES: tuple[str, ...] = (
+    INSTANT_QUERY_TOOL,
+    SERIES_TOOL,
+    LABELS_TOOL,
+    *STATE_TOOL_NAMES,
+)
 PROMETHEUS_EXT_TOOLS: frozenset[str] = frozenset(TOOL_NAMES)
 
 #: A5-4: the fixed ``limit`` of every series and label-name request
@@ -228,6 +242,49 @@ TOOL_SCHEMAS: tuple[Mapping[str, Any], ...] = (
                         "description": _WINDOW_PARAMETER_TEXT["end"],
                     },
                 },
+                "required": [],
+            },
+        },
+    },
+)
+
+TOOL_SCHEMAS = (
+    *TOOL_SCHEMAS,
+    {
+        "type": "function",
+        "function": {
+            "name": RULES_TOOL,
+            "description": "B2 skeleton.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    name: {"type": "string", "description": name}
+                    for name in ("type", "rule_name", "rule_group", "file", "match")
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": TARGET_TOOL,
+            "description": "B2 skeleton.",
+            "parameters": {
+                "type": "object",
+                "properties": {"target_name": {"type": "string", "description": "job"}},
+                "required": ["target_name"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": METADATA_TOOL,
+            "description": "B2 skeleton.",
+            "parameters": {
+                "type": "object",
+                "properties": {"metric": {"type": "string", "description": "metric"}},
                 "required": [],
             },
         },
@@ -431,7 +488,37 @@ def prometheus_ext_registrations() -> tuple[ToolRegistration, ...]:
         error_classes=_LIST_ERROR_CLASSES,
         **common,
     )
-    return instant, series, labels
+    skeleton = ToolDescription(
+        returns="B2 skeleton.",
+        window_format="The authorized absolute window is appended as {window}.",
+        values_format="The authorized target for this Run is appended as {values}.",
+        limits="B2 skeleton.",
+        cannot_prove="B2 skeleton.",
+    )
+    state = tuple(
+        ToolRegistration(
+            name=name,
+            verb=verb,
+            description=skeleton,
+            parameters={p: ParameterSpec("string", required=req) for p, req in params},
+            result_path=("data",),
+            error_classes=_LIST_ERROR_CLASSES,
+            **common,
+        )
+        for name, verb, params in (
+            (
+                RULES_TOOL,
+                "list",
+                tuple(
+                    (p, False)
+                    for p in ("type", "rule_name", "rule_group", "file", "match")
+                ),
+            ),
+            (TARGET_TOOL, "get", (("target_name", True),)),
+            (METADATA_TOOL, "get", (("metric", False),)),
+        )
+    )
+    return instant, series, labels, *state
 
 
 _ROW_UNITS = {SERIES_TOOL: "series", LABELS_TOOL: "label_names"}
@@ -530,6 +617,9 @@ class PrometheusExtTransport:
             return self._instant(request)
         if request.tool in (SERIES_TOOL, LABELS_TOOL):
             return self._list(request)
+        if request.tool in STATE_TOOL_NAMES:
+            # B2 probe skeleton: not implemented yet.
+            raise TransportError("TOOL_NOT_SUPPORTED")
         raise TransportError("TOOL_NOT_SUPPORTED")
 
     def _instant(self, request: TransportRequest) -> TransportResponse:
