@@ -596,3 +596,66 @@ def test_executor_adopts_a_query_and_refuses_secrets_and_403(monkeypatch, tmp_pa
     )
     assert (forbidden.status, forbidden.reason) == ("error", "SOURCE_FORBIDDEN")
     assert len(api.requests) == 2
+
+
+class _RecordingEnv(dict):
+    """A mapping that records every key read and refuses iteration."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.read: list[str] = []
+
+    def get(self, key, default=None):
+        self.read.append(key)
+        return super().get(key, default)
+
+    def __getitem__(self, key):
+        self.read.append(key)
+        return super().__getitem__(key)
+
+    def __iter__(self):
+        raise AssertionError("select_profile iterated the environment")
+
+    def items(self):
+        raise AssertionError("select_profile iterated the environment")
+
+    def keys(self):
+        raise AssertionError("select_profile iterated the environment")
+
+    def values(self):
+        raise AssertionError("select_profile iterated the environment")
+
+
+def test_web_profile_selection_never_reads_or_holds_the_cluster_token():
+    env = _RecordingEnv(
+        {
+            "OPSPILOT_TOOL_PROFILE": "otel-demo-ext",
+            "OPSPILOT_K8S_API_URL": API,
+            "OPSPILOT_K8S_TOKEN": K8S_TOKEN,
+            "OPSPILOT_K8S_CA_FILE": "/nonexistent/ca.crt",
+        }
+    )
+    profile = select_profile(env)
+    profile.versions()
+    profile.face(FakeClock(start=NOW)).evidence_context("run-1")
+    assert not [key for key in env.read if key.startswith("OPSPILOT_K8S_")]
+    cells = profile.executor_factory.__closure__ or ()  # type: ignore[attr-defined]
+    for cell in cells:
+        value = cell.cell_contents
+        if value is env:
+            continue  # the process environment itself, not a copy
+        assert K8S_TOKEN not in repr(value)
+
+
+def test_jq_strings_with_unicode_line_separators_are_one_result():
+    api = FakeApi({"/api/v1/pods": [_list("Pod", [_pod("a")])]})
+    response = _transport(api).fetch(
+        _request(
+            k8s.JQ_QUERY_TOOL,
+            {"kind": "pods", "jq_expr": '"a\\u2028b", "c\\u2029d", "e\\u0085f"'},
+        )
+    )
+    assert response.source_status is None
+    assert json.loads(response.body) == {
+        "results": ["a\u2028b", "c\u2029d", "e\u0085f"]
+    }

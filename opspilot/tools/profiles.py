@@ -96,8 +96,9 @@ _STARTUP_CODES = frozenset({"K8S_CONFIG_MISSING", "K8S_CONFIG_INVALID", "JQ_NOT_
 
 def _otel_demo_ext(env: Mapping[str, str]) -> ToolProfile:
     config = OtelDemoConfig.from_env(env)
-    # Copied now, parsed only by the worker's executor factory (A2-3).
-    snapshot = {k: v for k, v in env.items() if k.startswith("OPSPILOT_K8S_")}
+    # A2-3: no OPSPILOT_K8S_* key is read, copied or iterated here -- the web
+    # selects this profile too. Only the worker, when it builds the executor
+    # factory, reads them from the same mapping (the process environment).
 
     def executor_factory(
         store: DurableStore, evidence: EvidenceSink, clock: Clock
@@ -112,7 +113,7 @@ def _otel_demo_ext(env: Mapping[str, str]) -> ToolProfile:
                 evidence=evidence,
                 clock=clock,
                 config=config,
-                kubernetes=KubernetesConfig.from_env(snapshot),
+                kubernetes=KubernetesConfig.from_env(env),
             )
         except ToolContractError as error:
             code = str(error)

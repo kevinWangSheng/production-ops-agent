@@ -1009,7 +1009,9 @@ def _output_lines(output: bytes) -> list[tuple[str, object]] | None:
     except UnicodeDecodeError:
         return None
     lines: list[tuple[str, object]] = []
-    for line in text.splitlines():
+    # Only "\n" separates jq -c outputs: ``splitlines`` would also split on
+    # U+2028, U+2029 and U+0085, which a JSON string may carry unescaped.
+    for line in text.split("\n"):
         if not line.strip():
             continue
         try:
