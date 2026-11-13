@@ -137,15 +137,17 @@ def cited_evidence_ids(report: Any) -> list[str]:
     )
 
 
-def collect_run(conn: Any, run_id: UUID) -> tuple[dict[str, Any], dict[str, Any]]:
+def collect_run(
+    conn: Any, run_id: UUID, *, scenario_id: str = "frozen-run"
+) -> tuple[dict[str, Any], dict[str, Any]]:
     """``(summary block, raw ledger)`` of one Run; ``conn`` is a psycopg
     connection the caller opened, used here for SELECTs only.
 
     Field set follows the F3 collector
     (``docs/evidence/f3-step5-competing-cause/collect.py``): the incident's
     full projection, the report with the views of the evidence it cites, the
-    incident's Runs, the full audit timeline and the alert deliveries. The
-    durable ``outcome`` needs a store of its own and is added by ``collect``.
+    incident's Runs, the full audit timeline, the alert deliveries and the
+    durable ``outcome`` of this Run, all from this one read-only snapshot.
     """
     from psycopg.rows import dict_row
 
@@ -194,6 +196,7 @@ def collect_run(conn: Any, run_id: UUID) -> tuple[dict[str, Any], dict[str, Any]
             (cited,),
         ).fetchall()
         db_now = cursor.execute("SELECT now() AS now").fetchone()["now"]
+        outcome = _outcome_in_snapshot(cursor, run_id, scenario_id=scenario_id)
     evidence = investigation_evidence(conn, incident_id)
     timeline, undated = audit_records(conn, incident_id)
 
@@ -276,6 +279,7 @@ def collect_run(conn: Any, run_id: UUID) -> tuple[dict[str, Any], dict[str, Any]
         "audit_undated": plain(undated),
         "alert_delivery_outcomes": [d["outcome"] for d in deliveries],
         "alert_deliveries": plain([dict(d) for d in deliveries]),
+        "outcome": outcome,
         "collected_at_db": plain(db_now),
     }
     ledger = {
@@ -288,38 +292,70 @@ def collect_run(conn: Any, run_id: UUID) -> tuple[dict[str, Any], dict[str, Any]
     return relabel(block), relabel(ledger)
 
 
-def durable_outcome(dsn: str, incident_id: UUID, *, scenario_id: str) -> Any:
-    """The incident's ``IncidentOutcome`` from the durable rows (F3 collector)."""
-    from opspilot.acceptance import IncidentScenario, outcome_from_durable
-    from opspilot.persistence import DurableStore
-    from opspilot.web import DurableEventLog, DurableIncidentStore
+def _outcome_in_snapshot(cursor: Any, run_id: UUID, *, scenario_id: str) -> Any:
+    """``IncidentOutcome`` of *this* Run, read in the caller's snapshot.
 
-    store = DurableStore(dsn)
+    ``outcome_from_durable`` reads a ``DurableStore.rebuild``-shaped mapping,
+    which describes the incident's *current* Run (its ``conclusion`` is the
+    incident's). The same rows are read here with SELECTs for ``run_id``; when
+    the incident has moved on to another Run the outcome is recorded as
+    unavailable instead of pairing this Run with another Run's state.
+    """
+    from opspilot.acceptance import IncidentScenario, outcome_from_durable
+
+    run = cursor.execute(
+        "SELECT * FROM opspilot_runs WHERE run_id=%s", (run_id,)
+    ).fetchone()
+    incident = cursor.execute(
+        "SELECT * FROM opspilot_incidents WHERE incident_id=%s", (run["incident_id"],)
+    ).fetchone()
+    if incident["current_run_id"] != run_id:
+        return {
+            "available": False,
+            "reason": "RUN_NOT_CURRENT",
+            "current_run_id": plain(incident["current_run_id"]),
+        }
+    steps = cursor.execute(
+        "SELECT * FROM opspilot_steps WHERE run_id=%s ORDER BY sequence, step_id",
+        (run_id,),
+    ).fetchall()
+    controls = cursor.execute(
+        "SELECT action,expected_generation,resulting_generation,actor,payload"
+        " FROM opspilot_controls WHERE incident_id=%s ORDER BY resulting_generation",
+        (incident["incident_id"],),
+    ).fetchall()
+    handoffs = cursor.execute(
+        "SELECT payload FROM opspilot_subject_events WHERE subject_id=%s"
+        " AND kind='run_handoff' ORDER BY sequence",
+        (incident["incident_id"],),
+    ).fetchall()
+    snapshot = {
+        "incident_id": incident["incident_id"],
+        "state": incident["state"],
+        "control_generation": incident["control_generation"],
+        "run": run,
+        "steps": steps,
+        "conclusion": incident["conclusion"],
+    }
+    scenario = IncidentScenario(
+        scenario_id=scenario_id,
+        feature_id="lab",
+        acceptance_step="frozen-run",
+        kind="incident",
+        subject_id=str(incident["incident_id"]),
+    )
     try:
-        snapshot = store.rebuild(incident_id)
-        controls = tuple(
-            dataclasses.asdict(row)
-            for row in DurableIncidentStore(store).control_audit(incident_id)
+        result = outcome_from_durable(
+            scenario,
+            snapshot,
+            controls=tuple(dict(row) for row in controls),
+            handoff_events=tuple(dict(row["payload"]) for row in handoffs),
         )
-        handoffs = tuple(
-            dict(event.payload)
-            for event in DurableEventLog(store).read_after(incident_id, 0, limit=1000)
-            if event.kind == "run_handoff"
-        )
-        scenario = IncidentScenario(
-            scenario_id=scenario_id,
-            feature_id="lab",
-            acceptance_step="frozen-run",
-            kind="incident",
-            subject_id=str(incident_id),
-        )
-        return outcome_from_durable(
-            scenario, snapshot, controls=controls, handoff_events=handoffs
-        )
-    finally:
-        close = getattr(store, "close", None)
-        if close is not None:
-            close()
+    except ValueError as error:
+        # A Run frozen before a final state (a timed-out wait) has no
+        # durable outcome yet; recorded, never invented.
+        return {"available": False, "reason": str(error)}
+    return relabel({"available": True, "run_id": str(run_id), **plain(result)})
 
 
 def collect(
@@ -328,10 +364,8 @@ def collect(
     *,
     connect: Callable[[str], Any] | None = None,
     scenario_id: str = "frozen-run",
-    outcome: Callable[..., Any] | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    """``collect_run`` over a fresh connection to ``dsn``, plus the durable
-    outcome of the incident."""
+    """``collect_run`` over a fresh connection to ``dsn``."""
     if connect is None:
         import psycopg
 
@@ -339,16 +373,7 @@ def collect(
             return psycopg.connect(value, connect_timeout=5)
 
     with connect(dsn) as conn:
-        block, ledger = collect_run(conn, UUID(str(run_id)))
-    reader = outcome or durable_outcome
-    try:
-        value = plain(reader(dsn, UUID(block["incident_id"]), scenario_id=scenario_id))
-    except ValueError as error:
-        # A Run frozen before a final state (a timed-out wait) has no
-        # durable outcome yet; recorded, never invented.
-        value = {"available": False, "reason": str(error)}
-    block["outcome"] = relabel(value)
-    return block, ledger
+        return collect_run(conn, UUID(str(run_id)), scenario_id=scenario_id)
 
 
 def flat_evidence(block: Mapping[str, Any]) -> list[dict[str, Any]]:

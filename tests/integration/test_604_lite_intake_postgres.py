@@ -98,9 +98,48 @@ def test_driver_webhook_binds_one_run_on_the_real_intake(tmp_path: Path, labels)
             "available": False,
             "reason": "UNKNOWN_DURABLE_STATE",
         }
+        _check_outcome_follows_the_frozen_run(pg.owner_dsn, result["run_id"])
     finally:
         if web is not None:
             web.stop()
         launcher.stop(pg)
     assert not services.port_in_use(cfg.ports.web)
     assert not services.port_in_use(cfg.ports.pg)
+
+
+def _check_outcome_follows_the_frozen_run(owner_dsn: str, run_a: str) -> None:
+    """Review #606 r2: the incident's current Run moves from A to B (a copy of
+    A's row, test-only rows on the throwaway database); freezing A must not
+    report B's outcome, and freezing B reports B's."""
+    import uuid
+
+    import psycopg
+
+    run_b = str(uuid.uuid4())
+    with psycopg.connect(owner_dsn, autocommit=True) as conn:
+        conn.execute(
+            "CREATE TEMP TABLE r AS SELECT * FROM opspilot_runs WHERE run_id=%s",
+            (run_a,),
+        )
+        conn.execute(
+            "UPDATE r SET run_id=%s, state='cancelled',"
+            " control_generation=control_generation+1",
+            (run_b,),
+        )
+        conn.execute("INSERT INTO opspilot_runs SELECT * FROM r")
+        conn.execute(
+            "UPDATE opspilot_incidents SET current_run_id=%s,"
+            " control_generation=control_generation+1"
+            " WHERE incident_id=(SELECT incident_id FROM r)",
+            (run_b,),
+        )
+    a, _ = run_freeze.collect(owner_dsn, run_a)
+    assert a["run_id"] == run_a
+    assert a["outcome"]["available"] is False
+    assert a["outcome"]["reason"] == "RUN_NOT_CURRENT"
+    assert a["outcome"]["current_run_id"] == run_b
+    b, _ = run_freeze.collect(owner_dsn, run_b)
+    assert b["outcome"]["available"] is True, b["outcome"]
+    assert b["outcome"]["run_id"] == run_b
+    assert b["outcome"]["final_state"] == "cancelled"
+    assert b["run"]["state"] == "cancelled"

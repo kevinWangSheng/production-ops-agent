@@ -234,6 +234,9 @@ def copy_whitelisted(source: Path, destination: Path) -> dict[str, Any]:
     destination and renamed into place, so a half copy is never reused; a
     reused copy is verified again (``verify_copy``). Returns counts.
     """
+    if destination.is_symlink():
+        # ``is_dir`` is true for a link to an outside directory; never reuse it.
+        raise DeterministicError("UNSAFE_SNAPSHOT", "clean copy is a symlink")
     if destination.is_dir():
         verify_copy(destination)
         return {"reused": True}

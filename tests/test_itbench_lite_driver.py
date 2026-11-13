@@ -817,3 +817,14 @@ def test_judge_environment_is_narrowed():
     }
     child = driver.judge_env({**env, "ITBENCH_JUDGE_PROVIDER": "deepseek"})
     assert "DEEPSEEK_API_KEY" in child and "ZAI_API_KEY" not in child
+
+
+def test_reused_copy_that_is_a_symlink_is_refused(env, tmp_path):
+    cfg, _ = env
+    outside = tmp_path / "outside"
+    driver.copy_whitelisted(cfg.dataset / "Scenario-16", outside)  # a valid copy
+    link = tmp_path / "copy"
+    link.symlink_to(outside, target_is_directory=True)
+    with pytest.raises(driver.DeterministicError) as err:
+        driver.copy_whitelisted(cfg.dataset / "Scenario-16", link)
+    assert err.value.code == "UNSAFE_SNAPSHOT"

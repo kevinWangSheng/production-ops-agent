@@ -175,7 +175,7 @@ L6 已写入决定表。实现会话先做不依赖 A 系列的部分；假 serv
 - 完成判定（审查 #606）：答案输出先写、summary 后冻结、判分后最后原子写 `tmp/…/trial-<n>/complete.json`。续跑只跳过「标记 + completed summary + 答案输出 + 含确定性分的分数文件」齐全的 trial，以及带原因的 `status: missing` 终态；summary 与输出在但没标记的只补判分、不重跑 Run；summary 在而输出缺的，旧证据目录移到 `tmp/…/trial-<n>/stale/` 后重跑。中途 Ctrl-C 不写 summary。代码异常（非已分类失败）清理后直接结束进程，不重试。
 - 源树检查（审查 #606）：复制前按名称遍历整棵场景目录，不跟随链接；根目录是符号链接、任何一层有目录符号链接、任一目录列不出来，都拒绝。数据集目录本来就带答案文件，答案名只是永不被选中；白名单名字本身或其链接目标是答案名、或不是普通文件，拒绝。复用的副本重新核对：只能有白名单内的普通文件、没有链接、没有答案名。
 - 驱动侧输入（`--env-file`、`--prometheus-account`、词表）的名字及解析后目标名命中答案名，停整轮。
-- `run_freeze` 字段对照 F3 `collect.py`：报告、引用证据的工具名与存储视图、整份 F3 投影、事故的全部 Run、完整审计时间线、投递与投递结果、最终 `outcome`。与 F3 的差异：不含 F3 的 `frozen`（rubric 哈希，本场景没有）与 `lab_readings`（驱动另记内存读数）；Run 没到终态（等待超时）时 `outcome` 记 `{"available": false, "reason": …}`。
+- `run_freeze` 字段对照 F3 `collect.py`：报告、引用证据的工具名与存储视图、整份 F3 投影、事故的全部 Run、完整审计时间线、投递与投递结果、最终 `outcome`。与 F3 的差异：不含 F3 的 `frozen`（rubric 哈希，本场景没有）与 `lab_readings`（驱动另记内存读数）；`outcome` 在同一个只读快照里按传入的 run id 重建（产品侧 `rebuild` 只重建事故当前 Run，没有按指定 Run 的公开入口，故用只读查询组出同形状的输入再调 `outcome_from_durable`）；事故当前 Run 已不是这个 Run 时记 `{"available": false, "reason": "RUN_NOT_CURRENT", "current_run_id": …}`，不拿别的 Run 的状态充数；行状态不在产品投影认的终态里（含等待超时的 running，以及 `failed`、`budget_exhausted`）时记 `{"available": false, "reason": "UNKNOWN_DURABLE_STATE"}`。复用的干净副本若是符号链接，拒绝（审查 #606 第二轮）。
 - LangSmith 的 key 可来自环境或 `--env-file`，只传给 worker 与回读 trace；web 不拿任何模型或 trace 凭据。
 
 本机验证到的程度：编排顺序、7 处起动失败、作废线（POST 前与等待过久两种）、端口被占、确定性错误、目标无法解析停整轮、无报告与报告校验失败、等待超时、续跑、judge 重试、命令行，全部用替身测；假 server 用真子进程起停；一次性 PG 加真 web 进程上验证了驱动生成的条目与 webhook 能建出绑定 `m0-otel-20260909` 的 Run（含回退规则），`run_freeze.collect` 能在真实表结构上读出它。未在本机验证：docker 里的 promtool、Prometheus、Jaeger 1.53，worker 真调模型，LangSmith 回读，judge 真调，真实数据上的灌入耗时。
