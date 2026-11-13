@@ -19,7 +19,9 @@ One target, three backends (A2-1): the Kubernetes tools are registered under
 the existing lab target with ``source="otel-demo"``; the API server address
 travels in the target selector (``kubernetes_endpoint``) and the token in the
 Kubernetes transport's own credential slot ``k8s-ro``. Tools are routed to
-their transport by exact name (``RoutedTransport``).
+their transport by exact name (``RoutedTransport``); the Jaeger trace tools
+of :mod:`opspilot.tools.jaeger_query` (A4) go to its ``JaegerQueryTransport``
+over the same ``traces_endpoint`` and credential slot as ``traces_search``.
 """
 
 from __future__ import annotations
@@ -35,7 +37,7 @@ from opspilot.investigation.loop import DISCIPLINE_VARIANT, investigation_versio
 from opspilot.investigation.reports import DATA_SOURCES_INSTRUCTION
 from opspilot.investigation.runner import ExecutorFactory
 from opspilot.persistence import DurableStore, Lease
-from opspilot.tools import kubernetes_core, otel_demo, prometheus_ext
+from opspilot.tools import jaeger_query, kubernetes_core, otel_demo, prometheus_ext
 from opspilot.tools.evidence_read import (
     EvidenceReader,
     EvidenceReadTransport,
@@ -76,6 +78,7 @@ PROFILE_NAME = "otel-demo-ext"
 #: ``otel-demo``'s tools array unchanged, then the new tools.
 TOOL_SCHEMAS: tuple[Mapping[str, Any], ...] = (
     *otel_demo.TOOL_SCHEMAS,
+    *jaeger_query.TOOL_SCHEMAS,
     *kubernetes_core.TOOL_SCHEMAS,
     *prometheus_ext.TOOL_SCHEMAS,
 )
@@ -93,7 +96,7 @@ def _data_sources() -> dict[str, Any]:
             "prometheus": sorted(
                 otel_demo.PROMETHEUS_TOOLS | prometheus_ext.PROMETHEUS_EXT_TOOLS
             ),
-            "jaeger": [otel_demo.TRACES_TOOL],
+            "jaeger": [otel_demo.TRACES_TOOL, *jaeger_query.TOOL_NAMES],
             "kubernetes": sorted(kubernetes_core.K8S_TOOLS),
         },
         "not_integrated": list(_NOT_INTEGRATED),
@@ -104,6 +107,9 @@ def _data_sources() -> dict[str, Any]:
 def _registrations() -> tuple[ToolRegistration, ...]:
     return (
         *otel_demo._registrations(),
+        *jaeger_query.jaeger_registrations(
+            max_window_seconds=otel_demo.OBSERVATION_SECONDS
+        ),
         *kubernetes_core.kubernetes_registrations(
             max_window_seconds=otel_demo.OBSERVATION_SECONDS
         ),
@@ -199,6 +205,8 @@ def _overflow_summary(
         return {"row_unit": "matches"}
     if tool in prometheus_ext.PROMETHEUS_EXT_TOOLS:
         return prometheus_ext.overflow_summary(tool, rows, query)
+    if tool in jaeger_query.ROW_UNITS:
+        return {"row_unit": jaeger_query.ROW_UNITS[tool]}
     return otel_demo.overflow_summary(tool, rows, query)
 
 
@@ -233,6 +241,10 @@ def otel_demo_ext_executor_factory(
         | prometheus_ext.PROMETHEUS_EXT_TOOLS,
     )
     prometheus = prometheus_ext.PrometheusExtTransport(sources)
+    # A4: anonymous, like the lab Jaeger's query port; the slot is named only.
+    traces = jaeger_query.JaegerQueryTransport(
+        credentials={otel_demo.CREDENTIAL_REF: None},
+    )
     cluster = kubernetes_core.KubernetesTransport(
         credentials={kubernetes_core.CREDENTIAL_REF: kubernetes.token},
         jq_path=jq,
@@ -281,7 +293,10 @@ def otel_demo_ext_executor_factory(
                 ),
                 sources=sources,
                 kubernetes=cluster,
-                routes=dict.fromkeys(prometheus_ext.TOOL_NAMES, prometheus),
+                routes={
+                    **dict.fromkeys(prometheus_ext.TOOL_NAMES, prometheus),
+                    **dict.fromkeys(jaeger_query.TOOL_NAMES, traces),
+                },
             ),
             evidence=evidence,
             control=control,

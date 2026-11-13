@@ -204,11 +204,14 @@ def _utf8_text(value: str) -> bool:
 # anything is read, and the executor reports it as ``denied``.
 # ``RESOURCE_NOT_ALLOWED`` and ``SOURCE_FORBIDDEN`` (tool expansion A2-6) are
 # the cluster query's two denials: a Secret asked for (refused before sending)
-# and an HTTP 401/403 from the API server.
+# and an HTTP 401/403 from the API server. ``INVALID_TAGS`` (tool expansion
+# A4-2) is the trace tag search's fixed input code: a tags string that does
+# not parse as logfmt, refused before sending.
 SOURCE_ERROR_REASONS = frozenset(
     {
         "EVIDENCE_NOT_READABLE",
         "INVALID_PARAMS",
+        "INVALID_TAGS",
         "RESOURCE_NOT_ALLOWED",
         "SOURCE_ERROR",
         "SOURCE_FORBIDDEN",
