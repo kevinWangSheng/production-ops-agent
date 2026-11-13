@@ -47,17 +47,17 @@ from urllib.parse import parse_qs, urlsplit
 import pytest
 
 from opspilot.investigation.inputs import AlertAnchor
-from opspilot.tools import ToolRequest, Window
-from opspilot.tools import otel_demo
+from opspilot.tools import ToolRequest, Window, otel_demo
 from opspilot.tools.profiles import PROFILE_ENV, ToolProfile, select_profile
 from tests.m1_tool_support import FakeClock, RecordingSink
 from tests.test_m1_otel_demo_contract import (
-    FakeStore,
     NOW,
-    WINDOW as FIXTURE_WINDOW,
+    FakeStore,
     _lease,
 )
-
+from tests.test_m1_otel_demo_contract import (
+    WINDOW as FIXTURE_WINDOW,
+)
 
 EXT_PROFILE = "otel-demo-ext"
 TARGET_ID = "m0-otel-20260909"
@@ -142,7 +142,11 @@ class RefusingSpillSink(RecordingSink):
 
 
 def _url(request) -> str:
-    return request.full_url if isinstance(request, urllib.request.Request) else str(request)
+    return (
+        request.full_url
+        if isinstance(request, urllib.request.Request)
+        else str(request)
+    )
 
 
 def _headers(request) -> dict[str, str]:
@@ -345,9 +349,7 @@ def test_instant_time_outside_authorized_frame_is_refused_before_request(
 
 
 @pytest.mark.parametrize("query", ["up[10m]", "up offset 1h", "up @ 10"])
-def test_instant_query_rejects_lookback_before_frame_offset_and_at(
-    monkeypatch, query
-):
+def test_instant_query_rejects_lookback_before_frame_offset_and_at(monkeypatch, query):
     opener = PrometheusOpener(_instant_body())
     executor, _, _, _ = _executor(monkeypatch, opener)
     outcome = executor.execute(_call(INSTANT_TOOL, {"query": query}))
@@ -438,12 +440,14 @@ def test_get_series_uses_required_match_limit_100_and_default_one_hour_window(
 def test_get_series_marks_full_limit_or_warnings_incomplete(monkeypatch, body):
     opener = PrometheusOpener(body)
     executor, _, _, _ = _executor(monkeypatch, opener)
-    outcome = executor.execute(_call(SERIES_TOOL, {"match": "{__name__=~\"m_.*\"}"}))
+    outcome = executor.execute(_call(SERIES_TOOL, {"match": '{__name__=~"m_.*"}'}))
     assert outcome.status == "ok", outcome.model_view
     assert outcome.model_view["incomplete"] is True
 
 
-def test_get_all_labels_match_is_optional_and_uses_limit_and_default_window(monkeypatch):
+def test_get_all_labels_match_is_optional_and_uses_limit_and_default_window(
+    monkeypatch,
+):
     wide = Window(FIXTURE_WINDOW.end - timedelta(hours=2), FIXTURE_WINDOW.end)
     opener = PrometheusOpener(_labels_body(["job", "instance"]))
     executor, _, _, _ = _executor(monkeypatch, opener)
@@ -478,7 +482,7 @@ def test_all_a5_prometheus_tools_use_basic_auth_and_no_kubernetes_or_jaeger_cred
 ):
     for tool, params, body in (
         (INSTANT_TOOL, {"query": "up"}, _instant_body()),
-        (SERIES_TOOL, {"match": "{job=\"checkout\"}"}, _series_body()),
+        (SERIES_TOOL, {"match": '{job="checkout"}'}, _series_body()),
         (ALL_LABELS_TOOL, {}, _labels_body()),
     ):
         opener = PrometheusOpener(body)
@@ -493,34 +497,54 @@ def test_all_a5_prometheus_tools_use_basic_auth_and_no_kubernetes_or_jaeger_cred
         assert JAEGER_URL not in _url(request)
 
 
-@pytest.mark.parametrize("tool,params", [
-    (INSTANT_TOOL, {"query": "up"}),
-    (SERIES_TOOL, {"match": "{job=\"checkout\"}"}),
-    (ALL_LABELS_TOOL, {}),
-])
+@pytest.mark.parametrize(
+    "tool,params",
+    [
+        (INSTANT_TOOL, {"query": "up"}),
+        (SERIES_TOOL, {"match": '{job="checkout"}'}),
+        (ALL_LABELS_TOOL, {}),
+    ],
+)
 @pytest.mark.parametrize(
     "status,body,expected",
     [
-        (400, _body({"status": "error", "errorType": "bad_data", "error": "bad"}), "INVALID_PARAMS"),
-        (422, _body({"status": "error", "errorType": "bad_data", "error": "bad"}), "INVALID_PARAMS"),
+        (
+            400,
+            _body({"status": "error", "errorType": "bad_data", "error": "bad"}),
+            "INVALID_PARAMS",
+        ),
+        (
+            422,
+            _body({"status": "error", "errorType": "bad_data", "error": "bad"}),
+            "INVALID_PARAMS",
+        ),
         (401, b"Unauthorized", "SOURCE_ERROR"),
         (403, b"Forbidden", "SOURCE_ERROR"),
         (500, b"server error", "SOURCE_UNAVAILABLE"),
-        (503, _body({"status": "error", "errorType": "unavailable"}), "SOURCE_UNAVAILABLE"),
+        (
+            503,
+            _body({"status": "error", "errorType": "unavailable"}),
+            "SOURCE_UNAVAILABLE",
+        ),
     ],
 )
-def test_a5_http_error_classification_matches_discovery(monkeypatch, tool, params, status, body, expected):
+def test_a5_http_error_classification_matches_discovery(
+    monkeypatch, tool, params, status, body, expected
+):
     opener = PrometheusOpener(body, status=status)
     executor, _, _, _ = _executor(monkeypatch, opener)
     outcome = executor.execute(_call(tool, params))
     assert (outcome.status, outcome.reason) == ("error", expected)
 
 
-@pytest.mark.parametrize("tool,params", [
-    (INSTANT_TOOL, {"query": "up"}),
-    (SERIES_TOOL, {"match": "{job=\"checkout\"}"}),
-    (ALL_LABELS_TOOL, {}),
-])
+@pytest.mark.parametrize(
+    "tool,params",
+    [
+        (INSTANT_TOOL, {"query": "up"}),
+        (SERIES_TOOL, {"match": '{job="checkout"}'}),
+        (ALL_LABELS_TOOL, {}),
+    ],
+)
 def test_a5_503_timeout_is_classified_as_tool_timeout(monkeypatch, tool, params):
     opener = PrometheusOpener(
         _body({"status": "error", "errorType": "timeout", "error": "timed out"}),
