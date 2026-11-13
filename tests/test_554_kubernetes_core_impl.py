@@ -659,3 +659,24 @@ def test_jq_strings_with_unicode_line_separators_are_one_result():
     assert json.loads(response.body) == {
         "results": ["a\u2028b", "c\u2029d", "e\u0085f"]
     }
+
+
+def test_a_series_event_repeated_inside_the_window_is_kept():
+    first = (WINDOW.start - timedelta(hours=2)).isoformat().replace("+00:00", "Z")
+    repeat = (WINDOW.end - timedelta(hours=1)).isoformat().replace("+00:00", "Z")
+    events = [
+        {
+            "metadata": {"name": "series-1"},
+            "lastTimestamp": None,
+            "eventTime": first,
+            "series": {"count": 7, "lastObservedTime": repeat},
+        }
+    ]
+    api = FakeApi({"/api/v1/events": [_list("Event", events)]})
+    response = _transport(api).fetch(
+        _request(
+            k8s.JQ_QUERY_TOOL, {"kind": "events", "jq_expr": ".items[].metadata.name"}
+        )
+    )
+    assert json.loads(response.body) == {"results": ["series-1"]}
+    assert response.source_start_at == datetime.fromisoformat(repeat)

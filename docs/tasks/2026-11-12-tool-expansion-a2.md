@@ -81,7 +81,7 @@
 - 交给 jq 的是 `{"apiVersion":"v1","kind":"List","items":[...]}`，每个对象补 `kind`、`apiVersion`，与上游 `kubectl get -o json` 形状一致，`.items[]` 写法可直接用。
 - Secret 判定：`kind` 小写后含 `secret` 即 `RESOURCE_NOT_ALLOWED`（覆盖大小写、单数、带组后缀）；表外名字报 `UNKNOWN_KIND`（`INVALID_PARAMS`）。`kind` 区分大小写精确匹配。
 - 资源表：A1 清单去掉子资源、`events.k8s.io`、`metrics.k8s.io`、`extensions` 组与 `podsecuritypolicies`，同名优先核心组、其次当前在服的组（deployments 等走 `apps/v1`，HPA 走 `autoscaling/v2`）；表进档位版本哈希。
-- 事件时间取第一个可用的 `lastTimestamp`、`eventTime`、`series.lastObservedTime`、`firstTimestamp`、`metadata.creationTimestamp`；无时间的丢弃并计数；来源时间取保留事件首尾（与 A6-6 一致），其他资源留空。
+- 事件时间取第一个可用的 `lastTimestamp`、`series.lastObservedTime`、`eventTime`、`firstTimestamp`、`metadata.creationTimestamp`；无时间的丢弃并计数；来源时间取保留事件首尾（与 A6-6 一致），其他资源留空。
 - 视图字段：`total_items_processed`（与 A6 同名同义）、`pages_read`、`scope`、`notes`、`cannot_prove`；计数工具另有 `matches_found`，并用 `row_unit="matches"` 出 `backend_matches_returned` 等计数。
 - 启动失败固定码（worker 构造执行器时以 `SystemExit` 退出）：缺变量 `K8S_CONFIG_MISSING`；地址非 https、namespace 非 DNS 标签、CA 文件不可读 `K8S_CONFIG_INVALID`；找不到 jq `JQ_NOT_FOUND`。缺 `k8s-ro` 凭据在传输层报 `CREDENTIAL_REF_UNKNOWN`（同 otel-demo 传输），不发请求。
 - lab 闸门新码 `KUBERNETES_NOT_LAB`：扩展档位必须有 lab 主机的 API 地址；其他档位只在设了该变量时检查。

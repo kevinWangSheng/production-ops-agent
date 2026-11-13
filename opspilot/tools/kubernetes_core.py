@@ -663,8 +663,10 @@ def _page(body: bytes) -> tuple[list[dict[str, Any]], str | None, str, str] | No
 
 _EVENT_TIME_FIELDS: tuple[tuple[str, ...], ...] = (
     ("lastTimestamp",),
-    ("eventTime",),
+    # The latest repeat of a series event, before its first observation:
+    # an event first seen before the window and repeated inside it is in it.
     ("series", "lastObservedTime"),
+    ("eventTime",),
     ("firstTimestamp",),
     ("metadata", "creationTimestamp"),
 )
@@ -672,7 +674,7 @@ _EVENT_TIME_FIELDS: tuple[tuple[str, ...], ...] = (
 
 def event_time(event: Mapping[str, Any]) -> datetime | None:
     """An event's own time: the first usable of ``lastTimestamp``,
-    ``eventTime``, ``series.lastObservedTime``, ``firstTimestamp``,
+    ``series.lastObservedTime``, ``eventTime``, ``firstTimestamp``,
     ``metadata.creationTimestamp`` (A2-11; these are often null)."""
     for path in _EVENT_TIME_FIELDS:
         cursor: object = event
