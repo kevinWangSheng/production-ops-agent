@@ -65,6 +65,7 @@ A1 改 `deploy/` 里 worker 拿凭据的方式，属「数据流与凭据」类�
 - 入口脚本放行 `OPSPILOT_K8S_*` 通配，但名字含 `[A-Z0-9_]` 以外字符就跳过：名字会进 `eval`。
 - 为配合独立验收测试的接缝（2026-11-13）：`k8s_api_url` 另收 `container=True/False`，不给 server 时直接读 lab kubeconfig 文件（JSON 或 kind 的 YAML，只认唯一一行 `server:`）；`kubectl create token` 参数改为 `--duration 24h` 分开写；输出不是 TokenRequest JSON 时按裸 token 处理，过期时间取 JWT `exp`，取不到就按请求时长推算，并在 `expires_at_source` 里写明来源；CA 只要求非空，不再要求 PEM 头；SA 去掉 labels。探测脚本提供 `authorization(env_file)`、`request(method, path, auth, *, env_file, headers, body)`、`probe(env_file=..., namespace=..., known_secrets=...)`（报告带 `known_secret_hits`） 与 `--output`、`--rules-output`；`--known-secrets` 改为可选，不给时报告 `ok` 为假；exec POST 也带 `dryRun=All`；JWT 形状另认三段各 8 字符以上的点分串。
 - 探测脚本完全独立（不 import `scripts.kind_lab`）：worker 镜像里没有 `scripts/`，容器侧用 `python -c "$(cat ...)"` 运行，已知秘密值用 `--known-secrets -` 从 stdin 给。
+- 自定义资源行（Argo、Flux、Istio、Chaos Mesh、Prometheus Operator）接受 403 或 404，`denied_by` 分别记 `rbac` / `not_registered`：lab 不装这些 CRD，API server 对未注册组可能回 404（PR #589 审查采纳）；核心资源的拒绝行仍只认 403。
 - 探测输出只记状态码、发现的 Pod/节点名、规则列表与计数；ConfigMap 搜索命中只记 `namespace/name/key`；token 本身也算已知秘密参与搜索。
 - 输出自查：含 token 全文、token 中 16 字符以上的段、已知秘密值或 `eyJ...\.…` JWT 形状就整份拒绝，退出码 2，不写文件。
 - `tests/test_413_compose_impl.py` 的 lab override 断言从整体相等改为只比 ports：worker 多了 `secrets`，端口不变。

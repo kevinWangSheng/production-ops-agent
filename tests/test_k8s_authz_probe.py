@@ -160,10 +160,13 @@ def test_a_read_only_identity_matches_every_row(
         "impersonate a user",
         "create a ConfigMap (dry run)",
         "delete a pod (dry run)",
+    ):
+        assert expected[name] == 403, name
+    for name in (
         "list custom resource chaos-mesh.org",
         "list custom resource argoproj.io",
     ):
-        assert expected[name] == 403, name
+        assert expected[name] == [403, 404], name
     scan = report["configmap_secret_scan"]
     assert scan == {
         "configmaps_scanned": 2,
@@ -337,3 +340,47 @@ def test_three_dot_joined_runs_count_as_a_jwt_shape() -> None:
         probe.check_output(".".join(("a" * 8, "b" * 8, "c" * 8)), TOKEN, [])
     for harmless in ("events.k8s.io", "source.toolkit.fluxcd.io", "127.0.0.1"):
         probe.check_output(harmless, TOKEN, [])
+
+
+def test_custom_resources_accept_rbac_or_unregistered_and_say_which(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    api = FakeApi()
+    api.override = {
+        "/apis/argoproj.io/": 404,
+        "/apis/chaos-mesh.org/": 404,
+    }
+    assert _run(api, tmp_path) == 0
+    rows = {
+        r["name"]: r
+        for r in json.loads(capsys.readouterr().out)["requests"]
+        if r["name"].startswith("list custom resource")
+    }
+    assert rows["list custom resource argoproj.io"]["denied_by"] == "not_registered"
+    assert rows["list custom resource chaos-mesh.org"]["denied_by"] == "not_registered"
+    assert rows["list custom resource networking.istio.io"]["denied_by"] == "rbac"
+    assert all(r["matches"] for r in rows.values())
+
+
+@pytest.mark.parametrize("status", [200, 500, 0])
+def test_a_readable_or_unanswered_custom_resource_still_fails(
+    tmp_path: Path, status: int
+) -> None:
+    api = FakeApi()
+    api.override = {"/apis/argoproj.io/": status}
+    assert _run(api, tmp_path) == 1
+
+
+@pytest.mark.parametrize(
+    "prefix",
+    [
+        "/api/v1/secrets",
+        "/api/v1/pods?watch=true",
+        "/api/v1/namespaces?dryRun=All",
+        "/api/v1/namespaces/kube-system/pods/etcd-node/exec",
+    ],
+)
+def test_core_denials_still_require_403(tmp_path: Path, prefix: str) -> None:
+    api = FakeApi()
+    api.override = {prefix: 404}
+    assert _run(api, tmp_path) == 1

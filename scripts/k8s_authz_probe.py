@@ -56,7 +56,11 @@ JWT_SHAPE = re.compile(
     # or any three dot-joined base64url runs of 8+ (header.payload.signature)
     r"|[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}"
 )
-#: Unregistered custom-resource groups (Q6): denied, installed or not.
+#: Custom-resource groups the identity is not granted (Q6). The lab installs
+#: none of these CRDs, and the API server may answer an unregistered group
+#: 404 instead of RBAC's 403: either is "cannot read", recorded apart as
+#: ``denied_by`` ``rbac`` / ``not_registered``. Every other denial row
+#: still requires 403.
 CUSTOM_RESOURCES = (
     "/apis/argoproj.io/v1alpha1/applications",
     "/apis/source.toolkit.fluxcd.io/v1/gitrepositories",
@@ -377,7 +381,7 @@ def rows(namespace: str, found: dict[str, str | None]) -> list[dict[str, Any]]:
             "name": name,
             "method": method,
             "path": path,
-            "expected": 403,
+            "expected": [403, 404] if path in CUSTOM_RESOURCES else 403,
         }
         if headers:
             row["headers"] = headers
@@ -501,16 +505,19 @@ def probe(
     results = []
     for row in rows(namespace, found):
         status = _send_row(send, row)
-        results.append(
-            {
-                "name": row["name"],
-                "method": row["method"],
-                "path": row["path"],
-                "status": status,
-                "expected": row["expected"],
-                "matches": status == row["expected"],
-            }
-        )
+        expected = row["expected"]
+        accepted = expected if isinstance(expected, list) else [expected]
+        result: dict[str, Any] = {
+            "name": row["name"],
+            "method": row["method"],
+            "path": row["path"],
+            "status": status,
+            "expected": expected,
+            "matches": status in accepted,
+        }
+        if isinstance(expected, list):
+            result["denied_by"] = {403: "rbac", 404: "not_registered"}.get(status)
+        results.append(result)
     scan = configmap_scan(send, needles)
     return {
         "discovered": found,
