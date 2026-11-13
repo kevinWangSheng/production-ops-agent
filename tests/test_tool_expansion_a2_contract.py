@@ -375,7 +375,7 @@ def test_kubernetes_schemas_have_the_upstream_parameter_surface(tool):
 
 def test_kubernetes_registrations_declare_that_cluster_objects_may_contain_secrets():
     registrations = kubernetes_core._registrations()
-    assert {item.name for item in registrations} == {K8S_JQ_TOOL, K8S_COUNT_TOOL}
+    assert {K8S_JQ_TOOL, K8S_COUNT_TOOL} <= {item.name for item in registrations}
     assert all(item.may_contain_secrets is True for item in registrations)
 
 

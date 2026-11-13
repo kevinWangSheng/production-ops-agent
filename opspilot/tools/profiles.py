@@ -91,7 +91,9 @@ def _otel_demo(env: Mapping[str, str]) -> ToolProfile:
     )
 
 
-_STARTUP_CODES = frozenset({"K8S_CONFIG_MISSING", "K8S_CONFIG_INVALID", "JQ_NOT_FOUND"})
+_STARTUP_CODES = frozenset(
+    {"K8S_CONFIG_MISSING", "K8S_CONFIG_INVALID", "JQ_NOT_FOUND", "PYTHON_NOT_FOUND"}
+)
 
 
 def _otel_demo_ext(env: Mapping[str, str]) -> ToolProfile:
@@ -106,7 +108,7 @@ def _otel_demo_ext(env: Mapping[str, str]) -> ToolProfile:
         # The cluster setting and jq are startup preconditions of this
         # worker: their fixed codes end the process like any other
         # misconfiguration (``K8S_CONFIG_MISSING``, ``K8S_CONFIG_INVALID``,
-        # ``JQ_NOT_FOUND``).
+        # ``JQ_NOT_FOUND``; ``PYTHON_NOT_FOUND`` for the Pod log filters).
         try:
             return otel_demo_ext_executor_factory(
                 store,

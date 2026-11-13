@@ -77,6 +77,7 @@
   - A4（2026-11-13，探针骨架 `a035c1da`，草稿 PR #592）：全量 CI 1 failed / 11985 passed / 2550 skipped。唯一失败是 `tests/test_tool_expansion_a2_contract.py` 断言扩展档位工具集恰好等于 otel-demo 加两个 Kubernetes 工具，与 A2-2「A3–A6 也进这个档位」冲突；已在 A4 分支由测试作者改为超集断言（`e266ff22`）。
   - A5 已补跑（探针草稿 PR #591）：2 failed / 11984 passed / 2550 skipped。两个失败都是 A2 测试把扩展档位钉死为只多 A2 两个工具：`tests/test_tool_expansion_a2_contract.py` 的全集断言，与 `tests/test_554_kubernetes_core_impl.py:421` 的位置断言。A5 代码 PR #593 已把前者改为 ⊇ 形式，后者改为不依赖位置；`otel-demo` 字节不变。
   - B2（2026-11-13，探针骨架 `4df603ab`，草稿 PR #595）：全量 CI 5 failed / 12213 passed / 2550 skipped。5 个失败都是钉旧拒绝的测试：`tests/acceptance/test_396_proxy_contract.py` 的 f7 探针行、`tests/test_kind_lab_readonly_proxy.py` 的表单 POST 用例、`tests/test_399_isolation_impl.py` 1 条、`tests/acceptance/test_399_isolation.py` 2 条。后两个文件不在 B2-1 的影响面清单里，原因是 Holmes 隔离检查的放行集合直接取代理读路径（`scripts/holmes_baseline/isolation.py:148`）。5 个失败都已在代码 PR #597 由测试作者按 B2-1 改写。
+  - A3（2026-11-13，探针骨架 `9384f5e6`，草稿 PR #596，已关闭）：全量 CI 0 failed / 12158 passed / 2550 skipped；只加扩展档位，`otel-demo` 字节不变。
 
 ### N3：lab 的 Jaeger 能做什么
 

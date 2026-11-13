@@ -424,7 +424,10 @@ def test_web_builds_face_and_versions_without_cluster_settings():
     assert not set(k8s.TOOL_NAMES) & set(otel_demo.TOOL_NAMES)
     assert not set(k8s.TOOL_NAMES) & otel_demo.PROMETHEUS_TOOLS
     context = profile.face(FakeClock(start=NOW)).evidence_context("run-1")
-    assert context["data_sources"]["available"]["kubernetes"] == sorted(k8s.TOOL_NAMES)
+    # A3 adds fetch_pod_logs to the same list (A2-2: later items join).
+    assert set(context["data_sources"]["available"]["kubernetes"]) >= set(
+        k8s.TOOL_NAMES
+    )
     assert "kubernetes_state" not in context["data_sources"]["not_integrated"]
 
 
