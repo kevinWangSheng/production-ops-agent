@@ -31,7 +31,7 @@ TraceQL、Tempo 的 trace 指标工具、标签名发现、放宽 trace 投影�
 ## 完成条件
 
 1. 代码 PR：合同测试与 CI 通过，`otel-demo` 钉值不变。这是功能 PR。
-2. #556 关闭：租机后的真实 Run 里出现按标签搜索或按 ID 取整条的证据，报告引用；仓库里有 `summary.json` 与 LangSmith trace 链接。
+2. 代码 PR 合并后 #556 关闭。真实证据归租机集中取证（#580）：租机后的真实 Run 里出现按标签搜索或按 ID 取整条的证据，报告引用；仓库里有 `summary.json` 与 LangSmith trace 链接。
 
 ## 没有真实实例时的已知风险
 
