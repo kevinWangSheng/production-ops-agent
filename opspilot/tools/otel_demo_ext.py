@@ -21,7 +21,9 @@ travels in the target selector (``kubernetes_endpoint``) and the token in the
 Kubernetes transport's own credential slot ``k8s-ro``. Tools are routed to
 their transport by exact name (``RoutedTransport``); the Jaeger trace tools
 of :mod:`opspilot.tools.jaeger_query` (A4) go to its ``JaegerQueryTransport``
-over the same ``traces_endpoint`` and credential slot as ``traces_search``.
+over the same ``traces_endpoint`` and credential slot as ``traces_search``;
+``fetch_pod_logs`` (A3, :mod:`opspilot.tools.kubernetes_logs`) goes by name
+to the same ``KubernetesTransport`` (Kubernetes address, ``k8s-ro`` slot).
 """
 
 from __future__ import annotations
@@ -37,7 +39,13 @@ from opspilot.investigation.loop import DISCIPLINE_VARIANT, investigation_versio
 from opspilot.investigation.reports import DATA_SOURCES_INSTRUCTION
 from opspilot.investigation.runner import ExecutorFactory
 from opspilot.persistence import DurableStore, Lease
-from opspilot.tools import jaeger_query, kubernetes_core, otel_demo, prometheus_ext
+from opspilot.tools import (
+    jaeger_query,
+    kubernetes_core,
+    kubernetes_logs,
+    otel_demo,
+    prometheus_ext,
+)
 from opspilot.tools.evidence_read import (
     EvidenceReader,
     EvidenceReadTransport,
@@ -81,12 +89,16 @@ TOOL_SCHEMAS: tuple[Mapping[str, Any], ...] = (
     *jaeger_query.TOOL_SCHEMAS,
     *kubernetes_core.TOOL_SCHEMAS,
     *prometheus_ext.TOOL_SCHEMAS,
+    *kubernetes_logs.TOOL_SCHEMAS,
 )
 
 #: What this profile can and cannot query (#311 U5); ``kubernetes_state``
-#: moves from not integrated to available (A2-2).
+#: moves from not integrated to available (A2-2), and ``pod_logs`` with it
+#: (A3-11).
 _NOT_INTEGRATED: tuple[str, ...] = tuple(
-    name for name in otel_demo.NOT_INTEGRATED if name != "kubernetes_state"
+    name
+    for name in otel_demo.NOT_INTEGRATED
+    if name not in {"kubernetes_state", "pod_logs"}
 )
 
 
@@ -97,7 +109,9 @@ def _data_sources() -> dict[str, Any]:
                 otel_demo.PROMETHEUS_TOOLS | prometheus_ext.PROMETHEUS_EXT_TOOLS
             ),
             "jaeger": [otel_demo.TRACES_TOOL, *jaeger_query.TOOL_NAMES],
-            "kubernetes": sorted(kubernetes_core.K8S_TOOLS),
+            "kubernetes": sorted(
+                kubernetes_core.K8S_TOOLS | set(kubernetes_logs.TOOL_NAMES)
+            ),
         },
         "not_integrated": list(_NOT_INTEGRATED),
         "instruction": DATA_SOURCES_INSTRUCTION,
@@ -114,6 +128,9 @@ def _registrations() -> tuple[ToolRegistration, ...]:
             max_window_seconds=otel_demo.OBSERVATION_SECONDS
         ),
         *prometheus_ext.prometheus_ext_registrations(),
+        *kubernetes_logs.pod_logs_registrations(
+            max_window_seconds=otel_demo.OBSERVATION_SECONDS
+        ),
     )
 
 
@@ -205,6 +222,8 @@ def _overflow_summary(
         return {"row_unit": "matches"}
     if tool in prometheus_ext.PROMETHEUS_EXT_TOOLS:
         return prometheus_ext.overflow_summary(tool, rows, query)
+    if tool == kubernetes_logs.POD_LOGS_TOOL:
+        return {"row_unit": "lines"}
     if tool in jaeger_query.ROW_UNITS:
         return {"row_unit": jaeger_query.ROW_UNITS[tool]}
     return otel_demo.overflow_summary(tool, rows, query)
@@ -223,10 +242,13 @@ def otel_demo_ext_executor_factory(
     """An ``ExecutorFactory`` over this profile; built once per worker slot.
 
     ``jq_path`` defaults to ``jq`` on PATH: a worker without it does not start
-    (``JQ_UNAVAILABLE``, A2-8), nor without a tokenizer.
+    (``JQ_UNAVAILABLE``, A2-8), nor without a tokenizer, nor
+    without ``python3`` on PATH for the Pod log filters' regex child (A3-7,
+    ``PYTHON_NOT_FOUND``; the child resolves it again per call).
     """
     config = config or otel_demo.OtelDemoConfig()
     jq = jq_path or kubernetes_core.require_jq()
+    kubernetes_core.require_python()  # startup precondition (A3-7)
     counter = token_counter if token_counter is not None else default_counter()
     registrations = otel_demo_ext_registrations(config, kubernetes)
     tools = ToolRegistry(registrations.tools)
@@ -296,6 +318,8 @@ def otel_demo_ext_executor_factory(
                 routes={
                     **dict.fromkeys(prometheus_ext.TOOL_NAMES, prometheus),
                     **dict.fromkeys(jaeger_query.TOOL_NAMES, traces),
+                    # A3: served by the cluster transport, routed by name.
+                    **dict.fromkeys(kubernetes_logs.TOOL_NAMES, cluster),
                 },
             ),
             evidence=evidence,

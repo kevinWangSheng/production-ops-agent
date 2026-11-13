@@ -1,9 +1,9 @@
 # 工具面拓展 A3：Pod 日志
 
-- 状态：待开始（开工说明已齐，未实现；在 A2 合并后开工）
-- 更新日期：2026-11-12
+- 状态：实施中（实现与实现者单测已提交本地分支，待独立合同测试合入与审查）
+- 更新日期：2026-11-13
 - 依据：[工具面拓展任务记录](2026-11-12-tool-expansion.md)、[决定表 r3](2026-11-12-tool-expansion-contract.md)（r1 的 R8、R9、R10，r2 的 A2-1 至 A2-15，r3 的 A3-1 至 A3-11）、C3 第 8 节；上游 HolmesGPT `a0009195` 的 `kubernetes_logs.py` 与 `logging_utils/logging_api.py`。issue #555。开工前预审在仓库外（A3、A6 预审，2026-11-12），没有需要用户裁决的项。
-- 工作区：开工时另开 worktree，分支 `feature/tool-expansion-a3-pod-logs`，写入本节。
+- 工作区：worktree `/Users/shenghuikevin/dev/AI/poa-a3-impl`，分支 `feature/tool-expansion-a3-pod-logs`（起点 `origin/main` `43c12203`）。
 
 ## 目标
 
@@ -48,6 +48,31 @@
 ## 依赖 A2 的假设
 
 A3 假设 A2 把配置、GET 传输、错误映射做成可复用函数，传输路由按显式工具名分派（`fetch_pod_logs` 不带 `kubernetes_` 前缀），且 A2 定下 jq 超时报的结果类，正则子进程照抄（见 [A2 开工说明](2026-11-12-tool-expansion-a2.md)「后续各项对 A2 的要求」）。新视图字段名要在 A2 落地后对照通用视图字段再核一次。全量探针未跑：A2 合并后、A3 开工前开草稿 PR 经 CI 补跑，预计只加扩展档位、0 失败。
+
+## 实施记录
+
+代码：`opspilot/tools/kubernetes_logs.py`（工具面、读取、行处理、视图）；`kubernetes_core.py` 加 `check_object_name`、`pod_url`、`require_python`、`pattern_problem`、`filter_lines`（正则子进程，A6 复用；子进程脚本 `_regex_child.py`），`KubernetesClient.get` 加 `accept`、`cut` 两个可选参数（默认值保持 A2 行为）；`otel_demo_ext.py` 注册与路由；`profiles.py` 加启动码 `PYTHON_NOT_FOUND`。实现者单测 `tests/test_555_pod_logs_impl.py`。
+
+自行决定的可逆细节：
+
+- 正则子进程（lead 2026-11-13 确认）：worker 启动时从 PATH 解析 `python3`（同 `require_jq`，缺失为启动码 `PYTHON_NOT_FOUND`），以 `-I -S -B` 按包内路径执行随包发布的固定脚本 `opspilot/tools/_regex_child.py`（只读 stdin 的 JSON，运行时不写任何代码文件），经 `run_isolated` 启动（空环境、空工作目录、超时、输出上限）。F11 第 4 步代码面检查不改且通过。runtime 镜像基础是 `python:3.12.13-slim`（自带 `/usr/local/bin/python3`），PATH 首位 `/app/.venv/bin`（venv 的 `python3` 指向它），`COPY opspilot /app/opspilot` 带上该脚本。
+- 「全部容器」含 init 与临时容器，顺序 init、应用、临时，与上游全容器读取一致；请求数因此是 1+2C，C 计全部容器。
+- 读取顺序：先所有容器的 `previous`，再所有容器的当前流；共用 4 MiB 预算按顺序扣，预算用完的流记 `not_read`。理由：崩溃循环时上一次实例最关键，且它的体积受一个实例寿命所限。
+- 流被 `limitBytes` 截断时丢掉末尾半行并写备注；响应长度达到预算即视为读满（可能恰好读完，按不完整处理更保守）。
+- `sinceTime` 取窗起点向下取整到秒，早于窗起点的行在本地丢弃并单独计数（`lines_before_window`）。
+- 流返回 404（Pod 在调用中途被删）按 `POD_NOT_FOUND` 报整条；400 以外的其他 4xx 按 A2 的错误表报整条。
+- `filter`、`exclude_filter` 为空串视同未给（同上游 `if params.filter`）；超过 2000 字符或含 NUL 在发请求前拒绝（`INVALID_PARAMS`）。子进程失败或输出不合形状报 `SOURCE_ERROR`（`FILTER_FAILED`）。
+- `POD_NOT_FOUND` 的回显：拒绝视图的 `source_error` 带 `error_type=pod_not_found` 与一句含 namespace、Pod 名的提示（建议改用 `kubernetes_jq_query` 列 Pod）；`query` 里也有原参数。
+- 每行固定字段 `timestamp`（API 原样字符串，保留纳秒）、`container`、`previous`（布尔，是否上一次实例；独立合同测试按此键取值）、`text`、`text_truncated`；同一时刻按纳秒、流、行号稳定排序。
+- 视图字段：`pod`、`containers`、`streams`（每流状态、字节、行数、是否读满、读到的最后时刻）、`lines_requested`、`lines_read`、`lines_without_timestamp`、`lines_before_window`、`lines_after_window`、`lines_removed_by_filter`、`lines_removed_by_exclude_filter`、`long_lines_cut`、`filter_mode`、`bytes_read`、`read_limit_bytes`、`read_limit_reached`、`read_through`、`incomplete_reason`、`notes`、`cannot_prove`；与通用视图字段和 `lines_*` 单位计数无冲突。
+- 数据源清单：`fetch_pod_logs` 并入 `available.kubernetes`（独立合同测试要求）；A2 实现单测 `test_554` 对该清单的全等断言改为 ⊇（同 A5 先例）。
+- 接缝：`fetch_pod_logs` 由 `KubernetesTransport` 转交 `PodLogsTransport`（共用同一 client），档位里按精确名路由到该传输，`K8S_TOOLS` 不变；`kubernetes_core._registrations()` 清点含本工具（A3 合同测试的清点接缝）。
+
+偏离与已知限制：
+
+- `read_through` 取被截断各流最后时刻中最早的一个；有流因预算用完完全未读时为空，备注只建议把起点后移。
+- 日志请求的 `Accept` 为 `*/*`（A2 的对象读取仍是 `application/json`）；真实 API server 的内容协商未在真集群核对。
+- 上文「没有真集群时的已知风险」四条全部仍未确认。
 
 ## 下一步
 

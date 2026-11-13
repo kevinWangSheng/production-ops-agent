@@ -98,8 +98,14 @@ __all__ = [
     "KubernetesTransport",
     "ListResult",
     "Resource",
+    "LineFilter",
     "check_namespace",
+    "check_object_name",
     "check_selector",
+    "filter_lines",
+    "pattern_problem",
+    "pod_url",
+    "require_python",
     "kubernetes_registrations",
     "require_jq",
     "resolve_kind",
@@ -110,6 +116,8 @@ JQ_QUERY_TOOL = "kubernetes_jq_query"
 COUNT_TOOL = "kubernetes_count"
 TOOL_NAMES: tuple[str, ...] = (JQ_QUERY_TOOL, COUNT_TOOL)
 K8S_TOOLS: frozenset[str] = frozenset(TOOL_NAMES)
+#: A3's tool, served by ``KubernetesTransport`` but routed by exact name.
+_POD_LOGS_TOOL = "fetch_pod_logs"
 
 #: The Kubernetes transport's own credential slot (A2-1); the target's
 #: ``credential_ref`` names the Prometheus slot and is not used here.
@@ -149,6 +157,9 @@ _JQ_COMPILE_STATUS = 3
 _JQ_RUNTIME_STATUS = 5
 
 _DNS_LABEL = re.compile(r"[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?")
+#: A3-6: an object name (a Pod's) is a DNS subdomain: dot-separated DNS
+#: labels of at most 63 characters each, at most 253 characters in all.
+MAX_OBJECT_NAME_CHARS = 253
 _JQ_FORBIDDEN = ("import", "include")
 
 
@@ -250,6 +261,31 @@ def resolve_kind(kind: object) -> tuple[Resource | None, str | None]:
 def check_namespace(namespace: object) -> bool:
     """A2-7: a namespace is a DNS label (it is spliced into the path)."""
     return isinstance(namespace, str) and _DNS_LABEL.fullmatch(namespace) is not None
+
+
+def check_object_name(name: object) -> bool:
+    """A3-6: an object name is a DNS subdomain (it is spliced into the path):
+    every dot-separated part a DNS label (at most 63 characters), at most
+    253 characters in all."""
+    return (
+        isinstance(name, str)
+        and 0 < len(name) <= MAX_OBJECT_NAME_CHARS
+        and all(_DNS_LABEL.fullmatch(part) is not None for part in name.split("."))
+    )
+
+
+def pod_url(endpoint: str, namespace: str, pod_name: str, *, log: bool = False) -> str:
+    """The URL of one Pod, or of its ``log`` subresource (A3-2).
+
+    ``namespace`` and ``pod_name`` must already have passed
+    ``check_namespace`` and ``check_object_name``; they are still
+    percent-encoded so nothing in them can change the path.
+    """
+    base = endpoint.rstrip("/") + RESOURCES["pods"].path(
+        urllib.parse.quote(namespace, safe="")
+    )
+    url = f"{base}/{urllib.parse.quote(pod_name, safe='')}"
+    return url + "/log" if log else url
 
 
 def check_selector(value: object) -> bool:
@@ -417,6 +453,9 @@ def kubernetes_opener(ca_file: str | None) -> urllib.request.OpenerDirector:
 class _Fetched:
     status: int
     body: bytes
+    #: ``get(..., cut=True)`` only: the 2xx body ran past ``max_bytes`` and
+    #: was cut there (A3-3: a log stream keeps what it read).
+    cut: bool = False
 
 
 def _monotonic() -> float:
@@ -476,15 +515,25 @@ class KubernetesClient:
             raise TransportError("CREDENTIAL_REF_UNKNOWN")
         return token
 
-    def get(self, url: str, *, deadline: float, max_bytes: int) -> _Fetched:
+    def get(
+        self,
+        url: str,
+        *,
+        deadline: float,
+        max_bytes: int,
+        accept: str = "application/json",
+        cut: bool = False,
+    ) -> _Fetched:
         """One GET bounded by ``deadline`` (monotonic) and ``max_bytes``.
 
         2xx and 4xx come back (a 4xx body cut at ``ERROR_BODY_BYTES``); 5xx is
         ``TransportUnavailable``; a body past ``max_bytes`` is
-        ``TransportResultTooLarge``; the deadline is ``TransportTimeout``.
+        ``TransportResultTooLarge`` -- or, with ``cut=True``, its first
+        ``max_bytes`` bytes with ``_Fetched.cut`` set (A3-3); the deadline is
+        ``TransportTimeout``.
         """
         headers = {
-            "Accept": "application/json",
+            "Accept": accept,
             "Authorization": f"Bearer {self.token()}",
         }
         http_request = urllib.request.Request(url, headers=headers, method="GET")
@@ -507,6 +556,8 @@ class KubernetesClient:
                         raise TransportUnavailable(str(code)) from None
                     return _Fetched(code, body)
                 if len(body) > max_bytes:
+                    if cut:
+                        return _Fetched(status, body[:max_bytes], cut=True)
                     raise TransportResultTooLarge(str(max_bytes))
                 return _Fetched(status, body)
             finally:
@@ -723,7 +774,7 @@ def _limit_memory() -> None:
 
 
 def run_isolated(
-    argv: Sequence[str],
+    argv: Sequence[str | os.PathLike[str]],
     stdin: bytes,
     *,
     deadline: float,
@@ -873,6 +924,119 @@ class _Jq:
         )
 
 
+# -- bounded regular-expression child (A3-7; reused by A6) --------------------
+
+#: A3-7: the longest pattern the child is given.
+MAX_PATTERN_CHARS = 2000
+
+#: The child program, shipped in the package and run by its path (never
+#: written at run time): Python ``re`` over a JSON list of lines on stdin.
+REGEX_CHILD = Path(__file__).with_name("_regex_child.py")
+
+
+def require_python() -> str:
+    """The absolute path of ``python3`` on this worker's PATH, or a startup
+    error (A3-7: the regex child needs an interpreter; like jq, a worker of
+    the extended profile without one does not start)."""
+    path = shutil.which("python3")
+    if not path:
+        raise ToolContractError("PYTHON_NOT_FOUND")
+    return os.path.abspath(path)
+
+
+def pattern_problem(pattern: object) -> bool:
+    """A3-7: a pattern is a non-empty string of at most 2000 characters."""
+    return (
+        not isinstance(pattern, str)
+        or not pattern
+        or len(pattern) > MAX_PATTERN_CHARS
+        or "\x00" in pattern
+    )
+
+
+@dataclass(frozen=True)
+class LineFilter:
+    """What the child decided: one flag per input line and how it matched."""
+
+    keep: tuple[bool, ...]
+    include_mode: str | None
+    exclude_mode: str | None
+    removed_include: int
+    removed_exclude: int
+
+
+def filter_lines(
+    lines: Sequence[str],
+    *,
+    include: str | None,
+    exclude: str | None,
+    ignore_case: bool,
+    deadline: float,
+) -> LineFilter | None:
+    """Run ``include``/``exclude`` over ``lines`` in a bounded child.
+
+    The child is ``REGEX_CHILD`` (a fixed file of this package) run by the
+    ``python3`` that ``require_python`` resolves (the worker already checked
+    it at startup) in isolated mode without ``site`` (``-I -S -B``), started
+    by ``run_isolated``: no shell, an empty
+    environment, an empty working directory, the call's remaining time
+    (a pathological pattern is killed: ``timeout``/``TOOL_TIMEOUT``, the jq
+    timeout class) and 512 MiB of memory. A line is kept when it matches
+    ``include`` (if given) and does not match ``exclude`` (if given).
+    ``None`` when the child failed or answered something malformed.
+    Patterns must already have passed ``pattern_problem``.
+    """
+    spec = {
+        "ignore_case": ignore_case,
+        "include": include,
+        "exclude": exclude,
+        "lines": list(lines),
+    }
+    stdin = json.dumps(spec, separators=(",", ":")).encode("ascii")
+    try:
+        python = require_python()
+    except ToolContractError:
+        raise TransportError("CHILD_UNAVAILABLE") from None
+    with tempfile.TemporaryDirectory(prefix="opspilot-re-") as work:
+        status, output = run_isolated(
+            [python, "-I", "-S", "-B", REGEX_CHILD],
+            stdin,
+            deadline=deadline,
+            max_output_bytes=len(lines) + 4096,
+            cwd=work,
+        )
+    if status != 0:
+        return None
+    try:
+        answer = json.loads(output.decode("ascii"))
+    except (UnicodeDecodeError, ValueError, RecursionError):
+        return None
+    if not isinstance(answer, dict):
+        return None
+    keep = answer.get("keep")
+    if not isinstance(keep, str) or len(keep) != len(lines) or set(keep) - {"0", "1"}:
+        return None
+    modes = (answer.get("include_mode"), answer.get("exclude_mode"))
+    if any(mode not in (None, "regex", "substring") for mode in modes):
+        return None
+    removed_include = answer.get("removed_include")
+    removed_exclude = answer.get("removed_exclude")
+    if not (
+        type(removed_include) is int
+        and type(removed_exclude) is int
+        and removed_include >= 0
+        and removed_exclude >= 0
+    ):
+        return None
+    return LineFilter(
+        keep=tuple(flag == "1" for flag in keep),
+        include_mode=modes[0],
+        exclude_mode=modes[1],
+        removed_include=removed_include,
+        removed_exclude=removed_exclude,
+    )
+
+
 # -- transport -------------------------------------------------------------------
 
 
@@ -893,6 +1057,11 @@ class KubernetesTransport:
     (length, ``import``/``include``). Then the list is read
     (``KubernetesClient.list_objects``) and jq runs once over it; an
     expression that does not compile is reported after the read.
+
+    ``fetch_pod_logs`` (A3) is served by the same transport, over the same
+    client: it is handed to ``kubernetes_logs.PodLogsTransport``. It is still
+    routed by its exact name (``RoutedTransport`` ``routes``), never through
+    ``K8S_TOOLS``.
     """
 
     def __init__(
@@ -913,8 +1082,18 @@ class KubernetesTransport:
         self._jq_path = jq_path
         self._application_namespace = application_namespace
         self._monotonic = monotonic or _monotonic
+        # Imported here: kubernetes_logs builds on this module.
+        from opspilot.tools.kubernetes_logs import PodLogsTransport
+
+        self._logs = PodLogsTransport(
+            client=self._client,
+            application_namespace=application_namespace,
+            monotonic=self._monotonic,
+        )
 
     def fetch(self, request: TransportRequest) -> TransportResponse:
+        if request.tool == _POD_LOGS_TOOL:
+            return self._logs.fetch(request)
         if request.tool not in K8S_TOOLS:
             raise TransportError("TOOL_NOT_SUPPORTED")
         deadline = self._monotonic() + request.timeout_seconds
@@ -1231,9 +1410,15 @@ def kubernetes_registrations(
 
 
 def _registrations() -> tuple[ToolRegistration, ...]:
-    """The two registrations under the profiles' 24 h frame (the private
-    inventory seam ``otel_demo._registrations`` also offers)."""
-    return kubernetes_registrations(max_window_seconds=OBSERVATION_SECONDS)
+    """Every registration this transport serves under the profiles' 24 h
+    frame -- the two object queries and ``fetch_pod_logs`` (A3) -- for the
+    private inventory seam ``otel_demo._registrations`` also offers."""
+    from opspilot.tools.kubernetes_logs import pod_logs_registrations
+
+    return (
+        *kubernetes_registrations(max_window_seconds=OBSERVATION_SECONDS),
+        *pod_logs_registrations(max_window_seconds=OBSERVATION_SECONDS),
+    )
 
 
 def resource_table() -> dict[str, dict[str, object]]:

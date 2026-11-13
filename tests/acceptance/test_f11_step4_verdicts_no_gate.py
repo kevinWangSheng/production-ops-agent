@@ -8,11 +8,14 @@ D8 ``release_outcome_from_durable``, the no-gate code surface, A11).
 
 U-5 was revised 2026-11-13 for PR #588 after the user's 2026-11-12 X1/Q1/Q2
 decisions.  The product may now hold one read-only Kubernetes credential in
-the A2 extension profile, and model-written jq may run in its bounded child
-process.  The code-surface proof therefore requires: Kubernetes access is
-confined to ``opspilot/tools/kubernetes_core.py``; that transport is GET-only;
-its only child-process entry is ``run_isolated`` with one ``Popen(env={})``
-using the resolved jq executable;
+the A2 extension profile, and model-written jq plus the A3 Python ``re``
+worker may run in bounded child processes.  The code-surface proof therefore
+requires: Kubernetes access is confined to ``opspilot/tools/kubernetes_core.py``;
+that transport is GET-only; its only child-process entry is
+``run_isolated`` with one ``Popen(env={})``.  The only child programs are jq,
+resolved once by ``require_jq``, and the Python regex worker, resolved once
+from PATH by ``require_python`` and run with ``-I -S -B`` against a fixed
+package script under ``opspilot/tools/``;
 the module has no ``kubectl`` client and no GitHub/GitLab/CI/forge client; and
 the other product modules retain their original forbidden-client checks.  A2's
 contract test records that web face/version construction works without
@@ -425,7 +428,9 @@ def test_item3_no_product_module_names_kubectl_or_a_cluster_ci_or_forge_api() ->
 
 #: ``opspilot/schema.py`` is the migration tool (``make migrate``), not a
 #: product process; it shells out to ``pg_dump`` only (ambiguity note E2).
-#: A2's Kubernetes module is the one bounded exception for jq's child process.
+#: The Kubernetes module is the one bounded exception for its two child
+#: processes: jq (A2) and the Python ``re`` worker (A3).  Both must use the
+#: same ``run_isolated`` boundary.
 SUBPROCESS_ALLOWED = {"opspilot/schema.py"}
 PROCESS_CALLS = {
     ("subprocess", name)
@@ -447,7 +452,7 @@ PROCESS_CALLS = {
 }
 
 
-def test_item3_only_migration_or_bounded_kubernetes_jq_starts_processes() -> None:
+def test_item3_only_migration_or_bounded_kubernetes_children_start_processes() -> None:
     offenders: list[tuple[str, str]] = []
     kubernetes_tree: ast.Module | None = None
     kubernetes_path = PACKAGE / "tools" / "kubernetes_core.py"
@@ -573,10 +578,18 @@ def test_item3_only_migration_or_bounded_kubernetes_jq_starts_processes() -> Non
                 if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
                 and node.name == "require_jq"
             ]
+            require_python = [
+                node
+                for node in ast.walk(tree)
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                and node.name == "require_python"
+            ]
             if len(run_isolated) != 1:
                 offenders.append((relative, "run_isolated function count"))
             if len(require_jq) != 1:
                 offenders.append((relative, "require_jq function count"))
+            if len(require_python) != 1:
+                offenders.append((relative, "require_python function count"))
             if require_jq:
                 jq_checks = [
                     node
@@ -592,6 +605,23 @@ def test_item3_only_migration_or_bounded_kubernetes_jq_starts_processes() -> Non
                 ]
                 if not jq_checks:
                     offenders.append((relative, "require_jq does not resolve jq"))
+            if require_python:
+                python_checks = [
+                    node
+                    for node in ast.walk(require_python[0])
+                    if isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Attribute)
+                    and isinstance(node.func.value, ast.Name)
+                    and node.func.value.id == "shutil"
+                    and node.func.attr == "which"
+                    and len(node.args) == 1
+                    and isinstance(node.args[0], ast.Constant)
+                    and node.args[0].value == "python3"
+                ]
+                if not python_checks:
+                    offenders.append(
+                        (relative, "require_python does not resolve python3")
+                    )
 
             popen_calls = [
                 node
@@ -605,7 +635,160 @@ def test_item3_only_migration_or_bounded_kubernetes_jq_starts_processes() -> Non
             if len(popen_calls) != 1:
                 offenders.append((relative, "Popen call count"))
 
-            forbidden_literals = {"/bin/sh", "sh", "bash", "-c"}
+            for node in ast.walk(tree):
+                if (
+                    isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Attribute)
+                    and node.func.attr in {"chmod", "fchmod"}
+                ):
+                    offenders.append((relative, "executable temp-file mode change"))
+
+            def target_key(node: ast.AST) -> str | None:
+                if isinstance(node, ast.Name):
+                    return node.id
+                if isinstance(node, ast.Attribute):
+                    return ast.dump(node, include_attributes=False)
+                return None
+
+            assignments: dict[str, ast.AST] = {}
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Assign):
+                    for target in node.targets:
+                        if (key := target_key(target)) is not None:
+                            assignments[key] = node.value
+                elif isinstance(node, ast.AnnAssign):
+                    if (key := target_key(node.target)) is not None:
+                        assignments[key] = node.value
+
+            def resolve(node: ast.AST, seen: frozenset[str] = frozenset()) -> ast.AST:
+                key = target_key(node)
+                if key is None or key in seen or key not in assignments:
+                    return node
+                return resolve(node=assignments[key], seen=seen | {key})
+
+            def call_named(node: ast.AST, name: str) -> bool:
+                node = resolve(node)
+                if not isinstance(node, ast.Call):
+                    return False
+                function = node.func
+                return (isinstance(function, ast.Name) and function.id == name) or (
+                    isinstance(function, ast.Attribute) and function.attr == name
+                )
+
+            def argv_for(call: ast.Call) -> ast.List | ast.Tuple | None:
+                if not call.args:
+                    return None
+                value = resolve(call.args[0])
+                return value if isinstance(value, (ast.List, ast.Tuple)) else None
+
+            run_calls = [
+                node
+                for node in ast.walk(tree)
+                if isinstance(node, ast.Call)
+                and (
+                    (isinstance(node.func, ast.Name) and node.func.id == "run_isolated")
+                    or (
+                        isinstance(node.func, ast.Attribute)
+                        and node.func.attr == "run_isolated"
+                    )
+                )
+            ]
+            if len(run_calls) != 2:
+                offenders.append((relative, "run_isolated call count"))
+
+            argv_lists = [argv_for(call) for call in run_calls]
+            argv_lists = [argv for argv in argv_lists if argv is not None]
+            regex_argv = [
+                argv
+                for argv in argv_lists
+                if len(argv.elts) == 5
+                and all(
+                    isinstance(item, ast.Constant) and item.value == flag
+                    for item, flag in zip(argv.elts[1:4], ("-I", "-S", "-B"))
+                )
+                and isinstance(argv.elts[4], ast.Name)
+                and argv.elts[4].id == "REGEX_CHILD"
+            ]
+            if len(regex_argv) != 1:
+                offenders.append((relative, "regex run_isolated argv shape"))
+            elif not call_named(regex_argv[0].elts[0], "require_python"):
+                offenders.append(
+                    (relative, "regex argv[0] is not require_python result")
+                )
+
+            forbidden_process_literals = {"/bin/sh", "sh", "bash", "-c"}
+            jq_argv = [argv for argv in argv_lists if argv not in regex_argv]
+            if len(jq_argv) != 1:
+                offenders.append((relative, "jq run_isolated argv shape"))
+            else:
+                first = jq_argv[0].elts[0]
+                if isinstance(first, ast.Constant) and isinstance(first.value, str):
+                    offenders.append((relative, "jq argv[0] is a string literal"))
+                if any(
+                    isinstance(item, ast.Constant)
+                    and isinstance(item.value, str)
+                    and item.value in forbidden_process_literals
+                    for item in jq_argv[0].elts[1:]
+                ):
+                    offenders.append((relative, "jq argv contains shell flag"))
+
+            regex_constants = [
+                node
+                for node in tree.body
+                if isinstance(node, ast.Assign)
+                and any(
+                    isinstance(target, ast.Name) and target.id == "REGEX_CHILD"
+                    for target in node.targets
+                )
+            ]
+            regex_constants += [
+                node
+                for node in tree.body
+                if isinstance(node, ast.AnnAssign)
+                and isinstance(node.target, ast.Name)
+                and node.target.id == "REGEX_CHILD"
+            ]
+            if len(regex_constants) != 1:
+                offenders.append((relative, "REGEX_CHILD module constant count"))
+
+            def is_path_file(node: ast.AST) -> bool:
+                return (
+                    isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Name)
+                    and node.func.id == "Path"
+                    and len(node.args) == 1
+                    and isinstance(node.args[0], ast.Name)
+                    and node.args[0].id == "__file__"
+                )
+
+            def is_regex_child_path(node: ast.AST) -> bool:
+                if (
+                    isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Attribute)
+                    and node.func.attr == "with_name"
+                    and is_path_file(node.func.value)
+                    and len(node.args) == 1
+                    and isinstance(node.args[0], ast.Constant)
+                    and node.args[0].value == "_regex_child.py"
+                ):
+                    return True
+                return (
+                    isinstance(node, ast.BinOp)
+                    and isinstance(node.op, ast.Div)
+                    and isinstance(node.right, ast.Constant)
+                    and node.right.value == "_regex_child.py"
+                    and isinstance(node.left, ast.Attribute)
+                    and node.left.attr == "parent"
+                    and is_path_file(node.left.value)
+                )
+
+            if regex_constants and not is_regex_child_path(regex_constants[0].value):
+                offenders.append(
+                    (relative, "REGEX_CHILD is not Path(__file__) sibling")
+                )
+            if not (PACKAGE / "tools" / "_regex_child.py").is_file():
+                offenders.append((relative, "_regex_child.py is missing"))
+
             for node in ast.walk(tree):
                 if isinstance(node, ast.Attribute):
                     if (
@@ -618,7 +801,7 @@ def test_item3_only_migration_or_bounded_kubernetes_jq_starts_processes() -> Non
                     isinstance(node, ast.Constant)
                     and isinstance(node.value, str)
                     and (
-                        node.value in forbidden_literals
+                        node.value in forbidden_process_literals
                         or node.value == "sys.executable"
                     )
                 ):
@@ -640,6 +823,8 @@ def test_item3_only_migration_or_bounded_kubernetes_jq_starts_processes() -> Non
                 and function.attr == "run_isolated"
             ):
                 continue
+            if relative != KUBERNETES_CORE_RELATIVE:
+                offenders.append((relative, "run_isolated outside kubernetes_core"))
             all_run_isolated_calls.append((relative, node))
             if not node.args:
                 offenders.append((relative, "run_isolated has no argv"))
