@@ -50,9 +50,10 @@ N3 的结论来自读 Jaeger v1.53.0 源码，下列各项未在真实实例取�
 
 - 传输是 `otel_demo.OtelDemoTransport` 的子类 `JaegerQueryTransport`，只换分派、复用其 GET（无代理、不跟重定向、期限、限读）；`RoutedTransport(routes=...)` 按精确名路由。新模块不导入网络库、不开子进程。
 - 四个 schema 插在 otel-demo 工具之后、Kubernetes 工具之前（A2 实现测试钉了「最后两个是 Kubernetes」）。
-- 预检原因码（都归 `INVALID_PARAMS`）：`INVALID_SERVICE`、`INVALID_TAGS`、`INVALID_OPERATION`、`INVALID_DURATION`、`INVALID_LIMIT`、`INVALID_TRACE_ID`、`INVALID_SPAN_KIND`、`QUERY_OUT_OF_WINDOW`。`INVALID_TAGS` 按决定表；其余命名为本实现所定。
+- 按合同测试对齐：`INVALID_TAGS` 是独立的结果原因码（注册表与结果词表各加一项，同 A2-6 做法）；四个新工具一律匿名访问 Jaeger，不带 `OPSPILOT_OTEL_TOKEN`（`traces_search` 照旧会带）；时长按模型原文发给 Jaeger。
+- 其余预检原因码（都归 `INVALID_PARAMS`）：`INVALID_SERVICE`、`INVALID_OPERATION`、`INVALID_DURATION`、`INVALID_LIMIT`、`INVALID_TRACE_ID`、`INVALID_SPAN_KIND`、`QUERY_OUT_OF_WINDOW`。`INVALID_TAGS` 按决定表；其余命名为本实现所定。
 - logfmt：键为不含空白、`=`、`"`、`\` 的串；值为带 `\"`、`\\` 转义的双引号串或非空无引号串；重复键、控制字符（含制表）、超 2000 字符拒绝；空白串视为不带标签。发给 Jaeger 时用 `tags` JSON。
-- 时长：Go 单位 ns/us/µs/ms/s/m/h，必须为正，换算成整数纳秒以 `NNNns` 发送，保证校验的就是发出的。
+- 时长：Go 单位 ns/us/µs/ms/s/m/h，必须为正，换算成纳秒只用于比较 max ≥ min。
 - 超出 limit：按每条 trace 最早 span 的开始时间取最新 N 条；视图 `backend_traces_returned` 记原始条数，记录里加 `backend_traces_dropped_over_limit`。
 - 按 ID：只保留完全落在查询窗内（且有开始时间和时长）的 span，其余计入 `spans_outside_window` 与 `spans_omitted`；ID 转小写；不发时间参数。注册的 `max_result_bytes` 取注册表上限 2 MiB（读仍是 4 MiB），使超视图上限的整条能走「留证据供回读」路径。
 - 404（按 ID）是成功的空视图，执行器照常给 `no_data`/`NO_DATA`（与 `traces_search` 空结果一致），视图带 `trace_found: false` 和 5000 条内存说明。其余工具的 404 记 `INVALID_PARAMS`。
