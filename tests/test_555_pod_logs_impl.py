@@ -257,7 +257,6 @@ def test_pathological_regex_is_stopped_at_the_deadline():
     opener = LogOpener(_pod("app"), {("app", False): _log((5, "a" * 40 + "!"))})
     transport = logs.PodLogsTransport(
         credentials={k8s.CREDENTIAL_REF: "k8s-aaaaaaaa357"},
-        python_path=k8s.require_python(),
         opener=opener,  # type: ignore[arg-type]
     )
     request = TransportRequest(
@@ -323,7 +322,6 @@ def test_regex_child_is_a_fixed_package_file():
         include="boom",
         exclude=None,
         ignore_case=True,
-        python_path=k8s.require_python(),
         deadline=time.monotonic() + 10,
     )
     assert decided is not None and decided.keep == (True, False)

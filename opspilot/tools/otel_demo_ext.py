@@ -237,19 +237,18 @@ def otel_demo_ext_executor_factory(
     config: otel_demo.OtelDemoConfig | None = None,
     kubernetes: kubernetes_core.KubernetesConfig,
     jq_path: str | None = None,
-    python_path: str | None = None,
     token_counter: TokenCounter | None = None,
 ) -> ExecutorFactory:
     """An ``ExecutorFactory`` over this profile; built once per worker slot.
 
     ``jq_path`` defaults to ``jq`` on PATH: a worker without it does not start
-    (``JQ_UNAVAILABLE``, A2-8), nor without a tokenizer. ``python_path``
-    (the Pod log filters' regex child, A3-7) defaults to ``python3`` on PATH
-    the same way (``PYTHON_NOT_FOUND``).
+    (``JQ_UNAVAILABLE``, A2-8), nor without a tokenizer, nor
+    without ``python3`` on PATH for the Pod log filters' regex child (A3-7,
+    ``PYTHON_NOT_FOUND``; the child resolves it again per call).
     """
     config = config or otel_demo.OtelDemoConfig()
     jq = jq_path or kubernetes_core.require_jq()
-    python = python_path or kubernetes_core.require_python()
+    kubernetes_core.require_python()  # startup precondition (A3-7)
     counter = token_counter if token_counter is not None else default_counter()
     registrations = otel_demo_ext_registrations(config, kubernetes)
     tools = ToolRegistry(registrations.tools)
@@ -271,7 +270,6 @@ def otel_demo_ext_executor_factory(
     cluster = kubernetes_core.KubernetesTransport(
         credentials={kubernetes_core.CREDENTIAL_REF: kubernetes.token},
         jq_path=jq,
-        python_path=python,
         ca_file=kubernetes.ca_file,
         application_namespace=kubernetes.namespace,
     )

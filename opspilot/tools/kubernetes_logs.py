@@ -61,7 +61,6 @@ from opspilot.tools.kubernetes_core import (
     pattern_problem,
     pod_url,
     refused,
-    require_python,
 )
 from opspilot.tools.kubernetes_core import _monotonic as _monotonic
 from opspilot.tools.outcomes import Window
@@ -268,7 +267,6 @@ class PodLogsTransport:
         *,
         credentials: Mapping[str, str | None] | None = None,
         client: KubernetesClient | None = None,
-        python_path: str | None = None,
         opener: Any = None,
         ca_file: str | None = None,
         application_namespace: str = DEFAULT_NAMESPACE,
@@ -279,9 +277,6 @@ class PodLogsTransport:
                 credentials=credentials or {}, opener=opener, ca_file=ca_file
             )
         self._client = client
-        # ``None``: resolved from PATH on first filtered call (the worker
-        # resolves it at startup and passes it in, A3-7).
-        self._python_path = python_path
         self._application_namespace = application_namespace
         self._monotonic = monotonic or _monotonic
 
@@ -314,8 +309,6 @@ class PodLogsTransport:
         endpoint = request.selector.get(ENDPOINT_SELECTOR, "")
         if not endpoint:
             raise TransportError("K8S_ENDPOINT_MISSING")
-        if (include or exclude) and self._python_path is None:
-            self._python_path = require_python()
         return _Read(
             client=self._client,
             endpoint=endpoint,
@@ -328,7 +321,6 @@ class PodLogsTransport:
             limit=limit,
             include=include,
             exclude=exclude,
-            python_path=self._python_path,
             application_namespace=self._application_namespace,
         )
 
@@ -372,7 +364,6 @@ class _Read:
         limit: int,
         include: str | None,
         exclude: str | None,
-        python_path: str | None,
         application_namespace: str,
     ) -> TransportResponse:
         pod = self.client.get(
@@ -464,13 +455,11 @@ class _Read:
         modes: dict[str, str | None] = {"filter": None, "exclude_filter": None}
         removed_include = removed_exclude = 0
         if lines and (include is not None or exclude is not None):
-            assert python_path is not None
             decided = filter_lines(
                 [line.text for line in lines],
                 include=include,
                 exclude=exclude,
                 ignore_case=True,
-                python_path=python_path,
                 deadline=self.deadline,
             )
             if decided is None:

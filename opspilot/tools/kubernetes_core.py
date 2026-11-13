@@ -774,7 +774,7 @@ def _limit_memory() -> None:
 
 
 def run_isolated(
-    argv: Sequence[str],
+    argv: Sequence[str | os.PathLike[str]],
     stdin: bytes,
     *,
     deadline: float,
@@ -971,14 +971,14 @@ def filter_lines(
     include: str | None,
     exclude: str | None,
     ignore_case: bool,
-    python_path: str,
     deadline: float,
 ) -> LineFilter | None:
     """Run ``include``/``exclude`` over ``lines`` in a bounded child.
 
-    The child is ``REGEX_CHILD`` (a fixed file of this package) run by
-    ``python_path`` in isolated mode without ``site`` (``-I -S -B``),
-    started by ``run_isolated``: no shell, an empty
+    The child is ``REGEX_CHILD`` (a fixed file of this package) run by the
+    ``python3`` that ``require_python`` resolves (the worker already checked
+    it at startup) in isolated mode without ``site`` (``-I -S -B``), started
+    by ``run_isolated``: no shell, an empty
     environment, an empty working directory, the call's remaining time
     (a pathological pattern is killed: ``timeout``/``TOOL_TIMEOUT``, the jq
     timeout class) and 512 MiB of memory. A line is kept when it matches
@@ -993,9 +993,13 @@ def filter_lines(
         "lines": list(lines),
     }
     stdin = json.dumps(spec, separators=(",", ":")).encode("ascii")
+    try:
+        python = require_python()
+    except ToolContractError:
+        raise TransportError("CHILD_UNAVAILABLE") from None
     with tempfile.TemporaryDirectory(prefix="opspilot-re-") as work:
         status, output = run_isolated(
-            [python_path, "-I", "-S", "-B", str(REGEX_CHILD)],
+            [python, "-I", "-S", "-B", REGEX_CHILD],
             stdin,
             deadline=deadline,
             max_output_bytes=len(lines) + 4096,
@@ -1065,7 +1069,6 @@ class KubernetesTransport:
         *,
         credentials: Mapping[str, str | None],
         jq_path: str | None = None,
-        python_path: str | None = None,
         opener: urllib.request.OpenerDirector | None = None,
         ca_file: str | None = None,
         application_namespace: str = DEFAULT_NAMESPACE,
@@ -1084,7 +1087,6 @@ class KubernetesTransport:
 
         self._logs = PodLogsTransport(
             client=self._client,
-            python_path=python_path,
             application_namespace=application_namespace,
             monotonic=self._monotonic,
         )
