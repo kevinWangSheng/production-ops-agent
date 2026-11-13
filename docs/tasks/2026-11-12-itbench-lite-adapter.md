@@ -93,7 +93,9 @@ L6 已写入决定表。实现会话先做不依赖 A 系列的部分；假 serv
 - `alerts_explained` 恒为空：L1–L5 没有规则，钉住版本的 judge 提示词也不给它打分。
 - 「启发式」「受转换限制」写在 trial 目录的 `conversion_meta.json` 与 judge 标签文件里，不写进 `agent_output.json`：评测器把整份对象发给 judge，额外字段会进提示词。
 - 确定性匹配的 filter 正则对对象名和完整 `namespace/Kind/name` 都试 `re.search`：judge 示例里的 filter 两种写法都有可能。
-- judge 默认接收方 Z.ai（`glm-5.3-flashx`），`ITBENCH_JUDGE_PROVIDER` 可选 openai、deepseek，其他一律拒绝；子进程只拿 `JUDGE_*` 三个变量与基础路径，工作目录不得有 `.env`（评测器会 `load_dotenv`）。
+- judge 默认接收方 Z.ai（`glm-5.3-flashx`），`ITBENCH_JUDGE_PROVIDER` 可选 openai、deepseek，其他一律拒绝；子进程只拿 `JUDGE_*` 三个变量、`PYTHON_DOTENV_DISABLED=1` 与基础路径（评测器会 `load_dotenv` 并向上找 `.env`），工作目录有 `.env` 仍拒绝；路径在启动子进程前转成绝对路径。
+- L5 的强制：`conversion_meta.json` 里 `report_present=false` 的 trial 不送 judge，`trial_scores.json` 里这类 trial 全部指标记 0 并留在分母；评测器自带的 statistics 不含它们，不作为公布分数。
+- 分档清单必须正好是官方 35 个场景 ID（常量取自仓库外两次普查的场景目录名，只用目录名）。
 - 结构合同测试设了 `ITBENCH_EVALUATIONS_DIR` 才跑，CI 跳过。
 
 偏离与已知限制：

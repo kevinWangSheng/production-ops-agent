@@ -115,7 +115,9 @@ class _Matcher:
             re.compile(
                 rf"(?<![{_NAME_CHAR}])(?:"
                 + "|".join(re.escape(n) for n in self.names)
-                + rf")(?![{_NAME_CHAR}])",
+                # A trailing hyphen ends the name only when it starts "->",
+                # so ``payment->checkout`` splits but ``checkout-7f9`` does not.
+                + r")(?![A-Za-z0-9_]|-(?!>))",
                 re.IGNORECASE,
             )
             if self.names

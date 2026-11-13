@@ -6,23 +6,30 @@ import pytest
 
 from scripts.itbench_lite import coverage
 
+IDS = sorted(coverage.SCENARIO_IDS, key=int)
+
 
 def tiers():
-    # Synthetic ids (1..34 plus 38) with made-up tier labels.
-    return {f"Scenario-{i}": ("T1" if i % 2 else "T2") for i in [*range(1, 35), 38]}
+    # Official scenario ids with made-up tier labels.
+    return {f"Scenario-{i}": ("T1" if n % 2 else "T2") for n, i in enumerate(IDS)}
+
+
+def test_official_scenario_set():
+    assert len(coverage.SCENARIO_IDS) == 35
+    assert coverage.DATA_INCOMPLETE <= coverage.SCENARIO_IDS
 
 
 def test_all_scenarios_stay_in_denominator_missing_runs_score_zero():
     table = coverage.build_table(
         coverage.load_tiers(tiers()),
-        {"S1": [{"f1": 1.0}, {"f1": 1.0}, {"f1": 1.0}], "3": [{"f1": 1.0}]},
+        {"S1": [{"f1": 1.0}, {"f1": 1.0}, {"f1": 1.0}], "4": [{"f1": 1.0}]},
         ["f1"],
     )
     assert table["overall"]["scenarios"] == 35
     rows = {r["scenario"]: r for r in table["scenarios"]}
     assert rows["1"]["means"]["f1"] == 1.0
-    assert rows["3"]["means"]["f1"] == pytest.approx(1 / 3)
-    assert rows["3"]["trials_missing"] == 2
+    assert rows["4"]["means"]["f1"] == pytest.approx(1 / 3)
+    assert rows["4"]["trials_missing"] == 2
     assert rows["5"]["means"]["f1"] == 0.0
     assert table["overall"]["means"]["f1"] == pytest.approx((1 + 1 / 3) / 35)
     t1 = next(t for t in table["tiers"] if t["tier"] == "T1")
@@ -35,24 +42,24 @@ def test_data_incomplete_scenarios_flagged():
     assert flagged == ["18", "38"]
 
 
-def test_tier_file_must_list_35_and_include_s38_s18():
-    with pytest.raises(ValueError, match="expected 35"):
+def test_tier_file_must_list_exactly_the_official_set():
+    with pytest.raises(ValueError, match="exactly the 35"):
         coverage.load_tiers({"1": "T1"})
-    ids = {f"S{i}": "T" for i in range(1, 36)}
-    with pytest.raises(ValueError, match="data-incomplete"):
-        coverage.load_tiers(ids)
-    ids = {f"S{i}": "T" for i in [*range(1, 35), 38]}
-    assert len(coverage.load_tiers(ids)) == 35
+    # 35 ids, includes S18 and S38, but one id is not an official scenario.
+    wrong = {f"S{i}": "T" for i in IDS if i != "105"} | {"S3": "T"}
+    with pytest.raises(ValueError, match=r"missing \['105'\], unexpected \['3'\]"):
+        coverage.load_tiers(wrong)
+    assert len(coverage.load_tiers({f"S{i}": "T" for i in IDS})) == 35
 
 
 def test_score_for_unknown_scenario_rejected():
-    ids = coverage.load_tiers({f"S{i}": "T" for i in [*range(1, 35), 38]})
+    ids = coverage.load_tiers({f"S{i}": "T" for i in IDS})
     with pytest.raises(ValueError, match="no tier"):
         coverage.build_table(ids, {"S99": [{}]}, ["f1"])
 
 
 def test_markdown_labels():
-    ids = coverage.load_tiers({f"S{i}": "T" for i in [*range(1, 35), 38]})
+    ids = coverage.load_tiers({f"S{i}": "T" for i in IDS})
     text = coverage.render_markdown(
         coverage.build_table(ids, {}, ["root_cause_entity_f1", "propagation_chain"])
     )

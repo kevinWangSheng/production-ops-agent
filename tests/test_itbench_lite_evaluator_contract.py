@@ -50,6 +50,7 @@ print(json.dumps({
                 "root_causes": sum(1 for e in t["output"]["entities"] if e["contributing_factor"] is True),
                 "propagations": len(t["output"]["propagations"])} for t in outputs],
     "prompt_round_trip": round_trip,
+    "dotenv_disabled": __import__("dotenv.main").main._load_dotenv_disabled(),
     "judge_reads": {
         "name": "`name` field" in p_main.LAAJ_SYSTEM_PROMPT,
         "contributing_factor": "contributing_factor" in p_ent.ROOT_CAUSE_ENTITY_PROMPT,
@@ -125,7 +126,8 @@ def test_synthetic_outputs_load_and_parse_in_pinned_evaluator(tmp_path):
         capture_output=True,
         text=True,
         timeout=120,
-        env={"PATH": os.environ.get("PATH", ""), "HOME": os.environ.get("HOME", "")},
+        # The same child environment official_eval.run uses (no key: no call).
+        env=official_eval.subprocess_env(official_eval.judge_config({})),
     )
     assert completed.returncode == 0, completed.stderr[-2000:]
     result = json.loads(completed.stdout.strip().splitlines()[-1])
@@ -139,6 +141,7 @@ def test_synthetic_outputs_load_and_parse_in_pinned_evaluator(tmp_path):
         {"trial": 3, "keys": keys, "entities": 3, "root_causes": 1, "propagations": 2},
     ]
     assert result["prompt_round_trip"] == [True, True, True]
+    assert result["dotenv_disabled"] is True
     assert result["judge_reads"] == {
         "name": True,
         "contributing_factor": True,

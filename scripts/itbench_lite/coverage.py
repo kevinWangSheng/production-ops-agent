@@ -21,7 +21,14 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
-EXPECTED_SCENARIOS = 35
+# The 35 SRE scenario directory names of ITBench-Lite v0.2, as listed (names
+# only) by the 2026-11-04 replay survey and the 2026-11-12 cluster-object
+# census outside the repo; both lists agree.  Ids only, no answer content.
+SCENARIO_IDS: frozenset[str] = frozenset(
+    "1 2 4 5 6 7 8 9 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 29 31 33 34 "
+    "35 38 80 81 83 91 102 105".split()
+)
+EXPECTED_SCENARIOS = len(SCENARIO_IDS)
 EXPECTED_TRIALS = 3
 DATA_INCOMPLETE = frozenset({"38", "18"})
 DATA_INCOMPLETE_LABEL = "数据残缺"
@@ -53,7 +60,7 @@ def scenario_key(value: str) -> str:
 
 
 def load_tiers(
-    tiers: Mapping[str, str], *, expected: int = EXPECTED_SCENARIOS
+    tiers: Mapping[str, str], *, expected: frozenset[str] = SCENARIO_IDS
 ) -> dict[str, str]:
     """Validate and canonicalise a tier mapping."""
 
@@ -65,13 +72,15 @@ def load_tiers(
         if not isinstance(tier, str) or not tier.strip():
             raise ValueError(f"empty tier for scenario {raw_id!r}")
         result[key] = tier.strip()
-    if len(result) != expected:
+    if result.keys() != expected:
+        missing = sorted(expected - result.keys(), key=int)
+        extra = sorted(result.keys() - expected, key=int)
         raise ValueError(
-            f"tier file lists {len(result)} scenarios, expected {expected}"
+            f"tier file must list exactly the {len(expected)} official scenarios;"
+            f" missing {missing}, unexpected {extra}"
         )
-    missing = sorted(DATA_INCOMPLETE - result.keys())
-    if missing:
-        raise ValueError(f"tier file lacks data-incomplete scenarios: {missing}")
+    if not DATA_INCOMPLETE <= result.keys():
+        raise ValueError("data-incomplete scenarios are not in the scenario set")
     return result
 
 

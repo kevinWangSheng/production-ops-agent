@@ -262,3 +262,18 @@ def test_write_trial_layout_and_sidecar(tmp_path):
         (tmp_path / "Scenario-7" / "2" / "conversion_meta.json").read_text()
     )
     assert meta["method"] == "heuristic" and meta["propagation_chain"] == "受转换限制"
+
+
+def test_unspaced_ascii_arrow_with_hyphenated_names():
+    rep = report(
+        "payment->checkout; flagd-config->cart; checkout-7f9->frontend.",
+        [claim("fact", "x")],
+    )
+    out = answer.convert(rep, [ev("ev-1", "m", {})], VOCAB).agent_output
+    assert [(p["source"], p["target"]) for p in out["propagations"]] == [
+        ("otel-demo/Service/payment", "otel-demo/Service/checkout"),
+        ("otel-demo/Service/flagd-config", "otel-demo/Service/cart"),
+    ]
+    # flagd is never matched inside flagd-config, nor checkout inside checkout-7f9.
+    assert "otel-demo/Service/flagd" not in names(out)
+    assert names(out).count("otel-demo/Service/checkout") == 1

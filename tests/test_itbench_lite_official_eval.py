@@ -57,6 +57,7 @@ def test_child_env_only_carries_judge_variables():
     )
     assert env == {
         "PATH": "/bin",
+        "PYTHON_DOTENV_DISABLED": "1",
         "JUDGE_BASE_URL": "https://api.z.ai/api/paas/v4",
         "JUDGE_API_KEY": KEY,
         "JUDGE_MODEL": "glm-5.3-flashx",
@@ -86,3 +87,91 @@ def test_run_refuses_without_key_before_any_call(tmp_path):
 def test_evaluator_dir_required():
     with pytest.raises(oe.ConfigError):
         oe.evaluator_dir({})
+
+
+def test_child_env_disables_dotenv():
+    env = oe.subprocess_env(oe.judge_config({"ZAI_API_KEY": KEY}), {})
+    assert env["PYTHON_DOTENV_DISABLED"] == "1"
+
+
+def test_redacted_strips_url_userinfo():
+    config = oe.judge_config(
+        {"ZAI_API_KEY": KEY, "ZAI_BASE_URL": "https://u:pw357@judge.example/v1"}
+    )
+    assert config.redacted()["base_url"] == "https://judge.example/v1"
+    assert config.base_url == "https://u:pw357@judge.example/v1"
+
+
+def test_command_paths_are_absolute(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    command = oe.build_command(Path("ev"), Path("gt"), Path("out"), Path("w/r.json"))
+    assert command[0] == str(tmp_path / "ev" / ".venv" / "bin" / "python")
+    for flag, rel in [
+        ("--ground-truth", "gt"),
+        ("--outputs", "out"),
+        ("--result-file", "w/r.json"),
+    ]:
+        assert command[command.index(flag) + 1] == str(tmp_path / rel)
+
+
+def _write(outputs, scenario, trial, present):
+    from scripts.itbench_lite import answer
+
+    conversion = answer.Conversion(answer.empty_output(), {"report_present": present})
+    answer.write_trial(outputs, scenario, trial, conversion)
+
+
+def test_reportless_trials_are_not_staged_for_the_judge(tmp_path):
+    outputs = tmp_path / "outputs"
+    _write(outputs, "Scenario-4", 1, True)
+    _write(outputs, "Scenario-4", 2, False)
+    _write(outputs, "Scenario-5", 1, False)
+    reportless = oe.stage_judged(outputs, tmp_path / "staged")
+    assert reportless == [("Scenario-4", 2), ("Scenario-5", 1)]
+    staged = sorted(
+        str(p.relative_to(tmp_path / "staged"))
+        for p in (tmp_path / "staged").rglob("agent_output.json")
+    )
+    assert staged == ["Scenario-4/1/outputs/agent_output.json"]
+
+
+def test_reportless_trials_score_zero_even_if_judge_scored_them(tmp_path):
+    outputs = tmp_path / "outputs"
+    _write(outputs, "Scenario-4", 1, True)
+    _write(outputs, "Scenario-4", 2, False)
+    _write(outputs, "Scenario-5", 1, False)
+    results = {
+        "raw_results": [
+            {
+                "incident_id": "4",
+                "trial_id": "1",
+                "scores": {
+                    "root_cause_entity": {
+                        "calculation_precision": 1,
+                        "calculation_recall": 0.5,
+                        "calculation_f1": 0.667,
+                    },
+                    "propagation_chain": {"calculation": 0.25},
+                },
+            },
+            # A judged score for a reportless trial must be overridden.
+            {
+                "incident_id": "4",
+                "trial_id": "2",
+                "scores": {"root_cause_entity": {"calculation_f1": 1.0}},
+            },
+        ]
+    }
+    table = oe.trial_scores(results, outputs)
+    assert table["4"][0]["root_cause_entity_f1"] == 0.667
+    assert table["4"][0]["propagation_chain"] == 0.25
+    assert table["4"][1] == {m: 0.0 for m in oe.METRIC_KEYS}
+    assert table["5"] == [{m: 0.0 for m in oe.METRIC_KEYS}]
+
+
+def test_missing_meta_is_refused(tmp_path):
+    trial = tmp_path / "outputs" / "Scenario-4" / "1" / "outputs"
+    trial.mkdir(parents=True)
+    (trial / "agent_output.json").write_text("{}")
+    with pytest.raises(oe.ConfigError, match="conversion_meta"):
+        oe.stage_judged(tmp_path / "outputs", tmp_path / "staged")
