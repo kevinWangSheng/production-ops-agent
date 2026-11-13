@@ -1,0 +1,139 @@
+# OpsPilot's read-only cluster identity for the lab (A1, #553; decision
+# table r3 A1-1, A1-2). `kind_lab.py up` applies this file and issues a
+# 24h token for the ServiceAccount (`kubectl create token`, never a
+# long-lived token Secret); `kind_lab.py k8s-token` only re-issues it.
+#
+# Rules: the unconditional rules of HolmesGPT a0009195
+# helm/holmes/templates/holmesgpt-service-account.yaml, narrowed to the verbs
+# get and list (no watch); its custom-resource, monitoring.coreos.com and
+# openshift blocks are not carried over (Q6). No rule names secrets, a
+# wildcard, exec, attach, portforward, proxy, serviceaccounts/token,
+# impersonate or any write verb.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: opspilot-readonly
+  labels:
+    app.kubernetes.io/part-of: opspilot-kind-lab
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: opspilot-investigator
+  namespace: opspilot-readonly
+automountServiceAccountToken: false
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: opspilot-investigator-readonly
+  labels:
+    app.kubernetes.io/part-of: opspilot-kind-lab
+rules:
+  - apiGroups: [""]
+    resources:
+      - configmaps
+      - daemonsets
+      - deployments
+      - endpoints
+      - events
+      - namespaces
+      - nodes
+      - persistentvolumes
+      - persistentvolumeclaims
+      - pods
+      - pods/log
+      - pods/status
+      - replicasets
+      - replicationcontrollers
+      - resourcequotas
+      - services
+      - serviceaccounts
+    verbs: [get, list]
+  - apiGroups: [apps]
+    resources:
+      - daemonsets
+      - deployments
+      - deployments/scale
+      - replicasets
+      - replicasets/scale
+      - statefulsets
+    verbs: [get, list]
+  - apiGroups: [extensions]
+    resources:
+      - daemonsets
+      - deployments
+      - deployments/scale
+      - ingresses
+      - replicasets
+      - replicasets/scale
+      - replicationcontrollers/scale
+    verbs: [get, list]
+  - apiGroups: [batch]
+    resources:
+      - cronjobs
+      - jobs
+    verbs: [get, list]
+  - apiGroups: [autoscaling]
+    resources:
+      - horizontalpodautoscalers
+    verbs: [get, list]
+  - apiGroups: [events.k8s.io]
+    resources:
+      - events
+    verbs: [get, list]
+  - apiGroups: [storage.k8s.io]
+    resources:
+      - storageclasses
+    verbs: [get, list]
+  - apiGroups: [metrics.k8s.io]
+    resources:
+      - pods
+      - nodes
+    verbs: [get, list]
+  - apiGroups: [networking.k8s.io]
+    resources:
+      - ingresses
+      - networkpolicies
+    verbs: [get, list]
+  - apiGroups: [policy]
+    resources:
+      - poddisruptionbudgets
+      - podsecuritypolicies
+    verbs: [get, list]
+  - apiGroups: [rbac.authorization.k8s.io]
+    resources:
+      - clusterroles
+      - clusterrolebindings
+      - roles
+      - rolebindings
+    verbs: [get, list]
+  - apiGroups: [apiregistration.k8s.io]
+    resources:
+      - apiservices
+    verbs: [get, list]
+  # the definitions only, not any custom resource itself
+  - apiGroups: [apiextensions.k8s.io]
+    resources:
+      - customresourcedefinitions
+    verbs: [get, list]
+  - apiGroups: [admissionregistration.k8s.io]
+    resources:
+      - mutatingwebhookconfigurations
+      - validatingwebhookconfigurations
+    verbs: [get, list]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: opspilot-investigator-readonly
+  labels:
+    app.kubernetes.io/part-of: opspilot-kind-lab
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: opspilot-investigator-readonly
+subjects:
+  - kind: ServiceAccount
+    name: opspilot-investigator
+    namespace: opspilot-readonly
