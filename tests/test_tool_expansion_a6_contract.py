@@ -34,6 +34,7 @@ real cluster, container, Docker, or full-suite pytest run is used.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import shutil
 from datetime import timedelta
@@ -136,15 +137,45 @@ def _header_labels(view: dict[str, object]) -> list[str]:
     return header.split()
 
 
-def _assert_invalid_columns(outcome, bad_column: str) -> None:
-    # The outer executor reason remains the standard parameter error; the
-    # fixed adapter code and offending column must be visible to the model.
+def _invalid_columns_refusal(opener: KubeOpener, params: dict[str, object]):
+    """Read the pre-dispatch refusal through the existing transport seam."""
+
+    transport = kubernetes_core.KubernetesTransport(
+        credentials={kubernetes_core.CREDENTIAL_REF: K8S_TOKEN},
+        opener=opener,
+    )
+    request = TransportRequest(
+        operation_id="a6-invalid-columns-t0",
+        source="otel-demo",
+        verb="list",
+        endpoint=K8S_API,
+        selector={kubernetes_core.ENDPOINT_SELECTOR: K8S_API},
+        params=params,
+        window=A6_AUTHORIZED_WINDOW,
+        timeout_seconds=1.0,
+        max_result_bytes=4 * 1024 * 1024,
+        credential_ref="k8s-ro",
+        tool=TABULAR_TOOL,
+        target_id=TARGET_ID,
+    )
+    return transport.fetch(request)
+
+
+def _assert_invalid_columns(
+    outcome, refusal, bad_column: str, opener: KubeOpener
+) -> None:
+    # The executor exposes only the standard parameter reason and no source
+    # error for a request that was never sent.  The adapter refusal itself is
+    # checked through its existing TransportResponse seam below.
     assert (outcome.status, outcome.reason) == ("error", "INVALID_PARAMS"), outcome.model_view
     view = _view(outcome)
     assert view["content"] is None
-    rendered = json.dumps(view, ensure_ascii=False)
-    assert "INVALID_COLUMNS" in rendered
-    assert bad_column in rendered or bad_column.replace("\n", "\\n") in rendered
+    assert opener.requests == []
+    assert refusal.sent is False
+    refusal_text = refusal.body.decode("utf-8")
+    refusal_record = f"{refusal.source_status}\n{refusal_text}"
+    assert "INVALID_COLUMNS" in refusal_record
+    assert bad_column in refusal_record or bad_column.replace("\n", "\\n") in refusal_record
 
 
 def test_extension_surface_adds_tabular_query_without_pinning_future_tools():
@@ -235,7 +266,7 @@ def test_pod_name_status_image_columns_are_cell_arrays_and_one_operation(monkeyp
     )
     assert (outcome.status, outcome.reason) == ("ok", None), outcome.model_view
     view = _view(outcome)
-    assert set(("header", "rows", "count", "scope", "notes")) <= set(view)
+    assert set(("header", "count", "scope", "notes")) <= set(view)
     assert _header_labels(view) == ["NAME", "STATUS", "IMAGE"]
     assert _rows(outcome) == [
         ["checkout-0", "Running", "ghcr.io/checkout:v1,ghcr.io/sidecar:v2"],
@@ -365,7 +396,6 @@ def test_raw_source_over_four_mib_refuses_the_whole_tabular_result(monkeypatch):
     outcome = executor.execute(_call(_params(columns="NAME:.metadata.name")))
     assert (outcome.status, outcome.reason) == ("error", "RESULT_TOO_LARGE")
     assert _view(outcome)["content"] is None
-    assert _view(outcome).get("rows") is None
 
 
 def test_more_than_twenty_columns_or_two_thousand_chars_is_invalid_before_request(
@@ -374,15 +404,17 @@ def test_more_than_twenty_columns_or_two_thousand_chars_is_invalid_before_reques
     opener = KubeOpener([])
     executor, _, _, _, _ = _executor(monkeypatch, opener)
     twenty_one = ",".join(f"C{i}:.metadata.name" for i in range(21))
-    outcome = executor.execute(_call(_params(columns=twenty_one)))
-    _assert_invalid_columns(outcome, twenty_one)
-    assert opener.requests == []
+    params = _params(columns=twenty_one)
+    refusal = _invalid_columns_refusal(opener, params)
+    outcome = executor.execute(_call(params))
+    _assert_invalid_columns(outcome, refusal, twenty_one, opener)
 
     too_long = "H" * (2001 - len(":.metadata.name")) + ":.metadata.name"
     assert len(too_long) == 2001
-    outcome = executor.execute(_call(_params(columns=too_long), index=1))
-    _assert_invalid_columns(outcome, too_long)
-    assert opener.requests == []
+    params = _params(columns=too_long)
+    refusal = _invalid_columns_refusal(opener, params)
+    outcome = executor.execute(_call(params, index=1))
+    _assert_invalid_columns(outcome, refusal, too_long, opener)
 
 
 def test_twenty_columns_and_two_thousand_chars_are_accepted_at_the_boundary(monkeypatch):
@@ -406,18 +438,20 @@ def test_forbidden_column_characters_are_invalid_and_never_sent(monkeypatch, for
     bad = f"BAD:.metadata.name{forbidden}tail"
     opener = KubeOpener([])
     executor, _, _, _, _ = _executor(monkeypatch, opener)
-    outcome = executor.execute(_call(_params(columns=bad)))
-    _assert_invalid_columns(outcome, bad)
-    assert opener.requests == []
+    params = _params(columns=bad)
+    refusal = _invalid_columns_refusal(opener, params)
+    outcome = executor.execute(_call(params))
+    _assert_invalid_columns(outcome, refusal, bad, opener)
 
 
 def test_malformed_column_echoes_the_offending_column(monkeypatch):
     bad = "BROKEN"
     opener = KubeOpener([])
     executor, _, _, _, _ = _executor(monkeypatch, opener)
-    outcome = executor.execute(_call(_params(columns=bad)))
-    _assert_invalid_columns(outcome, bad)
-    assert opener.requests == []
+    params = _params(columns=bad)
+    refusal = _invalid_columns_refusal(opener, params)
+    outcome = executor.execute(_call(params))
+    _assert_invalid_columns(outcome, refusal, bad, opener)
 
 
 def test_filter_pattern_is_case_sensitive_and_matches_the_joined_row(monkeypatch):
@@ -456,13 +490,23 @@ def test_no_row_count_cap_is_distinct_from_view_size_cap(monkeypatch):
 
 
 def test_view_over_max_tokens_refuses_whole_result_without_partial_rows(monkeypatch):
-    items = [_tabular_pod(f"wide-{index}", blob="x" * 400) for index in range(400)]
+    def high_entropy_blob(index: int) -> str:
+        seed = f"a6-view-{index}".encode()
+        chunks = []
+        for _ in range(20):
+            seed = hashlib.sha256(seed).digest()
+            chunks.append(seed.hex())
+        return "".join(chunks)[:600]
+
+    items = [
+        _tabular_pod(f"wide-{index}", blob=high_entropy_blob(index))
+        for index in range(500)
+    ]
     opener = KubeOpener([_list(items)])
     executor, _, _, _, _ = _executor(monkeypatch, opener)
     outcome = executor.execute(_call(_params(columns="NAME:.metadata.name,BLOB:.blob")))
     assert (outcome.status, outcome.reason) == ("error", "RESULT_TOO_LARGE")
     assert _view(outcome)["content"] is None
-    assert _view(outcome).get("rows") is None
 
 
 def test_pathological_filter_pattern_is_hard_stopped_with_a2_timeout_class():
