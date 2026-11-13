@@ -97,7 +97,7 @@ L6 裁决后写入决定表。实现会话可先做不依赖 A 系列的部分�
 - trace 任何一行转换失败就报错退出（不静默丢 span）；trace ID 须为 32 位、span ID 与 parent 须为 16 位非全零十六进制（parent 可空，links 同样校验）；SpanKind 与 StatusCode 同时认 ClickHouse 的 `Server`/`Error` 写法和 proto 的 `SPAN_KIND_*`/`STATUS_CODE_*` 写法，未知值报错；按服务、资源属性、scope 分组，带上 links。
 - 入口告警只取 `state=firing`；同一时刻按排序后的标签打破平局。webhook 的 `startsAt` 保留原小数位，`endsAt` 用零时刻，不带 `generatorURL`（Prometheus 告警 API 没有这一项，所以问句里不会出现 PromQL）。
 - 目标条目配置只传 `match.labels`；选出的告警不带这些标签就报错，不投递。默认配置用告警的 `service_name`。
-- 投递与 trace 灌入只允许回环地址。2 分钟作废线提供成纯函数 `delivery_gap_ok`，由驱动调用。
+- 投递与 trace 灌入只允许回环地址，发送不走代理、不跟随重定向（30x 直接报错，避免 token 被带到新地址）。2 分钟作废线提供成纯函数 `delivery_gap_ok`，由驱动调用。
 
 偏离与已知限制：
 

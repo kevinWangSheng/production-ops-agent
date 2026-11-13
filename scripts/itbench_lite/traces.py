@@ -230,10 +230,24 @@ def require_loopback(url: str) -> None:
     raise ValueError("replay endpoints must be loopback addresses")
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *args: object, **kwargs: object) -> None:
+        return None
+
+
+# No proxies and no redirects: a 30x would otherwise be followed to a new
+# address without passing ``require_loopback`` again, carrying the
+# Authorization header with it. A redirect surfaces as ``HTTPError`` instead.
+_OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirect())
+
+
 def post_json_loopback(
     url: str, body: Mapping[str, Any], headers: Mapping[str, str] | None = None
 ) -> int:
-    """POST ``body`` as JSON to a loopback ``url``; returns the HTTP status."""
+    """POST ``body`` as JSON to a loopback ``url``; returns the HTTP status.
+
+    Never follows a redirect: a 30x raises ``urllib.error.HTTPError``.
+    """
     require_loopback(url)
     request = urllib.request.Request(
         url,
@@ -241,7 +255,7 @@ def post_json_loopback(
         headers={"Content-Type": "application/json", **(headers or {})},
         method="POST",
     )
-    with urllib.request.urlopen(request, timeout=TIMEOUT_SECONDS) as response:
+    with _OPENER.open(request, timeout=TIMEOUT_SECONDS) as response:
         response.read()
         return int(response.status)
 
