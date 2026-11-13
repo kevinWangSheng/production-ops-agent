@@ -394,3 +394,63 @@ def test_b2_tools_declare_may_contain_secrets_and_a5_tools_do_not():
         prometheus_ext.LABELS_TOOL,
     ):
         assert registrations[name].may_contain_secrets is False
+
+
+def _direct_fetch(tool: str, params: dict, body: bytes):
+    """The transport's own response, before the executor ORs in the marker."""
+    from opspilot.tools.executor import TransportRequest
+    from tests.test_tool_expansion_a2_contract import AUTHORIZED_WINDOW
+
+    class _Base:
+        _credentials = {"ref": None}
+
+        def _get(self, url, request, *, max_bytes):
+            return otel_demo._Fetched(200, body)
+
+    transport = prometheus_ext.PrometheusExtTransport(_Base())  # type: ignore[arg-type]
+    return transport.fetch(
+        TransportRequest(
+            operation_id="op",
+            source=otel_demo.SOURCE,
+            verb="list",
+            endpoint="http://127.0.0.1:19090",
+            selector={},
+            params=params,
+            window=AUTHORIZED_WINDOW,
+            timeout_seconds=30.0,
+            max_result_bytes=1024 * 1024,
+            credential_ref="ref",
+            tool=tool,
+        )
+    )
+
+
+@pytest.mark.parametrize(
+    ("tool", "body"),
+    [
+        (RULES, _envelope(_groups(), warnings=["partial"])),
+        (
+            METADATA,
+            _envelope(
+                {"m": [{"type": "gauge", "help": "", "unit": ""}]}, warnings=["w"]
+            ),
+        ),
+    ],
+)
+def test_warnings_below_the_limit_set_the_transport_incomplete_flag(tool, body):
+    response = _direct_fetch(tool, {}, body)
+    assert response.incomplete is True
+    assert response.view_fields is not None
+    assert response.view_fields["incomplete_reason"]
+
+
+def test_a_lone_surrogate_in_a_projected_record_is_an_error_not_a_crash(monkeypatch):
+    # JSON text with an escaped lone surrogate: json.loads accepts it, UTF-8
+    # encoding of the projected record does not.
+    body = b'{"status":"success","data":{"m":[{"type":"gauge","help":"\\ud800","unit":""}]}}'
+    assert "\\ud800" in body.decode()
+    opener = KubeOpener([body])
+    executor, *_ = _executor(monkeypatch, opener)
+    outcome = executor.execute(_call(METADATA, {}))
+    # executor.py converges an exception from fetch() into SOURCE_ERROR.
+    assert (outcome.status, outcome.reason) == ("error", "SOURCE_ERROR")

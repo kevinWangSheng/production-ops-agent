@@ -1102,7 +1102,7 @@ class PrometheusExtTransport:
         # B2-3: no source time; the rules and alerts are the query moment's.
         return TransportResponse(
             body=fetched.body,
-            incomplete=paged,
+            incomplete=paged or warned,
             view_fields={
                 "incomplete_reason": (
                     RULES_INCOMPLETE_REASON if paged or warned else None
@@ -1208,7 +1208,7 @@ class PrometheusExtTransport:
         full = len(data) >= METADATA_LIMIT
         return TransportResponse(
             body=_record_body(record, request),
-            incomplete=full,
+            incomplete=full or warned,
             view_fields={
                 "incomplete_reason": (
                     METADATA_INCOMPLETE_REASON if full or warned else None
