@@ -716,11 +716,21 @@ def test_item3_only_migration_or_bounded_kubernetes_children_start_processes() -
                     (relative, "regex argv[0] is not require_python result")
                 )
 
+            forbidden_process_literals = {"/bin/sh", "sh", "bash", "-c"}
             jq_argv = [argv for argv in argv_lists if argv not in regex_argv]
             if len(jq_argv) != 1:
                 offenders.append((relative, "jq run_isolated argv shape"))
-            elif not call_named(jq_argv[0].elts[0], "require_jq"):
-                offenders.append((relative, "jq argv[0] is not require_jq result"))
+            else:
+                first = jq_argv[0].elts[0]
+                if isinstance(first, ast.Constant) and isinstance(first.value, str):
+                    offenders.append((relative, "jq argv[0] is a string literal"))
+                if any(
+                    isinstance(item, ast.Constant)
+                    and isinstance(item.value, str)
+                    and item.value in forbidden_process_literals
+                    for item in jq_argv[0].elts[1:]
+                ):
+                    offenders.append((relative, "jq argv contains shell flag"))
 
             regex_constants = [
                 node
@@ -779,7 +789,6 @@ def test_item3_only_migration_or_bounded_kubernetes_children_start_processes() -
             if not (PACKAGE / "tools" / "_regex_child.py").is_file():
                 offenders.append((relative, "_regex_child.py is missing"))
 
-            forbidden_literals = {"/bin/sh", "sh", "bash", "-c"}
             for node in ast.walk(tree):
                 if isinstance(node, ast.Attribute):
                     if (
@@ -792,7 +801,7 @@ def test_item3_only_migration_or_bounded_kubernetes_children_start_processes() -
                     isinstance(node, ast.Constant)
                     and isinstance(node.value, str)
                     and (
-                        node.value in forbidden_literals
+                        node.value in forbidden_process_literals
                         or node.value == "sys.executable"
                     )
                 ):
