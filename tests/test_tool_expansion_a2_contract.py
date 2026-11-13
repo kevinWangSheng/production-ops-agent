@@ -15,8 +15,8 @@ lands.
 * The worker-side profile factory validates the four Kubernetes environment
   variables lazily (web-side profile selection and face/version construction
   do not read them), and reports ``K8S_CONFIG_MISSING`` or ``JQ_NOT_FOUND`` as
-  ``SystemExit`` startup codes.  The test uses ``/etc/ssl/cert.pem`` as a
-  readable CA path on this host.
+  ``SystemExit`` startup codes.  Each test supplies a readable CA file under
+  its own ``tmp_path``; no system CA path is assumed.
 * ``opspilot.tools.kubernetes_core`` exposes the analogous public
   ``KubernetesTransport`` seam used by ``otel_demo.OtelDemoTransport``; an
   unknown ``k8s-ro`` slot raises ``CREDENTIAL_REF_UNKNOWN`` before a request
@@ -63,6 +63,7 @@ from opspilot.tools import (
 )
 from opspilot.tools.evidence_read import RoutedTransport
 from opspilot.tools.otel_demo import (
+    CREDENTIAL_REF,
     METRICS_TOOL,
     TARGET_ID,
     TRACES_TOOL,
@@ -85,7 +86,6 @@ EXT_PROFILE = "otel-demo-ext"
 K8S_TOKEN = "k8s-aaaaaaaa357"
 OTEL_TOKEN = "otel-aaaaaaaa357"
 K8S_API = "https://127.0.0.1:16443"
-K8S_CA = "/etc/ssl/cert.pem"
 K8S_NAMESPACE = "otel-demo"
 K8S_JQ_TOOL = "kubernetes_jq_query"
 K8S_COUNT_TOOL = "kubernetes_count"
@@ -97,6 +97,13 @@ BASE_TOOL_NAMES = (
     "get_label_values",
     "read_evidence",
 )
+
+
+@pytest.fixture(autouse=True)
+def _synthetic_k8s_ca(tmp_path, monkeypatch):
+    ca_file = tmp_path / "synthetic-ca.pem"
+    ca_file.write_text("synthetic ca placeholder\n")
+    monkeypatch.setenv("A2_TEST_K8S_CA_FILE", str(ca_file))
 
 
 def _reply(body: bytes, status: int = 200):
@@ -208,7 +215,7 @@ def _env(**overrides) -> dict[str, str]:
         PROFILE_ENV: EXT_PROFILE,
         "OPSPILOT_K8S_API_URL": K8S_API,
         "OPSPILOT_K8S_TOKEN": K8S_TOKEN,
-        "OPSPILOT_K8S_CA_FILE": K8S_CA,
+        "OPSPILOT_K8S_CA_FILE": os.environ["A2_TEST_K8S_CA_FILE"],
         "OPSPILOT_K8S_NAMESPACE": K8S_NAMESPACE,
         "OPSPILOT_OTEL_PROMETHEUS_URL": "http://127.0.0.1:19090",
         "OPSPILOT_OTEL_JAEGER_URL": "http://127.0.0.1:16686/jaeger/ui",
@@ -588,9 +595,11 @@ def test_kubernetes_and_otel_credentials_are_separate_and_named_by_slot(monkeypa
     )
     prom = executor.execute(_call(METRICS_TOOL, {"expr": "sum by(service_name) (increase(traces_span_metrics_calls_total[5m]))"}, index=1))
     traces = executor.execute(_call(TRACES_TOOL, {"service": "checkout", "limit": 1}, index=2))
-    assert k8s.operation.credential_ref == "k8s-ro"
-    assert prom.operation.credential_ref == "otel-demo-ro"
-    assert traces.operation.credential_ref == "otel-demo-ro"
+    assert {
+        k8s.operation.credential_ref,
+        prom.operation.credential_ref,
+        traces.operation.credential_ref,
+    } == {CREDENTIAL_REF}
     for request in opener.requests:
         headers = _headers(request)
         if "/api/v1/namespaces/otel-demo/pods" in _url(request):
