@@ -493,3 +493,28 @@ def test_too_large_descriptions_promise_read_back_only_with_an_evidence_id():
         assert "kept as evidence" not in text
         assert "Only when that refusal carries an evidence_id" in text
     assert "evidence_id" in registrations[jq.TRACE_BY_ID_TOOL].description.limits
+
+
+def test_list_services_null_data_is_an_empty_list(monkeypatch):
+    executor, _ = _ext(monkeypatch, b'{"data":null,"total":0,"limit":0,"offset":0}')
+    outcome = executor.execute(_call(jq.LIST_SERVICES_TOOL, {}))
+    assert (outcome.status, outcome.reason) == ("no_data", "NO_DATA"), (
+        outcome.model_view
+    )
+    assert outcome.model_view["content"] == []
+
+
+@pytest.mark.parametrize(
+    ("tool", "params"),
+    [
+        (jq.SEARCH_BY_TAGS_TOOL, {"service": "checkout"}),
+        (jq.TRACE_BY_ID_TOOL, {"trace_id": "abc123"}),
+        (jq.LIST_OPERATIONS_TOOL, {"service": "checkout"}),
+    ],
+)
+def test_null_data_stays_malformed_where_jaeger_always_sends_a_list(
+    monkeypatch, tool, params
+):
+    executor, _ = _ext(monkeypatch, b'{"data":null,"total":0}')
+    outcome = executor.execute(_call(tool, params))
+    assert (outcome.status, outcome.reason) == ("error", "MALFORMED_RESULT")

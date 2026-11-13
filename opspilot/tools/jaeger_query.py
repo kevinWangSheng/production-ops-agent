@@ -400,10 +400,15 @@ class JaegerQueryTransport(otel_demo.OtelDemoTransport):
         return base
 
     def _read_json(
-        self, url: str, request: TransportRequest
+        self, url: str, request: TransportRequest, *, null_data_ok: bool = False
     ) -> tuple[Any, bytes, TransportResponse | None]:
         """GET ``url``; ``(payload, body, None)`` on a parsed 200, otherwise
-        ``(None, body, response)`` with the response to return as is."""
+        ``(None, body, response)`` with the response to return as is.
+
+        ``null_data_ok``: the endpoint is one whose v1.53.0 handler can encode
+        an empty answer as ``"data": null`` (see ``_services``); that one
+        shape is read as an empty list, every other non-list still is
+        MALFORMED_RESULT."""
         fetched = self._get(url, request, max_bytes=SOURCE_READ_BYTES)
         if fetched.status != 200:
             return None, fetched.body, _source_error(fetched.status, fetched.body)
@@ -416,6 +421,13 @@ class JaegerQueryTransport(otel_demo.OtelDemoTransport):
                 fetched.body,
                 TransportResponse(body=fetched.body[: request.max_result_bytes]),
             )
+        if (
+            null_data_ok
+            and isinstance(payload, Mapping)
+            and "data" in payload
+            and payload["data"] is None
+        ):
+            payload = {**payload, "data": []}
         if not _envelope_ok(payload):
             return None, fetched.body, _MALFORMED
         return payload, fetched.body, None
@@ -656,7 +668,12 @@ class JaegerQueryTransport(otel_demo.OtelDemoTransport):
 
     def _services(self, request: TransportRequest) -> TransportResponse:
         url = f"{self._base(request)}/api/services"
-        payload, raw, early = self._read_json(url, request)
+        # Jaeger v1.53.0: the in-memory store returns a nil slice when it has
+        # seen no service, and the handler puts that slice into ``data``
+        # unchanged, so an empty list arrives as ``"data": null``. The search
+        # and ``/api/operations`` handlers build ``data`` with ``make`` and
+        # always send a list; they stay strict.
+        payload, raw, early = self._read_json(url, request, null_data_ok=True)
         if early is not None:
             return early
         data = payload.get("data") if isinstance(payload, Mapping) else None
