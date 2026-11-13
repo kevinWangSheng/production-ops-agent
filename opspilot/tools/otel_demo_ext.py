@@ -227,7 +227,6 @@ def otel_demo_ext_executor_factory(
         ca_file=kubernetes.ca_file,
         application_namespace=kubernetes.namespace,
     )
-    routes = {name: cluster for name in kubernetes_core.KUBERNETES_TOOLS}
     control = otel_demo.DurableControl(store)
     reader = cast(
         "EvidenceReader | None",
@@ -269,7 +268,7 @@ def otel_demo_ext_executor_factory(
                     result_paths=result_paths,
                 ),
                 sources=sources,
-                routes=routes,
+                kubernetes=cluster,
             ),
             evidence=evidence,
             control=control,

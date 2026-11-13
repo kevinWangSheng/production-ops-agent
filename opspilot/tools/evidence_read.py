@@ -371,8 +371,8 @@ def _rows(raw: bytes, path: Sequence[str]) -> list[object] | None:
 
 
 class RoutedTransport:
-    """``read_evidence`` to the evidence transport, a tool named in ``routes``
-    to its own transport, every other tool to the profile's own transport
+    """``read_evidence`` to the evidence transport, the cluster query tools to
+    ``kubernetes``, a tool named in ``routes`` to its own transport, every other tool to the profile's own transport
     (the request's gateway-resolved ``tool``).
 
     ``routes`` dispatches on exact tool names, never on a name prefix (tool
@@ -385,11 +385,19 @@ class RoutedTransport:
         *,
         evidence: ReadOnlyTransport,
         sources: ReadOnlyTransport,
+        kubernetes: ReadOnlyTransport | None = None,
         routes: Mapping[str, ReadOnlyTransport] | None = None,
     ) -> None:
         self._evidence = evidence
         self._sources = sources
-        self._routes = dict(routes or {})
+        self._routes: dict[str, ReadOnlyTransport] = {}
+        if kubernetes is not None:
+            # Imported here: kubernetes_core imports otel_demo, which imports
+            # this module.
+            from .kubernetes_core import KUBERNETES_TOOLS
+
+            self._routes.update(dict.fromkeys(KUBERNETES_TOOLS, kubernetes))
+        self._routes.update(routes or {})
         if EVIDENCE_TOOL in self._routes:
             raise ValueError("ROUTE_SHADOWS_EVIDENCE_TOOL")
 

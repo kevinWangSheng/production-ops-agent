@@ -33,7 +33,7 @@ from opspilot.tools.executor import (
     TransportResultTooLarge,
     TransportTimeout,
 )
-from opspilot.tools.outcomes import DENIED_REASONS, Window
+from opspilot.tools.outcomes import ERROR_REASONS, Window
 from opspilot.tools.profiles import select_profile
 from opspilot.tools.registry import ToolContractError
 from opspilot.tracing import check_lab_target
@@ -157,7 +157,7 @@ def test_secrets_are_refused_before_any_request(kind):
     assert response.sent is False
     assert response.source_status == "RESOURCE_NOT_ALLOWED"
     assert api.requests == []
-    assert "RESOURCE_NOT_ALLOWED" in DENIED_REASONS
+    assert "RESOURCE_NOT_ALLOWED" in ERROR_REASONS
 
 
 @pytest.mark.parametrize(
@@ -169,7 +169,6 @@ def test_secrets_are_refused_before_any_request(kind):
         ({"kind": "pods", "jq_expr": 'import "x" as y; .'}, "INVALID_JQ"),
         ({"kind": "pods", "jq_expr": 'include "x"; .'}, "INVALID_JQ"),
         ({"kind": "pods", "jq_expr": "." * 2001}, "INVALID_JQ"),
-        ({"kind": "pods", "jq_expr": ".items[] |"}, "JQ_COMPILE_ERROR"),
         (
             {"kind": "pods", "jq_expr": ".", "label_selector": "a\nb"},
             "INVALID_SELECTOR",
@@ -361,6 +360,15 @@ def test_jq_runs_with_an_empty_environment():
     assert json.loads(response.body) == {"results": [[0, 0]]}
 
 
+def test_jq_compile_error_is_invalid_params_after_the_single_read():
+    api = FakeApi({"/api/v1/pods": [_list("Pod", [_pod("a")])]})
+    response = _transport(api).fetch(
+        _request(k8s.JQ_QUERY_TOOL, {"kind": "pods", "jq_expr": ".items[] |"})
+    )
+    assert (response.sent, response.source_status) == (True, "JQ_COMPILE_ERROR")
+    assert k8s.ERROR_CLASSES["JQ_COMPILE_ERROR"] == "INVALID_PARAMS"
+
+
 def test_jq_runtime_error_is_reported_after_the_read():
     api = FakeApi({"/api/v1/pods": [_list("Pod", [_pod("a")])]})
     response = _transport(api).fetch(
@@ -422,7 +430,7 @@ def test_web_builds_face_and_versions_without_cluster_settings():
 
 def test_worker_without_cluster_settings_fails_with_a_fixed_code():
     profile = select_profile({"OPSPILOT_TOOL_PROFILE": "otel-demo-ext"})
-    with pytest.raises(ToolContractError, match="K8S_CONFIG_MISSING"):
+    with pytest.raises(SystemExit, match="K8S_CONFIG_MISSING"):
         profile.executor_factory(object(), RecordingSink(), FakeClock(start=NOW))  # type: ignore[arg-type]
 
 
@@ -438,7 +446,7 @@ def test_worker_without_jq_fails_with_a_fixed_code(monkeypatch, tmp_path):
             "OPSPILOT_K8S_CA_FILE": str(ca),
         }
     )
-    with pytest.raises(ToolContractError, match="JQ_UNAVAILABLE"):
+    with pytest.raises(SystemExit, match="JQ_NOT_FOUND"):
         profile.executor_factory(object(), RecordingSink(), FakeClock(start=NOW))  # type: ignore[arg-type]
 
 
@@ -569,7 +577,7 @@ def _call(tool: str, params: dict) -> ToolRequest:
     )
 
 
-def test_executor_adopts_a_query_and_denies_secrets_and_403(monkeypatch, tmp_path):
+def test_executor_adopts_a_query_and_refuses_secrets_and_403(monkeypatch, tmp_path):
     api = FakeApi({"/api/v1/pods": [_list("Pod", [_pod("a", "CrashLoopBackOff")])]})
     executor = _executor(monkeypatch, tmp_path, api)
     ok = executor.execute(
@@ -581,10 +589,10 @@ def test_executor_adopts_a_query_and_denies_secrets_and_403(monkeypatch, tmp_pat
     secret = executor.execute(
         _call(k8s.COUNT_TOOL, {"kind": "Secret", "jq_expr": ".items[]"})
     )
-    assert (secret.status, secret.reason) == ("denied", "RESOURCE_NOT_ALLOWED")
+    assert (secret.status, secret.reason) == ("error", "RESOURCE_NOT_ALLOWED")
     api.pages["/api/v1/pods"] = 403
     forbidden = executor.execute(
         _call(k8s.JQ_QUERY_TOOL, {"kind": "pods", "jq_expr": "."})
     )
-    assert (forbidden.status, forbidden.reason) == ("denied", "SOURCE_FORBIDDEN")
+    assert (forbidden.status, forbidden.reason) == ("error", "SOURCE_FORBIDDEN")
     assert len(api.requests) == 2

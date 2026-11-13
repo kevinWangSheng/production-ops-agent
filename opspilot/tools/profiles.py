@@ -52,6 +52,7 @@ from opspilot.tools.otel_demo_ext import (
     otel_demo_ext_face,
     otel_demo_ext_versions,
 )
+from opspilot.tools.registry import ToolContractError
 
 __all__ = ["PROFILE_ENV", "PROFILE_NAMES", "ToolProfile", "select_profile"]
 
@@ -90,6 +91,9 @@ def _otel_demo(env: Mapping[str, str]) -> ToolProfile:
     )
 
 
+_STARTUP_CODES = frozenset({"K8S_CONFIG_MISSING", "K8S_CONFIG_INVALID", "JQ_NOT_FOUND"})
+
+
 def _otel_demo_ext(env: Mapping[str, str]) -> ToolProfile:
     config = OtelDemoConfig.from_env(env)
     # Copied now, parsed only by the worker's executor factory (A2-3).
@@ -98,13 +102,23 @@ def _otel_demo_ext(env: Mapping[str, str]) -> ToolProfile:
     def executor_factory(
         store: DurableStore, evidence: EvidenceSink, clock: Clock
     ) -> ExecutorFactory:
-        return otel_demo_ext_executor_factory(
-            store,
-            evidence=evidence,
-            clock=clock,
-            config=config,
-            kubernetes=KubernetesConfig.from_env(snapshot),
-        )
+        # The cluster setting and jq are startup preconditions of this
+        # worker: their fixed codes end the process like any other
+        # misconfiguration (``K8S_CONFIG_MISSING``, ``K8S_CONFIG_INVALID``,
+        # ``JQ_NOT_FOUND``).
+        try:
+            return otel_demo_ext_executor_factory(
+                store,
+                evidence=evidence,
+                clock=clock,
+                config=config,
+                kubernetes=KubernetesConfig.from_env(snapshot),
+            )
+        except ToolContractError as error:
+            code = str(error)
+            if code in _STARTUP_CODES:
+                raise SystemExit(code) from None
+            raise
 
     return ToolProfile(
         name="otel-demo-ext",

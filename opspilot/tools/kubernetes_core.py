@@ -68,7 +68,7 @@ from opspilot.tools.executor import (
     TransportUnavailable,
 )
 from opspilot.tools.http_deadline import DeadlineHandlers, RequestSockets
-from opspilot.tools.otel_demo import SOURCE
+from opspilot.tools.otel_demo import OBSERVATION_SECONDS, SOURCE
 from opspilot.tools.outcomes import SourceContact, Window
 from opspilot.tools.registry import (
     MAX_VIEW_TOKENS,
@@ -373,7 +373,7 @@ def require_jq() -> str:
     (A2-8: a worker of the extended profile without jq does not start)."""
     path = shutil.which("jq")
     if not path:
-        raise ToolContractError("JQ_UNAVAILABLE")
+        raise ToolContractError("JQ_NOT_FOUND")
     return os.path.abspath(path)
 
 
@@ -860,15 +860,6 @@ class _Jq:
                 source_contact=source_contact,
             )
 
-    def compiles(self, expr: str, *, deadline: float) -> int:
-        """Exit status of compiling ``expr`` without evaluating it."""
-        program = "if false then (\n" + expr + "\n) else empty end"
-        # Before any read: a timeout here had no source contact.
-        status, _ = self._run(
-            program, b"", null_input=True, deadline=deadline, source_contact="none"
-        )
-        return status
-
     def evaluate(
         self, expr: str, document: bytes, *, deadline: float
     ) -> tuple[int, bytes]:
@@ -898,15 +889,16 @@ class KubernetesTransport:
 
     Every refusal of the model's input is decided before anything is sent:
     the kind (Secret first), the namespace, the selectors, the jq expression
-    (length, ``import``/``include``, compilation). Then the list is read
-    (``KubernetesClient.list_objects``) and jq runs once over it.
+    (length, ``import``/``include``). Then the list is read
+    (``KubernetesClient.list_objects``) and jq runs once over it; an
+    expression that does not compile is reported after the read.
     """
 
     def __init__(
         self,
         *,
         credentials: Mapping[str, str | None],
-        jq_path: str,
+        jq_path: str | None = None,
         opener: urllib.request.OpenerDirector | None = None,
         ca_file: str | None = None,
         application_namespace: str = DEFAULT_NAMESPACE,
@@ -915,7 +907,9 @@ class KubernetesTransport:
         self._client = KubernetesClient(
             credentials=credentials, opener=opener, ca_file=ca_file
         )
-        self._jq = _Jq(jq_path)
+        # ``None``: resolved from PATH on first use (the worker resolves it at
+        # startup and passes it in, A2-8).
+        self._jq_path = jq_path
         self._application_namespace = application_namespace
         self._monotonic = monotonic or _monotonic
 
@@ -938,15 +932,13 @@ class KubernetesTransport:
         if _jq_problem(expr):
             return refused("INVALID_JQ")
         assert isinstance(expr, str)
+        self._client.token()  # a missing slot fails before anything runs
         endpoint = request.selector.get(ENDPOINT_SELECTOR, "")
         if not endpoint:
             raise TransportError("KUBERNETES_ENDPOINT_MISSING")
-        self._client.token()  # a missing slot fails before anything runs
-        status = self._jq.compiles(expr, deadline=deadline)
-        if status == _JQ_COMPILE_STATUS:
-            return refused("JQ_COMPILE_ERROR")
-        if status != 0:
-            return refused("JQ_FAILED")
+        if self._jq_path is None:
+            self._jq_path = require_jq()
+        jq = _Jq(self._jq_path)
         listed = self._client.list_objects(
             endpoint=endpoint,
             resource=resource,
@@ -959,7 +951,11 @@ class KubernetesTransport:
         if isinstance(listed, TransportResponse):
             return listed
         document = json.dumps(listed.document(), separators=(",", ":")).encode("utf-8")
-        status, output = self._jq.evaluate(expr, document, deadline=deadline)
+        # jq runs exactly once per call (A2-9), so a compile error is only
+        # known after the read: still INVALID_PARAMS, with the source read.
+        status, output = jq.evaluate(expr, document, deadline=deadline)
+        if status == _JQ_COMPILE_STATUS:
+            return _answered("JQ_COMPILE_ERROR")
         if status == _JQ_RUNTIME_STATUS:
             return _answered("JQ_RUNTIME_ERROR")
         if status != 0:
@@ -980,6 +976,7 @@ class KubernetesTransport:
             "pages_read": listed.pages,
             "scope": scope,
             "notes": list(listed.notes),
+            "cannot_prove": _CANNOT_PROVE,
         }
         if request.tool == COUNT_TOOL:
             preview = [
@@ -992,7 +989,7 @@ class KubernetesTransport:
                 source_end_at=listed.source_end_at,
                 row_unit="matches",
                 backend_rows_returned=len(lines),
-                view_fields={**view_fields, "count": len(lines)},
+                view_fields={**view_fields, "matches_found": len(lines)},
             )
         body = canonical({"results": [value for _, value in lines]}).encode("utf-8")
         if len(body) > request.max_result_bytes:
@@ -1148,7 +1145,7 @@ _LIMITS = (
 )
 _CANNOT_PROVE = (
     "Objects are the cluster's state when the query ran, not during the "
-    "incident window: no object field proves what was true earlier, and an "
+    "incident window: they cannot prove what was true earlier, and an "
     "object missing now may have existed then. Events cover only their own "
     "timestamps inside the window; an event that is not returned is unknown, "
     "not proof nothing happened (events expire and timestamps are often "
@@ -1228,6 +1225,12 @@ def kubernetes_registrations(
         **common,
     )
     return jq_query, count
+
+
+def _registrations() -> tuple[ToolRegistration, ...]:
+    """The two registrations under the profiles' 24 h frame (the private
+    inventory seam ``otel_demo._registrations`` also offers)."""
+    return kubernetes_registrations(max_window_seconds=OBSERVATION_SECONDS)
 
 
 def resource_table() -> dict[str, dict[str, object]]:

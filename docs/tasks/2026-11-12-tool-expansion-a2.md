@@ -1,6 +1,6 @@
 # 工具面拓展 A2：扩展档位与集群对象只读查询
 
-- 状态：实施中（代码与实现者单元测试已提交到本地分支；独立合同测试待合入）
+- 状态：实施中（独立合同测试已合入，除一条与 A2-1 冲突的断言外均通过，见偏离）
 - 更新日期：2026-11-13
 - 依据：[工具面拓展任务记录](2026-11-12-tool-expansion.md)、[决定表 r3](2026-11-12-tool-expansion-contract.md)（r1 用户裁决，r2 的 A2-1 至 A2-15；r3 是后续各项对 A2 的要求）、SPEC 2026-11-12 段、C3 第 3、8、12 节；上游 HolmesGPT `a0009195` 的 `kubernetes/core`。issue #554。
 - 工作区：worktree `/Users/shenghuikevin/dev/AI/poa-a2-impl`，分支 `feature/tool-expansion-a2-k8s-core`（起点 `origin/main` `52d640a0`）。
@@ -74,21 +74,24 @@
 自行决定的可逆细节：
 
 - 档位组合单放 `otel_demo_ext.py`：A3–A6 往这里加工具，不让 `kubernetes_core` 反向依赖后续模块。
-- `RoutedTransport` 加可选 `routes`（精确工具名到传输），不传时行为不变；`read_evidence` 不能被路由覆盖。
-- 两个新原因码进 `DENIED_REASONS` 与 `SOURCE_ERROR_REASONS`，结果类为 `denied`（R11「拒绝并可见」）；`PROJECTION_REVISION` 不升，`otel-demo` 视图字节不变。
-- jq 超时报 `timeout/TOOL_TIMEOUT`、来源接触 `confirmed`（已读过集群）；编译预检在读集群前，超时记 `none`。A3、A6 的子进程用同一个 `run_isolated`。
-- jq 先做编译预检（`if false then (表达式) else empty end`，`-n`），编不过在发请求前报 `JQ_COMPILE_ERROR`；运行期错误（退出码 5）报 `JQ_RUNTIME_ERROR`，均归 `INVALID_PARAMS`；其他失败 `JQ_FAILED` 归 `SOURCE_ERROR`。表达式写进临时文件用 `-f` 传，不进命令行；`-L` 指向空目录。
+- `RoutedTransport` 加可选 `kubernetes=`（两个集群工具名精确分派，合同测试的接缝）与通用 `routes`，都不传时行为不变；`read_evidence` 不能被路由覆盖。
+- 两个新原因码进 `ERROR_REASONS` 与 `SOURCE_ERROR_REASONS`，结果类为 `error`（按合同测试；R11「拒绝并可见」未指定结果类）；`PROJECTION_REVISION` 不升，`otel-demo` 视图字节不变。
+- jq 超时报 `timeout/TOOL_TIMEOUT`、来源接触 `confirmed`（已读过集群）。A3、A6 的子进程用同一个 `run_isolated`。
+- 每次调用只起一次 jq（A2-9，合同测试计进程数），所以编译错误在读集群之后才知道，报 `JQ_COMPILE_ERROR`；运行期错误（退出码 5）报 `JQ_RUNTIME_ERROR`，均归 `INVALID_PARAMS`；其他失败 `JQ_FAILED` 归 `SOURCE_ERROR`。表达式写进临时文件用 `-f` 传，不进命令行；`-L` 指向空目录。
 - 交给 jq 的是 `{"apiVersion":"v1","kind":"List","items":[...]}`，每个对象补 `kind`、`apiVersion`，与上游 `kubectl get -o json` 形状一致，`.items[]` 写法可直接用。
 - Secret 判定：`kind` 小写后含 `secret` 即 `RESOURCE_NOT_ALLOWED`（覆盖大小写、单数、带组后缀）；表外名字报 `UNKNOWN_KIND`（`INVALID_PARAMS`）。`kind` 区分大小写精确匹配。
 - 资源表：A1 清单去掉子资源、`events.k8s.io`、`metrics.k8s.io`、`extensions` 组与 `podsecuritypolicies`，同名优先核心组、其次当前在服的组（deployments 等走 `apps/v1`，HPA 走 `autoscaling/v2`）；表进档位版本哈希。
 - 事件时间取第一个可用的 `lastTimestamp`、`eventTime`、`series.lastObservedTime`、`firstTimestamp`、`metadata.creationTimestamp`；无时间的丢弃并计数；来源时间取保留事件首尾（与 A6-6 一致），其他资源留空。
-- 视图字段：`total_items_processed`（与 A6 同名同义）、`pages_read`、`scope`、`notes`；计数工具另有 `count`，并用 `row_unit="matches"` 出 `backend_matches_returned` 等计数。
-- 启动失败固定码（`ToolContractError`）：缺变量 `K8S_CONFIG_MISSING`；地址非 https、namespace 非 DNS 标签、CA 文件不可读 `K8S_CONFIG_INVALID`；找不到 jq `JQ_UNAVAILABLE`。缺 `k8s-ro` 凭据在传输层报 `CREDENTIAL_REF_UNKNOWN`（同 otel-demo 传输），不发请求。
+- 视图字段：`total_items_processed`（与 A6 同名同义）、`pages_read`、`scope`、`notes`、`cannot_prove`；计数工具另有 `matches_found`，并用 `row_unit="matches"` 出 `backend_matches_returned` 等计数。
+- 启动失败固定码（worker 构造执行器时以 `SystemExit` 退出）：缺变量 `K8S_CONFIG_MISSING`；地址非 https、namespace 非 DNS 标签、CA 文件不可读 `K8S_CONFIG_INVALID`；找不到 jq `JQ_NOT_FOUND`。缺 `k8s-ro` 凭据在传输层报 `CREDENTIAL_REF_UNKNOWN`（同 otel-demo 传输），不发请求。
 - lab 闸门新码 `KUBERNETES_NOT_LAB`：扩展档位必须有 lab 主机的 API 地址；其他档位只在设了该变量时检查。
 - `OPSPILOT_K8S_NAMESPACE` 只作提示，放进 selector 与视图 `scope.application_namespace`，不收窄查询（R17）。
 - Dockerfile 在 runtime 阶段加一行装 `jq`（未钉版本）。
 
 偏离与已知限制：
+
+- 合同测试 `test_kubernetes_and_otel_credentials_are_separate_and_named_by_slot` 要求集群工具操作记录的 `credential_ref` 为 `k8s-ro`；A2-1 定的是登记在现有目标下、执行器不改，执行器按目标写 `otel-demo-ro`，该断言未迎合，待裁决。请求头的凭据分离已满足。
+- 合同测试的 CA 路径 `/etc/ssl/cert.pem` 在 Ubuntu CI 上可能不存在，实现在配置期拒绝不可读的 CA 文件，CI 上依赖它的用例会以 `K8S_CONFIG_INVALID` 失败，待裁决。
 
 - CA 文件内容在配置期只查可读；载入失败时 TLS 上下文没有任何信任根，每次握手失败报 `SOURCE_UNAVAILABLE`，不回落到系统根证书。没在启动时拒绝，是为了让替身测试用假 CA 文件也能构造执行器。
 - jq 与 API 的错误文本不回显给模型（只有 HTTP 状态）；模型改表达式只能看原因码。
