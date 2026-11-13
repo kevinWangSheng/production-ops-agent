@@ -273,8 +273,23 @@ def test_holmes_rows_extend_the_frozen_matrix_without_changing_it(
         if r.get("body") == "form" and r["expected"] == 200
     }
     assert allowed == {("POST", "/api/v1/query"), ("POST", "/api/v1/query_range")}
+    allowed_get = {
+        (r["method"], r["path"])
+        for r in holmes
+        if r.get("body") is None and r["expected"] == 200
+    }
+    assert {
+        ("GET", "/api/v1/metadata"),
+        ("GET", "/api/v1/rules"),
+        ("GET", "/api/v1/targets"),
+    } <= allowed_get
     denied = {r["path"] for r in holmes if r["expected"] == 403}
-    assert {"/api/v1/metadata", "/api/v1/rules", "/api/v1/series"} <= denied
+    assert {
+        "/api/v1/series",
+        "/api/v1/status/config",
+        "/api/v1/alerts",
+        "/api/v1/targets/metadata",
+    } <= denied
     assert any(
         r.get("body") == "form-oversize" and r["expected"] == 413 for r in holmes
     )

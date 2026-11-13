@@ -64,9 +64,21 @@ def test_holmes_is_a_proxy_account_without_changing_existing_accounts() -> None:
             config,
         )
 
-    # The metadata and rules APIs remain outside the explicitly granted query
-    # surface.  They must not appear in a POST grant or a read-path list.
-    for denied in ("/api/v1/metadata", "/api/v1/rules"):
+    # B2-1: the three current-state GET APIs are now in the read surface for
+    # every account, including Holmes.  The method gate still keeps them out
+    # of the Holmes form-POST exception.
+    for allowed in ("/api/v1/rules", "/api/v1/targets", "/api/v1/metadata"):
+        assert allowed in lab.READ_PATHS
+        assert f"location = {allowed} {{ try_files /__absent__ @read; }}" in config
+
+    # Keep a representative status/admin path denied so this test retains its
+    # original intent: B2 expands the named read allow-list, not the whole API.
+    for denied in (
+        "/api/v1/status/config",
+        "/api/v1/alerts",
+        "/api/v1/targets/metadata",
+    ):
+        assert denied not in lab.READ_PATHS
         assert denied not in config or re.search(
             rf"(?s){re.escape(denied)}.*?(?:return 403|@denied)", config
         )
@@ -118,6 +130,9 @@ def test_f7_probe_has_holmes_rows_and_preserves_other_account_expectations(
                 "/api/v1/series",
                 "/api/v1/labels",
                 "/api/v1/status/buildinfo",
+                "/api/v1/rules",
+                "/api/v1/targets",
+                "/api/v1/metadata",
                 "/federate",
             }
             or clean_path.startswith("/api/v1/label/")
@@ -136,6 +151,21 @@ def test_f7_probe_has_holmes_rows_and_preserves_other_account_expectations(
     holmes_rows = [row for row in rows if row["account"] == "holmes"]
     assert holmes_rows
     assert all(row["matches"] is True for row in holmes_rows)
+
+    b2_gets = {
+        ("GET", "/api/v1/metadata"),
+        ("GET", "/api/v1/rules"),
+        ("GET", "/api/v1/targets"),
+    }
+    for role in ("investigator", "observer", "lab", "holmes"):
+        role_allowed_get = {
+            (row["method"], row["path"])
+            for row in rows
+            if row["account"] == role
+            and row.get("body") is None
+            and row["expected"] == 200
+        }
+        assert b2_gets <= role_allowed_get
 
     form_holmes_rows = [
         row

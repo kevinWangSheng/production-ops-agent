@@ -185,8 +185,9 @@ def test_model_via_proxy_false_fails_only_model_check():
     "line",
     (
         "2026-10-28T18:42:25+00:00 holmes GET /api/v1/query 403 0 0 0.001",
-        "2026-10-28T18:42:25+00:00 holmes GET /api/v1/metadata 200 0 0 0.001",
-        "2026-10-28T18:42:25+00:00 holmes GET /api/v1/rules 200 0 0 0.001",
+        "2026-10-28T18:42:25+00:00 holmes GET /api/v1/status/config 200 0 0 0.001",
+        "2026-10-28T18:42:25+00:00 holmes GET /api/v1/alerts 200 0 0 0.001",
+        "2026-10-28T18:42:25+00:00 holmes GET /api/v1/targets/metadata 200 0 0 0.001",
     ),
 )
 def test_forbidden_holmes_proxy_log_line_fails_only_log_check(line: str):
@@ -194,6 +195,21 @@ def test_forbidden_holmes_proxy_log_line_fails_only_log_check(line: str):
     observed = _clean_observation(isolation=isolation)
     observed["proxy_log_lines"] = [line]
     _assert_only_check_failed(isolation.evaluate(observed), "proxy_log_allowed_paths")
+
+
+@pytest.mark.parametrize(
+    "line",
+    (
+        "2026-10-28T18:42:25+00:00 holmes GET /api/v1/rules 200 0 0 0.001",
+        "2026-10-28T18:42:25+00:00 holmes GET /api/v1/metadata 200 0 0 0.001",
+        "2026-10-28T18:42:25+00:00 holmes GET /api/v1/targets 200 0 0 0.001",
+    ),
+)
+def test_b2_readonly_holmes_proxy_log_lines_are_allowed(line: str):
+    isolation = _isolation()
+    observed = _clean_observation(isolation=isolation)
+    observed["proxy_log_lines"].append(line)
+    assert isolation.evaluate(observed)["passed"] is True
 
 
 @pytest.mark.parametrize(

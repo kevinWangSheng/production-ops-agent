@@ -207,8 +207,15 @@ def test_holmes_form_post_is_limited_to_the_query_paths() -> None:
     assert "client_max_body_size 64k;" in form
     assert "client_max_body_size" not in config.split("location @holmes_form", 1)[0]
     assert "if ($opspilot_holmes_form_too_large) { return 413; }" in form
-    for denied in ("/api/v1/metadata", "/api/v1/rules"):
-        assert denied not in lab.READ_PATHS and denied not in config
+    for allowed in ("/api/v1/metadata", "/api/v1/rules", "/api/v1/targets"):
+        assert allowed in lab.READ_PATHS
+        assert f"location = {allowed} {{ try_files /__absent__ @read; }}" in config
+    for denied in (
+        "/api/v1/status/config",
+        "/api/v1/alerts",
+        "/api/v1/targets/metadata",
+    ):
+        assert denied not in lab.READ_PATHS
 
 
 def test_holmes_access_log_only_and_without_credentials() -> None:
@@ -443,7 +450,12 @@ def test_real_nginx_holmes_form_rules(live_proxy: str) -> None:
             ("protobuf", 403),
         )
     }
-    for path in ("/api/v1/series", "/api/v1/metadata", "/api/v1/rules"):
+    for path in (
+        "/api/v1/series",
+        "/api/v1/metadata",
+        "/api/v1/rules",
+        "/api/v1/targets",
+    ):
         assert _send(live_proxy, "POST", path, "holmes", _form(512))[0] == 403
 
 
