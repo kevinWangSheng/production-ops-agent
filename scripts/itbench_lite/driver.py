@@ -60,6 +60,7 @@ from scripts.itbench_lite.alerts import (
     INTAKE_PATH,
     EntryTarget,
     NoEntryAlert,
+    build_webhook,
     delivery_gap_ok,
     entry_webhook,
     final_alert_file,
@@ -273,6 +274,19 @@ def entry_plan(snapshot: Snapshot) -> EntryPlan:
         alert = select_entry_alert(snapshot.read_alert_file(final_alert_file(snapshot)))
     except NoEntryAlert as error:
         raise DeterministicError("NO_ENTRY_ALERT", str(error)) from None
+    except (ValueError, TypeError, KeyError) as error:
+        # Unparseable file, non-string labels, ...: this scenario's data, not
+        # the round's; its trials are recorded missing and the round goes on.
+        raise DeterministicError("ENTRY_ALERT_INVALID", str(error)[:200]) from None
+    plan = _plan_for(alert)
+    try:  # the same conversion the attempt does later, checked up front
+        build_webhook(alert, offset_seconds=0, target=EntryTarget(plan.match_labels))
+    except (ValueError, TypeError, KeyError) as error:
+        raise DeterministicError("ENTRY_ALERT_INVALID", str(error)[:200]) from None
+    return plan
+
+
+def _plan_for(alert: Mapping[str, Any]) -> EntryPlan:
     labels = alert.get("labels") or {}
     name = str(labels.get("alertname") or "")
     service = labels.get("service_name")
@@ -1005,7 +1019,7 @@ def judge_trial(
     """Run the judging process (retried); return its numeric scores only."""
     trial_dir = cfg.round_dir / label / f"trial-{trial}"
     out = trial_dir / "scores.json"
-    status = None
+    status: int | str | None = None
     for attempt in range(1, JUDGE_TRIES + 1):
         work = trial_dir / f"judge-{attempt}"
         if work.exists():
@@ -1022,10 +1036,12 @@ def judge_trial(
             }
         )
         if status == 0:
-            break
-    if status != 0 or not out.is_file():
+            data = _read_json(out)
+            if isinstance(data, Mapping) and _numeric(data.get("det")):
+                break
+            status = "SCORES_INVALID"  # exit 0 but a truncated or bad file
+    if status != 0:
         return {"status": "failed", "tries": JUDGE_TRIES, "exit": status}
-    data = json.loads(out.read_text())
     return {
         "status": "ok",
         "judged": bool(data.get("judged")),

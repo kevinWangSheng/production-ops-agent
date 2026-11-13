@@ -828,3 +828,56 @@ def test_reused_copy_that_is_a_symlink_is_refused(env, tmp_path):
     with pytest.raises(driver.DeterministicError) as err:
         driver.copy_whitelisted(cfg.dataset / "Scenario-16", link)
     assert err.value.code == "UNSAFE_SNAPSHOT"
+
+
+# -- bot review (#606) ---------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("entries", "reason"),
+    [
+        (
+            [_alert("RequestErrorRate", "2025-12-15T17:20:00Z", service_name=7)],
+            "ENTRY_ALERT_INVALID",
+        ),
+        # An unparseable file already fails the end-time pass.
+        ("{not json", "SNAPSHOT_DATA_ERROR"),
+    ],
+)
+def test_bad_entry_alert_marks_the_scenario_missing_and_the_round_goes_on(
+    env, tmp_path, entries, reason
+):
+    cfg, vocab = env
+    path = cfg.dataset / "Scenario-16" / "alerts" / "alerts_alerting_state_1.json"
+    path.write_text(entries if isinstance(entries, str) else json.dumps(entries))
+    h = Harness(tmp_path)
+    out = driver.run_scenario(cfg, h.backends(), "Scenario-16", vocab, [1, 2])
+    assert {t: r["reason"] for t, r in out["trials"].items()} == {
+        1: reason,
+        2: reason,
+    }
+    assert h.events == []
+
+
+@pytest.mark.parametrize("content", ["{trunc", '{"det": {}}', "[]"])
+def test_bad_scores_file_counts_as_a_failed_judge_try(env, tmp_path, content):
+    cfg, vocab = env
+    h = Harness(tmp_path)
+    backends = h.backends()
+
+    def judge(job):
+        h.judge_calls.append(dict(job))
+        Path(job["out"]).write_text(content)
+        return 0
+
+    backends.judge = judge
+    out = driver.run_scenario(cfg, backends, "Scenario-16", vocab, [1])
+    record = out["trials"][1]
+    assert record["judge"] == {
+        "status": "failed",
+        "tries": driver.JUDGE_TRIES,
+        "exit": "SCORES_INVALID",
+    }
+    assert len(h.judge_calls) == driver.JUDGE_TRIES
+    # No marker: a later run finishes the judging without a new Run.
+    assert driver.trial_state(cfg, "S16", "Scenario-16", 1) == "judge"
