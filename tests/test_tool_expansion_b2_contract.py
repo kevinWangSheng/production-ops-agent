@@ -273,8 +273,7 @@ def test_b2_schemas_have_decided_parameters_and_no_time_window():
     assert rules.get("required", []) == []
     assert rules["properties"]["type"]["type"] == "string"
     for name in ("rule_name", "rule_group", "file", "match"):
-        assert rules["properties"][name]["type"] == "array"
-        assert rules["properties"][name]["items"]["type"] == "string"
+        assert rules["properties"][name]["type"] == "string"
 
     target = schemas[TARGET_TOOL]["parameters"]
     assert set(target["properties"]) == {"target_name"}
@@ -326,10 +325,10 @@ def test_list_rules_forwards_filters_verbatim_and_preserves_active_alerts(monkey
     executor, _ = _executor(monkeypatch, opener)
     params = {
         "type": "alert",
-        "rule_name": ["CheckoutDown", "CheckoutSlow"],
-        "rule_group": ["checkout.rules"],
-        "file": ["/etc/prometheus/rules.yml"],
-        "match": ['{job="checkout"}', '{severity="critical"}'],
+        "rule_name": "CheckoutDown",
+        "rule_group": "checkout.rules",
+        "file": "/etc/prometheus/rules.yml",
+        "match": '{job="checkout"}',
     }
     outcome = executor.execute(_call(RULES_TOOL, params))
     assert outcome.status == "ok", outcome.model_view
@@ -340,10 +339,10 @@ def test_list_rules_forwards_filters_verbatim_and_preserves_active_alerts(monkey
     query = _query(opener.requests[0])
     assert query == {
         "type": ["alert"],
-        "rule_name[]": ["CheckoutDown", "CheckoutSlow"],
+        "rule_name[]": ["CheckoutDown"],
         "rule_group[]": ["checkout.rules"],
         "file[]": ["/etc/prometheus/rules.yml"],
-        "match[]": ['{job="checkout"}', '{severity="critical"}'],
+        "match[]": ['{job="checkout"}'],
     }
     assert opener.timeouts == [30.0]
 
