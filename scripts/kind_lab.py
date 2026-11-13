@@ -822,16 +822,51 @@ def k8s_lab_files() -> dict[str, Path]:
     }
 
 
-def k8s_api_url(form: str, server: str | None = None) -> str:
-    """The one place both API addresses come from (A1-6): ``host`` is the
-    lab kubeconfig's loopback server (its port is random per cluster, so the
-    caller re-reads it every time), ``container`` the kind node container's
+def _kubeconfig_server(path: Path) -> str:
+    """The one ``server`` of the lab kubeconfig file (kind writes only this
+    cluster there); JSON or kind's YAML, read without a YAML library."""
+    text = path.read_text()
+    try:
+        document = json.loads(text)
+    except ValueError:
+        document = None
+    if isinstance(document, dict):
+        servers = [
+            str((c.get("cluster") or {}).get("server", ""))
+            for c in document.get("clusters") or []
+            if isinstance(c, dict)
+        ]
+    else:
+        servers = [
+            line.split(":", 1)[1].strip().strip("\"'")
+            for line in text.splitlines()
+            if line.strip().startswith("server:")
+        ]
+    if len(servers) != 1:
+        raise SystemExit(f"{path}: not exactly one cluster server; refusing")
+    return servers[0]
+
+
+def k8s_api_url(
+    form: str | None = None,
+    server: str | None = None,
+    *,
+    container: bool | None = None,
+) -> str:
+    """The one place both API addresses come from (A1-6): ``host``
+    (``container=False``) is the lab kubeconfig's loopback server, re-read
+    from KUBECONFIG every time unless given (its port is random per
+    cluster); ``container`` (``container=True``) the kind node container's
     in-network address for the control-side containers."""
+    if container is not None:
+        form = "container" if container else "host"
     if form == "container":
         return f"https://{NODE_CONTAINER}:{K8S_NODE_API_PORT}"
     if form != "host":
         raise ValueError(f"unknown API address form {form!r}")
-    parts = urllib.parse.urlsplit(server or "")
+    if server is None:
+        server = _kubeconfig_server(KUBECONFIG)
+    parts = urllib.parse.urlsplit(server)
     try:
         port = parts.port
     except ValueError:
@@ -869,11 +904,8 @@ def lab_kubeconfig_cluster() -> tuple[str, bytes] | None:
             "lab kubeconfig: no single cluster with server and CA data", file=sys.stderr
         )
         return None
-    if b"BEGIN CERTIFICATE" not in ca:
-        print(
-            "lab kubeconfig: certificate-authority-data is not a PEM certificate",
-            file=sys.stderr,
-        )
+    if not ca:
+        print("lab kubeconfig: empty certificate-authority-data", file=sys.stderr)
         return None
     return server, ca
 
@@ -900,7 +932,8 @@ def issue_k8s_token() -> int:
             "create",
             "token",
             K8S_SERVICE_ACCOUNT,
-            f"--duration={K8S_TOKEN_DURATION}",
+            "--duration",
+            K8S_TOKEN_DURATION,
             "-o",
             "json",
         )
@@ -909,21 +942,18 @@ def issue_k8s_token() -> int:
         # kubectl's error text, never stdout (which would hold the token)
         print(proc.stderr, file=sys.stderr)
         return proc.returncode
-    try:
-        status = json.loads(proc.stdout)["status"]
-        token = str(status["token"])
-        expires_at = str(status["expirationTimestamp"])
-    except (KeyError, TypeError, ValueError):
-        print(
-            "kubectl create token: no TokenRequest status in the output",
-            file=sys.stderr,
-        )
-        return 1
-    if not token or any(c.isspace() for c in token):
+    parsed = _token_output(proc.stdout)
+    if parsed is None:
         print("kubectl create token: unusable token in the output", file=sys.stderr)
         return 1
+    token, expires_at, expiry_source = parsed
+    try:
+        ca_text = ca.decode("ascii")
+    except UnicodeDecodeError:
+        print("lab kubeconfig: certificate-authority-data is not text", file=sys.stderr)
+        return 1
     files = k8s_lab_files()
-    _private_write(files["ca"], ca.decode())
+    _private_write(files["ca"], ca_text)
     _private_write(
         files["env"],
         f"{K8S_API_URL_VAR}={host_url}\n"
@@ -936,6 +966,7 @@ def issue_k8s_token() -> int:
         "requested_duration": K8S_TOKEN_DURATION,
         "issued_at": datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "expires_at": expires_at,
+        "expires_at_source": expiry_source,
         "api_url": {"host": host_url, "container": k8s_api_url("container")},
         "rbac_manifest_sha256": hashlib.sha256(
             K8S_RBAC_MANIFEST.read_bytes()
@@ -947,6 +978,39 @@ def issue_k8s_token() -> int:
         f"(token expires {expires_at}; value not shown)"
     )
     return 0
+
+
+def _token_output(stdout: str) -> tuple[str, str, str] | None:
+    """``(token, expires_at, source)`` from ``kubectl create token``: the
+    TokenRequest JSON ``-o json`` prints (expiry as the API server set it),
+    or a bare token, whose expiry is then the JWT ``exp`` claim if it has
+    one, else the requested duration from now."""
+    text = stdout.strip()
+    try:
+        status = json.loads(text)["status"]
+        token = str(status["token"])
+        expires_at = str(status["expirationTimestamp"])
+        source = "token_request"
+    except (KeyError, TypeError, ValueError):
+        token, expires_at, source = text, "", ""
+    if not token or any(c.isspace() for c in token):
+        return None
+    if not expires_at:
+        try:
+            payload = token.split(".")[1]
+            claims = json.loads(
+                base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4))
+            )
+            expiry = datetime.datetime.fromtimestamp(int(claims["exp"]), datetime.UTC)
+            source = "jwt_exp"
+        except (IndexError, KeyError, TypeError, ValueError):
+            hours = int(K8S_TOKEN_DURATION.removesuffix("h"))
+            expiry = datetime.datetime.now(datetime.UTC) + datetime.timedelta(
+                hours=hours
+            )
+            source = "requested_duration"
+        expires_at = expiry.strftime("%Y-%m-%dT%H:%M:%SZ")
+    return token, expires_at, source
 
 
 def cmd_k8s_token(args: argparse.Namespace) -> int:

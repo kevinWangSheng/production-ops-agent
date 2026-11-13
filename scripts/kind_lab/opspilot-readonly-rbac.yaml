@@ -21,8 +21,6 @@ kind: ServiceAccount
 metadata:
   name: opspilot-investigator
   namespace: opspilot-readonly
-  labels:
-    app.kubernetes.io/part-of: opspilot-kind-lab
 automountServiceAccountToken: false
 ---
 apiVersion: rbac.authorization.k8s.io/v1

@@ -94,7 +94,30 @@ class FakeApi:
         return 200, b"{}"
 
 
+_API: list[FakeApi] = []
+
+
+@pytest.fixture(autouse=True)
+def _transport(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``probe.request`` answered by the current FakeApi; checks the bearer."""
+
+    def request(
+        method: str,
+        path: str,
+        auth: str,
+        *,
+        env_file: Path,
+        headers: dict[str, str] | None = None,
+        body: bytes | None = None,
+    ) -> tuple[int, bytes]:
+        assert auth == f"Bearer {TOKEN}"
+        return _API[-1](method, path, dict(headers or {}), body)
+
+    monkeypatch.setattr(probe, "request", request)
+
+
 def _run(api: FakeApi, tmp_path: Path, *extra: str) -> int:
+    _API.append(api)
     env = tmp_path / "k8s.env"
     env.write_text(
         "# comment\n"
@@ -105,10 +128,7 @@ def _run(api: FakeApi, tmp_path: Path, *extra: str) -> int:
     )
     known = tmp_path / "known.txt"
     known.write_text(f"{KNOWN}\n\n")
-    return probe.main(
-        ["--env-file", str(env), "--known-secrets", str(known), *extra],
-        transport=api,
-    )
+    return probe.main(["--env-file", str(env), "--known-secrets", str(known), *extra])
 
 
 def test_a_read_only_identity_matches_every_row(
@@ -156,7 +176,7 @@ def test_a_read_only_identity_matches_every_row(
     assert set(rules["reviews"]) == {"otel-demo", "kube-system"}
     text = (out / "probe.json").read_text() + (out / "rules.json").read_text()
     assert TOKEN not in text
-    # every request carries no credential but the bearer the transport adds
+    # the bearer goes only in ``request``'s auth argument, never in headers
     assert all("Authorization" not in h for _, _, h, _ in api.calls)
 
 
@@ -165,8 +185,6 @@ def test_every_write_class_request_is_a_dry_run() -> None:
     writes = [r for r in table if r["method"] in ("POST", "PUT", "PATCH", "DELETE")]
     assert writes
     for row in writes:
-        if row["name"] == "exec (POST)":
-            continue  # a connect request: no dryRun parameter exists
         assert "dryRun=All" in row["path"], row["name"]
         assert row["expected"] == 403
 
@@ -261,7 +279,6 @@ def test_unreadable_inputs_print_no_values(
             "--known-secrets",
             str(tmp_path / "k"),
         ],
-        transport=FakeApi(),
     )
     assert code == 1
     assert json.loads(capsys.readouterr().out) == {
@@ -296,3 +313,27 @@ def test_the_https_transport_uses_no_proxy_and_no_redirects() -> None:
     # ProxyHandler({}) replaces the environment-reading default
     assert not [p for p in proxies if p.proxies]
     assert any(isinstance(h, probe._NoRedirect) for h in handlers)
+
+
+def test_without_known_secrets_the_report_is_not_ok(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _API.append(FakeApi())
+    env = tmp_path / "k8s.env"
+    env.write_text(
+        "OPSPILOT_K8S_API_URL=https://127.0.0.1:41234\n"
+        f"OPSPILOT_K8S_TOKEN={TOKEN}\n"
+        "OPSPILOT_K8S_CA_FILE=/nonexistent/ca.crt\n"
+    )
+    out = tmp_path / "probe.json"
+    assert probe.main(["--env-file", str(env), "--output", str(out)]) == 1
+    report = json.loads(out.read_text())
+    assert report["known_secrets_supplied"] is False
+    assert report["ok"] is False
+
+
+def test_three_dot_joined_runs_count_as_a_jwt_shape() -> None:
+    with pytest.raises(probe.RefusedOutput):
+        probe.check_output(".".join(("a" * 8, "b" * 8, "c" * 8)), TOKEN, [])
+    for harmless in ("events.k8s.io", "source.toolkit.fluxcd.io", "127.0.0.1"):
+        probe.check_output(harmless, TOKEN, [])

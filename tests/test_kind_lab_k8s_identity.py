@@ -118,7 +118,6 @@ def test_manifest_names_match_the_decision_table() -> None:
     assert sa["metadata"] == {
         "name": "opspilot-investigator",
         "namespace": "opspilot-readonly",
-        "labels": {"app.kubernetes.io/part-of": "opspilot-kind-lab"},
     }
     assert sa["automountServiceAccountToken"] is False
     assert docs["ClusterRole"]["metadata"]["name"] == "opspilot-investigator-readonly"
@@ -285,7 +284,8 @@ def test_issuing_writes_private_host_files_and_never_prints_the_token(
         "create",
         "token",
         "opspilot-investigator",
-        "--duration=24h",
+        "--duration",
+        "24h",
         "-o",
         "json",
     ]

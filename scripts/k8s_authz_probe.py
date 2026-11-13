@@ -43,12 +43,19 @@ IDENTITY_NAMESPACE = "opspilot-readonly"
 SERVICE_ACCOUNT = "opspilot-investigator"
 #: The application namespace and the fault hook's switch ConfigMap (Q5).
 DEFAULT_NAMESPACE = "otel-demo"
+#: The host-form env file ``kind_lab.py up`` / ``k8s-token`` writes, from the
+#: repository root (instance 0).
+DEFAULT_ENV_FILE = Path("tmp/m1-kind-lab/k8s-investigator.env")
 FLAG_CONFIGMAP = "flagd-config"
 TIMEOUT_SECONDS = 15
 MAX_BYTES = 8 * 1024 * 1024
 PAGE_LIMIT = 500
 #: Base64url JSON header of a JWT (``{"`` encodes to ``eyJ``), two segments.
-JWT_SHAPE = re.compile(r"eyJ[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}")
+JWT_SHAPE = re.compile(
+    r"eyJ[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}"
+    # or any three dot-joined base64url runs of 8+ (header.payload.signature)
+    r"|[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}"
+)
 #: Unregistered custom-resource groups (Q6): denied, installed or not.
 CUSTOM_RESOURCES = (
     "/apis/argoproj.io/v1alpha1/applications",
@@ -96,33 +103,77 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
-def https_transport(api_url: str, token: str, ca_file: str) -> Transport:
+def _opener(ca_file: str | None) -> urllib.request.OpenerDirector:
+    """Only the lab CA; no proxy (``ProxyHandler({})`` replaces the
+    environment-reading default) and no redirects."""
     context = ssl.create_default_context(cafile=ca_file)
-    opener = urllib.request.build_opener(
+    return urllib.request.build_opener(
         urllib.request.ProxyHandler({}),
         urllib.request.HTTPSHandler(context=context),
         _NoRedirect(),
     )
+
+
+def _open(
+    opener: urllib.request.OpenerDirector, req: urllib.request.Request
+) -> tuple[int, bytes]:
+    try:
+        with opener.open(req, timeout=TIMEOUT_SECONDS) as response:
+            return int(response.status), response.read(MAX_BYTES + 1)
+    except urllib.error.HTTPError as exc:
+        return exc.code, b""
+    except (urllib.error.URLError, OSError, TimeoutError):
+        return 0, b""
+
+
+def https_transport(api_url: str, token: str, ca_file: str) -> Transport:
+    opener = _opener(ca_file)
     base = api_url.rstrip("/")
 
     def send(
         method: str, path: str, headers: dict[str, str], body: bytes | None
     ) -> tuple[int, bytes]:
-        request = urllib.request.Request(
+        req = urllib.request.Request(
             base + path,
             data=body,
             headers={"Authorization": f"Bearer {token}", **headers},
             method=method,
         )
-        try:
-            with opener.open(request, timeout=TIMEOUT_SECONDS) as response:
-                return int(response.status), response.read(MAX_BYTES + 1)
-        except urllib.error.HTTPError as exc:
-            return exc.code, b""
-        except (urllib.error.URLError, OSError, TimeoutError):
-            return 0, b""
+        return _open(opener, req)
 
     return send
+
+
+def authorization(env_file: Path) -> str:
+    """The ``Authorization`` header value for the env file's token."""
+    return "Bearer " + read_env(env_file)["OPSPILOT_K8S_TOKEN"]
+
+
+_OPENERS: dict[str, urllib.request.OpenerDirector] = {}
+
+
+def request(
+    method: str,
+    path: str,
+    auth: str,
+    *,
+    env_file: Path,
+    headers: dict[str, str] | None = None,
+    body: bytes | None = None,
+) -> tuple[int, bytes]:
+    """One request to the env file's API server; ``(0, b"")`` when nothing
+    answered. Never raises on an HTTP or transport error."""
+    env = read_env(env_file)
+    ca_file = env["OPSPILOT_K8S_CA_FILE"]
+    if ca_file not in _OPENERS:
+        _OPENERS[ca_file] = _opener(ca_file)
+    req = urllib.request.Request(
+        env["OPSPILOT_K8S_API_URL"].rstrip("/") + path,
+        data=body,
+        headers={**(headers or {}), "Authorization": auth},
+        method=method,
+    )
+    return _open(_OPENERS[ca_file], req)
 
 
 def _json(body: bytes) -> dict[str, Any]:
@@ -208,7 +259,8 @@ def rows(namespace: str, found: dict[str, str | None]) -> list[dict[str, Any]]:
         (
             "exec (POST)",
             "POST",
-            pod + "/exec?command=true&stdout=true",
+            # a connect request has no dry run; authorization refuses first
+            pod + f"/exec?command=true&stdout=true&{dry}",
             {},
             None,
         ),
@@ -420,13 +472,29 @@ def rules_reviews(send: Transport, namespaces: tuple[str, ...]) -> dict[str, Any
     return reviews
 
 
+def _sender(env_file: Path, auth: str) -> Transport:
+    def send(
+        method: str, path: str, headers: dict[str, str], body: bytes | None
+    ) -> tuple[int, bytes]:
+        return request(
+            method, path, auth, env_file=env_file, headers=headers, body=body
+        )
+
+    return send
+
+
 def probe(
-    send: Transport,
+    env_file: Path = DEFAULT_ENV_FILE,
     *,
     namespace: str = DEFAULT_NAMESPACE,
-    needles: list[str],
-) -> tuple[dict[str, Any], dict[str, Any]]:
-    """``(probe report, rules review)``; nothing here retries or repairs."""
+    known: list[str] | tuple[str, ...] = (),
+) -> dict[str, Any]:
+    """The probe table and the ConfigMap search, through ``request``; the
+    report's ``ok`` also needs known lab secret values to have been given.
+    Nothing here retries or repairs."""
+    auth = authorization(env_file)
+    send = _sender(env_file, auth)
+    needles = [auth.removeprefix("Bearer "), *known]
     found = discover(send)
     results = []
     for row in rows(namespace, found):
@@ -442,13 +510,13 @@ def probe(
             }
         )
     scan = configmap_scan(send, needles)
-    report = {
+    return {
         "discovered": found,
         "requests": results,
         "configmap_secret_scan": scan,
-        "ok": all(r["matches"] for r in results) and scan["matches"],
+        "known_secrets_supplied": bool(known),
+        "ok": all(r["matches"] for r in results) and scan["matches"] and bool(known),
     }
-    return report, rules_reviews(send, (namespace, "kube-system"))
 
 
 def check_output(text: str, token: str, known: list[str]) -> None:
@@ -469,33 +537,34 @@ def read_known(path: Path) -> list[str]:
     return [line.strip() for line in text.splitlines() if line.strip()]
 
 
-def main(argv: list[str] | None = None, *, transport: Transport | None = None) -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    parser.add_argument("--env-file", type=Path, required=True)
+    parser.add_argument("--env-file", type=Path, default=DEFAULT_ENV_FILE)
     parser.add_argument(
         "--known-secrets",
         type=Path,
-        required=True,
-        help="lab secret values to search the cluster's ConfigMaps for, one per line",
+        help="lab secret values to search the cluster's ConfigMaps for, one per "
+        "line (- for stdin); without it the report is not ok",
     )
     parser.add_argument("--side", choices=("host", "worker"), default="host")
     parser.add_argument("--namespace", default=DEFAULT_NAMESPACE)
     parser.add_argument("--manifest", type=Path, help="RBAC manifest to fingerprint")
+    parser.add_argument("--output", type=Path, help="write the probe report here")
+    parser.add_argument(
+        "--rules-output", type=Path, help="write the SelfSubjectRulesReviews here"
+    )
     parser.add_argument(
         "--out-dir", type=Path, help="write probe.json and rules.json here"
     )
     args = parser.parse_args(argv)
     try:
         env = read_env(args.env_file)
-        known = read_known(args.known_secrets)
+        known = read_known(args.known_secrets) if args.known_secrets else []
     except (OSError, ValueError):
         print(json.dumps({"ok": False, "error": "cannot read the probe inputs"}))
         return 1
     token = env["OPSPILOT_K8S_TOKEN"]
-    send = transport or https_transport(
-        env["OPSPILOT_K8S_API_URL"], token, env["OPSPILOT_K8S_CA_FILE"]
-    )
-    report, rules = probe(send, namespace=args.namespace, needles=[token, *known])
+    report = probe(env_file=args.env_file, namespace=args.namespace, known=known)
     report = {
         "side": args.side,
         "api_url": env["OPSPILOT_K8S_API_URL"],
@@ -507,24 +576,33 @@ def main(argv: list[str] | None = None, *, transport: Transport | None = None) -
         ),
         **report,
     }
-    outputs = {
-        "probe.json": json.dumps(report, indent=2) + "\n",
-        "rules.json": json.dumps({"side": args.side, "reviews": rules}, indent=2)
-        + "\n",
-    }
+    targets: dict[Path, str] = {}
+    probe_text = json.dumps(report, indent=2) + "\n"
+    rules_paths = [p for p in (args.rules_output,) if p] + (
+        [args.out_dir / "rules.json"] if args.out_dir else []
+    )
+    if args.output:
+        targets[args.output] = probe_text
+    if args.out_dir:
+        targets[args.out_dir / "probe.json"] = probe_text
+    if rules_paths:
+        sender = _sender(args.env_file, authorization(args.env_file))
+        rules = rules_reviews(sender, (args.namespace, "kube-system"))
+        rules_text = json.dumps({"side": args.side, "reviews": rules}, indent=2) + "\n"
+        targets.update({path: rules_text for path in rules_paths})
     try:
-        for text in outputs.values():
+        for text in [probe_text, *targets.values()]:
             check_output(text, token, known)
     except RefusedOutput as exc:
         print(json.dumps({"ok": False, "error": f"output refused: {exc}"}))
         return 2
-    if args.out_dir:
-        args.out_dir.mkdir(parents=True, exist_ok=True)
-        for name, text in outputs.items():
-            (args.out_dir / name).write_text(text)
-        print(json.dumps({"ok": report["ok"], "out_dir": str(args.out_dir)}))
+    for path, text in targets.items():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text)
+    if targets:
+        print(json.dumps({"ok": report["ok"], "written": [str(p) for p in targets]}))
     else:
-        print(outputs["probe.json"], end="")
+        print(probe_text, end="")
     return 0 if report["ok"] else 1
 
 
