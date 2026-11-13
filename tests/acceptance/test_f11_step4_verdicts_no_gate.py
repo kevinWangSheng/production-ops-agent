@@ -8,11 +8,14 @@ D8 ``release_outcome_from_durable``, the no-gate code surface, A11).
 
 U-5 was revised 2026-11-13 for PR #588 after the user's 2026-11-12 X1/Q1/Q2
 decisions.  The product may now hold one read-only Kubernetes credential in
-the A2 extension profile, and model-written jq may run in its bounded child
-process.  The code-surface proof therefore requires: Kubernetes access is
-confined to ``opspilot/tools/kubernetes_core.py``; that transport is GET-only;
-its only child-process entry is ``run_isolated`` with one ``Popen(env={})``
-using the resolved jq executable;
+the A2 extension profile, and model-written jq plus the A3 Python ``re``
+worker may run in bounded child processes.  The code-surface proof therefore
+requires: Kubernetes access is confined to ``opspilot/tools/kubernetes_core.py``;
+that transport is GET-only; its only child-process entry is
+``run_isolated`` with one ``Popen(env={})``.  The only child programs are jq,
+resolved once by ``require_jq``, and the Python regex worker, resolved once
+from PATH by ``require_python`` and run with ``-I -S -B`` against a fixed
+package script under ``opspilot/tools/``;
 the module has no ``kubectl`` client and no GitHub/GitLab/CI/forge client; and
 the other product modules retain their original forbidden-client checks.  A2's
 contract test records that web face/version construction works without
@@ -425,7 +428,9 @@ def test_item3_no_product_module_names_kubectl_or_a_cluster_ci_or_forge_api() ->
 
 #: ``opspilot/schema.py`` is the migration tool (``make migrate``), not a
 #: product process; it shells out to ``pg_dump`` only (ambiguity note E2).
-#: A2's Kubernetes module is the one bounded exception for jq's child process.
+#: The Kubernetes module is the one bounded exception for its two child
+#: processes: jq (A2) and the Python ``re`` worker (A3).  Both must use the
+#: same ``run_isolated`` boundary.
 SUBPROCESS_ALLOWED = {"opspilot/schema.py"}
 PROCESS_CALLS = {
     ("subprocess", name)
@@ -447,7 +452,7 @@ PROCESS_CALLS = {
 }
 
 
-def test_item3_only_migration_or_bounded_kubernetes_jq_starts_processes() -> None:
+def test_item3_only_migration_or_bounded_kubernetes_children_start_processes() -> None:
     offenders: list[tuple[str, str]] = []
     kubernetes_tree: ast.Module | None = None
     kubernetes_path = PACKAGE / "tools" / "kubernetes_core.py"
@@ -573,10 +578,18 @@ def test_item3_only_migration_or_bounded_kubernetes_jq_starts_processes() -> Non
                 if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
                 and node.name == "require_jq"
             ]
+            require_python = [
+                node
+                for node in ast.walk(tree)
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                and node.name == "require_python"
+            ]
             if len(run_isolated) != 1:
                 offenders.append((relative, "run_isolated function count"))
             if len(require_jq) != 1:
                 offenders.append((relative, "require_jq function count"))
+            if len(require_python) != 1:
+                offenders.append((relative, "require_python function count"))
             if require_jq:
                 jq_checks = [
                     node
@@ -592,6 +605,23 @@ def test_item3_only_migration_or_bounded_kubernetes_jq_starts_processes() -> Non
                 ]
                 if not jq_checks:
                     offenders.append((relative, "require_jq does not resolve jq"))
+            if require_python:
+                python_checks = [
+                    node
+                    for node in ast.walk(require_python[0])
+                    if isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Attribute)
+                    and isinstance(node.func.value, ast.Name)
+                    and node.func.value.id == "shutil"
+                    and node.func.attr == "which"
+                    and len(node.args) == 1
+                    and isinstance(node.args[0], ast.Constant)
+                    and node.args[0].value == "python3"
+                ]
+                if not python_checks:
+                    offenders.append(
+                        (relative, "require_python does not resolve python3")
+                    )
 
             popen_calls = [
                 node
@@ -604,6 +634,47 @@ def test_item3_only_migration_or_bounded_kubernetes_jq_starts_processes() -> Non
             ]
             if len(popen_calls) != 1:
                 offenders.append((relative, "Popen call count"))
+
+            for node in ast.walk(tree):
+                if (
+                    isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Attribute)
+                    and node.func.attr in {"chmod", "fchmod"}
+                ):
+                    offenders.append((relative, "executable temp-file mode change"))
+
+            # A3's regex worker is a fixed package script, launched through the
+            # same argv boundary as jq.  The exact script filename is an
+            # implementation detail, so this pins the public launch shape:
+            # isolated mode, no site initialization, no bytecode writes, and
+            # no shell/eval flag.  The source file itself is checked below by
+            # requiring a Python script reference under this package's tools
+            # directory rather than accepting a temporary executable path.
+            constants = {
+                node.value
+                for node in ast.walk(tree)
+                if isinstance(node, ast.Constant) and isinstance(node.value, str)
+            }
+            for flag in ("-I", "-S", "-B"):
+                if flag not in constants:
+                    offenders.append((relative, f"regex worker missing {flag}"))
+            script_path_literals = [
+                value
+                for value in constants
+                if value.endswith(".py") and "tools" in value
+            ]
+            if not script_path_literals:
+                # A Path(__file__).with_name(...) expression is the other
+                # public spelling of the same fixed package-file contract;
+                # allow it while still rejecting a literal temporary script.
+                has_file_path = any(
+                    isinstance(node, ast.Name) and node.id == "__file__"
+                    for node in ast.walk(tree)
+                )
+                if not has_file_path:
+                    offenders.append(
+                        (relative, "regex worker has no fixed tools script path")
+                    )
 
             forbidden_literals = {"/bin/sh", "sh", "bash", "-c"}
             for node in ast.walk(tree):
@@ -640,6 +711,8 @@ def test_item3_only_migration_or_bounded_kubernetes_jq_starts_processes() -> Non
                 and function.attr == "run_isolated"
             ):
                 continue
+            if relative != KUBERNETES_CORE_RELATIVE:
+                offenders.append((relative, "run_isolated outside kubernetes_core"))
             all_run_isolated_calls.append((relative, node))
             if not node.args:
                 offenders.append((relative, "run_isolated has no argv"))
