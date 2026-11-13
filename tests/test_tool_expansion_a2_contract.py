@@ -52,9 +52,9 @@ import urllib.request
 from datetime import timedelta
 from urllib.parse import parse_qs, urlsplit
 
-import opspilot.tools.kubernetes_core as kubernetes_core
 import pytest
 
+import opspilot.tools.kubernetes_core as kubernetes_core
 from opspilot.tools import (
     ToolRequest,
     TransportError,
@@ -136,7 +136,11 @@ class KubeOpener:
     def open(self, request, timeout=None):
         self.requests.append(request)
         self.timeouts.append(timeout)
-        url = request.full_url if isinstance(request, urllib.request.Request) else str(request)
+        url = (
+            request.full_url
+            if isinstance(request, urllib.request.Request)
+            else str(request)
+        )
         path = urlsplit(url).path
         if path in self.by_path:
             value = self.by_path[path]
@@ -154,7 +158,11 @@ class KubeOpener:
 
 
 def _url(request) -> str:
-    return request.full_url if isinstance(request, urllib.request.Request) else str(request)
+    return (
+        request.full_url
+        if isinstance(request, urllib.request.Request)
+        else str(request)
+    )
 
 
 def _headers(request) -> dict[str, str]:
@@ -181,7 +189,13 @@ def _list(items, *, continue_token: str | None = None, kind: str = "PodList") ->
     ).encode()
 
 
-def _pod(name: str, phase: str = "Running", *, namespace: str = K8S_NAMESPACE, blob: str | None = None):
+def _pod(
+    name: str,
+    phase: str = "Running",
+    *,
+    namespace: str = K8S_NAMESPACE,
+    blob: str | None = None,
+):
     metadata = {
         "name": name,
         "namespace": namespace,
@@ -342,7 +356,10 @@ def test_extension_face_is_base_face_plus_two_tools_and_base_is_byte_stable():
 @pytest.mark.parametrize("tool", [K8S_JQ_TOOL, K8S_COUNT_TOOL])
 def test_kubernetes_schemas_have_the_upstream_parameter_surface(tool):
     profile = select_profile({PROFILE_ENV: EXT_PROFILE})
-    schemas = {schema["function"]["name"]: schema for schema in profile.face(FakeClock()).tool_schemas}
+    schemas = {
+        schema["function"]["name"]: schema
+        for schema in profile.face(FakeClock()).tool_schemas
+    }
     schema = schemas[tool]["function"]
     assert set(schema["parameters"]["properties"]) == {
         "kind",
@@ -362,14 +379,18 @@ def test_kubernetes_registrations_declare_that_cluster_objects_may_contain_secre
     assert all(item.may_contain_secrets is True for item in registrations)
 
 
-def test_pod_status_query_uses_list_shape_strips_managed_fields_and_records_current_state(monkeypatch):
-    opener = KubeOpener([_list([_pod("checkout-1", "Running"), _pod("checkout-2", "Pending")])])
+def test_pod_status_query_uses_list_shape_strips_managed_fields_and_records_current_state(
+    monkeypatch,
+):
+    opener = KubeOpener(
+        [_list([_pod("checkout-1", "Running"), _pod("checkout-2", "Pending")])]
+    )
     executor, _, _, _, _ = _executor(monkeypatch, opener)
     outcome = executor.execute(
         _call(
             K8S_JQ_TOOL,
             _query(
-                expr='.items[] | {name: .metadata.name, phase: .status.phase, managed: .metadata.managedFields}',
+                expr=".items[] | {name: .metadata.name, phase: .status.phase, managed: .metadata.managedFields}",
                 namespace=K8S_NAMESPACE,
                 label_selector="app=checkout",
                 field_selector="status.phase!=Succeeded",
@@ -394,32 +415,58 @@ def test_pod_status_query_uses_list_shape_strips_managed_fields_and_records_curr
     assert query["fieldSelector"] == ["status.phase!=Succeeded"]
 
 
-def test_namespace_omitted_queries_all_namespaces_and_cluster_kind_ignores_namespace(monkeypatch):
+def test_namespace_omitted_queries_all_namespaces_and_cluster_kind_ignores_namespace(
+    monkeypatch,
+):
     all_ns = KubeOpener([_list([_pod("a"), _pod("b", namespace="other")])])
     executor, _, _, _, _ = _executor(monkeypatch, all_ns)
-    outcome = executor.execute(_call(K8S_JQ_TOOL, _query(expr='.items[] | .metadata.name')))
+    outcome = executor.execute(
+        _call(K8S_JQ_TOOL, _query(expr=".items[] | .metadata.name"))
+    )
     assert outcome.status == "ok"
     assert urlsplit(_url(all_ns.requests[0])).path.endswith("/api/v1/pods")
 
-    nodes = KubeOpener([_list([{"metadata": {"name": "node-a"}, "status": {"conditions": []}}], kind="NodeList")])
+    nodes = KubeOpener(
+        [
+            _list(
+                [{"metadata": {"name": "node-a"}, "status": {"conditions": []}}],
+                kind="NodeList",
+            )
+        ]
+    )
     executor, _, _, _, _ = _executor(monkeypatch, nodes)
     outcome = executor.execute(
-        _call(K8S_JQ_TOOL, _query(kind="nodes", expr='.items[] | .metadata.name', namespace=K8S_NAMESPACE))
+        _call(
+            K8S_JQ_TOOL,
+            _query(
+                kind="nodes", expr=".items[] | .metadata.name", namespace=K8S_NAMESPACE
+            ),
+        )
     )
     assert outcome.status == "ok"
     assert urlsplit(_url(nodes.requests[0])).path.endswith("/api/v1/nodes")
     assert "ignored" in json.dumps(_view(outcome)["notes"]).lower()
 
 
-def test_event_query_keeps_only_authorized_events_and_notes_discarded_count(monkeypatch):
+def test_event_query_keeps_only_authorized_events_and_notes_discarded_count(
+    monkeypatch,
+):
     inside = (AUTHORIZED_WINDOW.start + timedelta(minutes=1)).isoformat()
     outside = (AUTHORIZED_WINDOW.end + timedelta(minutes=1)).isoformat()
     opener = KubeOpener(
-        [_list([_event("in-window", inside), _event("out-window", outside)], kind="EventList")]
+        [
+            _list(
+                [_event("in-window", inside), _event("out-window", outside)],
+                kind="EventList",
+            )
+        ]
     )
     executor, _, _, _, _ = _executor(monkeypatch, opener)
     outcome = executor.execute(
-        _call(K8S_JQ_TOOL, _query(kind="events", expr='.items[] | .reason', namespace=K8S_NAMESPACE))
+        _call(
+            K8S_JQ_TOOL,
+            _query(kind="events", expr=".items[] | .reason", namespace=K8S_NAMESPACE),
+        )
     )
     assert outcome.status == "ok"
     view = _view(outcome)
@@ -428,7 +475,9 @@ def test_event_query_keeps_only_authorized_events_and_notes_discarded_count(monk
     assert "1" in notes and ("discard" in notes or "drop" in notes)
 
 
-def test_namespace_is_a_dns_label_and_bad_or_unknown_kinds_never_send_a_request(monkeypatch):
+def test_namespace_is_a_dns_label_and_bad_or_unknown_kinds_never_send_a_request(
+    monkeypatch,
+):
     opener = KubeOpener([_list([])])
     executor, _, _, _, _ = _executor(monkeypatch, opener)
     for params in (
@@ -441,7 +490,9 @@ def test_namespace_is_a_dns_label_and_bad_or_unknown_kinds_never_send_a_request(
 
 
 @pytest.mark.parametrize("kind", ["secrets", "Secrets", "secret", "Secret"])
-def test_secret_variants_are_resource_denied_without_a_cluster_request(monkeypatch, kind):
+def test_secret_variants_are_resource_denied_without_a_cluster_request(
+    monkeypatch, kind
+):
     opener = KubeOpener([])
     executor, _, _, _, _ = _executor(monkeypatch, opener)
     outcome = executor.execute(_call(K8S_JQ_TOOL, _query(kind=kind)))
@@ -463,7 +514,9 @@ def test_secret_variants_are_resource_denied_without_a_cluster_request(monkeypat
         (503, "SOURCE_UNAVAILABLE"),
     ],
 )
-def test_kubernetes_http_statuses_map_to_fixed_outcome_reasons(monkeypatch, status, reason):
+def test_kubernetes_http_statuses_map_to_fixed_outcome_reasons(
+    monkeypatch, status, reason
+):
     opener = KubeOpener([status])
     executor, _, _, _, _ = _executor(monkeypatch, opener)
     outcome = executor.execute(_call(K8S_JQ_TOOL, _query()))
@@ -478,17 +531,15 @@ def test_kubernetes_transport_does_not_follow_redirects(monkeypatch):
     assert len(opener.requests) == 1
 
 
-def test_pagination_is_500_per_page_and_jq_runs_once_after_all_pages(monkeypatch, tmp_path):
+def test_pagination_is_500_per_page_and_jq_runs_once_after_all_pages(
+    monkeypatch, tmp_path
+):
     _require_jq()
     real_jq = shutil.which("jq")
     assert real_jq is not None
     counter = tmp_path / "jq.calls"
     wrapper = tmp_path / "jq"
-    wrapper.write_text(
-        "#!/bin/sh\n"
-        f"echo x >> {counter}\n"
-        f"exec {real_jq} \"$@\"\n"
-    )
+    wrapper.write_text(f'#!/bin/sh\necho x >> {counter}\nexec {real_jq} "$@"\n')
     wrapper.chmod(wrapper.stat().st_mode | stat.S_IXUSR)
     monkeypatch.setenv("PATH", f"{tmp_path}:{os.environ.get('PATH', '')}")
     opener = KubeOpener(
@@ -500,7 +551,7 @@ def test_pagination_is_500_per_page_and_jq_runs_once_after_all_pages(monkeypatch
     executor, _, _, _, _ = _executor(monkeypatch, opener)
     counter.write_text("")
     outcome = executor.execute(
-        _call(K8S_COUNT_TOOL, _query(expr='.items[] | .status.phase'))
+        _call(K8S_COUNT_TOOL, _query(expr=".items[] | .status.phase"))
     )
     assert outcome.status == "ok"
     view = _view(outcome)
@@ -516,7 +567,7 @@ def test_count_returns_total_and_only_ten_previews_each_at_most_200_chars(monkey
     opener = KubeOpener([_list(items)])
     executor, _, _, _, _ = _executor(monkeypatch, opener)
     outcome = executor.execute(
-        _call(K8S_COUNT_TOOL, _query(expr='.items[] | .metadata.name'))
+        _call(K8S_COUNT_TOOL, _query(expr=".items[] | .metadata.name"))
     )
     assert outcome.status == "ok"
     view = _view(outcome)
@@ -530,16 +581,20 @@ def test_raw_api_bytes_over_4_mib_are_refused_as_a_whole(monkeypatch):
     huge = _list([_pod("huge", blob="x" * (4 * 1024 * 1024))])
     opener = KubeOpener([huge])
     executor, sink, _, _, _ = _executor(monkeypatch, opener)
-    outcome = executor.execute(_call(K8S_JQ_TOOL, _query(expr='.items[] | .metadata.name')))
+    outcome = executor.execute(
+        _call(K8S_JQ_TOOL, _query(expr=".items[] | .metadata.name"))
+    )
     assert (outcome.status, outcome.reason) == ("error", "RESULT_TOO_LARGE")
     assert _view(outcome)["content"] is None
     assert sink.records == []
 
 
 def test_jq_output_over_2_mib_is_refused_as_a_whole(monkeypatch):
-    opener = KubeOpener([_list([_pod("large-output", blob="x" * (2 * 1024 * 1024 + 1))])])
+    opener = KubeOpener(
+        [_list([_pod("large-output", blob="x" * (2 * 1024 * 1024 + 1))])]
+    )
     executor, sink, _, _, _ = _executor(monkeypatch, opener)
-    outcome = executor.execute(_call(K8S_JQ_TOOL, _query(expr='.items[] | .blob')))
+    outcome = executor.execute(_call(K8S_JQ_TOOL, _query(expr=".items[] | .blob")))
     assert (outcome.status, outcome.reason) == ("error", "RESULT_TOO_LARGE")
     assert _view(outcome)["content"] is None
     assert sink.records == []
@@ -554,7 +609,9 @@ def test_jq_output_over_2_mib_is_refused_as_a_whole(monkeypatch):
         "[",
     ],
 )
-def test_jq_import_include_overlong_and_compile_errors_are_invalid_params(monkeypatch, expr):
+def test_jq_import_include_overlong_and_compile_errors_are_invalid_params(
+    monkeypatch, expr
+):
     opener = KubeOpener([_list([_pod("never-read")])])
     executor, _, _, _, _ = _executor(monkeypatch, opener)
     outcome = executor.execute(_call(K8S_JQ_TOOL, _query(expr=expr)))
@@ -590,11 +647,19 @@ def test_kubernetes_and_otel_credentials_are_separate_and_named_by_slot(monkeypa
 
     opener = Router()
     executor, _, _, _, _ = _executor(monkeypatch, opener)
-    k8s = executor.execute(
-        _call(K8S_JQ_TOOL, _query(namespace=K8S_NAMESPACE))
+    k8s = executor.execute(_call(K8S_JQ_TOOL, _query(namespace=K8S_NAMESPACE)))
+    prom = executor.execute(
+        _call(
+            METRICS_TOOL,
+            {
+                "expr": "sum by(service_name) (increase(traces_span_metrics_calls_total[5m]))"
+            },
+            index=1,
+        )
     )
-    prom = executor.execute(_call(METRICS_TOOL, {"expr": "sum by(service_name) (increase(traces_span_metrics_calls_total[5m]))"}, index=1))
-    traces = executor.execute(_call(TRACES_TOOL, {"service": "checkout", "limit": 1}, index=2))
+    traces = executor.execute(
+        _call(TRACES_TOOL, {"service": "checkout", "limit": 1}, index=2)
+    )
     assert {
         k8s.operation.credential_ref,
         prom.operation.credential_ref,
@@ -610,7 +675,9 @@ def test_kubernetes_and_otel_credentials_are_separate_and_named_by_slot(monkeypa
 
 
 def test_missing_k8s_ro_credential_is_not_replaced_by_an_otel_credential():
-    transport = kubernetes_core.KubernetesTransport(credentials={"otel-demo-ro": OTEL_TOKEN})
+    transport = kubernetes_core.KubernetesTransport(
+        credentials={"otel-demo-ro": OTEL_TOKEN}
+    )
     request = TransportRequest(
         operation_id="a2-t0",
         source="otel-demo",
@@ -675,6 +742,7 @@ def test_lab_gate_accepts_extension_only_for_a_lab_kubernetes_host():
         "OPSPILOT_K8S_API_URL": K8S_API,
     }
     assert check_lab_target(env) == ()
-    rejected = check_lab_target({**env, "OPSPILOT_K8S_API_URL": "https://kube.external.invalid:6443"})
+    rejected = check_lab_target(
+        {**env, "OPSPILOT_K8S_API_URL": "https://kube.external.invalid:6443"}
+    )
     assert "KUBERNETES_NOT_LAB" in rejected
-
