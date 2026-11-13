@@ -15,6 +15,7 @@ import time
 import urllib.error
 import urllib.request
 from datetime import timedelta, timezone
+from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
@@ -311,3 +312,17 @@ def test_registration_and_profile_listing():
     sources = otel_demo_ext._data_sources()
     assert sources["available"]["pod_logs"] == [TOOL]
     assert "pod_logs" not in sources["not_integrated"]
+
+
+def test_regex_child_is_a_fixed_package_file():
+    assert k8s.REGEX_CHILD.is_file()
+    assert k8s.REGEX_CHILD.parent == Path(k8s.__file__).parent
+    decided = k8s.filter_lines(
+        ["Boom", "ok"],
+        include="boom",
+        exclude=None,
+        ignore_case=True,
+        python_path=k8s.require_python(),
+        deadline=time.monotonic() + 10,
+    )
+    assert decided is not None and decided.keep == (True, False)

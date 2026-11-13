@@ -927,65 +927,9 @@ class _Jq:
 #: A3-7: the longest pattern the child is given.
 MAX_PATTERN_CHARS = 2000
 
-#: The child program: Python ``re`` over a JSON list of lines read from
-#: stdin. It imports only the standard library and writes one JSON object:
-#: ``keep`` (one ``1``/``0`` per line), the removal counts and, per pattern,
-#: ``regex`` or ``substring`` (a pattern that does not compile is matched as
-#: a substring, with the same case rule).
-_FILTER_PROGRAM = """\
-import json
-import re
-import sys
-
-
-def main():
-    spec = json.loads(sys.stdin.buffer.read())
-    ignore_case = bool(spec["ignore_case"])
-    flags = re.IGNORECASE if ignore_case else 0
-
-    def compiled(pattern):
-        if pattern is None:
-            return None, None
-        try:
-            return re.compile(pattern, flags), "regex"
-        except (re.error, RecursionError, OverflowError, ValueError):
-            return None, "substring"
-
-    def hit(pattern, regex, text):
-        if regex is not None:
-            return regex.search(text) is not None
-        if ignore_case:
-            return pattern.lower() in text.lower()
-        return pattern in text
-
-    include = spec["include"]
-    exclude = spec["exclude"]
-    include_regex, include_mode = compiled(include)
-    exclude_regex, exclude_mode = compiled(exclude)
-    keep = []
-    removed_include = 0
-    removed_exclude = 0
-    for text in spec["lines"]:
-        if include is not None and not hit(include, include_regex, text):
-            removed_include += 1
-            keep.append("0")
-        elif exclude is not None and hit(exclude, exclude_regex, text):
-            removed_exclude += 1
-            keep.append("0")
-        else:
-            keep.append("1")
-    result = {
-        "keep": "".join(keep),
-        "include_mode": include_mode,
-        "exclude_mode": exclude_mode,
-        "removed_include": removed_include,
-        "removed_exclude": removed_exclude,
-    }
-    sys.stdout.buffer.write(json.dumps(result).encode("ascii"))
-
-
-main()
-"""
+#: The child program, shipped in the package and run by its path (never
+#: written at run time): Python ``re`` over a JSON list of lines on stdin.
+REGEX_CHILD = Path(__file__).with_name("_regex_child.py")
 
 
 def require_python() -> str:
@@ -1030,8 +974,9 @@ def filter_lines(
 ) -> LineFilter | None:
     """Run ``include``/``exclude`` over ``lines`` in a bounded child.
 
-    The child is ``python_path`` in isolated mode without ``site``
-    (``-I -S -B``), started by ``run_isolated``: no shell, an empty
+    The child is ``REGEX_CHILD`` (a fixed file of this package) run by
+    ``python_path`` in isolated mode without ``site`` (``-I -S -B``),
+    started by ``run_isolated``: no shell, an empty
     environment, an empty working directory, the call's remaining time
     (a pathological pattern is killed: ``timeout``/``TOOL_TIMEOUT``, the jq
     timeout class) and 512 MiB of memory. A line is kept when it matches
@@ -1046,17 +991,13 @@ def filter_lines(
         "lines": list(lines),
     }
     stdin = json.dumps(spec, separators=(",", ":")).encode("ascii")
-    with tempfile.TemporaryDirectory(prefix="opspilot-re-") as root:
-        work = Path(root) / "work"
-        work.mkdir()
-        program = Path(root) / "filter.py"
-        program.write_text(_FILTER_PROGRAM, encoding="utf-8")
+    with tempfile.TemporaryDirectory(prefix="opspilot-re-") as work:
         status, output = run_isolated(
-            [python_path, "-I", "-S", "-B", str(program)],
+            [python_path, "-I", "-S", "-B", str(REGEX_CHILD)],
             stdin,
             deadline=deadline,
             max_output_bytes=len(lines) + 4096,
-            cwd=str(work),
+            cwd=work,
         )
     if status != 0:
         return None

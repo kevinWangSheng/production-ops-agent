@@ -51,11 +51,11 @@ A3 假设 A2 把配置、GET 传输、错误映射做成可复用函数，传输
 
 ## 实施记录
 
-代码：`opspilot/tools/kubernetes_logs.py`（工具面、读取、行处理、视图）；`kubernetes_core.py` 加 `check_object_name`、`pod_url`、`require_python`、`pattern_problem`、`filter_lines`（正则子进程，A6 复用），`KubernetesClient.get` 加 `accept`、`cut` 两个可选参数（默认值保持 A2 行为）；`otel_demo_ext.py` 注册与路由；`profiles.py` 加启动码 `PYTHON_NOT_FOUND`。实现者单测 `tests/test_555_pod_logs_impl.py`。
+代码：`opspilot/tools/kubernetes_logs.py`（工具面、读取、行处理、视图）；`kubernetes_core.py` 加 `check_object_name`、`pod_url`、`require_python`、`pattern_problem`、`filter_lines`（正则子进程，A6 复用；子进程脚本 `_regex_child.py`），`KubernetesClient.get` 加 `accept`、`cut` 两个可选参数（默认值保持 A2 行为）；`otel_demo_ext.py` 注册与路由；`profiles.py` 加启动码 `PYTHON_NOT_FOUND`。实现者单测 `tests/test_555_pod_logs_impl.py`。
 
 自行决定的可逆细节：
 
-- 正则子进程的解释器：worker 启动时从 PATH 解析 `python3`（同 `require_jq`），以 `-I -S -B` 跑临时目录里的脚本文件，经 `run_isolated` 启动。F11 第 4 步代码面检查禁止 `kubernetes_core.py` 出现 `sys.executable` 与 `-c`，这样不触碰它；镜像里 PATH 首位是 `/app/.venv/bin`，解析到的就是 worker 自己的解释器。
+- 正则子进程（lead 2026-11-13 确认）：worker 启动时从 PATH 解析 `python3`（同 `require_jq`，缺失为启动码 `PYTHON_NOT_FOUND`），以 `-I -S -B` 按包内路径执行随包发布的固定脚本 `opspilot/tools/_regex_child.py`（只读 stdin 的 JSON，运行时不写任何代码文件），经 `run_isolated` 启动（空环境、空工作目录、超时、输出上限）。F11 第 4 步代码面检查不改且通过。runtime 镜像基础是 `python:3.12.13-slim`（自带 `/usr/local/bin/python3`），PATH 首位 `/app/.venv/bin`（venv 的 `python3` 指向它），`COPY opspilot /app/opspilot` 带上该脚本。
 - 「全部容器」含 init 与临时容器，顺序 init、应用、临时，与上游全容器读取一致；请求数因此是 1+2C，C 计全部容器。
 - 读取顺序：先所有容器的 `previous`，再所有容器的当前流；共用 4 MiB 预算按顺序扣，预算用完的流记 `not_read`。理由：崩溃循环时上一次实例最关键，且它的体积受一个实例寿命所限。
 - 流被 `limitBytes` 截断时丢掉末尾半行并写备注；响应长度达到预算即视为读满（可能恰好读完，按不完整处理更保守）。
