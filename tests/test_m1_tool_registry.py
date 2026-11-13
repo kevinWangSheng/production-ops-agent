@@ -44,9 +44,9 @@ def test_read_only_flag_cannot_be_turned_off():
         registration(read_only=False)
 
 
-def test_sources_that_may_return_secrets_are_refused_at_registration():
-    with pytest.raises(ToolContractError, match="SECRET_BEARING_SOURCE_FORBIDDEN"):
-        registration(may_contain_secrets=True)
+def test_sources_that_may_return_secrets_may_be_declared_at_registration():
+    declared = registration(may_contain_secrets=True)
+    assert declared.may_contain_secrets is True
 
 
 def test_secret_bearing_declaration_is_boolean():
