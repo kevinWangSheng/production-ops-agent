@@ -1,9 +1,9 @@
 # ITBench-Lite SRE 离线快照评测适配
 
-- 状态：待开始（开工说明已齐，L6 等用户裁决；未实现）
+- 状态：实施中（L6 已裁决）
 - 更新日期：2026-11-12
 - 依据：[工具面拓展任务记录](2026-11-12-tool-expansion.md)、[决定表 r4](2026-11-12-tool-expansion-contract.md)（L1 至 L16）；用户 2026-11-12 的四条对齐；ITBench 官方 agent 仓库 `30673b23` 与评测器 `ITBench-Evaluations@14f026fc`（查于 2026-11-12）；数据集 `ibm-research/ITBench-Lite` SRE `v0.2`。issue #571（35 题真实运行）、#581（数据转换与告警投递）、#582（报告转答案与判分）、#583（假 API server）。两份回放探针（2026-11-04 指标与 trace、2026-11-12 集群对象与日志）和开工前预审都在仓库外。
-- 工作区：开工时另开 worktree，分支 `feature/itbench-lite-adapter`，写入本节。
+- 工作区：#582 在 `/Users/shenghuikevin/dev/AI/poa-lite-582`，分支 `feature/itbench-lite-582-scoring`。
 
 ## 目标
 
@@ -40,14 +40,9 @@
 
 这些限制随结果一起对外写明。
 
-## 待用户裁决：L6
+## 已裁决：L6
 
-官方 LLM judge 用哪个模型、发给哪家。发出去的是我们的报告转换结果和公开数据集的标准答案，没有非公开数据。
-
-- a：用仓库已经在用的接收方（Z.ai、OpenAI、DeepSeek 之一）。不新增外部服务；结果要写明「judge 与官方示例不同」。
-- b：照官方示例经 OpenRouter 用 `gemini-2.5-pro`。与官方示例可比；OpenRouter 是新的数据接收方。
-
-官方榜单实际用哪个 judge 未确认。裁决前其余部分照常开工，judge 只是最后一步的一个配置。
+用户 2026-11-13 裁决 a：官方 judge 用仓库已有接收方（Z.ai、OpenAI、DeepSeek 之一），不新增 OpenRouter；结果写明「judge 与官方示例不同」。
 
 ## 这个 PR 做什么
 
@@ -81,4 +76,29 @@
 
 ## 下一步
 
-L6 裁决后写入决定表。实现会话可先做不依赖 A 系列的部分；假 server 在 A2 接口合并后做。
+L6 已写入决定表。实现会话先做不依赖 A 系列的部分；假 server 在 A2 接口合并后做。
+
+## 实施记录（#582）
+
+代码在 `scripts/itbench_lite/` 的 `answer.py`、`entity_match.py`、`coverage.py`、`official_eval.py`。
+
+结构合同（2026-11-13，评测器 `14f026fc` 克隆在仓库外 `~/.agent/eval-probes/itbench-evaluations-14f026fc/`，用其 `uv.lock` 建独立 venv）：
+- 评测器的确定性代码不读 `agent_output.json` 的任何字段：加载器只要求 `<根>/<场景目录>/<数字 trial>/outputs/agent_output.json` 能解析成 JSON，整份对象原样序列化进 judge 提示词。字段名由 judge 提示词消费：实体的 `name`、`contributing_factor`，以及 `propagations`。与上文字段一致，无需改。
+- 场景目录名不区分大小写地按 `scenario-<id>` 等候选解析；trial 目录缺文件记 bad run，且该题没有任何可读输出时整题不进评测，所以 L5 必须写出空结果文件。
+
+可逆技术细节（每条一行理由）：
+- 名字边界为 `[A-Za-z0-9_-]` 以外的字符、不区分大小写、重叠取最长：Kubernetes 名字含连字符，`\b` 会把 `checkout` 匹配进 Pod 名。
+- Kind 规则依次为：被引证据带 `kind` 且其他参数里出现该名字；`pod`/`pod_name` 等于该名字取 Pod；`service` 或 PromQL `service_name="…"` 取 Service；只提到这一个实体的论断所引证据的 `kind`；否则 Service。`events` 不算实体类型。理由：把 L1「取工具参数」写成可测的顺序。
+- namespace 取定出 Kind 那条证据的 `namespace` 参数，否则 `otel-demo`：快照目录里 namespace 的来源以 #581 为准。
+- `alerts_explained` 恒为空：L1–L5 没有规则，钉住版本的 judge 提示词也不给它打分。
+- 「启发式」「受转换限制」写在 trial 目录的 `conversion_meta.json` 与 judge 标签文件里，不写进 `agent_output.json`：评测器把整份对象发给 judge，额外字段会进提示词。
+- 确定性匹配的 filter 正则对对象名和完整 `namespace/Kind/name` 都试 `re.search`：judge 示例里的 filter 两种写法都有可能。
+- judge 默认接收方 Z.ai（`glm-5.3-flashx`），`ITBENCH_JUDGE_PROVIDER` 可选 openai、deepseek，其他一律拒绝；子进程只拿 `JUDGE_*` 三个变量与基础路径，工作目录不得有 `.env`（评测器会 `load_dotenv`）。
+- 结构合同测试设了 `ITBENCH_EVALUATIONS_DIR` 才跑，CI 跳过。
+
+偏离与已知限制：
+- 第一个实体若被 `rejected_hypothesis` 提到，则整份报告没有根因，不顺延到下一个实体（按 L2 字面）。
+- 只在 summary 里出现、没有论断提到的实体，`reasoning` 与 `evidence` 为空串（L4 只说用论断原文）。
+- 集群级对象（Node、Namespace）也写成 `<namespace>/Kind/name`，官方对集群级对象的写法未确认。
+- GT 的 `kind` 若不是标准 Kubernetes Kind（judge 提示词提到 Chaos、flagd 类），确定性匹配不会命中，只有 judge 分能覆盖。
+- 本 PR 不调用 judge；分档清单与真实分数等 #571。
