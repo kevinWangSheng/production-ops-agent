@@ -64,7 +64,7 @@
 | A2-12 | 错误分类 | 400、422、404 报 `INVALID_PARAMS`；401、403 报 `SOURCE_FORBIDDEN`；410 报 `SOURCE_ERROR`；429 与 5xx 报 `SOURCE_UNAVAILABLE`；不跟重定向、不走代理 | 全部落在现有固定结果类 |
 | A2-13 | LangSmith 的 lab 闸门 | 允许名单加 `otel-demo-ext`；加一项检查，Kubernetes API 地址必须是 lab 主机 | 内容导出只限 lab；worker 实际用的 API 地址未确认，等集群取证（A1） |
 | A2-14 | 「只接 lab 或受控快照」是否在代码里强制 | 不强制；`may_contain_secrets=True` 只是声明，由 lab 闸门与运行规则约束 | 照实宣称即可，不为此搭技术隔离 |
-| A2-15 | 合并与关闭时机 | 代码 PR 凭替身 API 响应加合同测试即可提交；#554 留着，租机跑完真实 Run、有 trace 与 `summary.json` 后再关 | A2 不碰调查循环、报告校验与恢复路径 |
+| A2-15 | 合并与关闭时机 | 代码 PR 凭替身 API 响应加合同测试即可提交；#554 在代码 PR 合并时关闭；租机后的真实 Run、trace 与 `summary.json` 归租机集中取证（#580，2026-11-12 拆 ticket 时改） | A2 不碰调查循环、报告校验与恢复路径 |
 
 ## r3：A1、A3、A4、A5、A6、B2 开工前预审
 
