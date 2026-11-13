@@ -35,7 +35,6 @@ import yaml  # type: ignore[import-untyped]
 from scripts import k8s_authz_probe as probe
 from scripts import kind_lab
 
-
 ROOT = Path(kind_lab.ROOT)
 RBAC = ROOT / "scripts/kind_lab/opspilot-readonly-rbac.yaml"
 ENTRYPOINT = ROOT / "deploy/docker-entrypoint.sh"
@@ -141,9 +140,9 @@ def test_readonly_rbac_manifest_is_the_narrow_cluster_contract() -> None:
     assert RBAC.is_file()
     documents = [doc for doc in yaml.safe_load_all(RBAC.read_text()) if doc]
     by_kind = {doc["kind"]: doc for doc in documents}
-    assert {doc["metadata"]["name"] for doc in documents if doc["kind"] == "Namespace"} == {
-        "opspilot-readonly"
-    }
+    assert {
+        doc["metadata"]["name"] for doc in documents if doc["kind"] == "Namespace"
+    } == {"opspilot-readonly"}
     assert by_kind["ServiceAccount"]["metadata"] == {
         "name": "opspilot-investigator",
         "namespace": "opspilot-readonly",
@@ -287,7 +286,9 @@ def test_k8s_token_subcommand_does_not_run_up_steps(
     monkeypatch.setattr(kind_lab, "capture", fixture)
     monkeypatch.setattr(kind_lab, "run", fixture)
     assert kind_lab.main(["k8s-token"]) == 0
-    assert not any(c and c[0] in {"kind", "helm", "docker", "colima"} for c in fixture.calls)
+    assert not any(
+        c and c[0] in {"kind", "helm", "docker", "colima"} for c in fixture.calls
+    )
     assert not any("apply" in c or "upgrade" in c for c in fixture.calls)
 
 
@@ -327,7 +328,11 @@ def test_control_secrets_replaces_worker_k8s_lines_and_restarts_worker(
         return subprocess.CompletedProcess(cmd, 0, "", "")
 
     def fake_capture(cmd: list[str], **_: Any) -> subprocess.CompletedProcess[str]:
-        output = "worker-container-id\n" if cmd and cmd[0] == "docker" and "ps" in cmd else ""
+        output = (
+            "worker-container-id\n"
+            if cmd and cmd[0] == "docker" and "ps" in cmd
+            else ""
+        )
         return subprocess.CompletedProcess(cmd, 0, output, "")
 
     monkeypatch.setattr(kind_lab, "run", fake_run)
@@ -440,7 +445,9 @@ def _probe_method(args: tuple[Any, ...], kwargs: dict[str, Any]) -> str:
     return "GET"
 
 
-def _probe_matrix(monkeypatch: pytest.MonkeyPatch, mismatch: bool = False) -> dict[str, Any]:
+def _probe_matrix(
+    monkeypatch: pytest.MonkeyPatch, mismatch: bool = False
+) -> dict[str, Any]:
     seen: list[tuple[str, str]] = []
     known_secrets = ("lab-known-secret-357",)
 
@@ -451,10 +458,14 @@ def _probe_matrix(monkeypatch: pytest.MonkeyPatch, mismatch: bool = False) -> di
         headers: dict[str, str] = {}
         for value in (*args, *kwargs.values()):
             if isinstance(value, dict):
-                headers.update({str(key).lower(): str(item) for key, item in value.items()})
+                headers.update(
+                    {str(key).lower(): str(item) for key, item in value.items()}
+                )
         write = method in {"POST", "PUT", "PATCH", "DELETE"}
         query = path.partition("?")[2].split("&")
-        watches = {item.lower() for item in query if item.lower() in {"watch=true", "watch=1"}}
+        watches = {
+            item.lower() for item in query if item.lower() in {"watch=true", "watch=1"}
+        }
         impersonating = any(
             key in {"impersonate-user", "impersonate-group"} for key in headers
         )
@@ -469,17 +480,22 @@ def _probe_matrix(monkeypatch: pytest.MonkeyPatch, mismatch: bool = False) -> di
         custom_resource = any(f"/apis/{group}/" in path for group in custom_groups)
         if write:
             assert "dryRun=All" in unquote(path)
-        denied = any(
-            marker in path
-            for marker in (
-                "/secrets",
-                "/exec",
-                "/attach",
-                "/portforward",
-                "/proxy",
-                "/serviceaccounts/token",
+        denied = (
+            any(
+                marker in path
+                for marker in (
+                    "/secrets",
+                    "/exec",
+                    "/attach",
+                    "/portforward",
+                    "/proxy",
+                    "/serviceaccounts/token",
+                )
             )
-        ) or bool(watches) or impersonating or custom_resource
+            or bool(watches)
+            or impersonating
+            or custom_resource
+        )
         status = 403 if write or denied else 200
         if mismatch and denied:
             status = 200
@@ -499,7 +515,9 @@ def _probe_matrix(monkeypatch: pytest.MonkeyPatch, mismatch: bool = False) -> di
             return status, json.dumps(body).encode()
         return status, b"{}"
 
-    monkeypatch.setattr(probe, "authorization", lambda *args, **kwargs: "Bearer aaaaaaaaa357")
+    monkeypatch.setattr(
+        probe, "authorization", lambda *args, **kwargs: "Bearer aaaaaaaaa357"
+    )
     monkeypatch.setattr(probe, "request", fake_request)
     report = probe.probe(known_secrets=known_secrets)
     assert seen, "probe must exercise the fake transport"
@@ -508,7 +526,9 @@ def _probe_matrix(monkeypatch: pytest.MonkeyPatch, mismatch: bool = False) -> di
     return report
 
 
-def test_authz_probe_accepts_expected_200_and_403_matrix(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_authz_probe_accepts_expected_200_and_403_matrix(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     report = _probe_matrix(monkeypatch)
     assert report["ok"] is True
 
