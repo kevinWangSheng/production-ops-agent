@@ -53,7 +53,7 @@ kubectl、服务端表格打印、完整 JSONPath、带点 label 键、评测回
 - 事件的来源时间取过滤后保留行对应事件的首尾（A6-6 的「保留事件」按最终返回的行算，更窄）。
 - 错误码表：A2 的表去掉 jq 专用码，加 `INVALID_COLUMNS`、`INVALID_FILTER`（都归参数错误）、`FILTER_FAILED`（来源错误，同 A3）。校验顺序 kind（Secret 先）→ namespace → 选择器 → 列 → 正则。
 
-偏离：开工说明要求回显出错列；执行器对未发出的请求不向模型传详情（`executor.py` `_source_error`），与 A2/A4 一致，回显只在拒绝记录（拒绝体的 `column`、`problem`），模型只见 `INVALID_PARAMS`（lead 2026-11-13 裁决不改执行器）。
+偏离：开工说明要求回显出错列；执行器对未发出的请求不向模型传详情（`executor.py` `_source_error`），与 A2/A4 一致，回显只在拒绝记录（拒绝体的 `column`、`problem`；单列写错回显那一列，超列数或超长回显整串，超 4000 字符截断并标 `column_truncated`），模型只见 `INVALID_PARAMS`（lead 2026-11-13 裁决不改执行器）。
 
 行只在视图 `content` 里放一份，不在视图字段里重复 `rows`（lead 2026-11-13 裁决）。
 

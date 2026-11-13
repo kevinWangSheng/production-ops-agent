@@ -96,8 +96,10 @@ MAX_COLUMNS = 20
 MAX_COLUMNS_CHARS = 2000
 #: Upstream's forbidden characters, plus every line break.
 _FORBIDDEN = frozenset("'/;\n\r")
-#: A refused column is echoed this far.
-_ECHO_CHARS = 200
+#: A refused specification is echoed this far (``column_truncated`` past
+#: it): every specification that passed the length check fits whole, and a
+#: too-long one is echoed in full up to twice the limit.
+_ECHO_CHARS = 2 * MAX_COLUMNS_CHARS
 #: The longest index accepted in ``[n]``.
 _MAX_INDEX_DIGITS = 6
 #: What a missing value is shown as (the upstream printer's text).
@@ -137,7 +139,8 @@ class Column:
 
 @dataclass(frozen=True)
 class ColumnProblem:
-    """Why ``columns`` was refused, and the entry it was refused at."""
+    """Why ``columns`` was refused, and the entry it was refused at -- the
+    whole specification for ``too_long`` and ``too_many_columns``."""
 
     problem: str
     column: str
@@ -149,6 +152,7 @@ class ColumnProblem:
                     "error": "INVALID_COLUMNS",
                     "problem": self.problem,
                     "column": self.column[:_ECHO_CHARS],
+                    "column_truncated": len(self.column) > _ECHO_CHARS,
                 }
             ).encode("utf-8"),
             source_status="INVALID_COLUMNS",
@@ -193,7 +197,8 @@ def parse_columns(columns: object) -> list[Column] | ColumnProblem:
         return ColumnProblem("too_long", columns)
     entries = columns.split(",")
     if len(entries) > MAX_COLUMNS:
-        return ColumnProblem("too_many_columns", entries[MAX_COLUMNS])
+        # No single column is at fault: the whole specification is echoed.
+        return ColumnProblem("too_many_columns", columns)
     parsed: list[Column] = []
     for entry in entries:
         if _FORBIDDEN & set(entry):

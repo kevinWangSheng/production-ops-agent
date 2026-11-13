@@ -370,3 +370,22 @@ def test_only_the_extended_profile_offers_the_tool():
     )
     assert "kubernetes_jq_query" in description
     assert "Only requested fields are transmitted" not in description
+
+
+def test_too_long_or_too_many_echoes_the_whole_specification():
+    many = ",".join(f"C{i}:.a" for i in range(tab.MAX_COLUMNS + 1))
+    long = "A:.a" + "b" * tab.MAX_COLUMNS_CHARS
+    huge = "A:.a" + "b" * (3 * tab.MAX_COLUMNS_CHARS)
+    for spec in (many, long):
+        found = tab.parse_columns(spec)
+        assert isinstance(found, tab.ColumnProblem)
+        body = json.loads(found.response().body)
+        assert (body["column"], body["column_truncated"]) == (spec, False)
+    found = tab.parse_columns(huge)
+    assert isinstance(found, tab.ColumnProblem)
+    body = json.loads(found.response().body)
+    assert body["column_truncated"] is True
+    assert huge.startswith(body["column"]) and len(body["column"]) < len(huge)
+    found = tab.parse_columns("A:.a,BROKEN,C:.c")
+    assert isinstance(found, tab.ColumnProblem)
+    assert json.loads(found.response().body)["column"] == "BROKEN"
