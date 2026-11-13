@@ -149,3 +149,36 @@ L6 已写入决定表。实现会话先做不依赖 A 系列的部分；假 serv
 - 没有 discovery（`/api`、`/apis`、`/version`），`kubectl` 兼容性仍未确认（已知风险 5）。
 - 读日志按 `k8s.pod.name` 建索引，100 MB 级日志文件整份读进内存；未在完整真实文件上测过加载时长与内存。
 - 坏行即拒绝启动（PR #603 审查后）：对象行缺 Body、Body 不是 JSON 对象、缺 `k8s.resource.name`、对象缺 `apiVersion`/`kind`/`metadata.name`，事件行缺 Body、watch 类型不是 ADDED/MODIFIED/DELETED、对象不是 Event 或版本既非 `v1` 也非 `events.k8s.io/v1`、既无 uid 也无 name，日志行缺 `k8s.pod.name`/`k8s.namespace.name` 或缺 Body 列，以及任何行时间戳解析失败，都抛 `SnapshotRowError`（带文件名与数据行号），不返回部分数据。日志正文为空串照常加载。真实片段 S16 上的对象、事件、日志开头一段都能通过；完整日志文件里有没有不带 Pod 属性的行未确认，若有则会拒绝启动，到时再定。
+
+## 实施记录（#604：逐题编排驱动）
+
+代码：`scripts/itbench_lite/driver.py`（编排与命令行）、`services.py`（docker 与子进程启动器）、`judge_trial.py`（判分子进程）；「冻结一个给定 Run」是 `scripts/run_freeze.py`（`collect`、`trace_roots`、`freeze_run`，命令行 `RUN_FREEZE_DSN=… python -m scripts.run_freeze --run-id … --experiment … --evidence-dir …`），A7 驱动复用。测试 `tests/test_itbench_lite_driver.py`、`tests/test_itbench_lite_judge_freeze.py`（替身启动器、合成数据），以及需 `OPSPILOT_LITE_PG=1` 的 `tests/integration/test_604_lite_intake_postgres.py`（本机一次性 PG 加真 web 进程）。决定表见 [r6](2026-11-12-tool-expansion-contract.md)。
+
+命令行（租机手册阶段 4 引用）：
+
+- 一题一次：`python3 -m scripts.itbench_lite.driver attempt --dataset <数据集根> --scenario <场景目录名> --trial 1 --round <轮次> --vocabulary <词表> --env-file <私有 KEY=value 文件>`
+- 全量：`python3 -m scripts.itbench_lite.driver round --dataset <根> --round <轮次> --vocabulary-dir <目录，内含 S<id>.txt> [--scenarios 16,23] [--trials 3]`；已有 summary 的 trial 跳过
+- 补判分：`… driver judge --round <轮次> --ground-truth <根>`；汇总给 `coverage.py`：`… driver scores --round <轮次> --out <文件>`
+- 可调：`--load-budget-seconds`（默认 180）、`--trace lab|off`、`--no-judge`、`--allow-dirty`、`--prometheus-account`、各端口 `--{pg,prometheus,jaeger-query,jaeger-otlp,fake-k8s,web}-port`
+
+自行决定的可逆细节（每条一行理由）：
+
+- 目标条目写 `health_profile_id: otel-demo-checkout`：预审写「不写」，但身份文件加载器把它列为必填（`opspilot/schema.py` `TARGET_ENTRY_FIELDS`），不写 web 起不来；自动观察已关，这个值不产生行为。
+- `loaded_at` 是指标、trace、假 server 与 web 都就绪的时刻；worker 在其后起，起动时间算进 2 分钟间隔：worker 要用假 server 生成的 CA。
+- worker 的就绪判据是「起动 5 秒后仍存活」：健康监听按 L-D3 关闭后没有别的信号。
+- 端口释放只核对本次尝试开始时确认空闲的端口：被别人占着的端口不是本次的，核对它会把基础设施失败误判成清理失败。
+- 清理失败（含端口没释放）停整轮：状态不可信时继续跑会污染下一次尝试。
+- 回放 Jaeger 用根地址（`OPSPILOT_OTEL_JAEGER_URL=http://127.0.0.1:<端口>`，工具在其后直接拼 `/api/...`，`otel_demo.py` 查询处），`MEMORY_MAX_TRACES=1000000`：lab 的 5000 按 trace 个数淘汰，回放一题远超此数。
+- promtool 与 Prometheus 容器都用 `--user <宿主 uid:gid>`，promtool 加 `--network none`：避开镜像 nobody 用户写宿主目录的权限问题（预审风险 5）。
+- 工作区「不干净」只看已跟踪文件，且不算本轮证据目录：续跑时新写的 summary 不应让第二次调用拒绝启动。
+- 判分子进程只继承基础路径与 `ITBENCH_*`、`ZAI_*`、`OPENAI_*`、`DEEPSEEK_*`、`OPSPILOT_JUDGE_MODEL`；驱动只读回分数文件里的数值。官方分加 `root_cause_entity_pass`（`root_cause_entity_f1 == 1`），确定性分键名 `det_*`。
+- 缺失与确定性错误的 trial 也写 `summary.json`（`status: missing` 加原因），续跑不重跑；中途 Ctrl-C 不写，续跑会重跑。代码异常（非已分类失败）清理后直接结束进程，不重试。
+- LangSmith 的 key 可来自环境或 `--env-file`，只传给 worker 与回读 trace；web 不拿任何模型或 trace 凭据。
+
+本机验证到的程度：编排顺序、7 处起动失败、作废线（POST 前与等待过久两种）、端口被占、确定性错误、目标无法解析停整轮、无报告与报告校验失败、等待超时、续跑、judge 重试、命令行，全部用替身测；假 server 用真子进程起停；一次性 PG 加真 web 进程上验证了驱动生成的条目与 webhook 能建出绑定 `m0-otel-20260909` 的 Run（含回退规则），`run_freeze.collect` 能在真实表结构上读出它。未在本机验证：docker 里的 promtool、Prometheus、Jaeger 1.53，worker 真调模型，LangSmith 回读，judge 真调，真实数据上的灌入耗时。
+
+需裁决与风险：
+
+- 作废线照字面执行（预审风险 2）：灌得比 `--load-budget` 快超过 2 分钟也会作废，默认 180 s 只是占位，冒烟按实测灌入耗时（summary 的 `load.*.seconds`）调整。
+- 入口告警没有 `service_name` 时按 lead 定的回退跑，产物里 `target_fallback: true`；S12 这类题调查对象可能是基础设施噪声（预审风险 1），是否改入口选择规则待定。
+- Ubuntu 上 PostgreSQL 17 的 `initdb`、`pg_ctl` 需在 PATH 上（`LocalPgLauncher` 用 `shutil.which`）。
