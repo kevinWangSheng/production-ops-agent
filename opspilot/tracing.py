@@ -83,7 +83,9 @@ _T = TypeVar("_T")
 TRACE_ENV = "OPSPILOT_TRACE"
 TraceMode = Literal["off", "lab", "outbox"]
 LAB_PROJECT_PREFIX = "opspilot-lab-"
-LAB_TOOL_PROFILES = frozenset({"fixture", "otel-demo"})
+LAB_TOOL_PROFILES = frozenset({"fixture", "otel-demo", "otel-demo-ext"})
+# Profiles that read a Kubernetes API server (tool expansion A2-13).
+_KUBERNETES_PROFILES = frozenset({"otel-demo-ext"})
 # LangSmith SaaS regions (docs: trace-with-opentelemetry). A self-hosted or
 # unknown host is refused: the lab exports to the account's own SaaS project.
 _LANGSMITH_HOSTS = frozenset(
@@ -195,6 +197,13 @@ def check_lab_target(env: Mapping[str, str]) -> tuple[str, ...]:
         failures.append("PROMETHEUS_NOT_LAB")
     if not _is_lab_host(env.get("OPSPILOT_OTEL_JAEGER_URL") or "http://127.0.0.1"):
         failures.append("JAEGER_NOT_LAB")
+    # A2-13: the cluster API address too, when the profile reads one or the
+    # address is set at all; an extended profile without one fails closed.
+    kubernetes_url = env.get("OPSPILOT_K8S_API_URL") or ""
+    if (profile in _KUBERNETES_PROFILES or kubernetes_url) and not _is_lab_host(
+        kubernetes_url
+    ):
+        failures.append("KUBERNETES_NOT_LAB")
     project = env.get("LANGSMITH_PROJECT") or ""
     if not project.startswith(LAB_PROJECT_PREFIX):
         failures.append("PROJECT_NOT_LAB")

@@ -202,8 +202,18 @@ def _utf8_text(value: str) -> bool:
 # ``EVIDENCE_NOT_READABLE`` (#308 R3) is the one denial a transport may name:
 # the evidence-read transport refuses a record this Run may not read before
 # anything is read, and the executor reports it as ``denied``.
+# ``RESOURCE_NOT_ALLOWED`` and ``SOURCE_FORBIDDEN`` (tool expansion A2-6) are
+# the cluster query's two denials: a Secret asked for (refused before sending)
+# and an HTTP 401/403 from the API server.
 SOURCE_ERROR_REASONS = frozenset(
-    {"EVIDENCE_NOT_READABLE", "INVALID_PARAMS", "SOURCE_ERROR", "SOURCE_UNAVAILABLE"}
+    {
+        "EVIDENCE_NOT_READABLE",
+        "INVALID_PARAMS",
+        "RESOURCE_NOT_ALLOWED",
+        "SOURCE_ERROR",
+        "SOURCE_FORBIDDEN",
+        "SOURCE_UNAVAILABLE",
+    }
 )
 
 _NAME = re.compile(r"[a-z0-9][a-z0-9._-]{2,63}")
@@ -431,10 +441,14 @@ class ToolRegistration:
     :attr:`ToolRegistry.revision`.
 
     ``may_contain_secrets`` is a required operator declaration about the raw
-    source payload, not just the selected rows. Only literal ``False`` is
-    accepted; missing declarations fail construction and unknown/true values
-    are refused. This is a reviewed configuration assertion, not a scanner
-    or a runtime redaction guarantee.
+    source payload, not just the selected rows: a strict ``bool``; missing
+    declarations fail construction and non-bool values are refused. ``True``
+    is accepted (Q3/N5, tool expansion A2): such a source is registered,
+    its returns still pass the shared credential redaction, and bare secret
+    values are a stated residual risk bounded by the lab gate and the run
+    rules, not by code (A2-14). It is a reviewed configuration assertion,
+    not a scanner or a runtime redaction guarantee, and it is fingerprinted
+    in the registry revision.
     """
 
     name: str
@@ -467,8 +481,6 @@ class ToolRegistration:
             raise ToolContractError("WRITE_CAPABILITY_FORBIDDEN")
         if type(self.may_contain_secrets) is not bool:
             raise ToolContractError("INVALID_SECRET_DECLARATION")
-        if self.may_contain_secrets:
-            raise ToolContractError("SECRET_BEARING_SOURCE_FORBIDDEN")
         if self.verb not in READ_ONLY_VERBS:
             raise ToolContractError("VERB_NOT_ALLOWED")
         if not isinstance(self.parameters, Mapping) or any(

@@ -371,16 +371,40 @@ def _rows(raw: bytes, path: Sequence[str]) -> list[object] | None:
 
 
 class RoutedTransport:
-    """``read_evidence`` to the evidence transport, every other tool to the
-    profile's own transport (the request's gateway-resolved ``tool``)."""
+    """``read_evidence`` to the evidence transport, the cluster query tools to
+    ``kubernetes``, a tool named in ``routes`` to its own transport, every other tool to the profile's own transport
+    (the request's gateway-resolved ``tool``).
+
+    ``routes`` dispatches on exact tool names, never on a name prefix (tool
+    expansion A2, r3): a later tool without the prefix of its backend must
+    not fall through to another backend's transport.
+    """
 
     def __init__(
-        self, *, evidence: ReadOnlyTransport, sources: ReadOnlyTransport
+        self,
+        *,
+        evidence: ReadOnlyTransport,
+        sources: ReadOnlyTransport,
+        kubernetes: ReadOnlyTransport | None = None,
+        routes: Mapping[str, ReadOnlyTransport] | None = None,
     ) -> None:
         self._evidence = evidence
         self._sources = sources
+        self._routes: dict[str, ReadOnlyTransport] = {}
+        if kubernetes is not None:
+            # Imported here: kubernetes_core imports otel_demo, which imports
+            # this module.
+            from .kubernetes_core import K8S_TOOLS
+
+            self._routes.update(dict.fromkeys(K8S_TOOLS, kubernetes))
+        self._routes.update(routes or {})
+        if EVIDENCE_TOOL in self._routes:
+            raise ValueError("ROUTE_SHADOWS_EVIDENCE_TOOL")
 
     def fetch(self, request: TransportRequest) -> TransportResponse:
         if request.tool == EVIDENCE_TOOL:
             return self._evidence.fetch(request)
+        routed = self._routes.get(request.tool)
+        if routed is not None:
+            return routed.fetch(request)
         return self._sources.fetch(request)

@@ -1,9 +1,9 @@
 # 工具面拓展 A2：扩展档位与集群对象只读查询
 
-- 状态：待开始（开工说明已齐，未实现）
-- 更新日期：2026-11-12
+- 状态：实施中（独立合同测试已合入；剩余一条按裁决由测试作者改写）
+- 更新日期：2026-11-13
 - 依据：[工具面拓展任务记录](2026-11-12-tool-expansion.md)、[决定表 r3](2026-11-12-tool-expansion-contract.md)（r1 用户裁决，r2 的 A2-1 至 A2-15；r3 是后续各项对 A2 的要求）、SPEC 2026-11-12 段、C3 第 3、8、12 节；上游 HolmesGPT `a0009195` 的 `kubernetes/core`。issue #554。
-- 工作区：开工时另开 worktree，分支 `feature/tool-expansion-a2-k8s-core`，写入本节。
+- 工作区：worktree `/Users/shenghuikevin/dev/AI/poa-a2-impl`，分支 `feature/tool-expansion-a2-k8s-core`（起点 `origin/main` `52d640a0`）。
 
 ## 目标
 
@@ -66,6 +66,38 @@
 ## 本机约束
 
 本机内存紧张：不跑 `make check`、全量 pytest，不起 Docker、colima、kind。定向测试用 `.venv/bin/python -m pytest <文件>`，全量交给 CI。
+
+## 实施记录
+
+落点：`opspilot/tools/kubernetes_core.py`（两个工具、配置、GET 客户端、资源表、受限子进程）、`opspilot/tools/otel_demo_ext.py`（档位组合）、`profiles.py`、`evidence_read.py` 的 `RoutedTransport`、`registry.py`、`outcomes.py`、`tracing.py`、`Dockerfile`；实现者单元测试 `tests/test_554_kubernetes_core_impl.py`。
+
+自行决定的可逆细节：
+
+- 档位组合单放 `otel_demo_ext.py`：A3–A6 往这里加工具，不让 `kubernetes_core` 反向依赖后续模块。
+- `RoutedTransport` 加可选 `kubernetes=`（两个集群工具名精确分派，合同测试的接缝）与通用 `routes`，都不传时行为不变；`read_evidence` 不能被路由覆盖。
+- 两个新原因码进 `ERROR_REASONS` 与 `SOURCE_ERROR_REASONS`，结果类为 `error`（按合同测试；R11「拒绝并可见」未指定结果类）；`PROJECTION_REVISION` 不升，`otel-demo` 视图字节不变。
+- jq 超时报 `timeout/TOOL_TIMEOUT`、来源接触 `confirmed`（已读过集群）。A3、A6 的子进程用同一个 `run_isolated`。
+- 每次调用只起一次 jq（A2-9，合同测试计进程数），所以编译错误在读集群之后才知道，报 `JQ_COMPILE_ERROR`；运行期错误（退出码 5）报 `JQ_RUNTIME_ERROR`，均归 `INVALID_PARAMS`；其他失败 `JQ_FAILED` 归 `SOURCE_ERROR`。表达式写进临时文件用 `-f` 传，不进命令行；`-L` 指向空目录。
+- 交给 jq 的是 `{"apiVersion":"v1","kind":"List","items":[...]}`，每个对象补 `kind`、`apiVersion`，与上游 `kubectl get -o json` 形状一致，`.items[]` 写法可直接用。
+- Secret 判定：`kind` 小写后含 `secret` 即 `RESOURCE_NOT_ALLOWED`（覆盖大小写、单数、带组后缀）；表外名字报 `UNKNOWN_KIND`（`INVALID_PARAMS`）。`kind` 区分大小写精确匹配。
+- 资源表：A1 清单去掉子资源、`events.k8s.io`、`metrics.k8s.io`、`extensions` 组与 `podsecuritypolicies`，同名优先核心组、其次当前在服的组（deployments 等走 `apps/v1`，HPA 走 `autoscaling/v2`）；表进档位版本哈希。
+- 事件时间取第一个可用的 `lastTimestamp`、`series.lastObservedTime`、`eventTime`、`firstTimestamp`、`metadata.creationTimestamp`；无时间的丢弃并计数；来源时间取保留事件首尾（与 A6-6 一致），其他资源留空。
+- 视图字段：`total_items_processed`（与 A6 同名同义）、`pages_read`、`scope`、`notes`、`cannot_prove`；计数工具另有 `matches_found`，并用 `row_unit="matches"` 出 `backend_matches_returned` 等计数。
+- 启动失败固定码（worker 构造执行器时以 `SystemExit` 退出）：缺变量 `K8S_CONFIG_MISSING`；地址非 https、namespace 非 DNS 标签、CA 文件不可读 `K8S_CONFIG_INVALID`；找不到 jq `JQ_NOT_FOUND`。缺 `k8s-ro` 凭据在传输层报 `CREDENTIAL_REF_UNKNOWN`（同 otel-demo 传输），不发请求。
+- lab 闸门新码 `KUBERNETES_NOT_LAB`：扩展档位必须有 lab 主机的 API 地址；其他档位只在设了该变量时检查。
+- `OPSPILOT_K8S_NAMESPACE` 只作提示，放进 selector 与视图 `scope.application_namespace`，不收窄查询（R17）。
+- Dockerfile 在 runtime 阶段加一行装 `jq`（未钉版本）。
+
+偏离与已知限制：
+
+- 已裁决（编排者 2026-11-13）：集群工具操作记录的 `credential_ref` 按 A2-1 仍写目标的 `otel-demo-ro`，改合同测试，实现不动。
+- 已裁决（编排者 2026-11-13）：合同测试的 CA 路径改用 `tmp_path` 文件，实现保留配置期 CA 可读检查；两个新原因码归 `error`、去掉 jq 编译预检均接受。
+
+- CA 文件内容在配置期只查可读；载入失败时 TLS 上下文没有任何信任根，每次握手失败报 `SOURCE_UNAVAILABLE`，不回落到系统根证书。没在启动时拒绝，是为了让替身测试用假 CA 文件也能构造执行器。
+- jq 与 API 的错误文本不回显给模型（只有 HTTP 状态）；模型改表达式只能看原因码。
+- 内存上限用 `preexec_fn` 设 `RLIMIT_AS`，macOS 上设不上就跳过；worker 多线程下 `preexec_fn` 只做一次系统调用。
+- `read_evidence` 的模型可见描述是 `otel-demo` 字节，没写 Kubernetes 结果的行单位；超限结果仍可按 `results` / `preview` 切片读回。
+- 本机未构建镜像，镜像里 jq 版本未确认；按开工说明，两处现有测试的改写归测试作者，在本分支上 `test_m1_tool_registry.py` 的拒绝断言按预期失败。
 
 ## 下一步
 

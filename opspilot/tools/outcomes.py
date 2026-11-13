@@ -100,8 +100,12 @@ ERROR_REASONS = frozenset(
         "EVIDENCE_NOT_COMMITTED",
         "INVALID_PARAMS",
         "MALFORMED_RESULT",
+        # Tool expansion A2-6: a resource the cluster query never reads
+        # (secrets), refused before sending; and a 401/403 from the source.
+        "RESOURCE_NOT_ALLOWED",
         "RESULT_TOO_LARGE",
         "SOURCE_ERROR",
+        "SOURCE_FORBIDDEN",
         "SOURCE_UNAVAILABLE",
     }
 )
