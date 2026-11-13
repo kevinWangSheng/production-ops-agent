@@ -685,3 +685,102 @@ def test_real_pod_logs_read_the_snapshot(executor):
     assert not any(row["previous"] for row in rows)
     # The previous stream's 400 is a note, not a failure (A3-4).
     assert "previous" in json.dumps(view).lower()
+
+
+# -- fail-closed loading and version isolation (review of PR #603) -------------------
+
+
+def _bad_object(**changes) -> dict[str, str]:
+    row = _obj("pods", _pod("bad-1"), SECOND)
+    row.update(changes)
+    return row
+
+
+def _body_without(key: str) -> str:
+    body = _pod("bad-1")
+    if key == "name":
+        del body["metadata"]["name"]
+    else:
+        del body[key]
+    return json.dumps(body)
+
+
+@pytest.mark.parametrize(
+    ("file", "row", "reason"),
+    [
+        ("k8s_objects_raw.tsv", _bad_object(Body=""), "no Body"),
+        ("k8s_objects_raw.tsv", _bad_object(Body="{not json"), "not JSON"),
+        ("k8s_objects_raw.tsv", _bad_object(Body="[1]"), "not an object"),
+        ("k8s_objects_raw.tsv", _bad_object(LogAttributes=""), "no LogAttributes"),
+        ("k8s_objects_raw.tsv", _bad_object(LogAttributes="{'x': 'y'}"), "k8s.resource.name"),
+        ("k8s_objects_raw.tsv", _bad_object(LogAttributes="{'k8s"), "does not parse"),
+        ("k8s_objects_raw.tsv", _bad_object(Body=_body_without("apiVersion")), "apiVersion"),
+        ("k8s_objects_raw.tsv", _bad_object(Body=_body_without("kind")), "kind"),
+        ("k8s_objects_raw.tsv", _bad_object(Body=_body_without("name")), "metadata.name"),
+        ("k8s_objects_raw.tsv", _bad_object(Timestamp="yesterday"), "Timestamp"),
+        ("k8s_events_raw.tsv", {**_watch("ADDED", _event("x", "R", W0), W0), "Body": ""}, "no Body"),
+        ("k8s_events_raw.tsv", _watch("BOOKMARK", _event("x", "R", W0), W0), "watch type"),
+        ("k8s_events_raw.tsv", {**_watch("ADDED", {}, W0), "Body": '{"type": "ADDED"}'}, "no object"),
+        ("k8s_events_raw.tsv", _watch("ADDED", {**_event("x", "R", W0), "apiVersion": "v1beta1"}, W0), "apiVersion"),
+        ("k8s_events_raw.tsv", _watch("ADDED", {**_event("x", "R", W0), "metadata": {}}, W0), "neither uid nor name"),
+        ("otel_logs_raw.tsv", {**_log("p", "t", W0), "ResourceAttributes": "{'k8s.namespace.name': 'otel-demo'}"}, "k8s.pod.name"),
+        ("otel_logs_raw.tsv", {**_log("p", "t", W0), "ResourceAttributes": "{'k8s.pod.name': 'p'}"}, "k8s.namespace.name"),
+        ("otel_logs_raw.tsv", {**_log("p", "t", W0), "ResourceAttributes": ""}, "no ResourceAttributes"),
+        ("otel_logs_raw.tsv", {**_log("p", "t", W0), "Timestamp": ""}, "Timestamp"),
+    ],
+)  # fmt: skip
+def test_a_bad_row_refuses_to_start_naming_file_and_row(
+    snapshot_dir, file, row, reason
+):
+    path = snapshot_dir / file
+    with path.open(newline="", encoding="utf-8") as handle:
+        rows = list(csv.DictReader(handle, delimiter="\t"))
+    rows.insert(1, row)  # the second data row
+    _write(path, rows)
+    with pytest.raises(fake_k8s.SnapshotRowError) as error:
+        fake_k8s.FakeCluster.from_snapshot(
+            load_snapshot(snapshot_dir), offset_seconds=0, token=TOKEN
+        )
+    message = str(error.value)
+    assert f"{file} data row 2" in message and reason in message
+
+
+def test_log_column_without_body_refuses_to_start(snapshot_dir):
+    path = snapshot_dir / "otel_logs_raw.tsv"
+    with path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(
+            handle,
+            fieldnames=["Timestamp", "TimestampTime", "ResourceAttributes"],
+            delimiter="\t",
+            extrasaction="ignore",
+        )
+        writer.writeheader()
+        writer.writerows(_logs())
+    with pytest.raises(fake_k8s.SnapshotRowError, match="no Body column"):
+        fake_k8s.FakeCluster.from_snapshot(
+            load_snapshot(snapshot_dir), offset_seconds=0, token=TOKEN
+        )
+
+
+def test_objects_are_indexed_by_group_version_and_plural(snapshot_dir):
+    path = snapshot_dir / "k8s_objects_raw.tsv"
+    with path.open(newline="", encoding="utf-8") as handle:
+        rows = list(csv.DictReader(handle, delimiter="\t"))
+    old = {
+        "apiVersion": "apps/v1beta1",
+        "kind": "Deployment",
+        "metadata": {"name": "legacy", "namespace": "otel-demo"},
+    }
+    rows.append(_obj("deployments", old, SECOND))
+    _write(path, rows)
+    cluster = fake_k8s.FakeCluster.from_snapshot(
+        load_snapshot(snapshot_dir),
+        offset_seconds=0,
+        token=TOKEN,
+        clock=lambda: _ns(NOW),
+    )
+    assert _names(_get(cluster, "/apis/apps/v1/deployments")) == ["checkout"]
+    legacy = _json(_get(cluster, "/apis/apps/v1beta1/namespaces/otel-demo/deployments"))
+    assert legacy["apiVersion"] == "apps/v1beta1"
+    assert [i["metadata"]["name"] for i in legacy["items"]] == ["legacy"]
+    assert _get(cluster, "/apis/apps/v1beta2/deployments").status == 503

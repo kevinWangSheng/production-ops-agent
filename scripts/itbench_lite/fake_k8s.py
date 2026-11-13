@@ -75,8 +75,12 @@ class ResourceType:
         return f"{self.group}/{self.version}" if self.group else self.version
 
 
-def _types(*rows: tuple[str, str, str, str, bool]) -> dict[str, ResourceType]:
-    return {r[0]: ResourceType(*r) for r in rows}
+#: A resource class is its API group, version and plural name.
+TypeKey = tuple[str, str, str]
+
+
+def _types(*rows: tuple[str, str, str, str, bool]) -> dict[TypeKey, ResourceType]:
+    return {(r[1], r[2], r[0]): ResourceType(*r) for r in rows}
 
 
 #: Resource classes seen in the scenario snapshots (the 2026-11-12 probe:
@@ -84,7 +88,7 @@ def _types(*rows: tuple[str, str, str, str, bool]) -> dict[str, ResourceType]:
 #: probe found horizontalpodautoscalers, networkpolicies and resourcequotas
 #: only in the latter). A class present in the loaded snapshot is served too,
 #: even if it is missing here. Anything else is 503 (never seen).
-SEEN_RESOURCES: Mapping[str, ResourceType] = _types(
+SEEN_RESOURCES: Mapping[TypeKey, ResourceType] = _types(
     ("configmaps", "", "v1", "ConfigMap", True),
     ("endpoints", "", "v1", "Endpoints", True),
     ("events", "", "v1", "Event", True),
@@ -192,6 +196,10 @@ def status_reply(code: int, message: str) -> Reply:
         },
         code,
     )
+
+
+class SnapshotRowError(ValueError):
+    """A snapshot row the server cannot load; the server does not start."""
 
 
 class BadRequest(ValueError):
@@ -339,13 +347,6 @@ def _decode_continue(token: str) -> tuple[int, int]:
 # -- the cluster data -------------------------------------------------------------
 
 
-def _literal_dict(text: str | None) -> dict[str, Any]:
-    if not text or not text.strip():
-        return {}
-    value = ast.literal_eval(text)
-    return value if isinstance(value, dict) else {}
-
-
 def _sort_key(obj: Mapping[str, Any]) -> tuple[str, str]:
     return (
         _field_text(_lookup(obj, ("metadata", "namespace"))),
@@ -395,8 +396,8 @@ class FakeCluster:
     def __init__(
         self,
         *,
-        objects: Mapping[str, _Collections],
-        types: Mapping[str, ResourceType],
+        objects: Mapping[TypeKey, _Collections],
+        types: Mapping[TypeKey, ResourceType],
         watch: Sequence[_WatchRecord],
         logs: Mapping[tuple[str, str], _PodLogs],
         token: str,
@@ -424,26 +425,20 @@ class FakeCluster:
     ) -> FakeCluster:
         """Load objects, events and logs of ``snapshot`` moved by the offset."""
         shift = offset_seconds * NS
-        types = dict(SEEN_RESOURCES)
-        objects: dict[str, _Collections] = {}
+        types: dict[TypeKey, ResourceType] = dict(SEEN_RESOURCES)
+        objects: dict[TypeKey, _Collections] = {}
         path = snapshot.tsv_path("objects")
         if path is not None:
-            grouped: dict[str, dict[int, list[dict[str, Any]]]] = {}
-            for row in snapshot.iter_tsv(path):
-                plural = _literal_dict(row.get("LogAttributes")).get(
-                    "k8s.resource.name"
-                )
-                if not isinstance(plural, str) or not row.get("Body"):
-                    continue
-                body = shift_json_times(json.loads(row["Body"]), offset_seconds)
-                if not isinstance(body, dict):
-                    continue
-                at_ns = parse_clickhouse_ns(row["Timestamp"]) + shift
-                grouped.setdefault(plural, {}).setdefault(at_ns, []).append(body)
-                if plural not in types:
-                    types[plural] = _type_of(plural, body)
-            for plural, by_time in grouped.items():
-                objects[plural] = _Collections(
+            grouped: dict[TypeKey, dict[int, list[dict[str, Any]]]] = {}
+            for number, row in enumerate(snapshot.iter_tsv(path), start=1):
+                where = f"{path.name} data row {number}"
+                at_ns, body = _object_row(row, where, offset_seconds)
+                rtype = _object_type(row, body, where)
+                key = (rtype.group, rtype.version, rtype.plural)
+                grouped.setdefault(key, {}).setdefault(at_ns + shift, []).append(body)
+                types.setdefault(key, rtype)
+            for key, by_time in grouped.items():
+                objects[key] = _Collections(
                     [
                         (at, sorted(items, key=_sort_key))
                         for at, items in sorted(by_time.items())
@@ -452,36 +447,35 @@ class FakeCluster:
         watch: list[_WatchRecord] = []
         path = snapshot.tsv_path("events")
         if path is not None:
-            for row in snapshot.iter_tsv(path):
-                if not row.get("Body"):
-                    continue
-                note = shift_json_times(json.loads(row["Body"]), offset_seconds)
-                record = _watch_record(
-                    note, parse_clickhouse_ns(row["Timestamp"]) + shift
-                )
+            for number, row in enumerate(snapshot.iter_tsv(path), start=1):
+                where = f"{path.name} data row {number}"
+                at_ns, note = _object_row(row, where, offset_seconds)
+                record = _watch_record(note, at_ns + shift, where)
                 if record is not None:
                     watch.append(record)
             watch.sort(key=lambda r: r.at_ns)
         logs: dict[tuple[str, str], _PodLogs] = {}
         path = snapshot.tsv_path("logs")
         if path is not None:
-            for row in snapshot.iter_tsv(path):
-                attrs = _literal_dict(row.get("ResourceAttributes"))
+            for number, row in enumerate(snapshot.iter_tsv(path), start=1):
+                where = f"{path.name} data row {number}"
+                at_ns = _row_time(row, where)
+                attrs = _row_literal(row, "ResourceAttributes", where)
                 pod = attrs.get("k8s.pod.name")
                 namespace = attrs.get("k8s.namespace.name")
-                if not isinstance(pod, str) or not isinstance(namespace, str):
-                    continue
+                if not (isinstance(pod, str) and pod):
+                    raise SnapshotRowError(f"{where}: no k8s.pod.name")
+                if not (isinstance(namespace, str) and namespace):
+                    raise SnapshotRowError(f"{where}: no k8s.namespace.name")
+                text = row.get("Body")
+                if text is None:
+                    raise SnapshotRowError(f"{where}: no Body column")
                 deployment = attrs.get("k8s.deployment.name")
                 entry = logs.setdefault(
                     (namespace, pod),
                     _PodLogs(deployment if isinstance(deployment, str) else None),
                 )
-                entry.records.append(
-                    LogRecord(
-                        parse_clickhouse_ns(row["Timestamp"]) + shift,
-                        row.get("Body") or "",
-                    )
-                )
+                entry.records.append(LogRecord(at_ns + shift, text))
             for entry in logs.values():
                 entry.records.sort(key=lambda r: r.at_ns)
         return cls(
@@ -534,8 +528,8 @@ class FakeCluster:
             return status_reply(
                 403, 'secrets is forbidden: replay does not serve resource "secrets"'
             )
-        rtype = self._types.get(plural)
-        if rtype is None or (rtype.group, rtype.version) != (group, version):
+        rtype = self._types.get((group, version, plural))
+        if rtype is None:
             return status_reply(
                 503,
                 f"the snapshot never recorded {plural} in {group or 'core'}/{version}",
@@ -557,7 +551,7 @@ class FakeCluster:
         """The objects of a class as of ``at_ns``; ``None``: not collected yet."""
         if rtype.plural == "events":
             return at_ns, self._replay_events(at_ns)
-        collections = self._objects.get(rtype.plural)
+        collections = self._objects.get((rtype.group, rtype.version, rtype.plural))
         if collections is None:
             return 0, []  # seen in the scenario set, no objects in this one
         return collections.at(at_ns)
@@ -642,7 +636,7 @@ class FakeCluster:
         self, namespace: str, pod_name: str, query: Mapping[str, str]
     ) -> Reply:
         now_ns = self._clock()
-        pods = self._current(self._types["pods"], now_ns)
+        pods = self._current(self._types[("", "v1", "pods")], now_ns)
         pod = None
         for obj in pods[1] if pods is not None else []:
             if _lookup(obj, ("metadata", "name")) == pod_name and (
@@ -736,31 +730,101 @@ class FakeCluster:
                 yield record.at_ns, line.rstrip("\r")
 
 
-def _type_of(plural: str, body: Mapping[str, Any]) -> ResourceType:
+def _row_time(row: Mapping[str, str | None], where: str) -> int:
+    try:
+        return parse_clickhouse_ns(row.get("Timestamp") or "")
+    except ValueError:
+        raise SnapshotRowError(f"{where}: bad Timestamp") from None
+
+
+def _row_literal(
+    row: Mapping[str, str | None], column: str, where: str
+) -> dict[str, Any]:
+    text = row.get(column)
+    if text is None or not text.strip():
+        raise SnapshotRowError(f"{where}: no {column}")
+    try:
+        value = ast.literal_eval(text)
+    except (ValueError, SyntaxError, MemoryError, RecursionError):
+        raise SnapshotRowError(f"{where}: {column} does not parse") from None
+    if not isinstance(value, dict):
+        raise SnapshotRowError(f"{where}: {column} is not a mapping")
+    return value
+
+
+def _object_row(
+    row: Mapping[str, str | None], where: str, offset_seconds: int
+) -> tuple[int, dict[str, Any]]:
+    """``(collection time before the offset, shifted Body)`` of an object or
+    event row; any missing or unparseable part raises ``SnapshotRowError``."""
+    at_ns = _row_time(row, where)
+    text = row.get("Body")
+    if not text:
+        raise SnapshotRowError(f"{where}: no Body")
+    try:
+        body = json.loads(text)
+    except (ValueError, RecursionError):
+        raise SnapshotRowError(f"{where}: Body is not JSON") from None
+    if not isinstance(body, dict):
+        raise SnapshotRowError(f"{where}: Body is not an object")
+    shifted = shift_json_times(body, offset_seconds)
+    assert isinstance(shifted, dict)
+    return at_ns, shifted
+
+
+def _object_type(
+    row: Mapping[str, str | None], body: Mapping[str, Any], where: str
+) -> ResourceType:
+    """The class of an object row: plural from ``LogAttributes``, group and
+    version from the object's own ``apiVersion``."""
+    plural = _row_literal(row, "LogAttributes", where).get("k8s.resource.name")
+    if not (isinstance(plural, str) and plural):
+        raise SnapshotRowError(f"{where}: no k8s.resource.name")
     api_version = body.get("apiVersion")
-    group, _, version = (
-        api_version.rpartition("/") if isinstance(api_version, str) else ("", "", "v1")
-    )
-    kind = body.get("kind") if isinstance(body.get("kind"), str) else plural
+    kind = body.get("kind")
+    name = _lookup(body, ("metadata", "name"))
+    if not (isinstance(api_version, str) and api_version):
+        raise SnapshotRowError(f"{where}: object has no apiVersion")
+    if not (isinstance(kind, str) and kind):
+        raise SnapshotRowError(f"{where}: object has no kind")
+    if not (isinstance(name, str) and name):
+        raise SnapshotRowError(f"{where}: object has no metadata.name")
+    group, _, version = api_version.rpartition("/")
     namespaced = isinstance(_lookup(body, ("metadata", "namespace")), str)
-    return ResourceType(plural, group, version or "v1", str(kind), namespaced)
+    return ResourceType(plural, group, version, kind, namespaced)
 
 
-def _watch_record(note: object, at_ns: int) -> _WatchRecord | None:
-    """One core ``v1`` watch notification; the ``events.k8s.io`` half is dropped."""
-    if not isinstance(note, dict):
-        return None
+def _watch_record(
+    note: Mapping[str, Any], at_ns: int, where: str
+) -> _WatchRecord | None:
+    """One core ``v1`` watch notification. The ``events.k8s.io`` half of the
+    stream is dropped on purpose (``None``); anything malformed raises."""
     kind = note.get("type")
     obj = note.get("object")
-    if kind not in ("ADDED", "MODIFIED", "DELETED") or not isinstance(obj, dict):
+    if kind not in ("ADDED", "MODIFIED", "DELETED"):
+        raise SnapshotRowError(f"{where}: watch type is not ADDED/MODIFIED/DELETED")
+    if not isinstance(obj, dict):
+        raise SnapshotRowError(f"{where}: watch notification has no object")
+    if obj.get("kind") != "Event":
+        raise SnapshotRowError(f"{where}: watch object is not an Event")
+    api_version = obj.get("apiVersion")
+    if api_version == "events.k8s.io/v1":
         return None
-    if obj.get("apiVersion") != "v1" or obj.get("kind") != "Event":
-        return None
+    if api_version != "v1":
+        raise SnapshotRowError(
+            f"{where}: Event apiVersion is not v1 or events.k8s.io/v1"
+        )
     metadata = obj.get("metadata")
     if not isinstance(metadata, dict):
-        return None
-    key = metadata.get("uid") or f"{metadata.get('namespace')}/{metadata.get('name')}"
-    return _WatchRecord(at_ns, str(kind), str(key), obj)
+        raise SnapshotRowError(f"{where}: Event has no metadata")
+    uid, name = metadata.get("uid"), metadata.get("name")
+    if isinstance(uid, str) and uid:
+        key = uid
+    elif isinstance(name, str) and name:
+        key = f"{metadata.get('namespace')}/{name}"
+    else:
+        raise SnapshotRowError(f"{where}: Event has neither uid nor name")
+    return _WatchRecord(at_ns, str(kind), key, obj)
 
 
 def _container_names(pod: Mapping[str, Any], *, init: bool = True) -> list[str]:

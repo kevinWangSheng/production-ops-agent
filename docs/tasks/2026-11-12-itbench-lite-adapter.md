@@ -135,7 +135,7 @@ L6 已写入决定表。实现会话先做不依赖 A 系列的部分；假 serv
 
 - 「一次全量」= 同一资源类、`Timestamp` 完全相同的一组行（S16 实测每类每 5 分钟一组）；取采集时刻不晚于虚拟当前时刻的最后一组。虚拟当前时刻默认取本机时钟（数据已平移到投递前约 1 分钟）。
 - 虚拟当前时刻早于这一类的第一组全量时返回 503「尚未采集」，不返回空列表：没采集不等于没有。
-- 「35 题出现过的资源类」用常量 `SEEN_RESOURCES`（11-12 探针整读三题加流式统计两题得到的 28 类，含 events），再并上本题快照里实际出现的类。A2 表里的 cronjobs、replicationcontrollers、apiservices、两类 webhook 配置不在其中，返回 503；同组不同版本也算没出现过。`events.k8s.io` 组不提供（503），core `v1` 事件照常。
+- 「35 题出现过的资源类」用常量 `SEEN_RESOURCES`（11-12 探针整读三题加流式统计两题得到的 28 类，含 events），再并上本题快照里实际出现的类。A2 表里的 cronjobs、replicationcontrollers、apiservices、两类 webhook 配置不在其中，返回 503；对象按 (组, 版本, 复数名) 建索引，版本取对象自己的 `apiVersion`：同组不同版本的对象互不混入，请求没出现过的版本返回 503。`events.k8s.io` 组不提供（503），core `v1` 事件照常。
 - Secret 在任何组、列表与单对象都返回 403，先于资源类判断。
 - 分页：`limit` 为 0 或省略返回全部；`continue` 令牌记下第一页的虚拟时刻与偏移量，后续页读同一组全量，不受时钟前进影响；坏令牌 400。先按选择器过滤再分页，按 namespace/name 排序。
 - label 选择器支持 `=`、`==`、`!=`、`in`、`notin`、存在与 `!` 不存在；field 选择器只支持 `=`、`==`、`!=`，标签集合照真实 API（所有类的 `metadata.name`/`metadata.namespace`，Pod 的 `spec.nodeName`、`status.phase` 等，事件的 `involvedObject.*`、`reason`、`type`、`source`、`reportingComponent`），其他标签 400。
@@ -148,4 +148,4 @@ L6 已写入决定表。实现会话先做不依赖 A 系列的部分；假 serv
 
 - 没有 discovery（`/api`、`/apis`、`/version`），`kubectl` 兼容性仍未确认（已知风险 5）。
 - 读日志按 `k8s.pod.name` 建索引，100 MB 级日志文件整份读进内存；未在完整真实文件上测过加载时长与内存。
-- 坏行不跳过：对象、事件、日志行解析失败直接报错，不静默丢数据。
+- 坏行即拒绝启动（PR #603 审查后）：对象行缺 Body、Body 不是 JSON 对象、缺 `k8s.resource.name`、对象缺 `apiVersion`/`kind`/`metadata.name`，事件行缺 Body、watch 类型不是 ADDED/MODIFIED/DELETED、对象不是 Event 或版本既非 `v1` 也非 `events.k8s.io/v1`、既无 uid 也无 name，日志行缺 `k8s.pod.name`/`k8s.namespace.name` 或缺 Body 列，以及任何行时间戳解析失败，都抛 `SnapshotRowError`（带文件名与数据行号），不返回部分数据。日志正文为空串照常加载。真实片段 S16 上的对象、事件、日志开头一段都能通过；完整日志文件里有没有不带 Pod 属性的行未确认，若有则会拒绝启动，到时再定。
