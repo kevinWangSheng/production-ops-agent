@@ -487,11 +487,13 @@ def probe(
     env_file: Path = DEFAULT_ENV_FILE,
     *,
     namespace: str = DEFAULT_NAMESPACE,
+    known_secrets: list[str] | tuple[str, ...] = (),
     known: list[str] | tuple[str, ...] = (),
 ) -> dict[str, Any]:
     """The probe table and the ConfigMap search, through ``request``; the
     report's ``ok`` also needs known lab secret values to have been given.
     Nothing here retries or repairs."""
+    known = [*known_secrets, *known]
     auth = authorization(env_file)
     send = _sender(env_file, auth)
     needles = [auth.removeprefix("Bearer "), *known]
@@ -515,6 +517,7 @@ def probe(
         "requests": results,
         "configmap_secret_scan": scan,
         "known_secrets_supplied": bool(known),
+        "known_secret_hits": scan["hits"],
         "ok": all(r["matches"] for r in results) and scan["matches"] and bool(known),
     }
 
@@ -564,7 +567,9 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps({"ok": False, "error": "cannot read the probe inputs"}))
         return 1
     token = env["OPSPILOT_K8S_TOKEN"]
-    report = probe(env_file=args.env_file, namespace=args.namespace, known=known)
+    report = probe(
+        env_file=args.env_file, namespace=args.namespace, known_secrets=known
+    )
     report = {
         "side": args.side,
         "api_url": env["OPSPILOT_K8S_API_URL"],

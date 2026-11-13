@@ -611,3 +611,28 @@ def test_an_inline_k8s_value_and_the_env_file_conflict(tmp_path: Path) -> None:
     )
     assert result.returncode == 64
     assert TOKEN not in result.stderr + result.stdout
+
+
+def test_host_form_lines_in_worker_env_become_the_container_form(
+    control: tuple[_Docker, Path, Path], capsys: pytest.CaptureFixture[str]
+) -> None:
+    _, lab_dir, secrets = control
+    secrets.mkdir()
+    (secrets / "worker_env").write_text(
+        "OPSPILOT_K8S_API_URL=https://127.0.0.1:16443\n"
+        f"OPSPILOT_K8S_CA_FILE={lab_dir / 'k8s-ca.crt'}\n"
+    )
+    assert _control(secrets) == 0
+    env = _env(secrets / "worker_env")
+    assert env["OPSPILOT_K8S_API_URL"] == f"https://{kind_lab.NODE_CONTAINER}:6443"
+    assert env["OPSPILOT_K8S_CA_FILE"] == "/run/secrets/k8s_ca"
+
+
+def test_a_missing_lab_ca_is_reported_not_invented(
+    control: tuple[_Docker, Path, Path], capsys: pytest.CaptureFixture[str]
+) -> None:
+    _, lab_dir, secrets = control
+    (lab_dir / "k8s-ca.crt").unlink()
+    assert _control(secrets) == 0
+    assert not (secrets / "k8s_ca.crt").exists()
+    assert _report(capsys)["k8s_ca.crt"].startswith("missing")

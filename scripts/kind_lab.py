@@ -1140,34 +1140,43 @@ def restart_control_worker(project: str, secrets_dir: Path, *, changed: bool) ->
 
 def control_k8s_wiring(secrets_dir: Path, project: str) -> dict[str, str] | None:
     """The container form of the identity in ``worker_env`` (A1-7): the CA
-    as ``<secrets dir>/k8s_ca.crt``, the token and the in-network address
-    replacing older values, the CA path added once; then a running worker
-    is restarted. ``None`` (nothing written) when the lab has issued no
-    token yet."""
+    as ``<secrets dir>/k8s_ca.crt``; the token, the in-network address and
+    the CA's mount path replacing older values (a host-form address or CA
+    path would not work in the container); then a running worker is
+    restarted. ``None`` (nothing written) when the lab has issued no token
+    yet; a lab CA file that is missing is reported, not invented."""
     files = k8s_lab_files()
-    if not (files["env"].exists() and files["ca"].exists()):
+    if not files["env"].exists():
         return None
     token = _read_env_values(files["env"]).get(K8S_TOKEN_VAR, "")
     if not token:
         raise SystemExit(f"{files['env']} holds no {K8S_TOKEN_VAR}; run k8s-token")
     ca_target = secrets_dir / K8S_CONTROL_CA_NAME
-    ca = files["ca"].read_text()
-    ca_state = "unchanged"
-    if not ca_target.exists() or ca_target.read_text() != ca:
-        ca_state = "written"
-        _private_write(ca_target, ca)
-    os.chmod(ca_target, 0o600)
+    if files["ca"].exists():
+        ca = files["ca"].read_text()
+        ca_state = "unchanged"
+        if not ca_target.exists() or ca_target.read_text() != ca:
+            ca_state = "written"
+            _private_write(ca_target, ca)
+        os.chmod(ca_target, 0o600)
+    else:
+        ca_state = "missing in the lab (run k8s-token)"
+        print(
+            f"{files['ca']} is missing: the worker's CA secret cannot be written; "
+            "run `kind_lab.py k8s-token`",
+            file=sys.stderr,
+        )
     worker_env = secrets_dir / "worker_env"
     replaced = _replace_env(
         worker_env,
-        {K8S_API_URL_VAR: k8s_api_url("container"), K8S_TOKEN_VAR: token},
+        {
+            K8S_API_URL_VAR: k8s_api_url("container"),
+            K8S_TOKEN_VAR: token,
+            K8S_CA_FILE_VAR: K8S_CONTAINER_CA_FILE,
+        },
     )
-    merged = _merge_env(worker_env, {K8S_CA_FILE_VAR: K8S_CONTAINER_CA_FILE})
-    changed = ca_state != "unchanged" or replaced != "unchanged" or merged != "kept"
-    report = {
-        K8S_CONTROL_CA_NAME: ca_state,
-        "worker_env.k8s": replaced if replaced != "unchanged" else merged,
-    }
+    changed = ca_state != "unchanged" or replaced != "unchanged"
+    report = {K8S_CONTROL_CA_NAME: ca_state, "worker_env.k8s": replaced}
     report["worker"] = restart_control_worker(project, secrets_dir, changed=changed)
     return report
 
