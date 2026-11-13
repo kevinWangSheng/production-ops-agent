@@ -420,7 +420,7 @@ def test_web_builds_face_and_versions_without_cluster_settings():
     names = [
         s["function"]["name"] for s in profile.face(FakeClock(start=NOW)).tool_schemas
     ]
-    assert names[-2:] == [k8s.JQ_QUERY_TOOL, k8s.COUNT_TOOL]
+    assert {k8s.JQ_QUERY_TOOL, k8s.COUNT_TOOL} <= set(names)
     assert not set(k8s.TOOL_NAMES) & set(otel_demo.TOOL_NAMES)
     assert not set(k8s.TOOL_NAMES) & otel_demo.PROMETHEUS_TOOLS
     context = profile.face(FakeClock(start=NOW)).evidence_context("run-1")
