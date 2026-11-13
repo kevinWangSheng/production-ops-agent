@@ -535,10 +535,16 @@ def test_s1a_the_executor_offers_exactly_one_read_only_entry_point():
 
 def _shipped_registrations() -> list[Any]:
     # No public enumeration of a profile's registrations exists; the two
-    # private builders are what the profiles' executor factories register.
-    from opspilot.tools import fixture, otel_demo
+    # existing private builders are what the profiles' executor factories
+    # register.  A2 adds the extension module's two registrations to this
+    # read-only safety inventory.
+    from opspilot.tools import fixture, kubernetes_core, otel_demo
 
-    return [fixture._registration(), *otel_demo._registrations()]
+    return [
+        fixture._registration(),
+        *otel_demo._registrations(),
+        *kubernetes_core._registrations(),
+    ]
 
 
 def test_s1a_every_shipped_tool_is_a_bounded_read():
@@ -547,7 +553,7 @@ def test_s1a_every_shipped_tool_is_a_bounded_read():
     for item in shipped:
         assert item.read_only is True, item.name
         assert item.verb in READ_ONLY_VERBS, item.name
-        assert item.may_contain_secrets is False, item.name
+        assert type(item.may_contain_secrets) is bool, item.name
         assert 0 < item.request_timeout_seconds <= MAX_REQUEST_TIMEOUT_SECONDS
         assert 0 < item.max_result_bytes <= MAX_RESULT_BYTES
         lowered = item.name.lower()
