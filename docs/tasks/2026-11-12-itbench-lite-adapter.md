@@ -1,9 +1,9 @@
 # ITBench-Lite SRE 离线快照评测适配
 
-- 状态：待开始（开工说明已齐，L6 等用户裁决；未实现）
-- 更新日期：2026-11-12
+- 状态：实施中（#582 已合并 be92dc65；#581 为 PR #586；L6 已由用户 2026-11-13 裁决为 a）
+- 更新日期：2026-11-13
 - 依据：[工具面拓展任务记录](2026-11-12-tool-expansion.md)、[决定表 r4](2026-11-12-tool-expansion-contract.md)（L1 至 L16）；用户 2026-11-12 的四条对齐；ITBench 官方 agent 仓库 `30673b23` 与评测器 `ITBench-Evaluations@14f026fc`（查于 2026-11-12）；数据集 `ibm-research/ITBench-Lite` SRE `v0.2`。issue #571（35 题真实运行）、#581（数据转换与告警投递）、#582（报告转答案与判分）、#583（假 API server）。两份回放探针（2026-11-04 指标与 trace、2026-11-12 集群对象与日志）和开工前预审都在仓库外。
-- 工作区：开工时另开 worktree，分支 `feature/itbench-lite-adapter`，写入本节。
+- 工作区：#581 在 `/Users/shenghuikevin/dev/AI/poa-lite-581`，分支 `feature/itbench-lite-581-convert`；#582 在 `/Users/shenghuikevin/dev/AI/poa-lite-582`，分支 `feature/itbench-lite-582-scoring`（均起于 `origin/main` 52d640a0）。
 
 ## 目标
 
@@ -40,14 +40,9 @@
 
 这些限制随结果一起对外写明。
 
-## 待用户裁决：L6
+## 已裁决：L6
 
-官方 LLM judge 用哪个模型、发给哪家。发出去的是我们的报告转换结果和公开数据集的标准答案，没有非公开数据。
-
-- a：用仓库已经在用的接收方（Z.ai、OpenAI、DeepSeek 之一）。不新增外部服务；结果要写明「judge 与官方示例不同」。
-- b：照官方示例经 OpenRouter 用 `gemini-2.5-pro`。与官方示例可比；OpenRouter 是新的数据接收方。
-
-官方榜单实际用哪个 judge 未确认。裁决前其余部分照常开工，judge 只是最后一步的一个配置。
+用户 2026-11-13 裁决 a：官方 judge 用仓库已有接收方（Z.ai、OpenAI、DeepSeek 之一），不新增 OpenRouter；结果写明「judge 与官方示例不同」。
 
 ## 这个 PR 做什么
 
@@ -81,4 +76,53 @@
 
 ## 下一步
 
-L6 裁决后写入决定表。实现会话可先做不依赖 A 系列的部分；假 server 在 A2 接口合并后做。
+L6 已写入决定表。实现会话先做不依赖 A 系列的部分；假 server 在 A2 接口合并后做。
+
+## 实施记录（#582）
+
+代码在 `scripts/itbench_lite/` 的 `answer.py`、`entity_match.py`、`coverage.py`、`official_eval.py`。
+
+结构合同（2026-11-13，评测器 `14f026fc` 克隆在仓库外 `~/.agent/eval-probes/itbench-evaluations-14f026fc/`，用其 `uv.lock` 建独立 venv）：
+- 评测器的确定性代码不读 `agent_output.json` 的任何字段：加载器只要求 `<根>/<场景目录>/<数字 trial>/outputs/agent_output.json` 能解析成 JSON，整份对象原样序列化进 judge 提示词。字段名由 judge 提示词消费：实体的 `name`、`contributing_factor`，以及 `propagations`。与上文字段一致，无需改。
+- 场景目录名不区分大小写地按 `scenario-<id>` 等候选解析；trial 目录缺文件记 bad run，且该题没有任何可读输出时整题不进评测，所以 L5 必须写出空结果文件。
+
+可逆技术细节（每条一行理由）：
+- 名字边界为 `[A-Za-z0-9_-]` 以外的字符、不区分大小写、重叠取最长：Kubernetes 名字含连字符，`\b` 会把 `checkout` 匹配进 Pod 名。
+- Kind 规则依次为：被引证据带 `kind` 且其他参数里出现该名字；`pod`/`pod_name` 等于该名字取 Pod；`service` 或 PromQL `service_name="…"` 取 Service；只提到这一个实体的论断所引证据的 `kind`；否则 Service。`events` 不算实体类型。理由：把 L1「取工具参数」写成可测的顺序。
+- namespace 取定出 Kind 那条证据的 `namespace` 参数，否则 `otel-demo`：快照目录里 namespace 的来源以 #581 为准。
+- `alerts_explained` 恒为空：L1–L5 没有规则，钉住版本的 judge 提示词也不给它打分。
+- 「启发式」「受转换限制」写在 trial 目录的 `conversion_meta.json` 与 judge 标签文件里，不写进 `agent_output.json`：评测器把整份对象发给 judge，额外字段会进提示词。
+- 确定性匹配的 filter 正则对对象名和完整 `namespace/Kind/name` 都试 `re.search`：judge 示例里的 filter 两种写法都有可能。
+- judge 默认接收方 Z.ai（`glm-5.3-flashx`），`ITBENCH_JUDGE_PROVIDER` 可选 openai、deepseek，其他一律拒绝；子进程只拿 `JUDGE_*` 三个变量、`PYTHON_DOTENV_DISABLED=1` 与基础路径（评测器会 `load_dotenv` 并向上找 `.env`），工作目录有 `.env` 仍拒绝；路径在启动子进程前转成绝对路径。
+- L5 的强制：`conversion_meta.json` 里 `report_present=false` 的 trial 不送 judge，`trial_scores.json` 里这类 trial 全部指标记 0 并留在分母；评测器自带的 statistics 不含它们，不作为公布分数。
+- 分档清单必须正好是官方 35 个场景 ID（常量取自仓库外两次普查的场景目录名，只用目录名）。
+- 结构合同测试设了 `ITBENCH_EVALUATIONS_DIR` 才跑，CI 跳过。
+
+偏离与已知限制：
+- 第一个实体若被 `rejected_hypothesis` 提到，则整份报告没有根因，不顺延到下一个实体（按 L2 字面）。
+- 只在 summary 里出现、没有论断提到的实体，`reasoning` 与 `evidence` 为空串（L4 只说用论断原文）。
+- 集群级对象（Node、Namespace）也写成 `<namespace>/Kind/name`，官方对集群级对象的写法未确认。
+- GT 的 `kind` 若不是标准 Kubernetes Kind（judge 提示词提到 Chaos、flagd 类），确定性匹配不会命中，只有 judge 分能覆盖。
+- 本 PR 不调用 judge；分档清单与真实分数等 #571。
+
+## 实施记录（#581：快照转换与告警投递）
+
+代码在 `scripts/itbench_lite/`：`snapshot.py`（白名单加载器）、`shift.py`（统一平移）、`metrics.py`、`traces.py`、`alerts.py`；测试 `tests/test_itbench_lite_{snapshot,shift,metrics,traces,alerts}.py`，全部合成数据。各模块可用 `python -m scripts.itbench_lite.<模块>` 单独跑，真实灌数据与投递等租机。
+
+自行决定的可逆细节：
+
+- 平移量取整秒并向下取整：所有时间戳保留原有小数位与格式，最晚结束时刻落在「投递时刻 − 60 s」之前不到 1 秒。
+- 各类的结束时刻：指标取有值行的时间戳；trace 取 span 开始加时长，再与 span 事件时间取最大；告警取所有告警文件里的 `activeAt`；对象只取采集时间列（对象体里可能有过期日之类的未来值）；事件取采集时间与事件体里的 RFC 3339 时间；日志取 `Timestamp`。
+- 对象与事件行的平移改写 `Timestamp`、`TimestampTime` 和 `Body` 里所有恰好是 RFC 3339 的字符串，Go 零时刻不动；日志只改时间列，正文不改。
+- 答案文件检查只看名字，大小写不敏感，覆盖整个目录树（含同名目录）和白名单文件的符号链接目标；名单：`ground_truth.yaml/.yml`、`assertion.json`、`status.json`。目录树里有目录符号链接或有子目录列不出来时也拒绝启动（fail-closed）。
+- 指标去重保留第一个值并计数冲突；空值、坏 tags、非法指标名或标签名的行跳过并计数；派生 `calls_total` 替换有对应 `+Inf` 桶的原序列，没有桶的原序列保留；无标签序列不写花括号。
+- trace 任何一行转换失败就报错退出（不静默丢 span）；trace ID 须为 32 位、span ID 与 parent 须为 16 位非全零十六进制（parent 可空，links 同样校验）；SpanKind 与 StatusCode 同时认 ClickHouse 的 `Server`/`Error` 写法和 proto 的 `SPAN_KIND_*`/`STATUS_CODE_*` 写法，未知值报错；按服务、资源属性、scope 分组，带上 links。
+- 入口告警只取 `state=firing`；同一时刻按排序后的标签打破平局。webhook 的 `startsAt` 保留原小数位，`endsAt` 用零时刻，不带 `generatorURL`（Prometheus 告警 API 没有这一项，所以问句里不会出现 PromQL）。
+- 目标条目配置只传 `match.labels`；选出的告警不带这些标签就报错，不投递。默认配置用告警的 `service_name`。
+- 投递与 trace 灌入只允许回环地址，发送不走代理、不跟随重定向（30x 直接报错，避免 token 被带到新地址）。2 分钟作废线提供成纯函数 `delivery_gap_ok`，由驱动调用。
+
+偏离与已知限制：
+
+- 指标 TSV 的列名（`timestamp`、`metric_name`、`value`、`tags`、`namespace`、`pod_name`、`service_name`）沿用 11-04 原型，本机没有真实指标样本可核对；trace 列名同理。对象与事件的平移在本机真实片段（S16，4601 行对象、872 行事件）上跑通。
+- 对象体里恰好是 RFC 3339 的业务值（例如 ConfigMap 数据）也会被平移；日志正文里的时间不平移。
+- 告警文件的三种外形（API 信封、`{"alerts": [...]}`、裸列表）都接受，真实文件的外形未在本机核对。
