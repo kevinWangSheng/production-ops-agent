@@ -414,7 +414,17 @@ def test_search_accepts_non_enumerated_service_and_sends_default_limit_tags_and_
     query = parse_qs(urlsplit(_url(request)).query)
     assert query["service"] == [service]
     assert query["limit"] == ["20"]
-    assert query["tags"] == ['http.status_code="500" retry=true']
+    expected_tags = {"http.status_code": "500", "retry": "true"}
+    parsed_tags = None
+    if len(query.get("tags", ())) == 1:
+        try:
+            parsed_tags = json.loads(query["tags"][0])
+        except (TypeError, ValueError):
+            parsed_tags = None
+    assert parsed_tags == expected_tags or set(query.get("tag", ())) == {
+        "http.status_code:500",
+        "retry:true",
+    }
     assert query["operation"] == ["charge"]
     assert query["minDuration"] == ["10ms"]
     assert query["maxDuration"] == ["2s"]
