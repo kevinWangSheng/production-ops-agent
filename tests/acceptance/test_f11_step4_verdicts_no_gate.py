@@ -643,38 +643,141 @@ def test_item3_only_migration_or_bounded_kubernetes_children_start_processes() -
                 ):
                     offenders.append((relative, "executable temp-file mode change"))
 
-            # A3's regex worker is a fixed package script, launched through the
-            # same argv boundary as jq.  The exact script filename is an
-            # implementation detail, so this pins the public launch shape:
-            # isolated mode, no site initialization, no bytecode writes, and
-            # no shell/eval flag.  The source file itself is checked below by
-            # requiring a Python script reference under this package's tools
-            # directory rather than accepting a temporary executable path.
-            constants = {
-                node.value
-                for node in ast.walk(tree)
-                if isinstance(node, ast.Constant) and isinstance(node.value, str)
-            }
-            for flag in ("-I", "-S", "-B"):
-                if flag not in constants:
-                    offenders.append((relative, f"regex worker missing {flag}"))
-            script_path_literals = [
-                value
-                for value in constants
-                if value.endswith(".py") and "tools" in value
-            ]
-            if not script_path_literals:
-                # A Path(__file__).with_name(...) expression is the other
-                # public spelling of the same fixed package-file contract;
-                # allow it while still rejecting a literal temporary script.
-                has_file_path = any(
-                    isinstance(node, ast.Name) and node.id == "__file__"
-                    for node in ast.walk(tree)
+            def target_key(node: ast.AST) -> str | None:
+                if isinstance(node, ast.Name):
+                    return node.id
+                if isinstance(node, ast.Attribute):
+                    return ast.dump(node, include_attributes=False)
+                return None
+
+            assignments: dict[str, ast.AST] = {}
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Assign):
+                    for target in node.targets:
+                        if (key := target_key(target)) is not None:
+                            assignments[key] = node.value
+                elif isinstance(node, ast.AnnAssign):
+                    if (key := target_key(node.target)) is not None:
+                        assignments[key] = node.value
+
+            def resolve(node: ast.AST, seen: frozenset[str] = frozenset()) -> ast.AST:
+                key = target_key(node)
+                if key is None or key in seen or key not in assignments:
+                    return node
+                return resolve(node=assignments[key], seen=seen | {key})
+
+            def call_named(node: ast.AST, name: str) -> bool:
+                node = resolve(node)
+                if not isinstance(node, ast.Call):
+                    return False
+                function = node.func
+                return (
+                    isinstance(function, ast.Name) and function.id == name
+                ) or (
+                    isinstance(function, ast.Attribute) and function.attr == name
                 )
-                if not has_file_path:
-                    offenders.append(
-                        (relative, "regex worker has no fixed tools script path")
+
+            def argv_for(call: ast.Call) -> ast.List | ast.Tuple | None:
+                if not call.args:
+                    return None
+                value = resolve(call.args[0])
+                return value if isinstance(value, (ast.List, ast.Tuple)) else None
+
+            run_calls = [
+                node
+                for node in ast.walk(tree)
+                if isinstance(node, ast.Call)
+                and (
+                    (isinstance(node.func, ast.Name) and node.func.id == "run_isolated")
+                    or (
+                        isinstance(node.func, ast.Attribute)
+                        and node.func.attr == "run_isolated"
                     )
+                )
+            ]
+            if len(run_calls) != 2:
+                offenders.append((relative, "run_isolated call count"))
+
+            argv_lists = [argv_for(call) for call in run_calls]
+            argv_lists = [argv for argv in argv_lists if argv is not None]
+            regex_argv = [
+                argv
+                for argv in argv_lists
+                if len(argv.elts) == 5
+                and all(
+                    isinstance(item, ast.Constant) and item.value == flag
+                    for item, flag in zip(argv.elts[1:4], ("-I", "-S", "-B"))
+                )
+                and isinstance(argv.elts[4], ast.Name)
+                and argv.elts[4].id == "REGEX_CHILD"
+            ]
+            if len(regex_argv) != 1:
+                offenders.append((relative, "regex run_isolated argv shape"))
+            elif not call_named(regex_argv[0].elts[0], "require_python"):
+                offenders.append(
+                    (relative, "regex argv[0] is not require_python result")
+                )
+
+            jq_argv = [argv for argv in argv_lists if argv not in regex_argv]
+            if len(jq_argv) != 1:
+                offenders.append((relative, "jq run_isolated argv shape"))
+            elif not call_named(jq_argv[0].elts[0], "require_jq"):
+                offenders.append((relative, "jq argv[0] is not require_jq result"))
+
+            regex_constants = [
+                node
+                for node in tree.body
+                if isinstance(node, ast.Assign)
+                and any(
+                    isinstance(target, ast.Name) and target.id == "REGEX_CHILD"
+                    for target in node.targets
+                )
+            ]
+            regex_constants += [
+                node
+                for node in tree.body
+                if isinstance(node, ast.AnnAssign)
+                and isinstance(node.target, ast.Name)
+                and node.target.id == "REGEX_CHILD"
+            ]
+            if len(regex_constants) != 1:
+                offenders.append((relative, "REGEX_CHILD module constant count"))
+
+            def is_path_file(node: ast.AST) -> bool:
+                return (
+                    isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Name)
+                    and node.func.id == "Path"
+                    and len(node.args) == 1
+                    and isinstance(node.args[0], ast.Name)
+                    and node.args[0].id == "__file__"
+                )
+
+            def is_regex_child_path(node: ast.AST) -> bool:
+                if (
+                    isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Attribute)
+                    and node.func.attr == "with_name"
+                    and is_path_file(node.func.value)
+                    and len(node.args) == 1
+                    and isinstance(node.args[0], ast.Constant)
+                    and node.args[0].value == "_regex_child.py"
+                ):
+                    return True
+                return (
+                    isinstance(node, ast.BinOp)
+                    and isinstance(node.op, ast.Div)
+                    and isinstance(node.right, ast.Constant)
+                    and node.right.value == "_regex_child.py"
+                    and isinstance(node.left, ast.Attribute)
+                    and node.left.attr == "parent"
+                    and is_path_file(node.left.value)
+                )
+
+            if regex_constants and not is_regex_child_path(regex_constants[0].value):
+                offenders.append((relative, "REGEX_CHILD is not Path(__file__) sibling"))
+            if not (PACKAGE / "tools" / "_regex_child.py").is_file():
+                offenders.append((relative, "_regex_child.py is missing"))
 
             forbidden_literals = {"/bin/sh", "sh", "bash", "-c"}
             for node in ast.walk(tree):
