@@ -47,7 +47,8 @@ are ``INVALID_PARAMS`` with Prometheus's own error echoed, 503 with
 Transport (A5-7): the requests go through the profile's one
 ``OtelDemoTransport`` -- the same GET-only, no-proxy, no-redirect, bounded
 reader and the same basic-auth credential -- built with these three names
-added to its ``prometheus_tools`` (with B2, all six). ``otel_demo.PROMETHEUS_TOOLS`` is not
+added to its ``prometheus_tools`` (with B2, all six).
+``otel_demo.PROMETHEUS_TOOLS`` is not
 changed: that set is part of ``otel-demo``'s version hash.
 """
 
@@ -423,7 +424,10 @@ _STATE_SCHEMAS: tuple[Mapping[str, Any], ...] = (
                 "any warning, incomplete is true: give metric to look one "
                 "up. "
                 "There is no time range: it is the metadata Prometheus holds "
-                "at the moment of the query. Metadata says nothing about "
+                "at the moment of the query, which can be after the "
+                "authorized window, so it cannot prove what a metric's "
+                "metadata was when the incident happened. Metadata says "
+                "nothing about "
                 "values or the service's health, and a metric that is not "
                 "listed is unknown, not proven absent. "
                 "A result whose whole view exceeds 25,000 tokens is refused "
@@ -801,7 +805,8 @@ def _state_registrations(
             ),
             cannot_prove=(
                 "Metadata is what Prometheus holds at the moment of the "
-                "query; it says nothing about values or the service's "
+                "query, not when the incident happened; it says nothing "
+                "about values or the service's "
                 "health, and a metric that is not listed is unknown, not "
                 "proven absent (the list may be cut at 100)."
             ),
