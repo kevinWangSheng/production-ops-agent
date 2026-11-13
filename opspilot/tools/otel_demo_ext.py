@@ -18,7 +18,9 @@ One target, three backends (A2-1): the Kubernetes tools are registered under
 the existing lab target with ``source="otel-demo"``; the API server address
 travels in the target selector (``kubernetes_endpoint``) and the token in the
 Kubernetes transport's own credential slot ``k8s-ro``. Tools are routed to
-their transport by exact name (``RoutedTransport``).
+their transport by exact name (``RoutedTransport``); the Jaeger trace tools
+of :mod:`opspilot.tools.jaeger_query` (A4) go to its ``JaegerQueryTransport``
+over the same ``traces_endpoint`` and credential slot as ``traces_search``.
 """
 
 from __future__ import annotations
@@ -196,6 +198,8 @@ def _overflow_summary(
         return {"row_unit": "results"}
     if tool == kubernetes_core.COUNT_TOOL:
         return {"row_unit": "matches"}
+    if tool in jaeger_query.ROW_UNITS:
+        return {"row_unit": jaeger_query.ROW_UNITS[tool]}
     return otel_demo.overflow_summary(tool, rows, query)
 
 

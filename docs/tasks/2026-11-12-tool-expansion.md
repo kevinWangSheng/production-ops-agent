@@ -80,7 +80,9 @@
 
 ## 新数据源登记
 
-按 Q8，每个新数据源落地时在此加一行：数据源、返回什么、发往哪里。现在为空（没有工具已实现）。
+按 Q8，每个新数据源落地时在此加一行：数据源、返回什么、发往哪里。
+
+- A4（#556，只在 `otel-demo-ext`）：lab Jaeger 1.53.0 查询 API 的 `/api/traces`（按服务、标签、操作、时长）、`/api/traces/{id}`、`/api/services`、`/api/operations`，经现有 Jaeger 传输 GET、匿名直连；返回按 `traces_search` 同一白名单投影的 span 行（其他标签值不出），以及服务名、操作名清单（脱敏、截短）；去向与 `traces_search` 相同：模型上下文与证据库，LangSmith 只在 lab 闸门放行时导出。
 
 ## 待决
 
