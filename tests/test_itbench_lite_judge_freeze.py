@@ -61,8 +61,7 @@ def _run(tmp_path, gt_root, outputs, *extra):
         [
             "--ground-truth", str(gt_root), "--scenario-dir", "Scenario-7",
             "--outputs", str(outputs), "--trial", "2",
-            "--work-dir", str(tmp_path / "work"), "--out", str(out),
-            "--detail", str(tmp_path / "detail.json"), *extra,
+            "--work-dir", str(tmp_path / "work"), "--out", str(out), *extra,
         ]
     )  # fmt: skip
     return code, (json.loads(out.read_text()) if out.is_file() else None)
@@ -74,10 +73,13 @@ def test_deterministic_score_without_judge(tmp_path):
     assert code == 0
     assert scores["det"]["det_f1"] == 1.0 and scores["det"]["det_pass"] == 1.0
     assert scores["official"] is None and scores["judged"] is False
-    # Scores are numbers only; the match detail stays in the detail file.
+    # Numbers only; nothing answer-derived is written anywhere.
     assert all(isinstance(v, float) for v in scores["det"].values())
     assert "matched_to" not in json.dumps(scores)
-    assert "g-checkout" in (tmp_path / "detail.json").read_text()
+    written = [p for p in tmp_path.rglob("*") if p.is_file()]
+    for path in written:
+        if path.parent.name != "Scenario-7" or path.parent.parent.name != "gt":
+            assert "g-checkout" not in path.read_text(errors="replace"), path
 
 
 def test_reportless_trial_is_zero_and_never_sent_to_the_judge(tmp_path, monkeypatch):
@@ -94,8 +96,32 @@ def test_reportless_trial_is_zero_and_never_sent_to_the_judge(tmp_path, monkeypa
 def test_judge_configuration_failure_exits_3(tmp_path, monkeypatch):
     monkeypatch.delenv("ITBENCH_EVALUATIONS_DIR", raising=False)
     gt_root, outputs = _trial(tmp_path, _report("payment broke"))
-    code, _ = _run(tmp_path, gt_root, outputs, "--judge")
+    code, scores = _run(tmp_path, gt_root, outputs, "--judge")
     assert code == 3
+    # The deterministic score is still written; the official one is absent.
+    assert scores["det"]["det_f1"] == 0.0 and scores["official"] is None
+    assert scores["judged"] is False and scores["judge_error"] == "ConfigError"
+    assert not (tmp_path / "work").exists()
+
+
+def test_judge_work_directory_is_removed_after_reading_the_row(tmp_path, monkeypatch):
+    from scripts.itbench_lite import official_eval
+
+    gt_root, outputs = _trial(tmp_path, _report("checkout is failing"))
+
+    def fake_run(directory, ground_truth, outputs_root, work_dir, config):
+        work_dir.mkdir(parents=True)
+        (work_dir / "evaluation_results.json").write_text("judge text g-checkout")
+        scores = work_dir / "trial_scores.json"
+        scores.write_text(json.dumps({"7": [{"root_cause_entity_f1": 1.0}]}))
+        return scores
+
+    monkeypatch.setattr(official_eval, "run", fake_run)
+    monkeypatch.setenv("ITBENCH_EVALUATIONS_DIR", str(tmp_path))
+    code, scores = _run(tmp_path, gt_root, outputs, "--judge")
+    assert code == 0
+    assert scores["official"]["root_cause_entity_pass"] == 1.0
+    assert not (tmp_path / "work").exists()
 
 
 def test_official_row_takes_the_one_trial(tmp_path):
@@ -107,6 +133,44 @@ def test_official_row_takes_the_one_trial(tmp_path):
 
 
 # -- run_freeze -----------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "report", ["plain text, not JSON", None, ["x"], {"claims": "x"}]
+)
+def test_cited_ids_of_a_non_object_report_are_empty(report):
+    assert run_freeze.cited_evidence_ids(report) == []
+
+
+def test_cited_ids_of_a_report():
+    report = {"claims": [{"evidence_ids": ["b", "a"]}, {"evidence_ids": ["a"]}, "x"]}
+    assert run_freeze.cited_evidence_ids(report) == ["a", "b"]
+
+
+def test_worker_interrupted_while_settling_is_stopped(tmp_path, monkeypatch):
+    import time as real_time
+
+    spawned = []
+    real_sleep = real_time.sleep
+    calls = {"n": 0}
+
+    def fake_spawn(argv, env, log_path, stdout_pipe=False):
+        proc = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+        spawned.append(proc)
+        return proc
+
+    def interrupt_once(seconds):
+        # Only the settle wait is interrupted; Popen.wait polls with sleep too.
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise KeyboardInterrupt
+        real_sleep(seconds)
+
+    monkeypatch.setattr(services, "spawn", fake_spawn)
+    monkeypatch.setattr(services.time, "sleep", interrupt_once)
+    with pytest.raises(KeyboardInterrupt):
+        services.start_worker({}, tmp_path / "w.log", settle_seconds=5)
+    assert spawned and spawned[0].poll() is not None
 
 
 def test_report_tokens_and_flat_evidence():

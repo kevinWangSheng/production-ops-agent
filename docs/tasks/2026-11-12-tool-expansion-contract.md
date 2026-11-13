@@ -223,7 +223,7 @@ A2-5 的静态资源表比 A1 清单窄；A1 与 A2 谁后合并，谁加一条�
 | L-D4 | docker 起 `prom/prometheus:v3.5.0`（promtool 用同一镜像）与 `jaegertracing/all-in-one:1.53.0`，只发布 `127.0.0.1:端口`；Prometheus 不写抓取任务与规则；容器名 `itbl-<尝试id>-{prom,jaeger}`，按完整名字删除；summary 记镜像 digest | 默认 |
 | L-D5 | 假 server 用子进程跑 CLI，读 stdout 那一行 JSON；每次尝试新 token（0600 文件）与证书目录；就绪判据是带 token 的 GET 返回 200 | 默认 |
 | L-D6 | 快照每题按白名单名字复制一次到干净目录（跟随符号链接复制内容），3 次尝试共用只读副本，每次尝试前重新 `load_snapshot` 校验。偏离 #604 正文「每次尝试复制」的字面，为省读写，数据不变 | lead |
-| L-D7 | 计划投递时刻 = 开始时刻 + `--load-budget`；各类数据并行灌入，全部就绪记 `loaded_at`；在 max(计划时刻, `loaded_at`) 投递；POST 前检查 `delivery_gap_ok` 与 `check_not_future`，不过就作废、不投递；POST 后用响应时刻再核一次；时钟用主机 UTC 墙钟 | 默认 |
+| L-D7 | 按 r4 原文：灌完立刻投，灌完到投递间隔超过 2 分钟作废；POST 前检查 `delivery_gap_ok` 与 `check_not_future`，不过就作废、不投递，POST 后用响应时刻再核一次。平移量在灌入前以尝试开始时刻为锚，数据末尾早于开始约 1 分钟；`--load-budget-seconds` 只作灌入耗时上限，超过记基础设施失败。时钟用主机 UTC 墙钟。lead 2026-11-13 按 r4 原文改正（原推荐「等到计划时刻再投」） | lead |
 | L-D8 | 每个 trial 最多作废或因临时基础设施问题失败 2 次（共 3 次机会），超过记缺失、计 0、留在分母（L5）；确定性错误（`NoEntryAlert`、`SnapshotRowError`、`AnswerFilePresent`、入口告警缺匹配标签）不重试，3 个 trial 都记缺失并写原因 | 默认 |
 | L-D9 | 投递后没建 Run（`TARGET_UNRESOLVED`/`TARGET_AMBIGUOUS`）是配置错误，停整轮；Run 结束但没有报告照 L5 计 0、不送 judge；报告校验不过按没有报告处理并记 `REPORT_INVALID_FOR_CONVERSION`；judge 失败只重跑判分，最多 2 次；驱动中途崩溃记 `interrupted`，算基础设施失败 | 默认（L5） |
 | L-D10 | 模型与上限沿用产品默认，不设 `OPSPILOT_RUN_SECONDS`；兜底等待 7200 s + 10 分钟；`OPSPILOT_SELF_HEAL_INTERVAL_SECONDS=0`；`OPSPILOT_TRACE=lab`，项目 `opspilot-lab-itbench-lite-<日期>`，第一次 Run 前设长期保留；记录 `prompt_revision` 与 `tool_schema_revision`（L12） | 默认 |

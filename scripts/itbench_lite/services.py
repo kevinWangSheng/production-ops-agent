@@ -385,12 +385,16 @@ def start_worker(
     started = Started(
         "worker", lambda: stop_process(proc), alive=lambda: proc.poll() is None
     )
-    deadline = time.monotonic() + settle_seconds
-    while time.monotonic() < deadline:
-        if proc.poll() is not None:
-            started.stop()
-            raise ServiceError("WORKER_EXITED", f"rc={proc.returncode}")
-        time.sleep(0.2)
+    try:
+        deadline = time.monotonic() + settle_seconds
+        while time.monotonic() < deadline:
+            if proc.poll() is not None:
+                raise ServiceError("WORKER_EXITED", f"rc={proc.returncode}")
+            time.sleep(0.2)
+    except BaseException:
+        # The handle never reached the caller's cleanup: stop it here.
+        started.stop()
+        raise
     started.info = {"pid": proc.pid}
     return started
 

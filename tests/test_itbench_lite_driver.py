@@ -191,11 +191,11 @@ class Harness:
 
         def judge(job):
             self.judge_calls.append(dict(job))
-            if self.judge_status == 0:
+            if self.judge_status in (0, 3):  # the child writes det either way
                 Path(job["out"]).write_text(
                     json.dumps(
                         {
-                            "judged": job["judge"],
+                            "judged": job["judge"] and self.judge_status == 0,
                             "det": {"det_f1": 1.0, "det_pass": 1.0, "note": "x"},
                             "official": None,
                         }
@@ -403,15 +403,31 @@ def test_late_delivery_is_void_before_any_post_and_retried(env, tmp_path):
     assert len(h.delivered) == 1
 
 
-def test_waiting_past_planned_time_beyond_two_minutes_is_void(env, tmp_path):
+def test_delivery_follows_loading_at_once_whatever_the_budget(env, tmp_path):
     cfg, vocab = env
-    cfg.load_budget = timedelta(seconds=600)  # loads finish long before
+    cfg.load_budget = timedelta(seconds=3600)  # a ceiling, never a wait
+    h = Harness(tmp_path)
+    driver.run_scenario(cfg, h.backends(), "Scenario-16", vocab, [1])
+    block = _summary(cfg)["itbench_lite"]
+    assert block["history"] == []
+    # Only the worker start (7.5 s in the stand-in) separates load and POST.
+    assert block["gap_seconds"] == 7.5
+    assert "planned_delivery_at" not in block
+    # Offset anchored at the start: data ends a minute before the start.
+    assert block["data_end_to_delivery_seconds"] == pytest.approx(
+        60 + block["load_seconds"] + 7.5, abs=1
+    )
+
+
+def test_loading_over_the_budget_is_an_infra_failure_without_delivery(env, tmp_path):
+    cfg, vocab = env
+    cfg.load_budget = timedelta(seconds=10)  # the stand-in loads take 30 s
     h = Harness(tmp_path)
     driver.run_scenario(cfg, h.backends(), "Scenario-16", vocab, [1])
     summary = _summary(cfg)
     assert summary["status"] == "missing"
     assert {i["code"] for i in summary["itbench_lite"]["history"]} == {
-        "DELIVERY_GAP_EXCEEDED"
+        "LOAD_BUDGET_EXCEEDED"
     }
     assert h.delivered == []
 
@@ -506,14 +522,63 @@ def test_entry_alert_without_service_name_uses_the_fallback(tmp_path):
     )
 
 
-def test_resume_skips_trials_with_a_summary(env, tmp_path):
+def test_resume_skips_only_completed_or_terminal_missing_trials(env, tmp_path):
     cfg, vocab = env
     h = Harness(tmp_path)
     driver.run_scenario(cfg, h.backends(), "Scenario-16", vocab, [1])
+    assert (cfg.round_dir / "S16" / "trial-1" / driver.MARKER).is_file()
     h2 = Harness(tmp_path)
     out = driver.run_scenario(cfg, h2.backends(), "Scenario-16", vocab, [1])
     assert out == {"scenario": "16", "skipped": [1]}
-    assert h2.events == []
+    assert h2.events == [] and h2.judge_calls == []
+
+
+def test_resume_finishes_judging_without_a_new_run(env, tmp_path):
+    cfg, vocab = env
+    h = Harness(tmp_path)
+    driver.run_scenario(cfg, h.backends(), "Scenario-16", vocab, [1])
+    trial_dir = cfg.round_dir / "S16" / "trial-1"
+    (trial_dir / driver.MARKER).unlink()  # crash after freeze, before marker
+    (trial_dir / "scores.json").unlink()
+    h2 = Harness(tmp_path)
+    out = driver.run_scenario(cfg, h2.backends(), "Scenario-16", vocab, [1])
+    assert out["trials"][1]["resumed"] == "judge"
+    assert h2.events == [] and len(h2.judge_calls) == 1
+    assert (trial_dir / driver.MARKER).is_file()
+
+
+def test_resume_reruns_a_summary_without_outputs_and_keeps_the_old_one(env, tmp_path):
+    cfg, vocab = env
+    h = Harness(tmp_path)
+    driver.run_scenario(cfg, h.backends(), "Scenario-16", vocab, [1])
+    trial_dir = cfg.round_dir / "S16" / "trial-1"
+    import shutil
+
+    shutil.rmtree(trial_dir / "outputs")
+    (trial_dir / driver.MARKER).unlink()
+    h2 = Harness(tmp_path)
+    out = driver.run_scenario(cfg, h2.backends(), "Scenario-16", vocab, [1])
+    assert out["trials"][1]["status"] == "completed"
+    assert ("start", "pg") in h2.events  # a new Run
+    assert len(list((trial_dir / "stale").iterdir())) == 1  # set aside, not deleted
+    assert _summary(cfg)["status"] == "completed"
+
+
+@pytest.mark.parametrize(
+    ("summary", "state"),
+    [
+        ({"status": "missing", "reason": "NO_ENTRY_ALERT"}, "missing"),
+        ({"status": "missing"}, "rerun"),
+        ({"status": "completed"}, "rerun"),
+        ("not an object", "rerun"),
+    ],
+)
+def test_trial_state_needs_explicit_terminal_records(env, summary, state):
+    cfg, _ = env
+    path = cfg.evidence_dir / "S16" / "trial-1"
+    path.mkdir(parents=True)
+    (path / "summary.json").write_text(json.dumps(summary))
+    assert driver.trial_state(cfg, "S16", "Scenario-16", 1) == state
 
 
 def test_judge_failures_are_retried_then_recorded(env, tmp_path):
@@ -524,6 +589,9 @@ def test_judge_failures_are_retried_then_recorded(env, tmp_path):
     assert out["trials"][1]["judge"]["status"] == "failed"
     assert len(h.judge_calls) == driver.JUDGE_TRIES
     assert len({c["work_dir"] for c in h.judge_calls}) == driver.JUDGE_TRIES
+    # The deterministic score exists, so the trial is complete; the official
+    # score is re-judged later by ``driver judge``.
+    assert driver.trial_state(cfg, "S16", "Scenario-16", 1) == "done"
 
 
 def test_scores_aggregate_for_coverage(env, tmp_path):
@@ -638,3 +706,114 @@ def test_cli_refuses_without_model_key(env, monkeypatch, capsys):
     )  # fmt: skip
     assert code == 2
     assert json.loads(capsys.readouterr().out)["code"] == "DEEPSEEK_API_KEY_MISSING"
+
+
+# -- review round 1 (#606) ---------------------------------------------------------
+
+
+def test_directory_symlink_anywhere_in_the_source_is_refused(env, tmp_path):
+    cfg, _ = env
+    root = cfg.dataset / "Scenario-16"
+    other = tmp_path / "other"
+    other.mkdir()
+    (root / "deep" / "er").mkdir(parents=True)
+    (root / "deep" / "er" / "link").symlink_to(other, target_is_directory=True)
+    with pytest.raises(driver.DeterministicError) as err:
+        driver.copy_whitelisted(root, tmp_path / "copy")
+    assert err.value.code == "UNSAFE_SNAPSHOT"
+    assert not (tmp_path / "copy").exists()
+
+
+def test_symlinked_scenario_root_is_refused(env, tmp_path):
+    cfg, _ = env
+    link = tmp_path / "linked"
+    link.symlink_to(cfg.dataset / "Scenario-16", target_is_directory=True)
+    with pytest.raises(driver.DeterministicError) as err:
+        driver.copy_whitelisted(link, tmp_path / "copy")
+    assert err.value.code == "UNSAFE_SNAPSHOT"
+
+
+def test_unlistable_subdirectory_fails_closed(env, tmp_path):
+    cfg, _ = env
+    locked = cfg.dataset / "Scenario-16" / "locked"
+    locked.mkdir()
+    locked.chmod(0o000)
+    try:
+        with pytest.raises(driver.DeterministicError) as err:
+            driver.copy_whitelisted(cfg.dataset / "Scenario-16", tmp_path / "copy")
+        assert err.value.code == "UNSAFE_SNAPSHOT"
+    finally:
+        locked.chmod(0o700)
+
+
+def test_answer_names_elsewhere_in_the_tree_are_never_selected(env, tmp_path):
+    cfg, _ = env
+    nested = cfg.dataset / "Scenario-16" / "metrics" / "assertion.json"
+    nested.write_text("{}")
+    nested.chmod(0o000)
+    stats = driver.copy_whitelisted(cfg.dataset / "Scenario-16", tmp_path / "copy")
+    assert stats["files"] == 3
+
+
+def test_reused_copy_is_verified_again(env, tmp_path):
+    cfg, _ = env
+    copy = tmp_path / "copy"
+    driver.copy_whitelisted(cfg.dataset / "Scenario-16", copy)
+    (copy / "extra.txt").write_text("x")
+    with pytest.raises(driver.DeterministicError):
+        driver.copy_whitelisted(cfg.dataset / "Scenario-16", copy)
+    (copy / "extra.txt").unlink()
+    (copy / "status.json").write_text("x")
+    with pytest.raises(driver.DeterministicError) as err:
+        driver.copy_whitelisted(cfg.dataset / "Scenario-16", copy)
+    assert err.value.code == "ANSWER_FILE_PRESENT"
+
+
+def test_non_json_report_text_counts_as_invalid(env, tmp_path):
+    cfg, vocab = env
+    h = Harness(tmp_path)
+    h.report = "The checkout service failed."  # parse_report keeps the text
+    driver.run_scenario(cfg, h.backends(), "Scenario-16", vocab, [1])
+    block = _summary(cfg)["itbench_lite"]
+    assert block["conversion"]["report_present"] is False
+    assert block["conversion"]["reason"] == "REPORT_INVALID_FOR_CONVERSION"
+
+
+@pytest.mark.parametrize("name", ["ground_truth.yaml", "status.json", "Assertion.JSON"])
+def test_answer_named_inputs_are_refused(env, tmp_path, name):
+    cfg, vocab = env
+    target = tmp_path / name
+    target.write_text("x")
+    with pytest.raises(driver.RoundAbort) as err:
+        driver.check_input_file(target, "env-file")
+    assert err.value.code == "ANSWER_FILE_AS_INPUT"
+    link = tmp_path / "vocab-link.txt"
+    link.symlink_to(target)
+    with pytest.raises(driver.RoundAbort):
+        driver.run_scenario(cfg, Harness(tmp_path).backends(), "Scenario-16", link, [1])
+    cfg.env_file = target
+    with pytest.raises(driver.RoundAbort):
+        driver.prepare_round(cfg, Harness(tmp_path).backends())
+
+
+def test_judge_environment_is_narrowed():
+    env = {
+        "PATH": "/bin",
+        "HOME": "/h",
+        "ITBENCH_EVALUATIONS_DIR": "/e",
+        "ZAI_API_KEY": "synthetic-zai",
+        "OPENAI_API_KEY": "synthetic-openai",
+        "DEEPSEEK_API_KEY": "synthetic-deepseek",
+        "LANGSMITH_API_KEY": "synthetic-ls",
+        "OPSPILOT_WEB_DSN": "dsn",
+    }
+    child = driver.judge_env(env)
+    assert child == {
+        "PATH": "/bin",
+        "HOME": "/h",
+        "ITBENCH_EVALUATIONS_DIR": "/e",
+        "ZAI_API_KEY": "synthetic-zai",
+        "PYTHON_DOTENV_DISABLED": "1",
+    }
+    child = driver.judge_env({**env, "ITBENCH_JUDGE_PROVIDER": "deepseek"})
+    assert "DEEPSEEK_API_KEY" in child and "ZAI_API_KEY" not in child

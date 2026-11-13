@@ -10,9 +10,9 @@ r6, L-D1 to L-D20, docs/tasks/2026-11-12-tool-expansion-contract.md):
    OpenMetrics -> promtool -> replay Prometheus; replay Jaeger + OTLP traces;
    the fake Kubernetes API server; the web. All bind 127.0.0.1 on fixed,
    configurable ports (L-D3). Then the worker (``otel-demo-ext``);
-3. one entry alert is delivered at max(planned time, loaded time) after the
-   2-minute gap check (``delivery_gap_ok``, L-D7); a late attempt is void and
-   retried, at most 3 chances per trial (L-D8);
+3. one entry alert is delivered right after loading, after the 2-minute
+   gap check (``delivery_gap_ok``, L-D7 as r4 words it); a late attempt is
+   void and retried, at most 3 chances per trial (L-D8);
 4. the Run is awaited, frozen (``scripts.run_freeze``), its report and
    evidence converted (``answer.convert``) and every started service stopped
    in reverse order, ports checked released (L-D20);
@@ -46,7 +46,7 @@ import subprocess
 import sys
 import threading
 import time
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -66,11 +66,19 @@ from scripts.itbench_lite.alerts import (
     select_entry_alert,
 )
 from scripts.itbench_lite.coverage import scenario_key
+from scripts.itbench_lite.official_eval import (
+    DEFAULT_PROVIDER,
+    EVALUATOR_DIR_ENV,
+    MODEL_OVERRIDE_ENV,
+    PROVIDER_ENV,
+    PROVIDERS,
+)
 from scripts.itbench_lite.services import Started
 from scripts.itbench_lite.shift import (
     check_not_future,
     compute_offset_seconds,
     from_ns,
+    latest_shifted_ns,
     snapshot_end_times,
 )
 from scripts.itbench_lite.snapshot import (
@@ -94,7 +102,7 @@ CLUSTER_UID_FALLBACK = "itbench-lite"
 EVENT_ACTOR = "alertmanager"
 FALLBACK_WORKLOAD_LABELS = ("service", "pod", "namespace")
 TERMINAL_WAIT = timedelta(seconds=7200 + 600)  # RUN_WALL + 10 min (L-D10)
-DEFAULT_LOAD_BUDGET = timedelta(seconds=180)
+DEFAULT_LOAD_BUDGET = timedelta(seconds=600)
 CHANCES = 3  # L-D8: at most 2 voids/infra failures per trial
 JUDGE_TRIES = 3  # L-D9: the judge call is retried at most twice
 SUMMARY_SCHEMA = "itbench-lite-trial-1"
@@ -105,7 +113,6 @@ _LANGSMITH_KEYS = (
     "LANGSMITH_ENDPOINT",
     "LANGSMITH_WORKSPACE_ID",
 )
-_JUDGE_ENV = re.compile(r"^(ITBENCH_|ZAI_|OPENAI_|DEEPSEEK_|OPSPILOT_JUDGE_MODEL$)")
 
 
 @dataclass(frozen=True)
@@ -152,54 +159,98 @@ class RoundAbort(DriverError):
 # -- clean copy (L-D6) ----------------------------------------------------------
 
 
-def _candidates(source: Path) -> Iterable[tuple[Path, Path]]:
-    """``(source file, relative destination)`` of every whitelisted name.
+def _walk_error(error: OSError) -> None:
+    raise DeterministicError("UNSAFE_SNAPSHOT", "source tree cannot be listed")
 
-    Lists directory entries only; nothing outside the whitelist is opened.
-    """
-    for entry in sorted(os.scandir(source), key=lambda e: e.name):
-        name = entry.name
-        if name in TSV_FILES.values() or (
+
+def _whitelisted_rel(rel: Path) -> bool:
+    """Whether a path relative to the scenario root is on the loader's list."""
+    parts = rel.parts
+    if len(parts) == 1:
+        name = parts[0]
+        return name in TSV_FILES.values() or (
             name.startswith("alerts") and name.endswith(".json")
-        ):
-            yield Path(entry.path), Path(name)
-    for subdir, suffix in ((METRICS_DIR, ".tsv"), (ALERTS_DIR, ".json")):
-        base = source / subdir
-        if base.is_dir():
-            for entry in sorted(os.scandir(base), key=lambda e: e.name):
-                if entry.name.endswith(suffix):
-                    yield Path(entry.path), Path(subdir) / entry.name
+        )
+    if len(parts) == 2:
+        return (parts[0] == METRICS_DIR and parts[1].endswith(".tsv")) or (
+            parts[0] == ALERTS_DIR and parts[1].endswith(".json")
+        )
+    return False
+
+
+def scan_source(source: Path) -> list[tuple[Path, Path]]:
+    """The whole source tree checked by name, fail-closed; the whitelisted
+    ``(source file, relative path)`` pairs.
+
+    Lists names only (``os.walk``, not following links); opens no file.
+    Refuses a symlinked root, any directory symlink anywhere in the tree and
+    any listing error. Answer files are expected in the dataset and are never
+    selected; a whitelisted name that is, or points to, an answer name, or
+    that points outside a regular file, is refused.
+    """
+    if source.is_symlink():
+        raise DeterministicError("UNSAFE_SNAPSHOT", "scenario root is a symlink")
+    if not source.is_dir():
+        raise DeterministicError("SCENARIO_NOT_FOUND", str(source.name))
+    selected: list[tuple[Path, Path]] = []
+    for dirpath, dirnames, filenames in os.walk(source, onerror=_walk_error):
+        base = Path(dirpath)
+        for name in dirnames:
+            if (base / name).is_symlink():
+                raise DeterministicError("UNSAFE_SNAPSHOT", "directory symlink")
+        for name in filenames:
+            path = base / name
+            rel = path.relative_to(source)
+            if not _whitelisted_rel(rel):
+                continue
+            if _is_answer_name(name) or _is_answer_name(path.resolve().name):
+                raise DeterministicError("ANSWER_FILE_PRESENT", "whitelisted name")
+            if not path.is_file():
+                raise DeterministicError("UNSAFE_SNAPSHOT", "not a regular file")
+            selected.append((path, rel))
+    return sorted(selected, key=lambda item: str(item[1]))
+
+
+def verify_copy(copy: Path) -> None:
+    """A reused clean copy holds whitelisted regular files only, no links."""
+    for dirpath, dirnames, filenames in os.walk(copy, onerror=_walk_error):
+        base = Path(dirpath)
+        for name in (*dirnames, *filenames):
+            path = base / name
+            if path.is_symlink():
+                raise DeterministicError("UNSAFE_SNAPSHOT", "link in the clean copy")
+            if _is_answer_name(name):
+                raise DeterministicError("ANSWER_FILE_PRESENT", "in the clean copy")
+        for name in filenames:
+            if not _whitelisted_rel((base / name).relative_to(copy)):
+                raise DeterministicError("UNSAFE_SNAPSHOT", "unexpected file in copy")
 
 
 def copy_whitelisted(source: Path, destination: Path) -> dict[str, Any]:
     """Copy the whitelisted names of ``source`` into ``destination`` once.
 
-    Symlinks are followed (their content is copied) unless the target's name
-    is an answer name. The copy is built beside the destination and renamed
-    into place, so a half copy is never reused. Returns counts.
+    The whole source tree is checked first (``scan_source``); file symlinks
+    are followed (their content is copied). The copy is built beside the
+    destination and renamed into place, so a half copy is never reused; a
+    reused copy is verified again (``verify_copy``). Returns counts.
     """
     if destination.is_dir():
+        verify_copy(destination)
         return {"reused": True}
-    if not source.is_dir():
-        raise DeterministicError("SCENARIO_NOT_FOUND", str(source.name))
+    selected = scan_source(source)
     partial = destination.with_name(destination.name + ".partial")
     if partial.exists():
         shutil.rmtree(partial)
-    files = 0
+    partial.mkdir(parents=True)
     size = 0
-    for src, rel in _candidates(source):
-        if _is_answer_name(src.name) or _is_answer_name(src.resolve().name):
-            raise DeterministicError("ANSWER_FILE_PRESENT", "whitelisted name")
-        if not src.is_file():
-            continue
+    for src, rel in selected:
         target = partial / rel
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(src, target)
-        files += 1
         size += target.stat().st_size
-    partial.mkdir(parents=True, exist_ok=True)
+    verify_copy(partial)
     partial.rename(destination)
-    return {"reused": False, "files": files, "bytes": size}
+    return {"reused": False, "files": len(selected), "bytes": size}
 
 
 # -- per-scenario preparation ---------------------------------------------------
@@ -399,11 +450,29 @@ def run_state(dsn: str, run_id: str) -> str | None:
     return None if row is None else str(row[0])
 
 
+def judge_env(environ: Mapping[str, str] | None = None) -> dict[str, str]:
+    """The judging process's environment, narrowed as r4 narrows the
+    evaluator's: base paths, ``PYTHON_DOTENV_DISABLED=1``, the evaluator
+    location, the provider choice and only that provider's three variables."""
+    env = os.environ if environ is None else environ
+    names = [EVALUATOR_DIR_ENV, PROVIDER_ENV, MODEL_OVERRIDE_ENV]
+    provider = (env.get(PROVIDER_ENV) or DEFAULT_PROVIDER).strip().casefold()
+    spec = PROVIDERS.get(provider)
+    if spec is not None:
+        names += [spec.key_env, spec.base_env]
+        if spec.model_env:
+            names.append(spec.model_env)
+    child = services.base_env(env) | {n: env[n] for n in names if env.get(n)}
+    child["PYTHON_DOTENV_DISABLED"] = "1"
+    return child
+
+
 def run_judge(job: Mapping[str, Any]) -> int:
-    """Start the judging process; returns its exit status."""
-    env = services.base_env() | {
-        k: v for k, v in os.environ.items() if _JUDGE_ENV.match(k)
-    }
+    """Start the judging process; returns its exit status.
+
+    Its output is discarded: the evaluator it runs may print judge text that
+    derives from the answer, and nothing answer-derived goes to a log.
+    """
     argv = [
         sys.executable, "-m", "scripts.itbench_lite.judge_trial",
         "--ground-truth", str(job["ground_truth"]),
@@ -412,14 +481,15 @@ def run_judge(job: Mapping[str, Any]) -> int:
         "--trial", str(job["trial"]),
         "--work-dir", str(job["work_dir"]),
         "--out", str(job["out"]),
-        "--detail", str(job["detail"]),
     ] + (["--judge"] if job["judge"] else [])  # fmt: skip
-    log = Path(job["work_dir"]).with_suffix(".log")
-    log.parent.mkdir(parents=True, exist_ok=True)
-    with log.open("ab") as stream:
-        return subprocess.run(
-            argv, cwd=ROOT, env=env, stdout=stream, stderr=stream, check=False
-        ).returncode
+    return subprocess.run(
+        argv,
+        cwd=ROOT,
+        env=judge_env(),
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    ).returncode
 
 
 @dataclass
@@ -742,15 +812,15 @@ class Attempt:
         self.block["memory_before"] = b.memory_reading()
         self._check_ports()
 
+        # r4 as worded (lead 2026-11-13): deliver right after loading, void
+        # when loading-to-delivery exceeds 2 minutes. The offset is fixed
+        # before loading and anchored on this moment, so the shifted data
+        # always ends before the (later) delivery; ``--load-budget-seconds``
+        # is only the ceiling on loading.
         started_at = b.now()
-        planned = started_at + cfg.load_budget
-        offset = compute_offset_seconds(self.s.ends, planned)
-        check_not_future(self.s.ends, offset, planned)
-        self.block.update(
-            started_at=_iso(started_at),
-            planned_delivery_at=_iso(planned),
-            offset_seconds=offset,
-        )
+        offset = compute_offset_seconds(self.s.ends, started_at)
+        check_not_future(self.s.ends, offset, started_at)
+        self.block.update(started_at=_iso(started_at), offset_seconds=offset)
 
         try:
             pg = b.start_pg(self.dir / "pg", cfg.ports.pg)
@@ -778,6 +848,11 @@ class Attempt:
                 }
             )
             loaded_at = b.now()
+            if loaded_at - started_at > cfg.load_budget:
+                raise InfraFailure(
+                    "LOAD_BUDGET_EXCEEDED",
+                    f"{(loaded_at - started_at).total_seconds():.0f}s",
+                )
             worker = self._started(
                 b.start_worker(
                     worker_env(cfg, pg, loaded["fake_k8s"], k8s_token),
@@ -789,14 +864,15 @@ class Attempt:
             raise InfraFailure(error.code, str(error)) from None
         self.block["loaded_at"] = _iso(loaded_at)
 
-        # Delivery (L-D7): checked before POST, so a void costs no model call.
-        delivery_at = max(planned, loaded_at)
-        wait = (delivery_at - b.now()).total_seconds()
-        if wait > 0:
-            b.sleep(wait)
+        # Delivery (L-D7): immediately, checked before POST so a void costs
+        # no model call.
         now = b.now()
         self.block["delivered_at"] = _iso(now)
+        self.block["load_seconds"] = (loaded_at - started_at).total_seconds()
         self.block["gap_seconds"] = (now - loaded_at).total_seconds()
+        self.block["data_end_to_delivery_seconds"] = (
+            now - from_ns(latest_shifted_ns(self.s.ends, offset))
+        ).total_seconds()
         if not delivery_gap_ok(loaded_at, now):
             raise VoidAttempt(
                 "DELIVERY_GAP_EXCEEDED", f"{self.block['gap_seconds']:.1f}s"
@@ -866,6 +942,12 @@ class Attempt:
             "trace": trace,
             "itbench_lite": self.block,
         }
+        # Outputs first, summary second, completion marker last (after judging,
+        # ``run_trial``): a crash in between is never mistaken for a done trial.
+        outputs_root = self.dir.parent / "outputs"
+        if outputs_root.exists():
+            shutil.rmtree(outputs_root)
+        answer.write_trial(outputs_root, self.s.dir_name, self.trial, conversion)
         evidence = cfg.evidence_dir / self.s.label / f"trial-{self.trial}"
         _, summary_path = lab_evidence.freeze(
             ledger,
@@ -874,10 +956,6 @@ class Attempt:
             evidence_dir=evidence,
             summary=summary,
         )
-        outputs_root = self.dir.parent / "outputs"
-        if outputs_root.exists():
-            shutil.rmtree(outputs_root)
-        answer.write_trial(outputs_root, self.s.dir_name, self.trial, conversion)
         return AttemptResult(
             run_id, summary_path, outputs_root, conversion.meta["report_present"]
         )
@@ -937,7 +1015,6 @@ def judge_trial(
                 "trial": trial,
                 "work_dir": work,
                 "out": out,
-                "detail": trial_dir / "det_detail.json",
                 "judge": judge,
             }
         )
@@ -975,15 +1052,91 @@ def _write_status_summary(
     )
 
 
-def trial_done(cfg: Config, label: str, trial: int) -> bool:
-    path = cfg.evidence_dir / label / f"trial-{trial}" / "summary.json"
-    if not path.is_file():
-        return False
+MARKER = "complete.json"
+
+
+def _read_json(path: Path) -> Any:
     try:
-        json.loads(path.read_text())
-    except ValueError:
-        return False
-    return True
+        return json.loads(path.read_text())
+    except (OSError, ValueError):
+        return None
+
+
+def write_marker(
+    cfg: Config, label: str, trial: int, record: Mapping[str, Any]
+) -> None:
+    """The trial's completion marker, written atomically and last."""
+    path = cfg.round_dir / label / f"trial-{trial}" / MARKER
+    path.parent.mkdir(parents=True, exist_ok=True)
+    partial = path.with_suffix(".partial")
+    partial.write_text(json.dumps(record, indent=1, default=str) + "\n")
+    os.replace(partial, path)
+
+
+def trial_state(cfg: Config, label: str, scenario_dir: str, trial: int) -> str:
+    """``done``, ``missing`` (a terminal missing record), ``judge`` (Run frozen
+    and converted, scoring not finished) or ``rerun``.
+
+    ``done`` needs the marker, a completed summary, the evaluator output and a
+    scores file with the deterministic score.
+    """
+    summary = _read_json(cfg.evidence_dir / label / f"trial-{trial}" / "summary.json")
+    if not isinstance(summary, Mapping):
+        return "rerun"
+    status = summary.get("status")
+    if status == "missing" and summary.get("reason"):
+        return "missing"
+    if status != "completed":
+        return "rerun"
+    trial_dir = cfg.round_dir / label / f"trial-{trial}"
+    output = trial_dir / "outputs" / scenario_dir / str(trial) / "outputs"
+    if not (output / "agent_output.json").is_file():
+        return "rerun"
+    scores = _read_json(trial_dir / "scores.json")
+    marker = _read_json(trial_dir / MARKER)
+    if (
+        isinstance(marker, Mapping)
+        and marker.get("status") == "completed"
+        and isinstance(scores, Mapping)
+        and _numeric(scores.get("det"))
+    ):
+        return "done"
+    return "judge"
+
+
+def trial_done(cfg: Config, label: str, scenario_dir: str, trial: int) -> bool:
+    return trial_state(cfg, label, scenario_dir, trial) in ("done", "missing")
+
+
+def _set_aside(cfg: Config, label: str, trial: int) -> None:
+    """Move an unfinished trial's evidence directory into the ignored tree so
+    the rerun can freeze afresh; nothing is deleted."""
+    evidence = cfg.evidence_dir / label / f"trial-{trial}"
+    if evidence.exists():
+        stale = cfg.round_dir / label / f"trial-{trial}" / "stale"
+        stale.mkdir(parents=True, exist_ok=True)
+        shutil.move(
+            str(evidence), stale / datetime.now(UTC).strftime("%Y%m%dT%H%M%S%f")
+        )
+
+
+def finish_judging(
+    cfg: Config,
+    backends: Backends,
+    scenario_dir: str,
+    label: str,
+    trial: int,
+    *,
+    judge: bool | None = None,
+) -> dict[str, Any]:
+    """Judge an already frozen trial and write its completion marker once the
+    deterministic score exists (a failed judge call is re-run by ``judge``)."""
+    use = cfg.judge if judge is None else judge
+    outcome = judge_trial(cfg, backends, scenario_dir, label, trial, judge=use)
+    scores = _read_json(cfg.round_dir / label / f"trial-{trial}" / "scores.json")
+    if isinstance(scores, Mapping) and _numeric(scores.get("det")):
+        write_marker(cfg, label, trial, {"status": "completed", "judge": outcome})
+    return outcome
 
 
 def run_trial(
@@ -1022,8 +1175,8 @@ def run_trial(
             "run_id": result.run_id,
             "history": history,
         }
-        record["judge"] = judge_trial(
-            cfg, backends, scenario.dir_name, scenario.label, trial, judge=cfg.judge
+        record["judge"] = finish_judging(
+            cfg, backends, scenario.dir_name, scenario.label, trial
         )
         return record
     block = {
@@ -1045,17 +1198,32 @@ def run_scenario(
 ) -> dict[str, Any]:
     key = scenario_key(dir_name)
     label = f"S{key}"
-    pending = [t for t in trials if not trial_done(cfg, label, t)]
+    states = {t: trial_state(cfg, label, dir_name, t) for t in trials}
+    records: dict[int, Any] = {}
+    for trial, state in states.items():
+        if state == "judge":  # Run already frozen: finish scoring only
+            records[trial] = {
+                "status": "completed",
+                "resumed": "judge",
+                "judge": finish_judging(cfg, backends, dir_name, label, trial),
+            }
+    pending = [t for t, state in states.items() if state == "rerun"]
     if not pending:
-        return {"scenario": key, "skipped": list(trials)}
+        skipped = [t for t, state in states.items() if state in ("done", "missing")]
+        if records:
+            return {"scenario": key, "trials": records, "skipped": skipped}
+        return {"scenario": key, "skipped": skipped}
+    for trial in pending:
+        _set_aside(cfg, label, trial)
     try:
+        check_input_file(vocabulary_file, "vocabulary")
         if not vocabulary_file.is_file():
             raise DeterministicError("VOCABULARY_MISSING", str(vocabulary_file.name))
         vocabulary = vocabulary_file.read_text().splitlines()
         scenario = prepare_scenario(cfg.dataset, dir_name, cfg.round_dir)
     except DeterministicError as error:
-        return _all_missing(cfg, label, key, pending, error)
-    records = {}
+        missing = _all_missing(cfg, label, key, pending, error)
+        return {"scenario": key, "trials": {**records, **missing["trials"]}}
     for trial in pending:
         try:
             records[trial] = run_trial(cfg, backends, scenario, trial, vocabulary)
@@ -1121,9 +1289,22 @@ def git_state(allow_dirty: bool) -> dict[str, Any]:
     return {"commit": commit, "dirty": bool(changed), "allow_dirty": allow_dirty}
 
 
+def check_input_file(path: Path | None, what: str) -> None:
+    """A driver-side input never names, or points at, an answer file."""
+    if path is None:
+        return
+    names = [path.name]
+    if path.exists() or path.is_symlink():
+        names.append(path.resolve().name)
+    if any(_is_answer_name(name) for name in names):
+        raise RoundAbort("ANSWER_FILE_AS_INPUT", what)
+
+
 def prepare_round(cfg: Config, backends: Backends) -> None:
     if not _ROUND.match(cfg.round):
         raise RoundAbort("BAD_ROUND", cfg.round)
+    check_input_file(cfg.env_file, "env-file")
+    check_input_file(cfg.prometheus_account, "prometheus-account")
     cfg.git = git_state(cfg.allow_dirty)
     cfg.secrets_env = _env_file_values(cfg.env_file, (*_PASS_KEYS, *_LANGSMITH_KEYS))
     for name in (*_PASS_KEYS, *_LANGSMITH_KEYS):
@@ -1149,7 +1330,12 @@ def _common(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--ground-truth", type=Path, help="answer root; default --dataset"
     )
-    parser.add_argument("--load-budget-seconds", type=float, default=180)
+    parser.add_argument(
+        "--load-budget-seconds",
+        type=float,
+        default=DEFAULT_LOAD_BUDGET.total_seconds(),
+        help="ceiling on loading; delivery follows loading at once",
+    )
     parser.add_argument("--trace", choices=("lab", "off"), default="lab")
     parser.add_argument("--no-judge", action="store_true")
     parser.add_argument("--allow-dirty", action="store_true")
@@ -1245,7 +1431,7 @@ def main(argv: Sequence[str] | None = None, backends: Backends | None = None) ->
                 continue
             scenario_dir = next(p.name for p in meta.iterdir() if p.is_dir())
             trial = int(trial_dir.name.split("-")[1])
-            outcome = judge_trial(
+            outcome = finish_judging(
                 cfg, backends, scenario_dir, trial_dir.parent.name, trial, judge=True
             )
             results.append(

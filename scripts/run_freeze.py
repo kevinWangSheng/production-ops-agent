@@ -118,9 +118,35 @@ def _response_kind(response: Any) -> Any:
     return response.get("kind") if isinstance(response, Mapping) else None
 
 
+def cited_evidence_ids(report: Any) -> list[str]:
+    """Evidence ids the report's claims cite; empty for a non-object report
+    (a text that is not JSON, or None)."""
+    if not isinstance(report, Mapping):
+        return []
+    claims = report.get("claims")
+    if not isinstance(claims, list):
+        return []
+    return sorted(
+        {
+            eid
+            for claim in claims
+            if isinstance(claim, Mapping)
+            for eid in (claim.get("evidence_ids") or [])
+            if isinstance(eid, str)
+        }
+    )
+
+
 def collect_run(conn: Any, run_id: UUID) -> tuple[dict[str, Any], dict[str, Any]]:
     """``(summary block, raw ledger)`` of one Run; ``conn`` is a psycopg
-    connection the caller opened, used here for SELECTs only."""
+    connection the caller opened, used here for SELECTs only.
+
+    Field set follows the F3 collector
+    (``docs/evidence/f3-step5-competing-cause/collect.py``): the incident's
+    full projection, the report with the views of the evidence it cites, the
+    incident's Runs, the full audit timeline and the alert deliveries. The
+    durable ``outcome`` needs a store of its own and is added by ``collect``.
+    """
     from psycopg.rows import dict_row
 
     from opspilot.acceptance_audit import audit_records
@@ -143,6 +169,11 @@ def collect_run(conn: Any, run_id: UUID) -> tuple[dict[str, Any], dict[str, Any]
             "current_run_id,created_at FROM opspilot_incidents WHERE incident_id=%s",
             (incident_id,),
         ).fetchone()
+        runs = cursor.execute(
+            "SELECT run_id,control_generation,state FROM opspilot_runs"
+            " WHERE incident_id=%s ORDER BY control_generation,run_id",
+            (incident_id,),
+        ).fetchall()
         steps = cursor.execute(
             "SELECT step_id,sequence,logical_key,status,control_generation,"
             "observed_at,response,tool_results FROM opspilot_steps"
@@ -155,23 +186,21 @@ def collect_run(conn: Any, run_id: UUID) -> tuple[dict[str, Any], dict[str, Any]
             " ORDER BY delivery_id",
             (incident_id,),
         ).fetchall()
+        report, conclusion = report_of(steps)
+        cited = cited_evidence_ids(report)
+        cited_rows = cursor.execute(
+            "SELECT evidence_id,run_id,subject_id,status,view FROM opspilot_evidence"
+            " WHERE evidence_id = ANY(%s)",
+            (cited,),
+        ).fetchall()
         db_now = cursor.execute("SELECT now() AS now").fetchone()["now"]
     evidence = investigation_evidence(conn, incident_id)
     timeline, undated = audit_records(conn, incident_id)
 
-    report, conclusion = report_of(steps)
     run_key = str(run_id)
     observations = [o for o in evidence.observations if o.run_id == run_key]
-    cited = sorted(
-        {
-            eid
-            for claim in (report or {}).get("claims", [])
-            if isinstance(report, Mapping) and isinstance(claim, Mapping)
-            for eid in claim.get("evidence_ids", [])
-            if isinstance(eid, str)
-        }
-    )
-    by_id = {o.evidence_id: o for o in observations}
+    by_id = {o.evidence_id: o for o in evidence.observations}
+    views = {str(r["evidence_id"]): r for r in cited_rows}
     run_input = run["input"] if isinstance(run["input"], Mapping) else {}
     policies = (run_input.get("evidence_context") or {}).get("time_policies") or []
     window = policies[0].get("window") if policies else None
@@ -191,6 +220,7 @@ def collect_run(conn: Any, run_id: UUID) -> tuple[dict[str, Any], dict[str, Any]
             "authorized_window": plain(window),
         },
         "incident": plain(dict(incident)) if incident else None,
+        "incident_runs": plain([dict(r) for r in runs]),
         # The versions the Run row persisted, never the collector checkout's.
         "versions": plain(run["versions"]),
         "report": report,
@@ -220,21 +250,32 @@ def collect_run(conn: Any, run_id: UUID) -> tuple[dict[str, Any], dict[str, Any]
             if e.category == "query" and str(e.run_id) == run_key
         ],
         "observations": plain(observations),
-        "refused_operations": plain(
-            [r for r in evidence.refused_operations if str(r.run_id) == run_key]
-        ),
-        "coverage": plain([c for c in evidence.coverage if str(c.run_id) == run_key]),
+        # The incident's whole F3 projection: observations, refusals, report
+        # claims with their evidence references, per-Run coverage.
+        "investigation_evidence": plain(evidence),
+        # Every cited id with the tool that produced it (A7's category rule
+        # follows these) and the stored view, as F3 froze them.
         "cited_evidence": [
             {
                 "evidence_id": eid,
                 "resolvable": eid in by_id,
                 "tool": by_id[eid].tool if eid in by_id else None,
                 "status": by_id[eid].status if eid in by_id else None,
+                "stored": None
+                if eid not in views
+                else {
+                    "run_id": str(views[eid]["run_id"]),
+                    "subject_id": plain(views[eid]["subject_id"]),
+                    "status": views[eid]["status"],
+                    "view": plain(views[eid]["view"]),
+                },
             }
             for eid in cited
         ],
-        "alert_deliveries": plain([dict(d) for d in deliveries]),
+        "audit": plain(timeline),
         "audit_undated": plain(undated),
+        "alert_delivery_outcomes": [d["outcome"] for d in deliveries],
+        "alert_deliveries": plain([dict(d) for d in deliveries]),
         "collected_at_db": plain(db_now),
     }
     ledger = {
@@ -247,10 +288,50 @@ def collect_run(conn: Any, run_id: UUID) -> tuple[dict[str, Any], dict[str, Any]
     return relabel(block), relabel(ledger)
 
 
+def durable_outcome(dsn: str, incident_id: UUID, *, scenario_id: str) -> Any:
+    """The incident's ``IncidentOutcome`` from the durable rows (F3 collector)."""
+    from opspilot.acceptance import IncidentScenario, outcome_from_durable
+    from opspilot.persistence import DurableStore
+    from opspilot.web import DurableEventLog, DurableIncidentStore
+
+    store = DurableStore(dsn)
+    try:
+        snapshot = store.rebuild(incident_id)
+        controls = tuple(
+            dataclasses.asdict(row)
+            for row in DurableIncidentStore(store).control_audit(incident_id)
+        )
+        handoffs = tuple(
+            dict(event.payload)
+            for event in DurableEventLog(store).read_after(incident_id, 0, limit=1000)
+            if event.kind == "run_handoff"
+        )
+        scenario = IncidentScenario(
+            scenario_id=scenario_id,
+            feature_id="lab",
+            acceptance_step="frozen-run",
+            kind="incident",
+            subject_id=str(incident_id),
+        )
+        return outcome_from_durable(
+            scenario, snapshot, controls=controls, handoff_events=handoffs
+        )
+    finally:
+        close = getattr(store, "close", None)
+        if close is not None:
+            close()
+
+
 def collect(
-    dsn: str, run_id: UUID | str, *, connect: Callable[[str], Any] | None = None
+    dsn: str,
+    run_id: UUID | str,
+    *,
+    connect: Callable[[str], Any] | None = None,
+    scenario_id: str = "frozen-run",
+    outcome: Callable[..., Any] | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    """``collect_run`` over a fresh connection to ``dsn``."""
+    """``collect_run`` over a fresh connection to ``dsn``, plus the durable
+    outcome of the incident."""
     if connect is None:
         import psycopg
 
@@ -258,7 +339,16 @@ def collect(
             return psycopg.connect(value, connect_timeout=5)
 
     with connect(dsn) as conn:
-        return collect_run(conn, UUID(str(run_id)))
+        block, ledger = collect_run(conn, UUID(str(run_id)))
+    reader = outcome or durable_outcome
+    try:
+        value = plain(reader(dsn, UUID(block["incident_id"]), scenario_id=scenario_id))
+    except ValueError as error:
+        # A Run frozen before a final state (a timed-out wait) has no
+        # durable outcome yet; recorded, never invented.
+        value = {"available": False, "reason": str(error)}
+    block["outcome"] = relabel(value)
+    return block, ledger
 
 
 def flat_evidence(block: Mapping[str, Any]) -> list[dict[str, Any]]:

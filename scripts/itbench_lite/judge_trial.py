@@ -11,20 +11,23 @@ outputs root, and reads back only the numeric scores this writes. Here:
   work directory; a reportless trial is never sent and scores 0 (L5);
   ``root_cause_entity_pass`` = ``root_cause_entity_f1 == 1`` (L-D15).
 
-The match detail (which ground-truth entity a prediction hit) goes to
-``--detail`` in the ignored directory and never into the scores file or a
-summary. Exit status 0 on success, 3 when the judge call failed.
+Only numbers are persisted. The match detail (which ground-truth entity a
+prediction hit) is never written, and the evaluator's work directory (its
+staged outputs and judge results, which carry answer-derived judge text) is
+removed once the numeric row is read. Nothing answer-derived is printed; the
+driver also discards this process's output. Exit status 0 on success, 3 when
+the judge call failed; the deterministic score is written either way.
 
     python -m scripts.itbench_lite.judge_trial --ground-truth <root> \\
         --scenario-dir <name> --outputs <outputs root> --trial <n> \\
-        --work-dir <dir> --out <scores.json> --detail <detail.json> [--judge]
+        --work-dir <dir> --out <scores.json> [--judge]
 """
 
 from __future__ import annotations
 
 import argparse
 import json
-import sys
+import shutil
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -48,10 +51,10 @@ def numeric(values: Mapping[str, Any]) -> dict[str, float]:
 
 def deterministic(
     agent_output: Mapping[str, Any], gt: Mapping[str, Any]
-) -> tuple[dict[str, float], dict[str, Any]]:
+) -> dict[str, float]:
+    """``det_*`` numbers only; the per-prediction match list is dropped."""
     result = entity_match.score(agent_output, gt)
-    scores = {f"det_{k}": v for k, v in numeric(result).items()}
-    return scores, result
+    return {f"det_{k}": v for k, v in numeric(result).items()}
 
 
 def official_row(scores_file: Path, scenario_dir: str, trial: int) -> dict[str, float]:
@@ -81,7 +84,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--trial", required=True, type=int)
     parser.add_argument("--work-dir", required=True, type=Path)
     parser.add_argument("--out", required=True, type=Path)
-    parser.add_argument("--detail", required=True, type=Path)
     parser.add_argument("--judge", action="store_true")
     args = parser.parse_args(argv)
 
@@ -89,16 +91,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     agent_output = json.loads((trial_dir / "outputs" / "agent_output.json").read_text())
     present = official_eval.report_present(trial_dir)
     gt = _load_gt(args.ground_truth, args.scenario_dir)
-    det, detail = deterministic(agent_output, gt if isinstance(gt, Mapping) else {})
-    args.detail.parent.mkdir(parents=True, exist_ok=True)
-    args.detail.write_text(json.dumps(detail, ensure_ascii=False, indent=1) + "\n")
+    det = deterministic(agent_output, gt if isinstance(gt, Mapping) else {})
+    del gt
 
     official: dict[str, float] | None = None
     labels: dict[str, object] | None = None
+    judge_error: str | None = None
     if args.judge:
         if present:
-            config = official_eval.judge_config()
             try:
+                config = official_eval.judge_config()
                 scores_file = official_eval.run(
                     official_eval.evaluator_dir(),
                     args.ground_truth,
@@ -106,26 +108,31 @@ def main(argv: Sequence[str] | None = None) -> int:
                     args.work_dir,
                     config,
                 )
+                official = official_row(scores_file, args.scenario_dir, args.trial)
+                labels = config.labels()
             except Exception as error:  # noqa: BLE001 - the driver retries
-                print(f"judge failed: {type(error).__name__}", file=sys.stderr)
-                return 3
-            official = official_row(scores_file, args.scenario_dir, args.trial)
-            labels = config.labels()
+                judge_error = type(error).__name__
+            finally:
+                shutil.rmtree(args.work_dir, ignore_errors=True)
         else:
             official = {metric: 0.0 for metric in official_eval.METRIC_KEYS}
-        official["root_cause_entity_pass"] = (
-            1.0 if official.get("root_cause_entity_f1") == 1.0 else 0.0
-        )
+        if official is not None:
+            official["root_cause_entity_pass"] = (
+                1.0 if official.get("root_cause_entity_f1") == 1.0 else 0.0
+            )
     out = {
         "report_present": present,
         "det": det,
         "official": official,
-        "judged": args.judge,
+        "judged": args.judge and judge_error is None,
+        "judge_error": judge_error,
         "labels": labels,
     }
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(json.dumps(out, ensure_ascii=False, indent=1) + "\n")
-    return 0
+    partial = args.out.with_suffix(".partial")
+    partial.write_text(json.dumps(out, ensure_ascii=False, indent=1) + "\n")
+    partial.replace(args.out)
+    return 3 if judge_error else 0
 
 
 if __name__ == "__main__":

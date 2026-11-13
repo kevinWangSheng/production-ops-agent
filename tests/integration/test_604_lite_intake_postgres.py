@@ -87,6 +87,17 @@ def test_driver_webhook_binds_one_run_on_the_real_intake(tmp_path: Path, labels)
         assert f"otel-demo/{workload}" in question
         assert block["versions"]["tool_schema_revision"]
         assert [d["outcome"] for d in block["alert_deliveries"]] == ["created"]
+        # F3 collector fields (review #606 item 7).
+        assert block["alert_delivery_outcomes"] == ["created"]
+        assert [r["run_id"] for r in block["incident_runs"]] == [result["run_id"]]
+        assert block["investigation_evidence"]["incident_id"] == block["incident_id"]
+        assert block["audit"]["entries"], "audit timeline is frozen"
+        assert block["cited_evidence"] == []
+        # A queued Run has no final durable outcome yet: recorded as such.
+        assert block["outcome"] == {
+            "available": False,
+            "reason": "UNKNOWN_DURABLE_STATE",
+        }
     finally:
         if web is not None:
             web.stop()

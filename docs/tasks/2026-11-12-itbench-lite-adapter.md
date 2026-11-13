@@ -159,26 +159,29 @@ L6 已写入决定表。实现会话先做不依赖 A 系列的部分；假 serv
 - 一题一次：`python3 -m scripts.itbench_lite.driver attempt --dataset <数据集根> --scenario <场景目录名> --trial 1 --round <轮次> --vocabulary <词表> --env-file <私有 KEY=value 文件>`
 - 全量：`python3 -m scripts.itbench_lite.driver round --dataset <根> --round <轮次> --vocabulary-dir <目录，内含 S<id>.txt> [--scenarios 16,23] [--trials 3]`；已有 summary 的 trial 跳过
 - 补判分：`… driver judge --round <轮次> --ground-truth <根>`；汇总给 `coverage.py`：`… driver scores --round <轮次> --out <文件>`
-- 可调：`--load-budget-seconds`（默认 180）、`--trace lab|off`、`--no-judge`、`--allow-dirty`、`--prometheus-account`、各端口 `--{pg,prometheus,jaeger-query,jaeger-otlp,fake-k8s,web}-port`
+- 可调：`--load-budget-seconds`（灌入耗时上限，默认 600）、`--trace lab|off`、`--no-judge`、`--allow-dirty`、`--prometheus-account`、各端口 `--{pg,prometheus,jaeger-query,jaeger-otlp,fake-k8s,web}-port`
 
 自行决定的可逆细节（每条一行理由）：
 
 - 目标条目写 `health_profile_id: otel-demo-checkout`：预审写「不写」，但身份文件加载器把它列为必填（`opspilot/schema.py` `TARGET_ENTRY_FIELDS`），不写 web 起不来；自动观察已关，这个值不产生行为。
-- `loaded_at` 是指标、trace、假 server 与 web 都就绪的时刻；worker 在其后起，起动时间算进 2 分钟间隔：worker 要用假 server 生成的 CA。
+- `loaded_at` 是指标、trace、假 server 与 web 都就绪的时刻；worker 在其后起，起动时间算进 2 分钟间隔：worker 要用假 server 生成的 CA。之后立即投递（L-D7 按 r4 原文改正）；平移量以尝试开始时刻为锚，summary 记 `load_seconds`、`gap_seconds` 与 `data_end_to_delivery_seconds`（≈ 60 s + 灌入耗时 + worker 起动）。
 - worker 的就绪判据是「起动 5 秒后仍存活」：健康监听按 L-D3 关闭后没有别的信号。
 - 端口释放只核对本次尝试开始时确认空闲的端口：被别人占着的端口不是本次的，核对它会把基础设施失败误判成清理失败。
 - 清理失败（含端口没释放）停整轮：状态不可信时继续跑会污染下一次尝试。
 - 回放 Jaeger 用根地址（`OPSPILOT_OTEL_JAEGER_URL=http://127.0.0.1:<端口>`，工具在其后直接拼 `/api/...`，`otel_demo.py` 查询处），`MEMORY_MAX_TRACES=1000000`：lab 的 5000 按 trace 个数淘汰，回放一题远超此数。
 - promtool 与 Prometheus 容器都用 `--user <宿主 uid:gid>`，promtool 加 `--network none`：避开镜像 nobody 用户写宿主目录的权限问题（预审风险 5）。
 - 工作区「不干净」只看已跟踪文件，且不算本轮证据目录：续跑时新写的 summary 不应让第二次调用拒绝启动。
-- 判分子进程只继承基础路径与 `ITBENCH_*`、`ZAI_*`、`OPENAI_*`、`DEEPSEEK_*`、`OPSPILOT_JUDGE_MODEL`；驱动只读回分数文件里的数值。官方分加 `root_cause_entity_pass`（`root_cause_entity_f1 == 1`），确定性分键名 `det_*`。
-- 缺失与确定性错误的 trial 也写 `summary.json`（`status: missing` 加原因），续跑不重跑；中途 Ctrl-C 不写，续跑会重跑。代码异常（非已分类失败）清理后直接结束进程，不重试。
+- 判分子进程的环境：基础路径、`PYTHON_DOTENV_DISABLED=1`、评测器位置、接收方选择与所选接收方的 key/地址/模型三个变量；输出丢弃。只持久化数值分数：匹配明细不写；评测器工作目录（暂存输出与 judge 结果，含由答案派生的 judge 文本）读出数值行后删除，judge 标签并入分数文件。judge 失败仍写确定性分（退出码 3），官方分留空，`driver judge` 补判。官方分加 `root_cause_entity_pass`，确定性分键名 `det_*`。
+- 完成判定（审查 #606）：答案输出先写、summary 后冻结、判分后最后原子写 `tmp/…/trial-<n>/complete.json`。续跑只跳过「标记 + completed summary + 答案输出 + 含确定性分的分数文件」齐全的 trial，以及带原因的 `status: missing` 终态；summary 与输出在但没标记的只补判分、不重跑 Run；summary 在而输出缺的，旧证据目录移到 `tmp/…/trial-<n>/stale/` 后重跑。中途 Ctrl-C 不写 summary。代码异常（非已分类失败）清理后直接结束进程，不重试。
+- 源树检查（审查 #606）：复制前按名称遍历整棵场景目录，不跟随链接；根目录是符号链接、任何一层有目录符号链接、任一目录列不出来，都拒绝。数据集目录本来就带答案文件，答案名只是永不被选中；白名单名字本身或其链接目标是答案名、或不是普通文件，拒绝。复用的副本重新核对：只能有白名单内的普通文件、没有链接、没有答案名。
+- 驱动侧输入（`--env-file`、`--prometheus-account`、词表）的名字及解析后目标名命中答案名，停整轮。
+- `run_freeze` 字段对照 F3 `collect.py`：报告、引用证据的工具名与存储视图、整份 F3 投影、事故的全部 Run、完整审计时间线、投递与投递结果、最终 `outcome`。与 F3 的差异：不含 F3 的 `frozen`（rubric 哈希，本场景没有）与 `lab_readings`（驱动另记内存读数）；Run 没到终态（等待超时）时 `outcome` 记 `{"available": false, "reason": …}`。
 - LangSmith 的 key 可来自环境或 `--env-file`，只传给 worker 与回读 trace；web 不拿任何模型或 trace 凭据。
 
 本机验证到的程度：编排顺序、7 处起动失败、作废线（POST 前与等待过久两种）、端口被占、确定性错误、目标无法解析停整轮、无报告与报告校验失败、等待超时、续跑、judge 重试、命令行，全部用替身测；假 server 用真子进程起停；一次性 PG 加真 web 进程上验证了驱动生成的条目与 webhook 能建出绑定 `m0-otel-20260909` 的 Run（含回退规则），`run_freeze.collect` 能在真实表结构上读出它。未在本机验证：docker 里的 promtool、Prometheus、Jaeger 1.53，worker 真调模型，LangSmith 回读，judge 真调，真实数据上的灌入耗时。
 
 需裁决与风险：
 
-- 作废线照字面执行（预审风险 2）：灌得比 `--load-budget` 快超过 2 分钟也会作废，默认 180 s 只是占位，冒烟按实测灌入耗时（summary 的 `load.*.seconds`）调整。
+- 作废线已按 r4 原文改为灌完即投。代价：快照末尾早于投递约「60 s + 灌入耗时」；灌入超过约 4 分钟时，以查询窗终点为时刻的即时查询可能落在数据之后（已知风险 1 的 5 分钟线），冒烟看 `data_end_to_delivery_seconds`。
 - 入口告警没有 `service_name` 时按 lead 定的回退跑，产物里 `target_fallback: true`；S12 这类题调查对象可能是基础设施噪声（预审风险 1），是否改入口选择规则待定。
 - Ubuntu 上 PostgreSQL 17 的 `initdb`、`pg_ctl` 需在 PATH 上（`LocalPgLauncher` 用 `shutil.which`）。
