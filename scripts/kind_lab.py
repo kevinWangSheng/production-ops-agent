@@ -812,6 +812,9 @@ K8S_CONTAINER_CA_FILE = "/run/secrets/k8s_ca"
 K8S_API_URL_VAR = "OPSPILOT_K8S_API_URL"
 K8S_TOKEN_VAR = "OPSPILOT_K8S_TOKEN"
 K8S_CA_FILE_VAR = "OPSPILOT_K8S_CA_FILE"
+#: compose.lab.yaml's CA secret source; unset, it is /dev/null so a lab
+#: deployment without the cluster identity still starts its worker.
+K8S_CA_SOURCE_VAR = "OPSPILOT_K8S_CA_SOURCE"
 
 
 def k8s_lab_files() -> dict[str, Path]:
@@ -1069,9 +1072,11 @@ INSTALL_SETTINGS = (
 )
 
 
-def worker_has_k8s_ca(container: str) -> bool:
-    """Whether a worker container mounts the CA secret (it does only when
-    created with the lab override; ``install.sh`` creates it without)."""
+def worker_has_k8s_ca(container: str, source: Path) -> bool:
+    """Whether a worker container mounts the lab CA ``source`` as its CA
+    secret: only a worker this command recreated does; ``install.sh``
+    creates it without the override, and the override without
+    ``OPSPILOT_K8S_CA_SOURCE`` mounts ``/dev/null`` there."""
     proc = capture(
         ["docker", "inspect", container, "-f", "{{json .Mounts}}"],
         timeout=30,
@@ -1082,7 +1087,9 @@ def worker_has_k8s_ca(container: str) -> bool:
     except ValueError:
         mounts = []
     return isinstance(mounts, list) and any(
-        isinstance(m, dict) and m.get("Destination") == K8S_CONTAINER_CA_FILE
+        isinstance(m, dict)
+        and m.get("Destination") == K8S_CONTAINER_CA_FILE
+        and m.get("Source") in (str(source), str(source.resolve()))
         for m in mounts
     )
 
@@ -1096,7 +1103,8 @@ def restart_control_worker(project: str, secrets_dir: Path, *, changed: bool) ->
     ids = control_containers(project)["worker"]
     if not ids:
         return "not running"
-    if not changed and all(worker_has_k8s_ca(i) for i in ids):
+    ca_source = secrets_dir / K8S_CONTROL_CA_NAME
+    if not changed and all(worker_has_k8s_ca(i, ca_source) for i in ids):
         return "unchanged"
     env = docker_env()
     settings = secrets_dir / "install.env"
@@ -1105,6 +1113,8 @@ def restart_control_worker(project: str, secrets_dir: Path, *, changed: bool) ->
         env.update({k: saved[k] for k in INSTALL_SETTINGS if k in saved})
     env.update(
         OPSPILOT_SECRETS_DIR=str(secrets_dir),
+        # compose.lab.yaml mounts /dev/null as the CA unless this is set
+        **{K8S_CA_SOURCE_VAR: str(ca_source)},
         OPSPILOT_PROJECT=project,
         OPSPILOT_RUNTIME_UID=str(os.getuid()),
         OPSPILOT_RUNTIME_GID=str(os.getgid()),

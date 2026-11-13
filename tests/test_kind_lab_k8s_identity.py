@@ -369,6 +369,7 @@ class _Docker:
         self.calls: list[tuple[list[str], dict]] = []
         self.worker: list[str] = []
         self.mounted = False
+        self.ca_source: Path | None = None
 
     def proc(self, cmd: list[str], **kw: object) -> subprocess.CompletedProcess:
         self.calls.append((list(cmd), dict(kw.get("env") or {})))
@@ -377,7 +378,11 @@ class _Docker:
             ids = self.worker if service == "worker" else []
             return subprocess.CompletedProcess(cmd, 0, "\n".join(ids), "")
         if cmd[:2] == ["docker", "inspect"] and "{{json .Mounts}}" in cmd:
-            mounts = [{"Destination": "/run/secrets/k8s_ca"}] if self.mounted else []
+            mounts = (
+                [{"Source": str(self.ca_source), "Destination": "/run/secrets/k8s_ca"}]
+                if self.mounted
+                else [{"Source": "/dev/null", "Destination": "/run/secrets/k8s_ca"}]
+            )
             return subprocess.CompletedProcess(cmd, 0, json.dumps(mounts), "")
         if cmd[:2] == ["docker", "inspect"]:
             networks = {"kind": {"Aliases": ["opspilot-worker"]}}
@@ -403,6 +408,7 @@ def control(
     monkeypatch.setattr(kind_lab, "capture", fake.proc)
     monkeypatch.setattr(kind_lab, "run", fake.proc)
     secrets = tmp_path / "secrets"
+    fake.ca_source = secrets / "k8s_ca.crt"
     _issue(lab_dir, TOKEN, 41234)
     return fake, lab_dir, secrets
 
@@ -485,6 +491,8 @@ def test_a_reissued_token_replaces_the_old_lines_and_restarts_the_worker(
         "worker",
     ]
     assert env["OPSPILOT_SECRETS_DIR"] == str(secrets.absolute())
+    # the override mounts this lab CA, not its /dev/null default
+    assert env["OPSPILOT_K8S_CA_SOURCE"] == str(secrets.absolute() / "k8s_ca.crt")
     assert env["COMPOSE_PROFILES"] == "agent"
     # then the recreated worker's kind network membership is checked again
     up = next(
@@ -552,9 +560,7 @@ def test_no_token_in_the_lab_leaves_worker_env_without_k8s(
 def test_only_the_worker_mounts_the_ca_and_only_in_the_lab_override() -> None:
     lab = yaml.safe_load((COMPOSE_DIR / "compose.lab.yaml").read_text())
     assert lab["secrets"] == {
-        "k8s_ca": {
-            "file": "${OPSPILOT_SECRETS_DIR:?run deploy/compose/install.sh}/k8s_ca.crt"
-        }
+        "k8s_ca": {"file": "${OPSPILOT_K8S_CA_SOURCE:-/dev/null}"}
     }
     assert lab["services"]["worker"]["secrets"] == ["k8s_ca"]
     for service in ("web", "observer"):
@@ -636,3 +642,26 @@ def test_a_missing_lab_ca_is_reported_not_invented(
     assert _control(secrets) == 0
     assert not (secrets / "k8s_ca.crt").exists()
     assert _report(capsys)["k8s_ca.crt"].startswith("missing")
+
+
+def test_without_the_ca_variable_the_override_mounts_an_always_present_file() -> None:
+    lab = yaml.safe_load((COMPOSE_DIR / "compose.lab.yaml").read_text())
+    source = lab["secrets"]["k8s_ca"]["file"]
+    assert source == "${OPSPILOT_K8S_CA_SOURCE:-/dev/null}"
+    default = source.split(":-", 1)[1].rstrip("}")
+    # an OS file, not one this repository or control-secrets generates
+    assert default == "/dev/null" and Path(default).exists()
+    assert not Path(default).is_relative_to(ROOT)
+    assert kind_lab.K8S_CA_SOURCE_VAR == "OPSPILOT_K8S_CA_SOURCE"
+
+
+def test_a_worker_mounting_dev_null_is_recreated_with_the_lab_ca(
+    control: tuple[_Docker, Path, Path], capsys: pytest.CaptureFixture[str]
+) -> None:
+    fake, _, secrets = control
+    assert _control(secrets) == 0
+    fake.worker = ["c0ffee"]
+    fake.mounted = False  # e.g. started with compose.lab.yaml for a soak
+    capsys.readouterr()
+    assert _control(secrets) == 0
+    assert _report(capsys)["worker"] == "restarted"

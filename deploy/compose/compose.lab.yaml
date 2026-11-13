@@ -5,7 +5,10 @@
 # It also gives the worker (only the worker) the lab's read-only cluster CA as
 # the k8s_ca secret (A1-7, #553): OPSPILOT_K8S_CA_FILE=/run/secrets/k8s_ca in
 # worker_env. `scripts/kind_lab.py control-secrets` writes
-# <secrets dir>/k8s_ca.crt and recreates a running worker with this file.
+# <secrets dir>/k8s_ca.crt and recreates a running worker with this file and
+# OPSPILOT_K8S_CA_SOURCE pointing at it. Without that variable the secret is
+# /dev/null (an empty file), so deployments that never use the cluster (soak,
+# health, drills) start as before.
 #
 #   docker compose -p <project> -f deploy/compose/compose.yaml \
 #     -f deploy/compose/compose.lab.yaml up ...
@@ -36,4 +39,4 @@ services:
 
 secrets:
   k8s_ca:
-    file: ${OPSPILOT_SECRETS_DIR:?run deploy/compose/install.sh}/k8s_ca.crt
+    file: ${OPSPILOT_K8S_CA_SOURCE:-/dev/null}
