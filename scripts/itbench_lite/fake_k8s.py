@@ -870,7 +870,10 @@ _SINCE_RE = re.compile(
 def _parse_since_time(text: str) -> int:
     if _SINCE_RE.fullmatch(text) is None:
         raise BadRequest("sinceTime must be an RFC 3339 time")
-    return parse_rfc3339_ns(text)
+    try:
+        return parse_rfc3339_ns(text)
+    except (ValueError, OverflowError):  # right shape, impossible date
+        raise BadRequest("sinceTime must be an RFC 3339 time") from None
 
 
 def rfc3339_nano(at_ns: int) -> str:

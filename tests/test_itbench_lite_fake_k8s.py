@@ -466,6 +466,14 @@ def test_logs_since_time_since_seconds_tail_lines_and_limit_bytes(cluster):
     both = _get(cluster, LOG, sinceTime=_rfc(base), sinceSeconds="10")
     assert both.status == 400
     assert _get(cluster, LOG, sinceTime="yesterday").status == 400
+    for impossible in (
+        "2026-99-99T99:99:99Z",
+        "2026-02-30T00:00:00Z",
+        "2026-01-01T00:00:00+99:00",
+    ):
+        reply = _get(cluster, LOG, sinceTime=impossible)
+        assert reply.status == 400, impossible
+        assert "sinceTime" in _json(reply)["message"]
     assert _get(cluster, LOG, tailLines="-1").status == 400
 
 
