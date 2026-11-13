@@ -310,7 +310,7 @@ def test_registration_and_profile_listing():
     assert registration.may_contain_secrets is True
     assert TOOL in otel_demo_ext.TOOL_NAMES
     sources = otel_demo_ext._data_sources()
-    assert sources["available"]["pod_logs"] == [TOOL]
+    assert TOOL in sources["available"]["kubernetes"]
     assert "pod_logs" not in sources["not_integrated"]
 
 

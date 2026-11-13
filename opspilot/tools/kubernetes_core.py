@@ -116,6 +116,8 @@ JQ_QUERY_TOOL = "kubernetes_jq_query"
 COUNT_TOOL = "kubernetes_count"
 TOOL_NAMES: tuple[str, ...] = (JQ_QUERY_TOOL, COUNT_TOOL)
 K8S_TOOLS: frozenset[str] = frozenset(TOOL_NAMES)
+#: A3's tool, served by ``KubernetesTransport`` but routed by exact name.
+_POD_LOGS_TOOL = "fetch_pod_logs"
 
 #: The Kubernetes transport's own credential slot (A2-1); the target's
 #: ``credential_ref`` names the Prometheus slot and is not used here.
@@ -1051,6 +1053,11 @@ class KubernetesTransport:
     (length, ``import``/``include``). Then the list is read
     (``KubernetesClient.list_objects``) and jq runs once over it; an
     expression that does not compile is reported after the read.
+
+    ``fetch_pod_logs`` (A3) is served by the same transport, over the same
+    client: it is handed to ``kubernetes_logs.PodLogsTransport``. It is still
+    routed by its exact name (``RoutedTransport`` ``routes``), never through
+    ``K8S_TOOLS``.
     """
 
     def __init__(
@@ -1058,6 +1065,7 @@ class KubernetesTransport:
         *,
         credentials: Mapping[str, str | None],
         jq_path: str | None = None,
+        python_path: str | None = None,
         opener: urllib.request.OpenerDirector | None = None,
         ca_file: str | None = None,
         application_namespace: str = DEFAULT_NAMESPACE,
@@ -1071,8 +1079,19 @@ class KubernetesTransport:
         self._jq_path = jq_path
         self._application_namespace = application_namespace
         self._monotonic = monotonic or _monotonic
+        # Imported here: kubernetes_logs builds on this module.
+        from opspilot.tools.kubernetes_logs import PodLogsTransport
+
+        self._logs = PodLogsTransport(
+            client=self._client,
+            python_path=python_path,
+            application_namespace=application_namespace,
+            monotonic=self._monotonic,
+        )
 
     def fetch(self, request: TransportRequest) -> TransportResponse:
+        if request.tool == _POD_LOGS_TOOL:
+            return self._logs.fetch(request)
         if request.tool not in K8S_TOOLS:
             raise TransportError("TOOL_NOT_SUPPORTED")
         deadline = self._monotonic() + request.timeout_seconds
@@ -1389,9 +1408,15 @@ def kubernetes_registrations(
 
 
 def _registrations() -> tuple[ToolRegistration, ...]:
-    """The two registrations under the profiles' 24 h frame (the private
-    inventory seam ``otel_demo._registrations`` also offers)."""
-    return kubernetes_registrations(max_window_seconds=OBSERVATION_SECONDS)
+    """Every registration this transport serves under the profiles' 24 h
+    frame -- the two object queries and ``fetch_pod_logs`` (A3) -- for the
+    private inventory seam ``otel_demo._registrations`` also offers."""
+    from opspilot.tools.kubernetes_logs import pod_logs_registrations
+
+    return (
+        *kubernetes_registrations(max_window_seconds=OBSERVATION_SECONDS),
+        *pod_logs_registrations(max_window_seconds=OBSERVATION_SECONDS),
+    )
 
 
 def resource_table() -> dict[str, dict[str, object]]:

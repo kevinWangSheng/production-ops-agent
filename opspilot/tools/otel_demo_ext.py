@@ -22,8 +22,8 @@ Kubernetes transport's own credential slot ``k8s-ro``. Tools are routed to
 their transport by exact name (``RoutedTransport``); the Jaeger trace tools
 of :mod:`opspilot.tools.jaeger_query` (A4) go to its ``JaegerQueryTransport``
 over the same ``traces_endpoint`` and credential slot as ``traces_search``;
-``fetch_pod_logs`` (A3, :mod:`opspilot.tools.kubernetes_logs`) goes to its
-``PodLogsTransport`` over the Kubernetes address and ``k8s-ro`` slot.
+``fetch_pod_logs`` (A3, :mod:`opspilot.tools.kubernetes_logs`) goes by name
+to the same ``KubernetesTransport`` (Kubernetes address, ``k8s-ro`` slot).
 """
 
 from __future__ import annotations
@@ -109,8 +109,9 @@ def _data_sources() -> dict[str, Any]:
                 otel_demo.PROMETHEUS_TOOLS | prometheus_ext.PROMETHEUS_EXT_TOOLS
             ),
             "jaeger": [otel_demo.TRACES_TOOL, *jaeger_query.TOOL_NAMES],
-            "kubernetes": sorted(kubernetes_core.K8S_TOOLS),
-            "pod_logs": list(kubernetes_logs.TOOL_NAMES),
+            "kubernetes": sorted(
+                kubernetes_core.K8S_TOOLS | set(kubernetes_logs.TOOL_NAMES)
+            ),
         },
         "not_integrated": list(_NOT_INTEGRATED),
         "instruction": DATA_SOURCES_INSTRUCTION,
@@ -270,11 +271,6 @@ def otel_demo_ext_executor_factory(
     cluster = kubernetes_core.KubernetesTransport(
         credentials={kubernetes_core.CREDENTIAL_REF: kubernetes.token},
         jq_path=jq,
-        ca_file=kubernetes.ca_file,
-        application_namespace=kubernetes.namespace,
-    )
-    logs = kubernetes_logs.PodLogsTransport(
-        credentials={kubernetes_core.CREDENTIAL_REF: kubernetes.token},
         python_path=python,
         ca_file=kubernetes.ca_file,
         application_namespace=kubernetes.namespace,
@@ -324,7 +320,8 @@ def otel_demo_ext_executor_factory(
                 routes={
                     **dict.fromkeys(prometheus_ext.TOOL_NAMES, prometheus),
                     **dict.fromkeys(jaeger_query.TOOL_NAMES, traces),
-                    **dict.fromkeys(kubernetes_logs.TOOL_NAMES, logs),
+                    # A3: served by the cluster transport, routed by name.
+                    **dict.fromkeys(kubernetes_logs.TOOL_NAMES, cluster),
                 },
             ),
             evidence=evidence,

@@ -6,7 +6,7 @@ parameters, served by direct GETs through the A2 client
 (:class:`opspilot.tools.kubernetes_core.KubernetesClient`) instead of a
 command-line client. Decision table r3 A3-1 to A3-11:
 
-* ``start_time``/``end_time`` are absolute RFC 3339 only, checked by the
+* ``start_time``/``end_time`` are absolute RFC3339 only, checked by the
   same rule as ``traces_search``'s ``start``/``end`` (A3-1): both or neither;
   neither is the alert Run's default query window, else the hour ending at
   the authorized window's end; outside the authorized window is refused
@@ -99,7 +99,7 @@ MAX_RESULT_BYTES = 2 * 1024 * 1024
 #: A 400 Status message quoted into a note is cut this far.
 _NOTE_MESSAGE_CHARS = 300
 
-#: RFC 3339 as the API server's ``timestamps=true`` prefix writes it
+#: RFC3339 as the API server's ``timestamps=true`` prefix writes it
 #: (``2026-09-14T00:10:00.123456789Z``), then one space, then the text.
 _TIMESTAMP = re.compile(
     r"(?P<ts>(?P<base>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})"
@@ -266,16 +266,19 @@ class PodLogsTransport:
     def __init__(
         self,
         *,
-        credentials: Mapping[str, str | None],
+        credentials: Mapping[str, str | None] | None = None,
+        client: KubernetesClient | None = None,
         python_path: str | None = None,
         opener: Any = None,
         ca_file: str | None = None,
         application_namespace: str = DEFAULT_NAMESPACE,
         monotonic: Callable[[], float] | None = None,
     ) -> None:
-        self._client = KubernetesClient(
-            credentials=credentials, opener=opener, ca_file=ca_file
-        )
+        if client is None:
+            client = KubernetesClient(
+                credentials=credentials or {}, opener=opener, ca_file=ca_file
+            )
+        self._client = client
         # ``None``: resolved from PATH on first filtered call (the worker
         # resolves it at startup and passes it in, A3-7).
         self._python_path = python_path
@@ -631,14 +634,16 @@ _DESCRIPTION = (
     "the newest lines, each with timestamp, container and instance. Use "
     "filter to find errors (e.g. filter='err|error|fatal|fail|exception|panic') "
     "and exclude_filter to cut noise (e.g. exclude_filter='health|metrics|ping'). "
-    "start_time and end_time are absolute RFC 3339 times inside the "
+    "start_time and end_time are absolute RFC3339 times inside the "
     "authorized window, both or neither; relative seconds are refused. "
     "Neither: the alert Run's default query window, else the hour ending at "
     "the authorized window's end -- narrower than the upstream 7-day default. "
     f"limit defaults to {DEFAULT_LIMIT}, at most {MAX_LIMIT}. A pod that does "
     "not exist is INVALID_PARAMS (POD_NOT_FOUND): list pods with "
     "kubernetes_jq_query (kind=pods) to find the exact name. HTTP 401/403 is "
-    "SOURCE_FORBIDDEN."
+    "SOURCE_FORBIDDEN. Logs cannot prove an absence: only what the "
+    "containers wrote to standard output and the node still keeps is read, "
+    "and lines cut by limit or the 4 MiB read limit are unknown."
 )
 
 TOOL_SCHEMAS: tuple[Mapping[str, Any], ...] = (
@@ -661,14 +666,14 @@ TOOL_SCHEMAS: tuple[Mapping[str, Any], ...] = (
                     "start_time": {
                         "type": "string",
                         "description": (
-                            "RFC 3339 start, e.g. '2026-09-14T10:30:00Z'; give "
+                            "RFC3339 start, e.g. '2026-09-14T10:30:00Z'; give "
                             "both start_time and end_time or neither."
                         ),
                     },
                     "end_time": {
                         "type": "string",
                         "description": (
-                            "RFC 3339 end, e.g. '2026-09-14T11:30:00Z'; give "
+                            "RFC3339 end, e.g. '2026-09-14T11:30:00Z'; give "
                             "both start_time and end_time or neither."
                         ),
                     },
@@ -720,7 +725,7 @@ _RETURNS = (
 )
 _WINDOW_FORMAT = (
     "The authorized absolute window is appended as {window}. start_time and "
-    "end_time pick a query window inside it, as absolute RFC 3339 times, both "
+    "end_time pick a query window inside it, as absolute RFC3339 times, both "
     "or neither; relative times are refused. Omitted, the query window is the "
     "time policy's default_query_window when it states one, otherwise the 1 "
     "hour ending at the authorized window's end (narrower than the upstream "
@@ -794,11 +799,11 @@ def pod_logs_registrations(*, max_window_seconds: int) -> tuple[ToolRegistration
                 ),
                 "start_time": ParameterSpec(
                     "string",
-                    description="Absolute RFC 3339 start; both or neither.",
+                    description="Absolute RFC3339 start; both or neither.",
                 ),
                 "end_time": ParameterSpec(
                     "string",
-                    description="Absolute RFC 3339 end; both or neither.",
+                    description="Absolute RFC3339 end; both or neither.",
                 ),
                 "limit": ParameterSpec(
                     "integer",

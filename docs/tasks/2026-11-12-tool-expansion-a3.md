@@ -65,7 +65,8 @@ A3 假设 A2 把配置、GET 传输、错误映射做成可复用函数，传输
 - `POD_NOT_FOUND` 的回显：拒绝视图的 `source_error` 带 `error_type=pod_not_found` 与一句含 namespace、Pod 名的提示（建议改用 `kubernetes_jq_query` 列 Pod）；`query` 里也有原参数。
 - 每行固定字段 `timestamp`（API 原样字符串，保留纳秒）、`container`、`instance`、`text`、`text_truncated`；同一时刻按纳秒、流、行号稳定排序。
 - 视图字段：`pod`、`containers`、`streams`（每流状态、字节、行数、是否读满、读到的最后时刻）、`lines_requested`、`lines_read`、`lines_without_timestamp`、`lines_before_window`、`lines_after_window`、`lines_removed_by_filter`、`lines_removed_by_exclude_filter`、`long_lines_cut`、`filter_mode`、`bytes_read`、`read_limit_bytes`、`read_limit_reached`、`read_through`、`incomplete_reason`、`notes`、`cannot_prove`；与通用视图字段和 `lines_*` 单位计数无冲突。
-- 数据源清单键名 `pod_logs`（与原未集成名一致），不并入 `kubernetes` 键，免得改动 A2 已钉的清单。
+- 数据源清单：`fetch_pod_logs` 并入 `available.kubernetes`（独立合同测试要求）；A2 实现单测 `test_554` 对该清单的全等断言改为 ⊇（同 A5 先例）。
+- 接缝：`fetch_pod_logs` 由 `KubernetesTransport` 转交 `PodLogsTransport`（共用同一 client），档位里按精确名路由到该传输，`K8S_TOOLS` 不变；`kubernetes_core._registrations()` 清点含本工具（A3 合同测试的清点接缝）。
 
 偏离与已知限制：
 
