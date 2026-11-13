@@ -23,7 +23,7 @@
 2. **Linux 上的 Run 拓扑要先定**（核实过的事实）：lab trace 闸门只接受回环地址或 `*.svc` 的数据源地址（`opspilot/tracing.py:152-206`）。Compose 里的 worker 用 `http://opspilot-m1-control-plane:30090`，开 `OPSPILOT_TRACE=lab` 会报 `PROMETHEUS_NOT_LAB`，只能用 `outbox` 模式；outbox 只发 id、版本、token 数和固定码。另外 Linux 上 Alertmanager 的 webhook 渲染成容器别名 `opspilot-web:8080`。**推荐**：A7 与 #580 的 Run 用宿主进程拓扑（F3 的接法：web 与 worker 在宿主上跑，数据源走 127.0.0.1），告警用开发指南写的退路 `OPSPILOT_LAB_HOST_ADDRESS=<kind 网关>`，web 设 `OPSPILOT_BIND=<kind 网关>:8080`。这条路在 Linux 上没有端到端测过：F9 S4 当时被 ufw 挡住。它需要宿主装 PostgreSQL 17，并把 `initdb`、`pg_ctl` 放进 PATH（`postgres_lab.py` 与 #604 的 `LocalPgLauncher` 都用 `shutil.which` 找；Ubuntu 的 PGDG 包装在 `/usr/lib/postgresql/17/bin`，未核实）。ITBench 驱动自己在宿主上起 web/worker，不受这项影响。
 3. **#604 ITBench-Lite 逐题驱动：已完成**（`130225f9`，命令见阶段 4）。它在本机只用替身和一次性 PG 测过；docker 里的 promtool、Prometheus `v3.5.0`、Jaeger `1.53.0`，worker 真调模型，LangSmith 回读，judge 真调，真实数据的灌入耗时，都要在租机上第一次验证（[适配记录「实施记录（#604）」](2026-11-12-itbench-lite-adapter.md)）。
 4. **#605 分档文件与词表生成器**（未完成，等用户裁决 L-V7：namespace 名与 `kubernetes`、`default` 这类通用词进不进词表）：驱动要每题一个词表 `S<id>.txt`，`coverage.py` 要分档 JSON。分档只能来自两次普查（L11）。
-5. **直接取样脚本（未完成，建议）**：A6 只要求在真实集群上取样调用一次 `kubernetes_tabular_query`（[A6 记录](2026-11-12-tool-expansion-a6.md):35），现在没有绕过模型直接调工具的脚本。可以照 #583 集成测试的做法，经 `otel-demo-ext` 执行器调一次；同一个脚本对一个日志多的 Pod 调 `fetch_pod_logs`，就能确定性地拿到「超过 100 行时视图不完整」的证据。
+5. **直接取样脚本：已完成**（#607，`97e9919c`，`scripts/tool_sample.py`）：不经模型直接调 `otel-demo-ext` 工具（按列查询、Pod 日志、Secret 拒绝、trace、即时查询、B2 规则），命令见阶段 3 第 3.6 步。
 6. **主机准备清单**：PostgreSQL 17、`uv`、宿主 `jq`（宿主 worker 跑 `otel-demo-ext` 时，没有 jq 就启动失败，`JQ_NOT_FOUND`）、DeepSeek、LangSmith、Z.ai 三个 key（放在仓库外 600 文件里；ITBench 驱动用 `--env-file` 读，只交给 worker 与 trace 回读，web 不拿），评测器在 `14f026fc` 重新克隆并按其 `uv.lock` 建 venv（本机那份在 `~/.agent/eval-probes/`），数据集 `ibm-research/ITBench-Lite` SRE `v0.2` 的下载命令（未核实）。
 
 ## 2. 步骤清单
@@ -68,7 +68,26 @@
 | 3.3 | 后一次 Run：worker 换成「A7 合并后的提交」重启，执行 `--experiment-id a7-after-1`。A7 驱动的命令未核实（驱动还没写） | `cited_categories(summary)` 含指标、trace、集群对象、日志四类；`prompt_revision` 以 `prompt-replay-candidate-k8s-` 开头 | 40 分钟 |
 | 3.4 | #580 人工提问 Run，放在 3.3 同一个故障窗里（故障还开着，省一个 30 分钟窗口）：在 3.3 的 Run 完成后，用 `curl -u <账号> -H 'Origin: http://<网关>:8080' -d target_id=m0-otel-20260909 -d idempotency_key=r580-1 --data-urlencode 'question=…' http://<网关>:8080/intake/ui` 提交（开发指南「提交事故」）。问题要明确请调查读 checkout 的 Pod 状态与事件、Pod 日志、按标签搜 trace 再按 ID 取整条、即时查询与序列/标签发现、告警规则与抓取目标，并要求读 `otel-demo` 里的 Secret | `tool_requests` 里有：集群对象查询 ok、`kind` 含 secret 的请求被拒为 `RESOURCE_NOT_ALLOWED`（A2-6）、`fetch_pod_logs` ok、`traces_search_by_tags` 或 `traces_query_trace_by_id` ok、`execute_prometheus_instant_query`/`get_series`/`get_all_labels` 之一 ok、B2 规则/目标/元数据之一 ok；报告引用了 Pod 状态或事件，以及某 Pod 的日志行 | 15 分钟 |
 | 3.5 | 补跑（只在 3.3 没达到四类时）：恢复、冷却后，同一份代码再跑 `a7-after-2`、`a7-after-3` | x/n 照实写 | 每次 55 分钟，最多 2 次 |
-| 3.6 | 直接取样（第 1 节第 5 项的脚本）：`kubernetes_tabular_query` 取 `otel-demo` 的 Pod 名、状态、镜像三列；`fetch_pod_logs` 取一个日志多的 Pod | 输出有 `header`、`rows`、`count`、`scope`、`notes`（A6-5）；日志视图标出不完整与省略条数 | 10 分钟 |
+| 3.6 | 直接取样（#607，不调模型；lab 起着就能跑，不需要故障窗），命令见表下「直接取样」 | 退出码 0，且 `result.json` 的 `all_requested_passed` 为 `true`；之后再做一遍 token 原文 grep，见阶段 5 | 10 分钟 |
+
+**直接取样（3.6）**：
+
+```sh
+set -a; . tmp/m1-kind-lab/k8s-investigator.env; . <investigator 的 Prometheus env>; . <LangSmith/trace env>; set +a
+.venv/bin/python -m scripts.tool_sample \
+  --evidence-dir docs/evidence/tool-expansion-live/direct-sample \
+  --log-pod <最近 1 小时日志超过 100 行的 Pod> \
+  --trace-service frontend \
+  --trace-tags '<先确认 lab 里存在的标签>' \
+  --prom-query 'sum(rate(traces_span_metrics_calls_total{service_name="frontend"}[5m]))' \
+  --allow-skip rules
+```
+
+- 运行环境必须带全套 lab 闸门变量：`OPSPILOT_TRACE=lab`、`LANGSMITH_PROJECT=opspilot-lab-*`、`LANGSMITH_API_KEY`。
+- 后两个 env 文件名是占位，未核实。investigator 的 Prometheus env 推测是 `tmp/m1-kind-lab/prometheus-investigator.env`，同样未核实。LangSmith/trace env 是仓库外的私有文件。
+- `--trace-tags` 用 logfmt 写法，例如 `error=true`。先在 lab 的 Jaeger 里确认这个标签真的存在：任取一条 frontend trace，看它的 span 标签。
+- `--log-pod` 选最近 1 小时日志超过 100 行的 Pod，用工程侧 `kubectl --kubeconfig tmp/m1-kind-lab/kubeconfig -n otel-demo logs <pod> --since=1h | wc -l` 确认。
+- **B2 #597 已合并时去掉 `--allow-skip rules`**，让规则一项也必须通过。
 
 **冻结**：每个 Run 结束（3.2 关闭事故之前）就冻结一次，用 `RUN_FREEZE_DSN="host=127.0.0.1 port=55431 dbname=m0_budget user=m0_lab" .venv/bin/python -m scripts.run_freeze --run-id <Run id> --experiment <a7-before|a7-after-1|r580-1> --evidence-dir docs/evidence/<a7-main-path-live|tool-expansion-live>/<同名> --project opspilot-lab-a7-main-path-<日期>`。DSN 只要能读产品表，也可以照 F3 另建只读角色；DSN 从环境读，不写进文件。判定：退出码 0，`summary.json` 带 trace 块，原始 ledger 落在 `tmp/lab-ledgers/`。以 `failed` 或 `budget_exhausted` 结束的 Run，`outcome` 会是 `{"available": false, "reason": "UNKNOWN_DURABLE_STATE"}`（产品投影的既有规则），其余字段照常完整，照实记录，不当作冻结失败。在同一事故上，已不是当前 Run 的那次记作 `RUN_NOT_CURRENT`，所以要在关闭事故、开下一次之前冻结。
 
@@ -97,7 +116,7 @@
 
 ### 阶段 5：收尾（约 0.5 小时）
 
-- token 原文搜索：`T=$(sed -n 's/^OPSPILOT_K8S_TOKEN=//p' tmp/m1-kind-lab/k8s-investigator.env); grep -rlF "$T" docs/evidence/ ; echo "exit=$?"`，期望 exit=1（0 命中）。另对 `~/rental-private/known-secrets.txt` 里的每个值做同样搜索。
+- token 原文搜索（3.6 直接取样之后先做一遍，收尾时再做一遍）：`T=$(sed -n 's/^OPSPILOT_K8S_TOKEN=//p' tmp/m1-kind-lab/k8s-investigator.env); grep -rlF "$T" docs/evidence/ ; echo "exit=$?"`，期望 exit=1（0 命中）。另对 `~/rental-private/known-secrets.txt` 里的每个值做同样搜索。
 - `make secrets-branch`（gitleaks 只扫本分支新提交），通过后提交证据，推分支。
 - 主机上的 key、`~/rental-private/` 与 lab 凭据文件随主机销毁；销毁前确认证据已经推送。
 
@@ -110,7 +129,7 @@
 | A1 拒绝取证 | `docs/evidence/a1-cluster-identity/{host,worker}/`（`probe.json`、`rules.json`）与 `run.md`（清单 sha256、token 过期时间、两侧结论）；A1-10 只写了一份 `probe.json`，两侧分目录是自定 | 探测表、规则、计数 | token、`k8s-investigator.env`、CA、已知秘密值文件 |
 | B2/F7 代理探测 | `docs/evidence/b2-authz-probe/probe.json` 与 `run.md`（目录名自定） | 探测结果 | Prometheus 口令 |
 | A7 两次或多次 Run | `docs/evidence/a7-main-path-live/<run>/summary.json` 与 `run.md`（时间线、对照表、trace 链接、`cited_categories` 结果） | `summary.json`、LangSmith 链接 | 原始 ledger（`tmp/lab-ledgers/`，summary 里记 sha256） |
-| #580 人工提问 Run 与直接取样 | `docs/evidence/tool-expansion-live/`（目录名自定）：`summary.json`、取样输出（已脱敏的视图）、`run.md` 按 #580 验收项逐条对照 | 同上 | 原始响应体 |
+| #580 人工提问 Run 与直接取样 | `docs/evidence/tool-expansion-live/`（目录名自定）：`summary.json`、直接取样的 `direct-sample/`（含 `result.json`）、`run.md` 按 #580 验收项逐条对照 | 同上 | 原始响应体 |
 | ITBench-Lite | `docs/evidence/itbench-lite-sre-<轮次>/`（驱动写的 `S<id>/trial-<n>/summary.json`，加分数表）：分数表（json 与 markdown）、每题覆盖档位、每次尝试的 `summary.json` 与 trace 链接、限制说明（启发式根因、传播链受转换限制、日志与 trace 覆盖缺口、派生的调用总数） | 只有这些（L10） | `tmp/itbench-lite/<轮次>/` 下的 `agent_output.json`、`conversion_meta.json`、分数文件与评测器工作目录（驱动不写匹配明细，judge 工作目录读完数值就删）；任何答案文件 |
 
 证据写完后，在 #580、#559、#571 各附链接；新数据源已在工具拓展记录登记过，不必重复。
