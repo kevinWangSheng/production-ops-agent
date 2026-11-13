@@ -34,7 +34,7 @@ from opspilot.investigation.loop import DISCIPLINE_VARIANT, investigation_versio
 from opspilot.investigation.reports import DATA_SOURCES_INSTRUCTION
 from opspilot.investigation.runner import ExecutorFactory
 from opspilot.persistence import DurableStore, Lease
-from opspilot.tools import kubernetes_core, otel_demo
+from opspilot.tools import kubernetes_core, otel_demo, prometheus_ext
 from opspilot.tools.evidence_read import (
     EvidenceReader,
     EvidenceReadTransport,
@@ -76,6 +76,7 @@ PROFILE_NAME = "otel-demo-ext"
 TOOL_SCHEMAS: tuple[Mapping[str, Any], ...] = (
     *otel_demo.TOOL_SCHEMAS,
     *kubernetes_core.TOOL_SCHEMAS,
+    *prometheus_ext.TOOL_SCHEMAS,
 )
 
 #: What this profile can and cannot query (#311 U5); ``kubernetes_state``
@@ -88,7 +89,9 @@ _NOT_INTEGRATED: tuple[str, ...] = tuple(
 def _data_sources() -> dict[str, Any]:
     return {
         "available": {
-            "prometheus": sorted(otel_demo.PROMETHEUS_TOOLS),
+            "prometheus": sorted(
+                otel_demo.PROMETHEUS_TOOLS | prometheus_ext.PROMETHEUS_EXT_TOOLS
+            ),
             "jaeger": [otel_demo.TRACES_TOOL],
             "kubernetes": sorted(kubernetes_core.K8S_TOOLS),
         },
@@ -103,6 +106,7 @@ def _registrations() -> tuple[ToolRegistration, ...]:
         *kubernetes_core.kubernetes_registrations(
             max_window_seconds=otel_demo.OBSERVATION_SECONDS
         ),
+        *prometheus_ext.prometheus_ext_registrations(),
     )
 
 
@@ -221,6 +225,7 @@ def otel_demo_ext_executor_factory(
         credentials={otel_demo.CREDENTIAL_REF: config.token},
         basic_auth={} if pair is None else {otel_demo.CREDENTIAL_REF: pair},
     )
+    prometheus = prometheus_ext.PrometheusExtTransport(sources)
     cluster = kubernetes_core.KubernetesTransport(
         credentials={kubernetes_core.CREDENTIAL_REF: kubernetes.token},
         jq_path=jq,
@@ -269,6 +274,7 @@ def otel_demo_ext_executor_factory(
                 ),
                 sources=sources,
                 kubernetes=cluster,
+                routes=dict.fromkeys(prometheus_ext.TOOL_NAMES, prometheus),
             ),
             evidence=evidence,
             control=control,
