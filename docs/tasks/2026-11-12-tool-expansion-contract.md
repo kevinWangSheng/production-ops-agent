@@ -1,6 +1,6 @@
-# 工具面拓展：决定表（r2）
+# 工具面拓展：决定表（r3）
 
-- 修订：r1，用户 2026-11-12 裁决（口头，约 08:00–08:50 PT；同日下一会话复述后确认）。r2（2026-11-12）：集群对象只读查询（A2，#554）开工前预审，没有新的用户裁决项，追加 15 条可逆默认并改写 R6、R17，见文末。
+- 修订：r1，用户 2026-11-12 裁决（口头，约 08:00–08:50 PT；同日下一会话复述后确认）。r2（2026-11-12）：集群对象只读查询（A2，#554）开工前预审，没有新的用户裁决项，追加 15 条可逆默认并改写 R6、R17，见文末。r3（2026-11-12）：A1、A3、A4、A5、A6、B2 开工前预审，追加各项可逆默认与 N3 结论；B2-1 由用户 2026-11-12 裁决为 a（对所有账号放开），其余没有新的用户裁决项，见文末。
 - 归属：[任务记录](2026-11-12-tool-expansion.md)。选项与代价的全文在仓库外的预审稿（Kubernetes 工具预审第 2 版，2026-11-11），本表只留裁决与落点。
 - 预审的推荐按「单 namespace 只读」写成；N4 裁决为整个集群只读后，受影响的可逆默认已在下表改写，A1、A2 各自的预审按集群级核对。
 
@@ -20,7 +20,7 @@
 | Q8 / D2 | 新数据源是否逐个报批 | 去掉逐个报批。合成 lab 或受控快照内新增的只读数据源直接按数据流合同进入所选模型，在任务记录登记返回什么、发往哪里。新增接收方、lab 以外的数据、外部服务仍由用户决定 | PRODUCT-CONSTRAINTS「Data flow contract」；C3 §12 |
 | D3 | 模型自写 SQL | 不在策略层禁止，从排除项拿掉。只读由工具保证：数据库只读账号，语句检查作第二道。数据库只读查询（#570）仍排第三批，lab 没有 SQL 数据库。任意 shell 与云命令照旧排除 | PRODUCT-CONSTRAINTS「Explicit exclusions」；C3 §8 |
 
-仍未决定、不挡 A0：N1 Lite 快照如何映射到查询端点（探针 #571）；N2 现场版与 Lite 同号场景是否一致（未确认，不合并分数）；N3 Jaeger 能否做标签过滤、按 ID 取整条、操作发现（trace 工具 #556 开工前探针）；N6 工具 search/catalog（有运行数据再定）。
+仍未决定、不挡 A0：N1 Lite 快照如何映射到查询端点（探针 #571）；N2 现场版与 Lite 同号场景是否一致（未确认，不合并分数）；N3 已有结论（读 Jaeger v1.53.0 源码，见 r3「N3」；未在真实实例取样的项照列）；N6 工具 search/catalog（有运行数据再定）。
 
 ## 可逆默认（实现者自定）
 
@@ -35,7 +35,7 @@
 | R7 | 对象投影 | 去掉 `metadata.managedFields`，其余原样交给 jq | 纯噪声且体积大 |
 | R8 | 日志条数 | 默认 100，硬上限 1000，超出标「不完整」与省略条数 | 同上游默认 |
 | R9 | 多容器与上一次日志 | 全部容器，当前与上一次各取一次 | 照搬上游 |
-| R10 | 模型给的正则 | Python `re`，不区分大小写，在请求期限内执行 | 照搬；防病态正则 |
+| R10 | 模型给的日志过滤正则 | Python `re`，不区分大小写，在请求期限内执行（r3：只管 Pod 日志；按列查询的过滤照上游区分大小写，见 A6-4；执行方式见 A3 的正则子进程） | 照搬；防病态正则 |
 | R11 | 错误分类 | 401/403 记为拒绝并可见，404 记为无数据或参数错误 | 沿用现有五类结果 |
 | R12 | Kubernetes 调查指导 | 搬上游 6 条，去掉依赖 `kubectl_describe` 的措辞，只在扩展档位生效 | 只动扩展档位的提示词版本 |
 | R13 | 已公布结果的标注 | 结果页与作品集加一句「两家均无 Kubernetes 与日志工具，基础档位」 | 照实宣称 |
@@ -65,3 +65,115 @@
 | A2-13 | LangSmith 的 lab 闸门 | 允许名单加 `otel-demo-ext`；加一项检查，Kubernetes API 地址必须是 lab 主机 | 内容导出只限 lab；worker 实际用的 API 地址未确认，等集群取证（A1） |
 | A2-14 | 「只接 lab 或受控快照」是否在代码里强制 | 不强制；`may_contain_secrets=True` 只是声明，由 lab 闸门与运行规则约束 | 照实宣称即可，不为此搭技术隔离 |
 | A2-15 | 合并与关闭时机 | 代码 PR 凭替身 API 响应加合同测试即可提交；#554 留着，租机跑完真实 Run、有 trace 与 `summary.json` 后再关 | A2 不碰调查循环、报告校验与恢复路径 |
+
+## r3：A1、A3、A4、A5、A6、B2 开工前预审
+
+三份预审在仓库外（A1；A3 与 A6；A4、A5 与 B2，均 2026-11-12），预审者未参与实现，对照 `main` `bda337b9` 与上游 HolmesGPT `a0009195` 核对。A2 尚未实现，下文引 A2 的都是 r2 的约定，不是代码。各项范围与接口见各自开工说明：[A1](2026-11-12-tool-expansion-a1.md)、[A3](2026-11-12-tool-expansion-a3.md)、[A4](2026-11-12-tool-expansion-a4.md)、[A5](2026-11-12-tool-expansion-a5.md)、[A6](2026-11-12-tool-expansion-a6.md)、[B2](2026-11-12-tool-expansion-b2.md)。
+
+- A1、A3、A4、A5、A6 没有需要用户裁决的项。
+- **B2-1 已由用户裁决为 a**（2026-11-12），见下方 B2 小节。
+- A1 对「上游默认规则」取窄读法：只用上游模板里不带条件的规则，上游默认打开的自定义资源授权（Argo、Flux、Istio 等）、`monitoring.coreos.com` 与 openshift 块都不搬，与 Q6 一致；lab 没装这些 CRD，对行为无影响。
+- 全量探针都未跑（A3、A6 与 A4、A5、B2 两份预审均受「不开 PR、不跑全量 pytest」约束）。须在 A2 合并后各开草稿 PR 经 CI 补跑，结果补进本节。预计：A3、A4、A5、A6 只加扩展档位，0 失败；B2 预计失败即 B2-1 列出的 4 个钉 403 的测试文件。
+
+### N3：lab 的 Jaeger 能做什么
+
+lab 是 chart `opentelemetry-demo 0.37.8` 带的 Jaeger 1.53.0（all-in-one、内存存储 5000 条），产品经 NodePort 匿名直连查询端口，A4 不需要改 lab。依据是读 v1.53.0 源码（`http_handler.go`、`query_parser.go`、`memory.go`）：
+
+- 支持：标签过滤（所有条件落在同一个 span 上，按字符串精确比较）、最短与最长时长过滤（比单个 span 的时长）、按 ID 取整条（无时间参数，查不到 404）、列服务、列某服务的操作。
+- 不支持：标签名发现（无此接口）；不带 service 搜索（400）。
+- 服务与操作清单没有时间范围，是 Jaeger 本次启动以来见过的；`/api/*` 文档写明为不稳定的内部接口，现有 `traces_search` 已依赖它。
+- 未在真实实例取样（未确认）：标签值字符串化的样子与 OTel 状态码类标签在 lab 的类型；一条 checkout 整条 trace 的 span 数与投影后 token 数；404 响应体形态；`errors` 字段是否出现；5000 条在 lab 负载下覆盖多久。
+
+### A1：lab 只读集群身份
+
+| 编号 | 问题 | 默认 | 理由 |
+|---|---|---|---|
+| A1-1 | 身份建在哪 | 新 namespace `opspilot-readonly`，SA `opspilot-investigator`，ClusterRole 与绑定 `opspilot-investigator-readonly`；清单 `scripts/kind_lab/opspilot-readonly-rbac.yaml`，`up` 末尾 apply | 身份是集群级的，不属于应用 namespace；ITBench 换 namespace 也能用 |
+| A1-2 | 规则清单 | 上游模板不带条件的规则，只留 get、list，去掉自定义资源、`monitoring.coreos.com`、openshift 三块；清单见 A1 预审 | 窄读法同时满足 SPEC 与 Q6；上游本身无 secrets、exec、proxy、token |
+| A1-3 | token 有效期与发放 | `kubectl create token --duration=24h`，不回显；`up` 每次重发，另加 `k8s-token` 子命令；过期时间写进 `k8s-token.json`（不放 token） | 一次租机够用；过期后报 `SOURCE_FORBIDDEN`；API server 最长期限未确认 |
+| A1-4 | 文件落点 | `LAB_DIR` 下 `k8s-ca.crt`、`k8s-investigator.env`（600）、`k8s-token.json`，用 `_private_write` | 同 `prometheus-<role>.env`；`LAB_DIR` 跟检出目录走，租机上在主检出跑或软链 |
+| A1-5 | CA 来源 | 从 lab kubeconfig 的 `certificate-authority-data` 解码 | 不需额外请求、不碰 Secret |
+| A1-6 | worker 用的地址 | 宿主进程用 kubeconfig 的 `https://127.0.0.1:<端口>`（每次重读）；控制侧容器用 `https://{NODE_CONTAINER}:6443`；同一函数生成 | 端口每次随机；容器形态证书名未在 lab 验证 |
+| A1-7 | 交给容器里的 worker | 入口脚本放行 `OPSPILOT_K8S_*`；lab 覆盖 compose 把 CA 作为 secret 只挂给 worker；`control-secrets` 重发时替换 token 与地址两行并重启 worker | 不改会被入口脚本悄悄跳过；不进基础 compose 以免 fixture 安装坏（未验证） |
+| A1-8 | lab 闸门 | 不用改；A2 新加的 API 地址检查放进 `check_lab_target` | 回环地址能过 `_is_lab_host`，容器走 outbox 不查数据源 |
+| A1-9 | 探测工具 | `scripts/k8s_authz_probe.py`，标准库、不走代理不跟重定向；宿主与 worker 容器各跑一遍；写类探测加 `dryRun=All` | 先授权再执行，写错也不改 lab |
+| A1-10 | 证据 | `docs/evidence/a1-cluster-identity/`：`probe.json`、`rules.json`、`run.md`、清单 sha256、过期时间；token 不入库 | 格式同 F7 授权探测 |
+
+A1-2 的规则清单（动词都是 get、list）：核心组 configmaps、daemonsets、deployments、endpoints、events、namespaces、nodes、persistentvolumes、persistentvolumeclaims、pods、pods/log、pods/status、replicasets、replicationcontrollers、resourcequotas、services、serviceaccounts；`apps` daemonsets、deployments、deployments/scale、replicasets、replicasets/scale、statefulsets；`extensions` daemonsets、deployments、deployments/scale、ingresses、replicasets、replicasets/scale、replicationcontrollers/scale；`batch` cronjobs、jobs；`autoscaling` horizontalpodautoscalers；`events.k8s.io` events；`storage.k8s.io` storageclasses；`metrics.k8s.io` pods、nodes；`networking.k8s.io` ingresses、networkpolicies；`policy` poddisruptionbudgets、podsecuritypolicies；`rbac.authorization.k8s.io` clusterroles、clusterrolebindings、roles、rolebindings；`apiregistration.k8s.io` apiservices；`apiextensions.k8s.io` customresourcedefinitions（只是定义，不是自定义资源本身）；`admissionregistration.k8s.io` mutatingwebhookconfigurations、validatingwebhookconfigurations。
+
+A2-5 的静态资源表比 A1 清单窄；A1 与 A2 谁后合并，谁加一条测试：静态表是 A1 清单的子集。
+
+### A3：Pod 日志
+
+| 编号 | 问题 | 默认 | 理由 |
+|---|---|---|---|
+| A3-1 | 时间参数 | `start_time`、`end_time` 只收绝对 RFC3339，相对秒数拒绝；复用 `_query_window` 规则 | C3 §8 要求绝对窗，与其他工具一致 |
+| A3-2 | 请求与计数 | 先取 Pod 拿容器名，每容器当前与 `previous` 各一次；1+2C 次 HTTP 记 1 个 operation | API 无 all-containers；计数同 A2-9 |
+| A3-3 | 窗终点与读量 | 本地丢掉晚于窗终点的行；所有流共用 4 MiB，读满保留已读、标不完整并提示后移起点 | 部分日志不会算错，比整条拒绝有用 |
+| A3-4 | 流取不到 | 单流 400 记无数据并写 notes；401/403 `SOURCE_FORBIDDEN`；429/5xx `SOURCE_UNAVAILABLE`；全空 `no_data` | 一次失败不连累另一次；CrashLoop 时上一次流最关键 |
+| A3-5 | Pod 不存在 | 404 报 `INVALID_PARAMS`，固定码 `POD_NOT_FOUND` | 与 A2-12 一致 |
+| A3-6 | 路径注入 | namespace 为 DNS 标签、pod 为 DNS 子域名、容器名 URL 编码；不合法不发请求 | 都拼进 API 路径 |
+| A3-7 | 正则 | 窗内筛选后跑 `filter`、`exclude_filter`；独立子进程，Python `re` 不区分大小写，最长 2000 字符，编不过退化为子串；超时结果类与 A2 jq 超时相同 | 进程内 `re` 停不下来，依赖里无 re2 |
+| A3-8 | 条数 | `limit` 默认 100、1–1000；`row_unit="lines"`，截了行或读满标不完整；读取数、筛掉数等进 `view_fields` | R8；沿用 traces 计数先例 |
+| A3-9 | 行形态与来源时间 | 每行带时间戳、容器、实例、文本；无时间戳的行丢弃计入 notes；来源时间取保留行首尾 | 来源时间须来自数据，不能证明在框内的不留 |
+| A3-10 | 超长行 | 每行截到 2000 字符并标出 | 防一行巨型 JSON 让视图整条被拒 |
+| A3-11 | 登记 | verb `logs`，`source="otel-demo"`，`may_contain_secrets=True`；扩展档位 `pod_logs` 移到可用 | 与 A2 一致，`otel-demo` 不动 |
+
+### A4：trace 扩展
+
+| 编号 | 问题 | 默认 | 理由 |
+|---|---|---|---|
+| A4-1 | 工具 | `traces_search_by_tags`、`traces_query_trace_by_id`、`traces_list_services`、`traces_list_operations`；`traces_search` 不动 | 对上 Tempo 两个工具；值发现在 Jaeger 只能落到服务与操作 |
+| A4-2 | 搜索参数 | service 必填，加 tags、operation、时长、limit、start、end；tags 用 logfmt 串，解析失败报 `INVALID_TAGS` | Jaeger 要求 service；`ParameterSpec` 不支持 object |
+| A4-3 | service 校验 | 非空、≤200、无控制字符，不用固定枚举 | 枚举是 otel-demo 写死的；空结果提示核对服务名 |
+| A4-4 | 时长 | Go 时长格式，max ≥ min；描述写明比单个 span | 语义与 Tempo 不同须让模型看到 |
+| A4-5 | 条数 | 默认 20、无上限，满了标不完整；超出返回最新 N 条 | 沿用 B1 先例 |
+| A4-6 | 搜索投影 | 调现有 `project_traces`，只换 query 记录；投影 id `otel-demo-ext-traces-v1` | 白名单不放宽，不动 otel-demo 字节 |
+| A4-7 | 按 ID 的时间 | 省略时用整个授权框；ID 为 1–32 位十六进制；丢窗外 span 并计数 | 不丢会被 `WINDOW_OUT_OF_SCOPE` 整条拒绝 |
+| A4-8 | 按 ID 的投影 | 同白名单，按起始时间排序不抽样；读 4 MiB、视图 25k 超了整条拒绝 | 「整条」指全部 span；体积未确认 |
+| A4-9 | 按 ID 404 | 成功的空视图，说明 ring 里没有不证明不存在；400 报 `INVALID_PARAMS` | 404 在这里是「没数据」 |
+| A4-10 | 服务与操作清单 | 无时间参数，来源时间留空；`cannot_prove` 写明只代表启动以来；操作名脱敏截 150 字符 | 清单不随 ring 淘汰 |
+| A4-11 | 错误分类 | 400 `INVALID_PARAMS`（回显截短脱敏的错误）、5xx `SOURCE_UNAVAILABLE`；`errors` 非空标不完整 | 沿用现有传输 |
+| A4-12 | 模块 | `opspilot/tools/jaeger_query.py`，复用 `otel_demo` 可导入函数不改它们 | 同 A2 独立模块做法 |
+
+### A5：Prometheus 即时查询与发现
+
+| 编号 | 问题 | 默认 | 理由 |
+|---|---|---|---|
+| A5-1 | 名字与参数 | `execute_prometheus_instant_query(query, time?)`、`get_series`、`get_all_labels`；不搬 description、timeout，超时固定 30 秒 | 名字照上游，超时由注册统一管 |
+| A5-2 | 即时查询时刻 | 总是显式发 time，省略取查询窗终点；须在框内，回看区间不早于框起点 | 「现在」晚于授权框会被整条拒绝 |
+| A5-3 | 即时查询上限 | 不发 limit，视图 25k 超了整条拒绝并给摘要与 topk 建议 | 与区间查询同口径 |
+| A5-4 | 序列与标签条数 | 固定 limit=100，有 warnings 或恰好 100 条都标不完整 | v3.5 截断是否带 warning 未确认，两条都认 |
+| A5-5 | 时间窗 | 沿用 `_query_window`，省略为 1 小时 | 与现有发现工具一致 |
+| A5-6 | match | 复用 `_match_ok`；series 必填、labels 可选 | 现有规则 |
+| A5-7 | 模块与传输 | 新模块 `prometheus_ext.py`；新工具名不进 `PROMETHEUS_TOOLS`；推荐给现有传输加「哪些工具走基本认证」构造参数 | 那个集合进 otel-demo 版本哈希 |
+| A5-8 | 错误分类 | 同发现工具；即时查询另认 503 timeout 为超时 | 现有规则 |
+
+### A6：按列查询集群对象
+
+| 编号 | 问题 | 默认 | 理由 |
+|---|---|---|---|
+| A6-1 | 取数 | 完全复用 A2（资源表、namespace、Secret 拒绝、分页、4 MiB、managedFields、错误、事件按框筛）；1 次调用 1 个 operation | 事件筛选不共用就会绕过授权框 |
+| A6-2 | 列语法子集 | 字段名、`[n]`、`[*]`、可选 `{}`；缺字段 `<none>`；最多 20 列、2000 字符；禁 `'` `/` `;` 换行；失败报 `INVALID_COLUMNS` | R16，上游实际用到的部分 |
+| A6-3 | 要不要 jq | 不要，Python 求值 | 子集小，省注入面 |
+| A6-4 | filter_pattern | 匹配单元格拼成的行；区分大小写；跑在 A3-7 的正则子进程 | 照上游 `grep -E` |
+| A6-5 | 返回与计数 | `{header, rows, count, scope, notes}`，行是单元格数组；不设条数上限，视图超限整条拒绝 | 键名照上游，模型不用自己切对齐空格 |
+| A6-6 | 时间 | 同 A2-11；`kind=events` 时来源时间取保留事件首尾 | 共用 A2 规则 |
+
+### B2：告警规则、抓取目标与指标元数据
+
+用户裁决（2026-11-12）：
+
+| 编号 | 问题 | 选项与代价 | 推荐 | 影响面 | 裁决 |
+|---|---|---|---|---|---|
+| B2-1 | lab 只读代理放行 `/api/v1/rules`、`/api/v1/metadata`、`/api/v1/targets` 三个 GET 时对谁放开；前两条现按 F14 的 U2「两边都没有，权限对齐」有意拒绝并钉在测试里 | a. 对所有账号放行（含 Holmes 基线账号）：两边再次对齐；代价是 Holmes 基线以后的 Run 比已公布的 F14 结果多两个能用的工具，旧结果按日期保留。b. 只对 investigator 与 lab 放行：已公布的对比条件不变；代价是 OpsPilot 比 Holmes 多权限，违反 U2 的理由 | a | 改写钉 403 的测试：`tests/acceptance/test_396_proxy_contract.py:67-72`（验收测试，按意图须改）、`tests/test_kind_lab_readonly_proxy.py:210,446`、`tests/test_f7_authz_probe.py:277`、`scripts/f7_authz_probe.py:57-60`；拒绝样例换成 `/api/v1/status/config` 这类仍拒路径 | a（用户 2026-11-12） |
+
+可逆默认：
+
+| 编号 | 问题 | 默认 | 理由 |
+|---|---|---|---|
+| B2-2 | 规则查询参数 | type、rule_name、rule_group、file、match 原样转发；不搬 jq、max_depth；type 只认 alert、record | jq 子进程要等 A2；lab 规则很少，视图 25k 兜底 |
+| B2-3 | 规则里的活跃告警 | 照返回，来源时间留空，`cannot_prove` 写只代表查询那一刻 | 同 Q4 |
+| B2-4 | 指标元数据 | 固定 limit=100，满 100 标不完整；metric 名格式校验；无时间窗 | 照上游；接口标 experimental |
+| B2-5 | 抓取目标 | 打 `targets?state=active`，按 `labels.job` 过滤，去掉 `discoveredLabels` | `scrapePool` 不一定等于 job；原始标签体积大 |
+| B2-6 | 模块与凭据 | 进 `prometheus_ext.py`，凭据与错误分类同 A5；代码可先于 lab 改动合并 | 少一份传输代码 |

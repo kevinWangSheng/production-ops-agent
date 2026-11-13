@@ -1,6 +1,6 @@
 # 工具面拓展（对标 HolmesGPT，M3 之后）
 
-- 状态：进行中（合同 r2；A0 合同文字已合并 #575；A2 开工说明已齐；没有任何工具已实现）
+- 状态：进行中（合同 r3；A0 合同文字已合并 #575；A1–A6、B2 七项开工说明已齐；没有任何工具已实现）
 - 更新日期：2026-11-12
 - 依据：用户 2026-11-11 方向「对标上游拓宽调查数据面、只保自动化主路径」，2026-11-12 补充标注（下文「范围与状态」「范围原则」）；C3 第 8 节；`PRODUCT-CONSTRAINTS.md:12`；上游 HolmesGPT `a0009195`（工具集清单见 `scripts/holmes_baseline/config.py:48-98`，共 48 个）。完整计划与 Kubernetes 预审在仓库外，本记录已收录其中决定所需的内容。
 - 工作区：各实施项开工时另开 worktree 并写入各自的任务记录。
@@ -35,15 +35,15 @@
 | 序号 | 标题 | 对标上游 | 前置 | 估时 | issue |
 |---|---|---|---|---|---|
 | A0 | SPEC 有界开放，C3 第 3、8、12 节与 PRODUCT-CONSTRAINTS 修订（用户门） | — | 已裁决 | 0.5 天 | #552 |
-| A1 | lab 只读集群身份与拒绝取证 | chart 默认 RBAC | A0 | 0.5–1 天 | #553 |
-| A2 | 扩展档位与集群对象只读查询 | `kubernetes/core` | A1 | 2–3 天 | #554 |
-| A3 | Pod 日志 | `kubernetes/logs` | A2 | 1–1.5 天 | #555 |
-| A4 | trace 按标签过滤、按 ID 取整条、列服务与操作 | `grafana/tempo` 子集，落在 Jaeger | A2、N3 | 1–1.5 天 | #556 |
-| A5 | Prometheus 即时查询、序列与全部标签 | `prometheus/metrics` | A2 | 0.5–1 天 | #557 |
-| A6 | 按列查询集群对象 | `kubernetes_tabular_query` | A2 | 0.5–1 天 | #558 |
+| A1 | [lab 只读集群身份与拒绝取证](2026-11-12-tool-expansion-a1.md) | chart 默认 RBAC | A0 | 0.5–1 天 | #553 |
+| A2 | [扩展档位与集群对象只读查询](2026-11-12-tool-expansion-a2.md) | `kubernetes/core` | A1 | 2–3 天 | #554 |
+| A3 | [Pod 日志](2026-11-12-tool-expansion-a3.md) | `kubernetes/logs` | A2 | 1–1.5 天 | #555 |
+| A4 | [trace 按标签过滤、按 ID 取整条、列服务与操作](2026-11-12-tool-expansion-a4.md) | `grafana/tempo` 子集，落在 Jaeger | A2（N3 已有结论） | 1–1.5 天 | #556 |
+| A5 | [Prometheus 即时查询、序列与全部标签](2026-11-12-tool-expansion-a5.md) | `prometheus/metrics` | A2 | 0.5–1 天 | #557 |
+| A6 | [按列查询集群对象](2026-11-12-tool-expansion-a6.md) | `kubernetes_tabular_query` | A2 | 0.5–1 天 | #558 |
 | A7 | Kubernetes 调查指导 + 端到端主路径 Run | `generic_ask.jinja2` K8s 段 | A3–A5 | 0.5–1 天 | #559 |
 | B1 | OpenSearch 日志检索 | `elasticsearch/data` | A2、开 OpenSearch 的环境 | 2–3 天 + 环境 0.5 天 | #560 |
-| B2 | 告警规则、抓取目标与指标元数据 | Prometheus 余下工具 | A5、代理放行 | 1 天 | #561 |
+| B2 | [告警规则、抓取目标与指标元数据](2026-11-12-tool-expansion-b2.md) | Prometheus 余下工具 | A5、代理放行 | 1 天 | #561 |
 | B3 | Pod 与节点实时用量 | `kubernetes/live-metrics` | A2、metrics-server | 0.5–1 天 | #562 |
 | B4 | Helm 变更历史（Q7：先不读 Helm 记录，降级） | `helm/core` | A2 | 1.5–2 天 | #563 |
 | B5 | ITBench 现场版接入预审 | — | 阶段 A | 1 天 | #564 |
@@ -62,7 +62,7 @@
 
 ## 合同（r1）
 
-用户 2026-11-12 裁决，全表与可逆默认见[决定表](2026-11-12-tool-expansion-contract.md)。r2 为 A2 开工前预审追加的可逆默认，没有新的用户裁决项；A2 的范围与接口见 [A2 任务记录](2026-11-12-tool-expansion-a2.md)。
+用户 2026-11-12 裁决，全表与可逆默认见[决定表](2026-11-12-tool-expansion-contract.md)。r2 为 A2 开工前预审追加的可逆默认；r3 为 A1、A3–A6、B2 开工前预审追加的可逆默认与 N3 结论，唯一新的用户裁决项是 B2-1，用户 2026-11-12 裁决为 a（对所有账号放开）。各项范围与接口见阶段表里链接的开工说明。
 
 | 编号 | 裁决要点 |
 |---|---|
@@ -87,9 +87,13 @@
 |---|---|---|
 | N1 | Lite 快照如何映射到各查询端点 | 未实现，单独探针 #571 |
 | N2 | 现场版与 Lite 同号场景是否逐题一致 | 未确认，不据此合并分数 |
-| N3 | Jaeger 能否提供标签过滤、按 ID 取整条、操作发现 | 未确认，A4 开工前做接口探针 |
+| N3 | Jaeger 能否提供标签过滤、按 ID 取整条、操作发现 | 已有结论（读 v1.53.0 源码）：支持标签与时长过滤、按 ID 取整条、列服务与操作，不支持标签名发现；未在真实实例取样的项见[决定表 r3](2026-11-12-tool-expansion-contract.md)「N3」 |
 | N6 | 工具 search/catalog 值不值得做 | 未决定，不改固定档位、注册表与 schema revision |
 
 ## 下一步与交接
 
-A2（集群对象只读查询）由实现会话按 [A2 任务记录](2026-11-12-tool-expansion-a2.md) 开工，全量探针已经 CI 跑过（结果在决定表 r2 节）。A3 起各项的开工说明在前一项落地后逐项做。未确认项：控制侧容器能否按 kind 证书里的名字访问 API server、lab 里 Helm 记录的实际存储形态、metrics-server 与 cAdvisor 指标、上游 `elasticsearch/data` 对 OpenSearch 的兼容性、Jaeger 过滤参数行为、ITBench 现场版的判分方式与单场景耗时。
+实现顺序 A2 → A5 → A4 → A3 → A6，各按开工说明由实现会话开 worktree、走功能 PR 流程；A1 的脚本与单元测试可与 A2 并行写，真实取证和各项真实 Run 等一次租机集中做；B2 在 A5 合并后开工。A3–A6 与 B2 的全量探针未跑，A2 合并后各开草稿 PR 经 CI 补跑（预计见决定表 r3）。
+
+ITBench-Lite 的集群对象与日志探针已做（报告在仓库外 `~/.agent/handoffs/itbench-lite-k8s-logs-probe-2026-11-12.md`）：可用只读的假 API server 回放集群对象，日志部分可回放；用户 2026-11-12 已对齐四点（报告由评测侧确定性转换成答案格式、产品报告格式不变；官方 LLM judge 分与确定性实体匹配分都报；35 题全留分母并按数据覆盖分档；第一轮只跑 OpsPilot、标为单边结果），适配的开工说明另写。
+
+未确认项：控制侧容器能否按 kind 证书里的名字访问 API server、lab 里 Helm 记录的实际存储形态、metrics-server 与 cAdvisor 指标、上游 `elasticsearch/data` 对 OpenSearch 的兼容性、Jaeger 标签值字符串化与整条 trace 体积、ITBench 现场版的判分方式与单场景耗时。

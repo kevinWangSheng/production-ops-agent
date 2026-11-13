@@ -2,7 +2,7 @@
 
 - 状态：待开始（开工说明已齐，未实现）
 - 更新日期：2026-11-12
-- 依据：[工具面拓展任务记录](2026-11-12-tool-expansion.md)、[决定表 r2](2026-11-12-tool-expansion-contract.md)（r1 用户裁决，r2 的 A2-1 至 A2-15）、SPEC 2026-11-12 段、C3 第 3、8、12 节；上游 HolmesGPT `a0009195` 的 `kubernetes/core`。issue #554。
+- 依据：[工具面拓展任务记录](2026-11-12-tool-expansion.md)、[决定表 r3](2026-11-12-tool-expansion-contract.md)（r1 用户裁决，r2 的 A2-1 至 A2-15；r3 是后续各项对 A2 的要求）、SPEC 2026-11-12 段、C3 第 3、8、12 节；上游 HolmesGPT `a0009195` 的 `kubernetes/core`。issue #554。
 - 工作区：开工时另开 worktree，分支 `feature/tool-expansion-a2-k8s-core`，写入本节。
 
 ## 目标
@@ -28,6 +28,17 @@
 - `profiles.py` 加档位；传输路由改成按工具分派；`registry.py` 允许登记可能含秘密的数据源；两个新原因码；LangSmith lab 闸门认新档位；runtime 镜像装 jq。
 - 合同测试对着替身 API 响应写，由未参与实现的测试作者按本记录、决定表与 C3 编写，不看实现代码。
 - 按用户裁决改写两处现有测试：`tests/test_m1_tool_registry.py` 里「可能含秘密的来源在登记时被拒绝」改为允许声明为真、非布尔值仍拒绝；只读安全验收里「每个出厂工具都是有界只读」那条加上扩展档位的注册。
+
+## 后续各项对 A2 的要求
+
+来自 A1、A3/A6、A4/A5 的开工前预审（决定表 r3）。不改 A2 的行为，只约束实现形状，免得后续各项返工：
+
+- 传输路由按显式工具名分派，不按 `kubernetes_` 前缀匹配：`RoutedTransport` 现只有两路（`opspilot/tools/evidence_read.py:373-386`）；A3 的 `fetch_pod_logs` 不带这个前缀，前缀匹配会把它送到 otel-demo 传输。
+- 配置、GET 传输、静态资源表、分页与 4 MiB 累计、错误映射、事件按授权框筛选做成可复用函数，A3（Pod 日志）与 A6（按列查询）直接调用；A6 要复用「取一类资源的全部对象（已筛事件）」这一步，事件筛选不共用会让按列查询绕过授权框（A6-1）。
+- 定下 jq 超时报哪个结果类（A2-8 只写了超时用剩余时间）；A3、A6 的正则子进程沿用 jq 子进程的约束，超时报同一个类（A3-7、A6-4）。
+- 新工具名不加进参与 `otel-demo` 版本哈希的集合：`PROMETHEUS_TOOLS`（`opspilot/tools/otel_demo.py:179`）进了 otel-demo 的 `data_sources` 哈希（`otel_demo.py:1047-1083`，A5-7）；Kubernetes 与后续工具名同理只进扩展档位。
+- 容器里的 worker 拿集群凭据归 A1，不在 A2：部署入口脚本的变量放行名单只导出 `OPSPILOT_OTEL_*` 与 `LANGSMITH_*`（`deploy/docker-entrypoint.sh:54-60`），CA 文件要靠 lab 覆盖 compose 挂进只读的 worker 容器（`deploy/compose/compose.yaml:18-30,130-153,213-231`），重发 token 时要替换而不是保留旧值（`scripts/kind_lab.py:558-570` 的 `_merge_env`）（A1-7）。A2 只负责 worker 读这四个变量；新加的 API 地址 lab 检查放进 `check_lab_target`（`opspilot/tracing.py:181`），与 Prometheus、Jaeger 两项并列（A1-8）。
+- 视图字段键名：A3 的 `lines_read` 等、A6 的 `total_items_processed` 要能与 A2 用到的通用视图字段并存，A2 落地后对照一次。
 
 ## 不做
 
