@@ -56,7 +56,6 @@ from opspilot.tools.profiles import PROFILE_ENV, select_profile
 from tests.m1_tool_support import FakeClock, RecordingSink
 from tests.test_m1_otel_demo_contract import NOW, TARGET_ID
 from tests.test_tool_expansion_a2_contract import (
-    AUTHORIZED_WINDOW,
     BASE_TOOL_NAMES,
     BASE_TOOL_SCHEMA_REVISION,
     K8S_API,
@@ -64,7 +63,6 @@ from tests.test_tool_expansion_a2_contract import (
     K8S_TOKEN,
     OTEL_TOKEN,
     FakeStore,
-    _call,
     _env,
     _executor,
     _headers,
@@ -75,8 +73,16 @@ from tests.test_tool_expansion_a2_contract import (
 
 LOG_TOOL = "fetch_pod_logs"
 POD = "checkout-0"
-START = AUTHORIZED_WINDOW.start + timedelta(hours=1)
-END = AUTHORIZED_WINDOW.end - timedelta(hours=1)
+# A2's fixture window is deliberately only five minutes.  A3 needs enough
+# room for explicit start/end, latest-N selection, and the default one-hour
+# lookback.  Anchor the wider frame at the trusted test clock so it remains
+# inside the executor's current authorized frame.
+A3_AUTHORIZED_WINDOW = Window(
+    NOW - timedelta(hours=6),
+    NOW,
+)
+START = A3_AUTHORIZED_WINDOW.start + timedelta(hours=1)
+END = A3_AUTHORIZED_WINDOW.end - timedelta(hours=1)
 
 
 @pytest.fixture(autouse=True)
@@ -171,8 +177,25 @@ def _params(**overrides) -> dict[str, object]:
     return values
 
 
+def _call(
+    tool: str,
+    params: dict[str, object],
+    *,
+    index: int = 0,
+    window: Window = A3_AUTHORIZED_WINDOW,
+) -> ToolRequest:
+    return ToolRequest(
+        step_id="a3-step",
+        tool_index=index,
+        tool_name=tool,
+        target_ref=TARGET_ID,
+        params=params,
+        window=window.as_json(),
+    )
+
+
 def _request(
-    params: dict[str, object], *, window: Window = AUTHORIZED_WINDOW, index: int = 0
+    params: dict[str, object], *, window: Window = A3_AUTHORIZED_WINDOW, index: int = 0
 ) -> ToolRequest:
     return ToolRequest(
         step_id="a3-step",
@@ -228,9 +251,9 @@ def _alert_executor(monkeypatch, opener):
     clock = FakeClock(start=NOW)
     sink = RecordingSink()
     alert = AlertAnchor(
-        received_at=AUTHORIZED_WINDOW.end,
-        starts_at=AUTHORIZED_WINDOW.end - timedelta(hours=3),
-        original=_rfc3339(AUTHORIZED_WINDOW.end - timedelta(hours=3)),
+        received_at=A3_AUTHORIZED_WINDOW.end,
+        starts_at=A3_AUTHORIZED_WINDOW.end - timedelta(hours=3),
+        original=_rfc3339(A3_AUTHORIZED_WINDOW.end - timedelta(hours=3)),
     )
     alert_window = Window(*alert.frame)
     model_input = profile.face(clock).input_for(
@@ -479,7 +502,7 @@ def test_late_lines_are_dropped_and_source_bounds_stay_in_the_authorized_window(
     assert "inside" in json.dumps(_rows(outcome))
     assert "late" not in json.dumps(_rows(outcome))
     assert outcome.evidence is not None
-    assert outcome.evidence.source_end_at <= AUTHORIZED_WINDOW.end
+    assert outcome.evidence.source_end_at <= A3_AUTHORIZED_WINDOW.end
     assert (
         "drop" in json.dumps(_view(outcome)).lower()
         or "outside" in json.dumps(_view(outcome)).lower()
@@ -595,7 +618,7 @@ def test_pathological_regex_is_hard_stopped_with_the_a2_timeout_class(monkeypatc
             end_time=_rfc3339(END),
             filter="(a+)+$",
         ),
-        window=AUTHORIZED_WINDOW,
+        window=A3_AUTHORIZED_WINDOW,
         timeout_seconds=0.25,
         max_result_bytes=4 * 1024 * 1024,
         credential_ref=kubernetes_core.CREDENTIAL_REF,
@@ -615,12 +638,12 @@ def test_pathological_regex_is_hard_stopped_with_the_a2_timeout_class(monkeypatc
         _params(start_time=_rfc3339(START)),
         _params(end_time=_rfc3339(END)),
         _params(
-            start_time=_rfc3339(AUTHORIZED_WINDOW.start - timedelta(seconds=1)),
+            start_time=_rfc3339(A3_AUTHORIZED_WINDOW.start - timedelta(seconds=1)),
             end_time=_rfc3339(END),
         ),
         _params(
             start_time=_rfc3339(START),
-            end_time=_rfc3339(AUTHORIZED_WINDOW.end + timedelta(seconds=1)),
+            end_time=_rfc3339(A3_AUTHORIZED_WINDOW.end + timedelta(seconds=1)),
         ),
         _params(start_time="2026-09-14T10:00:00", end_time=_rfc3339(END)),
     ],
@@ -634,7 +657,7 @@ def test_time_inputs_are_absolute_bounded_and_echo_the_authorized_window(
     assert outcome.status in {"error", "denied"}
     assert outcome.reason in {"INVALID_PARAMS", "WINDOW_OUT_OF_SCOPE"}
     assert _view(outcome)["content"] is None
-    assert _view(outcome).get("window") == AUTHORIZED_WINDOW.as_json()
+    assert _view(outcome).get("window") == A3_AUTHORIZED_WINDOW.as_json()
     assert opener.requests == []
 
 
@@ -654,8 +677,17 @@ def test_explicit_start_time_is_sent_as_since_time_and_ordinary_default_is_one_h
     outcome = executor.execute(_call(LOG_TOOL, _params()))
     assert outcome.status == "no_data"
     assert opener.query(1)["sinceTime"] == [
-        _rfc3339(AUTHORIZED_WINDOW.end - timedelta(hours=1))
+        _rfc3339(A3_AUTHORIZED_WINDOW.end - timedelta(hours=1))
     ]
+
+
+def test_short_authorized_window_default_start_is_clamped_to_window_start(monkeypatch):
+    short_window = Window(NOW - timedelta(minutes=30), NOW)
+    opener = PodLogOpener()
+    executor, _, _, _, _ = _executor(monkeypatch, opener)
+    outcome = executor.execute(_call(LOG_TOOL, _params(), window=short_window))
+    assert outcome.status == "no_data"
+    assert opener.query(1)["sinceTime"] == [_rfc3339(short_window.start)]
 
 
 def test_alert_default_window_starts_one_hour_before_alert_anchor(monkeypatch):
