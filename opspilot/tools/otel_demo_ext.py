@@ -44,6 +44,7 @@ from opspilot.tools import (
     jaeger_query,
     kubernetes_core,
     kubernetes_logs,
+    kubernetes_tabular,
     otel_demo,
     prometheus_ext,
 )
@@ -91,6 +92,7 @@ TOOL_SCHEMAS: tuple[Mapping[str, Any], ...] = (
     *kubernetes_core.TOOL_SCHEMAS,
     *prometheus_ext.TOOL_SCHEMAS,
     *kubernetes_logs.TOOL_SCHEMAS,
+    *kubernetes_tabular.TOOL_SCHEMAS,
 )
 
 #: What this profile can and cannot query (#311 U5); ``kubernetes_state``
@@ -111,7 +113,9 @@ def _data_sources() -> dict[str, Any]:
             ),
             "jaeger": [otel_demo.TRACES_TOOL, *jaeger_query.TOOL_NAMES],
             "kubernetes": sorted(
-                kubernetes_core.K8S_TOOLS | set(kubernetes_logs.TOOL_NAMES)
+                kubernetes_core.K8S_TOOLS
+                | set(kubernetes_logs.TOOL_NAMES)
+                | set(kubernetes_tabular.TOOL_NAMES)
             ),
         },
         "not_integrated": list(_NOT_INTEGRATED),
@@ -130,6 +134,9 @@ def _registrations() -> tuple[ToolRegistration, ...]:
         ),
         *prometheus_ext.prometheus_ext_registrations(),
         *kubernetes_logs.pod_logs_registrations(
+            max_window_seconds=otel_demo.OBSERVATION_SECONDS
+        ),
+        *kubernetes_tabular.tabular_registrations(
             max_window_seconds=otel_demo.OBSERVATION_SECONDS
         ),
     )
@@ -225,6 +232,8 @@ def _overflow_summary(
         return prometheus_ext.overflow_summary(tool, rows, query)
     if tool == kubernetes_logs.POD_LOGS_TOOL:
         return {"row_unit": "lines"}
+    if tool == kubernetes_tabular.TABULAR_TOOL:
+        return {"row_unit": "rows"}
     if tool in jaeger_query.ROW_UNITS:
         return {"row_unit": jaeger_query.ROW_UNITS[tool]}
     return otel_demo.overflow_summary(tool, rows, query)
@@ -321,6 +330,8 @@ def otel_demo_ext_executor_factory(
                     **dict.fromkeys(jaeger_query.TOOL_NAMES, traces),
                     # A3: served by the cluster transport, routed by name.
                     **dict.fromkeys(kubernetes_logs.TOOL_NAMES, cluster),
+                    # A6: likewise.
+                    **dict.fromkeys(kubernetes_tabular.TOOL_NAMES, cluster),
                 },
             ),
             evidence=evidence,

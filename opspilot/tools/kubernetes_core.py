@@ -118,6 +118,8 @@ TOOL_NAMES: tuple[str, ...] = (JQ_QUERY_TOOL, COUNT_TOOL)
 K8S_TOOLS: frozenset[str] = frozenset(TOOL_NAMES)
 #: A3's tool, served by ``KubernetesTransport`` but routed by exact name.
 _POD_LOGS_TOOL = "fetch_pod_logs"
+#: A6's tool, served the same way (``kubernetes_tabular.TabularQueryTransport``).
+_TABULAR_TOOL = "kubernetes_tabular_query"
 
 #: The Kubernetes transport's own credential slot (A2-1); the target's
 #: ``credential_ref`` names the Prometheus slot and is not used here.
@@ -596,9 +598,13 @@ class KubernetesClient:
         field_selector: str | None,
         window: Window,
         deadline: float,
+        consumer: str = "jq ran",
     ) -> ListResult | TransportResponse:
         """All objects of ``resource`` in scope: pages of ``PAGE_LIMIT`` read
         to the end under one ``MAX_SOURCE_READ_BYTES`` budget (A2-9).
+
+        ``consumer`` names what runs over the list in the event notes
+        ("dropped before <consumer>"): jq for A2, the columns for A6.
 
         Returns a ``TransportResponse`` for a source error (the caller hands
         it on): 4xx as its HTTP status code, a page that is not a list as an
@@ -662,12 +668,12 @@ class KubernetesClient:
             if outside:
                 notes.append(
                     f"{outside} events outside the authorized window were "
-                    "dropped before jq ran."
+                    f"dropped before {consumer}."
                 )
             if untimed:
                 notes.append(
                     f"{untimed} events without any timestamp were dropped "
-                    "before jq ran (they cannot be placed in the window)."
+                    f"before {consumer} (they cannot be placed in the window)."
                 )
         return ListResult(
             items=items,
@@ -1090,10 +1096,19 @@ class KubernetesTransport:
             application_namespace=application_namespace,
             monotonic=self._monotonic,
         )
+        from opspilot.tools.kubernetes_tabular import TabularQueryTransport
+
+        self._tabular = TabularQueryTransport(
+            client=self._client,
+            application_namespace=application_namespace,
+            monotonic=self._monotonic,
+        )
 
     def fetch(self, request: TransportRequest) -> TransportResponse:
         if request.tool == _POD_LOGS_TOOL:
             return self._logs.fetch(request)
+        if request.tool == _TABULAR_TOOL:
+            return self._tabular.fetch(request)
         if request.tool not in K8S_TOOLS:
             raise TransportError("TOOL_NOT_SUPPORTED")
         deadline = self._monotonic() + request.timeout_seconds
@@ -1411,13 +1426,16 @@ def kubernetes_registrations(
 
 def _registrations() -> tuple[ToolRegistration, ...]:
     """Every registration this transport serves under the profiles' 24 h
-    frame -- the two object queries and ``fetch_pod_logs`` (A3) -- for the
+    frame -- the two object queries, ``fetch_pod_logs`` (A3) and
+    ``kubernetes_tabular_query`` (A6) -- for the
     private inventory seam ``otel_demo._registrations`` also offers."""
     from opspilot.tools.kubernetes_logs import pod_logs_registrations
+    from opspilot.tools.kubernetes_tabular import tabular_registrations
 
     return (
         *kubernetes_registrations(max_window_seconds=OBSERVATION_SECONDS),
         *pod_logs_registrations(max_window_seconds=OBSERVATION_SECONDS),
+        *tabular_registrations(max_window_seconds=OBSERVATION_SECONDS),
     )
 
 
