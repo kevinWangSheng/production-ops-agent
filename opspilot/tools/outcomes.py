@@ -98,9 +98,6 @@ DENIED_REASONS = frozenset(
 ERROR_REASONS = frozenset(
     {
         "EVIDENCE_NOT_COMMITTED",
-        # Tool expansion A6-2: a column specification outside the supported
-        # subset, refused before sending.
-        "INVALID_COLUMNS",
         "INVALID_PARAMS",
         # Tool expansion A4-2: a trace tag filter that does not parse, refused
         # before sending.

@@ -206,13 +206,10 @@ def _utf8_text(value: str) -> bool:
 # the cluster query's two denials: a Secret asked for (refused before sending)
 # and an HTTP 401/403 from the API server. ``INVALID_TAGS`` (tool expansion
 # A4-2) is the trace tag search's fixed input code: a tags string that does
-# not parse as logfmt, refused before sending. ``INVALID_COLUMNS`` (tool
-# expansion A6-2) is the column query's: a column specification outside the
-# supported subset, refused before sending.
+# not parse as logfmt, refused before sending.
 SOURCE_ERROR_REASONS = frozenset(
     {
         "EVIDENCE_NOT_READABLE",
-        "INVALID_COLUMNS",
         "INVALID_PARAMS",
         "INVALID_TAGS",
         "RESOURCE_NOT_ALLOWED",

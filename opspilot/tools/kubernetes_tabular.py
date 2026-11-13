@@ -16,7 +16,8 @@ command-line client's custom-columns printer. Decision table r3 A6-1 to A6-6:
   ``{}`` around the path. A missing field, an index out of range, a null or
   an empty ``[*]`` is ``<none>``; several values are joined by commas. At
   most 20 columns and 2000 characters; ``'`` ``/`` ``;`` and line breaks are
-  refused. Anything else is ``INVALID_COLUMNS`` before anything is sent,
+  refused. Anything else is ``INVALID_PARAMS`` with the fixed code
+  ``INVALID_COLUMNS`` before anything is sent,
   with the offending column echoed in the refusal body.
 * Columns are evaluated here, in Python (A6-3): no jq.
 * ``filter_pattern`` is case-sensitive and matched against each row's
@@ -412,7 +413,7 @@ _COLUMNS_TEXT = (
     "recursive descent (..), slices, negative indexes and quoted keys are "
     f"not supported. At most {MAX_COLUMNS} columns and {MAX_COLUMNS_CHARS} "
     "characters; a column outside this subset is refused with "
-    "INVALID_COLUMNS before anything is sent."
+    "INVALID_PARAMS (INVALID_COLUMNS) before anything is sent."
 )
 
 _LABEL_KEYS_TEXT = (
@@ -539,7 +540,8 @@ _VALUES_FORMAT = (
     "before anything is sent; namespace, when given, is a DNS label. columns "
     f"is HEADER:PATH entries separated by commas, at most {MAX_COLUMNS} and "
     f"{MAX_COLUMNS_CHARS} characters, without ' / ; or line breaks; anything "
-    "outside the supported subset is INVALID_COLUMNS before anything is "
+    "outside the supported subset is INVALID_PARAMS (INVALID_COLUMNS) before "
+    "anything is "
     f"sent. filter_pattern is at most {MAX_PATTERN_CHARS} characters."
 )
 _LIMITS = (
@@ -573,7 +575,7 @@ _ERROR_CLASSES: Mapping[str, str] = {
         for key, value in ERROR_CLASSES.items()
         if not key.startswith("JQ_") and key != "INVALID_JQ"
     },
-    "INVALID_COLUMNS": "INVALID_COLUMNS",
+    "INVALID_COLUMNS": "INVALID_PARAMS",
     "INVALID_FILTER": "INVALID_PARAMS",
     "FILTER_FAILED": "SOURCE_ERROR",
 }

@@ -21,9 +21,7 @@ from opspilot.tools.executor import (
     TransportResultTooLarge,
     TransportTimeout,
 )
-from opspilot.tools.outcomes import ERROR_REASONS
 from opspilot.tools.profiles import select_profile
-from opspilot.tools.registry import SOURCE_ERROR_REASONS
 from tests.m1_tool_support import FakeClock
 from tests.test_554_kubernetes_core_impl import (
     API,
@@ -208,8 +206,8 @@ def test_invalid_columns_are_refused_before_sending_with_the_column_echoed():
     assert response.source_status == "INVALID_COLUMNS"
     assert _body(response)["column"] == "BAD:.a[?(@.x)]"
     assert api.requests == []
-    assert "INVALID_COLUMNS" in ERROR_REASONS
-    assert "INVALID_COLUMNS" in SOURCE_ERROR_REASONS
+    registration = tab.tabular_registrations(max_window_seconds=86400)[0]
+    assert registration.classify("INVALID_COLUMNS") == "INVALID_PARAMS"
 
 
 def test_secrets_are_refused_first_whatever_the_columns():
@@ -345,7 +343,7 @@ def test_executor_adopts_the_table_and_reports_invalid_columns(monkeypatch, tmp_
     assert ok.model_view["count"] == 1
     assert ok.model_view["source_start_at"] is None
     bad = executor.execute(_call(TOOL, {"kind": "pods", "columns": "A:.a/b"}))
-    assert (bad.status, bad.reason) == ("error", "INVALID_COLUMNS")
+    assert (bad.status, bad.reason) == ("error", "INVALID_PARAMS")
     api.pages["/api/v1/pods"] = 403
     denied = executor.execute(_call(TOOL, {"kind": "pods", "columns": COLUMNS}))
     assert (denied.status, denied.reason) == ("error", "SOURCE_FORBIDDEN")
