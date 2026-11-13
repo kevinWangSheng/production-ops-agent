@@ -83,6 +83,7 @@
 按 Q8，每个新数据源落地时在此加一行：数据源、返回什么、发往哪里。
 
 - A4（#556，只在 `otel-demo-ext`）：lab Jaeger 1.53.0 查询 API 的 `/api/traces`（按服务、标签、操作、时长）、`/api/traces/{id}`、`/api/services`、`/api/operations`，经现有 Jaeger 传输 GET、匿名直连；返回按 `traces_search` 同一白名单投影的 span 行（其他标签值不出），以及服务名、操作名清单（脱敏、截短）；去向与 `traces_search` 相同：模型上下文与证据库，LangSmith 只在 lab 闸门放行时导出。
+- A5（#557）lab Prometheus 的 `/api/v1/query`、`/api/v1/series`、`/api/v1/labels`（沿用现有只读代理与只读账号）：某一时刻的 PromQL 结果、匹配选择器的序列标签集（≤100 条）、标签名（≤100 条）。原样响应存入证据库；视图经现有脱敏后进入 Run 所选模型；lab 内随 LangSmith trace 导出（`otel-demo-ext` 已在 lab 闸门允许名单）。不新增接收方。
 
 ## 待决
 
