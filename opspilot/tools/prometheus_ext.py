@@ -668,7 +668,13 @@ _STATE_ERROR_CLASSES = {
 def _state_registrations(
     common: Mapping[str, Any],
 ) -> tuple[ToolRegistration, ...]:
-    """B2: rules, scrape targets and metric metadata on the A5 envelope (B2-6)."""
+    """B2: rules, scrape targets and metric metadata on the A5 envelope (B2-6),
+    except the secrets declaration: rule annotations, target labels and
+    scrape URLs, and metric help text are operator-written values kept as
+    returned that the shared credential redaction cannot recognize as bare
+    values, so these three declare ``may_contain_secrets=True`` (C3 section 8,
+    Q3); the A5 three keep ``False``."""
+    common = {**common, "may_contain_secrets": True}
     rules = ToolRegistration(
         name=RULES_TOOL,
         verb="list",

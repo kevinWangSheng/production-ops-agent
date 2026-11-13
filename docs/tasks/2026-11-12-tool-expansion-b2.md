@@ -44,7 +44,7 @@ lab 的 Prometheus 只读代理现在**有意拒绝**告警规则与指标元数
 
 ## 没有真实实例时的已知风险
 
-1. lab 抓取目标的标签里是否带 lab 私有值（未确认，取证时扫）。
+1. 规则注解、抓取目标标签与 scrapeUrl、指标说明里是否带 lab 私有值（未确认，取证时扫）。这些值原样返回，共用的凭据脱敏识别不了裸值，所以三个工具登记 `may_contain_secrets=True`（C3 §8、Q3），本 PR 不加脱敏机制。
 2. Prometheus v3.5 的规则接口是否默认分页（文档写分组上限需显式传，不传不分页）。
 
 ## 全量探针
@@ -62,11 +62,11 @@ lab 的 Prometheus 只读代理现在**有意拒绝**告警规则与指标元数
 - 规则：结果路径 `data.groups`，原样字节入证据；`data.groupNextToken` 出现即标不完整（对应风险 2）。rule_name、rule_group、file 只校验非空、≤2000 字符、无控制字符，以 `[]` 形式转发。理由：照上游参数，挡掉空串与换行。
 - 目标：结果是投影记录（`targets` 加原始响应 sha256 与字节数），视图另给 `jobs_seen`（全部活跃目标的 job 名，最多 100 个）与 `active_targets_total`，便于名字没匹配时改正。理由：`scrapePool` 不一定等于 job，模型需要看到可用 job 名。
 - 元数据：Prometheus 返回的是「指标名 → 条目列表」的对象，执行器要求结果是列表，所以投影成每条 `{metric, type, help, unit}` 一行；不完整按指标个数满 100 判定。指标名按经典格式 `[A-Za-z_:][A-Za-z0-9_:]*`、≤200 字符校验。
-- 三个工具 `may_contain_secrets=False`、超时 30 秒、1 MiB 读取上限、视图 25k，同 A5（B2-6）；空结果是执行器的 `no_data`。
+- 三个工具超时 30 秒、1 MiB 读取上限、视图 25k，同 A5（B2-6）；空结果是执行器的 `no_data`。秘密声明与 A5 不同：三个工具登记 `may_contain_secrets=True`（独立审查 P1，见风险 1），A5 的三个仍为 `False`。
 
 偏离与已知限制：
 
-- 规则与目标的返回里有 annotations、标签和 scrapeUrl，lab 私有值未确认（风险 1），只靠共用的凭据脱敏。
+- 规则与目标的返回里有 annotations、标签和 scrapeUrl，lab 私有值未确认（风险 1）：已按实登记 `may_contain_secrets=True`，仍只有共用的凭据脱敏，裸值是已声明的残余风险。
 - Prometheus v3 允许 UTF-8 指标名，元数据的名字校验只认经典格式，带点号等字符的名字会被拒。
 - HEAD 在三条新路径上预期 405 沿用现有读路径的实测结论，未在真实实例确认。
 

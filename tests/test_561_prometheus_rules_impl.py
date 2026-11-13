@@ -382,3 +382,15 @@ def test_probe_expects_200_for_the_new_gets_and_403_for_the_rest():
         assert ("GET", path) in probe.DENIED_REQUESTS
         assert ("GET", path, None, 403) in probe.HOLMES_ROWS
     assert probe._query("/api/v1/targets") == "?state=active"
+
+
+def test_b2_tools_declare_may_contain_secrets_and_a5_tools_do_not():
+    registrations = {r.name: r for r in prometheus_ext.prometheus_ext_registrations()}
+    for name in B2:
+        assert registrations[name].may_contain_secrets is True
+    for name in (
+        prometheus_ext.INSTANT_QUERY_TOOL,
+        prometheus_ext.SERIES_TOOL,
+        prometheus_ext.LABELS_TOOL,
+    ):
+        assert registrations[name].may_contain_secrets is False
