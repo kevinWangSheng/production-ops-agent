@@ -5,8 +5,7 @@ changed), plus the cluster object queries of
 :mod:`opspilot.tools.kubernetes_core` and the Prometheus instant query, series
 and label-name tools of :mod:`opspilot.tools.prometheus_ext` (A5) with its
 rules, scrape-target and metric-metadata tools (B2). Later tool-expansion
-items (column queries, more trace and Prometheus tools) join this profile,
-never ``otel-demo``.
+items join this profile, never ``otel-demo``.
 
 Where configuration is read (A2-3): the face and the versions are built from
 template text only, so the web -- which selects the profile to record a
