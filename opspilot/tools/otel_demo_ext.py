@@ -34,7 +34,7 @@ from opspilot.investigation.loop import DISCIPLINE_VARIANT, investigation_versio
 from opspilot.investigation.reports import DATA_SOURCES_INSTRUCTION
 from opspilot.investigation.runner import ExecutorFactory
 from opspilot.persistence import DurableStore, Lease
-from opspilot.tools import kubernetes_core, otel_demo
+from opspilot.tools import jaeger_query, kubernetes_core, otel_demo
 from opspilot.tools.evidence_read import (
     EvidenceReader,
     EvidenceReadTransport,
@@ -75,6 +75,7 @@ PROFILE_NAME = "otel-demo-ext"
 #: ``otel-demo``'s tools array unchanged, then the new tools.
 TOOL_SCHEMAS: tuple[Mapping[str, Any], ...] = (
     *otel_demo.TOOL_SCHEMAS,
+    *jaeger_query.TOOL_SCHEMAS,
     *kubernetes_core.TOOL_SCHEMAS,
 )
 
@@ -89,7 +90,7 @@ def _data_sources() -> dict[str, Any]:
     return {
         "available": {
             "prometheus": sorted(otel_demo.PROMETHEUS_TOOLS),
-            "jaeger": [otel_demo.TRACES_TOOL],
+            "jaeger": [otel_demo.TRACES_TOOL, *jaeger_query.TOOL_NAMES],
             "kubernetes": sorted(kubernetes_core.K8S_TOOLS),
         },
         "not_integrated": list(_NOT_INTEGRATED),
@@ -100,6 +101,9 @@ def _data_sources() -> dict[str, Any]:
 def _registrations() -> tuple[ToolRegistration, ...]:
     return (
         *otel_demo._registrations(),
+        *jaeger_query.jaeger_registrations(
+            max_window_seconds=otel_demo.OBSERVATION_SECONDS
+        ),
         *kubernetes_core.kubernetes_registrations(
             max_window_seconds=otel_demo.OBSERVATION_SECONDS
         ),
@@ -221,6 +225,9 @@ def otel_demo_ext_executor_factory(
         credentials={otel_demo.CREDENTIAL_REF: config.token},
         basic_auth={} if pair is None else {otel_demo.CREDENTIAL_REF: pair},
     )
+    traces = jaeger_query.JaegerQueryTransport(
+        credentials={otel_demo.CREDENTIAL_REF: config.token},
+    )
     cluster = kubernetes_core.KubernetesTransport(
         credentials={kubernetes_core.CREDENTIAL_REF: kubernetes.token},
         jq_path=jq,
@@ -269,6 +276,7 @@ def otel_demo_ext_executor_factory(
                 ),
                 sources=sources,
                 kubernetes=cluster,
+                routes=dict.fromkeys(jaeger_query.TOOL_NAMES, traces),
             ),
             evidence=evidence,
             control=control,
