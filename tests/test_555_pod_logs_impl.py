@@ -327,3 +327,27 @@ def test_regex_child_is_a_fixed_package_file():
         deadline=time.monotonic() + 10,
     )
     assert decided is not None and decided.keep == (True, False)
+
+
+@pytest.mark.parametrize(
+    "pod_name",
+    [
+        "a" * 64,
+        "ok." + "b" * 64,
+        ".".join(["c" * 63] * 4),  # 255 characters
+        "a..b",
+        "a.",
+    ],
+)
+def test_pod_name_with_a_label_over_63_or_over_253_sends_nothing(monkeypatch, pod_name):
+    assert not k8s.check_object_name(pod_name)
+    opener = LogOpener(_pod("app"), {})
+    executor, _, _, _, _ = _executor(monkeypatch, opener)
+    outcome = executor.execute(_call(TOOL, {"pod_name": pod_name, "namespace": NS}))
+    assert outcome.reason == "INVALID_PARAMS" and opener.requests == []
+
+
+def test_pod_name_at_the_limits_is_accepted():
+    assert k8s.check_object_name("a" * 63)
+    assert k8s.check_object_name(".".join(["c" * 63] * 3 + ["d" * 61]))  # 253
+    assert k8s.check_object_name("checkout-7d9f8c6b5-abcde")

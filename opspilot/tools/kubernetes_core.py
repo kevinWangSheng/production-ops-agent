@@ -157,10 +157,8 @@ _JQ_COMPILE_STATUS = 3
 _JQ_RUNTIME_STATUS = 5
 
 _DNS_LABEL = re.compile(r"[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?")
-#: A3-6: an object name (a Pod's) is a DNS subdomain, at most 253 characters.
-_DNS_SUBDOMAIN = re.compile(
-    r"[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*"
-)
+#: A3-6: an object name (a Pod's) is a DNS subdomain: dot-separated DNS
+#: labels of at most 63 characters each, at most 253 characters in all.
 MAX_OBJECT_NAME_CHARS = 253
 _JQ_FORBIDDEN = ("import", "include")
 
@@ -266,11 +264,13 @@ def check_namespace(namespace: object) -> bool:
 
 
 def check_object_name(name: object) -> bool:
-    """A3-6: an object name is a DNS subdomain (it is spliced into the path)."""
+    """A3-6: an object name is a DNS subdomain (it is spliced into the path):
+    every dot-separated part a DNS label (at most 63 characters), at most
+    253 characters in all."""
     return (
         isinstance(name, str)
-        and len(name) <= MAX_OBJECT_NAME_CHARS
-        and _DNS_SUBDOMAIN.fullmatch(name) is not None
+        and 0 < len(name) <= MAX_OBJECT_NAME_CHARS
+        and all(_DNS_LABEL.fullmatch(part) is not None for part in name.split("."))
     )
 
 
