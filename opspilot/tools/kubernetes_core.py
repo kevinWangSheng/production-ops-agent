@@ -43,7 +43,6 @@ import json
 import os
 import re
 import shutil
-import socket
 import ssl
 import subprocess
 import tempfile
@@ -525,10 +524,10 @@ class KubernetesClient:
         try:
             thread.start()
             return future.result(timeout=sockets.remaining())
-        except (TimeoutError, socket.timeout):
+        except TimeoutError:
             raise TransportTimeout("TIMEOUT") from None
         except urllib.error.URLError as error:
-            if isinstance(error.reason, (TimeoutError, socket.timeout)):
+            if isinstance(error.reason, TimeoutError):
                 raise TransportTimeout("TIMEOUT") from None
             raise TransportUnavailable("UNREACHABLE") from None
         except OSError:
