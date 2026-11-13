@@ -502,7 +502,7 @@ class _Read:
                 {
                     "timestamp": line.stamp,
                     "container": line.container,
-                    "instance": line.instance,
+                    "previous": line.instance == PREVIOUS,
                     "text": line.text[:MAX_LINE_CHARS],
                     "text_truncated": text_truncated,
                 }
@@ -631,7 +631,8 @@ _CANNOT_PROVE = (
 _DESCRIPTION = (
     "Fetch the logs of every container of one pod, the current instance and "
     "the previous (crashed or restarted) one, merged in time order; returns "
-    "the newest lines, each with timestamp, container and instance. Use "
+    "the newest lines, each with timestamp, container and previous (true "
+    "for the previous instance). Use "
     "filter to find errors (e.g. filter='err|error|fatal|fail|exception|panic') "
     "and exclude_filter to cut noise (e.g. exclude_filter='health|metrics|ping'). "
     "start_time and end_time are absolute RFC3339 times inside the "
@@ -712,8 +713,8 @@ _RETURNS = (
     "Log lines of every container of one pod, read from the cluster's API "
     "server: the current and the previous instance of each container, "
     "merged in time order, the newest lines kept, under lines; each line has "
-    "timestamp (as the API server wrote it), container, instance (current or "
-    "previous), text and text_truncated. The view adds backend_lines_returned "
+    "timestamp (as the API server wrote it), container, previous (true for "
+    "the previous instance), text and text_truncated. The view adds backend_lines_returned "
     "(lines matching the window and filters), lines_shown, lines_omitted, "
     "lines_requested, containers, streams (each stream's status: read, "
     "unavailable or not_read, bytes and lines read, read_limit_reached, "

@@ -110,7 +110,8 @@ def test_every_container_current_and_previous_merged_in_time_order(monkeypatch):
     assert outcome.status == "ok", outcome
     view = _view(outcome)
     texts = [
-        (row["container"], row["instance"], row["text"]) for row in view["content"]
+        (row["container"], ("previous" if row["previous"] else "current"), row["text"])
+        for row in view["content"]
     ]
     assert texts == [
         ("app", "previous", "panic: boom"),

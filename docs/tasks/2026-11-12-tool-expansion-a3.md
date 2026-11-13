@@ -63,7 +63,7 @@ A3 假设 A2 把配置、GET 传输、错误映射做成可复用函数，传输
 - 流返回 404（Pod 在调用中途被删）按 `POD_NOT_FOUND` 报整条；400 以外的其他 4xx 按 A2 的错误表报整条。
 - `filter`、`exclude_filter` 为空串视同未给（同上游 `if params.filter`）；超过 2000 字符或含 NUL 在发请求前拒绝（`INVALID_PARAMS`）。子进程失败或输出不合形状报 `SOURCE_ERROR`（`FILTER_FAILED`）。
 - `POD_NOT_FOUND` 的回显：拒绝视图的 `source_error` 带 `error_type=pod_not_found` 与一句含 namespace、Pod 名的提示（建议改用 `kubernetes_jq_query` 列 Pod）；`query` 里也有原参数。
-- 每行固定字段 `timestamp`（API 原样字符串，保留纳秒）、`container`、`instance`、`text`、`text_truncated`；同一时刻按纳秒、流、行号稳定排序。
+- 每行固定字段 `timestamp`（API 原样字符串，保留纳秒）、`container`、`previous`（布尔，是否上一次实例；独立合同测试按此键取值）、`text`、`text_truncated`；同一时刻按纳秒、流、行号稳定排序。
 - 视图字段：`pod`、`containers`、`streams`（每流状态、字节、行数、是否读满、读到的最后时刻）、`lines_requested`、`lines_read`、`lines_without_timestamp`、`lines_before_window`、`lines_after_window`、`lines_removed_by_filter`、`lines_removed_by_exclude_filter`、`long_lines_cut`、`filter_mode`、`bytes_read`、`read_limit_bytes`、`read_limit_reached`、`read_through`、`incomplete_reason`、`notes`、`cannot_prove`；与通用视图字段和 `lines_*` 单位计数无冲突。
 - 数据源清单：`fetch_pod_logs` 并入 `available.kubernetes`（独立合同测试要求）；A2 实现单测 `test_554` 对该清单的全等断言改为 ⊇（同 A5 先例）。
 - 接缝：`fetch_pod_logs` 由 `KubernetesTransport` 转交 `PodLogsTransport`（共用同一 client），档位里按精确名路由到该传输，`K8S_TOOLS` 不变；`kubernetes_core._registrations()` 清点含本工具（A3 合同测试的清点接缝）。
