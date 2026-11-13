@@ -81,6 +81,10 @@ DENIED_REASONS = frozenset(
         "EVIDENCE_NOT_READABLE",
         "OPERATION_BUDGET_EXHAUSTED",
         "PARAM_NOT_ALLOWED",
+        # Tool expansion A2-6: a resource the cluster query never reads
+        # (secrets), refused before sending; and a 401/403 from the source.
+        "RESOURCE_NOT_ALLOWED",
+        "SOURCE_FORBIDDEN",
         "SUSPENDED",
         "TARGET_NOT_AUTHORIZED",
         "TARGET_NOT_REGISTERED",

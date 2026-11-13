@@ -15,6 +15,13 @@ drives. Selection is by ``OPSPILOT_TOOL_PROFILE``:
   / ``OPSPILOT_OTEL_PROMETHEUS_PASSWORD`` (basic auth, the lab) or
   ``OPSPILOT_OTEL_TOKEN`` (bearer). The Observer's ``OPSPILOT_OBSERVER_*``
   variables are never read here (C3 §3, D3).
+* ``otel-demo-ext``: every ``otel-demo`` tool unchanged plus the read-only
+  cluster object queries (``opspilot.tools.otel_demo_ext``, tool expansion
+  A2). Its face and versions need no cluster setting, so the web starts
+  without one; only the worker reads ``OPSPILOT_K8S_API_URL``,
+  ``OPSPILOT_K8S_TOKEN``, ``OPSPILOT_K8S_CA_FILE`` and
+  ``OPSPILOT_K8S_NAMESPACE``, when it builds the executor, and refuses to
+  start without them or without ``jq``.
 
 Both processes must be started with the same value.
 """
@@ -33,17 +40,23 @@ from opspilot.tools.fixture import (
     fixture_face,
     fixture_versions,
 )
+from opspilot.tools.kubernetes_core import KubernetesConfig
 from opspilot.tools.otel_demo import (
     OtelDemoConfig,
     otel_demo_executor_factory,
     otel_demo_face,
     otel_demo_versions,
 )
+from opspilot.tools.otel_demo_ext import (
+    otel_demo_ext_executor_factory,
+    otel_demo_ext_face,
+    otel_demo_ext_versions,
+)
 
 __all__ = ["PROFILE_ENV", "PROFILE_NAMES", "ToolProfile", "select_profile"]
 
 PROFILE_ENV = "OPSPILOT_TOOL_PROFILE"
-PROFILE_NAMES = ("fixture", "otel-demo")
+PROFILE_NAMES = ("fixture", "otel-demo", "otel-demo-ext")
 
 
 @dataclass(frozen=True)
@@ -77,6 +90,30 @@ def _otel_demo(env: Mapping[str, str]) -> ToolProfile:
     )
 
 
+def _otel_demo_ext(env: Mapping[str, str]) -> ToolProfile:
+    config = OtelDemoConfig.from_env(env)
+    # Copied now, parsed only by the worker's executor factory (A2-3).
+    snapshot = {k: v for k, v in env.items() if k.startswith("OPSPILOT_K8S_")}
+
+    def executor_factory(
+        store: DurableStore, evidence: EvidenceSink, clock: Clock
+    ) -> ExecutorFactory:
+        return otel_demo_ext_executor_factory(
+            store,
+            evidence=evidence,
+            clock=clock,
+            config=config,
+            kubernetes=KubernetesConfig.from_env(snapshot),
+        )
+
+    return ToolProfile(
+        name="otel-demo-ext",
+        face=otel_demo_ext_face,
+        versions=otel_demo_ext_versions,
+        executor_factory=executor_factory,
+    )
+
+
 def select_profile(env: Mapping[str, str]) -> ToolProfile:
     """The profile ``env`` names; an unknown name is a startup error."""
     name = env.get(PROFILE_ENV) or "fixture"
@@ -84,4 +121,6 @@ def select_profile(env: Mapping[str, str]) -> ToolProfile:
         return _fixture()
     if name == "otel-demo":
         return _otel_demo(env)
+    if name == "otel-demo-ext":
+        return _otel_demo_ext(env)
     raise SystemExit(f"{PROFILE_ENV} must be one of {', '.join(PROFILE_NAMES)}")
