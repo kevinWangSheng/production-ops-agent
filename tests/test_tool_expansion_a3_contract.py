@@ -95,7 +95,9 @@ def _log_body(*lines: str) -> bytes:
     return ("\n".join(lines) + ("\n" if lines else "")).encode()
 
 
-def _pod(name: str = POD, *, namespace: str = K8S_NAMESPACE, containers=("app",)) -> bytes:
+def _pod(
+    name: str = POD, *, namespace: str = K8S_NAMESPACE, containers=("app",)
+) -> bytes:
     return json.dumps(
         {
             "apiVersion": "v1",
@@ -129,7 +131,11 @@ class PodLogOpener:
         self.timeouts.append(timeout)
         url = _url(request)
         parts = urlsplit(url)
-        if parts.path.endswith(f"/pods/{POD}") or "/pods/" in parts.path and not parts.path.endswith("/log"):
+        if (
+            parts.path.endswith(f"/pods/{POD}")
+            or "/pods/" in parts.path
+            and not parts.path.endswith("/log")
+        ):
             value: bytes | int = (
                 self.pod_status if self.pod_status is not None else self.pod_body
             )
@@ -165,7 +171,9 @@ def _params(**overrides) -> dict[str, object]:
     return values
 
 
-def _request(params: dict[str, object], *, window: Window = AUTHORIZED_WINDOW, index: int = 0) -> ToolRequest:
+def _request(
+    params: dict[str, object], *, window: Window = AUTHORIZED_WINDOW, index: int = 0
+) -> ToolRequest:
     return ToolRequest(
         step_id="a3-step",
         tool_index=index,
@@ -241,8 +249,12 @@ def _alert_executor(monkeypatch, opener):
 def test_extension_face_is_a_superset_and_otel_demo_is_byte_stable():
     base = select_profile({PROFILE_ENV: "otel-demo"})
     ext = select_profile({PROFILE_ENV: "otel-demo-ext"})
-    base_names = [item["function"]["name"] for item in base.face(FakeClock()).tool_schemas]
-    ext_names = [item["function"]["name"] for item in ext.face(FakeClock()).tool_schemas]
+    base_names = [
+        item["function"]["name"] for item in base.face(FakeClock()).tool_schemas
+    ]
+    ext_names = [
+        item["function"]["name"] for item in ext.face(FakeClock()).tool_schemas
+    ]
     assert tuple(base_names) == BASE_TOOL_NAMES
     assert ext_names[: len(base_names)] == base_names
     assert set(ext_names) >= set(base_names) | {LOG_TOOL}
@@ -283,17 +295,24 @@ def test_log_schema_and_registration_pin_the_public_surface():
     assert "100" in text and "1000" in text
     assert "cannot" in text or "unknown" in text
 
-    registration = next(item for item in kubernetes_core._registrations() if item.name == LOG_TOOL)
+    registration = next(
+        item for item in kubernetes_core._registrations() if item.name == LOG_TOOL
+    )
     assert registration.source == "otel-demo"
     assert registration.verb == "logs"
     assert registration.may_contain_secrets is True
     description = registration.description
     assert description.returns and description.window_format
     assert description.values_format and description.limits and description.cannot_prove
-    assert "cannot" in description.cannot_prove.lower() or "unknown" in description.cannot_prove.lower()
+    assert (
+        "cannot" in description.cannot_prove.lower()
+        or "unknown" in description.cannot_prove.lower()
+    )
 
 
-def test_multiple_containers_read_current_and_previous_once_sort_and_count_one_operation(monkeypatch):
+def test_multiple_containers_read_current_and_previous_once_sort_and_count_one_operation(
+    monkeypatch,
+):
     streams = {
         ("app", False): _log_body(
             f"{_rfc3339(START + timedelta(hours=1))} app-old",
@@ -312,7 +331,10 @@ def test_multiple_containers_read_current_and_previous_once_sort_and_count_one_o
     opener = PodLogOpener(pod_body=_pod(containers=("app", "sidecar")), streams=streams)
     executor, _, _, _, _ = _executor(monkeypatch, opener)
     outcome = executor.execute(
-        _call(LOG_TOOL, _params(start_time=_rfc3339(START), end_time=_rfc3339(END), limit=4))
+        _call(
+            LOG_TOOL,
+            _params(start_time=_rfc3339(START), end_time=_rfc3339(END), limit=4),
+        )
     )
     assert (outcome.status, outcome.reason) == ("ok", None), outcome.model_view
     assert len(opener.requests) == 5  # 1 Pod GET + 2 streams for each of 2 containers.
@@ -323,15 +345,23 @@ def test_multiple_containers_read_current_and_previous_once_sort_and_count_one_o
     )
     text = " ".join(_row_text(row) for row in _rows(outcome))
     assert "app-new" in text and "sidecar-new" in text
-    assert all(_row_value(row, "container", "container_name") in {"app", "sidecar"} for row in _rows(outcome))
-    assert {bool(_row_value(row, "previous", "is_previous")) for row in _rows(outcome)} == {False, True}
+    assert all(
+        _row_value(row, "container", "container_name") in {"app", "sidecar"}
+        for row in _rows(outcome)
+    )
+    assert {
+        bool(_row_value(row, "previous", "is_previous")) for row in _rows(outcome)
+    } == {False, True}
     for index, request in enumerate(opener.requests):
         assert request.get_method() == "GET"
         assert _headers(request).get("authorization") == f"Bearer {K8S_TOKEN}"
         if index:
             query = parse_qs(urlsplit(_url(request)).query)
             assert query.get("timestamps") == ["true"]
-            assert "limitBytes" in query and 0 < int(query["limitBytes"][0]) <= 4 * 1024 * 1024
+            assert (
+                "limitBytes" in query
+                and 0 < int(query["limitBytes"][0]) <= 4 * 1024 * 1024
+            )
 
 
 def test_previous_instance_and_not_started_400_are_notes_only(monkeypatch):
@@ -339,11 +369,15 @@ def test_previous_instance_and_not_started_400_are_notes_only(monkeypatch):
         ("app", False): _log_body(f"{_rfc3339(START)} app-current"),
         ("app", True): 400,
         ("sidecar", False): 400,
-        ("sidecar", True): _log_body(f"{_rfc3339(START + timedelta(minutes=1))} sidecar-previous"),
+        ("sidecar", True): _log_body(
+            f"{_rfc3339(START + timedelta(minutes=1))} sidecar-previous"
+        ),
     }
     opener = PodLogOpener(pod_body=_pod(containers=("app", "sidecar")), streams=streams)
     executor, _, _, _, _ = _executor(monkeypatch, opener)
-    outcome = executor.execute(_call(LOG_TOOL, _params(start_time=_rfc3339(START), end_time=_rfc3339(END))))
+    outcome = executor.execute(
+        _call(LOG_TOOL, _params(start_time=_rfc3339(START), end_time=_rfc3339(END)))
+    )
     assert (outcome.status, outcome.reason) == ("ok", None), outcome.model_view
     notes = json.dumps(_view(outcome), ensure_ascii=False).lower()
     assert "previous" in notes and "sidecar" in notes
@@ -382,7 +416,9 @@ def test_pod_404_is_invalid_params_with_pod_not_found_detail(monkeypatch):
 def test_all_empty_streams_are_no_data(monkeypatch):
     opener = PodLogOpener(pod_body=_pod(containers=("app",)), streams={})
     executor, _, _, _, _ = _executor(monkeypatch, opener)
-    outcome = executor.execute(_call(LOG_TOOL, _params(start_time=_rfc3339(START), end_time=_rfc3339(END))))
+    outcome = executor.execute(
+        _call(LOG_TOOL, _params(start_time=_rfc3339(START), end_time=_rfc3339(END)))
+    )
     assert (outcome.status, outcome.reason) == ("no_data", "NO_DATA")
     assert _rows(outcome) == []
 
@@ -407,17 +443,25 @@ def test_read_cap_keeps_rows_marks_incomplete_and_suggests_a_later_start(monkeyp
     )
     executor, _, _, _, _ = _executor(monkeypatch, opener)
     outcome = executor.execute(
-        _call(LOG_TOOL, _params(start_time=_rfc3339(START), end_time=_rfc3339(END), limit=2))
+        _call(
+            LOG_TOOL,
+            _params(start_time=_rfc3339(START), end_time=_rfc3339(END), limit=2),
+        )
     )
     assert outcome.status == "ok", outcome.model_view
     view = _view(outcome)
     assert view["incomplete"] is True
     assert _rows(outcome)
     notes = json.dumps(view, ensure_ascii=False).lower()
-    assert any(word in notes for word in ("4 mib", "4mib", "read limit", "since", "start", "later"))
+    assert any(
+        word in notes
+        for word in ("4 mib", "4mib", "read limit", "since", "start", "later")
+    )
 
 
-def test_late_lines_are_dropped_and_source_bounds_stay_in_the_authorized_window(monkeypatch):
+def test_late_lines_are_dropped_and_source_bounds_stay_in_the_authorized_window(
+    monkeypatch,
+):
     late = END + timedelta(minutes=1)
     opener = PodLogOpener(
         streams={
@@ -436,7 +480,10 @@ def test_late_lines_are_dropped_and_source_bounds_stay_in_the_authorized_window(
     assert "late" not in json.dumps(_rows(outcome))
     assert outcome.evidence is not None
     assert outcome.evidence.source_end_at <= AUTHORIZED_WINDOW.end
-    assert "drop" in json.dumps(_view(outcome)).lower() or "outside" in json.dumps(_view(outcome)).lower()
+    assert (
+        "drop" in json.dumps(_view(outcome)).lower()
+        or "outside" in json.dumps(_view(outcome)).lower()
+    )
 
 
 def test_untimestamped_lines_are_dropped_and_counted_in_notes(monkeypatch):
@@ -449,7 +496,9 @@ def test_untimestamped_lines_are_dropped_and_counted_in_notes(monkeypatch):
         }
     )
     executor, _, _, _, _ = _executor(monkeypatch, opener)
-    outcome = executor.execute(_call(LOG_TOOL, _params(start_time=_rfc3339(START), end_time=_rfc3339(END))))
+    outcome = executor.execute(
+        _call(LOG_TOOL, _params(start_time=_rfc3339(START), end_time=_rfc3339(END)))
+    )
     assert outcome.status == "ok"
     assert "timestamped" in json.dumps(_rows(outcome))
     assert "no timestamp" not in json.dumps(_rows(outcome)).lower()
@@ -462,7 +511,9 @@ def test_long_lines_are_cut_to_2000_chars_and_marked(monkeypatch):
         streams={("app", False): _log_body(f"{_rfc3339(START)} " + "z" * 2500)}
     )
     executor, _, _, _, _ = _executor(monkeypatch, opener)
-    outcome = executor.execute(_call(LOG_TOOL, _params(start_time=_rfc3339(START), end_time=_rfc3339(END))))
+    outcome = executor.execute(
+        _call(LOG_TOOL, _params(start_time=_rfc3339(START), end_time=_rfc3339(END)))
+    )
     assert outcome.status == "ok"
     row = _rows(outcome)[0]
     text = _row_text(row)
@@ -510,7 +561,10 @@ def test_invalid_regex_falls_back_to_substring_and_notes_the_fallback(monkeypatc
     )
     executor, _, _, _, _ = _executor(monkeypatch, opener)
     outcome = executor.execute(
-        _call(LOG_TOOL, _params(start_time=_rfc3339(START), end_time=_rfc3339(END), filter="["))
+        _call(
+            LOG_TOOL,
+            _params(start_time=_rfc3339(START), end_time=_rfc3339(END), filter="["),
+        )
     )
     assert outcome.status == "ok"
     content = json.dumps(_rows(outcome), ensure_ascii=False)
@@ -560,12 +614,20 @@ def test_pathological_regex_is_hard_stopped_with_the_a2_timeout_class(monkeypatc
         _params(start_time=3600, end_time=_rfc3339(END)),
         _params(start_time=_rfc3339(START)),
         _params(end_time=_rfc3339(END)),
-        _params(start_time=_rfc3339(AUTHORIZED_WINDOW.start - timedelta(seconds=1)), end_time=_rfc3339(END)),
-        _params(start_time=_rfc3339(START), end_time=_rfc3339(AUTHORIZED_WINDOW.end + timedelta(seconds=1))),
+        _params(
+            start_time=_rfc3339(AUTHORIZED_WINDOW.start - timedelta(seconds=1)),
+            end_time=_rfc3339(END),
+        ),
+        _params(
+            start_time=_rfc3339(START),
+            end_time=_rfc3339(AUTHORIZED_WINDOW.end + timedelta(seconds=1)),
+        ),
         _params(start_time="2026-09-14T10:00:00", end_time=_rfc3339(END)),
     ],
 )
-def test_time_inputs_are_absolute_bounded_and_echo_the_authorized_window(monkeypatch, params):
+def test_time_inputs_are_absolute_bounded_and_echo_the_authorized_window(
+    monkeypatch, params
+):
     opener = PodLogOpener()
     executor, _, _, _, _ = _executor(monkeypatch, opener)
     outcome = executor.execute(_call(LOG_TOOL, params))
@@ -576,7 +638,9 @@ def test_time_inputs_are_absolute_bounded_and_echo_the_authorized_window(monkeyp
     assert opener.requests == []
 
 
-def test_explicit_start_time_is_sent_as_since_time_and_ordinary_default_is_one_hour_before_frame_end(monkeypatch):
+def test_explicit_start_time_is_sent_as_since_time_and_ordinary_default_is_one_hour_before_frame_end(
+    monkeypatch,
+):
     opener = PodLogOpener()
     executor, _, _, _, _ = _executor(monkeypatch, opener)
     outcome = executor.execute(
@@ -589,7 +653,9 @@ def test_explicit_start_time_is_sent_as_since_time_and_ordinary_default_is_one_h
     executor, _, _, _, _ = _executor(monkeypatch, opener)
     outcome = executor.execute(_call(LOG_TOOL, _params()))
     assert outcome.status == "no_data"
-    assert opener.query(1)["sinceTime"] == [_rfc3339(AUTHORIZED_WINDOW.end - timedelta(hours=1))]
+    assert opener.query(1)["sinceTime"] == [
+        _rfc3339(AUTHORIZED_WINDOW.end - timedelta(hours=1))
+    ]
 
 
 def test_alert_default_window_starts_one_hour_before_alert_anchor(monkeypatch):
@@ -598,7 +664,9 @@ def test_alert_default_window_starts_one_hour_before_alert_anchor(monkeypatch):
     outcome = executor.execute(_request(_params(), window=alert_window))
     assert outcome.status == "no_data"
     assert opener.query(1)["sinceTime"] == [_rfc3339(alert.default_query_window[0])]
-    assert opener.query(1)["sinceTime"] != [_rfc3339(alert_window.end - timedelta(hours=1))]
+    assert opener.query(1)["sinceTime"] != [
+        _rfc3339(alert_window.end - timedelta(hours=1))
+    ]
 
 
 @pytest.mark.parametrize("limit", [0, 1001, -1])
@@ -623,7 +691,9 @@ def test_default_limit_is_100_and_view_reports_displayed_and_omitted_lines(monke
     lines = [f"{_rfc3339(START + timedelta(seconds=i))} line-{i}" for i in range(120)]
     opener = PodLogOpener(streams={("app", False): _log_body(*lines)})
     executor, _, _, _, _ = _executor(monkeypatch, opener)
-    outcome = executor.execute(_call(LOG_TOOL, _params(start_time=_rfc3339(START), end_time=_rfc3339(END))))
+    outcome = executor.execute(
+        _call(LOG_TOOL, _params(start_time=_rfc3339(START), end_time=_rfc3339(END)))
+    )
     assert outcome.status == "ok"
     view = _view(outcome)
     assert len(_rows(outcome)) == 100
@@ -649,13 +719,19 @@ def test_container_name_is_url_encoded_and_no_otel_credential_is_used(monkeypatc
         streams={(container, False): _log_body(f"{_rfc3339(START)} encoded")},
     )
     executor, _, _, _, _ = _executor(monkeypatch, opener)
-    outcome = executor.execute(_call(LOG_TOOL, _params(start_time=_rfc3339(START), end_time=_rfc3339(END))))
+    outcome = executor.execute(
+        _call(LOG_TOOL, _params(start_time=_rfc3339(START), end_time=_rfc3339(END)))
+    )
     assert outcome.status == "ok"
     log_request = opener.requests[1]
     raw_query = urlsplit(_url(log_request)).query
     assert quote(container, safe="") in raw_query
     assert all(request.get_method() == "GET" for request in opener.requests)
-    assert all(_headers(request).get("authorization") == f"Bearer {K8S_TOKEN}" for request in opener.requests)
-    assert OTEL_TOKEN not in json.dumps([_headers(request) for request in opener.requests])
+    assert all(
+        _headers(request).get("authorization") == f"Bearer {K8S_TOKEN}"
+        for request in opener.requests
+    )
+    assert OTEL_TOKEN not in json.dumps(
+        [_headers(request) for request in opener.requests]
+    )
     assert kubernetes_core.CREDENTIAL_REF == "k8s-ro"
-
