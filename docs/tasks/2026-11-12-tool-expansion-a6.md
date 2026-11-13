@@ -41,7 +41,7 @@ kubectl、服务端表格打印、完整 JSONPath、带点 label 键、评测回
 
 ## 实施记录
 
-新模块 `opspilot/tools/kubernetes_tabular.py`，由 `KubernetesTransport` 按工具名分派（与 A3 同法），扩展档位的 schema、注册、`data_sources`、routes 与 `kubernetes_core._registrations` 都加了这一项；`otel-demo` 字节不变。`INVALID_COLUMNS` 照 A4 加进 `registry.SOURCE_ERROR_REASONS` 与 `outcomes.ERROR_REASONS`。
+新模块 `opspilot/tools/kubernetes_tabular.py`，由 `KubernetesTransport` 按工具名分派（与 A3 同法），扩展档位的 schema、注册、`data_sources`、routes 与 `kubernetes_core._registrations` 都加了这一项；`otel-demo` 字节不变。`INVALID_COLUMNS` 是适配器固定码，外层原因归 `INVALID_PARAMS`（同 A3 的 `POD_NOT_FOUND`），不进共享原因词表。
 
 自行决定的可逆细节：
 
@@ -51,9 +51,11 @@ kubectl、服务端表格打印、完整 JSONPath、带点 label 键、评测回
 - `filter_pattern` 匹配单元格用三个空格拼成的行（上游表格列间至少三个空格），不含表头；没有行时不起子进程，`filter_mode` 为空；编不过的模式沿用 A3 子进程的退化子串匹配并写进 notes（上游 `grep -E` 会报错得零行）。
 - 返回体 `{header, rows, count, scope, notes}`；由于执行器只把 `result_path`（`rows`）当 content 给模型，表头、计数、范围、备注同时放进视图字段，另加 `total_items_processed`、`rows_removed_by_filter`、`filter_mode`、`pages_read`、`cannot_prove`。`scope` 在 A2 的键上加了 `label_selector`、`field_selector`（上游 scope 的键）。
 - 事件的来源时间取过滤后保留行对应事件的首尾（A6-6 的「保留事件」按最终返回的行算，更窄）。
-- 错误码表：A2 的表去掉 jq 专用码，加 `INVALID_COLUMNS`、`INVALID_FILTER`（参数错误）、`FILTER_FAILED`（来源错误，同 A3）。校验顺序 kind（Secret 先）→ namespace → 选择器 → 列 → 正则。
+- 错误码表：A2 的表去掉 jq 专用码，加 `INVALID_COLUMNS`、`INVALID_FILTER`（都归参数错误）、`FILTER_FAILED`（来源错误，同 A3）。校验顺序 kind（Secret 先）→ namespace → 选择器 → 列 → 正则。
 
-已知限制：`INVALID_COLUMNS` 回显的出错列只在拒绝体里（`column`、`problem`），执行器对未发送的拒绝只把原因码给模型，模型看不到是哪一列（要让模型看到需改执行器，范围外）。
+偏离：开工说明要求回显出错列；执行器对未发出的请求不向模型传详情（`executor.py` `_source_error`），与 A2/A4 一致，回显只在拒绝记录（拒绝体的 `column`、`problem`），模型只见 `INVALID_PARAMS`（lead 2026-11-13 裁决不改执行器）。
+
+行只在视图 `content` 里放一份，不在视图字段里重复 `rows`（lead 2026-11-13 裁决）。
 
 ## 依赖 A2 与 A3 的假设
 
