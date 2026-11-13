@@ -461,3 +461,35 @@ def test_by_id_over_view_limit_is_refused_whole_and_kept(monkeypatch):
     # (#308); this test sink cannot count spills, so nothing is kept here.
     assert view["view_tokens"] > view["max_view_tokens"]
     assert view["adopted"] is False
+
+
+@pytest.mark.parametrize(
+    "body",
+    [b"[]", b'{"data":"not-a-list","errors":[]}', b'{"data":{}}', b'{"errors":[]}'],
+)
+@pytest.mark.parametrize(
+    ("tool", "params"),
+    [
+        (jq.SEARCH_BY_TAGS_TOOL, {"service": "checkout"}),
+        (jq.TRACE_BY_ID_TOOL, {"trace_id": "abc123"}),
+        (jq.LIST_SERVICES_TOOL, {}),
+        (jq.LIST_OPERATIONS_TOOL, {"service": "checkout"}),
+    ],
+)
+def test_a_200_that_is_not_a_jaeger_envelope_is_malformed(
+    monkeypatch, tool, params, body
+):
+    executor, _ = _ext(monkeypatch, body)
+    outcome = executor.execute(_call(tool, params))
+    assert (outcome.status, outcome.reason) == ("error", "MALFORMED_RESULT")
+    assert outcome.evidence is None
+
+
+def test_too_large_descriptions_promise_read_back_only_with_an_evidence_id():
+    schemas = {s["function"]["name"]: s["function"] for s in jq.TOOL_SCHEMAS}
+    registrations = {r.name: r for r in jq.jaeger_registrations(max_window_seconds=60)}
+    for name in (jq.SEARCH_BY_TAGS_TOOL, jq.TRACE_BY_ID_TOOL):
+        text = schemas[name]["description"]
+        assert "kept as evidence" not in text
+        assert "Only when that refusal carries an evidence_id" in text
+    assert "evidence_id" in registrations[jq.TRACE_BY_ID_TOOL].description.limits

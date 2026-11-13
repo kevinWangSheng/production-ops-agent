@@ -114,8 +114,8 @@ MAX_OPERATION_CHARS = otel_demo.MAX_OPERATION_CHARS
 SOURCE_READ_BYTES = otel_demo.TRACE_SOURCE_READ_BYTES
 REQUEST_TIMEOUT_SECONDS = 30.0
 MAX_RESULT_BYTES = 1024 * 1024
-#: A4-8: a whole trace's projected record is kept as evidence (for
-#: read_evidence) up to the registry's 2 MiB ceiling, so the view token limit
+#: A4-8: a whole trace's projected record may be kept as evidence (for
+#: read_evidence, when the sink can) up to the registry's 2 MiB ceiling, so the view token limit
 #: is what usually refuses an over-large trace; a record past 2 MiB is
 #: RESULT_TOO_LARGE with nothing kept.
 BY_ID_MAX_RESULT_BYTES = REGISTRY_MAX_RESULT_BYTES
@@ -321,6 +321,19 @@ def _errors_count(payload: object) -> int:
     return len(errors) if isinstance(errors, list) else 0
 
 
+def _envelope_ok(payload: object) -> bool:
+    """A 200 answer is a Jaeger envelope: an object whose ``data`` is a list.
+    Anything else (a bare list, ``data`` missing, null, an object or a
+    string) is not an empty result but an unreadable one."""
+    return isinstance(payload, Mapping) and isinstance(payload.get("data"), list)
+
+
+#: Handed to the executor for a 200 that is not a Jaeger envelope: no result
+#: path resolves in it, so the outcome is error/MALFORMED_RESULT, never
+#: no_data (the general contract, tests/test_m1_tool_outcomes.py).
+_MALFORMED = TransportResponse(body=b"null")
+
+
 def _incomplete_reason(*reasons: str | None) -> str | None:
     kept = [reason for reason in reasons if reason]
     return " ".join(kept) if kept else None
@@ -403,6 +416,8 @@ class JaegerQueryTransport(otel_demo.OtelDemoTransport):
                 fetched.body,
                 TransportResponse(body=fetched.body[: request.max_result_bytes]),
             )
+        if not _envelope_ok(payload):
+            return None, fetched.body, _MALFORMED
         return payload, fetched.body, None
 
     @staticmethod
@@ -548,6 +563,8 @@ class JaegerQueryTransport(otel_demo.OtelDemoTransport):
                 payload = json.loads(fetched.body.decode("utf-8"))
             except (UnicodeDecodeError, ValueError, RecursionError):
                 return TransportResponse(body=fetched.body[: request.max_result_bytes])
+            if not _envelope_ok(payload):
+                return _MALFORMED
         traces = payload.get("data") if isinstance(payload, Mapping) else None
         traces = (
             [t for t in traces if isinstance(t, Mapping)]
@@ -754,8 +771,9 @@ _SOURCE_ERRORS_TEXT = (
 )
 _TOO_LARGE_TEXT = (
     "A result whose whole view exceeds 25,000 tokens is refused with "
-    "RESULT_TOO_LARGE and nothing is shown; the result is kept as evidence "
-    "for read_evidence."
+    "RESULT_TOO_LARGE and nothing is shown. Only when that refusal carries an "
+    "evidence_id (stored is not false) can the result be read back with "
+    "read_evidence; otherwise narrow the query."
 )
 _SPAN_ROW_TEXT = (
     "Each span row has trace_id, span_id, service, operation, start_us, "
@@ -1110,8 +1128,10 @@ def jaeger_registrations(*, max_window_seconds: int) -> tuple[ToolRegistration, 
             limits=(
                 "Nothing is sampled out. More than 4 MiB read from Jaeger, or "
                 "a view over the registered max_view_tokens (25,000 DeepSeek "
-                "tokens), refuses the whole trace with RESULT_TOO_LARGE; the "
-                "kept evidence can be read back with read_evidence. HTTP 404 "
+                "tokens), refuses the whole trace with RESULT_TOO_LARGE. Only a "
+                "refusal that carries an evidence_id can be read back with "
+                "read_evidence; a raw read over 4 MiB or a projected record "
+                "over 2 MiB keeps nothing, so narrow start/end. HTTP 404 "
                 "is an empty result with trace_found false. " + _SOURCE_ERRORS_TEXT
             ),
             cannot_prove=(
