@@ -47,6 +47,7 @@ kubectl、服务端表格打印、完整 JSONPath、带点 label 键、评测回
 
 - 取数直接调 A2 的 `KubernetesClient.list_objects`；给它加了一个默认 `"jq ran"` 的 `consumer` 参数，只改事件备注的措辞（A6 写「before the columns were read」），A2 输出不变。
 - 列写法另接受可选的开头点（`metadata.name`），与上游打印器的宽松写法一致；列前后空白去掉。下标只收非负整数，负下标、切片、过滤、带引号的键、`..` 一律 `INVALID_COLUMNS`。列名按 `,` 切、每列按 `:` 切且必须恰好两段（同上游），所以带 `:` 的切片报的是「不是 HEADER:PATH」。
+- 下标最多 6 位数字，更大的视为非法列（`INVALID_COLUMNS`），防极大整数；与合同「越界显示 `<none>`」在真实数据上等价（PR #600 独立审查 P2，lead 定不改代码）。
 - 单元格：字符串原样，其他值用规范 JSON（`true`、`3`、`{"app":"x"}`；上游打印 Go 的 map 写法，模型更好读 JSON）；`null` 与路径没走到都算 `<none>`；多个值用逗号拼。
 - `filter_pattern` 匹配单元格用三个空格拼成的行（上游表格列间至少三个空格），不含表头；没有行时不起子进程，`filter_mode` 为空；编不过的模式沿用 A3 子进程的退化子串匹配并写进 notes（上游 `grep -E` 会报错得零行）。
 - 返回体 `{header, rows, count, scope, notes}`；由于执行器只把 `result_path`（`rows`）当 content 给模型，表头、计数、范围、备注同时放进视图字段，另加 `total_items_processed`、`rows_removed_by_filter`、`filter_mode`、`pages_read`、`cannot_prove`。`scope` 在 A2 的键上加了 `label_selector`、`field_selector`（上游 scope 的键）。
