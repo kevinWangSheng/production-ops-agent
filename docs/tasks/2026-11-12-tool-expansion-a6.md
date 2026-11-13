@@ -1,9 +1,9 @@
 # 工具面拓展 A6：按列查询集群对象
 
-- 状态：待开始（开工说明已齐，未实现；在 A2 合并后开工）
-- 更新日期：2026-11-12
+- 状态：实施中（代码与实现者单元测试已提交；等独立合同测试合入后对齐，未开 PR）
+- 更新日期：2026-11-13
 - 依据：[工具面拓展任务记录](2026-11-12-tool-expansion.md)、[决定表 r3](2026-11-12-tool-expansion-contract.md)（r1 的 R16，r2 的 A2-1 至 A2-15，r3 的 A6-1 至 A6-6）、C3 第 8 节；上游 HolmesGPT `a0009195` 的 `kubernetes.yaml` 里 `kubernetes_tabular_query`。issue #558。开工前预审在仓库外（A3、A6 预审，2026-11-12），没有需要用户裁决的项。
-- 工作区：开工时另开 worktree，分支 `feature/tool-expansion-a6-tabular-query`，写入本节。
+- 工作区：worktree `/Users/shenghuikevin/dev/AI/poa-a6-impl`，分支 `feature/tool-expansion-a6-tabular-query`（起点 `origin/main` `b717e1ef`）；探针骨架 `6469127c`。
 
 ## 目标
 
@@ -39,9 +39,28 @@ kubectl、服务端表格打印、完整 JSONPath、带点 label 键、评测回
 1. 不带 namespace 的全集群 Pod 列表是否常碰 4 MiB 读取上限（按列查询的典型用法正是不带 namespace，碰到概率比 jq 工具高，未确认）。
 2. 其余同 [A2 开工说明](2026-11-12-tool-expansion-a2.md) 的风险清单。
 
+## 实施记录
+
+新模块 `opspilot/tools/kubernetes_tabular.py`，由 `KubernetesTransport` 按工具名分派（与 A3 同法），扩展档位的 schema、注册、`data_sources`、routes 与 `kubernetes_core._registrations` 都加了这一项；`otel-demo` 字节不变。`INVALID_COLUMNS` 是适配器固定码，外层原因归 `INVALID_PARAMS`（同 A3 的 `POD_NOT_FOUND`），不进共享原因词表。
+
+自行决定的可逆细节：
+
+- 取数直接调 A2 的 `KubernetesClient.list_objects`；给它加了一个默认 `"jq ran"` 的 `consumer` 参数，只改事件备注的措辞（A6 写「before the columns were read」），A2 输出不变。
+- 列写法另接受可选的开头点（`metadata.name`），与上游打印器的宽松写法一致；列前后空白去掉。下标只收非负整数，负下标、切片、过滤、带引号的键、`..` 一律 `INVALID_COLUMNS`。列名按 `,` 切、每列按 `:` 切且必须恰好两段（同上游），所以带 `:` 的切片报的是「不是 HEADER:PATH」。
+- 下标最多 6 位数字，更大的视为非法列（`INVALID_COLUMNS`），防极大整数；与合同「越界显示 `<none>`」在真实数据上等价（PR #600 独立审查 P2，lead 定不改代码）。
+- 单元格：字符串原样，其他值用规范 JSON（`true`、`3`、`{"app":"x"}`；上游打印 Go 的 map 写法，模型更好读 JSON）；`null` 与路径没走到都算 `<none>`；多个值用逗号拼。
+- `filter_pattern` 匹配单元格用三个空格拼成的行（上游表格列间至少三个空格），不含表头；没有行时不起子进程，`filter_mode` 为空；编不过的模式沿用 A3 子进程的退化子串匹配并写进 notes（上游 `grep -E` 会报错得零行）。
+- 返回体 `{header, rows, count, scope, notes}`；由于执行器只把 `result_path`（`rows`）当 content 给模型，表头、计数、范围、备注同时放进视图字段，另加 `total_items_processed`、`rows_removed_by_filter`、`filter_mode`、`pages_read`、`cannot_prove`。`scope` 在 A2 的键上加了 `label_selector`、`field_selector`（上游 scope 的键）。
+- 事件的来源时间取过滤后保留行对应事件的首尾（A6-6 的「保留事件」按最终返回的行算，更窄）。
+- 错误码表：A2 的表去掉 jq 专用码，加 `INVALID_COLUMNS`、`INVALID_FILTER`（都归参数错误）、`FILTER_FAILED`（来源错误，同 A3）。校验顺序 kind（Secret 先）→ namespace → 选择器 → 列 → 正则。
+
+偏离：开工说明要求回显出错列；执行器对未发出的请求不向模型传详情（`executor.py` `_source_error`），与 A2/A4 一致，回显只在拒绝记录（拒绝体的 `column`、`problem`；单列写错回显那一列，超列数或超长回显整串，超 4000 字符截断并标 `column_truncated`），模型只见 `INVALID_PARAMS`（lead 2026-11-13 裁决不改执行器）。
+
+行只在视图 `content` 里放一份，不在视图字段里重复 `rows`（lead 2026-11-13 裁决）。
+
 ## 依赖 A2 与 A3 的假设
 
-A6 假设 A2 把资源表、分页、读取上限、事件时间筛选与错误映射做成可复用函数；若 A2 写成两个工具专用的一体实现，A6 要先抽函数。正则子进程与超时结果类来自 A3（A3 照抄 A2 的 jq 子进程）。`view_fields` 新键名要在 A2 落地后对照通用视图字段再核一次。全量探针未跑：A2 合并后开草稿 PR 经 CI 补跑，预计只加扩展档位、0 失败。
+A6 假设 A2 把资源表、分页、读取上限、事件时间筛选与错误映射做成可复用函数；若 A2 写成两个工具专用的一体实现，A6 要先抽函数。正则子进程与超时结果类来自 A3（A3 照抄 A2 的 jq 子进程）。`view_fields` 新键名要在 A2 落地后对照通用视图字段再核一次。全量探针已跑（探针骨架 `6469127c`，草稿 PR #599，已关闭）：全量 CI 0 failed / 12226 passed / 2550 skipped，只加扩展档位。
 
 ## 下一步
 
