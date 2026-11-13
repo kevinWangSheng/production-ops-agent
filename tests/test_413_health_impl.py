@@ -590,7 +590,14 @@ def test_excess_concurrent_requests_get_503_busy_at_once():
         release.set()
         holder.join(5)
         assert first == [200]
-        assert _request(server.port, "/healthz")[0] == 200
+        # The server frees the slot only after its handler thread closes the
+        # connection, which can trail the client reading the full response;
+        # wait (bounded) for the slot to come back instead of racing it.
+        deadline = time.monotonic() + 2
+        while (status := _request(server.port, "/healthz")[0]) != 200:
+            assert status == 503
+            assert time.monotonic() < deadline, "slot never released"
+            time.sleep(0.01)
     finally:
         release.set()
         server.close()
