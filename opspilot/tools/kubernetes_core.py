@@ -849,7 +849,7 @@ class _Jq:
             # expression starting with ``-`` cannot be read as an option.
             program_file = Path(root) / "program.jq"
             program_file.write_text(program, encoding="utf-8")
-            argv = [self._path, "-c", "-L", str(modules)]
+            argv = [self._path, "--compact-output", "-L", str(modules)]
             if null_input:
                 argv.append("-n")
             argv += ["-f", str(program_file)]
