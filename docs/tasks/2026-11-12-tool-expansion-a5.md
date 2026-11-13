@@ -31,7 +31,7 @@ POST 表单查询、`timeout` 参数、按指标限条数、改现有 `metrics_r
 ## 完成条件
 
 1. 代码 PR：合同测试与 CI 通过，`otel-demo` 钉值不变。这是功能 PR。
-2. #557 关闭：租机后的真实 Run 里出现即时查询或序列、标签发现的证据，报告引用；仓库里有 `summary.json` 与 LangSmith trace 链接。
+2. 代码 PR 合并后 #557 关闭。真实证据归租机集中取证（#580）：租机后的真实 Run 里出现即时查询或序列、标签发现的证据，报告引用；仓库里有 `summary.json` 与 LangSmith trace 链接。
 
 ## 没有真实实例时的已知风险
 

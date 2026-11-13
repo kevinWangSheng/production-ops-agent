@@ -33,8 +33,8 @@
 
 ## 完成条件
 
-1. 脚本阶段（本机）：上面各项写完，单元测试与 CI 通过，`otel-demo` 档位不变，没有任何集群运行。#553 保持打开。
-2. 租机后：起 lab 成功发出 token；拒绝取证探测表（该读的 200、该拒的 403、在全集群 ConfigMap 里搜 lab 已知秘密值 0 命中）在宿主与 worker 容器两侧都全部符合；证据入库 `docs/evidence/a1-cluster-identity/`，gitleaks 通过，token 原文搜索 0 命中。之后 A2 的真实 Run 用这份身份，#553 关闭。
+1. 脚本阶段（本机）：上面各项写完，单元测试与 CI 通过，`otel-demo` 档位不变，没有任何集群运行。合并后 #553 关闭。
+2. 租机后：起 lab 成功发出 token；拒绝取证探测表（该读的 200、该拒的 403、在全集群 ConfigMap 里搜 lab 已知秘密值 0 命中）在宿主与 worker 容器两侧都全部符合；证据入库 `docs/evidence/a1-cluster-identity/`，gitleaks 通过，token 原文搜索 0 命中。之后 A2 的真实 Run 用这份身份。这一步归租机集中取证（#580）。
 
 ## 没有真集群时的已知风险
 

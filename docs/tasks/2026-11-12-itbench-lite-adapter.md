@@ -2,7 +2,7 @@
 
 - 状态：待开始（开工说明已齐，L6 等用户裁决；未实现）
 - 更新日期：2026-11-12
-- 依据：[工具面拓展任务记录](2026-11-12-tool-expansion.md)、[决定表 r4](2026-11-12-tool-expansion-contract.md)（L1 至 L16）；用户 2026-11-12 的四条对齐；ITBench 官方 agent 仓库 `30673b23` 与评测器 `ITBench-Evaluations@14f026fc`（查于 2026-11-12）；数据集 `ibm-research/ITBench-Lite` SRE `v0.2`。issue #571。两份回放探针（2026-11-04 指标与 trace、2026-11-12 集群对象与日志）和开工前预审都在仓库外。
+- 依据：[工具面拓展任务记录](2026-11-12-tool-expansion.md)、[决定表 r4](2026-11-12-tool-expansion-contract.md)（L1 至 L16）；用户 2026-11-12 的四条对齐；ITBench 官方 agent 仓库 `30673b23` 与评测器 `ITBench-Evaluations@14f026fc`（查于 2026-11-12）；数据集 `ibm-research/ITBench-Lite` SRE `v0.2`。issue #571（35 题真实运行）、#581（数据转换与告警投递）、#582（报告转答案与判分）、#583（假 API server）。两份回放探针（2026-11-04 指标与 trace、2026-11-12 集群对象与日志）和开工前预审都在仓库外。
 - 工作区：开工时另开 worktree，分支 `feature/itbench-lite-adapter`，写入本节。
 
 ## 目标
@@ -62,7 +62,7 @@
 
 ## 完成条件
 
-1. 代码 PR：单元测试与 CI 通过；A2、A3 合并后，本机用真工具打回环上的假 server 的集成测试通过。
+1. 代码分三个 ticket，各自的 PR 合并后关闭：#581、#582 不依赖工具，可立即开工；#583 在 A2、A3 合并后做，本机用真工具打回环上的假 server 的集成测试通过。
 2. #571 关闭：租机后 35 题跑完，仓库里有分数表（两种分、覆盖分档、限制说明）、`summary.json` 与 trace 链接。
 
 ## 已知风险

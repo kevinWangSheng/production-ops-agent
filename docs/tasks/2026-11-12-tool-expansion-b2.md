@@ -40,7 +40,7 @@ lab 的 Prometheus 只读代理现在**有意拒绝**告警规则与指标元数
 ## 完成条件
 
 1. 代码 PR：合同测试与 CI 通过，`otel-demo` 钉值不变。这是功能 PR，且改权限与验收测试意图，走用户门。
-2. #561 关闭：租机后跑 `scripts/f7_authz_probe.py`，新放行的三条 200、其余拒绝项不变；真实 Run 里出现规则、目标或元数据的证据，报告引用；仓库里有 `summary.json` 与 LangSmith trace 链接。
+2. 代码 PR 合并后 #561 关闭。真实证据归租机集中取证（#580）：租机后跑 `scripts/f7_authz_probe.py`，新放行的三条 200、其余拒绝项不变；真实 Run 里出现规则、目标或元数据的证据，报告引用；仓库里有 `summary.json` 与 LangSmith trace 链接。
 
 ## 没有真实实例时的已知风险
 
