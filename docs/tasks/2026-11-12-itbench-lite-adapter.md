@@ -1,6 +1,6 @@
 # ITBench-Lite SRE 离线快照评测适配
 
-- 状态：实施中（#582 已合并 be92dc65；#581 为 PR #586；L6 已由用户 2026-11-13 裁决为 a）
+- 状态：#581（PR #586，`4f9b42b2`）与 #582（PR #587，`be92dc65`）已合并（2026-11-13）；#583 等 #555、#558；#571 等租机；L6 = a（用户 2026-11-13）
 - 更新日期：2026-11-13
 - 依据：[工具面拓展任务记录](2026-11-12-tool-expansion.md)、[决定表 r4](2026-11-12-tool-expansion-contract.md)（L1 至 L16）；用户 2026-11-12 的四条对齐；ITBench 官方 agent 仓库 `30673b23` 与评测器 `ITBench-Evaluations@14f026fc`（查于 2026-11-12）；数据集 `ibm-research/ITBench-Lite` SRE `v0.2`。issue #571（35 题真实运行）、#581（数据转换与告警投递）、#582（报告转答案与判分）、#583（假 API server）。两份回放探针（2026-11-04 指标与 trace、2026-11-12 集群对象与日志）和开工前预审都在仓库外。
 - 工作区：#581 在 `/Users/shenghuikevin/dev/AI/poa-lite-581`，分支 `feature/itbench-lite-581-convert`；#582 在 `/Users/shenghuikevin/dev/AI/poa-lite-582`，分支 `feature/itbench-lite-582-scoring`（均起于 `origin/main` 52d640a0）。

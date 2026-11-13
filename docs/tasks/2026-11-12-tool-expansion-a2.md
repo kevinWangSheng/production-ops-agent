@@ -1,6 +1,6 @@
 # 工具面拓展 A2：扩展档位与集群对象只读查询
 
-- 状态：实施中（独立合同测试已合入；剩余一条按裁决由测试作者改写）
+- 状态：代码已合并（PR #588，`4883af92`，2026-11-13），#554 已关；F11 第 4 步代码面论证按 X1/Q1/Q2 由独立测试作者修订（单模块、只发 GET、子进程只在 `run_isolated`）；真实 Run 归 #580
 - 更新日期：2026-11-13
 - 依据：[工具面拓展任务记录](2026-11-12-tool-expansion.md)、[决定表 r3](2026-11-12-tool-expansion-contract.md)（r1 用户裁决，r2 的 A2-1 至 A2-15；r3 是后续各项对 A2 的要求）、SPEC 2026-11-12 段、C3 第 3、8、12 节；上游 HolmesGPT `a0009195` 的 `kubernetes/core`。issue #554。
 - 工作区：worktree `/Users/shenghuikevin/dev/AI/poa-a2-impl`，分支 `feature/tool-expansion-a2-k8s-core`（起点 `origin/main` `52d640a0`）。

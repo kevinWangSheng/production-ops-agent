@@ -1,6 +1,6 @@
 # 工具面拓展 A1：lab 只读集群身份与拒绝取证
 
-- 状态：实施中（脚本与单元测试已写、本地定向测试通过，未推送；真实取证等租机 #580）
+- 状态：代码已合并（PR #589，`264ff395`，2026-11-13），#553 已关；真实拒绝取证与 `docs/evidence/a1-cluster-identity/` 归租机集中取证 #580
 - 更新日期：2026-11-13
 - 依据：[工具面拓展任务记录](2026-11-12-tool-expansion.md)、[决定表 r3](2026-11-12-tool-expansion-contract.md)（r1 的 N4、R4、R5、Q5、Q6，r3 的 A1-1 至 A1-10）、SPEC 2026-11-12 段、C3 第 3、8 节；上游 HolmesGPT `a0009195` 的 `helm/holmes/templates/holmesgpt-service-account.yaml`。issue #553。开工前预审在仓库外（A1 预审，2026-11-12），没有需要用户裁决的项。
 - 工作区：worktree `/Users/shenghuikevin/dev/AI/poa-a1-impl`，分支 `feature/tool-expansion-a1-cluster-identity`（起点 `main` `52d640a0`）。
