@@ -208,3 +208,47 @@ A2-5 的静态资源表比 A1 清单窄；A1 与 A2 谁后合并，谁加一条�
 | L16 | 回放 Prometheus 的认证 | 不校验，账号文件用占位值；驱动从参数读账号文件 | 可逆默认 |
 
 探针遗留四点的默认：假 API server 算评测设施，放 `scripts/itbench_lite/`，不进产品镜像；回放服务全绑回环地址，lab 闸门（A2-13）不改；出现过的资源类没有对象时返回空列表，从没出现过的返回 503（落进 A2-12 的来源不可用）；`previous=true` 返回 400。告警入口：评测侧把 ITBench 告警转成 webhook v4，每题投一条入口告警，目标条目按题配置，不改产品代码。
+
+## r6（2026-11-13）：#604/#605 开工前预审
+
+对照 `main` `bc7ff9d0`，预审全文在仓库外。#604 是逐题回放与评测编排驱动，#605 是分档文件与词表生成器。L-D 全部按推荐执行，另有 lead 三条裁决（标「lead」）；L-V 除 L-V7 外按推荐执行。
+
+### #604 驱动
+
+| 编号 | 决定 | 类别 |
+|---|---|---|
+| L-D1 | web 与 worker 用宿主子进程（`opspilot.web serve`、`opspilot.worker_main`），告警走真实 HTTP 入口 | 默认 |
+| L-D2 | 每次尝试用 `eval_live_lab.LocalPgLauncher` 建全新 PG，数据目录在 `tmp/itbench-lite/<轮次>/…/pg`；summary 冻结后按 pid 文件停库，目录留到整轮结束；驱动用 owner DSN 开只读事务读 | 默认（L15） |
+| L-D3 | 固定可配端口，全部 127.0.0.1：PG 29110、Prometheus 29190、Jaeger 查询 29186、Jaeger OTLP/HTTP 29118、假 server 29143、web 29180；每次尝试前逐个查空闲，被占记基础设施失败、不换端口；web 与 worker 的健康监听设空串关闭 | 默认 |
+| L-D4 | docker 起 `prom/prometheus:v3.5.0`（promtool 用同一镜像）与 `jaegertracing/all-in-one:1.53.0`，只发布 `127.0.0.1:端口`；Prometheus 不写抓取任务与规则；容器名 `itbl-<尝试id>-{prom,jaeger}`，按完整名字删除；summary 记镜像 digest | 默认 |
+| L-D5 | 假 server 用子进程跑 CLI，读 stdout 那一行 JSON；每次尝试新 token（0600 文件）与证书目录；就绪判据是带 token 的 GET 返回 200 | 默认 |
+| L-D6 | 快照每题按白名单名字复制一次到干净目录（跟随符号链接复制内容），3 次尝试共用只读副本，每次尝试前重新 `load_snapshot` 校验。偏离 #604 正文「每次尝试复制」的字面，为省读写，数据不变 | lead |
+| L-D7 | 按 r4 原文：灌完立刻投，灌完到投递间隔超过 2 分钟作废；POST 前检查 `delivery_gap_ok` 与 `check_not_future`，不过就作废、不投递，POST 后用响应时刻再核一次。平移量在灌入前以尝试开始时刻为锚，数据末尾早于开始约 1 分钟；`--load-budget-seconds` 只作灌入耗时上限，超过记基础设施失败。时钟用主机 UTC 墙钟。lead 2026-11-13 按 r4 原文改正（原推荐「等到计划时刻再投」） | lead |
+| L-D8 | 每个 trial 最多作废或因临时基础设施问题失败 2 次（共 3 次机会），超过记缺失、计 0、留在分母（L5）；确定性错误（`NoEntryAlert`、`SnapshotRowError`、`AnswerFilePresent`、入口告警缺匹配标签）不重试，3 个 trial 都记缺失并写原因 | 默认 |
+| L-D9 | 投递后没建 Run（`TARGET_UNRESOLVED`/`TARGET_AMBIGUOUS`）是配置错误，停整轮；Run 结束但没有报告照 L5 计 0、不送 judge；报告校验不过按没有报告处理并记 `REPORT_INVALID_FOR_CONVERSION`；judge 失败只重跑判分，最多 2 次；驱动中途崩溃记 `interrupted`，算基础设施失败 | 默认（L5） |
+| L-D10 | 模型与上限沿用产品默认，不设 `OPSPILOT_RUN_SECONDS`；兜底等待 7200 s + 10 分钟；`OPSPILOT_SELF_HEAL_INTERVAL_SECONDS=0`；`OPSPILOT_TRACE=lab`，项目 `opspilot-lab-itbench-lite-<日期>`，第一次 Run 前设长期保留；记录 `prompt_revision` 与 `tool_schema_revision`（L12） | 默认 |
+| L-D11 | 目标条目键 `m0-otel-20260909`，`namespace=otel-demo`，`workload` = 入口告警的 `service_name`，`match.labels` = `default_match_labels`；`cluster_uid` 取快照里 kube-system 的 uid，没有用 `itbench-lite`。入口告警没有 `service_name` 时回退：match 用 `alertname`，workload 取 `service`、`pod`、`namespace` 中第一个存在的标签，并在产物里标记该题用了回退 | 默认 + lead（回退与标记） |
+| L-D12 | 报告取结论步骤的 `report_content`；证据用 `investigation_evidence(...).observations` 映射成 `{"evidence_id","tool","query"}` | 默认 |
+| L-D13 | summary 用 `lab_evidence.freeze`，内容照 F3：报告、投影、审计、版本、token、trace 链接，另加「尝试」块；不写任何来自答案的内容。「冻结一个给定 Run」写成可复用模块放 `scripts/` 下，接口是给 run id → 冻结 summary.json 与回读 trace 链接，A7 驱动复用 | lead |
+| L-D14 | 每次尝试结束后起判分子进程，只传答案根目录与这次尝试的输出路径；子进程调 `official_eval.run`（每次尝试单独 work dir）与 `entity_match.score`，分数写进忽略目录，驱动只读回数值；默认每次都调 judge，`--no-judge` 推迟；另有汇总命令生成 `coverage.py` 的分数文件 | 默认（L9） |
+| L-D15 | 官方 pass@1 = 各 trial `root_cause_entity_f1 == 1` 的均值；确定性分用 `pass`；确定性分的键加前缀 `det_` | 默认 |
+| L-D16 | 入库：`docs/evidence/itbench-lite-sre-<日期>/` 下每次尝试的 `S<id>/trial-<n>/summary.json`、分数表、分档文件与明细、限制说明；其余（干净副本、PG、TSDB、日志、原始 ledger、词表、答案输出、匹配明细、judge 工作目录）在 `tmp/itbench-lite/<轮次>/` | 默认（L10） |
+| L-D17 | 默认串行，端口、PG、LangSmith 项目与 lab 全部错开、健康监听关闭，使与 kind 阶段并行成为可能；每次尝试前记一次内存读数 | 默认 |
+| L-D18 | summary 记 git 提交；正式轮次工作区不干净就拒绝启动，冒烟可加 `--allow-dirty` 并写进 summary | 默认 |
+| L-D19 | 场景按编号排序，每题连续跑 3 个 trial；已有完整 summary 的 trial 跳过，可续跑 | 默认（L15） |
+| L-D20 | 只对驱动自己启动的进程经 `Popen` 句柄先 SIGTERM、宽限后 SIGKILL 同一 PID；容器按完整名字 `docker rm -f`；逆序清理，任一步失败也清理到底再报错，清理后核对端口已释放 | 默认 |
+
+### #605 生成器
+
+| 编号 | 决定 | 类别 |
+|---|---|---|
+| L-V1 | 分档数据用 `load_snapshot` 从快照重新算；可选 `--census` 交叉核对，只许读不来自答案的列，禁止读 `mechanism` | 默认（L11） |
+| L-V2 | 故障起点取 `alerts.select_entry_alert(final_alert_file)` 的 `activeAt`（未平移） | 默认 |
+| L-V3 | 每类「结束时刻 − 故障起点」≥ 5 分钟为覆盖，0–5 分钟为部分，< 0 为不覆盖，五类各判一次 | 默认 |
+| L-V4 | 两档：「指标+trace」与「故障窗无 trace」；每类覆盖另写进明细 | 默认（可逆） |
+| L-V5 | 输出 `{"<id>": "<档位>"}`（正好 35 个 ID）与 `tiers_detail.json`，都入库 | 默认 |
+| L-V6 | 词表收全量里出现过的 `metadata.name`（`answer.RESOURCE_KINDS` 内的资源类，去掉 secrets 与官方排除 namespace 的对象），加三处服务名并集 | 默认 |
+| L-V7 | namespace 名与通用词（`kubernetes`、`default`）进不进词表：推荐去掉 Namespace 对象名并用固定停用表，规则在看答案前写死 | **待用户裁决** |
+| L-V8 | 每行一个名字，不区分大小写去重并排序；每题生成一次，放忽略目录 | 默认 |
+| L-V9 | CLI：`python -m scripts.itbench_lite.vocabulary <干净副本> --out <文件>`；`python -m scripts.itbench_lite.tiers <副本根目录> --out tiers.json --detail tiers_detail.json` | 默认 |
+| L-V10 | 流式读，不做缓存 | 默认 |
