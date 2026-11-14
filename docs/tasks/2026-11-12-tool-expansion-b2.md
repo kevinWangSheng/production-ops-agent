@@ -1,9 +1,9 @@
 # 工具面拓展 B2：告警规则、抓取目标与指标元数据
 
-- 状态：待开始（B2-1 已裁决；开工说明已齐，未实现；在 A5 合并后开工）
-- 更新日期：2026-11-12
+- 状态：实施中（代码与 lab 代理改动已在分支上；独立合同测试由另一位测试作者编写，钉 403 的测试待其改写）
+- 更新日期：2026-11-13
 - 依据：[工具面拓展任务记录](2026-11-12-tool-expansion.md)、[决定表 r3](2026-11-12-tool-expansion-contract.md)（r3 的 B2-1 至 B2-6）、C3 第 8 节；上游 HolmesGPT `a0009195` 的 `prometheus/prometheus.py` 与 `kubernetes.yaml`；Prometheus `v3.5.0` API 文档；F14 上游对照合同（[任务记录](2026-10-27-m3-f14-upstream-contract.md)）。issue #561。开工前预审在仓库外（A4、A5、B2 预审，2026-11-12）。
-- 工作区：开工时另开 worktree，分支 `feature/tool-expansion-b2-prometheus-rules`，写入本节。
+- 工作区：worktree `/Users/shenghuikevin/dev/AI/poa-b2-impl`，分支 `feature/tool-expansion-b2-prometheus-rules`（起点 `origin/main` 43c12203）。
 
 ## 用户裁决：B2-1（2026-11-12，选 a）
 
@@ -44,13 +44,32 @@ lab 的 Prometheus 只读代理现在**有意拒绝**告警规则与指标元数
 
 ## 没有真实实例时的已知风险
 
-1. lab 抓取目标的标签里是否带 lab 私有值（未确认，取证时扫）。
+1. 规则注解、抓取目标标签与 scrapeUrl、指标说明里是否带 lab 私有值（未确认，取证时扫）。这些值原样返回，共用的凭据脱敏识别不了裸值，所以三个工具登记 `may_contain_secrets=True`（C3 §8、Q3），本 PR 不加脱敏机制。
 2. Prometheus v3.5 的规则接口是否默认分页（文档写分组上限需显式传，不传不分页）。
 
 ## 全量探针
 
-未跑。预计失败即上面列的 4 个钉 403 的测试文件。开工前按 A2 先例开草稿 PR 经 CI 补跑。
+骨架提交 `4df603ab`（三个工具名进扩展档位、代理放行三条）交 lead 推草稿 PR 经 CI 补跑。本机定向跑的红项：`tests/test_kind_lab_readonly_proxy.py:210-211`、`tests/acceptance/test_396_proxy_contract.py:67-72`，另有两处预审没列的：`tests/test_399_isolation_impl.py:183` 与 `tests/acceptance/test_399_isolation.py:188-189`——Holmes 隔离检查的代理日志放行集合直接取 `kind_lab.READ_PATHS`（`scripts/holmes_baseline/isolation.py:148`），按 B2-1 = a holmes GET 这三条不再算违规，测试意图随裁决翻转。`tests/test_f7_authz_probe.py:277` 仍绿（holmes 对 rules、metadata 的表单 POST 仍 403）。
+
+全量 CI（草稿 PR #595，2026-11-13）：5 failed / 12213 passed / 2550 skipped。5 个失败就是上面这些钉旧拒绝的测试：`test_396_proxy_contract` 的 f7 探针行、`test_kind_lab_readonly_proxy` 的表单 POST 用例、`test_399_isolation_impl` 1 条、`acceptance/test_399_isolation` 2 条，没有别的失败。它们已在代码 PR #597 由测试作者按 B2-1 改写。
+
+## 实施记录
+
+自行决定的可逆技术细节：
+
+- 代理：三条路径加进 `kind_lab.READ_PATHS`，与现有读路径同一 `location =` 精确匹配，GET/HEAD、丢弃请求体；`/api/v1/targets/metadata` 等子路径不匹配仍落到 `@denied`。理由：复用已审过的规则，不新写分支。
+- 探针：新增仍拒的 GET `/api/v1/alerts`、`/api/v1/targets/metadata`、`/api/v1/status/config`，对四个账号与 holmes 预期 403；targets 探测带 `?state=active` 与工具一致。理由：把「其余不放宽」变成可测的行。
+- 规则：结果路径 `data.groups`，原样字节入证据；`data.groupNextToken` 出现即标不完整（对应风险 2）。rule_name、rule_group、file 只校验非空、≤2000 字符、无控制字符，以 `[]` 形式转发。理由：照上游参数，挡掉空串与换行。
+- 目标：结果是投影记录（`targets` 加原始响应 sha256 与字节数），视图另给 `jobs_seen`（全部活跃目标的 job 名，最多 100 个）与 `active_targets_total`，便于名字没匹配时改正。理由：`scrapePool` 不一定等于 job，模型需要看到可用 job 名。
+- 元数据：Prometheus 返回的是「指标名 → 条目列表」的对象，执行器要求结果是列表，所以投影成每条 `{metric, type, help, unit}` 一行；不完整按指标个数满 100 判定。指标名按经典格式 `[A-Za-z_:][A-Za-z0-9_:]*`、≤200 字符校验。
+- 三个工具超时 30 秒、1 MiB 读取上限、视图 25k，同 A5（B2-6）；空结果是执行器的 `no_data`。秘密声明与 A5 不同：三个工具登记 `may_contain_secrets=True`（独立审查 P1，见风险 1），A5 的三个仍为 `False`。
+
+偏离与已知限制：
+
+- 规则与目标的返回里有 annotations、标签和 scrapeUrl，lab 私有值未确认（风险 1）：已按实登记 `may_contain_secrets=True`，仍只有共用的凭据脱敏，裸值是已声明的残余风险。
+- Prometheus v3 允许 UTF-8 指标名，元数据的名字校验只认经典格式，带点号等字符的名字会被拒。
+- HEAD 在三条新路径上预期 405 沿用现有读路径的实测结论，未在真实实例确认。
 
 ## 下一步
 
-B2-1 已裁决并写入决定表；A5 合并后由实现会话接手。
+独立合同测试合入后让其通过；CI 全量；租机取证（#580）跑 `scripts/f7_authz_probe.py` 与真实 Run。
