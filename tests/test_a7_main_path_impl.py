@@ -73,7 +73,7 @@ def _summary(claims: list[dict[str, Any]], *, state: str = "completed") -> dict:
             _request(K8S, "kubernetes_tabular_query"),
             _request(LOGS, "fetch_pod_logs"),
             _request(SLICE, "read_evidence"),
-            _request(FAILED, "kubernetes_count", "SOURCE_UNAVAILABLE"),
+            _request(FAILED, "kubernetes_count", "error"),
         ],
         "cited_evidence": [
             _cited(METRIC, "metrics_range_query"),
@@ -267,22 +267,206 @@ def test_human_opened_or_second_run_is_not_human_free() -> None:
     assert not a7.human_free(late)
 
 
-def test_compare_tally_and_attempt_limit() -> None:
-    before = _summary([_claim("fact", METRIC)])
-    before["run"]["versions"]["prompt_revision"] = "prompt-replay-candidate-x"
-    good = _summary(
-        [_claim("fact", METRIC, TRACE, K8S, LOGS)],
+def _side(summary: dict, side: str, attempt: int, run_id: str) -> dict:
+    """A summary of one side under exactly that side's code-computed versions."""
+    expected = a7.expected_versions(side)
+    summary["run_id"] = run_id
+    summary["run"]["run_id"] = run_id
+    summary["run"]["incident_runs"] = [{"run_id": run_id}]
+    for item in summary["run"]["tool_requests"]:
+        item["run_id"] = run_id
+    for item in summary["run"]["cited_evidence"]:
+        if item["stored"]["run_id"] == RUN:
+            item["stored"]["run_id"] = run_id
+    for entry in summary["run"]["audit"]["entries"]:
+        if entry["run_id"] == RUN:
+            entry["run_id"] = run_id
+    summary["run"]["run"]["bound_target_id"] = "lab"
+    summary["run"]["versions"] = {
+        k: expected[k]
+        for k in ("prompt_revision", "context_policy_revision", "tool_schema_revision")
+    }
+    summary["a7"] = {
+        "side": side,
+        "attempt": attempt,
+        "variant_id": expected["variant_id"],
+        "langsmith_project": "opspilot-lab-a7-main-path-20261113",
+        "scenario": {"flag": "paymentFailure", "alertname": a7.ALERTNAME},
+        "worker_running_before_alert": True,
+    }
+    return summary
+
+
+def _pair() -> tuple[dict, list[dict]]:
+    before = _side(_summary([_claim("fact", METRIC)]), "before", 1, OTHER_RUN)
+    bad = _side(_summary([_claim("fact", METRIC)]), "after", 1, RUN)
+    good = _side(
+        _summary([_claim("fact", METRIC, TRACE, K8S, LOGS)]),
+        "after",
+        2,
+        "55555555-5555-5555-5555-555555555555",
     )
-    bad = copy.deepcopy(before)
-    result = a7.compare(before, [bad, good])
+    return before, [bad, good]
+
+
+def test_expected_versions_are_the_pinned_code_values() -> None:
+    before, after = a7.expected_versions("before"), a7.expected_versions("after")
+    assert before["prompt_revision"] == "prompt-replay-candidate-bef70649a3a8"
+    assert before["discipline_revision"] == "l1a-replay-candidate-9a45deb526fe"
+    assert before["variant_id"] == "replay-candidate"
+    assert after["variant_id"] == "replay-candidate-k8s"
+    assert after["prompt_revision"].startswith("prompt-replay-candidate-k8s-")
+    assert before["tool_schema_revision"] == after["tool_schema_revision"]
+
+
+def test_compare_tally_x_of_n() -> None:
+    before, afters = _pair()
+    result = a7.compare(before, afters)
     assert result["after_reached"] == "1/2" and result["done"]
-    assert result["before"]["tool_failures"] == 1
     assert result["after"][1]["tool_calls_by_category"]["read_evidence"] == 1
-    with pytest.raises(ValueError):
-        a7.compare(before, [good] * 4)
-    assert a7.side_versions_ok("before", before["run"]["versions"])
-    assert not a7.side_versions_ok("before", good["run"]["versions"])
-    assert a7.side_versions_ok("after", good["run"]["versions"])
+
+
+def _refused(before: dict, afters: list[dict]) -> tuple[str, ...]:
+    with pytest.raises(a7.ComparisonRefused) as caught:
+        a7.compare(before, afters)
+    return caught.value.problems
+
+
+@pytest.mark.parametrize(
+    "key, value",
+    [
+        ("prompt_revision", "prompt-replay-candidate-k8s-WRONG"),
+        ("tool_schema_revision", "otel-demo-ext-000000000000"),
+    ],
+)
+def test_compare_refuses_a_wrong_after_version(key: str, value: str) -> None:
+    before, afters = _pair()
+    afters[1]["run"]["versions"][key] = value
+    problems = _refused(before, afters)
+    assert f"after:{key}" in problems and "AFTER_VERSIONS_DIFFER" in problems
+
+
+def test_compare_refuses_wrong_variant_or_before_on_after_code() -> None:
+    before, afters = _pair()
+    afters[0]["a7"]["variant_id"] = "replay-candidate"
+    assert "after:variant_id" in _refused(before, afters)
+    before, afters = _pair()
+    before["run"]["versions"] = dict(afters[0]["run"]["versions"])
+    assert "before:prompt_revision" in _refused(before, afters)
+
+
+def test_compare_refuses_mixed_sessions_scenarios_targets_and_repeats() -> None:
+    before, afters = _pair()
+    afters[1]["a7"]["langsmith_project"] = "opspilot-lab-other"
+    assert "LANGSMITH_PROJECT_DIFFERS" in _refused(before, afters)
+    before, afters = _pair()
+    afters[1]["a7"]["scenario"] = {"flag": "cartFailure"}
+    assert "SCENARIO_DIFFERS" in _refused(before, afters)
+    before, afters = _pair()
+    afters[1]["run"]["run"]["bound_target_id"] = "other"
+    assert "TARGET_DIFFERS" in _refused(before, afters)
+    before, afters = _pair()
+    assert "RUN_IDS_NOT_UNIQUE" in _refused(before, [afters[1], afters[1]])
+    assert "AFTER_ATTEMPTS_INVALID" in _refused(before, [afters[1], afters[1]])
+    many = [copy.deepcopy(afters[1]) for _ in range(4)]
+    for n, item in enumerate(many, start=1):
+        item["a7"]["attempt"] = n
+        item["run"]["run_id"] = f"run-{n}"
+    assert "AFTER_COUNT_NOT_1_TO_3" in _refused(before, many)
+    assert "BEFORE_SIDE_MISMATCH" in _refused(afters[0], [afters[1]])
+
+
+def test_tool_failures_count_only_failed_statuses() -> None:
+    summary = _summary([])
+    summary["run"]["tool_requests"] += [
+        _request(_eid(STEP, 7), "kubernetes_count", "no_data"),
+        _request(_eid(STEP, 8), "kubernetes_count", "timeout"),
+        _request(_eid(STEP, 9), "kubernetes_count", "denied"),
+        {**_request(_eid(STEP, 9), "kubernetes_count"), "result_code": None},
+    ]
+    metrics = a7.run_metrics(summary)
+    assert metrics["tool_results"] == {"ok": 5, "no_data": 1, "failed": 3, "unknown": 1}
+    assert metrics["tool_failures"] == 3
+
+
+class FakeLab:
+    def __init__(self, *, inject_raises: bool = False, restore_works: bool = True):
+        self.calls: list[str] = []
+        self.variant = "off"
+        self.inject_raises = inject_raises
+        self.restore_works = restore_works
+
+    def prepare_project(self, project: str) -> dict:
+        return {"project": project}
+
+    def worker_running(self, project: str) -> bool:
+        return True
+
+    def alert_incidents(self) -> list:
+        return []
+
+    def flag_variant(self) -> str:
+        return self.variant
+
+    def fault(self, action: str, experiment: str) -> None:
+        self.calls.append(action)
+        if action == "inject":
+            self.variant = "100%"  # patched, then the read-back check fails
+            if self.inject_raises:
+                raise subprocess.CalledProcessError(1, "kind_lab")
+        elif self.restore_works:
+            self.variant = "off"
+        else:
+            raise subprocess.CalledProcessError(1, "kind_lab")
+
+
+def _args(tmp_path: Path) -> Any:
+    return a7.build_parser().parse_args(
+        [
+            "run",
+            "--side",
+            "after",
+            "--project",
+            "opspilot-lab-a7-main-path-20261113",
+            "--evidence-dir",
+            str(tmp_path / "after-1"),
+            "--alert-timeout",
+            "0",
+            "--poll",
+            "0",
+            "--cooldown",
+            "0",
+        ]
+    )
+
+
+def test_injection_error_is_still_restored_and_confirmed(tmp_path: Path) -> None:
+    lab = FakeLab(inject_raises=True)
+    with pytest.raises(subprocess.CalledProcessError):
+        a7.cmd_run(_args(tmp_path), lab=lab)
+    assert lab.calls == ["inject", "restore"] and lab.variant == "off"
+
+
+def test_alert_timeout_restores(tmp_path: Path) -> None:
+    lab = FakeLab()
+    assert a7.cmd_run(_args(tmp_path), lab=lab) == 1
+    assert lab.calls == ["inject", "restore"]
+
+
+def test_failed_restore_exits_loudly(tmp_path: Path, capsys) -> None:
+    lab = FakeLab(restore_works=False)
+    with pytest.raises(SystemExit) as caught:
+        a7.cmd_run(_args(tmp_path), lab=lab)
+    assert caught.value.code == a7.FAULT_LEFT_ON_EXIT
+    assert "FAULT MAY STILL BE ON" in capsys.readouterr().err
+
+
+def test_refuses_to_inject_when_the_flag_is_not_normal(tmp_path: Path) -> None:
+    lab = FakeLab()
+    lab.variant = "100%"
+    with pytest.raises(SystemExit):
+        a7.cmd_run(_args(tmp_path), lab=lab)
+    assert lab.calls == []
 
 
 def test_dry_run_touches_nothing_and_limits_attempts() -> None:

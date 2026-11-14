@@ -35,6 +35,16 @@ CLI (``.venv/bin/python -m scripts.a7_main_path [--dry-run] <command>``):
 * ``verdict SUMMARY``: print the verdicts of one frozen summary.
 * ``compare --before SUMMARY --after SUMMARY [--after SUMMARY ...]
   [--out PATH]``: the A7-11 deterministic comparison and the x/n tally.
+  Refused (exit 2, the reasons on stdout) unless: one ``before`` and 1..3
+  distinct ``after`` attempts; unique Run ids; one LangSmith project, one
+  fault scenario and one bound target across all; and every Run recorded
+  under exactly its side's versions (``expected_versions``: computed from
+  this checkout's code, not given on the command line; run ``compare`` from
+  the A7 commit).
+
+The ``run`` command restores the fault on every exit path once the
+injection was attempted, re-reads ``flagd-config`` and exits 3 with a loud
+message when ``paymentFailure`` is not back to its normal variant.
 
 Environment: ``RUN_FREEZE_DSN`` (read-only DSN, never printed or stored) and
 the ``LANGSMITH_*`` keys ``lab_evidence.langsmith_client`` reads.
@@ -51,7 +61,7 @@ import time
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, get_args
 
 from opspilot.observation.store import (
     AUTO_OBSERVATION_ACTION,
@@ -66,6 +76,7 @@ from opspilot.tools import (
     prometheus_ext,
 )
 from opspilot.tools.executor import EVIDENCE_TOOL
+from opspilot.tools.outcomes import ToolStatus
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -322,12 +333,17 @@ def verdicts(summary: Mapping[str, Any]) -> dict[str, Any]:
 
 # -- comparison (A7-11, A7-12; pure) ------------------------------------------
 
+#: ``opspilot/tools/outcomes.py`` ``ToolStatus``: the statuses that are a
+#: failed tool operation. ``no_data`` is a valid empty answer and a request
+#: without a recorded result (``plan_reference``, ``None``) is unknown.
+FAILED_STATUSES: frozenset[str] = frozenset(get_args(ToolStatus)) - {OK, "no_data"}
+
 
 def run_metrics(summary: Mapping[str, Any]) -> dict[str, Any]:
     """The deterministic per-Run facts A7-11 compares."""
     block = _block(summary)
     calls: dict[str, int] = {}
-    failures = 0
+    results = {"ok": 0, "no_data": 0, "failed": 0, "unknown": 0}
     for entry in block.get("tool_requests") or []:
         if not isinstance(entry, Mapping):
             continue
@@ -336,8 +352,15 @@ def run_metrics(summary: Mapping[str, Any]) -> dict[str, Any]:
             "read_evidence" if tool == EVIDENCE_TOOL else "other"
         )
         calls[label] = calls.get(label, 0) + 1
-        if _code(entry) != OK:
-            failures += 1
+        code = _code(entry)
+        if code == OK:
+            results["ok"] += 1
+        elif code == "no_data":
+            results["no_data"] += 1
+        elif code in FAILED_STATUSES:
+            results["failed"] += 1
+        else:
+            results["unknown"] += 1
     run = block.get("run") if isinstance(block.get("run"), Mapping) else {}
     versions = (
         block.get("versions") if isinstance(block.get("versions"), Mapping) else {}
@@ -350,23 +373,160 @@ def run_metrics(summary: Mapping[str, Any]) -> dict[str, Any]:
         "all_four_cited": all_four_cited(summary),
         "human_free": human_free(summary),
         "tool_calls_by_category": dict(sorted(calls.items())),
-        "tool_failures": failures,
+        "tool_results": results,
+        "tool_failures": results["failed"],
         "model_requests_used": run.get("model_requests_used"),
         "tokens": block.get("tokens"),
         "report_published": published_report(summary) is not None,
     }
 
 
+#: The L1a variant each side's extension profile runs (A7-11): the A7 start
+#: commit's ``otel-demo-ext`` used the loop default, this commit its own.
+BEFORE_VARIANT = "replay-candidate"
+
+
+def expected_versions(side: str) -> dict[str, str]:
+    """The exact versions a Run of ``side`` must have been recorded under,
+    computed from this checkout's code, never typed in.
+
+    ``after`` is this commit's ``otel-demo-ext`` (``otel_demo_ext_versions``).
+    ``before`` is the A7 start commit's ``otel-demo-ext``: that commit ran
+    ``replay-candidate`` with the same tool registry, and A7 changes neither
+    (A7-5 pins ``replay-candidate``'s bytes; A7-6 leaves the ext
+    ``tool_schema_revision`` alone), so this code reproduces its values
+    exactly. A checkout where either moved yields other values, and
+    ``compare`` then refuses (fail-closed); run ``compare`` from the A7 commit.
+    """
+    from opspilot.instructions.discipline import discipline_revision
+    from opspilot.investigation.loop import investigation_versions
+    from opspilot.tools import otel_demo_ext
+
+    if side not in SIDES:
+        raise ValueError(f"unknown side {side!r}")
+    if side == "after":
+        variant = otel_demo_ext.DISCIPLINE_VARIANT
+        versions = dict(otel_demo_ext.otel_demo_ext_versions())
+    else:
+        variant = BEFORE_VARIANT
+        versions = {
+            **investigation_versions(variant),
+            "tool_schema_revision": otel_demo_ext.TOOL_SCHEMA_REVISION,
+        }
+    return {
+        **versions,
+        "variant_id": variant,
+        "discipline_revision": discipline_revision(variant),
+    }
+
+
+def observed_versions(summary: Mapping[str, Any]) -> dict[str, Any]:
+    """What the Run was recorded under: the Run row's ``versions`` and the
+    ``variant_id`` of its persisted input (frozen into the ``a7`` block by
+    the driver, since ``run_freeze``'s block does not carry the input)."""
+    from opspilot.instructions.discipline import (
+        UnknownVariantError,
+        discipline_revision,
+    )
+
+    block = _block(summary)
+    versions = block.get("versions")
+    observed: dict[str, Any] = dict(versions) if isinstance(versions, Mapping) else {}
+    driver = summary.get("a7")
+    variant = driver.get("variant_id") if isinstance(driver, Mapping) else None
+    observed["variant_id"] = variant
+    try:
+        observed["discipline_revision"] = (
+            discipline_revision(variant) if isinstance(variant, str) else None
+        )
+    except UnknownVariantError:
+        observed["discipline_revision"] = None
+    return observed
+
+
+def version_problems(summary: Mapping[str, Any], side: str) -> list[str]:
+    """Each expected version key whose recorded value differs, exactly."""
+    observed = observed_versions(summary)
+    return [
+        f"{side}:{key}"
+        for key, value in expected_versions(side).items()
+        if observed.get(key) != value
+    ]
+
+
+class ComparisonRefused(ValueError):
+    """The summaries are not one A7-11 comparison; ``problems`` says why."""
+
+    def __init__(self, problems: Sequence[str]) -> None:
+        super().__init__(", ".join(problems))
+        self.problems = tuple(problems)
+
+
+def _driver(summary: Mapping[str, Any]) -> Mapping[str, Any]:
+    driver = summary.get("a7")
+    return driver if isinstance(driver, Mapping) else {}
+
+
+def comparison_problems(
+    before: Mapping[str, Any], afters: Sequence[Mapping[str, Any]]
+) -> list[str]:
+    """Why ``before`` and ``afters`` are not one same-session, same-scenario
+    comparison of the two exact versions (A7-11) within A7-12 a's limit."""
+    problems: list[str] = []
+    if not 1 <= len(afters) <= MAX_AFTER_ATTEMPTS:
+        problems.append(f"AFTER_COUNT_NOT_1_TO_{MAX_AFTER_ATTEMPTS}")
+    everyone = [before, *afters]
+    if _driver(before).get("side") != "before":
+        problems.append("BEFORE_SIDE_MISMATCH")
+    if any(_driver(a).get("side") != "after" for a in afters):
+        problems.append("AFTER_SIDE_MISMATCH")
+    attempts = [_driver(a).get("attempt") for a in afters]
+    if len(set(attempts)) != len(attempts) or not all(
+        type(n) is int and 1 <= n <= MAX_AFTER_ATTEMPTS for n in attempts
+    ):
+        problems.append("AFTER_ATTEMPTS_INVALID")
+    run_ids = [_block(s).get("run_id") for s in everyone]
+    if not all(isinstance(r, str) and r for r in run_ids) or len(set(run_ids)) != len(
+        run_ids
+    ):
+        problems.append("RUN_IDS_NOT_UNIQUE")
+    projects = {_driver(s).get("langsmith_project") for s in everyone}
+    if len(projects) != 1 or not all(isinstance(p, str) and p for p in projects):
+        problems.append("LANGSMITH_PROJECT_DIFFERS")
+    scenarios = [_driver(s).get("scenario") for s in everyone]
+    if not isinstance(scenarios[0], Mapping) or any(
+        x != scenarios[0] for x in scenarios
+    ):
+        problems.append("SCENARIO_DIFFERS")
+    targets = set()
+    for s in everyone:
+        run = _block(s).get("run")
+        targets.add(run.get("bound_target_id") if isinstance(run, Mapping) else None)
+    if len(targets) != 1 or None in targets:
+        problems.append("TARGET_DIFFERS")
+    problems += version_problems(before, "before")
+    for a in afters:
+        problems += version_problems(a, "after")
+    after_versions = [observed_versions(a) for a in afters]
+    if any(v != after_versions[0] for v in after_versions):
+        problems.append("AFTER_VERSIONS_DIFFER")
+    return list(dict.fromkeys(problems))
+
+
 def compare(
     before: Mapping[str, Any], afters: Sequence[Mapping[str, Any]]
 ) -> dict[str, Any]:
-    if not 1 <= len(afters) <= MAX_AFTER_ATTEMPTS:
-        raise ValueError(f"1..{MAX_AFTER_ATTEMPTS} after-side summaries")
+    """The A7-11 comparison and the A7-12 a tally; ``ComparisonRefused``
+    unless ``comparison_problems`` is empty."""
+    problems = comparison_problems(before, afters)
+    if problems:
+        raise ComparisonRefused(problems)
     rows = [run_metrics(s) for s in afters]
     reached = sum(1 for r in rows if r["all_four_cited"] and r["human_free"])
     return {
         "before": run_metrics(before),
         "after": rows,
+        "expected_versions": {side: expected_versions(side) for side in SIDES},
         # A7-12 a: x/n of the after side, every attempt recorded.
         "after_reached": f"{reached}/{len(rows)}",
         "done": reached > 0,
@@ -383,17 +543,18 @@ ALERT_WORKLOAD = "checkout"
 FAULT_FLAG = "paymentFailure"
 MAX_AFTER_ATTEMPTS = 3
 SIDES = ("before", "after")
-#: The ext profile's L1a variant per side (A7-11): the A7 start commit runs
-#: ``replay-candidate``, the A7 commit ``replay-candidate-k8s``.
-SIDE_PROMPT_PREFIX = {
-    "before": "prompt-replay-candidate-",
-    "after": "prompt-replay-candidate-k8s-",
-}
-TOOL_SCHEMA_PREFIX = "otel-demo-ext-"
 FINISHED_RUN_STATES = frozenset(
     {"completed", "cancelled", "failed", "blocked", "budget_exhausted", "waiting_human"}
 )
 EVIDENCE_ROOT = ROOT / "docs/evidence/a7-main-path"
+#: Exit code when the fault may still be on after the driver ends.
+FAULT_LEFT_ON_EXIT = 3
+
+
+def normal_variant() -> str:
+    from scripts import kind_lab
+
+    return kind_lab.NORMAL_VARIANT
 
 
 def default_project(today: datetime | None = None) -> str:
@@ -410,20 +571,6 @@ def experiment_id(side: str, attempt: int) -> str:
     return f"a7-main-path-{side}-{attempt}"
 
 
-def side_versions_ok(side: str, versions: Mapping[str, Any]) -> bool:
-    prompt = versions.get("prompt_revision")
-    schema = versions.get("tool_schema_revision")
-    if not isinstance(prompt, str) or not isinstance(schema, str):
-        return False
-    if not schema.startswith(TOOL_SCHEMA_PREFIX):
-        return False
-    if side == "before":
-        return prompt.startswith(SIDE_PROMPT_PREFIX["before"]) and not (
-            prompt.startswith(SIDE_PROMPT_PREFIX["after"])
-        )
-    return prompt.startswith(SIDE_PROMPT_PREFIX["after"])
-
-
 def plan_steps(args: argparse.Namespace) -> list[str]:
     exp = experiment_id(args.side, args.attempt)
     return [
@@ -431,12 +578,15 @@ def plan_steps(args: argparse.Namespace) -> list[str]:
         f"check the {args.compose_project} worker container is running",
         f"check no open incident from {ALERTNAME} on "
         f"{ALERT_NAMESPACE}/{ALERT_WORKLOAD} (close the previous one first)",
+        f"check {FAULT_FLAG} is {normal_variant()!r} in flagd-config",
         f"kind_lab.py fault inject --experiment-id {exp} --flag {FAULT_FLAG}",
         f"wait up to {args.alert_timeout}s for {ALERTNAME} to open an incident "
         "with a queued Run",
         f"wait up to {args.run_timeout}s for the Run to end",
         f"freeze summary.json with verdicts to {args.evidence_dir}",
-        f"kind_lab.py fault restore --experiment-id {exp}",
+        f"kind_lab.py fault restore --experiment-id {exp} (also after any error "
+        "from the injection on), then re-read flagd-config and exit "
+        f"{FAULT_LEFT_ON_EXIT} if {FAULT_FLAG} is not {normal_variant()!r}",
         f"cool down {args.cooldown}s",
     ]
 
@@ -501,6 +651,19 @@ class Lab:
             command += ["--flag", FAULT_FLAG]
         subprocess.run(command, check=True, timeout=180)
 
+    def flag_variant(self) -> str | None:
+        """``paymentFailure``'s live ``defaultVariant``; None when unreadable."""
+        from scripts import kind_lab
+
+        raw = kind_lab.read_live_flags()
+        if raw is None:
+            return None
+        try:
+            value = json.loads(raw)["flags"][FAULT_FLAG]["defaultVariant"]
+        except (ValueError, KeyError, TypeError):
+            return None
+        return value if isinstance(value, str) else None
+
     def prepare_project(self, project: str) -> dict[str, Any]:
         from scripts import lab_evidence
 
@@ -523,11 +686,14 @@ class Lab:
         trace = run_freeze.trace_roots(
             project, run_id, client_factory=lab_evidence.langsmith_client
         )
+        run_input = (ledger.get("run") or {}).get("input")
         summary: dict[str, Any] = {"run": block, "trace": trace, "a7": dict(driver)}
-        summary["a7"]["verdicts"] = verdicts(summary)
-        summary["a7"]["side_versions_ok"] = side_versions_ok(
-            driver["side"], block.get("versions") or {}
+        summary["a7"]["variant_id"] = (
+            run_input.get("variant_id") if isinstance(run_input, Mapping) else None
         )
+        summary["a7"]["expected_versions"] = expected_versions(driver["side"])
+        summary["a7"]["version_problems"] = version_problems(summary, driver["side"])
+        summary["a7"]["verdicts"] = verdicts(summary)
         return lab_evidence.freeze(
             ledger,
             experiment=experiment,
@@ -596,22 +762,34 @@ def cmd_run(args: argparse.Namespace, *, lab: Lab | None = None) -> int:
             "first, or the new alert attaches to it without a Run: "
             + ",".join(i["incident_id"] for i in open_incidents)
         )
+    if lab.flag_variant() != normal_variant():
+        raise SystemExit(
+            f"{FAULT_FLAG} is not {normal_variant()!r} before the injection; "
+            "restore the earlier experiment first"
+        )
     known = {i["incident_id"] for i in lab.alert_incidents()}
-    injected_at = _now()
-    lab.fault("inject", exp)
-    _emit({"step": "inject", "at": injected_at.isoformat(), "experiment": exp})
     driver: dict[str, Any] = {
         "side": args.side,
         "attempt": args.attempt,
         "max_attempts": MAX_AFTER_ATTEMPTS if args.side == "after" else 1,
         "experiment": exp,
-        "scenario": {"flag": FAULT_FLAG, "alertname": ALERTNAME, "kind": "switch"},
+        "scenario": {
+            "flag": FAULT_FLAG,
+            "alertname": ALERTNAME,
+            "namespace": ALERT_NAMESPACE,
+            "workload": ALERT_WORKLOAD,
+            "kind": "switch",
+        },
         "worker_running_before_alert": worker,
         "langsmith_project": args.project,
-        "injected_at": injected_at.isoformat(),
     }
-    restored = False
     try:
+        driver["injected_at"] = _now().isoformat()
+        # Inside the cleanup scope: kind_lab may have patched the ConfigMap
+        # and still fail its read-back check, so an injection that raised has
+        # an unknown result and is restored like any other.
+        lab.fault("inject", exp)
+        _emit({"step": "inject", "at": driver["injected_at"], "experiment": exp})
         incident = _wait(
             lambda: next(
                 (
@@ -652,16 +830,44 @@ def cmd_run(args: argparse.Namespace, *, lab: Lab | None = None) -> int:
             driver=driver,
         )
         _emit({"step": "freeze", "summary": str(path), **frozen["a7"]["verdicts"]})
-        lab.fault("restore", exp)
-        restored = True
-        _emit({"step": "restore", "at": _now().isoformat()})
     finally:
-        if not restored:
-            lab.fault("restore", exp)
-            _emit({"step": "restore", "at": _now().isoformat(), "after_error": True})
+        restore_and_confirm(lab, exp)
     _emit({"step": "cooldown", "seconds": args.cooldown})
     time.sleep(args.cooldown)
     return 0
+
+
+def restore_and_confirm(lab: Lab, exp: str) -> None:
+    """Restore, then re-read the flag; a flag that is not back to normal ends
+    the process loudly with ``FAULT_LEFT_ON_EXIT`` whatever happened before.
+
+    A restore that fails while the flag reads normal is the injection that
+    never took effect (``kind_lab`` writes its restore snapshot only after a
+    verified patch); it is reported, not hidden."""
+    error: str | None = None
+    try:
+        lab.fault("restore", exp)
+    except Exception as exc:  # noqa: BLE001 - re-checked against the live flag
+        error = type(exc).__name__
+    variant = lab.flag_variant()
+    if variant != normal_variant():
+        print(
+            f"FAULT MAY STILL BE ON: {FAULT_FLAG} reads {variant!r} after restore "
+            f"(restore error: {error}); run `kind_lab.py fault restore "
+            f"--experiment-id {exp}` or restore flagd-config by hand",
+            file=sys.stderr,
+            flush=True,
+        )
+        raise SystemExit(FAULT_LEFT_ON_EXIT)
+    _emit(
+        {
+            "step": "restore",
+            "at": _now().isoformat(),
+            "flag": FAULT_FLAG,
+            "variant": variant,
+            "restore_error": error,
+        }
+    )
 
 
 def _load(path: Path) -> dict[str, Any]:
@@ -674,7 +880,11 @@ def cmd_verdict(args: argparse.Namespace) -> int:
 
 
 def cmd_compare(args: argparse.Namespace) -> int:
-    result = compare(_load(args.before), [_load(p) for p in args.after])
+    try:
+        result = compare(_load(args.before), [_load(p) for p in args.after])
+    except ComparisonRefused as refused:
+        _emit({"command": "compare", "refused": list(refused.problems)})
+        return 2
     text = json.dumps(result, indent=2, ensure_ascii=False, default=str) + "\n"
     if args.out is not None and not args.dry_run:
         args.out.write_text(text)
