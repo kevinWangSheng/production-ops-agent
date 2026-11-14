@@ -30,6 +30,11 @@ DENIED_REQUESTS = (
     ("POST", "/-/reload"),
     ("GET", "/federate"),
     ("POST", "/api/v1/query"),
+    # B2 (#561): still outside the read surface after rules, targets and
+    # metadata were opened (decision B2-1 = a).
+    ("GET", "/api/v1/alerts"),
+    ("GET", "/api/v1/targets/metadata"),
+    ("GET", "/api/v1/status/config"),
 ) + tuple(("OPTIONS", path) for path in READ_ENDPOINTS)
 VARIANT_PATHS = (
     "//api/v1/otlp/v1/metrics",
@@ -45,19 +50,18 @@ PROBE_ACCOUNTS = ("investigator", "observer", "lab", "anonymous")
 MAX_BYTES = 2 * 1024 * 1024
 # #396 (decision Q6): the holmes account's extra rows. The frozen matrix above
 # is unchanged for every other account. holmes may POST a form body (<= 64k)
-# to query/query_range only; a non-form POST, a form POST anywhere else, an
-# oversized form and the metadata/rules paths HolmesGPT also calls are denied.
+# to query/query_range only; a non-form POST, a form POST anywhere else and an
+# oversized form are denied. B2 (#561, decision B2-1 = a): GET on rules,
+# targets and metadata is now in READ_PATHS for every account, holmes too, so
+# those rows come from READ_REQUESTS (200) and their form POSTs stay 403.
 HOLMES_FORM_PATHS = ("/api/v1/query", "/api/v1/query_range")
 HOLMES_ROWS: tuple[tuple[str, str, str | None, int | str], ...] = (
     tuple((m, p, None, 405 if m == "HEAD" else 200) for m, p in READ_REQUESTS)
     + tuple(("POST", p, "form", 200) for p in HOLMES_FORM_PATHS)
     + (("POST", "/api/v1/query", "form-oversize", 413),)
     + tuple(
-        ("POST", p, "form", 403)
-        for p in READ_ENDPOINTS + ("/api/v1/metadata", "/api/v1/rules")
-        if p not in HOLMES_FORM_PATHS
+        ("POST", p, "form", 403) for p in READ_ENDPOINTS if p not in HOLMES_FORM_PATHS
     )
-    + (("GET", "/api/v1/metadata", None, 403), ("GET", "/api/v1/rules", None, 403))
     + tuple((m, p, None, 403) for m, p in DENIED_REQUESTS)
     + tuple((m, p, None, "4xx") for m, p in VARIANT_REQUESTS)
     + (("POST", "/API/V1/QUERY", "form", "4xx"),)
@@ -147,6 +151,8 @@ def _query(path: str) -> str:
         query += "&start=0&end=1&step=1"
     elif path == "/api/v1/series":
         query = "?match%5B%5D=up"
+    elif path == "/api/v1/targets":
+        query = "?state=active"
     return query
 
 

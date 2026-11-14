@@ -38,6 +38,9 @@ GOOD_LOG = [
     "2026-10-28T18:42:10+00:00 holmes GET /api/v1/label/__name__/values 200 4 2 0.9",
     "2026-10-28T18:42:19+00:00 holmes GET /api/v1/series 200 357 3039 1.498",
     "2026-10-28T18:42:19+00:00 holmes GET /api/v1/labels 200 357 172 2.469",
+    "2026-10-28T18:42:25+00:00 holmes GET /api/v1/rules 200 0 0 0.001",
+    "2026-10-28T18:42:25+00:00 holmes GET /api/v1/targets 200 0 0 0.001",
+    "2026-10-28T18:42:25+00:00 holmes GET /api/v1/metadata 200 0 0 0.001",
     "2026-10-28T18:42:25+00:00 holmes POST /api/v1/query 200 473 582 2.256",
     "2026-10-28T18:43:46+00:00 holmes POST /api/v1/query_range 200 987 93 2.298",
     "2026-10-28T18:43:47+00:00 holmes POST /api/v1/query 422 300 90 0.001",
@@ -179,8 +182,9 @@ def test_missing_or_non_bool_reach_fails(key: str) -> None:
 @pytest.mark.parametrize(
     "line",
     [
-        "2026-10-28T12:00:07+00:00 holmes GET /api/v1/metadata 403 300 0 0.000",
-        "2026-10-28T12:00:07+00:00 holmes GET /api/v1/rules 200 300 0 0.000",
+        "2026-10-28T12:00:07+00:00 holmes GET /api/v1/status/config 200 300 0 0.000",
+        "2026-10-28T12:00:07+00:00 holmes GET /api/v1/alerts 200 300 0 0.000",
+        "2026-10-28T12:00:07+00:00 holmes GET /api/v1/targets/metadata 200 300 0 0.000",
         "2026-10-28T12:00:07+00:00 holmes POST /api/v1/series 200 300 0 0.000",
         "2026-10-28T12:00:07+00:00 holmes DELETE /api/v1/query 200 300 0 0.000",
         "2026-10-28T12:00:07+00:00 holmes GET /api/v1/query 403 300 0 0.000",

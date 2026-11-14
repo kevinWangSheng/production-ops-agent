@@ -1263,6 +1263,11 @@ READ_PATHS = (
     "/api/v1/series",
     "/api/v1/labels",
     "/api/v1/status/buildinfo",
+    # B2 (#561, decision B2-1 = a): rules, targets and metric metadata, GET
+    # and HEAD only, for every account including holmes.
+    "/api/v1/rules",
+    "/api/v1/targets",
+    "/api/v1/metadata",
 )
 
 
