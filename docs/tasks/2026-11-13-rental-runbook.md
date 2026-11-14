@@ -13,9 +13,9 @@
 | 项 | 现状（2026-11-13） | 为什么必须 |
 |---|---|---|
 | A1–A6（#589、#588、#598、#594、#593、#600）、#581–#583（#586、#587、#603）、#604（`130225f9`） | 已合并 | 工具、回放组件、逐题驱动与 `run_freeze` |
-| #605 分档文件与词表生成器 | 未实现，等 L-V7 裁决 | 驱动的 `--vocabulary`/`--vocabulary-dir` 与 `coverage.py --tiers` 都要它的产物 |
-| B2 #597 | OPEN，BEHIND | 改只读代理与 `f7_authz_probe.py` 的期望表；没合并时 `up` 渲染出的代理不放行 rules/targets/metadata |
-| A7（#559，变体预计叫 `replay-candidate-k8s`） | 未实现 | A7-14：扩展档位的最终 `prompt_revision` 要用于 A7 后一次 Run 和 Lite 35 题（L12）。下文写作「A7 合并后的提交」 |
+| #605 分档文件与词表生成器（#610） | 已合并（`56e22b93`） | 驱动的 `--vocabulary`/`--vocabulary-dir` 与 `coverage.py --tiers` 都要它的产物 |
+| B2 #597 | 已合并（`dc9156b7`） | 改只读代理与 `f7_authz_probe.py` 的期望表；没合并时 `up` 渲染出的代理不放行 rules/targets/metadata |
+| A7（#559，变体 `replay-candidate-k8s`，PR #614） | 审查中，租机前合并 | A7-14：扩展档位的最终 `prompt_revision` 要用于 A7 后一次 Run 和 Lite 35 题（L12）。下文写作「A7 合并后的提交」 |
 
 **租机前还缺的本机工作**（不做完就开机，会在机上临时写代码）：
 
