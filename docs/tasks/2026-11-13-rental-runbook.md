@@ -66,7 +66,7 @@
 | 2.2 | 挑题，只按数据覆盖：从分档明细取 trace 与日志都覆盖故障窗的题，去掉 S18、S38，按编号取前两个（本手册的默认，可逆），再在数据集根目录下按名字找到对应的场景目录名。命令见表下「2.2」 | 输出正好 2 个编号；两个编号写进 `run.md` | 不足 2 个：停，报 lead（分档结果与预期不符） | 2 分钟 |
 | 2.3 | 第 1 题：`.venv/bin/python -m scripts.itbench_lite.driver attempt --round <冒烟轮次> --dataset <数据集根> --scenario <场景目录名> --trial 1 --vocabulary <词表目录>/S<id>.txt --env-file ~/rental-private/lite.env` | 见表下「每题判定」 | 不通过就停，不跑第 2 题；按阶段 3 分类 | 约 10 分钟 |
 | 2.4 | 第 2 题：第 1 题判定全部通过后，同一条命令换场景 | 同上 | 同上 | 约 10 分钟 |
-| 2.5 | 反馈简报：每题一节，写下表的数值；按阶段 3 的类别 ①–④ 归类发现；①②③ 各开缺陷 issue，④ 列给用户决定 | 简报写进冒烟证据目录的 `run.md`，同时发给 lead | — | 20 分钟 |
+| 2.5 | 反馈简报：每题一节，写下表的数值；按阶段 3 的类别 ①–④ 归类发现；①②③ 各开缺陷 issue，④ 由 lead 决定改不改（理由写进 run.md） | 简报写进冒烟证据目录的 `run.md`，同时发给 lead | — | 20 分钟 |
 
 **2.1**（复制、词表、分档）：
 
@@ -108,15 +108,15 @@ jq -r 'to_entries[] | select(.value.coverage.traces=="covered" and .value.covera
 | ① 环境与脚本 | 驱动起不来、端口、灌数据超时、环境变量 | 开缺陷 issue 修，重跑同一题 |
 | ② 工具缺陷 | 新工具对真实 API 报错、解析不对 | 开缺陷 issue，按缺陷 PR 修并独立审查，重跑 |
 | ③ 适配层 | 假 server 与真实 API 不一致、报告转答案出错 | 同 ②；改动理由只能来自日志与报错，不能来自分数或答案 |
-| ④ 提示词与调查指导 | 模型漏调某类工具、方向不对 | 列入反馈简报，由用户决定改不改；改了就开 issue 实现 |
+| ④ 提示词与调查指导 | 模型漏调某类工具、方向不对 | 列入反馈简报，由 lead 决定改不改（理由写进 run.md）；改了就开 issue 实现 |
 
 规则：
 
 - 每个缺陷单独一个 issue（链接 #616 与本手册），在别的会话实现，不在编排会话里修，也不在租机上临时改代码。只是环境操作（装包、放行端口、重启 collector）不改代码的，在机上做，记进 `lab_actions`。
 - 改动合并后，主 checkout 更新到新的 `main`（`git pull --ff-only`；`uv.lock` 变了就再跑 `make setup`），用新轮次重跑出问题的那一题（①②③），判定同「每题判定」。
-- **版本停点**：A7 前一次 Run 的版本期望由驱动所在提交的代码算出（`scripts/a7_main_path.py` `expected_versions` 的说明：A7 不改扩展档位的 `tool_schema_revision`，前一次的期望才能从后来的代码复现）。所以改动全部合并后，在主 checkout 跑 `.venv/bin/python -c 'from opspilot.tools.otel_demo_ext import otel_demo_ext_versions as v; print(v())'`，把 `tool_schema_revision` 与 `context_policy_revision` 和冒烟 summary 的 `run.versions` 对照。任一不同：停，报用户，说明 A7 前一次 Run 的版本核对与 `compare` 会拒绝，由用户决定怎么办，不自行处理。
+- **版本停点**：A7 前一次 Run 的版本期望由驱动所在提交的代码算出（`scripts/a7_main_path.py` `expected_versions` 的说明：A7 不改扩展档位的 `tool_schema_revision`，前一次的期望才能从后来的代码复现）。所以改动全部合并后，在主 checkout 跑 `.venv/bin/python -c 'from opspilot.tools.otel_demo_ext import otel_demo_ext_versions as v; print(v())'`，把 `tool_schema_revision` 与 `context_policy_revision` 和冒烟 summary 的 `run.versions` 对照。任一不同：报 lead，说明 A7 前一次 Run 的版本核对与 `compare` 会拒绝；由 lead 决定处理方式并把理由写进 run.md，之后继续。
 
-**检查点 3**：冒烟开出的 ①②③ issue 全部合并且重跑通过，或由用户决定延后；④ 每项都有用户的决定（改或不改，改的已合并）；版本停点没有触发；主 checkout 在提交 P、无已跟踪修改。P 的哈希与 `otel_demo_ext_versions()` 的输出记进 `run.md`。
+**检查点 3**：冒烟开出的 ①②③ issue 全部合并且重跑通过，或由 lead 决定延后；④ 每项都有 lead 的决定（改或不改，改的已合并）；版本停点没有触发或 lead 已处置；主 checkout 在提交 P、无已跟踪修改。P 的哈希与 `otel_demo_ext_versions()` 的输出记进 `run.md`。
 
 ### 阶段 4：kind 部分，#580 集群取证 → #559 A7 主路径 Run（约 4–5.5 小时）
 
@@ -178,7 +178,7 @@ set -a; . tmp/m1-kind-lab/k8s-investigator.env; . <investigator 的 Prometheus e
 
 前后对照只记确定性数字（A7-11）：引用了哪些类别、各类调用次数、模型请求数、token、校验是否通过、工具失败次数。每边只有 1 次，不下因果结论。
 
-**检查点 4**：4a.2、4a.4、4a.5 的探测判定满足（或按 A1 规则修正期望后重跑一次通过）；4b 告警到达；4c.1、4c.3（或补跑后 `compare.json` 已写出）、4c.4、4c.6 的判定满足；token 搜索 0 命中。A7 补跑 3 次都没达到四类时，照实记 x/n，#559 保持开着，停，报用户，不现场改提示词（A7-12 c 不取）。4c 结束后停掉 `../poa-a7-after` 的 web 与 worker，lab 继续运行到阶段 5 结束。
+**检查点 4**：4a.2、4a.4、4a.5 的探测判定满足（或按 A1 规则修正期望后重跑一次通过）；4b 告警到达；4c.1、4c.3（或补跑后 `compare.json` 已写出）、4c.4、4c.6 的判定满足；token 搜索 0 命中。A7 补跑 3 次都没达到四类时，照实记 x/n，#559 保持开着，写进全量前给用户的简报，不现场改提示词（A7-12 c 不取），继续阶段 5。4c 结束后停掉 `../poa-a7-after` 的 web 与 worker，lab 继续运行到阶段 5 结束。
 
 ### 阶段 5：ITBench-Lite 小批与彩排（#619、#497，约 1.5–2 小时）
 
@@ -192,18 +192,18 @@ set -a; . tmp/m1-kind-lab/k8s-investigator.env; . <investigator 的 Prometheus e
 | 5.4 | 恢复：用 5.2 的同一条命令重跑（文档写的续跑方式：完整的 trial 会跳过，只差判分的只补判分，被中断的 trial 的旧证据移到 `tmp/…/trial-1/stale/` 后重跑） | 第 1 题的输出带 `skipped: [1]`；被中断的那题这次 `status` 为 `completed`；其余题照常跑完；跑完后 5.3 的端口与容器检查再做一遍，同样干净 | 不符：属类别 ①，停，开 issue | 约 50 分钟 |
 | 5.5 | 逐题核对：每题按阶段 2 的「每题判定」记数值，另统计作废次数（`itbench_lite.history` 里 `kind` 为 `void` 的条数）与基础设施失败次数（`kind` 为 `infra`） | 见检查点 5 | — | 15 分钟 |
 
-**小批之后的改动**：按阶段 3 的分类处理，①②③ 开 issue 修，合并后用新轮次重跑受影响的题。**A7-14 停点**：如果小批引出的改动是类别 ④（改提示词），或改变了扩展档位的 `tool_schema_revision`，而 A7 后一次 Run 已在提交 P 上跑过，那么 A7 后一次用的就不再是最终提示词或最终工具面：停，报用户，由用户决定是否在最终提交上重跑 A7 后一次，不自行决定。两个版本号都不变的改动不触发这个停点。
+**小批之后的改动**：按阶段 3 的分类处理，①②③ 开 issue 修，合并后用新轮次重跑受影响的题。**A7-14 停点**：如果小批引出的改动是类别 ④（改提示词），或改变了扩展档位的 `tool_schema_revision`，而 A7 后一次 Run 已在提交 P 上跑过，那么 A7 后一次用的就不再是最终提示词或最终工具面：报 lead，由 lead 决定是否在最终提交上重跑 A7 后一次（默认重跑），理由写进 run.md。两个版本号都不变的改动不触发这个停点。
 
 **检查点 5**：
 - 无基础设施失败，或失败已开 issue 并处置；作废次数照实记录。
 - 每题 judge 正常返回（`scores.json` 的 `judged` 为 true）。
 - 5.3 与 5.4 的判定全部满足（#497 彩排通过）；两档都跑到了。
-- 反馈按阶段 3 分类处置完；A7-14 停点没有触发，或用户已就它作出决定。
+- 反馈按阶段 3 分类处置完；A7-14 停点没有触发，或 lead 已处置。
 - 有任一条不满足就停，不开全量。
 
 ### 阶段 6：冻结版本号，跑全量 35 题 × 3（#571，约 16–20 小时）
 
-1. **用户确认**：把冒烟与小批的反馈、各阶段检查点结果、当前提交交给用户，用户确认后才冻结。
+1. **冻结前简报（全程唯一一次停下等用户）**：由 lead 决定冻结点，把冒烟与小批的反馈、各阶段检查点结果、改动与当前提交简报给用户，用户回复后开全量。
 2. **冻结**：记下提交 F（`git rev-parse HEAD`，主 checkout 无已跟踪修改），在主 checkout 跑 `.venv/bin/python -c 'from opspilot.tools.otel_demo_ext import otel_demo_ext_versions as v; print(v())'`，把 `prompt_revision` 与 `tool_schema_revision` 的值写进本记录与全量证据目录的 `run.md`。这两个值要与小批 summary 的 `run.versions` 相同；不同说明小批之后又有改动，回到阶段 5 重跑受影响的题。从这一刻到全量结束，不再合并任何会进入主 checkout 的改动，主 checkout 不 pull。
 3. **停 lab，腾内存**：`python3 scripts/kind_lab.py stop`（kind 部分已做完；lab 的 Jaeger 内存上限是 2Gi，旧记录里 1Gi 跑约 13.7 小时被 OOM，停掉就不受影响）。
 4. **全量**：`.venv/bin/python -m scripts.itbench_lite.driver round --round <全量轮次> --dataset <数据集根> --vocabulary-dir <词表目录> --env-file ~/rental-private/lite.env`（默认全部题、`--trials 3`，按题串行，每次全新 PG 并重算平移量，L15）。可续跑：中断后用同一条命令重跑，完整的 trial（标记、completed summary、答案输出与确定性分都在）会跳过；只差判分的只补判分。清理失败（含端口没释放）会停整轮（退出码 2），查明后再续跑；查明需要改代码的，停，报用户，全量期间不改代码。作废线、每题判定同阶段 2；每个 trial 最多 3 次机会，用完记缺失、计 0、留在分母（L-D8、L5）。
