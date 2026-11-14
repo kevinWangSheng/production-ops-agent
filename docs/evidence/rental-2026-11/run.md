@@ -35,7 +35,7 @@
 | 08:59 | 1.3 内存 | `free -m` | 见上表；lab 起来后另见检查点 |
 | 09:00 | 1.2 镜像 | `docker pull prom/prometheus:v3.5.0 jaegertracing/all-in-one:1.53.0`；`docker image inspect` | 退出码 0；`prom/prometheus@sha256:63805ebb…4996`，`jaegertracing/all-in-one@sha256:60e65bff…409c` |
 | 09:00 | 1.2 needs-kind-run | 本机：`gh issue list --label needs-kind-run --state open` | 见下 |
-| 09:01 | key 文件 | 见下「私有 env 文件」 | **不完整**，见下 |
+| 09:01–09:02 | key 文件 | 见下「私有 env 文件」 | 首次缺 3 个，补齐后复核通过 |
 
 ### 版本
 
@@ -56,7 +56,9 @@ Docker 29.2.1（`docker-ce 5:29.2.1-1~ubuntu.24.04~noble`），kind v0.33.0，ku
 
 路径 `/home/opspilot/rental-private/lite.env`（目录 700、文件 600，属主 opspilot）。由用户从本机复制（执行者对本机 `.env` 没有读取权限）。只核对变量名与权限，不读值。
 
-09:01 核对（文件 08:59:32 写入后没有再变）：权限 600，属主 opspilot，2 行，只有 `LANGSMITH_ENDPOINT`、`LANGSMITH_WORKSPACE_ID`。**缺 `DEEPSEEK_API_KEY`、`LANGSMITH_API_KEY`、`ZAI_API_KEY`。** 驱动缺前两个会以 `DEEPSEEK_API_KEY_MISSING` / `LANGSMITH_API_KEY_MISSING` 中止（`scripts/itbench_lite/driver.py`），judge 缺 `ZAI_API_KEY`。这是环境前提，不是代码问题；需要用户补齐。
+09:01 第一次核对：文件只有 `LANGSMITH_ENDPOINT`、`LANGSMITH_WORKSPACE_ID` 两行，缺 `DEEPSEEK_API_KEY`、`LANGSMITH_API_KEY`、`ZAI_API_KEY`（环境前提，不是代码问题），报 lead。
+
+09:02 复核（用户 09:01:30 补齐后）：目录 700、文件 600，属主 opspilot，5 行，变量名为 `DEEPSEEK_API_KEY`、`LANGSMITH_API_KEY`、`LANGSMITH_ENDPOINT`、`LANGSMITH_WORKSPACE_ID`、`ZAI_API_KEY`，没有空值，不带 `export` 前缀。值没有读取或打印。
 
 ## 检查点 1
 
@@ -70,9 +72,9 @@ Docker 29.2.1（`docker-ce 5:29.2.1-1~ubuntu.24.04~noble`），kind v0.33.0，ku
 | 1.2 数据集 35 个场景目录 | 通过（按目录名；`scenario_key` 正式校验在 2.1） | 35 个 `Scenario-<n>` |
 | 1.3 health ok、rules-check 全 0、span 速率 > 0、flagd 全 off | 通过 | 1.9167；四项 exit 0；11 个开关 off |
 | 1.4 主机信息 | 部分：单价与开机时刻未确认 | 主机表 |
-| 三个 key 放进 600 文件（#617） | **未通过**：缺 `DEEPSEEK_API_KEY`、`LANGSMITH_API_KEY`、`ZAI_API_KEY` | 私有 env 文件一节 |
+| 三个 key 放进 600 文件（#617） | 通过（09:02 复核） | 私有 env 文件一节 |
 
-**结论：检查点 1 未通过**，只差 key 文件（以及单价、开机时刻两项未确认的记录）。环境本身就绪。key 补齐、按变量名与权限复核后即可判通过；在此之前不进入冒烟。
+**结论：检查点 1 通过**（09:02）。唯一未满足的是 1.4 的单价与开机时刻，主机上看不到，记为未确认；这两项不影响冒烟。
 
 ## 未执行
 
