@@ -88,5 +88,5 @@
 
 ## 未执行 / 未入库
 
-- 两题的 `summary.json` 仍留在主机运行 checkout 的未跟踪目录里（`docs/evidence/itbench-lite-sre-lite-smoke-1114b/S{1,5}/trial-1/`），按手册第 1 节收尾再提交；首轮失败的 `lite-smoke-1114/S1` 同样保留。原始 ledger 在主机 `tmp/lab-ledgers/`，不入库。
+- 冻结摘要已入库（复制前在主机上对 token 与 11 个已知秘密值逐个搜索，0 命中；sha256 与主机一致）：[S1](S1/trial-1/summary.json)、[S5](S5/trial-1/summary.json)，以及首轮因 key 失败的 [lite-smoke-1114 S1](../itbench-lite-sre-lite-smoke-1114/S1/trial-1/summary.json)。原始 ledger 在主机 `tmp/lab-ledgers/`，不入库。
 - 费用（token × 单价）未算：单价未在当天读取。
