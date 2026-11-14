@@ -52,9 +52,7 @@ ANSWER_TOKEN = "ANSWER_FILE_MUST_NOT_BE_READ_605"
 
 
 def _rfc(moment: datetime) -> str:
-    return moment.astimezone(UTC).isoformat(timespec="seconds").replace(
-        "+00:00", "Z"
-    )
+    return moment.astimezone(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
 def _click(moment: datetime) -> str:
@@ -595,4 +593,3 @@ def test_both_generators_reject_answer_lure_without_opening_or_emitting_it(
     for output_path in (tiers_out, detail_out):
         if output_path.exists():
             assert ANSWER_TOKEN not in output_path.read_text(encoding="utf-8")
-
