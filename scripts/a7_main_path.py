@@ -42,6 +42,20 @@ CLI (``.venv/bin/python -m scripts.a7_main_path [--dry-run] <command>``):
   this checkout's code, not given on the command line; run ``compare`` from
   the A7 commit).
 
+``run`` does not start the product. The operator starts web and worker with
+``OPSPILOT_TOOL_PROFILE=otel-demo-ext``: for ``--side before`` from a
+checkout of the A7 start commit (``dc9156b7``), for ``--side after`` from the
+A7 commit. Before injecting, ``run`` reads with ``docker exec`` the versions
+each running web/worker container would record and refuses unless they equal
+``expected_versions(side)`` exactly.
+
+How an attempt ends (``a7.run_end``, exit code): ``terminal`` (a terminal Run
+state, 0); ``parked`` (``waiting_human``/``paused``: resumable but waiting for
+a person, which A7-10 rules out, so the attempt is a failed one, frozen as is
+and never resumed, 4); ``timeout`` (still running at ``--run-timeout``, 5: the
+summary is frozen and marked incomplete, and ``compare`` refuses it). A
+``parked`` attempt is a valid attempt and counts in A7-12's n.
+
 The ``run`` command restores the fault on every exit path once the
 injection was attempted, re-reads ``flagd-config`` and exits 3 with a loud
 message when ``paymentFailure`` is not back to its normal variant.
@@ -504,6 +518,8 @@ def comparison_problems(
         targets.add(run.get("bound_target_id") if isinstance(run, Mapping) else None)
     if len(targets) != 1 or None in targets:
         problems.append("TARGET_DIFFERS")
+    if any(_driver(s).get("run_end") not in COMPLETE_RUN_ENDS for s in everyone):
+        problems.append("INCOMPLETE_ATTEMPT")
     problems += version_problems(before, "before")
     for a in afters:
         problems += version_problems(a, "after")
@@ -543,12 +559,62 @@ ALERT_WORKLOAD = "checkout"
 FAULT_FLAG = "paymentFailure"
 MAX_AFTER_ATTEMPTS = 3
 SIDES = ("before", "after")
-FINISHED_RUN_STATES = frozenset(
-    {"completed", "cancelled", "failed", "blocked", "budget_exhausted", "waiting_human"}
+#: A Run in one of these can no longer continue (``acceptance_audit``).
+TERMINAL_RUN_STATES = frozenset(
+    {"completed", "cancelled", "failed", "blocked", "budget_exhausted"}
 )
+#: Resumable, waiting for a person: for A7 (no human at all, A7-10) the
+#: attempt ends here as a failed attempt; nobody resumes it.
+PARKED_RUN_STATES = frozenset({"waiting_human", "paused"})
+#: How one attempt ended (``a7.run_end``) and the driver's exit code.
+RUN_END_EXIT = {"terminal": 0, "parked": 4, "timeout": 5}
+#: Only these attempts are valid entries of an A7-11/A7-12 comparison; a
+#: timed-out attempt's summary is incomplete.
+COMPLETE_RUN_ENDS = frozenset({"terminal", "parked"})
 EVIDENCE_ROOT = ROOT / "docs/evidence/a7-main-path"
 #: Exit code when the fault may still be on after the driver ends.
 FAULT_LEFT_ON_EXIT = 3
+
+
+#: The A7 start commit (A7-11): the ``before`` side's web and worker run it.
+BEFORE_COMMIT = "dc9156b7"
+#: Both create or claim a Run: the web records ``versions`` at alert intake,
+#: the worker refuses a claim whose ``versions`` differ from its own.
+DEPLOYED_SERVICES = ("web", "worker")
+VERSION_KEYS = ("prompt_revision", "context_policy_revision", "tool_schema_revision")
+_VERSION_PROBE = (
+    "import json, os\n"
+    "from opspilot.tools import otel_demo_ext as e\n"
+    "print(json.dumps({'profile': os.environ.get('OPSPILOT_TOOL_PROFILE'),"
+    " 'variant_id': e.DISCIPLINE_VARIANT, 'versions': e.otel_demo_ext_versions()}))"
+)
+
+
+def deployment_problems(side: str, deployed: Mapping[str, Any]) -> list[str]:
+    """Why the running web/worker would not record ``side``'s exact versions
+    (``expected_versions``); empty when every container matches."""
+    expected = expected_versions(side)
+    problems: list[str] = []
+    for service in DEPLOYED_SERVICES:
+        entries = deployed.get(service) or []
+        if not entries:
+            problems.append(f"{service}:NOT_RUNNING")
+        for entry in entries:
+            if not isinstance(entry, Mapping):
+                problems.append(f"{service}:VERSION_UNREADABLE")
+                continue
+            if entry.get("profile") != "otel-demo-ext":
+                problems.append(f"{service}:profile")
+            if entry.get("variant_id") != expected["variant_id"]:
+                problems.append(f"{service}:variant_id")
+            versions = entry.get("versions")
+            versions = versions if isinstance(versions, Mapping) else {}
+            problems += [
+                f"{service}:{key}"
+                for key in VERSION_KEYS
+                if versions.get(key) != expected[key]
+            ]
+    return list(dict.fromkeys(problems))
 
 
 def normal_variant() -> str:
@@ -576,13 +642,18 @@ def plan_steps(args: argparse.Namespace) -> list[str]:
     return [
         f"set LangSmith project {args.project} to long-lived retention",
         f"check the {args.compose_project} worker container is running",
+        f"check the running web and worker record the {args.side} side's exact "
+        "versions (docker exec, read-only)"
+        + (f"; they must run {BEFORE_COMMIT}" if args.side == "before" else ""),
         f"check no open incident from {ALERTNAME} on "
         f"{ALERT_NAMESPACE}/{ALERT_WORKLOAD} (close the previous one first)",
         f"check {FAULT_FLAG} is {normal_variant()!r} in flagd-config",
         f"kind_lab.py fault inject --experiment-id {exp} --flag {FAULT_FLAG}",
         f"wait up to {args.alert_timeout}s for {ALERTNAME} to open an incident "
         "with a queued Run",
-        f"wait up to {args.run_timeout}s for the Run to end",
+        f"wait up to {args.run_timeout}s for the Run to end or park "
+        "(waiting_human/paused: a failed attempt, exit 4; timeout: incomplete, "
+        "exit 5)",
         f"freeze summary.json with verdicts to {args.evidence_dir}",
         f"kind_lab.py fault restore --experiment-id {exp} (also after any error "
         "from the injection on), then re-read flagd-config and exit "
@@ -632,6 +703,31 @@ class Lab:
                     _OPEN_INCIDENT_SQL, (ALERT_NAMESPACE, ALERT_WORKLOAD)
                 ).fetchall()
         return [r for r in rows if _alertname(r.pop("alert_json")) == ALERTNAME]
+
+    def deployed_versions(self, project: str) -> dict[str, Any]:
+        """What each running web/worker container of ``project`` would record
+        for an ``otel-demo-ext`` Run, computed by its own installed code
+        (read-only ``docker exec``; no product state is touched)."""
+        from scripts import kind_lab
+
+        found: dict[str, Any] = {}
+        containers = kind_lab.control_containers(project)
+        for service in DEPLOYED_SERVICES:
+            entries = []
+            for container in containers.get(service) or []:
+                proc = subprocess.run(
+                    ["docker", "exec", container, "python", "-c", _VERSION_PROBE],
+                    capture_output=True,
+                    text=True,
+                    timeout=60,
+                    env=kind_lab.docker_env(),
+                )
+                try:
+                    entries.append(json.loads(proc.stdout))
+                except ValueError:
+                    entries.append(None)
+            found[service] = entries
+        return found
 
     def worker_running(self, project: str) -> bool:
         from scripts import kind_lab
@@ -755,6 +851,16 @@ def cmd_run(args: argparse.Namespace, *, lab: Lab | None = None) -> int:
     worker = lab.worker_running(args.compose_project)
     if not worker:
         raise SystemExit("worker is not running; start it before the alert (A7-10)")
+    deployed = lab.deployed_versions(args.compose_project)
+    mismatch = deployment_problems(args.side, deployed)
+    _emit({"step": "deployment", "services": deployed, "problems": mismatch})
+    if mismatch:
+        raise SystemExit(
+            f"the running deployment is not the {args.side} side's code: "
+            + ", ".join(mismatch)
+            + f" (before: start web and worker from {BEFORE_COMMIT}; after: from "
+            "the A7 commit)"
+        )
     open_incidents = [i for i in lab.alert_incidents() if i["lifecycle"] != "closed"]
     if open_incidents:
         raise SystemExit(
@@ -781,6 +887,7 @@ def cmd_run(args: argparse.Namespace, *, lab: Lab | None = None) -> int:
             "kind": "switch",
         },
         "worker_running_before_alert": worker,
+        "deployed_versions": deployed,
         "langsmith_project": args.project,
     }
     try:
@@ -813,7 +920,8 @@ def cmd_run(args: argparse.Namespace, *, lab: Lab | None = None) -> int:
                 (
                     i
                     for i in lab.alert_incidents()
-                    if i["run_id"] == run_id and i["run_state"] in FINISHED_RUN_STATES
+                    if i["run_id"] == run_id
+                    and i["run_state"] in TERMINAL_RUN_STATES | PARKED_RUN_STATES
                 ),
                 None,
             ),
@@ -821,7 +929,9 @@ def cmd_run(args: argparse.Namespace, *, lab: Lab | None = None) -> int:
             poll=args.poll,
             sleep=time.sleep,
         )
-        driver["run_finished_wait"] = "ended" if ended else "timeout"
+        driver["run_end"] = run_end(ended)
+        driver["run_state_at_end"] = None if ended is None else ended["run_state"]
+        driver["complete"] = driver["run_end"] in COMPLETE_RUN_ENDS
         frozen, path = lab.freeze(
             run_id,
             experiment=exp,
@@ -829,12 +939,28 @@ def cmd_run(args: argparse.Namespace, *, lab: Lab | None = None) -> int:
             project=args.project,
             driver=driver,
         )
-        _emit({"step": "freeze", "summary": str(path), **frozen["a7"]["verdicts"]})
+        _emit(
+            {
+                "step": "freeze",
+                "summary": str(path),
+                "run_end": driver["run_end"],
+                "complete": driver["complete"],
+                **frozen["a7"]["verdicts"],
+            }
+        )
     finally:
         restore_and_confirm(lab, exp)
     _emit({"step": "cooldown", "seconds": args.cooldown})
     time.sleep(args.cooldown)
-    return 0
+    return RUN_END_EXIT[driver["run_end"]]
+
+
+def run_end(ended: Mapping[str, Any] | None) -> str:
+    """``terminal``, ``parked`` (waiting for a person: a failed attempt under
+    A7-10, frozen as is, never resumed) or ``timeout`` (incomplete)."""
+    if ended is None:
+        return "timeout"
+    return "parked" if ended["run_state"] in PARKED_RUN_STATES else "terminal"
 
 
 def restore_and_confirm(lab: Lab, exp: str) -> None:

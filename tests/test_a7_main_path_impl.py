@@ -293,6 +293,7 @@ def _side(summary: dict, side: str, attempt: int, run_id: str) -> dict:
         "langsmith_project": "opspilot-lab-a7-main-path-20261113",
         "scenario": {"flag": "paymentFailure", "alertname": a7.ALERTNAME},
         "worker_running_before_alert": True,
+        "run_end": "terminal",
     }
     return summary
 
@@ -389,12 +390,40 @@ def test_tool_failures_count_only_failed_statuses() -> None:
     assert metrics["tool_failures"] == 3
 
 
+def _deployed(side: str) -> dict:
+    expected = a7.expected_versions(side)
+    entry = {
+        "profile": "otel-demo-ext",
+        "variant_id": expected["variant_id"],
+        "versions": {k: expected[k] for k in a7.VERSION_KEYS},
+    }
+    return {"web": [entry], "worker": [copy.deepcopy(entry)]}
+
+
 class FakeLab:
-    def __init__(self, *, inject_raises: bool = False, restore_works: bool = True):
+    def __init__(
+        self,
+        *,
+        inject_raises: bool = False,
+        restore_works: bool = True,
+        run_state: str | None = None,
+        deployed: dict | None = None,
+    ):
         self.calls: list[str] = []
         self.variant = "off"
         self.inject_raises = inject_raises
         self.restore_works = restore_works
+        self.run_state = run_state
+        self.deployed = deployed if deployed is not None else _deployed("after")
+        self.frozen: dict | None = None
+
+    def deployed_versions(self, project: str) -> dict:
+        return self.deployed
+
+    def freeze(self, run_id: str, **kwargs: Any) -> tuple[dict, Path]:
+        self.calls.append("freeze")
+        self.frozen = dict(kwargs["driver"])
+        return {"a7": {"verdicts": {}}}, kwargs["evidence_dir"] / "summary.json"
 
     def prepare_project(self, project: str) -> dict:
         return {"project": project}
@@ -403,7 +432,16 @@ class FakeLab:
         return True
 
     def alert_incidents(self) -> list:
-        return []
+        if self.run_state is None or "inject" not in self.calls:
+            return []
+        return [
+            {
+                "incident_id": "inc-1",
+                "run_id": RUN,
+                "lifecycle": "open",
+                "run_state": self.run_state,
+            }
+        ]
 
     def flag_variant(self) -> str:
         return self.variant
@@ -438,6 +476,56 @@ def _args(tmp_path: Path) -> Any:
             "0",
         ]
     )
+
+
+@pytest.mark.parametrize(
+    "state, end, code",
+    [
+        ("completed", "terminal", 0),
+        ("failed", "terminal", 0),
+        ("waiting_human", "parked", 4),
+        ("paused", "parked", 4),
+        ("running", "timeout", 5),
+    ],
+)
+def test_run_end_classifies_parked_and_timeout(
+    tmp_path: Path, state: str, end: str, code: int
+) -> None:
+    lab = FakeLab(run_state=state)
+    args = _args(tmp_path)
+    args.run_timeout = 0
+    assert a7.cmd_run(args, lab=lab) == code
+    assert lab.frozen["run_end"] == end
+    assert lab.frozen["complete"] is (end != "timeout")
+    assert lab.calls == ["inject", "freeze", "restore"]
+
+
+def test_compare_refuses_an_incomplete_attempt() -> None:
+    before, afters = _pair()
+    afters[1]["a7"]["run_end"] = "timeout"
+    assert "INCOMPLETE_ATTEMPT" in _refused(before, afters)
+    before, afters = _pair()
+    afters[0]["a7"]["run_end"] = "parked"
+    assert a7.compare(before, afters)["after_reached"] == "1/2"
+
+
+def test_deployment_must_match_the_side(tmp_path: Path) -> None:
+    assert a7.deployment_problems("after", _deployed("after")) == []
+    assert a7.deployment_problems("before", _deployed("before")) == []
+    wrong = a7.deployment_problems("before", _deployed("after"))
+    assert "web:prompt_revision" in wrong and "worker:variant_id" in wrong
+    missing = _deployed("after")
+    missing["worker"] = []
+    assert "worker:NOT_RUNNING" in a7.deployment_problems("after", missing)
+    other = _deployed("after")
+    other["web"][0]["profile"] = "otel-demo"
+    assert "web:profile" in a7.deployment_problems("after", other)
+    lab = FakeLab(deployed=_deployed("after"))
+    args = _args(tmp_path)
+    args.side = "before"
+    with pytest.raises(SystemExit):
+        a7.cmd_run(args, lab=lab)
+    assert lab.calls == []
 
 
 def test_injection_error_is_still_restored_and_confirmed(tmp_path: Path) -> None:
