@@ -94,10 +94,10 @@ Docker 29.2.1（`docker-ce 5:29.2.1-1~ubuntu.24.04~noble`），kind v0.33.0，ku
 | 磁盘 | 现有 `/` 已用 94 GB、剩 50 GB。全量轮次会把 35 题白名单副本复制一份（约 30 GB）再加 105 个 trial 目录（每个约 240–490 MB，约 25–35 GB），合计约 55–65 GB，**超过剩余空间** | `du`：冒烟轮次副本 30 GB，每 trial 目录 238–492 MB |
 | 内存 | lab 停着时开跑前 used 约 1.0–1.1 GB，单 trial 峰值约 4.5 GB，swap 0 | `memory_before` 与 `free -m` |
 
-磁盘需要在全量开跑前腾出空间（例如删掉冒烟轮次 `tmp/itbench-lite/lite-smoke-1114/S*/snapshot` 这批可重建的白名单副本，约 30 GB；分档与词表已生成在 `tmp/itbench-lite/inputs/`），由 lead 决定。
+磁盘需要在全量开跑前腾出空间（例如删掉冒烟轮次 `tmp/itbench-lite/lite-smoke-1114/S*/snapshot` 这批可重建的白名单副本，约 30 GB；分档与词表已生成在 `tmp/itbench-lite/inputs/`），由 lead 决定。2026-11-14 lead 决定只删这批副本，删后 `df -h /` 为 65G 已用 / 79G 可用；S1 的失败 trial 与 `inputs/` 保留。
 
 ## 未执行
 
-- 没有跑任何调查、模型调用、冒烟或 judge（按阶段 1 范围）。
+- 阶段 1（#617）本身不跑调查、模型调用或 judge；之后各阶段的真实运行见冒烟（#627）、kind 部分（#633）、小批（#631）与本记录的再彩排三轮。
 - 单价、开机时刻、Vultr 控制台信息：未确认。
 - 中途事件：08:35–约 08:55，本机经代理出站的 22 端口不通（连 GitHub 22 端口也一样），ssh 连不上主机；主机上的 tmux 任务不受影响，照常跑完。这是本机网络问题，不是主机问题。
