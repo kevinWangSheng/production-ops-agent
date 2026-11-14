@@ -1,6 +1,7 @@
 # 租机操作手册：工具拓展真实评测（ITBench-Lite 冒烟与全量、集群取证、A7 主路径 Run）
 
 - 状态：草案（2026-11-14 按 #616 改为分阶段执行，对照 `main` `a2eb0135`；前一版 2026-11-13 对照 `130225f9`）。A7 三项（A7-8/9/12）与 L-V7 已于 2026-11-13 裁决（决定表 r7、r6）；A7 本机部分 #614、#605 生成器 #610 已合并。阶段顺序由用户 2026-11-14 在 #616 裁决。
+- **用户裁决（2026-11-14，见 #616 评论）**：本手册中「④ 由用户决定」「用户确认后冻结」、A7 版本停点与 A7-14 停点，一律改为 Agent 自行决定并继续；全程只在全量（阶段 6）开跑前停一次向用户简报。检查点不通过仍须修复后才往下走。仓库模块（`scripts.*`）一律用 `.venv/bin/python` 运行，主机系统 `python3` 没有项目依赖（`scripts/kind_lab.py` 等独立脚本除外）。
 - 依据：#616 及子项 #617、#618、#619，#580 验收项、#559 与 A7 预审决定表（仓库外，A7-1 至 A7-17）、#571、#497（2026-11-06 Q1 彩排规则）、[工具面拓展任务记录](2026-11-12-tool-expansion.md)、[决定表 r3/r4/r7](2026-11-12-tool-expansion-contract.md)、[A1 开工说明](2026-11-12-tool-expansion-a1.md)、[ITBench-Lite 适配](2026-11-12-itbench-lite-adapter.md)、[Linux kind lab](2026-11-04-linux-kind-lab.md)、[开发指南「kind 实验环境」](../development.md)、README「The OpenTelemetry Demo lab on the same host」，以及照搬步骤的 [F3 真实会话](../evidence/f3-acceptance-live/run.md) 和 [F7 授权探测](../evidence/f7-authz-probe/run.md)。
 - 用法：开机前先过完第 1 节；开机后按第 2 节的阶段顺序执行。每个阶段末尾是检查点：通过标准全部满足才进下一阶段，任一不满足就停在原地，不往下走。标「未核实」的命令或参数在本机没法确认，到主机上先核对再用。
 
@@ -63,7 +64,7 @@
 |---|---|---|---|---|
 | 2.1 | 分档与词表（#605）。两个生成器都拒绝含答案文件的目录，所以先用驱动自己的白名单复制，把每题的干净副本建到冒烟轮次下（驱动发现已有副本会重新校验后复用），再每题生成一份词表、全量生成一次分档。词表与分档目录放在轮次目录之外（例如 `tmp/itbench-lite/inputs/`），三个阶段共用。命令见表下「2.1」 | 复制循环与两个生成器退出码 0；`tiers.json` 正好 35 题；词表目录里 35 个 `S<id>.txt` | 复制循环未在真实数据集上跑过；生成器报错属类别 ①，开 issue，不在机上改代码 | 约 20 分钟（460 MB trace 的耗时未验证） |
 | 2.2 | 挑题，只按数据覆盖：从分档明细取 trace 与日志都覆盖故障窗的题，去掉 S18、S38，按编号取前两个（本手册的默认，可逆），再在数据集根目录下按名字找到对应的场景目录名。命令见表下「2.2」 | 输出正好 2 个编号；两个编号写进 `run.md` | 不足 2 个：停，报 lead（分档结果与预期不符） | 2 分钟 |
-| 2.3 | 第 1 题：`python3 -m scripts.itbench_lite.driver attempt --round <冒烟轮次> --dataset <数据集根> --scenario <场景目录名> --trial 1 --vocabulary <词表目录>/S<id>.txt --env-file ~/rental-private/lite.env` | 见表下「每题判定」 | 不通过就停，不跑第 2 题；按阶段 3 分类 | 约 10 分钟 |
+| 2.3 | 第 1 题：`.venv/bin/python -m scripts.itbench_lite.driver attempt --round <冒烟轮次> --dataset <数据集根> --scenario <场景目录名> --trial 1 --vocabulary <词表目录>/S<id>.txt --env-file ~/rental-private/lite.env` | 见表下「每题判定」 | 不通过就停，不跑第 2 题；按阶段 3 分类 | 约 10 分钟 |
 | 2.4 | 第 2 题：第 1 题判定全部通过后，同一条命令换场景 | 同上 | 同上 | 约 10 分钟 |
 | 2.5 | 反馈简报：每题一节，写下表的数值；按阶段 3 的类别 ①–④ 归类发现；①②③ 各开缺陷 issue，④ 列给用户决定 | 简报写进冒烟证据目录的 `run.md`，同时发给 lead | — | 20 分钟 |
 
@@ -72,13 +73,13 @@
 ```sh
 for d in <数据集根>/*/; do
   n=$(basename "$d")
-  k=$(python3 -c 'import sys; from scripts.itbench_lite.coverage import scenario_key; print(scenario_key(sys.argv[1]))' "$n") || continue
-  python3 -c 'import sys; from pathlib import Path; from scripts.itbench_lite.driver import copy_whitelisted; copy_whitelisted(Path(sys.argv[1]), Path(sys.argv[2]))' "$d" "tmp/itbench-lite/<冒烟轮次>/S$k/snapshot"
+  k=$(.venv/bin/python -c 'import sys; from scripts.itbench_lite.coverage import scenario_key; print(scenario_key(sys.argv[1]))' "$n") || continue
+  .venv/bin/python -c 'import sys; from pathlib import Path; from scripts.itbench_lite.driver import copy_whitelisted; copy_whitelisted(Path(sys.argv[1]), Path(sys.argv[2]))' "$d" "tmp/itbench-lite/<冒烟轮次>/S$k/snapshot"
 done
 # 词表，每题一份
-python3 -m scripts.itbench_lite.vocabulary tmp/itbench-lite/<冒烟轮次>/S<id>/snapshot --out <词表目录>/S<id>.txt
+.venv/bin/python -m scripts.itbench_lite.vocabulary tmp/itbench-lite/<冒烟轮次>/S<id>/snapshot --out <词表目录>/S<id>.txt
 # 分档，全量一次
-python3 -m scripts.itbench_lite.tiers tmp/itbench-lite/<冒烟轮次> --out <分档目录>/tiers.json --detail <分档目录>/tiers_detail.json
+.venv/bin/python -m scripts.itbench_lite.tiers tmp/itbench-lite/<冒烟轮次> --out <分档目录>/tiers.json --detail <分档目录>/tiers_detail.json
 ```
 
 **2.2**（挑题）：
@@ -186,8 +187,8 @@ set -a; . tmp/m1-kind-lab/k8s-investigator.env; . <investigator 的 Prometheus e
 | 步 | 目的与命令 | 判定 | 失败时 | 耗时 |
 |---|---|---|---|---|
 | 5.1 | 挑题：从 `tiers.json` 每档按编号取 3 题，跳过冒烟用过的两题；`故障窗无 trace` 档里有 S18 或 S38 时，取其中编号小的一个代替该档第 3 题，让数据残缺的路径在全量前走一次（本手册的默认，可逆）。共约 6 题，编号写进 `run.md` | 两档都有题；编号已记录 | 某档不足：有几题跑几题，`run.md` 写明 | 5 分钟 |
-| 5.2 | 开跑：`python3 -m scripts.itbench_lite.driver round --round <小批轮次> --dataset <数据集根> --vocabulary-dir <词表目录> --scenarios <编号,逗号分隔> --trials 1 --env-file ~/rental-private/lite.env`，在前台终端运行 | 见 5.3 与检查点 5 | — | 约 1 小时（每题约 10 分钟） |
-| 5.3 | 故意中断一次（#497）：在第 2 题进行中（第 1 题那一行 JSON 打印后约 3 分钟），在驱动的前台终端按 Ctrl-C。驱动不在前台时，只对驱动本身发 SIGINT：先用 `ps -o pid,ppid,args -u opspilot` 找到 args 为 `python3 -m scripts.itbench_lite.driver round …` 的那个进程（不是外层 shell），核对后 `kill -INT <该 pid>`。不用 pkill、killall，不按名字批量发信号 | 驱动退出且没有打印 `CLEANUP_FAILED`；`ss -ltn` 里 29110、29190、29186、29118、29143、29180 都没有监听；`docker ps --filter name=itbl-` 为空 | 有端口没释放或容器残留：属类别 ①，停，开 issue，不手动清理后假装通过 | 5 分钟 |
+| 5.2 | 开跑：`.venv/bin/python -m scripts.itbench_lite.driver round --round <小批轮次> --dataset <数据集根> --vocabulary-dir <词表目录> --scenarios <编号,逗号分隔> --trials 1 --env-file ~/rental-private/lite.env`，在前台终端运行 | 见 5.3 与检查点 5 | — | 约 1 小时（每题约 10 分钟） |
+| 5.3 | 故意中断一次（#497）：在第 2 题进行中（第 1 题那一行 JSON 打印后约 3 分钟），在驱动的前台终端按 Ctrl-C。驱动不在前台时，只对驱动本身发 SIGINT：先用 `ps -o pid,ppid,args -u opspilot` 找到 args 为 `.venv/bin/python -m scripts.itbench_lite.driver round …` 的那个进程（不是外层 shell），核对后 `kill -INT <该 pid>`。不用 pkill、killall，不按名字批量发信号 | 驱动退出且没有打印 `CLEANUP_FAILED`；`ss -ltn` 里 29110、29190、29186、29118、29143、29180 都没有监听；`docker ps --filter name=itbl-` 为空 | 有端口没释放或容器残留：属类别 ①，停，开 issue，不手动清理后假装通过 | 5 分钟 |
 | 5.4 | 恢复：用 5.2 的同一条命令重跑（文档写的续跑方式：完整的 trial 会跳过，只差判分的只补判分，被中断的 trial 的旧证据移到 `tmp/…/trial-1/stale/` 后重跑） | 第 1 题的输出带 `skipped: [1]`；被中断的那题这次 `status` 为 `completed`；其余题照常跑完；跑完后 5.3 的端口与容器检查再做一遍，同样干净 | 不符：属类别 ①，停，开 issue | 约 50 分钟 |
 | 5.5 | 逐题核对：每题按阶段 2 的「每题判定」记数值，另统计作废次数（`itbench_lite.history` 里 `kind` 为 `void` 的条数）与基础设施失败次数（`kind` 为 `infra`） | 见检查点 5 | — | 15 分钟 |
 
@@ -205,13 +206,13 @@ set -a; . tmp/m1-kind-lab/k8s-investigator.env; . <investigator 的 Prometheus e
 1. **用户确认**：把冒烟与小批的反馈、各阶段检查点结果、当前提交交给用户，用户确认后才冻结。
 2. **冻结**：记下提交 F（`git rev-parse HEAD`，主 checkout 无已跟踪修改），在主 checkout 跑 `.venv/bin/python -c 'from opspilot.tools.otel_demo_ext import otel_demo_ext_versions as v; print(v())'`，把 `prompt_revision` 与 `tool_schema_revision` 的值写进本记录与全量证据目录的 `run.md`。这两个值要与小批 summary 的 `run.versions` 相同；不同说明小批之后又有改动，回到阶段 5 重跑受影响的题。从这一刻到全量结束，不再合并任何会进入主 checkout 的改动，主 checkout 不 pull。
 3. **停 lab，腾内存**：`python3 scripts/kind_lab.py stop`（kind 部分已做完；lab 的 Jaeger 内存上限是 2Gi，旧记录里 1Gi 跑约 13.7 小时被 OOM，停掉就不受影响）。
-4. **全量**：`python3 -m scripts.itbench_lite.driver round --round <全量轮次> --dataset <数据集根> --vocabulary-dir <词表目录> --env-file ~/rental-private/lite.env`（默认全部题、`--trials 3`，按题串行，每次全新 PG 并重算平移量，L15）。可续跑：中断后用同一条命令重跑，完整的 trial（标记、completed summary、答案输出与确定性分都在）会跳过；只差判分的只补判分。清理失败（含端口没释放）会停整轮（退出码 2），查明后再续跑；查明需要改代码的，停，报用户，全量期间不改代码。作废线、每题判定同阶段 2；每个 trial 最多 3 次机会，用完记缺失、计 0、留在分母（L-D8、L5）。
+4. **全量**：`.venv/bin/python -m scripts.itbench_lite.driver round --round <全量轮次> --dataset <数据集根> --vocabulary-dir <词表目录> --env-file ~/rental-private/lite.env`（默认全部题、`--trials 3`，按题串行，每次全新 PG 并重算平移量，L15）。可续跑：中断后用同一条命令重跑，完整的 trial（标记、completed summary、答案输出与确定性分都在）会跳过；只差判分的只补判分。清理失败（含端口没释放）会停整轮（退出码 2），查明后再续跑；查明需要改代码的，停，报用户，全量期间不改代码。作废线、每题判定同阶段 2；每个 trial 最多 3 次机会，用完记缺失、计 0、留在分母（L-D8、L5）。
 5. **全量判定**：
    - 105 个 `summary.json` 都在（`find docs/evidence/itbench-lite-sre-<全量轮次> -name summary.json | wc -l` 为 105），`status` 为 `completed` 或带原因的 `missing`。
    - 每个 completed summary 的 `run.versions.prompt_revision`、`run.versions.tool_schema_revision` 等于冻结值，`itbench_lite.git.commit` 等于 F、`itbench_lite.git.dirty` 为 false。逐个用 `jq -r '[.run.versions.prompt_revision, .run.versions.tool_schema_revision, .itbench_lite.git.commit, .itbench_lite.git.dirty] | @tsv'` 取出后 `sort | uniq -c`，应只有一行。不止一行：停，报用户，这一轮不能作为全量分数。
    - 作废与缺失次数照实写进 `run.md`。
-6. **补判分**：judge 失败的 trial 已写入确定性分，官方分留空。之后先把私有 env 导入当前 shell（`judge` 子命令没有 `--env-file`，只从进程环境取 judge 凭据与 `ITBENCH_EVALUATIONS_DIR`）：`set -a; . ~/rental-private/lite.env; set +a`，再用 `python3 -m scripts.itbench_lite.driver judge --round <全量轮次> --ground-truth <数据集根>` 补判，退出码 0 表示全部补上。judge 默认 Z.ai `glm-5.3-flashx`（L6 = a），结果写明「judge 与官方示例不同」。官方分的键名带 `root_cause_entity_pass`，确定性分键名以 `det_` 开头。
-7. **分数表**：`python3 -m scripts.itbench_lite.driver scores --round <全量轮次> --out tmp/itbench-lite/<全量轮次>/scores.json`（输出的 `scenarios` 应为 35），再用 `python3 -m scripts.itbench_lite.coverage --tiers <分档目录>/tiers.json --scores tmp/itbench-lite/<全量轮次>/scores.json --metric <键名> --json-out docs/evidence/itbench-lite-sre-<全量轮次>/table.json --markdown-out docs/evidence/itbench-lite-sre-<全量轮次>/table.md`，官方分与确定性分各出一份。主分取根因实体 F1 与 pass@1（L7）。`--metric` 要填 `scores` 输出里的实际键名，到主机上先看一眼再填（未核实）。没有报告的 trial 记 0 分，留在分母（L5）。`tiers.json` 与明细一并入库。
+6. **补判分**：judge 失败的 trial 已写入确定性分，官方分留空。之后先把私有 env 导入当前 shell（`judge` 子命令没有 `--env-file`，只从进程环境取 judge 凭据与 `ITBENCH_EVALUATIONS_DIR`）：`set -a; . ~/rental-private/lite.env; set +a`，再用 `.venv/bin/python -m scripts.itbench_lite.driver judge --round <全量轮次> --ground-truth <数据集根>` 补判，退出码 0 表示全部补上。judge 默认 Z.ai `glm-5.3-flashx`（L6 = a），结果写明「judge 与官方示例不同」。官方分的键名带 `root_cause_entity_pass`，确定性分键名以 `det_` 开头。
+7. **分数表**：`.venv/bin/python -m scripts.itbench_lite.driver scores --round <全量轮次> --out tmp/itbench-lite/<全量轮次>/scores.json`（输出的 `scenarios` 应为 35），再用 `.venv/bin/python -m scripts.itbench_lite.coverage --tiers <分档目录>/tiers.json --scores tmp/itbench-lite/<全量轮次>/scores.json --metric <键名> --json-out docs/evidence/itbench-lite-sre-<全量轮次>/table.json --markdown-out docs/evidence/itbench-lite-sre-<全量轮次>/table.md`，官方分与确定性分各出一份。主分取根因实体 F1 与 pass@1（L7）。`--metric` 要填 `scores` 输出里的实际键名，到主机上先看一眼再填（未核实）。没有报告的 trial 记 0 分，留在分母（L5）。`tiers.json` 与明细一并入库。
 
 耗时依据：每次尝试约 9–11 分钟（建 PG 加灌数据 3–5 分钟，未实测，冒烟的 `load_seconds` 出来后重算；调查约 4–5 分钟，F3 从领取到完成约 4 分钟；收尾 1 分钟），共 105 次；judge 另计约 1 小时（并发数未定）。与适配记录的估计「1–1.5 天」一致。
 
