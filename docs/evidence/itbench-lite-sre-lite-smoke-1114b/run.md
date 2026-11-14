@@ -78,6 +78,14 @@
 
 没有 ② 或 ③ 类缺陷。
 
+### 阶段 3 决定（类别 ④，lead 2026-11-14 决定；用户常设规则：全量前只停一次）
+
+| # | 决定 | 理由 |
+|---|---|---|
+| 3 | **改**：#628 给 `replay-candidate-k8s` 加一行调查指导（宽 trace 查询先收窄或用 `read_evidence` 分页），只动提示词 | 两题都撞上 `RESULT_TOO_LARGE`，S1 没有接着读；只改提示词不动 `tool_schema_revision` 与 `context_policy_revision`，A7 前一次 Run 的版本核对不受影响（手册阶段 3 版本停点） |
+| 4 | **不改** | 改工具说明会变 `tool_schema_revision`，A7 的 `compare` 会拒绝；工具已如实回报 Prometheus 400 |
+| 5 | **不改**，记入全量限制说明 | 回放 Prometheus 按设计不带规则，不是缺陷 |
+
 ## 未执行 / 未入库
 
 - 两题的 `summary.json` 仍留在主机运行 checkout 的未跟踪目录里（`docs/evidence/itbench-lite-sre-lite-smoke-1114b/S{1,5}/trial-1/`），按手册第 1 节收尾再提交；首轮失败的 `lite-smoke-1114/S1` 同样保留。原始 ledger 在主机 `tmp/lab-ledgers/`，不入库。
