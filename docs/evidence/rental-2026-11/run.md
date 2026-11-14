@@ -76,6 +76,26 @@ Docker 29.2.1（`docker-ce 5:29.2.1-1~ubuntu.24.04~noble`），kind v0.33.0，ku
 
 **结论：检查点 1 通过**（09:02）。唯一未满足的是 1.4 的单价与开机时刻，主机上看不到，记为未确认；这两项不影响冒烟。
 
+## 阶段 6.2 冻结（2026-11-14，PT 15:10 前后）
+
+- **提交 F**：`5f731318679afa9873b8ba405283badf2982d752`（main，#634 合并后，含 #632 恢复修复）。主机主 checkout 快进到 F，`uv.lock` 自 P 起未变，无已跟踪修改。快进前，主机上与 main 已入库内容同名的未跟踪证据移到 `/home/opspilot/rental-evidence-backup/20261114T224123/`（29 个文件，28 个与入库版本逐字相同，1 个是入库后又改过的 `a1-cluster-identity/run.md`），没有删除。
+- **冻结版本**（主 checkout 上 `otel_demo_ext_versions()`）：`prompt_revision = prompt-replay-candidate-k8s-0282ee7d0e7a`，`tool_schema_revision = otel-demo-ext-d467c4b436b0`（`context_policy_revision = ctx-ctx-policy-v1-a30e65ea52f4`）。与小批 6 个 summary 及 F 上 3 次重新彩排的 `run.versions` 相同。
+- 从这一刻到全量结束，不再合并会进入主 checkout 的改动，主 checkout 不 pull。全量尚未开跑（用户先听简报）。
+
+### 全量规划数字（依据：冒烟 2 题与小批 6 题，另有 F 上 3 次彩排作参考）
+
+| 项 | 数值 | 依据 |
+|---|---|---|
+| 规模 | 35 题 × 3 次 = 105 个 trial | 手册阶段 6 |
+| 每 trial 墙钟 | 中位约 6.7 分钟，范围 5.0–7.6 分钟；带一次重试的 S4 为 12.7 分钟 | `started_at` 到 `complete.json`（含灌数据、调查、judge） |
+| 全量墙钟 | 约 11.5–13.5 小时（105 × 6.6–7.7 分钟，含少量重试） | 同上；judge 已在每个 trial 内 |
+| 每 trial DeepSeek token（8 题） | prompt 均值 1,404,714、最大 2,351,280（S4）、最小 702,592；其中缓存命中均值 1,303,728（约 92.8%），未命中均值 100,986；completion 均值 43,359、最大 58,668；模型轮次均值 21.6、最大 28 | 各 summary `run.tokens`（冒烟 2 题用的是 #628 之前的提示词） |
+| 全量 token 预期 | prompt 约 1.47 亿（缓存命中约 1.37 亿、未命中约 1060 万），completion 约 455 万；按每 trial 最大值算的上界为 prompt 约 2.47 亿 | 均值 × 105 |
+| 磁盘 | 现有 `/` 已用 94 GB、剩 50 GB。全量轮次会把 35 题白名单副本复制一份（约 30 GB）再加 105 个 trial 目录（每个约 240–490 MB，约 25–35 GB），合计约 55–65 GB，**超过剩余空间** | `du`：冒烟轮次副本 30 GB，每 trial 目录 238–492 MB |
+| 内存 | lab 停着时开跑前 used 约 1.0–1.1 GB，单 trial 峰值约 4.5 GB，swap 0 | `memory_before` 与 `free -m` |
+
+磁盘需要在全量开跑前腾出空间（例如删掉冒烟轮次 `tmp/itbench-lite/lite-smoke-1114/S*/snapshot` 这批可重建的白名单副本，约 30 GB；分档与词表已生成在 `tmp/itbench-lite/inputs/`），由 lead 决定。
+
 ## 未执行
 
 - 没有跑任何调查、模型调用、冒烟或 judge（按阶段 1 范围）。
