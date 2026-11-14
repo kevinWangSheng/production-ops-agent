@@ -573,6 +573,42 @@ def test_before_run_on_after_deployment_injects_nothing(tmp_path: Path) -> None:
     assert lab.calls == []
 
 
+def test_checkout_dirty_counts_untracked_but_not_ignored(tmp_path: Path) -> None:
+    def git(*args: str) -> None:
+        subprocess.run(
+            [
+                "git",
+                "-C",
+                str(tmp_path),
+                "-c",
+                "user.name=t",
+                "-c",
+                "user.email=t@t",
+                *args,
+            ],
+            check=True,
+            capture_output=True,
+        )
+
+    git("init", "-q")
+    (tmp_path / ".gitignore").write_text(".venv/\ntmp/\n")
+    (tmp_path / "a.py").write_text("x = 1\n")
+    git("add", ".")
+    git("commit", "-qm", "init")
+    (tmp_path / ".venv/bin").mkdir(parents=True)
+    (tmp_path / ".venv/bin/python").write_text("")
+    (tmp_path / "tmp").mkdir()
+    (tmp_path / "tmp/ledger.json").write_text("{}")
+    assert a7.checkout_dirty(tmp_path) is False
+    (tmp_path / "opspilot").mkdir()
+    (tmp_path / "opspilot/extra.py").write_text("")
+    assert a7.checkout_dirty(tmp_path) is True
+    (tmp_path / "opspilot/extra.py").unlink()
+    (tmp_path / "a.py").write_text("x = 2\n")
+    assert a7.checkout_dirty(tmp_path) is True
+    assert a7.checkout_dirty(tmp_path / "missing") is None
+
+
 def test_probe_reads_the_checkouts_own_code() -> None:
     probe = a7.probe_checkout(ROOT)
     assert probe is not None

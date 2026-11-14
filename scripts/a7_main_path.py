@@ -51,8 +51,9 @@ checkout's own ``.venv`` and ``OPSPILOT_TOOL_PROFILE=otel-demo-ext``. For
 ``--side after`` at the commit this driver runs from. ``--deployment-checkout``
 names it. Before injecting, ``run`` refuses (nothing injected) unless:
 
-* ``git -C <checkout> rev-parse HEAD`` is that commit and tracked files are
-  unmodified;
+* ``git -C <checkout> rev-parse HEAD`` is that commit, no tracked file is
+  modified and no file is untracked (ignored files such as a ``.venv``
+  directory do not count; a ``.venv`` symlink does, build the venv in place);
 * ``<checkout>/.venv/bin/python -I`` with the checkout first on ``sys.path``
   (what ``python -m`` from the checkout imports) computes exactly
   ``expected_versions(side)`` (variant, prompt, context-policy and tool-schema
@@ -609,6 +610,26 @@ _VERSION_PROBE = (
 )
 
 
+def git(directory: Path, *args: str) -> str | None:
+    proc = subprocess.run(
+        ["git", "-C", str(directory), *args],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    return proc.stdout.strip() if proc.returncode == 0 else None
+
+
+def checkout_dirty(checkout: Path) -> bool | None:
+    """True when any tracked file is modified or any file is untracked: an
+    untracked module would be imported by ``python -m`` from the checkout.
+    Ignored files (the ``.venv`` directory, ``tmp/``) do not count; a
+    ``.venv`` *symlink* is not covered by ``.gitignore``'s ``.venv/`` and is
+    therefore refused too. None when git cannot tell."""
+    status = git(checkout, "status", "--porcelain", "--untracked-files=all")
+    return None if status is None else bool(status)
+
+
 def probe_checkout(checkout: Path) -> dict[str, Any] | None:
     """What ``checkout``'s own code would record for an ``otel-demo-ext``
     Run, run by its own ``.venv`` interpreter; None when that fails."""
@@ -830,27 +851,17 @@ class Lab:
         """The checkout's commit, cleanliness and code-computed versions, and
         the running host web/worker processes (all read-only)."""
 
-        def git(directory: Path, *args: str) -> str | None:
-            proc = subprocess.run(
-                ["git", "-C", str(directory), *args],
-                capture_output=True,
-                text=True,
-                timeout=30,
-            )
-            return proc.stdout.strip() if proc.returncode == 0 else None
-
         expected_head = (
             git(ROOT, "rev-parse", "--verify", f"{BEFORE_COMMIT}^{{commit}}")
             if side == "before"
             else git(ROOT, "rev-parse", "HEAD")
         )
-        status = git(checkout, "status", "--porcelain", "--untracked-files=no")
         probe = probe_checkout(checkout)
         return {
             "checkout": str(checkout),
             "head": git(checkout, "rev-parse", "HEAD"),
             "expected_head": expected_head,
-            "dirty": None if status is None else bool(status),
+            "dirty": checkout_dirty(checkout),
             "probe": probe,
             "processes": host_processes(),
         }
