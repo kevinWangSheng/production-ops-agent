@@ -22,8 +22,13 @@ import pytest
 from scripts.itbench_lite import answer, coverage
 from scripts.itbench_lite.snapshot import AnswerFilePresent
 
-
-TSV_COLUMNS = ["Timestamp", "TimestampTime", "Body", "ResourceAttributes"]
+TSV_COLUMNS = [
+    "Timestamp",
+    "TimestampTime",
+    "Body",
+    "ResourceAttributes",
+    "LogAttributes",
+]
 TRACE_COLUMNS = [
     "Timestamp",
     "TraceId",
@@ -63,14 +68,33 @@ def _write_tsv(path: Path, columns: list[str], rows: list[dict[str, str]]) -> No
         writer.writerows(rows)
 
 
-def _body_row(moment: datetime, body: dict[str, Any], resource: str = "{}") -> dict[str, str]:
+def _body_row(
+    moment: datetime,
+    body: dict[str, Any],
+    resource: str = "{}",
+    log_attributes: str = "{}",
+) -> dict[str, str]:
     stamp = _click(moment)
     return {
         "Timestamp": stamp,
         "TimestampTime": stamp,
         "Body": json.dumps(body, ensure_ascii=False),
         "ResourceAttributes": resource,
+        "LogAttributes": log_attributes,
     }
+
+
+def _object_log_attributes(body: dict[str, Any]) -> str:
+    kind = body.get("kind")
+    plural = next(
+        (
+            resource
+            for resource, resource_kind in answer.RESOURCE_KINDS.items()
+            if resource_kind == kind
+        ),
+        "",
+    )
+    return repr({"k8s.resource.name": plural})
 
 
 def _make_scenario(
@@ -153,7 +177,14 @@ def _make_scenario(
     _write_tsv(
         root / "k8s_objects_raw.tsv",
         TSV_COLUMNS,
-        [_body_row(object_end, body) for body in objects],
+        [
+            _body_row(
+                object_end,
+                body,
+                log_attributes=_object_log_attributes(body),
+            )
+            for body in objects
+        ],
     )
 
     event_end = START + timedelta(seconds=ends["events"])
@@ -233,7 +264,12 @@ def _tiers_dataset(root: Path) -> Path:
             ends["traces"] = 0
         elif raw_id == "6":
             ends["traces"] = -1
-        _make_scenario(root / scenario_id, ends=ends, scenario_id=scenario_id)
+        _make_scenario(
+            root / scenario_id,
+            ends=ends,
+            scenario_id=scenario_id,
+            include_trace=include_trace,
+        )
     return root
 
 
@@ -405,6 +441,7 @@ def test_vocabulary_cli_collects_allowed_names_and_answer_cli_consumes_it(tmp_pa
         "frontend",
         "log-only",
         "node-a",
+        "payment",
     } | {
         f"resource-{kind.casefold()}"
         for kind in answer.RESOURCE_KINDS.values()
