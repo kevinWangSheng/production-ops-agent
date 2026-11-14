@@ -390,14 +390,28 @@ def test_tool_failures_count_only_failed_statuses() -> None:
     assert metrics["tool_failures"] == 3
 
 
+CHECKOUT = "/srv/poa-a7"
+HEADS = {"before": "b" * 40, "after": "a" * 40}
+
+
 def _deployed(side: str) -> dict:
+    """``Lab.deployment``'s record of a host deployment of ``side``'s code."""
     expected = a7.expected_versions(side)
-    entry = {
-        "profile": "otel-demo-ext",
-        "variant_id": expected["variant_id"],
-        "versions": {k: expected[k] for k in a7.VERSION_KEYS},
+    return {
+        "checkout": CHECKOUT,
+        "head": HEADS[side],
+        "expected_head": HEADS[side],
+        "dirty": False,
+        "probe": {
+            "opspilot_file": f"{CHECKOUT}/opspilot/__init__.py",
+            "variant_id": expected["variant_id"],
+            "versions": {k: expected[k] for k in a7.VERSION_KEYS},
+        },
+        "processes": {
+            "web": [{"pid": 11, "cwd": CHECKOUT, "profile": "otel-demo-ext"}],
+            "worker": [{"pid": 12, "cwd": CHECKOUT, "profile": "otel-demo-ext"}],
+        },
     }
-    return {"web": [entry], "worker": [copy.deepcopy(entry)]}
 
 
 class FakeLab:
@@ -417,8 +431,9 @@ class FakeLab:
         self.deployed = deployed if deployed is not None else _deployed("after")
         self.frozen: dict | None = None
 
-    def deployed_versions(self, project: str) -> dict:
-        return self.deployed
+    def deployment(self, side: str, checkout: Path) -> dict:
+        # The real Lab resolves the expected commit for the requested side.
+        return {**self.deployed, "expected_head": HEADS[side]}
 
     def freeze(self, run_id: str, **kwargs: Any) -> tuple[dict, Path]:
         self.calls.append("freeze")
@@ -474,6 +489,8 @@ def _args(tmp_path: Path) -> Any:
             "0",
             "--cooldown",
             "0",
+            "--deployment-checkout",
+            CHECKOUT,
         ]
     )
 
@@ -509,23 +526,85 @@ def test_compare_refuses_an_incomplete_attempt() -> None:
     assert a7.compare(before, afters)["after_reached"] == "1/2"
 
 
-def test_deployment_must_match_the_side(tmp_path: Path) -> None:
+def test_deployment_matches_its_own_side_only() -> None:
     assert a7.deployment_problems("after", _deployed("after")) == []
     assert a7.deployment_problems("before", _deployed("before")) == []
     wrong = a7.deployment_problems("before", _deployed("after"))
-    assert "web:prompt_revision" in wrong and "worker:variant_id" in wrong
-    missing = _deployed("after")
-    missing["worker"] = []
-    assert "worker:NOT_RUNNING" in a7.deployment_problems("after", missing)
-    other = _deployed("after")
-    other["web"][0]["profile"] = "otel-demo"
-    assert "web:profile" in a7.deployment_problems("after", other)
+    assert "checkout:prompt_revision" in wrong and "checkout:variant_id" in wrong
+
+
+@pytest.mark.parametrize(
+    "mutate, problem",
+    [
+        (lambda d: d.update(head="c" * 40), "checkout:head"),
+        (lambda d: d.update(dirty=True), "checkout:dirty"),
+        (lambda d: d.update(dirty=None), "checkout:dirty"),
+        (lambda d: d.update(probe=None), "checkout:VERSION_UNREADABLE"),
+        (
+            lambda d: d["probe"].update(
+                opspilot_file="/elsewhere/opspilot/__init__.py"
+            ),
+            "checkout:module_path",
+        ),
+        (lambda d: d["processes"].update(worker=[]), "worker:NOT_RUNNING"),
+        (lambda d: d["processes"]["web"][0].update(cwd="/other"), "web:cwd"),
+        (
+            lambda d: d["processes"]["worker"][0].update(profile="otel-demo"),
+            "worker:profile",
+        ),
+        (
+            lambda d: d["processes"]["web"].append({"pid": 3, "unreadable": True}),
+            "web:UNREADABLE",
+        ),
+    ],
+)
+def test_deployment_problems_host_shape(mutate, problem: str) -> None:
+    deployed = copy.deepcopy(_deployed("after"))
+    mutate(deployed)
+    assert problem in a7.deployment_problems("after", deployed)
+
+
+def test_before_run_on_after_deployment_injects_nothing(tmp_path: Path) -> None:
     lab = FakeLab(deployed=_deployed("after"))
     args = _args(tmp_path)
     args.side = "before"
     with pytest.raises(SystemExit):
         a7.cmd_run(args, lab=lab)
     assert lab.calls == []
+
+
+def test_probe_reads_the_checkouts_own_code() -> None:
+    probe = a7.probe_checkout(ROOT)
+    assert probe is not None
+    assert probe["opspilot_file"].startswith(str(ROOT.resolve()))
+    expected = a7.expected_versions("after")
+    assert probe["variant_id"] == expected["variant_id"]
+    assert probe["versions"] == {k: expected[k] for k in a7.VERSION_KEYS}
+
+
+def test_host_processes_reads_proc_without_other_env(tmp_path: Path) -> None:
+    def proc(pid: int, argv: list[str], cwd: Path, env: dict) -> None:
+        d = tmp_path / str(pid)
+        d.mkdir()
+        (d / "cmdline").write_bytes(b"\0".join(a.encode() for a in argv) + b"\0")
+        (d / "environ").write_bytes(
+            b"\0".join(f"{k}={v}".encode() for k, v in env.items()) + b"\0"
+        )
+        (d / "cwd").symlink_to(cwd)
+
+    proc(
+        101,
+        ["python", "-m", "opspilot.web", "serve"],
+        ROOT,
+        {"OPSPILOT_TOOL_PROFILE": "otel-demo-ext", "DEEPSEEK_API_KEY": "aaaaaaaa357"},
+    )
+    proc(102, ["/x/python", "-m", "opspilot.worker_main"], ROOT, {})
+    proc(103, ["zsh", "-c", "python -m opspilot.worker_main"], ROOT, {})
+    (tmp_path / "self").mkdir()
+    found = a7.host_processes(tmp_path)
+    assert found["web"] == [{"pid": 101, "cwd": str(ROOT), "profile": "otel-demo-ext"}]
+    assert found["worker"] == [{"pid": 102, "cwd": str(ROOT), "profile": None}]
+    assert "aaaaaaaa357" not in json.dumps(found)
 
 
 def test_injection_error_is_still_restored_and_confirmed(tmp_path: Path) -> None:

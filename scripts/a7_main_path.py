@@ -42,12 +42,26 @@ CLI (``.venv/bin/python -m scripts.a7_main_path [--dry-run] <command>``):
   this checkout's code, not given on the command line; run ``compare`` from
   the A7 commit).
 
-``run`` does not start the product. The operator starts web and worker with
-``OPSPILOT_TOOL_PROFILE=otel-demo-ext``: for ``--side before`` from a
-checkout of the A7 start commit (``dc9156b7``), for ``--side after`` from the
-A7 commit. Before injecting, ``run`` reads with ``docker exec`` the versions
-each running web/worker container would record and refuses unless they equal
-``expected_versions(side)`` exactly.
+``run`` does not start the product. Host topology only (the rental runbook's
+stage 2; the Compose stack is not supported): the operator starts web
+(``python -m opspilot.web serve``) and worker (``python -m
+opspilot.worker_main``) as host processes, from inside one checkout with that
+checkout's own ``.venv`` and ``OPSPILOT_TOOL_PROFILE=otel-demo-ext``. For
+``--side before`` that checkout is at the A7 start commit (``dc9156b7``), for
+``--side after`` at the commit this driver runs from. ``--deployment-checkout``
+names it. Before injecting, ``run`` refuses (nothing injected) unless:
+
+* ``git -C <checkout> rev-parse HEAD`` is that commit and tracked files are
+  unmodified;
+* ``<checkout>/.venv/bin/python -I`` with the checkout first on ``sys.path``
+  (what ``python -m`` from the checkout imports) computes exactly
+  ``expected_versions(side)`` (variant, prompt, context-policy and tool-schema
+  revisions), importing ``opspilot`` from that checkout;
+* at least one web and one worker process are running (Linux ``/proc``,
+  read-only: argv, cwd and the single ``OPSPILOT_TOOL_PROFILE`` value of the
+  environment; nothing else is read or kept), each with cwd = the checkout
+  and ``OPSPILOT_TOOL_PROFILE=otel-demo-ext``. The worker running before the
+  alert is A7-10's last condition and is recorded.
 
 How an attempt ends (``a7.run_end``, exit code): ``terminal`` (a terminal Run
 state, 0); ``parked`` (``waiting_human``/``paused``: resumable but waiting for
@@ -581,39 +595,145 @@ BEFORE_COMMIT = "dc9156b7"
 #: Both create or claim a Run: the web records ``versions`` at alert intake,
 #: the worker refuses a claim whose ``versions`` differ from its own.
 DEPLOYED_SERVICES = ("web", "worker")
+PROFILE_ENV = "OPSPILOT_TOOL_PROFILE"
+EXT_PROFILE = "otel-demo-ext"
 VERSION_KEYS = ("prompt_revision", "context_policy_revision", "tool_schema_revision")
+#: Run as ``<checkout>/.venv/bin/python -I -c _VERSION_PROBE <checkout>``.
 _VERSION_PROBE = (
-    "import json, os\n"
+    "import json, sys\n"
+    "sys.path.insert(0, sys.argv[1])\n"
+    "import opspilot\n"
     "from opspilot.tools import otel_demo_ext as e\n"
-    "print(json.dumps({'profile': os.environ.get('OPSPILOT_TOOL_PROFILE'),"
+    "print(json.dumps({'opspilot_file': opspilot.__file__,"
     " 'variant_id': e.DISCIPLINE_VARIANT, 'versions': e.otel_demo_ext_versions()}))"
 )
 
 
+def probe_checkout(checkout: Path) -> dict[str, Any] | None:
+    """What ``checkout``'s own code would record for an ``otel-demo-ext``
+    Run, run by its own ``.venv`` interpreter; None when that fails."""
+    try:
+        proc = subprocess.run(
+            [
+                str(checkout / ".venv/bin/python"),
+                "-I",
+                "-c",
+                _VERSION_PROBE,
+                str(checkout),
+            ],
+            cwd=checkout,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        value = json.loads(proc.stdout) if proc.returncode == 0 else None
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        return None
+    return value if isinstance(value, dict) else None
+
+
+def service_of(argv: Sequence[str]) -> str | None:
+    """``web`` / ``worker`` for a product process's argv, else None."""
+    if "-m" not in argv:
+        return None
+    rest = list(argv[argv.index("-m") + 1 :])
+    if rest[:1] == ["opspilot.worker_main"]:
+        return "worker"
+    if rest[:1] == ["opspilot.web"] and "serve" in rest[1:]:
+        return "web"
+    return None
+
+
+def host_processes(proc_root: Path = Path("/proc")) -> dict[str, list[dict[str, Any]]]:
+    """Running web/worker processes, read-only from ``/proc``: pid, cwd and
+    the ``OPSPILOT_TOOL_PROFILE`` value only (no other environment value is
+    kept). Never signals anything."""
+    found: dict[str, list[dict[str, Any]]] = {s: [] for s in DEPLOYED_SERVICES}
+    if not proc_root.is_dir():
+        raise SystemExit("host topology needs Linux /proc to read web/worker")
+    for entry in proc_root.iterdir():
+        if not entry.name.isdigit() or int(entry.name) == os.getpid():
+            continue
+        try:
+            raw = (entry / "cmdline").read_bytes()
+        except OSError:
+            continue
+        argv = [a.decode(errors="replace") for a in raw.split(b"\0") if a]
+        service = service_of(argv)
+        if service is None:
+            continue
+        item: dict[str, Any] = {"pid": int(entry.name)}
+        try:
+            item["cwd"] = os.readlink(entry / "cwd")
+            profile = None
+            prefix = PROFILE_ENV.encode() + b"="
+            for pair in (entry / "environ").read_bytes().split(b"\0"):
+                if pair.startswith(prefix):
+                    profile = pair[len(prefix) :].decode(errors="replace")
+            item["profile"] = profile
+        except OSError:
+            item["unreadable"] = True
+        found[service].append(item)
+    return found
+
+
+def _same_path(a: object, b: object) -> bool:
+    return (
+        isinstance(a, str)
+        and isinstance(b, str)
+        and (os.path.realpath(a) == os.path.realpath(b))
+    )
+
+
 def deployment_problems(side: str, deployed: Mapping[str, Any]) -> list[str]:
-    """Why the running web/worker would not record ``side``'s exact versions
-    (``expected_versions``); empty when every container matches."""
+    """Why the running host web/worker are not ``side``'s exact code (see the
+    module docstring); empty when everything matches. ``deployed`` is
+    ``Lab.deployment``'s record."""
     expected = expected_versions(side)
+    checkout = deployed.get("checkout")
     problems: list[str] = []
+    if not deployed.get("expected_head") or (
+        deployed.get("head") != deployed.get("expected_head")
+    ):
+        problems.append("checkout:head")
+    if deployed.get("dirty") is not False:
+        problems.append("checkout:dirty")
+    probe = deployed.get("probe")
+    if not isinstance(probe, Mapping):
+        problems.append("checkout:VERSION_UNREADABLE")
+    else:
+        module = probe.get("opspilot_file")
+        if not (
+            isinstance(module, str)
+            and isinstance(checkout, str)
+            and os.path.realpath(module).startswith(
+                os.path.join(os.path.realpath(checkout), "")
+            )
+        ):
+            problems.append("checkout:module_path")
+        if probe.get("variant_id") != expected["variant_id"]:
+            problems.append("checkout:variant_id")
+        versions = probe.get("versions")
+        versions = versions if isinstance(versions, Mapping) else {}
+        problems += [
+            f"checkout:{key}"
+            for key in VERSION_KEYS
+            if versions.get(key) != expected[key]
+        ]
+    processes = deployed.get("processes")
+    processes = processes if isinstance(processes, Mapping) else {}
     for service in DEPLOYED_SERVICES:
-        entries = deployed.get(service) or []
+        entries = processes.get(service) or []
         if not entries:
             problems.append(f"{service}:NOT_RUNNING")
         for entry in entries:
-            if not isinstance(entry, Mapping):
-                problems.append(f"{service}:VERSION_UNREADABLE")
+            if not isinstance(entry, Mapping) or entry.get("unreadable"):
+                problems.append(f"{service}:UNREADABLE")
                 continue
-            if entry.get("profile") != "otel-demo-ext":
+            if not _same_path(entry.get("cwd"), checkout):
+                problems.append(f"{service}:cwd")
+            if entry.get("profile") != EXT_PROFILE:
                 problems.append(f"{service}:profile")
-            if entry.get("variant_id") != expected["variant_id"]:
-                problems.append(f"{service}:variant_id")
-            versions = entry.get("versions")
-            versions = versions if isinstance(versions, Mapping) else {}
-            problems += [
-                f"{service}:{key}"
-                for key in VERSION_KEYS
-                if versions.get(key) != expected[key]
-            ]
     return list(dict.fromkeys(problems))
 
 
@@ -641,10 +761,12 @@ def plan_steps(args: argparse.Namespace) -> list[str]:
     exp = experiment_id(args.side, args.attempt)
     return [
         f"set LangSmith project {args.project} to long-lived retention",
-        f"check the {args.compose_project} worker container is running",
-        f"check the running web and worker record the {args.side} side's exact "
-        "versions (docker exec, read-only)"
-        + (f"; they must run {BEFORE_COMMIT}" if args.side == "before" else ""),
+        f"check {args.deployment_checkout or '<--deployment-checkout>'} is at "
+        + (BEFORE_COMMIT if args.side == "before" else "this driver's commit")
+        + ", unmodified, and its own .venv computes the "
+        f"{args.side} side's exact versions",
+        "check host web and worker processes run from that checkout with "
+        f"{PROFILE_ENV}={EXT_PROFILE} (/proc, read-only)",
         f"check no open incident from {ALERTNAME} on "
         f"{ALERT_NAMESPACE}/{ALERT_WORKLOAD} (close the previous one first)",
         f"check {FAULT_FLAG} is {normal_variant()!r} in flagd-config",
@@ -704,35 +826,34 @@ class Lab:
                 ).fetchall()
         return [r for r in rows if _alertname(r.pop("alert_json")) == ALERTNAME]
 
-    def deployed_versions(self, project: str) -> dict[str, Any]:
-        """What each running web/worker container of ``project`` would record
-        for an ``otel-demo-ext`` Run, computed by its own installed code
-        (read-only ``docker exec``; no product state is touched)."""
-        from scripts import kind_lab
+    def deployment(self, side: str, checkout: Path) -> dict[str, Any]:
+        """The checkout's commit, cleanliness and code-computed versions, and
+        the running host web/worker processes (all read-only)."""
 
-        found: dict[str, Any] = {}
-        containers = kind_lab.control_containers(project)
-        for service in DEPLOYED_SERVICES:
-            entries = []
-            for container in containers.get(service) or []:
-                proc = subprocess.run(
-                    ["docker", "exec", container, "python", "-c", _VERSION_PROBE],
-                    capture_output=True,
-                    text=True,
-                    timeout=60,
-                    env=kind_lab.docker_env(),
-                )
-                try:
-                    entries.append(json.loads(proc.stdout))
-                except ValueError:
-                    entries.append(None)
-            found[service] = entries
-        return found
+        def git(directory: Path, *args: str) -> str | None:
+            proc = subprocess.run(
+                ["git", "-C", str(directory), *args],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            return proc.stdout.strip() if proc.returncode == 0 else None
 
-    def worker_running(self, project: str) -> bool:
-        from scripts import kind_lab
-
-        return bool(kind_lab.control_containers(project)["worker"])
+        expected_head = (
+            git(ROOT, "rev-parse", "--verify", f"{BEFORE_COMMIT}^{{commit}}")
+            if side == "before"
+            else git(ROOT, "rev-parse", "HEAD")
+        )
+        status = git(checkout, "status", "--porcelain", "--untracked-files=no")
+        probe = probe_checkout(checkout)
+        return {
+            "checkout": str(checkout),
+            "head": git(checkout, "rev-parse", "HEAD"),
+            "expected_head": expected_head,
+            "dirty": None if status is None else bool(status),
+            "probe": probe,
+            "processes": host_processes(),
+        }
 
     def fault(self, action: str, experiment: str) -> None:
         command = [
@@ -839,6 +960,9 @@ def cmd_run(args: argparse.Namespace, *, lab: Lab | None = None) -> int:
     if args.dry_run:
         _emit({"command": "run", "dry_run": True, "steps": plan_steps(args)})
         return 0
+    if args.deployment_checkout is None:
+        raise SystemExit("--deployment-checkout is required")
+    args.deployment_checkout = args.deployment_checkout.resolve()
     if args.evidence_dir.exists():
         raise SystemExit(f"{args.evidence_dir} exists; refusing to overwrite")
     if lab is None:
@@ -848,19 +972,17 @@ def cmd_run(args: argparse.Namespace, *, lab: Lab | None = None) -> int:
         lab = Lab(dsn)
     exp = experiment_id(args.side, args.attempt)
     _emit({"step": "project", **lab.prepare_project(args.project)})
-    worker = lab.worker_running(args.compose_project)
-    if not worker:
-        raise SystemExit("worker is not running; start it before the alert (A7-10)")
-    deployed = lab.deployed_versions(args.compose_project)
+    deployed = lab.deployment(args.side, args.deployment_checkout)
     mismatch = deployment_problems(args.side, deployed)
-    _emit({"step": "deployment", "services": deployed, "problems": mismatch})
+    _emit({"step": "deployment", **deployed, "problems": mismatch})
     if mismatch:
         raise SystemExit(
             f"the running deployment is not the {args.side} side's code: "
             + ", ".join(mismatch)
-            + f" (before: start web and worker from {BEFORE_COMMIT}; after: from "
-            "the A7 commit)"
+            + f" (before: start web and worker from a {BEFORE_COMMIT} checkout; "
+            "after: from this driver's commit)"
         )
+    worker = bool(deployed["processes"]["worker"])
     open_incidents = [i for i in lab.alert_incidents() if i["lifecycle"] != "closed"]
     if open_incidents:
         raise SystemExit(
@@ -1028,7 +1150,11 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--attempt", type=int, default=1)
     run.add_argument("--project", help="LangSmith project (default: A7-17 name)")
     run.add_argument("--evidence-dir", type=Path)
-    run.add_argument("--compose-project", default="opspilot")
+    run.add_argument(
+        "--deployment-checkout",
+        type=Path,
+        help="the checkout host web and worker were started from (required)",
+    )
     run.add_argument("--alert-timeout", type=float, default=1500.0)
     run.add_argument("--run-timeout", type=float, default=1800.0)
     run.add_argument("--poll", type=float, default=10.0)
