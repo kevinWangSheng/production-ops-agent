@@ -146,22 +146,13 @@ def _requests_for(
 ) -> list[Mapping[str, Any]]:
     """This Run's tool requests behind one evidence id. ``run_freeze`` writes
     the audit's query detail, which names the ``operation_id`` (the id's part
-    before ``:``) but not the evidence id; an entry that does carry an
-    ``evidence_id`` is matched on it exactly."""
-    found: list[Mapping[str, Any]] = []
-    for entries in _requests_by_operation(block).values():
-        for entry in entries:
-            named = entry.get("evidence_id")
-            if named == evidence_id or (
-                named is None and entry.get("operation_id") == _operation(evidence_id)
-            ):
-                found.append(entry)
-    return found
+    before ``:``) but not the evidence id."""
+    return _requests_by_operation(block).get(_operation(evidence_id)) or []
 
 
 def _code(entry: Mapping[str, Any]) -> object:
     """The request's result: ``result_code`` in the audit detail."""
-    return entry["result_code"] if "result_code" in entry else entry.get("status")
+    return entry.get("result_code")
 
 
 def _cited(block: Mapping[str, Any]) -> dict[str, Mapping[str, Any]]:
@@ -268,9 +259,9 @@ def human_free_problems(summary: Mapping[str, Any]) -> list[str]:
     openings = [d for d in deliveries if _detail(d).get("outcome") == OPENING_OUTCOME]
     if len(openings) != 1:
         problems.append("NOT_OPENED_BY_ONE_ALERT")
-    runs = block.get("incident_runs")
-    run_ids = [r.get("run_id") for r in runs or [] if isinstance(r, Mapping)]
-    if runs is not None and run_ids != [run_id]:
+    runs = block.get("incident_runs") or []
+    run_ids = [r.get("run_id") for r in runs if isinstance(r, Mapping)]
+    if run_ids != [run_id]:
         problems.append("NOT_THE_INCIDENTS_ONLY_RUN")
     queued = any(
         e.get("category") == "state_change"
