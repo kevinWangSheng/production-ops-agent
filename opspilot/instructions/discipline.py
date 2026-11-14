@@ -126,10 +126,13 @@ KUBERNETES_GUIDANCE: Final = (
     " Place a pod under affected only when you can name its own reason, such as Evicted, OOMKilled, BackOff, Failed, Unhealthy on a long-running pod, or an error log line; SuccessfulCreate, SuccessfulDelete, Scheduled, Started and a probe miss at startup are not impact on their own."
     " Secrets cannot be read; when a conclusion depends on a value you could not read, say you could not verify it rather than guessing."
     " A running or ready pod can still be failing; read its application logs before calling it healthy."
+    " When a tool reports RESULT_TOO_LARGE, retry it narrower, with a shorter window, a specific service or operation, tags or a lower limit, or page through the stored result as the response suggests; do not drop that evidence."
 )
-"""Kubernetes 调查指导（11 句，K1–K9），A7（#559，r7 A7-1~A7-4）新增，改写自 HolmesGPT
+"""Kubernetes 调查指导（12 句，K1–K9 加 #628），A7（#559，r7 A7-1~A7-4）新增，改写自 HolmesGPT
 ``generic_ask.jinja2`` :56/:58/:69/:73-78：去掉上游依赖命令行 describe 的措辞，不点工具名、
-参数名或投影字段名，因此不标 ``tool_specific``。仅 ``replay-candidate-k8s`` 含此段。"""
+参数名或投影字段名，因此不标 ``tool_specific``。仅 ``replay-candidate-k8s`` 含此段。
+末句（#628）：工具报 RESULT_TOO_LARGE 后收窄重试或分页读取，不放弃该类证据；
+RESULT_TOO_LARGE 是工具描述里已有的错误码，不是工具名或参数名。"""
 
 FIXED_WINDOW: Final = " The authorized query window is fixed by the trusted runner; do not supply start/end tool parameters."
 """查询时间窗由可信 runner 固定（1 句）。三个变体共用。"""
