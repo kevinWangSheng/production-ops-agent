@@ -16,7 +16,6 @@ this module only reads their time fields and shifts their rows.
 from __future__ import annotations
 
 import argparse
-import ast
 import calendar
 import json
 import re
@@ -25,6 +24,7 @@ from collections.abc import Iterable, Mapping
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from scripts.itbench_lite.literals import parse_cell
 from scripts.itbench_lite.snapshot import Snapshot, load_snapshot
 
 NS = 1_000_000_000
@@ -204,12 +204,12 @@ def metrics_end_ns(snapshot: Snapshot) -> int | None:
     return _max(times())
 
 
-def _literal_list(text: str | None) -> list[Any]:
+def _literal_list(text: str | None, column: str) -> list[Any]:
     if not text or not text.strip():
         return []
-    value = ast.literal_eval(text)
+    value = parse_cell(text, column)
     if not isinstance(value, (list, tuple)):
-        raise ValueError("not a list")
+        raise ValueError(f"column {column}: not a list")
     return list(value)
 
 
@@ -222,7 +222,7 @@ def traces_end_ns(snapshot: Snapshot) -> int | None:
     def times() -> Iterable[int]:
         for row in snapshot.iter_tsv(path):
             yield parse_clickhouse_ns(row["Timestamp"]) + int(row["Duration"])
-            for stamp in _literal_list(row.get("Events.Timestamp")):
+            for stamp in _literal_list(row.get("Events.Timestamp"), "Events.Timestamp"):
                 yield parse_clickhouse_ns(str(stamp))
 
     return _max(times())
