@@ -118,6 +118,8 @@ def published_report(summary: Mapping[str, Any]) -> Mapping[str, Any] | None:
     report = block.get("report")
     if not isinstance(run, Mapping) or run.get("state") != "completed":
         return None
+    if block.get("report_present") is False:
+        return None
     if not isinstance(report, Mapping) or not isinstance(report.get("claims"), list):
         return None
     return report
@@ -139,6 +141,29 @@ def _requests_by_operation(
     return found
 
 
+def _requests_for(
+    evidence_id: str, block: Mapping[str, Any]
+) -> list[Mapping[str, Any]]:
+    """This Run's tool requests behind one evidence id. ``run_freeze`` writes
+    the audit's query detail, which names the ``operation_id`` (the id's part
+    before ``:``) but not the evidence id; an entry that does carry an
+    ``evidence_id`` is matched on it exactly."""
+    found: list[Mapping[str, Any]] = []
+    for entries in _requests_by_operation(block).values():
+        for entry in entries:
+            named = entry.get("evidence_id")
+            if named == evidence_id or (
+                named is None and entry.get("operation_id") == _operation(evidence_id)
+            ):
+                found.append(entry)
+    return found
+
+
+def _code(entry: Mapping[str, Any]) -> object:
+    """The request's result: ``result_code`` in the audit detail."""
+    return entry["result_code"] if "result_code" in entry else entry.get("status")
+
+
 def _cited(block: Mapping[str, Any]) -> dict[str, Mapping[str, Any]]:
     return {
         item["evidence_id"]: item
@@ -154,7 +179,7 @@ def evidence_category(
     count (not this Run's, not ok, unknown tool, unresolvable slice)."""
     if not isinstance(evidence_id, str) or _depth > 1:
         return None
-    requests = _requests_by_operation(block).get(_operation(evidence_id))
+    requests = _requests_for(evidence_id, block)
     if not requests:
         return None  # not a tool request of this Run: inherited or unknown
     cited = _cited(block).get(evidence_id)
@@ -163,7 +188,7 @@ def evidence_category(
         producer = stored.get("run_id")
         if producer is not None and producer != block.get("run_id"):
             return None
-    if not any(entry.get("result_code") == OK for entry in requests):
+    if not any(_code(entry) == OK for entry in requests):
         return None
     if isinstance(cited, Mapping) and cited.get("status") not in (None, OK):
         return None
@@ -184,7 +209,7 @@ def evidence_category(
     parent = piece.get("parent_evidence_id") if isinstance(piece, Mapping) else None
     if not isinstance(parent, str):
         return None
-    parent_requests = _requests_by_operation(block).get(_operation(parent)) or []
+    parent_requests = _requests_for(parent, block)
     parent_tools = {entry.get("tool") for entry in parent_requests}
     if len(parent_tools) != 1:
         return None
@@ -243,9 +268,9 @@ def human_free_problems(summary: Mapping[str, Any]) -> list[str]:
     openings = [d for d in deliveries if _detail(d).get("outcome") == OPENING_OUTCOME]
     if len(openings) != 1:
         problems.append("NOT_OPENED_BY_ONE_ALERT")
-    runs = block.get("incident_runs") or []
-    run_ids = [r.get("run_id") for r in runs if isinstance(r, Mapping)]
-    if run_ids != [run_id]:
+    runs = block.get("incident_runs")
+    run_ids = [r.get("run_id") for r in runs or [] if isinstance(r, Mapping)]
+    if runs is not None and run_ids != [run_id]:
         problems.append("NOT_THE_INCIDENTS_ONLY_RUN")
     queued = any(
         e.get("category") == "state_change"
@@ -320,7 +345,7 @@ def run_metrics(summary: Mapping[str, Any]) -> dict[str, Any]:
             "read_evidence" if tool == EVIDENCE_TOOL else "other"
         )
         calls[label] = calls.get(label, 0) + 1
-        if entry.get("result_code") != OK:
+        if _code(entry) != OK:
             failures += 1
     run = block.get("run") if isinstance(block.get("run"), Mapping) else {}
     versions = (

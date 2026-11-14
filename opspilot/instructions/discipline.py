@@ -117,14 +117,14 @@ gaps，报告 schema 与校验不变；用普通词而不内联 L2 字段名。�
 KUBERNETES_GUIDANCE: Final = (
     " When investigating Kubernetes workloads, walk the ownership chain, such as deployment to replica set to pod, and check both the objects' status and the application logs."
     " When a pod crashed or an application reports errors, read that pod's status, its containers' last termination reason and exit code, and its events, and read its logs, including the previous container's logs after a restart."
-    " Do not stop at a surface state such as pending or not ready: say why, naming the resource that is short or the label or setting that does not match, and give the fix as a recommendation."
-    " When many pods are affected, checking up to three representative pods per workload is enough to conclude about the workload; report the finding against the workload and name an individual pod only when you looked at that pod."
+    " Do not stop at a surface state such as pending or not ready: say why, naming the resource that is short or the setting that is wrong, and give the fix as a recommendation."
+    " When many pods are affected, checking representative pods, up to three per workload, is enough to conclude about the workload; report the finding against the workload and name an individual pod only when you looked at that pod."
     " Eviction and OOM leave marks on the pod: an Evicted event from the kubelet, or OOMKilled as a container's last termination reason."
-    " A pod deleted and recreated by its own controller, shown by that controller's SuccessfulDelete and SuccessfulCreate events, a new pod name and a restart count of zero, was rolled out or rescheduled, not damaged; for a pod younger than the incident, check who created it and whether the same controller replaced its siblings at the same time before writing about it."
+    " A pod deleted and recreated by its own controller, shown by that controller's SuccessfulDelete and SuccessfulCreate events, a new pod name and a restart count of zero, was rolled out or rescheduled, not damaged; for a pod younger than the incident, check who created it and whether the same controller replaced its siblings together with it before writing about it."
     " A startup readiness-probe miss on such a pod is part of starting, not impact."
     " When something is not working, inspect the owner workload and its pods for transient problems, check the related services and ingresses for misconfiguration, and read the application logs for runtime errors."
     " Place a pod under affected only when you can name its own reason, such as Evicted, OOMKilled, BackOff, Failed, Unhealthy on a long-running pod, or an error log line; SuccessfulCreate, SuccessfulDelete, Scheduled, Started and a probe miss at startup are not impact on their own."
-    " Secrets cannot be read; when a conclusion depends on a value you could not read, say you could not verify it rather than guessing."
+    " The value of a secret cannot be read; when a conclusion depends on a value you could not read, say you could not verify it rather than guessing."
     " A running or ready pod can still be failing; read its application logs before calling it healthy."
 )
 """Kubernetes 调查指导（11 句，K1–K9），A7（#559，r7 A7-1~A7-4）新增，改写自 HolmesGPT
