@@ -1,0 +1,581 @@
+{
+  "side": "host",
+  "reviews": {
+    "otel-demo": {
+      "status": 201,
+      "resourceRules": [
+        {
+          "verbs": [
+            "create"
+          ],
+          "apiGroups": [
+            "authorization.k8s.io"
+          ],
+          "resources": [
+            "selfsubjectaccessreviews",
+            "selfsubjectrulesreviews"
+          ]
+        },
+        {
+          "verbs": [
+            "create"
+          ],
+          "apiGroups": [
+            "authentication.k8s.io"
+          ],
+          "resources": [
+            "selfsubjectreviews"
+          ]
+        },
+        {
+          "verbs": [
+            "get",
+            "list"
+          ],
+          "apiGroups": [
+            ""
+          ],
+          "resources": [
+            "configmaps",
+            "daemonsets",
+            "deployments",
+            "endpoints",
+            "events",
+            "namespaces",
+            "nodes",
+            "persistentvolumes",
+            "persistentvolumeclaims",
+            "pods",
+            "pods/log",
+            "pods/status",
+            "replicasets",
+            "replicationcontrollers",
+            "resourcequotas",
+            "services",
+            "serviceaccounts"
+          ]
+        },
+        {
+          "verbs": [
+            "get",
+            "list"
+          ],
+          "apiGroups": [
+            "apps"
+          ],
+          "resources": [
+            "daemonsets",
+            "deployments",
+            "deployments/scale",
+            "replicasets",
+            "replicasets/scale",
+            "statefulsets"
+          ]
+        },
+        {
+          "verbs": [
+            "get",
+            "list"
+          ],
+          "apiGroups": [
+            "extensions"
+          ],
+          "resources": [
+            "daemonsets",
+            "deployments",
+            "deployments/scale",
+            "ingresses",
+            "replicasets",
+            "replicasets/scale",
+            "replicationcontrollers/scale"
+          ]
+        },
+        {
+          "verbs": [
+            "get",
+            "list"
+          ],
+          "apiGroups": [
+            "batch"
+          ],
+          "resources": [
+            "cronjobs",
+            "jobs"
+          ]
+        },
+        {
+          "verbs": [
+            "get",
+            "list"
+          ],
+          "apiGroups": [
+            "autoscaling"
+          ],
+          "resources": [
+            "horizontalpodautoscalers"
+          ]
+        },
+        {
+          "verbs": [
+            "get",
+            "list"
+          ],
+          "apiGroups": [
+            "events.k8s.io"
+          ],
+          "resources": [
+            "events"
+          ]
+        },
+        {
+          "verbs": [
+            "get",
+            "list"
+          ],
+          "apiGroups": [
+            "storage.k8s.io"
+          ],
+          "resources": [
+            "storageclasses"
+          ]
+        },
+        {
+          "verbs": [
+            "get",
+            "list"
+          ],
+          "apiGroups": [
+            "metrics.k8s.io"
+          ],
+          "resources": [
+            "pods",
+            "nodes"
+          ]
+        },
+        {
+          "verbs": [
+            "get",
+            "list"
+          ],
+          "apiGroups": [
+            "networking.k8s.io"
+          ],
+          "resources": [
+            "ingresses",
+            "networkpolicies"
+          ]
+        },
+        {
+          "verbs": [
+            "get",
+            "list"
+          ],
+          "apiGroups": [
+            "policy"
+          ],
+          "resources": [
+            "poddisruptionbudgets",
+            "podsecuritypolicies"
+          ]
+        },
+        {
+          "verbs": [
+            "get",
+            "list"
+          ],
+          "apiGroups": [
+            "rbac.authorization.k8s.io"
+          ],
+          "resources": [
+            "clusterroles",
+            "clusterrolebindings",
+            "roles",
+            "rolebindings"
+          ]
+        },
+        {
+          "verbs": [
+            "get",
+            "list"
+          ],
+          "apiGroups": [
+            "apiregistration.k8s.io"
+          ],
+          "resources": [
+            "apiservices"
+          ]
+        },
+        {
+          "verbs": [
+            "get",
+            "list"
+          ],
+          "apiGroups": [
+            "apiextensions.k8s.io"
+          ],
+          "resources": [
+            "customresourcedefinitions"
+          ]
+        },
+        {
+          "verbs": [
+            "get",
+            "list"
+          ],
+          "apiGroups": [
+            "admissionregistration.k8s.io"
+          ],
+          "resources": [
+            "mutatingwebhookconfigurations",
+            "validatingwebhookconfigurations"
+          ]
+        },
+        {
+          "verbs": [
+            "get",
+            "list",
+            "watch"
+          ],
+          "apiGroups": [
+            "certificates.k8s.io"
+          ],
+          "resources": [
+            "clustertrustbundles"
+          ]
+        }
+      ],
+      "nonResourceRules": [
+        {
+          "verbs": [
+            "get"
+          ],
+          "nonResourceURLs": [
+            "/api",
+            "/api/*",
+            "/apis",
+            "/apis/*",
+            "/healthz",
+            "/livez",
+            "/openapi",
+            "/openapi/*",
+            "/readyz",
+            "/version",
+            "/version/"
+          ]
+        },
+        {
+          "verbs": [
+            "get"
+          ],
+          "nonResourceURLs": [
+            "/healthz",
+            "/livez",
+            "/readyz",
+            "/version",
+            "/version/"
+          ]
+        },
+        {
+          "verbs": [
+            "get"
+          ],
+          "nonResourceURLs": [
+            "/.well-known/openid-configuration",
+            "/.well-known/openid-configuration/",
+            "/openid/v1/jwks",
+            "/openid/v1/jwks/"
+          ]
+        }
+      ],
+      "incomplete": false
+    },
+    "kube-system": {
+      "status": 201,
+      "resourceRules": [
+        {
+          "verbs": [
+            "create"
+          ],
+          "apiGroups": [
+            "authorization.k8s.io"
+          ],
+          "resources": [
+            "selfsubjectaccessreviews",
+            "selfsubjectrulesreviews"
+          ]
+        },
+        {
+          "verbs": [
+            "create"
+          ],
+          "apiGroups": [
+            "authentication.k8s.io"
+          ],
+          "resources": [
+            "selfsubjectreviews"
+          ]
+        },
+        {
+          "verbs": [
+            "get",
+            "list"
+          ],
+          "apiGroups": [
+            ""
+          ],
+          "resources": [
+            "configmaps",
+            "daemonsets",
+            "deployments",
+            "endpoints",
+            "events",
+            "namespaces",
+            "nodes",
+            "persistentvolumes",
+            "persistentvolumeclaims",
+            "pods",
+            "pods/log",
+            "pods/status",
+            "replicasets",
+            "replicationcontrollers",
+            "resourcequotas",
+            "services",
+            "serviceaccounts"
+          ]
+        },
+        {
+          "verbs": [
+            "get",
+            "list"
+          ],
+          "apiGroups": [
+            "apps"
+          ],
+          "resources": [
+            "daemonsets",
+            "deployments",
+            "deployments/scale",
+            "replicasets",
+            "replicasets/scale",
+            "statefulsets"
+          ]
+        },
+        {
+          "verbs": [
+            "get",
+            "list"
+          ],
+          "apiGroups": [
+            "extensions"
+          ],
+          "resources": [
+            "daemonsets",
+            "deployments",
+            "deployments/scale",
+            "ingresses",
+            "replicasets",
+            "replicasets/scale",
+            "replicationcontrollers/scale"
+          ]
+        },
+        {
+          "verbs": [
+            "get",
+            "list"
+          ],
+          "apiGroups": [
+            "batch"
+          ],
+          "resources": [
+            "cronjobs",
+            "jobs"
+          ]
+        },
+        {
+          "verbs": [
+            "get",
+            "list"
+          ],
+          "apiGroups": [
+            "autoscaling"
+          ],
+          "resources": [
+            "horizontalpodautoscalers"
+          ]
+        },
+        {
+          "verbs": [
+            "get",
+            "list"
+          ],
+          "apiGroups": [
+            "events.k8s.io"
+          ],
+          "resources": [
+            "events"
+          ]
+        },
+        {
+          "verbs": [
+            "get",
+            "list"
+          ],
+          "apiGroups": [
+            "storage.k8s.io"
+          ],
+          "resources": [
+            "storageclasses"
+          ]
+        },
+        {
+          "verbs": [
+            "get",
+            "list"
+          ],
+          "apiGroups": [
+            "metrics.k8s.io"
+          ],
+          "resources": [
+            "pods",
+            "nodes"
+          ]
+        },
+        {
+          "verbs": [
+            "get",
+            "list"
+          ],
+          "apiGroups": [
+            "networking.k8s.io"
+          ],
+          "resources": [
+            "ingresses",
+            "networkpolicies"
+          ]
+        },
+        {
+          "verbs": [
+            "get",
+            "list"
+          ],
+          "apiGroups": [
+            "policy"
+          ],
+          "resources": [
+            "poddisruptionbudgets",
+            "podsecuritypolicies"
+          ]
+        },
+        {
+          "verbs": [
+            "get",
+            "list"
+          ],
+          "apiGroups": [
+            "rbac.authorization.k8s.io"
+          ],
+          "resources": [
+            "clusterroles",
+            "clusterrolebindings",
+            "roles",
+            "rolebindings"
+          ]
+        },
+        {
+          "verbs": [
+            "get",
+            "list"
+          ],
+          "apiGroups": [
+            "apiregistration.k8s.io"
+          ],
+          "resources": [
+            "apiservices"
+          ]
+        },
+        {
+          "verbs": [
+            "get",
+            "list"
+          ],
+          "apiGroups": [
+            "apiextensions.k8s.io"
+          ],
+          "resources": [
+            "customresourcedefinitions"
+          ]
+        },
+        {
+          "verbs": [
+            "get",
+            "list"
+          ],
+          "apiGroups": [
+            "admissionregistration.k8s.io"
+          ],
+          "resources": [
+            "mutatingwebhookconfigurations",
+            "validatingwebhookconfigurations"
+          ]
+        },
+        {
+          "verbs": [
+            "get",
+            "list",
+            "watch"
+          ],
+          "apiGroups": [
+            "certificates.k8s.io"
+          ],
+          "resources": [
+            "clustertrustbundles"
+          ]
+        }
+      ],
+      "nonResourceRules": [
+        {
+          "verbs": [
+            "get"
+          ],
+          "nonResourceURLs": [
+            "/healthz",
+            "/livez",
+            "/readyz",
+            "/version",
+            "/version/"
+          ]
+        },
+        {
+          "verbs": [
+            "get"
+          ],
+          "nonResourceURLs": [
+            "/.well-known/openid-configuration",
+            "/.well-known/openid-configuration/",
+            "/openid/v1/jwks",
+            "/openid/v1/jwks/"
+          ]
+        },
+        {
+          "verbs": [
+            "get"
+          ],
+          "nonResourceURLs": [
+            "/api",
+            "/api/*",
+            "/apis",
+            "/apis/*",
+            "/healthz",
+            "/livez",
+            "/openapi",
+            "/openapi/*",
+            "/readyz",
+            "/version",
+            "/version/"
+          ]
+        }
+      ],
+      "incomplete": false
+    }
+  }
+}
