@@ -1,7 +1,7 @@
 # 工具面拓展（对标 HolmesGPT，M3 之后）
 
-- 状态：进行中（合同 r5；A0 #575、A1 #589、A2 #588 已合并，扩展档位 `otel-demo-ext` 已有集群对象查询；ITBench-Lite 转换 #586 与判分 #587 已合并；下一项 A5 #557）
-- 更新日期：2026-11-12
+- 状态：进行中（决定表 r7，2026-11-13）。已合并：A0 #575、A1 #589、A2 #588、A5 #593、A4 #594、A3 #598、A6 #600、B2 #597；ITBench-Lite 转换 #586、判分 #587、假 Kubernetes API server #603、逐题驱动 #606；租机直接取样脚本 #607。本机剩余：A7 #559 本机部分（提示词变体、钉值测试、四类证据判定与驱动）与 #605 分档、词表生成器，均已开工。之后一次租机跑完 #580 集群取证、A7 主路径 Run 与 Lite 35 题 #571（A7 合并后才跑 Lite，见 r7 A7-14；手册 [租机手册](2026-11-13-rental-runbook.md)）
+- 更新日期：2026-11-13
 - 依据：用户 2026-11-11 方向「对标上游拓宽调查数据面、只保自动化主路径」，2026-11-12 补充标注（下文「范围与状态」「范围原则」）；C3 第 8 节；`PRODUCT-CONSTRAINTS.md:12`；上游 HolmesGPT `a0009195`（工具集清单见 `scripts/holmes_baseline/config.py:48-98`，共 48 个）。完整计划与 Kubernetes 预审在仓库外，本记录已收录其中决定所需的内容。
 - 工作区：各实施项开工时另开 worktree 并写入各自的任务记录。
 
@@ -93,16 +93,16 @@
 | 编号 | 问题 | 状态 |
 |---|---|---|
 | N1 | Lite 快照如何映射到各查询端点 | 探针已做，映射见[开工说明](2026-11-12-itbench-lite-adapter.md)；未实现 |
-| L6 | ITBench-Lite 官方 LLM judge 用哪个模型、发给哪家（已有接收方，或照官方示例新增 OpenRouter） | 待用户裁决，见[决定表 r4](2026-11-12-tool-expansion-contract.md) |
+| L6 | ITBench-Lite 官方 LLM judge 用哪个模型、发给哪家（已有接收方，或照官方示例新增 OpenRouter） | 已裁决（用户 2026-11-13：a，用仓库已有接收方，默认 Z.ai，结果注明与官方示例不同），见[决定表 r4](2026-11-12-tool-expansion-contract.md) L6 行 |
 | N2 | 现场版与 Lite 同号场景是否逐题一致 | 未确认，不据此合并分数 |
 | N3 | Jaeger 能否提供标签过滤、按 ID 取整条、操作发现 | 已有结论（读 v1.53.0 源码）：支持标签与时长过滤、按 ID 取整条、列服务与操作，不支持标签名发现；未在真实实例取样的项见[决定表 r3](2026-11-12-tool-expansion-contract.md)「N3」 |
 | N6 | 工具 search/catalog 值不值得做 | 未决定，不改固定档位、注册表与 schema revision |
 
 ## 下一步与交接
 
-实现顺序 A2 → A5 → A4 → A3 → A6，各按开工说明由实现会话开 worktree、走功能 PR 流程；A1 的脚本与单元测试可与 A2 并行写，真实取证和各项真实 Run 等一次租机集中做；B2 在 A5 合并后开工。A3–A6 与 B2 的全量探针未跑，A2 合并后各开草稿 PR 经 CI 补跑（预计见决定表 r3）。
+阶段 A 的 A1–A6 与 B2 代码已全部合并（各项 PR 见上方状态行），未跑的全量探针都已经 CI 补过。本机剩余两项：A7 #559 本机部分（提示词变体 `replay-candidate-k8s`、四类证据判定与驱动，决定表 r7）与 #605 分档、词表生成器（r6）。两项合并后一次租机，按[租机手册](2026-11-13-rental-runbook.md)依次跑 #580 集群取证、A7 主路径 Run（前后各一，后一次按 A7-12 最多补跑 2 次）与 ITBench-Lite 35 题 #571（排在 A7 合并之后，r7 A7-14）。
 
-ITBench-Lite 的集群对象与日志探针已做（报告在仓库外 `~/.agent/handoffs/itbench-lite-k8s-logs-probe-2026-11-12.md`）：可用只读的假 API server 回放集群对象，日志部分可回放；用户 2026-11-12 已对齐四点（报告由评测侧确定性转换成答案格式、产品报告格式不变；官方 LLM judge 分与确定性实体匹配分都报；35 题全留分母并按数据覆盖分档；第一轮只跑 OpsPilot、标为单边结果），适配的[开工说明](2026-11-12-itbench-lite-adapter.md)已写，只剩 judge 接收方（L6）待用户裁决。
+ITBench-Lite 的集群对象与日志探针已做（报告在仓库外 `~/.agent/handoffs/itbench-lite-k8s-logs-probe-2026-11-12.md`）；用户 2026-11-12 对齐的四点（报告由评测侧确定性转换成答案格式、产品报告格式不变；官方 LLM judge 分与确定性实体匹配分都报；35 题全留分母并按数据覆盖分档；第一轮只跑 OpsPilot、标为单边结果）已按[开工说明](2026-11-12-itbench-lite-adapter.md)实现。judge 接收方 L6 已裁决（a）。
 
 未确认项：控制侧容器能否按 kind 证书里的名字访问 API server、lab 里 Helm 记录的实际存储形态、metrics-server 与 cAdvisor 指标、上游 `elasticsearch/data` 对 OpenSearch 的兼容性、Jaeger 标签值字符串化与整条 trace 体积、ITBench 现场版的判分方式与单场景耗时。
 
