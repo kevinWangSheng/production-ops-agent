@@ -551,6 +551,11 @@ def test_a_model_timeout_in_one_slot_does_not_abort_the_other_slots_request(
         (ok_tag, 0, True),
         (ok_tag, 1, True),
     ]
+    # The worker commits the Run as completed first and announces
+    # ``run_completed`` in a later transaction, so wait for the event itself.
+    assert wait_until(
+        lambda: events_of(owner, [fine], "run_completed"), timeout=SETTLE
+    ), worker.log()
     assert len(events_of(owner, [fine], "run_completed")) == 1
     assert events_of(owner, [fine], "run_handoff") == []
     assert worker.stop() == 0
