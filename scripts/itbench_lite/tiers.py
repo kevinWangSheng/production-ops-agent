@@ -14,9 +14,11 @@ Rules (decision table r6, docs/tasks/2026-11-12-tool-expansion-contract.md):
   partial, below 0 (or no data of that class) is not covered.
 * L-V4 two tiers: traces covered -> ``TIER_TRACES``, otherwise
   ``TIER_NO_TRACES``; the per-class coverage goes into the detail file.
-* L-V5 ``tiers.json`` is ``{"<id>": "<tier>"}`` for exactly the 35 official
+* L-V5 ``tiers.json`` is ``{"S<id>": "<tier>"}`` for exactly the 35 official
   scenarios (``coverage.load_tiers`` accepts it as is), plus
-  ``tiers_detail.json``. Neither holds answer content.
+  ``tiers_detail.json`` keyed the same way: per scenario the ``fault_start``,
+  the ``ends`` and ``coverage`` maps over the five classes (times RFC 3339 in
+  UTC, ``Z``), the tier and the rule. Neither holds answer content.
 * L-V10 every TSV is streamed row by row; nothing is cached.
 
 Scenario ids come from the directory names (``coverage.scenario_key``). A
@@ -74,6 +76,7 @@ CENSUS_COLUMNS = frozenset(
 )
 CLEAN_COPY_DIR = "snapshot"
 RULE = {
+    "window_seconds": int(WINDOW.total_seconds()),
     "fault_start": "unshifted activeAt of alerts.select_entry_alert(final_alert_file)",
     "classes": list(CLASS_READERS),
     "covered": f"end - fault_start >= {int(WINDOW.total_seconds())} s",
@@ -102,7 +105,19 @@ def tier_of(classes: Mapping[str, str]) -> str:
 
 
 def _iso(value: int | None) -> str | None:
-    return None if value is None else shift.from_ns(value).isoformat()
+    """RFC 3339 in UTC with ``Z``; nanosecond digits only as far as needed."""
+    if value is None:
+        return None
+    seconds, rest = divmod(value, shift.NS)
+    text = shift.from_ns(seconds * shift.NS).strftime("%Y-%m-%dT%H:%M:%S")
+    if rest:
+        text += "." + f"{rest:09d}".rstrip("0")
+    return text + "Z"
+
+
+def scenario_label(key: str) -> str:
+    """The id form used as key in both files (``16`` -> ``S16``)."""
+    return f"S{key}"
 
 
 def fault_start(snapshot: Snapshot) -> tuple[int, str]:
@@ -115,22 +130,22 @@ def fault_start(snapshot: Snapshot) -> tuple[int, str]:
 def scenario_detail(snapshot: Snapshot) -> dict[str, Any]:
     """Per-class ends and coverage plus the tier of one loaded scenario."""
     start_ns, alertname = fault_start(snapshot)
-    classes: dict[str, Any] = {}
+    ends: dict[str, str | None] = {}
+    after: dict[str, float | None] = {}
+    coverage: dict[str, str] = {}
     for kind, reader in CLASS_READERS.items():
         end_ns = reader(snapshot)
-        classes[kind] = {
-            "end": _iso(end_ns),
-            "seconds_after_fault_start": (
-                None if end_ns is None else (end_ns - start_ns) / shift.NS
-            ),
-            "coverage": judge(end_ns, start_ns),
-        }
-    coverage = {kind: info["coverage"] for kind, info in classes.items()}
+        ends[kind] = _iso(end_ns)
+        after[kind] = None if end_ns is None else (end_ns - start_ns) / shift.NS
+        coverage[kind] = judge(end_ns, start_ns)
     return {
         "fault_start": _iso(start_ns),
         "entry_alertname": alertname,
-        "classes": classes,
+        "ends": ends,
+        "seconds_after_fault_start": after,
+        "coverage": coverage,
         "tier": tier_of(coverage),
+        "rule": RULE,
     }
 
 
@@ -224,8 +239,7 @@ def _compare(census_value: Any, ours: str | None) -> str:
     mine = None if ours is None else _parse_time(ours)
     if mine is None:
         return "differ"
-    # ISO strings from ``from_ns`` keep microseconds only.
-    return "agree" if abs(theirs - mine) < 1000 else "differ"
+    return "agree" if theirs == mine else "differ"
 
 
 def cross_check(detail: Mapping[str, Any], row: Mapping[str, Any]) -> dict[str, Any]:
@@ -235,7 +249,7 @@ def cross_check(detail: Mapping[str, Any], row: Mapping[str, Any]) -> dict[str, 
         "fault_start_proxy": _compare(
             row.get("fault_start_proxy"), detail["fault_start"]
         ),
-        "trace_end": _compare(row.get("trace_end"), detail["classes"]["traces"]["end"]),
+        "trace_end": _compare(row.get("trace_end"), detail["ends"]["traces"]),
     }
 
 
@@ -248,7 +262,8 @@ def build(
     census: Mapping[str, Mapping[str, Any]] | None = None,
     expected: frozenset[str] = SCENARIO_IDS,
 ) -> tuple[dict[str, str], dict[str, Any]]:
-    """``(tiers, detail)`` over the scenario copies under ``root``."""
+    """``(tiers, detail)`` over the scenario copies under ``root``, both keyed
+    ``S<id>`` in id order."""
     dirs = scenario_dirs(root)
     if dirs.keys() != expected:
         missing = sorted(expected - dirs.keys(), key=int)
@@ -269,14 +284,9 @@ def build(
         if census is not None:
             row = census.get(key)
             info["census"] = None if row is None else cross_check(info, row)
-        scenarios[key] = info
-    tiers = {key: info["tier"] for key, info in scenarios.items()}
-    detail = {
-        "rule": RULE,
-        "tiers": sorted(set(tiers.values())),
-        "scenarios": scenarios,
-    }
-    return tiers, detail
+        scenarios[scenario_label(key)] = info
+    tiers = {label: info["tier"] for label, info in scenarios.items()}
+    return tiers, scenarios
 
 
 def _write_json(path: Path, value: Any) -> None:
@@ -295,7 +305,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     census = load_census(Path(args.census)) if args.census else None
     tiers, detail = build(Path(args.root), census=census)
     load_tiers(tiers)  # the file must be what ``coverage.py --tiers`` accepts
-    _write_json(Path(args.out), dict(sorted(tiers.items(), key=lambda kv: int(kv[0]))))
+    _write_json(Path(args.out), tiers)
     _write_json(Path(args.detail), detail)
     return 0
 

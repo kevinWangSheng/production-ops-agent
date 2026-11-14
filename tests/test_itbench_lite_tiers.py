@@ -100,6 +100,13 @@ def make_scenario(
     return root
 
 
+def test_iso_keeps_nanoseconds_only_as_needed():
+    assert tiers._iso(0) == "1970-01-01T00:00:00Z"
+    assert tiers._iso(1_500_000_000) == "1970-01-01T00:00:01.5Z"
+    assert tiers._iso(1_000_000_007) == "1970-01-01T00:00:01.000000007Z"
+    assert tiers._iso(None) is None
+
+
 def test_judge_thresholds():
     start = 10 * 60 * 10**9
     assert tiers.judge(start + 300 * 10**9, start) == tiers.COVERED
@@ -112,18 +119,18 @@ def test_judge_thresholds():
 def test_scenario_detail_uses_entry_alert_and_judges_five_classes(tmp_path):
     snap = load_snapshot(make_scenario(tmp_path / "s", logs=False))
     detail = tiers.scenario_detail(snap)
-    assert detail["fault_start"] == FAULT.isoformat()
+    assert detail["fault_start"] == "2025-12-15T17:30:00Z"
     assert detail["entry_alertname"] == "RequestErrorRate"
-    assert set(detail["classes"]) == {"metrics", "traces", "objects", "events", "logs"}
-    assert detail["classes"]["traces"]["coverage"] == tiers.COVERED
-    assert detail["classes"]["traces"]["seconds_after_fault_start"] == 600.0
+    classes = {"metrics", "traces", "objects", "events", "logs"}
+    assert set(detail["ends"]) == set(detail["coverage"]) == classes
+    assert detail["coverage"]["traces"] == tiers.COVERED
+    assert detail["ends"]["traces"] == "2025-12-15T17:40:00Z"
+    assert detail["seconds_after_fault_start"]["traces"] == 600.0
     # The valueless metrics row an hour later does not count.
-    assert detail["classes"]["metrics"]["seconds_after_fault_start"] == 600.0
-    assert detail["classes"]["logs"] == {
-        "end": None,
-        "seconds_after_fault_start": None,
-        "coverage": tiers.NOT_COVERED,
-    }
+    assert detail["seconds_after_fault_start"]["metrics"] == 600.0
+    assert detail["ends"]["logs"] is None
+    assert detail["seconds_after_fault_start"]["logs"] is None
+    assert detail["coverage"]["logs"] == tiers.NOT_COVERED
     assert detail["tier"] == tiers.TIER_TRACES
 
 
@@ -138,7 +145,7 @@ def test_scenario_detail_uses_entry_alert_and_judges_five_classes(tmp_path):
 def test_traces_not_covered_go_to_the_no_trace_tier(tmp_path, after, coverage):
     snap = load_snapshot(make_scenario(tmp_path / "s", traces_after=after))
     detail = tiers.scenario_detail(snap)
-    assert detail["classes"]["traces"]["coverage"] == coverage
+    assert detail["coverage"]["traces"] == coverage
     assert detail["tier"] == tiers.TIER_NO_TRACES
 
 
@@ -159,15 +166,15 @@ def test_cli_writes_files_coverage_accepts(tmp_path):
     out, detail_path = tmp_path / "tiers.json", tmp_path / "tiers_detail.json"
     assert tiers.main([str(root), "--out", str(out), "--detail", str(detail_path)]) == 0
     written = json.loads(out.read_text())
-    assert load_tiers(written) == written
-    assert list(written) == sorted(SCENARIO_IDS, key=int)
-    assert written["1"] == tiers.TIER_NO_TRACES
-    assert written["2"] == tiers.TIER_TRACES
+    assert set(load_tiers(written)) == SCENARIO_IDS
+    assert list(written) == [f"S{k}" for k in sorted(SCENARIO_IDS, key=int)]
+    assert written["S1"] == tiers.TIER_NO_TRACES
+    assert written["S2"] == tiers.TIER_TRACES
     detail = json.loads(detail_path.read_text())
-    assert detail["scenarios"]["1"]["directory"] == "S1/snapshot"
-    assert detail["scenarios"]["2"]["directory"] == "Scenario-2"
-    assert set(detail["scenarios"]) == SCENARIO_IDS
-    assert "census" not in detail["scenarios"]["2"]
+    assert detail["S1"]["directory"] == "S1/snapshot"
+    assert detail["S2"]["directory"] == "Scenario-2"
+    assert set(detail) == set(written)
+    assert "census" not in detail["S2"]
 
 
 def test_missing_scenario_is_refused(tmp_path):
@@ -228,8 +235,8 @@ def test_census_keeps_only_allowed_columns(tmp_path):
         "2": {"fault_start_proxy": "n/a"},
     }
     _, detail = tiers.build(root, census=rows, expected=frozenset({"1", "2"}))
-    one = detail["scenarios"]["1"]["census"]
+    one = detail["S1"]["census"]
     assert one["fault_start_proxy"] == "agree"
     assert one["trace_end"] == "differ"
-    assert detail["scenarios"]["2"]["census"]["fault_start_proxy"] == "unparsed"
+    assert detail["S2"]["census"]["fault_start_proxy"] == "unparsed"
     assert "sentinel" not in json.dumps(detail)

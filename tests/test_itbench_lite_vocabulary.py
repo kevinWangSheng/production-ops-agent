@@ -49,6 +49,10 @@ def make_scenario(root: Path) -> Path:
             _obj("nodes", "Node", "node-a", ns=None),
             _obj("pods", "Pod", "coredns-1", ns="kube-system"),
             _obj("clusterroles", "ClusterRole", "admin-role", ns=None),
+            # No k8s.resource.name: the object's own kind decides.
+            dict(_obj("configmaps", "ConfigMap", "flags"), LogAttributes="{}"),
+            dict(_obj("secrets", "Secret", "token-x"), LogAttributes="{}"),
+            dict(_obj("roles", "Role", "reader"), LogAttributes="{}"),
         ],
     )
     _tsv(
@@ -79,6 +83,7 @@ EXPECTED = [
     "checkout",
     "checkout-7f9-a",
     "checkout-7f9-b",
+    "flags",
     "Frontend",
     "node-a",
     "payment",
