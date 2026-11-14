@@ -118,6 +118,10 @@ def valid_report():
     }
 
 
+class PgDirectoryExists(Exception):
+    code = "PG_DIRECTORY_EXISTS"
+
+
 class Harness:
     """Stand-in backends; ``fail`` names the step that raises."""
 
@@ -152,6 +156,9 @@ class Harness:
         def start_pg(directory, port):
             if self.fail == "pg":
                 raise RuntimeError("boom")
+            if Path(directory).exists():  # as the real launcher refuses
+                raise PgDirectoryExists()
+            Path(directory).mkdir(parents=True)
             self.events.append(("start", "pg"))
             return FakePg()
 
@@ -560,8 +567,40 @@ def test_resume_reruns_a_summary_without_outputs_and_keeps_the_old_one(env, tmp_
     out = driver.run_scenario(cfg, h2.backends(), "Scenario-16", vocab, [1])
     assert out["trials"][1]["status"] == "completed"
     assert ("start", "pg") in h2.events  # a new Run
-    assert len(list((trial_dir / "stale").iterdir())) == 1  # set aside, not deleted
+    assert out["trials"][1]["history"] == []  # the old chance-1 cost nothing
+    (kept,) = list((trial_dir / "stale").iterdir())  # set aside, not deleted
+    assert (kept / "evidence" / "summary.json").is_file()
+    assert (kept / "chance-1").is_dir()
     assert _summary(cfg)["status"] == "completed"
+
+
+def test_resume_sets_aside_an_interrupted_chance_without_using_it(env, tmp_path):
+    """#632: a chance dir left by an interrupted process (here mid-load, with
+    its PostgreSQL data dir) is moved under ``stale/`` before chance 1 starts,
+    so it costs no chance and leaves no infra entry."""
+    cfg, vocab = env
+    trial_dir = cfg.round_dir / "S16" / "trial-1"
+    leftover = trial_dir / "chance-1" / "pg"
+    leftover.mkdir(parents=True)
+    (leftover / "PG_VERSION").write_text("16\n")
+    (trial_dir / "chance-1" / "worker.log").write_text("interrupted\n")
+    h = Harness(tmp_path)
+    out = driver.run_scenario(cfg, h.backends(), "Scenario-16", vocab, [1])
+    assert out["trials"][1]["status"] == "completed"
+    assert out["trials"][1]["history"] == []
+    assert _summary(cfg)["itbench_lite"]["history"] == []
+    assert _summary(cfg)["itbench_lite"]["chance"] == 1
+    assert sorted(
+        p.name for p in trial_dir.iterdir() if p.name.startswith("chance-")
+    ) == ["chance-1"]
+    (kept,) = list((trial_dir / "stale").iterdir())
+    assert (kept / "chance-1" / "pg" / "PG_VERSION").read_text() == "16\n"
+    assert (kept / "chance-1" / "worker.log").is_file()
+    # The completed trial is skipped as before, with nothing moved again.
+    h2 = Harness(tmp_path)
+    again = driver.run_scenario(cfg, h2.backends(), "Scenario-16", vocab, [1])
+    assert again == {"scenario": "16", "skipped": [1]}
+    assert h2.events == [] and len(list((trial_dir / "stale").iterdir())) == 1
 
 
 @pytest.mark.parametrize(
