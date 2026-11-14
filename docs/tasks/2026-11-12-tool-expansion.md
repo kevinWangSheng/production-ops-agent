@@ -105,3 +105,5 @@
 ITBench-Lite 的集群对象与日志探针已做（报告在仓库外 `~/.agent/handoffs/itbench-lite-k8s-logs-probe-2026-11-12.md`）；用户 2026-11-12 对齐的四点（报告由评测侧确定性转换成答案格式、产品报告格式不变；官方 LLM judge 分与确定性实体匹配分都报；35 题全留分母并按数据覆盖分档；第一轮只跑 OpsPilot、标为单边结果）已按[开工说明](2026-11-12-itbench-lite-adapter.md)实现。judge 接收方 L6 已裁决（a）。
 
 未确认项：控制侧容器能否按 kind 证书里的名字访问 API server、lab 里 Helm 记录的实际存储形态、metrics-server 与 cAdvisor 指标、上游 `elasticsearch/data` 对 OpenSearch 的兼容性、Jaeger 标签值字符串化与整条 trace 体积、ITBench 现场版的判分方式与单场景耗时。
+
+租机集中取证（#580）、A7 主路径 Run（#559）与 ITBench-Lite 35 题（#571）的开机清单见[租机操作手册](2026-11-13-rental-runbook.md)。
