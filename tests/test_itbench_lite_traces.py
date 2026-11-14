@@ -123,6 +123,33 @@ def test_span_fields_and_offset(tmp_path):
     ]
 
 
+def test_numpy_event_timestamps_as_exported(tmp_path):
+    # #624: the real export writes Events.Timestamp as numpy reprs.
+    row = _span(
+        0,
+        **{
+            "Events.Timestamp": "[np.datetime64('2025-12-15T17:30:00.200000000'), "
+            "np.datetime64('2025-12-15T17:30:00.300000001')]",
+            "Events.Name": "['exception', 'retry']",
+            "Events.Attributes": "[{'exception.message': 'boom'}, {}]",
+        },
+    )
+    ((_, span),) = _spans(
+        iter_otlp_requests(_snapshot(tmp_path, [row]), offset_seconds=0)
+    )
+    base = 1765819800 * 10**9
+    assert [(e["timeUnixNano"], e["name"]) for e in span["events"]] == [
+        (str(base + 200000000), "exception"),
+        (str(base + 300000001), "retry"),
+    ]
+
+
+def test_unknown_call_in_a_cell_names_the_column(tmp_path):
+    row = _span(0, **{"Events.Timestamp": "[np.int64(1)]"})
+    with pytest.raises(ValueError, match="traces line 2: column Events.Timestamp"):
+        list(iter_otlp_requests(_snapshot(tmp_path, [row]), offset_seconds=0))
+
+
 def test_proto_enum_names_are_accepted(tmp_path):
     snap = _snapshot(
         tmp_path, [_span(0, SpanKind="SPAN_KIND_CONSUMER", StatusCode="STATUS_CODE_OK")]

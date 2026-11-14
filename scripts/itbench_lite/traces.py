@@ -11,7 +11,6 @@ Posting goes only to a loopback endpoint (the replay Jaeger binds 127.0.0.1).
 from __future__ import annotations
 
 import argparse
-import ast
 import ipaddress
 import json
 import re
@@ -23,6 +22,7 @@ from dataclasses import asdict, dataclass
 from typing import Any
 from urllib.parse import urlsplit
 
+from scripts.itbench_lite.literals import parse_cell
 from scripts.itbench_lite.shift import NS, parse_clickhouse_ns
 from scripts.itbench_lite.snapshot import Snapshot, load_snapshot
 
@@ -65,12 +65,12 @@ class TraceStats:
     end_ns: int | None = None
 
 
-def _literal(text: str | None, kind: type) -> Any:
+def _literal(text: str | None, kind: type, column: str) -> Any:
     if text is None or not text.strip():
         return kind()
-    value = ast.literal_eval(text)
+    value = parse_cell(text, column)
     if not isinstance(value, kind if kind is dict else (list, tuple)):
-        raise ValueError(f"expected {kind.__name__}")
+        raise ValueError(f"column {column}: expected {kind.__name__}")
     return value
 
 
@@ -101,9 +101,9 @@ def span_from_row(row: Mapping[str, str], offset_seconds: int) -> dict[str, Any]
     duration = int(row["Duration"])
     if duration < 0:
         raise ValueError("negative duration")
-    stamps = _literal(row.get("Events.Timestamp"), list)
-    names = _literal(row.get("Events.Name"), list)
-    attrs = _literal(row.get("Events.Attributes"), list)
+    stamps = _literal(row.get("Events.Timestamp"), list, "Events.Timestamp")
+    names = _literal(row.get("Events.Name"), list, "Events.Name")
+    attrs = _literal(row.get("Events.Attributes"), list, "Events.Attributes")
     if not len(stamps) == len(names) == len(attrs):
         raise ValueError("event arrays differ in length")
     events = [
@@ -114,10 +114,12 @@ def span_from_row(row: Mapping[str, str], offset_seconds: int) -> dict[str, Any]
         }
         for stamp, name, attr in zip(stamps, names, attrs, strict=True)
     ]
-    link_traces = _literal(row.get("Links.TraceId"), list)
-    link_spans = _literal(row.get("Links.SpanId"), list)
-    link_states = _literal(row.get("Links.TraceState"), list) or [""] * len(link_traces)
-    link_attrs = _literal(row.get("Links.Attributes"), list) or [{}] * len(link_traces)
+    link_traces = _literal(row.get("Links.TraceId"), list, "Links.TraceId")
+    link_spans = _literal(row.get("Links.SpanId"), list, "Links.SpanId")
+    link_states = _literal(row.get("Links.TraceState"), list, "Links.TraceState")
+    link_states = link_states or [""] * len(link_traces)
+    link_attrs = _literal(row.get("Links.Attributes"), list, "Links.Attributes")
+    link_attrs = link_attrs or [{}] * len(link_traces)
     if not len(link_traces) == len(link_spans) == len(link_states) == len(link_attrs):
         raise ValueError("link arrays differ in length")
     links = [
@@ -138,7 +140,9 @@ def span_from_row(row: Mapping[str, str], offset_seconds: int) -> dict[str, Any]
         "kind": kind,
         "startTimeUnixNano": str(start),
         "endTimeUnixNano": str(start + duration),
-        "attributes": _attributes(_literal(row.get("SpanAttributes"), dict)),
+        "attributes": _attributes(
+            _literal(row.get("SpanAttributes"), dict, "SpanAttributes")
+        ),
         "events": events,
         "links": links,
         "status": {"code": status, "message": row.get("StatusMessage") or ""},
@@ -156,7 +160,7 @@ GroupKey = tuple[str, str, str, str]
 def _request(groups: Mapping[GroupKey, list[dict[str, Any]]]) -> dict[str, Any]:
     resource_spans = []
     for (service, resource, scope_name, scope_version), spans in groups.items():
-        attributes = _attributes(_literal(resource, dict))
+        attributes = _attributes(_literal(resource, dict, "ResourceAttributes"))
         if not any(a["key"] == "service.name" for a in attributes):
             attributes.append(
                 {"key": "service.name", "value": {"stringValue": service}}
