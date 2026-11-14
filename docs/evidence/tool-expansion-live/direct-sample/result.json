@@ -1,0 +1,84 @@
+{
+  "type": "opspilot-tool-sample-v1",
+  "issue": 580,
+  "profile": "otel-demo-ext",
+  "versions": {
+    "prompt_revision": "prompt-replay-candidate-k8s-0282ee7d0e7a",
+    "context_policy_revision": "ctx-ctx-policy-v1-a30e65ea52f4",
+    "tool_schema_revision": "otel-demo-ext-d467c4b436b0"
+  },
+  "sampled_at": "2026-11-14T20:38:50+00:00",
+  "window": {
+    "start": "2026-11-14T19:38:50+00:00",
+    "end": "2026-11-14T20:38:50+00:00"
+  },
+  "frame": {
+    "start": "2026-11-13T20:38:50+00:00",
+    "end": "2026-11-14T20:38:50+00:00"
+  },
+  "endpoints": {
+    "kubernetes": "https://127.0.0.1:42947",
+    "application_namespace": null,
+    "prometheus": "http://127.0.0.1:19090",
+    "jaeger": "http://127.0.0.1:16686/jaeger/ui"
+  },
+  "items": {
+    "tabular": {
+      "tool": "kubernetes_tabular_query",
+      "verdict": "pass",
+      "skip_allowed": null,
+      "status": "ok",
+      "reason": null,
+      "failed_checks": []
+    },
+    "logs": {
+      "tool": "fetch_pod_logs",
+      "verdict": "pass",
+      "skip_allowed": null,
+      "status": "ok",
+      "reason": null,
+      "failed_checks": []
+    },
+    "secret": {
+      "tool": "kubernetes_jq_query",
+      "verdict": "pass",
+      "skip_allowed": null,
+      "status": "error",
+      "reason": "RESOURCE_NOT_ALLOWED",
+      "failed_checks": []
+    },
+    "traces": {
+      "tool": "traces_search_by_tags",
+      "verdict": "pass",
+      "skip_allowed": null,
+      "status": "ok",
+      "reason": null,
+      "failed_checks": []
+    },
+    "prom_instant": {
+      "tool": "execute_prometheus_instant_query",
+      "verdict": "pass",
+      "skip_allowed": null,
+      "status": "ok",
+      "reason": null,
+      "failed_checks": []
+    },
+    "rules": {
+      "tool": "list_prometheus_rules",
+      "verdict": "pass",
+      "skip_allowed": null,
+      "status": "ok",
+      "reason": null,
+      "failed_checks": []
+    }
+  },
+  "all_executed_passed": true,
+  "all_requested_passed": true,
+  "allowed_skips": [],
+  "lab_gate": {
+    "check": "opspilot.tracing.check_lab_target",
+    "failures": []
+  },
+  "operations_charged": 6,
+  "credential_hits": 0
+}

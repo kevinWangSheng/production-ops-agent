@@ -1,0 +1,340 @@
+{
+  "side": "host",
+  "api_url": "https://127.0.0.1:42947",
+  "service_account": "opspilot-readonly/opspilot-investigator",
+  "manifest_sha256": "ddd4299d538ecfeb48ed272bd2f7d6306c54778f8c188ae09366a4b4370fdea0",
+  "discovered": {
+    "pod": "coredns-559f6c778d-fdfmk",
+    "container": "coredns",
+    "node": "opspilot-m1-control-plane"
+  },
+  "requests": [
+    {
+      "name": "list namespaces",
+      "method": "GET",
+      "path": "/api/v1/namespaces",
+      "status": 200,
+      "expected": 200,
+      "matches": true
+    },
+    {
+      "name": "list nodes",
+      "method": "GET",
+      "path": "/api/v1/nodes",
+      "status": 200,
+      "expected": 200,
+      "matches": true
+    },
+    {
+      "name": "list pods, all namespaces",
+      "method": "GET",
+      "path": "/api/v1/pods",
+      "status": 200,
+      "expected": 200,
+      "matches": true
+    },
+    {
+      "name": "list kube-system pods",
+      "method": "GET",
+      "path": "/api/v1/namespaces/kube-system/pods",
+      "status": 200,
+      "expected": 200,
+      "matches": true
+    },
+    {
+      "name": "list events (core)",
+      "method": "GET",
+      "path": "/api/v1/events",
+      "status": 200,
+      "expected": 200,
+      "matches": true
+    },
+    {
+      "name": "list events (events.k8s.io)",
+      "method": "GET",
+      "path": "/apis/events.k8s.io/v1/events",
+      "status": 200,
+      "expected": 200,
+      "matches": true
+    },
+    {
+      "name": "list configmaps, all namespaces",
+      "method": "GET",
+      "path": "/api/v1/configmaps",
+      "status": 200,
+      "expected": 200,
+      "matches": true
+    },
+    {
+      "name": "get the fault switch ConfigMap (Q5)",
+      "method": "GET",
+      "path": "/api/v1/namespaces/otel-demo/configmaps/flagd-config",
+      "status": 200,
+      "expected": 200,
+      "matches": true
+    },
+    {
+      "name": "list deployments",
+      "method": "GET",
+      "path": "/apis/apps/v1/deployments",
+      "status": 200,
+      "expected": 200,
+      "matches": true
+    },
+    {
+      "name": "list replicasets",
+      "method": "GET",
+      "path": "/apis/apps/v1/replicasets",
+      "status": 200,
+      "expected": 200,
+      "matches": true
+    },
+    {
+      "name": "list services",
+      "method": "GET",
+      "path": "/api/v1/services",
+      "status": 200,
+      "expected": 200,
+      "matches": true
+    },
+    {
+      "name": "read a kube-system pod log",
+      "method": "GET",
+      "path": "/api/v1/namespaces/kube-system/pods/coredns-559f6c778d-fdfmk/log?tailLines=1&container=coredns",
+      "status": 200,
+      "expected": 200,
+      "matches": true
+    },
+    {
+      "name": "list secrets, all namespaces",
+      "method": "GET",
+      "path": "/api/v1/secrets",
+      "status": 403,
+      "expected": 403,
+      "matches": true
+    },
+    {
+      "name": "list kube-system secrets",
+      "method": "GET",
+      "path": "/api/v1/namespaces/kube-system/secrets",
+      "status": 403,
+      "expected": 403,
+      "matches": true
+    },
+    {
+      "name": "list app secrets",
+      "method": "GET",
+      "path": "/api/v1/namespaces/otel-demo/secrets",
+      "status": 403,
+      "expected": 403,
+      "matches": true
+    },
+    {
+      "name": "watch pods",
+      "method": "GET",
+      "path": "/api/v1/pods?watch=true",
+      "status": 403,
+      "expected": 403,
+      "matches": true
+    },
+    {
+      "name": "exec (GET)",
+      "method": "GET",
+      "path": "/api/v1/namespaces/kube-system/pods/coredns-559f6c778d-fdfmk/exec?command=true&stdout=true",
+      "status": 403,
+      "expected": 403,
+      "matches": true
+    },
+    {
+      "name": "exec (POST)",
+      "method": "POST",
+      "path": "/api/v1/namespaces/kube-system/pods/coredns-559f6c778d-fdfmk/exec?command=true&stdout=true&dryRun=All",
+      "status": 403,
+      "expected": 403,
+      "matches": true
+    },
+    {
+      "name": "attach",
+      "method": "GET",
+      "path": "/api/v1/namespaces/kube-system/pods/coredns-559f6c778d-fdfmk/attach?stdout=true",
+      "status": 403,
+      "expected": 403,
+      "matches": true
+    },
+    {
+      "name": "port-forward",
+      "method": "GET",
+      "path": "/api/v1/namespaces/kube-system/pods/coredns-559f6c778d-fdfmk/portforward?ports=80",
+      "status": 403,
+      "expected": 403,
+      "matches": true
+    },
+    {
+      "name": "pod proxy",
+      "method": "GET",
+      "path": "/api/v1/namespaces/kube-system/pods/coredns-559f6c778d-fdfmk/proxy/",
+      "status": 403,
+      "expected": 403,
+      "matches": true
+    },
+    {
+      "name": "node proxy",
+      "method": "GET",
+      "path": "/api/v1/nodes/opspilot-m1-control-plane/proxy/healthz",
+      "status": 403,
+      "expected": 403,
+      "matches": true
+    },
+    {
+      "name": "service proxy",
+      "method": "GET",
+      "path": "/api/v1/namespaces/default/services/https:kubernetes:443/proxy/",
+      "status": 403,
+      "expected": 403,
+      "matches": true
+    },
+    {
+      "name": "issue itself a token (dry run)",
+      "method": "POST",
+      "path": "/api/v1/namespaces/opspilot-readonly/serviceaccounts/opspilot-investigator/token?dryRun=All",
+      "status": 403,
+      "expected": 403,
+      "matches": true
+    },
+    {
+      "name": "impersonate a user",
+      "method": "GET",
+      "path": "/api/v1/namespaces",
+      "status": 403,
+      "expected": 403,
+      "matches": true
+    },
+    {
+      "name": "impersonate a group",
+      "method": "GET",
+      "path": "/api/v1/namespaces",
+      "status": 403,
+      "expected": 403,
+      "matches": true
+    },
+    {
+      "name": "create a ConfigMap (dry run)",
+      "method": "POST",
+      "path": "/api/v1/namespaces/otel-demo/configmaps?dryRun=All",
+      "status": 403,
+      "expected": 403,
+      "matches": true
+    },
+    {
+      "name": "patch the fault switch ConfigMap (dry run)",
+      "method": "PATCH",
+      "path": "/api/v1/namespaces/otel-demo/configmaps/flagd-config?dryRun=All",
+      "status": 403,
+      "expected": 403,
+      "matches": true
+    },
+    {
+      "name": "delete a pod (dry run)",
+      "method": "DELETE",
+      "path": "/api/v1/namespaces/kube-system/pods/coredns-559f6c778d-fdfmk?dryRun=All",
+      "status": 403,
+      "expected": 403,
+      "matches": true
+    },
+    {
+      "name": "scale a deployment (dry run)",
+      "method": "PATCH",
+      "path": "/apis/apps/v1/namespaces/otel-demo/deployments/checkout/scale?dryRun=All",
+      "status": 403,
+      "expected": 403,
+      "matches": true
+    },
+    {
+      "name": "create a namespace (dry run)",
+      "method": "POST",
+      "path": "/api/v1/namespaces?dryRun=All",
+      "status": 403,
+      "expected": 403,
+      "matches": true
+    },
+    {
+      "name": "bind itself cluster-admin (dry run)",
+      "method": "POST",
+      "path": "/apis/rbac.authorization.k8s.io/v1/clusterrolebindings?dryRun=All",
+      "status": 403,
+      "expected": 403,
+      "matches": true
+    },
+    {
+      "name": "list custom resource argoproj.io",
+      "method": "GET",
+      "path": "/apis/argoproj.io/v1alpha1/applications",
+      "status": 403,
+      "expected": [
+        403,
+        404
+      ],
+      "matches": true,
+      "denied_by": "rbac"
+    },
+    {
+      "name": "list custom resource source.toolkit.fluxcd.io",
+      "method": "GET",
+      "path": "/apis/source.toolkit.fluxcd.io/v1/gitrepositories",
+      "status": 403,
+      "expected": [
+        403,
+        404
+      ],
+      "matches": true,
+      "denied_by": "rbac"
+    },
+    {
+      "name": "list custom resource networking.istio.io",
+      "method": "GET",
+      "path": "/apis/networking.istio.io/v1beta1/virtualservices",
+      "status": 403,
+      "expected": [
+        403,
+        404
+      ],
+      "matches": true,
+      "denied_by": "rbac"
+    },
+    {
+      "name": "list custom resource chaos-mesh.org",
+      "method": "GET",
+      "path": "/apis/chaos-mesh.org/v1alpha1/podchaos",
+      "status": 403,
+      "expected": [
+        403,
+        404
+      ],
+      "matches": true,
+      "denied_by": "rbac"
+    },
+    {
+      "name": "list custom resource monitoring.coreos.com",
+      "method": "GET",
+      "path": "/apis/monitoring.coreos.com/v1/prometheusrules",
+      "status": 403,
+      "expected": [
+        403,
+        404
+      ],
+      "matches": true,
+      "denied_by": "rbac"
+    }
+  ],
+  "configmap_secret_scan": {
+    "configmaps_scanned": 20,
+    "known_values": 11,
+    "hits": 0,
+    "hit_keys": [],
+    "expected": 0,
+    "matches": true
+  },
+  "known_secrets_supplied": true,
+  "known_secret_hits": 0,
+  "ok": true
+}
