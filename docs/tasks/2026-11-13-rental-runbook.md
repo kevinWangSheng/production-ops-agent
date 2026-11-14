@@ -61,11 +61,31 @@
 
 | 步 | 目的与命令 | 判定 | 失败时 | 耗时 |
 |---|---|---|---|---|
-| 2.1 | 分档与词表（#605）。两个生成器都拒绝含答案文件的目录，所以先用驱动自己的白名单复制，把每题的干净副本建到冒烟轮次下（驱动发现已有副本会重新校验后复用）：`for d in <数据集根>/*/; do n=$(basename "$d"); k=$(python3 -c 'import sys; from scripts.itbench_lite.coverage import scenario_key; print(scenario_key(sys.argv[1]))' "$n") \|\| continue; python3 -c 'import sys; from pathlib import Path; from scripts.itbench_lite.driver import copy_whitelisted; copy_whitelisted(Path(sys.argv[1]), Path(sys.argv[2]))' "$d" "tmp/itbench-lite/<冒烟轮次>/S$k/snapshot"; done`。然后词表每题一份：`python3 -m scripts.itbench_lite.vocabulary tmp/itbench-lite/<冒烟轮次>/S<id>/snapshot --out <词表目录>/S<id>.txt`；分档全量一次：`python3 -m scripts.itbench_lite.tiers tmp/itbench-lite/<冒烟轮次> --out <分档目录>/tiers.json --detail <分档目录>/tiers_detail.json`。词表与分档目录放在轮次目录之外（例如 `tmp/itbench-lite/inputs/`），三个阶段共用 | 复制循环与两个生成器退出码 0；`tiers.json` 正好 35 题；词表目录里 35 个 `S<id>.txt` | 复制循环未在真实数据集上跑过；生成器报错属类别 ①，开 issue，不在机上改代码 | 约 20 分钟（460 MB trace 的耗时未验证） |
-| 2.2 | 挑题，只按数据覆盖：`jq -r 'to_entries[] \| select(.value.coverage.traces=="covered" and .value.coverage.logs=="covered") \| .key' <分档目录>/tiers_detail.json \| grep -vxE 'S18\|S38' \| sort -V \| head -2`，按编号取前两个（本手册的默认，可逆），再在数据集根目录下按名字找到对应的场景目录名 | 输出正好 2 个编号；两个编号写进 `run.md` | 不足 2 个：停，报 lead（分档结果与预期不符） | 2 分钟 |
+| 2.1 | 分档与词表（#605）。两个生成器都拒绝含答案文件的目录，所以先用驱动自己的白名单复制，把每题的干净副本建到冒烟轮次下（驱动发现已有副本会重新校验后复用），再每题生成一份词表、全量生成一次分档。词表与分档目录放在轮次目录之外（例如 `tmp/itbench-lite/inputs/`），三个阶段共用。命令见表下「2.1」 | 复制循环与两个生成器退出码 0；`tiers.json` 正好 35 题；词表目录里 35 个 `S<id>.txt` | 复制循环未在真实数据集上跑过；生成器报错属类别 ①，开 issue，不在机上改代码 | 约 20 分钟（460 MB trace 的耗时未验证） |
+| 2.2 | 挑题，只按数据覆盖：从分档明细取 trace 与日志都覆盖故障窗的题，去掉 S18、S38，按编号取前两个（本手册的默认，可逆），再在数据集根目录下按名字找到对应的场景目录名。命令见表下「2.2」 | 输出正好 2 个编号；两个编号写进 `run.md` | 不足 2 个：停，报 lead（分档结果与预期不符） | 2 分钟 |
 | 2.3 | 第 1 题：`python3 -m scripts.itbench_lite.driver attempt --round <冒烟轮次> --dataset <数据集根> --scenario <场景目录名> --trial 1 --vocabulary <词表目录>/S<id>.txt --env-file ~/rental-private/lite.env` | 见表下「每题判定」 | 不通过就停，不跑第 2 题；按阶段 3 分类 | 约 10 分钟 |
 | 2.4 | 第 2 题：第 1 题判定全部通过后，同一条命令换场景 | 同上 | 同上 | 约 10 分钟 |
 | 2.5 | 反馈简报：每题一节，写下表的数值；按阶段 3 的类别 ①–④ 归类发现；①②③ 各开缺陷 issue，④ 列给用户决定 | 简报写进冒烟证据目录的 `run.md`，同时发给 lead | — | 20 分钟 |
+
+**2.1**（复制、词表、分档）：
+
+```sh
+for d in <数据集根>/*/; do
+  n=$(basename "$d")
+  k=$(python3 -c 'import sys; from scripts.itbench_lite.coverage import scenario_key; print(scenario_key(sys.argv[1]))' "$n") || continue
+  python3 -c 'import sys; from pathlib import Path; from scripts.itbench_lite.driver import copy_whitelisted; copy_whitelisted(Path(sys.argv[1]), Path(sys.argv[2]))' "$d" "tmp/itbench-lite/<冒烟轮次>/S$k/snapshot"
+done
+# 词表，每题一份
+python3 -m scripts.itbench_lite.vocabulary tmp/itbench-lite/<冒烟轮次>/S<id>/snapshot --out <词表目录>/S<id>.txt
+# 分档，全量一次
+python3 -m scripts.itbench_lite.tiers tmp/itbench-lite/<冒烟轮次> --out <分档目录>/tiers.json --detail <分档目录>/tiers_detail.json
+```
+
+**2.2**（挑题）：
+
+```sh
+jq -r 'to_entries[] | select(.value.coverage.traces=="covered" and .value.coverage.logs=="covered") | .key' <分档目录>/tiers_detail.json | grep -vxE 'S18|S38' | sort -V | head -2
+```
 
 **每题判定（2.3、2.4）**：
 
