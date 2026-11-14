@@ -26,7 +26,7 @@
 | 08:31:30–08:35:16 | 1.1 安装 lab | root：`scripts/kind_lab/install_linux.sh --user opspilot`（remote tmux，日志在主机 `/root/rental-logs/install.log`） | 退出码 0，末尾 health `ok: true`，`deployments.not_ready` 为空；用时 3 分 46 秒。没有版本或哈希不符 |
 | 08:32–08:33:32 | 1.2 PG 与工具 | `apt-get install postgresql-common jq`；PGDG `apt.postgresql.org.sh -y`；`apt-get install postgresql-17`；`systemctl disable --now postgresql`（PG 只由脚本按需启动）；按 astral 安装脚本给 opspilot 装 `uv`；`/usr/lib/postgresql/17/bin` 与 `~/.local/bin` 写进 opspilot 的 `~/.profile` 与 `~/.bashrc` 的 PATH | 退出码 0；`which initdb pg_ctl uv jq docker` 全部有输出 |
 | 约 08:35 | 1.2 `make setup` | opspilot：`make setup` | 退出码 0；`.venv` Python 3.12.3 |
-| 08:33:3x–08:34:22 | 1.2 评测器 | `git clone https://github.com/itbench-hub/ITBench-Evaluations.git ~/rental-data/ITBench-Evaluations`，`git checkout 14f026fc`，`uv sync --frozen` | HEAD `14f026fc9cc348c4ecec5ab32714de954c95c1b1`；venv Python 3.12.3；工作区干净 |
+| 约 08:33（起始秒数未记录）–08:34:22 | 1.2 评测器 | `git clone https://github.com/itbench-hub/ITBench-Evaluations.git ~/rental-data/ITBench-Evaluations`，`git checkout 14f026fc`，`uv sync --frozen` | HEAD `14f026fc9cc348c4ecec5ab32714de954c95c1b1`；venv Python 3.12.3；工作区干净 |
 | 08:34:22–08:38:19 | 1.2 数据集 | `hf download ibm-research/ITBench-Lite --repo-type dataset --revision d0916b08… --include 'snapshots/sre/v0.2-B96DF826-4BB2-4B62-97AB-6D84254C53D7/*' --local-dir ~/rental-data/itbench-lite`（huggingface_hub 2.4.0，未登录） | 见下「数据集」 |
 | 08:59 | 1.3 lab health | `python3 scripts/kind_lab.py health` | 退出码 0，`ok: true`（prometheus `span_metrics`、`kube_state_metrics` 都为 true；jaeger 200，15 个服务；frontend 200） |
 | 08:59 | 1.3 rules-check | `python3 scripts/kind_lab.py rules-check` | 退出码 0，`{"rules": 0, "config": 0, "alertmanager": 0, "self_route": 0}` |
@@ -39,7 +39,7 @@
 
 ### 版本
 
-Docker 29.2.1（`docker-ce 5:29.2.1-1~ubuntu.24.04~noble`），kind v0.33.0，kubectl v1.37.1，helm v4.3.0，PostgreSQL 17.12（`17.12-1.pgdg24.04+1`），uv 0.13.8，jq（Ubuntu 包），Helm chart：opentelemetry-demo 0.37.8、kube-state-metrics 8.6.0、alertmanager 1.24.0。均为 `install_linux.sh` 钉住的版本，未改动。
+Docker 29.2.1（`docker-ce 5:29.2.1-1~ubuntu.24.04~noble`），kind v0.33.0，kubectl v1.37.1，helm v4.3.0，PostgreSQL 17.12（`17.12-1.pgdg24.04+1`），uv 0.13.8，jq（Ubuntu 包），Helm chart：opentelemetry-demo 0.37.8、kube-state-metrics 8.6.0、alertmanager 1.24.0。其中 Docker、kind、kubectl、Helm 由 `install_linux.sh` 钉住，未改动；Helm chart 版本由 lab 脚本选定；PostgreSQL、uv、jq 为阶段 1.2 单独安装的当时版本，不是钉住的版本。
 
 ### 数据集
 
