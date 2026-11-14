@@ -100,8 +100,8 @@
 
 ## 下一步与交接
 
-实现顺序 A2 → A5 → A4 → A3 → A6，各按开工说明由实现会话开 worktree、走功能 PR 流程；A1 的脚本与单元测试可与 A2 并行写，真实取证和各项真实 Run 等一次租机集中做；B2 在 A5 合并后开工。A3–A6 与 B2 的全量探针未跑，A2 合并后各开草稿 PR 经 CI 补跑（预计见决定表 r3）。
+阶段 A 的 A1–A6 与 B2 代码已全部合并（各项 PR 见上方状态行），未跑的全量探针都已经 CI 补过。本机剩余两项：A7 #559 本机部分（提示词变体 `replay-candidate-k8s`、四类证据判定与驱动，决定表 r7）与 #605 分档、词表生成器（r6）。两项合并后一次租机，按[租机手册](2026-11-13-rental-runbook.md)依次跑 #580 集群取证、A7 主路径 Run（前后各一，后一次按 A7-12 最多补跑 2 次）与 ITBench-Lite 35 题 #571（排在 A7 合并之后，r7 A7-14）。
 
-ITBench-Lite 的集群对象与日志探针已做（报告在仓库外 `~/.agent/handoffs/itbench-lite-k8s-logs-probe-2026-11-12.md`）：可用只读的假 API server 回放集群对象，日志部分可回放；用户 2026-11-12 已对齐四点（报告由评测侧确定性转换成答案格式、产品报告格式不变；官方 LLM judge 分与确定性实体匹配分都报；35 题全留分母并按数据覆盖分档；第一轮只跑 OpsPilot、标为单边结果），适配的[开工说明](2026-11-12-itbench-lite-adapter.md)已写，只剩 judge 接收方（L6）待用户裁决。
+ITBench-Lite 的集群对象与日志探针已做（报告在仓库外 `~/.agent/handoffs/itbench-lite-k8s-logs-probe-2026-11-12.md`）；用户 2026-11-12 对齐的四点（报告由评测侧确定性转换成答案格式、产品报告格式不变；官方 LLM judge 分与确定性实体匹配分都报；35 题全留分母并按数据覆盖分档；第一轮只跑 OpsPilot、标为单边结果）已按[开工说明](2026-11-12-itbench-lite-adapter.md)实现。judge 接收方 L6 已裁决（a）。
 
 未确认项：控制侧容器能否按 kind 证书里的名字访问 API server、lab 里 Helm 记录的实际存储形态、metrics-server 与 cAdvisor 指标、上游 `elasticsearch/data` 对 OpenSearch 的兼容性、Jaeger 标签值字符串化与整条 trace 体积、ITBench 现场版的判分方式与单场景耗时。
