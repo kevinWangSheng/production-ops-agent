@@ -630,6 +630,17 @@ def checkout_dirty(checkout: Path) -> bool | None:
     return None if status is None else bool(status)
 
 
+#: The only variables the version probe's interpreter gets: it runs the
+#: checkout's code, so no DSN, key, token or ``OPSPILOT_*`` setting reaches it.
+PROBE_ENV_KEYS = ("PATH", "HOME", "LANG")
+
+
+def probe_env() -> dict[str, str]:
+    env = {k: os.environ[k] for k in PROBE_ENV_KEYS if k in os.environ}
+    env["PYTHONDONTWRITEBYTECODE"] = "1"
+    return env
+
+
 def probe_checkout(checkout: Path) -> dict[str, Any] | None:
     """What ``checkout``'s own code would record for an ``otel-demo-ext``
     Run, run by its own ``.venv`` interpreter; None when that fails."""
@@ -643,6 +654,7 @@ def probe_checkout(checkout: Path) -> dict[str, Any] | None:
                 str(checkout),
             ],
             cwd=checkout,
+            env=probe_env(),
             capture_output=True,
             text=True,
             timeout=120,
@@ -856,13 +868,18 @@ class Lab:
             if side == "before"
             else git(ROOT, "rev-parse", "HEAD")
         )
-        probe = probe_checkout(checkout)
+        head = git(checkout, "rev-parse", "HEAD")
+        dirty = checkout_dirty(checkout)
+        # The checkout's interpreter runs only once the commit and the tree
+        # are the ones expected; otherwise nothing of it is executed.
+        trusted = bool(expected_head) and head == expected_head and dirty is False
         return {
             "checkout": str(checkout),
-            "head": git(checkout, "rev-parse", "HEAD"),
+            "head": head,
             "expected_head": expected_head,
-            "dirty": checkout_dirty(checkout),
-            "probe": probe,
+            "dirty": dirty,
+            "probe": probe_checkout(checkout) if trusted else None,
+            "probe_skipped": not trusted,
             "processes": host_processes(),
         }
 
@@ -949,7 +966,7 @@ def _wait(
             return value
         if time.monotonic() >= deadline:
             return None
-        sleep(poll)
+        sleep(max(0.0, min(poll, deadline - time.monotonic())))
 
 
 def _emit(value: Mapping[str, Any]) -> None:

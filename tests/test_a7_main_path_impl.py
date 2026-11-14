@@ -609,6 +609,54 @@ def test_checkout_dirty_counts_untracked_but_not_ignored(tmp_path: Path) -> None
     assert a7.checkout_dirty(tmp_path / "missing") is None
 
 
+@pytest.mark.parametrize("head, dirty", [("c" * 40, False), ("a" * 40, True)])
+def test_probe_not_run_before_head_and_clean_check(monkeypatch, head, dirty) -> None:
+    called: list[Path] = []
+    monkeypatch.setattr(a7, "git", lambda d, *args: head if d != a7.ROOT else "a" * 40)
+    monkeypatch.setattr(a7, "checkout_dirty", lambda c: dirty)
+    monkeypatch.setattr(a7, "probe_checkout", lambda c: called.append(c))
+    monkeypatch.setattr(a7, "host_processes", lambda: {"web": [], "worker": []})
+    record = a7.Lab("dsn").deployment("after", Path(CHECKOUT))
+    assert called == [] and record["probe"] is None and record["probe_skipped"]
+    assert "checkout:head" in a7.deployment_problems(
+        "after", record
+    ) or "checkout:dirty" in a7.deployment_problems("after", record)
+    monkeypatch.setattr(a7, "git", lambda d, *args: "a" * 40)
+    monkeypatch.setattr(a7, "checkout_dirty", lambda c: False)
+    a7.Lab("dsn").deployment("after", Path(CHECKOUT))
+    assert called == [Path(CHECKOUT)]
+
+
+def test_probe_subprocess_gets_no_credentials(monkeypatch) -> None:
+    monkeypatch.setenv("RUN_FREEZE_DSN", "host=x password=aaaaaaaa357")
+    monkeypatch.setenv("LANGSMITH_API_KEY", "aaaaaaaa357")
+    monkeypatch.setenv("OPSPILOT_TOOL_PROFILE", "otel-demo-ext")
+    seen: dict = {}
+
+    def fake_run(*args, **kwargs):
+        seen.update(kwargs["env"])
+        return subprocess.CompletedProcess(args, 1, "", "")
+
+    monkeypatch.setattr(a7.subprocess, "run", fake_run)
+    assert a7.probe_checkout(Path(CHECKOUT)) is None
+    assert "RUN_FREEZE_DSN" not in seen and "LANGSMITH_API_KEY" not in seen
+    assert not any(k.startswith("OPSPILOT_") for k in seen)
+    assert seen["PYTHONDONTWRITEBYTECODE"] == "1"
+
+
+def test_wait_never_sleeps_past_the_deadline(monkeypatch) -> None:
+    now = [100.0]
+    slept: list[float] = []
+    monkeypatch.setattr(a7.time, "monotonic", lambda: now[0])
+
+    def sleep(seconds: float) -> None:
+        slept.append(seconds)
+        now[0] += seconds
+
+    assert a7._wait(lambda: None, timeout=25, poll=10, sleep=sleep) is None
+    assert slept == [10, 10, 5]
+
+
 def test_probe_reads_the_checkouts_own_code() -> None:
     probe = a7.probe_checkout(ROOT)
     assert probe is not None
