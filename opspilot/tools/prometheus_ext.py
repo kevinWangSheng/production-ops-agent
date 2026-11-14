@@ -23,6 +23,23 @@ Three upstream HolmesGPT Prometheus tools (``prometheus/prometheus.py`` at
   truncation is unconfirmed, so both count). ``match`` follows ``_match_ok``
   (A5-6): required for series, optional for labels.
 
+B2 (#561, docs/tasks/2026-11-12-tool-expansion-b2.md, decision table r3
+B2-1 to B2-6) adds three no-window state tools on the same transport,
+credential and error classes (B2-6):
+
+* ``list_prometheus_rules(type?, rule_name?, rule_group?, file?, match?)``
+  forwards the filters to ``/api/v1/rules`` as given (B2-2: ``type`` only
+  ``alert``/``record``, no jq) and keeps the exact bytes; the active alerts
+  inside the rules come back as returned, with no source time (B2-3).
+* ``get_prometheus_target(target_name)`` reads ``/api/v1/targets?state=active``
+  and keeps the targets whose ``labels.job`` equals ``target_name``, without
+  ``discoveredLabels`` (B2-5); the record keeps the source bytes' sha256.
+* ``get_metric_metadata(metric?)`` reads ``/api/v1/metadata`` with a fixed
+  ``limit=100``; 100 metrics or a warning is incomplete (B2-4).
+
+None of them has a time range: each shows the state at the moment of the
+query, and every view says so in ``notes``.
+
 Errors are classified as for the ``otel-demo`` discovery tools (A5-8): 400/422
 are ``INVALID_PARAMS`` with Prometheus's own error echoed, 503 with
 ``errorType=timeout`` is a confirmed timeout, other 5xx ``SOURCE_UNAVAILABLE``.
@@ -30,30 +47,48 @@ are ``INVALID_PARAMS`` with Prometheus's own error echoed, 503 with
 Transport (A5-7): the requests go through the profile's one
 ``OtelDemoTransport`` -- the same GET-only, no-proxy, no-redirect, bounded
 reader and the same basic-auth credential -- built with these three names
-added to its ``prometheus_tools``. ``otel_demo.PROMETHEUS_TOOLS`` is not
+added to its ``prometheus_tools`` (with B2, all six).
+``otel_demo.PROMETHEUS_TOOLS`` is not
 changed: that set is part of ``otel-demo``'s version hash.
 """
 
 from __future__ import annotations
 
 import json
+import re
 import urllib.parse
 from collections.abc import Mapping, Sequence
 from datetime import datetime, timedelta, timezone
+from hashlib import sha256
 from typing import Any
 
+from opspilot.redaction import has_duplicate_keys
 from opspilot.tools import otel_demo
-from opspilot.tools.executor import TransportError, TransportRequest, TransportResponse
+from opspilot.tools.executor import (
+    TransportError,
+    TransportRequest,
+    TransportResponse,
+    TransportResultTooLarge,
+)
 from opspilot.tools.outcomes import Window
-from opspilot.tools.registry import ParameterSpec, ToolDescription, ToolRegistration
+from opspilot.tools.registry import (
+    ParameterSpec,
+    ToolDescription,
+    ToolRegistration,
+    canonical,
+)
 
 __all__ = [
     "INSTANT_QUERY_TOOL",
     "LABELS_TOOL",
     "LIST_INCOMPLETE_REASON",
     "LIST_LIMIT",
+    "METADATA_TOOL",
     "PROMETHEUS_EXT_TOOLS",
+    "RULES_TOOL",
     "SERIES_TOOL",
+    "STATE_TOOL_NAMES",
+    "TARGET_TOOL",
     "TOOL_NAMES",
     "TOOL_SCHEMAS",
     "PrometheusExtTransport",
@@ -64,7 +99,17 @@ __all__ = [
 INSTANT_QUERY_TOOL = "execute_prometheus_instant_query"
 SERIES_TOOL = "get_series"
 LABELS_TOOL = "get_all_labels"
-TOOL_NAMES: tuple[str, ...] = (INSTANT_QUERY_TOOL, SERIES_TOOL, LABELS_TOOL)
+RULES_TOOL = "list_prometheus_rules"
+TARGET_TOOL = "get_prometheus_target"
+METADATA_TOOL = "get_metric_metadata"
+#: B2 (#561): the three no-window state tools.
+STATE_TOOL_NAMES: tuple[str, ...] = (RULES_TOOL, TARGET_TOOL, METADATA_TOOL)
+TOOL_NAMES: tuple[str, ...] = (
+    INSTANT_QUERY_TOOL,
+    SERIES_TOOL,
+    LABELS_TOOL,
+    *STATE_TOOL_NAMES,
+)
 PROMETHEUS_EXT_TOOLS: frozenset[str] = frozenset(TOOL_NAMES)
 
 #: A5-4: the fixed ``limit`` of every series and label-name request
@@ -105,7 +150,7 @@ _LIST_DESCRIPTION_TAIL = (
     "at 100 or limited by the selector and window."
 )
 
-TOOL_SCHEMAS: tuple[Mapping[str, Any], ...] = (
+_QUERY_SCHEMAS: tuple[Mapping[str, Any], ...] = (
     {
         "type": "function",
         "function": {
@@ -233,6 +278,180 @@ TOOL_SCHEMAS: tuple[Mapping[str, Any], ...] = (
         },
     },
 )
+
+# -- B2 (#561): rules, scrape targets and metric metadata ------------------------
+
+#: B2-2: the two rule types Prometheus's ``type`` filter accepts.
+RULE_TYPES: tuple[str, ...] = ("alert", "record")
+#: B2-4: the fixed ``limit`` of every metadata request (upstream
+#: ``PROMETHEUS_METADATA_API_LIMIT``, the discovery tools' value).
+METADATA_LIMIT = otel_demo.DISCOVERY_LIMIT
+#: B2-5: a job name is at most this long (the A4-3 name bound).
+MAX_NAME_CHARS = 200
+# B2-4: the classic Prometheus metric-name pattern; checked before sending.
+_METRIC_NAME = re.compile(r"[A-Za-z_:][A-Za-z0-9_:]*")
+#: B2-5: how many distinct job names ``jobs_seen`` shows at most.
+JOBS_SEEN_LIMIT = 100
+STATE_NOTE = (
+    "This tool has no time range: it shows Prometheus's state at the moment "
+    "of the query, which can be after the authorized window; it cannot show "
+    "the state when the incident happened."
+)
+RULES_INCOMPLETE_REASON = (
+    "Prometheus returned warnings with this result or a next-page token, so "
+    "more rule groups may exist; narrow the result with type, rule_name, "
+    "rule_group, file or match."
+)
+METADATA_INCOMPLETE_REASON = (
+    "Prometheus returned warnings with this result or exactly the 100-metric "
+    "limit, so more metrics may exist; give metric to look up one metric."
+)
+_TARGET_ERRORS_TEXT = (
+    "A result whose whole view exceeds 25,000 tokens is refused with "
+    "RESULT_TOO_LARGE and nothing is returned."
+)
+
+_STATE_SCHEMAS: tuple[Mapping[str, Any], ...] = (
+    {
+        "type": "function",
+        "function": {
+            "name": RULES_TOOL,
+            "description": (
+                "List the alerting and recording rules loaded in the "
+                "registered target's Prometheus, with the pending or firing "
+                "alerts of each alerting rule. "
+                "Use it to see which alerts are firing now and what a rule's "
+                "expression, labels and annotations are. "
+                "content is the list of rule groups, each {name, file, rules: "
+                "[{name, query, type, health, labels, annotations, state, "
+                "alerts, ...}]}. "
+                "The filters are sent to Prometheus as given; without any, "
+                "every rule is returned. "
+                "There is no time range: the result is the rules and alerts "
+                "at the moment of the query, which can be after the "
+                "authorized window, so it cannot prove which alerts were "
+                "firing or which rules existed when the incident happened. "
+                "A result whose whole view exceeds 25,000 tokens is refused "
+                "with RESULT_TOO_LARGE and nothing is returned; narrow it "
+                "with the filters. A rule that is not listed is unknown, "
+                "not proven absent."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "type": {
+                        "type": "string",
+                        "description": (
+                            "Optional rule type: alert for alerting rules, "
+                            "record for recording rules."
+                        ),
+                    },
+                    "rule_name": {
+                        "type": "string",
+                        "description": "Optional exact rule name.",
+                    },
+                    "rule_group": {
+                        "type": "string",
+                        "description": "Optional exact rule group name.",
+                    },
+                    "file": {
+                        "type": "string",
+                        "description": "Optional exact rule file path.",
+                    },
+                    "match": {
+                        "type": "string",
+                        "description": (
+                            "Optional label selector on the rules' own "
+                            'labels, for example {severity="critical"}.'
+                        ),
+                    },
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": TARGET_TOOL,
+            "description": (
+                "Get the active scrape targets of one scrape job in the "
+                "registered target's Prometheus: each target's labels, "
+                "scrape pool, scrape URL, health (up, down or unknown), last "
+                "error, last scrape time and duration; the raw "
+                "service-discovery labels (discoveredLabels) are removed. "
+                "Use it to check whether Prometheus can currently scrape a "
+                "service's metrics. "
+                "content is the list of active targets whose job label "
+                "equals target_name; jobs_seen lists the job names of all "
+                "active targets so a name that matched nothing can be "
+                "corrected. "
+                "There is no time range: the result is the state at the "
+                "moment of the query, which can be after the authorized "
+                "window; lastScrape and lastError describe only the most "
+                "recent scrape, so it cannot prove a target's health when "
+                "the incident happened. " + _TARGET_ERRORS_TEXT
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "target_name": {
+                        "type": "string",
+                        "description": (
+                            "The scrape job name, the value of the targets' "
+                            "job label; non-empty, at most 200 characters."
+                        ),
+                    },
+                },
+                "required": ["target_name"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": METADATA_TOOL,
+            "description": (
+                "Get the type (counter, gauge, histogram, summary, ...), help "
+                "text and unit of metrics in the registered target's "
+                "Prometheus. "
+                "Use it after finding metric names to learn what a metric "
+                "measures and how to query it. "
+                "content is one row per metric and metadata entry: {metric, "
+                "type, help, unit}. "
+                "At most 100 metrics are returned (a fixed limit you cannot "
+                "change); when exactly 100 come back, or Prometheus returned "
+                "any warning, incomplete is true: give metric to look one "
+                "up. "
+                "There is no time range: it is the metadata Prometheus holds "
+                "at the moment of the query, which can be after the "
+                "authorized window, so it cannot prove what a metric's "
+                "metadata was when the incident happened. Metadata says "
+                "nothing about "
+                "values or the service's health, and a metric that is not "
+                "listed is unknown, not proven absent. "
+                "A result whose whole view exceeds 25,000 tokens is refused "
+                "with RESULT_TOO_LARGE and nothing is returned."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "metric": {
+                        "type": "string",
+                        "description": (
+                            "Optional exact metric name, for example "
+                            "traces_span_metrics_calls_total; omitted, up to "
+                            "100 metrics."
+                        ),
+                    },
+                },
+                "required": [],
+            },
+        },
+    },
+)
+
+TOOL_SCHEMAS = (*_QUERY_SCHEMAS, *_STATE_SCHEMAS)
 
 _ERROR_LIMITS = (
     "Prometheus HTTP 400/422 is error/INVALID_PARAMS and its refusal's "
@@ -431,10 +650,195 @@ def prometheus_ext_registrations() -> tuple[ToolRegistration, ...]:
         error_classes=_LIST_ERROR_CLASSES,
         **common,
     )
-    return instant, series, labels
+    return instant, series, labels, *_state_registrations(common)
 
 
-_ROW_UNITS = {SERIES_TOOL: "series", LABELS_TOOL: "label_names"}
+_STATE_WINDOW_FORMAT = (
+    "The authorized absolute window is appended as {window}, but this tool "
+    "has no time range: it reads Prometheus's state at the moment of the "
+    "query, which can be after that window, and no source time is reported."
+)
+_STATE_ERROR_CLASSES = {
+    "400": "INVALID_PARAMS",
+    "422": "INVALID_PARAMS",
+    "503": "SOURCE_UNAVAILABLE",
+}
+
+
+def _state_registrations(
+    common: Mapping[str, Any],
+) -> tuple[ToolRegistration, ...]:
+    """B2: rules, scrape targets and metric metadata on the A5 envelope (B2-6),
+    except the secrets declaration: rule annotations, target labels and
+    scrape URLs, and metric help text are operator-written values kept as
+    returned that the shared credential redaction cannot recognize as bare
+    values, so these three declare ``may_contain_secrets=True`` (C3 section 8,
+    Q3); the A5 three keep ``False``."""
+    common = {**common, "may_contain_secrets": True}
+    rules = ToolRegistration(
+        name=RULES_TOOL,
+        verb="list",
+        description=ToolDescription(
+            returns=(
+                "The exact Prometheus rules response of the registered "
+                "target: data.groups holds the rule groups with their "
+                "alerting and recording rules, and each alerting rule's "
+                "pending or firing alerts; the view adds incomplete_reason "
+                "and notes."
+            ),
+            window_format=_STATE_WINDOW_FORMAT,
+            values_format=(
+                "The authorized target for this Run is appended as {values}. "
+                "type, when given, is alert or record; rule_name, rule_group "
+                "and file, when given, are non-empty strings of at most 2000 "
+                "characters without control characters, sent as Prometheus's "
+                "rule_name[], rule_group[] and file[]; match, when given, is "
+                "a non-empty label selector sent as match[]. A value outside "
+                "these rules is INVALID_PARAMS and nothing is sent."
+            ),
+            limits=(
+                "No limit or page size is sent. A warning or a next-page "
+                "token sets incomplete true with incomplete_reason. The whole "
+                "view is limited to the registered max_view_tokens (25,000 "
+                "DeepSeek tokens): a larger result is refused with "
+                "RESULT_TOO_LARGE, never truncated. " + _ERROR_LIMITS
+            ),
+            cannot_prove=(
+                "Rules and alerts at the moment of the query only, not when "
+                "the incident happened: an alert firing now may not have "
+                "fired then and the reverse; a rule that is not listed is "
+                "unknown, not proven absent; a rule's expression says "
+                "nothing about the service's health by itself."
+            ),
+        ),
+        parameters={
+            "type": ParameterSpec(
+                "string", description="Optional rule type: alert or record."
+            ),
+            "rule_name": ParameterSpec(
+                "string", description="Optional exact rule name."
+            ),
+            "rule_group": ParameterSpec(
+                "string", description="Optional exact rule group name."
+            ),
+            "file": ParameterSpec("string", description="Optional exact rule file."),
+            "match": ParameterSpec(
+                "string", description="Optional label selector on rule labels."
+            ),
+        },
+        result_path=("data", "groups"),
+        error_classes={
+            **_STATE_ERROR_CLASSES,
+            "RULE_TYPE_INVALID": "INVALID_PARAMS",
+            "RULE_FILTER_INVALID": "INVALID_PARAMS",
+            "MATCH_INVALID": "INVALID_PARAMS",
+        },
+        **common,
+    )
+    target = ToolRegistration(
+        name=TARGET_TOOL,
+        verb="get",
+        description=ToolDescription(
+            returns=(
+                "The registered target's active Prometheus scrape targets "
+                "whose job label equals target_name, under targets, each "
+                "without discoveredLabels; the record keeps the sha256 and "
+                "size of the exact source response. The view adds jobs_seen "
+                "(the job names of all active targets, at most 100), "
+                "active_targets_total and notes."
+            ),
+            window_format=_STATE_WINDOW_FORMAT,
+            values_format=(
+                "The authorized target for this Run is appended as {values}. "
+                "target_name is a non-empty job name of at most 200 "
+                "characters without control characters; otherwise "
+                "INVALID_PARAMS and nothing is sent."
+            ),
+            limits=(
+                "Prometheus is asked for active targets only "
+                "(state=active); every one whose job matches is shown. The "
+                "whole view is limited to the registered max_view_tokens "
+                "(25,000 DeepSeek tokens): a larger result is refused with "
+                "RESULT_TOO_LARGE, never truncated. " + _ERROR_LIMITS
+            ),
+            cannot_prove=(
+                "Target state at the moment of the query only: health, "
+                "lastScrape and lastError describe the most recent scrape, "
+                "not the incident; an empty list does not prove the service "
+                "is not scraped under another job name (see jobs_seen)."
+            ),
+        ),
+        parameters={
+            "target_name": ParameterSpec(
+                "string",
+                required=True,
+                description="The scrape job name (the targets' job label).",
+            ),
+        },
+        result_path=("targets",),
+        error_classes={
+            **_STATE_ERROR_CLASSES,
+            "TARGET_NAME_INVALID": "INVALID_PARAMS",
+        },
+        **common,
+    )
+    metadata = ToolRegistration(
+        name=METADATA_TOOL,
+        verb="list",
+        description=ToolDescription(
+            returns=(
+                "The registered target's Prometheus metric metadata, one "
+                "row per metric and entry under metadata: {metric, type, "
+                "help, unit}; the record keeps the sha256 and size of the "
+                "exact source response. The view adds incomplete_reason, "
+                "limit and notes."
+            ),
+            window_format=_STATE_WINDOW_FORMAT,
+            values_format=(
+                "The authorized target for this Run is appended as {values}. "
+                "metric, when given, is a metric name matching "
+                "[A-Za-z_:][A-Za-z0-9_:]* of at most 200 characters; "
+                "otherwise INVALID_PARAMS and nothing is sent."
+            ),
+            limits=(
+                "Every request asks Prometheus for at most 100 metrics (a "
+                "fixed limit the model cannot change). Exactly 100 metrics "
+                "or any Prometheus warning sets incomplete true with "
+                "incomplete_reason. The whole view is limited to the "
+                "registered max_view_tokens (25,000 DeepSeek tokens): a "
+                "larger result is refused with RESULT_TOO_LARGE, never "
+                "truncated. " + _ERROR_LIMITS
+            ),
+            cannot_prove=(
+                "Metadata is what Prometheus holds at the moment of the "
+                "query, not when the incident happened; it says nothing "
+                "about values or the service's "
+                "health, and a metric that is not listed is unknown, not "
+                "proven absent (the list may be cut at 100)."
+            ),
+        ),
+        parameters={
+            "metric": ParameterSpec(
+                "string", description="Optional exact metric name."
+            ),
+        },
+        result_path=("metadata",),
+        error_classes={
+            **_STATE_ERROR_CLASSES,
+            "METRIC_INVALID": "INVALID_PARAMS",
+        },
+        **common,
+    )
+    return rules, target, metadata
+
+
+_ROW_UNITS = {
+    SERIES_TOOL: "series",
+    LABELS_TOOL: "label_names",
+    RULES_TOOL: "rule_groups",
+    TARGET_TOOL: "targets",
+    METADATA_TOOL: "metadata_entries",
+}
 
 
 def overflow_summary(
@@ -511,6 +915,38 @@ def _instant_bounds(body: bytes) -> tuple[datetime | None, datetime | None]:
     return None, None
 
 
+def _filter_ok(value: object, max_chars: int) -> bool:
+    """B2-2/B2-5: a non-empty string within ``max_chars``, no control characters."""
+    return (
+        isinstance(value, str)
+        and bool(value.strip())
+        and len(value) <= max_chars
+        and not any(ord(ch) < 0x20 or ord(ch) == 0x7F for ch in value)
+    )
+
+
+def _success_payload(body: bytes) -> Mapping[str, Any] | None:
+    """A Prometheus ``status: success`` envelope without duplicate keys, else
+    ``None`` (the caller hands the raw bytes on for MALFORMED_RESULT)."""
+    try:
+        text = body.decode("utf-8")
+        payload = json.loads(text)
+    except (UnicodeDecodeError, ValueError, RecursionError):
+        return None
+    if not isinstance(payload, Mapping) or has_duplicate_keys(text):
+        return None
+    if payload.get("status") != "success":
+        return None
+    return payload
+
+
+def _record_body(record: Mapping[str, Any], request: TransportRequest) -> bytes:
+    body = canonical(record).encode("utf-8")
+    if len(body) > request.max_result_bytes:
+        raise TransportResultTooLarge(str(request.max_result_bytes))
+    return body
+
+
 class PrometheusExtTransport:
     """The three tools over the profile's ``OtelDemoTransport`` (A5-7).
 
@@ -530,6 +966,12 @@ class PrometheusExtTransport:
             return self._instant(request)
         if request.tool in (SERIES_TOOL, LABELS_TOOL):
             return self._list(request)
+        if request.tool == RULES_TOOL:
+            return self._rules(request)
+        if request.tool == TARGET_TOOL:
+            return self._target(request)
+        if request.tool == METADATA_TOOL:
+            return self._metadata(request)
         raise TransportError("TOOL_NOT_SUPPORTED")
 
     def _instant(self, request: TransportRequest) -> TransportResponse:
@@ -617,5 +1059,161 @@ class PrometheusExtTransport:
             view_fields={
                 "incomplete_reason": LIST_INCOMPLETE_REASON if incomplete else None,
                 "limit": LIST_LIMIT,
+            },
+        )
+
+    # -- B2 -------------------------------------------------------------------
+
+    def _rules(self, request: TransportRequest) -> TransportResponse:
+        """B2-2/B2-3: filters forwarded as given; exact bytes kept."""
+        params = request.params
+        query: list[tuple[str, str]] = []
+        kind = params.get("type")
+        if kind is not None:
+            if kind not in RULE_TYPES:
+                return otel_demo._refused("RULE_TYPE_INVALID")
+            query.append(("type", str(kind)))
+        for name in ("rule_name", "rule_group", "file"):
+            value = params.get(name)
+            if value is None:
+                continue
+            if not _filter_ok(value, otel_demo.MAX_PROMQL_CHARS):
+                return otel_demo._refused("RULE_FILTER_INVALID")
+            query.append((f"{name}[]", str(value)))
+        match = params.get("match")
+        if match is not None:
+            if not otel_demo._match_ok(match):
+                return otel_demo._refused("MATCH_INVALID")
+            query.append(("match[]", str(match)))
+        url = f"{request.endpoint}/api/v1/rules"
+        if query:
+            url += "?" + urllib.parse.urlencode(query)
+        fetched = self._base._get(url, request, max_bytes=request.max_result_bytes)
+        if fetched.status != 200:
+            return self._base.source_error(fetched, request.tool)
+        payload = _success_payload(fetched.body)
+        if payload is None:
+            return TransportResponse(body=fetched.body)
+        data = payload.get("data")
+        # Risk 2 of the task record: no group_limit is sent, so v3.5 should
+        # not page; a next-page token would still mean groups are missing.
+        paged = isinstance(data, Mapping) and bool(data.get("groupNextToken"))
+        warned = bool(payload.get("warnings"))
+        # B2-3: no source time; the rules and alerts are the query moment's.
+        return TransportResponse(
+            body=fetched.body,
+            incomplete=paged or warned,
+            view_fields={
+                "incomplete_reason": (
+                    RULES_INCOMPLETE_REASON if paged or warned else None
+                ),
+                "notes": [STATE_NOTE],
+            },
+        )
+
+    def _target(self, request: TransportRequest) -> TransportResponse:
+        """B2-5: active targets of one job, ``discoveredLabels`` removed."""
+        name = request.params.get("target_name")
+        if not _filter_ok(name, MAX_NAME_CHARS):
+            return otel_demo._refused("TARGET_NAME_INVALID")
+        assert isinstance(name, str)
+        url = f"{request.endpoint}/api/v1/targets?" + urllib.parse.urlencode(
+            {"state": "active"}
+        )
+        fetched = self._base._get(url, request, max_bytes=request.max_result_bytes)
+        if fetched.status != 200:
+            return self._base.source_error(fetched, request.tool)
+        payload = _success_payload(fetched.body)
+        data = None if payload is None else payload.get("data")
+        active = data.get("activeTargets") if isinstance(data, Mapping) else None
+        if payload is None or not isinstance(active, list):
+            return TransportResponse(body=fetched.body)
+        kept: list[dict[str, Any]] = []
+        jobs: set[str] = set()
+        for item in active:
+            labels = item.get("labels") if isinstance(item, Mapping) else None
+            job = labels.get("job") if isinstance(labels, Mapping) else None
+            if not isinstance(job, str):
+                continue
+            jobs.add(job)
+            if job == name:
+                assert isinstance(item, Mapping)
+                kept.append({k: v for k, v in item.items() if k != "discoveredLabels"})
+        record: dict[str, Any] = {
+            "source": "prometheus",
+            "query": {"target_name": name, "state": "active"},
+            "source_response_sha256": sha256(fetched.body).hexdigest(),
+            "source_response_bytes": len(fetched.body),
+            "targets": kept,
+        }
+        if payload.get("warnings"):
+            record["warnings"] = payload["warnings"]
+        seen = sorted(jobs)
+        return TransportResponse(
+            body=_record_body(record, request),
+            view_fields={
+                "jobs_seen": seen[:JOBS_SEEN_LIMIT],
+                "jobs_seen_truncated": len(seen) > JOBS_SEEN_LIMIT,
+                "active_targets_total": len(active),
+                "notes": [STATE_NOTE],
+            },
+        )
+
+    def _metadata(self, request: TransportRequest) -> TransportResponse:
+        """B2-4: fixed ``limit=100``, optional exact metric name."""
+        metric = request.params.get("metric")
+        query: list[tuple[str, str]] = [("limit", str(METADATA_LIMIT))]
+        if metric is not None:
+            if not (
+                isinstance(metric, str)
+                and len(metric) <= MAX_NAME_CHARS
+                and _METRIC_NAME.fullmatch(metric)
+            ):
+                return otel_demo._refused("METRIC_INVALID")
+            query.append(("metric", metric))
+        url = f"{request.endpoint}/api/v1/metadata?" + urllib.parse.urlencode(query)
+        fetched = self._base._get(url, request, max_bytes=request.max_result_bytes)
+        if fetched.status != 200:
+            return self._base.source_error(fetched, request.tool)
+        payload = _success_payload(fetched.body)
+        data = None if payload is None else payload.get("data")
+        if payload is None or not isinstance(data, Mapping):
+            return TransportResponse(body=fetched.body)
+        rows: list[dict[str, Any]] = []
+        for name in sorted(data):
+            entries = data[name]
+            if not isinstance(entries, list):
+                return TransportResponse(body=fetched.body)
+            for entry in entries:
+                if not isinstance(entry, Mapping):
+                    return TransportResponse(body=fetched.body)
+                rows.append(
+                    {
+                        "metric": name,
+                        "type": entry.get("type"),
+                        "help": entry.get("help"),
+                        "unit": entry.get("unit"),
+                    }
+                )
+        record: dict[str, Any] = {
+            "source": "prometheus",
+            "query": {"metric": metric, "limit": METADATA_LIMIT},
+            "source_response_sha256": sha256(fetched.body).hexdigest(),
+            "source_response_bytes": len(fetched.body),
+            "metadata": rows,
+        }
+        warned = bool(payload.get("warnings"))
+        if warned:
+            record["warnings"] = payload["warnings"]
+        full = len(data) >= METADATA_LIMIT
+        return TransportResponse(
+            body=_record_body(record, request),
+            incomplete=full or warned,
+            view_fields={
+                "incomplete_reason": (
+                    METADATA_INCOMPLETE_REASON if full or warned else None
+                ),
+                "limit": METADATA_LIMIT,
+                "notes": [STATE_NOTE],
             },
         )
