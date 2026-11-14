@@ -53,7 +53,7 @@
 ### 阶段 2：切到宿主拓扑（约 0.5 小时，按第 1 节第 2 项的推荐）
 
 1. 查 kind 网关：`docker network inspect kind -f '{{(index .IPAM.Config 0).Gateway}}'`（F9 主机上是 172.18.0.1，取下标 0 未核实）。然后执行 `OPSPILOT_LAB_HOST_ADDRESS=<网关> python3 scripts/kind_lab.py up`，重新渲染 webhook。`ufw status` 为 active 时，放行 kind 网段到 8080（这台租机用完即弃）。
-2. 宿主 PG 按开发指南「本地运行演示」执行：`python -m scripts.m0.postgres_lab start`、`make migrate`、`postgres_lab runtime-roles`。web 与 worker 的环境照 F3 run.md「环境」一节，有三处不同：`OPSPILOT_TOOL_PROFILE=otel-demo-ext`；worker 读 `tmp/m1-kind-lab/k8s-investigator.env`（宿主形态）；web 设 `OPSPILOT_BIND=<网关>:8080`。trace 用 `OPSPILOT_TRACE=lab`，项目按 A7-17 设为 `opspilot-lab-a7-main-path-<日期>`，开跑前由驱动设成长期保留。
+2. 宿主 PG 按开发指南「本地运行演示」执行：`python -m scripts.m0.postgres_lab start`、`make migrate`、`python -m scripts.m0.postgres_lab runtime-roles`。web 与 worker 的环境照 F3 run.md「环境」一节，有三处不同：`OPSPILOT_TOOL_PROFILE=otel-demo-ext`；worker 读 `tmp/m1-kind-lab/k8s-investigator.env`（宿主形态）；web 设 `OPSPILOT_BIND=<网关>:8080`。trace 用 `OPSPILOT_TRACE=lab`，项目按 A7-17 设为 `opspilot-lab-a7-main-path-<日期>`，开跑前由驱动设成长期保留。
 3. 冒烟：用 lab 的 Alertmanager 发一条测试告警（F9 S4 用的是 `amtool alert add`，在 lab 里执行的确切命令未核实），确认 web 收到 `POST /intake/alertmanager`，`up{job="opspilot"}` 的状态先不管（抓取目标指向网关，可能是 down）。
 4. 失败时：网关不通就退回第 1 节第 2 项的备选（Compose 加 `outbox`），A7 与 #580 的 trace 证据会降级，要报 lead。
 
