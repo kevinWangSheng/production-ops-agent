@@ -1,0 +1,148 @@
+{
+  "item": "prom_instant",
+  "tool": "execute_prometheus_instant_query",
+  "params": {
+    "query": "sum(rate(traces_span_metrics_calls_total{service_name=\"frontend\"}[5m]))"
+  },
+  "window": {
+    "start": "2026-11-14T19:38:50+00:00",
+    "end": "2026-11-14T20:38:50+00:00"
+  },
+  "status": "ok",
+  "reason": null,
+  "source_contact": "confirmed",
+  "dispatched": true,
+  "adopted": true,
+  "model_view_keys": [
+    "adopted",
+    "citable_as_fact",
+    "content",
+    "data_as_of",
+    "dispatch_started_at",
+    "evaluation_time",
+    "evidence_id",
+    "freshness_seconds",
+    "incomplete",
+    "lookback_seconds",
+    "lookback_start_at",
+    "observed_at",
+    "omitted_bytes",
+    "omitted_rows",
+    "operation_id",
+    "projection_revision",
+    "query",
+    "registry_revision",
+    "result_count",
+    "returned_count",
+    "series_note",
+    "source",
+    "source_end_at",
+    "source_start_at",
+    "status",
+    "target_id",
+    "tool",
+    "tool_registry_revision",
+    "tool_version",
+    "truncated",
+    "trust",
+    "window"
+  ],
+  "model_view": {
+    "evidence_id": "tool-sample-t4:0fcecdf8-e7c9-466d-a0e7-355ff0107b41",
+    "operation_id": "tool-sample-t4",
+    "trust": "untrusted-evidence",
+    "status": "ok",
+    "adopted": true,
+    "citable_as_fact": true,
+    "tool": "execute_prometheus_instant_query",
+    "tool_version": "v1",
+    "source": "otel-demo",
+    "target_id": "m0-otel-20260909",
+    "registry_revision": "3f1e18d57f89d2985579d84de2bec7af0e29379bf7112cb6f65b5008e211bf9b",
+    "tool_registry_revision": "bc4db9a58a8b30802563c58a93963c43c5ae4392e7329a22e8c0bb4713d4915c",
+    "projection_revision": "m1-01-tool-view-v11",
+    "query": {
+      "query": "sum(rate(traces_span_metrics_calls_total{service_name=\"frontend\"}[5m]))"
+    },
+    "window": {
+      "start": "2026-11-14T20:33:50+00:00",
+      "end": "2026-11-14T20:38:50+00:00"
+    },
+    "observed_at": "2026-11-14T20:38:52.088269+00:00",
+    "dispatch_started_at": "2026-11-14T20:38:51.096341+00:00",
+    "data_as_of": "2026-11-14T20:38:50+00:00",
+    "source_start_at": "2026-11-14T20:38:50+00:00",
+    "source_end_at": "2026-11-14T20:38:50+00:00",
+    "freshness_seconds": 2.088269,
+    "lookback_seconds": 300,
+    "lookback_start_at": "2026-11-14T20:33:50+00:00",
+    "result_count": 1,
+    "incomplete": false,
+    "evaluation_time": "2026-11-14T20:38:50+00:00",
+    "series_note": "traces_span_metrics_calls_total counts spans of every operation of the service (internal, client and server spans alike), summed over the labels kept in this query; it is not a count of requests. status_code STATUS_CODE_UNSET means the span carried no status; it does not mean the call succeeded.",
+    "returned_count": 1,
+    "truncated": false,
+    "omitted_rows": 0,
+    "omitted_bytes": 0
+  },
+  "content_summary": {
+    "type": "list",
+    "length": 1,
+    "first_row_keys": [
+      [
+        "metric",
+        "value"
+      ]
+    ]
+  },
+  "evidence": {
+    "evidence_id": "tool-sample-t4:0fcecdf8-e7c9-466d-a0e7-355ff0107b41",
+    "status": "ok",
+    "adopted": true,
+    "raw_bytes": 118,
+    "raw_sha256": "889f960a4b4c4c486ccb2e89d3323cd3bef73250828d383a108a067508588e2c",
+    "view_sha256": "2b7d1e8f3aac06bf3b9fcf8968774d241e3a5aaf7f46fa6977a74e900d8eace7",
+    "projection_revision": "m1-01-tool-view-v11",
+    "observed_at": "2026-11-14T20:38:52.088269+00:00",
+    "data_as_of": "2026-11-14T20:38:50+00:00",
+    "source_start_at": "2026-11-14T20:38:50+00:00",
+    "source_end_at": "2026-11-14T20:38:50+00:00",
+    "result_count": 1,
+    "incomplete": false,
+    "truncated": false,
+    "omitted_rows": 0,
+    "omitted_bytes": 0
+  },
+  "ledger_charges": [
+    {
+      "operation_id": "tool-sample-t4",
+      "dispatch_id": "0fcecdf8-e7c9-466d-a0e7-355ff0107b41",
+      "reserved_seconds": 30.0,
+      "seconds": 0.992,
+      "settled": true
+    }
+  ],
+  "checks": [
+    {
+      "check": "status == ok",
+      "ok": true,
+      "observed": "ok"
+    },
+    {
+      "check": "result_count >= 1",
+      "ok": true,
+      "observed": 1
+    },
+    {
+      "check": "source_contact == confirmed",
+      "ok": true,
+      "observed": "confirmed"
+    },
+    {
+      "check": "evidence adopted",
+      "ok": true,
+      "observed": true
+    }
+  ],
+  "verdict": "pass"
+}
