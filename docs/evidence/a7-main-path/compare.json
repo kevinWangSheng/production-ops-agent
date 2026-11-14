@@ -1,0 +1,144 @@
+{
+  "before": {
+    "run_id": "b87d8e48-686e-5709-9040-94d0587356d4",
+    "run_state": "completed",
+    "versions": {
+      "prompt_revision": "prompt-replay-candidate-bef70649a3a8",
+      "tool_schema_revision": "otel-demo-ext-d467c4b436b0",
+      "context_policy_revision": "ctx-ctx-policy-v1-a30e65ea52f4"
+    },
+    "cited_categories": {
+      "metrics": {
+        "fact": 5,
+        "hypothesis": 1,
+        "counter_evidence": 1
+      },
+      "traces": {
+        "fact": 4,
+        "hypothesis": 1,
+        "rejected_hypothesis": 1,
+        "counter_evidence": 1
+      },
+      "cluster_objects": {
+        "fact": 3,
+        "hypothesis": 2,
+        "rejected_hypothesis": 1,
+        "recommendation": 1
+      },
+      "logs": {
+        "fact": 2,
+        "hypothesis": 1,
+        "rejected_hypothesis": 1,
+        "recommendation": 1
+      }
+    },
+    "all_four_cited": true,
+    "human_free": true,
+    "tool_calls_by_category": {
+      "cluster_objects": 5,
+      "logs": 3,
+      "metrics": 6,
+      "read_evidence": 1,
+      "traces": 3
+    },
+    "tool_results": {
+      "ok": 14,
+      "no_data": 2,
+      "failed": 2,
+      "unknown": 0
+    },
+    "tool_failures": 2,
+    "model_requests_used": 11,
+    "tokens": {
+      "model_rounds_with_usage": 11,
+      "prompt_tokens": 530500,
+      "completion_tokens": 26033,
+      "total_tokens": 556533,
+      "prompt_cache_hit_tokens": 396800,
+      "prompt_cache_miss_tokens": 133700
+    },
+    "report_published": true
+  },
+  "after": [
+    {
+      "run_id": "db1e89dd-0018-547d-bb6e-2f449a960061",
+      "run_state": "completed",
+      "versions": {
+        "prompt_revision": "prompt-replay-candidate-k8s-0282ee7d0e7a",
+        "tool_schema_revision": "otel-demo-ext-d467c4b436b0",
+        "context_policy_revision": "ctx-ctx-policy-v1-a30e65ea52f4"
+      },
+      "cited_categories": {
+        "metrics": {
+          "fact": 6,
+          "hypothesis": 2,
+          "counter_evidence": 2,
+          "rejected_hypothesis": 2,
+          "recommendation": 2
+        },
+        "traces": {
+          "fact": 2,
+          "rejected_hypothesis": 3
+        },
+        "cluster_objects": {
+          "fact": 3,
+          "hypothesis": 1,
+          "rejected_hypothesis": 2,
+          "recommendation": 1
+        },
+        "logs": {
+          "fact": 2,
+          "hypothesis": 2,
+          "counter_evidence": 2,
+          "rejected_hypothesis": 1,
+          "recommendation": 1
+        }
+      },
+      "all_four_cited": true,
+      "human_free": true,
+      "tool_calls_by_category": {
+        "cluster_objects": 7,
+        "logs": 2,
+        "metrics": 9,
+        "read_evidence": 1,
+        "traces": 3
+      },
+      "tool_results": {
+        "ok": 19,
+        "no_data": 0,
+        "failed": 3,
+        "unknown": 0
+      },
+      "tool_failures": 3,
+      "model_requests_used": 12,
+      "tokens": {
+        "model_rounds_with_usage": 12,
+        "prompt_tokens": 637269,
+        "completion_tokens": 25247,
+        "total_tokens": 662516,
+        "prompt_cache_hit_tokens": 553216,
+        "prompt_cache_miss_tokens": 84053
+      },
+      "report_published": true
+    }
+  ],
+  "expected_versions": {
+    "before": {
+      "prompt_revision": "prompt-replay-candidate-bef70649a3a8",
+      "context_policy_revision": "ctx-ctx-policy-v1-a30e65ea52f4",
+      "tool_schema_revision": "otel-demo-ext-d467c4b436b0",
+      "variant_id": "replay-candidate",
+      "discipline_revision": "l1a-replay-candidate-9a45deb526fe"
+    },
+    "after": {
+      "prompt_revision": "prompt-replay-candidate-k8s-0282ee7d0e7a",
+      "context_policy_revision": "ctx-ctx-policy-v1-a30e65ea52f4",
+      "tool_schema_revision": "otel-demo-ext-d467c4b436b0",
+      "variant_id": "replay-candidate-k8s",
+      "discipline_revision": "l1a-replay-candidate-k8s-129936be8f78"
+    }
+  },
+  "after_reached": "1/1",
+  "done": true,
+  "note": "one Run per side: a single observation, no causal claim (A7-11)"
+}
