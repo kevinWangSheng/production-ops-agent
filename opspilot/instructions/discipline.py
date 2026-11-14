@@ -10,7 +10,7 @@ L2 报告契约 / L3a 工具模板 / L3b 实例快照，并要求各层「各有
 本模块把那些句子按**复用边界**收敛成一组只声明一次的 segment，
 再把每个历史变体表述为 segment 的有序序列。收敛的硬约束是**字节不变**。
 
-冻结证据的覆盖面要说准确：3 个变体里**只有 ``replay-candidate`` 有冻结哈希背书**
+冻结证据的覆盖面要说准确：历史 3 个变体里**只有 ``replay-candidate`` 有冻结哈希背书**
 （``9648c6de…``，M0 证据里两个 Run 记录的 ``prompt_sha256``），``render()`` 对它
 逐字节重建出当初送进模型的完整 system 消息。两个 baseline 变体**结构上不可能**有：
 ``holmes_baseline.py:1206`` 哈希的是 ``build_system_prompt(...)`` 的返回值，即
@@ -32,6 +32,8 @@ baseline 两变体靠的是漂移断言——逐字节锚定 ``holmes_baseline.p
 
 ``replay-candidate`` 另有两段非历史段落 ``INVESTIGATION_METHOD`` 与 ``IMPACT_SCOPE``
 （#310，2026-10-22 用户裁决），没有冻结哈希，只受句数普查与 revision 变化约束。
+``replay-candidate-k8s``（A7，#559）= ``replay-candidate`` 全部段落加一段
+``KUBERNETES_GUIDANCE``，只供扩展档位 ``otel-demo-ext`` 使用。
 
 本模块不发起调用、不读环境变量、不依赖 ``scripts/``。L2 报告契约的文本由调用方传入，
 以免产品包反向依赖 M0 实验脚手架。
@@ -112,6 +114,23 @@ IMPACT_SCOPE: Final = (
 gaps，报告 schema 与校验不变；用普通词而不内联 L2 字段名。仅 ``replay-candidate``
 含此段。"""
 
+KUBERNETES_GUIDANCE: Final = (
+    " When investigating Kubernetes workloads, walk the ownership chain, such as deployment to replica set to pod, and check both the objects' status and the application logs."
+    " When a pod crashed or an application reports errors, read that pod's status, its containers' last termination reason and exit code, and its events, and read its logs, including the previous container's logs after a restart."
+    " Do not stop at a surface state such as pending or not ready: say why, naming the resource that is short or the label or setting that does not match, and give the fix as a recommendation."
+    " When many pods are affected, checking up to three representative pods per workload is enough to conclude about the workload; report the finding against the workload and name an individual pod only when you looked at that pod."
+    " Eviction and OOM leave marks on the pod: an Evicted event from the kubelet, or OOMKilled as a container's last termination reason."
+    " A pod deleted and recreated by its own controller, shown by that controller's SuccessfulDelete and SuccessfulCreate events, a new pod name and a restart count of zero, was rolled out or rescheduled, not damaged; for a pod younger than the incident, check who created it and whether the same controller replaced its siblings at the same time before writing about it."
+    " A startup readiness-probe miss on such a pod is part of starting, not impact."
+    " When something is not working, inspect the owner workload and its pods for transient problems, check the related services and ingresses for misconfiguration, and read the application logs for runtime errors."
+    " Place a pod under affected only when you can name its own reason, such as Evicted, OOMKilled, BackOff, Failed, Unhealthy on a long-running pod, or an error log line; SuccessfulCreate, SuccessfulDelete, Scheduled, Started and a probe miss at startup are not impact on their own."
+    " Secrets cannot be read; when a conclusion depends on a value you could not read, say you could not verify it rather than guessing."
+    " A running or ready pod can still be failing; read its application logs before calling it healthy."
+)
+"""Kubernetes 调查指导（11 句，K1–K9），A7（#559，r7 A7-1~A7-4）新增，改写自 HolmesGPT
+``generic_ask.jinja2`` :56/:58/:69/:73-78：去掉上游依赖命令行 describe 的措辞，不点工具名、
+参数名或投影字段名，因此不标 ``tool_specific``。仅 ``replay-candidate-k8s`` 含此段。"""
+
 FIXED_WINDOW: Final = " The authorized query window is fixed by the trusted runner; do not supply start/end tool parameters."
 """查询时间窗由可信 runner 固定（1 句）。三个变体共用。"""
 
@@ -160,6 +179,7 @@ _MISSING: Final = Segment("missing_series", LAYER_TEMPLATE, MISSING_SERIES)
 _WINDOW: Final = Segment("fixed_window", LAYER_TEMPLATE, FIXED_WINDOW)
 _METHOD: Final = Segment("investigation_method", LAYER_TEMPLATE, INVESTIGATION_METHOD)
 _IMPACT: Final = Segment("impact_scope", LAYER_TEMPLATE, IMPACT_SCOPE)
+_KUBERNETES: Final = Segment("kubernetes_guidance", LAYER_TEMPLATE, KUBERNETES_GUIDANCE)
 # 同一句话，baseline 里随 scope 出现，候选臂里无条件出现。
 _WINDOW_SCOPED: Final = _WINDOW._replace(scoped=True)
 _SERVICES_PREFIX: Final = Segment(
@@ -213,6 +233,18 @@ _VARIANTS: Final[dict[str, tuple[Segment, ...]]] = {
         _MISSING,
         _METHOD,
         _IMPACT,
+        _REPORT_SLOT,
+    ),
+    # A7（#559，r7 A7-1/A7-2）：扩展档位（otel-demo-ext）专用，= replay-candidate 的
+    # 全部段落，在影响面段与报告契约槽位之间加 Kubernetes 调查指导。replay-candidate
+    # 本身与 otel-demo 档位不变。
+    "replay-candidate-k8s": (
+        _OPENING_REPLAY,
+        _EVIDENCE,
+        _MISSING,
+        _METHOD,
+        _IMPACT,
+        _KUBERNETES,
         _REPORT_SLOT,
     ),
 }

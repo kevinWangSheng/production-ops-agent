@@ -35,7 +35,7 @@ from typing import Any, cast
 
 from opspilot.investigation.context import InvestigationInput
 from opspilot.investigation.inputs import ToolFace
-from opspilot.investigation.loop import DISCIPLINE_VARIANT, investigation_versions
+from opspilot.investigation.loop import investigation_versions
 from opspilot.investigation.reports import DATA_SOURCES_INSTRUCTION
 from opspilot.investigation.runner import ExecutorFactory
 from opspilot.persistence import DurableStore, Lease
@@ -83,6 +83,11 @@ __all__ = [
 ]
 
 PROFILE_NAME = "otel-demo-ext"
+
+#: A7 (#559, r7 A7-1/A7-6): this profile's L1a variant -- ``replay-candidate``
+#: plus the Kubernetes investigation guidance. ``otel-demo`` keeps
+#: ``replay-candidate``; the revision follows the content hash.
+DISCIPLINE_VARIANT = "replay-candidate-k8s"
 
 #: ``otel-demo``'s tools array unchanged, then the new tools.
 TOOL_SCHEMAS: tuple[Mapping[str, Any], ...] = (
@@ -163,7 +168,10 @@ TOOL_NAMES: tuple[str, ...] = tuple(item.name for item in _registrations())
 
 
 def otel_demo_ext_versions() -> dict[str, str]:
-    return {**investigation_versions(), "tool_schema_revision": TOOL_SCHEMA_REVISION}
+    return {
+        **investigation_versions(DISCIPLINE_VARIANT),
+        "tool_schema_revision": TOOL_SCHEMA_REVISION,
+    }
 
 
 def otel_demo_ext_face(clock: Clock) -> ToolFace:
