@@ -1,4 +1,4 @@
-# 工具面拓展：决定表（r3）
+# 工具面拓展：决定表（r7）
 
 - 修订：r1，用户 2026-11-12 裁决（口头，约 08:00–08:50 PT；同日下一会话复述后确认）。r2（2026-11-12）：集群对象只读查询（A2，#554）开工前预审，没有新的用户裁决项，追加 15 条可逆默认并改写 R6、R17，见文末。r3（2026-11-12）：A1、A3、A4、A5、A6、B2 开工前预审，追加各项可逆默认与 N3 结论；B2-1 由用户 2026-11-12 裁决为 a（对所有账号放开），其余没有新的用户裁决项，见文末。r4（2026-11-12）：ITBench-Lite 适配开工前预审，记入用户四条对齐与 16 条默认，L6 待用户裁决，见文末。r5（2026-11-13）：用户裁决 L6 = a（用仓库已有接收方），并确认 A2-14 维持默认（不在代码里强制）。
 - 归属：[任务记录](2026-11-12-tool-expansion.md)。选项与代价的全文在仓库外的预审稿（Kubernetes 工具预审第 2 版，2026-11-11），本表只留裁决与落点。
@@ -249,7 +249,43 @@ A2-5 的静态资源表比 A1 清单窄；A1 与 A2 谁后合并，谁加一条�
 | L-V4 | 两档：「指标+trace」与「故障窗无 trace」；每类覆盖另写进明细 | 默认（可逆） |
 | L-V5 | 输出 `{"<id>": "<档位>"}`（正好 35 个 ID）与 `tiers_detail.json`，都入库 | 默认 |
 | L-V6 | 词表收全量里出现过的 `metadata.name`（`answer.RESOURCE_KINDS` 内的资源类，去掉 secrets 与官方排除 namespace 的对象），加三处服务名并集 | 默认 |
-| L-V7 | namespace 名与通用词（`kubernetes`、`default`）进不进词表：推荐去掉 Namespace 对象名并用固定停用表，规则在看答案前写死 | **待用户裁决** |
+| L-V7 | namespace 名与通用词（`kubernetes`、`default`）进不进词表：推荐去掉 Namespace 对象名并用固定停用表，规则在看答案前写死 | **用户裁决（2026-11-13）：按推荐**，去掉 Namespace 对象名并用固定停用表 |
 | L-V8 | 每行一个名字，不区分大小写去重并排序；每题生成一次，放忽略目录 | 默认 |
 | L-V9 | CLI：`python -m scripts.itbench_lite.vocabulary <干净副本> --out <文件>`；`python -m scripts.itbench_lite.tiers <副本根目录> --out tiers.json --detail tiers_detail.json` | 默认 |
 | L-V10 | 流式读，不做缓存 | 默认 |
+
+## r7（2026-11-13）：A7（#559）开工前预审
+
+对照 `main` 的预审全文在仓库外。A7-8、A7-9、A7-12 由用户裁决（2026-11-13，均按推荐 a），其余为可逆默认。租机安排同日裁决：本机部分做完后一次跑完全部真实 Run（约 20–26 小时）。
+
+| 编号 | 问题 | 选项（★推荐） | 裁决 |
+|---|---|---|---|
+| A7-1 | 指导放在哪一层 | ★a. 新的 L1a（纪律层）变体，只有扩展档位使用。依据：C3 第 5 节 L1a 含「调查方法与影响面纪律」，R12 写的是「只动扩展档位的提示词版本」。b. 放进 L3 的 `DATA_SOURCES_INSTRUCTION` 或工具描述，会改扩展档位的 `tool_schema_revision`，与 R12 的措辞不符 | 默认：a |
+| A7-2 | 新变体的结构 | ★变体名 `replay-candidate-k8s`，段落为 `replay-candidate` 的全部段落，再在影响面段（`_IMPACT`）和报告契约槽位（`_REPORT_SLOT`）之间加一段 `kubernetes_guidance`（位置与 #310 一致）。`replay-candidate` 本身一个字节不改 | 默认 |
+| A7-3 | 新段落标不标「工具专有」 | ★不标（`tool_specific=False`）。正文不出现工具名、参数名或投影字段名，只讲集群调查方法；`tests/test_instruction_discipline.py:463` 的合同测试因此不用改 | 默认 |
+| A7-4 | 哪些条款进来 | ★上游 :73-78 六条按第 2 节改写，加上 #310 当时去掉的三个 K8s 片段（:56 读不到 Secret 就说无法核实、:58 检查应用日志、:69 原因词清单），约 8–9 句。去掉 kubectl/describe，不点工具名。不收 :24 命名空间受限段（N4）、:88 权限错误段（贴上游链接）、:9 多集群段、TodoWrite 段（属 C1 #565） | 默认（R12 本身就是可逆默认，扩充方式按「照搬上游」方向）；在简报里列出句子清单 |
+| A7-5 | 改不改 `otel-demo` 档位 | 不改。补钉值：`otel-demo` 的 `prompt_revision == "prompt-replay-candidate-bef70649a3a8"`、`discipline_revision("replay-candidate") == "l1a-replay-candidate-9a45deb526fe"`、`otel-demo` 工具面的 `variant_id == "replay-candidate"`，再钉 `replay-candidate` 用现行 `REPORT_CONTRACT` 渲染结果的 sha256。现有「字节不变」测试只钉 `tool_schema_revision`，这是缺口 | 默认 |
+| A7-6 | 提示词 revision 怎么变 | 只按内容哈希自动变化，不手写版本号。扩展档位得到 `prompt-replay-candidate-k8s-<哈希>` 和新的 `discipline_revision`；`tool_schema_revision` 不因 A7 变化。代码改两处：`opspilot/tools/otel_demo_ext.py:160` 改为 `investigation_versions(新变体)`，`:175` 的工具面 `variant_id` 换成新变体。在途扩展档位 Run 被重新领取时进入 `blocked(INCOMPATIBLE_STATE)`，按 C3 照常，目前没有部署中的扩展档位 Run | 默认 |
+| A7-7 | #310 的通用条款是否带入 | ★不再带入：已在 `replay-candidate` 里（`discipline.py:85-113`、`:210-217`，2026-10-22 裁决，提交 `6e1c1bae`），新变体继承。#310 仍是 OPEN，由 lead 判断是否关闭 | 默认 |
+| A7-8 | 「四类证据都被引用」怎么判定 | ★a. 取已发布、已通过校验的报告里每条结论的 `evidence_ids`，经 summary 的 `tool_requests` 找到工具名，再按代码常量分类：指标 = Prometheus 工具（`otel_demo.PROMETHEUS_TOOLS` ∪ `prometheus_ext` 工具，含 B2）；trace = `traces_search` ∪ `jaeger_query.TOOL_NAMES`；集群对象 = `kubernetes_jq_query`/`kubernetes_count`/`kubernetes_tabular_query`；日志 = `fetch_pod_logs`。只算 `status` 为 ok 的证据；从证据上下文继承来的不算；`read_evidence` 切片归到它来源工具的类别。任何结论类别（fact、hypothesis、counter_evidence 等）都算，另记录各类别的分布。b. 每类至少支撑一条 fact（更严）。c. 调用过就算，不要求引用（比 issue 的写法松，不取） | **用户裁决（2026-11-13）：a** |
+| A7-9 | Run 用什么故障场景 | ★a. 现有的 flagd `paymentFailure` 100%（`scripts/kind_lab.py fault inject`，`kind_lab.py:154,2452`），触发 lab 里真实的 Prometheus 规则 `CheckoutPlaceOrderErrorRatioHigh`，经 Alertmanager 投递到工作台。F2/F3 都用过，不是按 benchmark 答案挑的。按 Q5 标为「开关类场景」。b. 新做一个 K8s 原生故障（OOM/limit、缩到 0、坏镜像），要新的注入器和告警规则，有量身定做的风险，工作量也更大。c. 换 `cartFailure`/`productCatalogFailure`，能否触发唯一那条 checkout 告警规则未确认 | **用户裁决（2026-11-13）：a** |
+| A7-10 | 「全程无人工」的确定性判定 | 事故由 `alertmanager` 身份开出；Run 由告警接收自动排队；审计里没有追问、暂停、接管或人工 close（在冻结 summary 之前）；worker 在告警到达前已在运行（不像 F3 的 D1-a 那样由驱动放行） | 默认 |
+| A7-11 | 2 次 Run 的前后对照口径 | 前一次用 A7 起点提交的扩展档位（`replay-candidate`），后一次用 A7 提交；同一 lab 会话、同一场景，中间恢复故障并冷却。确定性对照：引用了哪些类别、各类别调用次数、模型请求数、token、校验是否通过、工具失败次数。每边只有 1 次 Run，不下因果结论，不用 LLM judge。完成标志只要求后一次达到 | 默认 |
+| A7-12 | 后一次没达到四类时怎么办 | ★a. 同一份代码最多补跑 2 次，全部照实记录（x/n），有一次达到即满足完成标志。b. 只跑一次，失败就保持 issue 开着，改提示词另开 PR。c. 现场改提示词直到通过：这就是量身定做，不取 | **用户裁决（2026-11-13）：a** |
+| A7-13 | 驱动与证据收集 | 现有驱动都不合适：F3 驱动的公开接口已冻结，并且内置了发布和人工追问（`scripts/f3_competing_scenario.py:10-40`）；eval_live 由 harness 自己投递告警（`AlertIntake`），不是真实的 Alertmanager。默认新写一个薄的工程脚本：`kind_lab.py fault inject/restore`，用 `scripts/lab_evidence.py` 冻结 summary 和回读 trace，再加一个纯函数 `cited_categories(summary)` 并配单元测试（用合成的 summary 做输入） | 默认 |
+| A7-14 | 与 A6、B2、ITBench-Lite 的先后 | 真实 Run 放在 A6（PR #600）和 B2（PR #597）合并之后，这样扩展档位的工具面是阶段 A 的最终面；summary 记录三个版本号。Lite 35 题（#571）放在 A7 合并之后，因为它记录的 `prompt_revision`（L12）要用最终值 | 默认 |
+| A7-15 | 上游许可登记 | `docs/portfolio/upstream-attribution.md` 加上「Kubernetes 段改写自 `generic_ask.jinja2` :56/:58/:69/:73-78」，`third_party/holmesgpt/PROVENANCE` 的覆盖清单同步 | 默认 |
+| A7-16 | 上限 | 用产品默认：每 Run 100 次模型请求的防循环上限、20 次工具操作、240 秒（`executor.py:96-97`），不为 A7 调整 | 默认（改上限属合同变更，不在本项） |
+| A7-17 | trace 项目 | LangSmith 项目 `opspilot-lab-a7-main-path-<日期>`，开跑前设为长期保留 | 默认 |
+
+附：A7-4 推荐的段落草稿（英文，供实现者参考，句子可调）
+
+- K1（:73）When investigating Kubernetes workloads, walk the ownership chain, such as deployment to replica set to pod, and check both the objects' status and the application logs.
+- K2（:74）When a pod crashed or an application reports errors, read that pod's status, its containers' last termination reason and exit code, and its events, and read its logs, including the previous container's logs after a restart.
+- K3（:75）Do not stop at a surface state such as pending or not ready: say why, naming the resource that is short or the label or setting that does not match, and give the fix as a recommendation.
+- K4（:76）When many pods are affected, checking up to three representative pods per workload is enough to conclude about the workload; report the finding against the workload and name an individual pod only when you looked at that pod.
+- K5（:77，压缩）Eviction and OOM leave marks on the pod: an Evicted event from the kubelet, or OOMKilled as a container's last termination reason. A pod deleted and recreated by its own controller, shown by that controller's SuccessfulDelete and SuccessfulCreate events, a new pod name and a restart count of zero, was rolled out or rescheduled, not damaged; for a pod younger than the incident, check who created it and whether the same controller replaced its siblings at the same time before writing about it. A startup readiness-probe miss on such a pod is part of starting, not impact.
+- K6（:78）When something is not working, inspect the owner workload and its pods for transient problems, check the related services and ingresses for misconfiguration, and read the application logs for runtime errors.
+- K7（:69）Place a pod under affected only when you can name its own reason, such as Evicted, OOMKilled, BackOff, Failed, Unhealthy on a long-running pod, or an error log line; SuccessfulCreate, SuccessfulDelete, Scheduled, Started and a probe miss at startup are not impact on their own.
+- K8（:56）Secrets cannot be read; when a conclusion depends on a value you could not read, say you could not verify it rather than guessing.
+- K9（:58）A running or ready pod can still be failing; read its application logs before calling it healthy.
