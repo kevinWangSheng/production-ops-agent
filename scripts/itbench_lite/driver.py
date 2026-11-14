@@ -1128,15 +1128,27 @@ def trial_done(cfg: Config, label: str, scenario_dir: str, trial: int) -> bool:
 
 
 def _set_aside(cfg: Config, label: str, trial: int) -> None:
-    """Move an unfinished trial's evidence directory into the ignored tree so
-    the rerun can freeze afresh; nothing is deleted."""
+    """Move everything an unfinished trial left behind into
+    ``trial-N/stale/<timestamp>/`` so the rerun starts afresh at chance 1:
+    the evidence directory (as ``evidence``) and every entry of the trial
+    directory, including the ``chance-*`` dirs of an interrupted process with
+    their PostgreSQL data (#632). A leftover never counts as a used chance;
+    nothing is deleted."""
     evidence = cfg.evidence_dir / label / f"trial-{trial}"
+    trial_dir = cfg.round_dir / label / f"trial-{trial}"
+    leftovers = (
+        sorted(p for p in trial_dir.iterdir() if p.name != "stale")
+        if trial_dir.is_dir()
+        else []
+    )
+    if not evidence.exists() and not leftovers:
+        return
+    target = trial_dir / "stale" / datetime.now(UTC).strftime("%Y%m%dT%H%M%S%f")
+    target.mkdir(parents=True, exist_ok=False)
+    for path in leftovers:
+        shutil.move(str(path), target / path.name)
     if evidence.exists():
-        stale = cfg.round_dir / label / f"trial-{trial}" / "stale"
-        stale.mkdir(parents=True, exist_ok=True)
-        shutil.move(
-            str(evidence), stale / datetime.now(UTC).strftime("%Y%m%dT%H%M%S%f")
-        )
+        shutil.move(str(evidence), target / "evidence")
 
 
 def finish_judging(
