@@ -42,7 +42,9 @@ PROMPT_REVISION = "prompt-replay-candidate-bef70649a3a8"
 DISCIPLINE_REVISION = "l1a-replay-candidate-9a45deb526fe"
 BASE_TOOL_SCHEMA_REVISION = "otel-demo-a3a95a0f888e"
 EXT_TOOL_SCHEMA_REVISION = "otel-demo-ext-d467c4b436b0"
-REPLAY_RENDER_SHA256 = "f38c56abc2d6745b7195e35c46d51b6b1e28d115fbb8639db92a8e1627a5c6b9"
+REPLAY_RENDER_SHA256 = (
+    "f38c56abc2d6745b7195e35c46d51b6b1e28d115fbb8639db92a8e1627a5c6b9"
+)
 
 
 class _Clock:
@@ -91,7 +93,9 @@ def _guidance() -> Any:
 
 
 def test_otel_demo_frozen_prompt_and_discipline_values_remain_byte_stable() -> None:
-    assert investigation_versions("replay-candidate")["prompt_revision"] == PROMPT_REVISION
+    assert (
+        investigation_versions("replay-candidate")["prompt_revision"] == PROMPT_REVISION
+    )
     assert d.discipline_revision("replay-candidate") == DISCIPLINE_REVISION
     assert _face("otel-demo").variant_id == "replay-candidate"
 
@@ -104,9 +108,9 @@ def test_otel_demo_frozen_prompt_and_discipline_values_remain_byte_stable() -> N
 
 
 def test_otel_demo_tool_schema_revision_is_unchanged() -> None:
-    assert select_profile({PROFILE_ENV: "otel-demo"}).versions()["tool_schema_revision"] == (
-        BASE_TOOL_SCHEMA_REVISION
-    )
+    assert select_profile({PROFILE_ENV: "otel-demo"}).versions()[
+        "tool_schema_revision"
+    ] == (BASE_TOOL_SCHEMA_REVISION)
 
 
 def test_replay_candidate_k8s_inherits_the_base_segments_and_inserts_guidance() -> None:
@@ -128,11 +132,14 @@ def test_replay_candidate_k8s_inherits_the_base_segments_and_inserts_guidance() 
 
 @pytest.mark.parametrize("needle", ["kubectl", "describe"])
 def test_kubernetes_guidance_omits_forbidden_cli_words(needle: str) -> None:
-    assert re.search(
-        rf"(?<![a-z0-9_]){re.escape(needle)}(?![a-z0-9_])",
-        _guidance().text,
-        re.I,
-    ) is None
+    assert (
+        re.search(
+            rf"(?<![a-z0-9_]){re.escape(needle)}(?![a-z0-9_])",
+            _guidance().text,
+            re.I,
+        )
+        is None
+    )
 
 
 def test_kubernetes_guidance_omits_registered_tools_and_parameters() -> None:
@@ -184,7 +191,9 @@ def test_kubernetes_guidance_covers_k1_to_k9_method_points(pattern: str) -> None
     assert re.search(pattern, _guidance().text, re.I | re.S), pattern
 
 
-def test_otel_demo_ext_uses_the_new_prompt_variant_without_changing_tool_schema() -> None:
+def test_otel_demo_ext_uses_the_new_prompt_variant_without_changing_tool_schema() -> (
+    None
+):
     versions = select_profile({PROFILE_ENV: "otel-demo-ext"}).versions()
     assert versions["prompt_revision"].startswith("prompt-replay-candidate-k8s-")
     assert versions["prompt_revision"] != PROMPT_REVISION

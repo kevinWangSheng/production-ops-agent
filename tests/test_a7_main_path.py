@@ -39,6 +39,7 @@ from copy import deepcopy
 from typing import Any, Mapping
 
 import pytest
+
 from scripts.a7_main_path import all_four_cited, cited_categories, human_free
 
 RUN_ID = "run-aaaaaaaa357"
@@ -291,7 +292,11 @@ def test_failed_evidence_does_not_count_as_a_citation() -> None:
     evidence_id = _evidence_id("failed-metric-aaaaaaaa357")
     summary = _summary(
         [_claim("fact", evidence_id)],
-        [_request("failed-metric-aaaaaaaa357", "metrics_range_query", result_code="error")],
+        [
+            _request(
+                "failed-metric-aaaaaaaa357", "metrics_range_query", result_code="error"
+            )
+        ],
         cited_views=[
             _cited_view(
                 evidence_id,
