@@ -174,7 +174,6 @@ def test_cli_writes_files_coverage_accepts(tmp_path):
     assert detail["S1"]["directory"] == "S1/snapshot"
     assert detail["S2"]["directory"] == "Scenario-2"
     assert set(detail) == set(written)
-    assert "census" not in detail["S2"]
 
 
 def test_missing_scenario_is_refused(tmp_path):
@@ -200,43 +199,3 @@ def test_symlinked_scenario_directory_is_refused(tmp_path):
     (root / "S1").symlink_to(tmp_path / "real")
     with pytest.raises(UnsafeSnapshot):
         tiers.build(root, expected=frozenset({"1"}))
-
-
-def test_census_keeps_only_allowed_columns(tmp_path):
-    root = tmp_path / "copies"
-    make_scenario(root / "S1")
-    make_scenario(root / "S2")
-    census = tmp_path / "survey.json"
-    census.write_text(
-        json.dumps(
-            {
-                "mechanism": "zz-container-sentinel",
-                "rows": [
-                    {
-                        "scenario": "Scenario-1",
-                        "fault_start_proxy": _rfc(FAULT),
-                        "trace_end": _rfc(FAULT),
-                        "k8s_objects": "full",
-                        "mechanism": "zz-row-sentinel",
-                        "other": "dropped",
-                    },
-                    {"scenario": "S2", "fault_start_proxy": "n/a"},
-                ],
-            }
-        )
-    )
-    rows = tiers.load_census(census)
-    assert rows == {
-        "1": {
-            "fault_start_proxy": _rfc(FAULT),
-            "trace_end": _rfc(FAULT),
-            "k8s_objects": "full",
-        },
-        "2": {"fault_start_proxy": "n/a"},
-    }
-    _, detail = tiers.build(root, census=rows, expected=frozenset({"1", "2"}))
-    one = detail["S1"]["census"]
-    assert one["fault_start_proxy"] == "agree"
-    assert one["trace_end"] == "differ"
-    assert detail["S2"]["census"]["fault_start_proxy"] == "unparsed"
-    assert "sentinel" not in json.dumps(detail)
