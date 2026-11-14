@@ -17,10 +17,10 @@ implementation worktree supplies the public functions.
   has no parsed report; an unpublished handoff keeps a report but has a
   non-completed Run state.
 * Claims are read from summary["run"]["report"]["claims"]. Each cited
-  evidence id is resolved through a same-Run summary["run"]["tool_requests"]
-  entry; an evidence id that only exists in the frozen incident projection is
-  treated as inherited and does not count. The request's status is the status
-  gate.
+  evidence id is resolved by matching the part before ":" to the same-Run
+  summary["run"]["tool_requests"] entry's operation_id; the request's
+  result_code is the status gate. An evidence id that only exists in the
+  frozen incident projection is treated as inherited and does not count.
 * A read_evidence request is classified by the source tool in its frozen cited
   view's existing stored.view.parent_tool field. No new parent field is
   invented in the synthetic summary.
@@ -39,9 +39,7 @@ from copy import deepcopy
 from typing import Any, Mapping
 
 import pytest
-
 from scripts.a7_main_path import all_four_cited, cited_categories, human_free
-
 
 RUN_ID = "run-aaaaaaaa357"
 INCIDENT_ID = "incident-aaaaaaaa357"
@@ -58,26 +56,29 @@ def _claim(kind: str, evidence_id: str) -> dict[str, Any]:
     }
 
 
+def _evidence_id(label: str) -> str:
+    return f"op-{label}:dispatch-{label}"
+
+
 def _request(
-    evidence_id: str,
+    label: str,
     tool: str,
     *,
-    status: str = "ok",
-    arguments: Mapping[str, Any] | None = None,
+    result_code: str = "ok",
 ) -> dict[str, Any]:
+    operation_id = f"op-{label}"
     return {
         "run_id": RUN_ID,
-        "operation_id": f"op-{evidence_id}",
-        "evidence_id": evidence_id,
-        "ordinal": 0,
-        "status": status,
+        "operation_id": operation_id,
+        "epoch": 1,
         "tool": tool,
-        "verb": "get" if tool == "read_evidence" else "query",
-        "arguments": dict(arguments or {}),
         "target_id": "m0-otel-20260909",
-        "read_only": True,
-        "reason": None,
-        "source_contact": None,
+        "result_code": result_code,
+        "reason": None if result_code == "ok" else "synthetic-failure",
+        "outbound": result_code == "ok",
+        "source_contact": "confirmed" if result_code == "ok" else "none",
+        "time_basis": "tool_event",
+        "record_kind": "result",
     }
 
 
@@ -98,7 +99,10 @@ def _cited_view(
     }
     if parent_tool is not None:
         view["parent_tool"] = parent_tool
-        view["slice"] = {"parent_evidence_id": "parent-aaaaaaaa357", "returned": 1}
+        view["slice"] = {
+            "parent_evidence_id": _evidence_id("parent-aaaaaaaa357"),
+            "returned": 1,
+        }
     return {
         "evidence_id": evidence_id,
         "resolvable": True,
@@ -201,6 +205,13 @@ def _summary(
                 "status": "response_committed",
                 "observed_at": "2026-11-13T12:00:30+00:00",
             },
+            "incident_runs": [
+                {
+                    "run_id": RUN_ID,
+                    "control_generation": 0,
+                    "state": state,
+                }
+            ],
             "tool_requests": deepcopy(requests),
             "observations": [],
             "cited_evidence": cited_views or [],
@@ -225,11 +236,11 @@ def _summary(
 
 def _four_category_summary() -> dict[str, Any]:
     claims = [
-        _claim("fact", "metric-aaaaaaaa357"),
-        _claim("hypothesis", "trace-aaaaaaaa357"),
-        _claim("counter_evidence", "cluster-aaaaaaaa357"),
-        _claim("rejected_hypothesis", "log-aaaaaaaa357"),
-        _claim("recommendation", "metric-2-aaaaaaaa357"),
+        _claim("fact", _evidence_id("metric-aaaaaaaa357")),
+        _claim("hypothesis", _evidence_id("trace-aaaaaaaa357")),
+        _claim("counter_evidence", _evidence_id("cluster-aaaaaaaa357")),
+        _claim("rejected_hypothesis", _evidence_id("log-aaaaaaaa357")),
+        _claim("recommendation", _evidence_id("metric-2-aaaaaaaa357")),
     ]
     requests = [
         _request("metric-aaaaaaaa357", "metrics_range_query"),
@@ -244,11 +255,11 @@ def _four_category_summary() -> dict[str, Any]:
         cited_views=[
             _cited_view(eid, tool)
             for eid, tool in (
-                ("metric-aaaaaaaa357", "metrics_range_query"),
-                ("metric-2-aaaaaaaa357", "get_metric_names"),
-                ("trace-aaaaaaaa357", "traces_search"),
-                ("cluster-aaaaaaaa357", "kubernetes_jq_query"),
-                ("log-aaaaaaaa357", "fetch_pod_logs"),
+                (_evidence_id("metric-aaaaaaaa357"), "metrics_range_query"),
+                (_evidence_id("metric-2-aaaaaaaa357"), "get_metric_names"),
+                (_evidence_id("trace-aaaaaaaa357"), "traces_search"),
+                (_evidence_id("cluster-aaaaaaaa357"), "kubernetes_jq_query"),
+                (_evidence_id("log-aaaaaaaa357"), "fetch_pod_logs"),
             )
         ],
     )
@@ -277,12 +288,13 @@ def test_missing_one_source_category_fails_the_four_source_predicate() -> None:
 
 
 def test_failed_evidence_does_not_count_as_a_citation() -> None:
+    evidence_id = _evidence_id("failed-metric-aaaaaaaa357")
     summary = _summary(
-        [_claim("fact", "failed-metric-aaaaaaaa357")],
-        [_request("failed-metric-aaaaaaaa357", "metrics_range_query", status="error")],
+        [_claim("fact", evidence_id)],
+        [_request("failed-metric-aaaaaaaa357", "metrics_range_query", result_code="error")],
         cited_views=[
             _cited_view(
-                "failed-metric-aaaaaaaa357",
+                evidence_id,
                 "metrics_range_query",
                 status="error",
             )
@@ -292,12 +304,13 @@ def test_failed_evidence_does_not_count_as_a_citation() -> None:
 
 
 def test_inherited_evidence_without_a_same_run_tool_request_does_not_count() -> None:
+    evidence_id = _evidence_id("inherited-trace-aaaaaaaa357")
     summary = _summary(
-        [_claim("fact", "inherited-trace-aaaaaaaa357")],
+        [_claim("fact", evidence_id)],
         [],
         cited_views=[
             _cited_view(
-                "inherited-trace-aaaaaaaa357",
+                evidence_id,
                 "traces_search",
                 run_id="prior-run-aaaaaaaa357",
             )
@@ -307,20 +320,10 @@ def test_inherited_evidence_without_a_same_run_tool_request_does_not_count() -> 
 
 
 def test_read_evidence_slice_is_classified_by_its_parent_tool() -> None:
-    evidence_id = "trace-slice-aaaaaaaa357"
+    evidence_id = _evidence_id("trace-slice-aaaaaaaa357")
     summary = _summary(
         [_claim("counter_evidence", evidence_id)],
-        [
-            _request(
-                evidence_id,
-                "read_evidence",
-                arguments={
-                    "evidence_id": "parent-aaaaaaaa357",
-                    "offset": 0,
-                    "limit": 1,
-                },
-            )
-        ],
+        [_request("trace-slice-aaaaaaaa357", "read_evidence")],
         cited_views=[
             _cited_view(
                 evidence_id,
@@ -337,7 +340,7 @@ def test_read_evidence_slice_is_classified_by_its_parent_tool() -> None:
     [
         _summary([], [], report=None, state="failed"),
         _summary(
-            [_claim("fact", "metric-aaaaaaaa357")],
+            [_claim("fact", _evidence_id("metric-aaaaaaaa357"))],
             [_request("metric-aaaaaaaa357", "metrics_range_query")],
             state="waiting_human",
         ),

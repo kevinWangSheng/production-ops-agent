@@ -38,7 +38,6 @@ from opspilot.investigation.loop import investigation_versions
 from opspilot.investigation.reports import REPORT_CONTRACT
 from opspilot.tools.profiles import PROFILE_ENV, select_profile
 
-
 PROMPT_REVISION = "prompt-replay-candidate-bef70649a3a8"
 DISCIPLINE_REVISION = "l1a-replay-candidate-9a45deb526fe"
 BASE_TOOL_SCHEMA_REVISION = "otel-demo-a3a95a0f888e"
@@ -145,26 +144,40 @@ def test_kubernetes_guidance_omits_registered_tools_and_parameters() -> None:
     ]
     assert tool_hits == []
 
-    parameter_hits = [
+    parameter_names = _nested_schema_names(_face("otel-demo-ext").tool_schemas)
+    underscored_parameter_hits = [
         name
-        for name in _nested_schema_names(_face("otel-demo-ext").tool_schemas)
+        for name in parameter_names
+        if "_" in name
         if re.search(rf"(?<![a-z0-9_]){re.escape(name)}(?![a-z0-9_])", text, re.I)
     ]
-    assert parameter_hits == []
+    assert underscored_parameter_hits == []
+
+    plain_parameter_hits = [
+        name
+        for name in parameter_names
+        if "_" not in name
+        if re.search(
+            rf"\x60{re.escape(name)}\x60|(?<![a-z0-9_]){re.escape(name)}\s*(?:=|:)",
+            text,
+            re.I,
+        )
+    ]
+    assert plain_parameter_hits == []
 
 
 @pytest.mark.parametrize(
     "pattern",
     [
-        r"\b(?:owner|ownership)\b.*\bdeployment\b.*\b(?:replica\s*set|replicaset)\b.*\bpod\b",
-        r"\bprevious\b.*\b(?:container|instance)\b.*\blog",
-        r"\b(?:pending|not\s+ready)\b.*\b(?:why|reason)\b.*\b(?:recommend|fix)\b",
-        r"\brepresentative\b.*\b(?:three|3)\b.*\bworkload\b",
-        r"\bevicted\b.*\boomkilled\b.*\b(?:event|termination)\b",
-        r"\bservice\b.*\bingress\b.*\blog",
-        r"\baffected\b.*\b(?:evicted|oomkilled|backoff|failed|unhealthy|error)\b",
-        r"\bsecret\b.*\b(?:cannot|could\s+not|unable|not)\b.*\bverif",
-        r"\b(?:running|ready)\b.*\blog",
+        r"\b(?:owners?|ownership)\b.*\bdeployments?\b.*\b(?:replica\s*sets?|replicasets?)\b.*\bpods?\b",
+        r"\bprevious\b.*\b(?:containers?|instances?)\b.*\blogs?\b",
+        r"\b(?:pending|not\s+ready)\b.*\b(?:whys?|reasons?)\b.*\b(?:recommends?|fix(?:es)?)\b",
+        r"\brepresentatives?\b.*\b(?:three|3)\b.*\bworkloads?\b",
+        r"\bevicted\b.*\boomkilled\b.*\b(?:events?|terminations?)\b",
+        r"\bservices?\b.*\bingress(?:es)?\b.*\blogs?\b",
+        r"\baffected\b.*\b(?:evicted|oomkilled|backoffs?|failed|unhealthy|errors?)\b",
+        r"\bsecrets?\b.*\b(?:cannot|could\s+not|unable|not)\b.*\bverif",
+        r"\b(?:running|ready)\b.*\blogs?\b",
     ],
 )
 def test_kubernetes_guidance_covers_k1_to_k9_method_points(pattern: str) -> None:
