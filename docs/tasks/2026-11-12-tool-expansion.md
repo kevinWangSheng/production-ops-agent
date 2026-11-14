@@ -92,7 +92,7 @@
 | 编号 | 问题 | 状态 |
 |---|---|---|
 | N1 | Lite 快照如何映射到各查询端点 | 探针已做，映射见[开工说明](2026-11-12-itbench-lite-adapter.md)；未实现 |
-| L6 | ITBench-Lite 官方 LLM judge 用哪个模型、发给哪家（已有接收方，或照官方示例新增 OpenRouter） | 待用户裁决，见[决定表 r4](2026-11-12-tool-expansion-contract.md) |
+| L6 | ITBench-Lite 官方 LLM judge 用哪个模型、发给哪家（已有接收方，或照官方示例新增 OpenRouter） | 已裁决（用户 2026-11-13：a，用仓库已有接收方，默认 Z.ai，结果注明与官方示例不同），见[决定表 r4](2026-11-12-tool-expansion-contract.md) L6 行 |
 | N2 | 现场版与 Lite 同号场景是否逐题一致 | 未确认，不据此合并分数 |
 | N3 | Jaeger 能否提供标签过滤、按 ID 取整条、操作发现 | 已有结论（读 v1.53.0 源码）：支持标签与时长过滤、按 ID 取整条、列服务与操作，不支持标签名发现；未在真实实例取样的项见[决定表 r3](2026-11-12-tool-expansion-contract.md)「N3」 |
 | N6 | 工具 search/catalog 值不值得做 | 未决定，不改固定档位、注册表与 schema revision |
