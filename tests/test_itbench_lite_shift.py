@@ -65,9 +65,10 @@ def _scenario(tmp_path: Path) -> Path:
                 "Duration": str(20 * NS),
                 "StatusCode": "Unset",
                 "StatusMessage": "",
-                "Events.Timestamp": "['2025-12-15 17:59:40.000000000']",
-                "Events.Name": "['e']",
-                "Events.Attributes": "[{}]",
+                "Events.Timestamp": "[np.datetime64('2025-12-15T17:59:35.000000000'), "
+                "np.datetime64('2025-12-15T17:59:40.000000000')]",
+                "Events.Name": "['e', 'f']",
+                "Events.Attributes": "[{}, {}]",
             }
         ],
     )
