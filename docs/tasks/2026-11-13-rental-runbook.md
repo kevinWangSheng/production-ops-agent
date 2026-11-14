@@ -53,7 +53,7 @@
 ### 阶段 2：切到宿主拓扑（约 0.5 小时，按第 1 节第 2 项的推荐）
 
 1. 查 kind 网关：`docker network inspect kind -f '{{(index .IPAM.Config 0).Gateway}}'`（F9 主机上是 172.18.0.1，取下标 0 未核实）。然后执行 `OPSPILOT_LAB_HOST_ADDRESS=<网关> python3 scripts/kind_lab.py up`，重新渲染 webhook。`ufw status` 为 active 时，放行 kind 网段到 8080（这台租机用完即弃）。
-2. 宿主 PG 按开发指南「本地运行演示」执行：`python -m scripts.m0.postgres_lab start`、`make migrate`、`python -m scripts.m0.postgres_lab runtime-roles`。web 与 worker 的环境照 F3 run.md「环境」一节，有三处不同：`OPSPILOT_TOOL_PROFILE=otel-demo-ext`；worker 读 `tmp/m1-kind-lab/k8s-investigator.env`（宿主形态）；web 设 `OPSPILOT_BIND=<网关>:8080`。trace 用 `OPSPILOT_TRACE=lab`，项目按 A7-17 设为 `opspilot-lab-a7-main-path-<日期>`，开跑前由驱动设成长期保留。
+2. 宿主 PG 按开发指南「本地运行演示」执行：`python -m scripts.m0.postgres_lab start`，按开发指南导出 owner 连接 `export OPSPILOT_DSN=<owner 连接>`（`make migrate` 缺它会报 `OPSPILOT_DSN is required`），再 `make migrate`、`python -m scripts.m0.postgres_lab runtime-roles`。web 与 worker 的环境照 F3 run.md「环境」一节，有三处不同：`OPSPILOT_TOOL_PROFILE=otel-demo-ext`；worker 读 `tmp/m1-kind-lab/k8s-investigator.env`（宿主形态）；web 设 `OPSPILOT_BIND=<网关>:8080`。trace 用 `OPSPILOT_TRACE=lab`，项目按 A7-17 设为 `opspilot-lab-a7-main-path-<日期>`，开跑前由驱动设成长期保留。
 3. 冒烟：用 lab 的 Alertmanager 发一条测试告警（F9 S4 用的是 `amtool alert add`，在 lab 里执行的确切命令未核实），确认 web 收到 `POST /intake/alertmanager`，`up{job="opspilot"}` 的状态先不管（抓取目标指向网关，可能是 down）。
 4. 失败时：网关不通就退回第 1 节第 2 项的备选（Compose 加 `outbox`），A7 与 #580 的 trace 证据会降级，要报 lead。
 
@@ -97,7 +97,7 @@ set -a; . tmp/m1-kind-lab/k8s-investigator.env; . <investigator 的 Prometheus e
 
 驱动是 `scripts/itbench_lite/driver.py`（#604），子命令有 `attempt`、`round`、`judge`、`scores`。回放服务默认绑 127.0.0.1 的 29110（PG）、29190（Prometheus）、29186/29118（Jaeger 查询与 OTLP）、29143（假 server）、29180（web），都避开了 lab 的 19090、16686、18080、8080、55431、9464，要改就用 `--{pg,prometheus,jaeger-query,jaeger-otlp,fake-k8s,web}-port`。镜像钉 `prom/prometheus:v3.5.0` 与 `jaegertracing/all-in-one:1.53.0`（`services.py`）。证据写到 `docs/evidence/itbench-lite-sre-<轮次>/S<id>/trial-<n>/summary.json`，其余都在 git 忽略的 `tmp/itbench-lite/<轮次>/`。
 
-1. 准备：#605 的词表目录（每题 `S<id>.txt`）与分档文件；私有 env 文件放 DeepSeek、LangSmith、judge 的 key（`--env-file`，600，放在仓库外）；判分要 `ITBENCH_EVALUATIONS_DIR` 指向重新克隆的评测器。数据集根目录本身带答案文件，驱动只按名字复制白名单文件，不打开答案。
+1. 准备：#605 的词表目录（每题 `S<id>.txt`）与分档文件；私有 env 文件放 DeepSeek、LangSmith、judge 的 key（`--env-file`，600，放在仓库外）；判分要 `ITBENCH_EVALUATIONS_DIR` 指向重新克隆的评测器。`--env-file` 只导入 DeepSeek 与 LangSmith 变量，judge 子进程的凭据（如 `ZAI_API_KEY`）与 `ITBENCH_EVALUATIONS_DIR` 只从父进程环境继承（`driver.py` 的 `judge_env`），所以跑 `attempt`、`round`、`judge` 之前都先在同一个 shell 里 `set -a; . <私有 env 文件>; set +a`。数据集根目录本身带答案文件，驱动只按名字复制白名单文件，不打开答案。
 2. 冒烟 1 题 × 1 次（题目选数据完整的，不选 S18、S38）：`python3 -m scripts.itbench_lite.driver attempt --round <轮次> --dataset <数据集根> --scenario <场景目录名> --trial 1 --vocabulary <词表>/S<id>.txt --env-file ~/rental-private/lite.env`。判定：
    - 退出码 0，`summary.json` 已冻结，`tmp/…/trial-1/complete.json` 已写出。
    - 作废线按 r4 原文：灌完立即投递，灌完到投递超过 2 分钟这次作废（驱动每个 trial 最多给 3 次机会）。看 `gap_seconds`。
