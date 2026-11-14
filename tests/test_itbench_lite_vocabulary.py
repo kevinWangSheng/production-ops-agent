@@ -49,10 +49,6 @@ def make_scenario(root: Path) -> Path:
             _obj("nodes", "Node", "node-a", ns=None),
             _obj("pods", "Pod", "coredns-1", ns="kube-system"),
             _obj("clusterroles", "ClusterRole", "admin-role", ns=None),
-            # No k8s.resource.name: the object's own kind decides.
-            dict(_obj("configmaps", "ConfigMap", "flags"), LogAttributes="{}"),
-            dict(_obj("secrets", "Secret", "token-x"), LogAttributes="{}"),
-            dict(_obj("roles", "Role", "reader"), LogAttributes="{}"),
         ],
     )
     _tsv(
@@ -83,7 +79,6 @@ EXPECTED = [
     "checkout",
     "checkout-7f9-a",
     "checkout-7f9-b",
-    "flags",
     "Frontend",
     "node-a",
     "payment",
@@ -137,3 +132,13 @@ def test_answer_file_is_refused(tmp_path):
     (root / "assertion.json").write_text("{}")
     with pytest.raises(AnswerFilePresent):
         vocabulary.main([str(root), "--out", str(tmp_path / "v.txt")])
+
+
+@pytest.mark.parametrize("attributes", ["{}", ""])
+def test_object_row_without_resource_name_is_refused(tmp_path, attributes):
+    root = make_scenario(tmp_path / "s")
+    rows = [_obj("pods", "Pod", "ok-1"), dict(_obj("pods", "Pod", "x"))]
+    rows[1]["LogAttributes"] = attributes
+    _tsv(root / "k8s_objects_raw.tsv", rows)
+    with pytest.raises(ValueError, match="data row 2: no k8s.resource.name"):
+        vocabulary.build(load_snapshot(root))

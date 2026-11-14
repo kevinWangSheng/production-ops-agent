@@ -42,8 +42,6 @@ STOPWORDS = frozenset({"kubernetes", "default"})
 #: Resource classes left out although ``answer.RESOURCE_KINDS`` lists them.
 EXCLUDED_PLURALS = frozenset({"secrets", "namespaces"})
 OBJECT_PLURALS = frozenset(RESOURCE_KINDS) - EXCLUDED_PLURALS
-#: Kubernetes ``kind`` to plural, for rows without ``k8s.resource.name``.
-PLURAL_OF_KIND = {kind: plural for plural, kind in RESOURCE_KINDS.items()}
 SERVICE_ATTRIBUTE = "service.name"
 
 
@@ -62,9 +60,9 @@ def _literal(text: str | None, where: str) -> dict[str, Any]:
 def object_names(snapshot: Snapshot) -> Iterator[str]:
     """``metadata.name`` of every kept object row (L-V6, L-V7).
 
-    The resource class is the row's ``LogAttributes`` ``k8s.resource.name``
-    (what the fake API server serves it as); a row without one falls back to
-    the object's own ``kind``.
+    The resource class is the row's ``LogAttributes`` ``k8s.resource.name``;
+    a row without one is malformed and raises, as in the fake API server
+    (``fake_k8s._object_type``).
     """
     path = snapshot.tsv_path("objects")
     if path is None:
@@ -72,16 +70,14 @@ def object_names(snapshot: Snapshot) -> Iterator[str]:
     for number, row in enumerate(snapshot.iter_tsv(path), start=1):
         where = f"{path.name} data row {number}"
         plural = _literal(row.get("LogAttributes"), where).get("k8s.resource.name")
-        if plural is not None and plural not in OBJECT_PLURALS:
+        if not (isinstance(plural, str) and plural):
+            raise ValueError(f"{where}: no k8s.resource.name")
+        if plural not in OBJECT_PLURALS:
             continue
         try:
             body = json.loads(row.get("Body") or "")
         except (ValueError, RecursionError):
             raise ValueError(f"{where}: Body is not JSON") from None
-        if plural is None:
-            kind = body.get("kind") if isinstance(body, dict) else None
-            if PLURAL_OF_KIND.get(kind) not in OBJECT_PLURALS:
-                continue
         metadata = body.get("metadata") if isinstance(body, dict) else None
         if not isinstance(metadata, dict):
             raise ValueError(f"{where}: object has no metadata")
