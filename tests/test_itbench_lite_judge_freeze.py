@@ -291,6 +291,7 @@ def test_deliver_refuses_non_loopback(bad):
     [
         {"root_cause_entity_precision": 1.0, "root_cause_entity_recall": 1.0},
         {},
+        {"root_cause_entity_f1": float("nan")},
     ],
 )
 def test_judge_result_without_required_official_key_is_a_failed_judge(

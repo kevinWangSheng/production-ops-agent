@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import shutil
 import subprocess
@@ -71,14 +72,17 @@ REQUIRED_OFFICIAL_KEYS = ("root_cause_entity_f1",)
 
 
 def missing_official_keys(official: Mapping[str, object] | None) -> list[str]:
-    """Required official keys absent from (or not numeric in) ``official``."""
+    """Required official keys absent from ``official`` or not a finite number."""
     values = official or {}
-    return [
-        key
-        for key in REQUIRED_OFFICIAL_KEYS
-        if not isinstance(values.get(key), (int, float))
-        or isinstance(values.get(key), bool)
-    ]
+    return [key for key in REQUIRED_OFFICIAL_KEYS if not _finite(values.get(key))]
+
+
+def _finite(value: object) -> bool:
+    return (
+        isinstance(value, (int, float))
+        and not isinstance(value, bool)
+        and math.isfinite(value)
+    )
 
 
 METRIC_KEYS = (
