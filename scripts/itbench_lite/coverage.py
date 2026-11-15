@@ -1,8 +1,8 @@
 """Coverage-tiered score table for the ITBench-Lite SRE run (#582, L5/L11).
 
 All scenarios stay in the denominator: a missing trial or a trial without a
-score counts as 0, never as a dropped run.  A scored trial that lacks a main
-official metric (``MAIN_METRICS``) is refused rather than counted as 0 (#641).  Scenarios are grouped by a
+score counts as 0, never as a dropped run.  A scored trial with a report that
+lacks a selected metric is refused rather than counted as 0 (#641).  Scenarios are grouped by a
 caller-supplied tier file and the two scenarios with incomplete snapshot data
 (S38, S18) are flagged.  The tier file must be built from the census columns
 that carry no answer information (L11); this module only reads the file it is
@@ -19,6 +19,7 @@ import argparse
 import json
 import math
 import re
+import sys
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -90,10 +91,10 @@ def _mean(values: Sequence[float]) -> float:
     return sum(values) / len(values) if values else 0.0
 
 
-#: The main official metrics (L-D15).  A scored trial without one is a judge
-#: result that was never completed, not a 0: reportless trials already carry
-#: explicit zeros (L5), so the table refuses instead of filling in (#641).
-MAIN_METRICS = frozenset({"root_cause_entity_f1", "root_cause_entity_pass"})
+#: Row keys ``driver scores`` adds besides the metrics: the trial number and
+#: whether the trial had a report (1.0/0.0).
+TRIAL_KEY = "trial"
+REPORT_KEY = "report_present"
 
 
 def _number(value: Any) -> float | None:
@@ -104,11 +105,23 @@ def _number(value: Any) -> float | None:
     return None
 
 
+def _trial_label(trial: Mapping[str, Any], number: int) -> str:
+    value = _number(trial.get(TRIAL_KEY))
+    return f"trial-{int(value)}" if value is not None else f"trial row {number}"
+
+
 def _value(trial: Mapping[str, Any], metric: str, where: str = "") -> float:
+    """A trial's metric.  A scored trial with a report that lacks the metric
+    (or holds a non-finite value) is refused, naming the trial and the key: it
+    is an incomplete judge result, not a 0 (#641).  A reportless trial (L5,
+    ``report_present`` 0) and a missing trial (no row, ``where`` empty)
+    count 0."""
     value = _number(trial.get(metric))
-    if value is None and metric in MAIN_METRICS and where:
-        raise ValueError(f"{where} has a score but no {metric}; judge it again")
-    return 0.0 if value is None else value
+    if value is not None:
+        return value
+    if where and _number(trial.get(REPORT_KEY)) != 0.0:
+        raise ValueError(f"{where} has a report but no {metric!r}; judge it again")
+    return 0.0
 
 
 def build_table(
@@ -138,7 +151,7 @@ def build_table(
             )
         for number, trial in enumerate(trials, start=1):
             for metric in metrics:
-                _value(trial, metric, f"scenario {key} trial row {number}")
+                _value(trial, metric, f"S{key} {_trial_label(trial, number)}")
         padded = trials + [{}] * (expected_trials - len(trials))
         rows.append(
             {
@@ -231,7 +244,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     tiers = load_tiers(json.loads(Path(args.tiers).read_text()))
     scores = json.loads(Path(args.scores).read_text())
-    table = build_table(tiers, scores, args.metric, expected_trials=args.trials)
+    try:
+        table = build_table(tiers, scores, args.metric, expected_trials=args.trials)
+    except ValueError as error:
+        print(f"coverage: {error}", file=sys.stderr)
+        return 2
     if args.json_out:
         Path(args.json_out).write_text(
             json.dumps(table, ensure_ascii=False, indent=2) + "\n"

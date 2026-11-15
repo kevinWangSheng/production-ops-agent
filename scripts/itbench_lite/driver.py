@@ -1349,7 +1349,19 @@ def aggregate_scores(
                 }
                 if official_missing is not None:
                     official_missing.append(f"{scenario.name}/{trial.name}")
-            rows.append({**_numeric(data.get("det")), **official})
+            rows.append(
+                {
+                    **_numeric(data.get("det")),
+                    **official,
+                    # For coverage: which trial, and whether it had a report
+                    # (a reportless trial counts 0, L5; one with a report must
+                    # carry every selected metric, #641).
+                    "trial": float(trial.name.split("-")[1]),
+                    "report_present": 0.0
+                    if data.get("report_present") is False
+                    else 1.0,
+                }
+            )
     return table
 
 
