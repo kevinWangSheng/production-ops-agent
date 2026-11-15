@@ -64,6 +64,23 @@ _VALUE_KEYS = {
     "calculation_recall": "_recall",
     "calculation_f1": "_f1",
 }
+#: Official keys a judged trial must carry; the main score (L-D15) is built
+#: from ``root_cause_entity_f1``.  A judge result without them is a failed
+#: judge call, not a 0 (#641; L5 zeroes only reportless trials).
+REQUIRED_OFFICIAL_KEYS = ("root_cause_entity_f1",)
+
+
+def missing_official_keys(official: Mapping[str, object] | None) -> list[str]:
+    """Required official keys absent from (or not numeric in) ``official``."""
+    values = official or {}
+    return [
+        key
+        for key in REQUIRED_OFFICIAL_KEYS
+        if not isinstance(values.get(key), (int, float))
+        or isinstance(values.get(key), bool)
+    ]
+
+
 METRIC_KEYS = (
     "root_cause_entity_precision",
     "root_cause_entity_recall",

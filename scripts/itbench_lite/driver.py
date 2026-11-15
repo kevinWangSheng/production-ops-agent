@@ -57,7 +57,7 @@ from typing import Any
 
 from opspilot.web.auth import token_digest
 from scripts import lab_evidence, run_freeze
-from scripts.itbench_lite import answer, metrics, services, traces
+from scripts.itbench_lite import answer, metrics, official_eval, services, traces
 from scripts.itbench_lite.alerts import (
     INTAKE_PATH,
     EntryTarget,
@@ -1605,8 +1605,14 @@ def main(argv: Sequence[str] | None = None, backends: Backends | None = None) ->
             scored = trial_dir / "scores.json"
             if not meta.is_dir():
                 continue
-            if scored.is_file() and json.loads(scored.read_text()).get("judged"):
-                continue
+            if scored.is_file():
+                done = json.loads(scored.read_text())
+                # A result judged before #641 may lack a required official
+                # key; it is judged again like a failed judge call.
+                if done.get("judged") and not official_eval.missing_official_keys(
+                    done.get("official")
+                ):
+                    continue
             scenario_dir = next(p.name for p in meta.iterdir() if p.is_dir())
             trial = int(trial_dir.name.split("-")[1])
             outcome = finish_judging(

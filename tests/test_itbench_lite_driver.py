@@ -1051,3 +1051,33 @@ def test_rescore_refuses_a_vocabulary_that_points_at_an_answer_file(
         "ANSWER_FILE_AS_INPUT"
     )
     assert not (cfg.tmp_root / "t604-r638").exists()  # nothing partial left
+
+
+def test_judge_command_rejudges_a_judged_result_missing_a_required_key(
+    env, tmp_path, capsys
+):
+    # #641: a scores file marked judged but without root_cause_entity_f1 (as
+    # written before the fix) is judged again; a complete one is skipped.
+    cfg, vocab = env
+    make_scenario(cfg.dataset, "Scenario-7")
+    h = Harness(tmp_path)
+    driver.run_scenario(cfg, h.backends(), "Scenario-16", vocab, [1])
+    driver.run_scenario(cfg, h.backends(), "Scenario-7", vocab, [1])
+    complete = {"judged": True, "det": {"det_f1": 0.0},
+                "official": {"root_cause_entity_f1": 0.5}}  # fmt: skip
+    lacking = {"judged": True, "det": {"det_f1": 0.0},
+               "official": {"root_cause_entity_precision": 0.5}}  # fmt: skip
+    (cfg.round_dir / "S16" / "trial-1" / "scores.json").write_text(json.dumps(complete))
+    (cfg.round_dir / "S7" / "trial-1" / "scores.json").write_text(json.dumps(lacking))
+    h2 = Harness(tmp_path)
+    code = driver.main(
+        [
+            "judge", "--round", cfg.round, "--ground-truth", str(cfg.dataset),
+            "--tmp-root", str(cfg.tmp_root),
+        ],
+        backends=h2.backends(),
+    )  # fmt: skip
+    assert code == 0
+    assert [c["outputs"] for c in h2.judge_calls] == [
+        cfg.round_dir / "S7" / "trial-1" / "outputs"
+    ]

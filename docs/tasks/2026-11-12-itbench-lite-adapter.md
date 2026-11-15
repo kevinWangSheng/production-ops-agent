@@ -194,3 +194,10 @@ L6 已写入决定表。实现会话先做不依赖 A 系列的部分；假 serv
 - 修在换算侧：`answer.convert` 不把 `namespace` 参数（默认 `DEFAULT_NAMESPACE`，即驱动的部署命名空间）当实体候选，大小写不敏感；`conversion_meta.json` 记 `excluded_namespace`。理由：歧义发生在「文本里的命名空间前缀」这一步，与词表来源无关；改换算后已生成的词表文件原样可用，离线重算不用重生成词表，也不改用户裁决过的 L-V6/L-V7。代价：与命名空间同名的对象（这个 ServiceAccount）永远不会成为实体。证据里模型传的 `namespace` 值不排除：模型可能传错，排除它会误删真实服务名。
 - 离线重算：`driver rescore --round <原轮次> --into <新轮次> --vocabulary-dir <词表目录>` 读冻结的 `docs/evidence/itbench-lite-sre-<原轮次>/S*/trial-*/summary.json`（`run` 块含报告与证据），用当前换算规则写到 `tmp/itbench-lite/<新轮次>/`，再用已有的 `driver judge --round <新轮次>` 判分、`driver scores` 汇总。不调模型、不起服务，原轮次只读，新轮次已存在就拒绝。
 - 独立审查（Codex gpt-6-astra）两条发现已修：rescore 的目标目录不得与源轮次或其证据目录互相包含；词表文件先过 `check_input_file`（名字或链接目标是答案名就停），与 `round` 路径一致；全部词表在写任何文件前先查完，中止不留半个目标轮次（机器人分诊）。
+
+## 缺陷修复（#641：判分结果缺官方核心指标仍记为已判分）
+
+状态：进行中。worktree `../poa-641-fix`，分支 `fix/641-judge-required-keys`。
+
+- 裁决（2026-11-15 用户，F3）：判分结果缺官方核心指标时当成判分失败处理，再离线重判；原始结果保留，重判结果另存。
+- 做法：`official_eval.REQUIRED_OFFICIAL_KEYS = ("root_cause_entity_f1",)`，L-D15 的主分只由它算出（`root_cause_entity_pass` 由它导出）。`judge_trial` 拿到的官方行缺这个键时记 `judge_error: OFFICIAL_KEYS_MISSING`、`judged: false`、`official: null`、退出码 3，和 judge 调用失败同样处理（驱动重试，确定性分照写）。`driver judge` 补判时，已标 `judged: true` 但缺必需键的旧结果也重新判。理由：必需键只取主分依赖的那一个，precision/recall 不参与主分，缺了不判失败，避免把可用的结果判废。
