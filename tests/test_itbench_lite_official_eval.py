@@ -175,3 +175,18 @@ def test_missing_meta_is_refused(tmp_path):
     (trial / "agent_output.json").write_text("{}")
     with pytest.raises(oe.ConfigError, match="conversion_meta"):
         oe.stage_judged(tmp_path / "outputs", tmp_path / "staged")
+
+
+@pytest.mark.parametrize(
+    "official",
+    [
+        None,
+        [],
+        "x",
+        {"root_cause_entity_precision": 1.0},
+        {"root_cause_entity_f1": float("inf")},
+    ],
+)
+def test_missing_official_keys_flags_malformed_results(official):
+    assert oe.missing_official_keys(official) == ["root_cause_entity_f1"]
+    assert oe.missing_official_keys({"root_cause_entity_f1": 0.0}) == []

@@ -71,9 +71,9 @@ _VALUE_KEYS = {
 REQUIRED_OFFICIAL_KEYS = ("root_cause_entity_f1",)
 
 
-def missing_official_keys(official: Mapping[str, object] | None) -> list[str]:
+def missing_official_keys(official: object) -> list[str]:
     """Required official keys absent from ``official`` or not a finite number."""
-    values = official or {}
+    values = official if isinstance(official, Mapping) else {}
     return [key for key in REQUIRED_OFFICIAL_KEYS if not _finite(values.get(key))]
 
 
