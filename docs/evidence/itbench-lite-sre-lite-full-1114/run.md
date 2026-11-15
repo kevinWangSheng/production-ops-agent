@@ -25,7 +25,9 @@
 | judge | 105 个 ok；补判退出码 0 |
 | 结束后端口与 `itbl-*` 容器 | 0 |
 
-补充（本记录从 summary 统计）：灌数据 47–106 秒，数据末尾到投递 112–171 秒；LangSmith 回读 105/105 `found`（每个 summary 的 `trace.roots[].url`，项目 `opspilot-lab-itbench-lite-lite-full-1114`）；结论 `supported` 70、`partial` 35；Run 终态 `completed` 104、`waiting_human` 1（S23 trial-1，有报告）；换算 `reason` 全为空（没有报告校验失败）。
+补充（本记录从 summary 统计）：灌数据 47–106 秒，数据末尾到投递 112–171 秒；LangSmith 回读 105/105 `found`（每个 summary 的 `trace.roots[].url`，项目 `opspilot-lab-itbench-lite-lite-full-1114`）；结论 `supported` 70、`partial` 35；Run 终态 `completed` 104、`waiting_human` 1；换算 `reason` 全为空。
+
+**S23 trial-1 的报告被产品判为无效，但换算照常计分。** 这个 Run 的产品结果是 `outcome.final_state: failed`、`report_available: false`、`handoff_reasons: ["REPORT_INVALID"]`，转人工等待。冻结的 `run.report` 里仍有一份报告对象，它通过了换算侧的 `m0-report-v2` 结构校验，所以驱动照常换算、判分（L5 只把「没有报告对象」的 Run 计为空结果）。影响：原始轮次这个 trial 的官方 pass 为 1，在 7/105 之内；按「产品判无效即视为无报告」计，原始官方 pass@1 为 6/105 = 0.057（故障窗无 trace 档 0.048）。修复后轮次这个 trial 的四项分数都是 0，修复后的主分数不受影响。驱动是否应把产品判无效的报告当作无报告，是换算合同的问题，本轮不改，另行处理。
 
 ## #638：命名空间名被当成根因实体
 
@@ -46,7 +48,7 @@
 |---|---|---|---|
 | 官方 pass@1 `root_cause_entity_pass` | 指标+trace（14 题） | 0.071 | 0.000 |
 | | 故障窗无 trace（21 题） | 0.063 | 0.048 |
-| | **全部（35 题）** | **0.067**（7/105） | **0.029**（3/105） |
+| | **全部（35 题）** | **0.067**（7/105；S23 trial-1 按无报告计为 6/105 = 0.057，见上） | **0.029**（3/105） |
 | 官方根因实体 F1 `root_cause_entity_f1` | 指标+trace | 0.071 | 0.000 |
 | | 故障窗无 trace | 0.063 | 0.048 |
 | | **全部** | **0.067** | **0.029** |
