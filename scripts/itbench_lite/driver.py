@@ -985,17 +985,31 @@ class Attempt:
         return convert_run(run_block, self.vocabulary)
 
 
+REPORT_REJECTED_BY_PRODUCT = "REPORT_REJECTED_BY_PRODUCT"
+
+
 def convert_run(
     run_block: Mapping[str, Any], vocabulary: Sequence[str]
 ) -> tuple[answer.Conversion, str | None]:
     """A frozen Run block's report and evidence through ``answer.convert``;
-    the second value is the reason a present report counted as reportless."""
+    the second value is the reason a present report counted as reportless.
+
+    A report the product itself rejected (``outcome.report_available`` not
+    true, e.g. ``REPORT_INVALID``) counts as no report: empty output, not
+    judged, 0 (L-D9; the product's validation is the authoritative one, #645).
+    The frozen Run block keeps the raw report either way."""
     report = run_block.get("report")
     evidence = run_freeze.flat_evidence(run_block)
     if not isinstance(report, Mapping):
         return answer.convert(None, [], vocabulary), (
             None if report is None else "REPORT_INVALID_FOR_CONVERSION"
         )
+    outcome = run_block.get("outcome")
+    available = (
+        outcome.get("report_available") if isinstance(outcome, Mapping) else None
+    )
+    if available is not True:
+        return answer.convert(None, [], vocabulary), REPORT_REJECTED_BY_PRODUCT
     try:
         return answer.convert(report, evidence, vocabulary), None
     except ValueError:

@@ -185,6 +185,8 @@ class Harness:
                 "run_id": run_id,
                 "report": self.report,
                 "report_present": self.report is not None,
+                # As run_freeze.collect freezes it: the product accepted the report.
+                "outcome": {"report_available": self.report is not None},
                 "observations": [
                     {
                         "evidence_id": "ev-1",
@@ -1160,3 +1162,51 @@ def test_resume_judging_keeps_the_earlier_scores_file(env, tmp_path):
     assert out["trials"][1]["resumed"] == "judge"
     kept = list((trial_dir / driver.SUPERSEDED_DIR).iterdir())
     assert [json.loads(p.read_text()) for p in kept] == [earlier]
+
+
+@pytest.mark.parametrize(
+    "outcome",
+    [
+        {"final_state": "failed", "report_available": False,
+         "handoff_reasons": ["REPORT_INVALID"]},
+        {"available": False, "reason": "UNKNOWN_DURABLE_STATE"},
+        None,
+    ],
+)  # fmt: skip
+def test_report_rejected_by_the_product_counts_as_no_report(outcome):
+    # #645: a schema-valid report that the product did not accept is not
+    # converted: empty output, not judged (report_present false), 0.
+    block = {"report": valid_report(), "observations": [{"evidence_id": "ev-1"}]}
+    if outcome is not None:
+        block["outcome"] = outcome
+    conversion, reason = driver.convert_run(block, ["checkout"])
+    assert reason == "REPORT_REJECTED_BY_PRODUCT"
+    assert conversion.agent_output == {
+        "entities": [], "propagations": [], "alerts_explained": []
+    }  # fmt: skip
+    assert conversion.meta["report_present"] is False
+    accepted, reason = driver.convert_run(
+        {**block, "outcome": {"report_available": True}}, ["checkout"]
+    )
+    assert reason is None and accepted.meta["report_present"] is True
+
+
+def test_rescore_applies_the_product_rejection_to_a_frozen_round(env, tmp_path, capsys):
+    cfg, _ = env
+    vocab_dir = tmp_path / "vocab"
+    vocab_dir.mkdir()
+    (vocab_dir / "S16.txt").write_text("checkout\n")
+    driver.run_scenario(cfg, Harness(tmp_path).backends(), "Scenario-16",
+                        vocab_dir / "S16.txt", [1])  # fmt: skip
+    summary_path = cfg.evidence_dir / "S16" / "trial-1" / "summary.json"
+    summary = json.loads(summary_path.read_text())
+    summary["run"]["outcome"] = {"report_available": False}
+    summary_path.write_text(json.dumps(summary))
+    assert driver.main(
+        ["rescore", "--round", cfg.round, "--into", "t604-r645",
+         "--vocabulary-dir", str(vocab_dir), "--tmp-root", str(cfg.tmp_root),
+         "--evidence-root", str(cfg.evidence_root)]
+    ) == 0  # fmt: skip
+    row = json.loads(capsys.readouterr().out.splitlines()[-1])
+    assert row["reason"] == "REPORT_REJECTED_BY_PRODUCT"
+    assert row["root_cause_entity"] is None and row["entity_count"] == 0
