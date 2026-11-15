@@ -202,3 +202,4 @@ L6 已写入决定表。实现会话先做不依赖 A 系列的部分；假 serv
 - 裁决（2026-11-15 用户，F3）：判分结果缺官方核心指标时当成判分失败处理，再离线重判；原始结果保留，重判结果另存。
 - 做法：`official_eval.REQUIRED_OFFICIAL_KEYS = ("root_cause_entity_f1",)`，L-D15 的主分只由它算出（`root_cause_entity_pass` 由它导出）。`judge_trial` 拿到的官方行缺这个键时记 `judge_error: OFFICIAL_KEYS_MISSING`、`judged: false`、`official: null`、退出码 3，和 judge 调用失败同样处理（驱动重试，确定性分照写）。`driver judge` 补判时，已标 `judged: true` 但缺必需键的旧结果也重新判。理由：必需键只取主分依赖的那一个，precision/recall 不参与主分，缺了不判失败，避免把可用的结果判废。
 - 独立审查（Codex gpt-6-astra）一条发现已修：`driver judge` 重判缺键的旧结果前，把原 `scores.json` 逐字节复制到 `trial-<n>/superseded/<时间戳>-scores.json`（独占创建，不覆盖），满足「原始结果保留」；分数表只读 `scores.json`。
+- 范围扩大（2026-11-15 用户裁决，见 #641 评论）：`coverage` 出表时，已有分数行缺主指标（`MAIN_METRICS`：`root_cause_entity_f1`、`root_cause_entity_pass`）就报错，不再补 0；没有分数行的缺失 trial 仍计 0、留在分母，无报告的 trial 本来就写显式 0（L5）。其他指标缺值仍按 0。重判按 L-D9 只重跑判分，最多 2 次（`JUDGE_TRIES = 3`）；用尽仍缺的记缺失、计 0、留在分母，在 run.md 单独列出。

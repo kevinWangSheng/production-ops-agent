@@ -340,7 +340,7 @@ def trial_scores(
     """Per-scenario trial scores for ``coverage.build_table``.
 
     Judged trials take the evaluator's flattened scores (a failed judge call
-    leaves them empty, which the table counts as 0).  Reportless trials get 0
+    leaves them empty; ``judge_trial`` then reports a failed judge, #641).  Reportless trials get 0
     on every metric whatever the evaluator said (L5).
     """
 

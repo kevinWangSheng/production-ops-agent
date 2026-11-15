@@ -75,3 +75,25 @@ def test_scenario_key_forms():
     } == {"38"}
     with pytest.raises(ValueError):
         coverage.scenario_key("abc")
+
+
+@pytest.mark.parametrize("metric", ["root_cause_entity_f1", "root_cause_entity_pass"])
+def test_scored_trial_without_a_main_metric_is_refused_not_zeroed(metric):
+    # #641: a trial row that is present but lacks the main official metric is
+    # an incomplete judge result; only missing trials (absent rows) count 0.
+    ids = coverage.load_tiers({f"S{i}": "T" for i in IDS})
+    complete = {metric: 1.0}
+    with pytest.raises(ValueError, match=f"scenario 33 trial row 2 .*{metric}"):
+        coverage.build_table(
+            ids, {"S33": [complete, {"root_cause_entity_precision": 1.0}]}, [metric]
+        )
+    table = coverage.build_table(ids, {"S33": [complete, complete]}, [metric])
+    row = next(r for r in table["scenarios"] if r["scenario"] == "33")
+    assert row["means"][metric] == pytest.approx(2 / 3)  # the absent row is 0
+
+
+def test_other_metrics_still_count_a_missing_value_as_zero():
+    ids = coverage.load_tiers({f"S{i}": "T" for i in IDS})
+    table = coverage.build_table(ids, {"S1": [{"x": 1.0}, {}]}, ["propagation_chain"])
+    row = next(r for r in table["scenarios"] if r["scenario"] == "1")
+    assert row["means"]["propagation_chain"] == 0.0

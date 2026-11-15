@@ -1,7 +1,8 @@
 """Coverage-tiered score table for the ITBench-Lite SRE run (#582, L5/L11).
 
 All scenarios stay in the denominator: a missing trial or a trial without a
-score counts as 0, never as a dropped run.  Scenarios are grouped by a
+score counts as 0, never as a dropped run.  A scored trial that lacks a main
+official metric (``MAIN_METRICS``) is refused rather than counted as 0 (#641).  Scenarios are grouped by a
 caller-supplied tier file and the two scenarios with incomplete snapshot data
 (S38, S18) are flagged.  The tier file must be built from the census columns
 that carry no answer information (L11); this module only reads the file it is
@@ -88,13 +89,25 @@ def _mean(values: Sequence[float]) -> float:
     return sum(values) / len(values) if values else 0.0
 
 
-def _value(trial: Mapping[str, Any], metric: str) -> float:
-    value = trial.get(metric)
+#: The main official metrics (L-D15).  A scored trial without one is a judge
+#: result that was never completed, not a 0: reportless trials already carry
+#: explicit zeros (L5), so the table refuses instead of filling in (#641).
+MAIN_METRICS = frozenset({"root_cause_entity_f1", "root_cause_entity_pass"})
+
+
+def _number(value: Any) -> float | None:
     if isinstance(value, bool):
         return 1.0 if value else 0.0
     if isinstance(value, (int, float)):
         return float(value)
-    return 0.0
+    return None
+
+
+def _value(trial: Mapping[str, Any], metric: str, where: str = "") -> float:
+    value = _number(trial.get(metric))
+    if value is None and metric in MAIN_METRICS and where:
+        raise ValueError(f"{where} has a score but no {metric}; judge it again")
+    return 0.0 if value is None else value
 
 
 def build_table(
@@ -122,6 +135,9 @@ def build_table(
             raise ValueError(
                 f"scenario {key} has {len(trials)} trials, expected {expected_trials}"
             )
+        for number, trial in enumerate(trials, start=1):
+            for metric in metrics:
+                _value(trial, metric, f"scenario {key} trial row {number}")
         padded = trials + [{}] * (expected_trials - len(trials))
         rows.append(
             {
