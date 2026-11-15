@@ -188,9 +188,10 @@ L6 已写入决定表。实现会话先做不依赖 A 系列的部分；假 serv
 
 ## 缺陷修复（#638：命名空间名被当成根因实体）
 
-状态：进行中。worktree `../poa-638-fix`，分支 `fix/638-namespace-root`。
+状态：已完成（#639 合并为 `a720b9d8`；全量重算见 [证据](../evidence/itbench-lite-sre-lite-full-1114/run.md)）。
 
 - 原因（主机快照核对）：`otel-demo` 进词表不是生成器漏掉了 Namespace 对象，而是快照里有一个同名 ServiceAccount（`serviceaccounts`，命名空间 `otel-demo`），按 L-V6 被正当收进对象名。报告总结常写 `otel-demo/<服务>`，换算先命中它当根因。
 - 修在换算侧：`answer.convert` 不把 `namespace` 参数（默认 `DEFAULT_NAMESPACE`，即驱动的部署命名空间）当实体候选，大小写不敏感；`conversion_meta.json` 记 `excluded_namespace`。理由：歧义发生在「文本里的命名空间前缀」这一步，与词表来源无关；改换算后已生成的词表文件原样可用，离线重算不用重生成词表，也不改用户裁决过的 L-V6/L-V7。代价：与命名空间同名的对象（这个 ServiceAccount）永远不会成为实体。证据里模型传的 `namespace` 值不排除：模型可能传错，排除它会误删真实服务名。
 - 离线重算：`driver rescore --round <原轮次> --into <新轮次> --vocabulary-dir <词表目录>` 读冻结的 `docs/evidence/itbench-lite-sre-<原轮次>/S*/trial-*/summary.json`（`run` 块含报告与证据），用当前换算规则写到 `tmp/itbench-lite/<新轮次>/`，再用已有的 `driver judge --round <新轮次>` 判分、`driver scores` 汇总。不调模型、不起服务，原轮次只读，新轮次已存在就拒绝。
 - 独立审查（Codex gpt-6-astra）两条发现已修：rescore 的目标目录不得与源轮次或其证据目录互相包含；词表文件先过 `check_input_file`（名字或链接目标是答案名就停），与 `round` 路径一致；全部词表在写任何文件前先查完，中止不留半个目标轮次（机器人分诊）。
+- 裁决（2026-11-15 用户，全局审查发现 F1 指出这条规则原来不在决定表里）：保留 #638 的做法，不收窄也不扩大，L2 不动。规则：从换算用的词表里去掉与部署命名空间同名的裸名；带 Kind 和对象名的实体照常参与。已知代价：同名 ServiceAccount 永远不会成为实体。
