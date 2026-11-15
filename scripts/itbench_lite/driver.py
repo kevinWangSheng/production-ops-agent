@@ -1027,6 +1027,8 @@ def judge_trial(
     """Run the judging process (retried); return its numeric scores only."""
     trial_dir = cfg.round_dir / label / f"trial-{trial}"
     out = trial_dir / "scores.json"
+    if out.is_file():
+        keep_superseded(out)  # an earlier result is kept, never replaced (#641)
     status: int | str | None = None
     for attempt in range(1, JUDGE_TRIES + 1):
         work = trial_dir / f"judge-{attempt}"
@@ -1045,9 +1047,12 @@ def judge_trial(
         )
         if status == 0:
             data = _read_json(out)
-            if isinstance(data, Mapping) and _numeric(data.get("det")):
+            if not (isinstance(data, Mapping) and _numeric(data.get("det"))):
+                status = "SCORES_INVALID"  # exit 0 but a truncated or bad file
+            elif judge and official_eval.missing_official_keys(data.get("official")):
+                status = "OFFICIAL_KEYS_MISSING"  # judged, main metric absent
+            else:
                 break
-            status = "SCORES_INVALID"  # exit 0 but a truncated or bad file
     if status != 0:
         return {"status": "failed", "tries": JUDGE_TRIES, "exit": status}
     return {
@@ -1307,9 +1312,23 @@ def _all_missing(
     return {"scenario": key, "trials": out}
 
 
-def aggregate_scores(cfg: Config) -> dict[str, list[dict[str, float]]]:
+def _judging_exhausted(trial_dir: Path) -> bool:
+    marker = _read_json(trial_dir / MARKER)
+    outcome = marker.get("judge") if isinstance(marker, Mapping) else None
+    return isinstance(outcome, Mapping) and outcome.get("status") == "failed"
+
+
+def aggregate_scores(
+    cfg: Config, official_missing: list[str] | None = None
+) -> dict[str, list[dict[str, float]]]:
     """``{scenario id: [trial scores]}`` for ``coverage.py``; a missing or
-    unscored trial is absent and counts 0 there (L5)."""
+    unscored trial is absent and counts 0 there (L5).
+
+    A trial whose judging used every try (L-D9) without the main official
+    metric is recorded as missing official scores: 0 on every official metric,
+    left in the denominator and appended to ``official_missing`` (#641).  Any
+    other scored trial without it is left as is, and the table refuses it.
+    """
     table: dict[str, list[dict[str, float]]] = {}
     if not cfg.round_dir.is_dir():
         return table
@@ -1321,7 +1340,16 @@ def aggregate_scores(cfg: Config) -> dict[str, list[dict[str, float]]]:
             if not path.is_file():
                 continue
             data = json.loads(path.read_text())
-            rows.append({**_numeric(data.get("det")), **_numeric(data.get("official"))})
+            official = _numeric(data.get("official"))
+            if official_eval.missing_official_keys(official) and _judging_exhausted(
+                trial
+            ):
+                official = {m: 0.0 for m in official_eval.METRIC_KEYS} | {
+                    "root_cause_entity_pass": 0.0
+                }
+                if official_missing is not None:
+                    official_missing.append(f"{scenario.name}/{trial.name}")
+            rows.append({**_numeric(data.get("det")), **official})
     return table
 
 
@@ -1610,10 +1638,19 @@ def main(argv: Sequence[str] | None = None, backends: Backends | None = None) ->
             tmp_root=args.tmp_root.resolve(),
         )
         if args.command == "scores":
-            table = aggregate_scores(cfg)
+            missing: list[str] = []
+            table = aggregate_scores(cfg, missing)
             args.out.parent.mkdir(parents=True, exist_ok=True)
             args.out.write_text(json.dumps(table, indent=1, sort_keys=True) + "\n")
-            print(json.dumps({"out": str(args.out), "scenarios": len(table)}))
+            print(
+                json.dumps(
+                    {
+                        "out": str(args.out),
+                        "scenarios": len(table),
+                        "official_missing": missing,
+                    }
+                )
+            )
             return 0
         results = []
         for trial_dir in sorted(cfg.round_dir.glob("S*/trial-*")):
@@ -1626,10 +1663,10 @@ def main(argv: Sequence[str] | None = None, backends: Backends | None = None) ->
                 # A result judged before #641 may lack a required official
                 # key; it is judged again like a failed judge call, and the
                 # original result is kept beside the new one, never replaced.
-                if done.get("judged"):
-                    if not official_eval.missing_official_keys(done.get("official")):
-                        continue
-                    keep_superseded(scored)
+                if done.get("judged") and not official_eval.missing_official_keys(
+                    done.get("official")
+                ):
+                    continue
             scenario_dir = next(p.name for p in meta.iterdir() if p.is_dir())
             trial = int(trial_dir.name.split("-")[1])
             outcome = finish_judging(

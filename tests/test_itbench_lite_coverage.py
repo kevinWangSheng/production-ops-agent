@@ -97,3 +97,13 @@ def test_other_metrics_still_count_a_missing_value_as_zero():
     table = coverage.build_table(ids, {"S1": [{"x": 1.0}, {}]}, ["propagation_chain"])
     row = next(r for r in table["scenarios"] if r["scenario"] == "1")
     assert row["means"]["propagation_chain"] == 0.0
+
+
+def test_non_finite_main_metric_is_refused():
+    ids = coverage.load_tiers({f"S{i}": "T" for i in IDS})
+    with pytest.raises(ValueError, match="root_cause_entity_f1"):
+        coverage.build_table(
+            ids,
+            {"S1": [{"root_cause_entity_f1": float("nan")}]},
+            ["root_cause_entity_f1"],
+        )
