@@ -3,7 +3,7 @@
 类别：集成运行（真实 DeepSeek、回放组件、真实 judge），不计分。#497 规则：修复只影响恢复路径，所以只重新彩排这一项。提交 F `5f731318`（#632 修复，PR #634）。时间 UTC，2026-11-14。前一次彩排与缺陷见 [小批记录](../itbench-lite-sre-lite-small-1114/run.md)。
 
 - 每轮 1 题（S2）× 1 次，新轮次；驱动输出直接重定向到文件（不经 `tee`）；中断用驱动所在 tmux 前台的 Ctrl-C；恢复用同一条命令。lab 停着。
-- 通过标准（lead）：恢复后 trial completed，`itbench_lite.history` 为空（没有 `PG_DIRECTORY_EXISTS`），`trial-1/stale/<时刻>/` 里是被中断的 `chance-1`；中断后与恢复后端口 29110、29190、29186、29118、29143、29180 无监听，`itbl-*` 容器为 0。
+- 通过标准（lead）：恢复后 trial completed，`itbench_lite.history` 为空（没有 `PG_DIRECTORY_EXISTS`），`trial-1/stale/<时刻>/` 里是被中断的 `chance-1`；中断后驱动进程退出时（灌数据中中断要等灌数据线程结束，本次最长约 57 秒）与恢复后，端口 29110、29190、29186、29118、29143、29180 无监听，`itbl-*` 容器为 0。驱动退出前端口与容器仍在属预期，不算未清理。
 
 | 轮次 | 中断时刻 | 中断落点（驱动 traceback） | 中断后清理 | 恢复结果 | stale |
 |---|---|---|---|---|---|
