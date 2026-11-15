@@ -1131,6 +1131,22 @@ def trial_state(cfg: Config, label: str, scenario_dir: str, trial: int) -> str:
     return "judge"
 
 
+SUPERSEDED_DIR = "superseded"
+
+
+def keep_superseded(scores_file: Path) -> Path:
+    """Copy a scores file about to be judged again to
+    ``<trial>/superseded/<timestamp>-scores.json`` (#641); the copy is never
+    overwritten and nothing reads it for the score tables."""
+    target_dir = scores_file.parent / SUPERSEDED_DIR
+    target_dir.mkdir(exist_ok=True)
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%f")
+    target = target_dir / f"{stamp}-{scores_file.name}"
+    with target.open("xb") as handle:  # exclusive: never replaces a copy
+        handle.write(scores_file.read_bytes())
+    return target
+
+
 def trial_done(cfg: Config, label: str, scenario_dir: str, trial: int) -> bool:
     return trial_state(cfg, label, scenario_dir, trial) in ("done", "missing")
 
@@ -1608,11 +1624,12 @@ def main(argv: Sequence[str] | None = None, backends: Backends | None = None) ->
             if scored.is_file():
                 done = json.loads(scored.read_text())
                 # A result judged before #641 may lack a required official
-                # key; it is judged again like a failed judge call.
-                if done.get("judged") and not official_eval.missing_official_keys(
-                    done.get("official")
-                ):
-                    continue
+                # key; it is judged again like a failed judge call, and the
+                # original result is kept beside the new one, never replaced.
+                if done.get("judged"):
+                    if not official_eval.missing_official_keys(done.get("official")):
+                        continue
+                    keep_superseded(scored)
             scenario_dir = next(p.name for p in meta.iterdir() if p.is_dir())
             trial = int(trial_dir.name.split("-")[1])
             outcome = finish_judging(

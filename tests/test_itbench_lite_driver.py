@@ -1081,3 +1081,11 @@ def test_judge_command_rejudges_a_judged_result_missing_a_required_key(
     assert [c["outputs"] for c in h2.judge_calls] == [
         cfg.round_dir / "S7" / "trial-1" / "outputs"
     ]
+    # The original result is kept byte for byte; the complete one is untouched.
+    kept = list((cfg.round_dir / "S7" / "trial-1" / driver.SUPERSEDED_DIR).iterdir())
+    assert [json.loads(p.read_text()) for p in kept] == [lacking]
+    assert not (cfg.round_dir / "S16" / "trial-1" / driver.SUPERSEDED_DIR).exists()
+    assert (
+        json.loads((cfg.round_dir / "S16" / "trial-1" / "scores.json").read_text())
+        == complete
+    )
